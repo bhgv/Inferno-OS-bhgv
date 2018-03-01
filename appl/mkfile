@@ -1,0 +1,22 @@
+<../mkconfig
+
+DIRS=\
+	acme\
+#	alphabet\
+	charon\
+	cmd\
+	collab\
+	demo\
+	ebook\
+	grid\
+#	lib\
+	alib\
+	math\
+#	mux\
+	spree\
+	svc\
+	tiny\
+#	wm\
+	awm\
+
+<$ROOT/mkfiles/mksubdirs

@@ -1,0 +1,118 @@
+dev
+	root
+	cons
+	env
+	mnt
+	pipe
+	prog
+	prof
+	srv
+	dup
+	ssl
+	cap
+	fs
+	cmd	cmd
+	indir
+
+	draw	win-andr
+	pointer
+
+	ip	ipif6-posix ipaux
+	mem
+
+	snarf
+
+	audio_andr
+	gui
+
+#	ip	ipif6-posix ipaux
+#	eia
+#	audio	audio-oss
+
+lib
+	interp
+	tk
+	freetype
+	math
+	draw
+
+	memlayer
+	memdraw
+	keyring
+	sec
+	mp
+
+	9
+
+	lodepng
+
+link
+
+mod
+	sys
+	draw
+
+	tk
+	math
+	srv	srv
+	keyring
+	crypt
+	ipints
+	loader
+	freetype
+
+port
+	calltrace
+	alloc-andr
+	cache
+	chan-andr
+	dev
+	devtab
+
+	dial
+	dis
+	discall
+	env
+	error
+	errstr
+	exception
+	exportfs
+	inferno
+	latin1
+	parse
+	pgrp
+	print
+	proc
+	qio
+	random
+	sysfile
+	uqid
+	amain
+#	main
+
+code
+	int dontcompile = 1;
+
+init
+	emuinit
+
+root
+	/dev	/
+	/fd	/
+	/prog	/
+	/prof	/
+	/net	/
+	/net.alt	/
+	/chan	/
+	/nvfs	/
+	/env	/
+	/n	/
+	/gui	/
+#	/dis
+#	/n
+#	/icons
+#	/osinit.dis
+#	/dis/emuinit.dis
+#	/dis/lib/auth.dis
+#	/dis/lib/ssl.dis
+#	/n/local /
