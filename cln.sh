@@ -1,6 +1,6 @@
 #!/bin/sh
 
-export NDK=$PWD/../android-ndk-r10e
+#export NDK=$PWD/../android-ndk-r10e
 
 #python %NDK%/build/tools/make_standalone_toolchain.py -v --arch arm --api 17 --install-dir=ndk_toolchain
 
@@ -11,7 +11,5 @@ export PATH=$PWD/Linux/386/bin:$ANDR_TOOLCHAIN/bin:$PATH
 
 export ROOT=$PWD
 
-ln -s $ANDR_TOOLCHAIN ./ndk_toolchain
-
-mk install
+mk clean
 
