@@ -1,3 +1,5 @@
 
 *.dis
 *.sbl
+*.o
+*.obj
