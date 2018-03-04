@@ -13,5 +13,8 @@ export ROOT=$PWD
 
 ln -s $ANDR_TOOLCHAIN ./ndk_toolchain
 
+unzip -n dis_folders.zip
+
 mk install
 
+ln -s $PWD/Android/arm/lib/emu.a Android/arm/lib/libemu.a
