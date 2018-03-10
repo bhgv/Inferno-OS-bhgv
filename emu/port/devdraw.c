@@ -1260,11 +1260,13 @@ printmesg(char *fmt, uchar *a, int plsprnt)
 	char *p, *q;
 	int s;
 
+#if 1
 	if(1|| plsprnt==0){
 		SET(s); SET(q); SET(p);
 		USED(fmt); USED(a); USED(buf); USED(p); USED(q); USED(s);
 		return;
 	}
+#endif
 	q = buf;
 	*q++ = *a++;
 	for(p=fmt; *p; p++){
@@ -1446,6 +1448,26 @@ drawmesg(Client *client, void *av, int n)
 			if(a[5])
 				dst->flags |= Frepl;
 			drawrectangle(&dst->clipr, a+6);
+			continue;
+			
+		/* attach to ext win: 'W' dstid[4] */
+		case 'W':
+			printmesg(fmt="L", a, 0);
+			m = 1+4;
+			if(n < m)
+				error(Eshortdraw);
+			dst = drawimage(client, a+1);
+			r = dst->r;
+			//op = drawclientop(client);
+			//memdraw(dst, r, src, p, mask, q, op);
+			//dstflush(dst, r);
+#ifdef clutter
+			if(dst->data && !dst->ext_win)
+				dst->ext_win = attach_clutter_actor(dst->data->bdata, 
+														r.min.x, r.min.y, 
+														r.max.x, r.max.y);
+printf("clutter new window\n");
+#endif
 			continue;
 
 		/* draw: 'd' dstid[4] srcid[4] maskid[4] R[4*4] P[2*4] P[2*4] */
