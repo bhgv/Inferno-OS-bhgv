@@ -72,6 +72,11 @@ memltofrontn(Memimage **ip, int n)
 	front = nil;
 	while(--n >= 0){
 		i = *ip++;
+#ifdef EXT_WIN
+		if(i->ext_win){
+			clutter_ext_win_tofront(i->ext_win);
+		}else
+#endif
 		_memltofront(i, front, 1);
 		front = i;
 	}

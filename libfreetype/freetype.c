@@ -5,18 +5,36 @@
 
 static char* fterrstr(int);
 
+#ifdef EXT_WIN
+extern char rootdir[];
+#endif
+
 char*
 ftnewface(char *path, int index, FTface *f, FTfaceinfo *finfo)
 {
 	FT_Library ft_lib;
 	FT_Face ft_face;
 	char *err;
+#ifdef EXT_WIN
+	char *path2;
+#endif
 
 	err = fterrstr(FT_Init_FreeType(&ft_lib));
 	if (err != nil)
 		return err;
 
+#ifdef EXT_WIN
+	path2 = malloc(strlen(rootdir) + 1 + strlen(path) + 1);
+	sprintf(path2, "%s%s", rootdir, path);
+	path = path2;
+#endif
+	
 	err = fterrstr(FT_New_Face(ft_lib, path, index, &ft_face));
+
+#ifdef EXT_WIN
+	free(path2);
+#endif
+
 	if (err != nil) {
 		FT_Done_FreeType(ft_lib);
 		return err;

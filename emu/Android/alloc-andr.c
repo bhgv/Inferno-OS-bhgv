@@ -805,7 +805,7 @@ free(void *v)
 {
 	Bhdr *b;
 
-	if(v != nil) {
+	if(v != nil && v > 0x1000 && v < 0xffff0000) {
 		if(Npadlong)
 			v = (ulong*)v-Npadlong;
 		D2B(b, v);
@@ -819,6 +819,9 @@ void*
 realloc(void *v, size_t size)
 {
 	void *nv;
+
+	if(v <= 0x1000 || v >= 0xffff0000)
+		v = nil;
 
 	if(size == 0)
 		return malloc(size);	/* temporary change until realloc calls can be checked */

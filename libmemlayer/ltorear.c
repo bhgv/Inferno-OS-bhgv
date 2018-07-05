@@ -60,6 +60,11 @@ memltorearn(Memimage **ip, int n)
 	rear = nil;
 	while(--n >= 0){
 		i = *ip++;
+#ifdef EXT_WIN
+		if(i->ext_win){
+			clutter_ext_win_torear(i->ext_win);
+		}else
+#endif
 		_memltorear(i, rear);
 		rear = i;
 	}

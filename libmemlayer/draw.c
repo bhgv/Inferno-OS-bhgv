@@ -69,8 +69,19 @@ if(drawdebug)	iprint("mask->layer != nil\n");
 	}
 
     Top:
-	if(dst->layer==nil && src->layer==nil){
+	if(
+#ifndef EXT_WIN
+		dst->layer==nil && 
+		src->layer==nil
+#else
+		1
+#endif
+	){
+#ifndef EXT_WIN
 		memimagedraw(dst, r, src, p0, mask, p1, op);
+#else
+		memimagedraw(dst, r, src, p0, mask, p1, op);
+#endif
 		return;
 	}
 

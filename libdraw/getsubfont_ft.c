@@ -22,6 +22,7 @@
 #include "freetype.h"
 
 
+
 int
 is_subfont_ft(char *name){
 	char c1, c2, c3, c4;

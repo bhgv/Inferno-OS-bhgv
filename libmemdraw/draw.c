@@ -3,6 +3,18 @@
 #include "memdraw.h"
 #include "pool.h"
 
+//#undef EXT_WIN
+
+#ifdef ANDROID
+#include <android/log.h>
+
+#define  LOG_TAG    "inferno DRWml"
+#define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
+#define  LOGW(...)  __android_log_print(ANDROID_LOG_WARN,LOG_TAG,__VA_ARGS__)
+#define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
+#endif
+
+
 extern Pool* imagmem;
 int drawdebug;
 static int	tablesbuilt;
@@ -87,24 +99,98 @@ static ulong imgtorgba(Memimage*, ulong);
 static ulong rgbatoimg(Memimage*, ulong);
 static ulong pixelbits(Memimage*, Point);
 
+
+#ifdef EXT_WIN
+int clutter_ext_win_get_coords(void *actor, int *x, int *y, int *w, int *h);
+#endif
+
+
 #define DBG if(0)
 void
 memimagedraw(Memimage *dst, Rectangle r, Memimage *src, Point p0, Memimage *mask, Point p1, int op)
 {
 	Memdrawparam par;
+#ifdef EXT_WIN
+	Rectangle tr = r;
+#endif
 
 	if(mask == nil)
 		mask = memopaque;
 
 DBG	print("memimagedraw %p/%luX %R @ %p %p/%luX %P %p/%luX %P... ", dst, dst->chan, r, dst->data->bdata, src, src->chan, p0, mask, mask->chan, p1);
 
+#ifdef EXT_WIN
+	Rectangle ocr = dst->clipr;
+	if(dst->ext_win){
+		int x, y, w, h, dx, dy;
+		
+		clutter_ext_win_get_coords(dst->ext_win, &x, &y, &w, &h);
+		
+		LOGE("-- Fr: %s: %i cl=%x (%d, %d, %d, %d), \nr=(%d, %d, %d, %d), \nsr=(%d, %d, %d, %d), \nmr=(%d, %d, %d, %d), \ndst->r=(%d, %d, %d, %d), \ndst->clipr=(%d, %d, %d, %d), \np0=(%d, %d), p1=(%d, %d)",
+				__func__, __LINE__,
+				dst->ext_win, x, y, w, h,
+				r.min.x, r.min.y, Dx(r), Dy(r),
+				par.sr.min.x, par.sr.min.y, Dx(par.sr), Dy(par.sr),
+				par.mr.min.x, par.mr.min.y, Dx(par.mr), Dy(par.mr),
+				dst->r.min.x, dst->r.min.y, Dx(dst->r), Dy(dst->r),
+				dst->clipr.min.x, dst->clipr.min.y, Dx(dst->clipr), Dy(dst->clipr),
+				p0.x, p0.y, p1.x, p1.y);
+
+		/**/
+		r.max.x += x;
+		r.max.y += y;
+		r.min.x += x;
+		r.min.y += y;
+
+		/** /
+		dst->clipr.max.x += x;
+		dst->clipr.max.y += y;
+		dst->clipr.min.x += x;
+		dst->clipr.min.y += y;
+		/**/
+		
+	}
+	if(src->ext_win){
+		int x, y, w, h, dx, dy; 	
+		clutter_ext_win_get_coords(src->ext_win, &x, &y, &w, &h);
+//LOGE("-- Src->ext_win: %s: %i cl=%x", __func__, __LINE__, src->ext_win);
+		/**/
+		p0.x += x;
+		p0.y += y;
+		/**/
+	}
+#endif
 	if(drawclip(dst, &r, src, &p0, mask, &p1, &par.sr, &par.mr) == 0){
+#ifdef EXT_WIN
+		dst->clipr = ocr;
+#endif
 //		if(drawdebug)
 //			iprint("empty clipped rectangle\n");
 		return;
 	}
+#ifdef EXT_WIN
+	if(dst->ext_win){
+		int x, y, w, h;
+		if(clutter_ext_win_get_coords(dst->ext_win, &x, &y, &w, &h)){
+			LOGE("-- To: %s: %i cl=%x (%d, %d, %d, %d), \nr=(%d, %d, %d, %d), \nsr=(%d, %d, %d, %d), \nmr=(%d, %d, %d, %d), \ndst->r=(%d, %d, %d, %d), \ndst->clipr=(%d, %d, %d, %d), \np0=(%d, %d), p1=(%d, %d)",
+					__func__, __LINE__,
+					dst->ext_win, x, y, w, h,
+					r.min.x, r.min.y, Dx(r), Dy(r),
+					par.sr.min.x, par.sr.min.y, Dx(par.sr), Dy(par.sr),
+					par.mr.min.x, par.mr.min.y, Dx(par.mr), Dy(par.mr),
+					dst->r.min.x, dst->r.min.y, Dx(dst->r), Dy(dst->r),
+					dst->clipr.min.x, dst->clipr.min.y, Dx(dst->clipr), Dy(dst->clipr),
+					p0.x, p0.y, p1.x, p1.y);
+
+		}
+
+	}
+#endif
 
 	if(op < Clear || op > SoverD){
+#ifdef EXT_WIN
+		dst->clipr = ocr;
+#endif
 //		if(drawdebug)
 //			iprint("op out of range: %d\n", op);
 		return;
@@ -127,6 +213,9 @@ DBG	print("memimagedraw %p/%luX %R @ %p %p/%luX %P %p/%luX %P... ", dst, dst->ch
 			par.srgba = imgtorgba(src, par.sval);
 			par.sdval = rgbatoimg(dst, par.srgba);
 			if((par.srgba&0xFF) == 0 && (op&DoutS)){
+#ifdef EXT_WIN
+				dst->clipr = ocr;
+#endif
 //				if (drawdebug) iprint("fill with transparent source\n");
 				return;	/* no-op successfully handled */
 			}
@@ -138,6 +227,9 @@ DBG	print("memimagedraw %p/%luX %R @ %p %p/%luX %P %p/%luX %P... ", dst, dst->ch
 		if(Dx(mask->r)==1 && Dy(mask->r)==1){
 			par.mval = pixelbits(mask, mask->r.min);
 			if(par.mval == 0 && (op&DoutS)){
+#ifdef EXT_WIN
+				dst->clipr = ocr;
+#endif
 //				if(drawdebug) iprint("fill with zero mask\n");
 				return;	/* no-op successfully handled */
 			}
@@ -166,6 +258,9 @@ DBG print("draw dr %R sr %R mr %R %lux\n", r, par.sr, par.mr, par.state);
 	 */
 DBG print("test hwdraw\n");
 	if(hwdraw(&par)){
+#ifdef EXT_WIN
+		dst->clipr = ocr;
+#endif
 //if(drawdebug) iprint("hw handled\n");
 DBG print("hwdraw handled\n");
 		return;
@@ -175,6 +270,14 @@ DBG print("hwdraw handled\n");
 	 */
 DBG print("test memoptdraw\n");
 	if(memoptdraw(&par)){
+#ifdef EXT_WIN
+		void *ext_win=NULL;
+		
+		dst->clipr = ocr;
+
+//		ext_win = dst->ext_win;
+//		if(ext_win) clutter_ext_win_repaint(ext_win);
+#endif
 //if(drawdebug) iprint("memopt handled\n");
 DBG print("memopt handled\n");
 		return;
@@ -186,6 +289,14 @@ DBG print("memopt handled\n");
 	 */
 DBG print("test chardraw\n");
 	if(chardraw(&par)){
+#ifdef EXT_WIN
+		void *ext_win=NULL;
+		
+		dst->clipr = ocr;
+		
+//		ext_win = dst->ext_win;
+//		if(ext_win) clutter_ext_win_repaint(ext_win);
+#endif
 //if(drawdebug) iprint("chardraw handled\n");
 DBG print("chardraw handled\n");
 		return;
@@ -198,6 +309,9 @@ DBG print("do alphadraw\n");
 	alphadraw(&par);
 //if(drawdebug) iprint("alphadraw handled\n");
 DBG print("alphadraw handled\n");
+#ifdef EXT_WIN
+	dst->clipr = ocr;
+#endif
 }
 #undef DBG
 
@@ -513,14 +627,30 @@ getparam(Param *p, Memimage *img, Rectangle r, int convgrey, int needbuf, int *n
 
 	p->bytey0s = byteaddr(img, Pt(img->r.min.x, img->r.min.y));
 	p->bytermin = byteaddr(img, Pt(r.min.x, img->r.min.y));
-	p->bytey0e = byteaddr(img, Pt(img->r.max.x, img->r.min.y));
+#ifdef EXT_WIN
+	p->bytey0e = byteaddr(img, Pt(img->r.max.x, img->r.max.y)); //img->r.min.y));
+#else
+	p->bytey0e = byteaddr(img, Pt(img->r.max.x, img->r.max.y)); //img->r.min.y));
+#endif
 	p->bwidth = sizeof(ulong)*img->width;
+#ifdef EXT_WIN
+	if(img->ext_win){
+		void* a;
+		int wid;
+		a = clutter_ext_win_get_dp(img->ext_win, img->r.min.x, r.min.y, &wid, NULL, NULL);
+		if(a){
+			p->bwidth = wid;
+		}
+	}
+#endif
+
 
 	assert(p->bytey0s <= p->bytermin && p->bytermin <= p->bytey0e);
 
-	if(p->r.min.x == p->img->r.min.x)
+	if(p->r.min.x == p->img->r.min.x){
 		assert(p->bytermin == p->bytey0s);
-
+	}
+	
 	nbuf = 1;
 	if((img->flags&Frepl) && Dy(img->r) <= MAXBCACHE && Dy(img->r) < Dy(r)){
 		p->replcache = 1;
@@ -608,6 +738,7 @@ alphadraw(Memdrawparam *par)
 	Memimage *src, *mask, *dst;
 	Rectangle r, sr, mr;
 	Dbuf *z;
+	void *ext_win = NULL;
 
 	z = allocdbuf();
 	if(z == nil)
@@ -623,7 +754,7 @@ alphadraw(Memdrawparam *par)
 	sr = par->sr;
 	mr = par->mr;
 	op = par->op;
-
+	
 	isgrey = dst->flags&Fgrey;
 
 	/*
@@ -731,6 +862,16 @@ alphadraw(Memdrawparam *par)
 	z->mpar.bufbase = drawbuf+z->mpar.bufoff;
 	z->dpar.bufbase = drawbuf+z->dpar.bufoff;
 	z->spar.convbuf = drawbuf+z->spar.convbufoff;
+
+#ifdef EXT_WIN
+	ext_win = dst->ext_win;
+	if(ext_win){
+		int x, y, w, h;
+		clutter_ext_win_get_coords(ext_win, &x, &y, &w, &h);
+		dy = (dy >= h ? h-1 : dy);
+		dx = (dx >= w ? w-1 : dx);
+	}
+#endif
 
 	if(dir == 1){
 		starty = 0;
@@ -1714,6 +1855,7 @@ boolmemmove(Buffer bdst, Buffer bsrc, Buffer b1, int dx, int i, int o)
 	USED(i);
 	USED(o);
 	USED(b1.grey);
+LOGI("%s: %d", __func__, __LINE__);
 	memmove(bdst.red, bsrc.red, dx*bdst.delta);
 	return bdst;
 }
@@ -1898,8 +2040,9 @@ pixelbits(Memimage *i, Point pt)
 static Calcfn*
 boolcopyfn(Memimage *img, Memimage *mask)
 {
-	if(mask->flags&Frepl && Dx(mask->r)==1 && Dy(mask->r)==1 && pixelbits(mask, mask->r.min)==~0)
+	if(mask->flags&Frepl && Dx(mask->r)==1 && Dy(mask->r)==1 && pixelbits(mask, mask->r.min)==~0){
 		return boolmemmove;
+	}
 
 	switch(img->depth){
 	case 8:
@@ -2071,12 +2214,18 @@ memoptdraw(Memdrawparam *par)
 	ulong v;
 	Memimage *src;
 	Memimage *dst;
+	int dstw, dsth;
+	void *ext_win=NULL;
 
 	dx = Dx(par->r);
 	dy = Dy(par->r);
 	src = par->src;
 	dst = par->dst;
 	op = par->op;
+
+#ifdef EXT_WIN
+	ext_win = dst->ext_win;
+#endif
 
 DBG print("state %lux mval %lux dd %d\n", par->state, par->mval, dst->depth);
 	/*
@@ -2090,8 +2239,30 @@ DBG print("state %lux mval %lux dd %d\n", par->state, par->mval, dst->depth);
 		uchar lm, rm;
 
 DBG print("memopt, dst %p, dst->data->bdata %p\n", dst, dst->data->bdata);
-		dwid = dst->width*sizeof(ulong);
 		dp = byteaddr(dst, par->r.min);
+		dwid = dst->width*sizeof(ulong);
+#ifdef EXT_WIN
+		if(ext_win){
+			dp = clutter_ext_win_get_dp(ext_win, par->r.min.x, par->r.min.y, &dwid, &dstw, &dsth);
+			if(!dp)
+				return 1;
+			dy = (dy > dsth ? dsth : dy);
+			dx = (dx > dstw ? dstw : dx);
+		}
+#endif
+
+#ifdef EXT_WIN
+		if(ext_win)
+			LOGI("%s: %d zakr src_xy=(%d, %d), src_wh=(%d, %d), dst_wh=(%d, %d), clu_xy=(%d, %d), clu_wh=(%d, %d), clu=%x", 
+					__func__, __LINE__,
+					par->sr.min.x, par->sr.min.y,
+					Dx(src->r), Dy(src->r),
+					dx, dy, 
+					par->r.min.x, par->r.min.y,
+					dstw, dsth,
+					ext_win);
+#endif
+
 		v = par->sdval;
 DBG print("sdval %lud, depth %d\n", v, dst->depth);
 		switch(dst->depth){
@@ -2174,6 +2345,7 @@ DBG print("dp=%p; dx=%d; for(y=0; y<%d; y++, dp+=%d)\nmemsets(dp, v, dx);\n",
 			p[2] = v>>16;
 			p[3] = v>>24;
 			v = *(ulong*)p;
+			
 			for(y=0; y<dy; y++, dp+=dwid)
 				memsetl(dp, v, dx);
 			return 1;
@@ -2199,10 +2371,31 @@ DBG print("dp=%p; dx=%d; for(y=0; y<%d; y++, dp+=%d)\nmemsets(dp, v, dx);\n",
 		else
 			dir = 1;
 
-		swid = src->width*sizeof(ulong);
-		dwid = dst->width*sizeof(ulong);
 		sp = byteaddr(src, par->sr.min);
+		swid = src->width*sizeof(ulong);
 		dp = byteaddr(dst, par->r.min);
+		dwid = dst->width*sizeof(ulong);
+#ifdef EXT_WIN
+		if(ext_win){
+			dp = clutter_ext_win_get_dp(ext_win, par->r.min.x, par->r.min.y, &dwid, &dstw, &dsth);
+			if(!dp)
+				return 1;
+			dy = (dy > dsth ? dsth : dy);
+			dx = (dx > dstw ? dstw : dx);
+		}
+#endif
+		
+#ifdef EXT_WIN
+		if(ext_win)
+LOGI("%s: %d img src_xy=(%d, %d), src_wh=(%d, %d), dst_wh=(%d, %d), clu_xy=(%d, %d), clu_wh=(%d, %d), clu=%x", 
+		__func__, __LINE__,
+		par->sr.min.x, par->sr.min.y,
+		Dx(src->r), Dy(src->r),
+		dx, dy, 
+		par->r.min.x, par->r.min.y,
+		dstw, dsth,
+		ext_win);
+#endif
 		if(dir == -1){
 			sp += (dy-1)*swid;
 			dp += (dy-1)*dwid;
@@ -2210,6 +2403,7 @@ DBG print("dp=%p; dx=%d; for(y=0; y<%d; y++, dp+=%d)\nmemsets(dp, v, dx);\n",
 			dwid = -dwid;
 		}
 		nb = (dx*src->depth)/8;
+		
 		for(y=0; y<dy; y++, sp+=swid, dp+=dwid)
 			memmove(dp, sp, nb);
 		return 1;
@@ -2227,13 +2421,25 @@ DBG print("dp=%p; dx=%d; for(y=0; y<%d; y++, dp+=%d)\nmemsets(dp, v, dx);\n",
 		uchar lm, rm;
 		long swid, dwid, mwid;
 		int i, x, dir;
+		int dstw, dsth;
 
 		sp = byteaddr(src, par->sr.min);
-		dp = byteaddr(dst, par->r.min);
-		mp = byteaddr(par->mask, par->mr.min);
 		swid = src->width*sizeof(ulong);
+		dp = byteaddr(dst, par->r.min);
 		dwid = dst->width*sizeof(ulong);
+		mp = byteaddr(par->mask, par->mr.min);
 		mwid = par->mask->width*sizeof(ulong);
+#ifdef EXT_WIN
+		/**/
+		if(ext_win){
+			dp = clutter_ext_win_get_dp(ext_win, par->r.min.x, par->r.min.y, &dwid, &dstw, &dsth);
+			if(!dp)
+				return 1;
+			dy = (dy > dsth ? dsth : dy);
+			dx = (dx > dstw ? dstw : dx);
+		}
+		/**/
+#endif
 
 		if(src->data == dst->data && byteaddr(dst, par->r.min) > byteaddr(src, par->sr.min)){
 			dir = -1;
@@ -2331,6 +2537,7 @@ chardraw(Memdrawparam *par)
 	uchar sp[4];
 	Rectangle r, mr;
 	Memimage *mask, *src, *dst;
+	int dstw, dsth;
 
 if(0) if(drawdebug) iprint("chardraw? mf %lux md %d sf %lux dxs %d dys %d dd %d ddat %p sdat %p\n",
 		par->mask->flags, par->mask->depth, par->src->flags, 
@@ -2358,6 +2565,13 @@ if(0) if(drawdebug) iprint("chardraw? mf %lux md %d sf %lux dxs %d dys %d dd %d 
 
 	wp = byteaddr(dst, r.min);
 	dstwid = dst->width*sizeof(ulong);
+#ifdef EXT_WIN_
+	if(dst->ext_win){
+		wp = clutter_ext_win_get_dp(dst->ext_win, par->r.min.x, par->r.min.y, &dstwid, &dstw, &dsth);
+		if(!wp)
+			return 1;
+	}
+#endif
 DBG print("bsh %d\n", bsh);
 	dy = Dy(r);
 	dx = Dx(r);

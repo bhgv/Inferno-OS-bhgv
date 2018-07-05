@@ -11,7 +11,7 @@ ROOT=$ROOT
 #
 TKSTYLE=std
 
-WINDOW_BACKEND=andr		# andr, clutter
+WINDOW_BACKEND=clutter		# andr, clutter
 
 #
 #	Except for building kernels, SYSTARG must always be the same as SYSHOST

@@ -64,7 +64,8 @@ typedef unsigned long uintptr;
 #undef offsetof
 #define	offsetof(s, m)	(ulong)(&(((s*)0)->m))
 #undef assert
-#define	assert(x)	if(x){}else _assert("x")
+//#define	assert(x)	if(x){}else _assert("x")
+#define	assert(x)	if(x){}else _assert("%s: %d", __func__, __LINE__)
 
 /*
  * most mem and string routines are declared by ANSI/POSIX files above

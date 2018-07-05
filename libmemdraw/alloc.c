@@ -3,6 +3,16 @@
 #include "memdraw.h"
 #include "pool.h"
 
+#ifdef EXT_WIN
+#include <android/log.h>
+
+
+#define  LOG_TAG    "inferno LmALC"
+#define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
+#define  LOGW(...)  __android_log_print(ANDROID_LOG_WARN,LOG_TAG,__VA_ARGS__)
+#define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
+#endif
+
 extern	Pool*	imagmem;
 
 void
@@ -87,6 +97,7 @@ allocmemimage(Rectangle r, ulong chan)
 	}
 
 	md->base[0] = (ulong)md;
+	md->base[1] = 0;
 	/* md->base[1] = getcallerpc(&r); */
 
 	/* if this changes, memimagemove must change too */
@@ -109,6 +120,13 @@ freememimage(Memimage *i)
 {
 	if(i == nil)
 		return;
+#ifdef EXT_WIN
+	if(i->ext_win){
+LOGI("(%d) clutter free img ext_win=%x", __LINE__, i->ext_win);
+		clutter_ext_win_free(i->ext_win);
+		i->ext_win = NULL;
+	}
+#endif
 	if(i->data->ref-- == 1 && i->data->allocd){
 		if(i->data->base)
 			poolfree(imagmem, i->data->base);
@@ -131,6 +149,12 @@ byteaddr(Memimage *i, Point p)
 {
 	uchar *a;
 
+#ifdef EXT_WIN
+	if(i->ext_win){
+		a = clutter_ext_win_get_dp(i->ext_win, p.x, p.y, NULL, NULL, NULL);
+		if(a) return a;
+	}
+#endif
 	a = i->data->bdata+i->zero+sizeof(ulong)*p.y*i->width;
 
 	if(i->depth < 8){

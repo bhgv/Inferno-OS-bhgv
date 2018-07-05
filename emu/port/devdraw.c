@@ -12,6 +12,15 @@
 #include "interp.h"
 
 
+#include <android/log.h>
+
+
+#define  LOG_TAG    "inferno D-DRW"
+#define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
+#define  LOGW(...)  __android_log_print(ANDROID_LOG_WARN,LOG_TAG,__VA_ARGS__)
+#define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
+
+
 
 enum
 {
@@ -385,7 +394,17 @@ void
 dstflush(Memimage *dst, Rectangle r)
 {
 	Memlayer *l;
-
+	
+	int dstw, dsth;
+	void *ext_win=NULL;
+/**/
+#ifdef EXT_WIN
+	if(dst->ext_win){
+		clutter_ext_win_repaint(dst->ext_win);
+		return;
+	}
+#endif
+/**/
 	if(dst == screenimage){
 		combinerect(&flushrect, r);
 		return;
@@ -643,6 +662,9 @@ drawfreedimage(DImage *dimage)
 	ds = dimage->dscreen;
 	if(ds){
 		l = dimage->image;
+#ifdef EXT_WIN
+		if(l->layer->screen->image->ext_win == NULL)
+#endif
 		if(l->data == screenimage->data)
 			dstflush(l->layer->screen->image, l->layer->screenr);
 		if(l->layer->refreshfn == drawrefresh)	/* else true owner will clean up */
@@ -1260,7 +1282,7 @@ printmesg(char *fmt, uchar *a, int plsprnt)
 	char *p, *q;
 	int s;
 
-#if 1
+#if 0
 	if(1|| plsprnt==0){
 		SET(s); SET(q); SET(p);
 		USED(fmt); USED(a); USED(buf); USED(p); USED(q); USED(s);
@@ -1302,7 +1324,8 @@ printmesg(char *fmt, uchar *a, int plsprnt)
 	}
 	*q++ = '\n';
 	*q = 0;
-	iprint("%.*s", (int)(q-buf), buf);
+//	iprint("%.*s", (int)(q-buf), buf);
+LOGI("%s", buf);
 }
 
 void
@@ -1376,6 +1399,12 @@ drawmesg(Client *client, void *av, int n)
 				l = memlalloc(scrn, r, reffn, 0, value);
 				if(l == 0)
 					error(Edrawmem);
+#ifdef EXT_WIN
+				if(l->ext_win){
+					clutter_ext_win_child_to_layer(l->ext_win, scrnid);
+				}
+//				if(l->layer->screen->image->ext_win == NULL)
+#endif
 				dstflush(l->layer->screen->image, l->layer->screenr);
 				l->clipr = clipr;
 				rectclip(&l->clipr, r);
@@ -1431,6 +1460,11 @@ drawmesg(Client *client, void *av, int n)
 				error(Enodrawimage);
 			if(drawinstallscreen(client, 0, dstid, ddst, dsrc, a[13]) == 0)
 				error(Edrawmem);
+#ifdef EXT_WIN
+			if(ddst->image->ext_win){
+				clutter_ext_win_add_layer(ddst->image->ext_win, dstid);
+			}
+#endif
 			continue;
 
 		/* set repl and clip: 'c' dstid[4] repl[1] clipR[4*4] */
@@ -1447,12 +1481,36 @@ drawmesg(Client *client, void *av, int n)
 			dst = ddst->image;
 			if(a[5])
 				dst->flags |= Frepl;
+#ifndef EXT_WIN
 			drawrectangle(&dst->clipr, a+6);
+#else
+LOGI("%s: %d ext_win=%x, repl=%d", __func__, __LINE__, dst->ext_win, a[5]);
+			if(!dst->ext_win){
+				drawrectangle(&dst->clipr, a+6);
+			}else{
+				drawrectangle(&dst->clipr, a+6);
+				/**/
+				{
+					Rectangle *rr = &dst->clipr;
+					int x, y, w, h;
+					clutter_ext_win_get_coords(dst->ext_win, &x, &y, &w, &h);
+
+					//clutter_clipr_actor(dst->ext_win, rr->min.x, rr->min.y, rr->max.x, rr->max.y);
+					
+					rr->max.x += x;
+					rr->max.y += y;
+					rr->min.x += x;
+					rr->min.y += y;
+//LOGI("clutter clipr window wh=(%d, %d)\n", rr->max.x - rr->min.x, rr->max.y - rr->min.y);
+				}
+				/**/
+			}
+#endif
 			continue;
 			
 		/* attach to ext win: 'W' dstid[4] */
 		case 'W':
-			printmesg(fmt="L", a, 0);
+//			printmesg(fmt="L", a, 0);
 			m = 1+4;
 			if(n < m)
 				error(Eshortdraw);
@@ -1461,18 +1519,18 @@ drawmesg(Client *client, void *av, int n)
 			//op = drawclientop(client);
 			//memdraw(dst, r, src, p, mask, q, op);
 			//dstflush(dst, r);
-#ifdef clutter
-			if(dst->data && !dst->ext_win)
-				dst->ext_win = attach_clutter_actor(dst->data->bdata, 
-														r.min.x, r.min.y, 
-														r.max.x, r.max.y);
-printf("clutter new window\n");
+#ifdef EXT_WIN
+//			if(dst->data && !dst->ext_win)
+//				dst->ext_win = attach_clutter_actor(dst->data->bdata, 
+//													r.min.x, r.min.y, 
+//													r.max.x, r.max.y);
+//print("clutter new window\n");
 #endif
 			continue;
 
 		/* draw: 'd' dstid[4] srcid[4] maskid[4] R[4*4] P[2*4] P[2*4] */
 		case 'd':
-			printmesg(fmt="LLLRPP", a, 0);
+//			printmesg(fmt="LLLRPP", a, 0);
 			m = 1+4+4+4+4*4+2*4+2*4;
 			if(n < m)
 				error(Eshortdraw);
@@ -1489,7 +1547,7 @@ printf("clutter new window\n");
 
 		/* toggle debugging: 'D' val[1] */
 		case 'D':
-			printmesg(fmt="b", a, 0);
+//			printmesg(fmt="b", a, 0);
 			m = 1+1;
 			if(n < m)
 				error(Eshortdraw);
@@ -1499,7 +1557,7 @@ printf("clutter new window\n");
 		/* ellipse: 'e' dstid[4] srcid[4] center[2*4] a[4] b[4] thick[4] sp[2*4] alpha[4] phi[4]*/
 		case 'e':
 		case 'E':
-			printmesg(fmt="LLPlllPll", a, 0);
+//			printmesg(fmt="LLPlllPll", a, 0);
 			m = 1+4+4+2*4+4+4+4+2*4+2*4;
 			if(n < m)
 				error(Eshortdraw);
@@ -1554,7 +1612,7 @@ printf("clutter new window\n");
 
 		/* initialize font: 'i' fontid[4] nchars[4] ascent[1] */
 		case 'i':
-			printmesg(fmt="Llb", a, 1);
+//			printmesg(fmt="Llb", a, 1);
 			m = 1+4+4+1;
 			if(n < m)
 				error(Eshortdraw);
@@ -1581,7 +1639,7 @@ printf("clutter new window\n");
 
 		/* load character: 'l' fontid[4] srcid[4] index[2] R[4*4] P[2*4] left[1] width[1] */
 		case 'l':
-			printmesg(fmt="LLSRPbb", a, 0);
+//			printmesg(fmt="LLSRPbb", a, 0);
 			m = 1+4+4+2+4*4+2*4+1+1;
 			if(n < m)
 				error(Eshortdraw);
@@ -1608,7 +1666,7 @@ printf("clutter new window\n");
 
 		/* draw line: 'L' dstid[4] p0[2*4] p1[2*4] end0[4] end1[4] radius[4] srcid[4] sp[2*4] */
 		case 'L':
-			printmesg(fmt="LPPlllLP", a, 0);
+//			printmesg(fmt="LPPlllLP", a, 0);
 			m = 1+4+2*4+2*4+4+4+4+4+2*4;
 			if(n < m)
 				error(Eshortdraw);
@@ -1713,6 +1771,39 @@ printf("clutter new window\n");
 			if(n < m)
 				error(Eshortdraw);
 			dst = drawimage(client, a+1);
+#ifdef EXT_WIN
+			if(dst->ext_win){
+				int x, y, dx, dy, cdx, cdy;
+				Rectangle *r = &(dst->r);
+				
+				drawpoint(&p, a+5);
+				drawpoint(&q, a+13);
+				
+				x = q.x-p.x;
+				y = q.y-p.y;
+				
+				dx = x - dst->r.min.x;
+				dy = y - dst->r.min.y;
+
+				cdx = dst->clipr.min.x - dst->r.min.x;
+				cdy = dst->clipr.min.y - dst->r.min.y;
+				
+				/**/
+				dst->r.min.x += dx;
+				dst->r.min.y += dy;
+				dst->r.max.x += dx;
+				dst->r.max.y += dy;
+				/**/
+				dst->clipr.max.x += dx;
+				dst->clipr.max.y += dy;
+				dst->clipr.min.x += dx;
+				dst->clipr.min.y += dy;
+//				//dst->clipr = *r;
+				/**/
+				clutter_move_actor(dst->ext_win, x, y);
+//LOGI("clutter pos window x=%d, y=%d", x, y);
+			}else 
+#endif
 			if(dst->layer){
 				drawpoint(&p, a+5);
 				drawpoint(&q, a+13);
@@ -1742,7 +1833,7 @@ printf("clutter new window\n");
 		/* polygon: 'p' dstid[4] n[2] end0[4] end1[4] radius[4] srcid[4] sp[2*4] p0[2*4] dp[2*2*n] */
 		case 'p':
 		case 'P':
-			printmesg(fmt="LslllLPP", a, 0);
+//			printmesg(fmt="LslllLPP", a, 0);
 			m = 1+4+2+4+4+4+4+2*4;
 			if(n < m)
 				error(Eshortdraw);
@@ -1822,6 +1913,18 @@ printf("clutter new window\n");
 				error(Eshortdraw);
 			i = drawimage(client, a+1);
 			drawrectangle(&r, a+5);
+#ifdef EXT_WIN
+			/**
+			if(i->ext_win){
+				int x,y;
+				clutter_ext_win_get_coords(i->ext_win, &x, &y, NULL, NULL);
+				r.min.x += x;
+				r.min.y += y;
+				r.max.x += x;
+				r.max.y += y;
+			}
+			/**/
+#endif
 			if(!rectinrect(r, i->r))
 				error(Ereadoutside);
 			c = bytesperline(r, i->depth);
@@ -1842,7 +1945,7 @@ printf("clutter new window\n");
 		/* stringbg: 'x' dstid[4] srcid[4] fontid[4] P[2*4] clipr[4*4] sp[2*4] ni[2] bgid[4] bgpt[2*4] ni*(index[2]) */
 		case 's':
 		case 'x':
-			printmesg(fmt="LLLPRPs", a, 0);
+//			printmesg(fmt="LLLPRPs", a, 0);
 			m = 1+4+4+4+2*4+4*4+2*4+2;
 			if(*a == 'x')
 				m += 4+2*4;
@@ -1864,6 +1967,19 @@ printf("clutter new window\n");
 			m += ni*2;
 			if(n < m)
 				error(Eshortdraw);
+#ifdef EXT_WIN
+			/**/
+			if(dst->ext_win){
+				int x, y, w, h;
+				clutter_ext_win_get_coords(dst->ext_win, &x, &y, &w, &h);
+
+				r.min.x += x;
+				r.min.y += y;
+				r.max.x += x;
+				r.max.y += y;
+			}
+			/**/
+#endif
 			clipr = dst->clipr;
 			dst->clipr = r;
 			op = drawclientop(client);
@@ -1953,11 +2069,13 @@ printf("clutter new window\n");
 				memltofrontn(lp, nw);
 			else
 				memltorearn(lp, nw);
+#ifndef EXT_WIN
 			if(lp[0]->layer->screen->image->data == screenimage->data)
 				for(j=0; j<nw; j++)
 					dstflush(lp[j]->layer->screen->image, lp[j]->layer->screenr);
 			ll = drawlookup(client, BGLONG(a+1+1+2), 1);
 			drawrefreshscreen(ll, client);
+#endif
 			poperror();
 			free(lp);
 			continue;
@@ -1973,7 +2091,7 @@ printf("clutter new window\n");
 		/* write from compressed data: 'Y' id[4] R[4*4] data[x*1] */
 		case 'y':
 		case 'Y':
-			printmesg(fmt="LR", a, 0);
+//			printmesg(fmt="LR", a, 0);
 		//	iprint("load %c\n", *a);
 			m = 1+4+4*4;
 			if(n < m)

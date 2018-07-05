@@ -92,6 +92,7 @@ typedef unsigned long uintptr;
  */
 
 extern	char*	strecpy(char*, char*, char*);
+#define strdup strdup_
 extern	char*	strdup(const char*);
 extern	int	cistrncmp(char*, char*, int);
 extern	int	cistrcmp(char*, char*);

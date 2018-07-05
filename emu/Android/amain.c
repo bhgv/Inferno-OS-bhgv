@@ -31,7 +31,7 @@ extern	int	mflag;
 extern	int	Xsize; // = 640; //	= 640;
 extern	int	Ysize; // = 480; //	= 480;
 	int	bflag = 1;
-	int	sflag = 0;
+	int	sflag = 1;
 	int	qflag = 0;
 	int	xtblbit = 0;
 	ulong	displaychan = 32;
@@ -295,6 +295,7 @@ amain()
 	snprint(sdcard_path, 127, "%s/Inferno", getenv("EXTERNAL_STORAGE"));
 	strecpy(rootdir, rootdir+sizeof(rootdir), sdcard_path);
 	
+//LOGI("%s: %d sdcard_path=%s", __func__, __LINE__, sdcard_path);
 	snprint(calltracelog_path, 127, "%s/backtrace.log", rootdir);
 	f = fopen(calltracelog_path, "a");
 	if(f){

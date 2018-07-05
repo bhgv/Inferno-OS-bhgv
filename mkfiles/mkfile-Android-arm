@@ -23,6 +23,7 @@ CFLAGS=		-O\
 		-I$ROOT/Android/arm/include\
 		-I$ROOT/include\
 		-DLINUX_ARM\
+		-DEXT_WIN\
 		-D__arm__\
 		-D__ANDROID_API__=17 -DANDROID\
 		-ffunction-sections -funwind-tables \

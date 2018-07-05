@@ -3,6 +3,12 @@
 #include "memdraw.h"
 #include "memlayer.h"
 
+
+#ifdef EXT_WIN
+extern void* attach_clutter_actor(char* buffer, int min_x, int min_y, int max_x, int max_y);
+#endif
+
+
 Memimage*
 memlalloc(Memscreen *s, Rectangle screenr, Refreshfn refreshfn, void *refreshptr, ulong val)
 {
@@ -18,7 +24,19 @@ memlalloc(Memscreen *s, Rectangle screenr, Refreshfn refreshfn, void *refreshptr
 		paint->clipr = Rect(-0x3FFFFFF, -0x3FFFFFF, 0x3FFFFFF, 0x3FFFFFF);
 	}
 
+#ifndef EXT_WIN
 	n = allocmemimaged(screenr, s->image->chan, s->image->data);
+#else
+	n = allocmemimage(screenr, s->image->chan);
+	if(n && n->data && n->data->bdata /*&& !n->ext_win*/){
+		n->ext_win = attach_clutter_actor(n->data->bdata, 
+										n->r.min.x, n->r.min.y, 
+										n->r.max.x, n->r.max.y);
+	}else{
+		n->ext_win = NULL;
+	}
+print("clutter new window chan=%d\n", chantodepth(s->image->chan) );
+#endif
 	if(n == nil)
 		return nil;
 	l = malloc(sizeof(Memlayer));
