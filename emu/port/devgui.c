@@ -118,209 +118,159 @@ tk2idx(TkTop *t, Tk *tk){
 	return i;
 }
 
+
+// VV dinamic names-tree helper VV
+
+/* go to lower dir (..) */
 static int
-guigen(Chan *c, char *name, Dirtab *tab, int ntab, int s, Dir *dp)
+guigen_folder_back(Chan *c, Prog *p, Dir *dp)
 {
 	Qid qid;
-	Prog *p;
-	char *e;
+
+	// Tk pointers, counters
+	TkTop *t;
+	Tk *tk=nil, *tkr=nil;
+	int n;
+	
 	Osenv *o;
-	ulong pid, path, perm, len;
+
+	t = p->tktop;
+	
+	if(!t){
+		mkqid(&qid, Qdir, 0, QTDIR);
+		devdir(c, qid, "#G", 0, eve, DMDIR|0555, dp);
+		return 1;
+	}
+
+	tkr = t->root;
+
+	tk = qid2tk(&c->qid, t);
+	if(tk == nil){
+		error(Enonexist);
+	}
+	if(tk)
+		tk = tk->master;
+
+	if( !tk /*|| tk == tkr*/){
+		mkqid(&qid, Qdir, 0, QTDIR);
+		devdir(c, qid, "#G", 0, eve, DMDIR|0555, dp);
+		return 1;
+	}
+
+	n = tk2idx(t, tk);
+	if(n == -1){
+		error(Enonexist);
+	}
+
+	snprint(up->genbuf, 127, "%s", 
+			tk->name_tail
+			? tk->name_tail
+			: tkname(tk)
+	);
+	mkqid(&qid, (ulong)n | PATH(c->qid), c->qid.vers, QTDIR);
+	o = p->osenv;
+	devdir(c, qid, up->genbuf, 0,  o->user, DMDIR|0777, dp);
+	return 1;
+}
+
+
+/* ignore s and use name to find pid */
+static int
+guigen_by_name(Chan *c, Prog *p, char *name, Dir *dp)
+{
+	Qid qid;
+	ulong pid, path;
 
 	TkTop *t;
 	Tk *tk=nil, *tk2=nil, *tkr=nil;
-	int i, j, n;
+	int n;
+
+	Osenv *o;
 	
-
-	USED(ntab);
-
-	if(s == DEVDOTDOT){
-		n = QID(c->qid);
-
-		p = progpid(PID(c->qid));
-		if(p == nil){
-			error(Enonexist);
-		}
-
-		t = p->tktop;
-		
-		if(!t){
-			mkqid(&qid, Qdir, 0, QTDIR);
-			devdir(c, qid, "#G", 0, eve, DMDIR|0555, dp);
-			return 1;
-		}
-
-		tkr = t->root;
-
-		tk = qid2tk(&c->qid, t);
-		if(tk == nil){
-			error(Enonexist);
-		}
-		if(tk)
-			tk = tk->master;
-
-		if( !tk /*|| tk == tkr*/){
-			mkqid(&qid, Qdir, 0, QTDIR);
-			devdir(c, qid, "#G", 0, eve, DMDIR|0555, dp);
-			return 1;
-		}
-
-		n = tk2idx(t, tk);
-		if(n == -1){
-			error(Enonexist);
-		}
-
-		snprint(up->genbuf, 127, "%s", 
-				tk->name_tail
-				? tk->name_tail
-				: tkname(tk)
-		);
-		mkqid(&qid, (ulong)n | PATH(c->qid), c->qid.vers, QTDIR);
-		o =  p->osenv;
-		devdir(c, qid, up->genbuf, 0,  o->user, DMDIR|0777, dp);
-		return 1;
-	}
+	char *e;
 
 
+	/* if it is the Top dir of the device */
 	if((ulong)c->qid.path == Qdir) {
-		if(name != nil){
-			/* ignore s and use name to find pid */
-			pid = strtoul(name, &e, 0);
-			if(pid == 0 || *e != '\0')
-				return -1;
-			acquire();
-			p = progpid(pid);
-			if(p == nil){
-				release();
-				return -1;
-			}
-		}else{
-			acquire();
-			p = progn(s);
-			if(p == nil) {
-				release();
-				return -1;
-			}
-			pid = p->pid;
-		}
-		o = p->osenv;
-		sprint(up->genbuf, "%lud", pid);
-		if(name != nil && strcmp(name, up->genbuf) != 0){
-			release();
+		pid = strtoul(name, &e, 0);  // Top dir of devgui is a list of numbers of gui-procs. test this
+		if(pid == 0 || *e != '\0')
+			return -1;
+		p = progpid(pid);
+		if(p == nil){
 			return -1;
 		}
-		mkqid(&qid, pid << QSHIFT, pid, QTDIR);
+		o = p->osenv;
+	
+		// common part
+		snprint(up->genbuf, 127, "%lud", pid);  // up->genbuf is a small (127 bytes) per-process character buffer
+		if(name != nil && strcmp(name, up->genbuf) != 0){
+			return -1;
+		}
+		mkqid(&qid, pid << QSHIFT, pid, QTDIR);  // in the Top dir of devgui all the entryes are folders
 		devdir(c, qid, up->genbuf, 0, o->user, DMDIR|0777, dp);
-		release();
 		return 1;
 	}
-
 
 	path = QID(c->qid); //PATH(c->qid) >> QSHIFT;
 
-	acquire();
-	p = progpid(PID(c->qid));
-	if(p == nil) {
-		release();
-		return -1;
-	}
-	o = p->osenv;
-
-
 	if(p->tktop == nil) {
-		release();
 		return -1;
 	}
 	else{
-		if(name != nil){
-			t = p->tktop;
+		t = p->tktop;
 		
-			tkr = t->root;
-			n = path;
+		tkr = t->root;
+		n = path;
 
-			tk = qid2tk(&c->qid, t);
-			if(tk == nil){
-				release();
-				return -1;
-			}
-
-			if( strcmp(name, ".self") ){
-				char *p, *pr = nil;
-				
-				for(p = name; *p != '\0'; p++){
-					if(*p == '.'){
-						pr = p;
-						*p = '\0';
-						break;
-					}
-				}
-
-				for( tk2 = tk->slave; tk2; tk2 = tk2->next){
-					if( !strcmp(name, 
-							tk2->name_tail
-							? tk2->name_tail
-							: tkname(tk2) ) 
-					){
-						break;
-					}
-				}
-				if(pr != nil)
-					*pr = '.';
-				if(tk2 == nil){
-					release();
-					return -1;
-				}
-				
-				n = tk2idx(t, tk2);
-				if(n == -1){
-					release();
-					return -1;
-				}
-			}else{
-				n = 0;
-			}
-
+		tk = qid2tk(&c->qid, t);
+		if(tk == nil){
+			return -1;
 		}
-		else{
-			t = p->tktop;
-		
-			tkr = t->root;
-			n = path;
+
+		/* .self file controls the folder (widget-container) properties. it has n==0 */
+		if( strcmp(name, ".self") ){
+			char *p, *pr = nil;
 			
-			tk = qid2tk(&c->qid, t);
-			if(tk == nil){
-				release();
+			for(p = name; *p != '\0'; p++){
+				if(*p == '.'){
+					pr = p;
+					*p = '\0';
+					break;
+				}
+			}
+
+			for( tk2 = tk->slave; tk2; tk2 = tk2->next){
+				if( !strcmp(name, 
+						tk2->name_tail
+						? tk2->name_tail
+						: tkname(tk2) ) 
+				){
+					break;
+				}
+			}
+			if(pr != nil)
+				*pr = '.';
+			if(tk2 == nil){
 				return -1;
 			}
-
-			if(s > 0){
-				for( i = 1, tk2 = tk->slave; tk2 && i < s; i++, tk2 = tk2->next);
-				if(tk2 == nil){
-					release();
-					return -1;
-				}
-
-				n = tk2idx(t, tk2);
-				if(n == -1){
-					release();
-					return -1;
-				}
-			}else{
-				n = 0;
-			}
 			
+			n = tk2idx(t, tk2);
+			if(n == -1){
+				return -1;
+			}
+		}else{
+			n = 0;
 		}
 	}
 
 	if(n == 0){
 		strcpy(up->genbuf, ".self");
 		if(name != nil && strcmp(name, up->genbuf) != 0){
-			release();
 			return -1;
 		}
 		mkqid(&qid, (ulong)path | PATH(c->qid) | QCTL_NAME, c->qid.vers, QTFILE);
+		o = p->osenv;
 		devdir(c, qid, up->genbuf, 0, o->user, 0664, dp);
-		release();
 		return 1;
 		
 	}else if(tk2){
@@ -331,19 +281,166 @@ guigen(Chan *c, char *name, Dirtab *tab, int ntab, int s, Dir *dp)
 				tkmethod[tk2->type]->name
 		);
 		if(name != nil && strcmp(name, up->genbuf) != 0){
-			release();
 			return -1;
 		}
 		if(tk2->slave) 
 			tk2->is_container = 1;
 		mkqid(&qid, (ulong)n | PATH(c->qid), c->qid.vers, (tk2->is_container) ? QTDIR : QTFILE);
+		o = p->osenv;
 		devdir(c, qid, up->genbuf, 0, o->user, (tk2->is_container) ? DMDIR|0777 : 0664, dp);
-		release();
 		return 1;
 	}else{
+		return -1;
+	}
+
+}
+
+
+/* ignore name and use s to find pid */
+static int
+guigen_by_number(Chan *c, Prog *p, int s, Dir *dp)
+{
+	Qid qid;
+	ulong pid, path;
+
+	TkTop *t;
+	Tk *tk=nil, *tk2=nil, *tkr=nil;
+	int i, n;
+	
+	Osenv *o;
+	
+	
+	/* if it is the Top dir of the device */
+	if((ulong)c->qid.path == Qdir) {
+		p = progn(s);
+		if(p == nil) {
+			return -1;
+		}
+		pid = p->pid;
+		o = p->osenv;
+	
+		// common part
+		snprint(up->genbuf, 127, "%lud", pid);  // up->genbuf is a small (127 bytes) per-process character buffer
+//printf("%s: %d > %s\n", __func__, __LINE__, up->genbuf);
+		mkqid(&qid, pid << QSHIFT, pid, QTDIR);  // in the Top dir of devgui all the entryes are folders
+		devdir(c, qid, up->genbuf, 0, o->user, DMDIR|0777, dp);
+		return 1;
+	}
+
+	path = QID(c->qid); //PATH(c->qid) >> QSHIFT;
+
+	if(p->tktop == nil) {
+		return -1;
+	}
+	else{
+		t = p->tktop;
+		
+		tkr = t->root;
+		n = path;
+		
+		tk = qid2tk(&c->qid, t);
+		if(tk == nil){
+			return -1;
+		}
+
+		if(s > 0){
+			for( i = 1, tk2 = tk->slave; tk2 && i < s; i++, tk2 = tk2->next);
+			if(tk2 == nil){
+				return -1;
+			}
+
+			n = tk2idx(t, tk2);
+			if(n == -1){
+				return -1;
+			}
+		}else{
+			n = 0;
+		}
+	}
+	
+	/* .self file controls the folder (widget-container) properties. n==0 */
+	if(n == 0){
+		strcpy(up->genbuf, ".self");
+		mkqid(&qid, (ulong)path | PATH(c->qid) | QCTL_NAME, c->qid.vers, QTFILE);
+		o = p->osenv;
+		devdir(c, qid, up->genbuf, 0, o->user, 0664, dp);
+		return 1;
+		
+	}else if(tk2){
+		snprint(up->genbuf, 127, "%s.%s", 
+				tk2->name_tail
+				? tk2->name_tail
+				: tkname(tk2),
+				tkmethod[tk2->type]->name
+		);
+//printf("%s: %d > %s\n", __func__, __LINE__, up->genbuf);
+		if(tk2->slave) 
+			tk2->is_container = 1;
+		mkqid(&qid, (ulong)n | PATH(c->qid), c->qid.vers, (tk2->is_container) ? QTDIR : QTFILE);
+		o = p->osenv;
+		devdir(c, qid, up->genbuf, 0, o->user, (tk2->is_container) ? DMDIR|0777 : 0664, dp);
+		return 1;
+	}else{
+		return -1;
+	}
+
+}
+
+
+static int
+guigen(Chan *c, char *name, Dirtab *tab, int ntab, int s, Dir *dp)
+{
+	Prog *p;
+	char *e;
+	ulong pid, path;
+
+	int n;
+	
+
+	USED(ntab);
+
+	if(s == DEVDOTDOT){
+		p = progpid(PID(c->qid));
+		if(p == nil){
+			error(Enonexist);
+		}
+
+		return guigen_folder_back(/*Chan **/c, /*Prog **/p, /*Dir **/dp);
+	}
+
+	path = QID(c->qid); //PATH(c->qid) >> QSHIFT;
+	
+	acquire();
+	
+	if((ulong)c->qid.path == Qdir){
+		if(name == nil){
+			/* ignore s and use name to find pid */
+			p = progn(s);
+		}else{
+			pid = strtoul(name, &e, 0);
+			if(pid == 0 || *e != '\0'){
+				release();
+				return -1;
+			}
+			p = progpid(pid);
+		}
+
+	}else{
+		p = progpid(PID(c->qid));
+	}
+	if(p == nil) {
 		release();
 		return -1;
 	}
+
+	if(name != nil)
+		n = guigen_by_name(/*Chan **/c, /*Prog **/p, /*char **/name, /*Dir **/dp);
+	else
+		n = guigen_by_number(/*Chan **/c, /*Prog **/p, /*int*/ s, /*Dir **/dp);
+
+	release();
+	
+	return n;
 
 #if 0
 		perm = tab->perm;
@@ -358,6 +455,7 @@ guigen(Chan *c, char *name, Dirtab *tab, int ntab, int s, Dir *dp)
 #endif
 
 }
+// AA dinamic names-tree helper AA
 
 
 
@@ -747,9 +845,9 @@ guiremove(Chan *c)
 	
 	TkTop *t;
 	Tk    *tk;
-	Tk *tk2 = nil;	
+//	Tk *tk2 = nil;	
 
-	char *rt;
+//	char *rt;
 	char *name = c->name->s;
 
 	if(strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
@@ -797,12 +895,12 @@ static long
 guiread(Chan *c, void *va, long count, vlong offset)
 {
 	Prog *p;
-	char *buf;
-	int n;
+//	char *buf;
+//	int n;
 	
 	int len = 0;
 
-	Osenv *o;
+//	Osenv *o;
 
 	rslt_string *r, *or;
 
@@ -1067,8 +1165,8 @@ guiwrite(Chan *c, void *va, long count, vlong offset)
 		}
 		
 		{
-			TkOption **opts = tkmethod[tk->type]->opts;
-			TkCmdtab *cmd = tkmethod[tk->type]->cmd;	
+//			TkOption **opts = tkmethod[tk->type]->opts;
+//			TkCmdtab *cmd = tkmethod[tk->type]->cmd;	
 			rslt_string *r = nil;
 			int rl = 0;
 
