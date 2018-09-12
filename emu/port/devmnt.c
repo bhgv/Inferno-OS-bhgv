@@ -193,8 +193,12 @@ mntversion(Chan *c, char *version, int msize, int returnlen)
 			error(f.ename);
 		error("unexpected reply type in fversion");
 	}
-	if(f.msize > msize)
-		error("server tries to increase msize in fversion");
+	if(f.msize > msize){
+		char ebuf[256];
+		sprint(ebuf, "server tries to increase msize in fversion (%d > %d)", f.msize, msize);
+		error(ebuf);
+//		error("server tries to increase msize in fversion (%d > %d)", f.msize, msize);
+	}
 	if(f.msize<256 || f.msize>5*1024*1024)
 		error("nonsense value of msize in fversion");
 	if(strncmp(f.version, v, strlen(f.version)) != 0)
