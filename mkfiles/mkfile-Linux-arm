@@ -5,13 +5,13 @@ CPUS=		arm
 O=		o
 OS=		o
 
-AR=		ar
+AR=		${CROSS}ar
 ARFLAGS=	ruvs
 
-AS=		arm-gcc -c 
+AS=		${CROSS}gcc -c 
 ASFLAGS=
 
-CC=		arm-gcc -c 
+CC=		${CROSS}gcc -c 
 CFLAGS=		-O\
 		-Wuninitialized -Wunused-variable -Wreturn-type -Wimplicit\
 		-I$ROOT/Linux/arm/include\
@@ -19,7 +19,7 @@ CFLAGS=		-O\
 		-DLINUX_ARM
 
 ANSICPP=
-LD=		arm-gcc 
+LD=		${CROSS}gcc 
 LDFLAGS=	
 
 SYSLIBS=

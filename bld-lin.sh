@@ -1,5 +1,7 @@
 #!/bin/sh
 
+mkdir acme/dis
+
 export ROOT=$PWD
 
 export PATH=$PWD/Linux/386/bin:$PATH

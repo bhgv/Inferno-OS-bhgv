@@ -14,6 +14,8 @@ EMUDIRS=\
 	libmath\
 #	utils/iyacc\
 #	limbo\
+	utils/iyacc\
+	limbo\
 	libinterp\
 	libkeyring\
 	libdraw\

@@ -1183,7 +1183,6 @@ drawwrite(Chan *c, void *a, long n, vlong off)
 	int i, m, red, green, blue, x;
 	ulong offset = off;
 
-
 //print("<< %s: %d prog=%p, proc=%p, qid=%d\n", "drawwrite", __LINE__, currun(), up, QID(c->qid));
 
 	USED(offset);

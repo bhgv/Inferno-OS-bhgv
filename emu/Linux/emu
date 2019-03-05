@@ -14,7 +14,7 @@ dev
 	cmd	cmd
 	indir
 
-	draw	win-x11a
+	draw	win-$WINDOW_BACKEND
 	pointer
 	snarf
 

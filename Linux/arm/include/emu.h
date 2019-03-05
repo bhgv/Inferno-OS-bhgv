@@ -4,6 +4,9 @@
  * implementation of the current-process variable `up'.
  */
 
+#ifndef _EMU_H_
+#define _EMU_H_
+
 /*
  * This structure must agree with FPsave and FPrestore asm routines
  */
@@ -32,3 +35,6 @@ extern	Proc*	getup(void);
 
 typedef sigjmp_buf osjmpbuf;
 #define	ossetjmp(buf)	sigsetjmp(buf, 1)
+
+
+#endif //_EMU_H_

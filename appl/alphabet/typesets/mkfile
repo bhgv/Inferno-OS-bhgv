@@ -28,7 +28,7 @@ DISBIN=$ROOT/dis/alphabet
 
 <$ROOT/mkfiles/mkdis
 
-LIMBOFLAGS=$LIMBOFLAGS -i -F
+LIMBOFLAGS=$LIMBOFLAGS -i -Ialphabet -F
 
 #%.b %types.b %.m %types.m: %.typeset
 #	mktypeset $stem.typeset

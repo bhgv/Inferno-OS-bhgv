@@ -106,6 +106,7 @@ kchanio(void *vc, void *buf, int n, int mode)
 		r = devtab[c->type]->read(c, buf, n, c->offset);
 	else
 		r = devtab[c->type]->write(c, buf, n, c->offset);
+printf("%s:%d mode=%d, r=%d\n", __func__, __LINE__, mode, r);
 
 	lock(c);
 	c->offset += r;
