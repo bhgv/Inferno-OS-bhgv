@@ -1859,7 +1859,7 @@ boolmemmove(Buffer bdst, Buffer bsrc, Buffer b1, int dx, int i, int o)
 	USED(i);
 	USED(o);
 	USED(b1.grey);
-LOGI("%s: %d", __func__, __LINE__);
+//LOGI("%s: %d", __func__, __LINE__);
 	memmove(bdst.red, bsrc.red, dx*bdst.delta);
 	return bdst;
 }

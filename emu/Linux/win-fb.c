@@ -25,6 +25,7 @@
 #include <sys/mman.h>
 #include <stdio.h>
 
+#include <linux/input.h>
 
 //#include "keysym2ucs.h"
 
@@ -32,9 +33,9 @@
 //#include <sys/shm.h>
 
 #define  LOG_TAG    "Inferno WIN"
-#define  LOGI(...)  printf(__VA_ARGS__)
-#define  LOGW(...)  printf(__VA_ARGS__)
-#define  LOGE(...)  printf(__VA_ARGS__)
+#define  LOGI(...)  //printf(__VA_ARGS__)
+#define  LOGW(...)  //printf(__VA_ARGS__)
+#define  LOGE(...)  //printf(__VA_ARGS__)
 
 
 
@@ -72,7 +73,8 @@ static void     xkeyboard(); ///*XEvent*/void*);
 static void     xkbdproc(void*);
 //static void       xdestroy(XEvent*);
 //static void       xselect(XEvent*, XDisplay*);
-static void     xproc(void*);
+static void     xproc_expose(void*);
+static void     xproc_mouse(void*);
 
 static int      xscreendepth;
 
@@ -83,6 +85,7 @@ static int putsnarf, assertsnarf;
 extern int Xsize;
 extern int Ysize;
 
+int fd_mou = -1;
 
 /*
  * The documentation for the XSHM extension implies that if the server
@@ -101,12 +104,12 @@ struct {
     int fd;
     uchar* base;
     uchar* data;
-    
+
     int width;
     int height;
     int bpp;
     int stride;
-    
+
     int alloc;
 } fb;
 
@@ -121,7 +124,7 @@ attach_fb()
 
   fb.alloc = 0;
   fb.fd = -1;
-  
+
   if ((fb.fd = open ("/dev/fb0", O_RDWR)) < 0)
     {
       LOGE ("Error opening /dev/fb0");
@@ -162,7 +165,7 @@ attach_fb()
 
   fb.bpp    = fb_var.bits_per_pixel;
   fb.stride = fb_fix.line_length;
-  
+
 /*
   fb.type   = fb_fix.type;
   fb.visual = fb_fix.visual;
@@ -200,16 +203,16 @@ attach_fb()
   size_t size = fb.stride * fb.height;
 
   fb.base = (char *) mmap ((caddr_t) NULL,
-			    /*fb_fix.smem_len */
-			    size,
-			    PROT_READ|PROT_WRITE,
-			    MAP_SHARED,
-			    fb.fd, 0);
+                /*fb_fix.smem_len */
+                size,
+                PROT_READ|PROT_WRITE,
+                MAP_SHARED,
+                fb.fd, 0);
 
   if (fb.base == (char *)-1)
     {
       LOGE("Error cannot mmap framebuffer. Using malloc instead.\n");
-	  fb.base = (char*)malloc(size);
+      fb.base = (char*)malloc(size);
       if (!fb.base)
         {
           LOGE("Error cannot allocate memory.");
@@ -221,10 +224,9 @@ attach_fb()
   off = (unsigned long) fb_fix.smem_start % (unsigned long) getpagesize();
 
   fb.data = fb.base + off;
-  
+
   return fb.data;
 }
-
 
 
 uchar*
@@ -232,46 +234,58 @@ attachscreen(Rectangle *r, ulong *chan, int *d, int *width, int *softscreen)
 {
     int depth;
 LOGE("attachscreen\n");
-
+    
     if(triedscreen)
         return gscreendata;
 
-        triedscreen = 1;
+    // stop cursor blinking
+    int f = open("/dev/tty1", O_WRONLY);
+    if(f >= 0){
+        char s[]="\033[?17;0;0c";
+        write(f, s, strlen(s));
+        close(f);
+    }
 
-        //if(gscreendata != xscreendata)
-        //  kproc("xproc", xproc, NULL/*xmcon*/, 0);
-//      kproc("xkbdproc", xkbdproc, NULL/*xkbdcon*/, 0/*KPX11*/);   /* silly stack size for bloated X11 */
+    // prepare mouse
+    if(fd_mou == -1){
+        fd_mou = open("/dev/input/event1", O_RDWR);
+    }
 
-//#undef malloc
-//#define malloc malloc_
-        xscreendata = attach_fb(); //malloc(Xsize * Ysize * 4);
-        xscreendepth = fb.bpp; //32;
-        
-        Xsize &= ~0x3;  /* ensure multiple of 4 */
+    triedscreen = 1;
 
-        r->min.x = 0;
-        r->min.y = 0;
-        r->max.x = Xsize;
-        r->max.y = Ysize;
+    //if(gscreendata != xscreendata)
+    kproc("xproc_expose", xproc_expose, NULL/*xmcon*/, 0);
+    kproc("xproc_mouse", xproc_mouse, NULL/*xmcon*/, 0);
+//    kproc("xkbdproc", xkbdproc, NULL/*xkbdcon*/, 0/*KPX11*/);   /* silly stack size for bloated X11 */
+
+    xscreendata = attach_fb(); //malloc(Xsize * Ysize * 4);
+    xscreendepth = fb.bpp; //32;
+
+    Xsize &= ~0x3;  /* ensure multiple of 4 */
+
+    r->min.x = 0;
+    r->min.y = 0;
+    r->max.x = Xsize;
+    r->max.y = Ysize;
 
         /*
          * moved xproc from here to end since it could cause an expose event and
          * hence a flushmemscreen before xscreendata is initialized
          */
 
-        *chan = displaychan;        /* not every channel description will work */
-        *d = chantodepth(displaychan);
-        displaydepth = *d;
-        
-        printf("%s:%d displaychan=%X, displaydepth=%d\n", __func__, __LINE__, displaychan, displaydepth);
+    *chan = displaychan;        /* not every channel description will work */
+    *d = chantodepth(displaychan);
+    displaydepth = *d;
+
+    printf("%s:%d displaychan=%X, displaydepth=%d\n", __func__, __LINE__, displaychan, displaydepth);
 
 //      gscreendata = xscreendata;
-        gscreendata = malloc(Xsize * (Ysize+1) * (displaydepth >> 3));
+    gscreendata = malloc(Xsize * (Ysize+1) * (displaydepth >> 3));
 
-        LOGE("attachscreen: gscreendata=%x, (displaydepth>>3)=%d\n", gscreendata, (displaydepth>>3));
+    LOGE("attachscreen: gscreendata=%x, (displaydepth>>3)=%d\n", gscreendata, (displaydepth>>3));
 
-        *width = (Xsize/4)*(*d/8);
-        *softscreen = 1;
+    *width = (Xsize/4)*(*d/8);
+    *softscreen = 1;
 
     return gscreendata;
 }
@@ -532,7 +546,7 @@ xkbdproc(void *arg)
 }
 
 static void
-xproc(void *arg)
+xproc_expose(void *arg)
 {
 //  ulong mask;
 //  XEvent event;
@@ -563,8 +577,46 @@ xproc(void *arg)
         osmillisleep(10);
 //      XNextEvent(xd, &event);
 //      xselect(&event, xd);
-//      xmouse(); //&event);
+        //xmouse(); //&event);
         xexpose(); //&event);
+//      xdestroy(&event);
+    }
+}
+
+static void
+xproc_mouse(void *arg)
+{
+//  ulong mask;
+//  XEvent event;
+//  XDisplay *xd;
+
+    closepgrp(up->env->pgrp);
+    closefgrp(up->env->fgrp);
+    closeegrp(up->env->egrp);
+    closesigs(up->env->sigs);
+
+#if 0
+    xd = arg;
+    mask = ButtonPressMask|
+        ButtonReleaseMask|
+        PointerMotionMask|
+        Button1MotionMask|
+        Button2MotionMask|
+        Button3MotionMask|
+        Button4MotionMask|
+        Button5MotionMask|
+        ExposureMask|
+        StructureNotifyMask;
+
+    XLockDisplay(xd);   /* should be ours alone */
+    XSelectInput(xd, xdrawable, mask);
+#endif
+    for(;;){
+        osmillisleep(10);
+//      XNextEvent(xd, &event);
+//      xselect(&event, xd);
+        xmouse(); //&event);
+        //xexpose(); //&event);
 //      xdestroy(&event);
     }
 }
@@ -1030,6 +1082,147 @@ xkeyboard() ///*XEvent*/void *e)
         gkbdputc(gkbdq, k);
 }
 
+
+
+/*
+** calibration (perfect = 0 0 4096 4096)
+*/
+//#define NOMINAL_CALIBRATION
+//#ifdef NOMINAL_CALIBRATION
+//#define MIN_X   0
+//#define MIN_Y   0
+//#define MAX_X   4096
+//#define MAX_Y   4096
+//#else
+#define MIN_X   200
+#define MIN_Y   260
+#define MAX_X   3900
+#define MAX_Y   3800
+//#endif
+
+//#define NOT_MUCH 200    /* small dx or dy ; about 3% of full width */
+#define SHORT_CLICK (200/5) /* 200 ms */
+
+
+static int tsc2003_events(int fd, int* b, int* x, int* y)
+{
+    struct input_event ev[64];
+    int i, rd;
+    fd_set rdfs;
+    struct timeval to;
+    static int ox=0, oy = 0, ob = 0;
+    int j, nx = 0, ny = 0;
+
+    to.tv_sec = 0;
+    to.tv_usec = SHORT_CLICK * 1000;
+
+    FD_ZERO(&rdfs);
+    FD_SET(fd, &rdfs);
+
+    *b = 0;
+    
+    if(ob == 0){
+        ox = 0;
+        oy = 0;
+    }
+    *x = ox;
+    *y = oy;
+
+    for(j = 0; j < 5; j++)
+    {
+        int rv = select(fd + 1, &rdfs, NULL, NULL, &to);
+        if(rv == -1){
+            /* an error accured */
+            return 1;
+        }
+        else if(rv == 0){
+            /* a timeout occured */
+            break;
+        }
+
+        rd = read(fd, ev, sizeof(ev));
+        if (rd < (int) sizeof(struct input_event)) {
+            printf("expected %d bytes, got %d\n", (int) sizeof(struct input_event), rd);
+            //perror("\nevtest: error reading");
+            return 1;
+        }
+
+        for (i = 0; i < rd / sizeof(struct input_event); i++) {
+            unsigned int type, code;
+            type = ev[i].type;
+            code = ev[i].code;
+
+            if(type == EV_ABS){
+                int v = ev[i].value;
+                
+                if(code == ABS_PRESSURE)
+                    *b |= v > 10 ? 1 : 0;
+                else if(code == ABS_X){
+                    int tx = Xsize * (v - MIN_X) / (MAX_X-MIN_X);
+                        if(/* *b && j > 0 &&*/ ox > 0){
+                            //int t = nx/j;
+                            if(tx < ox - 30)
+                                tx = ox - 30;
+                            else 
+                            if(tx > ox + 30)
+                                tx = ox + 30;
+                        }
+                    if(tx >= 0 && tx < Xsize){
+                        nx += tx;
+                    }else{
+                        j--;
+                        break;
+                    }
+                }else if(code == ABS_Y){
+                    int ty = Ysize * (v - MIN_Y) / (MAX_Y-MIN_Y);
+                        if(/* *b && j > 0 &&*/ oy > 0){
+                            //int t = ny/j;
+                            if(ty < oy - 30)
+                                ty = oy - 30;
+                            else 
+                            if(ty > oy + 30)
+                                ty = oy + 30;
+                        }
+                    if(ty >= 0 && ty < Ysize){
+                        ny += ty;
+                    }else{
+                        j--;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    if(j < 1){
+        *b = ob = 0;
+        return 0;
+    }
+
+    *x = nx/j;
+    *y = ny/j;
+
+    if(nx < 0)
+        *x = 0;
+    if(*y < 0)
+        *y = 0;
+
+    if(*x > Xsize)
+        *x = Xsize;
+    if(*y > Ysize)
+        *y = Ysize;
+
+    ox = *x;
+    oy = *y;
+    
+    ob = *b;
+
+    //ioctl(fd, EVIOCGRAB, (void*)0);
+    return 0;
+}
+
+
+
 static void
 xmouse() //XEvent *e)
 {
@@ -1038,6 +1231,8 @@ xmouse() //XEvent *e)
 //  XMotionEvent *me;
 //  XEvent motion;
     int x=0, y=0, b=0;
+    //char buf[64];
+    static ob = 0;
 //  static ulong lastb, lastt;
 
 //  if(putsnarf != assertsnarf){
@@ -1048,6 +1243,14 @@ xmouse() //XEvent *e)
 //      XFlush(xmcon);
 //  }
 
+    if(fd_mou >= 0){
+        tsc2003_events(fd_mou, &b, &x, &y);
+        if(b > 0 || (b == 0 && ob > 0)){
+            ob = b;
+            mousetrack(b, x, y, 0);
+            //printf("ob = %d, b=%d, xy=(%d, %d)\n", ob, b, x, y);
+        }
+    }
 #if 0
     dbl = 0;
     switch(e->type){
@@ -1141,7 +1344,7 @@ xmouse() //XEvent *e)
         b |= 1<<8;
 #endif
 
-    mousetrack(b, x, y, 0);
+    //mousetrack(b, x, y, 0);
 }
 
 
