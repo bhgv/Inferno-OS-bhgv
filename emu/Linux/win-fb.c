@@ -1101,7 +1101,7 @@ xkeyboard() ///*XEvent*/void *e)
 //#endif
 
 //#define NOT_MUCH 200    /* small dx or dy ; about 3% of full width */
-#define SHORT_CLICK (200/5) /* 200 ms */
+#define SHORT_CLICK (150) /* 200 ms */
 
 
 static int tsc2003_events(int fd, int* b, int* x, int* y)
@@ -1111,7 +1111,8 @@ static int tsc2003_events(int fd, int* b, int* x, int* y)
     fd_set rdfs;
     struct timeval to;
     static int ox=0, oy = 0, ob = 0;
-    int j, nx = 0, ny = 0;
+    int jx, jy, nx = 0, ny = 0;
+    int st = 0;
 
     to.tv_sec = 0;
     to.tv_usec = SHORT_CLICK * 1000;
@@ -1128,7 +1129,7 @@ static int tsc2003_events(int fd, int* b, int* x, int* y)
     *x = ox;
     *y = oy;
 
-    for(j = 0; j < 5; j++)
+    for(jx = jy = 0; jx < 5 || jy < 5; )
     {
         int rv = select(fd + 1, &rdfs, NULL, NULL, &to);
         if(rv == -1){
@@ -1136,17 +1137,19 @@ static int tsc2003_events(int fd, int* b, int* x, int* y)
             return 1;
         }
         else if(rv == 0){
+            //printf("timeout\n");
             /* a timeout occured */
             break;
         }
 
         rd = read(fd, ev, sizeof(ev));
         if (rd < (int) sizeof(struct input_event)) {
-            printf("expected %d bytes, got %d\n", (int) sizeof(struct input_event), rd);
+            //printf("expected %d bytes, got %d\n", (int) sizeof(struct input_event), rd);
             //perror("\nevtest: error reading");
             return 1;
         }
 
+        int xt = -1, yt = -1;
         for (i = 0; i < rd / sizeof(struct input_event); i++) {
             unsigned int type, code;
             type = ev[i].type;
@@ -1158,51 +1161,73 @@ static int tsc2003_events(int fd, int* b, int* x, int* y)
                 if(code == ABS_PRESSURE)
                     *b |= v > 10 ? 1 : 0;
                 else if(code == ABS_X){
-                    int tx = Xsize * (v - MIN_X) / (MAX_X-MIN_X);
-                        if(/* *b && j > 0 &&*/ ox > 0){
-                            //int t = nx/j;
-                            if(tx < ox - 30)
-                                tx = ox - 30;
-                            else 
-                            if(tx > ox + 30)
-                                tx = ox + 30;
-                        }
-                    if(tx >= 0 && tx < Xsize){
-                        nx += tx;
-                    }else{
-                        j--;
-                        break;
+                    int t = Xsize * (v - MIN_X) / (MAX_X-MIN_X);
+#if 0
+                    if(/* *b && j > 0 &&*/ ox > 0){
+                        //int t = nx/j;
+                        if(t < ox - 100)
+                            t = ox - 100;
+                        else 
+                        if(t > ox + 100)
+                            t = ox + 100;
+                    }
+#endif
+                    if(t >= 0 && t < Xsize){
+                        xt = t;
+                        jx++;
+                        nx += t;
+                    //    st |= 1;
+                    //}else{
+                    //    j--;
+                    //    break;
                     }
                 }else if(code == ABS_Y){
-                    int ty = Ysize * (v - MIN_Y) / (MAX_Y-MIN_Y);
-                        if(/* *b && j > 0 &&*/ oy > 0){
-                            //int t = ny/j;
-                            if(ty < oy - 30)
-                                ty = oy - 30;
-                            else 
-                            if(ty > oy + 30)
-                                ty = oy + 30;
-                        }
-                    if(ty >= 0 && ty < Ysize){
-                        ny += ty;
-                    }else{
-                        j--;
-                        break;
+                    int t = Ysize * (v - MIN_Y) / (MAX_Y-MIN_Y);
+#if 0
+                    if(/* *b && j > 0 &&*/ oy > 0){
+                        //int t = ny/j;
+                        if(t < oy - 100)
+                            t = oy - 100;
+                        else 
+                        if(t > oy + 100)
+                            t = oy + 100;
+                    }
+#endif
+                    if(t >= 0 && t < Ysize){
+                        yt = t;
+                        jy++;
+                        ny += t;
+                    //    st |=2;
+                    //}else{
+                    //    j--;
+                    //    break;
                     }
                 }
             }
         }
+        //printf("xyt=(%d, %d)\n", xt, yt);
+        
+        /*
+        if(xt >= 0 && yt >= 0){
+            nx += xt;
+            ny += yt
+        }
+        */
+//        if(st | 3 != 3)
+//            j--;
     }
     
-    if(j < 1){
+    //printf("nxy=(%d, %d) jxy=(%d, %d)\n", nx, ny, jx, jy);
+
+    if(jx < 1 || jy < 1){
         *b = ob = 0;
         return 0;
     }
 
-    *x = nx/j;
-    *y = ny/j;
+    *x = nx/jx;
+    *y = ny/jy;
 
-    if(nx < 0)
+    if(*x < 0)
         *x = 0;
     if(*y < 0)
         *y = 0;
