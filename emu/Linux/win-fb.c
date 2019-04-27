@@ -202,14 +202,14 @@ attach_fb()
 
   size_t size = fb.stride * fb.height;
 
-  fb.base = (char *) mmap ((caddr_t) NULL,
+  fb.base = (uchar*) mmap ((caddr_t) NULL,
                 /*fb_fix.smem_len */
                 size,
                 PROT_READ|PROT_WRITE,
                 MAP_SHARED,
                 fb.fd, 0);
 
-  if (fb.base == (char *)-1)
+  if (fb.base == (uchar*)-1)
     {
       LOGE("Error cannot mmap framebuffer. Using malloc instead.\n");
       fb.base = (char*)malloc(size);
@@ -612,7 +612,7 @@ xproc_mouse(void *arg)
     XSelectInput(xd, xdrawable, mask);
 #endif
     for(;;){
-        osmillisleep(10);
+        osmillisleep(100);
 //      XNextEvent(xd, &event);
 //      xselect(&event, xd);
         xmouse(); //&event);
@@ -1083,6 +1083,110 @@ xkeyboard() ///*XEvent*/void *e)
 }
 
 
+#if TOUCHSCREEN_CAPACITIVE
+
+typedef struct {
+    int x;
+    int y;
+    int b;
+} touch_evt;
+
+static touch_evt touch_events[10] = {0};
+static int touch_btns = 0;
+
+static int capacitive_events(int fd, int* b, int* x, int* y)
+{
+    struct input_event ev[64];
+    int i, j, rd;
+    fd_set rdfs;
+    struct timeval to;
+    
+    int is_changed = 0;
+    
+//    static touch_evt touch_event[10] = {0};
+    static int cur_event_n = 0;
+
+    FD_ZERO(&rdfs);
+    FD_SET(fd, &rdfs);
+
+    *b = touch_btns;
+    
+    *x = touch_events[cur_event_n].x;
+    *y = touch_events[cur_event_n].y;
+
+    int rv = select(fd + 1, &rdfs, NULL, NULL, &to);
+    if(rv == -1){
+        /* an error accured */
+        return 1;
+    }
+    else if(rv == 0){
+        //printf("timeout\n");
+        /* a timeout occured */
+        //break;
+        return 1;
+    }
+
+    rd = read(fd, ev, sizeof(ev));
+    if (rd < (int) sizeof(struct input_event)) {
+        //printf("expected %d bytes, got %d\n", (int) sizeof(struct input_event), rd);
+        //perror("\nevtest: error reading");
+        return 1;
+    }
+    
+    for (i = 0; i < rd / sizeof(struct input_event); i++) {
+        unsigned int type, code;
+        type = ev[i].type;
+        code = ev[i].code;
+
+        if(type == EV_ABS){
+            int v = ev[i].value;
+            
+            switch(code){
+                case ABS_MT_SLOT:
+                    cur_event_n = v;
+                    //if(cur_event_n >= 0 && cur_event_n < 10)
+                    //    touch_events[cur_event_n].b = 1;
+                    break;
+                
+                case ABS_MT_TRACKING_ID:
+                    if(cur_event_n >= 0 && cur_event_n < 10){
+                        touch_events[cur_event_n].b = v;
+                        
+                        is_changed = 1;
+                        
+                        if(v > 0)
+                            touch_btns |= 1 << cur_event_n;
+                        else
+                            touch_btns &= ~(1 << cur_event_n);
+                    }
+                    //printf("ABS_MT_TRACKING_ID id=%d, btns=%d\n", v, touch_btns);
+                    break;
+                
+                case ABS_MT_POSITION_X:
+                    is_changed = 1;
+                    if(cur_event_n >= 0 && cur_event_n < 10)
+                        touch_events[cur_event_n].x = v;
+                    break;
+                
+                case ABS_MT_POSITION_Y:
+                    is_changed = 1;
+                    if(cur_event_n >= 0 && cur_event_n < 10)
+                        touch_events[cur_event_n].y = v;
+                    break;
+                
+            }
+        }
+    }
+    
+    *x = touch_events[0].x;
+    *y = touch_events[0].y;
+    
+    *b = touch_btns;
+    
+    return !is_changed;
+}
+
+#else
 
 /*
 ** calibration (perfect = 0 0 4096 4096)
@@ -1103,7 +1207,6 @@ xkeyboard() ///*XEvent*/void *e)
 //#define NOT_MUCH 200    /* small dx or dy ; about 3% of full width */
 #define SHORT_CLICK (150) /* 200 ms */
 
-
 static int tsc2003_events(int fd, int* b, int* x, int* y)
 {
     struct input_event ev[64];
@@ -1113,7 +1216,7 @@ static int tsc2003_events(int fd, int* b, int* x, int* y)
     static int ox=0, oy = 0, ob = 0;
     int jx, jy, nx = 0, ny = 0;
     int st = 0;
-
+    
     to.tv_sec = 0;
     to.tv_usec = SHORT_CLICK * 1000;
 
@@ -1246,6 +1349,7 @@ static int tsc2003_events(int fd, int* b, int* x, int* y)
     return 0;
 }
 
+#endif
 
 
 static void
@@ -1269,12 +1373,20 @@ xmouse() //XEvent *e)
 //  }
 
     if(fd_mou >= 0){
+#if TOUCHSCREEN_CAPACITIVE
+        if(!capacitive_events(fd_mou, &b, &x, &y)){
+            //printf("capt x=%d, y=%d, b=%x\n", x, y, b);
+            mousetrack(b, x, y, 0);
+        }
+#else
         tsc2003_events(fd_mou, &b, &x, &y);
         if(b > 0 || (b == 0 && ob > 0)){
             ob = b;
+            //printf("rest x=%d, y=%d, b=%x\n", x, y, b);
             mousetrack(b, x, y, 0);
             //printf("ob = %d, b=%d, xy=(%d, %d)\n", ob, b, x, y);
         }
+#endif
     }
 #if 0
     dbl = 0;
