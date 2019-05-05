@@ -24,6 +24,7 @@
 #include <linux/fb.h>
 #include <sys/mman.h>
 #include <stdio.h>
+#include <dirent.h>
 
 #include <linux/input.h>
 
@@ -37,6 +38,7 @@
 #define  LOGW(...)  //printf(__VA_ARGS__)
 #define  LOGE(...)  //printf(__VA_ARGS__)
 
+#define DBG(...) printf(__VA_ARGS__)
 
 
 static int displaydepth = 32;
@@ -85,7 +87,20 @@ static int putsnarf, assertsnarf;
 extern int Xsize;
 extern int Ysize;
 
-int fd_mou = -1;
+static int Xmou_max = 0;
+static int Ymou_max = 0;
+
+static int fd_mou = -1;
+static int is_mt = 0;
+
+
+static char *supported_mouse_devs[] = {
+    "Goodix Capacitive TouchScreen",
+    "TSC2003 Touchscreen",
+    "TSC2007 Touchscreen",
+    NULL
+};
+
 
 /*
  * The documentation for the XSHM extension implies that if the server
@@ -229,6 +244,143 @@ attach_fb()
 }
 
 
+
+
+
+#define BITS_PER_LONG (sizeof(long) * 8)
+#define NBITS(x) ((((x)-1)/BITS_PER_LONG)+1)
+#define OFF(x)  ((x)%BITS_PER_LONG)
+#define BIT(x)  (1UL<<OFF(x))
+#define LONG(x) ((x)/BITS_PER_LONG)
+#define test_bit(bit, array)    ((array[LONG(bit)] >> OFF(bit)) & 1)
+
+static int is_event_device(const struct dirent *dir) {
+	return strncmp("event", dir->d_name, 5) == 0;
+}
+
+static int
+scan_mouse()
+{
+    struct dirent **namelist;
+    int i, j, ndev;
+    int fd = -1, fd_cap = -1, fd_res = -1;
+    char fname[64];
+    char *dname = malloc(256);
+    
+    unsigned long bits[NBITS(KEY_MAX)];
+    struct input_absinfo abs;
+
+    int touch_res;
+    int touch_cap;
+    
+    ndev = scandir("/dev/input", &namelist, is_event_device, versionsort);
+    if (ndev <= 0)
+        return -1;
+DBG("ndev=%d\n", ndev);
+    
+    for(i = 0; i < ndev; i++){
+        int  is_supported = 0;
+        
+        snprintf(fname, sizeof(fname), "/dev/input/%s", namelist[i]->d_name);
+DBG("test file: %s\n", fname);
+        
+        fd = open(fname, O_RDWR);
+        if (fd < 0)
+            continue;
+
+        ioctl(fd, EVIOCGNAME(256), dname);
+DBG("test dev: %s\n", dname);
+        for(j = 0; supported_mouse_devs[j] != NULL; j++){
+            if(!strcmp(dname, supported_mouse_devs[j])){
+                is_supported = 1;
+                break;
+            }
+        }
+        
+        if(!is_supported){
+            close(fd);
+            continue;
+        }
+DBG("supported: %s\n", fname);
+        
+        ioctl(fd, EVIOCGBIT(0, EV_MAX), bits);
+        if (!test_bit(EV_ABS, bits)){
+            close(fd);
+            continue;
+        }
+        
+        ioctl(fd, EVIOCGBIT(EV_ABS, KEY_MAX), bits);
+        if(!(
+            test_bit(ABS_MT_POSITION_X, bits) &&
+            test_bit(ABS_MT_POSITION_Y, bits)
+            )
+        ){
+            if(fd_res >= 0)
+                close(fd_res);
+            fd_res = fd;
+DBG("RESISTIVE\n");
+        }else{
+            if(fd_cap >= 0)
+                close(fd_cap);
+            fd_cap = fd;
+DBG("CAPACITIVE\n");
+        }
+    }
+
+    if(fd_cap < 0){
+        ioctl(fd, EVIOCGABS (ABS_X), &abs);
+        Xmou_max = abs.maximum;
+#if 0
+        context->min.x  = abs.minimum;
+        context->max.x  = abs.maximum;
+#endif
+        ioctl (fd, EVIOCGABS (ABS_Y), &abs);
+        Ymou_max = abs.maximum;
+#if 0
+        context->max.y = abs.maximum;
+        context->have_multitouch = 0;
+        context->min.id = -1;
+        context->max.id = -1;
+#endif
+        is_mt = 0;
+        fd = fd_res;
+    }else{
+        if(fd_res >= 0)
+            close(fd_res);
+        
+        ioctl (fd, EVIOCGABS (ABS_MT_POSITION_X), &abs);
+        Xmou_max = abs.maximum;
+        printf(">O X = (%d -- %d)\n", abs.minimum, abs.maximum);
+/*
+        abs.maximum = 800;
+        ioctl (fd, EVIOCSABS (ABS_MT_POSITION_X), &abs);
+        ioctl (fd, EVIOCGABS (ABS_MT_POSITION_X), &abs);
+        printf(">N X = (%d -- %d)\n", abs.minimum, abs.maximum);
+*/
+        // ----
+        ioctl (fd, EVIOCGABS (ABS_MT_POSITION_Y), &abs);
+        Ymou_max = abs.maximum;
+        printf(">O Y = (%d -- %d)\n", abs.minimum, abs.maximum);
+/*
+        abs.maximum = 480;
+        ioctl (fd, EVIOCSABS (ABS_MT_POSITION_Y), &abs);
+        ioctl (fd, EVIOCGABS (ABS_MT_POSITION_Y), &abs);
+        printf(">N Y = (%d -- %d)\n", abs.minimum, abs.maximum);
+*/
+        // ----
+        is_mt = 1;
+        fd = fd_cap;
+    }
+DBG("is_mt=%d\n", is_mt);
+
+    free(dname);
+    
+    return fd;
+}
+
+
+
+
 uchar*
 attachscreen(Rectangle *r, ulong *chan, int *d, int *width, int *softscreen)
 {
@@ -248,7 +400,7 @@ LOGE("attachscreen\n");
 
     // prepare mouse
     if(fd_mou == -1){
-        fd_mou = open("/dev/input/event1", O_RDWR);
+        fd_mou = scan_mouse(); //open("/dev/input/event1", O_RDWR);
     }
 
     triedscreen = 1;
@@ -1083,7 +1235,7 @@ xkeyboard() ///*XEvent*/void *e)
 }
 
 
-#if TOUCHSCREEN_CAPACITIVE
+
 
 typedef struct {
     int x;
@@ -1186,7 +1338,6 @@ static int capacitive_events(int fd, int* b, int* x, int* y)
     return !is_changed;
 }
 
-#else
 
 /*
 ** calibration (perfect = 0 0 4096 4096)
@@ -1349,8 +1500,6 @@ static int tsc2003_events(int fd, int* b, int* x, int* y)
     return 0;
 }
 
-#endif
-
 
 static void
 xmouse() //XEvent *e)
@@ -1373,20 +1522,25 @@ xmouse() //XEvent *e)
 //  }
 
     if(fd_mou >= 0){
-#if TOUCHSCREEN_CAPACITIVE
-        if(!capacitive_events(fd_mou, &b, &x, &y)){
-            //printf("capt x=%d, y=%d, b=%x\n", x, y, b);
-            mousetrack(b, x, y, 0);
+//#if TOUCHSCREEN_CAPACITIVE
+        if(is_mt){
+            if(Xmou_max > 0 && Ymou_max && !capacitive_events(fd_mou, &b, &x, &y)){
+                x = (x * Xsize) / Xmou_max;
+                y = (y * Ysize) / Ymou_max;
+                //printf("capt x=%d, y=%d, b=%x\n", x, y, b);
+                mousetrack(b, x, y, 0);
+            }
+        }else{
+//#else
+            tsc2003_events(fd_mou, &b, &x, &y);
+            if(b > 0 || (b == 0 && ob > 0)){
+                ob = b;
+                //printf("rest x=%d, y=%d, b=%x\n", x, y, b);
+                mousetrack(b, x, y, 0);
+                //printf("ob = %d, b=%d, xy=(%d, %d)\n", ob, b, x, y);
+            }
         }
-#else
-        tsc2003_events(fd_mou, &b, &x, &y);
-        if(b > 0 || (b == 0 && ob > 0)){
-            ob = b;
-            //printf("rest x=%d, y=%d, b=%x\n", x, y, b);
-            mousetrack(b, x, y, 0);
-            //printf("ob = %d, b=%d, xy=(%d, %d)\n", ob, b, x, y);
-        }
-#endif
+//#endif
     }
 #if 0
     dbl = 0;

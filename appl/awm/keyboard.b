@@ -40,7 +40,7 @@ SPECFONT_TTF: con "/fonts/ttf/FantasqueSansMono-Regular.ttf";
 
 # size in pixels
 #KEYSIZE: con 16;
-KEYSIZE: con 13;
+KEYSIZE: con 16; #13;
 KEYSPACE: con 2;
 KEYBORDER: con 1;
 KEYGAP: con KEYSPACE - (2 * KEYBORDER);
@@ -145,10 +145,10 @@ init(ctxt: ref Draw->Context, args: list of string)
 #	sys->print("scrn WxH = %dx%d bsz=%d - %d\n", r.dx(), r.dy(), r.dx()/15, KEYBORDER);
 	wkbd := r.dx();
 	if(wkbd > r.dy())
-		wkbd = int wkbd/2;
+		wkbd = int (2*wkbd/3);
 
 	KEYGAP_ := int wkbd/100;
-	KEYSIZE_ := int wkbd/15 - KEYGAP_;
+	KEYSIZE_ := int (wkbd/15) - KEYGAP_;
 
 	specials[ Backslash ].size = KEYSIZE_;
 	specials[ Esc       ].size = KEYSIZE_;
@@ -172,7 +172,7 @@ init(ctxt: ref Draw->Context, args: list of string)
 		if(keys[0][i] != nil)
 			cmd(t, sys->sprint("button .b%d -takefocus 0 -font %s -width %d -height %d -bd %d -activebackground %s -text {%s} -command 'send keypress %d",
 				i, fnt_nm   #FONT
-				, KEYSIZE_, int (KEYSIZE_ * 3/2), 
+				, KEYSIZE_, KEYSIZE_, #int (KEYSIZE_ * 3/2), 
 				KEYBORDER, background, keys[0][i], keyvals[0][i]));
 
 	for(i = 0; i < len specials; i++) {

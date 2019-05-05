@@ -38,6 +38,8 @@ tb_fnt : ref Font;
 
 tb_h := 0;
 
+is_hrz := (0 == 0);
+
 # execute this if no menu items have been created
 # by the init script.
 defaultscript :=
@@ -243,13 +245,22 @@ iconify(id, label: string)
 	label = condenselabel(label);
 	
 	padf := ".toolbar.sp"+id;
-	tk->cmd(tbtop, "frame " + padf + " -width 2");
-	cmd(tbtop, "pack " + padf + " -side left -fill y");
+	if (is_hrz) {
+		tk->cmd(tbtop, "frame " + padf + " -height 2");
+		cmd(tbtop, "pack " + padf + " -side top -fill x");
+	} else {
+		tk->cmd(tbtop, "frame " + padf + " -width 2");
+		cmd(tbtop, "pack " + padf + " -side left -fill y");
+	}
 
 	e := tk->cmd(tbtop, "button .toolbar." +id+" -command {send task "+id+"} -takefocus 0");
-	cmd(tbtop, ".toolbar." +id+" configure -font " + tb_fnt.name + " -text '" + label);
-	if(e[0] != '!')
-		cmd(tbtop, "pack .toolbar."+id+" -side left -fill y");
+	cmd(tbtop, ".toolbar." +id+" configure -font " + tb_fnt.name + " -height " + string tb_h + " -text '" + label);
+	if (e[0] != '!') {
+		if (is_hrz)
+			cmd(tbtop, "pack .toolbar."+id+" -side top -fill x");
+		else
+			cmd(tbtop, "pack .toolbar."+id+" -side left -fill y");
+	}
 	cmd(tbtop, "update");
 }
 
@@ -271,10 +282,18 @@ layout(top: ref Tk->Toplevel)
 	h := tb_h; #60; #32;
 	if(r.dy() < 480)
 		h = tk->rect(top, ".b", Tk->Border|Tk->Required).dy();
-	cmd(top, ". configure -x " + string r.min.x +
+	if (is_hrz)
+		cmd(top, ". configure -x " + string r.min.x +
+			" -y " + string r.min.y +  #(r.max.y - h) +
+			" -width " + string h +
+			" -height " + string r.dy()
+		);
+	else
+		cmd(top, ". configure -x " + string r.min.x +
 			" -y " + string r.min.y +  #(r.max.y - h) +
 			" -width " + string r.dx() +
-			" -height " + string h);
+			" -height " + string h
+		);
 	cmd(top, "update");
 	tkclient->onscreen(tbtop, "exact");
 }
@@ -286,7 +305,9 @@ toolbar(ctxt: ref Draw->Context, startmenu: int,
 	screenr = tbtop.screenr;
 
 
-	tb_h = screenr.dy() / 20;
+	tb_h = int (1.5 * real screenr.dy() / 20.0);
+	
+	is_hrz = (screenr.dx() > screenr.dy());
 
 	fnt_csz := int ( tb_h / 2);
 	fnt_nm := FONT_TTF + "_" + string fnt_csz;
@@ -307,10 +328,16 @@ toolbar(ctxt: ref Draw->Context, startmenu: int,
 		cmd(tbtop, "menubutton .toolbar.start -menu .m -borderwidth 0 -bitmap :" 
 					+ string int tb_h 
 					+ ":vitabig.png");
-		cmd(tbtop, "pack .toolbar.start -side left");
+		if (is_hrz)
+			cmd(tbtop, "pack .toolbar.start -side top");
+		else
+			cmd(tbtop, "pack .toolbar.start -side left");
 	}
 
-	cmd(tbtop, "pack .toolbar -fill x");
+	if (is_hrz)
+		cmd(tbtop, "pack .toolbar -fill x");
+	else
+		cmd(tbtop, "pack .toolbar -fill y");
 	cmd(tbtop, "menu .m");
 	return tbtop;
 }
@@ -412,7 +439,7 @@ builtin_menu(nil: ref Context, nil: Sh, argv: list of ref Listnode): string
 	primary := (hd tl argv).word;
 	argv = tl tl argv;
 
-	h_mnu_itm := string int (screenr.dy() / 30);
+	h_mnu_itm := string int (tb_h); #screenr.dy() / 30);
 
 	tb_fnt_nm := tb_fnt.name;
 

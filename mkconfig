@@ -12,7 +12,6 @@ ROOT=$ROOT
 TKSTYLE=std
 
 WINDOW_BACKEND=fb		# andr, clutter, x11a, fb
-TOUCHSCREEN_CAPACITIVE=1
 
 #
 #	Except for building kernels, SYSTARG must always be the same as SYSHOST

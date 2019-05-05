@@ -44,8 +44,7 @@ init()
 new(top: ref Tk->Toplevel, buts: int): chan of string
 {
 	r := top.screenr;
-	h_title = int (r.dy() / 30);
-
+	h_title = int (1.5 * real r.dy() / 30.0);
 
 	fnt_csz := int ( h_title * 2/3);
 	fnt_nm := FONT_TTF + "_" + string fnt_csz;
