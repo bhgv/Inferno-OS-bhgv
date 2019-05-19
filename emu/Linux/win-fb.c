@@ -1243,8 +1243,9 @@ typedef struct {
     int b;
 } touch_evt;
 
-static touch_evt touch_events[10] = {0};
+static touch_evt touch_events[10];
 static int touch_btns = 0;
+static int first_time = 1;
 
 static int capacitive_events(int fd, int* b, int* x, int* y)
 {
@@ -1257,6 +1258,13 @@ static int capacitive_events(int fd, int* b, int* x, int* y)
     
 //    static touch_evt touch_event[10] = {0};
     static int cur_event_n = 0;
+    
+    if(first_time){
+        for(i = 0; i < 10; i++){
+            touch_events[i].b = -1;
+        }
+        first_time = 0;
+    }
 
     FD_ZERO(&rdfs);
     FD_SET(fd, &rdfs);
@@ -1302,16 +1310,17 @@ static int capacitive_events(int fd, int* b, int* x, int* y)
                 
                 case ABS_MT_TRACKING_ID:
                     if(cur_event_n >= 0 && cur_event_n < 10){
-                        touch_events[cur_event_n].b = v;
-                        
                         is_changed = 1;
                         
-                        if(v > 0)
+                        if(v > 0){
+                            touch_events[cur_event_n].b = v;
                             touch_btns |= 1 << cur_event_n;
-                        else
+                        }else if(v < 0){
+                            touch_events[cur_event_n].b = 0;
                             touch_btns &= ~(1 << cur_event_n);
+                        }
                     }
-                    //printf("ABS_MT_TRACKING_ID id=%d, btns=%d\n", v, touch_btns);
+                    printf("ABS_MT_TRACKING_ID id=%d, btns=%d\n", v, touch_btns);
                     break;
                 
                 case ABS_MT_POSITION_X:
@@ -1329,7 +1338,16 @@ static int capacitive_events(int fd, int* b, int* x, int* y)
             }
         }
     }
+
+/*
+    printf("%s:%d xy[%d]=(%d, %d), id=%d\n", __func__, __LINE__,
+                            cur_event_n,
+                            touch_events[cur_event_n].x,
+                            touch_events[cur_event_n].y,
+                            touch_events[cur_event_n].b
     
+    );
+*/
     *x = touch_events[0].x;
     *y = touch_events[0].y;
     
@@ -1501,6 +1519,8 @@ static int tsc2003_events(int fd, int* b, int* x, int* y)
 }
 
 
+void process_gestures(touch_evt*, int);
+
 static void
 xmouse() //XEvent *e)
 {
@@ -1524,11 +1544,25 @@ xmouse() //XEvent *e)
     if(fd_mou >= 0){
 //#if TOUCHSCREEN_CAPACITIVE
         if(is_mt){
-            if(Xmou_max > 0 && Ymou_max && !capacitive_events(fd_mou, &b, &x, &y)){
+            if(Xmou_max > 0 && Ymou_max > 0 && 
+               !capacitive_events(fd_mou, &b, &x, &y)
+            ){
+                int i;
+                
                 x = (x * Xsize) / Xmou_max;
                 y = (y * Ysize) / Ymou_max;
                 //printf("capt x=%d, y=%d, b=%x\n", x, y, b);
                 mousetrack(b, x, y, 0);
+                
+                //printf("%s:%d process_gestures=%x\n", __func__, __LINE__, process_gestures);
+                process_gestures(touch_events, 10);
+                
+                /**/
+                for(i = 0; i < 10; i++){
+                    if(touch_events[i].b == 0)
+                        touch_events[i].b = -1;
+                }
+                /**/
             }
         }else{
 //#else
