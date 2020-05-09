@@ -1,0 +1,3 @@
+OFILES=\
+	$OFILES\
+	hal/w25qxx.$O\

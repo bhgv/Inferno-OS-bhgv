@@ -1,0 +1,5 @@
+OFILES=\
+	$OFILES\
+	sys/panic.$O\
+	sys/mutex.$O\
+	sys/list.$O\

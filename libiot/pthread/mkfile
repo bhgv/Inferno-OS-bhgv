@@ -1,0 +1,10 @@
+#<$ROOT/mkconfig
+
+#LIB=libspiffs.a
+OFILES=\
+	$OFILES\
+	pthread/mutex.$O\
+
+#HFILES=	$ROOT/include/bio.h
+
+#<$ROOT/mkfiles/mksyslib-$SHELLTYPE

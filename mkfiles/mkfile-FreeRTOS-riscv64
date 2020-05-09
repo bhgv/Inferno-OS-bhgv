@@ -1,0 +1,37 @@
+TARGMODEL=	Posix
+TARGSHTYPE=	sh
+CPUS=		arm
+
+O=		o
+OS=		o
+
+AR=		${CROSS}ar
+ARFLAGS=	ruvs
+
+AS=		${CROSS}gcc -c 
+ASFLAGS=
+
+CC=		${CROSS}gcc -c 
+CFLAGS=		-O\
+		-Wuninitialized -Wunused-variable -Wreturn-type -Wimplicit\
+		-I$ROOT/FreeRTOS/riscv64/include\
+		-I$FreeRTOS_ROOT/include\
+		-I$FreeRTOS_ROOT/conf\
+		-I$FreeRTOS_ROOT/portable\
+		-I$K210_SDK/lib/arch/include\
+		-I$K210_SDK/lib/posix/include\
+		-I$K210_SDK/third_party/lwip/src/include/compat/posix\
+		-I$K210_SDK/third_party/lwip/src/include\
+		-I$ROOT/include\
+		-DFREERTOS_RISCV64
+
+#		-DLINUX_ARM
+
+ANSICPP=
+LD=		${CROSS}gcc 
+LDFLAGS=	
+
+SYSLIBS=
+
+YACC=		iyacc
+YFLAGS=		-d
