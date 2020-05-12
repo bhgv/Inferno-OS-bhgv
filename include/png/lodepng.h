@@ -27,8 +27,10 @@ freely, subject to the following restrictions:
 #define LODEPNG_H
 
 //#include <string.h> /*for size_t*/
-typedef unsigned int size_t;
 
+#ifndef FREERTOS_RISCV64
+typedef unsigned int size_t;
+#endif
 
 extern const char* LODEPNG_VERSION_STRING;
 

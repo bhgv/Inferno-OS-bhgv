@@ -1,0 +1,9 @@
+OFILES=\
+	$OFILES\
+	spiffs/spiffs_check.$O\
+	spiffs/spiffs_hydrogen.$O\
+	spiffs/spiffs_cache.$O\
+	spiffs/spiffs_gc.$O\
+	spiffs/spiffs_nucleus.$O\
+	spiffs/k210_spiffs.$O\
+

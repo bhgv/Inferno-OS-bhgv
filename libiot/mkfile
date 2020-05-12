@@ -1,0 +1,26 @@
+# Directories common to all architectures.
+# Build in order:
+#	- critical libraries used by the limbo compiler
+#	- the limbo compiler (used to build some subsequent libraries)
+#	- the remaining libraries
+#	- commands
+#	- utilities
+
+<$ROOT/mkconfig
+
+LIB=libiot.a
+
+OFILES=\
+
+CFLAGS=\
+	$CFLAGS\
+	-Iinclude\
+
+#<pthread/mkfile
+<freertos/mkfile
+<sys/mkfile
+<hal/mkfile
+<spiffs/mkfile
+<vfs/mkfile
+
+<$ROOT/mkfiles/mksyslib-$SHELLTYPE

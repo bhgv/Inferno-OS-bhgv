@@ -1,0 +1,7 @@
+OFILES=\
+	$OFILES\
+	vfs/spiffs.$O\
+
+CFLAGS=\
+	$CFLAGS\
+	-Ivfs/include\
