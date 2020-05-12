@@ -96,7 +96,7 @@ int vfs_fat_format(const char *target);
 int vfs_fat_fsstat(const char *target, u32_t *total, u32_t *used);
 */
 
-int vfs_spiffs_mount(const char *target);
+esp_vfs_t* vfs_spiffs_mount(const char *target);
 int vfs_spiffs_umount(const char *target);
 int vfs_spiffs_format(const char *target);
 int vfs_spiffs_fsstat(const char *target, u32_t *total, u32_t *used);
@@ -121,8 +121,11 @@ ssize_t vfs_generic_read(vfs_fd_local_storage_t *local_storage, vfs_has_bytes ha
 ssize_t vfs_generic_write(vfs_fd_local_storage_t *local_storage, vfs_put_byte put, int fd, const void *data, size_t size);
 ssize_t vfs_generic_writev(vfs_fd_local_storage_t *local_storage, vfs_put_byte put, int fd, const struct iovec *iov, int iovcnt);
 int vfs_generic_select(vfs_fd_local_storage_t *local_storage, vfs_has_bytes has_bytes, vfs_free_bytes free, int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptset, struct timeval *timeout);
+*/
 
 vfs_dir_t *vfs_allocate_dir(const char *vfs, const char *name);
 void vfs_free_dir(vfs_dir_t *dir);
-vfs_fd_local_storage_t *vfs_create_fd_local_storage(int num);
-*/
+//vfs_fd_local_storage_t *vfs_create_fd_local_storage(int num);
+
+
+extern esp_vfs_t vfs;

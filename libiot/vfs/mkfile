@@ -1,5 +1,6 @@
 OFILES=\
 	$OFILES\
+	vfs/vfs.$O\
 	vfs/spiffs.$O\
 
 CFLAGS=\

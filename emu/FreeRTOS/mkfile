@@ -44,6 +44,8 @@ CFLAGS='-DROOT="'$ROOT'"' -DEMU \
 	-I$ROOT/$SYSTARG/$OBJTYPE/include \
 	-I$ROOT/include \
 	-I$ROOT/libinterp \
+	-I$ROOT/libiot/vfs/include \
+	-I$ROOT/libiot/include \
 	$CTHREADFLAGS $CFLAGS $EMUOPTIONS
 #SYSLIBS= $X11LIBS -lm -lpthread
 SYSLIBS= -lm -lpthread

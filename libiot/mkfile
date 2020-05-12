@@ -24,3 +24,6 @@ CFLAGS=\
 <vfs/mkfile
 
 <$ROOT/mkfiles/mksyslib-$SHELLTYPE
+
+%.$O:	%.c
+	$CC $CFLAGS -o $target $stem.c

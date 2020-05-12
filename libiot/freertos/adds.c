@@ -59,6 +59,9 @@
 
 #include <malloc.h>
 
+
+void panic(const char*);
+
 #define THREAD_LOCAL_STORAGE_POINTER_ID 0
 
 // Reference to lua_thread, which is created in app_main
@@ -134,7 +137,7 @@ void uxSetLuaState(lua_State* L) {
 		if (!lua_rtos_tcb->lthread) {
 			lua_rtos_tcb->lthread = calloc(1, sizeof(lthread_t));
 			if (lua_rtos_tcb->lthread == NULL) {
-				panic();
+				panic("No thread TLS!");
 			}
 			//assert(lua_rtos_tcb->lthread);
 		}

@@ -997,6 +997,7 @@ static struct dirent* vfs_spiffs_readdir(DIR* pdir) {
     // Clear the current dirent
     memset(ent, 0, sizeof(struct dirent));
 
+#if 0 //{}
     // If there are mount points to read, read them first
     if (dir->mount) {
         struct dirent *ment = mount_readdir((DIR *)dir);
@@ -1004,6 +1005,7 @@ static struct dirent* vfs_spiffs_readdir(DIR* pdir) {
             return ment;
         }
     }
+#endif //{}
 
     mtx_lock(&vfs_mtx);
 
@@ -1220,7 +1222,10 @@ static void vfs_spiffs_free_resources() {
     mtx_destroy(&ll_mtx);
 }
 
-int vfs_spiffs_mount(const char *target) {
+
+
+
+
     esp_vfs_t vfs = {
         .flags = ESP_VFS_FLAG_DEFAULT,
         .write = &vfs_spiffs_write,
@@ -1240,8 +1245,36 @@ int vfs_spiffs_mount(const char *target) {
         .rmdir = &vfs_spiffs_rmdir,
         .fsync = &vfs_spiffs_fsync,
         .access = &vfs_spiffs_access,
-		.telldir = &vfs_spiffs_telldir,
+        .telldir = &vfs_spiffs_telldir,
     };
+
+
+
+
+esp_vfs_t* vfs_spiffs_mount(const char *target) {
+#if 0 //{}
+    esp_vfs_t vfs = {
+        .flags = ESP_VFS_FLAG_DEFAULT,
+        .write = &vfs_spiffs_write,
+        .open = &vfs_spiffs_open,
+        .fstat = &vfs_spiffs_fstat,
+        .close = &vfs_spiffs_close,
+        .read = &vfs_spiffs_read,
+        .lseek = &vfs_spiffs_lseek,
+        .stat = &vfs_spiffs_stat,
+        .link = NULL,
+        .unlink = &vfs_spiffs_unlink,
+        .rename = &vfs_spiffs_rename,
+        .mkdir = &vfs_spiffs_mkdir,
+        .opendir = &vfs_spiffs_opendir,
+        .readdir = &vfs_spiffs_readdir,
+        .closedir = &vfs_spiffs_closedir,
+        .rmdir = &vfs_spiffs_rmdir,
+        .fsync = &vfs_spiffs_fsync,
+        .access = &vfs_spiffs_access,
+        .telldir = &vfs_spiffs_telldir,
+    };
+#endif //{}
 
     // Mount spiffs file system
     spiffs_config cfg;
@@ -1249,6 +1282,7 @@ int vfs_spiffs_mount(const char *target) {
     int retries = 0;
 
     // Find partition
+#if 0 //{}
     const esp_partition_t *partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, LUA_RTOS_SPIFFS_PART, NULL);
 
     if (!partition) {
@@ -1259,11 +1293,17 @@ int vfs_spiffs_mount(const char *target) {
         cfg.phys_addr = partition->address;
         cfg.phys_size = partition->size;
     }
+#endif //{}
+
+    cfg.phys_addr = 0xA00000;
+    cfg.phys_size = 1024 * 1024;
+
 
     cfg.phys_erase_block = w25qxx_FLASH_SECTOR_SIZE; //{} CONFIG_LUA_RTOS_SPIFFS_ERASE_SIZE;
     cfg.log_page_size = w25qxx_FLASH_PAGE_SIZE; //{} CONFIG_LUA_RTOS_SPIFFS_LOG_PAGE_SIZE;
     cfg.log_block_size = w25qxx_FLASH_SECTOR_SIZE; //{} CONFIG_LUA_RTOS_SPIFFS_LOG_BLOCK_SIZE;
 
+#if 0 //{}
     if (partition) {
         syslog(LOG_INFO,
                 "spiffs start address at 0x%x, size %d Kb",
@@ -1272,6 +1312,7 @@ int vfs_spiffs_mount(const char *target) {
         syslog(LOG_INFO, "spiffs start address at 0x%x, size %d Kb",
                 cfg.phys_addr, cfg.phys_size / 1024);
     }
+#endif //{}
 
     cfg.hal_read_f  = (spiffs_read)  low_spiffs_read;
     cfg.hal_write_f = (spiffs_write) low_spiffs_write;
@@ -1281,7 +1322,7 @@ int vfs_spiffs_mount(const char *target) {
     if (!my_spiffs_work_buf) {
         vfs_spiffs_free_resources();
         syslog(LOG_ERR, "spiffs can't allocate memory for file system");
-        return -1;
+        return NULL;
     }
 
     int fds_len = sizeof(spiffs_fd) * 5;
@@ -1289,7 +1330,7 @@ int vfs_spiffs_mount(const char *target) {
     if (!my_spiffs_fds) {
         vfs_spiffs_free_resources();
         syslog(LOG_ERR, "spiffs can't allocate memory for file system");
-        return -1;
+        return NULL;
     }
 
     int cache_len = cfg.log_page_size * 5;
@@ -1297,7 +1338,7 @@ int vfs_spiffs_mount(const char *target) {
     if (!my_spiffs_cache) {
         vfs_spiffs_free_resources();
         syslog(LOG_ERR, "spiffs can't allocate memory for file system");
-        return -1;
+        return NULL;
     }
 
     // Init mutex
@@ -1318,13 +1359,13 @@ int vfs_spiffs_mount(const char *target) {
                 if (res < 0) {
                     vfs_spiffs_free_resources();
                     syslog(LOG_ERR, "spiffs format error");
-                    return -1;
+                    return NULL;
                 }
             } else {
                 vfs_spiffs_free_resources();
                 syslog(LOG_ERR, "spiff can't mount file system (%s)",
                         strerror(spiffs_result(fs.err_code)));
-                return -1;
+                return NULL;
             }
         } else {
             break;
@@ -1342,28 +1383,33 @@ int vfs_spiffs_mount(const char *target) {
             vfs_spiffs_umount(target);
             syslog(LOG_ERR, "spiffs can't create root folder (%s)",
                     strerror(spiffs_result(fs.err_code)));
-            return -1;
+            return NULL;
         }
 
         if (SPIFFS_close(&fs, fd) < 0) {
             vfs_spiffs_umount(target);
             syslog(LOG_ERR, "spiffs can't create root folder (%s)",
                     strerror(spiffs_result(fs.err_code)));
-            return -1;
+            return NULL;
         }
     }
 
     lstinit(&files, 0, LIST_DEFAULT);
 
-    ESP_ERROR_CHECK(esp_vfs_register("/spiffs", &vfs, NULL));
+//    ESP_ERROR_CHECK(esp_vfs_register("/spiffs", &vfs, NULL));
+
+//    esp_vfs_t* ovfs = malloc(sizeof(esp_vfs_t));
+//    memcpy(ovfs, &vfs);
 
     syslog(LOG_INFO, "spiffs mounted on %s", target);
 
-    return 0;
+    return &vfs; //ovfs;
 }
 
-int vfs_spiffs_umount(const char *target) {
-    esp_vfs_unregister("/spiffs");
+int vfs_spiffs_umount(/*esp_vfs_t* vfs*/ const char *target) {
+//    esp_vfs_unregister("/spiffs");
+//    free(vfs);
+
     SPIFFS_unmount(&fs);
 
     vfs_spiffs_free_resources();
@@ -1373,7 +1419,7 @@ int vfs_spiffs_umount(const char *target) {
     return 0;
 }
 
-int vfs_spiffs_format(const char *target) {
+int vfs_spiffs_format(/*esp_vfs_t** vfs*/ const char *target) {
     vfs_spiffs_umount(target);
 
     mtx_init(&ll_mtx, NULL, NULL, 0);

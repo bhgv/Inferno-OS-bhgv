@@ -15,7 +15,8 @@
 #include	<sys/un.h>
 #endif //{}
 #include	<utime.h>
-#include	<dirent.h>
+#include	"../../libiot/vfs/include/sys/dirent.h"
+#include	"../../libiot/vfs/vfs.h"
 #include	<stdio.h>
 #define	__EXTENSIONS__
 #undef	getwd
