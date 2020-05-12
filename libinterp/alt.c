@@ -165,10 +165,14 @@ altdone(Alt *a, Prog *p, Channel *sel, int sr)
 		c = ac->c;
 		if(c != H) {
 			t = D2H(c)->t;
+//printf("t=%X\n", t);
 			if(t == &Tarray)
 				altunmark(c, ac->ptr, p, sr, &sel, n);
 			else {
-				if(c->recv->prog)
+//printf("c=%X\n", c);
+//printf("c->recv=%X\n", c->recv);
+//printf("c->recv->prog=%X\n", c->recv->prog);
+				if(c->recv && c->recv->prog)
 					cqdelp(&c->recv, p);
 				if(sr == 1 && c == sel) {
 					p->ptr = ac->ptr;

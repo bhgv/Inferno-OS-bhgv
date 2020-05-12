@@ -62,8 +62,39 @@ static struct {
 
 
 
+#if 0
 #define Nx 10
 #define Ny 10
+
+
+// --- VV -- gesture defines
+enum {
+    A_0    = 0,
+    A_45   = 1,
+    A_90   = 2,
+    A_135  = 3,
+    A_180  = 4,
+    A_m135 = -3,
+    A_m90  = -2,
+    A_m45  = -1,
+};
+
+enum {
+    EOFP = 0,
+    MirrorH,
+    MirrorV,
+    NoI,
+    I,
+    NoI_FT,
+    I_FT,
+};
+
+typedef struct {
+    signed char* data;
+    char*                name;
+} gesture_node;
+// --- AA -- gesture defines
+
 
 
 typedef struct {
@@ -78,7 +109,7 @@ typedef struct {
     int id;
     
     double a;
-    double a45;
+    int a45;
     double l;
 } touch_evt;
 
@@ -109,9 +140,28 @@ bresenham_line (int* map, int i, int x0, int y0, int x1, int y1)
 
 #include <math.h>
 
-#define PI 3.14159265                                       // число ПИ
+#define PI 3.14159265
 
 #define ANGLE_EMPTY 10000.
+
+
+
+
+
+// -- VV - gesture tests
+static signed char gst1[] = {
+    MirrorV, 
+    I, A_0, 
+    NoI_FT, A_90, A_135, 
+    I_FT, A_m135, A_m45,
+    EOFP, EOFP, EOFP,
+};
+
+gesture_node gests_root[] = {
+    {gst1, "X-close"},
+    {NULL, NULL}
+};
+// -- AA - gesture tests
 
 void
 process_gestures(in_touch_evt *cur_evts, int max_evts)
@@ -291,8 +341,8 @@ printf("first_time (%d)\n", sizeof(evt_root));
                 else if(a2i > 4)
                     a2i = -8 + a2i;
                 
-                a = (double)a2i * (PI/4.);
-                pt->a45 = a;
+                //a = (double)a2i * (PI/4.);
+                pt->a45 = a2i;
                 
                 if(stage == 0 || stage == 1 || a != oa2){
                     tmp_node->next = sh_evt;
@@ -300,7 +350,7 @@ printf("first_time (%d)\n", sizeof(evt_root));
                     
                     popt = &tmp_node->pt;
                     
-                    printf(">>> i=%d, pt->a=%f, pt->a45=%f, pt->l=%f\n", i, pt->a * 180. / PI, pt->a45 * 180. / PI, pt->l);
+                    printf(">>> i=%d, pt->a=%f, pt->a45=%d, pt->l=%f\n", i, pt->a * 180. / PI, pt->a45 * 45, pt->l);
                 }else{
                     if(popt != NULL){
                         pt->l += (*popt)->l;
@@ -331,25 +381,149 @@ printf("first_time (%d)\n", sizeof(evt_root));
 if(evt_root[i])
 printf("\n%d) -V--- normalisation --\n", i);
             // angle (a45) normalisation
-            an = ANGLE_EMPTY;
+            int ani = (int)ANGLE_EMPTY;
             tmp_node = evt_root[i];
-            if(tmp_node && an == ANGLE_EMPTY)
-                an = tmp_node->pt->a45;
+            if(tmp_node && ani == (int)ANGLE_EMPTY)
+                ani = tmp_node->pt->a45;
             while(tmp_node != NULL){
                 touch_evt* pt  = tmp_node->pt;
-                double a = pt->a45 - an;
+                int a = pt->a45 - ani;
                 
-                if(a <= -PI)
-                    a = 2.*PI + a;
-                else if(a > PI)
-                    a = -2.*PI + a;
+                if(a <= -4)
+                    a = 8 + a;
+                else if(a > 4)
+                    a = -8 + a;
 
                 pt->a45 = a;
-printf("> a45=%f, L=%f, an=%f\n", pt->a45 * 180. / PI, pt->l, an * 180. / PI);
+printf("> a45=%d, L=%f, ani=%d\n", pt->a45 * 45, pt->l, ani * 45);
                 tmp_node = tmp_node->next;
             }
 if(evt_root[i])
 printf("%d) -A--- normalisation --\n\n", i);
+            /**/
+            
+            
+            
+            
+            /**/
+if(evt_root[i])
+printf("\n%d) -V--- parsing --\n", i);
+            // parsing
+
+            for(j = 0; 
+                gests_root[j].data != NULL && gests_root[j].name != NULL; 
+                j++
+            ){
+                gesture_node* gest_nd = &gests_root[j];
+                int gi;
+                signed char* gest_data = gest_nd->data;
+                int is_mirror = 0;
+                int is_found = 1;
+                
+                tmp_node = evt_root[i];
+
+                for(gi = 0; gest_data[gi] != EOFP; ){
+                    signed char gop = gest_data[gi];
+                    
+                    if(tmp_node == NULL){
+                        is_found = 0;
+                        break;
+                    }
+                    
+                    touch_evt* pt  = tmp_node->pt;
+                    int a = pt->a45;
+                    
+                    if(is_mirror && a < 0)
+                        a = -a;
+                    
+                    switch(gop){
+                        case NoI:
+                            tmp_node = tmp_node->next;
+                            gi += 2;
+                            break;
+                        
+                        case NoI_FT:
+                            tmp_node = tmp_node->next;
+                            gi += 3;
+                            break;
+                        
+                        case I:
+                            gi++;
+                            {
+                                int ga = gest_data[gi];
+                                if(is_mirror && ga < 0)
+                                    ga = -ga;
+                                
+                                if( a != ga ){
+                                    is_found = 0;
+                                    break;
+                                }
+                                tmp_node = tmp_node->next;
+                                gi++;
+                            }
+                            break;
+                        
+                        case I_FT:
+                            {
+                                int fr, to;
+                                
+                                gi++;
+                                fr = gest_data[gi];
+                                gi++;
+                                to = gest_data[gi];
+                                if(is_mirror){
+                                    if(fr < 0 && to < 0){
+                                        fr = 4 + fr;
+                                        to = 4 + to;
+                                    }
+                                }
+                                
+                                if(
+                                    (a < fr || a > to) 
+                                ){
+                                    is_found = 0;
+                                    break;
+                                }
+                            }
+                            tmp_node = tmp_node->next;
+                            gi++;
+                            break;
+                        
+                        case MirrorV:
+                            is_mirror = 1;
+                            gi += 1;
+                            break;
+                        
+                        case EOFP:
+                            break;
+
+                        default:
+                            gi += 1;
+                            break;
+                    };
+                } // for(gi = 0; gest_data[gi] != EOFP; )
+                
+                if(tmp_node != NULL){
+                    is_found = 0;
+                }
+                
+                if(is_found){
+                    printf("---\ngesture: %s\n---\n", gest_nd->name);
+                    break;
+                }
+/*
+                tmp_node = evt_root[i];
+                while(tmp_node != NULL){
+                    touch_evt* pt  = tmp_node->pt;
+                    int a = pt->a45; // - ani;
+                    
+                    tmp_node = tmp_node->next;
+                }
+*/
+            }
+//printf("> a45=%d, L=%f, ani=%d\n", pt->a45 * 45, pt->l, ani * 45);
+if(evt_root[i])
+printf("%d) -A--- parsing --\n\n", i);
             /**/
         }        
         
@@ -377,6 +551,7 @@ printf("%d) -A--- normalisation --\n\n", i);
         maxY = -100000;
     }
 }
+#endif
 
 
 /*

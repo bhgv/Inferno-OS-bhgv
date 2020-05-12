@@ -1296,6 +1296,18 @@ xkeyboard(XEvent *e)
         gkbdputc(gkbdq, k);
 }
 
+
+
+
+typedef struct {
+    int x;
+    int y;
+    int b;
+} touch_evt;
+
+static touch_evt touch_events[10];
+
+
 static void
 xmouse(XEvent *e)
 {
@@ -1406,6 +1418,15 @@ xmouse(XEvent *e)
 		b |= 1<<8;
 
 	mousetrack(b, x, y, 0);
+	
+	memset(touch_events, 0, sizeof(touch_events));
+	touch_events[0].b = b;
+	touch_events[0].x = x;
+	touch_events[0].y = y;
+	
+	process_gestures(touch_events, 10);
+	if(b == 0)
+		touch_events[0].b = -1;
 }
 
 #include "x11-keysym2ucs.c"
