@@ -1,5 +1,6 @@
 #include "devfs-posix.c"
 
+#if 0 //{}
 #include	<linux/hdreg.h>
 #include	<linux/fs.h>
 #include	<sys/ioctl.h>
@@ -24,3 +25,4 @@ osdisksize(int fd)
 		return (vlong)geo.heads*geo.sectors*geo.cylinders*512;
 	return 0;
 }
+#endif //{}

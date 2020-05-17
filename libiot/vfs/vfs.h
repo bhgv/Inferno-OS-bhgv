@@ -99,7 +99,7 @@ int vfs_fat_fsstat(const char *target, u32_t *total, u32_t *used);
 esp_vfs_t* vfs_spiffs_mount(const char *target);
 int vfs_spiffs_umount(const char *target);
 int vfs_spiffs_format(const char *target);
-int vfs_spiffs_fsstat(const char *target, u32_t *total, u32_t *used);
+//{} int vfs_spiffs_fsstat(const char *target, u32_t *total, u32_t *used);
 
 /*
 int vfs_lfs_mount(const char *target);

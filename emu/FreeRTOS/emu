@@ -22,7 +22,7 @@ dev
 
 #	ip	ipif6-posix ipaux
 #	ip	ipif-posix ipaux
-	eia
+#	eia
 #	audio	audio-oss
 	mem
 

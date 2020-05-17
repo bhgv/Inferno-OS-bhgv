@@ -8,8 +8,8 @@
 #include	"error.h"
 
 #include	<sys/types.h>
-#include	<sys/stat.h>
-#include	<sys/fcntl.h>
+//{} #include	<sys/stat.h>
+//{} #include	<sys/fcntl.h>
 #include	<sys/socket.h>
 #if 0 //{}
 #include	<sys/un.h>
@@ -27,15 +27,15 @@
 typedef struct Fsinfo Fsinfo;
 struct Fsinfo
 {
-	int	uid;
-	int	gid;
+//{}	int	uid;
+//{}	int	gid;
 	int	mode;	/* Unix mode */
 	DIR*	dir;		/* open directory */
 	struct dirent*	de;	/* directory reading */
 	int	fd;		/* open files */
 	ulong	offset;	/* offset when reading directory */
 	int	eod;	/* end of directory */
-	int	issocket;
+//{}	int	issocket;
 	QLock	oq;	/* mutex for offset */
 	char*	spec;
 	Cname*	name;	/* Unix's name for file */
@@ -93,10 +93,10 @@ static	vlong osdisksize(int);	/* defined by including file */
 static int
 xstat(char *f, struct stat *sb)
 {
-	if(stat(f, sb) >= 0)
+	if(vfs.stat(f, sb) >= 0)
 		return 0;
 	/* could possibly generate ->name as rob once suggested */
-	return lstat(f, sb);
+	return -1; //{} lstat(f, sb);
 }
 
 static void
@@ -116,20 +116,20 @@ fsattach(char *spec)
 
 	if(!emptystr(spec) && strcmp(spec, "*") != 0)
 		error(Ebadspec);
-	if(stat(rootdir, &st) < 0)
+	if(vfs.stat(rootdir, &st) < 0)
 		oserror();
 	if(!S_ISDIR(st.st_mode))
 		error(Enotdir);
 
 	c = devattach('U', spec);
-	c->qid = fsqid(&st);
+//{}	c->qid = fsqid(&st);
 	c->aux = smalloc(sizeof(Fsinfo));
 	FS(c)->dir = nil;
 	FS(c)->de = nil;
 	FS(c)->fd = -1;
-	FS(c)->issocket = 0;
-	FS(c)->gid = st.st_gid;
-	FS(c)->uid = st.st_uid;
+//{}	FS(c)->issocket = 0;
+//{}	FS(c)->gid = st.st_gid;
+//{}	FS(c)->uid = st.st_uid;
 	FS(c)->mode = st.st_mode;
 	lock(&l);
 	c->dev = devno++;
@@ -139,10 +139,19 @@ fsattach(char *spec)
 		FS(c)->name = newcname(FS(c)->spec);
 	}else
 		FS(c)->name = newcname(rootdir);
-	FS(c)->rootqid = c->qid;
+//{}	FS(c)->rootqid = c->qid;
 
 	return c;
 }
+
+
+static void fsinit(void)
+{
+	vfs_spiffs_mount("spiffs");
+
+	devinit();
+}
+
 
 Walkqid*
 fswalk(Chan *c, Chan *nc, char **name, int nname)
@@ -214,15 +223,15 @@ fswalk(Chan *c, Chan *nc, char **name, int nname)
 		nc->aux = smalloc(sizeof(Fsinfo));
 		nc->type = c->type;
 		if(nname > 0) {
-			FS(nc)->gid = st.st_gid;
-			FS(nc)->uid = st.st_uid;
+//{}			FS(nc)->gid = st.st_gid;
+//{}			FS(nc)->uid = st.st_uid;
 			FS(nc)->mode = st.st_mode;
-			FS(nc)->issocket = S_ISSOCK(st.st_mode);
+//{}			FS(nc)->issocket = S_ISSOCK(st.st_mode);
 		} else {
-			FS(nc)->gid = FS(c)->gid;
-			FS(nc)->uid = FS(c)->uid;
+//{}			FS(nc)->gid = FS(c)->gid;
+//{}			FS(nc)->uid = FS(c)->uid;
 			FS(nc)->mode = FS(c)->mode;
-			FS(nc)->issocket = FS(c)->issocket;
+//{}			FS(nc)->issocket = FS(c)->issocket;
 		}
 		FS(nc)->name = current;
 		FS(nc)->spec = FS(c)->spec;
@@ -241,7 +250,7 @@ fsstat(Chan *c, uchar *dp, int n)
 	char *p;
 
 	if(FS(c)->fd >= 0){
-		if(fstat(FS(c)->fd, &st) < 0)
+		if(vfs.fstat(FS(c)->fd, &st) < 0)
 			oserror();
 	}else{
 		if(xstat(FS(c)->name->s, &st) < 0)
@@ -256,6 +265,7 @@ fsstat(Chan *c, uchar *dp, int n)
 	return n;
 }
 
+#if 0 //{}
 static int
 opensocket(char *path)
 {
@@ -278,7 +288,8 @@ opensocket(char *path)
 		return fd;
 	close(fd);
 	return -1;
-}		
+}
+#endif //{}
 
 static Chan*
 fsopen(Chan *c, int mode)
@@ -316,18 +327,18 @@ fsopen(Chan *c, int mode)
 	c->mode = openmode(mode);
 
 	if(isdir) {
-		FS(c)->dir = opendir(FS(c)->name->s);
+		FS(c)->dir = vfs.opendir(FS(c)->name->s);
 		if(FS(c)->dir == nil)
 			oserror();
 		FS(c)->eod = 0;
 	}
 	else {
-		if(!FS(c)->issocket){
+//{}		if(!FS(c)->issocket){
 			if(mode & OTRUNC)
 				m |= O_TRUNC;
-			FS(c)->fd = open(FS(c)->name->s, m, 0666);
-		}else
-			FS(c)->fd = opensocket(FS(c)->name->s);
+			FS(c)->fd = vfs.open(FS(c)->name->s, m, 0666);
+//{}		}else
+//{}			FS(c)->fd = opensocket(FS(c)->name->s);
 		if(FS(c)->fd < 0)
 			oserror();
 	}
@@ -361,21 +372,27 @@ fscreate(Chan *c, char *name, int mode, ulong perm)
 		if(m)
 			error(Eperm);
 
-		perm &= ~0777 | (FS(c)->mode & 0777);
-		if(mkdir(n->s, perm) < 0)
+//{}		perm &= ~0777 | (FS(c)->mode & 0777);
+		if(vfs.mkdir(n->s, perm) < 0)
 			oserror();
 
-		fd = open(n->s, 0);
+#if 0 //{}
+		fd = vfs.open(n->s, 0);
 		if(fd < 0)
 			oserror();
-		fchmod(fd, perm);
-		fchown(fd, up->env->uid, FS(c)->gid);
-		if(fstat(fd, &st) <0){
-			close(fd);
+//{}		fchmod(fd, perm);
+//{}		fchown(fd, up->env->uid, FS(c)->gid);
+		if(vfs.fstat(fd, &st) <0){
+			vfs.close(fd);
 			oserror();
 		}
-		close(fd);
-		FS(c)->dir = opendir(n->s);
+		vfs.close(fd);
+#else //{}
+		if(vfs.stat(n->s, &st) <0){
+			oserror();
+		}
+#endif //{}
+		FS(c)->dir = vfs.opendir(n->s);
 		if(FS(c)->dir == nil)
 			oserror();
 		FS(c)->eod = 0;
@@ -383,14 +400,14 @@ fscreate(Chan *c, char *name, int mode, ulong perm)
 		o = (O_CREAT | O_EXCL) | (mode&3);
 		if(mode & OTRUNC)
 			o |= O_TRUNC;
-		perm &= ~0666 | (FS(c)->mode & 0666);
-		fd = open(n->s, o, perm);
+//{}		perm &= ~0666 | (FS(c)->mode & 0666);
+		fd = vfs.open(n->s, o, perm);
 		if(fd < 0)
 			oserror();
-		fchmod(fd, perm);
-		fchown(fd, up->env->uid, FS(c)->gid);
-		if(fstat(fd, &st) < 0){
-			close(fd);
+//{}		fchmod(fd, perm);
+//{}		fchown(fd, up->env->uid, FS(c)->gid);
+		if(vfs.fstat(fd, &st) < 0){
+			vfs.close(fd);
 			oserror();
 		}
 		FS(c)->fd = fd;
@@ -400,13 +417,13 @@ fscreate(Chan *c, char *name, int mode, ulong perm)
 	poperror();
 
 	c->qid = fsqid(&st);
-	FS(c)->gid = st.st_gid;
-	FS(c)->uid = st.st_uid;
+//{}	FS(c)->gid = st.st_gid;
+//{}	FS(c)->uid = st.st_uid;
 	FS(c)->mode = st.st_mode;
 	c->mode = openmode(mode);
 	c->offset = 0;
 	FS(c)->offset = 0;
-	FS(c)->issocket = 0;
+//{}	FS(c)->issocket = 0;
 	c->flag |= COPEN;
 }
 
@@ -415,9 +432,9 @@ fsclose(Chan *c)
 {
 	if((c->flag & COPEN) != 0){
 		if(c->qid.type & QTDIR)
-			closedir(FS(c)->dir);
+			vfs.closedir(FS(c)->dir);
 		else
-			close(FS(c)->fd);
+			vfs.close(FS(c)->fd);
 	}
 	if(c->flag & CRCLOSE) {
 		if(!waserror()) {
@@ -444,14 +461,14 @@ fsread(Chan *c, void *va, long n, vlong offset)
 		poperror();
 		qunlock(&FS(c)->oq);
 	}else{
-		if(!FS(c)->issocket){
+//{}		if(!FS(c)->issocket){
 			r = pread(FS(c)->fd, va, n, offset);
 			if(r >= 0)
 				return r;
 			if(errno != ESPIPE && errno != EPIPE)
 				oserror();
-		}
-		r = read(FS(c)->fd, va, n);
+//{}		}
+		r = vfs.read(FS(c)->fd, va, n);
 		if(r < 0)
 			oserror();
 	}
@@ -463,14 +480,14 @@ fswrite(Chan *c, void *va, long n, vlong offset)
 {
 	long r;
 
-	if(!FS(c)->issocket){
+//{}	if(!FS(c)->issocket){
 		r = pwrite(FS(c)->fd, va, n, offset);
 		if(r >= 0)
 			return r;
 		if(errno != ESPIPE && errno != EPIPE)
 			oserror();
-	}
-	r = write(FS(c)->fd, va, n);
+//{}	}
+	r = vfs.write(FS(c)->fd, va, n);
 	if(r < 0)
 		oserror();
 	return r;
@@ -481,13 +498,15 @@ fswchk(Cname *c)
 {
 	struct stat st;
 
-	if(stat(c->s, &st) < 0)
+	if(vfs.stat(c->s, &st) < 0)
 		oserror();
 
+#if 0 //{}
 	if(st.st_uid == up->env->uid)
 		st.st_mode >>= 6;
 	else if(st.st_gid == up->env->gid || ingroup(up->env->uid, st.st_gid))
 		st.st_mode >>= 3;
+#endif //{}
 
 	if(st.st_mode & S_IWOTH)
 		return;
@@ -514,9 +533,10 @@ fsremove(Chan *c)
 	cnameclose(dir);
 	poperror();
 	if(c->qid.type & QTDIR)
-		n = rmdir(FS(c)->name->s);
+		n = vfs.rmdir(FS(c)->name->s);
 	else
-		n = remove(FS(c)->name->s);
+		n = vfs.unlink(FS(c)->name->s);
+//		n = remove(FS(c)->name->s);
 	if(n < 0)
 		oserror();
 	poperror();
@@ -527,17 +547,17 @@ static int
 fswstat(Chan *c, uchar *buf, int nb)
 {
 	Dir *d;
-	User *p;
+//{}	User *p;
 	Cname *volatile ph;
 	struct stat st;
 	struct utimbuf utbuf;
 	int tsync;
 
 	if(FS(c)->fd >= 0){
-		if(fstat(FS(c)->fd, &st) < 0)
+		if(vfs.fstat(FS(c)->fd, &st) < 0)
 			oserror();
 	}else{
-		if(stat(FS(c)->name->s, &st) < 0)
+		if(vfs.stat(FS(c)->name->s, &st) < 0)
 			oserror();
 	}
 	d = malloc(sizeof(*d)+nb);
@@ -568,6 +588,7 @@ fswstat(Chan *c, uchar *buf, int nb)
 		FS(c)->name = ph;
 	}
 
+#if 0 //{}
 	if(d->mode != ~0 && (d->mode&0777) != (st.st_mode&0777)) {
 		tsync = 0;
 		if(up->env->uid != st.st_uid)
@@ -582,12 +603,13 @@ fswstat(Chan *c, uchar *buf, int nb)
 		FS(c)->mode &= ~0777;
 		FS(c)->mode |= d->mode&0777;
 	}
+#endif //{}
 
 	if(d->atime != ~0 && d->atime != st.st_atime ||
 	   d->mtime != ~0 && d->mtime != st.st_mtime) {
 		tsync = 0;
-		if(up->env->uid != st.st_uid)
-			error(Eowner);
+//{}		if(up->env->uid != st.st_uid)
+//{}			error(Eowner);
 		if(d->mtime != ~0)
 			utbuf.modtime = d->mtime;
 		else
@@ -600,6 +622,7 @@ fswstat(Chan *c, uchar *buf, int nb)
 			oserror();
 	}
 
+#if 0 //{}
 	if(*d->gid){
 		tsync = 0;
 		qlock(&idl);
@@ -625,7 +648,9 @@ fswstat(Chan *c, uchar *buf, int nb)
 		poperror();
 		qunlock(&idl);
 	}
+#endif //{}
 
+#if 0 //{}
 	if(d->length != ~(uvlong)0){
 		tsync = 0;
 		if(FS(c)->fd >= 0){
@@ -638,10 +663,11 @@ fswstat(Chan *c, uchar *buf, int nb)
 				oserror();
 		}
 	}
+#endif //{}
 
 	poperror();
 	free(d);
-	if(tsync && FS(c)->fd >= 0 && fsync(FS(c)->fd) < 0)
+	if(tsync && FS(c)->fd >= 0 && vfs.fsync(FS(c)->fd) < 0)
 		oserror();
 	return nb;
 }
@@ -718,6 +744,7 @@ fsperm(Chan *c, int mask)
 	int m;
 
 	m = FS(c)->mode;
+#if 0 //{}
 /*
 	print("fsperm: %o %o uuid %d ugid %d cuid %d cgid %d\n",
 		m, mask, up->env->uid, up->env->gid, FS(c)->uid, FS(c)->gid);
@@ -726,6 +753,7 @@ fsperm(Chan *c, int mask)
 		m >>= 6;
 	else if(FS(c)->gid == up->env->gid || ingroup(up->env->uid, FS(c)->gid))
 		m >>= 3;
+#endif //{}
 
 	m &= mask;
 	if(m == 0)
@@ -742,12 +770,13 @@ static int
 fsdirconv(Chan *c, char *path, char *name, struct stat *s, uchar *va, int nb, int indir)
 {
 	Dir d;
-	char uidbuf[NUMSIZE], gidbuf[NUMSIZE];
-	User *u;
-	int fd;
+//{}	char uidbuf[NUMSIZE], gidbuf[NUMSIZE];
+//{}	User *u;
+//{}	int fd;
 
 	memset(&d, 0, sizeof(d));
 	d.name = name;
+#if 0 //{}
 	u = id2user(uidmap, s->st_uid, newuid);
 	if(u == nil){
 		snprint(uidbuf, sizeof(uidbuf), "#%lud", (long)s->st_uid);
@@ -762,19 +791,22 @@ fsdirconv(Chan *c, char *path, char *name, struct stat *s, uchar *va, int nb, in
 		d.gid = u->name;
 	d.muid = "";
 	d.qid = fsqid(s);
+#endif //{}
 	d.mode = (d.qid.type<<24)|(s->st_mode&0777);
 	d.atime = s->st_atime;
 	d.mtime = s->st_mtime;
 	d.length = s->st_size;
 	if(d.mode&DMDIR)
 		d.length = 0;
+#if 0 //{}
 	else if(S_ISBLK(s->st_mode) && s->st_size == 0){
-		fd = open(path, O_RDONLY);
+		fd = vfs.open(path, O_RDONLY);
 		if(fd >= 0){
 			d.length = osdisksize(fd);
 			close(fd);
 		}
 	}
+#endif //{}
 	d.type = 'U';
 	d.dev = c->dev;
 	if(indir && sizeD2M(&d) > nb)
@@ -796,11 +828,11 @@ fsdirread(Chan *c, uchar *va, int count, vlong offset)
 	fspath(FS(c)->name, "", path);
 	ep = path+strlen(path);
 	if(FS(c)->offset != offset) {
-		seekdir(FS(c)->dir, 0);
+//{}		seekdir(FS(c)->dir, 0);
 		FS(c)->de = nil;
 		FS(c)->eod = 0;
 		for(n=0; n<offset; ) {
-			de = readdir(FS(c)->dir);
+			de = vfs.readdir(FS(c)->dir);
 			if(de == 0) {
 				/* EOF, so stash offset and return 0 */
 				FS(c)->offset = n;
@@ -844,7 +876,7 @@ fsdirread(Chan *c, uchar *va, int count, vlong offset)
 		de = FS(c)->de;
 		FS(c)->de = nil;
 		if(de == nil)
-			de = readdir(FS(c)->dir);
+			de = vfs.readdir(FS(c)->dir);
 		if(de == nil){
 			FS(c)->eod = 1;
 			break;
@@ -881,6 +913,7 @@ fsomode(int m)
 void
 setid(char *name, int owner)
 {
+#if 0 //{}
 	User *u;
 
 	if(owner && !iseve())
@@ -899,8 +932,10 @@ setid(char *name, int owner)
 	up->env->uid = u->id;
 	up->env->gid = u->gid;
 	qunlock(&idl);
+#endif //{}
 }
 
+#if 0 //{}
 static User**
 hashuser(User** tab, int id)
 {
@@ -1076,12 +1111,14 @@ ingroup(int id, int gid)
 			return 1;
 	return 0;
 }
+#endif //{}
+
 
 Dev fsdevtab = {
 	'U',
 	"fs",
 
-	devinit,
+	fsinit,
 	fsattach,
 	fswalk,
 	fsstat,

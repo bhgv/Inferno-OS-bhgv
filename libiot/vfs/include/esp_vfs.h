@@ -34,7 +34,7 @@
 #include <string.h>
 //#include "sdkconfig.h"
 
-#include "lwip/sockets.h"
+//{} ???  #include "lwip/sockets.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -193,10 +193,12 @@ typedef struct
         int (*ftruncate_p)(void* ctx, int fd, off_t length);
         int (*ftruncate)(int fd, off_t length);
     };
+#if 0 //{}
     union {
         int (*writev_p)(void* ctx, int fd, const struct iovec *iov, int iovcnt);
         int (*writev)(int fd, const struct iovec *iov, int iovcnt);
     };
+#endif //{}
     union {
         int (*select_p)(void* ctx, int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptset, struct timeval *timeout);
         int (*select)(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptset, struct timeval *timeout);
@@ -415,7 +417,7 @@ void esp_vfs_select_triggered_isr(SemaphoreHandle_t *signal_sem, BaseType_t *wok
  *                    return value indicates a timed-out poll. -1 is return on failure and errno is set accordingly.
  *
  */
-int esp_vfs_poll(struct pollfd *fds, nfds_t nfds, int timeout);
+//{} int esp_vfs_poll(struct pollfd *fds, nfds_t nfds, int timeout);
 
 #ifdef __cplusplus
 } // extern "C"
