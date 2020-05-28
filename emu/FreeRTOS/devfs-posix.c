@@ -65,6 +65,7 @@ struct User
 
 char	rootdir[MAXROOT] = ROOT;
 
+#if 0 //{}
 static	User*	uidmap[NID];
 static	User*	gidmap[NID];
 static	QLock	idl;
@@ -74,6 +75,9 @@ static	User*	newuid(int);
 static	User*	newgid(int);
 static	User*	newuname(char*);
 static	User*	newgname(char*);
+#else //{}
+static	QLock	idl;
+#endif //{}
 
 static	Qid	fsqid(struct stat *);
 static	void	fspath(Cname*, char*, char*);
@@ -462,12 +466,15 @@ fsread(Chan *c, void *va, long n, vlong offset)
 		qunlock(&FS(c)->oq);
 	}else{
 //{}		if(!FS(c)->issocket){
+#if 0 //{}
 			r = pread(FS(c)->fd, va, n, offset);
 			if(r >= 0)
 				return r;
 			if(errno != ESPIPE && errno != EPIPE)
 				oserror();
+#endif //{}
 //{}		}
+		vfs.lseek(FS(c)->fd, offset, SEEK_SET);
 		r = vfs.read(FS(c)->fd, va, n);
 		if(r < 0)
 			oserror();
@@ -481,12 +488,15 @@ fswrite(Chan *c, void *va, long n, vlong offset)
 	long r;
 
 //{}	if(!FS(c)->issocket){
+#if 0 //{}
 		r = pwrite(FS(c)->fd, va, n, offset);
 		if(r >= 0)
 			return r;
 		if(errno != ESPIPE && errno != EPIPE)
 			oserror();
+#endif //{}
 //{}	}
+	vfs.lseek(FS(c)->fd, offset, SEEK_SET);
 	r = vfs.write(FS(c)->fd, va, n);
 	if(r < 0)
 		oserror();

@@ -1,5 +1,5 @@
 
-#ifdef ANDROID
+#if defined(ANDROID) || defined(FREERTOS)
 #define malloc malloc_
 #define free   free_
 #define realloc realloc_

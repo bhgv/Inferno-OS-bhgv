@@ -1,6 +1,6 @@
 typedef uchar		BYTE;		/* 8  bits */
-typedef int		WORD;		/* 32 bits */
-typedef unsigned int	UWORD;		/* 32 bits */
+typedef long		WORD;		/* 32 bits */
+typedef unsigned long	UWORD;		/* 32 bits */
 typedef vlong		LONG;		/* 64 bits */
 typedef uvlong		ULONG;		/* 64 bits */
 typedef double		REAL;		/* 64 double IEEE754 */
@@ -29,7 +29,7 @@ enum
 
 	/* STRUCTALIGN is the unit to which the compiler aligns structs. */
 	/* It really should be defined somewhere else */
-	STRUCTALIGN = sizeof(int)	/* must be >=2 because of Strings */
+	STRUCTALIGN = sizeof(long)	/* must be >=2 because of Strings */
 };
 
 enum

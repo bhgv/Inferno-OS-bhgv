@@ -130,6 +130,13 @@ extern	int	isupperrune(Rune);
 /*
  * malloc
  */
+#define malloc malloc_
+#define free   free_
+#define realloc realloc_
+#define calloc  calloc_
+#define mallocz mallocz_
+#define msize   msize_
+
 extern	void*	malloc(size_t);
 extern	void*	mallocz(ulong, int);
 extern	void	free(void*);
@@ -478,6 +485,10 @@ static __inline uintptr getcallerpc(void* dummy) {
  			: "=r" (lr) 
  	); 
 	return lr;
+}
+#else
+static __inline uintptr getcallerpc(void* dummy) {
+	return 0;
 }
 #endif
 

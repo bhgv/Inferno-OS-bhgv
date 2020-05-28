@@ -23,15 +23,44 @@ CFLAGS=		-O\
 		-I$K210_SDK/third_party/lwip/src/include/compat/posix\
 		-I$K210_SDK/third_party/lwip/src/include\
 		-I$ROOT/include\
-		-DFREERTOS_RISCV64
-
-#		-DLINUX_ARM
+		-DFREERTOS_RISCV64\
+		-DFREERTOS\
 
 ANSICPP=
 LD=		${CROSS}gcc 
-LDFLAGS=	
+LDFLAGS=	\
+		-mcmodel=medany -mabi=lp64f -march=rv64imafc\
+		-fno-common -ffunction-sections -fdata-sections\
+		-fstrict-volatile-bitfields -ffast-math -fno-math-errno\
+		-fsingle-precision-constant\
+		-O2 -g -ggdb -std=gnu11\
+		-Wall -Werror=all -Wno-error=unused-function\
+		-Wno-error=unused-but-set-variable -Wno-error=unused-variable\
+		-Wno-error=deprecated-declarations -Wno-error=maybe-uninitialized\
+		-Wextra -Werror=frame-larger-than=65536 -Wno-unused-parameter\
+		-Wno-unused-function -Wno-implicit-fallthrough -Wno-sign-compare\
+		-Wno-error=missing-braces -Wno-old-style-declaration\
+		-g\
+		-nostartfiles -static\
+		-Wl,--gc-sections -Wl,-static\
+		-Wl,--start-group -Wl,--whole-archive -Wl,--no-whole-archive -Wl,--end-group\
+		-Wl,-EL -T $EMU_LD_SCRIPT\
+		$K210_CRT_BEGIN_END_PATH/crti.o\
+		$K210_CRT_BEGIN_END_PATH/crtbegin.o\
 
-SYSLIBS=
+
+SYSLIBS=	\
+		$K210_CRT_BEGIN_END_PATH/crtend.o\
+		$K210_CRT_BEGIN_END_PATH/crtn.o\
+		-L$K210_SDK_LIBS\
+		-Wl,--start-group -lm\
+		-lfreertos -latomic -lbsp -lc -lstdc++ -ldrivers -lposix\
+		-Wl,--end-group\
+		-lfreertos -lhal\
+		-lm\
+		-lfatfs -llwipcore\
+		-lstdc++ -lm\
+
 
 YACC=		iyacc
 YFLAGS=		-d

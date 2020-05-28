@@ -1,5 +1,6 @@
 #include <lib9.h>
 
+#if 0 //{}
 ulong
 getcallerpc(void *x)
 {
@@ -9,4 +10,4 @@ ulong *lp;
 
 	return lp[-1];
 }
-
+#endif

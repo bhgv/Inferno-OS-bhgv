@@ -17,6 +17,10 @@
 
 #include <semphr.h>
 
+void* pvGetLuaState();
+void  uxSetLuaState(void*);
+
+
 typedef SemaphoreHandle_t sem_t;
 
 typedef struct Osdep Osdep;
@@ -220,10 +224,13 @@ osready(Proc *p)
 void
 kprocinit(Proc *p)
 {
+	uxSetLuaState(p);
+#if 0 //{}
 	if(pthread_key_create(&prdakey, NULL))
 		panic("key_create failed");
 	if(pthread_setspecific(prdakey, p))
 		panic("set specific thread data failed");
+#endif
 }
 
 #ifdef ANDROID

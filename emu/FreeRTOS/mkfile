@@ -48,7 +48,7 @@ CFLAGS='-DROOT="'$ROOT'"' -DEMU \
 	-I$ROOT/libiot/include \
 	$CTHREADFLAGS $CFLAGS $EMUOPTIONS
 #SYSLIBS= $X11LIBS -lm -lpthread
-SYSLIBS= -lm
+#SYSLIBS= -lm
 
 default:V:	$O.$CONF
 

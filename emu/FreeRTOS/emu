@@ -41,6 +41,8 @@ lib
 
 	9
 
+	iot
+
 #	lodepng
 
 link
@@ -59,7 +61,7 @@ mod
 #	freetype
 
 port
-	alloc
+	alloc-andr
 	cache
 	chan
 	dev

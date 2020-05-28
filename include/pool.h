@@ -55,7 +55,7 @@ struct Btail
 
 #define B2LIMIT(b)	((Bhdr*)((uchar*)b + b->csize))
 
-#define BHDRSIZE	((int)(((Bhdr*)0)->u.data)+sizeof(Btail))
+#define BHDRSIZE	((long)(((Bhdr*)0)->u.data)+sizeof(Btail))
 
 extern	void	(*poolfault)(void *, char *, ulong);
 extern	void	poolinit(void);
