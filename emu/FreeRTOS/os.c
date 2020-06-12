@@ -330,3 +330,14 @@ limbosleep(ulong milsec)
 {
 	return osmillisleep(milsec);
 }
+
+
+int
+_tas(int *la)
+{
+	int v = *la;
+
+	*la = 1;
+
+	return v;
+}

@@ -36,6 +36,7 @@ extern int uidnobody;
 static int
 childproc(Targ *t)
 {
+#if 0 // in the FreeRTOS no any "os" cmds
 	int i, nfd;
 
 	if(Debug)
@@ -81,11 +82,14 @@ childproc(Targ *t)
 	fprint(t->wfd, "exec failed: %s", strerror(errno));
 
 	_exit(1);
+#endif
+	return 0;
 }
 
 void*
 oscmd(char **args, int nice, char *dir, int *fd)
 {
+#if 0 // in the FreeRTOS no any "os" cmds
 	Targ *t;
 	int r, fd0[2], fd1[2], fd2[2], wfd[2], n, pid;
 
@@ -169,22 +173,27 @@ Error:
 	close(wfd[0]);
 	close(wfd[1]);
 	error(strerror(r));
+#endif
 	return nil;
 }
 
 int
 oscmdkill(void *a)
 {
+#if 0 // in the FreeRTOS no any "os" cmds
 	Targ *t = a;
 
 	if(Debug)
 		print("kill: %d\n", t->pid);
 	return kill(-t->pid, SIGTERM);
+#endif
+	return 0;
 }
 
 int
 oscmdwait(void *a, char *buf, int n)
 {
+#if 0 // in the FreeRTOS no any "os" cmds
 	Targ *t = a;
 	int s;
 
@@ -204,6 +213,8 @@ oscmdwait(void *a, char *buf, int n)
 		return snprint(buf, n, "%d 0 0 0 'signal: %d'", t->pid, WTERMSIG(s));
 	}
 	return snprint(buf, n, "%d 0 0 0 'odd status: 0x%x'", t->pid, s);
+#endif
+	return 0;
 }
 
 void

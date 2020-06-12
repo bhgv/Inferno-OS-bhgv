@@ -64,11 +64,11 @@ void panic(const char*);
 
 #define THREAD_LOCAL_STORAGE_POINTER_ID 0
 
-// Reference to lua_thread, which is created in app_main
-extern pthread_t lua_thread;
+//// Reference to lua_thread, which is created in app_main
+//extern pthread_t lua_thread;
 
-// Global state
-static lua_State *gL = NULL;
+//// Global state
+//static lua_State *gL = NULL;
 
 static int compare(const void *a, const void *b) {
 	if (((task_info_t *)a)->task_type < ((task_info_t *)b)->task_type) {
@@ -144,10 +144,10 @@ void uxSetLuaState(lua_State* L) {
 		lua_rtos_tcb->lthread->L = L;
 	}
 
-	// If this is the lua thread, store state in global state
-	if ((uxGetThreadId() == lua_thread) && (gL == NULL)) {
-		gL = L;
-	}
+//	// If this is the lua thread, store state in global state
+//	if ((uxGetThreadId() == lua_thread) && (gL == NULL)) {
+//		gL = L;
+//	}
 }
 
 lua_State* pvGetLuaState() {
@@ -163,9 +163,9 @@ lua_State* pvGetLuaState() {
 		}
 	}
 
-	if (L == NULL) {
-		L = gL;
-	}
+//	if (L == NULL) {
+//		L = gL;
+//	}
 
 	return L;
 }
