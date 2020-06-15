@@ -51,6 +51,9 @@ int	gidnobody = -1;
 int	uidnobody = -1;
 //{} static struct 	termios tinit;
 
+void	(*coherence)(void) = nofence;
+
+
 static void
 sysfsa_flagsault(char *what, void *addr)
 {
@@ -176,37 +179,42 @@ osreboot(char *file, char **argv)
 {
 	if(dflag == 0)
 		termrestore();
-	execvp(file, argv);
+//	execvp(file, argv);
 	error("reboot failure");
 }
 
 void
 libinit(char *imod)
 {
-	struct sigaction act;
-	struct passwd *pw;
+//	struct sigaction act;
+//	struct passwd *pw;
 	Proc *p;
-	char sys[64];
+//	char sys[64];
+	char* sys = "k210-freertos";
 
-	setsid();
+//	setsid();
 
-	gethostname(sys, sizeof(sys));
+//	gethostname(sys, sizeof(sys));
 	kstrdup(&ossysname, sys);
+/*
 	pw = getpwnam("nobody");
 	if(pw != nil) {
 		uidnobody = pw->pw_uid;
 		gidnobody = pw->pw_gid;
 	}
+*/
 
 	if(dflag == 0)
 		termset();
 
+/*
 	memset(&act, 0, sizeof(act));
 	act.sa_handler = trapUSR1;
 	sigaction(SIGUSR1, &act, nil);
 
 	act.sa_handler = SIG_IGN;
 	sigaction(SIGCHLD, &act, nil);
+*/
 
 	/*
 	 * For the correct functioning of devcmd in the
@@ -235,6 +243,7 @@ libinit(char *imod)
 	p = newproc();
 	kprocinit(p);
 
+/*
 	pw = getpwuid(getuid());
 	if(pw != nil)
 		kstrdup(&eve, pw->pw_name);
@@ -243,6 +252,7 @@ libinit(char *imod)
 
 	p->env->uid = getuid();
 	p->env->gid = getgid();
+*/
 
 	emuinit(imod);
 }

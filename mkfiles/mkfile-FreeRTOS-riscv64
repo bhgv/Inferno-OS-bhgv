@@ -13,6 +13,9 @@ ASFLAGS=
 
 CC=		${CROSS}gcc -c 
 CFLAGS=		-O\
+		-mcmodel=medany\
+		-mabi=lp64f -march=rv64imafc\
+		-fno-common -ffunction-sections -fdata-sections -fstrict-volatile-bitfields -ffast-math -fno-math-errno -fsingle-precision-constant\
 		-Wuninitialized -Wunused-variable -Wreturn-type -Wimplicit\
 		-I$ROOT/FreeRTOS/riscv64/include\
 		-I$FreeRTOS_ROOT/include\
