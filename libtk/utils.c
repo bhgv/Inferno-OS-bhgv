@@ -608,6 +608,7 @@ tknewobj(TkTop *t, int type, int n)
 	if(tk == 0)
 		return 0;
 
+	tk->guiqid = 0;		/* assigned under the VM lock by #G */
 	tk->type = type;		/* Defaults */
 	tk->flag = Tktop;
 	tk->relief = TKflat;

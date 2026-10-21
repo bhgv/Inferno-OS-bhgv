@@ -15,11 +15,11 @@
 static Proc worker;
 static int lock_depth, missing_process, dir_reads;
 static char last_error[128];
-static int live_allocations, fail_after=-1;
+static int live_allocations, fail_after=-1, poison_alloc;
 static char *getter_value="value", *widget_name=".widget";
 static int getter_throw, getter_calls;
 static char last_command[12000],last_widget_command[12000];
-static int command_error,drop_top;
+static int command_error,drop_top,replace_widget;
 static int lifecycle, remote_owner, display_calls;
 static Tk child;
 static Osenv environment;
@@ -32,7 +32,7 @@ void *guimalloc(size_t n) {
     void *p;
     if(fail_after==0)return nil;
     if(fail_after>0)fail_after--;
-    p=calloc(1,n?n:1);if(p)live_allocations++;return p;
+    p=calloc(1,n?n:1);if(p){live_allocations++;if(poison_alloc)memset(p,0xa5,n);}return p;
 }
 void *guirealloc(void *old,size_t n) {
     void *p;
@@ -92,6 +92,7 @@ char *tksinglecmd(TkTop *t,char *s,char **out) {
     }
     if(getter_throw)error(Ebadarg);
     if(drop_top)process.tktop=nil;
+    if(replace_widget)widget.guiqid=0;
     if(lifecycle && !command_error && !drop_top && strncmp(s,"frame ",6)==0) {
         strcpy(child_path,s+6);strcpy(child_tail,strrchr(child_path,'.')+1);
         child.type=TKframe;child.name_tail=child_tail;child.master=&widget;
@@ -105,6 +106,9 @@ int errfmt(Fmt *f) { return fmtstrcpy(f,"test error"); }
 long devdirread(Chan *c,char *s,long n,Dirtab *t,int nt,Devgen *g) {
     (void)c;(void)s;(void)n;(void)t;(void)nt;(void)g;dir_reads++;return 17;
 }
+static TkEnv default_environment;
+TkEnv *tkdefaultenv(TkTop *t) {(void)t;return &default_environment;}
+TKNEWOBJ_IMPLEMENTATION
 GUIQID_IMPLEMENTATION
 GUIRESULT_IMPLEMENTATION
 QID_HELPERS_IMPLEMENTATION
@@ -115,11 +119,11 @@ GUIREAD_IMPLEMENTATION
 GUICLOSE_IMPLEMENTATION
 GUIWRITE_IMPLEMENTATION
 
-static void enqueue(Qid q,char *text) {
+static void enqueue(Chan *c,char *text) {
     long n=strlen(text);
     rslt_string *r=malloc(sizeof(*r)+n);
-    assert(r);r->qid=q;r->len=n;r->pos=0;memcpy(r->str,text,n+1);
-    acquire();guiresultqueue(r);release();
+    assert(r);r->qid=c->qid;r->len=n;r->pos=0;memcpy(r->str,text,n+1);
+    acquire();guiresultqueue(c,r);release();
 }
 static void balanced(void) { assert(lock_depth==0 && worker.nerr==0); }
 static void badread(Chan *c,long count,vlong offset,char *expected) {
@@ -145,11 +149,11 @@ int main(void) {
     }
     quotefmtinstall();
     for(i=0;i<TKwidgets;i++)tkmethod[i]=&method;
-    widget.type=TKframe; top.root=&widget;process.tktop=&top;
-    c.qid.path=((uvlong)42<<16)|1;c.qid.vers=42;c.flag=COPEN;
+    widget.type=TKframe;widget.guiqid=1;guinextid=1; top.root=&widget;process.tktop=&top;
+    c.qid.path=QPID(42)|1;c.qid.vers=42;c.flag=COPEN;
     other=c;other.qid.vers=43;
     high=c;high.qid.path+=((uvlong)1<<40);
-    enqueue(c.qid,"abcdef");
+    enqueue(&c,"abcdef");
     memset(out,0xa5,sizeof(out));
     assert(guiread(&c,out,0,0)==0 && root_rslt_strings && root_rslt_strings->pos==0);
     assert(out[0]==0xa5);balanced();
@@ -157,17 +161,17 @@ int main(void) {
     assert(guiread(&c,out,2,2)==2 && memcmp(out,"cd",2)==0);
     assert(guiread(&c,out,10,4)==2 && memcmp(out,"ef",2)==0 && !root_rslt_strings);
     balanced();
-    enqueue(c.qid,"one");enqueue(c.qid,"two");
+    enqueue(&c,"one");enqueue(&c,"two");
     assert(guiread(&c,out,16,0)==3 && memcmp(out,"one",3)==0);
     assert(guiread(&c,out,16,3)==3 && memcmp(out,"two",3)==0);
-    enqueue(c.qid,"");assert(guiread(&c,out,1,0)==0 && !root_rslt_strings);balanced();
-    enqueue(c.qid,"low");enqueue(other.qid,"vers");enqueue(high.qid,"high");
+    enqueue(&c,"");assert(guiread(&c,out,1,0)==0 && !root_rslt_strings);balanced();
+    enqueue(&c,"low");enqueue(&other,"vers");enqueue(&high,"high");
     assert(guiread(&high,out,16,0)==4 && memcmp(out,"high",4)==0);
     assert(guiread(&other,out,16,0)==4 && memcmp(out,"vers",4)==0);
     assert(guiread(&c,out,16,0)==3 && memcmp(out,"low",3)==0);
-    enqueue(c.qid,"a");enqueue(other.qid,"keep");enqueue(c.qid,"b");
+    enqueue(&c,"a");enqueue(&other,"keep");enqueue(&c,"b");
     guiclose(&c);balanced();
-    assert(root_rslt_strings && guisameresult(root_rslt_strings,&other.qid) && !root_rslt_strings->next);
+    assert(root_rslt_strings && guisameresult(root_rslt_strings,&other) && !root_rslt_strings->next);
     guiclose(&other);assert(!root_rslt_strings);balanced();
     top.root=nil;
     for(i=0;i<100;i++) { assert(guiread(&c,out,1,0)==0);balanced(); }
@@ -218,7 +222,7 @@ int main(void) {
             TkCitem *item=malloc(sizeof(TkCitem)+sizeof(TkCwind));
             TkCanvas *canvas=TKobj(TkCanvas,canvas_widget);
             assert(canvas_widget && item);
-            canvas_widget->type=TKcanvas;canvas->width=20;canvas->height=30;
+            canvas_widget->guiqid=widget.guiqid;canvas_widget->type=TKcanvas;canvas->width=20;canvas->height=30;
             item->type=TkCVwindow;item->id=3;canvas->head=item;
             tkcimethod[TkCVwindow].name="window";top.root=canvas_widget;
             method.opts=nil;method.cmd=nil;method.name="canvas";

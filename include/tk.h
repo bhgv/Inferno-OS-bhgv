@@ -485,6 +485,7 @@ struct Tk
 
 	char *name_tail;
 	int  is_container;
+	uint guiqid;		/* lazy #G identity; never reused during emulator lifetime */
 
 	/* followed by widget-dependent data */
 };

@@ -49,6 +49,20 @@ static void test_guiwrite(Chan *c) {
     getter_value="second";assert(guiwrite(c,(void*)"x",1,11)==1);
     assert(guiread(c,out,sizeof(out),12)==6 && memcmp(out,"first\n",6)==0);
     assert(guiread(c,out,sizeof(out),18)==7 && memcmp(out,"second\n",7)==0);guiclose(c);
+    /* Independent opens of the same widget cannot steal/drain replies. */
+    {
+        Chan peer=*c;
+        peer.aux=nil;
+        getter_value="owner";assert(guiwrite(c,(void*)"x",1,0)==1);
+        getter_value="peer";assert(guiwrite(&peer,(void*)"x",1,0)==1);
+        assert(guiread(c,out,2,0)==2 && memcmp(out,"ow",2)==0);
+        guiclose(&peer);
+        assert(guiread(c,out,sizeof(out),2)==4 && memcmp(out,"ner\n",4)==0);
+        getter_value="peer2";assert(guiwrite(&peer,(void*)"x",1,0)==1);
+        guiclose(c);
+        assert(guiread(&peer,out,sizeof(out),0)==6 && memcmp(out,"peer2\n",6)==0);
+        guiclose(&peer);assert(!root_rslt_strings && live_allocations==0);
+    }
     /* Snapshot envelope round-trip, including literal quotes/backslashes/UTF-8. */
     widget.type=TKtext;method.name="text";method.opts=nil;
     getter_value="\316\261 \"b\" \\path\nline";
@@ -61,6 +75,11 @@ static void test_guiwrite(Chan *c) {
     command_error=1;badwrite(c,(void*)"x",1,0,Ebadarg);command_error=0;
     getter_throw=1;badwrite(c,(void*)"x",1,0,Ebadarg);getter_throw=0;
     drop_top=1;badwrite(c,(void*)"x\ny",3,0,Enonexist);drop_top=0;process.tktop=&top;
+    {
+        uint saved=widget.guiqid;
+        replace_widget=1;badwrite(c,(void*)"x\ny",3,0,Enonexist);
+        replace_widget=0;widget.guiqid=saved;
+    }
     assert(!root_rslt_strings && live_allocations==0);balanced();
     memset(payload,'P',sizeof(payload)-1);payload[sizeof(payload)-1]=0;
     memset(name,'N',sizeof(name)-1);name[0]='.';name[sizeof(name)-1]=0;

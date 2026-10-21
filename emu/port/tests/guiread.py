@@ -23,10 +23,12 @@ def function(name,result):
     raise ValueError(name)
 
 harness=(root/'emu/port/tests/guiread.c').read_text()
+utils=(root/'libtk/utils.c').read_text()
 parts={
- 'GUIQID_IMPLEMENTATION':source[source.index('#define\tQSHIFT'):source.index('/* Protected by acquire')],
+ 'TKNEWOBJ_IMPLEMENTATION':utils[utils.index('Tk*\ntknewobj('):utils.index('void\ntkfreebind(')],
+ 'GUIQID_IMPLEMENTATION':source[source.index('/* Qid.path:'):source.index('/* Protected by acquire')],
  'GUIRESULT_IMPLEMENTATION':source[source.index('typedef struct _rslt_string'):source.index('extern char rootdir[];')],
- 'QID_HELPERS_IMPLEMENTATION':source[source.index('static Tk*'):source.index('// VV dinamic names-tree helper')],
+ 'QID_HELPERS_IMPLEMENTATION':source[source.index('/* Protected by the VM lock. Exhaustion'):source.index('// VV dinamic names-tree helper')],
  'GUIGEN_IMPLEMENTATION':source[source.index('/* go to lower dir'):source.index('// AA dinamic names-tree helper')],
  'GUICHANGE_IMPLEMENTATION':source[source.index('typedef struct GuiChange'):source.index('typedef struct GuiSnapshot')],
  'GUILIFECYCLE_TESTS':(root/'emu/port/tests/guilifecycle.c').read_text(),

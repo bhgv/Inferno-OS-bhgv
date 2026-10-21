@@ -40,22 +40,20 @@ enum
 
 
 
-#define	QSHIFT		16	// 4		/* location in qid of pid */
-#define	QID(q)		(((ulong)(q).path&0x00007ffF)>>0)
-#define QPID(pid)	((uvlong)(pid)<<QSHIFT)
-#define	PID(q)		((q).vers)
-#define PATH(q)		((q).path & ~(((uvlong)1<<QSHIFT)-1))
-#define QCTL_NAME	((ulong)0x00008000)
-//#define QIDgetRV(q)	( (ulong)( (uvlong)(q).path >> (sizeof(ulong)*8) ) )
-//#define QIDsetRV(q, v)	( (uvlong)(q).path | (uvlong)v << (sizeof(ulong)*8) )
-
-
-
+/* Qid.path: PID in bits 32..63, control flag in bit 31, stable widget
+ * identity in bits 0..30. Identity zero denotes the process directory. */
+#define QSHIFT 32
+#define QID(q) ((uint)((q).path & 0x7fffffffUL))
+#define QPID(pid) ((uvlong)(pid)<<QSHIFT)
+#define PID(q) ((q).vers)
+#define PATH(q) ((q).path & ~(((uvlong)1<<QSHIFT)-1))
+#define QCTL_NAME ((uint)0x80000000UL)
 
 /* Protected by acquire/release in read, write and close. */
 typedef struct _rslt_string rslt_string;
 struct _rslt_string {
 	rslt_string *next;
+	Chan *owner;	/* replies belong to one open channel */
 	Qid qid;
 	long len;
 	long pos;
@@ -65,20 +63,20 @@ struct _rslt_string {
 static rslt_string *root_rslt_strings;
 
 static int
-guisameresult(rslt_string *r, Qid *qid)
+guisameresult(rslt_string *r, Chan *c)
 {
-	return r->qid.path == qid->path && r->qid.vers == qid->vers;
+	return r->owner == c && r->qid.path == c->qid.path && r->qid.vers == c->qid.vers;
 }
 
 /* -1 means no reply is pending; 0 may be an empty completed reply. */
 static long
-guiresultread(Qid *qid, void *va, long count)
+guiresultread(Chan *c, void *va, long count)
 {
 	rslt_string **link, *r;
 	long n;
 
 	for(link=&root_rslt_strings; (r=*link) != nil; link=&r->next) {
-		if(!guisameresult(r, qid))
+		if(!guisameresult(r, c))
 			continue;
 		n=r->len-r->pos;
 		if(n > count)
@@ -95,21 +93,23 @@ guiresultread(Qid *qid, void *va, long count)
 }
 
 static void
-guiresultqueue(rslt_string *r)
+guiresultqueue(Chan *c, rslt_string *r)
 {
 	rslt_string **link;
 	for(link=&root_rslt_strings; *link != nil; link=&(*link)->next)
 		;
+	r->owner=c;
+	r->qid=c->qid;
 	r->next=nil;
 	*link=r;
 }
 
 static void
-guiresultclear(Qid *qid)
+guiresultclear(Chan *c)
 {
 	rslt_string **link, *r;
 	for(link=&root_rslt_strings; (r=*link) != nil; ) {
-		if(guisameresult(r, qid)) {
+		if(guisameresult(r, c)) {
 			*link=r->next;
 			free(r);
 		}else
@@ -149,29 +149,40 @@ extern char* tksinglecmd(TkTop *t, char *arg, char **val);
 
 
 
+/* Protected by the VM lock. Exhaustion fails instead of reusing an old Qid. */
+static uint guinextid;
+
 static Tk*
 qid2tk(Qid *qid, TkTop *t)
 {
-	ulong path=QID(*qid);
 	Tk *tk;
-	int i;
+	uint id;
 	if(t == nil)
 		return nil;
-	for(i=1, tk=t->root; tk != nil && i<path; i++)
-		tk=tk->siblings;
-	return tk;
+	id=QID(*qid);
+	if(id == 0)
+		return t->root; /* live process directory, not a particular widget */
+	for(tk=t->root; tk != nil; tk=tk->siblings)
+		if(tk->guiqid == id)
+			return tk;
+	return nil;
 }
 
 static int
-tk2idx(TkTop *t, Tk *tk)
+tk2id(TkTop *t, Tk *tk)
 {
 	Tk *p;
-	int i;
 	if(t == nil || tk == nil)
 		return -1;
-	for(i=1, p=t->root; p != nil && i<QCTL_NAME; i++, p=p->siblings)
-		if(p == tk)
-			return i;
+	for(p=t->root; p != nil; p=p->siblings)
+		if(p == tk) {
+			if(tk->guiqid == 0) {
+				if(guinextid == 0x7fffffffUL)
+					error(Etoobig);
+				tk->guiqid=++guinextid;
+			}
+			return tk->guiqid;
+		}
 	return -1;
 }
 
@@ -213,7 +224,7 @@ guigen_folder_back(Chan *c, Prog *p, Dir *dp)
 		return 1;
 	}
 
-	n = tk2idx(t, tk);
+	n = tk2id(t, tk);
 	if(n == -1){
 		error(Enonexist);
 	}
@@ -269,7 +280,7 @@ guigen_by_name(Chan *c, Prog *p, char *name, Dir *dp)
 		return 1;
 	}
 
-	path = QID(c->qid); //PATH(c->qid) >> QSHIFT;
+	path = QID(c->qid);
 
 	if(p->tktop == nil) {
 		return -1;
@@ -299,7 +310,7 @@ guigen_by_name(Chan *c, Prog *p, char *name, Dir *dp)
 			if(tk2 == nil)
 				return -1;
 
-			n = tk2idx(t, tk2);
+			n = tk2id(t, tk2);
 			if(n == -1){
 				return -1;
 			}
@@ -309,6 +320,7 @@ guigen_by_name(Chan *c, Prog *p, char *name, Dir *dp)
 	}
 
 	if(n == 0){
+		path=tk2id(t, tk);
 		strcpy(up->genbuf, ".self");
 		if(name != nil && strcmp(name, up->genbuf) != 0){
 			return -1;
@@ -375,7 +387,7 @@ guigen_by_number(Chan *c, Prog *p, int s, Dir *dp)
 		return 1;
 	}
 
-	path = QID(c->qid); //PATH(c->qid) >> QSHIFT;
+	path = QID(c->qid);
 
 	if(p->tktop == nil) {
 		return -1;
@@ -397,7 +409,7 @@ guigen_by_number(Chan *c, Prog *p, int s, Dir *dp)
 				return -1;
 			}
 
-			n = tk2idx(t, tk2);
+			n = tk2id(t, tk2);
 			if(n == -1){
 				return -1;
 			}
@@ -408,6 +420,7 @@ guigen_by_number(Chan *c, Prog *p, int s, Dir *dp)
 	
 	/* .self file controls the folder (widget-container) properties. n==0 */
 	if(n == 0){
+		path=tk2id(t, tk);
 		strcpy(up->genbuf, ".self");
 		mkqid(&qid, (ulong)path | PATH(c->qid) | QCTL_NAME, c->qid.vers, QTFILE);
 		o = p->osenv;
@@ -570,7 +583,7 @@ guiclose(Chan *c)
 	if((c->flag & COPEN) == 0)
 		return;
 	acquire();
-	guiresultclear(&c->qid);
+	guiresultclear(c);
 	state=c->aux;
 	if(state != nil) {
 		free(state->data);
@@ -746,7 +759,7 @@ guicreate(Chan *c, char *name, int mode, ulong perm)
 		error(e);
 	if(p->tktop != top || (created=tklook(top, s->path, 0)) == nil)
 		error(Enonexist);
-	index=tk2idx(top, created);
+	index=tk2id(top, created);
 	if(index < 0)
 		error(Etoobig);
 	if(perm & DMDIR)
@@ -795,7 +808,7 @@ guiremove(Chan *c)
 		if(e != nil)
 			error(e);
 	}
-	guiresultclear(&c->qid);
+	guiresultclear(c);
 	cached=c->aux;
 	if(cached != nil) {
 		free(cached->data); cached->data=nil; cached->len=0;
@@ -993,7 +1006,7 @@ guiread(Chan *c, void *va, long count, vlong offset)
 		release();
 		nexterror();
 	}
-	n=guiresultread(&c->qid, va, count);
+	n=guiresultread(c, va, count);
 	if(n >= 0)
 		goto Done;
 	state=c->aux;
@@ -1167,7 +1180,7 @@ guiwrite(Chan *c, void *va, long count, vlong offset)
 	j=0;
 	limit=0x7fffffffUL-sizeof(rslt_string)-1;
 	for(i=0; i<n; i++) {
-		if(p->tktop != top)
+		if(p->tktop != top || qid2tk(&c->qid, top) != tk)
 			error(Enonexist);
 		s->buffer=smprint("%s %s", s->name, args[i]);
 		if(s->buffer == nil)
@@ -1184,11 +1197,13 @@ guiwrite(Chan *c, void *va, long count, vlong offset)
 			j++;
 		}
 	}
-	if(p->tktop != top)
+	if(p->tktop != top || qid2tk(&c->qid, top) != tk)
 		error(Enonexist);
 	e=tksinglecmd(top, "update -onscreen", nil);
 	if(e != nil)
 		error(e);
+	if(p->tktop != top || qid2tk(&c->qid, top) != tk)
+		error(Enonexist);
 	s->reply=malloc(sizeof(rslt_string)+total);
 	if(s->reply == nil)
 		error(Enomem);
@@ -1203,7 +1218,7 @@ guiwrite(Chan *c, void *va, long count, vlong offset)
 	s->reply->qid=c->qid;
 	s->reply->len=total;
 	s->reply->pos=0;
-	guiresultqueue(s->reply);
+	guiresultqueue(c, s->reply);
 	s->reply=nil;
 	cached=c->aux;
 	if(cached != nil) {

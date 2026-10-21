@@ -6,8 +6,9 @@ that remains. It does not claim that all Inferno bugs or all GUI bugs are fixed.
 ## Closed defects
 
 - Reply reads preserve unread bytes; zero reads do not consume replies. Queues
-  are FIFO, compare the full Qid path/version and use the VM lock for read,
-  write and close. Close drains all matching reply nodes.
+  are FIFO, belong to the individual open channel, compare the full Qid
+  path/version and use the VM lock for read, write and close. Independent opens
+  cannot consume or drain each other's replies; close drains its own reply nodes.
 - Missing-widget reads unwind the error stack. Repeated failures do not leave
   stale handlers or held locks.
 - Snapshots use growing lib9 formatting and a per-open cache. Short reads and
@@ -18,6 +19,11 @@ that remains. It does not claim that all Inferno bugs or all GUI bugs are fixed.
   newlines. Writes copy bounded input, reject embedded NUL/malformed envelopes,
   parse the entire request before execution and reject more than 99 commands.
   Input is never modified. Positive stream offsets remain accepted.
+- Widget Qids use a lazy monotonic identity stored in Tk, not the sibling-list
+  position. Deleted widgets, reused object memory and replaced tops cannot
+  inherit an old widget Qid. The 64-bit path reserves 32 PID bits, 31 identity
+  bits and one control flag; identity exhaustion fails without wrapping. The
+  process directory itself intentionally follows the current top.
 - Directory lookup does not write into the supplied name. High PID bits survive
   Qid construction and parent traversal. All generation paths, including `..`,
   balance locking/error handlers. Overlong directory names fail explicitly
@@ -53,7 +59,9 @@ extracts production device functions and links production lib9 formatters with
 real Chan/Tk/Dis headers. Scheduler, process lookup and Tk command execution are
 boundary stubs. Allocation cutoffs exercise read, write, create and remove;
 explicit accounting checks heap cleanup, and assertions check lock/error-stack
-balance. Directory tests include PID 100000, immutable lookup and long names.
+balance. Directory tests include PID 100000, immutable lookup and long names. Identity tests delete/reorder siblings, reuse
+widget storage, replace the top and exhaust the ID counter. Independent opens
+are tested with partial reads and close in both orders.
 Bootstrap tests cover the ownership guard and display-allocation failure; the
 successful Draw/Tk bootstrap and its later failures still require integration
 coverage. Dis destruction is stubbed and is not a GC/refcount integration test.
@@ -67,12 +75,6 @@ stack instrumentation disabled; it is not a full stack/LeakSanitizer result.
 - Run the complete emulator with real Tk, display resources, scheduling and GC;
   exercise first-top creation, allocation failure at every bootstrap stage,
   repeated open/close and concurrent clients.
-- Qids still encode positions in Tk's sibling list. Deletion can change which
-  widget a previously issued Qid names. Stable identity requires a separate
-  lifecycle-aware mapping; this is not solved by preserving high PID bits.
-- Replies remain shared by Qid, not owned by each open channel. Closing one open
-  can drain another open's replies. Define the desired protocol before changing
-  this ownership model.
 - Tk requests are not transactions: preceding successful commands/widgets are
   not rolled back after a later command fails. Bootstrap may leave a published
   top after a later failure.
