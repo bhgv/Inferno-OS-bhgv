@@ -7,6 +7,8 @@
 #include "draw.h"
 #include "tk.h"
 #include "canvs.h"
+#include "isa.h"
+#include "runt.h"
 #include <assert.h>
 #include <stdio.h>
 
@@ -18,6 +20,12 @@ static char *getter_value="value", *widget_name=".widget";
 static int getter_throw, getter_calls;
 static char last_command[12000],last_widget_command[12000];
 static int command_error,drop_top;
+static int lifecycle, remote_owner, display_calls;
+static Tk child;
+static Osenv environment;
+static char child_path[12000], child_tail[128];
+char *eve="eve";
+enum {Qdir=0,Qgui,Qguictl};
 extern void hostfree(void*) __asm__("free");
 extern void *hostrealloc(void*,size_t) __asm__("realloc");
 void *guimalloc(size_t n) {
@@ -45,6 +53,7 @@ static TkMethod method = {.name="frame", .opts=nooptions};
 TkMethod *tkmethod[TKwidgets];
 TkCimeth tkcimethod[TkCVarc+1];
 char Ebadarg[]="bad argument", Ethread[]="unknown process", Enomem[]="out of memory";
+char Eperm[]="permission denied", Efilename[]="bad filename", Eio[]="I/O error";
 char Etoobig[]="too big", Eisdir[]="is a directory", Enonexist[]="does not exist";
 
 Proc *getup(void) { return &worker; }
@@ -53,7 +62,25 @@ void release(void) { assert(--lock_depth == 0); }
 void nexterror(void) { assert(worker.nerr>0); siglongjmp(worker.estack[--worker.nerr],1); }
 void error(char *text) { snprintf(last_error,sizeof(last_error),"%s",text); nexterror(); }
 Prog *progpid(int pid) { (void)pid;return missing_process ? nil : &process; }
-char *tkname(Tk *tk) { return tk ? widget_name : "(nil)"; }
+char *tkname(Tk *tk) { if(lifecycle)return tk==&widget ? widget_name : child_path;return tk ? widget_name : "(nil)"; }
+Tk *tklook(TkTop *t,char *name,int flag) { (void)t;(void)flag;return strcmp(name,child_path)==0 ? &child : nil; }
+Prog *progn(int n) { return !missing_process && n==0 ? &process : nil; }
+Prog *currun(void) { return remote_owner ? nil : &process; }
+void mkqid(Qid *q,vlong path,ulong vers,int type) {q->path=path;q->vers=vers;q->type=type;}
+void devdir(Chan *c,Qid q,char *name,long length,char *user,long perm,Dir *d) {
+ (void)c;(void)user;assert(lock_depth==1);memset(d,0,sizeof(*d));d->qid=q;d->name=name;d->length=length;d->mode=perm;
+}
+int openmode(ulong m) {if(m>3)error(Ebadarg);return m;}
+void destroy(void *p) {assert(p==H || p==nil);}
+void poolimmutable(void *p) {(void)p;assert(0);}
+String *c2string(char *s,int n) {(void)s;(void)n;assert(0);return H;}
+char *string2c(String *s) {(void)s;assert(0);return "";}
+void Display_allocate(void *v) {F_Display_allocate *f=v;display_calls++;*f->ret=H;}
+void Tk_toplevel(void *v) {(void)v;assert(0);}
+void Screen_allocate(void *v) {(void)v;assert(0);}
+void Screen_newwindow(void *v) {(void)v;assert(0);}
+void Image_draw(void *v) {(void)v;assert(0);}
+void Tk_putimage(void *v) {(void)v;assert(0);}
 char *tkfprint(char *s,int v) { snprintf(s,Tkminitem,"%d",v);return s; }
 char *tksinglecmd(TkTop *t,char *s,char **out) {
     (void)t;getter_calls++;
@@ -65,20 +92,24 @@ char *tksinglecmd(TkTop *t,char *s,char **out) {
     }
     if(getter_throw)error(Ebadarg);
     if(drop_top)process.tktop=nil;
+    if(lifecycle && !command_error && !drop_top && strncmp(s,"frame ",6)==0) {
+        strcpy(child_path,s+6);strcpy(child_tail,strrchr(child_path,'.')+1);
+        child.type=TKframe;child.name_tail=child_tail;child.master=&widget;
+        widget.slave=&child;widget.siblings=&child;
+    }
     return command_error ? Ebadarg : nil;
 }
 void _fmtlock(void) {}
 void _fmtunlock(void) {}
 int errfmt(Fmt *f) { return fmtstrcpy(f,"test error"); }
-static int guigen(Chan *c,char *s,Dirtab *t,int nt,int n,Dir *d) {
-    (void)c;(void)s;(void)t;(void)nt;(void)n;(void)d;return -1;
-}
 long devdirread(Chan *c,char *s,long n,Dirtab *t,int nt,Devgen *g) {
     (void)c;(void)s;(void)n;(void)t;(void)nt;(void)g;dir_reads++;return 17;
 }
 GUIQID_IMPLEMENTATION
 GUIRESULT_IMPLEMENTATION
 QID_HELPERS_IMPLEMENTATION
+GUIGEN_IMPLEMENTATION
+GUICHANGE_IMPLEMENTATION
 GUISNAPSHOT_IMPLEMENTATION
 GUIREAD_IMPLEMENTATION
 GUICLOSE_IMPLEMENTATION
@@ -99,6 +130,7 @@ static void badread(Chan *c,long count,vlong offset,char *expected) {
     guiread(c,buffer,count,offset);assert(0);
 }
 GUIWRITE_TESTS
+GUILIFECYCLE_TESTS
 
 int main(void) {
     Chan c={0},other={0},high={0};
@@ -200,6 +232,7 @@ int main(void) {
     }
     puts("PASS GUI read/close: snapshot chunks, exact read boundaries, long getters, allocation failures and Tk error cleanup");
     test_guiwrite(&c);
+    test_guilifecycle();
     puts("PASS GUI read/close: partial and zero reads, FIFO replies, full Qid isolation, complete close cleanup and error-stack balance");
     return 0;
 }
