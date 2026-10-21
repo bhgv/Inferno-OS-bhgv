@@ -83,6 +83,13 @@ class Machine:
 bridge=r'''
 #include "lib9.h"
 #include "mathi.h"
+#include "emu.h"
+#include <stddef.h>
+_Static_assert(sizeof(FPU)==28,"ARM context footprint");
+_Static_assert(offsetof(FPU,fpscr)==0,"ARM FPSCR offset");
+_Static_assert(sizeof(((FPU*)0)->fpscr)==4,"ARM FPSCR width");
+struct AlignedFPU { char prefix; FPU fpu; };
+_Static_assert(offsetof(struct AlignedFPU,fpu)%4==0,"ARM FPSCR alignment");
 static ulong (*readcr)(void), (*readsr)(void);
 static void (*writecr)(ulong), (*writesr)(ulong);
 void bridge(ulong (*gcr)(void), ulong (*gsr)(void), void (*scr)(ulong), void (*ssr)(ulong))
@@ -146,6 +153,8 @@ with tempfile.TemporaryDirectory(prefix='arm-fpscr-') as directory:
             for thumb in [False,True]:
                 text=preprocess(root/'lib9'/('setfcr-'+arch+'-arm.S'),defines+(['__thumb__=1'] if thumb else []))
                 functions=bodies(text)
+                context=preprocess(root/'emu'/arch/'asm-arm.S',defines+(['__thumb__=1'] if thumb else []))
+                functions.update(bodies(context))
                 ks=Ks(KS_ARCH_ARM,KS_MODE_THUMB if thumb else KS_MODE_ARM)
                 code={name:bytes(ks.asm(body,addr=0x1000)[0]) for name,body in functions.items()}
                 code['divide']=bytes(ks.asm('vdiv.f64 d0,d0,d1; bx lr',addr=0x1000)[0])
@@ -164,6 +173,24 @@ with tempfile.TemporaryDirectory(prefix='arm-fpscr-') as directory:
                     machine.call('setfsr',arg)
                     expected=(initial&~status)|(arg&status) if vfp else initial
                     check(machine.fpscr()==expected)
+                # Switch between two thread environments; buffer guards prove layout.
+                address_a,address_b=0x2000,0x2040
+                guard=bytes([0xa5])*64
+                machine.u.mem_write(address_a,guard);machine.u.mem_write(address_b,guard)
+                first=machine.fpscr(0xa9400091)
+                machine.call('FPsave',address_a)
+                saved=struct.unpack('<I',machine.u.mem_read(address_a,4))[0]
+                check(saved==(first if vfp else 0))
+                check(bytes(machine.u.mem_read(address_a+4,60))==guard[4:])
+                second=machine.fpscr(0x58c0000a)
+                machine.call('FPsave',address_b)
+                check(struct.unpack('<I',machine.u.mem_read(address_b,4))[0]==(second if vfp else 0))
+                for _ in range(8):
+                    machine.call('FPrestore',address_a)
+                    check(machine.fpscr()==(first if vfp else second))
+                    machine.call('FPrestore',address_b)
+                    check(machine.fpscr()==second)
+                check(bytes(machine.u.mem_read(address_b+4,60))==guard[4:])
                 if vfp:
                     callbacks=[Get(lambda:machine.call('getfcr')),Get(lambda:machine.call('getfsr')),
                                Set(lambda x:machine.call('setfcr',x)),Set(lambda x:machine.call('setfsr',x))]
@@ -181,6 +208,17 @@ with tempfile.TemporaryDirectory(prefix='arm-fpscr-') as directory:
                         lib.FPstatus(0,31)
                         check(lib.getFPcontrol()==rounding<<8)
                         check(machine.divide(-1.,10.)==negative[rounding])
+                    # Separate Dis environments retain their rounding and flags.
+                    machine.fpscr(0);lib.FPcontrol(0x100,0x300);lib.FPstatus(2,31)
+                    machine.call('FPsave',address_a)
+                    lib.FPcontrol(0x200,0x300);lib.FPstatus(1,31)
+                    machine.call('FPsave',address_b)
+                    machine.call('FPrestore',address_a)
+                    check(lib.getFPcontrol()==0x100 and lib.getFPstatus()==2)
+                    check(machine.divide(1.,10.)==positive[1])
+                    machine.call('FPrestore',address_b)
+                    check(lib.getFPcontrol()==0x200 and lib.getFPstatus()==1)
+                    check(machine.divide(-1.,10.)==negative[2])
                     for a,b,flag in [(0.,0.,1),(1.,0.,2),(1e308,1e-308,4),(1e-308,1e308,8)]:
                         machine.fpscr(0);lib.FPstatus(0,31);machine.divide(a,b)
                         check(lib.getFPstatus()&flag==flag)

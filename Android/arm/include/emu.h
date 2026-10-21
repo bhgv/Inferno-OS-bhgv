@@ -15,7 +15,8 @@
 typedef struct FPU FPU;
 struct FPU
 {
-	uchar	env[28];
+	uint	fpscr;		/* first word used by ARM FPsave/FPrestore */
+	uchar	reserved[24];	/* retain the previous 28-byte context footprint */
 };
 
 

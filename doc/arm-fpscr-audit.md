@@ -55,9 +55,18 @@ Math C bridge using an independent native-register model. Separate integrated
 checks run Math -> actual ARM lib9 assembly -> VFP division and verify directed
 rounding, inexact, invalid, division by zero, overflow and underflow. Random
 register values exercise preservation of unrelated fields. The current suite
-performs 39266 checks. Its no-VFP cases verify defined getters and no-op setters.
+performs 39970 checks. Its no-VFP cases verify defined getters and no-op setters.
 
 Unicorn implements trap enables as read-as-zero; the model checks their mapping,
 not actual trap delivery. There is no ARM SDK cross-link, OS signal test or
-physical-device run in this harness. Per-thread FPSCR save/restore is audited
-separately; correct lib9 setters alone do not isolate Dis thread environments.
+physical-device run in this harness. The emulator ARM FPsave/FPrestore functions now save/restore the complete FPSCR
+in the first aligned uint32 of FPU, retaining the 28-byte context footprint.
+The no-VFP save writes a defined zero and restore is a no-op. The suite switches
+two contexts repeatedly, checks buffer canaries and verifies independent Math
+rounding/status followed by VFP arithmetic in each. Host assertions compile the
+actual Linux/Android FPU layouts. FP register values continue to obey the C ABI;
+the JIT does not keep floating operands live across helper/scheduler calls.
+
+Real scheduler/GC/signal interaction still requires an emulator integration run.
+A separate issue remains in newprog: copying a parent's stored FPU context can
+miss changes made in its current scheduling quantum before spawn.

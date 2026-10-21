@@ -83,8 +83,9 @@ zero, границ int32, четырёх режимов округления FPS
 1. **Исправлено управление FPSCR в lib9 Linux/Android ARM.** Маски VFP,
    независимое обновление control/status и выбор аппаратного пути согласованы.
    Проверки Math -> ARM assembly -> VFP и ограничения описаны в
-   [arm-fpscr-audit.md](arm-fpscr-audit.md). Контекст Dis-потоков требует
-   отдельного FPsave/FPrestore; аппаратная доставка trap ещё не проверена.
+   [arm-fpscr-audit.md](arm-fpscr-audit.md). ARM FPsave/FPrestore также сохраняют FPSCR
+   между Dis-потоками. Наследование текущего контекста при spawn и аппаратная
+   доставка trap ещё проверяются.
 
 2. **WORD/UWORD объявлены через long.** На LP64 это 64 бита вместо 32;
    исходники xec.c используют их для операций Dis, рассчитанных на 4 байта.
