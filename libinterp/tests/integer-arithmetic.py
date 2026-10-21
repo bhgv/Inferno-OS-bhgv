@@ -27,10 +27,10 @@ typedef int32_t WORD; typedef uint32_t UWORD;
 #else
 typedef int64_t WORD; typedef uint64_t UWORD;
 #endif
-typedef int64_t LONG; typedef uint64_t ULONG;
+typedef int64_t LONG; typedef uint64_t ULONG; typedef double REAL;
 static struct {void *s,*m,*d;} R;
 static jmp_buf unwind;
-static char *exZdiv="zero divide";
+static char *exZdiv="zero divide", *exRange="value out of range";
 static int caught;
 static void error(char *s) {caught=!strcmp(s,exZdiv)?1:2;longjmp(unwind,1);}
 #define OP(n) static void n(void)
@@ -78,7 +78,7 @@ with tempfile.TemporaryDirectory(prefix='integer-arithmetic-') as td:
             vals=[0,1,2,mask,mask-1,1<<(bits-1),(1<<(bits-1))-1]
             counts=[-1,0,1,7,8,31,32,63,64,65,255,256,1<<(wb-1)]
             pairs=[(s,m) for s in (counts if name.startswith(('sh','lsr')) else vals) for m in vals]
-            pairs += [(rng.getrandbits(wb if name.startswith(('sh','lsr')) else bits),rng.getrandbits(bits)) for _ in range(500)]
+            pairs += [(rng.getrandbits(wb if name.startswith(('sh','lsr')) else bits),rng.getrandbits(bits)) for _ in range(4000)]
             for s,m in pairs:
                 shift=name.startswith(('sh','lsr'));sv=signed(s,wb) if shift else s&mask if kind=='b' else signed(s,bits)
                 mv=m&mask if kind=='b' else signed(m,bits)

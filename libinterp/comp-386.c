@@ -247,8 +247,11 @@ gen2(uchar o1, uchar o2)
 static void
 genw(ulong o)
 {
-	*(ulong*)code = o;
-	code += 4;
+	/* Immediate fields need not be aligned in an x86 instruction. */
+	genb(o);
+	genb(o>>8);
+	genb(o>>16);
+	genb(o>>24);
 }
 
 static void
@@ -266,8 +269,7 @@ modrm(int inst, ulong disp, int rm, int r)
 		return;
 	}
 	*code++ = (2<<6)|(r<<3)|rm;
-	*(ulong*)code = disp;
-	code += 4;
+	genw(disp);
 }
 
 static void
@@ -803,63 +805,7 @@ larith(Inst *i, int op, int opc)
 	modrm(Ostw, 4, RTA, RCX);
 }
 
-static void
-shll(Inst *i)
-{
-	uchar *label, *label1;
 
-	opwld(i, Oldw, RCX);
-	mid(i, Olea, RTA);
-	gen2(Otestib, (3<<6)|(0<<3)|RCX);
-	genb(0x20);
-	gen2(Ojneb, 0);
-	label = code-1;
-	modrm(Oldw, 0, RTA, RAX);
-	modrm(Oldw, 4, RTA, RBX);
-	genb(0x0f);
-	gen2(Oshld, (3<<6)|(RAX<<3)|RBX);
-	gen2(Oshl, (3<<6)|(4<<3)|RAX);
-	gen2(Ojmpb, 0);
-	label1 = code-1;
-	*label = code-label-1;
-	modrm(Oldw, 0, RTA, RBX);
-	con(0, RAX);
-	gen2(Oshl, (3<<6)|(4<<3)|RBX);
-	*label1 = code-label1-1;
-	opwst(i, Olea, RTA);
-	modrm(Ostw, 0, RTA, RAX);
-	modrm(Ostw, 4, RTA, RBX);
-}
-
-static void
-shrl(Inst *i)
-{
-	uchar *label, *label1;
-
-	opwld(i, Oldw, RCX);
-	mid(i, Olea, RTA);
-	gen2(Otestib, (3<<6)|(0<<3)|RCX);
-	genb(0x20);
-	gen2(Ojneb, 0);
-	label = code-1;
-	modrm(Oldw, 0, RTA, RAX);
-	modrm(Oldw, 4, RTA, RBX);
-	genb(0x0f);
-	gen2(Oshrd, (3<<6)|(RBX<<3)|RAX);
-	gen2(Osar, (3<<6)|(7<<3)|RBX);
-	gen2(Ojmpb, 0);
-	label1 = code-1;
-	*label = code-label-1;
-	modrm(Oldw, 4, RTA, RBX);
-	gen2(Oldw, (3<<6)|(RAX<<3)|RBX);
-	gen2(Osarimm, (3<<6)|(7<<3)|RBX);
-	genb(0x1f);
-	gen2(Osar, (3<<6)|(7<<3)|RAX);
-	*label1 = code-label1-1;
-	opwst(i, Olea, RTA);
-	modrm(Ostw, 0, RTA, RAX);
-	modrm(Ostw, 4, RTA, RBX);
-}
 
 static
 void
@@ -1455,10 +1401,10 @@ comp(Inst *i)
 		cbral(i, Ojgtl, Ojael, EQAND);
 		break;
 	case ISHLL:
-		shll(i);
+		punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
 		break;
 	case ISHRL:
-		shrl(i);
+		punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
 		break;
 	case IRAISE:
 		punt(i, SRCOP|WRTPC|NEWPC, optab[i->op]);

@@ -11,11 +11,13 @@ ARFLAGS=	ruvs
 AS=		${CROSS}gcc -c 
 ASFLAGS=
 
+# VM real values require IEEE NaN/range semantics and binary64 literals.
+# Keep fast-math and single-precision-constant disabled, including at link.
 CC=		${CROSS}gcc -c 
 CFLAGS=		-O\
 		-mcmodel=medany\
 		-mabi=lp64f -march=rv64imafc\
-		-fno-common -ffunction-sections -fdata-sections -fstrict-volatile-bitfields -ffast-math -fno-math-errno -fsingle-precision-constant\
+		-fno-common -ffunction-sections -fdata-sections -fstrict-volatile-bitfields -fno-math-errno\
 		-Wuninitialized -Wunused-variable -Wreturn-type -Wimplicit\
 		-I$ROOT/FreeRTOS/riscv64/include\
 		-I$FreeRTOS_ROOT/include\
@@ -34,7 +36,7 @@ LD=		${CROSS}gcc
 LDFLAGS=	\
 		-mcmodel=medany -mabi=lp64f -march=rv64imafc\
 		-fno-common -ffunction-sections -fdata-sections\
-		-fstrict-volatile-bitfields -ffast-math -fno-math-errno\
+		-fstrict-volatile-bitfields -fno-math-errno\
 		-fsingle-precision-constant\
 		-O2 -g -ggdb -std=gnu11\
 		-Wall -Werror=all -Wno-error=unused-function\

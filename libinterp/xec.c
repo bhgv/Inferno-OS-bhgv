@@ -75,6 +75,66 @@ bigshr(LONG v, UWORD n)
 	return intbig(~((ULONG)~u >> n));
 }
 
+/* Fixed-point intermediates use the same wrapping big arithmetic. */
+static LONG
+scalediv(LONG a, LONG b)
+{
+	if(b == 0)
+		error(exZdiv);
+	if(b == -1)
+		return intbig((ULONG)0 - (ULONG)a);
+	return a / b;
+}
+
+static LONG
+scaleshift(LONG v, WORD p)
+{
+	UWORD n;
+	n = p < 0 ? (UWORD)0 - (UWORD)p : (UWORD)p;
+	if(n >= sizeof(LONG)*8)
+		error("invalid shift");
+	if(p < 0)
+		return bigshr(v, n);
+	return intbig((ULONG)v << n);
+}
+
+static LONG
+scalebias(WORD p)
+{
+	UWORD n;
+	/* A rounding bias is meaningful only for a right shift. */
+	if(p > 0)
+		error("invalid shift");
+	n = (UWORD)0 - (UWORD)p;
+	if(n >= sizeof(LONG)*8)
+		error("invalid shift");
+	return intbig(((ULONG)1 << n) - 1);
+}
+
+/* Round halves away from zero, then range-check before the C cast. */
+static LONG
+realint(REAL f, int bits)
+{
+	REAL limit, r;
+	LONG v;
+	limit = bits == 32 ? 2147483648.0 : 9223372036854775808.0;
+	/* These comparisons also reject NaN and infinities. */
+	if(!(f >= (bits == 32 ? -limit-.5 : -limit) && f < limit))
+		error(exRange);
+	v = (LONG)f;
+	r = f - (REAL)v;
+	if(r >= .5){
+		if((REAL)v >= limit-1.0)
+			error(exRange);
+		v++;
+	}else if(r <= -.5){
+		if(v == (bits == 32 ? (LONG)-2147483647-1 : intbig((ULONG)1<<63)))
+			error(exRange);
+		v--;
+	}
+	return v;
+}
+
 OP(runt) {}
 OP(negf) { F(d) = -F(s); }
 OP(jmp)  { JMP(d); }
@@ -162,20 +222,8 @@ OP(iexit){ error(""); }
 OP(cvtwl){ V(d) = W(s); }
 OP(cvtlw){ W(d) = V(s); }
 OP(cvtlf){ F(d) = V(s); }
-OP(cvtfl)
-{
-	REAL f;
-
-	f = F(s);
-	V(d) = f < 0 ? f - .5 : f + .5;
-}
-OP(cvtfw)
-{
-	REAL f;
-
-	f = F(s);
-	W(d) = f < 0 ? f - .5 : f + .5;
-}
+OP(cvtfl) { V(d) = realint(F(s), sizeof(LONG)*8); }
+OP(cvtfw) { W(d) = (WORD)realint(F(s), sizeof(WORD)*8); }
 OP(cvtcl)
 {
 	String *s;
@@ -1420,12 +1468,9 @@ OP(mulx)
 	LONG r;
 
 	p = Dtmp;
-	r = (LONG)W(m)*(LONG)W(s);
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	W(d) = (WORD)r;
+	r = intbig((ULONG)(LONG)W(m)*(ULONG)(LONG)W(s));
+	r = scaleshift(r, p);
+	W(d) = intword((UWORD)r);
 }
 OP(divx)
 {
@@ -1434,12 +1479,9 @@ OP(divx)
 
 	p = Dtmp;
 	s = (LONG)W(m);
-	if(p >= 0)
-		s <<= p;
-	else
-		s >>= (-p);
-	s /= (LONG)W(s);
-	W(d) = (WORD)s;
+	s = scaleshift(s, p);
+	s = scalediv(s, (LONG)W(s));
+	W(d) = intword((UWORD)s);
 }
 OP(cvtxx)
 {
@@ -1448,11 +1490,8 @@ OP(cvtxx)
 
 	p = W(m);
 	r = (LONG)W(s);
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	W(d) = (WORD)r;
+	r = scaleshift(r, p);
+	W(d) = intword((UWORD)r);
 }
 OP(mulx0)
 {
@@ -1464,16 +1503,15 @@ OP(mulx0)
 	p = Dtmp;
 	a = Stmp;
 	if(x == 0 || y == 0){
+		scaleshift(0, p);
+		scalediv(0, (LONG)a);
 		W(d) = 0;
 		return;
 	}
-	r = (LONG)x*(LONG)y;
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	r /= (LONG)a;
-	W(d) = (WORD)r;
+	r = intbig((ULONG)(LONG)x*(ULONG)(LONG)y);
+	r = scaleshift(r, p);
+	r = scalediv(r, (LONG)a);
+	W(d) = intword((UWORD)r);
 }
 OP(divx0)
 {
@@ -1485,16 +1523,15 @@ OP(divx0)
 	p = Dtmp;
 	b = Stmp;
 	if(x == 0){
+		scaleshift(0, p);
+		scalediv(0, (LONG)y);
 		W(d) = 0;
 		return;
 	}
-	s = (LONG)b*(LONG)x;
-	if(p >= 0)
-		s <<= p;
-	else
-		s >>= (-p);
-	s /= (LONG)y;
-	W(d) = (WORD)s;
+	s = intbig((ULONG)(LONG)b*(ULONG)(LONG)x);
+	s = scaleshift(s, p);
+	s = scalediv(s, (LONG)y);
+	W(d) = intword((UWORD)s);
 }
 OP(cvtxx0)
 {
@@ -1505,16 +1542,15 @@ OP(cvtxx0)
 	p = W(m);
 	a = Stmp;
 	if(x == 0){
+		scaleshift(0, p);
+		scalediv(0, (LONG)a);
 		W(d) = 0;
 		return;
 	}
 	r = (LONG)x;
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	r /= (LONG)a;
-	W(d) = (WORD)r;
+	r = scaleshift(r, p);
+	r = scalediv(r, (LONG)a);
+	W(d) = intword((UWORD)r);
 }
 OP(mulx1)
 {
@@ -1527,32 +1563,31 @@ OP(mulx1)
 	p = Dtmp;
 	a = Stmp;
 	if(x == 0 || y == 0){
+		scaleshift(0, wordshr(p, 2));
+		scalediv(0, (LONG)a);
 		W(d) = 0;
 		return;
 	}
 	vnz = p&2;
 	wnz = p&1;
-	p >>= 2;
+	p = wordshr(p, 2);
 	v = 0;
 	w = 0;
 	if(vnz){
-		v = a-1;
+		v = intword((UWORD)a-1);
 		if(x >= 0 && y < 0 || x < 0 && y >= 0)
-			v = -v;
+			v = intword((UWORD)0-(UWORD)v);
 	}
 	if(wnz){
 		if((!vnz && (x > 0 && y < 0 || x < 0 && y > 0)) ||
 		(vnz && (x > 0 && y > 0 || x < 0 && y < 0)))
-			w = ((LONG)1<<(-p)) - 1;
+			w = scalebias(p);
 	}
-	r = (LONG)x*(LONG)y + w;
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	r += (LONG)v;
-	r /= (LONG)a;
-	W(d) = (WORD)r;
+	r = intbig((ULONG)x*(ULONG)y + (ULONG)w);
+	r = scaleshift(r, p);
+	r = intbig((ULONG)r + (ULONG)(LONG)v);
+	r = scalediv(r, (LONG)a);
+	W(d) = intword((UWORD)r);
 }
 OP(divx1)
 {
@@ -1565,30 +1600,29 @@ OP(divx1)
 	p = Dtmp;
 	b = Stmp;
 	if(x == 0){
+		scaleshift(0, wordshr(p, 2));
+		scalediv(0, (LONG)y);
 		W(d) = 0;
 		return;
 	}
 	vnz = p&2;
 	wnz = p&1;
-	p >>= 2;
+	p = wordshr(p, 2);
 	v = 0;
 	w = 0;
 	if(vnz){
 		v = 1;
 		if(x >= 0 && y < 0 || x < 0 && y >= 0)
-			v = -v;
+			v = intword((UWORD)0-(UWORD)v);
 	}
 	if(wnz){
 		if(x <= 0)
-			w = ((LONG)1<<(-p)) - 1;
+			w = scalebias(p);
 	}
-	s = (LONG)b*(LONG)x + w;
-	if(p >= 0)
-		s <<= p;
-	else
-		s >>= (-p);
-	s /= (LONG)y;
-	W(d) = (WORD)s + v;
+	s = intbig((ULONG)b*(ULONG)x + (ULONG)w);
+	s = scaleshift(s, p);
+	s = scalediv(s, (LONG)y);
+	W(d) = intword((UWORD)s + (UWORD)v);
 }
 OP(cvtxx1)
 {
@@ -1600,31 +1634,30 @@ OP(cvtxx1)
 	p = W(m);
 	a = Stmp;
 	if(x == 0){
+		scaleshift(0, wordshr(p, 2));
+		scalediv(0, (LONG)a);
 		W(d) = 0;
 		return;
 	}
 	vnz = p&2;
 	wnz = p&1;
-	p >>= 2;
+	p = wordshr(p, 2);
 	v = 0;
 	w = 0;
 	if(vnz){
-		v = a-1;
+		v = intword((UWORD)a-1);
 		if(x < 0)
-			v = -v;
+			v = intword((UWORD)0-(UWORD)v);
 	}
 	if(wnz){
 		if(!vnz && x < 0 || vnz && x > 0)
-			w = ((LONG)1<<(-p)) - 1;
+			w = scalebias(p);
 	}
-	r = (LONG)x + w;
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	r += (LONG)v;
-	r /= (LONG)a;
-	W(d) = (WORD)r;
+	r = intbig((ULONG)(LONG)x + (ULONG)w);
+	r = scaleshift(r, p);
+	r = intbig((ULONG)r + (ULONG)(LONG)v);
+	r = scalediv(r, (LONG)a);
+	W(d) = intword((UWORD)r);
 }
 /*
 OP(cvtxx)
@@ -1636,14 +1669,7 @@ OP(cvtxx)
 	W(d) = (WORD)v;
 }
 */
-OP(cvtfx)
-{
-	REAL v;
-
-	v = F(s)*F(m);
-	v = v < 0 ? v-0.5: v+0.5;
-	W(d) = (WORD)v;
-}
+OP(cvtfx) { W(d) = (WORD)realint(F(s)*F(m), sizeof(WORD)*8); }
 OP(cvtxf)
 {
 	F(d) = (REAL)W(s)*F(m);
