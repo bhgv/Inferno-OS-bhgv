@@ -9,6 +9,7 @@ int
 segflush(void *a, ulong n)
 {
 	if(n)
-		syscall(SYS_cacheflush, a, (char*)a+n-1, 1);
+		/* Linux ARM cacheflush takes an exclusive end and zero flags. */
+		return syscall(SYS_cacheflush, a, (char*)a+n, 0);
 	return 0;
 }
