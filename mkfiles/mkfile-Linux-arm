@@ -9,14 +9,15 @@ AR=		${CROSS}ar
 ARFLAGS=	ruvs
 
 AS=		${CROSS}gcc -c 
-ASFLAGS=
+ARMFPFLAGS=	# optional -mfpu/-mfloat-abi target flags for both C and assembly
+ASFLAGS=	$ARMFPFLAGS
 
 CC=		${CROSS}gcc -c 
 CFLAGS=		-O\
 		-Wuninitialized -Wunused-variable -Wreturn-type -Wimplicit\
 		-I$ROOT/Linux/arm/include\
 		-I$ROOT/include\
-		-DLINUX_ARM
+		-DLINUX_ARM $ARMFPFLAGS
 
 ANSICPP=
 LD=		${CROSS}gcc 

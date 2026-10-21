@@ -9,7 +9,8 @@ AR=		arm-linux-androideabi-ar
 ARFLAGS=	ruvs
 
 AS=		arm-linux-androideabi-gcc -c 
-ASFLAGS=	-march=armv7-a -marm
+ARMFPFLAGS=	-march=armv7-a -marm -mfloat-abi=softfp -mfpu=vfpv3-d16
+ASFLAGS=	$ARMFPFLAGS
 
 CC=		arm-linux-androideabi-gcc -c 
 CFLAGS=		-O\
@@ -27,8 +28,8 @@ CFLAGS=		-O\
 		-D__arm__\
 		-D__ANDROID_API__=17 -DANDROID\
 		-ffunction-sections -funwind-tables \
-		-no-canonical-prefixes -march=armv7-a -mfloat-abi=softfp -mfpu=vfpv3-d16\
-		-marm -Wa,--noexecstack -Wformat -Werror=format-security  -std=c99\
+		-no-canonical-prefixes $ARMFPFLAGS\
+		-Wa,--noexecstack -Wformat -Werror=format-security  -std=c99\
 		--sysroot=$ROOT/ndk_toolchain/sysroot 
 
 #-static

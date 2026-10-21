@@ -485,27 +485,27 @@ extern	void	setfsr(ulong);
 extern	ulong	getfcr(void);
 extern	ulong	getfsr(void);
 
-/* FCR */
-#define	FPINEX	(1<<5)
-#define	FPUNFL	((1<<4)|(1<<1))
-#define	FPOVFL	(1<<3)
-#define	FPZDIV	(1<<2)
-#define	FPINVAL	(1<<0)
-#define	FPRNR	(0<<10)
-#define	FPRZ	(3<<10)
-#define	FPRPINF	(2<<10)
-#define	FPRNINF	(1<<10)
-#define	FPRMASK	(3<<10)
-#define	FPPEXT	(3<<8)
-#define	FPPSGL	(0<<8)
-#define	FPPDBL	(2<<8)
-#define	FPPMASK	(3<<8)
-/* FSR */
-#define	FPAINEX	FPINEX
-#define	FPAOVFL	FPOVFL
-#define	FPAUNFL	FPUNFL
-#define	FPAZDIV	FPZDIV
-#define	FPAINVAL	FPINVAL
-
+/* VFP FPSCR: trap enables and accumulated flags occupy different bits. */
+#include "arm-fp.h"
+#define FPINEX (1<<12)
+#define FPUNFL (1<<11)
+#define FPOVFL (1<<10)
+#define FPZDIV (1<<9)
+#define FPINVAL (1<<8)
+#define FPRNR (0<<22)
+#define FPRZ (3<<22)
+#define FPRPINF (1<<22)
+#define FPRNINF (2<<22)
+#define FPRMASK ARM_FPSCR_ROUND_MASK
+/* VFP precision is selected by each instruction, not a global FCR field. */
+#define FPPEXT 0
+#define FPPSGL 0
+#define FPPDBL 0
+#define FPPMASK 0
+#define FPAINEX (1<<4)
+#define FPAOVFL (1<<2)
+#define FPAUNFL (1<<3)
+#define FPAZDIV (1<<1)
+#define FPAINVAL (1<<0)
 
 #endif
