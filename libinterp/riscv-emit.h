@@ -193,7 +193,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 			if(op == ISHLB || op == ISHLW || op == ISHRB || op == ISHRW || op == ILSRW) {
 				/* Leave exceptional/undefined shift counts to the VM helper.
 				 * No visible state has changed when returning 0 here. */
-				rvi(&b, 0x13, 0, Rvt6, Rvzero, bytes == 1 ? 32 : bytes*8);
+				rvi(&b, 0x13, 0, Rvt6, Rvzero, bytes*8);
 				rvbranch(&b, 6, Rvt4, Rvt6, 12); /* bltu count, width, valid */
 				rvi(&b, 0x13, 0, Rva0, Rvzero, 0);
 				rvi(&b, 0x67, 0, Rvzero, Rvra, 0);

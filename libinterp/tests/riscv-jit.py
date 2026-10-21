@@ -118,7 +118,7 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
         for name in ('ISHLW','ISHRW','ILSRW','ISHLB','ISHRB'):
             width=1 if name.endswith('B') else wb
             bits=8 if width==1 else wb*8
-            countbits=32 if width==1 else wb*8
+            countbits=bits
             for count in (-1,0,1,7,8,31,32,63,64,65):
                 b=0xf123456789abcdef&((1<<bits)-1)
                 u,result=run(name,struct.pack('<Q',count&mask),struct.pack('<Q',b))
