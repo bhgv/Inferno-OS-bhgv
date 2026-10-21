@@ -1160,3 +1160,9 @@ kprotect(int (*fn)(void*), void *arg)
 	poperror();
 	return result;
 }
+
+void
+krethrow(void)
+{
+	nexterror();
+}

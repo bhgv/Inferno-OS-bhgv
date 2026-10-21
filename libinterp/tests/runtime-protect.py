@@ -18,12 +18,13 @@ unit = r'''
 #include <assert.h>
 #include <stdio.h>
 static Proc worker;
+static char *last_error;
 Proc *getup(void) { return &worker; }
 void nexterror(void) {
     assert(worker.nerr > 0);
     siglongjmp(worker.estack[--worker.nerr], 1);
 }
-void error(char *text) { (void)text; nexterror(); }
+void error(char *text) { last_error=text; nexterror(); }
 int __lsan_is_turned_off(void) { return 1; }
 GUARD
 static int result(void *arg) {
@@ -40,7 +41,8 @@ static int nested(void *arg) {
     assert(worker.nerr == 2);
     assert(!kprotect(fail, arg));
     assert(worker.nerr == 2);
-    error("after nested failure");
+    assert(strcmp(last_error,"injected")==0);
+    krethrow();
     return 1;
 }
 int main(void) {
@@ -62,7 +64,7 @@ int main(void) {
         assert(0);
     }
     assert(worker.nerr == 0);
-    puts("PASS runtime protection: returns, nested VM errors, outer error frame and 100 retries");
+    puts("PASS runtime protection: returns, nested VM errors/rethrow, outer error frame and 100 retries");
     return 0;
 }
 '''

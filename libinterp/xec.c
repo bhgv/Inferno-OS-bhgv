@@ -3,6 +3,7 @@
 #include "interp.h"
 #include "raise.h"
 #include "pool.h"
+#include "kernel.h"
 
 REG	R;			/* Virtual Machine registers */
 String	snil;			/* String known to be zero length */
@@ -438,34 +439,56 @@ OP(newaz)
 	*ap = a;
 	destroy(at);
 }
+typedef struct ChannelBuild ChannelBuild;
+struct ChannelBuild {
+	Type *t;
+	void (*mover)(void);
+	int len;
+	Channel *c;
+};
+
+static int
+channelbuild(void *arg)
+{
+	ChannelBuild *b;
+	Channel *c;
+	b=arg;
+	b->c=c=H2D(Channel*,heap(&Tchannel));
+	/* Make the partial channel safe for freechan before any further call. */
+	c->buf=H; c->send=nil; c->recv=nil; c->aux=nil;
+	c->mover=nil; c->mid.w=0; c->front=0; c->size=0;
+	c->send=mallocz(sizeof(Progq),1);
+	if(c->send == nil)
+		error(exNomem);
+	c->recv=mallocz(sizeof(Progq),1);
+	if(c->recv == nil)
+		error(exNomem);
+	if(b->len > 0)
+		c->buf=H2D(Array*,heaparray(b->t,b->len));
+	if(b->mover == movtmp) {
+		c->mid.t=b->t;
+		b->t->ref++;
+	}
+	c->mover=b->mover;
+	return 1;
+}
+
 Channel*
 cnewc(Type *t, void (*mover)(void), int len)
 {
-	Heap *h;
-	Channel *c;
-
-	h = heap(&Tchannel);
-	c = H2D(Channel*, h);
-	c->send = malloc(sizeof(Progq));
-	c->recv = malloc(sizeof(Progq));
-	if(c->send == nil || c->recv == nil){
-		free(c->send);
-		free(c->recv);
-		error(exNomem);
-	}
-	c->send->prog = c->recv->prog = nil;
-	c->send->next = c->recv->next = nil;
-	c->mover = mover;
-	c->buf = H;
+	ChannelBuild b;
+	if(len < 0)
+		error(exNegsize);
+	if((len > 0 || mover == movtmp) && t == nil)
+		error(exHeap);
 	if(len > 0)
-		c->buf = H2D(Array*, heaparray(t, len));
-	c->front = 0;
-	c->size = 0;
-	if(mover == movtmp){
-		c->mid.t = t;
-		t->ref++;
+		acheck(t->size,len);
+	b.t=t; b.mover=mover; b.len=len; b.c=H;
+	if(!kprotect(channelbuild,&b)) {
+		destroy(b.c);
+		krethrow();
 	}
-	return c;
+	return b.c;
 }
 Channel*
 newc(Type *t, void (*mover)(void))
@@ -479,6 +502,8 @@ newc(Type *t, void (*mover)(void))
 		if(len < 0)
 			error(exNegsize);
 	}
+	if((uvlong)len > 0x7fffffff)
+		error(exHeap);
 	cp = R.d;
 	oldc = *cp;
 	*cp = cnewc(t, mover, len);
@@ -490,18 +515,40 @@ OP(newcb)  { newc(&Tbyte, movb);  }
 OP(newcw)  { newc(&Tword, movw);  }
 OP(newcf)  { newc(&Treal, movf);  }
 OP(newcp)  { newc(&Tptr, movp);  }
+typedef struct RawChannel RawChannel;
+struct RawChannel {
+	Type *t;
+};
+
+static int
+rawchannel(void *arg)
+{
+	RawChannel *b;
+	Channel *c;
+	b=arg;
+	c=newc(b->t,movm);
+	c->mid.w=W(s);
+	return 1;
+}
+
 OP(newcm)
 {
-	Channel *c;
-	Type *t;
-
-	t = nil;
-	if(R.m != R.d && W(m) > 0)
-		t = dtype(nil, W(s), nil, 0);
-	c = newc(t, movm);
-	c->mid.w = W(s);
-	if(t != nil)
-		freetype(t);
+	RawChannel b;
+	int ok;
+	if(W(s) < 0)
+		error(exNegsize);
+	if((uvlong)W(s) > 0x7fffffff)
+		error(exHeap);
+	b.t=nil;
+	if(R.m != R.d && W(m) > 0) {
+		b.t=dtype(nil,W(s),nil,0);
+		if(b.t == nil)
+			error(exNomem);
+	}
+	ok=kprotect(rawchannel,&b);
+	freetype(b.t);
+	if(!ok)
+		krethrow();
 }
 OP(newcmp)
 {

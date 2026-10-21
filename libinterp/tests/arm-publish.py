@@ -231,9 +231,9 @@ int main(void) {
 }
 '''
 runtime=(root/'emu/port/dis.c').read_text()
-guard=runtime[runtime.index('int\nkprotect('):]
+guard=runtime[runtime.index('int\nkprotect('):runtime.index('\nvoid\nkrethrow(')]
 native=(root/'os/port/dis.c').read_text()
-assert guard == native[native.index('int\nkprotect('):]
+assert guard == native[native.index('int\nkprotect('):native.index('\nvoid\nkrethrow(')]
 unit=unit.replace('RUNTIMEGUARD',guard)
 relocators='\n'.join(function(n,'static void') for n in ['comcase','comcasel','comgoto'])
 unit=unit.replace('RELOCATORS',relocators).replace('PREAMBLE',function('preamble','static int'))

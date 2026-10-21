@@ -51,3 +51,6 @@ extern	long	kchanio(void*, void*, int, int);
 
 /* Run a fallible VM callback; a VM error becomes a zero result. */
 extern int kprotect(int (*)(void*), void*);
+
+/* Propagate the current VM error after protected cleanup. */
+extern void krethrow(void);
