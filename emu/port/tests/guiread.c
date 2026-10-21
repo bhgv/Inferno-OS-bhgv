@@ -16,7 +16,8 @@ static char last_error[128];
 static int live_allocations, fail_after=-1;
 static char *getter_value="value", *widget_name=".widget";
 static int getter_throw, getter_calls;
-static char last_command[12000];
+static char last_command[12000],last_widget_command[12000];
+static int command_error,drop_top;
 extern void hostfree(void*) __asm__("free");
 extern void *hostrealloc(void*,size_t) __asm__("realloc");
 void *guimalloc(size_t n) {
@@ -44,6 +45,7 @@ static TkMethod method = {.name="frame", .opts=nooptions};
 TkMethod *tkmethod[TKwidgets];
 TkCimeth tkcimethod[TkCVarc+1];
 char Ebadarg[]="bad argument", Ethread[]="unknown process", Enomem[]="out of memory";
+char Etoobig[]="too big", Eisdir[]="is a directory", Enonexist[]="does not exist";
 
 Proc *getup(void) { return &worker; }
 void acquire(void) { assert(lock_depth++ == 0); }
@@ -57,11 +59,13 @@ char *tksinglecmd(TkTop *t,char *s,char **out) {
     (void)t;getter_calls++;
     assert(strlen(s)<sizeof(last_command));strcpy(last_command,s);
     if(out) {
+        strcpy(last_widget_command,s);
         *out=malloc(strlen(getter_value)+1);if(!*out)error(Enomem);
         strcpy(*out,getter_value);
     }
     if(getter_throw)error(Ebadarg);
-    return nil;
+    if(drop_top)process.tktop=nil;
+    return command_error ? Ebadarg : nil;
 }
 void _fmtlock(void) {}
 void _fmtunlock(void) {}
@@ -78,6 +82,7 @@ QID_HELPERS_IMPLEMENTATION
 GUISNAPSHOT_IMPLEMENTATION
 GUIREAD_IMPLEMENTATION
 GUICLOSE_IMPLEMENTATION
+GUIWRITE_IMPLEMENTATION
 
 static void enqueue(Qid q,char *text) {
     long n=strlen(text);
@@ -93,6 +98,8 @@ static void badread(Chan *c,long count,vlong offset,char *expected) {
     }
     guiread(c,buffer,count,offset);assert(0);
 }
+GUIWRITE_TESTS
+
 int main(void) {
     Chan c={0},other={0},high={0};
     unsigned char out[16];
@@ -192,6 +199,7 @@ int main(void) {
         assert(live_allocations==0);balanced();
     }
     puts("PASS GUI read/close: snapshot chunks, exact read boundaries, long getters, allocation failures and Tk error cleanup");
+    test_guiwrite(&c);
     puts("PASS GUI read/close: partial and zero reads, FIFO replies, full Qid isolation, complete close cleanup and error-stack balance");
     return 0;
 }

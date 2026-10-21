@@ -30,6 +30,8 @@ parts={
  'GUISNAPSHOT_IMPLEMENTATION':source[source.index('typedef struct GuiSnapshot'):source.index('static long\nguiread(')],
  'GUIREAD_IMPLEMENTATION':function('guiread','static long'),
  'GUICLOSE_IMPLEMENTATION':function('guiclose','static void'),
+ 'GUIWRITE_IMPLEMENTATION':source[source.index('typedef struct GuiWrite'):source.index('static int\nguiwstat(')],
+ 'GUIWRITE_TESTS':(root/'emu/port/tests/guiwrite.c').read_text(),
 }
 for placeholder,value in parts.items():harness=harness.replace(placeholder,value)
 formatters=['dofmt','fmt','fmtquote','fmtrune','rune','runestrlen','utflen','utfnlen',

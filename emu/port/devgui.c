@@ -956,6 +956,7 @@ struct GuiSnapshot {
 	Fmt fmt;
 	char *command;
 	char *value;
+	char *wire;
 };
 
 static TkMethod*
@@ -978,6 +979,32 @@ guiprint(GuiSnapshot *s, char *format, ...)
 		error(Enomem);
 }
 
+/* Encode the command envelope understood by guiparse. Preserve literal
+ * quotes, backslashes and embedded newlines from Tk getter results. */
+static void
+guicommand(GuiSnapshot *s, char *format, ...)
+{
+	va_list args;
+	char *p, *start;
+	int c;
+	va_start(args, format);
+	s->wire=vsmprint(format, args);
+	va_end(args);
+	if(s->wire == nil)
+		error(Enomem);
+	guiprint(s, "\"");
+	start=s->wire;
+	for(p=start; *p != '\0'; p++) {
+		if(*p != '\\' && *p != '"')
+			continue;
+		c=*p; *p='\0';
+		guiprint(s, "%s\\%c", start, c);
+		*p=c; start=p+1;
+	}
+	guiprint(s, "%s\"\n", start);
+	free(s->wire); s->wire=nil;
+}
+
 /* Build a complete snapshot independently of the size of a read request.
  * Mutable cleanup state lives on the heap across waserror/longjmp. */
 static char*
@@ -997,6 +1024,7 @@ guisnapshot(TkTop *top, Tk *tk)
 	if(waserror()) {
 		free(s->value);
 		free(s->command);
+		free(s->wire);
 		free(s->fmt.start);
 		free(s);
 		nexterror();
@@ -1019,7 +1047,7 @@ guisnapshot(TkTop *top, Tk *tk)
 				error(Enomem);
 			e=tksinglecmd(top, s->command, &s->value);
 			if(e == nil && s->value != nil)
-				guiprint(s, "\"configure -%s \t%s\"\n", opt->o, s->value);
+				guicommand(s, "configure -%s \t%s", opt->o, s->value);
 			free(s->command); s->command=nil;
 			free(s->value); s->value=nil;
 		}
@@ -1033,7 +1061,7 @@ guisnapshot(TkTop *top, Tk *tk)
 				continue;
 			e=cmd[i].fn(tk, "", &s->value);
 			if(e == nil && s->value != nil)
-				guiprint(s, "\"%s %s\"\n", cmd[i].name, s->value);
+				guicommand(s, "%s %s", cmd[i].name, s->value);
 			free(s->value); s->value=nil;
 		}
 	}
@@ -1049,7 +1077,7 @@ guisnapshot(TkTop *top, Tk *tk)
 			error(Enomem);
 		e=tksinglecmd(top, s->command, &s->value);
 		if(e == nil && s->value != nil)
-			guiprint(s, "\"insert end '%s\"\n", s->value);
+			guicommand(s, "insert end '%s", s->value);
 		free(s->command); s->command=nil;
 		free(s->value); s->value=nil;
 	}else if(tk->type == TKcanvas) {
@@ -1154,157 +1182,186 @@ Done:
 }
 
 
+typedef struct GuiWrite GuiWrite;
+struct GuiWrite {
+	char *commands;
+	char *name;
+	char *buffer;
+	char *values[100];
+	rslt_string *reply;
+};
+
+static void
+guifreewrite(GuiWrite *s)
+{
+	int i;
+	for(i=0; i<nelem(s->values); i++)
+		free(s->values[i]);
+	free(s->commands);
+	free(s->name);
+	free(s->buffer);
+	free(s->reply);
+	free(s);
+}
+
+/* Raw lines are forwarded verbatim. A leading double quote wraps a whole
+ * command, including newlines; only escaped quote/backslash are decoded. */
+static int
+guiparse(char *text, char **args, int capacity)
+{
+	char *p, *start, *out;
+	int n;
+
+	p=text;
+	n=0;
+	while(*p != '\0') {
+		while(*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')
+			p++;
+		if(*p == '\0')
+			break;
+		if(*p == '#') {
+			while(*p != '\0' && *p != '\r' && *p != '\n')
+				p++;
+			continue;
+		}
+		if(*p == '"') {
+			start=out=++p;
+			while(*p != '\0' && *p != '"') {
+				if(*p == '\\' && (p[1] == '"' || p[1] == '\\'))
+					p++;
+				*out++=*p++;
+			}
+			if(*p != '"')
+				error(Ebadarg);
+			p++;
+			while(*p == ' ' || *p == '\t')
+				p++;
+			if(*p != '\0' && *p != '\r' && *p != '\n')
+				error(Ebadarg);
+			/* Advance before terminating a non-escaped quoted command. */
+			if(*p != '\0')
+				p++;
+			*out='\0';
+		}else{
+			start=p;
+			while(*p != '\0' && *p != '\r' && *p != '\n')
+				p++;
+			if(*p != '\0')
+				*p++='\0';
+		}
+		if(*start != '\0') {
+			if(n >= capacity-1)
+				error(Etoobig);
+			args[n++]=start;
+		}
+	}
+	args[n]=nil;
+	return n;
+}
+
 static long
 guiwrite(Chan *c, void *va, long count, vlong offset)
 {
+	GuiWrite *s;
+	GuiRead *cached;
 	Prog *p;
-	int totl = 0;
-	char *commands = nil;
+	TkTop *top;
+	Tk *tk;
+	char *args[100], *e;
+	ulong length, total, limit;
+	long result;
+	int i, j, n;
 
 	if(c->qid.type & QTDIR)
 		error(Eisdir);
-
-	/* A device write is length-delimited, not a NUL-terminated C string.
-	 * Parse a private copy: callers may pass read-only or exactly-sized data.
-	 */
-	if(offset == 0 && count > 0){
-		if(count >= 0x7fffffffL)
-			error(Ebadarg);
-		commands = malloc(count + 1);
-		if(commands == nil)
-			error(Enomem);
-		memmove(commands, va, count);
-		commands[count] = '\0';
-	}
+	if(count < 0 || count >= 0x7fffffffL || offset < 0)
+		error(Ebadarg);
+	if(count == 0)
+		return 0;
+	s=mallocz(sizeof(*s), 1);
+	if(s == nil)
+		error(Enomem);
 	acquire();
 	if(waserror()) {
-		free(commands);
+		guifreewrite(s);
 		release();
 		nexterror();
 	}
-	p = progpid(PID(c->qid));
-	if(p == nil){
+	if(memchr(va, '\0', count) != nil)
+		error(Ebadarg);
+	s->commands=malloc(count+1);
+	if(s->commands == nil)
+		error(Enomem);
+	memmove(s->commands, va, count);
+	s->commands[count]='\0';
+	n=guiparse(s->commands, args, nelem(args));
+	p=progpid(PID(c->qid));
+	if(p == nil)
 		error(Ethread);
+	result=0;
+	top=p->tktop;
+	tk=top != nil ? qid2tk(&c->qid, top) : nil;
+	if(tk == nil)
+		goto Done;
+	if(n == 0) {
+		result=count;
+		goto Done;
 	}
-	
-	if(offset == 0 && count > 0 && p->tktop){
-		TkTop *t;
-		Tk *tkr, *tk;
-		int i, j, n;
-		char *args[100], *rvs[100];
-		char *va2 = commands;
-
-		int pars = 0;
-		int cmnt = 0;
-
-		j = 0; rvs[0] = nil; args[0] = nil;
-		
-		for(i = 0, j = 0; i < count && va2[i] != '\0' && j < 100-1; i++){
-			char c = va2[i];
-			
-			if(c == '"'){
-				pars ^= 1;
-				va2[i] = '\0';
-			}else
-			if(
-				(!pars) && 
-				(c == '\n' || c == '\r')
-			){
-				cmnt = 0;
-				va2[i] = '\0';
-				if(args[j] != nil){
-					j++;
-					args[j] = nil;
-				}
-			}else{
-				if(args[j] == nil){
-					if(c == '#' || cmnt){
-						cmnt = 1;
-					}else{
-						args[j] = &va2[i];
-						args[j+1] = nil;
-					}
-				}
-			}
-		}
-		/* Reserve args[99] for the sentinel even when all slots are used. */
-		if(j < 99 && args[j] != nil)
+	s->name=smprint("%s", tkname(tk));
+	if(s->name == nil)
+		error(Enomem);
+	total=0;
+	j=0;
+	limit=0x7fffffffUL-sizeof(rslt_string)-1;
+	for(i=0; i<n; i++) {
+		if(p->tktop != top)
+			error(Enonexist);
+		s->buffer=smprint("%s %s", s->name, args[i]);
+		if(s->buffer == nil)
+			error(Enomem);
+		e=tksinglecmd(top, s->buffer, &s->values[j]);
+		if(e != nil)
+			error(e);
+		free(s->buffer); s->buffer=nil;
+		if(s->values[j] != nil) {
+			length=strlen(s->values[j]);
+			if(total >= limit || length > limit-total-1)
+				error(Etoobig);
+			total+=length+1;
 			j++;
-		args[j] = nil;
-	
-		t = p->tktop;
-		
-		tkr = t->root;
-		n = QID(c->qid);
-		
-		tk = qid2tk(&c->qid, t);
-		if(tk == nil)
-			goto Done;
-		
-		{
-//			TkOption **opts = tkmethod[tk->type]->opts;
-//			TkCmdtab *cmd = tkmethod[tk->type]->cmd;	
-			rslt_string *r = nil;
-			int rl = 0;
-
-			for(i = 0, j = 0; args[i] != nil; i++){
-				char *buf;
-				int blen;
-				char *rv = nil;
-				char *arg = args[i];
-				char *tknm = tkname(tk);
-				
-				blen = strlen( tknm ) + strlen( arg ) + 2 + 2;
-				buf = malloc( blen );
-				
-				snprint(buf, blen, "%s %s", tknm, arg);
-
-//				if( !
-					tksinglecmd(t, buf, &rv);
-//				)
-//					tksinglecmd(t, "update", nil);
-				free(buf);
-
-				if(rv != nil){
-					rl += strlen(rv) + 1;
-					
-					rvs[j] = rv;
-					j++;
-					rvs[j] = nil;
-				}
-			}
-			tksinglecmd(t, "update -onscreen", nil);
-
-			r = malloc(sizeof(rslt_string) + rl + 2);
-
-			rl = 0;
-			for(i = 0; rvs[i] != 0 && i < j; i++){
-				int l = strlen( rvs[i] );
-				
-				memcpy(&(r->str[rl]), rvs[i], l);
-				rl += l;
-				r->str[rl] = '\n';
-				rl++;
-
-				free(rvs[i]);
-			}
-			r->str[rl] = '\0';
-			
-			//QIDsetRV(c->qid, r);
-			r->qid = c->qid;
-			r->len = rl;
-			r->pos = 0;
-			guiresultqueue(r);
-
-			totl = count;
 		}
 	}
+	if(p->tktop != top)
+		error(Enonexist);
+	e=tksinglecmd(top, "update -onscreen", nil);
+	if(e != nil)
+		error(e);
+	s->reply=malloc(sizeof(rslt_string)+total);
+	if(s->reply == nil)
+		error(Enomem);
+	total=0;
+	for(i=0; i<j; i++) {
+		length=strlen(s->values[i]);
+		memmove(s->reply->str+total, s->values[i], length);
+		total+=length;
+		s->reply->str[total++]='\n';
+	}
+	s->reply->str[total]='\0';
+	s->reply->qid=c->qid;
+	s->reply->len=total;
+	s->reply->pos=0;
+	guiresultqueue(s->reply);
+	s->reply=nil;
+	cached=c->aux;
+	if(cached != nil) {
+		free(cached->data); cached->data=nil; cached->len=0;
+	}
+	result=count;
 Done:
 	poperror();
-	free(commands);
+	guifreewrite(s);
 	release();
-
-	return totl;
+	return result;
 }
 
 
