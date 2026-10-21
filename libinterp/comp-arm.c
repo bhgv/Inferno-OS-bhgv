@@ -2,6 +2,7 @@
 #include "isa.h"
 #include "interp.h"
 #include "raise.h"
+#include "kernel.h"
 
 /*
  * to do:
@@ -1763,6 +1764,9 @@ comp(Inst *i)
 	}
 }
 
+/* Unpublished helper buffers, reclaimed after a VM error unwind. */
+static ulong *armhelpertemp, *armhelpercode;
+
 static int
 preamble(void)
 {
@@ -1771,6 +1775,7 @@ preamble(void)
 		return 1;
 
 	start = malloc(10 * sizeof(*code));
+	armhelpercode = start;
 	if(start == nil)
 		return 0;
 	code = start;
@@ -1786,9 +1791,11 @@ preamble(void)
 
 	if(segflush(start, 10 * sizeof(*code)) != 0) {
 		free(start);
+		armhelpercode = nil;
 		return 0;
 	}
 	comvec = (void(*)(void))start;
+	armhelpercode = nil;
 	return 1;
 }
 
@@ -2114,6 +2121,7 @@ typecom(Type *t)
 		return;
 	capacity=((ulong)t->np+1)*128;
 	tmp = mallocz(capacity*sizeof(ulong), 0);
+	armhelpertemp = tmp;
 	if(tmp == nil)
 		return;
 
@@ -2125,6 +2133,7 @@ typecom(Type *t)
 	comd(t);
 	destructorwords=code-tmp;
 	free(tmp);
+	armhelpertemp = nil;
 	if(n < 0 || destructorwords < 0 ||
 	   n > 0x7fffffff/sizeof(*code)-destructorwords)
 		return;
@@ -2132,6 +2141,7 @@ typecom(Type *t)
 
 	n *= sizeof(*code);
 	code = mallocz(n, 0);
+	armhelpercode = code;
 	if(code == nil)
 		return;
 
@@ -2142,10 +2152,12 @@ typecom(Type *t)
 
 	if(code-start != n/sizeof(*code) || segflush(start, n) != 0) {
 		free(start);
+		armhelpercode = nil;
 		return;
 	}
 	t->initialize = start;
 	t->destroy = destructor;
+	armhelpercode = nil;
 
 	if(cflag > 3)
 		print("typ= %.8p %4d i %.8p d %.8p asm=%d\n",
@@ -2236,26 +2248,38 @@ armremember(ArmTypeState *saved, int count, Type *t)
 	return count+1;
 }
 
-int
-compile(Module *m, int size, Modlink *ml)
+typedef struct ArmCompile ArmCompile;
+struct ArmCompile {
+	Module *m, *shadow;
+	Modlink *ml;
+	int size, ntypes;
+	ulong *tmp;
+	uchar *stagedmp;
+	ArmTypeState *savedtypes;
+};
+
+static int
+armcompile(void *arg)
 {
+	ArmCompile *c;
+	Module *m;
+	Modlink *ml;
+	int size;
 	Link *l;
 	Modl *e;
-	int i, n, ntypes, capacity, datasize, words;
-	ulong *s, *tmp;
-	uchar *stagedmp;
-	Module *shadow;
-	ArmTypeState *savedtypes;
+	int i, n, capacity, datasize, words;
+	ulong *s;
 	Type *t;
 
+	c=arg; m=c->m; ml=c->ml; size=c->size;
 	if(m == nil || m->compiled || size <= 0 || size != m->nprog ||
 	   m->ntype < 0 || m->prog == nil || m->ext == nil ||
 	   (m->ntype != 0 && m->type == nil) ||
 	   size >= 0x7fffffff/sizeof(*patch) ||
 	   size > 0x7fffffff/sizeof(Inst) || !armvalidmeta(m,size,ml))
 		return 0;
-	base=nil; patch=nil; tinit=nil; tmp=nil;
-	stagedmp=nil; shadow=nil; savedtypes=nil; ntypes=0; datasize=0;
+	base=nil; patch=nil; tinit=nil; c->tmp=nil;
+	c->stagedmp=nil; c->shadow=nil; c->savedtypes=nil; c->ntypes=0; datasize=0;
 	/* Reserve all rollback records before any table or Type can change. */
 	capacity=m->ntype;
 	for(l=m->ext; l->name; l++) {
@@ -2268,69 +2292,69 @@ compile(Module *m, int size, Modlink *ml)
 			goto bad;
 		capacity+=ml->nlinks;
 	}
-	if(capacity > 0x7fffffff/sizeof(*savedtypes))
+	if(capacity > 0x7fffffff/sizeof(*c->savedtypes))
 		goto bad;
 	if(capacity != 0) {
-		savedtypes=malloc(capacity*sizeof(*savedtypes));
-		if(savedtypes == nil)
+		c->savedtypes=malloc(capacity*sizeof(*c->savedtypes));
+		if(c->savedtypes == nil)
 			goto bad;
 	}
 	for(i=0; i<m->ntype; i++)
-		ntypes=armremember(savedtypes,ntypes,m->type[i]);
+		c->ntypes=armremember(c->savedtypes,c->ntypes,m->type[i]);
 	for(l=m->ext; l->name; l++)
-		ntypes=armremember(savedtypes,ntypes,l->frame);
+		c->ntypes=armremember(c->savedtypes,c->ntypes,l->frame);
 	if(ml != nil)
 		for(i=0; i<ml->nlinks; i++)
-			ntypes=armremember(savedtypes,ntypes,ml->links[i].frame);
+			c->ntypes=armremember(c->savedtypes,c->ntypes,ml->links[i].frame);
 	if(m->origmp != H) {
 		if(m->ntype == 0 || m->type[0] == nil || m->type[0]->size < 0)
 			goto bad;
 		datasize=m->type[0]->size;
 		if(datasize != 0) {
-			stagedmp=malloc(datasize);
-			if(stagedmp == nil)
+			c->stagedmp=malloc(datasize);
+			if(c->stagedmp == nil)
 				goto bad;
-			memmove(stagedmp,m->origmp,datasize);
+			memmove(c->stagedmp,m->origmp,datasize);
 		}
 	}
-	shadow=malloc(sizeof(*shadow));
-	if(shadow == nil)
+	c->shadow=malloc(sizeof(*c->shadow));
+	if(c->shadow == nil)
 		goto bad;
-	memmove(shadow,m,sizeof(*shadow));
-	if(stagedmp != nil)
-		shadow->origmp=stagedmp;
+	memmove(c->shadow,m,sizeof(*c->shadow));
+	if(c->stagedmp != nil)
+		c->shadow->origmp=c->stagedmp;
 	patch=mallocz((size+1)*sizeof(*patch),0);
 	if(m->ntype != 0)
 		tinit=mallocz(m->ntype*sizeof(*tinit),1);
-	tmp=malloc(4096*sizeof(ulong));
-	if(patch == nil || tmp == nil || (m->ntype != 0 && tinit == nil))
+	c->tmp=malloc(4096*sizeof(ulong));
+	if(patch == nil || c->tmp == nil || (m->ntype != 0 && tinit == nil))
 		goto bad;
 
 	pass=0; codeoff=0; rcon.ptr=0;
 	if(!preamble())
 		goto bad;
-	mod=shadow; n=0; nlit=0;
+	mod=c->shadow; n=0; nlit=0;
 	for(i=0; i<size; i++) {
-		codeoff=n; code=tmp;
+		codeoff=n; code=c->tmp;
 		comp(&m->prog[i]);
 		patch[i]=n;
-		words=code-tmp;
+		words=code-c->tmp;
 		if(words < 0 || words > 0x7fffffff/sizeof(*code)-n)
 			goto bad;
 		n+=words;
 	}
 	patch[size]=n; /* handler ranges may end just past the last Dis PC */
 	for(i=0; i<nelem(mactab); i++) {
-		codeoff=n; code=tmp;
+		codeoff=n; code=c->tmp;
 		mactab[i].gen();
 		macro[mactab[i].idx]=n;
-		words=code-tmp;
+		words=code-c->tmp;
 		if(words < 0 || words > 0x7fffffff/sizeof(*code)-n)
 			goto bad;
 		n+=words;
 	}
-	code=tmp; flushcon(0);
-	words=code-tmp;
+	code=c->tmp; flushcon(0);
+	words=code-c->tmp;
 	if(words < 0 || words > 0x7fffffff/sizeof(*code)-n)
 		goto bad;
 	n+=words;
@@ -2388,8 +2412,8 @@ compile(Module *m, int size, Modlink *ml)
 			if(m->type[i] != nil && m->type[i]->initialize == nil)
 				goto bad;
 		}
-	if(stagedmp != nil)
-		memmove(m->origmp,stagedmp,datasize);
+	if(c->stagedmp != nil)
+		memmove(m->origmp,c->stagedmp,datasize);
 	for(l=m->ext; l->name; l++)
 		l->u.pc=(Inst*)RELPC(patch[l->u.pc-m->prog]);
 	if(ml != nil) {
@@ -2402,18 +2426,38 @@ compile(Module *m, int size, Modlink *ml)
 	free(m->prog);
 	m->prog=(Inst*)base;
 	m->compiled=1;
-	free(patch); free(tinit); free(tmp); free(stagedmp); free(shadow); free(savedtypes);
-	patch=nil; tinit=nil; rcon.ptr=0; mod=m;
 	return 1;
 bad:
-	for(i=0; i<ntypes; i++) {
-		t=savedtypes[i].type;
-		if(t->initialize != savedtypes[i].initialize)
-			free(t->initialize);
-		t->initialize=savedtypes[i].initialize;
-		t->destroy=savedtypes[i].destroy;
-	}
-	free(patch); free(tinit); free(base); free(tmp); free(stagedmp); free(shadow); free(savedtypes);
-	base=nil; patch=nil; tinit=nil; rcon.ptr=0; mod=m;
 	return 0;
+}
+
+int
+compile(Module *m, int size, Modlink *ml)
+{
+	ArmCompile c;
+	Type *t;
+	int i, ok;
+
+	memset(&c, 0, sizeof(c));
+	c.m=m; c.size=size; c.ml=ml;
+	base=nil; patch=nil; tinit=nil;
+	armhelpertemp=nil; armhelpercode=nil;
+	ok=kprotect(armcompile, &c);
+	if(!ok) {
+		for(i=0; i<c.ntypes; i++) {
+			t=c.savedtypes[i].type;
+			if(t->initialize != c.savedtypes[i].initialize)
+				free(t->initialize);
+			t->initialize=c.savedtypes[i].initialize;
+			t->destroy=c.savedtypes[i].destroy;
+		}
+		free(base);
+		base=nil;
+	}
+	free(armhelpertemp); free(armhelpercode);
+	armhelpertemp=nil; armhelpercode=nil;
+	free(patch); free(tinit); free(c.tmp); free(c.stagedmp);
+	free(c.shadow); free(c.savedtypes);
+	patch=nil; tinit=nil; rcon.ptr=0; mod=m;
+	return ok;
 }

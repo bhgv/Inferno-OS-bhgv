@@ -72,11 +72,39 @@ sizeof(WORD*) expression is evaluated as 4 in this ARM32 model. Destructor
 instructions are emitted and size-checked, but native destructor calls and
 GC integration are not executed.
 
+## VM error cleanup
+
+ARM compilation now catches VM error() through the runtime kprotect boundary.
+Ownership records live in the caller's frame, outside the runtime setjmp
+frame. Both ordinary failures and non-local exits release module staging,
+helper scratch and unpublished code, restoring shared Type metadata.
+The compiler still requires the existing serialized VM compiler entry;
+its emitter globals are not reentrant.
+
+The publication harness also extracts both runtime kprotect implementations
+and requires them to match. It injects a non-local error at every observed
+emitter, cache-sync and debug-output boundary, checks balanced error frames,
+unchanged module data/PCs and allocation accounting, then recompiles the same
+module successfully. The host error-stack adapter uses setjmp/longjmp; a
+complete native scheduler/device integration test remains outstanding.
+
+The additional runtime-protect.py test uses the real emulator Proc structure
+and waserror/poperror macros. Both runtime function bodies pass return-value,
+nested-error and outer-frame checks across 100 repeated failures. Native-kernel
+execution uses this emulator error-stack adapter, not a kernel build.
+
+```sh
+CFLAGS='-O2 -g -fsanitize=undefined' python3 libinterp/tests/runtime-protect.py
+CFLAGS='-O1 -g -fsanitize=address,undefined --param=asan-stack=0' \
+    python3 libinterp/tests/arm-publish.py
+```
+
+As with GUI unwind tests, ASan stack instrumentation is disabled for the
+longjmp test because the sandbox lacks the /proc information its runtime
+expects. Explicit live-allocation accounting checks cleanup on every path.
+
 ## Still open
 
-- Non-local VM error() unwinds from the instruction emitter do not currently
-  release all compiler scratch allocations. Staged table generation protects
-  the module data, but full exception cleanup needs a runtime protection boundary.
 - The legacy backends share similar table/publication patterns; these ARM tests
   do not establish their safety. RISC-V's leaf sidecar already avoids relocation
   and publishes only after successful synchronization.

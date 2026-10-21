@@ -48,3 +48,6 @@ extern	int	kiounit(int);
 extern	void	kwerrstr(char *, ...);
 extern	void	kgerrstr(char*, uint);
 extern	long	kchanio(void*, void*, int, int);
+
+/* Run a fallible VM callback; a VM error becomes a zero result. */
+extern int kprotect(int (*)(void*), void*);

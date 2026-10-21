@@ -27,6 +27,18 @@ unit=r'''
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <setjmp.h>
+static jmp_buf errorframe;
+static int errdepth, throw_after=-1, events;
+#define waserror() (errdepth++, setjmp(errorframe))
+#define poperror() (errdepth--)
+static void event(void) {
+ events++;
+ if(throw_after==0){errdepth--;longjmp(errorframe,1);}
+ if(throw_after>0)throw_after--;
+}
+RUNTIMEGUARD
+
 #define ulong uint32_t
 #define nil NULL
 #define H ((void*)(uintptr_t)0xffffffff)
@@ -71,6 +83,7 @@ static void testfree(void *p) {
 #define malloc testmalloc
 #define mallocz testmallocz
 #define free testfree
+static ulong *armhelpertemp,*armhelpercode;
 static ulong *code,*base,*patch,*litpool;
 static uint8_t *tinit;
 static Module *mod;
@@ -95,20 +108,20 @@ void (*comvec)(void);
 #define RA3 3
 #define MacCASE 0
 static int R;
-static void con(ulong x,int r,int opt) {(void)x;(void)r;(void)opt;*code++=1;}
-static void mem(int op,int off,int a,int b) {(void)op;(void)off;(void)a;(void)b;*code++=2;}
-static void flushcon(int x) {(void)x;}
-static void opwld(Inst *i,int op,int reg) {(void)i;(void)op;(void)reg;*code++=3;}
-static void opwst(Inst *i,int op,int reg) {(void)i;(void)op;(void)reg;*code++=4;}
+static void con(ulong x,int r,int opt) { event();(void)x;(void)r;(void)opt;*code++=1;}
+static void mem(int op,int off,int a,int b) { event();(void)op;(void)off;(void)a;(void)b;*code++=2;}
+static void flushcon(int x) { event();(void)x;}
+static void opwld(Inst *i,int op,int reg) { event();(void)i;(void)op;(void)reg;*code++=3;}
+static void opwst(Inst *i,int op,int reg) { event();(void)i;(void)op;(void)reg;*code++=4;}
 #define BRAMAC(...) (*code++=5)
 #define LDRW(...) (*code++=6)
-static void macgen(void) {*code++=7;}
+static void macgen(void) { event();*code++=7;}
 static struct {int idx;void (*gen)(void);char *name;} mactab[]={{0,macgen,"macro"}};
-static void print(char *s,...) {(void)s;}
-static void das(ulong *p,int n) {(void)p;(void)n;}
+static void print(char *s,...) { event();(void)s;}
+static void das(ulong *p,int n) { event();(void)p;(void)n;}
 static Module *active;
 static Inst *original;
-static int segflush(void *p,ulong n) {
+static int segflush(void *p,ulong n) { event();
     assert(p && n);flushes++;
     assert(active && !active->compiled && active->prog==original);
     assert(active->ext[0].u.pc==original+1);
@@ -116,10 +129,10 @@ static int segflush(void *p,ulong n) {
         assert(((WORD*)active->origmp)[0]==1 && ((WORD*)active->origmp)[8]==2 && ((WORD*)active->origmp)[16]==1);
     return flushes==fail_flush ? -1 : 0;
 }
-static void comi(Type *t) {(void)t;*code++=8;}
-static void comd(Type *t) {(void)t;*code++=9;}
+static void comi(Type *t) { event();(void)t;*code++=8;}
+static void comd(Type *t) { event();(void)t;*code++=9;}
 RELOCATORS
-static void comp(Inst *i) {
+static void comp(Inst *i) { event();
     if(i->op==ICASE)comcase(i,0);
     if(i->op==ICASEL)comcasel(i);
     if(i->op==IGOTO)comgoto(i);
@@ -176,7 +189,14 @@ static void cleanup(void) {
     assert(live==0);
 }
 int main(void) {
-    int i,failures=0,successes=0;
+    int i,failures=0,successes=0, count;
+    fixture();cflag=5;events=0;assert(compile(&m,4,&ml));count=events;cleanup();
+    for(i=0;i<count;i++) {
+        fixture();cflag=5;throw_after=i;
+        assert(!compile(&m,4,&ml));assert(errdepth==0);unchanged();
+        throw_after=-1;assert(compile(&m,4,&ml));cleanup();
+    }
+    cflag=0;
     for(i=0;i<25;i++) {
         fixture();fail_after=i;
         if(compile(&m,4,&ml))successes++;
@@ -205,10 +225,16 @@ int main(void) {
     fixture();links[0].u.pc=(Inst*)((char*)original+1);assert(!compile(&m,4,&ml));links[0].u.pc=original+1;unchanged();cleanup();
     fixture();handlers[0].pc2=5;assert(!compile(&m,4,&ml));handlers[0].pc2=4;unchanged();cleanup();
     fixture();exceptions[0].pc=-2;assert(!compile(&m,4,&ml));exceptions[0].pc=1;unchanged();cleanup();
-    puts("PASS ARM publication: allocation/cache failures, table/Type rollback, retry, aliases, shared helpers, phase mismatch and end-PC exception ranges");
+    printf("PASS %d VM error injection points\n",count);
+    puts("PASS ARM publication: VM error unwinds, allocation/cache failures, table/Type rollback, retry, aliases, shared helpers, phase mismatch and end-PC exception ranges");
     return 0;
 }
 '''
+runtime=(root/'emu/port/dis.c').read_text()
+guard=runtime[runtime.index('int\nkprotect('):]
+native=(root/'os/port/dis.c').read_text()
+assert guard == native[native.index('int\nkprotect('):]
+unit=unit.replace('RUNTIMEGUARD',guard)
 relocators='\n'.join(function(n,'static void') for n in ['comcase','comcasel','comgoto'])
 unit=unit.replace('RELOCATORS',relocators).replace('PREAMBLE',function('preamble','static int'))
 unit=unit.replace('TYPECOM',function('typecom','void')).replace('PATCHEX',function('patchex','static void'))

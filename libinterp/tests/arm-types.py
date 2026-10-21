@@ -45,6 +45,7 @@ unit=r'''
 HEADER
 CONSTANTS
 static ulong modulebase[16];
+static ulong *armhelpertemp,*armhelpercode;
 static ulong *code,*base=modulebase,*litpool;
 static ulong macro[MacRELQ+1];
 static int pass=1,codeoff,cflag;

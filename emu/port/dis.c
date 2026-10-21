@@ -1150,3 +1150,17 @@ pushrun(Prog *p)
 	if(p->link == nil)
 		isched.runtl = p;
 }
+
+/* Keep the error frame in the runtime: libinterp is independent of Proc's
+ * platform-specific error stack. Callback-owned state must live outside
+ * this setjmp frame so it remains available to the caller on failure. */
+int
+kprotect(int (*fn)(void*), void *arg)
+{
+	int result;
+	if(waserror())
+		return 0;
+	result=fn(arg);
+	poperror();
+	return result;
+}
