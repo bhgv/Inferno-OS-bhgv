@@ -26,11 +26,8 @@ freely, subject to the following restrictions:
 #ifndef LODEPNG_H
 #define LODEPNG_H
 
-//#include <string.h> /*for size_t*/
-
-#ifndef FREERTOS_RISCV64
-typedef unsigned int size_t;
-#endif
+/* Inferno: use the compiler's size_t on both 32-bit and 64-bit targets. */
+#include <stddef.h>
 
 extern const char* LODEPNG_VERSION_STRING;
 

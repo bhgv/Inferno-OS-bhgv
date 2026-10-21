@@ -1227,247 +1227,220 @@ Image_name(void *fp)
 	}
 }
 
+/* loadimage/nsvg strides use signed int; validate before multiplying. */
+static int
+drawimagesize(unsigned w, unsigned h, int *bytes)
+{
+	if(w == 0 || h == 0 || h > 0x7fffffffUL/4 || w > 0x7fffffffUL/4/h)
+		return 0;
+	*bytes=w*h*4;
+	return 1;
+}
+
+/* Optional :positive-size:path prefix, shared by PNG and SVG. */
+static int
+drawimagespec(char **name, unsigned *size)
+{
+	char *p;
+	unsigned n, digit;
+	p=*name;
+	*size=0;
+	if(p == nil || *p == '\0')
+		return 0;
+	if(*p == ':') {
+		p++;
+		n=0;
+		if(*p < '0' || *p > '9')
+			return 0;
+		while(*p >= '0' && *p <= '9') {
+			digit=*p++-'0';
+			if(n > (0x7fffffffUL-digit)/10)
+				return 0;
+			n=n*10+digit;
+		}
+		if(n == 0 || *p++ != ':' || *p == '\0')
+			return 0;
+		*size=n;
+	}
+	*name=p;
+	return 1;
+}
+
+static char*
+drawimagepath(char *name)
+{
+	ulong a, b;
+	char *path;
+	a=strlen(rootdir); b=strlen(name);
+	if(a > 0x7ffffffdUL || b > 0x7ffffffdUL-a)
+		return nil;
+	path=malloc(a+b+2);
+	if(path != nil) {
+		memmove(path, rootdir, a);
+		path[a]='/';
+		memmove(path+a+1, name, b+1);
+	}
+	return path;
+}
+
+/* Both decoders return straight RGBA. Draw ARGB32 is byte-addressed BGRA
+ * with premultiplied components, as required by libmemdraw's compositing. */
+static Image*
+drawimageload(Display *disp, unsigned char *pixels, unsigned w, unsigned h)
+{
+	Rectangle r;
+	Image *image;
+	int bytes, j, locked;
+	unsigned red, alpha;
+	if(!drawimagesize(w,h,&bytes))
+		return nil;
+	for(j=0; j<bytes; j+=4) {
+		red=pixels[j]; alpha=pixels[j+3];
+		pixels[j]=(pixels[j+2]*alpha+127)/255;
+		pixels[j+1]=(pixels[j+1]*alpha+127)/255;
+		pixels[j+2]=(red*alpha+127)/255;
+	}
+	r.min.x=r.min.y=0; r.max.x=w; r.max.y=h;
+	locked=lockdisplay(disp);
+	image=allocimage(disp, r, ARGB32, 0, DTransparent);
+	if(image != nil && loadimage(image,r,pixels,bytes) != bytes) {
+		freeimage(image);
+		image=nil;
+	}
+	if(locked)
+		unlockdisplay(disp);
+	return image;
+}
+
+static Image*
+drawimagepng(Display *disp, char *path, unsigned size)
+{
+	unsigned char *pixels, *scaled;
+	unsigned w, h, nw, nh, x, y, sx, sy, longest, code;
+	int bytes;
+	Image *image;
+	pixels=nil;
+	code=lodepng_decode32_file(&pixels,&w,&h,path);
+	if(code != 0 || pixels == nil || !drawimagesize(w,h,&bytes)) {
+		free(pixels);
+		return nil;
+	}
+	if(size != 0) {
+		longest=w > h ? w : h;
+		nw=(uvlong)w*size/longest; nh=(uvlong)h*size/longest;
+		if(nw == 0) nw=1;
+		if(nh == 0) nh=1;
+		if(!drawimagesize(nw,nh,&bytes)) {
+			free(pixels);
+			return nil;
+		}
+		scaled=malloc(bytes);
+		if(scaled == nil) {
+			free(pixels);
+			return nil;
+		}
+		for(y=0; y<nh; y++) {
+			sy=(uvlong)y*h/nh;
+			for(x=0; x<nw; x++) {
+				sx=(uvlong)x*w/nw;
+				memmove(scaled+((ulong)y*nw+x)*4, pixels+((ulong)sy*w+sx)*4, 4);
+			}
+		}
+		free(pixels); pixels=scaled; w=nw; h=nh;
+	}
+	image=drawimageload(disp,pixels,w,h);
+	free(pixels);
+	return image;
+}
+
+static Image*
+drawimagesvg(Display *disp, char *path, unsigned size)
+{
+	NSVGimage *svg;
+	NSVGrasterizer *rast;
+	unsigned char *pixels;
+	unsigned w, h;
+	double width, height, ratio;
+	float scale;
+	int bytes;
+	Image *image;
+	svg=nsvgParseFromFile(path,"px",72.0f);
+	if(svg == nil)
+		return nil;
+	width=svg->width; height=svg->height;
+	if(!(width > 0) || !(height > 0) || width > 0x7fffffffUL || height > 0x7fffffffUL) {
+		nsvgDelete(svg);
+		return nil;
+	}
+	ratio=size == 0 ? 1.0 : size/(width > height ? width : height);
+	if(!(ratio > 0) || ratio > FLT_MAX) {
+		nsvgDelete(svg);
+		return nil;
+	}
+	scale=ratio;
+	width*=scale; height*=scale;
+	if(!(width > 0) || !(height > 0) || width > 0x7fffffffUL || height > 0x7fffffffUL) {
+		nsvgDelete(svg);
+		return nil;
+	}
+	w=width < 1 ? 1 : (unsigned)width;
+	h=height < 1 ? 1 : (unsigned)height;
+	/* Float rounding must not shorten the requested longest side. */
+	if(size != 0) {
+		if(svg->width >= svg->height) w=size;
+		else h=size;
+	}
+	if(!drawimagesize(w,h,&bytes)) {
+		nsvgDelete(svg);
+		return nil;
+	}
+	rast=nsvgCreateRasterizer();
+	if(rast == nil) {
+		nsvgDelete(svg);
+		return nil;
+	}
+	pixels=malloc(bytes);
+	if(pixels == nil) {
+		nsvgDeleteRasterizer(rast); nsvgDelete(svg);
+		return nil;
+	}
+	nsvgRasterize(rast,svg,0,0,scale,pixels,w,h,w*4);
+	nsvgDeleteRasterizer(rast); nsvgDelete(svg);
+	image=drawimageload(disp,pixels,w,h);
+	free(pixels);
+	return image;
+}
+
 Image*
 display_open(Display *disp, char *name)
 {
-	Image *i;
-	int fd;
-	int len = strlen(name);
-	char c1, c2, c3, c4;
-
-	c4 = name[len-1];
-	c3 = name[len-2];
-	c2 = name[len-3];
-	c1 = name[len-4];
-
-	if(
-		c1 == '.' &&
-		(c2 == 'p' || c2 == 'P') &&
-		(c3 == 'n' || c3 == 'N') &&
-		(c4 == 'g' || c4 == 'G') 
-	){
-		unsigned error;
-		unsigned char* image;
-		unsigned w, h, x, y;
-
-		char filename[128];
-
-		Rectangle r;
-	
-		int locked;
-		int nbytes = 0;
-
-		float scale = 1.0;
-		
-		int dst_size = -1;
-		
-//LOGI("rd png 1 %s ", name);
-		if(name[0] == ':'){
-			name++;
-			dst_size = atoi(name);
-//LOGI("rd png 2 %d ", dst_size);
-			for( ; *name != ':' && *name != '\0'; name++)
-				;
-			if(*name == ':') 
-				name++;
-		}
-//LOGI("rd png 3 %s ", name);
-		if(name == nil || name[0] == '\0')
+	char *extension, *path;
+	Image *image;
+	unsigned size;
+	ulong length;
+	int fd, png, svg;
+	if(!drawimagespec(&name,&size))
+		return nil;
+	length=strlen(name);
+	extension=length >= 4 ? name+length-4 : "";
+	png=cistrcmp(extension,".png")==0;
+	svg=cistrcmp(extension,".svg")==0;
+	if(png || svg) {
+		path=drawimagepath(name);
+		if(path == nil)
 			return nil;
-
-		locked = 1;
-			
-		snprint(filename, 127, "%s/%s", rootdir, name);
-//LOGI("PNG 0: showing %s\n", filename);
-		/*load the PNG in one function call*/
-		error = lodepng_decode32_file(&image, &w, &h, filename);
-
-//LOGI("PNG %d: image=%x, w=%d, h=%d\n", 1, image, w, h);
-		/*stop if there is an error*/
-		if(error || image == nil){
-			LOGE("PNG decoder error %u: %s\n", error, lodepng_error_text(error));
-			return nil;
-		}
-
-		if(dst_size > 0 && w != 0 && h != 0){
-			char *ti = NULL;
-			int nw, nh, z, q;
-
-			if(w > h)
-				scale = (float)dst_size/(float)w;
-			else
-				scale = (float)dst_size/(float)h;
-
-			nw = (int)(scale * (float)w);
-			nh = (int)(scale * (float)h);
-
-			ti = malloc(nw * nh * 4);
-
-			for(z = 0; z < nh; z++){
-				for(q = 0; q < nw; q++){
-					float xpos = (float)q / scale;
-					float ypos = (float)z / scale;
-				
-					int x = (int)xpos;
-					int y = (int)ypos;
-					
-					//if(x >= w) x = w-1;
-					//if(y >= h) y = h-1;
-				
-					ti[z*nw*4 + 4*q] = image[y*w*4 + 4*x];
-					ti[z*nw*4 + 4*q+1] = image[y*w*4 + 4*x+1];
-					ti[z*nw*4 + 4*q+2] = image[y*w*4 + 4*x+2];
-					ti[z*nw*4 + 4*q+3] = image[y*w*4 + 4*x+3];
-				}
-			}
-			free(image);
-			image = ti;
-
-			w = nw;
-			h = nh;
-		}
-
-		r.min.x = 0;
-		r.min.y = 0;
-		r.max = r.min;
-		r.max.x += w;
-		r.max.y += h;
-	
-		nbytes = w*h*4;
-
-		{
-			int j;
-			for(j=0; j<nbytes; j+=4){
-				char tmp = image[j];
-				image[j] = image[j+2];
-				image[j+2] = tmp;
-			}
-		}
-		
-//LOGI("PNG %d:\n", 2);
-		locked = lockdisplay(disp);
-		i = allocimage(disp, r, ARGB32, 0, DTransparent);
-//LOGI("PNG %d: i=%x\n", 3, i);
-		if(i != nil){
-//LOGI("PNG 3.5: nb=%d\n",			loadimage(i, r, image, nbytes)  );
-			if (loadimage(i, r, image, nbytes) != nbytes) {
-				freeimage(i);
-				i = nil;
-			}
-		}
-//LOGI("PNG 3.7:\n");
-		free(image);
-//LOGI("PNG %d:\n", 4);
-		if(locked)
-			unlockdisplay(disp);
-//LOGI("PNG %d:\n", 5);
-		
-	}else if(
-		c1 == '.' &&
-		(c2 == 's' || c2 == 'S') &&
-		(c3 == 'v' || c3 == 'V') &&
-		(c4 == 'g' || c4 == 'G') 
-	){
-		unsigned char* image = nil;
-		unsigned w, h, x, y;
-		char filename[128];
-		
- 		Rectangle r;
-		
-		int locked;
-		int nbytes = 0;
-			
-		NSVGimage *svg = nil;
-		
-		NSVGrasterizer *rast = nil;
-	
-		float scale = 1.0;
-
-		int dst_size = -1;
-		
-LOGI("rd img 1 %s ", name);
-		if(name[0] == ':'){
-			name++;
-			dst_size = atoi(name);
-LOGI("rd img 2 %d ", dst_size);
-			for( ; *name != ':' && *name != '\0'; name++)
-				;
-			if(*name == ':') 
-				name++;
-		}
-LOGI("rd img 3 %s ", name);
-		if(name == nil || name[0] == '\0')
-			return nil;
-			
-		locked = 0;
-	
-		snprint(filename, 127, "%s/%s", rootdir, name);
-//LOGI("SVG showing %s\n", filename);
-		svg = nsvgParseFromFile(filename, "px", 72.0f);
-		if(svg == nil){
-			return nil;
-		}
-
-		if(dst_size > 0){
-			if(svg->width > svg->height)
-				scale = ((float)dst_size) / ((float)svg->width);
-			else
-				scale = ((float)dst_size) / ((float)svg->height);
-		}
-
-		w = (int)(scale * (float)svg->width);
-		h = (int)(scale * (float)svg->height);
-LOGI("rd img 4 %f, %dx%d ", scale, w, h);
-		
-		rast = nsvgCreateRasterizer();
-		if (rast == nil) {
-			nsvgDelete(svg);
-			fprint(2, "Could not init rasterizer.\n");
-			return nil;
-		}
-		
-		image = malloc(w*h*4);
-		if (image == NULL) {
-			fprint(2, "Could not alloc image buffer.\n");
-			nsvgDeleteRasterizer(rast);
-			nsvgDelete(svg);
-			return nil;
-		}
-		
-		nsvgRasterize(rast, svg, 0,0, scale, image, w, h, w*4);
-		
-		nsvgDeleteRasterizer(rast);
-		nsvgDelete(svg);
-		
-		r.min.x = 0;
-		r.min.y = 0;
-		r.max = r.min;
-		r.max.x += w;
-		r.max.y += h;
-		
-		nbytes = w*h*4;
-		
-		locked = lockdisplay(disp);
-		i = allocimage(disp, r, ARGB32, 0, DTransparent);
-		if(i != nil){
-			if (loadimage(i, r, image, nbytes) != nbytes) {
-				freeimage(i);
-				i = nil;
-			}
-		}
-		free(image);
-		if (locked)
-			unlockdisplay(disp);
-	
-	}else{
-		fd = libopen(name, OREAD);
-		if(fd < 0)
-			return nil;
-
-		i = readimage(disp, fd, 1);
-		libclose(fd);
+		image=png ? drawimagepng(disp,path,size) : drawimagesvg(disp,path,size);
+		free(path);
+		return image;
 	}
-	return i;
+	if(size != 0)
+		return nil;
+	fd=libopen(name,OREAD);
+	if(fd < 0)
+		return nil;
+	image=readimage(disp,fd,1);
+	libclose(fd);
+	return image;
 }
 
 void

@@ -70,6 +70,9 @@ The sandbox lacks usable `/proc` information for ASan stack/LSan handling across
 Inferno's siglongjmp error paths. The ASan run therefore checks the heap with
 stack instrumentation disabled; it is not a full stack/LeakSanitizer result.
 
+Related Draw PNG/SVG fixes and decoder tests are tracked in
+[draw-image-audit.md](draw-image-audit.md).
+
 ## Remaining work
 
 - Run the complete emulator with real Tk, display resources, scheduling and GC;
