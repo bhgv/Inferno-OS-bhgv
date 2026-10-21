@@ -246,14 +246,15 @@ dtype(void (*destroy)(Heap*, int), int size, uchar *map, int mapsize)
 	/* The active VM map advances by native pointer slots. Dis64's proposed
 	 * four-byte bitmap quantum is a separate, not yet activated ABI. */
 	if(size < 0 || mapsize < 0 || (mapsize != 0 && map == nil) ||
-				mapsize > 0x7fffffff-(sizeof(Type)-sizeof(t->map)))
+	   mapsize > 0x7fffffff-(sizeof(Type)-sizeof(t->map)))
 		return nil;
 	slots=size/sizeof(void*);
 	if(mapsize > size/(8*sizeof(void*))+(size%(8*sizeof(void*)) != 0))
 		return nil;
 	for(i=0; i<mapsize; i++)
 		for(bit=0; bit<8; bit++)
-			if((map[i] & (0x80>>bit)) && i*8+bit >= slots)
+			if((map[i] & (0x80>>bit)) &&
+			   (i*8+bit >= slots || size%sizeof(void*) != 0))
 				return nil;
 	t = mallocz(sizeof(Type)-sizeof(t->map)+mapsize, 1);
 	if(t != nil) {

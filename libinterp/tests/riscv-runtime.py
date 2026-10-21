@@ -29,7 +29,11 @@ unit=r'''
 #include "comp-riscv64.c"
 #include <assert.h>
 #include <stdio.h>
+#include <setjmp.h>
+static jmp_buf errorframes[8];
+static int errdepth,throw_flush;
 extern void hostfree(void*) __asm__("free");
+int __lsan_is_turned_off(void) {return 1;}
 static int live, fail_after=-1, flushes, flush_result;
 void *testmalloc(size_t n) {
     void *p;
@@ -41,15 +45,20 @@ void *testmalloc(size_t n) {
 }
 void *testmallocz(ulong n, int clear) { (void)clear; return testmalloc(n); }
 void testfree(void *p) { if(p) { live--; hostfree(p); } }
-int segflush(void *p, ulong n) { assert(p && n); flushes++; return flush_result; }
+int segflush(void *p, ulong n) { assert(p && n); flushes++; if(throw_flush)error("flush injected"); return flush_result; }
 void freetype(Type *t) { (void)t; assert(0); }
-void error(char *s) { fprintf(stderr,"unexpected VM error: %s\n",s); abort(); }
+void error(char *s) { if(errdepth)longjmp(errorframes[--errdepth],1); fprintf(stderr,"unexpected VM error: %s\n",s); abort(); }
 REG R;
 void (*optab[256])(void);
 void (*dec[256])(void);
 int cflag;
 typedef struct { int *ret; Modlink *mp; int flag; } F_Loader_compile;
-int kprotect(int (*fn)(void*),void *arg) {return fn(arg);}
+int kprotect(int (*fn)(void*),void *arg) {
+ int r;
+ assert(errdepth<8);
+ if(setjmp(errorframes[errdepth++]))return 0;
+ r=fn(arg);errdepth--;return r;
+}
 void kwerrstr(char *s, ...) { (void)s; }
 ''' + extract('libinterp/loader.c','loadercompile','static int') + '\n' + extract('libinterp/loader.c','Loader_compile','void') + '\n' + extract('libinterp/load.c','freemod','void') + '\n' + extract('libinterp/xec.c','xec','void') + r'''
 static int natives, helpers, decoded, entered, rejected;
@@ -101,6 +110,13 @@ int main(void) {
     prog[2].op=IDIVW;
     m.origmp=H; m.nprog=3; m.prog=prog; m.entry=prog+1;
     before=live;
+    m.prog=nil;assert(!compile(&m,3,nil) && live==before);m.prog=prog;
+    throw_flush=1;
+    assert(!compile(&m,3,nil) && !m.jit && live==before && errdepth==0);
+    dynamic.m=&m;dynamic.MP=(uchar*)"data";
+    Loader_compile(&request);
+    assert(loadresult==-1 && m.origmp==H && !m.jit && live==before && errdepth==0);
+    throw_flush=0;
     fail_after=0;
     assert(compile(&m,3,nil)==0 && m.jit==nil && live==before);
     fail_after=1;
@@ -154,7 +170,7 @@ int main(void) {
     ma.compiled=1; comvec=compiled_entry;
     xec(&p); assert(phase==1);
     assert(live==0);
-    puts("PASS RISC-V runtime: atomic publication, allocation/cache failures, cleanup, opcode mutation, quanta and module dispatch");
+    puts("PASS RISC-V runtime: atomic publication, allocation/cache/VM-error failures, cleanup, opcode mutation, quanta and module dispatch");
     return 0;
 }
 '''

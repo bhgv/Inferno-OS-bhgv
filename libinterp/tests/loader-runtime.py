@@ -101,7 +101,8 @@ int main(void) {
     uchar saved[8], instance[8];
     int i, baseline;
     assert(!dtype(freeheap,-1,nil,0));assert(!dtype(freeheap,8,bits,-1));
-    assert(!dtype(freeheap,8,nil,1));assert(!dtype(freeheap,8,bits,0x7fffffff));
+    assert(!dtype(freeheap,8,nil,1));
+    assert(!dtype(freeheap,sizeof(void*)+1,bits,1));assert(!dtype(freeheap,8,bits,0x7fffffff));
     for(i=0;i<8;i++) {
         bits[0]=0x80>>i;
         assert(!dtype(freeheap,(i+1)*sizeof(void*)-1,bits,1));

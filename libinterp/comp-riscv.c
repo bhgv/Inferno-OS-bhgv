@@ -2,6 +2,7 @@
 #include "isa.h"
 #include "interp.h"
 #include "raise.h"
+#include "kernel.h"
 
 #ifndef RVXLEN
 #define RVXLEN 32
@@ -31,17 +32,27 @@ rventer(void)
 #endif
 }
 
-int
-compile(Module *m, int size, Modlink *ml)
+typedef struct RvCompile RvCompile;
+struct RvCompile {
+	Module *m;
+	int size;
+	Jit *j;
+};
+
+static int
+rvcompile(void *arg)
 {
+	RvCompile *c;
+	Module *m;
+	int size;
 	RvLayout abi;
 	Jit *j;
 	u32int *code;
 	int (*fn[256])(REG*);
 	int count[256], i, n, op, used;
 
-	USED(ml);
-	if(m == nil || m->compiled || size <= 0 || size != m->nprog ||
+	c=arg; m=c->m; size=c->size;
+	if(m == nil || m->compiled || size <= 0 || size != m->nprog || m->prog == nil ||
 	   sizeof(u32int) != 4 || sizeof(void*)*8 != RVXLEN ||
 	   sizeof(WORD)*8 > RVXLEN)
 		return 0;
@@ -72,14 +83,12 @@ compile(Module *m, int size, Modlink *ml)
 	}
 	if(n == 0)
 		return 0;
-	j=mallocz(sizeof(Jit), 1);
+	c->j=j=mallocz(sizeof(Jit), 1);
 	if(j == nil)
 		return 0;
 	j->code=malloc(n*sizeof(u32int));
-	if(j->code == nil) {
-		free(j);
+	if(j->code == nil)
 		return 0;
-	}
 	j->enter=rventer;
 	j->nprog=size;
 	j->size=n*sizeof(u32int);
@@ -101,7 +110,20 @@ compile(Module *m, int size, Modlink *ml)
 	m->jit=j;
 	return 1;
 bad:
-	free(j->code);
-	free(j);
 	return 0;
+}
+
+int
+compile(Module *m, int size, Modlink *ml)
+{
+	RvCompile c;
+	int ok;
+	USED(ml);
+	c.m=m; c.size=size; c.j=nil;
+	ok=kprotect(rvcompile,&c);
+	if(!ok && c.j != nil) {
+		free(c.j->code);
+		free(c.j);
+	}
+	return ok;
 }

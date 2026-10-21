@@ -53,7 +53,9 @@ pointer ABI, not an enabled replacement for all existing VM structures.
 
 Generation has a bounded sizing pass and an emission pass. No module state
 changes until allocations and `segflush` succeed; failures free temporary
-allocations. Module destruction frees both native code and the Jit table.
+allocations. A runtime protection boundary also releases unpublished code
+after VM error() unwinds, including a cache-sync exception. Null program
+buffers are rejected before opcode scanning. Module destruction frees both native code and the Jit table.
 The new Module field is initialized at all three Module allocation sites.
 
 FreeRTOS RV64 `segflush` now issues `fence.i` instead of doing nothing.
@@ -89,7 +91,7 @@ Capstone validates instruction decoding, including RV64 ADDW selection.
 
 `riscv-runtime.py` extracts the production compile/Loader_compile/freemod/xec
 paths and runs them on the host. Native execution is replaced with C stand-in
-callbacks in this test. It checks allocation/cache failures, atomic
+callbacks in this test. It checks allocation/cache/VM-error failures, atomic
 publication, repeated compilation, destruction, opcode changes, fallback,
 module switching, PC advancement, quantum accounting and native-PC dispatch.
 These two test boundaries are complementary; neither boots Inferno or

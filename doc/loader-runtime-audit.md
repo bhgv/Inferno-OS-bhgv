@@ -4,7 +4,8 @@
 
 - `dtype` rejected neither negative sizes nor null/truncated/oversized pointer
   maps. It now bounds map storage, requires each marked native pointer slot to
-  fit the object and explicitly initializes helper pointers with `mallocz`.
+  fit the object, requires pointer-bearing element sizes to preserve pointer
+  alignment across arrays, and explicitly initializes helper pointers with `mallocz`.
 - `Loader_tnew` leaked a newly constructed Type if its table could not grow.
   It now releases that Type and checks table-size arithmetic before growth.
 - `Loader_dnew` retained the creator's Type reference after `heapz`, skipped nil

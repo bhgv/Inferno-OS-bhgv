@@ -474,7 +474,7 @@ Loader_compile(void *a)
 		kwerrstr("compiled module");
 		return;
 	}
-	 *f->ret=0;
+	*f->ret=0;
 	if(cflag || f->flag) {
 		savedmp=m->origmp;
 		m->origmp=f->mp->MP;
@@ -484,6 +484,6 @@ Loader_compile(void *a)
 			f->mp->prog=m->prog;
 			f->mp->compiled=m->compiled;
 		} else
-	 *f->ret=-1;
+			*f->ret=-1;
 	}
 }

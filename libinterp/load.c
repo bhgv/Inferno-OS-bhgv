@@ -124,28 +124,113 @@ brpatch(Inst *ip, Module *m)
 	return 1;
 }
 
-Module*
-parsemod(char *path, uchar *code, ulong length, Dir *dir)
+/* Check the complete encoded operand before the legacy decoder reads it. */
+static int
+disneed(uchar *p, uchar *end, ulong n)
 {
+	return p <= end && n <= (ulong)(end-p);
+}
+
+static int
+disopvalid(uchar *p, uchar *end)
+{
+	if(!disneed(p,end,1))
+		return 0;
+	return disneed(p,end,(*p&0xc0) == 0xc0 ? 4 : (*p&0x80) ? 2 : 1);
+}
+
+static int
+disname(uchar *p, uchar *end)
+{
+	return p < end && memchr(p,0,end-p) != nil;
+}
+
+static int
+disrange(int size, int offset, int count, int width)
+{
+	return offset >= 0 && count >= 0 && offset <= size &&
+		count <= (size-offset)/width && offset%width == 0;
+}
+
+/* Data initializers must respect the same pointer slots as GC. */
+static int
+disptr(Type *t, int offset)
+{
+	int slot;
+	if(t == nil || t->size < sizeof(void*))
+		return 0;
+	offset %= t->size;
+	if(offset%sizeof(void*) != 0 || offset > t->size-sizeof(void*))
+		return 0;
+	slot=offset/sizeof(void*);
+	return slot/8 < t->np && (t->map[slot/8] & (0x80>>(slot%8))) != 0;
+}
+
+static int
+displain(Type *t, int offset, int n)
+{
+	int at, count, slot, last;
+	if(n == 0 || (t != nil && t->np == 0))
+		return 1;
+	if(t == nil || t->size <= 0)
+		return 0;
+	while(n != 0) {
+		at=offset%t->size;
+		count=t->size-at;
+		if(count > n)
+			count=n;
+		last=(at+count-1)/sizeof(void*);
+		for(slot=at/sizeof(void*); slot<=last; slot++)
+			if(slot/8 < t->np && (t->map[slot/8] & (0x80>>(slot%8))))
+				return 0;
+		offset+=count;
+		n-=count;
+	}
+	return 1;
+}
+
+typedef struct DisLoad DisLoad;
+struct DisLoad {
+	char *path;
+	uchar *code;
+	ulong length;
+	Dir *dir;
+	Module *m;
+};
+
+static int
+disparse(void *arg)
+{
+	DisLoad *c;
+	char *path;
+	uchar *code;
+	ulong length;
+	Dir *dir;
 	Heap *h;
 	Inst *ip;
-	Type *pt;
+	Type *pt, *addrtype, *typestack[DADEPTH];
 	String *s;
 	Module *m;
 	Array *ary;
 	ulong ul[2];
 	WORD lo, hi;
 	int lsize, id, v, entry, entryt, tnp, tsz, siglen;
-	int de, pc, i, n, isize, dsize, hsize, dasp;
-	uchar *mod, sm, *istream, **isp, *si, *addr, *dastack[DADEPTH];
+	int de, pc, i, n, isize, dsize, hsize, dasp, addrsize, sizestack[DADEPTH];
+	uchar *mod, sm, *istream, **isp, *si, *addr, *end, *dastack[DADEPTH];
 	Link *l;
 
+	c=arg; path=c->path; code=c->code; length=c->length; dir=c->dir;
+	if(code == nil || length > 0x7fffffff) {
+		kwerrstr("bad Dis length");
+		return 0;
+	}
+	end=code+length;
 	istream = code;
 	isp = &istream;
 
-	m = malloc(sizeof(Module));
+	c->m = m = mallocz(sizeof(Module),1);
 	if(m == nil)
-		return nil;
+		return 0;
 
 	m->jit = nil;
 	m->dev = dir->dev;
@@ -155,14 +240,18 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 	m->origmp = H;
 	m->pctab = nil;
 
+	if(!disopvalid(istream,end))
+		goto truncated;
 	switch(operand(isp)) {
 	default:
 		kwerrstr("bad magic");
 		goto bad;
 	case SMAGIC:
+		if(!disopvalid(istream,end))
+			goto truncated;
 		siglen = operand(isp);
 		n = length-(*isp-code);
-		if(n < 0 || siglen > n){
+		if(n < 0 || siglen < 0 || siglen > n){
 			kwerrstr("corrupt signature");
 			goto bad;
 		}
@@ -180,16 +269,37 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 		break;
 	}
 
+	if(!disopvalid(istream,end))
+		goto truncated;
 	m->rt = operand(isp);
+	if(!disopvalid(istream,end))
+		goto truncated;
 	m->ss = operand(isp);
+	if(!disopvalid(istream,end))
+		goto truncated;
 	isize = operand(isp);
+	if(!disopvalid(istream,end))
+		goto truncated;
 	dsize = operand(isp);
+	if(!disopvalid(istream,end))
+		goto truncated;
 	hsize = operand(isp);
+	if(!disopvalid(istream,end))
+		goto truncated;
 	lsize = operand(isp);
+	if(!disopvalid(istream,end))
+		goto truncated;
 	entry = operand(isp);
+	if(!disopvalid(istream,end))
+		goto truncated;
 	entryt = operand(isp);
 
-	if(isize < 0 || dsize < 0 || hsize < 0 || lsize < 0) {
+	if(isize < 0 || dsize < 0 || hsize < 0 || lsize < 0 ||
+	   isize > 0x7fffffff/sizeof(Inst) ||
+	   hsize > 0x7fffffff/sizeof(Type*) ||
+	   lsize >= 0x7fffffff/sizeof(Link) ||
+	   isize > (end-istream)/2 || hsize > (end-istream)/3 ||
+	   lsize > (end-istream)/7) {
 		kwerrstr("implausible Dis file");
 		goto bad;
 	}
@@ -205,7 +315,13 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 
 	ip = m->prog;
 	for(i = 0; i < isize; i++) {
+		if(!disneed(istream,end,2))
+			goto truncated;
 		ip->op = *istream++;
+		if(ip->op >= MAXDIS) {
+			kwerrstr("bad Dis opcode");
+			goto bad;
+		}
 		ip->add = *istream++;
 		ip->reg = 0;
 		ip->s.imm = 0;
@@ -214,6 +330,8 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 		case AXIMM:
 		case AXINF:
 		case AXINM:
+			if(!disopvalid(istream,end))
+				goto truncated;
 			ip->reg = operand(isp);
 		 	break;
 		}
@@ -221,20 +339,30 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 		case SRC(AFP):
 		case SRC(AMP):	
 		case SRC(AIMM):
+			if(!disopvalid(istream,end))
+				goto truncated;
 			ip->s.ind = operand(isp);
 			break;
 		case SRC(AIND|AFP):
 		case SRC(AIND|AMP):
+			if(!disopvalid(istream,end))
+				goto truncated;
 			ip->s.i.f = operand(isp);
+			if(!disopvalid(istream,end))
+				goto truncated;
 			ip->s.i.s = operand(isp);
 			break;
 		}
 		switch(UXDST(ip->add)) {
 		case DST(AFP):
 		case DST(AMP):	
+			if(!disopvalid(istream,end))
+				goto truncated;
 			ip->d.ind = operand(isp);
 			break;
 		case DST(AIMM):
+			if(!disopvalid(istream,end))
+				goto truncated;
 			ip->d.ind = operand(isp);
 			if(brpatch(ip, m) == 0) {
 				kwerrstr("bad branch addr");
@@ -243,7 +371,11 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 			break;
 		case DST(AIND|AFP):
 		case DST(AIND|AMP):
+			if(!disopvalid(istream,end))
+				goto truncated;
 			ip->d.i.f = operand(isp);
+			if(!disopvalid(istream,end))
+				goto truncated;
 			ip->d.i.s = operand(isp);
 			break;
 		}
@@ -257,17 +389,25 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 		goto bad;
 	}
 	for(i = 0; i < hsize; i++) {
+		if(!disopvalid(istream,end))
+			goto truncated;
 		id = operand(isp);
 		if(id < 0 || id >= hsize || m->type[id] != nil) {
 			kwerrstr("heap id range");
 			goto bad;
 		}
+		if(!disopvalid(istream,end))
+			goto truncated;
 		tsz = operand(isp);
+		if(!disopvalid(istream,end))
+			goto truncated;
 		tnp = operand(isp);
 		if(tsz < 0 || tnp < 0 || tnp > 128*1024){
 			kwerrstr("implausible Dis file");
 			goto bad;
 		}
+		if(!disneed(istream,end,tnp))
+			goto truncated;
 		pt = dtype(freeheap, tsz, istream, tnp);
 		if(pt == nil) {
 			kwerrstr(exNomem);
@@ -291,59 +431,114 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 		m->origmp = H2D(uchar*, h);
 	}
 	addr = m->origmp;
+	addrsize=dsize;
+	addrtype=dsize == 0 ? nil : m->type[0];
 	dasp = 0;
 	for(;;) {
+		if(!disneed(istream,end,1))
+			goto truncated;
 		sm = *istream++;
 		if(sm == 0)
 			break;
 		n = DLEN(sm);
-		if(n == 0)
+		if(n == 0) {
+			if(!disopvalid(istream,end))
+				goto truncated;
 			n = operand(isp);
+		}
+		if(!disopvalid(istream,end))
+			goto truncated;
 		v = operand(isp);
-		si = addr + v;
+		if(v < 0 || v > addrsize || n < 0)
+			goto datarange;
+		si = addr == H ? H : addr + v;
 		switch(DTYPE(sm)) {
 		default:
 			kwerrstr("bad data item");
 			goto bad;
 		case DEFS:
+			if(!disrange(addrsize,v,1,sizeof(String*)) || !disptr(addrtype,v))
+				goto datarange;
+			if(!disneed(istream,end,n))
+				goto truncated;
 			s = c2string((char*)istream, n);
 			istream += n;
+			destroy(*(String**)si);
 			*(String**)si = s;
 			break;
 		case DEFB:
+			if(!disrange(addrsize,v,n,1) ||
+			   !displain(addrtype,v,n*1))
+				goto datarange;
+			if(n > (end-istream)/1)
+				goto truncated;
 			for(i = 0; i < n; i++)
 				*si++ = *istream++;
 			break;
 		case DEFW:
+			if(!disrange(addrsize,v,n,sizeof(WORD)) ||
+			   !displain(addrtype,v,n*sizeof(WORD)))
+				goto datarange;
+			if(n > (end-istream)/4)
+				goto truncated;
 			for(i = 0; i < n; i++) {
+				if(!disneed(istream,end,4))
+					goto truncated;
 				*(WORD*)si = disw(isp);
 				si += sizeof(WORD);
 			}
 			break;
 		case DEFL:
+			if(!disrange(addrsize,v,n,sizeof(LONG)) ||
+			   !displain(addrtype,v,n*sizeof(LONG)))
+				goto datarange;
+			if(n > (end-istream)/8)
+				goto truncated;
 			for(i = 0; i < n; i++) {
+				if(!disneed(istream,end,4))
+					goto truncated;
 				hi = disw(isp);
+				if(!disneed(istream,end,4))
+					goto truncated;
 				lo = disw(isp);
 				*(LONG*)si = (LONG)((uvlong)(unsigned int)hi << 32 | (unsigned int)lo);
 				si += sizeof(LONG);
 			}
 			break;
 		case DEFF:
+			if(!disrange(addrsize,v,n,sizeof(REAL)) ||
+			   !displain(addrtype,v,n*sizeof(REAL)))
+				goto datarange;
+			if(n > (end-istream)/8)
+				goto truncated;
 			for(i = 0; i < n; i++) {
+				if(!disneed(istream,end,4))
+					goto truncated;
 				ul[0] = disw(isp);
+				if(!disneed(istream,end,4))
+					goto truncated;
 				ul[1] = disw(isp);
 				*(REAL*)si = canontod(ul);
 				si += sizeof(REAL);
 			}
 			break;
 		case DEFA:			/* Array */
+			if(!disrange(addrsize,v,1,sizeof(Array*)) || !disptr(addrtype,v))
+				goto datarange;
+			if(!disneed(istream,end,4))
+				goto truncated;
 			v = disw(isp);
 			if(v < 0 || v >= m->ntype) {
 				kwerrstr("bad array type");
 				goto bad;
 			}
 			pt = m->type[v];
+			if(!disneed(istream,end,4))
+				goto truncated;
 			v = disw(isp);
+			if(v < 0 || pt->size < 0 ||
+			   (pt->size != 0 && v > (0x7fffffff-sizeof(Array))/pt->size))
+				goto datarange;
 			h = nheap(sizeof(Array)+(pt->size*v));
 			h->t = &Tarray;
 			h->t->ref++;
@@ -354,20 +549,29 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 			ary->data = (uchar*)ary+sizeof(Array);
 			memset((void*)ary->data, 0, pt->size*v);
 			initarray(pt, ary);
+			destroy(A(si));
 			A(si) = ary;
 			break;			
 		case DIND:			/* Set index */
+			if(!disrange(addrsize,v,1,sizeof(Array*)) || !disptr(addrtype,v))
+				goto datarange;
 			ary = A(si);
 			if(ary == H || D2H(ary)->t != &Tarray) {
 				kwerrstr("ind not array");
 				goto bad;
 			}
+			if(!disneed(istream,end,4))
+				goto truncated;
 			v = disw(isp);
 			if(v > ary->len || v < 0 || dasp >= DADEPTH) {
 				kwerrstr("array init range");
 				goto bad;
 			}
+			typestack[dasp]=addrtype;
+			sizestack[dasp]=addrsize;
 			dastack[dasp++] = addr;
+			addrtype=ary->t;
+			addrsize=(ary->len-v)*ary->t->size;
 			addr = ary->data+v*ary->t->size;
 			break;
 		case DAPOP:
@@ -376,11 +580,13 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 				goto bad;
 			}
 			addr = dastack[--dasp];
+			addrsize=sizestack[dasp];
+			addrtype=typestack[dasp];
 			break;
 		}
 	}
 	mod = istream;
-	if(memchr(mod, 0, 128) == 0) {
+	if(!disname(mod,end) || strlen((char*)mod) >= 128) {
 		kwerrstr("bad module name");
 		goto bad;
 	}
@@ -392,15 +598,27 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 	while(*istream++)
 		;
 
-	l = m->ext = (Link*)malloc((lsize+1)*sizeof(Link));
+	l = m->ext = (Link*)mallocz((lsize+1)*sizeof(Link),1);
 	if(l == nil){
 		kwerrstr(exNomem);
 		goto bad;
 	}
 	for(i = 0; i < lsize; i++, l++) {
+		if(!disopvalid(istream,end))
+			goto truncated;
 		pc = operand(isp);
+		if(!disopvalid(istream,end))
+			goto truncated;
 		de = operand(isp);
+		if(!disneed(istream,end,4))
+			goto truncated;
 		v  = disw(isp);
+		if(pc < 0 || pc >= isize || de < -1 || de >= hsize) {
+			kwerrstr("bad export index");
+			goto bad;
+		}
+		if(!disname(istream,end))
+			goto truncated;
 		pt = nil;
 		if(de != -1)
 			pt = m->type[de];
@@ -419,21 +637,35 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 		int j, nl;
 		Import *i1, **i2;
 
+		if(!disopvalid(istream,end))
+			goto truncated;
 		nl = operand(isp);
-		i2 = m->ldt = (Import**)malloc((nl+1)*sizeof(Import*));
+		if(nl < 0 || nl >= 0x7fffffff/sizeof(Import*) ||
+		   nl > end-istream)
+			goto datarange;
+		i2 = m->ldt = (Import**)mallocz((nl+1)*sizeof(Import*),1);
 		if(i2 == nil){
 			kwerrstr(exNomem);
 			goto bad;
 		}
 		for(i = 0; i < nl; i++, i2++){
+			if(!disopvalid(istream,end))
+				goto truncated;
 			n = operand(isp);
-			i1 = *i2 = (Import*)malloc((n+1)*sizeof(Import));
+			if(n < 0 || n >= 0x7fffffff/sizeof(Import) ||
+			   n > end-istream)
+				goto datarange;
+			i1 = *i2 = (Import*)mallocz((n+1)*sizeof(Import),1);
 			if(i1 == nil){
 				kwerrstr(exNomem);
 				goto bad;
 			}
 			for(j = 0; j < n; j++, i1++){
+				if(!disneed(istream,end,4))
+					goto truncated;
 				i1->sig = disw(isp);
+				if(!disname(istream,end))
+					goto truncated;
 				i1->name = strdup((char*)istream);
 				if(i1->name == nil){
 					kwerrstr(exNomem);
@@ -443,6 +675,8 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 					;
 			}
 		}
+		if(!disneed(istream,end,1))
+			goto truncated;
 		istream++;
 	}
 
@@ -451,30 +685,54 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 		Handler *h;
 		Except *e;
 
+		if(!disopvalid(istream,end))
+			goto truncated;
 		nh = operand(isp);
-		m->htab = malloc((nh+1)*sizeof(Handler));
+		if(nh < 0 || nh >= 0x7fffffff/sizeof(Handler) ||
+		   nh > end-istream)
+			goto datarange;
+		m->htab = mallocz((nh+1)*sizeof(Handler),1);
 		if(m->htab == nil){
 			kwerrstr(exNomem);
 			goto bad;
 		}
 		h = m->htab;
 		for(i = 0; i < nh; i++, h++){
+			if(!disopvalid(istream,end))
+				goto truncated;
 			h->eoff = operand(isp);
+			if(!disopvalid(istream,end))
+				goto truncated;
 			h->pc1 = operand(isp);
+			if(!disopvalid(istream,end))
+				goto truncated;
 			h->pc2 = operand(isp);
+			if(!disopvalid(istream,end))
+				goto truncated;
 			n = operand(isp);
+			if(n < -1 || n >= hsize ||
+			   h->pc1 > h->pc2 || h->pc2 > isize) {
+				kwerrstr("bad exception index");
+				goto bad;
+			}
 			if(n != -1)
 				h->t = m->type[n];
+			if(!disopvalid(istream,end))
+				goto truncated;
 			n = operand(isp);
+			if(n < 0 || (n>>16) > (n&0xffff))
+				goto datarange;
 			h->ne = n>>16;
 			n &= 0xffff;
-			h->etab = malloc((n+1)*sizeof(Except));
+			h->etab = mallocz((n+1)*sizeof(Except),1);
 			if(h->etab == nil){
 				kwerrstr(exNomem);
 				goto bad;
 			}
 			e = h->etab;
 			for(j = 0; j < n; j++, e++){
+				if(!disname(istream,end))
+					goto truncated;
 				e->s = strdup((char*)istream);
 				if(e->s == nil){
 					kwerrstr(exNomem);
@@ -482,11 +740,21 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 				}
 				while(*istream++)
 					;
+				if(!disopvalid(istream,end))
+					goto truncated;
 				e->pc = operand(isp);
+				if(e->pc >= (ulong)isize)
+					goto datarange;
 			}
 			e->s = nil;
+			if(!disopvalid(istream,end))
+				goto truncated;
 			e->pc = operand(isp);
+			if(e->pc != (ulong)-1 && e->pc >= (ulong)isize)
+				goto datarange;
 		}
+		if(!disneed(istream,end,1))
+			goto truncated;
 		istream++;
 	}
 
@@ -517,10 +785,29 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 	m->link = modules;
 	modules = m;
 
-	return m;
+	return 1;
+truncated:
+	kwerrstr("truncated Dis file");
+	goto bad;
+datarange:
+	kwerrstr("bad Dis data range");
 bad:
-	destroy(m->origmp);
-	freemod(m);
+	return 0;
+}
+
+Module*
+parsemod(char *path, uchar *code, ulong length, Dir *dir)
+{
+	DisLoad c;
+	c.path=path; c.code=code; c.length=length; c.dir=dir; c.m=nil;
+	if(kprotect(disparse,&c))
+		return c.m;
+	if(c.m != nil) {
+		if(c.m->ext != nil)
+			destroylinks(c.m);
+		destroy(c.m->origmp);
+		freemod(c.m);
+	}
 	return nil;
 }
 
