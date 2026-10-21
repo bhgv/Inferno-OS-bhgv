@@ -49,7 +49,7 @@ zero division, invalid counts and no mutation on errors. UBSan is enabled by
 default; CC and CFLAGS can override the compiler/options. These are host tests
 with a stubbed VM error boundary, not an emulator boot or target ABI test.
 
-All 20 libinterp Python suites pass with Unicorn/Capstone/Keystone installed.
+All 23 libinterp Python suites pass with Unicorn/Capstone/Keystone installed.
 Full xec.c and comp-386.c pass host syntax checks with Linux/386 headers;
 comp-arm.c passes with Linux/arm headers. These checks do not replace target
 builds or on-device execution, and no performance measurements were made.
@@ -87,7 +87,7 @@ and hardware execution remain unverified.
 ## Executed x86 encoders
 
 x86-integer-jit.py extracts production addressing/ALU encoders and arithmetic
-switch bodies, generates IA-32 code and executes it in Unicorn. 49,560 checks
+switch bodies, generates IA-32 code and executes it in Unicorn. 55,176 checks
 cover byte/word/big arithmetic, carries/borrows, destination aliases, frame,
 module, immediate and indirect addressing. Full surrounding memory is compared
 to catch unintended writes. Helper dispatch is a recording stub: tests check
@@ -95,6 +95,9 @@ routing/operand flags, not the full runtime C-call ABI. The emitter is built
 with UBSan. Its unaligned ulong stores in genw/modrm were replaced by explicit
 little-endian bytes; x86 immediate/displacement fields need not be aligned.
 
-Together the three arithmetic suites run 1,421,382 oracle/dispatch checks.
+Together the three arithmetic suites run 1,426,998 oracle/dispatch checks.
 These supplement the ARM/RISC-V publication, runtime and native-encoder suites;
 none is a claim that all six requested architectures are implemented or booted.
+
+Publication, Type helpers, metadata validation and additional move/branch checks
+are documented in [x86-jit-audit.md](x86-jit-audit.md).

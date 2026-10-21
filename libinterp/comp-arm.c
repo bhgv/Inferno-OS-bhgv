@@ -3,6 +3,7 @@
 #include "interp.h"
 #include "raise.h"
 #include "kernel.h"
+#include "jit-validate.h"
 
 /*
  * to do:
@@ -830,9 +831,9 @@ cbra(Inst *i, int r)
 		mid(i, Ldw, RA1);
 		CMPI(AL, RA1, 0, 0, i->s.imm);
 		r = swapbraop(r);
-	} else if(UXSRC(i->add) == SRC(AIMM) && FITS8(-i->s.imm)) {
+	} else if(UXSRC(i->add) == SRC(AIMM) && FITS8(-(ulong)i->s.imm)) {
 		mid(i, Ldw, RA1);
-		CMNI(AL, RA1, 0, 0, -i->s.imm);
+		CMNI(AL, RA1, 0, 0, -(ulong)i->s.imm);
 		r = swapbraop(r);
 	} else if((i->add & ARM) == AXIMM && FITS8(i->reg)) {
 		opwld(i, Ldw, RA1);
@@ -2158,16 +2159,6 @@ patchex(Module *m, ulong *p)
 
 /* Roll back only helpers created by this compilation; existing Type code
  * may be shared with modules that are already running. */
-static int
-armvalidpc(Module *m, Inst *pc, int size)
-{
-	uintptr start, address, offset;
-	start=(uintptr)m->prog; address=(uintptr)pc;
-	if(address < start)
-		return 0;
-	offset=address-start;
-	return offset%sizeof(Inst) == 0 && offset/sizeof(Inst) < size;
-}
 
 static int
 armvalidmeta(Module *m, int size, Modlink *ml)
@@ -2176,16 +2167,16 @@ armvalidmeta(Module *m, int size, Modlink *ml)
 	Handler *h;
 	Except *e;
 	int i;
-	if(!armvalidpc(m,m->entry,size))
+	if(!jitvalidpc(m,m->entry,size))
 		return 0;
 	for(l=m->ext; l->name; l++)
-		if(!armvalidpc(m,l->u.pc,size))
+		if(!jitvalidpc(m,l->u.pc,size))
 			return 0;
 	if(ml != nil) {
 		if(ml->nlinks < 0)
 			return 0;
 		for(i=0; i<ml->nlinks; i++)
-			if(!armvalidpc(m,ml->links[i].u.pc,size))
+			if(!jitvalidpc(m,ml->links[i].u.pc,size))
 				return 0;
 	}
 	if(m->htab != nil)
@@ -2247,10 +2238,10 @@ armcompile(void *arg)
 
 	c=arg; m=c->m; ml=c->ml; size=c->size;
 	if(m == nil || m->compiled || size <= 0 || size != m->nprog ||
-	   m->ntype < 0 || m->prog == nil || m->ext == nil ||
+	   m->ntype < 0 || m->prog == nil || m->ext == nil || m->origmp == nil ||
 	   (m->ntype != 0 && m->type == nil) ||
 	   size >= 0x7fffffff/sizeof(*patch) ||
-	   size > 0x7fffffff/sizeof(Inst) || !armvalidmeta(m,size,ml))
+	   size > 0x7fffffff/sizeof(Inst) || (!armvalidmeta(m,size,ml) || !jitvalidprogram(m,size)))
 		return 0;
 	base=nil; patch=nil; tinit=nil; c->tmp=nil;
 	c->stagedmp=nil; c->shadow=nil; c->savedtypes=nil; c->ntypes=0; datasize=0;

@@ -25,11 +25,11 @@ start=src.index('comp(Inst *i)')
 def case(name):
     a=src.index('\tcase '+name+':',start)
     return src[a:src.index('\t\tbreak;',a)+len('\t\tbreak;')]
-names=['I'+a+b for a in ('ADD','SUB','MUL','AND','OR','XOR') for b in ('B','W')]+['I'+a+'L' for a in ('ADD','SUB','AND','OR','XOR')]
+names=['I'+a+b for a in ('ADD','SUB','MUL','AND','OR','XOR') for b in ('B','W')]+['I'+a+'L' for a in ('ADD','SUB','AND','OR','XOR')]+['ICVTWL','IMOVF','IMOVL']
 fallback=['ISHLB','ISHLW','ISHRB','ISHRW','ISHLL','ISHRL','IDIVB','IDIVW','IDIVL','IMODB','IMODW','IMODL','ILSRW','ILSRL','IMULX','IDIVX','ICVTXX','IMULX0','IDIVX0','ICVTXX0','IMULX1','IDIVX1','ICVTXX1','ICVTFX']
 # Groups for a helper can be reached from multiple starting labels; obtain
 # unique full blocks directly by splitting the production switch on break.
-allblocks=src[start:src.index('\nstatic void\npreamble',start)].split('\t\tbreak;')
+allblocks=src[start:src.index('\nstatic int\npreamble',start)].split('\t\tbreak;')
 groups=[]
 for block in allblocks:
     labels=re.findall(r'\tcase (\w+):',block)
@@ -38,6 +38,11 @@ for block in allblocks:
         a=block.index('\tcase ')
         groups.append(block[a:]+'\t\tbreak;')
 header=src[src.index('enum\n'):src.index('static\tuchar*\tcode;')]
+nativecases=[]
+seen=set()
+for n in names:
+    if n not in seen:
+        block=case(n);nativecases.append(block);seen.update(re.findall(r'case (\w+):',block))
 unit=r'''
 #include <stdint.h>
 #include <stdio.h>
@@ -60,7 +65,7 @@ int emit(uchar *out,int op,int add,int s,int m,int d){
  i->op=op;i->add=add;i->s.ind=s;i->reg=m;i->d.ind=d;
  code=out;puntmask=0;
  switch(op){
-'''+ '\n'.join(case(n) for n in names)+'\n'.join(groups)+r'''
+'''+ '\n'.join(nativecases)+'\n'.join(groups)+r'''
  default:abort();
  }
  return puntmask?-puntmask:(int)(code-out);
@@ -88,7 +93,7 @@ with tempfile.TemporaryDirectory(prefix='x86-integer-jit-') as td:
         out=(C.c_ubyte*256)();assert lib.emit(out,ids[n],lib.mode(0),0x100,0x200,0x300)==-(1|2|64),n
         checks+=1
     BASE,FP,MP=0x10000,0x20000,0x30000
-    for name in names:
+    for name in names[:-3]:
         bits=8 if name.endswith('B') else 32 if name.endswith('W') else 64
         mask=(1<<bits)-1
         vectors=[0,1,2,mask,mask-1,1<<(bits-1),(1<<(bits-1))-1]
@@ -140,5 +145,43 @@ with tempfile.TemporaryDirectory(prefix='x86-integer-jit-') as td:
                     assert got==want,(name,mode,alias,hex(av),hex(bv),hex(got),hex(want),blob.hex())
                     for base in (FP,MP):
                         assert bytes(u.mem_read(base,0x500))==expected[base],(name,mode,alias,'unexpected memory write')
+                    checks+=1
+    # Complete source capture for overlapping big/real moves and word->big.
+    patterns=[0,1,0x80000000,0x7fffffff,0xffffffffffffffff,
+              0x7ff0000000000001,0xfff0000000000001,0x8000000000000000]
+    patterns += [rng.getrandbits(64) for _ in range(100)]
+    for name in names[-3:]:
+        for mode in [0,1,2,3,5]:
+            if mode==3 and name!='ICVTWL':continue
+            for delta in [0,4,-4,0x100]:
+                sarg=0x100;darg=0x100+delta
+                sr=(MP if mode==1 else FP)+0x4000
+                dr=(MP if mode in (2,5) else FP)+0x4000
+                saddr=sr+0x100;daddr=dr+0x100+delta
+                if mode==5:
+                    sarg=(0x20<<16)|0x40;darg=(0x30<<16)|0x48
+                    saddr=FP+0x4520;daddr=MP+0x4530
+                if mode==3:sarg=-2147483648
+                out=(C.c_ubyte*256)();size=lib.emit(out,ids[name],lib.mode(mode),sarg,0,darg)
+                blob=bytes(out[:size]);u=Uc(UC_ARCH_X86,UC_MODE_32)
+                for address in (BASE,FP,MP):u.mem_map(address,0x10000)
+                u.mem_write(BASE,blob)
+                for value in patterns:
+                    for base in (FP,MP):u.mem_write(base,b'\xa5'*0x8000)
+                    if mode==5:
+                        u.mem_write(FP+0x4040,struct.pack('<I',FP+0x4500))
+                        u.mem_write(MP+0x4048,struct.pack('<I',MP+0x4500))
+                    width=4 if name=='ICVTWL' else 8
+                    u.mem_write(saddr,(value&((1<<(width*8))-1)).to_bytes(width,'little'))
+                    raw=(sarg&0xffffffff).to_bytes(4,'little') if mode==3 else bytes(u.mem_read(saddr,width))
+                    want=int.from_bytes(raw,'little',signed=name=='ICVTWL')&((1<<64)-1)
+                    expected={base:bytearray(u.mem_read(base,0x8000)) for base in (FP,MP)}
+                    destbase=FP if daddr<MP else MP
+                    expected[destbase][daddr-destbase:daddr-destbase+8]=want.to_bytes(8,'little')
+                    u.reg_write(UC_X86_REG_ESI,FP+0x4000);u.reg_write(UC_X86_REG_EDI,MP+0x4000)
+                    u.reg_write(UC_X86_REG_EFLAGS,2)
+                    u.emu_start(BASE,BASE+size,count=100)
+                    for base in (FP,MP):
+                        assert bytes(u.mem_read(base,0x8000))==expected[base],(name,mode,delta,hex(value),'move/conversion memory differs')
                     checks+=1
 print(f'PASS x86 integer JIT: {checks} executed oracle/fallback checks, byte/word/big, frame/module/immediate/indirect operands and aliases; production emitters under UBSan')

@@ -34,6 +34,7 @@ OFILES=\
 	string.$O\
 
 HFILES=\
+	jit-validate.h\
 	$ROOT/include/interp.h\
 	$ROOT/include/isa.h\
 	runt.h\

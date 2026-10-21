@@ -59,7 +59,7 @@ static void urk(char *s) { (void)s; abort(); }
 static void ccon(int cc, ulong v, int r, int opt) {
     (void)opt;
     *code++ = ((ulong)cc<<28)|0x03000000|(r<<12)|((v&0xf000)<<4)|(v&0xfff);
-    *code++ = ((ulong)cc<<28)|0x03400000|(r<<12)|((v>>12)&0xf000)|((v>>16)&0xfff);
+    *code++ = ((ulong)cc<<28)|0x03400000|(r<<12)|((v>>12)&0xf0000)|((v>>16)&0xfff);
 }
 static void mem(int op, ulong disp, int rm, int r) {
     if(op == Ldw) { LDW(AL, rm, r, disp); }
