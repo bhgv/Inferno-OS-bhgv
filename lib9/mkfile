@@ -81,6 +81,7 @@ IMPORTFILES=\
 OFILES=$COMMONFILES $TARGFILES
 
 HFILES=$ROOT/$SYSTARG/$OBJTYPE/include/lib9.h\
+	$ROOT/include/arm-fp.h\
 	fmtdef.h\
 
 <$ROOT/mkfiles/mksyslib-$SHELLTYPE

@@ -180,8 +180,15 @@ newprog(Prog *p, Modlink *m)
 	n->flags = p->flags;
 	if(p->flags & Prestrict)
 		n->flags |= Prestricted;
-	memmove(n->osenv, p->osenv, sizeof(Osenv));
+	/* The running parent's stored context predates this scheduling quantum.
+	 * FPsave can change the native environment (for example x87 FNSTENV
+	 * masks traps), so restore it before continuing the parent. */
 	op = p->osenv;
+	if(p == currun()) {
+		FPsave(&op->fpu);
+		FPrestore(&op->fpu);
+	}
+	memmove(n->osenv, op, sizeof(Osenv));
 	on = n->osenv;
 	on->waitq = op->childq;
 	on->childq = nil;

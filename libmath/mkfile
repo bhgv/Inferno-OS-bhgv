@@ -57,6 +57,8 @@ OFILES=\
 	s_tanh.$O\
 
 HFILES=\
+	$ROOT/$OBJDIR/include/lib9.h\
+	$ROOT/include/arm-fp.h\
 	$ROOT/include/mathi.h\
 	fdlibm/fdlibm.h\
 	

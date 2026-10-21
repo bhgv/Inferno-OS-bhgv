@@ -20,7 +20,9 @@ not add software floating-point environment emulation.
 
 Android now passes the same `ARMFPFLAGS` to C and assembler. Linux provides the
 same optional variable; its default retains the cross-toolchain target defaults.
-All target FP options/overrides must be shared by C and assembly. ARM lib9 entry
+All target FP options/overrides must be shared by C and assembly. The lib9,
+libmath and emulator dependency lists include the shared FPSCR header so an
+incremental rebuild cannot retain old mask/control objects. ARM lib9 entry
 points support A32 and Thumb code with the appropriate symbol annotation; the
 JIT itself still emits A32. Android's manual size_t/ptrdiff_t/NULL definitions
 were replaced with standard stddef.h, which permits the host regression bridge
@@ -68,5 +70,25 @@ actual Linux/Android FPU layouts. FP register values continue to obey the C ABI;
 the JIT does not keep floating operands live across helper/scheduler calls.
 
 Real scheduler/GC/signal interaction still requires an emulator integration run.
-A separate issue remains in newprog: copying a parent's stored FPU context can
-miss changes made in its current scheduling quantum before spawn.
+`newprog` in both emu and native-kernel sources refreshes a running parent's
+stored FPU context before copying Osenv, so spawn inherits FPcontrol/status
+changes from the current quantum. FPsave is immediately paired with FPrestore:
+some native save operations have side effects (x87 FSTENV/FNSTENV masks traps).
+A non-running parent's stored context is copied without sampling another
+thread's native registers. Child state remains independent after the copy.
+
+`libinterp/tests/fp-spawn.py` runs both production newprog bodies using real
+emulator Prog/Osenv/Heap layouts and boundary stubs for scheduling, grouping,
+allocation and FP state. The native-kernel variant uses an incref adapter and is
+not a complete kernel build. Cases cover current/stored parents, control/status
+changes, destructive save restoration, child independence and root creation.
+The harness passes ASan/UBSan; LSan is unavailable in this sandbox.
+
+```sh
+CFLAGS='-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer' \
+  python3 libinterp/tests/fp-spawn.py
+```
+
+The x87 save-side-effect requirement is specified in Intel SDM Volume 2A,
+FSTENV/FNSTENV:
+<https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2a-manual.pdf>.
