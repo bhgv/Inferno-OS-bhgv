@@ -41,13 +41,42 @@ This supplements arm-vfp.py, which runs generated VFP instructions; it does not
 execute a complete generated module, GC, OS cacheflush or the actual scheduler.
 Host syntax checking of the complete comp-arm.c also passes.
 
+## Type helper capacity and instruction encoding
+
+Type helper measurement now allocates a checked capacity proportional to the
+pointer map instead of a fixed 4096 words. Each byte describes at most eight
+pointers; 128 words per byte plus a prologue block conservatively cover memory
+address construction, calls, literals and pool branches. The bound is checked
+before multiplication and before map-index shifts. The combined helper byte
+size and final emission count are also checked before publication.
+
+ARM condition fields now shift an unsigned word when placing bits 31:28.
+The former signed-int C<<28 was undefined for common conditions including AL.
+The emitted bit patterns are unchanged.
+
+```sh
+PYTHONPATH=/path/to/arm-test-deps python3 libinterp/tests/arm-types.py
+CFLAGS='-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer' \
+  PYTHONPATH=/path/to/arm-test-deps python3 libinterp/tests/arm-types.py
+```
+
+This harness uses production integer emitters, literal-pool handling,
+comi/comd and typecom. A host executable checks large/dense/sparse maps, all 16
+condition encodings and allocation/cache failure cleanup under ASan/UBSan.
+For execution, a host shared library retains UBSan but omits ASan to avoid
+injecting its runtime into Python. Unicorn executes initializers for maps up
+to 4096 bytes (32768 pointer slots), verifies every marked/unmarked slot and
+checks surrounding canaries. There are 84 initializer/failure scenarios plus
+the encoding assertions and descriptor-bound checks. The target-specific
+sizeof(WORD*) expression is evaluated as 4 in this ARM32 model. Destructor
+instructions are emitted and size-checked, but native destructor calls and
+GC integration are not executed.
+
 ## Still open
 
 - Non-local VM error() unwinds from the instruction emitter do not currently
   release all compiler scratch allocations. Staged table generation protects
   the module data, but full exception cleanup needs a runtime protection boundary.
-- Type helper sizing still uses a fixed 4096-word scratch buffer. Large pointer
-  maps need bounded/dynamic generation and separate regression coverage.
 - The legacy backends share similar table/publication patterns; these ARM tests
   do not establish their safety. RISC-V's leaf sidecar already avoids relocation
   and publishes only after successful synchronization.

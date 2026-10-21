@@ -144,41 +144,41 @@ enum
 #define PBIT	(1<<24)
 #define UPBIT	(1<<23)
 
-#define LDW(C, Rn, Rd, O)		*code++ = (C<<28)|(1<<26)|(1<<24)|(1<<23)|(1<<20)|\
+#define LDW(C, Rn, Rd, O)		*code++ = ((ulong)(C)<<28)|(1<<26)|(1<<24)|(1<<23)|(1<<20)|\
 					  (Rn<<16)|(Rd<<12)|IMM(O)
-#define STW(C, Rn, Rd, O)		*code++ = (C<<28)|(1<<26)|(1<<24)|(1<<23)|\
+#define STW(C, Rn, Rd, O)		*code++ = ((ulong)(C)<<28)|(1<<26)|(1<<24)|(1<<23)|\
 					  (Rn<<16)|(Rd<<12)|IMM(O)
-#define LDB(C, Rn, Rd, O)		*code++ = (C<<28)|(1<<26)|(1<<24)|(1<<23)|(1<<20)|(1<<22)|\
+#define LDB(C, Rn, Rd, O)		*code++ = ((ulong)(C)<<28)|(1<<26)|(1<<24)|(1<<23)|(1<<20)|(1<<22)|\
 					  (Rn<<16)|(Rd<<12)|IMM(O)
-#define STB(C, Rn, Rd, O)		*code++ = (C<<28)|(1<<26)|(1<<24)|(1<<23)|(1<<22)|\
+#define STB(C, Rn, Rd, O)		*code++ = ((ulong)(C)<<28)|(1<<26)|(1<<24)|(1<<23)|(1<<22)|\
 					  (Rn<<16)|(Rd<<12)|IMM(O)
 
-#define LDxP(C, Rn, Rd, O, B)		*code++ = (C<<28)|(1<<26)|(B<<22)|(1<<23)|(1<<20)|\
+#define LDxP(C, Rn, Rd, O, B)		*code++ = ((ulong)(C)<<28)|(1<<26)|(B<<22)|(1<<23)|(1<<20)|\
 					  (Rn<<16)|(Rd<<12)|IMM(O)
-#define STxP(C, Rn, Rd, O, B)		*code++ = (C<<28)|(1<<26)|(B<<22)|(1<<23)|\
+#define STxP(C, Rn, Rd, O, B)		*code++ = ((ulong)(C)<<28)|(1<<26)|(B<<22)|(1<<23)|\
 					  (Rn<<16)|(Rd<<12)|IMM(O)
-#define LDRW(C, Rn, Rd, SH, R)		*code++ = (C<<28)|(3<<25)|(1<<24)|(1<<23)|(1<<20)|\
+#define LDRW(C, Rn, Rd, SH, R)		*code++ = ((ulong)(C)<<28)|(3<<25)|(1<<24)|(1<<23)|(1<<20)|\
 					  (Rn<<16)|(Rd<<12)|(SH<<4)|R
-#define STRW(C, Rn, Rd, SH, R)		*code++ = (C<<28)|(3<<25)|(1<<24)|(1<<23)|\
+#define STRW(C, Rn, Rd, SH, R)		*code++ = ((ulong)(C)<<28)|(3<<25)|(1<<24)|(1<<23)|\
 					  (Rn<<16)|(Rd<<12)|(SH<<4)|R
-#define LDRB(C, Rn, Rd, SH, R)		*code++ = (C<<28)|(3<<25)|(1<<24)|(1<<23)|(1<<20)|(1<<22)|\
+#define LDRB(C, Rn, Rd, SH, R)		*code++ = ((ulong)(C)<<28)|(3<<25)|(1<<24)|(1<<23)|(1<<20)|(1<<22)|\
 					  (Rn<<16)|(Rd<<12)|(SH<<4)|R
-#define STRB(C, Rn, Rd, SH, R)		*code++ = (C<<28)|(3<<25)|(1<<24)|(1<<23)|(1<<22)|\
+#define STRB(C, Rn, Rd, SH, R)		*code++ = ((ulong)(C)<<28)|(3<<25)|(1<<24)|(1<<23)|(1<<22)|\
 					  (Rn<<16)|(Rd<<12)|(SH<<4)|R
 
-#define DPI(C, Op, Rn, Rd, RO, O)	*code++ = (C<<28)|(1<<25)|(Op<<21)|\
+#define DPI(C, Op, Rn, Rd, RO, O)	*code++ = ((ulong)(C)<<28)|(1<<25)|(Op<<21)|\
 					  (Rn<<16)|(Rd<<12)|(RO<<8)|((O)&0xff)
-#define DP(C, Op, Rn, Rd, Sh, Ro)	*code++ = (C<<28)|(Op<<21)|(Rn<<16)|\
+#define DP(C, Op, Rn, Rd, Sh, Ro)	*code++ = ((ulong)(C)<<28)|(Op<<21)|(Rn<<16)|\
 					  (Rd<<12)|((Sh)<<4)|Ro
-#define CMPI(C, Rn, Rd, RO, O)	*code++ = (C<<28)|(1<<25)|(Cmp<<21)|(1<<20)|\
+#define CMPI(C, Rn, Rd, RO, O)	*code++ = ((ulong)(C)<<28)|(1<<25)|(Cmp<<21)|(1<<20)|\
 					  (Rn<<16)|(Rd<<12)|(RO<<8)|((O)&0xff)
-#define CMNI(C, Rn, Rd, RO, O)	*code++ = (C<<28)|(1<<25)|(Cmn<<21)|(1<<20)|\
+#define CMNI(C, Rn, Rd, RO, O)	*code++ = ((ulong)(C)<<28)|(1<<25)|(Cmn<<21)|(1<<20)|\
 					  (Rn<<16)|(Rd<<12)|(RO<<8)|((O)&0xff)
-#define CMP(C, Rn, Rd, Sh, Ro)	*code++ = (C<<28)|(Cmp<<21)|(Rn<<16)|(1<<20)|\
+#define CMP(C, Rn, Rd, Sh, Ro)	*code++ = ((ulong)(C)<<28)|(Cmp<<21)|(Rn<<16)|(1<<20)|\
 					  (Rd<<12)|((Sh)<<4)|Ro
-#define CMN(C, Rn, Rd, Sh, Ro)	*code++ = (C<<28)|(Cmn<<21)|(Rn<<16)|(1<<20)|\
+#define CMN(C, Rn, Rd, Sh, Ro)	*code++ = ((ulong)(C)<<28)|(Cmn<<21)|(Rn<<16)|(1<<20)|\
 					  (Rd<<12)|((Sh)<<4)|Ro
-#define MUL(C, Rm, Rs, Rd)		*code++ = (C<<28)|(Rd<<16)|(Rm<<0)|(Rs<<8)|\
+#define MUL(C, Rm, Rs, Rd)		*code++ = ((ulong)(C)<<28)|(Rd<<16)|(Rm<<0)|(Rs<<8)|\
 					  (9<<4)
 
 /* A32 VFP, restricted to caller-saved d0-d7 (and s0-s15). */
@@ -191,12 +191,12 @@ enum
 #define VFPS32(Rd) *code++ = 0xee020a10|((Rd)<<12) /* vmov s4, Rd */
 #define VFPF64() *code++ = 0xeeb82bc2 /* vcvt.f64.s32 d2, s4 */
 
-#define LDH(C, Rn, Rd, O)		*code++ = (C<<28)|(0<<25)|(1<<24)|(1<<23)|(1<<22)|(1<<20)|\
+#define LDH(C, Rn, Rd, O)		*code++ = ((ulong)(C)<<28)|(0<<25)|(1<<24)|(1<<23)|(1<<22)|(1<<20)|\
 					  (Rn<<16)|(Rd<<12)|(((O)&0xf0)<<4)|(0xb<<4)|((O)&0xf)
-#define LDRH(C, Rn, Rd, Rm)		*code++ = (C<<28)|(0<<25)|(1<<24)|(1<<23)|(1<<20)|\
+#define LDRH(C, Rn, Rd, Rm)		*code++ = ((ulong)(C)<<28)|(0<<25)|(1<<24)|(1<<23)|(1<<20)|\
 					  (Rn<<16)|(Rd<<12)|(0xb<<4)|Rm
 
-#define BRAW(C, o)			((C<<28)|(5<<25)|((o) & 0x00ffffff))
+#define BRAW(C, o)			(((ulong)(C)<<28)|(5<<25)|((o) & 0x00ffffff))
 #define BRA(C, o)			gen(BRAW((C),(o)))
 #define IA(s, o)			(ulong)(base+s[o])
 #define BRADIS(C, o)			BRA(C, (IA(patch, o)-(ulong)code-8)>>2)
@@ -2099,23 +2099,36 @@ comi(Type *t)
 void
 typecom(Type *t)
 {
-	int n;
+	int n, destructorwords;
+	ulong capacity;
 	ulong *tmp, *start, *destructor;
 
 	if(t == nil || t->initialize != 0)
 		return;
 
-	tmp = mallocz(4096*sizeof(ulong), 0);
+	/* Each map byte describes at most eight pointers. Even large-offset
+	 * mem plus CALL, literal entries and pool branches fit in 128 words
+	 * per byte; the extra block covers the prologue and return. Bound the
+	 * byte allocation before multiplication and i<<5 in comi/comd. */
+	if(t->np < 0 || (ulong)t->np > 0x7fffffff/sizeof(ulong)/128-1)
+		return;
+	capacity=((ulong)t->np+1)*128;
+	tmp = mallocz(capacity*sizeof(ulong), 0);
 	if(tmp == nil)
 		return;
 
+	codeoff=0; rcon.ptr=0;
 	code = tmp;
 	comi(t);
 	n = code - tmp;
 	code = tmp;
 	comd(t);
-	n += code - tmp;
+	destructorwords=code-tmp;
 	free(tmp);
+	if(n < 0 || destructorwords < 0 ||
+	   n > 0x7fffffff/sizeof(*code)-destructorwords)
+		return;
+	n+=destructorwords;
 
 	n *= sizeof(*code);
 	code = mallocz(n, 0);
@@ -2127,7 +2140,7 @@ typecom(Type *t)
 	destructor = code;
 	comd(t);
 
-	if(segflush(start, n) != 0) {
+	if(code-start != n/sizeof(*code) || segflush(start, n) != 0) {
 		free(start);
 		return;
 	}

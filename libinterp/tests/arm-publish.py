@@ -57,7 +57,8 @@ static void *testmalloc(size_t n) {
     void *p;int i;
     if(fail_after==0)return nil;
     if(fail_after>0)fail_after--;
-    p=calloc(1,n?n:1);if(!p)return nil;
+    if(n==0)return nil;
+    p=calloc(1,n);if(!p)return nil;
     for(i=0;i<256;i++)if(!allocations[i]){allocations[i]=p;live++;return p;}
     assert(0);return nil;
 }
@@ -111,7 +112,8 @@ static int segflush(void *p,ulong n) {
     assert(p && n);flushes++;
     assert(active && !active->compiled && active->prog==original);
     assert(active->ext[0].u.pc==original+1);
-    assert(((WORD*)active->origmp)[0]==1 && ((WORD*)active->origmp)[8]==2 && ((WORD*)active->origmp)[16]==1);
+    if(active->origmp!=H)
+        assert(((WORD*)active->origmp)[0]==1 && ((WORD*)active->origmp)[8]==2 && ((WORD*)active->origmp)[16]==1);
     return flushes==fail_flush ? -1 : 0;
 }
 static void comi(Type *t) {(void)t;*code++=8;}
@@ -193,6 +195,10 @@ int main(void) {
         assert(handlers[0].pc1==1 && handlers[0].pc2==7);
         cleanup();
     }
+    fixture();m.ntype=0;m.type=nil;m.origmp=H;ml.nlinks=0;
+    links[0].frame=nil;links[1].frame=nil;
+    for(i=0;i<4;i++)original[i].op=IRUNT;
+    assert(compile(&m,4,&ml));cleanup();
     fixture();phase_error=1;assert(!compile(&m,4,&ml));phase_error=0;unchanged();cleanup();
     fixture();assert(!compile(&m,3,&ml));unchanged();cleanup();
     fixture();m.entry=original+4;assert(!compile(&m,4,&ml));m.entry=original+3;unchanged();cleanup();
