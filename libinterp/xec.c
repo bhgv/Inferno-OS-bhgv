@@ -28,6 +28,53 @@ String	snil;			/* String known to be zero length */
 #define SH(r)	*((SHORT*)(R.r))
 #define SR(r)	*((SREAL*)(R.r))
 
+/* Integer contract: wrap at the active VM width without signed C overflow.
+ * This does not change the legacy LP64 WORD layout into a Dis64 ABI. */
+static WORD
+intword(UWORD u)
+{
+	if(u <= (~(UWORD)0 >> 1))
+		return (WORD)u;
+	return -(WORD)(UWORD)~u - 1;
+}
+
+static LONG
+intbig(ULONG u)
+{
+	if(u <= (~(ULONG)0 >> 1))
+		return (LONG)u;
+	return -(LONG)(ULONG)~u - 1;
+}
+
+static UWORD
+shiftcount(WORD n, int bits)
+{
+	if(n < 0 || (UWORD)n >= (UWORD)bits)
+		error("invalid shift");
+	return (UWORD)n;
+}
+
+/* Arithmetic right shift using unsigned operations, including count zero. */
+static WORD
+wordshr(WORD v, UWORD n)
+{
+	UWORD u;
+	u=(UWORD)v;
+	if(v >= 0 || n == 0)
+		return intword(u >> n);
+	return intword(~((UWORD)~u >> n));
+}
+
+static LONG
+bigshr(LONG v, UWORD n)
+{
+	ULONG u;
+	u=(ULONG)v;
+	if(v >= 0 || n == 0)
+		return intbig(u >> n);
+	return intbig(~((ULONG)~u >> n));
+}
+
 OP(runt) {}
 OP(negf) { F(d) = -F(s); }
 OP(jmp)  { JMP(d); }
@@ -46,23 +93,23 @@ OP(cvtws){ SH(d) = W(s); }
 OP(cvtsw){ W(d) = SH(s); }
 OP(cvtwf){ F(d) = W(s); }
 OP(addb) { B(d) = B(m) + B(s); }
-OP(addw) { W(d) = W(m) + W(s); }
-OP(addl) { V(d) = V(m) + V(s); }
+OP(addw) { W(d) = intword((UWORD)W(m) + (UWORD)W(s)); }
+OP(addl) { V(d) = intbig((ULONG)V(m) + (ULONG)V(s)); }
 OP(addf) { F(d) = F(m) + F(s); }
 OP(subb) { B(d) = B(m) - B(s); }
-OP(subw) { W(d) = W(m) - W(s); }
-OP(subl) { V(d) = V(m) - V(s); }
+OP(subw) { W(d) = intword((UWORD)W(m) - (UWORD)W(s)); }
+OP(subl) { V(d) = intbig((ULONG)V(m) - (ULONG)V(s)); }
 OP(subf) { F(d) = F(m) - F(s); }
-OP(divb) { B(d) = B(m) / B(s); }
-OP(divw) { W(d) = W(m) / W(s); }
-OP(divl) { V(d) = V(m) / V(s); }
+OP(divb) { if(B(s) == 0) error(exZdiv); B(d) = B(m) / B(s); }
+OP(divw) { if(W(s) == 0) error(exZdiv); W(d) = W(s) == -1 ? intword((UWORD)0 - (UWORD)W(m)) : W(m) / W(s); }
+OP(divl) { if(V(s) == 0) error(exZdiv); V(d) = V(s) == -1 ? intbig((ULONG)0 - (ULONG)V(m)) : V(m) / V(s); }
 OP(divf) { F(d) = F(m) / F(s); }
-OP(modb) { B(d) = B(m) % B(s); }
-OP(modw) { W(d) = W(m) % W(s); }
-OP(modl) { V(d) = V(m) % V(s); }
+OP(modb) { if(B(s) == 0) error(exZdiv); B(d) = B(m) % B(s); }
+OP(modw) { if(W(s) == 0) error(exZdiv); W(d) = W(s) == -1 ? 0 : W(m) % W(s); }
+OP(modl) { if(V(s) == 0) error(exZdiv); V(d) = V(s) == -1 ? 0 : V(m) % V(s); }
 OP(mulb) { B(d) = B(m) * B(s); }
-OP(mulw) { W(d) = W(m) * W(s); }
-OP(mull) { V(d) = V(m) * V(s); }
+OP(mulw) { W(d) = intword((UWORD)W(m) * (UWORD)W(s)); }
+OP(mull) { V(d) = intbig((ULONG)V(m) * (ULONG)V(s)); }
 OP(mulf) { F(d) = F(m) * F(s); }
 OP(andb) { B(d) = B(m) & B(s); }
 OP(andw) { W(d) = W(m) & W(s); }
@@ -73,14 +120,14 @@ OP(xorl) { V(d) = V(m) ^ V(s); }
 OP(orb)  { B(d) = B(m) | B(s); }
 OP(orw)  { W(d) = W(m) | W(s); }
 OP(orl)  { V(d) = V(m) | V(s); }
-OP(shlb) { B(d) = B(m) << W(s); }
-OP(shlw) { W(d) = W(m) << W(s); }
-OP(shll) { V(d) = V(m) << W(s); }
-OP(shrb) { B(d) = B(m) >> W(s); }
-OP(shrw) { W(d) = W(m) >> W(s); }
-OP(shrl) { V(d) = V(m) >> W(s); }
-OP(lsrw) { W(d) = UW(m) >> W(s); }
-OP(lsrl) { V(d) = UV(m) >> W(s); }
+OP(shlb) { B(d) = (UWORD)B(m) << shiftcount(W(s), 8); }
+OP(shlw) { W(d) = intword((UWORD)W(m) << shiftcount(W(s), sizeof(WORD)*8)); }
+OP(shll) { V(d) = intbig((ULONG)V(m) << shiftcount(W(s), sizeof(LONG)*8)); }
+OP(shrb) { B(d) = (UWORD)B(m) >> shiftcount(W(s), 8); }
+OP(shrw) { W(d) = wordshr(W(m), shiftcount(W(s), sizeof(WORD)*8)); }
+OP(shrl) { V(d) = bigshr(V(m), shiftcount(W(s), sizeof(LONG)*8)); }
+OP(lsrw) { W(d) = intword((UWORD)W(m) >> shiftcount(W(s), sizeof(WORD)*8)); }
+OP(lsrl) { V(d) = intbig((ULONG)V(m) >> shiftcount(W(s), sizeof(LONG)*8)); }
 OP(beqb) { if(B(s) == B(m)) JMP(d); }
 OP(bneb) { if(B(s) != B(m)) JMP(d); }
 OP(bltb) { if(B(s) <  B(m)) JMP(d); }

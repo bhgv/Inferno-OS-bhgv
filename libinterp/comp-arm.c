@@ -1200,6 +1200,11 @@ comp(Inst *i)
 		comcasel(i);
 		punt(i, SRCOP|DSTOP|NEWPC, optab[i->op]);
 		break;
+	/* Shared helpers validate shifts and define exceptional division. */
+	case ISHLW:
+	case ISHRW:
+	case ISHLB:
+	case ISHRB:
 	case IADDC:
 	case IMULL:
 	case IDIVL:
@@ -1500,22 +1505,6 @@ comp(Inst *i)
 		}
 		opwst(i, Stw, RA0);
 		break;
-	case ISHRW:
-		r = 2;
-	shiftw:
-		mid(i, Ldw, RA1);
-		if(UXSRC(i->add) == SRC(AIMM) && FITS5(i->s.imm))
-			DP(AL, Mov, 0, RA0, ((i->s.imm&0x3F)<<3)|(r<<1), RA1);
-		else {
-			opwld(i, Ldw, RA0);
-			DP(AL, Mov, 0, RA0, (RA0<<4)|(r<<1)|1, RA1);
-		}
-		opwst(i, Stw, RA0);
-		break;
-	case ISHLW:
-		r = 0;
-		goto shiftw;
-		break;
 	case IORB:
 		r = Orr;
 		goto arithb;
@@ -1537,21 +1526,6 @@ comp(Inst *i)
 		else {
 			opwld(i, Ldb, RA0);
 			DP(AL, r, RA1, RA0, 0, RA0);
-		}
-		opwst(i, Stb, RA0);
-		break;
-	case ISHRB:
-		r = 2;
-		goto shiftb;
-	case ISHLB:
-		r = 0;
-	shiftb:
-		mid(i, Ldb, RA1);
-		if(UXSRC(i->add) == SRC(AIMM) && FITS5(i->s.imm))
-			DP(AL, Mov, 0, RA0, ((i->s.imm&0x3F)<<3)|(r<<1), RA1);
-		else {
-			opwld(i, Ldw, RA0);
-			DP(AL, Mov, 0, RA0, (RA0<<4)|(r<<1)|1, RA1);
 		}
 		opwst(i, Stb, RA0);
 		break;

@@ -527,14 +527,6 @@ arithb(Inst *i, int op2)
 	opwst(i, op2, RAX);
 }
 
-static void
-shift(Inst *i, int ld, int st, int op, int r)
-{
-	mid(i, ld, RAX);
-	opwld(i, Oldw, RCX);
-	gen2(op, (3<<6)|(r<<3)|RAX);
-	opwst(i, st, RAX);
-}
 
 static void
 arithf(Inst *i, int op)
@@ -926,6 +918,15 @@ comp(Inst *i)
 		comcasel(i);
 		punt(i, SRCOP|DSTOP|NEWPC, optab[i->op]);
 		break;
+	/* Shared helpers validate shifts and define exceptional division. */
+	case ISHLW:
+	case ISHRW:
+	case ISHLB:
+	case ISHRB:
+	case IDIVW:
+	case IMODW:
+	case IDIVB:
+	case IMODB:
 	case IADDC:
 	case IMULL:
 	case IDIVL:
@@ -1222,18 +1223,6 @@ comp(Inst *i)
 	case IXORB:
 		arithb(i, 0x30);
 		break;
-	case ISHLW:
-		shift(i, Oldw, Ostw, 0xd3, 4);
-		break;
-	case ISHLB:
-		shift(i, Oldb, Ostb, 0xd2, 4);
-		break;
-	case ISHRW:
-		shift(i, Oldw, Ostw, 0xd3, 7);
-		break;
-	case ISHRB:
-		shift(i, Oldb, Ostb, 0xd2, 5);
-		break;
 	case IMOVF:
 		opwld(i, Omovf, 0);
 		opwst(i, Omovf, 3);
@@ -1310,34 +1299,16 @@ comp(Inst *i)
 	case IDIVF:
 		arithf(i, 7);
 		break;
-	case IMODW:
-	case IDIVW:
 	case IMULW:
 		mid(i, Oldw, RAX);
 		opwld(i, Oldw, RTMP);
-		if(i->op == IMULW)
-			gen2(0xf7, (3<<6)|(4<<3)|RTMP);
-		else {
-			genb(Ocdq);
-			gen2(0xf7, (3<<6)|(7<<3)|RTMP);	// IDIV AX, RTMP
-			if(i->op == IMODW)
-				genb(0x90+RDX);		// XCHG	AX, DX
-		}
+		gen2(0xf7, (3<<6)|(4<<3)|RTMP);
 		opwst(i, Ostw, RAX);
 		break;
-	case IMODB:
-	case IDIVB:
 	case IMULB:
 		mid(i, Oldb, RAX);
 		opwld(i, Oldb, RTMP);
-		if(i->op == IMULB)
-			gen2(0xf6, (3<<6)|(4<<3)|RTMP);
-		else {
-			genb(Ocdq);
-			gen2(0xf6, (3<<6)|(7<<3)|RTMP);	// IDIV AX, RTMP
-			if(i->op == IMODB)
-				genb(0x90+RDX);		// XCHG	AX, DX
-		}
+		gen2(0xf6, (3<<6)|(4<<3)|RTMP);
 		opwst(i, Ostb, RAX);
 		break;
 	case IINDX:
