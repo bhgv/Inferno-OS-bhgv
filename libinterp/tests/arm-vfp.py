@@ -207,6 +207,13 @@ with tempfile.TemporaryDirectory(prefix='arm-vfp-') as td:
         u = run(blob, {FP+0x4100: struct.pack('<i', value)})
         assert struct.unpack('<d', u.mem_read(FP+0x4300, 8))[0] == float(value)
         checks += 1
+    # Inline arithmetic must obey the current FPSCR rounding mode.
+    for mode, want in [(0, 1.0), (1, math.nextafter(1.0, math.inf)), (2, 1.0), (3, 1.0)]:
+        _, blob = emit('IADDF')
+        u = run(blob, {FP+0x4100:struct.pack('<d', 2.0**-53),
+                       FP+0x4200:struct.pack('<d', 1.0)}, fpscr=mode << 22)
+        assert struct.unpack('<d', u.mem_read(FP+0x4300, 8))[0] == want
+        checks += 1
     # All six relations, including unordered in either operand and signed zero.
     for cond, predicate in [(0, lambda a,b:a==b), (1, lambda a,b:a!=b),
                             (11, lambda a,b:a<b), (13, lambda a,b:a<=b),
