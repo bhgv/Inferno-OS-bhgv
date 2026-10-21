@@ -49,8 +49,9 @@ void (*optab[256])(void);
 void (*dec[256])(void);
 int cflag;
 typedef struct { int *ret; Modlink *mp; int flag; } F_Loader_compile;
+int kprotect(int (*fn)(void*),void *arg) {return fn(arg);}
 void kwerrstr(char *s, ...) { (void)s; }
-''' + extract('libinterp/loader.c','Loader_compile','void') + '\n' + extract('libinterp/load.c','freemod','void') + '\n' + extract('libinterp/xec.c','xec','void') + r'''
+''' + extract('libinterp/loader.c','loadercompile','static int') + '\n' + extract('libinterp/loader.c','Loader_compile','void') + '\n' + extract('libinterp/load.c','freemod','void') + '\n' + extract('libinterp/xec.c','xec','void') + r'''
 static int natives, helpers, decoded, entered, rejected;
 static WORD output, source=7;
 static Modlink ma, mb;
@@ -98,7 +99,7 @@ int main(void) {
     int before, n;
     prog[0].op=prog[1].op=IADDW;
     prog[2].op=IDIVW;
-    m.nprog=3; m.prog=prog; m.entry=prog+1;
+    m.origmp=H; m.nprog=3; m.prog=prog; m.entry=prog+1;
     before=live;
     fail_after=0;
     assert(compile(&m,3,nil)==0 && m.jit==nil && live==before);

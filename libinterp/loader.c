@@ -327,10 +327,20 @@ Loader_tnew(void *a)
 		ar->data = nil;
 	}
 
+	if(f->size < 0 || (uvlong)f->size > 0x7fffffff ||
+	   ar->len < 0 || (uvlong)ar->len > 0x7fffffff) {
+		kwerrstr("bad type");
+		return;
+	}
 	t = dtype(freeheap, f->size, ar->data, ar->len);
 	if(t == nil)
 		return;
 
+	if(m->ntype < 0 || m->ntype >= 0x7fffffff/sizeof(Type*)-1) {
+		freetype(t);
+		kwerrstr("too many types");
+		return;
+	}
 	mem = (m->ntype+1)*sizeof(Type*);
 	if(msize(m->type) > mem) {
 		*f->ret = m->ntype;
@@ -339,6 +349,7 @@ Loader_tnew(void *a)
 	}
 	nt = realloc(m->type, mem);
 	if(nt == nil) {
+		freetype(t);
 		kwerrstr(exNomem);
 		return;
 	}
@@ -364,6 +375,10 @@ Loader_ext(void *a)
 	}
 	ml = f->mp;
 	m = ml->m;
+	if(m->compiled) {
+		kwerrstr("compiled module");
+		return;
+	}
 	if(f->tdesc < 0 || f->tdesc >= m->ntype) {
 		kwerrstr("bad tdesc");
 		return;
@@ -382,38 +397,62 @@ Loader_ext(void *a)
 	*f->ret = 0;
 }
 
+typedef struct LoaderHeap LoaderHeap;
+struct LoaderHeap {
+	Type *t;
+	Heap *h;
+};
+
+static int
+loaderheap(void *arg)
+{
+	LoaderHeap *c;
+	c=arg;
+	c->h=heapz(c->t);
+	return c->h != nil;
+}
+
 void
 Loader_dnew(void *a)
 {
 	F_Loader_dnew *f;
-	Heap *h;
 	Array *ar, az;
-	Type *t;
- 
-        f = a;
-        *f->ret = H;
-        if(f->map == H)
-                return;
-        ar = f->map;
-        if(ar == H) {
-                ar = &az;
-                ar->len = 0;
-                ar->data = nil;
-        }
-        t = dtype(freeheap, f->size, ar->data, ar->len);
-        if(t == nil) {
-                kwerrstr(exNomem);
-                return;
-        }
+	LoaderHeap c;
+	int ok;
 
-	h=heapz(t);
-	if(h == nil) {
-		freetype(t);
-		kwerrstr(exNomem);
+	f=a;
+	destroy(*f->ret);
+	*f->ret=H;
+	ar=f->map;
+	if(ar == H) {
+		ar=&az;
+		ar->len=0;
+		ar->data=nil;
+	}
+	if(f->size < 0 || (uvlong)f->size > 0x7fffffff ||
+	   ar->len < 0 || (uvlong)ar->len > 0x7fffffff) {
+		kwerrstr("bad type");
 		return;
-        }
-		
-	*f->ret=H2D(Loader_Niladt*, h);
+	}
+	c.t=dtype(freeheap, f->size, ar->data, ar->len);
+	if(c.t == nil) {
+		kwerrstr("bad type or no memory");
+		return;
+	}
+	c.h=nil;
+	ok=kprotect(loaderheap, &c);
+	/* heapz takes its own reference; release the creator's on both paths. */
+	freetype(c.t);
+	if(ok)
+		*f->ret=H2D(Loader_Niladt*, c.h);
+}
+
+static int
+loadercompile(void *a)
+{
+	F_Loader_compile *f;
+	f=a;
+	return compile(f->mp->m, f->mp->m->nprog, f->mp);
 }
 
 void
@@ -421,6 +460,8 @@ Loader_compile(void *a)
 {
 	Module *m;
 	F_Loader_compile *f;
+	uchar *savedmp;
+	int ok;
 
 	f = a;
 	*f->ret = -1;
@@ -433,13 +474,16 @@ Loader_compile(void *a)
 		kwerrstr("compiled module");
 		return;
 	}
-	*f->ret = 0;
-	m->origmp = f->mp->MP;
-	if(cflag || f->flag)
-	if(compile(m, m->nprog, f->mp)) {
-		f->mp->prog = m->prog;
-		f->mp->compiled = m->compiled;
-	} else
-		*f->ret = -1;
-	m->origmp = H;
+	 *f->ret=0;
+	if(cflag || f->flag) {
+		savedmp=m->origmp;
+		m->origmp=f->mp->MP;
+		ok=kprotect(loadercompile, f);
+		m->origmp=savedmp;
+		if(ok) {
+			f->mp->prog=m->prog;
+			f->mp->compiled=m->compiled;
+		} else
+	 *f->ret=-1;
+	}
 }
