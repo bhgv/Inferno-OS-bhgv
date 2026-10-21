@@ -114,6 +114,16 @@ static void fixture(void) {
     integer(1);integer(0);integer(0);integer(1);handlertype_at=at;integer(1);
     integer(0x10001);name("exception");handlerpc_at=at;integer(0);integer(-1);byte(0);
 }
+static void instructionfixture(int add,int first,int second) {
+    at=0;
+    integer(XMAGIC);integer(0);integer(1024);integer(1);
+    integer(0);integer(0);integer(0);integer(0);integer(-1);
+    byte(IRET);byte(add);
+    if((add&ARM)!=AXNON)integer(first);
+    if(USRC(add)==(AFP|AIND)){integer(first);integer(second);}
+    if(UDST(add)==(AFP|AIND)){integer(first);integer(second);}
+    byte(0);name("instruction");
+}
 static Module *parse(int n) {
     uchar *copy=testmalloc(n);Dir d={0};Module *m;
     assert(copy);memcpy(copy,buffer,n);
@@ -160,7 +170,25 @@ int main(void) {
         else assert(live==0 && worker.nerr==0 && !modules && Tarray.ref==1 && Tstring.ref==1);
         mutations++;
     }
+    {
+        static const int values[]={-32769,-32768,-1,0,32767,65535,65536};
+        unsigned int k;int mode,valid,indirect;
+        for(mode=AXIMM;mode<=AXINM;mode+=AXIMM)for(k=0;k<nelem(values);k++) {
+            instructionfixture(SRC(AXXX)|DST(AXXX)|mode,values[k],0);
+            valid=values[k]>=-32768 && values[k]<=65535 && (mode==AXIMM || values[k]>=0);
+            if(valid){m=parse(at);assert(m);drop(m);}else rejected();
+        }
+        for(indirect=0;indirect<2;indirect++)for(k=0;k<nelem(values);k++) {
+            int add=indirect?SRC(AXXX)|DST(AFP|AIND):SRC(AFP|AIND)|DST(AXXX);
+            instructionfixture(add,values[k],0);
+            if(values[k]>=0 && values[k]<=65535){m=parse(at);assert(m);drop(m);}else rejected();
+            instructionfixture(add,0,values[k]);
+            if(values[k]>=0 && values[k]<=65535){m=parse(at);assert(m);drop(m);}else rejected();
+        }
+        instructionfixture(SRC(6)|DST(AXXX),0,0);rejected();
+        instructionfixture(SRC(AXXX)|DST(7),0,0);rejected();
+    }
     at=0;integer(SMAGIC);integer(-1);rejected();
     assert(!parsemod("nil",nil,0,nil));
-    printf("PASS Dis loader: %d truncations, %d mutations, allocation cutoffs, GC/data maps, nested arrays, metadata indices, overwrites and VM-error cleanup\n",total,mutations);
+    printf("PASS Dis loader: %d truncations, %d mutations, allocation cutoffs, instruction field bounds, GC/data maps, nested arrays, metadata indices, overwrites and VM-error cleanup\n",total,mutations);
 }

@@ -20,6 +20,15 @@
 - `Loader_ext` interpreted a Dis PC index as an Inst offset into native code
   after compilation. Export replacement is now rejected for such modules.
 
+- `Loader_newmod` could dereference a failed name allocation and lose partial
+  module state on a string/heap error. It now retains ownership outside the
+  runtime error frame, cleans up every failed stage, explicitly initializes
+  metadata, and publishes only after mklinkmod succeeds. It creates an empty
+  export sentinel table required by unload and native-PC JIT metadata walks.
+- Dynamic instruction count/element sizes, link allocation sizes and opcode,
+  address and middle-operand fields are checked before narrowing or copying.
+  Branch relocation is restricted to immediate destinations, matching parsemod.
+
 ## Verification
 
 `libinterp/tests/loader-runtime.py` extracts the production functions and uses
@@ -27,6 +36,9 @@ real generated Loader frames, VM types and emulator Proc error frames. Heap and
 compiler operations are injected boundaries. It checks each bitmap boundary,
 allocation/resize failures, old-result replacement, exact Type reference
 counts, 100 repeated heap/compiler errors, nested cleanup and MP restoration.
+The same harness checks newmod allocation cutoffs, string conversion and
+mklinkmod errors, data/Type reference balance, old-result replacement, empty
+exports, wide lengths, invalid instructions and conditional branch relocation.
 Explicit allocation accounting ends at zero. UBSan and ASan host checks pass;
 ASan stack instrumentation is disabled for the longjmp harness because this
 sandbox does not supply its expected /proc stack information.

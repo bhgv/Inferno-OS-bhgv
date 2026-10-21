@@ -11,8 +11,13 @@ arithmetic are rejected before allocation.
 
 Export Type/PC indices and handler Type/PC/range/count metadata are validated
 before indexing. Exception range ends may equal nprog; the default handler
-retains its unsigned -1 sentinel. Unknown opcode numbers are rejected. This is
-not a verifier for all instruction operands or run-time program behavior.
+retains its unsigned -1 sentinel. Unknown opcode numbers are rejected. Unsupported source/destination address
+modes and out-of-range middle or
+indirection fields are rejected before narrowing into 16-bit Inst fields.
+Middle immediates accept both signed and unsigned 16-bit representations, so
+Loader.ifetch round trips remain valid. Extra fixtures test the numeric bounds
+for immediate and frame/module modes, and both indirection components.
+This is not a verifier for all instruction operands or run-time program behavior.
 
 Data initializer addresses now track the remaining region size, including
 DIND/DAPOP through nested arrays. Scalar writes must be aligned, fit the region

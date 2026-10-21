@@ -323,6 +323,8 @@ disparse(void *arg)
 			goto bad;
 		}
 		ip->add = *istream++;
+		if(USRC(ip->add) > (AFP|AIND) || UDST(ip->add) > (AFP|AIND))
+			goto badinstruction;
 		ip->reg = 0;
 		ip->s.imm = 0;
 		ip->d.imm = 0;
@@ -332,7 +334,11 @@ disparse(void *arg)
 		case AXINM:
 			if(!disopvalid(istream,end))
 				goto truncated;
-			ip->reg = operand(isp);
+			v=operand(isp);
+			if(v < -32768 || v > 65535 ||
+			   ((ip->add&ARM) != AXIMM && v < 0))
+				goto badinstruction;
+			ip->reg=v;
 		 	break;
 		}
 		switch(UXSRC(ip->add)) {
@@ -347,10 +353,16 @@ disparse(void *arg)
 		case SRC(AIND|AMP):
 			if(!disopvalid(istream,end))
 				goto truncated;
-			ip->s.i.f = operand(isp);
+			v=operand(isp);
+			if(v < 0 || v > 65535)
+				goto badinstruction;
+			ip->s.i.f=v;
 			if(!disopvalid(istream,end))
 				goto truncated;
-			ip->s.i.s = operand(isp);
+			v=operand(isp);
+			if(v < 0 || v > 65535)
+				goto badinstruction;
+			ip->s.i.s=v;
 			break;
 		}
 		switch(UXDST(ip->add)) {
@@ -373,10 +385,16 @@ disparse(void *arg)
 		case DST(AIND|AMP):
 			if(!disopvalid(istream,end))
 				goto truncated;
-			ip->d.i.f = operand(isp);
+			v=operand(isp);
+			if(v < 0 || v > 65535)
+				goto badinstruction;
+			ip->d.i.f=v;
 			if(!disopvalid(istream,end))
 				goto truncated;
-			ip->d.i.s = operand(isp);
+			v=operand(isp);
+			if(v < 0 || v > 65535)
+				goto badinstruction;
+			ip->d.i.s=v;
 			break;
 		}
 		ip++;		
@@ -786,6 +804,9 @@ disparse(void *arg)
 	modules = m;
 
 	return 1;
+badinstruction:
+	kwerrstr("bad instruction operand");
+	goto bad;
 truncated:
 	kwerrstr("truncated Dis file");
 	goto bad;
