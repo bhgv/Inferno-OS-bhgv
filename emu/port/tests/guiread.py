@@ -27,6 +27,7 @@ parts={
  'GUIQID_IMPLEMENTATION':source[source.index('#define\tQSHIFT'):source.index('/* Protected by acquire')],
  'GUIRESULT_IMPLEMENTATION':source[source.index('typedef struct _rslt_string'):source.index('extern char rootdir[];')],
  'QID_HELPERS_IMPLEMENTATION':source[source.index('static Tk*'):source.index('// VV dinamic names-tree helper')],
+ 'GUISNAPSHOT_IMPLEMENTATION':source[source.index('typedef struct GuiSnapshot'):source.index('static long\nguiread(')],
  'GUIREAD_IMPLEMENTATION':function('guiread','static long'),
  'GUICLOSE_IMPLEMENTATION':function('guiclose','static void'),
 }
@@ -36,6 +37,7 @@ formatters=['dofmt','fmt','fmtquote','fmtrune','rune','runestrlen','utflen','utf
 with tempfile.TemporaryDirectory(prefix='guiread-') as td:
     td=Path(td);unit=td/'guiread.c';unit.write_text(harness)
     command=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1 -g'))
+    command += ['-Dmalloc=guimalloc','-Drealloc=guirealloc','-Dfree=guifree']
     command += ['-I'+str(root/p) for p in ['Linux/386/include','emu/port','include','libtk','lib9']]
     command += [str(unit)]+[str(root/'lib9'/(name+'.c')) for name in formatters]+['-o',str(td/'guiread')]
     subprocess.run(command,check=True)

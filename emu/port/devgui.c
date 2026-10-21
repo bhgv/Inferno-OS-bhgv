@@ -117,6 +117,12 @@ guiresultclear(Qid *qid)
 	}
 }
 
+typedef struct GuiRead GuiRead;
+struct GuiRead {
+	char *data;
+	long len;
+};
+
 extern char rootdir[];
 
 
@@ -577,6 +583,7 @@ guiopen(Chan *c, int omode)
 
 	poperror();
 	release();
+	c->aux = nil;
 	c->offset = 0;
 	c->mode = omode;
 	c->flag |= COPEN;
@@ -587,10 +594,17 @@ guiopen(Chan *c, int omode)
 static void
 guiclose(Chan *c)
 {
+	GuiRead *state;
 	if((c->flag & COPEN) == 0)
 		return;
 	acquire();
 	guiresultclear(&c->qid);
+	state=c->aux;
+	if(state != nil) {
+		free(state->data);
+		free(state);
+		c->aux=nil;
+	}
 	release();
 }
 
@@ -863,6 +877,7 @@ guicreate(Chan *c, char *name, int mode, ulong perm)
 			}
 			mkqid(&c->qid, (ulong)n | PATH(c->qid), c->qid.vers, (tk2->is_container) ? QTDIR : QTFILE);
 			c->mode = openmode(mode);
+			c->aux = nil;
 			c->offset = 0;
 			c->flag |= COPEN;
 		}
@@ -936,189 +951,206 @@ guiremove(Chan *c)
 }
 
 
+typedef struct GuiSnapshot GuiSnapshot;
+struct GuiSnapshot {
+	Fmt fmt;
+	char *command;
+	char *value;
+};
+
+static TkMethod*
+guimethod(Tk *tk)
+{
+	if(tk == nil || (uint)tk->type >= TKwidgets || tkmethod[tk->type] == nil)
+		error(Ebadarg);
+	return tkmethod[tk->type];
+}
+
+static void
+guiprint(GuiSnapshot *s, char *format, ...)
+{
+	va_list args;
+	int n;
+	va_start(args, format);
+	n=fmtvprint(&s->fmt, format, args);
+	va_end(args);
+	if(n < 0)
+		error(Enomem);
+}
+
+/* Build a complete snapshot independently of the size of a read request.
+ * Mutable cleanup state lives on the heap across waserror/longjmp. */
+static char*
+guisnapshot(TkTop *top, Tk *tk)
+{
+	GuiSnapshot *s;
+	TkMethod *method;
+	TkOption **opts, *opt;
+	TkCmdtab *cmd;
+	Tk *slave;
+	char *e, *result;
+	int i, j;
+
+	s=mallocz(sizeof(*s), 1);
+	if(s == nil)
+		error(Enomem);
+	if(waserror()) {
+		free(s->value);
+		free(s->command);
+		free(s->fmt.start);
+		free(s);
+		nexterror();
+	}
+	if(fmtstrinit(&s->fmt) < 0)
+		error(Enomem);
+	method=guimethod(tk);
+	guiprint(s, "# type=%s\n", method->name);
+	if(tk->name == nil)
+		guiprint(s, "# name=%p\n", tk->name);
+	else
+		guiprint(s, "# name='%s'\n", tkname(tk));
+	guiprint(s, "\n# Options:\n# --------\n\n");
+	opts=method->opts;
+	for(i=0; opts != nil && opts[i] != nil; i++) {
+		for(j=0; opts[i][j].o != nil; j++) {
+			opt=&opts[i][j];
+			s->command=smprint("%s cget %s", tkname(tk), opt->o);
+			if(s->command == nil)
+				error(Enomem);
+			e=tksinglecmd(top, s->command, &s->value);
+			if(e == nil && s->value != nil)
+				guiprint(s, "\"configure -%s \t%s\"\n", opt->o, s->value);
+			free(s->command); s->command=nil;
+			free(s->value); s->value=nil;
+		}
+		guiprint(s, "\n");
+	}
+	cmd=method->cmd;
+	if(cmd != nil) {
+		guiprint(s, "\n# Other Data:\n# -----------\n\n");
+		for(i=0; cmd[i].name != nil; i++) {
+			if(cmd[i].flag != TK_CMD_OUT || cmd[i].fn == nil)
+				continue;
+			e=cmd[i].fn(tk, "", &s->value);
+			if(e == nil && s->value != nil)
+				guiprint(s, "\"%s %s\"\n", cmd[i].name, s->value);
+			free(s->value); s->value=nil;
+		}
+	}
+	if(tk->slave != nil) {
+		guiprint(s, "\n# Slaves:\n# -------\n\n");
+		for(slave=tk->slave; slave != nil; slave=slave->next)
+			guiprint(s, "# [%q %s]\n", tkname(slave), guimethod(slave)->name);
+	}
+	guiprint(s, "\n");
+	if(tk->type == TKtext) {
+		s->command=smprint("%s get 1.0 end", tkname(tk));
+		if(s->command == nil)
+			error(Enomem);
+		e=tksinglecmd(top, s->command, &s->value);
+		if(e == nil && s->value != nil)
+			guiprint(s, "\"insert end '%s\"\n", s->value);
+		free(s->command); s->command=nil;
+		free(s->value); s->value=nil;
+	}else if(tk->type == TKcanvas) {
+		TkCanvas *canvas;
+		TkCitem *item;
+		TkCwind *window;
+		char x[Tkminitem], y[Tkminitem];
+
+		canvas=TKobj(TkCanvas, tk);
+		guiprint(s, "\n# Canvas cmds:\n# ------------\n\n");
+		tkfprint(x, canvas->width); tkfprint(y, canvas->height);
+		guiprint(s, "configure -width %s -height %s\n", x, y);
+		guiprint(s, "# focus %#p mouse %#p grab %#p\n\n", canvas->focus, canvas->mouse, canvas->grab);
+		for(item=canvas->head; item != nil; item=item->next) {
+			if((uint)item->type > TkCVarc || tkcimethod[item->type].name == nil)
+				error(Ebadarg);
+			guiprint(s, "create %q", tkcimethod[item->type].name);
+			for(i=0; i<item->p.npoint; i++) {
+				tkfprint(x, item->p.parampt[i].x); tkfprint(y, item->p.parampt[i].y);
+				guiprint(s, " %s %s", x, y);
+			}
+			guiprint(s, "\n");
+			if(item->type == TkCVwindow) {
+				window=TKobj(TkCwind, item);
+				if(window->sub != nil)
+					guiprint(s, " -window %q", tkname(window->sub));
+				guiprint(s, " # item %#p id %d sub %#p focus [%#p %q]\n",
+					item, item->id, window->sub, window->focus, tkname(window->focus));
+			}else
+				guiprint(s, "# item %#p id %d\n", item, item->id);
+		}
+	}
+	result=fmtstrflush(&s->fmt);
+	if(result == nil)
+		error(Enomem);
+	s->fmt.start=nil;
+	poperror();
+	free(s);
+	return result;
+}
+
 static long
 guiread(Chan *c, void *va, long count, vlong offset)
 {
 	Prog *p;
-//	char *buf;
-//	int n;
-	
-	int len = 0;
-
-//	Osenv *o;
-
-	long reply;
+	TkTop *top;
+	Tk *tk;
+	GuiRead *state;
+	char *snapshot;
+	long n;
 
 	if(count < 0 || offset < 0)
 		error(Ebadarg);
 	if(count == 0)
 		return 0;
 	if(c->qid.type & QTDIR)
-		return devdirread(c, (char*)va, count, 0, 0, guigen);
-
+		return devdirread(c, va, count, 0, 0, guigen);
 	acquire();
 	if(waserror()) {
 		release();
 		nexterror();
 	}
-	reply=guiresultread(&c->qid, va, count);
-	if(reply >= 0) {
-		poperror();
-		release();
-		return reply;
-	}
-	p = progpid(PID(c->qid));
-	if(p == nil)
-		error(Ethread);
-
-	if(offset == 0 && p->tktop){
-		TkTop *t;
-		Tk *tkr, *tk, *tk2;
-		int i, j, k, n;
-
-		t = p->tktop;
-		
-		tkr = t->root;
-		n = QID(c->qid);
-		
-		tk = qid2tk(&c->qid, t);
-		if(tk == nil)
+	n=guiresultread(&c->qid, va, count);
+	if(n >= 0)
+		goto Done;
+	state=c->aux;
+	if(state == nil || state->data == nil || offset == 0) {
+		p=progpid(PID(c->qid));
+		if(p == nil)
+			error(Ethread);
+		top=p->tktop;
+		tk=top != nil ? qid2tk(&c->qid, top) : nil;
+		if(tk == nil) {
+			if(state != nil) {
+				free(state->data); state->data=nil; state->len=0;
+			}
+			n=0;
 			goto Done;
-
-		tk2 = tk;
-		if(tk2){
-			char *va2 = va;
-			TkOption **opts;
-		
-			TkCmdtab *cmd = tkmethod[tk2->type]->cmd;
-			char *rv;
-			
-			i = 0;
-		
-			if((uint)tk2->type < TKwidgets)
-				i += snprint(va2+i, count-i, "# type=%s\n", tkmethod[tk2->type]->name);
-			else
-				i += snprint(va2+i, count-i, "# type=TYPE#%#ux\n", tk2->type);
-			
-			if(tk2->name == nil || (ulong)tk2->name < 512)
-				i += snprint(va2+i, count-i, "# name=%p\n", tk2->name);
-			else
-				i += snprint(va2+i, count-i, "# name='%s'\n", tkname(tk2));
-
-//			i += snprint(va2+i, count-i, "x=%d; y=%d; w=%d; h=%d;\n", 
-//										tk2->act.x, tk2->act.y, tk2->act.width, tk2->act.height);
-
-			i += snprint(va2+i, count-i, "\n# Options:\n# --------\n\n");
-			opts = tkmethod[tk2->type]->opts;
-			for(j=0; opts[j] != nil; j++){
-				for(k=0; opts[j][k].o != nil; k++ ){
-					TkOption *opt = &opts[j][k];
-					char buf[256];
-					char *rv = nil;
-
-					if(opt->o != nil){
-						snprint(buf, 255, "%s cget %s", tkname(tk2), opt->o);
-						tksinglecmd(t, buf, &rv);
-						if(rv){
-							i += snprint(va2+i, count-i, "\"configure -%s \t%s\"\n", opt->o, rv);
-							free(rv);
-						}
-					}
-				}
-				i += snprint(va2+i, count-i, "\n");
-			}
-
-			if(cmd != nil){
-				i += snprint(va2+i, count-i, "\n# Other Data:\n# -----------\n\n");
-				
-				for(j = 0; cmd[j].name != nil; j++){
-					if(cmd[j].flag == TK_CMD_OUT){
-						char *e;
-
-						rv = nil;
-						e = cmd[j].fn(tk2, "", &rv);
-						if(!e)
-							i += snprint(va2+i, count-i, "\"%s %s\"\n", cmd[j].name, rv);
-						if(rv)
-							free(rv);
-					}
-				}
-			}
-			
-//			i += snprint(va2+i, count-i, "# tk %#p; \nflag=%#ux; \ngrid=%#p; \n", tk2, tk2->flag, tk2->grid);
-
-			if(tk2->slave != nil){
-				Tk *sl;
-				i += snprint(va2+i, count-i, "\n# Slaves:\n# -------\n\n");
-				for(sl = tk2->slave; sl != nil; sl = sl->next)
-					i += snprint(va2+i, count-i, "# [%q %s]\n", tkname(sl), tkmethod[sl->type]->name);
-			}
-			i += snprint(va2+i, count-i, "\n");
-
-			tk = tk2;
-			len = i;
-			n = i;
-			if(tk->type == TKtext)
-			{
-				char buf[256];
-				char *rv = nil;
-
-				snprint(buf, 255, "%s get 1.0 end", tkname(tk) );
-				tksinglecmd(t, buf, &rv);
-				if(rv){
-					n += snprint(va2+n, count-n, "\"insert end '%s\"\n", rv);
-					free(rv);
-				}
-			}else
-			if(tk->type == TKcanvas)
-			{
-				TkCanvas *c;
-				TkCitem *it;
-				TkCwind *w;
-				char v1[Tkminitem], v2[Tkminitem];
-				int i;
-			
-				if(tk == nil)
-					return len;
-				
-				n += snprint(va2+n, count-n, "\n# Canvas cmds:\n# ------------\n\n");
-				
-				c = TKobj(TkCanvas, tk);
-				tkfprint(v1, c->width);
-				tkfprint(v2, c->height);
-				n += snprint(va2+n, count-n, "configure -width %s -height %s\n", v1, v2);
-				n += snprint(va2+n, count-n, "# focus %#p mouse %#p grab %#p\n\n", c->focus, c->mouse, c->grab);
-
-				for(it = c->head; it != nil; it = it->next){
-					n += snprint(va2+n, count-n, "create %q", tkcimethod[it->type].name);
-					for(i = 0; i < it->p.npoint; i++){
-						tkfprint(v1, it->p.parampt[i].x);
-						tkfprint(v2, it->p.parampt[i].y);
-						n += snprint(va2+n, count-n, " %s %s", v1, v2);
-					}
-					n += snprint(va2+n, count-n, "\n");
-					
-					if(it->type == TkCVwindow){
-						w = TKobj(TkCwind, it);
-						if(w->sub != nil)
-							n += snprint(va2+n, count-n, " -window %q", tkname(w->sub));
-						n += snprint(va2+n, count-n, " # item %#p id %d sub %#p focus [%#p %q]\n", it, it->id, w->sub, w->focus, tkname(w->focus));
-					}else
-						n += snprint(va2+n, count-n, "# item %#p id %d\n", it, it->id);
-				}
-			}
-//			tkcvsdump(tk);
-
-			len = n;
 		}
-		
+		if(state == nil) {
+			state=mallocz(sizeof(*state), 1);
+			if(state == nil)
+				error(Enomem);
+			c->aux=state;
+		}
+		snapshot=guisnapshot(top, tk);
+		free(state->data);
+		state->data=snapshot;
+		state->len=strlen(snapshot);
+	}
+	n=0;
+	if(offset < state->len) {
+		n=state->len-offset;
+		if(n > count)
+			n=count;
+		memmove(va, state->data+offset, n);
 	}
 Done:
 	poperror();
 	release();
-
-	return len;
-
+	return n;
 }
 
 
