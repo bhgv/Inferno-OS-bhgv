@@ -1094,12 +1094,26 @@ guiwrite(Chan *c, void *va, long count, vlong offset)
 {
 	Prog *p;
 	int totl = 0;
+	char *commands = nil;
 
 	if(c->qid.type & QTDIR)
 		error(Eisdir);
 
+	/* A device write is length-delimited, not a NUL-terminated C string.
+	 * Parse a private copy: callers may pass read-only or exactly-sized data.
+	 */
+	if(offset == 0 && count > 0){
+		if(count >= 0x7fffffffL)
+			error(Ebadarg);
+		commands = malloc(count + 1);
+		if(commands == nil)
+			error(Enomem);
+		memmove(commands, va, count);
+		commands[count] = '\0';
+	}
 	acquire();
 	if(waserror()) {
+		free(commands);
 		release();
 		nexterror();
 	}
@@ -1113,7 +1127,7 @@ guiwrite(Chan *c, void *va, long count, vlong offset)
 		Tk *tkr, *tk;
 		int i, j, n;
 		char *args[100], *rvs[100];
-		char *va2 = va;
+		char *va2 = commands;
 
 		int pars = 0;
 		int cmnt = 0;
@@ -1148,10 +1162,10 @@ guiwrite(Chan *c, void *va, long count, vlong offset)
 				}
 			}
 		}
-		if(j < 100){
+		/* Reserve args[99] for the sentinel even when all slots are used. */
+		if(j < 99 && args[j] != nil)
 			j++;
-			args[j] = nil;
-		}
+		args[j] = nil;
 	
 		t = p->tktop;
 		
@@ -1159,10 +1173,8 @@ guiwrite(Chan *c, void *va, long count, vlong offset)
 		n = QID(c->qid);
 		
 		tk = qid2tk(&c->qid, t);
-		if(tk == nil){
-			release();
-			return 0;
-		}
+		if(tk == nil)
+			goto Done;
 		
 		{
 //			TkOption **opts = tkmethod[tk->type]->opts;
@@ -1221,7 +1233,9 @@ guiwrite(Chan *c, void *va, long count, vlong offset)
 			totl = count;
 		}
 	}
+Done:
 	poperror();
+	free(commands);
 	release();
 
 	return totl;
