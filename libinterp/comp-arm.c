@@ -1763,16 +1763,17 @@ comp(Inst *i)
 	}
 }
 
-static void
+static int
 preamble(void)
 {
+	ulong *start;
 	if(comvec)
-		return;
+		return 1;
 
-	comvec = malloc(10 * sizeof(*code));
-	if(comvec == nil)
-		error(exNomem);
-	code = (ulong*)comvec;
+	start = malloc(10 * sizeof(*code));
+	if(start == nil)
+		return 0;
+	code = start;
 
 	con((ulong)&R, RREG, 0);
 	mem(Stw, O(REG, xpc), RREG, RLINK);
@@ -1783,7 +1784,12 @@ preamble(void)
 	flushcon(0);
 	pass--;
 
-	segflush(comvec, 10 * sizeof(*code));
+	if(segflush(start, 10 * sizeof(*code)) != 0) {
+		free(start);
+		return 0;
+	}
+	comvec = (void(*)(void))start;
+	return 1;
 }
 
 static void
@@ -2094,14 +2100,14 @@ void
 typecom(Type *t)
 {
 	int n;
-	ulong *tmp, *start;
+	ulong *tmp, *start, *destructor;
 
 	if(t == nil || t->initialize != 0)
 		return;
 
 	tmp = mallocz(4096*sizeof(ulong), 0);
 	if(tmp == nil)
-		error(exNomem);
+		return;
 
 	code = tmp;
 	comi(t);
@@ -2117,12 +2123,16 @@ typecom(Type *t)
 		return;
 
 	start = code;
-	t->initialize = code;
 	comi(t);
-	t->destroy = code;
+	destructor = code;
 	comd(t);
 
-	segflush(start, n);
+	if(segflush(start, n) != 0) {
+		free(start);
+		return;
+	}
+	t->initialize = start;
+	t->destroy = destructor;
 
 	if(cflag > 3)
 		print("typ= %.8p %4d i %.8p d %.8p asm=%d\n",
@@ -2147,123 +2157,250 @@ patchex(Module *m, ulong *p)
 	}
 }
 
+/* Roll back only helpers created by this compilation; existing Type code
+ * may be shared with modules that are already running. */
+static int
+armvalidpc(Module *m, Inst *pc, int size)
+{
+	uintptr start, address, offset;
+	start=(uintptr)m->prog; address=(uintptr)pc;
+	if(address < start)
+		return 0;
+	offset=address-start;
+	return offset%sizeof(Inst) == 0 && offset/sizeof(Inst) < size;
+}
+
+static int
+armvalidmeta(Module *m, int size, Modlink *ml)
+{
+	Link *l;
+	Handler *h;
+	Except *e;
+	int i;
+	if(!armvalidpc(m,m->entry,size))
+		return 0;
+	for(l=m->ext; l->name; l++)
+		if(!armvalidpc(m,l->u.pc,size))
+			return 0;
+	if(ml != nil) {
+		if(ml->nlinks < 0)
+			return 0;
+		for(i=0; i<ml->nlinks; i++)
+			if(!armvalidpc(m,ml->links[i].u.pc,size))
+				return 0;
+	}
+	if(m->htab != nil)
+		for(h=m->htab; h->etab != nil; h++) {
+			if(h->pc1 < 0 || h->pc2 < h->pc1 || h->pc2 > size)
+				return 0;
+			for(e=h->etab; e->s != nil; e++)
+				if(e->pc < 0 || e->pc >= size)
+					return 0;
+			if(e->pc != -1 && (e->pc < 0 || e->pc >= size))
+				return 0;
+		}
+	return 1;
+}
+
+typedef struct ArmTypeState ArmTypeState;
+struct ArmTypeState {
+	Type *type;
+	void *initialize, *destroy;
+};
+
+static int
+armremember(ArmTypeState *saved, int count, Type *t)
+{
+	int i;
+	if(t == nil)
+		return count;
+	for(i=0; i<count; i++)
+		if(saved[i].type == t)
+			return count;
+	saved[count].type=t;
+	saved[count].initialize=t->initialize;
+	saved[count].destroy=t->destroy;
+	return count+1;
+}
+
 int
 compile(Module *m, int size, Modlink *ml)
 {
 	Link *l;
 	Modl *e;
-	int i, n;
+	int i, n, ntypes, capacity, datasize, words;
 	ulong *s, *tmp;
+	uchar *stagedmp;
+	Module *shadow;
+	ArmTypeState *savedtypes;
+	Type *t;
 
-	base = nil;
-	patch = mallocz(size*sizeof(*patch), 0);
-	tinit = malloc(m->ntype*sizeof(*tinit));
-	tmp = malloc(4096*sizeof(ulong));
-	if(tinit == nil || patch == nil || tmp == nil)
-		goto bad;
-
-	preamble();
-
-	mod = m;
-	n = 0;
-	pass = 0;
-	nlit = 0;
-
-	for(i = 0; i < size; i++) {
-		codeoff = n;
-		code = tmp;
-		comp(&m->prog[i]);
-		patch[i] = n;
-		n += code - tmp;
-	}
-
-	for(i = 0; i < nelem(mactab); i++) {
-		codeoff = n;
-		code = tmp;
-		mactab[i].gen();
-		macro[mactab[i].idx] = n;
-		n += code - tmp;
-	}
-	code = tmp;
-	flushcon(0);
-	n += code - tmp;
-
-	base = mallocz((n+nlit)*sizeof(*code), 0);
-	if(base == nil)
-		goto bad;
-
-	if(cflag > 3)
-		print("dis=%5d %5d 386=%5d asm=%.8p: %s\n",
-			size, size*sizeof(Inst), n, base, m->name);
-
-	pass++;
-	nlit = 0;
-	litpool = base+n;
-	code = base;
-	n = 0;
-	codeoff = 0;
-	for(i = 0; i < size; i++) {
-		s = code;
-		comp(&m->prog[i]);
-		if(patch[i] != n) {
-			print("%3d %D\n", i, &m->prog[i]);
-			print("%lud != %d\n", patch[i], n);
-			urk("phase error");
-		}
-		n += code - s;
-		if(cflag > 4) {
-			print("%3d %D\n", i, &m->prog[i]);
-			das(s, code-s);
-		}
-	}
-
-	for(i = 0; i < nelem(mactab); i++) {
-		s = code;
-		mactab[i].gen();
-		if(macro[mactab[i].idx] != n){
-			print("mac phase err: %lud != %d\n", macro[mactab[i].idx], n);
-			urk("phase error");
-		}
-		n += code - s;
-		if(cflag > 4) {
-			print("%s:\n", mactab[i].name);
-			das(s, code-s);
-		}
-	}
-	s = code;
-	flushcon(0);
-	n += code - s;
-
-	for(l = m->ext; l->name; l++) {
-		l->u.pc = (Inst*)RELPC(patch[l->u.pc-m->prog]);
-		typecom(l->frame);
+	if(m == nil || m->compiled || size <= 0 || size != m->nprog ||
+	   m->ntype < 0 || m->prog == nil || m->ext == nil ||
+	   (m->ntype != 0 && m->type == nil) ||
+	   size >= 0x7fffffff/sizeof(*patch) ||
+	   size > 0x7fffffff/sizeof(Inst) || !armvalidmeta(m,size,ml))
+		return 0;
+	base=nil; patch=nil; tinit=nil; tmp=nil;
+	stagedmp=nil; shadow=nil; savedtypes=nil; ntypes=0; datasize=0;
+	/* Reserve all rollback records before any table or Type can change. */
+	capacity=m->ntype;
+	for(l=m->ext; l->name; l++) {
+		if(capacity == 0x7fffffff)
+			goto bad;
+		capacity++;
 	}
 	if(ml != nil) {
-		e = &ml->links[0];
-		for(i = 0; i < ml->nlinks; i++) {
-			e->u.pc = (Inst*)RELPC(patch[e->u.pc-m->prog]);
-			typecom(e->frame);
-			e++;
+		if(ml->nlinks < 0 || ml->nlinks > 0x7fffffff-capacity)
+			goto bad;
+		capacity+=ml->nlinks;
+	}
+	if(capacity > 0x7fffffff/sizeof(*savedtypes))
+		goto bad;
+	if(capacity != 0) {
+		savedtypes=malloc(capacity*sizeof(*savedtypes));
+		if(savedtypes == nil)
+			goto bad;
+	}
+	for(i=0; i<m->ntype; i++)
+		ntypes=armremember(savedtypes,ntypes,m->type[i]);
+	for(l=m->ext; l->name; l++)
+		ntypes=armremember(savedtypes,ntypes,l->frame);
+	if(ml != nil)
+		for(i=0; i<ml->nlinks; i++)
+			ntypes=armremember(savedtypes,ntypes,ml->links[i].frame);
+	if(m->origmp != H) {
+		if(m->ntype == 0 || m->type[0] == nil || m->type[0]->size < 0)
+			goto bad;
+		datasize=m->type[0]->size;
+		if(datasize != 0) {
+			stagedmp=malloc(datasize);
+			if(stagedmp == nil)
+				goto bad;
+			memmove(stagedmp,m->origmp,datasize);
 		}
 	}
-	for(i = 0; i < m->ntype; i++) {
-		if(tinit[i] != 0)
-			typecom(m->type[i]);
+	shadow=malloc(sizeof(*shadow));
+	if(shadow == nil)
+		goto bad;
+	memmove(shadow,m,sizeof(*shadow));
+	if(stagedmp != nil)
+		shadow->origmp=stagedmp;
+	patch=mallocz((size+1)*sizeof(*patch),0);
+	if(m->ntype != 0)
+		tinit=mallocz(m->ntype*sizeof(*tinit),1);
+	tmp=malloc(4096*sizeof(ulong));
+	if(patch == nil || tmp == nil || (m->ntype != 0 && tinit == nil))
+		goto bad;
+
+	pass=0; codeoff=0; rcon.ptr=0;
+	if(!preamble())
+		goto bad;
+	mod=shadow; n=0; nlit=0;
+	for(i=0; i<size; i++) {
+		codeoff=n; code=tmp;
+		comp(&m->prog[i]);
+		patch[i]=n;
+		words=code-tmp;
+		if(words < 0 || words > 0x7fffffff/sizeof(*code)-n)
+			goto bad;
+		n+=words;
 	}
-	patchex(m, patch);
-	m->entry = (Inst*)RELPC(patch[mod->entry-mod->prog]);
-	free(patch);
-	free(tinit);
-	free(tmp);
+	patch[size]=n; /* handler ranges may end just past the last Dis PC */
+	for(i=0; i<nelem(mactab); i++) {
+		codeoff=n; code=tmp;
+		mactab[i].gen();
+		macro[mactab[i].idx]=n;
+		words=code-tmp;
+		if(words < 0 || words > 0x7fffffff/sizeof(*code)-n)
+			goto bad;
+		n+=words;
+	}
+	code=tmp; flushcon(0);
+	words=code-tmp;
+	if(words < 0 || words > 0x7fffffff/sizeof(*code)-n)
+		goto bad;
+	n+=words;
+	if(nlit < 0 || nlit > 0x7fffffff/sizeof(*code)-n)
+		goto bad;
+	base=mallocz((n+nlit)*sizeof(*code),0);
+	if(base == nil)
+		goto bad;
+	if(cflag > 3)
+		print("dis=%5d %5d arm=%5d asm=%.8p: %s\n",size,size*sizeof(Inst),n,base,m->name);
+	pass=1; nlit=0; litpool=base+n; code=base; n=0; codeoff=0;
+	for(i=0; i<size; i++) {
+		s=code;
+		comp(&m->prog[i]);
+		if(patch[i] != n)
+			goto bad;
+		n+=code-s;
+		if(cflag > 4) {
+			print("%3d %D\n",i,&m->prog[i]);
+			das(s,code-s);
+		}
+	}
+	for(i=0; i<nelem(mactab); i++) {
+		s=code;
+		mactab[i].gen();
+		if(macro[mactab[i].idx] != n)
+			goto bad;
+		n+=code-s;
+		if(cflag > 4) {
+			print("%s:\n",mactab[i].name);
+			das(s,code-s);
+		}
+	}
+	s=code; flushcon(0); n+=code-s;
+
+	if(segflush(base,n*sizeof(*base)) != 0)
+		goto bad;
+	/* Type helper generation is fallible; retain all old PCs until it and
+	 * the module's own cache synchronization have succeeded. */
+	for(l=m->ext; l->name; l++) {
+		typecom(l->frame);
+		if(l->frame != nil && l->frame->initialize == nil)
+			goto bad;
+	}
+	if(ml != nil)
+		for(i=0; i<ml->nlinks; i++) {
+			t=ml->links[i].frame;
+			typecom(t);
+			if(t != nil && t->initialize == nil)
+				goto bad;
+		}
+	for(i=0; i<m->ntype; i++)
+		if(tinit[i] != 0) {
+			typecom(m->type[i]);
+			if(m->type[i] != nil && m->type[i]->initialize == nil)
+				goto bad;
+		}
+	if(stagedmp != nil)
+		memmove(m->origmp,stagedmp,datasize);
+	for(l=m->ext; l->name; l++)
+		l->u.pc=(Inst*)RELPC(patch[l->u.pc-m->prog]);
+	if(ml != nil) {
+		e=&ml->links[0];
+		for(i=0; i<ml->nlinks; i++,e++)
+			e->u.pc=(Inst*)RELPC(patch[e->u.pc-m->prog]);
+	}
+	patchex(m,patch);
+	m->entry=(Inst*)RELPC(patch[m->entry-m->prog]);
 	free(m->prog);
-	m->prog = (Inst*)base;
-	m->compiled = 1;
-	segflush(base, n*sizeof(*base));
+	m->prog=(Inst*)base;
+	m->compiled=1;
+	free(patch); free(tinit); free(tmp); free(stagedmp); free(shadow); free(savedtypes);
+	patch=nil; tinit=nil; rcon.ptr=0; mod=m;
 	return 1;
 bad:
-	free(patch);
-	free(tinit);
-	free(base);
-	free(tmp);
+	for(i=0; i<ntypes; i++) {
+		t=savedtypes[i].type;
+		if(t->initialize != savedtypes[i].initialize)
+			free(t->initialize);
+		t->initialize=savedtypes[i].initialize;
+		t->destroy=savedtypes[i].destroy;
+	}
+	free(patch); free(tinit); free(base); free(tmp); free(stagedmp); free(shadow); free(savedtypes);
+	base=nil; patch=nil; tinit=nil; rcon.ptr=0; mod=m;
 	return 0;
 }
