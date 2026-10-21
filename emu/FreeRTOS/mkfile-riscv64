@@ -1,0 +1,2 @@
+# _tas is provided by os.c; this port has no ARM assembly objects.
+ARCHFILES=

@@ -49,6 +49,7 @@ typedef struct Progq	Progq;
 typedef struct Import	Import;
 typedef struct ILock	ILock;
 typedef struct Inst	Inst;
+typedef struct Jit	Jit;
 typedef struct Module	Module;
 typedef struct Modlink	Modlink;
 typedef struct Modl	Modl;
@@ -267,6 +268,16 @@ struct Prog
 	void*	tktop; //TkTop*
 };
 
+/* Optional native leaf operations; Dis PCs and interpreter metadata survive. */
+struct Jit
+{
+	uchar*	code;
+	int	size;		/* bytes of generated instructions */
+	int	nprog;
+	void	(*enter)(void); /* optional current-hart instruction synchronization */
+	int	(*entry[256])(REG*); /* opcode; nil/return 0 uses optab */
+};
+
 struct Module
 {
 	int	ref;		/* Use count */
@@ -292,6 +303,7 @@ struct Module
 	Handler*	htab;	/* Exception handler table */
 	ulong*	pctab;	/* dis pc to code pc when compiled */
 	void*	dlm;		/* dynamic C module */
+	Jit*	jit;		/* optional leaf JIT, separate from native-PC compiled */
 };
 
 struct Modl

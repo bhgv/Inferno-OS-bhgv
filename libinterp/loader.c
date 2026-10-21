@@ -245,6 +245,7 @@ Loader_newmod(void *a)
 		kwerrstr(exNomem);
 		return;
 	}
+	m->jit = nil;
 	m->origmp = H;
 	m->ref = 1;
 	m->ss = f->ss;
@@ -437,7 +438,7 @@ Loader_compile(void *a)
 	if(cflag || f->flag)
 	if(compile(m, m->nprog, f->mp)) {
 		f->mp->prog = m->prog;
-		f->mp->compiled = 1;
+		f->mp->compiled = m->compiled;
 	} else
 		*f->ret = -1;
 	m->origmp = H;

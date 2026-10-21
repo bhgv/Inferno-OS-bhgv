@@ -118,7 +118,7 @@ brpatch(Inst *ip, Module *m)
 	case ISPAWN:
 		if(ip->d.imm < 0 || ip->d.imm >= m->nprog)
 			return 0;
-		ip->d.imm = (WORD)&m->prog[ip->d.imm];
+		ip->d.ins = &m->prog[ip->d.imm];
 		break;
 	}
 	return 1;
@@ -147,6 +147,7 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 	if(m == nil)
 		return nil;
 
+	m->jit = nil;
 	m->dev = dir->dev;
 	m->dtype = dir->type;
 	m->qid = dir->qid;
@@ -527,6 +528,7 @@ newmod(char *s)
 	m = malloc(sizeof(Module));
 	if(m == nil)
 		error(exNomem);
+	m->jit = nil;
 	m->ref = 1;
 	m->path = s;
 	m->origmp = H;
@@ -566,6 +568,10 @@ freemod(Module *m)
 		for(i = 0; i < m->ntype; i++)
 			freetype(m->type[i]);
 		free(m->type);
+	}
+	if(m->jit != nil) {
+		free(m->jit->code);
+		free(m->jit);
 	}
 	free(m->name);
 	free(m->prog);

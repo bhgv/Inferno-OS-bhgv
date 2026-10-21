@@ -1671,6 +1671,7 @@ void
 xec(Prog *p)
 {
 	int op;
+	Jit *j;
 
 	R = p->R;
 	R.MP = R.M->MP;
@@ -1688,10 +1689,17 @@ xec(Prog *p)
 	if(R.M->compiled)
 		comvec();
 	else do {
+		j = R.M->m->jit;
 		dec[R.PC->add]();
 		op = R.PC->op;
 		R.PC++;
-		optab[op]();
+		if(j != nil && j->entry[op] != nil) {
+			if(j->enter != nil)
+				j->enter();
+			if(!j->entry[op](&R))
+				optab[op]();
+		}else
+			optab[op]();
 	} while(--R.IC != 0);
 
 	p->R = R;

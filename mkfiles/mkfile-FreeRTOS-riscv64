@@ -1,6 +1,6 @@
 TARGMODEL=	Posix
 TARGSHTYPE=	sh
-CPUS=		arm
+CPUS=		riscv64
 
 O=		o
 OS=		o

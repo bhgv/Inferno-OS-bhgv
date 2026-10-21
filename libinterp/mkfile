@@ -127,3 +127,5 @@ comp-spim.c:N:	comp-mips.c
 
 nuke:EV:	nuke-std
 	rm -f runt.h sysmod.h drawmod.h prefabmod.h tkmod.h mathmod.h keyring.h readimagemod.h loadermod.h freetypemod.h cryptmod.h keyringif.h ipintsmod.h
+
+comp-riscv.$O comp-riscv64.$O: riscv-emit.h comp-riscv.c
