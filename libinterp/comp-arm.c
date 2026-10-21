@@ -7,11 +7,20 @@
  * to do:
  *	eliminate litpool?
  *	eliminate long constants in comi/comd
- *	enable and check inline FP code (not much point with fpemu)
  */
 
 #define	RESCHED 1	/* check for interpreter reschedule */
-#define	SOFTFP	1
+/* Select double-precision VFP only when the C target guarantees it.
+ * Older ARM/Plan 9 targets retain interpreter helpers. Override with
+ * -DARM_VFP=0 to disable inline VFP even on a VFP build.
+ */
+#ifndef ARM_VFP
+#if defined(__ARM_FP) && (__ARM_FP & 8)
+#define ARM_VFP 1
+#else
+#define ARM_VFP 0
+#endif
+#endif
 
 enum
 {
@@ -45,10 +54,8 @@ enum
 	RA0	= R1,		/* gpr 0 0+1 = L */
 
 
-	FA2	= 2,		/* Floating */
-	FA3	= 3,
+	FA2	= 2,		/* VFP d2/d4: caller-saved; no value lives across a C call */
 	FA4	= 4,
-	FA5	= 5,
 
 	EQ	= 0,
 	NE	= 1,
@@ -87,24 +94,10 @@ enum
 	Bic	= 14,
 	Mvn	= 15,
 
-	Adf	= 0,
-	Muf	= 1,
-	Suf	= 2,
-	Rsf	= 3,
-	Dvf	= 4,
-	Rdf	= 5,
-	Rmf	= 8,
-
-	Mvf	= 0,
-	Mnf	= 1,
-	Abs	= 2,
-	Rnd	= 3,
-
-	Flt	= 0,
-	Fix	= 1,
-
-	Cmf	= 4,
-	Cnf	= 5,
+	Vadd = 0x00300b00,
+	Vsub = 0x00300b40,
+	Vmul = 0x00200b00,
+	Vdiv = 0x00800b00,
 
 	Lea	= 100,		/* macro memory ops */
 	Ldw,
@@ -188,22 +181,20 @@ enum
 #define MUL(C, Rm, Rs, Rd)		*code++ = (C<<28)|(Rd<<16)|(Rm<<0)|(Rs<<8)|\
 					  (9<<4)
 
-#define LDF(C, Rn, Fd, O)		*code++ = (C<<28)|(6<<25)|(1<<24)|(1<<23)|(1<<20)|\
-					  (Rn<<16)|(1<<15)|(Fd<<12)|(1<<8)|((O)&0xff)
-#define STF(C, Rn, Fd, O)		*code++ = (C<<28)|(6<<25)|(1<<24)|(1<<23)|\
-					  (Rn<<16)|(1<<15)|(Fd<<12)|(1<<8)|((O)&0xff)
-#define CMF(C, Fn, Fm)	*code++ = (C<<28)|(7<<25)|(4<<21)|(1<<20)|(Fn<<16)|\
-						(0xF<<12)|(1<<8)|(1<<4)|(Fm)
+/* A32 VFP, restricted to caller-saved d0-d7 (and s0-s15). */
+#define LDF(C, Rn, Dd, O) *code++ = ((ulong)(C)<<28)|0x0d900b00|((Rn)<<16)|((Dd)<<12)|((O)&0xff)
+#define STF(C, Rn, Dd, O) *code++ = ((ulong)(C)<<28)|0x0d800b00|((Rn)<<16)|((Dd)<<12)|((O)&0xff)
+#define VFPBIN(Op, Dd, Dn, Dm) *code++ = 0xee000000|(Op)|((Dn)<<16)|((Dd)<<12)|(Dm)
+#define VFPNEG(Dd, Dm) *code++ = 0xeeb10b40|((Dd)<<12)|(Dm)
+#define VFPCMP(Dd, Dm) *code++ = 0xeeb40b40|((Dd)<<12)|(Dm)
+#define VFPFLAGS() *code++ = 0xeef1fa10 /* vmrs APSR_nzcv, FPSCR */
+#define VFPS32(Rd) *code++ = 0xee020a10|((Rd)<<12) /* vmov s4, Rd */
+#define VFPF64() *code++ = 0xeeb82bc2 /* vcvt.f64.s32 d2, s4 */
 
 #define LDH(C, Rn, Rd, O)		*code++ = (C<<28)|(0<<25)|(1<<24)|(1<<23)|(1<<22)|(1<<20)|\
 					  (Rn<<16)|(Rd<<12)|(((O)&0xf0)<<4)|(0xb<<4)|((O)&0xf)
 #define LDRH(C, Rn, Rd, Rm)		*code++ = (C<<28)|(0<<25)|(1<<24)|(1<<23)|(1<<20)|\
 					  (Rn<<16)|(Rd<<12)|(0xb<<4)|Rm
-
-#define CPDO2(C, Op, Fn, Fd, Fm)	*code++ = (C<<28)|(0xE<<24)|(Op<<20)|(Fn<<16)|(Fd<<12)|(1<<8)|(1<<7)|(Fm)
-#define CPDO1(C, Op, Fd, Fm)	CPDO2((C),(Op),0,(Fd),(Fm))|(1<<15)
-#define CPFLT(C, Fn, Rd)	*code++ = (C<<28)|(0xE<<24)|(0<<20)|(Fn<<16)|(Rd<<12)|(1<<8)|(9<<4)
-#define CPFIX(C, Rd, Fm)	*code++ = (C<<28)|(0xE<<24)|(1<<20)|(0<<16)|(Rd<<12)|(1<<8)|(9<<4)|(Fm)
 
 #define BRAW(C, o)			((C<<28)|(5<<25)|((o) & 0x00ffffff))
 #define BRA(C, o)			gen(BRAW((C),(o)))
@@ -777,7 +768,7 @@ midfl(Inst *i, int mi, int r)
 		opflst(i, mi, r);
 		return;
 	case AXIMM:
-		con((short)i->reg, r, 1);	// BUG
+		urk("midfl/imm"); /* FP immediate operands must use punt. */
 		return;
 	case AXINF:
 		ir = RFP;
@@ -917,13 +908,17 @@ cbraf(Inst *i, int r)
 {
 	if(RESCHED)
 		schedcheck(i);
-	if(!SOFTFP){
-		ulong *s=code;
+	if(ARM_VFP && (i->add&ARM) != AXIMM){
 		opflld(i, Ldf, FA4);
 		midfl(i, Ldf, FA2);
-		CMF(AL, FA4, FA2);
+		VFPCMP(FA4, FA2);
+		VFPFLAGS();
+		/* VFP unordered is NZCV=0011. LT/LE would accept NaN. */
+		if(r == LT)
+			r = MI;
+		else if(r == LE)
+			r = LS;
 		BRADIS(r, i->d.ins-mod->prog);
-		if(pass){print("%D\n", i); das(s, code-s);}
 	}else
 		punt(i, SRCOP|THREOP|DBRAN|NEWPC|WRTPC, optab[i->op]);
 }	
@@ -1271,7 +1266,7 @@ comp(Inst *i)
 		comgoto(i);
 		break;
 	case IMOVF:
-		if(!SOFTFP){
+		if(ARM_VFP){
 			opflld(i, Ldf, FA2);
 			opflst(i, Stf, FA2);
 			break;
@@ -1689,57 +1684,51 @@ comp(Inst *i)
 		punt(i, SRCOP|DSTOP, optab[i->op]);
 		break;
 	case IDIVF:
-		r = Dvf;
+		r = Vdiv;
 		goto arithf;
 	case IMULF:
-		r = Muf;
+		r = Vmul;
 		goto arithf;
 	case ISUBF:
-		r = Suf;
+		r = Vsub;
 		goto arithf;
 	case IADDF:
-		r = Adf;
+		r = Vadd;
 	arithf:
-		if(SOFTFP){
-			/* software fp */
+		if(!ARM_VFP || (i->add&ARM) == AXIMM){
+			/* Preserve the interpreter path on non-VFP targets/immediates. */
 			USED(r);
 			punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
 			break;
 		}
 		opflld(i, Ldf, FA2);
 		midfl(i, Ldf, FA4);
-		CPDO2(AL, r, FA4, FA4, FA2);
+		VFPBIN(r, FA4, FA4, FA2);
 		opflst(i, Stf, FA4);
 		break;
 	case INEGF:
-		if(SOFTFP){
+		if(!ARM_VFP){
 			punt(i, SRCOP|DSTOP, optab[i->op]);
 			break;
 		}
 		opflld(i, Ldf, FA2);
-		CPDO1(AL, Mnf, FA2, FA2);
+		VFPNEG(FA2, FA2);
 		opflst(i, Stf, FA2);
-//if(pass){print("%D\n", i); das(s, code-s);}
 		break;
 	case ICVTWF:
-		if(SOFTFP){
+		if(!ARM_VFP){
 			punt(i, SRCOP|DSTOP, optab[i->op]);
 			break;
 		}
 		opwld(i, Ldw, RA2);
-		CPFLT(AL, FA2, RA2);
+		VFPS32(RA2);
+		VFPF64();
 		opflst(i, Stf, FA2);
-//if(pass){print("%D\n", i); das(s, code-s);}
 		break;
 	case ICVTFW:
-		if(SOFTFP){
-			punt(i, SRCOP|DSTOP, optab[i->op]);
-			break;
-		}
-		opflld(i, Ldf, FA2);
-		CPFIX(AL, RA2, FA2);
-		opwst(i, Stw, RA2);
-//if(pass){print("%D\n", i); das(s, code-s);}
+		/* Dis rounds half away from zero (xec.c); VCVT truncates or
+		 * follows FPSCR, neither of which implements that rule. */
+		punt(i, SRCOP|DSTOP, optab[i->op]);
 		break;
 	case ISHLL:
 		/* should do better */
