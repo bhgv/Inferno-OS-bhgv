@@ -373,11 +373,25 @@ initmem(Type *t, void *vw)
 	}
 }
 
+/* Bound the full allocation before multiplication or narrowing to int. */
+void
+acheck(int tsz, WORD sz)
+{
+	if(sz < 0)
+		error(exNegsize);
+	if(tsz < 0 || (uvlong)sz > 0x7fffffff ||
+	   (tsz != 0 && (uvlong)sz >
+	    (0x7fffffff-sizeof(Heap)-sizeof(Array))/(ulong)tsz))
+		error(exHeap);
+}
+
 Heap*
 nheap(int n)
 {
 	Heap *h;
 
+	if(n < 0 || (ulong)n > 0x7fffffff-sizeof(Heap))
+		error(exHeap);
 	h = poolalloc(heapmem, sizeof(Heap)+n);
 	if(h == nil)
 		error(exHeap);
@@ -396,6 +410,8 @@ heapz(Type *t)
 {
 	Heap *h;
 
+	if(t == nil || t->size < 0 || (ulong)t->size > 0x7fffffff-sizeof(Heap))
+		error(exHeap);
 	h = poolalloc(heapmem, sizeof(Heap)+t->size);
 	if(h == nil)
 		error(exHeap);
@@ -417,6 +433,8 @@ heap(Type *t)
 {
 	Heap *h;
 
+	if(t == nil || t->size < 0 || (ulong)t->size > 0x7fffffff-sizeof(Heap))
+		error(exHeap);
 	h = poolalloc(heapmem, sizeof(Heap)+t->size);
 	if(h == nil)
 		error(exHeap);
@@ -438,6 +456,7 @@ heaparray(Type *t, int sz)
 	Heap *h;
 	Array *a;
 
+	acheck(t->size,sz);
 	h = nheap(sizeof(Array) + (t->size*sz));
 	h->t = &Tarray;
 	Tarray.ref++;
@@ -485,6 +504,7 @@ arraycpy(Array *sa)
 	if(sa == H)
 		return H;
 
+	acheck(sa->t->size,sa->len);
 	dh = nheap(sizeof(Array) + sa->t->size*sa->len);
 	dh->t = &Tarray;
 	Tarray.ref++;

@@ -489,6 +489,7 @@ extern	void	newgrp(Prog*);
 extern	void		newmp(void*, void*, Type*);
 extern	Prog*		newprog(Prog*, Modlink*);
 extern	void		newstack(Prog*);
+extern	void		acheck(int, WORD);
 extern	Heap*		nheap(int);
 extern	void		noptrs(Type*, void*);
 extern	int		nprog(void);

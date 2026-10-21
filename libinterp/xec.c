@@ -387,18 +387,9 @@ OP(mframe)
 		initmem(t, f);
 	T(d) = f;
 }
-void
-acheck(int tsz, int sz)
-{
-	if(sz < 0)
-		error(exNegsize);
-	/* test for overflow; assumes sz >>> tsz */
-	if((int)(sizeof(Array) + sizeof(Heap) + tsz*sz) < sz && tsz != 0)
-		error(exHeap);
-}
 OP(newa)
 {
-	int sz;
+	WORD sz;
 	Type *t;
 	Heap *h;
 	Array *a, *at, **ap;
@@ -423,7 +414,7 @@ OP(newa)
 }
 OP(newaz)
 {
-	int sz;
+	WORD sz;
 	Type *t;
 	Heap *h;
 	Array *a, *at, **ap;
@@ -1048,6 +1039,9 @@ cons(ulong size, List **lp)
 	Heap *h;
 	List *lv, *l;
 
+	if(size > 0x7fffffff-sizeof(Heap)-
+	   (sizeof(List)-sizeof(((List*)0)->data)))
+		error(exHeap);
 	h = nheap(sizeof(List) + size - sizeof(((List*)0)->data));
 	h->t = &Tlist;
 	Tlist.ref++;
@@ -1193,20 +1187,20 @@ OP(slicea)
 	Type *t;
 	Heap *h;
 	Array *at, *ss, *ds;
-	int v, n, start;
+	WORD v, n, start;
 
 	v = W(m);
 	start = W(s);
-	n = v - start;
 	ds = A(d);
 
 	if(ds == H) {
-		if(n == 0)
+		if(v == start)
 			return;
 		error(exNilref);
 	}
-	if(n < 0 || (ulong)start > ds->len || (ulong)v > ds->len)
+	if(start < 0 || v < start || v > ds->len)
 		error(exBounds);
+	n = v-start;
 
 	t = ds->t;
 	h = heap(&Tarray);
@@ -1235,7 +1229,8 @@ OP(slicea)
 OP(slicela)
 {
 	Type *t;
-	int l, dl;
+	int l;
+	WORD dl;
 	Array *ss, *ds;
 	uchar *sp, *dp, *ep;
 
@@ -1246,7 +1241,7 @@ OP(slicela)
 		return;
 	if(ds == H)
 		error(exNilref);
-	if(dl < 0 || dl+ss->len > ds->len)
+	if(dl < 0 || dl > ds->len || ss->len < 0 || ss->len > ds->len-dl)
 		error(exBounds);
 
 	t = ds->t;

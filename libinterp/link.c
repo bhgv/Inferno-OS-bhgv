@@ -67,7 +67,10 @@ mklinkmod(Module *m, int n)
 	Heap *h;
 	Modlink *ml;
 
-	h = nheap(sizeof(Modlink)+(n-1)*sizeof(ml->links[0]));
+	if(n < 0 || (ulong)n >
+	   (0x7fffffff-sizeof(Heap)-(sizeof(Modlink)-sizeof(ml->links[0])))/sizeof(ml->links[0]))
+		error(exHeap);
+	h = nheap(sizeof(Modlink)-sizeof(ml->links[0])+n*sizeof(ml->links[0]));
 	h->t = &Tmodlink;
 	Tmodlink.ref++;
 	ml = H2D(Modlink*, h);
