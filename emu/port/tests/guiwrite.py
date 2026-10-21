@@ -11,7 +11,8 @@ source = (root.parent / "devgui.c").read_text()
 start = source.index("static long\nguiwrite(")
 end = source.index("\n\nstatic int\nguiwstat(", start)
 harness = (root / "guiwrite.c").read_text().replace(
-    "GUIWRITE_IMPLEMENTATION", source[start:end])
+    "GUIWRITE_IMPLEMENTATION", source[start:end]).replace(
+    "GUIRESULT_IMPLEMENTATION", source[source.index("typedef struct _rslt_string"):source.index("extern char rootdir[];")])
 with tempfile.TemporaryDirectory(prefix="guiwrite-") as temporary:
     unit = Path(temporary) / "guiwrite.c"
     binary = Path(temporary) / "guiwrite"

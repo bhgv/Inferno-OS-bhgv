@@ -52,16 +52,70 @@ enum
 
 
 
+/* Protected by acquire/release in read, write and close. */
 typedef struct _rslt_string rslt_string;
 struct _rslt_string {
 	rslt_string *next;
-	ulong		path;
-	char 		str[1];
+	Qid qid;
+	long len;
+	long pos;
+	char str[1];
 };
 
-rslt_string *root_rslt_strings = nil;
+static rslt_string *root_rslt_strings;
 
+static int
+guisameresult(rslt_string *r, Qid *qid)
+{
+	return r->qid.path == qid->path && r->qid.vers == qid->vers;
+}
 
+/* -1 means no reply is pending; 0 may be an empty completed reply. */
+static long
+guiresultread(Qid *qid, void *va, long count)
+{
+	rslt_string **link, *r;
+	long n;
+
+	for(link=&root_rslt_strings; (r=*link) != nil; link=&r->next) {
+		if(!guisameresult(r, qid))
+			continue;
+		n=r->len-r->pos;
+		if(n > count)
+			n=count;
+		memmove(va, r->str+r->pos, n);
+		r->pos+=n;
+		if(r->pos == r->len) {
+			*link=r->next;
+			free(r);
+		}
+		return n;
+	}
+	return -1;
+}
+
+static void
+guiresultqueue(rslt_string *r)
+{
+	rslt_string **link;
+	for(link=&root_rslt_strings; *link != nil; link=&(*link)->next)
+		;
+	r->next=nil;
+	*link=r;
+}
+
+static void
+guiresultclear(Qid *qid)
+{
+	rslt_string **link, *r;
+	for(link=&root_rslt_strings; (r=*link) != nil; ) {
+		if(guisameresult(r, qid)) {
+			*link=r->next;
+			free(r);
+		}else
+			link=&r->next;
+	}
+}
 
 extern char rootdir[];
 
@@ -533,20 +587,11 @@ guiopen(Chan *c, int omode)
 static void
 guiclose(Chan *c)
 {
-	rslt_string *r, *or;
-
 	if((c->flag & COPEN) == 0)
 		return;
-
-	for(r = root_rslt_strings, or = nil; r != nil && r->path != (ulong)c->qid.path; or = r, r = r->next);
-	if(r != nil){
-		if(or == nil)
-			root_rslt_strings = r->next;
-		else
-			or->next = r->next;
-		
-		free(r);
-	}
+	acquire();
+	guiresultclear(&c->qid);
+	release();
 }
 
 
@@ -902,36 +947,25 @@ guiread(Chan *c, void *va, long count, vlong offset)
 
 //	Osenv *o;
 
-	rslt_string *r, *or;
+	long reply;
 
-	
+	if(count < 0 || offset < 0)
+		error(Ebadarg);
+	if(count == 0)
+		return 0;
 	if(c->qid.type & QTDIR)
 		return devdirread(c, (char*)va, count, 0, 0, guigen);
 
-	for(r = root_rslt_strings, or = nil; r != nil && r->path != (ulong)c->qid.path; or = r, r = r->next);
-	if(r != nil){
-		char *rv = r->str;
-		int l = strlen(rv);
-		
-		if(l > count)
-			l = count;
-		memcpy(va, rv, l);
-
-		if(or == nil)
-			root_rslt_strings = r->next;
-		else
-			or->next = r->next;
-		
-		free(r);
-
-		return l;
-	}
-
-
 	acquire();
-	if (waserror()) {
+	if(waserror()) {
 		release();
 		nexterror();
+	}
+	reply=guiresultread(&c->qid, va, count);
+	if(reply >= 0) {
+		poperror();
+		release();
+		return reply;
 	}
 	p = progpid(PID(c->qid));
 	if(p == nil)
@@ -948,10 +982,8 @@ guiread(Chan *c, void *va, long count, vlong offset)
 		n = QID(c->qid);
 		
 		tk = qid2tk(&c->qid, t);
-		if(tk == nil){
-			release();
-			return 0;
-		}
+		if(tk == nil)
+			goto Done;
 
 		tk2 = tk;
 		if(tk2){
@@ -1081,6 +1113,7 @@ guiread(Chan *c, void *va, long count, vlong offset)
 		}
 		
 	}
+Done:
 	poperror();
 	release();
 
@@ -1226,9 +1259,10 @@ guiwrite(Chan *c, void *va, long count, vlong offset)
 			r->str[rl] = '\0';
 			
 			//QIDsetRV(c->qid, r);
-			r->next = root_rslt_strings;
-			r->path = (ulong)c->qid.path;
-			root_rslt_strings = r;
+			r->qid = c->qid;
+			r->len = rl;
+			r->pos = 0;
+			guiresultqueue(r);
 
 			totl = count;
 		}

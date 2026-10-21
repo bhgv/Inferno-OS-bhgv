@@ -19,16 +19,15 @@ typedef struct Tk Tk;
 typedef struct TkTop TkTop;
 typedef struct Prog Prog;
 typedef struct Chan Chan;
-typedef struct rslt_string rslt_string;
 struct Tk { int unused; };
 struct TkTop { Tk *root; };
 struct Prog { TkTop *tktop; };
-struct Chan { struct { int type; ulong path; } qid; };
-struct rslt_string { rslt_string *next; ulong path; char str[1]; };
+typedef struct { int type; unsigned long long path; ulong vers; } Qid;
+struct Chan { Qid qid; };
+GUIRESULT_IMPLEMENTATION
 static Tk widget;
 static TkTop top = {&widget};
 static Prog process = {&top};
-static rslt_string *root_rslt_strings;
 static int lock_depth, error_depth, missing_widget, command_count;
 static char last_command[256];
 static void error(const char *text) { (void)text; assert(0); }
