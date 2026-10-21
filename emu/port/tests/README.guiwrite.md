@@ -19,7 +19,8 @@ formatters; process lookup, scheduler and Tk execution are stubs. It covers
 partial/zero reads, FIFO/full-Qid isolation, coherent chunked snapshots, long
 getters, escaped snapshot round trips, immutable bounded write input, malformed
 requests, the 99-command boundary, positive stream offsets, large PIDs,
-immutable directory lookup, unknown types, long paths, missing widgets/processes,
+immutable directory lookup, stable Qids across sibling deletion and object
+reuse, independent-open reply ownership, unknown types, long paths, missing widgets/processes,
 Tk errors, allocation failures, explicit heap accounting and lock/error balance.
 
 Successful Draw/Tk bootstrap, real resource reference counts, rendering, GC and

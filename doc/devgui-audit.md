@@ -41,6 +41,12 @@ that remains. It does not claim that all Inferno bugs or all GUI bugs are fixed.
 - lib9 dynamic formatting saves the used offset before realloc and checks
   capacity growth for overflow.
 
+- Tk autorepeat generations use `uintptr`, eliminating signed overflow and
+  pointer truncation at the event-worker boundary. A callback that rearms a new
+  one-shot is no longer cancelled by cleanup for the old callback. Stale events
+  still fail the generation check. The Tk command-sort callback now matches
+  the actual lib9 qsort signature.
+
 ## Verification
 
 From the repository root:
@@ -53,6 +59,11 @@ CFLAGS='-O1 -g -fsanitize=address,undefined --param=asan-stack=0' \
 cc -Werror=incompatible-pointer-types -fsyntax-only \
   -I Linux/386/include -I emu/port -I include -I libtk emu/port/devgui.c
 ```
+
+`libinterp/tests/tk-repeat.py` exercises production autorepeat functions with
+worker-boundary stubs: cancellation, replaced/stale events, reentrant one-shot
+rearming, worker-allocation retry, and generations crossing signed-32-bit,
+unsigned-32-bit and uintptr rollover boundaries. It passes UBSan.
 
 `guiwrite.py` is a compatibility entry point for the same suite. The harness
 extracts production device functions and links production lib9 formatters with

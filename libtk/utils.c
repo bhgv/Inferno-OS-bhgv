@@ -71,7 +71,7 @@ char*	tkfont;
  * a mechanism for terminating the rptproc
  */
 static void *autorpt;
-static int rptid;
+static uintptr rptid;
 static Tk *rptw;
 static void *rptnote;
 static void (*rptcb)(Tk*, void*, int);
@@ -1633,7 +1633,7 @@ tkdirty(Tk *tk)
 }
 
 static int
-qcmdcmp(const void *a, const void *b)
+qcmdcmp(void *a, void *b)
 {
 	return strcmp(((TkCmdtab*)a)->name, ((TkCmdtab*)b)->name);
 }
@@ -1988,7 +1988,7 @@ tkhaskeyfocus(Tk *tk)
 static int
 rptactive(void *v)
 {
-	int id = (int)v;
+	uintptr id = (uintptr)v;
 	if (id == rptid)
 		return 1;
 	return 0;
@@ -1997,7 +1997,7 @@ rptactive(void *v)
 static int
 ckrpt(void *v, int interval)
 {
-	int id = (int)v;
+	uintptr id = (uintptr)v;
 	if (id != rptid)
 		return -1;
 	if (interval < rptto)
@@ -2008,12 +2008,12 @@ ckrpt(void *v, int interval)
 static void
 dorpt(void *v)
 {
-	int id = (int)v;
+	uintptr id = (uintptr)v;
 
 	if (id == rptid) {
 		rptto = rptint;
 		(*rptcb)(rptw, rptnote, 0);
-		if (rptint <= 0) {
+		if (id == rptid && rptint <= 0) {
 			rptid++;
 			rptw = nil;
 		}
