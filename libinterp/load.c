@@ -30,14 +30,14 @@ operand(uchar **p)
 			c |= ~0x3F;
 		else
 			c &= 0x3F;
-		return (c<<8)|cp[1];		
+		return (int)(((unsigned int)c<<8)|cp[1]);
 	case 0xC0:
 		*p = cp+4;
 		if(c & 0x20)
 			c |= ~0x3F;
 		else
 			c &= 0x3F;
-		return (c<<24)|(cp[1]<<16)|(cp[2]<<8)|cp[3];		
+		return (int)(((unsigned int)c<<24)|(cp[1]<<16)|(cp[2]<<8)|cp[3]);
 	}
 	return 0;	
 }
@@ -49,7 +49,7 @@ disw(uchar **p)
 	uchar *c;
 
 	c = *p;
-	v  = c[0] << 24;
+	v  = (ulong)c[0] << 24;
 	v |= c[1] << 16;
 	v |= c[2] << 8;
 	v |= c[3];
@@ -60,7 +60,7 @@ disw(uchar **p)
 double
 canontod(ulong v[2])
 {
-	union { double d; unsigned long ul[2]; } a;
+	union { double d; unsigned int ul[2]; } a;
 	a.d = 1.;
 	if(a.ul[0]) {
 		a.ul[0] = v[0];
@@ -251,14 +251,14 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 	}
 
 	m->ntype = hsize;
-	m->type = malloc(hsize*sizeof(Type*));
+	m->type = mallocz(hsize*sizeof(Type*), 1);
 	if(m->type == nil) {
 		kwerrstr(exNomem);
 		goto bad;
 	}
 	for(i = 0; i < hsize; i++) {
 		id = operand(isp);
-		if(id > hsize) {
+		if(id < 0 || id >= hsize || m->type[id] != nil) {
 			kwerrstr("heap id range");
 			goto bad;
 		}
@@ -278,6 +278,10 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 	}
 
 	if(dsize != 0) {
+		if(hsize == 0) {
+			kwerrstr("missing desc for mp");
+			goto bad;
+		}
 		pt = m->type[0];
 		if(pt == 0 || pt->size != dsize) {
 			kwerrstr("bad desc for mp");
@@ -320,7 +324,7 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 			for(i = 0; i < n; i++) {
 				hi = disw(isp);
 				lo = disw(isp);
-				*(LONG*)si = (LONG)hi << 32 | (LONG)(ulong)lo;
+				*(LONG*)si = (LONG)((uvlong)(unsigned int)hi << 32 | (unsigned int)lo);
 				si += sizeof(LONG);
 			}
 			break;
@@ -334,7 +338,7 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 			break;
 		case DEFA:			/* Array */
 			v = disw(isp);
-			if(v < 0 || v > m->ntype) {
+			if(v < 0 || v >= m->ntype) {
 				kwerrstr("bad array type");
 				goto bad;
 			}

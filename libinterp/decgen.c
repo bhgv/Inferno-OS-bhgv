@@ -21,7 +21,7 @@ main(void)
 	print("#include \"isa.h\"\n");
 	print("#include \"interp.h\"\n\n");
 
-	print("#define DIND(reg, xxx) (uchar*)((*(ulong*)(R.reg+R.PC->xxx.i.f))+R.PC->xxx.i.s)\n");
+	print("#define DIND(reg, xxx) (*(uchar**)(R.reg+R.PC->xxx.i.f)+R.PC->xxx.i.s)\n");
 
 	for(i = 0; i < 256; i++)
 		decgen(i);

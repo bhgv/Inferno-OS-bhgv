@@ -3,7 +3,7 @@
 void
 dtocanon(double f, ulong v[])
 {
-	union { double d; ulong ul[2]; } a;
+	union { double d; unsigned int ul[2]; } a;
 
 	a.d = 1.;
 	if(a.ul[0]){
@@ -20,7 +20,7 @@ dtocanon(double f, ulong v[])
 double
 canontod(ulong v[2])
 {
-	union { double d; unsigned long ul[2]; } a;
+	union { double d; unsigned int ul[2]; } a;
 
 	a.d = 1.;
 	if(a.ul[0]) {

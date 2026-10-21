@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Check production canonical serialization and native pointer decoding widths."""
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+import tempfile
+
+root=Path(__file__).resolve().parents[2]
+
+def extract(src, name, result):
+    start=src.index(result+'\n'+name+'(')
+    pos=src.index('{',start)+1
+    depth=1
+    while depth:
+        depth+=(src[pos]=='{')-(src[pos]=='}')
+        pos+=1
+    return src[start:pos]
+
+load=(root/'libinterp/load.c').read_text()
+limbo=(root/'limbo/dtocanon.c').read_text()
+vm=extract(load,'canontod','double').replace('canontod(', 'vm_canontod(')
+limbo=limbo.replace('#include "limbo.h"','').replace('canontod(', 'compiler_canontod(')
+big=re.search(r'\*\(LONG\*\)si = (.*);',load).group(1)
+macro=next(line for line in (root/'libinterp/dec.c').read_text().splitlines() if line.startswith('#define DIND'))
+# The generator must emit the same pointer expression as the generated file.
+assert macro.replace('\\','\\\\').replace('"','\\"') in (root/'libinterp/decgen.c').read_text()
+patch=extract(load,'brpatch','int')
+unit=r'''
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include "isa.h"
+#ifdef LONG32
+#define ulong uint32_t
+#else
+#define ulong unsigned long
+#endif
+#ifdef WORD32
+#define WORD int32_t
+#else
+#define WORD int64_t
+#endif
+typedef int64_t LONG;
+typedef uint64_t uvlong;
+typedef unsigned char uchar;
+''' + vm + '\n' + limbo + r'''
+typedef struct Inst Inst;
+typedef union { WORD imm,ind; Inst *ins; struct { uint16_t f,s; } i; } Adr;
+struct Inst { int op; Adr s,d; };
+typedef struct { Inst *prog; int nprog; } Module;
+static struct { uchar *FP; Inst *PC; } R;
+''' + macro + '\n' + patch + r'''
+static LONG join(WORD hi, WORD lo) { return BIG_EXPRESSION; }
+int main(void) {
+    static const uint64_t bits[]={0,0x8000000000000000ULL,0x3ff0000000000000ULL,
+        0x3ff8000000000000ULL,0xbff8000000000000ULL,1,0x0010000000000000ULL,
+        0x7fefffffffffffffULL,0x7ff0000000000000ULL,0xfff0000000000000ULL,
+        0x7ff8123456789abcULL};
+    ulong words[2],again[2];
+    uint64_t result;
+    double input,decoded;
+    unsigned int i,j;
+    union { void *aligned; uchar raw[32]; } area;
+    uchar target[32];
+    Inst instructions[2]={{0}};
+    Module m={instructions,2};
+    for(i=0;i<sizeof(bits)/sizeof(bits[0]);i++) {
+        memcpy(&input,&bits[i],8);
+        dtocanon(input,words);
+        assert(words[0]==(uint32_t)(bits[i]>>32) && words[1]==(uint32_t)bits[i]);
+        decoded=vm_canontod(words); memcpy(&result,&decoded,8); assert(result==bits[i]);
+        decoded=compiler_canontod(words); memcpy(&result,&decoded,8); assert(result==bits[i]);
+        dtocanon(decoded,again); assert(again[0]==words[0] && again[1]==words[1]);
+    }
+    for(i=0;i<sizeof(bits)/sizeof(bits[0]);i++)
+        for(j=0;j<sizeof(bits)/sizeof(bits[0]);j++) {
+            uint32_t hi=bits[i],lo=bits[j];
+            assert((uint64_t)join((WORD)(int32_t)hi,(WORD)(int32_t)lo)==((uint64_t)hi<<32|lo));
+        }
+    *(uchar**)area.raw=target;
+    R.FP=area.raw; R.PC=instructions;
+    instructions[0].s.i.f=0; instructions[0].s.i.s=7;
+    assert(DIND(FP,s)==target+7); /* also with a 32-bit ulong and 64-bit pointers */
+    instructions[0].op=IJMP; instructions[0].d.imm=1;
+    assert(brpatch(&instructions[0],&m)==1 && instructions[0].d.ins==instructions+1);
+    instructions[0].d.imm=2; assert(brpatch(&instructions[0],&m)==0);
+    return 0;
+}
+'''.replace('BIG_EXPRESSION',big)
+with tempfile.TemporaryDirectory(prefix='vm-widths-') as td:
+    td=Path(td)
+    src=td/'widths.c';src.write_text(unit)
+    for name,defines in [('LP64',[]),('word32-pointer64',['-DWORD32']),
+                         ('LLP64-model',['-DWORD32','-DLONG32'])]:
+        exe=td/name
+        subprocess.run(shlex.split(os.environ.get('CC','cc'))+
+                       shlex.split(os.environ.get('CFLAGS','-O1 -g'))+
+                       ['-I'+str(root/'include')]+defines+[str(src),'-o',str(exe)],check=True)
+        subprocess.run([str(exe)],check=True)
+print('PASS VM widths: canonical real bit patterns, big halves, indirect pointers and branch patching in three data models')
