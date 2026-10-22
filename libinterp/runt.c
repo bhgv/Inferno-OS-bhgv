@@ -304,36 +304,53 @@ Sys_tokenize(void *fp)
 	f->ret->t1 = l;
 }
 
+/* Validate byte-array metadata and full VM lengths before native UTF routines. */
+static int
+sysutfarray(Array *a)
+{
+	if(a == H || a == nil)
+		error(exBounds);
+	if(D2H(a)->t != &Tarray || a->t != &Tbyte)
+		error(exType);
+	if(a->len < 0 || (uvlong)a->len > 0x7fffffff || (a->len != 0 && a->data == nil))
+		error(exBounds);
+	return (int)a->len;
+}
+
+/* Count only complete UTF sequences within the validated byte prefix. */
 void
 Sys_utfbytes(void *fp)
 {
 	Array *a;
-	int nbyte;
+	int nbyte, length;
 	F_Sys_utfbytes *f;
 
 	f = fp;
 	a = f->buf;
-	if(a == H || (UWORD)f->n > a->len)
+	length = sysutfarray(a);
+	if(f->n < 0 || f->n > length)
 		error(exBounds);
 
-	utfnleng((char*)a->data, f->n, &nbyte);
+	utfnleng((char*)a->data, (int)f->n, &nbyte);
 	*f->ret = nbyte;
 }
 
+/* Validate the full VM offset before decoding one possibly incomplete rune. */
 void
 Sys_byte2char(void *fp)
 {
 	Rune r;
 	char *p;
-	int n, w;
+	int n, w, length;
 	Array *a;
 	F_Sys_byte2char *f;
 
 	f = fp;
 	a = f->buf;
-	n = f->n;
-	if(a == H || (UWORD)n >= a->len)
+	length = sysutfarray(a);
+	if(f->n < 0 || f->n >= length)
 		error(exBounds);
+	n = (int)f->n;
 	r = a->data[n];
 	if(r < Runeself){
 		f->ret->t0 = r;
@@ -342,7 +359,7 @@ Sys_byte2char(void *fp)
 		return;
 	}
 	p = (char*)a->data+n;
-	if(n+UTFmax <= a->len || fullrune(p, a->len-n))
+	if(length-n >= UTFmax || fullrune(p, length-n))
 		w = chartorune(&r, p);
 	else {
 		/* insufficient data */
@@ -362,21 +379,24 @@ Sys_byte2char(void *fp)
 	f->ret->t2 = 1;
 }
 
+/* Preserve the full rune and offset until validation, including U+10FFFF. */
 void
 Sys_char2byte(void *fp)
 {
 	F_Sys_char2byte *f;
 	Array *a;
-	int n, c;
+	int n, length;
+	WORD c;
 	Rune r;
 
 	f = fp;
 	a = f->buf;
-	n = f->n;
+	length = sysutfarray(a);
 	c = f->c;
-	if(a == H || (UWORD)n>=a->len)
+	if(f->n < 0 || f->n >= length)
 		error(exBounds);
-	if(c<0 || c>=Runemax)
+	n = (int)f->n;
+	if(c < 0 || c > Runemax)
 		c = Runeerror;
 	if(c < Runeself){
 		a->data[n] = c;
@@ -384,7 +404,7 @@ Sys_char2byte(void *fp)
 		return;
 	}
 	r = c;
-	if(n+UTFmax<=a->len || runelen(c)<=a->len-n){
+	if(length-n >= UTFmax || runelen(c) <= length-n){
 		*f->ret = runetochar((char*)a->data+n, &r);
 		return;
 	}
@@ -469,6 +489,7 @@ mem2array(void *va, int n)
 	return a;
 }
 
+/* Empty prefixes need no data pointer; compare remaining bytes within the span. */
 static int
 utfnleng(char *s, int nb, int *ngood)
 {
@@ -477,6 +498,11 @@ utfnleng(char *s, int nb, int *ngood)
 	Rune rune;
 	char *es, *starts;
 
+	if(nb == 0){
+		if(ngood)
+			*ngood = 0;
+		return 0;
+	}
 	starts = s;
 	es = s+nb;
 	for(n = 0; s < es; n++) {
@@ -484,7 +510,7 @@ utfnleng(char *s, int nb, int *ngood)
 		if(c < Runeself)
 			s++;
 		else {
-			if(s+UTFmax<=es || fullrune(s, es-s))
+			if(es-s >= UTFmax || fullrune(s, es-s))
 				s += chartorune(&rune, s);
 			else
 				break;
