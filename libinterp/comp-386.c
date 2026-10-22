@@ -802,6 +802,7 @@ commcall(Inst *i)
 	modrm(Oldw, O(REG, M), RTMP, RTA);	// MOVL R.M, RTA
 	modrm(Ostw, O(Frame, mr), RCX, RTA);	// MOVL RTA, mr(CX) 	f->mr = R.M
 	opwst(i, Oldw, RTA);			// MOVL ml, RTA
+	con((ulong)H, RAX); /* nil module must reach rmcall with dt == H */
 	cmpl(RTA, (ulong)H);
 	gen2(Ojeqb, 0);
 	mlnil = code - 1;
@@ -884,10 +885,11 @@ comp(Inst *i)
 		error(buf);
 		break;
 	case IMCALL:
-		if((i->add&ARM) == AXIMM)
+		/* Negative link numbers address exports through the VM helper. */
+		if((i->add&ARM) == AXIMM && (short)i->reg >= 0)
 			commcall(i);
 		else
-			punt(i, SRCOP|DSTOP|THREOP|WRTPC|NEWPC, optab[i->op]);
+			punt(i, SRCOP|DSTOP|THREOP|WRTPC|NEWPC|TCHECK, optab[i->op]);
 		break;
 	case ISEND:
 	case IRECV:
@@ -971,7 +973,8 @@ comp(Inst *i)
 		punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
 		break;
 	case IMFRAME:
-		if((i->add&ARM) == AXIMM)
+		/* Negative link numbers address exports through the VM helper. */
+		if((i->add&ARM) == AXIMM && (short)i->reg >= 0)
 			commframe(i);
 		else
 			punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
@@ -1697,14 +1700,17 @@ macmcal(void)
 static void
 macfram(void)
 {
-	uchar *label;
+	uchar *label, *overflow;
 
 	con((ulong)&R, RTMP);			// MOVL	$R, RTMP
 	modrm(Oldw, O(REG, SP), RTMP, RAX);	// MOVL	R.SP, AX
 	modrm(0x03, O(Type, size), RTA, RAX);	// ADDL size(RCX), RAX
+	gen2(0x72, 0); /* JC: a wrapped stack address must extend. */
+	overflow = code-1;
 	modrm(0x3b, O(REG, TS), RTMP, RAX);	// CMPL	AX, R.TS
-	gen2(0x7c, 0x00);			// JL	.+(patch)
+	gen2(0x72, 0x00);			// JB: unsigned stack limit
 	label = code-1;
+	*overflow = code-overflow-1;
 
 	modrm(Ostw, O(REG, s), RTMP, RTA);
 	modrm(Ostw, O(REG, FP), RTMP, RFP);	// MOVL	RFP, R.FP

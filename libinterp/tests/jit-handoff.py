@@ -94,9 +94,9 @@ with tempfile.TemporaryDirectory(prefix='jit-handoff-') as td:
         subprocess.run(shlex.split(os.environ.get('CC','cc'))+flags+['-Wno-pointer-to-int-cast','-Wno-int-to-pointer-cast','-shared','-fPIC','-I'+str(root/'include'),str(src),'-o',str(binary)],check=True)
         lib=C.CDLL(str(binary));lib.image.restype=C.c_void_p
         for mode in range(6):
-            for outcome in (['decode-fault'] if mode==5 else ['normal','newpc','yield','check-zero','error']):
+            for outcome in (['decode-fault'] if mode==5 else ['normal','newpc','yield','check-zero','error','newpc-yield','newpc-check-zero']):
                 for synthetic in [False,True]:
-                    mask=1|2|64|(16 if outcome=='newpc' else 8 if outcome in ['yield','check-zero'] else 0)
+                    mask=1|2|64|(16 if outcome.startswith('newpc') else 0)|(8 if outcome in ['yield','check-zero','newpc-yield','newpc-check-zero'] else 0)
                     # IA-32/ARM TCHECK=(1<<3), WRTPC=(1<<2), NEWPC=(1<<4).
                     size=lib.build(mode,mask,int(synthetic));host=lib.image();BASE=C.c_uint32(host).value
                     reg=lib.regaddr()&0xffffffff;callback=lib.callback()&0xffffffff
@@ -134,8 +134,8 @@ with tempfile.TemporaryDirectory(prefix='jit-handoff-') as td:
                         if outcome=='error':uc.emu_stop();return
                         uc.mem_write(dp,struct.pack('<I',(av+bv)&0xffffffff))
                         uc.mem_write(NEWFRAME,bytes(uc.mem_read(FRAME,4096)));uc.mem_write(reg+8,struct.pack('<I',NEWFRAME))
-                        uc.mem_write(reg+4,struct.pack('<I',NEWMP));uc.mem_write(reg+48,struct.pack('<I',int(outcome=='yield')))
-                        if outcome=='newpc':uc.mem_write(reg,struct.pack('<I',STOP))
+                        uc.mem_write(reg+4,struct.pack('<I',NEWMP));uc.mem_write(reg+48,struct.pack('<I',int(outcome in ['yield','newpc-yield'])))
+                        if outcome.startswith('newpc'):uc.mem_write(reg,struct.pack('<I',0xdead0000 if outcome=='newpc-yield' else STOP))
                         volatile=[UC_X86_REG_EAX,UC_X86_REG_ECX,UC_X86_REG_EDX] if arch=='386' else [UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_R2,UC_ARM_REG_R3,UC_ARM_REG_R12,UC_ARM_REG_LR]
                         for r in volatile:uc.reg_write(r,0xdeadbeef)
                     u.hook_add(UC_HOOK_CODE,called)
@@ -144,7 +144,7 @@ with tempfile.TemporaryDirectory(prefix='jit-handoff-') as td:
                         u.mem_write(STACK+2048,struct.pack('<6I',0x10,0x20,0x30,0x40,0x50,STOP))
                     else:
                         u.reg_write(UC_ARM_REG_R5,reg);u.reg_write(UC_ARM_REG_R9,FRAME);u.reg_write(UC_ARM_REG_R8,MP);u.reg_write(UC_ARM_REG_LR,STOP);u.reg_write(UC_ARM_REG_SP,STACK+2048)
-                    end=STOP if outcome in ['newpc','yield'] else BASE+size
+                    end=STOP if outcome.startswith('newpc') or outcome=='yield' else BASE+size
                     if outcome=='decode-fault':
                         try:u.emu_start(BASE+0x100,end,count=1000)
                         except UcError:pass
@@ -155,10 +155,10 @@ with tempfile.TemporaryDirectory(prefix='jit-handoff-') as td:
                     u.emu_start(BASE+0x100,end,count=1000)
                     assert len(calls)==1
                     assert word(dest)==(11 if outcome=='error' else (av+bv)&0xffffffff)
-                    if outcome not in ['error','yield']:
+                    if outcome not in ['error','yield','newpc-yield']:
                         assert u.reg_read(UC_X86_REG_ESI if arch=='386' else UC_ARM_REG_R9)==NEWFRAME
                         assert u.reg_read(UC_X86_REG_EDI if arch=='386' else UC_ARM_REG_R8)==NEWMP
-                    if outcome=='yield' and arch=='386':
+                    if outcome in ['yield','newpc-yield'] and arch=='386':
                         assert u.reg_read(UC_X86_REG_ESP)==STACK+2048+24
                         for register,value in [(UC_X86_REG_EDI,0x10),(UC_X86_REG_ESI,0x20),(UC_X86_REG_EDX,0x30),(UC_X86_REG_ECX,0x40),(UC_X86_REG_EBX,0x50)]:assert u.reg_read(register)==value
                     checks+=1

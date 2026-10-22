@@ -1057,6 +1057,7 @@ commcall(Inst *i)
 	mem(Ldw, O(REG, M), RREG, RA3);
 	mem(Stw, O(Frame, mr), RA2, RA3);
 	opwst(i, Ldw, RA3);
+	con((ulong)H, RA0, 1); /* nil module must reach rmcall with dt == H */
 	CMPH(AL, RA3);
 	mlnil = code;
 	BRA(EQ, 0);
@@ -1141,10 +1142,11 @@ comp(Inst *i)
 		error(buf);
 		break;
 	case IMCALL:
-		if((i->add&ARM) == AXIMM)
+		/* Negative link numbers address exports through the VM helper. */
+		if((i->add&ARM) == AXIMM && (short)i->reg >= 0)
 			commcall(i);
 		else
-			punt(i, SRCOP|DSTOP|THREOP|WRTPC|NEWPC, optab[i->op]);
+			punt(i, SRCOP|DSTOP|THREOP|WRTPC|NEWPC|TCHECK, optab[i->op]);
 		break;
 	case ISEND:
 	case IRECV:
@@ -1230,7 +1232,8 @@ comp(Inst *i)
 		punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
 		break;
 	case IMFRAME:
-		if((i->add&ARM) == AXIMM)
+		/* Negative link numbers address exports through the VM helper. */
+		if((i->add&ARM) == AXIMM && (short)i->reg >= 0)
 			commframe(i);
 		else
 			punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
@@ -1940,11 +1943,13 @@ macmcal(void)
 static void
 macfram(void)
 {
-	ulong *lab1;
+	ulong *lab1, *overflow;
 
 	mem(Ldw, O(REG, SP), RREG, RA0);	// MOVL	R.SP, RA0
 	mem(Ldw, O(Type, size), RA3, RA1);
-	DP(AL, Add, RA0, RA0, 0, RA1);		// nsp = R.SP + t->size
+	DP(AL, Add, RA0, RA0, 0, RA1) | SBIT;
+	overflow = code;
+	BRA(CS, 0);		// nsp = R.SP + t->size
 	mem(Ldw, O(REG, TS), RREG, RA1);
 	CMP(AL, RA0, 0, 0, RA1);	// nsp :: R.TS
 	lab1 = code;
@@ -1959,6 +1964,7 @@ macfram(void)
 	mem(Ldw, O(Type, initialize), RA3, R15);	// become t->init(RA2), returning RA2
 
 	PATCH(lab1);
+	PATCH(overflow);
 	mem(Stw, O(REG, s), RREG, RA3);
 	mem(Stw, O(REG, st), RREG, RLINK);
 	mem(Stw, O(REG, FP), RREG, RFP);	// MOVL	RFP, R.FP

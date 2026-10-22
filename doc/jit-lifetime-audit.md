@@ -63,7 +63,7 @@ These tests require Unicorn and a host C compiler. UBSan is enabled by default.
   and shared children, real native fast reference decrements, slow final frees,
   volatile-register clobbers, canonical FP/MP reloads, frame relocation and
   allocation canaries/balance. A separate legacy ARM profile passes as well.
-- jit-handoff runs 104 cases using production punt, operand encoders and literal
+- jit-handoff runs 144 cases using production punt, operand encoders and literal
   pools. It checks direct/module/immediate/indirect/implicit middle operands,
   current PC before helpers and indirect operand faults, normal return, NEWPC,
   TCHECK yield/continue, saved IA-32 registers, volatile clobbers and FP/MP
@@ -86,7 +86,7 @@ to module-local reclaim code makes the lifetime test fault on an unmapped
 fetch; suppressing automatic PC publication makes handoff fail its stale-PC
 check. Restoring direct ARM BL also fails the far-A32 call case.
 
-All 30 libinterp Python suites pass, including the existing arithmetic,
+All 32 libinterp Python suites pass, including the existing arithmetic,
 loader, publication and native-encoder suites. Full xec/IA-32/ARM syntax checks
 pass with Linux headers, including the legacy ARM preprocessor profile.
 
@@ -102,3 +102,6 @@ IEEE IA-32 branch semantics and overlapping block moves are covered in
 
 Byte immediates, integer branches and ARM indexing are covered in
 [jit-index-audit.md](jit-index-audit.md).
+
+Native stack allocation, nil module calls and signed link selectors are covered
+in [jit-frame-audit.md](jit-frame-audit.md).

@@ -72,7 +72,7 @@ UBSan stopped on both signed shifts. Restoring the old x86 byte encoder
 aborted at the previously unsupported immediate-source case. These controls
 were temporary experiments; the normal suites use the current source only.
 
-All 30 libinterp Python suites pass. Full xec/IA-32/ARM syntax checks pass
+All 32 libinterp Python suites pass. Full xec/IA-32/ARM syntax checks pass
 with Linux headers, including the legacy ARM architecture profile. The new
 ARM indexing suite also passes all 3,452 cases with __ARM_ARCH=4.
 
@@ -80,3 +80,6 @@ These checks do not execute the target C runtime, actual native signal/GC/
 exception integration or a complete OS boot. They do not validate arbitrary
 corrupt String/Array objects, allocation ownership or huge-array pointer
 wraparound. No 64-bit ABI or additional architecture backend is enabled.
+
+Native stack allocation, nil module calls and signed link selectors are covered
+in [jit-frame-audit.md](jit-frame-audit.md).
