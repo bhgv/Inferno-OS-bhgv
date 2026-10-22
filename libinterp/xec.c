@@ -1417,33 +1417,74 @@ OP(iraise)
 	else
 		error(string2c(*(String**)v));
 }
+/* Shift a fixed intermediate with bounded counts and unsigned left-shift bits. */
+static LONG
+fixedshift(LONG value, WORD count)
+{
+	UWORD amount;
+
+	if(count >= 0){
+		if((UWORD)count > 63)
+			error(exInval);
+		return (LONG)((uvlong)value<<count);
+	}
+	amount = (UWORD)0-(UWORD)count;
+	if(amount > 63)
+		error(exInval);
+	return value>>amount;
+}
+
+/* Divide without a host zero fault or signed minimum/-1 overflow. */
+static LONG
+fixeddivide(LONG value, LONG divisor)
+{
+	if(divisor == 0)
+		error(exZdiv);
+	if(divisor == -1)
+		return (LONG)((uvlong)0-(uvlong)value);
+	return value/divisor;
+}
+
+/* Construct a right-shift rounding mask only for a valid negative exponent. */
+static LONG
+fixedroundmask(WORD count)
+{
+	UWORD amount;
+
+	amount = (UWORD)0-(UWORD)count;
+	if(count >= 0 || amount > 63)
+		error(exInval);
+	return (LONG)(((uvlong)1<<amount)-1);
+}
+
+/* Multiply and shift fixed values using defined intermediate bit arithmetic. */
 OP(mulx)
 {
 	WORD p;
 	LONG r;
 
 	p = Dtmp;
-	r = (LONG)W(m)*(LONG)W(s);
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
+	r = (LONG)((uvlong)(LONG)W(m)*(uvlong)(LONG)W(s));
+	r = fixedshift(r, p);
 	W(d) = (WORD)r;
 }
+
+/* Shift and divide a fixed numerator with VM errors on invalid parameters. */
 OP(divx)
 {
 	WORD p;
 	LONG s;
 
 	p = Dtmp;
+	if(W(s) == 0)
+		error(exZdiv);
 	s = (LONG)W(m);
-	if(p >= 0)
-		s <<= p;
-	else
-		s >>= (-p);
-	s /= (LONG)W(s);
+	s = fixedshift(s, p);
+	s = fixeddivide(s, (LONG)W(s));
 	W(d) = (WORD)s;
 }
+
+/* Convert fixed scales without signed left-shift undefined behavior. */
 OP(cvtxx)
 {
 	WORD p;
@@ -1451,12 +1492,11 @@ OP(cvtxx)
 
 	p = W(m);
 	r = (LONG)W(s);
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
+	r = fixedshift(r, p);
 	W(d) = (WORD)r;
 }
+
+/* Validate the coefficient before a zero shortcut and stage the product. */
 OP(mulx0)
 {
 	WORD x, y, p, a;
@@ -1466,18 +1506,19 @@ OP(mulx0)
 	y = W(s);
 	p = Dtmp;
 	a = Stmp;
+	if(a == 0)
+		error(exZdiv);
 	if(x == 0 || y == 0){
 		W(d) = 0;
 		return;
 	}
-	r = (LONG)x*(LONG)y;
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	r /= (LONG)a;
+	r = (LONG)((uvlong)(LONG)x*(uvlong)(LONG)y);
+	r = fixedshift(r, p);
+	r = fixeddivide(r, (LONG)a);
 	W(d) = (WORD)r;
 }
+
+/* Reject zero divisors even when the fixed numerator is zero. */
 OP(divx0)
 {
 	WORD x, y, p, b;
@@ -1487,18 +1528,19 @@ OP(divx0)
 	y = W(s);
 	p = Dtmp;
 	b = Stmp;
+	if(y == 0)
+		error(exZdiv);
 	if(x == 0){
 		W(d) = 0;
 		return;
 	}
-	s = (LONG)b*(LONG)x;
-	if(p >= 0)
-		s <<= p;
-	else
-		s >>= (-p);
-	s /= (LONG)y;
+	s = (LONG)((uvlong)(LONG)b*(uvlong)(LONG)x);
+	s = fixedshift(s, p);
+	s = fixeddivide(s, (LONG)y);
 	W(d) = (WORD)s;
 }
+
+/* Scale a fixed value before publishing the divided result. */
 OP(cvtxx0)
 {
 	WORD x, p, a;
@@ -1507,18 +1549,19 @@ OP(cvtxx0)
 	x = W(s);
 	p = W(m);
 	a = Stmp;
+	if(a == 0)
+		error(exZdiv);
 	if(x == 0){
 		W(d) = 0;
 		return;
 	}
 	r = (LONG)x;
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	r /= (LONG)a;
+	r = fixedshift(r, p);
+	r = fixeddivide(r, (LONG)a);
 	W(d) = (WORD)r;
 }
+
+/* Apply fixed multiplication rounding with bounded masks and modular corrections. */
 OP(mulx1)
 {
 	WORD x, y, p, a, v;
@@ -1529,6 +1572,8 @@ OP(mulx1)
 	y = W(s);
 	p = Dtmp;
 	a = Stmp;
+	if(a == 0)
+		error(exZdiv);
 	if(x == 0 || y == 0){
 		W(d) = 0;
 		return;
@@ -1539,24 +1584,23 @@ OP(mulx1)
 	v = 0;
 	w = 0;
 	if(vnz){
-		v = a-1;
+		v = (WORD)((UWORD)a-1);
 		if(x >= 0 && y < 0 || x < 0 && y >= 0)
-			v = -v;
+			v = (WORD)((UWORD)0-(UWORD)v);
 	}
 	if(wnz){
 		if((!vnz && (x > 0 && y < 0 || x < 0 && y > 0)) ||
 		(vnz && (x > 0 && y > 0 || x < 0 && y < 0)))
-			w = ((LONG)1<<(-p)) - 1;
+			w = fixedroundmask(p);
 	}
-	r = (LONG)x*(LONG)y + w;
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	r += (LONG)v;
-	r /= (LONG)a;
+	r = (LONG)((uvlong)(LONG)x*(uvlong)(LONG)y+(uvlong)w);
+	r = fixedshift(r, p);
+	r = (LONG)((uvlong)r+(uvlong)(LONG)v);
+	r = fixeddivide(r, (LONG)a);
 	W(d) = (WORD)r;
 }
+
+/* Apply fixed division rounding without signed intermediate overflow. */
 OP(divx1)
 {
 	WORD x, y, p, b, v;
@@ -1567,6 +1611,8 @@ OP(divx1)
 	y = W(s);
 	p = Dtmp;
 	b = Stmp;
+	if(y == 0)
+		error(exZdiv);
 	if(x == 0){
 		W(d) = 0;
 		return;
@@ -1579,20 +1625,19 @@ OP(divx1)
 	if(vnz){
 		v = 1;
 		if(x >= 0 && y < 0 || x < 0 && y >= 0)
-			v = -v;
+			v = (WORD)((UWORD)0-(UWORD)v);
 	}
 	if(wnz){
 		if(x <= 0)
-			w = ((LONG)1<<(-p)) - 1;
+			w = fixedroundmask(p);
 	}
-	s = (LONG)b*(LONG)x + w;
-	if(p >= 0)
-		s <<= p;
-	else
-		s >>= (-p);
-	s /= (LONG)y;
-	W(d) = (WORD)s + v;
+	s = (LONG)((uvlong)(LONG)b*(uvlong)(LONG)x+(uvlong)w);
+	s = fixedshift(s, p);
+	s = fixeddivide(s, (LONG)y);
+	W(d) = (WORD)((UWORD)s+(UWORD)v);
 }
+
+/* Round and scale a fixed conversion without invalid native shifts. */
 OP(cvtxx1)
 {
 	WORD x, p, a, v;
@@ -1602,6 +1647,8 @@ OP(cvtxx1)
 	x = W(s);
 	p = W(m);
 	a = Stmp;
+	if(a == 0)
+		error(exZdiv);
 	if(x == 0){
 		W(d) = 0;
 		return;
@@ -1612,21 +1659,18 @@ OP(cvtxx1)
 	v = 0;
 	w = 0;
 	if(vnz){
-		v = a-1;
+		v = (WORD)((UWORD)a-1);
 		if(x < 0)
-			v = -v;
+			v = (WORD)((UWORD)0-(UWORD)v);
 	}
 	if(wnz){
 		if(!vnz && x < 0 || vnz && x > 0)
-			w = ((LONG)1<<(-p)) - 1;
+			w = fixedroundmask(p);
 	}
-	r = (LONG)x + w;
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	r += (LONG)v;
-	r /= (LONG)a;
+	r = (LONG)((uvlong)(LONG)x+(uvlong)w);
+	r = fixedshift(r, p);
+	r = (LONG)((uvlong)r+(uvlong)(LONG)v);
+	r = fixeddivide(r, (LONG)a);
 	W(d) = (WORD)r;
 }
 /*
