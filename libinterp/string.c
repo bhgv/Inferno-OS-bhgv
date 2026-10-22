@@ -42,6 +42,9 @@ e:			error(exBounds);
 	W(d) = l;
 }
 
+/*
+ * Store or append one character. Reject invalid indices before acquiring storage.
+ */
 OP(insc)
 {
 	ulong v;
@@ -52,10 +55,18 @@ OP(insc)
 	v = W(m);
 	ss = S(d);
 
+	/* Check before allocating or splitting: a failed store must retain d. */
+	l = ss == H ? 0 : ss->len;
+	if(l < 0)
+		l = -l;
+	if(v > (ulong)l)
+		error(exBounds);
+
 	expand = r >= Runeself;
 
 	if(ss == H) {
-		ss = newstring(0);
+		ss = newstring(expand ? sizeof(Rune) : 1);
+		ss->len = 0;
 		if(expand) {
 			l = 0;
 			ss->max /= sizeof(Rune);
@@ -80,6 +91,9 @@ r:
 		else {
 			if(v != l)
 				error(exBounds);
+			if(v > (0x7fffffff-sizeof(Heap)-sizeof(String))/sizeof(Rune) ||
+			   v + 1 + v/4 > (0x7fffffff-sizeof(Heap)-sizeof(String))/sizeof(Rune))
+				error(exHeap);
 			ns = newstring((v + 1 + v/4)*sizeof(Rune));
 			memmove(ns->Srune, ss->Srune, -ss->len*sizeof(Rune));
 			ns->Srune[v] = r;
@@ -170,6 +184,10 @@ cvtup(Rune *r, String *s)
 		*r++ = *bp++;
 }
 
+/*
+ * Concatenate strings, reusing a unique destination when requested.
+ * Keep source lengths unchanged until copying finishes: s1 and s2 may alias.
+ */
 String*
 addstring(String *s1, String *s2, int append)
 {
@@ -190,31 +208,34 @@ addstring(String *s1, String *s2, int append)
 		return stringdup(s1);
 	}
 
+	l1 = s1->len < 0 ? -s1->len : s1->len;
+	l2 = s2->len < 0 ? -s2->len : s2->len;
+	if(l1 > 0x7fffffff-l2)
+		error(exHeap);
+	l = l1+l2;
+	if(append && l > 0x7fffffff-l/4)
+		error(exHeap);
+
 	if(s1->len < 0) {
 		l1 = -s1->len;
-		if(s2->len < 0) 
-			l = l1 - s2->len;
-		else
-			l = l1 + s2->len;
 		if(append && l <= s1->max)
 			ns = s1;
 		else {
 			ns = newrunes(append? (l+l/4): l);
 			memmove(ns->Srune, s1->Srune, l1*sizeof(Rune));
 		}
-		ns->len = -l;
 		r = &ns->Srune[l1];
 		if(s2->len < 0)
 			memmove(r, s2->Srune, -s2->len*sizeof(Rune));
 		else
 			cvtup(r, s2);
+		ns->len = -l;
 
 		return ns;
 	}
 
 	if(s2->len < 0) {
 		l2 = -s2->len;
-		l = s1->len + l2;
 		ns = newrunes(append? (l+l/4): l);
 		ns->len = -l;
 		cvtup(ns->Srune, s1);
@@ -223,15 +244,14 @@ addstring(String *s1, String *s2, int append)
 	}
 
 	l1 = s1->len;
-	l = l1 + s2->len;
 	if(append && l <= s1->max)
 		ns = s1;
 	else {
 		ns = newstring(append? (l+l/4): l);
 		memmove(ns->Sascii, s1->Sascii, l1);
 	}
-	ns->len = l;
 	memmove(ns->Sascii+l1, s2->Sascii, s2->len);
+	ns->len = l;
 
 	return ns;
 }
@@ -352,11 +372,14 @@ OP(cvtwc)
 	*dp = ds;
 }
 
+/*
+ * Format every signed 64-bit value, including its sign and terminating NUL.
+ */
 OP(cvtlc)
 {
 	String *ds, **dp;
 
-	ds = newstring(16);
+	ds = newstring(24);
 	ds->len = sprint(ds->Sascii, "%lld", V(s));
 	
 	dp = R.d;
@@ -375,6 +398,10 @@ OP(cvtfc)
 	*dp = ds;
 }
 
+/*
+ * Return a NUL-terminated UTF-8 view, caching rune conversion in the string.
+ * Bound the temporary byte count before multiplying the rune count.
+ */
 char*
 string2c(String *s)
 {
@@ -391,6 +418,8 @@ string2c(String *s)
 	}
 
 	nc = -s->len;
+	if(nc > (0x7fffffff-UTFmax)/UTFmax)
+		error(exNomem);
 	l = (nc * UTFmax) + UTFmax;
 	if(s->tmp == nil || msize(s->tmp) < l) {
 		free(s->tmp);
@@ -462,12 +491,20 @@ c2string(char *cs, int len)
 	return s;
 }
 
+/*
+ * Allocate an ASCII string with room for its terminator.
+ * Validate the payload and heap headers before narrowing the allocation size.
+ */
 String*
 newstring(int nb)
 {
 	Heap *h;
 	String *s;
 
+	if(nb < 0)
+		error(exNegsize);
+	if((ulong)nb > 0x7fffffff-sizeof(Heap)-sizeof(String))
+		error(exHeap);
 	h = nheap(sizeof(String)+nb);
 	h->t = &Tstring;
 	Tstring.ref++;
@@ -478,6 +515,10 @@ newstring(int nb)
 	return s;
 }
 
+/*
+ * Allocate rune storage within the same heap limit as ASCII strings.
+ * Preserve the historical negative-count convention without negating INT_MIN.
+ */
 String*
 newrunes(int nr)
 {
@@ -486,8 +527,12 @@ newrunes(int nr)
 
 	if(nr == 0)
 		return newstring(nr);
+	if(nr == (-0x7fffffff-1))
+		error(exHeap);
 	if(nr < 0)
 		nr = -nr;
+	if((ulong)nr > (0x7fffffff-sizeof(Heap)-sizeof(String))/sizeof(Rune))
+		error(exHeap);
 	h = nheap(sizeof(String)+nr*sizeof(Rune));
 	h->t = &Tstring;
 	Tstring.ref++;

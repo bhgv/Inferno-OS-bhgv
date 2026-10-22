@@ -839,7 +839,8 @@ foldvc(Node *n)
 }
 
 /*
- * left and right are const ints
+ * Fold constant integers using unsigned arithmetic for wraparound.
+ * Shift masks must use the full width of Long, independently of host int.
  */
 Node*
 foldc(Node *n)
@@ -852,13 +853,13 @@ foldc(Node *n)
 	right = n->right;
 	switch(n->op){
 	case Oadd:
-		v = left->val + right->val;
+		v = (uvlong)left->val + (uvlong)right->val;
 		break;
 	case Osub:
-		v = left->val - right->val;
+		v = (uvlong)left->val - (uvlong)right->val;
 		break;
 	case Omul:
-		v = left->val * right->val;
+		v = (uvlong)left->val * (uvlong)right->val;
 		break;
 	case Odiv:
 		if(right->val == 0){
@@ -901,7 +902,7 @@ foldc(Node *n)
 			v = lv;
 			break;
 		}
-		v = lv << rv;
+		v = (uvlong)lv << rv;
 		break;
 	case Orsh:
 		lv = left->val;
@@ -922,14 +923,14 @@ foldc(Node *n)
 		 */
 		if((n->ty == tint || n->ty == tbig)
 		&& rv != 0
-		&& (lv & (1<<(nb-1)))){
+		&& ((uvlong)lv & ((uvlong)1<<(nb-1)))){
 			lv = 0;
 			lv = ~lv;
-			v |= lv << (nb - rv);
+			v |= (uvlong)lv << (nb - rv);
 		}
 		break;
 	case Oneg:
-		v = -left->val;
+		v = (uvlong)0 - (uvlong)left->val;
 		break;
 	case Ocomp:
 		v = ~left->val;
@@ -967,7 +968,7 @@ foldc(Node *n)
 	if(n->ty == tint){
 		v &= 0xffffffff;
 		if(v & 0x80000000)
-			v |= (Long)0xffffffff << 32;
+			v |= (uvlong)0xffffffff << 32;
 	}else if(n->ty == tbyte)
 		v &= 0xff;
 	n->left = nil;
