@@ -63,9 +63,10 @@ struct	Fcall
 
 #define	GBIT8(p)	((p)[0])
 #define	GBIT16(p)	((p)[0]|((p)[1]<<8))
-#define	GBIT32(p)	((u32int)((p)[0]|((p)[1]<<8)|((p)[2]<<16)|((p)[3]<<24)))
-#define	GBIT64(p)	((u32int)((p)[0]|((p)[1]<<8)|((p)[2]<<16)|((p)[3]<<24)) |\
-				((vlong)((p)[4]|((p)[5]<<8)|((p)[6]<<16)|((p)[7]<<24)) << 32))
+/* Assemble wire integers with unsigned shifts, including each high byte. */
+#define GBIT32(p) ((u32int)(p)[0] | ((u32int)(p)[1]<<8) | \
+                   ((u32int)(p)[2]<<16) | ((u32int)(p)[3]<<24))
+#define GBIT64(p) ((uvlong)GBIT32(p) | ((uvlong)GBIT32((p)+4)<<32))
 
 #define	PBIT8(p,v)	(p)[0]=(v)
 #define	PBIT16(p,v)	(p)[0]=(v);(p)[1]=(v)>>8
