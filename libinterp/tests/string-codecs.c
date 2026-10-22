@@ -320,11 +320,111 @@ checktext(void)
 	destroy(s); checks++;
 }
 
+/* Stores allocate at most once and keep shared sources/results intact on failure. */
+static void
+checkstores(void)
+{
+	String *old;
+	String *volatile slot;
+	WORD index, rune;
+	Rune expected, actual;
+	int length, wide, shared, nonascii, fault, position, i;
+	int allocations, before, needcopy, resultwide;
+
+	for(length = 0; length <= 20; length++)
+	for(wide = 0; wide < 2; wide++)
+	for(shared = 0; shared < 2; shared++)
+	for(nonascii = 0; nonascii < 2; nonascii++)
+	for(fault = 0; fault < 3; fault++)
+	for(position = 0; position <= length; position++){
+		old = wide ? newrunes(length) : newstring(length);
+		for(i = 0; i < length; i++){
+			if(wide)old->Srune[i] = 0x400+i;
+			else old->Sascii[i] = 'A'+i;
+		}
+		if(shared)D2H(old)->ref++;
+		slot = old; index = position; rune = nonascii ? 0x1f600 : 'x';
+		R.s = &rune; R.m = &index; R.d = (void*)&slot;
+		resultwide = old->len < 0 || nonascii;
+		needcopy = shared || (resultwide && old->len >= 0) || index >= old->max;
+		allocations = calls; before = live;
+		failure = fault == 2 ? -1 : fault;
+		if(fault == 0 && needcopy){
+			EXPECT(insc(), exNomem);
+			assert(slot == old && live == before);
+		}else{
+			if(setjmp(boundary) != 0)assert(!"unexpected character-store error");
+			insc();
+			assert(calls-allocations <= 1);
+			assert(slot->len == (resultwide ? -(length+(position == length)) : length+(position == length)));
+			for(i = 0; i < length+(position == length); i++){
+				expected = i == position ? rune : wide ? 0x400+i : 'A'+i;
+				actual = resultwide ? slot->Srune[i] : (uchar)slot->Sascii[i];
+				assert(actual == expected);
+			}
+		}
+		failure = -1;
+		if(shared){
+			for(i = 0; i < length; i++){
+				actual = wide ? old->Srune[i] : (uchar)old->Sascii[i];
+				assert(actual == (wide ? 0x400+i : 'A'+i));
+			}
+			destroy(old);
+		}
+		destroy(slot); assert(live == 0); checks++;
+	}
+}
+
+/* An allocated empty ASCII buffer has byte capacity, never Rune capacity. */
+static void
+checkemptycapacity(void)
+{
+	String *s;
+	WORD index, rune = 0x20ac;
+	int i;
+
+	s = newstring(64); s->len = 0;
+	for(i = 0; i < 40; i++){
+		index = i; R.s = &rune; R.m = &index; R.d = &s;
+		insc();
+		assert(s->len == -(i+1));
+		assert(s->max <= (hmsize(D2H(s))-sizeof(Heap)-sizeof(String))/sizeof(Rune));
+		assert(s->Srune[i] == rune); checks++;
+	}
+	destroy(s); assert(live == 0);
+}
+
+/* Invalid read/store indices never narrow, allocate or change result ownership. */
+static void
+checkindices(void)
+{
+	String *s, *old;
+	WORD index, rune = 'x', output;
+	int mode, before;
+
+	for(mode = 0; mode < 6; mode++){
+		s = c2string("abc", 3); old = s;
+		if(mode == 0)index = -1;
+		if(mode == 1)index = sizeof(WORD)>4 ? (WORD)((uvlong)1<<32) : -1;
+		if(mode == 2)index = sizeof(WORD)>4 ? (WORD)(((uvlong)1<<32)+1) : -1;
+		if(mode == 3)index = 4;
+		if(mode == 4)index = sizeof(WORD)>4 ? -(WORD)((uvlong)1<<32) : -1;
+		if(mode == 5)index = sizeof(WORD)>4 ? (WORD)(((uvlong)1<<63)+1) : -1;
+		before = calls; output = 77;
+		R.s = &s; R.m = &index; R.d = &output;
+		EXPECT(indc(), exBounds); assert(output == 77 && calls == before);
+		R.s = &rune; R.d = &s;
+		EXPECT(insc(), exBounds);
+		assert(s == old && calls == before && !memcmp(s->Sascii, "abc", 3));
+		destroy(s); checks++;
+	}
+}
+
 /* Complete all real-header codec checks with balanced VM and native ownership. */
 int
 main(void)
 {
-	checkrunes(); checkbounds(); checkaliases(); checkwords(); checktext();
+	checkrunes(); checkbounds(); checkaliases(); checkwords(); checktext(); checkstores(); checkindices(); checkemptycapacity();
 	assert(live == 0 && Tstring.ref == 1 && Tarray.ref == 1 && Tbyte.ref == 1);
 	printf("PASS string codecs: %d UTF/word/bounds/ownership checks, WORD%zu\n",checks,sizeof(WORD)*8);
 	return 0;

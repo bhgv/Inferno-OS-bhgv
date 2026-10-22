@@ -35,7 +35,7 @@ character store, word formatter, byte/string conversion instructions, cached
 UTF view, mem2array and lib9/rune.c. It uses real Heap/String/Array/REG layouts
 with bounded heap allocation, exact capacities, guards, reference accounting
 and deterministic VM heap failures. WORD64 and WORD32 scalar models each pass
-32,951 checks under UBSan and ASan+UBSan. WORD32 changes only WORD/UWORD in a
+39,771 checks under UBSan and ASan+UBSan. WORD32 changes only WORD/UWORD in a
 temporary real header while pointers remain native; this is not Dis ABI32
 execution.
 
@@ -64,3 +64,18 @@ this fixture. ASan stack instrumentation is enabled for this setjmp-based test;
 LeakSanitizer inspection remains disabled for the documented sandbox limitation.
 The baseline bodies of all six changed codec/store functions independently fail
 the new fixture.
+
+Character stores now prepare their final capacity and representation before
+publishing a copied result. The fixture sweeps lengths 0 through 20, all valid
+update/append positions, shared/unshared ownership, ASCII/Rune sources, ASCII
+and non-ASCII characters, and first/second allocation failures. Each store
+needs at most one allocation; rejected stores retain the old result and shared
+source bytes. Allocated empty ASCII strings with spare byte capacity are
+converted before Rune stores, so byte capacity is never reused as Rune capacity.
+A separate append sequence checks this capacity invariant and every heap guard.
+
+Character reads and stores validate complete signed VM indices before accessing
+storage. Added index cases include negative values and high bits above 32 bits;
+errors must preserve output values, ownership, bytes and allocation counts.
+The old store body independently fails the extended fixture. These checks still
+use bounded heap/GC stubs rather than actual JIT execution or a complete boot.

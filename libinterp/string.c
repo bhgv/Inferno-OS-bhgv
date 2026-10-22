@@ -4,6 +4,8 @@
 #include "raise.h"
 #include "pool.h"
 
+void cvtup(Rune*, String*);
+
 #define OP(fn)	void fn(void)
 #define B(r)	*((BYTE*)(R.r))
 #define W(r)	*((WORD*)(R.r))
@@ -16,116 +18,80 @@
 #define C(r)	*((Channel**)(R.r))
 #define T(r)	*((void**)(R.r))
 
+/* Check the complete VM index before reading ASCII or Rune storage. */
 OP(indc)
 {
-	int l;
-	ulong v;
-	String *ss;
+	WORD index;
+	int length;
+	String *string;
 
-	v = W(m);
-	ss = S(s);
-
-	if(ss == H)
+	index = W(m);
+	string = S(s);
+	if(string == H)
 		error(exNilref);
-
-	l = ss->len;
-	if(l < 0) {
-		if(v >= -l)
-e:			error(exBounds);
-		l = ss->Srune[v];			
-	}
-	else {
-		if(v >= l)
-			goto e;
-		l = ss->Sascii[v];			
-	}
-	W(d) = l;
+	length = string->len < 0 ? -string->len : string->len;
+	if(index < 0 || index >= length)
+		error(exBounds);
+	if(string->len < 0)
+		W(d) = (int)string->Srune[index];
+	else
+		W(d) = (uchar)string->Sascii[index];
 }
 
-/*
- * Store or append one character. Reject invalid indices before acquiring storage.
- */
+/* Store or append with one allocation, publishing copies only after they are complete. */
 OP(insc)
 {
-	ulong v;
-	int l, expand;
-	Rune r;
-	String *ss, *ns, **sp;
+	WORD index;
+	int length, wide, shared;
+	uvlong capacity;
+	Rune rune;
+	String *old, *result, **slot;
 
-	r = W(s);
-	v = W(m);
-	ss = S(d);
-
-	/* Check before allocating or splitting: a failed store must retain d. */
-	l = ss == H ? 0 : ss->len;
-	if(l < 0)
-		l = -l;
-	if(v > (ulong)l)
+	rune = W(s);
+	index = W(m);
+	slot = R.d;
+	old = *slot;
+	length = old == H ? 0 : old->len;
+	if(length < 0)
+		length = -length;
+	if(index < 0 || index > length)
 		error(exBounds);
 
-	expand = r >= Runeself;
-
-	if(ss == H) {
-		ss = newstring(expand ? sizeof(Rune) : 1);
-		ss->len = 0;
-		if(expand) {
-			l = 0;
-			ss->max /= sizeof(Rune);
-			goto r;
-		}
+	wide = rune >= Runeself || (old != H && old->len < 0);
+	shared = old != H && D2H(old)->ref > 1;
+	if(old != H && !shared && (old->len < 0 || !wide) && index < old->max){
+		if(wide)
+			old->Srune[index] = rune;
+		else
+			old->Sascii[index] = rune;
+		if(index == length)
+			old->len = wide ? -(length+1) : length+1;
+		return;
 	}
+
+	capacity = length;
+	if(index == length)
+		capacity = (uvlong)length+1+length/4;
+	if(capacity > 0x7fffffff)
+		error(exHeap);
+	result = wide ? newrunes((int)capacity) : newstring((int)capacity);
+	if(old != H){
+		if(wide && old->len >= 0)
+			cvtup(result->Srune, old);
+		else if(wide)
+			memmove(result->Srune, old->Srune, length*sizeof(Rune));
+		else
+			memmove(result->Sascii, old->Sascii, length);
+	}
+	if(wide)
+		result->Srune[index] = rune;
 	else
-	if(D2H(ss)->ref > 1 || (expand && ss->len > 0))
-		ss = splitc(R.d, expand);
-
-	l = ss->len;
-	if(l < 0 || expand) {
-		l = -l;
-r:
-		if(v < l)
-			ss->Srune[v] = r;
-		else
-		if(v == l && v < ss->max) {
-			ss->len = -(v+1);
-			ss->Srune[v] = r;
-		}
-		else {
-			if(v != l)
-				error(exBounds);
-			if(v > (0x7fffffff-sizeof(Heap)-sizeof(String))/sizeof(Rune) ||
-			   v + 1 + v/4 > (0x7fffffff-sizeof(Heap)-sizeof(String))/sizeof(Rune))
-				error(exHeap);
-			ns = newstring((v + 1 + v/4)*sizeof(Rune));
-			memmove(ns->Srune, ss->Srune, -ss->len*sizeof(Rune));
-			ns->Srune[v] = r;
-			ns->len = -(v+1);
-			ns->max /= sizeof(Rune);
-			ss = ns;
-		}
-	}
-	else {
-		if(v < l)
-			ss->Sascii[v] = r;
-		else
-		if(v == l && v < ss->max) {
-			ss->len = v+1;
-			ss->Sascii[v] = r;
-		}
-		else {
-			if(v != l)
-				error(exBounds);
-			ns = newstring(v + 1 + v/4);
-			memmove(ns->Sascii, ss->Sascii, l);
-			ns->Sascii[v] = r;
-			ns->len = v+1;
-			ss = ns;
-		}
-	}
-	if(ss != S(d)) {
-		sp = R.d;
-		destroy(*sp);
-		*sp = ss;
-	}
+		result->Sascii[index] = rune;
+	if(index == length)
+		length++;
+	result->len = wide ? -length : length;
+	*slot = result;
+	destroy(old);
 }
 
 String*
