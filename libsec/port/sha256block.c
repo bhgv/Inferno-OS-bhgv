@@ -38,10 +38,11 @@ u32int sha256const[] = {
 #define G	v[6]
 #define H	v[7]
 
+/* Promote the high byte before shifting into the unsigned sign bit. */
 static u32int
 g32(uchar *p)
 {
-	return p[0]<<24|p[1]<<16|p[2]<<8|p[3]<<0;
+	return (u32int)p[0]<<24|p[1]<<16|p[2]<<8|p[3]<<0;
 }
 
 void

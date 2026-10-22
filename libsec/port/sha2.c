@@ -82,10 +82,16 @@ uvvmult8(u64int v[2])
 }
 
 
+/* Process hash bytes, accepting a nil span only when its length is zero. */
 static void
 _sha256(uchar *p, ulong len, SHA256state *s)
 {
+	uchar empty[1];
 	u32int take;
+
+	/* Empty native updates may use nil, but C byte spans must still be valid. */
+	if(p == nil && len == 0)
+		p = empty;
 
 	/* complete possible partial block from last time */
 	if(s->blen > 0 && s->blen+len >= SHA256bsize) {
@@ -188,10 +194,16 @@ sha512init(void)
 	return s;
 }
 
+/* Process hash bytes, accepting a nil span only when its length is zero. */
 static void
 _sha512(uchar *p, ulong len, SHA512state *s)
 {
+	uchar empty[1];
 	u32int take;
+
+	/* Empty native updates may use nil, but C byte spans must still be valid. */
+	if(p == nil && len == 0)
+		p = empty;
 
 	/* complete possible partial block from last time */
 	if(s->blen > 0 && s->blen+len >= SHA512bsize) {

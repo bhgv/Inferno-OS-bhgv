@@ -1,12 +1,13 @@
 #include "os.h"
 #include <libsec.h>
 
-/* rfc2104 */
+/* RFC 2104 streaming HMAC, with allocation-free outer finalization. */
 static DigestState*
 hmac_x(uchar *p, ulong len, uchar *key, ulong klen, uchar *digest, DigestState *s,
 	DigestState*(*x)(uchar*, ulong, uchar*, DigestState*), int xlen)
 {
 	int i;
+	DigestState outer;
 	uchar pad[65], innerdigest[256];
 
 	if(xlen > sizeof(innerdigest))
@@ -38,8 +39,10 @@ hmac_x(uchar *p, ulong len, uchar *key, ulong klen, uchar *digest, DigestState *
 	for(i=0; i<klen; i++)
 		pad[i] ^= key[i];
 	(*x)(nil, 0, innerdigest, s);
-	s = (*x)(pad, 64, nil, nil);
-	(*x)(innerdigest, xlen, digest, s);
+	/* Finalization must not allocate another native state after consuming s. */
+	memset(&outer, 0, sizeof(outer));
+	(*x)(pad, 64, nil, &outer);
+	(*x)(innerdigest, xlen, digest, &outer);
 	return nil;
 }
 

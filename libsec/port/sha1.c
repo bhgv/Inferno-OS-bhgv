@@ -10,13 +10,19 @@ extern void _sha1block(uchar*, ulong, u32int*);
  *  the last call.  There must be room in the input buffer
  *  to pad.
  */
+/* Process hash bytes, accepting a nil span only when its length is zero. */
 SHA1state*
 sha1(uchar *p, ulong len, uchar *digest, SHA1state *s)
 {
+	uchar empty[1];
 	uchar buf[128];
 	u32int x[16];
 	int i;
 	uchar *e;
+
+	/* Empty native updates may use nil, but C byte spans must still be valid. */
+	if(p == nil && len == 0)
+		p = empty;
 
 	if(s == nil){
 		s = malloc(sizeof(*s));

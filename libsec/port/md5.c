@@ -31,13 +31,19 @@ static void encode(uchar*, u32int*, ulong);
 
 extern void _md5block(uchar*, ulong, u32int*);
 
+/* Process hash bytes, accepting a nil span only when its length is zero. */
 MD5state*
 md5(uchar *p, ulong len, uchar *digest, MD5state *s)
 {
+	uchar empty[1];
 	u32int x[16];
 	uchar buf[128];
 	int i;
 	uchar *e;
+
+	/* Empty native updates may use nil, but C byte spans must still be valid. */
+	if(p == nil && len == 0)
+		p = empty;
 
 	if(s == nil){
 		s = malloc(sizeof(*s));
