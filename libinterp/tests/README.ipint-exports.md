@@ -15,13 +15,17 @@ The native side links production portable libmp arithmetic/formatting and lib9
 codecs, with the tracked allocator from the libmp text fixture. The VM heap and
 ASCII string constructor are bounded stubs with deterministic VM-error injection.
 
-Its 211 cases include zero, signed magnitudes, both compatibility-prefix branches,
+Its 230 cases include zero, signed magnitudes, both compatibility-prefix branches,
 and sizes around 768/1024 bytes up to 4096 bytes. All five export wrappers retain
 old results when validation, native-buffer allocation or VM output allocation
 fails. Native temporaries and VM references must balance after each case. Tests
 cover nil/wrong-type references, impossible formatting lengths, cleanup after
 both quotient/remainder heap failures, atomic pair publication, owned constructor
 failure, zero-divisor VM errors and successful division/modulo results.
+Modular powers cover the zero exponent modulo one, invalid exponent/modulus
+errors, and preservation of old results on VM allocation failure. Shift cases
+cover both directions, negative counts, the minimum VM word, counts wider than
+C int, zero inputs, and allocation failure without losing the previous result.
 
 IPints no longer exports through fixed 1024-byte stack buffers. Ordinary base64
 and textual exports retain libmp's signed representation; byte exports and the

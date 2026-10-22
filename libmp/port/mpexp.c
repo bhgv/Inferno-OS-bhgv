@@ -14,6 +14,7 @@ enum {
 
 //int expdebug;
 
+/* Reduce the identity for zero exponents too, including aliased modulus output. */
 void
 mpexp(mpint *b, mpint *e, mpint *m, mpint *res)
 {
@@ -22,9 +23,14 @@ mpexp(mpint *b, mpint *e, mpint *m, mpint *res)
 	mpdigit d, bit;
 	int i, j;
 
-	i = mpcmp(e,mpzero);
+	if(m != nil && m->top == 0)
+		sysfatal("mpexp: zero modulus");
+	i = e->top == 0 ? 0 : e->sign;
 	if(i==0){
-		mpassign(mpone, res);
+		if(m == nil)
+			mpassign(mpone, res);
+		else
+			mpmod(mpone, m, res);
 		return;
 	}
 	if(i<0)

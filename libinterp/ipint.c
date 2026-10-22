@@ -390,29 +390,35 @@ IPint_iptoint(void *fp)
 	*f->ret = mptoi(MP(f->i));
 }
 
-/* modular exponentiation */
+/* Validate modular powers before entering native fatal-error paths. */
 void
 IPint_expmod(void *fp)
 {
 	F_IPint_expmod *f;
-	mpint *ret, *mod, *base, *exp;
-	void *v;
+	mpint *number, *mod, *base, *exp;
+	IPints_IPint *result, *old;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
 	base = MP(f->base);
 	exp = MP(f->exp);
-	if(f->mod != H)
+	if(exp->top != 0 && exp->sign < 0)
+		error(exInval);
+	mod = nil;
+	if(f->mod != H){
 		mod = MP(f->mod);
-	else
-		mod = nil;
-	ret = mpnew(0);
-	if(ret != nil)
-		mpexp(base, exp, mod, ret);
-	*f->ret = newIPint(ret);
+		if(mod->top == 0)
+			error(exZdiv);
+		if(mod->sign < 0)
+			error(exInval);
+	}
+	number = mpnew(0);
+	if(number == nil)
+		error(exHeap);
+	mpexp(base, exp, mod, number);
+	result = newIPint(number);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
 /* multiplicative inverse */
@@ -642,42 +648,60 @@ IPint_cmp(void *fp)
 	*f->ret = mpcmp(MP(f->i1), MP(f->i2));
 }
 
-/* shifts */
+/* Bound and direct a full VM-word count before narrowing to libmp's int. */
+static void
+ipintshift(mpint *number, WORD count, int left, IPints_IPint **result)
+{
+	UWORD amount;
+	uvlong bits, limit;
+	mpint *shifted;
+	IPints_IPint *value, *old;
+
+	amount = count;
+	if(count < 0){
+		amount = (UWORD)0-amount;
+		left = !left;
+	}
+	limit = 0x7fffffff-(Dbits-1);
+	bits = (uvlong)number->top*Dbits;
+	if(number->top < 0 || bits > limit)
+		error(exHeap);
+	if(left && bits != 0 && (uvlong)amount > limit-bits)
+		error(exHeap);
+
+	shifted = mpnew(0);
+	if(shifted == nil)
+		error(exHeap);
+	if(bits == 0 || (!left && (uvlong)amount >= bits))
+		mpassign(mpzero, shifted);
+	else if(left)
+		mpleft(number, (int)amount, shifted);
+	else
+		mpright(number, (int)amount, shifted);
+	value = newIPint(shifted);
+	old = *result;
+	*result = value;
+	destroy(old);
+}
+
+/* Preserve the previous result when a left shift cannot be represented. */
 void
 IPint_shl(void *fp)
 {
 	F_IPint_shl *f;
-	mpint *ret, *i;
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	i = MP(f->i);
-	ret = mpnew(0);
-	if(ret != nil)
-		mpleft(i, f->n, ret);
-	*f->ret = newIPint(ret);
+	ipintshift(MP(f->i), f->n, 1, f->ret);
 }
+
+/* Large right shifts produce zero without truncating the VM-word count. */
 void
 IPint_shr(void *fp)
 {
 	F_IPint_shr *f;
-	mpint *ret, *i;
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	i = MP(f->i);
-	ret = mpnew(0);
-	if(ret != nil)
-		mpright(i, f->n, ret);
-	*f->ret = newIPint(ret);
+	ipintshift(MP(f->i), f->n, 0, f->ret);
 }
 
 static void

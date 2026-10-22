@@ -43,13 +43,18 @@ else:
     names = ['IPint_iptob64', 'IPint_iptob64z', 'IPint_iptostr',
              'IPint_iptobebytes', 'IPint_iptobytes', 'IPint_div', 'IPint_mod']
     parts += [function('libinterp/ipint.c', 'void\n' + name + '(') for name in names]
+parts += [function('libinterp/ipint.c', 'void\nIPint_expmod(')]
+if 'static void\nipintshift(' in ipint:
+    parts += [function('libinterp/ipint.c', 'static void\nipintshift(')]
+parts += [function('libinterp/ipint.c', 'void\n' + name + '(')
+          for name in ['IPint_shl', 'IPint_shr']]
 parts += [function('libinterp/runt.c', 'void\nretstr('),
           function('libinterp/runt.c', 'Array*\nmem2array(')]
 unit = (root / 'libinterp/tests/ipint-exports.c').read_text()
 unit = unit.replace('TYPES', types).replace('IMPLEMENTATION', '\n'.join(parts))
 files = ['mpaux', 'mpfmt', 'mptobe', 'betomp', 'mpadd', 'mpsub', 'mpcmp',
          'mpmul', 'mpleft', 'mpright', 'mpvecadd', 'mpvecsub', 'mpvecdigmuladd',
-         'mpveccmp', 'mpdigdiv', 'mpdiv', 'mpmod', 'mptoui', 'mptoi']
+         'mpveccmp', 'mpdigdiv', 'mpdiv', 'mpmod', 'mpexp', 'mptoui', 'mptoi']
 
 with tempfile.TemporaryDirectory(prefix='ipint-exports-') as directory:
     td = Path(directory)

@@ -11,7 +11,7 @@ import tempfile
 
 root = Path(__file__).resolve().parents[2]
 files = ['mpaux', 'mpfmt', 'strtomp', 'mptobe', 'betomp', 'mpadd', 'mpsub',
-         'mpcmp', 'mpmul', 'mpleft', 'mpright', 'mpvecadd', 'mpvecsub',
+         'mpcmp', 'mpmul', 'mpexp', 'mpmod', 'mpleft', 'mpright', 'mpvecadd', 'mpvecsub',
          'mpvecdigmuladd', 'mpveccmp', 'mpdigdiv', 'mpdiv', 'mptoui']
 alphabet = '23456789abcdefghijkmnpqrstuvwxyz'
 
@@ -51,6 +51,8 @@ with tempfile.TemporaryDirectory(prefix='mp-text-') as directory:
     lib.mpnew.argtypes = [C.c_int]
     lib.mpnew.restype = C.c_void_p
     lib.mpright.argtypes = [C.c_void_p, C.c_int, C.c_void_p]
+    lib.mpleft.argtypes = [C.c_void_p, C.c_int, C.c_void_p]
+    lib.mpexp.argtypes = [C.c_void_p, C.c_void_p, C.c_void_p, C.c_void_p]
     lib.mplowbits0.argtypes = [C.c_void_p]
     lib.testfree.argtypes = [C.c_void_p]
     lib.mpsetminbits(1)
@@ -89,6 +91,35 @@ with tempfile.TemporaryDirectory(prefix='mp-text-') as directory:
             checks += 1
         lib.mpfree(number)
         assert lib.liveblocks() == 0
+    # Compare modular powers and all output aliases with Python's integer oracle.
+    power_checks = 0
+    for base_value in (0, 1, 2, 17, 2**32+1, 2**65-1):
+        for exponent_value in (0, 1, 2, 7, 31):
+            for modulus_value in (1, 2, 19, 2**64-59):
+                for alias in range(4):
+                    pointers = [lib.strtomp(str(value).encode(), None, 10, None)
+                                for value in (base_value, exponent_value, modulus_value)]
+                    result = lib.mpnew(0) if alias == 3 else pointers[alias]
+                    lib.mpexp(*pointers, result)
+                    encoded = lib.mptoa(result, 16, None, 0)
+                    assert int(C.string_at(encoded), 16) == pow(base_value, exponent_value, modulus_value)
+                    lib.testfree(encoded)
+                    if alias == 3:
+                        lib.mpfree(result)
+                    for pointer in pointers:
+                        lib.mpfree(pointer)
+                    assert lib.liveblocks() == 0
+                    power_checks += 1
+    # Minimum negative left shift is a large right shift, with no signed negation.
+    number = lib.strtomp(b'123456789', None, 10, None)
+    shifted = lib.mpnew(0)
+    lib.mpleft(number, -2**31, shifted)
+    encoded = lib.mptoa(shifted, 16, None, 0)
+    assert int(C.string_at(encoded), 16) == 0
+    lib.testfree(encoded)
+    lib.mpfree(shifted)
+    lib.mpfree(number)
+    assert lib.liveblocks() == 0
     # No-number parsing must release only internally allocated destinations.
     for text, base in [(b'', 16), (b'!', 16), (b'1', 32), (b'222', 32), (b'0', 32)]:
         assert not lib.strtomp(text, None, base, None)
@@ -119,4 +150,4 @@ with tempfile.TemporaryDirectory(prefix='mp-text-') as directory:
         assert lib.liveblocks() == before
     lib.mpfree(number)
     assert lib.liveblocks() == 0
-    print(f'PASS mp text: {checks} base10/16/32/64 round trips, independent base32 oracle and ownership')
+    print(f'PASS mp text: {checks} text round trips, {power_checks} modular power/alias cases, minimum shift and ownership')

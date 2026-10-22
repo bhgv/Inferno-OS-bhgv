@@ -52,7 +52,7 @@ yyerror(char *format, ...)
 	errors++;
 }
 
-/* Radix fractions are not the subject of this bounded scanner fixture. */
+/* Supply the legacy parser dependency when testing an older revision. */
 static double
 rpow(double base, int exponent)
 {
@@ -90,6 +90,36 @@ check(const char *text, int token, Long value, int diagnostic)
 	checks++;
 }
 
+/* Keep long radix fractions finite and preserve radix letters as digits. */
+static void
+checkfractions(void)
+{
+	char text[256];
+	int i;
+
+	memcpy(text, "36r0.", 5);
+	memset(text+5, 'z', 245);
+	text[250] = ';';
+	text[251] = 0;
+	input = (const unsigned char*)text;
+	position = 1;
+	errors = 0;
+	assert(lexnum(text[0]) == Lrconst && errors == 0);
+	assert(isfinite(yylval.tok.v.rval));
+	assert(fabs(yylval.tok.v.rval-1.0) < 1e-15);
+	assert(Getc() == ';');
+	assert(strtodb("0.fe", 16) == 254.0/256.0);
+	assert(strtodb("-0.01", 2) == -0.25);
+	for(i = 1; i < 240; i++) {
+		text[0] = '0';
+		text[1] = '.';
+		memset(text+2, '0', i-1);
+		text[i+1] = '1';
+		text[i+2] = 0;
+		assert(strtodb(text, 2) == ldexp(1.0, -i));
+	}
+}
+
 /* Initialize the actual scanner character classes used by numeric states. */
 static void
 initmap(void)
@@ -118,6 +148,7 @@ main(void)
 	int length;
 
 	initmap();
+	checkfractions();
 	assert(strtoi("-9223372036854775808", 10) == INT64_MIN);
 	assert(strtoi("18446744073709551615", 10) == -1);
 	assert(strtoi("18446744073709551616", 10) == 0);
@@ -149,6 +180,6 @@ main(void)
 	text[StrSize+1] = ';';
 	text[StrSize+2] = 0;
 	check(text, Lconst, 0, 1);
-	puts("PASS numeric lexer: EOF, radix buffer boundaries, long tokens and 64-bit accumulation");
+	puts("PASS numeric lexer: EOF, radix buffer boundaries, long fractions, long tokens and 64-bit accumulation");
 	return 0;
 }

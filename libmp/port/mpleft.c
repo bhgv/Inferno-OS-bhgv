@@ -2,7 +2,10 @@
 #include <mp.h>
 #include "dat.h"
 
-// res = b << shift
+/*
+ * Shift a magnitude without overflowing the signed bit-capacity calculation.
+ * INT_MIN in the reverse direction shifts every representable input to zero.
+ */
 void
 mpleft(mpint *b, int shift, mpint *res)
 {
@@ -12,17 +15,24 @@ mpleft(mpint *b, int shift, mpint *res)
 	res->sign = b->sign;
 	if(b->top==0){
 		res->top = 0;
+		res->sign = 1;
 		return;
 	}
 
 	// a negative left shift is a right shift
 	if(shift < 0){
+		if(shift == (-0x7fffffff-1)){
+			mpassign(mpzero, res);
+			return;
+		}
 		mpright(b, -shift, res);
 		return;
 	}
 
 	// b and res may be the same so remember the old top
 	otop = b->top;
+	if((uvlong)otop*Dbits+(uint)shift > 0x7fffffff-(Dbits-1))
+		sysfatal("mpleft: shift exceeds bit capacity");
 
 	// shift
 	mpbits(res, otop*Dbits + shift);	// overkill

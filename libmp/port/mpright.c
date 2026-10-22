@@ -2,8 +2,10 @@
 #include <mp.h>
 #include "dat.h"
 
-// res = b >> shift
-/* Large right shifts become zero before computing a destination bit count. */
+/*
+ * Large right shifts become zero before computing a destination bit count.
+ * Reject an unrepresentable reverse shift without negating INT_MIN.
+ */
 void
 mpright(mpint *b, int shift, mpint *res)
 {
@@ -13,11 +15,14 @@ mpright(mpint *b, int shift, mpint *res)
 	res->sign = b->sign;
 	if(b->top==0){
 		res->top = 0;
+		res->sign = 1;
 		return;
 	}
 
 	// a negative right shift is a left shift
 	if(shift < 0){
+		if(shift == (-0x7fffffff-1))
+			sysfatal("mpright: reverse shift exceeds bit capacity");
 		mpleft(b, -shift, res);
 		return;
 	}

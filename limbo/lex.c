@@ -599,62 +599,42 @@ digit(int c, int base)
 	return c;
 }
 
+/*
+ * Parse a radix fraction without building an overflowing integer numerator
+ * and denominator. Backward Horner evaluation retains small fractional values.
+ * Letters, including e/E, are digits in this radix syntax, not exponents.
+ */
 double
-strtodb(char *t, int base)
+strtodb(char *text, int base)
 {
-	double num, dem;
-	int neg, eneg, dig, exp, c, d;
+	double number, fraction;
+	char *start, *end;
+	int negative, c, d;
 
-	num = 0;
-	neg = 0;
-	dig = 0;
-	exp = 0;
-	eneg = 0;
-
-	c = *t++;
+	negative = 0;
+	c = *text++;
 	if(c == '-' || c == '+'){
-		if(c == '-')
-			neg = 1;
-		c = *t++;
+		negative = c == '-';
+		c = *text++;
 	}
+	number = 0;
 	while((d = digit(c, base)) >= 0){
-		num = num*base + d;
-		c = *t++;
+		number = number*base+d;
+		c = *text++;
 	}
-	if(c == '.')
-		c = *t++;
-	while((d = digit(c, base)) >= 0){
-		num = num*base + d;
-		dig++;
-		c = *t++;
+	if(c == '.'){
+		start = text;
+		while(digit(*text, base) >= 0)
+			text++;
+		end = text;
+		fraction = 0;
+		while(end > start)
+			fraction = (fraction+digit(*--end, base))/base;
+		number += fraction;
 	}
-	if(c == 'e' || c == 'E'){
-		c = *t++;
-		if(c == '-' || c == '+'){
-			if(c == '-'){
-				dig = -dig;
-				eneg = 1;
-			}
-			c = *t++;
-		}
-		while((d = digit(c, base)) >= 0){
-			exp = exp*base + d;
-			c = *t++;
-		}
-	}
-	exp -= dig;
-	if(exp < 0){
-		exp = -exp;
-		eneg = !eneg;
-	}
-	dem = rpow(base, exp);
-	if(eneg)
-		num /= dem;
-	else
-		num *= dem;
-	if(neg)
-		return -num;
-	return num;
+	if(negative)
+		return -number;
+	return number;
 }
 
 /*

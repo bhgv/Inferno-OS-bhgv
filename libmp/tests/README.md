@@ -31,6 +31,9 @@ sandbox hides `/proc`.
 parsing and formatting code with lib9's codecs. Python integers supply the value
 oracle. It checks 336 decimal/hex/base32/base64 round trips, large right shifts,
 low-set-bit positions, exact base32 output and balanced temporary ownership.
+It also compares 480 modular power cases with Python pow, including zero
+exponents, modulus one and output aliasing each input, and checks the minimum
+negative native shift without signed negation overflow.
 Ordinary allocation failures are injected into output buffers and parsers;
 failures in fatal mpnew/mpbits allocation paths are outside this fixture.
 

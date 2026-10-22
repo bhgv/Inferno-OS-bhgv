@@ -28,6 +28,7 @@ char exHeap[] = "heap";
 char exNilref[] = "nil";
 char exType[] = "type";
 char exZdiv[] = "divide by zero";
+char exInval[] = "invalid argument";
 static char injected[] = "original VM allocation error";
 #define MP(x) checkIPint(x)
 
@@ -148,6 +149,9 @@ static F_IPint_iptobebytes bytesframe;
 static F_IPint_iptobytes legacyframe;
 static F_IPint_div divideframe;
 static F_IPint_mod modframe;
+static F_IPint_expmod powerframe;
+static F_IPint_shl leftframe;
+static F_IPint_shr rightframe;
 static mpint *owned_number;
 static int operation;
 
@@ -165,6 +169,9 @@ invoke(void *unused)
 	case 5: newIPint(owned_number); break;
 	case 6: IPint_div(&divideframe); break;
 	case 7: IPint_mod(&modframe); break;
+	case 8: IPint_expmod(&powerframe); break;
+	case 9: IPint_shl(&leftframe); break;
+	case 10: IPint_shr(&rightframe); break;
 	default: assert(0);
 	}
 	return 1;
@@ -404,6 +411,117 @@ checkinvalid(void)
 	checks++;
 }
 
+/* Validate power domains and allocation failure without losing old results. */
+static void
+checkpowers(void)
+{
+	IPints_IPint *base, *exp, *mod, *negative, *zero, *result, *old;
+	int native_before, vm_before;
+
+	base = newIPint(itomp(17, nil));
+	exp = newIPint(itomp(0, nil));
+	mod = newIPint(itomp(1, nil));
+	negative = newIPint(itomp(-1, nil));
+	zero = newIPint(itomp(0, nil));
+	result = newIPint(itomp(99, nil));
+	powerframe.base = base;
+	powerframe.exp = exp;
+	powerframe.mod = mod;
+	powerframe.ret = &result;
+	operation = 8;
+	assert(kprotect(invoke, nil) && mptoi(checkIPint(result)) == 0);
+	old = result;
+	native_before = liveblocks();
+	vm_before = vm_live;
+	powerframe.exp = negative;
+	assert(!kprotect(invoke, nil) && last_error == exInval && result == old);
+	powerframe.exp = exp;
+	powerframe.mod = zero;
+	assert(!kprotect(invoke, nil) && last_error == exZdiv && result == old);
+	powerframe.mod = negative;
+	assert(!kprotect(invoke, nil) && last_error == exInval && result == old);
+	assert(liveblocks() == native_before && vm_live == vm_before);
+	powerframe.mod = mod;
+	vm_failure = 0;
+	assert(!kprotect(invoke, nil) && last_error == injected && result == old);
+	vm_failure = -1;
+	assert(liveblocks() == native_before && vm_live == vm_before);
+	powerframe.mod = H;
+	assert(kprotect(invoke, nil) && mptoi(checkIPint(result)) == 1);
+	destroy(result);
+	destroy(base);
+	destroy(exp);
+	destroy(mod);
+	destroy(negative);
+	destroy(zero);
+	checks += 6;
+}
+
+/* Check reverse/minimum/full-word counts and old-result ownership on failure. */
+static void
+checkshifts(void)
+{
+	IPints_IPint *number, *result, *old, *zero;
+	WORD minimum, wide;
+	int native_before, vm_before, op;
+
+	number = newIPint(itomp(8, nil));
+	zero = newIPint(itomp(0, nil));
+	result = newIPint(itomp(99, nil));
+	leftframe.i = rightframe.i = number;
+	leftframe.ret = rightframe.ret = &result;
+	minimum = (WORD)((UWORD)1 << (sizeof(WORD)*8-1));
+	for(op = 9; op <= 10; op++) {
+		operation = op;
+		leftframe.n = rightframe.n = 1;
+		assert(kprotect(invoke, nil));
+		assert(mptoi(checkIPint(result)) == (op == 9 ? 16 : 4));
+		leftframe.n = rightframe.n = -1;
+		assert(kprotect(invoke, nil));
+		assert(mptoi(checkIPint(result)) == (op == 9 ? 4 : 16));
+		leftframe.n = rightframe.n = minimum;
+		old = result;
+		native_before = liveblocks();
+		vm_before = vm_live;
+		if(op == 9) {
+			assert(kprotect(invoke, nil));
+			assert(mptoi(checkIPint(result)) == 0);
+		}else {
+			assert(!kprotect(invoke, nil) && last_error == exHeap && result == old);
+			assert(liveblocks() == native_before && vm_live == vm_before);
+		}
+		leftframe.n = rightframe.n = 1;
+		old = result;
+		native_before = liveblocks();
+		vm_before = vm_live;
+		vm_failure = 0;
+		assert(!kprotect(invoke, nil) && last_error == injected && result == old);
+		vm_failure = -1;
+		assert(liveblocks() == native_before && vm_live == vm_before);
+		leftframe.i = rightframe.i = zero;
+		leftframe.n = rightframe.n = minimum;
+		assert(kprotect(invoke, nil) && mptoi(checkIPint(result)) == 0);
+		leftframe.i = rightframe.i = number;
+		checks += 5;
+	}
+	if(sizeof(WORD) > sizeof(int)) {
+		wide = (WORD)((uvlong)1<<32);
+		operation = 10;
+		rightframe.n = wide;
+		assert(kprotect(invoke, nil) && mptoi(checkIPint(result)) == 0);
+		operation = 9;
+		leftframe.n = -wide;
+		assert(kprotect(invoke, nil) && mptoi(checkIPint(result)) == 0);
+		leftframe.n = wide;
+		old = result;
+		assert(!kprotect(invoke, nil) && last_error == exHeap && result == old);
+		checks += 3;
+	}
+	destroy(number);
+	destroy(zero);
+	destroy(result);
+}
+
 /* Cover the old fixed-buffer limits and verify all VM/native ownership balances. */
 int
 main(void)
@@ -425,6 +543,8 @@ main(void)
 	checkexport(data, 1025, 1);
 	checkownership();
 	checkinvalid();
+	checkpowers();
+	checkshifts();
 	assert(vm_live == 0 && liveblocks() == 0 && worker.nerr == 0);
 	assert(TIPint->ref == 1 && Tarray.ref == 1 && Tbyte.ref == 1 && Tstring.ref == 1);
 	printf("PASS IPints: %d large export/VM unwind/native failure/ownership cases\n", checks);
