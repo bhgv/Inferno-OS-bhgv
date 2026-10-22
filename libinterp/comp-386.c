@@ -126,6 +126,7 @@ static	ulong*	litpool;
 static	int	nlit;
 static	void	macfrp(void);
 static	void	macret(void);
+static	void	retbody(void);
 static	void	maccase(void);
 static	void	maccolr(void);
 static	void	macmcal(void);
@@ -1502,17 +1503,18 @@ comp(Inst *i)
 /* Unpublished helper buffers, reclaimed after VM error unwinds. */
 static uchar *x86helpertemp, *x86helpercode;
 /* Owned by the permanent comvec block, never by a Module. */
-static uchar *x86frp;
+static uchar *x86frp, *x86ret;
 
 static int
 preamble(void)
 {
-	uchar *start, *frp;
+	uchar *start, *frp, *ret;
 	if(comvec)
 		return 1;
 
 	x86frp = nil;
-	start = malloc(256);
+	x86ret = nil;
+	start = malloc(1024);
 	x86helpercode = start;
 	if(start == nil)
 		return 0;
@@ -1530,12 +1532,15 @@ preamble(void)
 
 	frp = code;
 	macfrp();
+	ret = code;
+	retbody();
 	if(segflush(start, code-start) != 0) {
 		free(start);
 		x86helpercode = nil;
 		return 0;
 	}
 	x86frp = frp;
+	x86ret = ret;
 	comvec = (void(*)(void))start;
 	x86helpercode = nil;
 	return 1;
@@ -1615,68 +1620,46 @@ macfrp(void)
 static void
 macret(void)
 {
+	bra((ulong)x86ret, Ojmp);
+}
+
+static void
+retbody(void)
+{
 	Inst i;
-	uchar *s;
-	static ulong lpunt, lnomr, lfrmr, linterp;
+	uchar *fallback[4];
+	int j;
 
-	s = code;
-
-	lpunt -= 2;
-	lnomr -= 2;
-	lfrmr -= 2;
-	linterp -= 2;
-
-	con(0, RBX);				// MOVL  $0, RBX
-	modrm(Oldw, O(Frame, t), RFP, RAX);	// MOVL  t(FP), RAX
-	gen2(Ocmpw, (3<<6)|(RAX<<3)|RBX);	// CMPL  RAX, RBX
-	gen2(Ojeqb, lpunt-(code-s));		// JEQ	 lpunt
-	modrm(Oldw, O(Type, destroy), RAX, RAX);// MOVL  destroy(RAX), RAX
-	gen2(Ocmpw, (3<<6)|(RAX<<3)|RBX);	// CMPL	 RAX, RBX
-	gen2(Ojeqb, lpunt-(code-s));		// JEQ	 lpunt
-	modrm(Ocmpw, O(Frame, fp), RFP, RBX);	// CMPL	 fp(FP), RBX
-	gen2(Ojeqb, lpunt-(code-s));		// JEQ	 lpunt
-	modrm(Ocmpw, O(Frame, mr), RFP, RBX);	// CMPL	 mr(FP), RBX
-	gen2(Ojeqb, lnomr-(code-s));		// JEQ	 lnomr
-	con((ulong)&R, RTMP);			// MOVL	 $R, RTMP
-	modrm(Oldw, O(REG, M), RTMP, RTA);	// MOVL	 R.M, RTA
-	modrm(Odecrm, O(Heap, ref)-sizeof(Heap), RTA, 1);
-	gen2(Ojneb, lfrmr-(code-s));		// JNE	 lfrmr
-	modrm(Oincrm, O(Heap, ref)-sizeof(Heap), RTA, 0);
-	gen2(Ojmpb, lpunt-(code-s));		// JMP	 lpunt
-	lfrmr = code - s;
-	modrm(Oldw, O(Frame, mr), RFP, RTA);	// MOVL	 mr(FP), RTA
-	modrm(Ostw, O(REG, M), RTMP, RTA);	// MOVL	 RTA, R.M
-	modrm(Oldw, O(Modlink, MP), RTA, RMP);	// MOVL	 MP(RTA), RMP
-	modrm(Ostw, O(REG, MP), RTMP, RMP);	// MOVL	 RMP, R.MP
-	modrm(Ocmpi, O(Modlink, compiled), RTA, 7);// CMPL $0, M.compiled
-	genb(0x00);
-	gen2(Ojeqb, linterp-(code-s));		// JEQ	linterp
-	lnomr = code - s;
-	gen2(Ocallrm, (3<<6)|(2<<3)|RAX);	// CALL* AX
-	con((ulong)&R, RTMP);			// MOVL	 $R, RTMP
-	modrm(Ostw, O(REG, SP), RTMP, RFP);	// MOVL  RFP, R.SP
-	modrm(Oldw, O(Frame, lr), RFP, RAX);	// MOVL  lr(RFP), RAX
-	modrm(Oldw, O(Frame, fp), RFP, RFP);	// MOVL  fp(RFP), RFP
-	modrm(Ostw, O(REG, FP), RTMP, RFP);	// MOVL  RFP, R.FP
-	gen2(Ojmprm, (3<<6)|(4<<3)|RAX);	// JMP*L AX
-
-	linterp = code - s;			// return to uncompiled code
-	gen2(Ocallrm, (3<<6)|(2<<3)|RAX);	// CALL* AX
-	con((ulong)&R, RTMP);			// MOVL	 $R, RTMP
-	modrm(Ostw, O(REG, SP), RTMP, RFP);	// MOVL  RFP, R.SP
-	modrm(Oldw, O(Frame, lr), RFP, RAX);	// MOVL  lr(RFP), RAX
-	modrm(Ostw, O(REG, PC), RTMP, RAX);	// MOVL  RAX, R.PC
-	modrm(Oldw, O(Frame, fp), RFP, RFP);	// MOVL  fp(RFP), RFP
-	modrm(Ostw, O(REG, FP), RTMP, RFP);	// MOVL  RFP, R.FP
-	genb(Opopl+RDI);			// return to uncompiled code
-	genb(Opopl+RSI);
-	genb(Opopl+RDX);
-	genb(Opopl+RCX);
-	genb(Opopl+RBX);
-	genb(Oret);
-						// label:
-	lpunt = code - s;
-
+	con(0, RBX);
+	modrm(Oldw, O(Frame, t), RFP, RAX);
+	gen2(Ocmpw, (3<<6)|(RAX<<3)|RBX);
+	gen2(Ojeqb, 0);
+	fallback[0] = code-1;
+	modrm(Oldw, O(Type, destroy), RAX, RAX);
+	gen2(Ocmpw, (3<<6)|(RAX<<3)|RBX);
+	gen2(Ojeqb, 0);
+	fallback[1] = code-1;
+	modrm(Ocmpw, O(Frame, fp), RFP, RBX);
+	gen2(Ojeqb, 0);
+	fallback[2] = code-1;
+	modrm(Ocmpw, O(Frame, mr), RFP, RBX);
+	/* Keep the returning module alive until all frame pointers are freed.
+	 * Cross-module returns use VM ret from this permanent bridge. */
+	gen2(Ojneb, 0);
+	fallback[3] = code-1;
+	gen2(Ocallrm, (3<<6)|(2<<3)|RAX);
+	con((ulong)&R, RTMP);
+	modrm(Ostw, O(REG, SP), RTMP, RFP);
+	modrm(Oldw, O(Frame, lr), RFP, RAX);
+	modrm(Oldw, O(Frame, fp), RFP, RFP);
+	modrm(Ostw, O(REG, FP), RTMP, RFP);
+	gen2(Ojmprm, (3<<6)|(4<<3)|RAX);
+	for(j = 0; j < 4; j++) {
+		if(code-fallback[j]-1 > 127)
+			error(exCompile);
+		*fallback[j] = code-fallback[j]-1;
+	}
+	memset(&i, 0, sizeof(i));
 	i.add = AXNON;
 	punt(&i, TCHECK|NEWPC, optab[IRET]);
 }

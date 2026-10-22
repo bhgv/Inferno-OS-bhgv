@@ -241,6 +241,7 @@ static	ulong	macro[NMACRO];
 	void	(*comvec)(void);
 static	void	macfrp(void);
 static	void	macret(void);
+static	void	retbody(void);
 static	void	maccase(void);
 static	void	maccolr(void);
 static	void	macmcal(void);
@@ -1740,17 +1741,18 @@ comp(Inst *i)
 /* Unpublished helper buffers, reclaimed after a VM error unwind. */
 static ulong *armhelpertemp, *armhelpercode;
 /* Owned by the permanent comvec block, never by a Module. */
-static ulong *armfrp;
+static ulong *armfrp, *armret;
 
 static int
 preamble(void)
 {
-	ulong *start, *frp;
+	ulong *start, *frp, *ret;
 	if(comvec)
 		return 1;
 
 	armfrp = nil;
-	start = malloc(128 * sizeof(*code));
+	armret = nil;
+	start = malloc(512 * sizeof(*code));
 	armhelpercode = start;
 	if(start == nil)
 		return 0;
@@ -1765,6 +1767,8 @@ preamble(void)
 	flushcon(0);
 	frp = code;
 	macfrp();
+	ret = code;
+	retbody();
 	pass--;
 
 	if(segflush(start, (code-start)*sizeof(*code)) != 0) {
@@ -1773,6 +1777,7 @@ preamble(void)
 		return 0;
 	}
 	armfrp = frp;
+	armret = ret;
 	comvec = (void(*)(void))start;
 	armhelpercode = nil;
 	return 1;
@@ -1871,70 +1876,43 @@ maccolr(void)
 static void
 macret(void)
 {
+	con((ulong)armret, R15, 0);
+}
+
+static void
+retbody(void)
+{
 	Inst i;
-	ulong *cp1, *cp2, *cp3, *cp4, *cp5, *linterp;
+	ulong *fallback[4];
+	int j;
 
 	CMPI(AL, RA1, 0, 0, 0);
-	cp1 = code;
-	BRA(EQ, 0);				// t(Rfp) == 0
-
-	mem(Ldw, O(Type,destroy),RA1, RA0);
-	CMPI(AL, RA0, 0, 0, 0);
-	cp2 = code;
-	BRA(EQ, 0);				// destroy(t(fp)) == 0
-
-	mem(Ldw, O(Frame,fp),RFP, RA2);
-	CMPI(AL, RA2, 0, 0, 0);
-	cp3 = code;
-	BRA(EQ, 0);				// fp(Rfp) == 0
-
-	mem(Ldw, O(Frame,mr),RFP, RA3);
-	CMPI(AL, RA3, 0, 0, 0);
-	cp4 = code;
-	BRA(EQ, 0);				// mr(Rfp) == 0
-
-	mem(Ldw, O(REG,M),RREG, RA2);
-	mem(Ldw, O(Heap,ref)-sizeof(Heap),RA2, RA3);
-	DPI(AL, Sub, RA3, RA3, 0, 1) | SBIT;
-	cp5 = code;
-	BRA(EQ, 0);				// --ref(arg) == 0
-	mem(Stw, O(Heap,ref)-sizeof(Heap),RA2, RA3);
-
-	mem(Ldw, O(Frame,mr),RFP, RA1);
-	mem(Stw, O(REG,M),RREG, RA1);
-	mem(Ldw, O(Modlink,MP),RA1, RMP);
-	mem(Stw, O(REG,MP),RREG, RMP);
-	mem(Ldw, O(Modlink,compiled), RA1, RA3);	// R.M->compiled
-	CMPI(AL, RA3, 0, 0, 0);
-	linterp = code;
+	fallback[0] = code;
 	BRA(EQ, 0);
-
-	PATCH(cp4);
-	MOV(R15, R14);		// call destroy(t(fp))
+	mem(Ldw, O(Type, destroy), RA1, RA0);
+	CMPI(AL, RA0, 0, 0, 0);
+	fallback[1] = code;
+	BRA(EQ, 0);
+	mem(Ldw, O(Frame, fp), RFP, RA2);
+	CMPI(AL, RA2, 0, 0, 0);
+	fallback[2] = code;
+	BRA(EQ, 0);
+	mem(Ldw, O(Frame, mr), RFP, RA3);
+	CMPI(AL, RA3, 0, 0, 0);
+	/* Keep the returning module alive until all frame pointers are freed.
+	 * Cross-module returns use VM ret from this permanent bridge. */
+	fallback[3] = code;
+	BRA(NE, 0);
+	MOV(R15, R14);
 	MOV(RA0, R15);
-
-	mem(Stw, O(REG,SP),RREG, RFP);
-	mem(Ldw, O(Frame,lr),RFP, RA1);
-	mem(Ldw, O(Frame,fp),RFP, RFP);
-	mem(Stw, O(REG,FP),RREG, RFP);	// R.FP = RFP
-	DP(AL, Mov, 0, R15, 0, RA1);		// goto lr(Rfp), if compiled
-
-	PATCH(linterp);
-	MOV(R15, R14);		// call destroy(t(fp))
-	MOV(RA0, R15);
-
-	mem(Stw, O(REG,SP),RREG, RFP);
-	mem(Ldw, O(Frame,lr),RFP, RA1);
-	mem(Ldw, O(Frame,fp),RFP, RFP);
-	mem(Stw, O(REG,PC),RREG, RA1);	// R.PC = fp->lr
-	mem(Stw, O(REG,FP),RREG, RFP);	// R.FP = RFP
-	mem(Ldw, O(REG, xpc), RREG, RLINK);
-	RETURN;		// return to xec uncompiled code
-
-	PATCH(cp1);
-	PATCH(cp2);
-	PATCH(cp3);
-	PATCH(cp5);
+	mem(Stw, O(REG, SP), RREG, RFP);
+	mem(Ldw, O(Frame, lr), RFP, RA1);
+	mem(Ldw, O(Frame, fp), RFP, RFP);
+	mem(Stw, O(REG, FP), RREG, RFP);
+	DP(AL, Mov, 0, R15, 0, RA1);
+	for(j = 0; j < 4; j++)
+		PATCH(fallback[j]);
+	memset(&i, 0, sizeof(i));
 	i.add = AXNON;
 	punt(&i, TCHECK|NEWPC, optab[IRET]);
 }

@@ -85,81 +85,82 @@ void *image(void){return out.bytes;}
 unsigned regaddr(void){return (uint32_t)(uintptr_t)&R;}
 unsigned callback(void){return (uint32_t)(uintptr_t)rdestroy;}
 '''.replace('OFFSETS',offsets).replace('INITIALIZE',initialize).replace('FINISH',finish)
-checks=0
-with tempfile.TemporaryDirectory(prefix='jit-handoff-') as td:
-    td=Path(td)
-    for arch in ['386','arm']:
-        src=td/f'{arch}.c';src.write_text(unit(arch));binary=td/f'{arch}.so'
-        flags=shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
-        subprocess.run(shlex.split(os.environ.get('CC','cc'))+flags+['-Wno-pointer-to-int-cast','-Wno-int-to-pointer-cast','-shared','-fPIC','-I'+str(root/'include'),str(src),'-o',str(binary)],check=True)
-        lib=C.CDLL(str(binary));lib.image.restype=C.c_void_p
-        for mode in range(6):
-            for outcome in (['decode-fault'] if mode==5 else ['normal','newpc','yield','check-zero','error','newpc-yield','newpc-check-zero']):
-                for synthetic in [False,True]:
-                    mask=1|2|64|(16 if outcome.startswith('newpc') else 0)|(8 if outcome in ['yield','check-zero','newpc-yield','newpc-check-zero'] else 0)
-                    # IA-32/ARM TCHECK=(1<<3), WRTPC=(1<<2), NEWPC=(1<<4).
-                    size=lib.build(mode,mask,int(synthetic));host=lib.image();BASE=C.c_uint32(host).value
-                    reg=lib.regaddr()&0xffffffff;callback=lib.callback()&0xffffffff
-                    FRAME,MP,NEWFRAME,NEWMP,STACK,STOP=0x200000,0x300000,0x400000,0x500000,0x800000,0xa00000
-                    image=C.string_at(host,4096);state=bytearray(60)
-                    struct.pack_into('<I',state,0,BASE+4);struct.pack_into('<I',state,4,MP);struct.pack_into('<I',state,8,FRAME)
-                    struct.pack_into('<I',state,32,STOP)
-                    frame=bytearray(b'\xa5'*4096);module=bytearray(b'\xa5'*4096)
-                    source=(MP if mode==1 else FRAME)+0x100;middle=(MP if mode==1 else FRAME)+0x200;dest=FRAME+0x300
-                    struct.pack_into('<I',frame,0x100,3);struct.pack_into('<I',frame,0x200,7);struct.pack_into('<I',frame,0x300,11)
-                    struct.pack_into('<I',module,0x100,3);struct.pack_into('<I',module,0x200,7)
-                    if mode==2:av,bv=-129,-17
-                    else:av,bv=3,11 if mode==3 else 7
-                    if mode==3:middle=dest
-                    if mode==4:
-                        source=FRAME+0x520;dest=MP+0x530
-                        struct.pack_into('<I',frame,0x40,FRAME+0x500);struct.pack_into('<I',module,0x48,MP+0x500)
-                        struct.pack_into('<I',frame,0x520,3);struct.pack_into('<I',module,0x530,11)
-                    stub=b'\xc3' if arch=='386' else struct.pack('<II',0xe92d4000,0xe8bd8000)
-                    u=Uc(UC_ARCH_X86,UC_MODE_32) if arch=='386' else Uc(UC_ARCH_ARM,UC_MODE_ARM)
-                    model.mapregions(u,[(BASE,image),(reg,bytes(state)),(FRAME,bytes(frame)),(MP,bytes(module)),(NEWFRAME,bytes(4096)),(NEWMP,bytes(4096)),(STACK,bytes(4096)),(STOP,bytes(16)),(callback,stub)])
-                    calls=[]
-                    def word(addr):return struct.unpack('<I',u.mem_read(addr,4))[0]
-                    def called(uc,address,length,data):
-                        if address!=(callback if arch=='386' else callback+4):return
-                        calls.append(address)
-                        savedpc=word(reg);expectedpc=BASE+4 if synthetic else BASE+0x300
-                        assert savedpc==expectedpc,(arch,mode,outcome,synthetic,'stale PC',hex(savedpc),hex(expectedpc))
-                        assert word(reg+8)==FRAME
-                        # handler() uses next-PC minus one for compiled code.
-                        if not synthetic:assert 0x100<=savedpc-BASE-1<0x300
-                        sp,dp,mp=word(reg+36),word(reg+40),word(reg+44)
-                        if mode!=2:assert (sp,dp,mp)==(source,dest,middle),(arch,mode,'operands')
-                        assert word(sp)==av&0xffffffff and word(mp)==bv&0xffffffff
-                        if outcome=='error':uc.emu_stop();return
-                        uc.mem_write(dp,struct.pack('<I',(av+bv)&0xffffffff))
-                        uc.mem_write(NEWFRAME,bytes(uc.mem_read(FRAME,4096)));uc.mem_write(reg+8,struct.pack('<I',NEWFRAME))
-                        uc.mem_write(reg+4,struct.pack('<I',NEWMP));uc.mem_write(reg+48,struct.pack('<I',int(outcome in ['yield','newpc-yield'])))
-                        if outcome.startswith('newpc'):uc.mem_write(reg,struct.pack('<I',0xdead0000 if outcome=='newpc-yield' else STOP))
-                        volatile=[UC_X86_REG_EAX,UC_X86_REG_ECX,UC_X86_REG_EDX] if arch=='386' else [UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_R2,UC_ARM_REG_R3,UC_ARM_REG_R12,UC_ARM_REG_LR]
-                        for r in volatile:uc.reg_write(r,0xdeadbeef)
-                    u.hook_add(UC_HOOK_CODE,called)
-                    if arch=='386':
-                        u.reg_write(UC_X86_REG_ESI,FRAME);u.reg_write(UC_X86_REG_EDI,MP);u.reg_write(UC_X86_REG_ESP,STACK+2048)
-                        u.mem_write(STACK+2048,struct.pack('<6I',0x10,0x20,0x30,0x40,0x50,STOP))
-                    else:
-                        u.reg_write(UC_ARM_REG_R5,reg);u.reg_write(UC_ARM_REG_R9,FRAME);u.reg_write(UC_ARM_REG_R8,MP);u.reg_write(UC_ARM_REG_LR,STOP);u.reg_write(UC_ARM_REG_SP,STACK+2048)
-                    end=STOP if outcome.startswith('newpc') or outcome=='yield' else BASE+size
-                    if outcome=='decode-fault':
-                        try:u.emu_start(BASE+0x100,end,count=1000)
-                        except UcError:pass
-                        else:raise AssertionError('invalid operand did not fault')
-                        assert not calls
-                        assert word(reg)==(BASE+4 if synthetic else BASE+0x300),'PC was saved after operand decoding'
-                        checks+=1;continue
-                    u.emu_start(BASE+0x100,end,count=1000)
-                    assert len(calls)==1
-                    assert word(dest)==(11 if outcome=='error' else (av+bv)&0xffffffff)
-                    if outcome not in ['error','yield','newpc-yield']:
-                        assert u.reg_read(UC_X86_REG_ESI if arch=='386' else UC_ARM_REG_R9)==NEWFRAME
-                        assert u.reg_read(UC_X86_REG_EDI if arch=='386' else UC_ARM_REG_R8)==NEWMP
-                    if outcome in ['yield','newpc-yield'] and arch=='386':
-                        assert u.reg_read(UC_X86_REG_ESP)==STACK+2048+24
-                        for register,value in [(UC_X86_REG_EDI,0x10),(UC_X86_REG_ESI,0x20),(UC_X86_REG_EDX,0x30),(UC_X86_REG_ECX,0x40),(UC_X86_REG_EBX,0x50)]:assert u.reg_read(register)==value
-                    checks+=1
-print(f'PASS JIT handoff: {checks} executed x86/ARM normal/error/NEWPC/TCHECK cases, exact operands, current-PC exception ranges, synthetic macros, clobbers and frame/MP restore')
+if __name__ == '__main__':
+    checks=0
+    with tempfile.TemporaryDirectory(prefix='jit-handoff-') as td:
+        td=Path(td)
+        for arch in ['386','arm']:
+            src=td/f'{arch}.c';src.write_text(unit(arch));binary=td/f'{arch}.so'
+            flags=shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
+            subprocess.run(shlex.split(os.environ.get('CC','cc'))+flags+['-Wno-pointer-to-int-cast','-Wno-int-to-pointer-cast','-shared','-fPIC','-I'+str(root/'include'),str(src),'-o',str(binary)],check=True)
+            lib=C.CDLL(str(binary));lib.image.restype=C.c_void_p
+            for mode in range(6):
+                for outcome in (['decode-fault'] if mode==5 else ['normal','newpc','yield','check-zero','error','newpc-yield','newpc-check-zero']):
+                    for synthetic in [False,True]:
+                        mask=1|2|64|(16 if outcome.startswith('newpc') else 0)|(8 if outcome in ['yield','check-zero','newpc-yield','newpc-check-zero'] else 0)
+                        # IA-32/ARM TCHECK=(1<<3), WRTPC=(1<<2), NEWPC=(1<<4).
+                        size=lib.build(mode,mask,int(synthetic));host=lib.image();BASE=C.c_uint32(host).value
+                        reg=lib.regaddr()&0xffffffff;callback=lib.callback()&0xffffffff
+                        FRAME,MP,NEWFRAME,NEWMP,STACK,STOP=0x200000,0x300000,0x400000,0x500000,0x800000,0xa00000
+                        image=C.string_at(host,4096);state=bytearray(60)
+                        struct.pack_into('<I',state,0,BASE+4);struct.pack_into('<I',state,4,MP);struct.pack_into('<I',state,8,FRAME)
+                        struct.pack_into('<I',state,32,STOP)
+                        frame=bytearray(b'\xa5'*4096);module=bytearray(b'\xa5'*4096)
+                        source=(MP if mode==1 else FRAME)+0x100;middle=(MP if mode==1 else FRAME)+0x200;dest=FRAME+0x300
+                        struct.pack_into('<I',frame,0x100,3);struct.pack_into('<I',frame,0x200,7);struct.pack_into('<I',frame,0x300,11)
+                        struct.pack_into('<I',module,0x100,3);struct.pack_into('<I',module,0x200,7)
+                        if mode==2:av,bv=-129,-17
+                        else:av,bv=3,11 if mode==3 else 7
+                        if mode==3:middle=dest
+                        if mode==4:
+                            source=FRAME+0x520;dest=MP+0x530
+                            struct.pack_into('<I',frame,0x40,FRAME+0x500);struct.pack_into('<I',module,0x48,MP+0x500)
+                            struct.pack_into('<I',frame,0x520,3);struct.pack_into('<I',module,0x530,11)
+                        stub=b'\xc3' if arch=='386' else struct.pack('<II',0xe92d4000,0xe8bd8000)
+                        u=Uc(UC_ARCH_X86,UC_MODE_32) if arch=='386' else Uc(UC_ARCH_ARM,UC_MODE_ARM)
+                        model.mapregions(u,[(BASE,image),(reg,bytes(state)),(FRAME,bytes(frame)),(MP,bytes(module)),(NEWFRAME,bytes(4096)),(NEWMP,bytes(4096)),(STACK,bytes(4096)),(STOP,bytes(16)),(callback,stub)])
+                        calls=[]
+                        def word(addr):return struct.unpack('<I',u.mem_read(addr,4))[0]
+                        def called(uc,address,length,data):
+                            if address!=(callback if arch=='386' else callback+4):return
+                            calls.append(address)
+                            savedpc=word(reg);expectedpc=BASE+4 if synthetic else BASE+0x300
+                            assert savedpc==expectedpc,(arch,mode,outcome,synthetic,'stale PC',hex(savedpc),hex(expectedpc))
+                            assert word(reg+8)==FRAME
+                            # handler() uses next-PC minus one for compiled code.
+                            if not synthetic:assert 0x100<=savedpc-BASE-1<0x300
+                            sp,dp,mp=word(reg+36),word(reg+40),word(reg+44)
+                            if mode!=2:assert (sp,dp,mp)==(source,dest,middle),(arch,mode,'operands')
+                            assert word(sp)==av&0xffffffff and word(mp)==bv&0xffffffff
+                            if outcome=='error':uc.emu_stop();return
+                            uc.mem_write(dp,struct.pack('<I',(av+bv)&0xffffffff))
+                            uc.mem_write(NEWFRAME,bytes(uc.mem_read(FRAME,4096)));uc.mem_write(reg+8,struct.pack('<I',NEWFRAME))
+                            uc.mem_write(reg+4,struct.pack('<I',NEWMP));uc.mem_write(reg+48,struct.pack('<I',int(outcome in ['yield','newpc-yield'])))
+                            if outcome.startswith('newpc'):uc.mem_write(reg,struct.pack('<I',0xdead0000 if outcome=='newpc-yield' else STOP))
+                            volatile=[UC_X86_REG_EAX,UC_X86_REG_ECX,UC_X86_REG_EDX] if arch=='386' else [UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_R2,UC_ARM_REG_R3,UC_ARM_REG_R12,UC_ARM_REG_LR]
+                            for r in volatile:uc.reg_write(r,0xdeadbeef)
+                        u.hook_add(UC_HOOK_CODE,called)
+                        if arch=='386':
+                            u.reg_write(UC_X86_REG_ESI,FRAME);u.reg_write(UC_X86_REG_EDI,MP);u.reg_write(UC_X86_REG_ESP,STACK+2048)
+                            u.mem_write(STACK+2048,struct.pack('<6I',0x10,0x20,0x30,0x40,0x50,STOP))
+                        else:
+                            u.reg_write(UC_ARM_REG_R5,reg);u.reg_write(UC_ARM_REG_R9,FRAME);u.reg_write(UC_ARM_REG_R8,MP);u.reg_write(UC_ARM_REG_LR,STOP);u.reg_write(UC_ARM_REG_SP,STACK+2048)
+                        end=STOP if outcome.startswith('newpc') or outcome=='yield' else BASE+size
+                        if outcome=='decode-fault':
+                            try:u.emu_start(BASE+0x100,end,count=1000)
+                            except UcError:pass
+                            else:raise AssertionError('invalid operand did not fault')
+                            assert not calls
+                            assert word(reg)==(BASE+4 if synthetic else BASE+0x300),'PC was saved after operand decoding'
+                            checks+=1;continue
+                        u.emu_start(BASE+0x100,end,count=1000)
+                        assert len(calls)==1
+                        assert word(dest)==(11 if outcome=='error' else (av+bv)&0xffffffff)
+                        if outcome not in ['error','yield','newpc-yield']:
+                            assert u.reg_read(UC_X86_REG_ESI if arch=='386' else UC_ARM_REG_R9)==NEWFRAME
+                            assert u.reg_read(UC_X86_REG_EDI if arch=='386' else UC_ARM_REG_R8)==NEWMP
+                        if outcome in ['yield','newpc-yield'] and arch=='386':
+                            assert u.reg_read(UC_X86_REG_ESP)==STACK+2048+24
+                            for register,value in [(UC_X86_REG_EDI,0x10),(UC_X86_REG_ESI,0x20),(UC_X86_REG_EDX,0x30),(UC_X86_REG_ECX,0x40),(UC_X86_REG_EBX,0x50)]:assert u.reg_read(register)==value
+                        checks+=1
+    print(f'PASS JIT handoff: {checks} executed x86/ARM normal/error/NEWPC/TCHECK cases, exact operands, current-PC exception ranges, synthetic macros, clobbers and frame/MP restore')

@@ -72,7 +72,7 @@ UBSan stopped on both signed shifts. Restoring the old x86 byte encoder
 aborted at the previously unsupported immediate-source case. These controls
 were temporary experiments; the normal suites use the current source only.
 
-All 33 libinterp Python suites pass. Full xec/IA-32/ARM syntax checks pass
+All 34 libinterp Python suites pass. Full xec/IA-32/ARM syntax checks pass
 with Linux headers, including the legacy ARM architecture profile. The new
 ARM indexing suite also passes all 3,452 cases with __ARM_ARCH=4.
 
@@ -86,3 +86,6 @@ in [jit-frame-audit.md](jit-frame-audit.md).
 
 Checked module link resolution, native guards and export cleanup are covered
 in [module-link-audit.md](module-link-audit.md).
+
+Permanent RET continuations, frame/module release order and checked mspawn
+are covered in [jit-return-audit.md](jit-return-audit.md).

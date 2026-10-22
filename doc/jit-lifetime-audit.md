@@ -14,7 +14,8 @@ Both backends now append an independent reclaim thunk to the permanent comvec
 allocation and publish its address only after cache synchronization succeeds.
 Type destructors call that address rather than a module-local macro. The
 existing per-module macro remains available for module-local operations.
-The permanent block is 256 bytes on IA-32 and 128 words on ARM; generated
+After adding the RET bridge, the permanent block is 1024 bytes on IA-32 and
+512 words on ARM; generated
 bytes, not the entire capacity, are synchronized. It remains process-lifetime
 storage, as comvec already was. Type-owned code still dies with the Type.
 Unpublished blocks remain covered by the compilation rollback boundary.
@@ -77,7 +78,7 @@ These tests require Unicorn and a host C compiler. UBSan is enabled by default.
 - x86-types also executes unchanged native CALLs at their encoded virtual
   addresses after removing its former module block; its permanent target is
   a recording stub. The lifetime test above exercises the real reclaim thunk.
-- Production publication/rollback tests pass with 52 IA-32 and 50 ARM VM-error
+- Production publication/rollback tests pass with 53 IA-32 and 51 ARM VM-error
   event points after adding permanent thunk generation. Poisoned allocation,
   allocation/cache failure, retries and shared Type restoration still pass.
 
@@ -86,7 +87,7 @@ to module-local reclaim code makes the lifetime test fault on an unmapped
 fetch; suppressing automatic PC publication makes handoff fail its stale-PC
 check. Restoring direct ARM BL also fails the far-A32 call case.
 
-All 33 libinterp Python suites pass, including the existing arithmetic,
+All 34 libinterp Python suites pass, including the existing arithmetic,
 loader, publication and native-encoder suites. Full xec/IA-32/ARM syntax checks
 pass with Linux headers, including the legacy ARM preprocessor profile.
 
@@ -108,3 +109,6 @@ in [jit-frame-audit.md](jit-frame-audit.md).
 
 Checked module link resolution, native guards and export cleanup are covered
 in [module-link-audit.md](module-link-audit.md).
+
+Permanent RET continuations, frame/module release order and checked mspawn
+are covered in [jit-return-audit.md](jit-return-audit.md).

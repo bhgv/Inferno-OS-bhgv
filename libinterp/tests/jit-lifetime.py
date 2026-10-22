@@ -70,18 +70,20 @@ def unit(arch):
         header=s[s.index('enum\n'):s.index('static\tuchar*\tcode;')]
         globals=r'''
 #define DOT ((ulong)(uintptr_t)code)
-static uchar *code,*base=(uchar*)0x6000000,*x86frp,*x86helpertemp,*x86helpercode;
+static uchar *code,*base=(uchar*)0x6000000,*x86frp,*x86ret,*x86helpertemp,*x86helpercode;
 static ulong macro[NMACRO];static int cflag;
 '''
+        globals+='static void retbody(void) { *code++=0xc3; }\n'
         names=[('bc','static int')]+[(n,'static void') for n in ['genb','gen2','genw','modrm','con','bra','cmpl','macfrp']]+[('preamble','static int')]+[(n,'void') for n in ['comi','comd','typecom']]
         setup=''
     else:
         header=s[s.index('#define\tRESCHED'):s.index('static\tulong*\tcode;')]
         globals=s[s.index('typedef struct Const'):s.index('static Con rcon;')+len('static Con rcon;')]+r'''
-static ulong *code,*base=(ulong*)0x6000000,*armfrp,*armhelpertemp,*armhelpercode;
+static ulong *code,*base=(ulong*)0x6000000,*armfrp,*armret,*armhelpertemp,*armhelpercode;
 static ulong macro[MacRELQ+1];static int pass,codeoff,cflag;
 static void flushchk(void);static void gen(ulong);
 '''
+        globals+='static void retbody(void) { *code++=0xe1a0f00e; }\n'
         names=[(n,'static '+r) for n,r in [('gen','void'),('immrot','long'),('flushcon','void'),('flushchk','void'),('ccon','void'),('con','void'),('armcall','void'),('memc','void'),('mem','void'),('macfrp','void'),('preamble','int')]]+[(n,'void') for n in ['comi','comd','typecom']]
         setup='pass=1;codeoff=0;rcon.ptr=0;'
     return common+header+globals+'\n'.join(function(s,n,r) for n,r in names).replace('sizeof(WORD*)','4').replace('sizeof(Heap)','16U')+r'''

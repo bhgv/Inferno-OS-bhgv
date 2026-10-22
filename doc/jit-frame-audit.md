@@ -77,7 +77,7 @@ Separate negative controls restored each old frame macro and removed each nil
 sentinel independently; the corresponding native tests failed on unsigned
 stack selection, wrapped allocation or unmapped Modlink reads.
 
-All 33 libinterp Python suites pass; the expanded frame suite was rerun after
+All 34 libinterp Python suites pass; the expanded frame suite was rerun after
 its final coverage additions. The frame suite also passes with __ARM_ARCH=4.
 Full IA-32/ARM source syntax checks pass with Linux headers.
 
@@ -88,3 +88,6 @@ integration remain separate audit areas. No 64-bit ABI or new backend is enabled
 
 Checked module link resolution, native guards and export cleanup are covered
 in [module-link-audit.md](module-link-audit.md).
+
+Permanent RET continuations, frame/module release order and checked mspawn
+are covered in [jit-return-audit.md](jit-return-audit.md).

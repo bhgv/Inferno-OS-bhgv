@@ -65,7 +65,7 @@ Unicorn/Capstone are required for native encoder tests (the full test suite
 also uses Keystone).
 
 - x86-publish executes production driver, runtime protection, preamble, Type
-  publication and table/exception relocators. It injects VM errors at 52 event
+  publication and table/exception relocators. It injects VM errors at 53 event
   points and retries, exercises allocation/cache failures, old/shared Type
   preservation, phase mismatch, literal sizing and already-compiled modules.
   Its cache boundary checks the exact module code/literal extent. Integer
@@ -73,7 +73,7 @@ also uses Keystone).
 - Both x86/ARM publication tests cover malformed metadata, exact table aliases,
   rejected overlaps, 32,768 single-byte data mutations and 129 data extents.
   The mutation loop checks preflight bounds/purity and allocator balance; it
-  does not execute mutated bytecode. ARM additionally retains its 50 VM-error
+  does not execute mutated bytecode. ARM additionally retains its 51 VM-error
   injection points.
 - x86-types executes production initializers/destructors for empty, sparse and
   dense maps up to 4096 map bytes. Its 135 checks include memory canaries,
@@ -89,7 +89,7 @@ also uses Keystone).
   final Dis target relocation are boundary stubs. A MOVT encoding bug in the
   older VFP test's constant-load stub was corrected as part of this coverage.
 
-All 33 libinterp Python suites pass. Full xec/IA-32/ARM source syntax checks
+All 34 libinterp Python suites pass. Full xec/IA-32/ARM source syntax checks
 pass with their respective Linux headers. These host checks do not boot an
 emulator/OS, prove executable-memory permissions, validate physical cache
 coherence or substitute for target builds and module-unload testing on hardware.
@@ -108,3 +108,6 @@ in [jit-frame-audit.md](jit-frame-audit.md).
 
 Checked module link resolution, native guards and export cleanup are covered
 in [module-link-audit.md](module-link-audit.md).
+
+Permanent RET continuations, frame/module release order and checked mspawn
+are covered in [jit-return-audit.md](jit-return-audit.md).

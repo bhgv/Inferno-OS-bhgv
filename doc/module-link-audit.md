@@ -58,8 +58,8 @@ python3 libinterp/tests/module-links.py
 python3 libinterp/tests/jit-frames.py
 ```
 
-- module-links runs 131,110 cases per WORD32/WORD64 operand model (262,220
-  total). It extracts the real resolver, mcall, mframe, linkm, destroylinks and
+- module-links runs 196,662 cases per WORD32/WORD64 operand model (393,324
+  total). It extracts the real resolver, mcall, mframe, mspawn, ret, linkm, destroylinks and
   runtime kprotect; VM errors unwind through real emulator Proc frames.
   It covers every signed 16-bit invalid link, MIN/MAX WORD and values beyond
   int width, valid imports/exports, nil modules and absent exports, invalid
@@ -89,6 +89,9 @@ execute target C prologues/GC, or integrate the entire loader/unloader and
 module return lifecycle. They do not benchmark the additional native guards
 or export scanning. No target ABI or backend availability was changed.
 
-All 33 libinterp Python suites pass. The 296 native frame/guard cases also
+All 34 libinterp Python suites pass. The 296 native frame/guard cases also
 pass under __ARM_ARCH=4. Full xec/link/IA-32/ARM syntax checks pass with Linux
 headers; git diff --check is clean.
+
+Permanent RET continuations, frame/module release order and checked mspawn
+are covered in [jit-return-audit.md](jit-return-audit.md).

@@ -49,7 +49,7 @@ zero division, invalid counts and no mutation on errors. UBSan is enabled by
 default; CC and CFLAGS can override the compiler/options. These are host tests
 with a stubbed VM error boundary, not an emulator boot or target ABI test.
 
-All 33 libinterp Python suites pass with Unicorn/Capstone/Keystone installed.
+All 34 libinterp Python suites pass with Unicorn/Capstone/Keystone installed.
 Full xec.c and comp-386.c pass host syntax checks with Linux/386 headers;
 comp-arm.c passes with Linux/arm headers. These checks do not replace target
 builds or on-device execution, and no performance measurements were made.
@@ -116,3 +116,6 @@ in [jit-frame-audit.md](jit-frame-audit.md).
 
 Checked module link resolution, native guards and export cleanup are covered
 in [module-link-audit.md](module-link-audit.md).
+
+Permanent RET continuations, frame/module release order and checked mspawn
+are covered in [jit-return-audit.md](jit-return-audit.md).

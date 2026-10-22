@@ -89,7 +89,7 @@ static uchar *code,*base;
 static ulong *patch,*litpool;
 static uint8_t *tinit;
 static Module *mod;
-static uchar *x86frp;
+static uchar *x86frp, *x86ret;
 static int pass,nlit,cflag;
 static int use_literals,literal_phase;
 static ulong macro[1];
@@ -150,6 +150,7 @@ static void comp(Inst *i) { event();
     if(!(phase_error && pass && i==mod->prog))*code++=10;
 }
 static void macfrp(void) {event();*code++=11;}
+static void retbody(void) {event();*code++=12;}
 PREAMBLE
 TYPECOM
 PATCHEX
@@ -195,9 +196,10 @@ static void unchanged(void) {
     assert(old.initialize && old.destroy==(char*)old.initialize+4);
     assert(handlers[0].pc1==1 && handlers[0].pc2==4 && exceptions[0].pc==1);
     assert(live==2+(comvec!=nil));
+    assert((comvec!=nil)==(x86frp!=nil));assert((comvec!=nil)==(x86ret!=nil));
 }
 static void cleanup(void) {
-    free(m.prog);free(a.initialize);free(b.initialize);free(old.initialize);free((void*)comvec);comvec=nil;
+    free(m.prog);free(a.initialize);free(b.initialize);free(old.initialize);free((void*)comvec);comvec=nil;x86frp=nil;x86ret=nil;
     assert(live==0);
 }
 int main(void) {

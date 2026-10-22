@@ -828,19 +828,18 @@ OP(mspawn)
 {
 	Prog *p;
 	Modlink *ml;
-	int o;
+	Linkpc *entry;
 
 	ml = *(Modlink**)R.d;
 	if(ml == H)
 		error(exModule);
 	if(ml->prog == nil)
 		error(exSpawn);
+	entry = modulelink(ml, W(m), nil, "invalid mspawn");
+	if(entry->pc == nil || entry->pc == (Inst*)H)
+		error("invalid mspawn");
 	p = newprog(currun(), ml);
-	o = W(m);
-	if(o >= 0)
-		p->R.PC = ml->links[o].u.pc;
-	else
-		p->R.PC = ml->m->ext[-o-1].u.pc;
+	p->R.PC = entry->pc;
 	newstack(p);
 	unframe();
 }
