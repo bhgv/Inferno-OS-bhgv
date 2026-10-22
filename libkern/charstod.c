@@ -7,14 +7,23 @@
  * necessary to back up the input stream up one byte after calling charstod.
  */
 
-#define ADVANCE *s++ = c; if(s>=e) return NaN(); c = (*f)(vp)
+/* Continue scanning after storage fills so the last callback still ends the token. */
+#define ADVANCE do { \
+	if(s < e) \
+		*s++ = c; \
+	else \
+		overflow = 1; \
+	c = (*f)(vp); \
+} while(0)
 
+/* Bound stored text while consuming the entire number and one terminator. */
 double
 charstod(int(*f)(void*), void *vp)
 {
 	char str[400], *s, *e, *start;
-	int c;
+	int c, overflow;
 
+	overflow = 0;
 	s = str;
 	e = str + sizeof str - 1;
 	c = (*f)(vp);
@@ -64,8 +73,7 @@ charstod(int(*f)(void*), void *vp)
 		if(c != 'y' && c != 'Y')
 			return NaN();
 		ADVANCE;  /* so caller can back up uniformly */
-		USED(c);
-	}else if(s == str && (c == 'n' || c == 'N')){
+	}else if(s == start && (c == 'n' || c == 'N')){
 		ADVANCE;
 		if(c != 'a' && c != 'A')
 			return NaN();
@@ -73,8 +81,9 @@ charstod(int(*f)(void*), void *vp)
 		if(c != 'n' && c != 'N')
 			return NaN();
 		ADVANCE;  /* so caller can back up uniformly */
-		USED(c);
 	}
+	if(overflow)
+		return NaN();
 	*s = 0;
 	return strtod(str, &s);
 }
