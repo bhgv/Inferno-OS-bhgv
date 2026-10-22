@@ -2,9 +2,9 @@ typedef struct IPint IPint;
 
 #pragma incomplete IPint
 
-//Keyring_IPint*	newIPint(mpint*);
+/* Takes ownership of the magnitude on success and VM allocation failure. */
 void*	newIPint(mpint*);
-//mpint*	checkIPint(Keyring_IPint*);
+/* Validate the VM object and borrow its non-nil native magnitude. */
 mpint*	checkIPint(void*);
 void	freeIPint(Heap*, int);
 void	ipintsmodinit(void);

@@ -11,11 +11,6 @@
 
 #include "ipintsmod.h"
 
-enum
-{
-	MaxBigBytes = 1024
-};
-
 /* infinite precision integer */
 struct IPint
 {
@@ -37,19 +32,40 @@ ipintsmodinit(void)
 	builtinmod("$IPints", IPintsmodtab, IPintsmodlen);
 }
 
-//IPints_IPint*
-void*
-newIPint(mpint* b)
+typedef struct IPintBuild IPintBuild;
+struct IPintBuild
 {
-	Heap *h;
-	IPint *ip;
+	mpint *number;
+	IPint *result;
+};
 
-	if(b == nil)
+/* Attach an owned magnitude only after its VM heap object exists. */
+static int
+ipintbuild(void *arg)
+{
+	IPintBuild *build;
+
+	build = arg;
+	build->result = H2D(IPint*, heap(TIPint));
+	build->result->b = build->number;
+	return 1;
+}
+
+/* Consume the supplied magnitude on both success and VM allocation failure. */
+void*
+newIPint(mpint *number)
+{
+	IPintBuild build;
+
+	if(number == nil)
 		error(exHeap);
-	h = heap(TIPint);	/* TO DO: caller might lose other values if heap raises error here */
-	ip = H2D(IPint*, h);
-	ip->b = b;
-	return (IPints_IPint*)ip;
+	build.number = number;
+	build.result = nil;
+	if(!kprotect(ipintbuild, &build)){
+		mpfree(number);
+		krethrow();
+	}
+	return (IPints_IPint*)build.result;
 }
 
 mpint*
@@ -79,104 +95,150 @@ freeIPint(Heap *h, int swept)
 	freeheap(h, 0);
 }
 
+typedef struct IPintText IPintText;
+struct IPintText
+{
+	mpint *number;
+	int base;
+	int leadingzero;
+	uchar *bytes;
+	char *text;
+	String **result;
+};
+
+/* Bound the signed size arithmetic used by libmp's formatting helpers. */
+static void
+ipintexportsize(mpint *number)
+{
+	if(number->top < 0 ||
+	   (uvlong)number->top > (0x7fffffff-Dbits-2)/Dbits)
+		error(exHeap);
+}
+
+/* Build a dynamically sized encoding before publishing the VM string. */
+static int
+ipinttextbuild(void *arg)
+{
+	IPintText *build;
+	int n, capacity;
+
+	build = arg;
+	if(build->leadingzero){
+		n = mptobe(build->number, nil, 0, &build->bytes);
+		if(n < 0)
+			error(exHeap);
+		if(n > 0 && (build->bytes[0]&0x80)){
+			/* mptobe's extra digit leaves space for this compatibility byte. */
+			memmove(build->bytes+1, build->bytes, n);
+			build->bytes[0] = 0;
+			n++;
+		}
+		capacity = 4*((n+2)/3)+1;
+		build->text = malloc(capacity);
+		if(build->text == nil)
+			error(exHeap);
+		if(enc64(build->text, capacity, build->bytes, n) != capacity-1)
+			error(exHeap);
+	}else{
+		build->text = mptoa(build->number, build->base, nil, 0);
+		if(build->text == nil)
+			error(exHeap);
+	}
+	retstr(build->text, build->result);
+	return 1;
+}
+
+/* Reclaim native buffers after either a successful export or a VM exception. */
+static void
+ipinttext(mpint *number, int base, int leadingzero, String **result)
+{
+	IPintText build;
+	int ok;
+
+	ipintexportsize(number);
+	build.number = number;
+	build.base = base;
+	build.leadingzero = leadingzero;
+	build.bytes = nil;
+	build.text = nil;
+	build.result = result;
+	ok = kprotect(ipinttextbuild, &build);
+	free(build.bytes);
+	free(build.text);
+	if(!ok)
+		krethrow();
+}
+
+/* Export the magnitude directly into an exactly sized VM byte array. */
+static void
+ipintbytes(mpint *number, Array **result)
+{
+	Array *bytes, *old;
+	int bits, n;
+
+	ipintexportsize(number);
+	bits = mpsignif(number);
+	n = bits/8 + (bits%8 != 0);
+	if(n == 0)
+		n = 1;
+	bytes = mem2array(nil, n);
+	if(mptobe(number, bytes->data, n, nil) != n){
+		destroy(bytes);
+		error(exHeap);
+	}
+	old = *result;
+	*result = bytes;
+	destroy(old);
+}
+
+/* Retain the legacy unsigned base64 representation with a leading zero byte. */
 void
 IPint_iptob64z(void *fp)
 {
-	F_IPint_iptob64 *f;
-	mpint *b;
-	char buf[MaxBigBytes];	/* TO DO: should allocate these */
-	uchar *p;
-	int n, o;
-	void *v;
+	F_IPint_iptob64z *f;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	b = MP(f->i);
-	n = (b->top+1)*Dbytes;
-	p = malloc(n+1);
-	if(p == nil)
-		error(exHeap);
-	n = mptobe(b, p+1, n, nil);
-	if(n < 0){
-		free(p);
-		return;
-	}
-	p[0] = 0;
-	if(n != 0 && (p[1]&0x80)){
-		/* force leading 0 byte for compatibility with older representation */
-		o = 0;
-		n++;
-	}else
-		o = 1;
-	enc64(buf, sizeof(buf), p+o, n);
-	retstr(buf, f->ret);
-	free(p);
+	ipinttext(MP(f->i), 64, 1, f->ret);
 }
 
+/* Export base64 without a fixed stack-buffer limit. */
 void
 IPint_iptob64(void *fp)
 {
 	F_IPint_iptob64 *f;
-	char buf[MaxBigBytes];
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	mptoa(MP(f->i), 64, buf, sizeof(buf));
-	retstr(buf, f->ret);
+	ipinttext(MP(f->i), 64, 0, f->ret);
 }
 
+/* Preserve the historical magnitude-only byte representation. */
 void
 IPint_iptobytes(void *fp)
 {
 	F_IPint_iptobytes *f;
-	uchar buf[MaxBigBytes];
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	/* TO DO: two's complement or have ipmagtobe? */
-	*f->ret = mem2array(buf, mptobe(MP(f->i), buf, sizeof(buf), nil));	/* for now we'll ignore sign */
+	ipintbytes(MP(f->i), f->ret);
 }
 
+/* Export the complete big-endian magnitude, including values over 1024 bytes. */
 void
 IPint_iptobebytes(void *fp)
 {
 	F_IPint_iptobebytes *f;
-	uchar buf[MaxBigBytes];
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	*f->ret = mem2array(buf, mptobe(MP(f->i), buf, sizeof(buf), nil));
+	ipintbytes(MP(f->i), f->ret);
 }
 
+/* Format a number before replacing the caller's previous string result. */
 void
 IPint_iptostr(void *fp)
 {
 	F_IPint_iptostr *f;
-	char buf[MaxBigBytes];
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	mptoa(MP(f->i), f->base, buf, sizeof(buf));
-	retstr(buf, f->ret);
+	ipinttext(MP(f->i), f->base, 0, f->ret);
 }
 
 static IPints_IPint*
@@ -433,56 +495,97 @@ IPint_mul(void *fp)
 
 	*f->ret = newIPint(ret);
 }
+typedef struct IPintDivide IPintDivide;
+struct IPintDivide
+{
+	mpint *dividend;
+	mpint *divisor;
+	mpint *quotient;
+	mpint *remainder;
+	IPints_IPint *q;
+	IPints_IPint *r;
+};
+
+/* Stage both results so any VM allocation failure can release the whole pair. */
+static int
+ipintdivide(void *arg)
+{
+	IPintDivide *divide;
+	mpint *number;
+
+	divide = arg;
+	divide->quotient = mpnew(0);
+	if(divide->quotient == nil)
+		error(exHeap);
+	divide->remainder = mpnew(0);
+	if(divide->remainder == nil)
+		error(exHeap);
+	mpdiv(divide->dividend, divide->divisor, divide->quotient, divide->remainder);
+	/* newIPint consumes its argument even when its VM allocation fails. */
+	number = divide->quotient;
+	divide->quotient = nil;
+	divide->q = newIPint(number);
+	number = divide->remainder;
+	divide->remainder = nil;
+	divide->r = newIPint(number);
+	return 1;
+}
+
+/* Reject zero divisors in the VM and publish quotient/remainder atomically. */
 void
 IPint_div(void *fp)
 {
 	F_IPint_div *f;
-	mpint *i1, *i2, *quo, *rem;
-	void *v;
+	IPintDivide divide;
+	IPints_IPint *oldq, *oldr;
 
 	f = fp;
-	v = f->ret->t0;
-	f->ret->t0 = H;
-	destroy(v);
-	v = f->ret->t1;
-	f->ret->t1 = H;
-	destroy(v);
-
-	i1 = MP(f->i1);
-	i2 = MP(f->i2);
-	quo = mpnew(0);
-	if(quo == nil)
-		error(exHeap);
-	rem = mpnew(0);
-	if(rem == nil){
-		mpfree(quo);
-		error(exHeap);
+	divide.dividend = MP(f->i1);
+	divide.divisor = MP(f->i2);
+	if(divide.divisor->top == 0)
+		error(exZdiv);
+	divide.quotient = nil;
+	divide.remainder = nil;
+	divide.q = H;
+	divide.r = H;
+	if(!kprotect(ipintdivide, &divide)){
+		mpfree(divide.quotient);
+		mpfree(divide.remainder);
+		destroy(divide.q);
+		destroy(divide.r);
+		krethrow();
 	}
-	mpdiv(i1, i2, quo, rem);
-
-	f->ret->t0 = newIPint(quo);
-	f->ret->t1 = newIPint(rem);
+	oldq = f->ret->t0;
+	oldr = f->ret->t1;
+	f->ret->t0 = divide.q;
+	f->ret->t1 = divide.r;
+	destroy(oldq);
+	destroy(oldr);
 }
+
+/* Validate the modulus and finish allocation before replacing the old result. */
 void
 IPint_mod(void *fp)
 {
 	F_IPint_mod *f;
-	mpint *i1, *i2, *ret;
-	void *v;
+	mpint *i1, *i2, *number;
+	IPints_IPint *result, *old;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
 	i1 = MP(f->i1);
 	i2 = MP(f->i2);
-	ret = mpnew(0);
-	if(ret != nil)
-		mpmod(i1, i2, ret);
-
-	*f->ret = newIPint(ret);
+	if(i2->top == 0)
+		error(exZdiv);
+	number = mpnew(0);
+	if(number == nil)
+		error(exHeap);
+	mpmod(i1, i2, number);
+	result = newIPint(number);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
+
 void
 IPint_neg(void *fp)
 {

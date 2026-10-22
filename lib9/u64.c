@@ -24,17 +24,22 @@ static uchar t64d[256] = {
 };
 static char t64e[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+/* Decode tolerated base64 input without touching zero-capacity destinations. */
 int
 dec64(uchar *out, int lim, char *in, int n)
 {
 	ulong b24;
-	uchar *start = out;
-	uchar *e = out + lim;
+	uchar *start, *e;
 	int i, c;
 
+	if(lim <= 0 || n <= 0)
+		return 0;
+	start = out;
+	e = out+lim;
 	b24 = 0;
 	i = 0;
-	while(n-- > 0){
+	while(n > 0){
+		n--;
  
 		c = t64d[*(uchar*)in++];
 		if(c == INVAL)
@@ -50,7 +55,7 @@ dec64(uchar *out, int lim, char *in, int n)
 			b24 |= c<<6;
 			break;
 		case 3:
-			if(out + 3 > e)
+			if(e-out < 3)
 				goto exhausted;
 
 			b24 |= c;
@@ -64,12 +69,12 @@ dec64(uchar *out, int lim, char *in, int n)
 	}
 	switch(i){
 	case 2:
-		if(out + 1 > e)
+		if(e-out < 1)
 			goto exhausted;
 		*out++ = b24>>16;
 		break;
 	case 3:
-		if(out + 2 > e)
+		if(e-out < 2)
 			goto exhausted;
 		*out++ = b24>>16;
 		*out++ = b24>>8;
@@ -79,20 +84,25 @@ exhausted:
 	return out - start;
 }
 
+/* Reserve the terminator before encoding; no output is possible when lim <= 0. */
 int
 enc64(char *out, int lim, uchar *in, int n)
 {
 	int i;
 	ulong b24;
-	char *start = out;
-	char *e = out + lim;
+	char *start, *e;
+
+	if(lim <= 0 || n < 0)
+		return 0;
+	start = out;
+	e = out+lim;
 
 	for(i = n/3; i > 0; i--){
+		if(e-out <= 4)
+			goto exhausted;
 		b24 = (*in++)<<16;
 		b24 |= (*in++)<<8;
 		b24 |= *in++;
-		if(out + 4 >= e)
-			goto exhausted;
 		*out++ = t64e[(b24>>18)];
 		*out++ = t64e[(b24>>12)&0x3f];
 		*out++ = t64e[(b24>>6)&0x3f];
@@ -101,19 +111,19 @@ enc64(char *out, int lim, uchar *in, int n)
 
 	switch(n%3){
 	case 2:
+		if(e-out <= 4)
+			goto exhausted;
 		b24 = (*in++)<<16;
 		b24 |= (*in)<<8;
-		if(out + 4 >= e)
-			goto exhausted;
 		*out++ = t64e[(b24>>18)];
 		*out++ = t64e[(b24>>12)&0x3f];
 		*out++ = t64e[(b24>>6)&0x3f];
 		*out++ = '=';
 		break;
 	case 1:
-		b24 = (*in)<<16;
-		if(out + 4 >= e)
+		if(e-out <= 4)
 			goto exhausted;
+		b24 = (*in)<<16;
 		*out++ = t64e[(b24>>18)];
 		*out++ = t64e[(b24>>12)&0x3f];
 		*out++ = '=';

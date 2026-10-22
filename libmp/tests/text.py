@@ -96,6 +96,16 @@ with tempfile.TemporaryDirectory(prefix='mp-text-') as directory:
     # Ordinary output allocation failures must not leak the input number.
     number = lib.betomp(b'\x12\x34', 2, None)
     before = lib.liveblocks()
+    for capacity in range(7):
+        output = C.create_string_buffer(b'\xa5' * 16)
+        result = lib.mptoa(number, 64, output, capacity)
+        if capacity < 5:
+            assert not result and output.raw[:16] == b'\xa5' * 16
+        else:
+            assert result == C.addressof(output)
+            assert output.raw[:5] == b'EjQ=\0'
+            assert output.raw[5:16] == b'\xa5' * 11
+        assert lib.liveblocks() == before
     for base in (16, 32, 64):
         for failure in range(2 if base in (32, 64) else 1):
             lib.setfailure(failure)

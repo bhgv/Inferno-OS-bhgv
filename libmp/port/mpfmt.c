@@ -3,16 +3,23 @@
 #include <libsec.h>
 #include "dat.h"
 
+/* Treat a truncated base64 encoding as failure, matching the other bases. */
 static int
 to64(mpint *b, char *buf, int len)
 {
 	uchar *p;
 	int n, rv;
+	uvlong needed;
 
 	p = nil;
 	n = mptobe(b, nil, 0, &p);
 	if(n < 0)
 		return -1;
+	needed = 4*(((uvlong)n+2)/3);
+	if(len <= 0 || needed >= (uvlong)len){
+		free(p);
+		return -1;
+	}
 	rv = enc64(buf, len, p, n);
 	free(p);
 	return rv;
