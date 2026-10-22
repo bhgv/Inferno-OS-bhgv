@@ -250,6 +250,21 @@ Sys_unmount(void *fp)
 	acquire();
 }
 
+/* Clamp full VM counts before narrowing and before releasing the interpreter. */
+static int
+sysiocount(Array *a, WORD count)
+{
+	if(a == nil || D2H(a)->t != &Tarray || a->t != &Tbyte ||
+	   a->len < 0 || (uvlong)a->len > 0x7fffffff || (a->len != 0 && a->data == nil)){
+		seterror(Ebadarg);
+		return -1;
+	}
+	if(count > a->len)
+		count = a->len;
+	return (int)count;
+}
+
+/* Validate byte spans and counts before entering native I/O. */
 void
 Sys_read(void *fp)
 {
@@ -257,19 +272,22 @@ Sys_read(void *fp)
 	F_Sys_read *f;
 
 	f = fp;
-	n = f->n;
-	if(f->buf == (Array*)H || n < 0) {
+	if(f->buf == (Array*)H || f->n < 0) {
 		*f->ret = 0;
 		return;		
 	}
-	if(n > f->buf->len)
-		n = f->buf->len;
+	n = sysiocount(f->buf, f->n);
+	if(n < 0){
+		*f->ret = -1;
+		return;
+	}
 
 	release();
 	*f->ret = kread(fdchk(f->fd), f->buf->data, n);
 	acquire();
 }
 
+/* Validate byte spans and counts before entering native I/O. */
 void
 Sys_readn(void *fp)
 {
@@ -277,13 +295,15 @@ Sys_readn(void *fp)
 	F_Sys_readn *f;
 
 	f = fp;
-	n = f->n;
-	if(f->buf == (Array*)H || n < 0) {
+	if(f->buf == (Array*)H || f->n < 0) {
 		*f->ret = 0;
 		return;		
 	}
-	if(n > f->buf->len)
-		n = f->buf->len;
+	n = sysiocount(f->buf, f->n);
+	if(n < 0){
+		*f->ret = -1;
+		return;
+	}
 	fd = fdchk(f->fd);
 
 	release();
@@ -299,6 +319,7 @@ Sys_readn(void *fp)
 	acquire();
 }
 
+/* Validate byte spans and counts before entering native I/O. */
 void
 Sys_pread(void *fp)
 {
@@ -306,13 +327,15 @@ Sys_pread(void *fp)
 	F_Sys_pread *f;
 
 	f = fp;
-	n = f->n;
-	if(f->buf == (Array*)H || n < 0) {
+	if(f->buf == (Array*)H || f->n < 0) {
 		*f->ret = 0;
 		return;		
 	}
-	if(n > f->buf->len)
-		n = f->buf->len;
+	n = sysiocount(f->buf, f->n);
+	if(n < 0){
+		*f->ret = -1;
+		return;
+	}
 
 	release();
 	*f->ret = kpread(fdchk(f->fd), f->buf->data, n, f->off);
@@ -330,6 +353,7 @@ Sys_chdir(void *fp)
 	acquire();
 }
 
+/* Validate byte spans and counts before entering native I/O. */
 void
 Sys_write(void *fp)
 {
@@ -337,19 +361,22 @@ Sys_write(void *fp)
 	F_Sys_write *f;
 
 	f = fp;
-	n = f->n;
-	if(f->buf == (Array*)H || n < 0) {
+	if(f->buf == (Array*)H || f->n < 0) {
 		*f->ret = 0;
 		return;		
 	}
-	if(n > f->buf->len)
-		n = f->buf->len;
+	n = sysiocount(f->buf, f->n);
+	if(n < 0){
+		*f->ret = -1;
+		return;
+	}
 
 	release();
 	*f->ret = kwrite(fdchk(f->fd), f->buf->data, n);
 	acquire();
 }
 
+/* Validate byte spans and counts before entering native I/O. */
 void
 Sys_pwrite(void *fp)
 {
@@ -357,13 +384,15 @@ Sys_pwrite(void *fp)
 	F_Sys_pwrite *f;
 
 	f = fp;
-	n = f->n;
-	if(f->buf == (Array*)H || n < 0) {
+	if(f->buf == (Array*)H || f->n < 0) {
 		*f->ret = 0;
 		return;		
 	}
-	if(n > f->buf->len)
-		n = f->buf->len;
+	n = sysiocount(f->buf, f->n);
+	if(n < 0){
+		*f->ret = -1;
+		return;
+	}
 
 	release();
 	*f->ret = kpwrite(fdchk(f->fd), f->buf->data, n, f->off);
