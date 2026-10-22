@@ -564,6 +564,14 @@ static int
 swapbraop(int b)
 {
 	switch(b) {
+	case Ojael:
+		return Ojbel;
+	case Ojbel:
+		return Ojael;
+	case Ojal:
+		return Ojbl;
+	case Ojbl:
+		return Ojal;
 	case Ojgel:
 		return Ojlel;
 	case Ojlel:
@@ -649,10 +657,12 @@ cbrab(Inst *i, int jmp)
 	if(RESCHED)
 		schedcheck(i);
 	mid(i, Oldb, RAX);
-	if(UXSRC(i->add) == SRC(AIMM))
-		urk();
-
-	opwld(i, Ocmpb, RAX);
+	if(UXSRC(i->add) == SRC(AIMM)) {
+		genb(0x3c); /* CMP AL, immediate byte */
+		genb(i->s.imm);
+		jmp = swapbraop(jmp);
+	} else
+		opwld(i, Ocmpb, RAX);
 	genb(0x0f);
 	rbra(patch[i->d.ins-mod->prog], jmp);
 }

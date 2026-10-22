@@ -89,7 +89,7 @@ also uses Keystone).
   final Dis target relocation are boundary stubs. A MOVT encoding bug in the
   older VFP test's constant-load stub was corrected as part of this coverage.
 
-All 28 libinterp Python suites pass. Full xec/IA-32/ARM source syntax checks
+All 30 libinterp Python suites pass. Full xec/IA-32/ARM source syntax checks
 pass with their respective Linux headers. These host checks do not boot an
 emulator/OS, prove executable-memory permissions, validate physical cache
 coherence or substitute for target builds and module-unload testing on hardware.
@@ -99,3 +99,6 @@ are covered in [jit-lifetime-audit.md](jit-lifetime-audit.md).
 
 IEEE IA-32 branch semantics and overlapping block moves are covered in
 [jit-float-move-audit.md](jit-float-move-audit.md).
+
+Byte immediates, integer branches and ARM indexing are covered in
+[jit-index-audit.md](jit-index-audit.md).

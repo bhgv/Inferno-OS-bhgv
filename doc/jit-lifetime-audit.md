@@ -86,7 +86,7 @@ to module-local reclaim code makes the lifetime test fault on an unmapped
 fetch; suppressing automatic PC publication makes handoff fail its stale-PC
 check. Restoring direct ARM BL also fails the far-A32 call case.
 
-All 28 libinterp Python suites pass, including the existing arithmetic,
+All 30 libinterp Python suites pass, including the existing arithmetic,
 loader, publication and native-encoder suites. Full xec/IA-32/ARM syntax checks
 pass with Linux headers, including the legacy ARM preprocessor profile.
 
@@ -99,3 +99,6 @@ large-module Dis branch reach and performance remain outside this coverage.
 
 IEEE IA-32 branch semantics and overlapping block moves are covered in
 [jit-float-move-audit.md](jit-float-move-audit.md).
+
+Byte immediates, integer branches and ARM indexing are covered in
+[jit-index-audit.md](jit-index-audit.md).

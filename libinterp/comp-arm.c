@@ -569,7 +569,8 @@ opx(int mode, Adr *a, int mi, int r, int li)
 		mem(mi, a->ind, RMP, r);
 		return;
 	case AIMM:
-		con(a->imm, r, 1);
+		/* Immediate byte operands have the same width as memory loads. */
+		con(mi == Ldb ? a->imm & 0xff : a->imm, r, 1);
 		if(mi == Lea) {	/* could be simpler if con generates reachable literal */
 			mem(Stw, li, RREG, r);
 			mem(Lea, li, RREG, r);
@@ -1488,13 +1489,14 @@ comp(Inst *i)
 		opwld(i, Ldw, RA1);			// RA1 = string
 		NOTNIL(RA1);
 		imm = 1;
-		if((i->add&ARM) != AXIMM || !FITS12((short)i->reg<<Lg2Rune) || immrot((short)i->reg) == 0){
+		if((i->add&ARM) != AXIMM || !FITS12((ulong)(short)i->reg<<Lg2Rune) || immrot((short)i->reg) == 0){
 			mid(i, Ldw, RA2);			// RA2 = i
 			imm = 0;
 		}
 		mem(Ldw, O(String,len),RA1, RA0);	// len<0 => index Runes, otherwise bytes
 		if(bflag){
-			DPI(AL, Orr, RA0, RA3, 0, 0);
+			/* Copy len and set N with V cleared before the signed test. */
+			DPI(AL, Add, RA0, RA3, 0, 0) | SBIT;
 			DPI(LT, Rsb, RA3, RA3, 0, 0);
 			if(imm)
 				BCKR(immrot((short)i->reg), RA3);
@@ -1505,7 +1507,7 @@ comp(Inst *i)
 		CMPI(AL, RA0, 0, 0, 0);
 		if(imm){
 			LDB(GE, RA1, RA3, i->reg);
-			LDW(LT, RA1, RA3, (short)i->reg<<Lg2Rune);
+			LDW(LT, RA1, RA3, (ulong)(short)i->reg<<Lg2Rune);
 		} else {
 			LDRB(GE, RA1, RA3, 0, RA2);
 			DP(LT, Mov, 0, RA2, (Lg2Rune<<3), RA2);
@@ -1537,7 +1539,7 @@ comp(Inst *i)
 			if(bflag)
 				BCKR(imm, RA2);
 			if(i->d.imm != 0)
-				DPI(AL, Add, RA0, RA0, 0, 0) | immrot(i->d.imm<<r);
+				DPI(AL, Add, RA0, RA0, 0, 0) | immrot((ulong)i->d.imm<<r);
 		} else {
 			opwst(i, Ldw, RA1);
 			if(bflag)
