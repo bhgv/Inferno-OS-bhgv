@@ -62,11 +62,17 @@ if 'typedef struct IPintPrimePair' in ipint:
     parts += [ipint[ipint.index('typedef struct IPintPrimePair'):ipint.index('\nvoid\nIPints_DSAprimes(')]]
 else:
     parts += [function('libinterp/ipint.c', 'void\nIPints_gensafeprime(')]
+parts += [function('libinterp/ipint.c', 'static IPints_IPint*\nstrtoipint(')]
+if 'static void\nipintfrombytes(' in ipint:
+    parts += [function('libinterp/ipint.c', 'static void\nipintfrombytes(')]
+parts += [function('libinterp/ipint.c', 'void\n' + name + '(')
+          for name in ['IPint_strtoip', 'IPint_b64toip', 'IPint_bytestoip',
+                       'IPint_bebytestoip', 'IPint_inttoip', 'IPint_iptoint', 'IPint_bits']]
 parts += [function('libinterp/runt.c', 'void\nretstr('),
           function('libinterp/runt.c', 'Array*\nmem2array(')]
 unit = (root / 'libinterp/tests/ipint-exports.c').read_text()
 unit = unit.replace('TYPES', types).replace('IMPLEMENTATION', '\n'.join(parts))
-files = ['mpaux', 'mpfmt', 'mptobe', 'betomp', 'mpadd', 'mpsub', 'mpcmp',
+files = ['mpaux', 'mpfmt', 'strtomp', 'mptov', 'mptobe', 'betomp', 'mpadd', 'mpsub', 'mpcmp',
          'mpmul', 'mprand', 'mpleft', 'mpright', 'mpvecadd', 'mpvecsub', 'mpvecdigmuladd',
          'mpveccmp', 'mpdigdiv', 'mpdiv', 'mpmod', 'mpexp', 'mpextendedgcd', 'mpinvert', 'mptoui', 'mptoi']
 
@@ -91,7 +97,21 @@ with tempfile.TemporaryDirectory(prefix='ipint-exports-') as directory:
     cmd = shlex.split(os.environ.get('CC', 'cc'))
     flags = '-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'
     cmd += shlex.split(os.environ.get('CFLAGS', flags))
-    for path in ('Linux/arm/include', 'emu/port', 'include', 'libinterp'):
-        cmd += ['-I' + str(root / path)]
-    subprocess.run(cmd + units + [str(target), '-o', str(td / 'exports')], check=True)
-    subprocess.run([str(td / 'exports')], check=True)
+    includes = ['-I' + str(root / path) for path in
+                ('Linux/arm/include', 'emu/port', 'include', 'libinterp')]
+    for model in ('native', 'word32'):
+        override = []
+        if model == 'word32':
+            # Reuse real VM declarations, changing only the two scalar word typedefs.
+            modeldir = td / model
+            modeldir.mkdir()
+            header = (root / 'include/interp.h').read_text()
+            header, signed = re.subn(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
+            header, unsigned = re.subn(r'typedef unsigned long\s+UWORD;',
+                                      'typedef unsigned int UWORD;', header, count=1)
+            assert signed == unsigned == 1
+            (modeldir / 'interp.h').write_text(header)
+            override = ['-I' + str(modeldir)]
+        binary = td / ('exports-' + model)
+        subprocess.run(cmd + override + includes + units + [str(target), '-o', str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)

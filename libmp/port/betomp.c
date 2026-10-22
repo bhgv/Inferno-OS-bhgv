@@ -3,13 +3,15 @@
 #include "dat.h"
 
 // convert a big-endian byte array (most significant byte first) to an mpint
-/* Import an unsigned magnitude, including empty input and reused destinations. */
+/* Validate byte counts before allocation; rejected imports retain the destination. */
 mpint*
 betomp(uchar *p, uint n, mpint *b)
 {
 	int m, s;
 	mpdigit x;
 
+	if(n > (0x7fffffff-(Dbits-1))/8 || (n != 0 && p == nil))
+		return nil;
 	if(b == nil)
 		b = mpnew(0);
 

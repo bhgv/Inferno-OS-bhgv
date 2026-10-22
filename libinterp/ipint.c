@@ -231,6 +231,15 @@ IPint_iptobebytes(void *fp)
 	ipintbytes(MP(f->i), f->ret);
 }
 
+/* Retain native base fallback rules without truncating a full VM word. */
+static int
+ipintbase(WORD base)
+{
+	if(base < (-0x7fffffff-1) || base > 0x7fffffff)
+		error(exInval);
+	return (int)base;
+}
+
 /* Format a number before replacing the caller's previous string result. */
 void
 IPint_iptostr(void *fp)
@@ -238,21 +247,41 @@ IPint_iptostr(void *fp)
 	F_IPint_iptostr *f;
 
 	f = fp;
-	ipinttext(MP(f->i), f->base, 0, f->ret);
+	ipinttext(MP(f->i), ipintbase(f->base), 0, f->ret);
 }
 
+/* Parse the whole VM string, rejecting embedded terminators and unrelated padding. */
 static IPints_IPint*
 strtoipint(String *s, int base)
 {
 	char *p, *q;
 	mpint *b;
+	int i, count;
 
+	if(s == H)
+		return H;
+	if(s == nil)
+		error(exNilref);
+	if(D2H(s)->t != &Tstring)
+		error(exType);
+	if(s->len >= 0){
+		if(memchr(s->Sascii, 0, s->len) != nil)
+			return H;
+	}else{
+		if(s->len < -(0x7fffffff-UTFmax)/UTFmax)
+			error(exHeap);
+		count = -s->len;
+		for(i = 0; i < count; i++)
+			if(s->Srune[i] == 0)
+				return H;
+	}
 	p = string2c(s);
 	b = strtomp(p, &q, base, nil);
 	if(b == nil)
 		return H;
-	while(*q == '=')
-		q++;
+	if(base == 32 || base == 64)
+		while(*q == '=')
+			q++;
 	if(q == p || *q != 0){
 		mpfree(b);
 		return H;
@@ -260,70 +289,72 @@ strtoipint(String *s, int base)
 	return newIPint(b);
 }
 
+/* Finish base64 parsing before replacing the caller's previous result. */
 void
 IPint_b64toip(void *fp)
 {
 	F_IPint_b64toip *f;
-	void *v;
+	IPints_IPint *result, *old;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	*f->ret = strtoipint(f->str, 64);
+	result = strtoipint(f->str, 64);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate full VM-array lengths before the native byte-count conversion. */
+static void
+ipintfrombytes(Array *bytes, IPints_IPint **result)
+{
+	mpint *number;
+	IPints_IPint *value, *old;
+
+	if(bytes == H || bytes == nil)
+		error(exNilref);
+	if(D2H(bytes)->t != &Tarray || bytes->t != &Tbyte)
+		error(exType);
+	if(bytes->len < 0 || (uvlong)bytes->len > (0x7fffffff-(Dbits-1))/8)
+		error(exHeap);
+	number = betomp(bytes->data, (uint)bytes->len, nil);
+	value = newIPint(number);
+	old = *result;
+	*result = value;
+	destroy(old);
+}
+
+/* Preserve the historical unsigned byte representation with staged ownership. */
 void
 IPint_bytestoip(void *fp)
 {
 	F_IPint_bytestoip *f;
-	mpint *b;
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	if(f->buf == H)
-		error(exNilref);
-
-	b = betomp(f->buf->data, f->buf->len, nil);	/* for now we'll ignore sign */
-	*f->ret = newIPint(b);
+	ipintfrombytes(f->buf, f->ret);
 }
 
+/* Import an unsigned big-endian magnitude without narrowing unchecked lengths. */
 void
 IPint_bebytestoip(void *fp)
 {
 	F_IPint_bebytestoip *f;
-	mpint *b;
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	if(f->mag == H)
-		error(exNilref);
-
-	b = betomp(f->mag->data, f->mag->len, nil);
-	*f->ret = newIPint(b);
+	ipintfrombytes(f->mag, f->ret);
 }
 
+/* Invalid text returns nil; VM errors leave the previous result untouched. */
 void
 IPint_strtoip(void *fp)
 {
 	F_IPint_strtoip *f;
-	void *v;
+	IPints_IPint *result, *old;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	*f->ret = strtoipint(f->str, f->base);
+	result = strtoipint(f->str, ipintbase(f->base));
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
 /* Validate the VM-word size before narrowing or releasing the interpreter lock. */
@@ -346,49 +377,58 @@ IPint_random(void *fp)
 	destroy(old);
 }
 
-/* number of bits in number */
+/* Validate before replacing the scalar result and keep the legacy zero width. */
 void
 IPint_bits(void *fp)
 {
 	F_IPint_bits *f;
-	int n;
+	mpint *number;
+	int bits;
 
 	f = fp;
-	*f->ret = 0;
-	if(f->i == H)
+	if(f->i == H){
+		*f->ret = 0;
 		return;
-
-	n = mpsignif(MP(f->i));
-	if(n == 0)
-		n = 1;	/* compatibility */
-	*f->ret = n;
+	}
+	number = MP(f->i);
+	ipintexportsize(number);
+	bits = mpsignif(number);
+	*f->ret = bits == 0 ? 1 : bits;
 }
 
-/* create a new IP from an int */
+/* Import the complete VM word rather than an implicitly narrowed C int. */
 void
 IPint_inttoip(void *fp)
 {
 	F_IPint_inttoip *f;
-	void *v;
+	IPints_IPint *result, *old;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	*f->ret = newIPint(itomp(f->i, nil));
+	result = newIPint(vtomp((vlong)f->i, nil));
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Saturate to the active VM-word width and retain scalar output on validation errors. */
 void
 IPint_iptoint(void *fp)
 {
 	F_IPint_iptoint *f;
+	mpint *number;
+	WORD value;
 
 	f = fp;
-	*f->ret = 0;
-	if(f->i == H)
+	if(f->i == H){
+		*f->ret = 0;
 		return;
-	*f->ret = mptoi(MP(f->i));
+	}
+	number = MP(f->i);
+	if(sizeof(WORD) == sizeof(vlong))
+		value = mptov(number);
+	else
+		value = mptoi(number);
+	*f->ret = value;
 }
 
 /* Validate modular powers before entering native fatal-error paths. */

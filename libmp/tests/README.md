@@ -20,12 +20,17 @@ failures are checked for leaving the destination unchanged.
 
 `conversions.py` includes production signed/unsigned scalar and endian import
 functions, plus byte exporters. The real `mp.h` defines the structures; an
-exact-capacity allocator models the mpnew/mpbits contracts. There are 4,018
+exact-capacity allocator models the mpnew/mpbits contracts. There are 4,034
 scalar/byte cases in each of the 32-bit and 64-bit digit models, including reused
 negative destinations, stale zero storage, minimum signed values, full-width
 limbs, saturation and empty NULL imports. Both models pass AddressSanitizer.
 LeakSanitizer process inspection is disabled in that executable because the
 sandbox hides `/proc`.
+
+Byte-import bounds add rejected UINT_MAX/INT_MAX/rounded-capacity counts and
+nonempty NULL buffers for both byte orders, with and without reused destinations.
+No allocation or digit access is permitted before rejection. Existing metadata
+and digit buffers must remain unchanged; empty NULL imports still produce zero.
 
 `text.py` links production portable mp allocation, arithmetic, division, shifts,
 parsing and formatting code with lib9's codecs. Python integers supply the value
@@ -41,6 +46,10 @@ restore stale high limbs from reused destinations. Invalid native counts leave
 the destination unchanged. Scratch-buffer failure preserves existing metadata
 and values, and leaves no internally allocated result behind. Zero bits return
 canonical zero without invoking the generator or allocating a scratch buffer.
+
+Twelve signed-zero parsing cases cover decimal, hex, base32 and base64, both new
+and reused negative destinations. strtomp now retains mpnorm's canonical positive
+zero sign rather than overwriting it with a parsed minus sign.
 
 Ordinary allocation failures are injected into output buffers and parsers;
 failures in fatal mpnew/mpbits allocation paths are outside this fixture.

@@ -15,7 +15,7 @@ The native side links production portable libmp arithmetic/formatting and lib9
 codecs, with the tracked allocator from the libmp text fixture. The VM heap and
 ASCII string constructor are bounded stubs with deterministic VM-error injection.
 
-Its 2,338 cases include zero, signed magnitudes, both compatibility-prefix branches,
+Its 2,406 native-WORD cases (2,400 in the WORD32 model) include zero, signed magnitudes, both compatibility-prefix branches,
 and sizes around 768/1024 bytes up to 4096 bytes. All five export wrappers retain
 old results when validation, native-buffer allocation or VM output allocation
 fails. Native temporaries and VM references must balance after each case. Tests
@@ -61,6 +61,31 @@ Safe-prime pair tests cover successful publication, each of the two VM heap
 failures, invalid sizes, lock restoration and balanced native/VM ownership.
 The linked primality and generation routines are production libsec code; the
 separate libsec/tests/primes.py fixture checks native arithmetic/group behavior.
+
+Imports now exercise complete byte-array validation before narrowing and staged
+ownership across both legacy and big-endian wrappers. Tests cover empty input,
+wrong heap/element types, negative and extreme lengths, missing nonempty data,
+nil references and VM output-allocation failure. Rejected native imports leave
+both existing metadata and digits intact.
+
+String imports retain nil-on-invalid-text behavior while VM errors preserve the
+previous result. Cases include ASCII and ASCII-valued rune strings, embedded NUL,
+non-base64 padding, trailing junk, negative zero, nil/wrong-type input, impossible
+rune lengths and full-word bases. Base32/base64 retain their historical trailing
+padding tolerance; other bases no longer accept trailing equals signs. The C
+string conversion dependency is a bounded fixture model, not a full Unicode
+conversion/allocator implementation. Existing small unsupported bases still use
+libmp's hexadecimal fallback; bases outside native int range raise a VM error.
+
+Scalar cases cover full VM-word minima/maxima, values beyond C int, native/VM
+ownership on constructor failure, saturation to the active word width, wrong
+references, legacy nil behavior and impossible bit counts. Scalar validation
+errors preserve the previous return slot.
+
+The driver additionally builds a WORD32 model using the real VM declarations
+with only WORD/UWORD changed to int/unsigned int in a temporary header. Pointer
+width remains native. This checks width-dependent wrapper branches and internal
+structure consistency; it is not actual Dis ABI32 execution or a target build.
 
 IPints no longer exports through fixed 1024-byte stack buffers. Ordinary base64
 and textual exports retain libmp's signed representation; byte exports and the

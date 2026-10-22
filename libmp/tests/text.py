@@ -123,6 +123,20 @@ with tempfile.TemporaryDirectory(prefix='mp-text-') as directory:
     lib.mpfree(shifted)
     lib.mpfree(number)
     assert lib.liveblocks() == 0
+    # A parsed zero has no negative sign, including reused negative destinations.
+    zero_checks = 0
+    for text, base in [(b'-0', 10), (b'--0', 10), (b'-00', 16),
+                       (b'-22', 32), (b'-AA', 64), (b' -000', 10)]:
+        for reused in (False, True):
+            number = lib.strtomp(b'-123', None, 10, None) if reused else None
+            result = lib.strtomp(text, None, base, number)
+            assert result and C.c_int.from_address(result).value == 1
+            encoded = lib.mptoa(result, 16, None, 0)
+            assert not C.string_at(encoded).startswith(b'-') and int(C.string_at(encoded), 16) == 0
+            lib.testfree(encoded)
+            lib.mpfree(result)
+            assert lib.liveblocks() == 0
+            zero_checks += 1
     # No-number parsing must release only internally allocated destinations.
     for text, base in [(b'', 16), (b'!', 16), (b'1', 32), (b'222', 32), (b'0', 32)]:
         assert not lib.strtomp(text, None, base, None)
@@ -216,4 +230,4 @@ with tempfile.TemporaryDirectory(prefix='mp-text-') as directory:
     lib.setfailure(-1)
     assert lib.liveblocks() == 0
     random_checks += 1
-    print(f'PASS mp text: {checks} text round trips, {power_checks} modular power/alias cases, minimum shift, {random_checks} random-size/mask/failure cases and ownership')
+    print(f'PASS mp text: {checks} text round trips, {power_checks} modular power/alias cases, minimum shift, {random_checks} random-size/mask/failure, {zero_checks} zero-sign cases and ownership')

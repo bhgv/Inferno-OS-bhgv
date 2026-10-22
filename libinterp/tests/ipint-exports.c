@@ -184,6 +184,28 @@ int probably_prime(mpint*, int);
 void genprime(mpint*, int, int);
 void gensafeprime(mpint*, mpint*, int, int);
 
+/* Model ASCII text and ASCII-valued rune strings with bounded temporary storage. */
+char*
+string2c(String *s)
+{
+	static char converted[256];
+	int i;
+
+	if(s == H)
+		return "";
+	if(s->len >= 0){
+		s->Sascii[s->len] = 0;
+		return s->Sascii;
+	}
+	assert(s->len > -256);
+	for(i = 0; i < -s->len; i++) {
+		assert(s->Srune[i] < 128);
+		converted[i] = s->Srune[i];
+	}
+	converted[i] = 0;
+	return converted;
+}
+
 /* Route native export allocations through the tracked libmp allocator. */
 #define malloc testmalloc
 #define free testfree
@@ -215,6 +237,13 @@ static F_IPint_random randomframe;
 static F_IPints_probably_prime primeframe;
 static F_IPints_genprime genframe;
 static F_IPints_gensafeprime safeframe;
+static F_IPint_strtoip parseframe;
+static F_IPint_b64toip parse64frame;
+static F_IPint_bytestoip importframe;
+static F_IPint_bebytestoip importbeframe;
+static F_IPint_inttoip scalarinframe;
+static F_IPint_iptoint scalaroutframe;
+static F_IPint_bits bitsframe;
 static mpint *owned_number;
 static int operation;
 
@@ -249,6 +278,13 @@ invoke(void *unused)
 	case 22: IPints_probably_prime(&primeframe); break;
 	case 23: IPints_genprime(&genframe); break;
 	case 24: IPints_gensafeprime(&safeframe); break;
+	case 25: IPint_strtoip(&parseframe); break;
+	case 26: IPint_b64toip(&parse64frame); break;
+	case 27: IPint_bytestoip(&importframe); break;
+	case 28: IPint_bebytestoip(&importbeframe); break;
+	case 29: IPint_inttoip(&scalarinframe); break;
+	case 30: IPint_iptoint(&scalaroutframe); break;
+	case 31: IPint_bits(&bitsframe); break;
 	default: assert(0);
 	}
 	return 1;
@@ -987,6 +1023,191 @@ checksafeprime(void)
 	free(safeframe.ret);
 }
 
+/* Import byte magnitudes while preserving output on descriptor or heap errors. */
+static void
+checkimports(void)
+{
+	uchar data[] = {1, 0x23};
+	Array *bytes;
+	IPints_IPint *result, *old;
+	WORD length;
+	uchar *pointer;
+	int op, mode, native_before, vm_before;
+
+	bytes = mem2array(data, sizeof(data));
+	result = newIPint(itomp(99, nil));
+	importframe.ret = importbeframe.ret = &result;
+	for(op = 27; op <= 28; op++) {
+		operation = op;
+		for(mode = 0; mode < 11; mode++) {
+			importframe.buf = importbeframe.mag = bytes;
+			length = bytes->len;
+			pointer = bytes->data;
+			old = result;
+			native_before = liveblocks(); vm_before = vm_live;
+			if(mode == 1) vm_failure = 0;
+			if(mode == 2) importframe.buf = importbeframe.mag = H;
+			if(mode == 3) importframe.buf = importbeframe.mag = nil;
+			if(mode == 4) bytes->t = &Tstring;
+			if(mode == 5) bytes->len = -1;
+			if(mode == 6) bytes->len = 0x7fffffff;
+			if(mode == 7) bytes->len = sizeof(WORD) > sizeof(int) ? (WORD)((uvlong)1<<32) : -2;
+			if(mode == 8) { bytes->data = nil; bytes->len = 1; }
+			if(mode == 9) D2H(bytes)->t = &Tstring;
+			if(mode == 10) { bytes->data = nil; bytes->len = 0; }
+			if(mode == 0 || mode == 10) {
+				assert(kprotect(invoke, nil));
+				assert(mptoi(checkIPint(result)) == (mode == 0 ? 0x123 : 0));
+			}else {
+				assert(!kprotect(invoke, nil));
+				assert(result == old);
+				assert(last_error == (mode == 1 ? injected : mode == 2 || mode == 3 ? exNilref :
+					mode == 4 || mode == 9 ? exType : exHeap));
+			}
+			vm_failure = -1;
+			bytes->len = length; bytes->data = pointer; bytes->t = &Tbyte; D2H(bytes)->t = &Tarray;
+			assert(liveblocks() == native_before && vm_live == vm_before);
+			checks++;
+		}
+	}
+	destroy(bytes); destroy(result);
+}
+
+/* Parse complete strings, retaining legacy nil-on-invalid-text behavior. */
+static void
+checkparsing(void)
+{
+	char *texts[] = {"300", "-0", "123==", "12x", "12\0x", "", "AQ==", "-AA==", "AQ==x"};
+	int lengths[] = {3, 2, 5, 3, 4, 0, 4, 5, 5};
+	int bases[] = {10, 10, 10, 10, 10, 10, 64, 64, 64};
+	int values[] = {300, 0, -1, -1, -1, -1, 1, 0, -1};
+	String *text, *oldtext;
+	IPints_IPint *result, *old;
+	int i, op, native_before, vm_before;
+	Heap *h;
+
+	for(i = 0; i < 9; i++) {
+		text = c2string(texts[i], lengths[i]);
+		result = newIPint(itomp(99, nil));
+		parseframe.str = parse64frame.str = text;
+		parseframe.base = bases[i];
+		parseframe.ret = parse64frame.ret = &result;
+		operation = bases[i] == 64 ? 26 : 25;
+		assert(kprotect(invoke, nil));
+		if(values[i] == -1) assert(result == H);
+		else {
+			assert(mptoi(checkIPint(result)) == values[i]);
+			if(values[i] == 0) assert(checkIPint(result)->sign == 1);
+		}
+		destroy(text); destroy(result);
+		checks++;
+	}
+	for(op = 25; op <= 26; op++) {
+		text = c2string(op == 25 ? "123" : "AQ==", op == 25 ? 3 : 4);
+		result = newIPint(itomp(99, nil));
+		parseframe.str = parse64frame.str = text;
+		parseframe.base = 10;
+		parseframe.ret = parse64frame.ret = &result;
+		operation = op;
+		old = result; native_before = liveblocks(); vm_before = vm_live;
+		vm_failure = 0;
+		assert(!kprotect(invoke, nil) && last_error == injected && result == old);
+		vm_failure = -1;
+		assert(liveblocks() == native_before && vm_live == vm_before);
+		parseframe.str = parse64frame.str = nil;
+		assert(!kprotect(invoke, nil) && last_error == exNilref && result == old);
+		parseframe.str = parse64frame.str = (String*)result;
+		assert(!kprotect(invoke, nil) && last_error == exType && result == old);
+		parseframe.str = parse64frame.str = H;
+		assert(kprotect(invoke, nil) && result == H);
+		destroy(text);
+		checks += 4;
+	}
+	/* Rune strings are checked for embedded zero before conversion to C text. */
+	h = nheap(sizeof(String)+3*sizeof(Rune)); h->t = &Tstring; Tstring.ref++;
+	text = H2D(String*, h); text->len = -3; text->max = 4;
+	text->Srune[0] = '1'; text->Srune[1] = 0; text->Srune[2] = '2';
+	result = newIPint(itomp(99, nil));
+	parseframe.str = text; parseframe.base = 10; parseframe.ret = &result; operation = 25;
+	assert(kprotect(invoke, nil) && result == H);
+	text->Srune[1] = '2'; text->Srune[2] = '3';
+	assert(kprotect(invoke, nil) && mptoi(checkIPint(result)) == 123);
+	old = result; text->len = (-0x7fffffff-1);
+	assert(!kprotect(invoke, nil) && last_error == exHeap && result == old);
+	text->len = -3;
+	if(sizeof(WORD) > sizeof(int)) {
+		parseframe.base = (WORD)(((uvlong)1<<32)+10);
+		assert(!kprotect(invoke, nil) && last_error == exInval && result == old);
+		oldtext = text;
+		formatframe.i = result; formatframe.base = parseframe.base; formatframe.ret = &text;
+		operation = 2;
+		assert(!kprotect(invoke, nil) && last_error == exInval && text == oldtext);
+		checks += 2;
+	}
+	destroy(text); destroy(result);
+	checks += 3;
+}
+
+/* Scalar constructors must use full VM words and retain results on VM failure. */
+static void
+checkscalars(void)
+{
+	WORD values[7], answer, oldanswer;
+	IPints_IPint *result, *old;
+	String *wrong;
+	int i, native_before, vm_before, top;
+	mpint *number;
+	uchar large[16];
+
+	values[0] = 0; values[1] = 1; values[2] = -1;
+	values[3] = (WORD)((UWORD)1 << (sizeof(WORD)*8-1));
+	values[4] = (WORD)(((UWORD)~0)>>1);
+	values[5] = sizeof(WORD) > sizeof(int) ? (WORD)(((uvlong)1<<32)+1) : 123456789;
+	values[6] = -values[5];
+	result = H;
+	scalarinframe.ret = &result;
+	scalaroutframe.ret = bitsframe.ret = &answer;
+	for(i = 0; i < 7; i++) {
+		scalarinframe.i = values[i]; operation = 29;
+		assert(kprotect(invoke, nil));
+		assert(mptov(checkIPint(result)) == (vlong)values[i]);
+		scalaroutframe.i = result; operation = 30;
+		assert(kprotect(invoke, nil) && answer == values[i]);
+		checks += 2;
+	}
+	old = result; native_before = liveblocks(); vm_before = vm_live;
+	vm_failure = 0; operation = 29;
+	assert(!kprotect(invoke, nil) && last_error == injected && result == old);
+	vm_failure = -1;
+	assert(liveblocks() == native_before && vm_live == vm_before);
+	checks++;
+	wrong = c2string("x", 1);
+	for(i = 30; i <= 31; i++) {
+		operation = i; answer = oldanswer = 99;
+		scalaroutframe.i = bitsframe.i = (IPints_IPint*)wrong;
+		assert(!kprotect(invoke, nil) && last_error == exType && answer == oldanswer);
+		scalaroutframe.i = bitsframe.i = nil;
+		assert(!kprotect(invoke, nil) && last_error == exNilref && answer == oldanswer);
+		scalaroutframe.i = bitsframe.i = H;
+		assert(kprotect(invoke, nil) && answer == 0);
+		checks += 3;
+	}
+	memset(large, 0xff, sizeof(large));
+	number = betomp(large, sizeof(large), nil);
+	destroy(result); result = newIPint(number);
+	scalaroutframe.i = result; operation = 30;
+	assert(kprotect(invoke, nil) && answer == values[4]);
+	number->sign = -1;
+	assert(kprotect(invoke, nil) && answer == values[3]);
+	checks += 2;
+	bitsframe.i = result; operation = 31;
+	top = number->top; number->top = 0x7fffffff; answer = 99;
+	assert(!kprotect(invoke, nil) && last_error == exHeap && answer == 99);
+	number->top = top;
+	checks++;
+	destroy(wrong); destroy(result);
+}
+
 /* Cover the old fixed-buffer limits and verify all VM/native ownership balances. */
 int
 main(void)
@@ -1017,8 +1238,12 @@ main(void)
 	checkrandom();
 	checkprimes();
 	checksafeprime();
+	checkimports();
+	checkparsing();
+	checkscalars();
 	assert(vm_live == 0 && liveblocks() == 0 && worker.nerr == 0);
 	assert(TIPint->ref == 1 && Tarray.ref == 1 && Tbyte.ref == 1 && Tstring.ref == 1);
-	printf("PASS IPints: %d large export/VM unwind/native failure/ownership cases\n", checks);
+	printf("PASS IPints: %d large export/VM unwind/native failure/ownership cases, WORD%d\n",
+		checks, (int)(sizeof(WORD)*8));
 	return 0;
 }

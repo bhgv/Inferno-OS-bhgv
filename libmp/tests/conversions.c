@@ -170,6 +170,41 @@ checkbytes(uint64_t value)
 	checks++;
 }
 
+/* Reject impossible counts and missing nonempty buffers before touching storage. */
+static void
+checkimportbounds(void)
+{
+	uint counts[] = {UINT_MAX, INT_MAX, (0x7fffffff-(Dbits-1))/8+1};
+	mpint *b, saved;
+	mpdigit digits[8];
+	mpint *(*importers[])(uchar*, uint, mpint*) = {betomp, letomp};
+	unsigned int i, op;
+
+	b = mpnew(128);
+	b->top = b->size;
+	b->sign = -1;
+	memset(b->p, 0xa5, b->size*Dbytes);
+	saved = *b;
+	memcpy(digits, b->p, b->size*Dbytes);
+	for(op = 0; op < 2; op++) {
+		for(i = 0; i < sizeof(counts)/sizeof(counts[0]); i++) {
+			assert(importers[op]((uchar*)1, counts[i], b) == nil);
+			assert(importers[op]((uchar*)1, counts[i], nil) == nil);
+			assert(b->sign == saved.sign && b->size == saved.size && b->top == saved.top &&
+			       b->p == saved.p && b->flags == saved.flags);
+			assert(memcmp(digits, b->p, b->size*Dbytes) == 0);
+			checks += 2;
+		}
+		assert(importers[op](nil, 1, b) == nil);
+		assert(importers[op](nil, 1, nil) == nil);
+		assert(b->sign == saved.sign && b->size == saved.size && b->top == saved.top &&
+			       b->p == saved.p && b->flags == saved.flags);
+		assert(memcmp(digits, b->p, b->size*Dbytes) == 0);
+		checks += 2;
+	}
+	mpfree(b);
+}
+
 /* Include full-width limbs, saturating magnitudes and deterministic random bits. */
 int
 main(void)
@@ -180,6 +215,7 @@ main(void)
 	unsigned int i;
 	mpint *b;
 
+	checkimportbounds();
 	for(i = 0; i < sizeof(edges)/sizeof(edges[0]); i++) {
 		checkscalar(edges[i]);
 		checkbytes(edges[i]);

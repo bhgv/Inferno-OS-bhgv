@@ -158,7 +158,7 @@ from32(char *a, mpint *b)
 	return a;
 }
 
-/* Release a destination allocated here when no number can be converted. */
+/* Parse a signed magnitude, normalize zero, and release owned results on failure. */
 mpint*
 strtomp(char *a, char **pp, int base, mpint *b)
 {
@@ -209,7 +209,7 @@ strtomp(char *a, char **pp, int base, mpint *b)
 	}
 
 	mpnorm(b);
-	b->sign = sign;
+	b->sign = b->top == 0 ? 1 : sign;
 	if(pp != nil)
 		*pp = e;
 

@@ -3,13 +3,15 @@
 #include "dat.h"
 
 // convert a little endian byte array (least significant byte first) to an mpint
-/* Import an unsigned magnitude, including empty input and reused destinations. */
+/* Validate byte counts before allocation; rejected imports retain the destination. */
 mpint*
 letomp(uchar *s, uint n, mpint *b)
 {
 	int i=0, m = 0;
 	mpdigit x=0;
 
+	if(n > (0x7fffffff-(Dbits-1))/8 || (n != 0 && s == nil))
+		return nil;
 	if(b == nil)
 		b = mpnew(0);
 	mpbits(b, 8*n);
