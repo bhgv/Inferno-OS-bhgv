@@ -71,11 +71,11 @@ static void *testmalloc(size_t n) {
     if(fail_after==0)return nil;
     if(fail_after>0)fail_after--;
     if(n==0)return nil;
-    p=calloc(1,n);if(!p)return nil;
+    p=malloc(n);if(!p)return nil;memset(p,0xa5,n);
     for(i=0;i<256;i++)if(!allocations[i]){allocations[i]=p;live++;return p;}
     assert(0);return nil;
 }
-static void *testmallocz(size_t n,int zero) {(void)zero;return testmalloc(n);}
+static void *testmallocz(size_t n,int zero) {void *p=testmalloc(n);if(p && zero)memset(p,0,n);return p;}
 static void testfree(void *p) {
     int i;if(!p)return;
     for(i=0;i<256;i++)if(allocations[i]==p){allocations[i]=nil;live--;frees++;free(p);return;}
@@ -88,6 +88,7 @@ static ulong *armhelpertemp,*armhelpercode;
 static ulong *code,*base,*patch,*litpool;
 static uint8_t *tinit;
 static Module *mod;
+static ulong *armfrp;
 static int pass,nlit,codeoff,cflag;
 static ulong macro[1];
 static struct {int ptr;} rcon;
@@ -140,6 +141,7 @@ static void comp(Inst *i) { event();
     if(mod->ntype>1)tinit[1]=1;
     if(!(phase_error && pass && i==mod->prog))*code++=10;
 }
+static void macfrp(void) {event();*code++=11;}
 PREAMBLE
 TYPECOM
 PATCHEX
@@ -157,7 +159,7 @@ static void fixture(void) {
     memset(&m,0,sizeof(m));memset(&ml,0,sizeof(ml));
     memset(&a,0,sizeof(a));memset(&b,0,sizeof(b));memset(&old,0,sizeof(old));
     memset(&data,0,sizeof(data));memset(links,0,sizeof(links));memset(mp,0,sizeof(mp));
-    original=malloc(4*sizeof(Inst));assert(original);
+    original=malloc(4*sizeof(Inst));assert(original);memset(original,0,4*sizeof(Inst));
     original[0].op=ICASE;original[1].op=ICASE;
     original[2].op=IGOTO;original[2].d.ind=9*4;
     original[3].op=ICASEL;original[3].d.ind=16*4;

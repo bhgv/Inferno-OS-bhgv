@@ -204,8 +204,8 @@ enum
 #define BRADIS(C, o)			BRA(C, (IA(patch, o)-(ulong)code-8)>>2)
 #define BRAMAC(r, o)			BRA(r, (IA(macro, o)-(ulong)code-8)>>2)
 #define BRANCH(C, o)				gen(BRAW(C, ((ulong)(o)-(ulong)code-8)>>2))
-#define CALL(o)				gen(BRAW(AL, ((ulong)(o)-(ulong)code-8)>>2)|(1<<24))
-#define CCALL(C,o)				gen(BRAW((C), ((ulong)(o)-(ulong)code-8)>>2)|(1<<24))
+#define CALL(o)				armcall(AL, (ulong)(o))
+#define CCALL(C,o)				armcall((C), (ulong)(o))
 #define CALLMAC(C,o)			gen(BRAW((C), (IA(macro, o)-(ulong)code-8)>>2)|(1<<24))
 #define RELPC(pc)			(ulong)(base+(pc))
 #define RETURN				DPI(AL, Add, RLINK, R15, 0, 0)				
@@ -533,6 +533,22 @@ con(ulong o, int r, int opt)
 	ccon(AL, o, r, opt);
 }
 
+/* Use an absolute literal target: C helpers and shared Type code need not
+ * lie within BL's +/-32 MiB range. Force one literal load in both passes. */
+static void
+armcall(int cc, ulong target)
+{
+	ccon(cc, target, RCON, 0);
+	DP(cc, Mov, 0, RLINK, 0, R15);
+#if defined(__ARM_ARCH_3__) || defined(__ARM_ARCH_3M__) || defined(__ARM_ARCH_4__) || \
+    (defined(__ARM_ARCH) && __ARM_ARCH < 5 && !defined(__ARM_ARCH_4T__))
+	/* Pre-Thumb ARM has no BX; its C helpers are necessarily A32. */
+	DP(cc, Mov, 0, R15, 0, RCON);
+#else
+	gen(((ulong)cc<<28)|0x012fff10|RCON); /* BX, including Thumb targets */
+#endif
+}
+
 static void
 mem(int inst, ulong disp, int rm, int r)
 {
@@ -699,6 +715,17 @@ punt(Inst *i, int m, void (*fn)(void))
 {
 	ulong pc;
 
+	/* A C helper may raise even when it normally returns in-line. Keep
+	 * exception lookup on this instruction, including operand decoding.
+	 * Synthetic macro instructions (e.g. RET fallback) have no Dis PC. */
+	if(jitvalidpc(mod, i, mod->nprog))
+		m |= WRTPC;
+
+	if(m & WRTPC) {
+		con(RELPC(patch[i-mod->prog+1]), RA0, 0);
+		mem(Stw, O(REG, PC), RREG, RA0);
+	}
+
 	if(m & SRCOP) {
 		if(UXSRC(i->add) == SRC(AIMM))
 			literal(i->s.imm, O(REG, s));
@@ -712,10 +739,7 @@ punt(Inst *i, int m, void (*fn)(void))
 		opwst(i, Lea, RA0);
 		mem(Stw, O(REG, d), RREG, RA0);
 	}
-	if(m & WRTPC) {
-		con(RELPC(patch[i-mod->prog+1]), RA0, 0);
-		mem(Stw, O(REG, PC), RREG, RA0);
-	}
+
 	if(m & DBRAN) {
 		pc = patch[i->d.ins-mod->prog];
 		literal((ulong)(base+pc), O(REG, d));
@@ -1741,15 +1765,18 @@ comp(Inst *i)
 
 /* Unpublished helper buffers, reclaimed after a VM error unwind. */
 static ulong *armhelpertemp, *armhelpercode;
+/* Owned by the permanent comvec block, never by a Module. */
+static ulong *armfrp;
 
 static int
 preamble(void)
 {
-	ulong *start;
+	ulong *start, *frp;
 	if(comvec)
 		return 1;
 
-	start = malloc(10 * sizeof(*code));
+	armfrp = nil;
+	start = malloc(128 * sizeof(*code));
 	armhelpercode = start;
 	if(start == nil)
 		return 0;
@@ -1762,13 +1789,16 @@ preamble(void)
 	mem(Ldw, O(REG, PC), RREG, R15);
 	pass++;
 	flushcon(0);
+	frp = code;
+	macfrp();
 	pass--;
 
-	if(segflush(start, 10 * sizeof(*code)) != 0) {
+	if(segflush(start, (code-start)*sizeof(*code)) != 0) {
 		free(start);
 		armhelpercode = nil;
 		return 0;
 	}
+	armfrp = frp;
 	comvec = (void(*)(void))start;
 	armhelpercode = nil;
 	return 1;
@@ -2047,7 +2077,7 @@ comd(Type *t)
 		for(m = 0x80; m != 0; m >>= 1) {
 			if(c & m) {
 				mem(Ldw, j, RFP, RA0);
-				CALL(base+macro[MacFRP]);
+				CALL(armfrp);
 			}
 			j += sizeof(WORD*);
 		}
@@ -2085,7 +2115,7 @@ typecom(Type *t)
 	ulong capacity;
 	ulong *tmp, *start, *destructor;
 
-	if(t == nil || t->initialize != 0)
+	if(t == nil || t->initialize != 0 || armfrp == nil)
 		return;
 
 	/* Each map byte describes at most eight pointers. Even large-offset
@@ -2288,7 +2318,7 @@ armcompile(void *arg)
 	memmove(c->shadow,m,sizeof(*c->shadow));
 	if(c->stagedmp != nil)
 		c->shadow->origmp=c->stagedmp;
-	patch=mallocz((size+1)*sizeof(*patch),0);
+	patch=mallocz((size+1)*sizeof(*patch),1);
 	if(m->ntype != 0)
 		tinit=mallocz(m->ntype*sizeof(*tinit),1);
 	c->tmp=malloc(4096*sizeof(ulong));

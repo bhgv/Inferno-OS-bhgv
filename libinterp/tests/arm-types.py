@@ -46,6 +46,7 @@ HEADER
 CONSTANTS
 static ulong modulebase[16];
 static ulong *armhelpertemp,*armhelpercode;
+static ulong *armfrp=(ulong*)0x900000;
 static ulong *code,*base=modulebase,*litpool;
 static ulong macro[MacRELQ+1];
 static int pass=1,codeoff,cflag;
@@ -116,7 +117,7 @@ int main(void) {
 }
 #endif
 '''.replace('HEADER',header).replace('CONSTANTS',constants)
-generator='\n'.join(function(n,'static '+r) for n,r in [('gen','void'),('immrot','long'),('flushcon','void'),('flushchk','void'),('ccon','void'),('memc','void'),('con','void'),('mem','void')])
+generator='\n'.join(function(n,'static '+r) for n,r in [('gen','void'),('immrot','long'),('flushcon','void'),('flushchk','void'),('ccon','void'),('memc','void'),('con','void'),('armcall','void'),('mem','void')])
 helpers='\n'.join(function(n,'void') for n in ['comi','comd','typecom'])
 # Evaluate this target-specific sizeof as the actual ARM32 compiler does.
 helpers=helpers.replace('sizeof(WORD*)','4')

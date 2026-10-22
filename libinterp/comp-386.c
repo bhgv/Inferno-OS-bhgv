@@ -387,7 +387,19 @@ punt(Inst *i, int m, void (*fn)(void))
 {
 	ulong pc;
 
+	/* A C helper may raise even when it normally returns in-line. Keep
+	 * exception lookup on this instruction, including operand decoding.
+	 * Synthetic macro instructions (e.g. RET fallback) have no Dis PC. */
+	if(jitvalidpc(mod, i, mod->nprog))
+		m |= WRTPC;
+
 	con((ulong)&R, RTMP);
+
+	if(m & WRTPC) {
+		modrm(Omov, O(REG, PC), RTMP, 0);
+		pc = patch[i-mod->prog+1];
+		genw((ulong)base + pc);
+	}
 
 	if(m & SRCOP) {
 		if(UXSRC(i->add) == SRC(AIMM))
@@ -402,11 +414,7 @@ punt(Inst *i, int m, void (*fn)(void))
 		opwst(i, Olea, 0);
 		modrm(Ostw, O(REG, d), RTMP, RAX);
 	}
-	if(m & WRTPC) {
-		modrm(Omov, O(REG, PC), RTMP, 0);
-		pc = patch[i-mod->prog+1];
-		genw((ulong)base + pc);
-	}
+
 	if(m & DBRAN) {
 		pc = patch[(Inst*)i->d.imm-mod->prog];
 		literal((ulong)base+pc, O(REG, d));
@@ -1439,15 +1447,18 @@ comp(Inst *i)
 
 /* Unpublished helper buffers, reclaimed after VM error unwinds. */
 static uchar *x86helpertemp, *x86helpercode;
+/* Owned by the permanent comvec block, never by a Module. */
+static uchar *x86frp;
 
 static int
 preamble(void)
 {
-	uchar *start;
+	uchar *start, *frp;
 	if(comvec)
 		return 1;
 
-	start = malloc(32);
+	x86frp = nil;
+	start = malloc(256);
 	x86helpercode = start;
 	if(start == nil)
 		return 0;
@@ -1463,11 +1474,14 @@ preamble(void)
 	modrm(Oldw, O(REG, MP), RTMP, RMP);
 	modrm(Ojmprm, O(REG, PC), RTMP, 4);
 
+	frp = code;
+	macfrp();
 	if(segflush(start, code-start) != 0) {
 		free(start);
 		x86helpercode = nil;
 		return 0;
 	}
+	x86frp = frp;
 	comvec = (void(*)(void))start;
 	x86helpercode = nil;
 	return 1;
@@ -1743,7 +1757,7 @@ comd(Type *t)
 		for(m = 0x80; m != 0; m >>= 1) {
 			if(c & m) {
 				modrm(Oldw, j, RFP, RAX);
-				rbra(macro[MacFRP], Ocall);
+				bra((ulong)x86frp, Ocall);
 			}
 			j += sizeof(WORD*);
 		}
@@ -1776,7 +1790,7 @@ typecom(Type *t)
 	ulong capacity;
 	uchar *tmp, *start, *destructor;
 
-	if(t == nil || t->initialize != 0)
+	if(t == nil || t->initialize != 0 || x86frp == nil)
 		return;
 	/* Eight maximum-displacement pointer loads/calls fit in 128 bytes
 	 * per map byte, with one extra block for prologue and return. */
@@ -1956,7 +1970,7 @@ x86compile(void *arg)
 	memmove(c->shadow,m,sizeof(*c->shadow));
 	if(c->stagedmp != nil)
 		c->shadow->origmp=c->stagedmp;
-	patch=mallocz((size+1)*sizeof(*patch),0);
+	patch=mallocz((size+1)*sizeof(*patch),1);
 	if(m->ntype != 0)
 		tinit=mallocz(m->ntype*sizeof(*tinit),1);
 	c->tmp=malloc(4096);

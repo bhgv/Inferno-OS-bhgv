@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Production IA-32 Type emitters: large maps, failures and executed helpers.
 
-Pointer size is evaluated as the IA-32 compiler does. Destructor call targets
-are relocated to a recording return stub; allocator/cache/VM ABI are boundaries.
+Pointer size is evaluated as the IA-32 compiler does. Native CALL targets are
+kept intact; the permanent reclaim target is a recording return stub.
 """
 import ctypes as C
 import os
@@ -13,7 +13,6 @@ import shlex
 import struct
 import subprocess
 import tempfile
-from capstone import Cs,CS_ARCH_X86,CS_MODE_32
 from unicorn import Uc,UC_ARCH_X86,UC_MODE_32,UC_HOOK_CODE
 from unicorn.x86_const import UC_X86_REG_ESI,UC_X86_REG_ECX,UC_X86_REG_ESP,UC_X86_REG_EAX,UC_X86_REG_EDX,UC_X86_REG_EBX
 root=Path(__file__).resolve().parents[2]
@@ -34,7 +33,8 @@ typedef unsigned char uchar;
 #define H ((void*)(uintptr_t)0xffffffff)
 #include "isa.h"
 '''+header+r'''
-static uchar *code,*base,*x86helpertemp,*x86helpercode;
+static uchar *code,*base=(uchar*)0x600000,*x86helpertemp,*x86helpercode;
+static uchar *x86frp=(uchar*)0x900000;
 static ulong macro[NMACRO];
 static int cflag;
 static size_t bytes;
@@ -57,7 +57,7 @@ static void release(void *v){
 static int segflush(void *p,ulong n){assert(p);bytes=n;return flush_error;}
 static void print(char *p,...){(void)p;}
 typedef struct Type {int size,np;void *initialize,*destroy;uchar map[1];} Type;
-'''+ '\n'.join(function(n,r) for n,r in [('bc','static int'),('genb','static void'),('gen2','static void'),('genw','static void'),('modrm','static void'),('con','static void'),('rbra','static void'),('comi','void'),('comd','void'),('typecom','void')]).replace('sizeof(WORD*)','4')+r'''
+'''+ '\n'.join(function(n,r) for n,r in [('bc','static int'),('genb','static void'),('gen2','static void'),('genw','static void'),('modrm','static void'),('con','static void'),('bra','static void'),('comi','void'),('comd','void'),('typecom','void')]).replace('sizeof(WORD*)','4')+r'''
 static Type *current;
 void drop(void){if(current){free(current->initialize);free(current);current=nil;}assert(live==0);}
 int build(const uchar *map,int np,int failure,int cacheerror){
@@ -75,7 +75,6 @@ void badmaps(void){Type t={0};t.np=-1;typecom(&t);assert(!t.initialize&&!t.destr
 '''
 rng=random.Random(0x3867)
 checks=0
-dis=Cs(CS_ARCH_X86,CS_MODE_32)
 with tempfile.TemporaryDirectory(prefix='x86-types-') as td:
     td=Path(td);src=td/'types.c';src.write_text(unit);binary=td/'types.so'
     flags=shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
@@ -88,13 +87,13 @@ with tempfile.TemporaryDirectory(prefix='x86-types-') as td:
             buf=C.create_string_buffer(mapping);assert lib.build(buf,np,-1,0)
             init=lib.initbytes();total=lib.totalbytes();blob=bytearray(C.string_at(lib.initializer(),total))
             if np>=512 and pattern=='dense':assert total>4096
-            BASE,DATA,STACK,HOOK,STOP=0x100000,0x400000,0x800000,0x900000,0xa00000
-            # Module-relative CALL relocations are the destruction boundary.
-            for ins in dis.disasm(bytes(blob[init:]),BASE+init):
-                if ins.mnemonic=='call':
-                    struct.pack_into('<i',blob,ins.address-BASE+1,HOOK-(ins.address+5))
+            BASE=C.c_uint32(lib.initializer()).value
+            DATA,STACK,HOOK,STOP=0x400000,0x800000,0x900000,0xa00000
+            # Execute at the encoded virtual address without rewriting calls.
+            # The former module block is deliberately unmapped before destruction.
             u=Uc(UC_ARCH_X86,UC_MODE_32)
-            for addr,size in [(BASE,max(4096,(total+4095)&~4095)),(DATA,(np*32+64+4095)&~4095),(STACK,4096),(HOOK,4096),(STOP,4096)]:u.mem_map(addr,size)
+            for addr,size in [(BASE&~4095,max(4096,(total+(BASE&4095)+4095)&~4095)),(DATA,(np*32+64+4095)&~4095),(STACK,4096),(HOOK,4096),(STOP,4096)]:u.mem_map(addr,size)
+            u.mem_map(0x600000,4096);u.mem_unmap(0x600000,4096)
             u.mem_write(BASE,bytes(blob));u.mem_write(HOOK,b'\xc3');u.mem_write(DATA,b'\xa5'*(np*32+64))
             u.reg_write(UC_X86_REG_ECX,DATA+32);u.reg_write(UC_X86_REG_ESP,STACK+2048)
             u.mem_write(STACK+2048,struct.pack('<I',STOP));u.emu_start(BASE,STOP,count=1000000)

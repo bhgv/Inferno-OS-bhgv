@@ -65,7 +65,7 @@ Unicorn/Capstone are required for native encoder tests (the full test suite
 also uses Keystone).
 
 - x86-publish executes production driver, runtime protection, preamble, Type
-  publication and table/exception relocators. It injects VM errors at 51 event
+  publication and table/exception relocators. It injects VM errors at 52 event
   points and retries, exercises allocation/cache failures, old/shared Type
   preservation, phase mismatch, literal sizing and already-compiled modules.
   Its cache boundary checks the exact module code/literal extent. Integer
@@ -73,13 +73,14 @@ also uses Keystone).
 - Both x86/ARM publication tests cover malformed metadata, exact table aliases,
   rejected overlaps, 32,768 single-byte data mutations and 129 data extents.
   The mutation loop checks preflight bounds/purity and allocator balance; it
-  does not execute mutated bytecode. ARM additionally retains its 49 VM-error
+  does not execute mutated bytecode. ARM additionally retains its 50 VM-error
   injection points.
 - x86-types executes production initializers/destructors for empty, sparse and
   dense maps up to 4096 map bytes. Its 135 checks include memory canaries,
   allocation/cache failures and generated code above the old buffer limit.
-  Destructor CALL targets are relocated to a recording return stub that
-  clobbers volatile registers; native GC/runtime call ABI remains out of scope.
+  Destructor CALL targets remain intact and address a permanent recording
+  return stub that clobbers volatile registers; the real reclaim thunk is
+  exercised separately by jit-lifetime.py. Full native GC remains out of scope.
 - x86-integer-jit now performs 55,176 arithmetic, routing, move and conversion
   checks, including overlap, source/destination indirection, NaN payloads and
   unchanged surrounding memory. Helper calls are recording stubs.
@@ -88,7 +89,10 @@ also uses Keystone).
   final Dis target relocation are boundary stubs. A MOVT encoding bug in the
   older VFP test's constant-load stub was corrected as part of this coverage.
 
-All 23 libinterp Python suites pass. Full xec/IA-32/ARM source syntax checks
+All 26 libinterp Python suites pass. Full xec/IA-32/ARM source syntax checks
 pass with their respective Linux headers. These host checks do not boot an
 emulator/OS, prove executable-memory permissions, validate physical cache
 coherence or substitute for target builds and module-unload testing on hardware.
+
+Permanent reclaim thunks, full-address ARM calls and helper-PC publication
+are covered in [jit-lifetime-audit.md](jit-lifetime-audit.md).
