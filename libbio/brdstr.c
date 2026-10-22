@@ -1,25 +1,37 @@
 #include	"lib9.h"
 #include	<bio.h>
 
+/* Append within the signed line-length limit, consuming the old owner on failure. */
 static char*
 badd(char *p, int *np, char *data, int ndata, int delim, int nulldelim)
 {
 	int n;
+	char *grown;
 
 	n = *np;
-	p = realloc(p, n+ndata+1);
-	if(p){
-		memmove(p+n, data, ndata);
-		n += ndata;
-		if(n>0 && nulldelim && p[n-1]==delim)
-			p[--n] = '\0';
-		else
-			p[n] = '\0';
-		*np = n;
+	if(n < 0 || ndata < 0 || n > 0x7fffffff-ndata-1){
+		free(p);
+		*np = 0;
+		return nil;
 	}
+	grown = realloc(p, n+ndata+1);
+	if(grown == nil){
+		free(p);
+		*np = 0;
+		return nil;
+	}
+	p = grown;
+	memmove(p+n, data, ndata);
+	n += ndata;
+	if(n > 0 && nulldelim && (uchar)p[n-1] == (uchar)delim)
+		p[--n] = '\0';
+	else
+		p[n] = '\0';
+	*np = n;
 	return p;
 }
 
+/* Stop immediately if a line cannot be allocated; do not return a later suffix. */
 char*
 Brdstr(Biobuf *bp, int delim, int nulldelim)
 {
@@ -107,5 +119,7 @@ Brdstr(Biobuf *bp, int delim, int nulldelim)
 		i = 0;
 		bp->icount = 0;
 		bp->gbuf = bp->ebuf;
+		if(p == nil)
+			return nil;
 	}
 }
