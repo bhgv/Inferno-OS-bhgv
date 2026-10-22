@@ -47,30 +47,44 @@ static int rijndaelKeySetup(u32 erk[/*4*(Nr + 1)*/], u32 drk[/*4*(Nr + 1)*/], co
 static void	rijndaelEncrypt(const u32int rk[], int Nr, const uchar pt[16], uchar ct[16]);
 static void	rijndaelDecrypt(const u32int rk[], int Nr, const uchar ct[16], uchar pt[16]);
 
+/* Stage possibly aliased key/IV bytes before clearing the previous state. */
 void
 setupAESstate(AESstate *s, uchar key[], int keybytes, uchar *ivec)
 {
-	memset(s, 0, sizeof(*s));
+	uchar savedkey[AESmaxkey], savediv[AESbsize];
+	int hasiv;
+
 	if(keybytes > AESmaxkey)
 		keybytes = AESmaxkey;
-	memmove(s->key, key, keybytes);
+	if(key == nil || (keybytes != 16 && keybytes != 24 && keybytes != 32))
+		sysfatal("setupAESstate: invalid key");
+	memmove(savedkey, key, keybytes);
+	hasiv = ivec != nil;
+	if(hasiv)
+		memmove(savediv, ivec, AESbsize);
+	memset(s, 0, sizeof(*s));
+	memmove(s->key, savedkey, keybytes);
 	s->keybytes = keybytes;
 	s->rounds = rijndaelKeySetup(s->ekey, s->dkey, s->key, keybytes * 8);
-	if(ivec != nil)
-		memmove(s->ivec, ivec, AESbsize);
-	if(keybytes==16 || keybytes==24 || keybytes==32)
-		s->setup = 0xcafebabe;
-	// else rijndaelKeySetup was invalid
+	if(hasiv)
+		memmove(s->ivec, savediv, AESbsize);
+	s->setup = 0xcafebabe;
 }
 
 // Define by analogy with desCBCencrypt;  AES modes are not standardized yet.
 // Because of the way that non-multiple-of-16 buffers are handled,
 // the decryptor must be fed buffers of the same size as the encryptor.
+/* Validate the native byte span before mutating CBC data or IV. */
 void
 aesCBCencrypt(uchar *p, int len, AESstate *s)
 {
 	uchar *p2, *ip, *eip;
 	uchar q[AESbsize];
+
+	if(len < 0 || (len != 0 && p == nil))
+		sysfatal("aesCBCencrypt: invalid byte span");
+	if(len == 0)
+		return;
 
 	for(; len >= AESbsize; len -= AESbsize){
 		p2 = p;
@@ -92,11 +106,17 @@ aesCBCencrypt(uchar *p, int len, AESstate *s)
 	}
 }
 
+/* Validate the native byte span before mutating CBC data or IV. */
 void
 aesCBCdecrypt(uchar *p, int len, AESstate *s)
 {
 	uchar *ip, *eip, *tp;
 	uchar tmp[AESbsize], q[AESbsize];
+
+	if(len < 0 || (len != 0 && p == nil))
+		sysfatal("aesCBCdecrypt: invalid byte span");
+	if(len == 0)
+		return;
 
 	for(; len >= AESbsize; len -= AESbsize){
 		memmove(tmp, p, AESbsize);
@@ -868,7 +888,10 @@ static const u32 rcon[] = {
  *
  * @return	the number of rounds for the given cipher key size.
  */
-static int rijndaelKeySetupEnc(u32 rk[/*4*(Nr + 1)*/], const u8 cipherKey[], int keyBits) {
+/* Expand encryption keys with unsigned substitution-table words. */
+static int
+rijndaelKeySetupEnc(u32 rk[/*4*(Nr + 1)*/], const u8 cipherKey[], int keyBits)
+{
    	int i = 0;
 	u32 temp;
 
@@ -880,7 +903,7 @@ static int rijndaelKeySetupEnc(u32 rk[/*4*(Nr + 1)*/], const u8 cipherKey[], int
 		for (;;) {
 			temp  = rk[3];
 			rk[4] = rk[0] ^
-				(Te4[(temp >> 16) & 0xff] << 24) ^
+		((u32)Te4[(temp >> 16) & 0xff] << 24) ^
 				(Te4[(temp >>  8) & 0xff] << 16) ^
 				(Te4[(temp      ) & 0xff] <<  8) ^
 				(Te4[(temp >> 24)       ]      ) ^
@@ -900,7 +923,7 @@ static int rijndaelKeySetupEnc(u32 rk[/*4*(Nr + 1)*/], const u8 cipherKey[], int
 		for (;;) {
 			temp = rk[ 5];
 			rk[ 6] = rk[ 0] ^
-				(Te4[(temp >> 16) & 0xff] << 24) ^
+		((u32)Te4[(temp >> 16) & 0xff] << 24) ^
 				(Te4[(temp >>  8) & 0xff] << 16) ^
 				(Te4[(temp      ) & 0xff] <<  8) ^
 				(Te4[(temp >> 24)       ]      ) ^
@@ -922,7 +945,7 @@ static int rijndaelKeySetupEnc(u32 rk[/*4*(Nr + 1)*/], const u8 cipherKey[], int
         for (;;) {
         	temp = rk[ 7];
         	rk[ 8] = rk[ 0] ^
-        		(Te4[(temp >> 16) & 0xff] << 24) ^
+		((u32)Te4[(temp >> 16) & 0xff] << 24) ^
         		(Te4[(temp >>  8) & 0xff] << 16) ^
         		(Te4[(temp      ) & 0xff] <<  8) ^
         		(Te4[(temp >> 24)       ]      ) ^
@@ -935,7 +958,7 @@ static int rijndaelKeySetupEnc(u32 rk[/*4*(Nr + 1)*/], const u8 cipherKey[], int
 			}
         	temp = rk[11];
         	rk[12] = rk[ 4] ^
-        		(Te4[(temp >> 24)       ] << 24) ^
+		((u32)Te4[(temp >> 24)       ] << 24) ^
         		(Te4[(temp >> 16) & 0xff] << 16) ^
         		(Te4[(temp >>  8) & 0xff] <<  8) ^
         		(Te4[(temp      ) & 0xff]      );
@@ -994,7 +1017,10 @@ static int rijndaelKeySetupDec(u32 rk[/*4*(Nr + 1)*/], const u8 cipherKey[], int
 	return Nr;
 }
 
-static void rijndaelEncrypt(const u32 rk[/*4*(Nr + 1)*/], int Nr, const u8 pt[16], u8 ct[16]) {
+/* Encrypt one block with unsigned final-round table assembly. */
+static void
+rijndaelEncrypt(const u32 rk[/*4*(Nr + 1)*/], int Nr, const u8 pt[16], u8 ct[16])
+{
 	u32 s0, s1, s2, s3, t0, t1, t2, t3;
 #ifndef FULL_UNROLL
     int r;
@@ -1146,28 +1172,28 @@ static void rijndaelEncrypt(const u32 rk[/*4*(Nr + 1)*/], int Nr, const u8 pt[16
 	 * map cipher state to byte array block:
 	 */
 	s0 =
-		(Te4[(t0 >> 24)       ] << 24) ^
+		((u32)Te4[(t0 >> 24)       ] << 24) ^
 		(Te4[(t1 >> 16) & 0xff] << 16) ^
 		(Te4[(t2 >>  8) & 0xff] <<  8) ^
 		(Te4[(t3      ) & 0xff]      ) ^
 		rk[0];
 	PUTU32(ct     , s0);
 	s1 =
-		(Te4[(t1 >> 24)       ] << 24) ^
+		((u32)Te4[(t1 >> 24)       ] << 24) ^
 		(Te4[(t2 >> 16) & 0xff] << 16) ^
 		(Te4[(t3 >>  8) & 0xff] <<  8) ^
 		(Te4[(t0      ) & 0xff]      ) ^
 		rk[1];
 	PUTU32(ct +  4, s1);
 	s2 =
-		(Te4[(t2 >> 24)       ] << 24) ^
+		((u32)Te4[(t2 >> 24)       ] << 24) ^
 		(Te4[(t3 >> 16) & 0xff] << 16) ^
 		(Te4[(t0 >>  8) & 0xff] <<  8) ^
 		(Te4[(t1      ) & 0xff]      ) ^
 		rk[2];
 	PUTU32(ct +  8, s2);
 	s3 =
-		(Te4[(t3 >> 24)       ] << 24) ^
+		((u32)Te4[(t3 >> 24)       ] << 24) ^
 		(Te4[(t0 >> 16) & 0xff] << 16) ^
 		(Te4[(t1 >>  8) & 0xff] <<  8) ^
 		(Te4[(t2      ) & 0xff]      ) ^
@@ -1175,7 +1201,10 @@ static void rijndaelEncrypt(const u32 rk[/*4*(Nr + 1)*/], int Nr, const u8 pt[16
 	PUTU32(ct + 12, s3);
 }
 
-static void rijndaelDecrypt(const u32 rk[/*4*(Nr + 1)*/], int Nr, const u8 ct[16], u8 pt[16]) {
+/* Decrypt one block with unsigned final-round table assembly. */
+static void
+rijndaelDecrypt(const u32 rk[/*4*(Nr + 1)*/], int Nr, const u8 ct[16], u8 pt[16])
+{
 	u32 s0, s1, s2, s3, t0, t1, t2, t3;
 #ifndef FULL_UNROLL
     int r;
@@ -1327,28 +1356,28 @@ static void rijndaelDecrypt(const u32 rk[/*4*(Nr + 1)*/], int Nr, const u8 ct[16
 	 * map cipher state to byte array block:
 	 */
    	s0 =
-   		(Td4[(t0 >> 24)       ] << 24) ^
+		((u32)Td4[(t0 >> 24)       ] << 24) ^
    		(Td4[(t3 >> 16) & 0xff] << 16) ^
    		(Td4[(t2 >>  8) & 0xff] <<  8) ^
    		(Td4[(t1      ) & 0xff]      ) ^
    		rk[0];
 	PUTU32(pt     , s0);
    	s1 =
-   		(Td4[(t1 >> 24)       ] << 24) ^
+		((u32)Td4[(t1 >> 24)       ] << 24) ^
    		(Td4[(t0 >> 16) & 0xff] << 16) ^
    		(Td4[(t3 >>  8) & 0xff] <<  8) ^
    		(Td4[(t2      ) & 0xff]      ) ^
    		rk[1];
 	PUTU32(pt +  4, s1);
    	s2 =
-   		(Td4[(t2 >> 24)       ] << 24) ^
+		((u32)Td4[(t2 >> 24)       ] << 24) ^
    		(Td4[(t1 >> 16) & 0xff] << 16) ^
    		(Td4[(t0 >>  8) & 0xff] <<  8) ^
    		(Td4[(t3      ) & 0xff]      ) ^
    		rk[2];
 	PUTU32(pt +  8, s2);
    	s3 =
-   		(Td4[(t3 >> 24)       ] << 24) ^
+		((u32)Td4[(t3 >> 24)       ] << 24) ^
    		(Td4[(t2 >> 16) & 0xff] << 16) ^
    		(Td4[(t1 >>  8) & 0xff] <<  8) ^
    		(Td4[(t0      ) & 0xff]      ) ^
@@ -1358,7 +1387,10 @@ static void rijndaelDecrypt(const u32 rk[/*4*(Nr + 1)*/], int Nr, const u8 ct[16
 
 #ifdef INTERMEDIATE_VALUE_KAT
 
-static void rijndaelEncryptRound(const u32 rk[/*4*(Nr + 1)*/], int Nr, u8 block[16], int rounds) {
+/* Execute encryption rounds without signed table-byte shifts. */
+static void
+rijndaelEncryptRound(const u32 rk[/*4*(Nr + 1)*/], int Nr, u8 block[16], int rounds)
+{
 	int r;
 	u32 s0, s1, s2, s3, t0, t1, t2, t3;
 
@@ -1415,25 +1447,25 @@ static void rijndaelEncryptRound(const u32 rk[/*4*(Nr + 1)*/], int Nr, u8 block[
 	 */
 	if (rounds == Nr) {
     	t0 =
-    		(Te4[(s0 >> 24)       ] << 24) ^
+		((u32)Te4[(s0 >> 24)       ] << 24) ^
     		(Te4[(s1 >> 16) & 0xff] << 16) ^
     		(Te4[(s2 >>  8) & 0xff] <<  8) ^
     		(Te4[(s3      ) & 0xff]      ) ^
     		rk[0];
     	t1 =
-    		(Te4[(s1 >> 24)       ] << 24) ^
+		((u32)Te4[(s1 >> 24)       ] << 24) ^
     		(Te4[(s2 >> 16) & 0xff] << 16) ^
     		(Te4[(s3 >>  8) & 0xff] <<  8) ^
     		(Te4[(s0      ) & 0xff]      ) ^
     		rk[1];
     	t2 =
-    		(Te4[(s2 >> 24)       ] << 24) ^
+		((u32)Te4[(s2 >> 24)       ] << 24) ^
     		(Te4[(s3 >> 16) & 0xff] << 16) ^
     		(Te4[(s0 >>  8) & 0xff] <<  8) ^
     		(Te4[(s1      ) & 0xff]      ) ^
     		rk[2];
     	t3 =
-    		(Te4[(s3 >> 24)       ] << 24) ^
+		((u32)Te4[(s3 >> 24)       ] << 24) ^
     		(Te4[(s0 >> 16) & 0xff] << 16) ^
     		(Te4[(s1 >>  8) & 0xff] <<  8) ^
     		(Te4[(s2      ) & 0xff]      ) ^
@@ -1451,7 +1483,10 @@ static void rijndaelEncryptRound(const u32 rk[/*4*(Nr + 1)*/], int Nr, u8 block[
 	PUTU32(block + 12, s3);
 }
 
-static void rijndaelDecryptRound(const u32 rk[/*4*(Nr + 1)*/], int Nr, u8 block[16], int rounds) {
+/* Execute decryption rounds without signed table-byte shifts. */
+static void
+rijndaelDecryptRound(const u32 rk[/*4*(Nr + 1)*/], int Nr, u8 block[16], int rounds)
+{
 	int r;
 	u32 s0, s1, s2, s3, t0, t1, t2, t3;
 
@@ -1507,22 +1542,22 @@ static void rijndaelDecryptRound(const u32 rk[/*4*(Nr + 1)*/], int Nr, u8 block[
 	 * map cipher state to byte array block:
 	 */
 	t0 =
-		(Td4[(s0 >> 24)       ] << 24) ^
+		((u32)Td4[(s0 >> 24)       ] << 24) ^
 		(Td4[(s3 >> 16) & 0xff] << 16) ^
 		(Td4[(s2 >>  8) & 0xff] <<  8) ^
 		(Td4[(s1      ) & 0xff]      );
 	t1 =
-		(Td4[(s1 >> 24)       ] << 24) ^
+		((u32)Td4[(s1 >> 24)       ] << 24) ^
 		(Td4[(s0 >> 16) & 0xff] << 16) ^
 		(Td4[(s3 >>  8) & 0xff] <<  8) ^
 		(Td4[(s2      ) & 0xff]      );
 	t2 =
-		(Td4[(s2 >> 24)       ] << 24) ^
+		((u32)Td4[(s2 >> 24)       ] << 24) ^
 		(Td4[(s1 >> 16) & 0xff] << 16) ^
 		(Td4[(s0 >>  8) & 0xff] <<  8) ^
 		(Td4[(s3      ) & 0xff]      );
 	t3 =
-		(Td4[(s3 >> 24)       ] << 24) ^
+		((u32)Td4[(s3 >> 24)       ] << 24) ^
 		(Td4[(s2 >> 16) & 0xff] << 16) ^
 		(Td4[(s1 >>  8) & 0xff] <<  8) ^
 		(Td4[(s0      ) & 0xff]      );
