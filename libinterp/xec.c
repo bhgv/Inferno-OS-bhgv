@@ -1683,12 +1683,20 @@ OP(cvtxx)
 	W(d) = (WORD)v;
 }
 */
+/* Reject exceptional real-to-fixed casts before a native integer conversion. */
 OP(cvtfx)
 {
 	REAL v;
 
 	v = F(s)*F(m);
 	v = v < 0 ? v-0.5: v+0.5;
+	if(sizeof(WORD) == 4){
+		if(!(v > -2147483649.0 && v < 2147483648.0))
+			error(exInval);
+	}else{
+		if(!(v >= -9223372036854775808.0 && v < 9223372036854775808.0))
+			error(exInval);
+	}
 	W(d) = (WORD)v;
 }
 OP(cvtxf)
