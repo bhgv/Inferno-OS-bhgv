@@ -310,12 +310,12 @@ occurs(Decl *d, Node *n)
 	return occurs(d, n->left) + occurs(d, n->right);
 }
 
-/*
- * left and right subtrees the same
- */
+/* Preserve IEEE values and boolean normalization in same-tree identities. */
 Node*
 folds(Node *n)
 {
+	if(n->left->ty == treal)
+		return n;
 	if(hasside(n, 1))
 		return n;
 	switch(n->op){
@@ -336,9 +336,12 @@ folds(Node *n)
 		break;
 	case Oand:
 	case Oor:
+		return n->left;
 	case Oandand:
 	case Ooror:
-		return n->left;
+		if(isrelop[n->left->op])
+			return n->left;
+		return n;
 	default:
 		return n;
 	}
@@ -364,6 +367,7 @@ fold(Node *n)
 	return n;
 }
 
+/* Fold typed expressions without reassociating inexact real/fixed arithmetic. */
 Node*
 efold(Node *n)
 {
@@ -577,7 +581,7 @@ efold(Node *n)
 	}
 	if(right->op == Oconst && left->op == n->op && left->right->op == Oconst
 	&& (n->op == Oadd || n->op == Omul || n->op == Oor || n->op == Oxor || n->op == Oand)
-	&& n->ty != tstring){
+	&& (n->ty == tint || n->ty == tbyte || n->ty == tbig)){
 		n->left = left->left;
 		left->left = right;
 		right = efold(left);
