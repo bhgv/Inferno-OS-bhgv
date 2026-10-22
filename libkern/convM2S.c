@@ -1,18 +1,19 @@
 #include	"lib9.h"
 #include	"fcall.h"
 
+/* Decode a counted string entirely inside the declared message. */
 static
 uchar*
 gstring(uchar *p, uchar *ep, char **s)
 {
 	uint n;
 
-	if(p+BIT16SZ > ep)
+	if((uint)(ep-p) < BIT16SZ)
 		return nil;
 	n = GBIT16(p);
-	p += BIT16SZ - 1;
-	if(p+n+1 > ep)
+	if(n > (uint)(ep-p)-BIT16SZ)
 		return nil;
+	p += BIT16SZ - 1;
 	/* move it down, on top of count, to make room for '\0' */
 	memmove(p, p + 1, n);
 	p[n] = '\0';
@@ -21,11 +22,12 @@ gstring(uchar *p, uchar *ep, char **s)
 	return p;
 }
 
+/* Read a qid only after checking the remaining message bytes. */
 static
 uchar*
 gqid(uchar *p, uchar *ep, Qid *q)
 {
-	if(p+QIDSZ > ep)
+	if((uint)(ep-p) < QIDSZ)
 		return nil;
 	q->type = GBIT8(p);
 	p += BIT8SZ;
@@ -52,16 +54,14 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 	uchar *p, *ep;
 	uint i, size;
 
-	p = ap;
-	ep = p + nap;
-
-	if(p+BIT32SZ+BIT8SZ+BIT16SZ > ep)
+	if(nap < BIT32SZ+BIT8SZ+BIT16SZ)
 		return 0;
-	size = GBIT32(p);
-	p += BIT32SZ;
-
-	if(size < BIT32SZ+BIT8SZ+BIT16SZ)
+	size = GBIT32(ap);
+	if(size < BIT32SZ+BIT8SZ+BIT16SZ || size > nap)
 		return 0;
+
+	p = ap + BIT32SZ;
+	ep = ap + size;
 
 	f->type = GBIT8(p);
 	p += BIT8SZ;
@@ -74,7 +74,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		return 0;
 
 	case Tversion:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->msize = GBIT32(p);
 		p += BIT32SZ;
@@ -82,14 +82,14 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Tflush:
-		if(p+BIT16SZ > ep)
+		if((uint)(ep-p) < BIT16SZ)
 			return 0;
 		f->oldtag = GBIT16(p);
 		p += BIT16SZ;
 		break;
 
 	case Tauth:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->afid = GBIT32(p);
 		p += BIT32SZ;
@@ -102,11 +102,11 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Tattach:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->afid = GBIT32(p);
 		p += BIT32SZ;
@@ -119,7 +119,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Twalk:
-		if(p+BIT32SZ+BIT32SZ+BIT16SZ > ep)
+		if((uint)(ep-p) < BIT32SZ+BIT32SZ+BIT16SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
@@ -137,7 +137,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Topen:
-		if(p+BIT32SZ+BIT8SZ > ep)
+		if((uint)(ep-p) < BIT32SZ+BIT8SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
@@ -146,14 +146,14 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Tcreate:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
 		p = gstring(p, ep, &f->name);
 		if(p == nil)
 			break;
-		if(p+BIT32SZ+BIT8SZ > ep)
+		if((uint)(ep-p) < BIT32SZ+BIT8SZ)
 			return 0;
 		f->perm = GBIT32(p);
 		p += BIT32SZ;
@@ -162,7 +162,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Tread:
-		if(p+BIT32SZ+BIT64SZ+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ+BIT64SZ+BIT32SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
@@ -173,7 +173,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Twrite:
-		if(p+BIT32SZ+BIT64SZ+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ+BIT64SZ+BIT32SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
@@ -181,7 +181,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		p += BIT64SZ;
 		f->count = GBIT32(p);
 		p += BIT32SZ;
-		if(p+f->count > ep)
+		if((uint)(ep-p) < f->count)
 			return 0;
 		f->data = (char*)p;
 		p += f->count;
@@ -189,27 +189,27 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 
 	case Tclunk:
 	case Tremove:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
 		break;
 
 	case Tstat:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
 		break;
 
 	case Twstat:
-		if(p+BIT32SZ+BIT16SZ > ep)
+		if((uint)(ep-p) < BIT32SZ+BIT16SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
 		f->nstat = GBIT16(p);
 		p += BIT16SZ;
-		if(p+f->nstat > ep)
+		if((uint)(ep-p) < f->nstat)
 			return 0;
 		f->stat = p;
 		p += f->nstat;
@@ -218,7 +218,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 /*
  */
 	case Rversion:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->msize = GBIT32(p);
 		p += BIT32SZ;
@@ -245,7 +245,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Rwalk:
-		if(p+BIT16SZ > ep)
+		if((uint)(ep-p) < BIT16SZ)
 			return 0;
 		f->nwqid = GBIT16(p);
 		p += BIT16SZ;
@@ -263,25 +263,25 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		p = gqid(p, ep, &f->qid);
 		if(p == nil)
 			break;
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->iounit = GBIT32(p);
 		p += BIT32SZ;
 		break;
 
 	case Rread:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->count = GBIT32(p);
 		p += BIT32SZ;
-		if(p+f->count > ep)
+		if((uint)(ep-p) < f->count)
 			return 0;
 		f->data = (char*)p;
 		p += f->count;
 		break;
 
 	case Rwrite:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->count = GBIT32(p);
 		p += BIT32SZ;
@@ -292,11 +292,11 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Rstat:
-		if(p+BIT16SZ > ep)
+		if((uint)(ep-p) < BIT16SZ)
 			return 0;
 		f->nstat = GBIT16(p);
 		p += BIT16SZ;
-		if(p+f->nstat > ep)
+		if((uint)(ep-p) < f->nstat)
 			return 0;
 		f->stat = p;
 		p += f->nstat;
@@ -308,7 +308,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 
 	if(p==nil || p>ep)
 		return 0;
-	if(ap+size == p)
+	if(p == ep)
 		return size;
 	return 0;
 }

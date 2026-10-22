@@ -2,18 +2,19 @@
 #include	"fns.h"
 #include	"error.h"
 
+/* Decode a counted string entirely inside the declared message. */
 static
 uchar*
 gstring(uchar *p, uchar *ep, char **s)
 {
 	uint n;
 
-	if(p+BIT16SZ > ep)
+	if((uint)(ep-p) < BIT16SZ)
 		return nil;
 	n = GBIT16(p);
-	p += BIT16SZ - 1;
-	if(p+n+1 > ep)
+	if(n > (uint)(ep-p)-BIT16SZ)
 		return nil;
+	p += BIT16SZ - 1;
 	/* move it down, on top of count, to make room for '\0' */
 	memmove(p, p + 1, n);
 	p[n] = '\0';
@@ -22,11 +23,12 @@ gstring(uchar *p, uchar *ep, char **s)
 	return p;
 }
 
+/* Read a qid only after checking the remaining message bytes. */
 static
 uchar*
 gqid(uchar *p, uchar *ep, Qid *q)
 {
-	if(p+QIDSZ > ep)
+	if((uint)(ep-p) < QIDSZ)
 		return nil;
 	q->type = GBIT8(p);
 	p += BIT8SZ;
@@ -53,16 +55,14 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 	uchar *p, *ep;
 	uint i, size;
 
-	p = ap;
-	ep = p + nap;
-
-	if(p+BIT32SZ+BIT8SZ+BIT16SZ > ep)
+	if(nap < BIT32SZ+BIT8SZ+BIT16SZ)
 		return 0;
-	size = GBIT32(p);
-	p += BIT32SZ;
-
-	if(size < BIT32SZ+BIT8SZ+BIT16SZ)
+	size = GBIT32(ap);
+	if(size < BIT32SZ+BIT8SZ+BIT16SZ || size > nap)
 		return 0;
+
+	p = ap + BIT32SZ;
+	ep = ap + size;
 
 	f->type = GBIT8(p);
 	p += BIT8SZ;
@@ -75,7 +75,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		return 0;
 
 	case Tversion:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->msize = GBIT32(p);
 		p += BIT32SZ;
@@ -83,14 +83,14 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Tflush:
-		if(p+BIT16SZ > ep)
+		if((uint)(ep-p) < BIT16SZ)
 			return 0;
 		f->oldtag = GBIT16(p);
 		p += BIT16SZ;
 		break;
 
 	case Tauth:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->afid = GBIT32(p);
 		p += BIT32SZ;
@@ -103,11 +103,11 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Tattach:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->afid = GBIT32(p);
 		p += BIT32SZ;
@@ -120,7 +120,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Twalk:
-		if(p+BIT32SZ+BIT32SZ+BIT16SZ > ep)
+		if((uint)(ep-p) < BIT32SZ+BIT32SZ+BIT16SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
@@ -138,7 +138,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Topen:
-		if(p+BIT32SZ+BIT8SZ > ep)
+		if((uint)(ep-p) < BIT32SZ+BIT8SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
@@ -147,14 +147,14 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Tcreate:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
 		p = gstring(p, ep, &f->name);
 		if(p == nil)
 			break;
-		if(p+BIT32SZ+BIT8SZ > ep)
+		if((uint)(ep-p) < BIT32SZ+BIT8SZ)
 			return 0;
 		f->perm = GBIT32(p);
 		p += BIT32SZ;
@@ -163,7 +163,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Tread:
-		if(p+BIT32SZ+BIT64SZ+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ+BIT64SZ+BIT32SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
@@ -174,7 +174,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Twrite:
-		if(p+BIT32SZ+BIT64SZ+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ+BIT64SZ+BIT32SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
@@ -182,7 +182,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		p += BIT64SZ;
 		f->count = GBIT32(p);
 		p += BIT32SZ;
-		if(p+f->count > ep)
+		if((uint)(ep-p) < f->count)
 			return 0;
 		f->data = (char*)p;
 		p += f->count;
@@ -190,27 +190,27 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 
 	case Tclunk:
 	case Tremove:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
 		break;
 
 	case Tstat:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
 		break;
 
 	case Twstat:
-		if(p+BIT32SZ+BIT16SZ > ep)
+		if((uint)(ep-p) < BIT32SZ+BIT16SZ)
 			return 0;
 		f->fid = GBIT32(p);
 		p += BIT32SZ;
 		f->nstat = GBIT16(p);
 		p += BIT16SZ;
-		if(p+f->nstat > ep)
+		if((uint)(ep-p) < f->nstat)
 			return 0;
 		f->stat = p;
 		p += f->nstat;
@@ -219,7 +219,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 /*
  */
 	case Rversion:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->msize = GBIT32(p);
 		p += BIT32SZ;
@@ -246,7 +246,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Rwalk:
-		if(p+BIT16SZ > ep)
+		if((uint)(ep-p) < BIT16SZ)
 			return 0;
 		f->nwqid = GBIT16(p);
 		p += BIT16SZ;
@@ -264,25 +264,25 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		p = gqid(p, ep, &f->qid);
 		if(p == nil)
 			break;
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->iounit = GBIT32(p);
 		p += BIT32SZ;
 		break;
 
 	case Rread:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->count = GBIT32(p);
 		p += BIT32SZ;
-		if(p+f->count > ep)
+		if((uint)(ep-p) < f->count)
 			return 0;
 		f->data = (char*)p;
 		p += f->count;
 		break;
 
 	case Rwrite:
-		if(p+BIT32SZ > ep)
+		if((uint)(ep-p) < BIT32SZ)
 			return 0;
 		f->count = GBIT32(p);
 		p += BIT32SZ;
@@ -293,11 +293,11 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 		break;
 
 	case Rstat:
-		if(p+BIT16SZ > ep)
+		if((uint)(ep-p) < BIT16SZ)
 			return 0;
 		f->nstat = GBIT16(p);
 		p += BIT16SZ;
-		if(p+f->nstat > ep)
+		if((uint)(ep-p) < f->nstat)
 			return 0;
 		f->stat = p;
 		p += f->nstat;
@@ -309,7 +309,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 
 	if(p==nil || p>ep)
 		return 0;
-	if(ap+size == p)
+	if(p == ep)
 		return size;
 	return 0;
 }
@@ -317,6 +317,7 @@ convM2S(uchar *ap, uint nap, Fcall *f)
 
 
 
+/* Encode a string whose 16-bit length was validated by sizeS2M. */
 static
 uchar*
 pstring(uchar *p, char *s)
@@ -337,6 +338,7 @@ pstring(uchar *p, char *s)
 	return p;
 }
 
+/* Encode a qid in its fixed-width wire representation. */
 static
 uchar*
 pqid(uchar *p, Qid *q)
@@ -350,20 +352,25 @@ pqid(uchar *p, Qid *q)
 	return p;
 }
 
-static
-uint
+/* Return zero for a string that cannot fit its 16-bit wire count. */
+static uint
 stringsz(char *s)
 {
+	uint n;
+
 	if(s == nil)
 		return BIT16SZ;
-
-	return BIT16SZ+strlen(s);
+	for(n = 0; n <= 0xffff; n++)
+		if(s[n] == '\0')
+			return BIT16SZ+n;
+	return 0;
 }
 
+/* Validate variable fields before sizing or touching the output buffer. */
 uint
 sizeS2M(Fcall *f)
 {
-	uint n;
+	uint n, ns;
 	int i;
 
 	n = 0;
@@ -378,7 +385,9 @@ sizeS2M(Fcall *f)
 
 	case Tversion:
 		n += BIT32SZ;
-		n += stringsz(f->version);
+		if((ns = stringsz(f->version)) == 0)
+			return 0;
+		n += ns;
 		break;
 
 	case Tflush:
@@ -387,23 +396,36 @@ sizeS2M(Fcall *f)
 
 	case Tauth:
 		n += BIT32SZ;
-		n += stringsz(f->uname);
-		n += stringsz(f->aname);
+		if((ns = stringsz(f->uname)) == 0)
+			return 0;
+		n += ns;
+		if((ns = stringsz(f->aname)) == 0)
+			return 0;
+		n += ns;
 		break;
 
 	case Tattach:
 		n += BIT32SZ;
 		n += BIT32SZ;
-		n += stringsz(f->uname);
-		n += stringsz(f->aname);
+		if((ns = stringsz(f->uname)) == 0)
+			return 0;
+		n += ns;
+		if((ns = stringsz(f->aname)) == 0)
+			return 0;
+		n += ns;
 		break;
 
 	case Twalk:
+		if(f->nwname > MAXWELEM)
+			return 0;
 		n += BIT32SZ;
 		n += BIT32SZ;
 		n += BIT16SZ;
-		for(i=0; i<f->nwname; i++)
-			n += stringsz(f->wname[i]);
+		for(i=0; i<f->nwname; i++){
+			if((ns = stringsz(f->wname[i])) == 0)
+				return 0;
+			n += ns;
+		}
 		break;
 
 	case Topen:
@@ -413,7 +435,9 @@ sizeS2M(Fcall *f)
 
 	case Tcreate:
 		n += BIT32SZ;
-		n += stringsz(f->name);
+		if((ns = stringsz(f->name)) == 0)
+			return 0;
+		n += ns;
 		n += BIT32SZ;
 		n += BIT8SZ;
 		break;
@@ -428,6 +452,8 @@ sizeS2M(Fcall *f)
 		n += BIT32SZ;
 		n += BIT64SZ;
 		n += BIT32SZ;
+		if(f->count > (uint)~0-n)
+			return 0;
 		n += f->count;
 		break;
 
@@ -450,11 +476,15 @@ sizeS2M(Fcall *f)
 
 	case Rversion:
 		n += BIT32SZ;
-		n += stringsz(f->version);
+		if((ns = stringsz(f->version)) == 0)
+			return 0;
+		n += ns;
 		break;
 
 	case Rerror:
-		n += stringsz(f->ename);
+		if((ns = stringsz(f->ename)) == 0)
+			return 0;
+		n += ns;
 		break;
 
 	case Rflush:
@@ -469,6 +499,8 @@ sizeS2M(Fcall *f)
 		break;
 
 	case Rwalk:
+		if(f->nwqid > MAXWELEM)
+			return 0;
 		n += BIT16SZ;
 		n += f->nwqid*QIDSZ;
 		break;
@@ -481,6 +513,8 @@ sizeS2M(Fcall *f)
 
 	case Rread:
 		n += BIT32SZ;
+		if(f->count > (uint)~0-n)
+			return 0;
 		n += f->count;
 		break;
 
@@ -505,6 +539,7 @@ sizeS2M(Fcall *f)
 	return n;
 }
 
+/* Serialize only messages whose complete wire size has been validated. */
 uint
 convS2M(Fcall *f, uchar *ap, uint nap)
 {
@@ -515,6 +550,10 @@ convS2M(Fcall *f, uchar *ap, uint nap)
 	if(size == 0)
 		return 0;
 	if(size > nap)
+		return 0;
+	if((f->type == Twrite || f->type == Rread) && f->count != 0 && f->data == nil)
+		return 0;
+	if((f->type == Twstat || f->type == Rstat) && f->nstat != 0 && f->stat == nil)
 		return 0;
 
 	p = (uchar*)ap;
@@ -604,7 +643,8 @@ convS2M(Fcall *f, uchar *ap, uint nap)
 		p += BIT64SZ;
 		PBIT32(p, f->count);
 		p += BIT32SZ;
-		memmove(p, f->data, f->count);
+		if(f->count != 0)
+			memmove(p, f->data, f->count);
 		p += f->count;
 		break;
 
@@ -624,7 +664,8 @@ convS2M(Fcall *f, uchar *ap, uint nap)
 		p += BIT32SZ;
 		PBIT16(p, f->nstat);
 		p += BIT16SZ;
-		memmove(p, f->stat, f->nstat);
+		if(f->nstat != 0)
+			memmove(p, f->stat, f->nstat);
 		p += f->nstat;
 		break;
 /*
@@ -670,7 +711,8 @@ convS2M(Fcall *f, uchar *ap, uint nap)
 	case Rread:
 		PBIT32(p, f->count);
 		p += BIT32SZ;
-		memmove(p, f->data, f->count);
+		if(f->count != 0)
+			memmove(p, f->data, f->count);
 		p += f->count;
 		break;
 
@@ -688,7 +730,8 @@ convS2M(Fcall *f, uchar *ap, uint nap)
 	case Rstat:
 		PBIT16(p, f->nstat);
 		p += BIT16SZ;
-		memmove(p, f->stat, f->nstat);
+		if(f->nstat != 0)
+			memmove(p, f->stat, f->nstat);
 		p += f->nstat;
 		break;
 

@@ -1,6 +1,7 @@
 #include	"lib9.h"
 #include	"fcall.h"
 
+/* Encode a string whose 16-bit length was validated by sizeS2M. */
 static
 uchar*
 pstring(uchar *p, char *s)
@@ -21,6 +22,7 @@ pstring(uchar *p, char *s)
 	return p;
 }
 
+/* Encode a qid in its fixed-width wire representation. */
 static
 uchar*
 pqid(uchar *p, Qid *q)
@@ -34,20 +36,25 @@ pqid(uchar *p, Qid *q)
 	return p;
 }
 
-static
-uint
+/* Return zero for a string that cannot fit its 16-bit wire count. */
+static uint
 stringsz(char *s)
 {
+	uint n;
+
 	if(s == nil)
 		return BIT16SZ;
-
-	return BIT16SZ+strlen(s);
+	for(n = 0; n <= 0xffff; n++)
+		if(s[n] == '\0')
+			return BIT16SZ+n;
+	return 0;
 }
 
+/* Validate variable fields before sizing or touching the output buffer. */
 uint
 sizeS2M(Fcall *f)
 {
-	uint n;
+	uint n, ns;
 	int i;
 
 	n = 0;
@@ -62,7 +69,9 @@ sizeS2M(Fcall *f)
 
 	case Tversion:
 		n += BIT32SZ;
-		n += stringsz(f->version);
+		if((ns = stringsz(f->version)) == 0)
+			return 0;
+		n += ns;
 		break;
 
 	case Tflush:
@@ -71,23 +80,36 @@ sizeS2M(Fcall *f)
 
 	case Tauth:
 		n += BIT32SZ;
-		n += stringsz(f->uname);
-		n += stringsz(f->aname);
+		if((ns = stringsz(f->uname)) == 0)
+			return 0;
+		n += ns;
+		if((ns = stringsz(f->aname)) == 0)
+			return 0;
+		n += ns;
 		break;
 
 	case Tattach:
 		n += BIT32SZ;
 		n += BIT32SZ;
-		n += stringsz(f->uname);
-		n += stringsz(f->aname);
+		if((ns = stringsz(f->uname)) == 0)
+			return 0;
+		n += ns;
+		if((ns = stringsz(f->aname)) == 0)
+			return 0;
+		n += ns;
 		break;
 
 	case Twalk:
+		if(f->nwname > MAXWELEM)
+			return 0;
 		n += BIT32SZ;
 		n += BIT32SZ;
 		n += BIT16SZ;
-		for(i=0; i<f->nwname; i++)
-			n += stringsz(f->wname[i]);
+		for(i=0; i<f->nwname; i++){
+			if((ns = stringsz(f->wname[i])) == 0)
+				return 0;
+			n += ns;
+		}
 		break;
 
 	case Topen:
@@ -97,7 +119,9 @@ sizeS2M(Fcall *f)
 
 	case Tcreate:
 		n += BIT32SZ;
-		n += stringsz(f->name);
+		if((ns = stringsz(f->name)) == 0)
+			return 0;
+		n += ns;
 		n += BIT32SZ;
 		n += BIT8SZ;
 		break;
@@ -112,6 +136,8 @@ sizeS2M(Fcall *f)
 		n += BIT32SZ;
 		n += BIT64SZ;
 		n += BIT32SZ;
+		if(f->count > (uint)~0-n)
+			return 0;
 		n += f->count;
 		break;
 
@@ -134,11 +160,15 @@ sizeS2M(Fcall *f)
 
 	case Rversion:
 		n += BIT32SZ;
-		n += stringsz(f->version);
+		if((ns = stringsz(f->version)) == 0)
+			return 0;
+		n += ns;
 		break;
 
 	case Rerror:
-		n += stringsz(f->ename);
+		if((ns = stringsz(f->ename)) == 0)
+			return 0;
+		n += ns;
 		break;
 
 	case Rflush:
@@ -153,6 +183,8 @@ sizeS2M(Fcall *f)
 		break;
 
 	case Rwalk:
+		if(f->nwqid > MAXWELEM)
+			return 0;
 		n += BIT16SZ;
 		n += f->nwqid*QIDSZ;
 		break;
@@ -165,6 +197,8 @@ sizeS2M(Fcall *f)
 
 	case Rread:
 		n += BIT32SZ;
+		if(f->count > (uint)~0-n)
+			return 0;
 		n += f->count;
 		break;
 
@@ -189,6 +223,7 @@ sizeS2M(Fcall *f)
 	return n;
 }
 
+/* Serialize only messages whose complete wire size has been validated. */
 uint
 convS2M(Fcall *f, uchar *ap, uint nap)
 {
@@ -199,6 +234,10 @@ convS2M(Fcall *f, uchar *ap, uint nap)
 	if(size == 0)
 		return 0;
 	if(size > nap)
+		return 0;
+	if((f->type == Twrite || f->type == Rread) && f->count != 0 && f->data == nil)
+		return 0;
+	if((f->type == Twstat || f->type == Rstat) && f->nstat != 0 && f->stat == nil)
 		return 0;
 
 	p = (uchar*)ap;
@@ -288,7 +327,8 @@ convS2M(Fcall *f, uchar *ap, uint nap)
 		p += BIT64SZ;
 		PBIT32(p, f->count);
 		p += BIT32SZ;
-		memmove(p, f->data, f->count);
+		if(f->count != 0)
+			memmove(p, f->data, f->count);
 		p += f->count;
 		break;
 
@@ -308,7 +348,8 @@ convS2M(Fcall *f, uchar *ap, uint nap)
 		p += BIT32SZ;
 		PBIT16(p, f->nstat);
 		p += BIT16SZ;
-		memmove(p, f->stat, f->nstat);
+		if(f->nstat != 0)
+			memmove(p, f->stat, f->nstat);
 		p += f->nstat;
 		break;
 /*
@@ -354,7 +395,8 @@ convS2M(Fcall *f, uchar *ap, uint nap)
 	case Rread:
 		PBIT32(p, f->count);
 		p += BIT32SZ;
-		memmove(p, f->data, f->count);
+		if(f->count != 0)
+			memmove(p, f->data, f->count);
 		p += f->count;
 		break;
 
@@ -372,7 +414,8 @@ convS2M(Fcall *f, uchar *ap, uint nap)
 	case Rstat:
 		PBIT16(p, f->nstat);
 		p += BIT16SZ;
-		memmove(p, f->stat, f->nstat);
+		if(f->nstat != 0)
+			memmove(p, f->stat, f->nstat);
 		p += f->nstat;
 		break;
 

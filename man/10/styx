@@ -218,6 +218,15 @@ including its initial 32-bit size field.
 In other words, it reports the number of bytes produced
 by a successful call to
 .IR convS2M .
+It returns zero for an unknown message type, a walk count greater than
+.BR MAXWELEM ,
+a string longer than 65535 bytes, or a total size that exceeds the
+32-bit message size field.
+.I ConvS2M
+also rejects these inputs before modifying the output buffer.
+It rejects a nonzero data or stat count with a nil payload pointer;
+.I sizeS2M
+can still calculate the size before that payload is assigned.
 .PP
 Another structure is
 .BR Dir ,
