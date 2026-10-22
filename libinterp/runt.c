@@ -4,6 +4,7 @@
 #include "runt.h"
 #include "sysmod.h"
 #include "raise.h"
+#include "kernel.h"
 
 
 static	int		utfnleng(char*, int, int*);
@@ -15,10 +16,26 @@ sysmodinit(void)
 	builtinmod("$Sys", Sysmodtab, Sysmodlen);
 }
 
+/* A full destination consumes no bytes, even when vsnprint returns -1. */
+static int
+xsnprint(char *buf, int n, char *format, ...)
+{
+	va_list args;
+	int written;
+
+	if(n <= 0)
+		return 0;
+	va_start(args, format);
+	written = vsnprint(buf, n, format, args);
+	va_end(args);
+	return written < 0 ? 0 : written;
+}
+
+/* Consume arguments even after output fills, bounding each format specification. */
 int
 xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 {
-	WORD i;
+	int i;
 	void *p;
 	LONG bg;
 	Type *t;
@@ -35,7 +52,7 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 
 	sip = 0;
 	isr = 0;
-	if(s1 == H)
+	if(s1 == H || n <= 0)
 		return 0;
 	nc = s1->len;
 	if(nc < 0) {
@@ -45,7 +62,8 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 
 	b = buf;
 	eb = buf+n-1;
-	while(nc--) {
+	while(nc > 0) {
+		nc--;
 		c = isr ? s1->Srune[sip] : s1->Sascii[sip];
 		sip++;
 		if(c != '%') {
@@ -53,14 +71,17 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 				if(c < Runeself)
 					*b++ = c;
 				else
-					b += snprint(b, eb-b, "%C", c);
+					b += xsnprint(b, eb-b+1, "%C", c);
 			}
 			continue;
 		}
 		f = fmt;
 		*f++ = c;
 		isbig = 0;
-		while(nc--) {
+		while(nc > 0) {
+			nc--;
+			if(f-fmt > sizeof(fmt)-UTFmax-1)
+				error(exInval);
 			c = isr ? s1->Srune[sip] : s1->Sascii[sip];
 			sip++;
 			*f++ = c;
@@ -69,9 +90,13 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 			default:
 				continue;
 			case '*':
-				i = *(WORD*)va;
+				/* Dis integer arguments occupy four bytes, even on LP64 hosts. */
+				memmove(&i, va, IBY2WD);
 				f--;
-				f += snprint(f, sizeof(fmt)-(f-fmt), "%d", i);
+				/* Widths need at most eleven decimal bytes and a terminator. */
+				if(sizeof(fmt)-(f-fmt) < 12+UTFmax)
+					error(exInval);
+				f += snprint(f, sizeof(fmt)-(f-fmt), "%d", (int)i);
 				va += IBY2WD;
 				continue;
 			case 'b':
@@ -100,7 +125,7 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 					ss->Sascii[ss->len] = '\0';
 					p = ss->Sascii;
 				}
-				b += snprint(b, eb-b, fmt, p);
+				b += xsnprint(b, eb-b+1, fmt, p);
 				break;
 			case 'E':
 				f--;
@@ -115,7 +140,7 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 				while((va - fp) & (sizeof(REAL)-1))
 					va++;
 				d = *(REAL*)va;
-				b += snprint(b, eb-b, fmt, d);
+				b += xsnprint(b, eb-b+1, fmt, d);
 				va += sizeof(REAL);
 				break;
 			case 'd':
@@ -127,20 +152,22 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 					while((va - fp) & (IBY2LG-1))
 						va++;
 					bg = *(LONG*)va;
-					b += snprint(b, eb-b, fmt, bg);
+					b += xsnprint(b, eb-b+1, fmt, bg);
 					va += IBY2LG;
 				}
 				else {
-					i = *(WORD*)va;
+					/* Dis integer arguments occupy four bytes, even on LP64 hosts. */
+					memmove(&i, va, IBY2WD);
 					/* always a unicode character */
 					if(c == 'c')
 						f[-1] = 'C';
-					b += snprint(b, eb-b, fmt, i);
+					b += xsnprint(b, eb-b+1, fmt, (int)i);
 					va += IBY2WD;
 				}
 				break;
 			case 'r':
-				b = syserr(b, eb, xp);
+				if(b < eb)
+					b = syserr(b, eb, xp);
 				break;
 /* Debugging formats - may disappear */
 			case 'H':
@@ -151,7 +178,7 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 					c = D2H(ptr)->ref;
 					t = D2H(ptr)->t;
 				}
-				b += snprint(b, eb-b, "%d.%.8lux", c, (ulong)t);
+				b += xsnprint(b, eb-b+1, "%d.%.8lux", c, (ulong)t);
 				va += IBY2WD;
 				break;
 			}
@@ -161,59 +188,143 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 	return b - buf;
 }
 
+typedef struct XprintCall XprintCall;
+struct XprintCall
+{
+	Prog *prog;
+	void *frame;
+	void *args;
+	String *format;
+	char *buf;
+	int size;
+	int written;
+};
+
+/* Keep the allocated output visible to cleanup if formatting raises a VM error. */
+static int
+xprintcall(void *arg)
+{
+	XprintCall *call;
+
+	call = arg;
+	call->written = xprint(call->prog, call->frame, call->args,
+		call->format, call->buf, call->size);
+	return 1;
+}
+
+/* Grow without signed overflow and free temporary output before propagating errors. */
 int
 bigxprint(Prog *xp, void *vfp, void *vva, String *s1, char **buf, int s)
 {
-	char *b;
-	int m, n;
+	XprintCall call;
+	int m;
 
+	if(s <= 0)
+		error(exInval);
+	call.prog = xp;
+	call.frame = vfp;
+	call.args = vva;
+	call.format = s1;
 	m = s;
-	for (;;) {
-		m *= 2;
-		b = malloc(m);
-		if (b == nil)
+	for(;;){
+		if(m > 0x7fffffff/2)
 			error(exNomem);
-		n = xprint(xp, vfp, vva, s1, b, m);
-		if (n < m-UTFmax-2)
+		m *= 2;
+		call.size = m;
+		call.buf = malloc(m);
+		if(call.buf == nil)
+			error(exNomem);
+		if(!kprotect(xprintcall, &call)){
+			free(call.buf);
+			krethrow();
+		}
+		if(call.written < m-UTFmax-2)
 			break;
-		free(b);
+		free(call.buf);
 	}
-	*buf = b;
-	return n;
+	*buf = call.buf;
+	return call.written;
 }
 
+typedef struct XprintResult XprintResult;
+struct XprintResult
+{
+	char *text;
+	int length;
+	int array;
+	void *value;
+};
+
+/* Build a new VM owner without touching the caller's previous result. */
+static int
+buildprintresult(void *arg)
+{
+	XprintResult *result;
+
+	result = arg;
+	if(result->array)
+		result->value = mem2array(result->text, result->length);
+	else
+		result->value = c2string(result->text, strlen(result->text));
+	return 1;
+}
+
+/* Release dynamic formatting storage on both conversion success and VM error. */
+static void*
+printresult(char *text, int length, int array, int allocated)
+{
+	XprintResult result;
+	int ok;
+
+	result.text = text;
+	result.length = length;
+	result.array = array;
+	result.value = H;
+	ok = kprotect(buildprintresult, &result);
+	if(allocated)
+		free(text);
+	if(!ok)
+		krethrow();
+	return result.value;
+}
+
+/* Publish a formatted string only after conversion, retaining old results on error. */
 void
 Sys_sprint(void *fp)
 {
 	int n;
 	char buf[256], *b = buf;
+	String *result, *old;
 	F_Sys_sprint *f;
 
 	f = fp;
 	n = xprint(currun(), f, &f->vargs, f->s, buf, sizeof(buf));
-	if (n >= sizeof(buf)-UTFmax-2)
+	if(n >= sizeof(buf)-UTFmax-2)
 		n = bigxprint(currun(), f, &f->vargs, f->s, &b, sizeof(buf));
 	b[n] = '\0';
-	retstr(b, f->ret);
-	if (b != buf)
-		free(b);
+	result = printresult(b, n, 0, b != buf);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Publish a formatted byte array after allocation and temporary-buffer cleanup. */
 void
 Sys_aprint(void *fp)
 {
 	int n;
 	char buf[256], *b = buf;
+	Array *result, *old;
 	F_Sys_aprint *f;
 
 	f = fp;
 	n = xprint(currun(), f, &f->vargs, f->s, buf, sizeof(buf));
-	if (n >= sizeof(buf)-UTFmax-2)
+	if(n >= sizeof(buf)-UTFmax-2)
 		n = bigxprint(currun(), f, &f->vargs, f->s, &b, sizeof(buf));
-	destroy(*f->ret);
-	*f->ret = mem2array(b, n);
-	if (b != buf)
-		free(b);
+	result = printresult(b, n, 1, b != buf);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
 static int
