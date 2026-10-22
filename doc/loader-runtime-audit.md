@@ -54,3 +54,26 @@ The active bitmap still advances by native pointer-width slots, matching the
 current heap scanners. This change does not activate the separate Dis64 ABI
 proposal's four-byte bitmap quantum. Real 32-bit builds, full GC, concurrent
 module/link ownership and native compiled calls remain integration checks.
+
+## Snapshot ownership and exported metadata
+
+`Loader_ifetch`, `Loader_link` and `Loader_tdesc` now use checked heaparray
+allocation and initialized pointer maps. A protected construction context owns
+partial results until completion; failed child allocations release the array,
+previously constructed children and all descriptor references. Returned old
+arrays are still released on replacement. Descriptor maps with zero bytes
+remain H and exports retain their existing reverse order.
+
+Branch recovery now subtracts the native Inst pointers before storing a Dis
+index in Loader_Inst.dst. The previous path first copied the pointer into WORD,
+which loses its high bits when WORD is narrower than a native pointer.
+Loader_link rejects native-PC compiled modules, like Loader_ifetch, because
+its integer pc field represents a Dis index. Leaf JIT modules keep Dis PCs and
+remain inspectable. Builtin exports retain pc/tdesc = -1. Frame lookup is bounded
+by ntype and returns an error for an absent frame instead of overreading the
+type table.
+
+`libinterp/tests/loader-snapshots.py` runs 231 cases per native/word32 model with
+production heap initialization and pointer cleanup. It independently reproduces
+the old ownership, branch, metadata and size defects. Both strict UBSan and ASan
+with stack instrumentation pass; see tests/README.loader-snapshots.md for scope.

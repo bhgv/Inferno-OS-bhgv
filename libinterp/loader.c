@@ -23,8 +23,9 @@ loadermodinit(void)
 	Tlink = dtype(freeheap, sizeof(Loader_Link), Tlinkmap, sizeof(Tlinkmap));
 }
 
+/* Recover a Dis PC from the native pointer before narrowing to a Limbo int. */
 static void
-brunpatch(Loader_Inst *ip, Module *m)
+brunpatch(Loader_Inst *ip, Inst *inst, Module *m)
 {
 	switch(ip->op) {
 	case ICALL:
@@ -60,160 +61,176 @@ brunpatch(Loader_Inst *ip, Module *m)
 	case IBGTL:
 	case IBGEL:
 	case ISPAWN:
-		ip->dst = (Inst*)ip->dst - m->prog;
+		ip->dst = inst->d.ins - m->prog;
 		break;
 	}
 }
 
+enum {
+	SnapshotInst,
+	SnapshotLink,
+	SnapshotType,
+};
+
+typedef struct LoaderSnapshot LoaderSnapshot;
+struct LoaderSnapshot {
+	Module *m;
+	Array *array;
+	Type *type;
+	int count;
+	int kind;
+};
+
+/* Keep partial pointer-bearing arrays valid for destruction after any error. */
+static int
+loadersnapshot(void *arg)
+{
+	LoaderSnapshot *c;
+	Module *m;
+	Array *ar;
+	Loader_Inst *li;
+	Loader_Link *ll;
+	Loader_Typedesc *lt;
+	Inst *ip;
+	Link *link;
+	Type *t;
+	int i, j;
+
+	c = arg;
+	m = c->m;
+	ar = H2D(Array*, heaparray(c->type, c->count));
+	c->array = ar;
+	switch(c->kind){
+	case SnapshotInst:
+		li = (Loader_Inst*)ar->data;
+		for(i = 0; i < c->count; i++, li++){
+			ip = &m->prog[i];
+			li->op = ip->op;
+			li->addr = ip->add;
+			li->src = ip->s.imm;
+			li->dst = ip->d.imm;
+			li->mid = ip->reg;
+			if(UDST(ip->add) == AIMM)
+				brunpatch(li, ip, m);
+		}
+		break;
+	case SnapshotLink:
+		ll = (Loader_Link*)ar->data + c->count;
+		for(i = 0; i < c->count; i++){
+			link = &m->ext[i];
+			ll--;
+			ll->name = c2string(link->name, strlen(link->name));
+			ll->sig = link->sig;
+			if(m->prog == nil){
+				ll->pc = -1;
+				ll->tdesc = -1;
+			}else{
+				ll->pc = link->u.pc - m->prog;
+				for(j = 0; j < m->ntype; j++)
+					if(m->type[j] == link->frame)
+						break;
+				if(j == m->ntype){
+					kwerrstr("bad export frame");
+					return 0;
+				}
+				ll->tdesc = j;
+			}
+		}
+		break;
+	case SnapshotType:
+		lt = (Loader_Typedesc*)ar->data;
+		for(i = 0; i < c->count; i++, lt++){
+			t = m->type[i];
+			lt->size = t->size;
+			if(t->np != 0)
+				lt->map = mem2array(t->map, t->np);
+		}
+		break;
+	}
+	return 1;
+}
+
+/* Own the result outside the VM error frame until every element is complete. */
+static Array*
+loadergetsnapshot(Module *m, Type *type, int count, int kind)
+{
+	LoaderSnapshot c;
+
+	c.m = m;
+	c.array = H;
+	c.type = type;
+	c.count = count;
+	c.kind = kind;
+	if(kprotect(loadersnapshot, &c))
+		return c.array;
+	destroy(c.array);
+	return H;
+}
+
+/* Return checked instruction storage, preserving Dis branch indices. */
 void
 Loader_ifetch(void *a)
 {
-	Heap *h;
-	Array *ar;
 	Module *m;
-	Inst *i, *ie;
-	Loader_Inst *li;
 	F_Loader_ifetch *f;
 
 	f = a;
 	destroy(*f->ret);
 	*f->ret = H;
-
-	if(f->mp == H)
+	if(f->mp == H || f->mp->m == H)
 		return;
 	m = f->mp->m;
-	if(m == H)
-		return;
-	if(m->compiled) {
+	if(m->compiled){
 		kwerrstr("compiled module");
 		return;
 	}
-
-	h = nheap(sizeof(Array)+m->nprog*sizeof(Loader_Inst));
-	h->t = &Tarray;
-	h->t->ref++;
-	ar = H2D(Array*, h);
-	ar->t = Tinst;
-	Tinst->ref++;
-	ar->len = m->nprog;
-	ar->root = H;
-	ar->data = (uchar*)ar+sizeof(Array);
-
-	li = (Loader_Inst*)ar->data;
-	i = m->prog;
-	ie = i + m->nprog;
-	while(i < ie) {
-		li->op = i->op;
-		li->addr = i->add;
-		li->src = i->s.imm;
-		li->dst = i->d.imm;
-		li->mid = i->reg;
-		if(UDST(i->add) == AIMM)
-			brunpatch(li, m);
-		li++;
-		i++;
-	}
-
-	*f->ret = ar;
+	*f->ret = loadergetsnapshot(m, Tinst, m->nprog, SnapshotInst);
 }
 
+/* Native-PC modules cannot expose their export addresses as Dis indices. */
 void
 Loader_link(void *a)
 {
-	Link *p;
-	Heap *h;
-	Type **t;
-	int nlink;
 	Module *m;
-	Array *ar;
-	Loader_Link *ll;
+	int nlink;
 	F_Loader_link *f;
-	
+
 	f = a;
 	destroy(*f->ret);
 	*f->ret = H;
-
-	if(f->mp == H)
+	if(f->mp == H || f->mp->m == H)
 		return;
 	m = f->mp->m;
-	if(m == H)
+	if(m->compiled){
+		kwerrstr("compiled module");
 		return;
-
-	nlink = 0;
-	for(p = m->ext; p->name; p++)
-		nlink++;
-
-	h = nheap(sizeof(Array)+nlink*sizeof(Loader_Link));
-	h->t = &Tarray;
-	h->t->ref++;
-	ar = H2D(Array*, h);
-	ar->t = Tlink;
-	Tlink->ref++;
-	ar->len = nlink;
-	ar->root = H;
-	ar->data = (uchar*)ar+sizeof(Array);
-
-	ll = (Loader_Link*)ar->data + nlink;
-	for(p = m->ext; p->name; p++) {
-		ll--;
-		ll->name = c2string(p->name, strlen(p->name));
-		ll->sig = p->sig;
-		if(m->prog == nil) {
-			ll->pc = -1;
-			ll->tdesc = -1;
-		} else {
-			ll->pc = p->u.pc - m->prog;
-			ll->tdesc = 0;
-			for(t = m->type; *t != p->frame; t++)
-				ll->tdesc++;
-		}
 	}
-
-	*f->ret = ar;
+	nlink = 0;
+	if(m->ext != nil)
+		while(m->ext[nlink].name != nil){
+			if(nlink >= (0x7fffffff-sizeof(Heap)-sizeof(Array))/sizeof(Loader_Link)){
+				kwerrstr("too many exports");
+				return;
+			}
+			nlink++;
+		}
+	*f->ret = loadergetsnapshot(m, Tlink, nlink, SnapshotLink);
 }
 
+/* Build descriptor maps in an initialized, checked and error-owned array. */
 void
 Loader_tdesc(void *a)
 {
-	int i;
-	Heap *h;
-	Type *t;
-	Array *ar;
 	Module *m;
 	F_Loader_tdesc *f;
-	Loader_Typedesc *lt;
 
 	f = a;
 	destroy(*f->ret);
 	*f->ret = H;
-
-	if(f->mp == H)
+	if(f->mp == H || f->mp->m == H)
 		return;
 	m = f->mp->m;
-	if(m == H)
-		return;
-
-	h = nheap(sizeof(Array)+m->ntype*sizeof(Loader_Typedesc));
-	h->t = &Tarray;
-	h->t->ref++;
-	ar = H2D(Array*, h);
-	ar->t = Tdesc;
-	Tdesc->ref++;
-	ar->len = m->ntype;
-	ar->root = H;
-	ar->data = (uchar*)ar+sizeof(Array);
-
-	lt = (Loader_Typedesc*)ar->data;
-	for(i = 0; i < m->ntype; i++) {
-		t = m->type[i];
-		lt->size = t->size;
-		lt->map = H;
-		if(t->np != 0)
-			lt->map = mem2array(t->map, t->np);
-		lt++;
-	}
-
-	*f->ret = ar;
+	*f->ret = loadergetsnapshot(m, Tdesc, m->ntype, SnapshotType);
 }
 
 typedef struct LoaderModule LoaderModule;
