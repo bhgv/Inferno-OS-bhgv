@@ -46,12 +46,28 @@ OP(cvtws){ SH(d) = W(s); }
 OP(cvtsw){ W(d) = SH(s); }
 OP(cvtwf){ F(d) = W(s); }
 OP(addb) { B(d) = B(m) + B(s); }
-OP(addw) { W(d) = W(m) + W(s); }
-OP(addl) { V(d) = V(m) + V(s); }
+/* Keep word addition independent of host signed-overflow optimization. */
+OP(addw)
+{
+	W(d) = UW(m) + UW(s);
+}
+/* Keep big addition independent of host signed-overflow optimization. */
+OP(addl)
+{
+	V(d) = UV(m) + UV(s);
+}
 OP(addf) { F(d) = F(m) + F(s); }
 OP(subb) { B(d) = B(m) - B(s); }
-OP(subw) { W(d) = W(m) - W(s); }
-OP(subl) { V(d) = V(m) - V(s); }
+/* Keep word subtraction independent of host signed-overflow optimization. */
+OP(subw)
+{
+	W(d) = UW(m) - UW(s);
+}
+/* Keep big subtraction independent of host signed-overflow optimization. */
+OP(subl)
+{
+	V(d) = UV(m) - UV(s);
+}
 OP(subf) { F(d) = F(m) - F(s); }
 OP(divb) { B(d) = B(m) / B(s); }
 OP(divw) { W(d) = W(m) / W(s); }
@@ -61,8 +77,16 @@ OP(modb) { B(d) = B(m) % B(s); }
 OP(modw) { W(d) = W(m) % W(s); }
 OP(modl) { V(d) = V(m) % V(s); }
 OP(mulb) { B(d) = B(m) * B(s); }
-OP(mulw) { W(d) = W(m) * W(s); }
-OP(mull) { V(d) = V(m) * V(s); }
+/* Keep word multiplication independent of host signed-overflow optimization. */
+OP(mulw)
+{
+	W(d) = UW(m) * UW(s);
+}
+/* Keep big multiplication independent of host signed-overflow optimization. */
+OP(mull)
+{
+	V(d) = UV(m) * UV(s);
+}
 OP(mulf) { F(d) = F(m) * F(s); }
 OP(andb) { B(d) = B(m) & B(s); }
 OP(andw) { W(d) = W(m) & W(s); }
@@ -74,8 +98,16 @@ OP(orb)  { B(d) = B(m) | B(s); }
 OP(orw)  { W(d) = W(m) | W(s); }
 OP(orl)  { V(d) = V(m) | V(s); }
 OP(shlb) { B(d) = B(m) << W(s); }
-OP(shlw) { W(d) = W(m) << W(s); }
-OP(shll) { V(d) = V(m) << W(s); }
+/* Shift the value bits without invoking signed-left-shift overflow. */
+OP(shlw)
+{
+	W(d) = UW(m) << W(s);
+}
+/* Shift the value bits without invoking signed-left-shift overflow. */
+OP(shll)
+{
+	V(d) = UV(m) << W(s);
+}
 OP(shrb) { B(d) = B(m) >> W(s); }
 OP(shrw) { W(d) = W(m) >> W(s); }
 OP(shrl) { V(d) = V(m) >> W(s); }

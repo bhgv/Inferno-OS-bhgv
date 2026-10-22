@@ -16,7 +16,7 @@ allocation-size rejection, negative rune-count compatibility, UTF buffer-size
 rejection and signed big conversion extrema.
 
 The compiler fixture supplies a minimal AST and diagnostics around `foldc`,
-checking 392 shift, sign-extension, width and wraparound cases under UBSan by
+checking 398 shift, sign-extension, width and wraparound cases under UBSan by
 default. These tests do not build the complete Limbo compiler or boot Inferno.
 
 The tests fail against the pre-fix production sources: self append changes bytes

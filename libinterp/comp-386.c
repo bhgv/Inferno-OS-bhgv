@@ -475,6 +475,23 @@ mid(Inst *i, uchar mi, int r)
 	modrm(mi, i->reg, ir, r);
 }
 
+/*
+ * Dis bytes are unsigned. Clear stale upper register bits and divide EDX:EAX
+ * by the zero-extended byte in EBX; byte IDIV misinterprets values >= 128.
+ */
+static void
+divbyte(int remainder)
+{
+	gen2(0x0f, Omovzxb);
+	genb((3<<6)|(RAX<<3)|RAX);
+	gen2(0x0f, Omovzxb);
+	genb((3<<6)|(RTMP<<3)|RTMP);
+	gen2(Oxor, (3<<6)|(RDX<<3)|RDX);
+	gen2(0xf7, (3<<6)|(6<<3)|RTMP);
+	if(remainder)
+		genb(OxchgAX+RDX);
+}
+
 static void
 arith(Inst *i, int op2, int rm)
 {
@@ -1332,12 +1349,8 @@ comp(Inst *i)
 		opwld(i, Oldb, RTMP);
 		if(i->op == IMULB)
 			gen2(0xf6, (3<<6)|(4<<3)|RTMP);
-		else {
-			genb(Ocdq);
-			gen2(0xf6, (3<<6)|(7<<3)|RTMP);	// IDIV AX, RTMP
-			if(i->op == IMODB)
-				genb(0x90+RDX);		// XCHG	AX, DX
-		}
+		else
+			divbyte(i->op == IMODB);
 		opwst(i, Ostb, RAX);
 		break;
 	case IINDX:

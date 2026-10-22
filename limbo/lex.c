@@ -543,11 +543,12 @@ lexid(int c)
 	return t;
 }
 
+/* Parse integer bit patterns with defined 64-bit modular accumulation. */
 Long
 strtoi(char *t, int base)
 {
 	char *s;
-	Long v;
+	uvlong v;
 	int c, neg, ck;
 
 	neg = 0;
@@ -572,7 +573,7 @@ strtoi(char *t, int base)
 		v = v * base + c;
 	}
 	if(neg)
-		return -v;
+		return (uvlong)0-v;
 	return v;
 }
 
@@ -657,7 +658,8 @@ strtodb(char *t, int base)
 }
 
 /*
- * parse a numeric identifier
+ * Parse a numeric identifier, retaining the final token at EOF.
+ * Consume overlong tokens completely and reject them before decoding buf.
  * format [0-9]+(r[0-9A-Za-z]+)?
  * or ([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?
  */
@@ -668,9 +670,10 @@ lexnum(int c)
 	enum { Int, Radix, RadixSeen, Frac, ExpSeen, ExpSignSeen, Exp, FracB } state;
 	double d;
 	Long v;
-	int i, ck;
+	int i, ck, overflow;
 
 	i = 0;
+	overflow = 0;
 	buf[i++]  = c;
 	state = Int;
 	if(c == '.')
@@ -678,10 +681,8 @@ lexnum(int c)
 	base = nil;
 	for(;;){
 		c = Getc();
-		if(c == Beof){
-			yyerror("end of file in numeric constant");
-			return Leof;
-		}
+		if(c == Beof)
+			goto done;
 
 		ck = cmap(c);
 		switch(state){
@@ -741,10 +742,17 @@ lexnum(int c)
 		}
 		if(i < StrSize-1)
 			buf[i++] = c;
+		else
+			overflow = 1;
 	}
 done:
 	buf[i] = 0;
 	unGetc();
+	if(overflow){
+		yyerror("numeric constant too long");
+		yylval.tok.v.ival = 0;
+		return Lconst;
+	}
 	switch(state){
 	default:
 		yyerror("malformed numerical constant '%s'", buf);

@@ -888,14 +888,22 @@ foldc(Node *n)
 			nerror(n, "divide by 0 in constant expression");
 			return n;
 		}
-		v = left->val / right->val;
+		/* Avoid the host divide trap for the minimum Long divided by -1. */
+		if(right->val == -1)
+			v = (uvlong)0 - (uvlong)left->val;
+		else
+			v = left->val / right->val;
 		break;
 	case Omod:
 		if(right->val == 0){
 			nerror(n, "mod by 0 in constant expression");
 			return n;
 		}
-		v = left->val % right->val;
+		/* The remainder is zero for every numerator when the divisor is -1. */
+		if(right->val == -1)
+			v = 0;
+		else
+			v = left->val % right->val;
 		break;
 	case Oexp:
 		if(left->val == 0 && right->val < 0){

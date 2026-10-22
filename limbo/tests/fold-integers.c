@@ -100,6 +100,12 @@ main(void)
 	check(Osub, tbig, INT64_MIN, 1, INT64_MAX);
 	check(Omul, tbig, INT64_MAX, 2, -2);
 	check(Oneg, tbig, INT64_MIN, 0, INT64_MIN);
+	check(Odiv, tbig, INT64_MIN, -1, INT64_MIN);
+	check(Omod, tbig, INT64_MIN, -1, 0);
+	check(Odiv, tint, INT32_MIN, -1, INT32_MIN);
+	check(Omod, tint, INT32_MIN, -1, 0);
+	check(Odiv, tbig, -17, 3, -5);
+	check(Omod, tbig, -17, 3, -2);
 	check(Oadd, tint, INT32_MAX, 1, INT32_MIN);
 	check(Oadd, tbyte, 255, 1, 0);
 	check(Olsh, tbig, 3, 64, 3);
