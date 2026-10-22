@@ -1,0 +1,331 @@
+#include "dat.h"
+#include "fns.h"
+#include "isa.h"
+#include "interp.h"
+#include "raise.h"
+#include <assert.h>
+#include <stdio.h>
+#include <limits.h>
+#include <setjmp.h>
+/* LeakSanitizer cannot inspect processes in this sandbox; count blocks below. */
+int
+__lsan_is_turned_off(void)
+{
+	return 1;
+}
+
+static jmp_buf boundary;
+static char *raised;
+char exNilref[] = "nil";
+char exType[] = "type";
+char exBounds[] = "bounds";
+char exHeap[] = "heap";
+char exNegsize[] = "negative";
+char exNomem[] = "memory";
+REG R;
+Type Tstring = {1}, Tarray = {1}, Tbyte = {1};
+static int failure = -1, checks;
+static int calls, live;
+static struct {
+	Heap *h;
+	int n;
+} blocks[100];
+
+/* Deliver VM errors to the active test without aborting the process. */
+void
+error(char *s)
+{
+	raised = s;
+	longjmp(boundary, 1);
+}
+
+/* Bound allocations and place a guard immediately after each payload. */
+Heap*
+nheap(int n)
+{
+	Heap *h;
+	int i;
+
+	assert(n >= 0);
+	if(failure == 0)
+		error(exNomem);
+	if(failure > 0)
+		failure--;
+	calls++;
+	if(n > 4096)
+		error(exHeap);
+	h = calloc(1, sizeof(Heap)+n+32);
+	assert(h);
+	h->ref = 1;
+	for(i = 0; i < 100; i++)
+		if(!blocks[i].h)
+			break;
+	assert(i < 100);
+	blocks[i].h = h;
+	blocks[i].n = n;
+	memset((char*)(h+1)+n, 0xa5, 32);
+	live++;
+	return h;
+}
+
+/* Report exact allocation sizes so capacity checks cannot hide overruns. */
+int
+hmsize(void *h)
+{
+	int i;
+
+	for(i = 0; i < 100; i++)
+		if(blocks[i].h == h)
+			return sizeof(Heap)+blocks[i].n;
+	abort();
+	return 0;
+}
+
+/* Check reference ownership and every guard before releasing a string. */
+void
+destroy(void *v)
+{
+	Heap *h;
+	int i, j, n;
+
+	if(v == H)
+		return;
+	h = D2H(v);
+	assert(h->ref > 0);
+	if(--h->ref)
+		return;
+	for(i = 0; i < 100; i++)
+		if(blocks[i].h == h)
+			break;
+	assert(i < 100);
+	n = blocks[i].n;
+	for(j = 0; j < 32; j++)
+		assert(((uchar*)(h+1))[n+j] == 0xa5);
+	blocks[i].h = 0;
+	if(h->t == &Tstring)
+		free(((String*)v)->tmp);
+	else {
+		assert(h->t == &Tarray && ((Array*)v)->t == &Tbyte);
+		Tbyte.ref--;
+	}
+	h->t->ref--;
+	free(h);
+	live--;
+}
+
+/* Exercise the VM word formatter with standard signed decimal formatting. */
+int
+sprint(char *p, char *fmt, ...)
+{
+	int n;
+	va_list ap;
+
+	va_start(ap, fmt);
+	n = vsprintf(p, fmt, ap);
+	va_end(ap);
+	return n;
+}
+
+/* Force cache refreshes so repeated conversions exercise native buffer replacement. */
+ulong
+msize(void *p)
+{
+	(void)p;
+	return 0;
+}
+
+#define OP(fn) void fn(void)
+#define W(r) *((WORD*)(R.r))
+#define A(r) *((Array**)(R.r))
+#define V(r) *((LONG*)(R.r))
+#define S(r) *((String**)(R.r))
+IMPLEMENTATION
+
+/* Require an expected VM error without changing the old destination. */
+#define EXPECT(expr, why) do { \
+	raised = 0; \
+	if(setjmp(boundary) == 0) { expr; assert(0); } \
+	assert(raised == (why)); checks++; \
+} while(0)
+
+/* Encode independently of the production UTF helpers for byte-exact checks. */
+static int
+reference(Rune r, uchar *p)
+{
+	if(r > 0x10ffff || (r >= 0xd800 && r <= 0xdfff)) r = 0xfffd;
+	if(r < 0x80) { p[0] = r; return 1; }
+	if(r < 0x800) { p[0] = 0xc0|(r>>6); p[1] = 0x80|(r&63); return 2; }
+	if(r < 0x10000) {
+		p[0] = 0xe0|(r>>12); p[1] = 0x80|((r>>6)&63); p[2] = 0x80|(r&63); return 3;
+	}
+	p[0] = 0xf0|(r>>18); p[1] = 0x80|((r>>12)&63);
+	p[2] = 0x80|((r>>6)&63); p[3] = 0x80|(r&63); return 4;
+}
+
+/* Round-trip boundary and generated runes through the actual VM operations. */
+static void
+checkrunes(void)
+{
+	Rune cases[] = {0,1,0x7f,0x80,0x7ff,0x800,0xd7ff,0xd800,0xdfff,0xe000,
+		0xfffd,0xffff,0x10000,0x10ffff,0x110000,0x7fffffff,0x80000000,0xffffffff};
+	String *s, *decoded, *old;
+	Array *bytes;
+	uchar expected[4];
+	WORD rune, index;
+	Rune r;
+	uint state = 0x55544638;
+	int i, n, before;
+
+	for(i = 0; i < 4114; i++) {
+		state = state*1664525U+1013904223U;
+		r = i < 18 ? cases[i] : i&1 ? state%0x110000 : state;
+		n = reference(r,expected);
+		/* Store also checks high-bit runes are never misclassified as ASCII. */
+		s = H; rune = (WORD)r; index = 0;
+		R.s = &rune; R.m = &index; R.d = &s; insc();
+		assert((r < 128 && s->len == 1) || (r >= 128 && s->len == -1));
+		assert(!memcmp(string2c(s),expected,n) && string2c(s)[n] == 0);
+		bytes = H; R.s = &s; R.d = &bytes; cvtca();
+		assert(bytes->len == n && !memcmp(bytes->data,expected,n));
+		decoded = H; R.s = &bytes; R.d = &decoded; cvtac();
+		assert(decoded->len == (r < 128 ? 1 : -1));
+		assert(!memcmp(string2c(decoded),expected,n));
+		/* Either conversion must leave an existing result on VM heap failure. */
+		old = decoded; failure = 0;
+		EXPECT(cvtac(),exNomem); assert(decoded == old);
+		failure = -1; destroy(decoded);
+		old = s; R.s = &bytes; R.d = &s; failure = 0;
+		EXPECT(cvtac(),exNomem); assert(s == old);
+		failure = -1;
+		before = live; R.s = &s; R.d = &bytes; failure = 0;
+		EXPECT(cvtca(),exNomem); assert(live == before);
+		failure = -1;
+		destroy(s); destroy(bytes); checks += 5;
+	}
+}
+
+/* Validate wide lengths/types before poisoned data or old results are touched. */
+static void
+checkbounds(void)
+{
+	struct { Heap h; Array a; } forged;
+	struct { Heap h; String s; } text;
+	Array *a, *bytes, *oldbytes;
+	String *s, *old;
+	int mode, before;
+
+	memset(&forged,0,sizeof(forged));
+	memset(&text,0,sizeof(text));
+	forged.h.t = &Tarray; forged.a.t = &Tbyte; forged.a.data = (uchar*)1;
+	a = &forged.a;
+	s = c2string("keep",4); old = s;
+	R.s = &a; R.d = &s;
+	for(mode = 0; mode < 8; mode++) {
+		forged.a.len = mode == 0 ? -1 : mode == 1 ? 0x7fffffff :
+			mode == 2 ? (WORD)((uvlong)1<<32) : 1;
+		if(mode == 2 && sizeof(WORD) == 4) forged.a.len = -2;
+		if(mode == 3) forged.a.t = &Tstring;
+		if(mode == 4) forged.h.t = &Tstring;
+		if(mode == 5) forged.a.data = nil;
+		if(mode == 6) a = nil;
+		if(mode == 7) { a = H; cvtac(); assert(s == H); s = c2string("keep",4); old = s; }
+		else {
+			before = calls;
+			EXPECT(cvtac(), mode <= 2 ? exHeap : mode <= 4 ? exType : exNilref);
+			assert(s == old && calls == before);
+		}
+		forged.a.t = &Tbyte; forged.h.t = &Tarray; forged.a.data = (uchar*)1; a = &forged.a;
+	}
+	destroy(s);
+	s = c2string(nil,0); assert(s->len == 0); destroy(s); checks++;
+	EXPECT(c2string((char*)1,-1),exNegsize);
+	EXPECT(c2string((char*)1,0x7fffffff),exHeap);
+	EXPECT(c2string(nil,1),exNilref);
+	forged.a.data = nil; forged.a.len = 0;
+	s = H; R.d = &s; cvtac(); assert(s != H && s->len == 0); destroy(s); checks++;
+	text.h.t = &Tstring; text.s.len = (-0x7fffffff-1); s = &text.s;
+	bytes = mem2array("keep",4); oldbytes = bytes; R.s = &s; R.d = &bytes;
+	EXPECT(cvtca(),exHeap); assert(bytes == oldbytes);
+	EXPECT(string2c(s),exNomem);
+	text.s.len = 0x7fffffff;
+	EXPECT(cvtca(),exHeap); assert(bytes == oldbytes);
+	text.s.len = -1; text.h.t = &Tarray;
+	EXPECT(cvtca(),exType); assert(bytes == oldbytes);
+	s = nil; EXPECT(cvtca(),exNilref); assert(bytes == oldbytes);
+	s = H; cvtca(); assert(bytes != H && bytes->len == 0); destroy(bytes); checks++;
+	/* The nil-string result can replace an array in the same register slot. */
+	a = H; R.s = R.d = &a; cvtac(); assert(a == H); checks++;
+}
+
+/* Complete representation changes before releasing an aliased source owner. */
+static void
+checkaliases(void)
+{
+	void *slot, *old;
+	String *s;
+	Array *a;
+	int mode;
+
+	for(mode = 0; mode < 4; mode++) {
+		s = c2string("abc",3);
+		slot = s; old = slot; R.s = R.d = &slot;
+		if(mode&1) failure = 0;
+		if(mode&1) { EXPECT(cvtca(),exNomem); assert(slot == old); }
+		else {
+			cvtca(); a = slot;
+			assert(a->len == 3 && !memcmp(a->data,"abc",3));
+		}
+		failure = -1; destroy(slot); checks++;
+		a = mem2array("abc",3); slot = a; old = slot;
+		if(mode&1) failure = 0;
+		if(mode&1) { EXPECT(cvtac(),exNomem); assert(slot == old); }
+		else {
+			cvtac(); s = slot;
+			assert(s->len == 3 && !memcmp(s->Sascii,"abc",3));
+		}
+		failure = -1; destroy(slot); checks++;
+	}
+}
+
+/* Exercise complete VM words without relying on the host printf integer width. */
+static void
+checkwords(void)
+{
+	WORD values[] = {0,1,-1,2147483647,(-2147483647-1),
+		(WORD)((UWORD)1 << (sizeof(WORD)*8-1)),
+		(WORD)(((UWORD)1 << (sizeof(WORD)*8-1))-1)};
+	String *s;
+	char expected[32];
+	unsigned int i;
+
+	for(i = 0; i < sizeof(values)/sizeof(values[0]); i++) {
+		s = H; R.s = &values[i]; R.d = &s; cvtwc();
+		snprintf(expected,sizeof(expected),"%lld",(long long)values[i]);
+		assert(s->len == (int)strlen(expected));
+		assert(!memcmp(s->Sascii,expected,s->len));
+		destroy(s); checks++;
+	}
+}
+
+/* Check UTF truncation compatibility, embedded NULs and empty byte spans. */
+static void
+checktext(void)
+{
+	String *s;
+	uchar data[] = {'A',0,'B',0xe2,0x82,0xac,0xf0,0x9f};
+
+	s = c2string((char*)data,sizeof(data));
+	assert(s->len == -4 && s->Srune[0] == 'A' && s->Srune[1] == 0);
+	assert(s->Srune[2] == 'B' && s->Srune[3] == 0x20ac);
+	destroy(s); checks++;
+}
+
+/* Complete all real-header codec checks with balanced VM and native ownership. */
+int
+main(void)
+{
+	checkrunes(); checkbounds(); checkaliases(); checkwords(); checktext();
+	assert(live == 0 && Tstring.ref == 1 && Tarray.ref == 1 && Tbyte.ref == 1);
+	printf("PASS string codecs: %d UTF/word/bounds/ownership checks, WORD%zu\n",checks,sizeof(WORD)*8);
+	return 0;
+}

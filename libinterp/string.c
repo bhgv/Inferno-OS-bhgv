@@ -48,7 +48,8 @@ e:			error(exBounds);
 OP(insc)
 {
 	ulong v;
-	int l, r, expand;
+	int l, expand;
+	Rune r;
 	String *ss, *ns, **sp;
 
 	r = W(s);
@@ -269,6 +270,7 @@ OP(addc)
 	}
 }
 
+/* Export UTF-8 only after validating the string representation and byte bound. */
 OP(cvtca)
 {
 	int l;
@@ -282,7 +284,13 @@ OP(cvtca)
 		a = mem2array(nil, 0);
 		goto r;
 	}
+	if(ss == nil)
+		error(exNilref);
+	if(D2H(ss)->t != &Tstring)
+		error(exType);
 	if(ss->len < 0) {
+		if(ss->len < -(int)((0x7fffffff-sizeof(Heap)-sizeof(Array))/UTFmax))
+			error(exHeap);
 		l = -ss->len;
 		a = mem2array(nil, runenlen(ss->Srune, l));
 		p = (char*)a->data;
@@ -291,6 +299,8 @@ OP(cvtca)
 			p += runetochar(p, r++);	
 		goto r;
 	}
+	if((ulong)ss->len > 0x7fffffff-sizeof(Heap)-sizeof(Array))
+		error(exHeap);
 	a = mem2array(ss->Sascii, ss->len);
 
 r:	ap = R.d;
@@ -298,6 +308,7 @@ r:	ap = R.d;
 	*ap = a;
 }
 
+/* Validate complete VM-array lengths before narrowing to the string constructor. */
 OP(cvtac)
 {
 	Array *a;
@@ -305,8 +316,15 @@ OP(cvtac)
 
 	ds = H;
 	a = A(s);
-	if(a != H)
-		ds = c2string((char*)a->data, a->len);
+	if(a != H){
+		if(a == nil)
+			error(exNilref);
+		if(D2H(a)->t != &Tarray || a->t != &Tbyte)
+			error(exType);
+		if(a->len < 0 || (uvlong)a->len > 0x7fffffff)
+			error(exHeap);
+		ds = c2string((char*)a->data, (int)a->len);
+	}
 
 	dp = R.d;
 	destroy(*dp);
@@ -360,12 +378,13 @@ OP(cvtcf)
 	}
 }
 
+/* Format the complete VM word, including its sign and terminating NUL. */
 OP(cvtwc)
 {
 	String *ds, **dp;
 
-	ds = newstring(16);
-	ds->len = sprint(ds->Sascii, "%d", W(s));
+	ds = newstring(24);
+	ds->len = sprint(ds->Sascii, "%lld", (vlong)W(s));
 
 	dp = R.d;
 	destroy(*dp);
@@ -406,8 +425,8 @@ char*
 string2c(String *s)
 {
 	char *p;
-	int c, l, nc;
-	Rune *r, *er;
+	int l, nc;
+	Rune c, *r, *er;
 
 	if(s == H)
 		return "";
@@ -417,9 +436,9 @@ string2c(String *s)
 		return s->Sascii;
 	}
 
-	nc = -s->len;
-	if(nc > (0x7fffffff-UTFmax)/UTFmax)
+	if(s->len < -(0x7fffffff-UTFmax)/UTFmax)
 		error(exNomem);
+	nc = -s->len;
 	l = (nc * UTFmax) + UTFmax;
 	if(s->tmp == nil || msize(s->tmp) < l) {
 		free(s->tmp);
@@ -444,6 +463,7 @@ string2c(String *s)
 	return s->tmp;
 }
 
+/* Reject invalid byte spans before scanning; retain truncated-tail behavior. */
 String*
 c2string(char *cs, int len)
 {
@@ -453,6 +473,14 @@ c2string(char *cs, int len)
 	Rune *r, junk;
 	int c, nc, isrune;
 
+	if(len < 0)
+		error(exNegsize);
+	if((ulong)len > 0x7fffffff-sizeof(Heap)-sizeof(String))
+		error(exHeap);
+	if(len == 0)
+		return newstring(0);
+	if(cs == nil)
+		error(exNilref);
 	isrune = 0;
 	ecs = cs+len;
 	p = (uchar*)cs;
@@ -477,7 +505,7 @@ c2string(char *cs, int len)
 		c = *p;
 		if(c < Runeself)
 			p++;
-		else if(p+UTFmax<=(uchar*)ecs || fullrune((char*)p, (uchar*)ecs-p))
+		else if((uchar*)ecs-p >= UTFmax || fullrune((char*)p, (uchar*)ecs-p))
 			p += chartorune(&junk, (char*)p);
 		else
 			break;
