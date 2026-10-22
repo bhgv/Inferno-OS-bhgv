@@ -139,80 +139,98 @@ OP(cvtcl)
 	else
 		V(d) = strtoll(string2c(s), nil, 10);
 }
+
+/* Compute an integer power with word-width wraparound and bounded iteration. */
 OP(iexpw)
 {
-	int inv;
-	WORD x, n, r;
+	WORD x, n;
+	UWORD base, exponent, result;
 
 	x = W(m);
 	n = W(s);
-	inv = 0;
 	if(n < 0){
-		n = -n;
-		inv = 1;
+		if(x == 0)
+			error(exZdiv);
+		if(x == 1)
+			W(d) = 1;
+		else if(x == -1)
+			W(d) = n&1 ? -1 : 1;
+		else
+			W(d) = 0;
+		return;
 	}
-	r = 1;
+	base = x;
+	exponent = n;
+	result = 1;
 	for(;;){
-		if(n&1)
-			r *= x;
-		if((n >>= 1) == 0)
+		if(exponent&1)
+			result *= base;
+		if((exponent >>= 1) == 0)
 			break;
-		x *= x;
+		base *= base;
 	}
-	if(inv)
-		r = 1/r;
-	W(d) = r;
+	W(d) = result;
 }
+
+/* Apply the same rules to big values while the exponent remains a VM word. */
 OP(iexpl)
 {
-	int inv;
 	WORD n;
-	LONG x, r;
+	LONG x;
+	ULONG base, result;
+	UWORD exponent;
 
 	x = V(m);
 	n = W(s);
-	inv = 0;
 	if(n < 0){
-		n = -n;
-		inv = 1;
+		if(x == 0)
+			error(exZdiv);
+		if(x == 1)
+			V(d) = 1;
+		else if(x == -1)
+			V(d) = n&1 ? -1 : 1;
+		else
+			V(d) = 0;
+		return;
 	}
-	r = 1;
+	base = x;
+	exponent = n;
+	result = 1;
 	for(;;){
-		if(n&1)
-			r *= x;
-		if((n >>= 1) == 0)
+		if(exponent&1)
+			result *= base;
+		if((exponent >>= 1) == 0)
 			break;
-		x *= x;
+		base *= base;
 	}
-	if(inv)
-		r = 1/r;
-	V(d) = r;
+	V(d) = result;
 }
+
+/* Handle the minimum negative exponent without signed negation or overflow. */
 OP(iexpf)
 {
-	int inv;
 	WORD n;
-	REAL x, r;
+	UWORD exponent;
+	REAL x, result;
 
 	x = F(m);
 	n = W(s);
-	inv = 0;
+	exponent = n;
 	if(n < 0){
-		n = -n;
-		inv = 1;
+		exponent = 0-exponent;
+		x = 1/x;
 	}
-	r = 1;
+	result = 1;
 	for(;;){
-		if(n&1)
-			r *= x;
-		if((n >>= 1) == 0)
+		if(exponent&1)
+			result *= x;
+		if((exponent >>= 1) == 0)
 			break;
 		x *= x;
 	}
-	if(inv)
-		r = 1/r;
-	F(d) = r;
+	F(d) = result;
 }
+
 OP(indx)
 {
 	ulong i;

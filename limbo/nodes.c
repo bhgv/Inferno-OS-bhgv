@@ -1,51 +1,59 @@
 #include "limbo.h"
 
+/*
+ * Fold integer powers with defined wraparound. Negative powers of integers
+ * other than +/-1 truncate to zero; foldc diagnoses zero to a negative power.
+ */
 static vlong
 ipow(vlong x, int n)
 {
-	int inv;
-	vlong r;
+	uvlong base, result;
+	uint exponent;
 
-	inv = 0;
 	if(n < 0){
-		n = -n;
-		inv = 1;
+		if(x == 1)
+			return 1;
+		if(x == -1)
+			return n&1 ? -1 : 1;
+		return 0;
 	}
-	r = 1;
+	base = x;
+	exponent = n;
+	result = 1;
 	for(;;){
-		if(n&1)
-			r *= x;
-		if((n >>= 1) == 0)
+		if(exponent&1)
+			result *= base;
+		if((exponent >>= 1) == 0)
 			break;
-		x *= x;
+		base *= base;
 	}
-	if(inv)
-		r = 1/r;
-	return r;
+	return result;
 }
 
+/*
+ * Use an unsigned exponent magnitude so INT_MIN terminates normally.
+ * Invert the base first to avoid overflowing before a small reciprocal result.
+ */
 double
 rpow(double x, int n)
 {
-	int inv;
-	double r;
+	uint exponent;
+	double result;
 
-	inv = 0;
+	exponent = n;
 	if(n < 0){
-		n = -n;
-		inv = 1;
+		exponent = 0-exponent;
+		x = 1/x;
 	}
-	r = 1;
+	result = 1;
 	for(;;){
-		if(n&1)
-			r *= x;
-		if((n >>= 1) == 0)
+		if(exponent&1)
+			result *= x;
+		if((exponent >>= 1) == 0)
 			break;
 		x *= x;
 	}
-	if(inv)
-		r = 1/r;
-	return r;
+	return result;
 }
 
 Long
@@ -762,7 +770,8 @@ foldcasti(Node *n, Node *left)
 }
 
 /*
- * right is a const int
+ * Fold a constant right operand without changing boolean normalization
+ * or discarding evaluation of a left operand with side effects.
  */
 Node*
 foldvc(Node *n)
@@ -778,11 +787,17 @@ foldvc(Node *n)
 	case Oxor:
 	case Olsh:
 	case Orsh:
-	case Ooror:
 		if(right->val == 0)
 			return left;
-		if(n->op == Ooror && !hasside(left, 1))
+		break;
+	case Ooror:
+		if(right->val == 0){
+			if(isrelop[left->op])
+				return left;
+		}else if(!hasside(left, 1)){
+			right->val = 1;
 			return right;
+		}
 		break;
 	case Oand:
 		if(right->val == 0 && !hasside(left, 1))
@@ -805,7 +820,7 @@ foldvc(Node *n)
 		}
 		break;
 	case Oexp:
-		if(right->val == 0){
+		if(right->val == 0 && !hasside(left, 1)){
 			right->val = 1;
 			return right;
 		}
@@ -813,8 +828,11 @@ foldvc(Node *n)
 			return left;
 		break;
 	case Oandand:
-		if(right->val != 0)
-			return left;
+		if(right->val != 0){
+			if(isrelop[left->op])
+				return left;
+			break;
+		}
 		if(!hasside(left, 1))
 			return right;
 		break;
@@ -823,14 +841,18 @@ foldvc(Node *n)
 			return n;
 		if(right->val == 0)
 			return left;
+		if(right->val != 1)
+			break;
 		n->op = Onot;
 		n->right = nil;
 		break;
 	case Oeq:
 		if(!isrelop[left->op])
 			return n;
-		if(right->val != 0)
+		if(right->val == 1)
 			return left;
+		if(right->val != 0)
+			break;
 		n->op = Onot;
 		n->right = nil;
 		break;

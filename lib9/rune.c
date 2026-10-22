@@ -125,6 +125,10 @@ runelen(long c)
 	return runetochar(str, &rune);
 }
 
+/*
+ * Count exactly the bytes runetochar emits, including replacement of invalid
+ * code points. Callers use this count to size and expose UTF-8 buffers.
+ */
 int
 runenlen(Rune *r, int nrune)
 {
@@ -132,8 +136,11 @@ runenlen(Rune *r, int nrune)
 	Rune c;
 
 	nb = 0;
-	while(nrune--) {
+	while(nrune > 0) {
+		nrune--;
 		c = *r++;
+		if(c > Runemax || (SurrogateMin <= c && c <= SurrogateMax))
+			c = Runeerror;
 		if(c <= Rune1){
 			nb++;
 		} else {
