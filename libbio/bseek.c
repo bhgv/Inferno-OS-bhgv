@@ -1,10 +1,12 @@
 #include	"lib9.h"
 #include	<bio.h>
 
+/* Seek only after validated arithmetic/flush, retaining read buffers on native failure. */
 vlong
 Bseek(Biobuf *bp, vlong offset, int base)
 {
-	vlong n, d;
+	vlong n, current, maximum;
+	uvlong distance;
 
 	switch(bp->state) {
 	default:
@@ -12,44 +14,42 @@ Bseek(Biobuf *bp, vlong offset, int base)
 		return Beof;
 
 	case Bracteof:
-		bp->state = Bractive;
-		bp->icount = 0;
-		bp->gbuf = bp->ebuf;
-
 	case Bractive:
 		n = offset;
-		if(base == 1) {
-			n += Boffset(bp);
+		if(base == 1){
+			current = Boffset(bp);
+			maximum = (vlong)(~(uvlong)0 >> 1);
+			if((offset > 0 && current > maximum-offset) ||
+			   (offset < 0 && current < (-maximum-1)-offset))
+				return Beof;
+			n += current;
 			base = 0;
 		}
 
-		/*
-		 * try to seek within buffer
-		 */
-		if(base == 0) {
-			/*
-			 * if d is too large for an int, icount may wrap,
-			 * so we need to ensure that icount hasn't wrapped
-			 * and points within the buffer's valid data.
-			 */
-			d = n - Boffset(bp);
-			bp->icount += d;
-			if(d <= bp->bsize && bp->icount <= 0 &&
-			    bp->ebuf - bp->gbuf >= -bp->icount)
+		/* Subtract only after ordering, in an unsigned type that cannot wrap here. */
+		if(base == 0 && n <= bp->offset){
+			distance = (uvlong)bp->offset-(uvlong)n;
+			if(distance <= (uvlong)(bp->ebuf-bp->gbuf)){
+				bp->icount = -(int)distance;
+				bp->state = Bractive;
 				return n;
+			}
 		}
 
-		/*
-		 * reset the buffer
-		 */
 		n = seek(bp->fid, n, base);
+		if(n == Beof)
+			return Beof;
 		bp->icount = 0;
 		bp->gbuf = bp->ebuf;
+		bp->state = Bractive;
 		break;
 
 	case Bwactive:
-		Bflush(bp);
+		if(Bflush(bp) == Beof)
+			return Beof;
 		n = seek(bp->fid, offset, base);
+		if(n == Beof)
+			return Beof;
 		break;
 	}
 	bp->offset = n;
