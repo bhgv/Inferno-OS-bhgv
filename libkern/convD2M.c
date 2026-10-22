@@ -1,55 +1,67 @@
 #include	"lib9.h"
 #include	"fcall.h"
 
-uint
-sizeD2M(Dir *d)
+/* Bound the whole stat entry before any 16-bit wire count is written. */
+static uint
+statsz(Dir *d, uint nsv[4])
 {
 	char *sv[4];
-	int i, ns;
+	uint n, ns, left;
+	int i;
 
 	sv[0] = d->name;
 	sv[1] = d->uid;
 	sv[2] = d->gid;
 	sv[3] = d->muid;
 
-	ns = 0;
-	for(i = 0; i < 4; i++)
-		if(sv[i])
-			ns += strlen(sv[i]);
-
-	return STATFIXLEN + ns;
+	ns = STATFIXLEN;
+	for(i = 0; i < 4; i++){
+		left = 0xffff+BIT16SZ-ns;
+		n = 0;
+		if(sv[i] != nil){
+			while(n <= left && sv[i][n] != '\0')
+				n++;
+			if(n > left)
+				return 0;
+		}
+		nsv[i] = n;
+		ns += n;
+	}
+	return ns;
 }
 
+/* Report zero when the stat size cannot be represented on the wire. */
+uint
+sizeD2M(Dir *d)
+{
+	uint nsv[4];
+
+	return statsz(d, nsv);
+}
+
+/* Preserve short-buffer size reporting only for representable entries. */
 uint
 convD2M(Dir *d, uchar *buf, uint nbuf)
 {
-	uchar *p, *ebuf;
+	uchar *p;
 	char *sv[4];
-	int i, ns, nsv[4], ss;
+	int i;
+	uint ns, nsv[4], ss;
 
 	if(nbuf < BIT16SZ)
 		return 0;
 
+	ss = statsz(d, nsv);
+	if(ss == 0)
+		return 0;
 	p = buf;
-	ebuf = buf + nbuf;
 
 	sv[0] = d->name;
 	sv[1] = d->uid;
 	sv[2] = d->gid;
 	sv[3] = d->muid;
 
-	ns = 0;
-	for(i = 0; i < 4; i++){
-		if(sv[i])
-			nsv[i] = strlen(sv[i]);
-		else
-			nsv[i] = 0;
-		ns += nsv[i];
-	}
-
-	ss = STATFIXLEN + ns;
-
-	/* set size befor erroring, so user can know how much is needed */
+	/* Set size before returning a short buffer, so the caller can retry. */
 	/* note that length excludes count field itself */
 	PBIT16(p, ss-BIT16SZ);
 	p += BIT16SZ;
@@ -78,8 +90,6 @@ convD2M(Dir *d, uchar *buf, uint nbuf)
 
 	for(i = 0; i < 4; i++){
 		ns = nsv[i];
-		if(p + ns + BIT16SZ > ebuf)
-			return 0;
 		PBIT16(p, ns);
 		p += BIT16SZ;
 		if(ns)

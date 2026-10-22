@@ -288,6 +288,14 @@ returns the number of bytes required to store the machine-independent representa
 structure
 .IR d ,
 including its initial 16-bit size field.
+If the entry size, excluding that field, exceeds 65535 bytes,
+.I sizeD2M
+and
+.I convD2M
+return zero.
+In this case
+.I convD2M
+does not modify the output buffer.
 .PP
 The routine
 .B statcheck
