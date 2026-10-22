@@ -28,6 +28,113 @@ String	snil;			/* String known to be zero length */
 #define SH(r)	*((SHORT*)(R.r))
 #define SR(r)	*((SREAL*)(R.r))
 
+/* Integer contract: wrap at the active VM width without signed C overflow.
+ * This does not change the legacy LP64 WORD layout into a Dis64 ABI. */
+static WORD
+intword(UWORD u)
+{
+	if(u <= (~(UWORD)0 >> 1))
+		return (WORD)u;
+	return -(WORD)(UWORD)~u - 1;
+}
+
+static LONG
+intbig(ULONG u)
+{
+	if(u <= (~(ULONG)0 >> 1))
+		return (LONG)u;
+	return -(LONG)(ULONG)~u - 1;
+}
+
+static UWORD
+shiftcount(WORD n, int bits)
+{
+	if(n < 0 || (UWORD)n >= (UWORD)bits)
+		error("invalid shift");
+	return (UWORD)n;
+}
+
+/* Arithmetic right shift using unsigned operations, including count zero. */
+static WORD
+wordshr(WORD v, UWORD n)
+{
+	UWORD u;
+	u=(UWORD)v;
+	if(v >= 0 || n == 0)
+		return intword(u >> n);
+	return intword(~((UWORD)~u >> n));
+}
+
+static LONG
+bigshr(LONG v, UWORD n)
+{
+	ULONG u;
+	u=(ULONG)v;
+	if(v >= 0 || n == 0)
+		return intbig(u >> n);
+	return intbig(~((ULONG)~u >> n));
+}
+
+/* Fixed-point intermediates use the same wrapping big arithmetic. */
+static LONG
+scalediv(LONG a, LONG b)
+{
+	if(b == 0)
+		error(exZdiv);
+	if(b == -1)
+		return intbig((ULONG)0 - (ULONG)a);
+	return a / b;
+}
+
+static LONG
+scaleshift(LONG v, WORD p)
+{
+	UWORD n;
+	n = p < 0 ? (UWORD)0 - (UWORD)p : (UWORD)p;
+	if(n >= sizeof(LONG)*8)
+		error("invalid shift");
+	if(p < 0)
+		return bigshr(v, n);
+	return intbig((ULONG)v << n);
+}
+
+static LONG
+scalebias(WORD p)
+{
+	UWORD n;
+	/* A rounding bias is meaningful only for a right shift. */
+	if(p > 0)
+		error("invalid shift");
+	n = (UWORD)0 - (UWORD)p;
+	if(n >= sizeof(LONG)*8)
+		error("invalid shift");
+	return intbig(((ULONG)1 << n) - 1);
+}
+
+/* Round halves away from zero, then range-check before the C cast. */
+static LONG
+realint(REAL f, int bits)
+{
+	REAL limit, r;
+	LONG v;
+	limit = bits == 32 ? 2147483648.0 : 9223372036854775808.0;
+	/* These comparisons also reject NaN and infinities. */
+	if(!(f >= (bits == 32 ? -limit-.5 : -limit) && f < limit))
+		error(exRange);
+	v = (LONG)f;
+	r = f - (REAL)v;
+	if(r >= .5){
+		if((REAL)v >= limit-1.0)
+			error(exRange);
+		v++;
+	}else if(r <= -.5){
+		if(v == (bits == 32 ? (LONG)-2147483647-1 : intbig((ULONG)1<<63)))
+			error(exRange);
+		v--;
+	}
+	return v;
+}
+
 OP(runt) {}
 OP(negf) { F(d) = -F(s); }
 OP(jmp)  { JMP(d); }
@@ -46,23 +153,23 @@ OP(cvtws){ SH(d) = W(s); }
 OP(cvtsw){ W(d) = SH(s); }
 OP(cvtwf){ F(d) = W(s); }
 OP(addb) { B(d) = B(m) + B(s); }
-OP(addw) { W(d) = W(m) + W(s); }
-OP(addl) { V(d) = V(m) + V(s); }
+OP(addw) { W(d) = intword((UWORD)W(m) + (UWORD)W(s)); }
+OP(addl) { V(d) = intbig((ULONG)V(m) + (ULONG)V(s)); }
 OP(addf) { F(d) = F(m) + F(s); }
 OP(subb) { B(d) = B(m) - B(s); }
-OP(subw) { W(d) = W(m) - W(s); }
-OP(subl) { V(d) = V(m) - V(s); }
+OP(subw) { W(d) = intword((UWORD)W(m) - (UWORD)W(s)); }
+OP(subl) { V(d) = intbig((ULONG)V(m) - (ULONG)V(s)); }
 OP(subf) { F(d) = F(m) - F(s); }
-OP(divb) { B(d) = B(m) / B(s); }
-OP(divw) { W(d) = W(m) / W(s); }
-OP(divl) { V(d) = V(m) / V(s); }
+OP(divb) { if(B(s) == 0) error(exZdiv); B(d) = B(m) / B(s); }
+OP(divw) { if(W(s) == 0) error(exZdiv); W(d) = W(s) == -1 ? intword((UWORD)0 - (UWORD)W(m)) : W(m) / W(s); }
+OP(divl) { if(V(s) == 0) error(exZdiv); V(d) = V(s) == -1 ? intbig((ULONG)0 - (ULONG)V(m)) : V(m) / V(s); }
 OP(divf) { F(d) = F(m) / F(s); }
-OP(modb) { B(d) = B(m) % B(s); }
-OP(modw) { W(d) = W(m) % W(s); }
-OP(modl) { V(d) = V(m) % V(s); }
+OP(modb) { if(B(s) == 0) error(exZdiv); B(d) = B(m) % B(s); }
+OP(modw) { if(W(s) == 0) error(exZdiv); W(d) = W(s) == -1 ? 0 : W(m) % W(s); }
+OP(modl) { if(V(s) == 0) error(exZdiv); V(d) = V(s) == -1 ? 0 : V(m) % V(s); }
 OP(mulb) { B(d) = B(m) * B(s); }
-OP(mulw) { W(d) = W(m) * W(s); }
-OP(mull) { V(d) = V(m) * V(s); }
+OP(mulw) { W(d) = intword((UWORD)W(m) * (UWORD)W(s)); }
+OP(mull) { V(d) = intbig((ULONG)V(m) * (ULONG)V(s)); }
 OP(mulf) { F(d) = F(m) * F(s); }
 OP(andb) { B(d) = B(m) & B(s); }
 OP(andw) { W(d) = W(m) & W(s); }
@@ -73,14 +180,14 @@ OP(xorl) { V(d) = V(m) ^ V(s); }
 OP(orb)  { B(d) = B(m) | B(s); }
 OP(orw)  { W(d) = W(m) | W(s); }
 OP(orl)  { V(d) = V(m) | V(s); }
-OP(shlb) { B(d) = B(m) << W(s); }
-OP(shlw) { W(d) = W(m) << W(s); }
-OP(shll) { V(d) = V(m) << W(s); }
-OP(shrb) { B(d) = B(m) >> W(s); }
-OP(shrw) { W(d) = W(m) >> W(s); }
-OP(shrl) { V(d) = V(m) >> W(s); }
-OP(lsrw) { W(d) = UW(m) >> W(s); }
-OP(lsrl) { V(d) = UV(m) >> W(s); }
+OP(shlb) { B(d) = (UWORD)B(m) << shiftcount(W(s), 8); }
+OP(shlw) { W(d) = intword((UWORD)W(m) << shiftcount(W(s), sizeof(WORD)*8)); }
+OP(shll) { V(d) = intbig((ULONG)V(m) << shiftcount(W(s), sizeof(LONG)*8)); }
+OP(shrb) { B(d) = (UWORD)B(m) >> shiftcount(W(s), 8); }
+OP(shrw) { W(d) = wordshr(W(m), shiftcount(W(s), sizeof(WORD)*8)); }
+OP(shrl) { V(d) = bigshr(V(m), shiftcount(W(s), sizeof(LONG)*8)); }
+OP(lsrw) { W(d) = intword((UWORD)W(m) >> shiftcount(W(s), sizeof(WORD)*8)); }
+OP(lsrl) { V(d) = intbig((ULONG)V(m) >> shiftcount(W(s), sizeof(LONG)*8)); }
 OP(beqb) { if(B(s) == B(m)) JMP(d); }
 OP(bneb) { if(B(s) != B(m)) JMP(d); }
 OP(bltb) { if(B(s) <  B(m)) JMP(d); }
@@ -115,20 +222,8 @@ OP(iexit){ error(""); }
 OP(cvtwl){ V(d) = W(s); }
 OP(cvtlw){ W(d) = V(s); }
 OP(cvtlf){ F(d) = V(s); }
-OP(cvtfl)
-{
-	REAL f;
-
-	f = F(s);
-	V(d) = f < 0 ? f - .5 : f + .5;
-}
-OP(cvtfw)
-{
-	REAL f;
-
-	f = F(s);
-	W(d) = f < 0 ? f - .5 : f + .5;
-}
+OP(cvtfl) { V(d) = realint(F(s), sizeof(LONG)*8); }
+OP(cvtfw) { W(d) = (WORD)realint(F(s), sizeof(WORD)*8); }
 OP(cvtcl)
 {
 	String *s;
@@ -353,26 +448,51 @@ OP(frame)
 		initmem(t, f);
 	T(d) = f;
 }
+
+/* Resolve links at the full VM WORD width before changing call/frame state.
+ * Exports are name-terminated, so walk to the requested slot without forming
+ * an out-of-range pointer or negating MIN_WORD. */
+static Linkpc*
+modulelink(Modlink *ml, WORD index, Type **frame, char *reason)
+{
+	Link *l;
+	UWORD n;
+
+	if(ml == H)
+		error(exModule);
+	if(index >= 0) {
+		if(ml->nlinks < 0 || (UWORD)index >= (UWORD)ml->nlinks)
+			error(reason);
+		if(frame != nil)
+			*frame = ml->links[index].frame;
+		return &ml->links[index].u;
+	}
+	if(ml->m == nil || ml->m->ext == nil)
+		error(reason);
+	n = ~(UWORD)index;
+	for(l = ml->m->ext; l->name != nil; l++) {
+		if(n == 0) {
+			if(frame != nil)
+				*frame = l->frame;
+			return &l->u;
+		}
+		n--;
+	}
+	error(reason);
+	return nil;
+}
+
 OP(mframe)
 {
 	Type *t;
 	Frame *f;
 	uchar *nsp;
 	Modlink *ml;
-	int o;
 
 	ml = *(Modlink**)R.s;
-	if(ml == H)
-		error(exModule);
-
-	o = W(m);
-	if(o >= 0){
-		if(o >= ml->nlinks)
-			error("invalid mframe");
-		t = ml->links[o].frame;
-	}
-	else
-		t = ml->m->ext[-o-1].frame;
+	modulelink(ml, W(m), &t, "invalid mframe");
+	if(t == nil || t == (Type*)H)
+		error("invalid mframe");
 	nsp = R.SP + t->size;
 	if(nsp >= R.TS) {
 		R.s = t;
@@ -708,19 +828,18 @@ OP(mspawn)
 {
 	Prog *p;
 	Modlink *ml;
-	int o;
+	Linkpc *entry;
 
 	ml = *(Modlink**)R.d;
 	if(ml == H)
 		error(exModule);
 	if(ml->prog == nil)
 		error(exSpawn);
+	entry = modulelink(ml, W(m), nil, "invalid mspawn");
+	if(entry->pc == nil || entry->pc == (Inst*)H)
+		error("invalid mspawn");
 	p = newprog(currun(), ml);
-	o = W(m);
-	if(o >= 0)
-		p->R.PC = ml->links[o].u.pc;
-	else
-		p->R.PC = ml->m->ext[-o-1].u.pc;
+	p->R.PC = entry->pc;
 	newstack(p);
 	unframe();
 }
@@ -798,11 +917,11 @@ OP(mcall)
 	Frame *f;
 	Linkpc *l;
 	Modlink *ml;
-	int o;
 
 	ml = *(Modlink**)R.d;
-	if(ml == H)
-		error(exModule);
+	l = modulelink(ml, W(m), nil, "invalid mcall");
+	if(l->pc == nil || l->pc == (Inst*)H)
+		error("invalid mcall");
 	f = T(s);
 	f->lr = R.PC;
 	f->fp = R.FP;
@@ -813,11 +932,6 @@ OP(mcall)
 	h = D2H(ml);
 	h->ref++;
 
-	o = W(m);
-	if(o >= 0)
-		l = &ml->links[o].u;
-	else
-		l = &ml->m->ext[-o-1].u;
 	if(ml->prog == nil) {
 		l->runt(f);
 		h->ref--;
@@ -1373,12 +1487,9 @@ OP(mulx)
 	LONG r;
 
 	p = Dtmp;
-	r = (LONG)W(m)*(LONG)W(s);
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	W(d) = (WORD)r;
+	r = intbig((ULONG)(LONG)W(m)*(ULONG)(LONG)W(s));
+	r = scaleshift(r, p);
+	W(d) = intword((UWORD)r);
 }
 OP(divx)
 {
@@ -1387,12 +1498,9 @@ OP(divx)
 
 	p = Dtmp;
 	s = (LONG)W(m);
-	if(p >= 0)
-		s <<= p;
-	else
-		s >>= (-p);
-	s /= (LONG)W(s);
-	W(d) = (WORD)s;
+	s = scaleshift(s, p);
+	s = scalediv(s, (LONG)W(s));
+	W(d) = intword((UWORD)s);
 }
 OP(cvtxx)
 {
@@ -1401,11 +1509,8 @@ OP(cvtxx)
 
 	p = W(m);
 	r = (LONG)W(s);
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	W(d) = (WORD)r;
+	r = scaleshift(r, p);
+	W(d) = intword((UWORD)r);
 }
 OP(mulx0)
 {
@@ -1417,16 +1522,15 @@ OP(mulx0)
 	p = Dtmp;
 	a = Stmp;
 	if(x == 0 || y == 0){
+		scaleshift(0, p);
+		scalediv(0, (LONG)a);
 		W(d) = 0;
 		return;
 	}
-	r = (LONG)x*(LONG)y;
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	r /= (LONG)a;
-	W(d) = (WORD)r;
+	r = intbig((ULONG)(LONG)x*(ULONG)(LONG)y);
+	r = scaleshift(r, p);
+	r = scalediv(r, (LONG)a);
+	W(d) = intword((UWORD)r);
 }
 OP(divx0)
 {
@@ -1438,16 +1542,15 @@ OP(divx0)
 	p = Dtmp;
 	b = Stmp;
 	if(x == 0){
+		scaleshift(0, p);
+		scalediv(0, (LONG)y);
 		W(d) = 0;
 		return;
 	}
-	s = (LONG)b*(LONG)x;
-	if(p >= 0)
-		s <<= p;
-	else
-		s >>= (-p);
-	s /= (LONG)y;
-	W(d) = (WORD)s;
+	s = intbig((ULONG)(LONG)b*(ULONG)(LONG)x);
+	s = scaleshift(s, p);
+	s = scalediv(s, (LONG)y);
+	W(d) = intword((UWORD)s);
 }
 OP(cvtxx0)
 {
@@ -1458,16 +1561,15 @@ OP(cvtxx0)
 	p = W(m);
 	a = Stmp;
 	if(x == 0){
+		scaleshift(0, p);
+		scalediv(0, (LONG)a);
 		W(d) = 0;
 		return;
 	}
 	r = (LONG)x;
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	r /= (LONG)a;
-	W(d) = (WORD)r;
+	r = scaleshift(r, p);
+	r = scalediv(r, (LONG)a);
+	W(d) = intword((UWORD)r);
 }
 OP(mulx1)
 {
@@ -1480,32 +1582,31 @@ OP(mulx1)
 	p = Dtmp;
 	a = Stmp;
 	if(x == 0 || y == 0){
+		scaleshift(0, wordshr(p, 2));
+		scalediv(0, (LONG)a);
 		W(d) = 0;
 		return;
 	}
 	vnz = p&2;
 	wnz = p&1;
-	p >>= 2;
+	p = wordshr(p, 2);
 	v = 0;
 	w = 0;
 	if(vnz){
-		v = a-1;
+		v = intword((UWORD)a-1);
 		if(x >= 0 && y < 0 || x < 0 && y >= 0)
-			v = -v;
+			v = intword((UWORD)0-(UWORD)v);
 	}
 	if(wnz){
 		if((!vnz && (x > 0 && y < 0 || x < 0 && y > 0)) ||
 		(vnz && (x > 0 && y > 0 || x < 0 && y < 0)))
-			w = ((LONG)1<<(-p)) - 1;
+			w = scalebias(p);
 	}
-	r = (LONG)x*(LONG)y + w;
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	r += (LONG)v;
-	r /= (LONG)a;
-	W(d) = (WORD)r;
+	r = intbig((ULONG)x*(ULONG)y + (ULONG)w);
+	r = scaleshift(r, p);
+	r = intbig((ULONG)r + (ULONG)(LONG)v);
+	r = scalediv(r, (LONG)a);
+	W(d) = intword((UWORD)r);
 }
 OP(divx1)
 {
@@ -1518,30 +1619,29 @@ OP(divx1)
 	p = Dtmp;
 	b = Stmp;
 	if(x == 0){
+		scaleshift(0, wordshr(p, 2));
+		scalediv(0, (LONG)y);
 		W(d) = 0;
 		return;
 	}
 	vnz = p&2;
 	wnz = p&1;
-	p >>= 2;
+	p = wordshr(p, 2);
 	v = 0;
 	w = 0;
 	if(vnz){
 		v = 1;
 		if(x >= 0 && y < 0 || x < 0 && y >= 0)
-			v = -v;
+			v = intword((UWORD)0-(UWORD)v);
 	}
 	if(wnz){
 		if(x <= 0)
-			w = ((LONG)1<<(-p)) - 1;
+			w = scalebias(p);
 	}
-	s = (LONG)b*(LONG)x + w;
-	if(p >= 0)
-		s <<= p;
-	else
-		s >>= (-p);
-	s /= (LONG)y;
-	W(d) = (WORD)s + v;
+	s = intbig((ULONG)b*(ULONG)x + (ULONG)w);
+	s = scaleshift(s, p);
+	s = scalediv(s, (LONG)y);
+	W(d) = intword((UWORD)s + (UWORD)v);
 }
 OP(cvtxx1)
 {
@@ -1553,31 +1653,30 @@ OP(cvtxx1)
 	p = W(m);
 	a = Stmp;
 	if(x == 0){
+		scaleshift(0, wordshr(p, 2));
+		scalediv(0, (LONG)a);
 		W(d) = 0;
 		return;
 	}
 	vnz = p&2;
 	wnz = p&1;
-	p >>= 2;
+	p = wordshr(p, 2);
 	v = 0;
 	w = 0;
 	if(vnz){
-		v = a-1;
+		v = intword((UWORD)a-1);
 		if(x < 0)
-			v = -v;
+			v = intword((UWORD)0-(UWORD)v);
 	}
 	if(wnz){
 		if(!vnz && x < 0 || vnz && x > 0)
-			w = ((LONG)1<<(-p)) - 1;
+			w = scalebias(p);
 	}
-	r = (LONG)x + w;
-	if(p >= 0)
-		r <<= p;
-	else
-		r >>= (-p);
-	r += (LONG)v;
-	r /= (LONG)a;
-	W(d) = (WORD)r;
+	r = intbig((ULONG)(LONG)x + (ULONG)w);
+	r = scaleshift(r, p);
+	r = intbig((ULONG)r + (ULONG)(LONG)v);
+	r = scalediv(r, (LONG)a);
+	W(d) = intword((UWORD)r);
 }
 /*
 OP(cvtxx)
@@ -1589,14 +1688,7 @@ OP(cvtxx)
 	W(d) = (WORD)v;
 }
 */
-OP(cvtfx)
-{
-	REAL v;
-
-	v = F(s)*F(m);
-	v = v < 0 ? v-0.5: v+0.5;
-	W(d) = (WORD)v;
-}
+OP(cvtfx) { W(d) = (WORD)realint(F(s)*F(m), sizeof(WORD)*8); }
 OP(cvtxf)
 {
 	F(d) = (REAL)W(s)*F(m);

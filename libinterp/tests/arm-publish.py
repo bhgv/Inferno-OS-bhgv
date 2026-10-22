@@ -47,13 +47,14 @@ RUNTIMEGUARD
 typedef int32_t WORD;
 typedef uint8_t uchar;
 typedef uintptr_t uintptr;
+typedef uint64_t uvlong;
 typedef struct Inst Inst;
 typedef struct Type Type;
 typedef struct Module Module;
 typedef struct Link Link;
 typedef struct Modl Modl;
-typedef union Adr {int32_t ind;Inst *ins;} Adr;
-struct Inst {uint8_t op;Adr d;};
+typedef union Adr {int32_t ind,imm;Inst *ins;} Adr;
+struct Inst {uint8_t op,add;Adr s,d;};
 struct Type {int size,np;void *initialize,*destroy;};
 struct Link {char *name;union {Inst *pc;} u;Type *frame;};
 struct Modl {union {Inst *pc;} u;Type *frame;};
@@ -70,11 +71,11 @@ static void *testmalloc(size_t n) {
     if(fail_after==0)return nil;
     if(fail_after>0)fail_after--;
     if(n==0)return nil;
-    p=calloc(1,n);if(!p)return nil;
+    p=malloc(n);if(!p)return nil;memset(p,0xa5,n);
     for(i=0;i<256;i++)if(!allocations[i]){allocations[i]=p;live++;return p;}
     assert(0);return nil;
 }
-static void *testmallocz(size_t n,int zero) {(void)zero;return testmalloc(n);}
+static void *testmallocz(size_t n,int zero) {void *p=testmalloc(n);if(p && zero)memset(p,0,n);return p;}
 static void testfree(void *p) {
     int i;if(!p)return;
     for(i=0;i<256;i++)if(allocations[i]==p){allocations[i]=nil;live--;frees++;free(p);return;}
@@ -87,6 +88,7 @@ static ulong *armhelpertemp,*armhelpercode;
 static ulong *code,*base,*patch,*litpool;
 static uint8_t *tinit;
 static Module *mod;
+static ulong *armfrp, *armret;
 static int pass,nlit,codeoff,cflag;
 static ulong macro[1];
 static struct {int ptr;} rcon;
@@ -139,9 +141,12 @@ static void comp(Inst *i) { event();
     if(mod->ntype>1)tinit[1]=1;
     if(!(phase_error && pass && i==mod->prog))*code++=10;
 }
+static void macfrp(void) {event();*code++=11;}
+static void retbody(void) {event();*code++=12;}
 PREAMBLE
 TYPECOM
 PATCHEX
+#include "jit-validate.h"
 COMPILE
 static Module m;
 static Modlink ml;
@@ -155,7 +160,7 @@ static void fixture(void) {
     memset(&m,0,sizeof(m));memset(&ml,0,sizeof(ml));
     memset(&a,0,sizeof(a));memset(&b,0,sizeof(b));memset(&old,0,sizeof(old));
     memset(&data,0,sizeof(data));memset(links,0,sizeof(links));memset(mp,0,sizeof(mp));
-    original=malloc(4*sizeof(Inst));assert(original);
+    original=malloc(4*sizeof(Inst));assert(original);memset(original,0,4*sizeof(Inst));
     original[0].op=ICASE;original[1].op=ICASE;
     original[2].op=IGOTO;original[2].d.ind=9*4;
     original[3].op=ICASEL;original[3].d.ind=16*4;
@@ -183,9 +188,10 @@ static void unchanged(void) {
     assert(old.initialize && old.destroy==(char*)old.initialize+4);
     assert(handlers[0].pc1==1 && handlers[0].pc2==4 && exceptions[0].pc==1);
     assert(live==2+(comvec!=nil));
+    assert((comvec!=nil)==(armfrp!=nil));assert((comvec!=nil)==(armret!=nil));
 }
 static void cleanup(void) {
-    free(m.prog);free(a.initialize);free(b.initialize);free(old.initialize);free((void*)comvec);comvec=nil;
+    free(m.prog);free(a.initialize);free(b.initialize);free(old.initialize);free((void*)comvec);comvec=nil;armfrp=nil;armret=nil;
     assert(live==0);
 }
 int main(void) {
@@ -225,7 +231,47 @@ int main(void) {
     fixture();links[0].u.pc=(Inst*)((char*)original+1);assert(!compile(&m,4,&ml));links[0].u.pc=original+1;unchanged();cleanup();
     fixture();handlers[0].pc2=5;assert(!compile(&m,4,&ml));handlers[0].pc2=4;unchanged();cleanup();
     fixture();exceptions[0].pc=-2;assert(!compile(&m,4,&ml));exceptions[0].pc=1;unchanged();cleanup();
-    printf("PASS %d VM error injection points\n",count);
+    {
+        int slots[]={0,0,3,4,8,8,9,16,16,22,24};
+        WORD bad[]={-1,0x7fffffff,-1,4,-1,0x7fffffff,4,-1,0x7fffffff,4,-1};
+        WORD saved;
+        for(i=0;i<11;i++) {
+            fixture();saved=mp[slots[i]];mp[slots[i]]=bad[i];
+            assert(!compile(&m,4,&ml));mp[slots[i]]=saved;unchanged();cleanup();
+        }
+        for(i=0;i<3;i++) {
+            fixture();original[0].d.ind=i==0?-4:i==1?2:124;
+            assert(!compile(&m,4,&ml));original[0].d.ind=0;unchanged();cleanup();
+        }
+        fixture();original[2].d.ind=4; /* Valid goto inside the case table: reject overlap. */
+        assert(!compile(&m,4,&ml));original[2].d.ind=9*4;unchanged();cleanup();
+        fixture();original[0].op=IFRAME;original[0].add=SRC(AIMM);original[0].s.imm=-1;
+        assert(!compile(&m,4,&ml));unchanged();cleanup();
+        fixture();original[0].op=IFRAME;original[0].add=SRC(AIMM);original[0].s.imm=2;
+        assert(!compile(&m,4,&ml));unchanged();cleanup();
+        fixture();original[0].op=IJMP;original[0].d.ins=original+4;
+        assert(!compile(&m,4,&ml));unchanged();cleanup();
+        fixture();original[0].op=IJMP;original[0].d.ins=(Inst*)((char*)original+1);
+        assert(!compile(&m,4,&ml));unchanged();cleanup();
+        fixture();original[0].add=DST(AFP);
+        assert(!compile(&m,4,&ml));unchanged();cleanup();
+        fixture();m.origmp=nil;assert(!compile(&m,4,&ml));m.origmp=(uchar*)mp;unchanged();cleanup();
+    }
+    {
+        unsigned char *raw=(unsigned char*)mp;
+        unsigned char value;
+        unsigned int byte,mutation;
+        fixture();
+        for(byte=0;byte<sizeof(mp);byte++)for(mutation=0;mutation<256;mutation++) {
+            value=raw[byte];raw[byte]=mutation;
+            (void)jitvalidprogram(&m,4);
+            assert(raw[byte]==mutation);raw[byte]=value;
+            assert(!memcmp(mp,before,sizeof(mp)));
+        }
+        for(i=0;i<=128;i++){data.size=i;(void)jitvalidprogram(&m,4);}
+        data.size=sizeof(mp);unchanged();cleanup();
+    }
+    printf("PASS %d VM error injection points; 32768 table mutations and 129 data extents\n",count);
     puts("PASS ARM publication: VM error unwinds, allocation/cache failures, table/Type rollback, retry, aliases, shared helpers, phase mismatch and end-PC exception ranges");
     return 0;
 }
@@ -242,7 +288,7 @@ unit=unit.replace('COMPILE',source[source.index('/* Roll back only helpers'):])
 with tempfile.TemporaryDirectory(prefix='arm-publish-') as directory:
     td=Path(directory);path=td/'publish.c';path.write_text(unit)
     command=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1 -g'))
-    command+=['-Wno-pointer-to-int-cast','-Wno-int-to-pointer-cast','-I'+str(root/'include'),str(path),'-o',str(td/'publish')]
+    command+=['-Wno-pointer-to-int-cast','-Wno-int-to-pointer-cast','-I'+str(root/'include'),'-I'+str(root/'libinterp'),str(path),'-o',str(td/'publish')]
     subprocess.run(command,check=True)
     environment=dict(os.environ);environment.setdefault('UBSAN_OPTIONS','halt_on_error=1')
     subprocess.run([str(td/'publish')],check=True,env=environment)

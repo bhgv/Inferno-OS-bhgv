@@ -110,3 +110,13 @@ expects. Explicit live-allocation accounting checks cleanup on every path.
   and publishes only after successful synchronization.
 - Native-device cache behavior, executable allocation and migration across CPUs
   remain target integration checks.
+
+
+## Shared native-PC preflight
+
+The IA-32 publication series added jit-validate.h before ARM emission as well.
+It bounds static case/goto tables and target PCs, rejects conflicting table
+overlaps while retaining exact aliases, validates immediate frame Types and
+checks patched branch PCs. arm-publish.py includes malformed inputs, 32,768
+single-byte data mutations and 129 data extents. See x86-jit-audit.md for the
+shared contract and test boundaries.

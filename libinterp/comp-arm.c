@@ -3,6 +3,7 @@
 #include "interp.h"
 #include "raise.h"
 #include "kernel.h"
+#include "jit-validate.h"
 
 /*
  * to do:
@@ -203,8 +204,8 @@ enum
 #define BRADIS(C, o)			BRA(C, (IA(patch, o)-(ulong)code-8)>>2)
 #define BRAMAC(r, o)			BRA(r, (IA(macro, o)-(ulong)code-8)>>2)
 #define BRANCH(C, o)				gen(BRAW(C, ((ulong)(o)-(ulong)code-8)>>2))
-#define CALL(o)				gen(BRAW(AL, ((ulong)(o)-(ulong)code-8)>>2)|(1<<24))
-#define CCALL(C,o)				gen(BRAW((C), ((ulong)(o)-(ulong)code-8)>>2)|(1<<24))
+#define CALL(o)				armcall(AL, (ulong)(o))
+#define CCALL(C,o)				armcall((C), (ulong)(o))
 #define CALLMAC(C,o)			gen(BRAW((C), (IA(macro, o)-(ulong)code-8)>>2)|(1<<24))
 #define RELPC(pc)			(ulong)(base+(pc))
 #define RETURN				DPI(AL, Add, RLINK, R15, 0, 0)				
@@ -240,13 +241,13 @@ static	ulong	macro[NMACRO];
 	void	(*comvec)(void);
 static	void	macfrp(void);
 static	void	macret(void);
+static	void	retbody(void);
 static	void	maccase(void);
 static	void	maccolr(void);
 static	void	macmcal(void);
 static	void	macfram(void);
 static	void	macmfra(void);
 static	void	macrelq(void);
-static	void movmem(Inst*);
 static	void mid(Inst*, int, int);
 extern	void	das(ulong*, int);
 
@@ -532,6 +533,22 @@ con(ulong o, int r, int opt)
 	ccon(AL, o, r, opt);
 }
 
+/* Use an absolute literal target: C helpers and shared Type code need not
+ * lie within BL's +/-32 MiB range. Force one literal load in both passes. */
+static void
+armcall(int cc, ulong target)
+{
+	ccon(cc, target, RCON, 0);
+	DP(cc, Mov, 0, RLINK, 0, R15);
+#if defined(__ARM_ARCH_3__) || defined(__ARM_ARCH_3M__) || defined(__ARM_ARCH_4__) || \
+    (defined(__ARM_ARCH) && __ARM_ARCH < 5 && !defined(__ARM_ARCH_4T__))
+	/* Pre-Thumb ARM has no BX; its C helpers are necessarily A32. */
+	DP(cc, Mov, 0, R15, 0, RCON);
+#else
+	gen(((ulong)cc<<28)|0x012fff10|RCON); /* BX, including Thumb targets */
+#endif
+}
+
 static void
 mem(int inst, ulong disp, int rm, int r)
 {
@@ -553,7 +570,8 @@ opx(int mode, Adr *a, int mi, int r, int li)
 		mem(mi, a->ind, RMP, r);
 		return;
 	case AIMM:
-		con(a->imm, r, 1);
+		/* Immediate byte operands have the same width as memory loads. */
+		con(mi == Ldb ? a->imm & 0xff : a->imm, r, 1);
 		if(mi == Lea) {	/* could be simpler if con generates reachable literal */
 			mem(Stw, li, RREG, r);
 			mem(Lea, li, RREG, r);
@@ -698,6 +716,17 @@ punt(Inst *i, int m, void (*fn)(void))
 {
 	ulong pc;
 
+	/* A C helper may raise even when it normally returns in-line. Keep
+	 * exception lookup on this instruction, including operand decoding.
+	 * Synthetic macro instructions (e.g. RET fallback) have no Dis PC. */
+	if(jitvalidpc(mod, i, mod->nprog))
+		m |= WRTPC;
+
+	if(m & WRTPC) {
+		con(RELPC(patch[i-mod->prog+1]), RA0, 0);
+		mem(Stw, O(REG, PC), RREG, RA0);
+	}
+
 	if(m & SRCOP) {
 		if(UXSRC(i->add) == SRC(AIMM))
 			literal(i->s.imm, O(REG, s));
@@ -711,10 +740,7 @@ punt(Inst *i, int m, void (*fn)(void))
 		opwst(i, Lea, RA0);
 		mem(Stw, O(REG, d), RREG, RA0);
 	}
-	if(m & WRTPC) {
-		con(RELPC(patch[i-mod->prog+1]), RA0, 0);
-		mem(Stw, O(REG, PC), RREG, RA0);
-	}
+
 	if(m & DBRAN) {
 		pc = patch[i->d.ins-mod->prog];
 		literal((ulong)(base+pc), O(REG, d));
@@ -830,9 +856,9 @@ cbra(Inst *i, int r)
 		mid(i, Ldw, RA1);
 		CMPI(AL, RA1, 0, 0, i->s.imm);
 		r = swapbraop(r);
-	} else if(UXSRC(i->add) == SRC(AIMM) && FITS8(-i->s.imm)) {
+	} else if(UXSRC(i->add) == SRC(AIMM) && FITS8(-(ulong)i->s.imm)) {
 		mid(i, Ldw, RA1);
-		CMNI(AL, RA1, 0, 0, -i->s.imm);
+		CMNI(AL, RA1, 0, 0, -(ulong)i->s.imm);
 		r = swapbraop(r);
 	} else if((i->add & ARM) == AXIMM && FITS8(i->reg)) {
 		opwld(i, Ldw, RA1);
@@ -984,10 +1010,47 @@ comcasel(Inst *i)
 	t[0] = RELPC(patch[t[0]]);
 }
 
+/* Only nonnegative immediate links reach this native fast path. */
+static void
+modguard(Inst *i, int call)
+{
+	ulong *bad[3], *fast;
+	int j, offset;
+
+	if(call)
+		opwst(i, Ldw, RA0);
+	else
+		opwld(i, Ldw, RA0);
+	CMPH(AL, RA0);
+	bad[0] = code;
+	BRA(EQ, 0);
+	mem(Ldw, O(Modlink, nlinks), RA0, RA1);
+	con((short)i->reg, RA2, 1);
+	CMP(AL, RA1, 0, 0, RA2);
+	bad[1] = code;
+	BRA(LE, 0);
+	offset = call ? O(Modl, u.pc) : O(Modl, frame);
+	mem(Ldw, OA(Modlink, links)+i->reg*sizeof(Modl)+offset, RA0, RA3);
+	CMPI(AL, RA3, 0, 0, 0);
+	bad[2] = code;
+	BRA(EQ, 0);
+	CMPH(AL, RA3);
+	fast = code;
+	BRA(NE, 0);
+	for(j = 0; j < 3; j++)
+		PATCH(bad[j]);
+	punt(i, SRCOP|DSTOP|THREOP|(call ? WRTPC|NEWPC|TCHECK : 0), optab[i->op]);
+	if(!call)
+		BRADIS(AL, i-mod->prog+1);
+	PATCH(fast);
+}
+
 static void
 commframe(Inst *i)
 {
 	ulong *punt, *mlnil;
+
+	modguard(i, 0);
 
 	opwld(i, Ldw, RA0);
 	CMPH(AL, RA0);
@@ -1025,6 +1088,8 @@ commcall(Inst *i)
 {
 	ulong *mlnil;
 
+	modguard(i, 1);
+
 	opwld(i, Ldw, RA2);
 	con(RELPC(patch[i-mod->prog+1]), RA0, 0);
 	mem(Stw, O(Frame, lr), RA2, RA0);
@@ -1032,6 +1097,7 @@ commcall(Inst *i)
 	mem(Ldw, O(REG, M), RREG, RA3);
 	mem(Stw, O(Frame, mr), RA2, RA3);
 	opwst(i, Ldw, RA3);
+	con((ulong)H, RA0, 1); /* nil module must reach rmcall with dt == H */
 	CMPH(AL, RA3);
 	mlnil = code;
 	BRA(EQ, 0);
@@ -1061,61 +1127,6 @@ larith(Inst *i, int op, int opc)
 		opwst(i, Lea, RA3);
 	mem(Stw, Blo, RA3, RA2);
 	mem(Stw, Bhi, RA3, RA0);
-}
-
-static void
-movloop(Inst *i, int s)
-{
-	int b;
-
-	b = (s==1);
-	opwst(i, Lea, RA2);
-	LDxP(AL, RA1, RA0, s, b);
-	STxP(AL, RA2, RA0, s, b);
-	DPI(AL, Sub, RA3, RA3, 0, 1) | SBIT;
-	BRA(NE, (-3*4-8)>>2);
-}
-
-static void
-movmem(Inst *i)
-{
-	ulong *cp;
-
-	// source address already in RA1
-	if((i->add&ARM) != AXIMM){
-		mid(i, Ldw, RA3);
-		CMPI(AL, RA3, 0, 0, 0);
-		cp = code;
-		BRA(LE, 0);
-		movloop(i, 1);
-		PATCH(cp);
-		return;
-	}
-	switch(i->reg){
-	case 0:
-		break;
-	case 4:
-		LDW(AL, RA1, RA2, 0);
-		opwst(i, Stw, RA2);
-		break;
-	case 8:
-		LDW(AL, RA1, RA2, 0);
-		opwst(i, Lea, RA3);
-		LDW(AL, RA1, RA1, 4);
-		STW(AL, RA3, RA2, 0);
-		STW(AL, RA3, RA1, 4);
-		break;
-	default:
-		// could use ldm/stm loop...
-		if((i->reg&3) == 0) {
-			con(i->reg>>2, RA3, 1);
-			movloop(i, 4);
-		} else {
-			con(i->reg, RA3, 1);
-			movloop(i, 1);
-		}
-		break;
-	}
 }
 
 static
@@ -1171,10 +1182,11 @@ comp(Inst *i)
 		error(buf);
 		break;
 	case IMCALL:
-		if((i->add&ARM) == AXIMM)
+		/* Negative link numbers address exports through the VM helper. */
+		if((i->add&ARM) == AXIMM && (short)i->reg >= 0)
 			commcall(i);
 		else
-			punt(i, SRCOP|DSTOP|THREOP|WRTPC|NEWPC, optab[i->op]);
+			punt(i, SRCOP|DSTOP|THREOP|WRTPC|NEWPC|TCHECK, optab[i->op]);
 		break;
 	case ISEND:
 	case IRECV:
@@ -1200,6 +1212,11 @@ comp(Inst *i)
 		comcasel(i);
 		punt(i, SRCOP|DSTOP|NEWPC, optab[i->op]);
 		break;
+	/* Shared helpers validate shifts and define exceptional division. */
+	case ISHLW:
+	case ISHRW:
+	case ISHLB:
+	case ISHRB:
 	case IADDC:
 	case IMULL:
 	case IDIVL:
@@ -1255,7 +1272,8 @@ comp(Inst *i)
 		punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
 		break;
 	case IMFRAME:
-		if((i->add&ARM) == AXIMM)
+		/* Negative link numbers address exports through the VM helper. */
+		if((i->add&ARM) == AXIMM && (short)i->reg >= 0)
 			commframe(i);
 		else
 			punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
@@ -1283,23 +1301,9 @@ comp(Inst *i)
 		break;
 		break;
 	case IHEADM:
-		opwld(i, Ldw, RA1);
-		NOTNIL(RA1);
-		if(OA(List,data) != 0)
-			DPI(AL, Add, RA1, RA1, 0, OA(List,data));
-		movmem(i);
-		break;
-/*
-	case IHEADW:
-		opwld(i, Ldw, RA0);
-		NOTNIL(RA0);
-		mem(Ldw, OA(List, data), RA0, RA0);
-		opwst(i, Stw, RA0);
-		break;
-*/
 	case IMOVM:
-		opwld(i, Lea, RA1);
-		movmem(i);
+		/* The VM uses memmove: forward-only native loops corrupt overlaps. */
+		punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
 		break;
 	case IFRAME:
 		if(UXSRC(i->add) != SRC(AIMM)) {
@@ -1500,22 +1504,6 @@ comp(Inst *i)
 		}
 		opwst(i, Stw, RA0);
 		break;
-	case ISHRW:
-		r = 2;
-	shiftw:
-		mid(i, Ldw, RA1);
-		if(UXSRC(i->add) == SRC(AIMM) && FITS5(i->s.imm))
-			DP(AL, Mov, 0, RA0, ((i->s.imm&0x3F)<<3)|(r<<1), RA1);
-		else {
-			opwld(i, Ldw, RA0);
-			DP(AL, Mov, 0, RA0, (RA0<<4)|(r<<1)|1, RA1);
-		}
-		opwst(i, Stw, RA0);
-		break;
-	case ISHLW:
-		r = 0;
-		goto shiftw;
-		break;
 	case IORB:
 		r = Orr;
 		goto arithb;
@@ -1540,32 +1528,18 @@ comp(Inst *i)
 		}
 		opwst(i, Stb, RA0);
 		break;
-	case ISHRB:
-		r = 2;
-		goto shiftb;
-	case ISHLB:
-		r = 0;
-	shiftb:
-		mid(i, Ldb, RA1);
-		if(UXSRC(i->add) == SRC(AIMM) && FITS5(i->s.imm))
-			DP(AL, Mov, 0, RA0, ((i->s.imm&0x3F)<<3)|(r<<1), RA1);
-		else {
-			opwld(i, Ldw, RA0);
-			DP(AL, Mov, 0, RA0, (RA0<<4)|(r<<1)|1, RA1);
-		}
-		opwst(i, Stb, RA0);
-		break;
 	case IINDC:
 		opwld(i, Ldw, RA1);			// RA1 = string
 		NOTNIL(RA1);
 		imm = 1;
-		if((i->add&ARM) != AXIMM || !FITS12((short)i->reg<<Lg2Rune) || immrot((short)i->reg) == 0){
+		if((i->add&ARM) != AXIMM || !FITS12((ulong)(short)i->reg<<Lg2Rune) || immrot((short)i->reg) == 0){
 			mid(i, Ldw, RA2);			// RA2 = i
 			imm = 0;
 		}
 		mem(Ldw, O(String,len),RA1, RA0);	// len<0 => index Runes, otherwise bytes
 		if(bflag){
-			DPI(AL, Orr, RA0, RA3, 0, 0);
+			/* Copy len and set N with V cleared before the signed test. */
+			DPI(AL, Add, RA0, RA3, 0, 0) | SBIT;
 			DPI(LT, Rsb, RA3, RA3, 0, 0);
 			if(imm)
 				BCKR(immrot((short)i->reg), RA3);
@@ -1576,7 +1550,7 @@ comp(Inst *i)
 		CMPI(AL, RA0, 0, 0, 0);
 		if(imm){
 			LDB(GE, RA1, RA3, i->reg);
-			LDW(LT, RA1, RA3, (short)i->reg<<Lg2Rune);
+			LDW(LT, RA1, RA3, (ulong)(short)i->reg<<Lg2Rune);
 		} else {
 			LDRB(GE, RA1, RA3, 0, RA2);
 			DP(LT, Mov, 0, RA2, (Lg2Rune<<3), RA2);
@@ -1608,7 +1582,7 @@ comp(Inst *i)
 			if(bflag)
 				BCKR(imm, RA2);
 			if(i->d.imm != 0)
-				DPI(AL, Add, RA0, RA0, 0, 0) | immrot(i->d.imm<<r);
+				DPI(AL, Add, RA0, RA0, 0, 0) | immrot((ulong)i->d.imm<<r);
 		} else {
 			opwst(i, Ldw, RA1);
 			if(bflag)
@@ -1766,15 +1740,19 @@ comp(Inst *i)
 
 /* Unpublished helper buffers, reclaimed after a VM error unwind. */
 static ulong *armhelpertemp, *armhelpercode;
+/* Owned by the permanent comvec block, never by a Module. */
+static ulong *armfrp, *armret;
 
 static int
 preamble(void)
 {
-	ulong *start;
+	ulong *start, *frp, *ret;
 	if(comvec)
 		return 1;
 
-	start = malloc(10 * sizeof(*code));
+	armfrp = nil;
+	armret = nil;
+	start = malloc(512 * sizeof(*code));
 	armhelpercode = start;
 	if(start == nil)
 		return 0;
@@ -1787,13 +1765,19 @@ preamble(void)
 	mem(Ldw, O(REG, PC), RREG, R15);
 	pass++;
 	flushcon(0);
+	frp = code;
+	macfrp();
+	ret = code;
+	retbody();
 	pass--;
 
-	if(segflush(start, 10 * sizeof(*code)) != 0) {
+	if(segflush(start, (code-start)*sizeof(*code)) != 0) {
 		free(start);
 		armhelpercode = nil;
 		return 0;
 	}
+	armfrp = frp;
+	armret = ret;
 	comvec = (void(*)(void))start;
 	armhelpercode = nil;
 	return 1;
@@ -1892,70 +1876,43 @@ maccolr(void)
 static void
 macret(void)
 {
+	con((ulong)armret, R15, 0);
+}
+
+static void
+retbody(void)
+{
 	Inst i;
-	ulong *cp1, *cp2, *cp3, *cp4, *cp5, *linterp;
+	ulong *fallback[4];
+	int j;
 
 	CMPI(AL, RA1, 0, 0, 0);
-	cp1 = code;
-	BRA(EQ, 0);				// t(Rfp) == 0
-
-	mem(Ldw, O(Type,destroy),RA1, RA0);
-	CMPI(AL, RA0, 0, 0, 0);
-	cp2 = code;
-	BRA(EQ, 0);				// destroy(t(fp)) == 0
-
-	mem(Ldw, O(Frame,fp),RFP, RA2);
-	CMPI(AL, RA2, 0, 0, 0);
-	cp3 = code;
-	BRA(EQ, 0);				// fp(Rfp) == 0
-
-	mem(Ldw, O(Frame,mr),RFP, RA3);
-	CMPI(AL, RA3, 0, 0, 0);
-	cp4 = code;
-	BRA(EQ, 0);				// mr(Rfp) == 0
-
-	mem(Ldw, O(REG,M),RREG, RA2);
-	mem(Ldw, O(Heap,ref)-sizeof(Heap),RA2, RA3);
-	DPI(AL, Sub, RA3, RA3, 0, 1) | SBIT;
-	cp5 = code;
-	BRA(EQ, 0);				// --ref(arg) == 0
-	mem(Stw, O(Heap,ref)-sizeof(Heap),RA2, RA3);
-
-	mem(Ldw, O(Frame,mr),RFP, RA1);
-	mem(Stw, O(REG,M),RREG, RA1);
-	mem(Ldw, O(Modlink,MP),RA1, RMP);
-	mem(Stw, O(REG,MP),RREG, RMP);
-	mem(Ldw, O(Modlink,compiled), RA1, RA3);	// R.M->compiled
-	CMPI(AL, RA3, 0, 0, 0);
-	linterp = code;
+	fallback[0] = code;
 	BRA(EQ, 0);
-
-	PATCH(cp4);
-	MOV(R15, R14);		// call destroy(t(fp))
+	mem(Ldw, O(Type, destroy), RA1, RA0);
+	CMPI(AL, RA0, 0, 0, 0);
+	fallback[1] = code;
+	BRA(EQ, 0);
+	mem(Ldw, O(Frame, fp), RFP, RA2);
+	CMPI(AL, RA2, 0, 0, 0);
+	fallback[2] = code;
+	BRA(EQ, 0);
+	mem(Ldw, O(Frame, mr), RFP, RA3);
+	CMPI(AL, RA3, 0, 0, 0);
+	/* Keep the returning module alive until all frame pointers are freed.
+	 * Cross-module returns use VM ret from this permanent bridge. */
+	fallback[3] = code;
+	BRA(NE, 0);
+	MOV(R15, R14);
 	MOV(RA0, R15);
-
-	mem(Stw, O(REG,SP),RREG, RFP);
-	mem(Ldw, O(Frame,lr),RFP, RA1);
-	mem(Ldw, O(Frame,fp),RFP, RFP);
-	mem(Stw, O(REG,FP),RREG, RFP);	// R.FP = RFP
-	DP(AL, Mov, 0, R15, 0, RA1);		// goto lr(Rfp), if compiled
-
-	PATCH(linterp);
-	MOV(R15, R14);		// call destroy(t(fp))
-	MOV(RA0, R15);
-
-	mem(Stw, O(REG,SP),RREG, RFP);
-	mem(Ldw, O(Frame,lr),RFP, RA1);
-	mem(Ldw, O(Frame,fp),RFP, RFP);
-	mem(Stw, O(REG,PC),RREG, RA1);	// R.PC = fp->lr
-	mem(Stw, O(REG,FP),RREG, RFP);	// R.FP = RFP
-	mem(Ldw, O(REG, xpc), RREG, RLINK);
-	RETURN;		// return to xec uncompiled code
-
-	PATCH(cp1);
-	PATCH(cp2);
-	PATCH(cp3);
-	PATCH(cp5);
+	mem(Stw, O(REG, SP), RREG, RFP);
+	mem(Ldw, O(Frame, lr), RFP, RA1);
+	mem(Ldw, O(Frame, fp), RFP, RFP);
+	mem(Stw, O(REG, FP), RREG, RFP);
+	DP(AL, Mov, 0, R15, 0, RA1);
+	for(j = 0; j < 4; j++)
+		PATCH(fallback[j]);
+	memset(&i, 0, sizeof(i));
 	i.add = AXNON;
 	punt(&i, TCHECK|NEWPC, optab[IRET]);
 }
@@ -2003,11 +1960,13 @@ macmcal(void)
 static void
 macfram(void)
 {
-	ulong *lab1;
+	ulong *lab1, *overflow;
 
 	mem(Ldw, O(REG, SP), RREG, RA0);	// MOVL	R.SP, RA0
 	mem(Ldw, O(Type, size), RA3, RA1);
-	DP(AL, Add, RA0, RA0, 0, RA1);		// nsp = R.SP + t->size
+	DP(AL, Add, RA0, RA0, 0, RA1) | SBIT;
+	overflow = code;
+	BRA(CS, 0);		// nsp = R.SP + t->size
 	mem(Ldw, O(REG, TS), RREG, RA1);
 	CMP(AL, RA0, 0, 0, RA1);	// nsp :: R.TS
 	lab1 = code;
@@ -2022,6 +1981,7 @@ macfram(void)
 	mem(Ldw, O(Type, initialize), RA3, R15);	// become t->init(RA2), returning RA2
 
 	PATCH(lab1);
+	PATCH(overflow);
 	mem(Stw, O(REG, s), RREG, RA3);
 	mem(Stw, O(REG, st), RREG, RLINK);
 	mem(Stw, O(REG, FP), RREG, RFP);	// MOVL	RFP, R.FP
@@ -2072,7 +2032,7 @@ comd(Type *t)
 		for(m = 0x80; m != 0; m >>= 1) {
 			if(c & m) {
 				mem(Ldw, j, RFP, RA0);
-				CALL(base+macro[MacFRP]);
+				CALL(armfrp);
 			}
 			j += sizeof(WORD*);
 		}
@@ -2110,7 +2070,7 @@ typecom(Type *t)
 	ulong capacity;
 	ulong *tmp, *start, *destructor;
 
-	if(t == nil || t->initialize != 0)
+	if(t == nil || t->initialize != 0 || armfrp == nil)
 		return;
 
 	/* Each map byte describes at most eight pointers. Even large-offset
@@ -2184,16 +2144,6 @@ patchex(Module *m, ulong *p)
 
 /* Roll back only helpers created by this compilation; existing Type code
  * may be shared with modules that are already running. */
-static int
-armvalidpc(Module *m, Inst *pc, int size)
-{
-	uintptr start, address, offset;
-	start=(uintptr)m->prog; address=(uintptr)pc;
-	if(address < start)
-		return 0;
-	offset=address-start;
-	return offset%sizeof(Inst) == 0 && offset/sizeof(Inst) < size;
-}
 
 static int
 armvalidmeta(Module *m, int size, Modlink *ml)
@@ -2202,16 +2152,16 @@ armvalidmeta(Module *m, int size, Modlink *ml)
 	Handler *h;
 	Except *e;
 	int i;
-	if(!armvalidpc(m,m->entry,size))
+	if(!jitvalidpc(m,m->entry,size))
 		return 0;
 	for(l=m->ext; l->name; l++)
-		if(!armvalidpc(m,l->u.pc,size))
+		if(!jitvalidpc(m,l->u.pc,size))
 			return 0;
 	if(ml != nil) {
 		if(ml->nlinks < 0)
 			return 0;
 		for(i=0; i<ml->nlinks; i++)
-			if(!armvalidpc(m,ml->links[i].u.pc,size))
+			if(!jitvalidpc(m,ml->links[i].u.pc,size))
 				return 0;
 	}
 	if(m->htab != nil)
@@ -2273,10 +2223,10 @@ armcompile(void *arg)
 
 	c=arg; m=c->m; ml=c->ml; size=c->size;
 	if(m == nil || m->compiled || size <= 0 || size != m->nprog ||
-	   m->ntype < 0 || m->prog == nil || m->ext == nil ||
+	   m->ntype < 0 || m->prog == nil || m->ext == nil || m->origmp == nil ||
 	   (m->ntype != 0 && m->type == nil) ||
 	   size >= 0x7fffffff/sizeof(*patch) ||
-	   size > 0x7fffffff/sizeof(Inst) || !armvalidmeta(m,size,ml))
+	   size > 0x7fffffff/sizeof(Inst) || (!armvalidmeta(m,size,ml) || !jitvalidprogram(m,size)))
 		return 0;
 	base=nil; patch=nil; tinit=nil; c->tmp=nil;
 	c->stagedmp=nil; c->shadow=nil; c->savedtypes=nil; c->ntypes=0; datasize=0;
@@ -2323,7 +2273,7 @@ armcompile(void *arg)
 	memmove(c->shadow,m,sizeof(*c->shadow));
 	if(c->stagedmp != nil)
 		c->shadow->origmp=c->stagedmp;
-	patch=mallocz((size+1)*sizeof(*patch),0);
+	patch=mallocz((size+1)*sizeof(*patch),1);
 	if(m->ntype != 0)
 		tinit=mallocz(m->ntype*sizeof(*tinit),1);
 	c->tmp=malloc(4096*sizeof(ulong));
