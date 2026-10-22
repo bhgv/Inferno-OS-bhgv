@@ -5,13 +5,18 @@
 #include <string.h>
 #include <math.h>
 #include <stdarg.h>
+#include <setjmp.h>
 
 typedef int64_t Long;
 typedef uint64_t uvlong;
 typedef double Real;
+typedef int64_t vlong;
+#include "isa.h"
 enum {Tint, Tbyte, Tbig, Treal, Tfix, Tstring, NumSize = 128};
-typedef struct { int kind; double factor; } Type;
 typedef struct { int line; } Src;
+typedef struct { int kind; double factor; struct {int start;} src; } Type;
+static Type inttype={Tint,1};
+static Type *tint=&inttype;
 typedef struct { char *name; } Sym;
 typedef struct { Sym *sym; } Decl;
 typedef struct Node Node;
@@ -33,18 +38,38 @@ strtoi(char *text, int base)
 	return strtoll(text, nil, base);
 }
 
-/* Fixed-point and formatted-string targets are outside this fixture. */
-static Long real2fix(double value, Type *type) { (void)value; (void)type; abort(); }
-/* Bind fixed-point scaling while retaining the production fix2real body. */
+/* Bind scale lookup while compiling production conversion helpers. */
 static double scale(Type *type) { return type->factor; }
-static Long fix2fix(Long value, Type *from, Type *to) { (void)value; (void)from; (void)to; abort(); }
 static int tequal(Type *a, Type *b) { return a == b; }
 static void *allocmem(int size) { (void)size; abort(); }
 static char *seprint(char *p, char *end, char *format, ...) { (void)p; (void)end; (void)format; abort(); }
 static Decl *enterstring(char *text, int n) { (void)text; (void)n; abort(); }
 static Node *mksconst(Src *src, Decl *decl) { (void)src; (void)decl; abort(); }
 static Node *foldcasti(Node*, Node*);
+/* Valid fixture scales must not generate compiler diagnostics. */
+static void compilererror(int line,const char *text) { (void)line; (void)text; abort(); }
+/* Unexpected internal selection failures are test failures. */
+static void fatal(const char *text) { (void)text; abort(); }
+#define error compilererror
+SELECTBODY
+#undef error
 IMPLEMENTATION
+/* Use actual VM conversion code with a local error boundary and WORD32 storage. */
+typedef double REAL;
+typedef int32_t WORD;
+typedef uint32_t UWORD;
+typedef int64_t LONG;
+static WORD Stmp,Dtmp;
+static struct {void *s,*m,*d;} R;
+static jmp_buf boundary;
+static int vmerror;
+static char exInval[]="invalid",exZdiv[]="zero";
+/* Preserve the destination when the VM rejects an exceptional conversion. */
+static void error(char *text) { assert(text==exInval); vmerror=1; longjmp(boundary,1); }
+#define OP(n) static void n(void)
+#define F(r) (*(REAL*)R.r)
+#define W(r) (*(WORD*)R.r)
+VMBODY
 
 /* Canonical signed-32 arithmetic uses a wider intermediate as an independent oracle. */
 static Long
@@ -143,61 +168,112 @@ realcase(double value, int kind)
 	checks++;
 }
 
-/* Fixed-point sources truncate as before, then narrow to the destination width. */
+/* Match exact fixed instruction rounding while retaining compile-time constants. */
 static void
 fixed(void)
 {
-	Type source = {Tfix, .25}, target;
+	Type source = {Tfix,.25}, target;
 	Node left, cast;
 	Long expected;
 	int kind, value;
 
-	for(kind = Tint; kind <= Tbig; kind++)
+	for(kind = Tint; kind <= Tfix; kind++)
 		for(value = -4096; value <= 4096; value++) {
-			target = (Type){kind, 0};
+			if(kind == Treal) continue;
+			target = (Type){kind, .5};
 			left = (Node){&source, {1}, value, 0, nil};
 			cast = (Node){&target, {99}, 0, 0, nil};
-			expected = value/4;
-			if(kind == Tbyte) expected = (uvlong)expected&255;
-			assert(foldcast(&cast, &left) == &left);
-			assert(left.val == expected && left.ty == &target && left.src.line == 99);
+			expected = kind==Tfix ? value>>1 : value>>2;
+			if(kind==Tbig) expected=(Long)(value*.25+(value<0?-.5:.5));
+			if(kind==Tbyte) expected &= 255;
+			assert(foldcast(&cast,&left) == &left);
+			assert(left.val==expected && left.ty==&target && left.src.line==99);
 			checks++;
 		}
+	left = (Node){&source,{1},-1,0,nil};
+	cast = (Node){&source,{99},0,0,nil};
+	assert(foldcast(&cast,&left) == &left); checks++;
 }
 
-/* Fixed-point scaling can round a boundary beyond the native integer domain. */
+/* Int/byte inputs use fixed instructions; big inputs follow the real precast. */
 static void
-fixedbounds(void)
+fixedinputs(void)
 {
-	Type source = {Tfix, 1}, target;
-	Long values[] = {INT64_MIN, INT64_MAX, INT32_MIN, INT32_MAX};
-	double factors[] = {.25, 1, 2};
-	Node left, original, cast, *result;
-	long double converted;
-	Long expected;
-	int kind, valid;
-	unsigned int i, j;
+	Type source, target={Tfix,.25};
+	Node left,cast,original;
+	int kind, value;
 
-	for(kind = Tint; kind <= Tbig; kind++)
-		for(i = 0; i < sizeof(values)/sizeof(values[0]); i++)
-			for(j = 0; j < sizeof(factors)/sizeof(factors[0]); j++) {
-				source.factor = factors[j];
-				target = (Type){kind, 0};
-				left = (Node){&source, {1}, values[i], 0, nil};
-				memcpy(&original, &left, sizeof(left));
-				cast = (Node){&target, {99}, 0, 0, nil};
-				converted = truncl((long double)((double)values[i]*factors[j]));
-				valid = converted >= -9223372036854775808.0L && converted < 9223372036854775808.0L;
-				if(kind != Tbig) valid = valid && converted >= -2147483648.0L && converted < 2147483648.0L;
-				result = foldcast(&cast, &left);
-				if(valid) {
-					expected = (Long)converted;
-					if(kind == Tbyte) expected = (uvlong)expected&255;
-					assert(result == &left && left.val == expected);
-				}else
-					assert(result == &cast && memcmp(&original, &left, sizeof(left)) == 0);
-				checks++;
+	for(kind=Tint;kind<=Tbig;kind++) for(value=-255;value<=255;value++) {
+		source=(Type){kind,1};
+		left=(Node){&source,{1},kind==Tbyte ? value&255 : value,0,nil};
+		original=left;cast=(Node){&target,{99},0,0,nil};
+		assert(foldcast(&cast,&left)==&left && left.val==original.val*4);
+		checks++;
+	}
+}
+
+/* Cross-check fixed constant results with the exact selected VM instruction. */
+static void
+fixedpipeline(void)
+{
+	double factors[]={.03125,.1,.25,.5,1,1.5,3,17};
+	Type source={Tfix,1},target={Tfix,1};
+	Node left,cast;
+	WORD input,count,output;
+	int i,j,k,op,p,a;
+
+	for(i=0;i<8;i++) for(j=0;j<8;j++) for(k=-1024;k<=1024;k++) {
+		source.factor=factors[i];target.factor=factors[j];
+		left=(Node){&source,{1},k,0,nil};cast=(Node){&target,{99},0,0,nil};
+		assert(foldcast(&cast,&left)==&left);
+		op=fixop(ICVTXX,&source,tint,&target,&p,&a);
+		input=k;count=p;output=123;Stmp=a;
+		R.s=&input;R.m=&count;R.d=&output;
+		if(op==IMOVW) output=0;
+		else if(op==ICVTXX) cvtxx();
+		else if(op==ICVTXX0) cvtxx0();
+		else { assert(op==ICVTXX1);cvtxx1(); }
+		assert(left.val==output);checks++;
+	}
+}
+
+/* Compare compiler real/string folding directly with the production WORD32 VM. */
+static void
+fixedtargets(void)
+{
+	Type source={Treal,1},target={Tfix,1};
+	double scales[]={1,.25,.5,1.5,3,1e-300,1e300,0x1p-1074};
+	double edges[]={NAN,INFINITY,-INFINITY,0,-0.,.125,-.125,.5,-.5,
+		2147483647.,2147483647.5,-2147483648.,-2147483648.5,1e300,-1e300};
+	Node left,original,cast,*result;
+	char text[64]; Sym symbol={text}; Decl decl={&symbol};
+	double input,factor,rounded;
+	int32_t output;
+	int i,j,mode,valid;
+
+	for(j=0;j<8;j++) for(i=-4096;i<(int)(sizeof(edges)/sizeof(edges[0]));i++) {
+		input=i<0?i*.125:edges[i];target.factor=scales[j];factor=1/scales[j];
+		for(mode=0;mode<2;mode++) {
+			source.kind=mode?Tstring:Treal;
+			if(mode) snprintf(text,sizeof(text),"%.17g",input);
+			left=(Node){&source,{1},123,input,mode?&decl:nil};
+			original=left;cast=(Node){&target,{99},0,0,nil};
+			rounded=input*factor;rounded=rounded<0?rounded-.5:rounded+.5;
+			valid=isfinite(rounded) && truncl((long double)rounded)>=INT32_MIN &&
+				truncl((long double)rounded)<=INT32_MAX;
+			result=foldcast(&cast,&left);
+			output=12345; R.s=&input;R.m=&factor;R.d=&output;vmerror=0;
+			if(setjmp(boundary)==0) cvtfx();
+			if(valid) {
+				assert(!vmerror && result==&left && left.val==output);
+				assert(left.ty==&target && left.src.line==99);
+			}else {
+				assert(vmerror && output==12345 && result==&cast);
+				assert(!memcmp(&original,&left,sizeof(left)));
 			}
+			checks++;
+		}
+	}
 }
 
 /* Exercise ties, byte wrapping, signed boundaries, NaNs and infinities. */
@@ -214,7 +290,9 @@ main(void)
 	integers();
 	strings();
 	fixed();
-	fixedbounds();
+	fixedinputs();
+	fixedtargets();
+	fixedpipeline();
 	for(kind = Tint; kind <= Tbig; kind++) {
 		for(step = -4096; step <= 4096; step++) realcase(step*.25, kind);
 		for(i = 0; i < sizeof(edges)/sizeof(edges[0]); i++) realcase(edges[i], kind);

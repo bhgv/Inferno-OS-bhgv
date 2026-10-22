@@ -4,52 +4,49 @@ Run from the repository root:
 
 ```sh
 python3 limbo/tests/fold-casts.py
-```
-
-The fixture extracts production foldcast, foldcasti, fix2real and the integer
-conversion helpers. It checks 73,860 source/destination, width, rounding and
-unmodified-AST cases. UBSan and float-cast-overflow instrumentation are enabled
-with immediate failure by default. AST allocation, string parsing and fixed-point
-scale lookup are bounded dependency models; production numeric parsing has
-separate tests in numeric-lexer.py. Formatted-string and fixed-point destinations
-are outside this fixture.
-
-Integer sources cover int, byte and big, with every integer destination plus real,
-using signed boundaries and deterministic full-width values. Widened arithmetic
-provides the signed-32 oracle. The compiler's existing Dis int32 model is retained
-independently of native host long size. Signed extension no longer shifts a
-positive signed value into the sign bit of Long.
-
-String-to-integer results now pass through the same destination normalization as
-integer casts. Real and fixed-point sources also normalize byte results instead
-of attaching byte type to a value outside 0..255. Real conversion retains the
-existing half-away-from-zero expression used by the interpreter; fixed-point
-sources retain their existing truncation behavior before narrowing.
-
-Real-to-integer folding first verifies that the rounded intermediate fits Long.
-Int/byte paths additionally require a representable Dis int32 intermediate.
-Comparisons reject NaNs and infinities before any native integer cast. Unsafe
-cases return the original cast expression without modifying the source constant,
-including its type, source location and value. Boundary tests use long-double
-truncation as the range oracle and include nextafter neighbors around signed-64
-limits. Fixed-point tests cover scale 1/4 and boundary scales 1 and 2.
-
-Deferring an unsafe fold does not define new runtime semantics for out-of-range
-real-to-integer conversions. Such conversions remain ordinary runtime expressions;
-contexts requiring a compile-time constant may consequently reject them instead
-of depending on an undefined host C conversion. No VM opcode, builtin signature
-or active ABI layout changes are made by this patch.
-
-Baseline probes reproduce signed-shift undefined behavior, missing string/real/
-fixed-point byte narrowing, and nonfinite native conversion. This is a focused
-host fixture, not a complete compiler build or target JIT execution test.
-
-A supplementary AddressSanitizer+UBSan+float-cast-overflow run also passes:
-
-```sh
 CFLAGS='-O1 -g -fsanitize=address,undefined,float-cast-overflow -fno-omit-frame-pointer' python3 limbo/tests/fold-casts.py
 ```
 
-Stack instrumentation remains enabled in this fixture, which does not unwind VM
-errors. LeakSanitizer is explicitly disabled because process inspection is
-unavailable in the sandbox; the fixture uses no heap allocation.
+The fixture compiles production cast folding, fixed opcode selection and VM
+fixed conversion bodies. It passes 280,463 checks under UBSan including
+float-cast-overflow and ASan+UBSan. Minimal AST/type models supply scale lookup,
+source locations, equality, string parsing and diagnostics. Real instruction
+numbers come from isa.h. Formatted-string allocation and complete compiler
+parsing/code emission remain outside this host fixture.
+
+Integer int/byte/big sources retain canonical signed-32 or byte narrowing before
+conversion. Real-to-integer folding retains the interpreter's half-away-from-zero
+expression and rejects rounded native intermediates outside the destination's
+representable domain. Rejected folds retain the source constant's complete type,
+location and value. Existing signed boundaries, string inputs and nextafter
+neighbors around signed-64 limits remain covered.
+
+Fixed integer conversions now evaluate the exact selected WORD32 cvtxx/cvtxx0/
+cvtxx1 bit steps rather than assuming floating-point rounding matches them.
+Arithmetic right shifts, finite-width left shifts, coefficient division and
+rounding flags match production VM instructions. Fixed-to-big follows codegen's
+real precast and half-away rounding. Int/byte-to-fixed uses fixed instructions;
+big-to-fixed follows its real precast. Valid conversions remain compile-time
+constants, including fixed-to-fixed casts. The removed real2fix/fix2fix helpers
+performed unchecked native casts and could not model these distinct paths.
+
+All 64 combinations of eight scales are tested for each input -1024 through
+1024, comparing the folded result directly with the selected production WORD32
+VM instruction. Additional fixed source and int/byte/big target cases check
+negative fractions, integer narrowing and preservation of same-type constants.
+
+Real and string fixed targets use reciprocal multiplication, matching the factor
+emitted by codegen, before half-away rounding and signed-32 range validation.
+Eight target scales include very small/large values and a subnormal scale.
+Finite cases, ties, NaN/infinity and boundary values compare folding against the
+actual real-to-fixed VM function. Invalid folds retain the source AST and remain
+runtime expressions; contexts requiring a constant may reject such inputs.
+Production parsing of strings and target libmath are not modeled here.
+
+Baseline tests reproduce mismatched fixed rounding and native float-cast-overflow
+in real-to-fixed execution. This suite uses a WORD32 scalar model with native
+pointers and minimal registers; it does not establish a new Dis ABI or validate
+native JIT calling conventions. Full optimized compiler builds and Inferno boot
+remain outside scope. ASan stack instrumentation is enabled, including the local
+setjmp VM-error fixture. LeakSanitizer inspection is disabled for the sandbox;
+this fixture allocates no dynamic heap.

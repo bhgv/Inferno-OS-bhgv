@@ -56,24 +56,6 @@ rpow(double x, int n)
 	return result;
 }
 
-Long
-real2fix(double v, Type *t)
-{
-	v /= scale(t);
-	v = v < 0 ? v-0.5: v+0.5;
-	return v;
-}
-
-Long
-fix2fix(Long v, Type *f, Type *t)
-{
-	double r;
-
-	r = (double)v * (scale(f)/scale(t));
-	r = r < 0 ? r-0.5: r+0.5;
-	return r;
-}
-
 double
 fix2real(Long v, Type *f)
 {
@@ -675,6 +657,66 @@ foldrealint(Real value, int kind, Long *result)
 	return 1;
 }
 
+/* Match the real-to-fixed instruction's reciprocal multiply before rounding. */
+static int
+foldrealtofixed(Real value, Type *type, Long *result)
+{
+	Real converted;
+
+	converted = value*(1.0/scale(type));
+	converted = converted < 0 ? converted-.5 : converted+.5;
+	return foldrealint(converted, Tint, result);
+}
+
+/* Evaluate the selected WORD32 fixed conversion with the VM's exact bit steps. */
+static int
+foldfixedcast(Long value, Type *from, Type *to, Long *result)
+{
+	int op, shift, coefficient, flags;
+	Long correction, converted;
+	uvlong bits, mask;
+
+	op = fixop(ICVTXX, from, tint, to, &shift, &coefficient);
+	if(op == IMOVW){
+		*result = 0;
+		return 1;
+	}
+	flags = 0;
+	if(op == ICVTXX1){
+		flags = shift&3;
+		shift >>= 2;
+	}else if(op != ICVTXX && op != ICVTXX0)
+		return 0;
+	if(shift < -63 || shift > 63 || (op != ICVTXX && coefficient <= 0))
+		return 0;
+	value = foldint32(value);
+	correction = 0;
+	mask = 0;
+	if(flags&2){
+		correction = coefficient-1;
+		if(value < 0)
+			correction = -correction;
+	}
+	if((flags&1) && ((!(flags&2) && value < 0) || ((flags&2) && value > 0))){
+		if(shift >= 0)
+			return 0;
+		mask = ((uvlong)1<<(-shift))-1;
+	}
+	bits = (uvlong)value+mask;
+	if(shift >= 0)
+		bits <<= shift;
+	else if(bits>>63)
+		bits = ~((~bits)>>(-shift));
+	else
+		bits >>= -shift;
+	bits += (uvlong)correction;
+	converted = (Long)bits;
+	if(op != ICVTXX)
+		converted /= coefficient;
+	*result = foldint32(converted);
+	return 1;
+}
+
 /* Fold casts only when their native intermediate conversion is representable. */
 Node*
 foldcast(Node *n, Node *left)
@@ -702,7 +744,8 @@ foldcast(Node *n, Node *left)
 				return n;
 			return foldcasti(n, left);
 		case Tfix:
-			left->val = real2fix(left->rval, n->ty);
+			if(!foldrealtofixed(left->rval, n->ty, &left->val))
+				return n;
 			break;
 		case Tstring:
 			buf = allocmem(NumSize);
@@ -717,8 +760,12 @@ foldcast(Node *n, Node *left)
 		case Tint:
 		case Tbyte:
 		case Tbig:
-			r = fix2real(left->val, left->ty);
-			if(!foldrealint(r, n->ty->kind, &left->val))
+			if(n->ty->kind == Tbig){
+				r = fix2real(left->val, left->ty);
+				r = r < 0 ? r-.5 : r+.5;
+				if(!foldrealint(r, Tbig, &left->val))
+					return n;
+			}else if(!foldfixedcast(left->val, left->ty, tint, &left->val))
 				return n;
 			return foldcasti(n, left);
 		case Treal:
@@ -727,7 +774,8 @@ foldcast(Node *n, Node *left)
 		case Tfix:
 			if(tequal(left->ty, n->ty))
 				return left;
-			left->val = fix2fix(left->val, left->ty, n->ty);
+			if(!foldfixedcast(left->val, left->ty, n->ty, &left->val))
+				return n;
 			break;
 		case Tstring:
 			buf = allocmem(NumSize);
@@ -748,7 +796,8 @@ foldcast(Node *n, Node *left)
 			left->rval = strtod(left->decl->sym->name, nil);
 			break;
 		case Tfix:
-			left->val = real2fix(strtod(left->decl->sym->name, nil), n->ty);
+			if(!foldrealtofixed(strtod(left->decl->sym->name, nil), n->ty, &left->val))
+				return n;
 			break;
 		default:
 			return n;
@@ -781,7 +830,11 @@ foldcasti(Node *n, Node *left)
 		left->rval = left->val;
 		break;
 	case Tfix:
-		left->val = real2fix(left->val, n->ty);
+		if(left->ty->kind == Tbig){
+			if(!foldrealtofixed((Real)left->val, n->ty, &left->val))
+				return n;
+		}else if(!foldfixedcast(left->val, tint, n->ty, &left->val))
+			return n;
 		break;
 	case Tstring:
 		buf = allocmem(NumSize);
