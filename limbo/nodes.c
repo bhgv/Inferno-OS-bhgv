@@ -648,6 +648,30 @@ nodes(Node *n)
 	return 1+nodes(n->left)+nodes(n->right);
 }
 
+/* Canonicalize a Limbo int using widened arithmetic instead of signed shifts. */
+static Long
+foldint32(Long value)
+{
+	uvlong bits;
+
+	bits = (uvlong)value;
+	return (Long)(bits & 0x7fffffff)-(Long)(bits & 0x80000000);
+}
+
+/* Leave exceptional or out-of-range real conversions for ordinary execution. */
+static int
+foldrealint(Real value, int kind, Long *result)
+{
+	if(!(value >= -9223372036854775808.0 && value < 9223372036854775808.0))
+		return 0;
+	/* Byte conversions use a representable Dis int before narrowing. */
+	if(kind != Tbig && (value <= -2147483649.0 || value >= 2147483648.0))
+		return 0;
+	*result = (Long)value;
+	return 1;
+}
+
+/* Fold casts only when their native intermediate conversion is representable. */
 Node*
 foldcast(Node *n, Node *left)
 {
@@ -656,9 +680,7 @@ foldcast(Node *n, Node *left)
 
 	switch(left->ty->kind){
 	case Tint:
-		left->val &= 0xffffffff;
-		if(left->val & 0x80000000)
-			left->val |= (Long)0xffffffff << 32;
+		left->val = foldint32(left->val);
 		return foldcasti(n, left);
 	case Tbyte:
 		left->val &= 0xff;
@@ -671,8 +693,10 @@ foldcast(Node *n, Node *left)
 		case Tbyte:
 		case Tbig:
 			r = left->rval;
-			left->val = r < 0 ? r - .5 : r + .5;
-			break;
+			r = r < 0 ? r-.5 : r+.5;
+			if(!foldrealint(r, n->ty->kind, &left->val))
+				return n;
+			return foldcasti(n, left);
 		case Tfix:
 			left->val = real2fix(left->rval, n->ty);
 			break;
@@ -689,8 +713,10 @@ foldcast(Node *n, Node *left)
 		case Tint:
 		case Tbyte:
 		case Tbig:
-			left->val = fix2real(left->val, left->ty);
-			break;
+			r = fix2real(left->val, left->ty);
+			if(!foldrealint(r, n->ty->kind, &left->val))
+				return n;
+			return foldcasti(n, left);
 		case Treal:
 			left->rval = fix2real(left->val, left->ty);
 			break;
@@ -713,7 +739,7 @@ foldcast(Node *n, Node *left)
 		case Tbyte:
 		case Tbig:
 			left->val = strtoi(left->decl->sym->name, 10);
-			break;
+			return foldcasti(n, left);
 		case Treal:
 			left->rval = strtod(left->decl->sym->name, nil);
 			break;
@@ -732,9 +758,7 @@ foldcast(Node *n, Node *left)
 	return left;
 }
 
-/*
- * left is some kind of int type
- */
+/* Narrow integer constants before changing their type or exposing their value. */
 Node*
 foldcasti(Node *n, Node *left)
 {
@@ -742,9 +766,7 @@ foldcasti(Node *n, Node *left)
 
 	switch(n->ty->kind){
 	case Tint:
-		left->val &= 0xffffffff;
-		if(left->val & 0x80000000)
-			left->val |= (Long)0xffffffff << 32;
+		left->val = foldint32(left->val);
 		break;
 	case Tbyte:
 		left->val &= 0xff;
