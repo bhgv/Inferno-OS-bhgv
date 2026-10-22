@@ -168,36 +168,55 @@ ipcopymp(mpint* b)
 /*
  *  digests
  */
+/* Copy the native digest before releasing a possibly aliased previous result. */
 void
 DigestState_copy(void *fp)
 {
 	F_DigestState_copy *f;
 	Heap *h;
 	XDigestState *ds, *ods;
-	void *r;
+	Crypt_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
-
+	result = H;
 	if(f->d != H){
 		ods = checktype(f->d, TDigestState, "DigestState", 0);
 		h = heap(TDigestState);
-		ds = H2D(XDigestState*, h); 	
-		memmove(&ds->state, &ods->state, sizeof(ds->state)); 
-		*f->ret = (Crypt_DigestState*)ds;
+		ds = H2D(XDigestState*, h);
+		memmove(&ds->state, &ods->state, sizeof(ds->state));
+		result = (Crypt_DigestState*)ds;
 	}
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate byte spans at their full VM width before any native length conversion. */
+static WORD
+crypt_digestarray(Array *array)
+{
+	if(array == H || array == nil)
+		error(exNilref);
+	if(D2H(array)->t != &Tarray || array->t != &Tbyte)
+		error(exType);
+	if(array->len < 0 || (uvlong)array->len > 0x7fffffff ||
+	   (array->len != 0 && array->data == nil))
+		error(exInval);
+	return array->len;
+}
+
+/* Validate all spans before acquiring the returned state reference. */
 static Crypt_DigestState*
-crypt_digest_x(Array *buf, int n, Array *digest, int dlen, Crypt_DigestState *state, DigestState* (*fn)(uchar*, ulong, uchar*, DigestState*))
+crypt_digest_x(Array *buf, WORD n, Array *digest, int dlen, Crypt_DigestState *state, DigestState* (*fn)(uchar*, ulong, uchar*, DigestState*))
 {
 	Heap *h;
 	XDigestState *ds;
 	uchar *cbuf, *cdigest;
 
+	if(n < 0)
+		error(exInval);
 	if(buf != H){
+		crypt_digestarray(buf);
 		if(n > buf->len)
 			n = buf->len;
 		cbuf = buf->data;
@@ -208,6 +227,7 @@ crypt_digest_x(Array *buf, int n, Array *digest, int dlen, Crypt_DigestState *st
 	}
 
 	if(digest != H){
+		crypt_digestarray(digest);
 		if(digest->len < dlen)
 			error(exBadDigest);
 		cdigest = digest->data;
@@ -226,112 +246,123 @@ crypt_digest_x(Array *buf, int n, Array *digest, int dlen, Crypt_DigestState *st
 	return (Crypt_DigestState*)ds;
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Crypt_sha1(void *fp)
 {
 	F_Crypt_sha1 *f;
-	void *r;
+	Crypt_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 
-	*f->ret = crypt_digest_x(f->buf, f->n, f->digest, SHA1dlen, f->state, sha1);
+	result = crypt_digest_x(f->buf, f->n, f->digest, SHA1dlen, f->state, sha1);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Crypt_sha224(void *fp)
 {
 	F_Crypt_sha224 *f;
-	void *r;
+	Crypt_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 
-	*f->ret = crypt_digest_x(f->buf, f->n, f->digest, SHA224dlen, f->state, sha224);
+	result = crypt_digest_x(f->buf, f->n, f->digest, SHA224dlen, f->state, sha224);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Crypt_sha256(void *fp)
 {
 	F_Crypt_sha256 *f;
-	void *r;
+	Crypt_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 
-	*f->ret = crypt_digest_x(f->buf, f->n, f->digest, SHA256dlen, f->state, sha256);
+	result = crypt_digest_x(f->buf, f->n, f->digest, SHA256dlen, f->state, sha256);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Crypt_sha384(void *fp)
 {
 	F_Crypt_sha384 *f;
-	void *r;
+	Crypt_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 
-	*f->ret = crypt_digest_x(f->buf, f->n, f->digest, SHA384dlen, f->state, sha384);
+	result = crypt_digest_x(f->buf, f->n, f->digest, SHA384dlen, f->state, sha384);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Crypt_sha512(void *fp)
 {
 	F_Crypt_sha512 *f;
-	void *r;
+	Crypt_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 
-	*f->ret = crypt_digest_x(f->buf, f->n, f->digest, SHA512dlen, f->state, sha512);
+	result = crypt_digest_x(f->buf, f->n, f->digest, SHA512dlen, f->state, sha512);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Crypt_md5(void *fp)
 {
 	F_Crypt_md5 *f;
-	void *r;
+	Crypt_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 
-	*f->ret = crypt_digest_x(f->buf, f->n, f->digest, MD5dlen, f->state, md5);
+	result = crypt_digest_x(f->buf, f->n, f->digest, MD5dlen, f->state, md5);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Crypt_md4(void *fp)
 {
 	F_Crypt_md4 *f;
-	void *r;
+	Crypt_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 
-	*f->ret = crypt_digest_x(f->buf, f->n, f->digest, MD4dlen, f->state, md4);
+	result = crypt_digest_x(f->buf, f->n, f->digest, MD4dlen, f->state, md4);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate all spans before acquiring the returned state reference. */
 static Crypt_DigestState*
-crypt_hmac_x(Array *data, int n, Array *key, Array *digest, int dlen, Crypt_DigestState *state, DigestState* (*fn)(uchar*, ulong, uchar*, ulong, uchar*, DigestState*))
+crypt_hmac_x(Array *data, WORD n, Array *key, Array *digest, int dlen, Crypt_DigestState *state, DigestState* (*fn)(uchar*, ulong, uchar*, ulong, uchar*, DigestState*))
 {
 	Heap *h;
 	XDigestState *ds;
 	uchar *cdata, *cdigest;
 
+	if(n < 0)
+		error(exInval);
 	if(data != H){
+		crypt_digestarray(data);
 		if(n > data->len)
 			n = data->len;
 		cdata = data->data;
@@ -341,10 +372,13 @@ crypt_hmac_x(Array *data, int n, Array *key, Array *digest, int dlen, Crypt_Dige
 		cdata = nil;
 	}
 
-	if(key == H || key->len > 64)
+	if(key == H || key == nil)
+		error(exBadKey);
+	if(crypt_digestarray(key) > 64)
 		error(exBadKey);
 
 	if(digest != H){
+		crypt_digestarray(digest);
 		if(digest->len < dlen)
 			error(exBadDigest);
 		cdigest = digest->data;
@@ -363,30 +397,32 @@ crypt_hmac_x(Array *data, int n, Array *key, Array *digest, int dlen, Crypt_Dige
 	return (Crypt_DigestState*)ds;
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Crypt_hmac_sha1(void *fp)
 {
 	F_Crypt_hmac_sha1 *f;
-	void *r;
+	Crypt_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
-	*f->ret = crypt_hmac_x(f->data, f->n, f->key, f->digest, SHA1dlen, f->state, hmac_sha1);
+	result = crypt_hmac_x(f->data, f->n, f->key, f->digest, SHA1dlen, f->state, hmac_sha1);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Crypt_hmac_md5(void *fp)
 {
 	F_Crypt_hmac_md5 *f;
-	void *r;
+	Crypt_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
-	*f->ret = crypt_hmac_x(f->data, f->n, f->key, f->digest, MD5dlen, f->state, hmac_md5);
+	result = crypt_hmac_x(f->data, f->n, f->key, f->digest, MD5dlen, f->state, hmac_md5);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
 void

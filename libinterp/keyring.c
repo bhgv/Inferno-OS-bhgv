@@ -1173,36 +1173,55 @@ Keyring_verifym(void *fp)
 /*
  *  digests
  */
+/* Copy the native digest before releasing a possibly aliased previous result. */
 void
 Keyring_DigestState_copy(void *fp)
 {
 	F_DigestState_copy *f;
 	Heap *h;
 	XDigestState *ds, *ods;
-	void *r;
+	Keyring_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
-
+	result = H;
 	if(f->d != H){
 		ods = checktype(f->d, TDigestState, "DigestState", 0);
 		h = heap(TDigestState);
-		ds = H2D(XDigestState*, h); 	
-		memmove(&ds->state, &ods->state, sizeof(ds->state)); 
-		*f->ret = (Keyring_DigestState*)ds;
+		ds = H2D(XDigestState*, h);
+		memmove(&ds->state, &ods->state, sizeof(ds->state));
+		result = (Keyring_DigestState*)ds;
 	}
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate byte spans at their full VM width before any native length conversion. */
+static WORD
+keyring_digestarray(Array *array)
+{
+	if(array == H || array == nil)
+		error(exNilref);
+	if(D2H(array)->t != &Tarray || array->t != &Tbyte)
+		error(exType);
+	if(array->len < 0 || (uvlong)array->len > 0x7fffffff ||
+	   (array->len != 0 && array->data == nil))
+		error(exInval);
+	return array->len;
+}
+
+/* Validate all spans before acquiring the returned state reference. */
 static Keyring_DigestState*
-keyring_digest_x(Array *buf, int n, Array *digest, int dlen, Keyring_DigestState *state, DigestState* (*fn)(uchar*, ulong, uchar*, DigestState*))
+keyring_digest_x(Array *buf, WORD n, Array *digest, int dlen, Keyring_DigestState *state, DigestState* (*fn)(uchar*, ulong, uchar*, DigestState*))
 {
 	Heap *h;
 	XDigestState *ds;
 	uchar *cbuf, *cdigest;
 
+	if(n < 0)
+		error(exInval);
 	if(buf != H){
+		keyring_digestarray(buf);
 		if(n > buf->len)
 			n = buf->len;
 		cbuf = buf->data;
@@ -1213,6 +1232,7 @@ keyring_digest_x(Array *buf, int n, Array *digest, int dlen, Keyring_DigestState
 	}
 
 	if(digest != H){
+		keyring_digestarray(digest);
 		if(digest->len < dlen)
 			error(exBadDigest);
 		cdigest = digest->data;
@@ -1231,112 +1251,123 @@ keyring_digest_x(Array *buf, int n, Array *digest, int dlen, Keyring_DigestState
 	return (Keyring_DigestState*)ds;
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Keyring_sha1(void *fp)
 {
 	F_Keyring_sha1 *f;
-	void *r;
+	Keyring_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 
-	*f->ret = keyring_digest_x(f->buf, f->n, f->digest, SHA1dlen, f->state, sha1);
+	result = keyring_digest_x(f->buf, f->n, f->digest, SHA1dlen, f->state, sha1);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Keyring_sha224(void *fp)
 {
 	F_Keyring_sha224 *f;
-	void *r;
+	Keyring_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 
-	*f->ret = keyring_digest_x(f->buf, f->n, f->digest, SHA224dlen, f->state, sha224);
+	result = keyring_digest_x(f->buf, f->n, f->digest, SHA224dlen, f->state, sha224);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Keyring_sha256(void *fp)
 {
 	F_Keyring_sha256 *f;
-	void *r;
+	Keyring_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 
-	*f->ret = keyring_digest_x(f->buf, f->n, f->digest, SHA256dlen, f->state, sha256);
+	result = keyring_digest_x(f->buf, f->n, f->digest, SHA256dlen, f->state, sha256);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Keyring_sha384(void *fp)
 {
 	F_Keyring_sha384 *f;
-	void *r;
+	Keyring_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 
-	*f->ret = keyring_digest_x(f->buf, f->n, f->digest, SHA384dlen, f->state, sha384);
+	result = keyring_digest_x(f->buf, f->n, f->digest, SHA384dlen, f->state, sha384);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Keyring_sha512(void *fp)
 {
 	F_Keyring_sha512 *f;
-	void *r;
+	Keyring_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 
-	*f->ret = keyring_digest_x(f->buf, f->n, f->digest, SHA512dlen, f->state, sha512);
+	result = keyring_digest_x(f->buf, f->n, f->digest, SHA512dlen, f->state, sha512);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Keyring_md5(void *fp)
 {
 	F_Keyring_md5 *f;
-	void *r;
+	Keyring_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 
-	*f->ret = keyring_digest_x(f->buf, f->n, f->digest, MD5dlen, f->state, md5);
+	result = keyring_digest_x(f->buf, f->n, f->digest, MD5dlen, f->state, md5);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Keyring_md4(void *fp)
 {
 	F_Keyring_md4 *f;
-	void *r;
+	Keyring_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 
-	*f->ret = keyring_digest_x(f->buf, f->n, f->digest, MD4dlen, f->state, md4);
+	result = keyring_digest_x(f->buf, f->n, f->digest, MD4dlen, f->state, md4);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate all spans before acquiring the returned state reference. */
 static Keyring_DigestState*
-keyring_hmac_x(Array *data, int n, Array *key, Array *digest, int dlen, Keyring_DigestState *state, DigestState* (*fn)(uchar*, ulong, uchar*, ulong, uchar*, DigestState*))
+keyring_hmac_x(Array *data, WORD n, Array *key, Array *digest, int dlen, Keyring_DigestState *state, DigestState* (*fn)(uchar*, ulong, uchar*, ulong, uchar*, DigestState*))
 {
 	Heap *h;
 	XDigestState *ds;
 	uchar *cdata, *cdigest;
 
+	if(n < 0)
+		error(exInval);
 	if(data != H){
+		keyring_digestarray(data);
 		if(n > data->len)
 			n = data->len;
 		cdata = data->data;
@@ -1346,10 +1377,13 @@ keyring_hmac_x(Array *data, int n, Array *key, Array *digest, int dlen, Keyring_
 		cdata = nil;
 	}
 
-	if(key == H || key->len > 64)
+	if(key == H || key == nil)
+		error(exBadKey);
+	if(keyring_digestarray(key) > 64)
 		error(exBadKey);
 
 	if(digest != H){
+		keyring_digestarray(digest);
 		if(digest->len < dlen)
 			error(exBadDigest);
 		cdigest = digest->data;
@@ -1368,30 +1402,32 @@ keyring_hmac_x(Array *data, int n, Array *key, Array *digest, int dlen, Keyring_
 	return (Keyring_DigestState*)ds;
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Keyring_hmac_sha1(void *fp)
 {
 	F_Keyring_hmac_sha1 *f;
-	void *r;
+	Keyring_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
-	*f->ret = keyring_hmac_x(f->data, f->n, f->key, f->digest, SHA1dlen, f->state, hmac_sha1);
+	result = keyring_hmac_x(f->data, f->n, f->key, f->digest, SHA1dlen, f->state, hmac_sha1);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
+/* Validate and finish the digest before replacing its previous VM owner. */
 void
 Keyring_hmac_md5(void *fp)
 {
 	F_Keyring_hmac_md5 *f;
-	void *r;
+	Keyring_DigestState *result, *old;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
-	*f->ret = keyring_hmac_x(f->data, f->n, f->key, f->digest, MD5dlen, f->state, hmac_md5);
+	result = keyring_hmac_x(f->data, f->n, f->key, f->digest, MD5dlen, f->state, hmac_md5);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
 void
