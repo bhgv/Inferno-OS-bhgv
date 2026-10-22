@@ -4315,18 +4315,30 @@ mkextuptype(Type *t)
 	return t->tof;
 }
 
+/* Bound scale ratios before integer conversion and preserve the scale on error. */
 static void
 ckfix(Type *t, double max)
 {
 	int p;
 	vlong k, x;
-	double s;
+	double s, rounded;
 
 	s = t->val->rval;
+	if(!(s > 0.0) || !finite(s) || max < 0.0 || !finite(max)){
+		error(t->src.start, "invalid fixed point scale/maximum");
+		return;
+	}
 	if(max == 0.0)
 		k = ((vlong)1<<32)-1;
-	else
-		k = 2*(vlong)(max/s+0.5)+1;
+	else{
+		rounded = max/s+0.5;
+		/* The signed 32-bit representation needs at most 2**32 states. */
+		if(!(rounded < 2147483648.0)){
+			error(t->src.start, "cannot fit fixed type into an int");
+			return;
+		}
+		k = 2*(vlong)rounded+1;
+	}
 	x = 1;
 	for(p = 0; k > x; p++)
 		x *= 2;
@@ -4335,7 +4347,12 @@ ckfix(Type *t, double max)
 		return;
 	}
 	if(p < 32)
-		t->val->rval /= (double)(1<<(32-p));
+		s /= (double)((uvlong)1<<(32-p));
+	if(!(s > 0.0)){
+		error(t->src.start, "fixed point scale underflow");
+		return;
+	}
+	t->val->rval = s;
 }
 
 double
