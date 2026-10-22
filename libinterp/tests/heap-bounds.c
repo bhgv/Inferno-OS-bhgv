@@ -81,6 +81,64 @@ static void rejects(char *expected,int noallocation) {
     assert(last_error==expected && worker.nerr==0 && live==objects);
     if(noallocation)assert(before==poolcalls);
 }
+/* Exhaust overlapping pointer copies against a snapshot, including exact owner counts. */
+static void
+pointercopies(void)
+{
+    Type scalar={1};
+    void *expected[8], *original[8];
+    Array *root, *view;
+    WORD offset;
+    int first, dest, length, i, j, owners;
+
+    scalar.size=sizeof(WORD);
+    type.size=sizeof(void*); type.np=1; type.map[0]=0x80;
+    for(first=0;first<=8;first++) for(dest=0;dest<=8;dest++)
+    for(length=0;length<=8-first && length<=8-dest;length++) {
+        root=H2D(Array*,heaparray(&type,8));
+        for(i=0;i<8;i++) {
+            original[i]=H2D(void*,heapz(&scalar));
+            ((void**)root->data)[i]=expected[i]=original[i];
+        }
+        for(i=0;i<length;i++)expected[dest+i]=original[first+i];
+        view=H2D(Array*,heap(&Tarray));
+        view->len=length; view->t=&type; type.ref++;
+        view->root=root; D2H(root)->ref++;
+        view->data=root->data+first*sizeof(void*);
+        offset=dest; R.s=&view; R.d=&root; R.m=&offset; which=9;
+        assert(kprotect(run,nil));
+        for(i=0;i<8;i++) {
+            assert(((void**)root->data)[i]==expected[i]);
+            owners=0;
+            for(j=0;j<8;j++)if(expected[j]==expected[i])owners++;
+            assert(D2H(expected[i])->ref==owners);
+        }
+        destroy(view); destroy(root);
+        assert(scalar.ref==1 && live==0);
+    }
+    type.np=0;
+}
+
+/* An empty non-nil array can have no data, but invalid destinations still fail. */
+static void
+emptycopies(void)
+{
+    Array empty={0}, target={0}, *source=&empty, *destination=&target;
+    WORD offset=0;
+    int pointers, before;
+
+    for(pointers=0;pointers<2;pointers++) {
+        type.np=pointers; type.size=sizeof(void*); type.map[0]=0x80;
+        empty.t=target.t=&type; empty.data=target.data=nil;
+        empty.len=target.len=0;
+        R.s=&source; R.d=&destination; R.m=&offset; which=9;
+        before=poolcalls; assert(kprotect(run,nil)); assert(before==poolcalls);
+        offset=1; rejects(exBounds,1); offset=0;
+        destination=H; rejects(exNilref,1); destination=&target;
+    }
+    type.np=0;
+}
+
 int main(void) {
     static const int widths[]={0,1,2,4,8,16,4096,0x7fffffff};
     unsigned int i;int checks=0,limit,before;
@@ -163,7 +221,8 @@ int main(void) {
         destroy(a);assert(D2H(value)->ref==1);destroy(b);assert(scalar.ref==1);
         type.np=0;
     }
+    pointercopies(); emptycopies();
     assert(live==0 && worker.nerr==0 && type.ref==1 && Tarray.ref==1 && Tmodlink.ref==1 && Tlist.ref==1);
-    printf("PASS heap bounds: %d array boundaries, overflow counterexample, pool/header limits, copies, links, lists, slices and full-WORD VM sizes\n",checks);
+    printf("PASS heap bounds: %d array boundaries, overflow counterexample, pool/header limits, copies, links, lists, slices, full-WORD VM sizes, 285 pointer overlaps and empty spans\n",checks);
     return 0;
 }

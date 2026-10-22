@@ -1323,6 +1323,7 @@ OP(slicea)
 	}
 	Setmark(h);
 }
+/* Validate even empty copies, then avoid touching their possibly empty data spans. */
 OP(slicela)
 {
 	Type *t;
@@ -1340,6 +1341,8 @@ OP(slicela)
 		error(exNilref);
 	if(dl < 0 || dl > ds->len || ss->len < 0 || ss->len > ds->len-dl)
 		error(exBounds);
+	if(ss->len == 0)
+		return;
 
 	t = ds->t;
 	if(t->np == 0) {

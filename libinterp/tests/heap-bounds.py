@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 root=Path(__file__).resolve().parents[2]
 def function(path,signature):
-    source=(root/path).read_text();start=source.index(signature);brace=source.index('{',start);depth=0
+    source=Path(os.environ.get('HEAP_XEC_SOURCE', root/path) if path=='libinterp/xec.c' else root/path).read_text();start=source.index(signature);brace=source.index('{',start);depth=0
     for token in re.finditer(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*[\s\S]*?\*/|//[^\n]*|[{}]',source[brace:]):
         if token.group()=='{':depth+=1
         elif token.group()=='}':
