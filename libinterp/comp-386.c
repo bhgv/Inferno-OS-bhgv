@@ -668,6 +668,15 @@ cbraf(Inst *i, int jmp)
 	gen2(0xdf, 0xe0);	// FSTSW AX
 	genb(0x9e);		// SAHF
 
+	/* FCOMP reports unordered as ZF=PF=CF=1. Match the VM's C
+	 * comparisons: only != accepts NaN, including signalling NaNs
+	 * when the native floating-point exceptions are masked. */
+	if(jmp == Ojnel) {
+		genb(0x0f);
+		rbra(patch[i->d.ins-mod->prog], 0x8a); /* JP target */
+	} else if(jmp == Ojeql || jmp == Ojcsl || jmp == Ojlsl)
+		gen2(0x7a, 6); /* JP past the six-byte conditional jump */
+
 	genb(0x0f);
 	rbra(patch[i->d.ins-mod->prog], jmp);
 }
@@ -1010,20 +1019,9 @@ comp(Inst *i)
 		opwst(i, 0xdf, 7);
 		break;
 	case IHEADM:
-		opwld(i, Oldw, RAX);
-		modrm(Olea, OA(List, data), RAX, RAX);
-		goto movm;
 	case IMOVM:
-		opwld(i, Olea, RAX);
-	movm:
-		opwst(i, Olea, RBX);
-		mid(i, Oldw, RCX);
-		genb(OxchgAX+RSI);
-		gen2(Oxchg, (3<<6)|(RDI<<3)|RBX);
-		genb(Ocld);
-		gen2(Orep, Omovsb);
-		genb(OxchgAX+RSI);
-		gen2(Oxchg, (3<<6)|(RDI<<3)|RBX);
+		/* The VM uses memmove: forward-only native loops corrupt overlaps. */
+		punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
 		break;
 	case IRET:
 		rbra(macro[MacRET], Ojmp);

@@ -86,7 +86,7 @@ to module-local reclaim code makes the lifetime test fault on an unmapped
 fetch; suppressing automatic PC publication makes handoff fail its stale-PC
 check. Restoring direct ARM BL also fails the far-A32 call case.
 
-All 26 libinterp Python suites pass, including the existing arithmetic,
+All 28 libinterp Python suites pass, including the existing arithmetic,
 loader, publication and native-encoder suites. Full xec/IA-32/ARM syntax checks
 pass with Linux headers, including the legacy ARM preprocessor profile.
 
@@ -96,3 +96,6 @@ run the target C compiler's prologues, full GC/pool allocator, Loader/unloader
 integration or an OS boot. Code unmapping is a host emulation test, not a
 hardware unload test. Executable-memory permissions, physical cache coherence,
 large-module Dis branch reach and performance remain outside this coverage.
+
+IEEE IA-32 branch semantics and overlapping block moves are covered in
+[jit-float-move-audit.md](jit-float-move-audit.md).

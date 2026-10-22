@@ -247,7 +247,6 @@ static	void	macmcal(void);
 static	void	macfram(void);
 static	void	macmfra(void);
 static	void	macrelq(void);
-static	void movmem(Inst*);
 static	void mid(Inst*, int, int);
 extern	void	das(ulong*, int);
 
@@ -1088,61 +1087,6 @@ larith(Inst *i, int op, int opc)
 	mem(Stw, Bhi, RA3, RA0);
 }
 
-static void
-movloop(Inst *i, int s)
-{
-	int b;
-
-	b = (s==1);
-	opwst(i, Lea, RA2);
-	LDxP(AL, RA1, RA0, s, b);
-	STxP(AL, RA2, RA0, s, b);
-	DPI(AL, Sub, RA3, RA3, 0, 1) | SBIT;
-	BRA(NE, (-3*4-8)>>2);
-}
-
-static void
-movmem(Inst *i)
-{
-	ulong *cp;
-
-	// source address already in RA1
-	if((i->add&ARM) != AXIMM){
-		mid(i, Ldw, RA3);
-		CMPI(AL, RA3, 0, 0, 0);
-		cp = code;
-		BRA(LE, 0);
-		movloop(i, 1);
-		PATCH(cp);
-		return;
-	}
-	switch(i->reg){
-	case 0:
-		break;
-	case 4:
-		LDW(AL, RA1, RA2, 0);
-		opwst(i, Stw, RA2);
-		break;
-	case 8:
-		LDW(AL, RA1, RA2, 0);
-		opwst(i, Lea, RA3);
-		LDW(AL, RA1, RA1, 4);
-		STW(AL, RA3, RA2, 0);
-		STW(AL, RA3, RA1, 4);
-		break;
-	default:
-		// could use ldm/stm loop...
-		if((i->reg&3) == 0) {
-			con(i->reg>>2, RA3, 1);
-			movloop(i, 4);
-		} else {
-			con(i->reg, RA3, 1);
-			movloop(i, 1);
-		}
-		break;
-	}
-}
-
 static
 void
 compdbg(void)
@@ -1313,23 +1257,9 @@ comp(Inst *i)
 		break;
 		break;
 	case IHEADM:
-		opwld(i, Ldw, RA1);
-		NOTNIL(RA1);
-		if(OA(List,data) != 0)
-			DPI(AL, Add, RA1, RA1, 0, OA(List,data));
-		movmem(i);
-		break;
-/*
-	case IHEADW:
-		opwld(i, Ldw, RA0);
-		NOTNIL(RA0);
-		mem(Ldw, OA(List, data), RA0, RA0);
-		opwst(i, Stw, RA0);
-		break;
-*/
 	case IMOVM:
-		opwld(i, Lea, RA1);
-		movmem(i);
+		/* The VM uses memmove: forward-only native loops corrupt overlaps. */
+		punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
 		break;
 	case IFRAME:
 		if(UXSRC(i->add) != SRC(AIMM)) {
