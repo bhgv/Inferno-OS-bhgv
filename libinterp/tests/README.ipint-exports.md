@@ -15,7 +15,7 @@ The native side links production portable libmp arithmetic/formatting and lib9
 codecs, with the tracked allocator from the libmp text fixture. The VM heap and
 ASCII string constructor are bounded stubs with deterministic VM-error injection.
 
-Its 2,406 native-WORD cases (2,400 in the WORD32 model) include zero, signed magnitudes, both compatibility-prefix branches,
+Its 2,418 native-WORD cases (2,412 in the WORD32 model) include zero, signed magnitudes, both compatibility-prefix branches,
 and sizes around 768/1024 bytes up to 4096 bytes. All five export wrappers retain
 old results when validation, native-buffer allocation or VM output allocation
 fails. Native temporaries and VM references must balance after each case. Tests
@@ -120,3 +120,19 @@ Fatal native mpnew/mpbits allocation failures, collection cycles, complete Infer
 boot and native signal-to-VM-error translation are outside this fixture.
 Active Dis layouts and builtin signatures are unchanged; export sizes are derived
 from magnitude bits rather than a fixed native buffer or target pointer width.
+
+Strong-prime requests now validate full-word sizes and repetitions while locked,
+retain the historical minimum request of 64 bits for nonnegative small sizes,
+and default nonpositive repetitions to 18 before narrowing. Tests run the actual
+Gordon generator and primality routine, check invalid/wide arguments, minimum
+VM-word repetitions, and VM allocation failure with unchanged old output.
+The historical generator does not promise an exact output bit count; the fixture
+does not add such a contract. Native fatal allocation recovery remains excluded.
+
+DSA wrapper tests use a deterministic native generator stub, real VM frame and
+production ownership helpers. Each of the three VM allocation failures preserves
+the entire previous `(q, p, seed)` tuple and balances both allocation counters.
+Success publishes all three outputs together after restoring the interpreter
+lock. Seed bytes live in native stack storage while the lock is released, rather
+than in an already-published VM array. Native candidate arithmetic is checked
+separately by `libsec/tests/dsa-primes.py`.

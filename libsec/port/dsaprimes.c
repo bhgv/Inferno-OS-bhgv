@@ -9,17 +9,14 @@
 // arithmetic on unsigned ints mod 2**160, represented
 //    as 20-byte, little-endian uchar array
 
+/* Fill exactly 160 bits without host-word alignment or width assumptions. */
 static void
 Hrand(uchar *s)
 {
-	ulong *u = (ulong*)s;
-	*u++ = fastrand();
-	*u++ = fastrand();
-	*u++ = fastrand();
-	*u++ = fastrand();
-	*u = fastrand();
+	genrandom(s, SHA1dlen);
 }
 
+/* Increment the little-endian seed modulo 2**160. */
 static void
 Hincr(uchar *s)
 {
@@ -29,11 +26,11 @@ Hincr(uchar *s)
 			break;
 }
 
-// this can run for quite a while;  be patient
+/* Generate DSA primes; every candidate starts with an independent hash sum. */
 void
 DSAprimes(mpint *q, mpint *p, uchar seed[SHA1dlen])
 {
-	int i, j, k, n = 6, b = 63;
+	int i, k, n = 6, b = 63;
 	uchar s[SHA1dlen], Hs[SHA1dlen], Hs1[SHA1dlen], sj[SHA1dlen], sjk[SHA1dlen];
 	mpint *two1023, *mb, *Vk, *W, *X, *q2;
 
@@ -61,10 +58,10 @@ forever:
 	if(seed != nil)	// allow skeptics to confirm computation
 		memmove(seed, s, SHA1dlen);
 	i = 0;
-	j = 2;
 	Hincr(sj);
 	mpleft(q, 1, q2);
 	while(i<4096){
+		mpassign(mpzero, W);
 		memcpy(sjk, sj, 20);
 		for(k=0; k <= n; k++){
 			sha1(sjk, 20, Hs, 0);
@@ -82,7 +79,6 @@ forever:
 		if(mpcmp(p, two1023)>=0 && probably_prime(p, 5))
 			goto done;
 		i += 1;
-		j += n+1;
 		for(k=0; k<n+1; k++)
 			Hincr(sj);
 	}

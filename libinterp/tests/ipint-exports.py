@@ -57,11 +57,12 @@ parts += [function('libinterp/ipint.c', 'static void\n' + name + '(')
           for name in ['mpand', 'mpor', 'mpxor', 'mpnot']]
 parts += [function('libinterp/ipint.c', 'void\n' + name + '(')
           for name in ['IPint_and', 'IPint_ori', 'IPint_xor', 'IPint_not', 'IPint_random',
-                       'IPints_probably_prime', 'IPints_genprime']]
+                       'IPints_probably_prime', 'IPints_genprime', 'IPints_genstrongprime']]
 if 'typedef struct IPintPrimePair' in ipint:
-    parts += [ipint[ipint.index('typedef struct IPintPrimePair'):ipint.index('\nvoid\nIPints_DSAprimes(')]]
+    parts += [ipint[ipint.index('typedef struct IPintPrimePair'):ipint.index('typedef struct IPintDSAPrimes')]]
 else:
     parts += [function('libinterp/ipint.c', 'void\nIPints_gensafeprime(')]
+parts += [ipint[ipint.index('typedef struct IPintDSAPrimes'):]]
 parts += [function('libinterp/ipint.c', 'static IPints_IPint*\nstrtoipint(')]
 if 'static void\nipintfrombytes(' in ipint:
     parts += [function('libinterp/ipint.c', 'static void\nipintfrombytes(')]
@@ -87,6 +88,7 @@ with tempfile.TemporaryDirectory(prefix='ipint-exports-') as directory:
     for path in [root / ('libmp/port/' + name + '.c') for name in files] + [
             root / 'libsec/port/probably_prime.c', root / 'libsec/port/smallprimetest.c',
             root / 'libsec/port/genprime.c', root / 'libsec/port/gensafeprime.c',
+            root / 'libsec/port/genstrongprime.c',
             root / 'lib9/u32.c', root / 'lib9/u64.c', root / 'libmp/tests/text-support.c']:
         text = re.sub(r'^#include[^\n]*\n', '', path.read_text(), flags=re.M)
         target = td / path.name

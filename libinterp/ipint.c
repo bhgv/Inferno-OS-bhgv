@@ -940,22 +940,30 @@ IPints_genprime(void *fp)
 	destroy(old);
 }
 
+/* Bound full-word arguments before native generation and retain output on failure. */
 void
 IPints_genstrongprime(void *fp)
 {
 	F_IPints_genstrongprime *f;
-	mpint *p;
-	void *r;
+	mpint *number;
+	IPints_IPint *result, *old;
+	int bits, repetitions;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
-	p = mpnew(0);
+	/* Gordon's algorithm historically rounds requests below 64 bits upward. */
+	if(f->nbits < 0 || (uvlong)f->nbits > 0x7fffffff-2*Dbits ||
+	   f->nrep > 0x7fffffff)
+		error(exInval);
+	bits = f->nbits < 64 ? 64 : (int)f->nbits;
+	repetitions = f->nrep <= 0 ? 18 : (int)f->nrep;
+	number = mpnew(0);
 	release();
-	genstrongprime(p, f->nbits, f->nrep);
+	genstrongprime(number, bits, repetitions);
 	acquire();
-	*f->ret = newIPint(p);
+	result = newIPint(number);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
 typedef struct IPintPrimePair IPintPrimePair;
@@ -1020,33 +1028,59 @@ IPints_gensafeprime(void *fp)
 	destroy(olda);
 }
 
+typedef struct IPintDSAPrimes IPintDSAPrimes;
+struct IPintDSAPrimes
+{
+	IPintPrimePair pair;
+	Array *seed;
+	uchar bytes[SHA1dlen];
+};
+
+/* Build all three VM owners before publishing any part of the DSA result. */
+static int
+ipintdsaprimes(void *arg)
+{
+	IPintDSAPrimes *primes;
+
+	primes = arg;
+	ipintprimepair(&primes->pair);
+	primes->seed = mem2array(primes->bytes, SHA1dlen);
+	return 1;
+}
+
+/* Keep the seed private while unlocked and reclaim the entire tuple on error. */
 void
 IPints_DSAprimes(void *fp)
 {
 	F_IPints_DSAprimes *f;
-	mpint *p, *q;
-	Heap *h;
-	void *v;
+	IPintDSAPrimes primes;
+	IPints_IPint *oldq, *oldp;
+	Array *oldseed;
 
 	f = fp;
-	v = f->ret->t0;
-	f->ret->t0 = H;
-	destroy(v);
-	v = f->ret->t1;
-	f->ret->t1 = H;
-	destroy(v);
-	v = f->ret->t2;
-	f->ret->t2 = H;
-	destroy(v);
-
-	h = heaparray(&Tbyte, SHA1dlen);
-	f->ret->t2 = H2D(Array*, h);
-
-	p = mpnew(0);
-	q = mpnew(0);
+	primes.pair.p = mpnew(0);
+	primes.pair.alpha = mpnew(0);
+	primes.pair.prime = H;
+	primes.pair.generator = H;
+	primes.seed = H;
 	release();
-	DSAprimes(q, p, f->ret->t2->data);
+	DSAprimes(primes.pair.p, primes.pair.alpha, primes.bytes);
 	acquire();
-	f->ret->t0 = newIPint(q);
-	f->ret->t1 = newIPint(p);
+	if(!kprotect(ipintdsaprimes, &primes)){
+		mpfree(primes.pair.p);
+		mpfree(primes.pair.alpha);
+		destroy(primes.pair.prime);
+		destroy(primes.pair.generator);
+		destroy(primes.seed);
+		krethrow();
+	}
+	oldq = f->ret->t0;
+	oldp = f->ret->t1;
+	oldseed = f->ret->t2;
+	f->ret->t0 = primes.pair.prime;
+	f->ret->t1 = primes.pair.generator;
+	f->ret->t2 = primes.seed;
+	destroy(oldq);
+	destroy(oldp);
+	destroy(oldseed);
 }

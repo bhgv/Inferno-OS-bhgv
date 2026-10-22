@@ -4,6 +4,7 @@ Run from the repository root:
 
 ```sh
 python3 libsec/tests/primes.py
+python3 libsec/tests/dsa-primes.py
 python3 libinterp/tests/ipint-exports.py
 ```
 
@@ -45,3 +46,19 @@ entropy quality, constant-time behavior, cryptographic certification, or a full
 Inferno build. Native fatal allocator recovery is outside the fixture. The VM
 fixture documents its separate sandbox ASan/longjmp limitations in
 libinterp/tests/README.ipint-exports.md.
+
+The DSA regression checks the production seed helper with an actual LP64
+unsigned long and eight destination alignments, checking all 64 surrounding
+bytes each time. Seed generation requests exactly SHA1dlen bytes through
+`genrandom`; it no longer stores five potentially 64-bit host words through
+an alignment-dependent cast.
+
+Candidate tests link the production DSA routine and libmp arithmetic, with
+Python hashlib SHA1 callbacks and scripted primality decisions. An independent
+integer oracle reconstructs q and three successive p candidates from the seed,
+including carry across seed bytes and rejection of the first two p candidates.
+Each candidate starts W at zero instead of retaining the previous remainder.
+Both returned-seed and nil-seed modes check output, guards and tracked native
+ownership. These 530 checks validate candidate construction, not actual DSA
+primality, SHA1's native implementation, entropy or cryptographic suitability.
+The script bounds its scripted primality callbacks to avoid regression hangs.
