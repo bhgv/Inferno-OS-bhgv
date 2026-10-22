@@ -1,6 +1,7 @@
 #include	"lib9.h"
 #include	<bio.h>
 
+/* Reject inactive output and retain the full pending buffer across interrupted writes. */
 long
 Bwrite(Biobuf *bp, void *ap, long count)
 {
@@ -9,6 +10,8 @@ Bwrite(Biobuf *bp, void *ap, long count)
 	int i, n, oc;
 	char errbuf[ERRMAX];
 
+	if(count > 0 && bp->state != Bwactive)
+		return Beof;
 	p = ap;
 	c = count;
 	oc = bp->ocount;
@@ -20,6 +23,7 @@ Bwrite(Biobuf *bp, void *ap, long count)
 		if(n == 0) {
 			if(bp->state != Bwactive)
 				return Beof;
+			bp->ocount = oc;
 			i = write(bp->fid, bp->bbuf, bp->bsize);
 			if(i != bp->bsize) {
 				errstr(errbuf, sizeof errbuf);
