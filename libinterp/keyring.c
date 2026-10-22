@@ -2532,59 +2532,56 @@ Keyring_ideacbc(void *fp)
 	}
 }
 
+/* Validate key and IV spans before allocating or replacing an AES state. */
 void
 Keyring_aessetup(void *fp)
 {
 	F_Keyring_aessetup *f;
 	Heap *h;
 	XAESstate *is;
+	Keyring_AESstate *old;
 	uchar *ivec;
-	void *r;
+	WORD length;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
-
-	if(f->key == H ||
-	   f->key->len != 16 && f->key->len != 24 && f->key->len != 32)
+	if(f->key == H)
 		error(exBadKey);
+	length = keyring_bytearray(f->key);
+	if(length != 16 && length != 24 && length != 32)
+		error(exBadKey);
+	ivec = nil;
 	if(f->ivec != H){
-		if(f->ivec->len < AESbsize)
+		if(keyring_bytearray(f->ivec) < AESbsize)
 			error(exBadIvec);
 		ivec = f->ivec->data;
-	}else
-		ivec = nil;
-
+	}
 	h = heap(TAESstate);
 	is = H2D(XAESstate*, h);
-
-	setupAESstate(&is->state, f->key->data, f->key->len, ivec);
-
+	setupAESstate(&is->state, f->key->data, (int)length, ivec);
+	old = *f->ret;
 	*f->ret = (Keyring_AESstate*)is;
+	destroy(old);
 }
 
+/* Bound the full VM count before native CBC, retaining partial-tail semantics. */
 void
 Keyring_aescbc(void *fp)
 {
 	F_Keyring_aescbc *f;
 	XAESstate *is;
-	uchar *p;
+	WORD length;
 
 	f = fp;
-
 	if(f->buf == H)
 		return;
-	if(f->n < 0 || f->n > f->buf->len)
+	length = keyring_bytearray(f->buf);
+	if(f->n < 0 || f->n > length)
 		error(exBounds);
-
 	is = checktype(f->state, TAESstate, exBadState, 0);
-	p = f->buf->data;
-
 	if(f->direction == 0)
-		aesCBCencrypt(p, f->n, &is->state);
+		aesCBCencrypt(f->buf->data, (int)f->n, &is->state);
 	else
-		aesCBCdecrypt(p, f->n, &is->state);
+		aesCBCdecrypt(f->buf->data, (int)f->n, &is->state);
 }
 
 void

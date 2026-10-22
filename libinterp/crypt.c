@@ -676,60 +676,56 @@ Crypt_ideacbc(void *fp)
 	}
 }
 
+/* Validate key and IV spans before allocating or replacing an AES state. */
 void
 Crypt_aessetup(void *fp)
 {
 	F_Crypt_aessetup *f;
 	Heap *h;
 	XAESstate *is;
+	Crypt_AESstate *old;
 	uchar *ivec;
-	void *v;
+	WORD length;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
 	if(f->key == H)
 		error(exNilref);
-	if(f->key->len != 16 && f->key->len != 24 && f->key->len != 32)
+	length = crypt_bytearray(f->key);
+	if(length != 16 && length != 24 && length != 32)
 		error(exBadKey);
+	ivec = nil;
 	if(f->ivec != H){
-		if(f->ivec->len < AESbsize)
+		if(crypt_bytearray(f->ivec) < AESbsize)
 			error(exBadIvec);
 		ivec = f->ivec->data;
-	}else
-		ivec = nil;
-
+	}
 	h = heap(TAESstate);
 	is = H2D(XAESstate*, h);
-
-	setupAESstate(&is->state, f->key->data, f->key->len, ivec);
-
+	setupAESstate(&is->state, f->key->data, (int)length, ivec);
+	old = *f->ret;
 	*f->ret = (Crypt_AESstate*)is;
+	destroy(old);
 }
 
+/* Bound the full VM count before native CBC, retaining partial-tail semantics. */
 void
 Crypt_aescbc(void *fp)
 {
 	F_Crypt_aescbc *f;
 	XAESstate *is;
-	uchar *p;
+	WORD length;
 
 	f = fp;
-
 	if(f->buf == H)
 		return;
-	if(f->n < 0 || f->n > f->buf->len)
+	length = crypt_bytearray(f->buf);
+	if(f->n < 0 || f->n > length)
 		error(exBounds);
-
 	is = checktype(f->state, TAESstate, exBadState, 0);
-	p = f->buf->data;
-
 	if(f->direction == 0)
-		aesCBCencrypt(p, f->n, &is->state);
+		aesCBCencrypt(f->buf->data, (int)f->n, &is->state);
 	else
-		aesCBCdecrypt(p, f->n, &is->state);
+		aesCBCdecrypt(f->buf->data, (int)f->n, &is->state);
 }
 
 void
