@@ -2,15 +2,17 @@
 """Check production signed/unsigned 64-bit conversion across bases 2 through 36."""
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
+library = os.environ.get('NATIVE_LIBRARY', 'lib9')
 parts = []
 for name in ('strtoll', 'strtoull'):
-    source = (root / ('lib9/' + name + '.c')).read_text()
-    source = source.replace('#include "lib9.h"', '')
+    source = Path(os.environ.get('INTEGER_'+name.upper()+'_SOURCE', root / (library+'/' + name + '.c'))).read_text()
+    source = re.sub(r'#include\s*[<"]lib9.h[>"]', '', source)
     source = source.replace(name + '(', 'test_' + name + '(')
     parts.append(source)
 unit = (root / 'lib9/tests/integer-conversion.c').read_text()

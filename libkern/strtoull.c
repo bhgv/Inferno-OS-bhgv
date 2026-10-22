@@ -1,12 +1,13 @@
-#include <lib9.h>
+#include "lib9.h"
 
-#define UVLONG_MAX	(1LL<<63)
+#define UVLONG_MAX	(~(uvlong)0)
 
+/* Consume all digits and saturate only beyond the full unsigned 64-bit range. */
 uvlong
 strtoull(char *nptr, char **endptr, int base)
 {
 	char *p;
-	uvlong n, nn, m;
+	uvlong n, m, last;
 	int c, ovfl, v, neg, ndig;
 
 	p = nptr;
@@ -55,13 +56,14 @@ strtoull(char *nptr, char **endptr, int base)
 		if(p[1] == 'x' || p[1] == 'X')
 			p += 2;
 	} else
-	if(base < 0 || 36 < base)
+	if(base < 2 || 36 < base)
 		goto Return;
 
 	/*
 	 * Non-empty sequence of digits
 	 */
 	m = UVLONG_MAX/base;
+	last = UVLONG_MAX%base;
 	for(;; p++,ndig++) {
 		c = *p;
 		v = base;
@@ -75,19 +77,16 @@ strtoull(char *nptr, char **endptr, int base)
 			v = c - 'A' + 10;
 		if(v >= base)
 			break;
-		if(n > m)
+		if(n > m || (n == m && (uvlong)v > last))
 			ovfl = 1;
-		nn = n*base + v;
-		if(nn < n)
-			ovfl = 1;
-		n = nn;
+		n = n*base + v;
 	}
 
 Return:
 	if(ndig == 0)
 		p = nptr;
 	if(endptr)
-		*endptr = p;
+		*endptr = (char*)p;
 	if(ovfl)
 		return UVLONG_MAX;
 	if(neg)

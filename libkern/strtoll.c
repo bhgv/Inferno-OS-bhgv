@@ -1,10 +1,11 @@
 #include "lib9.h"
 
+/* Accumulate signed conversion bit patterns without host signed overflow. */
 vlong
-strtoll(const char *nptr, char **endptr, int base)
+strtoll(char *nptr, char **endptr, int base)
 {
 	const char *p;
-	vlong n;
+	uvlong n;
 	int c, v, neg, ndig;
 
 	p = nptr;
@@ -51,7 +52,7 @@ strtoll(const char *nptr, char **endptr, int base)
 	}else if(base==16 && *p=='0'){
 		if(p[1]=='x' || p[1]=='X')
 			p += 2;
-	}else if(base<0 || 36<base)
+	}else if(base<2 || 36<base)
 		goto Return;
 
 	/*
@@ -76,6 +77,6 @@ strtoll(const char *nptr, char **endptr, int base)
 	if(endptr)
 		*endptr = (char*) p;
 	if(neg)
-		return -n;
+		return (uvlong)0-n;
 	return n;
 }

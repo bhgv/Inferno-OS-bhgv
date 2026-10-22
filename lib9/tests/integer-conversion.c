@@ -66,7 +66,7 @@ int
 main(void)
 {
 	char text[400], *end;
-	const char *prefix;
+	char *prefix;
 	int base, i;
 	size_t n;
 	uint64_t edges[] = {0, 1, INT64_MAX, (uint64_t)1<<63, UINT64_MAX};

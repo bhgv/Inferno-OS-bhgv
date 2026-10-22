@@ -7,7 +7,8 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
-source = (root / 'lib9/rune.c').read_text()
+library = os.environ.get('NATIVE_LIBRARY', 'lib9')
+source = Path(os.environ.get('RUNE_SOURCE', root / library / 'rune.c')).read_text()
 source = source.replace('#include\t"lib9.h"', '')
 unit = (root / 'lib9/tests/rune-length.c').read_text()
 unit = unit.replace('IMPLEMENTATION', source)
