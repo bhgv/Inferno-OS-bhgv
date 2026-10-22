@@ -11,7 +11,7 @@ import tempfile
 
 root = Path(__file__).resolve().parents[2]
 files = ['mpaux', 'mpfmt', 'strtomp', 'mptobe', 'betomp', 'mpadd', 'mpsub',
-         'mpcmp', 'mpmul', 'mpexp', 'mpmod', 'mpleft', 'mpright', 'mpvecadd', 'mpvecsub',
+         'mpcmp', 'mpmul', 'mprand', 'mpexp', 'mpmod', 'mpleft', 'mpright', 'mpvecadd', 'mpvecsub',
          'mpvecdigmuladd', 'mpveccmp', 'mpdigdiv', 'mpdiv', 'mptoui']
 alphabet = '23456789abcdefghijkmnpqrstuvwxyz'
 
@@ -55,6 +55,9 @@ with tempfile.TemporaryDirectory(prefix='mp-text-') as directory:
     lib.mpexp.argtypes = [C.c_void_p, C.c_void_p, C.c_void_p, C.c_void_p]
     lib.mplowbits0.argtypes = [C.c_void_p]
     lib.testfree.argtypes = [C.c_void_p]
+    generator = C.CFUNCTYPE(None, C.POINTER(C.c_ubyte), C.c_int)
+    lib.mprand.argtypes = [C.c_int, generator, C.c_void_p]
+    lib.mprand.restype = C.c_void_p
     lib.mpsetminbits(1)
     rng = random.Random(0x6d7074657874)
     values = [0, 1, 15, 16, 255, 256, 2**31, 2**32-1, 2**63, 2**64-1]
@@ -150,4 +153,67 @@ with tempfile.TemporaryDirectory(prefix='mp-text-') as directory:
         assert lib.liveblocks() == before
     lib.mpfree(number)
     assert lib.liveblocks() == 0
-    print(f'PASS mp text: {checks} text round trips, {power_checks} modular power/alias cases, minimum shift and ownership')
+    # Deterministic bytes test range masking without making randomness claims.
+    calls = []
+
+    @generator
+    def fill(data, count):
+        calls.append(count)
+        for index in range(count):
+            data[index] = (index * 37 + 0xa5) & 255
+
+    random_checks = 0
+    for bits in list(range(130)) + [255, 256, 257, 511, 512, 1024, 8192]:
+        count = ((bits + 31)//32)*4
+        expected = int.from_bytes(bytes((i*37+0xa5)&255 for i in range(count)), 'big')
+        expected &= (1 << bits)-1
+        for reused in (False, True):
+            number = lib.strtomp(b'-123456789', None, 10, None) if reused else None
+            calls.clear()
+            result = lib.mprand(bits, fill, number)
+            assert result and (not reused or result == number)
+            assert calls == ([count] if bits else [])
+            encoded = lib.mptoa(result, 16, None, 0)
+            assert int(C.string_at(encoded), 16) == expected
+            lib.testfree(encoded)
+            lib.mpfree(result)
+            assert lib.liveblocks() == 0
+            random_checks += 1
+    for pattern in (b'\0'*16, b'\0'*15+b'\1', b'\xff'*16):
+        @generator
+        def fill_short(data, count):
+            assert count == len(pattern)
+            C.memmove(data, pattern, count)
+
+        for bits in (97, 127, 128):
+            number = lib.betomp(b'\xff'*16, 16, None)
+            result = lib.mprand(bits, fill_short, number)
+            encoded = lib.mptoa(result, 16, None, 0)
+            assert int(C.string_at(encoded), 16) == int.from_bytes(pattern, 'big') & ((1 << bits)-1)
+            lib.testfree(encoded)
+            lib.mpfree(result)
+            assert lib.liveblocks() == 0
+            random_checks += 1
+    number = lib.mpnew(256)
+    lib.strtomp(b'-123', None, 10, number)
+    before = lib.liveblocks()
+    original_header = C.string_at(number, 3*C.sizeof(C.c_int))
+    for bits in (-2**31, -1, 2**31-31, 2**31-1, 128):
+        calls.clear()
+        if bits == 128:
+            lib.setfailure(0)
+        assert not lib.mprand(bits, fill, number)
+        lib.setfailure(-1)
+        assert calls == [] and lib.liveblocks() == before
+        assert C.string_at(number, 3*C.sizeof(C.c_int)) == original_header
+        encoded = lib.mptoa(number, 16, None, 0)
+        assert int(C.string_at(encoded), 16) == -123
+        lib.testfree(encoded)
+        random_checks += 1
+    lib.mpfree(number)
+    lib.setfailure(0)
+    assert not lib.mprand(128, fill, None)
+    lib.setfailure(-1)
+    assert lib.liveblocks() == 0
+    random_checks += 1
+    print(f'PASS mp text: {checks} text round trips, {power_checks} modular power/alias cases, minimum shift, {random_checks} random-size/mask/failure cases and ownership')

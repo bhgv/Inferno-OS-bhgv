@@ -3,6 +3,7 @@
 #include <libsec.h>
 #include "dat.h"
 
+/* Reject impossible sizes and reserve scratch storage before changing a result. */
 mpint*
 mprand(int bits, void (*gen)(uchar*, int), mpint *b)
 {
@@ -10,33 +11,33 @@ mprand(int bits, void (*gen)(uchar*, int), mpint *b)
 	mpdigit mask;
 	uchar *p;
 
+	if(bits < 0 || bits > 0x7fffffff-(Dbits-1))
+		return nil;
+	if(bits == 0){
+		if(b == nil)
+			b = mpnew(0);
+		mpassign(mpzero, b);
+		return b;
+	}
 	n = DIGITS(bits);
+	p = malloc(n*Dbytes);
+	if(p == nil)
+		return nil;
 	if(b == nil)
 		b = mpnew(bits);
 	else
 		mpbits(b, bits);
 
-	p = malloc(n*Dbytes);
-	if(p == nil)
-		return nil;
 	(*gen)(p, n*Dbytes);
 	betomp(p, n*Dbytes, b);
 	free(p);
 
-	// make sure we don't give too many bits
+	/* Only the highest imported limb needs masking; higher storage may be stale. */
 	m = bits%Dbits;
-	n--;
-	if(m > 0){
-		mask = 1;
-		mask <<= m;
-		mask--;
-		b->p[n] &= mask;
+	if(m > 0 && b->top == n){
+		mask = ((mpdigit)1 << m)-1;
+		b->p[n-1] &= mask;
 	}
-
-	for(; n >= 0; n--)
-		if(b->p[n] != 0)
-			break;
-	b->top = n+1;
-	b->sign = 1;
+	mpnorm(b);
 	return b;
 }

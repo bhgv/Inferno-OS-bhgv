@@ -34,6 +34,14 @@ low-set-bit positions, exact base32 output and balanced temporary ownership.
 It also compares 480 modular power cases with Python pow, including zero
 exponents, modulus one and output aliasing each input, and checks the minimum
 negative native shift without signed negation overflow.
+Random generation adds 289 deterministic value/range/reuse/failure cases, from
+zero through 8192 bits and around limb boundaries. Python byte integers provide
+the masked-value oracle. All-zero and leading-zero generator outputs must not
+restore stale high limbs from reused destinations. Invalid native counts leave
+the destination unchanged. Scratch-buffer failure preserves existing metadata
+and values, and leaves no internally allocated result behind. Zero bits return
+canonical zero without invoking the generator or allocating a scratch buffer.
+
 Ordinary allocation failures are injected into output buffers and parsers;
 failures in fatal mpnew/mpbits allocation paths are outside this fixture.
 

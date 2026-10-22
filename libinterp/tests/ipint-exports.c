@@ -135,6 +135,33 @@ destroy(void *object)
 	vm_live--;
 }
 
+static int released, random_calls;
+
+/* Model the interpreter lock around native random generation. */
+void
+release(void)
+{
+	assert(!released);
+	released = 1;
+}
+
+/* Require the wrapper to restore the interpreter lock before VM allocation. */
+void
+acquire(void)
+{
+	assert(released);
+	released = 0;
+}
+
+/* Fill deterministic bytes while asserting the native call's lock contract. */
+void
+genrandom(uchar *data, int count)
+{
+	assert(released && count > 0);
+	memset(data, 0xff, count);
+	random_calls++;
+}
+
 /* Route native export allocations through the tracked libmp allocator. */
 #define malloc testmalloc
 #define free testfree
@@ -158,6 +185,11 @@ static F_IPint_mul mulframe;
 static F_IPint_neg negframe;
 static F_IPint_copy copyframe;
 static F_IPint_invert invertframe;
+static F_IPint_and andframe;
+static F_IPint_ori orframe;
+static F_IPint_xor xorframe;
+static F_IPint_not notframe;
+static F_IPint_random randomframe;
 static mpint *owned_number;
 static int operation;
 
@@ -184,6 +216,11 @@ invoke(void *unused)
 	case 14: IPint_neg(&negframe); break;
 	case 15: IPint_copy(&copyframe); break;
 	case 16: IPint_invert(&invertframe); break;
+	case 17: IPint_and(&andframe); break;
+	case 18: IPint_ori(&orframe); break;
+	case 19: IPint_xor(&xorframe); break;
+	case 20: IPint_not(&notframe); break;
+	case 21: IPint_random(&randomframe); break;
 	default: assert(0);
 	}
 	return 1;
@@ -700,6 +737,117 @@ checklargeinverses(void)
 		}
 }
 
+/* Check bitwise ownership, nil errors, heap failures and canonical zero. */
+static void
+checkbitwise(void)
+{
+	IPints_IPint *result, *other, *old;
+	ulong expected[] = {3, 7, 4, 0xfffffff8UL};
+	int op, mode, native_before, vm_before;
+
+	other = newIPint(itomp(3, nil));
+	for(op = 17; op <= 20; op++)
+		for(mode = 0; mode < (op == 20 ? 3 : 4); mode++) {
+			result = newIPint(itomp(7, nil));
+			old = result;
+			andframe.i1 = orframe.i1 = xorframe.i1 = result;
+			andframe.i2 = orframe.i2 = xorframe.i2 = other;
+			andframe.ret = orframe.ret = xorframe.ret = &result;
+			notframe.i1 = result;
+			notframe.ret = &result;
+			if(mode == 3) {
+				andframe.i1 = orframe.i1 = xorframe.i1 = other;
+				andframe.i2 = orframe.i2 = xorframe.i2 = result;
+			}
+			if(mode == 2) {
+				andframe.i1 = orframe.i1 = xorframe.i1 = H;
+				notframe.i1 = H;
+			}
+			if(mode == 1)
+				vm_failure = 0;
+			operation = op;
+			native_before = liveblocks();
+			vm_before = vm_live;
+			if(mode == 0 || mode == 3) {
+				assert(kprotect(invoke, nil));
+				assert(mptoui(checkIPint(result)) == expected[op-17]);
+			}else {
+				assert(!kprotect(invoke, nil));
+				assert(last_error == (mode == 1 ? injected : exNilref));
+				assert(result == old);
+			}
+			vm_failure = -1;
+			assert(liveblocks() == native_before && vm_live == vm_before);
+			destroy(result);
+			checks++;
+		}
+	result = newIPint(itomp(-7, nil));
+	itomp(0, checkIPint(other));
+	andframe.i1 = result;
+	andframe.i2 = other;
+	andframe.ret = &result;
+	operation = 17;
+	assert(kprotect(invoke, nil));
+	assert(checkIPint(result)->top == 0 && checkIPint(result)->sign == 1);
+	destroy(result);
+	destroy(other);
+	checks++;
+}
+
+/* Invalid VM-word sizes and both allocation failures must retain old output. */
+static void
+checkrandom(void)
+{
+	WORD sizes[] = {0, 1, 31, 32, 33, 127, 256};
+	IPints_IPint *result, *old;
+	mpint *expected;
+	int native_before, vm_before, mode;
+	unsigned int i;
+
+	result = newIPint(itomp(99, nil));
+	randomframe.ret = &result;
+	operation = 21;
+	for(i = 0; i < sizeof(sizes)/sizeof(sizes[0]); i++) {
+		randomframe.nbits = sizes[i];
+		random_calls = 0;
+		assert(kprotect(invoke, nil));
+		assert(!released && random_calls == (sizes[i] != 0));
+		expected = mpnew(0);
+		mpleft(mpone, sizes[i], expected);
+		mpsub(expected, mpone, expected);
+		assert(mpcmp(checkIPint(result), expected) == 0);
+		mpfree(expected);
+		checks++;
+	}
+	for(mode = 0; mode < 6; mode++) {
+		old = result;
+		native_before = liveblocks();
+		vm_before = vm_live;
+		random_calls = 0;
+		randomframe.nbits = 128;
+		if(mode == 0)
+			randomframe.nbits = -1;
+		if(mode == 1)
+			randomframe.nbits = (WORD)((UWORD)1 << (sizeof(WORD)*8-1));
+		if(mode == 2)
+			randomframe.nbits = 0x7fffffff;
+		if(mode == 3)
+			randomframe.nbits = sizeof(WORD) > sizeof(int) ? (WORD)((uvlong)1<<32) : -2;
+		if(mode == 4)
+			setfailure(0);
+		if(mode == 5)
+			vm_failure = 0;
+		assert(!kprotect(invoke, nil));
+		assert(last_error == (mode < 4 ? exInval : mode == 4 ? exHeap : injected));
+		setfailure(-1);
+		vm_failure = -1;
+		assert(result == old && !released && random_calls == (mode == 5));
+		assert(liveblocks() == native_before && vm_live == vm_before);
+		checks++;
+	}
+	destroy(result);
+}
+
 /* Cover the old fixed-buffer limits and verify all VM/native ownership balances. */
 int
 main(void)
@@ -726,6 +874,8 @@ main(void)
 	checkarithmetic();
 	checkinverses();
 	checklargeinverses();
+	checkbitwise();
+	checkrandom();
 	assert(vm_live == 0 && liveblocks() == 0 && worker.nerr == 0);
 	assert(TIPint->ref == 1 && Tarray.ref == 1 && Tbyte.ref == 1 && Tstring.ref == 1);
 	printf("PASS IPints: %d large export/VM unwind/native failure/ownership cases\n", checks);

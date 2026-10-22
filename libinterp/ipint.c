@@ -326,23 +326,24 @@ IPint_strtoip(void *fp)
 	*f->ret = strtoipint(f->str, f->base);
 }
 
-/* create a random integer */
+/* Validate the VM-word size before narrowing or releasing the interpreter lock. */
 void
 IPint_random(void *fp)
 {
 	F_IPint_random *f;
-	mpint *b;
-	void *v;
+	mpint *number;
+	IPints_IPint *result, *old;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
+	if(f->nbits < 0 || (uvlong)f->nbits > 0x7fffffff-(Dbits-1))
+		error(exInval);
 	release();
-	b = mprand(f->nbits, genrandom, nil);
+	number = mprand((int)f->nbits, genrandom, nil);
 	acquire();
-	*f->ret = newIPint(b);
+	result = newIPint(number);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
 /* number of bits in number */
@@ -715,6 +716,7 @@ IPint_shr(void *fp)
 	ipintshift(MP(f->i), f->n, 0, f->ret);
 }
 
+/* Intersect magnitudes while retaining the historical left-operand sign. */
 static void
 mpand(mpint *b, mpint *m, mpint *res)
 {
@@ -723,6 +725,7 @@ mpand(mpint *b, mpint *m, mpint *res)
 	res->sign = b->sign;
 	if(b->top == 0 || m->top == 0){
 		res->top = 0;
+		res->sign = 1;
 		return;
 	}
 	mpbits(res, b->top*Dbits);
@@ -736,6 +739,7 @@ mpand(mpint *b, mpint *m, mpint *res)
 	mpnorm(res);
 }
 
+/* Combine magnitudes using the existing larger-operand sign convention. */
 static void
 mpor(mpint *b1, mpint *b2, mpint *res)
 {
@@ -761,6 +765,7 @@ mpor(mpint *b1, mpint *b2, mpint *res)
 	mpnorm(res);
 }
 
+/* XOR magnitudes and normalize complete cancellation to positive zero. */
 static void
 mpxor(mpint *b1, mpint *b2, mpint *res)
 {
@@ -786,6 +791,7 @@ mpxor(mpint *b1, mpint *b2, mpint *res)
 	mpnorm(res);
 }
 
+/* Complement the stored limbs, preserving the existing finite-width syntax. */
 static void
 mpnot(mpint *b1, mpint *res)
 {
@@ -799,84 +805,52 @@ mpnot(mpint *b1, mpint *res)
 	mpnorm(res);
 }
 
-/* bits */
+/* Intersect only after both operands are validated and before replacing output. */
 void
 IPint_and(void *fp)
 {
 	F_IPint_and *f;
-	mpint *ret, *i1, *i2;
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	i1 = MP(f->i1);
-	i2 = MP(f->i2);
-	ret = mpnew(0);
-	if(ret != nil)
-		mpand(i1, i2, ret);
-	*f->ret = newIPint(ret);
+	ipintbinary(f->i1, f->i2, f->ret, mpand);
 }
 
+/* Publish a bitwise union with the binary arithmetic ownership guarantees. */
 void
 IPint_ori(void *fp)
 {
 	F_IPint_ori *f;
-	mpint *ret, *i1, *i2;
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	i1 = MP(f->i1);
-	i2 = MP(f->i2);
-	ret = mpnew(0);
-	if(ret != nil)
-		mpor(i1, i2, ret);
-	*f->ret = newIPint(ret);
+	ipintbinary(f->i1, f->i2, f->ret, mpor);
 }
 
+/* Retain both inputs until the XOR result has its VM heap object. */
 void
 IPint_xor(void *fp)
 {
 	F_IPint_xor *f;
-	mpint *ret, *i1, *i2;
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	i1 = MP(f->i1);
-	i2 = MP(f->i2);
-	ret = mpnew(0);
-	if(ret != nil)
-		mpxor(i1, i2, ret);
-	*f->ret = newIPint(ret);
+	ipintbinary(f->i1, f->i2, f->ret, mpxor);
 }
 
+/* Complete a finite-width complement before releasing an output-owned input. */
 void
 IPint_not(void *fp)
 {
 	F_IPint_not *f;
-	mpint *ret, *i1;
-	void *v;
+	mpint *input, *number;
+	IPints_IPint *result, *old;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	i1 = MP(f->i1);
-	ret = mpnew(0);
-	if(ret != nil)
-		mpnot(i1, ret);
-	*f->ret = newIPint(ret);
+	input = MP(f->i1);
+	number = mpnew(0);
+	mpnot(input, number);
+	result = newIPint(number);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
 /*

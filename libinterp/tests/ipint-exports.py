@@ -53,12 +53,16 @@ if 'static void\nipintshift(' in ipint:
     parts += [function('libinterp/ipint.c', 'static void\nipintshift(')]
 parts += [function('libinterp/ipint.c', 'void\n' + name + '(')
           for name in ['IPint_shl', 'IPint_shr']]
+parts += [function('libinterp/ipint.c', 'static void\n' + name + '(')
+          for name in ['mpand', 'mpor', 'mpxor', 'mpnot']]
+parts += [function('libinterp/ipint.c', 'void\n' + name + '(')
+          for name in ['IPint_and', 'IPint_ori', 'IPint_xor', 'IPint_not', 'IPint_random']]
 parts += [function('libinterp/runt.c', 'void\nretstr('),
           function('libinterp/runt.c', 'Array*\nmem2array(')]
 unit = (root / 'libinterp/tests/ipint-exports.c').read_text()
 unit = unit.replace('TYPES', types).replace('IMPLEMENTATION', '\n'.join(parts))
 files = ['mpaux', 'mpfmt', 'mptobe', 'betomp', 'mpadd', 'mpsub', 'mpcmp',
-         'mpmul', 'mpleft', 'mpright', 'mpvecadd', 'mpvecsub', 'mpvecdigmuladd',
+         'mpmul', 'mprand', 'mpleft', 'mpright', 'mpvecadd', 'mpvecsub', 'mpvecdigmuladd',
          'mpveccmp', 'mpdigdiv', 'mpdiv', 'mpmod', 'mpexp', 'mpextendedgcd', 'mpinvert', 'mptoui', 'mptoi']
 
 with tempfile.TemporaryDirectory(prefix='ipint-exports-') as directory:

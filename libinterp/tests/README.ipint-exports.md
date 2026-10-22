@@ -15,7 +15,7 @@ The native side links production portable libmp arithmetic/formatting and lib9
 codecs, with the tracked allocator from the libmp text fixture. The VM heap and
 ASCII string constructor are bounded stubs with deterministic VM-error injection.
 
-Its 2,285 cases include zero, signed magnitudes, both compatibility-prefix branches,
+Its 2,314 cases include zero, signed magnitudes, both compatibility-prefix branches,
 and sizes around 768/1024 bytes up to 4096 bytes. All five export wrappers retain
 old results when validation, native-buffer allocation or VM output allocation
 fails. Native temporaries and VM references must balance after each case. Tests
@@ -39,6 +39,20 @@ and negative inverses modulo 2**bits-1 across 31, 32, 33, 64, 127, 256, 521 and
 1024 bits. Every completed case balances native allocations and VM references.
 The wrapper normalizes signed bases before extended GCD, frees its native
 scratch values before raising VM errors, and publishes only a complete result.
+
+Bitwise AND/OR/XOR/NOT now use staged result ownership too. Cases cover output
+aliasing either input, nil errors, VM heap failures and AND with a negative
+left operand and zero right operand. The existing sign/magnitude and stored-limb
+complement conventions are retained; these changes do not introduce infinite
+two's-complement semantics. Zero results have a canonical positive sign.
+
+Random-generation cases cover zero and limb-edge sizes, minimum/negative VM
+words, counts exceeding native int capacity, scratch-buffer allocation failure
+and VM-result allocation failure. A deterministic generator and explicit lock
+model check that invalid sizes fail before release, native work runs unlocked,
+and every ordinary failure returns with the interpreter lock restored. Previous
+results and both allocation counters must remain unchanged on error. These tests
+check size/ownership contracts, not entropy quality or cryptographic strength.
 
 IPints no longer exports through fixed 1024-byte stack buffers. Ordinary base64
 and textual exports retain libmp's signed representation; byte exports and the
