@@ -5,6 +5,7 @@
 //
 //	divide two digits by one and return quotient
 //
+/* Form quotient bits in the unsigned digit type, including its highest bit. */
 void
 mpdigdiv(mpdigit *dividend, mpdigit divisor, mpdigit *quotient)
 {
@@ -36,7 +37,7 @@ mpdigdiv(mpdigit *dividend, mpdigit divisor, mpdigit *quotient)
 			hi--;
 		lo -= y;
 		hi -= x;
-		q |= 1<<i;
+		q |= (mpdigit)1<<i;
 	}
 	q += lo/divisor;
 	*quotient = q;

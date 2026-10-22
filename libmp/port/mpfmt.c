@@ -18,6 +18,7 @@ to64(mpint *b, char *buf, int len)
 	return rv;
 }
 
+/* Encode the exact magnitude length; trailing zero padding changes its value. */
 static int
 to32(mpint *b, char *buf, int len)
 {
@@ -30,12 +31,10 @@ to32(mpint *b, char *buf, int len)
 	if(p == nil)
 		return -1;
 	n = mptobe(b, p, n, nil);
-	if(n < 0)
+	if(n < 0){
+		free(p);
 		return -1;
-
-	// round up buffer size, enc32 only accepts a multiple of 5
-	if(n%5)
-		n += 5 - (n%5);
+	}
 	rv = enc32(buf, len, p, n);
 	free(p);
 	return rv;
@@ -43,6 +42,7 @@ to32(mpint *b, char *buf, int len)
 
 static char set16[] = "0123456789ABCDEF";
 
+/* Walk from one-past-end so zero never forms a pointer before its digits. */
 static int
 to16(mpint *b, char *buf, int len)
 {
@@ -55,8 +55,8 @@ to16(mpint *b, char *buf, int len)
 
 	out = buf;
 	eout = buf+len;
-	for(p = &b->p[b->top-1]; p >= b->p; p--){
-		x = *p;
+	for(p = b->p+b->top; p > b->p;){
+		x = *--p;
 		for(i = Dbits-4; i >= 0; i -= 4){
 			j = 0xf & (x>>i);
 			if(j != 0 || out != buf){

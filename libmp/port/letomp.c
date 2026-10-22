@@ -3,6 +3,7 @@
 #include "dat.h"
 
 // convert a little endian byte array (least significant byte first) to an mpint
+/* Import an unsigned magnitude, including empty input and reused destinations. */
 mpint*
 letomp(uchar *s, uint n, mpint *b)
 {
@@ -24,5 +25,7 @@ letomp(uchar *s, uint n, mpint *b)
 	if(i > 0)
 		b->p[m++] = x;
 	b->top = m;
+	b->sign = 1;
+	mpnorm(b);
 	return b;
 }

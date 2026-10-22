@@ -19,15 +19,18 @@ uitomp(uint i, mpint *b)
 	return b;
 }
 
+/* Zero has no significant digits; do not expose stale allocation contents. */
 uint
 mptoui(mpint *b)
 {
 	uint x;
 
+	if(b->top == 0)
+		return 0;
 	x = *b->p;
 	if(b->sign < 0)
 		x = 0;
-	else if(b->top > 1 || (sizeof(mpdigit) > sizeof(uint) && x > MAXUINT))
+	else if(b->top > 1 || (sizeof(mpdigit) > sizeof(uint) && *b->p > MAXUINT))
 		x =  MAXUINT;
 	return x;
 }

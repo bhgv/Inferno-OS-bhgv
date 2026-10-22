@@ -7,6 +7,7 @@
  *  big as an int.
  */
 
+/* Preserve INT_MIN by forming its magnitude in unsigned arithmetic. */
 mpint*
 itomp(int i, mpint *b)
 {
@@ -17,16 +18,17 @@ itomp(int i, mpint *b)
 		b->top = 1;
 	if(i < 0){
 		b->sign = -1;
-		*b->p = -i;
+		*b->p = (uint)0-(uint)i;
 	} else
 		*b->p = i;
 	return b;
 }
 
+/* Saturate signed results without negating an unrepresentable magnitude. */
 int
 mptoi(mpint *b)
 {
-	uint x;
+	mpdigit x;
 
 	if(b->top==0)
 		return 0;
@@ -40,7 +42,7 @@ mptoi(mpint *b)
 		if(b->top > 1 || x > MAXINT+1)
 			x = (int)MININT;
 		else
-			x = -(int)x;
+			x = (uint)0-(uint)x;
 	}
 	return x;
 }

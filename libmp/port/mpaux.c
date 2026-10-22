@@ -160,6 +160,7 @@ mpsignif(mpint *n)
 }
 
 // k, where n = 2**k * q for odd q
+/* Probe the low set bit without signed-int shifts at the digit boundary. */
 int
 mplowbits0(mpint *n)
 {
@@ -173,7 +174,7 @@ mplowbits0(mpint *n)
 	digit = 0;
 	d = n->p[0];
 	for(;;){
-		if(d & (1<<bit))
+		if(d & ((mpdigit)1<<bit))
 			break;
 		k++;
 		bit++;

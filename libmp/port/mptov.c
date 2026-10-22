@@ -5,8 +5,8 @@
 #define VLDIGITS (sizeof(vlong)/sizeof(mpdigit))
 
 /*
- *  this code assumes that a vlong is an integral number of
- *  mpdigits long.
+ * Convert signed magnitudes without negating the minimum signed value.
+ * A scalar contains an integral number of digits.
  */
 mpint*
 vtomp(vlong v, mpint *b)
@@ -15,25 +15,28 @@ vtomp(vlong v, mpint *b)
 	uvlong uv;
 
 	if(b == nil)
-		b = mpnew(VLDIGITS*sizeof(mpdigit));
+		b = mpnew(sizeof(vlong)*8);
 	else
-		mpbits(b, VLDIGITS*sizeof(mpdigit));
+		mpbits(b, sizeof(vlong)*8);
 	mpassign(mpzero, b);
 	if(v == 0)
 		return b;
 	if(v < 0){
 		b->sign = -1;
-		uv = -v;
+		uv = (uvlong)0-(uvlong)v;
 	} else
 		uv = v;
 	for(s = 0; s < VLDIGITS && uv != 0; s++){
 		b->p[s] = uv;
-		uv >>= sizeof(mpdigit)*8;
+		/* Two half shifts also permit digits as wide as the scalar. */
+		uv >>= Dbits/2;
+		uv >>= Dbits/2;
 	}
 	b->top = s;
 	return b;
 }
 
+/* Widen each digit before shifting and saturate to the signed result range. */
 vlong
 mptov(mpint *b)
 {
@@ -53,7 +56,7 @@ mptov(mpint *b)
 
 	v = 0;
 	for(s = 0; s < b->top; s++)
-		v |= b->p[s]<<(s*sizeof(mpdigit)*8);
+		v |= (uvlong)b->p[s]<<(s*sizeof(mpdigit)*8);
 
 	if(b->sign > 0){
 		if(v > MAXVLONG)
@@ -62,7 +65,7 @@ mptov(mpint *b)
 		if(v > MINVLONG)
 			v = MINVLONG;
 		else
-			v = -(vlong)v;
+			v = (uvlong)0-v;
 	}
 
 	return (vlong)v;

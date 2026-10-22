@@ -3,6 +3,7 @@
 #include "dat.h"
 
 // res = b >> shift
+/* Large right shifts become zero before computing a destination bit count. */
 void
 mpright(mpint *b, int shift, mpint *res)
 {
@@ -21,17 +22,18 @@ mpright(mpint *b, int shift, mpint *res)
 		return;
 	}
 
-	if(res != b)
-		mpbits(res, b->top*Dbits - shift);
 	d = shift/Dbits;
 	r = shift - d*Dbits;
 	l = Dbits - r;
 
-	//  shift all the bits out == zero
-	if(d>=b->top){
+	/* Test this before subtracting shift from the source's bit capacity. */
+	if(d >= b->top){
 		res->top = 0;
+		res->sign = 1;
 		return;
 	}
+	if(res != b)
+		mpbits(res, b->top*Dbits - shift);
 
 	// special case digit shifts
 	if(r == 0){

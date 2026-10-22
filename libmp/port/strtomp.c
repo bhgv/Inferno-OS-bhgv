@@ -43,6 +43,7 @@ init(void)
 	tab.inited = 1;
 }
 
+/* Widen nibbles before shifting into the sign bit of a digit. */
 static char*
 from16(char *a, mpint *b)
 {
@@ -62,7 +63,7 @@ from16(char *a, mpint *b)
 		for(i = 0; i < Dbits; i += 4){
 			if(p <= a)
 				break;
-			x |= tab.t16[*(uchar*)--p]<<i;
+			x |= (mpdigit)tab.t16[*(uchar*)--p]<<i;
 		}
 		b->p[b->top++] = x;
 	}
@@ -111,6 +112,7 @@ from10(char *a, mpint *b)
 	return a;
 }
 
+/* Allocation failure must report no conversion rather than a successful zero. */
 static char*
 from64(char *a, mpint *b)
 {
@@ -124,13 +126,14 @@ from64(char *a, mpint *b)
 	mpbits(b, n*6);
 	p = malloc(n);
 	if(p == nil)
-		return a;
+		return buf;
 	m = dec64(p, n, buf, n);
 	betomp(p, m, b);
 	free(p);
 	return a;
 }
 
+/* Use the base32 alphabet and reject incomplete or invalid encoded groups. */
 static char*
 from32(char *a, mpint *b)
 {
@@ -138,26 +141,32 @@ from32(char *a, mpint *b)
 	uchar *p;
 	int n, m;
 
-	for(; tab.t64[*(uchar*)a] != INVAL; a++)
+	for(; tab.t32[*(uchar*)a] != INVAL; a++)
 		;
 	n = a-buf;
 	mpbits(b, n*5);
 	p = malloc(n);
 	if(p == nil)
-		return a;
+		return buf;
 	m = dec32(p, n, buf, n);
+	if(m < 0){
+		free(p);
+		return buf;
+	}
 	betomp(p, m, b);
 	free(p);
 	return a;
 }
 
+/* Release a destination allocated here when no number can be converted. */
 mpint*
 strtomp(char *a, char **pp, int base, mpint *b)
 {
-	int sign;
+	int sign, allocated;
 	char *e;
 
-	if(b == nil)
+	allocated = b == nil;
+	if(allocated)
 		b = mpnew(0);
 
 	if(tab.inited == 0)
@@ -193,8 +202,11 @@ strtomp(char *a, char **pp, int base, mpint *b)
 	}
 
 	// if no characters parsed, there wasn't a number to convert
-	if(e == a)
+	if(e == a){
+		if(allocated)
+			mpfree(b);
 		return nil;
+	}
 
 	mpnorm(b);
 	b->sign = sign;

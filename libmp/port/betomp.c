@@ -3,6 +3,7 @@
 #include "dat.h"
 
 // convert a big-endian byte array (most significant byte first) to an mpint
+/* Import an unsigned magnitude, including empty input and reused destinations. */
 mpint*
 betomp(uchar *p, uint n, mpint *b)
 {
@@ -13,7 +14,7 @@ betomp(uchar *p, uint n, mpint *b)
 		b = mpnew(0);
 
 	// dump leading zeros
-	while(*p == 0 && n > 1){
+	while(n > 1 && *p == 0){
 		p++;
 		n--;
 	}
@@ -36,5 +37,7 @@ betomp(uchar *p, uint n, mpint *b)
 		}
 	}
 
+	b->sign = 1;
+	mpnorm(b);
 	return b;
 }
