@@ -1,6 +1,7 @@
 #include "os.h"
 #include <libsec.h>
 
+/* Reject impossible native seeds before touching the permutation state. */
 void
 setupRC4state(RC4state *key, uchar *start, int n)
 {
@@ -9,6 +10,8 @@ setupRC4state(RC4state *key, uchar *start, int n)
 	uchar *state;
 	uchar *p, *e, *sp, *se;
 
+	if(start == nil || n <= 0)
+		sysfatal("setupRC4state: invalid seed");
 	state = key->state;
 	se = &state[256];
 	for(sp = state; sp < se; sp++)
@@ -30,6 +33,7 @@ setupRC4state(RC4state *key, uchar *start, int n)
 	}
 }
 
+/* Validate native counts before advancing or reversing the stream state. */
 void
 rc4(RC4state *key, uchar *p, int len)
 {
@@ -37,6 +41,13 @@ rc4(RC4state *key, uchar *p, int len)
 	int x, y;
 	uchar *state;
 	uchar *e;
+
+	if(len < 0)
+		sysfatal("rc4: negative length");
+	if(len == 0)
+		return;
+	if(p == nil)
+		sysfatal("rc4: missing data");
 
 	x = key->x;
 	y = key->y;
@@ -55,6 +66,7 @@ rc4(RC4state *key, uchar *p, int len)
 	key->y = y;
 }
 
+/* Validate native counts before advancing or reversing the stream state. */
 void
 rc4skip(RC4state *key, int len)
 {
@@ -62,6 +74,9 @@ rc4skip(RC4state *key, int len)
 	int x, y;
 	uchar *state;
 	int i;
+
+	if(len < 0)
+		sysfatal("rc4skip: negative length");
 
 	x = key->x;
 	y = key->y;
@@ -79,6 +94,7 @@ rc4skip(RC4state *key, int len)
 	key->y = y;
 }
 
+/* Validate native counts before advancing or reversing the stream state. */
 void
 rc4back(RC4state *key, int len)
 {
@@ -86,6 +102,9 @@ rc4back(RC4state *key, int len)
 	int x, y;
 	uchar *state;
 	int i;
+
+	if(len < 0)
+		sysfatal("rc4back: negative length");
 
 	x = key->x;
 	y = key->y;
