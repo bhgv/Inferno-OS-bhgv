@@ -1,52 +1,55 @@
 #include <lib9.h>
 static char t16e[] = "0123456789ABCDEF";
 
+/* Decode hexadecimal pairs, retaining the legacy ignored-delimiter behavior. */
 int
 dec16(uchar *out, int lim, char *in, int n)
 {
-	int c, w = 0, i = 0;
-	uchar *start = out;
-	uchar *eout = out + lim;
+	int c, high, pending, used;
 
-	while(n-- > 0){
-		c = *in++;
-		if('0' <= c && c <= '9')
-			c = c - '0';
-		else if('a' <= c && c <= 'z')
-			c = c - 'a' + 10;
-		else if('A' <= c && c <= 'Z')
-			c = c - 'A' + 10;
+	if(lim <= 0 || n <= 0)
+		return 0;
+	high = 0;
+	pending = 0;
+	used = 0;
+	while(n > 0 && used < lim){
+		n--;
+		c = (uchar)*in++;
+		if(c >= '0' && c <= '9')
+			c -= '0';
+		else if(c >= 'a' && c <= 'f')
+			c = c-'a'+10;
+		else if(c >= 'A' && c <= 'F')
+			c = c-'A'+10;
 		else
 			continue;
-		w = (w<<4) + c;
-		i++;
-		if(i == 2){
-			if(out + 1 > eout)
-				goto exhausted;
-			*out++ = w;
-			w = 0;
-			i = 0;
+		if(pending){
+			out[used++] = (high<<4)|c;
+			pending = 0;
+		}else{
+			high = c;
+			pending = 1;
 		}
 	}
-exhausted:
-	return out - start;
+	return used;
 }
 
+/* Reserve a terminator and stop before reading a byte that cannot be encoded. */
 int
 enc16(char *out, int lim, uchar *in, int n)
 {
 	uint c;
-	char *eout = out + lim;
-	char *start = out;
+	int used;
 
-	while(n-- > 0){
+	if(lim <= 0)
+		return 0;
+	used = 0;
+	while(n > 0 && lim-used > 2){
+		n--;
 		c = *in++;
-		if(out + 2 >= eout)
-			goto exhausted;
-		*out++ = t16e[c>>4];
-		*out++ = t16e[c&0xf];
+		out[used++] = t16e[c>>4];
+		out[used++] = t16e[c&0xf];
 	}
-exhausted:
-	*out = 0;
-	return out - start;
+	out[used] = 0;
+	return used;
 }

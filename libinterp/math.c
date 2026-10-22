@@ -6,16 +6,44 @@
 #include "mathi.h"
 #include "mathmod.h"
 
-static union
+typedef union MathBits64 MathBits64;
+union MathBits64
 {
 	double x;
 	uvlong u;
-} bits64;
+};
 
-static union{
+typedef union MathBits32 MathBits32;
+union MathBits32
+{
 	float x;
 	unsigned int u;
-} bits32;
+};
+
+/* Check full VM lengths before multiplication, narrowing or touching array data. */
+static int
+matharraycount(Array *bytes, Array *numbers, int width, Type *type)
+{
+	if(bytes == H || bytes == nil || numbers == H || numbers == nil)
+		error(exNilref);
+	if(bytes->t != &Tbyte || numbers->t != type)
+		error(exType);
+	if(bytes->len < 0 || numbers->len < 0 ||
+	   (uvlong)numbers->len > 0x7fffffff/width ||
+	   (uvlong)numbers->len > 0x7fffffff/type->size ||
+	   bytes->len != numbers->len*width)
+		error(exMathia);
+	return (int)numbers->len;
+}
+
+/* Sign-extend an external 32-bit integer without overflowing a 32-bit VM word. */
+static WORD
+mathsigned32(unsigned int bits)
+{
+	if(bits & 0x80000000U)
+		return -1-(WORD)(~bits);
+	return (WORD)bits;
+}
 
 void
 mathmodinit(void)
@@ -29,6 +57,7 @@ mathmodinit(void)
 	fmtinstall('f', gfltconv);
 }
 
+/* Decode big-endian signed 32-bit values into complete VM-word slots. */
 void
 Math_import_int(void *fp)
 {
@@ -36,36 +65,34 @@ Math_import_int(void *fp)
 	int i, n;
 	unsigned int u;
 	unsigned char *bp;
-	int *x;
+	WORD *x;
 
 	f = fp;
-	n = f->x->len;
-	if(f->b->len!=4*n)
-		error(exMathia);
+	n = matharraycount(f->b, f->x, 4, &Tword);
 	bp = (unsigned char *)(f->b->data);
-	x = (int*)(f->x->data);
+	x = (WORD*)(f->x->data);
 	for(i=0; i<n; i++){
 		u = *bp++;
 		u = (u<<8) | *bp++;
 		u = (u<<8) | *bp++;
 		u = (u<<8) | *bp++;
-		x[i] = u;
+		x[i] = mathsigned32(u);
 	}
 }
 
+/* Decode external binary32 values through a local representation union. */
 void
 Math_import_real32(void *fp)
 {
-	F_Math_import_int *f;
+	F_Math_import_real32 *f;
 	int i, n;
 	unsigned int u;
 	unsigned char *bp;
 	double *x;
+	MathBits32 bits32;
 
 	f = fp;
-	n = f->x->len;
-	if(f->b->len!=4*n)
-		error(exMathia);
+	n = matharraycount(f->b, f->x, 4, &Treal);
 	bp = (unsigned char *)(f->b->data);
 	x = (double*)(f->x->data);
 	for(i=0; i<n; i++){
@@ -78,19 +105,19 @@ Math_import_real32(void *fp)
 	}
 }
 
+/* Decode external binary64 values after validating both array sizes. */
 void
 Math_import_real(void *fp)
 {
-	F_Math_import_int *f;
+	F_Math_import_real *f;
 	int i, n;
 	uvlong u;
 	unsigned char *bp;
 	double *x;
+	MathBits64 bits64;
 
 	f = fp;
-	n = f->x->len;
-	if(f->b->len!=8*n)
-		error(exMathia);
+	n = matharraycount(f->b, f->x, 8, &Treal);
 	bp = f->b->data;
 	x = (double*)(f->x->data);
 	for(i=0; i<n; i++){
@@ -107,6 +134,7 @@ Math_import_real(void *fp)
 	}
 }
 
+/* Encode the low 32 bits of each VM word using its actual array stride. */
 void
 Math_export_int(void *fp)
 {
@@ -114,14 +142,12 @@ Math_export_int(void *fp)
 	int i, n;
 	unsigned int u;
 	unsigned char *bp;
-	int *x;
+	WORD *x;
 
 	f = fp;
-	n = f->x->len;
-	if(f->b->len!=4*n)
-		error(exMathia);
+	n = matharraycount(f->b, f->x, 4, &Tword);
 	bp = (unsigned char *)(f->b->data);
-	x = (int*)(f->x->data);
+	x = (WORD*)(f->x->data);
 	for(i=0; i<n; i++){
 		u = x[i];
 		*bp++ = u>>24;
@@ -131,19 +157,19 @@ Math_export_int(void *fp)
 	}
 }
 
+/* Narrow real values to binary32 after checking the complete destination. */
 void
 Math_export_real32(void *fp)
 {
-	F_Math_export_int *f;
+	F_Math_export_real32 *f;
 	int i, n;
 	unsigned int u;
 	unsigned char *bp;
 	double *x;
+	MathBits32 bits32;
 
 	f = fp;
-	n = f->x->len;
-	if(f->b->len!=4*n)
-		error(exMathia);
+	n = matharraycount(f->b, f->x, 4, &Treal);
 	bp = (unsigned char *)(f->b->data);
 	x = (double*)(f->x->data);
 	for(i=0; i<n; i++){
@@ -156,19 +182,19 @@ Math_export_real32(void *fp)
 	}
 }
 
+/* Export exact binary64 representations in big-endian byte order. */
 void
 Math_export_real(void *fp)
 {
-	F_Math_export_int *f;
+	F_Math_export_real *f;
 	int i, n;
 	uvlong u;
 	unsigned char *bp;
 	double *x;
+	MathBits64 bits64;
 
 	f = fp;
-	n = f->x->len;
-	if(f->b->len!=8*n)
-		error(exMathia);
+	n = matharraycount(f->b, f->x, 8, &Treal);
 	bp = (unsigned char *)(f->b->data);
 	x = (double*)(f->x->data);
 	for(i=0; i<n; i++){
@@ -186,40 +212,48 @@ Math_export_real(void *fp)
 }
 
 
+/* Convert a scalar bit representation without shared mutable scratch state. */
 void
 Math_bits32real(void *fp)
 {
 	F_Math_bits32real *f;
+	MathBits32 bits32;
 
 	f = fp;
 	bits32.u = f->b;
 	*f->ret = bits32.x;
 }
 
+/* Convert a scalar bit representation without shared mutable scratch state. */
 void
 Math_bits64real(void *fp)
 {
 	F_Math_bits64real *f;
+	MathBits64 bits64;
 
 	f = fp;
 	bits64.u = f->b;
 	*f->ret = bits64.x;
 }
 
+/* Convert a scalar bit representation without shared mutable scratch state. */
 void
 Math_realbits32(void *fp)
 {
 	F_Math_realbits32 *f;
+	MathBits32 bits32;
 
 	f = fp;
 	bits32.x = f->x;
-	*f->ret = bits32.u;
+	*f->ret = mathsigned32(bits32.u);
 }
 
+/* Convert a scalar bit representation without shared mutable scratch state. */
 void
 Math_realbits64(void *fp)
 {
 	F_Math_realbits64 *f;
+	MathBits64 bits64;
 
 	f = fp;
 	bits64.x = f->x;
@@ -689,14 +723,18 @@ Math_jn(void *fp)
 	*f->ret = __ieee754_jn(f->n, f->x);
 }
 
+/* Widen the native sign output before storing it in a possibly wider VM slot. */
 void
 Math_lgamma(void *fp)
 {
 	F_Math_lgamma *f;
+	int sign;
+	double value;
 
 	f = fp;
-
-	f->ret->t1 = __ieee754_lgamma_r(f->x, &f->ret->t0);
+	value = __ieee754_lgamma_r(f->x, &sign);
+	f->ret->t0 = sign;
+	f->ret->t1 = value;
 }
 
 void
