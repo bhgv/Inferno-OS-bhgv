@@ -421,86 +421,92 @@ IPint_expmod(void *fp)
 	destroy(old);
 }
 
-/* multiplicative inverse */
+/* Reject noninvertible inputs as VM errors rather than native fatal errors. */
 void
 IPint_invert(void *fp)
 {
 	F_IPint_invert *f;
-	mpint *ret;
-	void *v;
+	mpint *input, *base, *mod, *gcd, *number, *other;
+	IPints_IPint *result, *old;
+	int invertible;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	ret = mpnew(0);
-	if(ret != nil)
-		mpinvert(MP(f->base), MP(f->mod), ret);
-	*f->ret = newIPint(ret);
+	input = MP(f->base);
+	mod = MP(f->mod);
+	if(mod->top == 0)
+		error(exZdiv);
+	if(mod->sign < 0)
+		error(exInval);
+	/* Normalize negative bases before the nonnegative extended-GCD routine. */
+	base = mpnew(0);
+	gcd = mpnew(0);
+	number = mpnew(0);
+	other = mpnew(0);
+	mpmod(input, mod, base);
+	mpextendedgcd(base, mod, gcd, number, other);
+	invertible = mpcmp(gcd, mpone) == 0;
+	mpfree(base);
+	mpfree(gcd);
+	mpfree(other);
+	if(!invertible){
+		mpfree(number);
+		error(exInval);
+	}
+	mpmod(number, mod, number);
+	result = newIPint(number);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
-/* basic math */
+/* Finish binary arithmetic before releasing a possibly aliased old result. */
+static void
+ipintbinary(IPints_IPint *a, IPints_IPint *b, IPints_IPint **result,
+	void (*calculate)(mpint*, mpint*, mpint*))
+{
+	mpint *left, *right, *number;
+	IPints_IPint *value, *old;
+
+	left = MP(a);
+	right = MP(b);
+	number = mpnew(0);
+	calculate(left, right, number);
+	value = newIPint(number);
+	old = *result;
+	*result = value;
+	destroy(old);
+}
+
+/* Add only after validating both operands and retain the result on failure. */
 void
 IPint_add(void *fp)
 {
 	F_IPint_add *f;
-	mpint *i1, *i2, *ret;
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	i1 = MP(f->i1);
-	i2 = MP(f->i2);
-	ret = mpnew(0);
-	if(ret != nil)
-		mpadd(i1, i2, ret);
-
-	*f->ret = newIPint(ret);
+	ipintbinary(f->i1, f->i2, f->ret, mpadd);
 }
+
+/* Subtract before replacing an output that can also be an input. */
 void
 IPint_sub(void *fp)
 {
 	F_IPint_sub *f;
-	mpint *i1, *i2, *ret;
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	i1 = MP(f->i1);
-	i2 = MP(f->i2);
-	ret = mpnew(0);
-	if(ret != nil)
-		mpsub(i1, i2, ret);
-
-	*f->ret = newIPint(ret);
+	ipintbinary(f->i1, f->i2, f->ret, mpsub);
 }
+
+/* Multiply with the same ownership and error guarantees as addition. */
 void
 IPint_mul(void *fp)
 {
 	F_IPint_mul *f;
-	mpint *i1, *i2, *ret;
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	i1 = MP(f->i1);
-	i2 = MP(f->i2);
-	ret = mpnew(0);
-	if(ret != nil)
-		mpmul(i1, i2, ret);
-
-	*f->ret = newIPint(ret);
+	ipintbinary(f->i1, f->i2, f->ret, mpmul);
 }
+
 typedef struct IPintDivide IPintDivide;
 struct IPintDivide
 {
@@ -592,39 +598,44 @@ IPint_mod(void *fp)
 	destroy(old);
 }
 
+/* Copy a magnitude before replacing its owner and keep zero nonnegative. */
+static void
+ipintcopy(IPints_IPint *input, IPints_IPint **result, int negate)
+{
+	mpint *number;
+	IPints_IPint *value, *old;
+
+	number = mpcopy(MP(input));
+	if(number == nil)
+		error(exHeap);
+	if(negate && number->top != 0)
+		number->sign = -number->sign;
+	if(number->top == 0)
+		number->sign = 1;
+	value = newIPint(number);
+	old = *result;
+	*result = value;
+	destroy(old);
+}
+
+/* Negate without freeing an aliased source or introducing negative zero. */
 void
 IPint_neg(void *fp)
 {
 	F_IPint_neg *f;
-	mpint *ret;
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	ret = mpcopy(MP(f->i));
-	if(ret == nil)
-		error(exHeap);
-	ret->sign = -ret->sign;
-
-	*f->ret = newIPint(ret);
+	ipintcopy(f->i, f->ret, 1);
 }
 
-/* copy */
+/* Publish an independent copy only after its VM allocation succeeds. */
 void
 IPint_copy(void *fp)
 {
 	F_IPint_copy *f;
-	void *v;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	*f->ret = newIPint(mpcopy(MP(f->i)));
+	ipintcopy(f->i, f->ret, 0);
 }
 
 

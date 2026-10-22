@@ -152,6 +152,12 @@ static F_IPint_mod modframe;
 static F_IPint_expmod powerframe;
 static F_IPint_shl leftframe;
 static F_IPint_shr rightframe;
+static F_IPint_add addframe;
+static F_IPint_sub subframe;
+static F_IPint_mul mulframe;
+static F_IPint_neg negframe;
+static F_IPint_copy copyframe;
+static F_IPint_invert invertframe;
 static mpint *owned_number;
 static int operation;
 
@@ -172,6 +178,12 @@ invoke(void *unused)
 	case 8: IPint_expmod(&powerframe); break;
 	case 9: IPint_shl(&leftframe); break;
 	case 10: IPint_shr(&rightframe); break;
+	case 11: IPint_add(&addframe); break;
+	case 12: IPint_sub(&subframe); break;
+	case 13: IPint_mul(&mulframe); break;
+	case 14: IPint_neg(&negframe); break;
+	case 15: IPint_copy(&copyframe); break;
+	case 16: IPint_invert(&invertframe); break;
 	default: assert(0);
 	}
 	return 1;
@@ -522,6 +534,172 @@ checkshifts(void)
 	destroy(result);
 }
 
+/* Exercise all arithmetic wrappers with failures and an output-owned source. */
+static void
+checkarithmetic(void)
+{
+	IPints_IPint *result, *other, *old;
+	int op, mode, native_before, vm_before, expected[] = {10, 4, 21, -7, 7};
+
+	other = newIPint(itomp(3, nil));
+	for(op = 11; op <= 15; op++)
+		for(mode = 0; mode < (op <= 13 ? 4 : 3); mode++) {
+			result = newIPint(itomp(7, nil));
+			old = result;
+			addframe.i1 = subframe.i1 = mulframe.i1 = result;
+			addframe.i2 = subframe.i2 = mulframe.i2 = other;
+			negframe.i = copyframe.i = result;
+			addframe.ret = subframe.ret = mulframe.ret = &result;
+			negframe.ret = copyframe.ret = &result;
+			if(mode == 3) {
+				addframe.i1 = subframe.i1 = mulframe.i1 = other;
+				addframe.i2 = subframe.i2 = mulframe.i2 = result;
+			}
+			operation = op;
+			native_before = liveblocks();
+			vm_before = vm_live;
+			if(mode == 1)
+				vm_failure = 0;
+			if(mode == 2) {
+				addframe.i1 = subframe.i1 = mulframe.i1 = H;
+				negframe.i = copyframe.i = H;
+			}
+			if(mode == 0 || mode == 3) {
+				assert(kprotect(invoke, nil));
+				assert(mptoi(checkIPint(result)) == (mode == 3 && op == 12 ? -4 : expected[op-11]));
+			}else {
+				assert(!kprotect(invoke, nil));
+				assert(last_error == (mode == 1 ? injected : exNilref));
+				assert(result == old);
+			}
+			vm_failure = -1;
+			assert(liveblocks() == native_before && vm_live == vm_before);
+			destroy(result);
+			checks++;
+		}
+	result = newIPint(itomp(0, nil));
+	negframe.i = result;
+	negframe.ret = &result;
+	operation = 14;
+	assert(kprotect(invoke, nil));
+	assert(checkIPint(result)->top == 0 && checkIPint(result)->sign == 1);
+	destroy(result);
+	destroy(other);
+	checks++;
+}
+
+/* Inversion failures must unwind through the VM and leave no native temporaries. */
+static void
+checkinverses(void)
+{
+	IPints_IPint *base, *mod, *result, *old;
+	int b, m, expected, native_before, vm_before;
+
+	for(m = 1; m <= 31; m++)
+		for(b = -32; b <= 32; b++) {
+			base = newIPint(itomp(b, nil));
+			mod = newIPint(itomp(m, nil));
+			result = newIPint(itomp(99, nil));
+			old = result;
+			invertframe.base = base;
+			invertframe.mod = mod;
+			invertframe.ret = &result;
+			operation = 16;
+			for(expected = 0; expected < m; expected++)
+				if(((b*expected)%m+m)%m == 1%m)
+					break;
+			native_before = liveblocks();
+			vm_before = vm_live;
+			if(expected < m) {
+				assert(kprotect(invoke, nil));
+				assert(mptoi(checkIPint(result)) == expected);
+				old = result;
+				vm_failure = 0;
+				assert(!kprotect(invoke, nil) && last_error == injected);
+				vm_failure = -1;
+				assert(result == old);
+			}else {
+				assert(!kprotect(invoke, nil) && last_error == exInval);
+				assert(result == old);
+			}
+			assert(liveblocks() == native_before && vm_live == vm_before);
+			destroy(base);
+			destroy(mod);
+			destroy(result);
+			checks++;
+		}
+	base = newIPint(itomp(3, nil));
+	result = newIPint(itomp(11, nil));
+	invertframe.base = base;
+	invertframe.mod = result;
+	invertframe.ret = &result;
+	assert(kprotect(invoke, nil));
+	assert(mptoi(checkIPint(result)) == 4);
+	destroy(result);
+	result = base;
+	mod = newIPint(itomp(11, nil));
+	invertframe.base = result;
+	invertframe.mod = mod;
+	assert(kprotect(invoke, nil));
+	assert(mptoi(checkIPint(result)) == 4);
+	destroy(mod);
+	old = result;
+	for(m = -1; m <= 0; m++) {
+		mod = newIPint(itomp(m, nil));
+		invertframe.base = result;
+		invertframe.mod = mod;
+		native_before = liveblocks();
+		vm_before = vm_live;
+		assert(!kprotect(invoke, nil));
+		assert(last_error == (m == 0 ? exZdiv : exInval));
+		assert(result == old);
+		assert(liveblocks() == native_before && vm_live == vm_before);
+		destroy(mod);
+	}
+	invertframe.mod = H;
+	assert(!kprotect(invoke, nil) && last_error == exNilref && result == old);
+	destroy(result);
+	checks += 5;
+
+}
+
+/* Cross limb boundaries with exact inverses modulo 2**bits-1. */
+static void
+checklargeinverses(void)
+{
+	int widths[] = {31, 32, 33, 64, 127, 256, 521, 1024};
+	IPints_IPint *base, *mod, *result;
+	mpint *number, *expected;
+	unsigned int i;
+	int sign;
+
+	for(i = 0; i < sizeof(widths)/sizeof(widths[0]); i++)
+		for(sign = -1; sign <= 1; sign += 2) {
+			number = mpnew(0);
+			mpleft(mpone, widths[i], number);
+			mpsub(number, mpone, number);
+			mod = newIPint(number);
+			base = newIPint(itomp(sign*2, nil));
+			result = H;
+			expected = mpnew(0);
+			mpleft(mpone, widths[i]-1, expected);
+			if(sign < 0)
+				mpsub(expected, mpone, expected);
+			invertframe.base = base;
+			invertframe.mod = mod;
+			invertframe.ret = &result;
+			operation = 16;
+			assert(kprotect(invoke, nil));
+			assert(mpcmp(checkIPint(result), expected) == 0);
+			mpfree(expected);
+			destroy(base);
+			destroy(mod);
+			destroy(result);
+			assert(vm_live == 0 && liveblocks() == 0);
+			checks++;
+		}
+}
+
 /* Cover the old fixed-buffer limits and verify all VM/native ownership balances. */
 int
 main(void)
@@ -545,6 +723,9 @@ main(void)
 	checkinvalid();
 	checkpowers();
 	checkshifts();
+	checkarithmetic();
+	checkinverses();
+	checklargeinverses();
 	assert(vm_live == 0 && liveblocks() == 0 && worker.nerr == 0);
 	assert(TIPint->ref == 1 && Tarray.ref == 1 && Tbyte.ref == 1 && Tstring.ref == 1);
 	printf("PASS IPints: %d large export/VM unwind/native failure/ownership cases\n", checks);

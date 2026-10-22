@@ -15,7 +15,7 @@ The native side links production portable libmp arithmetic/formatting and lib9
 codecs, with the tracked allocator from the libmp text fixture. The VM heap and
 ASCII string constructor are bounded stubs with deterministic VM-error injection.
 
-Its 230 cases include zero, signed magnitudes, both compatibility-prefix branches,
+Its 2,285 cases include zero, signed magnitudes, both compatibility-prefix branches,
 and sizes around 768/1024 bytes up to 4096 bytes. All five export wrappers retain
 old results when validation, native-buffer allocation or VM output allocation
 fails. Native temporaries and VM references must balance after each case. Tests
@@ -26,6 +26,19 @@ Modular powers cover the zero exponent modulo one, invalid exponent/modulus
 errors, and preservation of old results on VM allocation failure. Shift cases
 cover both directions, negative counts, the minimum VM word, counts wider than
 C int, zero inputs, and allocation failure without losing the previous result.
+Arithmetic cases additionally cover add/subtract/multiply with either operand
+owning the output, copy/negate with an output-owned source, nil arguments and
+VM allocation failure. Negating zero retains its canonical positive sign.
+
+Inversion is checked for every base from -32 through 32 and positive modulus
+from 1 through 31 against an exhaustive multiplication oracle. Noninvertible
+pairs raise a VM invalid-argument error; zero and negative moduli are rejected
+before entering native arithmetic. Invertible pairs also exercise VM allocation
+failure. Tests include output aliasing the base or modulus and exact positive
+and negative inverses modulo 2**bits-1 across 31, 32, 33, 64, 127, 256, 521 and
+1024 bits. Every completed case balances native allocations and VM references.
+The wrapper normalizes signed bases before extended GCD, frees its native
+scratch values before raising VM errors, and publishes only a complete result.
 
 IPints no longer exports through fixed 1024-byte stack buffers. Ordinary base64
 and textual exports retain libmp's signed representation; byte exports and the
