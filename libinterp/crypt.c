@@ -193,7 +193,7 @@ DigestState_copy(void *fp)
 
 /* Validate byte spans at their full VM width before any native length conversion. */
 static WORD
-crypt_digestarray(Array *array)
+crypt_bytearray(Array *array)
 {
 	if(array == H || array == nil)
 		error(exNilref);
@@ -216,7 +216,7 @@ crypt_digest_x(Array *buf, WORD n, Array *digest, int dlen, Crypt_DigestState *s
 	if(n < 0)
 		error(exInval);
 	if(buf != H){
-		crypt_digestarray(buf);
+		crypt_bytearray(buf);
 		if(n > buf->len)
 			n = buf->len;
 		cbuf = buf->data;
@@ -227,7 +227,7 @@ crypt_digest_x(Array *buf, WORD n, Array *digest, int dlen, Crypt_DigestState *s
 	}
 
 	if(digest != H){
-		crypt_digestarray(digest);
+		crypt_bytearray(digest);
 		if(digest->len < dlen)
 			error(exBadDigest);
 		cdigest = digest->data;
@@ -362,7 +362,7 @@ crypt_hmac_x(Array *data, WORD n, Array *key, Array *digest, int dlen, Crypt_Dig
 	if(n < 0)
 		error(exInval);
 	if(data != H){
-		crypt_digestarray(data);
+		crypt_bytearray(data);
 		if(n > data->len)
 			n = data->len;
 		cdata = data->data;
@@ -374,11 +374,11 @@ crypt_hmac_x(Array *data, WORD n, Array *key, Array *digest, int dlen, Crypt_Dig
 
 	if(key == H || key == nil)
 		error(exBadKey);
-	if(crypt_digestarray(key) > 64)
+	if(crypt_bytearray(key) > 64)
 		error(exBadKey);
 
 	if(digest != H){
-		crypt_digestarray(digest);
+		crypt_bytearray(digest);
 		if(digest->len < dlen)
 			error(exBadDigest);
 		cdigest = digest->data;
@@ -790,47 +790,50 @@ Crypt_blowfishcbc(void *fp)
 		bfCBCdecrypt(p, f->n, &is->state);
 }
 
+/* Validate the complete seed before allocating or replacing a prior state. */
 void
 Crypt_rc4setup(void *fp)
 {
 	F_Crypt_rc4setup *f;
 	Heap *h;
 	XRC4state *is;
-	void *v;
+	Crypt_RC4state *old;
+	WORD length;
 
 	f = fp;
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
 	if(f->seed == H)
 		error(exNilref);
 
+	length = crypt_bytearray(f->seed);
+	if(length == 0)
+		error(exBadKey);
 	h = heap(TRC4state);
 	is = H2D(XRC4state*, h);
-
-	setupRC4state(&is->state, f->seed->data, f->seed->len);
-
+	setupRC4state(&is->state, f->seed->data, (int)length);
+	old = *f->ret;
 	*f->ret = (Crypt_RC4state*)is;
+	destroy(old);
 }
 
+/* Check the full VM count and backing bytes before mutating stream or output. */
 void
 Crypt_rc4(void *fp)
 {
 	F_Crypt_rc4 *f;
 	XRC4state *is;
-	uchar *p;
+	WORD length;
 
 	f = fp;
 	if(f->buf == H)
 		return;
-	if(f->n < 0 || f->n > f->buf->len)
+	length = crypt_bytearray(f->buf);
+	if(f->n < 0 || f->n > length)
 		error(exBounds);
 	is = checktype(f->state, TRC4state, exBadState, 0);
-	p = f->buf->data;
-	rc4(&is->state, p, f->n);
+	rc4(&is->state, f->buf->data, (int)f->n);
 }
 
+/* Bound skip counts before native narrowing, keeping rejected states untouched. */
 void
 Crypt_rc4skip(void *fp)
 {
@@ -838,10 +841,13 @@ Crypt_rc4skip(void *fp)
 	XRC4state *is;
 
 	f = fp;
+	if(f->n < 0 || (uvlong)f->n > 0x7fffffff)
+		error(exBounds);
 	is = checktype(f->state, TRC4state, exBadState, 0);
-	rc4skip(&is->state, f->n);
+	rc4skip(&is->state, (int)f->n);
 }
 
+/* Bound reverse counts before native narrowing and preserve the original stream. */
 void
 Crypt_rc4back(void *fp)
 {
@@ -849,8 +855,10 @@ Crypt_rc4back(void *fp)
 	XRC4state *is;
 
 	f = fp;
+	if(f->n < 0 || (uvlong)f->n > 0x7fffffff)
+		error(exBounds);
 	is = checktype(f->state, TRC4state, exBadState, 0);
-	rc4back(&is->state, f->n);
+	rc4back(&is->state, (int)f->n);
 }
 
 /*

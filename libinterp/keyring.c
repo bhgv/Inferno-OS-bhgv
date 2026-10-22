@@ -1198,7 +1198,7 @@ Keyring_DigestState_copy(void *fp)
 
 /* Validate byte spans at their full VM width before any native length conversion. */
 static WORD
-keyring_digestarray(Array *array)
+keyring_bytearray(Array *array)
 {
 	if(array == H || array == nil)
 		error(exNilref);
@@ -1221,7 +1221,7 @@ keyring_digest_x(Array *buf, WORD n, Array *digest, int dlen, Keyring_DigestStat
 	if(n < 0)
 		error(exInval);
 	if(buf != H){
-		keyring_digestarray(buf);
+		keyring_bytearray(buf);
 		if(n > buf->len)
 			n = buf->len;
 		cbuf = buf->data;
@@ -1232,7 +1232,7 @@ keyring_digest_x(Array *buf, WORD n, Array *digest, int dlen, Keyring_DigestStat
 	}
 
 	if(digest != H){
-		keyring_digestarray(digest);
+		keyring_bytearray(digest);
 		if(digest->len < dlen)
 			error(exBadDigest);
 		cdigest = digest->data;
@@ -1367,7 +1367,7 @@ keyring_hmac_x(Array *data, WORD n, Array *key, Array *digest, int dlen, Keyring
 	if(n < 0)
 		error(exInval);
 	if(data != H){
-		keyring_digestarray(data);
+		keyring_bytearray(data);
 		if(n > data->len)
 			n = data->len;
 		cdata = data->data;
@@ -1379,11 +1379,11 @@ keyring_hmac_x(Array *data, WORD n, Array *key, Array *digest, int dlen, Keyring
 
 	if(key == H || key == nil)
 		error(exBadKey);
-	if(keyring_digestarray(key) > 64)
+	if(keyring_bytearray(key) > 64)
 		error(exBadKey);
 
 	if(digest != H){
-		keyring_digestarray(digest);
+		keyring_bytearray(digest);
 		if(digest->len < dlen)
 			error(exBadDigest);
 		cdigest = digest->data;
@@ -2643,47 +2643,54 @@ Keyring_blowfishcbc(void *fp)
 		bfCBCdecrypt(p, f->n, &is->state);
 }
 
+/* Validate the complete seed before allocating or replacing a prior state. */
 void
 Keyring_rc4setup(void *fp)
 {
 	F_Keyring_rc4setup *f;
 	Heap *h;
 	XRC4state *is;
-	void *r;
+	Keyring_RC4state *old;
+	WORD length;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
-
-	if(f->seed == H)
+	if(f->seed == H){
+		old = *f->ret;
+		*f->ret = H;
+		destroy(old);
 		return;
+	}
 
+	length = keyring_bytearray(f->seed);
+	if(length == 0)
+		error(exBadKey);
 	h = heap(TRC4state);
 	is = H2D(XRC4state*, h);
-
-	setupRC4state(&is->state, f->seed->data, f->seed->len);
-
+	setupRC4state(&is->state, f->seed->data, (int)length);
+	old = *f->ret;
 	*f->ret = (Keyring_RC4state*)is;
+	destroy(old);
 }
 
+/* Check the full VM count and backing bytes before mutating stream or output. */
 void
 Keyring_rc4(void *fp)
 {
 	F_Keyring_rc4 *f;
 	XRC4state *is;
-	uchar *p;
+	WORD length;
 
 	f = fp;
 	if(f->buf == H)
 		return;
-	if(f->n < 0 || f->n > f->buf->len)
+	length = keyring_bytearray(f->buf);
+	if(f->n < 0 || f->n > length)
 		error(exBounds);
 	is = checktype(f->state, TRC4state, exBadState, 0);
-	p = f->buf->data;
-	rc4(&is->state, p, f->n);
+	rc4(&is->state, f->buf->data, (int)f->n);
 }
 
+/* Bound skip counts before native narrowing, keeping rejected states untouched. */
 void
 Keyring_rc4skip(void *fp)
 {
@@ -2691,10 +2698,13 @@ Keyring_rc4skip(void *fp)
 	XRC4state *is;
 
 	f = fp;
+	if(f->n < 0 || (uvlong)f->n > 0x7fffffff)
+		error(exBounds);
 	is = checktype(f->state, TRC4state, exBadState, 0);
-	rc4skip(&is->state, f->n);
+	rc4skip(&is->state, (int)f->n);
 }
 
+/* Bound reverse counts before native narrowing and preserve the original stream. */
 void
 Keyring_rc4back(void *fp)
 {
@@ -2702,8 +2712,10 @@ Keyring_rc4back(void *fp)
 	XRC4state *is;
 
 	f = fp;
+	if(f->n < 0 || (uvlong)f->n > 0x7fffffff)
+		error(exBounds);
 	is = checktype(f->state, TRC4state, exBadState, 0);
-	rc4back(&is->state, f->n);
+	rc4back(&is->state, (int)f->n);
 }
 
 /*
