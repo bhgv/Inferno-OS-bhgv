@@ -857,33 +857,47 @@ IPint_not(void *fp)
  * primes
  */
 
+/* Validate references and repetition counts before releasing the interpreter. */
 void
 IPints_probably_prime(void *fp)
 {
 	F_IPints_probably_prime *f;
+	mpint *number;
+	int repetitions, result;
 
 	f = fp;
+	number = MP(f->n);
+	if(f->nrep > 0x7fffffff)
+		error(exInval);
+	repetitions = f->nrep <= 0 ? 18 : (int)f->nrep;
 	release();
-	*f->ret = probably_prime(checkIPint(f->n), f->nrep);
+	result = probably_prime(number, repetitions);
 	acquire();
+	*f->ret = result;
 }
 
+/* Reject invalid sizes before native fatal paths and retain output on VM failure. */
 void
 IPints_genprime(void *fp)
 {
 	F_IPints_genprime *f;
-	mpint *p;
-	void *r;
+	mpint *number;
+	IPints_IPint *result, *old;
+	int repetitions;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
-	p = mpnew(0);
+	if(f->nbits < 2 || (uvlong)f->nbits > 0x7fffffff-(Dbits-1) ||
+	   f->nrep > 0x7fffffff)
+		error(exInval);
+	repetitions = f->nrep <= 0 ? 18 : (int)f->nrep;
+	number = mpnew(0);
 	release();
-	genprime(p, f->nbits, f->nrep);
+	genprime(number, (int)f->nbits, repetitions);
 	acquire();
-	*f->ret = newIPint(p);
+	result = newIPint(number);
+	old = *f->ret;
+	*f->ret = result;
+	destroy(old);
 }
 
 void
@@ -904,28 +918,66 @@ IPints_genstrongprime(void *fp)
 	*f->ret = newIPint(p);
 }
 
+typedef struct IPintPrimePair IPintPrimePair;
+struct IPintPrimePair
+{
+	mpint *p;
+	mpint *alpha;
+	IPints_IPint *prime;
+	IPints_IPint *generator;
+};
+
+/* Transfer each native magnitude to its VM owner, even on allocation failure. */
+static int
+ipintprimepair(void *arg)
+{
+	IPintPrimePair *pair;
+	mpint *number;
+
+	pair = arg;
+	number = pair->p;
+	pair->p = nil;
+	pair->prime = newIPint(number);
+	number = pair->alpha;
+	pair->alpha = nil;
+	pair->generator = newIPint(number);
+	return 1;
+}
+
+/* Validate native sizes and publish the safe prime and generator atomically. */
 void
 IPints_gensafeprime(void *fp)
 {
 	F_IPints_gensafeprime *f;
-	mpint *p, *alpha;
-	void *v;
+	IPintPrimePair pair;
+	IPints_IPint *oldp, *olda;
+	int repetitions;
 
 	f = fp;
-	v = f->ret->t0;
-	f->ret->t0 = H;
-	destroy(v);
-	v = f->ret->t1;
-	f->ret->t1 = H;
-	destroy(v);
-
-	p = mpnew(0);
-	alpha = mpnew(0);
+	if(f->nbits < 3 || (uvlong)f->nbits > 0x7fffffff-(Dbits-1) ||
+	   f->nrep > 0x7fffffff)
+		error(exInval);
+	repetitions = f->nrep <= 0 ? 18 : (int)f->nrep;
+	pair.p = mpnew(0);
+	pair.alpha = mpnew(0);
+	pair.prime = H;
+	pair.generator = H;
 	release();
-	gensafeprime(p, alpha, f->nbits, f->nrep);
+	gensafeprime(pair.p, pair.alpha, (int)f->nbits, repetitions);
 	acquire();
-	f->ret->t0 = newIPint(p);
-	f->ret->t1 = newIPint(alpha);
+	if(!kprotect(ipintprimepair, &pair)){
+		mpfree(pair.p);
+		mpfree(pair.alpha);
+		destroy(pair.prime);
+		destroy(pair.generator);
+		krethrow();
+	}
+	oldp = f->ret->t0;
+	olda = f->ret->t1;
+	f->ret->t0 = pair.prime;
+	f->ret->t1 = pair.generator;
+	destroy(oldp);
+	destroy(olda);
 }
 
 void

@@ -135,7 +135,7 @@ destroy(void *object)
 	vm_live--;
 }
 
-static int released, random_calls;
+static int released, random_calls, safe_random;
 
 /* Model the interpreter lock around native random generation. */
 void
@@ -160,7 +160,29 @@ genrandom(uchar *data, int count)
 	assert(released && count > 0);
 	memset(data, 0xff, count);
 	random_calls++;
+	if(safe_random) {
+		memset(data, 0, count);
+		data[count-1] = random_calls <= 2 ? 0 : random_calls-2;
+	}
 }
+
+/* Supply bounded deterministic witnesses independently of candidate bytes. */
+void
+prng(uchar *data, int count)
+{
+	static unsigned int state = 0x7072696d;
+	int i;
+
+	assert(released);
+	for(i = 0; i < count; i++) {
+		state = state*1664525U+1013904223U;
+		data[i] = state>>24;
+	}
+}
+
+int probably_prime(mpint*, int);
+void genprime(mpint*, int, int);
+void gensafeprime(mpint*, mpint*, int, int);
 
 /* Route native export allocations through the tracked libmp allocator. */
 #define malloc testmalloc
@@ -190,6 +212,9 @@ static F_IPint_ori orframe;
 static F_IPint_xor xorframe;
 static F_IPint_not notframe;
 static F_IPint_random randomframe;
+static F_IPints_probably_prime primeframe;
+static F_IPints_genprime genframe;
+static F_IPints_gensafeprime safeframe;
 static mpint *owned_number;
 static int operation;
 
@@ -221,6 +246,9 @@ invoke(void *unused)
 	case 19: IPint_xor(&xorframe); break;
 	case 20: IPint_not(&notframe); break;
 	case 21: IPint_random(&randomframe); break;
+	case 22: IPints_probably_prime(&primeframe); break;
+	case 23: IPints_genprime(&genframe); break;
+	case 24: IPints_gensafeprime(&safeframe); break;
 	default: assert(0);
 	}
 	return 1;
@@ -848,6 +876,117 @@ checkrandom(void)
 	destroy(result);
 }
 
+/* Validate prime arguments while locked and publish generated output atomically. */
+static void
+checkprimes(void)
+{
+	IPints_IPint *number, *result, *old;
+	WORD answer;
+	int values[] = {-3, 0, 1, 2, 3, 4, 17};
+	int expected[] = {0, 0, 0, 1, 1, 0, 1};
+	int native_before, vm_before, mode;
+	unsigned int i;
+
+	operation = 22;
+	primeframe.ret = &answer;
+	for(i = 0; i < sizeof(values)/sizeof(values[0]); i++) {
+		number = newIPint(itomp(values[i], nil));
+		primeframe.n = number;
+		primeframe.nrep = 2;
+		answer = 99;
+		assert(kprotect(invoke, nil) && answer == expected[i] && !released);
+		destroy(number);
+		checks++;
+	}
+	answer = 99;
+	primeframe.n = H;
+	assert(!kprotect(invoke, nil) && last_error == exNilref && !released && answer == 99);
+	checks++;
+	number = newIPint(itomp(3, nil));
+	primeframe.n = number;
+	primeframe.nrep = (WORD)((UWORD)1 << (sizeof(WORD)*8-1));
+	assert(kprotect(invoke, nil) && answer == 1 && !released);
+	checks++;
+	if(sizeof(WORD) > sizeof(int)) {
+		primeframe.nrep = (WORD)((uvlong)1<<32);
+		answer = 99;
+		assert(!kprotect(invoke, nil) && last_error == exInval && !released && answer == 99);
+		checks++;
+	}
+	destroy(number);
+
+	result = newIPint(itomp(99, nil));
+	genframe.ret = &result;
+	genframe.nbits = 4;
+	genframe.nrep = 2;
+	operation = 23;
+	assert(kprotect(invoke, nil) && !released && mptoi(checkIPint(result)) == 11);
+	checks++;
+	for(mode = 0; mode < 7; mode++) {
+		old = result;
+		native_before = liveblocks();
+		vm_before = vm_live;
+		random_calls = 0;
+		genframe.nbits = mode == 0 ? -1 : mode == 1 ? 0 : mode == 2 ? 1 :
+			mode == 3 ? 0x7fffffff : mode == 4 ?
+			(sizeof(WORD) > sizeof(int) ? (WORD)((uvlong)1<<32) : -2) : 4;
+		genframe.nrep = mode == 5 ? (sizeof(WORD) > sizeof(int) ? (WORD)((uvlong)1<<32) : 2) : 2;
+		if(mode == 6 || (mode == 5 && sizeof(WORD) == sizeof(int)))
+			vm_failure = 0;
+		assert(!kprotect(invoke, nil));
+		assert(last_error == (vm_failure == 0 ? injected : exInval));
+		assert(result == old && !released);
+		assert(random_calls == (vm_failure == 0));
+		vm_failure = -1;
+		assert(liveblocks() == native_before && vm_live == vm_before);
+		checks++;
+	}
+	destroy(result);
+}
+
+/* Either heap failure must reclaim both native values and preserve the old pair. */
+static void
+checksafeprime(void)
+{
+	IPints_IPint *oldp, *olda;
+	int mode, native_before, vm_before;
+
+	safeframe.ret = malloc(sizeof(*safeframe.ret));
+	assert(safeframe.ret != nil);
+	safeframe.ret->t0 = newIPint(itomp(99, nil));
+	safeframe.ret->t1 = newIPint(itomp(101, nil));
+	operation = 24;
+	safe_random = 1;
+	for(mode = 0; mode < 6; mode++) {
+		random_calls = 0;
+		safeframe.nbits = mode == 3 ? 2 : mode == 4 ? -1 : mode == 5 ? 0x7fffffff : 3;
+		safeframe.nrep = 2;
+		oldp = safeframe.ret->t0;
+		olda = safeframe.ret->t1;
+		native_before = liveblocks();
+		vm_before = vm_live;
+		if(mode == 1 || mode == 2)
+			vm_failure = mode-1;
+		if(mode == 0) {
+			assert(kprotect(invoke, nil));
+			assert(mptoi(checkIPint(safeframe.ret->t0)) == 7);
+			assert(mptoi(checkIPint(safeframe.ret->t1)) == 3);
+		}else {
+			assert(!kprotect(invoke, nil));
+			assert(last_error == (mode <= 2 ? injected : exInval));
+			assert(safeframe.ret->t0 == oldp && safeframe.ret->t1 == olda);
+		}
+		vm_failure = -1;
+		assert(!released && random_calls == (mode <= 2 ? 5 : 0));
+		assert(liveblocks() == native_before && vm_live == vm_before);
+		checks++;
+	}
+	safe_random = 0;
+	destroy(safeframe.ret->t0);
+	destroy(safeframe.ret->t1);
+	free(safeframe.ret);
+}
+
 /* Cover the old fixed-buffer limits and verify all VM/native ownership balances. */
 int
 main(void)
@@ -876,6 +1015,8 @@ main(void)
 	checklargeinverses();
 	checkbitwise();
 	checkrandom();
+	checkprimes();
+	checksafeprime();
 	assert(vm_live == 0 && liveblocks() == 0 && worker.nerr == 0);
 	assert(TIPint->ref == 1 && Tarray.ref == 1 && Tbyte.ref == 1 && Tstring.ref == 1);
 	printf("PASS IPints: %d large export/VM unwind/native failure/ownership cases\n", checks);

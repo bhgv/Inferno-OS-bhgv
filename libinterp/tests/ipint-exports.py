@@ -56,7 +56,12 @@ parts += [function('libinterp/ipint.c', 'void\n' + name + '(')
 parts += [function('libinterp/ipint.c', 'static void\n' + name + '(')
           for name in ['mpand', 'mpor', 'mpxor', 'mpnot']]
 parts += [function('libinterp/ipint.c', 'void\n' + name + '(')
-          for name in ['IPint_and', 'IPint_ori', 'IPint_xor', 'IPint_not', 'IPint_random']]
+          for name in ['IPint_and', 'IPint_ori', 'IPint_xor', 'IPint_not', 'IPint_random',
+                       'IPints_probably_prime', 'IPints_genprime']]
+if 'typedef struct IPintPrimePair' in ipint:
+    parts += [ipint[ipint.index('typedef struct IPintPrimePair'):ipint.index('\nvoid\nIPints_DSAprimes(')]]
+else:
+    parts += [function('libinterp/ipint.c', 'void\nIPints_gensafeprime(')]
 parts += [function('libinterp/runt.c', 'void\nretstr('),
           function('libinterp/runt.c', 'Array*\nmem2array(')]
 unit = (root / 'libinterp/tests/ipint-exports.c').read_text()
@@ -69,7 +74,13 @@ with tempfile.TemporaryDirectory(prefix='ipint-exports-') as directory:
     td = Path(directory)
     units = []
     support = '#include "' + str(root / 'libmp/tests/text-support.h') + '"\n'
+    support += 'void genrandom(uchar*, int); void prng(uchar*, int);\n'
+    support += 'void genprime(mpint*, int, int);\n'
+    support += 'int probably_prime(mpint*, int); int smallprimetest(mpint*);\n'
+    support += '#define nelem(a) (sizeof(a)/sizeof((a)[0]))\n'
     for path in [root / ('libmp/port/' + name + '.c') for name in files] + [
+            root / 'libsec/port/probably_prime.c', root / 'libsec/port/smallprimetest.c',
+            root / 'libsec/port/genprime.c', root / 'libsec/port/gensafeprime.c',
             root / 'lib9/u32.c', root / 'lib9/u64.c', root / 'libmp/tests/text-support.c']:
         text = re.sub(r'^#include[^\n]*\n', '', path.read_text(), flags=re.M)
         target = td / path.name

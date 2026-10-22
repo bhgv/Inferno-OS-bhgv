@@ -2,13 +2,14 @@
 #include <mp.h>
 #include <libsec.h>
 
-// find a prime p of length n and a generator alpha of Z^*_p
-// Alg 4.86 Menezes et al () Handbook, p.164
+/* Find an n-bit safe prime and a nonzero generator of its multiplicative group. */
 void
 gensafeprime(mpint *p, mpint *alpha, int n, int accuracy)
 {
 	mpint *q, *b;
 
+	if(n < 3 || n > 0x7fffffff-(Dbits-1))
+		sysfatal("gensafeprime: invalid bit count");
 	q = mpnew(n-1);
 	while(1){
 		genprime(q, n-1, accuracy);
@@ -21,8 +22,11 @@ gensafeprime(mpint *p, mpint *alpha, int n, int accuracy)
 	// group Z*_p of order p-1=2q
 	b = mpnew(0);
 	while(1){
-		mprand(n, genrandom, alpha);
+		if(mprand(n, genrandom, alpha) == nil)
+			sysfatal("gensafeprime: random allocation failed");
 		mpmod(alpha, p, alpha);
+		if(mpcmp(alpha, mpone) <= 0)
+			continue;
 		mpmul(alpha, alpha, b);
 		mpmod(b, p, b);
 		if(mpcmp(b, mpone) == 0)

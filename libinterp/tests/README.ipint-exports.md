@@ -15,7 +15,7 @@ The native side links production portable libmp arithmetic/formatting and lib9
 codecs, with the tracked allocator from the libmp text fixture. The VM heap and
 ASCII string constructor are bounded stubs with deterministic VM-error injection.
 
-Its 2,314 cases include zero, signed magnitudes, both compatibility-prefix branches,
+Its 2,338 cases include zero, signed magnitudes, both compatibility-prefix branches,
 and sizes around 768/1024 bytes up to 4096 bytes. All five export wrappers retain
 old results when validation, native-buffer allocation or VM output allocation
 fails. Native temporaries and VM references must balance after each case. Tests
@@ -53,6 +53,14 @@ model check that invalid sizes fail before release, native work runs unlocked,
 and every ordinary failure returns with the interpreter lock restored. Previous
 results and both allocation counters must remain unchanged on error. These tests
 check size/ownership contracts, not entropy quality or cryptographic strength.
+
+Prime-wrapper tests add locked validation of nil references, full-word sizes and
+repetition counts, classification of small/negative candidates, default repetition
+handling, exact generated width, and preservation of old output after VM failure.
+Safe-prime pair tests cover successful publication, each of the two VM heap
+failures, invalid sizes, lock restoration and balanced native/VM ownership.
+The linked primality and generation routines are production libsec code; the
+separate libsec/tests/primes.py fixture checks native arithmetic/group behavior.
 
 IPints no longer exports through fixed 1024-byte stack buffers. Ordinary base64
 and textual exports retain libmp's signed representation; byte exports and the

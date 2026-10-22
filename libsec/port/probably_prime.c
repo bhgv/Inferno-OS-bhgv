@@ -13,13 +13,13 @@ probably_prime(mpint *n, int nrep)
 	mpint *nm1, *q, *x, *y, *r;
 
 	if(n->sign < 0)
-		sysfatal("negative prime candidate");
+		return 0;
 
 	if(nrep <= 0)
 		nrep = 18;
 
 	k = mptoi(n);
-	if(k == 2)		/* 2 is prime */
+	if(k == 2 || k == 3)	/* Avoid an empty witness interval for 3. */
 		return 1;
 	if(k < 2)		/* 1 is not prime */
 		return 0;
@@ -52,6 +52,8 @@ probably_prime(mpint *n, int nrep)
 		for(;;){
 			/* find x = random in [2, n-2] */
 			r = mprand(nbits, prng, nil);
+			if(r == nil)
+				sysfatal("probably_prime: random allocation failed");
 			mpmod(r, nm1, x);
 			mpfree(r);
 			if(mpcmp(x, mpone) > 0)
