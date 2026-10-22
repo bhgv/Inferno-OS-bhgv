@@ -45,6 +45,10 @@ destroy(void *p)
 void newdyndata(Modlink *ml) { (void)ml; abort(); }
 void newmp(void *d, void *s, Type *t) { (void)d; (void)s; (void)t; abort(); }
 void error(char *s) { (void)s; abort(); }
+/* This lookup-only fixture injects no non-local VM error. */
+int kprotect(int (*fn)(void*), void *arg) { return fn(arg); }
+void krethrow(void) { abort(); }
+void unload(Module *m) { assert(m->ref > 0); m->ref--; unloads++; }
 #define snprint snprintf
 #define print quiet
 IMPLEMENTATION

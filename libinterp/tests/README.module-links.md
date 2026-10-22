@@ -27,3 +27,7 @@ final destruction, diagnostics and formatting are injected boundaries. The
 fixture requests no MP clone or dynamic native data. It does not validate
 allocation failures during linkmod/newmp, full module unloading, GC, kernel
 boot or execution through a resulting native/Dis call target.
+
+The fixture now supplies a direct-call protection boundary for its lookup-only
+paths. Non-local initialization errors and partial MP ownership are exercised
+with real error frames by heap-clones.py; see README.heap-clones.md.

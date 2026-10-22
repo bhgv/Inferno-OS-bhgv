@@ -25,7 +25,10 @@ def function(text, signature):
 
 
 link = Path(os.environ.get('MODULE_LINK_SOURCE', root/'libinterp/link.c')).read_text()
-parts = [function(link, sig) for sig in ('static int\nlinkm(', 'Modlink*\nmklinkmod(', 'Modlink*\nlinkmod(')]
+parts = [function(link, sig) for sig in ('static int\nlinkm(', 'Modlink*\nmklinkmod(')]
+if 'typedef struct LinkModule' in link:
+    parts += [link[link.index('typedef struct LinkModule'):link.index('Modlink*\nlinkmod(')]]
+parts += [function(link, 'Modlink*\nlinkmod(')]
 unit = (root/'libinterp/tests/module-links.c').read_text().replace('IMPLEMENTATION', '\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='module-links-') as directory:
     td = Path(directory); target = td/'test.c'; target.write_text(unit)

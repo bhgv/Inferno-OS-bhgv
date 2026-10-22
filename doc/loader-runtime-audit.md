@@ -77,3 +77,34 @@ type table.
 production heap initialization and pointer cleanup. It independently reproduces
 the old ownership, branch, metadata and size defects. Both strict UBSan and ASan
 with stack instrumentation pass; see tests/README.loader-snapshots.md for scope.
+
+## Module-instance data and failed initialization
+
+`arraycpy` now follows pointer maps in ordinary element descriptors, cloning
+array-valued fields through newmp. The old identity comparison with the global
+Tarray heap-object descriptor did not recognize user array element descriptors;
+nested initial arrays were therefore shared between module instances. Scalars
+still use a bulk-copy path when the element map has no pointers. Non-array
+references retain their previous shared-reference semantics.
+
+A protected array-copy context owns each partial result. heaparray initializes
+all mapped slots to H before recursion. Failure destroys completed children
+and propagates the original VM error. newmp clears destination pointer slots
+before acquiring owners, then publishes only a completed child clone or an
+incremented non-array reference. Its map traversal uses byte offsets of native
+pointer slots, including transitions between bitmap bytes. A failed destination
+can be destroyed without releasing unacquired references belonging to the
+source template.
+
+`linkmod` now owns its partial Modlink outside the protected initialization
+callback. An ordinary binding failure cleans up and returns H. An allocation or
+initializer VM error cleans up and is rethrown. Even a failed first allocation
+releases the module reference passed to linkmod. Instance tests include an
+injected dynamic-data hook boundary; they do not execute real native libraries.
+
+`libinterp/tests/heap-clones.py` checks 189 cases per native/word32 scalar model,
+including every allocation failure in recursive trees, mixed records, partial
+MPs and module instances. Original bodies independently fail all three defect
+families. Strict UBSan and ASan with stack instrumentation pass. See
+`libinterp/tests/README.heap-clones.md` for the boundary injections and remaining
+scheduler, GC, cyclic-graph and full-ABI integration limits.

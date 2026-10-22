@@ -86,26 +86,37 @@ mklinkmod(Module *m, int n)
 	return ml;
 }
 
-Modlink*
-linkmod(Module *m, Import *ldt, int mkmp)
+typedef struct LinkModule LinkModule;
+struct LinkModule {
+	Module *m;
+	Import *imports;
+	Modlink *result;
+	int mkmp;
+	int linkfailed;
+};
+
+/* Keep the instance reachable by its owner throughout fallible MP cloning. */
+static int
+linkmodule(void *arg)
 {
+	LinkModule *c;
+	Module *m;
+	Import *l;
 	Type *t;
 	Heap *h;
-	int i;
 	Modlink *ml;
-	Import *l;
+	int i;
 
-	if(m == nil)
-		return H;
-
-	for(i = 0, l = ldt; l->name != nil; i++, l++)
-		;
-	ml = mklinkmod(m, i);
-
-	if(mkmp){
+	c = arg;
+	m = c->m;
+	for(i = 0, l = c->imports; l->name != nil; i++, l++)
+		if(i >= (0x7fffffff-sizeof(Heap)-(sizeof(Modlink)-sizeof(Modl)))/sizeof(Modl))
+			error(exHeap);
+	c->result = ml = mklinkmod(m, i);
+	if(c->mkmp){
 		if(m->rt == DYNMOD)
 			newdyndata(ml);
-		else if(mkmp && m->origmp != H && m->ntype > 0) {
+		else if(m->origmp != H && m->ntype > 0){
 			t = m->type[0];
 			h = nheap(t->size);
 			h->t = t;
@@ -114,15 +125,37 @@ linkmod(Module *m, Import *ldt, int mkmp)
 			newmp(ml->MP, m->origmp, t);
 		}
 	}
-
-	for(i = 0, l = ldt; l->name != nil; i++, l++) {
+	for(i = 0, l = c->imports; l->name != nil; i++, l++){
 		if(linkm(m, ml, i, l) < 0){
-			destroy(ml);
-			return H;
+			c->linkfailed = 1;
+			return 0;
 		}
 	}
+	return 1;
+}
 
-	return ml;
+/* Consume the module reference on all paths, including a failed first allocation. */
+Modlink*
+linkmod(Module *m, Import *ldt, int mkmp)
+{
+	LinkModule c;
+
+	if(m == nil)
+		return H;
+	c.m = m;
+	c.imports = ldt;
+	c.result = H;
+	c.mkmp = mkmp;
+	c.linkfailed = 0;
+	if(kprotect(linkmodule, &c))
+		return c.result;
+	if(c.result != H)
+		destroy(c.result);
+	else
+		unload(m);
+	if(!c.linkfailed)
+		krethrow();
+	return H;
 }
 
 void

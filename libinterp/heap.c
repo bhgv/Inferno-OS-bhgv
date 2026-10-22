@@ -3,6 +3,7 @@
 #include "interp.h"
 #include "pool.h"
 #include "raise.h"
+#include <kernel.h>
 
 void	freearray(Heap*, int);
 void	freelist(Heap*, int);
@@ -492,77 +493,82 @@ initarray(Type *t, Array *a)
 	}
 }
 
+typedef struct ArrayCopy ArrayCopy;
+struct ArrayCopy {
+	Array *source;
+	Array *result;
+};
+
+/* Clone mapped array fields in every element, including user descriptors. */
+static int
+copyarray(void *arg)
+{
+	ArrayCopy *c;
+	Array *sa, *da;
+	int i;
+
+	c = arg;
+	sa = c->source;
+	da = H2D(Array*, heaparray(sa->t, sa->len));
+	c->result = da;
+	if(sa->t->np == 0){
+		if(da->len != 0 && da->t->size != 0)
+			memmove(da->data, sa->data, da->len*da->t->size);
+		return 1;
+	}
+	/* Dis data declarations limit nesting to DADEPTH. */
+	for(i = 0; i < sa->len; i++)
+		newmp(da->data+i*da->t->size, sa->data+i*sa->t->size, sa->t);
+	return 1;
+}
+
+/* Release the complete partial tree before propagating the original VM error. */
 void*
 arraycpy(Array *sa)
 {
-	int i;
-	Heap *dh;
-	Array *da;
-	uchar *elemp;
-	void **sp, **dp;
+	ArrayCopy c;
 
 	if(sa == H)
 		return H;
-
-	acheck(sa->t->size,sa->len);
-	dh = nheap(sizeof(Array) + sa->t->size*sa->len);
-	dh->t = &Tarray;
-	Tarray.ref++;
-	da = H2D(Array*, dh);
-	da->t = sa->t;
-	da->t->ref++;
-	da->len = sa->len;
-	da->root = H;
-	da->data = (uchar*)da + sizeof(Array);
-	if(da->t == &Tarray) {
-		dp = (void**)da->data;
-		sp = (void**)sa->data;
-		/*
-		 * Maximum depth of this recursion is set by DADEPTH
-		 * in include/isa.h
-		 */
-		for(i = 0; i < sa->len; i++)
-			dp[i] = arraycpy(sp[i]);			
-	}
-	else {
-		memmove(da->data, sa->data, da->len*sa->t->size);
-		elemp = da->data;
-		for(i = 0; i < sa->len; i++) {
-			incmem(elemp, da->t);
-			elemp += da->t->size;
-		}
-	}
-	return da;
+	c.source = sa;
+	c.result = H;
+	if(kprotect(copyarray, &c))
+		return c.result;
+	destroy(c.result);
+	krethrow();
+	return H;
 }
 
+/* Publish only acquired references, so a failed clone is safe to destroy. */
 void
 newmp(void *dst, void *src, Type *t)
 {
 	Heap *h;
-	int c, i, m;
-	void **uld, *wp, **q;
+	int c, i, bit;
+	ulong offset;
+	void *wp, **q;
 
-	memmove(dst, src, t->size);
-	uld = dst;
-	for(i = 0; i < t->np; i++) {
+	if(t->size != 0)
+		memmove(dst, src, t->size);
+	initmem(t, dst);
+	for(i = 0; i < t->np; i++){
 		c = t->map[i];
-		if(c != 0) {
-			m = 0x80;
-			q = uld;
-			while(m != 0) {
-				if((m & c) && (wp = *q) != H) {
-					h = D2H(wp);
-					if(h->t == &Tarray)
-						*q = arraycpy(wp);
-					else {
-						h->ref++;
-						Setmark(h);
-					}
-				}
-				m >>= 1;
-				q++;
+		for(bit = 0; c != 0 && bit < 8; bit++){
+			if((c & (0x80>>bit)) == 0)
+				continue;
+			offset = (i*8+bit)*sizeof(void*);
+			q = (void**)((uchar*)dst+offset);
+			wp = *(void**)((uchar*)src+offset);
+			if(wp == H)
+				continue;
+			h = D2H(wp);
+			if(h->t == &Tarray)
+				*q = arraycpy(wp);
+			else{
+				h->ref++;
+				Setmark(h);
+				*q = wp;
 			}
 		}
-		uld += 8;
 	}
 }

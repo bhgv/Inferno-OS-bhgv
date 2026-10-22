@@ -15,8 +15,11 @@ def function(path,signature):
             depth-=1
             if not depth:return source[start:brace+token.end()]
     raise ValueError(signature)
-parts=[function('emu/port/dis.c','int\nkprotect(')]
-parts += [function('libinterp/heap.c',r+'\n'+n+'(') for n,r in [('incmem','void'),('freeptrs','void'),('acheck','void'),('nheap','Heap*'),('heap','Heap*'),('initmem','void'),('heapz','Heap*'),('initarray','void'),('heaparray','Heap*'),('arraycpy','void*')]]
+parts=[function('emu/port/dis.c','int\nkprotect('), function('emu/port/dis.c','void\nkrethrow(')]
+parts += [function('libinterp/heap.c',r+'\n'+n+'(') for n,r in [('incmem','void'),('freeptrs','void'),('acheck','void'),('nheap','Heap*'),('heap','Heap*'),('initmem','void'),('heapz','Heap*'),('initarray','void'),('heaparray','Heap*')]]
+heap_source=(root/'libinterp/heap.c').read_text()
+parts += [heap_source[heap_source.index('typedef struct ArrayCopy'):heap_source.index('void*\narraycpy(')]]
+parts += [function('libinterp/heap.c', 'void*\narraycpy('), function('libinterp/heap.c', 'void\nnewmp(')]
 parts += [function('libinterp/link.c','Modlink*\nmklinkmod('),function('libinterp/xec.c','List*\ncons(')]
 parts += [function('libinterp/xec.c','OP('+n+')') for n in ['newa','newaz','slicea','slicela']]
 unit=(root/'libinterp/tests/heap-bounds.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))
