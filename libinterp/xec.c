@@ -1154,36 +1154,50 @@ cons(ulong size, List **lp)
 	*lp = l;
 	return l;
 }
+
+/* Capture source values before publishing a node into a possibly aliased slot. */
 OP(consb)
 {
+	BYTE value;
 	List *l;
 
+	value = B(s);
 	l = cons(IBY2WD, R.d);
-	*(BYTE*)l->data = B(s);
+	*(BYTE*)l->data = value;
 }
+
+/* Host WORD storage must fit the complete interpreter value. */
 OP(consw)
 {
+	WORD value;
 	List *l;
 
-	l = cons(IBY2WD, R.d);
-	*(WORD*)l->data = W(s);
+	value = W(s);
+	l = cons(sizeof(value), R.d);
+	*(WORD*)l->data = value;
 }
+
+/* Retain the source big integer if publishing the list changes its source slot. */
 OP(consl)
 {
+	LONG value;
 	List *l;
 
-	l = cons(IBY2LG, R.d);
-	*(LONG*)l->data = V(s);
+	value = V(s);
+	l = cons(sizeof(value), R.d);
+	*(LONG*)l->data = value;
 }
+
+/* Allocate native pointer storage and acquire the original source owner. */
 OP(consp)
 {
 	List *l;
 	Heap *h;
 	WORD *sv;
 
-	l = cons(IBY2WD, R.d);
 	sv = P(s);
-	if(sv != H) {
+	l = cons(sizeof(sv), R.d);
+	if(sv != H){
 		h = D2H(sv);
 		h->ref++;
 		Setmark(h);
@@ -1192,33 +1206,50 @@ OP(consp)
 	Tptr.ref++;
 	*(WORD**)l->data = sv;
 }
+
+/* Capture the real argument before the destination slot becomes a list owner. */
 OP(consf)
 {
+	REAL value;
 	List *l;
 
-	l = cons(sizeof(REAL), R.d);
-	*(REAL*)l->data = F(s);
+	value = F(s);
+	l = cons(sizeof(value), R.d);
+	*(REAL*)l->data = value;
 }
+
+/* Check the complete VM size and copy raw payload before replacing its source slot. */
 OP(consm)
 {
-	int v;
-	List *l;
+	WORD size;
+	List *l, *result;
 
-	v = W(m);
-	l = cons(v, R.d);
-	memmove(l->data, R.s, v);
+	size = W(m);
+	if(size < 0 || (uvlong)size > 0x7fffffff-sizeof(Heap)-
+	   (sizeof(List)-sizeof(((List*)0)->data)))
+		error(exHeap);
+	result = L(d);
+	l = cons((ulong)size, &result);
+	if(size != 0)
+		memmove(l->data, R.s, (int)size);
+	L(d) = result;
 }
+
+/* Copy mapped payload and acquire its references before publishing an aliased result. */
 OP(consmp)
 {
-	List *l;
+	List *l, *result;
 	Type *t;
 
 	t = R.M->type[W(m)];
-	l = cons(t->size, R.d);
+	result = L(d);
+	l = cons(t->size, &result);
 	incmem(R.s, t);
-	memmove(l->data, R.s, t->size);
+	if(t->size != 0)
+		memmove(l->data, R.s, t->size);
 	l->t = t;
 	t->ref++;
+	L(d) = result;
 }
 OP(headb)
 {
