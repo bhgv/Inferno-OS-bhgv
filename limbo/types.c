@@ -4382,24 +4382,29 @@ scale2(Type *f, Type *t)
 #define V(x)	((Long)(x))
 #define D(x)	((double)(x))
 
-/* put x in normal form */
+/* Combine finite scales without overflowing or underflowing intermediate products. */
+static double
+fixratio(double sx, double sy, double sr, int divide)
+{
+	int x, y, r;
+	double mx, my, mr;
+
+	mx = frexp(sx, &x);
+	my = frexp(sy, &y);
+	mr = frexp(sr, &r);
+	if(divide)
+		return ldexp(mx/(my*mr), x-y-r);
+	return ldexp((mx*my)/mr, x+y-r);
+}
+
+/* Normalize a positive finite ratio without magnitude-dependent loops. */
 static int
 nf(double x, int *mant)
 {
 	int p;
 	double m;
 
-	p = 0;
-	m = x;
-	while(m >= 1){
-		p++;
-		m /= 2;
-	}
-	while(m < 0.5){
-		p--;
-		m *= 2;
-	}
-	m *= D(1<<16)*D(1<<15);
+	m = frexp(x, &p)*2147483648.0;
 	if(m >= D(0x7fffffff) - 0.5){
 		*mant = 0x7fffffff;
 		return p;
@@ -4408,17 +4413,16 @@ nf(double x, int *mant)
 	return p;
 }
 
+/* Rounded normal-form mantissas must not turn near powers into exact powers. */
 static int
 ispow2(double x)
 {
-	int m;
+	int p;
 
-	nf(x, &m);
-	if(m != 1<<30)
-		return 0;
-	return 1;
+	return x > 0.0 && finite(x) && frexp(x, &p) == 0.5;
 }
 
+/* Round a normalized ratio to the fixed instruction coefficient width. */
 static int
 fround(double x, int n, int *m)
 {
@@ -4427,13 +4431,14 @@ fround(double x, int n, int *m)
 	return nf(x, m);
 }
 
+/* Select the exact-power multiplication shift. */
 static int
 fixmul2(double sx, double sy, double sr, int *rp, int *ra)
 {
 	int k, n, a;
 	double alpha;
 
-	alpha = (sx*sy)/sr;
+	alpha = fixratio(sx, sy, sr, 0);
 	n = 31;
 	k = fround(1/alpha, n, &a);
 	*rp = 1-k;
@@ -4441,13 +4446,14 @@ fixmul2(double sx, double sy, double sr, int *rp, int *ra)
 	return IMULX;
 }
 
+/* Select the exact-power division shift. */
 static int
 fixdiv2(double sx, double sy, double sr, int *rp, int *ra)
 {
 	int k, n, b;
 	double beta;
 
-	beta = sx/(sy*sr);
+	beta = fixratio(sx, sy, sr, 1);
 	n = 31;
 	k = fround(beta, n, &b);
 	*rp = k-1;
@@ -4455,6 +4461,7 @@ fixdiv2(double sx, double sy, double sr, int *rp, int *ra)
 	return IDIVX;
 }
 
+/* Choose multiplication coefficients with real powers of two and signed exponents. */
 static int
 fixmul(double sx, double sy, double sr, int *rp, int *ra)
 {
@@ -4462,7 +4469,7 @@ fixmul(double sx, double sy, double sr, int *rp, int *ra)
 	vlong W;
 	double alpha, eps;
 
-	alpha = (sx*sy)/sr;
+	alpha = fixratio(sx, sy, sr, 0);
 	if(ispow2(alpha))
 		return fixmul2(sx, sy, sr, rp, ra);
 	n = 31;
@@ -4472,20 +4479,21 @@ fixmul(double sx, double sy, double sr, int *rp, int *ra)
 		return IMOVW;	/* result is zero whatever the values */
 	v = 0;
 	W = 0;
-	eps = D(1<<m)/(alpha*D(a)) - 1;
+	eps = ldexp(1.0, m)/(alpha*D(a)) - 1;
 	if(eps < 0){
 		v = a-1;
 		eps = -eps;
 	}
-	if(m < 0 && D(1<<n)*eps*D(a) >= D(a)-1+D(1<<m))
+	if(m < 0 && ldexp(1.0, n)*eps*D(a) >= D(a)-1+ldexp(1.0, m))
 		W = (V(1)<<(-m)) - 1;
 	if(v != 0 || W != 0)
-		m = m<<2|(v != 0)<<1|(W != 0);
+		m = (m*4)|((v != 0)<<1)|(W != 0);
 	*rp = m;
 	*ra = a;
 	return v == 0 && W == 0 ? IMULX0: IMULX1;
 }
 
+/* Choose division coefficients without signed or negative-count shifts. */
 static int
 fixdiv(double sx, double sy, double sr, int *rp, int *ra)
 {
@@ -4493,7 +4501,7 @@ fixdiv(double sx, double sy, double sr, int *rp, int *ra)
 	vlong W;
 	double beta, eps;
 
-	beta = sx/(sy*sr);
+	beta = fixratio(sx, sy, sr, 1);
 	if(ispow2(beta))
 		return fixdiv2(sx, sy, sr, rp, ra);
 	n = 31;
@@ -4503,41 +4511,74 @@ fixdiv(double sx, double sy, double sr, int *rp, int *ra)
 		return IMOVW;	/* result is zero whatever the values */
 	v = 0;
 	W = 0;
-	eps = (D(1<<m)*D(b))/beta - 1;
+	eps = (ldexp(1.0, m)*D(b))/beta - 1;
 	if(eps < 0)
 		v = 1;
 	if(m < 0)
 		W = (V(1)<<(-m)) - 1;
 	if(v != 0 || W != 0)
-		m = m<<2|(v != 0)<<1|(W != 0);
+		m = (m*4)|((v != 0)<<1)|(W != 0);
 	*rp = m;
 	*ra = b;
 	return v == 0 && W == 0 ? IDIVX0: IDIVX1;
 }
 
+/* Preserve the zero-result opcode while mapping multiplication to conversion. */
 static int
 fixcast(double sx, double sr, int *rp, int *ra)
 {
 	int op;
 
 	op = fixmul(sx, 1.0, sr, rp, ra);
+	if(op == IMOVW)
+		return IMOVW;
 	return op-IMULX+ICVTXX;
 }
 
+/* Reject unsupported ratios and shifts before emitting a fixed instruction. */
 int
 fixop(int op, Type *tx, Type *ty, Type *tr, int *rp, int *ra)
 {
-	double sx, sy, sr;
+	int shift;
+	double sx, sy, sr, ratio;
 
+	*rp = 0;
+	*ra = 0;
 	sx = scale(tx);
 	sy = scale(ty);
 	sr = scale(tr);
+	if(!(sx > 0.0) || !finite(sx) || !(sy > 0.0) || !finite(sy) ||
+	   !(sr > 0.0) || !finite(sr)){
+		error(tr->src.start, "invalid fixed point scale");
+		return IMOVW;
+	}
+	if(op == IMULX)
+		ratio = fixratio(sx, sy, sr, 0);
+	else if(op == IDIVX)
+		ratio = fixratio(sx, sy, sr, 1);
+	else
+		ratio = sx/sr;
+	if(!(ratio > 0.0) || !finite(ratio) || !finite(1.0/ratio)){
+		error(tr->src.start, "fixed point scale ratio out of range");
+		return IMOVW;
+	}
 	if(op == IMULX)
 		op = fixmul(sx, sy, sr, rp, ra);
 	else if(op == IDIVX)
 		op = fixdiv(sx, sy, sr, rp, ra);
 	else
 		op = fixcast(sx, sr, rp, ra);
+	if(op == IMOVW)
+		return op;
+	shift = *rp;
+	if(op == IMULX1 || op == IDIVX1 || op == ICVTXX1)
+		shift >>= 2;
+	if(shift < -63 || shift > 63){
+		error(tr->src.start, "fixed point shift out of range");
+		*rp = 0;
+		*ra = 0;
+		return IMOVW;
+	}
 	return op;
 }
 
