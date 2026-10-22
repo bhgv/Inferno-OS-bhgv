@@ -1,9 +1,10 @@
 #include <lib9.h>
 
+/* Keep the kernel 32-bit result while accumulating without signed overflow. */
 long
 atol(char *s)
 {
-	long n;
+	ulong n;
 	int f;
 
 	n = 0;
@@ -36,10 +37,15 @@ atol(char *s)
 		while(*s >= '0' && *s <= '9')
 			n = n*10 + *s++ - '0';
 	if(f)
-		n = -n;
+		n = 0UL-n;
+	n &= 0xffffffffUL;
+	if(n > 0x7fffffffUL)
+		return -1-(long)(0xffffffffUL-n);
 	return n;
 }
 
+/* Preserve the same conversion rules for the int entry point. */
+int
 atoi(char *s)
 {
 

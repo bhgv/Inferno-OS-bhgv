@@ -3,11 +3,12 @@
 #define LONG_MAX	2147483647L
 #define LONG_MIN	-2147483648L
 
+/* Convert a kernel 32-bit signed value without overflowing the accumulator. */
 long
 strtol(char *nptr, char **endptr, int base)
 {
 	char *p;
-	long n, nn;
+	ulong n, limit, cutoff, cutlim;
 	int c, ovfl, v, neg, ndig;
 
 	p = nptr;
@@ -55,13 +56,16 @@ strtol(char *nptr, char **endptr, int base)
 	}else if(base==16 && *p=='0'){
 		if(p[1]=='x' || p[1]=='X')
 			p += 2;
-	}else if(base<0 || 36<base)
+	}else if(base<2 || 36<base)
 		goto Return;
 
 	/*
 	 * Non-empty sequence of digits
 	 */
-	for(;; p++,ndig++){
+	limit = (ulong)LONG_MAX + neg;
+	cutoff = limit/base;
+	cutlim = limit%base;
+	for(;; p++){
 		c = *p;
 		v = base;
 		if('0'<=c && c<='9')
@@ -72,10 +76,11 @@ strtol(char *nptr, char **endptr, int base)
 			v = c - 'A' + 10;
 		if(v >= base)
 			break;
-		nn = n*base + v;
-		if(nn < n)
+		ndig = 1;
+		if(n > cutoff || (n == cutoff && (ulong)v > cutlim))
 			ovfl = 1;
-		n = nn;
+		else if(!ovfl)
+			n = n*base + v;
 	}
 
     Return:
@@ -88,7 +93,10 @@ strtol(char *nptr, char **endptr, int base)
 			return LONG_MIN;
 		return LONG_MAX;
 	}
-	if(neg)
-		return -n;
+	if(neg){
+		if(n == (ulong)LONG_MAX + 1)
+			return LONG_MIN;
+		return -(long)n;
+	}
 	return n;
 }

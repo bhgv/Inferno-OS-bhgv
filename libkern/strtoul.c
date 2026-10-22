@@ -2,11 +2,12 @@
 
 #define ULONG_MAX	4294967295UL
 
+/* Saturate at the kernel 32-bit limit before multiplication or addition. */
 ulong
 strtoul(char *nptr, char **endptr, int base)
 {
 	char *p;
-	ulong n, nn, m;
+	ulong n, cutoff, cutlim;
 	int c, ovfl, neg, v, ndig;
 
 	p = (char*)nptr;
@@ -63,8 +64,9 @@ strtoul(char *nptr, char **endptr, int base)
 	 * Non-empty sequence of digits
 	 */
 	n = 0;
-	m = ULONG_MAX/base;
-	for(;; p++,ndig++){
+	cutoff = ULONG_MAX/base;
+	cutlim = ULONG_MAX%base;
+	for(;; p++){
 		c = *p;
 		v = base;
 		if('0'<=c && c<='9')
@@ -75,12 +77,11 @@ strtoul(char *nptr, char **endptr, int base)
 			v = c - 'A' + 10;
 		if(v >= base)
 			break;
-		if(n > m)
+		ndig = 1;
+		if(n > cutoff || (n == cutoff && (ulong)v > cutlim))
 			ovfl = 1;
-		nn = n*base + v;
-		if(nn < n)
-			ovfl = 1;
-		n = nn;
+		else if(!ovfl)
+			n = n*base + v;
 	}
 
     Return:
@@ -91,6 +92,6 @@ strtoul(char *nptr, char **endptr, int base)
 	if(ovfl)
 		return ULONG_MAX;
 	if(neg)
-		return -n;
+		return (0UL-n) & ULONG_MAX;
 	return n;
 }

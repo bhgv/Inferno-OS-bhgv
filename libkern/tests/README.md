@@ -33,3 +33,8 @@ before/after comparisons; the eight original libkern bodies each fail their
 corresponding regression. The tests do not link or boot a native kernel, model
 Plan 9 varargs, execute GC/JIT code, or validate a complete 32/64-bit ABI. Syntax
 checks with Inferno ARM/386 headers complement the host execution tests.
+
+Additional direct kernel tests: `word-conversion.py` checks the fixed 32-bit
+strtol/strtoul/atol/atoi entry points; see README.word-conversion.md.
+`python3 lib9/tests/wire-integers.py` exercises both libraries against the shared
+9P wire-decoding macros; see lib9/tests/README.wire-integers.md.
