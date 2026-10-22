@@ -320,10 +320,11 @@ _percentfmt(Fmt *f)
 }
 
 /* fmt an integer */
+/* Leave room for grouped 64-bit binary digits and negate magnitudes unsigned. */
 int
 _ifmt(Fmt *f)
 {
-	char buf[70], *p, *conv;
+	char buf[128], *p, *conv;
 	uvlong vu;
 	ulong u;
 	int neg, base, i, n, fl, w, isv;
@@ -387,10 +388,10 @@ _ifmt(Fmt *f)
 	}
 	if(!(fl & FmtUnsigned)){
 		if(isv && (vlong)vu < 0){
-			vu = -(vlong)vu;
+			vu = (uvlong)0 - vu;
 			neg = 1;
 		}else if(!isv && (long)u < 0){
-			u = -(long)u;
+			u = (ulong)0 - u;
 			neg = 1;
 		}
 	}

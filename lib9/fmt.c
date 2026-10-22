@@ -115,6 +115,7 @@ fmtinstall(int c, Fmts f)
 	return 0;
 }
 
+/* Reject widths and precisions that cannot be represented by the format state. */
 void*
 _fmtdispatch(Fmt *f, void *fmt, int isrunes)
 {
@@ -149,6 +150,8 @@ _fmtdispatch(Fmt *f, void *fmt, int isrunes)
 		case '5': case '6': case '7': case '8': case '9':
 			i = 0;
 			while(r >= '0' && r <= '9'){
+				if(i > (0x7fffffff-(r-'0'))/10)
+					return nil;
 				i = i * 10 + r - '0';
 				if(isrunes){
 					r = *(Rune*)fmt;
@@ -174,6 +177,8 @@ _fmtdispatch(Fmt *f, void *fmt, int isrunes)
 		case '*':
 			i = va_arg(f->args, int);
 			if(i < 0){
+				if(i == (-0x7fffffff-1))
+					return nil;
 				i = -i;
 				f->flags |= FmtLeft;
 			}
