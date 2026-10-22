@@ -790,46 +790,74 @@ Math_yn(void *fp)
 }
 
 
-/**** sorting real vectors through permutation vector ****/
-/* qsort from coma:/usr/jlb/qsort/qsort.dir/qsort.c on 28 Sep '92
- char* has been changed to uchar*, static internal functions.
- specialized to swapping ints (which are 32-bit anyway in limbo).
- converted uchar* to int* (and substituted 1 for es).
-*/
-
+/* Bound native vector counts without losing the high bits of a VM length. */
 static int
-cmp(int *u, int *v, double *x)
+mathvectorcount(Array *array, Type *type)
 {
-	return ((x[*u]==x[*v])? 0 : ((x[*u]<x[*v])? -1 : 1));
+	if(array == H || array == nil)
+		error(exNilref);
+	if(array->t != type)
+		error(exType);
+	if(array->len < 0 || (uvlong)array->len > 0x7fffffff/type->size)
+		error(exMathia);
+	return (int)array->len;
 }
 
-#define swap(u, v) {int t = *(u); *(u) = *(v); *(v) = t;}
+/* Put NaNs after numeric values so comparisons remain consistent during sort. */
+static int
+cmp(WORD *u, WORD *v, double *x)
+{
+	double a, b;
 
-#define vecswap(u, v, n) if(n>0){	\
-    int i = n;				\
-    register int *pi = u;		\
-    register int *pj = v;		\
-    do {				\
-        register int t = *pi;		\
-        *pi++ = *pj;			\
-        *pj++ = t;			\
-    } while (--i > 0);			\
+	a = x[*u];
+	b = x[*v];
+	if(a != a)
+		return b != b ? 0 : 1;
+	if(b != b)
+		return -1;
+	return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/* Swap complete VM-word index slots rather than native C ints. */
+static void
+swap(WORD *a, WORD *b)
+{
+	WORD value;
+
+	value = *a;
+	*a = *b;
+	*b = value;
+}
+
+/* Exchange disjoint index blocks without narrowing their stored values. */
+static void
+vecswap(WORD *a, WORD *b, int n)
+{
+	while(n > 0){
+		n--;
+		swap(a++, b++);
+	}
 }
 
 #define minimum(x, y) ((x)<=(y) ? (x) : (y))
 
-static int *
-med3(int *a, int *b, int *c, double *x)
+/* Select the median index under the same NaN ordering as the partition. */
+static WORD*
+med3(WORD *a, WORD *b, WORD *c, double *x)
 {	return cmp(a, b, x) < 0 ?
 		  (cmp(b, c, x) < 0 ? b : (cmp(a, c, x) < 0 ? c : a ) )
 		: (cmp(b, c, x) > 0 ? b : (cmp(a, c, x) < 0 ? a : c ) );
 }
 
-void
-rqsort(int *a, int n, double *x)
+/* Sort validated indices in place; empty vectors need no pointer arithmetic. */
+static void
+rqsort(WORD *a, int n, double *x)
 {
-	int *pa, *pb, *pc, *pd, *pl, *pm, *pn;
-	int  d, r;
+	WORD *pa, *pb, *pc, *pd, *pl, *pm, *pn;
+	int d, r;
+
+	if(n < 2)
+		return;
 
 	if (n < 7) { /* Insertion sort on small arrays */
 		for (pm = a + 1; pm < a + n; pm++)
@@ -873,121 +901,129 @@ rqsort(int *a, int n, double *x)
 	if ((r = pd-pc) > 1) rqsort(pn-r, r, x);
 }
 
+/* Validate every index before sorting so errors leave the permutation intact. */
 void
-Math_sort(void*fp)
+Math_sort(void *fp)
 {
 	F_Math_sort *f;
-	int	i, pilen, xlen, *p;
+	WORD *indices;
+	int i, count, length;
 
 	f = fp;
-
-	/* check that permutation contents are in [0,n-1] !!! */
-	p = (int*) (f->pi->data);
-	pilen = f->pi->len;
-	xlen = f->x->len - 1;
-
-	for(i = 0; i < pilen; i++) {
-		if((*p < 0) || (xlen < *p))
+	count = mathvectorcount(f->pi, &Tword);
+	length = mathvectorcount(f->x, &Treal);
+	indices = (WORD*)f->pi->data;
+	for(i = 0; i < count; i++)
+		if(indices[i] < 0 || indices[i] >= length)
 			error(exMathia);
-		p++;
-	}
-
-	rqsort( (int*)(f->pi->data), f->pi->len, (double*)(f->x->data));
+	rqsort(indices, count, (double*)f->x->data);
 }
 
 
 /************ BLAS ***************/
 
+/* Validate both vectors before calling native dot with an int count. */
 void
 Math_dot(void *fp)
 {
 	F_Math_dot *f;
+	int n;
 
 	f = fp;
-	if(f->x->len!=f->y->len)
-		error(exMathia);	/* incompatible lengths */
-	*f->ret = dot(f->x->len, (double*)(f->x->data), (double*)(f->y->data));
+	n = mathvectorcount(f->x, &Treal);
+	if(mathvectorcount(f->y, &Treal) != n)
+		error(exMathia);
+	*f->ret = dot(n, (double*)f->x->data, (double*)f->y->data);
 }
 
+/* Return the maximum-magnitude index only after checking the full VM length. */
 void
 Math_iamax(void *fp)
 {
 	F_Math_iamax *f;
+	int n;
 
 	f = fp;
-
-	*f->ret = iamax(f->x->len, (double*)(f->x->data));
+	n = mathvectorcount(f->x, &Treal);
+	*f->ret = iamax(n, (double*)f->x->data);
 }
 
+/* Reject invalid real arrays before computing their Euclidean norm. */
 void
 Math_norm2(void *fp)
 {
 	F_Math_norm2 *f;
+	int n;
 
 	f = fp;
-
-	*f->ret = norm2(f->x->len, (double*)(f->x->data));
+	n = mathvectorcount(f->x, &Treal);
+	*f->ret = norm2(n, (double*)f->x->data);
 }
 
+/* Reject invalid real arrays before computing their absolute-value sum. */
 void
 Math_norm1(void *fp)
 {
 	F_Math_norm1 *f;
+	int n;
 
 	f = fp;
-
-	*f->ret = norm1(f->x->len, (double*)(f->x->data));
+	n = mathvectorcount(f->x, &Treal);
+	*f->ret = norm1(n, (double*)f->x->data);
 }
 
+/* Include the final active row and widen before multiplying leading dimensions. */
+static void
+mathmatrix(Array *array, int rows, int columns, WORD stride)
+{
+	int count;
+	uvlong required;
+
+	count = mathvectorcount(array, &Treal);
+	if(stride < rows || stride < 0 || (uvlong)stride > 0x7fffffff)
+		error(exBounds);
+	if(rows == 0 || columns == 0)
+		return;
+	required = (uvlong)(columns-1)*(uvlong)stride+rows;
+	if(required > (uvlong)count)
+		error(exBounds);
+}
+
+/* Check complete matrix extents and native parameter widths before GEMM. */
 void
 Math_gemm(void *fp)
 {
-	F_Math_gemm *f = fp;
-	int nrowa, ncola, nrowb, ncolb, mn, ld, m, n;
-	double *adata = 0, *bdata = 0, *cdata;
-	int nota = f->transa=='N';
-	int notb = f->transb=='N';
-	if(nota){
-		nrowa = f->m;
-		ncola = f->k;
-	}else{
-		nrowa = f->k;
-		ncola = f->m;
-	}
-	if(notb){
-		nrowb = f->k;
-		ncolb = f->n;
-	}else{
-		nrowb = f->n;
-		ncolb = f->k;
-	}
-	if(     (!nota && f->transa!='C' && f->transa!='T') ||
-		(!notb && f->transb!='C' && f->transb!='T') ||
-		(f->m < 0 || f->n < 0 || f->k < 0) ){
-		error(exMathia);
-	}
-	if(f->a != H){
-		mn = f->a->len;
-		adata = (double*)(f->a->data);
-		ld = f->lda;
-		if(ld<nrowa || ld*(ncola-1)>mn)
-			error(exBounds);
-	}
-	if(f->b != H){
-		mn = f->b->len;
-		ld = f->ldb;
-		bdata = (double*)(f->b->data);
-		if(ld<nrowb || ld*(ncolb-1)>mn)
-			error(exBounds);
-	}
-	m = f->m;
-	n = f->n;
-	mn = f->c->len;
-	cdata = (double*)(f->c->data);
-	ld = f->ldc;
-	if(ld<m || ld*(n-1)>mn)
-		error(exBounds);
+	F_Math_gemm *f;
+	int m, n, k, nota, notb, active;
+	double *a, *b;
 
-	gemm(f->transa, f->transb, f->m, f->n, f->k, f->alpha,
-		adata, f->lda, bdata, f->ldb, f->beta, cdata, f->ldc);
+	f = fp;
+	if((f->transa != 'N' && f->transa != 'T' && f->transa != 'C') ||
+	   (f->transb != 'N' && f->transb != 'T' && f->transb != 'C') ||
+	   f->m < 0 || f->n < 0 || f->k < 0 ||
+	   (uvlong)f->m > 0x7fffffff || (uvlong)f->n > 0x7fffffff ||
+	   (uvlong)f->k > 0x7fffffff)
+		error(exMathia);
+	m = (int)f->m;
+	n = (int)f->n;
+	k = (int)f->k;
+	nota = f->transa == 'N';
+	notb = f->transb == 'N';
+	active = m != 0 && n != 0 && k != 0 && f->alpha != 0;
+	a = nil;
+	b = nil;
+	if(f->a != H && f->a != nil){
+		mathmatrix(f->a, nota ? m : k, nota ? k : m, f->lda);
+		a = (double*)f->a->data;
+	}else if(active && m != k)
+		error(exMathia);	/* A nil left matrix denotes a square identity. */
+	if(f->b != H && f->b != nil){
+		mathmatrix(f->b, notb ? k : n, notb ? n : k, f->ldb);
+		b = (double*)f->b->data;
+	}else if(active)
+		error(exNilref);
+	mathmatrix(f->c, m, n, f->ldc);
+	gemm((int)f->transa, (int)f->transb, m, n, k, f->alpha,
+		a, a == nil ? 0 : (int)f->lda, b, b == nil ? 0 : (int)f->ldb,
+		f->beta, (double*)f->c->data, (int)f->ldc);
 }

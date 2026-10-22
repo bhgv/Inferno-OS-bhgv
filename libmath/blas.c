@@ -48,15 +48,36 @@ norm1(int n, double *x)
 }
 
 
+/* Scale squares so representable norms do not overflow or underflow internally. */
 double
 norm2(int n, double *x)
 {
-	double	sum = 0;
-	if (n <= 0) 
-		return 0;
-	while (n--) {
-		sum += *x * *x;
-		x++;
+	double scale, sum, a, ratio, infinity;
+	int i;
+
+	scale = 0;
+	sum = 1;
+	infinity = 0;
+	for(i = 0; i < n; i++){
+		a = fabs(x[i]);
+		if(isNaN(a))
+			return a;
+		if(isInf(a, 1)){
+			infinity = a;
+			continue;
+		}
+		if(a == 0)
+			continue;
+		if(scale < a){
+			ratio = scale/a;
+			sum = 1+sum*ratio*ratio;
+			scale = a;
+		}else{
+			ratio = a/scale;
+			sum += ratio*ratio;
+		}
 	}
-	return sqrt(sum);
+	if(infinity != 0)
+		return infinity;
+	return scale*sqrt(sum);
 }

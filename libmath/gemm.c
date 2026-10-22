@@ -1,5 +1,6 @@
 #include "lib9.h"
 #include "mathi.h"
+/* Multiply active column-major matrices, or scale C when the product is empty. */
 void
 gemm(int transa, int transb, int m, int n, int k, double alpha,
 	double *a, int lda,
@@ -12,10 +13,10 @@ gemm(int transa, int transb, int m, int n, int k, double alpha,
     nota = transa=='N';
     notb = transb=='N';
 
-    if(m == 0 || n == 0 || (alpha == 0. || k == 0) && beta == 1.){
+    if(m == 0 || n == 0 || ((alpha == 0. || k == 0) && beta == 1.)){
 	return;
     }
-    if(alpha == 0.){
+    if(alpha == 0. || k == 0){
 	if(beta == 0.){
 	    i1 = n;
 	    for(j = 0; j < i1; ++j){
@@ -46,7 +47,8 @@ gemm(int transa, int transb, int m, int n, int k, double alpha,
 		jc = j*ldc;
 		i2 = m;
 		for(i = 0; i < i2; ++i){
-		    c[i + jc] = alpha*b[i+jb] + beta*c[i+jc];
+		    c[i + jc] = beta == 0. ? alpha*b[i+jb] :
+		alpha*b[i+jb] + beta*c[i+jc];
 		}
 	    }
 	}else{   /* C := alpha*B' + beta*C. */
@@ -55,7 +57,8 @@ gemm(int transa, int transb, int m, int n, int k, double alpha,
 		jc = j*ldc;
 		i2 = m;
 		for(i = 0; i < i2; ++i){
-		    c[i + jc] = alpha*b[j+i*ldb] + beta*c[i+jc];
+		    c[i + jc] = beta == 0. ? alpha*b[j+i*ldb] :
+		alpha*b[j+i*ldb] + beta*c[i+jc];
 		}
 	    }
 	}
