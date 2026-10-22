@@ -20,9 +20,12 @@ tested that register against H before deciding whether to use rmcall or read
 Modlink.prog. Consequently nil could dereference an unmapped Modlink before
 reaching the helper, or pass an arbitrary callback address to it.
 
-Both encoders now initialize the entry register to H before the nil test.
-A non-nil entry lookup overwrites it. The nil path therefore supplies dt == H
-to rmcall, whose existing first check raises exModule. This change does not
+Both encoders initialize the entry register to H before the nil test.
+A non-nil entry lookup overwrites it. Before the subsequent guard work, the
+nil path therefore supplied dt == H
+to rmcall, whose existing first check raises exModule. The newer module-link
+guard now directs nil to the validating VM helper before Frame writes. This
+change does not
 add native exception-PC reconstruction or execute the error handler in tests.
 
 ## Signed export references and VM exits
@@ -50,7 +53,7 @@ python3 libinterp/tests/jit-handoff.py
 ```
 
 - jit-frames executes production IA-32/ARM frame macros, operand/call emitters,
-  commcall and module-call macros: 98 cases cover unsigned stack boundaries,
+  commcall and module-call macros: 296 cases cover unsigned stack boundaries,
   exact/exceeded limits, address wrap, prior flags, initialization, extend
   arguments, slow-path FP/MP reload and returned frame pointers. Entire stack
   pages are compared with expected canaries. Nil calls cover frame/module/
@@ -74,12 +77,14 @@ Separate negative controls restored each old frame macro and removed each nil
 sentinel independently; the corresponding native tests failed on unsigned
 stack selection, wrapped allocation or unmapped Modlink reads.
 
-All 32 libinterp Python suites pass; the expanded frame suite was rerun after
-its final coverage additions. The 98 frame cases also pass with __ARM_ARCH=4.
+All 33 libinterp Python suites pass; the expanded frame suite was rerun after
+its final coverage additions. The frame suite also passes with __ARM_ARCH=4.
 Full IA-32/ARM source syntax checks pass with Linux headers.
 
 The tests need a host C compiler and Unicorn, with UBSan enabled by default.
 They do not boot Inferno, exercise the target C allocator/ABI or actual native
-exception/GC integration. Positive link bounds, arbitrary corrupt objects,
-export-table ownership and complete module-call/return lifecycle integration
-remain separate audit areas. No 64-bit ABI or new backend is enabled here.
+exception/GC integration. Arbitrary corrupt objects and complete module-call/return lifecycle
+integration remain separate audit areas. No 64-bit ABI or new backend is enabled here.
+
+Checked module link resolution, native guards and export cleanup are covered
+in [module-link-audit.md](module-link-audit.md).

@@ -86,7 +86,7 @@ to module-local reclaim code makes the lifetime test fault on an unmapped
 fetch; suppressing automatic PC publication makes handoff fail its stale-PC
 check. Restoring direct ARM BL also fails the far-A32 call case.
 
-All 32 libinterp Python suites pass, including the existing arithmetic,
+All 33 libinterp Python suites pass, including the existing arithmetic,
 loader, publication and native-encoder suites. Full xec/IA-32/ARM syntax checks
 pass with Linux headers, including the legacy ARM preprocessor profile.
 
@@ -105,3 +105,6 @@ Byte immediates, integer branches and ARM indexing are covered in
 
 Native stack allocation, nil module calls and signed link selectors are covered
 in [jit-frame-audit.md](jit-frame-audit.md).
+
+Checked module link resolution, native guards and export cleanup are covered
+in [module-link-audit.md](module-link-audit.md).

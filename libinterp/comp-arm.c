@@ -1009,10 +1009,47 @@ comcasel(Inst *i)
 	t[0] = RELPC(patch[t[0]]);
 }
 
+/* Only nonnegative immediate links reach this native fast path. */
+static void
+modguard(Inst *i, int call)
+{
+	ulong *bad[3], *fast;
+	int j, offset;
+
+	if(call)
+		opwst(i, Ldw, RA0);
+	else
+		opwld(i, Ldw, RA0);
+	CMPH(AL, RA0);
+	bad[0] = code;
+	BRA(EQ, 0);
+	mem(Ldw, O(Modlink, nlinks), RA0, RA1);
+	con((short)i->reg, RA2, 1);
+	CMP(AL, RA1, 0, 0, RA2);
+	bad[1] = code;
+	BRA(LE, 0);
+	offset = call ? O(Modl, u.pc) : O(Modl, frame);
+	mem(Ldw, OA(Modlink, links)+i->reg*sizeof(Modl)+offset, RA0, RA3);
+	CMPI(AL, RA3, 0, 0, 0);
+	bad[2] = code;
+	BRA(EQ, 0);
+	CMPH(AL, RA3);
+	fast = code;
+	BRA(NE, 0);
+	for(j = 0; j < 3; j++)
+		PATCH(bad[j]);
+	punt(i, SRCOP|DSTOP|THREOP|(call ? WRTPC|NEWPC|TCHECK : 0), optab[i->op]);
+	if(!call)
+		BRADIS(AL, i-mod->prog+1);
+	PATCH(fast);
+}
+
 static void
 commframe(Inst *i)
 {
 	ulong *punt, *mlnil;
+
+	modguard(i, 0);
 
 	opwld(i, Ldw, RA0);
 	CMPH(AL, RA0);
@@ -1049,6 +1086,8 @@ static void
 commcall(Inst *i)
 {
 	ulong *mlnil;
+
+	modguard(i, 1);
 
 	opwld(i, Ldw, RA2);
 	con(RELPC(patch[i-mod->prog+1]), RA0, 0);

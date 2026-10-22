@@ -448,26 +448,51 @@ OP(frame)
 		initmem(t, f);
 	T(d) = f;
 }
+
+/* Resolve links at the full VM WORD width before changing call/frame state.
+ * Exports are name-terminated, so walk to the requested slot without forming
+ * an out-of-range pointer or negating MIN_WORD. */
+static Linkpc*
+modulelink(Modlink *ml, WORD index, Type **frame, char *reason)
+{
+	Link *l;
+	UWORD n;
+
+	if(ml == H)
+		error(exModule);
+	if(index >= 0) {
+		if(ml->nlinks < 0 || (UWORD)index >= (UWORD)ml->nlinks)
+			error(reason);
+		if(frame != nil)
+			*frame = ml->links[index].frame;
+		return &ml->links[index].u;
+	}
+	if(ml->m == nil || ml->m->ext == nil)
+		error(reason);
+	n = ~(UWORD)index;
+	for(l = ml->m->ext; l->name != nil; l++) {
+		if(n == 0) {
+			if(frame != nil)
+				*frame = l->frame;
+			return &l->u;
+		}
+		n--;
+	}
+	error(reason);
+	return nil;
+}
+
 OP(mframe)
 {
 	Type *t;
 	Frame *f;
 	uchar *nsp;
 	Modlink *ml;
-	int o;
 
 	ml = *(Modlink**)R.s;
-	if(ml == H)
-		error(exModule);
-
-	o = W(m);
-	if(o >= 0){
-		if(o >= ml->nlinks)
-			error("invalid mframe");
-		t = ml->links[o].frame;
-	}
-	else
-		t = ml->m->ext[-o-1].frame;
+	modulelink(ml, W(m), &t, "invalid mframe");
+	if(t == nil || t == (Type*)H)
+		error("invalid mframe");
 	nsp = R.SP + t->size;
 	if(nsp >= R.TS) {
 		R.s = t;
@@ -893,11 +918,11 @@ OP(mcall)
 	Frame *f;
 	Linkpc *l;
 	Modlink *ml;
-	int o;
 
 	ml = *(Modlink**)R.d;
-	if(ml == H)
-		error(exModule);
+	l = modulelink(ml, W(m), nil, "invalid mcall");
+	if(l->pc == nil || l->pc == (Inst*)H)
+		error("invalid mcall");
 	f = T(s);
 	f->lr = R.PC;
 	f->fp = R.FP;
@@ -908,11 +933,6 @@ OP(mcall)
 	h = D2H(ml);
 	h->ref++;
 
-	o = W(m);
-	if(o >= 0)
-		l = &ml->links[o].u;
-	else
-		l = &ml->m->ext[-o-1].u;
 	if(ml->prog == nil) {
 		l->runt(f);
 		h->ref--;

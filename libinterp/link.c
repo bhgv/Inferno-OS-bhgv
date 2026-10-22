@@ -38,11 +38,11 @@ linkm(Module *m, Modlink *ml, int i, Import *ldt)
 	char e[ERRMAX];
 
 	sig = ldt->sig;
-	for(l = m->ext; l->name; l++)
+	for(l = m->ext; l != nil && l->name != nil; l++)
 		if(strcmp(ldt->name, l->name) == 0)
 			break;
 
-	if(l == nil) {
+	if(l == nil || l->name == nil) {
 		snprint(e, sizeof(e), "link failed fn %s->%s() not implemented", m->name, ldt->name);
 		goto bad;
 	}
@@ -129,7 +129,8 @@ destroylinks(Module *m)
 {
 	Link *l;
 
-	for(l = m->ext; l->name; l++)
+	for(l = m->ext; l != nil && l->name != nil; l++)
 		free(l->name);
 	free(m->ext);
+	m->ext = nil;
 }
