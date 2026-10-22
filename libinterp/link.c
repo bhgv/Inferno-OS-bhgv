@@ -30,6 +30,7 @@ mlink(Module *m, Link* l, uchar *fn, int sig, int pc, Type *t)
 	l->u.pc = m->prog+pc;
 }
 
+/* Require an actual export name before comparing signatures or installing a link. */
 static int
 linkm(Module *m, Modlink *ml, int i, Import *ldt)
 {
@@ -38,11 +39,11 @@ linkm(Module *m, Modlink *ml, int i, Import *ldt)
 	char e[ERRMAX];
 
 	sig = ldt->sig;
-	for(l = m->ext; l->name; l++)
+	for(l = m->ext; l != nil && l->name != nil; l++)
 		if(strcmp(ldt->name, l->name) == 0)
 			break;
 
-	if(l == nil) {
+	if(l == nil || l->name == nil) {
 		snprint(e, sizeof(e), "link failed fn %s->%s() not implemented", m->name, ldt->name);
 		goto bad;
 	}
