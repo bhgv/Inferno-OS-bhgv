@@ -7,11 +7,12 @@
 	solution: r has def pc, s has def pc+1 and next instruction has pc pc+2
 */
 
-#define BLEN	(8*sizeof(ulong))
-#define BSHIFT	5	/* assumes ulong 4 */
+/* Optimizer sets use 32-bit cells regardless of the host or target word size. */
+#define BLEN	32
+#define BSHIFT	5
 #define BMASK	(BLEN-1)
 
-#define	SIGN(n)		(1<<(n-1))
+#define	SIGN(n)		((u32int)1<<((n)-1))
 #define	MSK(n)		(SIGN(n)|(SIGN(n)-1))
 #define	MASK(a, b)	(MSK((b)-(a)+1)<<(a))
 
@@ -131,7 +132,7 @@ struct Array
 struct Bits
 {
 	int	n;
-	ulong	*b;
+	u32int	*b;
 };
 
 struct Blist
@@ -398,6 +399,7 @@ pop(int i)
 }
 */
 
+/* Count bits in one fixed-width optimizer cell. */
 static int
 bitc(uint x)
 {
@@ -426,6 +428,7 @@ top(uint x)
 }
 */
 
+/* Return the highest set position in one 32-bit cell. */
 static int
 topb(uint x)
 {
@@ -469,6 +472,7 @@ lowb(uint x)
 }
 */
 
+/* Return the lowest set position in one 32-bit cell. */
 static int
 lowb(uint x)
 {
@@ -496,10 +500,12 @@ lowb(uint x)
 	return i+1-(x&1);
 }
 		
+/* Print cell positions without signed left-shift overflow. */
 static void
-pbit(int x, int n)
+pbit(u32int x, int n)
 {
-	int i, m;
+	int i;
+	u32int m;
 
 	m = 1;
 	for(i = 0; i < BLEN; i++){
@@ -509,8 +515,9 @@ pbit(int x, int n)
 	}
 }
 
-static ulong
-bop(int o, ulong s, ulong d)
+/* Apply a Boolean operation within exactly 32 bits. */
+static u32int
+bop(int o, u32int s, u32int d)
 {
 	switch(o){
 	case Bclr:	return 0;
@@ -533,49 +540,57 @@ bop(int o, ulong s, ulong d)
 	return 0;
 }
 
+/* Allocate zeroed cells, rounding bit counts without signed addition overflow. */
 static Bits
 bnew(int n, int bits)
 {
 	Bits b;
 
 	if(bits)
-		b.n = (n+BLEN-1)>>BSHIFT;
+		b.n = n/BLEN+(n%BLEN != 0);
 	else
 		b.n = n;
-	b.b = allocmem(b.n*sizeof(ulong));
-	memset(b.b, 0, b.n*sizeof(ulong));
+	b.b = allocmem(b.n*sizeof(*b.b));
+	memset(b.b, 0, b.n*sizeof(*b.b));
 	return b;
 }
 
+/* Release the storage owned by a bit set. */
 static void
 bfree(Bits b)
 {
 	free(b.b);
 }
 
+/* Set a bit using an unsigned mask, including cell bit 31. */
 static void
 bset(Bits b, int n)
 {
-	b.b[n>>BSHIFT] |= 1<<(n&BMASK);
+	b.b[n>>BSHIFT] |= (u32int)1<<(n&BMASK);
 }
 
+/* Clear one bit without extending a signed mask. */
 static void
 bclr(Bits b, int n)
 {
-	b.b[n>>BSHIFT] &= ~(1<<(n&BMASK));
+	b.b[n>>BSHIFT] &= ~((u32int)1<<(n&BMASK));
 }
 
+/* Test membership as a Boolean independent of the sign bit. */
 static int
 bmem(Bits b, int n)
 {
-	return b.b[n>>BSHIFT] & (1<<(n&BMASK));
+	return (b.b[n>>BSHIFT] & ((u32int)1<<(n&BMASK))) != 0;
 }
 
+/* Include an inclusive range, treating reversed ranges as empty. */
 static void
 bsets(Bits b, int m, int n)
 {
 	int i, c1, c2;
 
+	if(m > n)
+		return;
 	c1 = m>>BSHIFT;
 	c2 = n>>BSHIFT;
 	m &= BMASK;
@@ -590,13 +605,16 @@ bsets(Bits b, int m, int n)
 	b.b[c2] |= MASK(0, n);
 }
 
+/* Clear an inclusive range; a negative end denotes the last stored bit. */
 static void
 bclrs(Bits b, int m, int n)
 {
 	int i, c1, c2;
 
 	if(n < 0)
-		n = (b.n<<BSHIFT)-1;
+		n = b.n == 0 ? -1 : (b.n-1)*BLEN+BMASK;
+	if(m > n)
+		return;
 	c1 = m>>BSHIFT;
 	c2 = n>>BSHIFT;
 	m &= BMASK;
@@ -612,6 +630,7 @@ bclrs(Bits b, int m, int n)
 }
 	
 /* b = a op b */
+/* Apply a cell operation to equally sized bit sets. */
 static Bits
 boper(int o, Bits a, Bits b)
 {
@@ -625,6 +644,7 @@ boper(int o, Bits a, Bits b)
 	return b;
 }
 
+/* Compare stored cells of equally sized bit sets. */
 static int
 beq(Bits a, Bits b)
 {
@@ -637,6 +657,7 @@ beq(Bits a, Bits b)
 	return 1;
 }
 
+/* Test whether every stored cell is empty. */
 static int
 bzero(Bits b)
 {
@@ -649,6 +670,7 @@ bzero(Bits b)
 	return 1;
 }
 
+/* Count set positions across all stored cells. */
 static int
 bitcnt(Bits b)
 {
@@ -661,6 +683,7 @@ bitcnt(Bits b)
 	return n;
 }
 
+/* Find the highest stored set position, or -1 for an empty set. */
 static int
 topbit(Bits b)
 {
@@ -673,6 +696,7 @@ topbit(Bits b)
 	return -1;
 }
 
+/* Find the lowest stored set position, or -1 for an empty set. */
 static int
 lowbit(Bits b)
 {
@@ -685,6 +709,7 @@ lowbit(Bits b)
 	return -1;
 }
 
+/* Print set positions in increasing cell order. */
 static void
 pbits(Bits b)
 {
