@@ -1,5 +1,6 @@
 #include "lib9.h"
 
+/* Invalid rune values must not alias a byte after libc character conversion. */
 char*
 utfrune(char *s, long c)
 {
@@ -7,6 +8,8 @@ utfrune(char *s, long c)
 	Rune r;
 	int n;
 
+	if(c < 0 || c > Runemax)
+		return nil;
 	if(c < Runesync)		/* not part of utf sequence */
 		return strchr(s, c);
 
