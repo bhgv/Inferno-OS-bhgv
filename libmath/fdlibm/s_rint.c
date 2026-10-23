@@ -40,7 +40,9 @@ TWO52[2]={
  -4.50359962737049600000e+15, /* 0xC3300000, 0x00000000 */
 };
 
-	double rint(double x)
+/* Retain a fractional sticky bit and restore the sign with an unsigned shift. */
+double
+rint(double x)
 {
 	int i0,j0,sx;
 	unsigned i,i1;
@@ -60,15 +62,16 @@ TWO52[2]={
                  dummy();			/* fix optimiser */
 	        t =  w-TWO52[sx];
 	        i0 = __HI(t);
-	        __HI(t) = (i0&0x7fffffff)|(sx<<31);
+	        __HI(t) = (i0&0x7fffffff)|((unsigned)sx<<31);
 	        return t;
 	    } else {
 		i = (0x000fffff)>>j0;
 		if(((i0&i)|i1)==0) return x; /* x is integral */
 		i>>=1;
 		if(((i0&i)|i1)!=0) {
+		    /* Keep a nonzero sticky bit even when j0 is 18. */
 		    if(j0==19) i1 = 0x40000000; else
-		    i0 = (i0&(~i))|((0x20000)>>j0);
+		    i0 = (i0&(~i))|((0x40000)>>j0);
 		}
 	    }
 	} else if (j0>51) {

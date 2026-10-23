@@ -25,7 +25,9 @@
 
 static const double Huge = 1.0e300;
 
-	double floor(double x)
+/* Use unsigned low-word carries when rounding across significand boundaries. */
+double
+floor(double x)
 {
 	int i0,i1,j0;
 	unsigned i,j;
@@ -57,7 +59,7 @@ static const double Huge = 1.0e300;
 		if(i0<0) {
 		    if(j0==20) i0+=1; 
 		    else {
-			j = i1+(1<<(52-j0));
+			j = i1+(1U<<(52-j0));
 			if(j<i1) i0 +=1 ; 	/* got a carry */
 			i1=j;
 		    }
