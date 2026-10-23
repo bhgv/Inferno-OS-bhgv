@@ -1011,14 +1011,14 @@ OP(spawn)
 	spawnmodule(R.M, *(Inst**)R.d);
 }
 
-/* Check the full link index before reading a child entry PC. */
+/* Validate module ownership before reading a child entry or creating its stack. */
 OP(mspawn)
 {
 	Modlink *ml;
 	Modl entry;
 
 	ml = *(Modlink**)R.d;
-	if(ml == H)
+	if(ml == H || ml == nil || ml->m == H || ml->m == nil)
 		error(exModule);
 	if(ml->prog == nil)
 		error(exSpawn);

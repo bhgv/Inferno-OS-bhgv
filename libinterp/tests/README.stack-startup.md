@@ -54,3 +54,8 @@ native compiled frames, run concurrent scheduling or GC/compaction, or activate
 Dis64. Real native-kernel compilation and generated-JIT stack layout remain
 integration checks; syntax checks use Linux/Inferno ARM/386 headers and compile
 the full emulator scheduler.
+
+Module-spawn rejection also covers native NULL and VM nil instances, plus
+instances with either missing owner representation. These cases preserve VM
+registers, allocate no child stack and publish no process. The driver runs
+these checks for emulator/kernel variants with native and 32-bit VM words.

@@ -356,6 +356,31 @@ spawns(void)
 	}
 }
 
+/* Nil instances and absent owners must fail before stack or process publication. */
+static void
+spawnmodules(void)
+{
+	Modlink *saved;
+	Module *owner;
+	REG before;
+	int mode;
+
+	for(mode = 0; mode < 4; mode++){
+		setup(); operation = 4; operand = 0; R.m = &operand; R.d = &ml;
+		saved = ml; owner = ml->m;
+		if(mode < 2)
+			ml = mode == 0 ? nil : H;
+		else
+			ml->m = mode == 2 ? nil : H;
+		before = R;
+		assert(!kprotect(run, nil) && raised == exModule);
+		assert(!memcmp(&before, &R, sizeof(R)));
+		assert(allocations == 0 && created == nil && unframes == 0);
+		ml = saved; ml->m = owner;
+		destroy(ml); assert(live == 0); checks++;
+	}
+}
+
 /* Check complete positive/negative link indices and descriptor indices before access. */
 static void
 indices(void)
@@ -477,7 +502,7 @@ main(void)
 	only = getenv("STACK_CASES");
 	if(only == nil || !strcmp(only, "stack")){ stacks(); geometry(); limits(); }
 	if(only == nil || !strcmp(only, "root"))roots();
-	if(only == nil || !strcmp(only, "spawn"))spawns();
+	if(only == nil || !strcmp(only, "spawn")){ spawns(); spawnmodules(); }
 	if(only == nil || !strcmp(only, "indices"))indices();
 	if(only == nil || !strcmp(only, "frameerrors"))frameerrors();
 	if(only == nil || !strcmp(only, "environment"))environments();
