@@ -29,4 +29,4 @@ with tempfile.TemporaryDirectory(prefix='heap-bounds-') as directory:
     command=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O2 -g'))
     command += ['-I'+str(root/p) for p in ['Linux/arm/include','emu/port','include','libinterp']]
     subprocess.run(command+[str(p),'-o',str(td/'heap')],check=True)
-    subprocess.run([str(td/'heap')],check=True)
+    subprocess.run([str(td/'heap')]+shlex.split(os.environ.get('HEAP_CASE','')),check=True)

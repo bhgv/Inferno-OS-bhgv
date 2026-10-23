@@ -1621,6 +1621,7 @@ OP(tail)
 	R.s = &l->tail;
 	movp();
 }
+/* Preserve the language slice bounds even when an empty source is VM nil. */
 OP(slicea)
 {
 	Type *t;
@@ -1632,9 +1633,12 @@ OP(slicea)
 	start = W(s);
 	ds = A(d);
 
-	if(ds == H || ds == nil) {
-		if(v == start)
-			return;
+	if(ds == H || ds == nil){
+		if(v == start){
+			if(start == 0)
+				return;
+			error(exBounds);
+		}
 		error(exNilref);
 	}
 	if(start < 0 || v < start || v > ds->len)
@@ -1645,7 +1649,10 @@ OP(slicea)
 	h = heap(&Tarray);
 	ss = H2D(Array*, h);
 	ss->len = n;
-	ss->data = ds->data + start*t->size;
+	ss->data = ds->data;
+	/* Empty arrays and zero-sized elements may have no backing data address. */
+	if(start != 0 && t->size != 0)
+		ss->data += start*t->size;
 	ss->t = t;
 	t->ref++;
 

@@ -7,3 +7,6 @@ The system can be used to build portable client and server applications. It make
 Inferno can run 'native' on various ARM, PowerPC, SPARC and x86 platforms but also 'hosted', under an existing operating system (including FreeBSD, Irix, Linux, MacOS X, Plan 9, and Solaris), again on various processor types.
 
 This Bitbucket project includes source for the basic applications, Inferno itself (hosted and native), all supporting software, including the native compiler suite, essential executables and supporting files.
+
+Host regression checkpoint for array-slice bounds and tokenization ownership:
+[contracts, reproducible suite and validation limits](libinterp/tests/README.slice-tokenize-checkpoint.md).
