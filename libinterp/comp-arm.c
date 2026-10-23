@@ -926,6 +926,7 @@ cbraf(Inst *i, int r)
 		punt(i, SRCOP|THREOP|DBRAN|NEWPC|WRTPC, optab[i->op]);
 }	
 
+/* Relocate checked word/string tables, retaining the absent-default sentinel. */
 static void
 comcase(Inst *i, int w)
 {
@@ -959,9 +960,12 @@ comcase(Inst *i, int w)
 		t[2] = RELPC(patch[t[2]]);
 		t += 3;
 	}
-	t[0] = RELPC(patch[t[0]]);
+	/* Exhaustive cases may have no default target. */
+	if(t[0] != -1)
+		t[0] = RELPC(patch[t[0]]);
 }
 
+/* Relocate checked long tables, retaining the absent-default sentinel. */
 static void
 comcasel(Inst *i)
 {
@@ -983,7 +987,9 @@ comcasel(Inst *i)
 		t[4] = RELPC(patch[t[4]]);
 		t += 6;
 	}
-	t[0] = RELPC(patch[t[0]]);
+	/* Exhaustive cases may have no default target. */
+	if(t[0] != -1)
+		t[0] = RELPC(patch[t[0]]);
 }
 
 /* Check imported frame metadata before using the native allocation helper. */
@@ -2206,6 +2212,8 @@ patchex(Module *m, ulong *p)
 	}
 }
 
+#include "jit-tables.h"
+
 /* Roll back only helpers created by this compilation; existing Type code
  * may be shared with modules that are already running. */
 static int
@@ -2258,7 +2266,7 @@ armvalidmeta(Module *m, int size, Modlink *ml)
 			if(e->pc != -1 && (e->pc < 0 || e->pc >= size))
 				return 0;
 		}
-	return 1;
+	return jitvalidtables(m, size);
 }
 
 typedef struct ArmTypeState ArmTypeState;

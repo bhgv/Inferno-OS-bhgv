@@ -53,7 +53,7 @@ typedef struct Module Module;
 typedef struct Link Link;
 typedef struct Modl Modl;
 typedef union Adr {int32_t ind;Inst *ins;} Adr;
-struct Inst {uint8_t op;Adr d;};
+struct Inst {uint8_t op,add;Adr d;};
 struct Type {int size,np;void *initialize,*destroy;};
 struct Link {char *name;union {Inst *pc;} u;Type *frame;};
 struct Modl {union {Inst *pc;} u;Type *frame;};
@@ -140,6 +140,13 @@ static void print(char *s,...) { event();(void)s;}
 static char exNomem[]="memory";
 static void error(char *s) {(void)s;assert(0);}
 static void das(uchar *p,int n) { event();(void)p;(void)n;}
+/* Adapt the Plan 9 qsort callback to the host C library boundary. */
+static int (*plancompare)(void*,void*);
+static int hostcompare(const void *a,const void *b) {return plancompare((void*)a,(void*)b);}
+static void plansort(void *p,long n,long width,int (*compare)(void*,void*)) {
+    plancompare=compare;qsort(p,n,width,hostcompare);
+}
+#define qsort plansort
 static Module *active;
 static Inst *original;
 static int segflush(void *p,ulong n) { event();
@@ -157,7 +164,7 @@ static void comi(Type *t) { event();(void)t;*code++=8;}
 static void comd(Type *t) { event();(void)t;*code++=9;}
 RELOCATORS
 static void comp(Inst *i) { event();
-    if(i->op==ICASE)comcase(i,0);
+    if(i->op==ICASE || i->op==ICASEC)comcase(i,0);
     if(i->op==ICASEL)comcasel(i);
     if(i->op==IGOTO)comgoto(i);
     if(mod->ntype>1)tinit[1]=1;
@@ -181,6 +188,7 @@ static void fixture(void) {
     memset(&data,0,sizeof(data));memset(links,0,sizeof(links));memset(mp,0,sizeof(mp));
     original=malloc(4*sizeof(Inst));assert(original);
     original[0].op=ICASE;original[1].op=ICASE;
+    for(i=0;i<4;i++)original[i].add=DST(AMP);
     original[2].op=IGOTO;original[2].d.ind=9*4;
     original[3].op=ICASEL;original[3].d.ind=16*4;
     mp[0]=1;mp[1]=0;mp[2]=10;mp[3]=1;mp[4]=2;
@@ -249,6 +257,45 @@ int main(void) {
     fixture();links[0].u.pc=(Inst*)((char*)original+1);assert(!compile(&m,4,&ml));links[0].u.pc=original+1;unchanged();cleanup();
     fixture();handlers[0].pc2=5;assert(!compile(&m,4,&ml));handlers[0].pc2=4;unchanged();cleanup();
     fixture();exceptions[0].pc=-2;assert(!compile(&m,4,&ml));exceptions[0].pc=1;unchanged();cleanup();
+    /* Missing defaults are valid compiler output for exhaustive cases. */
+    for(i=0;i<2;i++) {
+        fixture();mp[4]=mp[24]=-1;
+        original[0].op=original[1].op=i?ICASEC:ICASE;
+        assert(compile(&m,4,&ml));
+        assert(mp[4]==-1 && mp[24]==-1 && mp[3]==RELPC(1));
+        cleanup();
+    }
+    /* Invalid table spans and targets must fail before either relocation pass. */
+    for(i=0;i<21;i++) {
+        WORD corrupt[32];Inst savedinstructions[4];
+        fixture();
+        if(i==0)original[0].d.ind=-4;
+        else if(i==1)original[0].d.ind=1;
+        else if(i==2)original[0].d.ind=sizeof(mp);
+        else if(i==3)mp[0]=-1;
+        else if(i==4)mp[0]=0x7fffffff;
+        else if(i==5)mp[3]=-1;
+        else if(i==6)mp[4]=4;
+        else if(i==7)mp[22]=-1;
+        else if(i==8)mp[24]=4;
+        else if(i==9)mp[8]=-1;
+        else if(i==10)mp[8]=0x7fffffff;
+        else if(i==11)mp[9]=-1;
+        else if(i==12)mp[10]=4;
+        else if(i==13)data.size=15;
+        else if(i==14)original[3].d.ind=68;
+        else if(i==15){original[1].d.ind=4;mp[1]=mp[2]=0;}
+        else if(i==16)original[1].op=ICASEC;
+        else if(i==17)original[1].add=DST(AFP);
+        else if(i==18)original[1].add=DST(AIND|AMP);
+        else if(i==19)m.origmp=H;
+        else if(i==20)types[0]=nil;
+        memcpy(corrupt,mp,sizeof(mp));memcpy(savedinstructions,original,sizeof(savedinstructions));
+        assert(!compile(&m,4,&ml));
+        assert(!memcmp(corrupt,mp,sizeof(mp)) && !memcmp(savedinstructions,original,sizeof(savedinstructions)));
+        memcpy(mp,before,sizeof(mp));m.origmp=(uint8_t*)mp;types[0]=&data;data.size=sizeof(mp);
+        unchanged();cleanup();
+    }
     /* Invalid metadata must fail before any helper or PC is published. */
     for(i=0;i<14;i++) {
         fixture();
@@ -289,6 +336,8 @@ relocators+='\nstatic void comgoto(Inst *i) { WORD *t,*e; switch(i->op) { '+bloc
 unit=unit.replace('RELOCATORS',relocators).replace('PREAMBLE',function('preamble','static int' if 'static int\npreamble(' in source else 'static void'))
 unit=unit.replace('TYPECOM',function('typecom','void')).replace('PATCHEX',function('patchex','static void'))
 unit=unit.replace('COMPILE',source[source.index('/* Check PC alignment'):] if '/* Check PC alignment' in source else source[source.index('/* Build both passes with initially clear marks'):])
+if 'jitvalidtables' in source:
+    unit=unit.replace('static int\nx86validpc(', (root/'libinterp/jit-tables.h').read_text()+'\nstatic int\nx86validpc(', 1)
 with tempfile.TemporaryDirectory(prefix='x86-publish-') as directory:
     td=Path(directory);path=td/'publish.c';path.write_text(unit)
     command=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1 -g'))

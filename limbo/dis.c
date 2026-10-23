@@ -365,6 +365,7 @@ disdatum(long offset, Node *n)
 	}
 }
 
+/* Bound packed exception counts before shifting or emitting handler records. */
 void
 disexc(Except *es)
 {
@@ -375,9 +376,17 @@ disexc(Except *es)
 	Label *lab;
 
 	n = 0;
-	for(e = es; e != nil; e = e->next)
-		if(e->p1->reach || e->p2->reach)
-			n++;
+	for(e = es; e != nil; e = e->next){
+		if(!e->p1->reach && !e->p2->reach)
+			continue;
+		c = e->c;
+		/* The low 16 bits count labels; the remaining 13 positive Dis
+		 * operand bits count typed exception labels. */
+		if(c == nil || c->nlab < 0 || c->nlab > 0xffff ||
+		   e->ne < 0 || e->ne > c->nlab || e->ne > 0x1fff)
+			fatal("exception table count out of range");
+		n++;
+	}
 	discon(n);
 	for(e = es; e != nil; e = e->next){
 		if(!e->p1->reach && !e->p2->reach)

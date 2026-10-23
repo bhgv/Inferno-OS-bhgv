@@ -692,6 +692,7 @@ cbraf(Inst *i, int jmp)
 	rbra(patch[i->d.ins-mod->prog], jmp);
 }
 
+/* Relocate checked word/string tables, retaining the absent-default sentinel. */
 static void
 comcase(Inst *i, int w)
 {
@@ -726,9 +727,12 @@ comcase(Inst *i, int w)
 		t[2] = (ulong)base + patch[t[2]];
 		t += 3;
 	}
-	t[0] = (ulong)base + patch[t[0]];
+	/* Exhaustive cases may have no default target. */
+	if(t[0] != -1)
+		t[0] = (ulong)base + patch[t[0]];
 }
 
+/* Relocate checked long tables, retaining the absent-default sentinel. */
 static void
 comcasel(Inst *i)
 {
@@ -750,7 +754,9 @@ comcasel(Inst *i)
 		t[4] = (ulong)base + patch[t[4]];
 		t += 6;
 	}
-	t[0] = (ulong)base + patch[t[0]];
+	/* Exhaustive cases may have no default target. */
+	if(t[0] != -1)
+		t[0] = (ulong)base + patch[t[0]];
 }
 
 /* Check imported frame metadata before using the native allocation helper. */
@@ -1953,6 +1959,8 @@ patchex(Module *m, ulong *p)
 	}
 }
 
+#include "jit-tables.h"
+
 /* Check PC alignment and bounds without subtracting unrelated C pointers. */
 static int
 x86validpc(Module *m, Inst *pc, int size)
@@ -2005,7 +2013,7 @@ x86validmeta(Module *m, int size, Modlink *ml)
 			if(e->pc != -1 && (e->pc < 0 || e->pc >= size))
 				return 0;
 		}
-	return 1;
+	return jitvalidtables(m, size);
 }
 
 typedef struct X86TypeState X86TypeState;
