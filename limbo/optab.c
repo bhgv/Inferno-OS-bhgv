@@ -307,6 +307,7 @@ int setisused[] = {
 	-1
 };
 
+/* Keep operations that can raise arithmetic, nil-list or slice errors during folding. */
 int setsideeffect[] = {
 	Oas,
 	Odas,
@@ -338,14 +339,20 @@ int setsideeffect[] = {
 	Ocons,
 	Odiv,
 	Odot,
+	Oexp,
+	Ohd,
 	Oind,
 	Oindex,
 	Oinds,
 	Oindx,
 	Olen,
 	Oload,
+	Olsh,
 	Omod,
 	Oref,
+	Orsh,
+	Oslice,
+	Otl,
 
 	-1
 };

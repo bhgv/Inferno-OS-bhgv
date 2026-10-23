@@ -349,7 +349,10 @@ fold(Node *n)
 	return n;
 }
 
-/* Fold typed expressions without reassociating inexact real/fixed arithmetic. */
+/*
+ * Fold typed expressions without reassociating inexact real/fixed arithmetic
+ * or discarding operand evaluations that can raise run-time errors.
+ */
 Node*
 efold(Node *n)
 {
@@ -523,11 +526,6 @@ efold(Node *n)
 
 	if(left->op == Oconst){
 		switch(n->op){
-		case Olsh:
-		case Orsh:
-			if(left->val == 0 && !hasside(right, 1))
-				return left;
-			break;
 		case Ooror:
 			if(left->ty == tint || left->ty == tbyte || left->ty == tbig){
 				if(left->val == 0){
@@ -590,7 +588,7 @@ efold(Node *n)
 }
 
 /*
- * does evaluating the node have any side effects?
+ * Include run-time errors as observable effects, as well as calls and mutation.
  */
 int
 hasside(Node *n, int strict)
