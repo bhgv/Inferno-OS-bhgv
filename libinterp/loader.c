@@ -210,14 +210,18 @@ Loader_link(void *a)
 		return;
 	}
 	nlink = 0;
-	if(m->ext != nil)
-		while(m->ext[nlink].name != nil){
-			if(nlink >= (0x7fffffff-sizeof(Heap)-sizeof(Array))/sizeof(Loader_Link)){
-				kwerrstr("too many exports");
-				return;
-			}
+	if(m->ext != nil) {
+		int maxlink;
+
+		maxlink = (0x7fffffff-sizeof(Heap)-sizeof(Array))/sizeof(Loader_Link);
+		/* Check the limit before reading the next sentinel entry. */
+		while(nlink < maxlink && m->ext[nlink].name != nil)
 			nlink++;
+		if(nlink == maxlink) {
+			kwerrstr("too many exports");
+			return;
 		}
+	}
 	*f->ret = loadergetsnapshot(m, Tlink, nlink, SnapshotLink);
 }
 
