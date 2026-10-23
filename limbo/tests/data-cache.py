@@ -30,6 +30,7 @@ names = [('void', 'discon'), ('void', 'disdata')]
 names += [('static void', n) for n in ('disbyte', 'disbytes', 'disint', 'disbig',
                                       'disreal', 'disstring', 'disflush')]
 parts = [function(source, result + '\n' + name + '(') for result, name in names]
+parts.insert(0, function((root / 'limbo/com.c').read_text(), 'Long\ncaseend('))
 parts.insert(0, function((root / 'limbo/dtocanon.c').read_text(), 'void\ndtocanon('))
 unit = (root / 'limbo/tests/data-cache.c').read_text()
 with tempfile.TemporaryDirectory(prefix='dis-data-cache-') as directory:

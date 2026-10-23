@@ -93,6 +93,7 @@ asmldt(long size, Decl *d)
 			asminitializer(d->offset, d->init);
 }
 
+/* Match binary Dis case bounds when writing textual initializers. */
 void
 asminitializer(long offset, Node *n)
 {
@@ -136,7 +137,7 @@ asminitializer(long offset, Node *n)
 		Bprint(bout, "\tword\t@mp+%ld,%d", offset, c->nlab);
 		for(i = 0; i < c->nlab; i++){
 			lab = &c->labs[i];
-			Bprint(bout, ",%ld,%ld,%ld", (long)lab->start->val, (long)lab->stop->val+1, lab->inst->pc);
+			Bprint(bout, ",%ld,%ld,%ld", (long)lab->start->val, (long)caseend(lab->stop->val, 0), lab->inst->pc);
 		}
 		Bprint(bout, ",%ld\n", c->iwild ? c->iwild->pc : -1);
 		break;
@@ -145,7 +146,7 @@ asminitializer(long offset, Node *n)
 		Bprint(bout, "\tword\t@mp+%ld,%d", offset, c->nlab);
 		for(i = 0; i < c->nlab; i++){
 			lab = &c->labs[i];
-			Bprint(bout, ",%lld,%lld,%ld", lab->start->val, lab->stop->val+1, lab->inst->pc);
+			Bprint(bout, ",%lld,%lld,%ld", lab->start->val, caseend(lab->stop->val, 1), lab->inst->pc);
 		}
 		Bprint(bout, ",%ld\n", c->iwild ? c->iwild->pc : -1);
 		break;

@@ -38,7 +38,9 @@ UBSan; the supplementary ASan/UBSan run also passes. Large label allocations
 are bounded rather than materialized by the fixture.
 
 These checks concern dense int-to-IGOTO optimization only. They do not validate
-sparse ICASE/ICASEL upper-bound serialization, full case instruction generation,
+full case instruction generation,
 front-end parsing/type checking, compiled program execution or new 64-bit JIT
 backends. Valid typed int endpoints are an input precondition of these internal
 helpers. No VM opcode, table layout or runtime ABI is changed.
+Sparse maximum-bound generation/serialization now has separate coverage in
+[README.case-max.md](README.case-max.md).

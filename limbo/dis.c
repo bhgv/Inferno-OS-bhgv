@@ -203,6 +203,7 @@ disldt(long size, Decl *ds)
 	discon(0);
 }
 
+/* Serialize typed initializers with representable, guarded numeric case bounds. */
 static void
 disdatum(long offset, Node *n)
 {
@@ -250,7 +251,7 @@ disdatum(long offset, Node *n)
 			lab = &c->labs[i];
 			disint(offset, lab->start->val);
 			offset += IBY2WD;
-			disint(offset, lab->stop->val+1);
+			disint(offset, caseend(lab->stop->val, 0));
 			offset += IBY2WD;
 			disint(offset, lab->inst->pc);
 			offset += IBY2WD;
@@ -265,7 +266,7 @@ disdatum(long offset, Node *n)
 			lab = &c->labs[i];
 			disbig(offset, lab->start->val);
 			offset += IBY2LG;
-			disbig(offset, lab->stop->val+1);
+			disbig(offset, caseend(lab->stop->val, 1));
 			offset += IBY2LG;
 			disint(offset, lab->inst->pc);
 			offset += 2*IBY2WD;

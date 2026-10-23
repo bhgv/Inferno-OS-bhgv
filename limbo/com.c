@@ -787,6 +787,19 @@ nconstqual(Node *s1)
 	return n;
 }
 
+/* Keep a maximum endpoint representable; casecom handles equality separately. */
+Long
+caseend(Long high, int big)
+{
+	Long maximum;
+
+	maximum = big ? (Long)0x7fffffffffffffffLL : 0x7fffffffL;
+	if(high == maximum)
+		return high;
+	return high+1;
+}
+
+/* Emit compatible case tables, guarding maximum labels before exclusive bounds. */
 void
 casecom(Node *cn)
 {
@@ -794,17 +807,18 @@ casecom(Node *cn)
 	Case *c;
 	Decl *d;
 	Type *ctype;
-	Inst *j, *jmps, *wild, *k, *j1, *j2;
+	Inst *j, *jmps, *wild, *k, *j1, *j2, *maxcase;
 	Node *n, *p, *left, tmp, nto, tmpc;
 	Label *labs;
 	char buf[32];
 	int i, nlab, op, needwild, igoto;
+	Long maximum;
 
 	c = cn->ty->cse;
 
 	needwild = cn->op != Opick || nconstqual(cn->right) != cn->left->right->ty->tof->decl->tag;
 	igoto = cn->left->ty == tint && dogoto(c);
-	j1 = j2 = nil;
+	j1 = j2 = maxcase = nil;
 
 	/*
 	 * generate global which has case labels
@@ -849,6 +863,18 @@ casecom(Node *cn)
 
 	labs = c->labs;
 	nlab = c->nlab;
+
+	maximum = ctype == tbig ? (Long)0x7fffffffffffffffLL : 0x7fffffffL;
+	if(!igoto && (ctype == tint || ctype == tbig) && nlab > 0 &&
+	   labs[nlab-1].stop->val == maximum){
+		/* Snapshot once: the guard and table must read the same case value. */
+		talloc(&tmpc, ctype, nil);
+		tmpc.src = left->src;
+		genrawop(&left->src, ctype == tbig ? IMOVL : IMOVW, left, nil, &tmpc);
+		left = &tmpc;
+		maxcase = genrawop(&left->src, ctype == tbig ? IBEQL : IBEQW,
+			sumark(labs[nlab-1].stop), left, nil);
+	}
 
 	if(igoto){
 		if(labs[0].start->val != 0){
@@ -921,6 +947,8 @@ casecom(Node *cn)
 		jmps = j;
 	}
 	patch(jmps, nextinst());
+	if(maxcase != nil)
+		patch(maxcase, labs[nlab-1].inst);
 	if(wild == nil && needwild)
 		wild = nextinst();
 

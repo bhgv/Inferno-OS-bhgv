@@ -41,6 +41,7 @@ double	canontod(ulong v[2]);
 void	casecheck(Node *cn, Type *ret);
 int	casecmp(Type*, Node*, Node*);
 void	casecom(Node*);
+Long	caseend(Long, int);
 Node	*caselist(Node*, Node*);
 void	casesort(Type*, Label*, Label*, int, int);
 Case	*checklabels(Node *inits, Type *ctype, int nlab, char *title);
