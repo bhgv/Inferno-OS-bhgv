@@ -34,6 +34,7 @@ common += [function(stack, signature) for signature in ('void\nnewstack(', 'void
 for signature in ('static int\nmoduleentry(', 'static int\nframefits('):
     if signature in xec:
         common += [function(xec, signature)]
+common += [function(xec, 'static Type*\nmoduletype(')]
 common += [function(xec, 'OP('+name+')') for name in ('frame', 'mframe')]
 if 'typedef struct SpawnProg' in xec:
     common += [xec[xec.index('typedef struct SpawnProg'):xec.index('OP(spawn)')]]

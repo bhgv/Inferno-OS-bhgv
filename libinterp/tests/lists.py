@@ -28,6 +28,7 @@ def function(text, signature):
 
 
 parts = [function(source, 'List*\ncons(')]
+parts += [function(source, 'static Type*\nmoduletype(')]
 parts += [function(source, 'OP('+name+')') for name in ('consb','consw','consl','consp','consf','consm','consmp')]
 heap = (root / 'libinterp/heap.c').read_text()
 parts = [function(heap, 'void\nincmem('), function(heap, 'void\nfreeptrs(')] + parts

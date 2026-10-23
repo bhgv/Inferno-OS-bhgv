@@ -318,7 +318,7 @@ struct Modlink
 	Module*	m;		/* The real module */
 	int	compiled;	/* Compiled into native assembler */
 	Inst*	prog;		/* text segment */
-	Type**	type;		/* Type descriptors */
+	Type**	type;		/* Legacy snapshot; use m->type after Loader.tnew */
 	uchar*	data;		/* for dynamic C modules */
 	int	nlinks;		/* ?apparently required by Java */
 	Modl	links[1];

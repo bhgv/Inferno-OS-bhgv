@@ -8,6 +8,7 @@
 
 static Proc worker;
 static char *raised;
+char exModule[]="module";
 char exHeap[] = "heap";
 REG R;
 int mutator, nprop;
@@ -116,10 +117,12 @@ aliases(void)
 	struct { List *list; WORD marker; } input;
 	Type *types[] = {&record};
 	Modlink module = {0};
+	Module owner = {0};
 	List *old;
 	WORD size;
 	int op, fail, before;
 
+	owner.type = types; owner.ntype = 1; module.m = &owner;
 	module.type = types; R.M = &module;
 	record.size = sizeof(input); record.np = 1; record.map[0] = 0x80;
 	for(op = 3; op <= 6; op++) for(fail = 0; fail < 2; fail++){

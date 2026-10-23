@@ -15,6 +15,7 @@ Proc *getup(void) {return &worker;}
 void nexterror(void) {assert(worker.nerr>0);siglongjmp(worker.estack[--worker.nerr],1);}
 void error(char *s) {last_error=s;nexterror();}
 int __lsan_is_turned_off(void) {return 1;}
+char exModule[]="module";
 char exHeap[]="heap",exNegsize[]="negative",exBounds[]="bounds",exNilref[]="nil";
 Pool *heapmem;
 int mutator,nprop;
@@ -146,7 +147,7 @@ int main(void) {
     Type *types[]={&type};Modlink ml={0};
     WORD count,first,last,offset;
     List *saved;
-    type.size=4;ml.type=types;R.M=&ml;
+    type.size=4;module.type=types;module.ntype=1;ml.m=&module;ml.type=types;R.M=&ml;
     which=0;
     for(i=0;i<nelem(widths);i++) {
         tsz=widths[i];

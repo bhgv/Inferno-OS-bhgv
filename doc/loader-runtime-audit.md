@@ -109,3 +109,27 @@ families. Strict UBSan and ASan with stack instrumentation pass. See
 `libinterp/tests/README.heap-clones.md` for the boundary injections and remaining
 GC, cyclic-graph and full-ABI integration limits. Scheduler startup is covered
 separately by stack-startup.py and doc/stack-startup-audit.md.
+
+## Growing type tables and checked VM consumers
+
+Loader_tnew updates the owner table and its supplied instance, but another
+Modlink can retain a pointer to the freed pre-realloc table. All interpreter
+type consumers now resolve descriptors through Module.type. A shared helper
+checks the full WORD index against ntype, the table/descriptor presence and
+nonnegative descriptor size before any instruction effects. This covers object,
+array, mapped channel/list/record and frame operations. Modlink.type remains
+only as a legacy snapshot to preserve structure layout; future JIT ports must
+use the owner table or stable Type addresses rather than this cache.
+
+mcall now uses the same checked import/export resolver as mframe and mspawn.
+The complete WORD index is resolved before writing the caller frame, changing
+registers or acquiring the callee reference. This removes int truncation,
+negative-index arithmetic overflow and unchecked linkage-table accesses while
+preserving normal Dis calls and builtin caller restoration.
+
+module-types.py runs 844 cases across native and word32 scalar models. Both
+strict UBSan and ASan pass; previous opcode bodies independently reproduce the
+stale-table use-after-free and the unchecked-call overread. See
+libinterp/tests/README.module-types.md for boundaries and remaining integration
+work. Native-PC compiler verification and the requested new JIT ports are not
+claimed complete by these interpreter fixes.

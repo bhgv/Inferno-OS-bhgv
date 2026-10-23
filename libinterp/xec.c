@@ -333,39 +333,61 @@ OP(movp)
 	P(d) = sv;
 	destroy(dv);
 }
+/* Resolve the full Limbo index through the owner: Loader.tnew may move its table. */
+static Type*
+moduletype(Modlink *ml, WORD index)
+{
+	Module *m;
+	Type *t;
+
+	if(ml == H || ml == nil || ml->m == nil || ml->m == H)
+		error(exModule);
+	m = ml->m;
+	if(index < 0 || index >= m->ntype || m->type == nil)
+		error("invalid type");
+	t = m->type[index];
+	if(t == nil || t->size < 0)
+		error("invalid type");
+	return t;
+}
+
+/* Resolve mapped-record metadata before acquiring or replacing references. */
 OP(movmp)
 {
 	Type *t;
 
-	t = R.M->type[W(m)];
+	t = moduletype(R.M, W(m));
 
 	incmem(R.s, t);
 	if (t->np)
 		freeptrs(R.d, t);
 	memmove(R.d, R.s, t->size);
 }
+/* Validate the descriptor before allocating or replacing the destination. */
 OP(new)
 {
 	Heap *h;
 	WORD **wp, *t;
 
-	h = heap(R.M->type[W(s)]);
+	h = heap(moduletype(R.M, W(s)));
 	wp = R.d;
 	t = *wp;
 	*wp = H2D(WORD*, h);
 	destroy(t);
 }
+/* Use the current module table for a zero-initialized object. */
 OP(newz)
 {
 	Heap *h;
 	WORD **wp, *t;
 
-	h = heapz(R.M->type[W(s)]);
+	h = heapz(moduletype(R.M, W(s)));
 	wp = R.d;
 	t = *wp;
 	*wp = H2D(WORD*, h);
 	destroy(t);
 }
+/* Resolve the requested descriptor in the source module before allocation. */
 OP(mnewz)
 {
 	Heap *h;
@@ -375,7 +397,7 @@ OP(mnewz)
 	ml = *(Modlink**)R.s;
 	if(ml == H)
 		error(exModule);
-	h = heapz(ml->type[W(m)]);
+	h = heapz(moduletype(ml, W(m)));
 	wp = R.d;
 	t = *wp;
 	*wp = H2D(WORD*, h);
@@ -417,12 +439,8 @@ OP(frame)
 {
 	Type *t;
 	Frame *f;
-	WORD index;
 
-	index = W(s);
-	if(index < 0 || index >= R.M->m->ntype)
-		error("invalid frame");
-	t = R.M->type[index];
+	t = moduletype(R.M, W(s));
 	if(!framefits(t)) {
 		R.s = t;
 		extend();
@@ -466,6 +484,7 @@ OP(mframe)
 		initmem(t, f);
 	T(d) = f;
 }
+/* Validate the current element descriptor before checking array geometry. */
 OP(newa)
 {
 	WORD sz;
@@ -473,7 +492,7 @@ OP(newa)
 	Heap *h;
 	Array *a, *at, **ap;
 
-	t = R.M->type[W(m)];
+	t = moduletype(R.M, W(m));
 	sz = W(s);
 	acheck(t->size, sz);
 	h = nheap(sizeof(Array) + (t->size*sz));
@@ -491,6 +510,7 @@ OP(newa)
 	*ap = a;
 	destroy(at);
 }
+/* Use current element metadata for zeroed storage and pointer initialization. */
 OP(newaz)
 {
 	WORD sz;
@@ -498,7 +518,7 @@ OP(newaz)
 	Heap *h;
 	Array *a, *at, **ap;
 
-	t = R.M->type[W(m)];
+	t = moduletype(R.M, W(m));
 	sz = W(s);
 	acheck(t->size, sz);
 	h = nheap(sizeof(Array) + (t->size*sz));
@@ -628,9 +648,10 @@ OP(newcm)
 	if(!ok)
 		krethrow();
 }
+/* Create a mapped channel only after validating its payload descriptor. */
 OP(newcmp)
 {
-	newc(R.M->type[W(s)], movtmp);
+	newc(moduletype(R.M, W(s)), movtmp);
 }
 OP(icase)
 {
@@ -901,18 +922,20 @@ OP(iload)
 	*mp = ml;
 	destroy(t);
 }
+/* Resolve the complete link index before publishing a frame or changing modules. */
 OP(mcall)
 {
 	Heap *h;
 	Prog *p;
 	Frame *f;
-	Linkpc *l;
+	Modl entry;
 	Modlink *ml;
-	int o;
 
 	ml = *(Modlink**)R.d;
 	if(ml == H)
 		error(exModule);
+	if(!moduleentry(ml, W(m), &entry))
+		error("invalid mcall");
 	f = T(s);
 	f->lr = R.PC;
 	f->fp = R.FP;
@@ -923,13 +946,8 @@ OP(mcall)
 	h = D2H(ml);
 	h->ref++;
 
-	o = W(m);
-	if(o >= 0)
-		l = &ml->links[o].u;
-	else
-		l = &ml->m->ext[-o-1].u;
 	if(ml->prog == nil) {
-		l->runt(f);
+		entry.u.runt(f);
 		h->ref--;
 		R.M = f->mr;
 		R.SP = R.FP;
@@ -945,7 +963,7 @@ OP(mcall)
 		return;
 	}
 	R.MP = R.M->MP;
-	R.PC = l->pc;
+	R.PC = entry.u.pc;
 	R.t = 1;
 
 	if(f->mr->compiled != R.M->compiled)
@@ -1301,7 +1319,7 @@ OP(consmp)
 	List *l, *result;
 	Type *t;
 
-	t = R.M->type[W(m)];
+	t = moduletype(R.M, W(m));
 	result = L(d);
 	l = cons(t->size, &result);
 	incmem(R.s, t);
