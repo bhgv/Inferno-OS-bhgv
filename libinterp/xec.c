@@ -508,7 +508,7 @@ moduletype(Modlink *ml, WORD index)
 	if(ml == H || ml == nil || ml->m == nil || ml->m == H)
 		error(exModule);
 	m = ml->m;
-	if(index < 0 || index >= m->ntype || m->type == nil)
+	if(m->type == nil || index < 0 || index >= m->ntype)
 		error("invalid type");
 	t = m->type[index];
 	if(t == nil || t == H || t->size < 0)
@@ -574,7 +574,8 @@ moduleentry(Modlink *ml, WORD index, Modl *entry)
 {
 	Link *l;
 
-	if(ml == nil || ml == H || ml->nlinks < 0)
+	if(ml == nil || ml == H || ml->nlinks < 0 ||
+	   (ml->nlinks != 0 && ml->links == nil))
 		return 0;
 	if(index >= 0){
 		if(index >= ml->nlinks)
