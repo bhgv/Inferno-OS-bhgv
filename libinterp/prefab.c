@@ -645,49 +645,69 @@ highlight(PCompound *pc, PElement *list, int index, int on)
 	dohighlight(pc, list, element(list, index, nil), on);
 }
 
-static
-PElement**
+/* Grow an owned tag vector without losing its previous allocation on failure. */
+static int
+tagspace(PElement ***tagged, int *capacity, int need)
+{
+	PElement **grown;
+	int limit, n;
+
+	limit = 0x7fffffff/sizeof(PElement*);
+	if(need < 0 || need > limit)
+		return -1;
+	if(need <= *capacity)
+		return 0;
+	n = need <= limit-10 ? need+10 : limit;
+	grown = realloc(*tagged, n*sizeof(PElement*));
+	if(grown == nil)
+		return -1;
+	*tagged = grown;
+	*capacity = n;
+	return 0;
+}
+
+/* Return a complete tag traversal, or a negative count with every vector freed. */
+static PElement**
 tags(PElement *pelem, int *ntag)
 {
-	int n, nalloc, nn;
+	int n, nalloc, nn, limit;
 	List *l;
-	PElement *pe, **tagged, **ntagged;
+	PElement *pe, **tagged, **nested;
 
 	n = 0;
 	nalloc = 0;
 	tagged = nil;
-	*ntag = 0;
-	for(l=pelem->first; l!=H; l=l->tail){
+	*ntag = -1;
+	limit = 0x7fffffff/sizeof(PElement*);
+	for(l = pelem->first; l != H; l = l->tail){
 		pe = *(PElement**)l->data;
 		if(pe->e.tag != H){
-			if(nalloc == n){
-				nalloc += 10;
-				tagged = realloc(tagged, nalloc*sizeof(PElement*));
-				if(tagged == nil)
-					return nil;
-			}
+			if(tagspace(&tagged, &nalloc, n+1) < 0)
+				goto Err;
 			tagged[n++] = pe;
-		}else if(pe->pkind==EHorizontal || pe->pkind==EVertical){
-			ntagged = tags(pe, &nn);
-			if(nn > 0){
-				if(nalloc < n+nn){
-					nalloc = n+nn+10;
-					tagged = realloc(tagged, nalloc*sizeof(PElement*));
-					if(tagged == nil){
-						free(ntagged);
-						return nil;
-					}
-				}
-				memmove(tagged+n, ntagged, nn*sizeof(PElement*));
-				free(ntagged);
-				n += nn;
+		}else if(pe->pkind == EHorizontal || pe->pkind == EVertical){
+			nested = tags(pe, &nn);
+			if(nn < 0)
+				goto Err;
+			if(nn > limit-n || tagspace(&tagged, &nalloc, n+nn) < 0){
+				free(nested);
+				goto Err;
 			}
+			if(nn > 0)
+				memmove(tagged+n, nested, nn*sizeof(PElement*));
+			free(nested);
+			n += nn;
 		}
 	}
 	*ntag = n;
 	return tagged;
+
+Err:
+	free(tagged);
+	return nil;
 }
 
+/* Unwind highlighting, display locking and tag ownership if setup cannot finish. */
 void
 doselect(void *fp, int dotags)
 {
@@ -738,8 +758,17 @@ doselect(void *fp, int dotags)
 		highlight(pc, pe, i, 1);
 	/* val must be in shared memory, but stacks not shared */
 	val = malloc(sizeof(WORD));
-	if(val == nil)
+	if(val == nil){
+		if(dotags)
+			dohighlight(pc, pe, tagged[i], 0);
+		else
+			highlight(pc, pe, i, 0);
+		flushimage(pc->display, 1);
+		if(locked)
+			unlockdisplay(pc->display);
+		free(tagged);
 		goto Bad;
+	}
 	for(;;){
 		if(lasti != i){
 			if(dotags){
