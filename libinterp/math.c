@@ -749,6 +749,18 @@ Math_modf(void *fp)
 	f->ret->t0 = ipart;
 }
 
+/* Preserve extreme VM exponents when the native math API takes a narrower int. */
+static int
+mathexponent(WORD n)
+{
+	if(n > 0x7fffffff)
+		return 0x7fffffff;
+	if(n < -0x7fffffff-1)
+		return -0x7fffffff-1;
+	return (int)n;
+}
+
+/* Decimal powers saturate in the original direction before narrowing the exponent. */
 void
 Math_pow10(void *fp)
 {
@@ -756,7 +768,7 @@ Math_pow10(void *fp)
 
 	f = fp;
 
-	*f->ret = ipow10(f->p);
+	*f->ret = ipow10(mathexponent(f->p));
 }
 
 void
@@ -769,6 +781,7 @@ Math_remainder(void *fp)
 	*f->ret = __ieee754_remainder(f->x, f->p);
 }
 
+/* Scale with a bounded native exponent while preserving zero, infinity and NaN. */
 void
 Math_scalbn(void *fp)
 {
@@ -776,7 +789,7 @@ Math_scalbn(void *fp)
 
 	f = fp;
 
-	*f->ret = scalbn(f->x, f->n);
+	*f->ret = scalbn(f->x, mathexponent(f->n));
 }
 
 void
