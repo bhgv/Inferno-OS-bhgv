@@ -69,7 +69,13 @@ OP(subl)
 	V(d) = UV(m) - UV(s);
 }
 OP(subf) { F(d) = F(m) - F(s); }
-OP(divb) { B(d) = B(m) / B(s); }
+/* Preserve the VM's divide-by-zero exception for byte operands too. */
+OP(divb)
+{
+	if(B(s) == 0)
+		error(exZdiv);
+	B(d) = B(m) / B(s);
+}
 /* Raise the VM divide-by-zero exception instead of invoking C undefined behavior. */
 OP(divw)
 {
@@ -85,7 +91,13 @@ OP(divl)
 	V(d) = V(m) / V(s);
 }
 OP(divf) { F(d) = F(m) / F(s); }
-OP(modb) { B(d) = B(m) % B(s); }
+/* Byte remainder by zero must not reach the host C operator. */
+OP(modb)
+{
+	if(B(s) == 0)
+		error(exZdiv);
+	B(d) = B(m) % B(s);
+}
 /* Reject zero divisors explicitly; C remainder by zero is undefined behavior. */
 OP(modw)
 {
