@@ -8,6 +8,7 @@ OFILES=\
 	conv.$O\
 	crypt.$O\
 	dec.$O\
+	disc.$O\
 	dlm-$TARGMODEL.$O\
 	draw.$O\
 	freetype.$O\

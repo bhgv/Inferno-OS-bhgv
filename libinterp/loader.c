@@ -121,11 +121,15 @@ loadersnapshot(void *arg)
 			ll--;
 			ll->name = c2string(link->name, strlen(link->name));
 			ll->sig = link->sig;
-			if(m->prog == nil){
+			if(m->prog == nil || link->u.pc == nil){
 				ll->pc = -1;
 				ll->tdesc = -1;
 			}else{
 				ll->pc = link->u.pc - m->prog;
+				if(link->frame == nil){
+					ll->tdesc = -1;
+					continue;
+				}
 				for(j = 0; j < m->ntype; j++)
 					if(m->type[j] == link->frame)
 						break;

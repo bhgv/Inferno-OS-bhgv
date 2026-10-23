@@ -84,7 +84,7 @@ int compile(Module *m,int n,Modlink *ml) {
 }
 IMPLEMENTATION
 static uchar buffer[2048];
-static int at,map_at,arraylen_at,exportpc_at,exporttype_at,handlertype_at,handlerpc_at;
+static int at,map_at,arraylen_at,exportpc_at,exporttype_at,exportname_at,handlertype_at,handlerpc_at;
 static void byte(int n) {assert(at<sizeof(buffer));buffer[at++]=n;}
 static void integer(int v) {
     unsigned int u=(unsigned int)v;
@@ -109,7 +109,7 @@ static void fixture(void) {
     byte(DBYTE(DAPOP,1));integer(0);
     byte(DBYTE(DEFB,1));integer(sizeof(void*));byte(7);
     byte(0);name("fixture");
-    exportpc_at=at;integer(0);exporttype_at=at;integer(1);word(42);name("run");
+    exportpc_at=at;integer(0);exporttype_at=at;integer(1);word(42);exportname_at=at;name("run");
     integer(1);integer(1);word(42);name("import");byte(0);
     integer(1);integer(0);integer(0);integer(1);handlertype_at=at;integer(1);
     integer(0x10001);name("exception");handlerpc_at=at;integer(0);integer(-1);byte(0);
@@ -154,6 +154,10 @@ int main(void) {
     assert(failures && successes);
     fixture();buffer[map_at]=0;rejected();
     fixture();buffer[arraylen_at]=0xff;rejected();
+    fixture();buffer[exportpc_at]=127;rejected();
+    fixture();buffer[exportpc_at]=127;buffer[exporttype_at]=127;
+    memcpy(buffer+exportname_at,".mp",3);
+    m=parse(at);assert(m && m->ext[0].u.pc==nil && m->ext[0].frame==nil);drop(m);
     fixture();buffer[exportpc_at]=1;rejected();
     fixture();buffer[exporttype_at]=2;rejected();
     fixture();buffer[handlertype_at]=2;rejected();

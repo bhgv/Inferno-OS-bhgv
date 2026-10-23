@@ -1975,6 +1975,9 @@ xec(Prog *p)
 	if(R.M->compiled)
 		comvec();
 	else do {
+		/* A C-translated step consumes the same single scheduler instruction. */
+		if(R.M->m->cstep != nil && R.M->m->cstep())
+			continue;
 		j = R.M->m->jit;
 		dec[R.PC->add]();
 		op = R.PC->op;

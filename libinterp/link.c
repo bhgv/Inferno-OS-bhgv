@@ -27,7 +27,7 @@ void
 mlink(Module *m, Link* l, uchar *fn, int sig, int pc, Type *t)
 {
 	newlink(l, (char*)fn, sig, t);
-	l->u.pc = m->prog+pc;
+	l->u.pc = pc < 0 ? nil : m->prog+pc;
 }
 
 /* Require an actual export name before comparing signatures or installing a link. */

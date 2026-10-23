@@ -23,6 +23,7 @@ def function(path,name,result):
 source=(root/'libinterp/load.c').read_text()
 parser=source[source.index('/* Check the complete encoded operand'):source.index('Module*\nnewmod(')]
 parts=[function('emu/port/dis.c','kprotect','int')]
+parts.append((root/'libinterp/disc.c').read_text().replace('#include "lib9.h"','').replace('#include "isa.h"','').replace('#include "interp.h"',''))
 parts += [function('libinterp/heap.c',n,r) for n,r in [('dtype','Type*'),('freetype','void'),('initmem','void'),('initarray','void')]]
 parts += [function('libinterp/link.c',n,r) for n,r in [('newlink','static void'),('mlink','void'),('destroylinks','void')]]
 parts += [function('libinterp/load.c',n,r) for n,r in [('operand','static int'),('disw','static ulong'),('canontod','double'),('brpatch','int'),('freemod','void')]]

@@ -262,8 +262,12 @@ metadata(void)
 		setup(); operation = op; module.compiled = 1; invoke();
 		assert(result == H && allocations == 0 && !strcmp(message, "compiled module")); checks++;
 	}
-	setup(); operation = 1; exports[0].frame = nil; invoke();
+	setup(); operation = 1; exports[0].frame = (Type*)&module; invoke();
 	assert(result == H && live == 0 && !strcmp(message, "bad export frame")); checks++;
+	setup(); operation = 1; exports[0].frame = nil; exports[0].u.pc = nil; exports[0].name = ".mp"; invoke();
+	assert(result != H);
+	{ Loader_Link *ll = (Loader_Link*)result->data+3; assert(ll->pc == -1 && ll->tdesc == -1); }
+	destroy(result); result = H; checks++;
 	setup(); operation = 1; module.prog = nil; invoke();
 	assert(result != H);
 	for(op = 0; op < result->len; op++){

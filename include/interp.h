@@ -50,6 +50,7 @@ typedef struct Import	Import;
 typedef struct ILock	ILock;
 typedef struct Inst	Inst;
 typedef struct Jit	Jit;
+typedef struct DisC	DisC;
 typedef struct Module	Module;
 typedef struct Modlink	Modlink;
 typedef struct Modl	Modl;
@@ -268,6 +269,16 @@ struct Prog
 	void*	tktop; //TkTop*
 };
 
+/* Static Dis-to-C images keep original module data, frames and Dis PCs. */
+struct DisC
+{
+	const uchar *image;
+	ulong length;
+	int nprog;
+	int (*step)(void);
+	DisC *next;
+};
+
 /* Optional native leaf operations; Dis PCs and interpreter metadata survive. */
 struct Jit
 {
@@ -304,6 +315,7 @@ struct Module
 	ulong*	pctab;	/* dis pc to code pc when compiled */
 	void*	dlm;		/* dynamic C module */
 	Jit*	jit;		/* optional leaf JIT, separate from native-PC compiled */
+	int	(*cstep)(void);	/* static Dis-to-C step; retains original Inst PCs */
 };
 
 struct Modl
@@ -390,6 +402,8 @@ extern	String	snil;
 extern	void	(*optab[256])(void);
 extern	void	(*comvec)(void);
 extern	void	(*dec[])(void);
+extern	int	disc_register(DisC*);
+extern	void	disc_attach(Module*, const uchar*, ulong);
 extern	Module*	modules;
 extern	int	mutator;
 extern	int	nprop;

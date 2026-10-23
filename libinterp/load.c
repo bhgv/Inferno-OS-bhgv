@@ -631,12 +631,17 @@ disparse(void *arg)
 		if(!disneed(istream,end,4))
 			goto truncated;
 		v  = disw(isp);
-		if(pc < 0 || pc >= isize || de < -1 || de >= hsize) {
+		if(pc < -1 || pc >= isize || de < -1 || de >= hsize) {
 			kwerrstr("bad export index");
 			goto bad;
 		}
 		if(!disname(istream,end))
 			goto truncated;
+		/* Public module data uses the compiler's (-1, -1, ".mp") sentinel. */
+		if(pc == -1 && (de != -1 || strcmp((char*)istream, ".mp") != 0)){
+			kwerrstr("bad global-data export");
+			goto bad;
+		}
 		pt = nil;
 		if(de != -1)
 			pt = m->type[de];
@@ -783,15 +788,19 @@ disparse(void *arg)
 		m->entryt = m->type[entryt];
 	}
 
-	if(cflag) {
-		if((m->rt&DONTCOMPILE) == 0 && !dontcompile)
-			compile(m, isize, nil);
-	}
-	else
-	if(m->rt & MUSTCOMPILE && !dontcompile) {
-		if(compile(m, isize, nil) == 0) {
-			kwerrstr("compiler required");
-			goto bad;
+	/* Match only fully checked images; C code does not relocate PCs or tables. */
+	disc_attach(m, code, length);
+	if(m->cstep == nil){
+		if(cflag) {
+			if((m->rt&DONTCOMPILE) == 0 && !dontcompile)
+				compile(m, isize, nil);
+		}
+		else
+		if(m->rt & MUSTCOMPILE && !dontcompile) {
+			if(compile(m, isize, nil) == 0) {
+				kwerrstr("compiler required");
+				goto bad;
+			}
 		}
 	}
 
