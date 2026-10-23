@@ -28,10 +28,10 @@ def function(source, signature):
 
 types = Path(os.environ.get('MAP_TYPES_SOURCE', root / 'limbo/types.c')).read_text()
 parts = []
-for signature in ('long\naddsize(', 'static long\nmapmark('):
+for signature in ('long\naddsize(', 'static long\nmapmark(', 'static long\ndescbytes('):
     if signature in types:
         parts.append(function(types, signature))
-    elif 'addsize' in signature:
+    elif 'addsize' in signature or 'descbytes' in signature:
         parts.append(function((root / 'limbo/types.c').read_text(), signature))
 for signature in ('Desc*\ngendesc(', 'Desc*\nmkdesc(', 'Desc*\nmktdesc(',
                   'Desc*\nenterdesc(', 'Desc*\nusedesc(', 'long\ndescmap(', 'long\ntdescmap('):

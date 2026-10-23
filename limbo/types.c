@@ -2417,14 +2417,27 @@ gendesc(Decl *d, long size, Decl *decls)
 	return desc;
 }
 
+/* Round descriptor capacity without signed addition overflow or zero-sized allocation dependence. */
+static long
+descbytes(long size)
+{
+	long quantum;
+
+	if(size < 0 || size > 0x7fffffff)
+		fatal("invalid descriptor size");
+	quantum = 8*IBY2WD;
+	return size/quantum+(size%quantum != 0);
+}
+
+/* Construct a bounded declaration map, including an owned empty-map representation. */
 Desc*
 mkdesc(long size, Decl *d)
 {
 	uchar *pmap;
 	long len, n;
 
-	len = (size+8*IBY2WD-1) / (8*IBY2WD);
-	pmap = allocmem(len);
+	len = descbytes(size);
+	pmap = allocmem(len != 0 ? len : 1);
 	memset(pmap, 0, len);
 	n = descmap(d, pmap, 0, size);
 	if(n >= 0)
@@ -2436,6 +2449,7 @@ mkdesc(long size, Decl *d)
 	return enterdesc(pmap, size, n);
 }
 
+/* Validate a type extent before declaration side effects or cached descriptor publication. */
 Desc*
 mktdesc(Type *t)
 {
@@ -2443,7 +2457,10 @@ mktdesc(Type *t)
 	uchar *pmap;
 	long len, n;
 
-usedty(t);
+	if(t == nil)
+		fatal("missing descriptor type");
+	len = descbytes(t->size);
+	usedty(t);
 	if(debug['D'])
 		print("generate desc for %T\n", t);
 	if(t->decl == nil){
@@ -2452,8 +2469,7 @@ usedty(t);
 	}
 	if(t->decl->desc != nil)
 		return t->decl->desc;
-	len = (t->size+8*IBY2WD-1) / (8*IBY2WD);
-	pmap = allocmem(len);
+	pmap = allocmem(len != 0 ? len : 1);
 	memset(pmap, 0, len);
 	n = tdescmap(t, pmap, 0, t->size);
 	if(n >= 0)

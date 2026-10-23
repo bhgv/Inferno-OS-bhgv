@@ -293,6 +293,75 @@ bounds(void)
 	}
 }
 
+/* Empty descriptors must intern and cache even when malloc(0) would return nil. */
+static void
+constructors(void)
+{
+	Type empty = {0}, pointer = {0};
+	Desc *first, *cached;
+	long sizes[] = {0, 1, 8*IBY2WD-1, 8*IBY2WD, 8*IBY2WD+1, 0x7fffffff};
+	int i;
+
+	for(i = 0; i < nelem(sizes); i++){
+		assert(descbytes(sizes[i]) == sizes[i]/(8*IBY2WD)+(sizes[i]%(8*IBY2WD) != 0));
+		checks++;
+	}
+	first = mkdesc(0, nil);
+	assert(first->size == 0 && first->nmap == 0 && first->map != nil);
+	assert(mkdesc(0, nil) == first && live == 2);
+	empty.kind = Ttuple;
+	empty.size = 0;
+	cached = mktdesc(&empty);
+	assert(cached == first && mktdesc(&empty) == first);
+	releaseall();
+	checks++;
+	pointer.kind = Tref;
+	pointer.size = IBY2WD;
+	cached = mktdesc(&pointer);
+	assert(cached->nmap == 1 && cached->map[0] == 0x80 && mktdesc(&pointer) == cached);
+	releaseall();
+	checks++;
+}
+
+/* Reject invalid descriptor headers before allocation or declaration creation. */
+static void
+badconstructor(int mode)
+{
+	Type type = {0};
+
+	type.kind = Ttuple;
+	type.size = -1;
+	if(mode == 0)
+		(void)mkdesc(-1, nil);
+	else if(mode == 1)
+		(void)mktdesc(&type);
+	else if(mode == 2)
+		(void)mktdesc(nil);
+	else if(mode == 3)
+		(void)descbytes(-1);
+	else
+		(void)mkdesc((long)0x7fffffff+1, nil);
+	_Exit(74);
+}
+
+/* Keep rejected constructor state isolated and require the compiler's fatal convention. */
+static void
+constructorbounds(void)
+{
+	pid_t child;
+	int i, status;
+
+	for(i = 0; i < (sizeof(long) > 4 ? 5 : 4); i++){
+		child = fork();
+		assert(child >= 0);
+		if(child == 0)
+			badconstructor(i);
+		assert(waitpid(child, &status, 0) == child);
+		assert(WIFEXITED(status) && WEXITSTATUS(status) == 73);
+		checks++;
+	}
+}
+
 /* Verify compiler map bytes, span, capacity and cleanup descriptor integration. */
 int
 main(int argc, char **argv)
@@ -308,6 +377,10 @@ main(int argc, char **argv)
 		tables();
 	if(argc == 1 || strcmp(argv[1], "bounds") == 0)
 		bounds();
+	if(argc == 1 || strcmp(argv[1], "constructors") == 0)
+		constructors();
+	if(argc == 1 || strcmp(argv[1], "constructor-bounds") == 0)
+		constructorbounds();
 	printf("compiler maps word=%d: %d bitmap/span/capacity cases passed\n", IBY2WD, checks);
 	return 0;
 }
