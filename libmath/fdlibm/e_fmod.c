@@ -22,10 +22,12 @@
 
 static const double one = 1.0, Zero[] = {0.0, -0.0,};
 
-	double __ieee754_fmod(double x, double y)
+/* Normalize subnormal significands with unsigned scans before exact subtraction. */
+double
+__ieee754_fmod(double x, double y)
 {
-	int n,hx,hy,hz,ix,iy,sx,i;
-	unsigned lx,ly,lz;
+	int n,hx,hy,hz,ix,iy,sx;
+	unsigned lx,ly,lz,i;
 
 	hx = __HI(x);		/* high word of x */
 	lx = __LO(x);		/* low  word of x */
@@ -48,18 +50,18 @@ static const double one = 1.0, Zero[] = {0.0, -0.0,};
     /* determine ix = ilogb(x) */
 	if(hx<0x00100000) {	/* subnormal x */
 	    if(hx==0) {
-		for (ix = -1043, i=lx; i>0; i<<=1) ix -=1;
+		for (ix = -1043, i=lx; (i&0x80000000U)==0; i<<=1) ix -=1;
 	    } else {
-		for (ix = -1022,i=(hx<<11); i>0; i<<=1) ix -=1;
+		for (ix = -1022,i=((unsigned)hx<<11); (i&0x80000000U)==0; i<<=1) ix -=1;
 	    }
 	} else ix = (hx>>20)-1023;
 
     /* determine iy = ilogb(y) */
 	if(hy<0x00100000) {	/* subnormal y */
 	    if(hy==0) {
-		for (iy = -1043, i=ly; i>0; i<<=1) iy -=1;
+		for (iy = -1043, i=ly; (i&0x80000000U)==0; i<<=1) iy -=1;
 	    } else {
-		for (iy = -1022,i=(hy<<11); i>0; i<<=1) iy -=1;
+		for (iy = -1022,i=((unsigned)hy<<11); (i&0x80000000U)==0; i<<=1) iy -=1;
 	    }
 	} else iy = (hy>>20)-1023;
 
@@ -120,7 +122,7 @@ static const double one = 1.0, Zero[] = {0.0, -0.0,};
 		lx = (lx>>n)|((unsigned)hx<<(32-n));
 		hx >>= n;
 	    } else if (n<=31) {
-		lx = (hx<<(32-n))|(lx>>n); hx = sx;
+		lx = ((unsigned)hx<<(32-n))|(lx>>n); hx = sx;
 	    } else {
 		lx = hx>>(n-32); hx = sx;
 	    }

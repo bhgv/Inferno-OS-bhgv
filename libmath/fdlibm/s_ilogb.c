@@ -20,23 +20,30 @@
 
 #include "fdlibm.h"
 
-	int ilogb(double x)
+/* Count subnormal leading bits with unsigned shifts, retaining legacy sentinel values. */
+int
+ilogb(double x)
 {
-	int hx,lx,ix;
+	unsigned hx, lx, scan;
+	int ix;
 
-	hx  = (__HI(x))&0x7fffffff;	/* high word of x */
-	if(hx<0x00100000) {
-	    lx = __LO(x);
-	    if((hx|lx)==0) 
-		return 0x80000001;	/* ilogb(0) = 0x80000001 */
-	    else			/* subnormal x */
-		if(hx==0) {
-		    for (ix = -1043; lx>0; lx<<=1) ix -=1;
-		} else {
-		    for (ix = -1022,hx<<=11; hx>0; hx<<=1) ix -=1;
+	hx = __HI(x)&0x7fffffff;
+	if(hx < 0x00100000){
+		lx = __LO(x);
+		if((hx|lx) == 0)
+			return -0x7fffffff;
+		if(hx == 0){
+			ix = -1043;
+			scan = lx;
+		}else{
+			ix = -1022;
+			scan = hx<<11;
 		}
-	    return ix;
+		for(; (scan&0x80000000U) == 0; scan <<= 1)
+			ix--;
+		return ix;
 	}
-	else if (hx<0x7ff00000) return (hx>>20)-1023;
-	else return 0x7fffffff;
+	if(hx < 0x7ff00000)
+		return (int)(hx>>20)-1023;
+	return 0x7fffffff;
 }

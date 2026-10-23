@@ -46,7 +46,9 @@
 
 #include "fdlibm.h"
 
-	double __ieee754_hypot(double x, double y)
+/* Form scale factors from nonnegative biased exponents without shifting a negative k. */
+double
+__ieee754_hypot(double x, double y)
 {
 	double a=x,b=y,t1,t2,y1,y2,w;
 	int j,k,ha,hb;
@@ -105,7 +107,7 @@
 	}
 	if(k!=0) {
 	    t1 = 1.0;
-	    __HI(t1) += (k<<20);
+	    __HI(t1) = (0x3ff+k)<<20;
 	    return t1*w;
 	} else return w;
 }
