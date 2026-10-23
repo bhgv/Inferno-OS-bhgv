@@ -31,7 +31,20 @@ String	snil;			/* String known to be zero length */
 OP(runt) {}
 OP(negf) { F(d) = -F(s); }
 OP(jmp)  { JMP(d); }
-OP(movpc){ T(d) = &R.M->prog[W(s)]; }
+/* Validate a Dis program index before turning it into a code pointer. */
+OP(movpc)
+{
+	WORD pc;
+	Modlink *ml;
+
+	ml = R.M;
+	if(ml == H || ml == nil || ml->m == H || ml->m == nil)
+		error(exModule);
+	pc = W(s);
+	if(pc < 0 || pc >= ml->m->nprog || ml->m->prog == nil)
+		error(exBounds);
+	T(d) = &ml->m->prog[pc];
+}
 /* Reject negative raw-copy sizes before they become huge size_t values. */
 OP(movm)
 {
