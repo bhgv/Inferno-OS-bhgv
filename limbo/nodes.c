@@ -514,15 +514,22 @@ efold(Node *n)
 		}
 		n->left = efold(left);
 		break;
+	case Oandand:
+	case Ooror:
+		n->left = left = efold(left);
+		/* A discarded operand must not trigger constant-expression diagnostics. */
+		if(left->op == Oconst && left->ty == tint &&
+		   ((n->op == Oandand && left->val == 0) ||
+		    (n->op == Ooror && left->val != 0)))
+			return mkconst(&n->src, n->op == Ooror);
+		n->right = efold(right);
+		break;
 	case Oif:
 		n->left = left = efold(left);
-		n->right = right = efold(right);
-		if(left->op == Oconst){
-			if(left->val)
-				return right->left;
-			else
-				return right->right;
-		}
+		/* Inlining can make the condition constant before either arm is folded. */
+		if(left->op == Oconst)
+			return efold(left->val ? right->left : right->right);
+		n->right = efold(right);
 		break;
 	default:
 		n->left = efold(left);

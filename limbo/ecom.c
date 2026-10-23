@@ -156,6 +156,26 @@ isfix(Node *n)
 	return 0;
 }
 
+/* Select known control-flow paths before rewriting can inline discarded calls. */
+static Node*
+rewritecontrol(Node *n)
+{
+	Node *left, *right;
+
+	right = n->right;
+	n->left = left = simplify(n->left);
+	if(left->op == Oconst){
+		if(n->op == Oif)
+			return rewrite(left->val ? right->left : right->right);
+		if(left->ty == tint &&
+		   ((n->op == Oandand && left->val == 0) ||
+		    (n->op == Ooror && left->val != 0)))
+			return mkconst(&n->src, n->op == Ooror);
+	}
+	n->right = rewrite(right);
+	return n;
+}
+
 /*
  * rewrite an expression to make it easiser to compile,
  * or give the correct results
@@ -178,6 +198,10 @@ rewrite(Node *n)
 	 * rewrites
 	 */
 	switch(n->op){
+	case Oandand:
+	case Ooror:
+	case Oif:
+		return rewritecontrol(n);
 	case Oname:
 		d = n->decl;
 		if(d->importid != nil){
