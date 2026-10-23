@@ -39,6 +39,7 @@ struct RvCompile {
 	Jit *j;
 };
 
+/* Reject invalid module storage before sizing or publishing native leaf code. */
 static int
 rvcompile(void *arg)
 {
@@ -52,7 +53,8 @@ rvcompile(void *arg)
 	int count[256], i, n, op, used;
 
 	c=arg; m=c->m; size=c->size;
-	if(m == nil || m->compiled || size <= 0 || size != m->nprog || m->prog == nil ||
+	if(m == nil || m == H || m->compiled || size <= 0 || size != m->nprog ||
+	   m->prog == nil || m->prog == H || size > 0x7fffffff/sizeof(Inst) ||
 	   sizeof(u32int) != 4 || sizeof(void*)*8 != RVXLEN ||
 	   sizeof(WORD)*8 > RVXLEN)
 		return 0;

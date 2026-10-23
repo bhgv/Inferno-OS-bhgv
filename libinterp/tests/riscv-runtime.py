@@ -110,6 +110,10 @@ int main(void) {
     prog[2].op=IDIVW;
     m.origmp=H; m.nprog=3; m.prog=prog; m.entry=prog+1;
     before=live;
+    assert(!compile(nil,3,nil) && !compile(H,3,nil) && live==before);
+    assert(!compile(&m,0,nil) && !compile(&m,-1,nil) && live==before);
+    m.nprog=0x7fffffff;assert(!compile(&m,m.nprog,nil) && live==before);m.nprog=3;
+    m.prog=H;assert(!compile(&m,3,nil) && live==before);m.prog=prog;
     m.prog=nil;assert(!compile(&m,3,nil) && live==before);m.prog=prog;
     throw_flush=1;
     assert(!compile(&m,3,nil) && !m.jit && live==before && errdepth==0);

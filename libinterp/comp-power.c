@@ -2155,7 +2155,7 @@ patchex(Module *m, ulong *p)
 	}
 }
 
-/* Build both passes with initially clear marks for frame helper selection. */
+/* Validate module shape and start both passes with clear frame-helper marks. */
 int
 compile(Module *m, int size, Modlink *ml)
 {
@@ -2164,8 +2164,19 @@ compile(Module *m, int size, Modlink *ml)
 	int i, n;
 	ulong *s, *tmp;
 
+	/* Reject malformed input before allocating or changing compiler globals. */
+	if(m == nil || m == H || ml == H || m->compiled ||
+	   size <= 0 || size != m->nprog || m->prog == nil || m->prog == H ||
+	   m->entry == nil || m->entry == H || m->ext == nil || m->ext == H ||
+	   m->ntype < 0 || m->type == H ||
+	   (m->ntype != 0 && m->type == nil) ||
+	   size > 0x7fffffff/sizeof(Inst) || size >= 0x7fffffff/sizeof(*patch) ||
+	   m->ntype > 0x7fffffff/sizeof(*tinit) ||
+	   (ml != nil && ml->nlinks < 0))
+		return 0;
+	/* Input is valid; the legacy compiler may now acquire working storage. */
 	base = nil;
-	patch = mallocz(size*sizeof(*patch), ROMABLE);
+	patch = mallocz((size+1)*sizeof(*patch), ROMABLE);
 	/* Only descriptors selected by frame instructions need generated helpers. */
 	tinit = mallocz(m->ntype*sizeof(*tinit), 1);
 	tmp = malloc(4096*sizeof(ulong));
@@ -2189,6 +2200,9 @@ compile(Module *m, int size, Modlink *ml)
 		patch[i] = n;
 		n += code - tmp;
 	}
+
+	/* Calls and helper punts may request the successor of the final Dis PC. */
+	patch[size] = n;
 
 	for(i=0; macinit[i].f; i++) {
 		code = tmp;
