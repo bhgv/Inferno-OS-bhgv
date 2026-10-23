@@ -77,8 +77,12 @@ rvcompile(void *arg)
 		if(count[op] == 0) {
 			used=rvemit(nil, RvMax, &abi, op);
 			count[op]=used == 0 ? -1 : used;
-			if(used > 0)
+			if(used > 0) {
+				/* Keep both the instruction count and allocation size representable. */
+				if(used > 0x7fffffff/(int)sizeof(u32int)-n)
+					return 0;
 				n+=used;
+			}
 		}
 	}
 	if(n == 0)
@@ -88,7 +92,7 @@ rvcompile(void *arg)
 		return 0;
 	j->code=malloc(n*sizeof(u32int));
 	if(j->code == nil)
-		return 0;
+		goto bad;
 	j->enter=rventer;
 	j->nprog=size;
 	j->size=n*sizeof(u32int);
@@ -110,6 +114,12 @@ rvcompile(void *arg)
 	m->jit=j;
 	return 1;
 bad:
+	/* A failed sizing, emission or instruction-cache flush must not leak code. */
+	if(j != nil) {
+		free(j->code);
+		free(j);
+		c->j=nil;
+	}
 	return 0;
 }
 
