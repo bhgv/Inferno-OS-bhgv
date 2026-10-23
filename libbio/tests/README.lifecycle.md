@@ -7,7 +7,7 @@ registration helpers, `Bgetc`, `Bputc` and `Bflush`. Native descriptor acquisiti
 allocation failure, exit registration and byte I/O use deterministic adapters.
 The real Biobuf declaration comes from bio.h.
 
-The 94 scenarios cover:
+The 96 scenarios cover:
 
 * Negative and undersized capacities, including INT_MIN, and null storage.
   Rejection must preserve the complete buffer and its exit registration.
@@ -39,3 +39,7 @@ The tests do not use real host files, process exit, concurrent access or a full
 Inferno boot. The failed-initialization branch in Bopen is defensive: its valid
 embedded buffer cannot currently trigger Binits failure. LeakSanitizer process
 inspection is disabled for the sandbox; ownership is explicitly counted.
+
+Native close failures are also injected for read and write handles. `Bterm`
+must return `Beof` while still unregistering, closing and releasing its owned
+storage exactly once. The complete lifecycle driver now covers 96 scenarios.

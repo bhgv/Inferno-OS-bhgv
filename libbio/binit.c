@@ -138,7 +138,7 @@ Bopen(char *name, int mode)
 	return bp;
 }
 
-/* Unregister and flush a buffer, closing storage owned by Bopen. */
+/* Release owned storage and report both flush and descriptor-close failures. */
 int
 Bterm(Biobuf *bp)
 {
@@ -148,7 +148,8 @@ Bterm(Biobuf *bp)
 	r = Bflush(bp);
 	if(bp->flag == Bmagic) {
 		bp->flag = 0;
-		close(bp->fid);
+		if(close(bp->fid) < 0)
+			r = Beof;
 		bp->fid = -1;			/* prevent accidents */
 		free(bp);
 	}

@@ -5,9 +5,16 @@
 #include <stdio.h>
 
 static int opens, creates, closes, allocations, releases, failopen, failalloc;
-static int lastmode, flushwrites, used, checks, registrations;
+static int lastmode, flushwrites, used, checks, registrations, failclose;
 static void (*exitfn)(void);
 static uchar output[64];
+
+/* Disable only unsupported LeakSanitizer thread inspection; allocation checks stay active. */
+int
+__lsan_is_turned_off(void)
+{
+	return 1;
+}
 
 /* Capture descriptor acquisition using the native read-only open path. */
 static int
@@ -35,7 +42,7 @@ inputclose(int fd)
 {
 	assert(fd == 17);
 	closes++;
-	return 0;
+	return failclose ? -1 : 0;
 }
 
 /* Inject allocation failure after the descriptor has already been acquired. */
@@ -104,6 +111,26 @@ fprint(int fd, char *fmt, ...)
 IMPLEMENTATION
 #undef malloc
 #undef free
+
+/* A failed native close still releases storage and is visible to the caller. */
+static void
+closefailures(void)
+{
+	Biobuf *b;
+	int mode, beforeclose, beforefree;
+
+	for(mode = OREAD; mode <= OWRITE; mode++){
+		b = Bopen("buffer-test", mode);
+		assert(b != nil);
+		beforeclose = closes;
+		beforefree = releases;
+		failclose = 1;
+		assert(Bterm(b) == Beof);
+		failclose = 0;
+		assert(closes == beforeclose+1 && releases == beforefree+1);
+		checks++;
+	}
+}
 
 /* Reject invalid capacities/modes without touching an existing registration. */
 static void
@@ -207,6 +234,7 @@ main(int argc, char **argv)
 		capacities();
 	if(argc == 1 || strcmp(argv[1], "ownership") == 0)
 		ownership();
+	closefailures();
 	assert(registrations == 1 && exitfn != nil);
 	for(i = 0; i < MAXBUFS; i++)
 		assert(wbufs[i] == nil);
