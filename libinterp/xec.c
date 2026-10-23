@@ -169,22 +169,79 @@ OP(xorl) { V(d) = V(m) ^ V(s); }
 OP(orb)  { B(d) = B(m) | B(s); }
 OP(orw)  { W(d) = W(m) | W(s); }
 OP(orl)  { V(d) = V(m) | V(s); }
-OP(shlb) { B(d) = B(m) << W(s); }
-/* Shift the value bits without invoking signed-left-shift overflow. */
+/* Validate a shift count before any C shift expression is evaluated. */
+static WORD
+shiftcount(WORD count, int width)
+{
+	if(count < 0 || count >= width)
+		error(exInval);
+	return count;
+}
+
+/* Keep byte shifts within the defined width of the byte value. */
+OP(shlb)
+{
+	WORD n;
+
+	n = shiftcount(W(s), 8);
+	B(d) = B(m) << n;
+}
+/* Shift word bits unsigned to avoid signed-left-shift overflow. */
 OP(shlw)
 {
-	W(d) = UW(m) << W(s);
+	WORD n;
+
+	n = shiftcount(W(s), sizeof(WORD)*8);
+	W(d) = UW(m) << n;
 }
-/* Shift the value bits without invoking signed-left-shift overflow. */
+/* Shift long bits unsigned to avoid signed-left-shift overflow. */
 OP(shll)
 {
-	V(d) = UV(m) << W(s);
+	WORD n;
+
+	n = shiftcount(W(s), sizeof(LONG)*8);
+	V(d) = UV(m) << n;
 }
-OP(shrb) { B(d) = B(m) >> W(s); }
-OP(shrw) { W(d) = W(m) >> W(s); }
-OP(shrl) { V(d) = V(m) >> W(s); }
-OP(lsrw) { W(d) = UW(m) >> W(s); }
-OP(lsrl) { V(d) = UV(m) >> W(s); }
+/* Reject invalid byte shift counts before evaluating the shift. */
+OP(shrb)
+{
+	WORD n;
+
+	n = shiftcount(W(s), 8);
+	B(d) = B(m) >> n;
+}
+/* Preserve arithmetic right shift for signed Limbo words. */
+OP(shrw)
+{
+	WORD n;
+
+	n = shiftcount(W(s), sizeof(WORD)*8);
+	W(d) = W(m) >> n;
+}
+/* Preserve arithmetic right shift for signed Limbo long values. */
+OP(shrl)
+{
+	WORD n;
+
+	n = shiftcount(W(s), sizeof(LONG)*8);
+	V(d) = V(m) >> n;
+}
+/* Validate counts before logical right shifts of unsigned word bits. */
+OP(lsrw)
+{
+	WORD n;
+
+	n = shiftcount(W(s), sizeof(WORD)*8);
+	W(d) = UW(m) >> n;
+}
+/* Validate counts before logical right shifts of unsigned long bits. */
+OP(lsrl)
+{
+	WORD n;
+
+	n = shiftcount(W(s), sizeof(LONG)*8);
+	V(d) = UV(m) >> n;
+}
 OP(beqb) { if(B(s) == B(m)) JMP(d); }
 OP(bneb) { if(B(s) != B(m)) JMP(d); }
 OP(bltb) { if(B(s) <  B(m)) JMP(d); }
