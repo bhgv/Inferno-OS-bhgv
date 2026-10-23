@@ -1,22 +1,31 @@
 #include "lib9.h"
 
+/* Match ASCII-folded byte prefixes without narrowing a native string length. */
 char*
 cistrstr(char *s, char *sub)
 {
-	int c, csub, n;
+	char *p, *q;
+	int c, csub;
 
-	csub = *sub;
-	if(csub == '\0')
+	if(*sub == 0)
 		return s;
-	if(csub >= 'A' && csub <= 'Z')
-		csub -= 'A' - 'a';
-	sub++;
-	n = strlen(sub);
-	for(; c = *s; s++){
-		if(c >= 'A' && c <= 'Z')
-			c -= 'A' - 'a';
-		if(c == csub && cistrncmp(s+1, sub, n) == 0)
-			return s;
+	for(; *s != 0; s++){
+		p = s;
+		q = sub;
+		for(;;){
+			csub = *(uchar*)q++;
+			if(csub == 0)
+				return s;
+			c = *(uchar*)p++;
+			if(c == 0)
+				return nil;
+			if(c >= 'A' && c <= 'Z')
+				c += 'a' - 'A';
+			if(csub >= 'A' && csub <= 'Z')
+				csub += 'a' - 'A';
+			if(c != csub)
+				break;
+		}
 	}
 	return nil;
 }

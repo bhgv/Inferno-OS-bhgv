@@ -2,13 +2,14 @@
 
 /*
  * Return pointer to first occurrence of s2 in s1,
- * 0 if none
+ * 0 if none. Retain the native length passed to strncmp.
  */
 char*
 strstr(char *s1, char *s2)
 {
 	char *p;
-	int f, n;
+	int f;
+	long n;
 
 	f = s2[0];
 	if(f == 0)
