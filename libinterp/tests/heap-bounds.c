@@ -140,6 +140,30 @@ emptycopies(void)
     type.np=0;
 }
 
+/* The language bounds invariant permits only [0:0] for a nil array. */
+static void
+nilslices(void)
+{
+    Array *a, *old;
+    WORD first, last;
+    WORD indices[] = {-1, INT_MIN, 1, 2, INT_MAX,
+                      -(WORD)(((UWORD)~0)>>1)-1, (WORD)(((UWORD)~0)>>1)};
+    unsigned i;
+    int nullvalue;
+
+    for(nullvalue=0; nullvalue<2; nullvalue++) {
+        a=nullvalue ? nil : H;
+        old=a; first=last=0;
+        R.s=&first; R.m=&last; R.d=&a; which=8;
+        assert(kprotect(run,nil) && a==old);
+        for(i=0; i<sizeof(indices)/sizeof(indices[0]); i++) {
+            first=last=indices[i];
+            rejects(exBounds,1); assert(a==old);
+        }
+        first=0; last=1; rejects(exNilref,1); assert(a==old);
+    }
+}
+
 int main(void) {
     static const int widths[]={0,1,2,4,8,16,4096,0x7fffffff};
     unsigned int i;int checks=0,limit,before;
@@ -197,7 +221,7 @@ int main(void) {
     destroy(a); /* also releases the transferred root */
     a=H2D(Array*,heaparray(&type,2));first=INT_MIN;last=INT_MAX;
     rejects(exBounds,1);destroy(a);
-    a=H;first=last=INT_MIN;assert(kprotect(run,nil));
+    a=H;first=last=0;assert(kprotect(run,nil));
     /* Check end positions by subtraction, before an overflowing addition. */
     a=H2D(Array*,heaparray(&type,3));b=H2D(Array*,heaparray(&type,5));
     R.s=&a;R.d=&b;R.m=&offset;which=9;
@@ -222,7 +246,7 @@ int main(void) {
         destroy(a);assert(D2H(value)->ref==1);destroy(b);assert(scalar.ref==1);
         type.np=0;
     }
-    pointercopies(); emptycopies();
+    pointercopies(); emptycopies(); nilslices();
     assert(live==0 && worker.nerr==0 && type.ref==1 && Tarray.ref==1 && Tmodlink.ref==1 && Tlist.ref==1);
     printf("PASS heap bounds: %d array boundaries, overflow counterexample, pool/header limits, copies, links, lists, slices, full-WORD VM sizes, 285 pointer overlaps and empty spans\n",checks);
     return 0;

@@ -1621,6 +1621,7 @@ OP(tail)
 	R.s = &l->tail;
 	movp();
 }
+/* Preserve the language slice bounds even when an empty source is VM nil. */
 OP(slicea)
 {
 	Type *t;
@@ -1632,9 +1633,12 @@ OP(slicea)
 	start = W(s);
 	ds = A(d);
 
-	if(ds == H || ds == nil) {
-		if(v == start)
-			return;
+	if(ds == H || ds == nil){
+		if(v == start){
+			if(start == 0)
+				return;
+			error(exBounds);
+		}
 		error(exNilref);
 	}
 	if(start < 0 || v < start || v > ds->len)
