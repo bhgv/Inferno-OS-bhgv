@@ -181,7 +181,7 @@ Loader_ifetch(void *a)
 	f = a;
 	destroy(*f->ret);
 	*f->ret = H;
-	if(f->mp == H || f->mp->m == H)
+	if(f->mp == H || f->mp == nil || f->mp->m == H || f->mp->m == nil)
 		return;
 	m = f->mp->m;
 	if(m->compiled){
@@ -322,7 +322,8 @@ Loader_newmod(void *a)
 	f=a;
 	destroy(*f->ret);
 	*f->ret=H;
-	if(f->inst == H || f->data == H) {
+	if(f->inst == H || f->inst == nil || f->data == H || f->data == nil ||
+	   f->name == H || f->name == nil) {
 		kwerrstr("nil parameters");
 		return;
 	}
@@ -358,10 +359,10 @@ Loader_tnew(void *a)
 
 	f = a;
 	*f->ret = -1;
-	if(f->mp == H)
+	if(f->mp == H || f->mp == nil)
 		return;
 	m = f->mp->m;
-	if(m == H)
+	if(m == H || m == nil)
 		return;
 	if(m->origmp != H){
 		kwerrstr("need newmod");
@@ -417,7 +418,7 @@ Loader_ext(void *a)
 
 	f = a;
 	*f->ret = -1;
-	if(f->mp == H) {
+	if(f->mp == H || f->mp == nil) {
 		kwerrstr("nil mp");
 		return;
 	}
