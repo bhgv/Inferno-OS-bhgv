@@ -138,6 +138,7 @@ initmap(void)
 	map['R'] |= Mradix;
 	map['+'] |= Msign;
 	map['-'] |= Msign;
+	map[0xc3] = Munder; /* production lexer treats non-ASCII bytes as identifier bytes */
 }
 
 /* Cover EOF, malformed tails, radix pointers and the complete token boundary. */
