@@ -45,13 +45,16 @@ lowercase(char *f)
 	return f;
 }
 
+/* Keep a full owned lowercase module name for both dynamic include paths. */
 void
 modcode(Decl *globals)
 {
 	Decl *d, *id;
-	char buf[32];
+	char *buf;
 
+	buf = nil;
 	if(emitdyn){
+		buf = allocmem(strlen(emitcode)+1);
 		strcpy(buf, emitcode);
 		lowercase(buf);
 		print("#include \"%s.h\"\n", buf);
@@ -68,8 +71,10 @@ modcode(Decl *globals)
 		if(d->store == Dtype && d->ty->kind == Tmodule && strcmp(d->sym->name, emitcode) == 0)
 			break;
 
-	if(d == nil)
+	if(d == nil){
+		free(buf);
 		return;
+	}
 	
 	/*
 	 * stub types
@@ -150,33 +155,46 @@ modcode(Decl *globals)
 
 	if(emitdyn)
 		print("\n#include \"%smod.h\"\n", buf);
+	free(buf);
 }
 
+enum { NativeMapBytes = 16 };
+
+/* Refuse native frame maps that cannot fit the fixed Runtab ABI field. */
 void
 modtab(Decl *globals)
 {
 	int n;
+	ulong signature;
 	Desc *md;
 	Decl *d, *id;
 
-	print("typedef struct{char *name; long sig; void (*fn)(void*); int size; int np; uchar map[16];} Runtab;\n");
+	print("typedef struct{char *name; long sig; void (*fn)(void*); int size; int np; uchar map[%d];} Runtab;\n", NativeMapBytes);
 	for(d = globals; d != nil; d = d->next){
 		if(d->store == Dtype && d->ty->kind == Tmodule && strcmp(d->sym->name, emittab) == 0){
 			n = 0;
 			print("Runtab %smodtab[]={\n", d->sym->name);
 			for(id = d->ty->tof->ids; id != nil; id = id->next){
+				signature = sign(id);
+				md = nil;
+				if(!id->ty->varargs){
+					md = mkdesc(idoffsets(id->ty->ids, MaxTemp, MaxAlign), id->ty->ids);
+					if(md->nmap < 0 || md->nmap > NativeMapBytes){
+						error(id->src.start, "native frame for %s exceeds %d pointer-map bytes",
+							id->sym->name, NativeMapBytes);
+						return;
+					}
+				}
 				n++;
 				print("\t\"");
 				if(id->dot != d)
 					print("%s.", id->dot->sym->name);
-				print("%s\",0x%lux,%s_%s,", id->sym->name, sign(id),
+				print("%s\",0x%lux,%s_%s,", id->sym->name, signature,
 					id->dot->sym->name, id->sym->name);
 				if(id->ty->varargs)
 					print("0,0,{0},");
-				else{
-					md = mkdesc(idoffsets(id->ty->ids, MaxTemp, MaxAlign), id->ty->ids);
+				else
 					print("%ld,%ld,%M,", md->size, md->nmap, md);
-				}
 				print("\n");
 			}
 			print("\t0\n};\n");

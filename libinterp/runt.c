@@ -522,35 +522,92 @@ Sys_char2byte(void *fp)
 	*f->ret = 0;
 }
 
-Module *
+typedef struct BuiltinModule BuiltinModule;
+struct BuiltinModule
+{
+	char *name;
+	Runtab *table;
+	int count;
+	Module *module;
+};
+
+/* Keep every frame descriptor reachable by cleanup while export names can fail. */
+static int
+buildbuiltin(void *arg)
+{
+	BuiltinModule *c;
+	Module *m;
+	Runtab *r;
+	Type *t;
+	int i;
+
+	c = arg;
+	c->module = m = newmod(c->name);
+	m->ntype = c->count;
+	if(c->count != 0){
+		m->type = mallocz(c->count*sizeof(Type*), 1);
+		if(m->type == nil){
+			kwerrstr(exNomem);
+			return 0;
+		}
+	}
+	m->ext = mallocz((c->count+1)*sizeof(Link), 1);
+	if(m->ext == nil){
+		kwerrstr(exNomem);
+		return 0;
+	}
+	for(i = 0; i < c->count; i++){
+		r = &c->table[i];
+		t = dtype(freeheap, r->size, r->map, r->np);
+		if(t == nil){
+			kwerrstr("bad builtin frame or out of memory");
+			return 0;
+		}
+		m->type[i] = t;
+		runtime(m, &m->ext[i], r->name, r->sig, r->fn, t);
+	}
+	return 1;
+}
+
+/* Validate table bounds, build under one error owner, then publish exactly once. */
+Module*
 builtinmod(char *name, void *vr, int rlen)
 {
-	Runtab *r = vr;
-	Type *t;
+	BuiltinModule c;
+	Runtab *r;
 	Module *m;
-	Link *l;
+	int n, limit;
 
-	m = newmod(name);
-	if(rlen == 0){
-		while(r->name){
-			rlen++;
-			r++;
-		}
-		r = vr;
+	limit = 0x7fffffff/sizeof(Link)-1;
+	if(name == nil || vr == nil || rlen < 0 || rlen > limit)
+		goto badtable;
+	r = vr;
+	for(n = 0; r[n].name != nil; n++){
+		if(n >= limit || (rlen != 0 && n >= rlen) ||
+		   r[n].fn == nil || r[n].size < 0 ||
+		   r[n].np < 0 || r[n].np > sizeof(r[n].map))
+			goto badtable;
 	}
-	l = m->ext = (Link*)malloc((rlen+1)*sizeof(Link));
-	if(l == nil){
-		freemod(m);
-		return nil;
+	if(rlen != 0 && n != rlen)
+		goto badtable;
+	c.name = name;
+	c.table = r;
+	c.count = n;
+	c.module = nil;
+	if(kprotect(buildbuiltin, &c)){
+		m = c.module;
+		m->link = modules;
+		modules = m;
+		return m;
 	}
-	while(r->name) {
-		t = dtype(freeheap, r->size, r->map, r->np);
-		runtime(m, l, r->name, r->sig, r->fn, t);
-		r++;
-		l++;
+	if(c.module != nil){
+		destroylinks(c.module);
+		freemod(c.module);
 	}
-	l->name = nil;
-	return m;
+	return nil;
+badtable:
+	kwerrstr("bad builtin table");
+	return nil;
 }
 
 void

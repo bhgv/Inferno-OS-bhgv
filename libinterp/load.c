@@ -832,26 +832,25 @@ parsemod(char *path, uchar *code, ulong length, Dir *dir)
 	return nil;
 }
 
+/* Allocate an unpublished module with owned names and initialized cleanup state. */
 Module*
 newmod(char *s)
 {
 	Module *m;
 
-	m = malloc(sizeof(Module));
+	m = mallocz(sizeof(Module), 1);
 	if(m == nil)
 		error(exNomem);
-	m->jit = nil;
 	m->ref = 1;
-	m->path = s;
 	m->origmp = H;
 	m->name = strdup(s);
-	if(m->name == nil) {
+	m->path = strdup(s);
+	if(m->name == nil || m->path == nil){
+		free(m->name);
+		free(m->path);
 		free(m);
 		error(exNomem);
 	}
-	m->link = modules;
-	modules = m;
-	m->pctab = nil;
 	return m;
 }
 

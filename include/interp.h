@@ -482,6 +482,7 @@ extern	void		movp(void);
 extern	void		movtmp(void);
 extern	void		movtmpsafe(void);
 extern	int			mustbesigned(char*, uchar*, ulong, Dir*);
+/* newmod returns unpublished storage; its owner publishes only after construction. */
 extern	Module*		newmod(char*);
 extern	Module*		newdyncode(int, char*, Dir*);
 extern	void		newdyndata(Modlink*);

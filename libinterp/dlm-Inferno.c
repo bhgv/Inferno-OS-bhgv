@@ -13,17 +13,23 @@ extern char*	enverror(void);
 
 typedef struct{char *name; long sig; void (*fn)(void*); int size; int np; uchar map[16];} Runtab;
 
+/* Bound concatenated import names without overflowing the native length sum. */
 static void*
 addr(char *pre, char *suf, Dynobj *o, ulong sig)
 {
 	char buf[64];
+	ulong n;
 
-	if(o == nil || strlen(pre)+strlen(suf) > 64-1)
+	if(o == nil || pre == nil || suf == nil)
+		return nil;
+	n = strlen(pre);
+	if(n >= sizeof(buf) || strlen(suf) > sizeof(buf)-1-n)
 		return nil;
 	snprint(buf, sizeof(buf), "%s%s", pre, suf);
 	return dynimport(o, buf, sig);
 }
 
+/* Retain the dynamic object until module construction and path ownership succeed. */
 Module*
 newdyncode(int fd, char *path, Dir *dir)
 {
@@ -31,7 +37,7 @@ newdyncode(int fd, char *path, Dir *dir)
 	void *v;
 	Runtab *r;
 	Dynobj *o;
-	char *name;
+	char *name, *newpath;
 
 	DBG("module path is %s\n", path);
 	m = nil;
@@ -49,22 +55,26 @@ newdyncode(int fd, char *path, Dir *dir)
 	if(r == nil)
 		goto Error;
 	m = builtinmod(name, r, 0);
-	m->rt = DYNMOD;
+	if(m == nil)
+		goto Error;
+	newpath = strdup(path);
+	if(newpath == nil)
+		goto Error;
+	free(m->path);
+	m->path = newpath;
 	m->dev = dir->dev;
 	m->dtype = dir->type;
 	m->qid = dir->qid;
 	m->mtime = dir->mtime;
-	m->path = strdup(path);
-	if(m->path == nil)
-		goto Error;
 	m->dlm = o;
+	m->rt = DYNMOD;
 	DBG("module base is 0x%p\n", o->base);
 	return m;
 Error:
+	if(m != nil)
+		unload(m);
 	if(o != nil)
 		dynobjfree(o);
-	if(m != nil)
-		freemod(m);
 	return nil;
 }
 

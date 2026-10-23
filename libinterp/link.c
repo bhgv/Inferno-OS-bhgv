@@ -158,12 +158,14 @@ linkmod(Module *m, Import *ldt, int mkmp)
 	return H;
 }
 
+/* Release partial or complete export tables, leaving repeated cleanup harmless. */
 void
 destroylinks(Module *m)
 {
 	Link *l;
 
-	for(l = m->ext; l->name; l++)
+	for(l = m->ext; l != nil && l->name != nil; l++)
 		free(l->name);
 	free(m->ext);
+	m->ext = nil;
 }
