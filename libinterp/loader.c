@@ -202,7 +202,7 @@ Loader_link(void *a)
 	f = a;
 	destroy(*f->ret);
 	*f->ret = H;
-	if(f->mp == H || f->mp->m == H)
+	if(f->mp == H || f->mp == nil || f->mp->m == H || f->mp->m == nil)
 		return;
 	m = f->mp->m;
 	if(m->compiled){
@@ -231,7 +231,7 @@ Loader_tdesc(void *a)
 	f = a;
 	destroy(*f->ret);
 	*f->ret = H;
-	if(f->mp == H || f->mp->m == H)
+	if(f->mp == H || f->mp == nil || f->mp->m == H || f->mp->m == nil)
 		return;
 	m = f->mp->m;
 	*f->ret = loadergetsnapshot(m, Tdesc, m->ntype, SnapshotType);
@@ -424,6 +424,10 @@ Loader_ext(void *a)
 	}
 	ml = f->mp;
 	m = ml->m;
+	if(m == H || m == nil) {
+		kwerrstr("nil module");
+		return;
+	}
 	if(m->compiled) {
 		kwerrstr("compiled module");
 		return;
@@ -514,11 +518,15 @@ Loader_compile(void *a)
 
 	f = a;
 	*f->ret = -1;
-	if(f->mp == H) {
+	if(f->mp == H || f->mp == nil) {
 		kwerrstr("nil mp");
 		return;
 	}
 	m = f->mp->m;
+	if(m == H || m == nil) {
+		kwerrstr("nil module");
+		return;
+	}
 	if(m->compiled) {
 		kwerrstr("compiled module");
 		return;
