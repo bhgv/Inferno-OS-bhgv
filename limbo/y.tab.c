@@ -113,30 +113,44 @@ static	char*	infile;
 
 #define SLASHMOD	"/module"
 
+/* Copy the root argument without editing environment storage or swallowing flags. */
 static char*
 getroot(void)
 {
-	int n;
-	char *e, *l, *s;
+	ulong n;
+	char *e, *p, *start, *root;
 
-	if((e = getenv("EMU")) != nil){
-		for(s = e; *e != '\0'; e++){
-			if(*e == '-' && *(e+1) == 'r' && (e == s || *(e-1) == ' ' || *(e-1) == '\t')){
-				e += 2;
-				l = strchr(e, ' ');
-				if(l != nil)
-					*l = '\0';
-				if((n = strlen(e)) > 0){
-					s = malloc(n+1);
-					strcpy(s, e);
-					return s;
+	e = getenv("EMU");
+	if(e != nil){
+		for(p = e; *p != '\0'; ){
+			while(*p == ' ' || *p == '\t')
+				p++;
+			if(*p == '-' && p[1] == 'r'){
+				p += 2;
+				while(*p == ' ' || *p == '\t')
+					p++;
+				start = p;
+				while(*p != '\0' && *p != ' ' && *p != '\t')
+					p++;
+				n = p-start;
+				if(n != 0){
+					root = allocmem(n+1);
+					memmove(root, start, n);
+					root[n] = '\0';
+					return root;
 				}
-			}
+			}else
+				while(*p != '\0' && *p != ' ' && *p != '\t')
+					p++;
 		}
 	}
-	if((e = getenv("ROOT")) != nil)
-		return strdup(e);
-	return nil;
+	e = getenv("ROOT");
+	if(e == nil)
+		return nil;
+	n = strlen(e);
+	root = allocmem(n+1);
+	memmove(root, e, n+1);
+	return root;
 }
 
 void
@@ -458,42 +472,50 @@ win2inf(char *s)
 	return s;
 }
 
+/* Normalize owned path storage and diagnose failed cwd lookup before using it. */
 static char *
 cleann(char *s)
 {
 	char *p, *r, *t;
-	char buf[256];
+	char buf[4096];
 
-	r = t = malloc(strlen(s)+1);
+	r = t = allocmem(strlen(s)+1);
 	strcpy(t, s);
 	t = win2inf(t);
 	if(*t != '/'){
-		p = win2inf(getwd(buf, sizeof(buf)));
-		s = malloc(strlen(p)+strlen(t)+2);
+		p = getwd(buf, sizeof(buf));
+		if(p == nil){
+			free(r);
+			fatal("can't determine current directory: %r");
+		}
+		p = win2inf(p);
+		s = allocmem(strlen(p)+strlen(t)+2);
 		strcpy(s, p);
 		strcat(s, "/");
 		strcat(s, t);
 	}
 	else{
-		s = malloc(strlen(t)+1);
+		s = allocmem(strlen(t)+1);
 		strcpy(s, t);
 	}
 	free(r);
-	/* print("cleann: %s\n", p); */
 	return cleanname(s);
 }
 
+/* Strip only a complete root path component and honor empty output spans. */
 char *
 srcpath(char *name, int nlen)
 {
 	int l1, l2;
 	char *r, *srcp, *t;
 
+	if(nlen <= 0)
+		return name;
 	srcp = cleann(infile);
 	r = getroot();
 	if(r == nil){
 		l1 = strlen(INCPATH);
-		r = malloc(l1+1);
+		r = allocmem(l1+1);
 		strcpy(r, INCPATH);
 		if(l1 >= strlen(SLASHMOD) && strcmp(r+l1-strlen(SLASHMOD), SLASHMOD) == 0)
 			r[l1-strlen(SLASHMOD)] = '\0';
@@ -504,7 +526,8 @@ srcpath(char *name, int nlen)
 	/* srcp relative to r */
 	l1 = strlen(srcp);
 	l2 = strlen(r);
-	if(l1 >= l2 && strncmp(srcp, r, l2) == 0){
+	if(l1 >= l2 && strncmp(srcp, r, l2) == 0 &&
+	   (l2 == 0 || r[l2-1] == '/' || srcp[l2] == '/' || srcp[l2] == '\0')){
 		/* nothing to do */
 	}else
 		l2 = 0;
