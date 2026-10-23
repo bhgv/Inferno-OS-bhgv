@@ -8,6 +8,7 @@
 static char	*lastname;
 Subfont	*lastsubfont;
 
+/* Find a cached subfont and retain the cache hit for its caller. */
 Subfont*
 lookupsubfont(Display *d, char *name)
 {
@@ -20,18 +21,26 @@ lookupsubfont(Display *d, char *name)
 	return 0;
 }
 
+/* Retain the existing cache entry when a replacement name cannot be copied. */
 void
 installsubfont(char *name, Subfont *subfont)
 {
+	char *copy;
+
+	copy = strdup(name);
+	if(copy == nil)
+		return;
 	free(lastname);
-	lastname = strdup(name);
+	lastname = copy;
 	lastsubfont = subfont;	/* notice we don't free the old one; that's your business */
 }
 
+/* Remove the weak cache reference before its subfont storage is released. */
 void
 uninstallsubfont(Subfont *subfont)
 {
 	if(subfont == lastsubfont){
+		free(lastname);
 		lastname = 0;
 		lastsubfont = 0;
 	}

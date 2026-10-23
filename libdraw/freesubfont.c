@@ -1,6 +1,7 @@
 #include "lib9.h"
 #include "draw.h"
 
+/* Drop the final reference and release the name, metrics and image it owns. */
 void
 freesubfont(Subfont *f)
 {
@@ -10,6 +11,7 @@ freesubfont(Subfont *f)
 	if(f->ref > 0)
 		return;
 	uninstallsubfont(f);
+	free(f->name);
 	free(f->info);	/* note: f->info must have been malloc'ed! */
 	freeimage(f->bits);
 	free(f);

@@ -2,8 +2,8 @@
 #include "draw.h"
 #include "kernel.h"
 
-static
-void
+/* Encode the n glyph metrics and the terminal horizontal position. */
+static void
 packinfo(Fontchar *fc, uchar *p, int n)
 {
 	int j;
@@ -20,6 +20,7 @@ packinfo(Fontchar *fc, uchar *p, int n)
 	}
 }
 
+/* Release the packed metrics on both complete and failed writes. */
 int
 writesubfont(int fd, Subfont *f)
 {
@@ -38,8 +39,10 @@ writesubfont(int fd, Subfont *f)
 	if(data == nil)
 		return -1;
 	packinfo(f->info, data, f->n);
-	if(libwrite(fd, data, nb) != nb)
+	if(libwrite(fd, data, nb) != nb){
+		free(data);
 		goto Err;
+	}
 	free(data);
 	return 0;
 }

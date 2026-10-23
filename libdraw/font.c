@@ -145,6 +145,7 @@ agefont(Font *f)
 	}
 }
 
+/* Resolve the cache name only when every required name allocation succeeds. */
 static Subfont*
 cf2subfont(Cachefont *cf, Font *f)
 {
@@ -168,6 +169,8 @@ cf2subfont(Cachefont *cf, Font *f)
 		char *sf_name;
 		
 		sf_name = mangle_subfont_ft(name, f->height);
+		if(sf_name == nil)
+			return nil;
 		sf = lookupsubfont(f->display, sf_name);
 		if(sf_name)
 			free(sf_name);
