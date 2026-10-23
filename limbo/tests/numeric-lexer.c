@@ -153,6 +153,13 @@ main(void)
 	assert(strtoi("18446744073709551615", 10) == -1);
 	assert(strtoi("18446744073709551616", 10) == 0);
 	assert(strtoi("ffffffffffffffff", 16) == -1);
+	/* Invalid radix digits, including UTF-8 bytes, must not be accumulated. */
+	errors = 0;
+	assert(strtoi("\xc3", 10) == -1 && errors == 1);
+	errors = 0;
+	assert(digit('z', 10) == -1 && errors == 1);
+	errors = 0;
+	assert(digit(0xc3, 10) == -1 && errors == 1);
 	memset(radix, '1', 64);
 	radix[64] = 0;
 	assert(strtoi(radix, 2) == -1);
