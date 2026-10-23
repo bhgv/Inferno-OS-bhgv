@@ -2,6 +2,7 @@
 #include "isa.h"
 #include "interp.h"
 #include "raise.h"
+#include "kernel.h"
 
 #define OP(fn)	void fn(void)
 #define W(p)	*((WORD*)(p))
@@ -123,10 +124,8 @@ altrdy(Alt *a, Prog *p)
 		cqadd(&c->send, p);
 	}
 
-	if(e != nil) {
-		altdone(a, p, nil, -1);
+	if(e != nil)
 		error(e);
-	}
 
 	return nrdy;
 }
@@ -266,18 +265,45 @@ altgone(Prog *p)
 	}
 }
 
+typedef struct AltReady AltReady;
+struct AltReady
+{
+	Alt *alt;
+	Prog *prog;
+	int ready;
+};
+
+/* Keep the partial-registration context outside the VM error jump frame. */
+static int
+altready(void *arg)
+{
+	AltReady *r;
+
+	r = arg;
+	r->ready = altrdy(r->alt, r->prog);
+	return 1;
+}
+
+/* Cancel all partial registrations if preparing an alt raises a VM error. */
 void
 xecalt(int block)
 {
 	Alt *a;
 	Prog *p;
 	int nrdy;
+	AltReady ready;
 	static ulong xrand = 0x20342;
 
 	p = currun();
 
 	a = R.s;
-	nrdy = altrdy(a, p);
+	ready.alt = a;
+	ready.prog = p;
+	if(!kprotect(altready, &ready)){
+		altdone(a, p, nil, -1);
+		krethrow();
+	}
+	nrdy = ready.ready;
 	if(nrdy == 0) {
 		if(block) {
 			delrun(Palt);

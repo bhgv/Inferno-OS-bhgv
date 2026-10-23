@@ -1103,26 +1103,35 @@ cqdel(Progq **q)
 	*q = f->next;
 	free(f);
 }
+/* Remove every registration while retaining the queue's mandatory empty node. */
 void
 cqdelp(Progq **q, Prog *p)
 {
 	Progq *f;
+	Progq **head;
 
-	if((*q)->next == nil){
-		if((*q)->prog == p)
-			(*q)->prog = nil;
-		return;
-	}
-	for( ; *q != nil; ){
-		if((*q)->prog == p){
-			f = *q;
-			*q = (*q)->next;
-			free(f);
-		}
-		else
+	head = q;
+	while(*q != nil){
+		if((*q)->prog != p){
 			q = &(*q)->next;
+			continue;
+		}
+		if((*q)->next == nil){
+			/* Only an entirely empty queue needs a placeholder node. */
+			if(q == head)
+				(*q)->prog = nil;
+			else{
+				free(*q);
+				*q = nil;
+			}
+			return;
+		}
+		f = *q;
+		*q = f->next;
+		free(f);
 	}
-}	
+}
+/* Queue a blocked sender before removing it from the runnable scheduler list. */
 OP(isend)
 {
 	Channel *c;
@@ -1135,12 +1144,13 @@ OP(isend)
 	if((p = c->recv->prog) == nil) {
 		if(c->buf != H && cputb(c, R.s))
 			return;
+		p = currun();
+		cqadd(&c->send, p);
 		p = delrun(Psend);
 		p->ptr = R.s;
 		p->chan = c;	/* for killprog */
 		R.IC = 1;	
 		R.t = 1;
-		cqadd(&c->send, p);
 		return;
 	}
 
@@ -1158,6 +1168,7 @@ OP(isend)
 	addrun(p);
 	R.t = 0;
 }
+/* Queue a blocked receiver before changing its scheduler state. */
 OP(irecv)
 {
 	Channel *c;
@@ -1170,12 +1181,13 @@ OP(irecv)
 	if((p = c->send->prog) == nil) {
 		if(c->buf != H && cgetb(c, R.d))
 			return;
+		p = currun();
+		cqadd(&c->recv, p);
 		p = delrun(Precv);
 		p->ptr = R.d;
 		p->chan = c;	/* for killprog */
 		R.IC = 1;
 		R.t = 1;
-		cqadd(&c->recv, p);
 		return;
 	}
 

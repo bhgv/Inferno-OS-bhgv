@@ -1030,12 +1030,12 @@ Sys_iounit(void *fp)
 	acquire();
 }
 
+/* Cover queue allocation as well as blocking with channel-registration cleanup. */
 void
 ccom(Progq **cl, Prog *p)
 {
 	volatile struct {Progq **cl;} vcl;
 
-	cqadd(cl, p);
 	vcl.cl = cl;
 	if(waserror()) {
 		if(p->ptr != nil) {	/* no killcomm */
@@ -1044,6 +1044,7 @@ ccom(Progq **cl, Prog *p)
 		}
 		nexterror();
 	}
+	cqadd(cl, p);
 	cblock(p);
 	poperror();
 }
