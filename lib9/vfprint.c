@@ -27,29 +27,39 @@
 
 
 
-/*
- * generic routine for flushing a formatting buffer
- * to a file descriptor
- */
+/* Complete short writes, retaining only an unwritten suffix after failure. */
 int
 _fmtFdFlush(Fmt *f)
 {
-	int n;
+	char *p;
+	int n, nr, fd;
 
-	n = (char*)f->to - (char*)f->start;
-#ifndef ANDROID
-	if(n && write((int)f->farg, f->start, n) != n)
-		return 0;
-#else
-	switch((int)f->farg){
-		case 1:
-			LOGI("%s", (char*)f->start);
-			break;
-		case 2:
-			LOGE("%s", (char*)f->start);
-			break;
-	};
+	p = f->start;
+	n = (char*)f->to-p;
+	fd = (int)(uintptr)f->farg;
+#ifdef ANDROID
+	/* Log only the occupied span; a full formatting buffer has no spare NUL. */
+	if(fd == 1 || fd == 2){
+		if(n > 0){
+			if(fd == 1)
+				LOGI("%.*s", n, p);
+			else
+				LOGE("%.*s", n, p);
+		}
+		f->to = f->start;
+		return 1;
+	}
 #endif
+	while(n > 0){
+		nr = write(fd, p, n);
+		if(nr <= 0){
+			memmove(f->start, p, n);
+			f->to = (char*)f->start+n;
+			return 0;
+		}
+		p += nr;
+		n -= nr;
+	}
 	f->to = f->start;
 	return 1;
 }
