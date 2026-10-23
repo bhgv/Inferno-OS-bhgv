@@ -708,10 +708,12 @@ bccom(Node *n, Inst **bs)
 	bs[ok] = p;
 }
 
+/* Expand only bounded dense int labels, using wide endpoint arithmetic. */
 static int
 dogoto(Case *c)
 {
-	int i, j, k, n, r, q, v;
+	int i, k, n;
+	Long j, r, q, v;
 	Label *l, *nl;
 	Src *src;
 
@@ -720,7 +722,7 @@ dogoto(Case *c)
 	if(n == 0)
 		return 0;
 	r = l[n-1].stop->val - l[0].start->val+1;
-	if(r >= 3 && r <= 3*n){
+	if(r >= 3 && r <= 3*(Long)n && r <= 0x7fffffff/sizeof(*nl)){
 		if(r != n){
 			/* remove ranges, fill in gaps */
 			c->nlab = r;
@@ -749,10 +751,12 @@ dogoto(Case *c)
 	return 0;
 }
 
+/* Walk inclusive int endpoints without overflowing at the largest label. */
 static void
 fillrange(Case *c, Node *nn, Inst *in)
 {
-	int i, j, n, p, q;
+	int i, n;
+	Long j, p, q;
 	Label *l;
 
 	l = c->labs;
