@@ -405,7 +405,7 @@ flushcon(int genbr)
 		if(pass){
 			disp = (code - c->code) * sizeof(*code) - 8;
 			if(disp >= BITS(12))
-				print("INVALID constant range %lud", disp);
+				urk("constant pool reference out of range");
 			if(0)print("data %8.8p %8.8lux (%8.8p, ins=%8.8lux cpc=%8.8p)\n", code, c->o, c->code, *c->code, c->pc);
 			*c->code |= (disp&0xfff);
 		}
