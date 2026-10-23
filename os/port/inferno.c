@@ -38,6 +38,7 @@ struct FD
 	Fgrp*	grp;
 };
 
+/* Initialize builtin descriptors, sizing directory records from their native layout. */
 void
 sysinit(void)
 {
@@ -49,7 +50,7 @@ sysinit(void)
 	FioTwrite = dtype(freeheap, Sys_FileIO_write_size, wmap, sizeof(wmap));
 
 	/* Support for dirread */
-	Tdir = dtype(freeheap, Sys_Dir_size, dmap, sizeof(dmap));
+	Tdir = dtype(freeheap, sizeof(Sys_Dir), dmap, sizeof(dmap));
 }
 
 void
@@ -402,6 +403,7 @@ Sys_pwrite(void *fp)
 	acquire();
 }
 
+/* Convert one directory record into an initialized, owned VM record. */
 static void
 unpackdir(Dir *d, Sys_Dir *sd)
 {
@@ -955,44 +957,45 @@ Sys_pctl(void *fp)
 	*f->ret = p->pid;
 }
 
+/* Retain ownership of native entries and partial VM records until conversion completes. */
 void
 Sys_dirread(void *fp)
 {
-
-	Dir *b;
-	int i, n;
-	Heap *h;
-	uchar *d;
-	void *r;
+	Dir *entries;
+	Sys_Dir *record;
 	F_Sys_dirread *f;
+	volatile struct { Heap *array; } result;
+	void *old;
+	int i, count;
 
 	f = fp;
 	f->ret->t0 = -1;
-	r = f->ret->t1;
+	old = f->ret->t1;
 	f->ret->t1 = H;
-	destroy(r);
+	destroy(old);
 	release();
-	n = kdirread(fdchk(f->fd), &b);
+	count = kdirread(fdchk(f->fd), &entries);
 	acquire();
-	if(n <= 0) {
-		f->ret->t0 = n;
-		free(b);
+	if(count <= 0){
+		f->ret->t0 = count;
+		free(entries);
 		return;
 	}
+	result.array = nil;
 	if(waserror()){
-		free(b);
+		if(result.array != nil)
+			destroy(H2D(Array*, result.array));
+		free(entries);
 		return;
 	}
-	h = heaparray(Tdir, n);
+	result.array = heaparray(Tdir, count);
+	record = (Sys_Dir*)H2D(Array*, result.array)->data;
+	for(i = 0; i < count; i++)
+		unpackdir(&entries[i], &record[i]);
 	poperror();
-	d = H2D(Array*, h)->data;
-	for(i = 0; i < n; i++) {
-		unpackdir(b+i, (Sys_Dir*)d);
-		d += Sys_Dir_size;
-	}
-	f->ret->t0 = n;
-	f->ret->t1 = H2D(Array*, h);
-	free(b);
+	f->ret->t0 = count;
+	f->ret->t1 = H2D(Array*, result.array);
+	free(entries);
 }
 
 void
