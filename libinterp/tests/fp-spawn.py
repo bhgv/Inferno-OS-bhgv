@@ -36,6 +36,8 @@ static int testincref(Ref *r) {return ++r->ref;}
 void kstrdup(char **p,char *s) {*p=malloc(strlen(s)+1);assert(*p);strcpy(*p,s);}
 void panic(char *text,...) {(void)text;assert(0);}
 void error(char *text) {(void)text;assert(0);}
+int kprotect(int (*fn)(void*),void *arg) {return fn(arg);}
+void krethrow(void) {assert(0);}
 void FPsave(void *v) {
     FPU *f=v;saves++;f->fpscr=live_fpscr;
     if(destructive)live_fpscr=0;
@@ -85,7 +87,7 @@ with tempfile.TemporaryDirectory(prefix='fp-spawn-') as directory:
     td=Path(directory)
     for variant in ['emu','os']:
         source=(root/variant/'port/dis.c').read_text()
-        start=source.index('Prog*\nnewprog(');end=source.index('void\ndelprog(',start)
+        start=source.index('static int\nnewrootgrp(');end=source.index('void\ndelprog(',start)
         path=td/(variant+'.c');path.write_text(unit.replace('NEWPROG_IMPLEMENTATION',source[start:end]))
         command=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1 -g'))
         command+=['-Dmalloc=testmalloc']

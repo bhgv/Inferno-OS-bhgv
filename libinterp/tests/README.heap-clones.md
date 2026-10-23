@@ -30,7 +30,8 @@ a GC/compaction test, a running Inferno system, or a complete 32-bit ABI build.
 Initial Dis data is acyclic and bounded by DADEPTH; this is not a general clone
 operation for arbitrary cyclic runtime graphs. newmp constructs separate,
 newly allocated destination storage and is not an in-place update operation.
-Scheduler/newprog/newstack error exits remain separate integration work.
+Scheduler/newprog/newstack error exits are tested separately by stack-startup.py;
+see README.stack-startup.md for its injected boundaries and integration limits.
 
 Strict UBSan is the default. ASan also passes with stack instrumentation enabled:
 

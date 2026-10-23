@@ -381,57 +381,85 @@ OP(mnewz)
 	*wp = H2D(WORD*, h);
 	destroy(t);
 }
+/* Resolve imports or named exports without narrowing the Limbo link index. */
+static int
+moduleentry(Modlink *ml, WORD index, Modl *entry)
+{
+	Link *l;
+
+	if(index >= 0){
+		if(index >= ml->nlinks)
+			return 0;
+		*entry = ml->links[index];
+		return 1;
+	}
+	if(ml->m->ext != nil)
+		for(l = ml->m->ext; l->name != nil; l++, index++)
+			if(index == -1){
+				entry->u = l->u;
+				entry->frame = l->frame;
+				return 1;
+			}
+	return 0;
+}
+
+/* Compare remaining stack bytes before forming a prospective frame pointer. */
+static int
+framefits(Type *t)
+{
+	if(t == nil || t->size < sizeof(Frame) || R.SP == nil || R.TS == nil || R.SP > R.TS)
+		error(exHeap);
+	return (ulong)t->size < (ulong)(R.TS-R.SP);
+}
+
+/* Validate the complete descriptor index and stack span before allocating a frame. */
 OP(frame)
 {
 	Type *t;
 	Frame *f;
-	uchar *nsp;
+	WORD index;
 
-	t = R.M->type[W(s)];
-	nsp = R.SP + t->size;
-	if(nsp >= R.TS) {
+	index = W(s);
+	if(index < 0 || index >= R.M->m->ntype)
+		error("invalid frame");
+	t = R.M->type[index];
+	if(!framefits(t)) {
 		R.s = t;
 		extend();
 		T(d) = R.s;
 		return;
 	}
 	f = (Frame*)R.SP;
-	R.SP  = nsp;
+	R.SP += t->size;
 	f->t  = t;
 	f->mr = nil;
 	if (t->np)
 		initmem(t, f);
 	T(d) = f;
 }
+/* Resolve both imported and exported frame types through checked metadata. */
 OP(mframe)
 {
 	Type *t;
 	Frame *f;
-	uchar *nsp;
+	Modl entry;
 	Modlink *ml;
-	int o;
 
 	ml = *(Modlink**)R.s;
 	if(ml == H)
 		error(exModule);
 
-	o = W(m);
-	if(o >= 0){
-		if(o >= ml->nlinks)
-			error("invalid mframe");
-		t = ml->links[o].frame;
-	}
-	else
-		t = ml->m->ext[-o-1].frame;
-	nsp = R.SP + t->size;
-	if(nsp >= R.TS) {
+	if(!moduleentry(ml, W(m), &entry))
+		error("invalid mframe");
+	t = entry.frame;
+	if(!framefits(t)) {
 		R.s = t;
 		extend();
 		T(d) = R.s;
 		return;
 	}
 	f = (Frame*)R.SP;
-	R.SP = nsp;
+	R.SP += t->size;
 	f->t = t;
 	f->mr = nil;
 	if (t->np)
@@ -745,34 +773,66 @@ OP(call)
 	R.FP = (uchar*)f;
 	JMP(d);
 }
-OP(spawn)
+typedef struct SpawnProg SpawnProg;
+struct SpawnProg {
+	Modlink *module;
+	Inst *pc;
+	Prog initial;
+};
+
+/* Build the child's stack before newprog makes it visible to the scheduler. */
+static int
+spawnready(void *arg)
 {
+	SpawnProg *c;
 	Prog *p;
 
-	p = newprog(currun(), R.M);
-	p->R.PC = *(Inst**)R.d;
-	newstack(p);
+	c = arg;
+	c->initial.R.M = c->module;
+	c->initial.R.MP = c->module->MP;
+	c->initial.R.PC = c->pc;
+	newstack(&c->initial);
+	p = newprog(currun(), c->module);
+	p->R = c->initial.R;
+	return 1;
+}
+
+/* On failure the source frame still owns its arguments; release only stack storage. */
+static void
+spawnmodule(Modlink *ml, Inst *pc)
+{
+	SpawnProg c;
+
+	memset(&c, 0, sizeof(c));
+	c.module = ml;
+	c.pc = pc;
+	if(!kprotect(spawnready, &c)){
+		free(c.initial.R.EX);
+		krethrow();
+	}
 	unframe();
 }
+
+/* Spawn only after the frame and process can both be constructed. */
+OP(spawn)
+{
+	spawnmodule(R.M, *(Inst**)R.d);
+}
+
+/* Check the full link index before reading a child entry PC. */
 OP(mspawn)
 {
-	Prog *p;
 	Modlink *ml;
-	int o;
+	Modl entry;
 
 	ml = *(Modlink**)R.d;
 	if(ml == H)
 		error(exModule);
 	if(ml->prog == nil)
 		error(exSpawn);
-	p = newprog(currun(), ml);
-	o = W(m);
-	if(o >= 0)
-		p->R.PC = ml->links[o].u.pc;
-	else
-		p->R.PC = ml->m->ext[-o-1].u.pc;
-	newstack(p);
-	unframe();
+	if(!moduleentry(ml, W(m), &entry))
+		error("invalid mspawn");
+	spawnmodule(ml, entry.u.pc);
 }
 OP(ret)
 {

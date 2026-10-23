@@ -6,6 +6,29 @@
 
 #define T(r)	*((void**)(R.r))
 
+/* Bound the complete extent before narrowing its size or growing a frame. */
+static int
+stacksize(Type *t, ulong hint, int grow)
+{
+	ulong header, need;
+
+	header = OA(Stkext, reg.tos.fu);
+	if(t == nil || t->size < sizeof(Frame) ||
+	   (ulong)t->size > 0x7fffffff-header || hint > 0x7fffffff)
+		error(exHeap);
+	need = header+t->size;
+	if(hint < need){
+		if(grow){
+			if((ulong)t->size > (0x7fffffff-header)/2)
+				error(exHeap);
+			need = header+2*(ulong)t->size;
+		}
+		hint = need;
+	}
+	return hint;
+}
+
+/* Copy a complete source frame only after the new extent has been allocated. */
 void
 newstack(Prog *p)
 {
@@ -20,13 +43,7 @@ newstack(Prog *p)
 	if(t == nil)
 		t = SEXTYPE(f)->reg.TR;
 
-	f->lr = nil;
-	f->mr = nil;
-	f->fp = nil;
-	l = p->R.M->m->ss;
-	/* 16 bytes for Stkext record keeping */
-	if(l < t->size+16)
-		l = t->size+16;
+	l = stacksize(t, p->R.M->m->ss, 0);
 	ns = mallocz(l, 0);
 	if(ns == nil)
 		error(exNomem);
@@ -42,9 +59,13 @@ newstack(Prog *p)
 
 	memmove(p->R.FP, f, t->size);
 	f = (Frame*)p->R.FP;
+	f->lr = nil;
+	f->mr = nil;
+	f->fp = nil;
 	f->t = nil;
 }
 
+/* Allocate enough space for the native extent header and requested frame. */
 void
 extend(void)
 {
@@ -54,10 +75,7 @@ extend(void)
 	Stkext *ns;
 
 	t = R.s;
-	l = R.M->m->ss;
-	/* 16 bytes for Stkext record keeping */
-	if(l < t->size+16)
-		l = 2*t->size+16;
+	l = stacksize(t, R.M->m->ss, 1);
 	ns = mallocz(l, 0);
 	if(ns == nil)
 		error(exNomem);

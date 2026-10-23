@@ -127,12 +127,64 @@ execatidle(void)
 	delrunq(up->prog);
 }
 
+/* Root-group allocation must finish before the Prog enters scheduler lists. */
+static int
+newrootgrp(void *arg)
+{
+	newgrp(arg);
+	return 1;
+}
+
+typedef struct NewProgEnv NewProgEnv;
+struct NewProgEnv {
+	Prog *parent;
+	Prog *child;
+};
+
+/* Copy fallible environment storage before joining any scheduler or group list. */
+static int
+newprogenv(void *arg)
+{
+	NewProgEnv *c;
+	Prog *p, *n;
+	Osenv *on, *op;
+
+	c = arg;
+	p = c->parent;
+	n = c->child;
+	op = p->osenv;
+	if(p == currun()){
+		/* FPsave may change native masks; leave the parent's environment live. */
+		FPsave(&op->fpu);
+		FPrestore(&op->fpu);
+	}
+	memmove(n->osenv, op, sizeof(Osenv));
+	on = n->osenv;
+	on->waitq = op->childq;
+	on->childq = nil;
+	on->debug = nil;
+	on->user = nil;
+	kstrdup(&on->user, op->user);
+	on->errstr = on->errbuf0;
+	on->syserrstr = on->errbuf1;
+	/* A waiting allocation can resume after the parent or its group was killed. */
+	if(p->group != nil)
+		p->flags |= p->group->flags & Pkilled;
+	if(p->kill != nil)
+		error(p->kill);
+	if(p->flags & Pkilled)
+		error("");
+	return 1;
+}
+
+/* Publish a process only after its fallible private resources are complete. */
 Prog*
 newprog(Prog *p, Modlink *m)
 {
 	Heap *h;
 	Prog *n, **ph;
-	Osenv *on, *op;
+	Osenv *on;
+	NewProgEnv env;
 	static int pidnum;
 
 	if(p != nil){
@@ -143,41 +195,44 @@ newprog(Prog *p, Modlink *m)
 		if(p->flags & Pkilled)
 			error("");
 	}
-	n = malloc(sizeof(Prog)+sizeof(Osenv));
-	if(n == 0){
-		if(p == nil)
-			panic("no memory");
-		else
-			error(exNomem);
-	}
-
-	n->pid = ++pidnum;
-	if(n->pid <= 0)
+	if(pidnum == 0x7fffffff)
 		panic("no pids");
+	n = malloc(sizeof(Prog)+sizeof(Osenv));
+	if(n == nil)
+		error(exNomem);
+	n->pid = ++pidnum;
 	n->group = nil;
-
-	if(isched.tail != nil) {
-		n->prev = isched.tail;
-		isched.tail->next = n;
-	}
-	else {
-		isched.head = n;
-		n->prev = nil;
-	}
-	isched.tail = n;
-
-	ph = pidlook(n->pid);
-	if(*ph != nil)
-		panic("dup pid");
-	n->pidlink = nil;
-	*ph = n;
-
-	n->osenv = (Osenv*)((uchar*)n + sizeof(Prog));
+	n->flags = 0;
+	n->osenv = (Osenv*)((uchar*)n+sizeof(Prog));
 	n->xec = xec;
 	n->quanta = PQUANTA;
-	n->flags = 0;
 	n->exval = H;
-
+	if(p == nil){
+		if(!kprotect(newrootgrp, n)){
+			free(n);
+			krethrow();
+		}
+	}else{
+		env.parent = p;
+		env.child = n;
+		if(!kprotect(newprogenv, &env)){
+			on = n->osenv;
+			free(on->user);
+			free(n);
+			krethrow();
+		}
+		on = n->osenv;
+		incref(on->pgrp);
+		incref(on->fgrp);
+		if(on->egrp != nil)
+			incref(on->egrp);
+		if(on->sigs != nil)
+			incref(on->sigs);
+		n->flags = p->flags;
+		if(p->flags & Prestrict)
+			n->flags |= Prestricted;
+		addgrp(n, p);
+	}
 	h = D2H(m);
 	h->ref++;
 	Setmark(h);
@@ -185,41 +240,20 @@ newprog(Prog *p, Modlink *m)
 	n->R.MP = m->MP;
 	if(m->MP != H)
 		Setmark(D2H(m->MP));
+	if(isched.tail != nil){
+		n->prev = isched.tail;
+		isched.tail->next = n;
+	}else{
+		isched.head = n;
+		n->prev = nil;
+	}
+	isched.tail = n;
+	ph = pidlook(n->pid);
+	if(*ph != nil)
+		panic("dup pid");
+	n->pidlink = nil;
+	*ph = n;
 	addrun(n);
-
-	if(p == nil){
-		newgrp(n);
-		return n;
-	}
-
-	addgrp(n, p);
-	n->flags = p->flags;
-	if(p->flags & Prestrict)
-		n->flags |= Prestricted;
-	/* The running parent's stored context predates this scheduling quantum.
-	 * FPsave can change the native environment (for example x87 FNSTENV
-	 * masks traps), so restore it before continuing the parent. */
-	op = p->osenv;
-	if(p == currun()) {
-		FPsave(&op->fpu);
-		FPrestore(&op->fpu);
-	}
-	memmove(n->osenv, op, sizeof(Osenv));
-	on = n->osenv;
-	on->waitq = op->childq;
-	on->childq = nil;
-	on->debug = nil;
-	incref(on->pgrp);
-	incref(on->fgrp);
-	if(on->egrp != nil)
-		incref(on->egrp);
-	if(on->sigs != nil)
-		incref(on->sigs);
-	on->user = nil;
-	kstrdup(&on->user, op->user);
-	on->errstr = on->errbuf0;
-	on->syserrstr = on->errbuf1;
-
 	return n;
 }
 
@@ -776,37 +810,77 @@ currun(void)
 	return isched.runhd;
 }
 
+typedef struct SchedModule SchedModule;
+struct SchedModule {
+	Module *m;
+	Modlink *ml;
+	Prog initial;
+	Prog *result;
+	Frame *frame;
+	void *saved;
+	int transferred;
+};
+
+/* Build complete module data and a full-sized root frame before scheduling. */
+static int
+schedmodule(void *arg)
+{
+	SchedModule *c;
+	Type *t;
+	Import empty;
+	Frame *fp;
+	Prog *p;
+
+	c = arg;
+	t = c->m->entryt;
+	if(t == nil || t->size < sizeof(Frame) ||
+	   (ulong)t->size > 0x7fffffff-OA(Stkext, reg.tos.fu) || c->m->ss > 0x7fffffff)
+		error(exHeap);
+	empty.name = nil;
+	c->transferred = 1;
+	c->ml = linkmod(c->m, &empty, 1);
+	c->frame = mallocz(t->size, 1);
+	if(c->frame == nil)
+		error(exNomem);
+	c->frame->t = t;
+	c->initial.R.M = c->ml;
+	c->initial.R.MP = c->ml->MP;
+	c->initial.R.PC = c->m->entry;
+	fp = c->frame;
+	R.s = &fp;
+	newstack(&c->initial);
+	initmem(t, c->initial.R.FP);
+	p = newprog(nil, c->ml);
+	p->R = c->initial.R;
+	D2H(c->ml)->ref--;
+	c->result = p;
+	return 1;
+}
+
+/* Restore scratch registers and release every unpublished startup resource. */
 Prog*
 schedmod(Module *m)
 {
-	Heap *h;
-	Type *t;
-	Prog *p;
-	Modlink *ml;
-	Frame f, *fp;
+	SchedModule c;
+	int ok;
 
-	ml = mklinkmod(m, 0);
-
-	if(m->origmp != H && m->ntype > 0) {
-		t = m->type[0];
-		h = nheap(t->size);
-		h->t = t;
-		t->ref++;
-		ml->MP = H2D(uchar*, h);
-		newmp(ml->MP, m->origmp, t);
-	}
-
-	p = newprog(nil, ml);
-	h = D2H(ml);
-	h->ref--;
-	p->R.PC = m->entry;
-	fp = &f;
-	R.s = &fp;
-	f.t = m->entryt;
-	newstack(p);
-	initmem(m->entryt, p->R.FP);
-
-	return p;
+	memset(&c, 0, sizeof(c));
+	c.m = m;
+	c.ml = H;
+	c.saved = R.s;
+	ok = kprotect(schedmodule, &c);
+	R.s = c.saved;
+	free(c.frame);
+	if(ok)
+		return c.result;
+	/* The initial frame contains only zero scalars and H pointer slots. */
+	free(c.initial.R.EX);
+	if(c.ml != H)
+		destroy(c.ml);
+	else if(!c.transferred)
+		unload(m);
+	krethrow();
+	return nil;
 }
 
 void

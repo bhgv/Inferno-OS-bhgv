@@ -107,4 +107,5 @@ including every allocation failure in recursive trees, mixed records, partial
 MPs and module instances. Original bodies independently fail all three defect
 families. Strict UBSan and ASan with stack instrumentation pass. See
 `libinterp/tests/README.heap-clones.md` for the boundary injections and remaining
-scheduler, GC, cyclic-graph and full-ABI integration limits.
+GC, cyclic-graph and full-ABI integration limits. Scheduler startup is covered
+separately by stack-startup.py and doc/stack-startup-audit.md.
