@@ -140,12 +140,31 @@ publiclinks(void)
 	}
 }
 
+/* Reject absent imports while consuming the transferred module reference once. */
+static void
+nilimports(void)
+{
+	Module m;
+	int before;
+
+	memset(&m, 0, sizeof(m));
+	before = unloads;
+	assert(linkmod(nil, nil, 0) == H);
+	assert(linkmod(H, nil, 0) == H && unloads == before);
+	m.ref = 1;
+	assert(linkmod(&m, nil, 0) == H && m.ref == 0);
+	m.ref = 1;
+	assert(linkmod(&m, H, 0) == H && m.ref == 0);
+	assert(unloads == before+2 && live == 0);
+	checks += 4;
+}
+
 /* Exercise sentinel collisions, exact names, mismatches and full link cleanup. */
 int
 main(void)
 {
-	lookup(); publiclinks();
-	assert(live == 0 && Tmodlink.ref == 1 && unloads == 7);
+	lookup(); publiclinks(); nilimports();
+	assert(live == 0 && Tmodlink.ref == 1 && unloads == 9);
 	printf("Module links: %d cases\n", checks);
 	return 0;
 }

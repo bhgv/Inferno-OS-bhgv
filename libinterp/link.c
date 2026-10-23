@@ -140,8 +140,13 @@ linkmod(Module *m, Import *ldt, int mkmp)
 {
 	LinkModule c;
 
-	if(m == nil)
+	if(m == nil || m == H)
 		return H;
+	if(ldt == nil || ldt == H){
+		kwerrstr("nil import table");
+		unload(m);
+		return H;
+	}
 	c.m = m;
 	c.imports = ldt;
 	c.result = H;

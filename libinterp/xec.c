@@ -1056,6 +1056,25 @@ OP(ret)
 		R.MP = m->MP;
 	}
 }
+/* Resolve a full-width import index without stepping beyond the table sentinel. */
+static Import*
+moduleimports(Module *m, WORD index)
+{
+	Import **table;
+	WORD i;
+
+	if(index < 0 || m->ldt == nil || m->ldt == H)
+		error(exModule);
+	table = m->ldt;
+	for(i = 0; ; i++){
+		if(table[i] == nil || table[i] == H)
+			error(exModule);
+		if(i == index)
+			return table[i];
+	}
+}
+
+/* Validate imports before loading and retain nil data for data-free self loads. */
 OP(iload)
 {
 	char *n;
@@ -1064,23 +1083,25 @@ OP(iload)
 	Modlink *ml, **mp, *t;
 	Heap *h;
 
-	n = string2c(S(s));
+	if(R.M == H || R.M == nil || R.M->m == H || R.M->m == nil)
+		error(exModule);
 	m = R.M->m;
-	if(m->rt & HASLDT)
-		ldt = m->ldt[W(m)];
-	else{
-		ldt = nil;
+	if(!(m->rt & HASLDT))
 		error("obsolete dis");
-	}
-
+	ldt = moduleimports(m, W(m));
+	n = string2c(S(s));
 	if(strcmp(n, "$self") == 0) {
+		if(R.M->MP == nil)
+			error(exModule);
 		m->ref++;
 		ml = linkmod(m, ldt, 0);
 		if(ml != H) {
 			ml->MP = R.M->MP;
-			h = D2H(ml->MP);
-			h->ref++;
-			Setmark(h);
+			if(ml->MP != H){
+				h = D2H(ml->MP);
+				h->ref++;
+				Setmark(h);
+			}
 		}
 	}
 	else {
