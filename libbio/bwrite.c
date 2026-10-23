@@ -1,13 +1,13 @@
 #include	"lib9.h"
 #include	<bio.h>
 
-/* Reject inactive output and retain the full pending buffer across interrupted writes. */
+/* Complete short writes, retaining only unwritten bytes after an interruption. */
 long
 Bwrite(Biobuf *bp, void *ap, long count)
 {
 	long c;
 	uchar *p;
-	int i, n, oc;
+	int i, n, oc, done;
 	char errbuf[ERRMAX];
 
 	if(count > 0 && bp->state != Bwactive)
@@ -24,15 +24,20 @@ Bwrite(Biobuf *bp, void *ap, long count)
 			if(bp->state != Bwactive)
 				return Beof;
 			bp->ocount = oc;
-			i = write(bp->fid, bp->bbuf, bp->bsize);
-			if(i != bp->bsize) {
-				errstr(errbuf, sizeof errbuf);
-				if(strstr(errbuf, "interrupt") == nil)
-					bp->state = Binactive;
-				errstr(errbuf, sizeof errbuf);
-				return Beof;
+			for(done = 0; done < bp->bsize; done += i){
+				i = write(bp->fid, bp->bbuf+done, bp->bsize-done);
+				if(i <= 0){
+					/* Retry only the unwritten suffix after an interruption. */
+					memmove(bp->bbuf, bp->bbuf+done, bp->bsize-done);
+					bp->ocount = -done;
+					errstr(errbuf, sizeof errbuf);
+					if(strstr(errbuf, "interrupt") == nil)
+						bp->state = Binactive;
+					errstr(errbuf, sizeof errbuf);
+					return Beof;
+				}
+				bp->offset += i;
 			}
-			bp->offset += i;
 			oc = -bp->bsize;
 			continue;
 		}
