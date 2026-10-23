@@ -1,14 +1,19 @@
 #include <lib9.h>
 
+/* Retain the final matching byte, testing the terminator exactly once. */
 char*
 strrchr(char *s, int c)
 {
-	char *r;
+	char *last;
+	uchar byte;
 
-	if(c == 0)
-		return strchr(s, 0);
-	r = 0;
-	while(s = strchr(s, c))
-		r = s++;
-	return r;
+	byte = c;
+	last = nil;
+	for(;;){
+		if(*(uchar*)s == byte)
+			last = s;
+		if(*s == 0)
+			return last;
+		s++;
+	}
 }

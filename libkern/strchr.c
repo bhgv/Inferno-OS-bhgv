@@ -1,18 +1,17 @@
 #include <lib9.h>
 
+/* Search unsigned bytes, including NUL after narrowing the requested character. */
 char*
 strchr(char *s, int c)
 {
-	char c1;
+	uchar byte;
 
-	if(c == 0) {
-		while(*s++)
-			;
-		return s-1;
+	byte = c;
+	for(;;){
+		if(*(uchar*)s == byte)
+			return s;
+		if(*s == 0)
+			return nil;
+		s++;
 	}
-
-	while(c1 = *s++)
-		if(c1 == c)
-			return s-1;
-	return 0;
 }

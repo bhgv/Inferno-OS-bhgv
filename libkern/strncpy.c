@@ -1,9 +1,10 @@
 #include <lib9.h>
 
+/* Copy and pad with a native-width count; nonpositive spans access no bytes. */
 char*
 strncpy(char *s1, char *s2, long n)
 {
-	int i;
+	long i;
 	char *os1;
 
 	os1 = s1;
