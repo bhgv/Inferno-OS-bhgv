@@ -38,16 +38,19 @@ struct FD
 	Fgrp*	grp;
 };
 
-/* Initialize builtin descriptors, sizing directory records from their native layout. */
+/* Size native records and locate channel-request pointers from their C declarations. */
 void
 sysinit(void)
 {
 	TFD = dtype(freeFD, sizeof(FD), FDmap, sizeof(FDmap));
-	TFileIO = dtype(freeFileIO, Sys_FileIO_size, FileIOmap, sizeof(FileIOmap));
+	TFileIO = dtype(freeFileIO, sizeof(Sys_FileIO), FileIOmap, sizeof(FileIOmap));
 
 	/* Support for devsrv.c */
-	FioTread = dtype(freeheap, Sys_FileIO_read_size, rmap, sizeof(rmap));
-	FioTwrite = dtype(freeheap, Sys_FileIO_write_size, wmap, sizeof(wmap));
+	rmap[0] = 0x80 >> (offsetof(Sys_FileIO_read, t3)/sizeof(void*));
+	wmap[0] = (0x80 >> (offsetof(Sys_FileIO_write, t1)/sizeof(void*))) |
+		(0x80 >> (offsetof(Sys_FileIO_write, t3)/sizeof(void*)));
+	FioTread = dtype(freeheap, sizeof(Sys_FileIO_read), rmap, sizeof(rmap));
+	FioTwrite = dtype(freeheap, sizeof(Sys_FileIO_write), wmap, sizeof(wmap));
 
 	/* Support for dirread */
 	Tdir = dtype(freeheap, sizeof(Sys_Dir), dmap, sizeof(dmap));
@@ -906,38 +909,49 @@ Sys_export(void *fp)
 	acquire();
 }
 
+/* Build both channels before registration, releasing partial results on every error. */
 void
 Sys_file2chan(void *fp)
 {
-	int r;
-	Heap *h;
-	Channel *c;
-	Sys_FileIO *fio;
 	F_Sys_file2chan *f;
-	void *sv;
-
-	h = heap(TFileIO);
-
-	fio = H2D(Sys_FileIO*, h);
-
-	c = cnewc(FioTread, movtmp, 16);
-	fio->read = c;
-
-	c = cnewc(FioTwrite, movtmp, 16);
-	fio->write = c;
+	volatile struct { Sys_FileIO *file; int released; } result;
+	Sys_FileIO *old;
+	char *directory, *name, saved[ERRMAX];
+	int status;
 
 	f = fp;
-	sv = *f->ret;
-	*f->ret = fio;
-	destroy(sv);
-
-	release();
-	r = srvf2c(string2c(f->dir), string2c(f->file), fio);
-	acquire();
-	if(r == -1) {
-		*f->ret = H;
-		destroy(fio);
+	/* String conversion can allocate and must run while the VM is acquired. */
+	directory = string2c(f->dir);
+	name = string2c(f->file);
+	result.file = H;
+	result.released = 0;
+	if(waserror()){
+		if(result.released)
+			acquire();
+		memmove(saved, up->env->errstr, sizeof(saved));
+		destroy(result.file);
+		memmove(up->env->errstr, saved, sizeof(saved));
+		nexterror();
 	}
+	result.file = H2D(Sys_FileIO*, heap(TFileIO));
+	result.file->read = cnewc(FioTread, movtmp, 16);
+	result.file->write = cnewc(FioTwrite, movtmp, 16);
+	release();
+	result.released = 1;
+	status = srvf2c(directory, name, result.file);
+	acquire();
+	result.released = 0;
+	poperror();
+	if(status < 0){
+		memmove(saved, up->env->errstr, sizeof(saved));
+		destroy(result.file);
+		result.file = H;
+	}
+	old = *f->ret;
+	*f->ret = result.file;
+	destroy(old);
+	if(status < 0)
+		memmove(up->env->errstr, saved, sizeof(saved));
 }
 
 enum

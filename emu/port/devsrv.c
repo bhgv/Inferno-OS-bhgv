@@ -101,6 +101,7 @@ srvgen(Chan *c, char *name, Dirtab *tab, int ntab, int s, Dir *dp)
 	return 1;
 }
 
+/* Match reply payload sizes and pointer maps to native records exchanged with the VM. */
 static void
 srvinit(void)
 {
@@ -111,8 +112,11 @@ srvinit(void)
 	Twrchan = dtype(freewrchan, sizeof(Channel), Tchannel.map, Tchannel.np);
 
 	dev.pathgen = 1;
-	dev.Rread = dtype(freeheap, Sys_Rread_size, rmap, sizeof(rmap));
-	dev.Rwrite = dtype(freeheap, Sys_Rwrite_size, wmap, sizeof(wmap));
+	rmap[0] = (0x80 >> (offsetof(Sys_Rread, t0)/sizeof(void*))) |
+		(0x80 >> (offsetof(Sys_Rread, t1)/sizeof(void*)));
+	wmap[0] = 0x80 >> (offsetof(Sys_Rwrite, t1)/sizeof(void*));
+	dev.Rread = dtype(freeheap, sizeof(Sys_Rread), rmap, sizeof(rmap));
+	dev.Rwrite = dtype(freeheap, sizeof(Sys_Rwrite), wmap, sizeof(wmap));
 }
 
 static int
