@@ -47,9 +47,12 @@ disword(long w)
 	Bputc(bout, w);
 }
 
+/* Validate the complete record count before writing even its header byte. */
 void
 disdata(int kind, long n)
 {
+	if(kind < 0 || kind > 15 || n < 0 || n > 536870911L)
+		fatal("data record out of range");
 	if(n < DMAX && n != 0)
 		Bputc(bout, DBYTE(kind, n));
 	else{
@@ -417,6 +420,7 @@ disexc(Except *es)
 	discon(0);
 }
 
+/* Append one byte to a contiguous data record. */
 static void
 disbyte(long off, int v)
 {
@@ -425,15 +429,19 @@ disbyte(long off, int v)
 	ndatum++;
 }
 
+/* Empty spans need neither cache storage nor a readable source pointer. */
 static void
 disbytes(long off, void *v, int n)
 {
+	if(n == 0)
+		return;
 	disflush(DEFB, off, n);
 	memmove(&cache[ncached], v, n);
 	ncached += n;
 	ndatum += n;
 }
 
+/* Append one canonical 32-bit integer to the data cache. */
 static void
 disint(long off, long v)
 {
@@ -445,6 +453,7 @@ disint(long off, long v)
 	ndatum++;
 }
 
+/* Append one canonical 64-bit integer to the data cache. */
 static void
 disbig(long off, Long v)
 {
@@ -464,6 +473,7 @@ disbig(long off, Long v)
 	ndatum++;
 }
 
+/* Append one canonical IEEE real to the data cache. */
 static void
 disreal(long off, Real v)
 {
@@ -485,6 +495,7 @@ disreal(long off, Real v)
 	ndatum++;
 }
 
+/* Flush scalar data before emitting a standalone string record. */
 static void
 disstring(long offset, Sym *sym)
 {
@@ -494,9 +505,16 @@ disstring(long offset, Sym *sym)
 	Bwrite(bout, sym->name, sym->len);
 }
 
+/* Grow to the complete pending span, validating counts before publishing state. */
 static void
 disflush(int kind, long off, long size)
 {
+	int needed, capacity;
+	uchar *grown;
+
+	if(kind >= 0 && (off < 0 || off > 536870911L ||
+	   size < 0 || size > 536870911L))
+		fatal("data cache span out of range");
 	if(kind != lastkind || off != lastoff){
 		if(lastkind != -1 && ncached){
 			disdata(lastkind, ndatum);
@@ -508,11 +526,27 @@ disflush(int kind, long off, long size)
 		ncached = 0;
 		ndatum = 0;
 	}
-	lastoff = off + size;
-	while(kind >= 0 && ncached + size >= lencache){
-		lencache = ncached+1024;
-		cache = reallocmem(cache, lencache);
+	if(kind >= 0){
+		if(ncached < 0 || size > 536870911L-ncached)
+			fatal("data cache size out of range");
+		needed = ncached+size;
+		if(needed > lencache){
+			capacity = lencache;
+			if(capacity < 1024)
+				capacity = 1024;
+			while(capacity < needed){
+				if(capacity > 536870911/2){
+					capacity = needed;
+					break;
+				}
+				capacity *= 2;
+			}
+			grown = reallocmem(cache, capacity);
+			cache = grown;
+			lencache = capacity;
+		}
 	}
+	lastoff = off+size;
 }
 
 static int dismode[Aend] = {
