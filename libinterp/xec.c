@@ -70,12 +70,36 @@ OP(subl)
 }
 OP(subf) { F(d) = F(m) - F(s); }
 OP(divb) { B(d) = B(m) / B(s); }
-OP(divw) { W(d) = W(m) / W(s); }
-OP(divl) { V(d) = V(m) / V(s); }
+/* Raise the VM divide-by-zero exception instead of invoking C undefined behavior. */
+OP(divw)
+{
+	if(W(s) == 0)
+		error(exZdiv);
+	W(d) = W(m) / W(s);
+}
+/* Keep big-integer division-by-zero behavior identical across interpreter hosts. */
+OP(divl)
+{
+	if(V(s) == 0)
+		error(exZdiv);
+	V(d) = V(m) / V(s);
+}
 OP(divf) { F(d) = F(m) / F(s); }
 OP(modb) { B(d) = B(m) % B(s); }
-OP(modw) { W(d) = W(m) % W(s); }
-OP(modl) { V(d) = V(m) % V(s); }
+/* Reject zero divisors explicitly; C remainder by zero is undefined behavior. */
+OP(modw)
+{
+	if(W(s) == 0)
+		error(exZdiv);
+	W(d) = W(m) % W(s);
+}
+/* Reject zero divisors explicitly; C remainder by zero is undefined behavior. */
+OP(modl)
+{
+	if(V(s) == 0)
+		error(exZdiv);
+	V(d) = V(m) % V(s);
+}
 OP(mulb) { B(d) = B(m) * B(s); }
 /* Keep word multiplication independent of host signed-overflow optimization. */
 OP(mulw)
