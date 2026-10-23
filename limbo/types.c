@@ -3532,6 +3532,24 @@ if(debug['w']) print("\texpanding\n");
 	}
 }
 
+/* Reserve one byte for the final signature terminator without adding indices. */
+static int
+sigspace(int spos, int size, int lensig)
+{
+	return spos >= 0 && size >= 0 && spos < lensig && size < lensig-spos;
+}
+
+/* Append counted symbol text without writing an intermediate NUL past the span. */
+static int
+sigtext(uchar *sig, int lensig, int spos, char *text, int length)
+{
+	if(!sigspace(spos, length, lensig))
+		return -1;
+	if(length > 0)
+		memmove(sig+spos, text, length);
+	return spos+length;
+}
+
 /*
  * create type signatures
  * sign the same information used
@@ -3542,12 +3560,14 @@ sign(Decl *d)
 {
 	Type *t;
 	uchar *sig, md5sig[MD5dlen];
+	MD5state state;
+	u32int folded;
 	char buf[StrSize];
 	int i, sigend, sigalloc, v;
 
 	t = d->ty;
 	if(t->sig != 0)
-		return t->sig;
+		return (u32int)t->sig;
 
 	if(ispoly(d))
 		rmfnptrs(d);
@@ -3556,7 +3576,12 @@ sign(Decl *d)
 	sigend = -1;
 	sigalloc = 1024;
 	while(sigend < 0 || sigend >= sigalloc){
-		sigalloc *= 2;
+		if(sigalloc == 0x7fffffff)
+			fatal("type signature too large");
+		if(sigalloc > 0x7fffffff/2)
+			sigalloc = 0x7fffffff;
+		else
+			sigalloc *= 2;
 		sig = reallocmem(sig, sigalloc);
 		eqrec = 0;
 		sigend = rtsign(t, sig, sigalloc, 0);
@@ -3575,9 +3600,13 @@ sign(Decl *d)
 		}
 	}
 
-	md5(sig, sigend, md5sig, nil);
+	memset(&state, 0, sizeof(state));
+	md5(sig, sigend, md5sig, &state);
+	folded = 0;
 	for(i = 0; i < MD5dlen; i += 4)
-		t->sig ^= md5sig[i+0] | (md5sig[i+1]<<8) | (md5sig[i+2]<<16) | (md5sig[i+3]<<24);
+		folded ^= (u32int)md5sig[i] | ((u32int)md5sig[i+1]<<8) |
+			((u32int)md5sig[i+2]<<16) | ((u32int)md5sig[i+3]<<24);
+	t->sig = folded;
 	if(debug['S'])
 		print("signed %D type %T len %d sig %#lux\n", d, t, sigend, t->sig);
 	free(sig);
@@ -3614,6 +3643,7 @@ static int sigkind[Tend] =
 	/* Tpoly */	'P',
 };
 
+/* Serialize one type, preserving failed-position sentinels across recursion. */
 static int
 rtsign(Type *t, uchar *sig, int lensig, int spos)
 {
@@ -3624,7 +3654,7 @@ rtsign(Type *t, uchar *sig, int lensig, int spos)
 	if(t == nil)
 		return spos;
 
-	if(spos < 0 || spos + 8 >= lensig)
+	if(!sigspace(spos, 8, lensig))
 		return -1;
 
 	if(t->eq != nil && t->eq->id){
@@ -3634,13 +3664,11 @@ rtsign(Type *t, uchar *sig, int lensig, int spos)
 		sig[spos++] = SIGREC;
 		seprint(name, name+sizeof(name), "%d", t->eq->id);
 		lenname = strlen(name);
-		if(spos + lenname > lensig)
-			return -1;
-		strcpy((char*)&sig[spos], name);
-		spos += lenname;
-		return spos;
+		return sigtext(sig, lensig, spos, name, lenname);
 	}
 	if(t->eq != nil){
+		if(eqrec == 0x7fffffff)
+			fatal("too many recursive signature types");
 		eqrec++;
 		t->eq->id = eqrec;
 	}
@@ -3666,11 +3694,7 @@ rtsign(Type *t, uchar *sig, int lensig, int spos)
 	case Tfix:
 		seprint(name, name+sizeof(name), "%g", t->val->rval);
 		lenname = strlen(name);
-		if(spos+lenname-1 >= lensig)
-			return -1;
-		strcpy((char*)&sig[spos], name);
-		spos += lenname;
-		return spos;
+		return sigtext(sig, lensig, spos, name, lenname);
 	case Tref:
 	case Tlist:
 	case Tarray:
@@ -3698,7 +3722,7 @@ rtsign(Type *t, uchar *sig, int lensig, int spos)
 			spos--;
 			for(id = t->ids; id != nil; id = id->next){
 				spos = idsign1(id, 1, sig, lensig, spos);
-				if(spos < 0 || spos >= lensig)
+				if(!sigspace(spos, 1, lensig))
 					return -1;
 				sig[spos++] = ';';
 			}
@@ -3716,21 +3740,20 @@ rtsign(Type *t, uchar *sig, int lensig, int spos)
 		sig[spos-1] = ',';
 		for(tg = t->tags; tg != nil; tg = tg->next){
 			lenname = tg->sym->len;
-			if(spos + lenname + 2 >= lensig)
+			spos = sigtext(sig, lensig, spos, tg->sym->name, lenname);
+			if(!sigspace(spos, 2, lensig))
 				return -1;
-			strcpy((char*)&sig[spos], tg->sym->name);
-			spos += lenname;
 			sig[spos++] = '=';
 			sig[spos++] = '>';
 
 			spos = rtsign(tg->ty, sig, lensig, spos);
-			if(spos < 0 || spos >= lensig)
+			if(!sigspace(spos, 1, lensig))
 				return -1;
 
 			if(tg->next != nil)
 				sig[spos++] = ',';
 		}
-		if(spos >= lensig)
+		if(!sigspace(spos, 1, lensig))
 			return -1;
 		sig[spos++] = ')';
 		return spos;
@@ -3743,7 +3766,7 @@ rtsign(Type *t, uchar *sig, int lensig, int spos)
 		if(t->tof->linkall == 0)
 			fatal("signing a narrowed module");
 
-		if(spos >= lensig)
+		if(!sigspace(spos, 1, lensig))
 			return -1;
 		sig[spos++] = '{';
 		for(id = t->tof->ids; id != nil; id = id->next){
@@ -3756,23 +3779,24 @@ rtsign(Type *t, uchar *sig, int lensig, int spos)
 				continue;
 			}
 			spos = idsign1(id, 1, sig, lensig, spos);
-			if(spos < 0 || spos >= lensig)
+			if(!sigspace(spos, 1, lensig))
 				return -1;
 			sig[spos++] = ';';
 		}
-		if(spos >= lensig)
+		if(!sigspace(spos, 1, lensig))
 			return -1;
 		sig[spos++] = '}';
 		return spos;
 	}
 }
 
+/* Stop failed list positions before writing delimiters or nested declarations. */
 static int
 idsign(Decl *id, int usenames, uchar *sig, int lensig, int spos)
 {
 	int first;
 
-	if(spos >= lensig)
+	if(!sigspace(spos, 1, lensig))
 		return -1;
 	sig[spos++] = '(';
 	first = 1;
@@ -3784,7 +3808,7 @@ idsign(Decl *id, int usenames, uchar *sig, int lensig, int spos)
 			continue;
 
 		if(!first){
-			if(spos >= lensig)
+			if(!sigspace(spos, 1, lensig))
 				return -1;
 			sig[spos++] = ',';
 		}
@@ -3794,12 +3818,13 @@ idsign(Decl *id, int usenames, uchar *sig, int lensig, int spos)
 			return -1;
 		first = 0;
 	}
-	if(spos >= lensig)
+	if(!sigspace(spos, 1, lensig))
 		return -1;
 	sig[spos++] = ')';
 	return spos;
 }
 
+/* Append an optional counted name and declaration flags within the same span. */
 static int
 idsign1(Decl *id, int usenames, uchar *sig, int lensig, int spos)
 {
@@ -3809,14 +3834,13 @@ idsign1(Decl *id, int usenames, uchar *sig, int lensig, int spos)
 	if(usenames){
 		name = id->sym->name;
 		lenname = id->sym->len;
-		if(spos + lenname + 1 >= lensig)
+		spos = sigtext(sig, lensig, spos, name, lenname);
+		if(!sigspace(spos, 1, lensig))
 			return -1;
-		strcpy((char*)&sig[spos], name);
-		spos += lenname;
 		sig[spos++] = ':';
 	}
 
-	if(spos + 2 >= lensig)
+	if(!sigspace(spos, 2, lensig))
 		return -1;
 
 	if(id->implicit != 0)
@@ -3828,6 +3852,7 @@ idsign1(Decl *id, int usenames, uchar *sig, int lensig, int spos)
 	return rtsign(id->ty, sig, lensig, spos);
 }
 
+/* Bound counted exception names without temporary terminators at the buffer end. */
 static int
 raisessign(Node *n, uchar *sig, int lensig, int spos)
 {
@@ -3835,28 +3860,28 @@ raisessign(Node *n, uchar *sig, int lensig, int spos)
 	char *s;
 	Node *nn;
 
-	if(spos >= lensig)
+	if(!sigspace(spos, 1, lensig))
 		return -1;
 	sig[spos++] = '(';
 	for(nn = n->left; nn != nil; nn = nn->right){
 		s = nn->left->decl->sym->name;
 		m = nn->left->decl->sym->len;
-		if(spos+m-1 >= lensig)
+		spos = sigtext(sig, lensig, spos, s, m);
+		if(spos < 0)
 			return -1;
-		strcpy((char*)&sig[spos], s);
-		spos += m;
 		if(nn->right != nil){
-			if(spos >= lensig)
+			if(!sigspace(spos, 1, lensig))
 				return -1;
 			sig[spos++] = ',';
 		}
 	}
-	if(spos >= lensig)
+	if(!sigspace(spos, 1, lensig))
 		return -1;
 	sig[spos++] = ')';
 	return spos;
 }
 
+/* Clear only the graph nodes and recursion IDs visited by the current attempt. */
 static int
 clearrec(Type *t)
 {
