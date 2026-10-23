@@ -17,6 +17,7 @@ static	int	lastoff;
 static	int	lastkind;
 static	int	lencache;
 
+/* Reject values outside the signed 30-bit Dis operand before emitting bytes. */
 void
 discon(long val)
 {
@@ -29,8 +30,7 @@ discon(long val)
 		Bputc(bout, val);
 		return;
 	}
-	if(val < 0 && ((val >> 29) & 0x7) != 7
-	|| val > 0 && (val >> 29) != 0)
+	if(val < -536870912L || val > 536870911L)
 		fatal("overflow in constant 0x%lux\n", val);
 	Bputc(bout, (val>>24) | 0xC0);
 	Bputc(bout, val>>16);
@@ -616,6 +616,7 @@ disaddr(int m, Addr *a)
 	disbcon(val);
 }
 
+/* Apply the same wire-width check to buffered instruction operands. */
 void
 disbcon(long val)
 {
@@ -628,8 +629,7 @@ disbcon(long val)
 		ibuf[nibuf++] = val;
 		return;
 	}
-	if(val < 0 && ((val >> 29) & 7) != 7
-	|| val > 0 && (val >> 29) != 0)
+	if(val < -536870912L || val > 536870911L)
 		fatal("overflow in constant 16r%lux", val);
 	ibuf[nibuf++] = val>>24 | 0xC0;
 	ibuf[nibuf++] = val>>16;

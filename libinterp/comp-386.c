@@ -749,39 +749,48 @@ comcasel(Inst *i)
 	t[0] = (ulong)base + patch[t[0]];
 }
 
+/* Check imported frame metadata before using the native allocation helper. */
 static void
 commframe(Inst *i)
 {
-	int o;
-	uchar *punt, *mlnil;
+	int j, o;
+	uchar *slow[6], *native;
 
 	opwld(i, Oldw, RAX);
 	cmpl(RAX, (ulong)H);
 	gen2(Ojeqb, 0);
-	mlnil = code - 1;
-	if((i->add&ARM) == AXIMM) {
-		o = OA(Modlink, links)+i->reg*sizeof(Modl)+O(Modl, frame);
-		modrm(Oldw, o, RAX, RTA);
-	} else {
-		gen2(Oldw, (3<<6)|(RTMP<<3)|RAX);	// MOVL	AX, RTMP
-		mid(i, Oldw, RCX);			// index
-		gen2(Olea, (0<<6)|(0<<3)|4);		// lea	(AX)(RCX*8)
-		genb((3<<6)|(RCX<<3)|RAX);		// assumes sizeof(Modl) == 8 hence 3
-		o = OA(Modlink, links)+O(Modl, frame);
-		modrm(Oldw, o, RAX, RTA);		// frame
-		genb(OxchgAX+RTMP);			// get old AX back
-	}
-	modrm(0x83, O(Type, initialize), RTA, 7);
+	slow[0] = code-1;
+	cmpl(RAX, 0);
+	gen2(Ojeqb, 0);
+	slow[1] = code-1;
+	modrm(Oldw, O(Modlink, nlinks), RAX, RCX);
+	cmpl(RCX, i->reg);
+	gen2(Ojleb, 0);
+	slow[2] = code-1;
+	o = OA(Modlink, links)+i->reg*sizeof(Modl)+O(Modl, frame);
+	modrm(Oldw, o, RAX, RTA);
+	cmpl(RTA, (ulong)H);
+	gen2(Ojeqb, 0);
+	slow[3] = code-1;
+	cmpl(RTA, 0);
+	gen2(Ojeqb, 0);
+	slow[4] = code-1;
+	modrm(Ocmpi, O(Type, size), RTA, 7);
+	genb(sizeof(Frame));
+	gen2(Ojltb, 0);
+	slow[5] = code-1;
+	modrm(Ocmpi, O(Type, initialize), RTA, 7);
 	genb(0);
 	gen2(Ojneb, 0);
-	punt = code - 1;
-	genb(OxchgAX+RTA);
-	opwst(i, Olea, RTA);
-	*mlnil = code-mlnil-1;
-	rbra(macro[MacMFRA], Ocall);
+	native = code-1;
+
+	/* Preserve full VM lookup semantics for missing or uncompiled descriptors. */
+	for(j = 0; j < nelem(slow); j++)
+		*slow[j] = code-slow[j]-1;
+	punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
 	rbra(patch[i-mod->prog+1], Ojmp);
 
-	*punt = code-punt-1;
+	*native = code-native-1;
 	rbra(macro[MacFRAM], Ocall);
 	opwst(i, Ostw, RCX);
 }
@@ -996,7 +1005,8 @@ comp(Inst *i)
 		punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
 		break;
 	case IMFRAME:
-		if((i->add&ARM) == AXIMM)
+		/* Negative immediates name exports, not entries in the import table. */
+		if((i->add&ARM) == AXIMM && (short)i->reg >= 0)
 			commframe(i);
 		else
 			punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
@@ -1076,7 +1086,8 @@ comp(Inst *i)
 		/* Invalid constant descriptors must reach the checked VM frame path. */
 		if(UXSRC(i->add) != SRC(AIMM) ||
 		   i->s.imm < 0 || i->s.imm >= mod->ntype || mod->type == nil ||
-		   mod->type[i->s.imm] == nil || mod->type[i->s.imm]->size < (int)sizeof(Frame)) {
+		   mod->type[i->s.imm] == nil || mod->type[i->s.imm] == H ||
+		   mod->type[i->s.imm]->size < (int)sizeof(Frame)) {
 			punt(i, SRCOP|DSTOP, optab[i->op]);
 			break;
 		}

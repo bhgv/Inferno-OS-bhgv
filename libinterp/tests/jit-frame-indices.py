@@ -76,6 +76,11 @@ int main(void) {
         punts=emitted=0; memset(marks,0,sizeof(marks)); selectframe(&i);
         assert(punts==1 && emitted==0 && marks[0]==0 && marks[1]==0 && marks[2]==0); checks++;
     }
+    if(TEST_H) {
+        module.type=table; table[1]=H;
+        punts=emitted=0; memset(marks,0,sizeof(marks)); selectframe(&i);
+        assert(punts==1 && emitted==0 && marks[0]==0 && marks[1]==0 && marks[2]==0); checks++;
+    }
     printf("IFRAME: %d cases\n",checks); return 0;
 }
 '''
@@ -96,7 +101,7 @@ with tempfile.TemporaryDirectory(prefix='jit-frame-indices-') as directory:
             initialization = 'memset(marks,0,sizeof(marks));'
         marktype = 'ulong' if arch in ('mips','power') else 'uchar'
         target = td/(arch+'.c')
-        target.write_text(unit.replace('BLOCK', source[start:end]).replace('MARKTYPE', marktype).replace('INITONLY', '1' if os.environ.get('JIT_FRAME_CASES') == 'initialization' else '0').replace('INIT', initialization))
+        target.write_text(unit.replace('TEST_H', '1' if arch in ('386','arm') else '0').replace('BLOCK', source[start:end]).replace('MARKTYPE', marktype).replace('INITONLY', '1' if os.environ.get('JIT_FRAME_CASES') == 'initialization' else '0').replace('INIT', initialization))
         binary = td/arch
         subprocess.run(cmd+includes+[str(target),'-o',str(binary)],check=True)
         print(arch,flush=True)

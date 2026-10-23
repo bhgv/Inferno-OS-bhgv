@@ -986,38 +986,49 @@ comcasel(Inst *i)
 	t[0] = RELPC(patch[t[0]]);
 }
 
+/* Check imported frame metadata before using the native allocation helper. */
 static void
 commframe(Inst *i)
 {
-	ulong *punt, *mlnil;
+	int j;
+	ulong *slow[6], *native;
 
 	opwld(i, Ldw, RA0);
 	CMPH(AL, RA0);
-	mlnil = code;
+	slow[0] = code;
 	BRA(EQ, 0);
-
-	if((i->add&ARM) == AXIMM) {
-		mem(Ldw, OA(Modlink, links)+i->reg*sizeof(Modl)+O(Modl, frame), RA0, RA3);
-	} else {
-		mid(i, Ldw, RA1);
-		DP(AL, Add, RA0, RA1, (3<<3), RA1);	// assumes sizeof(Modl) == 8
-		mem(Ldw, OA(Modlink, links)+O(Modl, frame), RA1, RA3);
-	}
-
+	CMPI(AL, RA0, 0, 0, 0);
+	slow[1] = code;
+	BRA(EQ, 0);
+	mem(Ldw, O(Modlink, nlinks), RA0, RA1);
+	con(i->reg, RA2, 1);
+	CMP(AL, RA1, 0, 0, RA2);
+	slow[2] = code;
+	BRA(LE, 0);
+	mem(Ldw, OA(Modlink, links)+i->reg*sizeof(Modl)+O(Modl, frame), RA0, RA3);
+	CMPH(AL, RA3);
+	slow[3] = code;
+	BRA(EQ, 0);
+	CMPI(AL, RA3, 0, 0, 0);
+	slow[4] = code;
+	BRA(EQ, 0);
+	mem(Ldw, O(Type, size), RA3, RA1);
+	CMPI(AL, RA1, 0, 0, sizeof(Frame));
+	slow[5] = code;
+	BRA(LT, 0);
 	mem(Ldw, O(Type, initialize), RA3, RA1);
 	CMPI(AL, RA1, 0, 0, 0);
-	punt = code;
+	native = code;
 	BRA(NE, 0);
 
-	opwst(i, Lea, RA0);
+	/* Preserve full VM lookup semantics for missing or uncompiled descriptors. */
+	for(j = 0; j < nelem(slow); j++){
+		PATCH(slow[j]);
+	}
+	punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
+	BRADIS(AL, i-mod->prog+1);
 
-	/* Type in RA3, destination in RA0 */
-	PATCH(mlnil);
-	con(RELPC(patch[i-mod->prog+1]), RLINK, 0);
-	BRAMAC(AL, MacMFRA);
-
-	/* Type in RA3 */
-	PATCH(punt);
+	PATCH(native);
 	CALLMAC(AL, MacFRAM);
 	opwst(i, Stw, RA2);
 }
@@ -1258,7 +1269,8 @@ comp(Inst *i)
 		punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
 		break;
 	case IMFRAME:
-		if((i->add&ARM) == AXIMM)
+		/* Negative immediates name exports, not entries in the import table. */
+		if((i->add&ARM) == AXIMM && (short)i->reg >= 0)
 			commframe(i);
 		else
 			punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
@@ -1308,7 +1320,8 @@ comp(Inst *i)
 		/* Invalid constant descriptors must reach the checked VM frame path. */
 		if(UXSRC(i->add) != SRC(AIMM) ||
 		   i->s.imm < 0 || i->s.imm >= mod->ntype || mod->type == nil ||
-		   mod->type[i->s.imm] == nil || mod->type[i->s.imm]->size < (int)sizeof(Frame)) {
+		   mod->type[i->s.imm] == nil || mod->type[i->s.imm] == H ||
+		   mod->type[i->s.imm]->size < (int)sizeof(Frame)) {
 			punt(i, SRCOP|DSTOP, optab[i->op]);
 			break;
 		}

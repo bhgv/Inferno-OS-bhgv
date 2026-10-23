@@ -385,6 +385,51 @@ indices(void)
 	}
 }
 
+/* Bad frame metadata must fail before changing the stack or destination. */
+static void
+frameerrors(void)
+{
+	REG before;
+	Modlink *saved;
+	Module *owner;
+	int op, mode;
+
+	for(op = 5; op <= 6; op++)for(mode = 0; mode < 5; mode++){
+		setup(); operation = op; operand = op == 5 ? 0 : -1;
+		R.m = &operand;
+		R.s = op == 5 ? (void*)&operand : (void*)&ml;
+		if(mode == 0)types[0] = exports[0].frame = nil;
+		else if(mode == 1)types[0] = exports[0].frame = H;
+		else if(mode == 2)type.size = 0;
+		else if(mode == 3)type.size = sizeof(Frame)-1;
+		else type.size = -1;
+		before = R;
+		assert(!kprotect(run, nil) && raised != nil && allocations == 0);
+		assert(!memcmp(&before, &R, sizeof(R)) && output == H);
+		destroy(ml); assert(live == 0); checks++;
+	}
+	for(mode = 0; mode < 2; mode++){
+		setup(); operation = 6; operand = -1; R.m = &operand; R.s = &ml;
+		saved = ml; ml = mode == 0 ? nil : H; before = R;
+		assert(!kprotect(run, nil) && raised == exModule && allocations == 0);
+		assert(!memcmp(&before, &R, sizeof(R)) && output == H);
+		ml = saved; destroy(ml); assert(live == 0); checks++;
+	}
+	for(mode = 0; mode < 3; mode++){
+		setup(); operation = 6; operand = -1; R.m = &operand; R.s = &ml;
+		owner = ml->m;
+		if(mode == 0)ml->m = nil;
+		else if(mode == 1)ml->m = H;
+		else ml->nlinks = -1;
+		before = R;
+		assert(!kprotect(run, nil) && raised != nil && allocations == 0);
+		assert(!memcmp(&before, &R, sizeof(R)) && output == H);
+		ml->m = owner; ml->nlinks = 0;
+		destroy(ml); assert(live == 0); checks++;
+	}
+
+}
+
 /* Environment errors must not leave a process in any scheduler or group list. */
 static void
 environments(void)
@@ -434,6 +479,7 @@ main(void)
 	if(only == nil || !strcmp(only, "root"))roots();
 	if(only == nil || !strcmp(only, "spawn"))spawns();
 	if(only == nil || !strcmp(only, "indices"))indices();
+	if(only == nil || !strcmp(only, "frameerrors"))frameerrors();
 	if(only == nil || !strcmp(only, "environment"))environments();
 	if(only != nil && !strcmp(only, "pid"))pids();
 	if(only == nil || !strcmp(only, "overflow"))overflowlimit();

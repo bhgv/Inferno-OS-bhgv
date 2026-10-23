@@ -346,7 +346,7 @@ moduletype(Modlink *ml, WORD index)
 	if(index < 0 || index >= m->ntype || m->type == nil)
 		error("invalid type");
 	t = m->type[index];
-	if(t == nil || t->size < 0)
+	if(t == nil || t == H || t->size < 0)
 		error("invalid type");
 	return t;
 }
@@ -409,12 +409,16 @@ moduleentry(Modlink *ml, WORD index, Modl *entry)
 {
 	Link *l;
 
+	if(ml == nil || ml == H || ml->nlinks < 0)
+		return 0;
 	if(index >= 0){
 		if(index >= ml->nlinks)
 			return 0;
 		*entry = ml->links[index];
 		return 1;
 	}
+	if(ml->m == nil || ml->m == H)
+		return 0;
 	if(ml->m->ext != nil)
 		for(l = ml->m->ext; l->name != nil; l++, index++)
 			if(index == -1){
@@ -429,7 +433,8 @@ moduleentry(Modlink *ml, WORD index, Modl *entry)
 static int
 framefits(Type *t)
 {
-	if(t == nil || t->size < sizeof(Frame) || R.SP == nil || R.TS == nil || R.SP > R.TS)
+	if(t == nil || t == H || t->size < (int)sizeof(Frame) ||
+	   R.SP == nil || R.TS == nil || R.SP > R.TS)
 		error(exHeap);
 	return (ulong)t->size < (ulong)(R.TS-R.SP);
 }
@@ -464,7 +469,7 @@ OP(mframe)
 	Modlink *ml;
 
 	ml = *(Modlink**)R.s;
-	if(ml == H)
+	if(ml == H || ml == nil)
 		error(exModule);
 
 	if(!moduleentry(ml, W(m), &entry))
