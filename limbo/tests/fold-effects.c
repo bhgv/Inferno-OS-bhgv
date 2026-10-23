@@ -28,6 +28,7 @@ struct Node {
 	Node *left, *right;
 	int op, side;
 	vlong val;
+	void *decl;
 };
 static int isrelop[64];
 static int visits, checks;

@@ -905,6 +905,7 @@ foldcasti(Node *n, Node *left)
 /*
  * Fold a constant right operand without changing boolean normalization
  * or discarding evaluation of a left operand with side effects.
+ * Preserve the expression type when its right operand has a different type.
  */
 Node*
 foldvc(Node *n)
@@ -954,8 +955,12 @@ foldvc(Node *n)
 		break;
 	case Oexp:
 		if(right->val == 0 && !hasside(left, 1)){
-			right->val = 1;
-			return right;
+			/* The exponent is int even when the power's result is big. */
+			n->op = Oconst;
+			n->val = 1;
+			n->left = n->right = nil;
+			n->decl = nil;
+			return n;
 		}
 		if(right->val == 1)
 			return left;
