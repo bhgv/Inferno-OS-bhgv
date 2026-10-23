@@ -558,7 +558,9 @@ strtoi(char *t, int base)
 	}else if(t[0] == '+')
 		t++;
 	v = 0;
-	for(s = t; c = *s; s++){
+	for(s = t; *s; s++){
+		/* Numeric tokens are bytes; do not sign-extend UTF-8 bytes on signed-char hosts. */
+		c = (uchar)*s;
 		ck = cmap(c);
 		if(ck & Mdigit)
 			c -= '0';
@@ -582,7 +584,9 @@ digit(int c, int base)
 {
 	int cc, ck;
 
-	cc = c;
+	/* Treat source bytes as unsigned so malformed UTF-8 cannot become a digit. */
+	cc = (uchar)c;
+	c = cc;
 	ck = cmap(c);
 	if(ck & Mdigit)
 		c -= '0';
