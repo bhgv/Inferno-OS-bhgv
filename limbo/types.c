@@ -2426,7 +2426,7 @@ mkdesc(long size, Decl *d)
 	len = (size+8*IBY2WD-1) / (8*IBY2WD);
 	pmap = allocmem(len);
 	memset(pmap, 0, len);
-	n = descmap(d, pmap, 0);
+	n = descmap(d, pmap, 0, size);
 	if(n >= 0)
 		n = n / (8*IBY2WD) + 1;
 	else
@@ -2455,7 +2455,7 @@ usedty(t);
 	len = (t->size+8*IBY2WD-1) / (8*IBY2WD);
 	pmap = allocmem(len);
 	memset(pmap, 0, len);
-	n = tdescmap(t, pmap, 0);
+	n = tdescmap(t, pmap, 0, t->size);
 	if(n >= 0)
 		n = n / (8*IBY2WD) + 1;
 	else
@@ -2521,86 +2521,93 @@ usedesc(Desc *d)
 	return d;
 }
 
-/*
- * create the pointer description byte map for every type in decls
- * each bit corresponds to a word, and is 1 if occupied by a pointer
- * the high bit in the byte maps the first word
- */
+/* Mark a complete aligned pointer slot only after checking the descriptor extent. */
+static long
+mapmark(uchar *map, long offset, long size)
+{
+	long slot;
+
+	if(map == nil || offset < 0 || size < IBY2WD ||
+	   offset > size-IBY2WD || offset%IBY2WD != 0)
+		fatal("pointer outside descriptor");
+	slot = offset/IBY2WD;
+	map[slot/8] |= 0x80>>(slot%8);
+	return offset;
+}
+
+/* Return the highest marked offset even when declaration order differs from storage order. */
 long
-descmap(Decl *decls, uchar *map, long start)
+descmap(Decl *decls, uchar *map, long start, long size)
 {
 	Decl *d;
-	long last, m;
+	long last, m, at;
 
 	if(debug['D'])
 		print("descmap offset %ld\n", start);
+	if(start < 0 || size < 0 || start > size || size > 0x7fffffff)
+		fatal("invalid descriptor extent");
 	last = -1;
 	for(d = decls; d != nil; d = d->next){
-		if(d->store == Dtype && d->ty->kind == Tmodule
-		|| d->store == Dfn
-		|| d->store == Dconst)
+		if((d->store == Dtype && d->ty->kind == Tmodule) ||
+		   d->store == Dfn || d->store == Dconst)
 			continue;
 		if(d->store == Dlocal && d->link != nil)
 			continue;
-		m = tdescmap(d->ty, map, d->offset + start);
+		at = addsize(start, d->offset);
+		m = tdescmap(d->ty, map, at, size);
 		if(debug['D']){
 			if(d->sym != nil)
 				print("descmap %s type %T offset %ld returns %ld\n",
-					d->sym->name, d->ty, d->offset+start, m);
+					d->sym->name, d->ty, at, m);
 			else
-				print("descmap type %T offset %ld returns %ld\n", d->ty, d->offset+start, m);
+				print("descmap type %T offset %ld returns %ld\n", d->ty, at, m);
 		}
-		if(m >= 0)
+		if(m > last)
 			last = m;
 	}
 	return last;
 }
 
+/* Propagate descriptor capacity through nested types before setting any pointer bit. */
 long
-tdescmap(Type *t, uchar *map, long offset)
+tdescmap(Type *t, uchar *map, long offset, long size)
 {
 	Label *lab;
 	long i, e, m;
-	int bit;
 
+	if(offset < 0 || size < 0 || offset > size || size > 0x7fffffff)
+		fatal("invalid descriptor extent");
 	if(t == nil)
 		return -1;
-
 	m = -1;
 	if(t->kind == Talt){
 		lab = t->cse->labs;
 		e = t->cse->nlab;
-		offset += IBY2WD * 2;
+		if(e < 0)
+			fatal("invalid descriptor table");
+		offset = addsize(offset, 2*IBY2WD);
 		for(i = 0; i < e; i++){
-			if(lab[i].isptr){
-				bit = offset / IBY2WD % 8;
-				map[offset / (8*IBY2WD)] |= 1 << (7 - bit);
-				m = offset;
-			}
-			offset += 2*IBY2WD;
+			if(lab[i].isptr)
+				m = mapmark(map, offset, size);
+			offset = addsize(offset, 2*IBY2WD);
 		}
 		return m;
 	}
 	if(t->kind == Tcasec){
 		e = t->cse->nlab;
-		offset += IBY2WD;
+		if(e < 0)
+			fatal("invalid descriptor table");
+		offset = addsize(offset, IBY2WD);
 		for(i = 0; i < e; i++){
-			bit = offset / IBY2WD % 8;
-			map[offset / (8*IBY2WD)] |= 1 << (7 - bit);
-			offset += IBY2WD;
-			bit = offset / IBY2WD % 8;
-			map[offset / (8*IBY2WD)] |= 1 << (7 - bit);
-			m = offset;
-			offset += 2*IBY2WD;
+			mapmark(map, offset, size);
+			offset = addsize(offset, IBY2WD);
+			m = mapmark(map, offset, size);
+			offset = addsize(offset, 2*IBY2WD);
 		}
 		return m;
 	}
-
-	if(tattr[t->kind].isptr){
-		bit = offset / IBY2WD % 8;
-		map[offset / (8*IBY2WD)] |= 1 << (7 - bit);
-		return offset;
-	}
+	if(tattr[t->kind].isptr)
+		return mapmark(map, offset, size);
 	if(t->kind == Tadtpick)
 		t = t->tof;
 	if(t->kind == Ttuple || t->kind == Tadt || t->kind == Texception){
@@ -2609,11 +2616,10 @@ tdescmap(Type *t, uchar *map, long offset)
 		if(t->rec != 0)
 			fatal("illegal cyclic type %t in tdescmap", t);
 		t->rec = 1;
-		offset = descmap(t->ids, map, offset);
+		m = descmap(t->ids, map, offset, size);
 		t->rec = 0;
-		return offset;
+		return m;
 	}
-
 	return -1;
 }
 
