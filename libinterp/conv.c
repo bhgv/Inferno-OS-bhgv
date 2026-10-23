@@ -24,9 +24,11 @@ struct Addr
 #pragma	varargck	type	"a"	Addr*
 
 char*	opnam[256];
+static uchar optype[256];
 int	iconv(Fmt*);
 int	aconv(Fmt*);
 
+/* Render unknown address modes explicitly and preserve full-width offsets. */
 int
 aconv(Fmt *f)
 {
@@ -37,15 +39,17 @@ aconv(Fmt *f)
 	if(a == nil)
 		return fmtstrcpy(f, "AZ");
 	switch(a->mode & AMASK) {
-	case AFP:	sprint(buf, "%d(fp)", a->a.ind);	break;
-	case AMP:	sprint(buf, "%d(mp)", a->a.ind);	break;
-	case AIMM:	sprint(buf, "$%d", a->a.imm);		break;
-	case AIND|AFP:	sprint(buf, "%d(%d(fp))", a->a.i.s, a->a.i.f); break;
-	case AIND|AMP:	sprint(buf, "%d(%d(mp))", a->a.i.s, a->a.i.f); break;
+	case AFP:	snprint(buf, sizeof(buf), "%ld(fp)", (long)a->a.ind);	break;
+	case AMP:	snprint(buf, sizeof(buf), "%ld(mp)", (long)a->a.ind);	break;
+	case AIMM:	snprint(buf, sizeof(buf), "$%ld", (long)a->a.imm);	break;
+	case AIND|AFP:	snprint(buf, sizeof(buf), "%d(%d(fp))", a->a.i.s, a->a.i.f); break;
+	case AIND|AMP:	snprint(buf, sizeof(buf), "%d(%d(mp))", a->a.i.s, a->a.i.f); break;
+	default:	snprint(buf, sizeof(buf), "A%d", a->mode & AMASK); break;
 	}
 	return fmtstrcpy(f, buf);
 }
 
+/* Look up opcode metadata by opcode and keep malformed diagnostics printable. */
 int
 Dconv(Fmt *f)
 {
@@ -56,8 +60,10 @@ Dconv(Fmt *f)
 	static int init;
 
 	if(init == 0) {
-		for(j = 0; keywds[j].name != nil; j++)
+		for(j = 0; keywds[j].name != nil; j++){
 			opnam[keywds[j].op] = keywds[j].name;
+			optype[keywds[j].op] = keywds[j].terminal;
+		}
 
 		fmtinstall('a', aconv);
 		init = 1;
@@ -67,14 +73,18 @@ Dconv(Fmt *f)
 	if(i == nil)
 		return fmtstrcpy(f, "IZ");
 
-	switch(keywds[i->op].terminal) {
+	if(opnam[i->op] == nil){
+		snprint(buf, sizeof(buf), "op %d", i->op);
+		return fmtstrcpy(f, buf);
+	}
+	switch(optype[i->op]) {
 	case TOKI0:
-		sprint(buf, "%s", opnam[i->op]);
+		snprint(buf, sizeof(buf), "%s", opnam[i->op]);
 		break;
 	case TOKI1:
 		d.a = i->d;
 		d.mode = UDST(i->add);
-		sprint(buf, "%s\t%a", opnam[i->op], &d);
+		snprint(buf, sizeof(buf), "%s\t%a", opnam[i->op], &d);
 		break;
 	case TOKI3:
 		d.a = i->d;
@@ -83,16 +93,16 @@ Dconv(Fmt *f)
 		s.mode = USRC(i->add);
 		switch(i->add&ARM) {
 		default:
-			sprint(buf, "%s\t%a, %a", opnam[i->op], &s, &d);
+			snprint(buf, sizeof(buf), "%s\t%a, %a", opnam[i->op], &s, &d);
 			break;
 		case AXIMM:
-			sprint(buf, "%s\t%a, $%d, %a", opnam[i->op], &s, i->reg, &d);
+			snprint(buf, sizeof(buf), "%s\t%a, $%d, %a", opnam[i->op], &s, (short)i->reg, &d);
 			break;
 		case AXINF:
-			sprint(buf, "%s\t%a, %d(fp), %a", opnam[i->op], &s, i->reg, &d);
+			snprint(buf, sizeof(buf), "%s\t%a, %d(fp), %a", opnam[i->op], &s, i->reg, &d);
 			break;
 		case AXINM:
-			sprint(buf, "%s\t%a, %d(mp), %a", opnam[i->op], &s, i->reg, &d);
+			snprint(buf, sizeof(buf), "%s\t%a, %d(mp), %a", opnam[i->op], &s, i->reg, &d);
 			break;
 		}
 		break;
@@ -101,7 +111,7 @@ Dconv(Fmt *f)
 		d.mode = UDST(i->add);
 		s.a = i->s;
 		s.mode = USRC(i->add);
-		sprint(buf, "%s\t%a, %a", opnam[i->op], &s, &d);
+		snprint(buf, sizeof(buf), "%s\t%a, %a", opnam[i->op], &s, &d);
 		break;
 	}
 

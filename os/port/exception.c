@@ -86,6 +86,48 @@ freeframe(uchar *fp, int setsp)
 		R.SP = fp;
 }
 
+/* Check exception storage and cleanup maps before selecting a handler. */
+static int
+exceptionframe(uchar *fp, Handler *handler)
+{
+	Frame *f;
+	Type *frame, *cleanup;
+	ulong offset, slot, bytes;
+	int i, bit;
+
+	f = (Frame*)fp;
+	frame = FRTYPE(f);
+	if(frame == nil || frame == H || frame->size < (int)sizeof(Frame) ||
+	   frame->np < 0 || frame->np > frame->size/(8*sizeof(void*))+
+	   (frame->size%(8*sizeof(void*)) != 0))
+		return 0;
+	offset = handler->eoff;
+	if(offset < sizeof(Frame) || offset%sizeof(void*) != 0 ||
+	   offset > (ulong)frame->size-sizeof(void*))
+		return 0;
+	slot = offset/sizeof(void*);
+	if(slot/8 >= frame->np || (frame->map[slot/8] & (0x80>>(slot%8))) == 0)
+		return 0;
+
+	cleanup = handler->t;
+	if(cleanup == nil)
+		return 1;
+	if(cleanup == H || cleanup->size < 0 || cleanup->size > frame->size ||
+	   cleanup->np < 0 || cleanup->np > cleanup->size/(8*sizeof(void*))+
+	   (cleanup->size%(8*sizeof(void*)) != 0))
+		return 0;
+	for(i = 0; i < cleanup->np; i++)
+		for(bit = 0; bit < 8; bit++)
+			if(cleanup->map[i] & (0x80>>bit)){
+				bytes = (i*8+bit)*sizeof(void*);
+				if(bytes < sizeof(Frame) || bytes > (ulong)cleanup->size ||
+				   sizeof(void*) > (ulong)cleanup->size-bytes)
+					return 0;
+			}
+	return 1;
+}
+
+/* Search only usable handlers, retaining diagnostic storage on allocation failure. */
 int
 handler(char *estr)
 {
@@ -117,6 +159,8 @@ handler(char *estr)
 			for( ; h->etab != nil; h++){
 				if(pc < h->pc1 || pc >= h->pc2)
 					continue;
+				if(!exceptionframe(fp, h))
+					continue;
 				eoff = h->eoff;
 				zt = h->t;
 				for(e = h->etab, ne = h->ne; e->s != nil; e++, ne--){
@@ -139,6 +183,9 @@ handler(char *estr)
 			continue;
 		}
 		f = (Frame*)fp;
+		/* The root has no caller PC to reconstruct. */
+		if(f->fp == nil)
+			break;
 		if(f->mr != nil)
 			m = f->mr;
 		if(m->compiled)
@@ -154,13 +201,15 @@ handler(char *estr)
 found:
 	{
 		int n;
-		char name[3*KNAMELEN];
+		char name[3*KNAMELEN], *text;
 
 		pc = modstatus(&R, name, sizeof(name));
 		n = 10+1+strlen(name)+1+strlen(estr)+1;
-		p->exstr = realloc(p->exstr, n);
-		if(p->exstr != nil)
+		text = realloc(p->exstr, n);
+		if(text != nil){
+			p->exstr = text;
 			snprint(p->exstr, n, "%lud %s %s", pc, name, estr);
+		}
 	}
 
 	/*
