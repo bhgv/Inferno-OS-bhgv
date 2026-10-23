@@ -2115,6 +2115,24 @@ cycarc(Type *base, Type *t)
 	return me;
 }
 
+/* Keep compiler storage extents representable in Szal and the VM's signed sizes. */
+long
+addsize(long offset, long size)
+{
+	if(offset < 0 || size < 0 || offset > 0x7fffffff || size > 0x7fffffff-offset)
+		fatal("type or frame too large");
+	return offset+size;
+}
+
+/* Bound table counts before native int multiplication can overflow. */
+static long
+sizetable(int count, int stride, int overhead)
+{
+	if(count < 0 || count > (0x7fffffff-overhead)/stride)
+		fatal("case table too large");
+	return (long)count*stride+overhead;
+}
+
 /*
  * set the sizes and field offsets for t
  * look only as deeply as needed to size this type.
@@ -2132,8 +2150,8 @@ sizetype(Type *t)
 	if((t->ok & OKsized) == OKsized)
 		return;
 	t->ok |= OKsized;
-if((t->ok & (OKverify|OKsized)) != (OKverify|OKsized))
-fatal("sizetype bogus ok for %t", t);
+	if((t->ok & (OKverify|OKsized)) != (OKverify|OKsized))
+		fatal("sizetype bogus ok for %t", t);
 	switch(t->kind){
 	default:
 		fatal("sizetype: unknown type kind %d", t->kind);
@@ -2210,31 +2228,30 @@ fatal("sizetype bogus ok for %t", t);
 		t->align = 1;
 		break;
 	case Talt:
-		t->size = t->cse->nlab * 2*IBY2WD + 2*IBY2WD;
+		t->size = sizetable(t->cse->nlab, 2*IBY2WD, 2*IBY2WD);
 		t->align = IBY2WD;
 		break;
 	case Tcase:
 	case Tcasec:
-		t->size = t->cse->nlab * 3*IBY2WD + 2*IBY2WD;
+		t->size = sizetable(t->cse->nlab, 3*IBY2WD, 2*IBY2WD);
 		t->align = IBY2WD;
 		break;
 	case Tcasel:
-		t->size = t->cse->nlab * 6*IBY2WD + 3*IBY2WD;
+		t->size = sizetable(t->cse->nlab, 6*IBY2WD, 3*IBY2WD);
 		t->align = IBY2LG;
 		break;
 	case Tgoto:
-		t->size = t->cse->nlab * IBY2WD + IBY2WD;
-		if(t->cse->iwild != nil)
-			t->size += IBY2WD;
+		t->size = sizetable(t->cse->nlab, IBY2WD,
+			t->cse->iwild != nil ? 2*IBY2WD : IBY2WD);
 		t->align = IBY2WD;
 		break;
 	case Tiface:
 		sz = IBY2WD;
 		for(id = t->ids; id != nil; id = id->next){
-			sz = align(sz, IBY2WD) + IBY2WD;
-			sz += id->sym->len + 1;
+			sz = addsize(align(sz, IBY2WD), IBY2WD);
+			sz = addsize(addsize(sz, id->sym->len), 1);
 			if(id->dot->ty->kind == Tadt)
-				sz += id->dot->sym->len + 1;
+				sz = addsize(addsize(sz, id->dot->sym->len), 1);
 		}
 		t->size = sz;
 		t->align = IBY2WD;
@@ -2246,12 +2263,14 @@ fatal("sizetype bogus ok for %t", t);
 	}
 }
 
+/* Assign field offsets without narrowing or overflowing accumulated storage. */
 Szal
 sizeids(Decl *id, long off)
 {
 	Szal szal;
 	int a, al;
 
+	off = addsize(off, 0);
 	al = 1;
 	for(; id != nil; id = id->next){
 		if(storespace[id->store]){
@@ -2270,7 +2289,7 @@ sizeids(Decl *id, long off)
 
 			off = align(off, a);
 			id->offset = off;
-			off += id->ty->size;
+			off = addsize(off, id->ty->size);
 		}
 	}
 	szal.size = off;
@@ -2278,14 +2297,19 @@ sizeids(Decl *id, long off)
 	return szal;
 }
 
+/* Round storage offsets in constant time, checking the padding before addition. */
 long
-align(long off, int align)
+align(long off, int alignment)
 {
-	if(align == 0)
-		fatal("align 0");
-	while(off % align)
-		off++;
-	return off;
+	long remainder;
+
+	if(alignment <= 0)
+		fatal("invalid alignment");
+	off = addsize(off, 0);
+	remainder = off%alignment;
+	if(remainder == 0)
+		return off;
+	return addsize(off, alignment-remainder);
 }
 
 /*

@@ -877,6 +877,7 @@ revids(Decl *id)
 	return d;
 }
 
+/* Bound frame extents while preserving grouped alignment and reused local slots. */
 long
 idoffsets(Decl *id, long offset, int al)
 {
@@ -886,7 +887,7 @@ idoffsets(Decl *id, long offset, int al)
 	algn = 1;
 	for(; id != nil; id = id->next){
 		if(storespace[id->store]){
-usedty(id->ty);
+			usedty(id->ty);
 			if(id->store == Dlocal && id->link != nil){
 				/* id->nid always 1 */
 				id->offset = id->link->offset;
@@ -901,7 +902,7 @@ usedty(id->ty);
 			}
 			offset = align(offset, a);
 			id->offset = offset;
-			offset += id->ty->size;
+			offset = addsize(offset, id->ty->size);
 			if(id->nid == 0 && (id->next == nil || id->next->nid != 0))
 				offset = align(offset, algn);
 		}

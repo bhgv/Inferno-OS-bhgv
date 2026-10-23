@@ -9,6 +9,7 @@ void	adtdecled(Node *n);
 void	adtdefd(Type*);
 Decl	*adtmeths(Type*);
 void	adtstub(Decl*);
+long	addsize(long, long);
 long	align(long, int);
 void	*allocmem(ulong);
 void	altcheck(Node *an, Type *ret);
