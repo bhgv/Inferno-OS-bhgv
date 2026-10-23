@@ -12,7 +12,7 @@
 #define  LOGW(...)  __android_log_print(ANDROID_LOG_WARN,LOG_TAG,__VA_ARGS__)
 #define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
 #else
-#define  LOGI(...)  printf(__VA_ARGS__)
+#define  LOGI(...)  print(__VA_ARGS__)
 #define  LOGW(...)  
 #define  LOGE(...)  
 #endif
@@ -23,49 +23,47 @@
 
 
 
+/* Inspect the suffix only after proving that all four bytes exist. */
 int
-is_subfont_ft(char *name){
-	char c1, c2, c3, c4;
-	int r;
-	int i = strlen(name) - 1;
-	
-	if(i >= 0){
-		c1 = name[i-3];
-		c2 = name[i-2];
-		c3 = name[i-1];
-		c4 = name[i-0];
-	}else
-		return 0;
+is_subfont_ft(char *name)
+{
+	ulong n;
+	char *suffix;
 
-	r = (
-		c1 == '.' && 
-		(c2 == 't' || c2 == 'T') &&
-		(c3 == 't' || c3 == 'T') &&
-		(c4 == 'f' || c4 == 'F')
-	);
-	
-	return r;
+	if(name == nil)
+		return 0;
+	n = strlen(name);
+	if(n < 4)
+		return 0;
+	suffix = name+n-4;
+	return suffix[0] == '.' &&
+		(suffix[1] == 't' || suffix[1] == 'T') &&
+		(suffix[2] == 't' || suffix[2] == 'T') &&
+		(suffix[3] == 'f' || suffix[3] == 'F');
 }
 
-
+/* Keep the complete path and decimal size in the subfont cache key. */
 char*
-mangle_subfont_ft(char* name, int size){
-	char *mangled_name;
+mangle_subfont_ft(char *name, int size)
+{
+	char *mangled;
+	ulong n;
 
 	if(name == nil || size == 0)
 		return nil;
-	
-	mangled_name = malloc(256);
-	
-	if(!mangled_name)
+	n = strlen(name);
+	/* Reserve brackets, a signed 32-bit size and the terminating NUL. */
+	if(n > 0x7fffffff-14)
 		return nil;
-
-	snprint(mangled_name, 255, "%s[%d]", name, size);
-
-	return mangled_name;
+	mangled = malloc(n+14);
+	if(mangled == nil)
+		return nil;
+	snprint(mangled, n+14, "%s[%d]", name, size);
+	return mangled;
 }
 
 
+/* Rasterize a TrueType face into a cached subfont. */
 Subfont*
 readsubfont_ft(Display*d, char *name, int fnt_size, int dolock)
 {
@@ -98,7 +96,7 @@ readsubfont_ft(Display*d, char *name, int fnt_size, int dolock)
 #define FNT_CHR_BEG 0
 #define FNT_CHR_END finfo.num_glyphs  //255
 	
-LOGI("font=%s, fnt_sz=%d, num_glyphs=%d", name, fnt_size, FNT_CHR_END);
+LOGI("font=%s, fnt_sz=%d, num_glyphs=%ld", name, fnt_size, FNT_CHR_END);
 
 	err = ftsetcharsize(ftface, fnt_size<<6, 72, 72, &finfo);
 	if (err != nil) {

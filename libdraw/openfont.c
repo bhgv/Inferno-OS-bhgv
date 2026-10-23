@@ -2,6 +2,7 @@
 #include "kernel.h"
 #include "draw.h"
 
+/* Reject unrepresentable file lengths before narrowing or allocating the text. */
 Font*
 openfont(Display *d, char *name)
 {
@@ -21,6 +22,11 @@ openfont(Display *d, char *name)
     Err0:
 		libclose(fd);
 		return 0;
+	}
+	if(dir->length < 0 || dir->length > 0x7fffffff-1){
+		free(dir);
+		kwerrstr("font file too large");
+		goto Err0;
 	}
 	n = dir->length;
 	free(dir);

@@ -11,15 +11,10 @@
 #define  LOGW(...)  __android_log_print(ANDROID_LOG_WARN,LOG_TAG,__VA_ARGS__)
 #define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
 #else
-#define  LOGI(...)  printf(__VA_ARGS__)
+#define  LOGI(...)  print(__VA_ARGS__)
 #define  LOGW(...)  
 #define  LOGE(...)  
 #endif
-
-
-extern Subfont*
-readsubfont_ft(Display*d, char *name, int fnt_size, int dolock);
-
 
 /*
  * Default version: treat as file name

@@ -2,6 +2,7 @@
 #include "draw.h"
 #include "kernel.h"
 
+/* Skip separators between font description fields. */
 static char*
 skip(char *s)
 {
@@ -10,13 +11,15 @@ skip(char *s)
 	return s;
 }
 
+/* Parse representable font dimensions and retain ownership on allocation failure. */
 Font*
 buildfont(Display *d, char *buf, char *name)
 {
 	Font *fnt;
-	Cachefont *c;
+	Cachefont *c, **sub;
 	char *s, *t;
 	ulong min, max;
+	long height, ascent;
 	int offset;
 	char badform[] = "bad font format: number expected (char position %d)";
 
@@ -40,14 +43,16 @@ buildfont(Display *d, char *buf, char *name)
 		free(fnt);
 		return 0;
 	}
-	fnt->height = strtol(s, &s, 0);
+	height = strtol(s, &s, 0);
 	s = skip(s);
-	fnt->ascent = strtol(s, &s, 0);
+	ascent = strtol(s, &s, 0);
 	s = skip(s);
-	if(fnt->height<=0 || fnt->ascent<=0){
+	if(height <= 0 || height > 0x7fff || ascent <= 0 || ascent > 0x7fff){
 		kwerrstr("bad height or ascent in font file");
 		goto Err2;
 	}
+	fnt->height = height;
+	fnt->ascent = ascent;
 	fnt->width = 0;
 	fnt->nsub = 0;
 	fnt->sub = 0;
@@ -82,12 +87,15 @@ buildfont(Display *d, char *buf, char *name)
 			s = skip(t);
 		else
 			offset = 0;
-		fnt->sub = realloc(fnt->sub, (fnt->nsub+1)*sizeof(Cachefont*));
-		if(fnt->sub == 0){
-			/* realloc manual says fnt->sub may have been destroyed */
-			fnt->nsub = 0;
+		/* nsub is a signed short in the public Font layout. */
+		if(fnt->nsub == 0x7fff){
+			kwerrstr("too many subfonts");
 			goto Err3;
 		}
+		sub = realloc(fnt->sub, (fnt->nsub+1)*sizeof(Cachefont*));
+		if(sub == nil)
+			goto Err3;
+		fnt->sub = sub;
 		c = malloc(sizeof(Cachefont));
 		if(c == 0)
 			goto Err3;
@@ -112,6 +120,7 @@ buildfont(Display *d, char *buf, char *name)
 	return fnt;
 }
 
+/* Release every owned subfont, cache entry and allocation. */
 void
 freefont(Font *f)
 {

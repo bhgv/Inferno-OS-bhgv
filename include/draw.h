@@ -493,6 +493,10 @@ extern Subfont*	lookupsubfont(Display*, char*);
 extern void	installsubfont(char*, Subfont*);
 extern void	uninstallsubfont(Subfont*);
 extern void	freesubfont(Subfont*);
+/* TrueType helpers share pointer-correct declarations across draw callers. */
+extern int	is_subfont_ft(char*);
+extern char*	mangle_subfont_ft(char*, int);
+extern Subfont*	readsubfont_ft(Display*, char*, int, int);
 extern Subfont*	readsubfont(Display*, char*, int, int);
 extern Subfont*	readsubfonti(Display*, char*, int, Image*, int);
 extern int	writesubfont(int, Subfont*);
