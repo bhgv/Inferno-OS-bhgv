@@ -1,47 +1,51 @@
 #include	"lib9.h"
 #include	"fcall.h"
 
+/* Validate every counted string before advancing beyond the available record. */
 int
 statcheck(uchar *buf, uint nbuf)
 {
-	uchar *ebuf;
+	uint left, n;
 	int i;
 
-	ebuf = buf + nbuf;
-
-	if(nbuf < STATFIXLEN || nbuf != BIT16SZ + GBIT16(buf))
+	if(buf == nil || nbuf < STATFIXLEN || nbuf != BIT16SZ + GBIT16(buf))
 		return -1;
-
-	buf += STATFIXLEN - 4 * BIT16SZ;
-
+	left = nbuf-(STATFIXLEN-4*BIT16SZ);
+	buf += STATFIXLEN-4*BIT16SZ;
 	for(i = 0; i < 4; i++){
-		if(buf + BIT16SZ > ebuf)
+		if(left < BIT16SZ)
 			return -1;
-		buf += BIT16SZ + GBIT16(buf);
+		n = GBIT16(buf);
+		if(n > left-BIT16SZ)
+			return -1;
+		buf += BIT16SZ+n;
+		left -= BIT16SZ+n;
 	}
-
-	if(buf != ebuf)
-		return -1;
-
-	return 0;
+	return left == 0 ? 0 : -1;
 }
 
 static char nullstring[] = "";
 
+/* Decode only the declared first record, leaving outputs untouched on bad input. */
 uint
 convM2D(uchar *buf, uint nbuf, Dir *d, char *strs)
 {
 	uchar *p, *ebuf;
 	char *sv[4];
 	int i, ns;
+	uint size;
 
-	if(nbuf < STATFIXLEN)
-		return 0; 
+	if(buf == nil || d == nil || nbuf < STATFIXLEN)
+		return 0;
+	size = BIT16SZ+GBIT16(buf);
+	if(size > nbuf || statcheck(buf, size) < 0)
+		return 0;
+	nbuf = size;
 
 	p = buf;
 	ebuf = buf + nbuf;
 
-	p += BIT16SZ;	/* ignore size */
+	p += BIT16SZ;	/* size was checked before any destination writes */
 	d->type = GBIT16(p);
 	p += BIT16SZ;
 	d->dev = GBIT32(p);
@@ -62,11 +66,11 @@ convM2D(uchar *buf, uint nbuf, Dir *d, char *strs)
 	p += BIT64SZ;
 
 	for(i = 0; i < 4; i++){
-		if(p + BIT16SZ > ebuf)
+		if(ebuf-p < BIT16SZ)
 			return 0;
 		ns = GBIT16(p);
 		p += BIT16SZ;
-		if(p + ns > ebuf)
+		if(ns > ebuf-p)
 			return 0;
 		if(strs){
 			sv[i] = strs;

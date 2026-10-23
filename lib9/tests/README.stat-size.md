@@ -22,3 +22,12 @@ LeakSanitizer process inspection is disabled; other instrumentation remains on.
 The 65,537-byte maximum tested here is the direct stat-entry limit; an enclosing
 Rstat/Twstat message has its own 16-bit nstat limit. This fixture does not test
 network transport, malformed stat decoding, running filesystems or kernel boot.
+
+
+The decoder regressions also cover every truncated prefix, inconsistent
+record-length declarations, overflowing counts in each of the four string
+positions, and consecutive records. `convM2D` must respect the first record's
+own declaration and validate it before altering either the Dir or string
+storage. Nil input/result pointers are rejected; nil string storage retains
+the existing empty-name behavior. `statcheck` advances only after each count
+fits the remaining bytes. Both library variants now run 2642 cases each.
