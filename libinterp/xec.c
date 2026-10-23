@@ -76,19 +76,37 @@ OP(divb)
 		error(exZdiv);
 	B(d) = B(m) / B(s);
 }
-/* Raise the VM divide-by-zero exception instead of invoking C undefined behavior. */
+/* Avoid both zero division and the signed minimum / -1 C overflow case. */
 OP(divw)
 {
-	if(W(s) == 0)
+	WORD dividend, divisor;
+
+	dividend = W(m);
+	divisor = W(s);
+	if(divisor == 0)
 		error(exZdiv);
-	W(d) = W(m) / W(s);
+	if(dividend < 0 && divisor == -1 &&
+	   (UWORD)dividend == ((UWORD)1 << (sizeof(WORD)*8-1))){
+		W(d) = dividend;
+		return;
+	}
+	W(d) = dividend / divisor;
 }
-/* Keep big-integer division-by-zero behavior identical across interpreter hosts. */
+/* Apply the same overflow-safe rules to the VM's big integer type. */
 OP(divl)
 {
-	if(V(s) == 0)
+	LONG dividend, divisor;
+
+	dividend = V(m);
+	divisor = V(s);
+	if(divisor == 0)
 		error(exZdiv);
-	V(d) = V(m) / V(s);
+	if(dividend < 0 && divisor == -1 &&
+	   (ULONG)dividend == ((ULONG)1 << (sizeof(LONG)*8-1))){
+		V(d) = dividend;
+		return;
+	}
+	V(d) = dividend / divisor;
 }
 OP(divf) { F(d) = F(m) / F(s); }
 /* Byte remainder by zero must not reach the host C operator. */
@@ -98,19 +116,37 @@ OP(modb)
 		error(exZdiv);
 	B(d) = B(m) % B(s);
 }
-/* Reject zero divisors explicitly; C remainder by zero is undefined behavior. */
+/* Avoid zero division and the signed minimum % -1 C overflow case. */
 OP(modw)
 {
-	if(W(s) == 0)
+	WORD dividend, divisor;
+
+	dividend = W(m);
+	divisor = W(s);
+	if(divisor == 0)
 		error(exZdiv);
-	W(d) = W(m) % W(s);
+	if(dividend < 0 && divisor == -1 &&
+	   (UWORD)dividend == ((UWORD)1 << (sizeof(WORD)*8-1))){
+		W(d) = 0;
+		return;
+	}
+	W(d) = dividend % divisor;
 }
-/* Reject zero divisors explicitly; C remainder by zero is undefined behavior. */
+/* Apply the same overflow-safe rules to big-integer remainder. */
 OP(modl)
 {
-	if(V(s) == 0)
+	LONG dividend, divisor;
+
+	dividend = V(m);
+	divisor = V(s);
+	if(divisor == 0)
 		error(exZdiv);
-	V(d) = V(m) % V(s);
+	if(dividend < 0 && divisor == -1 &&
+	   (ULONG)dividend == ((ULONG)1 << (sizeof(LONG)*8-1))){
+		V(d) = 0;
+		return;
+	}
+	V(d) = dividend % divisor;
 }
 OP(mulb) { B(d) = B(m) * B(s); }
 /* Keep word multiplication independent of host signed-overflow optimization. */
