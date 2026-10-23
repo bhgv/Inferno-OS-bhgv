@@ -715,53 +715,73 @@ Sys_sleep(void *fp)
 	acquire();
 }
 
+/* Complete short stream writes and count only bytes acknowledged by the destination. */
+static int
+sysstreamwrite(int fd, uchar *buf, int n, UWORD *total)
+{
+	int done, wrote;
+
+	for(done = 0; done < n; done += wrote){
+		wrote = kwrite(fd, buf+done, n-done);
+		if(wrote <= 0)
+			return -1;
+		*total += (UWORD)wrote;
+	}
+	return 0;
+}
+
+/* Validate the full VM buffer size and preserve short-write progress in both VM widths. */
 void
 Sys_stream(void *fp)
 {
 	Prog *p;
 	uchar *buf;
-	int src, dst;
+	int src, dst, size, t, n;
+	UWORD nbytes;
 	F_Sys_stream *f;
-	int nbytes, t, n;
 
 	f = fp;
-	buf = malloc(f->bufsiz);
-	if(buf == nil) {
+	if(f->bufsiz <= 0 || (uvlong)f->bufsiz > 0x7fffffff){
+		seterror(Ebadarg);
+		*f->ret = -1;
+		return;
+	}
+	size = (int)f->bufsiz;
+	buf = malloc(size);
+	if(buf == nil){
 		kwerrstr(Enomem);
 		*f->ret = -1;
 		return;
 	}
-
 	src = fdchk(f->src);
 	dst = fdchk(f->dst);
-
 	p = currun();
 
 	release();
 	t = 0;
 	nbytes = 0;
-	while(p->kill == nil) {
-		n = kread(src, buf+t, f->bufsiz-t);
+	while(p->kill == nil){
+		n = kread(src, buf+t, size-t);
 		if(n <= 0)
 			break;
 		t += n;
-		if(t >= f->bufsiz) {
-			if(kwrite(dst, buf, t) != t) {
+		if(t == size){
+			if(sysstreamwrite(dst, buf, t, &nbytes) < 0){
 				t = 0;
 				break;
 			}
-
-			nbytes += t;
 			t = 0;
 		}
 	}
-	if(t != 0) {
-		kwrite(dst, buf, t);
-		nbytes += t;
-	}
+	if(t != 0)
+		sysstreamwrite(dst, buf, t, &nbytes);
 	acquire();
 	free(buf);
-	*f->ret = nbytes;
+	/* Interpret the modular byte count at the VM's width without signed overflow. */
+	if(nbytes <= (~(UWORD)0 >> 1))
+		*f->ret = (WORD)nbytes;
+	else
+		*f->ret = -1-(WORD)(~nbytes);
 }
 
 void
