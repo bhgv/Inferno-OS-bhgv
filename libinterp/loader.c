@@ -330,7 +330,8 @@ Loader_newmod(void *a)
 	if(f->nlink < 0 || (uvlong)f->nlink >
 	   (0x7fffffff-sizeof(Heap)-(sizeof(Modlink)-sizeof(Modl)))/sizeof(Modl) ||
 	   f->inst->len <= 0 || (uvlong)f->inst->len > 0x7fffffff/sizeof(Inst) ||
-	   f->inst->t == nil || f->inst->t->size != sizeof(Loader_Inst) ||
+	   f->inst->data == nil || f->inst->t == nil ||
+	   f->inst->t == H || f->inst->t->size != sizeof(Loader_Inst) ||
 	   D2H(f->data)->t == nil) {
 		kwerrstr("bad module parameters");
 		return;
@@ -370,6 +371,10 @@ Loader_tnew(void *a)
 	}
 
 	ar = f->map;
+	if(ar == nil) {
+		kwerrstr("nil type map");
+		return;
+	}
 	if(ar == H) {
 		ar = &az;
 		ar->len = 0;
@@ -432,15 +437,18 @@ Loader_ext(void *a)
 		kwerrstr("compiled module");
 		return;
 	}
-	if(f->tdesc < 0 || f->tdesc >= m->ntype) {
+	if(f->tdesc < 0 || f->tdesc >= m->ntype ||
+	   m->type == nil || m->type[f->tdesc] == nil || m->type[f->tdesc] == H) {
 		kwerrstr("bad tdesc");
 		return;
 	}
-	if(f->pc < 0 || f->pc >= m->nprog) {
+	if(f->pc < 0 || f->pc >= m->nprog ||
+	   m->prog == nil) {
 		kwerrstr("bad pc");
 		return;
 	}
-	if(f->idx < 0 || f->idx >= ml->nlinks) {
+	if(f->idx < 0 || f->idx >= ml->nlinks ||
+	   ml->links == nil) {
 		kwerrstr("bad idx");
 		return;
 	}
@@ -477,6 +485,10 @@ Loader_dnew(void *a)
 	destroy(*f->ret);
 	*f->ret=H;
 	ar=f->map;
+	if(ar == nil) {
+		kwerrstr("nil type map");
+		return;
+	}
 	if(ar == H) {
 		ar=&az;
 		ar->len=0;
