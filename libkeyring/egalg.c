@@ -98,58 +98,52 @@ bad:
 	return nil;
 }
 
+/* Emit every integer field completely; short buffers and failed exports are errors. */
 static int
-eg_sk2str(void *veg, char *buf, int len)
+eg_sk2str(void *value, char *buf, int len)
 {
-	EGpriv *eg;
-	char *cp, *ep;
+	EGpriv *key;
+	mpint *fields[4];
 
-	eg = (EGpriv*)veg;
-	ep = buf + len - 1;
-	cp = buf;
-
-	cp += snprint(cp, ep - cp, "%U\n", eg->pub.p);
-	cp += snprint(cp, ep - cp, "%U\n", eg->pub.alpha);
-	cp += snprint(cp, ep - cp, "%U\n", eg->pub.key);
-	cp += snprint(cp, ep - cp, "%U\n", eg->secret);
-	*cp = 0;
-
-	return cp - buf;
+	if(value == nil)
+		return keyringfields(buf, len, nil, 1);
+	key = value;
+	fields[0] = key->pub.p;
+	fields[1] = key->pub.alpha;
+	fields[2] = key->pub.key;
+	fields[3] = key->secret;
+	return keyringfields(buf, len, fields, nelem(fields));
 }
 
+/* Emit every integer field completely; short buffers and failed exports are errors. */
 static int
-eg_pk2str(void *veg, char *buf, int len)
+eg_pk2str(void *value, char *buf, int len)
 {
-	EGpub *eg;
-	char *cp, *ep;
+	EGpub *key;
+	mpint *fields[3];
 
-	eg = (EGpub*)veg;
-	ep = buf + len - 1;
-	cp = buf;
-
-	cp += snprint(cp, ep - cp, "%U\n", eg->p);
-	cp += snprint(cp, ep - cp, "%U\n", eg->alpha);
-	cp += snprint(cp, ep - cp, "%U\n", eg->key);
-	*cp = 0;
-
-	return cp - buf;
+	if(value == nil)
+		return keyringfields(buf, len, nil, 1);
+	key = value;
+	fields[0] = key->p;
+	fields[1] = key->alpha;
+	fields[2] = key->key;
+	return keyringfields(buf, len, fields, nelem(fields));
 }
 
+/* Emit every integer field completely; short buffers and failed exports are errors. */
 static int
-eg_sig2str(void *veg, char *buf, int len)
+eg_sig2str(void *value, char *buf, int len)
 {
-	EGsig *eg;
-	char *cp, *ep;
+	EGsig *key;
+	mpint *fields[2];
 
-	eg = veg;
-	ep = buf + len - 1;
-	cp = buf;
-
-	cp += snprint(cp, ep - cp, "%U\n", eg->r);
-	cp += snprint(cp, ep - cp, "%U\n", eg->s);
-	*cp = 0;
-
-	return cp - buf;
+	if(value == nil)
+		return keyringfields(buf, len, nil, 1);
+	key = value;
+	fields[0] = key->r;
+	fields[1] = key->s;
+	return keyringfields(buf, len, fields, nelem(fields));
 }
 
 static void*

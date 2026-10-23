@@ -90,57 +90,110 @@ struct XBFstate
 	BFstate	state;
 };
 
-/* convert a Big to base64 ascii */
+/* Encode a complete legacy magnitude or a terminated failure marker, never a valid prefix. */
 int
-bigtobase64(mpint* b, char *buf, int len)
+bigtobase64(mpint *b, char *buf, int len)
 {
 	uchar *p;
-	int n, rv, o;
+	int n, rv, offset;
+	uvlong needed;
 
+	if(buf == nil || len <= 0)
+		return 0;
+	if(len == 1){
+		buf[0] = 0;
+		return 0;
+	}
+	p = nil;
+	if(b == nil || b->top < 0 || b->top > b->size ||
+	   (b->top != 0 && b->p == nil) ||
+	   b->top > (0x7fffffff-1)/Dbytes-1)
+		goto bad;
 	n = (b->top+1)*Dbytes;
 	p = malloc(n+1);
 	if(p == nil)
-		goto Err;
+		goto bad;
 	n = mptobe(b, p+1, n, nil);
 	if(n < 0)
-		goto Err;
+		goto bad;
 	p[0] = 0;
+	/* Preserve the historical leading zero for magnitudes with the high bit set. */
 	if(n != 0 && (p[1]&0x80)){
-		/* force leading 0 byte for compatibility with older representation */
-		/* TO DO: if b->sign < 0, complement bits and add one */
-		o = 0;
+		offset = 0;
 		n++;
 	}else
-		o = 1;
-	rv = enc64(buf, len, p+o, n);
+		offset = 1;
+	needed = 4*(((uvlong)n+2)/3);
+	if(needed >= (uvlong)len)
+		goto bad;
+	rv = enc64(buf, len, p+offset, n);
 	free(p);
 	return rv;
 
-Err:
+bad:
 	free(p);
-	if(len > 0){
-		*buf = '*';
-		return 1;
-	}
-	return 0;
+	buf[0] = '*';
+	buf[1] = 0;
+	return 1;
 }
 
-/* convert a Big to base64 ascii for %U */
+/* Serialize complete integer fields with newline delimiters, clearing failed records. */
+int
+keyringfields(char *buf, int len, mpint **fields, int count)
+{
+	int i, used, n;
+
+	if(buf == nil || len <= 0)
+		return -1;
+	buf[0] = 0;
+	if(count < 0 || (count != 0 && fields == nil))
+		return -1;
+	used = 0;
+	for(i = 0; i < count; i++){
+		if(len-used < 2)
+			goto bad;
+		n = bigtobase64(fields[i], buf+used, len-used-1);
+		if(n <= 0 || buf[used] == '*')
+			goto bad;
+		used += n;
+		buf[used++] = '\n';
+		buf[used] = 0;
+	}
+	return used;
+
+bad:
+	buf[0] = 0;
+	return -1;
+}
+
+/* Bound formatter allocation and report failures before exposing uninitialized text. */
 int
 big64conv(Fmt *f)
 {
 	mpint *b;
 	char *buf;
-	int n;
+	uvlong bytes, capacity;
+	int n, result;
 
 	b = va_arg(f->args, mpint*);
-	n = (b->top+1)*Dbytes + 1;
-	n = ((n+3)/3)*4 + 1;
-	buf = malloc(n);
-	bigtobase64(b, buf, n);
-	n = fmtstrcpy(f, buf);
+	if(b == nil)
+		return fmtstrcpy(f, "*");
+	if(b->top < 0 || b->top > b->size || (b->top != 0 && b->p == nil))
+		return -1;
+	bytes = ((uvlong)b->top+1)*Dbytes+1;
+	capacity = 4*((bytes+2)/3)+1;
+	if(capacity > 0x7fffffff)
+		return -1;
+	buf = malloc((int)capacity);
+	if(buf == nil)
+		return -1;
+	n = bigtobase64(b, buf, (int)capacity);
+	if(n <= 0 || buf[0] == '*')
+		result = -1;
+	else
+		result = fmtstrcpy(f, buf);
 	free(buf);
-	return  n;
+	return result;
 }
 
 static void*
@@ -437,6 +490,7 @@ bigs2attr(Fmt *f, char *bigs, char **names)
 	return fmtstrflush(f);
 }
 
+/* Return serialization failures without exposing an incomplete record. */
 void
 Keyring_sktoattr(void *fp)
 {
@@ -454,7 +508,11 @@ Keyring_sktoattr(void *fp)
 		retstr(nil, f->ret);
 		return;
 	}
-	(*sa->vec->sk2str)(sk->key, buf, Maxbuf);
+	if((*sa->vec->sk2str)(sk->key, buf, Maxbuf) < 0){
+		free(buf);
+		retstr(nil, f->ret);
+		return;
+	}
 	fmtstrinit(&o);
 	fmtprint(&o, "alg=%q", string2c(sa->x.name));
 	owner = string2c(sk->x.owner);
@@ -466,18 +524,27 @@ Keyring_sktoattr(void *fp)
 	free(val);
 }
 
+/* Return serialization failures without exposing an incomplete record. */
 static int
 sktostr(SK *sk, char *buf, int len)
 {
 	int n;
 	SigAlg *sa;
 
+	if(buf == nil || len <= 0)
+		return -1;
 	sa = checkSigAlg(sk->x.sa);
 	n = snprint(buf, len, "%s\n%s\n", string2c(sa->x.name),
 			string2c(sk->x.owner));
-	return n + (*sa->vec->sk2str)(sk->key, buf+n, len - n);
+	len = (*sa->vec->sk2str)(sk->key, buf+n, len - n);
+	if(len < 0){
+		buf[0] = 0;
+		return -1;
+	}
+	return n+len;
 }
 
+/* Return serialization failures without exposing an incomplete record. */
 void
 Keyring_sktostr(void *fp)
 {
@@ -487,8 +554,10 @@ Keyring_sktostr(void *fp)
 	f = fp;
 	buf = malloc(Maxbuf);
 
-	if(buf)
-		sktostr(checkSK(f->sk), buf, Maxbuf);
+	if(buf && sktostr(checkSK(f->sk), buf, Maxbuf) < 0){
+		free(buf);
+		buf = nil;
+	}
 	retstr(buf, f->ret);
 
 	free(buf);
@@ -624,17 +693,26 @@ Keyring_sktopk(void *fp)
 	*f->ret = (Keyring_PK*)pk;
 }
 
+/* Return serialization failures without exposing an incomplete record. */
 static int
 pktostr(PK *pk, char *buf, int len)
 {
 	int n;
 	SigAlg *sa;
 
+	if(buf == nil || len <= 0)
+		return -1;
 	sa = checkSigAlg(pk->x.sa);
 	n = snprint(buf, len, "%s\n%s\n", string2c(sa->x.name), string2c(pk->x.owner));
-	return n + (*sa->vec->pk2str)(pk->key, buf+n, len - n);
+	len = (*sa->vec->pk2str)(pk->key, buf+n, len - n);
+	if(len < 0){
+		buf[0] = 0;
+		return -1;
+	}
+	return n+len;
 }
 
+/* Return serialization failures without exposing an incomplete record. */
 void
 Keyring_pktostr(void *fp)
 {
@@ -644,13 +722,16 @@ Keyring_pktostr(void *fp)
 	f = fp;
 	buf = malloc(Maxbuf);
 
-	if(buf)
-		pktostr(checkPK(f->pk), buf, Maxbuf);
+	if(buf && pktostr(checkPK(f->pk), buf, Maxbuf) < 0){
+		free(buf);
+		buf = nil;
+	}
 	retstr(buf, f->ret);
 
 	free(buf);
 }
 
+/* Return serialization failures without exposing an incomplete record. */
 void
 Keyring_pktoattr(void *fp)
 {
@@ -668,7 +749,11 @@ Keyring_pktoattr(void *fp)
 		retstr(nil, f->ret);
 		return;
 	}
-	(*sa->vec->pk2str)(pk->key, buf, Maxbuf);
+	if((*sa->vec->pk2str)(pk->key, buf, Maxbuf) < 0){
+		free(buf);
+		retstr(nil, f->ret);
+		return;
+	}
 	fmtstrinit(&o);
 	fmtprint(&o, "alg=%q", string2c(sa->x.name));
 	owner = string2c(pk->x.owner);
@@ -797,18 +882,27 @@ checkCertificate(Keyring_Certificate *c)
 	return cert;
 }
 
+/* Return serialization failures without exposing an incomplete record. */
 static int
 certtostr(Certificate *c, char *buf, int len)
 {
 	SigAlg *sa;
 	int n;
 
+	if(buf == nil || len <= 0)
+		return -1;
 	sa = checkSigAlg(c->x.sa);
 	n = snprint(buf, len, "%s\n%s\n%s\n%d\n", string2c(sa->x.name),
 		string2c(c->x.ha), string2c(c->x.signer), c->x.exp);
-	return n + (*sa->vec->sig2str)(c->signa, buf+n, len - n);
+	len = (*sa->vec->sig2str)(c->signa, buf+n, len - n);
+	if(len < 0){
+		buf[0] = 0;
+		return -1;
+	}
+	return n+len;
 }
 
+/* Return serialization failures without exposing an incomplete record. */
 void
 Keyring_certtostr(void *fp)
 {
@@ -818,13 +912,16 @@ Keyring_certtostr(void *fp)
 	f = fp;
 	buf = malloc(Maxbuf);
 
-	if(buf)
-		certtostr(checkCertificate(f->c), buf, Maxbuf);
+	if(buf && certtostr(checkCertificate(f->c), buf, Maxbuf) < 0){
+		free(buf);
+		buf = nil;
+	}
 	retstr(buf, f->ret);
 
 	free(buf);
 }
 
+/* Return serialization failures without exposing an incomplete record. */
 void
 Keyring_certtoattr(void *fp)
 {
@@ -842,7 +939,11 @@ Keyring_certtoattr(void *fp)
 		retstr(nil, f->ret);
 		return;
 	}
-	(*sa->vec->sig2str)(c->signa, buf, Maxbuf);
+	if((*sa->vec->sig2str)(c->signa, buf, Maxbuf) < 0){
+		free(buf);
+		retstr(nil, f->ret);
+		return;
+	}
 	ha = string2c(c->x.ha);
 	if(strcmp(ha, "sha") == 0)
 		ha = "sha1";	/* normalise */

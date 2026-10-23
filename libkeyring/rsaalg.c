@@ -94,59 +94,54 @@ rsa_str2sig(char *str, char **strp)
 	return rsa;
 }
 
+/* Emit every integer field completely; short buffers and failed exports are errors. */
 static int
-rsa_sk2str(void *vrsa, char *buf, int len)
+rsa_sk2str(void *value, char *buf, int len)
 {
-	RSApriv *rsa;
-	char *cp, *ep;
+	RSApriv *key;
+	mpint *fields[8];
 
-	rsa = vrsa;
-	ep = buf + len - 1;
-	cp = buf;
-
-	cp += snprint(cp, ep - cp, "%U\n", rsa->pub.n);
-	cp += snprint(cp, ep - cp, "%U\n", rsa->pub.ek);
-	cp += snprint(cp, ep - cp, "%U\n", rsa->dk);
-	cp += snprint(cp, ep - cp, "%U\n", rsa->p);
-	cp += snprint(cp, ep - cp, "%U\n", rsa->q);
-	cp += snprint(cp, ep - cp, "%U\n", rsa->kp);
-	cp += snprint(cp, ep - cp, "%U\n", rsa->kq);
-	cp += snprint(cp, ep - cp, "%U\n", rsa->c2);
-	*cp = 0;
-
-	return cp - buf;
+	if(value == nil)
+		return keyringfields(buf, len, nil, 1);
+	key = value;
+	fields[0] = key->pub.n;
+	fields[1] = key->pub.ek;
+	fields[2] = key->dk;
+	fields[3] = key->p;
+	fields[4] = key->q;
+	fields[5] = key->kp;
+	fields[6] = key->kq;
+	fields[7] = key->c2;
+	return keyringfields(buf, len, fields, nelem(fields));
 }
 
+/* Emit every integer field completely; short buffers and failed exports are errors. */
 static int
-rsa_pk2str(void *vrsa, char *buf, int len)
+rsa_pk2str(void *value, char *buf, int len)
 {
-	RSApub *rsa;
-	char *cp, *ep;
+	RSApub *key;
+	mpint *fields[2];
 
-	rsa = vrsa;
-	ep = buf + len - 1;
-	cp = buf;
-	cp += snprint(cp, ep - cp, "%U\n", rsa->n);
-	cp += snprint(cp, ep - cp, "%U\n", rsa->ek);
-	*cp = 0;
-
-	return cp - buf;
+	if(value == nil)
+		return keyringfields(buf, len, nil, 1);
+	key = value;
+	fields[0] = key->n;
+	fields[1] = key->ek;
+	return keyringfields(buf, len, fields, nelem(fields));
 }
 
+/* Emit every integer field completely; short buffers and failed exports are errors. */
 static int
-rsa_sig2str(void *vrsa, char *buf, int len)
+rsa_sig2str(void *value, char *buf, int len)
 {
-	mpint *rsa;
-	char *cp, *ep;
+	mpint *key;
+	mpint *fields[1];
 
-	rsa = vrsa;
-	ep = buf + len - 1;
-	cp = buf;
-
-	cp += snprint(cp, ep - cp, "%U\n", rsa);
-	*cp = 0;
-
-	return cp - buf;
+	if(value == nil)
+		return keyringfields(buf, len, nil, 1);
+	key = value;
+	fields[0] = key;
+	return keyringfields(buf, len, fields, nelem(fields));
 }
 
 static void*

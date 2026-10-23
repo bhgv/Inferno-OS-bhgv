@@ -104,6 +104,7 @@ struct SigAlg
 	SigAlgVec	*vec;
 };
 
+int	keyringfields(char*, int, mpint**, int);
 int	bigtobase64(mpint* b, char *buf, int blen);
 mpint*	base64tobig(char *str, char **strp);
 SigAlgVec*	findsigalg(char*);
