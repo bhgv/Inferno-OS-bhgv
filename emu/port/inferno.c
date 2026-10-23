@@ -79,21 +79,120 @@ freeFileIO(Heap *h, int swept)
 	destroy(fio->write);
 }
 
+/* Transfer a native descriptor to a VM owner, closing it if allocation fails. */
 Sys_FD*
 mkfd(int fd)
 {
 	Heap *h;
 	Fgrp *fg;
 	FD *handle;
+	char saved[ERRMAX];
 
+	fg = up->env->fgrp;
+	if(waserror()){
+		memmove(saved, up->env->errstr, sizeof(saved));
+		if(fd >= 0){
+			release();
+			kfgrpclose(fg, fd);
+			acquire();
+		}
+		memmove(up->env->errstr, saved, sizeof(saved));
+		nexterror();
+	}
 	h = heap(TFD);
+	poperror();
 	handle = H2D(FD*, h);
 	handle->fd.fd = fd;
-	fg = up->env->fgrp;
 	handle->grp = fg;
 	incref(&fg->r);
 	return (Sys_FD*)handle;
 }
+
+typedef struct FDResult FDResult;
+struct FDResult
+{
+	int raw[2];
+	Sys_FD *handle[2];
+	String *directory;
+};
+
+/* Mark a descriptor as transferred before mkfd can raise an allocation error. */
+static Sys_FD*
+takefd(volatile int *slot)
+{
+	int fd;
+
+	fd = *slot;
+	*slot = -1;
+	return fd < 0 ? H : mkfd(fd);
+}
+
+/* Close every untransferred descriptor and partial owner without replacing the error. */
+static void
+freefdresult(volatile FDResult *result)
+{
+	char saved[ERRMAX];
+	int i;
+
+	memmove(saved, up->env->errstr, sizeof(saved));
+	for(i = 0; i < 2; i++){
+		if(result->raw[i] >= 0){
+			release();
+			kclose(result->raw[i]);
+			acquire();
+		}
+		destroy(result->handle[i]);
+	}
+	destroy(result->directory);
+	memmove(up->env->errstr, saved, sizeof(saved));
+}
+
+/* Clear all connection fields together, including an earlier directory string. */
+static void
+clearconnection(Sys_Connection *connection)
+{
+	Sys_Connection old;
+	char saved[ERRMAX];
+
+	memmove(saved, up->env->errstr, sizeof(saved));
+	old = *connection;
+	connection->dfd = H;
+	connection->cfd = H;
+	connection->dir = H;
+	destroy(old.dfd);
+	destroy(old.cfd);
+	destroy(old.dir);
+	memmove(up->env->errstr, saved, sizeof(saved));
+}
+
+/* Build a complete connection before replacing any of the previous managed owners. */
+static void
+makeconnection(int datafd, int controlfd, char *directory, Sys_Connection *connection)
+{
+	volatile FDResult result;
+	Sys_Connection old;
+
+	result.raw[0] = datafd;
+	result.raw[1] = controlfd;
+	result.handle[0] = result.handle[1] = H;
+	result.directory = H;
+	if(waserror()){
+		freefdresult(&result);
+		nexterror();
+	}
+	result.handle[0] = takefd(&result.raw[0]);
+	result.handle[1] = takefd(&result.raw[1]);
+	result.directory = c2string(directory, strlen(directory));
+	poperror();
+	old = *connection;
+	connection->dfd = result.handle[0];
+	connection->cfd = result.handle[1];
+	connection->dir = result.directory;
+	destroy(old.dfd);
+	destroy(old.cfd);
+	destroy(old.dir);
+}
+
 #define fdchk(x)	((x) == (Sys_FD*)H ? -1 : (x)->fd)
 
 void
@@ -145,30 +244,44 @@ Sys_open(void *fp)
 	*f->ret = mkfd(fd);
 }
 
+/* Replace both pipe ends only after both descriptor owners have been constructed. */
 void
 Sys_pipe(void *fp)
 {
 	Array *a;
-	int fd[2];
-	Sys_FD **sfd;
+	int fd[2], status;
+	Sys_FD **slots, *old[2];
 	F_Sys_pipe *f;
+	volatile FDResult result;
 
 	f = fp;
 	*f->ret = -1;
-
 	a = f->fds;
-	if(a->len < 2)
+	if(a == H || a->len < 2)
 		return;
-	if(kpipe(fd) < 0)
+	release();
+	status = kpipe(fd);
+	acquire();
+	if(status < 0)
 		return;
-
-	sfd = (Sys_FD**)a->data;
-	destroy(sfd[0]);
-	destroy(sfd[1]);
-	sfd[0] = H;
-	sfd[1] = H;
-	sfd[0] = mkfd(fd[0]);
-	sfd[1] = mkfd(fd[1]);
+	result.raw[0] = fd[0];
+	result.raw[1] = fd[1];
+	result.handle[0] = result.handle[1] = H;
+	result.directory = H;
+	if(waserror()){
+		freefdresult(&result);
+		nexterror();
+	}
+	result.handle[0] = takefd(&result.raw[0]);
+	result.handle[1] = takefd(&result.raw[1]);
+	poperror();
+	slots = (Sys_FD**)a->data;
+	old[0] = slots[0];
+	old[1] = slots[1];
+	slots[0] = result.handle[0];
+	slots[1] = result.handle[1];
+	destroy(old[0]);
+	destroy(old[1]);
 	*f->ret = 0;
 }
 
@@ -624,77 +737,71 @@ Sys_werrstr(void *fp)
 	kstrcpy(up->env->errstr, string2c(f->s), ERRMAX);
 }
 
+/* Adopt both dial descriptors as one result, closing them on conversion failure. */
 void
 Sys_dial(void *fp)
 {
-	int cfd;
-	char dir[NETPATHLEN], *a, *l;
+	int datafd, controlfd;
+	char dir[NETPATHLEN], *address, *local;
 	F_Sys_dial *f;
 
 	f = fp;
-	a = string2c(f->addr);
-	l = string2c(f->local);
+	address = string2c(f->addr);
+	local = string2c(f->local);
 	release();
-	f->ret->t0 = kdial(a, l, dir, &cfd);
+	datafd = kdial(address, local, dir, &controlfd);
 	acquire();
-	destroy(f->ret->t1.dfd);
-	f->ret->t1.dfd = H;
-	destroy(f->ret->t1.cfd);
-	f->ret->t1.cfd = H;
-	if(f->ret->t0 == -1)
+	f->ret->t0 = -1;
+	if(datafd < 0){
+		clearconnection(&f->ret->t1);
 		return;
-
-	f->ret->t1.dfd = mkfd(f->ret->t0);
+	}
+	makeconnection(datafd, controlfd, dir, &f->ret->t1);
 	f->ret->t0 = 0;
-	f->ret->t1.cfd = mkfd(cfd);
-	retstr(dir, &f->ret->t1.dir);
 }
 
+/* Adopt the announce control descriptor only after the complete result is ready. */
 void
 Sys_announce(void *fp)
 {
-	char dir[NETPATHLEN], *a;
+	char dir[NETPATHLEN], *address;
+	int fd;
 	F_Sys_announce *f;
 
 	f = fp;
-	a = string2c(f->addr);
+	address = string2c(f->addr);
 	release();
-	f->ret->t0 = kannounce(a, dir);
+	fd = kannounce(address, dir);
 	acquire();
-	destroy(f->ret->t1.dfd);
-	f->ret->t1.dfd = H;
-	destroy(f->ret->t1.cfd);
-	f->ret->t1.cfd = H;
-	if(f->ret->t0 == -1)
+	f->ret->t0 = -1;
+	if(fd < 0){
+		clearconnection(&f->ret->t1);
 		return;
-
-	f->ret->t1.cfd = mkfd(f->ret->t0);
+	}
+	makeconnection(-1, fd, dir, &f->ret->t1);
 	f->ret->t0 = 0;
-	retstr(dir, &f->ret->t1.dir);
 }
 
+/* Keep earlier connection owners valid until the new listening result is complete. */
 void
 Sys_listen(void *fp)
 {
 	F_Sys_listen *f;
-	char dir[NETPATHLEN], *d;
+	char dir[NETPATHLEN], *directory;
+	int fd;
 
 	f = fp;
-	d = string2c(f->c.dir);
+	directory = string2c(f->c.dir);
 	release();
-	f->ret->t0 = klisten(d, dir);
+	fd = klisten(directory, dir);
 	acquire();
-
-	destroy(f->ret->t1.dfd);
-	f->ret->t1.dfd = H;
-	destroy(f->ret->t1.cfd);
-	f->ret->t1.cfd = H;
-	if(f->ret->t0 == -1)
+	f->ret->t0 = -1;
+	if(fd < 0){
+		clearconnection(&f->ret->t1);
 		return;
-
-	f->ret->t1.cfd = mkfd(f->ret->t0);
+	}
+	makeconnection(-1, fd, dir, &f->ret->t1);
 	f->ret->t0 = 0;
-	retstr(dir, &f->ret->t1.dir);
 }
 
 void
