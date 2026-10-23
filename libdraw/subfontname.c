@@ -1,45 +1,52 @@
 #include "lib9.h"
 #include "draw.h"
 
-/*
- * Default version: convert to file name
- */
-
+/* Resolve complete paths without truncating a directory or a depth suffix. */
 char*
 subfontname(char *cfname, char *fname, int maxdepth)
 {
-	char *t, *u, tmp1[128], tmp2[128];
+	char *path, *slash;
+	ulong prefix, n;
 	int i;
 
 	if(strcmp(cfname, "*default*") == 0)
 		return strdup(cfname);
-	t = cfname;
-	if(t[0] != '/'){
-		snprint(tmp2, sizeof tmp2, "%s", fname);
-		u = utfrrune(tmp2, '/');
-		if(u)
-			u[0] = 0;
-		else
-			strcpy(tmp2, ".");
-		snprint(tmp1, sizeof tmp1, "%s/%s", tmp2, t);
-		t = tmp1;
+	n = strlen(cfname);
+	prefix = 0;
+	slash = nil;
+	if(cfname[0] != '/'){
+		slash = utfrrune(fname, '/');
+		prefix = slash == nil ? 2 : slash-fname+1;
 	}
+	/* Include an optional .0 suffix and NUL within the signed allocation limit. */
+	if(n > 0x7fffffff-3 || prefix > 0x7fffffff-3-n)
+		return nil;
+	path = malloc(prefix+n+3);
+	if(path == nil)
+		return nil;
+	if(prefix != 0){
+		if(slash == nil)
+			memmove(path, "./", prefix);
+		else
+			memmove(path, fname, prefix);
+	}
+	memmove(path+prefix, cfname, n+1);
+	n += prefix;
 
 	if(maxdepth > 8)
 		maxdepth = 8;
-
-	for(i=3; i>=0; i--){
+	for(i = 3; i >= 0; i--){
 		if((1<<i) > maxdepth)
 			continue;
-		/* try i-bit grey */
-		snprint(tmp2, sizeof tmp2, "%s.%d", t, i);
-		if(access(tmp2, AREAD) == 0)
-			return strdup(tmp2);
+		path[n] = '.';
+		path[n+1] = '0'+i;
+		path[n+2] = '\0';
+		if(access(path, AREAD) == 0)
+			return path;
 	}
-
-	/* try default */
-	if(access(t, AREAD) == 0)
-		return strdup(t);
-
+	path[n] = '\0';
+	if(access(path, AREAD) == 0)
+		return path;
+	free(path);
 	return nil;
 }
