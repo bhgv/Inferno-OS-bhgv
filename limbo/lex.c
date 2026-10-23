@@ -598,8 +598,10 @@ digit(int c, int base)
 		{}
 	else
 		return -1;
-	if(c >= base)
+	if(c >= base){
 		yyerror("digit '%c' not radix %d", cc, base);
+		return -1;
+	}
 	return c;
 }
 
@@ -689,7 +691,7 @@ lexnum(int c)
 			goto done;
 		case RadixSeen:
 		case Radix:
-			if(ck & (Mdigit|Malpha)){
+			if(ck & (Mdigit|Mlower|Mupper)){
 				state = Radix;
 				break;
 			}
@@ -707,7 +709,7 @@ lexnum(int c)
 				goto done;
 			break;
 		case FracB:
-			if(ck & (Mdigit|Malpha))
+			if(ck & (Mdigit|Mlower|Mupper))
 				break;
 			goto done;
 		case ExpSeen:
