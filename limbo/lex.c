@@ -304,6 +304,23 @@ addfile(File *f)
 	return nfiles++;
 }
 
+/* Refuse truncated include paths before asking the filesystem to open them. */
+static Biobuf*
+openinclude(char *buf, char *dir, char *name, int slash)
+{
+	ulong ndir, nname;
+
+	ndir = strlen(dir);
+	nname = strlen(name);
+	if(ndir >= MaxPath || nname >= MaxPath-ndir-slash){
+		werrstr("include path too long");
+		return nil;
+	}
+	seprint(buf, buf+MaxPath, "%s%s%s", dir, slash ? "/" : "", name);
+	return Bopen(buf, OREAD);
+}
+
+/* Include exactly the requested name, rejecting embedded NULs and empty paths. */
 void
 includef(Sym *file)
 {
@@ -311,6 +328,11 @@ includef(Sym *file)
 	char *p, buf[MaxPath];
 	int i;
 
+	if(file->len <= 0 || file->len >= MaxPath ||
+	   memchr(file->name, 0, file->len) != nil){
+		yyerror("invalid include file name");
+		return;
+	}
 	linestack[bstack].line = lineno;
 	linestack[bstack].pos = linepos;
 	bstack++;
@@ -319,11 +341,9 @@ includef(Sym *file)
 	p = "";
 	if(file->name[0] != '/')
 		p = srcdir;
-	seprint(buf, buf+sizeof(buf), "%s%s", p, file->name);
-	b = Bopen(buf, OREAD);
+	b = openinclude(buf, p, file->name, 0);
 	for(i = 0; b == nil && i < MaxIncPath && incpath[i] != nil && file->name[0] != '/'; i++){
-		seprint(buf, buf+sizeof(buf), "%s/%s", incpath[i], file->name);
-		b = Bopen(buf, OREAD);
+		b = openinclude(buf, incpath[i], file->name, 1);
 	}
 	bins[bstack] = b;
 	if(bins[bstack] == nil){
@@ -361,6 +381,17 @@ popinclude(void)
 	addfile(mkfile(f->name, lineno, ln-lineno, f->in, f->act, f->actoff, -1));
 }
 
+/* Clamp diagnostic locations after wide arithmetic rather than overflowing int. */
+static int
+sourceline(Long line)
+{
+	if(line > 0x7fffffff)
+		return 0x7fffffff;
+	if(line < (-0x7fffffff-1))
+		return -0x7fffffff-1;
+	return line;
+}
+
 /*
  * convert an absolute Line into a file and line within the file
  */
@@ -387,26 +418,27 @@ fline(int absline)
 	}
 
 	fl.file = files[lastfile];
-	fl.line = absline + files[lastfile]->off;
+	fl.line = sourceline((Long)absline + files[lastfile]->off);
 	return fl;
 }
 
-/*
- * read a comment
- */
+/* Consume comments completely and reject truncated or overflowing line directives. */
 static int
 lexcom(void)
 {
 	File *f;
 	char buf[StrSize], *s, *t, *act;
-	int i, n, c, actline;
+	int i, n, c, actline, overflow;
 
 	i = 0;
+	overflow = 0;
 	while((c = Getc()) != '\n'){
 		if(c == Beof)
 			return -1;
 		if(i < sizeof(buf)-1)
 			buf[i++] = c;
+		else
+			overflow = 1;
 	}
 	buf[i] = 0;
 
@@ -415,13 +447,22 @@ lexcom(void)
 
 	if(strncmp(buf, "line ", 5) != 0 && strncmp(buf, "line\t", 5) != 0)
 		return 0;
+	if(overflow){
+		yyerror("line directive too long");
+		return 0;
+	}
 	for(s = buf+5; *s == ' ' || *s == '\t'; s++)
 		;
 	if(!(cmap(*s) & Mdigit))
 		return 0;
 	n = 0;
-	for(; cmap(c = *s) & Mdigit; s++)
-		n = n * 10 + c - '0';
+	for(; cmap(c = *s) & Mdigit; s++){
+		if(n > (0x7fffffff-(c-'0'))/10){
+			yyerror("line number out of range");
+			return 0;
+		}
+		n = n * 10 + (c - '0');
+	}
 	for(; *s == ' ' || *s == '\t'; s++)
 		;
 	if(*s != '"')
@@ -433,15 +474,15 @@ lexcom(void)
 	*t = '\0';
 
 	f = files[nfiles - 1];
-	if(n == f->off+lineno && strcmp(s, f->name) == 0)
+	if((Long)n == (Long)f->off+lineno && strcmp(s, f->name) == 0)
 		return 1;
 	act = f->name;
-	actline = lineno + f->off;
+	actline = sourceline((Long)lineno + f->off);
 	if(f->act != nil){
-		actline += f->actoff;
+		actline = sourceline((Long)lineno + f->off + f->actoff);
 		act = f->act;
 	}
-	addfile(mkfile(strdup(s), lineno, n-lineno, f->in, act, actline - n, -1));
+	addfile(mkfile(strdup(s), lineno, n-lineno, f->in, act, sourceline((Long)actline - n), -1));
 
 	return 1;
 }
@@ -473,7 +514,8 @@ lineconv(Fmt *f)
 
 	s = seprint(buf, buf+sizeof(buf), "%s:%d", file->name, fl.line);
 	if(file->act != nil)
-		s = seprint(s, buf+sizeof(buf), " [ %s:%d ]", file->act, file->actoff+fl.line);
+		s = seprint(s, buf+sizeof(buf), " [ %s:%d ]", file->act,
+			sourceline((Long)file->actoff+line.line+file->off));
 	if(file->in >= 0){
 		inl.line = file->in;
 		inl.pos = 0;

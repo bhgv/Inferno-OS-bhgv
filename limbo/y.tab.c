@@ -357,12 +357,15 @@ mkfileext(char *file, char *oldext, char *ext)
 	return ofile;
 }
 
+/* Report output failures and clear owned streams between translation units. */
 void
 translate(char *in, char *out, char *dbg)
 {
 	Decl *entry;
-	int doemit;
+	int doemit, haveout, havesym;
 
+	bout = nil;
+	bsym = nil;
 	infile = in;
 	outfile = out;
 	symfile = dbg;
@@ -384,8 +387,10 @@ translate(char *in, char *out, char *dbg)
 		}
 		if(dosym){
 			bsym = Bopen(dbg, OWRITE);
-			if(bsym == nil)
+			if(bsym == nil){
 				fprint(2, "can't open %s: %r\n", dbg);
+				errors++;
+			}
 		}
 	}
 
@@ -405,14 +410,22 @@ translate(char *in, char *out, char *dbg)
 	nfns = 0;
 	descriptors = nil;
 
-	if(bout != nil)
-		Bterm(bout);
-	if(bsym != nil)
-		Bterm(bsym);
+	haveout = bout != nil;
+	havesym = bsym != nil;
+	if(haveout && Bterm(bout) == Beof){
+		fprint(2, "can't write %s: %r\n", out);
+		errors++;
+	}
+	bout = nil;
+	if(havesym && Bterm(bsym) == Beof){
+		fprint(2, "can't write %s: %r\n", dbg);
+		errors++;
+	}
+	bsym = nil;
 	toterrors += errors;
-	if(errors && bout != nil)
+	if(errors && haveout)
 		remove(out);
-	if(errors && bsym != nil)
+	if(errors && havesym)
 		remove(dbg);
 }
 
@@ -424,6 +437,7 @@ trapFPE(unsigned exception[5], int value[2])
 	USED(value);
 }
 
+/* Fold drive paths in ASCII without passing signed UTF-8 bytes to ctype. */
 static char *
 win2inf(char *s)
 {
@@ -438,8 +452,8 @@ win2inf(char *s)
 	for(t = s; *t != '\0'; t++){
 		if(*t == '\\')
 			*t = '/';
-		if(nt)
-			*t = tolower(*t);
+		if(nt && *t >= 'A' && *t <= 'Z')
+			*t += 'a' - 'A';
 	}
 	return s;
 }
