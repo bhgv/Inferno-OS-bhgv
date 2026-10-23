@@ -275,26 +275,53 @@ checkalts(void)
 	}
 }
 
-/* Reject self-communication after marking without leaving a stale receiver. */
+/* A rejected conflict must never reach communication or wake a foreign peer. */
+static void
+unexpectedtransfer(void)
+{
+	assert(!"conflicting alt reached data transfer");
+}
+
+/* Detect scalar/array receive registrations at every depth behind other waiters. */
 static void
 checkselfalt(void)
 {
 	struct { Heap h; Channel c; } box;
+	struct { Heap h; Array a; } array;
 	struct { int nsend, nrecv; Altc ac[2]; } storage;
-	WORD result = -77, data;
+	Channel *members[5];
+	Prog *expected[3];
+	WORD result, data[2];
 	Alt *a;
+	int foreign, wide, duplicate, i;
 
-	memset(&box, 0, sizeof(box));
-	box.c.send = emptyqueue(); box.c.recv = emptyqueue(); box.c.buf = H;
-	a = (Alt*)&storage; a->nsend = a->nrecv = 1;
-	a->ac[0].c = a->ac[1].c = &box.c;
-	a->ac[0].ptr = a->ac[1].ptr = &data;
-	R.s = a; R.d = &result; current.state = Pready; removed = 0;
-	assert(!kprotect(prepare, nil) && last_error == exAlt);
-	assert(result == -77 && !removed && current.state == Pready);
-	queueequals(box.c.send, nil, 0); queueequals(box.c.recv, nil, 0);
-	releasequeue(box.c.send); releasequeue(box.c.recv);
-	assert(live == 0 && worker.nerr == 0); checks++;
+	for(foreign = 0; foreign < 4; foreign++)
+	for(wide = 0; wide < 2; wide++)
+	for(duplicate = 1; duplicate <= 4; duplicate++){
+		memset(&box, 0, sizeof(box));
+		memset(&array, 0, sizeof(array));
+		array.h.t = &Tarray; array.a.data = (uchar*)members;
+		array.a.len = duplicate+1;
+		for(i = 0; i < duplicate; i++) members[i] = &box.c;
+		members[duplicate] = H;
+		box.c.send = emptyqueue(); box.c.recv = emptyqueue(); box.c.buf = H;
+		box.c.mover = unexpectedtransfer;
+		for(i = 0; i < foreign; i++){
+			others[i].state = Precv; others[i].ptr = data;
+			expected[i] = &others[i]; cqadd(&box.c.recv, expected[i]);
+		}
+		a = (Alt*)&storage; a->nsend = a->nrecv = 1;
+		a->ac[0].c = &box.c;
+		a->ac[1].c = wide ? (Channel*)&array.a : &box.c;
+		a->ac[0].ptr = a->ac[1].ptr = data;
+		result = -77; R.s = a; R.d = &result;
+		current.state = Pready; removed = 0;
+		assert(!kprotect(prepare, nil) && last_error == exAlt);
+		assert(result == -77 && !removed && current.state == Pready);
+		queueequals(box.c.send, nil, 0); queueequals(box.c.recv, expected, foreign);
+		releasequeue(box.c.send); releasequeue(box.c.recv);
+		assert(live == 0 && worker.nerr == 0); checks++;
+	}
 }
 
 /* Native channel helpers clean stale payload pointers even if queue allocation fails. */

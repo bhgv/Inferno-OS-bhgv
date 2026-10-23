@@ -70,6 +70,18 @@ altunmark(Channel *c, WORD *ptr, Prog *p, int sr, Channel **sel, int dn)
 	}
 }
 
+/* Detect this alt's receive registration even behind unrelated waiters. */
+static int
+altreceives(Channel *c, Prog *p)
+{
+	Progq *q;
+
+	for(q = c->recv; q != nil; q = q->next)
+		if(q->prog == p)
+			return 1;
+	return 0;
+}
+
 /*
  * ALT Pass 1 - Count the number of ready channels and mark
  * each channel as ALT by this prog
@@ -114,13 +126,12 @@ altrdy(Alt *a, Prog *p)
 			e = exNilref;
 			continue;
 		}
-		if(c->recv->prog || CANPUT(c)) {
-			if(c->recv->prog == p) {
-				e = exAlt;
-				continue;
-			}
-			nrdy++;
+		if(altreceives(c, p)){
+			e = exAlt;
+			continue;
 		}
+		if(c->recv->prog || CANPUT(c))
+			nrdy++;
 		cqadd(&c->send, p);
 	}
 

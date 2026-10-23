@@ -12,7 +12,7 @@ alt.c implementation, and ccom from both emu/port/inferno.c and
 os/port/inferno.c. It uses real Heap/Channel/Array/Alt/Prog declarations and
 Proc error frames. Both runtime kprotect/krethrow bodies run through the
 emulator error-stack adapter, in WORD64 and WORD32 scalar models. Each of the
-four configurations passes 29,914 scenarios, with explicit balanced queue-node
+four configurations passes 29,945 scenarios, with explicit balanced queue-node
 allocation accounting and ASan/UBSan checks.
 
 The FIFO sweep exhausts every queue of length zero through eight over three
@@ -33,8 +33,9 @@ blocking and default branches, empty and occupied waiting queues, and failure
 at every registration allocation. Errors must cancel partial registrations,
 preserve other waiters and the result slot, and balance nested error frames.
 Successful blocked registration is cancelled explicitly by the test. Ready
-communication selection, buffered transfer and actual scheduler wakeups are
-outside these alt tests.
+communication selection and buffered transfer are tested separately by
+channel-transfers.py. Actual concurrent scheduler execution remains outside
+these fixtures.
 
 Native ccom tests fail queue allocation, inject interruption while blocked,
 simulate prior killcomm removal, and complete a normal wakeup. Every case
@@ -48,3 +49,9 @@ model channel allocations and scheduler boundaries; they do not boot Inferno,
 exercise true concurrent scheduling, or validate native-kernel integration.
 WORD32 retains host pointers and is not a complete 32-bit ABI execution test.
 No Dis layout or native JIT instruction encoding changes are introduced.
+
+The self-communication matrix now places zero through three unrelated receivers
+before this process, using scalar guards or arrays with repeated channels and a
+nil member. Rejection must occur before data transfer; exact foreign FIFO order
+and all process/result state remain unchanged. The previous head-only test
+incorrectly admitted a conflicting alt when a foreign receiver came first.

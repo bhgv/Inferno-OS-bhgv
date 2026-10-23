@@ -1212,6 +1212,7 @@ OP(irecv)
 	addrun(p);
 	R.t = 0;
 }
+/* Best-effort native sends never block or allocate a nonpositive buffer. */
 int
 csendalt(Channel *c, void *ip, Type *t, int len)
 {
@@ -1221,8 +1222,7 @@ csendalt(Channel *c, void *ip, Type *t, int len)
 		error(exNilref);
 
 	if(c->recv->prog == nil && (c->buf == H || c->size == c->buf->len)){
-		if(c->buf != H){
-			print("csendalt failed\n");
+		if(c->buf != H || len <= 0){
 			freeptrs(ip, t);
 			return 0;
 		}
