@@ -32,20 +32,26 @@ double	tab[] =
 	1.0e150,1.0e151,1.0e152,1.0e153,1.0e154,1.0e155,1.0e156,1.0e157,1.0e158,1.0e159,
 };
 
+/* Preserve reciprocal subnormals and bound work without negating INT_MIN. */
 double
 pow10(int n)
 {
 	int m;
+	double p;
 
-	if(n < 0) {
-		n = -n;
-		if(n < sizeof(tab)/sizeof(tab[0]))
-			return 1/tab[n];
-		m = n/2;
-		return 1/(pow10(m) * pow10(n-m));
-	}
-	if(n < sizeof(tab)/sizeof(tab[0]))
+	if(n < 0 && n > -(int)(sizeof(tab)/sizeof(tab[0])))
+		return 1/tab[-n];
+	if(n >= 0 && n < sizeof(tab)/sizeof(tab[0]))
 		return tab[n];
+
 	m = n/2;
-	return pow10(m) * pow10(n-m);
+	p = pow10(m);
+	p *= p;
+	if(n%2 != 0){
+		if(n < 0)
+			p /= 10;
+		else
+			p *= 10;
+	}
+	return p;
 }
