@@ -38,3 +38,24 @@ invalid equal bounds now raise exBounds without allocation or destination change
 Unequal bounds retain the existing exNilref status. This intentionally corrects
 the earlier fixture's accepted `nil[INT_MIN:INT_MIN]` legacy behavior.
 The parent slicea body fails the extended rejection assertions.
+
+Empty and zero-sized-element views retain a native nil data address without
+performing C pointer arithmetic on it. Sixteen repeated-slice scenarios check
+root transfer, collapse of nested views, exact type/root references and injected
+allocation failures that preserve the original view. This is a C-definedness
+correction; ordinary successful output comparisons alone need not distinguish
+the parent null-plus-zero expression. The pool/destructor adapters do not run GC.
+
+The complete heap fault suite passes strict UBSan. In this sandbox its additional
+nested siglongjmp paths trigger ASan's ignored __asan_handle_no_return warning
+followed by a stack-redzone report; that full ASan run is not accepted as passing.
+Keep stack instrumentation enabled and select successful empty-view construction
+separately for ASan/UBSan:
+
+```
+HEAP_CASE=empty-views CFLAGS='-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all' python3 libinterp/tests/heap-bounds.py
+```
+
+The subset executes all sixteen successful empty-view/root transfers; it does not
+claim allocation-failure or nil-error sanitizer coverage. Those scenarios remain
+in the complete UBSan suite and ordinary host execution.

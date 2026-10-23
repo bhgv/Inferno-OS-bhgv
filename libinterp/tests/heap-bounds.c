@@ -140,6 +140,36 @@ emptycopies(void)
     type.np=0;
 }
 
+/* Empty or zero-width views retain nil data and their root through repeated slicing. */
+static void
+emptyviews(int faults)
+{
+    Array *a, *root, *saved;
+    WORD first, last;
+    int zeroelement, repeat, before, typerefs;
+
+    for(zeroelement=0; zeroelement<2; zeroelement++) {
+        type.size=zeroelement ? 0 : sizeof(WORD);
+        root=H2D(Array*,heap(&Tarray));
+        root->len=zeroelement ? 3 : 0;
+        root->data=nil; root->t=&type; root->root=H; type.ref++;
+        a=root; first=zeroelement ? 1 : 0; last=zeroelement ? 2 : 0;
+        R.s=&first; R.m=&last; R.d=&a; which=8;
+        for(repeat=0; repeat<8; repeat++) {
+            saved=a; before=live; typerefs=type.ref;
+            if(faults) { force_failure=1; rejects(exHeap,0); force_failure=0; }
+            assert(a==saved && live==before && type.ref==typerefs);
+            assert(kprotect(run,nil));
+            assert(a!=saved && a->data==nil && a->root==root);
+            assert(a->len==(zeroelement ? 1 : 0) && D2H(root)->ref==1);
+            first=0; last=a->len;
+        }
+        destroy(a);
+        assert(type.ref==1 && Tarray.ref==1);
+    }
+    type.size=sizeof(WORD);
+}
+
 /* The language bounds invariant permits only [0:0] for a nil array. */
 static void
 nilslices(void)
@@ -164,13 +194,19 @@ nilslices(void)
     }
 }
 
-int main(void) {
+int main(int argc, char **argv) {
     static const int widths[]={0,1,2,4,8,16,4096,0x7fffffff};
     unsigned int i;int checks=0,limit,before;
     Array *a,*b,*old;Heap *h;
     Type *types[]={&type};Modlink ml={0};
     WORD count,first,last,offset;
     List *saved;
+    if(argc>1 && !strcmp(argv[1],"empty-views")) {
+        emptyviews(0);
+        assert(live==0 && type.ref==1 && Tarray.ref==1);
+        puts("PASS empty views: 16 root-preserving slices without error injection");
+        return 0;
+    }
     type.size=4;module.type=types;module.ntype=1;ml.m=&module;ml.type=types;R.M=&ml;
     which=0;
     for(i=0;i<nelem(widths);i++) {
@@ -246,7 +282,7 @@ int main(void) {
         destroy(a);assert(D2H(value)->ref==1);destroy(b);assert(scalar.ref==1);
         type.np=0;
     }
-    pointercopies(); emptycopies(); nilslices();
+    pointercopies(); emptycopies(); nilslices(); emptyviews(1);
     assert(live==0 && worker.nerr==0 && type.ref==1 && Tarray.ref==1 && Tmodlink.ref==1 && Tlist.ref==1);
     printf("PASS heap bounds: %d array boundaries, overflow counterexample, pool/header limits, copies, links, lists, slices, full-WORD VM sizes, 285 pointer overlaps and empty spans\n",checks);
     return 0;

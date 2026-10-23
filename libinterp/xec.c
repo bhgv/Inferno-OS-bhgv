@@ -1649,7 +1649,10 @@ OP(slicea)
 	h = heap(&Tarray);
 	ss = H2D(Array*, h);
 	ss->len = n;
-	ss->data = ds->data + start*t->size;
+	ss->data = ds->data;
+	/* Empty arrays and zero-sized elements may have no backing data address. */
+	if(start != 0 && t->size != 0)
+		ss->data += start*t->size;
 	ss->t = t;
 	t->ref++;
 
