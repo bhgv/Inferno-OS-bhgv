@@ -147,19 +147,32 @@ OP(iexit){ error(""); }
 OP(cvtwl){ V(d) = W(s); }
 OP(cvtlw){ W(d) = V(s); }
 OP(cvtlf){ F(d) = V(s); }
+/* Round first, then reject non-finite or out-of-range big conversions. */
 OP(cvtfl)
 {
 	REAL f;
 
 	f = F(s);
-	V(d) = f < 0 ? f - .5 : f + .5;
+	f = f < 0 ? f - .5 : f + .5;
+	if(!(f >= -9223372036854775808.0 && f < 9223372036854775808.0))
+		error(exInval);
+	V(d) = (LONG)f;
 }
+/* Check the active VM word width before publishing the rounded integer. */
 OP(cvtfw)
 {
 	REAL f;
 
 	f = F(s);
-	W(d) = f < 0 ? f - .5 : f + .5;
+	f = f < 0 ? f - .5 : f + .5;
+	if(sizeof(WORD) == 4){
+		if(!(f > -2147483649.0 && f < 2147483648.0))
+			error(exInval);
+	}else{
+		if(!(f >= -9223372036854775808.0 && f < 9223372036854775808.0))
+			error(exInval);
+	}
+	W(d) = (WORD)f;
 }
 OP(cvtcl)
 {

@@ -19,8 +19,8 @@ The instruction validates its rounded product before the C integer cast. Invalid
 values raise exInval while preserving all destination bytes. Valid conversions
 retain the existing multiply/half-away rounding order and native word width.
 Zero or negative factors are not rejected independently: representability of
-the resulting product determines success. This leaves ordinary real-to-int and
-real-to-big instruction policies unchanged.
+the resulting product determines success. Ordinary real-to-int and real-to-big bounds are tested separately in
+README.real-integers.md.
 
 Baseline cvtfx reproduces NaN-to-integer float-cast-overflow. Existing native
 JITs punt this opcode to the shared interpreter implementation. Their fallback

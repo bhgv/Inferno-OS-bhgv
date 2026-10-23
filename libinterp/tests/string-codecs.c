@@ -134,12 +134,25 @@ msize(void *p)
 	return 0;
 }
 
+static int cachefailure;
+
+/* Fail native cache allocations independently of VM heap allocations. */
+static void*
+cachemalloc(ulong size)
+{
+	if(cachefailure)
+		return nil;
+	return malloc(size);
+}
+
+#define malloc cachemalloc
 #define OP(fn) void fn(void)
 #define W(r) *((WORD*)(R.r))
 #define A(r) *((Array**)(R.r))
 #define V(r) *((LONG*)(R.r))
 #define S(r) *((String**)(R.r))
 IMPLEMENTATION
+#undef malloc
 
 /* Require an expected VM error without changing the old destination. */
 #define EXPECT(expr, why) do { \
@@ -420,11 +433,41 @@ checkindices(void)
 	}
 }
 
+/* A failed UTF cache replacement retains ownership and permits a clean retry. */
+static void
+checkcachefailures(void)
+{
+	String *s;
+	char *previous;
+	int i;
+
+	for(i = 0; i < 64; i++){
+		s = newrunes(2);
+		s->Srune[0] = 0x20ac;
+		s->Srune[1] = 'A'+i%26;
+		cachefailure = 1;
+		EXPECT(string2c(s), exNomem);
+		assert(s->tmp == nil);
+		cachefailure = 0;
+		previous = string2c(s);
+		cachefailure = 1;
+		EXPECT(string2c(s), exNomem);
+		assert(s->tmp == previous);
+		assert(!memcmp(previous, "\342\202\254", 3));
+		assert(previous[3] == 'A'+i%26 && previous[4] == 0);
+		cachefailure = 0;
+		assert(!memcmp(string2c(s), "\342\202\254", 3));
+		destroy(s);
+		assert(live == 0);
+		checks++;
+	}
+}
+
 /* Complete all real-header codec checks with balanced VM and native ownership. */
 int
 main(void)
 {
-	checkrunes(); checkbounds(); checkaliases(); checkwords(); checktext(); checkstores(); checkindices(); checkemptycapacity();
+	checkcachefailures(); checkrunes(); checkbounds(); checkaliases(); checkwords(); checktext(); checkstores(); checkindices(); checkemptycapacity();
 	assert(live == 0 && Tstring.ref == 1 && Tarray.ref == 1 && Tbyte.ref == 1);
 	printf("PASS string codecs: %d UTF/word/bounds/ownership checks, WORD%zu\n",checks,sizeof(WORD)*8);
 	return 0;

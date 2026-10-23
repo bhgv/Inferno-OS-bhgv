@@ -390,7 +390,7 @@ OP(cvtfc)
 char*
 string2c(String *s)
 {
-	char *p;
+	char *p, *buffer;
 	int l, nc;
 	Rune c, *r, *er;
 
@@ -407,10 +407,12 @@ string2c(String *s)
 	nc = -s->len;
 	l = (nc * UTFmax) + UTFmax;
 	if(s->tmp == nil || msize(s->tmp) < l) {
-		free(s->tmp);
-		s->tmp = malloc(l);
-		if(s->tmp == nil)
+		/* Retain the old cache until its replacement allocation succeeds. */
+		buffer = malloc(l);
+		if(buffer == nil)
 			error(exNomem);
+		free(s->tmp);
+		s->tmp = buffer;
 	}
 
 	p = s->tmp;

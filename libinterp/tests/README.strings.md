@@ -58,8 +58,7 @@ use poisoned data pointers to prove rejection happens before reads.
 Word formatting now uses an explicitly widened signed argument and enough room
 for every supported WORD value. Allocation-failure checks preserve old output
 and exercise successful and failing conversions when source and destination
-are the same register slot. All fixture VM references balance. Cache allocation
-failure, garbage-collector scheduling and complete Inferno boot remain outside
+are the same register slot. All fixture VM references balance. Garbage-collector scheduling and complete Inferno boot remain outside
 this fixture. ASan stack instrumentation is enabled for this setjmp-based test;
 LeakSanitizer inspection remains disabled for the documented sandbox limitation.
 The baseline bodies of all six changed codec/store functions independently fail
@@ -79,3 +78,10 @@ storage. Added index cases include negative values and high bits above 32 bits;
 errors must preserve output values, ownership, bytes and allocation counts.
 The old store body independently fails the extended fixture. These checks still
 use bounded heap/GC stubs rather than actual JIT execution or a complete boot.
+
+Native UTF cache allocations now have independent deterministic failure injection.
+For 64 strings in each word model, the driver rejects first allocation, builds a
+cache, rejects replacement, checks retained pointer and bytes, retries, and frees
+the string. `msize` deliberately reports zero to force the replacement path.
+The previous implementation fails the retained-pointer assertion. This extends
+the driver to 39,963 checks per model; ASan/UBSan and VM reference accounting pass.
