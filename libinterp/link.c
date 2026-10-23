@@ -30,7 +30,7 @@ mlink(Module *m, Link* l, uchar *fn, int sig, int pc, Type *t)
 	l->u.pc = pc < 0 ? nil : m->prog+pc;
 }
 
-/* Require an actual export name before comparing signatures or installing a link. */
+/* Resolve exact exports and report names as text rather than error format strings. */
 static int
 linkm(Module *m, Modlink *ml, int i, Import *ldt)
 {
@@ -57,7 +57,7 @@ linkm(Module *m, Modlink *ml, int i, Import *ldt)
 	ml->links[i].frame = l->frame;
 	return 0;
 bad:
-	kwerrstr(e);
+	kwerrstr("%s", e);
 	print("%s\n", e);
 	return -1;
 }

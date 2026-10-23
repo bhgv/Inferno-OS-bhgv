@@ -2,7 +2,7 @@
 
 Run `python3 libinterp/tests/module-links.py` from the repository root.
 
-The fixture executes the real linkm, mklinkmod and linkmod bodies for 67 cases.
+The fixture executes the real linkm, mklinkmod and linkmod bodies for 73 cases.
 It tests exact case-sensitive names, similar prefixes, first/middle/last export
 positions, six signatures including zero and signed extrema, missing names,
 absent export tables and mismatched signatures. Sentinel fields deliberately
@@ -31,3 +31,10 @@ boot or execution through a resulting native/Dis call target.
 The fixture now supplies a direct-call protection boundary for its lookup-only
 paths. Non-local initialization errors and partial MP ownership are exercised
 with real error frames by heap-clones.py; see README.heap-clones.md.
+
+
+Literal percent signs in module and import names are checked in both missing
+export and signature-mismatch errors. The diagnostic boundary executes real
+varargs formatting, so the completed message must be passed to `kwerrstr` as
+text (`"%s"`), not interpreted again as a format string. Nil-import ownership
+checks remain part of the fixture.

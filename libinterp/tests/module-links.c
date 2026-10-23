@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 static char message[ERRMAX];
 static int live, checks, unloads;
@@ -11,7 +12,15 @@ Type Tmodlink = {1};
 char exHeap[] = "heap";
 
 /* Capture errors without substituting any lookup or signature decision. */
-void kwerrstr(char *s, ...) { snprintf(message, sizeof(message), "%s", s); }
+void
+kwerrstr(char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vsnprintf(message, sizeof(message), fmt, ap);
+	va_end(ap);
+}
 /* Keep intentional negative-case diagnostics out of the test log. */
 static int quiet(char *fmt, ...) { (void)fmt; return 0; }
 /* LeakSanitizer process inspection is unavailable in the sandbox. */
@@ -140,6 +149,28 @@ publiclinks(void)
 	}
 }
 
+/* User-supplied percent characters must survive both link error branches literally. */
+static void
+literalerrors(void)
+{
+	Module m = {0};
+	Link exports[2] = {{0}};
+	Import request;
+	Modlink *ml;
+
+	m.ref = 1; m.name = "module%%name"; m.ext = exports;
+	request.name = "function%%name"; request.sig = 1;
+	ml = mklinkmod(&m, 1);
+	assert(linkm(&m, ml, 0, &request) == -1);
+	assert(strstr(message, "module%%name") && strstr(message, "function%%name"));
+	exports[0].name = request.name; exports[0].sig = 2;
+	assert(linkm(&m, ml, 0, &request) == -1);
+	assert(strstr(message, "module%%name") && strstr(message, "function%%name"));
+	destroy(ml);
+	assert(live == 0 && m.ref == 0);
+	checks += 2;
+}
+
 /* Reject absent imports while consuming the transferred module reference once. */
 static void
 nilimports(void)
@@ -163,8 +194,8 @@ nilimports(void)
 int
 main(void)
 {
-	lookup(); publiclinks(); nilimports();
-	assert(live == 0 && Tmodlink.ref == 1 && unloads == 9);
+	lookup(); publiclinks(); nilimports(); literalerrors();
+	assert(live == 0 && Tmodlink.ref == 1 && unloads == 10);
 	printf("Module links: %d cases\n", checks);
 	return 0;
 }
