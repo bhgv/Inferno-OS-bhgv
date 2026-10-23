@@ -1044,6 +1044,7 @@ compdbg(void)
 	print("%s:%lud@%.8lux\n", R.M->m->name, *(ulong*)R.m, *(ulong*)R.s);
 }
 
+/* Emit one instruction, retaining checked VM fallbacks for invalid frame metadata. */
 static void
 comp(Inst *i)
 {
@@ -1204,7 +1205,10 @@ comp(Inst *i)
 		jmp(base+macro[MacRET]);
 		break;
 	case IFRAME:
-		if(UXSRC(i->add) != SRC(AIMM)) {
+		/* Invalid constant descriptors must reach the checked VM frame path. */
+		if(UXSRC(i->add) != SRC(AIMM) ||
+		   i->s.imm < 0 || i->s.imm >= mod->ntype || mod->type == nil ||
+		   mod->type[i->s.imm] == nil || mod->type[i->s.imm]->size < (int)sizeof(Frame)) {
 			punt(i, SRCOP|DSTOP, optab[i->op]);
 			break;
 		}
@@ -2142,6 +2146,7 @@ patchex(Module *m, ulong *p)
 	}
 }
 
+/* Build both passes with initially clear marks for frame helper selection. */
 int
 compile(Module *m, int size, Modlink *ml)
 {
@@ -2152,7 +2157,8 @@ compile(Module *m, int size, Modlink *ml)
 
 	base = nil;
 	patch = mallocz(size*sizeof(*patch), ROMABLE);
-	tinit = malloc(m->ntype*sizeof(*tinit));
+	/* Only descriptors selected by frame instructions need generated helpers. */
+	tinit = mallocz(m->ntype*sizeof(*tinit), 1);
 	tmp = malloc(4096*sizeof(ulong));
 	if(tinit == nil || patch == nil || tmp == nil)
 		goto bad;

@@ -781,6 +781,7 @@ compdbg(void)
 	print("%s:%d@%.8ux\n", R.M->m->name, R.t, R.st);
 }
 
+/* Emit one instruction, retaining checked VM fallbacks for invalid frame metadata. */
 static void
 comp(Inst *i)
 {
@@ -948,7 +949,10 @@ comp(Inst *i)
 		delay();
 		break;
 	case IFRAME:
-		if(UXSRC(i->add) != SRC(AIMM)) {
+		/* Invalid constant descriptors must reach the checked VM frame path. */
+		if(UXSRC(i->add) != SRC(AIMM) ||
+		   i->s.imm < 0 || i->s.imm >= mod->ntype || mod->type == nil ||
+		   mod->type[i->s.imm] == nil || mod->type[i->s.imm]->size < (int)sizeof(Frame)) {
 			punt(i, SRCOP|DSTOP, optab[i->op]);
 			break;
 		}
@@ -1840,6 +1844,7 @@ patchex(Module *m, ulong *p)
 	}
 }
 
+/* Keep allocation failures before code emission and module publication. */
 int
 compile(Module *m, int size, Modlink *ml)
 {
@@ -1849,12 +1854,17 @@ compile(Module *m, int size, Modlink *ml)
 	ulong *s, tmp[512];
 
 	patch = mallocz(size*sizeof(*patch), 0);
-	tinit = malloc(m->ntype*sizeof(*tinit));
+	/* Only descriptors selected by frame instructions need generated helpers. */
+	tinit = mallocz(m->ntype*sizeof(*tinit), 1);
 	base = 0;
+	if(patch == nil || tinit == nil)
+		goto bad;
 
 	if(!comvec) {
 		i = 10;		/* length of comvec */
 		code = malloc(i*sizeof(*code));
+		if(code == nil)
+			goto bad;
 		s = code;
 		preamble();
 		if(code >= (ulong*)(s + i))
@@ -1893,6 +1903,8 @@ compile(Module *m, int size, Modlink *ml)
 	}
 
 	base = malloc((n+nlit)*sizeof(*base));
+	if(base == nil)
+		goto bad;
 	if(cflag > 1)
 		print("dis=%5d %5d mips=%5d asm=%.8p lit=%d: %s\n",
 			size, size*sizeof(Inst), n, base, nlit, m->name);
@@ -1959,4 +1971,12 @@ compile(Module *m, int size, Modlink *ml)
 	m->compiled = 1;
 	segflush(base, n*sizeof(*base));
 	return 1;
+bad:
+	free(patch);
+	free(tinit);
+	free(base);
+	patch = nil;
+	tinit = nil;
+	base = nil;
+	return 0;
 }

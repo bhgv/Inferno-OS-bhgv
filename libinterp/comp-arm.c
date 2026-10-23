@@ -1147,6 +1147,7 @@ comgoto(Inst *i)
 	}
 }
 
+/* Emit one instruction, retaining checked VM fallbacks for invalid frame metadata. */
 static void
 comp(Inst *i)
 {
@@ -1302,7 +1303,10 @@ comp(Inst *i)
 		movmem(i);
 		break;
 	case IFRAME:
-		if(UXSRC(i->add) != SRC(AIMM)) {
+		/* Invalid constant descriptors must reach the checked VM frame path. */
+		if(UXSRC(i->add) != SRC(AIMM) ||
+		   i->s.imm < 0 || i->s.imm >= mod->ntype || mod->type == nil ||
+		   mod->type[i->s.imm] == nil || mod->type[i->s.imm]->size < (int)sizeof(Frame)) {
 			punt(i, SRCOP|DSTOP, optab[i->op]);
 			break;
 		}
