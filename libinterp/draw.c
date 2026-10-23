@@ -4,6 +4,7 @@
 #include "isa.h"
 #include "runt.h"
 #include "raise.h"
+#include "nativeptrmap.h"
 #include "drawmod.h"
 #include "draw.h"
 #include "drawif.h"
@@ -144,9 +145,28 @@ void		freeallsubfonts(Display*);
 
 extern char rootdir[];
 
+/* Build managed-pointer maps from the native public fields of each wrapper. */
 void
 drawmodinit(void)
 {
+	memset(fontmap, 0, sizeof(fontmap));
+	nativefieldmap(fontmap, DFont, drawfont.name);
+	nativefieldmap(fontmap, DFont, drawfont.display);
+	memset(imagemap, 0, sizeof(imagemap));
+	nativefieldmap(imagemap, DImage, drawimage.display);
+	nativefieldmap(imagemap, DImage, drawimage.screen);
+	nativefieldmap(imagemap, DImage, drawimage.iname);
+	memset(screenmap, 0, sizeof(screenmap));
+	nativefieldmap(screenmap, DScreen, drawscreen.image);
+	nativefieldmap(screenmap, DScreen, drawscreen.fill);
+	nativefieldmap(screenmap, DScreen, drawscreen.display);
+	memset(displaymap, 0, sizeof(displaymap));
+	nativefieldmap(displaymap, DDisplay, drawdisplay.image);
+	nativefieldmap(displaymap, DDisplay, drawdisplay.white);
+	nativefieldmap(displaymap, DDisplay, drawdisplay.black);
+	nativefieldmap(displaymap, DDisplay, drawdisplay.opaque);
+	nativefieldmap(displaymap, DDisplay, drawdisplay.transparent);
+
 	TFont = dtype(freedrawfont, sizeof(DFont), fontmap, sizeof(fontmap));
 	TImage = dtype(freedrawimage, sizeof(DImage), imagemap, sizeof(imagemap));
 	TScreen = dtype(freedrawscreen, sizeof(DScreen), screenmap, sizeof(screenmap));

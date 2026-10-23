@@ -20,6 +20,7 @@ CORE = [
     'libinterp/tests/sys-print.py',
     'libinterp/tests/sys-utf.py',
     'libinterp/tests/heap-clones.py',
+    'libinterp/tests/gui-type-maps.py',
     'libinterp/tests/channel-queues.py',
     'libinterp/tests/channel-transfers.py',
     'libinterp/tests/integer-ops.py',

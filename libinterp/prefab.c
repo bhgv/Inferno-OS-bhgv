@@ -8,6 +8,7 @@
 #include "drawif.h"
 #include "prefab.h"
 #include "raise.h"
+#include "nativeptrmap.h"
 
 uchar elementmap[] = Prefab_Element_map;
 uchar compoundmap[] = Prefab_Compound_map;
@@ -30,11 +31,33 @@ enum
 	IREnter	= 20,
 };
 
+/* Map public managed fields without treating private native aliases as owners. */
 void
 prefabmodinit(void)
 {
+	memset(elementmap, 0, sizeof(elementmap));
+	nativefieldmap(elementmap, PElement, e.environ);
+	nativefieldmap(elementmap, PElement, e.tag);
+	nativefieldmap(elementmap, PElement, e.kids);
+	nativefieldmap(elementmap, PElement, e.str);
+	nativefieldmap(elementmap, PElement, e.mask);
+	nativefieldmap(elementmap, PElement, e.image);
+	nativefieldmap(elementmap, PElement, e.font);
+	memset(compoundmap, 0, sizeof(compoundmap));
+	nativefieldmap(compoundmap, PCompound, c.image);
+	nativefieldmap(compoundmap, PCompound, c.environ);
+	nativefieldmap(compoundmap, PCompound, c.title);
+	nativefieldmap(compoundmap, PCompound, c.contents);
+	memset(layoutmap, 0, sizeof(layoutmap));
+	nativefieldmap(layoutmap, Prefab_Layout, font);
+	nativefieldmap(layoutmap, Prefab_Layout, color);
+	nativefieldmap(layoutmap, Prefab_Layout, text);
+	nativefieldmap(layoutmap, Prefab_Layout, icon);
+	nativefieldmap(layoutmap, Prefab_Layout, mask);
+	nativefieldmap(layoutmap, Prefab_Layout, tag);
+
 	TElement = dtype(freeheap, sizeof(PElement), elementmap, sizeof(elementmap));
-	TLayout = dtype(freeheap, Prefab_Layout_size, layoutmap, sizeof(layoutmap));
+	TLayout = dtype(freeheap, sizeof(Prefab_Layout), layoutmap, sizeof(layoutmap));
 	TCompound = dtype(freeprefabcompound, sizeof(PCompound), compoundmap, sizeof(compoundmap));
 	builtinmod("$Prefab", Prefabmodtab, Prefabmodlen);
 }
