@@ -5,6 +5,7 @@
 #include <string.h>
 #include <math.h>
 
+typedef unsigned char uchar;
 typedef int64_t Long;
 typedef uint64_t uvlong;
 #define nil NULL

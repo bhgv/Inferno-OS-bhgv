@@ -508,16 +508,18 @@ srcconv(Fmt *f)
 	return fmtstrcpy(f, buf);
 }
 
+/* Consume complete identifiers and diagnose truncation before symbols can alias. */
 int
 lexid(int c)
 {
 	Sym *sym;
 	char id[StrSize*UTFmax+1], *p;
 	Rune r;
-	int i, t;
+	int i, t, overflow;
 
 	p = id;
 	i = 0;
+	overflow = 0;
 	for(;;){
 		if(i < StrSize){
 			if(c < Runeself)
@@ -527,7 +529,8 @@ lexid(int c)
 				p += runetochar(p, &r);
 			}
 			i++;
-		}
+		}else
+			overflow = 1;
 		c = getrune();
 		if(c == Beof
 		|| !(cmap(c) & (Malpha|Mdigit))){
@@ -536,6 +539,8 @@ lexid(int c)
 		}
 	}
 	*p = '\0';
+	if(overflow)
+		yyerror("identifier too long");
 	sym = enter(id, Lid);
 	t = sym->token;
 	if(t == Lid || t == Ltid)
@@ -808,6 +813,7 @@ escchar(void)
 	return c;
 }
 
+/* Build a terminated UTF-8 byte buffer with checked, geometric growth. */
 void
 lexstring(int israw)
 {
@@ -818,7 +824,8 @@ lexstring(int israw)
 
 	alloc = 32;
 	len = 0;
-	str = allocmem(alloc * sizeof(str));
+	str = allocmem(alloc);
+	str[0] = '\0';
 	startlno = lineno;
 	for(;;){
 		c = getrune();
@@ -861,9 +868,14 @@ lexstring(int israw)
 				return;
 			}
 		}
-		while(len+UTFmax+1 >= alloc){
-			alloc += 32;
-			str = reallocmem(str, alloc * sizeof(str));
+		if(len > 0x7fffffff-UTFmax-1)
+			fatal("string constant too long");
+		if(len+UTFmax+1 >= alloc){
+			if(alloc > 0x7fffffff/2)
+				alloc = 0x7fffffff;
+			else
+				alloc *= 2;
+			str = reallocmem(str, alloc);
 		}
 		r = c;
 		len += runetochar(&str[len], &r);
@@ -1127,6 +1139,7 @@ toksp(int t)
 	return buf;
 }
 
+/* Intern owned bytes, releasing empty and duplicate buffers without reading them. */
 Sym*
 enterstring(char *str, int n)
 {
@@ -1135,13 +1148,17 @@ enterstring(char *str, int n)
 	ulong h;
 	int c, c0;
 
+	if(n == 0){
+		free(str);
+		return enter("", 0);
+	}
 	e = str + n;
 	h = 0;
 	for(p = str; p < e; p++){
-		c = *p;
+		c = *(uchar*)p;
 		c ^= c << 6;
 		h += (c << 11) ^ (c >> 1);
-		c = *p;
+		c = *(uchar*)p;
 		h ^= (c << 14) + (c << 7) + (c << 4) + c;
 	}
 
@@ -1153,9 +1170,6 @@ enterstring(char *str, int n)
 			return s;
 		}
 	}
-
-	if(n == 0)
-		return enter("", 0);
 
 	s = allocmem(sizeof(Sym));
 	memset(s, 0, sizeof(Sym));
@@ -1180,12 +1194,15 @@ symcmp(Sym *s, Sym *t)
 	return c;
 }
 
+/* Bound concatenated byte lengths before adding or allocating the terminator. */
 Sym*
 stringcat(Sym *s, Sym *t)
 {
 	char *str;
 	int n;
 
+	if(s->len < 0 || t->len < 0 || s->len > 0x7ffffffe - t->len)
+		fatal("string constant too long");
 	n = s->len + t->len;
 	str = allocmem(n+1);
 	memmove(str, s->name, s->len);
@@ -1194,6 +1211,7 @@ stringcat(Sym *s, Sym *t)
 	return enterstring(str, n);
 }
 
+/* Hash identifier bytes as unsigned values on every host architecture. */
 Sym*
 enter(char *name, int token)
 {
@@ -1204,10 +1222,10 @@ enter(char *name, int token)
 
 	c0 = name[0];
 	h = 0;
-	for(p = name; c = *p; p++){
+	for(p = name; c = *(uchar*)p; p++){
 		c ^= c << 6;
 		h += (c << 11) ^ (c >> 1);
-		c = *p;
+		c = *(uchar*)p;
 		h ^= (c << 14) + (c << 7) + (c << 4) + c;
 	}
 	n = p - name;
@@ -1358,12 +1376,14 @@ yyerror(char *fmt, ...)
 		fprint(2, "%L: %s\n", curline(), buf);
 }
 
+/* Keep the failure status initialized when earlier diagnostics suppress output. */
 void
 fatal(char *fmt, ...)
 {
 	char buf[4096];
 	va_list arg;
 
+	strcpy(buf, "errors");
 	if(errors == 0 || isfatal){
 		va_start(arg, fmt);
 		vseprint(buf, buf+sizeof(buf), fmt, arg);
@@ -1390,15 +1410,14 @@ gfltconv(Fmt *f)
 	return fmtstrcpy(f, buf);
 }
 
+/* Do not touch storage when a diagnostic has no remaining output space. */
 char*
 secpy(char *p, char *e, char *s)
 {
 	int c;
 
-	if(p == e){
-		p[-1] = '\0';
+	if(p >= e)
 		return p;
-	}
 	for(; c = *s; s++){
 		*p++ = c;
 		if(p == e){
