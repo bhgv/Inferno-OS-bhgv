@@ -164,6 +164,7 @@ int main(void) {
     assert(live==0 && worker.nerr==0);
     {
         Loader_Inst code[2]={{0}};
+        String name={0};
         Type insttype={0};Array instructions={0};
         F_Loader_newmod nm={0};Modlink *result=H;
         Loader_Niladt *data;Heap *dataheap;
@@ -174,8 +175,12 @@ int main(void) {
         instructions.data=(uchar*)code;instructions.len=2;
         code[0].op=IJMP;code[0].addr=SRC(AXXX)|DST(AIMM);code[0].dst=1;
         code[1].op=IRET;code[1].addr=SRC(AXXX)|DST(AXXX);
-        nm.ret=&result;nm.name=H;nm.inst=&instructions;nm.data=data;nm.nlink=1;nm.ss=1024;
+        nm.ret=&result;nm.name=&name;nm.inst=&instructions;nm.data=data;nm.nlink=1;nm.ss=1024;
         baseline=live;
+        /* Nil names must fail before allocation; use a valid name for fault injection. */
+        nm.name=H;Loader_newmod(&nm);assert(result==H && live==baseline);
+        nm.name=nil;Loader_newmod(&nm);assert(result==H && live==baseline);
+        nm.name=&name;
         for(i=0;i<12;i++) {
             fail_after=i;Loader_newmod(&nm);fail_after=-1;
             if(result==H)failures++;

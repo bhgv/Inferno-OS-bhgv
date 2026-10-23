@@ -13,7 +13,8 @@ source = (root / 'libinterp/xec.c').read_text()
 
 # Extract unchanged function bodies, including compact legacy OP definitions.
 def function(name):
-    start = source.index('OP(' + name + ')')
+    signature = 'static WORD\nshiftcount(' if name == 'shiftcount' else 'OP(' + name + ')'
+    start = source.index(signature)
     brace = source.index('{', start)
     depth = 0
     tokens = r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*[\s\S]*?\*/|//[^\n]*|[{}]'
@@ -27,7 +28,7 @@ def function(name):
     raise ValueError(name)
 
 
-names = ['addw', 'subw', 'mulw', 'addl', 'subl', 'mull', 'shlw', 'shll']
+names = ['shiftcount', 'addw', 'subw', 'mulw', 'addl', 'subl', 'mull', 'shlw', 'shll']
 unit = (root / 'libinterp/tests/integer-ops.c').read_text()
 unit = unit.replace('IMPLEMENTATION', '\n'.join(function(name) for name in names))
 

@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <limits.h>
+#include <stdlib.h>
 
 #if WORD_BITS == 32
 typedef int32_t WORD;
@@ -20,6 +21,16 @@ static struct {
 #define UW(r) (*(UWORD*)R.r)
 #define V(r) (*(LONG*)R.r)
 #define UV(r) (*(ULONG*)R.r)
+static char exInval[] = "invalid";
+
+/* Valid-count arithmetic tests must never enter the VM error path. */
+static void
+error(char *message)
+{
+	(void)message;
+	abort();
+}
+
 IMPLEMENTATION
 
 static unsigned int checks;
