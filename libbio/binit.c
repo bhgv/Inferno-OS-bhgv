@@ -9,8 +9,8 @@ enum
 static	Biobuf*	wbufs[MAXBUFS];
 static	int		atexitflag;
 
-static
-void
+/* Flush registered output buffers when the process exits. */
+static void
 batexit(void)
 {
 	Biobuf *bp;
@@ -25,8 +25,8 @@ batexit(void)
 	}
 }
 
-static
-void
+/* Remove every registration before a buffer is reused or released. */
+static void
 deinstall(Biobuf *bp)
 {
 	int i;
@@ -36,8 +36,8 @@ deinstall(Biobuf *bp)
 			wbufs[i] = 0;
 }
 
-static
-void
+/* Register an output buffer once for process-exit flushing. */
+static void
 install(Biobuf *bp)
 {
 	int i;
@@ -54,12 +54,13 @@ install(Biobuf *bp)
 	}
 }
 
+/* Reject invalid storage before changing the buffer or its exit registration. */
 int
 Binits(Biobuf *bp, int f, int mode, uchar *p, int size)
 {
 
-	p += Bungetsize;	/* make room for Bungets */
-	size -= Bungetsize;
+	if(p == nil || size <= Bungetsize)
+		return Beof;
 
 	switch(mode&~(OCEXEC|ORCLOSE|OTRUNC)) {
 	default:
@@ -67,6 +68,7 @@ Binits(Biobuf *bp, int f, int mode, uchar *p, int size)
 		return Beof;
 
 	case OREAD:
+		deinstall(bp);
 		bp->state = Bractive;
 		bp->ocount = 0;
 		break;
@@ -74,9 +76,12 @@ Binits(Biobuf *bp, int f, int mode, uchar *p, int size)
 	case OWRITE:
 		install(bp);
 		bp->state = Bwactive;
-		bp->ocount = -size;
 		break;
 	}
+	p += Bungetsize;	/* make room for Bungets */
+	size -= Bungetsize;
+	if(bp->state == Bwactive)
+		bp->ocount = -size;
 	bp->bbuf = p;
 	bp->ebuf = p+size;
 	bp->bsize = size;
@@ -90,13 +95,14 @@ Binits(Biobuf *bp, int f, int mode, uchar *p, int size)
 	return 0;
 }
 
-
+/* Initialize a buffer using its embedded storage. */
 int
 Binit(Biobuf *bp, int f, int mode)
 {
 	return Binits(bp, f, mode, bp->b, sizeof(bp->b));
 }
 
+/* Release every acquired descriptor and buffer when initialization fails. */
 Biobuf*
 Bopen(char *name, int mode)
 {
@@ -119,13 +125,20 @@ Bopen(char *name, int mode)
 	if(f < 0)
 		return 0;
 	bp = malloc(sizeof(Biobuf));
-	if(bp == nil)
+	if(bp == nil){
+		close(f);
 		return 0;
-	Binits(bp, f, mode, bp->b, sizeof(bp->b));
+	}
+	if(Binits(bp, f, mode, bp->b, sizeof(bp->b)) == Beof){
+		close(f);
+		free(bp);
+		return 0;
+	}
 	bp->flag = Bmagic;
 	return bp;
 }
 
+/* Unregister and flush a buffer, closing storage owned by Bopen. */
 int
 Bterm(Biobuf *bp)
 {

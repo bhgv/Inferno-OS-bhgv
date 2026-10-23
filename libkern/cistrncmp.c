@@ -1,27 +1,21 @@
 #include "lib9.h"
 
+/* Compare unsigned bytes with ASCII case folding, without reading past a nonpositive bound. */
 int
 cistrncmp(char *s1, char *s2, int n)
 {
 	int c1, c2;
 
-	while(*s1 && n-- > 0){
+	while(n > 0){
 		c1 = *(uchar*)s1++;
 		c2 = *(uchar*)s2++;
-
-		if(c1 == c2)
-			continue;
-
 		if(c1 >= 'A' && c1 <= 'Z')
-			c1 -= 'A' - 'a';
-
+			c1 += 'a' - 'A';
 		if(c2 >= 'A' && c2 <= 'Z')
-			c2 -= 'A' - 'a';
-
-		if(c1 != c2)
+			c2 += 'a' - 'A';
+		if(c1 != c2 || c1 == 0)
 			return c1 - c2;
+		n--;
 	}
-	if(n <= 0)
-		return 0;
-	return -*s2;
+	return 0;
 }
