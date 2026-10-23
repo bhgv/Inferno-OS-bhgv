@@ -110,7 +110,7 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == '--worker':
         worker(sys.argv[2], sys.argv[3:])
         return
-    selected = os.environ.get('FDLIBM_CASE', 'ilogb fmod remainder hypot ceil floor rint').split()
+    selected = os.environ.get('FDLIBM_CASE', ' '.join(names)).split()
     with tempfile.TemporaryDirectory(prefix='ieee-boundaries-') as directory:
         td = Path(directory)
         objects = []

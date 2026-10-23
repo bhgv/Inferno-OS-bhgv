@@ -21,7 +21,9 @@
 
 #include "fdlibm.h"
 
-	double nextafter(double x, double y)
+/* Equal values return the destination, including its signed-zero representation. */
+double
+nextafter(double x, double y)
 {
 	int	hx,hy,ix,iy;
 	unsigned lx,ly;
@@ -36,7 +38,7 @@
 	if(((ix>=0x7ff00000)&&((ix-0x7ff00000)|lx)!=0) ||   /* x is nan */ 
 	   ((iy>=0x7ff00000)&&((iy-0x7ff00000)|ly)!=0))     /* y is nan */ 
 	   return x+y;				
-	if(x==y) return x;		/* x=y, return x */
+	if(x==y) return y;		/* x=y, return the destination sign */
 	if((ix|lx)==0) {			/* x == 0 */
 	    __HI(x) = hy&0x80000000;	/* return +-minsubnormal */
 	    __LO(x) = 1;
