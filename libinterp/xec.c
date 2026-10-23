@@ -435,7 +435,7 @@ OP(indx)
 
 	a = A(s);
 	i = W(d);
-	if(a == H || i >= a->len)
+	if(a == H || a == nil || i >= a->len)
 		error(exBounds);
 	W(m) = (WORD)(a->data+i*a->t->size);
 }
@@ -446,7 +446,7 @@ OP(indw)
 
 	a = A(s);
 	i = W(d);
-	if(a == H || i >= a->len)
+	if(a == H || a == nil || i >= a->len)
 		error(exBounds);
 	W(m) = (WORD)(a->data+i*sizeof(WORD));
 }
@@ -457,7 +457,7 @@ OP(indf)
 
 	a = A(s);
 	i = W(d);
-	if(a == H || i >= a->len)
+	if(a == H || a == nil || i >= a->len)
 		error(exBounds);
 	W(m) = (WORD)(a->data+i*sizeof(REAL));
 }
@@ -468,7 +468,7 @@ OP(indl)
 
 	a = A(s);
 	i = W(d);
-	if(a == H || i >= a->len)
+	if(a == H || a == nil || i >= a->len)
 		error(exBounds);
 	W(m) = (WORD)(a->data+i*sizeof(LONG));
 }
@@ -479,7 +479,7 @@ OP(indb)
 
 	a = A(s);
 	i = W(d);
-	if(a == H || i >= a->len)
+	if(a == H || a == nil || i >= a->len)
 		error(exBounds);
 	W(m) = (WORD)(a->data+i*sizeof(BYTE));
 }
@@ -1146,7 +1146,7 @@ OP(lena)
 
 	a = A(s);
 	l = 0;
-	if(a != H)
+	if(a != H && a != nil)
 		l = a->len;
 	W(d) = l;
 }
@@ -1610,7 +1610,7 @@ OP(slicea)
 	start = W(s);
 	ds = A(d);
 
-	if(ds == H) {
+	if(ds == H || ds == nil) {
 		if(v == start)
 			return;
 		error(exNilref);
@@ -1655,9 +1655,9 @@ OP(slicela)
 	ss = A(s);
 	dl = W(m);
 	ds = A(d);
-	if(ss == H)
+	if(ss == H || ss == nil)
 		return;
-	if(ds == H)
+	if(ds == H || ds == nil)
 		error(exNilref);
 	if(dl < 0 || dl > ds->len || ss->len < 0 || ss->len > ds->len-dl)
 		error(exBounds);
