@@ -733,6 +733,7 @@ moddecl(Decl *ids, Node *fields)
 	return n;
 }
 
+/* Register implementation declarations using the compiler's checked allocator. */
 void
 moddecled(Node *n)
 {
@@ -751,7 +752,7 @@ moddecled(Node *n)
 			if(ids->sym == im->sym){
 				isimp = 1;
 				d = ids;
-				dm = malloc(sizeof(Dlist));
+				dm = allocmem(sizeof(Dlist));
 				dm->d = ids;
 				dm->next = nil;
 				if(impdecls == nil)

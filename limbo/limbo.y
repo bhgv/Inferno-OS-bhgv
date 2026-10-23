@@ -1645,10 +1645,33 @@ getroot(void)
 	return root;
 }
 
+/* Install an owned module include path with checked allocation and bounded length. */
+static void
+rootincludes(void)
+{
+	char *root, *path;
+	ulong n;
+
+	root = getroot();
+	if(root == nil){
+		addinclude(INCPATH);
+		return;
+	}
+	n = strlen(root);
+	if(n > 0x7fffffff-sizeof(SLASHMOD))
+		fatal("root path too long");
+	path = allocmem(n+sizeof(SLASHMOD));
+	memmove(path, root, n);
+	memmove(path+n, SLASHMOD, sizeof(SLASHMOD));
+	free(root);
+	addinclude(path);
+}
+
+/* Initialize compiler services and translate each requested source file. */
 void
 main(int argc, char *argv[])
 {
-	char *s, *ofile, *ext, *root;
+	char *s, *ofile, *ext;
 	int i;
 
 	FPinit();
@@ -1799,17 +1822,7 @@ main(int argc, char *argv[])
 		break;
 	}ARGEND
 
-	if((root = getroot()) != nil){
-		char *r;
-
-		r = malloc(strlen(root)+strlen(SLASHMOD)+1);
-		strcpy(r, root);
-		strcat(r, SLASHMOD);
-		addinclude(r);
-		free(root);
-	}
-	else
-		addinclude(INCPATH);
+	rootincludes();
 
 	if(argc == 0){
 		usage();
