@@ -737,16 +737,24 @@ Math_lgamma(void *fp)
 	f->ret->t1 = value;
 }
 
+/* Publish both components only when the integral part fits the active VM word. */
 void
 Math_modf(void *fp)
 {
 	F_Math_modf *f;
-	double ipart;
+	double ipart, fraction;
 
 	f = fp;
-
-	f->ret->t1 = modf(f->x, &ipart);
-	f->ret->t0 = ipart;
+	fraction = modf(f->x, &ipart);
+	if(sizeof(WORD) == 4){
+		if(!(ipart >= -2147483648.0 && ipart < 2147483648.0))
+			error(exInval);
+	}else{
+		if(!(ipart >= -9223372036854775808.0 && ipart < 9223372036854775808.0))
+			error(exInval);
+	}
+	f->ret->t0 = (WORD)ipart;
+	f->ret->t1 = fraction;
 }
 
 /* Preserve extreme VM exponents when the native math API takes a narrower int. */

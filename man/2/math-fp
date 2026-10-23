@@ -162,6 +162,7 @@ if
 is greater than
 .IR  y ,
 otherwise it is 0.
+If either argument is NaN, the result is NaN.
 The functions
 .BR fmin ,
 .BR fmax ,
@@ -174,6 +175,16 @@ customary minimum,
 maximum,
 absolute value,
 and integer rounding routines.
+If exactly one argument of
+.B fmin
+or
+.B fmax
+is NaN, the numeric argument is returned; if both are NaN, the result is NaN.
+For zero arguments,
+.B fmin
+prefers negative zero and
+.B fmax
+prefers positive zero when the signs differ.
 .PP
 There are two functions for computing the modulus:
 .BI fmod( x , y )
@@ -199,6 +210,13 @@ into integer and fractional parts returned in a tuple, and
 .B rint
 rounds to an integer, following the
 rounding mode specified in the floating point control word.
+The integer component of
+.B modf
+is truncated toward zero and must be representable as a Limbo
+.BR int .
+Otherwise the operation raises an invalid-argument exception without
+publishing a partial tuple.
+The fractional component retains the sign of the input, including zero.
 .SH SOURCE
 .B /libinterp/math.c
 .SH SEE ALSO
