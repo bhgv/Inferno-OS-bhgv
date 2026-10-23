@@ -190,26 +190,29 @@ rmcall(void)
 		error(p->kill);
 }
 
+/* Validate the descriptor and remaining stack span before forming a frame. */
 static void
 rmfram(void)
 {
 	Type *t;
 	Frame *f;
-	uchar *nsp;
 
-	t = (Type*)R.s;
-	if(t == H)
+	if(R.d == H || R.d == nil)
 		error(exModule);
-
-	nsp = R.SP + t->size;
-	if(nsp >= R.TS) {
+	t = (Type*)R.s;
+	if(t == H || t == nil)
+		error(exModule);
+	if(t->size < (int)sizeof(Frame))
+		error(exHeap);
+	if(R.SP == nil || R.TS == nil || R.SP > R.TS ||
+	   (ulong)t->size >= (ulong)(R.TS-R.SP)) {
 		R.s = t;
 		extend();
 		T(d) = R.s;
 		return;
 	}
 	f = (Frame*)R.SP;
-	R.SP = nsp;
+	R.SP += t->size;
 	f->t = t;
 	f->mr = nil;
 	initmem(t, f);
@@ -1754,17 +1757,21 @@ macmcal(void)
 	genb(Oret);
 }
 
+/* Reject wrapped stack addresses before testing the unsigned extent limit. */
 static void
 macfram(void)
 {
-	uchar *label;
+	uchar *label, *overflow;
 
 	con((ulong)&R, RTMP);			// MOVL	$R, RTMP
 	modrm(Oldw, O(REG, SP), RTMP, RAX);	// MOVL	R.SP, AX
-	modrm(0x03, O(Type, size), RTA, RAX);	// ADDL size(RCX), RAX
+	modrm(0x03, O(Type, size), RTA, RAX);	// ADDL size(RTA), RAX
+	gen2(0x72, 0x00);			// JC expand: address wrapped
+	overflow = code-1;
 	modrm(0x3b, O(REG, TS), RTMP, RAX);	// CMPL	AX, R.TS
-	gen2(0x7c, 0x00);			// JL	.+(patch)
+	gen2(0x72, 0x00);			// JB: unsigned nsp < R.TS
 	label = code-1;
+	*overflow = code-overflow-1;
 
 	modrm(Ostw, O(REG, s), RTMP, RTA);
 	modrm(Ostw, O(REG, FP), RTMP, RFP);	// MOVL	RFP, R.FP

@@ -279,25 +279,29 @@ rmcall(void)
 		error(p->kill);
 }
 
+/* Validate the descriptor and remaining stack span before forming a frame. */
 static void
 rmfram(void)
 {
 	Type *t;
 	Frame *f;
-	uchar *nsp;
 
-	t = (Type*)R.s;
-	if(t == H)
+	if(R.d == H || R.d == nil)
 		error(exModule);
-	nsp = R.SP + t->size;
-	if(nsp >= R.TS) {
+	t = (Type*)R.s;
+	if(t == H || t == nil)
+		error(exModule);
+	if(t->size < (int)sizeof(Frame))
+		error(exHeap);
+	if(R.SP == nil || R.TS == nil || R.SP > R.TS ||
+	   (ulong)t->size >= (ulong)(R.TS-R.SP)) {
 		R.s = t;
 		extend();
 		T(d) = R.s;
 		return;
 	}
 	f = (Frame*)R.SP;
-	R.SP = nsp;
+	R.SP += t->size;
 	f->t = t;
 	f->mr = nil;
 	initmem(t, f);
@@ -1890,10 +1894,11 @@ macmfra(void)
 	gen(Oblr);
 }
 
+/* Reject wrapped stack addresses before testing the unsigned extent limit. */
 static void
 macfram(void)
 {
-	ulong *cp;
+	ulong *cp, *overflow;
 
 	/*
 	 * Ri has t
@@ -1902,6 +1907,9 @@ macfram(void)
 	AIRR(Olwz, Ro1, Rreg,O(REG,SP));		// MOVW	R.SP, Ro1  (=(Frame*)R.SP)
 	AIRR(Olwz, Ro3, Rreg,O(REG,TS));		// MOVW	R.TS, tmp
 	ARRR(Oadd, Ro2, Ro2, Ro1);		// ADD Ro1, t->size, nsp
+	ARRR(Ocmpl, Rcrf0, Ro2, Ro1);	// wrapped if nsp < old SP
+	overflow = code;
+	br(Oblt, 0);
 	ARRR(Ocmpl, Rcrf0, Ro2, Ro3);		// CMPU nsp,tmp (nsp >= R.TS?)
 	cp = code;
 	br(Obge, 0);			// BGE expand
@@ -1914,6 +1922,7 @@ macfram(void)
 	gen(Obctr);				// become t->init(Ro1), returning Ro1
 
 	PATCH(cp);					// expand:
+	PATCH(overflow);
 	AIRR(Ostw, Ri, Rreg,O(REG,s));		// MOVL	t, R.s
 	mfspr(Rlink, Rlr);
 	AIRR(Ostw, Rlink, Rreg,O(REG,st));	// MOVL	Rlink, R.st

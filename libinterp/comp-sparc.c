@@ -218,28 +218,29 @@ rmcall(void)
 		error(p->kill);
 }
 
+/* Validate the descriptor and remaining stack span before forming a frame. */
 static void
 rmfram(void)
 {
 	Type *t;
 	Frame *f;
-	uchar *nsp;
 
-	if(R.d == H)
-                error(exModule);
-        t = (Type*)R.s;
-        if(t == H)
-                error(exModule);
-
-	nsp = R.SP + t->size;
-	if(nsp >= R.TS) {
+	if(R.d == H || R.d == nil)
+		error(exModule);
+	t = (Type*)R.s;
+	if(t == H || t == nil)
+		error(exModule);
+	if(t->size < (int)sizeof(Frame))
+		error(exHeap);
+	if(R.SP == nil || R.TS == nil || R.SP > R.TS ||
+	   (ulong)t->size >= (ulong)(R.TS-R.SP)) {
 		R.s = t;
 		extend();
 		T(d) = R.s;
 		return;
 	}
 	f = (Frame*)R.SP;
-	R.SP = nsp;
+	R.SP += t->size;
 	f->t = t;
 	f->mr = nil;
 	initmem(t, f);
@@ -1629,20 +1630,25 @@ macmcal(void)
 	mem(Ostw, O(REG,PC),RREG, RA0);
 }
 
+/* Reject wrapped stack addresses before testing the unsigned extent limit. */
 static void
 macfram(void)
 {
-	ulong *lab1;
+	ulong *lab1, *overflow;
 
 	mem(Oldw, O(REG, SP), RREG, RA0);	// MOVL	R.SP, RA0
 	mem(Oldw, O(Type, size), RA3, RA1);
-	FM3(2, Oadd, RA0, RA1, RA0);
+	FM3(2, Oaddcc, RA0, RA1, RA0);
+	overflow = code;
+	BRA(Obcs, 0);	// carry means the address wrapped
+	NOOP;
 	mem(Oldw, O(REG, TS), RREG, RA1);
 	FM3(2, Ocmp, RA1, RA0, RZ);
 	lab1 = code;
-	BRA(Obl, 0);
+	BRA(Obcs, 0);	// unsigned nsp < R.TS
 	NOOP;
 
+	PATCH(overflow);
 	mem(Ostw, O(REG, s), RREG, RA3);
 	mem(Ostw, O(REG, st), RREG, RLINK);
 	CALL(extend);				// CALL	extend
