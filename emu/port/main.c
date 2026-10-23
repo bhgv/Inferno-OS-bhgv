@@ -54,6 +54,7 @@ envusage(void)
 	usage();
 }
 
+/* Recognize a nonempty decimal digit sequence used by command-line options. */
 static int
 isnum(char *p)
 {
@@ -65,22 +66,25 @@ isnum(char *p)
 	return 1;
 }
 
+/* Validate both dimensions before narrowing or changing the current window size. */
 static int
 geom(char *val)
 {
 	char *p;
-	int x, y;
-	if (val == '\0' || (*val < '0' || *val > '9')) 
+	ulong x, y;
+
+	if(val == nil || *val < '0' || *val > '9')
 		return 0;
 	x = strtoul(val, &p, 0);
-	if(x >= 64) 
-		Xsize = x;
-	if (*p++ != 'x' || !isnum(p))
+	if(x > 0x7fffffff || *p != 'x' || !isnum(p+1))
 		return 0;
-	y = strtoul(p, &p, 0);
+	y = strtoul(p+1, &p, 0);
+	if(y > 0x7fffffff || *p != '\0')
+		return 0;
+	if(x >= 64)
+		Xsize = x;
 	if(y >= 48)
 		Ysize = y;
-	if (*p != '\0') return 0;
 	return 1;
 }
 
@@ -232,6 +236,7 @@ nofence(void)
 {
 }
 
+/* Parse startup options within the argument vector before initializing the emulator. */
 void
 main(int argc, char *argv[])
 {
@@ -249,7 +254,10 @@ main(int argc, char *argv[])
 	opt = getenv("EMU");
 	if(opt != nil && *opt != '\0') {
 		enva[0] = "emu";
-		envc = tokenize(opt, &enva[1], sizeof(enva)-1) + 1;
+		/* Leave space for argv[0] and reject a full vector before its terminator. */
+		envc = tokenize(opt, &enva[1], nelem(enva)-1) + 1;
+		if(envc >= nelem(enva))
+			envusage();
 		enva[envc] = 0;
 		option(envc, enva, envusage);
 	}
