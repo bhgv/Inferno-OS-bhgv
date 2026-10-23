@@ -1,0 +1,157 @@
+#include "lib9.h"
+#include "isa.h"
+#include "interp.h"
+#include "kernel.h"
+#include <assert.h>
+#include <stdio.h>
+
+static int syncflag, outside, opens, closes, acquired, released, unloaded, parsed, dynamiccalls;
+static int failopen, failstat, failalloc, dynamic, cached, fragment, stopat, readerror, position, reads, live, checks;
+static vlong filelength;
+static Module oldmodule, answer;
+
+/* Keep allocator checking without unsupported LeakSanitizer thread inspection. */
+int __lsan_is_turned_off(void) { return 1; }
+
+/* Acquire native metadata storage independently of module image allocation. */
+static void*
+owned(ulong n)
+{
+	void *p = malloc(n ? n : 1);
+	assert(p != nil);
+	live++;
+	return p;
+}
+
+/* Every temporary image and stat record must be released exactly once. */
+static void ownedfree(void *p) { if(p != nil)live--; free(p); }
+
+/* Expose byte-image allocation failure after a descriptor and stat are owned. */
+void*
+mallocz(ulong n, int clear)
+{
+	assert(outside == syncflag && clear == 0);
+	return failalloc ? nil : owned(n);
+}
+
+/* Record the interpreter lock boundary around native file access. */
+void release(void) { assert(outside == 0); outside = 1; released++; }
+void acquire(void) { assert(outside == 1); outside = 0; acquired++; }
+void kwerrstr(char *fmt, ...) { assert(fmt != nil); }
+int kopen(char *path, int mode) { assert(outside == syncflag && strcmp(path, "module.dis") == 0 && mode == OREAD); opens++; return failopen ? -1 : 7; }
+int kclose(int fd) { assert(fd == 7); closes++; return 0; }
+
+/* Return matching or changed module identity with configurable file length. */
+Dir*
+kdirfstat(int fd)
+{
+	Dir *d;
+	assert(fd == 7 && outside == syncflag);
+	if(failstat)return nil;
+	d = owned(sizeof *d);
+	memset(d, 0, sizeof *d);
+	d->length = filelength;
+	d->mtime = cached ? oldmodule.mtime : oldmodule.mtime+1;
+	d->mode = dynamic ? 0111 : 0;
+	return d;
+}
+
+/* Legal short reads fill a deterministic prefix; EOF/error may cut it short. */
+long
+kread(int fd, void *data, long n)
+{
+	long i, count;
+	assert(fd == 7 && outside == syncflag && n > 0);
+	reads++;
+	if(stopat >= 0 && position >= stopat)return readerror ? -1 : 0;
+	count = n < fragment ? n : fragment;
+	if(stopat >= 0 && count > stopat-position)count = stopat-position;
+	for(i = 0; i < count; i++)((uchar*)data)[i] = (position+i)*17+3;
+	position += count;
+	return count;
+}
+
+/* The dynamic loader must see a live descriptor after reacquiring the VM lock. */
+int dynldable(int fd) { assert(fd == 7 && outside == syncflag); return dynamic; }
+vlong kseek(int fd, vlong off, int base) { assert(fd == 7 && off == 0 && base == 0 && outside == 0); return 0; }
+Module* newdyncode(int fd, char *path, Dir *d) { assert(fd == 7 && path != nil && d != nil && outside == 0 && closes == 0); dynamiccalls++; return &answer; }
+void unload(Module *m) { assert(m == &oldmodule && outside == 0); unloaded++; }
+
+/* Reject partial images and verify byte order after any sequence of short reads. */
+Module*
+parsemod(char *path, uchar *code, ulong length, Dir *d)
+{
+	assert(path != nil && d != nil && outside == 0 && closes == 1);
+	assert(length == filelength && position == length);
+	for(ulong i = 0; i < length; i++)assert(code[i] == (uchar)(i*17+3));
+	parsed++;
+	return &answer;
+}
+
+#define free ownedfree
+IMPLEMENTATION
+#undef free
+
+/* Reset native observations while keeping an independent cached-module identity. */
+static void
+reset(int sync)
+{
+	syncflag = sync; outside = 0;
+	opens = closes = acquired = released = unloaded = parsed = dynamiccalls = 0;
+	failopen = failstat = failalloc = dynamic = cached = position = reads = 0;
+	fragment = 256; stopat = -1; readerror = 0;
+	filelength = 64;
+	assert(live == 0);
+}
+
+/* Check fragmentation, truncation, native errors and module ownership separately. */
+int
+main(void)
+{
+	int sync, length, chunk, cut, errorcase, existing;
+	Module *m, *result;
+	oldmodule.mtime = 10;
+	for(sync = 0; sync <= 1; sync++)
+		for(existing = 0; existing <= 1; existing++)
+			for(length = 1; length <= 129; length += length < 10 ? 1 : 13)
+				for(chunk = 1; chunk <= length+1; chunk++){
+					reset(sync); filelength = length; fragment = chunk;
+					m = existing ? &oldmodule : nil;
+					result = readmod("module.dis", m, sync);
+					assert(result == &answer && parsed == 1 && reads == (length+chunk-1)/chunk);
+					assert(unloaded == existing && closes == 1 && live == 0 && outside == 0);
+					assert(acquired == sync && released == sync);
+					checks++;
+				}
+	for(sync = 0; sync <= 1; sync++)
+		for(cut = 0; cut < 64; cut++)
+			for(errorcase = 0; errorcase <= 1; errorcase++){
+				reset(sync); fragment = 7; stopat = cut; readerror = errorcase;
+				assert(readmod("module.dis", &oldmodule, sync) == nil);
+				assert(parsed == 0 && unloaded == 1 && closes == 1 && live == 0 && outside == 0);
+				checks++;
+			}
+	for(sync = 0; sync <= 1; sync++)
+		for(errorcase = 0; errorcase < 7; errorcase++){
+			reset(sync);
+			if(errorcase == 0)failopen = 1;
+			if(errorcase == 1)failstat = 1;
+			if(errorcase == 2)failalloc = 1;
+			if(errorcase == 3)filelength = -1;
+			if(errorcase == 4)filelength = 8*1024*1024;
+			if(errorcase == 5)cached = 1;
+			if(errorcase == 6)dynamic = 1;
+			result = readmod("module.dis", &oldmodule, sync);
+			assert(result == (cached ? &oldmodule : dynamic ? &answer : nil));
+			assert(closes == (failopen ? 0 : 1) && unloaded == (cached ? 0 : 1));
+			assert(parsed == 0 && dynamiccalls == dynamic && live == 0 && outside == 0);
+			assert(acquired == sync && released == sync); checks++;
+		}
+	reset(1);
+	assert(readmod("$Sys", nil, 1) == nil);
+	assert(readmod("$Sys", &oldmodule, 1) == &oldmodule);
+	assert(opens == 0 && acquired == 0 && released == 0 && live == 0);
+	checks++;
+	printf("readmod I/O: %d checks passed\n", checks);
+	return 0;
+}

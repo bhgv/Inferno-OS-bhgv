@@ -4,11 +4,12 @@
 #include "kernel.h"
 #include "dynld.h"
 
+/* Read the complete module image even when the backing file returns short reads. */
 Module*
 readmod(char *path, Module *m, int sync)
 {
 	Dir *d;
-	int fd, n, dynld;
+	int fd, n, nr, dynld;
 	uchar *code;
 	Module *ans;
 	ulong length;
@@ -57,7 +58,13 @@ readmod(char *path, Module *m, int sync)
 	if(code == nil)
 		goto done;
 
-	n = kread(fd, code, length);
+	n = 0;
+	while(n < length){
+		nr = kread(fd, code+n, length-n);
+		if(nr <= 0)
+			break;
+		n += nr;
+	}
 	if(n != length) {
 		free(code);
 		code = nil;
