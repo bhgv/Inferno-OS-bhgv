@@ -31,6 +31,8 @@ def function(text, signature):
 signatures = ['static vlong\nipow(', 'double\nrpow(', 'int\nsametree(',
               'int\nhasside(', 'Node*\nfolds(', 'Node*\nefold(',
               'Node*\nfoldvc(', 'Node*\nfoldc(', 'Node*\nfoldr(']
+if 'static Long\nfoldstringlen(' in source:
+    signatures.insert(0, 'static Long\nfoldstringlen(')
 parts = [function(source, name) for name in signatures]
 a = tables.index('int setsideeffect[] = {')
 b = tables.index('\n};', a)+3

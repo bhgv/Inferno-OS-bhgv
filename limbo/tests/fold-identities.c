@@ -18,7 +18,7 @@ enum {Dconst, Dtag, Dtype, Dlocal};
 typedef struct Type Type;
 struct Type { int kind, size, cons; };
 typedef struct { int start; } Src;
-typedef struct { char *name; } Sym;
+typedef struct { char *name; int len; } Sym;
 typedef struct Decl Decl;
 typedef struct Node Node;
 struct Decl { Decl *importid; int store, tag; Node *init; Sym *sym; };

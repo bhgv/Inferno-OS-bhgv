@@ -42,6 +42,9 @@ Finite cases, ties, NaN/infinity and boundary values compare folding against the
 actual real-to-fixed VM function. Invalid folds retain the source AST and remain
 runtime expressions; contexts requiring a constant may reject such inputs.
 Production parsing of strings and target libmath are not modeled here.
+The separate fold-strings.py and fold-string-length.py fixtures cover actual
+string parser dependencies, numeric prefixes, portable deferral of wide int/byte
+prefixes, and length folding across embedded NULs; see README.fold-strings.md.
 
 Baseline tests reproduce mismatched fixed rounding and native float-cast-overflow
 in real-to-fixed execution. This suite uses a WORD32 scalar model with native

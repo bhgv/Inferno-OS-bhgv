@@ -349,6 +349,27 @@ fold(Node *n)
 	return n;
 }
 
+/* Count all encoded characters, including NULs inside a length-delimited constant. */
+static Long
+foldstringlen(Sym *symbol)
+{
+	char *p, *end;
+	Long length;
+
+	p = symbol->name;
+	end = p+symbol->len;
+	length = 0;
+	while(p < end){
+		length += utflen(p);
+		p += strlen(p);
+		if(p < end){
+			length++;
+			p++;
+		}
+	}
+	return length;
+}
+
 /*
  * Fold typed expressions without reassociating inexact real/fixed arithmetic
  * or discarding operand evaluations that can raise run-time errors.
@@ -434,7 +455,7 @@ efold(Node *n)
 		left = efold(left);
 		n->left = left;
 		if(left->ty == tstring && left->op == Oconst)
-			n = mkconst(&n->src, utflen(left->decl->sym->name));
+			n = mkconst(&n->src, foldstringlen(left->decl->sym));
 		break;
 	case Oslice:
 		if(right->left->op == Onothing)
@@ -715,6 +736,31 @@ foldfixedcast(Long value, Type *from, Type *to, Long *result)
 	return 1;
 }
 
+/* Fold decimal prefixes only in the common 32-bit strtol range of all targets. */
+static int
+foldstringint(char *text, Long *result)
+{
+	uvlong value, limit;
+	int negative, digit;
+
+	while(*text == ' ' || *text == '\t' || *text == '\n' ||
+	      *text == '\r' || *text == '\f' || *text == '\v')
+		text++;
+	negative = *text == '-';
+	if(*text == '-' || *text == '+')
+		text++;
+	value = 0;
+	limit = negative ? (uvlong)0x80000000 : (uvlong)0x7fffffff;
+	while(*text >= '0' && *text <= '9'){
+		digit = *text++-'0';
+		if(value > (limit-digit)/10)
+			return 0;
+		value = value*10+digit;
+	}
+	*result = negative ? -(Long)value : (Long)value;
+	return 1;
+}
+
 /* Fold casts only when their native intermediate conversion is representable. */
 Node*
 foldcast(Node *n, Node *left)
@@ -787,8 +833,11 @@ foldcast(Node *n, Node *left)
 		switch(n->ty->kind){
 		case Tint:
 		case Tbyte:
+			if(!foldstringint(left->decl->sym->name, &left->val))
+				return n;
+			return foldcasti(n, left);
 		case Tbig:
-			left->val = strtoi(left->decl->sym->name, 10);
+			left->val = strtoll(left->decl->sym->name, nil, 10);
 			return foldcasti(n, left);
 		case Treal:
 			left->rval = strtod(left->decl->sym->name, nil);

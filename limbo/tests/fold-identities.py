@@ -30,6 +30,8 @@ def function(signature):
 signatures = ['static vlong\nipow(', 'double\nrpow(', 'int\nsametree(',
               'int\nhasside(', 'Node*\nfolds(', 'Node*\nefold(',
               'Node*\nfoldvc(', 'Node*\nfoldc(', 'Node*\nfoldr(']
+if 'static Long\nfoldstringlen(' in source:
+    signatures.insert(0, 'static Long\nfoldstringlen(')
 parts = [function(signature) for signature in signatures]
 ops = sorted(set(re.findall(r'\bO[a-zA-Z0-9_]+\b', '\n'.join(parts))) | {'Ocall'})
 unit = (root / 'limbo/tests/fold-identities.c').read_text()

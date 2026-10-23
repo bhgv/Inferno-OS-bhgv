@@ -112,7 +112,7 @@ integers(void)
 	}
 }
 
-/* Strings must undergo the same integer narrowing as other constant sources. */
+/* Fold portable string values and retain target-dependent prefixes as runtime casts. */
 static void
 strings(void)
 {
@@ -122,7 +122,7 @@ strings(void)
 	char text[64];
 	Sym symbol = {text};
 	Decl decl = {&symbol};
-	Node left, cast;
+	Node left, cast, original;
 	Long expected;
 	unsigned int i;
 	int kind;
@@ -134,8 +134,14 @@ strings(void)
 			left = (Node){&source, {1}, 0, 0, &decl};
 			cast = (Node){&target, {99}, 0, 0, nil};
 			expected = kind == Tint ? int32value(values[i]) : kind == Tbyte ? (Long)((uvlong)values[i]&255) : values[i];
-			assert(foldcast(&cast, &left) == &left);
-			assert(left.val == expected && left.ty == &target && left.src.line == 99);
+			original = left;
+			if(kind != Tbig && (values[i] < INT32_MIN || values[i] > INT32_MAX)){
+				assert(foldcast(&cast, &left) == &cast);
+				assert(memcmp(&left, &original, sizeof left) == 0);
+			}else{
+				assert(foldcast(&cast, &left) == &left);
+				assert(left.val == expected && left.ty == &target && left.src.line == 99);
+			}
 			checks++;
 		}
 }

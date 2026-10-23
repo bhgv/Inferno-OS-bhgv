@@ -37,6 +37,8 @@ if 'static int\nfoldfixedcast(' in source:
 for signature in ('Long\nreal2fix(', 'Long\nfix2fix('):
     if signature in source:
         parts.append(function(signature))
+if 'static int\nfoldstringint(' in source:
+    parts.append(function('static int\nfoldstringint('))
 parts.append(function('double\nfix2real('))
 parts += [function('Node*\nfoldcast('), function('Node*\nfoldcasti(')]
 unit = (root / 'limbo/tests/fold-casts.c').read_text().replace('IMPLEMENTATION', '\n'.join(parts))
