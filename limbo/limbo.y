@@ -1847,19 +1847,25 @@ usage(void)
 	exits("usage");
 }
 
+/* Replace only a matching suffix and diagnose size or allocation failure. */
 static char*
 mkfileext(char *file, char *oldext, char *ext)
 {
 	char *ofile;
-	int n, n2;
+	ulong n, n2, ne;
 
 	n = strlen(file);
+	if(n > 0x7fffffff-1)
+		fatal("output file name too long");
 	n2 = strlen(oldext);
-	if(n >= n2 && strcmp(&file[n-n2], oldext) == 0)
+	if(n >= n2 && strcmp(file+n-n2, oldext) == 0)
 		n -= n2;
-	ofile = malloc(n + strlen(ext) + 1);
+	ne = strlen(ext);
+	if(ne > 0x7fffffff-1-n)
+		fatal("output file name too long");
+	ofile = allocmem(n+ne+1);
 	memmove(ofile, file, n);
-	strcpy(ofile+n, ext);
+	memmove(ofile+n, ext, ne+1);
 	return ofile;
 }
 

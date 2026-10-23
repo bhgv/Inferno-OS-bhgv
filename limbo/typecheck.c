@@ -867,39 +867,45 @@ concheck(Node *n, int isglobal)
 	}
 }
 
+/* Build a complete exception name within the compiler's signed string limit. */
 static char*
 exname(Decl *d)
 {
-	int n;
 	Sym *m;
-	char *s;
+	char *s, *p, *parts[4];
 	char buf[16];
+	ulong n, len;
+	int i, count;
 
-	n = 0;
 	sprint(buf, "%d", scope-ScopeGlobal);
 	m = nil;
 	if(d->dot)
 		m = d->dot->sym;
 	else if(impmods)
 		m = impmods->sym;
+	count = 0;
 	if(m)
-		n += strlen(m->name)+1;
+		parts[count++] = m->name;
 	if(fndec)
-		n += strlen(fndec->sym->name)+1;
-	n += strlen(buf)+1+strlen(d->sym->name)+1;
-	s = malloc(n);
-	strcpy(s, "");
-	if(m){
-		strcat(s, m->name);
-		strcat(s, ".");
+		parts[count++] = fndec->sym->name;
+	parts[count++] = buf;
+	parts[count++] = d->sym->name;
+	n = 1;
+	for(i = 0; i < count; i++){
+		len = strlen(parts[i]);
+		if(n > 0x7fffffff-(i != 0) || len > 0x7fffffff-n-(i != 0))
+			fatal("exception name too long");
+		n += len+(i != 0);
 	}
-	if(fndec){
-		strcat(s, fndec->sym->name);
-		strcat(s, ".");
+	s = p = allocmem(n);
+	for(i = 0; i < count; i++){
+		if(i != 0)
+			*p++ = '.';
+		len = strlen(parts[i]);
+		memmove(p, parts[i], len);
+		p += len;
 	}
-	strcat(s, buf);
-	strcat(s, ".");
-	strcat(s, d->sym->name);
+	*p = '\0';
 	return s;
 }
 

@@ -175,13 +175,14 @@ Idlist *frelist;
 Idlist *deflist;
 Idlist *uselist;
 
+/* Reuse a free list cell or report allocation failure before linking a new one. */
 static void
 addlist(Idlist **hd, int id)
 {
 	Idlist *il;
 
 	if(frelist == nil)
-		il = (Idlist*)malloc(sizeof(Idlist));
+		il = allocmem(sizeof(Idlist));
 	else{
 		il = frelist;
 		frelist = frelist->next;
@@ -728,30 +729,46 @@ decname(Decl *d)
 	return d->sym->name;
 }
 
+/* Bound and assemble alias names before passing the diagnostic to warn. */
 static void
 warning(Inst *i, char *s, Decl *d, Decl *sd)
 {
-	int n;
-	char *f;
+	ulong n, len;
+	int found;
+	char *f, *end;
 	Decl *ds;
 
-	n = 0;
-	for(ds = sd; ds != nil; ds = ds->next)
-		if(ds->link == d)
-			n += strlen(ds->sym->name)+1;
-	if(n == 0){
+	n = strlen(d->sym->name);
+	if(n > 0x7fffffff-1)
+		fatal("warning name too long");
+	n++;
+	found = 0;
+	for(ds = sd; ds != nil; ds = ds->next){
+		if(ds->link == d){
+			len = strlen(ds->sym->name);
+			if(n >= 0x7fffffff || len > 0x7fffffff-n-1)
+				fatal("warning name too long");
+			n += len+1;
+			found = 1;
+		}
+	}
+	if(!found){
 		warn(i->src.start, "%s: %s", d->sym->name, s);
 		return;
 	}
-	n += strlen(d->sym->name);
-	f = malloc(n+1);
-	strcpy(f, d->sym->name);
+	f = allocmem(n);
+	len = strlen(d->sym->name);
+	memmove(f, d->sym->name, len);
+	end = f+len;
 	for(ds = sd; ds != nil; ds = ds->next){
 		if(ds->link == d){
-			strcat(f, "/");
-			strcat(f, ds->sym->name);
+			*end++ = '/';
+			len = strlen(ds->sym->name);
+			memmove(end, ds->sym->name, len);
+			end += len;
 		}
 	}
+	*end = '\0';
 	warn(i->src.start, "%s: %s", f, s);
 	free(f);
 }

@@ -4710,23 +4710,30 @@ exptotype(Node *n)
 	return t;
 }
 
+/* Join implementation module names without zero-sized storage or quadratic copies. */
 static char*
 uname(Decl *im)
 {
 	Decl *p;
-	int n;
-	char *s;
+	ulong n, len;
+	char *s, *end;
 
-	n = 0;
-	for(p = im; p != nil; p = p->next)
-		n += strlen(p->sym->name)+1;
-	s = allocmem(n);
-	strcpy(s, "");
+	n = 1;
 	for(p = im; p != nil; p = p->next){
-		strcat(s, p->sym->name);
-		if(p->next != nil)
-			strcat(s, "+");
+		len = strlen(p->sym->name);
+		if(n > 0x7fffffff-(p != im) || len > 0x7fffffff-n-(p != im))
+			fatal("implementation name too long");
+		n += len+(p != im);
 	}
+	s = end = allocmem(n);
+	for(p = im; p != nil; p = p->next){
+		if(p != im)
+			*end++ = '+';
+		len = strlen(p->sym->name);
+		memmove(end, p->sym->name, len);
+		end += len;
+	}
+	*end = '\0';
 	return s;
 }
 
