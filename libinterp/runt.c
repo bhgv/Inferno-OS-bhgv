@@ -327,6 +327,7 @@ Sys_aprint(void *fp)
 	destroy(old);
 }
 
+/* A nil delimiter string denotes an empty set of separator characters. */
 static int
 tokdelim(int c, String *d)
 {
@@ -334,6 +335,8 @@ tokdelim(int c, String *d)
 	char *p;
 	Rune *r;
 
+	if(d == H)
+		return 0;
 	l = d->len;
 	if(l < 0) {
 		l = -l;
@@ -348,71 +351,88 @@ tokdelim(int c, String *d)
 	return 0;
 }
 
-void
-Sys_tokenize(void *fp)
+typedef struct TokenizeResult TokenizeResult;
+struct TokenizeResult
 {
+	String *source;
+	String *delimiters;
+	List *words;
+	int count;
+};
+
+/* Keep partial words under one owner until every allocation has succeeded. */
+static int
+buildtokens(void *arg)
+{
+	TokenizeResult *result;
 	String *s, *d;
-	List **h, *l, *nl;
-	F_Sys_tokenize *f;
-	int n, c, nc, first, last, srune;
+	List **h, *nl;
+	int c, nc, first, last, srune;
 
-	f = fp;
-	s = f->s;
-	d = f->delim;
-
-	if(s == H || d == H) {
-		f->ret->t0 = 0;
-		destroy(f->ret->t1);
-		f->ret->t1 = H;
-		return;
-	}
-
-	n = 0;
-	l = H;
-	h = &l;
+	result = arg;
+	s = result->source;
+	d = result->delimiters;
+	if(s == H)
+		return 1;
+	h = &result->words;
 	first = 0;
 	srune = 0;
-
 	nc = s->len;
-	if(nc < 0) {
+	if(nc < 0){
 		nc = -nc;
 		srune = 1;
 	}
-
-	while(first < nc) {
-		while(first < nc) {
+	while(first < nc){
+		while(first < nc){
 			c = srune ? s->Srune[first] : s->Sascii[first];
-			if(tokdelim(c, d) == 0)
-				break;	
+			if(!tokdelim(c, d))
+				break;
 			first++;
 		}
-
 		last = first;
-
-		while(last < nc) {
+		while(last < nc){
 			c = srune ? s->Srune[last] : s->Sascii[last];
-			if(tokdelim(c, d) != 0)
-				break;	
+			if(tokdelim(c, d))
+				break;
 			last++;
 		}
-
 		if(first == last)
 			break;
-
-		nl = cons(IBY2WD, h);
+		nl = cons(sizeof(String*), h);
 		nl->tail = H;
 		nl->t = &Tptr;
 		Tptr.ref++;
+		/* slicer can raise an error after the list node has been published. */
+		*(String**)nl->data = H;
 		*(String**)nl->data = slicer(first, last, s);
 		h = &nl->tail;
-
 		first = last;
-		n++;
+		result->count++;
 	}
+	return 1;
+}
 
-	f->ret->t0 = n;
-	destroy(f->ret->t1);
-	f->ret->t1 = l;
+/* Publish complete token lists, releasing all partial words on a VM error. */
+void
+Sys_tokenize(void *fp)
+{
+	F_Sys_tokenize *f;
+	TokenizeResult result;
+	List *old;
+
+	f = fp;
+	result.source = f->s;
+	result.delimiters = f->delim;
+	result.words = H;
+	result.count = 0;
+	if(!kprotect(buildtokens, &result)){
+		destroy(result.words);
+		krethrow();
+	}
+	old = f->ret->t1;
+	f->ret->t0 = result.count;
+	f->ret->t1 = result.words;
+	destroy(old);
 }
 
 /* Validate byte-array metadata and full VM lengths before native UTF routines. */
