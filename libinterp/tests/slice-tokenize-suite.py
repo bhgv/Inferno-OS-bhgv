@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""Run the host regression checkpoint for tokenization, slices and their dependencies."""
+import argparse
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+CORE = [
+    'libinterp/tests/sys-tokenize.py',
+    'libinterp/tests/sys-tokenize-matrix.py',
+    'limbo/tests/fold-result-types.py',
+    'emu/port/tests/startup-options.py',
+    'emu/port/tests/startup-geometry.py',
+    'libinterp/tests/heap-bounds.py',
+    'libinterp/tests/strings.py',
+    'libinterp/tests/string-codecs.py',
+    'libinterp/tests/lists.py',
+    'libinterp/tests/sys-print.py',
+    'libinterp/tests/sys-utf.py',
+    'libinterp/tests/heap-clones.py',
+    'libinterp/tests/channel-queues.py',
+    'libinterp/tests/channel-transfers.py',
+    'libinterp/tests/integer-ops.py',
+    'libinterp/tests/runtime-protect.py',
+    'limbo/tests/fold-traps.py',
+    'limbo/tests/fold-short-circuit.py',
+    'limbo/tests/fold-identities.py',
+    'limbo/tests/fold-effects.py',
+    'limbo/tests/fold-string-length.py',
+    'limbo/tests/fold-strings.py',
+    'limbo/tests/case-ranges.py',
+    'limbo/tests/case-max.py',
+]
+JIT = [
+    'libinterp/tests/386-byte-div.py',
+    'libinterp/tests/386-types.py',
+    'libinterp/tests/arm-types.py',
+    'libinterp/tests/arm-vfp.py',
+]
+
+
+def main():
+    """Fail at the first failed driver, without turning missing JIT packages into a pass."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--jit', action='store_true', help='include four instruction-emulation drivers')
+    parser.add_argument('--list', action='store_true', help='list selected drivers without executing them')
+    args = parser.parse_args()
+    root = Path(__file__).resolve().parents[2]
+    tests = CORE+(JIT if args.jit else [])
+    for test in tests:
+        if not (root/test).is_file():
+            parser.error('missing driver: '+test)
+    if args.list:
+        print('\n'.join(tests))
+        return
+    if args.jit:
+        missing = [name for name in ('capstone', 'unicorn', 'keystone') if importlib.util.find_spec(name) is None]
+        if missing:
+            parser.error('install libinterp/tests/requirements-jit.txt; missing '+', '.join(missing))
+    env = dict(os.environ)
+    env.setdefault('CFLAGS', '-O1 -g -fsanitize=undefined -fno-sanitize-recover=all')
+    for test in tests:
+        print('RUN '+test, flush=True)
+        subprocess.run([sys.executable, str(root/test)], cwd=root, env=env, check=True)
+    print('PASS checkpoint: %d host drivers; complete VM/native target acceptance remains separate' % len(tests))
+
+
+if __name__ == '__main__':
+    main()
