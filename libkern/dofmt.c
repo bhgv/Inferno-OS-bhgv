@@ -52,7 +52,7 @@ dofmt(Fmt *f, char *fmt)
 					fmt++;
 				}else{
 					n = chartorune(&rune, fmt);
-					if(t + n > s){
+					if(n > s-t){
 						t = _fmtflush(f, t, n);
 						if(t != nil)
 							s = f->stop;
@@ -85,7 +85,7 @@ _fmtflush(Fmt *f, void *t, int len)
 	else
 		f->nfmt += (char*)t - (char *)f->to;
 	f->to = t;
-	if(f->flush == 0 || (*f->flush)(f) == 0 || (char*)f->to + len > (char*)f->stop){
+	if(f->flush == 0 || (*f->flush)(f) == 0 || len < 0 || len > (char*)f->stop - (char*)f->to){
 		f->stop = f->to;
 		return nil;
 	}
@@ -126,6 +126,22 @@ _rfmtpad(Fmt *f, int n)
 	return 0;
 }
 
+/* Decode one bounded UTF-8 span; an incomplete tail becomes Runeerror safely. */
+int
+_fmtdecode(Rune *r, char *s, int size)
+{
+	char tail[UTFmax+1];
+
+	if(size <= 0)
+		return 0;
+	if(size >= UTFmax || fullrune(s, size))
+		return chartorune(r, s);
+	memmove(tail, s, size);
+	tail[size] = 0;
+	return chartorune(r, tail);
+}
+
+/* Copy counted runes without confusing an intentionally unused byte suffix with failure. */
 int
 _fmtcpy(Fmt *f, void *vm, int n, int sz)
 {
@@ -134,8 +150,10 @@ _fmtcpy(Fmt *f, void *vm, int n, int sz)
 	ulong fl;
 	int nc, w;
 
+	if(n < 0 || sz < 0 || n > sz || (vm == nil && sz != 0))
+		return -1;
 	m = vm;
-	me = m + sz;
+	me = m == nil ? nil : m + sz;
 	w = f->width;
 	fl = f->flags;
 	if((fl & FmtPrec) && n > f->prec)
@@ -145,19 +163,13 @@ _fmtcpy(Fmt *f, void *vm, int n, int sz)
 			return -1;
 		rt = f->to;
 		rs = f->stop;
-		for(nc = n; nc > 0; nc--){
-			r = *(uchar*)m;
-			if(r < Runeself)
-				m++;
-			else if((me - m) >= UTFmax || fullrune(m, me-m))
-				m += chartorune(&r, m);
-			else
-				break;
+		for(nc = n; nc > 0 && m < me; nc--){
+			m += _fmtdecode(&r, m, me-m);
 			FMTRCHAR(f, rt, rs, r);
 		}
 		f->nfmt += rt - (Rune *)f->to;
 		f->to = rt;
-		if(m < me)
+		if(nc > 0)
 			return -1;
 		if(fl & FmtLeft && _rfmtpad(f, w - n) < 0)
 			return -1;
@@ -166,32 +178,31 @@ _fmtcpy(Fmt *f, void *vm, int n, int sz)
 			return -1;
 		t = f->to;
 		s = f->stop;
-		for(nc = n; nc > 0; nc--){
-			r = *(uchar*)m;
-			if(r < Runeself)
-				m++;
-			else if((me - m) >= UTFmax || fullrune(m, me-m))
-				m += chartorune(&r, m);
-			else
-				break;
+		for(nc = n; nc > 0 && m < me; nc--){
+			m += _fmtdecode(&r, m, me-m);
 			FMTRUNE(f, t, s, r);
 		}
 		f->nfmt += t - (char *)f->to;
 		f->to = t;
+		if(nc > 0)
+			return -1;
 		if(fl & FmtLeft && _fmtpad(f, w - n) < 0)
 			return -1;
 	}
 	return 0;
 }
 
+/* Copy a counted Rune span without forming an end pointer for an empty nil span. */
 int
 _fmtrcpy(Fmt *f, void *vm, int n)
 {
-	Rune r, *m, *me, *rt, *rs;
+	Rune r, *m, *rt, *rs;
 	char *t, *s;
 	ulong fl;
-	int w;
+	int nc, w;
 
+	if(n < 0 || (vm == nil && n != 0))
+		return -1;
 	m = vm;
 	w = f->width;
 	fl = f->flags;
@@ -202,7 +213,7 @@ _fmtrcpy(Fmt *f, void *vm, int n)
 			return -1;
 		rt = f->to;
 		rs = f->stop;
-		for(me = m + n; m < me; m++)
+		for(nc = n; nc > 0; nc--, m++)
 			FMTRCHAR(f, rt, rs, *m);
 		f->nfmt += rt - (Rune *)f->to;
 		f->to = rt;
@@ -213,7 +224,7 @@ _fmtrcpy(Fmt *f, void *vm, int n)
 			return -1;
 		t = f->to;
 		s = f->stop;
-		for(me = m + n; m < me; m++){
+		for(nc = n; nc > 0; nc--, m++){
 			r = *m;
 			FMTRUNE(f, t, s, r);
 		}
@@ -250,6 +261,7 @@ _runefmt(Fmt *f)
 int
 fmtstrcpy(Fmt *f, char *s)
 {
+	uvlong size;
 	int p, i;
 	if(!s)
 		return _fmtcpy(f, "<nil>", 5, 5);
@@ -259,10 +271,13 @@ fmtstrcpy(Fmt *f, char *s)
 		for(i = 0; i < p; i++)
 			if(s[i] == 0)
 				break;
-		return _fmtcpy(f, s, utfnlen(s, i), i);	/* BUG?: won't print a partial rune at end */
+		return _fmtcpy(f, s, utfnlen(s, i), i);	/* byte precision omits incomplete runes */
 	}
 
-	return _fmtcpy(f, s, utflen(s), strlen(s));
+	size = strlen(s);
+	if(size > 0x7fffffffUL)
+		return -1;
+	return _fmtcpy(f, s, utflen(s), size);
 }
 
 /* fmt out a null terminated utf string */
@@ -280,6 +295,7 @@ int
 fmtrunestrcpy(Fmt *f, Rune *s)
 {
 	Rune *e;
+	uvlong size;
 	int n, p;
 
 	if(!s)
@@ -293,7 +309,10 @@ fmtrunestrcpy(Fmt *f, Rune *s)
 	}else{
 		for(e = s; *e; e++)
 			;
-		n = e - s;
+		size = e - s;
+		if(size > 0x7fffffffUL)
+			return -1;
+		n = size;
 	}
 	return _fmtrcpy(f, s, n);
 }

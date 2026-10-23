@@ -48,6 +48,7 @@ int	_runefmt(Fmt*);
 int	_runesfmt(Fmt*);
 int	_strfmt(Fmt*);
 int	_badfmt(Fmt*);
+int	_fmtdecode(Rune*, char*, int);
 int	_fmtcpy(Fmt*, void*, int, int);
 int	_fmtrcpy(Fmt*, void*, int n);
 
@@ -56,7 +57,7 @@ void	_fmtunlock(void);
 
 #define FMTCHAR(f, t, s, c)\
 	do{\
-	if(t + 1 > (char*)s){\
+	if(t >= (char*)s){\
 		t = _fmtflush(f, t, 1);\
 		if(t != nil)\
 			s = f->stop;\
@@ -68,7 +69,7 @@ void	_fmtunlock(void);
 
 #define FMTRCHAR(f, t, s, c)\
 	do{\
-	if(t + 1 > (Rune*)s){\
+	if(t >= (Rune*)s){\
 		t = _fmtflush(f, t, sizeof(Rune));\
 		if(t != nil)\
 			s = f->stop;\
@@ -82,7 +83,7 @@ void	_fmtunlock(void);
 	do{\
 	Rune _rune;\
 	int _runelen;\
-	if(t + UTFmax > (char*)s && t + (_runelen = runelen(r)) > (char*)s){\
+	if((char*)s - t < UTFmax && (_runelen = runelen(r)) > (char*)s - t){\
 		t = _fmtflush(f, t, _runelen);\
 		if(t != nil)\
 			s = f->stop;\
