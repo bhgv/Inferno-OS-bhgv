@@ -154,14 +154,15 @@ drawmodinit(void)
 	builtinmod("$Draw", Drawmodtab, Drawmodlen);
 }
 
+/* Hash bytes with defined unsigned wraparound on every host word size. */
 static int
 drawhash(char *s)
 {
-	int h;
+	uint h;
 
 	h = 0;
 	while(*s){
-		h += *s++;
+		h += (uchar)*s++;
 		h <<= 1;
 		if(h & (1<<8))
 			h |= 1;
@@ -182,6 +183,7 @@ cachelookup(Cache *cache[], Display *d, char *name)
 	return c;
 }
 
+/* Copy all owned state before publishing a cache record. */
 Cache*
 cacheinstall(Cache **cache, Display *d, char *name, void *ptr, char *type)
 {
@@ -201,6 +203,10 @@ cacheinstall(Cache **cache, Display *d, char *name, void *ptr, char *type)
 	c->ref = 0;	/* will be incremented by caller */
 	c->display = d;
 	c->name = strdup(name);
+	if(c->name == nil){
+		free(c);
+		return nil;
+	}
 	c->u.ptr = ptr;
 	libqlock(cacheqlock);
 	c->next = cache[hash];
@@ -2170,8 +2176,8 @@ Screen_newwindow(void *fp)
 	*f->ret = mkdrawimage(i, f->screen, f->screen->display, 0);
 }
 
-static
-void
+/* Treat nil window arrays as empty and bound native pointer-vector allocation. */
+static void
 screentopbot(Draw_Screen *screen, Array *array, void (*topbot)(Image **, int))
 {
 	Screen *s;
@@ -2180,6 +2186,9 @@ screentopbot(Draw_Screen *screen, Array *array, void (*topbot)(Image **, int))
 	int i, n, locked;
 
 	s = checkscreen(screen);
+	if(array == H || array == nil || array->len <= 0 ||
+	   (uvlong)array->len > 0x7fffffff/sizeof(Image*))
+		return;
 	di = (Draw_Image**)array->data;
 	ip = malloc(array->len * sizeof(Image*));
 	if(ip == nil)
