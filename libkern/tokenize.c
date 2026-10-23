@@ -2,6 +2,7 @@
 
 static char qsep[] = " \t\r\n";
 
+/* Compact shell quotes; the fixed separator set contains only ASCII bytes. */
 static char*
 qtoken(char *s, char *sep)
 {
@@ -10,7 +11,7 @@ qtoken(char *s, char *sep)
 
 	quoting = 0;
 	t = s;	/* s is output string, t is input string */
-	while(*t!='\0' && (quoting || utfrune(sep, *t)==nil)){
+	while(*t != '\0' && (quoting || strchr(sep, (uchar)*t) == nil)){
 		if(*t != '\''){
 			*s++ = *t++;
 			continue;
@@ -28,7 +29,7 @@ qtoken(char *s, char *sep)
 			quoting = 0;
 			continue;
 		}
-		/* doubled quote; fold one quote into two */
+		/* doubled quote; fold two quotes into one */
 		t++;
 		*s++ = *t++;
 	}
@@ -40,16 +41,21 @@ qtoken(char *s, char *sep)
 	return t;
 }
 
+/* Preserve quoted text while finding a complete UTF-8 delimiter rune. */
 static char*
 etoken(char *t, char *sep)
 {
-	int quoting;
+	Rune r;
+	int quoting, n;
 
 	/* move to end of next token */
 	quoting = 0;
-	while(*t!='\0' && (quoting || utfrune(sep, *t)==nil)){
+	while(*t != '\0'){
+		n = chartorune(&r, t);
+		if(!quoting && utfrune(sep, r) != nil)
+			break;
 		if(*t != '\''){
-			t++;
+			t += n;
 			continue;
 		}
 		/* *t is a quote */
@@ -65,20 +71,27 @@ etoken(char *t, char *sep)
 			quoting = 0;
 			continue;
 		}
-		/* doubled quote; fold one quote into two */
+		/* doubled quote; fold two quotes into one */
 		t += 2;
 	}
 	return t;
 }
 
+/* Clear whole delimiter encodings and preserve the historical final remainder. */
 int
 gettokens(char *s, char **args, int maxargs, char *sep)
 {
-	int nargs;
+	Rune r;
+	int nargs, n;
 
-	for(nargs=0; nargs<maxargs; nargs++){
-		while(*s!='\0' && utfrune(sep, *s)!=nil)
-			*s++ = '\0';
+	for(nargs = 0; nargs < maxargs; nargs++){
+		while(*s != '\0'){
+			n = chartorune(&r, s);
+			if(utfrune(sep, r) == nil)
+				break;
+			memset(s, 0, n);
+			s += n;
+		}
 		if(*s == '\0')
 			break;
 		args[nargs] = s;
@@ -88,13 +101,14 @@ gettokens(char *s, char **args, int maxargs, char *sep)
 	return nargs;
 }
 
+/* Split shell words using ASCII whitespace and remove their quoting syntax. */
 int
 tokenize(char *s, char **args, int maxargs)
 {
 	int nargs;
 
-	for(nargs=0; nargs<maxargs; nargs++){
-		while(*s!='\0' && utfrune(qsep, *s)!=nil)
+	for(nargs = 0; nargs < maxargs; nargs++){
+		while(*s != '\0' && strchr(qsep, (uchar)*s) != nil)
 			s++;
 		if(*s == '\0')
 			break;

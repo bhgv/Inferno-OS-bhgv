@@ -24,7 +24,7 @@
  *	NUL in input
  *	count exceeded in input
  *	count exceeded on output
- * *ninp is set to number of input bytes accepted.
+ * q records the number of input bytes and runes accepted.
  * nin may be <0 initially, to avoid checking input by count.
  */
 void
@@ -38,6 +38,8 @@ _quotesetup(char *s, Rune *r, int nin, int nout, Quoteinfo *q, int sharp, int ru
 	q->nrunesout = 0;
 	q->nbytesin = 0;
 	q->nrunesin = 0;
+	if(nout < 0)
+		return;
 	if(sharp || nin==0 || (s && *s=='\0') || (r && *r=='\0')){
 		if(nout < 2)
 			return;
@@ -45,43 +47,53 @@ _quotesetup(char *s, Rune *r, int nin, int nout, Quoteinfo *q, int sharp, int ru
 		q->nbytesout = 2;
 		q->nrunesout = 2;
 	}
-	for(; nin!=0; nin-=w){
-		if(s)
+	for(; nin != 0; ){
+		if(s){
+			if(nin > 0 && !fullrune(s, nin))
+				break;
 			w = chartorune(&c, s);
-		else{
+		}else{
 			c = *r;
 			w = runelen(c);
 		}
 
-		if(c == '\0')
+		if(c == '\0' || (nin > 0 && w > nin))
+			break;
+		/* Every Quoteinfo count remains representable, even for Rune output. */
+		if(q->nbytesin > 0x7fffffff-w || q->nrunesin == 0x7fffffff ||
+		   q->nbytesout > 0x7fffffff-w || q->nrunesout == 0x7fffffff)
 			break;
 		if(runesout){
-			if(q->nrunesout+1 > nout)
+			if(q->nrunesout >= nout)
 				break;
 		}else{
-			if(q->nbytesout+w > nout)
+			if(w > nout-q->nbytesout)
 				break;
 		}
 
 		if((c <= L' ') || (c == L'\'') || (doquote!=nil && doquote(c))){
 			if(!q->quoted){
+				if(q->nbytesout > 0x7fffffff-w-2 || q->nrunesout > 0x7fffffff-3)
+					break;
 				if(runesout){
-					if(1+q->nrunesout+1+1 > nout)	/* no room for quotes */
+					if(nout-q->nrunesout < 3)	/* no room for quotes */
 						break;
 				}else{
-					if(1+q->nbytesout+w+1 > nout)	/* no room for quotes */
+					if(nout-q->nbytesout < w+2)	/* no room for quotes */
 						break;
 				}
 				q->nrunesout += 2;	/* include quotes */
 				q->nbytesout += 2;	/* include quotes */
 				q->quoted = 1;
 			}
-			if(c == '\'')	{
+			if(c == '\''){
+				if(q->nbytesout > 0x7fffffff-w-1 || q->nrunesout > 0x7fffffff-2)
+					break;
 				if(runesout){
-					if(1+q->nrunesout+1 > nout)	/* no room for quotes */
+					if(nout-q->nrunesout < 2)	/* no room for quotes */
 						break;
 				}else{
-					if(1+q->nbytesout+w > nout)	/* no room for quotes */
+					if(nout-q->nbytesout < w+1)	/* no room for quotes */
 						break;
 				}
 				q->nbytesout++;
@@ -100,9 +112,12 @@ _quotesetup(char *s, Rune *r, int nin, int nout, Quoteinfo *q, int sharp, int ru
 		/* advance output */
 		q->nbytesout += w;
 		q->nrunesout++;
+		if(nin > 0)
+			nin -= w;
 	}
 }
 
+/* Format the accepted span without forming pointers from an absent input. */
 static int
 qstrfmt(char *sin, Rune *rin, Quoteinfo *q, Fmt *f)
 {
@@ -113,9 +128,9 @@ qstrfmt(char *sin, Rune *rin, Quoteinfo *q, Fmt *f)
 	int nc, w;
 
 	m = sin;
-	me = m + q->nbytesin;
+	me = m == nil ? nil : m + q->nbytesin;
 	rm = rin;
-	rme = rm + q->nrunesin;
+	rme = rm == nil ? nil : rm + q->nrunesin;
 
 	w = f->width;
 	fl = f->flags;
