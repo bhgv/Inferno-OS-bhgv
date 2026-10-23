@@ -27,7 +27,8 @@ to
 It returns the number of bytes written, or -1 if an error occurred.
 Messages written by
 .B putstring
-are truncated to 4096 bytes.
+are truncated to 4095 payload bytes; the leading record marker makes the
+maximum transmitted record 4096 bytes.
 .PP
 .B Getstring
 reads a string as written by
@@ -47,7 +48,8 @@ to
 It returns the number of bytes written, or -1 if an error occurred.
 Messages written by
 .B putbytearray
-are truncated to 4096 bytes.
+are truncated to 4095 payload bytes; the leading record marker makes the
+maximum transmitted record 4096 bytes.
 .PP
 .B Getbytearray
 reads an array of bytes as written by
@@ -75,6 +77,7 @@ to fail
 (in the receiving process),
 forcing them to return the error string
 .IR s .
+An empty error string still carries an error marker.
 It may not be longer than
 .BR Sys->ERRMAX
 bytes.

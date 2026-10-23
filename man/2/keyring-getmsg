@@ -25,6 +25,12 @@ Each data message is transmitted with a five-byte header containing a four-chara
 terminated by a newline, followed by
 .I n
 bytes of message data.
+The count must contain only decimal digits and the fifth header byte must be
+a newline. Data counts greater than 9999 and error counts greater than 999
+cannot be represented and are rejected before writing a header.
+The public
+.B getmsg
+interface accepts at most 4095 payload bytes per message.
 An error message has a similar structure, except that the first character
 of the count is replaced by an exclamation mark
 .RB ( ! );
@@ -59,6 +65,10 @@ and
 return -1 if there was an error writing to
 .IR fd ;
 they set the system error string.
+Short stream writes are continued until the complete header and payload have
+been written, or an error or lack of progress stops transmission.
+After a failed partial transmission, the connection may contain an incomplete
+frame; callers must not resend the whole message on that connection.
 .B Getmsg
 returns nil if there was an error reading from
 .IR fd ;

@@ -162,26 +162,49 @@ ipcopymp(mpint* b)
 	return newIPint(mpcopy(b));
 }
 
-/* convert a base64 string to a big */
+/* Parse one complete base64 integer; never accept a silently truncated prefix. */
 mpint*
 base64tobig(char *str, char **strp)
 {
-	int n;
+	int n, digits, padding, decoded, c;
 	char *p;
 	mpint *b;
 	uchar hex[(MaxBigBytes*6 + 7)/8];
 
-	for(p = str; *p && *p != '\n'; p++)
-		;
-	if(p == str)
+	if(strp)
+		*strp = str;
+	if(str == nil)
 		return nil;
-	n = dec64(hex, sizeof(hex), str, p - str);
-	b = betomp(hex, n, nil);
-	if(strp){
-		if(*p)
-			p++;
-		*strp = p;
+	digits = padding = 0;
+	for(p = str; *p && *p != '\n'; p++){
+		c = (uchar)*p;
+		if(c == '='){
+			if(++padding > 2)
+				return nil;
+		}else{
+			if(padding || !((c >= 'A' && c <= 'Z') ||
+			   (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+			   c == '+' || c == '/'))
+				return nil;
+			/* This also bounds the native decoder's int input length. */
+			if(++digits > (int)((sizeof(hex)+2)/3)*4)
+				return nil;
+		}
 	}
+	if(digits == 0 || digits%4 == 1 ||
+	   (padding && ((digits+padding)%4 != 0 || padding != 4-digits%4)))
+		return nil;
+	decoded = digits/4*3;
+	if(digits%4)
+		decoded += digits%4-1;
+	if(decoded > (int)sizeof(hex))
+		return nil;
+	n = dec64(hex, sizeof(hex), str, p-str);
+	if(n != decoded)
+		return nil;
+	b = betomp(hex, n, nil);
+	if(b != nil && strp)
+		*strp = *p ? p+1 : p;
 	return b;
 }
 
@@ -1457,61 +1480,93 @@ Keyring_dhparams(void *fp)
 	f->ret->t1 = newIPint(p);
 }
 
+/* Complete one stream span; a partial write is not a completed protocol message. */
 static int
-sendmsg(int fd, void *buf, int n)
+keyring_writeall(int fd, void *data, int n)
 {
-	char num[10];
+	uchar *p;
+	long written;
+	int total;
 
-	release();
-	snprint(num, sizeof(num), "%4.4d\n", n);
-	if(kwrite(fd, num, 5) != 5){
-		acquire();
-		return -1;
+	p = data;
+	for(total = 0; total < n; total += written){
+		written = kwrite(fd, p+total, n-total);
+		if(written <= 0 || written > n-total){
+			if(written >= 0)
+				kwerrstr("short message write");
+			return -1;
+		}
 	}
-	n = kwrite(fd, buf, n);
-	acquire();
 	return n;
 }
 
+/* Four decimal digits must describe exactly the payload written on the stream. */
+static int
+sendmsg(int fd, void *buf, int n)
+{
+	char num[6];
+	int result;
+
+	if(n < 0 || n > 9999){
+		kwerrstr("message too long");
+		return -1;
+	}
+	snprint(num, sizeof(num), "%4.4d\n", n);
+	release();
+	result = -1;
+	if(keyring_writeall(fd, num, 5) == 5)
+		result = keyring_writeall(fd, buf, n);
+	acquire();
+	return result;
+}
+
+/* Validate byte-array counts before converting them to the wire count. */
 void
 Keyring_sendmsg(void *fp)
 {
 	F_Keyring_sendmsg *f;
-	int n;
+	WORD n;
 
 	f = fp;
 	*f->ret = -1;
 	if(f->fd == H || f->buf == H || f->n < 0)
 		return;
 	n = f->n;
-	if(n < 0 || n > f->buf->len)
+	if(n > keyring_bytearray(f->buf))
 		error(exBounds);
+	if(n > 9999){
+		kwerrstr("message too long");
+		return;
+	}
 	*f->ret = sendmsg(f->fd->fd, f->buf->data, n);
 }
 
+/* Error frames have three count digits, including any remote diagnostic prefix. */
 static int
 senderr(int fd, char *err, int addrmt)
 {
-	char num[10];
-	int n, m;
+	char num[6];
+	int n, m, result;
+	ulong length;
 
-	release();
-	n = strlen(err);
-	m = 0;
-	if(addrmt)
-		m = strlen("remote: ");
-	snprint(num, sizeof(num), "!%3.3d\n", n+m);
-	if(kwrite(fd, num, 5) != 5){
-		acquire();
+	m = addrmt ? sizeof("remote: ")-1 : 0;
+	length = strlen(err);
+	if(length > (ulong)(999-m)){
+		kwerrstr("error message too long");
 		return -1;
 	}
-	if(addrmt)
-		kwrite(fd, "remote: ", m);
-	n = kwrite(fd, err, n);
+	n = length;
+	snprint(num, sizeof(num), "!%3.3d\n", n+m);
+	release();
+	result = -1;
+	if(keyring_writeall(fd, num, 5) == 5 &&
+	   (!addrmt || keyring_writeall(fd, "remote: ", m) == m))
+		result = keyring_writeall(fd, err, n);
 	acquire();
-	return n;
+	return result;
 }
 
+/* An empty diagnostic is still a successfully transmitted error frame. */
 void
 Keyring_senderrmsg(void *fp)
 {
@@ -1523,10 +1578,11 @@ Keyring_senderrmsg(void *fp)
 	if(f->fd == H)
 		return;
 	s = string2c(f->s);
-	if(senderr(f->fd->fd, s, 0) > 0)
+	if(senderr(f->fd->fd, s, 0) >= 0)
 		*f->ret = 0;
 }
 
+/* Accumulate stream reads without losing the count of an incomplete span. */
 static int
 nreadn(int fd, void *av, int n)
 {
@@ -1550,12 +1606,15 @@ nreadn(int fd, void *av, int n)
 
 #define MSG "input or format error"
 
+/* A diagnostic must fit even when the caller supplies an empty output span. */
 static void
 getmsgerr(char *buf, int n, int r)
 {
 	char *e;
 	int l;
 
+	if(n <= 0)
+		return;
 	e = r>0? MSG: "hungup";
 	l = strlen(e)+1;
 	if(n > l)
@@ -1564,40 +1623,92 @@ getmsgerr(char *buf, int n, int r)
 	buf[n-1] = 0;
 }
 
+/* Accept only the documented decimal header, including its terminating newline. */
 static int
 getmsg(int fd, char *buf, int n)
 {
-	char num[6];
-	int len, r;
+	char num[5];
+	int len, r, i, first;
 
+	if(n <= 0)
+		return -1;
 	release();
 	if((r = nreadn(fd, num, 5)) != 5){
 		getmsgerr(buf, n, r);
 		acquire();
 		return -1;
 	}
-	num[5] = 0;
-
-	if(num[0] == '!')
-		len = strtoul(num+1, 0, 10);
-	else
-		len = strtoul(num, 0, 10);
-
-	r = -1;
-	if(len < 0 || len >= n || (r = nreadn(fd, buf, len)) != len){
+	first = num[0] == '!' ? 1 : 0;
+	len = 0;
+	for(i = first; i < 4; i++){
+		if(num[i] < '0' || num[i] > '9')
+			break;
+		len = len*10 + num[i]-'0';
+	}
+	if(i != 4 || num[4] != '\n' || len >= n){
+		getmsgerr(buf, n, 1);
+		acquire();
+		return -1;
+	}
+	if((r = nreadn(fd, buf, len)) != len){
 		getmsgerr(buf, n, r);
 		acquire();
 		return -1;
 	}
-
 	buf[len] = 0;
 	acquire();
-	if(num[0] == '!')
-		return -len;
-
+	/* An empty error frame must not masquerade as a successful empty message. */
+	if(first)
+		return len == 0 ? -1 : -len;
 	return len;
 }
 
+typedef struct KeyringMessage KeyringMessage;
+struct KeyringMessage
+{
+	uchar *data;
+	int length;
+	int array;
+	void *result;
+};
+
+/* A protected allocation keeps the native receive buffer owned across VM errors. */
+static int
+keyring_makemessage(void *arg)
+{
+	KeyringMessage *message;
+	String *text;
+
+	message = arg;
+	if(message->array)
+		message->result = mem2array(message->data, message->length);
+	else{
+		text = H;
+		retnstr((char*)message->data, message->length, &text);
+		message->result = text;
+	}
+	return 1;
+}
+
+/* Consume the native allocation on both successful conversion and VM unwind. */
+static void*
+keyring_message(uchar *data, int length, int array)
+{
+	KeyringMessage message;
+	int ok;
+
+	message.data = data;
+	message.length = length;
+	message.array = array;
+	message.result = H;
+	ok = kprotect(keyring_makemessage, &message);
+	free(data);
+	if(!ok)
+		krethrow();
+	return message.result;
+}
+
+/* Keep the old result live until the checked receive and conversion finish. */
 void
 Keyring_getmsg(void *fp)
 {
@@ -1607,17 +1718,20 @@ Keyring_getmsg(void *fp)
 	void *r;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 	if(f->fd == H){
 		kwerrstr("nil fd");
+		r = *f->ret;
+		*f->ret = H;
+		destroy(r);
 		return;
 	}
 
 	buf = malloc(Maxmsg);
 	if(buf == nil){
 		kwerrstr(exNomem);
+		r = *f->ret;
+		*f->ret = H;
+		destroy(r);
 		return;
 	}
 
@@ -1625,11 +1739,15 @@ Keyring_getmsg(void *fp)
 	if(n < 0){
 		kwerrstr("%s", buf);
 		free(buf);
+		r = *f->ret;
+		*f->ret = H;
+		destroy(r);
 		return;
 	}
 
-	*f->ret = mem2array(buf, n);
-	free(buf);
+	r = *f->ret;
+	*f->ret = keyring_message((uchar*)buf, n, 1);
+	destroy(r);
 }
 
 void
@@ -2177,12 +2295,16 @@ getbuf(int fd, uchar *buf, int n, char *err, int nerr)
 {
 	int len;
 
+	if(n <= 0 || nerr <= 0)
+		return -1;
 	release();
 	len = kread(fd, buf, n);
 	acquire();
 	if(len <= 0){
-		strncpy(err, "hungup", nerr);
-		buf[nerr-1] = 0;
+		if(nerr > 0){
+			strncpy(err, "hungup", nerr);
+			err[nerr-1] = 0;
+		}
 		return -1;
 	}
 	if(buf[0] == 0)
@@ -2212,6 +2334,7 @@ getbuf(int fd, uchar *buf, int n, char *err, int nerr)
 	return -1;
 }
 
+/* Receive a record string and free native storage even if VM allocation fails. */
 void
 Keyring_getstring(void *fp)
 {
@@ -2235,13 +2358,16 @@ Keyring_getstring(void *fp)
 
 	n = getbuf(f->fd->fd, buf, Maxmsg, err, sizeof(err));
 	if(n < 0)
-		retnstr(err, strlen(err), &f->ret->t1);
+		memmove(buf, err, strlen(err)+1);
 	else
-		retnstr(((char*)buf)+1, n, &f->ret->t0);
-
-	free(buf);
+		memmove(buf, buf+1, n);
+	if(n < 0)
+		f->ret->t1 = keyring_message(buf, strlen((char*)buf), 0);
+	else
+		f->ret->t0 = keyring_message(buf, n, 0);
 }
 
+/* Receive byte records with the same bounded error and unwind contract. */
 void
 Keyring_getbytearray(void *fp)
 {
@@ -2265,76 +2391,85 @@ Keyring_getbytearray(void *fp)
 
 	n = getbuf(f->fd->fd, buf, Maxmsg, err, sizeof(err));
 	if(n < 0)
-		retnstr(err, strlen(err), &f->ret->t1);
+		memmove(buf, err, strlen(err)+1);
 	else
-		f->ret->t0 = mem2array(buf+1, n);
-
-	free(buf);
+		memmove(buf, buf+1, n);
+	if(n < 0)
+		f->ret->t1 = keyring_message(buf, strlen((char*)buf), 0);
+	else
+		f->ret->t0 = keyring_message(buf, n, 1);
 }
 
+/* Record transports require one write, including an explicit empty-error tag. */
 static int
-putbuf(int fd, void *p, int n)
+putbuf(int fd, void *p, ulong length, int iserror)
 {
-	char *buf;
+	uchar *buf;
+	int n, result;
 
-	buf = malloc(Maxmsg);
+	n = length >= Maxmsg ? Maxmsg-1 : length;
+	buf = malloc(n+1);
 	if(buf == nil)
 		return -1;
-
+	buf[0] = iserror ? 0xff : 0;
+	if(n != 0)
+		memmove(buf+1, p, n);
 	release();
-	buf[0] = 0;
-	if(n < 0){
-		buf[0] = 0xff;
-		n = -n;
-	}
-	if(n >= Maxmsg)
-		n = Maxmsg - 1;
-	memmove(buf+1, p, n);
-	n = kwrite(fd, buf, n+1);
+	result = kwrite(fd, buf, n+1);
 	acquire();
-
 	free(buf);
-	return n;
+	if(result >= 0 && result != n+1){
+		kwerrstr("short message write");
+		return -1;
+	}
+	return result;
 }
 
+/* Convert the source once and copy it before releasing the interpreter lock. */
 void
 Keyring_putstring(void *fp)
 {
 	F_Keyring_putstring *f;
+	char *text;
 
 	f = fp;
 	*f->ret = -1;
 	if(f->fd == H || f->s == H)
 		return;
-	*f->ret = putbuf(f->fd->fd, string2c(f->s), strlen(string2c(f->s)));
+	text = string2c(f->s);
+	*f->ret = putbuf(f->fd->fd, text, strlen(text), 0);
 }
 
+/* The marker does not depend on the error text having a nonzero length. */
 void
 Keyring_puterror(void *fp)
 {
 	F_Keyring_puterror *f;
+	char *text;
 
 	f = fp;
 	*f->ret = -1;
 	if(f->fd == H || f->s == H)
 		return;
-	*f->ret = putbuf(f->fd->fd, string2c(f->s), -strlen(string2c(f->s)));
+	text = string2c(f->s);
+	*f->ret = putbuf(f->fd->fd, text, strlen(text), 1);
 }
 
+/* Validate the VM-width count and byte-array representation before narrowing. */
 void
 Keyring_putbytearray(void *fp)
 {
 	F_Keyring_putbytearray *f;
-	int n;
+	WORD n;
 
 	f = fp;
 	*f->ret = -1;
 	if(f->fd == H || f->a == H)
 		return;
 	n = f->n;
-	if(n < 0 || n > f->a->len)
+	if(n < 0 || n > keyring_bytearray(f->a))
 		error(exBounds);
-	*f->ret = putbuf(f->fd->fd, f->a->data, n);
+	*f->ret = putbuf(f->fd->fd, f->a->data, n, 0);
 }
 
 void

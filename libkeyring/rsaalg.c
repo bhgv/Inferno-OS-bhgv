@@ -11,58 +11,81 @@ static char*	pkattr[] = { "n", "ek", nil };
 static char*	skattr[] = { "n", "ek", "!dk", "!p", "!q", "!kp", "!kq", "!c2", nil };
 static char*	sigattr[] = { "val", nil };
 
+/* Parse fields in order and release the partial key at the first invalid integer. */
 static void*
 rsa_str2sk(char *str, char **strp)
 {
 	RSApriv *rsa;
 	char *p;
 
+	if(strp)
+		*strp = str;
+	if(str == nil)
+		return nil;
+	p = str;
 	rsa = rsaprivalloc();
-	rsa->pub.n = base64tobig(str, &p);
-	rsa->pub.ek = base64tobig(p, &p);
-	rsa->dk = base64tobig(p, &p);
-	rsa->p = base64tobig(p, &p);
-	rsa->q = base64tobig(p, &p);
-	rsa->kp = base64tobig(p, &p);
-	rsa->kq = base64tobig(p, &p);
-	rsa->c2 = base64tobig(p, &p);
+	if(rsa == nil)
+		return nil;
+	if((rsa->pub.n = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((rsa->pub.ek = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((rsa->dk = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((rsa->p = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((rsa->q = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((rsa->kp = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((rsa->kq = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((rsa->c2 = base64tobig(p, &p)) == nil)
+		goto bad;
 	if(strp)
 		*strp = p;
-	if(rsa->pub.n == nil || rsa->pub.ek == nil ||
-	   rsa->dk == nil || rsa->p == nil || rsa->q == nil ||
-	   rsa->kp == nil || rsa->kq == nil || rsa->c2 == nil){
-		rsaprivfree(rsa);
-		return nil;
-	}
-
 	return rsa;
+bad:
+	rsaprivfree(rsa);
+	return nil;
 }
 
+/* Parse fields in order and release the partial key at the first invalid integer. */
 static void*
 rsa_str2pk(char *str, char **strp)
 {
 	RSApub *rsa;
 	char *p;
 
+	if(strp)
+		*strp = str;
+	if(str == nil)
+		return nil;
+	p = str;
 	rsa = rsapuballoc();
-	rsa->n = base64tobig(str, &p);
-	rsa->ek = base64tobig(p, &p);
+	if(rsa == nil)
+		return nil;
+	if((rsa->n = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((rsa->ek = base64tobig(p, &p)) == nil)
+		goto bad;
 	if(strp)
 		*strp = p;
-	if(rsa->n == nil || rsa->ek == nil){
-		rsapubfree(rsa);
-		return nil;
-	}
-
 	return rsa;
+bad:
+	rsapubfree(rsa);
+	return nil;
 }
 
+/* Publish a signature cursor only after the integer has been accepted. */
 static void*
 rsa_str2sig(char *str, char **strp)
 {
 	mpint *rsa;
 	char *p;
 
+	if(strp)
+		*strp = str;
 	rsa = base64tobig(str, &p);
 	if(rsa == nil)
 		return nil;

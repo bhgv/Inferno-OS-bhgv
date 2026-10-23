@@ -11,61 +11,91 @@ static char*	pkattr[] = { "p", "alpha", "key", nil };
 static char*	skattr[] = { "p", "alpha", "key", "!secret", nil };
 static char*	sigattr[] = { "r", "s", nil };
 
+/* Parse fields in order and release the partial key at the first invalid integer. */
 static void*
 eg_str2sk(char *str, char **strp)
 {
 	EGpriv *eg;
 	char *p;
 
+	if(strp)
+		*strp = str;
+	if(str == nil)
+		return nil;
+	p = str;
 	eg = egprivalloc();
-	eg->pub.p = base64tobig(str, &p);
-	eg->pub.alpha = base64tobig(p, &p);
-	eg->pub.key = base64tobig(p, &p);
-	eg->secret = base64tobig(p, &p);
+	if(eg == nil)
+		return nil;
+	if((eg->pub.p = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((eg->pub.alpha = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((eg->pub.key = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((eg->secret = base64tobig(p, &p)) == nil)
+		goto bad;
 	if(strp)
 		*strp = p;
-	if(eg->pub.p == nil || eg->pub.alpha == nil || eg->pub.key == nil || eg->secret == nil){
-		egprivfree(eg);
-		return nil;
-	}
 	return eg;
+bad:
+	egprivfree(eg);
+	return nil;
 }
 
+/* Parse fields in order and release the partial key at the first invalid integer. */
 static void*
 eg_str2pk(char *str, char **strp)
 {
 	EGpub *eg;
 	char *p;
 
+	if(strp)
+		*strp = str;
+	if(str == nil)
+		return nil;
+	p = str;
 	eg = egpuballoc();
-	eg->p = base64tobig(str, &p);
-	eg->alpha = base64tobig(p, &p);
-	eg->key = base64tobig(p, &p);
+	if(eg == nil)
+		return nil;
+	if((eg->p = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((eg->alpha = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((eg->key = base64tobig(p, &p)) == nil)
+		goto bad;
 	if(strp)
 		*strp = p;
-	if(eg->p == nil || eg->alpha == nil || eg->key == nil){
-		egpubfree(eg);
-		return nil;
-	}
 	return eg;
+bad:
+	egpubfree(eg);
+	return nil;
 }
 
+/* Parse fields in order and release the partial key at the first invalid integer. */
 static void*
 eg_str2sig(char *str, char **strp)
 {
 	EGsig *eg;
 	char *p;
 
+	if(strp)
+		*strp = str;
+	if(str == nil)
+		return nil;
+	p = str;
 	eg = egsigalloc();
-	eg->r = base64tobig(str, &p);
-	eg->s = base64tobig(p, &p);
+	if(eg == nil)
+		return nil;
+	if((eg->r = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((eg->s = base64tobig(p, &p)) == nil)
+		goto bad;
 	if(strp)
 		*strp = p;
-	if(eg->r == nil || eg->s == nil){
-		egsigfree(eg);
-		return nil;
-	}
 	return eg;
+bad:
+	egsigfree(eg);
+	return nil;
 }
 
 static int

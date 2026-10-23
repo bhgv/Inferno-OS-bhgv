@@ -11,64 +11,95 @@ static char*	pkattr[] = { "p", "q", "alpha", "key", nil };
 static char*	skattr[] = { "p", "q", "alpha", "key", "!secret", nil };
 static char*	sigattr[] = { "r", "s", nil };
 
+/* Parse fields in order and release the partial key at the first invalid integer. */
 static void*
 dsa_str2sk(char *str, char **strp)
 {
 	DSApriv *dsa;
 	char *p;
 
+	if(strp)
+		*strp = str;
+	if(str == nil)
+		return nil;
+	p = str;
 	dsa = dsaprivalloc();
-	dsa->pub.p = base64tobig(str, &p);
-	dsa->pub.q = base64tobig(str, &p);
-	dsa->pub.alpha = base64tobig(p, &p);
-	dsa->pub.key = base64tobig(p, &p);
-	dsa->secret = base64tobig(p, &p);
+	if(dsa == nil)
+		return nil;
+	if((dsa->pub.p = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((dsa->pub.q = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((dsa->pub.alpha = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((dsa->pub.key = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((dsa->secret = base64tobig(p, &p)) == nil)
+		goto bad;
 	if(strp)
 		*strp = p;
-	if(dsa->pub.p == nil || dsa->pub.q == nil ||
-	   dsa->pub.alpha == nil || dsa->pub.key == nil || dsa->secret == nil){
-		dsaprivfree(dsa);
-		return nil;
-	}
 	return dsa;
+bad:
+	dsaprivfree(dsa);
+	return nil;
 }
 
+/* Parse fields in order and release the partial key at the first invalid integer. */
 static void*
 dsa_str2pk(char *str, char **strp)
 {
 	DSApub *dsa;
 	char *p;
 
+	if(strp)
+		*strp = str;
+	if(str == nil)
+		return nil;
+	p = str;
 	dsa = dsapuballoc();
-	dsa->p = base64tobig(str, &p);
-	dsa->q = base64tobig(str, &p);
-	dsa->alpha = base64tobig(p, &p);
-	dsa->key = base64tobig(p, &p);
+	if(dsa == nil)
+		return nil;
+	if((dsa->p = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((dsa->q = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((dsa->alpha = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((dsa->key = base64tobig(p, &p)) == nil)
+		goto bad;
 	if(strp)
 		*strp = p;
-	if(dsa->p == nil || dsa->q == nil || dsa->alpha == nil || dsa->key == nil){
-		dsapubfree(dsa);
-		return nil;
-	}
 	return dsa;
+bad:
+	dsapubfree(dsa);
+	return nil;
 }
 
+/* Parse fields in order and release the partial key at the first invalid integer. */
 static void*
 dsa_str2sig(char *str, char **strp)
 {
 	DSAsig *dsa;
 	char *p;
 
+	if(strp)
+		*strp = str;
+	if(str == nil)
+		return nil;
+	p = str;
 	dsa = dsasigalloc();
-	dsa->r = base64tobig(str, &p);
-	dsa->s = base64tobig(p, &p);
+	if(dsa == nil)
+		return nil;
+	if((dsa->r = base64tobig(p, &p)) == nil)
+		goto bad;
+	if((dsa->s = base64tobig(p, &p)) == nil)
+		goto bad;
 	if(strp)
 		*strp = p;
-	if(dsa->r == nil || dsa->s == nil){
-		dsasigfree(dsa);
-		return nil;
-	}
 	return dsa;
+bad:
+	dsasigfree(dsa);
+	return nil;
 }
 
 static int
