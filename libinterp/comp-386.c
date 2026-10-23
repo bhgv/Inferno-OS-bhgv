@@ -247,13 +247,18 @@ gen2(uchar o1, uchar o2)
 	code += 2;
 }
 
+/* Emit little-endian words without requiring the byte cursor to be aligned. */
 static void
 genw(ulong o)
 {
-	*(ulong*)code = o;
+	code[0] = o;
+	code[1] = o>>8;
+	code[2] = o>>16;
+	code[3] = o>>24;
 	code += 4;
 }
 
+/* Encode displacement bytes through the alignment-safe word emitter. */
 static void
 modrm(int inst, ulong disp, int rm, int r)
 {
@@ -269,8 +274,7 @@ modrm(int inst, ulong disp, int rm, int r)
 		return;
 	}
 	*code++ = (2<<6)|(r<<3)|rm;
-	*(ulong*)code = disp;
-	code += 4;
+	genw(disp);
 }
 
 static void
@@ -1545,17 +1549,22 @@ comp(Inst *i)
 	}
 }
 
-static void
+/* Keep unpublished helper storage reachable across a VM error unwind. */
+static uchar *x86helpertemp, *x86helpercode;
+
+/* Publish the entry stub only after allocation, emission and cache flush succeed. */
+static int
 preamble(void)
 {
+	uchar *start;
+
 	if(comvec)
-		return;
-
-	comvec = malloc(32);
-	if(comvec == nil)
-		error(exNomem);
-	code = (uchar*)comvec;
-
+		return 1;
+	start = malloc(32);
+	x86helpercode = start;
+	if(start == nil)
+		return 0;
+	code = start;
 	genb(Opushl+RBX);
 	genb(Opushl+RCX);
 	genb(Opushl+RDX);
@@ -1565,8 +1574,14 @@ preamble(void)
 	modrm(Oldw, O(REG, FP), RTMP, RFP);
 	modrm(Oldw, O(REG, MP), RTMP, RMP);
 	modrm(Ojmprm, O(REG, PC), RTMP, 4);
-
-	segflush(comvec, 32);
+	if(segflush(start, 32) != 0){
+		free(start);
+		x86helpercode = nil;
+		return 0;
+	}
+	comvec = (void(*)(void))start;
+	x86helpercode = nil;
+	return 1;
 }
 
 static void
@@ -1869,41 +1884,55 @@ comi(Type *t)
 	genb(Oret);
 }
 
+/* Build and synchronize both type helpers before publishing either pointer. */
 void
 typecom(Type *t)
 {
-	int n;
-	uchar *tmp;
+	int n, destructorbytes;
+	ulong capacity;
+	uchar *tmp, *start, *destructor;
 
-	if(t == nil || t->initialize != 0)
+	if(t == nil || t == H || t->initialize != nil)
 		return;
-
-	tmp = mallocz(4096*sizeof(uchar), 0);
+	/* Eight large-offset loads/stores and calls per map byte fit within
+	 * 256 bytes; one extra block covers the return and initializer constant. */
+	if(t->np < 0 || (ulong)t->np > 0x7fffffff/256-1)
+		return;
+	capacity = ((ulong)t->np+1)*256;
+	tmp = mallocz(capacity, 0);
+	x86helpertemp = tmp;
 	if(tmp == nil)
-		error(exNomem);
-
-	code = tmp;
-	comi(t);
-	n = code - tmp;
-	code = tmp;
-	comd(t);
-	n += code - tmp;
-	free(tmp);
-
-	code = mallocz(n, 0);
-	if(code == nil)
 		return;
-
-	t->initialize = code;
+	code = tmp;
 	comi(t);
-	t->destroy = code;
+	n = code-tmp;
+	code = tmp;
 	comd(t);
-
+	destructorbytes = code-tmp;
+	free(tmp);
+	x86helpertemp = nil;
+	if(n < 0 || destructorbytes < 0 || n > 0x7fffffff-destructorbytes)
+		return;
+	n += destructorbytes;
+	start = mallocz(n, 0);
+	x86helpercode = start;
+	if(start == nil)
+		return;
+	code = start;
+	comi(t);
+	destructor = code;
+	comd(t);
+	if(code-start != n || segflush(start, n) != 0){
+		free(start);
+		x86helpercode = nil;
+		return;
+	}
+	t->initialize = start;
+	t->destroy = destructor;
+	x86helpercode = nil;
 	if(cflag > 3)
-		print("typ= %.8lux %4d i %.8lux d %.8lux asm=%d\n",
-			(ulong)t, t->size, (ulong)t->initialize, (ulong)t->destroy, n);
-
-	segflush(t->initialize, n);
+		print("typ= %.8p %4d i %.8p d %.8p asm=%d\n",
+			t, t->size, t->initialize, t->destroy, n);
 }
 
 static void
@@ -1924,105 +1953,327 @@ patchex(Module *m, ulong *p)
 	}
 }
 
-/* Build both passes with initially clear marks for frame helper selection. */
-int
-compile(Module *m, int size, Modlink *ml)
+/* Check PC alignment and bounds without subtracting unrelated C pointers. */
+static int
+x86validpc(Module *m, Inst *pc, int size)
 {
-	ulong v;
-	Modl *e;
-	Link *l;
-	int i, n;
-	uchar *s, *tmp;
+	uintptr start, address, offset;
+	start = (uintptr)m->prog;
+	address = (uintptr)pc;
+	if(address < start)
+		return 0;
+	offset = address-start;
+	return offset%sizeof(Inst) == 0 && offset/sizeof(Inst) < size;
+}
 
+/* Validate all publication PCs before indexing the relocation table. */
+static int
+x86validmeta(Module *m, int size, Modlink *ml)
+{
+	Link *l;
+	Handler *h;
+	Except *e;
+	int i;
+	/* Type snapshots and helper generation dereference these descriptors. */
+	for(i = 0; i < m->ntype; i++)
+		if(m->type[i] == H || (m->type[i] != nil &&
+		   (m->type[i]->size < 0 || m->type[i]->np < 0)))
+			return 0;
+	if(!x86validpc(m,m->entry,size))
+		return 0;
+	for(l=m->ext; l->name; l++)
+		if(l->frame == H || (l->frame != nil &&
+		   (l->frame->size < 0 || l->frame->np < 0)) ||
+		   !x86validpc(m,l->u.pc,size))
+			return 0;
+	if(ml != nil) {
+		if(ml->nlinks < 0)
+			return 0;
+		for(i=0; i<ml->nlinks; i++)
+			if(ml->links[i].frame == H || (ml->links[i].frame != nil &&
+			   (ml->links[i].frame->size < 0 || ml->links[i].frame->np < 0)) ||
+			   !x86validpc(m,ml->links[i].u.pc,size))
+				return 0;
+	}
+	if(m->htab != nil)
+		for(h=m->htab; h->etab != nil; h++) {
+			if(h->pc1 < 0 || h->pc2 < h->pc1 || h->pc2 > size)
+				return 0;
+			for(e=h->etab; e->s != nil; e++)
+				if(e->pc < 0 || e->pc >= size)
+					return 0;
+			if(e->pc != -1 && (e->pc < 0 || e->pc >= size))
+				return 0;
+		}
+	return 1;
+}
+
+typedef struct X86TypeState X86TypeState;
+struct X86TypeState {
+	Type *type;
+	void *initialize, *destroy;
+};
+
+/* Save each shared type once so rollback preserves pre-existing helpers. */
+static int
+x86remember(X86TypeState *saved, int count, Type *t)
+{
+	int i;
+
+	if(t == nil)
+		return count;
+	for(i=0; i<count; i++)
+		if(saved[i].type == t)
+			return count;
+	saved[count].type = t;
+	saved[count].initialize = t->initialize;
+	saved[count].destroy = t->destroy;
+	return count+1;
+}
+
+typedef struct X86Compile X86Compile;
+struct X86Compile {
+	Module *m, *shadow;
+	Modlink *ml;
+	int size, ntypes;
+	uchar *tmp;
+	uchar *stagedmp;
+	X86TypeState *savedtypes;
+};
+
+/* Generate against private metadata and publish only after all fallible work. */
+static int
+x86compile(void *arg)
+{
+	X86Compile *c;
+	Module *m;
+	Modlink *ml;
+	int size;
+	Link *l;
+	Modl *e;
+	int i, n, capacity, datasize, bytes, codebytes;
+	uchar *s;
+	Type *t;
+
+	c = arg;
+	m = c->m;
+	ml = c->ml;
+	size = c->size;
+	if(m == nil || m == H || ml == H || m->compiled || size <= 0 || size != m->nprog ||
+	   m->ntype < 0 || m->prog == nil || m->prog == H ||
+	   m->ext == nil || m->ext == H || m->type == H || m->htab == H ||
+	   (m->ntype != 0 && m->type == nil) ||
+	   size >= 0x7fffffff/sizeof(*patch) ||
+	   size > 0x7fffffff/sizeof(Inst) || !x86validmeta(m,size,ml))
+		return 0;
 	base = nil;
-	patch = mallocz(size*sizeof(*patch), 0);
-	/* Only descriptors selected by frame instructions need generated helpers. */
-	tinit = mallocz(m->ntype*sizeof(*tinit), 1);
-	tmp = mallocz(4096*sizeof(uchar),0);
-	if(tinit == nil || patch == nil || tmp == nil)
+	patch = nil;
+	tinit = nil;
+	c->tmp = nil;
+	c->stagedmp = nil;
+	c->shadow = nil;
+	c->savedtypes = nil;
+	c->ntypes = 0;
+	datasize = 0;
+	/* Reserve all rollback records before any table or Type can change. */
+	capacity=m->ntype;
+	for(l=m->ext; l->name; l++) {
+		if(capacity == 0x7fffffff)
+			goto bad;
+		capacity++;
+	}
+	if(ml != nil) {
+		if(ml->nlinks < 0 || ml->nlinks > 0x7fffffff-capacity)
+			goto bad;
+		capacity+=ml->nlinks;
+	}
+	if(capacity > 0x7fffffff/sizeof(*c->savedtypes))
+		goto bad;
+	if(capacity != 0) {
+		c->savedtypes=malloc(capacity*sizeof(*c->savedtypes));
+		if(c->savedtypes == nil)
+			goto bad;
+	}
+	for(i=0; i<m->ntype; i++)
+		c->ntypes=x86remember(c->savedtypes,c->ntypes,m->type[i]);
+	for(l=m->ext; l->name; l++)
+		c->ntypes=x86remember(c->savedtypes,c->ntypes,l->frame);
+	if(ml != nil)
+		for(i=0; i<ml->nlinks; i++)
+			c->ntypes=x86remember(c->savedtypes,c->ntypes,ml->links[i].frame);
+	if(m->origmp != H) {
+		if(m->ntype == 0 || m->type[0] == nil ||
+		   m->type[0]->size < 0 || m->origmp == nil)
+			goto bad;
+		datasize=m->type[0]->size;
+		if(datasize != 0) {
+			c->stagedmp=malloc(datasize);
+			if(c->stagedmp == nil)
+				goto bad;
+			memmove(c->stagedmp,m->origmp,datasize);
+		}
+	}
+	c->shadow=malloc(sizeof(*c->shadow));
+	if(c->shadow == nil)
+		goto bad;
+	memmove(c->shadow,m,sizeof(*c->shadow));
+	if(c->stagedmp != nil)
+		c->shadow->origmp=c->stagedmp;
+	patch=mallocz((size+1)*sizeof(*patch),0);
+	if(m->ntype != 0)
+		tinit=mallocz(m->ntype*sizeof(*tinit),1);
+	c->tmp=malloc(4096);
+	if(patch == nil || c->tmp == nil || (m->ntype != 0 && tinit == nil))
 		goto bad;
 
-	preamble();
-
-	mod = m;
+	pass=0;
+	if(!preamble())
+		goto bad;
+	mod = c->shadow;
 	n = 0;
-	pass = 0;
 	nlit = 0;
-
-	for(i = 0; i < size; i++) {
-		code = tmp;
+	for(i=0; i<size; i++) {
+		code=c->tmp;
 		comp(&m->prog[i]);
-		patch[i] = n;
-		n += code - tmp;
+		patch[i]=n;
+		bytes=code-c->tmp;
+		if(bytes < 0 || bytes > 0x7fffffff/sizeof(*code)-n)
+			goto bad;
+		n+=bytes;
 	}
-
-	for(i = 0; i < nelem(mactab); i++) {
-		code = tmp;
+	patch[size]=n; /* handler ranges may end just past the last Dis PC */
+	for(i=0; i<nelem(mactab); i++) {
+		code=c->tmp;
 		mactab[i].gen();
-		macro[mactab[i].idx] = n;
-		n += code - tmp;
+		macro[mactab[i].idx]=n;
+		bytes=code-c->tmp;
+		if(bytes < 0 || bytes > 0x7fffffff/sizeof(*code)-n)
+			goto bad;
+		n+=bytes;
 	}
-
-	n = (n+3)&~3;
-
-	nlit *= sizeof(ulong);
-	base = mallocz(n + nlit, 0);
+	codebytes=n;
+	if(n > 0x7fffffff-3)
+		goto bad;
+	n=(n+3)&~3;
+	if(nlit < 0 || nlit > (0x7fffffff-n)/sizeof(*litpool))
+		goto bad;
+	base=mallocz(n+nlit*sizeof(*litpool),0);
 	if(base == nil)
 		goto bad;
-
 	if(cflag > 3)
-		print("dis=%5d %5d 386=%5d asm=%.8lux lit=%d: %s\n",
-			size, size*sizeof(Inst), n, (ulong)base, nlit, m->name);
-
-	pass++;
+		print("dis=%5d %5d 386=%5d asm=%.8p: %s\n",size,size*sizeof(Inst),n,base,m->name);
+	pass = 1;
 	nlit = 0;
 	litpool = (ulong*)(base+n);
 	code = base;
-
-	for(i = 0; i < size; i++) {
-		s = code;
+	n = 0;
+	for(i=0; i<size; i++) {
+		s=code;
 		comp(&m->prog[i]);
+		if(patch[i] != n)
+			goto bad;
+		n+=code-s;
 		if(cflag > 4) {
-			print("%D\n", &m->prog[i]);
-			das(s, code-s);
+			print("%3d %D\n",i,&m->prog[i]);
+			das(s,code-s);
 		}
 	}
-
-	for(i = 0; i < nelem(mactab); i++)
+	for(i=0; i<nelem(mactab); i++) {
+		s=code;
 		mactab[i].gen();
-
-	v = (ulong)base;
-	for(l = m->ext; l->name; l++) {
-		l->u.pc = (Inst*)(v+patch[l->u.pc-m->prog]);
-		typecom(l->frame);
-	}
-	if(ml != nil) {
-		e = &ml->links[0];
-		for(i = 0; i < ml->nlinks; i++) {
-			e->u.pc = (Inst*)(v+patch[e->u.pc-m->prog]);
-			typecom(e->frame);
-			e++;
+		if(macro[mactab[i].idx] != n)
+			goto bad;
+		n+=code-s;
+		if(cflag > 4) {
+			print("macro %d:\n",mactab[i].idx);
+			das(s,code-s);
 		}
 	}
-	for(i = 0; i < m->ntype; i++) {
-		if(tinit[i] != 0)
-			typecom(m->type[i]);
+	if(n != codebytes)
+		goto bad;
+
+	if(segflush(base,n*sizeof(*base)) != 0)
+		goto bad;
+	/* Type helper generation is fallible; retain all old PCs until it and
+	 * the module's own cache synchronization have succeeded. */
+	for(l=m->ext; l->name; l++) {
+		typecom(l->frame);
+		if(l->frame != nil && l->frame->initialize == nil)
+			goto bad;
 	}
-	patchex(m, patch);
-	m->entry = (Inst*)(v+patch[mod->entry-mod->prog]);
-	free(patch);
-	free(tinit);
-	free(tmp);
+	if(ml != nil)
+		for(i=0; i<ml->nlinks; i++) {
+			t=ml->links[i].frame;
+			typecom(t);
+			if(t != nil && t->initialize == nil)
+				goto bad;
+		}
+	for(i=0; i<m->ntype; i++)
+		if(tinit[i] != 0) {
+			typecom(m->type[i]);
+			if(m->type[i] != nil && m->type[i]->initialize == nil)
+				goto bad;
+		}
+	if(c->stagedmp != nil)
+		memmove(m->origmp,c->stagedmp,datasize);
+	for(l=m->ext; l->name; l++)
+		l->u.pc=(Inst*)(base+patch[l->u.pc-m->prog]);
+	if(ml != nil) {
+		e=&ml->links[0];
+		for(i=0; i<ml->nlinks; i++,e++)
+			e->u.pc=(Inst*)(base+patch[e->u.pc-m->prog]);
+	}
+	patchex(m,patch);
+	m->entry=(Inst*)(base+patch[m->entry-m->prog]);
 	free(m->prog);
-	m->prog = (Inst*)base;
-	m->compiled = 1;
-	segflush(base, n*sizeof(base));
+	m->prog=(Inst*)base;
+	m->compiled=1;
 	return 1;
 bad:
-	free(patch);
-	free(tinit);
-	free(tmp);
-	free(base);
 	return 0;
 }
 
+/* Reclaim private buffers and restore type helpers after any VM error. */
+int
+compile(Module *m, int size, Modlink *ml)
+{
+	X86Compile c;
+	Type *t;
+	int i, ok;
+
+	memset(&c, 0, sizeof(c));
+	c.m = m;
+	c.size = size;
+	c.ml = ml;
+	base = nil;
+	patch = nil;
+	tinit = nil;
+	x86helpertemp = nil;
+	x86helpercode = nil;
+	ok=kprotect(x86compile, &c);
+	if(!ok) {
+		for(i=0; i<c.ntypes; i++) {
+			t=c.savedtypes[i].type;
+			if(t->initialize != c.savedtypes[i].initialize)
+				free(t->initialize);
+			t->initialize=c.savedtypes[i].initialize;
+			t->destroy=c.savedtypes[i].destroy;
+		}
+		free(base);
+		base=nil;
+	}
+	free(x86helpertemp);
+	free(x86helpercode);
+	x86helpertemp = nil;
+	x86helpercode = nil;
+	free(patch);
+	free(tinit);
+	free(c.tmp);
+	free(c.stagedmp);
+	free(c.shadow);
+	free(c.savedtypes);
+	patch = nil;
+	tinit = nil;
+	mod = m;
+	return ok;
+}

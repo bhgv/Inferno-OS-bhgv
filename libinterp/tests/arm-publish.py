@@ -11,7 +11,7 @@ import shlex
 import subprocess
 import tempfile
 root=Path(__file__).resolve().parents[2]
-source=(root/'libinterp/comp-arm.c').read_text()
+source=Path(os.environ.get('ARM_PUBLISH_SOURCE', root/'libinterp/comp-arm.c')).read_text()
 def function(name,result):
     start=source.index(result+'\n'+name+'(');brace=source.index('{',start);depth=0
     for token in re.finditer(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*[\s\S]*?\*/|//[^\n]*|[{}]',source[brace:]):
@@ -64,6 +64,7 @@ struct Module {Inst *prog,*entry;int compiled,nprog,ntype;Type **type;Link *ext;
 int __lsan_is_turned_off(void) {return 1;}
 static int live,fail_after=-1,flushes,fail_flush,phase_error;
 static void *allocations[256];
+static size_t allocationbytes[256];
 static int frees;
 static void *testmalloc(size_t n) {
     void *p;int i;
@@ -71,7 +72,7 @@ static void *testmalloc(size_t n) {
     if(fail_after>0)fail_after--;
     if(n==0)return nil;
     p=calloc(1,n);if(!p)return nil;
-    for(i=0;i<256;i++)if(!allocations[i]){allocations[i]=p;live++;return p;}
+    for(i=0;i<256;i++)if(!allocations[i]){allocations[i]=p;allocationbytes[i]=n;live++;return p;}
     assert(0);return nil;
 }
 static void *testmallocz(size_t n,int zero) {(void)zero;return testmalloc(n);}
@@ -123,6 +124,9 @@ static Module *active;
 static Inst *original;
 static int segflush(void *p,ulong n) { event();
     assert(p && n);flushes++;
+    int slot;
+    for(slot=0;slot<256 && allocations[slot]!=p;slot++);
+    assert(slot<256 && n<=allocationbytes[slot]);
     assert(active && !active->compiled && active->prog==original);
     assert(active->ext[0].u.pc==original+1);
     if(active->origmp!=H)
@@ -225,6 +229,29 @@ int main(void) {
     fixture();links[0].u.pc=(Inst*)((char*)original+1);assert(!compile(&m,4,&ml));links[0].u.pc=original+1;unchanged();cleanup();
     fixture();handlers[0].pc2=5;assert(!compile(&m,4,&ml));handlers[0].pc2=4;unchanged();cleanup();
     fixture();exceptions[0].pc=-2;assert(!compile(&m,4,&ml));exceptions[0].pc=1;unchanged();cleanup();
+    /* Invalid metadata must fail before any helper or PC is published. */
+    for(i=0;i<14;i++) {
+        fixture();
+        if(i==0)types[1]=H;
+        else if(i==1)links[0].frame=H;
+        else if(i==2)ml.links[1].frame=H;
+        else if(i==3)b.size=-1;
+        else if(i==4)b.np=-1;
+        else if(i==5)m.origmp=nil;
+        else if(i==6)a.np=-1;
+        else if(i==7)old.size=-1;
+        else if(i==10)m.prog=H;
+        else if(i==11)m.ext=H;
+        else if(i==12)m.type=H;
+        else if(i==13)m.htab=H;
+        if(i==8)assert(!compile((Module*)H,4,&ml));
+        else if(i==9)assert(!compile(&m,4,(Modlink*)H));
+        else assert(!compile(&m,4,&ml));
+        types[1]=&b;links[0].frame=&a;ml.links[1].frame=&b;
+        b.size=b.np=a.np=old.size=0;m.origmp=(uint8_t*)mp;
+        m.prog=original;m.ext=links;m.type=types;m.htab=handlers;
+        unchanged();cleanup();
+    }
     printf("PASS %d VM error injection points\n",count);
     puts("PASS ARM publication: VM error unwinds, allocation/cache failures, table/Type rollback, retry, aliases, shared helpers, phase mismatch and end-PC exception ranges");
     return 0;

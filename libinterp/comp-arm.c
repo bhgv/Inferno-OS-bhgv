@@ -2126,6 +2126,7 @@ comi(Type *t)
 	flushcon(0);
 }
 
+/* Publish synchronized type helpers only after both emitters succeed. */
 void
 typecom(Type *t)
 {
@@ -2133,7 +2134,7 @@ typecom(Type *t)
 	ulong capacity;
 	ulong *tmp, *start, *destructor;
 
-	if(t == nil || t->initialize != 0)
+	if(t == nil || t == H || t->initialize != 0)
 		return;
 
 	/* Each map byte describes at most eight pointers. Even large-offset
@@ -2218,6 +2219,7 @@ armvalidpc(Module *m, Inst *pc, int size)
 	return offset%sizeof(Inst) == 0 && offset/sizeof(Inst) < size;
 }
 
+/* Reject invalid descriptors and PCs before snapshots or relocation lookups. */
 static int
 armvalidmeta(Module *m, int size, Modlink *ml)
 {
@@ -2225,16 +2227,25 @@ armvalidmeta(Module *m, int size, Modlink *ml)
 	Handler *h;
 	Except *e;
 	int i;
+	/* Type snapshots and helper generation dereference these descriptors. */
+	for(i = 0; i < m->ntype; i++)
+		if(m->type[i] == H || (m->type[i] != nil &&
+		   (m->type[i]->size < 0 || m->type[i]->np < 0)))
+			return 0;
 	if(!armvalidpc(m,m->entry,size))
 		return 0;
 	for(l=m->ext; l->name; l++)
-		if(!armvalidpc(m,l->u.pc,size))
+		if(l->frame == H || (l->frame != nil &&
+		   (l->frame->size < 0 || l->frame->np < 0)) ||
+		   !armvalidpc(m,l->u.pc,size))
 			return 0;
 	if(ml != nil) {
 		if(ml->nlinks < 0)
 			return 0;
 		for(i=0; i<ml->nlinks; i++)
-			if(!armvalidpc(m,ml->links[i].u.pc,size))
+			if(ml->links[i].frame == H || (ml->links[i].frame != nil &&
+			   (ml->links[i].frame->size < 0 || ml->links[i].frame->np < 0)) ||
+			   !armvalidpc(m,ml->links[i].u.pc,size))
 				return 0;
 	}
 	if(m->htab != nil)
@@ -2281,6 +2292,7 @@ struct ArmCompile {
 	ArmTypeState *savedtypes;
 };
 
+/* Keep compilation private until all helpers and cache flushes succeed. */
 static int
 armcompile(void *arg)
 {
@@ -2295,8 +2307,9 @@ armcompile(void *arg)
 	Type *t;
 
 	c=arg; m=c->m; ml=c->ml; size=c->size;
-	if(m == nil || m->compiled || size <= 0 || size != m->nprog ||
-	   m->ntype < 0 || m->prog == nil || m->ext == nil ||
+	if(m == nil || m == H || ml == H || m->compiled || size <= 0 || size != m->nprog ||
+	   m->ntype < 0 || m->prog == nil || m->prog == H ||
+	   m->ext == nil || m->ext == H || m->type == H || m->htab == H ||
 	   (m->ntype != 0 && m->type == nil) ||
 	   size >= 0x7fffffff/sizeof(*patch) ||
 	   size > 0x7fffffff/sizeof(Inst) || !armvalidmeta(m,size,ml))
@@ -2330,7 +2343,8 @@ armcompile(void *arg)
 		for(i=0; i<ml->nlinks; i++)
 			c->ntypes=armremember(c->savedtypes,c->ntypes,ml->links[i].frame);
 	if(m->origmp != H) {
-		if(m->ntype == 0 || m->type[0] == nil || m->type[0]->size < 0)
+		if(m->ntype == 0 || m->type[0] == nil ||
+		   m->type[0]->size < 0 || m->origmp == nil)
 			goto bad;
 		datasize=m->type[0]->size;
 		if(datasize != 0) {
