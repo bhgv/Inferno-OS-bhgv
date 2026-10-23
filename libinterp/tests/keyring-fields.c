@@ -108,8 +108,9 @@ fieldfailures(void)
 int
 main(int argc, char **argv)
 {
-	if(argc == 1)
-		integer_main(1, argv);
+	if(argc == 1 || strcmp(argv[1], "integers") == 0 ||
+	   strcmp(argv[1], "failure") == 0 || strcmp(argv[1], "bounds") == 0)
+		integer_main(argc, argv);
 	fmtinstall('U', big64conv);
 	checks = 0;
 	fieldsetup();

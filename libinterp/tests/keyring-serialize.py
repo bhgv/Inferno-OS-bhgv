@@ -47,7 +47,17 @@ for n in range(129):
     vectors.append('{'+str(n)+',"'+base64.b64encode(legacy).decode()+'"}')
 unit = (root / 'libinterp/tests/keyring-serialize.c').read_text()
 unit = unit.replace('main(int argc, char **argv)', 'integer_main(int argc, char **argv)')
-unit += (root / 'libinterp/tests/keyring-fields.c').read_text()
+unit += (root / 'libinterp/tests/keyring-fields.c').read_text().replace('main(int argc, char **argv)', 'fields_main(int argc, char **argv)')
+unit += (root / 'libinterp/tests/keyring-records.c').read_text()
+recordsource = Path(os.environ.get('KEYRING_RECORD_SOURCE', root / 'libinterp/keyring.c')).read_text()
+records = []
+# Allow older record wrappers to be tested while supplying the new helper separately.
+records.append(function(recordsource if 'int\nkeyringrecord(' in recordsource else source, 'static int\nkeyringrecord('))
+records.append(function(source, 'static int\nkeyringexpiration('))
+for name in ('sktostr', 'pktostr', 'certtostr'):
+    records.append(function(recordsource, 'static int\n'+name+'('))
+unit = unit.replace('CERTIFICATE_IMPLEMENTATION', function(recordsource, 'static Certificate*\nstrtocert('))
+unit = unit.replace('RECORD_IMPLEMENTATION', '\n'.join(records))
 unit = unit.replace('IMPLEMENTATION', '\n'.join(parts))
 unit = unit.replace('VECTORS', 'static struct {int n; char *expected;} vectors[] = {'+','.join(vectors)+'};')
 with tempfile.TemporaryDirectory(prefix='keyring-serialize-') as directory:

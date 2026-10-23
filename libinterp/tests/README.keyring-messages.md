@@ -1,5 +1,36 @@
 # Keyring message and key parsing regressions
 
+## Complete record serialization and object validation
+
+Run `python3 libinterp/tests/keyring-serialize.py` and
+`python3 libinterp/tests/keyring-types.py` for the additional native fixtures.
+
+The serialization fixture uses production integer export, Base64 and native Fmt,
+all nine RSA/DSA/ElGamal serializers, and complete key/certificate record writers.
+Independent Python vectors check legacy leading-zero encoding. Every buffer
+capacity, every field allocation failure, header newline rejection, and native-long
+expiration boundaries are exercised. Decimal parsing checks mandatory newlines,
+overflow and unchanged cursor/output on failure. VM string conversion and
+algorithm lookup are adapters. The actual certificate parser is also tested with
+controlled header references and signature callbacks to check cleanup and ensure
+invalid expiration text never reaches signature parsing. These are not full VM
+or authentication tests.
+
+The object fixture runs the four actual validators with real Heap/object layouts.
+Nil references, alien heaps with no payload, empty native payloads,
+foreign/unregistered algorithm vectors, and initialized objects are covered.
+ASan/UBSan are enabled by default. LeakSanitizer is disabled because the sandbox
+does not expose its required process metadata. Fixtures release native allocations;
+the serialization fixture also tracks temporary ownership explicitly.
+
+`KEYRING_RECORD_SOURCE` selects older record writers; `KEYRING_TYPES_SOURCE`
+selects older validators. New record helpers are supplied when absent from the
+older source, leaving its wrappers under test. `KEYRING_SERIALIZE_CASE` accepts
+`records`, `record-faults`, `expiration`, or `certificates`; `KEYRING_TYPES_CASE` accepts `valid`
+or `invalid`. Native-long tests use the host layout, not a full 32-bit target run.
+
+## Message and key parsing fixtures
+
 `keyring-messages.py` extracts the production byte-array validator, framed-stream
 and record I/O functions, and real emulator `kprotect`/`krethrow` implementations.
 It uses the actual generated builtin frames and Heap/Array/String declarations.

@@ -331,6 +331,7 @@ strtoalg(char *str, char **strp)
 	return nil;
 }
 
+/* Validate the heap type before reading fields beyond the public object layout. */
 static SigAlg*
 checkSigAlg(Keyring_SigAlg *ksa)
 {
@@ -338,10 +339,12 @@ checkSigAlg(Keyring_SigAlg *ksa)
 	SigAlg *sa;
 
 	sa = (SigAlg*)ksa;
-
-	for(sap = algs; sap < &algs[Maxalg]; sap++)
+	if(sa == H || sa == nil || D2H(sa)->t != TSigAlg)
+		goto bad;
+	for(sap = algs; sap < &algs[nalg]; sap++)
 		if(sa->vec == *sap)
 			return sa;
+bad:
 	errorf("%s: %s", exType, exBadSA);
 	return nil;
 }
@@ -405,13 +408,14 @@ freeSK(Heap *h, int swept)
 	freeheap(h, swept);
 }
 
+/* Validate the heap type before reading fields beyond the public object layout. */
 static SK*
 checkSK(Keyring_SK *k)
 {
 	SK *sk;
 
 	sk = (SK*)k;
-	if(sk == H || sk == nil || sk->key == 0 || D2H(sk)->t != TSK){
+	if(sk == H || sk == nil || D2H(sk)->t != TSK || sk->key == 0){
 		errorf("%s: %s", exType, exBadSK);
 		return nil;
 	}
@@ -524,24 +528,58 @@ Keyring_sktoattr(void *fp)
 	free(val);
 }
 
+/* Validate line boundaries and capacity before exposing a key or certificate record. */
+static int
+keyringrecord(char *buf, int len, char **headers, int count,
+	void *value, int (*serialize)(void*, char*, int))
+{
+	int i, used, n;
+	ulong size;
+
+	if(buf == nil || len <= 0)
+		return -1;
+	buf[0] = 0;
+	if(headers == nil || count <= 0 || serialize == nil)
+		return -1;
+	used = 0;
+	for(i = 0; i < count; i++){
+		if(headers[i] == nil || strchr(headers[i], '\n') != nil)
+			return -1;
+		size = strlen(headers[i]);
+		/* Reserve a newline and the terminator without overflowing a signed sum. */
+		if(len-used < 2 || size > (ulong)(len-used-2))
+			return -1;
+		used += (int)size+1;
+	}
+	used = 0;
+	for(i = 0; i < count; i++){
+		n = strlen(headers[i]);
+		memmove(buf+used, headers[i], n);
+		used += n;
+		buf[used++] = '\n';
+	}
+	buf[used] = 0;
+	n = (*serialize)(value, buf+used, len-used);
+	if(n < 0 || n >= len-used){
+		buf[0] = 0;
+		return -1;
+	}
+	return used+n;
+}
+
 /* Return serialization failures without exposing an incomplete record. */
 static int
 sktostr(SK *sk, char *buf, int len)
 {
-	int n;
 	SigAlg *sa;
+	char *headers[2];
 
 	if(buf == nil || len <= 0)
 		return -1;
 	sa = checkSigAlg(sk->x.sa);
-	n = snprint(buf, len, "%s\n%s\n", string2c(sa->x.name),
-			string2c(sk->x.owner));
-	len = (*sa->vec->sk2str)(sk->key, buf+n, len - n);
-	if(len < 0){
-		buf[0] = 0;
-		return -1;
-	}
-	return n+len;
+	headers[0] = string2c(sa->x.name);
+	headers[1] = string2c(sk->x.owner);
+	return keyringrecord(buf, len, headers, nelem(headers), sk->key, sa->vec->sk2str);
 }
 
 /* Return serialization failures without exposing an incomplete record. */
@@ -659,13 +697,14 @@ freePK(Heap *h, int swept)
 	freeheap(h, swept);
 }
 
+/* Validate the heap type before reading fields beyond the public object layout. */
 static PK*
 checkPK(Keyring_PK *k)
 {
 	PK *pk;
 
 	pk = (PK*)k;
-	if(pk == H || pk == nil || pk->key == 0 || D2H(pk)->t != TPK){
+	if(pk == H || pk == nil || D2H(pk)->t != TPK || pk->key == 0){
 		errorf("%s: %s", exType, exBadPK);
 		return nil;
 	}
@@ -697,19 +736,15 @@ Keyring_sktopk(void *fp)
 static int
 pktostr(PK *pk, char *buf, int len)
 {
-	int n;
 	SigAlg *sa;
+	char *headers[2];
 
 	if(buf == nil || len <= 0)
 		return -1;
 	sa = checkSigAlg(pk->x.sa);
-	n = snprint(buf, len, "%s\n%s\n", string2c(sa->x.name), string2c(pk->x.owner));
-	len = (*sa->vec->pk2str)(pk->key, buf+n, len - n);
-	if(len < 0){
-		buf[0] = 0;
-		return -1;
-	}
-	return n+len;
+	headers[0] = string2c(sa->x.name);
+	headers[1] = string2c(pk->x.owner);
+	return keyringrecord(buf, len, headers, nelem(headers), pk->key, sa->vec->pk2str);
 }
 
 /* Return serialization failures without exposing an incomplete record. */
@@ -869,13 +904,14 @@ freeCertificate(Heap *h, int swept)
 	freeheap(h, swept);
 }
 
+/* Validate the heap type before reading fields beyond the public object layout. */
 Certificate*
 checkCertificate(Keyring_Certificate *c)
 {
 	Certificate *cert;
 
 	cert = (Certificate*)c;
-	if(cert == H || cert == nil || cert->signa == 0 || D2H(cert)->t != TCertificate){
+	if(cert == H || cert == nil || D2H(cert)->t != TCertificate || cert->signa == 0){
 		errorf("%s: %s", exType, exBadCert);
 		return nil;
 	}
@@ -887,19 +923,17 @@ static int
 certtostr(Certificate *c, char *buf, int len)
 {
 	SigAlg *sa;
-	int n;
+	char expiration[32], *headers[4];
 
 	if(buf == nil || len <= 0)
 		return -1;
 	sa = checkSigAlg(c->x.sa);
-	n = snprint(buf, len, "%s\n%s\n%s\n%d\n", string2c(sa->x.name),
-		string2c(c->x.ha), string2c(c->x.signer), c->x.exp);
-	len = (*sa->vec->sig2str)(c->signa, buf+n, len - n);
-	if(len < 0){
-		buf[0] = 0;
-		return -1;
-	}
-	return n+len;
+	snprint(expiration, sizeof expiration, "%ld", (long)c->x.exp);
+	headers[0] = string2c(sa->x.name);
+	headers[1] = string2c(c->x.ha);
+	headers[2] = string2c(c->x.signer);
+	headers[3] = expiration;
+	return keyringrecord(buf, len, headers, nelem(headers), c->signa, sa->vec->sig2str);
 }
 
 /* Return serialization failures without exposing an incomplete record. */
@@ -956,6 +990,38 @@ Keyring_certtoattr(void *fp)
 	free(val);
 }
 
+/* Parse one complete decimal expiration line without overflow or cursor drift on failure. */
+static int
+keyringexpiration(char **strp, long *expiration)
+{
+	char *p;
+	ulong value, limit;
+	int negative, digit;
+
+	if(strp == nil || *strp == nil || expiration == nil)
+		return 0;
+	p = *strp;
+	negative = *p == '-';
+	if(*p == '-' || *p == '+')
+		p++;
+	if(*p < '0' || *p > '9')
+		return 0;
+	value = 0;
+	limit = ~(ulong)0;
+	while(*p >= '0' && *p <= '9'){
+		digit = *p++ - '0';
+		if(value > (limit-digit)/10)
+			return 0;
+		value = value*10+digit;
+	}
+	if(*p != '\n')
+		return 0;
+	*expiration = (long)(negative ? (ulong)0-value : value);
+	*strp = p+1;
+	return 1;
+}
+
+/* Parse a certificate record, releasing acquired headers when any later field fails. */
 static Certificate*
 strtocert(char *buf)
 {
@@ -983,9 +1049,12 @@ strtocert(char *buf)
 		return H;
 	}
 
-	exp = strtoul(p, &p, 10);
-	if(*p)
-		p++;
+	if(!keyringexpiration(&p, &exp)){
+		destroy(sa);
+		destroy(ha);
+		destroy(signer);
+		return H;
+	}
 	signa = (*sa->vec->str2sig)(p, &p);
 	if(signa == nil){
 		destroy(sa);
