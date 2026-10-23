@@ -849,56 +849,74 @@ med3(WORD *a, WORD *b, WORD *c, double *x)
 		: (cmp(b, c, x) > 0 ? b : (cmp(a, c, x) < 0 ? a : c ) );
 }
 
-/* Sort validated indices in place; empty vectors need no pointer arithmetic. */
+/* Bound stack use by recursing on the smaller numeric-index partition. */
 static void
 rqsort(WORD *a, int n, double *x)
 {
 	WORD *pa, *pb, *pc, *pd, *pl, *pm, *pn;
-	int d, r;
+	int d, r, left, right;
 
-	if(n < 2)
-		return;
-
-	if (n < 7) { /* Insertion sort on small arrays */
-		for (pm = a + 1; pm < a + n; pm++)
-			for (pl = pm; pl > a && cmp(pl-1, pl, x) > 0; pl--)
-				swap(pl, pl-1);
-		return;
-	}
-	pm = a + (n/2);
-	if (n > 7) {
-		pl = a;
-		pn = a + (n-1);
-		if (n > 40) { /* On big arrays, pseudomedian of 9 */
-			d = (n/8);
-			pl = med3(pl, pl+d, pl+2*d, x);
-			pm = med3(pm-d, pm, pm+d, x);
-			pn = med3(pn-2*d, pn-d, pn, x);
+	while(n > 1){
+		if(n < 7){ /* Insertion sort on small arrays */
+			for(pm = a + 1; pm < a + n; pm++)
+				for(pl = pm; pl > a && cmp(pl-1, pl, x) > 0; pl--)
+					swap(pl, pl-1);
+			return;
 		}
-		pm = med3(pl, pm, pn, x); /* On mid arrays, med of 3 */
-	}
-	swap(a, pm); /* On tiny arrays, partition around middle */
-	pa = pb = a + 1;
-	pc = pd = a + (n-1);
-	for (;;) {
-		while (pb <= pc && (r = cmp(pb, a, x)) <= 0) {
-			if (r == 0) { swap(pa, pb); pa++; }
+		pm = a + (n/2);
+		if(n > 7){
+			pl = a;
+			pn = a + (n-1);
+			if(n > 40){ /* On big arrays, pseudomedian of 9 */
+				d = (n/8);
+				pl = med3(pl, pl+d, pl+2*d, x);
+				pm = med3(pm-d, pm, pm+d, x);
+				pn = med3(pn-2*d, pn-d, pn, x);
+			}
+			pm = med3(pl, pm, pn, x); /* On mid arrays, med of 3 */
+		}
+		swap(a, pm); /* On tiny arrays, partition around middle */
+		pa = pb = a + 1;
+		pc = pd = a + (n-1);
+		for(;;){
+			while(pb <= pc && (r = cmp(pb, a, x)) <= 0){
+				if(r == 0){
+					swap(pa, pb);
+					pa++;
+				}
+				pb++;
+			}
+			while(pb <= pc && (r = cmp(pc, a, x)) >= 0){
+				if(r == 0){
+					swap(pc, pd);
+					pd--;
+				}
+				pc--;
+			}
+			if(pb > pc)
+				break;
+			swap(pb, pc);
 			pb++;
-		}
-		while (pb <= pc && (r = cmp(pc, a, x)) >= 0) {
-			if (r == 0) { swap(pc, pd); pd--; }
 			pc--;
 		}
-		if (pb > pc) break;
-		swap(pb, pc);
-		pb++;
-		pc--;
+		pn = a + n;
+		r = minimum(pa-a, pb-pa);
+		vecswap(a, pb-r, r);
+		r = minimum(pd-pc, pn-pd-1);
+		vecswap(pb, pn-r, r);
+		left = pb-pa;
+		right = pd-pc;
+		if(left < right){
+			if(left > 1)
+				rqsort(a, left, x);
+			a = pn-right;
+			n = right;
+		}else{
+			if(right > 1)
+				rqsort(pn-right, right, x);
+			n = left;
+		}
 	}
-	pn = a + n;
-	r = minimum(pa-a,  pb-pa);   vecswap(a,  pb-r, r);
-	r = minimum(pd-pc, pn-pd-1); vecswap(pb, pn-r, r);
-	if ((r = pb-pa) > 1) rqsort(a, r, x);
-	if ((r = pd-pc) > 1) rqsort(pn-r, r, x);
 }
 
 /* Validate every index before sorting so errors leave the permutation intact. */

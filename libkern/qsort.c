@@ -11,7 +11,8 @@ struct
 	long	es;
 } Sort;
 
-static	void
+/* Exchange an element whose address or size needs bytewise access. */
+static void
 swapb(char *i, char *j, long es)
 {
 	char c;
@@ -25,7 +26,8 @@ swapb(char *i, char *j, long es)
 
 }
 
-static	void
+/* Exchange aligned native-word spans selected by the public entry point. */
+static void
 swapi(char *ii, char *ij, long es)
 {
 	long *i, *j, c;
@@ -40,7 +42,8 @@ swapi(char *ii, char *ij, long es)
 	} while(es != 0);
 }
 
-static	char*
+/* Choose the median of three spread-out elements without moving storage. */
+static char*
 pivot(char *a, long n, Sort *p)
 {
 	long j;
@@ -67,7 +70,8 @@ pivot(char *a, long n, Sort *p)
 	return pj;
 }
 
-static	void
+/* Recurse on the smaller partition and iterate over the larger one. */
+static void
 qsorts(char *a, long n, Sort *p)
 {
 	long j, es;
@@ -99,7 +103,7 @@ qsorts(char *a, long n, Sort *p)
 		j = (pj - a) / es;
 
 		n = n-j-1;
-		if(j >= n) {
+		if(j < n) {
 			qsorts(a, j, p);
 			a += (j+1)*es;
 		} else {
@@ -109,11 +113,14 @@ qsorts(char *a, long n, Sort *p)
 	}
 }
 
+/* Ignore empty/invalid spans before partitioning or multiplying native counts. */
 void
 qsort(void *va, long n, long es, int (*cmp)(void*, void*))
 {
 	Sort s;
 
+	if(n < 2 || es <= 0 || n > (long)(~(ulong)0 >> 1)/es)
+		return;
 	s.cmp = cmp;
 	s.es = es;
 	s.swap = swapi;

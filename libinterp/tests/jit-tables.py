@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import shlex
+import re
 import subprocess
 import tempfile
 
@@ -107,6 +108,60 @@ static void overlaps(void)
     instructions[0].op=IRUNT;module.origmp=H;module.ntype=0;module.type=nil;
     assert(jitvalidtables(&module,1));checks++;
 }
+/* Exercise complete native-sort plans with many disjoint/aliased table spans. */
+static void largeplans(void)
+{
+    int sizes[]={8,11,127,512,4096};
+    uint32_t random=0x12345678;
+    int size,mode,n,i,j,k,expected;
+    Type type,*types[]={&type};
+    Module module;
+    Inst *instructions,*saved;
+    unsigned char *data;
+
+    for(size=0;size<5;size++){
+        n=sizes[size];
+        data=calloc(n,16);
+        instructions=calloc(n,sizeof(*instructions));
+        saved=calloc(n,sizeof(*saved));
+        assert(data && instructions && saved);
+        type.size=n*16;
+        module.prog=instructions;module.ntype=1;module.type=types;module.origmp=data;
+        for(mode=0;mode<8;mode++){
+            for(i=0;i<n;i++){
+                instructions[i].op=ICASE;
+                instructions[i].add=DST(AMP);
+                instructions[i].d.ind=16*(mode==1?n-1-i:i);
+            }
+            if(mode==2){
+                for(i=n-1;i>0;i--){
+                    random=random*1664525U+1013904223U;
+                    j=random%(i+1);
+                    k=instructions[i].d.ind;
+                    instructions[i].d.ind=instructions[j].d.ind;
+                    instructions[j].d.ind=k;
+                }
+            }
+            if(mode==3)
+                for(i=0;i<n;i++)instructions[i].d.ind=0;
+            if(mode==4)instructions[1].d.ind=4;
+            if(mode==5){instructions[1].d.ind=0;instructions[1].op=ICASEC;}
+            if(mode==6)
+                for(i=1;i<n;i+=2)instructions[i].op=IRUNT;
+            if(mode==7)instructions[n-1].d.ind++;
+            memcpy(saved,instructions,n*sizeof(*saved));
+            expected=mode!=4 && mode!=5 && mode!=7;
+            assert(jitvalidtables(&module,n)==expected);
+            assert(live==0 && !memcmp(saved,instructions,n*sizeof(*saved)));
+            for(i=0;i<n*16;i++)assert(data[i]==0);
+            fail=1;assert(!jitvalidtables(&module,n) && live==0);fail=0;
+            assert(!memcmp(saved,instructions,n*sizeof(*saved)));
+            for(i=0;i<n*16;i++)assert(data[i]==0);
+            checks+=2;
+        }
+        free(saved);free(instructions);free(data);
+    }
+}
 /* Cover each count, target and extent transition, including 32-bit extrema. */
 int main(void)
 {
@@ -119,11 +174,29 @@ int main(void)
     for(bad=0;bad<3;bad++)
         one(kinds[kind],counts[count],offsets[offset],extent,bad);
     overlaps();
+    largeplans();
     printf("JIT table preflight: %d cases\n",checks);
     return 0;
 }
 int __lsan_is_turned_off(void) {return 1;}
 '''
+# Optionally exercise the actual native sorter at the JIT preflight boundary.
+native_library = os.environ.get('JIT_TABLE_NATIVE_SORT')
+native_sort = None
+if native_library:
+    if native_library not in ('lib9', 'libkern'):
+        raise ValueError('JIT_TABLE_NATIVE_SORT must be lib9 or libkern')
+    native_sort = (root / native_library / 'qsort.c').read_text()
+    native_sort = native_sort.replace('#include "lib9.h"', '')
+    native_sort = re.sub(r'\bqsort\b', 'native_qsort', native_sort)
+    native_sort = ('#include <stdint.h>\ntypedef unsigned long ulong;\n'
+                   'typedef uintptr_t uintptr;\n' + native_sort)
+    unit = unit.replace('plancompare=compare;qsort(p,n,width,hostcompare);',
+                        'native_qsort(p,n,width,compare);')
+    unit = unit.replace('static void plansort(',
+                        'extern void native_qsort(void*,long,long,int(*)(void*,void*));\n'
+                        'static void plansort(')
+
 with tempfile.TemporaryDirectory(prefix='jit-tables-') as directory:
     td = Path(directory)
     target = td/'test.c'
@@ -131,5 +204,11 @@ with tempfile.TemporaryDirectory(prefix='jit-tables-') as directory:
     binary = td/'test'
     cmd = shlex.split(os.environ.get('CC', 'cc'))
     cmd += shlex.split(os.environ.get('CFLAGS', '-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
-    subprocess.run(cmd+['-I'+str(root/'include'), str(target), '-o', str(binary)], check=True)
+    extra = []
+    if native_sort is not None:
+        sortfile = td/'native-sort.c'
+        sortfile.write_text(native_sort)
+        extra.append(str(sortfile))
+    subprocess.run(cmd+['-I'+str(root/'include'), str(target)] + extra +
+                   ['-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
