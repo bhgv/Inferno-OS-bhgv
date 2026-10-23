@@ -32,7 +32,17 @@ OP(runt) {}
 OP(negf) { F(d) = -F(s); }
 OP(jmp)  { JMP(d); }
 OP(movpc){ T(d) = &R.M->prog[W(s)]; }
-OP(movm) { memmove(R.d, R.s, W(m)); }
+/* Reject negative raw-copy sizes before they become huge size_t values. */
+OP(movm)
+{
+	WORD n;
+
+	n = W(m);
+	if(n < 0)
+		error(exBounds);
+	if(n != 0)
+		memmove(R.d, R.s, n);
+}
 OP(lea)  { W(d) = (WORD)R.s; }
 OP(movb) { B(d) = B(s); }
 OP(movw) { W(d) = W(s); }
@@ -1488,62 +1498,91 @@ OP(consmp)
 	t->ref++;
 	L(d) = result;
 }
+/* A nil list has no head payload. */
 OP(headb)
 {
 	List *l;
 
 	l = L(s);
+	if(l == H)
+		error(exNilref);
 	B(d) = *(BYTE*)l->data;
 }
+/* Reject nil before reading a word list head. */
 OP(headw)
 {
 	List *l;
 
 	l = L(s);
+	if(l == H)
+		error(exNilref);
 	W(d) = *(WORD*)l->data;
 }
+/* Reject nil before reading a long list head. */
 OP(headl)
 {
 	List *l;
 
 	l = L(s);
+	if(l == H)
+		error(exNilref);
 	V(d) = *(LONG*)l->data;
 }
+/* Validate the list before copying its pointer-valued head. */
 OP(headp)
 {
 	List *l;
 
 	l = L(s);
+	if(l == H)
+		error(exNilref);
 	R.s = l->data;
 	movp();
 }
+/* Reject nil before reading a real-valued list head. */
 OP(headf)
 {
 	List *l;
 
 	l = L(s);
+	if(l == H)
+		error(exNilref);
 	F(d) = *(REAL*)l->data;
 }
+/* Validate both the list reference and raw payload size before copying. */
 OP(headm)
 {
 	List *l;
+	WORD n;
 
 	l = L(s);
-	memmove(R.d, l->data, W(m));
+	if(l == H)
+		error(exNilref);
+	n = W(m);
+	if(n < 0)
+		error(exBounds);
+	if(n != 0)
+		memmove(R.d, l->data, n);
 }
+/* Validate the list before copying its mapped payload. */
 OP(headmp)
 {
 	List *l;
 
 	l = L(s);
+	if(l == H)
+		error(exNilref);
 	R.s = l->data;
 	movmp();
 }
+/* The tail operation must raise a VM nil-reference error on an empty list. */
 OP(tail)
 {
 	List *l;
 
 	l = L(s);
+	if(l == H)
+		error(exNilref);
 	R.s = &l->tail;
 	movp();
 }
