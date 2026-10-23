@@ -3452,50 +3452,81 @@ struct Elist{
 	Elist *nxt;
 };
 
+/* Release a temporary exception set without changing any compiler declarations. */
+static void
+efree(Elist *el)
+{
+	Elist *next;
+
+	for(; el != nil; el = next){
+		next = el->nxt;
+		free(el);
+	}
+}
+
+/* Copy a borrowed handler set so branch analysis always returns independent owners. */
+static Elist*
+ecopy(Elist *el)
+{
+	Elist *head, **tail, *entry;
+
+	head = nil;
+	tail = &head;
+	for(; el != nil; el = el->nxt){
+		entry = allocmem(sizeof(Elist));
+		entry->d = el->d;
+		entry->nxt = nil;
+		*tail = entry;
+		tail = &entry->nxt;
+	}
+	return head;
+}
+
+/* Consume two independent sets, retaining each declaration once and freeing duplicates. */
 static Elist*
 emerge(Elist *el1, Elist *el2)
 {
-	int f;
-	Elist *el, *nxt;
+	Elist *el, *next;
 
-	for( ; el1 != nil; el1 = nxt){
-		f = 0;
-		for(el = el2; el != nil; el = el->nxt){
-			if(el1->d == el->d){
-				f = 1;
+	for(; el1 != nil; el1 = next){
+		next = el1->nxt;
+		for(el = el2; el != nil; el = el->nxt)
+			if(el1->d == el->d)
 				break;
-			}
-		}
-		nxt = el1->nxt;
-		if(!f){
+		if(el == nil){
 			el1->nxt = el2;
 			el2 = el1;
-		}
+		}else
+			free(el1);
 	}
 	return el2;
 }
 
+/* Collect known handler qualifiers; a wildcard gives no finite re-raise set. */
 static Elist*
 equals(Node *n)
 {
 	Node *q, *nn;
-	Elist *e, *el;
+	Elist *entry, *el;
 
 	el = nil;
 	for(q = n->left->left; q != nil; q = q->right){
 		nn = q->left;
-		if(nn->op == Owild)
+		if(nn->op == Owild){
+			efree(el);
 			return nil;
+		}
 		if(nn->ty->kind != Texception)
 			continue;
-		e = (Elist*)malloc(sizeof(Elist));
-		e->d = nn->decl;
-		e->nxt = el;
-		el = e;
+		entry = allocmem(sizeof(Elist));
+		entry->d = nn->decl;
+		entry->nxt = nil;
+		el = emerge(entry, el);
 	}
 	return el;
 }
 
+/* Test only this try statement's handlers when filtering its protected body. */
 static int
 caught(Decl *d, Node *n)
 {
@@ -3506,86 +3537,88 @@ caught(Decl *d, Node *n)
 			nn = q->left;
 			if(nn->op == Owild)
 				return 1;
-			if(nn->ty->kind != Texception)
-				continue;
-			if(d == nn->decl)
+			if(nn->ty->kind == Texception && d == nn->decl)
 				return 1;
 		}
 	}
 	return 0;
 }
 
+/* Preserve accumulated raises and borrow the nearest handler context through nested control flow. */
 static Elist*
 raisecheck(Node *n, Elist *ql)
 {
+	Node *e, *arm;
+	Elist *el, *branch, *entry, *next, *pending, *handler;
 	int exc;
-	Node *e;
-	Elist *el, *nel, *nxt;
 
-	if(n == nil)
-		return nil;
 	el = nil;
 	for(; n != nil; n = n->right){
 		switch(n->op){
 		case Oscope:
-			return raisecheck(n->right, ql);
 		case Olabel:
 		case Odo:
-			return raisecheck(n->right, ql);
+			return emerge(el, raisecheck(n->right, ql));
 		case Oif:
 		case Ofor:
-			return emerge(raisecheck(n->right->left, ql),
-					        raisecheck(n->right->right, ql));
+			branch = emerge(raisecheck(n->right->left, ql),
+				raisecheck(n->right->right, ql));
+			return emerge(el, branch);
 		case Oalt:
 		case Ocase:
 		case Opick:
 		case Oexcept:
 			exc = n->op == Oexcept;
-			for(n = n->right; n != nil; n = n->right){
-				ql = nil;
+			for(arm = n->right; arm != nil; arm = arm->right){
+				handler = exc ? equals(arm) : ql;
+				branch = raisecheck(arm->left->right, handler);
 				if(exc)
-					ql = equals(n);
-				el = emerge(raisecheck(n->left->right, ql), el);
+					efree(handler);
+				el = emerge(branch, el);
 			}
 			return el;
 		case Oseq:
 			el = emerge(raisecheck(n->left, ql), el);
 			break;
 		case Oexstmt:
-			el = raisecheck(n->left, ql);
-			nel = nil;
-			for( ; el != nil; el = nxt){
-				nxt = el->nxt;
-				if(!caught(el->d, n->right)){
-					el->nxt = nel;
-					nel = el;
+			branch = raisecheck(n->left, ql);
+			pending = nil;
+			for(; branch != nil; branch = next){
+				next = branch->nxt;
+				if(caught(branch->d, n->right))
+					free(branch);
+				else{
+					branch->nxt = pending;
+					pending = branch;
 				}
-			}		
-			return emerge(nel, raisecheck(n->right, ql));
+			}
+			branch = emerge(pending, raisecheck(n->right, ql));
+			return emerge(el, branch);
 		case Oraise:
 			e = n->left;
-			if(e->ty && e->ty->kind == Texception){
+			if(e->ty != nil && e->ty->kind == Texception){
 				if(!e->ty->cons)
-					return ql;
+					return emerge(el, ecopy(ql));
 				if(e->op == Ocall)
 					e = e->left;
 				if(e->op == Omdot)
 					e = e->right;
 				if(e->op != Oname)
 					fatal("exception %n not a name", e);
-				el = (Elist*)malloc(sizeof(Elist));
-				el->d = e->decl;
-				el->nxt = nil;
-				return el;
+				entry = allocmem(sizeof(Elist));
+				entry->d = e->decl;
+				entry->nxt = nil;
+				return emerge(el, entry);
 			}
-			return nil;
+			return el;
 		default:
-			return nil;
+			return el;
 		}
 	}
 	return el;
 }
 
+/* Diagnose the final exception set and release every temporary node. */
 void
 checkraises(Node *n)
 {
@@ -3614,6 +3647,7 @@ checkraises(Node *n)
 	for(e = el; e != nil; e = e->nxt)
 		if(e->d != nil)
 			nwarn(n, "function %V raises %s but not declared", n->left, e->d->sym->name);
+	efree(el);
 }
 
 /* sort all globals in modules now that we've finished with 'last' pointers
