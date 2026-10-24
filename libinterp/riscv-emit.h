@@ -144,6 +144,15 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		f3=op == IBEQF ? 0 : op == IBNEF ? 1 : (op == IBLTF || op == IBGTF) ? 4 : 5;
 		swap=op == IBLEF || op == IBGTF;
 		break;
+	case ICVTXX:
+		/* RV64I suffices; RV32 keeps the complete fixed intermediate in C. */
+		if(abi->xlen != 64) return 0;
+		rvptr(&b, Rvt1, abi->m); rvload(&b, Rvt4, Rvt1, abi->wordbytes);
+		rvi(&b, 0x13, 0, Rvt6, Rvzero, 64); rvguard(&b, 6, Rvt4, Rvt6);
+		rvptr(&b, Rvt0, abi->s); rvload(&b, Rvt3, Rvt0, abi->wordbytes);
+		rvr(&b, 0x33, 1, 0, Rvt3, Rvt3, Rvt4);
+		rvptr(&b, Rvt2, abi->d); rvstore(&b, Rvt2, Rvt3, abi->wordbytes);
+		break;
 	case IEXPW: case IEXPL:
 		if(abi->xlen != 64 || !abi->hasm) return 0;
 		rvptr(&b, Rvt0, abi->s); rvload(&b, Rvt4, Rvt0, abi->wordbytes);

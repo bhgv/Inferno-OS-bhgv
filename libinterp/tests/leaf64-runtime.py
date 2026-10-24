@@ -83,9 +83,14 @@ FREEMOD
 #define UW(r) (*(UWORD*)R.r)
 #define F(r) (*(REAL*)R.r)
 #define V(r) (*(LONG*)R.r)
+#define UV(r) (*(ULONG*)R.r)
 char exInval[]="invalid", exZdiv[]="zero divide", exBounds[]="bounds", exHeap[]="heap", exNilref[]="nil";
 VM_OPERATIONS
+/* Invoke the C fallback through the fixture VM exception boundary. */
+static int fixedscaleerror(void *arg) { (void)arg;cvtxx();return 1; }
 SCALAR_TRANSFERS
+FIXED_SCALE
+INTEGER_ALU
 
 static Module *active;
 static int activeop;
@@ -549,7 +554,7 @@ int main(void) {
 #if EXECUTE_NATIVE
     assert(m.jit->entry[ISUBW](&R)==1 && out==4);
     R.d=&a;assert(m.jit->entry[IADDW](&R)==1 && a==10);
-    scalartransfers();arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);powers(&m);headrecords(&m);realbranches(&m);
+    integeralu();fixedscale();scalartransfers();arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);powers(&m);headrecords(&m);realbranches(&m);
 #endif
     assert(compile(&m,33,nil));dropmodule(&m);
     for(i=0;i<33;i++)instructions[i].op=IMOVP;
@@ -570,7 +575,7 @@ a=load.index('void\nfreemod(');b=load.index('\nvoid\nunload(',a)
 unit=unit.replace('FREEMOD',load[a:b])
 xec=Path(os.environ.get('LEAF_VM_SOURCE',str(root/'libinterp/xec.c'))).read_text()
 parts=[]
-for signature in ('OP(movb)', 'OP(movw)', 'OP(movl)', 'OP(movf)', 'OP(cvtbw)', 'OP(cvtwb)', 'OP(cvtws)', 'OP(cvtsw)', 'OP(cvtwl)', 'OP(cvtlw)', 'static WORD\nshiftcount(', 'static List*\nlisthead(', 'OP(lenl)', 'OP(headb)', 'OP(headw)', 'OP(headl)', 'OP(headf)', 'OP(headm)', 'static void\nbranchreal(', 'OP(beqf)', 'OP(bnef)', 'OP(bltf)', 'OP(blef)', 'OP(bgtf)', 'OP(bgef)', 'OP(iexpw)', 'OP(iexpl)', 'OP(iexpf)', 'OP(movm)', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
+for signature in ('OP(addb)', 'OP(subb)', 'OP(mulb)', 'OP(andb)', 'OP(orb)', 'OP(xorb)', 'OP(addw)', 'OP(subw)', 'OP(mulw)', 'OP(andw)', 'OP(orw)', 'OP(xorw)', 'OP(addl)', 'OP(subl)', 'OP(mull)', 'OP(andl)', 'OP(orl)', 'OP(xorl)', 'static LONG\nfixedshift(', 'OP(cvtxx)', 'OP(movb)', 'OP(movw)', 'OP(movl)', 'OP(movf)', 'OP(cvtbw)', 'OP(cvtwb)', 'OP(cvtws)', 'OP(cvtsw)', 'OP(cvtwl)', 'OP(cvtlw)', 'static WORD\nshiftcount(', 'static List*\nlisthead(', 'OP(lenl)', 'OP(headb)', 'OP(headw)', 'OP(headl)', 'OP(headf)', 'OP(headm)', 'static void\nbranchreal(', 'OP(beqf)', 'OP(bnef)', 'OP(bltf)', 'OP(blef)', 'OP(bgtf)', 'OP(bgef)', 'OP(iexpw)', 'OP(iexpl)', 'OP(iexpf)', 'OP(movm)', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
     if signature.startswith('static ') and signature not in xec:continue
     start=xec.index(signature);brace=xec.index('{',start);depth=0
     for token in re.finditer(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*[\s\S]*?\*/|//[^\n]*|[{}]',xec[brace:]):
@@ -591,6 +596,17 @@ scalar=scalar.replace('\tunsigned long checks=0;', '\tunsigned long checks=0;\n\
 scalar=scalar.replace('\t\tops[op]();', '\t\tassert(module.jit->entry[ids[op]](&R)==1);\n\t\tassert(!memcmp(memory.bytes,expected,sizeof(expected)));\n\t\t/* Restore the source so the production C path sees identical input. */\n\t\tfor(k=0;k<sizeof(memory.bytes);k++) memory.bytes[k]=(uchar)(k*37+11);\n\t\tmemmove(memory.bytes+s,&patterns[i],8);\n\t\tops[op]();')
 scalar=scalar.replace('\treturn 0;', '\tdropmodule(&module);')
 unit=unit.replace('SCALAR_TRANSFERS',scalar)
+fixed=(root/'libinterp/tests/fixed-scale.c').read_text()
+fixed=fixed[fixed.index('/* Exercise fixed intermediates'):]
+fixed=fixed.replace('int\nmain(void)', 'static void\nfixedscale(void)').replace('\treturn 0;', '')
+unit=unit.replace('FIXED_SCALE','#define NATIVE_FIXED 1\n'+fixed)
+alu=(root/'libinterp/tests/integer-alu.c').read_text()
+alu=alu[alu.index('/* Compare modular'):]
+alu=alu.replace('int\nmain(void)', 'static void\nintegeralu(void)')
+alu=alu.replace('\tunsigned long checks=0;', '\tunsigned long checks=0;\n\tModule module;\n\tInst code[18];\n\tint ids[]={IADDB,ISUBB,IMULB,IANDB,IORB,IXORB,IADDW,ISUBW,IMULW,IANDW,IORW,IXORW,IADDL,ISUBL,IMULL,IANDL,IORL,IXORL};\n\tmemset(&module,0,sizeof(module));memset(code,0,sizeof(code));\n\tfor(k=0;k<18;k++) code[k].op=ids[k];\n\tmodule.prog=code;module.nprog=18;assert(compile(&module,18,nil));')
+alu=alu.replace('\t\tops[op]();', '\t\tassert(module.jit->entry[ids[op]](&R)==1);\n\t\tassert(!memcmp(memory.bytes,expected,sizeof(expected)));\n\t\tassert(R.PC==&sentinel && R.s==memory.bytes+s && R.m==memory.bytes+m && R.d==memory.bytes+d);\n\t\tfor(k=0;k<sizeof(memory.bytes);k++) memory.bytes[k]=(uchar)(k*37+11);\n\t\tmemmove(memory.bytes+s,&patterns[i],8);memmove(memory.bytes+m,&patterns[j],8);\n\t\tops[op]();')
+alu=alu.replace('\treturn 0;', '\tdropmodule(&module);')
+unit=unit.replace('INTEGER_ALU',alu)
 unit=unit.replace('VM_OPERATIONS','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='leaf64-runtime-') as directory:
     td=Path(directory);source=td/'runtime.c';source.write_text(unit)

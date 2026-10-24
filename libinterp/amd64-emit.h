@@ -110,7 +110,15 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafPower){
+	if(p.kind == LeafFixedShift){
+		/* Negative scales retain C arithmetic-right-shift and error handling. */
+		x64ptr(&b, 1, abi->m); x64load(&b, 1, abi->wordbytes);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf9); x64byte(&b, 64);
+		x64guard(&b, 0x72); /* unsigned count < 64 */
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, abi->wordbytes);
+		x64byte(&b, 0x48); x64byte(&b, 0xd3); x64byte(&b, 0xe0); /* shl rax, cl */
+		x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
+	}else if(p.kind == LeafPower){
 		/* Let the VM apply negative-exponent results and zero-base exceptions. */
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, abi->wordbytes);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x79);

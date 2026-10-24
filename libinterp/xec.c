@@ -124,28 +124,66 @@ OP(cvtsw)
 	memmove(R.d, &result, sizeof(result));
 }
 OP(cvtwf){ F(d) = W(s); }
-OP(addb) { B(d) = B(m) + B(s); }
-/* Keep word addition independent of host signed-overflow optimization. */
+/* Capture integer operands before evaluating modular arithmetic or bit operations. */
+OP(addb)
+{
+	BYTE left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left + right;
+	memmove(R.d, &result, sizeof(result));
+}
+/* Capture unaligned operands and keep arithmetic independent of signed overflow. */
 OP(addw)
 {
-	W(d) = UW(m) + UW(s);
+	UWORD left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left + right;
+	memmove(R.d, &result, sizeof(result));
 }
-/* Keep big addition independent of host signed-overflow optimization. */
+/* Capture unaligned operands and keep arithmetic independent of signed overflow. */
 OP(addl)
 {
-	V(d) = UV(m) + UV(s);
+	ULONG left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left + right;
+	memmove(R.d, &result, sizeof(result));
 }
 OP(addf) { F(d) = F(m) + F(s); }
-OP(subb) { B(d) = B(m) - B(s); }
-/* Keep word subtraction independent of host signed-overflow optimization. */
+/* Capture integer operands before evaluating modular arithmetic or bit operations. */
+OP(subb)
+{
+	BYTE left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left - right;
+	memmove(R.d, &result, sizeof(result));
+}
+/* Capture unaligned operands and keep arithmetic independent of signed overflow. */
 OP(subw)
 {
-	W(d) = UW(m) - UW(s);
+	UWORD left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left - right;
+	memmove(R.d, &result, sizeof(result));
 }
-/* Keep big subtraction independent of host signed-overflow optimization. */
+/* Capture unaligned operands and keep arithmetic independent of signed overflow. */
 OP(subl)
 {
-	V(d) = UV(m) - UV(s);
+	ULONG left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left - right;
+	memmove(R.d, &result, sizeof(result));
 }
 OP(subf) { F(d) = F(m) - F(s); }
 /* Preserve the VM's divide-by-zero exception for byte operands too. */
@@ -227,27 +265,127 @@ OP(modl)
 	}
 	V(d) = dividend % divisor;
 }
-OP(mulb) { B(d) = B(m) * B(s); }
-/* Keep word multiplication independent of host signed-overflow optimization. */
+/* Capture integer operands before evaluating modular arithmetic or bit operations. */
+OP(mulb)
+{
+	BYTE left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left * right;
+	memmove(R.d, &result, sizeof(result));
+}
+/* Capture unaligned operands and keep arithmetic independent of signed overflow. */
 OP(mulw)
 {
-	W(d) = UW(m) * UW(s);
+	UWORD left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left * right;
+	memmove(R.d, &result, sizeof(result));
 }
-/* Keep big multiplication independent of host signed-overflow optimization. */
+/* Capture unaligned operands and keep arithmetic independent of signed overflow. */
 OP(mull)
 {
-	V(d) = UV(m) * UV(s);
+	ULONG left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left * right;
+	memmove(R.d, &result, sizeof(result));
 }
 OP(mulf) { F(d) = F(m) * F(s); }
-OP(andb) { B(d) = B(m) & B(s); }
-OP(andw) { W(d) = W(m) & W(s); }
-OP(andl) { V(d) = V(m) & V(s); }
-OP(xorb) { B(d) = B(m) ^ B(s); }
-OP(xorw) { W(d) = W(m) ^ W(s); }
-OP(xorl) { V(d) = V(m) ^ V(s); }
-OP(orb)  { B(d) = B(m) | B(s); }
-OP(orw)  { W(d) = W(m) | W(s); }
-OP(orl)  { V(d) = V(m) | V(s); }
+/* Capture integer operands before evaluating modular arithmetic or bit operations. */
+OP(andb)
+{
+	BYTE left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left & right;
+	memmove(R.d, &result, sizeof(result));
+}
+/* Capture integer operands before evaluating modular arithmetic or bit operations. */
+OP(andw)
+{
+	UWORD left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left & right;
+	memmove(R.d, &result, sizeof(result));
+}
+/* Capture integer operands before evaluating modular arithmetic or bit operations. */
+OP(andl)
+{
+	ULONG left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left & right;
+	memmove(R.d, &result, sizeof(result));
+}
+/* Capture integer operands before evaluating modular arithmetic or bit operations. */
+OP(xorb)
+{
+	BYTE left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left ^ right;
+	memmove(R.d, &result, sizeof(result));
+}
+/* Capture integer operands before evaluating modular arithmetic or bit operations. */
+OP(xorw)
+{
+	UWORD left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left ^ right;
+	memmove(R.d, &result, sizeof(result));
+}
+/* Capture integer operands before evaluating modular arithmetic or bit operations. */
+OP(xorl)
+{
+	ULONG left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left ^ right;
+	memmove(R.d, &result, sizeof(result));
+}
+/* Capture integer operands before evaluating modular arithmetic or bit operations. */
+OP(orb)
+{
+	BYTE left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left | right;
+	memmove(R.d, &result, sizeof(result));
+}
+/* Capture integer operands before evaluating modular arithmetic or bit operations. */
+OP(orw)
+{
+	UWORD left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left | right;
+	memmove(R.d, &result, sizeof(result));
+}
+/* Capture integer operands before evaluating modular arithmetic or bit operations. */
+OP(orl)
+{
+	ULONG left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left | right;
+	memmove(R.d, &result, sizeof(result));
+}
 /* Validate a shift count before any C shift expression is evaluated. */
 static WORD
 shiftcount(WORD count, int width)
@@ -2131,16 +2269,19 @@ OP(divx)
 	W(d) = (WORD)s;
 }
 
-/* Convert fixed scales without signed left-shift undefined behavior. */
+/* Capture unaligned fixed operands and publish only after validating the scale. */
 OP(cvtxx)
 {
 	WORD p;
 	LONG r;
 
-	p = W(m);
-	r = (LONG)W(s);
-	r = fixedshift(r, p);
-	W(d) = (WORD)r;
+	WORD value, result;
+
+	memmove(&p, R.m, sizeof(p));
+	memmove(&value, R.s, sizeof(value));
+	r = fixedshift((LONG)value, p);
+	result = (WORD)r;
+	memmove(R.d, &result, sizeof(result));
 }
 
 /* Validate the coefficient before a zero shortcut and stage the product. */

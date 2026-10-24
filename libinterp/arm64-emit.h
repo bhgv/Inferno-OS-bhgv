@@ -97,7 +97,16 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafPower){
+	if(p.kind == LeafFixedShift){
+		/* Validate the full scale before fetching a possibly inaccessible source. */
+		a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, abi->wordbytes);
+		a64put(&b, 0xf10101bf); /* cmp x13, #64 */
+		a64guard(&b, 0x54000063); /* b.lo valid */
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, abi->wordbytes);
+		if(abi->wordbytes == 4) a64put(&b, 0x93407d8c); /* sxtw x12, w12 */
+		a64put(&b, 0x9acd218c); /* lsl x12, x12, x13 */
+		a64ptr(&b, 11, abi->d); a64store(&b, 12, abi->wordbytes);
+	}else if(p.kind == LeafPower){
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, abi->wordbytes);
 		a64put(&b, abi->wordbytes == 8 ? 0xf100019fU : 0x7100019fU);
 		a64guard(&b, 0x5400006a);

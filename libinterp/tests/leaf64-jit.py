@@ -15,7 +15,7 @@ from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
 root = Path(__file__).resolve().parents[2]
-ops = '''IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF'''.split()
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
             code, registers, data, stack = 0x10000, 0x100020000, 0x100030000, 0x40000
             oldpc, target = 0x123456789, 0x987654321
 
-            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False):
+            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False):
                 """Exercise a leaf with high native pointers, four-byte alignment and exact aliases."""
                 if arch == 'amd64':
                     u = Uc(UC_ARCH_X86,UC_MODE_64); arg, result = UC_X86_REG_RDI, UC_X86_REG_RAX
@@ -204,6 +204,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     u.mem_write(data+0x500,bytes(metadata))
                 before = bytes(u.mem_read(output-8,32))
                 if badtarget:d=0x100060000
+                if badsource:s=0x100060000
                 u.mem_write(registers,struct.pack('<QQQQ',oldpc,s,d,m))
                 u.reg_write(arg,registers)
                 end=code+0x800
@@ -222,6 +223,29 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','fixed'):
+                # Fixed shifts use a signed 64-bit intermediate even in WORD32.
+                values=[0,1,-1,127,-128,0x7fffffff,0x80000000,0xffffffff,
+                        0x7fffffffffffffff,0x8000000000000000,0xffffffffffffffff]
+                counts=list(range(64))+[-1,-63,-64,64,65,-(1<<(wb*8-1)),(1<<(wb*8-1))-1]
+                for value in values:
+                    for count in counts:
+                        valid=0<=count<64
+                        for alias in (0,1,2,3,5):
+                            out,pc,before,after,_=run('ICVTXX',value,count,alias=alias,expect=int(valid))
+                            # d=m aliases preserve the same count; s=d-4/s=d+4 never overlaps m.
+                            if valid:
+                                expected=(signed(value,wb*8)<<count)&((1<<(wb*8))-1)
+                                assert int.from_bytes(out[:wb],'little')==expected,(arch,wb,value,count,alias,out)
+                                assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
+                            else:assert before==after
+                            assert pc==oldpc
+                            checks+=1
+                for count in (-1,-63,-64,64,65,-(1<<(wb*8-1))):
+                    _,pc,before,after,_=run('ICVTXX',0,count,expect=0,badsource=True)
+                    assert pc==oldpc and before==after
+                    checks+=1
+                if case=='fixed':continue
             if case in ('','scalar'):
                 patterns=[0,1,127,128,255,256,0x8000,0xffff,0x7fffffff,0x80000000,
                           0xffffffff,0x100000000,0x8000000000000000,0xffffffffffffffff,
