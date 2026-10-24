@@ -8,12 +8,14 @@ struct LeafLayout {
 	int listdata, listtail;
 	int fp, fixedtmp;
 	int arraytype, typesize;
+	int framelr, framefp;
 };
 typedef struct LeafOp LeafOp;
 struct LeafOp {
 	int kind, bytes, input, alu, condition;
 };
 enum {
+	LeafCall = 100,
 	LeafMove = 1, LeafAlu, LeafBranch, LeafJump, LeafAddress, LeafNop,
 	LeafRealBranch, LeafShift, LeafDivide, LeafLength, LeafIndex, LeafNegReal,
 	LeafDescriptorIndex, LeafFixedFrame, LeafRealResize, LeafIntegerReal, LeafFixedShift, LeafPower, LeafHeadCopy, LeafCopy, LeafStringIndex, LeafStringLength, LeafHead, LeafListLength,
@@ -71,6 +73,7 @@ leafop(LeafOp *p, int op, int wordbytes)
 		if(wordbytes != 8) return 0;
 		p->kind = LeafAddress;
 		break;
+	case ICALL: p->kind = LeafCall; break;
 	case IJMP: p->kind = LeafJump; break;
 	case IADDB: p->bytes = 1; /* fall through */
 	case IADDW: p->kind = LeafAlu; p->alu = 0; break;

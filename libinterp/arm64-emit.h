@@ -97,7 +97,21 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafDescriptorIndex){
+	if(p.kind == LeafCall){
+		/* The target may reside in either frame link about to be replaced. */
+		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 ||
+		   abi->framelr < 0 || abi->framelr > 2047 || abi->framelr%8 ||
+		   abi->framefp < 0 || abi->framefp > 2047 || abi->framefp%8 ||
+		   abi->framelr == abi->framefp) return 0;
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8); a64guard(&b, 0xb500006c);
+		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
+		a64ptr(&b, 9, abi->d); a64load(&b, 13, 9, 8);
+		a64ptr(&b, 14, abi->pc); a64ptr(&b, 15, abi->fp);
+		a64put(&b, 0xf9000000U | (abi->framelr/8)<<10 | 12<<5 | 14);
+		a64put(&b, 0xf9000000U | (abi->framefp/8)<<10 | 12<<5 | 15);
+		a64put(&b, 0xf9000000U | (abi->fp/8)<<10 | 12);
+		a64put(&b, 0xf9000000U | (abi->pc/8)<<10 | 13);
+	}else if(p.kind == LeafDescriptorIndex){
 		/* Descriptor pointers and signed sizes are validated before forming an address. */
 		if(abi->arraylen < 0 || abi->arraylen > 2047 || abi->arraydata < 0 || abi->arraydata > 2047 ||
 		   abi->arraytype < 0 || abi->arraytype > 2047 || abi->typesize < 0 || abi->typesize > 2047 ||

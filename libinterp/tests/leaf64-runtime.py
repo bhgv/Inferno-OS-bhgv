@@ -535,7 +535,7 @@ static void arrays(Module *m) {
 }
 /* Compile, invoke, reject invalid metadata and retry without changing Dis PCs. */
 int main(void) {
-    Module m={0}, *owned;Inst instructions[36]={{0}};
+    Module m={0}, *owned;Inst instructions[37]={{0}};
     WORD a=3,b=7,out=0;
     int i;
     instructions[0].op=ISUBW;instructions[1].op=IADDW;
@@ -547,14 +547,15 @@ int main(void) {
     instructions[17].op=IHEADB;instructions[18].op=IHEADW;instructions[19].op=IHEADL;instructions[20].op=IHEADF;instructions[21].op=ILENL;instructions[22].op=IINDC;instructions[23].op=IEXPW;instructions[24].op=IEXPL;instructions[25].op=IEXPF;instructions[26].op=IHEADM;
     instructions[27].op=IBEQF;instructions[28].op=IBNEF;instructions[29].op=IBLTF;
     instructions[30].op=IBLEF;instructions[31].op=IBGTF;instructions[32].op=IBGEF;
-    instructions[33].op=IMULX;instructions[34].op=IDIVX;instructions[35].op=IINDX;
-    m.prog=instructions;m.nprog=36;
+    instructions[33].op=IMULX;instructions[34].op=IDIVX;instructions[35].op=IINDX;instructions[36].op=ICALL;
+    m.prog=instructions;m.nprog=37;
     for(i=1;i<=5;i++) {
-        fail=i;assert(!compile(&m,36,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
+        fail=i;assert(!compile(&m,37,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
     }
     fail=0;
     assert(!compile(nil,36,nil));assert(!compile(&m,3,nil));
-    assert(compile(&m,36,nil));assert(m.jit && !m.compiled && m.prog==instructions);
+    assert(compile(&m,37,nil));assert(m.jit && !m.compiled && m.prog==instructions);
+    assert(m.jit->entry[ICALL]);
     assert(m.jit->entry[IMOVP]==nil && m.jit->entry[IMULX] && m.jit->entry[IDIVX]);
     assert(!!m.jit->entry[IINDX]==(sizeof(WORD)==8));
     assert(protections==1 && mappings==1);
@@ -564,9 +565,9 @@ int main(void) {
     R.d=&a;assert(m.jit->entry[IADDW](&R)==1 && a==10);
     descriptorindex();fixedframe();realarithmetic();integerreal();shiftdivision();integeralu();fixedscale();scalartransfers();arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);powers(&m);headrecords(&m);realbranches(&m);
 #endif
-    assert(compile(&m,36,nil));dropmodule(&m);
-    for(i=0;i<36;i++)instructions[i].op=IMOVP;
-    assert(!compile(&m,36,nil) && !m.jit);
+    assert(compile(&m,37,nil));dropmodule(&m);
+    for(i=0;i<37;i++)instructions[i].op=IMOVP;
+    assert(!compile(&m,37,nil) && !m.jit);
     owned=calloc(1,sizeof(*owned));assert(owned);
     owned->prog=calloc(1,sizeof(Inst));assert(owned->prog);
     owned->nprog=1;owned->prog[0].op=IADDW;

@@ -110,7 +110,22 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafDescriptorIndex){
+	if(p.kind == LeafCall){
+		/* Capture the target and old links before touching an aliased frame. */
+		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 ||
+		   abi->framelr < 0 || abi->framelr > 2047 || abi->framelr%8 ||
+		   abi->framefp < 0 || abi->framefp > 2047 || abi->framefp%8 ||
+		   abi->framelr == abi->framefp) return 0;
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
+		x64ptr(&b, 1, abi->d); x64load(&b, 1, 8);
+		x64ptr(&b, 0, abi->pc); x64ptr(&b, 1, abi->fp);
+		x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0x80); x64word(&b, abi->framelr);
+		x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0x88); x64word(&b, abi->framefp);
+		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0x87); x64word(&b, abi->fp);
+		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0x8f); x64word(&b, abi->pc);
+	}else if(p.kind == LeafDescriptorIndex){
 		/* Positive strides have bounded products; empty elements retain any backing identity. */
 		if(abi->arraylen < 0 || abi->arraylen > 2047 || abi->arraydata < 0 || abi->arraydata > 2047 ||
 		   abi->arraytype < 0 || abi->arraytype > 2047 || abi->typesize < 0 || abi->typesize > 2047 ||

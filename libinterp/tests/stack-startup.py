@@ -72,7 +72,7 @@ for variant in ('emu', 'os'):
             selected = os.environ.get('STACK_CASES')
             if selected != 'pid':
                 # Keep independent longjmp families in fresh processes with active stack checking.
-                families = [selected] if selected else ['stack','root','spawn','indices','framealignment','frameerrors','environment','overflow']
+                families = [selected] if selected else ['stack','root','spawn','spawnalignment','indices','framealignment','frameerrors','environment','overflow']
                 for family in families:
                     environment = dict(os.environ, STACK_CASES=family)
                     print('family', family, flush=True)

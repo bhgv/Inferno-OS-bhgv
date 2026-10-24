@@ -28,7 +28,7 @@ ISHLB ISHLW ISHRB ISHRW ILSRW IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW IBLEB
 IBLEW IBGTB IBGTW IBGEB IBGEW IDIVW IMODW IMOVP IFRAME ICALL IRET IADDF'''.split()
 
 class Layout(C.Structure):
-    _fields_ = [(name, C.c_int) for name in ('xlen','wordbytes','hasm','pc','s','d','m','arraylen','arraydata','stringlen','stringdata','listdata','listtail','fp','fixedtmp','arraytype','typesize','hasdiv')]
+    _fields_ = [(name, C.c_int) for name in ('xlen','wordbytes','hasm','pc','s','d','m','arraylen','arraydata','stringlen','stringdata','listdata','listtail','fp','fixedtmp','arraytype','typesize','hasdiv','framelr','framefp')]
 
 
 def signed(n, bits):
@@ -60,6 +60,7 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
         pb=xlen//8
         abi=Layout(xlen,wb,1,0,pb,pb*2,pb*3)
         abi.hasdiv=1
+        abi.framelr=0;abi.framefp=8;abi.fp=32
         dis=Cs(CS_ARCH_RISCV,CS_MODE_RISCV64 if xlen==64 else CS_MODE_RISCV32)
         BASE=0x10000
         REG=0x20000 if xlen==32 else 0x100020000
@@ -189,7 +190,7 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
                 assert emit(name,abi,cap=n-1)[0]==0,(name,'capacity check')
                 assert lib.emit(None,64,C.byref(abi),ops[name])==n
                 checks+=1
-        for name in ('IMOVP','IFRAME','ICALL','IRET','IADDF'):
+        for name in ('IMOVP','IFRAME','IRET','IADDF'):
             assert not code[name], name
             checks+=1
         assert not code['IEXPF']
@@ -220,6 +221,9 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
         assert emit('IMULX',no_m)[0]==emit('IDIVX',no_m)[0]==0
         checks+=1
         assert emit('IEXPW',no_m)[0]==emit('IEXPL',no_m)[0]==0
+        checks+=1
+        base_i=Layout.from_buffer_copy(abi);base_i.hasm=base_i.hasdiv=0
+        assert emit('ICALL',base_i)==emit('ICALL',abi)
         checks+=1
         # Zmmul keeps identical multiply leaves but cannot publish DIV/REM.
         multiply_only=Layout.from_buffer_copy(abi)

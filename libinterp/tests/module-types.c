@@ -163,7 +163,9 @@ calls(void)
 	Inst code[2];
 	REG saved;
 	WORD indices[8], operand;
-	int i, n, kind;
+	int i, n, kind, sa, ma, da, fa;
+	uchar framebytes[sizeof(Frame)+8];
+	uchar slots[3][24];
 
 	memset(&target, 0, sizeof(target));
 	target.h.ref = 1; target.ml.m = &module; target.ml.nlinks = 1;
@@ -173,37 +175,42 @@ calls(void)
 	indices[0] = 0; indices[1] = -1; indices[2] = 1; indices[3] = -2;
 	indices[4] = INT_MIN; indices[5] = INT_MAX; n = 6;
 	if(sizeof(WORD) > 4){ indices[n++] = (WORD)((uvlong)1<<32); indices[n++] = (WORD)-((vlong)1<<32); }
-	for(kind = 0; kind < 3; kind++)for(i = 0; i < n; i++){
+	for(sa=0;sa<8;sa++)for(ma=0;ma<8;ma++)for(da=0;da<8;da++)for(fa=0;fa<8;fa++)
+	for(kind = 0; kind < 5; kind++)for(i = 0; i < n; i++){
+		argument=kind==3 ? nil : kind==4 ? H : (Frame*)(framebytes+fa);
 		memset(&frame, 0xa5, sizeof(frame)); frame.t = nil; before = frame;
 		memset(&R, 0, sizeof(R)); R.M = &caller; R.PC = code;
 		R.FP = output; R.SP = input; R.MP = output;
-		operand = indices[i]; R.s = &argument; R.d = &destination; R.m = &operand;
+		operand = indices[i]; R.s = slots[0]+sa; R.d = slots[1]+da; R.m = slots[2]+ma;
+		memmove(R.s,&argument,sizeof(argument));memmove(R.d,&destination,sizeof(destination));memmove(R.m,&operand,sizeof(operand));
 		target.ml.prog = kind == 2 ? nil : code; caller.compiled = kind == 1;
 		if(kind == 2){
 			frame.t = before.t = &frametype;
 			target.ml.links[0].u.runt = exports[0].u.runt = builtin;
 		}else
 			target.ml.links[0].u.pc = exports[0].u.pc = code+1;
+		memmove(framebytes+fa,&frame,sizeof(frame));
 		saved = R;
-		if(i >= 2){
+		if(i >= 2 || kind>=3){
 			assert(!kprotect(call, nil));
 			assert(memcmp(&R, &saved, sizeof(R)) == 0);
-			assert(memcmp(&frame, &before, sizeof(frame)) == 0 && target.h.ref == 1);
+			assert(memcmp(framebytes+fa, &before, sizeof(frame)) == 0 && target.h.ref == 1);
 		}else{
 			assert(kprotect(call, nil));
+			memmove(&frame,framebytes+fa,sizeof(frame));
 			assert(frame.lr == code && frame.fp == output && frame.mr == &caller);
 			if(kind == 2){
-				assert(R.M == &caller && R.FP == output && R.SP == (uchar*)&frame);
+				assert(R.M == &caller && R.FP == output && R.SP == (uchar*)argument);
 				assert(target.h.ref == 1 && R.t == 0);
 			}else{
-				assert(R.M == &target.ml && R.FP == (uchar*)&frame);
+				assert(R.M == &target.ml && R.FP == (uchar*)argument);
 				assert(R.PC == code+1 && R.MP == target.ml.MP && R.t == 1);
 				assert(target.h.ref == 2 && R.IC == (kind == 1)); target.h.ref--;
 			}
 		}
 		checks++;
 	}
-	assert(callbacks == 2 && worker.nerr == 0);
+	assert(callbacks == 2*512*8 && worker.nerr == 0);
 }
 
 /* A stale instance cache must never decide which descriptor an instruction uses. */

@@ -1562,15 +1562,20 @@ OP(igoto)
 	}
 	R.PC = R.M->prog + t[0];
 }
+/* Capture both operands before frame-link stores can overwrite an aliased target. */
 OP(call)
 {
 	Frame *f;
+	Inst *target;
 
-	f = T(s);
-	f->lr = R.PC;
-	f->fp = R.FP;
+	memmove(&f, R.s, sizeof(f));
+	if(f == nil || f == H)
+		error(exNilref);
+	memmove(&target, R.d, sizeof(target));
+	memmove((uchar*)f+offsetof(Frame, lr), &R.PC, sizeof(f->lr));
+	memmove((uchar*)f+offsetof(Frame, fp), &R.FP, sizeof(f->fp));
 	R.FP = (uchar*)f;
-	JMP(d);
+	R.PC = target;
 }
 typedef struct SpawnProg SpawnProg;
 struct SpawnProg {
@@ -1615,43 +1620,54 @@ spawnmodule(Modlink *ml, Inst *pc)
 /* Spawn only after the frame and process can both be constructed. */
 OP(spawn)
 {
-	spawnmodule(R.M, *(Inst**)R.d);
+	Inst *target;
+
+	if(R.M == nil || R.M == H)
+		error(exModule);
+	memmove(&target, R.d, sizeof(target));
+	spawnmodule(R.M, target);
 }
 
 /* Validate module ownership before reading a child entry or creating its stack. */
 OP(mspawn)
 {
+	WORD index;
 	Modlink *ml;
 	Modl entry;
 
-	ml = *(Modlink**)R.d;
+	memmove(&ml, R.d, sizeof(ml));
 	if(ml == H || ml == nil || ml->m == H || ml->m == nil)
 		error(exModule);
 	if(ml->prog == nil)
 		error(exSpawn);
-	if(!moduleentry(ml, W(m), &entry))
+	memmove(&index, R.m, sizeof(index));
+	if(!moduleentry(ml, index, &entry))
 		error("invalid mspawn");
 	spawnmodule(ml, entry.u.pc);
 }
+/* Capture frame links before release, without requiring host pointer alignment. */
 OP(ret)
 {
-	Frame *f;
+	Frame *f, links;
 	Modlink *m;
 
+	if(R.FP == nil || R.FP == H)
+		error(exNilref);
 	f = (Frame*)R.FP;
-	R.FP = f->fp;
+	memmove(&links, f, sizeof(links));
+	R.FP = links.fp;
 	if(R.FP == nil) {
 		R.FP = (uchar*)f;
 		error("");
 	}
 	R.SP = (uchar*)f;
-	R.PC = f->lr;
-	m = f->mr;
+	R.PC = links.lr;
+	m = links.mr;
 
-	if(f->t == nil)
+	if(links.t == nil)
 		unextend(f);
-	else if (f->t->np)
-		freeptrs(f, f->t);
+	else if (links.t->np)
+		freeptrs(f, links.t);
 
 	if(m != nil) {
 		if(R.M->compiled != m->compiled) {
@@ -1687,7 +1703,9 @@ OP(iload)
 	char *n;
 	Import *ldt;
 	Module *m;
-	Modlink *ml, **mp, *t;
+	Modlink *ml, *t;
+	String *name;
+	WORD index;
 	Heap *h;
 
 	if(R.M == H || R.M == nil || R.M->m == H || R.M->m == nil)
@@ -1695,8 +1713,10 @@ OP(iload)
 	m = R.M->m;
 	if(!(m->rt & HASLDT))
 		error("obsolete dis");
-	ldt = moduleimports(m, W(m));
-	n = string2c(S(s));
+	memmove(&index, R.m, sizeof(index));
+	memmove(&name, R.s, sizeof(name));
+	ldt = moduleimports(m, index);
+	n = string2c(name);
 	if(strcmp(n, "$self") == 0) {
 		if(R.M->MP == nil)
 			error(exModule);
@@ -1716,30 +1736,35 @@ OP(iload)
 		ml = linkmod(m, ldt, 1);
 	}
 
-	mp = R.d;
-	t = *mp;
-	*mp = ml;
+	memmove(&t, R.d, sizeof(t));
+	memmove(R.d, &ml, sizeof(ml));
 	destroy(t);
 }
 /* Resolve the complete link index before publishing a frame or changing modules. */
 OP(mcall)
 {
+	WORD index;
 	Heap *h;
 	Prog *p;
-	Frame *f;
+	Frame *f, links;
+	Modlink *caller;
 	Modl entry;
 	Modlink *ml;
 
-	ml = *(Modlink**)R.d;
+	memmove(&ml, R.d, sizeof(ml));
 	if(ml == H)
 		error(exModule);
-	if(!moduleentry(ml, W(m), &entry))
+	memmove(&index, R.m, sizeof(index));
+	if(!moduleentry(ml, index, &entry))
 		error("invalid mcall");
-	f = T(s);
-	f->lr = R.PC;
-	f->fp = R.FP;
-	f->mr = R.M;
+	memmove(&f, R.s, sizeof(f));
+	if(f == nil || f == H)
+		error(exNilref);
+	memmove((uchar*)f+offsetof(Frame, lr), &R.PC, sizeof(f->lr));
+	memmove((uchar*)f+offsetof(Frame, fp), &R.FP, sizeof(f->fp));
+	memmove((uchar*)f+offsetof(Frame, mr), &R.M, sizeof(f->mr));
 
+	caller = R.M;
 	R.FP = (uchar*)f;
 	R.M = ml;
 	h = D2H(ml);
@@ -1748,13 +1773,14 @@ OP(mcall)
 	if(ml->prog == nil) {
 		entry.u.runt(f);
 		h->ref--;
-		R.M = f->mr;
+		memmove(&links, f, sizeof(links));
+		R.M = links.mr;
 		R.SP = R.FP;
-		R.FP = f->fp;
-		if(f->t == nil)
+		R.FP = links.fp;
+		if(links.t == nil)
 			unextend(f);
-		else if (f->t->np)
-			freeptrs(f, f->t);
+		else if (links.t->np)
+			freeptrs(f, links.t);
 		p = currun();
 		if(p->kill != nil)
 			error(p->kill);
@@ -1765,7 +1791,7 @@ OP(mcall)
 	R.PC = entry.u.pc;
 	R.t = 1;
 
-	if(f->mr->compiled != R.M->compiled)
+	if(caller->compiled != R.M->compiled)
 		R.IC = 1;
 }
 /* Capture and publish array lengths without aligned operand casts. */

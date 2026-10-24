@@ -92,7 +92,9 @@ static void
 destroy(void *old)
 {
 	(void)old;
-	assert(*(Modlink**)R.d == (fail_link ? H : &result));
+	Modlink *published;
+	memmove(&published,R.d,sizeof(published));
+	assert(published == (fail_link ? H : &result));
 	destroyed++;
 }
 
@@ -134,7 +136,8 @@ loads(Modlink *current)
 	WORD index = 1;
 	String name, *source = &name;
 	Modlink *destination;
-	int self, data, alias, failure, before;
+	int self, data, alias, failure, before, sa, ma, da;
+	uchar slots[3][24];
 
 	/* Raw native NULL is invalid; unlike the VM nil sentinel it owns no heap. */
 	name.text = "$self";
@@ -154,6 +157,7 @@ loads(Modlink *current)
 	assert(destination == current && current->m->ref == 1);
 	checks++;
 
+	for(sa=0;sa<8;sa++)for(ma=0;ma<8;ma++)for(da=0;da<8;da++)
 	for(self = 0; self < 2; self++)
 	for(data = 0; data < 2; data++)
 	for(alias = 0; alias < 2; alias++)
@@ -163,9 +167,10 @@ loads(Modlink *current)
 		current->m->ref = 1;
 		destination = current;
 		R.M = current;
-		R.m = &index;
-		R.s = &source;
-		R.d = alias ? (void*)&R.M : (void*)&destination;
+		R.m = slots[0]+ma;R.s = slots[1]+sa;
+		R.d = alias ? (void*)&R.M : slots[2]+da;
+		memmove(R.m,&index,sizeof(index));memmove(R.s,&source,sizeof(source));
+		if(!alias)memmove(R.d,&destination,sizeof(destination));
 		conversions = reads = links = destroyed = 0;
 		fail_link = failure;
 		before = block.heap.ref;

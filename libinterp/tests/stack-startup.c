@@ -356,6 +356,31 @@ spawns(void)
 	}
 }
 
+/* Misaligned decoded slots must preserve child entries and publication ordering. */
+static void
+spawnalignment(void)
+{
+	uchar slots[2][24],saved[512];
+	Inst *target=code+1;
+	int da,ma,op,point;
+
+	for(da=0;da<8;da++)for(ma=0;ma<8;ma++)for(op=3;op<=4;op++)for(point=0;point<(getenv("SPAWN_SUCCESS_ONLY") ? 1 : 3);point++){
+		setup();operation=op;operand=-1;R.m=slots[0]+ma;R.d=slots[1]+da;
+		memmove(R.m,&operand,sizeof(operand));
+		if(op==3)memmove(R.d,&target,sizeof(target));else memmove(R.d,&ml,sizeof(ml));
+		memmove(saved,framebuf.bytes,sizeof(saved));failat=point ? point : -1;
+		if(!point){
+			assert(kprotect(run,nil) && created && created->R.PC==code+1 && unframes==1);
+			assert(!memcmp(saved,framebuf.bytes,sizeof(saved)));discard(created);destroy(ml);
+		}else{
+			assert(!kprotect(run,nil) && !created && !unframes);
+			assert(!memcmp(saved,framebuf.bytes,sizeof(saved)) && D2H(ml)->ref==1);
+			failat=-1;destroy(ml);
+		}
+		assert(live==0);checks++;
+	}
+}
+
 /* Nil instances and absent owners must fail before stack or process publication. */
 static void
 spawnmodules(void)
@@ -529,6 +554,7 @@ main(void)
 	only = getenv("STACK_CASES");
 	if(only == nil || !strcmp(only, "stack")){ stacks(); geometry(); limits(); }
 	if(only == nil || !strcmp(only, "root"))roots();
+	if(only != nil && !strcmp(only,"spawnalignment"))spawnalignment();
 	if(only == nil || !strcmp(only, "spawn")){ spawns(); spawnmodules(); }
 	if(only == nil || !strcmp(only, "indices"))indices();
 	if(only == nil || !strcmp(only, "framealignment"))framealignment();

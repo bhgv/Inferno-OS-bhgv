@@ -20,9 +20,9 @@ IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF'''.split()
 class Layout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize')]
+    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp')]
 class RvLayout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv')]
+    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp')]
 
 
 def signed(value, bits):
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -57,6 +57,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
         for wb in (4,8):
             layout = RvLayout(64,wb,1,0,8,16,24) if rv else Layout(wb,0,8,16,24)
             if rv:layout.hasdiv=1
+            layout.framelr=0;layout.framefp=8
             layout.arraylen=8;layout.arraydata=32;layout.stringlen=12;layout.stringdata=32;layout.listdata=24;layout.listtail=8;layout.fp=32;layout.fixedtmp=28;layout.arraytype=16;layout.typesize=24
             dis = Cs(CS_ARCH_X86,CS_MODE_64) if arch == 'amd64' else Cs(CS_ARCH_ARM64,0) if arch == 'arm64' else Cs(CS_ARCH_RISCV,CS_MODE_RISCV64)
             blobs = {}
@@ -91,11 +92,72 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         assert lib.emit(guard,64,C.byref(malformed),ids['IINDX'])==0
                         assert list(guard)==[0xa5a5a5a5]*64
                         checks+=1
+            for field in ('fp','framelr','framefp'):
+                for value in (-1,1,2048):
+                    malformed=type(layout).from_buffer_copy(layout);setattr(malformed,field,value)
+                    guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
+                    assert lib.emit(guard,64,C.byref(malformed),ids['ICALL'])==0
+                    assert list(guard)==[0xa5a5a5a5]*64
+                    checks+=1
+            malformed=type(layout).from_buffer_copy(layout);malformed.framefp=malformed.framelr
+            assert lib.emit(None,64,C.byref(malformed),ids['ICALL'])==0
+            checks+=1
             if case=='frameabi':continue
-            for name in ('IHEADP','IHEADMP','ITAIL','IMOVP','IFRAME','ICALL','IRET','IADDF'):
+            for name in ('IHEADP','IHEADMP','ITAIL','IMOVP','IFRAME','IRET','IADDF'):
                 assert not blobs[name]
             code, registers, data, stack = 0x10000, 0x100020000, 0x100030000, 0x40000
             oldpc, target = 0x123456789, 0x987654321
+
+            if case in ('','call'):
+                # Check complete REG/data images, including source/target/frame aliases.
+                for sa in ((0,4) if rv else range(8)):
+                    for da in ((0,4) if rv else range(8)):
+                        for framealign in ((0,4) if rv else range(8)):
+                            for alias in range(5):
+                                if arch=='amd64':u=Uc(UC_ARCH_X86,UC_MODE_64);arg,result=UC_X86_REG_RDI,UC_X86_REG_RAX
+                                elif arch=='arm64':u=Uc(UC_ARCH_ARM64,0);arg=result=UC_ARM64_REG_X0
+                                else:u=Uc(UC_ARCH_RISCV,UC_MODE_RISCV64);arg=result=UC_RISCV_REG_A0
+                                for address in (code,registers,data,stack):u.mem_map(address,0x1000)
+                                u.mem_write(code,blobs['ICALL'])
+                                frame=data+0x500+framealign;previous=data+0x900
+                                sp=data+0x100+sa;dp=data+0x200+da
+                                if alias in (1,2):dp=frame+(layout.framelr if alias==1 else layout.framefp)
+                                if alias in (3,4):sp=frame+(layout.framelr if alias==3 else layout.framefp)
+                                image=bytearray(b'\xa5'*0x1000)
+                                image[sp-data:sp-data+8]=struct.pack('<Q',frame)
+                                image[dp-data:dp-data+8]=struct.pack('<Q',target)
+                                u.mem_write(data,bytes(image))
+                                expected=bytearray(image)
+                                expected[frame-data+layout.framelr:frame-data+layout.framelr+8]=struct.pack('<Q',oldpc)
+                                expected[frame-data+layout.framefp:frame-data+layout.framefp+8]=struct.pack('<Q',previous)
+                                u.mem_write(registers,struct.pack('<QQQQQ',oldpc,sp,dp,0xdeadbeef,previous))
+                                u.reg_write(arg,registers);end=code+0x800
+                                if arch=='amd64':u.reg_write(UC_X86_REG_RSP,stack+0x800);u.mem_write(stack+0x800,struct.pack('<Q',end))
+                                else:u.reg_write(UC_ARM64_REG_LR if arch=='arm64' else UC_RISCV_REG_RA,end)
+                                if rv:
+                                    def aligned_call(uc,access,address,size,value,user):
+                                        assert address%size==0,(hex(address),size)
+                                    u.hook_add(UC_HOOK_MEM_READ|UC_HOOK_MEM_WRITE,aligned_call)
+                                u.emu_start(code,end,count=1000)
+                                assert u.reg_read(result)==1,(arch,wb,alias)
+                                assert bytes(u.mem_read(data,0x1000))==expected,(arch,wb,alias,framealign)
+                                assert bytes(u.mem_read(registers,40))==struct.pack('<QQQQQ',target,sp,dp,0xdeadbeef,frame)
+                                checks+=1
+                # Rejected frames must not read even an unmapped target slot.
+                for frame in ((0,(1<<64)-1,data+0x501,data+0x502,data+0x503) if rv else (0,(1<<64)-1)):
+                    if arch=='amd64':u=Uc(UC_ARCH_X86,UC_MODE_64);arg,result=UC_X86_REG_RDI,UC_X86_REG_RAX
+                    elif arch=='arm64':u=Uc(UC_ARCH_ARM64,0);arg=result=UC_ARM64_REG_X0
+                    else:u=Uc(UC_ARCH_RISCV,UC_MODE_RISCV64);arg=result=UC_RISCV_REG_A0
+                    for address in (code,registers,data,stack):u.mem_map(address,0x1000)
+                    u.mem_write(code,blobs['ICALL']);u.mem_write(data+0x104,struct.pack('<Q',frame))
+                    saved=struct.pack('<QQQQQ',oldpc,data+0x104,0x100060000,0xdeadbeef,data+0x900)
+                    u.mem_write(registers,saved);u.reg_write(arg,registers);end=code+0x800
+                    if arch=='amd64':u.reg_write(UC_X86_REG_RSP,stack+0x800);u.mem_write(stack+0x800,struct.pack('<Q',end))
+                    else:u.reg_write(UC_ARM64_REG_LR if arch=='arm64' else UC_RISCV_REG_RA,end)
+                    u.emu_start(code,end,count=1000)
+                    assert u.reg_read(result)==0 and bytes(u.mem_read(registers,40))==saved
+                    checks+=1
+                if case=='call':continue
 
             def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False, fixedframe=None, descriptor=None, badresult=False):
                 """Exercise a leaf with high native pointers, four-byte alignment and exact aliases."""

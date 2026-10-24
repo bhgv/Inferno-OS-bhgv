@@ -17,6 +17,7 @@ struct RvLayout {
 	int fp, fixedtmp;
 	int arraytype, typesize;
 	int hasdiv;	/* Zmmul provides multiplication without division. */
+	int framelr, framefp;
 };
 typedef struct RvBuf RvBuf;
 struct RvBuf {
@@ -141,6 +142,21 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	b.out=out; b.n=0; b.cap=cap; b.bad=0; b.abi=abi;
 	bytes=abi->wordbytes; f3=0; f7=0; binary=0; branch=0; swap=0; invert=0; shift=0; division=0; realbranch=0;
 	switch(op) {
+	case ICALL:
+		/* Four-byte-aligned VM frames use paired stores for native links. */
+		if(abi->xlen != 64 || abi->fp < 0 || abi->fp > 2047 || abi->fp%8 ||
+		   abi->framelr < 0 || abi->framelr > 2047 || abi->framelr%8 ||
+		   abi->framefp < 0 || abi->framefp > 2047 || abi->framefp%8 ||
+		   abi->framelr == abi->framefp) return 0;
+		rvptr(&b, Rvt1, abi->s); rvload(&b, Rvt0, Rvt1, 8); rvguard(&b, 1, Rvt0, Rvzero);
+		rvi(&b, 0x13, 0, Rvt6, Rvzero, -1); rvguard(&b, 1, Rvt0, Rvt6);
+		rvi(&b, 0x13, 7, Rvt5, Rvt0, 3); rvguard(&b, 0, Rvt5, Rvzero);
+		rvptr(&b, Rvt1, abi->d); rvload(&b, Rvt3, Rvt1, 8);
+		rvptr(&b, Rvt4, abi->pc); rvptr(&b, Rvt6, abi->fp);
+		rvi(&b, 0x13, 0, Rvt1, Rvt0, abi->framelr); rvstore(&b, Rvt1, Rvt4, 8);
+		rvi(&b, 0x13, 0, Rvt1, Rvt0, abi->framefp); rvstore(&b, Rvt1, Rvt6, 8);
+		rvs(&b, 3, Rva0, Rvt0, abi->fp); rvs(&b, 3, Rva0, Rvt3, abi->pc);
+		break;
 	case IBEQF: case IBNEF: case IBLTF: case IBLEF: case IBGTF: case IBGEF:
 		if(abi->xlen != 64) return 0;
 		bytes=8; branch=1; realbranch=1;
