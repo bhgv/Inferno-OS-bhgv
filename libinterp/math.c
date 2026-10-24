@@ -713,6 +713,16 @@ Math_copysign(void *fp)
 	*f->ret = copysign(f->x, f->s);
 }
 
+/* Bessel order is a discrete index: reject high VM bits instead of changing its parity. */
+static int
+mathorder(WORD order)
+{
+	if(order < -0x7fffffff-1 || order > 0x7fffffff)
+		error(exInval);
+	return (int)order;
+}
+
+/* Validate the complete order before passing it to the native recurrence. */
 void
 Math_jn(void *fp)
 {
@@ -720,7 +730,7 @@ Math_jn(void *fp)
 
 	f = fp;
 
-	*f->ret = __ieee754_jn(f->n, f->x);
+	*f->ret = __ieee754_jn(mathorder(f->n), f->x);
 }
 
 /* Widen the native sign output before storing it in a possibly wider VM slot. */
@@ -800,6 +810,7 @@ Math_scalbn(void *fp)
 	*f->ret = scalbn(f->x, mathexponent(f->n));
 }
 
+/* Preserve native order bounds without silently wrapping a wider VM word. */
 void
 Math_yn(void *fp)
 {
@@ -807,7 +818,7 @@ Math_yn(void *fp)
 
 	f = fp;
 
-	*f->ret = __ieee754_yn(f->n, f->x);
+	*f->ret = __ieee754_yn(mathorder(f->n), f->x);
 }
 
 
