@@ -144,6 +144,27 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		f3=op == IBEQF ? 0 : op == IBNEF ? 1 : (op == IBLTF || op == IBGTF) ? 4 : 5;
 		swap=op == IBLEF || op == IBGTF;
 		break;
+	case ICVTWF: case ICVTLF:
+		/* RV64I constructs exact binary64 bits without M or floating instructions. */
+		if(abi->xlen != 64) return 0;
+		rvptr(&b, Rvt0, abi->s); rvload(&b, Rvt3, Rvt0, op == ICVTWF ? abi->wordbytes : 8);
+		rvi(&b, 0x13, 5, Rvt6, Rvt3, 0x400|63);
+		rvr(&b, 0x33, 4, 0, Rvt3, Rvt3, Rvt6);
+		rvr(&b, 0x33, 0, 32, Rvt3, Rvt3, Rvt6);
+		rvi(&b, 0x13, 1, Rvt6, Rvt6, 63);
+		rvi(&b, 0x13, 5, Rvt5, Rvt3, 53); rvguard(&b, 0, Rvt5, Rvzero);
+		rvbranch(&b, 0, Rvt3, Rvzero, 40);
+		rvi(&b, 0x13, 0, Rvt4, Rvzero, 1074);
+		rvi(&b, 0x13, 5, Rvt5, Rvt3, 52);
+		rvbranch(&b, 1, Rvt5, Rvzero, 16);
+		rvi(&b, 0x13, 1, Rvt3, Rvt3, 1);
+		rvi(&b, 0x13, 0, Rvt4, Rvt4, -1);
+		rvbranch(&b, 0, Rvzero, Rvzero, -16);
+		rvi(&b, 0x13, 1, Rvt4, Rvt4, 52);
+		rvr(&b, 0x33, 0, 0, Rvt3, Rvt3, Rvt4);
+		rvr(&b, 0x33, 6, 0, Rvt3, Rvt3, Rvt6);
+		rvptr(&b, Rvt2, abi->d); rvstore(&b, Rvt2, Rvt3, 8);
+		break;
 	case ICVTXX:
 		/* RV64I suffices; RV32 keeps the complete fixed intermediate in C. */
 		if(abi->xlen != 64) return 0;

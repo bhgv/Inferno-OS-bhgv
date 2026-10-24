@@ -123,7 +123,16 @@ OP(cvtsw)
 	result = source;
 	memmove(R.d, &result, sizeof(result));
 }
-OP(cvtwf){ F(d) = W(s); }
+/* Capture the unaligned integer before converting with the current FP environment. */
+OP(cvtwf)
+{
+	WORD source;
+	REAL result;
+
+	memmove(&source, R.s, sizeof(source));
+	result = source;
+	memmove(R.d, &result, sizeof(result));
+}
 /* Capture integer operands before evaluating modular arithmetic or bit operations. */
 OP(addb)
 {
@@ -742,7 +751,16 @@ OP(cvtlw)
 	result = source;
 	memmove(R.d, &result, sizeof(result));
 }
-OP(cvtlf){ F(d) = V(s); }
+/* Capture the unaligned integer before converting with the current FP environment. */
+OP(cvtlf)
+{
+	LONG source;
+	REAL result;
+
+	memmove(&source, R.s, sizeof(source));
+	result = source;
+	memmove(R.d, &result, sizeof(result));
+}
 /* Round first, then reject non-finite or out-of-range big conversions. */
 OP(cvtfl)
 {

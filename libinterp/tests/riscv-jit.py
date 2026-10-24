@@ -22,7 +22,7 @@ cc = shlex.split(os.environ.get('CC', 'cc'))
 flags = shlex.split(os.environ.get('CFLAGS', '-O1 -g'))
 checks = 0
 rng = random.Random(0x1f3e)
-names = '''ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IEXPF INEGF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+names = '''ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IEXPF INEGF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 ISHLB ISHLW ISHRB ISHRW ILSRW IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW IBLEB
 IBLEW IBGTB IBGTW IBGEB IBGEW IDIVW IMODW IMOVP IFRAME ICALL IRET IADDF'''.split()
@@ -210,6 +210,9 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
             checks+=1
         assert bool(emit('IHEADM',no_m)[0])==(xlen==64)
         checks+=1
+        for name in ('ICVTWF','ICVTLF'):
+            assert bool(emit(name,no_m)[0])==(xlen==64)
+            checks+=1
         assert bool(emit('ICVTXX',no_m)[0]) == (xlen==64)
         assert emit('IEXPW',no_m)[0]==emit('IEXPL',no_m)[0]==0
         checks+=1

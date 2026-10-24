@@ -110,7 +110,33 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafFixedShift){
+	if(p.kind == LeafIntegerReal){
+		/* Exact magnitudes below 2^53 need no FP rounding or exception changes. */
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, p.input);
+		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xc2); /* rdx=source */
+		x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xfa); x64byte(&b, 63);
+		x64byte(&b, 0x48); x64byte(&b, 0x31); x64byte(&b, 0xd0);
+		x64byte(&b, 0x48); x64byte(&b, 0x29); x64byte(&b, 0xd0); /* unsigned magnitude */
+		x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xe2); x64byte(&b, 63);
+		x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3);
+		x64byte(&b, 0x49); x64byte(&b, 0xc1); x64byte(&b, 0xeb); x64byte(&b, 53);
+		x64byte(&b, 0x4d); x64byte(&b, 0x85); x64byte(&b, 0xdb); x64guard(&b, 0x74);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0);
+		x64byte(&b, 0x74); empty=b.n; x64byte(&b, 0);
+		x64byte(&b, 0xb9); x64word(&b, 1074);
+		loop=b.n;
+		x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0xba); x64byte(&b, 0xe0); x64byte(&b, 52);
+		x64byte(&b, 0x72); done=b.n; x64byte(&b, 0);
+		x64byte(&b, 0x48); x64byte(&b, 0xd1); x64byte(&b, 0xe0);
+		x64byte(&b, 0xff); x64byte(&b, 0xc9);
+		x64byte(&b, 0xeb); x64byte(&b, loop-b.n-1);
+		b.bytes[done]=b.n-done-1;
+		x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xe1); x64byte(&b, 52);
+		x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xc8);
+		x64byte(&b, 0x48); x64byte(&b, 0x09); x64byte(&b, 0xd0);
+		b.bytes[empty]=b.n-empty-1;
+		x64ptr(&b, 2, abi->d); x64store(&b, 0, 8);
+	}else if(p.kind == LeafFixedShift){
 		/* Translating the signed interval avoids overflowing when negating minimum. */
 		x64ptr(&b, 1, abi->m); x64load(&b, 1, abi->wordbytes);
 		x64byte(&b, 0x48); x64byte(&b, 0x8d); x64byte(&b, 0x51); x64byte(&b, 63); /* lea rdx,[rcx+63] */

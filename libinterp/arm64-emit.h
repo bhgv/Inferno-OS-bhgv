@@ -97,7 +97,28 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafFixedShift){
+	if(p.kind == LeafIntegerReal){
+		/* Normalize exact integer bits without touching FP registers or status. */
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, p.input);
+		if(p.input == 4) a64put(&b, 0x93407d8c);
+		a64put(&b, 0x937ffd8d); /* asr x13,x12,#63 */
+		a64put(&b, 0xca0d018c); a64put(&b, 0xcb0d018c); /* unsigned magnitude */
+		a64put(&b, 0xd34101ad); /* sign bit */
+		a64put(&b, 0xd375fd8f); a64guard(&b, 0xb400006f); /* magnitude < 2^53 */
+		empty=b.n; a64put(&b, 0xb400000c);
+		a64put(&b, 0xd280864e); /* mov x14,#1074 */
+		loop=b.n;
+		a64put(&b, 0xd374fd8f); /* lsr x15,x12,#52 */
+		done=b.n; a64put(&b, 0xb500000f);
+		a64put(&b, 0xd37ff98c); /* lsl x12,x12,#1 */
+		a64put(&b, 0xd10005ce); /* sub x14,x14,#1 */
+		a64put(&b, 0x14000000U | ((u32int)(loop-b.n)&0x3ffffff));
+		b.code[done] |= (b.n-done)<<5;
+		a64put(&b, 0xd34c2dce); /* lsl x14,x14,#52 */
+		a64put(&b, 0x8b0e018c); a64put(&b, 0xaa0d018c);
+		b.code[empty] |= (b.n-empty)<<5;
+		a64ptr(&b, 11, abi->d); a64store(&b, 12, 8);
+	}else if(p.kind == LeafFixedShift){
 		/* Validate the signed interval before fetching a possibly inaccessible source. */
 		a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, abi->wordbytes);
 		if(abi->wordbytes == 4) a64put(&b, 0x93407dad); /* sxtw x13,w13 */

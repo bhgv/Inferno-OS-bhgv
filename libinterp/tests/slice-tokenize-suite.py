@@ -35,6 +35,7 @@ CORE = [
     'libinterp/tests/integer-alu.py',
     'libinterp/tests/fixed-scale.py',
     'libinterp/tests/shift-div.py',
+    'libinterp/tests/integer-real.py',
     'libinterp/tests/geometry-arithmetic.py',
     'libinterp/tests/math-bessel.py',
     'libinterp/tests/runtime-protect.py',
