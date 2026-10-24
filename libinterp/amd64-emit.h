@@ -67,6 +67,24 @@ x64field(X64Buf *b, int result, int owner, int offset, int bytes)
 	x64word(b, offset);
 }
 
+/* Resolve a byte-string length and data address; wide strings defer to C. */
+static void
+x64stringheader(X64Buf *b, int owner, int length, int lenoff, int dataoff)
+{
+	int empty, done;
+
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0+owner*9); x64guard(b, 0x75);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8+owner); x64byte(b, 0xff);
+	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
+	x64field(b, length, owner, lenoff, 4);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0+length*9); x64guard(b, 0x79);
+	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xc0+owner); x64word(b, dataoff);
+	x64byte(b, 0xeb); done=b->n; x64byte(b, 0);
+	b->bytes[empty]=b->n-empty-1;
+	x64byte(b, 0x31); x64byte(b, 0xc0+length*9);
+	b->bytes[done]=b->n-done-1;
+}
+
 /* Turn rax/rcx bits into signed keys using rdx; defer NaNs and denormals. */
 static void
 x64realkey(X64Buf *b, int reg)
@@ -100,7 +118,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 {
 	X64Buf b;
 	LeafOp p;
-	int i, patch, n, empty, other, done, scale, loop;
+	int i, patch, n, empty, other, done, scale, loop, equal;
 	static uchar arithmetic[] = {0x01, 0x29, 0, 0x21, 0x09, 0x31};
 	static uchar inverse[] = {0x75, 0x74, 0x7d, 0x7f, 0x7e, 0x7c};
 
@@ -110,7 +128,36 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafTypeCheck){
+	if(p.kind == LeafStringBranch){
+		/* Compare unsigned bytes without reading a branch target on a false predicate. */
+		if(abi->stringlen < 0 || abi->stringlen > 2047 || abi->stringlen%4 ||
+		   abi->stringdata < 0 || abi->stringdata > 2047) return 0;
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
+		x64ptr(&b, 1, abi->m); x64load(&b, 1, 8);
+		x64stringheader(&b, 0, 2, abi->stringlen, abi->stringdata);
+		x64stringheader(&b, 1, 6, abi->stringlen, abi->stringdata);
+		x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xc8);
+		x64byte(&b, 0x74); equal=b.n; x64byte(&b, 0);
+		loop=b.n;
+		x64byte(&b, 0x85); x64byte(&b, 0xd2); x64byte(&b, 0x74); empty=b.n; x64byte(&b, 0);
+		x64byte(&b, 0x85); x64byte(&b, 0xf6); x64byte(&b, 0x74); other=b.n; x64byte(&b, 0);
+		x64byte(&b, 0x44); x64byte(&b, 0x0f); x64byte(&b, 0xb6); x64byte(&b, 0x00);
+		x64byte(&b, 0x44); x64byte(&b, 0x0f); x64byte(&b, 0xb6); x64byte(&b, 0x09);
+		x64byte(&b, 0x45); x64byte(&b, 0x39); x64byte(&b, 0xc8);
+		x64byte(&b, 0x75); done=b.n; x64byte(&b, 0);
+		x64byte(&b, 0x48); x64byte(&b, 0xff); x64byte(&b, 0xc0);
+		x64byte(&b, 0x48); x64byte(&b, 0xff); x64byte(&b, 0xc1);
+		x64byte(&b, 0xff); x64byte(&b, 0xca); x64byte(&b, 0xff); x64byte(&b, 0xce);
+		x64byte(&b, 0xeb); x64byte(&b, loop-b.n-1);
+		b.bytes[empty]=b.n-empty-1; b.bytes[other]=b.n-other-1;
+		b.bytes[equal]=b.n-equal-1;
+		x64byte(&b, 0x39); x64byte(&b, 0xf2);
+		b.bytes[done]=b.n-done-1;
+		x64byte(&b, inverse[p.condition]); patch=b.n; x64byte(&b, 0);
+		x64ptr(&b, 2, abi->d); x64load(&b, 2, 8);
+		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0x97); x64word(&b, abi->pc);
+		b.bytes[patch]=b.n-patch-1;
+	}else if(p.kind == LeafTypeCheck){
 		/* Capture both owners before inspecting their immutable heap types. */
 		if(abi->heaptype <= 0 || abi->heaptype > 255 || abi->heaptype%8) return 0;
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);

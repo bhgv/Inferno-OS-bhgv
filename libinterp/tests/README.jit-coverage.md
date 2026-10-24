@@ -1,15 +1,15 @@
 # 64-bit JIT opcode availability checkpoint
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
-`IECLR` is unused, leaving 173 active commands. A native path is available for
-103 active commands on AMD64, ARM64 and RV64 with M (59.5%). The other 70
-currently run through the interpreter. WORD32/native-pointer and legacy
-WORD64 configurations have the same opcode counts at this checkpoint.
+`IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
+paths for 109 commands (63.0%); 64 remain on the interpreter path. RV64 profiles
+retain their earlier counts. WORD32/native-pointer and legacy WORD64
+configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 103 | 70 |
-| ARM64 | 173 | 103 | 70 |
+| AMD64 | 173 | 109 | 64 |
+| ARM64 | 173 | 109 | 64 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
@@ -21,8 +21,8 @@ flags, and some floating operations retain C when the exact FP contract cannot
 be preserved. Instructions may therefore contribute to both native execution
 and fallback execution at runtime. No fully-native opcode count is asserted.
 
-The 70 remaining commands are a list of current interpreter dispatch paths,
-not a requirement to hand-emit 70 additional implementations. Complex C
+The remaining commands are a list of current interpreter dispatch paths,
+not a requirement to hand-emit an additional implementation for every opcode. Complex C
 operations already become native machine code through the platform C compiler.
 A block JIT should call these helpers with a defined contract for arguments,
 GC roots, exceptions, frame state and scheduler transitions. Allocation,
@@ -58,18 +58,19 @@ It requires a host C compiler, but no target SDK or Unicorn installation.
 Its layout values represent valid emitter contracts; native adapter offsets
 and RX publication are covered separately by `leaf64-runtime.py`.
 
-## Current interpreter-only commands on AMD64/ARM64/RV64+M
+## Current interpreter-only commands on AMD64/ARM64
 
 ```
 IALT INBALT IGOTO IFRAME ISPAWN ILOAD IMCALL IMSPAWN IMFRAME IRET ICASE IEXIT INEW
 INEWA INEWCB INEWCW INEWCF INEWCP INEWCM INEWCMP ISEND IRECV ICONSB ICONSW ICONSP
 ICONSF ICONSM ICONSMP IHEADP IHEADMP ITAIL IMOVP IMOVMP ICVTFW ICVTCA ICVTAC ICVTWC
-ICVTCW ICVTFC ICVTCF IADDF ISUBF IMULF IDIVF IINSC IADDC IBEQC IBNEC IBLTC IBLEC
-IBGTC IBGEC ISLICEA ISLICELA ISLICEC ICVTFL ICVTLC ICVTCL ICONSL INEWCL ICASEC
+ICVTCW ICVTFC ICVTCF IADDF ISUBF IMULF IDIVF IINSC IADDC
+ISLICEA ISLICELA ISLICEC ICVTFL ICVTLC ICVTCL ICONSL INEWCL ICASEC
 IMNEWZ INEWZ INEWAZ IRAISE ICASEL ICVTFX ICVTXF IEXPF ISELF
 ```
 
-The list excludes invalid/unused slots. Many listed commands should remain C
+The list excludes invalid/unused slots. RV64+M additionally retains all six
+string comparison branches on the interpreter path. Many listed commands should remain C
 helpers when they are integrated into a native block execution path.
 
 ## This series
@@ -112,3 +113,13 @@ There are 4096 unwind cases per WORD model. `UNWIND_XEC_SOURCE`,
 stack destructor, frame validator and mapped scanner implementations. Selecting
 the parent implementations reproduces each unaligned access under UBSan.
 Physical ARM64/RV64 execution and complete OS/VM acceptance remain separate.
+
+## Narrow-string branch checkpoint
+
+AMD64 and ARM64 now implement `BEQC/BNEC/BLTC/BLEC/BGTC/BGEC` for byte strings
+and language nil. They compare unsigned bytes lexicographically, use explicit
+lengths (including embedded NULs), and read a native branch target only when
+the condition is true. Wide Rune strings and invalid metadata decline before
+changing PC or VM storage, retaining the common C comparator/error semantics.
+This is guarded partial coverage for six additional opcodes, not full native
+Unicode comparison. RISC-V backends are unchanged by this series.

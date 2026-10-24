@@ -38,6 +38,7 @@ with tempfile.TemporaryDirectory(prefix='string-branches-') as directory:
     target.write_text(unit)
     cmd = shlex.split(os.environ.get('CC','cc'))
     cmd += shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
+    if os.environ.get('STRING_BRANCH_NATIVE'):cmd += ['-DNATIVE_STRING_BRANCH']
     for bits in (64,32):
         model = td/('word'+str(bits))
         model.mkdir()

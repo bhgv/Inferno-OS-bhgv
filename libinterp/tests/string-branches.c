@@ -1,8 +1,12 @@
+#ifdef NATIVE_STRING_BRANCH
+#include "comp-amd64.c"
+#else
 #include "dat.h"
 #include "fns.h"
 #include "isa.h"
 #include "interp.h"
 #include "raise.h"
+#endif
 #include <setjmp.h>
 #include <assert.h>
 #include <stdio.h>
@@ -18,6 +22,12 @@ void error(char *message) {raised=message;longjmp(boundary,1);}
 /* Retain stack/address instrumentation without unsupported leak inspection. */
 int __lsan_is_turned_off(void) {return 1;}
 
+#ifdef NATIVE_STRING_BRANCH
+/* Publish the real leaf compiler with ordinary descriptor allocation. */
+void *mallocz(ulong n,int clear) {void *p=malloc(n);if(p && clear)memset(p,0,n);return p;}
+/* Valid publication in this fixture does not raise a VM error. */
+int kprotect(int (*fn)(void*),void *arg) {return fn(arg);}
+#endif
 IMPLEMENTATION
 
 /* Compare code points rather than using the production string comparison oracle. */
@@ -33,6 +43,14 @@ main(void)
 	Inst instructions[3],*target=instructions+2;
 	int i,j,k,sa,ma,da,op,order,n1,n2,n,take;
 	unsigned long checks=0;
+#ifdef NATIVE_STRING_BRANCH
+	Module module={0};Inst native[6]={{0}};
+	int opcodes[]={IBEQC,IBNEC,IBLTC,IBLEC,IBGTC,IBGEC};
+	for(i=0;i<6;i++)native[i].op=opcodes[i];
+	module.prog=native;module.nprog=6;
+	assert(compile(&module,6,nil));
+	for(i=0;i<6;i++)assert(module.jit->entry[opcodes[i]]);
+#endif
 
 	strings[0]=H;
 	for(i=0;i<9;i++){
@@ -59,6 +77,14 @@ main(void)
 			R.s=slots.bytes+16+sa;R.m=slots.bytes+48+ma;R.d=slots.bytes+80+da;R.PC=instructions;
 			memmove(R.s,&left,sizeof(left));memmove(R.m,&right,sizeof(right));memmove(R.d,&target,sizeof(target));
 			memmove(before,slots.bytes,sizeof(before));if(!take)R.d=(void*)1;
+#ifdef NATIVE_STRING_BRANCH
+			{
+				int handled=(left==H || left->len>=0) && (right==H || right->len>=0);
+				assert(module.jit->entry[opcodes[op]](&R)==handled);
+				assert(R.PC==(handled && take ? target : instructions) && !memcmp(slots.bytes,before,sizeof(before)));
+				R.PC=instructions;
+			}
+#endif
 			ops[op]();
 			assert(R.PC==(take ? target : instructions) && !memcmp(slots.bytes,before,sizeof(before)));
 			checks++;
@@ -72,13 +98,33 @@ main(void)
 		assert((forward>0)-(forward<0)==expected && (reverse>0)-(reverse<0)==-expected);
 		checks+=2;
 	}
+#ifdef NATIVE_STRING_BRANCH
+	/* All high byte values use unsigned lexicographic ordering in native code. */
+	for(i=0;i<256;i++)for(j=0;j<256;j++){
+		left=strings[1];right=strings[2];left->len=right->len=1;
+		left->Sascii[0]=i;right->Sascii[0]=j;
+		R.s=&left;R.m=&right;
+		for(op=0;op<6;op++){
+			take=op==0 ? i==j : op==1 ? i!=j : op==2 ? i<j : op==3 ? i<=j : op==4 ? i>j : i>=j;
+			R.PC=instructions;R.d=take ? (void*)&target : (void*)1;
+			assert(module.jit->entry[opcodes[op]](&R)==1 && R.PC==(take ? target : instructions));
+			checks++;
+		}
+	}
+#endif
 	for(i=0;i<4;i++){
 		String *invalid=i<2 ? nil : strings[1];
 		if(i>=2)invalid->len=(-0x7fffffff-1);
 		left=invalid;right=(i&1) ? invalid : strings[2];R.s=&left;R.m=&right;R.PC=instructions;
+#ifdef NATIVE_STRING_BRANCH
+		R.d=(void*)1;assert(module.jit->entry[IBEQC](&R)==0 && R.PC==instructions);
+#endif
 		raised=nil;if(setjmp(boundary)==0){beqc();assert(0);}
 		assert(raised==(i<2 ? exNilref : exHeap) && R.PC==instructions);checks++;
 	}
+#ifdef NATIVE_STRING_BRANCH
+	module.jit->freecode(module.jit->code,module.jit->size);free(module.jit);
+#endif
 	for(i=1;i<10;i++)free(strings[i]);
 	printf("PASS string branches: %lu Unicode/alignment/PC checks WORD%zu\n",checks,sizeof(WORD)*8);
 	return 0;

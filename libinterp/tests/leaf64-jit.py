@@ -15,7 +15,7 @@ from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
 root = Path(__file__).resolve().parents[2]
-ops = '''ITCMP IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''IBEQC IBNEC IBLTC IBLEC IBGTC IBGEC ITCMP IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF'''.split()
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -173,7 +173,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     checks+=1
                 if case=='call':continue
 
-            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False, fixedframe=None, descriptor=None, badresult=False, programaddress=None, slotshift=0, typecheck=None):
+            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False, fixedframe=None, descriptor=None, badresult=False, programaddress=None, slotshift=0, typecheck=None, stringpair=None):
                 """Exercise a leaf with high native pointers, four-byte alignment and exact aliases."""
                 if arch == 'amd64':
                     u = Uc(UC_ARCH_X86,UC_MODE_64); arg, result = UC_X86_REG_RDI, UC_X86_REG_RAX
@@ -195,7 +195,17 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 typedata=None
                 expected_copy=None
                 expected_head=None
-                if typecheck is not None:
+                if stringpair is not None:
+                    left,leftlen,leftdata,right,rightlen,rightdata=stringpair
+                    u.mem_write(s,struct.pack('<Q',left));u.mem_write(m,struct.pack('<Q',right))
+                    for address,length,payload in ((data+0x500,leftlen,leftdata),(data+0x700,rightlen,rightdata)):
+                        header=bytearray(b'\x5a'*256)
+                        header[layout.stringlen:layout.stringlen+4]=struct.pack('<i',length)
+                        header[layout.stringdata:layout.stringdata+len(payload)]=payload
+                        u.mem_write(address,bytes(header))
+                    u.mem_write(d,struct.pack('<Q',target))
+                    expected_copy=bytes(u.mem_read(data,0x1000))
+                elif typecheck is not None:
                     sourceowner,destowner,sourcetype,desttype=typecheck
                     u.mem_write(s,struct.pack('<Q',sourceowner))
                     u.mem_write(d,struct.pack('<Q',destowner))
@@ -353,6 +363,49 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','bytebranch'):
+                names=('IBEQC','IBNEC','IBLTC','IBLEC','IBGTC','IBGEC')
+                if rv:
+                    assert not any(blobs[name] for name in names)
+                else:
+                    for name in names:
+                        assert blobs[name],(arch,wb,name)
+                        for field,value in [('stringlen',-1),('stringlen',1),('stringlen',2048),('stringdata',-1),('stringdata',2048)]:
+                            malformed=type(layout).from_buffer_copy(layout);setattr(malformed,field,value)
+                            guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
+                            assert lib.emit(guard,64,C.byref(malformed),ids[name])==0 and list(guard)==[0xa5a5a5a5]*64
+                            checks+=1
+                    texts=[b'',b'a',b'ab',b'a\0b',b'a\0c',b'\0',b'\x7f',b'\x80',b'\xff',b'x'*128,b'x'*127+b'y']
+                    pairs=[(a,b) for a in texts for b in texts]
+                    pairs += [(bytes(rng.getrandbits(8) for _ in range(rng.randrange(32))),bytes(rng.getrandbits(8) for _ in range(rng.randrange(32)))) for _ in range(32)]
+                    for a,b in pairs:
+                        for condition,name in enumerate(names):
+                            take=(a==b,a!=b,a<b,a<=b,a>b,a>=b)[condition]
+                            for shift in (0,1,4,7):
+                                _,pc,before,after,_=run(name,slotshift=shift,badtarget=not take,stringpair=(data+0x500,len(a),a,data+0x700,len(b),b))
+                                assert pc==(target if take else oldpc) and before==after
+                                checks+=1
+                    # Identical owners compare equal without reading even a huge payload.
+                    for length in (0,1,0x7fffffff):
+                        for condition,name in enumerate(names):
+                            take=condition in (0,3,5)
+                            for shift in (0,4):
+                                _,pc,before,after,_=run(name,slotshift=shift,badtarget=not take,stringpair=(data+0x500,length,b'a',data+0x500,0,b''))
+                                assert pc==(target if take else oldpc) and before==after
+                                checks+=1
+                    for left in (0,(1<<64)-1,data+0x500):
+                        for right in (0,(1<<64)-1,data+0x700):
+                            for ll in (-0x80000000,-1,0,1):
+                                for rl in (-0x80000000,-1,0,1):
+                                    valid=left!=0 and right!=0 and (left==(1<<64)-1 or ll>=0) and (right==(1<<64)-1 or rl>=0)
+                                    aa=b'' if left==(1<<64)-1 or ll==0 else b'a'
+                                    bb=b'' if right==(1<<64)-1 or rl==0 else b'b'
+                                    for condition,name in enumerate(names):
+                                        take=(aa==bb,aa!=bb,aa<bb,aa<=bb,aa>bb,aa>=bb)[condition]
+                                        _,pc,before,after,_=run(name,expect=int(valid),badtarget=not valid or not take,stringpair=(left,ll,b'a',right,rl,b'b'))
+                                        assert pc==(target if valid and take else oldpc) and before==after
+                                        checks+=1
+                if case=='bytebranch':continue
             if case in ('','multiply'):
                 values=[0,1,-1,2,-2,127,128,255,256,0x7fffffff,-0x80000000,(1<<63)-1,-(1<<63)]
                 pairs=[(a,b) for a in values for b in values]

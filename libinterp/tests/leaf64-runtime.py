@@ -536,7 +536,7 @@ static void arrays(Module *m) {
 }
 /* Compile, invoke, reject invalid metadata and retry without changing Dis PCs. */
 int main(void) {
-    Module m={0}, *owned;Inst instructions[48]={{0}};
+    Module m={0}, *owned;Inst instructions[54]={{0}};
     WORD a=3,b=7,out=0;
     int i;
     instructions[0].op=ISUBW;instructions[1].op=IADDW;
@@ -548,16 +548,17 @@ int main(void) {
     instructions[17].op=IHEADB;instructions[18].op=IHEADW;instructions[19].op=IHEADL;instructions[20].op=IHEADF;instructions[21].op=ILENL;instructions[22].op=IINDC;instructions[23].op=IEXPW;instructions[24].op=IEXPL;instructions[25].op=IEXPF;instructions[26].op=IHEADM;
     instructions[27].op=IBEQF;instructions[28].op=IBNEF;instructions[29].op=IBLTF;
     instructions[30].op=IBLEF;instructions[31].op=IBGTF;instructions[32].op=IBGEF;
-    instructions[33].op=IMULX;instructions[34].op=IDIVX;instructions[35].op=IINDX;instructions[36].op=ICALL;instructions[37].op=IMULX0;instructions[38].op=IDIVX0;instructions[39].op=ICVTXX0;instructions[40].op=IMULX1;instructions[41].op=IDIVX1;instructions[42].op=ICVTXX1;instructions[43].op=IMOVPC;instructions[44].op=ITCMP;instructions[45].op=IMULB;instructions[46].op=IMULW;instructions[47].op=IMULL;
-    m.prog=instructions;m.nprog=48;
+    instructions[33].op=IMULX;instructions[34].op=IDIVX;instructions[35].op=IINDX;instructions[36].op=ICALL;instructions[37].op=IMULX0;instructions[38].op=IDIVX0;instructions[39].op=ICVTXX0;instructions[40].op=IMULX1;instructions[41].op=IDIVX1;instructions[42].op=ICVTXX1;instructions[43].op=IMOVPC;instructions[44].op=ITCMP;instructions[45].op=IMULB;instructions[46].op=IMULW;instructions[47].op=IMULL;instructions[48].op=IBEQC;instructions[49].op=IBNEC;instructions[50].op=IBLTC;instructions[51].op=IBLEC;instructions[52].op=IBGTC;instructions[53].op=IBGEC;
+    m.prog=instructions;m.nprog=54;
     for(i=1;i<=5;i++) {
-        fail=i;assert(!compile(&m,48,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
+        fail=i;assert(!compile(&m,54,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
     }
     fail=0;
     assert(!compile(nil,36,nil));assert(!compile(&m,3,nil));
-    assert(compile(&m,48,nil));assert(m.jit && !m.compiled && m.prog==instructions);
+    assert(compile(&m,54,nil));assert(m.jit && !m.compiled && m.prog==instructions);
     assert(m.jit->entry[ICALL] && m.jit->entry[ITCMP]);
     assert(m.jit->entry[IMOVPC]);
+    assert(m.jit->entry[IBEQC] && m.jit->entry[IBNEC] && m.jit->entry[IBLTC] && m.jit->entry[IBLEC] && m.jit->entry[IBGTC] && m.jit->entry[IBGEC]);
     assert(m.jit->entry[IMULB] && m.jit->entry[IMULW] && m.jit->entry[IMULL]);
     assert(m.jit->entry[IMULX1] && m.jit->entry[IDIVX1] && m.jit->entry[ICVTXX1]);
     assert(m.jit->entry[IMULX0] && m.jit->entry[IDIVX0] && m.jit->entry[ICVTXX0]);
@@ -570,9 +571,9 @@ int main(void) {
     R.d=&a;assert(m.jit->entry[IADDW](&R)==1 && a==10);
     descriptorindex();fixedframe();realarithmetic();integerreal();shiftdivision();integeralu();fixedscale();scalartransfers();arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);powers(&m);headrecords(&m);realbranches(&m);
 #endif
-    assert(compile(&m,48,nil));dropmodule(&m);
-    for(i=0;i<48;i++)instructions[i].op=IMOVP;
-    assert(!compile(&m,48,nil) && !m.jit);
+    assert(compile(&m,54,nil));dropmodule(&m);
+    for(i=0;i<54;i++)instructions[i].op=IMOVP;
+    assert(!compile(&m,54,nil) && !m.jit);
     owned=calloc(1,sizeof(*owned));assert(owned);
     owned->prog=calloc(1,sizeof(Inst));assert(owned->prog);
     owned->nprog=1;owned->prog[0].op=IADDW;
@@ -590,6 +591,7 @@ if backend=='riscv64':
     if profile!='i':definitions+='#define __riscv_mul 1\n'
     if profile=='m':definitions+='#define __riscv_div 1\n'
     unit=definitions+unit
+    unit=unit.replace('assert(m.jit->entry[IBEQC] && m.jit->entry[IBNEC] && m.jit->entry[IBLTC] && m.jit->entry[IBLEC] && m.jit->entry[IBGTC] && m.jit->entry[IBGEC]);', 'assert(!m.jit->entry[IBEQC] && !m.jit->entry[IBNEC] && !m.jit->entry[IBLTC] && !m.jit->entry[IBLEC] && !m.jit->entry[IBGTC] && !m.jit->entry[IBGEC]);')
     unit=unit.replace('assert(m.jit->entry[IMULX1] && m.jit->entry[IDIVX1] && m.jit->entry[ICVTXX1]);',
         'assert(!!m.jit->entry[IMULX1]=='+str(int(profile=='m'))+');assert(!!m.jit->entry[IDIVX1]=='+str(int(profile=='m'))+');assert(!!m.jit->entry[ICVTXX1]=='+str(int(profile=='m'))+');')
     unit=unit.replace('assert(m.jit->entry[IMULX0] && m.jit->entry[IDIVX0] && m.jit->entry[ICVTXX0]);',

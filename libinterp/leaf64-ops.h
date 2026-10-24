@@ -18,6 +18,7 @@ struct LeafOp {
 	int kind, bytes, input, alu, condition;
 };
 enum {
+	LeafStringBranch = 105,
 	LeafTypeCheck = 104,
 	LeafCall = 100,
 	LeafFixedCoefficient = 102,
@@ -27,13 +28,18 @@ enum {
 	LeafDescriptorIndex, LeafFixedFrame, LeafRealResize, LeafIntegerReal, LeafFixedShift, LeafPower, LeafHeadCopy, LeafCopy, LeafStringIndex, LeafStringLength, LeafHead, LeafListLength,
 };
 
-/* Classify only operations whose complete VM semantics fit a helper-free leaf. */
+/* Classify helper-free native paths that explicitly decline to the VM when needed. */
 static int
 leafop(LeafOp *p, int op, int wordbytes)
 {
 	memset(p, 0, sizeof(*p));
 	p->bytes = wordbytes;
 	switch(op){
+	case IBEQC: case IBNEC: case IBLTC: case IBLEC: case IBGTC: case IBGEC:
+		p->kind = LeafStringBranch;
+		p->condition = op == IBEQC ? 0 : op == IBNEC ? 1 : op == IBLTC ? 2 :
+			op == IBLEC ? 3 : op == IBGTC ? 4 : 5;
+		break;
 	case ITCMP: p->kind = LeafTypeCheck; break;
 	case IBEQF: case IBNEF: case IBLTF: case IBLEF: case IBGTF: case IBGEF:
 		p->kind = LeafRealBranch; p->bytes = 8;

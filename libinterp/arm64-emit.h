@@ -64,6 +64,24 @@ a64wordfield(A64Buf *b, int result, int owner, int offset, int wordbytes)
 		a64field(b, result, owner, offset, 8);
 }
 
+/* Resolve narrow-string metadata without imposing a bound on its byte length. */
+static void
+a64stringheader(A64Buf *b, int owner, int length, int lenoff, int dataoff)
+{
+	int empty, done;
+
+	a64guard(b, 0xb5000060U | owner);
+	a64put(b, 0xb100041fU | owner<<5);
+	empty=b->n; a64put(b, 0x54000000);
+	a64put(b, 0xb9800000U | (u32int)(lenoff/4)<<10 | owner<<5 | length);
+	a64put(b, 0xf100001fU | length<<5); a64guard(b, 0x5400006a);
+	a64put(b, 0x91000000U | (u32int)dataoff<<10 | owner<<5 | owner);
+	done=b->n; a64put(b, 0x14000000);
+	b->code[empty] |= (b->n-empty)<<5;
+	a64put(b, 0x52800000U | length);
+	b->code[done] |= b->n-done;
+}
+
 /* Turn x12/x13 bits into signed keys using x14, leaving FP state untouched. */
 static void
 a64realkey(A64Buf *b, int reg)
@@ -94,7 +112,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 {
 	A64Buf b;
 	LeafOp p;
-	int i, empty, other, done, scale, limit, loop;
+	int i, empty, other, done, scale, limit, loop, patch, equal;
 	u32int width;
 	static u32int arithmetic[] = {0x0b000000, 0x4b000000, 0x1b007c00,
 		0x0a000000, 0x2a000000, 0x4a000000};
@@ -107,7 +125,34 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafTypeCheck){
+	if(p.kind == LeafStringBranch){
+		/* The byte loop preserves owners and defers wide/invalid metadata to C. */
+		if(abi->stringlen < 0 || abi->stringlen > 2047 || abi->stringlen%4 ||
+		   abi->stringdata < 0 || abi->stringdata > 2047) return 0;
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
+		a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, 8);
+		a64stringheader(&b, 12, 14, abi->stringlen, abi->stringdata);
+		a64stringheader(&b, 13, 15, abi->stringlen, abi->stringdata);
+		a64put(&b, 0xeb0d019f);
+		equal=b.n; a64put(&b, 0x54000000);
+		loop=b.n;
+		empty=b.n; a64put(&b, 0xb400000e);
+		other=b.n; a64put(&b, 0xb400000f);
+		a64put(&b, 0x39400189); a64put(&b, 0x394001aa);
+		a64put(&b, 0x6b0a013f);
+		done=b.n; a64put(&b, 0x54000001);
+		a64put(&b, 0x9100058c); a64put(&b, 0x910005ad);
+		a64put(&b, 0xd10005ce); a64put(&b, 0xd10005ef);
+		a64put(&b, 0x14000000U | ((loop-b.n)&0x3ffffff));
+		b.code[empty] |= (b.n-empty)<<5; b.code[other] |= (b.n-other)<<5;
+		b.code[equal] |= (b.n-equal)<<5;
+		a64put(&b, 0xeb0f01df);
+		b.code[done] |= (b.n-done)<<5;
+		patch=b.n; a64put(&b, 0x54000000U | inverse[p.condition]);
+		a64ptr(&b, 11, abi->d); a64load(&b, 12, 11, 8);
+		a64put(&b, 0xf9000000U | (abi->pc/8)<<10 | 12);
+		b.code[patch] |= (b.n-patch)<<5;
+	}else if(p.kind == LeafTypeCheck){
 		/* The header displacement is private and independent of the Dis WORD. */
 		if(abi->heaptype <= 0 || abi->heaptype > 255 || abi->heaptype%8) return 0;
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);

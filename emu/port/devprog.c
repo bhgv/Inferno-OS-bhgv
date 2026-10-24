@@ -419,11 +419,12 @@ progclose(Chan *c)
 	}
 }
 
+/* Sum native allocation sizes without aligned frame reads or signed overflow. */
 static int
 progsize(Prog *p)
 {
-	int size;
-	Frame *f;
+	uvlong size;
+	Frame *f, frame;
 	uchar *fp;
 	Modlink *m;
 
@@ -437,17 +438,18 @@ progsize(Prog *p)
 	fp = p->R.FP;
 	while(fp != nil) {
 		f = (Frame*)fp;
-		fp = f->fp;
-		if(f->mr != nil) {
-			if(f->mr->MP != H)
-				size += hmsize(D2H(f->mr->MP));
-			if(f->mr->prog != nil)
-				size += msize(f->mr->prog);
+		memmove(&frame, fp, sizeof(frame));
+		fp = frame.fp;
+		if(frame.mr != nil) {
+			if(frame.mr->MP != H)
+				size += hmsize(D2H(frame.mr->MP));
+			if(frame.mr->prog != nil)
+				size += msize(frame.mr->prog);
 		}
-		if(f->t == nil)
+		if(frame.t == nil)
 			size += msize(SEXTYPE(f));
 	}
-	return size/1024;
+	return size/1024 > 0x7fffffff ? 0x7fffffff : (int)(size/1024);
 }
 
 static long
@@ -543,15 +545,18 @@ pc2dispc(Inst *pc, Module *mod)
 	return 0;
 }
 
+/* Format captured frame links and stop before reconstructing a root caller PC. */
 static int
 progstack(REG *reg, int state, char *va, int count, long offset)
 {
 	int n;
-	Frame *f;
+	Frame *f, frame;
 	Inst *pc;
 	uchar *fp;
 	Modlink *m;
 
+	if(count <= 0)
+		return 0;
 	n = 0;
 	m = reg->M;
 	fp = reg->FP;
@@ -586,10 +591,13 @@ progstack(REG *reg, int state, char *va, int count, long offset)
 				n = 0;
 		}
 
-		pc = f->lr;
-		fp = f->fp;
-		if(f->mr != nil)
-			m = f->mr;
+		memmove(&frame, fp, sizeof(frame));
+		fp = frame.fp;
+		if(fp == nil)
+			break;
+		pc = frame.lr;
+		if(frame.mr != nil)
+			m = frame.mr;
 		if(!m->compiled)
 			pc--;
 		else if(m->m->pctab != nil)
@@ -598,6 +606,7 @@ progstack(REG *reg, int state, char *va, int count, long offset)
 	return n;
 }
 
+/* Count frames through native pointer copies, including four-byte aligned slots. */
 static int
 calldepth(REG *reg)
 {
@@ -605,8 +614,10 @@ calldepth(REG *reg)
 	uchar *fp;
 
 	n = 0;
-	for(fp = reg->FP; fp != nil; fp = ((Frame*)fp)->fp)
+	for(fp = reg->FP; fp != nil; ){
 		n++;
+		memmove(&fp, fp+O(Frame, fp), sizeof(fp));
+	}
 	return n;
 }
 
@@ -764,22 +775,25 @@ progheap(Heapqry *hq, char *va, int count, ulong offset)
 	return n;
 }
 
+/* Bound name formatting and capture an unaligned builtin caller frame once. */
 WORD
 modstatus(REG *r, char *ptr, int len)
 {
 	Inst *PC;
-	Frame *f;
+	Frame frame;
 
 	if(r->M->m->name[0] == '$') {
-		f = (Frame*)r->FP;
-		snprint(ptr, len, "%s[%s]", f->mr->m->name, r->M->m->name);
-		if(f->mr->compiled)
-			return (WORD)f->lr;
-		return f->lr - f->mr->prog;
+		memmove(&frame, r->FP, sizeof(frame));
+		if(len > 0)
+			snprint(ptr, len, "%s[%s]", frame.mr->m->name, r->M->m->name);
+		if(frame.mr->compiled)
+			return (WORD)(uintptr)frame.lr;
+		return frame.lr - frame.mr->prog;
 	}
-	memmove(ptr, r->M->m->name, len);
+	if(len > 0)
+		snprint(ptr, len, "%s", r->M->m->name);
 	if(r->M->compiled)
-		return (WORD)r->PC;
+		return (WORD)(uintptr)r->PC;
 	PC = r->PC;
 	/* should really check for blocked states */
 	if(PC > r->M->prog)
