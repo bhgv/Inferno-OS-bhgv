@@ -15,48 +15,45 @@ extern	OP(irecv);
 
 /*
  * Count the number of ready channels in an array of channels
- * Set each channel's alt pointer to the owning prog
+ * Register the owning prog without arithmetic on an empty array data span.
  */
 static int
 altmark(Channel *c, Prog *p)
 {
 	int nrdy;
 	Array *a;
-	Channel **ca, **ec;
+	Channel **ca;
+	WORD i;
 
 	nrdy = 0;
 	a = (Array*)c;
 	ca = (Channel**)a->data;
-	ec = ca + a->len;
-	while(ca < ec) {
-		c = *ca;
+	for(i = 0; i < a->len; i++){
+		c = ca[i];
 		if(c != H) {
 			if(c->send->prog || CANGET(c))
 				nrdy++;
 			cqadd(&c->recv, p);
 		}
-		ca++;
 	}
 
 	return nrdy;
 }
 
 /*
- * Remove alt references to an array of channels
+ * Remove alt references by index, including empty views with nil data.
  */
 static void
 altunmark(Channel *c, WORD *ptr, Prog *p, int sr, Channel **sel, int dn)
 {
-	int n;
+	WORD n;
 	Array *a;
-	Channel **ca, **ec;
+	Channel **ca;
 
-	n = 0;
 	a = (Array*)c;
 	ca = (Channel**)a->data;
-	ec = ca + a->len;
-	while(ca < ec) {
-		c = *ca;
+	for(n = 0; n < a->len; n++){
+		c = ca[n];
 		if(c != H && c->recv->prog)
 			cqdelp(&c->recv, p);
 		if(sr == 1 && *sel == c) {
@@ -65,8 +62,6 @@ altunmark(Channel *c, WORD *ptr, Prog *p, int sr, Channel **sel, int dn)
 			ptr[0] = n;
 			*sel = nil;
 		}
-		ca++;
-		n++;
 	}
 }
 
@@ -197,17 +192,18 @@ altdone(Alt *a, Prog *p, Channel *sel, int sr)
 }
 
 /*
- * ALT Pass 2 - Perform the communication on the chosen channel
+ * ALT Pass 2 - Communicate on the chosen channel; empty array guards read no data.
  */
 static void
 altcomm(Alt *a, int which)
 {
 	Type *t;
 	Array *r;
-	int n, an;
+	int n;
+	WORD an;
 	WORD *ptr;
 	Altc *ac, *eac;
-	Channel *c, **ca, **ec;
+	Channel *c, **ca;
 
 	n = 0;
 	ac = a->ac;
@@ -230,12 +226,10 @@ altcomm(Alt *a, int which)
 		c = ac->c;
 		t = D2H(c)->t;
 		if(t == &Tarray) {
-			an = 0;
 			r = (Array*)c;
 			ca = (Channel**)r->data;
-			ec = ca + r->len;
-			while(ca < ec) {
-				c = *ca;
+			for(an = 0; an < r->len; an++){
+				c = ca[an];
 				if(c != H && (c->send->prog != nil || CANGET(c)) && which-- == 0) {
 					W(R.d) = n;
 					R.s = &c;
@@ -245,8 +239,6 @@ altcomm(Alt *a, int which)
 					irecv();
 					return;
 				}
-				ca++;
-				an++;
 			}
 		}
 		else

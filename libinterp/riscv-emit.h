@@ -95,7 +95,7 @@ static int
 rvemit(u32int *out, int cap, RvLayout *abi, int op)
 {
 	RvBuf b;
-	int bytes, f3, f7, wide, rs, binary, branch, swap, invert;
+	int bytes, f3, f7, wide, rs, binary, branch, swap, invert, shift, division;
 
 	if((abi->xlen != 32 && abi->xlen != 64) ||
 	   (abi->wordbytes != 4 && abi->wordbytes != 8) ||
@@ -104,7 +104,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	   abi->pc > 2047 || abi->s > 2047 || abi->d > 2047 || abi->m > 2047)
 		return 0;
 	b.out=out; b.n=0; b.cap=cap; b.bad=0; b.abi=abi;
-	bytes=abi->wordbytes; f3=0; f7=0; binary=0; branch=0; swap=0; invert=0;
+	bytes=abi->wordbytes; f3=0; f7=0; binary=0; branch=0; swap=0; invert=0; shift=0; division=0;
 	switch(op) {
 	case IRUNT:
 		break;
@@ -134,6 +134,13 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		rvload(&b, Rvt3, Rvt0, op == ICVTBW ? 1 : op == ICVTSW ? 2 : bytes);
 		rvstore(&b, Rvt2, Rvt3, op == ICVTWB ? 1 : op == ICVTWS ? 2 : bytes);
 		break;
+	case ICVTWL:
+	case ICVTLW:
+		if(abi->xlen != 64) return 0;
+		rvptr(&b, Rvt0, abi->s); rvptr(&b, Rvt2, abi->d);
+		rvload(&b, Rvt3, Rvt0, op == ICVTWL ? abi->wordbytes : 8);
+		rvstore(&b, Rvt2, Rvt3, op == ICVTWL ? 8 : abi->wordbytes);
+		break;
 	case ILEA:
 		/* Existing xec.c stores addresses in WORD. Do not widen that slot. */
 		if(bytes*8 != abi->xlen)
@@ -146,6 +153,27 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		rvptr(&b, Rvt2, abi->d);
 		rvi(&b, 0x03, abi->xlen == 64 ? 3 : 2, Rvt3, Rvt2, 0);
 		rvs(&b, abi->xlen == 64 ? 3 : 2, Rva0, Rvt3, abi->pc);
+		break;
+	case IDIVB: case IMODB: bytes=1; /* fall through */
+	case IDIVW: case IMODW:
+		if(abi->xlen != 64 || !abi->hasm) return 0;
+		binary=1; division=1; f7=1;
+		f3=(op == IMODB || op == IMODW) ? 6 : 4;
+		break;
+	case IDIVL: case IMODL:
+		if(abi->xlen != 64 || !abi->hasm) return 0;
+		bytes=8; binary=1; division=1; f7=1; f3=op == IMODL ? 6 : 4;
+		break;
+	case ISHLL: case ISHRL: case ILSRL:
+		if(abi->xlen != 64) return 0;
+		bytes=8; binary=1; shift=1;
+		f3=op == ISHLL ? 1 : 5; f7=op == ISHRL ? 32 : 0;
+		break;
+	case IBEQL: case IBNEL: case IBLTL: case IBLEL: case IBGTL: case IBGEL:
+		if(abi->xlen != 64) return 0;
+		bytes=8; branch=1;
+		f3=op == IBEQL ? 0 : op == IBNEL ? 1 : (op == IBLTL || op == IBGTL) ? 4 : 5;
+		swap=op == IBLEL || op == IBGTL;
 		break;
 	case IADDL: case ISUBL: case IMULL: case IANDL: case IORL: case IXORL:
 		if(abi->xlen != 64 || (op == IMULL && !abi->hasm)) return 0;
@@ -184,30 +212,31 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	case IBGTW: branch=1; f3=4; swap=1; break;
 	case IBLEB: bytes=1; /* fall through */
 	case IBLEW: branch=1; f3=5; swap=1; break;
-	/* Division/modulo and large shifts need the VM's exception semantics.
-	 * References/allocations/calls/FP/long arithmetic stay in optab. */
+	/* References, allocation, calls and floating arithmetic stay in optab. */
 	default:
 		return 0;
 	}
+	shift = shift || op == ISHLB || op == ISHLW || op == ISHRB || op == ISHRW || op == ILSRW;
 	if(binary || branch) {
 		rvptr(&b, Rvt0, abi->s);
 		rvptr(&b, Rvt1, abi->m);
-		rvload(&b, Rvt4, Rvt0, (op == ISHLB || op == ISHLW ||
-			op == ISHRB || op == ISHRW || op == ILSRW) ? abi->wordbytes : bytes);
+		rvload(&b, Rvt4, Rvt0, shift ? abi->wordbytes : bytes);
+		/* Reject exceptional inputs before reading the value operand or touching d. */
+		if(shift || division){
+			if(shift){
+				rvi(&b, 0x13, 0, Rvt6, Rvzero, bytes*8);
+				rvbranch(&b, 6, Rvt4, Rvt6, 12);
+			}else
+				rvbranch(&b, 1, Rvt4, Rvzero, 12);
+			rvi(&b, 0x13, 0, Rva0, Rvzero, 0);
+			rvi(&b, 0x67, 0, Rvzero, Rvra, 0);
+		}
 		rvload(&b, Rvt3, Rvt1, bytes);
 		if(binary) {
-			if(op == ISHLB || op == ISHLW || op == ISHRB || op == ISHRW || op == ILSRW) {
-				/* Leave exceptional/undefined shift counts to the VM helper.
-				 * No visible state has changed when returning 0 here. */
-				rvi(&b, 0x13, 0, Rvt6, Rvzero, bytes*8);
-				rvbranch(&b, 6, Rvt4, Rvt6, 12); /* bltu count, width, valid */
-				rvi(&b, 0x13, 0, Rva0, Rvzero, 0);
-				rvi(&b, 0x67, 0, Rvzero, Rvra, 0);
-			}
 			/* RV64 W arithmetic truncates to 32 bits; bitwise operations
 			 * have no W encoding and are truncated by SW instead. */
 			wide=abi->xlen == 64 && bytes == 4 &&
-				(f3 == 0 || f3 == 1 || f3 == 5);
+				(f3 == 0 || f3 == 1 || f3 == 5 || division);
 			rvr(&b, wide ? 0x3b : 0x33, f3, f7, Rvt3, Rvt3, Rvt4);
 			rvptr(&b, Rvt2, abi->d);
 			rvstore(&b, Rvt2, Rvt3, bytes);

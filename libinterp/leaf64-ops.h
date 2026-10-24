@@ -8,7 +8,7 @@ typedef struct LeafOp LeafOp;
 struct LeafOp {
 	int kind, bytes, input, alu, condition;
 };
-enum { LeafMove=1, LeafAlu, LeafBranch, LeafJump, LeafAddress, LeafNop };
+enum { LeafMove=1, LeafAlu, LeafBranch, LeafJump, LeafAddress, LeafNop, LeafShift, LeafDivide };
 
 /* Classify only operations whose complete VM semantics fit a helper-free leaf. */
 static int
@@ -46,6 +46,29 @@ leafop(LeafOp *p, int op, int wordbytes)
 		p->kind = LeafAlu; p->bytes = 8;
 		p->alu = op == IADDL ? 0 : op == ISUBL ? 1 : op == IMULL ? 2 :
 			op == IANDL ? 3 : op == IORL ? 4 : 5;
+		break;
+	case ICVTWL: p->kind = LeafMove; p->bytes = 8; p->input = wordbytes; break;
+	case ICVTLW: p->kind = LeafMove; p->input = 8; break;
+	case ISHLB: p->bytes = 1; /* fall through */
+	case ISHLW: p->kind = LeafShift; p->alu = 0; break;
+	case ISHRB: p->bytes = 1; p->kind = LeafShift; p->alu = 1; break;
+	case ILSRW: p->kind = LeafShift; p->alu = 1; break;
+	case ISHRW: p->kind = LeafShift; p->alu = 2; break;
+	case ISHLL: case ISHRL: case ILSRL:
+		p->kind = LeafShift; p->bytes = 8;
+		p->alu = op == ISHLL ? 0 : op == ILSRL ? 1 : 2;
+		break;
+	case IDIVB: p->bytes = 1; /* fall through */
+	case IDIVW: p->kind = LeafDivide; break;
+	case IMODB: p->bytes = 1; /* fall through */
+	case IMODW: p->kind = LeafDivide; p->alu = 1; break;
+	case IDIVL: case IMODL:
+		p->kind = LeafDivide; p->bytes = 8; p->alu = op == IMODL;
+		break;
+	case IBEQL: case IBNEL: case IBLTL: case IBLEL: case IBGTL: case IBGEL:
+		p->kind = LeafBranch; p->bytes = 8;
+		p->condition = op == IBEQL ? 0 : op == IBNEL ? 1 : op == IBLTL ? 2 :
+			op == IBLEL ? 3 : op == IBGTL ? 4 : 5;
 		break;
 	case IBEQB: p->bytes = 1; /* fall through */
 	case IBEQW: p->kind = LeafBranch; p->condition = 0; break;

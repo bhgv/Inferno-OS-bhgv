@@ -107,7 +107,7 @@ int main(void) {
     F_Loader_compile request={&loadresult,&dynamic,1};
     int before, n;
     prog[0].op=prog[1].op=IADDW;
-    prog[2].op=IDIVW;
+    prog[2].op=IADDF;
     m.origmp=H; m.nprog=3; m.prog=prog; m.entry=prog+1;
     before=live;
     assert(!compile(nil,3,nil) && !compile(H,3,nil) && live==before);
@@ -133,12 +133,12 @@ int main(void) {
     dynamic.m=&m; dynamic.MP=(uchar*)"data"; dynamic.compiled=123;
     Loader_compile(&request);
     assert(loadresult==0 && dynamic.compiled==0 && dynamic.prog==prog && m.origmp==H);
-    assert(m.jit->entry[IADDW] && !m.jit->entry[IDIVW] && m.jit->enter);
+    assert(m.jit->entry[IADDW] && !m.jit->entry[IADDF] && m.jit->enter);
     installed=m.jit; n=flushes;
     assert(compile(&m,3,nil)==1 && m.jit==installed && flushes==n);
     assert(compile(&m,2,nil)==0 && m.jit==installed);
     testfree(m.jit->code); testfree(m.jit); m.jit=nil;
-    prog[0].op=prog[1].op=prog[2].op=IDIVW;
+    prog[0].op=prog[1].op=prog[2].op=IADDF;
     assert(compile(&m,3,nil)==0 && !m.jit && live==before);
     m.compiled=1; prog[0].op=IADDW;
     assert(compile(&m,3,nil)==0 && !m.jit);

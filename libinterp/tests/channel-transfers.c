@@ -347,6 +347,52 @@ checkready(void)
 	}
 }
 
+/* Empty receive-array guards neither form data pointers nor hide a ready scalar guard. */
+static void
+checkemptyguards(void)
+{
+	struct { Heap h; Array a; } array;
+	struct { int nsend, nrecv; Altc ac[4]; } storage;
+	TestChannel box;
+	Alt *a;
+	WORD tuple[2], result, received;
+	int empty, position, representation, i, count;
+
+	for(empty = 0; empty <= 3; empty++)
+	for(position = -1; position <= empty; position++)
+	for(representation = 0; representation < 2; representation++){
+		memset(&array, 0, sizeof(array));
+		array.h.t = &Tarray;
+		array.a.len = 0;
+		array.a.data = representation ? H : nil;
+		if(position >= 0){
+			openchannel(&box, 2, 0);
+			sendvalue(&box.c, 99, 0);
+		}
+		count = empty+(position >= 0);
+		a = (Alt*)&storage;
+		a->nsend = 0;
+		a->nrecv = count;
+		tuple[0] = -11; tuple[1] = -22;
+		received = -33; result = -44;
+		for(i = 0; i < count; i++){
+			a->ac[i].c = i == position ? &box.c : (Channel*)&array.a;
+			a->ac[i].ptr = i == position ? &received : tuple;
+		}
+		R.s = a; R.d = &result;
+		xecalt(position >= 0);
+		assert(result == (position >= 0 ? position : count));
+		assert(tuple[0] == -11 && tuple[1] == -22 && !removed);
+		if(position >= 0){
+			assert(received == 99 && box.c.size == 0);
+			assert(box.c.recv->prog == nil && box.c.recv->next == nil);
+			closechannel(&box.c);
+		}else assert(received == -33);
+		assert(!live && !nodes && !worker.nerr);
+		checks++;
+	}
+}
+
 /* Wake actual blocked alt registrations from a second modeled VM process. */
 static void
 checkblockedwake(void)
@@ -506,6 +552,7 @@ main(void)
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "senders")) checksenders();
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "native")) checknative();
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "ready")) checkready();
+	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "empty")) checkemptyguards();
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "service")) checkservice();
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "faults")) checkfaults();
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "wake")) checkblockedwake();

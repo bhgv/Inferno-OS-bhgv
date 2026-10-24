@@ -2,6 +2,7 @@
 """Exercise production leaf compilers and execute AMD64 leaves on the native Linux host."""
 import os
 import platform
+import re
 from pathlib import Path
 import shlex
 import subprocess
@@ -72,30 +73,84 @@ int fixtureprotect(void *p,size_t n,int prot) {
 }
 void freetype(Type *t) { (void)t;assert(0); }
 FREEMOD
+#define OP(name) void name(void)
+#define W(r) (*(WORD*)R.r)
+#define UW(r) (*(UWORD*)R.r)
+char exInval[]="invalid", exZdiv[]="zero divide";
+VM_OPERATIONS
+static Module *active;
+static int activeop;
+/* Invoke actual interpreter helpers only when native code rejects an input. */
+static int dispatch(void *unused) {
+    (void)unused;
+    if(active->jit->entry[activeop](&R))return 1;
+    switch(activeop) {
+    case IDIVW:divw();break;
+    case IMODW:modw();break;
+    case ISHLW:shlw();break;
+    case ISHRW:shrw();break;
+    case ILSRW:lsrw();break;
+    default:assert(0);
+    }
+    return 1;
+}
+/* Compare native execution/fallback with VM exceptions and untouched rejected results. */
+static void arithmetic(Module *m) {
+    WORD minimum=(UWORD)1<<(sizeof(WORD)*8-1);
+    WORD values[]={0,1,-1,minimum,(WORD)((UWORD)minimum-1)};
+    WORD a,b,out,wanted;
+    Inst *pc=m->prog+1;
+    int i,j,op;
+    active=m;
+    R.PC=pc;
+    for(op=0;op<2;op++)for(i=0;i<5;i++)for(j=0;j<5;j++) {
+        a=values[i];b=values[j];out=123;
+        R.s=&a;R.m=&b;R.d=&out;activeop=op?IMODW:IDIVW;
+        if(a==0){assert(!kprotect(dispatch,nil));assert(out==123);}
+        else {
+            wanted=b==minimum && a==-1 ? (op?0:minimum) : op?b%a:b/a;
+            assert(kprotect(dispatch,nil) && out==wanted);
+        }
+        assert(R.PC==pc);
+    }
+    for(op=0;op<3;op++)for(i=-1;i<=(int)sizeof(WORD)*8;i++) {
+        a=i;b=-7;out=123;
+        R.s=&a;R.m=&b;R.d=&out;activeop=op==0?ISHLW:op==1?ISHRW:ILSRW;
+        if(i<0 || i>=(int)sizeof(WORD)*8){assert(!kprotect(dispatch,nil));assert(out==123);}
+        else {
+            wanted=op==0?(UWORD)b<<i:op==1?b>>i:(UWORD)b>>i;
+            assert(kprotect(dispatch,nil) && out==wanted);
+        }
+        assert(R.PC==pc);
+    }
+}
 /* Compile, invoke, reject invalid metadata and retry without changing Dis PCs. */
 int main(void) {
-    Module m={0}, *owned;Inst instructions[4]={{0}};
+    Module m={0}, *owned;Inst instructions[9]={{0}};
     WORD a=3,b=7,out=0;
     int i;
     instructions[0].op=ISUBW;instructions[1].op=IADDW;
     instructions[2].op=IMOVP;instructions[3].op=IADDW;
-    m.prog=instructions;m.nprog=4;
+    instructions[4].op=IDIVW;instructions[5].op=IMODW;
+    instructions[6].op=ISHLW;instructions[7].op=ISHRW;instructions[8].op=ILSRW;
+    m.prog=instructions;m.nprog=9;
     for(i=1;i<=5;i++) {
-        fail=i;assert(!compile(&m,4,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
+        fail=i;assert(!compile(&m,9,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
     }
     fail=0;
-    assert(!compile(nil,4,nil));assert(!compile(&m,3,nil));
-    assert(compile(&m,4,nil));assert(m.jit && !m.compiled && m.prog==instructions);
+    assert(!compile(nil,9,nil));assert(!compile(&m,3,nil));
+    assert(compile(&m,9,nil));assert(m.jit && !m.compiled && m.prog==instructions);
     assert(m.jit->entry[IMOVP]==nil);
     assert(protections==1 && mappings==1);
     R.s=&a;R.m=&b;R.d=&out;
 #if EXECUTE_NATIVE
     assert(m.jit->entry[ISUBW](&R)==1 && out==4);
     R.d=&a;assert(m.jit->entry[IADDW](&R)==1 && a==10);
+    arithmetic(&m);
 #endif
-    assert(compile(&m,4,nil));dropmodule(&m);
-    instructions[0].op=instructions[1].op=instructions[2].op=instructions[3].op=IMOVP;
-    assert(!compile(&m,4,nil) && !m.jit);
+    assert(compile(&m,9,nil));dropmodule(&m);
+    for(i=0;i<9;i++)instructions[i].op=IMOVP;
+    assert(!compile(&m,9,nil) && !m.jit);
     owned=calloc(1,sizeof(*owned));assert(owned);
     owned->prog=calloc(1,sizeof(Inst));assert(owned->prog);
     owned->nprog=1;owned->prog[0].op=IADDW;
@@ -110,10 +165,24 @@ if backend=='riscv64':unit='#define RV_CODE_PAGES\n'+unit
 load=(root/'libinterp/load.c').read_text()
 a=load.index('void\nfreemod(');b=load.index('\nvoid\nunload(',a)
 unit=unit.replace('FREEMOD',load[a:b])
+xec=(root/'libinterp/xec.c').read_text()
+parts=[]
+for signature in ('static WORD\nshiftcount(', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)'):
+    a=xec.index(signature);b=xec.index('\n}',a)+2
+    parts.append(xec[a:b])
+unit=unit.replace('VM_OPERATIONS','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='leaf64-runtime-') as directory:
     td=Path(directory);source=td/'runtime.c';source.write_text(unit)
+    includes=[]
+    if os.environ.get('LEAF_WORD_BITS')=='32':
+        header=(root/'include/interp.h').read_text()
+        header=re.sub(r'typedef long\s+WORD;', 'typedef int WORD;',header,count=1)
+        header=re.sub(r'typedef unsigned long\s+UWORD;', 'typedef unsigned int UWORD;',header,count=1)
+        (td/'interp.h').write_text(header)
+        includes=['-I'+str(td)]
     cmd=shlex.split(os.environ.get('CC','cc'))
     cmd+=shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
+    cmd+=includes
     cmd+=['-I'+str(root/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
     subprocess.run(cmd+[str(source),'-o',str(td/'runtime')],check=True)
     subprocess.run([str(td/'runtime')],check=True)

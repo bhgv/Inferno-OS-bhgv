@@ -13,14 +13,18 @@ native stack frames. The AMD64 entry includes ENDBR64 and the AArch64 entry BTI 
 Both emitters support WORD32 and the current native WORD64 declaration with
 64-bit native pointers. This does not choose a new canonical Dis64 ABI.
 
-The new emitters handle byte/word/long/real bit-preserving moves, byte and signed
-short conversions, word-sized address moves when words can hold pointers,
-modular byte/word/big addition, subtraction, multiplication and bitwise logic,
-byte/word comparisons and unconditional jumps. RV64 gains the six big arithmetic
-and bitwise operations as well. Division, remainders, shifts, floating arithmetic,
-reference ownership, allocation, calls, returns, exceptions and scheduling retain
-the existing decoder/optab implementations. Unsupported operations return no code;
-there is no stub that falsely claims an operation was completed.
+The emitters handle byte/word/long/real bit-preserving moves, byte/short and
+word/big conversions, pointer-width address moves, modular byte/word/big integer
+arithmetic and bitwise logic, byte/word/big comparisons and jumps. All three
+64-bit backends now support guarded byte/word/big shifts, division and remainder.
+Invalid counts and zero divisors return zero without changing VM storage or PC,
+so optab raises the existing VM exception. AMD64 also declines divisor -1 to
+avoid hardware IDIV overflow; the VM supplies the defined minimum/-1 wrap or zero
+remainder. ARM64 and RV64 implement that pair directly with architecture-defined
+integer results. RISC-V division requires M; RV32 division remains in optab.
+Floating arithmetic, reference ownership, allocation, calls, returns, exceptions
+and scheduling retain the existing decoder/optab implementations. Unsupported
+operations return no code; no stub falsely claims an operation was completed.
 
 Each module receives one leaf per distinct supported opcode. Runtime decoding
 and the instruction-quanta loop still happen in xec. Leaves capture both inputs
@@ -60,11 +64,13 @@ python3 libinterp/tests/slice-tokenize-suite.py --core
 
 The cross-architecture test compiles the production encoders, disassembles every
 emitted byte and executes AMD64, AArch64 and RV64 machine code in Unicorn. Its
-53,388 checks compare against independent Python integer/branch oracles for both
+88,722 checks compare against independent Python integer/branch oracles for both
 VM word widths. It covers overflow boundaries, randomized values, exact input
 aliases, partial move overlaps, four-byte-aligned long operands, high native
 addresses, PC updates, neighboring-byte guards, sizing, capacity rejection and
-unsupported-operation fallback. Actual REG field offsets are tested separately
+unsupported-operation fallback. Rejected shifts and zero divisors additionally
+use an unmapped middle operand, proving that validation precedes its value read.
+Actual REG field offsets are tested separately
 by the native runtime compiler fixture; the emulator fixture deliberately uses a
 compact layout to isolate encoder offsets and native pointer semantics.
 
@@ -77,7 +83,11 @@ adapters call the real OS APIs and verify RW allocation/RX publication flags;
 no /proc inspection is required. The same driver also checks ARM64 and RV64
 publication/failure/unmapping paths on the host, with instruction execution left
 to the emulator fixture; the RV64 mapping policy is explicitly enabled for this
-host test. Direct AMD64 execution requires an x86-64 host.
+host test. Direct AMD64 execution requires an x86-64 host. The native fixture also
+extracts actual divw/modw/shlw/shrw/lsrw and shiftcount helpers from xec.c. It
+checks native completion or real VM fallback, minimum/-1, zero division, invalid
+counts, unchanged outputs on exceptions and unchanged Dis PC with both WORD32
+and WORD64 declarations (`LEAF_WORD_BITS=32` selects the narrow model).
 
 The existing RISC-V fixtures retain their native encoder, publication/error,
 module-switch, quanta and destruction checks. The core VM/compiler checkpoint
@@ -86,3 +96,36 @@ ASan+UBSan; encoder fixtures use UBSan. Floating arithmetic, native callee-frame
 transitions, exceptions through emitted code and complete Inferno boots on the
 three targets have not been validated. No performance claim or full-JIT claim is
 made. Tk, security/cryptography and MIPS/SPARC/PowerPC backends are unchanged.
+
+## Guard-order and empty-alt regressions
+
+The RISC-V emitter previously loaded the middle value before checking a shift
+count. An invalid count with an unmapped value span faulted instead of returning
+to the VM helper. All guarded leaves now validate their source before reading
+the middle value or fetching the destination pointer. The focused test is:
+
+```
+LEAF64_ARCH=riscv64 LEAF64_CASE=guard python3 libinterp/tests/leaf64-jit.py
+```
+
+`LEAF64_RISCV_EMITTER` substitutes an alternate RISC-V header. The parent header
+fails this subset with UC_ERR_READ_UNMAPPED; the corrected header passes for
+both word models. Existing RISC-V publication tests now use floating arithmetic
+as their deliberate unsupported opcode, since integer division is supported.
+
+VM alt array registration, cancellation and communication now iterate by WORD
+index. This removes null-plus-zero/end-pointer formation for empty array views
+and avoids narrowing their selected index. The empty-guard fixture adds 28 cases
+per runtime/word configuration (112 executions), covering nil/sentinel empty
+data, multiple empty guards, default selection and a ready buffered scalar guard
+at every position. It passes ASan+UBSan with stack instrumentation enabled:
+
+```
+CHANNEL_TRANSFER_CASE=empty CFLAGS='-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all' python3 libinterp/tests/channel-transfers.py
+```
+
+The previous empty-alt output often matched; this is a C-definedness correction,
+not a claimed independently reproduced sanitizer crash in that path. The shared
+core checkpoint runs the extended channel fixture. No full target boot, native
+ARM64/RV64 hardware run, complete frame ABI migration or relocated-PC JIT is
+claimed by this extension.

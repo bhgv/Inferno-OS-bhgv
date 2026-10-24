@@ -171,11 +171,14 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
                 assert emit(name,abi,cap=n-1)[0]==0,(name,'capacity check')
                 assert lib.emit(None,64,C.byref(abi),ops[name])==n
                 checks+=1
-        for name in ('IDIVW','IMODW','IMOVP','IFRAME','ICALL','IRET','IADDF'):
+        for name in ('IMOVP','IFRAME','ICALL','IRET','IADDF'):
             assert not code[name], name
             checks+=1
+        if xlen==32:
+            assert not code['IDIVW'] and not code['IMODW']
         no_m=Layout(xlen,wb,0,0,pb,pb*2,pb*3)
         assert emit('IMULW',no_m)[0]==emit('IMULB',no_m)[0]==0
+        assert emit('IDIVW',no_m)[0]==emit('IMODW',no_m)[0]==0
         # In-place source/destination keeps both operands until the store.
         u,result=run('ISUBW',struct.pack('<Q',3),struct.pack('<Q',7),sptr=D)
         assert int.from_bytes(result[:wb],'little')==4
