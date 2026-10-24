@@ -89,6 +89,7 @@ rvcompile(void *arg)
 	abi.module=O(REG, M); abi.linkmodule=O(Modlink, m);
 	abi.moduleprog=O(Module, prog); abi.modulenprog=O(Module, nprog);
 	abi.instbytes=sizeof(Inst);
+	abi.heaptype=sizeof(Heap)-O(Heap, t);
 	abi.framelr=O(Frame, lr); abi.framefp=O(Frame, fp);
 	abi.arraytype=O(Array, t); abi.typesize=O(Type, size);
 #ifdef __riscv_mul

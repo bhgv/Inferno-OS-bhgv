@@ -70,6 +70,7 @@ leafcompile(void *arg)
 	abi.module=O(REG, M); abi.linkmodule=O(Modlink, m);
 	abi.moduleprog=O(Module, prog); abi.modulenprog=O(Module, nprog);
 	abi.instbytes=sizeof(Inst);
+	abi.heaptype=sizeof(Heap)-O(Heap, t);
 	abi.framelr=O(Frame, lr); abi.framefp=O(Frame, fp);
 	abi.arraytype=O(Array, t); abi.typesize=O(Type, size);
 	abi.pc=O(REG, PC); abi.s=O(REG, s); abi.d=O(REG, d); abi.m=O(REG, m);

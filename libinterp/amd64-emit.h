@@ -110,7 +110,21 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafProgramAddress){
+	if(p.kind == LeafTypeCheck){
+		/* Capture both owners before inspecting their immutable heap types. */
+		if(abi->heaptype <= 0 || abi->heaptype > 255 || abi->heaptype%8) return 0;
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
+		x64ptr(&b, 1, abi->d); x64load(&b, 1, 8);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff);
+		x64byte(&b, 0x74); done=b.n; x64byte(&b, 0);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9); x64guard(&b, 0x75);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf9); x64byte(&b, 0xff); x64guard(&b, 0x75);
+		x64field(&b, 2, 0, -abi->heaptype, 8);
+		x64field(&b, 0, 1, -abi->heaptype, 8);
+		x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xd0); x64guard(&b, 0x74);
+		b.bytes[done]=b.n-done-1;
+	}else if(p.kind == LeafProgramAddress){
 		/* Materialize a Dis PC only after validating the module, index and native span. */
 		if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
 		   abi->linkmodule < 0 || abi->linkmodule > 2047 || abi->linkmodule%8 ||

@@ -8,6 +8,8 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/jit-coverage.py',
+    'libinterp/tests/stack-unwind.py',
     'libinterp/tests/sys-tokenize.py',
     'libinterp/tests/sys-tokenize-matrix.py',
     'limbo/tests/fold-result-types.py',

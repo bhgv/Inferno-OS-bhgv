@@ -11,12 +11,14 @@ struct LeafLayout {
 	int framelr, framefp;
 	int fixedcoef;
 	int module, linkmodule, moduleprog, modulenprog, instbytes;
+	int heaptype;
 };
 typedef struct LeafOp LeafOp;
 struct LeafOp {
 	int kind, bytes, input, alu, condition;
 };
 enum {
+	LeafTypeCheck = 104,
 	LeafCall = 100,
 	LeafFixedCoefficient = 102,
 	LeafProgramAddress = 103,
@@ -32,6 +34,7 @@ leafop(LeafOp *p, int op, int wordbytes)
 	memset(p, 0, sizeof(*p));
 	p->bytes = wordbytes;
 	switch(op){
+	case ITCMP: p->kind = LeafTypeCheck; break;
 	case IBEQF: case IBNEF: case IBLTF: case IBLEF: case IBGTF: case IBGEF:
 		p->kind = LeafRealBranch; p->bytes = 8;
 		p->condition = op == IBEQF ? 0 : op == IBNEF ? 1 : op == IBLTF ? 2 :

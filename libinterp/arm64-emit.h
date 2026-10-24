@@ -107,7 +107,20 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafProgramAddress){
+	if(p.kind == LeafTypeCheck){
+		/* The header displacement is private and independent of the Dis WORD. */
+		if(abi->heaptype <= 0 || abi->heaptype > 255 || abi->heaptype%8) return 0;
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
+		a64ptr(&b, 10, abi->d); a64load(&b, 13, 10, 8);
+		a64put(&b, 0xb100059f);
+		empty=b.n; a64put(&b, 0x54000000);
+		a64guard(&b, 0xb500006c); a64guard(&b, 0xb500006d);
+		a64put(&b, 0xb10005bf); a64guard(&b, 0x54000061);
+		a64put(&b, 0xf8400000U | ((u32int)-abi->heaptype&511)<<12 | 12<<5 | 14);
+		a64put(&b, 0xf8400000U | ((u32int)-abi->heaptype&511)<<12 | 13<<5 | 15);
+		a64put(&b, 0xeb0f01df); a64guard(&b, 0x54000060);
+		b.code[empty] |= (b.n-empty)<<5;
+	}else if(p.kind == LeafProgramAddress){
 		/* All metadata offsets are supplied by the compiler's native layout adapter. */
 		if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
 		   abi->linkmodule < 0 || abi->linkmodule > 2047 || abi->linkmodule%8 ||

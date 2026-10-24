@@ -22,13 +22,13 @@ cc = shlex.split(os.environ.get('CC', 'cc'))
 flags = shlex.split(os.environ.get('CFLAGS', '-O1 -g'))
 checks = 0
 rng = random.Random(0x1f3e)
-names = '''IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IDIVB IMODB IDIVL IMODL IMULL IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IEXPF INEGF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+names = '''ITCMP IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IDIVB IMODB IDIVL IMODL IMULL IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IEXPF INEGF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 ISHLB ISHLW ISHRB ISHRW ILSRW IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW IBLEB
 IBLEW IBGTB IBGTW IBGEB IBGEW IDIVW IMODW IMOVP IFRAME ICALL IRET IADDF'''.split()
 
 class Layout(C.Structure):
-    _fields_ = [(name, C.c_int) for name in ('xlen','wordbytes','hasm','pc','s','d','m','arraylen','arraydata','stringlen','stringdata','listdata','listtail','fp','fixedtmp','arraytype','typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes')]
+    _fields_ = [(name, C.c_int) for name in ('xlen','wordbytes','hasm','pc','s','d','m','arraylen','arraydata','stringlen','stringdata','listdata','listtail','fp','fixedtmp','arraytype','typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]
 
 
 def signed(n, bits):
@@ -60,7 +60,7 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
         pb=xlen//8
         abi=Layout(xlen,wb,1,0,pb,pb*2,pb*3)
         abi.hasdiv=1
-        abi.framelr=0;abi.framefp=8;abi.fp=32
+        abi.heaptype=24;abi.framelr=0;abi.framefp=8;abi.fp=32
         abi.module=40;abi.linkmodule=8;abi.moduleprog=16;abi.modulenprog=24;abi.instbytes=24
         dis=Cs(CS_ARCH_RISCV,CS_MODE_RISCV64 if xlen==64 else CS_MODE_RISCV32)
         BASE=0x10000

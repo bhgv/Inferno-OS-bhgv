@@ -15,14 +15,14 @@ from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
 root = Path(__file__).resolve().parents[2]
-ops = '''IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''ITCMP IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF'''.split()
 class Layout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes')]
+    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]
 class RvLayout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes')]
+    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]
 
 
 def signed(value, bits):
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -60,7 +60,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 profile=os.environ.get('RV_FEATURE_PROFILE','m')
                 if profile not in ('i','zmmul','m'):raise ValueError(profile)
                 layout.hasm=int(profile!='i');layout.hasdiv=int(profile=='m')
-            layout.framelr=0;layout.framefp=8
+            layout.heaptype=24;layout.framelr=0;layout.framefp=8
             layout.arraylen=8;layout.arraydata=32;layout.stringlen=12;layout.stringdata=32;layout.listdata=24;layout.listtail=8;layout.fp=32;layout.fixedtmp=28;layout.fixedcoef=20;layout.module=40;layout.linkmodule=8;layout.moduleprog=16;layout.modulenprog=24;layout.instbytes=24;layout.arraytype=16;layout.typesize=24
             dis = Cs(CS_ARCH_X86,CS_MODE_64) if arch == 'amd64' else Cs(CS_ARCH_ARM64,0) if arch == 'arm64' else Cs(CS_ARCH_RISCV,CS_MODE_RISCV64)
             blobs = {}
@@ -173,7 +173,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     checks+=1
                 if case=='call':continue
 
-            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False, fixedframe=None, descriptor=None, badresult=False, programaddress=None, slotshift=0):
+            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False, fixedframe=None, descriptor=None, badresult=False, programaddress=None, slotshift=0, typecheck=None):
                 """Exercise a leaf with high native pointers, four-byte alignment and exact aliases."""
                 if arch == 'amd64':
                     u = Uc(UC_ARCH_X86,UC_MODE_64); arg, result = UC_X86_REG_RDI, UC_X86_REG_RAX
@@ -195,7 +195,14 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 typedata=None
                 expected_copy=None
                 expected_head=None
-                if headcopy is not None:
+                if typecheck is not None:
+                    sourceowner,destowner,sourcetype,desttype=typecheck
+                    u.mem_write(s,struct.pack('<Q',sourceowner))
+                    u.mem_write(d,struct.pack('<Q',destowner))
+                    u.mem_write(data+0x540-layout.heaptype,struct.pack('<Q',sourcetype))
+                    u.mem_write(data+0x740-layout.heaptype,struct.pack('<Q',desttype))
+                    expected_copy=bytes(u.mem_read(data,0x1000))
+                elif headcopy is not None:
                     pointer,length,delta,countslot=headcopy
                     s=data+0x104;m=data+countslot;d=data+0x500+layout.listdata+delta
                     if alias==1:d=s
@@ -346,6 +353,32 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','typecheck'):
+                for value in (-1,0,1,7,256,2048):
+                    malformed=type(layout).from_buffer_copy(layout);malformed.heaptype=value
+                    guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
+                    assert lib.emit(guard,64,C.byref(malformed),ids['ITCMP'])==0
+                    assert list(guard)==[0xa5a5a5a5]*64
+                    checks+=1
+                owners=(0,(1<<64)-1,data+0x540,data+0x740)
+                types=(0,(1<<64)-1,data+0x900,data+0xa00)
+                for source in owners:
+                    for destination in owners:
+                        for stype in types:
+                            for dtype in types:
+                                for alias in (0,1):
+                                    effective=source if alias else destination
+                                    headers={data+0x540:stype,data+0x740:dtype}
+                                    valid=source==(1<<64)-1 or (source in headers and effective in headers and headers[source]==headers[effective])
+                                    for shift in ((0,4) if rv else range(8)):
+                                        _,pc,before,after,_=run('ITCMP',alias=alias,slotshift=shift,expect=int(valid),typecheck=(source,effective,stype,dtype))
+                                        assert pc==oldpc and before==after
+                                        checks+=1
+                # A nil source is accepted without following the destination's header.
+                for source in (0,(1<<64)-1):
+                    _,pc,before,after,_=run('ITCMP',expect=int(source!=0),typecheck=(source,0x100070000,0,0))
+                    assert pc==oldpc and before==after;checks+=1
+                if case=='typecheck':continue
             if case in ('','address'):
                 for shift in ((0,4) if rv else range(8)):
                     for alias in (0,1,2,3,5):

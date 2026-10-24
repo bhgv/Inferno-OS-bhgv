@@ -4,12 +4,14 @@
 
 static int depth;
 
+/* Read mapped native owner slots without imposing C pointer alignment. */
 void
 memchk(void *p, Type *t)
 {
 	Heap *h;
 	int i, j;
-	ulong *v, **base;
+	void *v;
+	uchar *base;
 
 	if(depth > 100)
 		return;
@@ -18,7 +20,7 @@ memchk(void *p, Type *t)
 	for(i = 0; i < t->np; i++) {
 		for(j = 0; j < 8; j++) {
 			if(t->map[i] & (1<<(7-j))) {
-				v = base[(i*8)+j];
+				memmove(&v, base+((ulong)i*8+j)*sizeof(v), sizeof(v));
 				if(v != H) {
 					h = D2H(v);
 					hmsize(h);
@@ -33,6 +35,7 @@ memchk(void *p, Type *t)
 	depth--;
 }
 
+/* Follow frame metadata through byte copies, including extension root frames. */
 void
 validstk(void)
 {
@@ -43,11 +46,11 @@ validstk(void)
 	fp = R.FP;
 	while(fp != nil) {
 		f = (Frame*)fp;
-		t = f->t;
+		memmove(&t, fp+O(Frame, t), sizeof(t));
 		if(t == nil)
 			t = SEXTYPE(f)->reg.TR;
 
 		memchk(f, t);
-		fp = f->fp;
+		memmove(&fp, fp+O(Frame, fp), sizeof(fp));
 	}
 }

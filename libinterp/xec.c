@@ -2818,6 +2818,7 @@ OP(self)
 	destroy(t);
 }
 
+/* Capture frame links before releasing owners in possibly four-byte aligned frames. */
 void
 destroystack(REG *reg)
 {
@@ -2825,7 +2826,7 @@ destroystack(REG *reg)
 	Frame *f, *fp;
 	Modlink *m;
 	Stkext *sx;
-	uchar *ex;
+	uchar *ex, *next;
 
 	ex = reg->EX;
 	reg->EX = nil;
@@ -2836,11 +2837,12 @@ destroystack(REG *reg)
 			f = (Frame*)reg->FP;
 			if(f == nil)
 				break;
-			reg->FP = f->fp;
-			t = f->t;
+			memmove(&next, (uchar*)f+O(Frame, fp), sizeof(next));
+			memmove(&t, (uchar*)f+O(Frame, t), sizeof(t));
+			reg->FP = next;
 			if(t == nil)
 				t = sx->reg.TR;
-			m = f->mr;
+			memmove(&m, (uchar*)f+O(Frame, mr), sizeof(m));
 			if (t->np)
 				freeptrs(f, t);
 			if(m != nil) {

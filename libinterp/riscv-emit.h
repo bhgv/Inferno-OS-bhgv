@@ -20,6 +20,7 @@ struct RvLayout {
 	int framelr, framefp;
 	int fixedcoef;
 	int module, linkmodule, moduleprog, modulenprog, instbytes;
+	int heaptype;
 };
 typedef struct RvBuf RvBuf;
 struct RvBuf {
@@ -168,6 +169,20 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	b.out=out; b.n=0; b.cap=cap; b.bad=0; b.abi=abi;
 	bytes=abi->wordbytes; f3=0; f7=0; binary=0; branch=0; swap=0; invert=0; shift=0; division=0; realbranch=0;
 	switch(op) {
+	case ITCMP:
+		/* Both owner slots are native pointers; headers have natural alignment. */
+		if(abi->xlen != 64 || abi->heaptype <= 0 || abi->heaptype > 255 || abi->heaptype%8) return 0;
+		rvptr(&b, Rvt1, abi->s); rvload(&b, Rvt3, Rvt1, 8);
+		rvptr(&b, Rvt1, abi->d); rvload(&b, Rvt4, Rvt1, 8);
+		rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
+		rvbranch(&b, 0, Rvt3, Rvt6, 60);
+		rvguard(&b, 1, Rvt3, Rvzero); rvguard(&b, 1, Rvt4, Rvzero);
+		rvguard(&b, 1, Rvt4, Rvt6);
+		rvi(&b, 0x03, 3, Rvt3, Rvt3, -abi->heaptype);
+		rvi(&b, 0x03, 3, Rvt4, Rvt4, -abi->heaptype);
+		rvguard(&b, 0, Rvt3, Rvt4);
+		break;
+
 	case IMOVPC:
 		/* The bounded int-sized program length keeps the stride product in 64 bits. */
 		if(abi->xlen != 64) return 0;
