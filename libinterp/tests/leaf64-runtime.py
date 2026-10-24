@@ -75,6 +75,8 @@ int fixtureprotect(void *p,size_t n,int prot) {
 void freetype(Type *t) { (void)t;assert(0); }
 FREEMOD
 #define OP(name) void name(void)
+#define B(r) (*(BYTE*)R.r)
+#define SH(r) (*(SHORT*)R.r)
 #define W(r) (*(WORD*)R.r)
 #define A(r) (*(Array**)R.r)
 #define S(r) (*(String**)R.r)
@@ -83,6 +85,8 @@ FREEMOD
 #define V(r) (*(LONG*)R.r)
 char exInval[]="invalid", exZdiv[]="zero divide", exBounds[]="bounds", exHeap[]="heap", exNilref[]="nil";
 VM_OPERATIONS
+SCALAR_TRANSFERS
+
 static Module *active;
 static int activeop;
 /* Invoke actual interpreter helpers only when native code rejects an input. */
@@ -545,7 +549,7 @@ int main(void) {
 #if EXECUTE_NATIVE
     assert(m.jit->entry[ISUBW](&R)==1 && out==4);
     R.d=&a;assert(m.jit->entry[IADDW](&R)==1 && a==10);
-    arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);powers(&m);headrecords(&m);realbranches(&m);
+    scalartransfers();arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);powers(&m);headrecords(&m);realbranches(&m);
 #endif
     assert(compile(&m,33,nil));dropmodule(&m);
     for(i=0;i<33;i++)instructions[i].op=IMOVP;
@@ -566,7 +570,7 @@ a=load.index('void\nfreemod(');b=load.index('\nvoid\nunload(',a)
 unit=unit.replace('FREEMOD',load[a:b])
 xec=Path(os.environ.get('LEAF_VM_SOURCE',str(root/'libinterp/xec.c'))).read_text()
 parts=[]
-for signature in ('static WORD\nshiftcount(', 'static List*\nlisthead(', 'OP(lenl)', 'OP(headb)', 'OP(headw)', 'OP(headl)', 'OP(headf)', 'OP(headm)', 'static void\nbranchreal(', 'OP(beqf)', 'OP(bnef)', 'OP(bltf)', 'OP(blef)', 'OP(bgtf)', 'OP(bgef)', 'OP(iexpw)', 'OP(iexpl)', 'OP(iexpf)', 'OP(movm)', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
+for signature in ('OP(movb)', 'OP(movw)', 'OP(movl)', 'OP(movf)', 'OP(cvtbw)', 'OP(cvtwb)', 'OP(cvtws)', 'OP(cvtsw)', 'OP(cvtwl)', 'OP(cvtlw)', 'static WORD\nshiftcount(', 'static List*\nlisthead(', 'OP(lenl)', 'OP(headb)', 'OP(headw)', 'OP(headl)', 'OP(headf)', 'OP(headm)', 'static void\nbranchreal(', 'OP(beqf)', 'OP(bnef)', 'OP(bltf)', 'OP(blef)', 'OP(bgtf)', 'OP(bgef)', 'OP(iexpw)', 'OP(iexpl)', 'OP(iexpf)', 'OP(movm)', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
     if signature.startswith('static ') and signature not in xec:continue
     start=xec.index(signature);brace=xec.index('{',start);depth=0
     for token in re.finditer(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*[\s\S]*?\*/|//[^\n]*|[{}]',xec[brace:]):
@@ -580,6 +584,13 @@ string=(root/'libinterp/string.c').read_text()
 for op in ('lenc','indc'):
     a=string.index('OP('+op+')');b=string.index('\n}',a)+2
     parts.append(string[a:b])
+scalar=(root/'libinterp/tests/scalar-transfers.c').read_text()
+scalar=scalar[scalar.index('/* Construct independent'):]
+scalar=scalar.replace('int\nmain(void)', 'static void\nscalartransfers(void)')
+scalar=scalar.replace('\tunsigned long checks=0;', '\tunsigned long checks=0;\n\tModule module;\n\tInst code[10];\n\tint ids[] = {IMOVB,IMOVW,IMOVL,IMOVF,ICVTBW,ICVTWB,ICVTWS,ICVTSW,ICVTWL,ICVTLW};\n\tmemset(&module,0,sizeof(module));\n\tmemset(code,0,sizeof(code));\n\tfor(k=0;k<10;k++) code[k].op=ids[k];\n\tmodule.prog=code;module.nprog=10;\n\tassert(compile(&module,10,nil));')
+scalar=scalar.replace('\t\tops[op]();', '\t\tassert(module.jit->entry[ids[op]](&R)==1);\n\t\tassert(!memcmp(memory.bytes,expected,sizeof(expected)));\n\t\t/* Restore the source so the production C path sees identical input. */\n\t\tfor(k=0;k<sizeof(memory.bytes);k++) memory.bytes[k]=(uchar)(k*37+11);\n\t\tmemmove(memory.bytes+s,&patterns[i],8);\n\t\tops[op]();')
+scalar=scalar.replace('\treturn 0;', '\tdropmodule(&module);')
+unit=unit.replace('SCALAR_TRANSFERS',scalar)
 unit=unit.replace('VM_OPERATIONS','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='leaf64-runtime-') as directory:
     td=Path(directory);source=td/'runtime.c';source.write_text(unit)

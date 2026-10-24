@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -90,6 +90,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if alias == 2: d=m
                 if alias == 3: s=d-4
                 if alias == 4: d=m+4
+                if alias == 5: s=d+4
                 output=d
                 metadata=None
                 expected_copy=None
@@ -221,6 +222,24 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','scalar'):
+                patterns=[0,1,127,128,255,256,0x8000,0xffff,0x7fffffff,0x80000000,
+                          0xffffffff,0x100000000,0x8000000000000000,0xffffffffffffffff,
+                          0x7ff0000000000042,0xfff8000000000042]
+                for name,width in [('IMOVB',1),('IMOVW',wb),('IMOVL',8),('IMOVF',8),
+                                   ('ICVTBW',wb),('ICVTWB',1),('ICVTWS',2),('ICVTSW',wb),
+                                   ('ICVTWL',8),('ICVTLW',wb)]:
+                    for bits in patterns:
+                        raw=bits.to_bytes(8,'little')
+                        wanted=(bits&255 if name=='ICVTBW' else
+                                signed(bits,16) if name=='ICVTSW' else
+                                signed(bits,wb*8) if name=='ICVTWL' else bits)
+                        for alias in (0,1,3,5):
+                            out,pc,before,after,_=run(name,alias=alias,raw=raw,poison=True)
+                            assert int.from_bytes(out[:width],'little')==wanted&((1<<(8*width))-1),(arch,wb,name,bits,alias)
+                            assert pc==oldpc and before[:8]==after[:8] and before[8+width:]==after[8+width:]
+                            checks+=1
+                if case=='scalar':continue
             if case in ('','realbranch'):
                 floats=[0,1<<63,0x3ff0000000000000,0xbff0000000000000,
                         0x0010000000000000,0x8010000000000000,0x7fefffffffffffff,0xffefffffffffffff,

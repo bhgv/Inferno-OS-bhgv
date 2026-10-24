@@ -61,16 +61,68 @@ OP(movm)
 		memmove(R.d, R.s, n);
 }
 OP(lea)  { W(d) = (WORD)R.s; }
-OP(movb) { B(d) = B(s); }
-OP(movw) { W(d) = W(s); }
-OP(movf) { F(d) = F(s); }
-OP(movl) { V(d) = V(s); }
-OP(cvtbw){ W(d) = B(s); }
-OP(cvtwb){ B(d) = W(s); }
+/* Preserve overlapping scalar slots without requiring host alignment. */
+OP(movb)
+{
+	memmove(R.d, R.s, sizeof(BYTE));
+}
+/* Preserve overlapping scalar slots without requiring host alignment. */
+OP(movw)
+{
+	memmove(R.d, R.s, sizeof(WORD));
+}
+/* Preserve overlapping scalar slots without requiring host alignment. */
+OP(movf)
+{
+	memmove(R.d, R.s, sizeof(REAL));
+}
+/* Preserve overlapping scalar slots without requiring host alignment. */
+OP(movl)
+{
+	memmove(R.d, R.s, sizeof(LONG));
+}
+/* Capture the BYTE source before converting into a possibly overlapping WORD slot. */
+OP(cvtbw)
+{
+	BYTE source;
+	WORD result;
+
+	memmove(&source, R.s, sizeof(source));
+	result = source;
+	memmove(R.d, &result, sizeof(result));
+}
+/* Capture the WORD source before converting into a possibly overlapping BYTE slot. */
+OP(cvtwb)
+{
+	WORD source;
+	BYTE result;
+
+	memmove(&source, R.s, sizeof(source));
+	result = source;
+	memmove(R.d, &result, sizeof(result));
+}
 OP(cvtrf){ F(d) = SR(s); }
 OP(cvtfr){ SR(d) = F(s); }
-OP(cvtws){ SH(d) = W(s); }
-OP(cvtsw){ W(d) = SH(s); }
+/* Capture the WORD source before converting into a possibly overlapping SHORT slot. */
+OP(cvtws)
+{
+	WORD source;
+	SHORT result;
+
+	memmove(&source, R.s, sizeof(source));
+	result = source;
+	memmove(R.d, &result, sizeof(result));
+}
+/* Capture the SHORT source before converting into a possibly overlapping WORD slot. */
+OP(cvtsw)
+{
+	SHORT source;
+	WORD result;
+
+	memmove(&source, R.s, sizeof(source));
+	result = source;
+	memmove(R.d, &result, sizeof(result));
+}
 OP(cvtwf){ F(d) = W(s); }
 OP(addb) { B(d) = B(m) + B(s); }
 /* Keep word addition independent of host signed-overflow optimization. */
@@ -490,8 +542,26 @@ OP(blec) { if(stringcmp(S(s), S(m)) <= 0) JMP(d); }
 OP(bgtc) { if(stringcmp(S(s), S(m)) >  0) JMP(d); }
 OP(bgec) { if(stringcmp(S(s), S(m)) >= 0) JMP(d); }
 OP(iexit){ error(""); }
-OP(cvtwl){ V(d) = W(s); }
-OP(cvtlw){ W(d) = V(s); }
+/* Capture the WORD source before converting into a possibly overlapping LONG slot. */
+OP(cvtwl)
+{
+	WORD source;
+	LONG result;
+
+	memmove(&source, R.s, sizeof(source));
+	result = source;
+	memmove(R.d, &result, sizeof(result));
+}
+/* Capture the LONG source before converting into a possibly overlapping WORD slot. */
+OP(cvtlw)
+{
+	LONG source;
+	WORD result;
+
+	memmove(&source, R.s, sizeof(source));
+	result = source;
+	memmove(R.d, &result, sizeof(result));
+}
 OP(cvtlf){ F(d) = V(s); }
 /* Round first, then reject non-finite or out-of-range big conversions. */
 OP(cvtfl)
