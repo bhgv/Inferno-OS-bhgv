@@ -116,6 +116,7 @@ openchannel(TestChannel *box, int capacity, int pointers)
 	Channel *c;
 
 	memset(box, 0, sizeof(*box)); c = &box->c;
+	box->h.ref = 1;
 	c->send = nodealloc(sizeof(Progq)); c->recv = nodealloc(sizeof(Progq));
 	c->buf = capacity ? H2D(Array*, heaparray(pointers ? &pointer : &scalar, capacity)) : H;
 	c->mover = pointers ? movp : movw;
@@ -128,6 +129,7 @@ closechannel(Channel *c)
 	Progq *q, *next;
 	int direction;
 
+	assert(D2H(c)->ref == 1);
 	destroy(c->buf);
 	for(direction = 0; direction < 2; direction++){
 		q = direction ? c->recv : c->send;

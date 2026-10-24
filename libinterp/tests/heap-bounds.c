@@ -120,6 +120,69 @@ pointercopies(void)
     type.np=0;
 }
 
+/* A replaced destination element may be the only owner of the source or its view. */
+static void
+borrowedcopies(void)
+{
+	Type scalar = {1};
+	Array *source, *target, *root;
+	void *child;
+	WORD offset;
+	int length, victim, shared, view, i, before, cases = 0;
+
+	scalar.size = sizeof(WORD);
+	type.size = sizeof(void*);
+	type.np = 1;
+	type.map[0] = 0x80;
+	for(length = 1; length <= 16; length++)
+	for(offset = 0; offset < 4; offset++)
+	for(victim = 0; victim < length; victim++)
+	for(shared = 0; shared < 2; shared++)
+	for(view = 0; view < 2; view++){
+		root = H2D(Array*, heaparray(&type, length));
+		child = H2D(void*, heapz(&scalar));
+		for(i = 0; i < length; i++){
+			((void**)root->data)[i] = child;
+			D2H(child)->ref++;
+		}
+		source = root;
+		if(view){
+			source = H2D(Array*, heap(&Tarray));
+			source->len = length;
+			source->t = &type;
+			type.ref++;
+			source->root = root;
+			source->data = root->data;
+		}
+		target = H2D(Array*, heaparray(&type, length+offset+2));
+		((void**)target->data)[offset+victim] = source;
+		if(shared)
+			D2H(source)->ref++;
+		R.s = &((Array**)target->data)[offset+victim];
+		R.d = &target;
+		R.m = &offset;
+		which = 9;
+		before = poolcalls;
+		assert(kprotect(run, nil));
+		assert(poolcalls == before);
+		for(i = 0; i < target->len; i++)
+			assert(((void**)target->data)[i] ==
+				(i >= offset && i < offset+length ? child : H));
+		assert(D2H(child)->ref == 1+length*(1+shared));
+		if(shared){
+			assert(D2H(source)->ref == 1);
+			destroy(source);
+		}
+		destroy(target);
+		assert(D2H(child)->ref == 1);
+		destroy(child);
+		assert(live == 0 && scalar.ref == 1 && type.ref == 1 && Tarray.ref == 1);
+		cases++;
+	}
+	type.np = 0;
+	printf("PASS borrowed array copies: %d owner/view/offset cases\n", cases);
+}
+
 /* An empty non-nil array can have no data, but invalid destinations still fail. */
 static void
 emptycopies(void)
@@ -201,6 +264,10 @@ int main(int argc, char **argv) {
     Type *types[]={&type};Modlink ml={0};
     WORD count,first,last,offset;
     List *saved;
+    if(argc>1 && !strcmp(argv[1],"borrowed-copies")) {
+        borrowedcopies();
+        return 0;
+    }
     if(argc>1 && !strcmp(argv[1],"empty-views")) {
         emptyviews(0);
         assert(live==0 && type.ref==1 && Tarray.ref==1);
@@ -282,7 +349,7 @@ int main(int argc, char **argv) {
         destroy(a);assert(D2H(value)->ref==1);destroy(b);assert(scalar.ref==1);
         type.np=0;
     }
-    pointercopies(); emptycopies(); nilslices(); emptyviews(1);
+    pointercopies(); borrowedcopies(); emptycopies(); nilslices(); emptyviews(1);
     assert(live==0 && worker.nerr==0 && type.ref==1 && Tarray.ref==1 && Tmodlink.ref==1 && Tlist.ref==1);
     printf("PASS heap bounds: %d array boundaries, overflow counterexample, pool/header limits, copies, links, lists, slices, full-WORD VM sizes, 285 pointer overlaps and empty spans\n",checks);
     return 0;

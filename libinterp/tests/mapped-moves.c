@@ -13,7 +13,7 @@ REG R;
 Pool *heapmem;
 int mutator, nprop;
 void (*heapmonitor)(int, void*, ulong);
-Type Tarray = {1}, leaf = {1, 0, 0, sizeof(WORD)};
+Type channelowner = {1}, Tarray = {1}, leaf = {1, 0, 0, sizeof(WORD)};
 char exHeap[] = "heap", exNegsize[] = "negative", exNomem[] = "memory", exNilref[] = "nil", exModule[] = "module";
 static int live, checks, wakes;
 static struct { Heap *heap; ulong size; } blocks[256];
@@ -117,6 +117,11 @@ destroy(void *value)
 	if(h->t == &Tarray){
 		freearray(h, 0);
 		Tarray.ref--;
+	}else if(h->t == &channelowner){
+		Channel *c = value;
+		destroy(c->buf);
+		c->mid.t->ref--;
+		channelowner.ref--;
 	}else{
 		assert(h->t == &leaf);
 		leaf.ref--;
@@ -314,6 +319,85 @@ rendezvous(void)
 	}
 }
 
+/* Receiving can replace the channel's sole owner before buffer cleanup or refill. */
+static void
+borrowedchannels(void)
+{
+	Type type = {1};
+	Channel *channel;
+	Progq send, receive;
+	void *output[8], *message[8], *object;
+	int width, slot, capacity, front, shared, blocked, i, j, refs;
+
+	type.np = 1;
+	for(width = 1; width <= 8; width++)
+	for(slot = 0; slot < width; slot++)
+	for(capacity = 1; capacity <= 4; capacity++)
+	for(front = 0; front < capacity; front++)
+	for(shared = 0; shared < 2; shared++)
+	for(blocked = 0; blocked < 2; blocked++){
+		type.size = width*sizeof(void*);
+		type.map[0] = 0xff << (8-width);
+		channel = H2D(Channel*, nheap(sizeof(Channel)));
+		memset(channel, 0, sizeof(*channel));
+		D2H(channel)->t = &channelowner;
+		channelowner.ref++;
+		channel->mid.t = &type;
+		type.ref++;
+		channel->mover = movtmp;
+		channel->buf = H2D(Array*, heaparray(&type, capacity));
+		channel->front = front;
+		channel->size = capacity;
+		memset(&send, 0, sizeof(send));
+		memset(&receive, 0, sizeof(receive));
+		channel->send = &send;
+		channel->recv = &receive;
+		object = child();
+		for(i = 0; i < capacity; i++)for(j = 0; j < width; j++){
+			((void**)channel->buf->data)[i*width+j] = object;
+			D2H(object)->ref++;
+		}
+		for(i = 0; i < width; i++){
+			output[i] = H;
+			message[i] = object;
+			D2H(object)->ref++;
+		}
+		output[slot] = channel;
+		if(shared)
+			D2H(channel)->ref++;
+		wakes = 0;
+		if(blocked){
+			memset(&peer, 0, sizeof(peer));
+			peer.state = Psend;
+			peer.ptr = message;
+			send.prog = &peer;
+		}
+		R.s = &output[slot];
+		R.d = output;
+		irecv();
+		assert(wakes == blocked && (!blocked || peer.ptr == nil));
+		for(i = 0; i < width; i++)
+			assert(output[i] == object);
+		refs = 1+2*width;
+		if(shared){
+			assert(D2H(channel)->ref == 1);
+			assert(channel->size == capacity-1+blocked);
+			refs += channel->size*width;
+		}
+		assert(D2H(object)->ref == refs);
+		if(shared)
+			destroy(channel);
+		for(i = 0; i < width; i++){
+			destroy(output[i]);
+			destroy(message[i]);
+		}
+		assert(D2H(object)->ref == 1);
+		destroy(object);
+		assert(!live && type.ref == 1 && channelowner.ref == 1 && leaf.ref == 1);
+		checks++;
+	}
+}
+
 /* Empty mapped records still resolve module metadata but never access data addresses. */
 static void
 empty(void)
@@ -364,6 +448,7 @@ main(int argc, char **argv)
 		overlap(mover, width, from, to, aliases);
 	if(argc == 1 || strcmp(argv[1], "mixed") == 0)mixed();
 	if(argc == 1 || strcmp(argv[1], "buffer") == 0)buffered();
+	if(argc == 1 || strcmp(argv[1], "borrowed") == 0)borrowedchannels();
 	if(argc == 1 || strcmp(argv[1], "direct") == 0)rendezvous();
 	if(argc == 1 || strcmp(argv[1], "empty") == 0)empty();
 	assert(!live && checks > 0);

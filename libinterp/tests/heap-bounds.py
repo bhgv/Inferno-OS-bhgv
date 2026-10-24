@@ -26,7 +26,23 @@ parts += [function('libinterp/xec.c','OP('+n+')') for n in ['newa','newaz','slic
 unit=(root/'libinterp/tests/heap-bounds.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='heap-bounds-') as directory:
     td=Path(directory);p=td/'heap.c';p.write_text(unit)
-    command=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O2 -g'))
-    command += ['-I'+str(root/p) for p in ['Linux/arm/include','emu/port','include','libinterp']]
-    subprocess.run(command+[str(p),'-o',str(td/'heap')],check=True)
-    subprocess.run([str(td/'heap')]+shlex.split(os.environ.get('HEAP_CASE','')),check=True)
+    command = shlex.split(os.environ.get('CC', 'cc'))
+    command += shlex.split(os.environ.get('CFLAGS', '-O2 -g'))
+    for bits in (64, 32):
+        includes = []
+        if bits == 32:
+            model = td / 'word32'
+            model.mkdir()
+            header = (root / 'include/interp.h').read_text()
+            header, words = re.subn(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
+            header, unsigned = re.subn(r'typedef unsigned long\s+UWORD;',
+                                      'typedef unsigned int UWORD;', header, count=1)
+            assert words == unsigned == 1
+            (model / 'interp.h').write_text(header)
+            includes = ['-I'+str(model)]
+        includes += ['-I'+str(root / path) for path in
+                     ('Linux/arm/include', 'emu/port', 'include', 'libinterp')]
+        binary = td / ('heap'+str(bits))
+        subprocess.run(command+includes+[str(p), '-o', str(binary)], check=True)
+        subprocess.run([str(binary)]+shlex.split(os.environ.get('HEAP_CASE', '')), check=True)
+        print('WORD'+str(bits), flush=True)

@@ -8,7 +8,7 @@
 
 static Proc worker;
 static char *raised;
-char exModule[]="module";
+char exModule[]="module", exNilref[]="nil";
 char exHeap[] = "heap";
 REG R;
 int mutator, nprop;
@@ -82,6 +82,7 @@ run(void *unused)
 	case 4: consf(); break;
 	case 5: consm(); break;
 	case 6: consmp(); break;
+	case 7: headmp(); break;
 	}
 	return 1;
 }
@@ -192,12 +193,125 @@ sizes(void)
 	assert(kprotect(run, nil)); destroy(list); checks++;
 }
 
+/* Replace the sole source owner while copying every one-byte pointer-map shape. */
+static void
+mappedheads(void)
+{
+	void *output[8], *expected[8];
+	Type *types[] = {&record};
+	Module owner = {0};
+	Modlink module = {0};
+	List *source, *child, *tail;
+	WORD index = 0;
+	int mask, slot, shared, i, extra;
+
+	owner.type = types;
+	owner.ntype = 1;
+	module.m = &owner;
+	R.M = &module;
+	record.size = sizeof(output);
+	record.np = 1;
+	operation = 7;
+	for(mask = 1; mask < 256; mask++)
+	for(slot = 0; slot < 8; slot++){
+		if(!(mask & (0x80>>slot)))
+			continue;
+		for(shared = 0; shared < 2; shared++){
+			record.map[0] = mask;
+			tail = H;
+			cons(0, &tail);
+			source = tail;
+			cons(sizeof(output), &source);
+			source->t = &record;
+			record.ref++;
+			child = H;
+			cons(0, &child);
+			extra = 0;
+			for(i = 0; i < 8; i++){
+				if(mask & (0x80>>i)){
+					expected[i] = i&1 ? (void*)H : (void*)child;
+					if(expected[i] == child){
+						D2H(child)->ref++;
+						extra++;
+					}
+					output[i] = H;
+				}else{
+					memset(&expected[i], 0x29+i, sizeof(expected[i]));
+					memset(&output[i], 0xa9+i, sizeof(output[i]));
+				}
+			}
+			memmove(source->data, expected, sizeof(expected));
+			output[slot] = source;
+			if(shared)
+				D2H(source)->ref++;
+			R.s = &source;
+			R.d = output;
+			R.m = &index;
+			assert(kprotect(run, nil));
+			assert(!memcmp(output, expected, sizeof(expected)));
+			assert(D2H(child)->ref == 1+extra*(1+shared));
+			if(shared){
+				assert(D2H(source)->ref == 1);
+				destroy(source);
+			}
+			freeptrs(output, &record);
+			assert(D2H(child)->ref == 1);
+			destroy(child);
+			assert(live == 0 && record.ref == 1 && Tlist.ref == 1);
+			checks++;
+		}
+	}
+}
+
+/* Metadata errors must not acquire a source reference; empty records do not replace owners. */
+static void
+mappedheadbounds(void)
+{
+	Type *types[] = {&record};
+	Module owner = {0};
+	Modlink module = {0};
+	List *source, *output;
+	WORD index;
+	int mode;
+
+	owner.type = types;
+	owner.ntype = 1;
+	module.m = &owner;
+	R.M = &module;
+	operation = 7;
+	record.size = 0;
+	record.np = 0;
+	for(mode = 0; mode < 4; mode++){
+		source = H;
+		cons(0, &source);
+		output = source;
+		index = mode == 0 ? 0 : mode == 1 ? -1 : mode == 2 ? 1 :
+			sizeof(WORD) > 4 ? (WORD)((uvlong)1<<32) : -2;
+		R.s = &source;
+		R.d = &output;
+		R.m = &index;
+		assert(kprotect(run, nil) == (mode == 0));
+		assert(output == source && D2H(source)->ref == 1 && live == 1);
+		destroy(source);
+		assert(live == 0);
+		checks++;
+	}
+	source = H;
+	output = H;
+	index = 0;
+	R.s = &source;
+	R.d = &output;
+	R.m = &index;
+	assert(!kprotect(run, nil) && raised == exNilref && output == H);
+	checks++;
+}
+
 /* Require complete ownership balance and guard integrity in each VM word model. */
 int
 main(void)
 {
 	Tptr.size = sizeof(void*); Tptr.np = 1; Tptr.map[0] = 0x80;
-	scalars(); aliases(); payloads(); sizes();
+	scalars(); aliases(); payloads(); sizes(); mappedheads(); mappedheadbounds();
 	assert(live == 0 && Tlist.ref == 1 && Tptr.ref == 1 && worker.nerr == 0);
 	printf("PASS lists: %d width/alias/failure cases, WORD%zu\n", checks, sizeof(WORD)*8);
 	return 0;

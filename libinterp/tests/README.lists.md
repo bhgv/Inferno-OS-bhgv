@@ -25,3 +25,17 @@ and is not a full Dis ABI32 test. Scalar operand aliasing beyond typed pointer/r
 payloads is not covered. The fixture does not run GC, compiler-generated list
 programs, JIT calls or a complete Inferno boot. LeakSanitizer process inspection
 is disabled in the sandbox; ASan/UBSan remain enabled.
+
+Mapped head extraction now retains its source list until pointer replacement and
+byte copying finish. A mapped destination may contain the list's sole owner;
+retaining only its head's children did not keep the head storage alive. Descriptor
+lookup and empty-record handling precede the temporary reference, so invalid
+metadata cannot leak that reference and empty heads leave destination owners alone.
+
+The extended fixture runs 3,106 cases per WORD model. The 2,048 new successful
+head cases enumerate all 255 nonempty one-byte pointer maps, each possible mapped
+owner slot, and sole/shared source ownership. Mixed scalar bytes must match the
+snapshot exactly. Repeated head children, list tails and descriptor references
+must balance after every copy. Five additional cases cover empty records, nil
+lists, invalid indices and full-width index rejection. The parent headmp body
+fails under ASan with a heap-use-after-free during the final record copy.

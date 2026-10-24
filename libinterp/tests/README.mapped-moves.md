@@ -59,3 +59,27 @@ compiler checkpoint. It includes this driver and module type consumers and omits
 GUI/Tk and launcher-option tests. `--jit` can additionally select the existing
 x86/ARM instruction-emulation drivers when their dependencies are installed;
 those optional JIT checks are not claimed by this series.
+
+Buffered receives now retain the buffer across movement and consumed-slot cleanup.
+The destination may own the last channel reference; destroying that channel must
+not invalidate the message being copied or its subsequent pointer cleanup. When
+a sender is waiting on a full buffer, irecv separately retains the channel until
+the received slot has been refilled. This keeps both its metadata and buffer
+alive until the sender's payload has been transferred.
+
+The extended matrix runs 13,917 cases per model (27,834 total). Its 1,440 new
+borrowed-channel cases cover mapped records of one through eight pointers, every
+channel-owner slot, capacities one through four, every initial ring position,
+sole/shared channel owners and receives with/without a waiting sender. Production
+irecv, cgetb/cputb, movtmp, heaparray, reference maps and freearray participate;
+the bounded destruction adapter releases real heap channel buffers and descriptor
+references. Full output, wakeup counts, refill sizes, exact child references and
+all heap/type balances are checked. Both models pass the complete ASan+UBSan suite
+with stack instrumentation enabled.
+
+The old cgetb body reproduces a message-buffer heap-use-after-free. Substituting
+only the corrected cgetb into the parent source independently exposes irecv's
+missing channel owner during refill. Run just the new matrix with
+`MAPPED_MOVE_CASE=borrowed`. Queue/scheduler boundaries remain modeled, not native
+concurrent threads. No complete VM boot, GC cycle or target JIT execution is
+claimed. Tk, security/cryptography and backend sources are unchanged.

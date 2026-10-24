@@ -1187,6 +1187,7 @@ OP(lenl)
 	}
 	W(d) = l;
 }
+/* Retain buffered storage if the received value replaces the channel owner. */
 static int
 cgetb(Channel *c, void *v)
 {
@@ -1196,6 +1197,7 @@ cgetb(Channel *c, void *v)
 	if((a = c->buf) == H)
 		return 0;
 	if(c->size > 0){
+		D2H(a)->ref++;
 		w = a->data+c->front*a->t->size;
 		c->front++;
 		if(c->front == c->buf->len)
@@ -1209,6 +1211,7 @@ cgetb(Channel *c, void *v)
 			freeptrs(w, a->t);
 			initmem(a->t, w);
 		}
+		destroy(a);
 		return 1;
 	}
 	return 0;
@@ -1344,7 +1347,7 @@ OP(isend)
 	addrun(p);
 	R.t = 0;
 }
-/* Queue a blocked receiver before changing its scheduler state. */
+/* Queue blocked receivers safely and retain buffered channels through refill. */
 OP(irecv)
 {
 	Channel *c;
@@ -1375,9 +1378,12 @@ OP(irecv)
 		altdone(p->R.s, p, c, 0);
 
 	if(c->buf != H){
+		/* The destination can release c; keep it alive through sender refill. */
+		D2H(c)->ref++;
 		cgetb(c, R.d);
 		cputb(c, p->ptr);
 		p->ptr = nil;
+		destroy(c);
 	}
 	else{
 		R.m = &c->mid;
@@ -1601,16 +1607,27 @@ OP(headm)
 	if(n != 0)
 		memmove(R.d, l->data, n);
 }
-/* Validate the list before copying its mapped payload. */
+/* Keep the head storage alive when replacing the destination releases its list. */
 OP(headmp)
 {
 	List *l;
+	Type *t;
 
 	l = L(s);
 	if(l == H)
 		error(exNilref);
+	t = moduletype(R.M, W(m));
+	if(t->size == 0)
+		return;
+
+	/* Resolve fallible metadata before acquiring the temporary source owner. */
+	D2H(l)->ref++;
 	R.s = l->data;
-	movmp();
+	incmem(R.s, t);
+	if(t->np)
+		freeptrs(R.d, t);
+	memmove(R.d, R.s, t->size);
+	destroy(l);
 }
 /* The tail operation must raise a VM nil-reference error on an empty list. */
 OP(tail)
@@ -1674,7 +1691,7 @@ OP(slicea)
 	}
 	Setmark(h);
 }
-/* Validate even empty copies, then avoid touching their possibly empty data spans. */
+/* Validate empty spans and retain mapped source storage through destination release. */
 OP(slicela)
 {
 	Type *t;
@@ -1700,6 +1717,8 @@ OP(slicela)
 		memmove(ds->data+dl*t->size, ss->data, ss->len*t->size);
 		return;
 	}
+	/* A destination element can own the source array or its backing view. */
+	D2H(ss)->ref++;
 	sp = ss->data;
 	dp = ds->data+dl*t->size;
 
@@ -1726,6 +1745,7 @@ OP(slicela)
 		}
 	}
 	memmove(ds->data+dl*t->size, ss->data, ss->len*t->size);
+	destroy(ss);
 }
 OP(alt)
 {

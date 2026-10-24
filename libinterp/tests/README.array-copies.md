@@ -59,3 +59,24 @@ HEAP_CASE=empty-views CFLAGS='-O1 -g -fsanitize=address,undefined -fno-sanitize-
 The subset executes all sixteen successful empty-view/root transfers; it does not
 claim allocation-failure or nil-error sanitizer coverage. Those scenarios remain
 in the complete UBSan suite and ordinary host execution.
+
+Mapped slice assignment also retains the source array through the final copy.
+A replaced destination element can be the sole owner of that array or a view
+that owns its backing root. Retaining child pointers alone does not preserve
+source storage. No new allocation is required, and the temporary owner is dropped
+after copying. Existing overlap ordering and empty-span validation are preserved.
+
+Both WORD64 and WORD32 now run the heap driver with native host pointers. The
+new borrowed-source matrix adds 2,176 cases per model: lengths 1 through 16,
+four destination offsets, every replaced owner position, direct/view sources,
+and sole/shared owners. Independent output and exact child/type/root reference
+checks require complete heap balance. The parent slicela body independently
+reproduces a heap-use-after-free. The focused matrix passes ASan+UBSan:
+
+```
+HEAP_CASE=borrowed-copies CFLAGS='-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all' python3 libinterp/tests/heap-bounds.py
+```
+
+The full two-model fixture passes UBSan; the earlier documented full-suite ASan
+error-jump limitation remains. The new subset has no error jumps and does not
+suppress stack instrumentation. These models do not establish two native ABIs.
