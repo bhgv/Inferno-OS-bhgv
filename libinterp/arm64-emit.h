@@ -46,7 +46,7 @@ a64guard(A64Buf *b, u32int condition)
 	a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 }
 
-/* Fetch a native array header field after validating its owner pointer. */
+/* Fetch a native object header field after validating its owner pointer. */
 static void
 a64field(A64Buf *b, int result, int owner, int offset, int bytes)
 {
@@ -60,7 +60,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 {
 	A64Buf b;
 	LeafOp p;
-	int i, empty, other, done, scale, limit;
+	int i, empty, other, done, scale, limit, loop;
 	u32int width;
 	static u32int arithmetic[] = {0x0b000000, 0x4b000000, 0x1b007c00,
 		0x0a000000, 0x2a000000, 0x4a000000};
@@ -73,7 +73,47 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafLength || p.kind == LeafIndex){
+	if(p.kind == LeafStringLength){
+		if(abi->stringlen < 0 || abi->stringlen > 16380 || abi->stringlen%4 != 0) return 0;
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
+		a64guard(&b, 0xb500006c);
+		a64put(&b, 0xb100059f); /* cmn x12, #1 */
+		empty = b.n; a64put(&b, 0x54000000);
+		a64field(&b, 12, 12, abi->stringlen, 4);
+		a64put(&b, 0x52b0000d); /* mov w13, #0x80000000 */
+		a64put(&b, 0x6b0d019f); a64guard(&b, 0x54000061);
+		a64put(&b, 0x36f8004c); /* tbz w12, #31, positive */
+		a64put(&b, 0x4b0c03ec); /* neg w12, w12 */
+		done = b.n; a64put(&b, 0x14000000);
+		b.code[empty] |= (b.n-empty)<<5; a64put(&b, 0x5280000c);
+		b.code[done] |= b.n-done;
+		a64ptr(&b, 11, abi->d); a64store(&b, 12, abi->wordbytes);
+	}else if(p.kind == LeafCopy){
+		/* Only the count is read for a zero or rejected negative length. */
+		a64ptr(&b, 10, abi->m); a64load(&b, 12, 10, abi->wordbytes);
+		a64put(&b, (abi->wordbytes == 8 ? 0xf100019fU : 0x7100019fU));
+		a64guard(&b, 0x5400006a); /* b.ge valid */
+		empty = b.n; a64put(&b, 0xb400000c);
+		a64put(&b, 0xf102019f); /* cmp x12, #128 */
+		a64guard(&b, 0x54000069); /* b.ls small */
+		a64ptr(&b, 9, abi->s); a64ptr(&b, 11, abi->d);
+		a64put(&b, 0xeb09017f); /* cmp x11, x9 */
+		other = b.n; a64put(&b, 0x54000009); /* b.ls forward */
+		a64put(&b, 0x8b0c0129); a64put(&b, 0x8b0c016b);
+		loop = b.n;
+		a64put(&b, 0xd1000529); a64put(&b, 0xd100056b);
+		a64load(&b, 13, 9, 1); a64store(&b, 13, 1);
+		a64put(&b, 0xf100058c); /* subs x12, x12, #1 */
+		a64put(&b, 0x54000001U | ((u32int)(loop-b.n)&0x7ffff)<<5);
+		done = b.n; a64put(&b, 0x14000000);
+		b.code[other] |= (b.n-other)<<5;
+		loop = b.n;
+		a64load(&b, 13, 9, 1); a64store(&b, 13, 1);
+		a64put(&b, 0x91000529); a64put(&b, 0x9100056b);
+		a64put(&b, 0xf100058c);
+		a64put(&b, 0x54000001U | ((u32int)(loop-b.n)&0x7ffff)<<5);
+		b.code[empty] |= (b.n-empty)<<5; b.code[done] |= b.n-done;
+	}else if(p.kind == LeafLength || p.kind == LeafIndex){
 		if(abi->arraylen < 0 || abi->arraydata < 0 || abi->arraylen > 16376 ||
 		   abi->arraydata > 16376 || (abi->arraylen|abi->arraydata)%8 != 0) return 0;
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);

@@ -17,6 +17,7 @@ __lsan_is_turned_off(void)
 static jmp_buf boundary;
 static char *raised;
 char exBounds[] = "bounds";
+char exNilref[] = "nil";
 char exHeap[] = "heap";
 char exNegsize[] = "negative";
 char exNomem[] = "memory";
@@ -135,6 +136,65 @@ runetochar(char *p, Rune *r)
 #define V(r) *((LONG*)(R.r))
 #define S(r) *((String**)(R.r))
 IMPLEMENTATION
+#ifndef STRING_LENGTH_FIRST
+#define STRING_LENGTH_FIRST 0
+#define STRING_LENGTH_LAST 2
+#endif
+/* Check both representations, operand aliases, alignment and atomic failures. */
+static void
+lengths(void)
+{
+	String header = {0}, *source;
+	union { uvlong align; uchar bytes[64]; } slots;
+	WORD result;
+	int values[] = {-INT_MAX, -65537, -1, 0, 1, 65537, INT_MAX};
+	int i;
+
+	for(i = 0; i < nelem(values); i++){
+		header.len = values[i];
+		source = &header;
+		result = 123;
+		R.s = &source;
+		R.d = &result;
+		lenc();
+		assert(result == (values[i] < 0 ? -(WORD)values[i] : values[i]));
+		R.d = &source;
+		lenc();
+		memcpy(&result, &source, sizeof(result));
+		assert(result == (values[i] < 0 ? -(WORD)values[i] : values[i]));
+#if STRING_LENGTH_FIRST == 0 && STRING_LENGTH_LAST == 2
+		source = &header;
+		memcpy(slots.bytes+4, &source, sizeof(source));
+		R.s = slots.bytes+4;
+		R.d = slots.bytes+20;
+		lenc();
+		memcpy(&result, R.d, sizeof(result));
+		assert(result == (values[i] < 0 ? -(WORD)values[i] : values[i]));
+		R.d = R.s;
+		lenc();
+		memcpy(&result, R.d, sizeof(result));
+		assert(result == (values[i] < 0 ? -(WORD)values[i] : values[i]));
+#endif
+	}
+	source = H;
+	R.s = &source;
+	R.d = &result;
+	lenc();
+	assert(result == 0);
+	for(i = STRING_LENGTH_FIRST; i < STRING_LENGTH_LAST; i++){
+		source = i ? &header : nil;
+		header.len = INT_MIN;
+		result = 123;
+		R.s = &source;
+		R.d = &result;
+		raised = nil;
+		if(!setjmp(boundary)){
+			lenc();
+			assert(0);
+		}
+		assert(raised == (i ? exHeap : exNilref) && result == 123);
+	}
+}
 /* Errors must be raised before reaching the allocator. */
 #define FAIL(expr, why) do { \
 	int before = calls; \
@@ -256,6 +316,7 @@ main(void)
 	insc();
 	assert(d->len == -1 && d->Srune[0]==0x400);
 	destroy(d);
+	lengths();
 	assert(live == 0 && Tstring.ref == 1);
 	puts("string allocation, aliasing, bounds and big conversion: PASS");
 	return 0;

@@ -15,14 +15,14 @@ from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
 root = Path(__file__).resolve().parents[2]
-ops = '''INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IMOVP IFRAME ICALL IRET IADDF'''.split()
 class Layout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata')]
+    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen')]
 class RvLayout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata')]
+    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen')]
 
 
 def signed(value, bits):
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
         ids = {name:lib.opid(i) for i,name in enumerate(ops)}
         for wb in (4,8):
             layout = RvLayout(64,wb,1,0,8,16,24) if rv else Layout(wb,0,8,16,24)
-            layout.arraylen=8;layout.arraydata=32
+            layout.arraylen=8;layout.arraydata=32;layout.stringlen=12
             dis = Cs(CS_ARCH_X86,CS_MODE_64) if arch == 'amd64' else Cs(CS_ARCH_ARM64,0) if arch == 'arm64' else Cs(CS_ARCH_RISCV,CS_MODE_RISCV64)
             blobs = {}
             for name in ops:
@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
             code, registers, data, stack = 0x10000, 0x100020000, 0x100030000, 0x40000
             oldpc, target = 0x123456789, 0x987654321
 
-            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0):
+            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None):
                 """Exercise a leaf with high native pointers, four-byte alignment and exact aliases."""
                 if arch == 'amd64':
                     u = Uc(UC_ARCH_X86,UC_MODE_64); arg, result = UC_X86_REG_RDI, UC_X86_REG_RAX
@@ -91,7 +91,26 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if alias == 3: s=d-4
                 output=d
                 metadata=None
-                if array is None:
+                expected_copy=None
+                if string is not None:
+                    owner,length=string
+                    if alias:d=s
+                    output=d
+                    u.mem_write(d-8,b'\xa5'*32)
+                    u.mem_write(s,struct.pack('<Q',owner))
+                    metadata=bytearray(b'\x5a'*64)
+                    metadata[layout.stringlen:layout.stringlen+4]=struct.pack('<i',length)
+                    u.mem_write(data+0x500,bytes(metadata))
+                elif copy is not None:
+                    src,dst,length,countslot=copy
+                    s=data+src;d=data+dst;m=data+countslot;output=d
+                    memory=bytearray((i*29+17)&255 for i in range(0x1000))
+                    memory[countslot:countslot+wb]=(length&((1<<(8*wb))-1)).to_bytes(wb,'little')
+                    u.mem_write(data,bytes(memory))
+                    if length>0 and expect:memory[dst:dst+length]=bytes(memory[src:src+length])
+                    expected_copy=bytes(memory)
+                    if length<=0 or not expect:s=d=0x100050000;output=data+0x100
+                elif array is None:
                     u.mem_write(d-8,b'\xa5'*32)
                     u.mem_write(s,raw if raw is not None else struct.pack('<Q',a & ((1<<64)-1)))
                     if not poison: u.mem_write(m,struct.pack('<Q',b & ((1<<64)-1)))
@@ -125,12 +144,39 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     def aligned_access(uc, access, address, size, value, user):
                         assert address % size == 0, (name, hex(address), size)
                     u.hook_add(UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE, aligned_access)
-                u.emu_start(code,end,count=100)
+                u.emu_start(code,end,count=4000)
+                if expected_copy is not None:assert bytes(u.mem_read(data,0x1000))==expected_copy,(arch,wb,copy)
                 assert u.reg_read(result) == expect,(arch,wb,name,a,b,u.reg_read(result),expect)
                 assert bytes(u.mem_read(registers+8,24)) == struct.pack('<QQQ',s,d,m)
                 if metadata is not None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','string'):
+                for pointer in (0,(1<<64)-1,data+0x500):
+                    for length in (-2147483648,-2147483647,-65537,-1,0,1,65537,2147483647):
+                        for alias in (0,1):
+                            valid=pointer!=0 and (pointer==(1<<64)-1 or length!=-2147483648)
+                            out,pc,before,after,_=run('ILENC',alias=alias,string=(pointer,length),expect=int(valid))
+                            if valid:
+                                wanted=0 if pointer==(1<<64)-1 else abs(length)
+                                assert int.from_bytes(out[:wb],'little')==wanted,(arch,wb,pointer,length)
+                                assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
+                            else:assert before==after
+                            assert pc==oldpc
+                            checks+=1
+                if case=='string':continue
+            if case in ('','copy'):
+                for length in (0,1,2,3,7,8,15,16,31,32,63,64,127,128):
+                    for delta in (-129,-64,-17,-8,-1,0,1,3,8,17,64,129):
+                        for countslot in (0x704,0x304,0x308):
+                            _,pc,_,_,_=run('IMOVM',copy=(0x304,0x304+delta,length,countslot))
+                            assert pc==oldpc
+                            checks+=1
+                for length in (-1,-(1<<(wb*8-1)),129,256,(1<<(wb*8-1))-1):
+                    _,pc,_,_,_=run('IMOVM',copy=(0x304,0x305,length,0x704),expect=0)
+                    assert pc==oldpc
+                    checks+=1
+                if case=='copy':continue
             if case=='control':
                 for suffix in ('B','W','L'):
                     for relation in ('EQ','NE','LT','LE','GT','GE'):

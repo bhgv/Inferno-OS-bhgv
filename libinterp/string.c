@@ -297,19 +297,26 @@ OP(cvtac)
 	*dp = ds;
 }
 
+/* Reject invalid lengths before taking the absolute representation size. */
 OP(lenc)
 {
 	int l;
+	WORD length;
 	String *ss;
 
 	l = 0;
-	ss = S(s);
+	memmove(&ss, R.s, sizeof(ss));
+	if(ss == nil)
+		error(exNilref);
 	if(ss != H) {
 		l = ss->len;
+		if(l == (-0x7fffffff-1))
+			error(exHeap);
 		if(l < 0)
 			l = -l;
 	}
-	W(d) = l;
+	length = l;
+	memmove(R.d, &length, sizeof(length));
 }
 
 OP(cvtcw)

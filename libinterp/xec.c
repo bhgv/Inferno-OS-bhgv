@@ -45,12 +45,12 @@ OP(movpc)
 		error(exBounds);
 	T(d) = &ml->m->prog[pc];
 }
-/* Reject negative raw-copy sizes before they become huge size_t values. */
+/* Capture possibly four-byte-aligned lengths before validating or copying. */
 OP(movm)
 {
 	WORD n;
 
-	n = W(m);
+	memmove(&n, R.m, sizeof(n));
 	if(n < 0)
 		error(exBounds);
 	if(n != 0)

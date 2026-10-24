@@ -5,13 +5,13 @@
  * Include isa.h first. u32int must be exactly 32 bits, independently of XLEN.
  */
 enum { Rvzero=0, Rvra=1, Rvt0=5, Rvt1=6, Rvt2=7, Rva0=10,
-       Rvt3=28, Rvt4=29, Rvt5=30, Rvt6=31, RvMax=64 };
+	   Rvt3=28, Rvt4=29, Rvt5=30, Rvt6=31, RvMax=64 };
 
 typedef struct RvLayout RvLayout;
 struct RvLayout {
 	int xlen, wordbytes, hasm;
 	int pc, s, d, m;
-	int arraylen, arraydata;
+	int arraylen, arraydata, stringlen;
 };
 typedef struct RvBuf RvBuf;
 struct RvBuf {
@@ -117,6 +117,45 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	b.out=out; b.n=0; b.cap=cap; b.bad=0; b.abi=abi;
 	bytes=abi->wordbytes; f3=0; f7=0; binary=0; branch=0; swap=0; invert=0; shift=0; division=0;
 	switch(op) {
+	case ILENC:
+		if(abi->xlen != 64 || abi->stringlen < 0 || abi->stringlen > 2047 || abi->stringlen%4 != 0) return 0;
+		rvptr(&b, Rvt1, abi->s); rvload(&b, Rvt0, Rvt1, 8);
+		rvguard(&b, 1, Rvt0, Rvzero);
+		rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
+		rvbranch(&b, 0, Rvt0, Rvt6, 36);
+		rvi(&b, 0x03, 2, Rvt3, Rvt0, abi->stringlen);
+		rvput(&b, 0x80000000U | Rvt6<<7 | 0x37);
+		rvguard(&b, 1, Rvt3, Rvt6);
+		rvbranch(&b, 5, Rvt3, Rvzero, 8);
+		rvr(&b, 0x33, 0, 32, Rvt3, Rvzero, Rvt3);
+		rvbranch(&b, 0, Rvzero, Rvzero, 8);
+		rvi(&b, 0x13, 0, Rvt3, Rvzero, 0);
+		rvptr(&b, Rvt2, abi->d); rvstore(&b, Rvt2, Rvt3, abi->wordbytes);
+		break;
+	case IMOVM:
+		if(abi->xlen != 64) return 0;
+		/* Keep the length in a register even if the copy overwrites its slot. */
+		rvptr(&b, Rvt1, abi->m); rvload(&b, Rvt3, Rvt1, abi->wordbytes);
+		rvguard(&b, 5, Rvt3, Rvzero);
+		rvi(&b, 0x13, 0, Rvt6, Rvzero, 128);
+		rvguard(&b, 7, Rvt6, Rvt3);
+		rvbranch(&b, 0, Rvt3, Rvzero, 76);
+		rvptr(&b, Rvt0, abi->s); rvptr(&b, Rvt2, abi->d);
+		rvbranch(&b, 7, Rvt0, Rvt2, 40); /* source >= destination: forward */
+		rvr(&b, 0x33, 0, 0, Rvt0, Rvt0, Rvt3);
+		rvr(&b, 0x33, 0, 0, Rvt2, Rvt2, Rvt3);
+		rvi(&b, 0x13, 0, Rvt0, Rvt0, -1);
+		rvi(&b, 0x13, 0, Rvt2, Rvt2, -1);
+		rvi(&b, 0x03, 4, Rvt4, Rvt0, 0); rvs(&b, 0, Rvt2, Rvt4, 0);
+		rvi(&b, 0x13, 0, Rvt3, Rvt3, -1);
+		rvbranch(&b, 1, Rvt3, Rvzero, -20);
+		rvbranch(&b, 0, Rvzero, Rvzero, 28);
+		rvi(&b, 0x03, 4, Rvt4, Rvt0, 0); rvs(&b, 0, Rvt2, Rvt4, 0);
+		rvi(&b, 0x13, 0, Rvt0, Rvt0, 1);
+		rvi(&b, 0x13, 0, Rvt2, Rvt2, 1);
+		rvi(&b, 0x13, 0, Rvt3, Rvt3, -1);
+		rvbranch(&b, 1, Rvt3, Rvzero, -20);
+		break;
 	case ILENA:
 	case IINDB: case IINDW: case IINDL: case IINDF:
 		if(abi->xlen != 64 || (op != ILENA && abi->wordbytes != 8) ||

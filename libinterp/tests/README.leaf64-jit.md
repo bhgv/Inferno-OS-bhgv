@@ -25,7 +25,8 @@ integer results. RISC-V division requires M; RV32 division remains in optab.
 Array lengths are native in both word models; fixed byte/word/big/real element
 addresses are native when VM words hold pointers. Header offsets are explicit
 layout inputs derived from Array, and all rejected inputs use the VM helper.
-Generic descriptor indexing remains in the interpreter.
+Generic descriptor indexing remains in the interpreter. String lengths and raw
+record moves of up to 128 bytes are also native; larger moves use optab/memmove.
 Binary64 negation is native: only the sign bit changes, preserving signed zeros,
 infinities and NaN payloads without requiring floating-point registers.
 Other floating arithmetic, reference ownership, allocation, calls, returns, exceptions
@@ -70,7 +71,7 @@ python3 libinterp/tests/slice-tokenize-suite.py --core
 
 The cross-architecture test compiles the production encoders, disassembles every
 emitted byte and executes AMD64, AArch64 and RV64 machine code in Unicorn. Its
-117,306 checks compare against independent Python integer/branch oracles for both
+120,660 checks compare against independent Python integer/branch oracles for both
 VM word widths. It covers overflow boundaries, randomized values, exact input
 aliases, partial move overlaps, four-byte-aligned long operands, high native
 addresses, PC updates, neighboring-byte guards, sizing, capacity rejection and
@@ -143,7 +144,7 @@ three 64-bit backends. See [the array-address guide](README.array-indices.md) fo
 the checked VM helper, zero-width semantics, native address guards, word-model
 limitations and independent parent regressions. The array-only emulator matrix
 adds 26,100 semantic executions plus shared sizing/ABI checks. The complete
-three-architecture machine-code suite now has 117,306 checks; the dedicated VM
+three-architecture machine-code suite now has 120,660 checks; the dedicated VM
 address fixture adds 40,023 checks. These counts do not imply whole target boot
 or a new Dis64 ABI.
 
@@ -173,3 +174,53 @@ overlap. The native AMD64 compiler fixture executes the published code with real
 REG offsets under ASan/UBSan in both word models. The RISC-V fixture additionally
 checks RV32 compatibility and reports 1,995 checks. Floating addition, conversion
 and comparison still use their existing VM implementations.
+
+## Bounded record copies and string lengths
+
+All three 64-bit leaf backends now emit IMOVM for lengths 0 through 128. They
+capture the count before any output write, select a forward/backward byte loop
+for overlapping spans and avoid touching source/destination storage at length
+zero. Negative lengths return to the VM's bounds exception. Larger positive
+lengths return without writes so the existing platform memmove handles them;
+there is no performance claim for the small byte-loop baseline. Rejected lengths
+are checked before source/destination pointers or data are accessed. RV32 leaves
+IMOVM in the interpreter.
+
+ILENC reads the signed 32-bit String.len field independently of VM word width.
+Positive ASCII and negative rune counts yield the same positive VM length. H
+produces zero. C-null owners and INT_MIN metadata decline to optab before an
+output write. The VM now raises exNilref for C-null and exHeap for INT_MIN,
+rather than dereferencing null or evaluating signed -INT_MIN. Header length
+fields and operand widths are separate explicit layout inputs.
+
+The VM movm helper captures its count with memmove instead of a WORD pointer
+load. The lenc helper similarly captures its owner pointer and writes its result
+with byte-safe copies. These avoid undefined native alignment assumptions for
+Dis operands that are four-byte aligned in the WORD64 test model; they do not
+establish a complete new Dis64 frame/GC ABI.
+
+Focused emulator checks:
+
+```
+LEAF64_CASE=copy python3 libinterp/tests/leaf64-jit.py
+LEAF64_CASE=string python3 libinterp/tests/leaf64-jit.py
+```
+
+The copy subset reports 3,510 checks including encoder checks. It compares all
+4 KiB of surrounding storage against snapshot-copy oracles for overlapping,
+identical and disjoint spans, byte alignment, overwritten count operands,
+128/129 boundaries, signed extrema and unmapped source/destination spans on
+rejection. The string subset reports 744 checks including encoder checks, with
+four-byte String.len offsets, both word widths, source/result aliases and
+unchanged destinations on fallback. The complete driver reports 120,660 checks.
+The native AMD64 fixture compares copies with libc memmove, tests the real
+String/REG offsets and runs actual VM fallback for length 129, invalid counts,
+C-null strings and INT_MIN metadata. Both word models pass ASan/UBSan.
+
+`STRING_SOURCE` and `LEAF_VM_SOURCE` allow production source substitution for
+regressions. Against parent 79a4692, the runtime fixture diagnoses a misaligned
+WORD64 movm count load. The string fixture with `STRING_LENGTH_CASE=nil` diagnoses
+a null String member access, and `STRING_LENGTH_CASE=intmin` diagnoses signed
+INT_MIN negation. The default string fixture additionally tests four-byte-aligned
+owner/result slots and aliasing. The repaired sources pass those cases with
+ASan/UBSan. None of these tests is a full target operating-system boot.

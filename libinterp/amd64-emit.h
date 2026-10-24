@@ -72,7 +72,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 {
 	X64Buf b;
 	LeafOp p;
-	int i, patch, n, empty, other, done, scale;
+	int i, patch, n, empty, other, done, scale, loop;
 	static uchar arithmetic[] = {0x01, 0x29, 0, 0x21, 0x09, 0x31};
 	static uchar inverse[] = {0x75, 0x74, 0x7d, 0x7f, 0x7e, 0x7c};
 
@@ -82,7 +82,52 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafLength || p.kind == LeafIndex){
+	if(p.kind == LeafStringLength){
+		if(abi->stringlen < 0) return 0;
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff);
+		x64byte(&b, 0x74); empty = b.n; x64byte(&b, 0);
+		x64field(&b, 0, 0, abi->stringlen, 4);
+		x64byte(&b, 0x3d); x64word(&b, 0x80000000U); x64guard(&b, 0x75);
+		x64byte(&b, 0x85); x64byte(&b, 0xc0);
+		x64byte(&b, 0x79); x64byte(&b, 2); x64byte(&b, 0xf7); x64byte(&b, 0xd8);
+		x64byte(&b, 0xeb); done = b.n; x64byte(&b, 0);
+		b.bytes[empty] = b.n-empty-1;
+		x64byte(&b, 0x31); x64byte(&b, 0xc0);
+		b.bytes[done] = b.n-done-1;
+		x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
+	}else if(p.kind == LeafCopy){
+		/* Capture the signed length before copying can overwrite its operand. */
+		x64ptr(&b, 0, abi->m); x64load(&b, 0, abi->wordbytes);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x79);
+		x64byte(&b, 0x74); empty = b.n; x64byte(&b, 0);
+		/* Leave large records to the platform's optimized memmove. */
+		x64byte(&b, 0x48); x64byte(&b, 0x3d); x64word(&b, 128); x64guard(&b, 0x76);
+		x64ptr(&b, 0, abi->s); x64ptr(&b, 2, abi->d);
+		/* Copy downward whenever the destination follows the source. */
+		x64byte(&b, 0x4d); x64byte(&b, 0x39); x64byte(&b, 0xc2);
+		x64byte(&b, 0x76); other = b.n; x64byte(&b, 0);
+		x64byte(&b, 0x49); x64byte(&b, 0x01); x64byte(&b, 0xc0);
+		x64byte(&b, 0x49); x64byte(&b, 0x01); x64byte(&b, 0xc2);
+		loop = b.n;
+		x64byte(&b, 0x49); x64byte(&b, 0xff); x64byte(&b, 0xc8);
+		x64byte(&b, 0x49); x64byte(&b, 0xff); x64byte(&b, 0xca);
+		x64byte(&b, 0x41); x64byte(&b, 0x8a); x64byte(&b, 0x08);
+		x64byte(&b, 0x41); x64byte(&b, 0x88); x64byte(&b, 0x0a);
+		x64byte(&b, 0x48); x64byte(&b, 0xff); x64byte(&b, 0xc8);
+		x64byte(&b, 0x75); x64byte(&b, loop-b.n-1);
+		x64byte(&b, 0xeb); done = b.n; x64byte(&b, 0);
+		b.bytes[other] = b.n-other-1;
+		loop = b.n;
+		x64byte(&b, 0x41); x64byte(&b, 0x8a); x64byte(&b, 0x08);
+		x64byte(&b, 0x41); x64byte(&b, 0x88); x64byte(&b, 0x0a);
+		x64byte(&b, 0x49); x64byte(&b, 0xff); x64byte(&b, 0xc0);
+		x64byte(&b, 0x49); x64byte(&b, 0xff); x64byte(&b, 0xc2);
+		x64byte(&b, 0x48); x64byte(&b, 0xff); x64byte(&b, 0xc8);
+		x64byte(&b, 0x75); x64byte(&b, loop-b.n-1);
+		b.bytes[empty] = b.n-empty-1; b.bytes[done] = b.n-done-1;
+	}else if(p.kind == LeafLength || p.kind == LeafIndex){
 		if(abi->arraylen < 0 || abi->arraydata < 0) return 0;
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		if(p.kind == LeafLength){

@@ -76,8 +76,9 @@ FREEMOD
 #define OP(name) void name(void)
 #define W(r) (*(WORD*)R.r)
 #define A(r) (*(Array**)R.r)
+#define S(r) (*(String**)R.r)
 #define UW(r) (*(UWORD*)R.r)
-char exInval[]="invalid", exZdiv[]="zero divide", exBounds[]="bounds";
+char exInval[]="invalid", exZdiv[]="zero divide", exBounds[]="bounds", exHeap[]="heap", exNilref[]="nil";
 VM_OPERATIONS
 static Module *active;
 static int activeop;
@@ -97,6 +98,8 @@ static int dispatch(void *unused) {
     case IINDF:indf();break;
     case IINDX:indx();break;
     case ILENA:lena();break;
+    case ILENC:lenc();break;
+    case IMOVM:movm();break;
     default:assert(0);
     }
     return 1;
@@ -151,6 +154,50 @@ static void realnegation(Module *m) {
         assert(storage[0]==0xa5 && storage[23]==0xa5);
     }
 }
+/* Compare copied records with libc memmove, including overwritten length slots. */
+static void records(Module *m) {
+    uchar bytes[512], expected[512];
+    int sizes[]={0,1,7,8,31,64,127,128,129};
+    int deltas[]={-129,-64,-7,-1,0,1,3,7,64,129};
+    int slots[]={400,200,204};
+    int i,j,k,n;
+    WORD length;
+    Inst *pc=m->prog+1;
+    active=m;activeop=IMOVM;
+    for(i=0;i<nelem(sizes);i++)for(j=0;j<nelem(deltas);j++)for(k=0;k<nelem(slots);k++) {
+        for(n=0;n<sizeof(bytes);n++)bytes[n]=n*29+17;
+        length=sizes[i];memcpy(bytes+slots[k],&length,sizeof(length));
+        memcpy(expected,bytes,sizeof(bytes));
+        memmove(expected+200+deltas[j],expected+200,length);
+        R.s=bytes+200;R.d=bytes+200+deltas[j];R.m=bytes+slots[k];R.PC=pc;
+        assert(kprotect(dispatch,nil) && !memcmp(bytes,expected,sizeof(bytes)) && R.PC==pc);
+    }
+    for(i=0;i<3;i++){
+        length=i==0?0:i==1?-1:(WORD)((UWORD)1<<(sizeof(WORD)*8-1));
+        R.s=R.d=(void*)1;R.m=&length;R.PC=pc;
+        assert(kprotect(dispatch,nil)==(i==0) && R.PC==pc);
+    }
+}
+/* Verify native lengths and actual VM fallback against the real String layout. */
+static void stringlengths(Module *m) {
+    String string={0}, *source;
+    WORD out;
+    int values[]={-0x7fffffff,-65537,-1,0,1,65537,0x7fffffff};
+    int i;
+    Inst *pc=m->prog+1;
+    active=m;activeop=ILENC;
+    for(i=0;i<nelem(values);i++){
+        string.len=values[i];source=&string;out=123;
+        R.s=&source;R.d=&out;R.PC=pc;
+        assert(kprotect(dispatch,nil) && out==(values[i]<0?-(WORD)values[i]:values[i]) && R.PC==pc);
+    }
+    source=H;R.s=&source;R.d=&out;assert(kprotect(dispatch,nil) && out==0);
+    for(i=0;i<2;i++){
+        source=i?&string:nil;string.len=(-0x7fffffff-1);out=123;
+        R.s=&source;R.d=&out;
+        assert(!kprotect(dispatch,nil) && out==123 && R.PC==pc);
+    }
+}
 /* Use real Array/REG offsets and actual VM fallback on the native host. */
 static void arrays(Module *m) {
     Type type={0};Array array={0},*owner;
@@ -184,7 +231,7 @@ static void arrays(Module *m) {
 }
 /* Compile, invoke, reject invalid metadata and retry without changing Dis PCs. */
 int main(void) {
-    Module m={0}, *owned;Inst instructions[15]={{0}};
+    Module m={0}, *owned;Inst instructions[17]={{0}};
     WORD a=3,b=7,out=0;
     int i;
     instructions[0].op=ISUBW;instructions[1].op=IADDW;
@@ -192,25 +239,25 @@ int main(void) {
     instructions[4].op=IDIVW;instructions[5].op=IMODW;
     instructions[6].op=ISHLW;instructions[7].op=ISHRW;instructions[8].op=ILSRW;
     instructions[9].op=ILENA;instructions[10].op=IINDB;instructions[11].op=IINDW;
-    instructions[12].op=IINDL;instructions[13].op=IINDF;instructions[14].op=INEGF;
-    m.prog=instructions;m.nprog=15;
+    instructions[12].op=IINDL;instructions[13].op=IINDF;instructions[14].op=INEGF;instructions[15].op=IMOVM;instructions[16].op=ILENC;
+    m.prog=instructions;m.nprog=17;
     for(i=1;i<=5;i++) {
-        fail=i;assert(!compile(&m,15,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
+        fail=i;assert(!compile(&m,17,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
     }
     fail=0;
-    assert(!compile(nil,15,nil));assert(!compile(&m,3,nil));
-    assert(compile(&m,15,nil));assert(m.jit && !m.compiled && m.prog==instructions);
+    assert(!compile(nil,17,nil));assert(!compile(&m,3,nil));
+    assert(compile(&m,17,nil));assert(m.jit && !m.compiled && m.prog==instructions);
     assert(m.jit->entry[IMOVP]==nil);
     assert(protections==1 && mappings==1);
     R.s=&a;R.m=&b;R.d=&out;
 #if EXECUTE_NATIVE
     assert(m.jit->entry[ISUBW](&R)==1 && out==4);
     R.d=&a;assert(m.jit->entry[IADDW](&R)==1 && a==10);
-    arithmetic(&m);arrays(&m);realnegation(&m);
+    arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);
 #endif
-    assert(compile(&m,15,nil));dropmodule(&m);
-    for(i=0;i<15;i++)instructions[i].op=IMOVP;
-    assert(!compile(&m,15,nil) && !m.jit);
+    assert(compile(&m,17,nil));dropmodule(&m);
+    for(i=0;i<17;i++)instructions[i].op=IMOVP;
+    assert(!compile(&m,17,nil) && !m.jit);
     owned=calloc(1,sizeof(*owned));assert(owned);
     owned->prog=calloc(1,sizeof(Inst));assert(owned->prog);
     owned->nprog=1;owned->prog[0].op=IADDW;
@@ -225,11 +272,14 @@ if backend=='riscv64':unit='#define RV_CODE_PAGES\n'+unit
 load=(root/'libinterp/load.c').read_text()
 a=load.index('void\nfreemod(');b=load.index('\nvoid\nunload(',a)
 unit=unit.replace('FREEMOD',load[a:b])
-xec=(root/'libinterp/xec.c').read_text()
+xec=Path(os.environ.get('LEAF_VM_SOURCE',str(root/'libinterp/xec.c'))).read_text()
 parts=[]
-for signature in ('static WORD\nshiftcount(', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
+for signature in ('static WORD\nshiftcount(', 'OP(movm)', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
     a=xec.index(signature);b=xec.index('\n}',a)+2
     parts.append(xec[a:b])
+string=(root/'libinterp/string.c').read_text()
+a=string.index('OP(lenc)');b=string.index('\n}',a)+2
+parts.append(string[a:b])
 unit=unit.replace('VM_OPERATIONS','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='leaf64-runtime-') as directory:
     td=Path(directory);source=td/'runtime.c';source.write_text(unit)
