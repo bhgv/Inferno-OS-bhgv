@@ -26,7 +26,9 @@ Array lengths are native in both word models; fixed byte/word/big/real element
 addresses are native when VM words hold pointers. Header offsets are explicit
 layout inputs derived from Array, and all rejected inputs use the VM helper.
 Generic descriptor indexing remains in the interpreter.
-Floating arithmetic, reference ownership, allocation, calls, returns, exceptions
+Binary64 negation is native: only the sign bit changes, preserving signed zeros,
+infinities and NaN payloads without requiring floating-point registers.
+Other floating arithmetic, reference ownership, allocation, calls, returns, exceptions
 and scheduling retain the existing decoder/optab implementations. Unsupported
 operations return no code; no stub falsely claims an operation was completed.
 
@@ -68,7 +70,7 @@ python3 libinterp/tests/slice-tokenize-suite.py --core
 
 The cross-architecture test compiles the production encoders, disassembles every
 emitted byte and executes AMD64, AArch64 and RV64 machine code in Unicorn. Its
-114,852 checks compare against independent Python integer/branch oracles for both
+117,306 checks compare against independent Python integer/branch oracles for both
 VM word widths. It covers overflow boundaries, randomized values, exact input
 aliases, partial move overlaps, four-byte-aligned long operands, high native
 addresses, PC updates, neighboring-byte guards, sizing, capacity rejection and
@@ -141,6 +143,33 @@ three 64-bit backends. See [the array-address guide](README.array-indices.md) fo
 the checked VM helper, zero-width semantics, native address guards, word-model
 limitations and independent parent regressions. The array-only emulator matrix
 adds 26,100 semantic executions plus shared sizing/ABI checks. The complete
-three-architecture machine-code suite now has 114,852 checks; the dedicated VM
+three-architecture machine-code suite now has 117,306 checks; the dedicated VM
 address fixture adds 40,023 checks. These counts do not imply whole target boot
 or a new Dis64 ABI.
+
+## Aligned control transfers and binary64 negation
+
+RV64 jumps and taken comparisons now fetch their native target from a Dis slot
+with two 32-bit reads. The slot is only guaranteed four-byte alignment; an LD
+could trap on hardware even though Unicorn permits it. The false-branch skip
+accounts for the longer target load. REG pointer fields must retain native
+alignment, and malformed layout offsets are rejected during emission.
+Both RISC-V execution fixtures now reject any misaligned native memory access.
+The focused reproducer is:
+
+```
+LEAF64_ARCH=riscv64 LEAF64_CASE=control python3 libinterp/tests/leaf64-jit.py
+```
+
+With `LEAF64_RISCV_EMITTER` pointing to the parent header, the test fails on
+IBEQB's eight-byte read at a four-byte-aligned destination. The corrected encoder
+passes both word models. This is an alignment regression check, not a target
+hardware boot result.
+
+INEGF is emitted on AMD64, AArch64 and RISC-V by toggling the binary64 sign bit
+using integer instructions. Tests cover both zeros, subnormals, infinities,
+quiet/signaling NaN bit patterns, random bit patterns, exact aliases and partial
+overlap. The native AMD64 compiler fixture executes the published code with real
+REG offsets under ASan/UBSan in both word models. The RISC-V fixture additionally
+checks RV32 compatibility and reports 1,995 checks. Floating addition, conversion
+and comparison still use their existing VM implementations.

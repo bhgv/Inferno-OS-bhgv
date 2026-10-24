@@ -111,7 +111,8 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	   (abi->wordbytes != 4 && abi->wordbytes != 8) ||
 	   abi->wordbytes*8 > abi->xlen || cap <= 0 ||
 	   abi->pc < 0 || abi->s < 0 || abi->d < 0 || abi->m < 0 ||
-	   abi->pc > 2047 || abi->s > 2047 || abi->d > 2047 || abi->m > 2047)
+	   abi->pc > 2047 || abi->s > 2047 || abi->d > 2047 || abi->m > 2047 ||
+	   (abi->pc|abi->s|abi->d|abi->m) % (abi->xlen/8) != 0)
 		return 0;
 	b.out=out; b.n=0; b.cap=cap; b.bad=0; b.abi=abi;
 	bytes=abi->wordbytes; f3=0; f7=0; binary=0; branch=0; swap=0; invert=0; shift=0; division=0;
@@ -154,6 +155,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		break;
 	case IRUNT:
 		break;
+	case INEGF:
 	case IMOVF:
 	case IMOVL:
 		/* Capture both halves before storing, including aliasing operands. */
@@ -161,6 +163,11 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		rvptr(&b, Rvt2, abi->d);
 		rvi(&b, 0x03, 2, Rvt3, Rvt0, 0);
 		rvi(&b, 0x03, 2, Rvt4, Rvt0, 4);
+		/* Toggle the high word sign bit without requiring floating-point state. */
+		if(op == INEGF){
+			rvput(&b, 0x80000000U | Rvt5<<7 | 0x37);
+			rvr(&b, 0x33, 4, 0, Rvt4, Rvt4, Rvt5);
+		}
 		rvs(&b, 2, Rvt2, Rvt3, 0);
 		rvs(&b, 2, Rvt2, Rvt4, 4);
 		break;
@@ -197,7 +204,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		break;
 	case IJMP:
 		rvptr(&b, Rvt2, abi->d);
-		rvi(&b, 0x03, abi->xlen == 64 ? 3 : 2, Rvt3, Rvt2, 0);
+		rvload(&b, Rvt3, Rvt2, abi->xlen/8);
 		rvs(&b, abi->xlen == 64 ? 3 : 2, Rva0, Rvt3, abi->pc);
 		break;
 	case IDIVB: case IMODB: bytes=1; /* fall through */
@@ -291,9 +298,9 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 			 * For bytes LBU makes signed compares equivalent to unsigned. */
 			invert=f3 ^ 1;
 			rs=swap ? Rvt3 : Rvt4;
-			rvbranch(&b, invert, rs, swap ? Rvt4 : Rvt3, 16);
+			rvbranch(&b, invert, rs, swap ? Rvt4 : Rvt3, abi->xlen == 64 ? 28 : 16);
 			rvptr(&b, Rvt2, abi->d);
-			rvi(&b, 0x03, abi->xlen == 64 ? 3 : 2, Rvt3, Rvt2, 0);
+			rvload(&b, Rvt3, Rvt2, abi->xlen/8);
 			rvs(&b, abi->xlen == 64 ? 3 : 2, Rva0, Rvt3, abi->pc);
 		}
 	}

@@ -113,10 +113,15 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xc8); x64guard(&b, 0x73);
 			x64ptr(&b, 2, abi->m); x64store(&b, 0, 8);
 		}
-	}else if(p.kind == LeafMove || p.kind == LeafAddress){
+	}else if(p.kind == LeafMove || p.kind == LeafAddress || p.kind == LeafNegReal){
 		x64ptr(&b, 0, abi->s);
-		if(p.kind == LeafMove) x64load(&b, 0, p.input);
+		if(p.kind != LeafAddress) x64load(&b, 0, p.input);
 		else { x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0xc0); }
+		/* Flip the binary64 sign without rounding or quieting NaN payloads. */
+		if(p.kind == LeafNegReal){
+			x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0xba);
+			x64byte(&b, 0xf8); x64byte(&b, 63); /* btc rax, 63 */
+		}
 		x64ptr(&b, 2, abi->d);
 		x64store(&b, 0, p.bytes);
 	}else if(p.kind == LeafShift || p.kind == LeafDivide){

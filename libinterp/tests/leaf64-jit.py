@@ -9,13 +9,13 @@ import struct
 import subprocess
 import tempfile
 from capstone import Cs, CS_ARCH_X86, CS_ARCH_ARM64, CS_ARCH_RISCV, CS_MODE_64, CS_MODE_RISCV64
-from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_ARCH_RISCV, UC_MODE_64, UC_MODE_RISCV64
+from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_ARCH_RISCV, UC_MODE_64, UC_MODE_RISCV64, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
 from unicorn.x86_const import UC_X86_REG_RDI, UC_X86_REG_RAX, UC_X86_REG_RSP
 from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
 root = Path(__file__).resolve().parents[2]
-ops = '''ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IMOVP IFRAME ICALL IRET IADDF'''.split()
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array'):raise ValueError(case)
+if case not in ('','guard','array','control'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -121,12 +121,26 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if arch == 'amd64':
                     u.reg_write(UC_X86_REG_RSP,stack+0x800); u.mem_write(stack+0x800,struct.pack('<Q',end))
                 else: u.reg_write(UC_ARM64_REG_LR if arch == 'arm64' else UC_RISCV_REG_RA,end)
+                if rv:
+                    def aligned_access(uc, access, address, size, value, user):
+                        assert address % size == 0, (name, hex(address), size)
+                    u.hook_add(UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE, aligned_access)
                 u.emu_start(code,end,count=100)
                 assert u.reg_read(result) == expect,(arch,wb,name,a,b,u.reg_read(result),expect)
                 assert bytes(u.mem_read(registers+8,24)) == struct.pack('<QQQ',s,d,m)
                 if metadata is not None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case=='control':
+                for suffix in ('B','W','L'):
+                    for relation in ('EQ','NE','LT','LE','GT','GE'):
+                        name='IBNEW' if relation=='NE' and suffix=='W' else 'IB'+relation+suffix
+                        for a,b in ((0,0),(0,1),(1,0),(-1,1),(1,-1)):
+                            run(name,a,b)
+                            checks+=1
+                assert run('IJMP')[1]==target
+                checks+=1
+                continue
             if case=='guard':
                 counts=[-1,wb*8,-(1<<(wb*8-1))]+([1<<32] if wb==8 else [])
                 for count in counts:
@@ -190,7 +204,15 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         assert pc==(target if predicate(aa,bb) else oldpc),(arch,wb,name,aa,bb,pc)
                         assert before==after
                         checks+=1
-            for name,width in [('IMOVB',1),('IMOVW',wb),('IMOVL',8),('IMOVF',8),('ICVTBW',wb),('ICVTWB',1),('ICVTWS',2),('ICVTSW',wb),('ICVTWL',8),('ICVTLW',wb)]:
+            for bits in [0,1,0x8000000000000000,0x3ff0000000000000,
+                         0x7ff0000000000000,0xfff0000000000000,
+                         0x7ff8000000000042,0x7ff0000000000042] + [rng.getrandbits(64) for _ in range(128)]:
+                for alias in (0,1,3):
+                    out,pc,before,after,_=run('INEGF',alias=alias,raw=struct.pack('<Q',bits))
+                    assert int.from_bytes(out[:8],'little')==bits^(1<<63)
+                    assert pc==oldpc and before[:8]==after[:8] and before[16:]==after[16:]
+                    checks+=1
+            for name,width in [('IMOVB' ,1),('IMOVW',wb),('IMOVL',8),('IMOVF',8),('ICVTBW',wb),('ICVTWB',1),('ICVTWS',2),('ICVTSW',wb),('ICVTWL',8),('ICVTLW',wb)]:
                 for raw in (bytes.fromhex('efcdab8967452301'),bytes.fromhex('00800000ffffffff')):
                     wanted=(int.from_bytes(raw[:1],'little') if name=='ICVTBW' else
                             signed(int.from_bytes(raw[:2],'little'),16) if name=='ICVTSW' else

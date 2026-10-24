@@ -9,7 +9,7 @@ typedef struct LeafOp LeafOp;
 struct LeafOp {
 	int kind, bytes, input, alu, condition;
 };
-enum { LeafMove=1, LeafAlu, LeafBranch, LeafJump, LeafAddress, LeafNop, LeafShift, LeafDivide, LeafLength, LeafIndex };
+enum { LeafMove=1, LeafAlu, LeafBranch, LeafJump, LeafAddress, LeafNop, LeafShift, LeafDivide, LeafLength, LeafIndex, LeafNegReal };
 
 /* Classify only operations whose complete VM semantics fit a helper-free leaf. */
 static int
@@ -18,6 +18,7 @@ leafop(LeafOp *p, int op, int wordbytes)
 	memset(p, 0, sizeof(*p));
 	p->bytes = wordbytes;
 	switch(op){
+	case INEGF: p->kind = LeafNegReal; p->bytes = 8; break;
 	case ILENA: p->kind = LeafLength; break;
 	case IINDB: case IINDW: case IINDL: case IINDF:
 		/* Address-producing VM slots must be able to hold a native pointer. */

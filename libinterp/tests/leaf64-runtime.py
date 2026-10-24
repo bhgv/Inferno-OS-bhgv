@@ -131,6 +131,26 @@ static void arithmetic(Module *m) {
         assert(R.PC==pc);
     }
 }
+/* Check real published binary64 sign operations without evaluating a NaN in C. */
+static void realnegation(Module *m) {
+    uvlong bits[]={0,1,0x8000000000000000ULL,0x3ff0000000000000ULL,
+        0x7ff0000000000000ULL,0xfff0000000000000ULL,
+        0x7ff8000000000042ULL,0x7ff0000000000042ULL};
+    uvlong result, wanted;
+    uchar storage[24];
+    int i, alias;
+    Inst *pc=m->prog+1;
+    for(i=0;i<nelem(bits);i++)for(alias=0;alias<3;alias++) {
+        memset(storage,0xa5,sizeof(storage));
+        memcpy(storage+4,&bits[i],8);
+        R.s=storage+4;R.d=storage+(alias==0?12:alias==1?4:8);R.PC=pc;
+        wanted=bits[i]^0x8000000000000000ULL;
+        assert(m->jit->entry[INEGF](&R)==1);
+        memcpy(&result,R.d,8);
+        assert(result==wanted && R.PC==pc);
+        assert(storage[0]==0xa5 && storage[23]==0xa5);
+    }
+}
 /* Use real Array/REG offsets and actual VM fallback on the native host. */
 static void arrays(Module *m) {
     Type type={0};Array array={0},*owner;
@@ -164,7 +184,7 @@ static void arrays(Module *m) {
 }
 /* Compile, invoke, reject invalid metadata and retry without changing Dis PCs. */
 int main(void) {
-    Module m={0}, *owned;Inst instructions[14]={{0}};
+    Module m={0}, *owned;Inst instructions[15]={{0}};
     WORD a=3,b=7,out=0;
     int i;
     instructions[0].op=ISUBW;instructions[1].op=IADDW;
@@ -172,25 +192,25 @@ int main(void) {
     instructions[4].op=IDIVW;instructions[5].op=IMODW;
     instructions[6].op=ISHLW;instructions[7].op=ISHRW;instructions[8].op=ILSRW;
     instructions[9].op=ILENA;instructions[10].op=IINDB;instructions[11].op=IINDW;
-    instructions[12].op=IINDL;instructions[13].op=IINDF;
-    m.prog=instructions;m.nprog=14;
+    instructions[12].op=IINDL;instructions[13].op=IINDF;instructions[14].op=INEGF;
+    m.prog=instructions;m.nprog=15;
     for(i=1;i<=5;i++) {
-        fail=i;assert(!compile(&m,14,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
+        fail=i;assert(!compile(&m,15,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
     }
     fail=0;
-    assert(!compile(nil,14,nil));assert(!compile(&m,3,nil));
-    assert(compile(&m,14,nil));assert(m.jit && !m.compiled && m.prog==instructions);
+    assert(!compile(nil,15,nil));assert(!compile(&m,3,nil));
+    assert(compile(&m,15,nil));assert(m.jit && !m.compiled && m.prog==instructions);
     assert(m.jit->entry[IMOVP]==nil);
     assert(protections==1 && mappings==1);
     R.s=&a;R.m=&b;R.d=&out;
 #if EXECUTE_NATIVE
     assert(m.jit->entry[ISUBW](&R)==1 && out==4);
     R.d=&a;assert(m.jit->entry[IADDW](&R)==1 && a==10);
-    arithmetic(&m);arrays(&m);
+    arithmetic(&m);arrays(&m);realnegation(&m);
 #endif
-    assert(compile(&m,14,nil));dropmodule(&m);
-    for(i=0;i<14;i++)instructions[i].op=IMOVP;
-    assert(!compile(&m,14,nil) && !m.jit);
+    assert(compile(&m,15,nil));dropmodule(&m);
+    for(i=0;i<15;i++)instructions[i].op=IMOVP;
+    assert(!compile(&m,15,nil) && !m.jit);
     owned=calloc(1,sizeof(*owned));assert(owned);
     owned->prog=calloc(1,sizeof(Inst));assert(owned->prog);
     owned->nprog=1;owned->prog[0].op=IADDW;

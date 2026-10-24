@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 
 from capstone import Cs, CS_ARCH_RISCV, CS_MODE_RISCV32, CS_MODE_RISCV64
-from unicorn import Uc, UC_ARCH_RISCV, UC_MODE_RISCV32, UC_MODE_RISCV64
+from unicorn import Uc, UC_ARCH_RISCV, UC_MODE_RISCV32, UC_MODE_RISCV64, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
 import unicorn.riscv_const as regs
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,7 +22,7 @@ cc = shlex.split(os.environ.get('CC', 'cc'))
 flags = shlex.split(os.environ.get('CFLAGS', '-O1 -g'))
 checks = 0
 rng = random.Random(0x1f3e)
-names = '''IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+names = '''INEGF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 ISHLB ISHLW ISHRB ISHRW ILSRW IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW IBLEB
 IBLEW IBGTB IBGTW IBGEB IBGEW IDIVW IMODW IMOVP IFRAME ICALL IRET IADDF'''.split()
@@ -89,11 +89,28 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
             for r in preserved: u.reg_write(r,0xabc000+r*16)
             u.reg_write(regs.UC_RISCV_REG_A0,REG)
             u.reg_write(regs.UC_RISCV_REG_RA,BASE+len(blob))
+            def aligned_access(uc, access, address, size, value, user):
+                assert address % size == 0, (name, hex(address), size)
+            u.hook_add(UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE, aligned_access)
             u.emu_start(BASE,BASE+len(blob),count=100)
             for r in preserved: assert u.reg_read(r)==0xabc000+r*16, (name,'ABI clobber',r)
             return u,bytes(u.mem_read(dptr,16))
 
-        arithmetic=['IADDW','ISUBW','IMULW','IANDW','IORW','IXORW',
+        for field in ('pc','s','d','m'):
+            invalid=Layout(xlen,wb,1,0,pb,pb*2,pb*3)
+            setattr(invalid,field,getattr(invalid,field)+1)
+            assert emit('IADDW',invalid)[0]==0
+            checks+=1
+        for bits in (0,1,0x8000000000000000,0x3ff0000000000000,
+                     0x7ff0000000000000,0xfff0000000000000,
+                     0x7ff8000000000042,0x7ff0000000000042):
+            for destination in (D,S,S+4):
+                u,result=run('INEGF',struct.pack('<Q',bits),dptr=destination)
+                assert int.from_bytes(result[:8],'little')==bits^(1<<63)
+                assert result[8:]==b'\xa5'*8
+                assert int.from_bytes(u.mem_read(REG,pb),'little')==OLDPC
+                checks+=1
+        arithmetic=['IADDW' ,'ISUBW','IMULW','IANDW','IORW','IXORW',
                     'IADDB','ISUBB','IMULB','IANDB','IORB','IXORB']
         vectors=[(0,0),(1,-1),(-1,1),(2**31-1,1),(-2**31,-1),
                  (2**63-1,-2**63),(0x1122334455667788,0x8877665544332211)]

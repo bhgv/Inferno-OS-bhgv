@@ -105,10 +105,12 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			a64guard(&b, 0x54000063); /* no native address carry */
 			a64ptr(&b, 11, abi->m); a64store(&b, 14, 8);
 		}
-	}else if(p.kind == LeafMove || p.kind == LeafAddress){
+	}else if(p.kind == LeafMove || p.kind == LeafAddress || p.kind == LeafNegReal){
 		a64ptr(&b, 9, abi->s);
-		if(p.kind == LeafMove) a64load(&b, 12, 9, p.input);
+		if(p.kind != LeafAddress) a64load(&b, 12, 9, p.input);
 		else a64put(&b, 0xaa0903ec); /* mov x12, x9 */
+		/* EOR changes only the binary64 sign, including zeros and NaNs. */
+		if(p.kind == LeafNegReal) a64put(&b, 0xd241018c); /* eor x12, x12, #1<<63 */
 		/* LDRSH W sign-extends only to 32 bits; widen when the VM word is 64 bits. */
 		if(p.bytes == 8 && (p.input == 2 || (p.input == 4 && op == ICVTWL))) a64put(&b, 0x93407d8c); /* sxtw x12, w12 */
 		a64ptr(&b, 11, abi->d); a64store(&b, 12, p.bytes);
