@@ -621,10 +621,11 @@ calldepth(REG *reg)
 	return n;
 }
 
+/* Read exact native widths from Dis-aligned slots and bound output pagination. */
 static int
 progheap(Heapqry *hq, char *va, int count, ulong offset)
 {
-	WORD *w;
+	WORD word;
 	void *p;
 	List *hd;
 	Array *a;
@@ -634,21 +635,25 @@ progheap(Heapqry *hq, char *va, int count, ulong offset)
 	Channel *c;
 	ulong addr;
 	String *ss;
-	union { REAL r; LONG l; WORD w[2]; } rock;
-	int i, s, n, len, signed_off;
+	union { REAL r; LONG l; } rock;
+	int i, s, n, len;
+	uvlong skip;
 	Type *t;
 
+	if(count <= 0)
+		return 0;
 	n = 0;
 	s = 0;
-	signed_off = offset;
+	skip = offset;
 	addr = hq->addr;
-	for(i = 0; i < hq->count; i++) {
+	for(i = 0; i < hq->count && n < count; i++) {
 		switch(hq->fmt) {
 		case 'W':
 			if(addr & 3)
 				return -1;
-			n += snprint(va+n, count-n, "%d\n", *(WORD*)addr);
-			s = sizeof(WORD);
+			memmove(&word, (void*)addr, sizeof(word));
+			n += snprint(va+n, count-n, "%lld\n", (vlong)word);
+			s = sizeof(word);
 			break;
 		case 'B':
 			n += snprint(va+n, count-n, "%d\n", *(BYTE*)addr);
@@ -657,75 +662,73 @@ progheap(Heapqry *hq, char *va, int count, ulong offset)
 		case 'V':
 			if(addr & 3)
 				return -1;
-			w = (WORD*)addr;
-			rock.w[0] = w[0];
-			rock.w[1] = w[1];
+			memmove(&rock.l, (void*)addr, sizeof(rock.l));
 			n += snprint(va+n, count-n, "%lld\n", rock.l);
 			s = sizeof(LONG);
 			break;
 		case 'R':
 			if(addr & 3)
 				return -1;
-			w = (WORD*)addr;
-			rock.w[0] = w[0];
-			rock.w[1] = w[1];
+			memmove(&rock.r, (void*)addr, sizeof(rock.r));
 			n += snprint(va+n, count-n, "%g\n", rock.r);
 			s = sizeof(REAL);
 			break;
 		case 'I':
-			if(addr & 3)
-				return -1;
 			for(m = modules; m != nil; m = m->link)
 				if(m == (Module*)hq->module)
 					break;
 			if(m == nil)
 				error(Ebadctl);
-			addr = (ulong)(m->prog+addr);
-			n += snprint(va+n, count-n, "%D\n", (Inst*)addr);
-			s = sizeof(Inst);
+			if(m->compiled || m->prog == nil || m->prog == H ||
+			   m->nprog <= 0 || addr >= (ulong)m->nprog)
+				return -1;
+			n += snprint(va+n, count-n, "%D\n", m->prog+addr);
+			s = 1;
 			break;
 		case 'P':
 			if(addr & 3)
 				return -1;
-			p = *(void**)addr;
+			memmove(&p, (void*)addr, sizeof(p));
 			fmt = "nil\n";
 			if(p != H)
 				fmt = "%lux\n";
-			n += snprint(va+n, count-n, fmt, p);
-			s = sizeof(WORD);
+			n += snprint(va+n, count-n, fmt, (ulong)p);
+			s = sizeof(p);
 			break;
 		case 'L':
 			if(addr & 3)
 				return -1;
-			hd = *(List**)addr;
-			if(hd == H || D2H(hd)->t != &Tlist)
+			memmove(&hd, (void*)addr, sizeof(hd));
+			if(hd == nil || hd == H || D2H(hd)->t != &Tlist)
 				return -1;
 			n += snprint(va+n, count-n, "%lux.%lux\n", (ulong)&hd->tail, (ulong)hd->data);
-			s = sizeof(WORD);
+			s = sizeof(p);
 			break;
 		case 'A':
 			if(addr & 3)
 				return -1;
-			a = *(Array**)addr;
+			memmove(&a, (void*)addr, sizeof(a));
 			if(a == H)
 				n += snprint(va+n, count-n, "nil\n");
 			else {
-				if(D2H(a)->t != &Tarray)
+				if(a == nil || D2H(a)->t != &Tarray)
 					return -1;
-				n += snprint(va+n, count-n, "%d.%lux\n", a->len, (ulong)a->data);
+				n += snprint(va+n, count-n, "%lld.%lux\n", (vlong)a->len, (ulong)a->data);
 			}
-			s = sizeof(WORD);
+			s = sizeof(p);
 			break;
 		case 'C':
 			if(addr & 3)
 				return -1;
-			ss = *(String**)addr;
+			memmove(&ss, (void*)addr, sizeof(ss));
 			if(ss == H)
 				ss = &snil;
 			else
-			if(D2H(ss)->t != &Tstring)
+			if(ss == nil || D2H(ss)->t != &Tstring)
 				return -1;
-			n += snprint(va+n, count-n, "%d.", abs(ss->len));
+			if(ss->len == (-0x7fffffff-1))
+				return -1;
+			n += snprint(va+n, count-n, "%d.", (ss->len < 0 ? -ss->len : ss->len));
 			str = string2c(ss);
 			len = strlen(str);
 			if(count-n < len)
@@ -734,42 +737,53 @@ progheap(Heapqry *hq, char *va, int count, ulong offset)
 				memmove(va+n, str, len);
 				n += len;
 			}
+			s = sizeof(ss);
 			break;
 		case 'M':
 			if(addr & 3)
 				return -1;
-			ml = *(Modlink**)addr;
-			fmt = ml == H ? "nil\n" : "%lux\n";
-			n += snprint(va+n, count-n, fmt, ml->MP);
-			s = sizeof(WORD);
+			memmove(&ml, (void*)addr, sizeof(ml));
+			if(ml == H)
+				n += snprint(va+n, count-n, "nil\n");
+			else{
+				if(ml == nil)
+					return -1;
+				n += snprint(va+n, count-n, "%lux\n", (ulong)ml->MP);
+			}
+			s = sizeof(p);
 			break;
 		case 'c':
 			if(addr & 3)
 				return -1;
-			c = *(Channel**)addr;
+			memmove(&c, (void*)addr, sizeof(c));
 			if(c == H)
 				n += snprint(va+n, count-n, "nil\n");
 			else{
+				if(c == nil || c->buf == nil)
+					return -1;
 				t = D2H(c)->t;
 				if(t != &Tchannel && t != Trdchan && t != Twrchan)
 					return -1;
 				if(c->buf == H)
 					n += snprint(va+n, count-n, "0.%lux\n", (ulong)c);
 				else
-					n += snprint(va+n, count-n, "%d.%lux.%d.%d\n", c->buf->len, (ulong)c->buf->data, c->front, c->size);
+					n += snprint(va+n, count-n, "%lld.%lux.%d.%d\n",
+						(vlong)c->buf->len, (ulong)c->buf->data, c->front, c->size);
 			}
+			s = sizeof(c);
 			break;
 			
 		}
 		addr += s;
-		if(signed_off > 0) {
-			signed_off -= n;
-			if(signed_off < 0) {
-				memmove(va, va+n+signed_off, -signed_off);
-				n = -signed_off;
-			}
-			else
+		if(skip > 0){
+			if(skip >= (uvlong)n){
+				skip -= n;
 				n = 0;
+			}else{
+				memmove(va, va+(ulong)skip, n-(int)skip);
+				n -= (int)skip;
+				skip = 0;
+			}
 		}
 	}
 	return n;

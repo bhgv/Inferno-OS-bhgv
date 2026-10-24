@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/heap-query.py',
     'libinterp/tests/prog-diagnostics.py',
     'libinterp/tests/exception-frames.py',
     'libinterp/tests/stack-lifecycle.py',

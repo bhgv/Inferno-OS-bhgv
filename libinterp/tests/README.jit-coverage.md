@@ -114,12 +114,14 @@ stack destructor, frame validator and mapped scanner implementations. Selecting
 the parent implementations reproduces each unaligned access under UBSan.
 Physical ARM64/RV64 execution and complete OS/VM acceptance remain separate.
 
-## Narrow-string branch checkpoint
+## String comparison checkpoint
 
-AMD64 and ARM64 now implement `BEQC/BNEC/BLTC/BLEC/BGTC/BGEC` for byte strings
-and language nil. They compare unsigned bytes lexicographically, use explicit
-lengths (including embedded NULs), and read a native branch target only when
-the condition is true. Wide Rune strings and invalid metadata decline before
-changing PC or VM storage, retaining the common C comparator/error semantics.
-This is guarded partial coverage for six additional opcodes, not full native
-Unicode comparison. RISC-V backends are unchanged by this series.
+AMD64 and ARM64 implement `BEQC/BNEC/BLTC/BLEC/BGTC/BGEC` for byte strings,
+Rune strings, mixed representations and language nil. They compare unsigned
+bytes and the C comparator's signed int Rune keys, use explicit lengths
+(including embedded NULs), and read a native target only when the predicate is
+true. Null owners and INT_MIN lengths decline before changing PC or VM storage.
+Identical owners compare equal without scanning payloads. Counts remain 109/64:
+this broadens six existing native paths rather than adding six new opcode IDs.
+RISC-V string branches remain on the interpreter path. Physical ARM64 testing
+and full native-block/pointer-ABI completion remain separate work.

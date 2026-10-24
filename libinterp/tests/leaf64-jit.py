@@ -351,6 +351,14 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     def aligned_access(uc, access, address, size, value, user):
                         assert address % size == 0, (name, hex(address), size)
                     u.hook_add(UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE, aligned_access)
+                if stringpair is not None:
+                    def exact_string_reads(uc,access,address,size,value,user):
+                        for base,length in ((data+0x500,stringpair[1]),(data+0x700,stringpair[4])):
+                            start=base+layout.stringdata
+                            if start<=address<base+256:
+                                limit=start+abs(length)*(4 if length<0 else 1)
+                                assert address+size<=limit,(arch,name,hex(address),size,length)
+                    u.hook_add(UC_HOOK_MEM_READ,exact_string_reads)
                 u.emu_start(code,end,count=4000)
                 if expected_head is not None:assert bytes(u.mem_read(data,0x1000))==bytes(expected_head),(arch,wb,name,head,alias)
                 if expected_copy is not None:assert bytes(u.mem_read(data,0x1000))==expected_copy,(arch,wb,copy)
@@ -385,8 +393,22 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                 _,pc,before,after,_=run(name,slotshift=shift,badtarget=not take,stringpair=(data+0x500,len(a),a,data+0x700,len(b),b))
                                 assert pc==(target if take else oldpc) and before==after
                                 checks+=1
+                    points=[(),(0,),(127,),(128,),(255,),(256,),(0x10000,),(0x10ffff,),(0x7fffffff,),(0x80000000,),(0xffffffff,),(97,0,98),(97,256),(97,257)]
+                    forms=[]
+                    for points_ in points:
+                        for wide in (False,True):
+                            if not wide and any(p>255 for p in points_):continue
+                            payload=b''.join(struct.pack('<I',p) for p in points_) if wide else bytes(points_)
+                            forms.append((-len(points_) if wide else len(points_),payload,tuple(signed(p,32) for p in points_)))
+                    for ll,ld,aa in forms:
+                        for rl,rd,bb in forms:
+                            for condition,name in enumerate(names):
+                                take=(aa==bb,aa!=bb,aa<bb,aa<=bb,aa>bb,aa>=bb)[condition]
+                                _,pc,before,after,_=run(name,badtarget=not take,stringpair=(data+0x500,ll,ld,data+0x700,rl,rd))
+                                assert pc==(target if take else oldpc) and before==after,(arch,wb,name,ll,rl,aa,bb)
+                                checks+=1
                     # Identical owners compare equal without reading even a huge payload.
-                    for length in (0,1,0x7fffffff):
+                    for length in (0,1,-1,0x7fffffff,-0x7fffffff):
                         for condition,name in enumerate(names):
                             take=condition in (0,3,5)
                             for shift in (0,4):
@@ -397,12 +419,12 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         for right in (0,(1<<64)-1,data+0x700):
                             for ll in (-0x80000000,-1,0,1):
                                 for rl in (-0x80000000,-1,0,1):
-                                    valid=left!=0 and right!=0 and (left==(1<<64)-1 or ll>=0) and (right==(1<<64)-1 or rl>=0)
+                                    valid=left!=0 and right!=0 and (left==(1<<64)-1 or ll!=-0x80000000) and (right==(1<<64)-1 or rl!=-0x80000000)
                                     aa=b'' if left==(1<<64)-1 or ll==0 else b'a'
                                     bb=b'' if right==(1<<64)-1 or rl==0 else b'b'
                                     for condition,name in enumerate(names):
                                         take=(aa==bb,aa!=bb,aa<bb,aa<=bb,aa>bb,aa>=bb)[condition]
-                                        _,pc,before,after,_=run(name,expect=int(valid),badtarget=not valid or not take,stringpair=(left,ll,b'a',right,rl,b'b'))
+                                        _,pc,before,after,_=run(name,expect=int(valid),badtarget=not valid or not take,stringpair=(left,ll,struct.pack('<I',97) if ll<0 else b'a',right,rl,struct.pack('<I',98) if rl<0 else b'b'))
                                         assert pc==(target if valid and take else oldpc) and before==after
                                         checks+=1
                 if case=='bytebranch':continue

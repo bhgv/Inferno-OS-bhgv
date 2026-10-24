@@ -1,5 +1,9 @@
 # AMD64/ARM64 byte-string branches and process diagnostics
 
+The later [Unicode/heap-query checkpoint](README.unicode-heap-queries.md)
+removes this series' byte-only restriction. The text below records the earlier
+checkpoint and its diagnostics changes.
+
 This series prioritizes AMD64 and ARM64. Both backends now emit native paths
 for BEQC, BNEC, BLTC, BLEC, BGTC and BGEC on byte strings and language nil.
 They compare unsigned bytes lexicographically, respect explicit lengths and

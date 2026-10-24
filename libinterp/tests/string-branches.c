@@ -79,7 +79,7 @@ main(void)
 			memmove(before,slots.bytes,sizeof(before));if(!take)R.d=(void*)1;
 #ifdef NATIVE_STRING_BRANCH
 			{
-				int handled=(left==H || left->len>=0) && (right==H || right->len>=0);
+				int handled=1;
 				assert(module.jit->entry[opcodes[op]](&R)==handled);
 				assert(R.PC==(handled && take ? target : instructions) && !memcmp(slots.bytes,before,sizeof(before)));
 				R.PC=instructions;
@@ -109,6 +109,27 @@ main(void)
 			R.PC=instructions;R.d=take ? (void*)&target : (void*)1;
 			assert(module.jit->entry[opcodes[op]](&R)==1 && R.PC==(take ? target : instructions));
 			checks++;
+		}
+	}
+#endif
+#ifdef NATIVE_STRING_BRANCH
+	/* Compare both representations, including the C comparator's signed Rune keys. */
+	{
+		uint points[]={0,1,127,128,255,256,0x10000,0x10ffff,0x7fffffff,0x80000000U,0xffffffffU};
+		int a,b,aw,bw,ak,bk;
+		for(a=0;a<nelem(points);a++)for(b=0;b<nelem(points);b++)
+		for(aw=0;aw<2;aw++)for(bw=0;bw<2;bw++){
+			if(!aw && points[a]>255 || !bw && points[b]>255)continue;
+			left=strings[6];right=strings[7];left->len=aw ? -1 : 1;right->len=bw ? -1 : 1;
+			if(aw)left->Srune[0]=points[a];else left->Sascii[0]=points[a];
+			if(bw)right->Srune[0]=points[b];else right->Sascii[0]=points[b];
+			ak=(int)points[a];bk=(int)points[b];R.s=&left;R.m=&right;
+			for(op=0;op<6;op++){
+				take=op==0 ? ak==bk : op==1 ? ak!=bk : op==2 ? ak<bk : op==3 ? ak<=bk : op==4 ? ak>bk : ak>=bk;
+				R.PC=instructions;R.d=take ? (void*)&target : (void*)1;
+				assert(module.jit->entry[opcodes[op]](&R)==1 && R.PC==(take ? target : instructions));
+				R.PC=instructions;ops[op]();assert(R.PC==(take ? target : instructions));checks++;
+			}
 		}
 	}
 #endif
