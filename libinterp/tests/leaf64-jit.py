@@ -15,14 +15,14 @@ from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
 root = Path(__file__).resolve().parents[2]
-ops = '''ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IMOVP IFRAME ICALL IRET IADDF'''.split()
 class Layout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen')]
+    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'listdata', 'listtail')]
 class RvLayout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen')]
+    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'listdata', 'listtail')]
 
 
 def signed(value, bits):
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
         ids = {name:lib.opid(i) for i,name in enumerate(ops)}
         for wb in (4,8):
             layout = RvLayout(64,wb,1,0,8,16,24) if rv else Layout(wb,0,8,16,24)
-            layout.arraylen=8;layout.arraydata=32;layout.stringlen=12
+            layout.arraylen=8;layout.arraydata=32;layout.stringlen=12;layout.listdata=24;layout.listtail=8
             dis = Cs(CS_ARCH_X86,CS_MODE_64) if arch == 'amd64' else Cs(CS_ARCH_ARM64,0) if arch == 'arm64' else Cs(CS_ARCH_RISCV,CS_MODE_RISCV64)
             blobs = {}
             for name in ops:
@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
             code, registers, data, stack = 0x10000, 0x100020000, 0x100030000, 0x40000
             oldpc, target = 0x123456789, 0x987654321
 
-            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None):
+            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None):
                 """Exercise a leaf with high native pointers, four-byte alignment and exact aliases."""
                 if arch == 'amd64':
                     u = Uc(UC_ARCH_X86,UC_MODE_64); arg, result = UC_X86_REG_RDI, UC_X86_REG_RAX
@@ -92,7 +92,36 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 output=d
                 metadata=None
                 expected_copy=None
-                if string is not None:
+                expected_head=None
+                if chain is not None:
+                    length,terminal=chain
+                    if alias:d=s
+                    output=d
+                    u.mem_write(d-8,b'\xa5'*32)
+                    first=data+0x500 if length else terminal
+                    u.mem_write(s,struct.pack('<Q',first))
+                    for i in range(length):
+                        node=data+0x500+i*16
+                        tail=data+0x500+(i+1)*16 if i+1<length else terminal
+                        u.mem_write(node+layout.listtail,struct.pack('<Q',tail))
+                    expected_head=bytearray(u.mem_read(data,0x1000))
+                    if expect:expected_head[d-data:d-data+wb]=length.to_bytes(wb,'little')
+                elif head is not None:
+                    owner,bits=head
+                    if alias==1:d=s
+                    if alias==2:d=data+0x500+layout.listdata-4
+                    if alias==3:d=data+0x500+layout.listdata+4
+                    output=d
+                    u.mem_write(d-8,b'\xa5'*32)
+                    metadata=bytearray(b'\x5a'*64)
+                    metadata[layout.listdata:layout.listdata+8]=struct.pack('<Q',bits)
+                    u.mem_write(data+0x500,bytes(metadata))
+                    u.mem_write(s,struct.pack('<Q',owner))
+                    expected_head=bytearray(u.mem_read(data,0x1000))
+                    if expect:
+                        width=1 if name=='IHEADB' else wb if name=='IHEADW' else 8
+                        expected_head[d-data:d-data+width]=expected_head[0x500+layout.listdata:0x500+layout.listdata+width]
+                elif string is not None:
                     owner,length=string
                     if alias:d=s
                     output=d
@@ -145,12 +174,40 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         assert address % size == 0, (name, hex(address), size)
                     u.hook_add(UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE, aligned_access)
                 u.emu_start(code,end,count=4000)
+                if expected_head is not None:assert bytes(u.mem_read(data,0x1000))==bytes(expected_head),(arch,wb,name,head,alias)
                 if expected_copy is not None:assert bytes(u.mem_read(data,0x1000))==expected_copy,(arch,wb,copy)
                 assert u.reg_read(result) == expect,(arch,wb,name,a,b,u.reg_read(result),expect)
                 assert bytes(u.mem_read(registers+8,24)) == struct.pack('<QQQ',s,d,m)
-                if metadata is not None:assert bytes(u.mem_read(data+0x500,64))==metadata
+                if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','listlen'):
+                for length in (0,1,2,7,31,127,128,129):
+                    for terminal in (0,(1<<64)-1,data+0x500):
+                        for alias in (0,1):
+                            valid=length<=128 and terminal==(1<<64)-1
+                            out,pc,before,after,_=run('ILENL',alias=alias,chain=(length,terminal),expect=int(valid))
+                            if valid:
+                                assert int.from_bytes(out[:wb],'little')==length
+                                assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
+                            else:assert before==after
+                            assert pc==oldpc
+                            checks+=1
+                if case=='listlen':continue
+            if case in ('','head'):
+                patterns=[0,1,(1<<64)-1,1<<63,0x7ff8000000000042,0x7ff0000000000042]+[rng.getrandbits(64) for _ in range(32)]
+                for name in ('IHEADB','IHEADW','IHEADL','IHEADF'):
+                    width=1 if name=='IHEADB' else wb if name=='IHEADW' else 8
+                    for pointer in (0,(1<<64)-1,data+0x500):
+                        for bits in patterns:
+                            for alias in (0,1,2,3):
+                                valid=pointer==data+0x500
+                                out,pc,before,after,_=run(name,alias=alias,head=(pointer,bits),expect=int(valid))
+                                if valid:assert int.from_bytes(out[:width],'little')==bits&((1<<(8*width))-1)
+                                else:assert before==after
+                                assert pc==oldpc
+                                checks+=1
+                if case=='head':continue
             if case in ('','string'):
                 for pointer in (0,(1<<64)-1,data+0x500):
                     for length in (-2147483648,-2147483647,-65537,-1,0,1,65537,2147483647):

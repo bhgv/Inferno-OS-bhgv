@@ -1173,18 +1173,21 @@ OP(lena)
 		l = a->len;
 	W(d) = l;
 }
+/* Validate each list link and keep operand accesses independent of alignment. */
 OP(lenl)
 {
 	WORD l;
 	List *a;
 
-	a = L(s);
+	memmove(&a, R.s, sizeof(a));
 	l = 0;
 	while(a != H) {
+		if(a == nil)
+			error(exNilref);
 		l++;
 		a = a->tail;
 	}
-	W(d) = l;
+	memmove(R.d, &l, sizeof(l));
 }
 /* Retain buffered storage if the received value replaces the channel owner. */
 static int
@@ -1540,44 +1543,48 @@ OP(consmp)
 	t->ref++;
 	L(d) = result;
 }
+/* Capture a possibly four-byte-aligned owner before reading list storage. */
+static List*
+listhead(void)
+{
+	List *l;
+
+	memmove(&l, R.s, sizeof(l));
+	if(l == H || l == nil)
+		error(exNilref);
+	return l;
+}
+
 /* A nil list has no head payload. */
 OP(headb)
 {
 	List *l;
 
-	l = L(s);
-	if(l == H)
-		error(exNilref);
-	B(d) = *(BYTE*)l->data;
+	l = listhead();
+	memmove(R.d, l->data, sizeof(BYTE));
 }
 /* Reject nil before reading a word list head. */
 OP(headw)
 {
 	List *l;
 
-	l = L(s);
-	if(l == H)
-		error(exNilref);
-	W(d) = *(WORD*)l->data;
+	l = listhead();
+	memmove(R.d, l->data, sizeof(WORD));
 }
 /* Reject nil before reading a long list head. */
 OP(headl)
 {
 	List *l;
 
-	l = L(s);
-	if(l == H)
-		error(exNilref);
-	V(d) = *(LONG*)l->data;
+	l = listhead();
+	memmove(R.d, l->data, sizeof(LONG));
 }
 /* Validate the list before copying its pointer-valued head. */
 OP(headp)
 {
 	List *l;
 
-	l = L(s);
-	if(l == H)
-		error(exNilref);
+	l = listhead();
 	R.s = l->data;
 	movp();
 }
@@ -1586,10 +1593,8 @@ OP(headf)
 {
 	List *l;
 
-	l = L(s);
-	if(l == H)
-		error(exNilref);
-	F(d) = *(REAL*)l->data;
+	l = listhead();
+	memmove(R.d, l->data, sizeof(REAL));
 }
 /* Validate both the list reference and raw payload size before copying. */
 OP(headm)
@@ -1597,10 +1602,8 @@ OP(headm)
 	List *l;
 	WORD n;
 
-	l = L(s);
-	if(l == H)
-		error(exNilref);
-	n = W(m);
+	l = listhead();
+	memmove(&n, R.m, sizeof(n));
 	if(n < 0)
 		error(exBounds);
 	if(n != 0)
@@ -1611,11 +1614,11 @@ OP(headmp)
 {
 	List *l;
 	Type *t;
+	WORD index;
 
-	l = L(s);
-	if(l == H)
-		error(exNilref);
-	t = moduletype(R.M, W(m));
+	l = listhead();
+	memmove(&index, R.m, sizeof(index));
+	t = moduletype(R.M, index);
 	if(t->size == 0)
 		return;
 
@@ -1633,9 +1636,7 @@ OP(tail)
 {
 	List *l;
 
-	l = L(s);
-	if(l == H)
-		error(exNilref);
+	l = listhead();
 	R.s = &l->tail;
 	movp();
 }

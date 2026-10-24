@@ -3,13 +3,19 @@ typedef struct LeafLayout LeafLayout;
 struct LeafLayout {
 	int wordbytes;
 	int pc, s, d, m;
-	int arraylen, arraydata, stringlen;
+	int arraylen, arraydata;
+	int stringlen;
+	int listdata, listtail;
 };
 typedef struct LeafOp LeafOp;
 struct LeafOp {
 	int kind, bytes, input, alu, condition;
 };
-enum { LeafMove=1, LeafAlu, LeafBranch, LeafJump, LeafAddress, LeafNop, LeafShift, LeafDivide, LeafLength, LeafIndex, LeafNegReal, LeafCopy, LeafStringLength };
+enum {
+	LeafMove = 1, LeafAlu, LeafBranch, LeafJump, LeafAddress, LeafNop,
+	LeafShift, LeafDivide, LeafLength, LeafIndex, LeafNegReal,
+	LeafCopy, LeafStringLength, LeafHead, LeafListLength,
+};
 
 /* Classify only operations whose complete VM semantics fit a helper-free leaf. */
 static int
@@ -18,6 +24,10 @@ leafop(LeafOp *p, int op, int wordbytes)
 	memset(p, 0, sizeof(*p));
 	p->bytes = wordbytes;
 	switch(op){
+	case IHEADB: p->bytes = 1; /* fall through */
+	case IHEADW: p->kind = LeafHead; break;
+	case IHEADL: case IHEADF: p->kind = LeafHead; p->bytes = 8; break;
+	case ILENL: p->kind = LeafListLength; break;
 	case ILENC: p->kind = LeafStringLength; break;
 	case IMOVM: p->kind = LeafCopy; break;
 	case INEGF: p->kind = LeafNegReal; p->bytes = 8; break;

@@ -45,7 +45,8 @@ base = base.replace('Texception};', 'Texception,Tlist};')
 base = base.replace('IMPLEMENTATION', '\n'.join(parts))
 base = base.replace('main(void)', 'identity_main(void)')
 runtime = (root / 'libinterp/xec.c').read_text()
-native = [function(runtime, 'static WORD\nshiftcount(')]
+native = [function(runtime, 'static WORD\nshiftcount('),
+          function(runtime, 'static List*\nlisthead(')]
 native += [function(runtime, 'OP('+name+')') for name in
            ('shlb', 'shrb', 'shlw', 'shrw', 'shll', 'shrl', 'iexpw', 'iexpl', 'headw', 'tail')]
 native.append(function((root / 'libinterp/string.c').read_text(), 'String*\nslicer('))

@@ -29,7 +29,8 @@ def function(text, signature):
 
 parts = [function(source, 'List*\ncons(')]
 parts += [function(source, 'static Type*\nmoduletype(')]
-parts += [function(source, 'OP('+name+')') for name in ('consb','consw','consl','consp','consf','consm','consmp','movmp','headmp')]
+if 'static List*\nlisthead(' in source:parts += [function(source,'static List*\nlisthead(')]
+parts += [function(source, 'OP('+name+')') for name in ('consb','consw','consl','consp','consf','consm','consmp','movp','movmp','headmp','headb','headw','headl','headf','headm','lenl','headp','tail')]
 heap = (root / 'libinterp/heap.c').read_text()
 parts = [function(heap, 'void\nincmem('), function(heap, 'void\nfreeptrs(')] + parts
 parts.insert(0, function((root / 'emu/port/dis.c').read_text(), 'int\nkprotect('))
@@ -40,6 +41,9 @@ with tempfile.TemporaryDirectory(prefix='lists-') as directory:
     target.write_text(unit)
     cmd = shlex.split(os.environ.get('CC','cc'))
     cmd += shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
+    selected=os.environ.get('LIST_HEAD_CASE','')
+    if selected not in ('','nil','raw','length'):raise ValueError(selected)
+    if selected:cmd += ['-DLIST_HEAD_CASE='+{'nil':'1','raw':'2','length':'3'}[selected]]
     includes = ['-I'+str(root / p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
     for model in ('native','word32'):
         override = []

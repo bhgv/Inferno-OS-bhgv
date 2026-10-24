@@ -26,7 +26,8 @@ Array lengths are native in both word models; fixed byte/word/big/real element
 addresses are native when VM words hold pointers. Header offsets are explicit
 layout inputs derived from Array, and all rejected inputs use the VM helper.
 Generic descriptor indexing remains in the interpreter. String lengths and raw
-record moves of up to 128 bytes are also native; larger moves use optab/memmove.
+record moves of up to 128 bytes are also native; larger moves use optab/memmove. Scalar list heads are native, as are list
+length scans through 128 nodes; longer scans retain the VM helper.
 Binary64 negation is native: only the sign bit changes, preserving signed zeros,
 infinities and NaN payloads without requiring floating-point registers.
 Other floating arithmetic, reference ownership, allocation, calls, returns, exceptions
@@ -71,7 +72,7 @@ python3 libinterp/tests/slice-tokenize-suite.py --core
 
 The cross-architecture test compiles the production encoders, disassembles every
 emitted byte and executes AMD64, AArch64 and RV64 machine code in Unicorn. Its
-120,660 checks compare against independent Python integer/branch oracles for both
+131,922 checks compare against independent Python integer/branch oracles for both
 VM word widths. It covers overflow boundaries, randomized values, exact input
 aliases, partial move overlaps, four-byte-aligned long operands, high native
 addresses, PC updates, neighboring-byte guards, sizing, capacity rejection and
@@ -144,7 +145,7 @@ three 64-bit backends. See [the array-address guide](README.array-indices.md) fo
 the checked VM helper, zero-width semantics, native address guards, word-model
 limitations and independent parent regressions. The array-only emulator matrix
 adds 26,100 semantic executions plus shared sizing/ABI checks. The complete
-three-architecture machine-code suite now has 120,660 checks; the dedicated VM
+three-architecture machine-code suite now has 131,922 checks; the dedicated VM
 address fixture adds 40,023 checks. These counts do not imply whole target boot
 or a new Dis64 ABI.
 
@@ -212,7 +213,7 @@ identical and disjoint spans, byte alignment, overwritten count operands,
 128/129 boundaries, signed extrema and unmapped source/destination spans on
 rejection. The string subset reports 744 checks including encoder checks, with
 four-byte String.len offsets, both word widths, source/result aliases and
-unchanged destinations on fallback. The complete driver reports 120,660 checks.
+unchanged destinations on fallback. The complete driver reports 131,922 checks.
 The native AMD64 fixture compares copies with libc memmove, tests the real
 String/REG offsets and runs actual VM fallback for length 129, invalid counts,
 C-null strings and INT_MIN metadata. Both word models pass ASan/UBSan.
@@ -224,3 +225,53 @@ a null String member access, and `STRING_LENGTH_CASE=intmin` diagnoses signed
 INT_MIN negation. The default string fixture additionally tests four-byte-aligned
 owner/result slots and aliasing. The repaired sources pass those cases with
 ASan/UBSan. None of these tests is a full target operating-system boot.
+
+## List heads and bounded length scans
+
+IHEADB/IHEADW/IHEADL/IHEADF now read inline List.data natively on AMD64,
+AArch64 and RV64. Header offsets come from the production layout; the emulator
+fixture deliberately uses a different data offset. Owners are captured before
+possibly aliased output writes. H and C-null owners decline without changing
+storage, allowing optab to raise exNilref. Scalar real heads copy all binary64
+bits, including signaling NaN payloads, without evaluating floating arithmetic.
+Pointer/mapped heads and tails keep their interpreter reference ownership paths.
+
+ILENL scans at most 128 nodes in each 64-bit backend. H terminates the list and
+returns the count, including zero for an empty list. C-null links or a scan that
+would exceed 128 nodes return zero without storing a partial result; optab then
+runs the normal length helper. The explicit List.tail offset is independent of
+the inline payload offset. This bound also prevents the native leaf from
+spinning on cycles; the existing VM helper does not gain cycle detection.
+RV32 retains interpreter dispatch for these new operations.
+
+VM head instructions now capture owner pointers with byte-safe copies, reject
+C-null along with H and copy scalar results with memmove. Raw head sizes and
+mapped type indices are captured without native WORD alignment assumptions.
+The length helper checks C-null at every link and publishes a result only after
+a complete scan, using byte-safe operand access. Reference-valued head/tail
+instructions share the owner check while preserving their existing movers.
+
+```
+LEAF64_CASE=head python3 libinterp/tests/leaf64-jit.py
+LEAF64_CASE=listlen python3 libinterp/tests/leaf64-jit.py
+python3 libinterp/tests/lists.py
+```
+
+The full emulator driver reports 131,922 checks. Head checks cover byte/word/big/
+real bit patterns, high native pointers, source/result aliases, partial overlap
+with inline payloads and unchanged surrounding object/operand bytes. Length
+checks cover both word widths, 0/1/127/128/129 boundaries, null links, cycles,
+source/result aliasing and no writes on fallback. Native AMD64 tests execute
+both emitted code and forced real VM helpers for identical head/length inputs;
+129/130-node lists additionally exercise native rejection followed by C fallback.
+Both native word models pass ASan/UBSan.
+
+The VM list fixture reports 3,434 cases per word model, including unaligned
+owner/result/count/type-index operands, raw copy overlap, null failures, 129-node
+scans and reference counts when headp/tail replace the list that owns the result.
+Against parent 1d8a3e3, `LIST_SOURCE` source substitution with
+`LIST_HEAD_CASE=nil` reproduces a null head access, `LIST_HEAD_CASE=raw` a
+misaligned WORD64 headm size load, and `LIST_HEAD_CASE=length` a null length-link
+access. The repaired implementation passes ASan/UBSan. The compiler fold-traps
+fixture extracts the new shared listhead helper so its actual VM comparison
+continues to cover head/tail exceptions. Target hardware boots remain separate.

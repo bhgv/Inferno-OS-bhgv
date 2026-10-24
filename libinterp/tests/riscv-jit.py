@@ -28,7 +28,7 @@ ISHLB ISHLW ISHRB ISHRW ILSRW IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW IBLEB
 IBLEW IBGTB IBGTW IBGEB IBGEW IDIVW IMODW IMOVP IFRAME ICALL IRET IADDF'''.split()
 
 class Layout(C.Structure):
-    _fields_ = [(name, C.c_int) for name in ('xlen','wordbytes','hasm','pc','s','d','m','arraylen','arraydata','stringlen')]
+    _fields_ = [(name, C.c_int) for name in ('xlen','wordbytes','hasm','pc','s','d','m','arraylen','arraydata','stringlen','listdata','listtail')]
 
 
 def signed(n, bits):

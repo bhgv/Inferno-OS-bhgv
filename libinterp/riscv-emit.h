@@ -11,7 +11,9 @@ typedef struct RvLayout RvLayout;
 struct RvLayout {
 	int xlen, wordbytes, hasm;
 	int pc, s, d, m;
-	int arraylen, arraydata, stringlen;
+	int arraylen, arraydata;
+	int stringlen;
+	int listdata, listtail;
 };
 typedef struct RvBuf RvBuf;
 struct RvBuf {
@@ -117,6 +119,31 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	b.out=out; b.n=0; b.cap=cap; b.bad=0; b.abi=abi;
 	bytes=abi->wordbytes; f3=0; f7=0; binary=0; branch=0; swap=0; invert=0; shift=0; division=0;
 	switch(op) {
+	case ILENL:
+		/* Bounded scans decline without publishing a partial length. */
+		if(abi->xlen != 64 || abi->listtail < 0 || abi->listtail > 2047 || abi->listtail%8 != 0) return 0;
+		rvptr(&b, Rvt1, abi->s); rvload(&b, Rvt0, Rvt1, 8);
+		rvi(&b, 0x13, 0, Rvt3, Rvzero, 0);
+		rvi(&b, 0x13, 0, Rvt4, Rvzero, -1);
+		rvi(&b, 0x13, 0, Rvt6, Rvzero, 128);
+		rvbranch(&b, 0, Rvt0, Rvt4, 40);
+		rvguard(&b, 1, Rvt0, Rvzero);
+		rvguard(&b, 6, Rvt3, Rvt6);
+		rvi(&b, 0x03, 3, Rvt0, Rvt0, abi->listtail);
+		rvi(&b, 0x13, 0, Rvt3, Rvt3, 1);
+		rvbranch(&b, 0, Rvzero, Rvzero, -36);
+		rvptr(&b, Rvt2, abi->d); rvstore(&b, Rvt2, Rvt3, abi->wordbytes);
+		break;
+	case IHEADB: case IHEADW: case IHEADL: case IHEADF:
+		if(abi->xlen != 64 || abi->listdata < 0 || abi->listdata > 2047 || abi->listdata%8 != 0) return 0;
+		rvptr(&b, Rvt1, abi->s); rvload(&b, Rvt0, Rvt1, 8);
+		rvguard(&b, 1, Rvt0, Rvzero);
+		rvi(&b, 0x13, 0, Rvt6, Rvzero, -1); rvguard(&b, 1, Rvt0, Rvt6);
+		rvi(&b, 0x13, 0, Rvt1, Rvt0, abi->listdata);
+		bytes = op == IHEADB ? 1 : op == IHEADW ? abi->wordbytes : 8;
+		rvload(&b, Rvt3, Rvt1, bytes);
+		rvptr(&b, Rvt2, abi->d); rvstore(&b, Rvt2, Rvt3, bytes);
+		break;
 	case ILENC:
 		if(abi->xlen != 64 || abi->stringlen < 0 || abi->stringlen > 2047 || abi->stringlen%4 != 0) return 0;
 		rvptr(&b, Rvt1, abi->s); rvload(&b, Rvt0, Rvt1, 8);

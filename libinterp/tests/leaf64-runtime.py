@@ -100,6 +100,11 @@ static int dispatch(void *unused) {
     case ILENA:lena();break;
     case ILENC:lenc();break;
     case IMOVM:movm();break;
+    case IHEADB:headb();break;
+    case IHEADW:headw();break;
+    case IHEADL:headl();break;
+    case IHEADF:headf();break;
+    case ILENL:lenl();break;
     default:assert(0);
     }
     return 1;
@@ -198,6 +203,77 @@ static void stringlengths(Module *m) {
         assert(!kprotect(dispatch,nil) && out==123 && R.PC==pc);
     }
 }
+/* Compare native and interpreter heads with real layouts, aliases and errors. */
+static void listheads(Module *m) {
+    struct { List list; uchar extra[32]; } node;
+    union { uvlong align; uchar bytes[64]; } slots;
+    uchar original[sizeof(node)], expected[sizeof(node)], wantslots[64];
+    uvlong bits[]={0,1,0xffffffffffffffffULL,0x8000000000000000ULL,
+        0x7ff8000000000042ULL,0x7ff0000000000042ULL};
+    int ops[]={IHEADB,IHEADW,IHEADL,IHEADF}, op,i,alias,mode,width;
+    int (*entry)(REG*);
+    List *owner;
+    Inst *pc=m->prog+1;
+    active=m;
+    for(op=0;op<4;op++) {
+        activeop=ops[op];entry=m->jit->entry[activeop];assert(entry);
+        width=op==0?1:op==1?sizeof(WORD):8;
+        for(mode=0;mode<2;mode++) {
+            m->jit->entry[activeop]=mode?nil:entry;
+            for(i=0;i<nelem(bits);i++)for(alias=0;alias<4;alias++) {
+                memset(&node,0,sizeof(node));node.list.tail=H;
+                memcpy(node.list.data,&bits[i],8);
+                memcpy(original,&node,sizeof(node));memcpy(expected,&node,sizeof(node));
+                memset(slots.bytes,0xa5,sizeof(slots.bytes));
+                owner=&node.list;memcpy(slots.bytes+4,&owner,sizeof(owner));
+                memcpy(wantslots,slots.bytes,sizeof(wantslots));
+                R.s=slots.bytes+4;R.PC=pc;
+                if(alias<2) {
+                    R.d=slots.bytes+(alias?4:20);
+                    memcpy(wantslots+(alias?4:20),&bits[i],width);
+                }else {
+                    R.d=(uchar*)node.list.data+(alias==2?4:-4);
+                    memcpy(expected+((uchar*)R.d-(uchar*)&node),&bits[i],width);
+                }
+                assert(kprotect(dispatch,nil) && R.PC==pc);
+                assert(!memcmp(&node,expected,sizeof(node)) && !memcmp(slots.bytes,wantslots,sizeof(wantslots)));
+            }
+            for(i=0;i<2;i++) {
+                owner=i?nil:H;memcpy(slots.bytes+4,&owner,sizeof(owner));
+                R.s=slots.bytes+4;R.d=slots.bytes+20;R.PC=pc;
+                memcpy(wantslots,slots.bytes,sizeof(wantslots));
+                assert(!kprotect(dispatch,nil) && R.PC==pc && !memcmp(slots.bytes,wantslots,sizeof(wantslots)));
+            }
+        }
+        m->jit->entry[activeop]=entry;
+    }
+}
+/* Scan short lists natively and long or malformed lists through the VM helper. */
+static void listlengths(Module *m) {
+    List nodes[130], *owner;
+    union { uvlong align; uchar bytes[64]; } slots;
+    uchar expected[64];
+    WORD result;
+    int n,i,terminal,alias,mode;
+    int (*entry)(REG*)=m->jit->entry[ILENL];
+    Inst *pc=m->prog+1;
+    assert(entry);active=m;activeop=ILENL;
+    for(mode=0;mode<2;mode++) {
+        m->jit->entry[ILENL]=mode?nil:entry;
+        for(n=0;n<=130;n++)for(terminal=0;terminal<2;terminal++)for(alias=0;alias<2;alias++) {
+            for(i=0;i<n;i++)nodes[i].tail=i+1<n?&nodes[i+1]:terminal?nil:H;
+            owner=n?nodes:terminal?nil:H;
+            memset(slots.bytes,0xa5,sizeof(slots.bytes));
+            memcpy(slots.bytes+4,&owner,sizeof(owner));memcpy(expected,slots.bytes,sizeof(expected));
+            result=n;
+            if(!terminal)memcpy(expected+(alias?4:20),&result,sizeof(result));
+            R.s=slots.bytes+4;R.d=slots.bytes+(alias?4:20);R.PC=pc;
+            assert(kprotect(dispatch,nil)==!terminal && R.PC==pc);
+            assert(!memcmp(slots.bytes,expected,sizeof(expected)));
+        }
+    }
+    m->jit->entry[ILENL]=entry;
+}
 /* Use real Array/REG offsets and actual VM fallback on the native host. */
 static void arrays(Module *m) {
     Type type={0};Array array={0},*owner;
@@ -231,7 +307,7 @@ static void arrays(Module *m) {
 }
 /* Compile, invoke, reject invalid metadata and retry without changing Dis PCs. */
 int main(void) {
-    Module m={0}, *owned;Inst instructions[17]={{0}};
+    Module m={0}, *owned;Inst instructions[22]={{0}};
     WORD a=3,b=7,out=0;
     int i;
     instructions[0].op=ISUBW;instructions[1].op=IADDW;
@@ -240,24 +316,25 @@ int main(void) {
     instructions[6].op=ISHLW;instructions[7].op=ISHRW;instructions[8].op=ILSRW;
     instructions[9].op=ILENA;instructions[10].op=IINDB;instructions[11].op=IINDW;
     instructions[12].op=IINDL;instructions[13].op=IINDF;instructions[14].op=INEGF;instructions[15].op=IMOVM;instructions[16].op=ILENC;
-    m.prog=instructions;m.nprog=17;
+    instructions[17].op=IHEADB;instructions[18].op=IHEADW;instructions[19].op=IHEADL;instructions[20].op=IHEADF;instructions[21].op=ILENL;
+    m.prog=instructions;m.nprog=22;
     for(i=1;i<=5;i++) {
-        fail=i;assert(!compile(&m,17,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
+        fail=i;assert(!compile(&m,22,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
     }
     fail=0;
-    assert(!compile(nil,17,nil));assert(!compile(&m,3,nil));
-    assert(compile(&m,17,nil));assert(m.jit && !m.compiled && m.prog==instructions);
+    assert(!compile(nil,22,nil));assert(!compile(&m,3,nil));
+    assert(compile(&m,22,nil));assert(m.jit && !m.compiled && m.prog==instructions);
     assert(m.jit->entry[IMOVP]==nil);
     assert(protections==1 && mappings==1);
     R.s=&a;R.m=&b;R.d=&out;
 #if EXECUTE_NATIVE
     assert(m.jit->entry[ISUBW](&R)==1 && out==4);
     R.d=&a;assert(m.jit->entry[IADDW](&R)==1 && a==10);
-    arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);
+    arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);
 #endif
-    assert(compile(&m,17,nil));dropmodule(&m);
-    for(i=0;i<17;i++)instructions[i].op=IMOVP;
-    assert(!compile(&m,17,nil) && !m.jit);
+    assert(compile(&m,22,nil));dropmodule(&m);
+    for(i=0;i<22;i++)instructions[i].op=IMOVP;
+    assert(!compile(&m,22,nil) && !m.jit);
     owned=calloc(1,sizeof(*owned));assert(owned);
     owned->prog=calloc(1,sizeof(Inst));assert(owned->prog);
     owned->nprog=1;owned->prog[0].op=IADDW;
@@ -274,7 +351,8 @@ a=load.index('void\nfreemod(');b=load.index('\nvoid\nunload(',a)
 unit=unit.replace('FREEMOD',load[a:b])
 xec=Path(os.environ.get('LEAF_VM_SOURCE',str(root/'libinterp/xec.c'))).read_text()
 parts=[]
-for signature in ('static WORD\nshiftcount(', 'OP(movm)', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
+for signature in ('static WORD\nshiftcount(', 'static List*\nlisthead(', 'OP(lenl)', 'OP(headb)', 'OP(headw)', 'OP(headl)', 'OP(headf)', 'OP(movm)', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
+    if signature=='static List*\nlisthead(' and signature not in xec:continue
     a=xec.index(signature);b=xec.index('\n}',a)+2
     parts.append(xec[a:b])
 string=(root/'libinterp/string.c').read_text()

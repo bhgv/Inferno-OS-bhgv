@@ -56,12 +56,13 @@ x64guard(X64Buf *b, int condition)
 	x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 }
 
-/* Read a signed VM length or native pointer from an already validated object. */
+/* Read a scalar header or payload field from an already validated object. */
 static void
 x64field(X64Buf *b, int result, int owner, int offset, int bytes)
 {
 	x64byte(b, owner >= 8 ? 0x49 : 0x48);
-	x64byte(b, bytes == 8 ? 0x8b : 0x63);
+	if(bytes == 1){ x64byte(b, 0x0f); x64byte(b, 0xb6); }
+	else x64byte(b, bytes == 8 ? 0x8b : 0x63);
 	x64byte(b, 0x80 | result<<3 | (owner&7));
 	x64word(b, offset);
 }
@@ -82,7 +83,29 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafStringLength){
+	if(p.kind == LeafListLength){
+		/* Bounded scans decline without publishing a partial length. */
+		if(abi->listtail < 0) return 0;
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
+		x64byte(&b, 0x31); x64byte(&b, 0xc9); /* count = 0 */
+		loop = b.n;
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff);
+		x64byte(&b, 0x74); done = b.n; x64byte(&b, 0);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
+		x64byte(&b, 0x81); x64byte(&b, 0xf9); x64word(&b, 128); x64guard(&b, 0x72);
+		x64field(&b, 0, 0, abi->listtail, 8);
+		x64byte(&b, 0xff); x64byte(&b, 0xc1);
+		x64byte(&b, 0xeb); x64byte(&b, loop-b.n-1);
+		b.bytes[done] = b.n-done-1;
+		x64ptr(&b, 2, abi->d); x64store(&b, 1, abi->wordbytes);
+	}else if(p.kind == LeafHead){
+		if(abi->listdata < 0) return 0;
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
+		x64field(&b, 0, 0, abi->listdata, p.bytes);
+		x64ptr(&b, 2, abi->d); x64store(&b, 0, p.bytes);
+	}else if(p.kind == LeafStringLength){
 		if(abi->stringlen < 0) return 0;
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);

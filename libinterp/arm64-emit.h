@@ -46,11 +46,11 @@ a64guard(A64Buf *b, u32int condition)
 	a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 }
 
-/* Fetch a native object header field after validating its owner pointer. */
+/* Fetch a scalar object field after validating its owner pointer. */
 static void
 a64field(A64Buf *b, int result, int owner, int offset, int bytes)
 {
-	a64put(b, (bytes == 8 ? 0xf9400000U : 0xb9400000U) |
+	a64put(b, (bytes == 8 ? 0xf9400000U : bytes == 1 ? 0x39400000U : 0xb9400000U) |
 		(u32int)(offset/bytes)<<10 | owner<<5 | result);
 }
 
@@ -73,7 +73,29 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafStringLength){
+	if(p.kind == LeafListLength){
+		/* Bounded scans decline without publishing a partial length. */
+		if(abi->listtail < 0 || abi->listtail > 32760 || abi->listtail%8 != 0) return 0;
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
+		a64put(&b, 0x5280000d);
+		loop = b.n;
+		a64put(&b, 0xb100059f);
+		done = b.n; a64put(&b, 0x54000000);
+		a64guard(&b, 0xb500006c);
+		a64put(&b, 0x710201bf); a64guard(&b, 0x54000063); /* count < 128 */
+		a64field(&b, 12, 12, abi->listtail, 8);
+		a64put(&b, 0x110005ad);
+		a64put(&b, 0x14000000U | ((u32int)(loop-b.n)&0x3ffffff));
+		b.code[done] |= (b.n-done)<<5;
+		a64ptr(&b, 11, abi->d); a64store(&b, 13, abi->wordbytes);
+	}else if(p.kind == LeafHead){
+		if(abi->listdata < 0 || abi->listdata > 4095 || abi->listdata%8 != 0) return 0;
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
+		a64guard(&b, 0xb500006c);
+		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
+		a64field(&b, 12, 12, abi->listdata, p.bytes);
+		a64ptr(&b, 11, abi->d); a64store(&b, 12, p.bytes);
+	}else if(p.kind == LeafStringLength){
 		if(abi->stringlen < 0 || abi->stringlen > 16380 || abi->stringlen%4 != 0) return 0;
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
 		a64guard(&b, 0xb500006c);
