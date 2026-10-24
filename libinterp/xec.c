@@ -2441,24 +2441,44 @@ OP(badop)
 {
 	error(exOp);
 }
+/* Validate the owner and prepare its message before publishing an exception value. */
 OP(iraise)
 {
 	void *v;
+	String *message;
+	char *text;
 	Heap *h;
 	Prog *p;
 
-	p = currun();
-	v = T(s);
-	if(v == H)
+	memmove(&v, R.s, sizeof(v));
+	if(v == H || v == nil)
 		error(exNilref);
-	p->exval = v;
 	h = D2H(v);
-	h->ref++;
 	if(h->t == &Tstring)
-		error(string2c((String*)v));
-	else
-		error(string2c(*(String**)v));
+		message = v;
+	else{
+		if(h->t == nil || h->t == H || h->t->size < (int)sizeof(message))
+			error(exType);
+		memmove(&message, v, sizeof(message));
+	}
+	text = string2c(message);
+	p = currun();
+	h->ref++;
+	p->exval = v;
+	error(text);
 }
+/* Read a full VM frame word without arithmetic on nil frame identities. */
+static WORD
+fixedword(int offset)
+{
+	WORD value;
+
+	if(R.FP == nil || R.FP == H)
+		error(exNilref);
+	memmove(&value, R.FP+offset, sizeof(value));
+	return value;
+}
+
 /* Shift a fixed intermediate with bounded counts and unsigned left-shift bits. */
 static LONG
 fixedshift(LONG value, WORD count)
@@ -2505,7 +2525,7 @@ OP(mulx)
 	WORD p, x, y, result;
 	LONG r;
 
-	memmove(&p, R.FP+(NREG+2)*IBY2WD, sizeof(p));
+	p = fixedword((NREG+2)*IBY2WD);
 	memmove(&x, R.m, sizeof(x));
 	memmove(&y, R.s, sizeof(y));
 	r = (LONG)((uvlong)(LONG)x*(uvlong)(LONG)y);
@@ -2520,7 +2540,7 @@ OP(divx)
 	WORD p, value, divisor, result;
 	LONG s;
 
-	memmove(&p, R.FP+(NREG+2)*IBY2WD, sizeof(p));
+	p = fixedword((NREG+2)*IBY2WD);
 	memmove(&divisor, R.s, sizeof(divisor));
 	if(divisor == 0)
 		error(exZdiv);
@@ -2552,8 +2572,8 @@ OP(mulx0)
 
 	memmove(&x, R.m, sizeof(x));
 	memmove(&y, R.s, sizeof(y));
-	memmove(&p, R.FP+(NREG+2)*IBY2WD, sizeof(p));
-	memmove(&a, R.FP+NREG*IBY2WD, sizeof(a));
+	p = fixedword((NREG+2)*IBY2WD);
+	a = fixedword(NREG*IBY2WD);
 	if(a == 0)
 		error(exZdiv);
 	if(x == 0 || y == 0){
@@ -2576,8 +2596,8 @@ OP(divx0)
 
 	memmove(&x, R.m, sizeof(x));
 	memmove(&y, R.s, sizeof(y));
-	memmove(&p, R.FP+(NREG+2)*IBY2WD, sizeof(p));
-	memmove(&b, R.FP+NREG*IBY2WD, sizeof(b));
+	p = fixedword((NREG+2)*IBY2WD);
+	b = fixedword(NREG*IBY2WD);
 	if(y == 0)
 		error(exZdiv);
 	if(x == 0){
@@ -2600,7 +2620,7 @@ OP(cvtxx0)
 
 	memmove(&x, R.s, sizeof(x));
 	memmove(&p, R.m, sizeof(p));
-	memmove(&a, R.FP+NREG*IBY2WD, sizeof(a));
+	a = fixedword(NREG*IBY2WD);
 	if(a == 0)
 		error(exZdiv);
 	if(x == 0){
@@ -2624,8 +2644,8 @@ OP(mulx1)
 
 	memmove(&x, R.m, sizeof(x));
 	memmove(&y, R.s, sizeof(y));
-	memmove(&p, R.FP+(NREG+2)*IBY2WD, sizeof(p));
-	memmove(&a, R.FP+NREG*IBY2WD, sizeof(a));
+	p = fixedword((NREG+2)*IBY2WD);
+	a = fixedword(NREG*IBY2WD);
 	if(a == 0)
 		error(exZdiv);
 	if(x == 0 || y == 0){
@@ -2665,8 +2685,8 @@ OP(divx1)
 
 	memmove(&x, R.m, sizeof(x));
 	memmove(&y, R.s, sizeof(y));
-	memmove(&p, R.FP+(NREG+2)*IBY2WD, sizeof(p));
-	memmove(&b, R.FP+NREG*IBY2WD, sizeof(b));
+	p = fixedword((NREG+2)*IBY2WD);
+	b = fixedword(NREG*IBY2WD);
 	if(y == 0)
 		error(exZdiv);
 	if(x == 0){
@@ -2704,7 +2724,7 @@ OP(cvtxx1)
 
 	memmove(&x, R.s, sizeof(x));
 	memmove(&p, R.m, sizeof(p));
-	memmove(&a, R.FP+NREG*IBY2WD, sizeof(a));
+	a = fixedword(NREG*IBY2WD);
 	if(a == 0)
 		error(exZdiv);
 	if(x == 0){

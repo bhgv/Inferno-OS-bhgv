@@ -22,13 +22,13 @@ cc = shlex.split(os.environ.get('CC', 'cc'))
 flags = shlex.split(os.environ.get('CFLAGS', '-O1 -g'))
 checks = 0
 rng = random.Random(0x1f3e)
-names = '''IDIVB IMODB IDIVL IMODL IMULL IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IEXPF INEGF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+names = '''IMULX0 IDIVX0 ICVTXX0 IDIVB IMODB IDIVL IMODL IMULL IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IEXPF INEGF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 ISHLB ISHLW ISHRB ISHRW ILSRW IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW IBLEB
 IBLEW IBGTB IBGTW IBGEB IBGEW IDIVW IMODW IMOVP IFRAME ICALL IRET IADDF'''.split()
 
 class Layout(C.Structure):
-    _fields_ = [(name, C.c_int) for name in ('xlen','wordbytes','hasm','pc','s','d','m','arraylen','arraydata','stringlen','stringdata','listdata','listtail','fp','fixedtmp','arraytype','typesize','hasdiv','framelr','framefp')]
+    _fields_ = [(name, C.c_int) for name in ('xlen','wordbytes','hasm','pc','s','d','m','arraylen','arraydata','stringlen','stringdata','listdata','listtail','fp','fixedtmp','arraytype','typesize','hasdiv','framelr','framefp','fixedcoef')]
 
 
 def signed(n, bits):
@@ -228,7 +228,7 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
         # Zmmul keeps identical multiply leaves but cannot publish DIV/REM.
         multiply_only=Layout.from_buffer_copy(abi)
         multiply_only.hasdiv=0
-        for name in ('IDIVB','IMODB','IDIVW','IMODW','IDIVL','IMODL','IDIVX'):
+        for name in ('IDIVB','IMODB','IDIVW','IMODW','IDIVL','IMODL','IDIVX','IMULX0','IDIVX0','ICVTXX0'):
             assert emit(name,multiply_only)[0]==0, name
             checks+=1
         for name in ('IMULB','IMULW','IMULL','IMULX','IEXPW','IEXPL','IINDX'):

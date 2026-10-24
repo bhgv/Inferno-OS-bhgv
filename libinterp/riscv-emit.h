@@ -18,6 +18,7 @@ struct RvLayout {
 	int arraytype, typesize;
 	int hasdiv;	/* Zmmul provides multiplication without division. */
 	int framelr, framefp;
+	int fixedcoef;
 };
 typedef struct RvBuf RvBuf;
 struct RvBuf {
@@ -142,6 +143,30 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	b.out=out; b.n=0; b.cap=cap; b.bad=0; b.abi=abi;
 	bytes=abi->wordbytes; f3=0; f7=0; binary=0; branch=0; swap=0; invert=0; shift=0; division=0; realbranch=0;
 	switch(op) {
+	case IMULX0: case IDIVX0: case ICVTXX0:
+		/* All coefficients are captured before source/destination aliases are changed. */
+		if(abi->xlen != 64 || !abi->hasdiv || (op != ICVTXX0 && !abi->hasm) ||
+		   abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047 || abi->fixedtmp%4 ||
+		   abi->fixedcoef < 0 || abi->fixedcoef > 2047 || abi->fixedcoef%4) return 0;
+		rvptr(&b, Rvt1, abi->fp); rvguard(&b, 1, Rvt1, Rvzero);
+		rvi(&b, 0x13, 0, Rvt5, Rvzero, -1); rvguard(&b, 1, Rvt1, Rvt5);
+		rvi(&b, 0x13, 7, Rvt5, Rvt1, 3); rvguard(&b, 0, Rvt5, Rvzero);
+		rvi(&b, 0x13, 0, Rvt0, Rvt1, abi->fixedcoef); rvload(&b, Rvt6, Rvt0, abi->wordbytes);
+		if(op != IDIVX0){rvguard(&b, 1, Rvt6, Rvzero);rvi(&b, 0x13, 0, Rvt5, Rvzero, -1);rvguard(&b, 1, Rvt6, Rvt5);}
+		if(op == ICVTXX0)rvptr(&b, Rvt1, abi->m);else rvi(&b, 0x13, 0, Rvt1, Rvt1, abi->fixedtmp);
+		rvload(&b, Rvt4, Rvt1, abi->wordbytes);
+		rvi(&b, 0x13, 0, Rvt0, Rvt4, 63); rvi(&b, 0x13, 0, Rvt5, Rvzero, 127);rvguard(&b, 6, Rvt0, Rvt5);
+		if(op != ICVTXX0){
+			rvptr(&b, Rvt1, abi->s);rvload(&b, Rvt0, Rvt1, abi->wordbytes);
+			if(op == IDIVX0){rvguard(&b, 1, Rvt0, Rvzero);rvi(&b, 0x13, 0, Rvt5, Rvzero, -1);rvguard(&b, 1, Rvt0, Rvt5);}
+		}
+		rvptr(&b, Rvt1, op == ICVTXX0 ? abi->s : abi->m);rvload(&b, Rvt3, Rvt1, abi->wordbytes);
+		if(op != ICVTXX0)rvr(&b, 0x33, 0, 1, Rvt3, Rvt3, op == IDIVX0 ? Rvt6 : Rvt0);
+		rvbranch(&b, 4, Rvt4, Rvzero, 12);rvr(&b, 0x33, 1, 0, Rvt3, Rvt3, Rvt4);rvbranch(&b, 0, Rvzero, Rvzero, 12);
+		rvr(&b, 0x33, 0, 32, Rvt4, Rvzero, Rvt4);rvr(&b, 0x33, 5, 32, Rvt3, Rvt3, Rvt4);
+		rvr(&b, 0x33, 4, 1, Rvt3, Rvt3, op == IDIVX0 ? Rvt0 : Rvt6);
+		rvptr(&b, Rvt2, abi->d);rvstore(&b, Rvt2, Rvt3, abi->wordbytes);
+		break;
 	case ICALL:
 		/* Four-byte-aligned VM frames use paired stores for native links. */
 		if(abi->xlen != 64 || abi->fp < 0 || abi->fp > 2047 || abi->fp%8 ||

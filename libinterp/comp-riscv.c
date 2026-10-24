@@ -85,6 +85,7 @@ rvcompile(void *arg)
 	abi.listtail=O(List, tail);
 	abi.fp=O(REG, FP);
 	abi.fixedtmp=(NREG+2)*IBY2WD;
+	abi.fixedcoef=NREG*IBY2WD;
 	abi.framelr=O(Frame, lr); abi.framefp=O(Frame, fp);
 	abi.arraytype=O(Array, t); abi.typesize=O(Type, size);
 #ifdef __riscv_mul

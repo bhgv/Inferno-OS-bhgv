@@ -89,6 +89,26 @@ main(void)
 			slotresult(slots.bytes,before,80+da,sizeof(result));destroy(result);
 		}
 	}
+	/* Split empty and shared owners at every pointer-slot alignment. */
+	for(sa=0;sa<8;sa++)for(wide=0;wide<3;wide++)for(alias=0;alias<2;alias++)for(op=0;op<2;op++){
+		s=wide==2 ? H : wide ? newrunes(2) : c2string("ab",2);
+		if(wide==1){s->Srune[0]='a';s->Srune[1]='b';}
+		old=s;if(alias && old!=H)D2H(old)->ref++;
+		memset(slots.bytes,0xa5,128);R.d=slots.bytes+32+sa;memmove(R.d,&s,sizeof(s));memmove(before,slots.bytes,128);
+		if(old!=H){
+			failure=0;EXPECT(splitc((String**)R.d,op),exNomem);failure=-1;
+			assert(!memcmp(before,slots.bytes,128) && D2H(old)->ref==(alias ? 2 : 1));
+		}
+		result=splitc((String**)R.d,op);memmove(&s,R.d,sizeof(s));assert(result==s);
+		if(old==H)assert(result==H);
+		else{
+			assert(result->len==(wide || op ? -2 : 2));
+			if(wide || op)assert(result->Srune[0]=='a' && result->Srune[1]=='b');
+			else assert(!memcmp(result->Sascii,"ab",2));
+		}
+		slotresult(slots.bytes,before,32+sa,sizeof(result));
+		if(alias && old!=H){assert(D2H(old)->ref==1);destroy(old);}destroy(result);
+	}
 	/* Invalid representations and wide bounds must not allocate, release or publish. */
 	for(i=0;i<4;i++){
 		s=i==0 ? nil : newstring(0);if(i==1)s->len=INT_MIN;

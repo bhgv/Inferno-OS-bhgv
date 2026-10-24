@@ -97,7 +97,32 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafCall){
+	if(p.kind == LeafFixedCoefficient){
+		/* Coefficient slots follow the VM frame layout, not native pointer alignment. */
+		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047 ||
+		   abi->fixedcoef < 0 || abi->fixedcoef > 2047) return 0;
+		a64ptr(&b, 9, abi->fp); a64guard(&b, 0xb5000069);
+		a64put(&b, 0xb100053f); a64guard(&b, 0x54000061);
+		/* Form byte offsets explicitly, including four-byte-aligned WORD64 slots. */
+		a64put(&b, 0x91000000U | abi->fixedcoef<<10 | 9<<5 | 10); a64load(&b, 14, 10, abi->wordbytes);
+		if(abi->wordbytes == 4)a64put(&b, 0x93407dce);
+		if(p.alu != 1){a64put(&b, 0xaa0e03ef); a64guard(&b, 0xb500006f); a64put(&b, 0xb10005ff); a64guard(&b, 0x54000061);}
+		if(p.alu == 2)a64ptr(&b, 10, abi->m);
+		else a64put(&b, 0x91000000U | abi->fixedtmp<<10 | 9<<5 | 10);
+		a64load(&b, 13, 10, abi->wordbytes); if(abi->wordbytes == 4)a64put(&b, 0x93407dad);
+		a64put(&b, 0x9100fdaa); a64put(&b, 0xf101fd5f); a64guard(&b, 0x54000063);
+		if(p.alu == 1){
+			a64ptr(&b, 10, abi->s); a64load(&b, 15, 10, abi->wordbytes);
+			if(abi->wordbytes == 4)a64put(&b, 0x93407def);
+			a64guard(&b, 0xb500006f); a64put(&b, 0xb10005ff); a64guard(&b, 0x54000061);
+		}else if(p.alu == 0){a64ptr(&b, 10, abi->s); a64load(&b, 14, 10, abi->wordbytes);if(abi->wordbytes == 4)a64put(&b, 0x93407dce);}
+		a64ptr(&b, 10, p.alu == 2 ? abi->s : abi->m); a64load(&b, 12, 10, abi->wordbytes);
+		if(abi->wordbytes == 4)a64put(&b, 0x93407d8c);
+		if(p.alu != 2)a64put(&b, 0x9b0e7d8c);
+		a64put(&b, 0xf10001bf); a64put(&b, 0x5400006b); a64put(&b, 0x9acd218c); a64put(&b, 0x14000003);
+		a64put(&b, 0xcb0d03ed); a64put(&b, 0x9acd298c); a64put(&b, 0x9acf0d8c);
+		a64ptr(&b, 11, abi->d); a64store(&b, 12, abi->wordbytes);
+	}else if(p.kind == LeafCall){
 		/* The target may reside in either frame link about to be replaced. */
 		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 ||
 		   abi->framelr < 0 || abi->framelr > 2047 || abi->framelr%8 ||

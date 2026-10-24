@@ -15,14 +15,14 @@ from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
 root = Path(__file__).resolve().parents[2]
-ops = '''IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF'''.split()
 class Layout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp')]
+    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp','fixedcoef')]
 class RvLayout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp')]
+    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp','fixedcoef')]
 
 
 def signed(value, bits):
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -58,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
             layout = RvLayout(64,wb,1,0,8,16,24) if rv else Layout(wb,0,8,16,24)
             if rv:layout.hasdiv=1
             layout.framelr=0;layout.framefp=8
-            layout.arraylen=8;layout.arraydata=32;layout.stringlen=12;layout.stringdata=32;layout.listdata=24;layout.listtail=8;layout.fp=32;layout.fixedtmp=28;layout.arraytype=16;layout.typesize=24
+            layout.arraylen=8;layout.arraydata=32;layout.stringlen=12;layout.stringdata=32;layout.listdata=24;layout.listtail=8;layout.fp=32;layout.fixedtmp=28;layout.fixedcoef=20;layout.arraytype=16;layout.typesize=24
             dis = Cs(CS_ARCH_X86,CS_MODE_64) if arch == 'amd64' else Cs(CS_ARCH_ARM64,0) if arch == 'arm64' else Cs(CS_ARCH_RISCV,CS_MODE_RISCV64)
             blobs = {}
             for name in ops:
@@ -102,6 +102,12 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
             malformed=type(layout).from_buffer_copy(layout);malformed.framefp=malformed.framelr
             assert lib.emit(None,64,C.byref(malformed),ids['ICALL'])==0
             checks+=1
+            for name in ('IMULX0','IDIVX0','ICVTXX0'):
+                for field,value in [('fixedcoef',-1),('fixedcoef',2048)]+([('fixedcoef',1)] if rv else []):
+                    malformed=type(layout).from_buffer_copy(layout);setattr(malformed,field,value)
+                    guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
+                    assert lib.emit(guard,64,C.byref(malformed),ids[name])==0
+                    assert list(guard)==[0xa5a5a5a5]*64;checks+=1
             if case=='frameabi':continue
             for name in ('IHEADP','IHEADMP','ITAIL','IMOVP','IFRAME','IRET','IADDF'):
                 assert not blobs[name]
@@ -297,6 +303,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 fp=data+0x900 if fixedframe is None else fixedframe[0]
                 if fixedframe is not None and fp not in (0,(1<<64)-1):
                     u.mem_write(fp+layout.fixedtmp,(fixedframe[1]&((1<<(8*wb))-1)).to_bytes(wb,'little'))
+                    if len(fixedframe)>3:u.mem_write(fp+layout.fixedcoef,(fixedframe[3]&((1<<(8*wb))-1)).to_bytes(wb,'little'))
                 before = bytes(u.mem_read(output-8,32))
                 if badresult:m=0x100060000
                 if badtarget:d=0x100060000
@@ -320,6 +327,40 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','coefficient'):
+                pairs=[(0,0),(1,1),(-1,1),(1,-1),(-7,3),(7,-3),(-(1<<(wb*8-1)),2),((1<<(wb*8-1))-1,-2)]
+                pairs += [(signed(rng.getrandbits(wb*8),wb*8),signed(rng.getrandbits(wb*8),wb*8)) for _ in range(4)]
+                for name in ('IMULX0','IDIVX0','ICVTXX0'):
+                    assert blobs[name],(arch,wb,name,'missing coefficient leaf')
+                    for x,y in pairs:
+                        for coefficient in (0,1,-1,2,-3):
+                            for count in (-64,-63,-1,0,1,31,63,64,-(1<<(wb*8-1))):
+                                divisor=y if name=='IDIVX0' else coefficient
+                                valid=-63<=count<=63 and divisor not in (0,-1)
+                                numerator=coefficient*x if name=='IDIVX0' else x*y if name=='IMULX0' else x
+                                numerator=signed(numerator,64)
+                                if valid:
+                                    numerator=signed(numerator<<count,64) if count>=0 else numerator>>-count
+                                    quotient=abs(numerator)//abs(divisor)
+                                    wanted=(-quotient if (numerator<0)!=(divisor<0) else quotient)&((1<<(8*wb))-1)
+                                for alias in (0,1,2):
+                                    out,pc,before,after,_=run(name,x if name=='ICVTXX0' else y,count if name=='ICVTXX0' else x,alias=alias,expect=int(valid),fixedframe=(data+0x900,count,None,coefficient),badtarget=not valid)
+                                    assert pc==oldpc
+                                    if valid:assert int.from_bytes(out[:wb],'little')==wanted,(arch,wb,name,x,y,count,coefficient,out,wanted)
+                                    else:assert before==after
+                                    checks+=1
+                    for delta in (0,layout.fixedcoef-layout.fixedtmp,4 if rv else 1):
+                        out,pc,before,after,_=run(name,3,-2 if name!='ICVTXX0' else -1,expect=1,fixedframe=(data+0x900,-1,delta,2))
+                        value=3 if name=='ICVTXX0' else 3*-2 if name=='IMULX0' else 2*-2
+                        value>>=1;divisor=3 if name=='IDIVX0' else 2
+                        wanted=-(abs(value)//divisor) if value<0 else value//divisor
+                        assert int.from_bytes(out[:wb],'little')==wanted&((1<<(8*wb))-1)
+                        assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
+                        checks+=1
+                    for frame in (0,(1<<64)-1):
+                        _,pc,before,after,_=run(name,expect=0,badsource=True,poison=True,badtarget=True,fixedframe=(frame,0,None,2))
+                        assert pc==oldpc and before==after;checks+=1
+                if case=='coefficient':continue
             if case in ('','descriptor'):
                 if wb==4:assert not blobs['IINDX']
                 else:

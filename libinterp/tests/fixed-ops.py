@@ -11,6 +11,7 @@ import tempfile
 root=Path(__file__).resolve().parents[2]
 source=Path(os.environ.get('XEC_SOURCE',root/'libinterp/xec.c')).read_text()
 start=source.index('static LONG\nfixedshift(') if 'static LONG\nfixedshift(' in source else source.index('OP(mulx)')
+if 'static WORD\nfixedword(' in source:start=source.index('static WORD\nfixedword(')
 stop=source.index('/*\nOP(cvtxx)\n',start)
 names=['mulx','divx','cvtxx','mulx0','divx0','cvtxx0','mulx1','divx1','cvtxx1']
 unit=r'''
@@ -31,7 +32,9 @@ static struct {void *s,*m,*d;uchar *FP;} R;
 static WORD Stmp,Dtmp;
 static jmp_buf boundary;
 static int raised;
-static char exInval[]="invalid",exZdiv[]="zero";
+static char exInval[]="invalid",exZdiv[]="zero",exNilref[]="nil";
+#define nil ((void*)0)
+#define H ((void*)-1)
 /* Translate VM exceptions to fixture status without replacing arithmetic. */
 static void error(char *text) { raised=text==exZdiv?1:2; longjmp(boundary,1); }
 #define OP(name) static void name(void)

@@ -2,10 +2,17 @@
 #include "fns.h"
 #include "isa.h"
 #include "interp.h"
+#include "raise.h"
+#include <setjmp.h>
 #include <assert.h>
 #include <stdio.h>
 
 REG R;
+char exNilref[]="nil",exHeap[]="heap";
+static jmp_buf boundary;
+static char *raised;
+/* Invalid owners are checked before changing the branch PC. */
+void error(char *message) {raised=message;longjmp(boundary,1);}
 #define OP(name) void name(void)
 #define S(r) (*(String**)R.r)
 /* Retain stack/address instrumentation without unsupported leak inspection. */
@@ -56,6 +63,21 @@ main(void)
 			assert(R.PC==(take ? target : instructions) && !memcmp(slots.bytes,before,sizeof(before)));
 			checks++;
 		}
+	}
+	for(i=0;i<256;i++)for(j=0;j<256;j++){
+		String *narrow=strings[1],*wide=strings[6];
+		int expected=(i>j)-(i<j),forward,reverse;
+		narrow->len=1;wide->len=-1;narrow->Sascii[0]=i;wide->Srune[0]=j;
+		forward=stringcmp(narrow,wide);reverse=stringcmp(wide,narrow);
+		assert((forward>0)-(forward<0)==expected && (reverse>0)-(reverse<0)==-expected);
+		checks+=2;
+	}
+	for(i=0;i<4;i++){
+		String *invalid=i<2 ? nil : strings[1];
+		if(i>=2)invalid->len=(-0x7fffffff-1);
+		left=invalid;right=(i&1) ? invalid : strings[2];R.s=&left;R.m=&right;R.PC=instructions;
+		raised=nil;if(setjmp(boundary)==0){beqc();assert(0);}
+		assert(raised==(i<2 ? exNilref : exHeap) && R.PC==instructions);checks++;
 	}
 	for(i=1;i<10;i++)free(strings[i]);
 	printf("PASS string branches: %lu Unicode/alignment/PC checks WORD%zu\n",checks,sizeof(WORD)*8);

@@ -24,7 +24,7 @@ def function(signature):
     raise ValueError(signature)
 
 
-parts = [function('static LONG\nfixedshift('),function('static LONG\nfixeddivide('),function('OP(mulx)'),function('OP(divx)')]
+parts = ([function('static WORD\nfixedword(')] if 'static WORD\nfixedword(' in source else [])+[function('static LONG\nfixedshift('),function('static LONG\nfixeddivide('),function('OP(mulx)'),function('OP(divx)')]
 unit = (root/'libinterp/tests/fixed-frame.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='fixed-frame-') as directory:
     td = Path(directory)

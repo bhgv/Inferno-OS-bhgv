@@ -602,14 +602,20 @@ stringdup(String *s)
 	return ns;
 }
 
+/* Compare representation lengths and unsigned byte values before walking payloads. */
 int
 stringcmp(String *s1, String *s2)
 {
 	Rune *r1, *r2;
-	char *a1, *a2;
+	uchar *a1, *a2;
 	int v, n, n1, n2, c1, c2;
 	static String snil = { 0, 0, nil };
 
+	if(s1 == nil || s2 == nil)
+		error(exNilref);
+	if((s1 != H && s1->len == (-0x7fffffff-1)) ||
+	   (s2 != H && s2->len == (-0x7fffffff-1)))
+		error(exHeap);
 	if(s1 == H)
 		s1 = &snil;
 	if(s2 == H)
@@ -642,7 +648,7 @@ stringcmp(String *s1, String *s2)
 		return n;
 	case 1:		/* Rune Ascii */
 		r1 = s1->Srune;
-		a2 = s2->Sascii;
+		a2 = (uchar*)s2->Sascii;
 		while(n > 0) {
 			c1 = *r1++;
 			c2 = *a2++;
@@ -652,7 +658,7 @@ stringcmp(String *s1, String *s2)
 		}
 		break;
 	case 2:		/* Ascii Rune */
-		a1 = s1->Sascii;
+		a1 = (uchar*)s1->Sascii;
 		r2 = s2->Srune;
 		while(n > 0) {
 			c1 = *a1++;
@@ -681,20 +687,23 @@ ne:	if(c1 < c2)
 	return 1;
 }
 
+/* Duplicate before publication, including an empty H owner and unaligned slots. */
 String*
 splitc(String **s, int expand)
 {
 	String *ss, *ns;
 
-	ss = *s;
-	if(expand && ss->len > 0) {
+	memmove(&ss, s, sizeof(ss));
+	if(ss == nil)
+		error(exNilref);
+	if(expand && ss != H && ss->len > 0) {
 		ns = newrunes(ss->len);
 		cvtup(ns->Srune, ss);
 	}
 	else
 		ns = stringdup(ss);
 
+	memmove(s, &ns, sizeof(ns));
 	destroy(ss);
-	*s = ns;
 	return ns;
 }

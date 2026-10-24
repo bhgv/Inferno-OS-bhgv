@@ -110,7 +110,36 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafCall){
+	if(p.kind == LeafFixedCoefficient){
+		/* Capture frame parameters and both operands before any aliased result write. */
+		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047 ||
+		   abi->fixedcoef < 0 || abi->fixedcoef > 2047) return 0;
+		x64ptr(&b, 1, abi->fp); x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0xc8);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
+		x64field(&b, 2, 9, abi->fixedcoef, abi->wordbytes);
+		if(p.alu != 1){
+			x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xd2); x64guard(&b, 0x75);
+			x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xfa); x64byte(&b, 0xff); x64guard(&b, 0x75);
+			x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xd3);
+		}
+		if(p.alu == 2){x64ptr(&b, 1, abi->m); x64load(&b, 1, abi->wordbytes);}
+		else x64field(&b, 1, 9, abi->fixedtmp, abi->wordbytes);
+		x64byte(&b, 0x48); x64byte(&b, 0x8d); x64byte(&b, 0x41); x64byte(&b, 63);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 127); x64guard(&b, 0x72);
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, abi->wordbytes);
+		if(p.alu == 1){
+			x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
+			x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
+			x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3);
+		}else if(p.alu == 0){x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xc2);}
+		if(p.alu != 2){x64ptr(&b, 0, abi->m); x64load(&b, 0, abi->wordbytes); x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0xaf); x64byte(&b, 0xc2);}
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9);
+		x64byte(&b, 0x78); x64byte(&b, 5); x64byte(&b, 0x48); x64byte(&b, 0xd3); x64byte(&b, 0xe0);
+		x64byte(&b, 0xeb); x64byte(&b, 6); x64byte(&b, 0x48); x64byte(&b, 0xf7); x64byte(&b, 0xd9); x64byte(&b, 0x48); x64byte(&b, 0xd3); x64byte(&b, 0xf8);
+		x64byte(&b, 0x48); x64byte(&b, 0x99); x64byte(&b, 0x49); x64byte(&b, 0xf7); x64byte(&b, 0xfb);
+		x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
+	}else if(p.kind == LeafCall){
 		/* Capture the target and old links before touching an aliased frame. */
 		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 ||
 		   abi->framelr < 0 || abi->framelr > 2047 || abi->framelr%8 ||

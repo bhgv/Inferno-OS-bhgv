@@ -9,6 +9,7 @@ struct LeafLayout {
 	int fp, fixedtmp;
 	int arraytype, typesize;
 	int framelr, framefp;
+	int fixedcoef;
 };
 typedef struct LeafOp LeafOp;
 struct LeafOp {
@@ -16,6 +17,7 @@ struct LeafOp {
 };
 enum {
 	LeafCall = 100,
+	LeafFixedCoefficient = 102,
 	LeafMove = 1, LeafAlu, LeafBranch, LeafJump, LeafAddress, LeafNop,
 	LeafRealBranch, LeafShift, LeafDivide, LeafLength, LeafIndex, LeafNegReal,
 	LeafDescriptorIndex, LeafFixedFrame, LeafRealResize, LeafIntegerReal, LeafFixedShift, LeafPower, LeafHeadCopy, LeafCopy, LeafStringIndex, LeafStringLength, LeafHead, LeafListLength,
@@ -36,6 +38,9 @@ leafop(LeafOp *p, int op, int wordbytes)
 	case IINDX:
 		if(wordbytes != 8) return 0;
 		p->kind = LeafDescriptorIndex; break;
+	case IMULX0: p->kind = LeafFixedCoefficient; break;
+	case IDIVX0: p->kind = LeafFixedCoefficient; p->alu = 1; break;
+	case ICVTXX0: p->kind = LeafFixedCoefficient; p->alu = 2; break;
 	case IMULX: p->kind = LeafFixedFrame; break;
 	case IDIVX: p->kind = LeafFixedFrame; p->alu = 1; break;
 	case ICVTRF: p->kind = LeafRealResize; p->input = 4; p->bytes = 8; break;
