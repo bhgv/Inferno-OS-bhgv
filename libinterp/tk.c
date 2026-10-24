@@ -81,6 +81,7 @@ tkmodinit(void)
 	tksorttable();
 }
 
+/* Retain an existing top before replacing a result that may be its last owner. */
 void
 Tk_toplevel(void *a)
 {
@@ -93,16 +94,19 @@ Tk_toplevel(void *a)
 	F_Tk_toplevel *f = a;
 	void *r;
 
+	t = (currun())->tktop;
+	if(t){
+		h = D2H(t);
+		h->ref++;
+		poolmutable(h);
+		r = *f->ret;
+		*f->ret = (Tk_Toplevel*)t;
+		destroy(r);
+		return;
+	}
 	r = *f->ret;
 	*f->ret = H;
 	destroy(r);
-
-	t = (currun())->tktop;
-	if(t){
-		poolmutable(D2H(t));
-		*f->ret = (Tk_Toplevel*)t;
-		return;
-	}
 	
 	disp = checkdisplay(f->d);
 
@@ -568,10 +572,12 @@ tkfreevar(TkTop *t, char *name, int swept)
 	}
 }
 
+/* Publish and retain the replacement channel while the variable context is locked. */
 void
 Tk_namechan(void *a)
 {
 	Heap *h;
+	void *old;
 	TkVar *v;
 	TkTop *t;
 	char *name;
@@ -604,50 +610,52 @@ Tk_namechan(void *a)
 		retstr(TkNotvt, f->ret);
 		return;
 	}
-	destroy(v->value);
-	v->value = f->c;
-	unlockctxt(t->ctxt);
-	h = D2H(v->value);
+	h = D2H(f->c);
 	h->ref++;
 	Setmark(h);
+	old = v->value;
+	v->value = f->c;
+	unlockctxt(t->ctxt);
+	destroy(old);
 	retstr("", f->ret);
 }
 
+/* Bound escaped output before allocation and retain earlier results on failure. */
 void
 Tk_quote(void *a)
 {
 	String *s, *ns;
 	F_Tk_quote *f;
 	void *r;
-	int c, i, need, len, userune, last, n;
+	int c, i, len, userune, last, n;
+	uvlong need, limit;
 	Rune *sr;
 	char *sc;
 
 	f = a;
-
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
 
 	s = f->s;
 	if(s == H){
 		retstr("{}", f->ret);
 		return;
 	}
-	len = s->len;
-	userune = 0;
-	if(len < 0) {
-		len = -len;
-		userune = 1;
-	}
-	need = len+2;
+	userune = s->len < 0;
+	need = userune ? -(vlong)s->len : s->len;
+	limit = (0x7fffffff-sizeof(Heap)-sizeof(String))/(userune ? sizeof(Rune) : 1);
+	if(need > limit-2)
+		error(exHeap);
+	len = need;
+	need += 2;
 	for(i = 0; i < len; i++) {
 		c = userune? s->Srune[i]: s->Sascii[i];
-		if(c == '{' || c == '}' || c == '\\')
+		if(c == '{' || c == '}' || c == '\\'){
+			if(need == limit)
+				error(exHeap);
 			need++;
+		}
 	}
 	if(userune) {
-		ns = newrunes(need);
+		ns = newrunes((int)need);
 		sr = ns->Srune;
 		*sr++ = '{';
 		last = 0;
@@ -666,7 +674,7 @@ Tk_quote(void *a)
 		}
 		*sr = '}';
 	} else {
-		ns = newstring(need);
+		ns = newstring((int)need);
 		sc = ns->Sascii;
 		*sc++ = '{';
 		last = 0;
@@ -685,7 +693,9 @@ Tk_quote(void *a)
 		}
 		*sc= '}';
 	}
+	r = *f->ret;
 	*f->ret = ns;
+	destroy(r);
 }
 
 static void
