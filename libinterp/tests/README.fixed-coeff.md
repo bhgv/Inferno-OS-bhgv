@@ -45,11 +45,11 @@ Set `CFLAGS='-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all'` for
 the sanitizer matrices. Native AMD64 execution requires Linux x86-64. Every
 fixture extracts actual production bodies; WORD32 fixtures retain host pointers.
 
-* Coefficients: 1,097,744 C checks per word model, and 2,195,472 C/native checks
-  per model with `COEFFICIENT_NATIVE=1` (4,390,944 total). Independent unsigned
+* Coefficients: 2,195,472 C checks per word model, and 4,390,928 C/native checks
+  per model with `COEFFICIENT_NATIVE=1` (8,781,856 total). Independent unsigned
   product/division-magnitude oracles check slot/frame alignment, exact/partial
   operand and coefficient aliases, native fallback and eight nil-frame errors.
-* Three-backend coefficient emission/execution: 30,082 checks. Capstone decodes
+* Three-backend coefficient emission/execution: 30,142 checks. Capstone decodes
   the code and Unicorn executes WORD32/WORD64 edge/random values, signed scales,
   divide guards, inaccessible results and frame-slot aliases. RV64 frame/operand
   slots retain their existing four-byte minimum alignment contract.
@@ -57,7 +57,7 @@ fixture extracts actual production bodies; WORD32 fixtures retain host pointers.
   37,800 independent Python arbitrary-precision checks per word model.
 * Message preparation: 192 cases per word model, including both string forms,
   tuple layouts, nil/H owners, cache allocation failure and preserved REG/refs.
-* String slots: 79,271 cases per word model, including shared/empty splits and
+* String slots: 79,391 cases per word model, including shared/empty splits and
   failed allocations. String branches/comparisons: 438,276 per model, including
   the complete 256x256 mixed byte/Rune ordering oracle and invalid representations.
 
@@ -65,3 +65,6 @@ fixture extracts actual production bodies; WORD32 fixtures retain host pointers.
 parent sources. They reproduce a nil-frame crash, exception publication before
 message-allocation failure and the empty-owner/unaligned split failure. Hardware
 arm64/RV64 execution and complete Inferno boot remain separate acceptance work.
+
+The coefficient fixture now also covers zero-flag MULX1/DIVX1/CVTXX1 modes;
+see README.rounded-coeff.md for the complete flag/fallback matrix.

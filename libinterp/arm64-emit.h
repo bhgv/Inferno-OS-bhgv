@@ -110,6 +110,10 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(p.alu == 2)a64ptr(&b, 10, abi->m);
 		else a64put(&b, 0x91000000U | abi->fixedtmp<<10 | 9<<5 | 10);
 		a64load(&b, 13, 10, abi->wordbytes); if(abi->wordbytes == 4)a64put(&b, 0x93407dad);
+		if(p.condition){
+			/* Preserve full rounding semantics by declining nonzero flag bits. */
+			a64put(&b, 0x924005aa); a64guard(&b, 0xb400006a); a64put(&b, 0x9342fdad);
+		}
 		a64put(&b, 0x9100fdaa); a64put(&b, 0xf101fd5f); a64guard(&b, 0x54000063);
 		if(p.alu == 1){
 			a64ptr(&b, 10, abi->s); a64load(&b, 15, 10, abi->wordbytes);

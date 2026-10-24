@@ -630,28 +630,37 @@ badtable:
 	return nil;
 }
 
+/* Prepare the string before publishing through a potentially unaligned return slot. */
 void
 retnstr(char *s, int n, String **d)
 {
-	String *s1;
+	String *s1, *old;
 
 	s1 = H;
 	if(n != 0)
 		s1 = c2string(s, n);
-	destroy(*d);
-	*d = s1;
+	memmove(&old, d, sizeof(old));
+	memmove(d, &s1, sizeof(s1));
+	destroy(old);
 }
 
+/* Retain the original owner until conversion and return-slot publication succeed. */
 void
 retstr(char *s, String **d)
 {
-	String *s1;
+	String *s1, *old;
+	uvlong length;
 
 	s1 = H;
-	if(s != nil)
-		s1 = c2string(s, strlen(s));
-	destroy(*d);
-	*d = s1;
+	if(s != nil){
+		length = strlen(s);
+		if(length > 0x7fffffff)
+			error(exHeap);
+		s1 = c2string(s, (int)length);
+	}
+	memmove(&old, d, sizeof(old));
+	memmove(d, &s1, sizeof(s1));
+	destroy(old);
 }
 
 Array*

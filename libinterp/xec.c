@@ -2872,7 +2872,9 @@ movtmp(void)
 {
 	Type *t;
 
-	t = *(Type**)R.m;
+	memmove(&t, R.m, sizeof(t));
+	if(t == nil || t == H || t->size < 0)
+		error(exType);
 	if(t->size == 0)
 		return;
 

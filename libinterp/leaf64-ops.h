@@ -38,6 +38,9 @@ leafop(LeafOp *p, int op, int wordbytes)
 	case IINDX:
 		if(wordbytes != 8) return 0;
 		p->kind = LeafDescriptorIndex; break;
+	case IMULX1: p->kind = LeafFixedCoefficient; p->condition = 1; break;
+	case IDIVX1: p->kind = LeafFixedCoefficient; p->condition = 1; p->alu = 1; break;
+	case ICVTXX1: p->kind = LeafFixedCoefficient; p->condition = 1; p->alu = 2; break;
 	case IMULX0: p->kind = LeafFixedCoefficient; break;
 	case IDIVX0: p->kind = LeafFixedCoefficient; p->alu = 1; break;
 	case ICVTXX0: p->kind = LeafFixedCoefficient; p->alu = 2; break;

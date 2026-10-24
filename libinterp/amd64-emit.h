@@ -125,6 +125,12 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		}
 		if(p.alu == 2){x64ptr(&b, 1, abi->m); x64load(&b, 1, abi->wordbytes);}
 		else x64field(&b, 1, 9, abi->fixedtmp, abi->wordbytes);
+		if(p.condition){
+			/* Nonzero rounding flags retain the complete C rounding path. */
+			x64byte(&b, 0x89); x64byte(&b, 0xc8); x64byte(&b, 0x83); x64byte(&b, 0xe0); x64byte(&b, 3);
+			x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x74);
+			x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xf9); x64byte(&b, 2);
+		}
 		x64byte(&b, 0x48); x64byte(&b, 0x8d); x64byte(&b, 0x41); x64byte(&b, 63);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 127); x64guard(&b, 0x72);
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, abi->wordbytes);

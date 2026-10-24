@@ -24,10 +24,13 @@ native host pointers. It checks every byte alignment, exact owner aliases,
 allocation failure before replacement, ASCII/rune parsing, numeric formatting,
 string/byte-array conversion and all slices of a four-character ASCII/rune
 string (including invalid bounds and H). Bytes outside the result slot and all
-heap guards and reference counts are checked. There are 79,271 counted checks
+heap guards and reference counts are checked. There are 79,391 counted checks
 per word model. The parent revision fails UBSan on an unaligned owner read.
 
-The new slot driver passes ASan/UBSan with stack instrumentation enabled.
+The isolated VM/split group (`STRING_SLOT_CASE=vm`) and runtime return success group (`STRING_SLOT_CASE=returns-valid`) passes
+ASan/UBSan with stack instrumentation enabled. The combined driver passes UBSan;
+its error-bearing return group reports ASan stack redzones following longjmp.
+See README.rounded-coeff.md for the isolated families and current limits.
 The complete older `string-codecs.py` ASan run still reports stack redzones
 following `longjmp`/`__asan_handle_no_return` in this sandbox, including on the
 parent revision. It is not counted as passing ASan; its full UBSan run passes.

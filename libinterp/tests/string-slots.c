@@ -8,6 +8,46 @@ slotresult(uchar *bytes, uchar *before, int offset, int size)
 	checks++;
 }
 
+/* Keep the runtime return/error family independently runnable in a fresh process. */
+static void
+checkreturns(void)
+{
+	union {uvlong align;uchar bytes[128];} slots;
+	uchar before[128];
+	String *old,*result;
+	int sa,op,alias;
+	int lengthonly=getenv("STRING_SLOT_CASE") && !strcmp(getenv("STRING_SLOT_CASE"),"returns-length");
+	int validonly=getenv("STRING_SLOT_CASE") && !strcmp(getenv("STRING_SLOT_CASE"),"returns-valid");
+
+	/* Runtime return slots may alias the C-string owner and have any byte alignment. */
+	if(!lengthonly)
+	for(sa=0;sa<8;sa++)for(op=0;op<2;op++)for(alias=0;alias<2;alias++){
+		old=c2string("old",3);memset(slots.bytes,0xa5,128);R.d=slots.bytes+32+sa;
+		memmove(R.d,&old,sizeof(old));memmove(before,slots.bytes,128);
+		if(!validonly){
+		failure=0;
+		if(op)EXPECT(retnstr(alias ? old->Sascii : "abc",alias ? 2 : 3,(String**)R.d),exNomem);
+		else EXPECT(retstr(alias ? old->Sascii : "abc",(String**)R.d),exNomem);
+		failure=-1;assert(!memcmp(before,slots.bytes,128) && D2H(old)->ref==1);
+		}
+		if(op)retnstr(alias ? old->Sascii : "abc",alias ? 2 : 3,(String**)R.d);
+		else retstr(alias ? old->Sascii : "abc",(String**)R.d);
+		memmove(&result,R.d,sizeof(result));assert(result->len==(op && alias ? 2 : 3));
+		assert(!memcmp(result->Sascii,alias ? "old" : "abc",result->len));
+		slotresult(slots.bytes,before,32+sa,sizeof(result));destroy(result);
+		old=c2string("old",3);memmove(R.d,&old,sizeof(old));
+		if(op)retnstr(nil,0,(String**)R.d);else retstr(nil,(String**)R.d);
+		memmove(&result,R.d,sizeof(result));assert(result==H);checks++;
+	}
+	if(validonly)return;
+	for(sa=0;sa<8;sa++)for(op=0;op<3;op++){
+		old=c2string("old",3);R.d=slots.bytes+32+sa;memmove(R.d,&old,sizeof(old));
+		returnlength=op==0 ? 0x100000001ULL : op==1 ? 0x80000000ULL : 0x7fffffffULL;
+		EXPECT(retstr("a",(String**)R.d),exHeap);returnlength=0;
+		memmove(&result,R.d,sizeof(result));assert(result==old && D2H(old)->ref==1);destroy(old);
+	}
+}
+
 /* Exercise independent slot alignments, exact owner aliases and failure atomicity. */
 int
 main(void)
@@ -21,6 +61,8 @@ main(void)
 	REAL real, number;
 	int sa, ma, da, op, alias, wide, i;
 	void (*formats[])(void)={cvtwc,cvtlc,cvtfc};
+
+	if(getenv("STRING_SLOT_CASE") && !strncmp(getenv("STRING_SLOT_CASE"),"returns",7)){checkreturns();goto finished;}
 
 	for(sa=0;sa<8;sa++)for(da=0;da<8;da++)for(op=0;op<3;op++){
 		word=-1234567;big=-9223372036854775807LL;real=-123.5;
@@ -109,6 +151,7 @@ main(void)
 		slotresult(slots.bytes,before,32+sa,sizeof(result));
 		if(alias && old!=H){assert(D2H(old)->ref==1);destroy(old);}destroy(result);
 	}
+	if(!getenv("STRING_SLOT_CASE") || strcmp(getenv("STRING_SLOT_CASE"),"vm"))checkreturns();
 	/* Invalid representations and wide bounds must not allocate, release or publish. */
 	for(i=0;i<4;i++){
 		s=i==0 ? nil : newstring(0);if(i==1)s->len=INT_MIN;
@@ -119,6 +162,7 @@ main(void)
 	}
 	EXPECT(string2c(nil),exNilref);EXPECT(stringdup(nil),exNilref);
 	EXPECT(addstring(nil,H,0),exNilref);
+finished:
 	assert(live==0 && Tstring.ref==1 && Tarray.ref==1 && Tbyte.ref==1);
 	printf("PASS string slots: %d alignment/alias/bounds/ownership checks WORD%zu\n",checks,sizeof(WORD)*8);
 	return 0;

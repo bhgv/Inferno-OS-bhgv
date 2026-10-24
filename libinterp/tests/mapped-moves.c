@@ -14,7 +14,7 @@ Pool *heapmem;
 int mutator, nprop;
 void (*heapmonitor)(int, void*, ulong);
 Type channelowner = {1}, Tarray = {1}, leaf = {1, 0, 0, sizeof(WORD)};
-char exHeap[] = "heap", exNegsize[] = "negative", exNomem[] = "memory", exNilref[] = "nil", exModule[] = "module";
+char exHeap[] = "heap", exNegsize[] = "negative", exNomem[] = "memory", exNilref[] = "nil", exModule[] = "module", exType[]="type";
 static int live, checks, wakes;
 static struct { Heap *heap; ulong size; } blocks[256];
 static Prog current, peer;
@@ -160,6 +160,7 @@ overlap(int mover, int width, int from, int to, int aliases)
 	void *objects[16], *expected[16], *snapshot[8];
 	struct { uvlong before[4]; void *slots[16]; uvlong after[4]; } data;
 	WORD index = 0;
+	uchar metadata[32];
 	int i, j, count;
 
 	type.size = width*sizeof(void*); type.np = 1;
@@ -176,7 +177,8 @@ overlap(int mover, int width, int from, int to, int aliases)
 	for(i = 0; i < width; i++)snapshot[i] = expected[from+i];
 	for(i = 0; i < width; i++)expected[to+i] = snapshot[i];
 	R.M = &link; R.s = &data.slots[from]; R.d = &data.slots[to];
-	R.m = mover ? (void*)&index : (void*)&descriptor;
+	R.m = metadata+((from+to+width+aliases)&7);
+	if(mover)memmove(R.m,&index,sizeof(index));else memmove(R.m,&descriptor,sizeof(descriptor));
 	if(sizeof(WORD) < sizeof(void*))
 		assert((uvlong)(ulong)descriptor > 0xffffffffULL);
 	if(mover)movmp(); else movtmp();
@@ -436,12 +438,33 @@ empty(void)
 	checks++;
 }
 
+/* Reject bad native descriptors before touching inaccessible payload storage. */
+static void
+metadataerrors(void)
+{
+	Type type={0},*descriptor;
+	uchar slot[32];
+	REG before;
+	int align,kind;
+
+	for(align=0;align<8;align++)for(kind=0;kind<4;kind++){
+		type.size=kind==2 ? -1 : 0;descriptor=kind==0 ? nil : kind==1 ? H : &type;
+		R.m=slot+align;R.s=(void*)1;R.d=(void*)1;memmove(R.m,&descriptor,sizeof(descriptor));before=R;
+		if(kind==3)movtmp();
+		else{
+			expectederror=1;if(setjmp(boundary)==0){movtmp();assert(0);}expectederror=0;
+		}
+		assert(!memcmp(&R,&before,sizeof(R)) && !live);checks++;
+	}
+}
+
 /* Exercise mixed-width pointers, overlapping records, typed FIFO and direct rendezvous. */
 int
 main(int argc, char **argv)
 {
 	int mover, width, from, to, aliases;
 
+	if(argc==1 || !strcmp(argv[1],"metadata"))metadataerrors();
 	if(argc == 1 || strcmp(argv[1], "overlap") == 0)
 	for(mover = 0; mover < 2; mover++)for(width = 1; width <= 8; width++)
 	for(from = 0; from+width <= 16; from++)for(to = 0; to+width <= 16; to++)for(aliases = 0; aliases < 2; aliases++)
