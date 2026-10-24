@@ -223,9 +223,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(p.alu == 2){x64ptr(&b, 1, abi->m); x64load(&b, 1, abi->wordbytes);}
 		else x64field(&b, 1, 9, abi->fixedtmp, abi->wordbytes);
 		if(p.condition){
-			/* Nonzero rounding flags retain the complete C rounding path. */
-			x64byte(&b, 0x89); x64byte(&b, 0xc8); x64byte(&b, 0x83); x64byte(&b, 0xe0); x64byte(&b, 3);
-			x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x74);
+			/* Keep VN flags in C; capture WN before decoding the signed scale. */
+			x64byte(&b, 0x89); x64byte(&b, 0xce); x64byte(&b, 0x83); x64byte(&b, 0xe6); x64byte(&b, 3);
+			x64byte(&b, 0x83); x64byte(&b, 0xfe); x64byte(&b, 1); x64guard(&b, 0x76);
 			x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xf9); x64byte(&b, 2);
 		}
 		x64byte(&b, 0x48); x64byte(&b, 0x8d); x64byte(&b, 0x41); x64byte(&b, 63);
@@ -236,7 +236,26 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
 			x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3);
 		}else if(p.alu == 0){x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xc2);}
-		if(p.alu != 2){x64ptr(&b, 0, abi->m); x64load(&b, 0, abi->wordbytes); x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0xaf); x64byte(&b, 0xc2);}
+		if(p.alu != 2){x64ptr(&b, 0, abi->m); x64load(&b, 0, abi->wordbytes);}
+		if(p.condition){
+			x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc0);
+			if(p.alu == 0){x64byte(&b, 0x49); x64byte(&b, 0x31); x64byte(&b, 0xd0);}
+		}
+		if(p.alu != 2){x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0xaf); x64byte(&b, 0xc2);}
+		if(p.condition){
+			/* Mask selection precedes shifting and uses unmultiplied signs. */
+			x64byte(&b, 0x85); x64byte(&b, 0xf6); x64byte(&b, 0x74); done=b.n; x64byte(&b, 0);
+			x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9); x64guard(&b, 0x78);
+			x64byte(&b, 0x48); x64byte(&b, 0xf7); x64byte(&b, 0xd9);
+			x64byte(&b, 0x48); x64byte(&b, 0xc7); x64byte(&b, 0xc2); x64word(&b, -1);
+			x64byte(&b, 0x48); x64byte(&b, 0xd3); x64byte(&b, 0xe2);
+			x64byte(&b, 0x48); x64byte(&b, 0xf7); x64byte(&b, 0xd2);
+			x64byte(&b, 0x48); x64byte(&b, 0xf7); x64byte(&b, 0xd9);
+			x64byte(&b, 0x4d); x64byte(&b, 0x85); x64byte(&b, 0xc0);
+			x64byte(&b, p.alu == 1 ? 0x7f : 0x79); other=b.n; x64byte(&b, 0);
+			x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xd0);
+			b.bytes[done]=b.n-done-1; b.bytes[other]=b.n-other-1;
+		}
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9);
 		x64byte(&b, 0x78); x64byte(&b, 5); x64byte(&b, 0x48); x64byte(&b, 0xd3); x64byte(&b, 0xe0);
 		x64byte(&b, 0xeb); x64byte(&b, 6); x64byte(&b, 0x48); x64byte(&b, 0xf7); x64byte(&b, 0xd9); x64byte(&b, 0x48); x64byte(&b, 0xd3); x64byte(&b, 0xf8);

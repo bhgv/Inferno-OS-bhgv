@@ -45,7 +45,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
         source = td/(arch+'.c')
         source.write_text('#include <stdint.h>\n#include <string.h>\n'
                           'typedef uint32_t u32int; typedef unsigned char uchar;\n#define nil 0\n'
-                          '#include "isa.h"\n#include "'+(os.environ.get('LEAF64_RISCV_EMITTER','riscv-emit.h') if rv else arch+'-emit.h')+'"\n'
+                          '#include "isa.h"\n#include "'+(os.environ.get('LEAF64_RISCV_EMITTER','riscv-emit.h') if rv else os.environ.get('LEAF64_'+arch.upper()+'_EMITTER',arch+'-emit.h'))+'"\n'
                           'int emit(u32int *p,int n,'+('RvLayout' if rv else 'LeafLayout')+' *l,int op){return '+('rvemit' if rv else 'leafemit')+'(p,n,l,op);}\n'
                           'int opid(int i){static int ops[]={'+','.join(ops)+'};return ops[i];}\n')
         binary = td/(arch+'.so')
@@ -570,13 +570,15 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     assert blobs[name],(arch,wb,name,'missing coefficient leaf')
                     for x,y in pairs:
                         for coefficient in (0,1,-1,2,-3):
-                            for count,flags in [(scale*4+flags,flags) for scale in (-64,-63,-1,0,1,31,63,64) for flags in range(4)]+[(-(1<<(wb*8-1)),0),((1<<(wb*8-1))-1,3)]:
+                            for count,flags in [(scale*4+flags,flags) for scale in (-64,-63,-33,-32,-1,0,1,31,63,64) for flags in range(4)]+[(-(1<<(wb*8-1)),0),((1<<(wb*8-1))-1,3)]:
                                 divisor=y if name=='IDIVX1' else coefficient
                                 scale=count>>2
-                                valid=flags==0 and -63<=scale<=63 and divisor not in (0,-1)
+                                valid=(flags==0 and -63<=scale<=63 or not rv and flags==1 and -63<=scale<0) and divisor not in (0,-1)
                                 numerator=coefficient*x if name=='IDIVX1' else x*y if name=='IMULX1' else x
                                 numerator=signed(numerator,64)
                                 if valid:
+                                    if flags==1 and (x<=0 if name=='IDIVX1' else (x<0)!=(y<0) if name=='IMULX1' else x<0):
+                                        numerator=signed(numerator+((1<<-scale)-1),64)
                                     numerator=signed(numerator<<scale,64) if scale>=0 else numerator>>-scale
                                     quotient=abs(numerator)//abs(divisor)
                                     wanted=(-quotient if (numerator<0)!=(divisor<0) else quotient)&((1<<(8*wb))-1)

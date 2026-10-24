@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'limbo/tests/fixed-zero-div.py',
     'libinterp/tests/heap-query.py',
     'libinterp/tests/prog-diagnostics.py',
     'libinterp/tests/exception-frames.py',

@@ -16,8 +16,8 @@ configurations have the same opcode counts at this checkpoint.
 
 These figures count opcode availability, not complete semantic or performance
 coverage. Some native paths accept a bounded subset and return to C for other
-operands. For example, rounded fixed operations retain C for nonzero rounding
-flags, and some floating operations retain C when the exact FP contract cannot
+operands. For example, rounded fixed operations retain C for VN flags; WN right shifts run
+natively on AMD64/ARM64, while other WN cases retain C, and some floating operations retain C when the exact FP contract cannot
 be preserved. Instructions may therefore contribute to both native execution
 and fallback execution at runtime. No fully-native opcode count is asserted.
 

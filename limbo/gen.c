@@ -1058,16 +1058,23 @@ genstore(Src *src, Node *n, int offset)
 	genrawop(src, IMOVW, n, nil, &d);
 }
 
+/* Preserve divisor evaluation and zero traps when fixed scaling makes a result zero. */
 static Inst*
 genfixop(Src *src, int op, Node *s, Node *m, Node *d)
 {
-	int p, a;
+	int p, a, input;
 	Node *mm;
 	Inst *i;
 
+	input = op;
 	mm = m ? m: d;
 	op = fixop(op, mm->ty, s->ty, d->ty, &p, &a);
-	if(op == IMOVW){	/* just zero d */
+	if(op == IMOVW){
+		if(input == IDIVX){
+			/* 0/divisor is zero for every nonzero divisor and keeps exZdiv. */
+			mm = sumark(mkconst(src, 0));
+			return genrawop(src, IDIVW, s, mm, d);
+		}
 		s = sumark(mkconst(src, 0));
 		return genrawop(src, op, s, nil, d);
 	}
