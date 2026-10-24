@@ -15,14 +15,14 @@ from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
 root = Path(__file__).resolve().parents[2]
-ops = '''IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IMOVP IFRAME ICALL IRET IADDF'''.split()
 class Layout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm')]
+    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata')]
 class RvLayout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm')]
+    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata')]
 
 
 def signed(value, bits):
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard'):raise ValueError(case)
+if case not in ('','guard','array'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -56,6 +56,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
         ids = {name:lib.opid(i) for i,name in enumerate(ops)}
         for wb in (4,8):
             layout = RvLayout(64,wb,1,0,8,16,24) if rv else Layout(wb,0,8,16,24)
+            layout.arraylen=8;layout.arraydata=32
             dis = Cs(CS_ARCH_X86,CS_MODE_64) if arch == 'amd64' else Cs(CS_ARCH_ARM64,0) if arch == 'arm64' else Cs(CS_ARCH_RISCV,CS_MODE_RISCV64)
             blobs = {}
             for name in ops:
@@ -74,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
             code, registers, data, stack = 0x10000, 0x100020000, 0x100030000, 0x40000
             oldpc, target = 0x123456789, 0x987654321
 
-            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False):
+            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0):
                 """Exercise a leaf with high native pointers, four-byte alignment and exact aliases."""
                 if arch == 'amd64':
                     u = Uc(UC_ARCH_X86,UC_MODE_64); arg, result = UC_X86_REG_RDI, UC_X86_REG_RAX
@@ -88,12 +89,32 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if alias == 1: d=s
                 if alias == 2: d=m
                 if alias == 3: s=d-4
-                u.mem_write(d-8,b'\xa5'*32)
-                u.mem_write(s,raw if raw is not None else struct.pack('<Q',a & ((1<<64)-1)))
-                if not poison: u.mem_write(m,struct.pack('<Q',b & ((1<<64)-1)))
-                else: m=0x100050000
-                if name.startswith('IB') or name == 'IJMP': u.mem_write(d,struct.pack('<Q',target))
-                before = bytes(u.mem_read(d-8,32))
+                output=d
+                metadata=None
+                if array is None:
+                    u.mem_write(d-8,b'\xa5'*32)
+                    u.mem_write(s,raw if raw is not None else struct.pack('<Q',a & ((1<<64)-1)))
+                    if not poison: u.mem_write(m,struct.pack('<Q',b & ((1<<64)-1)))
+                    else: m=0x100050000
+                    if name.startswith('IB') or name == 'IJMP': u.mem_write(d,struct.pack('<Q',target))
+                else:
+                    owner,length,index,backing=array
+                    if name=='ILENA':
+                        if arrayalias:d=s
+                        output=d
+                    else:
+                        if arrayalias==1:m=d
+                        if arrayalias==2:m=s
+                        output=m
+                    u.mem_write(output-8,b'\xa5'*32)
+                    u.mem_write(m,struct.pack('<Q',123))
+                    u.mem_write(s,struct.pack('<Q',owner))
+                    if name!='ILENA':u.mem_write(d,struct.pack('<Q',index&((1<<64)-1)))
+                    metadata=bytearray(b'\x5a'*64)
+                    metadata[layout.arraylen:layout.arraylen+wb]=(length&((1<<(8*wb))-1)).to_bytes(wb,'little')
+                    metadata[layout.arraydata:layout.arraydata+8]=struct.pack('<Q',backing)
+                    u.mem_write(data+0x500,bytes(metadata))
+                before = bytes(u.mem_read(output-8,32))
                 u.mem_write(registers,struct.pack('<QQQQ',oldpc,s,d,m))
                 u.reg_write(arg,registers)
                 end=code+0x800
@@ -103,7 +124,8 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 u.emu_start(code,end,count=100)
                 assert u.reg_read(result) == expect,(arch,wb,name,a,b,u.reg_read(result),expect)
                 assert bytes(u.mem_read(registers+8,24)) == struct.pack('<QQQ',s,d,m)
-                return bytes(u.mem_read(d,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(d-8,32)),s
+                if metadata is not None:assert bytes(u.mem_read(data+0x500,64))==metadata
+                return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
             if case=='guard':
                 counts=[-1,wb*8,-(1<<(wb*8-1))]+([1<<32] if wb==8 else [])
@@ -112,6 +134,35 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     assert before==after and pc==oldpc
                     checks+=1
                 continue
+            owner=data+0x500
+            for pointer in (0,(1<<64)-1,owner):
+                for length in (-1,0,1,17,(1<<(wb*8-1))-1):
+                    for alias in (0,1):
+                        out,pc,before,after,_=run('ILENA',array=(pointer,length,0,0),arrayalias=alias)
+                        wanted=(length if pointer==owner else 0)&((1<<(wb*8))-1)
+                        assert int.from_bytes(out[:wb],'little')==wanted,(arch,wb,'ILENA',pointer,length,out,wanted)
+                        assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:] and pc==oldpc
+                        checks+=1
+            for name in ('IINDB','IINDW','IINDL','IINDF'):
+                if wb==4:
+                    assert not blobs[name]
+                    continue
+                stride=1 if name=='IINDB' else 8
+                for pointer in (0,(1<<64)-1,owner):
+                    for length in (-1,0,1,8,17,1<<40):
+                        for index in (-1,0,1,7,8,16,17,1<<32,1<<39,-(1<<63)):
+                            for backing in (0,(1<<64)-1,data+0x804,(1<<64)-2):
+                                valid=(pointer==owner and 0<=index<length and index<=0x7fffffff//stride and
+                                       backing not in (0,(1<<64)-1) and backing+index*stride<(1<<64))
+                                for alias in (0,1,2):
+                                    out,pc,before,after,_=run(name,expect=int(valid),array=(pointer,length,index,backing),arrayalias=alias)
+                                    if valid:
+                                        assert int.from_bytes(out[:8],'little')==backing+index*stride,(arch,name,length,index,backing,out)
+                                        assert before[:8]==after[:8] and before[16:]==after[16:]
+                                    else:assert before==after
+                                    assert pc==oldpc
+                                    checks+=1
+            if case=='array':continue
             edges=[0,1,255,256,(1<<31)-1,1<<31,(1<<32)-1,1<<63,(1<<64)-1]
             pairs=[(a,b) for a in edges for b in edges]+[(rng.getrandbits(64),rng.getrandbits(64)) for _ in range(64)]
             for suffix,width in (('B',1),('W',wb),('L',8)):

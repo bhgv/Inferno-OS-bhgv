@@ -75,21 +75,28 @@ void freetype(Type *t) { (void)t;assert(0); }
 FREEMOD
 #define OP(name) void name(void)
 #define W(r) (*(WORD*)R.r)
+#define A(r) (*(Array**)R.r)
 #define UW(r) (*(UWORD*)R.r)
-char exInval[]="invalid", exZdiv[]="zero divide";
+char exInval[]="invalid", exZdiv[]="zero divide", exBounds[]="bounds";
 VM_OPERATIONS
 static Module *active;
 static int activeop;
 /* Invoke actual interpreter helpers only when native code rejects an input. */
 static int dispatch(void *unused) {
     (void)unused;
-    if(active->jit->entry[activeop](&R))return 1;
+    if(active->jit->entry[activeop] && active->jit->entry[activeop](&R))return 1;
     switch(activeop) {
     case IDIVW:divw();break;
     case IMODW:modw();break;
     case ISHLW:shlw();break;
     case ISHRW:shrw();break;
     case ILSRW:lsrw();break;
+    case IINDB:indb();break;
+    case IINDW:indw();break;
+    case IINDL:indl();break;
+    case IINDF:indf();break;
+    case IINDX:indx();break;
+    case ILENA:lena();break;
     default:assert(0);
     }
     return 1;
@@ -124,33 +131,66 @@ static void arithmetic(Module *m) {
         assert(R.PC==pc);
     }
 }
+/* Use real Array/REG offsets and actual VM fallback on the native host. */
+static void arrays(Module *m) {
+    Type type={0};Array array={0},*owner;
+    uchar bytes[128];
+    WORD index,out;
+    int operations[]={IINDB,IINDW,IINDL,IINDF},op,i,stride;
+    Inst *pc=m->prog+1;
+    active=m;R.PC=pc;
+    array.len=8;array.data=bytes;array.t=&type;
+    for(op=0;op<4;op++)for(i=-1;i<=8;i++) {
+        owner=&array;index=i;out=123;
+        R.s=&owner;R.d=&index;R.m=&out;activeop=operations[op];
+        if(sizeof(WORD)==4)assert(!m->jit->entry[activeop]);
+        if(i<0 || i>=8){assert(!kprotect(dispatch,nil));assert(out==123);}
+        else {
+            stride=op==0?1:op==1?sizeof(WORD):8;
+            assert(kprotect(dispatch,nil) && (UWORD)out==(UWORD)(uintptr)(bytes+i*stride));
+        }
+        assert(R.PC==pc);
+    }
+    for(i=0;i<3;i++) {
+        owner=i==0?nil:i==1?H:&array;out=123;
+        R.s=&owner;R.d=&out;activeop=ILENA;
+        assert(kprotect(dispatch,nil) && out==(i==2?8:0));
+    }
+    owner=&array;array.data=nil;type.size=0;index=3;out=123;
+    R.s=&owner;R.d=&index;R.m=&out;activeop=IINDX;
+    assert(kprotect(dispatch,nil) && out==0);
+    activeop=IINDB;out=123;
+    assert(!kprotect(dispatch,nil) && out==123 && R.PC==pc);
+}
 /* Compile, invoke, reject invalid metadata and retry without changing Dis PCs. */
 int main(void) {
-    Module m={0}, *owned;Inst instructions[9]={{0}};
+    Module m={0}, *owned;Inst instructions[14]={{0}};
     WORD a=3,b=7,out=0;
     int i;
     instructions[0].op=ISUBW;instructions[1].op=IADDW;
     instructions[2].op=IMOVP;instructions[3].op=IADDW;
     instructions[4].op=IDIVW;instructions[5].op=IMODW;
     instructions[6].op=ISHLW;instructions[7].op=ISHRW;instructions[8].op=ILSRW;
-    m.prog=instructions;m.nprog=9;
+    instructions[9].op=ILENA;instructions[10].op=IINDB;instructions[11].op=IINDW;
+    instructions[12].op=IINDL;instructions[13].op=IINDF;
+    m.prog=instructions;m.nprog=14;
     for(i=1;i<=5;i++) {
-        fail=i;assert(!compile(&m,9,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
+        fail=i;assert(!compile(&m,14,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
     }
     fail=0;
-    assert(!compile(nil,9,nil));assert(!compile(&m,3,nil));
-    assert(compile(&m,9,nil));assert(m.jit && !m.compiled && m.prog==instructions);
+    assert(!compile(nil,14,nil));assert(!compile(&m,3,nil));
+    assert(compile(&m,14,nil));assert(m.jit && !m.compiled && m.prog==instructions);
     assert(m.jit->entry[IMOVP]==nil);
     assert(protections==1 && mappings==1);
     R.s=&a;R.m=&b;R.d=&out;
 #if EXECUTE_NATIVE
     assert(m.jit->entry[ISUBW](&R)==1 && out==4);
     R.d=&a;assert(m.jit->entry[IADDW](&R)==1 && a==10);
-    arithmetic(&m);
+    arithmetic(&m);arrays(&m);
 #endif
-    assert(compile(&m,9,nil));dropmodule(&m);
-    for(i=0;i<9;i++)instructions[i].op=IMOVP;
-    assert(!compile(&m,9,nil) && !m.jit);
+    assert(compile(&m,14,nil));dropmodule(&m);
+    for(i=0;i<14;i++)instructions[i].op=IMOVP;
+    assert(!compile(&m,14,nil) && !m.jit);
     owned=calloc(1,sizeof(*owned));assert(owned);
     owned->prog=calloc(1,sizeof(Inst));assert(owned->prog);
     owned->nprog=1;owned->prog[0].op=IADDW;
@@ -167,7 +207,7 @@ a=load.index('void\nfreemod(');b=load.index('\nvoid\nunload(',a)
 unit=unit.replace('FREEMOD',load[a:b])
 xec=(root/'libinterp/xec.c').read_text()
 parts=[]
-for signature in ('static WORD\nshiftcount(', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)'):
+for signature in ('static WORD\nshiftcount(', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
     a=xec.index(signature);b=xec.index('\n}',a)+2
     parts.append(xec[a:b])
 unit=unit.replace('VM_OPERATIONS','\n'.join(parts))

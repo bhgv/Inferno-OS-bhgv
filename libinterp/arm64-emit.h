@@ -38,13 +38,29 @@ a64store(A64Buf *b, int reg, int bytes)
 	a64put(b, instruction | 11<<5 | reg);
 }
 
+/* Branch over a side-effect-free fallback return when a guard succeeds. */
+static void
+a64guard(A64Buf *b, u32int condition)
+{
+	a64put(b, condition);
+	a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+}
+
+/* Fetch a native array header field after validating its owner pointer. */
+static void
+a64field(A64Buf *b, int result, int owner, int offset, int bytes)
+{
+	a64put(b, (bytes == 8 ? 0xf9400000U : 0xb9400000U) |
+		(u32int)(offset/bytes)<<10 | owner<<5 | result);
+}
+
 /* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 {
 	A64Buf b;
 	LeafOp p;
-	int i;
+	int i, empty, other, done, scale, limit;
 	u32int width;
 	static u32int arithmetic[] = {0x0b000000, 0x4b000000, 0x1b007c00,
 		0x0a000000, 0x2a000000, 0x4a000000};
@@ -57,7 +73,39 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafMove || p.kind == LeafAddress){
+	if(p.kind == LeafLength || p.kind == LeafIndex){
+		if(abi->arraylen < 0 || abi->arraydata < 0 || abi->arraylen > 16376 ||
+		   abi->arraydata > 16376 || (abi->arraylen|abi->arraydata)%8 != 0) return 0;
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
+		if(p.kind == LeafLength){
+			empty = b.n; a64put(&b, 0xb400000c);
+			a64put(&b, 0xb100059f); /* cmn x12, #1 */
+			other = b.n; a64put(&b, 0x54000000);
+			a64field(&b, 12, 12, abi->arraylen, abi->wordbytes);
+			done = b.n; a64put(&b, 0x14000000);
+			b.code[empty] |= (b.n-empty)<<5; b.code[other] |= (b.n-other)<<5;
+			a64put(&b, 0x5280000c);
+			b.code[done] |= b.n-done;
+			a64ptr(&b, 11, abi->d); a64store(&b, 12, abi->wordbytes);
+		}else{
+			a64guard(&b, 0xb500006c);
+			a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
+			a64field(&b, 13, 12, abi->arraylen, 8);
+			a64put(&b, 0xf10001bf); a64guard(&b, 0x5400006a); /* nonnegative length */
+			a64ptr(&b, 9, abi->d); a64load(&b, 14, 9, 8);
+			a64put(&b, 0xeb0d01df); a64guard(&b, 0x54000063); /* index < length */
+			scale = p.bytes == 1 ? 0 : 3; limit = 0x7fffffff>>scale;
+			a64put(&b, 0xd280000fU | (limit&0xffff)<<5);
+			a64put(&b, 0xf2a0000fU | (limit>>16)<<5);
+			a64put(&b, 0xeb0f01df); a64guard(&b, 0x54000069); /* bounded byte offset */
+			a64field(&b, 13, 12, abi->arraydata, 8);
+			a64guard(&b, 0xb500006d);
+			a64put(&b, 0xb10005bf); a64guard(&b, 0x54000061);
+			a64put(&b, 0xab000000U | 14<<16 | scale<<10 | 13<<5 | 14);
+			a64guard(&b, 0x54000063); /* no native address carry */
+			a64ptr(&b, 11, abi->m); a64store(&b, 14, 8);
+		}
+	}else if(p.kind == LeafMove || p.kind == LeafAddress){
 		a64ptr(&b, 9, abi->s);
 		if(p.kind == LeafMove) a64load(&b, 12, 9, p.input);
 		else a64put(&b, 0xaa0903ec); /* mov x12, x9 */

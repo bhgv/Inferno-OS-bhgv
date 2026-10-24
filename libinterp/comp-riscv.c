@@ -78,6 +78,7 @@ rvcompile(void *arg)
 #endif
 	abi.xlen=RVXLEN;
 	abi.wordbytes=sizeof(WORD);
+	abi.arraylen=O(Array, len); abi.arraydata=O(Array, data);
 #ifdef __riscv_mul
 	abi.hasm=1;
 #else

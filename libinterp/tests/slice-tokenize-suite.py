@@ -14,6 +14,7 @@ CORE = [
     'emu/port/tests/startup-options.py',
     'emu/port/tests/startup-geometry.py',
     'libinterp/tests/heap-bounds.py',
+    'libinterp/tests/array-indices.py',
     'libinterp/tests/strings.py',
     'libinterp/tests/string-codecs.py',
     'libinterp/tests/lists.py',

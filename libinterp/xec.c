@@ -428,60 +428,59 @@ OP(iexpf)
 	F(d) = result;
 }
 
+/* Validate complete indices and byte offsets before forming an element address. */
+static uchar*
+arrayaddress(Array *array, WORD index, int width)
+{
+	ulong offset;
+
+	if(array == H || array == nil || index < 0 || index >= array->len)
+		error(exBounds);
+	if(width < 0){
+		if(array->t == nil || array->t == H || array->t->size < 0)
+			error(exBounds);
+		width = array->t->size;
+	}
+	/* Empty records can have no backing bytes, even at a nonzero index. */
+	if(width == 0)
+		return array->data;
+	if(array->data == nil || array->data == H ||
+	   (uvlong)index > 0x7fffffff/(uint)width)
+		error(exBounds);
+	offset = (ulong)index*width;
+	if((uintptr)array->data > (uintptr)-1-offset)
+		error(exBounds);
+	return array->data+offset;
+}
+
+/* Resolve descriptor-sized elements after checking the array and full index. */
 OP(indx)
 {
-	ulong i;
-	Array *a;
-
-	a = A(s);
-	i = W(d);
-	if(a == H || a == nil || i >= a->len)
-		error(exBounds);
-	W(m) = (WORD)(a->data+i*a->t->size);
+	W(m) = (WORD)(uintptr)arrayaddress(A(s), W(d), -1);
 }
+
+/* Preserve the active word stride without narrowing the index. */
 OP(indw)
 {
-	ulong i;
-	Array *a;
-
-	a = A(s);
-	i = W(d);
-	if(a == H || a == nil || i >= a->len)
-		error(exBounds);
-	W(m) = (WORD)(a->data+i*sizeof(WORD));
+	W(m) = (WORD)(uintptr)arrayaddress(A(s), W(d), sizeof(WORD));
 }
+
+/* Real array indexing computes an address without loading a floating value. */
 OP(indf)
 {
-	ulong i;
-	Array *a;
-
-	a = A(s);
-	i = W(d);
-	if(a == H || a == nil || i >= a->len)
-		error(exBounds);
-	W(m) = (WORD)(a->data+i*sizeof(REAL));
+	W(m) = (WORD)(uintptr)arrayaddress(A(s), W(d), sizeof(REAL));
 }
+
+/* Big array indexing retains the complete native byte offset. */
 OP(indl)
 {
-	ulong i;
-	Array *a;
-
-	a = A(s);
-	i = W(d);
-	if(a == H || a == nil || i >= a->len)
-		error(exBounds);
-	W(m) = (WORD)(a->data+i*sizeof(LONG));
+	W(m) = (WORD)(uintptr)arrayaddress(A(s), W(d), sizeof(LONG));
 }
+
+/* Byte array indexing uses the same bounds and empty-storage checks. */
 OP(indb)
 {
-	ulong i;
-	Array *a;
-
-	a = A(s);
-	i = W(d);
-	if(a == H || a == nil || i >= a->len)
-		error(exBounds);
-	W(m) = (WORD)(a->data+i*sizeof(BYTE));
+	W(m) = (WORD)(uintptr)arrayaddress(A(s), W(d), sizeof(BYTE));
 }
 OP(movp)
 {

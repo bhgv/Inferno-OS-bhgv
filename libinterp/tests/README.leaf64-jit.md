@@ -22,6 +22,10 @@ so optab raises the existing VM exception. AMD64 also declines divisor -1 to
 avoid hardware IDIV overflow; the VM supplies the defined minimum/-1 wrap or zero
 remainder. ARM64 and RV64 implement that pair directly with architecture-defined
 integer results. RISC-V division requires M; RV32 division remains in optab.
+Array lengths are native in both word models; fixed byte/word/big/real element
+addresses are native when VM words hold pointers. Header offsets are explicit
+layout inputs derived from Array, and all rejected inputs use the VM helper.
+Generic descriptor indexing remains in the interpreter.
 Floating arithmetic, reference ownership, allocation, calls, returns, exceptions
 and scheduling retain the existing decoder/optab implementations. Unsupported
 operations return no code; no stub falsely claims an operation was completed.
@@ -64,7 +68,7 @@ python3 libinterp/tests/slice-tokenize-suite.py --core
 
 The cross-architecture test compiles the production encoders, disassembles every
 emitted byte and executes AMD64, AArch64 and RV64 machine code in Unicorn. Its
-88,722 checks compare against independent Python integer/branch oracles for both
+114,852 checks compare against independent Python integer/branch oracles for both
 VM word widths. It covers overflow boundaries, randomized values, exact input
 aliases, partial move overlaps, four-byte-aligned long operands, high native
 addresses, PC updates, neighboring-byte guards, sizing, capacity rejection and
@@ -129,3 +133,14 @@ not a claimed independently reproduced sanitizer crash in that path. The shared
 core checkpoint runs the extended channel fixture. No full target boot, native
 ARM64/RV64 hardware run, complete frame ABI migration or relocated-PC JIT is
 claimed by this extension.
+
+## Array address extension
+
+The array extension adds lena and native-pointer-width indb/indw/indl/indf to all
+three 64-bit backends. See [the array-address guide](README.array-indices.md) for
+the checked VM helper, zero-width semantics, native address guards, word-model
+limitations and independent parent regressions. The array-only emulator matrix
+adds 26,100 semantic executions plus shared sizing/ABI checks. The complete
+three-architecture machine-code suite now has 114,852 checks; the dedicated VM
+address fixture adds 40,023 checks. These counts do not imply whole target boot
+or a new Dis64 ABI.

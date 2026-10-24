@@ -11,6 +11,7 @@ typedef struct RvLayout RvLayout;
 struct RvLayout {
 	int xlen, wordbytes, hasm;
 	int pc, s, d, m;
+	int arraylen, arraydata;
 };
 typedef struct RvBuf RvBuf;
 struct RvBuf {
@@ -89,13 +90,22 @@ rvstore(RvBuf *b, int ptr, int rs, int bytes)
 	}
 }
 
+/* Return zero to the VM unless the relation permits continuing without side effects. */
+static void
+rvguard(RvBuf *b, int relation, int left, int right)
+{
+	rvbranch(b, relation, left, right, 12);
+	rvi(b, 0x13, 0, Rva0, Rvzero, 0);
+	rvi(b, 0x67, 0, Rvzero, Rvra, 0);
+}
+
 /* Return instruction count, or 0 for unsupported/invalid/overflow. out==0
  * performs the same bounded sizing pass without touching memory. */
 static int
 rvemit(u32int *out, int cap, RvLayout *abi, int op)
 {
 	RvBuf b;
-	int bytes, f3, f7, wide, rs, binary, branch, swap, invert, shift, division;
+	int bytes, f3, f7, wide, rs, binary, branch, swap, invert, shift, division, scale;
 
 	if((abi->xlen != 32 && abi->xlen != 64) ||
 	   (abi->wordbytes != 4 && abi->wordbytes != 8) ||
@@ -106,6 +116,42 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	b.out=out; b.n=0; b.cap=cap; b.bad=0; b.abi=abi;
 	bytes=abi->wordbytes; f3=0; f7=0; binary=0; branch=0; swap=0; invert=0; shift=0; division=0;
 	switch(op) {
+	case ILENA:
+	case IINDB: case IINDW: case IINDL: case IINDF:
+		if(abi->xlen != 64 || (op != ILENA && abi->wordbytes != 8) ||
+		   abi->arraylen < 0 || abi->arraydata < 0 || abi->arraylen > 2047 ||
+		   abi->arraydata > 2047 || (abi->arraylen|abi->arraydata)%8 != 0) return 0;
+		/* Dis operand slots can be four-byte aligned even for native pointers. */
+		rvptr(&b, Rvt1, abi->s);
+		rvload(&b, Rvt0, Rvt1, 8);
+		if(op == ILENA){
+			rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
+			rvbranch(&b, 0, Rvt0, Rvzero, 16);
+			rvbranch(&b, 0, Rvt0, Rvt6, 12);
+			rvi(&b, 0x03, abi->wordbytes == 8 ? 3 : 2, Rvt3, Rvt0, abi->arraylen);
+			rvput(&b, 0x0080006f); /* jal zero, done */
+			rvi(&b, 0x13, 0, Rvt3, Rvzero, 0);
+			rvptr(&b, Rvt2, abi->d); rvstore(&b, Rvt2, Rvt3, abi->wordbytes);
+		}else{
+			rvguard(&b, 1, Rvt0, Rvzero);
+			rvi(&b, 0x13, 0, Rvt6, Rvzero, -1); rvguard(&b, 1, Rvt0, Rvt6);
+			rvi(&b, 0x03, 3, Rvt3, Rvt0, abi->arraylen);
+			rvguard(&b, 5, Rvt3, Rvzero);
+			rvptr(&b, Rvt1, abi->d); rvload(&b, Rvt4, Rvt1, 8);
+			rvguard(&b, 6, Rvt4, Rvt3);
+			scale = op == IINDB ? 0 : 3;
+			rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
+			rvi(&b, 0x13, 5, Rvt6, Rvt6, 33+scale);
+			rvguard(&b, 7, Rvt6, Rvt4);
+			rvi(&b, 0x03, 3, Rvt3, Rvt0, abi->arraydata);
+			rvguard(&b, 1, Rvt3, Rvzero);
+			rvi(&b, 0x13, 0, Rvt6, Rvzero, -1); rvguard(&b, 1, Rvt3, Rvt6);
+			if(scale) rvi(&b, 0x13, 1, Rvt4, Rvt4, scale);
+			rvr(&b, 0x33, 0, 0, Rvt5, Rvt3, Rvt4);
+			rvguard(&b, 7, Rvt5, Rvt3);
+			rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, 8);
+		}
+		break;
 	case IRUNT:
 		break;
 	case IMOVF:

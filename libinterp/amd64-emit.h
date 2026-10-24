@@ -48,13 +48,31 @@ x64store(X64Buf *b, int reg, int bytes)
 	x64byte(b, 2+reg*8);
 }
 
+/* Return to the VM without writes unless the preceding condition permits execution. */
+static void
+x64guard(X64Buf *b, int condition)
+{
+	x64byte(b, condition); x64byte(b, 3);
+	x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+}
+
+/* Read a signed VM length or native pointer from an already validated object. */
+static void
+x64field(X64Buf *b, int result, int owner, int offset, int bytes)
+{
+	x64byte(b, owner >= 8 ? 0x49 : 0x48);
+	x64byte(b, bytes == 8 ? 0x8b : 0x63);
+	x64byte(b, 0x80 | result<<3 | (owner&7));
+	x64word(b, offset);
+}
+
 /* Emit a SysV AMD64 leaf, returning its bounded count of four-byte code units. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 {
 	X64Buf b;
 	LeafOp p;
-	int i, patch, n;
+	int i, patch, n, empty, other, done, scale;
 	static uchar arithmetic[] = {0x01, 0x29, 0, 0x21, 0x09, 0x31};
 	static uchar inverse[] = {0x75, 0x74, 0x7d, 0x7f, 0x7e, 0x7c};
 
@@ -64,7 +82,38 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafMove || p.kind == LeafAddress){
+	if(p.kind == LeafLength || p.kind == LeafIndex){
+		if(abi->arraylen < 0 || abi->arraydata < 0) return 0;
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
+		if(p.kind == LeafLength){
+			x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0);
+			x64byte(&b, 0x74); empty = b.n; x64byte(&b, 0);
+			x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff);
+			x64byte(&b, 0x74); other = b.n; x64byte(&b, 0);
+			x64field(&b, 0, 0, abi->arraylen, abi->wordbytes);
+			x64byte(&b, 0xeb); done = b.n; x64byte(&b, 0);
+			b.bytes[empty] = b.n-empty-1; b.bytes[other] = b.n-other-1;
+			x64byte(&b, 0x31); x64byte(&b, 0xc0);
+			b.bytes[done] = b.n-done-1;
+			x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
+		}else{
+			x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
+			x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
+			x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3); /* r11=array */
+			x64field(&b, 1, 0, abi->arraylen, 8);
+			x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9); x64guard(&b, 0x79);
+			x64ptr(&b, 0, abi->d); x64load(&b, 0, 8);
+			x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xc8); x64guard(&b, 0x72);
+			scale = p.bytes == 1 ? 0 : 3;
+			x64byte(&b, 0x48); x64byte(&b, 0x3d); x64word(&b, 0x7fffffff>>scale); x64guard(&b, 0x76);
+			x64field(&b, 1, 11, abi->arraydata, 8);
+			x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9); x64guard(&b, 0x75);
+			x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf9); x64byte(&b, 0xff); x64guard(&b, 0x75);
+			if(scale){ x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xe0); x64byte(&b, scale); }
+			x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xc8); x64guard(&b, 0x73);
+			x64ptr(&b, 2, abi->m); x64store(&b, 0, 8);
+		}
+	}else if(p.kind == LeafMove || p.kind == LeafAddress){
 		x64ptr(&b, 0, abi->s);
 		if(p.kind == LeafMove) x64load(&b, 0, p.input);
 		else { x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0xc0); }

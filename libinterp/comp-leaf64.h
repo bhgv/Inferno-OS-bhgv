@@ -59,6 +59,7 @@ leafcompile(void *arg)
 	return 0;
 #endif
 	abi.wordbytes=sizeof(WORD);
+	abi.arraylen=O(Array, len); abi.arraydata=O(Array, data);
 	abi.pc=O(REG, PC); abi.s=O(REG, s); abi.d=O(REG, d); abi.m=O(REG, m);
 	memset(count, 0, sizeof(count));
 	memset(fn, 0, sizeof(fn));
