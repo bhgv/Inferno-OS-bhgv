@@ -144,6 +144,35 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		f3=op == IBEQF ? 0 : op == IBNEF ? 1 : (op == IBLTF || op == IBGTF) ? 4 : 5;
 		swap=op == IBLEF || op == IBGTF;
 		break;
+	case ICVTRF: case ICVTFR:
+		/* Exact resizing uses only RV64I; operands retain four-byte slot alignment. */
+		if(abi->xlen != 64) return 0;
+		rvptr(&b, Rvt0, abi->s); rvload(&b, Rvt3, Rvt0, op == ICVTRF ? 4 : 8);
+		if(op == ICVTRF){ rvi(&b, 0x13, 1, Rvt3, Rvt3, 32); rvi(&b, 0x13, 5, Rvt3, Rvt3, 32); }
+		rvi(&b, 0x13, 5, Rvt6, Rvt3, op == ICVTRF ? 31 : 63);
+		rvi(&b, 0x13, 1, Rvt6, Rvt6, op == ICVTRF ? 63 : 31);
+		rvi(&b, 0x13, 1, Rvt3, Rvt3, op == ICVTRF ? 33 : 1);
+		rvi(&b, 0x13, 5, Rvt3, Rvt3, op == ICVTRF ? 33 : 1);
+		/* Zero skips all classification and joins the common sign publication. */
+		rvbranch(&b, 0, Rvt3, Rvzero, op == ICVTRF ? 52 : 64);
+		rvi(&b, 0x13, 5, Rvt4, Rvt3, op == ICVTRF ? 23 : 52);
+		if(op == ICVTRF){
+			rvguard(&b, 1, Rvt4, Rvzero);
+			rvi(&b, 0x13, 0, Rvt5, Rvzero, 255); rvguard(&b, 6, Rvt4, Rvt5);
+			rvi(&b, 0x13, 1, Rvt3, Rvt3, 29);
+			rvi(&b, 0x13, 0, Rvt4, Rvzero, 896); rvi(&b, 0x13, 1, Rvt4, Rvt4, 52);
+			rvr(&b, 0x33, 0, 0, Rvt3, Rvt3, Rvt4);
+		}else{
+			rvi(&b, 0x13, 0, Rvt4, Rvt4, -897);
+			rvi(&b, 0x13, 0, Rvt5, Rvzero, 254); rvguard(&b, 6, Rvt4, Rvt5);
+			rvi(&b, 0x13, 1, Rvt5, Rvt3, 35); rvguard(&b, 0, Rvt5, Rvzero);
+			rvi(&b, 0x13, 0, Rvt4, Rvt4, 1); rvi(&b, 0x13, 1, Rvt4, Rvt4, 23);
+			rvi(&b, 0x13, 1, Rvt3, Rvt3, 12); rvi(&b, 0x13, 5, Rvt3, Rvt3, 41);
+			rvr(&b, 0x33, 6, 0, Rvt3, Rvt3, Rvt4);
+		}
+		rvr(&b, 0x33, 6, 0, Rvt3, Rvt3, Rvt6);
+		rvptr(&b, Rvt2, abi->d); rvstore(&b, Rvt2, Rvt3, op == ICVTRF ? 8 : 4);
+		break;
 	case ICVTWF: case ICVTLF:
 		/* RV64I constructs exact binary64 bits without M or floating instructions. */
 		if(abi->xlen != 64) return 0;

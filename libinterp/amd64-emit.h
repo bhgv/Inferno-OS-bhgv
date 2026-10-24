@@ -110,7 +110,39 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafIntegerReal){
+	if(p.kind == LeafRealResize){
+		/* Resize exact normal values and signed zeros without changing FP status. */
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, p.input);
+		if(p.input == 4){ x64byte(&b, 0x89); x64byte(&b, 0xc0); }
+		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xc2);
+		x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xea); x64byte(&b, p.input == 4 ? 31 : 63);
+		x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xe2); x64byte(&b, p.input == 4 ? 63 : 31);
+		x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xe0); x64byte(&b, p.input == 4 ? 33 : 1);
+		x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xe8); x64byte(&b, p.input == 4 ? 33 : 1);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0);
+		x64byte(&b, 0x74); empty=b.n; x64byte(&b, 0);
+		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xc1);
+		x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xe9); x64byte(&b, p.input == 4 ? 23 : 52);
+		if(p.input == 4){
+			x64byte(&b, 0x85); x64byte(&b, 0xc9); x64guard(&b, 0x75);
+			x64byte(&b, 0x81); x64byte(&b, 0xf9); x64word(&b, 255); x64guard(&b, 0x72);
+			x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xe0); x64byte(&b, 29);
+			x64byte(&b, 0x48); x64byte(&b, 0xb9); x64word(&b, 0); x64word(&b, 0x38000000);
+			x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xc8);
+		}else{
+			x64byte(&b, 0x48); x64byte(&b, 0x81); x64byte(&b, 0xe9); x64word(&b, 897);
+			x64byte(&b, 0x48); x64byte(&b, 0x81); x64byte(&b, 0xf9); x64word(&b, 254); x64guard(&b, 0x72);
+			x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3);
+			x64byte(&b, 0x49); x64byte(&b, 0xc1); x64byte(&b, 0xe3); x64byte(&b, 35);
+			x64byte(&b, 0x4d); x64byte(&b, 0x85); x64byte(&b, 0xdb); x64guard(&b, 0x74);
+			x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xe8); x64byte(&b, 29);
+			x64byte(&b, 0x48); x64byte(&b, 0xb9); x64word(&b, 0xc0000000U); x64word(&b, 1);
+			x64byte(&b, 0x48); x64byte(&b, 0x29); x64byte(&b, 0xc8);
+		}
+		b.bytes[empty]=b.n-empty-1;
+		x64byte(&b, 0x48); x64byte(&b, 0x09); x64byte(&b, 0xd0);
+		x64ptr(&b, 2, abi->d); x64store(&b, 0, p.bytes);
+	}else if(p.kind == LeafIntegerReal){
 		/* Exact magnitudes below 2^53 need no FP rounding or exception changes. */
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, p.input);
 		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xc2); /* rdx=source */

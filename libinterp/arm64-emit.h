@@ -97,7 +97,37 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafIntegerReal){
+	if(p.kind == LeafRealResize){
+		/* Keep signed zeros exact and reject all values that need FP handling. */
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, p.input);
+		a64put(&b, 0xd3400000U | (p.input == 4 ? 31 : 63)<<16 | 63<<10 | 12<<5 | 13);
+		a64put(&b, 0xd3400000U | (p.input == 4 ? 1 : 33)<<16 | (p.input == 4 ? 0 : 32)<<10 | 13<<5 | 13);
+		a64put(&b, 0xd3400000U | (p.input == 4 ? 31 : 63)<<16 | (p.input == 4 ? 30 : 62)<<10 | 12<<5 | 12);
+		a64put(&b, 0xd3400000U | (p.input == 4 ? 33 : 1)<<16 | 63<<10 | 12<<5 | 12);
+		empty=b.n; a64put(&b, 0xb400000c);
+		a64put(&b, 0xd3400000U | (p.input == 4 ? 23 : 52)<<16 | 63<<10 | 12<<5 | 14);
+		if(p.input == 4){
+			a64guard(&b, 0xb500006e);
+			a64put(&b, 0xf100001fU | 255<<10 | 14<<5); a64guard(&b, 0x54000063);
+			a64put(&b, 0xd3400000U | 35<<16 | 34<<10 | 12<<5 | 12); /* lsl payload,29 */
+			a64put(&b, 0xd280000eU | 896<<5);
+			a64put(&b, 0xd3400000U | 12<<16 | 11<<10 | 14<<5 | 14);
+			a64put(&b, 0x8b0e018c);
+		}else{
+			a64put(&b, 0xd1000000U | 897<<10 | 14<<5 | 14);
+			a64put(&b, 0xf100001fU | 254<<10 | 14<<5); a64guard(&b, 0x54000063);
+			a64put(&b, 0xd3400000U | 29<<16 | 28<<10 | 12<<5 | 15); /* low 29 bits */
+			a64guard(&b, 0xb400006f);
+			a64put(&b, 0x910005ce); /* float exponent = translated exponent + 1 */
+			a64put(&b, 0xd3400000U | 41<<16 | 40<<10 | 14<<5 | 14);
+			a64put(&b, 0xd3400000U | 52<<16 | 51<<10 | 12<<5 | 12);
+			a64put(&b, 0xd3400000U | 41<<16 | 63<<10 | 12<<5 | 12);
+			a64put(&b, 0xaa0e018c);
+		}
+		b.code[empty] |= (b.n-empty)<<5;
+		a64put(&b, 0xaa0d018c);
+		a64ptr(&b, 11, abi->d); a64store(&b, 12, p.bytes);
+	}else if(p.kind == LeafIntegerReal){
 		/* Normalize exact integer bits without touching FP registers or status. */
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, p.input);
 		if(p.input == 4) a64put(&b, 0x93407d8c);

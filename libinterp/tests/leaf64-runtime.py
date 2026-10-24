@@ -82,6 +82,7 @@ FREEMOD
 #define S(r) (*(String**)R.r)
 #define UW(r) (*(UWORD*)R.r)
 #define F(r) (*(REAL*)R.r)
+#define SR(r) (*(SREAL*)R.r)
 #define V(r) (*(LONG*)R.r)
 #define UV(r) (*(ULONG*)R.r)
 char exInval[]="invalid", exZdiv[]="zero divide", exBounds[]="bounds", exHeap[]="heap", exNilref[]="nil";
@@ -93,6 +94,7 @@ FIXED_SCALE
 INTEGER_ALU
 SHIFT_DIV
 INTEGER_REAL
+REAL_ARITHMETIC
 
 static Module *active;
 static int activeop;
@@ -556,7 +558,7 @@ int main(void) {
 #if EXECUTE_NATIVE
     assert(m.jit->entry[ISUBW](&R)==1 && out==4);
     R.d=&a;assert(m.jit->entry[IADDW](&R)==1 && a==10);
-    integerreal();shiftdivision();integeralu();fixedscale();scalartransfers();arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);powers(&m);headrecords(&m);realbranches(&m);
+    realarithmetic();integerreal();shiftdivision();integeralu();fixedscale();scalartransfers();arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);powers(&m);headrecords(&m);realbranches(&m);
 #endif
     assert(compile(&m,33,nil));dropmodule(&m);
     for(i=0;i<33;i++)instructions[i].op=IMOVP;
@@ -577,7 +579,7 @@ a=load.index('void\nfreemod(');b=load.index('\nvoid\nunload(',a)
 unit=unit.replace('FREEMOD',load[a:b])
 xec=Path(os.environ.get('LEAF_VM_SOURCE',str(root/'libinterp/xec.c'))).read_text()
 parts=[]
-for signature in ('OP(cvtwf)', 'OP(cvtlf)', 'static WORD\nshiftcount(', 'OP(shlb)', 'OP(shrb)', 'OP(shll)', 'OP(shrl)', 'OP(lsrl)', 'OP(divb)', 'OP(modb)', 'OP(divl)', 'OP(modl)', 'OP(addb)', 'OP(subb)', 'OP(mulb)', 'OP(andb)', 'OP(orb)', 'OP(xorb)', 'OP(addw)', 'OP(subw)', 'OP(mulw)', 'OP(andw)', 'OP(orw)', 'OP(xorw)', 'OP(addl)', 'OP(subl)', 'OP(mull)', 'OP(andl)', 'OP(orl)', 'OP(xorl)', 'static LONG\nfixedshift(', 'OP(cvtxx)', 'OP(movb)', 'OP(movw)', 'OP(movl)', 'OP(movf)', 'OP(cvtbw)', 'OP(cvtwb)', 'OP(cvtws)', 'OP(cvtsw)', 'OP(cvtwl)', 'OP(cvtlw)', 'static List*\nlisthead(', 'OP(lenl)', 'OP(headb)', 'OP(headw)', 'OP(headl)', 'OP(headf)', 'OP(headm)', 'static void\nbranchreal(', 'OP(beqf)', 'OP(bnef)', 'OP(bltf)', 'OP(blef)', 'OP(bgtf)', 'OP(bgef)', 'OP(iexpw)', 'OP(iexpl)', 'OP(iexpf)', 'OP(movm)', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
+for signature in ('OP(addf)', 'OP(subf)', 'OP(mulf)', 'OP(divf)', 'OP(negf)', 'OP(cvtrf)', 'OP(cvtfr)', 'OP(cvtxf)', 'OP(cvtwf)', 'OP(cvtlf)', 'static WORD\nshiftcount(', 'OP(shlb)', 'OP(shrb)', 'OP(shll)', 'OP(shrl)', 'OP(lsrl)', 'OP(divb)', 'OP(modb)', 'OP(divl)', 'OP(modl)', 'OP(addb)', 'OP(subb)', 'OP(mulb)', 'OP(andb)', 'OP(orb)', 'OP(xorb)', 'OP(addw)', 'OP(subw)', 'OP(mulw)', 'OP(andw)', 'OP(orw)', 'OP(xorw)', 'OP(addl)', 'OP(subl)', 'OP(mull)', 'OP(andl)', 'OP(orl)', 'OP(xorl)', 'static LONG\nfixedshift(', 'OP(cvtxx)', 'OP(movb)', 'OP(movw)', 'OP(movl)', 'OP(movf)', 'OP(cvtbw)', 'OP(cvtwb)', 'OP(cvtws)', 'OP(cvtsw)', 'OP(cvtwl)', 'OP(cvtlw)', 'static List*\nlisthead(', 'OP(lenl)', 'OP(headb)', 'OP(headw)', 'OP(headl)', 'OP(headf)', 'OP(headm)', 'static void\nbranchreal(', 'OP(beqf)', 'OP(bnef)', 'OP(bltf)', 'OP(blef)', 'OP(bgtf)', 'OP(bgef)', 'OP(iexpw)', 'OP(iexpl)', 'OP(iexpf)', 'OP(movm)', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
     if signature.startswith('static ') and signature not in xec:continue
     start=xec.index(signature);brace=xec.index('{',start);depth=0
     for token in re.finditer(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*[\s\S]*?\*/|//[^\n]*|[{}]',xec[brace:]):
@@ -617,6 +619,10 @@ integerreal=(root/'libinterp/tests/integer-real.c').read_text()
 integerreal=integerreal[integerreal.index('/* Force the host'):]
 integerreal=integerreal.replace('int\nmain(void)', 'static void\nintegerreal(void)').replace('\treturn 0;', '')
 unit=unit.replace('INTEGER_REAL','#define NATIVE_INTEGER_REAL 1\n'+integerreal)
+realarith=(root/'libinterp/tests/real-arithmetic.c').read_text()
+realarith=realarith[realarith.index('/* Use volatile scalar'):]
+realarith=realarith.replace('int\nmain(void)', 'static void\nrealarithmetic(void)').replace('\treturn 0;', '')
+unit=unit.replace('REAL_ARITHMETIC','#define NATIVE_REAL_ARITH 1\n'+realarith)
 unit=unit.replace('VM_OPERATIONS','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='leaf64-runtime-') as directory:
     td=Path(directory);source=td/'runtime.c';source.write_text(unit)

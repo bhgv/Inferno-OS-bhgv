@@ -15,7 +15,7 @@ from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
 root = Path(__file__).resolve().parents[2]
-ops = '''ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF'''.split()
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -223,6 +223,41 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','resize'):
+                singles=[0,1<<31,1,(1<<31)|1,0x7fffff,0x800000,0x807fffff,0x80800000,
+                         0x3f800000,0xbf800000,0x7f7fffff,0xff7fffff,0x7f800000,0xff800000,
+                         0x7fc00042,0x7f800042,0xffc00042,0xff800042]
+                singles += [rng.getrandbits(32) for _ in range(128)]
+                doubles=[0,1<<63,1,(1<<63)|1,0x10000000000000,0x7fefffffffffffff,
+                         0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000042,0x7ff0000000000042]
+                for bits in singles:
+                    if (bits>>23)&255 != 255:
+                        wide=int.from_bytes(struct.pack('<d',struct.unpack('<f',bits.to_bytes(4,'little'))[0]),'little')
+                        doubles += [wide,(wide+1)&((1<<64)-1),(wide-1)&((1<<64)-1)]
+                doubles += [rng.getrandbits(64) for _ in range(128)]
+                for name,values,insize,outsize in [('ICVTRF',singles,4,8),('ICVTFR',doubles,8,4)]:
+                    for bits in values:
+                        magnitude=bits&((1<<(insize*8-1))-1)
+                        exponent=(magnitude>>(23 if insize==4 else 52))
+                        valid=(magnitude==0 or (0<exponent<255 if insize==4 else
+                               897<=exponent<=1150 and (magnitude&((1<<29)-1))==0))
+                        raw=bits.to_bytes(insize,'little')
+                        if valid:
+                            number=struct.unpack('<f' if insize==4 else '<d',raw)[0]
+                            expected=struct.pack('<d' if outsize==8 else '<f',number)
+                        for alias in (0,1,2,3,5):
+                            out,pc,before,after,_=run(name,alias=alias,raw=raw,expect=int(valid),poison=True)
+                            if valid:
+                                assert out[:outsize]==expected,(arch,wb,name,hex(bits),alias,out,expected)
+                                assert before[:8]==after[:8] and before[8+outsize:]==after[8+outsize:]
+                            else:assert before==after
+                            assert pc==oldpc
+                            checks+=1
+                        if not valid:
+                            _,pc,before,after,_=run(name,raw=raw,expect=0,poison=True,badtarget=True)
+                            assert pc==oldpc and before==after
+                            checks+=1
+                if case=='resize':continue
             if case in ('','integerreal'):
                 values=[0,1,-1,127,-128,0x7fffffff,-0x80000000,0xffffffff,
                         (1<<52)-1,1<<52,(1<<53)-1,1<<53,(1<<53)+1,

@@ -14,7 +14,7 @@ struct LeafOp {
 enum {
 	LeafMove = 1, LeafAlu, LeafBranch, LeafJump, LeafAddress, LeafNop,
 	LeafRealBranch, LeafShift, LeafDivide, LeafLength, LeafIndex, LeafNegReal,
-	LeafIntegerReal, LeafFixedShift, LeafPower, LeafHeadCopy, LeafCopy, LeafStringIndex, LeafStringLength, LeafHead, LeafListLength,
+	LeafRealResize, LeafIntegerReal, LeafFixedShift, LeafPower, LeafHeadCopy, LeafCopy, LeafStringIndex, LeafStringLength, LeafHead, LeafListLength,
 };
 
 /* Classify only operations whose complete VM semantics fit a helper-free leaf. */
@@ -29,6 +29,8 @@ leafop(LeafOp *p, int op, int wordbytes)
 		p->condition = op == IBEQF ? 0 : op == IBNEF ? 1 : op == IBLTF ? 2 :
 			op == IBLEF ? 3 : op == IBGTF ? 4 : 5;
 		break;
+	case ICVTRF: p->kind = LeafRealResize; p->input = 4; p->bytes = 8; break;
+	case ICVTFR: p->kind = LeafRealResize; p->input = 8; p->bytes = 4; break;
 	case ICVTWF: p->kind = LeafIntegerReal; p->input = wordbytes; p->bytes = 8; break;
 	case ICVTLF: p->kind = LeafIntegerReal; p->input = 8; p->bytes = 8; break;
 	case ICVTXX: p->kind = LeafFixedShift; break;

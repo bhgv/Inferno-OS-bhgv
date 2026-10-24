@@ -29,7 +29,16 @@ String	snil;			/* String known to be zero length */
 #define SR(r)	*((SREAL*)(R.r))
 
 OP(runt) {}
-OP(negf) { F(d) = -F(s); }
+/* Capture possibly unaligned real bits before evaluating and publishing the result. */
+OP(negf)
+{
+	REAL source;
+	REAL result;
+
+	memmove(&source, R.s, sizeof(source));
+	result = -source;
+	memmove(R.d, &result, sizeof(result));
+}
 /* Read native-width targets without imposing host pointer alignment. */
 OP(jmp)
 {
@@ -39,15 +48,17 @@ OP(jmp)
 OP(movpc)
 {
 	WORD pc;
+	Inst *target;
 	Modlink *ml;
 
 	ml = R.M;
 	if(ml == H || ml == nil || ml->m == H || ml->m == nil)
 		error(exModule);
-	pc = W(s);
+	memmove(&pc, R.s, sizeof(pc));
 	if(pc < 0 || pc >= ml->m->nprog || ml->m->prog == nil)
 		error(exBounds);
-	T(d) = &ml->m->prog[pc];
+	target = &ml->m->prog[pc];
+	memmove(R.d, &target, sizeof(target));
 }
 /* Capture possibly four-byte-aligned lengths before validating or copying. */
 OP(movm)
@@ -60,7 +71,14 @@ OP(movm)
 	if(n != 0)
 		memmove(R.d, R.s, n);
 }
-OP(lea)  { W(d) = (WORD)R.s; }
+/* Preserve the active VM word-width address representation at any slot alignment. */
+OP(lea)
+{
+	WORD address;
+
+	address = (WORD)R.s;
+	memmove(R.d, &address, sizeof(address));
+}
 /* Preserve overlapping scalar slots without requiring host alignment. */
 OP(movb)
 {
@@ -101,8 +119,26 @@ OP(cvtwb)
 	result = source;
 	memmove(R.d, &result, sizeof(result));
 }
-OP(cvtrf){ F(d) = SR(s); }
-OP(cvtfr){ SR(d) = F(s); }
+/* Capture possibly unaligned real bits before evaluating and publishing the result. */
+OP(cvtrf)
+{
+	SREAL source;
+	REAL result;
+
+	memmove(&source, R.s, sizeof(source));
+	result = source;
+	memmove(R.d, &result, sizeof(result));
+}
+/* Capture possibly unaligned real bits before evaluating and publishing the result. */
+OP(cvtfr)
+{
+	REAL source;
+	SREAL result;
+
+	memmove(&source, R.s, sizeof(source));
+	result = source;
+	memmove(R.d, &result, sizeof(result));
+}
 /* Capture the WORD source before converting into a possibly overlapping SHORT slot. */
 OP(cvtws)
 {
@@ -163,7 +199,16 @@ OP(addl)
 	result = left + right;
 	memmove(R.d, &result, sizeof(result));
 }
-OP(addf) { F(d) = F(m) + F(s); }
+/* Capture both real operands before an overlapping, possibly unaligned store. */
+OP(addf)
+{
+	REAL left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left + right;
+	memmove(R.d, &result, sizeof(result));
+}
 /* Capture integer operands before evaluating modular arithmetic or bit operations. */
 OP(subb)
 {
@@ -194,7 +239,16 @@ OP(subl)
 	result = left - right;
 	memmove(R.d, &result, sizeof(result));
 }
-OP(subf) { F(d) = F(m) - F(s); }
+/* Capture both real operands before an overlapping, possibly unaligned store. */
+OP(subf)
+{
+	REAL left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left - right;
+	memmove(R.d, &result, sizeof(result));
+}
 /* Preserve the VM's divide-by-zero exception for byte operands too. */
 OP(divb)
 {
@@ -239,7 +293,16 @@ OP(divl)
 		result = dividend / divisor;
 	memmove(R.d, &result, sizeof(result));
 }
-OP(divf) { F(d) = F(m) / F(s); }
+/* Capture both real operands before an overlapping, possibly unaligned store. */
+OP(divf)
+{
+	REAL left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left / right;
+	memmove(R.d, &result, sizeof(result));
+}
 /* Byte remainder by zero must not reach the host C operator. */
 OP(modb)
 {
@@ -314,7 +377,16 @@ OP(mull)
 	result = left * right;
 	memmove(R.d, &result, sizeof(result));
 }
-OP(mulf) { F(d) = F(m) * F(s); }
+/* Capture both real operands before an overlapping, possibly unaligned store. */
+OP(mulf)
+{
+	REAL left, right, result;
+
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	result = left * right;
+	memmove(R.d, &result, sizeof(result));
+}
 /* Capture integer operands before evaluating modular arithmetic or bit operations. */
 OP(andb)
 {
@@ -765,19 +837,22 @@ OP(cvtlf)
 OP(cvtfl)
 {
 	REAL f;
+	LONG result;
 
-	f = F(s);
+	memmove(&f, R.s, sizeof(f));
 	f = f < 0 ? f - .5 : f + .5;
 	if(!(f >= -9223372036854775808.0 && f < 9223372036854775808.0))
 		error(exInval);
-	V(d) = (LONG)f;
+	result = (LONG)f;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Check the active VM word width before publishing the rounded integer. */
 OP(cvtfw)
 {
 	REAL f;
+	WORD result;
 
-	f = F(s);
+	memmove(&f, R.s, sizeof(f));
 	f = f < 0 ? f - .5 : f + .5;
 	if(sizeof(WORD) == 4){
 		if(!(f > -2147483649.0 && f < 2147483648.0))
@@ -786,7 +861,8 @@ OP(cvtfw)
 		if(!(f >= -9223372036854775808.0 && f < 9223372036854775808.0))
 			error(exInval);
 	}
-	W(d) = (WORD)f;
+	result = (WORD)f;
+	memmove(R.d, &result, sizeof(result));
 }
 OP(cvtcl)
 {
@@ -2534,9 +2610,12 @@ OP(cvtxx)
 /* Reject exceptional real-to-fixed casts before a native integer conversion. */
 OP(cvtfx)
 {
-	REAL v;
+	REAL v, source, scale;
+	WORD result;
 
-	v = F(s)*F(m);
+	memmove(&source, R.s, sizeof(source));
+	memmove(&scale, R.m, sizeof(scale));
+	v = source*scale;
 	v = v < 0 ? v-0.5: v+0.5;
 	if(sizeof(WORD) == 4){
 		if(!(v > -2147483649.0 && v < 2147483648.0))
@@ -2545,11 +2624,19 @@ OP(cvtfx)
 		if(!(v >= -9223372036854775808.0 && v < 9223372036854775808.0))
 			error(exInval);
 	}
-	W(d) = (WORD)v;
+	result = (WORD)v;
+	memmove(R.d, &result, sizeof(result));
 }
+/* Capture the fixed integer and real scale before publishing their product. */
 OP(cvtxf)
 {
-	F(d) = (REAL)W(s)*F(m);
+	WORD source;
+	REAL scale, result;
+
+	memmove(&source, R.s, sizeof(source));
+	memmove(&scale, R.m, sizeof(scale));
+	result = (REAL)source*scale;
+	memmove(R.d, &result, sizeof(result));
 }
 
 OP(self)
