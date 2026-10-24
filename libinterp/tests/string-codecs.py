@@ -40,6 +40,10 @@ with tempfile.TemporaryDirectory(prefix='string-codecs-') as directory:
     target.write_text(unit)
     cmd = shlex.split(os.environ.get('CC','cc'))
     cmd += shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
+    selected=os.environ.get('STRING_INDEX_CASE','')
+    selections={'nil':1,'min':2,'store-nil':3,'store-min':4,'alignment':5,'stores':6}
+    if selected and selected not in selections:raise ValueError(selected)
+    if selected:cmd += ['-DSTRING_INDEX_CASE='+str(selections[selected])]
     includes = ['-I'+str(root / p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
     for model in ('native','word32'):
         override = []

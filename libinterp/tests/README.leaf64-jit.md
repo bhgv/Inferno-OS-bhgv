@@ -72,7 +72,7 @@ python3 libinterp/tests/slice-tokenize-suite.py --core
 
 The cross-architecture test compiles the production encoders, disassembles every
 emitted byte and executes AMD64, AArch64 and RV64 machine code in Unicorn. Its
-131,922 checks compare against independent Python integer/branch oracles for both
+135,204 checks compare against independent Python integer/branch oracles for both
 VM word widths. It covers overflow boundaries, randomized values, exact input
 aliases, partial move overlaps, four-byte-aligned long operands, high native
 addresses, PC updates, neighboring-byte guards, sizing, capacity rejection and
@@ -145,7 +145,7 @@ three 64-bit backends. See [the array-address guide](README.array-indices.md) fo
 the checked VM helper, zero-width semantics, native address guards, word-model
 limitations and independent parent regressions. The array-only emulator matrix
 adds 26,100 semantic executions plus shared sizing/ABI checks. The complete
-three-architecture machine-code suite now has 131,922 checks; the dedicated VM
+three-architecture machine-code suite now has 135,204 checks; the dedicated VM
 address fixture adds 40,023 checks. These counts do not imply whole target boot
 or a new Dis64 ABI.
 
@@ -207,13 +207,13 @@ LEAF64_CASE=copy python3 libinterp/tests/leaf64-jit.py
 LEAF64_CASE=string python3 libinterp/tests/leaf64-jit.py
 ```
 
-The copy subset reports 3,510 checks including encoder checks. It compares all
+The copy subset reports 3,546 checks including encoder checks. It compares all
 4 KiB of surrounding storage against snapshot-copy oracles for overlapping,
 identical and disjoint spans, byte alignment, overwritten count operands,
 128/129 boundaries, signed extrema and unmapped source/destination spans on
-rejection. The string subset reports 744 checks including encoder checks, with
+rejection. The string subset reports 780 checks including encoder checks, with
 four-byte String.len offsets, both word widths, source/result aliases and
-unchanged destinations on fallback. The complete driver reports 131,922 checks.
+unchanged destinations on fallback. The complete driver reports 135,204 checks.
 The native AMD64 fixture compares copies with libc memmove, tests the real
 String/REG offsets and runs actual VM fallback for length 129, invalid counts,
 C-null strings and INT_MIN metadata. Both word models pass ASan/UBSan.
@@ -257,7 +257,7 @@ LEAF64_CASE=listlen python3 libinterp/tests/leaf64-jit.py
 python3 libinterp/tests/lists.py
 ```
 
-The full emulator driver reports 131,922 checks. Head checks cover byte/word/big/
+The full emulator driver reports 135,204 checks. Head checks cover byte/word/big/
 real bit patterns, high native pointers, source/result aliases, partial overlap
 with inline payloads and unchanged surrounding object/operand bytes. Length
 checks cover both word widths, 0/1/127/128/129 boundaries, null links, cycles,
@@ -275,3 +275,52 @@ misaligned WORD64 headm size load, and `LIST_HEAD_CASE=length` a null length-lin
 access. The repaired implementation passes ASan/UBSan. The compiler fold-traps
 fixture extracts the new shared listhead helper so its actual VM comparison
 continues to cover head/tail exceptions. Target hardware boots remain separate.
+
+## String character indexing
+
+IINDC now reads ASCII or Rune elements natively on AMD64, AArch64 and RV64.
+String.len remains a signed 32-bit representation field even with WORD64.
+The emitters reject nil/H owners, INT_MIN representation lengths and complete
+out-of-range VM indices before reading character storage. ASCII bytes are
+zero-extended; Rune values are interpreted as signed 32-bit integers before
+publishing the VM word, matching the existing `(int)Srune[index]` rule. Header
+and character-data offsets are explicit layout inputs derived from String.
+These are scalar reads; string mutation and allocation remain in optab.
+
+The VM indc and insc handlers now reject C-null owners and INT_MIN lengths with
+exNilref/exHeap before any output or ownership changes. Operand words and owner
+slots are captured with byte-safe copies, and results/new owners are published
+without assuming native alignment. The insc slot itself stays a void pointer,
+so an unaligned byte address is never converted into a typed String**.
+Existing sharing, growth, rune promotion and allocation-failure behavior remains
+covered by the codec tests.
+
+```
+LEAF64_CASE=character python3 libinterp/tests/leaf64-jit.py
+python3 libinterp/tests/string-codecs.py
+STRING_INDEX_CASE=alignment python3 libinterp/tests/string-codecs.py
+STRING_INDEX_CASE=stores python3 libinterp/tests/string-codecs.py
+```
+
+The complete JIT driver reports 135,204 checks. Character tests cover both word
+widths, ASCII/rune strides, signed Rune extrema, high-word indices, nil/H owners,
+INT_MIN metadata, output aliases with owner/index/payload and whole-buffer
+preservation. Rejected indices also use an owner header at a mapped-page edge
+with unmapped character storage. Native AMD64 tests compare actual emitted code
+with forced production VM helpers, including errors and unchanged Dis PCs, under
+ASan/UBSan in both word models.
+
+The complete codec fixture reports 40,095 checks per word model under UBSan.
+New focused read/store/error subsets also pass ASan/UBSan with stack checks
+retained. Store coverage includes unaligned rune/index/owner slots, appending,
+ASCII-to-rune promotion, negative rune values, shared owners and unchanged
+storage on bounds failures. `STRING_SOURCE` plus `STRING_INDEX_CASE=nil`, `min`,
+`store-nil`, `store-min` or `alignment` reproduces the corresponding null access,
+INT_MIN negation or unaligned operand load against parent 692d358.
+
+In this sandbox the full codec ASan process reports a stack-buffer diagnostic
+inside the pre-existing cvtac/checkbounds longjmp sequence on both parent and
+current sources. Thus a full codec ASan pass is not claimed. The complete UBSan
+run, focused ASan subsets and native JIT ASan execution are the successful
+checks; stack instrumentation was not disabled. Full operating-system boots and
+hardware arm64/riscv64 execution remain separate.

@@ -18,40 +18,52 @@ void cvtup(Rune*, String*);
 #define C(r)	*((Channel**)(R.r))
 #define T(r)	*((void**)(R.r))
 
-/* Check the complete VM index before reading ASCII or Rune storage. */
+/* Validate representation and bounds before publishing an alignment-safe character. */
 OP(indc)
 {
-	WORD index;
+	WORD index, result;
 	int length;
 	String *string;
 
-	index = W(m);
-	string = S(s);
-	if(string == H)
+	memmove(&index, R.m, sizeof(index));
+	memmove(&string, R.s, sizeof(string));
+	if(string == H || string == nil)
 		error(exNilref);
-	length = string->len < 0 ? -string->len : string->len;
+	length = string->len;
+	if(length == (-0x7fffffff-1))
+		error(exHeap);
+	if(length < 0)
+		length = -length;
 	if(index < 0 || index >= length)
 		error(exBounds);
 	if(string->len < 0)
-		W(d) = (int)string->Srune[index];
+		result = (int)string->Srune[index];
 	else
-		W(d) = (uchar)string->Sascii[index];
+		result = (uchar)string->Sascii[index];
+	memmove(R.d, &result, sizeof(result));
 }
 
-/* Store or append with one allocation, publishing copies only after they are complete. */
+/* Capture operands and validate the representation before ownership changes.
+ * Publish replacement storage only after its contents are complete. */
 OP(insc)
 {
-	WORD index;
+	WORD index, value;
 	int length, wide, shared;
 	uvlong capacity;
 	Rune rune;
-	String *old, *result, **slot;
+	String *old, *result;
+	void *slot;
 
-	rune = W(s);
-	index = W(m);
+	memmove(&value, R.s, sizeof(value));
+	rune = value;
+	memmove(&index, R.m, sizeof(index));
 	slot = R.d;
-	old = *slot;
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
 	length = old == H ? 0 : old->len;
+	if(length == (-0x7fffffff-1))
+		error(exHeap);
 	if(length < 0)
 		length = -length;
 	if(index < 0 || index > length)
@@ -90,7 +102,7 @@ OP(insc)
 	if(index == length)
 		length++;
 	result->len = wide ? -length : length;
-	*slot = result;
+	memmove(slot, &result, sizeof(result));
 	destroy(old);
 }
 

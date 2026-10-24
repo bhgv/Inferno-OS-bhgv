@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <limits.h>
 #include <setjmp.h>
+#include <stddef.h>
 /* LeakSanitizer cannot inspect processes in this sandbox; count blocks below. */
 int
 __lsan_is_turned_off(void)
@@ -463,11 +464,148 @@ checkcachefailures(void)
 	}
 }
 
+#ifndef STRING_INDEX_CASE
+#define STRING_INDEX_CASE 0
+#endif
+
+/* Read both representations with aliased, four-byte-aligned operands. */
+static void
+checkindexedchars(void)
+{
+	union { uvlong align; uchar bytes[96]; } slots;
+	uchar original[64], expected[64], wantslots[96];
+	Rune values[] = {0, 0x7f, 0x80, 0xff, 0x10ffff, 0x7fffffff, 0x80000000U, 0xffffffffU};
+	String *s, forged = {0}, *owner;
+	WORD index, result, value = 'x';
+	int wide, i, alias, mode, size;
+
+	size = offsetof(String, data)+32;
+	assert(size <= sizeof(original));
+	if(STRING_INDEX_CASE == 0 || STRING_INDEX_CASE == 5)
+	for(wide = 0; wide < 2; wide++){
+		s = wide ? newrunes(32) : newstring(32);
+		s->len = wide ? -8 : 8;
+		for(i = 0; i < 8; i++){
+			if(wide)s->Srune[i] = values[i];
+			else s->Sascii[i] = values[i];
+		}
+		memcpy(original, s, size);
+		for(i = 0; i < 8; i++)
+		for(alias = 0; alias < 4; alias++){
+			memcpy(s, original, size);
+			memcpy(expected, original, size);
+			memset(slots.bytes, 0xa5, sizeof(slots.bytes));
+			memcpy(slots.bytes+4, &s, sizeof(s));
+			index = i;
+			memcpy(slots.bytes+20, &index, sizeof(index));
+			memcpy(wantslots, slots.bytes, sizeof(wantslots));
+			result = wide ? (int)values[i] : (uchar)values[i];
+			R.s = slots.bytes+4;
+			R.m = slots.bytes+20;
+			if(alias < 3){
+				int offset = alias == 0 ? 36 : alias == 1 ? 4 : 20;
+				R.d = slots.bytes+offset;
+				memcpy(wantslots+offset, &result, sizeof(result));
+			}else{
+				R.d = s->Sascii+4;
+				memcpy(expected+offsetof(String, data)+4, &result, sizeof(result));
+			}
+			indc();
+			assert(!memcmp(s, expected, size));
+			assert(!memcmp(slots.bytes, wantslots, sizeof(wantslots)));
+			checks++;
+		}
+		memcpy(s, original, size);
+		destroy(s);
+	}
+	for(mode = 0; mode < 4; mode++){
+		if(STRING_INDEX_CASE && mode != STRING_INDEX_CASE-1)continue;
+		owner = mode&1 ? &forged : nil;
+		forged.len = INT_MIN;
+		index = 0;
+		result = 77;
+		R.m = &index;
+		if(mode < 2){
+			R.s = &owner;
+			R.d = &result;
+			EXPECT(indc(), mode&1 ? exHeap : exNilref);
+			assert(result == 77);
+		}else{
+			R.s = &value;
+			R.d = &owner;
+			EXPECT(insc(), mode&1 ? exHeap : exNilref);
+			assert(owner == (mode&1 ? &forged : nil));
+		}
+		checks++;
+	}
+}
+
+/* Stores must capture unaligned operands before sharing, growth or replacement. */
+static void
+checkindexedstores(void)
+{
+	union { uvlong align; uchar bytes[96]; } slots;
+	uchar before[96];
+	String *s, *old, *result;
+	Rune initial[] = {0x400, 0x500, 0x600}, expected[4];
+	WORD value, index;
+	int wide, code, shared, position, i, n;
+
+	for(wide = 0; wide < 2; wide++)
+	for(code = 0; code < 3; code++)
+	for(shared = 0; shared < 2; shared++)
+	for(position = 0; position < 4; position++){
+		s = wide ? newrunes(32) : newstring(32);
+		s->len = wide ? -3 : 3;
+		for(i = 0; i < 3; i++){
+			expected[i] = wide ? initial[i] : 'a'+i;
+			if(wide)s->Srune[i] = expected[i];
+			else s->Sascii[i] = expected[i];
+		}
+		old = s;
+		if(shared)D2H(old)->ref++;
+		value = code == 0 ? 'x' : code == 1 ? 0x20ac : -1;
+		index = position == 2 ? 3 : position == 3 ? 4 : position;
+		memset(slots.bytes, 0xa5, sizeof(slots.bytes));
+		memcpy(slots.bytes+4, &s, sizeof(s));
+		memcpy(slots.bytes+20, &value, sizeof(value));
+		memcpy(slots.bytes+36, &index, sizeof(index));
+		memcpy(before, slots.bytes, sizeof(before));
+		R.d = slots.bytes+4;
+		R.s = slots.bytes+20;
+		R.m = slots.bytes+36;
+		if(index > 3){
+			EXPECT(insc(), exBounds);
+			assert(!memcmp(slots.bytes, before, sizeof(before)));
+			result = old;
+		}else{
+			insc();
+			memcpy(&result, R.d, sizeof(result));
+			n = index == 3 ? 4 : 3;
+			expected[index] = value;
+			assert(result->len == (wide || code ? -n : n));
+			for(i = 0; i < n; i++)assert((result->len < 0 ? result->Srune[i] : (uchar)result->Sascii[i]) == expected[i]);
+			assert(!memcmp(slots.bytes+12, before+12, sizeof(before)-12));
+		}
+		if(shared){
+			assert(D2H(old)->ref == (result == old ? 2 : 1));
+			assert(old->len == (wide ? -3 : 3));
+			destroy(old);
+		}
+		destroy(result);
+		checks++;
+	}
+}
+
 /* Complete all real-header codec checks with balanced VM and native ownership. */
 int
 main(void)
 {
+	if(STRING_INDEX_CASE == 0){
 	checkcachefailures(); checkrunes(); checkbounds(); checkaliases(); checkwords(); checktext(); checkstores(); checkindices(); checkemptycapacity();
+	}
+	if(STRING_INDEX_CASE != 6)checkindexedchars();
+	if(STRING_INDEX_CASE == 0 || STRING_INDEX_CASE == 6)checkindexedstores();
 	assert(live == 0 && Tstring.ref == 1 && Tarray.ref == 1 && Tbyte.ref == 1);
 	printf("PASS string codecs: %d UTF/word/bounds/ownership checks, WORD%zu\n",checks,sizeof(WORD)*8);
 	return 0;

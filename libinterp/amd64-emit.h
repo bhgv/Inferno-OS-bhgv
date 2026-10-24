@@ -83,7 +83,29 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafListLength){
+	if(p.kind == LeafStringIndex){
+		if(abi->stringlen < 0 || abi->stringdata < 0) return 0;
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
+		x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3); /* r11 = owner */
+		x64field(&b, 1, 0, abi->stringlen, 4);
+		x64byte(&b, 0x81); x64byte(&b, 0xf9); x64word(&b, 0x80000000U); x64guard(&b, 0x75);
+		x64byte(&b, 0x89); x64byte(&b, 0xca); /* edx = representation sign */
+		x64byte(&b, 0x85); x64byte(&b, 0xc9);
+		x64byte(&b, 0x79); x64byte(&b, 2); x64byte(&b, 0xf7); x64byte(&b, 0xd9);
+		x64ptr(&b, 0, abi->m); x64load(&b, 0, abi->wordbytes);
+		x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xc8); x64guard(&b, 0x72);
+		x64byte(&b, 0x85); x64byte(&b, 0xd2);
+		x64byte(&b, 0x78); other = b.n; x64byte(&b, 0);
+		x64byte(&b, 0x49); x64byte(&b, 0x0f); x64byte(&b, 0xb6);
+		x64byte(&b, 0x84); x64byte(&b, 0x03); x64word(&b, abi->stringdata);
+		x64byte(&b, 0xeb); done = b.n; x64byte(&b, 0);
+		b.bytes[other] = b.n-other-1;
+		x64byte(&b, 0x49); x64byte(&b, 0x63); x64byte(&b, 0x84); x64byte(&b, 0x83); x64word(&b, abi->stringdata);
+		b.bytes[done] = b.n-done-1;
+		x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
+	}else if(p.kind == LeafListLength){
 		/* Bounded scans decline without publishing a partial length. */
 		if(abi->listtail < 0) return 0;
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);

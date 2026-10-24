@@ -73,7 +73,27 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafListLength){
+	if(p.kind == LeafStringIndex){
+		if(abi->stringlen < 0 || abi->stringlen > 16380 || abi->stringlen%4 != 0 ||
+		   abi->stringdata < 0 || abi->stringdata > 4095 || abi->stringdata%4 != 0) return 0;
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
+		a64guard(&b, 0xb500006c);
+		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
+		a64field(&b, 13, 12, abi->stringlen, 4);
+		a64put(&b, 0x52b0000e); a64put(&b, 0x6b0e01bf); a64guard(&b, 0x54000061);
+		a64put(&b, 0x2a0d03ef); /* preserve the representation sign */
+		a64put(&b, 0x36f8004d); a64put(&b, 0x4b0d03ed);
+		a64ptr(&b, 10, abi->m); a64load(&b, 14, 10, abi->wordbytes);
+		a64put(&b, 0xeb0d01df); a64guard(&b, 0x54000063);
+		other = b.n; a64put(&b, 0x36f8000f); /* tbz w15, #31, ASCII */
+		a64put(&b, 0x8b0e098c);
+		a64put(&b, 0xb9800000U | (u32int)(abi->stringdata/4)<<10 | 12<<5 | 13);
+		done = b.n; a64put(&b, 0x14000000);
+		b.code[other] |= (b.n-other)<<5;
+		a64put(&b, 0x8b0e018c); a64field(&b, 13, 12, abi->stringdata, 1);
+		b.code[done] |= b.n-done;
+		a64ptr(&b, 11, abi->d); a64store(&b, 13, abi->wordbytes);
+	}else if(p.kind == LeafListLength){
 		/* Bounded scans decline without publishing a partial length. */
 		if(abi->listtail < 0 || abi->listtail > 32760 || abi->listtail%8 != 0) return 0;
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);

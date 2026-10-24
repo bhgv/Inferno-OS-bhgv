@@ -15,14 +15,14 @@ from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
 root = Path(__file__).resolve().parents[2]
-ops = '''ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IMOVP IFRAME ICALL IRET IADDF'''.split()
 class Layout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'listdata', 'listtail')]
+    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail')]
 class RvLayout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'listdata', 'listtail')]
+    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail')]
 
 
 def signed(value, bits):
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
         ids = {name:lib.opid(i) for i,name in enumerate(ops)}
         for wb in (4,8):
             layout = RvLayout(64,wb,1,0,8,16,24) if rv else Layout(wb,0,8,16,24)
-            layout.arraylen=8;layout.arraydata=32;layout.stringlen=12;layout.listdata=24;layout.listtail=8
+            layout.arraylen=8;layout.arraydata=32;layout.stringlen=12;layout.stringdata=32;layout.listdata=24;layout.listtail=8
             dis = Cs(CS_ARCH_X86,CS_MODE_64) if arch == 'amd64' else Cs(CS_ARCH_ARM64,0) if arch == 'arm64' else Cs(CS_ARCH_RISCV,CS_MODE_RISCV64)
             blobs = {}
             for name in ops:
@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
             code, registers, data, stack = 0x10000, 0x100020000, 0x100030000, 0x40000
             oldpc, target = 0x123456789, 0x987654321
 
-            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None):
+            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None):
                 """Exercise a leaf with high native pointers, four-byte alignment and exact aliases."""
                 if arch == 'amd64':
                     u = Uc(UC_ARCH_X86,UC_MODE_64); arg, result = UC_X86_REG_RDI, UC_X86_REG_RAX
@@ -93,7 +93,29 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 metadata=None
                 expected_copy=None
                 expected_head=None
-                if chain is not None:
+                if character is not None:
+                    owner,length,index,values=character
+                    if poison:owner=data+0x1000-layout.stringdata
+                    if alias==1:d=s
+                    if alias==2:d=m
+                    if alias==3:d=data+0x500+layout.stringdata+4
+                    output=d
+                    u.mem_write(d-8,b'\xa5'*32)
+                    metadata=bytearray(b'\x5a'*128)
+                    metadata[layout.stringlen:layout.stringlen+4]=struct.pack('<i',length)
+                    for i,bits in enumerate(values):
+                        pos=layout.stringdata+i*(4 if length<0 else 1)
+                        width=4 if length<0 else 1
+                        metadata[pos:pos+width]=(bits&((1<<(width*8))-1)).to_bytes(width,'little')
+                    u.mem_write(owner if poison else data+0x500,bytes(metadata[:layout.stringdata] if poison else metadata))
+                    u.mem_write(s,struct.pack('<Q',owner))
+                    u.mem_write(m,(index&((1<<(8*wb))-1)).to_bytes(wb,'little'))
+                    expected_head=bytearray(u.mem_read(data,0x1000))
+                    if expect:
+                        value=signed(values[index],32) if length<0 else values[index]&255
+                        expected_head[d-data:d-data+wb]=(value&((1<<(8*wb))-1)).to_bytes(wb,'little')
+                    metadata=None
+                elif chain is not None:
                     length,terminal=chain
                     if alias:d=s
                     output=d
@@ -181,6 +203,23 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','character'):
+                values=[0,0x7f,0x80,0xff,0x10ffff,0x7fffffff,0x80000000,0xffffffff]
+                for pointer in (0,(1<<64)-1,data+0x500):
+                    for length in (-2147483648,-8,-1,0,1,8):
+                        for index in [-1,0,1,7,8,(1<<(wb*8-1))-1]+([1<<32,(1<<32)+1,-(1<<63)] if wb==8 else []):
+                            for alias in (0,1,2,3):
+                                valid=pointer==data+0x500 and length!=-2147483648 and 0<=index<abs(length)
+                                out,pc,before,after,_=run('IINDC',alias=alias,character=(pointer,length,index,values),expect=int(valid))
+                                if not valid:assert before==after
+                                assert pc==oldpc
+                                checks+=1
+                for length in (-8,8):
+                    for index in (-1,8,(1<<(wb*8-1))-1):
+                        _,pc,before,after,_=run('IINDC',character=(data+0x500,length,index,values),expect=0,poison=True)
+                        assert before==after and pc==oldpc
+                        checks+=1
+                if case=='character':continue
             if case in ('','listlen'):
                 for length in (0,1,2,7,31,127,128,129):
                     for terminal in (0,(1<<64)-1,data+0x500):
