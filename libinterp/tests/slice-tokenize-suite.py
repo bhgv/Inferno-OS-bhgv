@@ -27,6 +27,7 @@ CORE = [
     'libinterp/tests/channel-queues.py',
     'libinterp/tests/channel-transfers.py',
     'libinterp/tests/integer-ops.py',
+    'libinterp/tests/geometry-arithmetic.py',
     'libinterp/tests/runtime-protect.py',
     'limbo/tests/fold-traps.py',
     'limbo/tests/fold-short-circuit.py',

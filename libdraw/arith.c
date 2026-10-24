@@ -33,65 +33,77 @@ Rpt(Point min, Point max)
 	return r;
 }
 
+/* Add native drawing coordinates without signed C overflow. */
 Point
 addpt(Point a, Point b)
 {
-	a.x += b.x;
-	a.y += b.y;
+	a.x = (uint)a.x + (uint)b.x;
+	a.y = (uint)a.y + (uint)b.y;
 	return a;
 }
 
+/* Subtract native drawing coordinates with modular integer arithmetic. */
 Point
 subpt(Point a, Point b)
 {
-	a.x -= b.x;
-	a.y -= b.y;
+	a.x = (uint)a.x - (uint)b.x;
+	a.y = (uint)a.y - (uint)b.y;
 	return a;
 }
 
+/* Inset both corners without signed C overflow. */
 Rectangle
 insetrect(Rectangle r, int n)
 {
-	r.min.x += n;
-	r.min.y += n;
-	r.max.x -= n;
-	r.max.y -= n;
+	r.min.x = (uint)r.min.x + (uint)n;
+	r.min.y = (uint)r.min.y + (uint)n;
+	r.max.x = (uint)r.max.x - (uint)n;
+	r.max.y = (uint)r.max.y - (uint)n;
 	return r;
 }
 
+/* Preserve modular negation for minimum / -1; other divisors retain C division. */
 Point
 divpt(Point a, int b)
 {
-	a.x /= b;
-	a.y /= b;
+	if(b == -1){
+		a.x = 0U - (uint)a.x;
+		a.y = 0U - (uint)a.y;
+	}else{
+		a.x /= b;
+		a.y /= b;
+	}
 	return a;
 }
 
+/* Scale native drawing coordinates without signed C overflow. */
 Point
 mulpt(Point a, int b)
 {
-	a.x *= b;
-	a.y *= b;
+	a.x = (uint)a.x * (uint)b;
+	a.y = (uint)a.y * (uint)b;
 	return a;
 }
 
+/* Subtract a point from both corners using native unsigned arithmetic. */
 Rectangle
 rectsubpt(Rectangle r, Point p)
 {
-	r.min.x -= p.x;
-	r.min.y -= p.y;
-	r.max.x -= p.x;
-	r.max.y -= p.y;
+	r.min.x = (uint)r.min.x - (uint)p.x;
+	r.min.y = (uint)r.min.y - (uint)p.y;
+	r.max.x = (uint)r.max.x - (uint)p.x;
+	r.max.y = (uint)r.max.y - (uint)p.y;
 	return r;
 }
 
+/* Add a point to both corners using native unsigned arithmetic. */
 Rectangle
 rectaddpt(Rectangle r, Point p)
 {
-	r.min.x += p.x;
-	r.min.y += p.y;
-	r.max.x += p.x;
-	r.max.y += p.y;
+	r.min.x = (uint)r.min.x + (uint)p.x;
+	r.min.y = (uint)r.min.y + (uint)p.y;
+	r.max.x = (uint)r.max.x + (uint)p.x;
+	r.max.y = (uint)r.max.y + (uint)p.y;
 	return r;
 }
 

@@ -5,6 +5,7 @@
 #include "runt.h"
 #include "raise.h"
 
+/* Add coordinates modulo the active VM word width, without C signed overflow. */
 void
 Point_add(void *fp)
 {
@@ -14,10 +15,11 @@ Point_add(void *fp)
 	f = fp;
 
 	ret = f->ret;
-	ret->x = f->p.x + f->q.x;
-	ret->y = f->p.y + f->q.y;
+	ret->x = (UWORD)f->p.x + (UWORD)f->q.x;
+	ret->y = (UWORD)f->p.y + (UWORD)f->q.y;
 }
 
+/* Subtract coordinates with the same modular arithmetic as VM word subtraction. */
 void
 Point_sub(void *fp)
 {
@@ -27,10 +29,11 @@ Point_sub(void *fp)
 	f = fp;
 
 	ret = f->ret;
-	ret->x = f->p.x - f->q.x;
-	ret->y = f->p.y - f->q.y;
+	ret->x = (UWORD)f->p.x - (UWORD)f->q.x;
+	ret->y = (UWORD)f->p.y - (UWORD)f->q.y;
 }
 
+/* Scale coordinates without overflowing a signed C intermediate. */
 void
 Point_mul(void *fp)
 {
@@ -40,10 +43,11 @@ Point_mul(void *fp)
 	f = fp;
 
 	ret = f->ret;
-	ret->x = f->p.x * f->i;
-	ret->y = f->p.y * f->i;
+	ret->x = (UWORD)f->p.x * (UWORD)f->i;
+	ret->y = (UWORD)f->p.y * (UWORD)f->i;
 }
 
+/* Raise on zero before writing either coordinate; handle minimum / -1 by wrapping. */
 void
 Point_div(void *fp)
 {
@@ -55,8 +59,13 @@ Point_div(void *fp)
 	if(f->i == 0)
 		error(exZdiv);
 	ret = f->ret;
-	ret->x = f->p.x / f->i;
-	ret->y = f->p.y / f->i;
+	if(f->i == -1){
+		ret->x = (UWORD)0 - (UWORD)f->p.x;
+		ret->y = (UWORD)0 - (UWORD)f->p.y;
+	}else{
+		ret->x = f->p.x / f->i;
+		ret->y = f->p.y / f->i;
+	}
 }
 
 void
@@ -222,6 +231,7 @@ Rect_contains(void *fp)
 		&& y >= f->r.min.y && y < f->r.max.y;
 }
 
+/* Translate both corners with VM-width unsigned addition. */
 void
 Rect_addpt(void *fp)
 {
@@ -233,13 +243,14 @@ Rect_addpt(void *fp)
 
 	ret = f->ret;
 	n = f->p.x;
-	ret->min.x = f->r.min.x + n;
-	ret->max.x = f->r.max.x + n;
+	ret->min.x = (UWORD)f->r.min.x + (UWORD)n;
+	ret->max.x = (UWORD)f->r.max.x + (UWORD)n;
 	n = f->p.y;
-	ret->min.y = f->r.min.y + n;
-	ret->max.y = f->r.max.y + n;
+	ret->min.y = (UWORD)f->r.min.y + (UWORD)n;
+	ret->max.y = (UWORD)f->r.max.y + (UWORD)n;
 }
 
+/* Translate both corners with VM-width unsigned subtraction. */
 void
 Rect_subpt(void *fp)
 {
@@ -251,13 +262,14 @@ Rect_subpt(void *fp)
 
 	ret = f->ret;
 	n = f->p.x;
-	ret->min.x = f->r.min.x - n;
-	ret->max.x = f->r.max.x - n;
+	ret->min.x = (UWORD)f->r.min.x - (UWORD)n;
+	ret->max.x = (UWORD)f->r.max.x - (UWORD)n;
 	n = f->p.y;
-	ret->min.y = f->r.min.y - n;
-	ret->max.y = f->r.max.y - n;
+	ret->min.y = (UWORD)f->r.min.y - (UWORD)n;
+	ret->max.y = (UWORD)f->r.max.y - (UWORD)n;
 }
 
+/* Inset corners without signed overflow, preserving noncanonical results. */
 void
 Rect_inset(void *fp)
 {
@@ -269,12 +281,13 @@ Rect_inset(void *fp)
 
 	ret = f->ret;
 	n = f->n;
-	ret->min.x = f->r.min.x + n;
-	ret->min.y = f->r.min.y + n;
-	ret->max.x = f->r.max.x - n;
-	ret->max.y = f->r.max.y - n;
+	ret->min.x = (UWORD)f->r.min.x + (UWORD)n;
+	ret->min.y = (UWORD)f->r.min.y + (UWORD)n;
+	ret->max.x = (UWORD)f->r.max.x - (UWORD)n;
+	ret->max.y = (UWORD)f->r.max.y - (UWORD)n;
 }
 
+/* Measure width using the VM word subtraction rules. */
 void
 Rect_dx(void *fp)
 {
@@ -282,9 +295,10 @@ Rect_dx(void *fp)
 
 	f = fp;
 
-	*f->ret = f->r.max.x-f->r.min.x;
+	*f->ret = (UWORD)f->r.max.x - (UWORD)f->r.min.x;
 }
 
+/* Measure height using the VM word subtraction rules. */
 void
 Rect_dy(void *fp)
 {
@@ -292,9 +306,10 @@ Rect_dy(void *fp)
 
 	f = fp;
 
-	*f->ret = f->r.max.y-f->r.min.y;
+	*f->ret = (UWORD)f->r.max.y - (UWORD)f->r.min.y;
 }
 
+/* Measure both dimensions without signed C overflow. */
 void
 Rect_size(void *fp)
 {
@@ -304,6 +319,6 @@ Rect_size(void *fp)
 	f = fp;
 
 	ret = f->ret;
-	ret->x = f->r.max.x-f->r.min.x;
-	ret->y = f->r.max.y-f->r.min.y;
+	ret->x = (UWORD)f->r.max.x - (UWORD)f->r.min.x;
+	ret->y = (UWORD)f->r.max.y - (UWORD)f->r.min.y;
 }
