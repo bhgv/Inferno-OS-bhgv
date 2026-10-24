@@ -16,6 +16,7 @@ Pool *heapmem;
 int mutator, nprop;
 void (*heapmonitor)(int, void*, ulong);
 Type Tarray = {1}, Tlist = {1};
+char exNilref[] = "nil";
 char exModule[] = "module", exHeap[] = "heap", exNegsize[] = "negative", exNomem[] = "memory";
 static Heap *allocated;
 static Type *seen;

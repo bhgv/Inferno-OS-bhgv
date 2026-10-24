@@ -30,14 +30,17 @@ with tempfile.TemporaryDirectory(prefix='heap-bounds-') as directory:
     command += shlex.split(os.environ.get('CFLAGS', '-O2 -g'))
     for bits in (64, 32):
         includes = []
-        if bits == 32:
-            model = td / 'word32'
+        legacy_cons = 'cons(ulong size, List **lp)' in Path(os.environ.get('HEAP_XEC_SOURCE',root/'libinterp/xec.c')).read_text()
+        if bits == 32 or legacy_cons:
+            model = td / ('word'+str(bits))
             model.mkdir()
             header = (root / 'include/interp.h').read_text()
-            header, words = re.subn(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
-            header, unsigned = re.subn(r'typedef unsigned long\s+UWORD;',
-                                      'typedef unsigned int UWORD;', header, count=1)
-            assert words == unsigned == 1
+            if legacy_cons:header = header.replace('cons(ulong, void*);','cons(ulong, List**);')
+            if bits == 32:
+                header, words = re.subn(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
+                header, unsigned = re.subn(r'typedef unsigned long\s+UWORD;',
+                                          'typedef unsigned int UWORD;', header, count=1)
+                assert words == unsigned == 1
             (model / 'interp.h').write_text(header)
             includes = ['-I'+str(model)]
         includes += ['-I'+str(root / path) for path in

@@ -15,10 +15,10 @@ from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
 root = Path(__file__).resolve().parents[2]
-ops = '''IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
-IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IMOVP IFRAME ICALL IRET IADDF'''.split()
+IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF'''.split()
 class Layout(C.Structure):
     _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail')]
 class RvLayout(C.Structure):
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -70,12 +70,12 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     assert lib.emit(guard,n-1,C.byref(layout),ids[name]) == 0
                     assert list(guard)[n-1:] == [0xa5a5a5a5]*(65-n)
                 checks += 1
-            for name in ('IMOVP','IFRAME','ICALL','IRET','IADDF'):
+            for name in ('IHEADP','IHEADMP','ITAIL','IMOVP','IFRAME','ICALL','IRET','IADDF'):
                 assert not blobs[name]
             code, registers, data, stack = 0x10000, 0x100020000, 0x100030000, 0x40000
             oldpc, target = 0x123456789, 0x987654321
 
-            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None):
+            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None):
                 """Exercise a leaf with high native pointers, four-byte alignment and exact aliases."""
                 if arch == 'amd64':
                     u = Uc(UC_ARCH_X86,UC_MODE_64); arg, result = UC_X86_REG_RDI, UC_X86_REG_RAX
@@ -94,7 +94,23 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 metadata=None
                 expected_copy=None
                 expected_head=None
-                if character is not None:
+                if headcopy is not None:
+                    pointer,length,delta,countslot=headcopy
+                    s=data+0x104;m=data+countslot;d=data+0x500+layout.listdata+delta
+                    if alias==1:d=s
+                    if alias==2:d=m
+                    output=d
+                    memory=bytearray((i*29+17)&255 for i in range(0x1000))
+                    memory[0x104:0x10c]=struct.pack('<Q',pointer)
+                    memory[countslot:countslot+wb]=(length&((1<<(8*wb))-1)).to_bytes(wb,'little')
+                    u.mem_write(data,bytes(memory))
+                    if length>0 and expect:
+                        memory[d-data:d-data+length]=bytes(memory[0x500+layout.listdata:0x500+layout.listdata+length])
+                    expected_copy=bytes(memory)
+                    if poison:
+                        if pointer in (0,(1<<64)-1):m=0x100050000
+                        d=0x100050000;output=data+0x100
+                elif character is not None:
                     owner,length,index,values=character
                     if poison:owner=data+0x1000-layout.stringdata
                     if alias==1:d=s
@@ -204,6 +220,29 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','headcopy'):
+                for length in (0,1,2,3,7,8,15,16,31,32,63,64,127,128):
+                    for delta in (-17,-1,0,1,4,17,129):
+                        for slot in (0x204,0x500+layout.listdata+4,0x500+layout.listdata+16):
+                            _,pc,_,_,_=run('IHEADM',headcopy=(data+0x500,length,delta,slot))
+                            assert pc==oldpc
+                            checks+=1
+                for pointer in (0,(1<<64)-1):
+                    for length in (-1,0,1,128,129,-(1<<(wb*8-1)),(1<<(wb*8-1))-1):
+                        for poison in (False,True):
+                            _,pc,before,after,_=run('IHEADM',headcopy=(pointer,length,0,0x204),expect=0,poison=poison)
+                            assert pc==oldpc and before==after
+                            checks+=1
+                for length in (0,-1,129,256,-(1<<(wb*8-1)),(1<<(wb*8-1))-1):
+                    _,pc,before,after,_=run('IHEADM',headcopy=(data+0x500,length,0,0x204),expect=int(length==0),poison=True)
+                    assert pc==oldpc and before==after
+                    checks+=1
+                for length in (1,7,8,31,128):
+                    for alias in (1,2):
+                        _,pc,_,_,_=run('IHEADM',headcopy=(data+0x500,length,0,0x204),alias=alias)
+                        assert pc==oldpc
+                        checks+=1
+                if case=='headcopy':continue
             if case in ('','power'):
                 exponents=[-1,-2,-3,-(1<<(wb*8-1)),0,1,2,3,7,31,32,63,64,127,(1<<(wb*8-1))-1]
                 if wb==8:exponents += [1<<32,(1<<32)+1]

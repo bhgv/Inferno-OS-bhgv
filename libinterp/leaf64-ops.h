@@ -14,7 +14,7 @@ struct LeafOp {
 enum {
 	LeafMove = 1, LeafAlu, LeafBranch, LeafJump, LeafAddress, LeafNop,
 	LeafShift, LeafDivide, LeafLength, LeafIndex, LeafNegReal,
-	LeafPower, LeafCopy, LeafStringIndex, LeafStringLength, LeafHead, LeafListLength,
+	LeafPower, LeafHeadCopy, LeafCopy, LeafStringIndex, LeafStringLength, LeafHead, LeafListLength,
 };
 
 /* Classify only operations whose complete VM semantics fit a helper-free leaf. */
@@ -32,6 +32,7 @@ leafop(LeafOp *p, int op, int wordbytes)
 	case ILENL: p->kind = LeafListLength; break;
 	case IINDC: p->kind = LeafStringIndex; break;
 	case ILENC: p->kind = LeafStringLength; break;
+	case IHEADM: p->kind = LeafHeadCopy; break;
 	case IMOVM: p->kind = LeafCopy; break;
 	case INEGF: p->kind = LeafNegReal; p->bytes = 8; break;
 	case ILENA: p->kind = LeafLength; break;

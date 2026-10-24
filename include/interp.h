@@ -558,7 +558,7 @@ extern	String*		newstring(int);
 extern	int		runeslen(Rune*, int);
 extern	String*		c2string(char*, int);
 extern	char*		string2c(String*);
-extern	List*		cons(ulong, List**);
+extern	List*		cons(ulong, void*);
 extern	String*		slicer(ulong, ulong, String*);
 extern	String*		addstring(String*, String*, int);
 extern	int		brpatch(Inst*, Module*);

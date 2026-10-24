@@ -42,21 +42,33 @@ with tempfile.TemporaryDirectory(prefix='lists-') as directory:
     cmd = shlex.split(os.environ.get('CC','cc'))
     cmd += shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
     selected=os.environ.get('LIST_HEAD_CASE','')
-    if selected not in ('','nil','raw','length'):raise ValueError(selected)
-    if selected:cmd += ['-DLIST_HEAD_CASE='+{'nil':'1','raw':'2','length':'3'}[selected]]
+    if selected not in ('','nil','raw','length','construct','null-tail','null-source'):raise ValueError(selected)
+    if selected:cmd += ['-DLIST_HEAD_CASE='+{'nil':'1','raw':'2','length':'3','construct':'4','null-tail':'5','null-source':'6'}[selected]]
     includes = ['-I'+str(root / p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
     for model in ('native','word32'):
         override = []
-        if model == 'word32':
+        # Match the declaration when testing a parent with the typed cons API.
+        legacy_cons = 'cons(ulong size, List **lp)' in source
+        if model == 'word32' or legacy_cons:
             modeldir = td / model
             modeldir.mkdir()
             header = (root / 'include/interp.h').read_text()
-            header, n = re.subn(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
-            header, m = re.subn(r'typedef unsigned long\s+UWORD;',
-                               'typedef unsigned int UWORD;', header, count=1)
-            assert n == m == 1
+            if legacy_cons:header = header.replace('cons(ulong, void*);','cons(ulong, List**);')
+            if model == 'word32':
+                header, n = re.subn(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
+                header, m = re.subn(r'typedef unsigned long\s+UWORD;',
+                                   'typedef unsigned int UWORD;', header, count=1)
+                assert n == m == 1
             (modeldir / 'interp.h').write_text(header)
             override = ['-I'+str(modeldir)]
         binary = td / ('codecs-'+model)
         subprocess.run(cmd+override+includes+[str(target),'-o',str(binary)],check=True)
-        subprocess.run([str(binary)],check=True)
+        # Separate invalid constructor calls: this sandbox cannot reliably unwind
+        # ASan stack shadow state across mixed siglongjmp call paths.
+        if selected == 'null-tail':
+            for operation in range(8):subprocess.run([str(binary),str(operation)],check=True)
+        elif selected == 'null-source':subprocess.run([str(binary),'8'],check=True)
+        else:
+            subprocess.run([str(binary)],check=True)
+            if not selected:
+                for operation in range(9):subprocess.run([str(binary),str(operation)],check=True)

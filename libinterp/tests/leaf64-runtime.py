@@ -110,6 +110,7 @@ static int dispatch(void *unused) {
     case IHEADW:headw();break;
     case IHEADL:headl();break;
     case IHEADF:headf();break;
+    case IHEADM:headm();break;
     case ILENL:lenl();break;
     default:assert(0);
     }
@@ -378,6 +379,45 @@ static void powers(Module *m) {
     }
 
 }
+/* Raw heads share memmove semantics, guard precedence and large-record fallback. */
+static void headrecords(Module *m) {
+    struct { List list; uchar extra[256]; } node;
+    union { uvlong align; uchar bytes[256]; } slots;
+    uchar expected[sizeof(node)], wantslots[256];
+    List *owner;
+    WORD length;
+    int sizes[]={0,1,7,8,31,64,127,128,129};
+    int deltas[]={-4,-1,0,1,4,17};
+    int mode,i,j,k,alias;
+    int (*entry)(REG*)=m->jit->entry[IHEADM];
+    Inst *pc=m->prog+1;
+    assert(entry);active=m;activeop=IHEADM;
+    for(mode=0;mode<2;mode++) {
+        m->jit->entry[IHEADM]=mode?nil:entry;
+        for(i=0;i<nelem(sizes);i++)for(j=0;j<nelem(deltas);j++)for(alias=0;alias<3;alias++) {
+            memset(&node,0,sizeof(node));node.list.tail=H;
+            for(k=0;k<256;k++)((uchar*)node.list.data)[k]=k*29+17;
+            memset(slots.bytes,0xa5,sizeof(slots.bytes));
+            owner=&node.list;length=sizes[i];
+            memcpy(slots.bytes+4,&owner,sizeof(owner));memcpy(slots.bytes+20,&length,sizeof(length));
+            memcpy(expected,&node,sizeof(node));memcpy(wantslots,slots.bytes,sizeof(wantslots));
+            R.s=slots.bytes+4;R.m=slots.bytes+20;R.PC=pc;
+            R.d=alias==0?(uchar*)node.list.data+deltas[j]:slots.bytes+(alias==1?4:20);
+            if(alias==0)memmove(expected+((uchar*)R.d-(uchar*)&node),node.list.data,length);
+            else memmove(wantslots+(alias==1?4:20),node.list.data,length);
+            assert(kprotect(dispatch,nil) && R.PC==pc);
+            assert(!memcmp(&node,expected,sizeof(node)) && !memcmp(slots.bytes,wantslots,sizeof(wantslots)));
+        }
+        for(i=0;i<3;i++) {
+            owner=i==0?H:i==1?nil:&node.list;
+            length=-1;memcpy(slots.bytes+4,&owner,sizeof(owner));
+            R.s=slots.bytes+4;R.d=slots.bytes+36;R.m=i<2?(void*)1:&length;R.PC=pc;
+            memcpy(wantslots,slots.bytes,sizeof(wantslots));
+            assert(!kprotect(dispatch,nil) && R.PC==pc && !memcmp(slots.bytes,wantslots,sizeof(wantslots)));
+        }
+    }
+    m->jit->entry[IHEADM]=entry;
+}
 /* Use real Array/REG offsets and actual VM fallback on the native host. */
 static void arrays(Module *m) {
     Type type={0};Array array={0},*owner;
@@ -411,7 +451,7 @@ static void arrays(Module *m) {
 }
 /* Compile, invoke, reject invalid metadata and retry without changing Dis PCs. */
 int main(void) {
-    Module m={0}, *owned;Inst instructions[26]={{0}};
+    Module m={0}, *owned;Inst instructions[27]={{0}};
     WORD a=3,b=7,out=0;
     int i;
     instructions[0].op=ISUBW;instructions[1].op=IADDW;
@@ -420,25 +460,25 @@ int main(void) {
     instructions[6].op=ISHLW;instructions[7].op=ISHRW;instructions[8].op=ILSRW;
     instructions[9].op=ILENA;instructions[10].op=IINDB;instructions[11].op=IINDW;
     instructions[12].op=IINDL;instructions[13].op=IINDF;instructions[14].op=INEGF;instructions[15].op=IMOVM;instructions[16].op=ILENC;
-    instructions[17].op=IHEADB;instructions[18].op=IHEADW;instructions[19].op=IHEADL;instructions[20].op=IHEADF;instructions[21].op=ILENL;instructions[22].op=IINDC;instructions[23].op=IEXPW;instructions[24].op=IEXPL;instructions[25].op=IEXPF;
-    m.prog=instructions;m.nprog=26;
+    instructions[17].op=IHEADB;instructions[18].op=IHEADW;instructions[19].op=IHEADL;instructions[20].op=IHEADF;instructions[21].op=ILENL;instructions[22].op=IINDC;instructions[23].op=IEXPW;instructions[24].op=IEXPL;instructions[25].op=IEXPF;instructions[26].op=IHEADM;
+    m.prog=instructions;m.nprog=27;
     for(i=1;i<=5;i++) {
-        fail=i;assert(!compile(&m,26,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
+        fail=i;assert(!compile(&m,27,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
     }
     fail=0;
-    assert(!compile(nil,26,nil));assert(!compile(&m,3,nil));
-    assert(compile(&m,26,nil));assert(m.jit && !m.compiled && m.prog==instructions);
+    assert(!compile(nil,27,nil));assert(!compile(&m,3,nil));
+    assert(compile(&m,27,nil));assert(m.jit && !m.compiled && m.prog==instructions);
     assert(m.jit->entry[IMOVP]==nil);
     assert(protections==1 && mappings==1);
     R.s=&a;R.m=&b;R.d=&out;
 #if EXECUTE_NATIVE
     assert(m.jit->entry[ISUBW](&R)==1 && out==4);
     R.d=&a;assert(m.jit->entry[IADDW](&R)==1 && a==10);
-    arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);powers(&m);
+    arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);powers(&m);headrecords(&m);
 #endif
-    assert(compile(&m,26,nil));dropmodule(&m);
-    for(i=0;i<26;i++)instructions[i].op=IMOVP;
-    assert(!compile(&m,26,nil) && !m.jit);
+    assert(compile(&m,27,nil));dropmodule(&m);
+    for(i=0;i<27;i++)instructions[i].op=IMOVP;
+    assert(!compile(&m,27,nil) && !m.jit);
     owned=calloc(1,sizeof(*owned));assert(owned);
     owned->prog=calloc(1,sizeof(Inst));assert(owned->prog);
     owned->nprog=1;owned->prog[0].op=IADDW;
@@ -455,7 +495,7 @@ a=load.index('void\nfreemod(');b=load.index('\nvoid\nunload(',a)
 unit=unit.replace('FREEMOD',load[a:b])
 xec=Path(os.environ.get('LEAF_VM_SOURCE',str(root/'libinterp/xec.c'))).read_text()
 parts=[]
-for signature in ('static WORD\nshiftcount(', 'static List*\nlisthead(', 'OP(lenl)', 'OP(headb)', 'OP(headw)', 'OP(headl)', 'OP(headf)', 'OP(iexpw)', 'OP(iexpl)', 'OP(iexpf)', 'OP(movm)', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
+for signature in ('static WORD\nshiftcount(', 'static List*\nlisthead(', 'OP(lenl)', 'OP(headb)', 'OP(headw)', 'OP(headl)', 'OP(headf)', 'OP(headm)', 'OP(iexpw)', 'OP(iexpl)', 'OP(iexpf)', 'OP(movm)', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
     if signature=='static List*\nlisthead(' and signature not in xec:continue
     a=xec.index(signature);b=xec.index('\n}',a)+2
     parts.append(xec[a:b])

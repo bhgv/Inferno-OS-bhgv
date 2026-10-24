@@ -17,6 +17,7 @@ int mutator, nprop;
 Type Tlist = {1}, Tptr = {1};
 static Type record = {1};
 static int live, allocations, failure, operation, checks;
+static int constructoperation = -1;
 static struct { Heap *heap; int size; } blocks[32];
 
 /* Use real emulator error frames around fallible list construction. */
@@ -93,6 +94,7 @@ run(void *unused)
 	case 13: lenl(); break;
 	case 14: headp(); break;
 	case 15: tail(); break;
+	case 16: cons(0, R.d); break;
 	}
 	return 1;
 }
@@ -480,17 +482,149 @@ pointerheads(void)
 	}
 }
 
+/* Constructors must capture unaligned values and preserve owners on heap failure. */
+static void
+constructors(void)
+{
+	union { uvlong align; uchar bytes[96]; } slots;
+	union { BYTE byte; WORD word; LONG big; REAL real; void *pointer; } value;
+	uchar payload[16], before[96];
+	Type *types[] = {&record};
+	Module owner = {0};
+	Modlink module = {0};
+	List *old, *result, *child;
+	uvlong bits[] = {0, 0x8000000000000000ULL, 0x7ff0000000000000ULL,
+		0x7ff8000000000042ULL, 0x7ff0000000000042ULL};
+	WORD middle;
+	int op, fail, width, i, livebefore;
+
+	owner.type = types; owner.ntype = 1; module.m = &owner; R.M = &module;
+	for(op = 0; op <= 6; op++)
+	for(fail = 0; fail < 2; fail++){
+		old = H;
+		cons(0, &old);
+		memset(&value, 0, sizeof(value));
+		memset(payload, 0, sizeof(payload));
+		width = 0;
+		if(op == 0){value.byte = 0xff; width = sizeof(value.byte);}
+		if(op == 1){value.word = (WORD)((UWORD)1<<(sizeof(WORD)*8-1)); width = sizeof(value.word);}
+		if(op == 2){value.big = (-9223372036854775807LL-1); width = sizeof(value.big);}
+		if(op == 3){value.pointer = H; width = sizeof(value.pointer);}
+		if(op == 4){value.real = -1234.5; width = sizeof(value.real);}
+		if(op <= 4)memcpy(payload, &value, width);
+		if(op == 5){width = sizeof(payload); for(i = 0; i < width; i++)payload[i] = i*19+31;}
+		if(op == 6){value.pointer = H; width = sizeof(value.pointer); memcpy(payload, &value, width);}
+		record.size = width; record.np = op == 6; record.map[0] = 0x80;
+		middle = op == 5 ? width : 0;
+		memset(slots.bytes, 0xa5, sizeof(slots.bytes));
+		memcpy(slots.bytes+4, payload, width);
+		memcpy(slots.bytes+20, &old, sizeof(old));
+		memcpy(slots.bytes+36, &middle, sizeof(middle));
+		memcpy(before, slots.bytes, sizeof(before));
+		R.s = slots.bytes+4; R.d = slots.bytes+20; R.m = slots.bytes+36;
+		operation = op; failure = fail; livebefore = live;
+		assert(kprotect(run, nil) == !fail);
+		failure = 0;
+		memcpy(&result, R.d, sizeof(result));
+		if(fail){
+			assert(raised == exHeap && result == old && live == livebefore && D2H(old)->ref == 1);
+			assert(!memcmp(slots.bytes, before, sizeof(before)));
+		}else{
+			assert(result != old && result->tail == old && D2H(old)->ref == 1);
+			assert(!memcmp(result->data, payload, width));
+			memcpy(before+20, &result, sizeof(result));
+			assert(!memcmp(slots.bytes, before, sizeof(before)));
+		}
+		destroy(result);
+		assert(live == 0 && record.ref == 1 && Tptr.ref == 1 && Tlist.ref == 1);
+		checks++;
+	}
+	/* Real construction is a bit-preserving copy, including signaling NaNs. */
+	for(i = 0; i < nelem(bits); i++){
+		old = H;
+		memcpy(slots.bytes+4, &bits[i], sizeof(bits[i]));
+		memcpy(slots.bytes+20, &old, sizeof(old));
+		R.s = slots.bytes+4; R.d = slots.bytes+20; operation = 4;
+		assert(kprotect(run, nil));
+		memcpy(&result, R.d, sizeof(result));
+		assert(!memcmp(result->data, &bits[i], sizeof(bits[i])));
+		destroy(result);
+		checks++;
+	}
+	/* Pointer and mapped constructors acquire exactly one child reference. */
+	for(op = 3; op <= 6; op += 3){
+		child = H;
+		cons(0, &child);
+		old = H; middle = 0;
+		record.size = sizeof(child); record.np = 1; record.map[0] = 0x80;
+		memcpy(slots.bytes+4, &child, sizeof(child));
+		memcpy(slots.bytes+20, &old, sizeof(old));
+		memcpy(slots.bytes+36, &middle, sizeof(middle));
+		R.s = slots.bytes+4; R.d = slots.bytes+20; R.m = slots.bytes+36; operation = op;
+		assert(kprotect(run, nil));
+		memcpy(&result, R.d, sizeof(result));
+		assert(D2H(child)->ref == 2 && !memcmp(result->data, &child, sizeof(child)));
+		destroy(result);
+		assert(D2H(child)->ref == 1);
+		destroy(child);
+		assert(live == 0 && record.ref == 1 && Tptr.ref == 1 && Tlist.ref == 1);
+		checks++;
+	}
+
+}
+
+/* Null tails and pointer heads must fail before allocation or publication. */
+static void
+constructerrors(void)
+{
+	Type *types[] = {&record};
+	Module owner = {0};
+	Modlink module = {0};
+	List *tail;
+	void *source;
+	WORD middle = 0;
+	int op, before;
+
+	owner.type = types; owner.ntype = 1; module.m = &owner; R.M = &module;
+	record.size = 0; record.np = 0;
+	if(constructoperation != 8)
+	for(op = 0; op <= 7; op++){
+		if(constructoperation >= 0 && constructoperation != op)continue;
+		tail = nil; source = H;
+		R.s = &source; R.d = &tail; R.m = &middle;
+		operation = op == 7 ? 16 : op;
+		before = allocations;
+		assert(!kprotect(run, nil) && raised == exNilref);
+		assert(tail == nil && allocations == before && live == 0);
+		checks++;
+	}
+	if(constructoperation < 0 || constructoperation == 8){
+		tail = H; source = nil;
+		R.s = &source; R.d = &tail; operation = 3;
+		before = allocations;
+		assert(!kprotect(run, nil) && raised == exNilref);
+		assert(tail == H && allocations == before && live == 0);
+		checks++;
+	}
+}
+
 /* Require complete ownership balance and guard integrity in each VM word model. */
 int
-main(void)
+main(int argc, char **argv)
 {
 	Tptr.size = sizeof(void*); Tptr.np = 1; Tptr.map[0] = 0x80;
-	if(LIST_HEAD_CASE == 1)scalarheads();
+	if(argc == 2){
+		constructoperation = atoi(argv[1]);
+		assert(constructoperation >= 0 && constructoperation <= 8);
+		constructerrors();
+	}else if(LIST_HEAD_CASE == 1)scalarheads();
 	else if(LIST_HEAD_CASE == 2)rawheads();
 	else if(LIST_HEAD_CASE == 3)listlengths();
+	else if(LIST_HEAD_CASE == 4)constructors();
+	else if(LIST_HEAD_CASE == 5 || LIST_HEAD_CASE == 6)constructerrors();
 	else{
 		scalars(); aliases(); payloads(); sizes(); mappedheads(); mappedheadbounds();
-		scalarheads(); rawheads(); listlengths(); pointerheads();
+		scalarheads(); rawheads(); listlengths(); pointerheads(); constructors();
 	}
 	assert(live == 0 && Tlist.ref == 1 && Tptr.ref == 1 && worker.nerr == 0);
 	printf("PASS lists: %d width/alias/failure cases, WORD%zu\n", checks, sizeof(WORD)*8);

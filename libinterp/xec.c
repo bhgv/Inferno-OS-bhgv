@@ -1424,8 +1424,9 @@ csendalt(Channel *c, void *ip, Type *t, int len)
 	return 1;
 }
 
+/* Validate and capture the old tail before allocating or publishing a node. */
 List*
-cons(ulong size, List **lp)
+cons(ulong size, void *slot)
 {
 	Heap *h;
 	List *lv, *l;
@@ -1433,19 +1434,21 @@ cons(ulong size, List **lp)
 	if(size > 0x7fffffff-sizeof(Heap)-
 	   (sizeof(List)-sizeof(((List*)0)->data)))
 		error(exHeap);
+	memmove(&lv, slot, sizeof(lv));
+	if(lv == nil)
+		error(exNilref);
 	h = nheap(sizeof(List) + size - sizeof(((List*)0)->data));
 	h->t = &Tlist;
 	Tlist.ref++;
 	l = H2D(List*, h);
 	l->t = nil;
 
-	lv = *lp;
 	if(lv != H) {
 		h = D2H(lv);
 		Setmark(h);
 	}
 	l->tail = lv;
-	*lp = l;
+	memmove(slot, &l, sizeof(l));
 	return l;
 }
 
@@ -1455,9 +1458,9 @@ OP(consb)
 	BYTE value;
 	List *l;
 
-	value = B(s);
+	memmove(&value, R.s, sizeof(value));
 	l = cons(IBY2WD, R.d);
-	*(BYTE*)l->data = value;
+	memmove(l->data, &value, sizeof(value));
 }
 
 /* Host WORD storage must fit the complete interpreter value. */
@@ -1466,9 +1469,9 @@ OP(consw)
 	WORD value;
 	List *l;
 
-	value = W(s);
+	memmove(&value, R.s, sizeof(value));
 	l = cons(sizeof(value), R.d);
-	*(WORD*)l->data = value;
+	memmove(l->data, &value, sizeof(value));
 }
 
 /* Retain the source big integer if publishing the list changes its source slot. */
@@ -1477,9 +1480,9 @@ OP(consl)
 	LONG value;
 	List *l;
 
-	value = V(s);
+	memmove(&value, R.s, sizeof(value));
 	l = cons(sizeof(value), R.d);
-	*(LONG*)l->data = value;
+	memmove(l->data, &value, sizeof(value));
 }
 
 /* Allocate native pointer storage and acquire the original source owner. */
@@ -1489,7 +1492,9 @@ OP(consp)
 	Heap *h;
 	WORD *sv;
 
-	sv = P(s);
+	memmove(&sv, R.s, sizeof(sv));
+	if(sv == nil)
+		error(exNilref);
 	l = cons(sizeof(sv), R.d);
 	if(sv != H){
 		h = D2H(sv);
@@ -1498,7 +1503,7 @@ OP(consp)
 	}
 	l->t = &Tptr;
 	Tptr.ref++;
-	*(WORD**)l->data = sv;
+	memmove(l->data, &sv, sizeof(sv));
 }
 
 /* Capture the real argument before the destination slot becomes a list owner. */
@@ -1507,9 +1512,9 @@ OP(consf)
 	REAL value;
 	List *l;
 
-	value = F(s);
+	memmove(&value, R.s, sizeof(value));
 	l = cons(sizeof(value), R.d);
-	*(REAL*)l->data = value;
+	memmove(l->data, &value, sizeof(value));
 }
 
 /* Check the complete VM size and copy raw payload before replacing its source slot. */
@@ -1518,15 +1523,15 @@ OP(consm)
 	WORD size;
 	List *l, *result;
 
-	size = W(m);
+	memmove(&size, R.m, sizeof(size));
 	if(size < 0 || (uvlong)size > 0x7fffffff-sizeof(Heap)-
 	   (sizeof(List)-sizeof(((List*)0)->data)))
 		error(exHeap);
-	result = L(d);
+	memmove(&result, R.d, sizeof(result));
 	l = cons((ulong)size, &result);
 	if(size != 0)
 		memmove(l->data, R.s, (int)size);
-	L(d) = result;
+	memmove(R.d, &result, sizeof(result));
 }
 
 /* Copy mapped payload and acquire its references before publishing an aliased result. */
@@ -1534,16 +1539,18 @@ OP(consmp)
 {
 	List *l, *result;
 	Type *t;
+	WORD index;
 
-	t = moduletype(R.M, W(m));
-	result = L(d);
+	memmove(&index, R.m, sizeof(index));
+	t = moduletype(R.M, index);
+	memmove(&result, R.d, sizeof(result));
 	l = cons(t->size, &result);
 	incmem(R.s, t);
 	if(t->size != 0)
 		memmove(l->data, R.s, t->size);
 	l->t = t;
 	t->ref++;
-	L(d) = result;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Capture a possibly four-byte-aligned owner before reading list storage. */
 static List*

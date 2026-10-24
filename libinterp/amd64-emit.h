@@ -158,14 +158,25 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x31); x64byte(&b, 0xc0);
 		b.bytes[done] = b.n-done-1;
 		x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
-	}else if(p.kind == LeafCopy){
+	}else if(p.kind == LeafCopy || p.kind == LeafHeadCopy){
+		if(p.kind == LeafHeadCopy){
+			if(abi->listdata < 0) return 0;
+			x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
+			x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
+			x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
+			x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3);
+		}
 		/* Capture the signed length before copying can overwrite its operand. */
 		x64ptr(&b, 0, abi->m); x64load(&b, 0, abi->wordbytes);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x79);
 		x64byte(&b, 0x74); empty = b.n; x64byte(&b, 0);
 		/* Leave large records to the platform's optimized memmove. */
 		x64byte(&b, 0x48); x64byte(&b, 0x3d); x64word(&b, 128); x64guard(&b, 0x76);
-		x64ptr(&b, 0, abi->s); x64ptr(&b, 2, abi->d);
+		if(p.kind == LeafHeadCopy){
+			x64byte(&b, 0x4d); x64byte(&b, 0x8d); x64byte(&b, 0x83); x64word(&b, abi->listdata);
+		}else
+			x64ptr(&b, 0, abi->s);
+		x64ptr(&b, 2, abi->d);
 		/* Copy downward whenever the destination follows the source. */
 		x64byte(&b, 0x4d); x64byte(&b, 0x39); x64byte(&b, 0xc2);
 		x64byte(&b, 0x76); other = b.n; x64byte(&b, 0);

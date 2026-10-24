@@ -144,15 +144,25 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		b.code[empty] |= (b.n-empty)<<5; a64put(&b, 0x5280000c);
 		b.code[done] |= b.n-done;
 		a64ptr(&b, 11, abi->d); a64store(&b, 12, abi->wordbytes);
-	}else if(p.kind == LeafCopy){
-		/* Only the count is read for a zero or rejected negative length. */
+	}else if(p.kind == LeafCopy || p.kind == LeafHeadCopy){
+		if(p.kind == LeafHeadCopy){
+			if(abi->listdata < 0 || abi->listdata > 4095) return 0;
+			a64ptr(&b, 9, abi->s); a64load(&b, 15, 9, 8);
+			a64guard(&b, 0xb500006f);
+			a64put(&b, 0xb10005ff); a64guard(&b, 0x54000061);
+		}
+		/* Validate the owner first for headm, then capture the complete count. */
 		a64ptr(&b, 10, abi->m); a64load(&b, 12, 10, abi->wordbytes);
 		a64put(&b, (abi->wordbytes == 8 ? 0xf100019fU : 0x7100019fU));
 		a64guard(&b, 0x5400006a); /* b.ge valid */
 		empty = b.n; a64put(&b, 0xb400000c);
 		a64put(&b, 0xf102019f); /* cmp x12, #128 */
 		a64guard(&b, 0x54000069); /* b.ls small */
-		a64ptr(&b, 9, abi->s); a64ptr(&b, 11, abi->d);
+		if(p.kind == LeafHeadCopy)
+			a64put(&b, 0x910001e9U | (u32int)abi->listdata<<10); /* add x9, x15, data */
+		else
+			a64ptr(&b, 9, abi->s);
+		a64ptr(&b, 11, abi->d);
 		a64put(&b, 0xeb09017f); /* cmp x11, x9 */
 		other = b.n; a64put(&b, 0x54000009); /* b.ls forward */
 		a64put(&b, 0x8b0c0129); a64put(&b, 0x8b0c016b);

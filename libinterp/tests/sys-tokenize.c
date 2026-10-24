@@ -9,6 +9,7 @@
 
 static Proc worker;
 static char *raised;
+char exNilref[] = "nil";
 char exHeap[] = "heap", exNegsize[] = "negative", exBounds[] = "bounds";
 Type Tstring = {1}, Tlist = {1};
 Type Tptr = {1, 0, 0, sizeof(String*), 1, 0, 0, {0x80}};

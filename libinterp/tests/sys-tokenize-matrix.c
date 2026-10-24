@@ -14,6 +14,7 @@ static int live, calls, failat, checks;
 static struct { Heap *heap; int size; } blocks[256];
 Type Tstring = {1}, Tlist = {1}, Tptr = {1};
 int mutator, nprop;
+char exNilref[] = "nil";
 char exHeap[] = "heap", exNegsize[] = "negative", exBounds[] = "bounds", exNomem[] = "memory";
 
 /* Use actual emulator error frames, including nested protected construction. */

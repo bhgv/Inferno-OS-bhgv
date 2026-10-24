@@ -196,15 +196,26 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		rvi(&b, 0x13, 0, Rvt3, Rvzero, 0);
 		rvptr(&b, Rvt2, abi->d); rvstore(&b, Rvt2, Rvt3, abi->wordbytes);
 		break;
+	case IHEADM:
 	case IMOVM:
 		if(abi->xlen != 64) return 0;
+		if(op == IHEADM){
+			if(abi->listdata < 0 || abi->listdata > 2047) return 0;
+			rvptr(&b, Rvt1, abi->s); rvload(&b, Rvt0, Rvt1, 8);
+			rvguard(&b, 1, Rvt0, Rvzero);
+			rvi(&b, 0x13, 0, Rvt6, Rvzero, -1); rvguard(&b, 1, Rvt0, Rvt6);
+		}
 		/* Keep the length in a register even if the copy overwrites its slot. */
 		rvptr(&b, Rvt1, abi->m); rvload(&b, Rvt3, Rvt1, abi->wordbytes);
 		rvguard(&b, 5, Rvt3, Rvzero);
 		rvi(&b, 0x13, 0, Rvt6, Rvzero, 128);
 		rvguard(&b, 7, Rvt6, Rvt3);
 		rvbranch(&b, 0, Rvt3, Rvzero, 76);
-		rvptr(&b, Rvt0, abi->s); rvptr(&b, Rvt2, abi->d);
+		if(op == IHEADM)
+			rvi(&b, 0x13, 0, Rvt0, Rvt0, abi->listdata);
+		else
+			rvptr(&b, Rvt0, abi->s);
+		rvptr(&b, Rvt2, abi->d);
 		rvbranch(&b, 7, Rvt0, Rvt2, 40); /* source >= destination: forward */
 		rvr(&b, 0x33, 0, 0, Rvt0, Rvt0, Rvt3);
 		rvr(&b, 0x33, 0, 0, Rvt2, Rvt2, Rvt3);

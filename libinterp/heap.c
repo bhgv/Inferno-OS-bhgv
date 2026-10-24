@@ -27,33 +27,26 @@ void	(*heapmonitor)(int, void*, ulong);
 
 #define	BIT(bt, nb)	(bt & (1<<nb))
 
+/* Release mapped pointers without imposing native alignment on record bytes. */
 void
 freeptrs(void *v, Type *t)
 {
-	int c;
-	WORD **w, *x;
-	uchar *p, *ep;
+	void *x;
+	int i, bit, c, n;
 
-	if(t->np == 0)
-		return;
-
-	w = (WORD**)v;
-	p = t->map;
-	ep = p + t->np;
-	while(p < ep) {
-		c = *p;
-		if(c != 0) {
- 			if(BIT(c, 0) && (x = w[7]) != H) destroy(x);
-			if(BIT(c, 1) && (x = w[6]) != H) destroy(x);
- 			if(BIT(c, 2) && (x = w[5]) != H) destroy(x);
-			if(BIT(c, 3) && (x = w[4]) != H) destroy(x);
-			if(BIT(c, 4) && (x = w[3]) != H) destroy(x);
-			if(BIT(c, 5) && (x = w[2]) != H) destroy(x);
-			if(BIT(c, 6) && (x = w[1]) != H) destroy(x);
-			if(BIT(c, 7) && (x = w[0]) != H) destroy(x);
+	n = t->np;
+	for(i = 0; i < n; i++){
+		c = t->map[i];
+		if(c == 0)
+			continue;
+		/* Preserve the historical reverse order within each map byte. */
+		for(bit = 0; bit < 8; bit++){
+			if(!(c & (1<<bit)))
+				continue;
+			memmove(&x, (uchar*)v+((ulong)i*8+7-bit)*sizeof(x), sizeof(x));
+			if(x != H)
+				destroy(x);
 		}
-		p++;
-		w += 8;
 	}
 }
 
@@ -297,80 +290,68 @@ freetype(Type *t)
 	free(t);
 }
 
+/* Retain mapped fields using byte-safe loads and the existing mark barrier. */
 void
-incmem(void *vw, Type *t)
+incmem(void *v, Type *t)
 {
 	Heap *h;
-	uchar *p;
-	int i, c, m;
-	WORD **w, **q, *wp;
+	void *x;
+	int i, bit, c;
 
-	w = (WORD**)vw;
-	p = t->map;
-	for(i = 0; i < t->np; i++) {
-		c = *p++;
-		if(c != 0) {
-			q = w;
-			for(m = 0x80; m != 0; m >>= 1) {
-				if((c & m) && (wp = *q) != H) {
-					h = D2H(wp);
-					h->ref++;
-					Setmark(h);
-				}
-				q++;
+	for(i = 0; i < t->np; i++){
+		c = t->map[i];
+		if(c == 0)
+			continue;
+		for(bit = 0; bit < 8; bit++){
+			if(!(c & (0x80>>bit)))
+				continue;
+			memmove(&x, (uchar*)v+((ulong)i*8+bit)*sizeof(x), sizeof(x));
+			if(x != H){
+				h = D2H(x);
+				h->ref++;
+				Setmark(h);
 			}
 		}
-		w += 8;
 	}
 }
 
+/* Visit mapped pointers in their original order without aligned-pointer casts. */
 void
-scanptrs(void *vw, Type *t, void (*f)(void*))
+scanptrs(void *v, Type *t, void (*f)(void*))
 {
-	uchar *p;
-	int i, c, m;
-	WORD **w, **q, *wp;
+	void *x;
+	int i, bit, c;
 
-	w = (WORD**)vw;
-	p = t->map;
-	for(i = 0; i < t->np; i++) {
-		c = *p++;
-		if(c != 0) {
-			q = w;
-			for(m = 0x80; m != 0; m >>= 1) {
-				if((c & m) && (wp = *q) != H)
-					f(D2H(wp));
-				q++;
-			}
+	for(i = 0; i < t->np; i++){
+		c = t->map[i];
+		if(c == 0)
+			continue;
+		for(bit = 0; bit < 8; bit++){
+			if(!(c & (0x80>>bit)))
+				continue;
+			memmove(&x, (uchar*)v+((ulong)i*8+bit)*sizeof(x), sizeof(x));
+			if(x != H)
+				f(D2H(x));
 		}
-		w += 8;
 	}
 }
 
+/* Initialize only mapped fields, leaving scalar bytes and padding unchanged. */
 void
-initmem(Type *t, void *vw)
+initmem(Type *t, void *v)
 {
-	int c;
-	WORD **w;
-	uchar *p, *ep;
+	void *x;
+	int i, bit, c;
 
-	w = (WORD**)vw;
-	p = t->map;
-	ep = p + t->np;
-	while(p < ep) {
-		c = *p;
-		if(c != 0) {
- 			if(BIT(c, 0)) w[7] = H;
-			if(BIT(c, 1)) w[6] = H;
-			if(BIT(c, 2)) w[5] = H;
-			if(BIT(c, 3)) w[4] = H;
-			if(BIT(c, 4)) w[3] = H;
-			if(BIT(c, 5)) w[2] = H;
-			if(BIT(c, 6)) w[1] = H;
-			if(BIT(c, 7)) w[0] = H;
+	x = H;
+	for(i = 0; i < t->np; i++){
+		c = t->map[i];
+		if(c == 0)
+			continue;
+		for(bit = 0; bit < 8; bit++){
+			if(c & (1<<bit))
+				memmove((uchar*)v+((ulong)i*8+7-bit)*sizeof(x), &x, sizeof(x));
 		}
-		p++;
-		w += 8;
 	}
 }
 
@@ -553,6 +534,8 @@ newmp(void *dst, void *src, Type *t)
 	initmem(t, dst);
 	for(i = 0; i < t->np; i++){
 		c = t->map[i];
+		if(c == 0)
+			continue;
 		for(bit = 0; c != 0 && bit < 8; bit++){
 			if((c & (0x80>>bit)) == 0)
 				continue;
