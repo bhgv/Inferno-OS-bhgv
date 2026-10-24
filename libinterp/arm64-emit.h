@@ -97,7 +97,27 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafRealResize){
+	if(p.kind == LeafFixedFrame){
+		/* Frame temporary slots may have only four-byte alignment, even in WORD64. */
+		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047) return 0;
+		a64ptr(&b, 10, abi->fp); a64guard(&b, 0xb500006a);
+		a64put(&b, 0xb100055f); a64guard(&b, 0x54000061);
+		a64put(&b, 0x91000000U | abi->fixedtmp<<10 | 10<<5 | 10);
+		a64load(&b, 13, 10, abi->wordbytes);
+		if(abi->wordbytes == 4) a64put(&b, 0x93407dad);
+		a64put(&b, 0x9100fdae); a64put(&b, 0xf101fddf); a64guard(&b, 0x54000063);
+		a64ptr(&b, 9, abi->s); a64load(&b, 15, 9, abi->wordbytes);
+		if(abi->wordbytes == 4) a64put(&b, 0x93407def);
+		if(p.alu){ a64guard(&b, 0xb500006f); a64put(&b, 0xb10005ff); a64guard(&b, 0x54000061); }
+		a64ptr(&b, 9, abi->m); a64load(&b, 12, 9, abi->wordbytes);
+		if(abi->wordbytes == 4) a64put(&b, 0x93407d8c);
+		if(!p.alu) a64put(&b, 0x9b0f7d8c);
+		a64put(&b, 0xf10001bf); a64put(&b, 0x5400006b);
+		a64put(&b, 0x9acd218c); a64put(&b, 0x14000003);
+		a64put(&b, 0xcb0d03ed); a64put(&b, 0x9acd298c);
+		if(p.alu) a64put(&b, 0x9acf0d8c);
+		a64ptr(&b, 11, abi->d); a64store(&b, 12, abi->wordbytes);
+	}else if(p.kind == LeafRealResize){
 		/* Keep signed zeros exact and reject all values that need FP handling. */
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, p.input);
 		a64put(&b, 0xd3400000U | (p.input == 4 ? 31 : 63)<<16 | 63<<10 | 12<<5 | 13);

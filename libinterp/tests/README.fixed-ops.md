@@ -27,15 +27,18 @@ overflow instruction. This does not establish a new language-level contract for
 overflowing fixed arithmetic; it makes the existing bit behavior independent of
 C signed-overflow optimizations.
 
-A separate native executable covers 87,075 boundary/alias cases per word model.
+A separate native executable covers 1,625,400 boundary/alignment/alias cases per word model. It varies frame, source, middle and destination byte offsets and includes partial destination overlap and both frame temporary slots.
 When ASan is requested, it runs in that executable with UBSan too; the Python
 oracle shared library retains UBSan and removes ASan to avoid injecting its
 runtime into Python. LeakSanitizer process inspection is disabled for the sandbox.
 All test state is bounded and stack/static; there is no dynamic VM heap here.
 The baseline runtime reproduces invalid-shift UBSan failures.
 
-Existing x86, ARM, MIPS, PowerPC and SPARC JITs route these opcodes through their
-interpreter fallback. The tests do not execute those fallback calling conventions
-or implement new 64-bit JITs. Full boot, native signal translation and platform
-acceptance remain outside this fixture. Active instruction/frame layouts stay
-unchanged.
+The scalar fixture now reads actual Stmp/Dtmp byte slots in an explicit frame
+buffer. The Python arbitrary-precision oracle still checks 37,800 cases per word
+model, now with varying source/middle/destination/frame alignment. Full byte
+snapshots verify that errors preserve storage and successful instructions modify
+only the destination word. The new 64-bit decoded-operation JITs implement mulx
+and divx as described in README.fixed-frame.md; the remaining fixed variants and
+legacy native-PC backends keep their existing C fallback. Frame/call ABI layout
+migration and full target boots remain outside these fixtures.

@@ -20,7 +20,9 @@ char exNilref[] = "nil";
 char exModule[] = "module", exHeap[] = "heap", exNegsize[] = "negative", exNomem[] = "memory";
 static Heap *allocated;
 static Type *seen;
-static int effects, failresize, operation, checks;
+static int effects, failresize, operation, checks, sa, ma, da;
+static union {uvlong alignment;uchar bytes[128];} operands;
+static uchar operandbefore[128];
 static size_t tablesize;
 static Prog running;
 Prog *currun(void) { return &running; }
@@ -84,20 +86,31 @@ static int
 run(void *unused)
 {
 	(void)unused;
-	R.s = &indexvalue; R.m = &indexvalue; R.d = &result;
+	memset(operands.bytes,0xa5,sizeof(operands.bytes));
+	R.s=operands.bytes+sa;R.m=operands.bytes+24+ma;R.d=operands.bytes+64+da;
+	memmove(R.s,&indexvalue,sizeof(indexvalue));memmove(R.m,&indexvalue,sizeof(indexvalue));
+	memmove(R.d,&result,sizeof(result));
+	if(operation==2)memmove(R.s,&source,sizeof(source));
+	if(operation==3 || operation==4)memmove(R.s,&count,sizeof(count));
+	memmove(operandbefore,operands.bytes,sizeof(operandbefore));
 	R.SP = teststack; R.TS = teststack+sizeof(teststack);
 	switch(operation){
 	case 0: new(); break;
 	case 1: newz(); break;
-	case 2: R.s = &source; mnewz(); break;
-	case 3: R.s = &count; newa(); break;
-	case 4: R.s = &count; newaz(); break;
+	case 2: mnewz(); break;
+	case 3: newa(); break;
+	case 4: newaz(); break;
 	case 5: newcmp(); break;
-	case 6: R.s = input; consmp(); break;
-	case 7: R.s = input; R.d = output; movmp(); break;
+	case 6: R.s = input+sa; consmp(); break;
+	case 7: R.s = input+sa; R.d = output+da; movmp(); break;
 	case 8: frame(); break;
 	case 9: seen = moduletype(source, indexvalue); break;
 	}
+	if(operation!=7){
+		memmove(&result,operands.bytes+64+da,sizeof(result));
+		memmove(operandbefore+64+da,&result,sizeof(result));
+	}
+	assert(!memcmp(operandbefore,operands.bytes,sizeof(operandbefore)));
 	return 1;
 }
 
@@ -221,12 +234,12 @@ main(int argc, char **argv)
 	memset(input, 0x5a, sizeof(input));
 	for(op = 0; op < 10; op++){
 		operation = op;
-		for(i = 0; i < m.ntype; i++){
+		for(i = 0; i < m.ntype; i++)for(sa=0;sa<8;sa++)for(ma=0;ma<8;ma++)for(da=0;da<8;da++){
 			indexvalue = i; result = H; effects = 0; seen = nil;
 			memset(output, 0, sizeof(output)); expected = m.type[i];
 			assert(kprotect(run, nil));
 			if(op == 5 || op == 9)assert(seen == expected);
-			else if(op == 7)assert(memcmp(input, output, expected->size) == 0);
+			else if(op == 7)assert(memcmp(input+sa, output+da, expected->size) == 0);
 			else if(op == 8)assert(((Frame*)result)->t == expected);
 			else if(op == 3 || op == 4)assert(((Array*)result)->t == expected);
 			else if(op == 6)assert(((List*)result)->t == expected);
@@ -239,6 +252,7 @@ main(int argc, char **argv)
 			indexvalue = bad[i]; result = H; effects = 0; seen = nil;
 			memset(output, 0, sizeof(output));
 			assert(!kprotect(run, nil));
+			assert(!memcmp(operandbefore,operands.bytes,sizeof(operandbefore)));
 			assert(result == H && effects == 0 && allocated == nil && seen == nil);
 			assert(output[0] == 0 && R.SP == teststack && worker.nerr == 0); checks++;
 		}
@@ -250,7 +264,6 @@ main(int argc, char **argv)
 	for(i = 0; i < m.ntype; i++)freetype(m.type[i]);
 	free(m.type);
 	assert(Tarray.ref == 1 && Tlist.ref == 1 && worker.nerr == 0);
-	calls();
 	printf("module types/calls: %d cases\n", checks);
 	return 0;
 }

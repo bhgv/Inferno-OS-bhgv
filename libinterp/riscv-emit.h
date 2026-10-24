@@ -14,6 +14,7 @@ struct RvLayout {
 	int arraylen, arraydata;
 	int stringlen, stringdata;
 	int listdata, listtail;
+	int fp, fixedtmp;
 };
 typedef struct RvBuf RvBuf;
 struct RvBuf {
@@ -143,6 +144,27 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		bytes=8; branch=1; realbranch=1;
 		f3=op == IBEQF ? 0 : op == IBNEF ? 1 : (op == IBLTF || op == IBGTF) ? 4 : 5;
 		swap=op == IBLEF || op == IBGTF;
+		break;
+	case IMULX: case IDIVX:
+		/* Fixed 64-bit intermediates require RV64M and explicit frame offsets. */
+		if(abi->xlen != 64 || !abi->hasm || abi->fp < 0 || abi->fp > 2047 || abi->fp%8 ||
+		   abi->fixedtmp < 0 || abi->fixedtmp > 2047 || abi->fixedtmp%4) return 0;
+		rvptr(&b, Rvt1, abi->fp); rvguard(&b, 1, Rvt1, Rvzero);
+		rvi(&b, 0x13, 0, Rvt5, Rvzero, -1); rvguard(&b, 1, Rvt1, Rvt5);
+		rvi(&b, 0x13, 7, Rvt5, Rvt1, 3); rvguard(&b, 0, Rvt5, Rvzero);
+		rvi(&b, 0x13, 0, Rvt1, Rvt1, abi->fixedtmp); rvload(&b, Rvt4, Rvt1, abi->wordbytes);
+		rvi(&b, 0x13, 0, Rvt6, Rvt4, 63); rvi(&b, 0x13, 0, Rvt5, Rvzero, 127); rvguard(&b, 6, Rvt6, Rvt5);
+		rvptr(&b, Rvt0, abi->s); rvload(&b, Rvt6, Rvt0, abi->wordbytes);
+		if(op == IDIVX){
+			rvguard(&b, 1, Rvt6, Rvzero); rvi(&b, 0x13, 0, Rvt5, Rvzero, -1); rvguard(&b, 1, Rvt6, Rvt5);
+		}
+		rvptr(&b, Rvt0, abi->m); rvload(&b, Rvt3, Rvt0, abi->wordbytes);
+		if(op == IMULX) rvr(&b, 0x33, 0, 1, Rvt3, Rvt3, Rvt6);
+		rvbranch(&b, 4, Rvt4, Rvzero, 12);
+		rvr(&b, 0x33, 1, 0, Rvt3, Rvt3, Rvt4); rvbranch(&b, 0, Rvzero, Rvzero, 12);
+		rvr(&b, 0x33, 0, 32, Rvt4, Rvzero, Rvt4); rvr(&b, 0x33, 5, 32, Rvt3, Rvt3, Rvt4);
+		if(op == IDIVX) rvr(&b, 0x33, 4, 1, Rvt3, Rvt3, Rvt6);
+		rvptr(&b, Rvt2, abi->d); rvstore(&b, Rvt2, Rvt3, abi->wordbytes);
 		break;
 	case ICVTRF: case ICVTFR:
 		/* Exact resizing uses only RV64I; operands retain four-byte slot alignment. */

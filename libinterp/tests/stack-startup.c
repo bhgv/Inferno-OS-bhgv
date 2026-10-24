@@ -410,6 +410,33 @@ indices(void)
 	}
 }
 
+/* Frame publication must accept unaligned operands on both stack paths. */
+static void
+framealignment(void)
+{
+	union {uvlong alignment;uchar bytes[112];} slots;
+	uchar expected[112];
+	Frame *frame;
+	int op,s,m,d,slow;
+
+	for(op=5;op<=6;op++)for(s=0;s<8;s++)for(m=0;m<8;m++)for(d=0;d<8;d++)for(slow=0;slow<2;slow++){
+		setup();operation=op;operand=op==5 ? 0 : -1;
+		memset(slots.bytes,0xa5,sizeof(slots.bytes));
+		R.s=slots.bytes+8+s;R.m=slots.bytes+40+m;R.d=slots.bytes+80+d;
+		if(op==5)memmove(R.s,&operand,sizeof(operand));else memmove(R.s,&ml,sizeof(ml));
+		memmove(R.m,&operand,sizeof(operand));memmove(R.d,&output,sizeof(output));
+		memmove(expected,slots.bytes,sizeof(expected));
+		if(slow)R.TS=R.SP;
+		assert(kprotect(run,nil));
+		memmove(&frame,slots.bytes+80+d,sizeof(frame));
+		assert(frame->t==(slow ? nil : &type) && *(void**)((uchar*)frame+sizeof(Frame))==H);
+		if(slow)assert(((Stkext*)R.EX)->reg.TR==&type);
+		memmove(expected+80+d,&frame,sizeof(frame));assert(!memcmp(expected,slots.bytes,sizeof(expected)));
+		if(slow)unextend(frame);else assert((uchar*)frame==arena.bytes && R.SP==arena.bytes+type.size);
+		destroy(ml);assert(live==0);checks++;
+	}
+}
+
 /* Bad frame metadata must fail before changing the stack or destination. */
 static void
 frameerrors(void)
@@ -504,6 +531,7 @@ main(void)
 	if(only == nil || !strcmp(only, "root"))roots();
 	if(only == nil || !strcmp(only, "spawn")){ spawns(); spawnmodules(); }
 	if(only == nil || !strcmp(only, "indices"))indices();
+	if(only == nil || !strcmp(only, "framealignment"))framealignment();
 	if(only == nil || !strcmp(only, "frameerrors"))frameerrors();
 	if(only == nil || !strcmp(only, "environment"))environments();
 	if(only != nil && !strcmp(only, "pid"))pids();

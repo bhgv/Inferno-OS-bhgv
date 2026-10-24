@@ -83,6 +83,8 @@ rvcompile(void *arg)
 	abi.stringdata=O(String, Sascii);
 	abi.listdata=O(List, data);
 	abi.listtail=O(List, tail);
+	abi.fp=O(REG, FP);
+	abi.fixedtmp=(NREG+2)*IBY2WD;
 #ifdef __riscv_mul
 	abi.hasm=1;
 #else

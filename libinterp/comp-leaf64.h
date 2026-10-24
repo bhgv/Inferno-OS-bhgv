@@ -64,6 +64,8 @@ leafcompile(void *arg)
 	abi.stringdata=O(String, Sascii);
 	abi.listdata=O(List, data);
 	abi.listtail=O(List, tail);
+	abi.fp=O(REG, FP);
+	abi.fixedtmp=(NREG+2)*IBY2WD;
 	abi.pc=O(REG, PC); abi.s=O(REG, s); abi.d=O(REG, d); abi.m=O(REG, m);
 	memset(count, 0, sizeof(count));
 	memset(fn, 0, sizeof(fn));

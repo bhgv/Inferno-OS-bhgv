@@ -8,9 +8,6 @@
 REG	R;			/* Virtual Machine registers */
 String	snil;			/* String known to be zero length */
 
-#define Stmp	*((WORD*)(R.FP+NREG*IBY2WD))
-#define Dtmp	*((WORD*)(R.FP+(NREG+2)*IBY2WD))
-
 #define OP(fn)	void fn(void)
 #define B(r)	*((BYTE*)(R.r))
 #define W(r)	*((WORD*)(R.r))
@@ -1059,8 +1056,10 @@ moduletype(Modlink *ml, WORD index)
 OP(movmp)
 {
 	Type *t;
+	WORD index;
 
-	t = moduletype(R.M, W(m));
+	memmove(&index, R.m, sizeof(index));
+	t = moduletype(R.M, index);
 	if(t->size == 0)
 		return;
 
@@ -1073,40 +1072,46 @@ OP(movmp)
 OP(new)
 {
 	Heap *h;
-	WORD **wp, *t;
+	WORD *t, *object;
+	WORD index;
 
-	h = heap(moduletype(R.M, W(s)));
-	wp = R.d;
-	t = *wp;
-	*wp = H2D(WORD*, h);
+	memmove(&index, R.s, sizeof(index));
+	h = heap(moduletype(R.M, index));
+	memmove(&t, R.d, sizeof(t));
+	object = H2D(WORD*, h);
+	memmove(R.d, &object, sizeof(object));
 	destroy(t);
 }
 /* Use the current module table for a zero-initialized object. */
 OP(newz)
 {
 	Heap *h;
-	WORD **wp, *t;
+	WORD *t, *object;
+	WORD index;
 
-	h = heapz(moduletype(R.M, W(s)));
-	wp = R.d;
-	t = *wp;
-	*wp = H2D(WORD*, h);
+	memmove(&index, R.s, sizeof(index));
+	h = heapz(moduletype(R.M, index));
+	memmove(&t, R.d, sizeof(t));
+	object = H2D(WORD*, h);
+	memmove(R.d, &object, sizeof(object));
 	destroy(t);
 }
 /* Resolve the requested descriptor in the source module before allocation. */
 OP(mnewz)
 {
 	Heap *h;
-	WORD **wp, *t;
+	WORD *t, *object;
+	WORD index;
 	Modlink *ml;
 
-	ml = *(Modlink**)R.s;
+	memmove(&ml, R.s, sizeof(ml));
 	if(ml == H)
 		error(exModule);
-	h = heapz(moduletype(ml, W(m)));
-	wp = R.d;
-	t = *wp;
-	*wp = H2D(WORD*, h);
+	memmove(&index, R.m, sizeof(index));
+	h = heapz(moduletype(ml, index));
+	memmove(&t, R.d, sizeof(t));
+	object = H2D(WORD*, h);
+	memmove(R.d, &object, sizeof(object));
 	destroy(t);
 }
 /* Resolve imports or named exports without narrowing the Limbo link index. */
@@ -1151,12 +1156,14 @@ OP(frame)
 {
 	Type *t;
 	Frame *f;
+	WORD index;
 
-	t = moduletype(R.M, W(s));
+	memmove(&index, R.s, sizeof(index));
+	t = moduletype(R.M, index);
 	if(!framefits(t)) {
 		R.s = t;
 		extend();
-		T(d) = R.s;
+		memmove(R.d, &R.s, sizeof(R.s));
 		return;
 	}
 	f = (Frame*)R.SP;
@@ -1165,27 +1172,29 @@ OP(frame)
 	f->mr = nil;
 	if (t->np)
 		initmem(t, f);
-	T(d) = f;
+	memmove(R.d, &f, sizeof(f));
 }
 /* Resolve both imported and exported frame types through checked metadata. */
 OP(mframe)
 {
 	Type *t;
 	Frame *f;
+	WORD index;
 	Modl entry;
 	Modlink *ml;
 
-	ml = *(Modlink**)R.s;
+	memmove(&ml, R.s, sizeof(ml));
 	if(ml == H || ml == nil)
 		error(exModule);
 
-	if(!moduleentry(ml, W(m), &entry))
+	memmove(&index, R.m, sizeof(index));
+	if(!moduleentry(ml, index, &entry))
 		error("invalid mframe");
 	t = entry.frame;
 	if(!framefits(t)) {
 		R.s = t;
 		extend();
-		T(d) = R.s;
+		memmove(R.d, &R.s, sizeof(R.s));
 		return;
 	}
 	f = (Frame*)R.SP;
@@ -1194,18 +1203,19 @@ OP(mframe)
 	f->mr = nil;
 	if (t->np)
 		initmem(t, f);
-	T(d) = f;
+	memmove(R.d, &f, sizeof(f));
 }
 /* Validate the current element descriptor before checking array geometry. */
 OP(newa)
 {
-	WORD sz;
+	WORD sz, index;
 	Type *t;
 	Heap *h;
-	Array *a, *at, **ap;
+	Array *a, *at;
 
-	t = moduletype(R.M, W(m));
-	sz = W(s);
+	memmove(&index, R.m, sizeof(index));
+	t = moduletype(R.M, index);
+	memmove(&sz, R.s, sizeof(sz));
 	acheck(t->size, sz);
 	h = nheap(sizeof(Array) + (t->size*sz));
 	h->t = &Tarray;
@@ -1217,21 +1227,21 @@ OP(newa)
 	a->data = (uchar*)a + sizeof(Array);
 	initarray(t, a);
 
-	ap = R.d;
-	at = *ap;
-	*ap = a;
+	memmove(&at, R.d, sizeof(at));
+	memmove(R.d, &a, sizeof(a));
 	destroy(at);
 }
 /* Use current element metadata for zeroed storage and pointer initialization. */
 OP(newaz)
 {
-	WORD sz;
+	WORD sz, index;
 	Type *t;
 	Heap *h;
-	Array *a, *at, **ap;
+	Array *a, *at;
 
-	t = moduletype(R.M, W(m));
-	sz = W(s);
+	memmove(&index, R.m, sizeof(index));
+	t = moduletype(R.M, index);
+	memmove(&sz, R.s, sizeof(sz));
 	acheck(t->size, sz);
 	h = nheap(sizeof(Array) + (t->size*sz));
 	h->t = &Tarray;
@@ -1244,9 +1254,8 @@ OP(newaz)
 	memset(a->data, 0, t->size*sz);
 	initarray(t, a);
 
-	ap = R.d;
-	at = *ap;
-	*ap = a;
+	memmove(&at, R.d, sizeof(at));
+	memmove(R.d, &a, sizeof(a));
 	destroy(at);
 }
 typedef struct ChannelBuild ChannelBuild;
@@ -1363,7 +1372,10 @@ OP(newcm)
 /* Create a mapped channel only after validating its payload descriptor. */
 OP(newcmp)
 {
-	newc(moduletype(R.M, W(s)), movtmp);
+	WORD index;
+
+	memmove(&index, R.s, sizeof(index));
+	newc(moduletype(R.M, index), movtmp);
 }
 OP(icase)
 {
@@ -2381,37 +2393,40 @@ fixedroundmask(WORD count)
 /* Multiply and shift fixed values using defined intermediate bit arithmetic. */
 OP(mulx)
 {
-	WORD p;
+	WORD p, x, y, result;
 	LONG r;
 
-	p = Dtmp;
-	r = (LONG)((uvlong)(LONG)W(m)*(uvlong)(LONG)W(s));
+	memmove(&p, R.FP+(NREG+2)*IBY2WD, sizeof(p));
+	memmove(&x, R.m, sizeof(x));
+	memmove(&y, R.s, sizeof(y));
+	r = (LONG)((uvlong)(LONG)x*(uvlong)(LONG)y);
 	r = fixedshift(r, p);
-	W(d) = (WORD)r;
+	result = (WORD)r;
+	memmove(R.d, &result, sizeof(result));
 }
 
 /* Shift and divide a fixed numerator with VM errors on invalid parameters. */
 OP(divx)
 {
-	WORD p;
+	WORD p, value, divisor, result;
 	LONG s;
 
-	p = Dtmp;
-	if(W(s) == 0)
+	memmove(&p, R.FP+(NREG+2)*IBY2WD, sizeof(p));
+	memmove(&divisor, R.s, sizeof(divisor));
+	if(divisor == 0)
 		error(exZdiv);
-	s = (LONG)W(m);
-	s = fixedshift(s, p);
-	s = fixeddivide(s, (LONG)W(s));
-	W(d) = (WORD)s;
+	memmove(&value, R.m, sizeof(value));
+	s = fixedshift((LONG)value, p);
+	s = fixeddivide(s, (LONG)divisor);
+	result = (WORD)s;
+	memmove(R.d, &result, sizeof(result));
 }
 
 /* Capture unaligned fixed operands and publish only after validating the scale. */
 OP(cvtxx)
 {
-	WORD p;
+	WORD p, value, result;
 	LONG r;
-
-	WORD value, result;
 
 	memmove(&p, R.m, sizeof(p));
 	memmove(&value, R.s, sizeof(value));
@@ -2423,83 +2438,90 @@ OP(cvtxx)
 /* Validate the coefficient before a zero shortcut and stage the product. */
 OP(mulx0)
 {
-	WORD x, y, p, a;
+	WORD result, x, y, p, a;
 	LONG r;
 
-	x = W(m);
-	y = W(s);
-	p = Dtmp;
-	a = Stmp;
+	memmove(&x, R.m, sizeof(x));
+	memmove(&y, R.s, sizeof(y));
+	memmove(&p, R.FP+(NREG+2)*IBY2WD, sizeof(p));
+	memmove(&a, R.FP+NREG*IBY2WD, sizeof(a));
 	if(a == 0)
 		error(exZdiv);
 	if(x == 0 || y == 0){
-		W(d) = 0;
+		result = 0;
+		memmove(R.d, &result, sizeof(result));
 		return;
 	}
 	r = (LONG)((uvlong)(LONG)x*(uvlong)(LONG)y);
 	r = fixedshift(r, p);
 	r = fixeddivide(r, (LONG)a);
-	W(d) = (WORD)r;
+	result = (WORD)r;
+	memmove(R.d, &result, sizeof(result));
 }
 
 /* Reject zero divisors even when the fixed numerator is zero. */
 OP(divx0)
 {
-	WORD x, y, p, b;
+	WORD result, x, y, p, b;
 	LONG s;
 
-	x = W(m);
-	y = W(s);
-	p = Dtmp;
-	b = Stmp;
+	memmove(&x, R.m, sizeof(x));
+	memmove(&y, R.s, sizeof(y));
+	memmove(&p, R.FP+(NREG+2)*IBY2WD, sizeof(p));
+	memmove(&b, R.FP+NREG*IBY2WD, sizeof(b));
 	if(y == 0)
 		error(exZdiv);
 	if(x == 0){
-		W(d) = 0;
+		result = 0;
+		memmove(R.d, &result, sizeof(result));
 		return;
 	}
 	s = (LONG)((uvlong)(LONG)b*(uvlong)(LONG)x);
 	s = fixedshift(s, p);
 	s = fixeddivide(s, (LONG)y);
-	W(d) = (WORD)s;
+	result = (WORD)s;
+	memmove(R.d, &result, sizeof(result));
 }
 
 /* Scale a fixed value before publishing the divided result. */
 OP(cvtxx0)
 {
-	WORD x, p, a;
+	WORD result, x, p, a;
 	LONG r;
 
-	x = W(s);
-	p = W(m);
-	a = Stmp;
+	memmove(&x, R.s, sizeof(x));
+	memmove(&p, R.m, sizeof(p));
+	memmove(&a, R.FP+NREG*IBY2WD, sizeof(a));
 	if(a == 0)
 		error(exZdiv);
 	if(x == 0){
-		W(d) = 0;
+		result = 0;
+		memmove(R.d, &result, sizeof(result));
 		return;
 	}
 	r = (LONG)x;
 	r = fixedshift(r, p);
 	r = fixeddivide(r, (LONG)a);
-	W(d) = (WORD)r;
+	result = (WORD)r;
+	memmove(R.d, &result, sizeof(result));
 }
 
 /* Apply fixed multiplication rounding with bounded masks and modular corrections. */
 OP(mulx1)
 {
-	WORD x, y, p, a, v;
+	WORD result, x, y, p, a, v;
 	int vnz, wnz;
 	LONG w, r;
 
-	x = W(m);
-	y = W(s);
-	p = Dtmp;
-	a = Stmp;
+	memmove(&x, R.m, sizeof(x));
+	memmove(&y, R.s, sizeof(y));
+	memmove(&p, R.FP+(NREG+2)*IBY2WD, sizeof(p));
+	memmove(&a, R.FP+NREG*IBY2WD, sizeof(a));
 	if(a == 0)
 		error(exZdiv);
 	if(x == 0 || y == 0){
-		W(d) = 0;
+		result = 0;
+		memmove(R.d, &result, sizeof(result));
 		return;
 	}
 	vnz = p&2;
@@ -2521,24 +2543,26 @@ OP(mulx1)
 	r = fixedshift(r, p);
 	r = (LONG)((uvlong)r+(uvlong)(LONG)v);
 	r = fixeddivide(r, (LONG)a);
-	W(d) = (WORD)r;
+	result = (WORD)r;
+	memmove(R.d, &result, sizeof(result));
 }
 
 /* Apply fixed division rounding without signed intermediate overflow. */
 OP(divx1)
 {
-	WORD x, y, p, b, v;
+	WORD result, x, y, p, b, v;
 	int vnz, wnz;
 	LONG w, s;
 
-	x = W(m);
-	y = W(s);
-	p = Dtmp;
-	b = Stmp;
+	memmove(&x, R.m, sizeof(x));
+	memmove(&y, R.s, sizeof(y));
+	memmove(&p, R.FP+(NREG+2)*IBY2WD, sizeof(p));
+	memmove(&b, R.FP+NREG*IBY2WD, sizeof(b));
 	if(y == 0)
 		error(exZdiv);
 	if(x == 0){
-		W(d) = 0;
+		result = 0;
+		memmove(R.d, &result, sizeof(result));
 		return;
 	}
 	vnz = p&2;
@@ -2558,23 +2582,25 @@ OP(divx1)
 	s = (LONG)((uvlong)(LONG)b*(uvlong)(LONG)x+(uvlong)w);
 	s = fixedshift(s, p);
 	s = fixeddivide(s, (LONG)y);
-	W(d) = (WORD)((UWORD)s+(UWORD)v);
+	result = (WORD)((UWORD)s+(UWORD)v);
+	memmove(R.d, &result, sizeof(result));
 }
 
 /* Round and scale a fixed conversion without invalid native shifts. */
 OP(cvtxx1)
 {
-	WORD x, p, a, v;
+	WORD result, x, p, a, v;
 	int vnz, wnz;
 	LONG w, r;
 
-	x = W(s);
-	p = W(m);
-	a = Stmp;
+	memmove(&x, R.s, sizeof(x));
+	memmove(&p, R.m, sizeof(p));
+	memmove(&a, R.FP+NREG*IBY2WD, sizeof(a));
 	if(a == 0)
 		error(exZdiv);
 	if(x == 0){
-		W(d) = 0;
+		result = 0;
+		memmove(R.d, &result, sizeof(result));
 		return;
 	}
 	vnz = p&2;
@@ -2595,7 +2621,8 @@ OP(cvtxx1)
 	r = fixedshift(r, p);
 	r = (LONG)((uvlong)r+(uvlong)(LONG)v);
 	r = fixeddivide(r, (LONG)a);
-	W(d) = (WORD)r;
+	result = (WORD)r;
+	memmove(R.d, &result, sizeof(result));
 }
 /*
 OP(cvtxx)

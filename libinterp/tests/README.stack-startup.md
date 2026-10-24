@@ -4,8 +4,9 @@ Run `python3 libinterp/tests/stack-startup.py` from the repository root.
 
 The fixture executes both emulator and native-kernel scheduler bodies through
 real emulator declarations and a native incref adapter. Each scheduler runs
-162 native-WORD cases and 150 word32 cases, plus one seeded PID-exhaustion case
-per model (628 cases total). Pointers keep host width; word32 is not a complete
+2,229 native-WORD cases and 2,217 word32 cases, plus one seeded PID-exhaustion
+case per model (8,896 cases total). Independent exception families run in fresh
+processes. Pointers keep host width; word32 is not a complete
 32-bit ABI build.
 
 Production bodies include newstack/extend/unextend, frame/mframe/spawn/mspawn,
@@ -59,3 +60,12 @@ Module-spawn rejection also covers native NULL and VM nil instances, plus
 instances with either missing owner representation. These cases preserve VM
 registers, allocate no child stack and publish no process. The driver runs
 these checks for emulator/kernel variants with native and 32-bit VM words.
+
+`STACK_CASES=framealignment` adds 2,048 cases per scheduler/word combination:
+independent byte offsets for the descriptor/module source, link index and pointer
+destination, on both the inline and extend/unextend paths. All four combinations
+pass ASan/UBSan (8,192 new cases). The complete default suite passes UBSan.
+The complete ASan run is not claimed: the pre-existing root-startup family reports
+a stack diagnostic at krethrow after siglongjmp, alongside the environment's
+missing stack-top warning. `STACK_CASES=root` reproduces the same diagnostic with
+parent 77a1a89 xec.c; stack instrumentation has not been disabled to hide it.

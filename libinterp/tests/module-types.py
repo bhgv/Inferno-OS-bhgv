@@ -63,3 +63,4 @@ with tempfile.TemporaryDirectory(prefix='module-types-') as directory:
         subprocess.run(cmd+override+includes+[str(target), '-o', str(binary)], check=True)
         print(model, flush=True)
         subprocess.run([str(binary)]+(['calls'] if os.environ.get('MODULE_CASES') == 'calls' else []), check=True, timeout=30)
+        if os.environ.get('MODULE_CASES') != 'calls':subprocess.run([str(binary),'calls'],check=True,timeout=30)

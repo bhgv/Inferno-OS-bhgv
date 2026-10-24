@@ -21,8 +21,11 @@ flags, and actual C builtin callbacks. Invalid links must preserve the frame,
 VM registers and callee reference count. Builtins must observe the callee and
 then restore the caller. Tests do not execute native-PC generated code.
 
-There are 435 cases with native WORD and 409 with a 32-bit WORD/native-pointer
-model: 844 total. The latter is not a complete 32-bit ABI build. Both strict
+There are 163,931 type-consumer cases plus 24 call cases with native WORD,
+and 163,911 type-consumer cases plus 18 call cases with a 32-bit WORD/native-pointer
+model: 327,884 total. Source, middle and pointer-destination byte offsets vary
+independently across 0..7. Calls run in a fresh process after the type-consumer
+family so longjmp sanitizer shadow state does not carry between families. The latter is not a complete 32-bit ABI build. Both strict
 UBSan and ASan with stack instrumentation pass:
 
 ```sh

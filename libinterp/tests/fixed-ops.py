@@ -25,7 +25,9 @@ typedef int32_t WORD; typedef uint32_t UWORD;
 typedef int64_t WORD; typedef uint64_t UWORD;
 #endif
 typedef int64_t LONG; typedef uint64_t uvlong;
-static struct {void *s,*m,*d;} R;
+typedef unsigned char uchar;
+enum {NREG=5,IBY2WD=4};
+static struct {void *s,*m,*d;uchar *FP;} R;
 static WORD Stmp,Dtmp;
 static jmp_buf boundary;
 static int raised;
@@ -35,19 +37,48 @@ static void error(char *text) { raised=text==exZdiv?1:2; longjmp(boundary,1); }
 #define OP(name) static void name(void)
 #define W(r) (*(WORD*)R.r)
 BODY
-/* Exercise source/destination aliases and preserve the actual destination on errors. */
-int execute(int op, WORD x, WORD y, WORD count, WORD coefficient, WORD *result, int alias)
+/* Capture byte snapshots before executing aligned, unaligned or overlapping slots. */
+int executealigned(int op, WORD x, WORD y, WORD count, WORD coefficient, WORD *result,
+    int alias, int sa, int ma, int da, int fa)
 {
-    WORD s=y,m=x,d=99;
-    if(op%3==2) {s=x;m=count;}
-    R.s=&s;R.m=&m;R.d=alias==1?&s:alias==2?&m:&d;
-    Stmp=coefficient;Dtmp=count;raised=0;
-    if(setjmp(boundary)==0) {
-        switch(op) { CASES }
+    union {uint64_t alignment;uchar bytes[144];} slots,frame;
+    uchar before[144],oldframe[144];
+    WORD source=y,middle=x,initial=99;
+    uintptr_t address;
+    if(op%3==2){source=x;middle=count;}
+    memset(slots.bytes,0xa5,sizeof(slots.bytes));memset(frame.bytes,0x5a,sizeof(frame.bytes));
+    R.s=slots.bytes+16+sa;R.m=slots.bytes+48+ma;R.d=slots.bytes+96+da;R.FP=frame.bytes+16+fa;
+    memcpy(R.s,&source,sizeof(source));memcpy(R.m,&middle,sizeof(middle));memcpy(R.d,&initial,sizeof(initial));
+    Stmp=coefficient;Dtmp=count;
+    memcpy(R.FP+NREG*IBY2WD,&coefficient,sizeof(coefficient));
+    memcpy(R.FP+(NREG+2)*IBY2WD,&count,sizeof(count));
+    if(alias==1)R.d=R.s;
+    if(alias==2)R.d=R.m;
+    if(alias==3)R.d=(uchar*)R.s+1;
+    if(alias==4)R.d=(uchar*)R.m-1;
+    if(alias==5)R.d=R.FP+NREG*IBY2WD;
+    if(alias==6)R.d=R.FP+(NREG+2)*IBY2WD;
+    memcpy(before,slots.bytes,sizeof(before));memcpy(oldframe,frame.bytes,sizeof(oldframe));
+    memcpy(&initial,R.d,sizeof(initial));raised=0;
+    if(setjmp(boundary)==0){switch(op){ CASES }}
+    memcpy(result,R.d,sizeof(*result));
+    if(raised)assert(*result==initial);
+    else {
+        address=(uintptr_t)R.d;
+        if(address>=(uintptr_t)slots.bytes && address<(uintptr_t)(slots.bytes+sizeof(slots.bytes)))
+            memcpy(before+(address-(uintptr_t)slots.bytes),result,sizeof(*result));
+        else memcpy(oldframe+(address-(uintptr_t)frame.bytes),result,sizeof(*result));
     }
-    *result=W(d);
+    assert(!memcmp(before,slots.bytes,sizeof(before)) && !memcmp(oldframe,frame.bytes,sizeof(oldframe)));
     return raised;
 }
+/* Keep the existing Python oracle entry point independent of slot placement. */
+int execute(int op, WORD x, WORD y, WORD count, WORD coefficient, WORD *result, int alias)
+{
+    return executealigned(op,x,y,count,coefficient,result,alias,0,0,0,0);
+}
+/* Keep stack instrumentation without unsupported leak-process inspection. */
+int __lsan_is_turned_off(void) {return 1;}
 #ifdef SELFTEST
 /* Exercise native sanitizer execution without loading ASan into the Python host. */
 int main(void)
@@ -55,11 +86,11 @@ int main(void)
     WORD edges[]={0,1,-1,(WORD)((UWORD)1<<(WORD_BITS-1)),
         (WORD)(((UWORD)1<<(WORD_BITS-1))-1)};
     WORD output;
-    int op,i,j,alias,count,checks=0;
+    int op,i,j,alias,count,align,checks=0;
     for(op=0;op<9;op++) for(i=0;i<5;i++) for(j=0;j<5;j++)
-        for(alias=0;alias<3;alias++) for(count=-64;count<=64;count++) {
-            int status=execute(op,edges[i],edges[j],op>=6?count*4:count,
-                edges[(i+j)%5],&output,alias);
+        for(alias=0;alias<7;alias++) for(align=0;align<8;align++) for(count=-64;count<=64;count++) {
+            int status=executealigned(op,edges[i],edges[j],op>=6?count*4:count,
+                edges[(i+j)%5],&output,alias,align,(align*3+1)%8,(align*5+2)%8,(align*7+3)%8);
             assert(status>=0 && status<=2); checks++;
         }
     printf("PASS fixed native sanitizer: %d cases, WORD%d\n",checks,WORD_BITS);
@@ -136,6 +167,7 @@ with tempfile.TemporaryDirectory(prefix='fixed-runtime-') as directory:
         lib=C.CDLL(str(binary))
         word=C.c_int32 if bits==32 else C.c_int64
         lib.execute.argtypes=[C.c_int,word,word,word,word,C.POINTER(word),C.c_int]
+        lib.executealigned.argtypes=lib.execute.argtypes+[C.c_int]*4
         rng=random.Random(0x666978+bits)
         limits=[-(1<<(bits-1)),(1<<(bits-1))-1,-1,0,1,2,-2,2147483647,-2147483648]
         checks=0
@@ -152,7 +184,8 @@ with tempfile.TemporaryDirectory(prefix='fixed-runtime-') as directory:
                 for alias in (0,1,2):
                     old=(x if op%3==2 else y) if alias==1 else (count if op%3==2 else x) if alias==2 else 99
                     output=word()
-                    got=lib.execute(op,x,y,count,a,C.byref(output),alias)
+                    align=case%8
+                    got=lib.executealigned(op,x,y,count,a,C.byref(output),alias,align,(align*3+1)%8,(align*5+2)%8,(align*7+3)%8)
                     assert got==status,(bits,names[op],x,y,count,a,got,status)
                     assert output.value==(old if status else expected),(bits,names[op],x,y,count,a,output.value,expected)
                     checks+=1

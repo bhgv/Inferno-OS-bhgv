@@ -69,8 +69,14 @@ for variant in ('emu', 'os'):
             binary = td/('test-'+model)
             subprocess.run(cmd+override+includes+[str(target), '-o', str(binary)], check=True)
             print(variant, model, flush=True)
-            if os.environ.get('STACK_CASES') != 'pid':
-                subprocess.run([str(binary)], check=True, timeout=60)
+            selected = os.environ.get('STACK_CASES')
+            if selected != 'pid':
+                # Keep independent longjmp families in fresh processes with active stack checking.
+                families = [selected] if selected else ['stack','root','spawn','indices','framealignment','frameerrors','environment','overflow']
+                for family in families:
+                    environment = dict(os.environ, STACK_CASES=family)
+                    print('family', family, flush=True)
+                    subprocess.run([str(binary)], check=True, env=environment, timeout=60)
 
             # Seed only the private counter to test exhaustion without billions of spawns.
             pid_unit = unit.replace('static int pidnum;', 'static int pidnum = 0x7fffffff;')

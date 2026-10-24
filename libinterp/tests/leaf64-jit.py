@@ -15,14 +15,14 @@ from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
 root = Path(__file__).resolve().parents[2]
-ops = '''ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF'''.split()
 class Layout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail')]
+    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp')]
 class RvLayout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail')]
+    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp')]
 
 
 def signed(value, bits):
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
         ids = {name:lib.opid(i) for i,name in enumerate(ops)}
         for wb in (4,8):
             layout = RvLayout(64,wb,1,0,8,16,24) if rv else Layout(wb,0,8,16,24)
-            layout.arraylen=8;layout.arraydata=32;layout.stringlen=12;layout.stringdata=32;layout.listdata=24;layout.listtail=8
+            layout.arraylen=8;layout.arraydata=32;layout.stringlen=12;layout.stringdata=32;layout.listdata=24;layout.listtail=8;layout.fp=32;layout.fixedtmp=28
             dis = Cs(CS_ARCH_X86,CS_MODE_64) if arch == 'amd64' else Cs(CS_ARCH_ARM64,0) if arch == 'arm64' else Cs(CS_ARCH_RISCV,CS_MODE_RISCV64)
             blobs = {}
             for name in ops:
@@ -70,12 +70,24 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     assert lib.emit(guard,n-1,C.byref(layout),ids[name]) == 0
                     assert list(guard)[n-1:] == [0xa5a5a5a5]*(65-n)
                 checks += 1
+            # Reject malformed frame descriptions before exposing any emitted output.
+            for name in ('IMULX','IDIVX'):
+                invalid=[('fp',-1),('fp',1),('fp',2048),('fixedtmp',-1),('fixedtmp',2048)]
+                if rv:invalid.append(('fixedtmp',1))
+                for field,value in invalid:
+                    malformed=type(layout).from_buffer_copy(layout)
+                    setattr(malformed,field,value)
+                    guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
+                    assert lib.emit(guard,64,C.byref(malformed),ids[name])==0
+                    assert list(guard)==[0xa5a5a5a5]*64
+                    checks+=1
+            if case=='frameabi':continue
             for name in ('IHEADP','IHEADMP','ITAIL','IMOVP','IFRAME','ICALL','IRET','IADDF'):
                 assert not blobs[name]
             code, registers, data, stack = 0x10000, 0x100020000, 0x100030000, 0x40000
             oldpc, target = 0x123456789, 0x987654321
 
-            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False):
+            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False, fixedframe=None):
                 """Exercise a leaf with high native pointers, four-byte alignment and exact aliases."""
                 if arch == 'amd64':
                     u = Uc(UC_ARCH_X86,UC_MODE_64); arg, result = UC_X86_REG_RDI, UC_X86_REG_RAX
@@ -86,6 +98,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 for address in (code,registers,data,stack): u.mem_map(address,0x1000)
                 u.mem_write(code,blobs[name])
                 s,m,d = data+0x104,data+0x204,data+0x304
+                if fixedframe is not None and fixedframe[2] is not None:d=fixedframe[0]+layout.fixedtmp+fixedframe[2]
                 if alias == 1: d=s
                 if alias == 2: d=m
                 if alias == 3: s=d-4
@@ -202,10 +215,13 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     metadata[layout.arraylen:layout.arraylen+wb]=(length&((1<<(8*wb))-1)).to_bytes(wb,'little')
                     metadata[layout.arraydata:layout.arraydata+8]=struct.pack('<Q',backing)
                     u.mem_write(data+0x500,bytes(metadata))
+                fp=data+0x900 if fixedframe is None else fixedframe[0]
+                if fixedframe is not None and fp not in (0,(1<<64)-1):
+                    u.mem_write(fp+layout.fixedtmp,(fixedframe[1]&((1<<(8*wb))-1)).to_bytes(wb,'little'))
                 before = bytes(u.mem_read(output-8,32))
                 if badtarget:d=0x100060000
                 if badsource:s=0x100060000
-                u.mem_write(registers,struct.pack('<QQQQ',oldpc,s,d,m))
+                u.mem_write(registers,struct.pack('<QQQQQ',oldpc,s,d,m,fp))
                 u.reg_write(arg,registers)
                 end=code+0x800
                 if arch == 'amd64':
@@ -219,10 +235,60 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if expected_head is not None:assert bytes(u.mem_read(data,0x1000))==bytes(expected_head),(arch,wb,name,head,alias)
                 if expected_copy is not None:assert bytes(u.mem_read(data,0x1000))==expected_copy,(arch,wb,copy)
                 assert u.reg_read(result) == expect,(arch,wb,name,a,b,u.reg_read(result),expect)
-                assert bytes(u.mem_read(registers+8,24)) == struct.pack('<QQQ',s,d,m)
+                assert bytes(u.mem_read(registers+8,32)) == struct.pack('<QQQQ',s,d,m,fp)
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','framefixed'):
+                values=[0,1,-1,127,-128,0x7fffffff,-0x80000000,(1<<63)-1,-(1<<63)]
+                pairs=[(a,b) for a in values for b in values]+[(signed(rng.getrandbits(64),64),signed(rng.getrandbits(64),64)) for _ in range(16)]
+                counts=[-63,-33,-32,-1,0,1,31,32,62,63,-64,64,-(1<<(wb*8-1))]
+                for name in ('IMULX','IDIVX'):
+                    for a,b in pairs:
+                        aa,bb=signed(a,wb*8),signed(b,wb*8)
+                        for count in counts:
+                            valid=-63<=count<=63 and (name=='IMULX' or aa not in (0,-1))
+                            for alias in (0,1,2,3,5):
+                                out,pc,before,after,_=run(name,a,b,alias=alias,expect=int(valid),fixedframe=(data+0x900,count,None))
+                                if valid:
+                                    intermediate=signed(aa*bb,64) if name=='IMULX' else bb
+                                    intermediate=signed(intermediate<<count,64) if count>=0 else intermediate>>-count
+                                    if name=='IDIVX':
+                                        magnitude=abs(intermediate)//abs(aa)
+                                        intermediate=-magnitude if (intermediate<0)!=(aa<0) else magnitude
+                                    assert int.from_bytes(out[:wb],'little')==intermediate&((1<<(8*wb))-1),(arch,wb,name,aa,bb,count,alias)
+                                    assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
+                                else:assert before==after
+                                assert pc==oldpc
+                                checks+=1
+                    for count in range(-63,64):
+                        a,b=3,-7
+                        for delta in (-4,0,4):
+                            out,_,before,after,_=run(name,a,b,fixedframe=(data+0x900,count,delta))
+                            value=a*b if name=='IMULX' else b
+                            value=signed(value<<count,64) if count>=0 else value>>-count
+                            if name=='IDIVX':value=-(abs(value)//a) if value<0 else value//a
+                            assert int.from_bytes(out[:wb],'little')==value&((1<<(8*wb))-1)
+                            assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
+                            checks+=1
+                    if rv:
+                        for delta in (1,2,3):
+                            _,pc,before,after,_=run(name,expect=0,poison=True,badsource=True,fixedframe=(data+0x900+delta,0,None))
+                            assert pc==oldpc and before==after
+                            checks+=1
+                    for frame in (0,(1<<64)-1):
+                        _,pc,before,after,_=run(name,expect=0,poison=True,badsource=True,fixedframe=(frame,0,None))
+                        assert pc==oldpc and before==after
+                        checks+=1
+                    for count in (-64,64,-(1<<(wb*8-1))):
+                        _,pc,before,after,_=run(name,expect=0,poison=True,badsource=True,fixedframe=(data+0x900,count,None))
+                        assert pc==oldpc and before==after
+                        checks+=1
+                for divisor in (0,-1):
+                    _,pc,before,after,_=run('IDIVX',divisor,7,expect=0,poison=True,fixedframe=(data+0x900,0,None))
+                    assert pc==oldpc and before==after
+                    checks+=1
+                if case=='framefixed':continue
             if case in ('','resize'):
                 singles=[0,1<<31,1,(1<<31)|1,0x7fffff,0x800000,0x807fffff,0x80800000,
                          0x3f800000,0xbf800000,0x7f7fffff,0xff7fffff,0x7f800000,0xff800000,
