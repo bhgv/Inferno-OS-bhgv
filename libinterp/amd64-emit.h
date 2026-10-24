@@ -67,6 +67,33 @@ x64field(X64Buf *b, int result, int owner, int offset, int bytes)
 	x64word(b, offset);
 }
 
+/* Turn rax/rcx bits into signed keys using rdx; defer NaNs and denormals. */
+static void
+x64realkey(X64Buf *b, int reg)
+{
+	int zero, normal, done;
+
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2+reg*8);
+	x64byte(b, 0x48); x64byte(b, 0xd1); x64byte(b, 0xe2);
+	x64byte(b, 0x74); zero = b->n; x64byte(b, 0);
+	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xea); x64byte(b, 53);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); x64guard(b, 0x75);
+	x64byte(b, 0x81); x64byte(b, 0xfa); x64word(b, 2047);
+	x64byte(b, 0x75); normal = b->n; x64byte(b, 0);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2+reg*8);
+	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe2); x64byte(b, 12);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); x64guard(b, 0x74);
+	b->bytes[normal] = b->n-normal-1;
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2+reg*8);
+	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xfa); x64byte(b, 63);
+	x64byte(b, 0x48); x64byte(b, 0xd1); x64byte(b, 0xea);
+	x64byte(b, 0x48); x64byte(b, 0x31); x64byte(b, 0xd0+reg);
+	x64byte(b, 0xeb); done = b->n; x64byte(b, 0);
+	b->bytes[zero] = b->n-zero-1;
+	x64byte(b, 0x31); x64byte(b, reg == 0 ? 0xc0 : 0xc9);
+	b->bytes[done] = b->n-done-1;
+}
+
 /* Emit a SysV AMD64 leaf, returning its bounded count of four-byte code units. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -275,9 +302,12 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			x64byte(&b, p.bytes == 8 ? 0x49 : 0x41); x64byte(&b, 0xf7); x64byte(&b, 0xfb);
 			x64ptr(&b, 2, abi->d); x64store(&b, p.alu ? 2 : 0, p.bytes);
 		}
-	}else if(p.kind == LeafAlu || p.kind == LeafBranch){
+	}else if(p.kind == LeafAlu || p.kind == LeafBranch || p.kind == LeafRealBranch){
 		x64ptr(&b, 0, abi->s); x64ptr(&b, 1, abi->m);
-		x64load(&b, 0, p.bytes); x64load(&b, 1, p.bytes);
+		x64load(&b, 0, p.bytes);
+		if(p.kind == LeafRealBranch) x64realkey(&b, 0);
+		x64load(&b, 1, p.bytes);
+		if(p.kind == LeafRealBranch) x64realkey(&b, 1);
 		if(p.bytes == 8) x64byte(&b, 0x48);
 		if(p.kind == LeafAlu){
 			if(p.alu == 2){ x64byte(&b, 0x0f); x64byte(&b, 0xaf); x64byte(&b, 0xc8); }

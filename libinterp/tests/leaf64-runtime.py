@@ -22,6 +22,7 @@ unit=r'''
 #include <assert.h>
 #include <stdio.h>
 #include <setjmp.h>
+#include <fenv.h>
 static int fail, mappings, protections;
 extern void *native_map(void*,size_t,int,int,int,off_t) __asm__("mmap");
 extern int native_unmap(void*,size_t) __asm__("munmap");
@@ -111,6 +112,12 @@ static int dispatch(void *unused) {
     case IHEADL:headl();break;
     case IHEADF:headf();break;
     case IHEADM:headm();break;
+    case IBEQF:beqf();break;
+    case IBNEF:bnef();break;
+    case IBLTF:bltf();break;
+    case IBLEF:blef();break;
+    case IBGTF:bgtf();break;
+    case IBGEF:bgef();break;
     case ILENL:lenl();break;
     default:assert(0);
     }
@@ -418,6 +425,68 @@ static void headrecords(Module *m) {
     }
     m->jit->entry[IHEADM]=entry;
 }
+/* Numeric C predicates are independent of the native integer key transform. */
+static int realrelation(int condition, REAL left, REAL right) {
+    volatile REAL a=left,b=right;
+    switch(condition) {
+    case 0:return a==b;
+    case 1:return a!=b;
+    case 2:return a<b;
+    case 3:return a<=b;
+    case 4:return a>b;
+    default:return a>=b;
+    }
+}
+/* Observe native completion/fallback without changing rounding or FP status. */
+static void realbranches(Module *m) {
+    uvlong bits[]={0,0x8000000000000000ULL,0x3ff0000000000000ULL,0xbff0000000000000ULL,
+        0x0010000000000000ULL,0x8010000000000000ULL,0x7fefffffffffffffULL,0xffefffffffffffffULL,
+        0x7ff0000000000000ULL,0xfff0000000000000ULL,1,0x8000000000000001ULL,
+        0xfffffffffffffULL,0x800fffffffffffffULL,0x7ff8000000000042ULL,0xfff8000000000042ULL,
+        0x7ff0000000000042ULL,0xfff0000000000042ULL};
+    int ops[]={IBEQF,IBNEF,IBLTF,IBLEF,IBGTF,IBGEF};
+    int rounds[]={FE_TONEAREST,FE_DOWNWARD};
+    int mode,round,op,i,j,take,valid,expa,expb,flags,completed;
+    union { uvlong align; uchar bytes[64]; } slots;
+    uchar before[64];
+    REAL a,b;
+    fenv_t saved;
+    Inst *pc=m->prog,*target=m->prog+2;
+    int (*entry)(REG*);
+    assert(fegetenv(&saved)==0);active=m;
+    for(op=0;op<6;op++) {
+        activeop=ops[op];entry=m->jit->entry[activeop];assert(entry);
+        for(mode=0;mode<2;mode++)for(round=0;round<2;round++) {
+            m->jit->entry[activeop]=mode?nil:entry;assert(fesetround(rounds[round])==0);
+            for(i=0;i<nelem(bits);i++)for(j=0;j<nelem(bits);j++) {
+                memcpy(&a,&bits[i],8);memcpy(&b,&bits[j],8);take=realrelation(op,a,b);
+                expa=(bits[i]>>52)&2047;expb=(bits[j]>>52)&2047;
+                valid=((bits[i]&0xfffffffffffffULL)==0 || (expa>0 && expa<2047)) &&
+                    ((bits[j]&0xfffffffffffffULL)==0 || (expb>0 && expb<2047));
+                memset(slots.bytes,0xa5,sizeof(slots.bytes));
+                memcpy(slots.bytes+4,&bits[i],8);memcpy(slots.bytes+20,&bits[j],8);
+                memcpy(slots.bytes+36,&target,sizeof(target));memcpy(before,slots.bytes,sizeof(before));
+                R.s=slots.bytes+4;R.m=slots.bytes+20;R.d=slots.bytes+36;R.PC=pc;
+                feclearexcept(FE_ALL_EXCEPT);feraiseexcept(round==0?FE_INEXACT:FE_ALL_EXCEPT);flags=fetestexcept(FE_ALL_EXCEPT);
+                if(!mode) {
+                    completed=entry(&R);assert(completed==valid);
+                    assert(fetestexcept(FE_ALL_EXCEPT)==flags && fegetround()==rounds[round]);
+                    if(!completed){assert(R.PC==pc);assert(kprotect(dispatch,nil));}
+                }else assert(kprotect(dispatch,nil));
+                assert(R.PC==(take?target:pc) && !memcmp(before,slots.bytes,sizeof(before)));
+                assert(fegetround()==rounds[round]);
+                if(valid)assert(fetestexcept(FE_ALL_EXCEPT)==flags);
+                if(!mode && (!valid || !take)) {
+                    R.PC=pc;R.d=(void*)1;
+                    feclearexcept(FE_ALL_EXCEPT);feraiseexcept(round==0?FE_INEXACT:FE_ALL_EXCEPT);flags=fetestexcept(FE_ALL_EXCEPT);
+                    assert(entry(&R)==valid && R.PC==pc && fetestexcept(FE_ALL_EXCEPT)==flags);
+                }
+            }
+        }
+        m->jit->entry[activeop]=entry;
+    }
+    assert(fesetenv(&saved)==0);
+}
 /* Use real Array/REG offsets and actual VM fallback on the native host. */
 static void arrays(Module *m) {
     Type type={0};Array array={0},*owner;
@@ -451,7 +520,7 @@ static void arrays(Module *m) {
 }
 /* Compile, invoke, reject invalid metadata and retry without changing Dis PCs. */
 int main(void) {
-    Module m={0}, *owned;Inst instructions[27]={{0}};
+    Module m={0}, *owned;Inst instructions[33]={{0}};
     WORD a=3,b=7,out=0;
     int i;
     instructions[0].op=ISUBW;instructions[1].op=IADDW;
@@ -461,24 +530,26 @@ int main(void) {
     instructions[9].op=ILENA;instructions[10].op=IINDB;instructions[11].op=IINDW;
     instructions[12].op=IINDL;instructions[13].op=IINDF;instructions[14].op=INEGF;instructions[15].op=IMOVM;instructions[16].op=ILENC;
     instructions[17].op=IHEADB;instructions[18].op=IHEADW;instructions[19].op=IHEADL;instructions[20].op=IHEADF;instructions[21].op=ILENL;instructions[22].op=IINDC;instructions[23].op=IEXPW;instructions[24].op=IEXPL;instructions[25].op=IEXPF;instructions[26].op=IHEADM;
-    m.prog=instructions;m.nprog=27;
+    instructions[27].op=IBEQF;instructions[28].op=IBNEF;instructions[29].op=IBLTF;
+    instructions[30].op=IBLEF;instructions[31].op=IBGTF;instructions[32].op=IBGEF;
+    m.prog=instructions;m.nprog=33;
     for(i=1;i<=5;i++) {
-        fail=i;assert(!compile(&m,27,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
+        fail=i;assert(!compile(&m,33,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
     }
     fail=0;
-    assert(!compile(nil,27,nil));assert(!compile(&m,3,nil));
-    assert(compile(&m,27,nil));assert(m.jit && !m.compiled && m.prog==instructions);
+    assert(!compile(nil,33,nil));assert(!compile(&m,3,nil));
+    assert(compile(&m,33,nil));assert(m.jit && !m.compiled && m.prog==instructions);
     assert(m.jit->entry[IMOVP]==nil);
     assert(protections==1 && mappings==1);
     R.s=&a;R.m=&b;R.d=&out;
 #if EXECUTE_NATIVE
     assert(m.jit->entry[ISUBW](&R)==1 && out==4);
     R.d=&a;assert(m.jit->entry[IADDW](&R)==1 && a==10);
-    arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);powers(&m);headrecords(&m);
+    arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);powers(&m);headrecords(&m);realbranches(&m);
 #endif
-    assert(compile(&m,27,nil));dropmodule(&m);
-    for(i=0;i<27;i++)instructions[i].op=IMOVP;
-    assert(!compile(&m,27,nil) && !m.jit);
+    assert(compile(&m,33,nil));dropmodule(&m);
+    for(i=0;i<33;i++)instructions[i].op=IMOVP;
+    assert(!compile(&m,33,nil) && !m.jit);
     owned=calloc(1,sizeof(*owned));assert(owned);
     owned->prog=calloc(1,sizeof(Inst));assert(owned->prog);
     owned->nprog=1;owned->prog[0].op=IADDW;
@@ -495,10 +566,16 @@ a=load.index('void\nfreemod(');b=load.index('\nvoid\nunload(',a)
 unit=unit.replace('FREEMOD',load[a:b])
 xec=Path(os.environ.get('LEAF_VM_SOURCE',str(root/'libinterp/xec.c'))).read_text()
 parts=[]
-for signature in ('static WORD\nshiftcount(', 'static List*\nlisthead(', 'OP(lenl)', 'OP(headb)', 'OP(headw)', 'OP(headl)', 'OP(headf)', 'OP(headm)', 'OP(iexpw)', 'OP(iexpl)', 'OP(iexpf)', 'OP(movm)', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
-    if signature=='static List*\nlisthead(' and signature not in xec:continue
-    a=xec.index(signature);b=xec.index('\n}',a)+2
-    parts.append(xec[a:b])
+for signature in ('static WORD\nshiftcount(', 'static List*\nlisthead(', 'OP(lenl)', 'OP(headb)', 'OP(headw)', 'OP(headl)', 'OP(headf)', 'OP(headm)', 'static void\nbranchreal(', 'OP(beqf)', 'OP(bnef)', 'OP(bltf)', 'OP(blef)', 'OP(bgtf)', 'OP(bgef)', 'OP(iexpw)', 'OP(iexpl)', 'OP(iexpf)', 'OP(movm)', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
+    if signature.startswith('static ') and signature not in xec:continue
+    start=xec.index(signature);brace=xec.index('{',start);depth=0
+    for token in re.finditer(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*[\s\S]*?\*/|//[^\n]*|[{}]',xec[brace:]):
+        if token.group()=='{':depth+=1
+        elif token.group()=='}':
+            depth-=1
+            if depth==0:
+                parts.append(xec[start:brace+token.end()]);break
+    else:raise ValueError(signature)
 string=(root/'libinterp/string.c').read_text()
 for op in ('lenc','indc'):
     a=string.index('OP('+op+')');b=string.index('\n}',a)+2
@@ -517,5 +594,5 @@ with tempfile.TemporaryDirectory(prefix='leaf64-runtime-') as directory:
     cmd+=shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
     cmd+=includes
     cmd+=['-I'+str(root/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
-    subprocess.run(cmd+[str(source),'-o',str(td/'runtime')],check=True)
+    subprocess.run(cmd+[str(source),'-lm','-o',str(td/'runtime')],check=True)
     subprocess.run([str(td/'runtime')],check=True)

@@ -29,6 +29,7 @@ CORE = [
     'libinterp/tests/channel-queues.py',
     'libinterp/tests/channel-transfers.py',
     'libinterp/tests/integer-ops.py',
+    'libinterp/tests/real-branches.py',
     'libinterp/tests/geometry-arithmetic.py',
     'libinterp/tests/math-bessel.py',
     'libinterp/tests/runtime-protect.py',

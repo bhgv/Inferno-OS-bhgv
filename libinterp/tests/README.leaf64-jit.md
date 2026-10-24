@@ -26,10 +26,12 @@ Array lengths are native in both word models; fixed byte/word/big/real element
 addresses are native when VM words hold pointers. Header offsets are explicit
 layout inputs derived from Array, and all rejected inputs use the VM helper.
 Generic descriptor indexing remains in the interpreter. String lengths and raw
-record moves of up to 128 bytes are also native; larger moves use optab/memmove. Scalar list heads are native, as are list
-length scans through 128 nodes; longer scans retain the VM helper.
+record moves of up to 128 bytes are also native; larger moves use optab/memmove.
+Scalar list heads are native, as are list length scans through 128 nodes; longer scans retain the VM helper.
 Binary64 negation is native: only the sign bit changes, preserving signed zeros,
-infinities and NaN payloads without requiring floating-point registers.
+infinities and NaN payloads without requiring floating-point registers. Real
+comparison branches handle normal values, zeros and infinities natively, while
+NaNs/subnormals retain the C comparison path.
 Other floating arithmetic, reference ownership, allocation, calls, returns, exceptions
 and scheduling retain the existing decoder/optab implementations. Unsupported
 operations return no code; no stub falsely claims an operation was completed.
@@ -72,7 +74,7 @@ python3 libinterp/tests/slice-tokenize-suite.py --core
 
 The cross-architecture test compiles the production encoders, disassembles every
 emitted byte and executes AMD64, AArch64 and RV64 machine code in Unicorn. Its
-148,812 checks compare against independent Python integer/branch oracles for both
+174,120 checks compare against independent Python integer/branch oracles for both
 VM word widths. It covers overflow boundaries, randomized values, exact input
 aliases, partial move overlaps, four-byte-aligned long operands, high native
 addresses, PC updates, neighboring-byte guards, sizing, capacity rejection and
@@ -145,7 +147,7 @@ three 64-bit backends. See [the array-address guide](README.array-indices.md) fo
 the checked VM helper, zero-width semantics, native address guards, word-model
 limitations and independent parent regressions. The array-only emulator matrix
 adds 26,100 semantic executions plus shared sizing/ABI checks. The complete
-three-architecture machine-code suite now has 148,812 checks; the dedicated VM
+three-architecture machine-code suite now has 174,120 checks; the dedicated VM
 address fixture adds 40,023 checks. These counts do not imply whole target boot
 or a new Dis64 ABI.
 
@@ -173,8 +175,9 @@ using integer instructions. Tests cover both zeros, subnormals, infinities,
 quiet/signaling NaN bit patterns, random bit patterns, exact aliases and partial
 overlap. The native AMD64 compiler fixture executes the published code with real
 REG offsets under ASan/UBSan in both word models. The RISC-V fixture additionally
-checks RV32 compatibility and reports 2,012 checks. Floating addition, conversion
-and comparison still use their existing VM implementations.
+checks RV32 compatibility and reports 2,048 checks. Floating addition and
+conversion still use their existing VM implementations.
+Real comparisons use the guarded leaves described below.
 
 ## Bounded record copies and string lengths
 
@@ -207,13 +210,13 @@ LEAF64_CASE=copy python3 libinterp/tests/leaf64-jit.py
 LEAF64_CASE=string python3 libinterp/tests/leaf64-jit.py
 ```
 
-The copy subset reports 3,582 checks including encoder checks. It compares all
+The copy subset reports 3,618 checks including encoder checks. It compares all
 4 KiB of surrounding storage against snapshot-copy oracles for overlapping,
 identical and disjoint spans, byte alignment, overwritten count operands,
 128/129 boundaries, signed extrema and unmapped source/destination spans on
-rejection. The string subset reports 816 checks including encoder checks, with
+rejection. The string subset reports 852 checks including encoder checks, with
 four-byte String.len offsets, both word widths, source/result aliases and
-unchanged destinations on fallback. The complete driver reports 148,812 checks.
+unchanged destinations on fallback. The complete driver reports 174,120 checks.
 The native AMD64 fixture compares copies with libc memmove, tests the real
 String/REG offsets and runs actual VM fallback for length 129, invalid counts,
 C-null strings and INT_MIN metadata. Both word models pass ASan/UBSan.
@@ -257,7 +260,7 @@ LEAF64_CASE=listlen python3 libinterp/tests/leaf64-jit.py
 python3 libinterp/tests/lists.py
 ```
 
-The full emulator driver reports 148,812 checks. Head checks cover byte/word/big/
+The full emulator driver reports 174,120 checks. Head checks cover byte/word/big/
 real bit patterns, high native pointers, source/result aliases, partial overlap
 with inline payloads and unchanged surrounding object/operand bytes. Length
 checks cover both word widths, 0/1/127/128/129 boundaries, null links, cycles,
@@ -302,7 +305,7 @@ STRING_INDEX_CASE=alignment python3 libinterp/tests/string-codecs.py
 STRING_INDEX_CASE=stores python3 libinterp/tests/string-codecs.py
 ```
 
-The complete JIT driver reports 148,812 checks. Character tests cover both word
+The complete JIT driver reports 174,120 checks. Character tests cover both word
 widths, ASCII/rune strides, signed Rune extrema, high-word indices, nil/H owners,
 INT_MIN metadata, output aliases with owner/index/payload and whole-buffer
 preservation. Rejected indices also use an owner header at a mapped-page edge
@@ -351,8 +354,8 @@ python3 libinterp/tests/leaf64-runtime.py
 python3 limbo/tests/fold-effects.py
 ```
 
-The full machine-code suite reports 148,812 checks; the focused power subset
-reports 12,048 including encoder checks. Independent Python modular-pow oracles
+The full machine-code suite reports 174,120 checks; the focused power subset
+reports 12,108 including encoder checks. Independent Python modular-pow oracles
 cover both word models, full-width/high-word exponents, modular extrema, zero,
 negative bases and exact/partial operand aliases. Negative exponents also use
 an unmapped base operand to verify guard order and unchanged output/PC.
@@ -372,7 +375,7 @@ process inspection is disabled because the sandbox cannot inspect target
 processes. This does not disable address or stack instrumentation. Parent
 c15785e reproduces an unaligned WORD64 power load via LEAF_VM_SOURCE and an
 unaligned LONG load in the WORD32 fixture via POWER_VM_SOURCE. Current sources
-pass both. The RISC-V regression fixture reports 2,012 checks and explicitly
+pass both. The RISC-V regression fixture reports 2,048 checks and explicitly
 rejects power leaves without M or on RV32, and real-power leaves on every model.
 Full Inferno boots and arm64/riscv64 target hardware execution remain separate.
 
@@ -390,7 +393,7 @@ LEAF64_CASE=headcopy python3 libinterp/tests/leaf64-jit.py
 python3 libinterp/tests/leaf64-runtime.py
 ```
 
-The focused subset reports 2,556 checks including encoder checks. Whole-buffer
+The focused subset reports 2,592 checks including encoder checks. Whole-buffer
 snapshot oracles cover both copy directions, exact/partial overlap, overwritten
 count operands, aliases with the owner/count slots and the 128/129 boundary.
 Nil/H owner tests also use an unmapped count; zero/rejected-count tests use an
@@ -398,8 +401,66 @@ unmapped destination. Native AMD64 tests compare emitted code and forced real
 headm helpers against libc memmove, including large-record fallback and owner
 validation before poisoned counts. Both word models pass ASan/UBSan.
 
-The complete native-code suite reports 148,812 checks, and explicitly keeps
+The complete native-code suite reports 174,120 checks, and explicitly keeps
 pointer/mapped heads and tails unsupported. Those operations continue to use
 the VM ownership movers. Full target boots and hardware arm64/riscv64 execution
 remain separate. See README.pointer-maps.md for the accompanying constructor,
 heap pointer-map and reference-count changes.
+
+## Guarded real comparison branches
+
+IBEQF/IBNEF/IBLTF/IBLEF/IBGTF/IBGEF now emit native leaves on AMD64, AArch64
+and RV64. Accepted operands are binary64 normal values, signed zeros and
+infinities. Integer instructions normalize both zeros to one key and reverse
+the low 63 bits of negative encodings; signed key comparisons then preserve
+numeric order. No emitted instruction touches floating registers or FP status.
+RV64 needs neither M nor floating-point instructions for these leaves; RV32
+retains interpreter dispatch. No performance claim is made for this baseline.
+
+NaN and subnormal operands return zero without changing memory, PC, rounding or
+FP flags. NaNs must reach the existing C comparison for unordered results and
+signaling behavior. Subnormals also stay in C so host flush/denormal-control
+modes are not bypassed by mathematical bit ordering. A rejected first operand
+is classified before accessing the middle value. A false comparison never reads
+the target operand. Supported true comparisons publish the full native Dis PC;
+Module.compiled, frames, GC maps and the decoder/quantum loop remain unchanged.
+
+The VM wrappers share branchreal, which captures both operands with memmove and
+loads the target only on a taken branch. This removes undefined native REAL and
+Inst* alignment assumptions without changing the six numeric C predicates.
+In particular, NaN inequality remains true and the other unordered predicates
+remain false according to their existing C operators.
+
+```
+LEAF64_CASE=realbranch python3 libinterp/tests/leaf64-jit.py
+python3 libinterp/tests/real-branches.py
+REAL_BRANCH_CASE=target python3 libinterp/tests/real-branches.py
+python3 libinterp/tests/leaf64-runtime.py
+```
+
+The full JIT driver reports 174,120 checks. The focused real-branch run reports
+25,839 including encoder checks: all six predicates, both word models, signed
+zeros, normal boundaries, infinities, positive/negative quiet/signaling NaNs,
+subnormals, random raw bits, high PCs and four-byte-aligned values/targets.
+Rejected first operands also use an unmapped middle value, and rejected/false
+branches use an unmapped target. Operand bytes and REG pointer fields remain
+unchanged. The RISC-V regression fixture reports 2,048 checks and includes no-M
+and RV32 emission/fallback checks for every new predicate.
+
+The VM comparison fixture reports 50,752 checks per word model, 101,504 total.
+It tests every byte alignment, two rounding modes, unchanged surrounding data,
+false branches with invalid targets and pre-existing FP exception flags. Separate
+volatile numeric operator oracles also compare exact C-path flags for NaNs and
+subnormals, alongside the normal-value flag-preservation checks. The
+native AMD64 fixture executes emitted leaves and forced real VM helpers against
+numeric C oracles, checks exact native completion/fallback classification and
+preservation of rounding/FP flags by every emitted leaf, and then verifies the
+C fallback PC result. One rounding pass seeds FE_INEXACT; the other seeds all
+standard FP flags. Both word models and the dedicated VM fixture pass ASan/UBSan
+with stack instrumentation retained; LSan process inspection is disabled.
+
+REAL_BRANCH_SOURCE substitutes xec.c. Parent 77b9d7d reproduces an unaligned REAL
+load in the default fixture and an unaligned Inst* target load with
+REAL_BRANCH_CASE=target. The corrected functions pass both cases. The core suite
+now has 29 host drivers. Actual arm64/riscv64 hardware FP-state acceptance and
+complete Inferno boots remain separate from these emulator and host checks.

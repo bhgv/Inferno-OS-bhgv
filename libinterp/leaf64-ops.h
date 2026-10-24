@@ -13,7 +13,7 @@ struct LeafOp {
 };
 enum {
 	LeafMove = 1, LeafAlu, LeafBranch, LeafJump, LeafAddress, LeafNop,
-	LeafShift, LeafDivide, LeafLength, LeafIndex, LeafNegReal,
+	LeafRealBranch, LeafShift, LeafDivide, LeafLength, LeafIndex, LeafNegReal,
 	LeafPower, LeafHeadCopy, LeafCopy, LeafStringIndex, LeafStringLength, LeafHead, LeafListLength,
 };
 
@@ -24,6 +24,11 @@ leafop(LeafOp *p, int op, int wordbytes)
 	memset(p, 0, sizeof(*p));
 	p->bytes = wordbytes;
 	switch(op){
+	case IBEQF: case IBNEF: case IBLTF: case IBLEF: case IBGTF: case IBGEF:
+		p->kind = LeafRealBranch; p->bytes = 8;
+		p->condition = op == IBEQF ? 0 : op == IBNEF ? 1 : op == IBLTF ? 2 :
+			op == IBLEF ? 3 : op == IBGTF ? 4 : 5;
+		break;
 	case IEXPW: p->kind = LeafPower; break;
 	case IEXPL: p->kind = LeafPower; p->bytes = 8; break;
 	case IHEADB: p->bytes = 1; /* fall through */

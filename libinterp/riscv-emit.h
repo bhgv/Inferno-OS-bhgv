@@ -101,13 +101,32 @@ rvguard(RvBuf *b, int relation, int left, int right)
 	rvi(b, 0x67, 0, Rvzero, Rvra, 0);
 }
 
+/* Turn t3/t4 bits into signed keys using t5/t6, leaving FP state untouched. */
+static void
+rvrealkey(RvBuf *b, int reg)
+{
+	rvi(b, 0x13, 1, Rvt5, reg, 1);
+	rvbranch(b, 0, Rvt5, Rvzero, 60);
+	rvi(b, 0x13, 5, Rvt5, Rvt5, 53);
+	rvguard(b, 1, Rvt5, Rvzero);
+	rvi(b, 0x13, 0, Rvt6, Rvzero, 2047);
+	rvbranch(b, 1, Rvt5, Rvt6, 20);
+	rvi(b, 0x13, 1, Rvt5, reg, 12);
+	rvguard(b, 0, Rvt5, Rvzero);
+	rvi(b, 0x13, 5, Rvt5, reg, 0x400|63);
+	rvi(b, 0x13, 5, Rvt5, Rvt5, 1);
+	rvr(b, 0x33, 4, 0, reg, reg, Rvt5);
+	rvbranch(b, 0, Rvzero, Rvzero, 8);
+	rvi(b, 0x13, 0, reg, Rvzero, 0);
+}
+
 /* Return instruction count, or 0 for unsupported/invalid/overflow. out==0
  * performs the same bounded sizing pass without touching memory. */
 static int
 rvemit(u32int *out, int cap, RvLayout *abi, int op)
 {
 	RvBuf b;
-	int bytes, f3, f7, wide, rs, binary, branch, swap, invert, shift, division, scale;
+	int bytes, f3, f7, wide, rs, binary, branch, swap, invert, shift, division, scale, realbranch;
 
 	if((abi->xlen != 32 && abi->xlen != 64) ||
 	   (abi->wordbytes != 4 && abi->wordbytes != 8) ||
@@ -117,8 +136,14 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	   (abi->pc|abi->s|abi->d|abi->m) % (abi->xlen/8) != 0)
 		return 0;
 	b.out=out; b.n=0; b.cap=cap; b.bad=0; b.abi=abi;
-	bytes=abi->wordbytes; f3=0; f7=0; binary=0; branch=0; swap=0; invert=0; shift=0; division=0;
+	bytes=abi->wordbytes; f3=0; f7=0; binary=0; branch=0; swap=0; invert=0; shift=0; division=0; realbranch=0;
 	switch(op) {
+	case IBEQF: case IBNEF: case IBLTF: case IBLEF: case IBGTF: case IBGEF:
+		if(abi->xlen != 64) return 0;
+		bytes=8; branch=1; realbranch=1;
+		f3=op == IBEQF ? 0 : op == IBNEF ? 1 : (op == IBLTF || op == IBGTF) ? 4 : 5;
+		swap=op == IBLEF || op == IBGTF;
+		break;
 	case IEXPW: case IEXPL:
 		if(abi->xlen != 64 || !abi->hasm) return 0;
 		rvptr(&b, Rvt0, abi->s); rvload(&b, Rvt4, Rvt0, abi->wordbytes);
@@ -388,6 +413,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		rvptr(&b, Rvt0, abi->s);
 		rvptr(&b, Rvt1, abi->m);
 		rvload(&b, Rvt4, Rvt0, shift ? abi->wordbytes : bytes);
+		if(realbranch) rvrealkey(&b, Rvt4);
 		/* Reject exceptional inputs before reading the value operand or touching d. */
 		if(shift || division){
 			if(shift){
@@ -399,6 +425,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 			rvi(&b, 0x67, 0, Rvzero, Rvra, 0);
 		}
 		rvload(&b, Rvt3, Rvt1, bytes);
+		if(realbranch) rvrealkey(&b, Rvt3);
 		if(binary) {
 			/* RV64 W arithmetic truncates to 32 bits; bitwise operations
 			 * have no W encoding and are truncated by SW instead. */

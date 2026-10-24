@@ -15,7 +15,7 @@ from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
 root = Path(__file__).resolve().parents[2]
-ops = '''IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF'''.split()
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
             code, registers, data, stack = 0x10000, 0x100020000, 0x100030000, 0x40000
             oldpc, target = 0x123456789, 0x987654321
 
-            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None):
+            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False):
                 """Exercise a leaf with high native pointers, four-byte alignment and exact aliases."""
                 if arch == 'amd64':
                     u = Uc(UC_ARCH_X86,UC_MODE_64); arg, result = UC_X86_REG_RDI, UC_X86_REG_RAX
@@ -202,6 +202,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     metadata[layout.arraydata:layout.arraydata+8]=struct.pack('<Q',backing)
                     u.mem_write(data+0x500,bytes(metadata))
                 before = bytes(u.mem_read(output-8,32))
+                if badtarget:d=0x100060000
                 u.mem_write(registers,struct.pack('<QQQQ',oldpc,s,d,m))
                 u.reg_write(arg,registers)
                 end=code+0x800
@@ -220,6 +221,37 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','realbranch'):
+                floats=[0,1<<63,0x3ff0000000000000,0xbff0000000000000,
+                        0x0010000000000000,0x8010000000000000,0x7fefffffffffffff,0xffefffffffffffff,
+                        0x7ff0000000000000,0xfff0000000000000,1,0x8000000000000001,
+                        0xfffffffffffff,0x800fffffffffffff,0x7ff8000000000042,0xfff8000000000042,
+                        0x7ff0000000000042,0xfff0000000000042]
+                def native_real(bits):
+                    exponent=(bits>>52)&2047
+                    fraction=bits&((1<<52)-1)
+                    return fraction==0 or 0<exponent<2047
+                realpairs=[(a,b) for a in floats for b in floats]+[(rng.getrandbits(64),rng.getrandbits(64)) for _ in range(64)]
+                for name,relation in [('IBEQF',0),('IBNEF',1),('IBLTF',2),('IBLEF',3),('IBGTF',4),('IBGEF',5)]:
+                    for a,b in realpairs:
+                        left=struct.unpack('<d',struct.pack('<Q',a))[0]
+                        right=struct.unpack('<d',struct.pack('<Q',b))[0]
+                        take=[left==right,left!=right,left<right,left<=right,left>right,left>=right][relation]
+                        valid=native_real(a) and native_real(b)
+                        _,pc,before,after,_=run(name,a,b,expect=int(valid))
+                        assert pc==(target if valid and take else oldpc),(arch,wb,name,hex(a),hex(b),pc)
+                        assert before==after
+                        checks+=1
+                        if not valid or not take:
+                            _,pc,before,after,_=run(name,a,b,expect=int(valid),badtarget=True)
+                            assert pc==oldpc and before==after
+                            checks+=1
+                    for a in floats:
+                        if not native_real(a):
+                            _,pc,before,after,_=run(name,a,poison=True,expect=0,badtarget=True)
+                            assert pc==oldpc and before==after
+                            checks+=1
+                if case=='realbranch':continue
             if case in ('','headcopy'):
                 for length in (0,1,2,3,7,8,15,16,31,32,63,64,127,128):
                     for delta in (-17,-1,0,1,4,17,129):

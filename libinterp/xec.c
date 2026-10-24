@@ -283,12 +283,40 @@ OP(bltl) { if(V(s) <  V(m)) JMP(d); }
 OP(blel) { if(V(s) <= V(m)) JMP(d); }
 OP(bgtl) { if(V(s) >  V(m)) JMP(d); }
 OP(bgel) { if(V(s) >= V(m)) JMP(d); }
-OP(beqf) { if(F(s) == F(m)) JMP(d); }
-OP(bnef) { if(F(s) != F(m)) JMP(d); }
-OP(bltf) { if(F(s) <  F(m)) JMP(d); }
-OP(blef) { if(F(s) <= F(m)) JMP(d); }
-OP(bgtf) { if(F(s) >  F(m)) JMP(d); }
-OP(bgef) { if(F(s) >= F(m)) JMP(d); }
+/* Compare captured real values and read a branch target only when it is taken. */
+static void
+branchreal(int condition)
+{
+	REAL left, right;
+	int take;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	take = 0;
+	switch(condition){
+	case 0: take = left == right; break;
+	case 1: take = left != right; break;
+	case 2: take = left < right; break;
+	case 3: take = left <= right; break;
+	case 4: take = left > right; break;
+	case 5: take = left >= right; break;
+	}
+	if(take)
+		memmove(&R.PC, R.d, sizeof(R.PC));
+}
+
+/* Equality remains false for unordered real operands. */
+OP(beqf) { branchreal(0); }
+/* Inequality remains true for unordered real operands. */
+OP(bnef) { branchreal(1); }
+/* Ordered real less-than comparison. */
+OP(bltf) { branchreal(2); }
+/* Ordered real less-than-or-equal comparison. */
+OP(blef) { branchreal(3); }
+/* Ordered real greater-than comparison. */
+OP(bgtf) { branchreal(4); }
+/* Ordered real greater-than-or-equal comparison. */
+OP(bgef) { branchreal(5); }
 OP(beqc) { if(stringcmp(S(s), S(m)) == 0) JMP(d); }
 OP(bnec) { if(stringcmp(S(s), S(m)) != 0) JMP(d); }
 OP(bltc) { if(stringcmp(S(s), S(m)) <  0) JMP(d); }
