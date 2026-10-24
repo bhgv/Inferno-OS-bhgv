@@ -106,12 +106,17 @@ OP(insc)
 	destroy(old);
 }
 
+/* Validate the representation before negation, subtraction or allocation. */
 String*
 slicer(ulong start, ulong v, String *ds)
 {
 	String *ns;
 	int l, nc;
 
+	if(ds == nil)
+		error(exNilref);
+	if(ds != H && ds->len == (-0x7fffffff-1))
+		error(exHeap);
 	if(ds == H) {
 		if(start == 0 && v == 0)
 			return H;
@@ -119,6 +124,8 @@ slicer(ulong start, ulong v, String *ds)
 		error(exBounds);
 	}
 
+	if(v < start || v > 0x7fffffff)
+		error(exBounds);
 	nc = v - start;
 	if(ds->len < 0) {
 		l = -ds->len;
@@ -142,14 +149,20 @@ slicer(ulong start, ulong v, String *ds)
 	return ns;
 }
 
+/* Capture complete VM words before narrowing validated slice bounds. */
 OP(slicec)
 {
-	String *ns, **sp;
+	WORD start, end;
+	String *old, *result;
 
-	ns = slicer(W(s), W(m), S(d));
-	sp = R.d;
-	destroy(*sp);
-	*sp = ns;
+	memmove(&start, R.s, sizeof(start));
+	memmove(&end, R.m, sizeof(end));
+	memmove(&old, R.d, sizeof(old));
+	if(start < 0 || end < start || (uvlong)end > 0x7fffffff)
+		error(exBounds);
+	result = slicer((ulong)start, (ulong)end, old);
+	memmove(R.d, &result, sizeof(result));
+	destroy(old);
 }
 
 void
@@ -174,6 +187,11 @@ addstring(String *s1, String *s2, int append)
 	String *ns;
 	int l, l1, l2;
 
+	if(s1 == nil || s2 == nil)
+		error(exNilref);
+	if((s1 != H && s1->len == (-0x7fffffff-1)) ||
+	   (s2 != H && s2->len == (-0x7fffffff-1)))
+		error(exHeap);
 	if(s1 == H) {
 		if(s2 == H)
 			return H;
@@ -235,16 +253,18 @@ addstring(String *s1, String *s2, int append)
 	return ns;
 }
 
+/* Capture both owners before allocation and publish before releasing the old owner. */
 OP(addc)
 {
-	String *ns, **sp;
+	String *left, *right, *old, *result;
 
-	ns = addstring(S(m), S(s), R.m == R.d);
-
-	sp = R.d;
-	if(ns != *sp) {
-		destroy(*sp);
-		*sp = ns;
+	memmove(&left, R.m, sizeof(left));
+	memmove(&right, R.s, sizeof(right));
+	memmove(&old, R.d, sizeof(old));
+	result = addstring(left, right, R.m == R.d);
+	if(result != old){
+		memmove(R.d, &result, sizeof(result));
+		destroy(old);
 	}
 }
 
@@ -255,9 +275,9 @@ OP(cvtca)
 	Rune *r;
 	char *p;
 	String *ss;
- 	Array *a, **ap;
+	Array *a, *old;
 
-	ss = S(s);
+	memmove(&ss, R.s, sizeof(ss));
 	if(ss == H) {
 		a = mem2array(nil, 0);
 		goto r;
@@ -281,19 +301,19 @@ OP(cvtca)
 		error(exHeap);
 	a = mem2array(ss->Sascii, ss->len);
 
-r:	ap = R.d;
-	destroy(*ap);
-	*ap = a;
+r:	memmove(&old, R.d, sizeof(old));
+	memmove(R.d, &a, sizeof(a));
+	destroy(old);
 }
 
 /* Validate complete VM-array lengths before narrowing to the string constructor. */
 OP(cvtac)
 {
 	Array *a;
-	String *ds, **dp;
+	String *ds, *old;
 
 	ds = H;
-	a = A(s);
+	memmove(&a, R.s, sizeof(a));
 	if(a != H){
 		if(a == nil)
 			error(exNilref);
@@ -304,9 +324,9 @@ OP(cvtac)
 		ds = c2string((char*)a->data, (int)a->len);
 	}
 
-	dp = R.d;
-	destroy(*dp);
-	*dp = ds;
+	memmove(&old, R.d, sizeof(old));
+	memmove(R.d, &ds, sizeof(ds));
+	destroy(old);
 }
 
 /* Reject invalid lengths before taking the absolute representation size. */
@@ -331,49 +351,41 @@ OP(lenc)
 	memmove(R.d, &length, sizeof(length));
 }
 
+/* Parse through the validated UTF-8 view and store through an unaligned slot. */
 OP(cvtcw)
 {
 	String *s;
+	WORD value;
 
-	s = S(s);
-	if(s == H)
-		W(d) = 0;
-	else
-	if(s->len < 0)
-		W(d) = strtol(string2c(s), nil, 10);
-	else {
-		s->Sascii[s->len] = '\0';
-		W(d) = strtol(s->Sascii, nil, 10);
-	}
+	memmove(&s, R.s, sizeof(s));
+	value = strtol(string2c(s), nil, 10);
+	memmove(R.d, &value, sizeof(value));
 }
 
+/* Capture the owner before parsing, including source/destination aliases. */
 OP(cvtcf)
 {
 	String *s;
+	REAL value;
 
-	s = S(s);
-	if(s == H)
-		F(d) = 0.0;
-	else
-	if(s->len < 0)
-		F(d) = strtod(string2c(s), nil);
-	else {
-		s->Sascii[s->len] = '\0';
-		F(d) = strtod(s->Sascii, nil);
-	}
+	memmove(&s, R.s, sizeof(s));
+	value = strtod(string2c(s), nil);
+	memmove(R.d, &value, sizeof(value));
 }
 
 /* Format the complete VM word, including its sign and terminating NUL. */
 OP(cvtwc)
 {
-	String *ds, **dp;
+	String *ds, *old;
+	WORD value;
 
+	memmove(&value, R.s, sizeof(value));
 	ds = newstring(24);
-	ds->len = sprint(ds->Sascii, "%lld", (vlong)W(s));
+	ds->len = sprint(ds->Sascii, "%lld", (vlong)value);
 
-	dp = R.d;
-	destroy(*dp);
-	*dp = ds;
+	memmove(&old, R.d, sizeof(old));
+	memmove(R.d, &ds, sizeof(ds));
+	destroy(old);
 }
 
 /*
@@ -381,25 +393,30 @@ OP(cvtwc)
  */
 OP(cvtlc)
 {
-	String *ds, **dp;
+	String *ds, *old;
+	LONG value;
 
+	memmove(&value, R.s, sizeof(value));
 	ds = newstring(24);
-	ds->len = sprint(ds->Sascii, "%lld", V(s));
+	ds->len = sprint(ds->Sascii, "%lld", value);
 	
-	dp = R.d;
-	destroy(*dp);
-	*dp = ds;
+	memmove(&old, R.d, sizeof(old));
+	memmove(R.d, &ds, sizeof(ds));
+	destroy(old);
 }
 
+/* Capture the real value before allocating or replacing its destination owner. */
 OP(cvtfc)
 {
-	String *ds, **dp;
+	String *ds, *old;
+	REAL value;
 
+	memmove(&value, R.s, sizeof(value));
 	ds = newstring(32);
-	ds->len = sprint(ds->Sascii, "%g", F(s));	
-	dp = R.d;
-	destroy(*dp);
-	*dp = ds;
+	ds->len = sprint(ds->Sascii, "%g", value);
+	memmove(&old, R.d, sizeof(old));
+	memmove(R.d, &ds, sizeof(ds));
+	destroy(old);
 }
 
 /*
@@ -413,6 +430,8 @@ string2c(String *s)
 	int l, nc;
 	Rune c, *r, *er;
 
+	if(s == nil)
+		error(exNilref);
 	if(s == H)
 		return "";
 
@@ -558,13 +577,18 @@ newrunes(int nr)
 	return s;
 }
 
+/* Reject invalid owners and INT_MIN before duplicating either representation. */
 String*
 stringdup(String *s)
 {
 	String *ns;
 
+	if(s == nil)
+		error(exNilref);
 	if(s == H)
 		return H;
+	if(s->len == (-0x7fffffff-1))
+		error(exHeap);
 
 	if(s->len >= 0) {
 		ns = newstring(s->len);

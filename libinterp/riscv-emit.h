@@ -16,6 +16,7 @@ struct RvLayout {
 	int listdata, listtail;
 	int fp, fixedtmp;
 	int arraytype, typesize;
+	int hasdiv;	/* Zmmul provides multiplication without division. */
 };
 typedef struct RvBuf RvBuf;
 struct RvBuf {
@@ -168,8 +169,8 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, 8);
 		break;
 	case IMULX: case IDIVX:
-		/* Fixed 64-bit intermediates require RV64M and explicit frame offsets. */
-		if(abi->xlen != 64 || !abi->hasm || abi->fp < 0 || abi->fp > 2047 || abi->fp%8 ||
+		/* Fixed intermediates need multiplication; DIVX additionally needs division. */
+		if(abi->xlen != 64 || !abi->hasm || (op == IDIVX && !abi->hasdiv) || abi->fp < 0 || abi->fp > 2047 || abi->fp%8 ||
 		   abi->fixedtmp < 0 || abi->fixedtmp > 2047 || abi->fixedtmp%4) return 0;
 		rvptr(&b, Rvt1, abi->fp); rvguard(&b, 1, Rvt1, Rvzero);
 		rvi(&b, 0x13, 0, Rvt5, Rvzero, -1); rvguard(&b, 1, Rvt1, Rvt5);
@@ -456,12 +457,12 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		break;
 	case IDIVB: case IMODB: bytes=1; /* fall through */
 	case IDIVW: case IMODW:
-		if(abi->xlen != 64 || !abi->hasm) return 0;
+		if(abi->xlen != 64 || !abi->hasdiv) return 0;
 		binary=1; division=1; f7=1;
 		f3=(op == IMODB || op == IMODW) ? 6 : 4;
 		break;
 	case IDIVL: case IMODL:
-		if(abi->xlen != 64 || !abi->hasm) return 0;
+		if(abi->xlen != 64 || !abi->hasdiv) return 0;
 		bytes=8; binary=1; division=1; f7=1; f3=op == IMODL ? 6 : 4;
 		break;
 	case ISHLL: case ISHRL: case ILSRL:

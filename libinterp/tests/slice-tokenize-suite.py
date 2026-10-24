@@ -42,6 +42,8 @@ CORE = [
     'libinterp/tests/real-arithmetic.py',
     'libinterp/tests/vm-addresses.py',
     'libinterp/tests/string-branches.py',
+    'libinterp/tests/string-slots.py',
+    'libinterp/tests/riscv-features.py',
     'libinterp/tests/reference-slots.py',
     'libinterp/tests/geometry-arithmetic.py',
     'libinterp/tests/math-bessel.py',

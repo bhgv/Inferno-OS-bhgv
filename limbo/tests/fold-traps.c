@@ -19,7 +19,7 @@ typedef struct String String;
 struct String {int len; char Sascii[16]; Rune Srune[16];};
 static String stringpool[64];
 static int stringused;
-static char exInval[] = "invalid", exZdiv[] = "zero divide", exNilref[] = "nil", exBounds[] = "bounds";
+static char exInval[] = "invalid", exZdiv[] = "zero divide", exNilref[] = "nil", exBounds[] = "bounds", exHeap[] = "heap";
 static char *raised;
 static jmp_buf escape;
 

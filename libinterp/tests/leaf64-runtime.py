@@ -577,7 +577,20 @@ int main(void) {
 }
 '''
 unit=unit.replace('comp-amd64.c','comp-'+backend+'.c').replace('EXECUTE_NATIVE','1' if backend=='amd64' else '0').replace('BACKEND',backend)
-if backend=='riscv64':unit='#define RV_CODE_PAGES\n#define __riscv_mul 1\n'+unit
+if backend=='riscv64':
+    profile=os.environ.get('RV_FEATURE_PROFILE','m')
+    if profile not in ('i','zmmul','m'):raise ValueError(profile)
+    definitions='#define RV_CODE_PAGES\n'
+    if profile!='i':definitions+='#define __riscv_mul 1\n'
+    if profile=='m':definitions+='#define __riscv_div 1\n'
+    unit=definitions+unit
+    unit=unit.replace('assert(m.jit->entry[IMOVP]==nil && m.jit->entry[IMULX] && m.jit->entry[IDIVX]);',
+        'assert(!m.jit->entry[IMOVP]);assert(!!m.jit->entry[IMULX]=='+str(int(profile!='i'))+');'
+        'assert(!!m.jit->entry[IDIVX]=='+str(int(profile=='m'))+');'
+        'assert(!!m.jit->entry[IDIVW]=='+str(int(profile=='m'))+');'
+        'assert(!!m.jit->entry[IMODW]=='+str(int(profile=='m'))+');')
+    unit=unit.replace('(sizeof(WORD)==8));', '(sizeof(WORD)==8 && '+str(int(profile!='i'))+'));')
+
 load=(root/'libinterp/load.c').read_text()
 a=load.index('void\nfreemod(');b=load.index('\nvoid\nunload(',a)
 unit=unit.replace('FREEMOD',load[a:b])

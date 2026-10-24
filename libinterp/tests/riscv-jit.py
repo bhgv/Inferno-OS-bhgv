@@ -22,13 +22,13 @@ cc = shlex.split(os.environ.get('CC', 'cc'))
 flags = shlex.split(os.environ.get('CFLAGS', '-O1 -g'))
 checks = 0
 rng = random.Random(0x1f3e)
-names = '''IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IEXPF INEGF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+names = '''IDIVB IMODB IDIVL IMODL IMULL IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IEXPF INEGF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 ISHLB ISHLW ISHRB ISHRW ILSRW IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW IBLEB
 IBLEW IBGTB IBGTW IBGEB IBGEW IDIVW IMODW IMOVP IFRAME ICALL IRET IADDF'''.split()
 
 class Layout(C.Structure):
-    _fields_ = [(name, C.c_int) for name in ('xlen','wordbytes','hasm','pc','s','d','m','arraylen','arraydata','stringlen','stringdata','listdata','listtail','fp','fixedtmp','arraytype','typesize')]
+    _fields_ = [(name, C.c_int) for name in ('xlen','wordbytes','hasm','pc','s','d','m','arraylen','arraydata','stringlen','stringdata','listdata','listtail','fp','fixedtmp','arraytype','typesize','hasdiv')]
 
 
 def signed(n, bits):
@@ -59,6 +59,7 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
     for xlen, wb in [(32,4),(64,4),(64,8)]:
         pb=xlen//8
         abi=Layout(xlen,wb,1,0,pb,pb*2,pb*3)
+        abi.hasdiv=1
         dis=Cs(CS_ARCH_RISCV,CS_MODE_RISCV64 if xlen==64 else CS_MODE_RISCV32)
         BASE=0x10000
         REG=0x20000 if xlen==32 else 0x100020000
@@ -220,6 +221,15 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
         checks+=1
         assert emit('IEXPW',no_m)[0]==emit('IEXPL',no_m)[0]==0
         checks+=1
+        # Zmmul keeps identical multiply leaves but cannot publish DIV/REM.
+        multiply_only=Layout.from_buffer_copy(abi)
+        multiply_only.hasdiv=0
+        for name in ('IDIVB','IMODB','IDIVW','IMODW','IDIVL','IMODL','IDIVX'):
+            assert emit(name,multiply_only)[0]==0, name
+            checks+=1
+        for name in ('IMULB','IMULW','IMULL','IMULX','IEXPW','IEXPL','IINDX'):
+            assert emit(name,multiply_only)==emit(name,abi), name
+            checks+=1
         # In-place source/destination keeps both operands until the store.
         u,result=run('ISUBW',struct.pack('<Q',3),struct.pack('<Q',7),sptr=D)
         assert int.from_bytes(result[:wb],'little')==4
