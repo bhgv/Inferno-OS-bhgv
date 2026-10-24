@@ -26,6 +26,7 @@ def function(signature):
 
 parts=[]
 if 'static uchar*\narrayaddress(' in source:parts.append(function('static uchar*\narrayaddress('))
+if 'static void\narrayindex(' in source:parts.append(function('static void\narrayindex('))
 parts += [function('OP('+name+')') for name in ('indx','indb','indw','indl','indf','lena')]
 unit=(root/'libinterp/tests/array-indices.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='array-indices-') as directory:

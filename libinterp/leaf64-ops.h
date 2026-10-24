@@ -7,6 +7,7 @@ struct LeafLayout {
 	int stringlen, stringdata;
 	int listdata, listtail;
 	int fp, fixedtmp;
+	int arraytype, typesize;
 };
 typedef struct LeafOp LeafOp;
 struct LeafOp {
@@ -15,7 +16,7 @@ struct LeafOp {
 enum {
 	LeafMove = 1, LeafAlu, LeafBranch, LeafJump, LeafAddress, LeafNop,
 	LeafRealBranch, LeafShift, LeafDivide, LeafLength, LeafIndex, LeafNegReal,
-	LeafFixedFrame, LeafRealResize, LeafIntegerReal, LeafFixedShift, LeafPower, LeafHeadCopy, LeafCopy, LeafStringIndex, LeafStringLength, LeafHead, LeafListLength,
+	LeafDescriptorIndex, LeafFixedFrame, LeafRealResize, LeafIntegerReal, LeafFixedShift, LeafPower, LeafHeadCopy, LeafCopy, LeafStringIndex, LeafStringLength, LeafHead, LeafListLength,
 };
 
 /* Classify only operations whose complete VM semantics fit a helper-free leaf. */
@@ -30,6 +31,9 @@ leafop(LeafOp *p, int op, int wordbytes)
 		p->condition = op == IBEQF ? 0 : op == IBNEF ? 1 : op == IBLTF ? 2 :
 			op == IBLEF ? 3 : op == IBGTF ? 4 : 5;
 		break;
+	case IINDX:
+		if(wordbytes != 8) return 0;
+		p->kind = LeafDescriptorIndex; break;
 	case IMULX: p->kind = LeafFixedFrame; break;
 	case IDIVX: p->kind = LeafFixedFrame; p->alu = 1; break;
 	case ICVTRF: p->kind = LeafRealResize; p->input = 4; p->bytes = 8; break;

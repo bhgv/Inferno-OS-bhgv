@@ -15,6 +15,7 @@ struct RvLayout {
 	int stringlen, stringdata;
 	int listdata, listtail;
 	int fp, fixedtmp;
+	int arraytype, typesize;
 };
 typedef struct RvBuf RvBuf;
 struct RvBuf {
@@ -144,6 +145,27 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		bytes=8; branch=1; realbranch=1;
 		f3=op == IBEQF ? 0 : op == IBNEF ? 1 : (op == IBLTF || op == IBGTF) ? 4 : 5;
 		swap=op == IBLEF || op == IBGTF;
+		break;
+	case IINDX:
+		/* A bounded positive descriptor product fits 62 bits before the final bound check. */
+		if(abi->xlen != 64 || abi->wordbytes != 8 || !abi->hasm ||
+		   abi->arraylen < 0 || abi->arraylen > 2047 || abi->arraydata < 0 || abi->arraydata > 2047 ||
+		   abi->arraytype < 0 || abi->arraytype > 2047 || abi->typesize < 0 || abi->typesize > 2047 ||
+		   (abi->arraylen|abi->arraydata|abi->arraytype)%8 || abi->typesize%4) return 0;
+		rvptr(&b, Rvt1, abi->s); rvload(&b, Rvt0, Rvt1, 8); rvguard(&b, 1, Rvt0, Rvzero);
+		rvi(&b, 0x13, 0, Rvt6, Rvzero, -1); rvguard(&b, 1, Rvt0, Rvt6);
+		rvi(&b, 0x03, 3, Rvt3, Rvt0, abi->arraylen); rvguard(&b, 5, Rvt3, Rvzero);
+		rvptr(&b, Rvt1, abi->d); rvload(&b, Rvt4, Rvt1, 8); rvguard(&b, 6, Rvt4, Rvt3);
+		rvi(&b, 0x03, 3, Rvt3, Rvt0, abi->arraytype); rvguard(&b, 1, Rvt3, Rvzero); rvguard(&b, 1, Rvt3, Rvt6);
+		rvi(&b, 0x03, 2, Rvt6, Rvt3, abi->typesize); rvguard(&b, 5, Rvt6, Rvzero);
+		rvi(&b, 0x03, 3, Rvt3, Rvt0, abi->arraydata);
+		rvi(&b, 0x13, 0, Rvt5, Rvt3, 0);
+		rvbranch(&b, 0, Rvt6, Rvzero, 84);
+		rvi(&b, 0x13, 0, Rvt0, Rvzero, -1); rvi(&b, 0x13, 5, Rvt0, Rvt0, 33);
+		rvguard(&b, 7, Rvt0, Rvt4); rvr(&b, 0x33, 0, 1, Rvt4, Rvt4, Rvt6); rvguard(&b, 7, Rvt0, Rvt4);
+		rvguard(&b, 1, Rvt3, Rvzero); rvi(&b, 0x13, 0, Rvt6, Rvzero, -1); rvguard(&b, 1, Rvt3, Rvt6);
+		rvr(&b, 0x33, 0, 0, Rvt5, Rvt3, Rvt4); rvguard(&b, 7, Rvt5, Rvt3);
+		rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, 8);
 		break;
 	case IMULX: case IDIVX:
 		/* Fixed 64-bit intermediates require RV64M and explicit frame offsets. */

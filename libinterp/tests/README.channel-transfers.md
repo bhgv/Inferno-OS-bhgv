@@ -58,3 +58,10 @@ checks do not establish full Inferno boot, hardware thread scheduling, GC
 interleavings, native JIT call/exception ABI integration or a new 64-bit backend.
 WORD32 uses real declarations with scalar WORD/UWORD substitutions while host
 pointers stay native. Dis layouts and instruction encodings are unchanged.
+
+The scalar/pointer sendvalue and receivevalue helpers now place channel owners
+and source/destination values in independently varying byte offsets. Existing
+140,462 WORD64 and 140,458 WORD32 scenarios per scheduler also compare the
+surrounding slot bytes. Both emulator and native-kernel variants pass ASan/UBSan.
+This checks the production byte-safe isend/irecv and movp paths; no scheduler
+or target OS boot is simulated by these host fixtures.

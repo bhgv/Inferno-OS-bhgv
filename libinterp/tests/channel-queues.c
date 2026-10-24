@@ -208,6 +208,28 @@ checkblocking(void)
 	}
 }
 
+/* Invalid channel owners must fail before touching queues, data or decoded registers. */
+static void checknilslots(void)
+{
+	union {uvlong align;uchar bytes[24];} slot;
+	uchar expected[24];
+	Channel *owner;
+	WORD data=42;
+	REG before;
+	int direction,kind,align;
+
+	for(direction=0;direction<2;direction++)for(kind=0;kind<2;kind++)for(align=0;align<8;align++){
+		sending=direction;owner=kind ? H : nil;
+		memset(slot.bytes,0xa5,sizeof(slot.bytes));memmove(slot.bytes+align,&owner,sizeof(owner));
+		memmove(expected,slot.bytes,sizeof(expected));
+		R.s=sending ? (void*)&data : slot.bytes+align;R.d=sending ? slot.bytes+align : (void*)&data;
+		R.IC=17;R.t=23;before=R;
+		assert(!kprotect(communicate,nil) && last_error==exNilref);
+		assert(!memcmp(&R,&before,sizeof(R)) && !memcmp(expected,slot.bytes,sizeof(expected)) && data==42 && live==0);
+		checks++;
+	}
+}
+
 /* Run complete alt preparation rather than replacing its registration logic. */
 static int
 prepare(void *unused)
@@ -357,7 +379,7 @@ int
 main(void)
 {
 	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"), "queues")) checkqueues();
-	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"), "blocking")) checkblocking();
+	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"), "blocking")) { checkblocking(); checknilslots(); }
 	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"), "alt")){ checkalts(); checkselfalt(); }
 	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"), "native")) checknative();
 	assert(live == 0 && worker.nerr == 0 && awakened == 0);

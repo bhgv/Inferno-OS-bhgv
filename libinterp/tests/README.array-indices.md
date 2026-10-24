@@ -25,8 +25,8 @@ This is not a verifier for arbitrary fabricated array storage or real allocation
 ownership, which remains the heap/runtime's responsibility.
 
 The fixture extracts actual arrayaddress, all five address instructions and lena
-with real VM declarations. It runs 20,019 WORD64 and 20,004 WORD32 checks (40,023
-total), including generic sizes 0/1/3/7/8/16, lengths zero through sixteen,
+with real VM declarations. It runs 10,247,040 WORD64 and 10,239,360 WORD32
+checks (20,486,400 total), with independent source/index/result byte offsets 0..7, including generic sizes 0/1/3/7/8/16, lengths zero through sixteen,
 negative/end/full-width indices, separate output slots, result/index aliases,
 result/source-pointer aliases, surrounding bytes, fixed strides with varied
 ignored descriptors, invalid metadata and native wrap. All fixture records are
@@ -70,3 +70,9 @@ The core VM/compiler checkpoint includes this driver. Full target boots, native
 ARM64/RV64 hardware, complete frame ABI migration, relocated-PC JIT calls and
 GC interaction with derived addresses are not established by these fixtures.
 Tk, security/cryptography and MIPS/SPARC/PowerPC backends are unchanged.
+
+Generic indX now also has a native WORD64 decoded-operation leaf on x86-64,
+ARM64 and RV64M. Descriptor offsets are supplied explicitly by the compiler
+adapter. See README.aggregate-slots.md for native-domain guards, zero-sized
+records, malformed layouts and the expanded C/native verification matrices.
+WORD32 retains the existing C narrowing behavior and declines this native leaf.

@@ -22,6 +22,7 @@ parts += [heap_source[heap_source.index('typedef struct ArrayCopy'):heap_source.
 parts += [function('libinterp/heap.c', 'void*\narraycpy('), function('libinterp/heap.c', 'void\nnewmp(')]
 parts += [function('libinterp/link.c','Modlink*\nmklinkmod('),function('libinterp/xec.c','List*\ncons(')]
 parts += [function('libinterp/xec.c','static Type*\nmoduletype(')]
+if 'static uchar*\narrayspan(' in Path(os.environ.get('HEAP_XEC_SOURCE',root/'libinterp/xec.c')).read_text():parts += [function('libinterp/xec.c','static uchar*\narrayspan(')]
 parts += [function('libinterp/xec.c','OP('+n+')') for n in ['newa','newaz','slicea','slicela']]
 unit=(root/'libinterp/tests/heap-bounds.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='heap-bounds-') as directory:

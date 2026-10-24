@@ -110,7 +110,39 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafFixedFrame){
+	if(p.kind == LeafDescriptorIndex){
+		/* Positive strides have bounded products; empty elements retain any backing identity. */
+		if(abi->arraylen < 0 || abi->arraylen > 2047 || abi->arraydata < 0 || abi->arraydata > 2047 ||
+		   abi->arraytype < 0 || abi->arraytype > 2047 || abi->typesize < 0 || abi->typesize > 2047 ||
+		   (abi->arraylen|abi->arraydata|abi->arraytype)%8 || abi->typesize%4) return 0;
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
+		x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3);
+		x64field(&b, 1, 0, abi->arraylen, 8);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9); x64guard(&b, 0x79);
+		x64ptr(&b, 0, abi->d); x64load(&b, 0, 8);
+		x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xc8); x64guard(&b, 0x72);
+		x64field(&b, 2, 11, abi->arraytype, 8);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xd2); x64guard(&b, 0x75);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xfa); x64byte(&b, 0xff); x64guard(&b, 0x75);
+		x64field(&b, 1, 2, abi->typesize, 4);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9); x64guard(&b, 0x79);
+		x64field(&b, 2, 11, abi->arraydata, 8);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9);
+		x64byte(&b, 0x74); empty=b.n; x64byte(&b, 0);
+		x64byte(&b, 0x48); x64byte(&b, 0x3d); x64word(&b, 0x7fffffff); x64guard(&b, 0x76);
+		x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0xaf); x64byte(&b, 0xc1);
+		x64byte(&b, 0x48); x64byte(&b, 0x3d); x64word(&b, 0x7fffffff); x64guard(&b, 0x76);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xd2); x64guard(&b, 0x75);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xfa); x64byte(&b, 0xff); x64guard(&b, 0x75);
+		x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xd0); x64guard(&b, 0x73);
+		x64byte(&b, 0xeb); done=b.n; x64byte(&b, 0);
+		b.bytes[empty]=b.n-empty-1;
+		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xd0);
+		b.bytes[done]=b.n-done-1;
+		x64ptr(&b, 2, abi->m); x64store(&b, 0, 8);
+	}else if(p.kind == LeafFixedFrame){
 		/* Read the explicit frame layout before capturing either arithmetic operand. */
 		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047) return 0;
 		x64ptr(&b, 1, abi->fp);

@@ -55,3 +55,8 @@ before this process, using scalar guards or arrays with repeated channels and a
 nil member. Rejection must occur before data transfer; exact foreign FIFO order
 and all process/result state remain unchanged. The previous head-only test
 incorrectly admitted a conflicting alt when a foreign receiver came first.
+
+The blocking group additionally checks 32 nil/H owner cases per scheduler/word
+combination at all byte alignments. It asserts the VM nil-reference error before
+queue allocation and checks unchanged data, decoded registers and operand bytes.
+The focused blocking group passes ASan/UBSan in all four combinations.

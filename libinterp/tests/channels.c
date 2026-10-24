@@ -85,9 +85,50 @@ static int run(void *unused) {
 static void balanced(int expected) {
     assert(live==expected && worker.nerr==0 && element.ref==1 && Tchannel.ref==1 && Tarray.ref==1);
 }
+/* Capture raw widths before replacing and destroying the owning source channel. */
+static void replacementwidth(void)
+{
+    int width;
+    Channel *owner;
+    for(width=0;width<=32;width++){
+        owner=cnewc(&element,scalar_move,0);owner->mid.w=width;result=owner;
+        capacity=0;R.s=&owner->mid.w;R.m=&capacity;R.d=&result;mode=3;
+        assert(kprotect(run,nil));
+        assert(result!=owner && result->mid.w==width && result->buf==H);
+        destroy(result);result=H;balanced(0);
+    }
+    puts("PASS raw width ownership: 33 replaced-source cases");
+}
+/* Vary input and pointer-result byte offsets independently through real allocation paths. */
+static void channelalignment(void)
+{
+    union {uvlong align;uchar bytes[112];} slots;
+    uchar expected[112];
+    Channel *created;
+    int op,sa,ma,da,length;
+    unsigned long checks=0;
+    for(op=0;op<3;op++)for(sa=0;sa<8;sa++)for(ma=0;ma<8;ma++)for(da=0;da<8;da++)for(length=0;length<=3;length++){
+        size=13;capacity=length;result=H;
+        memset(slots.bytes,0xa5,sizeof(slots.bytes));
+        R.s=slots.bytes+8+sa;R.m=slots.bytes+40+ma;R.d=slots.bytes+80+da;
+        memmove(R.s,&size,sizeof(size));memmove(R.m,&capacity,sizeof(capacity));memmove(R.d,&result,sizeof(result));
+        memmove(expected,slots.bytes,sizeof(expected));
+        if(op==2){mode=3;assert(kprotect(run,nil));}
+        else {created=newc(&element,op ? movtmp : scalar_move);assert(created!=H);}
+        memmove(&created,slots.bytes+80+da,sizeof(created));
+        assert(created->buf==H ? length==0 : created->buf->len==length);
+        if(op==2)assert(created->mid.w==13);
+        if(op==1)assert(created->mid.t==&element);
+        memmove(expected+80+da,&created,sizeof(created));assert(!memcmp(expected,slots.bytes,sizeof(expected)));
+        destroy(created);result=H;balanced(0);checks++;
+    }
+    printf("PASS channel slot alignment: %lu cases WORD%zu\n",checks,sizeof(WORD)*8);
+}
 int main(void) {
     int i,n,base,successes=0,failures=0,checks=0;
     Channel *old;
+    if(getenv("CHANNEL_CREATE_CASE") && !strcmp(getenv("CHANNEL_CREATE_CASE"),"alignment")){channelalignment();return 0;}
+    if(getenv("CHANNEL_CREATE_CASE") && !strcmp(getenv("CHANNEL_CREATE_CASE"),"owner")){replacementwidth();return 0;}
     result=H;
     for(mode=0;mode<=1;mode++)for(count=0;count<=3;count+=3) {
         for(i=0;i<8;i++) {
@@ -147,5 +188,6 @@ int main(void) {
     capacity=0;assert(kprotect(run,nil) && result->buf==H && result->mid.w==13);
     destroy(result);result=H;balanced(0);
     R.m=R.d;assert(kprotect(run,nil) && result->buf==H);destroy(result);result=H;balanced(0);
+    replacementwidth();channelalignment();
     printf("PASS channels: %d failure/cleanup scenarios, scalar/raw/typed buffers, reference counts, replacement and preserved VM errors\n",checks);
 }

@@ -257,6 +257,74 @@ nilslices(void)
     }
 }
 
+/* Slice pointers and bounds may occupy independently unaligned VM slots. */
+static void sliceslots(void)
+{
+    int widths[]={0,1,3,8,16},w,sa,ma,da,k,offset;
+    union {uvlong align;uchar bytes[128];} slots;
+    uchar expected[128],bytes[128];
+    Array *root,*view,*source,*destination;
+    WORD start=1,end=4,where;
+    unsigned long cases=0;
+    type.np=0;
+    for(w=0;w<nelem(widths);w++)for(sa=0;sa<8;sa++)for(ma=0;ma<8;ma++)for(da=0;da<8;da++){
+        type.size=widths[w];root=H2D(Array*,heaparray(&type,5));
+        memset(slots.bytes,0xa5,sizeof(slots.bytes));R.s=slots.bytes+8+sa;R.m=slots.bytes+40+ma;R.d=slots.bytes+80+da;
+        memmove(R.s,&start,sizeof(start));memmove(R.m,&end,sizeof(end));memmove(R.d,&root,sizeof(root));
+        memmove(expected,slots.bytes,sizeof(expected));which=8;assert(kprotect(run,nil));
+        memmove(&view,slots.bytes+80+da,sizeof(view));assert(view->root==root && view->len==3 && view->data==root->data+type.size);
+        memmove(expected+80+da,&view,sizeof(view));assert(!memcmp(slots.bytes,expected,sizeof(expected)));
+        destroy(view);assert(type.ref==1 && Tarray.ref==1);cases++;
+        for(offset=0;offset<4;offset++){
+            source=H2D(Array*,heaparray(&type,2));destination=H2D(Array*,heaparray(&type,5));
+            for(k=0;k<2*type.size;k++)source->data[k]=(uchar)(k*17+3);
+            memset(destination->data,0x5a,5*type.size);memmove(bytes,destination->data,5*type.size);
+            memmove(bytes+offset*type.size,source->data,2*type.size);where=offset;
+            memset(slots.bytes,0xa5,sizeof(slots.bytes));R.s=slots.bytes+8+sa;R.m=slots.bytes+40+ma;R.d=slots.bytes+80+da;
+            memmove(R.s,&source,sizeof(source));memmove(R.m,&where,sizeof(where));memmove(R.d,&destination,sizeof(destination));
+            memmove(expected,slots.bytes,sizeof(expected));which=9;assert(kprotect(run,nil));
+            assert(!memcmp(slots.bytes,expected,sizeof(expected)) && !memcmp(bytes,destination->data,5*type.size));
+            destroy(source);destroy(destination);assert(type.ref==1 && Tarray.ref==1);cases++;
+        }
+    }
+    assert(!live && !worker.nerr);printf("PASS slice slots: %lu view/copy/alignment cases\n",cases);
+}
+
+/* Invalid descriptor geometry must fail before allocation, marking or publication. */
+static void slicespans(void)
+{
+    struct {Heap h;Array a;} root,source;
+    union {uvlong align;uchar bytes[128];} slots;
+    uchar expected[128],data[64];
+    Array *owner,*input;
+    WORD first=1,last=2,offset=0;
+    int operation,mode,sa,ma,da,before;
+    unsigned long cases=0;
+    for(operation=8;operation<=9;operation++)for(mode=0;mode<8;mode++)for(sa=0;sa<8;sa++)for(ma=0;ma<8;ma++)for(da=0;da<8;da++){
+        memset(&root,0,sizeof(root));memset(&source,0,sizeof(source));
+        root.h.ref=source.h.ref=10;type.np=0;type.size=8;
+        root.a.len=3;root.a.t=&type;root.a.root=H;root.a.data=data;
+        source.a.len=1;source.a.t=&type;source.a.root=H;source.a.data=data;
+        first=1;last=2;owner=&root.a;input=&source.a;
+        if(mode==0)root.a.t=nil;
+        if(mode==1)root.a.t=H;
+        if(mode==2)type.size=-1;
+        if(mode==3)type.size=0x7fffffff;
+        if(mode==4)root.a.data=nil;
+        if(mode==5)root.a.data=H;
+        if(mode==6)root.a.data=(uchar*)(uintptr)-4;
+        if(mode==7){if(operation==8)first=-1;else source.a.data=nil;}
+        memset(slots.bytes,0xa5,sizeof(slots.bytes));R.s=slots.bytes+8+sa;R.m=slots.bytes+40+ma;R.d=slots.bytes+80+da;
+        if(operation==8){memmove(R.s,&first,sizeof(first));memmove(R.m,&last,sizeof(last));}
+        else{offset=1;memmove(R.s,&input,sizeof(input));memmove(R.m,&offset,sizeof(offset));}
+        memmove(R.d,&owner,sizeof(owner));memmove(expected,slots.bytes,sizeof(expected));which=operation;before=poolcalls;
+        assert(!kprotect(run,nil) && last_error==exBounds && poolcalls==before);
+        assert(!memcmp(expected,slots.bytes,sizeof(expected)) && root.h.ref==10 && source.h.ref==10);
+        cases++;
+    }
+    type.size=sizeof(WORD);assert(!live && !worker.nerr);printf("PASS slice spans: %lu rejected geometry/alignment cases\n",cases);
+}
+
 int main(int argc, char **argv) {
     static const int widths[]={0,1,2,4,8,16,4096,0x7fffffff};
     unsigned int i;int checks=0,limit,before;
@@ -264,6 +332,8 @@ int main(int argc, char **argv) {
     Type *types[]={&type};Modlink ml={0};
     WORD count,first,last,offset;
     List *saved;
+    if(argc>1 && !strcmp(argv[1],"slice-slots")){sliceslots();return 0;}
+    if(argc>1 && !strcmp(argv[1],"slice-spans")){slicespans();return 0;}
     if(argc>1 && !strcmp(argv[1],"borrowed-copies")) {
         borrowedcopies();
         return 0;
@@ -349,7 +419,7 @@ int main(int argc, char **argv) {
         destroy(a);assert(D2H(value)->ref==1);destroy(b);assert(scalar.ref==1);
         type.np=0;
     }
-    pointercopies(); borrowedcopies(); emptycopies(); nilslices(); emptyviews(1);
+    pointercopies(); borrowedcopies(); emptycopies(); nilslices(); emptyviews(1); sliceslots(); slicespans();
     assert(live==0 && worker.nerr==0 && type.ref==1 && Tarray.ref==1 && Tmodlink.ref==1 && Tlist.ref==1);
     printf("PASS heap bounds: %d array boundaries, overflow counterexample, pool/header limits, copies, links, lists, slices, full-WORD VM sizes, 285 pointer overlaps and empty spans\n",checks);
     return 0;

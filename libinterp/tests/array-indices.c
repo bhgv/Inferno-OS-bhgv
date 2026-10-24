@@ -36,26 +36,28 @@ IMPLEMENTATION
 static void
 probe(Array *array, WORD index, int operation, int alias, int valid, uchar *expected)
 {
-	union { Array *array; WORD word; } slot;
-	WORD output=123, savedindex=index;
+	union {uvlong align;uchar bytes[128];} slots;
+	uchar before[128];
+	WORD wanted=(WORD)(uintptr)expected;
+	Inst sentinel;
 	void (*functions[])(void)={indx,indb,indw,indl,indf};
-	uchar before[sizeof(slot)];
-	WORD *result;
+	int sa,ia,oa,offset;
 
-	memset(&slot,0xa5,sizeof(slot));slot.array=array;
-	memmove(before,&slot,sizeof(slot));
-	result=alias==0?&output:alias==1?&index:&slot.word;
-	R.s=&slot.array;R.d=&index;R.m=result;
-	raised=nil;
-	if(setjmp(boundary)==0){
-		functions[operation]();
-		assert(valid && (UWORD)*result==(UWORD)(uintptr)expected);
-		if(alias==2)assert(!memcmp((uchar*)&slot+sizeof(WORD),before+sizeof(WORD),sizeof(slot)-sizeof(WORD)));
-	}else{
-		assert(!valid && raised==exBounds);
-		assert(output==123 && index==savedindex && !memcmp(&slot,before,sizeof(slot)));
+	for(sa=0;sa<8;sa++)for(ia=0;ia<8;ia++)for(oa=0;oa<8;oa++){
+		memset(slots.bytes,0xa5,sizeof(slots.bytes));
+		R.s=slots.bytes+16+sa;R.d=slots.bytes+48+ia;
+		offset=alias==0 ? 88+oa : alias==1 ? 48+ia : 16+sa;
+		R.m=slots.bytes+offset;R.PC=&sentinel;
+		memmove(R.s,&array,sizeof(array));memmove(R.d,&index,sizeof(index));
+		memmove(before,slots.bytes,sizeof(before));raised=nil;
+		if(setjmp(boundary)==0){
+			functions[operation]();assert(valid);
+			memmove(before+offset,&wanted,sizeof(wanted));
+		}else assert(!valid && raised==exBounds);
+		assert(!memcmp(slots.bytes,before,sizeof(before)) && R.PC==&sentinel);
+		assert(R.s==slots.bytes+16+sa && R.d==slots.bytes+48+ia && R.m==slots.bytes+offset);
+		checks++;
 	}
-	checks++;
 }
 
 /* Compute ordinary addresses and zero-width identities against a byte-array oracle. */
@@ -136,14 +138,18 @@ static void
 lengths(void)
 {
 	Array array={0},*slot;
-	WORD out,values[]={0,1,-1,17};
-	int i;
+	WORD wanted,values[]={0,1,-1,17};
+	union {uvlong align;uchar bytes[80];} slots;
+	uchar expected[80];
+	int i,sa,da;
 
-	for(i=0;i<6;i++){
+	for(i=0;i<6;i++)for(sa=0;sa<8;sa++)for(da=0;da<8;da++){
 		slot=i==0?H:i==1?nil:&array;
-		if(i>=2)array.len=values[i-2];
-		out=123;R.s=&slot;R.d=&out;lena();
-		assert(out==(i>=2?values[i-2]:0));checks++;
+		if(i>=2)array.len=values[i-2];wanted=i>=2 ? values[i-2] : 0;
+		memset(slots.bytes,0xa5,sizeof(slots.bytes));R.s=slots.bytes+16+sa;R.d=slots.bytes+48+da;
+		memmove(R.s,&slot,sizeof(slot));memmove(expected,slots.bytes,sizeof(expected));
+		memmove(expected+48+da,&wanted,sizeof(wanted));lena();
+		assert(!memcmp(slots.bytes,expected,sizeof(expected)));checks++;
 	}
 }
 

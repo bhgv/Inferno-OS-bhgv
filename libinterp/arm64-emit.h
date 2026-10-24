@@ -97,7 +97,33 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafFixedFrame){
+	if(p.kind == LeafDescriptorIndex){
+		/* Descriptor pointers and signed sizes are validated before forming an address. */
+		if(abi->arraylen < 0 || abi->arraylen > 2047 || abi->arraydata < 0 || abi->arraydata > 2047 ||
+		   abi->arraytype < 0 || abi->arraytype > 2047 || abi->typesize < 0 || abi->typesize > 2047 ||
+		   (abi->arraylen|abi->arraydata|abi->arraytype)%8 || abi->typesize%4) return 0;
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8); a64guard(&b, 0xb500006c);
+		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
+		a64field(&b, 13, 12, abi->arraylen, 8);
+		a64put(&b, 0xf10001bf); a64guard(&b, 0x5400006a);
+		a64ptr(&b, 9, abi->d); a64load(&b, 14, 9, 8);
+		a64put(&b, 0xeb0d01df); a64guard(&b, 0x54000063);
+		a64field(&b, 15, 12, abi->arraytype, 8); a64guard(&b, 0xb500006f);
+		a64put(&b, 0xb10005ff); a64guard(&b, 0x54000061);
+		a64put(&b, 0xb9800000U | (abi->typesize/4)<<10 | 15<<5 | 15); /* ldrsw stride */
+		a64put(&b, 0xf10001ff); a64guard(&b, 0x5400006a);
+		a64field(&b, 13, 12, abi->arraydata, 8);
+		empty=b.n; a64put(&b, 0xb400000f);
+		a64put(&b, 0xd29fffec); a64put(&b, 0xf2afffec); /* x12=INT_MAX */
+		a64put(&b, 0xeb0c01df); a64guard(&b, 0x54000069);
+		a64put(&b, 0x9b0f7dce); a64put(&b, 0xeb0c01df); a64guard(&b, 0x54000069);
+		a64guard(&b, 0xb500006d); a64put(&b, 0xb10005bf); a64guard(&b, 0x54000061);
+		a64put(&b, 0xab0e01ae); a64guard(&b, 0x54000063);
+		done=b.n; a64put(&b, 0x14000000);
+		b.code[empty] |= (b.n-empty)<<5; a64put(&b, 0xaa0d03ee);
+		b.code[done] |= b.n-done;
+		a64ptr(&b, 11, abi->m); a64store(&b, 14, 8);
+	}else if(p.kind == LeafFixedFrame){
 		/* Frame temporary slots may have only four-byte alignment, even in WORD64. */
 		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047) return 0;
 		a64ptr(&b, 10, abi->fp); a64guard(&b, 0xb500006a);

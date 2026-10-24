@@ -142,10 +142,15 @@ static void
 sendvalue(Channel *c, WORD value, int pointers)
 {
 	void *p;
+	union {uvlong align;uchar bytes[80];} slots;
+	uchar before[80];
+	int sa=(UWORD)value&7,ca=((UWORD)value*3+1)&7;
 
 	p = pointers ? payload(value) : H;
-	R.s = pointers ? (void*)&p : (void*)&value; R.d = &c;
-	isend();
+	memset(slots.bytes,0xa5,sizeof(slots.bytes));R.s=slots.bytes+8+sa;R.d=slots.bytes+40+ca;
+	memmove(R.s,pointers ? (void*)&p : (void*)&value,pointers ? sizeof(p) : sizeof(value));
+	memmove(R.d,&c,sizeof(c));memmove(before,slots.bytes,sizeof(before));
+	isend();assert(!memcmp(before,slots.bytes,sizeof(before)));
 	if(pointers) destroy(p);
 }
 
@@ -153,14 +158,19 @@ sendvalue(Channel *c, WORD value, int pointers)
 static void
 receivevalue(Channel *c, WORD expected, int pointers)
 {
-	void *p;
-	WORD value = -1;
+	void *p,*destination;
+	WORD value=-1;
+	union {uvlong align;uchar bytes[80];} slots;
+	uchar before[80];
+	int ca=(UWORD)expected&7,da=((UWORD)expected*5+2)&7;
 
 	p = pointers ? payload(-77) : H;
-	R.s = &c; R.d = pointers ? (void*)&p : (void*)&value;
-	irecv();
-	if(pointers){ assert(*(WORD*)p == expected && D2H(p)->ref == 1); destroy(p); }
-	else assert(value == expected);
+	memset(slots.bytes,0xa5,sizeof(slots.bytes));R.s=slots.bytes+8+ca;R.d=destination=slots.bytes+40+da;
+	memmove(R.s,&c,sizeof(c));memmove(destination,pointers ? (void*)&p : (void*)&value,pointers ? sizeof(p) : sizeof(value));
+	memmove(before,slots.bytes,sizeof(before));irecv();
+	memmove(before+40+da,destination,pointers ? sizeof(p) : sizeof(value));assert(!memcmp(before,slots.bytes,sizeof(before)));
+	if(pointers){memmove(&p,destination,sizeof(p));assert(*(WORD*)p==expected && D2H(p)->ref==1);destroy(p);}
+	else{memmove(&value,destination,sizeof(value));assert(value==expected);}
 }
 
 /* Compare long mixed ring-buffer sequences with an independent FIFO. */

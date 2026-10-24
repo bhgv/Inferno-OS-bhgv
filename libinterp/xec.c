@@ -793,12 +793,41 @@ OP(blef) { branchreal(3); }
 OP(bgtf) { branchreal(4); }
 /* Ordered real greater-than-or-equal comparison. */
 OP(bgef) { branchreal(5); }
-OP(beqc) { if(stringcmp(S(s), S(m)) == 0) JMP(d); }
-OP(bnec) { if(stringcmp(S(s), S(m)) != 0) JMP(d); }
-OP(bltc) { if(stringcmp(S(s), S(m)) <  0) JMP(d); }
-OP(blec) { if(stringcmp(S(s), S(m)) <= 0) JMP(d); }
-OP(bgtc) { if(stringcmp(S(s), S(m)) >  0) JMP(d); }
-OP(bgec) { if(stringcmp(S(s), S(m)) >= 0) JMP(d); }
+/* Capture string owners and defer the target read until the predicate is true. */
+static void
+branchstring(int condition)
+{
+	String *left, *right;
+	int order, take;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	order = stringcmp(left, right);
+	take = 0;
+	switch(condition){
+	case 0: take = order == 0; break;
+	case 1: take = order != 0; break;
+	case 2: take = order < 0; break;
+	case 3: take = order <= 0; break;
+	case 4: take = order > 0; break;
+	case 5: take = order >= 0; break;
+	}
+	if(take)
+		JMP(d);
+}
+
+/* Apply the captured string equality predicate without aligned pointer casts. */
+OP(beqc) { branchstring(0); }
+/* Apply the captured string inequality predicate without aligned pointer casts. */
+OP(bnec) { branchstring(1); }
+/* Apply the captured string less-than predicate without aligned pointer casts. */
+OP(bltc) { branchstring(2); }
+/* Apply the captured string less-or-equal predicate without aligned pointer casts. */
+OP(blec) { branchstring(3); }
+/* Apply the captured string greater-than predicate without aligned pointer casts. */
+OP(bgtc) { branchstring(4); }
+/* Apply the captured string greater-or-equal predicate without aligned pointer casts. */
+OP(bgec) { branchstring(5); }
 OP(iexit){ error(""); }
 /* Capture the WORD source before converting into a possibly overlapping LONG slot. */
 OP(cvtwl)
@@ -987,51 +1016,67 @@ arrayaddress(Array *array, WORD index, int width)
 	offset = (ulong)index*width;
 	if((uintptr)array->data > (uintptr)-1-offset)
 		error(exBounds);
-	return array->data+offset;
+	return (uchar*)((uintptr)array->data+offset);
+}
+
+/* Capture decoded array slots before computing or publishing an aliased address. */
+static void
+arrayindex(int width)
+{
+	Array *array;
+	WORD index, address;
+
+	memmove(&array, R.s, sizeof(array));
+	memmove(&index, R.d, sizeof(index));
+	address = (WORD)(uintptr)arrayaddress(array, index, width);
+	memmove(R.m, &address, sizeof(address));
 }
 
 /* Resolve descriptor-sized elements after checking the array and full index. */
 OP(indx)
 {
-	W(m) = (WORD)(uintptr)arrayaddress(A(s), W(d), -1);
+	arrayindex(-1);
 }
 
 /* Preserve the active word stride without narrowing the index. */
 OP(indw)
 {
-	W(m) = (WORD)(uintptr)arrayaddress(A(s), W(d), sizeof(WORD));
+	arrayindex(sizeof(WORD));
 }
 
 /* Real array indexing computes an address without loading a floating value. */
 OP(indf)
 {
-	W(m) = (WORD)(uintptr)arrayaddress(A(s), W(d), sizeof(REAL));
+	arrayindex(sizeof(REAL));
 }
 
 /* Big array indexing retains the complete native byte offset. */
 OP(indl)
 {
-	W(m) = (WORD)(uintptr)arrayaddress(A(s), W(d), sizeof(LONG));
+	arrayindex(sizeof(LONG));
 }
 
 /* Byte array indexing uses the same bounds and empty-storage checks. */
 OP(indb)
 {
-	W(m) = (WORD)(uintptr)arrayaddress(A(s), W(d), sizeof(BYTE));
+	arrayindex(sizeof(BYTE));
 }
+/* Acquire a captured reference before replacing a potentially unaligned pointer slot. */
 OP(movp)
 {
 	Heap *h;
 	WORD *dv, *sv;
 
-	sv = P(s);
+	memmove(&sv, R.s, sizeof(sv));
+	if(sv == nil)
+		error(exNilref);
 	if(sv != H) {
 		h = D2H(sv);
 		h->ref++;
 		Setmark(h);
 	}
-	dv = P(d);
-	P(d) = sv;
+	memmove(&dv, R.d, sizeof(dv));
+	memmove(R.d, &sv, sizeof(sv));
 	destroy(dv);
 }
 /* Resolve the full Limbo index through the owner: Loader.tnew may move its table. */
@@ -1309,25 +1354,26 @@ cnewc(Type *t, void (*mover)(void), int len)
 	}
 	return b.c;
 }
+/* Capture channel capacity and replacement ownership before fallible allocation. */
 Channel*
 newc(Type *t, void (*mover)(void))
 {
-	Channel **cp, *oldc;
+	Channel *channel, *oldc;
 	WORD len;
 
 	len = 0;
 	if(R.m != R.d){
-		len = W(m);
+		memmove(&len, R.m, sizeof(len));
 		if(len < 0)
 			error(exNegsize);
 	}
 	if((uvlong)len > 0x7fffffff)
 		error(exHeap);
-	cp = R.d;
-	oldc = *cp;
-	*cp = cnewc(t, mover, len);
+	memmove(&oldc, R.d, sizeof(oldc));
+	channel = cnewc(t, mover, len);
+	memmove(R.d, &channel, sizeof(channel));
 	destroy(oldc);
-	return *cp;
+	return channel;
 }
 OP(newcl)  { newc(&Tlong, movl);  }
 OP(newcb)  { newc(&Tbyte, movb);  }
@@ -1337,8 +1383,10 @@ OP(newcp)  { newc(&Tptr, movp);  }
 typedef struct RawChannel RawChannel;
 struct RawChannel {
 	Type *t;
+	WORD size;
 };
 
+/* Publish the captured raw width even when allocation replaces its source slot. */
 static int
 rawchannel(void *arg)
 {
@@ -1346,21 +1394,27 @@ rawchannel(void *arg)
 	Channel *c;
 	b=arg;
 	c=newc(b->t,movm);
-	c->mid.w=W(s);
+	c->mid.w=b->size;
 	return 1;
 }
 
+/* Capture raw geometry before the destination can overwrite either operand. */
 OP(newcm)
 {
 	RawChannel b;
+	WORD capacity;
 	int ok;
-	if(W(s) < 0)
+	memmove(&b.size, R.s, sizeof(b.size));
+	if(b.size < 0)
 		error(exNegsize);
-	if((uvlong)W(s) > 0x7fffffff)
+	if((uvlong)b.size > 0x7fffffff)
 		error(exHeap);
 	b.t=nil;
-	if(R.m != R.d && W(m) > 0) {
-		b.t=dtype(nil,W(s),nil,0);
+	capacity = 0;
+	if(R.m != R.d)
+		memmove(&capacity, R.m, sizeof(capacity));
+	if(R.m != R.d && capacity > 0) {
+		b.t=dtype(nil,b.size,nil,0);
 		if(b.t == nil)
 			error(exNomem);
 	}
@@ -1714,16 +1768,17 @@ OP(mcall)
 	if(f->mr->compiled != R.M->compiled)
 		R.IC = 1;
 }
+/* Capture and publish array lengths without aligned operand casts. */
 OP(lena)
 {
 	WORD l;
 	Array *a;
 
-	a = A(s);
+	memmove(&a, R.s, sizeof(a));
 	l = 0;
 	if(a != H && a != nil)
 		l = a->len;
-	W(d) = l;
+	memmove(R.d, &l, sizeof(l));
 }
 /* Validate each list link and keep operand accesses independent of alignment. */
 OP(lenl)
@@ -1870,8 +1925,8 @@ OP(isend)
 	Channel *c;
  	Prog *p;
 
-	c = C(d);
-	if(c == H)
+	memmove(&c, R.d, sizeof(c));
+	if(c == H || c == nil)
 		error(exNilref);
 
 	if((p = c->recv->prog) == nil) {
@@ -1907,8 +1962,8 @@ OP(irecv)
 	Channel *c;
 	Prog *p;
 
-	c = C(s);
-	if(c == H)
+	memmove(&c, R.s, sizeof(c));
+	if(c == H || c == nil)
 		error(exNilref);
 
 	if((p = c->send->prog) == nil) {
@@ -2199,6 +2254,30 @@ OP(tail)
 	R.s = &l->tail;
 	movp();
 }
+/* Bound slice byte geometry before forming a pointer, including empty records. */
+static uchar*
+arrayspan(Array *array, Type *type, WORD start, WORD count)
+{
+	ulong offset, bytes, limit;
+
+	if(type == nil || type == H || type->size < 0 || start < 0 || count < 0)
+		error(exBounds);
+	if(type->size == 0)
+		return array->data;
+	limit = 0x7fffffff/(uint)type->size;
+	if((uvlong)start > limit || (uvlong)count > limit-(ulong)start)
+		error(exBounds);
+	offset = (ulong)start*type->size;
+	bytes = (ulong)count*type->size;
+	if(offset == 0 && bytes == 0)
+		return array->data;
+	if(array->data == nil || array->data == H ||
+	   (uintptr)array->data > (uintptr)-1-offset ||
+	   (uintptr)array->data+offset > (uintptr)-1-bytes)
+		error(exBounds);
+	return (uchar*)((uintptr)array->data+offset);
+}
+
 /* Preserve the language slice bounds even when an empty source is VM nil. */
 OP(slicea)
 {
@@ -2206,10 +2285,11 @@ OP(slicea)
 	Heap *h;
 	Array *at, *ss, *ds;
 	WORD v, n, start;
+	uchar *data;
 
-	v = W(m);
-	start = W(s);
-	ds = A(d);
+	memmove(&v, R.m, sizeof(v));
+	memmove(&start, R.s, sizeof(start));
+	memmove(&ds, R.d, sizeof(ds));
 
 	if(ds == H || ds == nil){
 		if(v == start){
@@ -2224,13 +2304,11 @@ OP(slicea)
 	n = v-start;
 
 	t = ds->t;
+	data = arrayspan(ds, t, start, n);
 	h = heap(&Tarray);
 	ss = H2D(Array*, h);
 	ss->len = n;
-	ss->data = ds->data;
-	/* Empty arrays and zero-sized elements may have no backing data address. */
-	if(start != 0 && t->size != 0)
-		ss->data += start*t->size;
+	ss->data = data;
 	ss->t = t;
 	t->ref++;
 
@@ -2238,15 +2316,15 @@ OP(slicea)
 		ds = ds->root;
 		h = D2H(ds);
 		h->ref++;
-		at = A(d);
-		A(d) = ss;
+		memmove(&at, R.d, sizeof(at));
+		memmove(R.d, &ss, sizeof(ss));
 		ss->root = ds;
 		destroy(at);
 	}
 	else {
 		h = D2H(ds);
 		ss->root = ds;
-		A(d) = ss;
+		memmove(R.d, &ss, sizeof(ss));
 	}
 	Setmark(h);
 }
@@ -2257,11 +2335,11 @@ OP(slicela)
 	int l;
 	WORD dl;
 	Array *ss, *ds;
-	uchar *sp, *dp, *ep;
+	uchar *sp, *dp, *ep, *source, *destination;
 
-	ss = A(s);
-	dl = W(m);
-	ds = A(d);
+	memmove(&ss, R.s, sizeof(ss));
+	memmove(&dl, R.m, sizeof(dl));
+	memmove(&ds, R.d, sizeof(ds));
 	if(ss == H || ss == nil)
 		return;
 	if(ds == H || ds == nil)
@@ -2272,16 +2350,20 @@ OP(slicela)
 		return;
 
 	t = ds->t;
+	source = arrayspan(ss, t, 0, ss->len);
+	destination = arrayspan(ds, t, dl, ss->len);
+	if(t->size == 0)
+		return;
 	if(t->np == 0) {
-		memmove(ds->data+dl*t->size, ss->data, ss->len*t->size);
+		memmove(destination, source, ss->len*t->size);
 		return;
 	}
 	/* A destination element can own the source array or its backing view. */
 	D2H(ss)->ref++;
-	sp = ss->data;
-	dp = ds->data+dl*t->size;
+	sp = source;
+	dp = destination;
 
-	if(dp > sp) {
+	if((uintptr)dp > (uintptr)sp) {
 		l = ss->len * t->size;
 		sp = ss->data + l;
 		ep = dp + l;
@@ -2303,7 +2385,7 @@ OP(slicela)
 			sp += t->size;
 		}
 	}
-	memmove(ds->data+dl*t->size, ss->data, ss->len*t->size);
+	memmove(destination, source, ss->len*t->size);
 	destroy(ss);
 }
 OP(alt)
@@ -2315,13 +2397,14 @@ OP(nbalt)
 {
 	xecalt(0);
 }
+/* Compare captured runtime owners without dereferencing C-null metadata. */
 OP(tcmp)
 {
 	void *s, *d;
 
-	s = T(s);
-	d = T(d);
-	if(s != H && (d == H || D2H(s)->t != D2H(d)->t))
+	memmove(&s, R.s, sizeof(s));
+	memmove(&d, R.d, sizeof(d));
+	if(s != H && (s == nil || d == nil || d == H || D2H(s)->t != D2H(d)->t))
 		error(exTcheck);
 }
 OP(eclr)
@@ -2666,18 +2749,20 @@ OP(cvtxf)
 	memmove(R.d, &result, sizeof(result));
 }
 
+/* Retain the current module before publishing into an unaligned owner slot. */
 OP(self)
 {
-	Modlink *ml, **mp, *t;
+	Modlink *ml, *t;
 	Heap *h;
 
 	ml = R.M;
+	if(ml == nil || ml == H)
+		error(exModule);
 	h = D2H(ml);
 	h->ref++;
 	Setmark(h);
-	mp = R.d;
-	t = *mp;
-	*mp = ml;
+	memmove(&t, R.d, sizeof(t));
+	memmove(R.d, &ml, sizeof(ml));
 	destroy(t);
 }
 
