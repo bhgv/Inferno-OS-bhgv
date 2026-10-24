@@ -111,12 +111,18 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
 	if(p.kind == LeafFixedShift){
-		/* Negative scales retain C arithmetic-right-shift and error handling. */
+		/* Translating the signed interval avoids overflowing when negating minimum. */
 		x64ptr(&b, 1, abi->m); x64load(&b, 1, abi->wordbytes);
-		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf9); x64byte(&b, 64);
-		x64guard(&b, 0x72); /* unsigned count < 64 */
+		x64byte(&b, 0x48); x64byte(&b, 0x8d); x64byte(&b, 0x51); x64byte(&b, 63); /* lea rdx,[rcx+63] */
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xfa); x64byte(&b, 127);
+		x64guard(&b, 0x72);
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, abi->wordbytes);
-		x64byte(&b, 0x48); x64byte(&b, 0xd3); x64byte(&b, 0xe0); /* shl rax, cl */
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9); /* test rcx,rcx */
+		x64byte(&b, 0x78); x64byte(&b, 5);
+		x64byte(&b, 0x48); x64byte(&b, 0xd3); x64byte(&b, 0xe0);
+		x64byte(&b, 0xeb); x64byte(&b, 6);
+		x64byte(&b, 0x48); x64byte(&b, 0xf7); x64byte(&b, 0xd9); /* neg rcx */
+		x64byte(&b, 0x48); x64byte(&b, 0xd3); x64byte(&b, 0xf8); /* sar rax,cl */
 		x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
 	}else if(p.kind == LeafPower){
 		/* Let the VM apply negative-exponent results and zero-base exceptions. */

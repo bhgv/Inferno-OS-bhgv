@@ -63,8 +63,8 @@ main(void)
 		memmove(expected+d,&result,sizeof(result));
 		R.s=memory.bytes+s;R.m=memory.bytes+m;R.d=memory.bytes+d;R.PC=&sentinel;
 #ifdef NATIVE_FIXED
-		assert(module.jit->entry[ICVTXX](&R)==(n>=0));
-		assert(!memcmp(memory.bytes,n>=0 ? expected : initial,sizeof(expected)));
+		assert(module.jit->entry[ICVTXX](&R)==1);
+		assert(!memcmp(memory.bytes,expected,sizeof(expected)));
 		assert(R.PC==&sentinel && R.s==memory.bytes+s && R.m==memory.bytes+m && R.d==memory.bytes+d);
 		memmove(memory.bytes,initial,sizeof(initial));
 #endif

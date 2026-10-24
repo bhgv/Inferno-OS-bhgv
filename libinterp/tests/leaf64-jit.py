@@ -227,21 +227,21 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 # Fixed shifts use a signed 64-bit intermediate even in WORD32.
                 values=[0,1,-1,127,-128,0x7fffffff,0x80000000,0xffffffff,
                         0x7fffffffffffffff,0x8000000000000000,0xffffffffffffffff]
-                counts=list(range(64))+[-1,-63,-64,64,65,-(1<<(wb*8-1)),(1<<(wb*8-1))-1]
+                counts=list(range(-63,64))+[-64,64,65,-(1<<(wb*8-1)),(1<<(wb*8-1))-1]
                 for value in values:
                     for count in counts:
-                        valid=0<=count<64
+                        valid=-63<=count<=63
                         for alias in (0,1,2,3,5):
                             out,pc,before,after,_=run('ICVTXX',value,count,alias=alias,expect=int(valid))
                             # d=m aliases preserve the same count; s=d-4/s=d+4 never overlaps m.
                             if valid:
-                                expected=(signed(value,wb*8)<<count)&((1<<(wb*8))-1)
+                                expected=((signed(value,wb*8)<<count) if count>=0 else (signed(value,wb*8)>>-count))&((1<<(wb*8))-1)
                                 assert int.from_bytes(out[:wb],'little')==expected,(arch,wb,value,count,alias,out)
                                 assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
                             else:assert before==after
                             assert pc==oldpc
                             checks+=1
-                for count in (-1,-63,-64,64,65,-(1<<(wb*8-1))):
+                for count in (-64,64,65,-(1<<(wb*8-1))):
                     _,pc,before,after,_=run('ICVTXX',0,count,expect=0,badsource=True)
                     assert pc==oldpc and before==after
                     checks+=1

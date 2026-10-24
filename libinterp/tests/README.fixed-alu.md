@@ -1,9 +1,9 @@
 # Fixed-scale leaves and integer operand alignment
 
 The x86-64, ARM64 and RV64 decoded-operation JITs now implement ICVTXX for
-nonnegative scales 0 through 63. They validate the complete scale before reading
-the source. Negative scales and values outside the range return zero without
-writes; the VM retains arithmetic right shifts and invalid-scale exceptions.
+signed scales -63 through 63. They validate the complete scale before reading
+the source. Negative scales use an arithmetic right shift; scales outside the
+range return zero without writes so the VM retains invalid-scale exceptions.
 Even WORD32 uses a signed 64-bit intermediate before truncation. RV64 needs only
 RV64I; RV32 declines this opcode. No frames, GC maps or native call ABI changes.
 
@@ -16,7 +16,7 @@ Run the dedicated drivers from the repository root:
 
 - `python libinterp/tests/integer-alu.py`: 2,336,256 cases per WORD model.
 - `python libinterp/tests/fixed-scale.py`: 1,170,432 cases per WORD model.
-- `LEAF64_CASE=fixed python libinterp/tests/leaf64-jit.py`: 24,036 checks across
+- `LEAF64_CASE=fixed python libinterp/tests/leaf64-jit.py`: 44,154 checks across
   x86-64, ARM64 and RV64 with both VM word sizes, including inaccessible source
   on rejected scales, aliases and both directions of partial overlap.
 - `python libinterp/tests/riscv-jit.py`: 2,050 RV32/RV64 checks, including RV64I

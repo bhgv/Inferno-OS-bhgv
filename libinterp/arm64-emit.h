@@ -98,13 +98,17 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
 	if(p.kind == LeafFixedShift){
-		/* Validate the full scale before fetching a possibly inaccessible source. */
+		/* Validate the signed interval before fetching a possibly inaccessible source. */
 		a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, abi->wordbytes);
-		a64put(&b, 0xf10101bf); /* cmp x13, #64 */
-		a64guard(&b, 0x54000063); /* b.lo valid */
+		if(abi->wordbytes == 4) a64put(&b, 0x93407dad); /* sxtw x13,w13 */
+		a64put(&b, 0x9100fdae); /* add x14,x13,#63 */
+		a64put(&b, 0xf101fddf); /* cmp x14,#127 */
+		a64guard(&b, 0x54000063);
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, abi->wordbytes);
-		if(abi->wordbytes == 4) a64put(&b, 0x93407d8c); /* sxtw x12, w12 */
-		a64put(&b, 0x9acd218c); /* lsl x12, x12, x13 */
+		if(abi->wordbytes == 4) a64put(&b, 0x93407d8c);
+		a64put(&b, 0xf10001bf); a64put(&b, 0x5400006b); /* cmp count,0; b.lt negative */
+		a64put(&b, 0x9acd218c); a64put(&b, 0x14000003); /* lsl; b done */
+		a64put(&b, 0xcb0d03ed); a64put(&b, 0x9acd298c); /* neg count; asr */
 		a64ptr(&b, 11, abi->d); a64store(&b, 12, abi->wordbytes);
 	}else if(p.kind == LeafPower){
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, abi->wordbytes);

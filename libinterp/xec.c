@@ -189,81 +189,91 @@ OP(subf) { F(d) = F(m) - F(s); }
 /* Preserve the VM's divide-by-zero exception for byte operands too. */
 OP(divb)
 {
-	if(B(s) == 0)
+	BYTE dividend, divisor, result;
+
+	memmove(&divisor, R.s, sizeof(divisor));
+	if(divisor == 0)
 		error(exZdiv);
-	B(d) = B(m) / B(s);
+	memmove(&dividend, R.m, sizeof(dividend));
+	result = dividend / divisor;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Avoid both zero division and the signed minimum / -1 C overflow case. */
 OP(divw)
 {
-	WORD dividend, divisor;
+	WORD dividend, divisor, result;
 
-	dividend = W(m);
-	divisor = W(s);
+	memmove(&dividend, R.m, sizeof(dividend));
+	memmove(&divisor, R.s, sizeof(divisor));
 	if(divisor == 0)
 		error(exZdiv);
 	if(dividend < 0 && divisor == -1 &&
-	   (UWORD)dividend == ((UWORD)1 << (sizeof(WORD)*8-1))){
-		W(d) = dividend;
-		return;
-	}
-	W(d) = dividend / divisor;
+	   (UWORD)dividend == ((UWORD)1 << (sizeof(WORD)*8-1)))
+		result = dividend;
+	else
+		result = dividend / divisor;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Apply the same overflow-safe rules to the VM's big integer type. */
 OP(divl)
 {
-	LONG dividend, divisor;
+	LONG dividend, divisor, result;
 
-	dividend = V(m);
-	divisor = V(s);
+	memmove(&dividend, R.m, sizeof(dividend));
+	memmove(&divisor, R.s, sizeof(divisor));
 	if(divisor == 0)
 		error(exZdiv);
 	if(dividend < 0 && divisor == -1 &&
-	   (ULONG)dividend == ((ULONG)1 << (sizeof(LONG)*8-1))){
-		V(d) = dividend;
-		return;
-	}
-	V(d) = dividend / divisor;
+	   (ULONG)dividend == ((ULONG)1 << (sizeof(LONG)*8-1)))
+		result = dividend;
+	else
+		result = dividend / divisor;
+	memmove(R.d, &result, sizeof(result));
 }
 OP(divf) { F(d) = F(m) / F(s); }
 /* Byte remainder by zero must not reach the host C operator. */
 OP(modb)
 {
-	if(B(s) == 0)
+	BYTE dividend, divisor, result;
+
+	memmove(&divisor, R.s, sizeof(divisor));
+	if(divisor == 0)
 		error(exZdiv);
-	B(d) = B(m) % B(s);
+	memmove(&dividend, R.m, sizeof(dividend));
+	result = dividend % divisor;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Avoid zero division and the signed minimum % -1 C overflow case. */
 OP(modw)
 {
-	WORD dividend, divisor;
+	WORD dividend, divisor, result;
 
-	dividend = W(m);
-	divisor = W(s);
+	memmove(&dividend, R.m, sizeof(dividend));
+	memmove(&divisor, R.s, sizeof(divisor));
 	if(divisor == 0)
 		error(exZdiv);
 	if(dividend < 0 && divisor == -1 &&
-	   (UWORD)dividend == ((UWORD)1 << (sizeof(WORD)*8-1))){
-		W(d) = 0;
-		return;
-	}
-	W(d) = dividend % divisor;
+	   (UWORD)dividend == ((UWORD)1 << (sizeof(WORD)*8-1)))
+		result = 0;
+	else
+		result = dividend % divisor;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Apply the same overflow-safe rules to big-integer remainder. */
 OP(modl)
 {
-	LONG dividend, divisor;
+	LONG dividend, divisor, result;
 
-	dividend = V(m);
-	divisor = V(s);
+	memmove(&dividend, R.m, sizeof(dividend));
+	memmove(&divisor, R.s, sizeof(divisor));
 	if(divisor == 0)
 		error(exZdiv);
 	if(dividend < 0 && divisor == -1 &&
-	   (ULONG)dividend == ((ULONG)1 << (sizeof(LONG)*8-1))){
-		V(d) = 0;
-		return;
-	}
-	V(d) = dividend % divisor;
+	   (ULONG)dividend == ((ULONG)1 << (sizeof(LONG)*8-1)))
+		result = 0;
+	else
+		result = dividend % divisor;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Capture integer operands before evaluating modular arithmetic or bit operations. */
 OP(mulb)
@@ -399,65 +409,97 @@ shiftcount(WORD count, int width)
 OP(shlb)
 {
 	WORD n;
+	BYTE value, result;
 
-	n = shiftcount(W(s), 8);
-	B(d) = B(m) << n;
+	memmove(&n, R.s, sizeof(n));
+	n = shiftcount(n, 8);
+	memmove(&value, R.m, sizeof(value));
+	result = value << n;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Shift word bits unsigned to avoid signed-left-shift overflow. */
 OP(shlw)
 {
 	WORD n;
+	UWORD value, result;
 
-	n = shiftcount(W(s), sizeof(WORD)*8);
-	W(d) = UW(m) << n;
+	memmove(&n, R.s, sizeof(n));
+	n = shiftcount(n, sizeof(WORD)*8);
+	memmove(&value, R.m, sizeof(value));
+	result = value << n;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Shift long bits unsigned to avoid signed-left-shift overflow. */
 OP(shll)
 {
 	WORD n;
+	ULONG value, result;
 
-	n = shiftcount(W(s), sizeof(LONG)*8);
-	V(d) = UV(m) << n;
+	memmove(&n, R.s, sizeof(n));
+	n = shiftcount(n, sizeof(LONG)*8);
+	memmove(&value, R.m, sizeof(value));
+	result = value << n;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Reject invalid byte shift counts before evaluating the shift. */
 OP(shrb)
 {
 	WORD n;
+	BYTE value, result;
 
-	n = shiftcount(W(s), 8);
-	B(d) = B(m) >> n;
+	memmove(&n, R.s, sizeof(n));
+	n = shiftcount(n, 8);
+	memmove(&value, R.m, sizeof(value));
+	result = value >> n;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Preserve arithmetic right shift for signed Limbo words. */
 OP(shrw)
 {
 	WORD n;
+	WORD value, result;
 
-	n = shiftcount(W(s), sizeof(WORD)*8);
-	W(d) = W(m) >> n;
+	memmove(&n, R.s, sizeof(n));
+	n = shiftcount(n, sizeof(WORD)*8);
+	memmove(&value, R.m, sizeof(value));
+	result = value >> n;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Preserve arithmetic right shift for signed Limbo long values. */
 OP(shrl)
 {
 	WORD n;
+	LONG value, result;
 
-	n = shiftcount(W(s), sizeof(LONG)*8);
-	V(d) = V(m) >> n;
+	memmove(&n, R.s, sizeof(n));
+	n = shiftcount(n, sizeof(LONG)*8);
+	memmove(&value, R.m, sizeof(value));
+	result = value >> n;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Validate counts before logical right shifts of unsigned word bits. */
 OP(lsrw)
 {
 	WORD n;
+	UWORD value, result;
 
-	n = shiftcount(W(s), sizeof(WORD)*8);
-	W(d) = UW(m) >> n;
+	memmove(&n, R.s, sizeof(n));
+	n = shiftcount(n, sizeof(WORD)*8);
+	memmove(&value, R.m, sizeof(value));
+	result = value >> n;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Validate counts before logical right shifts of unsigned long bits. */
 OP(lsrl)
 {
 	WORD n;
+	ULONG value, result;
 
-	n = shiftcount(W(s), sizeof(LONG)*8);
-	V(d) = UV(m) >> n;
+	memmove(&n, R.s, sizeof(n));
+	n = shiftcount(n, sizeof(LONG)*8);
+	memmove(&value, R.m, sizeof(value));
+	result = value >> n;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Capture both BYTE operands before conditionally reading the native target. */
 OP(beqb)
