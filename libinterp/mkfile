@@ -35,6 +35,12 @@ OFILES=\
 	string.$O\
 
 HFILES=\
+	leaf64-ops.h\
+	amd64-emit.h\
+	arm64-emit.h\
+	comp-leaf64.h\
+	leaf-code.h\
+	riscv-emit.h\
 	jit-tables.h\
 	$ROOT/include/interp.h\
 	$ROOT/include/isa.h\

@@ -876,6 +876,7 @@ lookmod(char *s)
 	return nil;
 }
 
+/* Release metadata and let each leaf backend release its own code allocation. */
 void
 freemod(Module *m)
 {
@@ -890,7 +891,10 @@ freemod(Module *m)
 		free(m->type);
 	}
 	if(m->jit != nil) {
-		free(m->jit->code);
+		if(m->jit->freecode != nil)
+			m->jit->freecode(m->jit->code, m->jit->size);
+		else
+			free(m->jit->code);
 		free(m->jit);
 	}
 	free(m->name);

@@ -147,6 +147,12 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		rvi(&b, 0x03, abi->xlen == 64 ? 3 : 2, Rvt3, Rvt2, 0);
 		rvs(&b, abi->xlen == 64 ? 3 : 2, Rva0, Rvt3, abi->pc);
 		break;
+	case IADDL: case ISUBL: case IMULL: case IANDL: case IORL: case IXORL:
+		if(abi->xlen != 64 || (op == IMULL && !abi->hasm)) return 0;
+		bytes=8; binary=1;
+		f7=op == ISUBL ? 32 : op == IMULL ? 1 : 0;
+		f3=op == IANDL ? 7 : op == IORL ? 6 : op == IXORL ? 4 : 0;
+		break;
 	case IADDB: bytes=1; /* fall through */
 	case IADDW: binary=1; break;
 	case ISUBB: bytes=1; /* fall through */

@@ -8,6 +8,9 @@
 #define RVXLEN 32
 #endif
 #include "riscv-emit.h"
+#ifdef RV_CODE_PAGES
+#include "leaf-code.h"
+#endif
 
 /* Leaf JIT keeps original Inst PCs and uses the existing decoder/optab for
  * unsupported operations. No patching of frames, GC maps or case tables.
@@ -30,6 +33,16 @@ rventer(void)
 	 * a per-hart code-generation epoch can amortize this later. */
 	__asm__ volatile(".word 0x0000100f" ::: "memory"); /* fence.i */
 #endif
+}
+
+/* Match executable mapping ownership while preserving existing embedded allocators. */
+static void
+rvcodefree(Jit *j)
+{
+	if(j->freecode != nil)
+		j->freecode(j->code, j->size);
+	else
+		free(j->code);
 }
 
 typedef struct RvCompile RvCompile;
@@ -92,12 +105,17 @@ rvcompile(void *arg)
 	c->j=j=mallocz(sizeof(Jit), 1);
 	if(j == nil)
 		return 0;
-	j->code=malloc(n*sizeof(u32int));
+	j->size=n*sizeof(u32int);
+#ifdef RV_CODE_PAGES
+	j->freecode=leafcodefree;
+	j->code=leafcodealloc(j->size);
+#else
+	j->code=malloc(j->size);
+#endif
 	if(j->code == nil)
 		goto bad;
 	j->enter=rventer;
 	j->nprog=size;
-	j->size=n*sizeof(u32int);
 	code=(u32int*)j->code;
 	for(op=0; op<256; op++) {
 		if(count[op] <= 0)
@@ -110,7 +128,11 @@ rvcompile(void *arg)
 	}
 	for(op=0; op<256; op++)
 		j->entry[op]=fn[op];
+#ifdef RV_CODE_PAGES
+	if(leafcodepublish(j->code, j->size) != 0)
+#else
 	if(segflush(j->code, j->size) != 0)
+#endif
 		goto bad;
 	/* Publish only fully generated, synchronized code. Failure is atomic. */
 	m->jit=j;
@@ -118,7 +140,7 @@ rvcompile(void *arg)
 bad:
 	/* A failed sizing, emission or instruction-cache flush must not leak code. */
 	if(j != nil) {
-		free(j->code);
+		rvcodefree(j);
 		free(j);
 		c->j=nil;
 	}
@@ -134,7 +156,7 @@ compile(Module *m, int size, Modlink *ml)
 	c.m=m; c.size=size; c.j=nil;
 	ok=kprotect(rvcompile,&c);
 	if(!ok && c.j != nil) {
-		free(c.j->code);
+		rvcodefree(c.j);
 		free(c.j);
 	}
 	return ok;

@@ -285,6 +285,7 @@ struct Jit
 	uchar*	code;
 	int	size;		/* bytes of generated instructions */
 	int	nprog;
+	void	(*freecode)(uchar*, int); /* optional mapping owner; nil uses free */
 	void	(*enter)(void); /* optional current-hart instruction synchronization */
 	int	(*entry[256])(REG*); /* opcode; nil/return 0 uses optab */
 };
