@@ -367,12 +367,23 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     checks+=1
                 if case=='copy':continue
             if case=='control':
-                for suffix in ('B','W','L'):
-                    for relation in ('EQ','NE','LT','LE','GT','GE'):
+                # Exercise signed-width boundaries and ensure false branches never read targets.
+                relations={'EQ':lambda a,b:a==b,'NE':lambda a,b:a!=b,'LT':lambda a,b:a<b,
+                           'LE':lambda a,b:a<=b,'GT':lambda a,b:a>b,'GE':lambda a,b:a>=b}
+                edges=[0,1,127,128,255,256,0x7fffffff,0x80000000,0xffffffff,
+                       0x100000000,0x7fffffffffffffff,0x8000000000000000,0xffffffffffffffff]
+                for suffix,width in (('B',1),('W',wb),('L',8)):
+                    for relation,predicate in relations.items():
                         name='IBNEW' if relation=='NE' and suffix=='W' else 'IB'+relation+suffix
-                        for a,b in ((0,0),(0,1),(1,0),(-1,1),(1,-1)):
-                            run(name,a,b)
-                            checks+=1
+                        for a in edges:
+                            for b in edges:
+                                aa=a&255 if width==1 else signed(a,width*8)
+                                bb=b&255 if width==1 else signed(b,width*8)
+                                take=predicate(aa,bb)
+                                _,pc,before,after,_=run(name,a,b,badtarget=not take)
+                                assert pc==(target if take else oldpc),(arch,wb,name,aa,bb)
+                                assert before==after
+                                checks+=1
                 assert run('IJMP')[1]==target
                 checks+=1
                 continue

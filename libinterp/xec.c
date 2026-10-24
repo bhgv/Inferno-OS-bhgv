@@ -24,13 +24,17 @@ String	snil;			/* String known to be zero length */
 #define P(r)	*((WORD**)(R.r))
 #define C(r)	*((Channel**)(R.r))
 #define T(r)	*((void**)(R.r))
-#define JMP(r)	R.PC = *(Inst**)(R.r)
+#define JMP(r)	memmove(&R.PC, R.r, sizeof(R.PC))
 #define SH(r)	*((SHORT*)(R.r))
 #define SR(r)	*((SREAL*)(R.r))
 
 OP(runt) {}
 OP(negf) { F(d) = -F(s); }
-OP(jmp)  { JMP(d); }
+/* Read native-width targets without imposing host pointer alignment. */
+OP(jmp)
+{
+	JMP(d);
+}
 /* Validate a Dis program index before turning it into a code pointer. */
 OP(movpc)
 {
@@ -265,24 +269,186 @@ OP(lsrl)
 	n = shiftcount(W(s), sizeof(LONG)*8);
 	V(d) = UV(m) >> n;
 }
-OP(beqb) { if(B(s) == B(m)) JMP(d); }
-OP(bneb) { if(B(s) != B(m)) JMP(d); }
-OP(bltb) { if(B(s) <  B(m)) JMP(d); }
-OP(bleb) { if(B(s) <= B(m)) JMP(d); }
-OP(bgtb) { if(B(s) >  B(m)) JMP(d); }
-OP(bgeb) { if(B(s) >= B(m)) JMP(d); }
-OP(beqw) { if(W(s) == W(m)) JMP(d); }
-OP(bnew) { if(W(s) != W(m)) JMP(d); }
-OP(bltw) { if(W(s) <  W(m)) JMP(d); }
-OP(blew) { if(W(s) <= W(m)) JMP(d); }
-OP(bgtw) { if(W(s) >  W(m)) JMP(d); }
-OP(bgew) { if(W(s) >= W(m)) JMP(d); }
-OP(beql) { if(V(s) == V(m)) JMP(d); }
-OP(bnel) { if(V(s) != V(m)) JMP(d); }
-OP(bltl) { if(V(s) <  V(m)) JMP(d); }
-OP(blel) { if(V(s) <= V(m)) JMP(d); }
-OP(bgtl) { if(V(s) >  V(m)) JMP(d); }
-OP(bgel) { if(V(s) >= V(m)) JMP(d); }
+/* Capture both BYTE operands before conditionally reading the native target. */
+OP(beqb)
+{
+	BYTE left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left == right)
+		JMP(d);
+}
+/* Capture both BYTE operands before conditionally reading the native target. */
+OP(bneb)
+{
+	BYTE left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left != right)
+		JMP(d);
+}
+/* Capture both BYTE operands before conditionally reading the native target. */
+OP(bltb)
+{
+	BYTE left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left < right)
+		JMP(d);
+}
+/* Capture both BYTE operands before conditionally reading the native target. */
+OP(bleb)
+{
+	BYTE left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left <= right)
+		JMP(d);
+}
+/* Capture both BYTE operands before conditionally reading the native target. */
+OP(bgtb)
+{
+	BYTE left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left > right)
+		JMP(d);
+}
+/* Capture both BYTE operands before conditionally reading the native target. */
+OP(bgeb)
+{
+	BYTE left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left >= right)
+		JMP(d);
+}
+/* Capture both WORD operands before conditionally reading the native target. */
+OP(beqw)
+{
+	WORD left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left == right)
+		JMP(d);
+}
+/* Capture both WORD operands before conditionally reading the native target. */
+OP(bnew)
+{
+	WORD left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left != right)
+		JMP(d);
+}
+/* Capture both WORD operands before conditionally reading the native target. */
+OP(bltw)
+{
+	WORD left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left < right)
+		JMP(d);
+}
+/* Capture both WORD operands before conditionally reading the native target. */
+OP(blew)
+{
+	WORD left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left <= right)
+		JMP(d);
+}
+/* Capture both WORD operands before conditionally reading the native target. */
+OP(bgtw)
+{
+	WORD left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left > right)
+		JMP(d);
+}
+/* Capture both WORD operands before conditionally reading the native target. */
+OP(bgew)
+{
+	WORD left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left >= right)
+		JMP(d);
+}
+/* Capture both LONG operands before conditionally reading the native target. */
+OP(beql)
+{
+	LONG left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left == right)
+		JMP(d);
+}
+/* Capture both LONG operands before conditionally reading the native target. */
+OP(bnel)
+{
+	LONG left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left != right)
+		JMP(d);
+}
+/* Capture both LONG operands before conditionally reading the native target. */
+OP(bltl)
+{
+	LONG left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left < right)
+		JMP(d);
+}
+/* Capture both LONG operands before conditionally reading the native target. */
+OP(blel)
+{
+	LONG left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left <= right)
+		JMP(d);
+}
+/* Capture both LONG operands before conditionally reading the native target. */
+OP(bgtl)
+{
+	LONG left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left > right)
+		JMP(d);
+}
+/* Capture both LONG operands before conditionally reading the native target. */
+OP(bgel)
+{
+	LONG left, right;
+
+	memmove(&left, R.s, sizeof(left));
+	memmove(&right, R.m, sizeof(right));
+	if(left >= right)
+		JMP(d);
+}
 /* Compare captured real values and read a branch target only when it is taken. */
 static void
 branchreal(int condition)
