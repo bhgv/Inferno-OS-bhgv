@@ -564,16 +564,17 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     for exponent in exponents:
                         for base in bases:
                             for alias in (0,1,2,3,4):
-                                out,pc,before,after,_=run(name,exponent,base,alias,expect=int(exponent>=0))
-                                if exponent>=0:
-                                    wanted=pow(base,exponent,1<<(width*8))
+                                out,pc,before,after,_=run(name,exponent,base,alias,expect=int(exponent>=0 or signed(base,width*8)!=0))
+                                if exponent>=0 or signed(base,width*8)!=0:
+                                    actual=signed(base,width*8)
+                                    wanted=pow(base,exponent,1<<(width*8)) if exponent>=0 else (1 if actual==1 else ((-1 if exponent&1 else 1)&((1<<(width*8))-1)) if actual==-1 else 0)
                                     assert int.from_bytes(out[:width],'little')==wanted,(arch,wb,name,exponent,base)
                                     assert before[:8]==after[:8] and before[8+width:]==after[8+width:]
                                 else:assert before==after
                                 assert pc==oldpc
                                 checks+=1
                     for exponent in (-1,-(1<<(wb*8-1))):
-                        _,pc,before,after,_=run(name,exponent,poison=True,expect=0)
+                        _,pc,before,after,_=run(name,exponent,0,expect=0,badtarget=True)
                         assert pc==oldpc and before==after
                         checks+=1
                 if case=='power':continue

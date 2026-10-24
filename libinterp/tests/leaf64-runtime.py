@@ -350,7 +350,7 @@ static void characters(Module *m) {
 /* Compare both dispatch paths with a high-bit-first modular power oracle. */
 static void powers(Module *m) {
     union { uvlong align; uchar bytes[64]; } slots;
-    uchar expected[64];
+    uchar expected[64],captured[64];
     WORD minimum=(UWORD)1<<(sizeof(WORD)*8-1),n,wordbase;
     WORD exponents[]={minimum,-3,-2,-1,0,1,2,3,7,31,32,63,64,(WORD)((UWORD)minimum-1)};
     LONG bases[]={0,1,-1,2,-2,(-9223372036854775807LL-1),9223372036854775807LL},base;
@@ -381,6 +381,7 @@ static void powers(Module *m) {
                 offset=alias==0?36:alias==1?4:alias==2?20:alias==3?8:24;
                 if(valid)memcpy(expected+offset,&want,width);
                 R.s=slots.bytes+4;R.m=slots.bytes+20;R.d=slots.bytes+offset;R.PC=pc;
+                if(!mode){memmove(captured,slots.bytes,sizeof(captured));assert(entry(&R)==valid);memmove(slots.bytes,captured,sizeof(captured));}
                 assert(kprotect(dispatch,nil)==valid && R.PC==pc);
                 assert(!memcmp(slots.bytes,expected,sizeof(expected)));
             }

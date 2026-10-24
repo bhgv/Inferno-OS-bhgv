@@ -13,7 +13,7 @@ static Proc worker;
 static Prog current, peers[3], *running = &current;
 static char *last_error;
 static int live, nodes, allocations, fail_after = -1, awakened, removed, checks, acquired;
-char exNomem[] = "allocation", exNilref[] = "nil", exAlt[] = "self alt";
+char exNomem[] = "allocation", exNilref[] = "nil", exAlt[] = "self alt", exBounds[] = "bounds";
 char exHeap[] = "heap", exNegsize[] = "negative";
 REG R;
 Type Tarray = {1}, scalar = {1}, pointer = {1};
@@ -295,9 +295,10 @@ checkready(void)
 	Channel *c, *members[5];
 	struct { Heap h; Array a; } array;
 	struct { int nsend, nrecv; Altc ac[3]; } storage;
-	union { void *align; uchar bytes[32]; } space;
+	union { void *align; uchar bytes[64]; } space;
+	uchar rawalt[sizeof(storage)+8],rawmembers[sizeof(members)+8],rawresult[24];
 	Alt *a;
-	WORD value, result, received, *index;
+	WORD value, result, received, selected, *index;
 	void *input, *output, *destination;
 	int sending, pointers, buffered, wide, repeat, i;
 
@@ -305,20 +306,21 @@ checkready(void)
 	for(pointers = 0; pointers < 2; pointers++)
 	for(buffered = 0; buffered < 2; buffered++)
 	for(wide = 0; wide <= !sending; wide++)
-	for(repeat = 0; repeat < 64; repeat++){
+	for(repeat = 0; repeat < 512; repeat++){
 		openchannel(&boxes[0], 0, pointers);
 		openchannel(&boxes[1], buffered ? 2 : 0, pointers); c = &boxes[1].c;
 		memset(&array, 0, sizeof(array)); array.h.t = &Tarray;
 		members[0] = members[4] = H; members[1] = &boxes[0].c;
-		members[2] = members[3] = c; array.a.len = 5; array.a.data = (uchar*)members;
+		members[2] = members[3] = c; array.a.len = 5;memmove(rawmembers+((repeat+(repeat>>3)+(repeat>>6))&7),members,sizeof(members));
+		array.a.data=rawmembers+((repeat+(repeat>>3)+(repeat>>6))&7);
 		value = 99; received = -1;
 		input = pointers ? payload(value) : H;
 		output = pointers ? payload(-77) : H;
-		index = (WORD*)(space.bytes+sizeof(void*)-sizeof(WORD)); *index = -1;
-		destination = wide ? (void*)(index+1) : pointers ? (void*)&output : (void*)&received;
+		index=(WORD*)(space.bytes+16+((repeat>>6)&7));selected=-1;memmove(index,&selected,sizeof(selected));
+		destination = wide ? (void*)((uchar*)index+sizeof(WORD)) : pointers ? (void*)&output : (void*)&received;
 		if(wide){
-			if(pointers) *(void**)destination = output;
-			else *(WORD*)destination = received;
+			if(pointers) memmove(destination,&output,sizeof(output));
+			else memmove(destination,&received,sizeof(received));
 		}
 		if(buffered){
 			if(!sending) sendvalue(c, 99, pointers);
@@ -333,8 +335,9 @@ checkready(void)
 			a->ac[i].ptr = sending ? (pointers ? (void*)&input : (void*)&value) :
 				i == 1 && wide ? (void*)index : destination;
 		}
-		result = -1; R.s = a; R.d = &result; awakened = 0;
-		xecalt(1); assert(result == 1 && !removed);
+		memmove(rawalt+(repeat&7),a,sizeof(storage));a=(Alt*)(rawalt+(repeat&7));
+		result=-1;memmove(rawresult+((repeat>>3)&7),&result,sizeof(result));R.s=a;R.d=rawresult+((repeat>>3)&7); awakened = 0;
+		xecalt(1);memmove(&result,rawresult+((repeat>>3)&7),sizeof(result));assert(result == 1 && !removed);
 		assert(awakened == !buffered);
 		if(!buffered) assert(peers[0].ptr == nil && peers[0].state == Pready);
 		if(sending && buffered){
@@ -342,10 +345,10 @@ checkready(void)
 			receivevalue(c, 99, pointers);
 		}
 		else{
-			if(wide && !sending) assert(*index == 2 || *index == 3);
+			if(wide && !sending){memmove(&selected,index,sizeof(selected));assert(selected==2 || selected==3);}
 			if(pointers){
-				output = *(void**)destination; assert(*(WORD*)output == 99);
-			}else assert(*(WORD*)destination == 99);
+				memmove(&output,destination,sizeof(output)); assert(*(WORD*)output == 99);
+			}else{memmove(&received,destination,sizeof(received));assert(received==99);}
 		}
 		if(pointers){ destroy(input); destroy(output); }
 		for(i = 0; i < 2; i++){
@@ -411,47 +414,50 @@ checkblockedwake(void)
 	Channel *c, *members[5];
 	struct { Heap h; Array a; } array;
 	struct { int nsend, nrecv; Altc ac[3]; } storage;
-	union { void *align; uchar bytes[32]; } space;
+	union { void *align; uchar bytes[64]; } space;
+	uchar rawalt[sizeof(storage)+8],rawmembers[sizeof(members)+8],rawresult[24];
 	Alt *a;
-	WORD value, result, received, *index;
+	WORD value, result, received, selected, *index;
 	void *input, *output, *destination;
 	int sending, pointers, wide, repeat, i, before;
 
 	for(sending = 0; sending < 2; sending++)
 	for(pointers = 0; pointers < 2; pointers++)
 	for(wide = 0; wide <= !sending; wide++)
-	for(repeat = 0; repeat < 32; repeat++){
+	for(repeat = 0; repeat < 512; repeat++){
 		openchannel(&boxes[0], 0, pointers); openchannel(&boxes[1], 0, pointers); c = &boxes[1].c;
 		memset(&array, 0, sizeof(array)); array.h.t = &Tarray;
 		members[0] = members[4] = H; members[1] = &boxes[0].c;
-		members[2] = members[3] = c; array.a.len = 5; array.a.data = (uchar*)members;
+		members[2] = members[3] = c; array.a.len = 5;memmove(rawmembers+((repeat+(repeat>>3)+(repeat>>6))&7),members,sizeof(members));
+		array.a.data=rawmembers+((repeat+(repeat>>3)+(repeat>>6))&7);
 		value = 99; received = -1;
 		input = pointers ? payload(value) : H; output = pointers ? payload(-77) : H;
-		index = (WORD*)(space.bytes+sizeof(void*)-sizeof(WORD)); *index = -1;
-		destination = wide ? (void*)(index+1) : pointers ? (void*)&output : (void*)&received;
-		if(wide){ if(pointers) *(void**)destination = output; else *(WORD*)destination = received; }
+		index=(WORD*)(space.bytes+16+((repeat>>6)&7));selected=-1;memmove(index,&selected,sizeof(selected));
+		destination = wide ? (void*)((uchar*)index+sizeof(WORD)) : pointers ? (void*)&output : (void*)&received;
+		if(wide){ if(pointers) memmove(destination,&output,sizeof(output)); else memmove(destination,&received,sizeof(received)); }
 		a = (Alt*)&storage; a->nsend = sending ? 3 : 0; a->nrecv = sending ? 0 : 3;
 		for(i = 0; i < 3; i++){
 			a->ac[i].c = i == 1 ? (!sending && wide ? (Channel*)&array.a : c) : &boxes[0].c;
 			a->ac[i].ptr = sending ? (pointers ? (void*)&input : (void*)&value) :
 				i == 1 && wide ? (void*)index : destination;
 		}
-		result = -1; R.s = a; R.d = &result;
+		memmove(rawalt+(repeat&7),a,sizeof(storage));a=(Alt*)(rawalt+(repeat&7));
+		result=-1;memmove(rawresult+((repeat>>3)&7),&result,sizeof(result));R.s=a;R.d=rawresult+((repeat>>3)&7);
 		current.state = Pready; awakened = 0; before = removed;
 		xecalt(1);
 		assert(removed == before+1 && current.state == Palt && result == -1);
 		running = &peers[0]; peers[0].state = Pready;
 		if(sending){ R.s = &c; R.d = destination; irecv(); }
 		else{ R.s = pointers ? (void*)&input : (void*)&value; R.d = &c; isend(); }
-		running = &current;
+		running = &current;memmove(&result,rawresult+((repeat>>3)&7),sizeof(result));
 		assert(current.state == Pready && current.ptr == nil && result == 1 && awakened == 1);
 		assert(removed == before+1);
-		if(wide && !sending) assert(*index == 2);
+		if(wide && !sending){memmove(&selected,index,sizeof(selected));assert(selected==2);}
 		if(pointers){
-			output = *(void**)destination;
+			memmove(&output,destination,sizeof(output));
 			assert(output == input && *(WORD*)output == 99 && D2H(output)->ref == 2);
 			destroy(input); destroy(output);
-		}else assert(*(WORD*)destination == 99);
+		}else{memmove(&received,destination,sizeof(received));assert(received==99);}
 		for(i = 0; i < 2; i++){
 			assert(boxes[i].c.recv->prog == nil && !boxes[i].c.recv->next);
 			assert(boxes[i].c.send->prog == nil && !boxes[i].c.send->next);
@@ -505,6 +511,10 @@ checkfaults(void)
 		fail_after = -1;
 		assert(!memcmp(&R, &saved, sizeof(R)) && box.c.buf == H && attempt.result == -1);
 		if(pointers) assert(D2H(input)->ref == 1);
+		attempt.channel = nil;
+		assert(!kprotect(attemptnative, &attempt) && last_error == exNilref);
+		assert(!memcmp(&R,&saved,sizeof(R)) && attempt.result==-1);
+		if(pointers)assert(D2H(input)->ref==1);
 		attempt.channel = H;
 		assert(!kprotect(attemptnative, &attempt) && last_error == exNilref);
 		if(pointers) assert(D2H(input)->ref == 1);

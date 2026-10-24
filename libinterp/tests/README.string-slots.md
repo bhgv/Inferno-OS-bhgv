@@ -1,7 +1,8 @@
 # String slots and RISC-V multiplication/division capabilities
 
 The string series covers `slicec`, `addc`, `cvtca`, `cvtac`, `cvtcw`, `cvtcf`,
-`cvtwc`, `cvtlc`, and `cvtfc`. Each captures scalar values or owners using
+`cvtwc`, `cvtlc`, `cvtfc`, and the `cvtcl` big parser in `xec.c`. Each captures
+scalar values or owners using
 `memmove`; pointer results are published before the replaced owner is released.
 The slice instruction validates complete signed VM words before converting to
 the public `slicer(ulong, ulong, String*)` API. The shared slice, concatenation,
@@ -23,7 +24,7 @@ native host pointers. It checks every byte alignment, exact owner aliases,
 allocation failure before replacement, ASCII/rune parsing, numeric formatting,
 string/byte-array conversion and all slices of a four-character ASCII/rune
 string (including invalid bounds and H). Bytes outside the result slot and all
-heap guards and reference counts are checked. There are 78,471 counted checks
+heap guards and reference counts are checked. There are 79,111 counted checks
 per word model. The parent revision fails UBSan on an unaligned owner read.
 
 The new slot driver passes ASan/UBSan with stack instrumentation enabled.

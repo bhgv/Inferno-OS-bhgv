@@ -890,15 +890,15 @@ OP(cvtfw)
 	result = (WORD)f;
 	memmove(R.d, &result, sizeof(result));
 }
+/* Capture the owner before parsing and publish a complete possibly unaligned big. */
 OP(cvtcl)
 {
 	String *s;
+	LONG value;
 
-	s = S(s);
-	if(s == H)
-		V(d) = 0;
-	else
-		V(d) = strtoll(string2c(s), nil, 10);
+	memmove(&s, R.s, sizeof(s));
+	value = strtoll(string2c(s), nil, 10);
+	memmove(R.d, &value, sizeof(value));
 }
 
 /* Capture operands before computing a modular power or its negative-exponent rule. */
@@ -2035,7 +2035,7 @@ csendalt(Channel *c, void *ip, Type *t, int len)
 {
 	REG rsav;
 
-	if(c == H)
+	if(c == H || c == nil)
 		error(exNilref);
 
 	if(c->recv->prog == nil && (c->buf == H || c->size == c->buf->len)){

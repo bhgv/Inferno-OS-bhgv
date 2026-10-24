@@ -17,7 +17,7 @@ main(void)
 	String *s, *t, *result, *old;
 	Array *a;
 	WORD start, end, word, parsed;
-	LONG big;
+	LONG big,parsedbig;
 	REAL real, number;
 	int sa, ma, da, op, alias, wide, i;
 	void (*formats[])(void)={cvtwc,cvtlc,cvtfc};
@@ -36,15 +36,16 @@ main(void)
 		assert(!strcmp(string2c(result),op==0 ? "-1234567" : op==1 ? "-9223372036854775807" : "-123.5"));
 		slotresult(slots.bytes,before,80+da,sizeof(result));destroy(result);
 	}
-	for(sa=0;sa<8;sa++)for(da=0;da<8;da++)for(wide=0;wide<2;wide++)for(alias=0;alias<2;alias++){
-		s=wide ? newrunes(4) : c2string("-123",4);
-		if(wide){s->Srune[0]='-';s->Srune[1]='1';s->Srune[2]='2';s->Srune[3]='3';}
-		for(op=0;op<2;op++){
+	for(sa=0;sa<8;sa++)for(da=0;da<8;da++)for(wide=0;wide<3;wide++)for(alias=0;alias<2;alias++){
+		s=wide==2 ? H : wide ? newrunes(4) : c2string("-123",4);
+		if(wide==1){s->Srune[0]='-';s->Srune[1]='1';s->Srune[2]='2';s->Srune[3]='3';}
+		for(op=0;op<3;op++){
 			memset(slots.bytes,0xa5,128);R.s=slots.bytes+16+sa;R.d=alias ? R.s : slots.bytes+80+da;
 			memmove(R.s,&s,sizeof(s));memmove(before,slots.bytes,128);
-			if(op==0){cvtcw();memmove(&parsed,R.d,sizeof(parsed));assert(parsed==-123);}
-			else{cvtcf();memmove(&number,R.d,sizeof(number));assert(number==-123.0);}
-			slotresult(slots.bytes,before,(uchar*)R.d-slots.bytes,op ? sizeof(number) : sizeof(parsed));
+			if(op==0){cvtcw();memmove(&parsed,R.d,sizeof(parsed));assert(parsed==(wide==2 ? 0 : -123));}
+			else if(op==1){cvtcf();memmove(&number,R.d,sizeof(number));assert(number==(wide==2 ? 0. : -123.));}
+			else{cvtcl();memmove(&parsedbig,R.d,sizeof(parsedbig));assert(parsedbig==(wide==2 ? 0 : -123));}
+			slotresult(slots.bytes,before,(uchar*)R.d-slots.bytes,op==2 ? sizeof(parsedbig) : op==1 ? sizeof(number) : sizeof(parsed));
 		}destroy(s);
 	}
 	for(sa=0;sa<8;sa++)for(da=0;da<8;da++)for(alias=0;alias<2;alias++){

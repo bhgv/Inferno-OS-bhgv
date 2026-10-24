@@ -259,10 +259,26 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x48); x64byte(&b, 0xd3); x64byte(&b, 0xf8); /* sar rax,cl */
 		x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
 	}else if(p.kind == LeafPower){
-		/* Let the VM apply negative-exponent results and zero-base exceptions. */
+		/* Negative exponents need only zero/one tests and parity, never negation. */
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, abi->wordbytes);
-		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x79);
 		x64ptr(&b, 1, abi->m); x64load(&b, 1, p.bytes);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0);
+		x64byte(&b, 0x79); scale=b.n; x64byte(&b, 0);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9); x64guard(&b, 0x75);
+		x64byte(&b, 0xba); x64word(&b, 1);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf9); x64byte(&b, 1);
+		x64byte(&b, 0x74); empty=b.n; x64byte(&b, 0);
+		x64byte(&b, 0x31); x64byte(&b, 0xd2);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf9); x64byte(&b, 0xff);
+		x64byte(&b, 0x75); other=b.n; x64byte(&b, 0);
+		x64byte(&b, 0x89); x64byte(&b, 0xc2); x64byte(&b, 0x83); x64byte(&b, 0xe2); x64byte(&b, 1);
+		x64byte(&b, 0x48); x64byte(&b, 0xf7); x64byte(&b, 0xda);
+		x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xd2);
+		x64byte(&b, 0x48); x64byte(&b, 0xff); x64byte(&b, 0xc2);
+		b.bytes[empty]=b.n-empty-1; b.bytes[other]=b.n-other-1;
+		x64ptr(&b, 2, abi->d); x64store(&b, 2, p.bytes);
+		x64byte(&b, 0xb8); x64word(&b, 1); x64byte(&b, 0xc3);
+		b.bytes[scale]=b.n-scale-1;
 		x64byte(&b, 0xba); x64word(&b, 1); /* rdx = result */
 		loop = b.n;
 		x64byte(&b, 0xa8); x64byte(&b, 1);

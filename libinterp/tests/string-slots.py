@@ -32,6 +32,7 @@ signatures = ['String*\nnewstring(', 'String*\nnewrunes(', 'void\ncvtup(',
               'OP(cvtac)', 'OP(cvtwc)', 'OP(cvtlc)', 'OP(cvtfc)', 'OP(cvtcw)', 'OP(cvtcf)',
               'String*\nslicer(', 'String*\naddstring(', 'OP(slicec)', 'OP(addc)', 'char*\nstring2c(', 'String*\nc2string(']
 parts = [function(source, signature) for signature in signatures]
+parts += [function(Path(os.environ.get('STRING_SLOT_XEC_SOURCE',root/'libinterp/xec.c')).read_text(), 'OP(cvtcl)')]
 parts += [function((root / 'libinterp/runt.c').read_text(), 'Array*\nmem2array(')]
 unit = (root / 'libinterp/tests/string-codecs.c').read_text()
 unit = unit.replace('IMPLEMENTATION', '#define F(r) (*(REAL*)R.r)\n'+'\n'.join(parts)).replace('main(void)', 'codecmain(void)')

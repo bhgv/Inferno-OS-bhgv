@@ -222,10 +222,24 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64put(&b, 0xcb0d03ed); a64put(&b, 0x9acd298c); /* neg count; asr */
 		a64ptr(&b, 11, abi->d); a64store(&b, 12, abi->wordbytes);
 	}else if(p.kind == LeafPower){
+		/* Minimum negative exponents are handled by parity without signed negation. */
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, abi->wordbytes);
-		a64put(&b, abi->wordbytes == 8 ? 0xf100019fU : 0x7100019fU);
-		a64guard(&b, 0x5400006a);
 		a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, p.bytes);
+		a64put(&b, abi->wordbytes == 8 ? 0xf100019fU : 0x7100019fU);
+		scale=b.n; a64put(&b, 0x5400000a);
+		a64guard(&b, 0xb500006d);
+		a64put(&b, 0xd280002e);
+		a64put(&b, p.bytes == 8 ? 0xf10005bf : 0x710005bf);
+		empty=b.n; a64put(&b, 0x54000000);
+		a64put(&b, 0xd280000e);
+		a64put(&b, p.bytes == 8 ? 0xb10005bf : 0x310005bf);
+		other=b.n; a64put(&b, 0x54000001);
+		a64put(&b, 0x9240018e); a64put(&b, 0xcb0e03ee);
+		a64put(&b, 0x8b0e01ce); a64put(&b, 0x910005ce);
+		b.code[empty] |= (b.n-empty)<<5; b.code[other] |= (b.n-other)<<5;
+		a64ptr(&b, 11, abi->d); a64store(&b, 14, p.bytes);
+		a64put(&b, 0x52800020); a64put(&b, 0xd65f03c0);
+		b.code[scale] |= (b.n-scale)<<5;
 		a64put(&b, 0x5280002e); /* result = 1 */
 		loop = b.n;
 		a64put(&b, 0x3600004c); a64put(&b, 0x9b0d7dce);

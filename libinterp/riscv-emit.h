@@ -272,9 +272,19 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	case IEXPW: case IEXPL:
 		if(abi->xlen != 64 || !abi->hasm) return 0;
 		rvptr(&b, Rvt0, abi->s); rvload(&b, Rvt4, Rvt0, abi->wordbytes);
-		rvguard(&b, 5, Rvt4, Rvzero);
 		bytes = op == IEXPL ? 8 : abi->wordbytes;
 		rvptr(&b, Rvt1, abi->m); rvload(&b, Rvt3, Rvt1, bytes);
+		/* No division or signed exponent negation is needed on the negative path. */
+		rvbranch(&b, 5, Rvt4, Rvzero, bytes == 8 ? 80 : 72);
+		rvguard(&b, 1, Rvt3, Rvzero);
+		rvi(&b, 0x13, 0, Rvt6, Rvzero, 1); rvi(&b, 0x13, 0, Rvt5, Rvzero, 1);
+		rvbranch(&b, 0, Rvt3, Rvt5, 32);
+		rvi(&b, 0x13, 0, Rvt6, Rvzero, 0); rvi(&b, 0x13, 0, Rvt5, Rvzero, -1);
+		rvbranch(&b, 1, Rvt3, Rvt5, 20);
+		rvi(&b, 0x13, 7, Rvt6, Rvt4, 1); rvi(&b, 0x13, 1, Rvt6, Rvt6, 1);
+		rvr(&b, 0x33, 0, 32, Rvt6, Rvzero, Rvt6); rvi(&b, 0x13, 0, Rvt6, Rvt6, 1);
+		rvptr(&b, Rvt2, abi->d); rvstore(&b, Rvt2, Rvt6, bytes);
+		rvi(&b, 0x13, 0, Rva0, Rvzero, 1); rvi(&b, 0x67, 0, Rvzero, Rvra, 0);
 		rvi(&b, 0x13, 0, Rvt6, Rvzero, 1);
 		rvi(&b, 0x13, 7, Rvt5, Rvt4, 1);
 		rvbranch(&b, 0, Rvt5, Rvzero, 8);

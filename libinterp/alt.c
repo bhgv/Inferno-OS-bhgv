@@ -13,6 +13,45 @@
 extern	OP(isend);
 extern	OP(irecv);
 
+/* Store a VM selection word without requiring native slot alignment. */
+static void
+altstore(void *slot, WORD value)
+{
+	memmove(slot, &value, sizeof(value));
+}
+
+/* Capture a possibly four-byte-aligned alt header before forming table spans. */
+static int
+altheader(Alt *a, int *nsend, int *nrecv)
+{
+	uvlong bytes;
+
+	if(a == nil || a == H)
+		return 0;
+	memmove(nsend, (uchar*)a+offsetof(Alt, nsend), sizeof(*nsend));
+	memmove(nrecv, (uchar*)a+offsetof(Alt, nrecv), sizeof(*nrecv));
+	if(*nsend < 0 || *nrecv < 0 || *nsend > 0x7fffffff/(int)sizeof(Altc)-*nrecv)
+		return 0;
+	bytes = (uvlong)(*nsend+*nrecv)*sizeof(Altc)+offsetof(Alt, ac);
+	return (uintptr)a <= (uintptr)-1-bytes;
+}
+
+/* Invalid array geometry must also be safe to revisit during partial cleanup. */
+static int
+altarrayvalid(Array *a)
+{
+	uvlong bytes;
+
+	if(a->len < 0 || (uvlong)a->len > 0x7fffffff/sizeof(Channel*))
+		return 0;
+	if(a->len == 0)
+		return 1;
+	if(a->data == nil || a->data == H)
+		return 0;
+	bytes = (uvlong)a->len*sizeof(Channel*);
+	return (uintptr)a->data <= (uintptr)-1-bytes;
+}
+
 /*
  * Count the number of ready channels in an array of channels
  * Register the owning prog without arithmetic on an empty array data span.
@@ -27,12 +66,19 @@ altmark(Channel *c, Prog *p)
 
 	nrdy = 0;
 	a = (Array*)c;
+	if(!altarrayvalid(a))
+		error(exBounds);
 	ca = (Channel**)a->data;
 	for(i = 0; i < a->len; i++){
-		c = ca[i];
-		if(c != H) {
-			if(c->send->prog || CANGET(c))
+		memmove(&c, (uchar*)ca+i*sizeof(c), sizeof(c));
+		if(c == nil)
+			error(exNilref);
+		if(c != H && c != nil) {
+			if(c->send->prog || CANGET(c)){
+				if(nrdy == 0x7fffffff)
+					error(exBounds);
 				nrdy++;
+			}
 			cqadd(&c->recv, p);
 		}
 	}
@@ -51,15 +97,17 @@ altunmark(Channel *c, WORD *ptr, Prog *p, int sr, Channel **sel, int dn)
 	Channel **ca;
 
 	a = (Array*)c;
+	if(!altarrayvalid(a))
+		return;
 	ca = (Channel**)a->data;
 	for(n = 0; n < a->len; n++){
-		c = ca[n];
-		if(c != H && c->recv->prog)
+		memmove(&c, (uchar*)ca+n*sizeof(c), sizeof(c));
+		if(c != H && c != nil && c->recv->prog)
 			cqdelp(&c->recv, p);
 		if(sr == 1 && *sel == c) {
-			W(p->R.d) = dn;
-			p->ptr = ptr + 1;
-			ptr[0] = n;
+			altstore(p->R.d, dn);
+			p->ptr = (uchar*)ptr+sizeof(WORD);
+			memmove(ptr, &n, sizeof(n));
 			*sel = nil;
 		}
 	}
@@ -86,38 +134,47 @@ altrdy(Alt *a, Prog *p)
 {
 	char *e;
 	Type *t;
-	int nrdy;
+	int nrdy, nsend, nrecv, added;
 	Channel *c;
 	Altc *ac, *eac;
 
+	if(!altheader(a, &nsend, &nrecv))
+		error(exBounds);
 	e = nil;
 	nrdy = 0;
 
-	ac = a->ac + a->nsend;
-	eac = ac + a->nrecv;
+	ac = (Altc*)((uchar*)a+offsetof(Alt, ac))+nsend;
+	eac = ac + nrecv;
 	while(ac < eac) {
-		c = ac->c;
+		memmove(&c, (uchar*)ac+offsetof(Altc, c), sizeof(c));
 		ac++;
-		if(c == H) {
+		if(c == H || c == nil) {
 			e = exNilref;
 			continue;
 		}
 		t = D2H(c)->t;
-		if(t == &Tarray)
-			nrdy += altmark(c, p);
+		if(t == &Tarray){
+			added = altmark(c, p);
+			if(added > 0x7fffffff-nrdy)
+				error(exBounds);
+			nrdy += added;
+		}
 		else {
-			if(c->send->prog || CANGET(c))
+			if(c->send->prog || CANGET(c)){
+				if(nrdy == 0x7fffffff)
+					error(exBounds);
 				nrdy++;
+			}
 			cqadd(&c->recv, p);
 		}
 	}
 
-	ac = a->ac;
-	eac = ac + a->nsend;
+	ac = (Altc*)((uchar*)a+offsetof(Alt, ac));
+	eac = ac + nsend;
 	while(ac < eac) {
-		c = ac->c;
+		memmove(&c, (uchar*)ac+offsetof(Altc, c), sizeof(c));
 		ac++;
-		if(c == H) {
+		if(c == H || c == nil) {
 			e = exNilref;
 			continue;
 		}
@@ -125,8 +182,11 @@ altrdy(Alt *a, Prog *p)
 			e = exAlt;
 			continue;
 		}
-		if(c->recv->prog || CANPUT(c))
+		if(c->recv->prog || CANPUT(c)){
+			if(nrdy == 0x7fffffff)
+				error(exBounds);
 			nrdy++;
+		}
 		cqadd(&c->send, p);
 	}
 
@@ -142,22 +202,25 @@ altrdy(Alt *a, Prog *p)
 void
 altdone(Alt *a, Prog *p, Channel *sel, int sr)
 {
-	int n;
+	int n, nsend, nrecv;
+	WORD *ptr;
 	Type *t;
 	Channel *c;
 	Altc *ac, *eac;
 
+	if(!altheader(a, &nsend, &nrecv))
+		return;
 	n = 0;
-	ac = a->ac;
-	eac = a->ac + a->nsend;
+	ac = (Altc*)((uchar*)a+offsetof(Alt, ac));
+	eac = (Altc*)((uchar*)a+offsetof(Alt, ac))+nsend;
 	while(ac < eac) {
-		c = ac->c;
-		if(c != H) {
+		memmove(&c, (uchar*)ac+offsetof(Altc, c), sizeof(c));
+		if(c != H && c != nil) {
 			if(c->send->prog)
 				cqdelp(&c->send, p);
 			if(sr == 0 && c == sel) {
-				p->ptr = ac->ptr;
-				W(p->R.d) = n;
+				memmove(&p->ptr, (uchar*)ac+offsetof(Altc, ptr), sizeof(p->ptr));
+				altstore(p->R.d, n);
 				sel = nil;
 			}
 		}
@@ -165,23 +228,21 @@ altdone(Alt *a, Prog *p, Channel *sel, int sr)
 		n++;
 	}
 
-	eac = a->ac + a->nsend + a->nrecv;
+	eac = (Altc*)((uchar*)a+offsetof(Alt, ac))+nsend+nrecv;
 	while(ac < eac) {
-		c = ac->c;
-		if(c != H) {
+		memmove(&c, (uchar*)ac+offsetof(Altc, c), sizeof(c));
+		if(c != H && c != nil) {
 			t = D2H(c)->t;
-//printf("t=%X\n", t);
-			if(t == &Tarray)
-				altunmark(c, ac->ptr, p, sr, &sel, n);
+			if(t == &Tarray){
+				memmove(&ptr, (uchar*)ac+offsetof(Altc, ptr), sizeof(ptr));
+				altunmark(c, ptr, p, sr, &sel, n);
+			}
 			else {
-//printf("c=%X\n", c);
-//printf("c->recv=%X\n", c->recv);
-//printf("c->recv->prog=%X\n", c->recv->prog);
 				if(c->recv && c->recv->prog)
 					cqdelp(&c->recv, p);
 				if(sr == 1 && c == sel) {
-					p->ptr = ac->ptr;
-					W(p->R.d) = n;
+					memmove(&p->ptr, (uchar*)ac+offsetof(Altc, ptr), sizeof(p->ptr));
+					altstore(p->R.d, n);
 					sel = nil;
 				}
 			}
@@ -199,20 +260,22 @@ altcomm(Alt *a, int which)
 {
 	Type *t;
 	Array *r;
-	int n;
+	int n, nsend, nrecv;
 	WORD an;
 	WORD *ptr;
 	Altc *ac, *eac;
 	Channel *c, **ca;
 
+	if(!altheader(a, &nsend, &nrecv))
+		error(exBounds);
 	n = 0;
-	ac = a->ac;
-	eac = ac + a->nsend;
+	ac = (Altc*)((uchar*)a+offsetof(Alt, ac));
+	eac = ac + nsend;
 	while(ac < eac) {
-		c = ac->c;
+		memmove(&c, (uchar*)ac+offsetof(Altc, c), sizeof(c));
 		if((c->recv->prog != nil || CANPUT(c)) && which-- == 0) {
-			W(R.d) = n;
-			R.s = ac->ptr;
+			altstore(R.d, n);
+			memmove(&R.s, (uchar*)ac+offsetof(Altc, ptr), sizeof(R.s));
 			R.d = &c;
 			isend();
 			return;
@@ -221,21 +284,21 @@ altcomm(Alt *a, int which)
 		n++;
 	}
 
-	eac = eac + a->nrecv;
+	eac = eac + nrecv;
 	while(ac < eac) {
-		c = ac->c;
+		memmove(&c, (uchar*)ac+offsetof(Altc, c), sizeof(c));
 		t = D2H(c)->t;
 		if(t == &Tarray) {
 			r = (Array*)c;
 			ca = (Channel**)r->data;
 			for(an = 0; an < r->len; an++){
-				c = ca[an];
-				if(c != H && (c->send->prog != nil || CANGET(c)) && which-- == 0) {
-					W(R.d) = n;
+				memmove(&c, (uchar*)ca+an*sizeof(c), sizeof(c));
+				if(c != H && c != nil && (c->send->prog != nil || CANGET(c)) && which-- == 0) {
+					altstore(R.d, n);
 					R.s = &c;
-					ptr = ac->ptr;
-					R.d = ptr + 1;
-					ptr[0] = an;
+					memmove(&ptr, (uchar*)ac+offsetof(Altc, ptr), sizeof(ptr));
+					R.d = (uchar*)ptr+sizeof(WORD);
+					memmove(ptr, &an, sizeof(an));
 					irecv();
 					return;
 				}
@@ -243,9 +306,9 @@ altcomm(Alt *a, int which)
 		}
 		else
 		if((c->send->prog != nil || CANGET(c)) && which-- == 0) {
-			W(R.d) = n;
+			altstore(R.d, n);
 			R.s = &c;
-			R.d = ac->ptr;
+			memmove(&R.d, (uchar*)ac+offsetof(Altc, ptr), sizeof(R.d));
 			irecv();
 			return;	
 		}
@@ -293,13 +356,17 @@ xecalt(int block)
 {
 	Alt *a;
 	Prog *p;
-	int nrdy;
+	int nrdy, nsend, nrecv;
 	AltReady ready;
 	static ulong xrand = 0x20342;
 
 	p = currun();
 
 	a = R.s;
+	if(a == nil || a == H)
+		error(exNilref);
+	if(!altheader(a, &nsend, &nrecv))
+		error(exBounds);
 	ready.alt = a;
 	ready.prog = p;
 	if(!kprotect(altready, &ready)){
@@ -316,7 +383,7 @@ xecalt(int block)
 			R.t = 1;
 			return;
 		}
-		W(R.d) = a->nsend + a->nrecv;
+		altstore(R.d, nsend+nrecv);
 		altdone(a, p, nil, -1);
 		return;
 	}

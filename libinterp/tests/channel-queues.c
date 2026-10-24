@@ -14,7 +14,7 @@ static int fail_after = -1, live, removed, awakened, checks;
 static Progq **blockedqueue;
 static int blockmode, blockcalls;
 static char interrupted[] = "interrupted";
-char exNomem[] = "allocation", exNilref[] = "nil", exAlt[] = "self alt";
+char exNomem[] = "allocation", exNilref[] = "nil", exAlt[] = "self alt", exBounds[] = "bounds";
 REG R;
 Type Tarray;
 
@@ -374,10 +374,94 @@ checknative(void)
 	}
 }
 
+/* Exercise actual registration and wakeup selection through independently aligned slots. */
+static void
+checkaltslots(void)
+{
+	union {uvlong align;uchar bytes[256];} storage;
+	uchar outputs[48],payload[48],members[64],before[48];
+	struct { Heap h; Channel c; } boxes[2];
+	struct { Heap h; Array a; } array;
+	Channel *entry;
+	Altc guard;
+	Alt *a;
+	Prog *expected[1];
+	WORD result,index;
+	int ha,oa,pa,aa,kind,foreign,i,counts[2];
+
+	for(ha=0;ha<8;ha++)for(oa=0;oa<8;oa++)for(pa=0;pa<8;pa++)for(aa=0;aa<8;aa++)
+	for(kind=0;kind<3;kind++)for(foreign=0;foreign<2;foreign++){
+		for(i=0;i<2;i++){
+			memset(&boxes[i],0,sizeof(boxes[i]));boxes[i].c.buf=H;
+			boxes[i].c.send=emptyqueue();boxes[i].c.recv=emptyqueue();
+			if(foreign){cqadd(&boxes[i].c.send,&others[0]);cqadd(&boxes[i].c.recv,&others[0]);}
+		}
+		memset(&current,0,sizeof(current));memset(&array,0,sizeof(array));array.h.t=&Tarray;
+		array.a.data=members+aa;array.a.len=3;
+		entry=H;memmove(members+aa,&entry,sizeof(entry));entry=&boxes[0].c;memmove(members+aa+sizeof(entry),&entry,sizeof(entry));
+		entry=&boxes[1].c;memmove(members+aa+2*sizeof(entry),&entry,sizeof(entry));
+		memset(storage.bytes,0xa5,sizeof(storage.bytes));a=(Alt*)(storage.bytes+ha);
+		counts[0]=kind==0 ? 2 : 0;counts[1]=kind==0 ? 0 : 2;memmove(a,counts,sizeof(counts));
+		guard.c=&boxes[0].c;guard.ptr=payload+pa;
+		memmove((uchar*)a+offsetof(Alt,ac),&guard,sizeof(guard));
+		guard.c=kind==2 ? (Channel*)&array.a : &boxes[1].c;
+		memmove((uchar*)a+offsetof(Alt,ac)+sizeof(guard),&guard,sizeof(guard));
+		memset(outputs,0xa5,sizeof(outputs));memset(payload,0xa5,sizeof(payload));memmove(before,payload,sizeof(payload));
+		current.R.d=outputs+oa;
+		altrdy(a,&current);altdone(a,&current,&boxes[1].c,kind==0 ? 0 : 1);
+		memmove(&result,outputs+oa,sizeof(result));assert(result==1);
+		if(kind==2){memmove(&index,payload+pa,sizeof(index));assert(index==2);memmove(before+pa,&index,sizeof(index));}
+		assert(current.ptr==payload+pa+(kind==2 ? sizeof(WORD) : 0));
+		assert(!memcmp(payload,before,sizeof(payload)));
+		for(i=0;i<48;i++)if(i<oa || i>=oa+(int)sizeof(WORD))assert(outputs[i]==0xa5);
+		expected[0]=&others[0];
+		for(i=0;i<2;i++){
+			queueequals(boxes[i].c.send,expected,foreign);queueequals(boxes[i].c.recv,expected,foreign);
+			releasequeue(boxes[i].c.send);releasequeue(boxes[i].c.recv);
+		}
+		assert(!live);checks++;
+	}
+}
+
+/* Partial cleanup must tolerate null channels, malformed arrays and rejected headers. */
+static void
+checkaltgeometry(void)
+{
+	struct { int nsend,nrecv; Altc ac[2]; } storage;
+	struct { Heap h; Channel c; } box;
+	struct { Heap h; Array a; } array;
+	Channel *members[2];
+	WORD result;
+	int mode;
+
+	for(mode=0;mode<12;mode++){
+		memset(&storage,0,sizeof(storage));memset(&box,0,sizeof(box));memset(&array,0,sizeof(array));
+		box.c.buf=H;box.c.send=emptyqueue();box.c.recv=emptyqueue();array.h.t=&Tarray;
+		members[0]=&box.c;members[1]=nil;array.a.data=(uchar*)members;array.a.len=2;
+		storage.nrecv=2;storage.ac[0].c=&box.c;storage.ac[1].c=(Channel*)&array.a;
+		if(mode==1)storage.ac[1].c=nil;
+		if(mode==2){storage.nsend=2;storage.nrecv=0;storage.ac[1].c=nil;}
+		if(mode==3)array.a.len=-1;
+		if(mode==4)array.a.len=(WORD)0x7fffffff;
+		if(mode==5)array.a.data=nil;
+		if(mode==6)array.a.data=H;
+		if(mode==7)array.a.data=(uchar*)((uintptr)-1-3);
+		if(mode==8)storage.nrecv=-1;
+		if(mode==9)storage.nsend=0x7fffffff;
+		R.s=mode==10 ? nil : mode==11 ? H : (void*)&storage;R.d=&result;result=-77;removed=0;blocking=0;
+		assert(!kprotect(prepare,nil));assert(!removed && result==-77);
+		assert(last_error==((mode<3 || mode>=10) ? exNilref : exBounds));
+		queueequals(box.c.send,nil,0);queueequals(box.c.recv,nil,0);
+		releasequeue(box.c.send);releasequeue(box.c.recv);assert(!live && !worker.nerr);checks++;
+	}
+}
+
 /* Require balanced allocations and error frames after every scenario. */
 int
 main(void)
 {
+	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"),"altslots"))checkaltslots();
+	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"),"altgeometry"))checkaltgeometry();
 	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"), "queues")) checkqueues();
 	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"), "blocking")) { checkblocking(); checknilslots(); }
 	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"), "alt")){ checkalts(); checkselfalt(); }
