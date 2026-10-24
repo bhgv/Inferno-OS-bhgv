@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the host regression checkpoint for tokenization, slices and their dependencies."""
+"""Run VM/compiler checkpoints with optional adjacent runtime and JIT drivers."""
 import argparse
 import importlib.util
 import os
@@ -20,6 +20,8 @@ CORE = [
     'libinterp/tests/sys-print.py',
     'libinterp/tests/sys-utf.py',
     'libinterp/tests/heap-clones.py',
+    'libinterp/tests/mapped-moves.py',
+    'libinterp/tests/module-types.py',
     'libinterp/tests/gui-type-maps.py',
     'libinterp/tests/tk-owners.py',
     'libinterp/tests/channel-queues.py',
@@ -46,11 +48,16 @@ JIT = [
 def main():
     """Fail at the first failed driver, without turning missing JIT packages into a pass."""
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--core', action='store_true', help='run VM/compiler checks without GUI/Tk or launcher-option tests')
     parser.add_argument('--jit', action='store_true', help='include four instruction-emulation drivers')
     parser.add_argument('--list', action='store_true', help='list selected drivers without executing them')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     tests = CORE+(JIT if args.jit else [])
+    if args.core:
+        excluded = {'libinterp/tests/gui-type-maps.py', 'libinterp/tests/tk-owners.py',
+                    'emu/port/tests/startup-options.py', 'emu/port/tests/startup-geometry.py'}
+        tests = [test for test in tests if test not in excluded]
     for test in tests:
         if not (root/test).is_file():
             parser.error('missing driver: '+test)

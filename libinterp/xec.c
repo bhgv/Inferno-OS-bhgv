@@ -516,12 +516,14 @@ moduletype(Modlink *ml, WORD index)
 	return t;
 }
 
-/* Resolve mapped-record metadata before acquiring or replacing references. */
+/* Resolve mapped metadata first; empty records neither access data nor change references. */
 OP(movmp)
 {
 	Type *t;
 
 	t = moduletype(R.M, W(m));
+	if(t->size == 0)
+		return;
 
 	incmem(R.s, t);
 	if (t->np)
@@ -2125,12 +2127,15 @@ irestore(Prog *p)
 	R.IC = 1;
 }
 
+/* Channel metadata is a native Type pointer, independently of the VM word width. */
 void
-movtmp(void)		/* Used by send & receive */
+movtmp(void)
 {
 	Type *t;
 
-	t = (Type*)W(m);
+	t = *(Type**)R.m;
+	if(t->size == 0)
+		return;
 
 	incmem(R.s, t);
 	if (t->np)

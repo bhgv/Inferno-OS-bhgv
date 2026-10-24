@@ -70,3 +70,12 @@ VM. Native builtin/JIT calling conventions for these exact operations, complete
 Inferno/compiler builds, concurrent GC and physical devices remain separate.
 No new x86-64, arm64 or riscv64 JIT or calling convention is claimed; the fixes
 avoid assuming four-byte pointers or performing invalid host address arithmetic.
+
+## Focused VM and compiler work
+
+Run `python3 libinterp/tests/slice-tokenize-suite.py --core` to omit GUI/Tk and
+launcher-option checks. The current focused selection has 24 host drivers,
+including mapped record/channel transfer and module type-table consumers.
+`--core --list` lists that selection; `--core --jit` adds the existing optional
+x86/ARM instruction-emulation drivers. Optional native-JIT acceptance limits
+remain unchanged. See [mapped moves](README.mapped-moves.md) for current coverage.
