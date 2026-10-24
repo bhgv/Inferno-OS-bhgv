@@ -8,11 +8,12 @@
 #include <assert.h>
 #include <stdio.h>
 
+extern int _efgfmt(Fmt*);
 static Proc worker;
 static char *raised;
 static int checks, live, allocations, failalloc, vmfail, vmlive;
 static void *owners[16];
-char exInval[] = "invalid", exNomem[] = "memory";
+char exInval[] = "invalid", exNomem[] = "memory", exNilref[]="nil";
 
 /* Preserve the real emulator error stack across protected formatting calls. */
 Proc *getup(void) { return &worker; }
@@ -256,11 +257,114 @@ results(void)
 	}
 }
 
+/* Read every native argument representation from independently aligned frame bytes. */
+static void
+alignedarguments(void)
+{
+	uchar arguments[160],output[96];
+	String *format,*text;
+	REAL real=1.25;
+	LONG big=-9223372036854775807LL;
+	struct {Heap heap;uchar data[8];} box;
+	Type type={0};
+	void *pointer=box.data;
+	char expected[96];
+	char *formats[]={"%s","%g","%bd","%H"};
+	int fa,va,wide,kind,n,i,offset,length;
+
+	box.heap.ref=7;box.heap.t=&type;text=string("hi",0);
+	for(fa=0;fa<8;fa++)for(va=0;va<8;va++)for(wide=0;wide<2;wide++)for(kind=0;kind<4;kind++){
+		format=string(formats[kind],wide);memset(arguments,0xa5,sizeof(arguments));memset(output,0xa5,sizeof(output));
+		offset=(kind==1 || kind==2) ? (va+7)&~7 : va;
+		if(kind==0){memmove(arguments+32+fa+offset,&text,sizeof(text));strcpy(expected,"hi");}
+		if(kind==1){memmove(arguments+32+fa+offset,&real,sizeof(real));strcpy(expected,"1.25");}
+		if(kind==2){memmove(arguments+32+fa+offset,&big,sizeof(big));strcpy(expected,"-9223372036854775807");}
+		if(kind==3){memmove(arguments+32+fa+offset,&pointer,sizeof(pointer));snprint(expected,sizeof(expected),"%d.%.8lux",7,(ulong)&type);}
+		n=xprint(nil,arguments+32+fa,arguments+32+fa+va,format,(char*)output+1,64);
+		length=strlen(expected);if(n!=length || memcmp(output+1,expected,length))fprintf(stderr,"format mismatch fa=%d va=%d wide=%d kind=%d n=%d expected=%s actual=%.*s\n",fa,va,wide,kind,n,expected,n,output+1);assert(n==length && !memcmp(output+1,expected,length));
+		assert(output[0]==0xa5);for(i=1+length+1;i<(int)sizeof(output);i++)assert(output[i]==0xa5);
+		free(format);checks++;
+	}
+	for(wide=0;wide<2;wide++)for(i=128;i<256;i++){
+		format=string("x",wide);if(wide)format->Srune[0]=i;else format->Sascii[0]=i;
+		n=xprint(nil,nil,nil,format,(char*)output,64);assert(n==2 && output[0]==(0xc0|(i>>6)) && output[1]==(0x80|(i&63)));
+		free(format);checks++;
+	}
+	free(text);
+}
+
+typedef struct PrintProbe PrintProbe;
+struct PrintProbe {String *format;void *args;char *output;int size;};
+/* Keep malformed formatting state outside the runtime's nonlocal error frame. */
+static int
+probeformat(void *data)
+{
+	PrintProbe *probe=data;
+	xprint(nil,probe->args,probe->args,probe->format,probe->output,probe->size);
+	return 1;
+}
+
+/* Reject nil and INT_MIN representations before payload access or output changes. */
+static void
+invalidarguments(void)
+{
+	PrintProbe probe;
+	String *format,*text,*value;
+	uchar args[32],output[64];
+	int kind,align,i;
+
+	for(align=0;align<8;align++)for(kind=0;kind<7;kind++){
+		format=string(kind==6 ? "%H" : "%s",0);text=string("hi",0);value=text;
+		probe.format=format;probe.args=args+align;probe.output=(char*)output;probe.size=sizeof(output);
+		if(kind==0)probe.format=nil;
+		if(kind==1)format->len=(-0x7fffffff-1);
+		if(kind==2)value=nil;
+		if(kind==3)text->len=(-0x7fffffff-1);
+		if(kind==4)probe.output=nil;
+		if(kind==5)probe.output=H;
+		if(kind==6)value=nil;
+		memmove(args+align,&value,sizeof(value));memset(output,0xa5,sizeof(output));raised=nil;
+		assert(!kprotect(probeformat,&probe) && raised==((kind==1 || kind==3) ? exInval : exNilref));
+		for(i=0;i<(int)sizeof(output);i++)assert(output[i]==0xa5);
+		assert(worker.nerr==0);free(format);free(text);checks++;
+	}
+	assert(xprint(nil,nil,nil,nil,nil,0)==0 && xprint(nil,nil,nil,nil,nil,-1)==0);
+}
+
+/* Result construction must preserve embedded NULs and unaligned owner slots. */
+static void
+embeddedresults(void)
+{
+	F_Sys_sprint f={0};
+	F_Sys_aprint g={0};
+	String *format,*text;
+	Array *array;
+	void *old,*result;
+	uchar slot[24];
+	int align,op,wide;
+
+	for(align=0;align<8;align++)for(op=0;op<2;op++)for(wide=0;wide<2;wide++){
+		format=string("axb",wide);if(wide)format->Srune[1]=0;else format->Sascii[1]=0;
+		old=c2string("old",3);memmove(slot+align,&old,sizeof(old));
+		if(op){g.ret=(Array**)(slot+align);g.s=format;Sys_aprint(&g);}
+		else{f.ret=(String**)(slot+align);f.s=format;Sys_sprint(&f);}
+		memmove(&result,slot+align,sizeof(result));
+		if(op){array=result;assert(array->len==3 && !memcmp(array->data,"a\0b",3));}
+		else{text=result;assert(text->len==3 && !memcmp(text->Sascii,"a\0b",3));}
+		assert(vmlive==1 && live==0);destroy(result);free(format);checks++;
+	}
+}
+
 /* Use real formatting and VM errors rather than a printf approximation. */
 int
 main(void)
 {
-	bounded(); ordinary(); mixedintegers(); failures(); growing(); results();
+	/* Install the real lib9 float formatter for the new REAL argument matrix. */
+	fmtinstall('g',_efgfmt);
+	if(!getenv("SYS_PRINT_CASE") || !strcmp(getenv("SYS_PRINT_CASE"),"alignment"))alignedarguments();
+	if(!getenv("SYS_PRINT_CASE") || !strcmp(getenv("SYS_PRINT_CASE"),"embedded"))embeddedresults();
+	if(!getenv("SYS_PRINT_CASE") || !strcmp(getenv("SYS_PRINT_CASE"),"invalid"))invalidarguments();
+	if(!getenv("SYS_PRINT_CASE") || !strcmp(getenv("SYS_PRINT_CASE"),"legacy")){bounded(); ordinary(); mixedintegers(); failures(); growing(); results();}
 	assert(worker.nerr == 0 && live == 0 && vmlive == 0);
 	printf("PASS Sys print: %d bounds/format/growth/ownership cases, WORD%zu\n", checks, sizeof(WORD)*8);
 	return 0;

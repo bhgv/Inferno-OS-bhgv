@@ -15,14 +15,14 @@ from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
 root = Path(__file__).resolve().parents[2]
-ops = '''IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF'''.split()
 class Layout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp','fixedcoef')]
+    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes')]
 class RvLayout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp','fixedcoef')]
+    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes')]
 
 
 def signed(value, bits):
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -58,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
             layout = RvLayout(64,wb,1,0,8,16,24) if rv else Layout(wb,0,8,16,24)
             if rv:layout.hasdiv=1
             layout.framelr=0;layout.framefp=8
-            layout.arraylen=8;layout.arraydata=32;layout.stringlen=12;layout.stringdata=32;layout.listdata=24;layout.listtail=8;layout.fp=32;layout.fixedtmp=28;layout.fixedcoef=20;layout.arraytype=16;layout.typesize=24
+            layout.arraylen=8;layout.arraydata=32;layout.stringlen=12;layout.stringdata=32;layout.listdata=24;layout.listtail=8;layout.fp=32;layout.fixedtmp=28;layout.fixedcoef=20;layout.module=40;layout.linkmodule=8;layout.moduleprog=16;layout.modulenprog=24;layout.instbytes=24;layout.arraytype=16;layout.typesize=24
             dis = Cs(CS_ARCH_X86,CS_MODE_64) if arch == 'amd64' else Cs(CS_ARCH_ARM64,0) if arch == 'arm64' else Cs(CS_ARCH_RISCV,CS_MODE_RISCV64)
             blobs = {}
             for name in ops:
@@ -107,6 +107,12 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     malformed=type(layout).from_buffer_copy(layout);setattr(malformed,field,value)
                     guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
                     assert lib.emit(guard,64,C.byref(malformed),ids[name])==0
+                    assert list(guard)==[0xa5a5a5a5]*64;checks+=1
+            for field in ('module','linkmodule','moduleprog','modulenprog','instbytes'):
+                for value in (-1,1 if field!='instbytes' else 0,2048):
+                    malformed=type(layout).from_buffer_copy(layout);setattr(malformed,field,value)
+                    guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
+                    assert lib.emit(guard,64,C.byref(malformed),ids['IMOVPC'])==0
                     assert list(guard)==[0xa5a5a5a5]*64;checks+=1
             if case=='frameabi':continue
             for name in ('IHEADP','IHEADMP','ITAIL','IMOVP','IFRAME','IRET','IADDF'):
@@ -165,7 +171,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     checks+=1
                 if case=='call':continue
 
-            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False, fixedframe=None, descriptor=None, badresult=False):
+            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False, fixedframe=None, descriptor=None, badresult=False, programaddress=None):
                 """Exercise a leaf with high native pointers, four-byte alignment and exact aliases."""
                 if arch == 'amd64':
                     u = Uc(UC_ARCH_X86,UC_MODE_64); arg, result = UC_X86_REG_RDI, UC_X86_REG_RAX
@@ -300,6 +306,13 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         typedata[layout.typesize:layout.typesize+4]=struct.pack('<i',width)
                         u.mem_write(data+0x700,bytes(typedata))
                     u.mem_write(data+0x500,bytes(metadata))
+                if programaddress is not None:
+                    link,owner,backing,length=programaddress
+                    linkbytes=bytearray(b'\x7b'*64);ownerbytes=bytearray(b'\x6b'*64)
+                    linkbytes[layout.linkmodule:layout.linkmodule+8]=struct.pack('<Q',owner)
+                    ownerbytes[layout.moduleprog:layout.moduleprog+8]=struct.pack('<Q',backing)
+                    ownerbytes[layout.modulenprog:layout.modulenprog+4]=struct.pack('<i',length)
+                    u.mem_write(data+0x500,bytes(linkbytes));u.mem_write(data+0x700,bytes(ownerbytes))
                 fp=data+0x900 if fixedframe is None else fixedframe[0]
                 if fixedframe is not None and fp not in (0,(1<<64)-1):
                     u.mem_write(fp+layout.fixedtmp,(fixedframe[1]&((1<<(8*wb))-1)).to_bytes(wb,'little'))
@@ -309,6 +322,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if badtarget:d=0x100060000
                 if badsource:s=0x100060000
                 u.mem_write(registers,struct.pack('<QQQQQ',oldpc,s,d,m,fp))
+                if programaddress is not None:u.mem_write(registers+layout.module,struct.pack('<Q',programaddress[0]))
                 u.reg_write(arg,registers)
                 end=code+0x800
                 if arch == 'amd64':
@@ -323,10 +337,32 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if expected_copy is not None:assert bytes(u.mem_read(data,0x1000))==expected_copy,(arch,wb,copy)
                 assert u.reg_read(result) == expect,(arch,wb,name,a,b,u.reg_read(result),expect)
                 assert bytes(u.mem_read(registers+8,32)) == struct.pack('<QQQQ',s,d,m,fp)
+                if programaddress is not None:
+                    assert bytes(u.mem_read(data+0x500,64))==linkbytes and bytes(u.mem_read(data+0x700,64))==ownerbytes
+                    assert int.from_bytes(u.mem_read(registers+layout.module,8),'little')==programaddress[0]
                 if typedata is not None:assert bytes(u.mem_read(data+0x700,64))==bytes(typedata)
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','movpc'):
+                for link in (0,(1<<64)-1,data+0x500):
+                    for owner in (0,(1<<64)-1,data+0x700):
+                        for length in (-1,0,1,4,0x7fffffff):
+                            for index in [-1,0,1,3,0x7fffffff]+([1<<32] if wb==8 else []):
+                                for backing in (0,(1<<64)-1,data+0x900,(1<<64)-16):
+                                    valid=link==data+0x500 and owner==data+0x700 and 0<=index<length and backing not in (0,(1<<64)-1) and backing+index*layout.instbytes<(1<<64)
+                                    for alias in (0,1,3):
+                                        out,pc,before,after,_=run('IMOVPC',index,alias=alias,expect=int(valid),programaddress=(link,owner,backing,length),badtarget=not valid)
+                                        assert pc==oldpc
+                                        if valid:
+                                            assert int.from_bytes(out[:8],'little')==backing+index*layout.instbytes
+                                            assert before[:8]==after[:8] and before[16:]==after[16:]
+                                        else:assert before==after
+                                        checks+=1
+                for link,owner in ((0,data+0x700),((1<<64)-1,data+0x700),(data+0x500,0),(data+0x500,(1<<64)-1)):
+                    _,pc,before,after,_=run('IMOVPC',expect=0,programaddress=(link,owner,data+0x900,4),badsource=True,badtarget=True)
+                    assert pc==oldpc and before==after;checks+=1
+                if case=='movpc':continue
             if case in ('','coefficient'):
                 pairs=[(0,0),(1,1),(-1,1),(1,-1),(-7,3),(7,-3),(-(1<<(wb*8-1)),2),((1<<(wb*8-1))-1,-2)]
                 pairs += [(signed(rng.getrandbits(wb*8),wb*8),signed(rng.getrandbits(wb*8),wb*8)) for _ in range(4)]

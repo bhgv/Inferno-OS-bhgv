@@ -45,6 +45,7 @@ OP(jmp)
 OP(movpc)
 {
 	WORD pc;
+	uintptr offset;
 	Inst *target;
 	Modlink *ml;
 
@@ -52,9 +53,14 @@ OP(movpc)
 	if(ml == H || ml == nil || ml->m == H || ml->m == nil)
 		error(exModule);
 	memmove(&pc, R.s, sizeof(pc));
-	if(pc < 0 || pc >= ml->m->nprog || ml->m->prog == nil)
+	if(pc < 0 || pc >= ml->m->nprog || ml->m->prog == nil || ml->m->prog == H)
 		error(exBounds);
-	target = &ml->m->prog[pc];
+	if((uvlong)pc > (uintptr)-1/sizeof(Inst))
+		error(exBounds);
+	offset = (uintptr)pc*sizeof(Inst);
+	if((uintptr)ml->m->prog > (uintptr)-1-offset)
+		error(exBounds);
+	target = (Inst*)((uintptr)ml->m->prog+offset);
 	memmove(R.d, &target, sizeof(target));
 }
 /* Capture possibly four-byte-aligned lengths before validating or copying. */

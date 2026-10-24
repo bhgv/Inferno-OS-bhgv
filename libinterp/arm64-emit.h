@@ -97,7 +97,28 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafFixedCoefficient){
+	if(p.kind == LeafProgramAddress){
+		/* All metadata offsets are supplied by the compiler's native layout adapter. */
+		if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
+		   abi->linkmodule < 0 || abi->linkmodule > 2047 || abi->linkmodule%8 ||
+		   abi->moduleprog < 0 || abi->moduleprog > 2047 || abi->moduleprog%8 ||
+		   abi->modulenprog < 0 || abi->modulenprog > 2047 || abi->modulenprog%4 ||
+		   abi->instbytes < 1 || abi->instbytes > 2047) return 0;
+		a64ptr(&b, 12, abi->module); a64guard(&b, 0xb500006c);
+		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
+		a64field(&b, 12, 12, abi->linkmodule, 8); a64guard(&b, 0xb500006c);
+		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
+		a64put(&b, 0xb9800000U | (abi->modulenprog/4)<<10 | 12<<5 | 13);
+		a64put(&b, 0xf10001bf); a64guard(&b, 0x5400006a);
+		a64ptr(&b, 9, abi->s); a64load(&b, 14, 9, abi->wordbytes);
+		if(abi->wordbytes == 4)a64put(&b, 0x93407dce);
+		a64put(&b, 0xeb0d01df); a64guard(&b, 0x54000063);
+		a64put(&b, 0xd280000dU | abi->instbytes<<5); a64put(&b, 0x9b0d7dce);
+		a64field(&b, 15, 12, abi->moduleprog, 8); a64guard(&b, 0xb500006f);
+		a64put(&b, 0xb10005ff); a64guard(&b, 0x54000061);
+		a64put(&b, 0xab0e01ee); a64guard(&b, 0x54000063);
+		a64ptr(&b, 11, abi->d); a64store(&b, 14, 8);
+	}else if(p.kind == LeafFixedCoefficient){
 		/* Coefficient slots follow the VM frame layout, not native pointer alignment. */
 		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047 ||
 		   abi->fixedcoef < 0 || abi->fixedcoef > 2047) return 0;

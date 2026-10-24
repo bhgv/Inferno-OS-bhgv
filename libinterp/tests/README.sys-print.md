@@ -16,16 +16,21 @@ production emulator `kprotect`/`krethrow` bodies. It covers:
 - Stack and dynamically grown `sprint`/`aprint` results, injected VM conversion
   failures, unchanged old result owners, and exact temporary-buffer ownership.
 
-Each WORD32/WORD64 model runs 158 cases with strict UBSan by default. For ASan:
+Each WORD32/WORD64 model runs 1,014 cases with strict UBSan by default. For ASan:
 
 ```
 CFLAGS='-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all' python3 libinterp/tests/sys-print.py
 ```
 
 VM result constructors and destruction use bounded allocation/failure stubs;
-they do not run GC. Pointer arguments and a full 64-bit builtin calling ABI are
-not validated by this test. WORD32 retains native pointers. This is not an
+they do not run GC. Native pointer/REAL/LONG reads at independent alignments
+are covered; a complete compiler-generated 64-bit builtin varargs ABI is not
+validated by this test. WORD32 retains native pointers. This is not an
 Inferno boot, a compiler-generated varargs integration test, or JIT execution.
 LeakSanitizer process inspection is disabled for this sandbox; ASan/UBSan remain
 enabled. `SYS_PRINT_SOURCE` selects an alternate source, and `SYS_PRINT_MODELS`
 selects `native`, `word32`, or both.
+
+`SYS_PRINT_CASE=alignment`, `invalid` and `embedded` select the new isolated
+ASan/UBSan families; `legacy` selects the original matrix. See
+README.movpc-print.md for native PC materialization and embedded-NUL checks.

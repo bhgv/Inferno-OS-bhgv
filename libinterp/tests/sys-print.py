@@ -63,5 +63,5 @@ with tempfile.TemporaryDirectory(prefix='sys-print-') as directory:
             (modeldir / 'interp.h').write_text(header)
             override = ['-I'+str(modeldir)]
         binary = td / ('codecs-'+model)
-        subprocess.run(cmd+override+includes+[str(target),*[str(root / ('lib9/'+p+'.c')) for p in ('rune','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen')],'-o',str(binary)],check=True)
+        subprocess.run(cmd+override+includes+[str(target),*[str(root / ('lib9/'+p+'.c')) for p in ('rune','sprint','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')],'-lm','-o',str(binary)],check=True)
         subprocess.run([str(binary)],check=True)

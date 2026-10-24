@@ -110,7 +110,31 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafFixedCoefficient){
+	if(p.kind == LeafProgramAddress){
+		/* Materialize a Dis PC only after validating the module, index and native span. */
+		if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
+		   abi->linkmodule < 0 || abi->linkmodule > 2047 || abi->linkmodule%8 ||
+		   abi->moduleprog < 0 || abi->moduleprog > 2047 || abi->moduleprog%8 ||
+		   abi->modulenprog < 0 || abi->modulenprog > 2047 || abi->modulenprog%4 ||
+		   abi->instbytes < 1 || abi->instbytes > 2047) return 0;
+		x64ptr(&b, 0, abi->module); x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0xc0);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
+		x64field(&b, 0, 0, abi->linkmodule, 8);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
+		x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3);
+		x64field(&b, 1, 0, abi->modulenprog, 4);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9); x64guard(&b, 0x79);
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, abi->wordbytes);
+		x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xc8); x64guard(&b, 0x72);
+		x64byte(&b, 0x48); x64byte(&b, 0x69); x64byte(&b, 0xc0); x64word(&b, abi->instbytes);
+		x64field(&b, 2, 11, abi->moduleprog, 8);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xd2); x64guard(&b, 0x75);
+		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xfa); x64byte(&b, 0xff); x64guard(&b, 0x75);
+		x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xd0); x64guard(&b, 0x73);
+		x64ptr(&b, 2, abi->d); x64store(&b, 0, 8);
+	}else if(p.kind == LeafFixedCoefficient){
 		/* Capture frame parameters and both operands before any aliased result write. */
 		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047 ||
 		   abi->fixedcoef < 0 || abi->fixedcoef > 2047) return 0;

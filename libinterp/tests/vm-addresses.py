@@ -32,6 +32,7 @@ with tempfile.TemporaryDirectory(prefix='vm-addresses-') as directory:
     target.write_text(unit)
     cmd = shlex.split(os.environ.get('CC','cc'))
     cmd += shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
+    if os.environ.get('MOVPC_NATIVE'):cmd += ['-DNATIVE_PC']
     for bits in (64,32):
         model = td/('word'+str(bits))
         model.mkdir()
@@ -44,4 +45,4 @@ with tempfile.TemporaryDirectory(prefix='vm-addresses-') as directory:
         binary = td/('branches'+str(bits))
         subprocess.run(cmd+includes+[str(target),'-o',str(binary)],check=True)
         subprocess.run([str(binary)],check=True)
-        for case in range(8):subprocess.run([str(binary),str(case)],check=True)
+        for case in range(11):subprocess.run([str(binary),str(case)],check=True)

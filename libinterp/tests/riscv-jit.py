@@ -22,13 +22,13 @@ cc = shlex.split(os.environ.get('CC', 'cc'))
 flags = shlex.split(os.environ.get('CFLAGS', '-O1 -g'))
 checks = 0
 rng = random.Random(0x1f3e)
-names = '''IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IDIVB IMODB IDIVL IMODL IMULL IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IEXPF INEGF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+names = '''IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IDIVB IMODB IDIVL IMODL IMULL IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IEXPF INEGF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 ISHLB ISHLW ISHRB ISHRW ILSRW IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW IBLEB
 IBLEW IBGTB IBGTW IBGEB IBGEW IDIVW IMODW IMOVP IFRAME ICALL IRET IADDF'''.split()
 
 class Layout(C.Structure):
-    _fields_ = [(name, C.c_int) for name in ('xlen','wordbytes','hasm','pc','s','d','m','arraylen','arraydata','stringlen','stringdata','listdata','listtail','fp','fixedtmp','arraytype','typesize','hasdiv','framelr','framefp','fixedcoef')]
+    _fields_ = [(name, C.c_int) for name in ('xlen','wordbytes','hasm','pc','s','d','m','arraylen','arraydata','stringlen','stringdata','listdata','listtail','fp','fixedtmp','arraytype','typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes')]
 
 
 def signed(n, bits):
@@ -61,6 +61,7 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
         abi=Layout(xlen,wb,1,0,pb,pb*2,pb*3)
         abi.hasdiv=1
         abi.framelr=0;abi.framefp=8;abi.fp=32
+        abi.module=40;abi.linkmodule=8;abi.moduleprog=16;abi.modulenprog=24;abi.instbytes=24
         dis=Cs(CS_ARCH_RISCV,CS_MODE_RISCV64 if xlen==64 else CS_MODE_RISCV32)
         BASE=0x10000
         REG=0x20000 if xlen==32 else 0x100020000
@@ -224,6 +225,7 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
         checks+=1
         base_i=Layout.from_buffer_copy(abi);base_i.hasm=base_i.hasdiv=0
         assert emit('ICALL',base_i)==emit('ICALL',abi)
+        assert not emit('IMOVPC',base_i)[0]
         checks+=1
         # Zmmul keeps identical multiply leaves but cannot publish DIV/REM.
         multiply_only=Layout.from_buffer_copy(abi)
@@ -231,7 +233,7 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
         for name in ('IDIVB','IMODB','IDIVW','IMODW','IDIVL','IMODL','IDIVX','IMULX0','IDIVX0','ICVTXX0','IMULX1','IDIVX1','ICVTXX1'):
             assert emit(name,multiply_only)[0]==0, name
             checks+=1
-        for name in ('IMULB','IMULW','IMULL','IMULX','IEXPW','IEXPL','IINDX'):
+        for name in ('IMULB','IMULW','IMULL','IMULX','IEXPW','IEXPL','IINDX','IMOVPC'):
             assert emit(name,multiply_only)==emit(name,abi), name
             checks+=1
         # In-place source/destination keeps both operands until the store.

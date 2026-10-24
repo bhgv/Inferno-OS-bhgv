@@ -54,6 +54,10 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 	isr = 0;
 	if(s1 == H || n <= 0)
 		return 0;
+	if(s1 == nil || buf == nil || buf == H)
+		error(exNilref);
+	if(s1->len == (-0x7fffffff-1))
+		error(exInval);
 	nc = s1->len;
 	if(nc < 0) {
 		nc = -nc;
@@ -64,7 +68,7 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 	eb = buf+n-1;
 	while(nc > 0) {
 		nc--;
-		c = isr ? s1->Srune[sip] : s1->Sascii[sip];
+		c = isr ? s1->Srune[sip] : (uchar)s1->Sascii[sip];
 		sip++;
 		if(c != '%') {
 			if(b < eb) {
@@ -82,7 +86,7 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 			nc--;
 			if(f-fmt > sizeof(fmt)-UTFmax-1)
 				error(exInval);
-			c = isr ? s1->Srune[sip] : s1->Sascii[sip];
+			c = isr ? s1->Srune[sip] : (uchar)s1->Sascii[sip];
 			sip++;
 			*f++ = c;
 			*f = '\0';
@@ -111,7 +115,11 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 				break;
 			case 'q':
 			case 's':
-				ss = *(String**)va;
+				memmove(&ss, va, sizeof(ss));
+				if(ss == nil)
+					error(exNilref);
+				if(ss != H && ss->len == (-0x7fffffff-1))
+					error(exInval);
 				va += IBY2WD;
 				if(ss == H)
 					p = "";
@@ -139,7 +147,7 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 			case 'G':
 				while((va - fp) & (sizeof(REAL)-1))
 					va++;
-				d = *(REAL*)va;
+				memmove(&d, va, sizeof(d));
 				b += xsnprint(b, eb-b+1, fmt, d);
 				va += sizeof(REAL);
 				break;
@@ -151,7 +159,7 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 				if(isbig) {
 					while((va - fp) & (IBY2LG-1))
 						va++;
-					bg = *(LONG*)va;
+					memmove(&bg, va, sizeof(bg));
 					b += xsnprint(b, eb-b+1, fmt, bg);
 					va += IBY2LG;
 				}
@@ -171,7 +179,9 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 				break;
 /* Debugging formats - may disappear */
 			case 'H':
-				ptr = *(ulong**)va;
+				memmove(&ptr, va, sizeof(ptr));
+				if(ptr == nil)
+					error(exNilref);
 				c = -1;
 				t = nil;
 				if(ptr != H) {
@@ -265,7 +275,7 @@ buildprintresult(void *arg)
 	if(result->array)
 		result->value = mem2array(result->text, result->length);
 	else
-		result->value = c2string(result->text, strlen(result->text));
+		result->value = c2string(result->text, result->length);
 	return 1;
 }
 
@@ -303,8 +313,8 @@ Sys_sprint(void *fp)
 		n = bigxprint(currun(), f, &f->vargs, f->s, &b, sizeof(buf));
 	b[n] = '\0';
 	result = printresult(b, n, 0, b != buf);
-	old = *f->ret;
-	*f->ret = result;
+	memmove(&old, f->ret, sizeof(old));
+	memmove(f->ret, &result, sizeof(result));
 	destroy(old);
 }
 
@@ -322,8 +332,8 @@ Sys_aprint(void *fp)
 	if(n >= sizeof(buf)-UTFmax-2)
 		n = bigxprint(currun(), f, &f->vargs, f->s, &b, sizeof(buf));
 	result = printresult(b, n, 1, b != buf);
-	old = *f->ret;
-	*f->ret = result;
+	memmove(&old, f->ret, sizeof(old));
+	memmove(f->ret, &result, sizeof(result));
 	destroy(old);
 }
 
