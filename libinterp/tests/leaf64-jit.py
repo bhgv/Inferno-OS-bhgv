@@ -560,6 +560,11 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 pairs=[(a,b) for a in values for b in values]+[(signed(rng.getrandbits(64),64),signed(rng.getrandbits(64),64)) for _ in range(16)]
                 counts=[-63,-33,-32,-1,0,1,31,32,62,63,-64,64,-(1<<(wb*8-1))]
                 for name in ('IMULX','IDIVX'):
+                    if not blobs[name]:
+                        assert rv and not layout.hasdiv and name=='IDIVX'
+                        continue
+                    if rv and not layout.hasm:
+                        assert not any(i.mnemonic.startswith(('mul','div','rem')) for i in dis.disasm(blobs[name],code))
                     for a,b in pairs:
                         aa,bb=signed(a,wb*8),signed(b,wb*8)
                         for count in counts:
@@ -600,7 +605,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         _,pc,before,after,_=run(name,expect=0,poison=True,badsource=True,fixedframe=(data+0x900,count,None))
                         assert pc==oldpc and before==after
                         checks+=1
-                for divisor in (0,-1):
+                for divisor in ((0,-1) if blobs['IDIVX'] else ()):
                     _,pc,before,after,_=run('IDIVX',divisor,7,expect=0,poison=True,fixedframe=(data+0x900,0,None))
                     assert pc==oldpc and before==after
                     checks+=1

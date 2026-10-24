@@ -595,7 +595,7 @@ if backend=='riscv64':
     unit=unit.replace('assert(m.jit->entry[IMULX0] && m.jit->entry[IDIVX0] && m.jit->entry[ICVTXX0]);',
         'assert(!!m.jit->entry[IMULX0]=='+str(int(profile=='m'))+');assert(!!m.jit->entry[IDIVX0]=='+str(int(profile=='m'))+');assert(!!m.jit->entry[ICVTXX0]=='+str(int(profile=='m'))+');')
     unit=unit.replace('assert(m.jit->entry[IMOVP]==nil && m.jit->entry[IMULX] && m.jit->entry[IDIVX]);',
-        'assert(!m.jit->entry[IMOVP]);assert(!!m.jit->entry[IMULX]=='+str(int(profile!='i'))+');'
+        'assert(!m.jit->entry[IMOVP]);assert(!!m.jit->entry[IMULX]=='+str(1)+');'
         'assert(!!m.jit->entry[IDIVX]=='+str(int(profile=='m'))+');'
         'assert(!!m.jit->entry[IDIVW]=='+str(int(profile=='m'))+');'
         'assert(!!m.jit->entry[IMODW]=='+str(int(profile=='m'))+');')

@@ -128,13 +128,13 @@ rvrealkey(RvBuf *b, int reg)
 }
 
 /* Multiply modulo XLEN without M, using only dead operand-pointer registers.
- * t3/t4 hold captured operands; t0-t2 and t5 are scratch. Logical shifts
+ * t3 and right hold captured operands; t0-t2 and t5 are scratch. Logical shifts
  * terminate after at most the operand width in bits, including negative values. */
 static void
-rvmultiply(RvBuf *b, int bytes)
+rvmultiply(RvBuf *b, int right, int bytes)
 {
 	rvi(b, 0x13, 0, Rvt0, Rvt3, 0);
-	rvi(b, 0x13, 0, Rvt1, Rvt4, 0);
+	rvi(b, 0x13, 0, Rvt1, right, 0);
 	if(bytes == 4){
 		rvi(b, 0x13, 1, Rvt1, Rvt1, 32);
 		rvi(b, 0x13, 5, Rvt1, Rvt1, 32);
@@ -309,8 +309,8 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, abi->wordbytes);
 		break;
 	case IMULX: case IDIVX:
-		/* Fixed intermediates need multiplication; DIVX additionally needs division. */
-		if(abi->xlen != 64 || !abi->hasm || (op == IDIVX && !abi->hasdiv) || abi->fp < 0 || abi->fp > 2047 || abi->fp%8 ||
+		/* Preserve the signed 64-bit intermediate; only DIVX needs hardware division. */
+		if(abi->xlen != 64 || (op == IDIVX && !abi->hasdiv) || abi->fp < 0 || abi->fp > 2047 || abi->fp%8 ||
 		   abi->fixedtmp < 0 || abi->fixedtmp > 2047 || abi->fixedtmp%4) return 0;
 		rvptr(&b, Rvt1, abi->fp); rvguard(&b, 1, Rvt1, Rvzero);
 		rvi(&b, 0x13, 0, Rvt5, Rvzero, -1); rvguard(&b, 1, Rvt1, Rvt5);
@@ -322,7 +322,10 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 			rvguard(&b, 1, Rvt6, Rvzero); rvi(&b, 0x13, 0, Rvt5, Rvzero, -1); rvguard(&b, 1, Rvt6, Rvt5);
 		}
 		rvptr(&b, Rvt0, abi->m); rvload(&b, Rvt3, Rvt0, abi->wordbytes);
-		if(op == IMULX) rvr(&b, 0x33, 0, 1, Rvt3, Rvt3, Rvt6);
+		if(op == IMULX){
+			if(abi->hasm)rvr(&b, 0x33, 0, 1, Rvt3, Rvt3, Rvt6);
+			else rvmultiply(&b, Rvt6, 8);
+		}
 		rvbranch(&b, 4, Rvt4, Rvzero, 12);
 		rvr(&b, 0x33, 1, 0, Rvt3, Rvt3, Rvt4); rvbranch(&b, 0, Rvzero, Rvzero, 12);
 		rvr(&b, 0x33, 0, 32, Rvt4, Rvzero, Rvt4); rvr(&b, 0x33, 5, 32, Rvt3, Rvt3, Rvt4);
@@ -689,7 +692,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 			wide=abi->xlen == 64 && bytes == 4 &&
 				(f3 == 0 || f3 == 1 || f3 == 5 || division);
 			if(f7 == 1 && !division && !abi->hasm)
-				rvmultiply(&b, bytes);
+				rvmultiply(&b, Rvt4, bytes);
 			else
 				rvr(&b, wide ? 0x3b : 0x33, f3, f7, Rvt3, Rvt3, Rvt4);
 			rvptr(&b, Rvt2, abi->d);

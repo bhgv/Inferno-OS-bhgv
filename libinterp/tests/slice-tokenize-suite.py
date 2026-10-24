@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/exception-frames.py',
     'libinterp/tests/stack-lifecycle.py',
     'libinterp/tests/jit-coverage.py',
     'libinterp/tests/stack-unwind.py',

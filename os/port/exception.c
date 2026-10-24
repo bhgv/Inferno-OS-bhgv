@@ -67,7 +67,17 @@ newestring(char *estr)
 
 #define NOPC	0xffffffff
 
-#define FRTYPE(f)	((f)->t == nil ? SEXTYPE(f)->reg.TR : (f)->t)
+/* Read Dis frame metadata without requiring native C structure alignment. */
+static Type*
+frametype(uchar *fp)
+{
+	Type *type;
+
+	memmove(&type, fp+O(Frame, t), sizeof(type));
+	if(type == nil)
+		type = SEXTYPE((Frame*)fp)->reg.TR;
+	return type;
+}
 
 /*
  * clear up an uncalled frame
@@ -76,12 +86,14 @@ static void
 freeframe(uchar *fp, int setsp)
 {
 	Frame *f;
+	Type *type;
 
 	f = (Frame*)fp;
-	if(f->t == nil)
+	memmove(&type, fp+O(Frame, t), sizeof(type));
+	if(type == nil)
 		unextend(f);
-	else if(f->t->np)
-		freeptrs(f, f->t);
+	else if(type->np)
+		freeptrs(f, type);
 	if(setsp)
 		R.SP = fp;
 }
@@ -90,13 +102,11 @@ freeframe(uchar *fp, int setsp)
 static int
 exceptionframe(uchar *fp, Handler *handler)
 {
-	Frame *f;
 	Type *frame, *cleanup;
 	ulong offset, slot, bytes;
 	int i, bit;
 
-	f = (Frame*)fp;
-	frame = FRTYPE(f);
+	frame = frametype(fp);
 	if(frame == nil || frame == H || frame->size < (int)sizeof(Frame) ||
 	   frame->np < 0 || frame->np > frame->size/(8*sizeof(void*))+
 	   (frame->size%(8*sizeof(void*)) != 0))
@@ -136,12 +146,12 @@ handler(char *estr)
 	int str, ne;
 	ulong pc, newpc;
 	long eoff;
-	uchar *fp, **eadr;
-	Frame *f;
+	uchar *fp, *eadr;
+	Frame *f, frame;
 	Type *t, *zt;
 	Handler *h;
 	Except *e;
-	void *v;
+	void *v, *old;
 
 	p = currun();
 	if(*estr == 0 || p == nil)
@@ -176,24 +186,24 @@ handler(char *estr)
 		}
 		if(!str && fp != R.FP){		/* becomes a string exception in immediate caller */
 			v = p->exval;
-			p->exval = *(String**)v;
+			memmove(&p->exval, v, sizeof(p->exval));
 			D2H(p->exval)->ref++;
 			destroy(v);
 			str = 1;
 			continue;
 		}
-		f = (Frame*)fp;
+		memmove(&frame, fp, sizeof(frame));
 		/* The root has no caller PC to reconstruct. */
-		if(f->fp == nil)
+		if(frame.fp == nil)
 			break;
-		if(f->mr != nil)
-			m = f->mr;
+		if(frame.mr != nil)
+			m = frame.mr;
 		if(m->compiled)
-			pc = (ulong)f->lr-(ulong)m->prog;
+			pc = (ulong)frame.lr-(ulong)m->prog;
 		else
-			pc = f->lr-m->prog;
+			pc = frame.lr-m->prog;
 		pc--;
-		fp = f->fp;
+		fp = frame.fp;
 	}
 	destroy(p->exval);
 	p->exval = H;
@@ -215,8 +225,7 @@ found:
 	/*
 	 * there may be an uncalled frame at the top of the stack
 	 */
-	f = (Frame*)R.FP;
-	t = FRTYPE(f);
+	t = frametype(R.FP);
 	if(R.FP < R.EX || R.FP >= R.TS)
 		freeframe(R.EX+OA(Stkext, reg.tos.fr), 0);
 	else if(R.FP+t->size < R.SP)
@@ -225,14 +234,15 @@ found:
 	m = R.M;
 	while(R.FP != fp){
 		f = (Frame*)R.FP;
-		R.PC = f->lr;
-		R.FP = f->fp;
+		memmove(&frame, R.FP, sizeof(frame));
+		R.PC = frame.lr;
+		R.FP = frame.fp;
 		R.SP = (uchar*)f;
-		mr = f->mr;
-		if(f->t == nil)
+		mr = frame.mr;
+		if(frame.t == nil)
 			unextend(f);
-		else if(f->t->np)
-			freeptrs(f, f->t);
+		else if(frame.t->np)
+			freeptrs(f, frame.t);
 		if(mr != nil){
 			m = mr;
 			destroy(R.M);
@@ -244,15 +254,18 @@ found:
 		freeptrs(fp, zt);
 		initmem(zt, fp);
 	}
-	eadr = (uchar**)(fp+eoff);
-	destroy(*eadr);
-	*eadr = H;
+	eadr = fp+eoff;
+	memmove(&old, eadr, sizeof(old));
+	v = H;
+	memmove(eadr, &v, sizeof(v));
+	destroy(old);
 	if(p->exval == H)
-		*eadr = (uchar*)newestring(estr);	/* might fail */
+		v = newestring(estr);	/* might fail; the result slot already owns nil */
 	else{
 		D2H(p->exval)->ref++;
-		*eadr = p->exval;
+		v = p->exval;
 	}
+	memmove(eadr, &v, sizeof(v));
 	if(m->compiled)
 		R.PC = (Inst*)((ulong)m->prog+newpc);
 	else

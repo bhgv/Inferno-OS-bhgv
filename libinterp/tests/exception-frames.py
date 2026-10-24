@@ -43,20 +43,22 @@ static struct {Heap h;uchar data[128];} oldvalue,newvalue,exceptionvalue;
 static uchar *storage,*fp;
 static size_t framesize,headersize;
 static char *diagnostic;
-static int faildiag,diagnostics,newstrings,destroys,checks;
+static int faildiag,diagnostics,newstrings,destroys,checks,alignment,observepublication;
 #define BIT(bt,nb) ((bt)&(1<<(nb)))
 #define NOPC 0xffffffff
 #define FRTYPE(f) ((f)->t==nil ? SEXTYPE(f)->reg.TR : (f)->t)
+static void *getowner(void*);
 /* Heap ownership remains observable even when no allocator or GC is running. */
 Prog *currun(void) {return &process;}
 void destroy(void *p) {
     if(p==H)return;
     assert(p==oldvalue.data || p==newvalue.data || p==exceptionvalue.data);
-    assert(D2H(p)->ref>0);D2H(p)->ref--;destroys++;
+    assert(D2H(p)->ref>0);
+    if(observepublication && p==oldvalue.data)assert(getowner(fp+handlers[0].eoff)==H);
+    D2H(p)->ref--;destroys++;
     if(p==exceptionvalue.data && D2H(p)->ref==0 && D2H(p)->t==&othertype &&
-       *(void**)exceptionvalue.data==newvalue.data)destroy(newvalue.data);
+       getowner(exceptionvalue.data)==newvalue.data)destroy(newvalue.data);
 }
-void unextend(Frame *f) {(void)f;assert(0);}
 WORD modstatus(REG *r,char *name,int n) {(void)r;assert(n>8);strcpy(name,"fixture");return 2;}
 static String *newestring(char *message) {assert(!strcmp(message,"match"));newstrings++;return (String*)newvalue.data;}
 /* A failed diagnostic resize must retain the old allocation and its contents. */
@@ -71,10 +73,13 @@ int snprint(char *p,int n,char *format,...) {
 #define realloc diagnosticrealloc
 IMPLEMENTATION
 #undef realloc
+/* Access fixture owner slots without reproducing the implementation's alignment bug. */
+static void *getowner(void *slot) {void *p;memmove(&p,slot,sizeof(p));return p;}
+static void putowner(void *slot,void *p) {memmove(slot,&p,sizeof(p));}
 /* Allocate canaries around either a normal frame or a stack-extension frame. */
 static void setup(int compiled,int extended,int payload,int clear,int failure,int last)
 {
-    Frame *f;int slot;
+    Frame *f;Frame header={0};int slot,shift;
     memset(&R,0,sizeof(R));memset(&process,0,sizeof(process));
     memset(&module,0,sizeof(module));memset(&instance,0,sizeof(instance));
     memset(&frame,0,sizeof(frame));memset(&cleanup,0,sizeof(cleanup));
@@ -85,14 +90,15 @@ static void setup(int compiled,int extended,int payload,int clear,int failure,in
     exceptionvalue.h.t=payload==1?&Tstring:&othertype;
     framesize=sizeof(Frame)+4*sizeof(void*);
     headersize=extended?OA(Stkext,reg.tos.fu):0;
-    storage=malloc(32+headersize+framesize+32);assert(storage);memset(storage,0xa5,32+headersize+framesize+32);
-    fp=storage+32+headersize;memset(fp,0,framesize);f=(Frame*)fp;
+    shift=extended?0:alignment;
+    storage=malloc(32+headersize+framesize+32+shift);assert(storage);memset(storage,0xa5,32+headersize+framesize+32+shift);
+    fp=storage+32+headersize+shift;memset(fp,0,framesize);f=(Frame*)fp;
     frame.size=framesize;frame.np=(framesize/sizeof(void*)+7)/8;
     for(slot=sizeof(Frame)/sizeof(void*);slot<(int)(framesize/sizeof(void*));slot++)
         frame.map[slot/8]|=0x80>>(slot%8);
-    cleanup=frame;f->t=extended?nil:&frame;
+    cleanup=frame;header.t=extended?nil:&frame;memmove(fp,&header,sizeof(header));
     if(extended)SEXTYPE(f)->reg.TR=&frame;
-    for(slot=sizeof(Frame);slot<(int)framesize;slot+=sizeof(void*))*(void**)(fp+slot)=H;
+    for(slot=sizeof(Frame);slot<(int)framesize;slot+=sizeof(void*))putowner(fp+slot,H);
     instance.m=&module;instance.prog=instructions;instance.compiled=compiled;
     module.prog=instructions;module.nprog=4;module.htab=handlers;
     handlers[0].pc1=0;handlers[0].pc2=2;
@@ -100,12 +106,12 @@ static void setup(int compiled,int extended,int payload,int clear,int failure,in
     handlers[0].t=clear?&cleanup:nil;handlers[0].ne=payload==2?1:0;handlers[0].etab=entries;
     entries[0].s="match";entries[0].pc=compiled?4:2;
     entries[1].pc=NOPC;
-    *(void**)(fp+handlers[0].eoff)=oldvalue.data;
+    putowner(fp+handlers[0].eoff,oldvalue.data);
     process.exval=payload?exceptionvalue.data:H;process.kill="pending";
     diagnostic=malloc(32);assert(diagnostic);strcpy(diagnostic,"previous diagnostic");process.exstr=diagnostic;
     R.FP=fp;R.SP=fp+framesize;R.TS=R.SP;R.EX=storage+32;R.M=&instance;
     R.PC=compiled?(Inst*)((uchar*)instructions+1):instructions+1;
-    diagnostics=newstrings=destroys=0;faildiag=failure;
+    diagnostics=newstrings=destroys=observepublication=0;faildiag=failure;
 }
 /* Guards include the extension's original registers and the entire frame header. */
 static void finish(void)
@@ -122,10 +128,11 @@ static void validhandlers(void)
     for(compiled=0;compiled<2;compiled++)for(extended=0;extended<2;extended++)
     for(payload=0;payload<3;payload++)for(clear=0;clear<2;clear++)
     for(failure=0;failure<2;failure++)for(last=0;last<2;last++){
-        setup(compiled,extended,payload,clear,failure,last);header=*(Frame*)fp;
+        setup(compiled,extended,payload,clear,failure,last);memmove(&header,fp,sizeof(header));
+        observepublication=!clear;
         assert(handler("match"));
         assert(!memcmp(&header,fp,sizeof(header)) && oldvalue.h.ref==0);
-        assert(*(void**)(fp+handlers[0].eoff)==(payload?exceptionvalue.data:newvalue.data));
+        assert(getowner(fp+handlers[0].eoff)==(payload?exceptionvalue.data:newvalue.data));
         assert((payload?exceptionvalue.h.ref:newvalue.h.ref)==1 && process.exval==H && process.kill==nil);
         assert(newstrings==!payload && diagnostics==1 && process.exstr==diagnostic);
         assert(!strcmp(process.exstr,failure?"previous diagnostic":"new diagnostic"));
@@ -158,7 +165,7 @@ static void invalidhandlers(void)
         case 14:cleanup.map[0]|=0x80;break;
         case 15:cleanup.size=sizeof(Frame)+1;break;
         case 16:frame.size=sizeof(Frame)-1;break;
-        case 17:if(extended)SEXTYPE((Frame*)fp)->reg.TR=H;else ((Frame*)fp)->t=H;break;
+        case 17:if(extended)SEXTYPE((Frame*)fp)->reg.TR=H;else {Type *bad=H;memmove(fp+O(Frame,t),&bad,sizeof(bad));}break;
         }
         memcpy(saved,fp,framesize);memcpy(&before,&R,sizeof(R));
         assert(!handler("match"));
@@ -172,31 +179,53 @@ static void invalidhandlers(void)
 static void laterhandler(void)
 {
     setup(0,0,0,0,0,0);handlers[1]=handlers[0];handlers[0].eoff=(ulong)-1;
-    assert(handler("match") && *(void**)(fp+handlers[1].eoff)==newvalue.data);
+    assert(handler("match") && getowner(fp+handlers[1].eoff)==newvalue.data);
     assert(oldvalue.h.ref==0 && diagnostics==1);finish();checks++;
 }
 /* Validate a caller before unwinding a normal frame, including string conversion. */
 static void unwindhandlers(void)
 {
-    int compiled,payload,clear,i;uchar *expanded,*child;Frame *f;
+    int compiled,payload,clear,i;uchar *expanded,*child;Frame header;
     for(compiled=0;compiled<2;compiled++)for(payload=0;payload<3;payload++)for(clear=0;clear<2;clear++){
         setup(compiled,0,payload,clear,0,0);
-        expanded=malloc(32+2*framesize+32);assert(expanded);memset(expanded,0xa5,32+2*framesize+32);
-        memcpy(expanded+32,fp,framesize);free(storage);storage=expanded;fp=storage+32;
-        child=fp+framesize;memset(child,0,framesize);initmem(&frame,child);
-        f=(Frame*)child;f->t=&frame;f->fp=fp;
-        f->lr=compiled?(Inst*)((uchar*)instructions+1):instructions+1;
+        expanded=malloc(32+2*framesize+32+2*alignment);assert(expanded);memset(expanded,0xa5,32+2*framesize+32+2*alignment);
+        memcpy(expanded+32+alignment,fp,framesize);free(storage);storage=expanded;fp=storage+32+alignment;
+        child=fp+framesize+alignment;memset(child,0,framesize);initmem(&frame,child);
+        memset(&header,0,sizeof(header));header.t=&frame;header.fp=fp;
+        header.lr=compiled?(Inst*)((uchar*)instructions+1):instructions+1;
+        memmove(child,&header,sizeof(header));
         handlers[0].ne=0;
-        if(payload==2)*(void**)exceptionvalue.data=newvalue.data;
+        if(payload==2)putowner(exceptionvalue.data,newvalue.data);
         R.FP=child;R.EX=storage+32;R.TS=R.SP=child+framesize;
         R.PC=compiled?(Inst*)((uchar*)instructions+3):instructions+3;
         assert(handler("match") && R.FP==fp && R.SP==child);
-        assert(*(void**)(fp+handlers[0].eoff)==(payload==1?exceptionvalue.data:newvalue.data));
+        assert(getowner(fp+handlers[0].eoff)==(payload==1?exceptionvalue.data:newvalue.data));
         assert(oldvalue.h.ref==0 && process.exval==H);
         if(payload==2)assert(exceptionvalue.h.ref==0 && newvalue.h.ref==1);
         assert(!memcmp(&process.R,&R,sizeof(R)));
         for(i=0;i<32;i++)assert(storage[i]==0xa5 && child[framesize+i]==0xa5);
         free(storage);free(diagnostic);checks++;
+    }
+}
+/* Unwind and actually free an extension while retaining an unaligned caller. */
+static void unwindextension(void)
+{
+    int compiled,payload,clear;Stkext *sx;Frame header={0};uchar *child;
+    for(compiled=0;compiled<2;compiled++)for(payload=0;payload<3;payload++)for(clear=0;clear<2;clear++){
+        setup(compiled,0,payload,clear,0,0);
+        sx=calloc(1,sizeof(Stkext)+framesize);assert(sx);child=sx->reg.tos.fu;
+        sx->reg.TR=&frame;sx->reg.SP=fp+framesize;sx->reg.TS=fp+framesize;sx->reg.EX=storage+32;
+        initmem(&frame,child);header.fp=fp;
+        header.lr=compiled?(Inst*)((uchar*)instructions+1):instructions+1;
+        memmove(child,&header,sizeof(header));
+        handlers[0].ne=0;
+        if(payload==2)putowner(exceptionvalue.data,newvalue.data);
+        R.FP=child;R.EX=(uchar*)sx;R.TS=R.SP=child+framesize;
+        R.PC=compiled?(Inst*)((uchar*)instructions+3):instructions+3;
+        assert(handler("match") && R.FP==fp && R.SP==fp+framesize && R.EX==storage+32);
+        assert(getowner(fp+handlers[0].eoff)==(payload==1?exceptionvalue.data:newvalue.data));
+        assert(oldvalue.h.ref==0 && process.exval==H && !memcmp(&process.R,&R,sizeof(R)));
+        finish();checks++;
     }
 }
 /* The first diagnostic allocation may fail without preventing exception delivery. */
@@ -208,18 +237,40 @@ static void emptydiagnostic(void)
         assert(handler("match") && process.exstr==diagnostic);
         if(failure)assert(process.exstr==nil);
         else assert(!strcmp(process.exstr,"new diagnostic"));
-        assert(*(void**)(fp+handlers[0].eoff)==newvalue.data && oldvalue.h.ref==0);
+        assert(getowner(fp+handlers[0].eoff)==newvalue.data && oldvalue.h.ref==0);
         finish();checks++;
     }
+}
+/* Release an uncalled ordinary frame before publishing into its caller. */
+static void uncalledframe(void)
+{
+    uchar *expanded,*temporary;Frame header={0};
+    setup(0,0,0,0,0,0);
+    expanded=malloc(32+2*framesize+32+alignment);assert(expanded);
+    memset(expanded,0xa5,32+2*framesize+32+alignment);
+    memcpy(expanded+32+alignment,fp,framesize);free(storage);storage=expanded;fp=expanded+32+alignment;
+    temporary=fp+framesize;memset(temporary,0,framesize);initmem(&frame,temporary);
+    header.t=&frame;memmove(temporary,&header,sizeof(header));
+    oldvalue.h.ref++;putowner(temporary+sizeof(Frame),oldvalue.data);
+    R.FP=fp;R.EX=storage+32;R.TS=R.SP=temporary+framesize;
+    assert(handler("match") && R.FP==fp && R.SP==temporary);
+    assert(oldvalue.h.ref==0 && getowner(fp+handlers[0].eoff)==newvalue.data);
+    assert(getowner(temporary+sizeof(Frame))==oldvalue.data);
+    for(int i=0;i<32;i++)assert(storage[i]==0xa5 && temporary[framesize+i]==0xa5);
+    free(storage);free(diagnostic);checks++;
 }
 int main(void)
 {
     char *only=getenv("EXCEPTION_CASES");
+    for(alignment=0;alignment<8;alignment++){
+    if(!only || !strcmp(only,"extension"))unwindextension();
+    if(!only || !strcmp(only,"uncalled"))uncalledframe();
     if(!only || !strcmp(only,"valid"))validhandlers();
     if(!only || !strcmp(only,"invalid"))invalidhandlers();
     if(!only || !strcmp(only,"later"))laterhandler();
     if(!only || !strcmp(only,"unwind"))unwindhandlers();
     if(!only || !strcmp(only,"diagnostic"))emptydiagnostic();
+    }
     printf("exception frames: %d cases\n",checks);return 0;
 }
 int __lsan_is_turned_off(void) {return 1;}
@@ -230,8 +281,10 @@ for variant in ('emu','os'):
     folder = Path(os.environ.get('EXCEPTION_SOURCE_DIR', root/variant/'port'))
     source = (folder/'exception.c').read_text()
     signatures = ['static int\nematch(', 'static void\nfreeframe(']
+    if 'static Type*\nframetype(' in source: signatures += ['static Type*\nframetype(']
     if 'static int\nexceptionframe(' in source: signatures += ['static int\nexceptionframe(']
     parts = [function(heap, s) for s in ('void\nfreeptrs(', 'void\ninitmem(')]
+    parts += [function((root/'libinterp/stack.c').read_text(), 'void\nunextend(')]
     parts += [function(source, s) for s in signatures+['int\nhandler(']]
     with tempfile.TemporaryDirectory(prefix='exception-frames-') as directory:
         td=Path(directory);target=td/'test.c';target.write_text(unit.replace('IMPLEMENTATION','\n'.join(parts)))

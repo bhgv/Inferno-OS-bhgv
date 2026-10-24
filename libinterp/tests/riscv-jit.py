@@ -219,11 +219,13 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
         assert bool(emit('ICVTXX',no_m)[0]) == (xlen==64)
         assert not emit('IINDX',no_m)[0]
         checks+=1
-        assert emit('IMULX',no_m)[0]==emit('IDIVX',no_m)[0]==0
+        assert bool(emit('IMULX',no_m)[0])==(xlen==64)
+        assert not emit('IDIVX',no_m)[0]
         checks+=1
         assert emit('IEXPW',no_m)[0]==emit('IEXPL',no_m)[0]==0
         checks+=1
         base_i=Layout.from_buffer_copy(abi);base_i.hasm=base_i.hasdiv=0
+        assert bool(emit('IMULX',base_i)[0])==(xlen==64)
         assert emit('ICALL',base_i)==emit('ICALL',abi)
         assert bool(emit('IMOVPC',base_i)[0])==(xlen==64)
         checks+=1
