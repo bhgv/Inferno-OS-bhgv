@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <setjmp.h>
 
-char exBounds[] = "bounds", exType[] = "type";
+char exBounds[] = "bounds", exType[] = "type", exNilref[] = "nil";
 Type Tarray = {1}, Tbyte = {1}, other = {1};
 static jmp_buf boundary;
 static int checks;
@@ -212,13 +212,110 @@ bounds(void)
 	free(g.ret); free(D2H(a));
 }
 
+/* Compare all scalar encodings with byte-aligned return slots and guard bytes. */
+static void
+alignment(void)
+{
+	F_Sys_char2byte f = {0};
+	F_Sys_byte2char g = {0};
+	F_Sys_utfbytes u = {0};
+	uchar output[3*sizeof(WORD)+16], data[8], expected[4];
+	WORD tuple[3], count;
+	Array *a;
+	unsigned values[] = {0, 1, 0x7f, 0x80, 0x7ff, 0x800, 0xd7ff,
+		0xd800, 0xdfff, 0xe000, 0xfffd, 0xffff, 0x10000, 0x10ffff, 0x110000};
+	int offset, i, n, prefix, mode, size, j;
+
+	a = array(data+1, 4);
+	f.buf = g.buf = u.buf = a;
+	for(offset = 0; offset < 8; offset++)
+	for(i = 0; i < nelem(values); i++){
+		n = encode(values[i], expected);
+		memset(data, 0xa5, sizeof(data));
+		f.ret = (void*)(output+offset);
+		g.ret = (void*)(output+offset);
+		u.ret = (void*)(output+offset);
+		f.c = values[i]; a->len = 4;
+		memset(output, 0xa5, sizeof(output));
+		Sys_char2byte(&f);
+		memmove(&count, output+offset, sizeof(count));
+		assert(count == n && !memcmp(data+1, expected, n));
+		for(j = 0; j < sizeof(output); j++)
+			if(j < offset || j >= offset+sizeof(WORD))assert(output[j] == 0xa5);
+		for(mode = 0; mode < 3; mode++){
+			memset(data, 0xa5, sizeof(data));
+			memmove(data+1, expected, n);
+			a->len = mode == 1 ? n-1 : n;
+			if(mode == 1 && n == 1)continue;
+			if(mode == 2){ data[1] = 0xff; a->len = 4; }
+			memset(output, 0xa5, sizeof(output));
+			Sys_byte2char(&g);
+			memmove(tuple, output+offset, sizeof(tuple));
+			assert(tuple[0] == (mode ? Runeerror : values[i] > 0x10ffff || (values[i] >= 0xd800 && values[i] <= 0xdfff) ? Runeerror : values[i]));
+			if(tuple[1] != (mode == 1 ? 0 : mode == 2 ? 1 : n))fprintf(stderr, "decode mismatch c=%x mode=%d n=%d got=%ld,%ld,%ld\n", values[i], mode, n, (long)tuple[0], (long)tuple[1], (long)tuple[2]);
+			assert(tuple[1] == (mode == 1 ? 0 : mode == 2 ? 1 : n));
+			assert(tuple[2] == (mode == 0));
+			size = sizeof(tuple);
+			for(j = 0; j < sizeof(output); j++)
+				if(j < offset || j >= offset+size)assert(output[j] == 0xa5);
+			checks++;
+		}
+		memmove(data+1, expected, n); a->len = n;
+		for(prefix = 0; prefix <= n; prefix++){
+			u.n = prefix;
+			memset(output, 0xa5, sizeof(output));
+			Sys_utfbytes(&u);
+			memmove(&count, output+offset, sizeof(count));
+			assert(count == (prefix == n ? n : 0));
+			for(j = 0; j < sizeof(output); j++)
+				if(j < offset || j >= offset+sizeof(WORD))assert(output[j] == 0xa5);
+			checks++;
+		}
+		checks++;
+	}
+	free(D2H(a));
+}
+
+/* Bad return owners must raise before the encoder writes its byte array. */
+static void
+badreturns(void)
+{
+	F_Sys_char2byte f = {0};
+	F_Sys_byte2char g = {0};
+	F_Sys_utfbytes u = {0};
+	uchar data[8];
+	Array *a;
+	int mode, bad, i;
+
+	a = array(data, sizeof(data));
+	f.buf = g.buf = u.buf = a;
+	f.c = 0x1f600; u.n = 1;
+	for(mode = 0; mode < 3; mode++)for(bad = 0; bad < 2; bad++){
+		f.ret = bad ? H : nil; g.ret = bad ? H : nil; u.ret = bad ? H : nil;
+		memset(data, 0xa5, sizeof(data));
+		raised = nil;
+		if(setjmp(boundary) == 0){
+			if(mode == 0)Sys_char2byte(&f);
+			if(mode == 1)Sys_byte2char(&g);
+			if(mode == 2)Sys_utfbytes(&u);
+			assert(0);
+		}
+		assert(raised == exNilref);
+		for(i = 0; i < sizeof(data); i++)assert(data[i] == 0xa5);
+		checks++;
+	}
+	free(D2H(a));
+}
+
 /* Exercise real generated builtin frames and the real UTF decoder/encoder. */
 int
-main(void)
+main(int argc, char **argv)
 {
-	scalars();
-	malformed();
-	bounds();
+	if(argc == 1 || strcmp(argv[1], "alignment") == 0)alignment();
+	if(argc == 1 || strcmp(argv[1], "badreturns") == 0)badreturns();
+	if(argc == 1 || strcmp(argv[1], "scalars") == 0)scalars();
+	if(argc == 1 || strcmp(argv[1], "malformed") == 0)malformed();
+	if(argc == 1 || strcmp(argv[1], "bounds") == 0)bounds();
 	printf("PASS Sys UTF: %d scalar/bounds cases, WORD%zu\n", checks, sizeof(WORD)*8);
 	return 0;
 }

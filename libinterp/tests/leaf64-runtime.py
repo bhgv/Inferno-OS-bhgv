@@ -515,7 +515,7 @@ static void arrays(Module *m) {
     for(op=0;op<4;op++)for(i=-1;i<=8;i++) {
         owner=&array;index=i;out=123;
         R.s=&owner;R.d=&index;R.m=&out;activeop=operations[op];
-        if(sizeof(WORD)==4)assert(!m->jit->entry[activeop]);
+        assert(m->jit->entry[activeop]);
         if(i<0 || i>=8){assert(!kprotect(dispatch,nil));assert(out==123);}
         else {
             stride=op==0?1:op==1?sizeof(WORD):8;
@@ -561,7 +561,7 @@ int main(void) {
     assert(m.jit->entry[IMULX1] && m.jit->entry[IDIVX1] && m.jit->entry[ICVTXX1]);
     assert(m.jit->entry[IMULX0] && m.jit->entry[IDIVX0] && m.jit->entry[ICVTXX0]);
     assert(m.jit->entry[IMOVP]==nil && m.jit->entry[IMULX] && m.jit->entry[IDIVX]);
-    assert(!!m.jit->entry[IINDX]==(sizeof(WORD)==8));
+    assert(m.jit->entry[IINDX]);
     assert(protections==1 && mappings==1);
     R.s=&a;R.m=&b;R.d=&out;
 #if EXECUTE_NATIVE
@@ -598,7 +598,7 @@ if backend=='riscv64':
         'assert(!!m.jit->entry[IDIVX]=='+str(int(profile=='m'))+');'
         'assert(!!m.jit->entry[IDIVW]=='+str(int(profile=='m'))+');'
         'assert(!!m.jit->entry[IMODW]=='+str(int(profile=='m'))+');')
-    unit=unit.replace('(sizeof(WORD)==8));', '(sizeof(WORD)==8 && '+str(int(profile!='i'))+'));')
+    unit=unit.replace('assert(m.jit->entry[IINDX]);', 'assert(!!m.jit->entry[IINDX]=='+str(int(profile!='i'))+');')
 
 load=(root/'libinterp/load.c').read_text()
 a=load.index('void\nfreemod(');b=load.index('\nvoid\nunload(',a)

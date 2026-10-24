@@ -27,9 +27,9 @@ def function(text, signature):
     raise ValueError(signature)
 
 
-signatures = ['static int\nsysutfarray(', 'static int\nutfnleng(',
+signatures = ['static int\nsysutfarray(', 'static uchar*\nsysutfresult(', 'static int\nutfnleng(',
               'void\nSys_utfbytes(', 'void\nSys_byte2char(', 'void\nSys_char2byte(']
-parts = [function(source, signature) for signature in signatures]
+parts = [function(source, signature) for signature in signatures if signature in source]
 unit = (root / 'libinterp/tests/sys-utf.c').read_text()
 unit = unit.replace('IMPLEMENTATION', '\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='sys-utf-') as directory:
@@ -53,4 +53,4 @@ with tempfile.TemporaryDirectory(prefix='sys-utf-') as directory:
             override = ['-I'+str(modeldir)]
         binary = td / ('codecs-'+model)
         subprocess.run(cmd+override+includes+[str(target),str(root / 'lib9/rune.c'),'-o',str(binary)],check=True)
-        subprocess.run([str(binary)],check=True)
+        subprocess.run([str(binary)]+shlex.split(os.environ.get('SYS_UTF_CASE','')),check=True)

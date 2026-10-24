@@ -251,14 +251,14 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		break;
 	case IINDX:
 		/* A bounded positive descriptor product fits 62 bits before the final bound check. */
-		if(abi->xlen != 64 || abi->wordbytes != 8 || !abi->hasm ||
+		if(abi->xlen != 64 || !abi->hasm ||
 		   abi->arraylen < 0 || abi->arraylen > 2047 || abi->arraydata < 0 || abi->arraydata > 2047 ||
 		   abi->arraytype < 0 || abi->arraytype > 2047 || abi->typesize < 0 || abi->typesize > 2047 ||
 		   (abi->arraylen|abi->arraydata|abi->arraytype)%8 || abi->typesize%4) return 0;
 		rvptr(&b, Rvt1, abi->s); rvload(&b, Rvt0, Rvt1, 8); rvguard(&b, 1, Rvt0, Rvzero);
 		rvi(&b, 0x13, 0, Rvt6, Rvzero, -1); rvguard(&b, 1, Rvt0, Rvt6);
-		rvi(&b, 0x03, 3, Rvt3, Rvt0, abi->arraylen); rvguard(&b, 5, Rvt3, Rvzero);
-		rvptr(&b, Rvt1, abi->d); rvload(&b, Rvt4, Rvt1, 8); rvguard(&b, 6, Rvt4, Rvt3);
+		rvi(&b, 0x03, abi->wordbytes == 8 ? 3 : 2, Rvt3, Rvt0, abi->arraylen); rvguard(&b, 5, Rvt3, Rvzero);
+		rvptr(&b, Rvt1, abi->d); rvload(&b, Rvt4, Rvt1, abi->wordbytes); rvguard(&b, 6, Rvt4, Rvt3);
 		rvi(&b, 0x03, 3, Rvt3, Rvt0, abi->arraytype); rvguard(&b, 1, Rvt3, Rvzero); rvguard(&b, 1, Rvt3, Rvt6);
 		rvi(&b, 0x03, 2, Rvt6, Rvt3, abi->typesize); rvguard(&b, 5, Rvt6, Rvzero);
 		rvi(&b, 0x03, 3, Rvt3, Rvt0, abi->arraydata);
@@ -268,7 +268,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		rvguard(&b, 7, Rvt0, Rvt4); rvr(&b, 0x33, 0, 1, Rvt4, Rvt4, Rvt6); rvguard(&b, 7, Rvt0, Rvt4);
 		rvguard(&b, 1, Rvt3, Rvzero); rvi(&b, 0x13, 0, Rvt6, Rvzero, -1); rvguard(&b, 1, Rvt3, Rvt6);
 		rvr(&b, 0x33, 0, 0, Rvt5, Rvt3, Rvt4); rvguard(&b, 7, Rvt5, Rvt3);
-		rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, 8);
+		rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, abi->wordbytes);
 		break;
 	case IMULX: case IDIVX:
 		/* Fixed intermediates need multiplication; DIVX additionally needs division. */
@@ -479,7 +479,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		break;
 	case ILENA:
 	case IINDB: case IINDW: case IINDL: case IINDF:
-		if(abi->xlen != 64 || (op != ILENA && abi->wordbytes != 8) ||
+		if(abi->xlen != 64 ||
 		   abi->arraylen < 0 || abi->arraydata < 0 || abi->arraylen > 2047 ||
 		   abi->arraydata > 2047 || (abi->arraylen|abi->arraydata)%8 != 0) return 0;
 		/* Dis operand slots can be four-byte aligned even for native pointers. */
@@ -496,11 +496,11 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		}else{
 			rvguard(&b, 1, Rvt0, Rvzero);
 			rvi(&b, 0x13, 0, Rvt6, Rvzero, -1); rvguard(&b, 1, Rvt0, Rvt6);
-			rvi(&b, 0x03, 3, Rvt3, Rvt0, abi->arraylen);
+			rvi(&b, 0x03, abi->wordbytes == 8 ? 3 : 2, Rvt3, Rvt0, abi->arraylen);
 			rvguard(&b, 5, Rvt3, Rvzero);
-			rvptr(&b, Rvt1, abi->d); rvload(&b, Rvt4, Rvt1, 8);
+			rvptr(&b, Rvt1, abi->d); rvload(&b, Rvt4, Rvt1, abi->wordbytes);
 			rvguard(&b, 6, Rvt4, Rvt3);
-			scale = op == IINDB ? 0 : 3;
+			scale = op == IINDB ? 0 : op == IINDW && abi->wordbytes == 4 ? 2 : 3;
 			rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
 			rvi(&b, 0x13, 5, Rvt6, Rvt6, 33+scale);
 			rvguard(&b, 7, Rvt6, Rvt4);
@@ -510,7 +510,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 			if(scale) rvi(&b, 0x13, 1, Rvt4, Rvt4, scale);
 			rvr(&b, 0x33, 0, 0, Rvt5, Rvt3, Rvt4);
 			rvguard(&b, 7, Rvt5, Rvt3);
-			rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, 8);
+			rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, abi->wordbytes);
 		}
 		break;
 	case IRUNT:
@@ -555,9 +555,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		rvstore(&b, Rvt2, Rvt3, op == ICVTWL ? 8 : abi->wordbytes);
 		break;
 	case ILEA:
-		/* Existing xec.c stores addresses in WORD. Do not widen that slot. */
-		if(bytes*8 != abi->xlen)
-			return 0;
+		/* Truncate to WORD exactly as xec.c does, without widening the slot. */
 		rvptr(&b, Rvt3, abi->s);
 		rvptr(&b, Rvt2, abi->d);
 		rvstore(&b, Rvt2, Rvt3, bytes);

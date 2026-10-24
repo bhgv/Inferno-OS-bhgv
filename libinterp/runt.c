@@ -471,79 +471,87 @@ sysutfarray(Array *a)
 	return (int)a->len;
 }
 
-/* Count only complete UTF sequences within the validated byte prefix. */
+/* Validate result slots before UTF operations can modify an aliased byte array. */
+static uchar*
+sysutfresult(void *slot)
+{
+	if(slot == nil || slot == H)
+		error(exNilref);
+	return slot;
+}
+
+/* Count complete UTF sequences and publish WORD without requiring alignment. */
 void
 Sys_utfbytes(void *fp)
 {
 	Array *a;
 	int nbyte, length;
+	WORD result;
+	uchar *ret;
 	F_Sys_utfbytes *f;
 
 	f = fp;
+	ret = sysutfresult(f->ret);
 	a = f->buf;
 	length = sysutfarray(a);
 	if(f->n < 0 || f->n > length)
 		error(exBounds);
 
 	utfnleng((char*)a->data, (int)f->n, &nbyte);
-	*f->ret = nbyte;
+	result = nbyte;
+	memmove(ret, &result, sizeof(result));
 }
 
-/* Validate the full VM offset before decoding one possibly incomplete rune. */
+/* Decode the complete tuple before publishing into a possibly unaligned slot. */
 void
 Sys_byte2char(void *fp)
 {
 	Rune r;
 	char *p;
-	int n, w, length;
+	int n, w, valid, length;
+	WORD result[3];
+	uchar *ret;
 	Array *a;
 	F_Sys_byte2char *f;
 
 	f = fp;
+	ret = sysutfresult(f->ret);
 	a = f->buf;
 	length = sysutfarray(a);
 	if(f->n < 0 || f->n >= length)
 		error(exBounds);
 	n = (int)f->n;
 	r = a->data[n];
-	if(r < Runeself){
-		f->ret->t0 = r;
-		f->ret->t1 = 1;
-		f->ret->t2 = 1;
-		return;
+	w = valid = 1;
+	if(r >= Runeself){
+		p = (char*)a->data+n;
+		if(length-n >= UTFmax || fullrune(p, length-n)){
+			w = chartorune(&r, p);
+			valid = r != Runeerror || w != 1;
+		}else{
+			r = Runeerror;
+			w = valid = 0;
+		}
 	}
-	p = (char*)a->data+n;
-	if(length-n >= UTFmax || fullrune(p, length-n))
-		w = chartorune(&r, p);
-	else {
-		/* insufficient data */
-		f->ret->t0 = Runeerror;
-		f->ret->t1 = 0;
-		f->ret->t2 = 0;
-		return;
-	}
-	if(r == Runeerror && w==1){	/* encoding error */
-		f->ret->t0 = Runeerror;
-		f->ret->t1 = 1;
-		f->ret->t2 = 0;
-		return;
-	}
-	f->ret->t0 = r;
-	f->ret->t1 = w;
-	f->ret->t2 = 1;
+	result[0] = r;
+	result[1] = w;
+	result[2] = valid;
+	memmove(ret, result, sizeof(result));
 }
 
-/* Preserve the full rune and offset until validation, including U+10FFFF. */
+/* Encode before publishing the count, preserving the full rune and offset. */
 void
 Sys_char2byte(void *fp)
 {
 	F_Sys_char2byte *f;
 	Array *a;
 	int n, length;
-	WORD c;
+	WORD c, result;
 	Rune r;
+	uchar *ret;
 
 	f = fp;
+	ret = sysutfresult(f->ret);
 	a = f->buf;
 	length = sysutfarray(a);
 	c = f->c;
@@ -552,17 +560,16 @@ Sys_char2byte(void *fp)
 	n = (int)f->n;
 	if(c < 0 || c > Runemax)
 		c = Runeerror;
+	result = 0;
 	if(c < Runeself){
 		a->data[n] = c;
-		*f->ret = 1;
-		return;
+		result = 1;
+	}else{
+		r = c;
+		if(length-n >= UTFmax || runelen(c) <= length-n)
+			result = runetochar((char*)a->data+n, &r);
 	}
-	r = c;
-	if(length-n >= UTFmax || runelen(c) <= length-n){
-		*f->ret = runetochar((char*)a->data+n, &r);
-		return;
-	}
-	*f->ret = 0;
+	memmove(ret, &result, sizeof(result));
 }
 
 typedef struct BuiltinModule BuiltinModule;

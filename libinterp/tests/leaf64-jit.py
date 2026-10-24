@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -86,15 +86,14 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     assert lib.emit(guard,64,C.byref(malformed),ids[name])==0
                     assert list(guard)==[0xa5a5a5a5]*64
                     checks+=1
-            if wb==8:
-                for field in ('arraylen','arraydata','arraytype','typesize'):
-                    for value in (-1,1,2048):
-                        malformed=type(layout).from_buffer_copy(layout)
-                        setattr(malformed,field,value)
-                        guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                        assert lib.emit(guard,64,C.byref(malformed),ids['IINDX'])==0
-                        assert list(guard)==[0xa5a5a5a5]*64
-                        checks+=1
+            for field in ('arraylen','arraydata','arraytype','typesize'):
+                for value in (-1,1,2048):
+                    malformed=type(layout).from_buffer_copy(layout)
+                    setattr(malformed,field,value)
+                    guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
+                    assert lib.emit(guard,64,C.byref(malformed),ids['IINDX'])==0
+                    assert list(guard)==[0xa5a5a5a5]*64
+                    checks+=1
             for field in ('fp','framelr','framefp'):
                 for value in (-1,1,2048):
                     malformed=type(layout).from_buffer_copy(layout);setattr(malformed,field,value)
@@ -174,7 +173,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     checks+=1
                 if case=='call':continue
 
-            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False, fixedframe=None, descriptor=None, badresult=False, programaddress=None):
+            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False, fixedframe=None, descriptor=None, badresult=False, programaddress=None, slotshift=0):
                 """Exercise a leaf with high native pointers, four-byte alignment and exact aliases."""
                 if arch == 'amd64':
                     u = Uc(UC_ARCH_X86,UC_MODE_64); arg, result = UC_X86_REG_RDI, UC_X86_REG_RAX
@@ -184,7 +183,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     u = Uc(UC_ARCH_RISCV,UC_MODE_RISCV64); arg = result = UC_RISCV_REG_A0
                 for address in (code,registers,data,stack): u.mem_map(address,0x1000)
                 u.mem_write(code,blobs[name])
-                s,m,d = data+0x104,data+0x204,data+0x304
+                s,m,d = data+0x104+slotshift,data+0x204+slotshift,data+0x304+slotshift
                 if fixedframe is not None and fixedframe[2] is not None:d=fixedframe[0]+layout.fixedtmp+fixedframe[2]
                 if alias == 1: d=s
                 if alias == 2: d=m
@@ -347,6 +346,16 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','address'):
+                for shift in ((0,4) if rv else range(8)):
+                    for alias in (0,1,2,3,5):
+                        for unreadable in (False,True):
+                            out,pc,before,after,source=run('ILEA',alias=alias,badsource=unreadable,slotshift=shift)
+                            assert int.from_bytes(out[:wb],'little')==source&((1<<(wb*8))-1)
+                            assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
+                            assert pc==oldpc
+                            checks+=1
+                if case=='address':continue
             if case in ('','movpc'):
                 for link in (0,(1<<64)-1,data+0x500):
                     for owner in (0,(1<<64)-1,data+0x700):
@@ -464,37 +473,36 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         assert pc==oldpc and before==after;checks+=1
                 if case=='roundedcoefficient':continue
             if case in ('','descriptor'):
-                if wb==4:assert not blobs['IINDX']
-                else:
-                    assert blobs['IINDX'],(arch,wb,'missing descriptor leaf')
-                    for width in (-1,0,1,3,7,8,16,0x7fffffff):
-                        for length in (-1,0,1,8,0x80000001,(1<<63)-1):
-                            for index in (-1,0,1,7,length-1,length):
-                                for backing in (data+0x800,0,(1<<64)-1,(1<<64)-16):
-                                    valid=0<=index<length and width>=0 and (width==0 or
-                                          backing not in (0,(1<<64)-1) and index*width<=0x7fffffff and backing+index*width<(1<<64))
-                                    for alias in (0,1,2):
-                                        out,pc,before,after,_=run('IINDX',array=(data+0x500,length,index,backing),arrayalias=alias,
-                                                                descriptor=(data+0x700,width),expect=int(valid))
-                                        if valid:
-                                            assert int.from_bytes(out[:8],'little')==backing+index*width,(arch,width,length,index,backing)
-                                            assert before[:8]==after[:8] and before[16:]==after[16:]
-                                        else:assert before==after
-                                        assert pc==oldpc
-                                        checks+=1
-                                    if not valid:
-                                        _,pc,before,after,_=run('IINDX',array=(data+0x500,length,index,backing),
-                                                                descriptor=(data+0x700,width),expect=0,badresult=True)
-                                        assert pc==oldpc and before==after
-                                        checks+=1
-                    for owner in (0,(1<<64)-1):
-                        _,pc,before,after,_=run('IINDX',array=(owner,8,0,data+0x800),descriptor=(data+0x700,3),expect=0,badtarget=True,badresult=True)
-                        assert pc==oldpc and before==after
-                        checks+=1
-                    for typeptr in (0,(1<<64)-1):
-                        _,pc,before,after,_=run('IINDX',array=(data+0x500,8,3,data+0x800),descriptor=(typeptr,3),expect=0,badresult=True)
-                        assert pc==oldpc and before==after
-                        checks+=1
+                assert blobs['IINDX'],(arch,wb,'missing descriptor leaf')
+                for width in (-1,0,1,3,7,8,16,0x7fffffff):
+                    for length in (-1,0,1,8,0x80000001,(1<<63)-1):
+                        for index in (-1,0,1,7,length-1,length):
+                            for backing in (data+0x800,0,(1<<64)-1,(1<<64)-16):
+                                actualindex=signed(index,wb*8);actuallength=signed(length,wb*8)
+                                valid=0<=actualindex<actuallength and width>=0 and (width==0 or
+                                      backing not in (0,(1<<64)-1) and actualindex*width<=0x7fffffff and backing+actualindex*width<(1<<64))
+                                for alias in (0,1,2):
+                                    out,pc,before,after,_=run('IINDX',array=(data+0x500,length,index,backing),arrayalias=alias,
+                                                            descriptor=(data+0x700,width),expect=int(valid))
+                                    if valid:
+                                        assert int.from_bytes(out[:wb],'little')==(backing+actualindex*width)&((1<<(8*wb))-1),(arch,width,length,index,backing)
+                                        assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
+                                    else:assert before==after
+                                    assert pc==oldpc
+                                    checks+=1
+                                if not valid:
+                                    _,pc,before,after,_=run('IINDX',array=(data+0x500,length,index,backing),
+                                                            descriptor=(data+0x700,width),expect=0,badresult=True)
+                                    assert pc==oldpc and before==after
+                                    checks+=1
+                for owner in (0,(1<<64)-1):
+                    _,pc,before,after,_=run('IINDX',array=(owner,8,0,data+0x800),descriptor=(data+0x700,3),expect=0,badtarget=True,badresult=True)
+                    assert pc==oldpc and before==after
+                    checks+=1
+                for typeptr in (0,(1<<64)-1):
+                    _,pc,before,after,_=run('IINDX',array=(data+0x500,8,3,data+0x800),descriptor=(typeptr,3),expect=0,badresult=True)
+                    assert pc==oldpc and before==after
+                    checks+=1
                 if case=='descriptor':continue
             if case in ('','framefixed'):
                 values=[0,1,-1,127,-128,0x7fffffff,-0x80000000,(1<<63)-1,-(1<<63)]
@@ -829,21 +837,19 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:] and pc==oldpc
                         checks+=1
             for name in ('IINDB','IINDW','IINDL','IINDF'):
-                if wb==4:
-                    assert not blobs[name]
-                    continue
-                stride=1 if name=='IINDB' else 8
+                stride=1 if name=='IINDB' else wb if name=='IINDW' else 8
                 for pointer in (0,(1<<64)-1,owner):
                     for length in (-1,0,1,8,17,1<<40):
                         for index in (-1,0,1,7,8,16,17,1<<32,1<<39,-(1<<63)):
                             for backing in (0,(1<<64)-1,data+0x804,(1<<64)-2):
-                                valid=(pointer==owner and 0<=index<length and index<=0x7fffffff//stride and
-                                       backing not in (0,(1<<64)-1) and backing+index*stride<(1<<64))
+                                actualindex=signed(index,wb*8);actuallength=signed(length,wb*8)
+                                valid=(pointer==owner and 0<=actualindex<actuallength and actualindex<=0x7fffffff//stride and
+                                       backing not in (0,(1<<64)-1) and backing+actualindex*stride<(1<<64))
                                 for alias in (0,1,2):
                                     out,pc,before,after,_=run(name,expect=int(valid),array=(pointer,length,index,backing),arrayalias=alias)
                                     if valid:
-                                        assert int.from_bytes(out[:8],'little')==backing+index*stride,(arch,name,length,index,backing,out)
-                                        assert before[:8]==after[:8] and before[16:]==after[16:]
+                                        assert int.from_bytes(out[:wb],'little')==(backing+actualindex*stride)&((1<<(8*wb))-1),(arch,name,length,index,backing,out)
+                                        assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
                                     else:assert before==after
                                     assert pc==oldpc
                                     checks+=1
@@ -937,8 +943,6 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     assert before==after and pc==oldpc
                     checks+=1
             assert run('IJMP')[1]==target
-            if wb==8:
-                out,_,_,_,s=run('ILEA'); assert int.from_bytes(out[:8],'little')==s
-            else: assert not blobs['ILEA']
+            out,_,_,_,s=run('ILEA'); assert int.from_bytes(out[:wb],'little')==s&((1<<(8*wb))-1)
         print('PASS',arch,'native leaves',flush=True)
 print('PASS leaf64 JIT:',checks,'instruction/ABI/alias/oracle checks')

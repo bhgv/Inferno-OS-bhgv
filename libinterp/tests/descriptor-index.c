@@ -34,7 +34,7 @@ main(void)
 	memset(&module,0,sizeof(module));memset(code,0,sizeof(code));
 	code[0].op=IINDX;code[1].op=IRUNT;module.prog=code;module.nprog=2;
 	assert(compile(&module,2,nil));
-	assert(!!module.jit->entry[IINDX]==(sizeof(WORD)==8));
+	assert(module.jit->entry[IINDX]);
 #endif
 	array.t=&type;array.len=8;
 	for(w=0;w<nelem(widths);w++)for(i=0;i<8;i++)for(b=0;b<nelem(bases);b++){
@@ -51,7 +51,7 @@ main(void)
 			memmove(initial,slots.bytes,sizeof(initial));memmove(expected,initial,sizeof(expected));
 			memmove(expected+d,&wanted,sizeof(wanted));
 #ifdef NATIVE_DESCRIPTOR
-			if(sizeof(WORD)==8){
+			{
 				assert(module.jit->entry[IINDX](&R)==1 && !memcmp(slots.bytes,expected,sizeof(expected)));
 				assert(R.PC==&sentinel && R.s==slots.bytes+16+sa && R.d==slots.bytes+56+ia && R.m==slots.bytes+d);
 				memmove(slots.bytes,initial,sizeof(initial));

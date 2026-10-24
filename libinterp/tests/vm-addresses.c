@@ -55,9 +55,10 @@ main(int argc, char **argv)
 
 	memset(&module,0,sizeof(module));memset(&link,0,sizeof(link));
 	memset(program,0,sizeof(program));for(i=0;i<4;i++)program[i].op=IMOVPC;
+	program[3].op=ILEA;
 	module.prog=program;module.nprog=4;link.m=&module;R.M=&link;R.PC=&sentinel;
 #ifdef NATIVE_PC
-	assert(compile(&module,4,nil) && module.jit->entry[IMOVPC]);
+	assert(compile(&module,4,nil) && module.jit->entry[IMOVPC] && module.jit->entry[ILEA]);
 #endif
 	if(argc>1){
 		which=atoi(argv[1]);assert(which>=0 && which<11);
@@ -110,6 +111,11 @@ main(int argc, char **argv)
 			R.s=sources[i];R.m=(void*)1;R.d=memory.bytes+64+d;
 			address=(WORD)R.s;
 			memmove(expected,memory.bytes,sizeof(expected));memmove(expected+64+d,&address,sizeof(address));
+#ifdef NATIVE_PC
+			assert(module.jit->entry[ILEA](&R)==1);
+			assert(!memcmp(memory.bytes,expected,sizeof(expected)) && R.PC==&sentinel && R.s==sources[i]);
+			memset(memory.bytes,0xa5,sizeof(memory.bytes));
+#endif
 			lea();
 			assert(!memcmp(memory.bytes,expected,sizeof(expected)) && R.PC==&sentinel && R.s==sources[i]);
 			checks++;

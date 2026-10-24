@@ -54,6 +54,16 @@ a64field(A64Buf *b, int result, int owner, int offset, int bytes)
 		(u32int)(offset/bytes)<<10 | owner<<5 | result);
 }
 
+/* Sign-extend WORD metadata before testing lengths in the native address domain. */
+static void
+a64wordfield(A64Buf *b, int result, int owner, int offset, int wordbytes)
+{
+	if(wordbytes == 4)
+		a64put(b, 0xb9800000U | (u32int)(offset/4)<<10 | owner<<5 | result);
+	else
+		a64field(b, result, owner, offset, 8);
+}
+
 /* Turn x12/x13 bits into signed keys using x14, leaving FP state untouched. */
 static void
 a64realkey(A64Buf *b, int reg)
@@ -111,7 +121,6 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64put(&b, 0xb9800000U | (abi->modulenprog/4)<<10 | 12<<5 | 13);
 		a64put(&b, 0xf10001bf); a64guard(&b, 0x5400006a);
 		a64ptr(&b, 9, abi->s); a64load(&b, 14, 9, abi->wordbytes);
-		if(abi->wordbytes == 4)a64put(&b, 0x93407dce);
 		a64put(&b, 0xeb0d01df); a64guard(&b, 0x54000063);
 		a64put(&b, 0xd280000dU | abi->instbytes<<5); a64put(&b, 0x9b0d7dce);
 		a64field(&b, 15, 12, abi->moduleprog, 8); a64guard(&b, 0xb500006f);
@@ -126,7 +135,6 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64put(&b, 0xb100053f); a64guard(&b, 0x54000061);
 		/* Form byte offsets explicitly, including four-byte-aligned WORD64 slots. */
 		a64put(&b, 0x91000000U | abi->fixedcoef<<10 | 9<<5 | 10); a64load(&b, 14, 10, abi->wordbytes);
-		if(abi->wordbytes == 4)a64put(&b, 0x93407dce);
 		if(p.alu != 1){a64put(&b, 0xaa0e03ef); a64guard(&b, 0xb500006f); a64put(&b, 0xb10005ff); a64guard(&b, 0x54000061);}
 		if(p.alu == 2)a64ptr(&b, 10, abi->m);
 		else a64put(&b, 0x91000000U | abi->fixedtmp<<10 | 9<<5 | 10);
@@ -168,9 +176,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		   (abi->arraylen|abi->arraydata|abi->arraytype)%8 || abi->typesize%4) return 0;
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8); a64guard(&b, 0xb500006c);
 		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
-		a64field(&b, 13, 12, abi->arraylen, 8);
+		a64wordfield(&b, 13, 12, abi->arraylen, abi->wordbytes);
 		a64put(&b, 0xf10001bf); a64guard(&b, 0x5400006a);
-		a64ptr(&b, 9, abi->d); a64load(&b, 14, 9, 8);
+		a64ptr(&b, 9, abi->d); a64load(&b, 14, 9, abi->wordbytes);
 		a64put(&b, 0xeb0d01df); a64guard(&b, 0x54000063);
 		a64field(&b, 15, 12, abi->arraytype, 8); a64guard(&b, 0xb500006f);
 		a64put(&b, 0xb10005ff); a64guard(&b, 0x54000061);
@@ -186,7 +194,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		done=b.n; a64put(&b, 0x14000000);
 		b.code[empty] |= (b.n-empty)<<5; a64put(&b, 0xaa0d03ee);
 		b.code[done] |= b.n-done;
-		a64ptr(&b, 11, abi->m); a64store(&b, 14, 8);
+		a64ptr(&b, 11, abi->m); a64store(&b, 14, abi->wordbytes);
 	}else if(p.kind == LeafFixedFrame){
 		/* Frame temporary slots may have only four-byte alignment, even in WORD64. */
 		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047) return 0;
@@ -408,11 +416,11 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		}else{
 			a64guard(&b, 0xb500006c);
 			a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
-			a64field(&b, 13, 12, abi->arraylen, 8);
+			a64wordfield(&b, 13, 12, abi->arraylen, abi->wordbytes);
 			a64put(&b, 0xf10001bf); a64guard(&b, 0x5400006a); /* nonnegative length */
-			a64ptr(&b, 9, abi->d); a64load(&b, 14, 9, 8);
+			a64ptr(&b, 9, abi->d); a64load(&b, 14, 9, abi->wordbytes);
 			a64put(&b, 0xeb0d01df); a64guard(&b, 0x54000063); /* index < length */
-			scale = p.bytes == 1 ? 0 : 3; limit = 0x7fffffff>>scale;
+			scale = p.bytes == 1 ? 0 : p.bytes == 4 ? 2 : 3; limit = 0x7fffffff>>scale;
 			a64put(&b, 0xd280000fU | (limit&0xffff)<<5);
 			a64put(&b, 0xf2a0000fU | (limit>>16)<<5);
 			a64put(&b, 0xeb0f01df); a64guard(&b, 0x54000069); /* bounded byte offset */
@@ -421,7 +429,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			a64put(&b, 0xb10005bf); a64guard(&b, 0x54000061);
 			a64put(&b, 0xab000000U | 14<<16 | scale<<10 | 13<<5 | 14);
 			a64guard(&b, 0x54000063); /* no native address carry */
-			a64ptr(&b, 11, abi->m); a64store(&b, 14, 8);
+			a64ptr(&b, 11, abi->m); a64store(&b, 14, abi->wordbytes);
 		}
 	}else if(p.kind == LeafMove || p.kind == LeafAddress || p.kind == LeafNegReal){
 		a64ptr(&b, 9, abi->s);
