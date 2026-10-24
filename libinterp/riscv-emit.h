@@ -127,6 +127,29 @@ rvrealkey(RvBuf *b, int reg)
 	rvi(b, 0x13, 0, reg, Rvzero, 0);
 }
 
+/* Multiply modulo XLEN without M, using only dead operand-pointer registers.
+ * t3/t4 hold captured operands; t0-t2 and t5 are scratch. Logical shifts
+ * terminate after at most the operand width in bits, including negative values. */
+static void
+rvmultiply(RvBuf *b, int bytes)
+{
+	rvi(b, 0x13, 0, Rvt0, Rvt3, 0);
+	rvi(b, 0x13, 0, Rvt1, Rvt4, 0);
+	if(bytes == 4){
+		rvi(b, 0x13, 1, Rvt1, Rvt1, 32);
+		rvi(b, 0x13, 5, Rvt1, Rvt1, 32);
+	}
+	rvi(b, 0x13, 0, Rvt2, Rvzero, 0);
+	rvbranch(b, 0, Rvt1, Rvzero, 28);
+	rvi(b, 0x13, 7, Rvt5, Rvt1, 1);
+	rvbranch(b, 0, Rvt5, Rvzero, 8);
+	rvr(b, 0x33, 0, 0, Rvt2, Rvt2, Rvt0);
+	rvi(b, 0x13, 5, Rvt1, Rvt1, 1);
+	rvi(b, 0x13, 1, Rvt0, Rvt0, 1);
+	rvbranch(b, 1, Rvt1, Rvzero, -20);
+	rvi(b, 0x13, 0, Rvt3, Rvt2, 0);
+}
+
 /* Scale a bounded program index using RV64I when multiplication is absent.
  * The constant multiplier is at most 2047, so the loop takes at most eleven
  * iterations. t1 is dead after the source load; t0 must retain the Module. */
@@ -602,7 +625,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		swap=op == IBLEL || op == IBGTL;
 		break;
 	case IADDL: case ISUBL: case IMULL: case IANDL: case IORL: case IXORL:
-		if(abi->xlen != 64 || (op == IMULL && !abi->hasm)) return 0;
+		if(abi->xlen != 64) return 0;
 		bytes=8; binary=1;
 		f7=op == ISUBL ? 32 : op == IMULL ? 1 : 0;
 		f3=op == IANDL ? 7 : op == IORL ? 6 : op == IXORL ? 4 : 0;
@@ -613,7 +636,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	case ISUBW: binary=1; f7=32; break;
 	case IMULB: bytes=1; /* fall through */
 	case IMULW:
-		if(!abi->hasm) return 0;
+		if(!abi->hasm && abi->xlen != 64) return 0;
 		binary=1; f7=1; break;
 	case IANDB: bytes=1; /* fall through */
 	case IANDW: binary=1; f3=7; break;
@@ -665,7 +688,10 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 			 * have no W encoding and are truncated by SW instead. */
 			wide=abi->xlen == 64 && bytes == 4 &&
 				(f3 == 0 || f3 == 1 || f3 == 5 || division);
-			rvr(&b, wide ? 0x3b : 0x33, f3, f7, Rvt3, Rvt3, Rvt4);
+			if(f7 == 1 && !division && !abi->hasm)
+				rvmultiply(&b, bytes);
+			else
+				rvr(&b, wide ? 0x3b : 0x33, f3, f7, Rvt3, Rvt3, Rvt4);
 			rvptr(&b, Rvt2, abi->d);
 			rvstore(&b, Rvt2, Rvt3, bytes);
 		}else{

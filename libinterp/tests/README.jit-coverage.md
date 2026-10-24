@@ -12,7 +12,7 @@ WORD64 configurations have the same opcode counts at this checkpoint.
 | ARM64 | 173 | 103 | 70 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
-| RV64I | 173 | 83 | 90 |
+| RV64I | 173 | 86 | 87 |
 
 These figures count opcode availability, not complete semantic or performance
 coverage. Some native paths accept a bounded subset and return to C for other
@@ -37,6 +37,9 @@ multi-instruction native blocks. Remaining architecture work includes native
 block construction, helper ABI transitions and a coordinated compiler/loader/
 frame/GC pointer ABI. Finishing that work cannot be measured by counting only
 opcode cases.
+
+The later stack-lifecycle/multiply series adds `IMULB`, `IMULW` and `IMULL`
+on base RV64I, raising its native-path count from 83 to 86.
 
 ## Reproduce the counts
 

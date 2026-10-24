@@ -28,6 +28,8 @@ stack = Path(os.environ.get('STACK_SOURCE', root/'libinterp/stack.c')).read_text
 xec = Path(os.environ.get('STACK_XEC_SOURCE', root/'libinterp/xec.c')).read_text()
 heap = (root/'libinterp/heap.c').read_text()
 common = [function(heap, 'void\ninitmem('), function(heap, 'void\nfreeptrs(')]
+if 'static ulong\nstackhint(' in stack:
+    common += [function(stack, 'static ulong\nstackhint(')]
 if 'static int\nstacksize(' in stack:
     common += [function(stack, 'static int\nstacksize(')]
 common += [function(stack, signature) for signature in ('void\nnewstack(', 'void\nextend(', 'void\nunextend(')]

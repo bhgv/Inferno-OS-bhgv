@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -353,6 +353,24 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','multiply'):
+                values=[0,1,-1,2,-2,127,128,255,256,0x7fffffff,-0x80000000,(1<<63)-1,-(1<<63)]
+                pairs=[(a,b) for a in values for b in values]
+                pairs += [(signed(rng.getrandbits(64),64),signed(rng.getrandbits(64),64)) for _ in range(64)]
+                for name,width in (('IMULB',1),('IMULW',wb),('IMULL',8)):
+                    mask=(1<<(width*8))-1
+                    if rv and not layout.hasm:
+                        assert not any(i.mnemonic.startswith(('mul','div','rem')) for i in dis.disasm(blobs[name],code))
+                    for a,b in pairs:
+                        for alias in (0,1,2,3,4,5):
+                            out,pc,before,after,_=run(name,a,b,alias=alias)
+                            # Both operands are captured before any aliased result store.
+                            aa=a&((1<<64)-1);bb=b&((1<<64)-1)
+                            wanted=((aa&mask)*(bb&mask))&mask
+                            assert int.from_bytes(out[:width],'little')==wanted,(arch,wb,name,a,b,alias,out,wanted)
+                            assert pc==oldpc and before[:8]==after[:8] and before[8+width:]==after[8+width:]
+                            checks+=1
+                if case=='multiply':continue
             if case in ('','typecheck'):
                 for value in (-1,0,1,7,256,2048):
                     malformed=type(layout).from_buffer_copy(layout);malformed.heaptype=value

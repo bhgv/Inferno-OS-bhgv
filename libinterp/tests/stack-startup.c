@@ -32,7 +32,7 @@ static WORD operand;
 static void *output;
 REG R;
 int mutator, nprop;
-char exHeap[] = "heap", exNomem[] = "memory", exModule[] = "module", exSpawn[] = "spawn";
+char exHeap[] = "heap", exNomem[] = "memory", exModule[] = "module", exSpawn[] = "spawn", exNilref[] = "nil";
 char Enomem[] = "memory";
 
 /* Preserve real emulator error frames and error identity. */

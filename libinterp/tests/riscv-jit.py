@@ -206,7 +206,7 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
             checks+=1
             assert not code['IDIVW'] and not code['IMODW']
         no_m=Layout(xlen,wb,0,0,pb,pb*2,pb*3)
-        assert emit('IMULW',no_m)[0]==emit('IMULB',no_m)[0]==0
+        assert bool(emit('IMULW',no_m)[0])==bool(emit('IMULB',no_m)[0])==(xlen==64)
         assert emit('IDIVW',no_m)[0]==emit('IMODW',no_m)[0]==0
         for name in ('IBEQF','IBNEF','IBLTF','IBLEF','IBGTF','IBGEF'):
             assert bool(emit(name,no_m)[0])==(xlen==64)

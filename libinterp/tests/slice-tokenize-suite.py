@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/stack-lifecycle.py',
     'libinterp/tests/jit-coverage.py',
     'libinterp/tests/stack-unwind.py',
     'libinterp/tests/sys-tokenize.py',

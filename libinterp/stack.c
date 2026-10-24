@@ -4,8 +4,6 @@
 #include "raise.h"
 #include <pool.h>
 
-#define T(r)	*((void**)(R.r))
-
 /* Bound the complete extent before narrowing its size or growing a frame. */
 static int
 stacksize(Type *t, ulong hint, int grow)
@@ -13,7 +11,7 @@ stacksize(Type *t, ulong hint, int grow)
 	ulong header, need;
 
 	header = OA(Stkext, reg.tos.fu);
-	if(t == nil || t->size < sizeof(Frame) ||
+	if(t == nil || t == H || t->size < sizeof(Frame) ||
 	   (ulong)t->size > 0x7fffffff-header || hint > 0x7fffffff)
 		error(exHeap);
 	need = header+t->size;
@@ -28,6 +26,15 @@ stacksize(Type *t, ulong hint, int grow)
 	return hint;
 }
 
+/* Validate both runtime owners before reading a module's stack-size hint. */
+static ulong
+stackhint(Modlink *link)
+{
+	if(link == nil || link == H || link->m == nil || link->m == H)
+		error(exModule);
+	return link->m->ss;
+}
+
 /* Copy a complete source frame only after the new extent has been allocated. */
 void
 newstack(Prog *p)
@@ -37,13 +44,14 @@ newstack(Prog *p)
 	Frame *f;
 	Stkext *ns;
 
-	f = T(s);
-
-	t = f->t;
+	memmove(&f, R.s, sizeof(f));
+	if(f == nil || f == H)
+		error(exNilref);
+	memmove(&t, (uchar*)f+O(Frame, t), sizeof(t));
 	if(t == nil)
 		t = SEXTYPE(f)->reg.TR;
 
-	l = stacksize(t, p->R.M->m->ss, 0);
+	l = stacksize(t, stackhint(p->R.M), 0);
 	ns = mallocz(l, 0);
 	if(ns == nil)
 		error(exNomem);
@@ -75,7 +83,7 @@ extend(void)
 	Stkext *ns;
 
 	t = R.s;
-	l = stacksize(t, R.M->m->ss, 1);
+	l = stacksize(t, stackhint(R.M), 1);
 	ns = mallocz(l, 0);
 	if(ns == nil)
 		error(exNomem);
@@ -112,22 +120,33 @@ unextend(Frame *f)
 	free(sx);
 }
 
+/* Capture both frame descriptors before changing the stack or freeing an extent. */
 void
 unframe(void)
 {
-	Type *t;
+	Type *t, *source;
 	Frame *f;
 	Stkext *sx;
+	uchar *nextsp;
 
 	f = (Frame*)R.FP;
-	t = f->t;
+	if(f == nil || f == H)
+		error(exNilref);
+	memmove(&t, (uchar*)f+O(Frame, t), sizeof(t));
 	if(t == nil)
 		t = SEXTYPE(f)->reg.TR;
+	/* stacksize checks the descriptor before its size is used as an offset. */
+	stacksize(t, 0, 0);
+	nextsp = R.FP+t->size;
 
-	R.SP = R.FP+t->size;
-
-	f = T(s);
-	if(f->t == nil) {
+	memmove(&f, R.s, sizeof(f));
+	if(f == nil || f == H)
+		error(exNilref);
+	memmove(&source, (uchar*)f+O(Frame, t), sizeof(source));
+	if(source == H)
+		error(exHeap);
+	R.SP = nextsp;
+	if(source == nil){
 		sx = SEXTYPE(f);
 		R.TS = sx->reg.TS;
 		R.EX = sx->reg.EX;
