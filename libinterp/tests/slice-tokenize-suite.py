@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/math-return-slots.py',
     'limbo/tests/fixed-zero-div.py',
     'libinterp/tests/heap-query.py',
     'libinterp/tests/prog-diagnostics.py',

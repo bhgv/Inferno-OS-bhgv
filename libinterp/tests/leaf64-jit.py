@@ -18,7 +18,7 @@ root = Path(__file__).resolve().parents[2]
 ops = '''IBEQC IBNEC IBLTC IBLEC IBGTC IBGEC ITCMP IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
-IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF'''.split()
+IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF ISUBF IMULF IDIVF ICVTXF'''.split()
 class Layout(C.Structure):
     _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]
 class RvLayout(C.Structure):
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -117,7 +117,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     assert lib.emit(guard,64,C.byref(malformed),ids['IMOVPC'])==0
                     assert list(guard)==[0xa5a5a5a5]*64;checks+=1
             if case=='frameabi':continue
-            for name in ('IHEADP','IHEADMP','ITAIL','IMOVP','IFRAME','IRET','IADDF'):
+            for name in ('IHEADP','IHEADMP','ITAIL','IMOVP','IFRAME','IRET'):
                 assert not blobs[name]
             code, registers, data, stack = 0x10000, 0x100020000, 0x100030000, 0x40000
             oldpc, target = 0x123456789, 0x987654321
@@ -370,6 +370,37 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if typedata is not None:assert bytes(u.mem_read(data+0x700,64))==bytes(typedata)
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
+
+            if case in ('','realarithmetic'):
+                names=('IADDF','ISUBF','IMULF','IDIVF','ICVTXF')
+                if rv:
+                    assert not any(blobs[name] for name in names)
+                else:
+                    # Independent host binary64 oracle; NaN payload selection is host-defined.
+                    patterns=(0,1,0x8000000000000000,0x8000000000000001,
+                              0x0010000000000000,0x3ff0000000000000,0xbff0000000000000,
+                              0x3ff0000000000001,0x7fefffffffffffff,0xffefffffffffffff,
+                              0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000042)
+                    for name in names:
+                        for a in patterns:
+                            for b in patterns:
+                                left=struct.unpack('<d',struct.pack('<Q',b))[0]
+                                right=float(signed(a,wb*8)) if name=='ICVTXF' else struct.unpack('<d',struct.pack('<Q',a))[0]
+                                if name=='IADDF':wanted=left+right
+                                elif name=='ISUBF':wanted=left-right
+                                elif name in ('IMULF','ICVTXF'):wanted=left*right
+                                elif right==0:
+                                    wanted=float('nan') if left==0 or left!=left else float('-inf') if ((b^a)>>63) else float('inf')
+                                else:wanted=left/right
+                                for alias in range(6):
+                                    out,pc,before,after,_=run(name,a=a,b=b,alias=alias)
+                                    actual=struct.unpack('<d',out[:8])[0]
+                                    if wanted!=wanted:assert actual!=actual,(arch,name,a,b)
+                                    else:assert out[:8]==struct.pack('<d',wanted),(arch,name,a,b,out[:8].hex(),wanted)
+                                    assert after[:8]==before[:8] and after[16:]==before[16:]
+                                    assert pc==oldpc
+                                    checks+=1
+                if case=='realarithmetic':continue
 
             if case in ('','bytebranch'):
                 names=('IBEQC','IBNEC','IBLTC','IBLEC','IBGTC','IBGEC')

@@ -528,6 +528,19 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			a64guard(&b, 0x54000063); /* no native address carry */
 			a64ptr(&b, 11, abi->m); a64store(&b, 14, abi->wordbytes);
 		}
+	}else if(p.kind == LeafRealArithmetic){
+		/* Load both unaligned binary64 operands before storing an aliased result.
+		 * AAPCS64 d0/d1 are volatile; FPCR/FPSR remain the host C environment. */
+		a64ptr(&b, 9, abi->m); a64put(&b, 0xfd400120); /* ldr d0, [x9] */
+		a64ptr(&b, 10, abi->s);
+		if(p.alu == 4){
+			a64load(&b, 12, 10, abi->wordbytes);
+			if(abi->wordbytes == 4)a64put(&b, 0x93407d8c);
+			a64put(&b, 0x9e620181); /* scvtf d1, x12 */
+		}else a64put(&b, 0xfd400141); /* ldr d1, [x10] */
+		a64put(&b, p.alu == 0 ? 0x1e612800 : p.alu == 1 ? 0x1e613800 :
+			p.alu == 3 ? 0x1e611800 : 0x1e610800);
+		a64ptr(&b, 11, abi->d); a64put(&b, 0xfd000160); /* str d0, [x11] */
 	}else if(p.kind == LeafMove || p.kind == LeafAddress || p.kind == LeafNegReal){
 		a64ptr(&b, 9, abi->s);
 		if(p.kind != LeafAddress) a64load(&b, 12, 9, p.input);

@@ -18,6 +18,7 @@ struct LeafOp {
 	int kind, bytes, input, alu, condition;
 };
 enum {
+	LeafRealArithmetic = 106,
 	LeafStringBranch = 105,
 	LeafTypeCheck = 104,
 	LeafCall = 100,
@@ -39,6 +40,12 @@ leafop(LeafOp *p, int op, int wordbytes)
 		p->kind = LeafStringBranch;
 		p->condition = op == IBEQC ? 0 : op == IBNEC ? 1 : op == IBLTC ? 2 :
 			op == IBLEC ? 3 : op == IBGTC ? 4 : 5;
+		break;
+	case ICVTXF:
+		p->kind = LeafRealArithmetic; p->bytes = 8; p->alu = 4; break;
+	case IADDF: case ISUBF: case IMULF: case IDIVF:
+		p->kind = LeafRealArithmetic; p->bytes = 8;
+		p->alu = op == IADDF ? 0 : op == ISUBF ? 1 : op == IMULF ? 2 : 3;
 		break;
 	case ITCMP: p->kind = LeafTypeCheck; break;
 	case IBEQF: case IBNEF: case IBLTF: case IBLEF: case IBGTF: case IBGEF:

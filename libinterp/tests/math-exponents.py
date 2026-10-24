@@ -22,8 +22,10 @@ for name in ('mathexponent', 'Math_pow10', 'Math_scalbn'):
     if match:
         start = match.start()
         end = vm.index('\n}', match.end())+2
-        parts.append(vm[start:end].replace('*f->ret = scalbn(', '*f->ret = tested_scalbn('))
+        parts.append(vm[start:end].replace('= scalbn(', '= tested_scalbn('))
 header = '''#include <stdint.h>
+#include <string.h>
+typedef double REAL;
 #include <math.h>
 typedef WORD_TYPE WORD;
 typedef struct { double *ret; WORD p; } F_Math_pow10;

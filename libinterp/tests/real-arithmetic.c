@@ -115,7 +115,7 @@ main(void)
 			initialflags=fetestexcept(FE_ALL_EXCEPT);
 			reference(op,a,b,wanted);expectedflags=fetestexcept(FE_ALL_EXCEPT);
 			nan=realnan(wanted,outsize);
-			take=op==4 || ((op==5 || op==6) && nativeresize(a,insize));
+			take=op<5 || op==7 || ((op==5 || op==6) && nativeresize(a,insize));
 			for(s=16;s<24;s++)for(m=48;m<56;m++)for(p=0;p<12;p++){
 				d=p<8 ? 96+p : p==8 ? s : p==9 ? m : p==10 ? s+1 : m-1;
 				for(k=0;k<sizeof(memory.bytes);k++)memory.bytes[k]=(uchar)(k*37+11);
@@ -125,12 +125,14 @@ main(void)
 				R.s=memory.bytes+s;R.m=middle ? memory.bytes+m : (void*)1;R.d=memory.bytes+d;R.PC=&sentinel;
 				feclearexcept(FE_ALL_EXCEPT);feraiseexcept(seed ? FE_ALL_EXCEPT : FE_DIVBYZERO);
 #ifdef NATIVE_REAL_ARITH
-				if(op==4 || op==5 || op==6){
+				if(op<=7){
 					assert(module.jit->entry[ids[op]](&R)==take);
+					if(take && nan){assert(realnan(memory.bytes+d,outsize));memmove(expected+d,memory.bytes+d,outsize);}
 					assert(!memcmp(memory.bytes,take ? expected : initial,sizeof(expected)));
-					assert(fetestexcept(FE_ALL_EXCEPT)==initialflags && fegetround()==modes[mode]);
+					assert(fetestexcept(FE_ALL_EXCEPT)==(op<4 || op==7 ? expectedflags : initialflags) && fegetround()==modes[mode]);
 					assert(R.PC==&sentinel && R.s==memory.bytes+s && R.d==memory.bytes+d);
 					memmove(memory.bytes,initial,sizeof(initial));
+					feclearexcept(FE_ALL_EXCEPT);feraiseexcept(seed ? FE_ALL_EXCEPT : FE_DIVBYZERO);
 				}else assert(!module.jit->entry[ids[op]]);
 #endif
 				ops[op]();

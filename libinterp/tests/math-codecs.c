@@ -12,6 +12,8 @@ typedef int32_t WORD;
 typedef int64_t WORD;
 #endif
 typedef int64_t BIG;
+typedef int64_t LONG;
+typedef double REAL;
 typedef uint64_t uvlong;
 typedef unsigned char uchar;
 typedef struct Type Type;

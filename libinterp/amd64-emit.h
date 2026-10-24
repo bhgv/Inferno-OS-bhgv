@@ -572,6 +572,23 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xc8); x64guard(&b, 0x73);
 			x64ptr(&b, 2, abi->m); x64store(&b, 0, abi->wordbytes);
 		}
+	}else if(p.kind == LeafRealArithmetic){
+		/* Snapshot both operands before an overlapping destination store.
+		 * Scalar SSE2 inherits the C host's rounding mode and sticky exceptions. */
+		x64ptr(&b, 0, abi->m);
+		x64byte(&b, 0xf2); x64byte(&b, 0x41); x64byte(&b, 0x0f); x64byte(&b, 0x10); x64byte(&b, 0x00);
+		x64ptr(&b, 1, abi->s);
+		if(p.alu == 4){
+			/* CVTXF converts signed WORD before the separate real multiplication. */
+			x64byte(&b, 0x49); x64byte(&b, abi->wordbytes == 4 ? 0x63 : 0x8b); x64byte(&b, 0x01);
+			x64byte(&b, 0xf2); x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0x2a); x64byte(&b, 0xc8);
+		}else{
+			x64byte(&b, 0xf2); x64byte(&b, 0x41); x64byte(&b, 0x0f); x64byte(&b, 0x10); x64byte(&b, 0x09);
+		}
+		x64byte(&b, 0xf2); x64byte(&b, 0x0f);
+		x64byte(&b, p.alu == 0 ? 0x58 : p.alu == 1 ? 0x5c : p.alu == 3 ? 0x5e : 0x59); x64byte(&b, 0xc1);
+		x64ptr(&b, 2, abi->d);
+		x64byte(&b, 0xf2); x64byte(&b, 0x41); x64byte(&b, 0x0f); x64byte(&b, 0x11); x64byte(&b, 0x02);
 	}else if(p.kind == LeafMove || p.kind == LeafAddress || p.kind == LeafNegReal){
 		x64ptr(&b, 0, abi->s);
 		if(p.kind != LeafAddress) x64load(&b, 0, p.input);

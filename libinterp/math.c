@@ -217,11 +217,13 @@ void
 Math_bits32real(void *fp)
 {
 	F_Math_bits32real *f;
+	REAL result;
 	MathBits32 bits32;
 
 	f = fp;
 	bits32.u = f->b;
-	*f->ret = bits32.x;
+	result = bits32.x;
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Convert a scalar bit representation without shared mutable scratch state. */
@@ -229,11 +231,13 @@ void
 Math_bits64real(void *fp)
 {
 	F_Math_bits64real *f;
+	REAL result;
 	MathBits64 bits64;
 
 	f = fp;
 	bits64.u = f->b;
-	*f->ret = bits64.x;
+	result = bits64.x;
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Convert a scalar bit representation without shared mutable scratch state. */
@@ -241,11 +245,13 @@ void
 Math_realbits32(void *fp)
 {
 	F_Math_realbits32 *f;
+	WORD result;
 	MathBits32 bits32;
 
 	f = fp;
 	bits32.x = f->x;
-	*f->ret = mathsigned32(bits32.u);
+	result = mathsigned32(bits32.u);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Convert a scalar bit representation without shared mutable scratch state. */
@@ -253,464 +259,601 @@ void
 Math_realbits64(void *fp)
 {
 	F_Math_realbits64 *f;
+	LONG result;
 	MathBits64 bits64;
 
 	f = fp;
 	bits64.x = f->x;
-	*f->ret = bits64.u;
+	result = bits64.u;
+	memmove(f->ret, &result, sizeof(result));
 }
 
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_getFPcontrol(void *fp)
 {
 	F_Math_getFPcontrol *f;
+	WORD result;
 
 	f = fp;
 
-	*f->ret = getFPcontrol();
+	result = getFPcontrol();
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_getFPstatus(void *fp)
 {
 	F_Math_getFPstatus *f;
+	WORD result;
 
 	f = fp;
 
-	*f->ret = getFPstatus();
+	result = getFPstatus();
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_finite(void *fp)
 {
 	F_Math_finite *f;
+	WORD result;
 
 	f = fp;
 
-	*f->ret = finite(f->x);
+	result = finite(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_ilogb(void *fp)
 {
 	F_Math_ilogb *f;
+	WORD result;
 
 	f = fp;
 
-	*f->ret = ilogb(f->x);
+	result = ilogb(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_isnan(void *fp)
 {
 	F_Math_isnan *f;
+	WORD result;
 
 	f = fp;
 
-	*f->ret = isNaN(f->x);
+	result = isNaN(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_acos(void *fp)
 {
 	F_Math_acos *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_acos(f->x);
+	result = __ieee754_acos(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_acosh(void *fp)
 {
 	F_Math_acosh *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_acosh(f->x);
+	result = __ieee754_acosh(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_asin(void *fp)
 {
 	F_Math_asin *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_asin(f->x);
+	result = __ieee754_asin(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_asinh(void *fp)
 {
 	F_Math_asinh *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = asinh(f->x);
+	result = asinh(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_atan(void *fp)
 {
 	F_Math_atan *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = atan(f->x);
+	result = atan(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_atanh(void *fp)
 {
 	F_Math_atanh *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_atanh(f->x);
+	result = __ieee754_atanh(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_cbrt(void *fp)
 {
 	F_Math_cbrt *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = cbrt(f->x);
+	result = cbrt(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_ceil(void *fp)
 {
 	F_Math_ceil *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = ceil(f->x);
+	result = ceil(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_cos(void *fp)
 {
 	F_Math_cos *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = cos(f->x);
+	result = cos(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_cosh(void *fp)
 {
 	F_Math_cosh *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_cosh(f->x);
+	result = __ieee754_cosh(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_erf(void *fp)
 {
 	F_Math_erf *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = erf(f->x);
+	result = erf(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_erfc(void *fp)
 {
 	F_Math_erfc *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = erfc(f->x);
+	result = erfc(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_exp(void *fp)
 {
 	F_Math_exp *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_exp(f->x);
+	result = __ieee754_exp(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_expm1(void *fp)
 {
 	F_Math_expm1 *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = expm1(f->x);
+	result = expm1(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_fabs(void *fp)
 {
 	F_Math_fabs *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = fabs(f->x);
+	result = fabs(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_floor(void *fp)
 {
 	F_Math_floor *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = floor(f->x);
+	result = floor(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_j0(void *fp)
 {
 	F_Math_j0 *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_j0(f->x);
+	result = __ieee754_j0(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_j1(void *fp)
 {
 	F_Math_j1 *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_j1(f->x);
+	result = __ieee754_j1(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_log(void *fp)
 {
 	F_Math_log *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_log(f->x);
+	result = __ieee754_log(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_log10(void *fp)
 {
 	F_Math_log10 *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_log10(f->x);
+	result = __ieee754_log10(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_log1p(void *fp)
 {
 	F_Math_log1p *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = log1p(f->x);
+	result = log1p(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_rint(void *fp)
 {
 	F_Math_rint *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = rint(f->x);
+	result = rint(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_sin(void *fp)
 {
 	F_Math_sin *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = sin(f->x);
+	result = sin(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_sinh(void *fp)
 {
 	F_Math_sinh *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_sinh(f->x);
+	result = __ieee754_sinh(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_sqrt(void *fp)
 {
 	F_Math_sqrt *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_sqrt(f->x);
+	result = __ieee754_sqrt(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_tan(void *fp)
 {
 	F_Math_tan *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = tan(f->x);
+	result = tan(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_tanh(void *fp)
 {
 	F_Math_tanh *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = tanh(f->x);
+	result = tanh(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_y0(void *fp)
 {
 	F_Math_y0 *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_y0(f->x);
+	result = __ieee754_y0(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_y1(void *fp)
 {
 	F_Math_y1 *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_y1(f->x);
+	result = __ieee754_y1(f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_fdim(void *fp)
 {
 	F_Math_fdim *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = fdim(f->x, f->y);
+	result = fdim(f->x, f->y);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_fmax(void *fp)
 {
 	F_Math_fmax *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = fmax(f->x, f->y);
+	result = fmax(f->x, f->y);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_fmin(void *fp)
 {
 	F_Math_fmin *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = fmin(f->x, f->y);
+	result = fmin(f->x, f->y);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_fmod(void *fp)
 {
 	F_Math_fmod *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_fmod(f->x, f->y);
+	result = __ieee754_fmod(f->x, f->y);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_hypot(void *fp)
 {
 	F_Math_hypot *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_hypot(f->x, f->y);
+	result = __ieee754_hypot(f->x, f->y);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_nextafter(void *fp)
 {
 	F_Math_nextafter *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = nextafter(f->x, f->y);
+	result = nextafter(f->x, f->y);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_pow(void *fp)
 {
 	F_Math_pow *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_pow(f->x, f->y);
+	result = __ieee754_pow(f->x, f->y);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_FPcontrol(void *fp)
 {
 	F_Math_FPcontrol *f;
+	WORD result;
 
 	f = fp;
 
-	*f->ret = FPcontrol(f->r, f->mask);
+	result = FPcontrol(f->r, f->mask);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_FPstatus(void *fp)
 {
 	F_Math_FPstatus *f;
+	WORD result;
 
 	f = fp;
 
-	*f->ret = FPstatus(f->r, f->mask);
+	result = FPstatus(f->r, f->mask);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_atan2(void *fp)
 {
 	F_Math_atan2 *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_atan2(f->y, f->x);
+	result = __ieee754_atan2(f->y, f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_copysign(void *fp)
 {
 	F_Math_copysign *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = copysign(f->x, f->s);
+	result = copysign(f->x, f->s);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Bessel order is a discrete index: reject high VM bits instead of changing its parity. */
@@ -727,31 +870,40 @@ void
 Math_jn(void *fp)
 {
 	F_Math_jn *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_jn(mathorder(f->n), f->x);
+	result = __ieee754_jn(mathorder(f->n), f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Widen the native sign output before storing it in a possibly wider VM slot. */
 void
 Math_lgamma(void *fp)
 {
-	F_Math_lgamma *f;
+	F_Math_lgamma *f, output;
+	union { REAL align; uchar bytes[sizeof(*output.ret)]; } result;
 	int sign;
 	double value;
 
 	f = fp;
 	value = __ieee754_lgamma_r(f->x, &sign);
-	f->ret->t0 = sign;
-	f->ret->t1 = value;
+	/* Stage the tuple at native alignment while preserving its ABI padding. */
+	output = *f;
+	output.ret = (void*)result.bytes;
+	memmove(result.bytes, f->ret, sizeof(result.bytes));
+	output.ret->t0 = sign;
+	output.ret->t1 = value;
+	memmove(f->ret, result.bytes, sizeof(result.bytes));
 }
 
 /* Publish both components only when the integral part fits the active VM word. */
 void
 Math_modf(void *fp)
 {
-	F_Math_modf *f;
+	F_Math_modf *f, output;
+	union { REAL align; uchar bytes[sizeof(*output.ret)]; } result;
 	double ipart, fraction;
 
 	f = fp;
@@ -763,8 +915,13 @@ Math_modf(void *fp)
 		if(!(ipart >= -9223372036854775808.0 && ipart < 9223372036854775808.0))
 			error(exInval);
 	}
-	f->ret->t0 = (WORD)ipart;
-	f->ret->t1 = fraction;
+	/* Stage the tuple at native alignment while preserving its ABI padding. */
+	output = *f;
+	output.ret = (void*)result.bytes;
+	memmove(result.bytes, f->ret, sizeof(result.bytes));
+	output.ret->t0 = (WORD)ipart;
+	output.ret->t1 = fraction;
+	memmove(f->ret, result.bytes, sizeof(result.bytes));
 }
 
 /* Preserve extreme VM exponents when the native math API takes a narrower int. */
@@ -783,20 +940,25 @@ void
 Math_pow10(void *fp)
 {
 	F_Math_pow10 *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = ipow10(mathexponent(f->p));
+	result = ipow10(mathexponent(f->p));
+	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Evaluate the scalar result before copying it into an unaligned VM return slot. */
 void
 Math_remainder(void *fp)
 {
 	F_Math_remainder *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_remainder(f->x, f->p);
+	result = __ieee754_remainder(f->x, f->p);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Scale with a bounded native exponent while preserving zero, infinity and NaN. */
@@ -804,10 +966,12 @@ void
 Math_scalbn(void *fp)
 {
 	F_Math_scalbn *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = scalbn(f->x, mathexponent(f->n));
+	result = scalbn(f->x, mathexponent(f->n));
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Preserve native order bounds without silently wrapping a wider VM word. */
@@ -815,10 +979,12 @@ void
 Math_yn(void *fp)
 {
 	F_Math_yn *f;
+	REAL result;
 
 	f = fp;
 
-	*f->ret = __ieee754_yn(mathorder(f->n), f->x);
+	result = __ieee754_yn(mathorder(f->n), f->x);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 
@@ -977,13 +1143,15 @@ void
 Math_dot(void *fp)
 {
 	F_Math_dot *f;
+	REAL result;
 	int n;
 
 	f = fp;
 	n = mathvectorcount(f->x, &Treal);
 	if(mathvectorcount(f->y, &Treal) != n)
 		error(exMathia);
-	*f->ret = dot(n, (double*)f->x->data, (double*)f->y->data);
+	result = dot(n, (double*)f->x->data, (double*)f->y->data);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Return the maximum-magnitude index only after checking the full VM length. */
@@ -991,11 +1159,13 @@ void
 Math_iamax(void *fp)
 {
 	F_Math_iamax *f;
+	WORD result;
 	int n;
 
 	f = fp;
 	n = mathvectorcount(f->x, &Treal);
-	*f->ret = iamax(n, (double*)f->x->data);
+	result = iamax(n, (double*)f->x->data);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Reject invalid real arrays before computing their Euclidean norm. */
@@ -1003,11 +1173,13 @@ void
 Math_norm2(void *fp)
 {
 	F_Math_norm2 *f;
+	REAL result;
 	int n;
 
 	f = fp;
 	n = mathvectorcount(f->x, &Treal);
-	*f->ret = norm2(n, (double*)f->x->data);
+	result = norm2(n, (double*)f->x->data);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Reject invalid real arrays before computing their absolute-value sum. */
@@ -1015,11 +1187,13 @@ void
 Math_norm1(void *fp)
 {
 	F_Math_norm1 *f;
+	REAL result;
 	int n;
 
 	f = fp;
 	n = mathvectorcount(f->x, &Treal);
-	*f->ret = norm1(n, (double*)f->x->data);
+	result = norm1(n, (double*)f->x->data);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Include the final active row and widen before multiplying leading dimensions. */

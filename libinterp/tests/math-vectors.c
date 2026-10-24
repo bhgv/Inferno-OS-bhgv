@@ -12,6 +12,7 @@ typedef int32_t WORD;
 typedef int64_t WORD;
 #endif
 typedef uint64_t uvlong;
+typedef double REAL;
 typedef unsigned char uchar;
 typedef struct Type Type;
 struct Type { int size; };
@@ -170,6 +171,39 @@ vectors(void)
 	Math_iamax(&af); assert(maximum == 0);
 	Math_norm1(&nf); assert(answer == 0);
 	checks += 4;
+}
+
+/* Copy scalar vector results into every byte alignment without changing guard bytes. */
+static void
+vectorreturns(void)
+{
+	double values[]={3,-4,0,0}, real;
+	WORD integer;
+	Array x={4,&Treal,nil,(uchar*)values};
+	F_Math_dot df={&x,&x,nil};
+	F_Math_iamax af={&x,nil};
+	F_Math_norm1 nf={&x,nil};
+	F_Math_norm2 tf={&x,nil};
+	union { double align; uchar bytes[48]; } memory;
+	uchar expected[48];
+	int op, offset, alias, width;
+	void *destination;
+
+	for(op=0;op<4;op++)for(offset=0;offset<8;offset++)for(alias=0;alias<2;alias++){
+		values[0]=3;values[1]=-4;values[2]=values[3]=0;
+		memset(memory.bytes,0xa5,sizeof(memory.bytes));memmove(expected,memory.bytes,sizeof(expected));
+		destination=alias ? (void*)values : memory.bytes+16+offset;
+		df.ret=destination;af.ret=destination;nf.ret=destination;tf.ret=destination;
+		width=op==1 ? sizeof(WORD) : sizeof(double);
+		if(op==0){real=25;Math_dot(&df);}
+		else if(op==1){integer=1;Math_iamax(&af);}
+		else if(op==2){real=7;Math_norm1(&nf);}
+		else{real=5;Math_norm2(&tf);}
+		assert(!memcmp(destination,op==1 ? (void*)&integer : (void*)&real,width));
+		if(!alias)memmove(expected+16+offset,destination,width);
+		assert(!memcmp(memory.bytes,expected,sizeof(expected)));
+		checks++;
+	}
 }
 
 /* Validate descriptors through each wrapper without reading their poisoned data. */
@@ -366,6 +400,7 @@ main(void)
 {
 	sorts();
 	vectors();
+	vectorreturns();
 	vectorbounds();
 	secondarybounds();
 	matrices();
