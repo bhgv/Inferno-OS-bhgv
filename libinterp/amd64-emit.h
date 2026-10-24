@@ -83,7 +83,23 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafStringIndex){
+	if(p.kind == LeafPower){
+		/* Let the VM apply negative-exponent results and zero-base exceptions. */
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, abi->wordbytes);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x79);
+		x64ptr(&b, 1, abi->m); x64load(&b, 1, p.bytes);
+		x64byte(&b, 0xba); x64word(&b, 1); /* rdx = result */
+		loop = b.n;
+		x64byte(&b, 0xa8); x64byte(&b, 1);
+		x64byte(&b, 0x74); x64byte(&b, 4);
+		x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0xaf); x64byte(&b, 0xd1);
+		x64byte(&b, 0x48); x64byte(&b, 0xd1); x64byte(&b, 0xe8);
+		x64byte(&b, 0x74); done = b.n; x64byte(&b, 0);
+		x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0xaf); x64byte(&b, 0xc9);
+		x64byte(&b, 0xeb); x64byte(&b, loop-b.n-1);
+		b.bytes[done] = b.n-done-1;
+		x64ptr(&b, 2, abi->d); x64store(&b, 2, p.bytes);
+	}else if(p.kind == LeafStringIndex){
 		if(abi->stringlen < 0 || abi->stringdata < 0) return 0;
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);

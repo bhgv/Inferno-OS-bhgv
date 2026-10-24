@@ -12,7 +12,7 @@ root = Path(__file__).resolve().parents[2]
 
 # Match balanced bodies while ignoring braces in strings and comments.
 def function(path, signature):
-    source = (root / path).read_text()
+    source = Path(os.environ.get('POWER_VM_SOURCE', root / path) if path == 'libinterp/xec.c' else root / path).read_text()
     start = source.index(signature)
     brace = source.index('{', start)
     depth = 0

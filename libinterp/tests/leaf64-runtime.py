@@ -78,6 +78,8 @@ FREEMOD
 #define A(r) (*(Array**)R.r)
 #define S(r) (*(String**)R.r)
 #define UW(r) (*(UWORD*)R.r)
+#define F(r) (*(REAL*)R.r)
+#define V(r) (*(LONG*)R.r)
 char exInval[]="invalid", exZdiv[]="zero divide", exBounds[]="bounds", exHeap[]="heap", exNilref[]="nil";
 VM_OPERATIONS
 static Module *active;
@@ -87,6 +89,9 @@ static int dispatch(void *unused) {
     (void)unused;
     if(active->jit->entry[activeop] && active->jit->entry[activeop](&R))return 1;
     switch(activeop) {
+    case IEXPW:iexpw();break;
+    case IEXPL:iexpl();break;
+    case IEXPF:iexpf();break;
     case IDIVW:divw();break;
     case IMODW:modw();break;
     case ISHLW:shlw();break;
@@ -319,6 +324,60 @@ static void characters(Module *m) {
     }
     m->jit->entry[IINDC]=entry;
 }
+/* Compare both dispatch paths with a high-bit-first modular power oracle. */
+static void powers(Module *m) {
+    union { uvlong align; uchar bytes[64]; } slots;
+    uchar expected[64];
+    WORD minimum=(UWORD)1<<(sizeof(WORD)*8-1),n,wordbase;
+    WORD exponents[]={minimum,-3,-2,-1,0,1,2,3,7,31,32,63,64,(WORD)((UWORD)minimum-1)};
+    LONG bases[]={0,1,-1,2,-2,(-9223372036854775807LL-1),9223372036854775807LL},base;
+    uvlong want, factor;
+    int op,mode,i,j,alias,width,valid,bit,offset;
+    int (*entry)(REG*);
+    Inst *pc=m->prog+1;
+    active=m;
+    for(op=0;op<2;op++) {
+        activeop=op?IEXPL:IEXPW;entry=m->jit->entry[activeop];assert(entry);
+        width=op?8:sizeof(WORD);
+        for(mode=0;mode<2;mode++) {
+            m->jit->entry[activeop]=mode?nil:entry;
+            for(i=0;i<nelem(exponents);i++)for(j=0;j<nelem(bases);j++)for(alias=0;alias<5;alias++) {
+                n=exponents[i];wordbase=bases[j];base=op?bases[j]:(LONG)wordbase;
+                valid=n>=0 || base!=0;
+                want=1;factor=base;
+                if(n<0)want=base==1?1:base==-1?(n&1?(uvlong)-1:1):0;
+                else for(bit=(int)sizeof(WORD)*8-1;bit>=0;bit--) {
+                    want*=want;
+                    if(((UWORD)n>>bit)&1)want*=factor;
+                }
+                memset(slots.bytes,0xa5,sizeof(slots.bytes));
+                memcpy(slots.bytes+4,&n,sizeof(n));
+                if(op)memcpy(slots.bytes+20,&base,8);
+                else memcpy(slots.bytes+20,&wordbase,sizeof(wordbase));
+                memcpy(expected,slots.bytes,sizeof(expected));
+                offset=alias==0?36:alias==1?4:alias==2?20:alias==3?8:24;
+                if(valid)memcpy(expected+offset,&want,width);
+                R.s=slots.bytes+4;R.m=slots.bytes+20;R.d=slots.bytes+offset;R.PC=pc;
+                assert(kprotect(dispatch,nil)==valid && R.PC==pc);
+                assert(!memcmp(slots.bytes,expected,sizeof(expected)));
+            }
+        }
+        m->jit->entry[activeop]=entry;
+    }
+    /* Floating powers stay in the VM, including full-width minimum exponents. */
+    assert(!m->jit->entry[IEXPF]);activeop=IEXPF;n=minimum;
+    for(j=0;j<2;j++)for(alias=0;alias<5;alias++) {
+        REAL input=j?2.0:-1.0, answer=j?0.0:1.0;
+        memset(slots.bytes,0xa5,sizeof(slots.bytes));
+        memcpy(slots.bytes+4,&n,sizeof(n));memcpy(slots.bytes+20,&input,sizeof(input));
+        memcpy(expected,slots.bytes,sizeof(expected));
+        offset=alias==0?36:alias==1?4:alias==2?20:alias==3?8:24;
+        memcpy(expected+offset,&answer,sizeof(answer));
+        R.s=slots.bytes+4;R.m=slots.bytes+20;R.d=slots.bytes+offset;R.PC=pc;
+        assert(kprotect(dispatch,nil) && R.PC==pc && !memcmp(slots.bytes,expected,sizeof(expected)));
+    }
+
+}
 /* Use real Array/REG offsets and actual VM fallback on the native host. */
 static void arrays(Module *m) {
     Type type={0};Array array={0},*owner;
@@ -352,7 +411,7 @@ static void arrays(Module *m) {
 }
 /* Compile, invoke, reject invalid metadata and retry without changing Dis PCs. */
 int main(void) {
-    Module m={0}, *owned;Inst instructions[23]={{0}};
+    Module m={0}, *owned;Inst instructions[26]={{0}};
     WORD a=3,b=7,out=0;
     int i;
     instructions[0].op=ISUBW;instructions[1].op=IADDW;
@@ -361,25 +420,25 @@ int main(void) {
     instructions[6].op=ISHLW;instructions[7].op=ISHRW;instructions[8].op=ILSRW;
     instructions[9].op=ILENA;instructions[10].op=IINDB;instructions[11].op=IINDW;
     instructions[12].op=IINDL;instructions[13].op=IINDF;instructions[14].op=INEGF;instructions[15].op=IMOVM;instructions[16].op=ILENC;
-    instructions[17].op=IHEADB;instructions[18].op=IHEADW;instructions[19].op=IHEADL;instructions[20].op=IHEADF;instructions[21].op=ILENL;instructions[22].op=IINDC;
-    m.prog=instructions;m.nprog=23;
+    instructions[17].op=IHEADB;instructions[18].op=IHEADW;instructions[19].op=IHEADL;instructions[20].op=IHEADF;instructions[21].op=ILENL;instructions[22].op=IINDC;instructions[23].op=IEXPW;instructions[24].op=IEXPL;instructions[25].op=IEXPF;
+    m.prog=instructions;m.nprog=26;
     for(i=1;i<=5;i++) {
-        fail=i;assert(!compile(&m,23,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
+        fail=i;assert(!compile(&m,26,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
     }
     fail=0;
-    assert(!compile(nil,23,nil));assert(!compile(&m,3,nil));
-    assert(compile(&m,23,nil));assert(m.jit && !m.compiled && m.prog==instructions);
+    assert(!compile(nil,26,nil));assert(!compile(&m,3,nil));
+    assert(compile(&m,26,nil));assert(m.jit && !m.compiled && m.prog==instructions);
     assert(m.jit->entry[IMOVP]==nil);
     assert(protections==1 && mappings==1);
     R.s=&a;R.m=&b;R.d=&out;
 #if EXECUTE_NATIVE
     assert(m.jit->entry[ISUBW](&R)==1 && out==4);
     R.d=&a;assert(m.jit->entry[IADDW](&R)==1 && a==10);
-    arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);
+    arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);powers(&m);
 #endif
-    assert(compile(&m,23,nil));dropmodule(&m);
-    for(i=0;i<23;i++)instructions[i].op=IMOVP;
-    assert(!compile(&m,23,nil) && !m.jit);
+    assert(compile(&m,26,nil));dropmodule(&m);
+    for(i=0;i<26;i++)instructions[i].op=IMOVP;
+    assert(!compile(&m,26,nil) && !m.jit);
     owned=calloc(1,sizeof(*owned));assert(owned);
     owned->prog=calloc(1,sizeof(Inst));assert(owned->prog);
     owned->nprog=1;owned->prog[0].op=IADDW;
@@ -396,7 +455,7 @@ a=load.index('void\nfreemod(');b=load.index('\nvoid\nunload(',a)
 unit=unit.replace('FREEMOD',load[a:b])
 xec=Path(os.environ.get('LEAF_VM_SOURCE',str(root/'libinterp/xec.c'))).read_text()
 parts=[]
-for signature in ('static WORD\nshiftcount(', 'static List*\nlisthead(', 'OP(lenl)', 'OP(headb)', 'OP(headw)', 'OP(headl)', 'OP(headf)', 'OP(movm)', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
+for signature in ('static WORD\nshiftcount(', 'static List*\nlisthead(', 'OP(lenl)', 'OP(headb)', 'OP(headw)', 'OP(headl)', 'OP(headf)', 'OP(iexpw)', 'OP(iexpl)', 'OP(iexpf)', 'OP(movm)', 'OP(divw)', 'OP(modw)', 'OP(shlw)', 'OP(shrw)', 'OP(lsrw)', 'static uchar*\narrayaddress(', 'OP(indx)', 'OP(indb)', 'OP(indw)', 'OP(indl)', 'OP(indf)', 'OP(lena)'):
     if signature=='static List*\nlisthead(' and signature not in xec:continue
     a=xec.index(signature);b=xec.index('\n}',a)+2
     parts.append(xec[a:b])

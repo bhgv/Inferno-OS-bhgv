@@ -22,7 +22,7 @@ cc = shlex.split(os.environ.get('CC', 'cc'))
 flags = shlex.split(os.environ.get('CFLAGS', '-O1 -g'))
 checks = 0
 rng = random.Random(0x1f3e)
-names = '''INEGF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+names = '''IEXPW IEXPL IEXPF INEGF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 ISHLB ISHLW ISHRB ISHRW ILSRW IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW IBLEB
 IBLEW IBGTB IBGTW IBGEB IBGEW IDIVW IMODW IMOVP IFRAME ICALL IRET IADDF'''.split()
@@ -191,11 +191,17 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
         for name in ('IMOVP','IFRAME','ICALL','IRET','IADDF'):
             assert not code[name], name
             checks+=1
+        assert not code['IEXPF']
+        checks+=1
         if xlen==32:
+            assert not code['IEXPW'] and not code['IEXPL']
+            checks+=1
             assert not code['IDIVW'] and not code['IMODW']
         no_m=Layout(xlen,wb,0,0,pb,pb*2,pb*3)
         assert emit('IMULW',no_m)[0]==emit('IMULB',no_m)[0]==0
         assert emit('IDIVW',no_m)[0]==emit('IMODW',no_m)[0]==0
+        assert emit('IEXPW',no_m)[0]==emit('IEXPL',no_m)[0]==0
+        checks+=1
         # In-place source/destination keeps both operands until the store.
         u,result=run('ISUBW',struct.pack('<Q',3),struct.pack('<Q',7),sptr=D)
         assert int.from_bytes(result[:wb],'little')==4

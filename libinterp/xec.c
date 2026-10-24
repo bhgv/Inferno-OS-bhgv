@@ -337,70 +337,72 @@ OP(cvtcl)
 		V(d) = strtoll(string2c(s), nil, 10);
 }
 
-/* Compute an integer power with word-width wraparound and bounded iteration. */
+/* Capture operands before computing a modular power or its negative-exponent rule. */
 OP(iexpw)
 {
-	WORD x, n;
+	WORD x, n, answer;
 	UWORD base, exponent, result;
 
-	x = W(m);
-	n = W(s);
+	memmove(&x, R.m, sizeof(x));
+	memmove(&n, R.s, sizeof(n));
 	if(n < 0){
 		if(x == 0)
 			error(exZdiv);
 		if(x == 1)
-			W(d) = 1;
+			result = 1;
 		else if(x == -1)
-			W(d) = n&1 ? -1 : 1;
+			result = n&1 ? (UWORD)-1 : 1;
 		else
-			W(d) = 0;
-		return;
+			result = 0;
+	}else{
+		base = x;
+		exponent = n;
+		result = 1;
+		for(;;){
+			if(exponent&1)
+				result *= base;
+			if((exponent >>= 1) == 0)
+				break;
+			base *= base;
+		}
 	}
-	base = x;
-	exponent = n;
-	result = 1;
-	for(;;){
-		if(exponent&1)
-			result *= base;
-		if((exponent >>= 1) == 0)
-			break;
-		base *= base;
-	}
-	W(d) = result;
+	answer = result;
+	memmove(R.d, &answer, sizeof(answer));
 }
 
-/* Apply the same rules to big values while the exponent remains a VM word. */
+/* Big powers use the same word-sized exponent and alignment-safe operand access. */
 OP(iexpl)
 {
 	WORD n;
-	LONG x;
+	LONG x, answer;
 	ULONG base, result;
 	UWORD exponent;
 
-	x = V(m);
-	n = W(s);
+	memmove(&x, R.m, sizeof(x));
+	memmove(&n, R.s, sizeof(n));
 	if(n < 0){
 		if(x == 0)
 			error(exZdiv);
 		if(x == 1)
-			V(d) = 1;
+			result = 1;
 		else if(x == -1)
-			V(d) = n&1 ? -1 : 1;
+			result = n&1 ? (ULONG)-1 : 1;
 		else
-			V(d) = 0;
-		return;
+			result = 0;
+	}else{
+		base = x;
+		exponent = n;
+		result = 1;
+		for(;;){
+			if(exponent&1)
+				result *= base;
+			if((exponent >>= 1) == 0)
+				break;
+			base *= base;
+		}
 	}
-	base = x;
-	exponent = n;
-	result = 1;
-	for(;;){
-		if(exponent&1)
-			result *= base;
-		if((exponent >>= 1) == 0)
-			break;
-		base *= base;
-	}
-	V(d) = result;
+	answer = result;
+	memmove(R.d, &answer, sizeof(answer));
 }
 
 /* Handle the minimum negative exponent without signed negation or overflow. */
@@ -410,8 +412,8 @@ OP(iexpf)
 	UWORD exponent;
 	REAL x, result;
 
-	x = F(m);
-	n = W(s);
+	memmove(&x, R.m, sizeof(x));
+	memmove(&n, R.s, sizeof(n));
 	exponent = n;
 	if(n < 0){
 		exponent = 0-exponent;
@@ -425,7 +427,7 @@ OP(iexpf)
 			break;
 		x *= x;
 	}
-	F(d) = result;
+	memmove(R.d, &result, sizeof(result));
 }
 
 /* Validate complete indices and byte offsets before forming an element address. */

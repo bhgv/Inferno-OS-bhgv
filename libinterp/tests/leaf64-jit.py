@@ -15,7 +15,7 @@ from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
 root = Path(__file__).resolve().parents[2]
-ops = '''IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IMOVP IFRAME ICALL IRET IADDF'''.split()
@@ -33,7 +33,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -89,6 +89,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if alias == 1: d=s
                 if alias == 2: d=m
                 if alias == 3: s=d-4
+                if alias == 4: d=m+4
                 output=d
                 metadata=None
                 expected_copy=None
@@ -203,6 +204,27 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','power'):
+                exponents=[-1,-2,-3,-(1<<(wb*8-1)),0,1,2,3,7,31,32,63,64,127,(1<<(wb*8-1))-1]
+                if wb==8:exponents += [1<<32,(1<<32)+1]
+                bases=[0,1,-1,2,-2,3,-3,(1<<31)-1,-(1<<31),(1<<63)-1,-(1<<63),0x123456789abcdef]
+                for name,width in (('IEXPW',wb),('IEXPL',8)):
+                    for exponent in exponents:
+                        for base in bases:
+                            for alias in (0,1,2,3,4):
+                                out,pc,before,after,_=run(name,exponent,base,alias,expect=int(exponent>=0))
+                                if exponent>=0:
+                                    wanted=pow(base,exponent,1<<(width*8))
+                                    assert int.from_bytes(out[:width],'little')==wanted,(arch,wb,name,exponent,base)
+                                    assert before[:8]==after[:8] and before[8+width:]==after[8+width:]
+                                else:assert before==after
+                                assert pc==oldpc
+                                checks+=1
+                    for exponent in (-1,-(1<<(wb*8-1))):
+                        _,pc,before,after,_=run(name,exponent,poison=True,expect=0)
+                        assert pc==oldpc and before==after
+                        checks+=1
+                if case=='power':continue
             if case in ('','character'):
                 values=[0,0x7f,0x80,0xff,0x10ffff,0x7fffffff,0x80000000,0xffffffff]
                 for pointer in (0,(1<<64)-1,data+0x500):

@@ -3,7 +3,15 @@
 #include <stdio.h>
 #include <math.h>
 #include <setjmp.h>
+#include <string.h>
 #include <limits.h>
+
+/* LeakSanitizer cannot inspect processes here; keep address and stack checks active. */
+int
+__lsan_is_turned_off(void)
+{
+	return 1;
+}
 
 typedef int64_t vlong;
 typedef uint64_t uvlong;
@@ -122,6 +130,9 @@ static void
 checkinteger(vlong base, int exponent)
 {
 	WORD wordbase, wordexponent, wordresult;
+	union { uint64_t align; unsigned char bytes[64]; } slots;
+	unsigned char expected[64];
+	int kind, alias, offset, width;
 	LONG bigresult;
 	uvlong want, factor;
 	unsigned int count;
@@ -147,6 +158,23 @@ checkinteger(vlong base, int exponent)
 	R.d = &wordresult;
 	iexpw();
 	assert((UWORD)wordresult == (UWORD)want);
+	for(kind = 0; kind < 2; kind++)
+	for(alias = 0; alias < 5; alias++){
+		memset(slots.bytes, 0xa5, sizeof(slots.bytes));
+		memcpy(slots.bytes+4, &wordexponent, sizeof(wordexponent));
+		width = kind ? 8 : sizeof(WORD);
+		memcpy(slots.bytes+20, kind ? (void*)&base : (void*)&wordbase, width);
+		memcpy(expected, slots.bytes, sizeof(expected));
+		offset = alias == 0 ? 36 : alias == 1 ? 4 : alias == 2 ? 20 : alias == 3 ? 8 : 24;
+		memcpy(expected+offset, &want, width);
+		R.s = slots.bytes+4;
+		R.m = slots.bytes+20;
+		R.d = slots.bytes+offset;
+		if(kind)iexpl();
+		else iexpw();
+		assert(!memcmp(slots.bytes, expected, sizeof(expected)));
+		checks++;
+	}
 	checks++;
 }
 
@@ -156,6 +184,9 @@ checkreal(double base, int exponent, double want)
 {
 	WORD wordexponent;
 	double result;
+	union { uint64_t align; unsigned char bytes[64]; } slots;
+	unsigned char expected[64];
+	int alias, offset;
 
 	result = rpow(base, exponent);
 	assert(result == want);
@@ -169,6 +200,20 @@ checkreal(double base, int exponent, double want)
 	assert(result == want);
 	if(want == 0.0 || isinf(want))
 		assert(!!signbit(result) == !!signbit(want));
+	for(alias = 0; alias < 5; alias++){
+		memset(slots.bytes, 0xa5, sizeof(slots.bytes));
+		memcpy(slots.bytes+4, &wordexponent, sizeof(wordexponent));
+		memcpy(slots.bytes+20, &base, sizeof(base));
+		memcpy(expected, slots.bytes, sizeof(expected));
+		offset = alias == 0 ? 36 : alias == 1 ? 4 : alias == 2 ? 20 : alias == 3 ? 8 : 24;
+		memcpy(expected+offset, &want, sizeof(want));
+		R.s = slots.bytes+4;
+		R.m = slots.bytes+20;
+		R.d = slots.bytes+offset;
+		iexpf();
+		assert(!memcmp(slots.bytes, expected, sizeof(expected)));
+		checks++;
+	}
 	checks++;
 }
 

@@ -72,7 +72,7 @@ python3 libinterp/tests/slice-tokenize-suite.py --core
 
 The cross-architecture test compiles the production encoders, disassembles every
 emitted byte and executes AMD64, AArch64 and RV64 machine code in Unicorn. Its
-135,204 checks compare against independent Python integer/branch oracles for both
+146,760 checks compare against independent Python integer/branch oracles for both
 VM word widths. It covers overflow boundaries, randomized values, exact input
 aliases, partial move overlaps, four-byte-aligned long operands, high native
 addresses, PC updates, neighboring-byte guards, sizing, capacity rejection and
@@ -145,7 +145,7 @@ three 64-bit backends. See [the array-address guide](README.array-indices.md) fo
 the checked VM helper, zero-width semantics, native address guards, word-model
 limitations and independent parent regressions. The array-only emulator matrix
 adds 26,100 semantic executions plus shared sizing/ABI checks. The complete
-three-architecture machine-code suite now has 135,204 checks; the dedicated VM
+three-architecture machine-code suite now has 146,760 checks; the dedicated VM
 address fixture adds 40,023 checks. These counts do not imply whole target boot
 or a new Dis64 ABI.
 
@@ -173,7 +173,7 @@ using integer instructions. Tests cover both zeros, subnormals, infinities,
 quiet/signaling NaN bit patterns, random bit patterns, exact aliases and partial
 overlap. The native AMD64 compiler fixture executes the published code with real
 REG offsets under ASan/UBSan in both word models. The RISC-V fixture additionally
-checks RV32 compatibility and reports 1,995 checks. Floating addition, conversion
+checks RV32 compatibility and reports 2,006 checks. Floating addition, conversion
 and comparison still use their existing VM implementations.
 
 ## Bounded record copies and string lengths
@@ -207,13 +207,13 @@ LEAF64_CASE=copy python3 libinterp/tests/leaf64-jit.py
 LEAF64_CASE=string python3 libinterp/tests/leaf64-jit.py
 ```
 
-The copy subset reports 3,546 checks including encoder checks. It compares all
+The copy subset reports 3,558 checks including encoder checks. It compares all
 4 KiB of surrounding storage against snapshot-copy oracles for overlapping,
 identical and disjoint spans, byte alignment, overwritten count operands,
 128/129 boundaries, signed extrema and unmapped source/destination spans on
-rejection. The string subset reports 780 checks including encoder checks, with
+rejection. The string subset reports 792 checks including encoder checks, with
 four-byte String.len offsets, both word widths, source/result aliases and
-unchanged destinations on fallback. The complete driver reports 135,204 checks.
+unchanged destinations on fallback. The complete driver reports 146,760 checks.
 The native AMD64 fixture compares copies with libc memmove, tests the real
 String/REG offsets and runs actual VM fallback for length 129, invalid counts,
 C-null strings and INT_MIN metadata. Both word models pass ASan/UBSan.
@@ -257,7 +257,7 @@ LEAF64_CASE=listlen python3 libinterp/tests/leaf64-jit.py
 python3 libinterp/tests/lists.py
 ```
 
-The full emulator driver reports 135,204 checks. Head checks cover byte/word/big/
+The full emulator driver reports 146,760 checks. Head checks cover byte/word/big/
 real bit patterns, high native pointers, source/result aliases, partial overlap
 with inline payloads and unchanged surrounding object/operand bytes. Length
 checks cover both word widths, 0/1/127/128/129 boundaries, null links, cycles,
@@ -302,7 +302,7 @@ STRING_INDEX_CASE=alignment python3 libinterp/tests/string-codecs.py
 STRING_INDEX_CASE=stores python3 libinterp/tests/string-codecs.py
 ```
 
-The complete JIT driver reports 135,204 checks. Character tests cover both word
+The complete JIT driver reports 146,760 checks. Character tests cover both word
 widths, ASCII/rune strides, signed Rune extrema, high-word indices, nil/H owners,
 INT_MIN metadata, output aliases with owner/index/payload and whole-buffer
 preservation. Rejected indices also use an owner header at a mapped-page edge
@@ -324,3 +324,54 @@ current sources. Thus a full codec ASan pass is not claimed. The complete UBSan
 run, focused ASan subsets and native JIT ASan execution are the successful
 checks; stack instrumentation was not disabled. Full operating-system boots and
 hardware arm64/riscv64 execution remain separate.
+
+## Native modular integer powers
+
+IEXPW and IEXPL now emit helper-free exponentiation by squaring on AMD64,
+AArch64 and RV64. The exponent is always a VM word, including for big results.
+A nonnegative exponent needs at most one iteration per exponent bit. Zero
+exponents return one, including zero to power zero. Multiplication preserves the
+VM's modular low bits; WORD32 results are narrowed only at the final store.
+RV64 requires M, and RV32/no-M configurations keep interpreter dispatch.
+
+Negative exponents decline before reading the base or writing any output. The
+VM then supplies the existing rules: zero base raises exZdiv, bases 1/-1 return
+1 or the parity-selected sign, and other integer bases return zero. No partial
+power is published. Both input values are captured before storing, including
+when the destination overlaps the exponent or base.
+
+The three interpreter power helpers now capture operands and publish results
+with memmove rather than assuming native alignment. Integer wrap, negative
+exponents, exceptions and floating reciprocal/rounding behavior are preserved.
+IEXPF remains an interpreter operation; no floating power leaf was added.
+
+```
+LEAF64_CASE=power python3 libinterp/tests/leaf64-jit.py
+python3 libinterp/tests/leaf64-runtime.py
+python3 limbo/tests/fold-effects.py
+```
+
+The full machine-code suite reports 146,760 checks; the focused power subset
+reports 12,048 including encoder checks. Independent Python modular-pow oracles
+cover both word models, full-width/high-word exponents, modular extrema, zero,
+negative bases and exact/partial operand aliases. Negative exponents also use
+an unmapped base operand to verify guard order and unchanged output/PC.
+
+The native AMD64 fixture runs both emitted code and forced production helpers
+against a high-bit-first modular oracle. It exercises negative exponent fallback,
+zero-base exceptions, four-byte-aligned word/big slots, partial overlap and
+unchanged neighbors/Dis PCs. Real powers remain C helpers and also test minimum
+full-width exponents through unaligned operand/result slots. Both word models
+pass ASan/UBSan with stack instrumentation active.
+
+The compiler/VM fold-effects fixture reports 9,341 checks per word model. New
+matrices compare word, big and real powers through unaligned operands and five
+result placements, while retaining boolean-folding, reciprocal subnormal,
+signed-zero/infinity and minimum-exponent checks. It passes ASan/UBSan; LSan
+process inspection is disabled because the sandbox cannot inspect target
+processes. This does not disable address or stack instrumentation. Parent
+c15785e reproduces an unaligned WORD64 power load via LEAF_VM_SOURCE and an
+unaligned LONG load in the WORD32 fixture via POWER_VM_SOURCE. Current sources
+pass both. The RISC-V regression fixture reports 2,006 checks and explicitly
+rejects power leaves without M or on RV32, and real-power leaves on every model.
+Full Inferno boots and arm64/riscv64 target hardware execution remain separate.

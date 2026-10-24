@@ -73,7 +73,21 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafStringIndex){
+	if(p.kind == LeafPower){
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, abi->wordbytes);
+		a64put(&b, abi->wordbytes == 8 ? 0xf100019fU : 0x7100019fU);
+		a64guard(&b, 0x5400006a);
+		a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, p.bytes);
+		a64put(&b, 0x5280002e); /* result = 1 */
+		loop = b.n;
+		a64put(&b, 0x3600004c); a64put(&b, 0x9b0d7dce);
+		a64put(&b, 0xd341fd8c);
+		done = b.n; a64put(&b, 0xb400000c);
+		a64put(&b, 0x9b0d7dad);
+		a64put(&b, 0x14000000U | ((u32int)(loop-b.n)&0x3ffffff));
+		b.code[done] |= (b.n-done)<<5;
+		a64ptr(&b, 11, abi->d); a64store(&b, 14, p.bytes);
+	}else if(p.kind == LeafStringIndex){
 		if(abi->stringlen < 0 || abi->stringlen > 16380 || abi->stringlen%4 != 0 ||
 		   abi->stringdata < 0 || abi->stringdata > 4095 || abi->stringdata%4 != 0) return 0;
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);

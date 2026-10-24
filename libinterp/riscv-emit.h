@@ -119,6 +119,22 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	b.out=out; b.n=0; b.cap=cap; b.bad=0; b.abi=abi;
 	bytes=abi->wordbytes; f3=0; f7=0; binary=0; branch=0; swap=0; invert=0; shift=0; division=0;
 	switch(op) {
+	case IEXPW: case IEXPL:
+		if(abi->xlen != 64 || !abi->hasm) return 0;
+		rvptr(&b, Rvt0, abi->s); rvload(&b, Rvt4, Rvt0, abi->wordbytes);
+		rvguard(&b, 5, Rvt4, Rvzero);
+		bytes = op == IEXPL ? 8 : abi->wordbytes;
+		rvptr(&b, Rvt1, abi->m); rvload(&b, Rvt3, Rvt1, bytes);
+		rvi(&b, 0x13, 0, Rvt6, Rvzero, 1);
+		rvi(&b, 0x13, 7, Rvt5, Rvt4, 1);
+		rvbranch(&b, 0, Rvt5, Rvzero, 8);
+		rvr(&b, 0x33, 0, 1, Rvt6, Rvt6, Rvt3);
+		rvi(&b, 0x13, 5, Rvt4, Rvt4, 1);
+		rvbranch(&b, 0, Rvt4, Rvzero, 12);
+		rvr(&b, 0x33, 0, 1, Rvt3, Rvt3, Rvt3);
+		rvbranch(&b, 0, Rvzero, Rvzero, -24);
+		rvptr(&b, Rvt2, abi->d); rvstore(&b, Rvt2, Rvt6, bytes);
+		break;
 	case IINDC:
 		if(abi->xlen != 64 || abi->stringlen < 0 || abi->stringlen > 2047 || abi->stringlen%4 != 0 ||
 		   abi->stringdata < 0 || abi->stringdata > 2047 || abi->stringdata%4 != 0) return 0;
