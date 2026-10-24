@@ -9,7 +9,7 @@
 
 static Proc worker;
 static char *raised;
-char exNilref[] = "nil";
+char exNilref[] = "nil", exInval[] = "invalid";
 char exHeap[] = "heap", exNegsize[] = "negative", exBounds[] = "bounds";
 Type Tstring = {1}, Tlist = {1};
 Type Tptr = {1, 0, 0, sizeof(String*), 1, 0, 0, {0x80}};
@@ -133,7 +133,7 @@ string(Rune *runes, int length, int wide)
 		if(wide)
 			s->Srune[i] = runes[i];
 		else{
-			assert(runes[i] < 128);
+			assert(runes[i] < 256);
 			s->Sascii[i] = runes[i];
 		}
 	return s;
@@ -230,6 +230,101 @@ one(Rune *source, int length, Rune *delimiters, int ndelim,
 	checks++;
 }
 
+/* Reject malformed metadata before allocating or publishing a partial tuple. */
+static void
+malformed(void)
+{
+	F_Sys_tokenize frame = {0};
+	struct { WORD t0; List *t1; } result;
+	String *source, *delimiter;
+	Rune a = 'a';
+	int which, baseline, ok;
+
+	for(which = 0; which < 6; which++){
+		source = string(&a, 1, 0);
+		delimiter = string(&a, 1, 0);
+		frame.s = source;
+		frame.delim = delimiter;
+		result.t0 = -77; result.t1 = H;
+		frame.ret = (void*)&result;
+		if(which == 0)frame.s = nil;
+		if(which == 1)frame.delim = nil;
+		if(which == 2)source->len = (-0x7fffffff-1);
+		if(which == 3)delimiter->len = (-0x7fffffff-1);
+		if(which == 4)frame.ret = nil;
+		if(which == 5)frame.ret = H;
+		baseline = live;
+		allocations = 0; raised = nil;
+		ok = kprotect(invoke, &frame);
+		assert(!ok && raised == (which == 2 || which == 3 ? exInval : exNilref));
+		assert(worker.nerr == 0 && allocations == 0 && live == baseline);
+		assert(result.t0 == -77 && result.t1 == H);
+		source->len = delimiter->len = 1;
+		destroy(source); destroy(delimiter);
+		assert(live == 0);
+		checks++;
+	}
+}
+
+/* Compare all byte characters against each one-character delimiter set. */
+static void
+membership(void)
+{
+	Rune rune;
+	String *delimiter;
+	int c, d, wide;
+
+	for(d = 0; d < 256; d++)
+	for(wide = 0; wide < 2; wide++){
+		rune = d;
+		delimiter = string(&rune, 1, wide);
+		for(c = 0; c < 256; c++){
+			assert(tokdelim(c, delimiter) == (c == d));
+			checks++;
+		}
+		destroy(delimiter);
+		assert(live == 0 && Tstring.ref == 1);
+	}
+}
+
+/* Exercise mixed byte/rune delimiters and every byte alignment of the tuple. */
+static void
+bytealignment(void)
+{
+	F_Sys_tokenize frame = {0};
+	typedef struct { WORD t0; List *t1; } Value;
+	Value result;
+	uchar storage[sizeof(Value)+16];
+	Rune source[3], delim;
+	int c, wide, dwide, alignment;
+	String *word;
+
+	for(c = 128; c < 256; c++)
+	for(wide = 0; wide < 2; wide++)
+	for(dwide = 0; dwide < 2; dwide++)
+	for(alignment = 0; alignment < 8; alignment++){
+		source[0] = c; source[1] = 'x'; source[2] = c;
+		delim = c;
+		frame.s = string(source, 3, wide);
+		frame.delim = string(&delim, 1, dwide);
+		result.t0 = -77; result.t1 = H;
+		memset(storage, 0xa5, sizeof(storage));
+		memmove(storage+alignment, &result, sizeof(result));
+		frame.ret = (void*)(storage+alignment);
+		assert(kprotect(invoke, &frame) && worker.nerr == 0);
+		memmove(&result, storage+alignment, sizeof(result));
+		assert(result.t0 == 1 && result.t1 != H && result.t1->tail == H);
+		memmove(&word, result.t1->data, sizeof(word));
+		assert(word->len == (wide ? -1 : 1));
+		assert((wide ? word->Srune[0] : (uchar)word->Sascii[0]) == 'x');
+		assert(storage[alignment+sizeof(result)] == 0xa5);
+		if(alignment)assert(storage[alignment-1] == 0xa5);
+		destroy(result.t1); destroy(frame.s); destroy(frame.delim);
+		assert(live == 0 && Tstring.ref == 1 && Tlist.ref == 1 && Tptr.ref == 1);
+		checks++;
+	}
+}
+
 /* Cover nil/empty delimiters, both representations, NULs and every failure boundary. */
 int
 main(int argc, char **argv)
@@ -239,6 +334,9 @@ main(int argc, char **argv)
 	unsigned state = 1;
 	int sample, length, i, mask, n, wide, dwide, ascii, dascii, fail;
 
+	if(argc == 1 || strcmp(argv[1], "membership") == 0)membership();
+	if(argc == 1 || strcmp(argv[1], "malformed") == 0)malformed();
+	if(argc == 1 || strcmp(argv[1], "alignment") == 0)bytealignment();
 	if(argc == 1 || strcmp(argv[1], "nil") == 0){
 		source[0] = 'a'; source[1] = 0; source[2] = 'b';
 		for(wide = 0; wide < 2; wide++)for(dwide = 0; dwide < 2; dwide++)

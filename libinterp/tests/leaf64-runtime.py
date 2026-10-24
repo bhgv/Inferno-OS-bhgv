@@ -589,7 +589,6 @@ if backend=='riscv64':
     if profile!='i':definitions+='#define __riscv_mul 1\n'
     if profile=='m':definitions+='#define __riscv_div 1\n'
     unit=definitions+unit
-    unit=unit.replace('assert(m.jit->entry[IMOVPC]);','assert(!!m.jit->entry[IMOVPC]=='+str(int(profile!='i'))+');')
     unit=unit.replace('assert(m.jit->entry[IMULX1] && m.jit->entry[IDIVX1] && m.jit->entry[ICVTXX1]);',
         'assert(!!m.jit->entry[IMULX1]=='+str(int(profile=='m'))+');assert(!!m.jit->entry[IDIVX1]=='+str(int(profile=='m'))+');assert(!!m.jit->entry[ICVTXX1]=='+str(int(profile=='m'))+');')
     unit=unit.replace('assert(m.jit->entry[IMULX0] && m.jit->entry[IDIVX0] && m.jit->entry[ICVTXX0]);',

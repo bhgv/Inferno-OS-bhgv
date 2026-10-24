@@ -337,12 +337,12 @@ Sys_aprint(void *fp)
 	destroy(old);
 }
 
-/* A nil delimiter string denotes an empty set of separator characters. */
+/* Compare unsigned byte characters with runes; nil denotes no separators. */
 static int
 tokdelim(int c, String *d)
 {
 	int l;
-	char *p;
+	uchar *p;
 	Rune *r;
 
 	if(d == H)
@@ -355,7 +355,7 @@ tokdelim(int c, String *d)
 				return 1;
 		return 0;
 	}
-	for(p = d->Sascii; l != 0; l--)
+	for(p = (uchar*)d->Sascii; l != 0; l--)
 		if(*p++ == c)
 			return 1;
 	return 0;
@@ -384,6 +384,12 @@ buildtokens(void *arg)
 	d = result->delimiters;
 	if(s == H)
 		return 1;
+	if(s == nil || d == nil)
+		error(exNilref);
+	/* Validate before negating rune counts or allocating partial words. */
+	if(s->len == (-0x7fffffff-1) ||
+	   (d != H && d->len == (-0x7fffffff-1)))
+		error(exInval);
 	h = &result->words;
 	first = 0;
 	srune = 0;
@@ -394,14 +400,14 @@ buildtokens(void *arg)
 	}
 	while(first < nc){
 		while(first < nc){
-			c = srune ? s->Srune[first] : s->Sascii[first];
+			c = srune ? s->Srune[first] : (uchar)s->Sascii[first];
 			if(!tokdelim(c, d))
 				break;
 			first++;
 		}
 		last = first;
 		while(last < nc){
-			c = srune ? s->Srune[last] : s->Sascii[last];
+			c = srune ? s->Srune[last] : (uchar)s->Sascii[last];
 			if(tokdelim(c, d))
 				break;
 			last++;
@@ -422,15 +428,21 @@ buildtokens(void *arg)
 	return 1;
 }
 
-/* Publish complete token lists, releasing all partial words on a VM error. */
+/* Publish tuple fields through byte copies after every allocation succeeds. */
 void
 Sys_tokenize(void *fp)
 {
+	typedef struct { WORD count; List *words; } Value;
 	F_Sys_tokenize *f;
 	TokenizeResult result;
 	List *old;
+	WORD count;
+	uchar *ret;
 
 	f = fp;
+	ret = (uchar*)f->ret;
+	if(ret == nil || ret == H)
+		error(exNilref);
 	result.source = f->s;
 	result.delimiters = f->delim;
 	result.words = H;
@@ -439,9 +451,10 @@ Sys_tokenize(void *fp)
 		destroy(result.words);
 		krethrow();
 	}
-	old = f->ret->t1;
-	f->ret->t0 = result.count;
-	f->ret->t1 = result.words;
+	count = result.count;
+	memmove(&old, ret+O(Value, words), sizeof(old));
+	memmove(ret+O(Value, count), &count, sizeof(count));
+	memmove(ret+O(Value, words), &result.words, sizeof(result.words));
 	destroy(old);
 }
 

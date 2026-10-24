@@ -225,7 +225,7 @@ with tempfile.TemporaryDirectory(prefix='riscv-jit-') as td:
         checks+=1
         base_i=Layout.from_buffer_copy(abi);base_i.hasm=base_i.hasdiv=0
         assert emit('ICALL',base_i)==emit('ICALL',abi)
-        assert not emit('IMOVPC',base_i)[0]
+        assert bool(emit('IMOVPC',base_i)[0])==(xlen==64)
         checks+=1
         # Zmmul keeps identical multiply leaves but cannot publish DIV/REM.
         multiply_only=Layout.from_buffer_copy(abi)

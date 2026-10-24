@@ -56,7 +56,10 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
         ids = {name:lib.opid(i) for i,name in enumerate(ops)}
         for wb in (4,8):
             layout = RvLayout(64,wb,1,0,8,16,24) if rv else Layout(wb,0,8,16,24)
-            if rv:layout.hasdiv=1
+            if rv:
+                profile=os.environ.get('RV_FEATURE_PROFILE','m')
+                if profile not in ('i','zmmul','m'):raise ValueError(profile)
+                layout.hasm=int(profile!='i');layout.hasdiv=int(profile=='m')
             layout.framelr=0;layout.framefp=8
             layout.arraylen=8;layout.arraydata=32;layout.stringlen=12;layout.stringdata=32;layout.listdata=24;layout.listtail=8;layout.fp=32;layout.fixedtmp=28;layout.fixedcoef=20;layout.module=40;layout.linkmodule=8;layout.moduleprog=16;layout.modulenprog=24;layout.instbytes=24;layout.arraytype=16;layout.typesize=24
             dis = Cs(CS_ARCH_X86,CS_MODE_64) if arch == 'amd64' else Cs(CS_ARCH_ARM64,0) if arch == 'arm64' else Cs(CS_ARCH_RISCV,CS_MODE_RISCV64)
@@ -362,6 +365,34 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 for link,owner in ((0,data+0x700),((1<<64)-1,data+0x700),(data+0x500,0),(data+0x500,(1<<64)-1)):
                     _,pc,before,after,_=run('IMOVPC',expect=0,programaddress=(link,owner,data+0x900,4),badsource=True,badtarget=True)
                     assert pc==oldpc and before==after;checks+=1
+                if rv:
+                    # Every accepted stride must fit the bounded leaf buffer and
+                    # execute without MUL/DIV/REM on the base-I profile.
+                    for stride in range(1,2048):
+                        layout.instbytes=stride
+                        out=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
+                        n=lib.emit(out,64,C.byref(layout),ids['IMOVPC'])
+                        assert 0<n<=64,(wb,stride,n)
+                        assert lib.emit(None,64,C.byref(layout),ids['IMOVPC'])==n
+                        assert list(out)[n:]==[0xa5a5a5a5]*(64-n)
+                        guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
+                        assert lib.emit(guard,n-1,C.byref(layout),ids['IMOVPC'])==0
+                        assert list(guard)[n-1:]==[0xa5a5a5a5]*(65-n)
+                        blobs['IMOVPC']=bytes(out)[:4*n]
+                        decoded=list(dis.disasm(blobs['IMOVPC'],code))
+                        assert sum(i.size for i in decoded)==4*n
+                        if not layout.hasm:
+                            assert not any(i.mnemonic.startswith(('mul','div','rem')) for i in decoded)
+                        for index,backing in ((0,data+0x900),(3,data+0x900),(0x7ffffffe,data+0x900),(3,(1<<64)-16)):
+                            valid=backing+index*stride<(1<<64)
+                            result,pc,before,after,_=run('IMOVPC',index,expect=int(valid),programaddress=(data+0x500,data+0x700,backing,0x7fffffff),badtarget=not valid)
+                            assert pc==oldpc
+                            if valid:assert int.from_bytes(result[:8],'little')==backing+index*stride
+                            else:assert before==after
+                            checks+=1
+                    layout.instbytes=24
+                    out=(C.c_uint32*64)();n=lib.emit(out,64,C.byref(layout),ids['IMOVPC'])
+                    blobs['IMOVPC']=bytes(out)[:4*n]
                 if case=='movpc':continue
             if case in ('','coefficient'):
                 pairs=[(0,0),(1,1),(-1,1),(1,-1),(-7,3),(7,-3),(-(1<<(wb*8-1)),2),((1<<(wb*8-1))-1,-2)]

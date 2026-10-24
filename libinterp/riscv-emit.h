@@ -126,6 +126,29 @@ rvrealkey(RvBuf *b, int reg)
 	rvi(b, 0x13, 0, reg, Rvzero, 0);
 }
 
+/* Scale a bounded program index using RV64I when multiplication is absent.
+ * The constant multiplier is at most 2047, so the loop takes at most eleven
+ * iterations. t1 is dead after the source load; t0 must retain the Module. */
+static void
+rvprogramscale(RvBuf *b, int stride)
+{
+	if(b->abi->hasm){
+		rvi(b, 0x13, 0, Rvt6, Rvzero, stride);
+		rvr(b, 0x33, 0, 1, Rvt4, Rvt4, Rvt6);
+		return;
+	}
+	rvi(b, 0x13, 0, Rvt5, Rvzero, 0);
+	rvi(b, 0x13, 0, Rvt6, Rvzero, stride);
+	rvi(b, 0x13, 7, Rvt1, Rvt6, 1);
+	rvbranch(b, 0, Rvt1, Rvzero, 8);
+	rvr(b, 0x33, 0, 0, Rvt5, Rvt5, Rvt4);
+	rvi(b, 0x13, 5, Rvt6, Rvt6, 1);
+	rvbranch(b, 0, Rvt6, Rvzero, 12);
+	rvi(b, 0x13, 1, Rvt4, Rvt4, 1);
+	rvbranch(b, 0, Rvzero, Rvzero, -24);
+	rvi(b, 0x13, 0, Rvt4, Rvt5, 0);
+}
+
 /* Return instruction count, or 0 for unsupported/invalid/overflow. out==0
  * performs the same bounded sizing pass without touching memory. */
 static int
@@ -147,7 +170,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	switch(op) {
 	case IMOVPC:
 		/* The bounded int-sized program length keeps the stride product in 64 bits. */
-		if(abi->xlen != 64 || !abi->hasm) return 0;
+		if(abi->xlen != 64) return 0;
 		if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
 		   abi->linkmodule < 0 || abi->linkmodule > 2047 || abi->linkmodule%8 ||
 		   abi->moduleprog < 0 || abi->moduleprog > 2047 || abi->moduleprog%8 ||
@@ -158,7 +181,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		rvi(&b, 0x03, 3, Rvt0, Rvt0, abi->linkmodule); rvguard(&b, 1, Rvt0, Rvzero); rvguard(&b, 1, Rvt0, Rvt6);
 		rvi(&b, 0x03, 2, Rvt3, Rvt0, abi->modulenprog); rvguard(&b, 5, Rvt3, Rvzero);
 		rvptr(&b, Rvt1, abi->s); rvload(&b, Rvt4, Rvt1, abi->wordbytes); rvguard(&b, 6, Rvt4, Rvt3);
-		rvi(&b, 0x13, 0, Rvt6, Rvzero, abi->instbytes); rvr(&b, 0x33, 0, 1, Rvt4, Rvt4, Rvt6);
+		rvprogramscale(&b, abi->instbytes);
 		rvi(&b, 0x03, 3, Rvt3, Rvt0, abi->moduleprog); rvguard(&b, 1, Rvt3, Rvzero);
 		rvi(&b, 0x13, 0, Rvt6, Rvzero, -1); rvguard(&b, 1, Rvt3, Rvt6);
 		rvr(&b, 0x33, 0, 0, Rvt4, Rvt4, Rvt3); rvguard(&b, 7, Rvt4, Rvt3);
