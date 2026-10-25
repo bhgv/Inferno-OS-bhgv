@@ -398,6 +398,10 @@ Tmsg.unpack(f: array of byte): (int, ref Tmsg)
 		return (0, nil);
 	size := (int f[1] << 8) | int f[0];
 	size |= ((int f[3] << 8) | int f[2]) << 16;
+	# Reject impossible frame sizes before slicing away the fixed header.
+	if(size < H) {
+		return (-1, nil);
+	}
 	if(len f != size){
 		if(len f < size)
 			return (0, nil);	# need more data
@@ -695,6 +699,10 @@ Rmsg.unpack(f: array of byte): (int, ref Rmsg)
 		return (0, nil);
 	size := (int f[1] << 8) | int f[0];
 	size |= ((int f[3] << 8) | int f[2]) << 16;	# size includes itself
+	# Reject impossible frame sizes before slicing away the fixed header.
+	if(size < H) {
+		return (-1, nil);
+	}
 	if(len f != size){
 		if(len f < size)
 			return (0, nil);	# need more data
