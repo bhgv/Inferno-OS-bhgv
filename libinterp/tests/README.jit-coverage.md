@@ -230,3 +230,13 @@ comparisons. Both backends now provide 132 guarded native paths / 41
 interpreter-only instructions out of 173 active instructions. RISC-V profiles
 remain 103/70 with M, 90/83 with Zmmul and 87/86 for the base integer ISA.
 These counts describe available guarded paths, not full operand or VM ABI coverage.
+
+## ASCII append and wider decimal checkpoint
+
+[ASCII append and wide decimal parsing](README.ascii-append-wide-decimal.md)
+adds ADDC for unique ASCII destinations with spare capacity and expands the
+64-bit integer/real decimal parsers. AMD64 and ARM64 now have 133 guarded native
+paths / 40 interpreter-only instructions out of 173 active commands. RISC-V
+profiles remain 103/70 with M, 90/83 with Zmmul and 87/86 for the base integer ISA.
+Full operand coverage, physical target execution and the complete native VM ABI
+remain separate from these guarded instruction counts.

@@ -32,6 +32,9 @@ main(void)
 		"-999999999","+999999999","000000000","1000000000","2147483647",
 		"-2147483648","9223372036854775807","-9223372036854775808"," 12",
 		"12 ","12x","++1","--1","\xff","\t1","0x1","123456789",
+		"4294967295","-4294967296","999999999999999","-999999999999999",
+		"1000000000000000","999999999999999999","-999999999999999999",
+		"1000000000000000000","-1000000000000000000","123456789012345678",
 		"1.5","-0.0","1e2","1e-300","1e-999","1e999","Inf","nan"};
 	Module module={0};Inst instructions[3]={{0},{0},{0}},sentinel;
 	union {uvlong align;uchar bytes[128];} object,slots;
@@ -56,7 +59,7 @@ main(void)
 		memset(object.bytes,0xa5,sizeof(object.bytes));s=(String*)object.bytes;
 		length=strlen(texts[i]);s->len=length;s->max=length;s->tmp=nil;
 		memmove(s->Sascii,texts[i],length+1);
-		valid=length-(texts[i][0]=='+' || texts[i][0]=='-')<=9;
+		valid=length-(texts[i][0]=='+' || texts[i][0]=='-')<=(op == 2 ? 15 : op == 0 && sizeof(WORD) == 4 ? 9 : 18);
 		for(j=(texts[i][0]=='+' || texts[i][0]=='-');j<length;j++)
 			if(texts[i][j]<'0' || texts[i][j]>'9')valid=0;
 		value=valid && length ? strtoll(texts[i],nil,10) : 0;
@@ -66,6 +69,8 @@ main(void)
 		if(kind==1){s=H;valid=1;value=0;real=0;}
 		if(kind==2){s=nil;valid=0;}
 		if(kind==3){((String*)object.bytes)->Sascii[length]='x';valid=0;}
+		if(getenv("DECIMAL_ACCEPTED_ONLY") && op == 2 && !valid && kind != 2)
+			continue;
 		memset(slots.bytes,0xa5,sizeof(slots.bytes));memset(&R,0,sizeof(R));
 		R.s=slots.bytes+8+sa;R.d=alias==1 ? R.s : alias==2 ? object.bytes+64+da : slots.bytes+80+da;
 		R.PC=&sentinel;memmove(R.s,&s,sizeof(s));saved=R;

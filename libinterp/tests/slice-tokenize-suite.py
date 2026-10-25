@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/string-append-native.py',
     'libinterp/tests/string-store-native.py',
     'libinterp/tests/decimal-native.py',
     'libinterp/tests/module-byte-descriptors.py',
@@ -90,6 +91,7 @@ CORE = [
     'limbo/tests/case-max.py',
 ]
 JIT = [
+    'libinterp/tests/string-append-jit.py',
     'libinterp/tests/string-store-jit.py',
     'libinterp/tests/decimal-jit.py',
     'libinterp/tests/slice-copy-jit.py',

@@ -604,6 +604,75 @@ x64slicecopy(X64Buf *b, LeafLayout *a)
 }
 
 
+/* Load a scalar field with a checked short displacement and low register numbers. */
+static void
+x64smallfield(X64Buf *b, int result, int owner, int offset, int bytes)
+{
+	x64byte(b, 0x48);
+	x64byte(b, bytes == 8 ? 0x8b : 0x63);
+	x64byte(b, 0x40 | result<<3 | owner);
+	x64byte(b, offset);
+}
+
+
+/* Concatenate bounded ASCII input into unique storage without allocation or ownership changes. */
+static int
+x64stringappend(X64Buf *b, LeafLayout *a)
+{
+	int overlap, empty, loop;
+
+	if(a->stringlen < 0 || a->stringlen > 127 || a->stringlen%4 ||
+	   a->stringmax < 0 || a->stringmax > 127 || a->stringmax%4 ||
+	   a->stringdata < 0 || a->stringdata > 127 ||
+	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 || a->refbytes != 8)
+		return 0;
+	x64ptr(b, 0, a->m); x64ptr(b, 1, a->d);
+	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xc8); x64guard(b, 0x74);
+	x64load(b, 0, 8);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2);
+	x64ptr(b, 0, a->s); x64load(b, 0, 8);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); x64guard(b, 0x75);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0xff); x64guard(b, 0x75);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64guard(b, 0x75);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff); x64guard(b, 0x75);
+	x64smallfield(b, 1, 2, -a->heapref, 8);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64guard(b, 0x74);
+	x64smallfield(b, 1, 0, -a->heapref, 8);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x75);
+	x64smallfield(b, 1, 2, a->stringlen, 4);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x79);
+	x64smallfield(b, 6, 0, a->stringlen, 4);
+	x64byte(b, 0x81); x64byte(b, 0xfe); x64word(b, 128); x64guard(b, 0x76);
+	x64byte(b, 0x4c); x64byte(b, 0x63); x64byte(b, 0x40); x64byte(b, a->stringmax);
+	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xc6); x64guard(b, 0x7e);
+	x64byte(b, 0x4c); x64byte(b, 0x63); x64byte(b, 0x52); x64byte(b, a->stringmax);
+	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x1c); x64byte(b, 0x31);
+	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xd3); x64guard(b, 0x7e);
+	/* The signed capacity comparison bounds the sum by INT_MAX before any store. */
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x4c); x64byte(b, 0x0a); x64byte(b, a->stringdata);
+	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x40); x64byte(b, a->stringdata);
+	x64byte(b, 0x4d); x64byte(b, 0x8d); x64byte(b, 0x14); x64byte(b, 0x30);
+	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xc1);
+	x64byte(b, 0x76); overlap = b->n; x64byte(b, 0);
+	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xd1); x64guard(b, 0x73);
+	b->bytes[overlap] = b->n-overlap-1;
+	x64byte(b, 0x85); x64byte(b, 0xf6);
+	x64byte(b, 0x74); empty = b->n; x64byte(b, 0);
+	loop = b->n;
+	x64byte(b, 0x45); x64byte(b, 0x0f); x64byte(b, 0xb6); x64byte(b, 0x10);
+	x64byte(b, 0x44); x64byte(b, 0x88); x64byte(b, 0x11);
+	x64byte(b, 0x49); x64byte(b, 0xff); x64byte(b, 0xc0);
+	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc1);
+	x64byte(b, 0xff); x64byte(b, 0xce);
+	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
+	if(b->n > sizeof(b->bytes))
+		return 0;
+	b->bytes[empty] = b->n-empty-1;
+	x64byte(b, 0x44); x64byte(b, 0x89); x64byte(b, 0x5a); x64byte(b, a->stringlen);
+	return 1;
+}
+
+
 /* Parse short signed decimal ASCII without helpers, caches or partial stores. */
 static int
 x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
@@ -621,7 +690,7 @@ x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
 	x64byte(b, 0x0f); x64byte(b, 0x84); absent=b->n; x64word(b, 0);
 	x64field(b, 1, 0, a->stringlen, 4);
-	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 10); x64guard(b, 0x76);
+	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, p->input+1); x64guard(b, 0x76);
 	x64field(b, 2, 0, a->stringmax, 4);
 	x64byte(b, 0x39); x64byte(b, 0xca); x64guard(b, 0x7d);
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0xb0); x64word(b, a->stringdata);
@@ -639,7 +708,7 @@ x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc6);
 	x64byte(b, 0xff); x64byte(b, 0xc9);
 	b->bytes[digits]=b->n-digits-1;
-	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 9); x64guard(b, 0x76);
+	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, p->input); x64guard(b, 0x76);
 	/* strtod rejects sign-only input; leave that case to its existing C path. */
 	if(p->alu){
 		x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x75);
@@ -650,14 +719,14 @@ x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
 	x64byte(b, 0x0f); x64byte(b, 0xb6); x64byte(b, 0x16);
 	x64byte(b, 0x83); x64byte(b, 0xea); x64byte(b, '0');
 	x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 9); x64guard(b, 0x76);
-	x64byte(b, 0x45); x64byte(b, 0x6b); x64byte(b, 0xc0); x64byte(b, 10);
-	x64byte(b, 0x41); x64byte(b, 0x01); x64byte(b, 0xd0);
+	x64byte(b, 0x4d); x64byte(b, 0x6b); x64byte(b, 0xc0); x64byte(b, 10);
+	x64byte(b, 0x49); x64byte(b, 0x01); x64byte(b, 0xd0);
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc6);
 	x64byte(b, 0xff); x64byte(b, 0xc9);
 	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
 	x64byte(b, 0x45); x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x74); minus=b->n; x64byte(b, 0);
-	x64byte(b, 0x41); x64byte(b, 0xf7); x64byte(b, 0xd8);
+	x64byte(b, 0x49); x64byte(b, 0xf7); x64byte(b, 0xd8);
 	if(b->n > sizeof(b->bytes)) return 0;
 	if(b->n-empty-1 > 127 ||
 	   b->n-positive-1 > 127 || b->n-minus-1 > 127) return 0;
@@ -666,13 +735,13 @@ x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
 	b->bytes[empty]=b->n-empty-1;
 	b->bytes[positive]=b->n-positive-1; b->bytes[minus]=b->n-minus-1;
 	if(p->alu){
-		/* Nine decimal digits convert exactly in every FP rounding mode. */
-		x64byte(b, 0xf2); x64byte(b, 0x41); x64byte(b, 0x0f); x64byte(b, 0x2a); x64byte(b, 0xc0);
+		/* Fifteen decimal digits convert exactly in every FP rounding mode. */
+		x64byte(b, 0xf2); x64byte(b, 0x49); x64byte(b, 0x0f); x64byte(b, 0x2a); x64byte(b, 0xc0);
 		x64byte(b, 0x66); x64byte(b, 0x48); x64byte(b, 0x0f); x64byte(b, 0x7e); x64byte(b, 0xc0);
 		x64byte(b, 0x49); x64byte(b, 0xc1); x64byte(b, 0xe1); x64byte(b, 63);
 		x64byte(b, 0x4c); x64byte(b, 0x09); x64byte(b, 0xc8); // Preserve the sign of decimal negative zero.
 	}else{
-		x64byte(b, 0x49); x64byte(b, 0x63); x64byte(b, 0xc0);
+		x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0);
 	}
 	x64ptr(b, 2, a->d); x64store(b, 0, p->bytes);
 	return 1;
@@ -751,7 +820,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafStringStore){
+	if(p.kind == LeafStringAppend){
+		if(!x64stringappend(&b, abi)) return 0;
+	}else if(p.kind == LeafStringStore){
 		if(!x64stringstore(&b, abi)) return 0;
 	}else if(p.kind == LeafDecimal){
 		if(!x64decimal(&b, abi, &p)) return 0;

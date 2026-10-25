@@ -206,6 +206,9 @@ addstring(String *s1, String *s2, int append)
 	if((s1 != H && s1->max < (s1->len < 0 ? -s1->len : s1->len)) ||
 	   (s2 != H && s2->max < (s2->len < 0 ? -s2->len : s2->len)))
 		error(exHeap);
+	if((s1 != H && D2H(s1)->ref == 0) ||
+	   (s2 != H && D2H(s2)->ref == 0))
+		error(exHeap);
 	if(s1 == H) {
 		if(s2 == H)
 			return H;
@@ -224,7 +227,9 @@ addstring(String *s1, String *s2, int append)
 	if(l1 > 0x7fffffff-l2)
 		error(exHeap);
 	l = l1+l2;
-	if(append && l > 0x7fffffff-l/4)
+	/* Growth allowance is needed only when replacement storage must be allocated. */
+	if(append && l > 0x7fffffff-l/4 &&
+	   (l > s1->max || (s1->len >= 0 && s2->len < 0)))
 		error(exHeap);
 
 	if(s1->len < 0) {
@@ -266,6 +271,7 @@ addstring(String *s1, String *s2, int append)
 
 	return ns;
 }
+
 
 /* Capture both owners before allocation and publish before releasing the old owner. */
 OP(addc)

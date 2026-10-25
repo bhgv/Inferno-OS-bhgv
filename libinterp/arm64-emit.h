@@ -460,7 +460,64 @@ a64slicecopy(A64Buf *b, LeafLayout *a)
 }
 
 
-/* Parse at most nine signed decimal digits and publish only complete results. */
+/* Append bounded ASCII bytes only after validating slots, ownership and both capacities. */
+static int
+a64stringappend(A64Buf *b, LeafLayout *a)
+{
+	int fallback, overlap, empty, loop;
+
+	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
+	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
+	   a->stringdata < 0 || a->stringdata > 2047 ||
+	   a->heapref <= 0 || a->heapref > 255 || a->heapref%8 || a->refbytes != 8)
+		return 0;
+	fallback = b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	a64ptr(b, 9, a->m); a64ptr(b, 10, a->d);
+	a64put(b, 0xeb0a013f); a64defer(b, 0x54000001, fallback);
+	a64load(b, 12, 9, 8);
+	a64ptr(b, 9, a->s); a64load(b, 13, 9, 8);
+	a64defer(b, 0xb400000c, fallback);
+	a64put(b, 0xb100059f); a64defer(b, 0x54000000, fallback);
+	a64defer(b, 0xb400000d, fallback);
+	a64put(b, 0xb10005bf); a64defer(b, 0x54000000, fallback);
+	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 12<<5 | 14);
+	a64put(b, 0xf10005df); a64defer(b, 0x54000001, fallback);
+	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 13<<5 | 3);
+	a64defer(b, 0xb4000003, fallback);
+	a64wordfield(b, 14, 12, a->stringlen, 4);
+	a64put(b, 0xf10001df); a64defer(b, 0x5400000b, fallback);
+	a64wordfield(b, 15, 13, a->stringlen, 4);
+	a64put(b, 0xf10201ff); a64defer(b, 0x54000008, fallback);
+	a64wordfield(b, 3, 13, a->stringmax, 4);
+	a64put(b, 0xeb0301ff); a64defer(b, 0x5400000c, fallback);
+	a64wordfield(b, 4, 12, a->stringmax, 4);
+	a64put(b, 0x8b0f01c5);
+	a64put(b, 0xeb0400bf); a64defer(b, 0x5400000c, fallback);
+	/* A nonnegative sum bounded by signed capacity also proves the left span valid. */
+	a64put(b, 0x910001a9U | (u32int)a->stringdata<<10);
+	a64put(b, 0x9100018bU | (u32int)a->stringdata<<10);
+	a64put(b, 0x8b0e016b);
+	a64put(b, 0x8b0f0123);
+	a64put(b, 0xeb09017f);
+	overlap = b->n; a64put(b, 0x54000009);
+	a64put(b, 0xeb03017f); a64defer(b, 0x54000003, fallback);
+	b->code[overlap] |= (b->n-overlap)<<5;
+	empty = b->n; a64put(b, 0xb400000f);
+	loop = b->n;
+	a64load(b, 3, 9, 1); a64store(b, 3, 1);
+	a64put(b, 0x91000529); a64put(b, 0x9100056b);
+	a64put(b, 0xf10005ef);
+	a64put(b, 0x54000001U | ((loop-b->n)&0x7ffff)<<5);
+	if(b->n > LeafMax)
+		return 0;
+	b->code[empty] |= (b->n-empty)<<5;
+	a64put(b, 0xb9000000U | (u32int)(a->stringlen/4)<<10 | 12<<5 | 5);
+	return 1;
+}
+
+
+/* Parse bounded decimal magnitudes in 64 bits and publish only complete results. */
 static int
 a64decimal(A64Buf *b, LeafLayout *a, LeafOp *p)
 {
@@ -474,7 +531,7 @@ a64decimal(A64Buf *b, LeafLayout *a, LeafOp *p)
 	a64guard(b, 0xb500006c);
 	a64put(b, 0xb100059f); absent=b->n; a64put(b, 0x54000000);
 	a64field(b, 13, 12, a->stringlen, 4);
-	a64put(b, 0x710029bf); a64guard(b, 0x54000069);
+	a64put(b, 0x710001bfU | (u32int)(p->input+1)<<10); a64guard(b, 0x54000069);
 	a64field(b, 10, 12, a->stringmax, 4);
 	a64put(b, 0x6b0d015f); a64guard(b, 0x5400006a);
 	a64put(b, 0x91000189U | (u32int)a->stringdata<<10);
@@ -488,7 +545,7 @@ a64decimal(A64Buf *b, LeafLayout *a, LeafOp *p)
 	b->code[minus] |= (b->n-minus)<<5;
 	a64put(b, 0x91000529); a64put(b, 0x510005ad);
 	b->code[digits] |= (b->n-digits)<<5;
-	a64put(b, 0x710025bf); a64guard(b, 0x54000069);
+	a64put(b, 0x710001bfU | (u32int)p->input<<10); a64guard(b, 0x54000069);
 	/* Decline sign-only real conversions before executing any FP instruction. */
 	if(p->alu)
 		a64guard(b, 0x3500006d);
@@ -496,22 +553,22 @@ a64decimal(A64Buf *b, LeafLayout *a, LeafOp *p)
 	loop=b->n;
 	a64load(b, 10, 9, 1); a64put(b, 0x5100c14a);
 	a64put(b, 0x7100255f); a64guard(b, 0x54000069);
-	a64put(b, 0x0b0e09ce); /* value*=5 */
-	a64put(b, 0x0b0e01ce); /* value*=2 */
-	a64put(b, 0x0b0a01ce);
+	a64put(b, 0x8b0e09ce); /* value*=5 */
+	a64put(b, 0x8b0e01ce); /* value*=2 */
+	a64put(b, 0x8b0a01ce);
 	a64put(b, 0x91000529); a64put(b, 0x710005ad);
 	a64put(b, 0x54000001U | ((loop-b->n)&0x7ffff)<<5);
 	positive=b->n; a64put(b, 0x3400000f);
-	a64put(b, 0x4b0e03ee);
+	a64put(b, 0xcb0e03ee);
 	if(b->n > LeafMax) return 0;
 	b->code[absent] |= (b->n-absent)<<5; b->code[empty] |= (b->n-empty)<<5;
 	b->code[signonly] |= (b->n-signonly)<<5; b->code[positive] |= (b->n-positive)<<5;
 	if(p->alu){
-		a64put(b, 0x1e6201c0); // SCVTF d0,w14 is exact for the bounded decimal accumulator.
+		a64put(b, 0x9e6201c0); // SCVTF d0,x14 is exact for the bounded decimal accumulator.
 		a64put(b, 0x9e66000d); // Move the binary64 representation to the integer store register.
 		a64put(b, 0xaa000000U | 15<<16 | 63<<10 | 13<<5 | 13); // Keep negative zero from its captured sign.
 	}else{
-		a64put(b, 0x93407dcd); // Sign-extend the parsed integer result.
+		a64put(b, 0xaa0e03ed); // Keep the complete signed 64-bit accumulator.
 	}
 	a64ptr(b, 11, a->d); a64store(b, 13, p->bytes);
 	return 1;
@@ -587,7 +644,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafStringStore){
+	if(p.kind == LeafStringAppend){
+		if(!a64stringappend(&b, abi)) return 0;
+	}else if(p.kind == LeafStringStore){
 		if(!a64stringstore(&b, abi)) return 0;
 	}else if(p.kind == LeafDecimal){
 		if(!a64decimal(&b, abi, &p)) return 0;

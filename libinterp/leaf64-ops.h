@@ -20,10 +20,17 @@ struct LeafLayout {
 	int stringmax;
 };
 typedef struct LeafOp LeafOp;
+
+/* Decoded operation parameters shared by the native leaf emitters. */
 struct LeafOp {
-	int kind, bytes, input, alu, condition;
+	int kind; // Native leaf implementation selected for this opcode.
+	int bytes; // Width of the stored scalar result.
+	int input; // Source width, or the bounded digit count for decimal leaves.
+	int alu; // Arithmetic or representation variant within a leaf kind.
+	int condition; // Comparison predicate or fixed-point rounding variant.
 };
 enum {
+	LeafStringAppend = 116, // Concatenation that reuses unique ASCII storage.
 	LeafStringStore = 115,
 	LeafDecimal = 114,
 	LeafSliceCopy = 113,
@@ -67,6 +74,7 @@ leafop(LeafOp *p, int op, int wordbytes)
 		p->kind = LeafRealArithmetic; p->bytes = 8;
 		p->alu = op == IADDF ? 0 : op == ISUBF ? 1 : op == IMULF ? 2 : 3;
 		break;
+	case IADDC: p->kind = LeafStringAppend; break;
 	case IINSC: p->kind = LeafStringStore; break;
 	case ICVTCW: p->kind = LeafDecimal; break;
 	case ICVTCL: p->kind = LeafDecimal; p->bytes = 8; break;
@@ -187,6 +195,8 @@ leafop(LeafOp *p, int op, int wordbytes)
 	case IBGEW: p->kind = LeafBranch; p->condition = 5; break;
 	default: return 0;
 	}
+	if(p->kind == LeafDecimal)
+		p->input = p->alu ? 15 : p->bytes == 4 ? 9 : 18; // Digits bounded for exact parsing on every supported host.
 	if(p->input == 0) p->input = p->bytes;
 	return 1;
 }

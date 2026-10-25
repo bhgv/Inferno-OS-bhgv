@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Compare short decimal native paths with C and the FP environment."""
 import os
+import json
 import platform
 import sys
 from pathlib import Path
@@ -32,14 +33,35 @@ def function(signature):
 
 parts=[function('OP(cvtcl)')]
 source=Path(os.environ.get('DECIMAL_STRING_SOURCE',root/'libinterp/string.c')).read_text()
-parts += [function('char*\nstring2c('),function('OP(cvtcw)'),function('OP(cvtcf)')]
+realbody = function('OP(cvtcf)')
+production_parser = bool(os.environ.get('DECIMAL_VM_PARSER'))
+if production_parser:
+    realbody = realbody.replace('strtod(', 'fixture_vm_strtod(')
+parts += [function('char*\nstring2c('), function('OP(cvtcw)'), realbody]
 unit=(root/'libinterp/tests/decimal-native.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))
+if production_parser:
+    unit = 'extern double fixture_vm_strtod(const char*, char**);\n'+unit
 with tempfile.TemporaryDirectory(prefix='decimal-native-') as directory:
     td = Path(directory)
     target = td/'branches.c'
     target.write_text(unit)
     cmd = shlex.split(os.environ.get('CC','cc'))
     cmd += shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
+    objects = []
+    if production_parser:
+        minimal = td/'parser-headers'
+        minimal.mkdir()
+        header = '#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <math.h>\n'
+        header += '#define nil NULL // Production parser null pointer.\n'
+        if sys.byteorder == 'little':
+            header += '#ifndef __LITTLE_ENDIAN\n#define __LITTLE_ENDIAN 1 // Native binary64 word order.\n#endif\n'
+        (minimal/'lib9.h').write_text(header)
+        wrapper = td/'vm-parser.c'
+        wrapper.write_text('#include "lib9.h"\n#define strtod fixture_vm_strtod // Keep the libc oracle independent.\n'
+                           '#include '+json.dumps(str(root/'libmath/dtoa.c'))+'\n')
+        parser = td/'vm-parser.o'
+        subprocess.run(cmd+['-fno-strict-aliasing', '-I'+str(minimal), '-c', str(wrapper), '-o', str(parser)], check=True)
+        objects = [str(parser)]
     for bits in (64,32):
         model = td/('word'+str(bits))
         model.mkdir()
@@ -50,5 +72,5 @@ with tempfile.TemporaryDirectory(prefix='decimal-native-') as directory:
         (model/'interp.h').write_text(header)
         includes = ['-I'+str(model)]+['-I'+str(root/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
         binary = td/('branches'+str(bits))
-        subprocess.run(cmd+includes+[str(target),'-o',str(binary),'-lm'],check=True)
+        subprocess.run(cmd+includes+[str(target)]+objects+['-o',str(binary),'-lm'],check=True)
         subprocess.run([str(binary)],check=True)

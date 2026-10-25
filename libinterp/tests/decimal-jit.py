@@ -26,10 +26,13 @@ texts=[b'',b'+',b'-',b'0',b'-0',b'+0',b'1',b'-1',b'999999999',b'-999999999',
        b'+999999999',b'000000000',b'1000000000',b'2147483647',b'-2147483648',
        b'9223372036854775807',b'-9223372036854775808',b' 12',b'12 ',b'12x',
        b'\x0012',b'1\x002',b'++1',b'--1',b'\xff',b'\t1',b'0x1',
+       b'4294967295',b'-4294967296',b'999999999999999',b'-999999999999999',
+       b'1000000000000000',b'999999999999999999',b'-999999999999999999',
+       b'1000000000000000000',b'-1000000000000000000',b'123456789012345678',
        b'1.5',b'-0.0',b'1e2',b'1e-300',b'1e-999',b'1e999',b'Inf',b'nan']
 texts += [b'1'+bytes([value])+b'2' for value in range(256)]
 rng=random.Random(114)
-for length in range(1,10):
+for length in range(1,20):
     for sign in (b'',b'+',b'-'):
         texts.append(sign+bytes(rng.randrange(48,58) for _ in range(length)))
 with tempfile.TemporaryDirectory(prefix='decimal-jit-') as directory:
@@ -78,7 +81,7 @@ int emit(u32int *out,int cap,int wb,int big,int field,int value){
                 cases=[(text,0) for text in texts]+[(b'12',fault) for fault in range(1,9)]
                 for text,fault in cases:
                     body=text[1:] if text[:1] in (b'+',b'-') else text
-                    valid=(len(body)<=9 and (not body or all(48<=x<=57 for x in body)))
+                    valid=(len(body)<=(15 if big==2 else 9 if big==0 and wb==4 else 18) and (not body or all(48<=x<=57 for x in body)))
                     if big==2 and text in (b'+',b'-'):valid=False
                     if fault:valid=fault==1
                     value=0 if not body or fault==1 else int(text) if valid else 0
@@ -92,7 +95,7 @@ int emit(u32int *out,int cap,int wb,int big,int field,int value){
                                 if fault==2:owner=0
                                 if fault==3:length=-len(text)
                                 if fault==4:length=0x80000000
-                                if fault==5:length=11
+                                if fault==5:length=20
                                 put(image,8,BASE+src);put(image,16,BASE+dst);put(image,src,owner)
                                 put(image,0x800+sa,length,4);put(image,0x804+sa,-1 if fault==7 else len(text)-1 if fault==8 else len(text),4)
                                 image[0x818+sa:0x818+sa+len(text)+1]=text+bytes([65 if fault==6 else 0])
