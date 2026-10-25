@@ -1067,7 +1067,7 @@ OP(indb)
 {
 	arrayindex(sizeof(BYTE));
 }
-/* Acquire a captured reference before replacing a potentially unaligned pointer slot. */
+/* Validate and retain a live reference before replacing an unaligned owner slot. */
 OP(movp)
 {
 	Heap *h;
@@ -1078,6 +1078,8 @@ OP(movp)
 		error(exNilref);
 	if(sv != H) {
 		h = D2H(sv);
+		if(h->ref == 0 || h->ref == (ulong)-1)
+			error(exHeap);
 		h->ref++;
 		Setmark(h);
 	}
@@ -2868,7 +2870,7 @@ OP(cvtxf)
 	memmove(R.d, &result, sizeof(result));
 }
 
-/* Retain the current module before publishing into an unaligned owner slot. */
+/* Reject dead or saturated module owners before retaining and publishing self. */
 OP(self)
 {
 	Modlink *ml, *t;
@@ -2878,6 +2880,8 @@ OP(self)
 	if(ml == nil || ml == H)
 		error(exModule);
 	h = D2H(ml);
+	if(h->ref == 0 || h->ref == (ulong)-1)
+		error(exHeap);
 	h->ref++;
 	Setmark(h);
 	memmove(&t, R.d, sizeof(t));

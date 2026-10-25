@@ -15,6 +15,7 @@ REG R;
 #define P(r) (*(WORD**)R.r)
 #define T(r) (*(void**)R.r)
 int mutator=1,nprop;
+char exHeap[]="heap";
 char exNilref[]="nil",exTcheck[]="type",exModule[]="module";
 static jmp_buf boundary;
 static char *raised;

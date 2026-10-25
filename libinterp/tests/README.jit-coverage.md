@@ -2,19 +2,28 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 121 commands (69.9%); 52 remain on the interpreter path. RV64 profiles
+paths for 125 commands (72.3%); 48 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 121 | 52 |
-| ARM64 | 173 | 121 | 52 |
+| AMD64 | 173 | 125 | 48 |
+| ARM64 | 173 | 125 | 48 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
 
-The latest additions are ICASE and ICASEL on AMD64/ARM64 for ordinary numeric
+The latest additions are guarded IMOVP, ISELF, IHEADP and ITAIL paths on
+AMD64/ARM64. Empty destinations retain a live source of the current mutator
+color; destinations already holding that source skip the net-zero retain/release.
+Nil sources remain valid for pointer moves and list payloads, but not ISELF.
+Other owner replacements, collector marking and invalid reference counts retain C.
+The compiler supplies actual native heap offsets, reference width and the live
+collector color address. No color is frozen at compilation time. See
+[README.native-owners.md](README.native-owners.md) for the differential evidence.
+
+The preceding additions are ICASE and ICASEL on AMD64/ARM64 for ordinary numeric
 tables with 0 through 4095 rows. Native binary search validates module/table/
 target metadata before committing a Dis PC; larger and relocated tables keep C.
 The preceding IGOTO addition reads compiler-emitted four-byte

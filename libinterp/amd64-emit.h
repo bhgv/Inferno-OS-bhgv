@@ -316,6 +316,70 @@ x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 	return 1;
 }
 
+/* Copy already marked owners into empty or identical slots without helper calls. */
+static int
+x64owner(X64Buf *b, LeafLayout *abi, LeafOp *p)
+{
+	unsigned long long color;
+	int offset, empty, same;
+
+	if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
+	   abi->heapref <= 0 || abi->heapref > 255 || abi->heapref%8 ||
+	   abi->heapcolor <= 0 || abi->heapcolor > 255 || abi->heapcolor%4 ||
+	   abi->refbytes != 8 || abi->mutator == nil)
+		return 0;
+	offset=p->alu == 2 ? abi->listdata : abi->listtail;
+	if(p->alu >= 2 && (offset < 0 || offset > 2047))
+		return 0;
+	if(p->alu == 1){
+		x64ptr(b, 0, abi->module);
+		x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0);
+	}else{
+		x64ptr(b, 0, abi->s); x64load(b, 0, 8);
+	}
+	if(p->alu >= 2){
+		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64guard(b, 0x75);
+		x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff); x64guard(b, 0x75);
+		x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x80); x64word(b, offset);
+		x64load(b, 0, 8);
+	}
+	x64ptr(b, 2, abi->d);
+	x64byte(b, 0x4d); x64byte(b, 0x8b); x64byte(b, 0x0a); /* r9=previous owner */
+	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff);
+	x64byte(b, 0x74); same=b->n; x64byte(b, 0);
+	x64byte(b, 0x49); x64byte(b, 0x39); x64byte(b, 0xc1); x64guard(b, 0x74);
+	b->bytes[same]=b->n-same-1;
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64guard(b, 0x75);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
+	empty=-1;
+	if(p->alu == 1)
+		x64guard(b, 0x75);
+	else{
+		x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
+	}
+	x64field(b, 1, 0, -abi->heapref, 8);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x75);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff); x64guard(b, 0x75);
+	x64field(b, 2, 0, -abi->heapcolor, 4);
+	color=(unsigned long long)abi->mutator;
+	x64byte(b, 0x49); x64byte(b, 0xbb); x64word(b, color); x64word(b, color>>32);
+	x64byte(b, 0x41); x64byte(b, 0x3b); x64byte(b, 0x13); x64guard(b, 0x74);
+	/* An identical owner needs no retain/release pair, but must pass the same guards. */
+	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff);
+	x64byte(b, 0x75); same=b->n; x64byte(b, 0);
+	/* No fallible checks remain after the first owner mutation. */
+	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc1);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x88); x64word(b, -abi->heapref);
+	b->bytes[same]=b->n-same-1;
+	if(empty >= 0)
+		b->bytes[empty]=b->n-empty-1;
+	if(p->alu >= 2){
+		x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, abi->s);
+	}
+	x64store(b, 0, 8);
+	return 1;
+}
+
 /* Emit a SysV AMD64 leaf, returning its bounded count of four-byte code units. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -333,7 +397,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafCaseJump){
+	if(p.kind == LeafOwner){
+		if(!x64owner(&b, abi, &p)) return 0;
+	}else if(p.kind == LeafCaseJump){
 		if(!x64case(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafStringBranch){
 		/* Compare captured characters without touching a false branch target. */

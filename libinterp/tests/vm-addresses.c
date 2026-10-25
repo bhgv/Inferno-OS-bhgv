@@ -11,6 +11,8 @@
 #include <setjmp.h>
 
 REG R;
+/* Supply the live collector color used by guarded owner leaves. */
+int mutator;
 #define OP(name) void name(void)
 #define W(r) (*(WORD*)R.r)
 #define T(r) (*(void**)R.r)

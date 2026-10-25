@@ -4,6 +4,8 @@
 #include <stdio.h>
 
 REG R;
+/* Supply the live collector color used by guarded owner leaves. */
+int mutator;
 char exModule[]="module",exBounds[]="bounds";
 static char *raised;
 static jmp_buf boundary;

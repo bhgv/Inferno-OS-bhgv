@@ -234,6 +234,71 @@ a64case(A64Buf *b, LeafLayout *abi, LeafOp *op)
 	return 1;
 }
 
+/* Keep ownership and list-source publication behind all collector and lifetime guards. */
+static int
+a64owner(A64Buf *b, LeafLayout *abi, LeafOp *p)
+{
+	unsigned long long color;
+	int offset, empty, fallback, same, i;
+
+	if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
+	   abi->heapref <= 0 || abi->heapref > 255 || abi->heapref%8 ||
+	   abi->heapcolor <= 0 || abi->heapcolor > 255 || abi->heapcolor%4 ||
+	   abi->refbytes != 8 || abi->mutator == nil)
+		return 0;
+	offset=p->alu == 2 ? abi->listdata : abi->listtail;
+	if(p->alu >= 2 && (offset < 0 || offset > 2047))
+		return 0;
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	if(p->alu == 1)
+		a64ptr(b, 12, abi->module);
+	else{
+		a64ptr(b, 9, abi->s); a64load(b, 12, 9, 8);
+	}
+	if(p->alu >= 2){
+		a64pcguard(b, 0xb500006c, fallback);
+		a64put(b, 0xb100059f); a64pcguard(b, 0x54000061, fallback);
+		a64put(b, 0x91000000U | offset<<10 | 12<<5 | 9);
+		a64load(b, 12, 9, 8);
+	}
+	a64ptr(b, 11, abi->d); a64load(b, 10, 11, 8);
+	a64put(b, 0xb100055f);
+	same=b->n; a64put(b, 0x54000000);
+	a64put(b, 0xeb0c015f); a64pcguard(b, 0x54000060, fallback);
+	b->code[same] |= (b->n-same)<<5;
+	a64pcguard(b, 0xb500006c, fallback);
+	a64put(b, 0xb100059f);
+	empty=-1;
+	if(p->alu == 1)
+		a64pcguard(b, 0x54000061, fallback);
+	else{
+		empty=b->n; a64put(b, 0x54000000);
+	}
+	a64put(b, 0xf8400000U | ((u32int)-abi->heapref&511)<<12 | 12<<5 | 13);
+	a64pcguard(b, 0xb500006d, fallback);
+	a64put(b, 0xb10005bf); a64pcguard(b, 0x54000061, fallback);
+	a64put(b, 0xb8400000U | ((u32int)-abi->heapcolor&511)<<12 | 12<<5 | 14);
+	color=(unsigned long long)abi->mutator;
+	for(i=0; i<4; i++)
+		a64put(b, (i == 0 ? 0xd2800000U : 0xf2800000U) | i<<21 | ((color>>(i*16))&65535)<<5 | 15);
+	a64load(b, 15, 15, 4);
+	a64put(b, 0x6b0f01df); a64pcguard(b, 0x54000060, fallback);
+	/* An identical owner skips the net-zero retain/release after validating its lifetime. */
+	a64put(b, 0xb100055f);
+	same=b->n; a64put(b, 0x54000001);
+	/* Increment the native heap width, independently of the language WORD. */
+	a64put(b, 0x910005ad);
+	a64put(b, 0xf8000000U | ((u32int)-abi->heapref&511)<<12 | 12<<5 | 13);
+	b->code[same] |= (b->n-same)<<5;
+	if(empty >= 0)
+		b->code[empty] |= (b->n-empty)<<5;
+	if(p->alu >= 2)
+		a64put(b, 0xf9000000U | (abi->s/8)<<10 | 9);
+	a64store(b, 12, 8);
+	return 1;
+}
+
 /* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -253,7 +318,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafCaseJump){
+	if(p.kind == LeafOwner){
+		if(!a64owner(&b, abi, &p)) return 0;
+	}else if(p.kind == LeafCaseJump){
 		if(!a64case(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafStringBranch){
 		/* Mixed character widths share one bounded loop and a common fallback. */

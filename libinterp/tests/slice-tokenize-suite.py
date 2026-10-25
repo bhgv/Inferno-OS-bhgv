@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/owner-native.py',
     'libinterp/tests/jit-unknown-kind.py',
     'libinterp/tests/sys-pctl.py',
     'libinterp/tests/sys-packdir.py',
@@ -81,6 +82,7 @@ CORE = [
     'limbo/tests/case-max.py',
 ]
 JIT = [
+    'libinterp/tests/owner-jit.py',
     'libinterp/tests/386-byte-div.py',
     'libinterp/tests/386-types.py',
     'libinterp/tests/arm-types.py',

@@ -37,6 +37,8 @@ def measure(arch, wordbytes, profile, names, directory):
         fields['heaptype'] = 24
     if not rv and 'int linkcompiled;' in (ROOT/'libinterp/leaf64-ops.h').read_text():
         fields['linkcompiled']=16
+    if not rv:
+        fields.update(heapref=24,heapcolor=32,refbytes=8,mutator='(void*)0x100008000ULL')
     if rv:
         fields.update(xlen=64, hasm=int(profile != 'i'), hasdiv=int(profile == 'm'))
     assignments = ''.join(f'abi.{key}={value};' for key, value in fields.items())
