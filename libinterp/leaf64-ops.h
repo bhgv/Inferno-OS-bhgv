@@ -14,7 +14,8 @@ struct LeafLayout {
 	int heaptype;
 	int linkcompiled;
 	int heapref, heapcolor, refbytes;
-	void *mutator;
+	void *mutator, *nprop;
+	int markcolor;
 };
 typedef struct LeafOp LeafOp;
 struct LeafOp {

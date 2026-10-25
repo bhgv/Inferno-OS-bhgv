@@ -1,6 +1,7 @@
 #include	"dat.h"
 #include	"fns.h"
 #include	"error.h"
+#include	"raise.h"
 #include	<interp.h>
 #include	<isa.h>
 #include	"ip.h"
@@ -8,6 +9,7 @@
 #include	"srvm.h"
 
 static	QLock	dbq;
+enum { SrvMaxHosts = 10 };
 
 void
 Srv_init(void *fp)
@@ -15,122 +17,133 @@ Srv_init(void *fp)
 	USED(fp);
 }
 
+/* Publish nil before releasing a previous result in a possibly unaligned slot. */
+static void
+srvclear(void *slot)
+{
+	void *old, *empty;
+
+	memmove(&old, slot, sizeof(old));
+	empty = H;
+	memmove(slot, &empty, sizeof(empty));
+	destroy(old);
+}
+
+/* Release every native answer, including partially populated resolver vectors. */
+static void
+srvfreehosts(char **hosts, int count)
+{
+	int i;
+
+	for(i = 0; i < count; i++)
+		free(hosts[i]);
+	free(hosts);
+}
+
+/* Root nodes before string allocation and roll back both VM and native owners on error. */
+static void
+srvhostlist(char **hosts, int count, int capacity, void *slot)
+{
+	List *list;
+	String *text;
+	ulong length;
+	int i;
+
+	if(waserror()){
+		srvclear(slot);
+		srvfreehosts(hosts, capacity);
+		nexterror();
+	}
+	if(count < 0 || count > capacity)
+		error(exHeap);
+	/* Prepending in reverse preserves the resolver's original answer order. */
+	for(i = count; i > 0; i--){
+		if(hosts[i-1] == nil)
+			error(exHeap);
+		length = strlen(hosts[i-1]);
+		if(length > 0x7fffffff)
+			error(exHeap);
+		list = cons(sizeof(text), slot);
+		text = newstring(length);
+		memmove(text->Sascii, hosts[i-1], length);
+		memmove(list->data, &text, sizeof(text));
+		list->t = &Tptr;
+		Tptr.ref++;
+	}
+	poperror();
+	srvfreehosts(hosts, capacity);
+}
+
+/* Resolve native answers outside the VM lock, then publish an owned list transactionally. */
 void
 Srv_iph2a(void *fp)
 {
-	Heap *hpt;
-	String *ss;
 	F_Srv_iph2a *f;
-	int i, n, nhost;
-	List **h, *l, *nl;
-	char *hostv[10];
-	void *r;
+	char **hosts;
+	int count;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
+	srvclear(f->ret);
+	/* The vector survives longjmp without indeterminate automatic array contents. */
+	hosts = malloc(SrvMaxHosts*sizeof(*hosts));
+	if(hosts == nil)
+		error(exHeap);
+	memset(hosts, 0, SrvMaxHosts*sizeof(*hosts));
 	release();
 	qlock(&dbq);
 	if(waserror()){
 		qunlock(&dbq);
 		acquire();
+		srvfreehosts(hosts, SrvMaxHosts);
 		return;
 	}
-	nhost = so_gethostbyname(string2c(f->host), hostv, nelem(hostv));
+	count = so_gethostbyname(string2c(f->host), hosts, SrvMaxHosts);
 	poperror();
 	qunlock(&dbq);
 	acquire();
-	if(nhost == 0)
-		return;
-
-	l = (List*)H;
-	h = &l;
-	for(i = 0; i < nhost; i++) {
-		n = strlen(hostv[i]);
-		ss = newstring(n);
-		memmove(ss->Sascii, hostv[i], n);
-		free(hostv[i]);
-
-		hpt = nheap(sizeof(List) + IBY2WD);
-		hpt->t = &Tlist;
-		hpt->t->ref++;
-		nl = H2D(List*, hpt);
-		nl->t = &Tptr;
-		Tptr.ref++;
-		nl->tail = (List*)H;
-		*(String**)nl->data = ss;
-
-		*h = nl;
-		h = &nl->tail;
-	}
-	*f->ret = l;
+	srvhostlist(hosts, count, SrvMaxHosts, f->ret);
 }
 
+/* Resolve native answers outside the VM lock, then publish an owned list transactionally. */
 void
 Srv_ipa2h(void *fp)
 {
-	Heap *hpt;
-	String *ss;
 	F_Srv_ipa2h *f;
-	int i, n, naliases;
-	List **h, *l, *nl;
-	char *hostv[10];
-	void *r;
+	char **hosts;
+	int count;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
+	srvclear(f->ret);
+	/* The vector survives longjmp without indeterminate automatic array contents. */
+	hosts = malloc(SrvMaxHosts*sizeof(*hosts));
+	if(hosts == nil)
+		error(exHeap);
+	memset(hosts, 0, SrvMaxHosts*sizeof(*hosts));
 	release();
 	qlock(&dbq);
 	if(waserror()){
 		qunlock(&dbq);
 		acquire();
+		srvfreehosts(hosts, SrvMaxHosts);
 		return;
 	}
-	naliases = so_gethostbyaddr(string2c(f->addr), hostv, nelem(hostv));
+	count = so_gethostbyaddr(string2c(f->addr), hosts, SrvMaxHosts);
 	poperror();
 	qunlock(&dbq);
 	acquire();
-	if(naliases == 0)
-		return;
-
-	l = (List*)H;
-	h = &l;
-	for(i = 0; i < naliases; i++) {
-		n = strlen(hostv[i]);
-		ss = newstring(n);
-		memmove(ss->Sascii, hostv[i], n);
-		free(hostv[i]);
-
-		hpt = nheap(sizeof(List) + IBY2WD);
-		hpt->t = &Tlist;
-		hpt->t->ref++;
-		nl = H2D(List*, hpt);
-		nl->t = &Tptr;
-		Tptr.ref++;
-		nl->tail = (List*)H;
-		*(String**)nl->data = ss;
-
-		*h = nl;
-		h = &nl->tail;
-	}
-	*f->ret = l;
+	srvhostlist(hosts, count, SrvMaxHosts, f->ret);
 }
 
+/* Clear a native string owner slot without assuming pointer alignment. */
 void
 Srv_ipn2p(void *fp)
 {
 	int n;
 	char buf[16];
 	F_Srv_ipn2p *f;
-	void *r;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
+	srvclear(f->ret);
 	release();
 	qlock(&dbq);
 	if(waserror()){

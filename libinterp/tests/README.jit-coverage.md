@@ -15,13 +15,16 @@ configurations have the same opcode counts at this checkpoint.
 | RV64I | 173 | 87 | 86 |
 
 The latest additions are guarded IMOVP, ISELF, IHEADP and ITAIL paths on
-AMD64/ARM64. Empty destinations retain a live source of the current mutator
-color; destinations already holding that source skip the net-zero retain/release.
+AMD64/ARM64. Empty destinations retain a live source; destinations already
+holding that source skip the net-zero retain/release. Both paths now implement
+Setmark directly, including propagator-color sources and the live nprop flag.
 Nil sources remain valid for pointer moves and list payloads, but not ISELF.
-Other owner replacements, collector marking and invalid reference counts retain C.
+Other owner replacements and invalid reference counts retain C.
 The compiler supplies actual native heap offsets, reference width and the live
-collector color address. No color is frozen at compilation time. See
-[README.native-owners.md](README.native-owners.md) for the differential evidence.
+collector color/propagation addresses and propagator constant. No mutable
+collector state is frozen at compilation time. See
+[README.gc-owner-srv.md](README.gc-owner-srv.md) for the latest differential
+evidence. This broadens four existing opcode paths without changing the counts.
 
 The preceding additions are ICASE and ICASEL on AMD64/ARM64 for ordinary numeric
 tables with 0 through 4095 rows. Native binary search validates module/table/

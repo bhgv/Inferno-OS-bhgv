@@ -1,5 +1,9 @@
 # Native owner-copy checkpoint
 
+The following records the initial owner-leaf checkpoint. The subsequent
+[GC owner/Srv checkpoint](README.gc-owner-srv.md) removes the current-color
+restriction and adds native Setmark semantics.
+
 AMD64 and ARM64 now publish guarded native paths for IMOVP, ISELF, IHEADP
 and ITAIL. This adds four opcode IDs per backend, taking availability from
 121/52 to 125/48 native-path/interpreter-only active commands. The 173-command

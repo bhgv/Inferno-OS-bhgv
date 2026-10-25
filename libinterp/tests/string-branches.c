@@ -13,7 +13,7 @@
 
 REG R;
 /* Supply the live collector color used by guarded owner leaves. */
-int mutator;
+int mutator, nprop;
 char exNilref[]="nil",exHeap[]="heap";
 static jmp_buf boundary;
 static char *raised;

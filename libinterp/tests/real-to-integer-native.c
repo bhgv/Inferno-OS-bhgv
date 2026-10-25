@@ -5,7 +5,7 @@
 #include <math.h>
 REG R;
 /* Supply the live collector color used by guarded owner leaves. */
-int mutator;
+int mutator, nprop;
 char exInval[]="invalid";
 /* Native compilation uses ordinary owned allocations. */
 void *mallocz(ulong n,int clear) {void *p=malloc(n);if(p && clear)memset(p,0,n);return p;}

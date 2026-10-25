@@ -2191,7 +2191,7 @@ OP(consl)
 	memmove(l->data, &value, sizeof(value));
 }
 
-/* Allocate native pointer storage and acquire the original source owner. */
+/* Reject dead or saturated source owners before allocating or publishing a node. */
 OP(consp)
 {
 	List *l;
@@ -2201,6 +2201,11 @@ OP(consp)
 	memmove(&sv, R.s, sizeof(sv));
 	if(sv == nil)
 		error(exNilref);
+	if(sv != H){
+		h = D2H(sv);
+		if(h->ref == 0 || h->ref == (ulong)-1)
+			error(exHeap);
+	}
 	l = cons(sizeof(sv), R.d);
 	if(sv != H){
 		h = D2H(sv);

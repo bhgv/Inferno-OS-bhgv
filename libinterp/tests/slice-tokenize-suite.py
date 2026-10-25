@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/srv-results.py',
     'libinterp/tests/owner-native.py',
     'libinterp/tests/jit-unknown-kind.py',
     'libinterp/tests/sys-pctl.py',

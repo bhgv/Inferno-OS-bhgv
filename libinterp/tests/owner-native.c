@@ -113,7 +113,7 @@ main(void)
 	uchar before[128], expected[128];
 	ulong counts[]={0,1,2,0xffffffffUL,0x100000000UL,(ulong)-2,(ulong)-1};
 	ulong wanted, oldwanted, refs;
-	int op,sa,da,v,d,ri,color,live,alias,pass,valid,native,marked,oldrelease;
+	int op,sa,da,v,d,ri,color,live,alias,pass,valid,native,marked,oldrelease,seed;
 	int selectedop=-1, selectedref=-1;
 	char *selection;
 	unsigned long checks=0;
@@ -137,7 +137,7 @@ main(void)
 
 	for(op=0;op<4;op++)for(sa=0;sa<8;sa++)for(da=0;da<8;da++)
 	for(v=0;v<3;v++)for(d=0;d<4;d++)for(ri=0;ri<7;ri++)
-	for(color=0;color<3;color++)for(live=0;live<3;live++)for(alias=0;alias<2;alias++){
+	for(color=0;color<4;color++)for(live=0;live<3;live++)for(alias=0;alias<2;alias++)for(seed=0;seed<2;seed++){
 		if((selectedop>=0 && op!=selectedop) || (selectedref>=0 && ri!=selectedref))
 			continue;
 		value=v==0 ? nil : v==1 ? H : H2D(void*,heap);
@@ -156,7 +156,7 @@ main(void)
 			continue;
 		valid=value!=nil && (op!=1 || value!=H) && (value==H || (refs!=0 && refs!=(ulong)-1));
 		failure=value==nil || (op==1 && value==H) ? (op==1 ? exModule : exNilref) : exHeap;
-		native=valid && (old==H || old==value) && (value==H || color==mutator);
+		native=valid && (old==H || old==value);
 		marked=valid && value!=H && color!=mutator;
 		oldrelease=valid && old!=H;
 		wanted=refs; oldwanted=10;
@@ -175,13 +175,13 @@ main(void)
 			memset(&R,0,sizeof(R)); R.s=source;R.d=destination;R.M=value;R.PC=&sentinel;
 			heap->ref=refs; heap->color=color; previous->ref=10; previous->color=2;
 			memmove(list->data,&value,sizeof(value));list->tail=value;
-			nprop=0; releases=0; raised=nil;
+			nprop=seed; releases=0; raised=nil;
 			feclearexcept(FE_ALL_EXCEPT); feraiseexcept(FE_DIVBYZERO);
 			if(pass==0){
 				assert(module.jit->entry[codes[op]](&R)==native);
 				if(!native){
 					assert(!memcmp(before,slots.bytes,sizeof(before)) && heap->ref==refs && previous->ref==10);
-					assert(R.s==source && heap->color==color && nprop==0 && releases==0);
+					assert(R.s==source && heap->color==color && nprop==seed && releases==0);
 					assert(fetestexcept(FE_ALL_EXCEPT)==FE_DIVBYZERO);
 					continue;
 				}
@@ -191,7 +191,7 @@ main(void)
 				assert(!valid && raised==failure);
 			assert(!memcmp(expected,slots.bytes,sizeof(expected)));
 			assert(heap->ref==wanted && previous->ref==oldwanted && releases==(pass ? oldrelease : 0));
-			assert(heap->color==(marked ? propagator : color) && nprop==marked && previous->color==2);
+			assert(heap->color==(marked ? propagator : color) && nprop==(marked ? 1 : seed) && previous->color==2);
 			assert(R.PC==&sentinel && R.M==value && R.d==destination);
 			assert(R.s==(op>=2 ? (op==2 ? (void*)list->data : (void*)&list->tail) : source));
 			assert(fetestexcept(FE_ALL_EXCEPT)==FE_DIVBYZERO);

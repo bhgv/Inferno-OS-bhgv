@@ -31,7 +31,7 @@ static jmp_buf frame;
 static int trapped;
 REG R;
 /* Supply the live collector color used by guarded owner leaves. */
-int mutator;
+int mutator, nprop;
 /* Inject descriptor allocation failure without replacing executable mappings. */
 void *fixturemallocz(ulong size, int clear) {
     void *p;

@@ -12,7 +12,7 @@
 #include <setjmp.h>
 REG R;
 /* Supply the live collector color used by guarded owner leaves. */
-int mutator;
+int mutator, nprop;
 char exInval[]="invalid",exZdiv[]="zero",exNilref[]="nil";
 static jmp_buf boundary;
 static char *raised;

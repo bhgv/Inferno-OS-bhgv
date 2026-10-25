@@ -608,6 +608,34 @@ constructerrors(void)
 	}
 }
 
+/* Validate retained heap owners before allocation, marking or destination publication. */
+static void
+retainerrors(void)
+{
+	union {uvlong align;uchar bytes[96];} slots;
+	uchar expected[96];
+	List *source,*old,*value;
+	Heap *heap;
+	int sa,da,alias,boundary,color,before;
+	ulong refs;
+
+	for(sa=0;sa<8;sa++)for(da=0;da<8;da++)for(alias=0;alias<2;alias++)
+	for(boundary=0;boundary<2;boundary++)for(color=0;color<4;color++){
+		source=H;old=H;cons(0,&source);cons(0,&old);
+		heap=D2H(source);refs=boundary ? (ulong)-1 : 0;
+		heap->ref=refs;heap->color=color;
+		memset(slots.bytes,0xa5,sizeof(slots.bytes));
+		R.s=slots.bytes+8+sa;R.d=alias ? R.s : slots.bytes+56+da;
+		memmove(R.s,&source,sizeof(source));value=alias ? source : old;
+		memmove(R.d,&value,sizeof(value));memmove(expected,slots.bytes,sizeof(expected));
+		operation=3;before=allocations;raised=nil;
+		assert(!kprotect(run,nil) && raised==exHeap);
+		assert(allocations==before && heap->ref==refs && heap->color==color);
+		assert(!memcmp(expected,slots.bytes,sizeof(expected)) && Tptr.ref==1);
+		heap->ref=1;destroy(source);destroy(old);assert(live==0);checks++;
+	}
+}
+
 /* Require complete ownership balance and guard integrity in each VM word model. */
 int
 main(int argc, char **argv)
@@ -621,9 +649,10 @@ main(int argc, char **argv)
 	else if(LIST_HEAD_CASE == 2)rawheads();
 	else if(LIST_HEAD_CASE == 3)listlengths();
 	else if(LIST_HEAD_CASE == 4)constructors();
+	else if(LIST_HEAD_CASE == 7)retainerrors();
 	else if(LIST_HEAD_CASE == 5 || LIST_HEAD_CASE == 6)constructerrors();
 	else{
-		scalars(); aliases(); payloads(); sizes(); mappedheads(); mappedheadbounds();
+		retainerrors(); scalars(); aliases(); payloads(); sizes(); mappedheads(); mappedheadbounds();
 		scalarheads(); rawheads(); listlengths(); pointerheads(); constructors();
 	}
 	assert(live == 0 && Tlist.ref == 1 && Tptr.ref == 1 && worker.nerr == 0);

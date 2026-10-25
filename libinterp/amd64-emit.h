@@ -316,17 +316,18 @@ x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 	return 1;
 }
 
-/* Copy already marked owners into empty or identical slots without helper calls. */
+/* Copy and mark live owners into empty or identical slots without helper calls. */
 static int
 x64owner(X64Buf *b, LeafLayout *abi, LeafOp *p)
 {
 	unsigned long long color;
-	int offset, empty, same;
+	int offset, empty, same, marked;
 
 	if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
 	   abi->heapref <= 0 || abi->heapref > 255 || abi->heapref%8 ||
 	   abi->heapcolor <= 0 || abi->heapcolor > 255 || abi->heapcolor%4 ||
-	   abi->refbytes != 8 || abi->mutator == nil)
+	   abi->refbytes != 8 || abi->mutator == nil || abi->nprop == nil ||
+	   abi->markcolor < 0 || abi->markcolor > 255)
 		return 0;
 	offset=p->alu == 2 ? abi->listdata : abi->listtail;
 	if(p->alu >= 2 && (offset < 0 || offset > 2047))
@@ -360,10 +361,6 @@ x64owner(X64Buf *b, LeafLayout *abi, LeafOp *p)
 	x64field(b, 1, 0, -abi->heapref, 8);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x75);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff); x64guard(b, 0x75);
-	x64field(b, 2, 0, -abi->heapcolor, 4);
-	color=(unsigned long long)abi->mutator;
-	x64byte(b, 0x49); x64byte(b, 0xbb); x64word(b, color); x64word(b, color>>32);
-	x64byte(b, 0x41); x64byte(b, 0x3b); x64byte(b, 0x13); x64guard(b, 0x74);
 	/* An identical owner needs no retain/release pair, but must pass the same guards. */
 	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff);
 	x64byte(b, 0x75); same=b->n; x64byte(b, 0);
@@ -371,6 +368,16 @@ x64owner(X64Buf *b, LeafLayout *abi, LeafOp *p)
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc1);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x88); x64word(b, -abi->heapref);
 	b->bytes[same]=b->n-same-1;
+	x64field(b, 2, 0, -abi->heapcolor, 4);
+	color=(unsigned long long)abi->mutator;
+	x64byte(b, 0x49); x64byte(b, 0xbb); x64word(b, color); x64word(b, color>>32);
+	x64byte(b, 0x41); x64byte(b, 0x3b); x64byte(b, 0x13); x64byte(b, 0x74); marked=b->n; x64byte(b, 0);
+	/* Match Setmark's two native int stores, retaining existing nprop on no-mark paths. */
+	x64byte(b, 0xc7); x64byte(b, 0x80); x64word(b, -abi->heapcolor); x64word(b, abi->markcolor);
+	color=(unsigned long long)abi->nprop;
+	x64byte(b, 0x49); x64byte(b, 0xbb); x64word(b, color); x64word(b, color>>32);
+	x64byte(b, 0x41); x64byte(b, 0xc7); x64byte(b, 0x03); x64word(b, 1);
+	b->bytes[marked]=b->n-marked-1;
 	if(empty >= 0)
 		b->bytes[empty]=b->n-empty-1;
 	if(p->alu >= 2){

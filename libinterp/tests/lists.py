@@ -42,8 +42,8 @@ with tempfile.TemporaryDirectory(prefix='lists-') as directory:
     cmd = shlex.split(os.environ.get('CC','cc'))
     cmd += shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
     selected=os.environ.get('LIST_HEAD_CASE','')
-    if selected not in ('','nil','raw','length','construct','null-tail','null-source'):raise ValueError(selected)
-    if selected:cmd += ['-DLIST_HEAD_CASE='+{'nil':'1','raw':'2','length':'3','construct':'4','null-tail':'5','null-source':'6'}[selected]]
+    if selected not in ('','nil','raw','length','construct','null-tail','null-source','retain'):raise ValueError(selected)
+    if selected:cmd += ['-DLIST_HEAD_CASE='+{'nil':'1','raw':'2','length':'3','construct':'4','null-tail':'5','null-source':'6','retain':'7'}[selected]]
     includes = ['-I'+str(root / p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
     for model in ('native','word32'):
         override = []

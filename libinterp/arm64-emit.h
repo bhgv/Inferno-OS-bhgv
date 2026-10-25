@@ -239,12 +239,13 @@ static int
 a64owner(A64Buf *b, LeafLayout *abi, LeafOp *p)
 {
 	unsigned long long color;
-	int offset, empty, fallback, same, i;
+	int offset, empty, fallback, same, marked, i;
 
 	if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
 	   abi->heapref <= 0 || abi->heapref > 255 || abi->heapref%8 ||
 	   abi->heapcolor <= 0 || abi->heapcolor > 255 || abi->heapcolor%4 ||
-	   abi->refbytes != 8 || abi->mutator == nil)
+	   abi->refbytes != 8 || abi->mutator == nil || abi->nprop == nil ||
+	   abi->markcolor < 0 || abi->markcolor > 255)
 		return 0;
 	offset=p->alu == 2 ? abi->listdata : abi->listtail;
 	if(p->alu >= 2 && (offset < 0 || offset > 2047))
@@ -278,12 +279,6 @@ a64owner(A64Buf *b, LeafLayout *abi, LeafOp *p)
 	a64put(b, 0xf8400000U | ((u32int)-abi->heapref&511)<<12 | 12<<5 | 13);
 	a64pcguard(b, 0xb500006d, fallback);
 	a64put(b, 0xb10005bf); a64pcguard(b, 0x54000061, fallback);
-	a64put(b, 0xb8400000U | ((u32int)-abi->heapcolor&511)<<12 | 12<<5 | 14);
-	color=(unsigned long long)abi->mutator;
-	for(i=0; i<4; i++)
-		a64put(b, (i == 0 ? 0xd2800000U : 0xf2800000U) | i<<21 | ((color>>(i*16))&65535)<<5 | 15);
-	a64load(b, 15, 15, 4);
-	a64put(b, 0x6b0f01df); a64pcguard(b, 0x54000060, fallback);
 	/* An identical owner skips the net-zero retain/release after validating its lifetime. */
 	a64put(b, 0xb100055f);
 	same=b->n; a64put(b, 0x54000001);
@@ -291,6 +286,21 @@ a64owner(A64Buf *b, LeafLayout *abi, LeafOp *p)
 	a64put(b, 0x910005ad);
 	a64put(b, 0xf8000000U | ((u32int)-abi->heapref&511)<<12 | 12<<5 | 13);
 	b->code[same] |= (b->n-same)<<5;
+	a64put(b, 0xb8400000U | ((u32int)-abi->heapcolor&511)<<12 | 12<<5 | 14);
+	color=(unsigned long long)abi->mutator;
+	for(i=0; i<4; i++)
+		a64put(b, (i == 0 ? 0xd2800000U : 0xf2800000U) | i<<21 | ((color>>(i*16))&65535)<<5 | 15);
+	a64load(b, 15, 15, 4);
+	a64put(b, 0x6b0f01df);
+	marked=b->n; a64put(b, 0x54000000);
+	/* Setmark changes only the heap color and the native int propagation flag. */
+	a64put(b, 0x52800000U | abi->markcolor<<5 | 14);
+	a64put(b, 0xb8000000U | ((u32int)-abi->heapcolor&511)<<12 | 12<<5 | 14);
+	color=(unsigned long long)abi->nprop;
+	for(i=0; i<4; i++)
+		a64put(b, (i == 0 ? 0xd2800000U : 0xf2800000U) | i<<21 | ((color>>(i*16))&65535)<<5 | 15);
+	a64put(b, 0x5280002e); a64put(b, 0xb90001ee);
+	b->code[marked] |= (b->n-marked)<<5;
 	if(empty >= 0)
 		b->code[empty] |= (b->n-empty)<<5;
 	if(p->alu >= 2)
