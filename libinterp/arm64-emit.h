@@ -121,28 +121,19 @@ a64stringheader(A64Buf *b, int owner, int length, int stride, int lenoff, int da
 	b->code[done] |= b->n-done;
 }
 
-/* Turn x12/x13 bits into signed keys using x14, leaving FP state untouched. */
+/* Reject NaNs before FP execution while allowing host-controlled subnormal inputs. */
 static void
-a64realkey(A64Buf *b, int reg)
+a64realguard(A64Buf *b, int reg)
 {
-	int zero, normal, done;
+	int ordinary;
 
 	a64put(b, 0xd3400000U | 63<<16 | 62<<10 | reg<<5 | 14);
-	zero = b->n; a64put(b, 0xb400000e);
 	a64put(b, 0xd3400000U | 53<<16 | 63<<10 | 14<<5 | 14);
-	a64guard(b, 0xb500006e);
 	a64put(b, 0xf100001fU | 2047<<10 | 14<<5);
-	normal = b->n; a64put(b, 0x54000001);
+	ordinary=b->n; a64put(b, 0x54000001);
 	a64put(b, 0xd3400000U | 52<<16 | 51<<10 | reg<<5 | 14);
 	a64guard(b, 0xb400006e);
-	b->code[normal] |= (b->n-normal)<<5;
-	a64put(b, 0x93400000U | 63<<16 | 63<<10 | reg<<5 | 14);
-	a64put(b, 0xd341fdce);
-	a64put(b, 0xca000000U | 14<<16 | reg<<5 | reg);
-	done = b->n; a64put(b, 0x14000000);
-	b->code[zero] |= (b->n-zero)<<5;
-	a64put(b, 0x52800000U | reg);
-	b->code[done] |= b->n-done;
+	b->code[ordinary] |= (b->n-ordinary)<<5;
 }
 
 /* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
@@ -608,12 +599,18 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			if(p.alu) a64put(&b, 0x1b008000U | width | 12<<16 | 13<<10 | 14<<5 | 14);
 			a64ptr(&b, 11, abi->d); a64store(&b, 14, p.bytes);
 		}
-	}else if(p.kind == LeafAlu || p.kind == LeafBranch || p.kind == LeafRealBranch){
+	}else if(p.kind == LeafRealBranch){
+		/* FCMP observes FPCR flushing and reads the target only for a true predicate. */
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8); a64realguard(&b, 12);
+		a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, 8); a64realguard(&b, 13);
+		a64put(&b, 0x9e670180); a64put(&b, 0x9e6701a1); a64put(&b, 0x1e612000);
+		a64put(&b, 0x54000080U | inverse[p.condition]);
+		a64ptr(&b, 11, abi->d); a64load(&b, 12, 11, 8);
+		a64put(&b, 0xf9000000U | (u32int)(abi->pc/8)<<10 | 12);
+	}else if(p.kind == LeafAlu || p.kind == LeafBranch){
 		a64ptr(&b, 9, abi->s); a64ptr(&b, 10, abi->m);
 		a64load(&b, 12, 9, p.bytes);
-		if(p.kind == LeafRealBranch) a64realkey(&b, 12);
 		a64load(&b, 13, 10, p.bytes);
-		if(p.kind == LeafRealBranch) a64realkey(&b, 13);
 		width = p.bytes == 8 ? 0x80000000U : 0;
 		if(p.kind == LeafAlu){
 			a64put(&b, arithmetic[p.alu] | width | 12<<16 | 13<<5 | 13);

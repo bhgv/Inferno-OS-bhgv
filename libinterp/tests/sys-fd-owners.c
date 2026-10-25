@@ -8,6 +8,8 @@
 #include <stdio.h>
 
 static Proc worker;
+char Ebadarg[]="bad argument";
+static WORD descriptorarg=17;
 static char *raised;
 char exHeap[] = "heap", exNegsize[] = "negative", exBounds[] = "bounds", exNomem[] = "memory", exNilref[] = "nil";
 FD_DECLARATION
@@ -264,11 +266,19 @@ kcreate(char *path, int mode, ulong permissions)
 	return issued[0] = newfd();
 }
 
+/* Preserve a normal argument error without throwing through an ownership transition. */
+void
+seterror(char *message,...)
+{
+	assert(message==Ebadarg);
+	strcpy(environment.errstr,message);
+}
+
 /* Simulate duplication of a numeric descriptor into a new native slot. */
 int
 kdup(int fd, int destination)
 {
-	assert(operation == 3 && fd == 17 && destination == -1);
+	assert(operation == 3 && fd == (int)descriptorarg && destination == -1);
 	if(!nativebegin())
 		return -1;
 	return issued[0] = newfd();
@@ -364,7 +374,7 @@ invoke(void *unused)
 		break;
 	case 3:
 		fildesframe.ret = (void*)(returnslot.bytes+8+returnoffset);
-		fildesframe.fd = 17;
+		fildesframe.fd = descriptorarg;
 		Sys_fildes(&fildesframe);
 		break;
 	case 4:
@@ -455,7 +465,8 @@ one(int fail, int shared, int firstfd)
 	failure = fail;
 	raised = nil;
 	strcpy(environment.errstr, "unchanged");
-	eligible = operation != 4 || (pipesize >= 2 && pipebad == 0);
+	eligible = (operation != 4 || (pipesize >= 2 && pipebad == 0)) &&
+		(operation != 3 || (WORD)(int)descriptorarg==descriptorarg);
 	budget = operation == 4 ? 2 : operation == 5 ? 3 : operation >= 6 ? 2 : 1;
 	memset(returnslot.bytes,0xa5,sizeof(returnslot.bytes));
 	if(operation == 4)memmove(returnslot.bytes+8+returnoffset,&status,sizeof(status));
@@ -508,8 +519,13 @@ one(int fail, int shared, int firstfd)
 	}else{
 		assert(ok && raised == nil);
 		if(!eligible){
-			assert(status == -1 && nativecalls == 0);
-			assert(slots[0] == old[0] && slots[1] == old[1]);
+			assert(nativecalls == 0);
+			if(operation==3)
+				assert(single==H && strcmp(environment.errstr,Ebadarg)==0);
+			else{
+				assert(status == -1);
+				assert(slots[0] == old[0] && slots[1] == old[1]);
+			}
 		}else if(nativefail && operation > 0){
 			assert(strcmp(environment.errstr, "native failure") == 0);
 			if(operation <= 3)
@@ -552,7 +568,8 @@ one(int fail, int shared, int firstfd)
 int
 main(int argc, char **argv)
 {
-	int fail, shared, first, limit, length;
+	int fail, shared, first, limit, length, argument;
+	WORD arguments[]={17,0,-1,0x7fffffff,(-0x7fffffff-1),(WORD)((uvlong)1<<32),(WORD)((uvlong)1<<40),(WORD)(-((vlong)1<<40))};
 
 	worker.env = &environment;
 	environment.fgrp = &group;
@@ -561,16 +578,19 @@ main(int argc, char **argv)
 	for(operation = 0; operation < 8; operation++){
 		if(argc > 1 && strcmp(argv[1], "all") != 0 && strcmp(argv[1], operation == 0 ? "single" : operation == 4 ? "pipe" : operation >= 5 ? "connection" : "files") != 0)
 			continue;
-		for(returnoffset=0;returnoffset<(operation >= 1 ? 8 : 1);returnoffset++)
-		for(nativefail = 0; nativefail < (operation == 0 ? 1 : 2); nativefail++)
-		for(shared = 0; shared < (operation >= 4 ? 2 : 1); shared++)
-		for(first = 0; first < 2; first++){
-			limit = operation == 4 ? 3 : operation == 5 ? 4 : operation >= 6 ? 3 : 2;
-			for(length = 0; length < (operation == 4 ? 9 : 1); length++){
-				pipesize = length < 5 ? length-1 : 2;
-				pipebad = length < 5 ? 0 : length-4;
-				for(fail = 0; fail <= (argc > 2 && strcmp(argv[2], "normal") == 0 ? 0 : limit); fail++)
-					one(fail, shared, first ? 10 : 0);
+		for(argument=0;argument<(operation==3 ? nelem(arguments) : 1);argument++){
+			descriptorarg=arguments[argument];
+			for(returnoffset=0;returnoffset<(operation >= 1 ? 8 : 1);returnoffset++)
+			for(nativefail = 0; nativefail < (operation == 0 ? 1 : 2); nativefail++)
+			for(shared = 0; shared < (operation >= 4 ? 2 : 1); shared++)
+			for(first = 0; first < 2; first++){
+				limit = operation == 4 ? 3 : operation == 5 ? 4 : operation >= 6 ? 3 : 2;
+				for(length = 0; length < (operation == 4 ? 9 : 1); length++){
+					pipesize = length < 5 ? length-1 : 2;
+					pipebad = length < 5 ? 0 : length-4;
+					for(fail = 0; fail <= (argc > 2 && strcmp(argv[2], "normal") == 0 ? 0 : limit); fail++)
+						one(fail, shared, first ? 10 : 0);
+				}
 			}
 		}
 	}

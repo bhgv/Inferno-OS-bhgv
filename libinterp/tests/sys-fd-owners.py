@@ -45,6 +45,7 @@ with tempfile.TemporaryDirectory(prefix='sys-fd-owners-') as directory:
             bodies += [function(source, sig) for sig in
                        ('static Sys_FD*\ntakefd(', 'static void\nfreefdresult(',
                         'static void\nclearconnection(', 'static void\nmakeconnection(')]
+        bodies += [function(source, 'static int\nsysnativeint(')]
         bodies += [function(source, 'void\nSys_'+name+'(') for name in
                    ('open','create','fildes','pipe','dial','announce','listen')]
         target = td / 'owners.c'

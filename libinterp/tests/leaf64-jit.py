@@ -109,7 +109,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic','realinteger','realpower','divide','vncoefficient'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic','realinteger','realpower','divide','vncoefficient','realbranchfp'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -252,7 +252,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     checks+=1
                 if case=='call':continue
 
-            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False, fixedframe=None, descriptor=None, badresult=False, programaddress=None, slotshift=0, typecheck=None, stringpair=None, fpstate=None):
+            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False, fixedframe=None, descriptor=None, badresult=False, programaddress=None, slotshift=0, typecheck=None, stringpair=None, fpstate=None, branchstate=None):
                 """Exercise a leaf with high native pointers, four-byte alignment and exact aliases."""
                 if arch == 'amd64':
                     u = Uc(UC_ARCH_X86,UC_MODE_64); arg, result = UC_X86_REG_RDI, UC_X86_REG_RAX
@@ -444,6 +444,11 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     else:
                         u.reg_write(UC_ARM64_REG_FPCR,(0,2,1,3)[mode]<<22)
                         u.reg_write(UC_ARM64_REG_FPSR,2 if seed else 0)
+                if branchstate is not None:
+                    mode,flush,seed=branchstate
+                    control=(0x1f80 | mode<<13 | (flush&1)<<6 | (flush>>1)<<15) if arch=='amd64' else ((0,2,1,3)[mode]<<22 | flush<<24)
+                    u.reg_write(UC_X86_REG_MXCSR if arch=='amd64' else UC_ARM64_REG_FPCR,control | (4 if seed and arch=='amd64' else 0))
+                    if arch=='arm64':u.reg_write(UC_ARM64_REG_FPSR,2 if seed else 0)
                 u.emu_start(code,end,count=4000)
                 if expected_head is not None:assert bytes(u.mem_read(data,0x1000))==bytes(expected_head),(arch,wb,name,head,alias)
                 if expected_copy is not None:assert bytes(u.mem_read(data,0x1000))==expected_copy,(arch,wb,copy)
@@ -454,6 +459,11 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     assert int.from_bytes(u.mem_read(registers+layout.module,8),'little')==programaddress[0]
                 if typedata is not None:assert bytes(u.mem_read(data+0x700,64))==bytes(typedata)
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
+                if branchstate is not None:
+                    hardware=u.reg_read(UC_X86_REG_MXCSR if arch=='amd64' else UC_ARM64_REG_FPSR)
+                    if arch=='amd64':assert hardware&~63==control
+                    else:assert u.reg_read(UC_ARM64_REG_FPCR)==control
+                    return int.from_bytes(u.mem_read(registers,8),'little'),before,bytes(u.mem_read(output-8,32)),hardware& (63 if arch=='amd64' else 255)
                 if fpstate is not None:
                     if arch=='amd64':
                         status=u.reg_read(UC_X86_REG_MXCSR)
@@ -1022,6 +1032,38 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             assert pc==oldpc and before[:8]==after[:8] and before[8+width:]==after[8+width:]
                             checks+=1
                 if case=='scalar':continue
+            if case in ('','realbranchfp'):
+                if not rv:
+                    patterns=(0,1<<63,1,0x8000000000000001,0xfffffffffffff,0x800fffffffffffff,
+                              0x0010000000000000,0x3ff0000000000000,0xbff0000000000000,
+                              0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000042,0x7ff0000000000042)
+                    names=('IBEQF','IBNEF','IBLTF','IBLEF','IBGTF','IBGEF')
+                    for a in patterns:
+                        for b in patterns:
+                            denormal=lambda x: 0<(x&0x7fffffffffffffff)<0x0010000000000000
+                            nan=lambda x: (x&0x7fffffffffffffff)>0x7ff0000000000000
+                            valid=not(nan(a) or nan(b))
+                            for mode in range(4):
+                                for flush in range(4):
+                                    flushing=bool(flush&1)
+                                    left=struct.unpack('<d',struct.pack('<Q',a& (1<<63) if flushing and denormal(a) else a))[0]
+                                    right=struct.unpack('<d',struct.pack('<Q',b& (1<<63) if flushing and denormal(b) else b))[0]
+                                    predicates=(left==right,left!=right,left<right,left<=right,left>right,left>=right)
+                                    for condition,name in enumerate(names):
+                                        for seed in range(2):
+                                            take=valid and predicates[condition]
+                                            pc,before,after,status=run(name,a,b,expect=int(valid),badtarget=not take,branchstate=(mode,flush,seed))
+                                            assert pc==(target if take else oldpc) and before==after,(arch,wb,name,a,b,mode,flush)
+                                            wanted=(4 if arch=='amd64' else 2) if seed else 0
+                                            if valid and (denormal(a) or denormal(b)):
+                                                if arch=='amd64' and not flushing:wanted|=2
+                                                if arch=='arm64' and flushing:wanted|=128
+                                            # Unicorn 2.1.4 omits the x86 denormal-operand sticky bit.
+                                            # The physical AMD64 differential checks all MXCSR bits instead.
+                                            if arch=='amd64':status&=~2;wanted&=~2
+                                            assert status==wanted,(arch,name,hex(a),hex(b),flush,status,wanted)
+                                            checks+=1
+                if case=='realbranchfp':continue
             if case in ('','realbranch'):
                 floats=[0,1<<63,0x3ff0000000000000,0xbff0000000000000,
                         0x0010000000000000,0x8010000000000000,0x7fefffffffffffff,0xffefffffffffffff,
@@ -1038,7 +1080,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         left=struct.unpack('<d',struct.pack('<Q',a))[0]
                         right=struct.unpack('<d',struct.pack('<Q',b))[0]
                         take=[left==right,left!=right,left<right,left<=right,left>right,left>=right][relation]
-                        valid=native_real(a) and native_real(b)
+                        valid=(native_real(a) and native_real(b)) if rv else not (left!=left or right!=right)
                         _,pc,before,after,_=run(name,a,b,expect=int(valid))
                         assert pc==(target if valid and take else oldpc),(arch,wb,name,hex(a),hex(b),pc)
                         assert before==after
@@ -1048,7 +1090,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             assert pc==oldpc and before==after
                             checks+=1
                     for a in floats:
-                        if not native_real(a):
+                        if not native_real(a) and (rv or (a>>52)&2047==2047):
                             _,pc,before,after,_=run(name,a,poison=True,expect=0,badtarget=True)
                             assert pc==oldpc and before==after
                             checks+=1

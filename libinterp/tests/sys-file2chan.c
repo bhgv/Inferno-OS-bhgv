@@ -9,6 +9,9 @@
 #include <stdio.h>
 
 static Proc worker;
+static union { uvlong align; uchar bytes[32]; } returnslot;
+static int returnoffset;
+static void *watchedowner;
 static Osenv environment;
 static char *raised;
 char exNomem[] = "malloc", exHeap[] = "heap", exNegsize[] = "negative", exNilref[] = "nil";
@@ -171,6 +174,12 @@ destroy(void *value)
 
 	if(value == H)
 		return;
+	if(value==watchedowner){
+		Sys_FileIO *published;
+		memmove(&published,returnslot.bytes+8+returnoffset,sizeof(published));
+		assert(published!=watchedowner);
+		watchedowner=H;
+	}
 	assert(!released);
 	h = D2H(value);
 	assert(h->ref > 0);
@@ -269,6 +278,7 @@ IMPLEMENTATION
 static F_Sys_file2chan frame;
 static Sys_FileIO *returned;
 
+
 /* Invoke the actual builtin without moving frame state across a nonlocal jump. */
 static int
 invoke(void *unused)
@@ -303,11 +313,23 @@ one(int wide, int oldresult, int fail)
 	frame.dir = wide ? c2string("/ch\303\251n", 6) : c2string("/chan", 5);
 	frame.file = wide ? c2string("svc\360\237\230\200", 7) : c2string("service", 7);
 	old = returned = oldresult ? previous() : H;
-	frame.ret = &returned;
+	memset(returnslot.bytes,0xa5,sizeof(returnslot.bytes));
+	memmove(returnslot.bytes+8+returnoffset,&returned,sizeof(returned));
+	frame.ret = (void*)(returnslot.bytes+8+returnoffset);
+	watchedowner=old;
 	allocations = nativecalls = 0;
 	failure = fail;
 	raised = nil;
 	ok = kprotect(invoke, nil);
+	memmove(&returned,returnslot.bytes+8+returnoffset,sizeof(returned));
+	assert(returned==old || watchedowner==H);
+	{
+		uchar expected[32];
+		memset(expected,0xa5,sizeof(expected));
+		memmove(expected+8+returnoffset,&returned,sizeof(returned));
+		assert(!memcmp(expected,returnslot.bytes,sizeof(expected)));
+	}
+	watchedowner=H;
 	count = allocations;
 	failure = 0;
 	assert(worker.nerr == 0 && !released);
@@ -366,6 +388,7 @@ main(int argc, char **argv)
 	checks++;
 	if(argc == 1 || strcmp(argv[1], "layout") != 0)
 	for(nativekind = 0; nativekind < (wideonly ? 1 : normal ? 2 : 3); nativekind++)
+	for(returnoffset=0;returnoffset<8;returnoffset++)
 	for(wide = wideonly; wide < 2; wide++)for(old = 0; old < 2; old++){
 		throwing = 0;
 		count = one(wide, old, 0);

@@ -479,8 +479,8 @@ static void realbranches(Module *m) {
             for(i=0;i<nelem(bits);i++)for(j=0;j<nelem(bits);j++) {
                 memcpy(&a,&bits[i],8);memcpy(&b,&bits[j],8);take=realrelation(op,a,b);
                 expa=(bits[i]>>52)&2047;expb=(bits[j]>>52)&2047;
-                valid=((bits[i]&0xfffffffffffffULL)==0 || (expa>0 && expa<2047)) &&
-                    ((bits[j]&0xfffffffffffffULL)==0 || (expb>0 && expb<2047));
+                valid=(expa!=2047 || (bits[i]&0xfffffffffffffULL)==0) &&
+                    (expb!=2047 || (bits[j]&0xfffffffffffffULL)==0);
                 memset(slots.bytes,0xa5,sizeof(slots.bytes));
                 memcpy(slots.bytes+4,&bits[i],8);memcpy(slots.bytes+20,&bits[j],8);
                 memcpy(slots.bytes+36,&target,sizeof(target));memcpy(before,slots.bytes,sizeof(before));

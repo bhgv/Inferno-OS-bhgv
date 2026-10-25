@@ -313,33 +313,39 @@ Sys_pipe(void *fp)
 	memmove(f->ret, &outcome, sizeof(outcome));
 }
 
+/* Reject high VM argument bits before a native int parameter can silently wrap. */
+static int
+sysnativeint(WORD value)
+{
+	return value >= -0x7fffffff-1 && value <= 0x7fffffff;
+}
+
 /* Clear an unaligned owner slot before finalization and publish only a constructed FD. */
 void
 Sys_fildes(void *fp)
 {
 	F_Sys_fildes *f;
 	Sys_FD *old, *result;
+	WORD source;
 	int fd;
 
 	f = fp;
+	source = f->fd;
 	memmove(&old, f->ret, sizeof(old));
 	result = H;
 	memmove(f->ret, &result, sizeof(result));
 	destroy(old);
+	if(!sysnativeint(source)){
+		seterror(Ebadarg);
+		return;
+	}
 	release();
-	fd = kdup(f->fd, -1);
+	fd = kdup(source, -1);
 	acquire();
 	if(fd == -1)
 		return;
 	result = mkfd(fd);
 	memmove(f->ret, &result, sizeof(result));
-}
-
-/* Reject high VM argument bits before a native int parameter can silently wrap. */
-static int
-sysnativeint(WORD value)
-{
-	return value >= -0x7fffffff-1 && value <= 0x7fffffff;
 }
 
 /* Capture the native status before copying into a possibly unaligned VM return slot. */
@@ -1061,7 +1067,7 @@ Sys_file2chan(void *fp)
 {
 	F_Sys_file2chan *f;
 	volatile struct { Sys_FileIO *file; int released; } result;
-	Sys_FileIO *old;
+	Sys_FileIO *old, *published;
 	char *directory, *name, saved[ERRMAX];
 	int status;
 
@@ -1093,8 +1099,9 @@ Sys_file2chan(void *fp)
 		destroy(result.file);
 		result.file = H;
 	}
-	old = *f->ret;
-	*f->ret = result.file;
+	memmove(&old, f->ret, sizeof(old));
+	published = result.file;
+	memmove(f->ret, &published, sizeof(published));
 	destroy(old);
 	if(status < 0)
 		memmove(up->env->errstr, saved, sizeof(saved));
@@ -1224,7 +1231,7 @@ Sys_pctl(void *fp)
 	*f->ret = p->pid;
 }
 
-/* Retain ownership of native entries and partial VM records until conversion completes. */
+/* Retain ownership of native entries and publish tuple fields without alignment assumptions. */
 void
 Sys_dirread(void *fp)
 {
@@ -1232,19 +1239,27 @@ Sys_dirread(void *fp)
 	Sys_Dir *record;
 	F_Sys_dirread *f;
 	volatile struct { Heap *array; } result;
-	void *old;
-	int i, count;
+	struct { WORD status; Array *array; } layout;
+	Array *old, *published;
+	uchar *arrayslot;
+	WORD status;
+	int i, count, fd;
 
 	f = fp;
-	f->ret->t0 = -1;
-	old = f->ret->t1;
-	f->ret->t1 = H;
+	fd = fdchk(f->fd);
+	arrayslot = (uchar*)f->ret+((uchar*)&layout.array-(uchar*)&layout);
+	status = -1;
+	memmove(&old, arrayslot, sizeof(old));
+	published = H;
+	memmove(f->ret, &status, sizeof(status));
+	memmove(arrayslot, &published, sizeof(published));
 	destroy(old);
 	release();
-	count = kdirread(fdchk(f->fd), &entries);
+	count = kdirread(fd, &entries);
 	acquire();
 	if(count <= 0){
-		f->ret->t0 = count;
+		status = count;
+		memmove(f->ret, &status, sizeof(status));
 		free(entries);
 		return;
 	}
@@ -1260,8 +1275,10 @@ Sys_dirread(void *fp)
 	for(i = 0; i < count; i++)
 		unpackdir(&entries[i], &record[i]);
 	poperror();
-	f->ret->t0 = count;
-	f->ret->t1 = H2D(Array*, result.array);
+	status = count;
+	published = H2D(Array*, result.array);
+	memmove(f->ret, &status, sizeof(status));
+	memmove(arrayslot, &published, sizeof(published));
 	free(entries);
 }
 

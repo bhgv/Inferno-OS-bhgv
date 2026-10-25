@@ -143,31 +143,21 @@ x64stringheader(X64Buf *b, int owner, int length, int stride, int lenoff, int da
 	b->bytes[done]=b->n-done-1;
 }
 
-/* Turn rax/rcx bits into signed keys using rdx; defer NaNs and denormals. */
+/* Reject NaNs without FP effects; finite/subnormal comparisons use host FP controls. */
 static void
-x64realkey(X64Buf *b, int reg)
+x64realguard(X64Buf *b, int reg)
 {
-	int zero, normal, done;
+	int ordinary;
 
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2+reg*8);
 	x64byte(b, 0x48); x64byte(b, 0xd1); x64byte(b, 0xe2);
-	x64byte(b, 0x74); zero = b->n; x64byte(b, 0);
 	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xea); x64byte(b, 53);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); x64guard(b, 0x75);
 	x64byte(b, 0x81); x64byte(b, 0xfa); x64word(b, 2047);
-	x64byte(b, 0x75); normal = b->n; x64byte(b, 0);
+	x64byte(b, 0x75); ordinary=b->n; x64byte(b, 0);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2+reg*8);
 	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe2); x64byte(b, 12);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); x64guard(b, 0x74);
-	b->bytes[normal] = b->n-normal-1;
-	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2+reg*8);
-	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xfa); x64byte(b, 63);
-	x64byte(b, 0x48); x64byte(b, 0xd1); x64byte(b, 0xea);
-	x64byte(b, 0x48); x64byte(b, 0x31); x64byte(b, 0xd0+reg);
-	x64byte(b, 0xeb); done = b->n; x64byte(b, 0);
-	b->bytes[zero] = b->n-zero-1;
-	x64byte(b, 0x31); x64byte(b, reg == 0 ? 0xc0 : 0xc9);
-	b->bytes[done] = b->n-done-1;
+	b->bytes[ordinary]=b->n-ordinary-1;
 }
 
 /* Emit a SysV AMD64 leaf, returning its bounded count of four-byte code units. */
@@ -179,6 +169,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	int i, patch, n, empty, other, done, scale, loop, equal;
 	static uchar arithmetic[] = {0x01, 0x29, 0, 0x21, 0x09, 0x31};
 	static uchar inverse[] = {0x75, 0x74, 0x7d, 0x7f, 0x7e, 0x7c};
+	static uchar realinverse[] = {0x75, 0x74, 0x73, 0x77, 0x76, 0x72};
 
 	if(cap <= 0 || (abi->wordbytes != 4 && abi->wordbytes != 8) ||
 	   abi->pc < 0 || abi->s < 0 || abi->d < 0 || abi->m < 0 ||
@@ -692,12 +683,22 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			x64signeddivide(&b, p.bytes);
 			x64ptr(&b, 2, abi->d); x64store(&b, p.alu ? 2 : 0, p.bytes);
 		}
-	}else if(p.kind == LeafAlu || p.kind == LeafBranch || p.kind == LeafRealBranch){
+	}else if(p.kind == LeafRealBranch){
+		/* Read the branch target only after an ordered hardware comparison takes it. */
+		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8); x64realguard(&b, 0);
+		x64ptr(&b, 1, abi->m); x64load(&b, 1, 8); x64realguard(&b, 1);
+		x64byte(&b, 0x66); x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0x6e); x64byte(&b, 0xc0);
+		x64byte(&b, 0x66); x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0x6e); x64byte(&b, 0xc9);
+		x64byte(&b, 0x66); x64byte(&b, 0x0f); x64byte(&b, 0x2e); x64byte(&b, 0xc1);
+		x64byte(&b, realinverse[p.condition]); patch=b.n; x64byte(&b, 0);
+		x64ptr(&b, 2, abi->d);
+		x64byte(&b, 0x49); x64byte(&b, 0x8b); x64byte(&b, 0x02);
+		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0x87); x64word(&b, abi->pc);
+		b.bytes[patch]=b.n-patch-1;
+	}else if(p.kind == LeafAlu || p.kind == LeafBranch){
 		x64ptr(&b, 0, abi->s); x64ptr(&b, 1, abi->m);
 		x64load(&b, 0, p.bytes);
-		if(p.kind == LeafRealBranch) x64realkey(&b, 0);
 		x64load(&b, 1, p.bytes);
-		if(p.kind == LeafRealBranch) x64realkey(&b, 1);
 		if(p.bytes == 8) x64byte(&b, 0x48);
 		if(p.kind == LeafAlu){
 			if(p.alu == 2){ x64byte(&b, 0x0f); x64byte(&b, 0xaf); x64byte(&b, 0xc8); }

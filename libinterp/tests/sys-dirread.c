@@ -8,6 +8,8 @@
 #include <stdio.h>
 
 static Proc worker;
+static Array *watchedarray;
+static uchar *watchedstatus, *watchedslot;
 static char *raised;
 char exHeap[] = "heap", exNegsize[] = "negative", exBounds[] = "bounds", exNomem[] = "memory", exNilref[] = "nil";
 Type Tstring = {1}, Tarray = {1};
@@ -91,6 +93,14 @@ destroy(void *value)
 
 	if(value == H)
 		return;
+	if(value==watchedarray){
+		Array *published;
+		WORD status;
+		memmove(&published,watchedslot,sizeof(published));
+		memmove(&status,watchedstatus,sizeof(status));
+		assert(published==H && status==-1);
+		watchedarray=H;
+	}
 	heap = D2H(value);
 	for(i = 0; i < 256 && blocks[i].heap != heap; i++);
 	assert(i < 256 && heap->ref > 0);
@@ -228,6 +238,8 @@ checkstring(String *string, char *text)
 	assert(string != H && (string->len < 0 ? -string->len : string->len) == i);
 }
 
+static int returnoffset;
+
 /* Each failure must return (-1,nil), release old/partial results and free native entries. */
 static void
 one(int count, int fail)
@@ -236,20 +248,34 @@ one(int count, int fail)
 	Sys_FD fd = {17};
 	struct { WORD t0; Array *t1; } result;
 	Sys_Dir *record;
+	union { uvlong align; uchar bytes[64]; } returnslot;
+	uchar expected[64];
 	int i, budget;
 
 	failure = 0;
+	memset(&result,0xa5,sizeof(result));
 	result.t0 = -77;
 	result.t1 = H2D(Array*, heaparray(Tdir, 1));
 	record = (Sys_Dir*)result.t1->data;
 	retstr("previous", &record->name);
 	frame.fd = &fd;
-	frame.ret = (void*)&result;
+	memset(returnslot.bytes,0xa5,sizeof(returnslot.bytes));
+	memmove(returnslot.bytes+8+returnoffset,&result,sizeof(result));
+	memmove(expected,returnslot.bytes,sizeof(expected));
+	frame.ret = (void*)(returnslot.bytes+8+returnoffset);
+	watchedstatus=returnslot.bytes+8+returnoffset;
+	watchedslot=watchedstatus+((uchar*)&result.t1-(uchar*)&result);
+	watchedarray=result.t1;
 	nativecount = count;
 	allocations = 0;
 	failure = fail;
 	raised = nil;
 	assert(kprotect(invoke, &frame));
+	assert(watchedarray==H);
+	memmove(&result,returnslot.bytes+8+returnoffset,sizeof(result));
+	memmove(expected+8+returnoffset,&result.t0,sizeof(result.t0));
+	memmove(expected+8+returnoffset+((uchar*)&result.t1-(uchar*)&result),&result.t1,sizeof(result.t1));
+	assert(!memcmp(expected,returnslot.bytes,sizeof(expected)));
 	assert(worker.nerr == 0 && !released && !nativelive);
 	failure = 0;
 	budget = count > 0 ? 1+(pattern ? 3 : 4)*count : 0;
@@ -288,6 +314,7 @@ main(int argc, char **argv)
 	if(argc == 1 || strcmp(argv[1], "layout") == 0)
 		assert(Tdir->size == sizeof(Sys_Dir));
 	if(argc == 1 || strcmp(argv[1], "failure") == 0 || strcmp(argv[1], "content") == 0){
+		for(returnoffset=0;returnoffset<8;returnoffset++)
 		for(pattern = 0; pattern < 2; pattern++)for(count = -1; count <= 16; count++){
 			maximum = argc > 1 && strcmp(argv[1], "content") == 0 ? 0 : (count > 0 ? 4*count+2 : 2);
 			for(fail = 0; fail <= maximum; fail++)

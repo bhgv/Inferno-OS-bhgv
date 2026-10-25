@@ -45,6 +45,12 @@ scale guard now follows sign selection, without growing the emitter buffers. RV6
 Some floating conversions also retain C for their range/error contract. Instructions may therefore contribute to both native execution
 and fallback execution at runtime. No fully-native opcode count is asserted.
 
+All six AMD64/ARM64 real branch predicates now use hardware floating comparison
+for non-NaN operands, including subnormals. This follows MXCSR DAZ/FTZ and ARM64
+FPCR FZ settings and preserves floating status. Raw NaN guards remain before any
+floating operation and retain C comparison/error behavior. RV64 keeps its earlier
+normal/zero/infinity guards. This expands operand coverage without new opcode IDs.
+
 The remaining commands are a list of current interpreter dispatch paths,
 not a requirement to hand-emit an additional implementation for every opcode. Complex C
 operations already become native machine code through the platform C compiler.
