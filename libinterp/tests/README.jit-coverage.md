@@ -194,3 +194,12 @@ counts were 109/64:
 this broadens six existing native paths rather than adding six new opcode IDs.
 RISC-V string branches remain on the interpreter path. Physical ARM64 testing
 and full native-block/pointer-ABI completion remain separate work.
+
+## Channel ring width and identical-range checkpoint
+
+[Channel ring width](README.channel-ring-width.md) documents native-width
+buffer offsets, overflow-free ring wrapping and null-buffer send failures.
+AMD64 SLICELA now returns without stores for identical validated physical
+ranges. The ARM64 loop and existing 64-unit emission limit are retained.
+No opcode count changed: AMD64/ARM64 128/45, RV64+M 103/70,
+RV64+Zmmul 90/83, RV64I 87/86 (native-path/interpreter-only).

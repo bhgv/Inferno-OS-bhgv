@@ -508,7 +508,7 @@ x64sliceempty(X64Buf *b, int notempty)
 static int
 x64slicecopy(X64Buf *b, LeafLayout *a)
 {
-	int fallback, forward, loop;
+	int fallback, forward, loop, identical;
 
 	if(a->arraylen < 0 || a->arraylen > 2047 || a->arraylen%a->wordbytes ||
 	   a->arraydata < 0 || a->arraydata > 2047 || a->arraydata%8 ||
@@ -580,6 +580,8 @@ x64slicecopy(X64Buf *b, LeafLayout *a)
 	/* An explicit signed stride gives memmove order while preserving DF. */
 	x64byte(b, 0xbe); x64word(b, 1);
 	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xc2);
+	/* All span guards precede the no-store path for identical physical ranges. */
+	x64byte(b, 0x74); identical=b->n; x64byte(b, 0);
 	x64byte(b, 0x76); forward=b->n; x64byte(b, 0);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xce); x64byte(b, 0xff);
 	x64byte(b, 0x4d); x64byte(b, 0x8d); x64byte(b, 0x44); x64byte(b, 0x00); x64byte(b, 0xff);
@@ -593,6 +595,8 @@ x64slicecopy(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x49); x64byte(b, 0x01); x64byte(b, 0xf2);
 	x64byte(b, 0xff); x64byte(b, 0xc8);
 	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
+	if(b->n > sizeof(b->bytes)) return 0;
+	b->bytes[identical]=b->n-identical-1;
 	return 1;
 }
 

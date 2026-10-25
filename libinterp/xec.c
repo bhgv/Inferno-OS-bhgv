@@ -1915,7 +1915,7 @@ cgetb(Channel *c, void *v)
 		if(h->ref == 0 || h->ref == (ulong)-1)
 			error(exHeap);
 		h->ref++;
-		w = a->data+c->front*a->t->size;
+		w = a->data+(ulong)c->front*a->t->size;
 		c->front++;
 		if(c->front == c->buf->len)
 			c->front = 0;
@@ -1933,6 +1933,7 @@ cgetb(Channel *c, void *v)
 	}
 	return 0;
 }
+/* Compute wrapped indexes without signed sums and use native-width byte offsets. */
 static int
 cputb(Channel *c, void *v)
 {
@@ -1941,15 +1942,19 @@ cputb(Channel *c, void *v)
 
 	if((a = c->buf) == H)
 		return 0;
-	len = c->buf->len;
+	if(a == nil)
+		error(exNilref);
+	len = a->len;
 	if(c->size < len){
-		r = c->front+c->size;
-		if(r >= len)
-			r -= len;
+		/* Subtract the distance to the end before adding an occupied prefix. */
+		if(c->front >= len-c->size)
+			r = c->front-(len-c->size);
+		else
+			r = c->front+c->size;
 		c->size++;
 		R.s = v;
 		R.m = &c->mid;
-		R.d = a->data+r*a->t->size;
+		R.d = a->data+(ulong)r*a->t->size;
 		c->mover();
 		return 1;
 	}
@@ -2133,7 +2138,7 @@ csendalt(Channel *c, void *ip, Type *t, int len)
 {
 	REG rsav;
 
-	if(c == H || c == nil)
+	if(c == H || c == nil || c->buf == nil)
 		error(exNilref);
 
 	if(c->recv->prog == nil && (c->buf == H || c->size == c->buf->len)){

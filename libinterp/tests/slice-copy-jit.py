@@ -125,7 +125,7 @@ int emit(u32int *out,int cap,int wb,int field,int value){
                 status=machine.reg_read(UC_X86_REG_RAX if arch=='amd64' else UC_ARM64_REG_X0)
                 assert status==int(accepted),(arch,wb,length,sa,da,delta,fault,status,accepted)
                 assert bytes(machine.mem_read(BASE,0x4000))==expected,(arch,wb,length,delta,fault)
-                if not accepted or absent or count==0:assert not writes
+                if not accepted or absent or count==0 or (arch=='amd64' and sp==dp+start):assert not writes
                 if arch=='amd64':assert machine.reg_read(UC_X86_REG_MXCSR)==0x5fa5
                 else:assert machine.reg_read(UC_ARM64_REG_FPCR)==0x800000 and machine.reg_read(UC_ARM64_REG_FPSR)==0x95
 
