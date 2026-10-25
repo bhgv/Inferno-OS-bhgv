@@ -507,12 +507,14 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                               0x41cfffffffffffff,0x41d0000000000000,0xc1d0000000000000,
                               0x43cfffffffffffff,0x43d0000000000000,0xc3d0000000000000,
                               0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000042,0x7ff0000000000042]
+                    patterns += [bound+delta | sign for bound in (0x41dfffffffe00000,0x43dfffffffffffff)
+                                 for delta in (-2,-1,0,1,2) for sign in (0,1<<63)]
                     patterns += [rng.getrandbits(64) for _ in range(200)]
                     for name in names:
                         width=8 if name=='ICVTFL' else wb
                         for bits in patterns:
                             value=struct.unpack('<d',struct.pack('<Q',bits))[0]
-                            valid=(bits&0x7fffffffffffffff)<(0x41d0000000000000 if width==4 else 0x43d0000000000000)
+                            valid=(bits&0x7fffffffffffffff)<(0x41dfffffffe00000 if width==4 else 0x43dfffffffffffff)
                             for scale in ((0x3ff0000000000000,0xbff0000000000000,0,0x4000000000000000,0x7ff0000000000042) if name=='ICVTFX' else (0,)):
                                 take=valid and (name!='ICVTFX' or scale in (0x3ff0000000000000,0xbff0000000000000))
                                 for alias in range(6):
@@ -527,8 +529,8 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     lib.realcastoracle.argtypes=[C.c_uint64,C.c_int,C.c_int,C.c_int,C.POINTER(C.c_int64)]
                     for name in names:
                         width=8 if name=='ICVTFL' else wb
-                        for bits in patterns[:16]:
-                            valid=(bits&0x7fffffffffffffff)<(0x41d0000000000000 if width==4 else 0x43d0000000000000)
+                        for bits in patterns[:36]:
+                            valid=(bits&0x7fffffffffffffff)<(0x41dfffffffe00000 if width==4 else 0x43dfffffffffffff)
                             for mode in range(4):
                                 for seed in range(2):
                                     for negative in range(2 if name=='ICVTFX' else 1):

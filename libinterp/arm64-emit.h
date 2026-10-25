@@ -538,7 +538,11 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			a64put(&b, 0xeb0e01bf); a64guard(&b, 0x54000060);
 		}
 		a64put(&b, 0xd37ff98d); /* lsl x13,x12,#1 */
-		a64put(&b, 0xd2e0000eU | (p.bytes == 4 ? 0x83a0 : 0x87a0)<<5);
+		/* Shifted binary64 bounds: 2^31-0.5 or the representable value below 2^63. */
+		a64put(&b, 0xd2e0000eU | (p.bytes == 4 ? 0x83bf : 0x87bf)<<5);
+		a64put(&b, 0xf2c0000eU | 0xffff<<5);
+		a64put(&b, 0xf2a0000eU | (p.bytes == 4 ? 0xffc0 : 0xffff)<<5);
+		a64put(&b, 0xf280000eU | (p.bytes == 4 ? 0 : 0xfffe)<<5);
 		a64put(&b, 0xeb0e01bf); a64guard(&b, 0x54000063);
 		a64put(&b, 0x9e670180); /* fmov d0,x12 */
 		if(p.alu){

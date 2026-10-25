@@ -614,23 +614,30 @@ Sys_pwrite(void *fp)
 	acquire();
 }
 
-/* Convert one directory record into an initialized, owned VM record. */
+/* Update owned strings in place, then copy scalar metadata without alignment assumptions. */
 static void
-unpackdir(Dir *d, Sys_Dir *sd)
+unpackdir(Dir *d, void *slot)
 {
-	retstr(d->name, &sd->name);
-	retstr(d->uid, &sd->uid);
-	retstr(d->gid, &sd->gid);
-	retstr(d->muid, &sd->muid);
-	sd->qid.path = d->qid.path;
-	sd->qid.vers = d->qid.vers;
-	sd->qid.qtype = d->qid.type;
-	sd->mode = d->mode;
-	sd->atime = d->atime;
-	sd->mtime = d->mtime;
-	sd->length = d->length;
-	sd->dtype = d->type;
-	sd->dev = d->dev;
+	Sys_Dir result;
+	uchar *bytes;
+
+	bytes = slot;
+	retstr(d->name, bytes+offsetof(Sys_Dir, name));
+	retstr(d->uid, bytes+offsetof(Sys_Dir, uid));
+	retstr(d->gid, bytes+offsetof(Sys_Dir, gid));
+	retstr(d->muid, bytes+offsetof(Sys_Dir, muid));
+	/* String publication remains visible to GC during subsequent allocations. */
+	memmove(&result, slot, sizeof(result));
+	result.qid.path = d->qid.path;
+	result.qid.vers = d->qid.vers;
+	result.qid.qtype = d->qid.type;
+	result.mode = d->mode;
+	result.atime = d->atime;
+	result.mtime = d->mtime;
+	result.length = d->length;
+	result.dtype = d->type;
+	result.dev = d->dev;
+	memmove(slot, &result, sizeof(result));
 }
 
 static Dir*
@@ -671,61 +678,89 @@ packdir(Sys_Dir *sd)
 	return d;
 }
 
+/* Keep partial directory ownership valid while publishing unaligned status and fields. */
 void
 Sys_fstat(void *fp)
 {
 	Dir *d;
 	F_Sys_fstat *f;
+	F_Sys_fstat layout;
+	union { uvlong align; uchar bytes[sizeof(*f->ret)]; } scratch;
+	uchar *recordslot;
+	WORD status;
+	int fd;
 
 	f = fp;
-	f->ret->t0 = -1;
+	fd = fdchk(f->fd);
+	/* Generated return tuples can contain explicit padding beyond native alignment. */
+	layout.ret = (void*)scratch.bytes;
+	recordslot = (uchar*)f->ret+((uchar*)&layout.ret->t1-scratch.bytes);
+	status = -1;
+	memmove(f->ret, &status, sizeof(status));
 	release();
-	d = kdirfstat(fdchk(f->fd));
+	d = kdirfstat(fd);
 	acquire();
 	if(d == nil)
 		return;
 	if(waserror() == 0){
-		unpackdir(d, &f->ret->t1);
-		f->ret->t0 = 0;
+		unpackdir(d, recordslot);
+		status = 0;
+		memmove(f->ret, &status, sizeof(status));
 		poperror();
 	}
 	free(d);
 }
 
+/* Keep partial directory ownership valid while publishing unaligned status and fields. */
 void
 Sys_stat(void *fp)
 {
 	Dir *d;
 	F_Sys_stat *f;
+	F_Sys_stat layout;
+	union { uvlong align; uchar bytes[sizeof(*f->ret)]; } scratch;
+	uchar *recordslot;
+	WORD status;
+	String *path;
 
 	f = fp;
-	f->ret->t0 = -1;
+	path = f->s;
+	/* Generated return tuples can contain explicit padding beyond native alignment. */
+	layout.ret = (void*)scratch.bytes;
+	recordslot = (uchar*)f->ret+((uchar*)&layout.ret->t1-scratch.bytes);
+	status = -1;
+	memmove(f->ret, &status, sizeof(status));
 	release();
-	d = kdirstat(string2c(f->s));
+	d = kdirstat(string2c(path));
 	acquire();
 	if(d == nil)
 		return;
 	if(waserror() == 0){
-		unpackdir(d, &f->ret->t1);
-		f->ret->t0 = 0;
+		unpackdir(d, recordslot);
+		status = 0;
+		memmove(f->ret, &status, sizeof(status));
 		poperror();
 	}
 	free(d);
 }
 
+/* Clear the string owner before finalization and retain the native path until conversion ends. */
 void
 Sys_fd2path(void *fp)
 {
 	F_Sys_fd2path *f;
 	char *s;
-	void *r;
+	String *old, *empty;
+	int fd;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
+	fd = fdchk(f->fd);
+	memmove(&old, f->ret, sizeof(old));
+	empty = H;
+	memmove(f->ret, &empty, sizeof(empty));
+	destroy(old);
 	release();
-	s = kfd2path(fdchk(f->fd));
+	s = kfd2path(fd);
 	acquire();
 	if(waserror() == 0){
 		retstr(s, f->ret);
@@ -1051,14 +1086,17 @@ Sys_stream(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Capture the native export status before publishing an unaligned VM result. */
 void
 Sys_export(void *fp)
 {
 	F_Sys_export *f;
+	WORD result;
 
 	f = fp;
 	release();
-	*f->ret = export(fdchk(f->c), string2c(f->dir), f->flag&Sys_EXPASYNC);
+	result = export(fdchk(f->c), string2c(f->dir), f->flag&Sys_EXPASYNC);
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 

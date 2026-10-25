@@ -662,7 +662,7 @@ badtable:
 
 /* Prepare the string before publishing through a potentially unaligned return slot. */
 void
-retnstr(char *s, int n, String **d)
+retnstr(char *s, int n, void *d)
 {
 	String *s1, *old;
 
@@ -674,9 +674,9 @@ retnstr(char *s, int n, String **d)
 	destroy(old);
 }
 
-/* Retain the original owner until conversion and return-slot publication succeed. */
+/* Retain the original owner until conversion and byte-addressed slot publication succeed. */
 void
-retstr(char *s, String **d)
+retstr(char *s, void *d)
 {
 	String *s1, *old;
 	uvlong length;

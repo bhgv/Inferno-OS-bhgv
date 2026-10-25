@@ -597,7 +597,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0xf2); x64byte(&b, 0x41); x64byte(&b, 0x0f); x64byte(&b, 0x11); x64byte(&b, 0x02);
 	}else if(p.kind == LeafRealInteger){
 		/* Guard bits before any FP effects; rejected leaves must preserve FP status.
-		 * The conservative range leaves room for rounding in every host FP mode. */
+		 * The symmetric bounds leave room for the half-unit addition in every FP mode. */
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		if(p.alu){
 			x64ptr(&b, 1, abi->m); x64load(&b, 1, 8);
@@ -607,7 +607,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		}
 		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xc1);
 		x64byte(&b, 0x48); x64byte(&b, 0xd1); x64byte(&b, 0xe1);
-		x64byte(&b, 0x48); x64byte(&b, 0xba); x64word(&b, 0); x64word(&b, p.bytes == 4 ? 0x83a00000U : 0x87a00000U);
+		x64byte(&b, 0x48); x64byte(&b, 0xba); x64word(&b, p.bytes == 4 ? 0xffc00000U : 0xfffffffeU); x64word(&b, p.bytes == 4 ? 0x83bfffffU : 0x87bfffffU);
 		x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xd1); x64guard(&b, 0x72);
 		x64byte(&b, 0x66); x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0x6e); x64byte(&b, 0xc0);
 		if(p.alu){

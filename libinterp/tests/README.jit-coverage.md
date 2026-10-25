@@ -18,7 +18,11 @@ The latest addition is IEXPF on AMD64/ARM64, using the same repeated-squaring
 sequence as C, including negative and minimum-width exponents. Earlier additions
 include guarded ICVTFW, ICVTFL and ICVTFX paths.
 The real-to-integer paths retain C for non-finite and large inputs; ICVTFX
-currently accepts exact +1.0 and -1.0 scales. Earlier additions include IADDF, ISUBF,
+currently accepts exact +1.0 and -1.0 scales. CVTFW/CVTFL/CVTFX now accept
+absolute source values below 2147483647.5 for a 32-bit result, or below the
+binary64 value 2^63-1024 for a 64-bit result. These symmetric bounds leave room
+for the half-unit correction in every rounding mode; remaining boundary and
+error cases retain C. Earlier additions include IADDF, ISUBF,
 IMULF, IDIVF and ICVTXF.
 They preserve host floating rounding and sticky exception state; numerical C
 helpers remain in use for complex operations.

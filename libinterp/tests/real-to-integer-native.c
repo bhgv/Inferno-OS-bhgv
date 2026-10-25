@@ -24,7 +24,10 @@ main(void)
 	uchar before[128],expected[128];
 	Module module={0};Inst code[3]={{0}};
 	union {uvlong bits;REAL value;} input;
-	REAL edges[]={0.,-0.,1.,-1.,.5,-.5,1.5,-1.5,2147483647.,-2147483648.,2147483648.,-2147483649.,0x1p52,-0x1p52,0x1.ffffffffffffep51,0x1p63,-0x1p63,INFINITY,-INFINITY,NAN,0x1p-1074};
+	REAL edges[]={0.,-0.,1.,-1.,.5,-.5,1.5,-1.5,2147483647.,-2147483648.,2147483648.,-2147483649.,0x1p52,-0x1p52,0x1.ffffffffffffep51,0x1p63,-0x1p63,INFINITY,-INFINITY,NAN,0x1p-1074,
+		0x1p30,-0x1p30,2147483647.4999998,-2147483647.4999998,2147483647.5,-2147483647.5,
+		0x1p62,-0x1p62,0x1.ffffffffffffep62,-0x1.ffffffffffffep62,
+		0x1.fffffffffffffp62,-0x1.fffffffffffffp62};
 	int rounds[]={FE_TONEAREST,FE_DOWNWARD,FE_UPWARD,FE_TOWARDZERO};
 	uvlong state=0x7265616c696e74ULL;
 	int i,op,sa,da,alias,round,flags,valid,width,native,expectedflags,co;
@@ -43,7 +46,7 @@ main(void)
 		else input.value=(vlong)(state&((1ULL<<53)-1))-(vlong)(1ULL<<52);
 		for(op=0;op<3;op++){
 			width=op==1 ? 8 : sizeof(WORD);
-			valid=isfinite(input.value) && fabs(input.value)<(width==4 ? 0x1p30 : 0x1p62);
+			valid=isfinite(input.value) && fabs(input.value)<(width==4 ? 2147483647.5 : 0x1.fffffffffffffp62);
 			for(co=0;co<(op==2 ? nelem(scales) : 1);co++)
 			for(sa=0;sa<8;sa++)for(da=0;da<8;da++)for(alias=0;alias<6;alias++)
 			for(round=0;round<4;round++)for(flags=0;flags<2;flags++){

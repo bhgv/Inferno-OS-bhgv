@@ -296,6 +296,15 @@ kstrcpy(char *dst,char *src,int size)
 	strcpy(dst,src);
 }
 
+/* Preserve the export flag mask and scalar native result without exporting a namespace. */
+int
+export(int fd,char *directory,int flags)
+{
+	nativecall(15);
+	assert(fd==17 && !strcmp(directory,"first") && flags==(3&Sys_EXPASYNC));
+	return nativeint;
+}
+
 IMPLEMENTATION
 /* Check every return alignment, complete status width and native-int narrowing boundary. */
 int
@@ -304,6 +313,7 @@ main(void)
 	WORD arguments[]={0,1,-1,17,0x7fffffff,(-0x7fffffff-1),(WORD)((uvlong)1<<32),(WORD)((uvlong)1<<40),(WORD)(-((vlong)1<<40))};
 	int results[]={0,1,-1,0x7fffffff,(-0x7fffffff-1)};
 	LONG bigresults[]={0,1,-1,9223372036854775807LL,(-9223372036854775807LL-1)};
+	F_Sys_export exportframe={0};
 	F_Sys_dup dup={0};
 	F_Sys_remove remove={0};
 	F_Sys_seek seek={0};
@@ -337,7 +347,7 @@ main(void)
 	group.fd=descriptors;
 	group.nfd=2;
 
-	for(operation=0;operation<15;operation++)
+	for(operation=0;operation<16;operation++)
 	for(i=0;i<(operation==0 || operation==2 || operation==5 || operation==6 || operation==11 ? nelem(arguments) : 1);i++)
 	for(j=0;j<(operation==0 ? nelem(arguments) : operation==12 || operation==13 ? 3 : 1);j++)
 	for(r=0;r<nelem(results);r++)for(offset=0;offset<8;offset++){
@@ -364,9 +374,10 @@ main(void)
 		memmove(expected,memory.bytes,sizeof(expected));
 		dup.ret=remove.ret=unmount.ret=chdir.ret=mount.ret=bind.ret=iounit.ret=(void*)(memory.bytes+8+offset);
 		seek.ret=(void*)(memory.bytes+8+offset);
-		print.ret=fprint.ret=werrstr.ret=wstat.ret=fwstat.ret=millisec.ret=sleep.ret=(void*)(memory.bytes+8+offset);
-		print.s=fprint.s=werrstr.s=&strings[0];
+		exportframe.ret=print.ret=fprint.ret=werrstr.ret=wstat.ret=fwstat.ret=millisec.ret=sleep.ret=(void*)(memory.bytes+8+offset);
+		exportframe.dir=print.s=fprint.s=werrstr.s=&strings[0];
 		fprint.fd=printmode==2 ? H : &fd;
+		exportframe.c=&fd;exportframe.flag=3;
 		wstat.s=&strings[0];
 		fwstat.fd=&fd;
 		sleep.period=first;
@@ -403,7 +414,8 @@ main(void)
 		case 11:Sys_sleep(&sleep);break;
 		case 12:Sys_print(&print);break;
 		case 13:Sys_fprint(&fprint);break;
-		default:Sys_werrstr(&werrstr);break;
+		case 14:Sys_werrstr(&werrstr);break;
+		default:Sys_export(&exportframe);break;
 		}
 		wordresult=valid ? (WORD)nativeint : -1;
 		bigresult=valid ? (LONG)nativebig : -1;
