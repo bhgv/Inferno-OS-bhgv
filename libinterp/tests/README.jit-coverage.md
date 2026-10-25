@@ -275,3 +275,12 @@ AMD64/ARM64. Both now provide 135 guarded opcode paths / 38 interpreter-only
 active commands. RISC-V profiles remain 103/70, 90/83 and 87/86. Channel Type
 preflight now accounts for buffer, mover and aliased header references before
 creating any resource.
+
+## Imported frame checkpoint
+
+[MFRAME and malformed frame metadata](README.mframe-native.md) adds MFRAME for
+nonnegative imports and pointer-free frames that fit in the existing extent.
+AMD64/ARM64 now provide 136 guarded paths / 37 interpreter-only active commands;
+RISC-V profiles remain 103/70, 90/83 and 87/86. C frame/stack checks reject
+negative pointer-map lengths, and named-export lookup rejects an H table before
+scanning names.

@@ -1184,6 +1184,8 @@ moduleentry(Modlink *ml, WORD index, Modl *entry)
 	}
 	if(ml->m == nil || ml->m == H)
 		return 0;
+	if(ml->m->ext == H)
+		return 0;
 	if(ml->m->ext != nil)
 		for(l = ml->m->ext; l->name != nil; l++, index++)
 			if(index == -1){
@@ -1199,7 +1201,7 @@ moduleentry(Modlink *ml, WORD index, Modl *entry)
 static int
 framefits(Type *t)
 {
-	if(t == nil || t == H || t->size < (int)sizeof(Frame) ||
+	if(t == nil || t == H || t->size < (int)sizeof(Frame) || t->np < 0 ||
 	   R.SP == nil || R.SP == H || R.TS == nil || R.TS == H || R.SP > R.TS)
 		error(exHeap);
 	return (ulong)t->size < (ulong)(R.TS-R.SP);

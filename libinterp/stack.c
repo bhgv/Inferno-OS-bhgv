@@ -4,6 +4,7 @@
 #include "raise.h"
 #include <pool.h>
 
+
 /* Bound the complete extent before narrowing its size or growing a frame. */
 static int
 stacksize(Type *t, ulong hint, int grow)
@@ -11,7 +12,7 @@ stacksize(Type *t, ulong hint, int grow)
 	ulong header, need;
 
 	header = OA(Stkext, reg.tos.fu);
-	if(t == nil || t == H || t->size < sizeof(Frame) ||
+	if(t == nil || t == H || t->size < sizeof(Frame) || t->np < 0 ||
 	   (ulong)t->size > 0x7fffffff-header || hint > 0x7fffffff)
 		error(exHeap);
 	need = header+t->size;

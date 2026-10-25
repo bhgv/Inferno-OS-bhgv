@@ -228,6 +228,40 @@ invalid(void)
 	}
 }
 
+/* Reject negative pointer-map lengths before allocation or stack publication. */
+static void
+negativemaps(void)
+{
+	union {uvlong align;uchar bytes[256];} storage;
+	Type type={0};
+	Module module={0};
+	Modlink link={0};
+	Prog child;
+	Frame *source;
+	REG before;
+	int op;
+
+	type.size=sizeof(Frame)+32;type.np=-1;link.m=&module;
+	for(op=0;op<3;op++){
+		memset(&R,0,sizeof(R));memset(&child,0,sizeof(child));
+		putframe(storage.bytes,&type);source=(Frame*)storage.bytes;
+		R.M=child.R.M=&link;R.FP=storage.bytes;
+		R.s=op==1 ? (void*)&type : (void*)&source;
+		before=op==0 ? child.R : R;
+		allocations=releases=0;failure=0;raised=nil;
+		if(setjmp(boundary)==0){
+			if(op==0)newstack(&child);
+			if(op==1)extend();
+			if(op==2)unframe();
+			abort();
+		}
+		if(raised!=exHeap || allocations || releases || owned ||
+		   memcmp(&before,op==0 ? &child.R : &R,sizeof(before)))abort();
+		checks++;
+	}
+}
+
+
 /* Keep error-bearing families independent under address/undefined sanitizers. */
 int
 main(int argc,char **argv)
@@ -236,7 +270,7 @@ main(int argc,char **argv)
 	if(!strcmp(argv[1],"copy"))copyframes();
 	if(!strcmp(argv[1],"pop"))popframes();
 	if(!strcmp(argv[1],"extent"))extentcycle();
-	if(!strcmp(argv[1],"invalid"))invalid();
+	if(!strcmp(argv[1],"invalid")){invalid();negativemaps();}
 	assert(checks>0 && owned==nil);
 	printf("PASS stack lifecycle: %d %s checks WORD%zu\n",checks,argv[1],sizeof(WORD)*8);
 	return 0;

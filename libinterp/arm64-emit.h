@@ -690,7 +690,7 @@ a64stringslice(A64Buf *b, LeafLayout *a)
 
 /* Publish pointer-free stack frames only after every metadata and extent guard. */
 static int
-a64frame(A64Buf *b, LeafLayout *a)
+a64frame(A64Buf *b, LeafLayout *a, int imported)
 {
 	int offsets[10], i, fallback;
 
@@ -699,25 +699,42 @@ a64frame(A64Buf *b, LeafLayout *a)
 	offsets[7]=a->modulenty; offsets[8]=a->typenp; offsets[9]=a->typesize;
 	for(i=0; i<10; i++)
 		if(offsets[i]<0 || offsets[i]>2047 || offsets[i]%(i<7 ? 8 : 4))return 0;
+	if(imported && (a->linknlinks<0 || a->linknlinks>2047 || a->linknlinks%4 ||
+	   a->linklinks<0 || a->linklinks>2047 || a->linklinks%8 ||
+	   a->modlbytes!=16 || a->modlframe<0 || a->modlframe>8 || a->modlframe%8))return 0;
 	if(a->framesize<32 || a->framesize>2047 || a->framesize%8 || a->frametype>a->framesize-8 || a->framemr>a->framesize-8 ||
 	   a->frametype==a->framemr)return 0;
 	a64put(b, 0x14000003);
 	fallback=b->n; a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
-	a64ptr(b, 9, a->s); a64load(b, 12, 9, a->wordbytes);
-	if(a->wordbytes==4)a64put(b, 0x93407d8c);
-	a64ptr(b, 13, a->module);
-	for(i=0; i<3; i++){
-		a64put(b, 0x910005a2); a64put(b, 0xf100045f);
-		a64defer(b, 0x54000009, fallback);
-		if(i==0)a64field(b, 13, 13, a->linkmodule, 8);
-		if(i==1){
-			a64wordfield(b, 14, 13, a->modulenty, 4);
-			a64put(b, 0xf10001df); a64defer(b, 0x5400000b, fallback);
-			a64put(b, 0xeb0e019f); a64defer(b, 0x54000002, fallback);
-			a64field(b, 13, 13, a->moduletypes, 8);
+	if(imported){
+		/* Keep the full WORD index; negative export ordinals retain C lookup. */
+		a64ptr(b, 9, a->s); a64load(b, 13, 9, 8);
+		a64put(b, 0x910005a2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+		/* Match the C error boundary before fetching a possibly inaccessible index. */
+		a64ptr(b, 10, a->m); a64load(b, 12, 10, a->wordbytes);
+		if(a->wordbytes==4)a64put(b, 0x93407d8c);
+		a64wordfield(b, 14, 13, a->linknlinks, 4);
+		a64put(b, 0xf10001df); a64defer(b, 0x5400000b, fallback);
+		a64put(b, 0xeb0e019f); a64defer(b, 0x54000002, fallback);
+		a64put(b, 0x8b0c11ad); // add x13,x13,x12,lsl #4.
+		a64field(b, 14, 13, a->linklinks+a->modlframe, 8);
+	}else{
+		a64ptr(b, 9, a->s); a64load(b, 12, 9, a->wordbytes);
+		if(a->wordbytes==4)a64put(b, 0x93407d8c);
+		a64ptr(b, 13, a->module);
+		for(i=0; i<3; i++){
+			a64put(b, 0x910005a2); a64put(b, 0xf100045f);
+			a64defer(b, 0x54000009, fallback);
+			if(i==0)a64field(b, 13, 13, a->linkmodule, 8);
+			if(i==1){
+				a64wordfield(b, 14, 13, a->modulenty, 4);
+				a64put(b, 0xf10001df); a64defer(b, 0x5400000b, fallback);
+				a64put(b, 0xeb0e019f); a64defer(b, 0x54000002, fallback);
+				a64field(b, 13, 13, a->moduletypes, 8);
+			}
 		}
+		a64put(b, 0xf86c79ae); // ldr x14,[x13,x12,lsl #3].
 	}
-	a64put(b, 0xf86c79ae); // ldr x14,[x13,x12,lsl #3].
 	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
 	a64wordfield(b, 15, 14, a->typesize, 4);
 	a64put(b, 0xd2800002U | (u32int)a->framesize<<5);
@@ -758,7 +775,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
 	if(p.kind == LeafFrame){
-		if(!a64frame(&b, abi))return 0;
+		if(!a64frame(&b, abi, p.alu))return 0;
 	}else if(p.kind == LeafStringSlice){
 		if(!a64stringslice(&b, abi)) return 0;
 	}else if(p.kind == LeafStringAppend){

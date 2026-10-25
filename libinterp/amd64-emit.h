@@ -881,7 +881,7 @@ x64stringslice(X64Buf *b, LeafLayout *a)
 
 /* Allocate a pointer-free frame within the current extent after write-free checks. */
 static int
-x64frame(X64Buf *b, LeafLayout *a)
+x64frame(X64Buf *b, LeafLayout *a, int imported)
 {
 	int offsets[10], i;
 
@@ -890,25 +890,44 @@ x64frame(X64Buf *b, LeafLayout *a)
 	offsets[7]=a->modulenty; offsets[8]=a->typenp; offsets[9]=a->typesize;
 	for(i=0; i<10; i++)
 		if(offsets[i]<0 || offsets[i]>2047 || offsets[i]%(i<7 ? 8 : 4))return 0;
+	if(imported && (a->linknlinks<0 || a->linknlinks>2047 || a->linknlinks%4 ||
+	   a->linklinks<0 || a->linklinks>2047 || a->linklinks%8 ||
+	   a->modlbytes!=16 || a->modlframe<0 || a->modlframe>8 || a->modlframe%8))return 0;
 	if(a->framesize<32 || a->framesize>2047 || a->framesize%8 || a->frametype>a->framesize-8 || a->framemr>a->framesize-8 ||
 	   a->frametype==a->framemr)return 0;
-	x64ptr(b, 0, a->s); x64load(b, 0, a->wordbytes);
-	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc6); // rsi is the complete signed index.
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xf6); x64guard(b, 0x79);
-	x64ptr(b, 0, a->module); x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0);
-	for(i=0; i<3; i++){
-		/* Pointer+1 is 0/1 for H/null; no address is dereferenced on rejection. */
+	if(imported){
+		/* Resolve a nonnegative import index without reading the legacy module Type table. */
+		x64ptr(b, 0, a->s); x64load(b, 0, 8);
 		x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
 		x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
-		if(i==0)x64field(b, 0, 0, a->linkmodule, 8);
-		if(i==1){
-			x64field(b, 1, 0, a->modulenty, 4);
-			x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64guard(b, 0x72);
-			x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x79);
-			x64field(b, 0, 0, a->moduletypes, 8);
+		/* Invalid module owners must decline before reading the index operand. */
+		x64ptr(b, 1, a->m); x64field(b, 6, 9, 0, a->wordbytes);
+		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xf6); x64guard(b, 0x79);
+		x64field(b, 1, 0, a->linknlinks, 4);
+		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x79);
+		x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64guard(b, 0x72);
+		x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe6); x64byte(b, 4);
+		x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x84); x64byte(b, 0x30);
+		x64word(b, a->linklinks+a->modlframe);
+	}else{
+		x64ptr(b, 0, a->s); x64load(b, 0, a->wordbytes);
+		x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc6); // rsi is the complete signed index.
+		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xf6); x64guard(b, 0x79);
+		x64ptr(b, 0, a->module); x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0);
+		for(i=0; i<3; i++){
+			/* Pointer+1 is 0/1 for H/null; no address is dereferenced on rejection. */
+			x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
+			x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
+			if(i==0)x64field(b, 0, 0, a->linkmodule, 8);
+			if(i==1){
+				x64field(b, 1, 0, a->modulenty, 4);
+				x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64guard(b, 0x72);
+				x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x79);
+				x64field(b, 0, 0, a->moduletypes, 8);
+			}
 		}
+		x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x04); x64byte(b, 0xf0);
 	}
-	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x04); x64byte(b, 0xf0);
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
 	x64field(b, 1, 0, a->typesize, 4);
@@ -950,7 +969,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
 	if(p.kind == LeafFrame){
-		if(!x64frame(&b, abi))return 0;
+		if(!x64frame(&b, abi, p.alu))return 0;
 	}else if(p.kind == LeafStringSlice){
 		if(!x64stringslice(&b, abi)) return 0;
 	}else if(p.kind == LeafStringAppend){

@@ -87,7 +87,7 @@ main(void)
 	instruction.op=IFRAME;compiled.prog=&instruction;compiled.nprog=1;
 	if(!compile(&compiled,1,nil) || !compiled.jit || !compiled.jit->entry[IFRAME])abort();
 	owner.type=types;owner.ntype=1;link.m=&owner;
-	for(mode=0;mode<8;mode++)for(sa=0;sa<8;sa++)for(da=0;da<8;da++)
+	for(mode=0;mode<9;mode++)for(sa=0;sa<8;sa++)for(da=0;da<8;da++)
 	for(alias=0;alias<3;alias++)for(pass=0;pass<2;pass++){
 		memset(memory.bytes,0xa5,sizeof(memory.bytes));memset(&R,0,sizeof(R));
 		descriptor.size=sizeof(Frame)+32;descriptor.np=0;
@@ -103,6 +103,7 @@ main(void)
 		if(mode==5)R.TS=H;
 		if(mode==6)R.SP=nil;
 		if(mode==7)R.TS=nil;
+		if(mode==8)descriptor.np=-1;
 		memmove(before,memory.bytes,sizeof(before));memmove(expected,before,sizeof(before));memmove(&saved,&R,sizeof(R));
 		extensions=initialized=0;raised=nil;valid=mode==0 || mode==2;
 		if(pass==0){
