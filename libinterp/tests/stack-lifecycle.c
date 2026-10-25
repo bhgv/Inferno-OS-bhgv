@@ -262,6 +262,38 @@ negativemaps(void)
 }
 
 
+/* Invalid extension owners must leave saved registers and storage untouched. */
+static void
+invalidunextend(void)
+{
+	union {uvlong align;uchar bytes[256];} storage;
+	Stkext *extent=(Stkext*)storage.bytes;
+	Type type={0};
+	Type *selected;
+	Frame *frame;
+	REG before;
+	int mode;
+	char *wanted;
+
+	for(mode=0;mode<6;mode++){
+		memset(storage.bytes,0xa5,sizeof(storage.bytes));memset(&R,0,sizeof(R));
+		type.np=mode==5 ? -1 : 0;selected=&type;
+		if(mode==2)selected=nil;
+		if(mode==3)selected=H;
+		if(mode==4)type.np=(-0x7fffffff-1);
+		extent->reg.TR=selected;frame=extent->reg.tos.fr;
+		if(mode==0)frame=nil;
+		if(mode==1)frame=H;
+		wanted=mode<2 ? exNilref : exHeap;
+		R.SP=(uchar*)1;R.TS=(uchar*)2;R.EX=(uchar*)3;before=R;
+		allocations=releases=0;failure=0;raised=nil;
+		if(setjmp(boundary)==0){unextend(frame);abort();}
+		if(raised!=wanted || allocations || releases || owned || memcmp(&before,&R,sizeof(R)))abort();
+		checks++;
+	}
+}
+
+
 /* Keep error-bearing families independent under address/undefined sanitizers. */
 int
 main(int argc,char **argv)
@@ -270,7 +302,7 @@ main(int argc,char **argv)
 	if(!strcmp(argv[1],"copy"))copyframes();
 	if(!strcmp(argv[1],"pop"))popframes();
 	if(!strcmp(argv[1],"extent"))extentcycle();
-	if(!strcmp(argv[1],"invalid")){invalid();negativemaps();}
+	if(!strcmp(argv[1],"invalid")){invalid();negativemaps();invalidunextend();}
 	assert(checks>0 && owned==nil);
 	printf("PASS stack lifecycle: %d %s checks WORD%zu\n",checks,argv[1],sizeof(WORD)*8);
 	return 0;

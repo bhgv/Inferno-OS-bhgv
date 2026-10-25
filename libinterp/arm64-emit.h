@@ -755,6 +755,37 @@ a64frame(A64Buf *b, LeafLayout *a, int imported)
 }
 
 
+/* Restore ordinary pointer-free frame links without calls or stack-owner changes. */
+static int
+a64return(A64Buf *b, LeafLayout *a)
+{
+	int offsets[7], i, j;
+
+	offsets[0]=a->fp; offsets[1]=a->sp; offsets[2]=a->pc;
+	offsets[3]=a->frametype; offsets[4]=a->framemr;
+	offsets[5]=a->framefp; offsets[6]=a->framelr;
+	for(i=0; i<7; i++)
+		if(offsets[i]<0 || offsets[i]>2047 || offsets[i]%8)return 0;
+	for(i=3; i<7; i++)for(j=i+1; j<7; j++)
+		if(offsets[i]==offsets[j])return 0;
+	if(a->typenp<0 || a->typenp>2047 || a->typenp%4)return 0;
+	a64ptr(b, 9, a->fp);
+	a64put(b, 0x91000522); a64put(b, 0xf100045f); a64guard(b, 0x54000068);
+	a64field(b, 12, 9, a->frametype, 8);
+	a64put(b, 0x91000582); a64put(b, 0xf100045f); a64guard(b, 0x54000068);
+	a64field(b, 13, 12, a->typenp, 4); a64guard(b, 0x3400006d);
+	a64field(b, 13, 9, a->framemr, 8); a64guard(b, 0xb400006d);
+	a64field(b, 13, 9, a->framefp, 8);
+	a64put(b, 0x910005a2); a64put(b, 0xf100045f); a64guard(b, 0x54000068);
+	a64field(b, 14, 9, a->framelr, 8);
+	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64guard(b, 0x54000068);
+	a64put(b, 0xf9000000U | (u32int)(a->fp/8)<<10 | 13);
+	a64put(b, 0xf9000000U | (u32int)(a->sp/8)<<10 | 9);
+	a64put(b, 0xf9000000U | (u32int)(a->pc/8)<<10 | 14);
+	return 1;
+}
+
+
 /* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -774,7 +805,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafFrame){
+	if(p.kind == LeafReturn){
+		if(!a64return(&b, abi))return 0;
+	}else if(p.kind == LeafFrame){
 		if(!a64frame(&b, abi, p.alu))return 0;
 	}else if(p.kind == LeafStringSlice){
 		if(!a64stringslice(&b, abi)) return 0;

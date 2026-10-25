@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <setjmp.h>
 REG R;
-char exNilref[]="nil";
+char exNilref[]="nil",exHeap[]="heap",exModule[]="module";
 static jmp_buf boundary;
 static int released,extended,mapped;
 static Frame *expectedframe;
@@ -45,7 +45,9 @@ main(void)
 		expectedframe=(Frame*)(arena.bytes+128+align);expectedtype=&type;expectedmodule=&callee;
 		links.lr=code+2;links.fp=arena.bytes+320;links.mr=restore ? &caller : nil;links.t=kind==0 ? nil : &type;
 		type.np=kind==2;caller.compiled=newcompiled;callee.compiled=oldcompiled;caller.MP=arena.bytes+400;
-		memmove(expectedframe,&links,sizeof(links));R.FP=(uchar*)expectedframe;R.PC=code;R.M=&callee;R.MP=arena.bytes+448;R.IC=12;R.t=9;
+		memmove(expectedframe,&links,sizeof(links));
+		if(kind==0)memmove((uchar*)SEXTYPE(expectedframe)+offsetof(Stkext,reg.TR),&expectedtype,sizeof(expectedtype));
+		R.FP=(uchar*)expectedframe;R.PC=code;R.M=&callee;R.MP=arena.bytes+448;R.IC=12;R.t=9;
 		released=extended=mapped=0;ret();
 		assert(R.FP==links.fp && R.PC==links.lr && R.SP==(uchar*)expectedframe);
 		assert(extended==(kind==0) && mapped==(kind==2) && released==restore);

@@ -951,6 +951,44 @@ x64frame(X64Buf *b, LeafLayout *a, int imported)
 }
 
 
+/* Return within a module only when no mapped owner or extent cleanup is required. */
+static int
+x64return(X64Buf *b, LeafLayout *a)
+{
+	int offsets[7], i, j;
+
+	offsets[0]=a->fp; offsets[1]=a->sp; offsets[2]=a->pc;
+	offsets[3]=a->frametype; offsets[4]=a->framemr;
+	offsets[5]=a->framefp; offsets[6]=a->framelr;
+	for(i=0; i<7; i++)
+		if(offsets[i]<0 || offsets[i]>2047 || offsets[i]%8)return 0;
+	for(i=3; i<7; i++)for(j=i+1; j<7; j++)
+		if(offsets[i]==offsets[j])return 0;
+	if(a->typenp<0 || a->typenp>2047 || a->typenp%4)return 0;
+	x64ptr(b, 0, a->fp);
+	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x40); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 1); x64guard(b, 0x77);
+	x64field(b, 0, 8, a->frametype, 8);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
+	x64field(b, 1, 0, a->typenp, 4);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x74);
+	x64field(b, 1, 8, a->framemr, 8);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x74);
+	x64field(b, 1, 8, a->framefp, 8);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x51); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
+	x64field(b, 0, 8, a->framelr, 8);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
+	/* All frame metadata is captured before the first REG store. */
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x8f); x64word(b, a->fp);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, a->sp);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, a->pc);
+	return 1;
+}
+
+
 /* Emit a SysV AMD64 leaf, returning its bounded count of four-byte code units. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -968,7 +1006,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafFrame){
+	if(p.kind == LeafReturn){
+		if(!x64return(&b, abi))return 0;
+	}else if(p.kind == LeafFrame){
 		if(!x64frame(&b, abi, p.alu))return 0;
 	}else if(p.kind == LeafStringSlice){
 		if(!x64stringslice(&b, abi)) return 0;

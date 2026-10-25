@@ -105,21 +105,28 @@ extend(void)
 		initmem(t, f);
 }
 
+
+/* Validate extent metadata before restoring registers or releasing stack storage. */
 void
 unextend(Frame *f)
 {
 	Stkext *sx;
 	Type *t;
 
+	if(f == nil || f == H)
+		error(exNilref);
 	sx = SEXTYPE(f);
+	memmove(&t, (uchar*)sx+O(Stkext, reg.TR), sizeof(t));
+	if(t == nil || t == H || t->np < 0)
+		error(exHeap);
 	R.SP = sx->reg.SP;
 	R.TS = sx->reg.TS;
 	R.EX = sx->reg.EX;
-	t = sx->reg.TR;
-	if (t->np)
+	if(t->np)
 		freeptrs(f, t);
 	free(sx);
 }
+
 
 /* Capture both frame descriptors before changing the stack or freeing an extent. */
 void

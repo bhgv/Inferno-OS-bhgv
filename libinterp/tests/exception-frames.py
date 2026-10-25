@@ -31,6 +31,17 @@ unit = r'''
 #include <stdio.h>
 #include <stdlib.h>
 REG R;
+char exHeap[]="heap", exNilref[]="nil";
+
+
+/* Validated exception frames must not raise during real extent teardown. */
+void
+error(char *message)
+{
+    fprintf(stderr,"unexpected extent teardown error: %s\n",message);
+    abort();
+}
+
 Type Tstring;
 static Type othertype,frame,cleanup;
 static Prog process;

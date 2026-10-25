@@ -1764,24 +1764,34 @@ OP(mspawn)
 		error("invalid mspawn");
 	spawnmodule(ml, entry.u.pc);
 }
-/* Capture frame links before release, without requiring host pointer alignment. */
+
+
+/* Validate captured return metadata before changing registers or releasing owners. */
 OP(ret)
 {
 	Frame *f, links;
 	Modlink *m;
+	Type *type;
 
 	if(R.FP == nil || R.FP == H)
 		error(exNilref);
 	f = (Frame*)R.FP;
 	memmove(&links, f, sizeof(links));
-	R.FP = links.fp;
-	if(R.FP == nil) {
-		R.FP = (uchar*)f;
+	if(links.fp == nil)
 		error("");
-	}
+	if(links.fp == H || links.lr == nil || links.lr == H)
+		error(exHeap);
+	m = links.mr;
+	if(m == H || (m != nil && (R.M == nil || R.M == H)))
+		error(exModule);
+	type = links.t;
+	if(type == nil)
+		memmove(&type, (uchar*)SEXTYPE(f)+O(Stkext, reg.TR), sizeof(type));
+	if(type == nil || type == H || type->np < 0)
+		error(exHeap);
+	R.FP = links.fp;
 	R.SP = (uchar*)f;
 	R.PC = links.lr;
-	m = links.mr;
 
 	if(links.t == nil)
 		unextend(f);

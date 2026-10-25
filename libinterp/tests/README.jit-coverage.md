@@ -284,3 +284,11 @@ AMD64/ARM64 now provide 136 guarded paths / 37 interpreter-only active commands;
 RISC-V profiles remain 103/70, 90/83 and 87/86. C frame/stack checks reject
 negative pointer-map lengths, and named-export lookup rejects an H table before
 scanning names.
+
+## Ordinary return checkpoint
+
+[RET and validated stack teardown](README.return-native.md) adds same-module,
+pointer-free RET on AMD64/ARM64. They now provide 137 guarded paths / 36
+interpreter-only active instructions; RISC-V profiles remain 103/70, 90/83 and
+87/86. C return and unextend validate saved owners before publishing register
+changes or performing cleanup. The parallel ctypes fixture repair is retained.
