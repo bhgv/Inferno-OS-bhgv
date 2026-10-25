@@ -563,11 +563,71 @@ checkservice(void)
 	}
 }
 
+/* Route the actual receive instruction through the production exception protector. */
+static int
+retainrecv(void *unused)
+{
+	(void)unused;
+	irecv();
+	return 1;
+}
+
+/* A bad temporary owner must not dequeue, mutate ring data or publish a receive result. */
+static void
+checkretains(void)
+{
+	TestChannel box,before;
+	Channel *c;
+	Array *buffer;
+	Prog peerbefore;
+	Progq sendbefore,recvbefore;
+	REG saved;
+	union {uvlong align;uchar bytes[80];} slots;
+	union {void *pointer;WORD word;} outgoing;
+	uchar expected[80],data[32];
+	void *empty=H;
+	int queued,kind,pointers,sa,da,oldlive,oldnodes,oldallocations;
+	char *failure,*selection=getenv("CHANNEL_RETAIN_KIND");
+	char *queueselection=getenv("CHANNEL_RETAIN_QUEUED");
+
+	for(queued=0;queued<2;queued++)for(kind=0;kind<5;kind++)
+	for(pointers=0;pointers<2;pointers++)for(sa=0;sa<8;sa++)for(da=0;da<8;da++){
+		if((!queued && kind>=3) || (selection && atoi(selection)!=kind) ||
+		   (queueselection && atoi(queueselection)!=queued))continue;
+		openchannel(&box,2,pointers);c=&box.c;buffer=c->buf;
+		sendvalue(c,1,pointers);if(queued)sendvalue(c,2,pointers);
+		memset(&peers[0],0,sizeof(peers[0]));
+		outgoing.pointer=H;if(!pointers)outgoing.word=3;
+		if(queued){peers[0].state=Psend;peers[0].ptr=&outgoing;cqadd(&c->send,&peers[0]);}
+		failure=kind==2 ? exNilref : exHeap;
+		if(kind==0)D2H(buffer)->ref=0;
+		if(kind==1)D2H(buffer)->ref=(ulong)-1;
+		if(kind==2)c->buf=nil;
+		if(kind==3)box.h.ref=0;
+		if(kind==4)box.h.ref=(ulong)-1;
+		memset(slots.bytes,0xa5,sizeof(slots.bytes));memset(&R,0,sizeof(R));
+		R.s=slots.bytes+8+sa;R.d=slots.bytes+40+da;
+		memmove(R.s,&c,sizeof(c));memmove(R.d,&empty,sizeof(empty));
+		memmove(expected,slots.bytes,sizeof(expected));memmove(data,buffer->data,buffer->len*buffer->t->size);
+		before=box;saved=R;peerbefore=peers[0];sendbefore=*c->send;recvbefore=*c->recv;
+		oldlive=live;oldnodes=nodes;oldallocations=allocations;awakened=removed=0;last_error=nil;
+		assert(!kprotect(retainrecv,nil) && last_error==failure);
+		assert(!memcmp(&before,&box,sizeof(box)) && !memcmp(&saved,&R,sizeof(R)));
+		assert(!memcmp(&peerbefore,&peers[0],sizeof(peerbefore)) && !memcmp(&sendbefore,c->send,sizeof(sendbefore)));
+		assert(!memcmp(&recvbefore,c->recv,sizeof(recvbefore)) && !memcmp(expected,slots.bytes,sizeof(expected)));
+		assert(!memcmp(data,buffer->data,buffer->len*buffer->t->size));
+		assert(live==oldlive && nodes==oldnodes && allocations==oldallocations && !awakened && !removed && !worker.nerr);
+		box.h.ref=1;D2H(buffer)->ref=1;c->buf=buffer;
+		closechannel(c);assert(!live && !nodes);checks++;
+	}
+}
+
 /* Require all references, descriptors and queue nodes to balance across each matrix. */
 int
 main(void)
 {
 	scalar.size = sizeof(WORD); pointer.size = sizeof(void*); pointer.np = 1; pointer.map[0] = 0x80;
+	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "retains"))checkretains();
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "fifo")) checkfifo();
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "senders")) checksenders();
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "native")) checknative();

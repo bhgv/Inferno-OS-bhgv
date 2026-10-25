@@ -1345,13 +1345,14 @@ channelbuild(void *arg)
 	return 1;
 }
 
+/* Reject missing required descriptors before creating any channel resource. */
 Channel*
 cnewc(Type *t, void (*mover)(void), int len)
 {
 	ChannelBuild b;
 	if(len < 0)
 		error(exNegsize);
-	if((len > 0 || mover == movtmp) && t == nil)
+	if((len > 0 || mover == movtmp) && (t == nil || t == H))
 		error(exHeap);
 	if(len > 0)
 		acheck(t->size,len);
@@ -1897,17 +1898,23 @@ OP(lenl)
 	}
 	memmove(R.d, &l, sizeof(l));
 }
-/* Retain buffered storage if the received value replaces the channel owner. */
+/* Validate and retain buffered storage before changing its ring or destination. */
 static int
 cgetb(Channel *c, void *v)
 {
 	Array *a;
+	Heap *h;
 	void *w;
 
 	if((a = c->buf) == H)
 		return 0;
+	if(a == nil)
+		error(exNilref);
 	if(c->size > 0){
-		D2H(a)->ref++;
+		h = D2H(a);
+		if(h->ref == 0 || h->ref == (ulong)-1)
+			error(exHeap);
+		h->ref++;
 		w = a->data+c->front*a->t->size;
 		c->front++;
 		if(c->front == c->buf->len)
@@ -2058,10 +2065,12 @@ OP(isend)
 	R.t = 0;
 }
 /* Queue blocked receivers safely and retain buffered channels through refill. */
+/* Validate buffered temporary owners before dequeuing or refilling a sender. */
 OP(irecv)
 {
 	Channel *c;
 	Prog *p;
+	Heap *h;
 
 	memmove(&c, R.s, sizeof(c));
 	if(c == H || c == nil)
@@ -2078,6 +2087,20 @@ OP(irecv)
 		R.IC = 1;
 		R.t = 1;
 		return;
+	}
+
+	/* Resolve temporary owner failures before removing or selecting a queued sender. */
+	if(c->buf != H){
+		if(c->buf == nil)
+			error(exNilref);
+		h = D2H(c);
+		if(h->ref == 0 || h->ref == (ulong)-1)
+			error(exHeap);
+		if(c->size > 0){
+			h = D2H(c->buf);
+			if(h->ref == 0 || h->ref == (ulong)-1)
+				error(exHeap);
+		}
 	}
 
 	if(c->buf != H && c->size != c->buf->len)

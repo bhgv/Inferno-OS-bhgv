@@ -1,5 +1,9 @@
 # Native byte-prefix copy and array-view lifetime checkpoint
 
+This records the initial prefix-only path. The subsequent
+[offset-slice/channel checkpoint](README.offset-slices-channels.md) removes the
+index-zero restriction while preserving the 64-unit emission limit.
+
 AMD64 and ARM64 now publish ISLICELA for destination index zero, non-pointer
 byte elements and source lengths up to 128. This adds one opcode ID per backend:
 128 native paths and 45 interpreter-only commands out of 173 active commands.

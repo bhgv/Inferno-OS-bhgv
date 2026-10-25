@@ -14,12 +14,13 @@ configurations have the same opcode counts at this checkpoint.
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
 
-The latest addition is guarded ISLICELA on AMD64/ARM64 for byte prefixes
-of at most 128 elements at destination index zero. It validates array bounds,
-byte/non-pointer descriptors and complete native data spans before overlap-aware
-copying. Absent sources and validated empty prefixes preserve C no-op behavior.
-Other offsets, element types, mapped owners and larger copies retain C. See
-[README.slice-prefix-native.md](README.slice-prefix-native.md).
+The latest ISLICELA expansion covers arbitrary valid destination indexes for
+non-pointer byte copies of at most 128 elements on AMD64/ARM64. It checks the
+complete element geometry (index + length <= INT_MAX) and native address spans
+before overlap-aware copying. Validated empty copies retain C's wider WORD-index
+behavior without inspecting type or data metadata. Other element types, mapped
+owners and larger copies retain C. No opcode IDs were added in this expansion.
+See [README.offset-slices-channels.md](README.offset-slices-channels.md).
 
 The preceding additions are guarded IMOVMP and IHEADMP paths on AMD64/ARM64.
 They resolve the current Module.type table, accept pointer-free records of

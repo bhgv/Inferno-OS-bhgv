@@ -25,7 +25,62 @@ int __lsan_is_turned_off(void) {return 1;}
 #define OP(name) void name(void)
 IMPLEMENTATION
 
-/* Compare prefix acceptance and all C fallback variants against independent memmove images. */
+/* Execute the exact arrayspan INT_MAX boundary, wide empty indexes and nil-source rules. */
+static unsigned long
+indexedges(Module *module)
+{
+    struct {Heap heap;Array array;} src,dst;
+    Type type={0};Array *source,*dest;
+    union {uvlong align;uchar bytes[96];} slots;
+    uchar savedslots[96],data[1024],expected[1024];
+    WORD index;
+    REG saved;
+    char *failure;
+    int profile,shift,pass,i,valid;
+    unsigned long checks=0;
+
+    for(profile=0;profile<12;profile++)for(shift=0;shift<8;shift++){
+        memset(&src,0,sizeof(src));memset(&dst,0,sizeof(dst));
+        src.heap.ref=dst.heap.ref=10;type.size=1;type.np=0;
+        source=&src.array;dest=&dst.array;index=0;
+        src.array.len=1;src.array.t=&type;src.array.root=H;src.array.data=data+128;
+        dst.array.len=300;dst.array.t=&type;dst.array.root=H;dst.array.data=data+256;
+        valid=profile==0 || profile==2 || profile==4 || profile==5 || profile==10 || profile==11;
+        failure=exBounds;
+        if(profile==0){index=0x7ffffffe;dst.array.len=0x7fffffff;}
+        if(profile==1){index=0x7fffffff;dst.array.len=(WORD)((uvlong)0x7fffffff+1);}
+        if(profile==2){index=sizeof(WORD)==8 ? (WORD)((uvlong)1<<32) : (WORD)0x7fffffff;dst.array.len=index;src.array.len=0;}
+        if(profile==3){index=0x7fffffff-127;src.array.len=128;dst.array.len=(WORD)((uvlong)0x7fffffff+1);}
+        if(profile==4){index=0x7fffffff-128;src.array.len=128;dst.array.len=0x7fffffff;}
+        if(profile<=4)dst.array.data=(uchar*)((uintptr)data+256-(uintptr)index);
+        if(profile==5){index=0x7fffffff;dst.array.len=index;src.array.len=0;dst.array.t=H;dst.array.data=H;}
+        if(profile==6)index=-1;
+        if(profile==7)src.array.len=-1;
+        if(profile==8)dst.array.t=H;
+        if(profile==9){index=1;dst.array.data=H;}
+        if(profile==10 || profile==11){source=profile==10 ? nil : H;dest=H;index=-1;}
+        memset(slots.bytes,0xa5,sizeof(slots.bytes));memset(&R,0,sizeof(R));
+        R.s=slots.bytes+8+shift;R.m=slots.bytes+40+shift;R.d=slots.bytes+72+shift;
+        memmove(R.s,&source,sizeof(source));memmove(R.m,&index,sizeof(index));memmove(R.d,&dest,sizeof(dest));
+        saved=R;memmove(savedslots,slots.bytes,sizeof(savedslots));
+        for(i=0;i<sizeof(data);i++)data[i]=(i*37+profile*11)&255;
+        memmove(expected,data,sizeof(data));
+        if(valid && source!=nil && source!=H && src.array.len)memmove(expected+256,data+128,src.array.len);
+        for(pass=0;pass<2;pass++){
+            for(i=0;i<sizeof(data);i++)data[i]=(i*37+profile*11)&255;
+            R=saved;retains=releases=destroys=0;nprop=1;raised=nil;
+            if(pass==0)assert(module->jit->entry[ISLICELA](&R)==valid);
+            else if(setjmp(boundary)==0){slicela();assert(valid);}
+            else assert(!valid && raised==failure);
+            assert(!memcmp(data,expected,sizeof(data)) && !memcmp(savedslots,slots.bytes,sizeof(savedslots)));
+            assert(!memcmp(&saved,&R,sizeof(R)) && src.heap.ref==10 && dst.heap.ref==10 && !retains && !releases && !destroys && nprop==1);
+        }
+        checks++;
+    }
+    return checks;
+}
+
+/* Compare slice acceptance and all C fallback variants against independent memmove images. */
 int
 main(void)
 {
@@ -46,7 +101,7 @@ main(void)
 	assert(compile(&module,1,nil) && module.jit->entry[ISLICELA]);
 	for(sa=0;sa<8;sa++)for(ma=0;ma<8;ma++)for(da=0;da<8;da++)
 	for(si=0;si<15;si++)for(di=0;di<13;di++)for(width=0;width<3;width++)
-	for(mapped=0;mapped<2;mapped++)for(index=0;index<2;index++){
+	for(mapped=0;mapped<2;mapped++)for(index=0;index<8;index++){
 		n=sizes[si];bytes=n*width;start=index;
 		memset(&source,0,sizeof(source));memset(&dest,0,sizeof(dest));memset(&type,0,sizeof(type));
 		source.heap.ref=dest.heap.ref=10;source.heap.color=dest.heap.color=2;
@@ -62,7 +117,7 @@ main(void)
 		memmove(saved,slots.bytes,sizeof(saved));memmove(expectedslots,saved,sizeof(saved));memmove(expected,data.bytes,sizeof(expected));
 		if(di<11)memmove(expected+(dp-data.bytes)+index*width,sp,bytes);
 		else memmove(expectedslots+(dp-slots.bytes)+index*width,sp,bytes);
-		native=index==0 && n<=128 && (n==0 || (width==1 && mapped==0));
+		native=n<=128 && (n==0 || (width==1 && mapped==0));
 		for(pass=0;pass<2;pass++){
 			for(i=0;i<sizeof(data.bytes);i++)data.bytes[i]=(i*37+si*11)&255;
 			memmove(slots.bytes,saved,sizeof(saved));source.heap.ref=10;
@@ -81,6 +136,7 @@ main(void)
 		}
 		checks++;
 	}
+	checks+=indexedges(&module);
 	module.jit->freecode(module.jit->code,module.jit->size);free(module.jit);
 	printf("PASS slice copy native: %lu byte-prefix/type/offset/overlap/alias/FP cases WORD%zu\n",checks,sizeof(WORD)*8);
 	return 0;

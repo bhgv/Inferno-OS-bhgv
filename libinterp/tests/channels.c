@@ -79,6 +79,9 @@ static int run(void *unused) {
     case 2:newc(&element,scalar_move);break;
     case 3:newcm();break;
     case 4:result=cnewc(nil,movm,count);break;
+    case 5:result=cnewc(H,scalar_move,count);break;
+    case 6:result=cnewc(H,movtmp,count);break;
+    case 7:result=cnewc(nil,movtmp,count);break;
     }
     return 1;
 }
@@ -124,7 +127,22 @@ static void channelalignment(void)
     }
     printf("PASS channel slot alignment: %lu cases WORD%zu\n",checks,sizeof(WORD)*8);
 }
+/* Required Type owners must be real before capacity checks or resource allocation. */
+static void
+requiredtypes(void)
+{
+    int which,n,b;
+    for(which=5;which<=7;which++)for(b=0;b<2;b++){
+        mode=which;count=b;result=H;n=calls;
+        if(which==5 && b==0){assert(kprotect(run,nil));destroy(result);result=H;}
+        else assert(!kprotect(run,nil) && last_error==exHeap && calls==n && result==H);
+        balanced(0);
+    }
+    puts("PASS required channel types: 6 nil/H/capacity/no-allocation cases");
+}
+
 int main(void) {
+    if(getenv("CHANNEL_REQUIRED_TYPES")){requiredtypes();return 0;}
     int i,n,base,successes=0,failures=0,checks=0;
     Channel *old;
     if(getenv("CHANNEL_CREATE_CASE") && !strcmp(getenv("CHANNEL_CREATE_CASE"),"alignment")){channelalignment();return 0;}
@@ -153,6 +171,7 @@ int main(void) {
         }
     }
     assert(successes && failures);
+    requiredtypes();
     mode=0;count=-1;n=calls;assert(!kprotect(run,nil) && last_error==exNegsize && calls==n);
     count=0x7fffffff;n=calls;assert(!kprotect(run,nil) && last_error==exHeap && calls==n);
     mode=4;count=1;n=calls;assert(!kprotect(run,nil) && last_error==exHeap && calls==n);

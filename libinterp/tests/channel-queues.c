@@ -14,6 +14,7 @@ static int fail_after = -1, live, removed, awakened, checks;
 static Progq **blockedqueue;
 static int blockmode, blockcalls;
 static char interrupted[] = "interrupted";
+char exHeap[] = "heap";
 char exNomem[] = "allocation", exNilref[] = "nil", exAlt[] = "self alt", exBounds[] = "bounds";
 REG R;
 Type Tarray;

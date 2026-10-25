@@ -387,7 +387,7 @@ a64mapped(A64Buf *b, LeafLayout *a, LeafOp *p)
 	return 1;
 }
 
-/* Copy a small byte-array prefix without allocation, ownership changes or helper calls. */
+/* Copy a short byte-array slice after bounding both element and native address spans. */
 static int
 a64slicecopy(A64Buf *b, LeafLayout *a)
 {
@@ -410,12 +410,17 @@ a64slicecopy(A64Buf *b, LeafLayout *a)
 	a64put(b, 0xb10005df); a64pcguard(b, 0x54000061, fallback);
 	a64wordfield(b, 12, 13, a->arraylen, a->wordbytes);
 	a64put(b, 0xf102019f); a64pcguard(b, 0x54000069, fallback);
-	a64ptr(b, 9, a->m); a64load(b, 2, 9, a->wordbytes);
-	a64pcguard(b, 0xb4000062, fallback);
-	a64wordfield(b, 2, 14, a->arraylen, a->wordbytes);
-	a64put(b, 0xb7f80002U | ((fallback-b->n)&0x3fff)<<5);
-	a64put(b, 0xeb02019f); a64pcguard(b, 0x54000069, fallback);
+	a64ptr(b, 9, a->m); a64load(b, 4, 9, a->wordbytes);
+	a64wordfield(b, 3, 14, a->arraylen, a->wordbytes);
+	a64put(b, 0xb7f80003U | ((fallback-b->n)&0x3fff)<<5);
+	/* Unsigned bounds against a nonnegative destination also reject negative indexes. */
+	a64put(b, 0xeb03009f); a64pcguard(b, 0x54000069, fallback);
+	a64put(b, 0xcb040063);
+	a64put(b, 0xeb03019f); a64pcguard(b, 0x54000069, fallback);
 	empty=b->n; a64put(b, 0xb400000c);
+	/* arrayspan bounds the complete byte geometry, not just the start index. */
+	a64put(b, 0x8b0c0083);
+	a64put(b, 0xd35ffc63); a64pcguard(b, 0xb4000063, fallback);
 	a64field(b, 2, 14, a->arraytype, 8);
 	a64pcguard(b, 0xb5000062, fallback);
 	a64put(b, 0xb100045f); a64pcguard(b, 0x54000061, fallback);
@@ -424,18 +429,20 @@ a64slicecopy(A64Buf *b, LeafLayout *a)
 	a64field(b, 3, 2, a->typenp, 4); a64pcguard(b, 0x34000063, fallback);
 	a64field(b, 9, 13, a->arraydata, 8);
 	a64pcguard(b, 0xb5000069, fallback);
-	a64put(b, 0xb100053f); a64pcguard(b, 0x54000061, fallback);
+
 	a64field(b, 11, 14, a->arraydata, 8);
 	a64pcguard(b, 0xb500006b, fallback);
-	a64put(b, 0xb100057f); a64pcguard(b, 0x54000061, fallback);
+
+	/* Positive-length span additions reject H as well as ordinary address wrap. */
+	a64put(b, 0xab04016b); a64pcguard(b, 0x54000063, fallback);
 	a64put(b, 0xab0c0123); a64pcguard(b, 0x54000063, fallback);
 	a64put(b, 0xab0c0163); a64pcguard(b, 0x54000063, fallback);
 	/* One signed-stride loop preserves both directions of memmove overlap. */
 	a64put(b, 0xd2800022); a64put(b, 0xeb09017f);
 	forward=b->n; a64put(b, 0x54000009);
 	a64put(b, 0x92800002);
-	a64put(b, 0x8b0c0129); a64put(b, 0xd1000529);
-	a64put(b, 0x8b0c016b); a64put(b, 0xd100056b);
+	a64put(b, 0xd1000583);
+	a64put(b, 0x8b030129); a64put(b, 0x8b03016b);
 	if(b->n > LeafMax) return 0;
 	b->code[forward] |= (b->n-forward)<<5;
 	loop=b->n;

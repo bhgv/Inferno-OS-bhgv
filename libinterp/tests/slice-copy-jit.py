@@ -63,11 +63,11 @@ int emit(u32int *out,int cap,int wb,int field,int value){
                     assert lib.emit(guard,64,wb,field,value)==0 and list(guard)==[0xa5a5a5a5]*64;checks+=1
             machine.mem_write(CODE,blob);machine.ctl_remove_cache(CODE,CODE+256)
 
-            def run(length,sa,da,delta,fault=0):
+            def run(length,sa,da,delta,fault=0,offset=0):
                 """Compute prefix validity and memmove results without emitter arithmetic."""
                 image=bytearray(bytes((i*37+length*11)&255 for i in range(256))*64)
                 ma=(sa^da)&7;src=0x1200+sa;dest=src+delta+da if delta not in (999,1000) else 0x200+ma if delta==999 else 0x100+sa
-                source=BASE+0x500;target=BASE+0x700;count=length;capacity=300;start=0
+                source=BASE+0x500;target=BASE+0x700;count=length;capacity=300;start=offset
                 typeptr=BASE+0x900;width=1;np=0;sp=BASE+src;dp=BASE+dest
                 if fault==1:source=0
                 if fault==2:source=MASK
@@ -99,16 +99,22 @@ int emit(u32int *out,int cap,int wb,int field,int value){
                 if fault==28:count=(1<<32)+1 if wb==8 else 0x7fffffff
                 if fault==29:start=(1<<32) if wb==8 else 1
                 if fault==30:capacity=(1<<32) if wb==8 else 0x7fffffff
+                if fault==31:start=0x7ffffffe;capacity=0x7fffffff;dp=BASE+dest-start
+                if fault==32:start=0x7fffffff;capacity=0x7fffffff+128 if wb==8 else 0x7fffffff;dp=BASE+dest-start
+                if fault==33:start=0x7fffffff-127;capacity=0x80000000 if wb==8 else 0x7fffffff;dp=BASE+dest-start
+                if fault==34:start=1;dp=MASK
+                if fault==35:start=1;dp=MASK-64
+                if fault==36:start=(1<<32) if wb==8 else 0x7fffffff;capacity=start;dp=MASK;typeptr=0
                 put(image,0,BASE+0x3000);put(image,8,BASE+0x100+sa);put(image,16,BASE+0x300+da);put(image,24,BASE+0x200+ma)
                 put(image,0x100+sa,source);put(image,0x300+da,target);put(image,0x200+ma,start,wb)
                 put(image,0x500,count,wb);put(image,0x500+24,sp)
                 put(image,0x700,capacity,wb);put(image,0x700+8,typeptr);put(image,0x700+24,dp)
                 put(image,0x900+24,width,4);put(image,0x900+28,np,4)
                 absent=source in (0,MASK)
-                accepted=absent or (target not in (0,MASK) and 0<=count<=128 and start==0 and capacity>=0 and count<=capacity and
-                    (count==0 or (typeptr not in (0,MASK) and width==1 and np==0 and sp not in (0,MASK) and dp not in (0,MASK) and sp<=MASK-count and dp<=MASK-count)))
+                accepted=absent or (target not in (0,MASK) and 0<=count<=128 and capacity>=0 and 0<=start<=capacity and count<=capacity-start and
+                    (count==0 or (start+count<=0x7fffffff and typeptr not in (0,MASK) and width==1 and np==0 and sp not in (0,MASK) and dp not in (0,MASK) and sp<=MASK-count and dp<=MASK-start-count)))
                 expected=bytearray(image)
-                if accepted and not absent and count:expected[dest:dest+count]=bytes(image[src:src+count])
+                if accepted and not absent and count:expected[dp+start-BASE:dp+start-BASE+count]=bytes(image[src:src+count])
                 if arch=='amd64':
                     put(image,0x3f00,STOP);put(expected,0x3f00,STOP)
                     machine.reg_write(UC_X86_REG_RDI,BASE);machine.reg_write(UC_X86_REG_RSP,BASE+0x3f00);machine.reg_write(UC_X86_REG_MXCSR,0x5fa5)
@@ -127,8 +133,8 @@ int emit(u32int *out,int cap,int wb,int field,int value){
                 for sa in range(8):
                     for da in range(8):
                         for delta in (-32,-1,0,1,7,8,31,63,127,128,256,999,1000):
-                            run(length,sa,da,delta);checks+=1
-            for fault in range(1,31):
-                for length in ((0,128) if fault in (23,24,25) else (0,1,128)):
+                            for offset in (0,1,7,31):run(length,sa,da,delta,offset=offset);checks+=1
+            for fault in range(1,37):
+                for length in ((0,128) if fault in (23,24,25,35) else (0,1,128)):
                     for shift in range(8):run(length,shift,shift,256,fault);checks+=1
         print('PASS',arch,'slice prefixes, cumulative span/metadata/alias/FP checks',checks)
