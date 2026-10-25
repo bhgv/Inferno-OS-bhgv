@@ -2,7 +2,7 @@
 
 AMD64 and ARM64 now publish IMOVMP and IHEADMP leaves for pointer-free records
 up to 256 bytes. The original checkpoint added two opcode IDs per backend. Current totals are
-138 guarded native paths and 35 interpreter-only commands out of 173 active commands. INOP is invalid and
+139 guarded native paths and 34 interpreter-only commands out of 173 active commands. INOP is invalid and
 IECLR is unused. RV64 counts remain 103/70 with M, 90/83 with Zmmul, and 87/86
 with its base integer ISA. Both WORD32/native-pointer64 and legacy WORD64
 configurations give these counts.

@@ -7,11 +7,13 @@
 #include LEAF_EMITTER
 #include "leaf-code.h"
 
+
 /* Leaf JIT keeps original Inst PCs and uses the existing decoder/optab for
  * unsupported operations. No patching of frames, GC maps or case tables.
  * compiled remains 0: its historical meaning is a relocated native-PC VM.
  */
 void (*comvec)(void);
+
 
 /* Leaf execution retains the existing native pointer maps and C heap helpers. */
 void
@@ -19,6 +21,7 @@ typecom(Type *t)
 {
 	USED(t); /* Existing initmem/freeptrs remain authoritative. */
 }
+
 
 /* Enter only code whose cache and executable permissions were published together. */
 static void
@@ -28,11 +31,13 @@ leafenter(void)
 }
 
 typedef struct LeafCompile LeafCompile;
+
 struct LeafCompile {
-	Module *m;
-	int size;
-	Jit *j;
+	Module *m; // Module whose original Dis program remains authoritative.
+	int size; // Instruction count validated before staging native entries.
+	Jit *j; // Partial code-table owner retained across protected compilation.
 };
+
 
 /* Reject invalid module storage before sizing or publishing native leaf code. */
 static int
@@ -87,6 +92,7 @@ leafcompile(void *arg)
 	abi.frametype=O(Frame, t); abi.framemr=O(Frame, mr); abi.framesize=sizeof(Frame);
 	abi.framelr=O(Frame, lr); abi.framefp=O(Frame, fp);
 	abi.arraytype=O(Array, t); abi.typesize=O(Type, size);
+	abi.arrayroot=O(Array, root); abi.typeref=O(Type, ref);
 	abi.pc=O(REG, PC); abi.s=O(REG, s); abi.d=O(REG, d); abi.m=O(REG, m);
 	memset(count, 0, sizeof(count));
 	memset(fn, 0, sizeof(fn));
@@ -142,6 +148,7 @@ bad:
 	}
 	return 0;
 }
+
 
 /* Own temporary code across VM errors and publish only a completed leaf table. */
 int

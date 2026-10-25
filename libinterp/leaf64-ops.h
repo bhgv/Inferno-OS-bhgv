@@ -24,6 +24,7 @@ struct LeafLayout {
 	int stringmax; // String capacity offset, measured in representation characters.
 	int regmp, regtemp, linkprog, linkmp; // Register MP/temp and module-link program/data offsets.
 	int modlpc; // Native program/runtime entry offset within an import record.
+	int arrayroot, typeref; // Backing array owner and signed Type reference count offsets.
 };
 typedef struct LeafOp LeafOp;
 
@@ -37,6 +38,7 @@ struct LeafOp {
 };
 
 enum {
+	LeafArraySlice = 121, // Narrow a uniquely owned array view without allocating.
 	LeafModuleCall = 120, // Bytecode calls between modules with equal execution modes.
 	LeafReturn = 119, // Returns without mapped cleanup, extent release or module destruction.
 	LeafFrame = 118, // Pointer-free frames within the current stack extent.
@@ -86,6 +88,7 @@ leafop(LeafOp *p, int op, int wordbytes)
 		p->alu = op == IADDF ? 0 : op == ISUBF ? 1 : op == IMULF ? 2 : 3;
 		break;
 	case ISLICEC: p->kind = LeafStringSlice; break;
+	case ISLICEA: p->kind = LeafArraySlice; break;
 	case IADDC: p->kind = LeafStringAppend; break;
 	case IINSC: p->kind = LeafStringStore; break;
 	case ICVTCW: p->kind = LeafDecimal; break;

@@ -1109,6 +1109,75 @@ x64modulecall(X64Buf *b, LeafLayout *a)
 }
 
 
+/* Narrow unique array views without allocating, retaining or visiting elements. */
+static int
+x64arrayslice(X64Buf *b, LeafLayout *a)
+{
+	int fields[6], i, j, fallback, empty;
+
+	fields[0]=a->arraylen; fields[1]=a->arraydata; fields[2]=a->arraytype;
+	fields[3]=a->arrayroot; fields[4]=a->typesize; fields[5]=a->typeref;
+	for(i=0; i<6; i++)
+		if(fields[i]<0 || fields[i]>2047 || fields[i]%(i==0 ? a->wordbytes : i<4 ? 8 : 4))return 0;
+	/* Header fields and the two int descriptor fields must occupy distinct spans. */
+	for(i=0; i<4; i++)for(j=i+1; j<4; j++)
+		if(fields[i]<fields[j]+(j==0 ? a->wordbytes : 8) &&
+		   fields[j]<fields[i]+(i==0 ? a->wordbytes : 8))return 0;
+	if(a->typesize==a->typeref)return 0;
+	if(a->heapref<=0 || a->heapref>128 || a->heapref%8 || a->refbytes!=8)return 0;
+	x64byte(b, 0xeb); x64byte(b, 3);
+	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+	/* r8/r9 retain start/end; r10 keeps the view throughout every guard. */
+	x64ptr(b, 0, a->s); x64modulefield(b, 8, 8, 0, a->wordbytes);
+	x64ptr(b, 1, a->m); x64modulefield(b, 9, 9, 0, a->wordbytes);
+	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x79, fallback);
+	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xc1); x64moduleguard(b, 0x7d, fallback);
+	x64ptr(b, 2, a->d); x64modulefield(b, 10, 10, 0, 8);
+	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x4a); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64modulefield(b, 1, 10, a->arraylen, a->wordbytes);
+	x64byte(b, 0x49); x64byte(b, 0x39); x64byte(b, 0xc9); x64moduleguard(b, 0x7e, fallback);
+	x64modulefield(b, 0, 10, -a->heapref, 8);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 1); x64moduleguard(b, 0x74, fallback);
+	x64modulefield(b, 0, 10, a->arrayroot, 8);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x48); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64modulefield(b, 0, 0, -a->heapref, 8);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x75, fallback);
+	x64modulefield(b, 11, 10, a->arraytype, 8);
+	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x4b); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64modulefield(b, 0, 11, a->typeref, 4);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x7f, fallback);
+	x64modulefield(b, 0, 11, a->typesize, 4);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x79, fallback);
+	x64modulefield(b, 6, 10, a->arraydata, 8);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
+	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
+	/* Bound multiplication by INT_MAX before native address arithmetic. */
+	x64byte(b, 0x49); x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, 0x7fffffff); x64moduleguard(b, 0x76, fallback);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc9);
+	x64byte(b, 0x48); x64byte(b, 0x0f); x64byte(b, 0xaf); x64byte(b, 0xc8);
+	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, 0x7fffffff); x64moduleguard(b, 0x76, fallback);
+	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc9); x64moduleguard(b, 0x75, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x56); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xf2);
+	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xca); x64moduleguard(b, 0x73, fallback);
+	x64byte(b, 0x49); x64byte(b, 0x0f); x64byte(b, 0xaf); x64byte(b, 0xc0);
+	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xc6);
+	if(b->n>sizeof(b->bytes) || b->n-empty-1>127)return 0;
+	b->bytes[empty]=b->n-empty-1;
+	/* The operand slot, backing root, element Type and all counters stay intact. */
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xca);
+	x64byte(b, 0x4c); x64byte(b, 0x29); x64byte(b, 0xc2);
+	x64byte(b, a->wordbytes==8 ? 0x49 : 0x41);
+	x64byte(b, 0x89); x64byte(b, 0x92); x64word(b, a->arraylen);
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xb2); x64word(b, a->arraydata);
+	return 1;
+}
+
+
 /* Emit a SysV AMD64 leaf, returning its bounded count of four-byte code units. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -1126,7 +1195,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafModuleCall){
+	if(p.kind == LeafArraySlice){
+		if(!x64arrayslice(&b, abi))return 0;
+	}else if(p.kind == LeafModuleCall){
 		if(!x64modulecall(&b, abi))return 0;
 	}else if(p.kind == LeafReturn){
 		if(!x64return(&b, abi))return 0;

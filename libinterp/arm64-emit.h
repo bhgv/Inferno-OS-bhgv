@@ -866,6 +866,66 @@ a64modulecall(A64Buf *b, LeafLayout *a)
 }
 
 
+/* Narrow a unique array view after validating full WORD bounds and native spans. */
+static int
+a64arrayslice(A64Buf *b, LeafLayout *a)
+{
+	int fields[6], i, j, fallback, empty;
+
+	fields[0]=a->arraylen; fields[1]=a->arraydata; fields[2]=a->arraytype;
+	fields[3]=a->arrayroot; fields[4]=a->typesize; fields[5]=a->typeref;
+	for(i=0; i<6; i++)
+		if(fields[i]<0 || fields[i]>2047 || fields[i]%(i==0 ? a->wordbytes : i<4 ? 8 : 4))return 0;
+	/* Header fields and the two int descriptor fields must occupy distinct spans. */
+	for(i=0; i<4; i++)for(j=i+1; j<4; j++)
+		if(fields[i]<fields[j]+(j==0 ? a->wordbytes : 8) &&
+		   fields[j]<fields[i]+(i==0 ? a->wordbytes : 8))return 0;
+	if(a->typesize==a->typeref)return 0;
+	if(a->heapref<=0 || a->heapref>128 || a->heapref%8 || a->refbytes!=8)return 0;
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	/* x12/x13 retain start/end, x14 the view, and x15 its element Type. */
+	a64ptr(b, 9, a->s); a64wordfield(b, 12, 9, 0, a->wordbytes);
+	a64ptr(b, 10, a->m); a64wordfield(b, 13, 10, 0, a->wordbytes);
+	a64put(b, 0xf100019f); a64defer(b, 0x5400000b, fallback);
+	a64put(b, 0xeb0c01bf); a64defer(b, 0x5400000b, fallback);
+	a64ptr(b, 11, a->d); a64field(b, 14, 11, 0, 8);
+	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	a64wordfield(b, 2, 14, a->arraylen, a->wordbytes);
+	a64put(b, 0xeb0201bf); a64defer(b, 0x5400000c, fallback);
+	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 14<<5 | 2);
+	a64put(b, 0xf100045f); a64defer(b, 0x54000001, fallback);
+	a64field(b, 3, 14, a->arrayroot, 8);
+	a64put(b, 0x91000462); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 3<<5 | 2);
+	a64defer(b, 0xb4000002, fallback);
+	a64field(b, 15, 14, a->arraytype, 8);
+	a64put(b, 0x910005e2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	a64wordfield(b, 2, 15, a->typeref, 4);
+	a64put(b, 0xf100005f); a64defer(b, 0x5400000d, fallback);
+	a64wordfield(b, 3, 15, a->typesize, 4);
+	a64put(b, 0xf100007f); a64defer(b, 0x5400000b, fallback);
+	a64field(b, 4, 14, a->arraydata, 8);
+	empty=b->n; a64put(b, 0xb4000003);
+	/* A positive element width bounds end*size before either pointer addition. */
+	a64put(b, 0x12b00002);
+	a64put(b, 0xeb0201bf); a64defer(b, 0x54000008, fallback);
+	a64put(b, 0x9b037da1);
+	a64put(b, 0xeb02003f); a64defer(b, 0x54000008, fallback);
+	a64defer(b, 0xb400000d, fallback);
+	a64put(b, 0x91000482); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	a64put(b, 0xab010082); a64defer(b, 0x54000002, fallback);
+	a64put(b, 0x9b037d82); a64put(b, 0x8b020084);
+	if(b->n>LeafMax)return 0;
+	b->code[empty] |= (b->n-empty)<<5;
+	/* Only the view length/data change; all owner and descriptor counts survive. */
+	a64put(b, 0xcb0c01a2);
+	a64put(b, (a->wordbytes==8 ? 0xf9000000U : 0xb9000000U) | (u32int)(a->arraylen/a->wordbytes)<<10 | 14<<5 | 2);
+	a64put(b, 0xf9000000U | (u32int)(a->arraydata/8)<<10 | 14<<5 | 4);
+	return 1;
+}
+
+
 /* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -885,7 +945,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafModuleCall){
+	if(p.kind == LeafArraySlice){
+		if(!a64arrayslice(&b, abi))return 0;
+	}else if(p.kind == LeafModuleCall){
 		if(!a64modulecall(&b, abi))return 0;
 	}else if(p.kind == LeafReturn){
 		if(!a64return(&b, abi))return 0;

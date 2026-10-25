@@ -1830,6 +1830,7 @@ moduleimports(Module *m, WORD index)
 	}
 }
 
+
 /* Validate imports before loading and retain nil data for data-free self loads. */
 OP(iload)
 {
@@ -1837,6 +1838,7 @@ OP(iload)
 	Import *ldt;
 	Module *m;
 	Modlink *ml, *t;
+	uchar *mp;
 	String *name;
 	WORD index;
 	Heap *h;
@@ -1851,14 +1853,21 @@ OP(iload)
 	ldt = moduleimports(m, index);
 	n = string2c(name);
 	if(strcmp(n, "$self") == 0) {
-		if(R.M->MP == nil)
+		mp = R.M->MP;
+		if(mp == nil || m->ref <= 0 || m->ref == 0x7fffffff)
 			error(exModule);
+		h = nil;
+		if(mp != H){
+			h = D2H(mp);
+			if(h->ref == 0 || h->ref == (ulong)-1)
+				error(exHeap);
+		}
+		/* Link failure consumes only the acquired Module reference, not MP. */
 		m->ref++;
 		ml = linkmod(m, ldt, 0);
 		if(ml != H) {
-			ml->MP = R.M->MP;
-			if(ml->MP != H){
-				h = D2H(ml->MP);
+			ml->MP = mp;
+			if(h != nil){
 				h->ref++;
 				Setmark(h);
 			}
@@ -2525,9 +2534,19 @@ OP(slicea)
 	if(D2H(ds)->ref == 0)
 		error(exHeap);
 	h = D2H(root);
-	if(h->ref == 0 || (ds->root != H && h->ref == (ulong)-1))
+	if(h->ref == 0)
 		error(exHeap);
-	if(t->ref <= 0 || t->ref > 0x7ffffffe - (t == &Tarray) ||
+	if(t->ref <= 0)
+		error(exHeap);
+	/* A unique view already owns its root and Type; narrowing needs no retains. */
+	if(ds->root != H && D2H(ds)->ref == 1){
+		ds->len = n;
+		ds->data = data;
+		return;
+	}
+	if(ds->root != H && h->ref == (ulong)-1)
+		error(exHeap);
+	if(t->ref > 0x7ffffffe - (t == &Tarray) ||
 	   Tarray.ref <= 0 || Tarray.ref == 0x7fffffff)
 		error(exHeap);
 	h = heap(&Tarray);

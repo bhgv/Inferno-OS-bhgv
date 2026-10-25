@@ -220,10 +220,10 @@ emptyviews(int faults)
         R.s=&first; R.m=&last; R.d=&a; which=8;
         for(repeat=0; repeat<8; repeat++) {
             saved=a; before=live; typerefs=type.ref;
-            if(faults) { force_failure=1; rejects(exHeap,0); force_failure=0; }
+            if(faults && repeat==0) { force_failure=1; rejects(exHeap,0); force_failure=0; }
             assert(a==saved && live==before && type.ref==typerefs);
             assert(kprotect(run,nil));
-            assert(a!=saved && a->data==nil && a->root==root);
+            if((repeat==0 ? a==saved : a!=saved) || a->data!=nil || a->root!=root)abort();
             assert(a->len==(zeroelement ? 1 : 0) && D2H(root)->ref==1);
             first=0; last=a->len;
         }

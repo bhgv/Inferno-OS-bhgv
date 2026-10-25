@@ -2,14 +2,14 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 138 commands (79.8%); 35 remain on the interpreter path. RV64 profiles
+paths for 139 commands (80.3%); 34 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 138 | 35 |
-| ARM64 | 173 | 138 | 35 |
+| AMD64 | 173 | 139 | 34 |
+| ARM64 | 173 | 139 | 34 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
@@ -326,3 +326,14 @@ self-module aliases. Last-reference releases, mode changes and frame cleanup
 still use C. Owner preflight prevents C RET from publishing REG before discovering
 a dead module. Counts remain 138/35 on AMD64/ARM64 and 103/70, 90/83, 87/86 on
 RISC-V profiles. Mixed C/RX MCALL/RET round trips check exact reference restoration.
+
+## Unique array-view checkpoint
+
+[Unique array-view slices](README.array-view.md) adds SLICEA to AMD64/ARM64 for
+allocation-free narrowing of unique views, including mapped and zero-width
+elements. Both now provide 139 guarded native commands / 34 remaining. Shared
+views and root arrays keep C allocation/ownership semantics. Layout adapter,
+ctypes probes and publication/fallback fixtures are updated together.
+[Self-load retain checks](README.self-load-retains.md) also prevent Module/MP
+counter overflow before linking, without changing failure ownership contracts.
+RISC-V profiles remain 103/70, 90/83 and 87/86.

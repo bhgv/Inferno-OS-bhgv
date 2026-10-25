@@ -24,8 +24,8 @@ Current availability among 173 active commands (partial guarded native paths):
 
 | Backend | Native paths | Interpreter only |
 | --- | ---: | ---: |
-| AMD64 | 138 | 35 |
-| ARM64 | 138 | 35 |
+| AMD64 | 139 | 34 |
+| ARM64 | 139 | 34 |
 | RISC-V64 M | 103 | 70 |
 | RISC-V64 Zmmul | 90 | 83 |
 | RISC-V64 I | 87 | 86 |

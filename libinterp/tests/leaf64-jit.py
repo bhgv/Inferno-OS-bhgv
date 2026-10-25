@@ -114,7 +114,20 @@ IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF ISUBF IMULF IDIVF ICVTXF ICVTFW ICVTFL ICVTFX IEXPF'''.split()
 class Layout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype','linkcompiled','heapref','heapcolor','refbytes')]+[('mutator',C.c_void_p),('nprop',C.c_void_p),('markcolor',C.c_int)]+[(x,C.c_int) for x in ('moduletypes','modulenty','typenp','linknlinks','linklinks','modlbytes','modlframe','sp','ts','frametype','framemr','framesize','stringmax','regmp','regtemp','linkprog','linkmp','modlpc')]
+    _fields_ = (
+        [(x, C.c_int) for x in (
+            'wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata',
+            'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp',
+            'arraytype', 'typesize', 'framelr', 'framefp', 'fixedcoef', 'module',
+            'linkmodule', 'moduleprog', 'modulenprog', 'instbytes', 'heaptype',
+            'linkcompiled', 'heapref', 'heapcolor', 'refbytes')]
+        + [('mutator', C.c_void_p), ('nprop', C.c_void_p), ('markcolor', C.c_int)]
+        + [(x, C.c_int) for x in (
+            'moduletypes', 'modulenty', 'typenp', 'linknlinks', 'linklinks',
+            'modlbytes', 'modlframe', 'sp', 'ts', 'frametype', 'framemr',
+            'framesize', 'stringmax', 'regmp', 'regtemp', 'linkprog', 'linkmp',
+            'modlpc', 'arrayroot', 'typeref')]
+    )
 class RvLayout(C.Structure):
     _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]
 

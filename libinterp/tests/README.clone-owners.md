@@ -22,7 +22,7 @@ AMD64 and ARM64 `MOVMP`/`HEADMP` now copy pointer-free records through 256 bytes
 The overlap-aware byte loop, private 64-unit staging bound and fallback contract
 are unchanged. Records of 257 bytes or containing mapped pointers use C. This
 extends two existing opcode paths; it adds no opcode IDs. Current coverage is
-138 native guarded paths / 35 remaining on each backend, out of 173 active Dis
+139 native guarded paths / 34 remaining on each backend, out of 173 active Dis
 commands. RV64 M, Zmmul and I remain 103/70, 90/83 and 87/86. Both WORD models use
 native 64-bit pointers. Guarded support is not complete VM/native ABI support.
 
