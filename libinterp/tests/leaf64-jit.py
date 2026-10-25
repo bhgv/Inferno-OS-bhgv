@@ -10,15 +10,39 @@ import subprocess
 import tempfile
 from capstone import Cs, CS_ARCH_X86, CS_ARCH_ARM64, CS_ARCH_RISCV, CS_MODE_64, CS_MODE_RISCV64
 from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_ARCH_RISCV, UC_MODE_64, UC_MODE_RISCV64, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
-from unicorn.x86_const import UC_X86_REG_RDI, UC_X86_REG_RAX, UC_X86_REG_RSP
-from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
+from unicorn.x86_const import UC_X86_REG_RDI, UC_X86_REG_RAX, UC_X86_REG_RSP, UC_X86_REG_MXCSR
+from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR, UC_ARM64_REG_FPCR, UC_ARM64_REG_FPSR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
+
+REAL_CAST_ORACLE = r'''
+#include <fenv.h>
+/* Compute the rounding/exception contract in host C, restoring the caller environment. */
+int realcastoracle(uint64_t bits,int fixed,int mode,int seed,int64_t *out){
+    fenv_t saved;
+    int flags, result=0, modes[]={FE_TONEAREST,FE_DOWNWARD,FE_UPWARD,FE_TOWARDZERO};
+    double value;
+    volatile double scale=1.0;
+    fegetenv(&saved);fesetround(modes[mode]);feclearexcept(FE_ALL_EXCEPT);
+    if(seed)feraiseexcept(FE_DIVBYZERO);
+    memcpy(&value,&bits,8);
+    if(fixed)value*=scale;
+    value=value<0 ? value-0.5 : value+0.5;
+    *out=(int64_t)value;
+    flags=fetestexcept(FE_ALL_EXCEPT);
+    if(flags&FE_INVALID)result|=1;
+    if(flags&FE_DIVBYZERO)result|=2;
+    if(flags&FE_OVERFLOW)result|=4;
+    if(flags&FE_UNDERFLOW)result|=8;
+    if(flags&FE_INEXACT)result|=16;
+    fesetenv(&saved);return result;
+}
+'''
 
 root = Path(__file__).resolve().parents[2]
 ops = '''IBEQC IBNEC IBLTC IBLEC IBGTC IBGEC ITCMP IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
-IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF ISUBF IMULF IDIVF ICVTXF'''.split()
+IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF ISUBF IMULF IDIVF ICVTXF ICVTFW ICVTFL ICVTFX'''.split()
 class Layout(C.Structure):
     _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]
 class RvLayout(C.Structure):
@@ -33,7 +57,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic','realinteger'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -48,10 +72,13 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                           '#include "isa.h"\n#include "'+(os.environ.get('LEAF64_RISCV_EMITTER','riscv-emit.h') if rv else os.environ.get('LEAF64_'+arch.upper()+'_EMITTER',arch+'-emit.h'))+'"\n'
                           'int emit(u32int *p,int n,'+('RvLayout' if rv else 'LeafLayout')+' *l,int op){return '+('rvemit' if rv else 'leafemit')+'(p,n,l,op);}\n'
                           'int opid(int i){static int ops[]={'+','.join(ops)+'};return ops[i];}\n')
+        if case in ('','realinteger'):
+            with source.open('a') as output:
+                output.write(REAL_CAST_ORACLE)
         binary = td/(arch+'.so')
         cmd = shlex.split(os.environ.get('CC', 'cc'))
         cmd += shlex.split(os.environ.get('CFLAGS', '-O2 -g -fsanitize=undefined -fno-sanitize-recover=all'))
-        subprocess.run(cmd+['-shared','-fPIC','-I'+str(root/'include'),'-I'+str(root/'libinterp'),str(source),'-o',str(binary)],check=True)
+        subprocess.run(cmd+['-shared','-fPIC','-I'+str(root/'include'),'-I'+str(root/'libinterp'),str(source),'-lm','-o',str(binary)],check=True)
         lib = C.CDLL(str(binary))
         ids = {name:lib.opid(i) for i,name in enumerate(ops)}
         for wb in (4,8):
@@ -173,7 +200,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     checks+=1
                 if case=='call':continue
 
-            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False, fixedframe=None, descriptor=None, badresult=False, programaddress=None, slotshift=0, typecheck=None, stringpair=None):
+            def run(name, a=0, b=0, alias=0, raw=None, expect=1, poison=False, array=None, arrayalias=0, copy=None, string=None, head=None, chain=None, character=None, headcopy=None, badtarget=False, badsource=False, fixedframe=None, descriptor=None, badresult=False, programaddress=None, slotshift=0, typecheck=None, stringpair=None, fpstate=None):
                 """Exercise a leaf with high native pointers, four-byte alignment and exact aliases."""
                 if arch == 'amd64':
                     u = Uc(UC_ARCH_X86,UC_MODE_64); arg, result = UC_X86_REG_RDI, UC_X86_REG_RAX
@@ -359,6 +386,12 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                 limit=start+abs(length)*(4 if length<0 else 1)
                                 assert address+size<=limit,(arch,name,hex(address),size,length)
                     u.hook_add(UC_HOOK_MEM_READ,exact_string_reads)
+                if fpstate is not None:
+                    mode,seed=fpstate
+                    if arch=='amd64':u.reg_write(UC_X86_REG_MXCSR,0x1f80 | mode<<13 | (4 if seed else 0))
+                    else:
+                        u.reg_write(UC_ARM64_REG_FPCR,(0,2,1,3)[mode]<<22)
+                        u.reg_write(UC_ARM64_REG_FPSR,2 if seed else 0)
                 u.emu_start(code,end,count=4000)
                 if expected_head is not None:assert bytes(u.mem_read(data,0x1000))==bytes(expected_head),(arch,wb,name,head,alias)
                 if expected_copy is not None:assert bytes(u.mem_read(data,0x1000))==expected_copy,(arch,wb,copy)
@@ -369,7 +402,59 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     assert int.from_bytes(u.mem_read(registers+layout.module,8),'little')==programaddress[0]
                 if typedata is not None:assert bytes(u.mem_read(data+0x700,64))==bytes(typedata)
                 if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
+                if fpstate is not None:
+                    if arch=='amd64':
+                        status=u.reg_read(UC_X86_REG_MXCSR)
+                        assert status&~63==0x1f80 | fpstate[0]<<13
+                        status=(status&1) | ((status>>1)&30)
+                    else:
+                        assert u.reg_read(UC_ARM64_REG_FPCR)==(0,2,1,3)[fpstate[0]]<<22
+                        status=u.reg_read(UC_ARM64_REG_FPSR)&31
+                    return bytes(u.mem_read(output,16)),before,bytes(u.mem_read(output-8,32)),status
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
+
+            if case in ('','realinteger'):
+                names=('ICVTFW','ICVTFL','ICVTFX')
+                if rv:assert not any(blobs[name] for name in names)
+                else:
+                    patterns=[0,1,0x8000000000000000,0x8000000000000001,
+                              0x3fe0000000000000,0xbfe0000000000000,
+                              0x41cfffffffffffff,0x41d0000000000000,0xc1d0000000000000,
+                              0x43cfffffffffffff,0x43d0000000000000,0xc3d0000000000000,
+                              0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000042,0x7ff0000000000042]
+                    patterns += [rng.getrandbits(64) for _ in range(200)]
+                    for name in names:
+                        width=8 if name=='ICVTFL' else wb
+                        for bits in patterns:
+                            value=struct.unpack('<d',struct.pack('<Q',bits))[0]
+                            valid=(bits&0x7fffffffffffffff)<(0x41d0000000000000 if width==4 else 0x43d0000000000000)
+                            for scale in ((0x3ff0000000000000,0xbff0000000000000,0,0x4000000000000000,0x7ff0000000000042) if name=='ICVTFX' else (0,)):
+                                take=valid and (name!='ICVTFX' or scale==0x3ff0000000000000)
+                                for alias in range(6):
+                                    out,pc,before,after,_=run(name,a=bits,b=scale,alias=alias,expect=int(take))
+                                    if take:
+                                        wanted=int(value-0.5 if value<0 else value+0.5)
+                                        assert signed(int.from_bytes(out[:width],'little'),width*8)==wanted,(arch,name,bits)
+                                        assert after[:8]==before[:8] and after[8+width:]==before[8+width:]
+                                    else:assert before==after
+                                    assert pc==oldpc;checks+=1
+                    lib.realcastoracle.argtypes=[C.c_uint64,C.c_int,C.c_int,C.c_int,C.POINTER(C.c_int64)]
+                    for name in names:
+                        width=8 if name=='ICVTFL' else wb
+                        for bits in patterns[:16]:
+                            valid=(bits&0x7fffffffffffffff)<(0x41d0000000000000 if width==4 else 0x43d0000000000000)
+                            for mode in range(4):
+                                for seed in range(2):
+                                    wanted=C.c_int64()
+                                    flags=lib.realcastoracle(bits,int(name=='ICVTFX'),mode,seed,C.byref(wanted)) if valid else (2 if seed else 0)
+                                    for alias in (0,1,4):
+                                        out,before,after,status=run(name,a=bits,b=0x3ff0000000000000,alias=alias,expect=int(valid),fpstate=(mode,seed))
+                                        # Unicorn x86 omits conversion precision flags; native tests check those.
+                                        if not valid or arch=='arm64':assert status==flags,(arch,wb,name,hex(bits),mode,seed,status,flags)
+                                        if valid:assert signed(int.from_bytes(out[:width],'little'),width*8)==wanted.value
+                                        else:assert before==after
+                                        checks+=1
+                if case=='realinteger':continue
 
             if case in ('','realarithmetic'):
                 names=('IADDF','ISUBF','IMULF','IDIVF','ICVTXF')

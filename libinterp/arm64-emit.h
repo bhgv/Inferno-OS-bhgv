@@ -528,6 +528,28 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			a64guard(&b, 0x54000063); /* no native address carry */
 			a64ptr(&b, 11, abi->m); a64store(&b, 14, abi->wordbytes);
 		}
+	}else if(p.kind == LeafRealInteger){
+		/* Reject unsupported bits without FP exceptions or destination writes. */
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
+		if(p.alu){
+			a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, 8);
+			a64put(&b, 0xd2e0000eU | 0x3ff0<<5);
+			a64put(&b, 0xeb0e01bf); a64guard(&b, 0x54000060);
+		}
+		a64put(&b, 0xd37ff98d); /* lsl x13,x12,#1 */
+		a64put(&b, 0xd2e0000eU | (p.bytes == 4 ? 0x83a0 : 0x87a0)<<5);
+		a64put(&b, 0xeb0e01bf); a64guard(&b, 0x54000063);
+		a64put(&b, 0x9e670180); /* fmov d0,x12 */
+		if(p.alu){a64put(&b, 0xfd400141); a64put(&b, 0x1e610800);}
+		a64put(&b, 0xd2e0000eU | 0x3fe0<<5);
+		/* C selects +0.5 for both signs of zero. */
+		done=b.n; a64put(&b, 0xb6f8000c); /* tbz x12,#63,positive */
+		other=b.n; a64put(&b, 0xb400000d); /* cbz magnitude,positive */
+		a64put(&b, 0xd24101ce); /* eor x14,x14,#1<<63 */
+		b.code[done] |= (b.n-done)<<5; b.code[other] |= (b.n-other)<<5;
+		a64put(&b, 0x9e6701c1); a64put(&b, 0x1e612800); /* fmov d1,x14; fadd */
+		a64put(&b, 0x9e78000c); /* fcvtzs x12,d0 */
+		a64ptr(&b, 11, abi->d); a64store(&b, 12, p.bytes);
 	}else if(p.kind == LeafRealArithmetic){
 		/* Load both unaligned binary64 operands before storing an aliased result.
 		 * AAPCS64 d0/d1 are volatile; FPCR/FPSR remain the host C environment. */

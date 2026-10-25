@@ -2,19 +2,22 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 114 commands (65.9%); 59 remain on the interpreter path. RV64 profiles
+paths for 117 commands (67.6%); 56 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 114 | 59 |
-| ARM64 | 173 | 114 | 59 |
+| AMD64 | 173 | 117 | 56 |
+| ARM64 | 173 | 117 | 56 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
 
-The latest additions are IADDF, ISUBF, IMULF, IDIVF and ICVTXF on AMD64/ARM64.
+The latest additions are guarded ICVTFW, ICVTFL and ICVTFX paths on AMD64/ARM64.
+The real-to-integer paths retain C for non-finite and large inputs; ICVTFX
+currently requires an exact +1.0 scale. Earlier additions include IADDF, ISUBF,
+IMULF, IDIVF and ICVTXF.
 They preserve host floating rounding and sticky exception state; numerical C
 helpers remain in use for complex operations.
 
