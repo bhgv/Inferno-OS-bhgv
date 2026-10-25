@@ -460,7 +460,7 @@ x64mapped(X64Buf *b, LeafLayout *a, LeafOp *p)
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff);
 	if(!x64mappedguard(b, 0x75, fallback)) return 0;
 	x64casefield(b, 0, 1, a->typesize, 4);
-	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, 128);
+	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, 256);
 	if(!x64mappedguard(b, 0x76, fallback)) return 0;
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
 	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);

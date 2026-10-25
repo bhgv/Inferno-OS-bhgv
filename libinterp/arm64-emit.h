@@ -357,7 +357,7 @@ a64mapped(A64Buf *b, LeafLayout *a, LeafOp *p)
 	a64pcguard(b, 0xb500006d, fallback);
 	a64put(b, 0xb10005bf); a64pcguard(b, 0x54000061, fallback);
 	a64put(b, 0xb9800000U | (a->typesize/4)<<10 | 13<<5 | 12);
-	a64put(b, 0xf102019f); a64pcguard(b, 0x54000069, fallback);
+	a64put(b, 0xf104019f); a64pcguard(b, 0x54000069, fallback);
 	empty=b->n; a64put(b, 0xb400000c);
 	a64field(b, 14, 13, a->typenp, 4);
 	a64pcguard(b, 0x3400006e, fallback);

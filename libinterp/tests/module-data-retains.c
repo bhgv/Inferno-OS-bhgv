@@ -9,7 +9,7 @@ main(void)
 	char *modevalue=getenv("MODULE_DATA_MODE");
 	ulong total=0;
 
-	for(mode=0;mode<13;mode++){
+	for(mode=0;mode<17;mode++){
 		if(modevalue && mode!=atoi(modevalue))continue;
 		setup();memset(&module,0,sizeof(module));memset(imports,0,sizeof(imports));
 		memset(payload,0x5a,sizeof(payload));memmove(savedpayload,payload,sizeof(payload));
@@ -29,6 +29,10 @@ main(void)
 		if(mode==10)mp.ref=0x7ffffffe;
 		if(mode==11){mp.size=0;module.origmp=nil;}
 		if(mode==12){moduletypes[0]=&Tmodlink;Tmodlink.ref=0x7ffffffe;}
+		if(mode==13)mp.np=-1;
+		if(mode==14)mp.np=2;
+		if(mode==15){mp.np=1;mp.map[0]=0x01;}
+		if(mode==16){mp.size=sizeof(void*)+1;mp.np=1;mp.map[0]=0xc0;}
 		memmove(&beforetype,&mp,sizeof(mp));memmove(&beforemodlink,&Tmodlink,sizeof(Tmodlink));
 		allocations=0;raised=nil;valid=mode==10 || mode==11;
 		ok=kprotect(run,nil);

@@ -1,8 +1,8 @@
 # Native typed-record copy checkpoint
 
 AMD64 and ARM64 now publish IMOVMP and IHEADMP leaves for pointer-free records
-up to 128 bytes. This adds two opcode IDs per backend: 127 native paths and
-46 interpreter-only commands out of 173 active commands. INOP is invalid and
+up to 256 bytes. The original checkpoint added two opcode IDs per backend. Current totals are
+138 guarded native paths and 35 interpreter-only commands out of 173 active commands. INOP is invalid and
 IECLR is unused. RV64 counts remain 103/70 with M, 90/83 with Zmmul, and 87/86
 with its base integer ISA. Both WORD32/native-pointer64 and legacy WORD64
 configurations give these counts.
@@ -15,7 +15,7 @@ Modlink.type vector. Native offsets come from the compiler layout adapter.
 The descriptor's size and pointer-map length are native C ints, independently
 of the language WORD width. Pointer-vector arithmetic is bounded before lookup.
 
-For sizes 1 through 128, only np==0 is accepted. Both overlap directions use a
+For sizes 1 through 256, only np==0 is accepted. Both overlap directions use a
 single byte loop with a signed native stride, preserving memmove byte results
 without setting the AMD64 direction flag or calling helpers. Larger records and
 records containing pointers retain the existing C ownership/memmove handlers.
@@ -48,23 +48,23 @@ operand change or copy. The original zero-size early return remains intact.
 
 - mapped-copy-native.py executes the production AMD64 adapter and actual C
   moduletype/listhead/movmp/headmp bodies against independent full byte-image
-  expectations and libc memmove. There are 199952 cases per WORD model, 399904
+  expectations and libc memmove. There are 226576 cases per WORD model, 453152
   total, under ASan/UBSan: all source/destination/index alignments, overlap in
   both directions, operand aliases, moving live tables, stale link caches,
-  sizes through 255, metadata failures, empty mapped records and reference
+  sizes through 257, metadata failures, empty mapped records and reference
   limits. C and the harness are instrumented; generated code itself is not.
 - mapped-copy-jit.py executes production AMD64/ARM64 bytes with Unicorn and
-  checks instruction boundaries with Capstone (52228 cases per architecture,
-  104456 total). It compares complete memory
+  checks instruction boundaries with Capstone (59620 cases per architecture,
+  119240 total). It compares complete memory
   images above 4 GiB and verifies with guest write hooks that zero-size and
   declined invocations make no stores. It checks invalid module/table/type
   identities, signed index/count boundaries, pointer-wrap rejection, mapped
   records, list/ref failures, malformed layouts, zero-size invalid data pointers,
   aliases, overlap and unchanged FP controls/status.
-- mapped-copy-layouts.py passes 58240 layout/capacity probes per architecture,
-  116480 total, under ASan/UBSan. Large native offsets and every capacity from
+- mapped-copy-layouts.py passes 106080 layout/capacity probes per architecture,
+  212160 total, under ASan/UBSan. Large native offsets and every capacity from
   zero through 64 must preserve output canaries or publish a complete leaf.
-- The core suite passes 70 host drivers. The publication fixture now contains
+- The core suite now includes 91 host drivers. The publication fixture now contains
   all new opcodes in its 74-instruction module and preserves the actual
   allocation/protection failure, retry and unmap checks. Actual AMD64 execution
   passes ASan/UBSan in both WORD models; ARM64 publication passes both models;

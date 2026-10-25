@@ -109,7 +109,7 @@ linkmodule(void *arg)
 	Type *t;
 	Heap *h;
 	Modlink *ml;
-	int i;
+	int i, j, bit;
 
 	c = arg;
 	m = c->m;
@@ -126,6 +126,15 @@ linkmodule(void *arg)
 		   t->ref <= 0 || t->ref > 0x7ffffffe - (t == &Tmodlink) ||
 		   (t->size != 0 && m->origmp == nil))
 			error(exHeap);
+		/* A rejected clone must never leave an uninitialized mapped MP to destroy. */
+		if(t->np < 0 ||
+		   t->np > t->size/(8*sizeof(void*))+(t->size%(8*sizeof(void*)) != 0))
+			error(exHeap);
+		for(j = 0; j < t->np; j++)
+			for(bit = 0; bit < 8; bit++)
+				if((t->map[j] & (0x80>>bit)) &&
+				   ((ulong)j*8+bit >= (ulong)t->size/sizeof(void*)))
+					error(exHeap);
 	}
 	c->result = ml = mklinkmod(m, i);
 	if(c->mkmp){

@@ -389,8 +389,10 @@ buildtokens(void *arg)
 	if(s == nil || d == nil)
 		error(exNilref);
 	/* Validate before negating rune counts or allocating partial words. */
-	if(s->len == (-0x7fffffff-1) ||
-	   (d != H && d->len == (-0x7fffffff-1)))
+	if(s->len == (-0x7fffffff-1) || s->max < 0 ||
+	   (s->len < 0 ? -s->len : s->len) > s->max ||
+	   (d != H && (d->len == (-0x7fffffff-1) || d->max < 0 ||
+	   (d->len < 0 ? -d->len : d->len) > d->max)))
 		error(exInval);
 	h = &result->words;
 	first = 0;

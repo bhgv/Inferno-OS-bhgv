@@ -2,19 +2,19 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 128 commands (74.0%); 45 remain on the interpreter path. RV64 profiles
+paths for 138 commands (79.8%); 35 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 128 | 45 |
-| ARM64 | 173 | 128 | 45 |
+| AMD64 | 173 | 138 | 35 |
+| ARM64 | 173 | 138 | 35 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
 
-The latest ISLICELA expansion covers arbitrary valid destination indexes for
+The earlier ISLICELA expansion covers arbitrary valid destination indexes for
 non-pointer byte copies of at most 128 elements on AMD64/ARM64. It checks the
 complete element geometry (index + length <= INT_MAX) and native address spans
 before overlap-aware copying. Validated empty copies retain C's wider WORD-index
@@ -24,7 +24,7 @@ See [README.offset-slices-channels.md](README.offset-slices-channels.md).
 
 The preceding additions are guarded IMOVMP and IHEADMP paths on AMD64/ARM64.
 They resolve the current Module.type table, accept pointer-free records of
-1 through 128 bytes, and preserve overlapping memmove order. Zero-size records
+1 through 256 bytes, and preserve overlapping memmove order. Zero-size records
 are native no-ops after required list/type validation, independently of pointer
 map flags or temporary source reference counts. Mapped and larger records keep C.
 See [README.mapped-copy-native.md](README.mapped-copy-native.md).
@@ -308,3 +308,12 @@ extends AMD64/ARM64 MCALL to different bytecode modules with equal compiled
 flags. Both remain at 138 guarded paths / 35 interpreter-only commands; RISC-V
 profiles remain 103/70, 90/83 and 87/86. Module-data clones and per-word token
 nodes now reserve descriptor capacity before allocating or publishing owners.
+
+## Wider record copies and mapped clone ownership
+
+[Mapped clone ownership and record-copy expansion](README.clone-owners.md)
+extends pointer-free MOVMP/HEADMP records to 256 bytes on AMD64/ARM64 while
+keeping the 64-unit staging bound. Counts remain 138/35 on both backends.
+Mapped module-data cloning now validates pointer spans and owner capacity,
+uses byte-safe field access, and leaves only acquired owners for cleanup.
+Tokenization validates both input capacities before reading either payload.

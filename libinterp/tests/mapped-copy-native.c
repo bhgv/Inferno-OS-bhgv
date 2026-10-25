@@ -97,7 +97,7 @@ main(void)
 	Module module={0},owner={0};Modlink link={0};Inst instructions[2]={{0}},sentinel;
 	Type record={0},stale={0};Type *first[2]={&stale,&record},*second[2]={&stale,&record};
 	int ops[]={IMOVMP,IHEADMP};void (*handlers[])(void)={movmp,headmp};
-	int sizes[]={0,1,2,7,8,15,16,31,32,63,64,127,128,129,255};
+	int sizes[]={0,1,2,7,8,15,16,31,32,63,64,127,128,129,255,256,257};
 	int deltas[]={-8,-1,0,1,7,8,31,63,127,128,256};
 	union {uvlong align;uchar bytes[512];} slots;
 	uchar before[512],expectedslots[512],*block,*expected,*source,*destination,*wanted;
@@ -114,7 +114,7 @@ main(void)
 	link.m=&owner;link.type=first;owner.ntype=2;
 	if(getenv("MAPPED_ERROR_ONLY"))goto errors;
 	for(op=0;op<2;op++)for(sa=0;sa<8;sa++)for(da=0;da<8;da++)for(ma=0;ma<8;ma++)
-	for(si=0;si<15;si++)for(di=0;di<13;di++){
+	for(si=0;si<sizeof(sizes)/sizeof(sizes[0]);si++)for(di=0;di<13;di++){
 		n=sizes[si];record.size=n;record.np=0;stale.size=257;
 		owner.type=(checks&1) ? first : second;
 		/* The cached link table points at an incompatible descriptor on every call. */
@@ -140,7 +140,8 @@ main(void)
 			retained=released=0;nprop=1;raised=nil;
 			feclearexcept(FE_ALL_EXCEPT);feraiseexcept(FE_DIVBYZERO);
 			if(pass==0){
-				valid=n<=128;assert(module.jit->entry[ops[op]](&R)==valid);
+				valid=n<=256;
+				if(module.jit->entry[ops[op]](&R)!=valid)abort();
 				if(!valid){assert(!memcmp(before,slots.bytes,sizeof(before)) && heap->ref==10 && R.s==(op ? slots.bytes+8+sa : source));continue;}
 			}else handlers[op]();
 			assert(!memcmp(expected,block,length) && !memcmp(expectedslots,slots.bytes,sizeof(before)));

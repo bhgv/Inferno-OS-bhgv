@@ -445,12 +445,22 @@ heaparray(Type *t, int sz)
 {
 	Heap *h;
 	Array *a;
+	int i, bit;
 
 	/* Header and element descriptors can be the same Type, requiring two retains. */
 	if(t == nil || t == H || t->ref <= 0 ||
 	   t->ref > 0x7ffffffe - (t == &Tarray) || Tarray.ref <= 0 || Tarray.ref == 0x7fffffff)
 		error(exHeap);
 	acheck(t->size,sz);
+	/* Validate before initarray publishes a header requiring mapped cleanup. */
+	if(t->np < 0 ||
+	   t->np > t->size/(8*sizeof(void*))+(t->size%(8*sizeof(void*)) != 0))
+		error(exHeap);
+	for(i = 0; i < t->np; i++)
+		for(bit = 0; bit < 8; bit++)
+			if((t->map[i] & (0x80>>bit)) &&
+			   ((ulong)i*8+bit >= (ulong)t->size/sizeof(void*)))
+				error(exHeap);
 	h = nheap(sizeof(Array) + (t->size*sz));
 	h->t = &Tarray;
 	Tarray.ref++;
@@ -534,15 +544,27 @@ arraycpy(Array *sa)
 	return H;
 }
 
-/* Publish only acquired references, so a failed clone is safe to destroy. */
+
+/* Validate mapped spans, then publish only acquired owners for failure cleanup. */
 void
 newmp(void *dst, void *src, Type *t)
 {
 	Heap *h;
 	int c, i, bit;
 	ulong offset;
-	void *wp, **q;
+	void *wp, *owned;
+	uchar *q;
 
+	if(t == nil || t == H || t->size < 0 || t->np < 0 ||
+	   t->np > t->size/(8*sizeof(void*))+(t->size%(8*sizeof(void*)) != 0) ||
+	   (t->size != 0 && (src == nil || src == H || dst == nil || dst == H)))
+		error(exHeap);
+	/* Reject partial pointer slots before initmem can write outside the payload. */
+	for(i = 0; i < t->np; i++)
+		for(bit = 0; bit < 8; bit++)
+			if((t->map[i] & (0x80>>bit)) &&
+			   ((ulong)i*8+bit >= (ulong)t->size/sizeof(void*)))
+				error(exHeap);
 	if(t->size != 0)
 		memmove(dst, src, t->size);
 	initmem(t, dst);
@@ -553,19 +575,26 @@ newmp(void *dst, void *src, Type *t)
 		for(bit = 0; c != 0 && bit < 8; bit++){
 			if((c & (0x80>>bit)) == 0)
 				continue;
-			offset = (i*8+bit)*sizeof(void*);
-			q = (void**)((uchar*)dst+offset);
-			wp = *(void**)((uchar*)src+offset);
+			offset = ((ulong)i*8+bit)*sizeof(void*);
+			q = (uchar*)dst+offset;
+			memmove(&wp, (uchar*)src+offset, sizeof(wp));
 			if(wp == H)
 				continue;
+			if(wp == nil)
+				error(exHeap);
 			h = D2H(wp);
+			if(h->ref == 0 || h->t == nil || h->t == H)
+				error(exHeap);
 			if(h->t == &Tarray)
-				*q = arraycpy(wp);
+				owned = arraycpy(wp);
 			else{
+				if(h->ref == (ulong)~0)
+					error(exHeap);
 				h->ref++;
 				Setmark(h);
-				*q = wp;
+				owned = wp;
 			}
+			memmove(q, &owned, sizeof(owned));
 		}
 	}
 }

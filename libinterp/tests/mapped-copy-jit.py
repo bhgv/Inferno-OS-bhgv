@@ -91,7 +91,7 @@ int emit(u32int *out,int cap,int wb,int op,int field,int value){
                     if fault==11:descriptor=0
                     if fault==12:descriptor=MASK
                     if fault==13:length=-1
-                    if fault==14:length=129
+                    if fault==14:length=257
                     if fault==15:np=1
                     if fault==16:np=-1
                     if fault==17:listowner=0
@@ -107,7 +107,7 @@ int emit(u32int *out,int cap,int wb,int op,int field,int value){
                     put(image,0x908,descriptor);put(image,0xb00+24,length,4);put(image,0xb00+28,np,4)
                     put(image,0x1000-24,refs)
                     validmeta=fault not in tuple(range(1,14))+(21,) and (not op or fault not in (17,18))
-                    accepted=validmeta and 0<=length<=128 and (length==0 or (np==0 and (not op or refs not in (0,MASK))))
+                    accepted=validmeta and 0<=length<=256 and (length==0 or (np==0 and (not op or refs not in (0,MASK))))
                     expected=bytearray(image)
                     if accepted and length:
                         expected[dest:dest+length]=bytes(image[src:src+length])
@@ -126,13 +126,13 @@ int emit(u32int *out,int cap,int wb,int op,int field,int value){
                     if arch=='amd64':assert machine.reg_read(UC_X86_REG_MXCSR)==0x5fa5
                     else:assert machine.reg_read(UC_ARM64_REG_FPCR)==0x800000 and machine.reg_read(UC_ARM64_REG_FPSR)==0x95
 
-                for length in (0,1,2,7,8,15,16,31,32,63,64,127,128,129,255):
+                for length in (0,1,2,7,8,15,16,31,32,63,64,127,128,129,255,256,257):
                     for sa in range(8):
                         for da in range(8):
                             for delta in (-8,-1,0,1,7,8,31,63,127,128,256,999,1000):
                                 run(length,sa,da,delta);checks+=1
                 for fault in range(23):
-                    for length in (0,1,128):
+                    for length in (0,1,128,256):
                         for shift in range(8):
                             run(length,shift,shift,256,fault);checks+=1
                 for fault in (25,26) if op else (23,24,25,26):
