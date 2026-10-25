@@ -17,12 +17,14 @@ struct LeafLayout {
 	void *mutator, *nprop;
 	int markcolor;
 	int moduletypes, modulenty, typenp;
+	int stringmax;
 };
 typedef struct LeafOp LeafOp;
 struct LeafOp {
 	int kind, bytes, input, alu, condition;
 };
 enum {
+	LeafStringStore = 115,
 	LeafDecimal = 114,
 	LeafSliceCopy = 113,
 	LeafMappedCopy = 112,
@@ -64,6 +66,7 @@ leafop(LeafOp *p, int op, int wordbytes)
 		p->kind = LeafRealArithmetic; p->bytes = 8;
 		p->alu = op == IADDF ? 0 : op == ISUBF ? 1 : op == IMULF ? 2 : 3;
 		break;
+	case IINSC: p->kind = LeafStringStore; break;
 	case ICVTCW: p->kind = LeafDecimal; break;
 	case ICVTCL: p->kind = LeafDecimal; p->bytes = 8; break;
 	case ISLICELA: p->kind = LeafSliceCopy; break;

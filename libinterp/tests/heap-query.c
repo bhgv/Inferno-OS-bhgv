@@ -12,7 +12,7 @@ Module *modules;
 Type Tarray={1},Tlist={1},Tstring={1},Tchannel={1};
 Type *Trdchan,*Twrchan;
 String snil;
-char Ebadctl[]="control",exNilref[]="nil",exNomem[]="memory";
+char Ebadctl[]="control",exNilref[]="nil",exNomem[]="memory",exHeap[]="heap";
 static int checks;
 static Inst instructions[8];
 extern int _efgfmt(Fmt*);
@@ -98,6 +98,7 @@ valid(void)
     module->MP=(void*)(uintptr)0x12345678;records('M',links,sizeof(links),2,"nil\n12345678\n");
     array->len=(WORD)0x100000002LL;array->data=(void*)(uintptr)0x12340000;
     snprintf(text,sizeof(text),"nil\n%lld.12340000\n",(vlong)array->len);records('A',arrays,sizeof(arrays),2,text);
+    narrow->max=16;wide->max=16/sizeof(Rune);
     narrow->len=2;memcpy(narrow->Sascii,"xy",3);wide->len=-1;wide->Srune[0]=0x3a9;
     records('C',strings,sizeof(strings),3,"0.2.xy1.\xce\xa9");
     channel->buf=H;

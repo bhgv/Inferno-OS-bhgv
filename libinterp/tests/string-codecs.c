@@ -602,15 +602,48 @@ checkindexedstores(void)
 	}
 }
 
+/* Invalid logical capacities must not write terminators, scan runes or refresh caches. */
+static void
+checkcapacities(void)
+{
+	String *s;
+	uchar before[256],cache[9];
+	int wide,mode,bytes,allocations,oldlive;
+	char *selection=getenv("STRING_CAPACITY_MODE");
+
+	for(wide=0;wide<2;wide++)for(mode=0;mode<4;mode++){
+		if(selection && atoi(selection)!=mode)continue;
+		s=wide ? newrunes(4) : newstring(4);
+		if(wide){
+			int j;
+			for(j=0;j<4;j++)s->Srune[j]=0x400+j;
+			string2c(s);memmove(cache,s->tmp,sizeof(cache));
+		}
+		bytes=sizeof(Heap)+sizeof(String)+(wide ? 4*sizeof(Rune) : 4)+32;
+		assert(bytes<sizeof(before));
+		if(mode==0)s->max=3;
+		if(mode==1)s->max=-1;
+		if(mode==2)s->len=wide ? -1000 : 1000;
+		if(mode==3){s->len=0;s->max=-1;}
+		memmove(before,D2H(s),bytes);allocations=calls;oldlive=live;
+		EXPECT(string2c(s),exHeap);
+		assert(!memcmp(before,D2H(s),bytes) && calls==allocations && live==oldlive);
+		if(wide)assert(!memcmp(cache,s->tmp,sizeof(cache)));
+		s->len=wide ? -4 : 4;s->max=4;destroy(s);assert(!live);checks++;
+	}
+}
+
 /* Complete all real-header codec checks with balanced VM and native ownership. */
 int
 main(void)
 {
+	if(getenv("STRING_CAPACITY_ONLY")){checkcapacities();goto finished;}
 	if(STRING_INDEX_CASE == 0){
-	checkcachefailures(); checkrunes(); checkbounds(); checkaliases(); checkwords(); checktext(); checkstores(); checkindices(); checkemptycapacity();
+	checkcapacities();checkcachefailures(); checkrunes(); checkbounds(); checkaliases(); checkwords(); checktext(); checkstores(); checkindices(); checkemptycapacity();
 	}
 	if(STRING_INDEX_CASE != 6)checkindexedchars();
 	if(STRING_INDEX_CASE == 0 || STRING_INDEX_CASE == 6)checkindexedstores();
+	finished:
 	assert(live == 0 && Tstring.ref == 1 && Tarray.ref == 1 && Tbyte.ref == 1);
 	printf("PASS string codecs: %d UTF/word/bounds/ownership checks, WORD%zu\n",checks,sizeof(WORD)*8);
 	return 0;

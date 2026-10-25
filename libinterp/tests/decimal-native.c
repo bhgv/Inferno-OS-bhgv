@@ -5,7 +5,7 @@
 #include <fenv.h>
 REG R;
 int mutator,nprop;
-char exNilref[]="nil",exNomem[]="memory";
+char exNilref[]="nil",exNomem[]="memory",exHeap[]="heap";
 static jmp_buf boundary;
 static char *raised;
 /* Exercise the actual compiler and its executable mapping ownership. */
@@ -49,7 +49,7 @@ main(void)
 	for(round=0;round<4;round++)for(i=0;i<sizeof(texts)/sizeof(texts[0]);i++)for(kind=0;kind<4;kind++)
 	for(op=0;op<2;op++)for(sa=0;sa<8;sa++)for(da=0;da<8;da++)for(alias=0;alias<3;alias++){
 		memset(object.bytes,0xa5,sizeof(object.bytes));s=(String*)object.bytes;
-		length=strlen(texts[i]);s->len=length;s->tmp=nil;
+		length=strlen(texts[i]);s->len=length;s->max=length;s->tmp=nil;
 		memmove(s->Sascii,texts[i],length+1);
 		valid=length-(texts[i][0]=='+' || texts[i][0]=='-')<=9;
 		for(j=(texts[i][0]=='+' || texts[i][0]=='-');j<length;j++)

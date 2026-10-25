@@ -60,7 +60,7 @@ leafcompile(void *arg)
 #endif
 	abi.wordbytes=sizeof(WORD);
 	abi.arraylen=O(Array, len); abi.arraydata=O(Array, data);
-	abi.stringlen=O(String, len);
+	abi.stringlen=O(String, len); abi.stringmax=O(String, max);
 	abi.stringdata=O(String, Sascii);
 	abi.listdata=O(List, data);
 	abi.listtail=O(List, tail);

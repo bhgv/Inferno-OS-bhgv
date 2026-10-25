@@ -464,6 +464,7 @@ a64decimal(A64Buf *b, LeafLayout *a, LeafOp *p)
 	int absent, empty, minus, digits, signonly, loop, positive;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
+	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
 	   a->stringdata < 0 || a->stringdata > 2047) return 0;
 	a64ptr(b, 9, a->s); a64load(b, 12, 9, 8);
 	a64put(b, 0x5280000e); a64put(b, 0x5280000f);
@@ -471,6 +472,8 @@ a64decimal(A64Buf *b, LeafLayout *a, LeafOp *p)
 	a64put(b, 0xb100059f); absent=b->n; a64put(b, 0x54000000);
 	a64field(b, 13, 12, a->stringlen, 4);
 	a64put(b, 0x710029bf); a64guard(b, 0x54000069);
+	a64field(b, 10, 12, a->stringmax, 4);
+	a64put(b, 0x6b0d015f); a64guard(b, 0x5400006a);
 	a64put(b, 0x91000189U | (u32int)a->stringdata<<10);
 	/* Preserve string2c's terminator mutation by declining nonterminated ASCII. */
 	a64put(b, 0x8b0d012a); a64load(b, 10, 10, 1); a64guard(b, 0x3400006a);
@@ -502,6 +505,43 @@ a64decimal(A64Buf *b, LeafLayout *a, LeafOp *p)
 	return 1;
 }
 
+/* Store one existing ASCII/Rune character without allocating or changing ownership. */
+static int
+a64stringstore(A64Buf *b, LeafLayout *a)
+{
+	int wide, done;
+
+	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
+	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
+	   a->stringdata < 0 || a->stringdata > 2047 ||
+	   a->heapref <= 0 || a->heapref > 255 || a->heapref%8 || a->refbytes != 8) return 0;
+	a64ptr(b, 9, a->s); a64load(b, 12, 9, a->wordbytes);
+	a64ptr(b, 10, a->m); a64load(b, 13, 10, a->wordbytes);
+	a64ptr(b, 11, a->d); a64load(b, 14, 11, 8);
+	a64guard(b, 0xb500006e);
+	a64put(b, 0xb10005df); a64guard(b, 0x54000061);
+	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 14<<5 | 4);
+	a64put(b, 0xf100049f); a64guard(b, 0x54000060);
+	a64field(b, 15, 14, a->stringlen, 4);
+	a64put(b, 0x52b00002); a64put(b, 0x6b0201ff); a64guard(b, 0x54000061);
+	a64put(b, 0x2a0f03e2); a64put(b, 0x36f80042); a64put(b, 0x4b0203e2);
+	a64field(b, 3, 14, a->stringmax, 4);
+	a64put(b, 0x6b02007f); a64guard(b, 0x5400006a);
+	a64put(b, 0xeb0201bf); a64guard(b, 0x54000063);
+	wide=b->n; a64put(b, 0x37f8000f);
+	a64put(b, 0x7102019f); a64guard(b, 0x54000063);
+	a64put(b, 0x910001ceU | (u32int)a->stringdata<<10);
+	a64put(b, 0x8b0d01cb); a64store(b, 12, 1);
+	done=b->n; a64put(b, 0x14000000);
+	if(b->n > LeafMax) return 0;
+	b->code[wide] |= (b->n-wide)<<5;
+	a64put(b, 0x910001ceU | (u32int)a->stringdata<<10);
+	a64put(b, 0x8b0d09cb); a64store(b, 12, 4);
+	if(b->n > LeafMax) return 0;
+	b->code[done] |= b->n-done;
+	return 1;
+}
+
 /* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -521,7 +561,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafDecimal){
+	if(p.kind == LeafStringStore){
+		if(!a64stringstore(&b, abi)) return 0;
+	}else if(p.kind == LeafDecimal){
 		if(!a64decimal(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafSliceCopy){
 		if(!a64slicecopy(&b, abi)) return 0;

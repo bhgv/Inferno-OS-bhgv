@@ -43,8 +43,8 @@ typedef uint32_t u32int;typedef unsigned char uchar;
 /* Derive both decimal instructions from one real staged emitter and private layout. */
 int emit(u32int *out,int cap,int wb,int big,int field,int value){
  LeafLayout a={0};a.wordbytes=wb;a.pc=0;a.s=8;a.d=16;a.m=24;
- a.stringlen=0;a.stringdata=24;
- if(field==1)a.stringlen=value;if(field==2)a.stringdata=value;
+ a.stringlen=0;a.stringmax=4;a.stringdata=24;
+ if(field==1)a.stringlen=value;if(field==2)a.stringdata=value;if(field==3)a.stringmax=value;
  return leafemit(out,cap,&a,big ? ICVTCL : ICVTCW);
 }
 ''')
@@ -68,12 +68,12 @@ int emit(u32int *out,int cap,int wb,int big,int field,int value){
                 for cap in range(n):
                     guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
                     assert lib.emit(guard,cap,wb,big,0,0)==0 and list(guard)==[0xa5a5a5a5]*64;checks+=1
-                for field,values in ((1,(-1,1,2048)),(2,(-1,2048))):
+                for field,values in ((1,(-1,1,2048)),(2,(-1,2048)),(3,(-1,1,2048))):
                     for value in values:
                         guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
                         assert lib.emit(guard,64,wb,big,field,value)==0 and list(guard)==[0xa5a5a5a5]*64;checks+=1
                 machine.mem_write(CODE,blob);machine.ctl_remove_cache(CODE,CODE+256)
-                cases=[(text,0) for text in texts]+[(b'12',fault) for fault in range(1,7)]
+                cases=[(text,0) for text in texts]+[(b'12',fault) for fault in range(1,9)]
                 for text,fault in cases:
                     body=text[1:] if text[:1] in (b'+',b'-') else text
                     valid=(len(body)<=9 and (not body or all(48<=x<=57 for x in body)))
@@ -91,7 +91,7 @@ int emit(u32int *out,int cap,int wb,int big,int field,int value){
                                 if fault==4:length=0x80000000
                                 if fault==5:length=11
                                 put(image,8,BASE+src);put(image,16,BASE+dst);put(image,src,owner)
-                                put(image,0x800+sa,length,4)
+                                put(image,0x800+sa,length,4);put(image,0x804+sa,-1 if fault==7 else len(text)-1 if fault==8 else len(text),4)
                                 image[0x818+sa:0x818+sa+len(text)+1]=text+bytes([65 if fault==6 else 0])
                                 expected=bytearray(image)
                                 if valid:put(expected,dst,value,8 if big else wb)

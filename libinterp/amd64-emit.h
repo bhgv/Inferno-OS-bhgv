@@ -604,18 +604,22 @@ x64slicecopy(X64Buf *b, LeafLayout *a)
 static int
 x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
 {
-	int absent, empty, minus, digits, loop, positive;
+	int absent, empty, minus, digits, loop, positive, i;
+	unsigned int distance;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
+	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
 	   a->stringdata < 0 || a->stringdata > 2047) return 0;
 	x64ptr(b, 0, a->s); x64load(b, 0, 8);
 	x64byte(b, 0x45); x64byte(b, 0x31); x64byte(b, 0xc0); /* r8d=value */
 	x64byte(b, 0x45); x64byte(b, 0x31); x64byte(b, 0xc9); /* r9d=negative */
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64guard(b, 0x75);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
-	x64byte(b, 0x74); absent=b->n; x64byte(b, 0);
+	x64byte(b, 0x0f); x64byte(b, 0x84); absent=b->n; x64word(b, 0);
 	x64field(b, 1, 0, a->stringlen, 4);
 	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 10); x64guard(b, 0x76);
+	x64field(b, 2, 0, a->stringmax, 4);
+	x64byte(b, 0x39); x64byte(b, 0xca); x64guard(b, 0x7d);
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0xb0); x64word(b, a->stringdata);
 	/* string2c would terminate ASCII; decline if that would change VM bytes. */
 	x64byte(b, 0x80); x64byte(b, 0x3c); x64byte(b, 0x0e); x64byte(b, 0); x64guard(b, 0x74);
@@ -647,12 +651,55 @@ x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
 	x64byte(b, 0x74); minus=b->n; x64byte(b, 0);
 	x64byte(b, 0x41); x64byte(b, 0xf7); x64byte(b, 0xd8);
 	if(b->n > sizeof(b->bytes)) return 0;
-	if(b->n-absent-1 > 127 || b->n-empty-1 > 127 ||
+	if(b->n-empty-1 > 127 ||
 	   b->n-positive-1 > 127 || b->n-minus-1 > 127) return 0;
-	b->bytes[absent]=b->n-absent-1; b->bytes[empty]=b->n-empty-1;
+	distance=b->n-absent-4;
+	for(i=0;i<4;i++)b->bytes[absent+i]=distance>>(i*8);
+	b->bytes[empty]=b->n-empty-1;
 	b->bytes[positive]=b->n-positive-1; b->bytes[minus]=b->n-minus-1;
 	x64byte(b, 0x49); x64byte(b, 0x63); x64byte(b, 0xc0);
 	x64ptr(b, 2, a->d); x64store(b, 0, p->bytes);
+	return 1;
+}
+
+/* Replace an existing character only when the owner is unique and capacity is valid. */
+static int
+x64stringstore(X64Buf *b, LeafLayout *a)
+{
+	int absolute, wide, done;
+
+	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
+	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
+	   a->stringdata < 0 || a->stringdata > 2047 ||
+	   a->heapref <= 0 || a->heapref > 255 || a->heapref%8 || a->refbytes != 8) return 0;
+	x64ptr(b, 0, a->s); x64load(b, 0, a->wordbytes);
+	x64byte(b, 0x41); x64byte(b, 0x89); x64byte(b, 0xc0); /* r8d=Rune(value) */
+	x64ptr(b, 1, a->m); x64load(b, 1, a->wordbytes);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xce); /* rsi=full WORD index */
+	x64ptr(b, 2, a->d); x64load(b, 2, 8);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); x64guard(b, 0x75);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0xff); x64guard(b, 0x75);
+	x64field(b, 0, 2, -a->heapref, 8);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 1); x64guard(b, 0x74);
+	x64field(b, 1, 2, a->stringlen, 4);
+	x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, 0x80000000U); x64guard(b, 0x75);
+	x64byte(b, 0x41); x64byte(b, 0x89); x64byte(b, 0xc9); /* preserve representation */
+	x64byte(b, 0x85); x64byte(b, 0xc9);
+	x64byte(b, 0x79); absolute=b->n; x64byte(b, 0);
+	x64byte(b, 0xf7); x64byte(b, 0xd9);
+	b->bytes[absolute]=b->n-absolute-1;
+	x64field(b, 0, 2, a->stringmax, 4);
+	x64byte(b, 0x39); x64byte(b, 0xc8); x64guard(b, 0x7d);
+	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64guard(b, 0x72);
+	x64byte(b, 0x45); x64byte(b, 0x85); x64byte(b, 0xc9);
+	x64byte(b, 0x78); wide=b->n; x64byte(b, 0);
+	x64byte(b, 0x41); x64byte(b, 0x81); x64byte(b, 0xf8); x64word(b, 128); x64guard(b, 0x72);
+	x64byte(b, 0x44); x64byte(b, 0x88); x64byte(b, 0x84); x64byte(b, 0x32); x64word(b, a->stringdata);
+	x64byte(b, 0xeb); done=b->n; x64byte(b, 0);
+	b->bytes[wide]=b->n-wide-1;
+	x64byte(b, 0x44); x64byte(b, 0x89); x64byte(b, 0x84); x64byte(b, 0xb2); x64word(b, a->stringdata);
+	if(b->n > sizeof(b->bytes)) return 0;
+	b->bytes[done]=b->n-done-1;
 	return 1;
 }
 
@@ -673,7 +720,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafDecimal){
+	if(p.kind == LeafStringStore){
+		if(!x64stringstore(&b, abi)) return 0;
+	}else if(p.kind == LeafDecimal){
 		if(!x64decimal(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafSliceCopy){
 		if(!x64slicecopy(&b, abi)) return 0;

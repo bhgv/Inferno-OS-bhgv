@@ -8,7 +8,7 @@
 #include <setjmp.h>
 REG R;
 Type Tstring={1};
-char exNilref[]="nil",exType[]="type",exNomem[]="memory";
+char exNilref[]="nil",exType[]="type",exNomem[]="memory",exHeap[]="heap";
 static Prog current;
 static jmp_buf boundary;
 static char *raised;
@@ -36,6 +36,7 @@ textstring(int wide)
 	Heap *h=calloc(1,sizeof(Heap)+sizeof(String)+64);
 	String *s;
 	assert(h);h->ref=1;h->t=&Tstring;s=H2D(String*,h);
+	s->max=wide ? 64/sizeof(Rune) : 64;
 	if(wide){s->len=-2;s->Srune[0]='e';s->Srune[1]='r';}
 	else{s->len=2;memmove(s->Sascii,"er",2);}
 	return s;
