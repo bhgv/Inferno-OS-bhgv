@@ -40,6 +40,8 @@ with tempfile.TemporaryDirectory(prefix='sys-fd-owners-') as directory:
             start = source.index('typedef struct FDResult FDResult;')
             end = source.index('\n/* Mark a descriptor', start)
             bodies += [source[start:end]]
+            if 'static uchar*\nconnectionresultslot(' in source:
+                bodies.append(function(source, 'static uchar*\nconnectionresultslot('))
             bodies += [function(source, sig) for sig in
                        ('static Sys_FD*\ntakefd(', 'static void\nfreefdresult(',
                         'static void\nclearconnection(', 'static void\nmakeconnection(')]

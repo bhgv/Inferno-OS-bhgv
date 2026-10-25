@@ -72,7 +72,7 @@ main(void)
 			memmove(initial,memory.bytes,sizeof(initial));memmove(expected,initial,sizeof(expected));
 			memmove(expected+d,&result,sizeof(result));
 #ifdef NATIVE_FIXED_FRAME
-			completed=op==0 || y!=-1;
+			completed=1;
 			assert(module.jit->entry[ids[op]](&R)==completed);
 			assert(!memcmp(memory.bytes,completed ? expected : initial,sizeof(expected)));
 			assert(R.PC==&sentinel && R.s==memory.bytes+16+s && R.m==memory.bytes+48+m && R.FP==memory.bytes+128+f && R.d==memory.bytes+d);

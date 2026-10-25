@@ -11,7 +11,7 @@ protection, string constructors/conversion and generated Sys frames. Native I/O,
 heap allocation, file-group references and scheduler transitions are bounded
 adapters. No real files, pipes or network connections are opened.
 
-There are 306 scenarios per configuration, or 1,224 executions across emulator
+There are 3,430 scenarios per configuration, or 13,720 executions across emulator
 and kernel sources and WORD32/WORD64 models. Both use host emulator error-stack
 declarations; WORD32 changes VM words while retaining native pointers. These are
 not full emulator/kernel builds or target JIT tests.
@@ -58,7 +58,7 @@ and `files`, nil-array failure in `pipe`, and premature replacement in
 `connection`. Adjacent Sys directory/I/O/stream and slice/tokenization checkpoint
 regressions are run against the combined branch state.
 
-## Owner-slot and pipe alignment checkpoint
+## Earlier owner-slot and pipe alignment checkpoint
 
 The current matrix exercises all eight return-slot offsets for open/create/fildes
 and both return/array offsets for pipe, including nil, absent and wrapping pipe
@@ -68,3 +68,12 @@ matrix now passes 2,702 cases per platform/WORD configuration (10,808 total)
 under UBSan. ASan/UBSan passes all normal paths and the files allocation-failure
 subset. The nested pipe/connection ASan limitation above still applies. See
 [the complete FP and FD checkpoint](README.full-fp-fd-slots.md).
+
+## Unaligned connection result checkpoint
+
+The current matrix also covers all eight byte offsets for dial/announce/listen
+result tuples. It preserves tuple padding, observes replacement/clear publication
+inside finalization, and checks allocation failures with shared old handles and
+a listen input borrowing the old directory. Full UBSan coverage is 3,430 cases
+per configuration; ASan/UBSan passes 866 normal-path and 288 files-failure cases
+per configuration. See [the division/connection checkpoint](README.minus-one-connections.md).

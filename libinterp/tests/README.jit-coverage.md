@@ -29,6 +29,12 @@ resizing now cover their complete input representations with the platform FP
 environment. RV64 retains its exact-bit guarded implementations. No opcode IDs
 were added in that expansion.
 
+Signed division by -1 now stays native in AMD64 ordinary DIV/MOD and in the
+AMD64/ARM64 fixed frame/coefficient paths. MIN/-1 preserves the VM wrap result;
+ordinary remainder is zero. Zero divisors and other existing guards still
+retain interpreter error handling. This expands operand coverage without adding
+opcode IDs; RV64 fixed guards are unchanged.
+
 These figures count opcode availability, not complete semantic or performance
 coverage. Some native paths accept a bounded subset and return to C for other
 operands. For example, rounded fixed operations retain C for VN flags; WN right shifts run

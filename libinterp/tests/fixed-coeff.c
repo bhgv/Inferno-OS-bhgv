@@ -60,7 +60,7 @@ wncases(void)
 		assert(!memcmp(&R,&saved,sizeof(R)));
 		if(!ok)assert(raised!=nil && !memcmp(memory.bytes,before,sizeof(before)));
 		memmove(expected,memory.bytes,sizeof(expected));memmove(memory.bytes,before,sizeof(before));
-		divisor=op==1 ? values[y] : coefficients[c];accepted=scales[n]>=-63 && scales[n]<0 && divisor!=0 && divisor!=-1;
+		divisor=op==1 ? values[y] : coefficients[c];accepted=scales[n]>=-63 && scales[n]<0 && divisor!=0 ;
 #ifdef NATIVE_COEFFICIENT
 		assert(module.jit->entry[ids[op]](&R)==accepted && !memcmp(&R,&saved,sizeof(R)));
 		assert(!memcmp(memory.bytes,accepted ? expected : before,sizeof(before)));
@@ -114,7 +114,7 @@ main(int argc,char **argv)
 		if((LONG)denominator<0)denominator=(uvlong)0-denominator;
 		magnitude=intermediate<0 ? (uvlong)0-(uvlong)intermediate : (uvlong)intermediate;magnitude/=denominator;
 		result=(WORD)(((intermediate<0)!=((kind==1 ? y : a)<0)) ? (uvlong)0-magnitude : magnitude);
-		accepted=(kind==1 ? y : a)!=-1;
+		accepted=1;
 		encoded=op>=3 ? n*4 : n;
 		source=kind==2 ? x : y;middle=kind==2 ? encoded : x;
 		for(sa=0;sa<8;sa++)for(ma=0;ma<8;ma++)for(fa=0;fa<8;fa++)for(alias=0;alias<8;alias++){

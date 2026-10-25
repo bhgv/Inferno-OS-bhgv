@@ -218,7 +218,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		/* Form byte offsets explicitly, including four-byte-aligned WORD64 slots. */
 		a64put(&b, 0x91000000U | abi->fixedcoef<<10 | 9<<5 | 10); a64load(&b, 14, 10, abi->wordbytes);
 		if(abi->wordbytes == 4)a64put(&b, 0x93407dce);
-		if(p.alu != 1){a64put(&b, 0xaa0e03ef); a64defer(&b, 0xb400000f, fallback); a64put(&b, 0xb10005ff); a64defer(&b, 0x54000000, fallback);}
+		if(p.alu != 1){a64put(&b, 0xaa0e03ef); a64defer(&b, 0xb400000f, fallback);}
 		if(p.alu == 2)a64ptr(&b, 10, abi->m);
 		else a64put(&b, 0x91000000U | abi->fixedtmp<<10 | 9<<5 | 10);
 		a64load(&b, 13, 10, abi->wordbytes); if(abi->wordbytes == 4)a64put(&b, 0x93407dad);
@@ -231,7 +231,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(p.alu == 1){
 			a64ptr(&b, 10, abi->s); a64load(&b, 15, 10, abi->wordbytes);
 			if(abi->wordbytes == 4)a64put(&b, 0x93407def);
-			a64defer(&b, 0xb400000f, fallback); a64put(&b, 0xb10005ff); a64defer(&b, 0x54000000, fallback);
+			a64defer(&b, 0xb400000f, fallback);
 		}else if(p.alu == 0){a64ptr(&b, 10, abi->s); a64load(&b, 14, 10, abi->wordbytes);if(abi->wordbytes == 4)a64put(&b, 0x93407dce);}
 		a64ptr(&b, 10, p.alu == 2 ? abi->s : abi->m); a64load(&b, 12, 10, abi->wordbytes);
 		if(abi->wordbytes == 4)a64put(&b, 0x93407d8c);
@@ -303,7 +303,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64put(&b, 0x9100fdae); a64put(&b, 0xf101fddf); a64guard(&b, 0x54000063);
 		a64ptr(&b, 9, abi->s); a64load(&b, 15, 9, abi->wordbytes);
 		if(abi->wordbytes == 4) a64put(&b, 0x93407def);
-		if(p.alu){ a64guard(&b, 0xb500006f); a64put(&b, 0xb10005ff); a64guard(&b, 0x54000061); }
+		if(p.alu){ a64guard(&b, 0xb500006f); }
 		a64ptr(&b, 9, abi->m); a64load(&b, 12, 9, abi->wordbytes);
 		if(abi->wordbytes == 4) a64put(&b, 0x93407d8c);
 		if(!p.alu) a64put(&b, 0x9b0f7d8c);

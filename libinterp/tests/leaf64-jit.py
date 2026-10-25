@@ -109,7 +109,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic','realinteger','realpower'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic','realinteger','realpower','divide'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -731,7 +731,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         for coefficient in (0,1,-1,2,-3):
                             for count in (-64,-63,-1,0,1,31,63,64,-(1<<(wb*8-1))):
                                 divisor=y if name=='IDIVX0' else coefficient
-                                valid=-63<=count<=63 and divisor not in (0,-1)
+                                valid=-63<=count<=63 and divisor!=0 and (not rv or divisor!=-1)
                                 numerator=coefficient*x if name=='IDIVX0' else x*y if name=='IMULX0' else x
                                 numerator=signed(numerator,64)
                                 if valid:
@@ -766,7 +766,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             for count,flags in [(scale*4+flags,flags) for scale in (-64,-63,-33,-32,-1,0,1,31,63,64) for flags in range(4)]+[(-(1<<(wb*8-1)),0),((1<<(wb*8-1))-1,3)]:
                                 divisor=y if name=='IDIVX1' else coefficient
                                 scale=count>>2
-                                valid=(flags==0 and -63<=scale<=63 or not rv and flags==1 and -63<=scale<0) and divisor not in (0,-1)
+                                valid=(flags==0 and -63<=scale<=63 or not rv and flags==1 and -63<=scale<0) and divisor!=0 and (not rv or divisor!=-1)
                                 numerator=coefficient*x if name=='IDIVX1' else x*y if name=='IMULX1' else x
                                 numerator=signed(numerator,64)
                                 if valid:
@@ -838,7 +838,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     for a,b in pairs:
                         aa,bb=signed(a,wb*8),signed(b,wb*8)
                         for count in counts:
-                            valid=-63<=count<=63 and (name=='IMULX' or aa not in (0,-1))
+                            valid=-63<=count<=63 and (name=='IMULX' or aa!=0 and (not rv or aa!=-1))
                             for alias in (0,1,2,3,5):
                                 out,pc,before,after,_=run(name,a,b,alias=alias,expect=int(valid),fixedframe=(data+0x900,count,None))
                                 if valid:
@@ -875,7 +875,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         _,pc,before,after,_=run(name,expect=0,poison=True,badsource=True,fixedframe=(data+0x900,count,None))
                         assert pc==oldpc and before==after
                         checks+=1
-                for divisor in ((0,-1) if blobs['IDIVX'] else ()):
+                for divisor in (((0,-1) if rv else (0,)) if blobs['IDIVX'] else ()):
                     _,pc,before,after,_=run('IDIVX',divisor,7,expect=0,poison=True,fixedframe=(data+0x900,0,None))
                     assert pc==oldpc and before==after
                     checks+=1
@@ -1175,6 +1175,32 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 assert run('IJMP')[1]==target
                 checks+=1
                 continue
+            if case=='divide':
+                for suffix,width in (('B',1),('W',wb),('L',8)):
+                    bits=width*8;mask=(1<<bits)-1
+                    edges=[0,1,-1,2,-2,(1<<(bits-1))-1,-(1<<(bits-1)),(1<<bits)-1]
+                    pairs=[(a,b) for a in edges for b in edges]
+                    pairs += [(signed(rng.getrandbits(bits),bits),signed(rng.getrandbits(bits),bits)) for _ in range(64)]
+                    for name in ('IDIV'+suffix,'IMOD'+suffix):
+                        if not blobs[name]:
+                            assert rv and not layout.hasdiv
+                            continue
+                        for divisor,dividend in pairs:
+                            a=divisor&255 if width==1 else signed(divisor,bits)
+                            b=dividend&255 if width==1 else signed(dividend,bits)
+                            for alias in range(6):
+                                out,pc,before,after,_=run(name,divisor,dividend,alias=alias,expect=int(a!=0))
+                                if a:
+                                    q=abs(b)//abs(a)
+                                    if (a<0)!=(b<0):q=-q
+                                    wanted=(q if name.startswith('IDIV') else b-q*a)&mask
+                                    assert int.from_bytes(out[:width],'little')==wanted,(arch,wb,name,a,b)
+                                    assert before[:8]==after[:8] and before[8+width:]==after[8+width:]
+                                else:assert before==after
+                                assert pc==oldpc;checks+=1
+                        _,pc,before,after,_=run(name,0,poison=True,expect=0)
+                        assert before==after and pc==oldpc;checks+=1
+                continue
             if case=='guard':
                 counts=[-1,wb*8,-(1<<(wb*8-1))]+([1<<32] if wb==8 else [])
                 for count in counts:
@@ -1282,7 +1308,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     for divisor,dividend in pairs:
                         a=divisor&255 if width==1 else signed(divisor,bits)
                         b=dividend&255 if width==1 else signed(dividend,bits)
-                        native=a!=0 and not (arch=='amd64' and a==-1)
+                        native=a!=0
                         for alias in (0,1,2):
                             out,pc,before,after,_=run(name,divisor,dividend,alias,expect=int(native))
                             if native:

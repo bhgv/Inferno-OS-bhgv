@@ -153,18 +153,29 @@ freefdresult(volatile FDResult *result)
 	memmove(up->env->errstr, saved, sizeof(saved));
 }
 
+/* Derive the connection offset from the generated tuple without aligning its VM slot. */
+static uchar*
+connectionresultslot(void *result)
+{
+	F_Sys_dial frame;
+	union { Sys_Connection align; uchar bytes[sizeof(*frame.ret)]; } layout;
+
+	frame.ret = (void*)layout.bytes;
+	return (uchar*)result + ((uchar*)&frame.ret->t1-layout.bytes);
+}
+
 /* Clear all connection fields together, including an earlier directory string. */
 static void
-clearconnection(Sys_Connection *connection)
+clearconnection(void *slot)
 {
-	Sys_Connection old;
+	Sys_Connection old, empty;
 	char saved[ERRMAX];
 
 	memmove(saved, up->env->errstr, sizeof(saved));
-	old = *connection;
-	connection->dfd = H;
-	connection->cfd = H;
-	connection->dir = H;
+	memmove(&old, slot, sizeof(old));
+	empty.dfd = empty.cfd = H;
+	empty.dir = H;
+	memmove(slot, &empty, sizeof(empty));
 	destroy(old.dfd);
 	destroy(old.cfd);
 	destroy(old.dir);
@@ -173,10 +184,10 @@ clearconnection(Sys_Connection *connection)
 
 /* Build a complete connection before replacing any of the previous managed owners. */
 static void
-makeconnection(int datafd, int controlfd, char *directory, Sys_Connection *connection)
+makeconnection(int datafd, int controlfd, char *directory, void *slot)
 {
 	volatile FDResult result;
-	Sys_Connection old;
+	Sys_Connection old, replacement;
 
 	result.raw[0] = datafd;
 	result.raw[1] = controlfd;
@@ -190,10 +201,11 @@ makeconnection(int datafd, int controlfd, char *directory, Sys_Connection *conne
 	result.handle[1] = takefd(&result.raw[1]);
 	result.directory = c2string(directory, strlen(directory));
 	poperror();
-	old = *connection;
-	connection->dfd = result.handle[0];
-	connection->cfd = result.handle[1];
-	connection->dir = result.directory;
+	memmove(&old, slot, sizeof(old));
+	replacement.dfd = result.handle[0];
+	replacement.cfd = result.handle[1];
+	replacement.dir = result.directory;
+	memmove(slot, &replacement, sizeof(replacement));
 	destroy(old.dfd);
 	destroy(old.cfd);
 	destroy(old.dir);
@@ -790,6 +802,7 @@ Sys_dial(void *fp)
 	int datafd, controlfd;
 	char dir[NETPATHLEN], *address, *local;
 	F_Sys_dial *f;
+	WORD status;
 
 	f = fp;
 	address = string2c(f->addr);
@@ -797,13 +810,15 @@ Sys_dial(void *fp)
 	release();
 	datafd = kdial(address, local, dir, &controlfd);
 	acquire();
-	f->ret->t0 = -1;
+	status = -1;
+	memmove(f->ret, &status, sizeof(status));
 	if(datafd < 0){
-		clearconnection(&f->ret->t1);
+		clearconnection(connectionresultslot(f->ret));
 		return;
 	}
-	makeconnection(datafd, controlfd, dir, &f->ret->t1);
-	f->ret->t0 = 0;
+	makeconnection(datafd, controlfd, dir, connectionresultslot(f->ret));
+	status = 0;
+	memmove(f->ret, &status, sizeof(status));
 }
 
 /* Adopt the announce control descriptor only after the complete result is ready. */
@@ -813,19 +828,22 @@ Sys_announce(void *fp)
 	char dir[NETPATHLEN], *address;
 	int fd;
 	F_Sys_announce *f;
+	WORD status;
 
 	f = fp;
 	address = string2c(f->addr);
 	release();
 	fd = kannounce(address, dir);
 	acquire();
-	f->ret->t0 = -1;
+	status = -1;
+	memmove(f->ret, &status, sizeof(status));
 	if(fd < 0){
-		clearconnection(&f->ret->t1);
+		clearconnection(connectionresultslot(f->ret));
 		return;
 	}
-	makeconnection(-1, fd, dir, &f->ret->t1);
-	f->ret->t0 = 0;
+	makeconnection(-1, fd, dir, connectionresultslot(f->ret));
+	status = 0;
+	memmove(f->ret, &status, sizeof(status));
 }
 
 /* Keep earlier connection owners valid until the new listening result is complete. */
@@ -833,6 +851,7 @@ void
 Sys_listen(void *fp)
 {
 	F_Sys_listen *f;
+	WORD status;
 	char dir[NETPATHLEN], *directory;
 	int fd;
 
@@ -841,13 +860,15 @@ Sys_listen(void *fp)
 	release();
 	fd = klisten(directory, dir);
 	acquire();
-	f->ret->t0 = -1;
+	status = -1;
+	memmove(f->ret, &status, sizeof(status));
 	if(fd < 0){
-		clearconnection(&f->ret->t1);
+		clearconnection(connectionresultslot(f->ret));
 		return;
 	}
-	makeconnection(-1, fd, dir, &f->ret->t1);
-	f->ret->t0 = 0;
+	makeconnection(-1, fd, dir, connectionresultslot(f->ret));
+	status = 0;
+	memmove(f->ret, &status, sizeof(status));
 }
 
 void

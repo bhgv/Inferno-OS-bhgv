@@ -92,7 +92,9 @@ static union { uvlong align; uchar bytes[32]; } returnslot;
 static void *watchedowner;
 static uchar *watchedslot, *pipewatchslot;
 static void *pipewatchold[2];
-static int pipewatch;
+static int pipewatch, connectionwatch;
+static uchar *connectionslot;
+static void *connectionold[3];
 
 /* Validate heap guards and run the real descriptor finalizer exactly once. */
 void
@@ -104,6 +106,13 @@ destroy(void *value)
 
 	if(value == H)
 		return;
+	if(connectionwatch && (value == connectionold[0] || value == connectionold[1] || value == connectionold[2])){
+		Sys_Connection published;
+		memmove(&published,connectionslot,sizeof(published));
+		assert(published.dfd != connectionold[0] && published.dfd != connectionold[1]);
+		assert(published.cfd != connectionold[0] && published.cfd != connectionold[1]);
+		assert(published.dir != connectionold[2]);
+	}
 	if(pipewatch && (value == pipewatchold[0] || value == pipewatchold[1])){
 		void *published[2];
 		memmove(published,pipewatchslot,sizeof(published));
@@ -316,6 +325,7 @@ IMPLEMENTATION
 static Sys_FD *single, *slots[3];
 static String *address, *local;
 static struct { WORD t0; Sys_Connection t1; } connection;
+static union { uvlong align; uchar bytes[sizeof(connection)+16]; } connectionreturn;
 static WORD status;
 static Array pipearray;
 static int pipesize, pipebad;
@@ -363,18 +373,18 @@ invoke(void *unused)
 		Sys_pipe(&pipeframe);
 		break;
 	case 5:
-		dialframe.ret = (void*)&connection;
+		dialframe.ret = (void*)(connectionreturn.bytes+returnoffset);
 		dialframe.addr = address;
 		dialframe.local = local;
 		Sys_dial(&dialframe);
 		break;
 	case 6:
-		announceframe.ret = (void*)&connection;
+		announceframe.ret = (void*)(connectionreturn.bytes+returnoffset);
 		announceframe.addr = address;
 		Sys_announce(&announceframe);
 		break;
 	case 7:
-		listenframe.ret = (void*)&connection;
+		listenframe.ret = (void*)(connectionreturn.bytes+returnoffset);
 		listenframe.c = connection.t1;
 		Sys_listen(&listenframe);
 		break;
@@ -401,6 +411,8 @@ one(int fail, int shared, int firstfd)
 	Sys_FD *old[3];
 	Sys_Connection previous;
 	int i, ok, budget, eligible;
+	uchar initialconnection[sizeof(connection)];
+	int connectionoffset=(uchar*)&connection.t1-(uchar*)&connection;
 
 	assert(live == 0 && group.r.ref == 1);
 	nextfd = 100;
@@ -453,7 +465,21 @@ one(int fail, int shared, int firstfd)
 	pipewatch = operation == 4 && eligible;
 	pipewatchslot = pipeslots.bytes+returnoffset;
 	pipewatchold[0] = slots[0];pipewatchold[1] = slots[1];
+	memset(connectionreturn.bytes,0xa5,sizeof(connectionreturn.bytes));
+	memmove(connectionreturn.bytes+returnoffset,&connection,sizeof(connection));
+	memmove(initialconnection,&connection,sizeof(connection));
+	connectionwatch = operation >= 5;
+	connectionslot = connectionreturn.bytes+returnoffset+connectionoffset;
+	connectionold[0] = connection.t1.dfd;connectionold[1] = connection.t1.cfd;connectionold[2] = connection.t1.dir;
 	ok = kprotect(invoke, nil);
+	connectionwatch = 0;
+	if(operation >= 5){
+		uchar expected[sizeof(connectionreturn.bytes)];
+		memmove(&connection,connectionreturn.bytes+returnoffset,sizeof(connection));
+		memset(expected,0xa5,sizeof(expected));memmove(expected+returnoffset,&connection,sizeof(connection));
+		memmove(expected+returnoffset+sizeof(WORD),initialconnection+sizeof(WORD),connectionoffset-sizeof(WORD));
+		assert(!memcmp(expected,connectionreturn.bytes,sizeof(expected)));
+	}
 	pipewatch = 0;
 	if(operation >= 1 && operation <= 3){
 		uchar expected[32];
@@ -535,7 +561,7 @@ main(int argc, char **argv)
 	for(operation = 0; operation < 8; operation++){
 		if(argc > 1 && strcmp(argv[1], "all") != 0 && strcmp(argv[1], operation == 0 ? "single" : operation == 4 ? "pipe" : operation >= 5 ? "connection" : "files") != 0)
 			continue;
-		for(returnoffset=0;returnoffset<(operation >= 1 && operation <= 4 ? 8 : 1);returnoffset++)
+		for(returnoffset=0;returnoffset<(operation >= 1 ? 8 : 1);returnoffset++)
 		for(nativefail = 0; nativefail < (operation == 0 ? 1 : 2); nativefail++)
 		for(shared = 0; shared < (operation >= 4 ? 2 : 1); shared++)
 		for(first = 0; first < 2; first++){

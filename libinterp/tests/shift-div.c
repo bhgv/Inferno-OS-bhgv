@@ -113,7 +113,7 @@ main(int argc, char **argv)
 			memmove(initial,memory.bytes,sizeof(initial));memmove(expected,initial,sizeof(expected));memmove(expected+d,&out,width);
 			R.s=memory.bytes+s;R.m=memory.bytes+m;R.d=memory.bytes+d;R.PC=&sentinel;
 #ifdef NATIVE_SHIFT_DIV
-			completed=op<8 || width==1 || divisor!=-1;
+			completed=1;
 			assert(module.jit->entry[ids[op]](&R)==completed);
 			if(completed)assert(!memcmp(memory.bytes,expected,sizeof(expected)));
 			else assert(!memcmp(memory.bytes,initial,sizeof(initial)));
