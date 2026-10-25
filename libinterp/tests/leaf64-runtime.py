@@ -320,7 +320,7 @@ static void characters(Module *m) {
     for(mode=0;mode<2;mode++) {
         m->jit->entry[IINDC]=mode?nil:entry;
         for(wide=0;wide<2;wide++)for(i=-1;i<=8;i++)for(alias=0;alias<4;alias++) {
-            memset(&node,0,sizeof(node));node.string.len=wide?-8:8;
+            memset(&node,0,sizeof(node));node.string.len=wide?-8:8;node.string.max=8;
             for(bad=0;bad<8;bad++) {
                 if(wide)memcpy((uchar*)&node+O(String, Sascii)+bad*4,&values[bad],4);
                 else *((uchar*)&node+O(String, Sascii)+bad)=(uchar)values[bad];
@@ -345,6 +345,24 @@ static void characters(Module *m) {
             owner=bad==0?nil:bad==1?H:&node.string;node.string.len=(-0x7fffffff-1);
             index=0;result=77;R.s=&owner;R.m=&index;R.d=&result;R.PC=pc;
             assert(!kprotect(dispatch,nil) && result==77 && R.PC==pc);
+        }
+    }
+    /* Malformed capacity must reach C exHeap without any destination/PC publication. */
+    for(mode=0;mode<2;mode++){
+        m->jit->entry[IINDC]=mode?nil:entry;
+        for(wide=0;wide<2;wide++){
+            for(bad=0;bad<3;bad++){
+                memset(&node,0,sizeof(node));
+                node.string.len=wide?-8:8;
+                node.string.max=bad==0?-1:bad==1?0:7;
+                memcpy(original,&node,sizeof(node));
+                owner=&node.string;index=0;result=77;
+                R.s=&owner;R.m=&index;R.d=&result;R.PC=pc;
+                if(kprotect(dispatch,nil) || result!=77 || R.PC!=pc || memcmp(&node,original,sizeof(node))){
+                    fprintf(stderr,"invalid character capacity published a result\n");
+                    exit(1);
+                }
+            }
         }
     }
     m->jit->entry[IINDC]=entry;

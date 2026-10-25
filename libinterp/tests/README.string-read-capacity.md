@@ -53,3 +53,17 @@ instrumentation remains enabled; this is an unresolved sanitizer limitation,
 not a claimed passing full ASan run. UBSan, native AMD64 checks and ARM64/AMD64
 instruction emulation pass. LeakSanitizer process inspection remains disabled
 by the existing fixture, which separately counts heap owners and checks guards.
+
+## Native dispatch fixture follow-up
+
+The standalone `leaf64-runtime.py` driver builds its own manually initialized
+String values. Its valid character fixture now supplies `String.max = 8`, so the
+new production capacity guard tests valid strings rather than rejecting its old
+zero-capacity headers. Without this fixture correction the e6c056c snapshot
+fails in `characters()` before finishing the native publication suite.
+
+Both forced C and real AMD64 JIT dispatch additionally reject capacities -1, 0
+and 7 for eight-character ASCII/Rune strings. The destination sentinel, complete
+String image and PC remain unchanged. `python3 libinterp/tests/leaf64-runtime.py`
+passes after the correction. This is fixture/acceptance work; production guards
+are unchanged.
