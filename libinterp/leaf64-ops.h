@@ -37,7 +37,7 @@ struct LeafOp {
 };
 
 enum {
-	LeafModuleCall = 120, // Bytecode calls that retain the current module.
+	LeafModuleCall = 120, // Bytecode calls between modules with equal execution modes.
 	LeafReturn = 119, // Same-module returns without mapped cleanup or extent release.
 	LeafFrame = 118, // Pointer-free frames within the current stack extent.
 	LeafStringSlice = 117, // Nonempty slices that reuse unique string storage.

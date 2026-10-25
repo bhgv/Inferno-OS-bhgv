@@ -8,6 +8,8 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/module-data-retains.py',
+    'libinterp/tests/token-retains.py',
     'libinterp/tests/mcall-native.py',
     'libinterp/tests/return-native.py',
     'libinterp/tests/mframe-native.py',

@@ -786,7 +786,7 @@ a64return(A64Buf *b, LeafLayout *a)
 }
 
 
-/* Publish a bytecode self-call only after ownership, index and frame checks. */
+/* Publish same-mode bytecode calls after owner, entry and frame checks. */
 static int
 a64modulecall(A64Buf *b, LeafLayout *a)
 {
@@ -797,13 +797,17 @@ a64modulecall(A64Buf *b, LeafLayout *a)
 	offsets[7]=a->framefp; offsets[8]=a->framemr; offsets[9]=a->regtemp; offsets[10]=a->linknlinks;
 	for(i=0;i<11;i++)
 		if(offsets[i]<0 || offsets[i]>2047 || offsets[i]%(i<9 ? 8 : i==9 ? a->wordbytes : 4))return 0;
-	if(a->modlbytes!=16 || a->modlpc<0 || a->modlpc>8 || a->modlpc%8 || a->heapref<=0 || a->heapref>128 || a->heapref%8 || a->refbytes!=8 ||
+	if(a->linkcompiled<0 || a->linkcompiled>2047 || a->linkcompiled%4 ||
+	   a->modlbytes!=16 || a->modlpc<0 || a->modlpc>8 || a->modlpc%8 || a->heapref<=0 || a->heapref>128 || a->heapref%8 || a->refbytes!=8 ||
 	   a->framelr==a->framefp || a->framelr==a->framemr || a->framefp==a->framemr)return 0;
 	a64put(b, 0x14000003);
 	fallback=b->n; a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	a64ptr(b, 10, a->d); a64load(b, 9, 10, 8);
 	a64put(b, 0x91000523); a64put(b, 0xf100047f); a64defer(b, 0x54000009, fallback);
-	a64ptr(b, 13, a->module); a64put(b, 0xeb0d013f); a64defer(b, 0x54000001, fallback);
+	a64ptr(b, 4, a->module);
+	a64put(b, 0x91000483); a64put(b, 0xf100047f); a64defer(b, 0x54000009, fallback);
+	a64field(b, 13, 9, a->linkcompiled, 4); a64field(b, 14, 4, a->linkcompiled, 4);
+	a64put(b, 0x6b0e01bf); a64defer(b, 0x54000001, fallback);
 	a64field(b, 12, 9, a->linkprog, 8);
 	a64put(b, 0x91000583); a64put(b, 0xf100047f); a64defer(b, 0x54000009, fallback);
 	a64ptr(b, 10, a->m); a64load(b, 12, 10, a->wordbytes);
@@ -822,8 +826,9 @@ a64modulecall(A64Buf *b, LeafLayout *a)
 	a64field(b, 2, 9, a->linkmp, 8);
 	a64put(b, 0xf9000000U | (u32int)(a->framelr/8)<<10 | 10<<5 | 14);
 	a64put(b, 0xf9000000U | (u32int)(a->framefp/8)<<10 | 10<<5 | 15);
-	a64put(b, 0xf9000000U | (u32int)(a->framemr/8)<<10 | 10<<5 | 9);
+	a64put(b, 0xf9000000U | (u32int)(a->framemr/8)<<10 | 10<<5 | 4);
 	a64put(b, 0xf9000000U | (u32int)(a->fp/8)<<10 | 10);
+	a64put(b, 0xf9000000U | (u32int)(a->module/8)<<10 | 9);
 	a64put(b, 0xf8000000U | ((u32int)-a->heapref&511)<<12 | 9<<5 | 13);
 	a64put(b, 0xf9000000U | (u32int)(a->regmp/8)<<10 | 2);
 	a64put(b, 0xf9000000U | (u32int)(a->pc/8)<<10 | 11);

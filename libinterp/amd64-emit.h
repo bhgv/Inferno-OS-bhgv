@@ -989,48 +989,87 @@ x64return(X64Buf *b, LeafLayout *a)
 }
 
 
-/* Retain a bytecode self-call only after validating every input before frame writes. */
+/* Share the nearby MCALL rejection return while short branch reach permits it. */
+static void
+x64moduleguard(X64Buf *b, int success, int fallback)
+{
+	int distance;
+
+	distance = fallback-b->n-2;
+	if(distance >= -128 && distance <= 127){
+		x64byte(b, success^1);
+		x64byte(b, distance);
+	}else
+		x64guard(b, success);
+}
+
+
+/* Use short field displacements where the private MCALL layout permits them. */
+static void
+x64modulefield(X64Buf *b, int result, int owner, int offset, int bytes)
+{
+	if(offset < -128 || offset > 127){
+		x64field(b, result, owner, offset, bytes);
+		return;
+	}
+	x64byte(b, owner >= 8 ? 0x49 : 0x48);
+	x64byte(b, bytes == 8 ? 0x8b : 0x63);
+	x64byte(b, 0x40 | result<<3 | (owner&7));
+	x64byte(b, offset);
+}
+
+
+/* Retain bytecode callees after validating owners, execution modes and frame inputs. */
 static int
 x64modulecall(X64Buf *b, LeafLayout *a)
 {
-	int offsets[11], i;
+	int offsets[11], i, fallback;
 
 	offsets[0]=a->module; offsets[1]=a->fp; offsets[2]=a->regmp; offsets[3]=a->linkprog;
 	offsets[4]=a->linkmp; offsets[5]=a->linklinks; offsets[6]=a->framelr;
 	offsets[7]=a->framefp; offsets[8]=a->framemr; offsets[9]=a->regtemp; offsets[10]=a->linknlinks;
 	for(i=0;i<11;i++)
 		if(offsets[i]<0 || offsets[i]>2047 || offsets[i]%(i<9 ? 8 : i==9 ? a->wordbytes : 4))return 0;
-	if(a->modlbytes!=16 || a->modlpc<0 || a->modlpc>8 || a->modlpc%8 || a->heapref<=0 || a->heapref>128 || a->heapref%8 || a->refbytes!=8 ||
+	if(a->linkcompiled<0 || a->linkcompiled>2047 || a->linkcompiled%4 ||
+	   a->modlbytes!=16 || a->modlpc<0 || a->modlpc>8 || a->modlpc%8 || a->heapref<=0 || a->heapref>128 || a->heapref%8 || a->refbytes!=8 ||
 	   a->framelr==a->framefp || a->framelr==a->framemr || a->framefp==a->framemr)return 0;
+	x64byte(b, 0xeb); x64byte(b, 3);
+	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	x64ptr(b, 0, a->d); x64load(b, 0, 8);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc0); // r8 is the module owner.
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
-	x64byte(b, 0x48); x64byte(b, 0x3b); x64byte(b, 0x87); x64word(b, a->module); x64guard(b, 0x74);
-	x64field(b, 1, 0, a->linkprog, 8);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64byte(b, 0x4c); x64byte(b, 0x8b); x64byte(b, 0x9f); x64word(b, a->module);
+	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x53); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64modulefield(b, 1, 8, a->linkcompiled, 4);
+	x64modulefield(b, 2, 11, a->linkcompiled, 4);
+	x64byte(b, 0x39); x64byte(b, 0xd1); x64moduleguard(b, 0x74, fallback);
+	x64modulefield(b, 1, 0, a->linkprog, 8);
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc1);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64guard(b, 0x77);
-	x64ptr(b, 1, a->m); x64field(b, 6, 9, 0, a->wordbytes);
-	x64field(b, 1, 0, a->linknlinks, 4);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x79);
-	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64guard(b, 0x72);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64ptr(b, 1, a->m); x64modulefield(b, 6, 9, 0, a->wordbytes);
+	x64modulefield(b, 1, 0, a->linknlinks, 4);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64moduleguard(b, 0x79, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64moduleguard(b, 0x72, fallback);
 	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe6); x64byte(b, 4);
 	x64byte(b, 0x4c); x64byte(b, 0x8b); x64byte(b, 0x94); x64byte(b, 0x30); x64word(b, a->linklinks+a->modlpc);
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x52); x64byte(b, 1);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
 	x64ptr(b, 1, a->s); x64load(b, 1, 8);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc9); // r9 is the captured frame.
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc1);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64guard(b, 0x77);
-	x64field(b, 1, 0, -a->heapref, 8);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64modulefield(b, 1, 0, -a->heapref, 8);
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc1);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64guard(b, 0x77);
-	x64field(b, 2, 7, a->pc, 8); x64field(b, 6, 7, a->fp, 8);
-	x64field(b, 0, 8, a->linkmp, 8);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64modulefield(b, 2, 7, a->pc, 8); x64modulefield(b, 6, 7, a->fp, 8);
+	x64modulefield(b, 0, 8, a->linkmp, 8);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0x91); x64word(b, a->framelr);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xb1); x64word(b, a->framefp);
-	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0x81); x64word(b, a->framemr);
+	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0x99); x64word(b, a->framemr);
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x8f); x64word(b, a->fp);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, a->module);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0x88); x64word(b, -a->heapref);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, a->regmp);
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x97); x64word(b, a->pc);

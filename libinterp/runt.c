@@ -362,13 +362,15 @@ tokdelim(int c, String *d)
 }
 
 typedef struct TokenizeResult TokenizeResult;
+
 struct TokenizeResult
 {
-	String *source;
-	String *delimiters;
-	List *words;
-	int count;
+	String *source; // Input string retained by the caller throughout construction.
+	String *delimiters; // Delimiter set in either string representation.
+	List *words; // Partial word list owned by protected cleanup.
+	int count; // Number of complete words built before publication.
 };
+
 
 /* Keep partial words under one owner until every allocation has succeeded. */
 static int
@@ -414,6 +416,8 @@ buildtokens(void *arg)
 		}
 		if(first == last)
 			break;
+		if(Tptr.ref <= 0 || Tptr.ref == 0x7fffffff)
+			error(exHeap);
 		nl = cons(sizeof(String*), h);
 		nl->tail = H;
 		nl->t = &Tptr;

@@ -300,3 +300,11 @@ same-module bytecode MCALL on AMD64/ARM64. Both now provide 138 guarded paths /
 35 interpreter-only active commands. RISC-V profiles remain 103/70, 90/83 and
 87/86. C MCALL checks module references and entry targets before frame or REG
 publication; private layout and ctypes probes are updated together.
+
+## Equal-mode cross-module call checkpoint
+
+[Cross-module MCALL and direct Type preflight](README.cross-call-retains.md)
+extends AMD64/ARM64 MCALL to different bytecode modules with equal compiled
+flags. Both remain at 138 guarded paths / 35 interpreter-only commands; RISC-V
+profiles remain 103/70, 90/83 and 87/86. Module-data clones and per-word token
+nodes now reserve descriptor capacity before allocating or publishing owners.

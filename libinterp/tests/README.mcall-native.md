@@ -1,9 +1,10 @@
-# Same-module MCALL and preflighted module ownership
+# Same-mode MCALL and preflighted module ownership
 
 AMD64 and ARM64 now implement MCALL for nonnegative bytecode import indices
-when the target module is already REG.M. Builtins, cross-module calls and named
-export ordinals use the interpreter path. The current module remains installed,
-so IC and module ownership transfer follow the unchanged same-module C rules.
+when the target and caller compiled flags match. Builtins, execution-mode
+transitions and named export ordinals use the interpreter path. The saved caller
+is transferred to Frame.mr, the callee is retained and installed in REG.M, and
+IC remains unchanged, following the equal-mode C rules.
 
 The native leaves validate module/program owners, signed import counts, full
 WORD indices, entry targets, frame owners and reference-counter capacity before
@@ -13,7 +14,7 @@ program-entry offset derived from Modl.u. A last legal retain to ULONG_MAX is
 accepted; zero or saturated owners decline without writing a partial frame.
 
 Success captures old PC/FP and module data before replacing frame links, retains
-the current module once, restores MP from the module link, publishes the entry
+the callee once, installs it as the current module, restores MP from the module link, publishes the entry
 PC and stores WORD-sized t=1. Frame and operand aliases are captured before
 writes. Both backends keep the existing 64-unit limit and preserve FP state.
 
@@ -30,18 +31,18 @@ probes check the complete record before emission.
 
 Validation:
 
-- mcall-native.py: 18,432 C/published RX AMD64 cases per WORD model, covering
-  indices 0/1/2, unaligned operands/frames, self/cross-module/builtin calls,
+- mcall-native.py: 24,576 C/published RX AMD64 cases per WORD model, covering
+  indices 0/1/2, unaligned operands/frames, self/equal-mode/cross-mode/builtin calls,
   named-export fallback, refcount saturation and the last legal retain,
   invalid programs/entries/owners, exact frame/REG/slot failure images and
   callback/refcount effects. Selected ASan/UBSan runs pass.
-- mcall-jit.py: 8,192 independent image/write/FP checks per backend, covering
+- mcall-jit.py: 9,216 independent image/write/FP checks per backend, covering
   both WORD models, full-width references and pointers, import stride and
   entry-PC offsets 0/8,
   operands inside overwritten frame links, nil/H metadata, inaccessible index
   operands and write-free fallback. Sizing, decoding, malformed layouts and
   bounded publication are also checked.
-- All 87 --core host drivers pass. Native publication/fallback/metadata/retry/
+- All 89 --core host drivers pass. Native publication/fallback/metadata/retry/
   unmap checks pass. The ctypes ABI probes and byte-branch/character selections
   pass 15,474 and 6,814 checks respectively.
 - Parent-source replay fails the new C regression driver. Removing the saturated

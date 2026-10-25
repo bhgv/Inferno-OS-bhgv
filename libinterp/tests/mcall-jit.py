@@ -44,14 +44,15 @@ typedef uint32_t u32int;typedef unsigned char uchar;
 int emit(u32int *out,int cap,int wb,int bad)
 {
  LeafLayout a={0};a.wordbytes=wb;a.pc=0;a.s=8;a.d=16;a.m=24;
- a.fp=32;a.module=40;a.regmp=64;a.regtemp=72;
+ a.fp=32;a.module=40;a.regmp=64;a.regtemp=72;a.linkcompiled=16;
  a.framelr=0;a.framefp=8;a.framemr=24;
  a.linknlinks=48;a.linklinks=56;a.modlbytes=16;a.modlpc=0;
  a.linkprog=24;a.linkmp=0;a.heapref=24;a.refbytes=8;
  switch(bad){case -1:a.modlpc=8;break;case 1:a.module=-1;break;case 2:a.regtemp=3;break;
  case 3:a.framemr=8;break;case 4:a.heapref=0;break;case 5:a.refbytes=4;break;
  case 6:a.linknlinks=3;break;case 7:a.linklinks=2048;break;case 8:a.modlbytes=8;break;
- case 9:a.modlpc=3;break;case 10:a.linkprog=-1;break;}
+ case 9:a.modlpc=3;break;case 10:a.linkprog=-1;break;
+ case 11:a.linkcompiled=-1;break;case 12:a.linkcompiled=1;break;case 13:a.linkcompiled=2048;break;}
  return leafemit(out,cap,&a,IMCALL);
 }
 ''')
@@ -81,18 +82,18 @@ int emit(u32int *out,int cap,int wb,int bad)
                 for cap in range(n):
                     guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
                     require(lib.emit(guard,cap,wb,-variant)==0 and list(guard)==[0xa5a5a5a5]*64,'partial publication')
-                for bad in range(1,11):
+                for bad in range(1,14):
                     guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
                     require(lib.emit(guard,64,wb,bad)==0 and list(guard)==[0xa5a5a5a5]*64,(arch,bad))
                 machine.mem_write(CODE,blob);machine.ctl_remove_cache(CODE,CODE+256)
-                for profile in range(32):
+                for profile in range(36):
                     for sa in range(8):
                         for fa in range(8):
                             image=bytearray(b'\xa5'*0x4000)
                             src=0x100+sa;mid=0x200+sa;dst=0x300+sa;obj=0x800;fo=0x1800+fa
                             owner=BASE+obj;current=owner;frame=BASE+fo;index=0;count=3;ref=1
                             program=BASE+0x2800;target=BASE+0x3000;mp=BASE+0x2200
-                            oldpc=BASE+0x2c00;oldfp=BASE+0x2000
+                            oldpc=BASE+0x2c00;oldfp=BASE+0x2000;calleecompiled=0;callercompiled=0
                             if profile==1:index=1
                             if profile==2:index=2
                             if profile==3:index=-1
@@ -124,6 +125,11 @@ int emit(u32int *out,int cap,int wb,int bad)
                             if profile==29:mp=0
                             if profile==30:ref=MASK>>1
                             if profile==31:ref=MASK-2;index=2
+                            if profile==32:current=BASE+0xa00;callercompiled=1
+                            if profile==33:current=BASE+0xa00;callercompiled=calleecompiled=1
+                            if profile==34:callercompiled=calleecompiled=-1
+                            if profile==35:current=BASE+0xa00;callercompiled=calleecompiled=0x12345678
+                            put(image,obj+16,calleecompiled,4);put(image,0xa10,callercompiled,4);
                             put(image,obj-24,ref);put(image,obj,mp);put(image,obj+24,program);put(image,obj+48,count,4)
                             for entry in range(3):put(image,obj+56+entry*16+variant*8,MASK)
                             if 0<=index<3:put(image,obj+56+index*16+variant*8,target)
@@ -131,12 +137,12 @@ int emit(u32int *out,int cap,int wb,int bad)
                             put(image,8,BASE+src);put(image,24,BASE+mid);put(image,16,BASE+dst)
                             if profile in (8,9,10,11):put(image,24,BASE+0x6000)
                             put(image,0,oldpc);put(image,32,oldfp);put(image,40,current)
-                            valid=owner not in (0,MASK) and current==owner and program not in (0,MASK) and count>=0 and 0<=index<count and target not in (0,MASK) and frame not in (0,MASK) and ref not in (0,MASK)
+                            valid=owner not in (0,MASK) and current not in (0,MASK) and (current==owner or calleecompiled==callercompiled) and program not in (0,MASK) and count>=0 and 0<=index<count and target not in (0,MASK) and frame not in (0,MASK) and ref not in (0,MASK)
                             expected=bytearray(image);expectedwrites=[]
                             if valid:
-                                put(expected,fo,oldpc);put(expected,fo+8,oldfp);put(expected,fo+24,owner)
-                                put(expected,32,frame);put(expected,obj-24,ref+1);put(expected,64,mp);put(expected,0,target);put(expected,72,1,wb)
-                                expectedwrites=[(BASE+fo,8),(BASE+fo+8,8),(BASE+fo+24,8),(BASE+32,8),(BASE+obj-24,8),(BASE+64,8),(BASE,8),(BASE+72,wb)]
+                                put(expected,fo,oldpc);put(expected,fo+8,oldfp);put(expected,fo+24,current)
+                                put(expected,32,frame);put(expected,40,owner);put(expected,obj-24,ref+1);put(expected,64,mp);put(expected,0,target);put(expected,72,1,wb)
+                                expectedwrites=[(BASE+fo,8),(BASE+fo+8,8),(BASE+fo+24,8),(BASE+32,8),(BASE+40,8),(BASE+obj-24,8),(BASE+64,8),(BASE,8),(BASE+72,wb)]
                             machine.mem_write(BASE,bytes(image));writes.clear()
                             if arch=='amd64':
                                 machine.reg_write(UC_X86_REG_RDI,BASE);machine.reg_write(UC_X86_REG_RSP,CODE+0x2800)

@@ -89,15 +89,17 @@ mklinkmod(Module *m, int n)
 }
 
 typedef struct LinkModule LinkModule;
+
 struct LinkModule {
-	Module *m;
-	Import *imports;
-	Modlink *result;
-	int mkmp;
-	int linkfailed;
+	Module *m; // Module reference consumed by the instance or failure cleanup.
+	Import *imports; // Sentinel-terminated requested bindings.
+	Modlink *result; // Partial instance retained across fallible data cloning.
+	int mkmp; // Whether this instance needs independent module data.
+	int linkfailed; // Distinguish binding failure from a raised VM error.
 };
 
-/* Keep the instance reachable by its owner throughout fallible MP cloning. */
+
+/* Preflight MP descriptors, then keep each partial instance owned during cloning. */
 static int
 linkmodule(void *arg)
 {
@@ -114,12 +116,22 @@ linkmodule(void *arg)
 	for(i = 0, l = c->imports; l->name != nil; i++, l++)
 		if(i >= (0x7fffffff-sizeof(Heap)-(sizeof(Modlink)-sizeof(Modl)))/sizeof(Modl))
 			error(exHeap);
+	t = nil;
+	if(c->mkmp && m->rt != DYNMOD && m->origmp != H && m->ntype > 0){
+		if(m->type == nil || m->type == H)
+			error(exHeap);
+		t = m->type[0];
+		if(t == nil || t == H || t->size < 0 ||
+		   (ulong)t->size > 0x7fffffff-sizeof(Heap) ||
+		   t->ref <= 0 || t->ref > 0x7ffffffe - (t == &Tmodlink) ||
+		   (t->size != 0 && m->origmp == nil))
+			error(exHeap);
+	}
 	c->result = ml = mklinkmod(m, i);
 	if(c->mkmp){
 		if(m->rt == DYNMOD)
 			newdyndata(ml);
-		else if(m->origmp != H && m->ntype > 0){
-			t = m->type[0];
+		else if(t != nil){
 			h = nheap(t->size);
 			h->t = t;
 			t->ref++;

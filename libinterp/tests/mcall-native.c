@@ -110,7 +110,7 @@ main(void)
 	instruction.op=IMCALL;compiled.prog=&instruction;compiled.nprog=1;
 	if(!compile(&compiled,1,nil) || !compiled.jit || !compiled.jit->entry[IMCALL])abort();
 	for(index=0;index<3;index++)for(alignment=0;alignment<8;alignment++)for(fa=0;fa<8;fa++)
-	for(kind=0;kind<3;kind++)for(bad=0;bad<16;bad++)for(pass=0;pass<2;pass++){
+	for(kind=0;kind<4;kind++)for(bad=0;bad<16;bad++)for(pass=0;pass<2;pass++){
 		memset(&R,0,sizeof(R));memset(bytes,0xa5,sizeof(bytes));memset(slots,0xa5,sizeof(slots));
 		frame=(Frame*)(bytes+fa);links.t=&type;
 		memmove(frame,&links,sizeof(links));
@@ -144,7 +144,7 @@ main(void)
 		memmove(R.s,&frame,sizeof(frame));memmove(R.m,&operand,sizeof(operand));memmove(R.d,&destination,sizeof(destination));
 		memmove(before,slots,sizeof(before));memmove(savedbytes,bytes,sizeof(bytes));memmove(expectedbytes,bytes,sizeof(bytes));
 		memmove(&saved,&R,sizeof(R));reference=header->ref;callbacks=0;raised=nil;
-		valid=bad==0 || bad==12 || bad==13;native=valid && kind==0 && operand>=0;
+		valid=bad==0 || bad==12 || bad==13;native=valid && (kind==0 || kind==3) && operand>=0;
 		if(pass==0){
 			if(compiled.jit->entry[IMCALL](&R)!=native)abort();
 			if(!native && (memcmp(&saved,&R,sizeof(R)) || memcmp(bytes,savedbytes,sizeof(bytes)) || header->ref!=reference))abort();
