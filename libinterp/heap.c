@@ -387,12 +387,15 @@ nheap(int n)
 	return h;
 }
 
+
+/* Reject dead or saturated descriptors before allocating and zeroing an object. */
 Heap*
 heapz(Type *t)
 {
 	Heap *h;
 
-	if(t == nil || t->size < 0 || (ulong)t->size > 0x7fffffff-sizeof(Heap))
+	if(t == nil || t == H || t->ref <= 0 || t->ref == 0x7fffffff ||
+	   t->size < 0 || (ulong)t->size > 0x7fffffff-sizeof(Heap))
 		error(exHeap);
 	h = poolalloc(heapmem, sizeof(Heap)+t->size);
 	if(h == nil)
@@ -410,12 +413,15 @@ heapz(Type *t)
 	return h;
 }
 
+
+/* Check descriptor lifetime and size before acquiring object storage. */
 Heap*
 heap(Type *t)
 {
 	Heap *h;
 
-	if(t == nil || t->size < 0 || (ulong)t->size > 0x7fffffff-sizeof(Heap))
+	if(t == nil || t == H || t->ref <= 0 || t->ref == 0x7fffffff ||
+	   t->size < 0 || (ulong)t->size > 0x7fffffff-sizeof(Heap))
 		error(exHeap);
 	h = poolalloc(heapmem, sizeof(Heap)+t->size);
 	if(h == nil)
@@ -432,12 +438,18 @@ heap(Type *t)
 	return h;
 }
 
+
+/* Reserve both descriptor retains before allocating an array header or payload. */
 Heap*
 heaparray(Type *t, int sz)
 {
 	Heap *h;
 	Array *a;
 
+	/* Header and element descriptors can be the same Type, requiring two retains. */
+	if(t == nil || t == H || t->ref <= 0 ||
+	   t->ref > 0x7ffffffe - (t == &Tarray) || Tarray.ref <= 0 || Tarray.ref == 0x7fffffff)
+		error(exHeap);
 	acheck(t->size,sz);
 	h = nheap(sizeof(Array) + (t->size*sz));
 	h->t = &Tarray;
@@ -457,6 +469,8 @@ hmsize(void *v)
 	return poolmsize(heapmem, v);
 }
 
+
+/* Allocation callers reserve the element Type retain before acquiring storage. */
 void
 initarray(Type *t, Array *a)
 {

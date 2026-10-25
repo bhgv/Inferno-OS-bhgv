@@ -8,6 +8,8 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/dis-loader.py',
+    'libinterp/tests/type-retains.py',
     'libinterp/tests/string-append-native.py',
     'libinterp/tests/string-store-native.py',
     'libinterp/tests/decimal-native.py',

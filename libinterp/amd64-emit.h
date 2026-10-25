@@ -615,11 +615,11 @@ x64smallfield(X64Buf *b, int result, int owner, int offset, int bytes)
 }
 
 
-/* Concatenate bounded ASCII input into unique storage without allocation or ownership changes. */
+/* Concatenate matching string representations within unique capacity and bounded copy size. */
 static int
 x64stringappend(X64Buf *b, LeafLayout *a)
 {
-	int overlap, empty, loop;
+	int overlap, empty, loop, narrow;
 
 	if(a->stringlen < 0 || a->stringlen > 127 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 127 || a->stringmax%4 ||
@@ -631,23 +631,39 @@ x64stringappend(X64Buf *b, LeafLayout *a)
 	x64load(b, 0, 8);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2);
 	x64ptr(b, 0, a->s); x64load(b, 0, 8);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); x64guard(b, 0x75);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0xff); x64guard(b, 0x75);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64guard(b, 0x75);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff); x64guard(b, 0x75);
-	x64smallfield(b, 1, 2, -a->heapref, 8);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64guard(b, 0x74);
-	x64smallfield(b, 1, 0, -a->heapref, 8);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x75);
+	/* owner+1 must be above one: this rejects both C null and language nil. */
+	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x42); x64byte(b, 1);
+	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 1); x64guard(b, 0x77);
+	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x40); x64byte(b, 1);
+	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 1); x64guard(b, 0x77);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0x7a); x64byte(b, -a->heapref); x64byte(b, 1); x64guard(b, 0x74);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0x78); x64byte(b, -a->heapref); x64byte(b, 0); x64guard(b, 0x75);
 	x64smallfield(b, 1, 2, a->stringlen, 4);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x79);
+	/* Keep a native sign mask while taking the absolute character count. */
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc9);
+	x64byte(b, 0x49); x64byte(b, 0xc1); x64byte(b, 0xf9); x64byte(b, 63);
+	x64byte(b, 0x4c); x64byte(b, 0x31); x64byte(b, 0xc9);
+	x64byte(b, 0x4c); x64byte(b, 0x29); x64byte(b, 0xc9);
 	x64smallfield(b, 6, 0, a->stringlen, 4);
+	/* Mixed representations retain the allocating/widening C implementation. */
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xf0);
+	x64byte(b, 0x4d); x64byte(b, 0x31); x64byte(b, 0xc8);
+	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc0); x64guard(b, 0x79);
+	x64byte(b, 0x4c); x64byte(b, 0x31); x64byte(b, 0xce);
+	x64byte(b, 0x4c); x64byte(b, 0x29); x64byte(b, 0xce);
 	x64byte(b, 0x81); x64byte(b, 0xfe); x64word(b, 128); x64guard(b, 0x76);
 	x64byte(b, 0x4c); x64byte(b, 0x63); x64byte(b, 0x40); x64byte(b, a->stringmax);
 	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xc6); x64guard(b, 0x7e);
 	x64byte(b, 0x4c); x64byte(b, 0x63); x64byte(b, 0x52); x64byte(b, a->stringmax);
 	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x1c); x64byte(b, 0x31);
 	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xd3); x64guard(b, 0x7e);
+	/* Capacity remains in characters; only the copy geometry uses byte counts. */
+	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc9);
+	x64byte(b, 0x79); narrow = b->n; x64byte(b, 0);
+	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe1); x64byte(b, 2);
+	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe6); x64byte(b, 2);
+	x64byte(b, 0x49); x64byte(b, 0xf7); x64byte(b, 0xdb);
+	b->bytes[narrow] = b->n-narrow-1;
 	/* The signed capacity comparison bounds the sum by INT_MAX before any store. */
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x4c); x64byte(b, 0x0a); x64byte(b, a->stringdata);
 	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x40); x64byte(b, a->stringdata);

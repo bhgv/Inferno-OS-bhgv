@@ -240,3 +240,11 @@ paths / 40 interpreter-only instructions out of 173 active commands. RISC-V
 profiles remain 103/70 with M, 90/83 with Zmmul and 87/86 for the base integer ISA.
 Full operand coverage, physical target execution and the complete native VM ABI
 remain separate from these guarded instruction counts.
+
+## Rune concatenation and Type retention checkpoint
+
+[Rune concatenation and allocation lifetimes](README.rune-append-type-retains.md)
+expands ADDC to matching Rune representations on AMD64 and ARM64 while keeping
+its 64-unit limit. Native opcode counts remain 133/40 on both backends; RISC-V
+profiles remain 103/70, 90/83 and 87/86. Descriptor lifetime checks now precede
+scalar heap, VM array and Dis-loader array allocation.

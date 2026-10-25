@@ -1258,6 +1258,8 @@ OP(mframe)
 		initmem(t, f);
 	memmove(R.d, &f, sizeof(f));
 }
+
+
 /* Validate the current element descriptor before checking array geometry. */
 OP(newa)
 {
@@ -1269,6 +1271,9 @@ OP(newa)
 	memmove(&index, R.m, sizeof(index));
 	t = moduletype(R.M, index);
 	memmove(&sz, R.s, sizeof(sz));
+	if(t->ref <= 0 || t->ref > 0x7ffffffe - (t == &Tarray) ||
+	   Tarray.ref <= 0 || Tarray.ref == 0x7fffffff)
+		error(exHeap);
 	acheck(t->size, sz);
 	h = nheap(sizeof(Array) + (t->size*sz));
 	h->t = &Tarray;
@@ -1284,6 +1289,8 @@ OP(newa)
 	memmove(R.d, &a, sizeof(a));
 	destroy(at);
 }
+
+
 /* Use current element metadata for zeroed storage and pointer initialization. */
 OP(newaz)
 {
@@ -1295,6 +1302,9 @@ OP(newaz)
 	memmove(&index, R.m, sizeof(index));
 	t = moduletype(R.M, index);
 	memmove(&sz, R.s, sizeof(sz));
+	if(t->ref <= 0 || t->ref > 0x7ffffffe - (t == &Tarray) ||
+	   Tarray.ref <= 0 || Tarray.ref == 0x7fffffff)
+		error(exHeap);
 	acheck(t->size, sz);
 	h = nheap(sizeof(Array) + (t->size*sz));
 	h->t = &Tarray;
@@ -2416,6 +2426,7 @@ arrayspan(Array *array, Type *type, WORD start, WORD count)
 	return (uchar*)((uintptr)array->data+offset);
 }
 
+
 /* Validate spans and backing lifetimes before allocating or publishing a view. */
 OP(slicea)
 {
@@ -2450,6 +2461,9 @@ OP(slicea)
 		error(exHeap);
 	h = D2H(root);
 	if(h->ref == 0 || (ds->root != H && h->ref == (ulong)-1))
+		error(exHeap);
+	if(t->ref <= 0 || t->ref > 0x7ffffffe - (t == &Tarray) ||
+	   Tarray.ref <= 0 || Tarray.ref == 0x7fffffff)
 		error(exHeap);
 	h = heap(&Tarray);
 	ss = H2D(Array*, h);

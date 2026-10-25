@@ -88,9 +88,9 @@ main(void)
 	Inst instruction = {0}, sentinel;
 	String *left, *right, *source, *destination;
 	REG saved;
-	uchar slots[128], before[128], leftimage[512], rightimage[512], expected[512];
+	uchar slots[128], before[128], leftimage[2048], rightimage[2048], expected[2048];
 	int lengths[] = {0, 1, 8, 127, 128, 129};
-	int li, ri, mode, sa, ma, pass, i, l, r, maximum, valid, allocations, size;
+	int li, ri, mode, sa, ma, pass, i, l, r, maximum, valid, allocations, size, wide;
 	char *exception;
 	unsigned long total = 0;
 
@@ -103,25 +103,33 @@ main(void)
 		checklarge(&module);
 		goto finished;
 	}
+	for(wide = 0; wide < 2; wide++)
 	for(li = 0; li < nelem(lengths); li++)
 	for(ri = 0; ri < nelem(lengths); ri++)
 	for(mode = 0; mode < 13; mode++)
 	for(sa = 0; sa < 8; sa++)
 	for(ma = 0; ma < 8; ma++){
 		l = lengths[li]; r = lengths[ri];
-		left = newstring(320); right = newstring(320);
+		left = wide ? newrunes(320) : newstring(320);
+		right = wide ? newrunes(320) : newstring(320);
 		maximum = left->max;
-		left->len = l; right->len = r;
-		for(i = 0; i < l; i++)left->Sascii[i] = i*73+1;
-		for(i = 0; i < r; i++)right->Sascii[i] = i*17+255;
+		left->len = wide ? -l : l; right->len = wide ? -r : r;
+		for(i = 0; i < l; i++){
+			if(wide)left->Srune[i] = (Rune)i*0x1000101U+0x80000000U;
+			else left->Sascii[i] = i*73+1;
+		}
+		for(i = 0; i < r; i++){
+			if(wide)right->Srune[i] = (Rune)i*0x1000101U+0xffffffffU;
+			else right->Sascii[i] = i*17+255;
+		}
 		source = right;
 		if(mode == 2)D2H(left)->ref = 2;
 		if(mode == 3)D2H(left)->ref = 0;
 		if(mode == 4)left->max = l-1;
 		if(mode == 5)right->max = r-1;
 		if(mode == 6)left->max = l;
-		if(mode == 7)right->len = -1;
-		if(mode == 8)left->len = -1;
+		if(mode == 7)right->len = left->len < 0 ? 1 : -1;
+		if(mode == 8)left->len = right->len < 0 ? 1 : -1;
 		if(mode == 9)source = H;
 		if(mode == 10)source = nil;
 		if(mode == 11){source = left; r = l;}
@@ -137,9 +145,10 @@ main(void)
 		memmove(R.d, &destination, sizeof(destination));
 		R.PC = &sentinel;
 		saved = R;
-		valid = (mode == 0 || mode == 6 || mode == 11) && r <= 128 && l+r <= left->max;
+		valid = (mode == 0 || mode == 6 || mode == 11) && r <= 128 && l+r <= left->max &&
+			(left->len < 0) == (source->len < 0);
 		exception = mode == 3 || mode == 4 || mode == 5 || mode == 12 ? exHeap : mode == 10 ? exNilref : nil;
-		size = sizeof(Heap)+sizeof(String)+320+32;
+		size = sizeof(Heap)+sizeof(String)+320*(wide ? sizeof(Rune) : 1)+32;
 		if(size > sizeof(leftimage))abort();
 		memmove(leftimage, D2H(left), size);
 		memmove(rightimage, D2H(right), size);
@@ -147,8 +156,8 @@ main(void)
 		memmove(before, slots, sizeof(slots));
 		if(valid){
 			int offset = (uchar*)left->Sascii-(uchar*)D2H(left);
-			int combined = l+r;
-			memmove(expected+offset+l, source->Sascii, r);
+			int combined = left->len < 0 ? -(l+r) : l+r;
+			memmove(expected+offset+l*(wide ? sizeof(Rune) : 1), source->Sascii, r*(wide ? sizeof(Rune) : 1));
 			memmove(expected+((uchar*)&left->len-(uchar*)D2H(left)), &combined, sizeof(combined));
 		}
 		allocations = calls;
@@ -181,6 +190,6 @@ main(void)
 finished:
 	module.jit->freecode(module.jit->code, module.jit->size);
 	free(module.jit);
-	printf("PASS native ASCII append: %lu C/JIT/image/slot/owner cases WORD%zu\n", total, sizeof(WORD)*8);
+	printf("PASS native string append: %lu C/JIT/image/slot/owner cases WORD%zu\n", total, sizeof(WORD)*8);
 	return 0;
 }

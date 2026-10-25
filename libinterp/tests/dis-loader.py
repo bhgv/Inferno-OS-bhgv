@@ -11,8 +11,12 @@ import shlex
 import subprocess
 import tempfile
 root=Path(__file__).resolve().parents[2]
+
+
+# Extract production functions for the parser and its ownership cleanup.
 def function(path,name,result):
-    source=(root/path).read_text()
+    selected = Path(os.environ.get('DIS_LOAD_SOURCE', root/path)) if path == 'libinterp/load.c' else root/path
+    source = selected.read_text()
     start=source.index(result+'\n'+name+'(');brace=source.index('{',start);depth=0
     for token in re.finditer(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*[\s\S]*?\*/|//[^\n]*|[{}]',source[brace:]):
         if token.group()=='{':depth+=1
@@ -20,7 +24,7 @@ def function(path,name,result):
             depth-=1
             if not depth:return source[start:brace+token.end()]
     raise ValueError(name)
-source=(root/'libinterp/load.c').read_text()
+source=Path(os.environ.get('DIS_LOAD_SOURCE', root/'libinterp/load.c')).read_text()
 parser=source[source.index('/* Check the complete encoded operand'):source.index('Module*\nnewmod(')]
 parts=[function('emu/port/dis.c','kprotect','int')]
 parts.append((root/'libinterp/disc.c').read_text().replace('#include "lib9.h"','').replace('#include "isa.h"','').replace('#include "interp.h"',''))

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare production concatenation with published AMD64 ASCII append leaves."""
+"""Compare production concatenation with published AMD64 string append leaves."""
 import os
 import platform
 import sys

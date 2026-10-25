@@ -198,6 +198,8 @@ struct DisLoad {
 	Module *m;
 };
 
+
+/* Parse and validate module data before publishing any owned runtime objects. */
 static int
 disparse(void *arg)
 {
@@ -551,6 +553,11 @@ disparse(void *arg)
 				goto bad;
 			}
 			pt = m->type[v];
+			if(pt == nil || pt == H || pt->ref <= 0 ||
+			   pt->ref > 0x7ffffffe - (pt == &Tarray) || Tarray.ref <= 0 || Tarray.ref == 0x7fffffff){
+				kwerrstr("invalid array type reference");
+				goto bad;
+			}
 			if(!disneed(istream,end,4))
 				goto truncated;
 			v = disw(isp);

@@ -460,7 +460,7 @@ a64slicecopy(A64Buf *b, LeafLayout *a)
 }
 
 
-/* Append bounded ASCII bytes only after validating slots, ownership and both capacities. */
+/* Append bounded matching representations after checking slots, ownership and capacities. */
 static int
 a64stringappend(A64Buf *b, LeafLayout *a)
 {
@@ -486,15 +486,27 @@ a64stringappend(A64Buf *b, LeafLayout *a)
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 13<<5 | 3);
 	a64defer(b, 0xb4000003, fallback);
 	a64wordfield(b, 14, 12, a->stringlen, 4);
-	a64put(b, 0xf10001df); a64defer(b, 0x5400000b, fallback);
+	a64put(b, 0x93400000U | 63<<16 | 63<<10 | 14<<5 | 6);
+	a64put(b, 0xf10001df);
+	a64put(b, 0xda80a400U | 14<<16 | 14<<5 | 14);
 	a64wordfield(b, 15, 13, a->stringlen, 4);
+	a64put(b, 0x93400000U | 63<<16 | 63<<10 | 15<<5 | 3);
+	a64put(b, 0xeb06007f); a64defer(b, 0x54000001, fallback);
+	a64put(b, 0xf10001ff);
+	a64put(b, 0xda80a400U | 15<<16 | 15<<5 | 15);
 	a64put(b, 0xf10201ff); a64defer(b, 0x54000008, fallback);
 	a64wordfield(b, 3, 13, a->stringmax, 4);
 	a64put(b, 0xeb0301ff); a64defer(b, 0x5400000c, fallback);
 	a64wordfield(b, 4, 12, a->stringmax, 4);
 	a64put(b, 0x8b0f01c5);
 	a64put(b, 0xeb0400bf); a64defer(b, 0x5400000c, fallback);
-	/* A nonnegative sum bounded by signed capacity also proves the left span valid. */
+	/* Preserve signed logical length before converting character offsets to bytes. */
+	a64put(b, 0xf10000df);
+	a64put(b, 0xda80a400U | 5<<16 | 5<<5 | 5);
+	a64put(b, 0xb6f80066); // TBZ x6,#63 skips both Rune scaling instructions for ASCII.
+	a64put(b, 0xd3400000U | 62<<16 | 61<<10 | 14<<5 | 14);
+	a64put(b, 0xd3400000U | 62<<16 | 61<<10 | 15<<5 | 15);
+	/* Capacity was checked in characters before forming native byte addresses. */
 	a64put(b, 0x910001a9U | (u32int)a->stringdata<<10);
 	a64put(b, 0x9100018bU | (u32int)a->stringdata<<10);
 	a64put(b, 0x8b0e016b);

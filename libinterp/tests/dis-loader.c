@@ -137,9 +137,23 @@ static void rejected(void) {
     assert(parse(at)==nil && live==0 && worker.nerr==0 && !modules);
     assert(Tarray.ref==1 && Tstring.ref==1);
 }
-int main(void) {
+
+
+/* Exercise parsing, ownership cleanup and complete input-boundary rejection. */
+int
+main(void)
+{
     static const int values[]={-536870912,-8193,-8192,-65,-64,-1,0,1,63,64,8191,8192,536870911};
     Module *m;Array *ar;uchar *p;unsigned int i;int n,total,j,mutations=0,failures=0,successes=0;
+    /* Reject an unavailable array descriptor before allocating or publishing its header. */
+    for(n=0;n<2;n++){
+        fixture();Tarray.ref=n ? 0x7fffffff : 0;
+        m=parse(at);
+        if(m || live || worker.nerr || modules || Tarray.ref!=(n ? 0x7fffffff : 0) ||
+           strcmp(message,"invalid array type reference") || Tstring.ref!=1)
+            abort();
+        Tarray.ref=1;
+    }
     for(i=0;i<nelem(values);i++){at=0;integer(values[i]);p=buffer;assert(operand(&p)==values[i] && p==buffer+at);}
     at=0;word(0xffffffff);p=buffer;assert(disw(&p)==0xffffffffUL);
     fixture();total=at;m=parse(total);if(!m)fprintf(stderr,"parse failed: %s\n",message);assert(m && m->jit==nil);

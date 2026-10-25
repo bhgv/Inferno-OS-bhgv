@@ -91,7 +91,7 @@ int emit(u32int *out, int cap, int wb, int field, int value)
             machine.ctl_remove_cache(CODE, CODE+256)
             for leftlen in (0, 1, 7, 127, 128):
                 for rightlen in (0, 1, 7, 128, 129):
-                    for profile in range(25):
+                    for profile in range(32):
                         for alignment in (0, 1, 4, 7):
                             for slot in (0, 1, 4, 7):
                                 image = bytearray(b'\xa5'*0x4000)
@@ -130,9 +130,22 @@ int emit(u32int *out, int cap, int wb, int field, int value)
                                 if profile == 20:
                                     l, r = 32, 128
                                     right = left+64; rightowner = BASE+right
-                                for i in range(320): image[left+24+i] = (i*73+1)&255
+                                wide = profile >= 25
+                                if wide:
+                                    right = 0x1800+alignment; rightowner = BASE+right
+                                    l, r = -leftlen, -rightlen
+                                    if profile == 26:
+                                        right = left; rightowner = leftowner; r = l; src = middle
+                                    if profile == 27: capacity = abs(l)+abs(r)-1
+                                    if profile == 28: rightcap = abs(r)-1
+                                    if profile == 29:
+                                        l, r = -8, -128
+                                        middle = destination = left+24+48
+                                    if profile == 30: l, r = -0x80000000, -1
+                                    if profile == 31: l, r = -1, -0x80000000
+                                for i in range(320*(4 if wide else 1)): image[left+24+i] = (i*73+1)&255
                                 if right != left:
-                                    for i in range(320): image[right+24+i] = (i*17+255)&255
+                                    for i in range(320*(4 if wide else 1)): image[right+24+i] = (i*17+255)&255
                                 put(image, left-24, ref)
                                 put(image, left, l, 4); put(image, left+4, capacity, 4)
                                 if right != left:
@@ -142,16 +155,18 @@ int emit(u32int *out, int cap, int wb, int field, int value)
                                 put(image, destination, leftowner)
                                 put(image, 8, BASE+src); put(image, 16, BASE+destination); put(image, 24, BASE+middle)
                                 good = (destination == middle and leftowner == BASE+left and rightowner == BASE+right
-                                        and ref == 1 and profile != 21 and l >= 0 and 0 <= r <= 128
-                                        and r <= (capacity if right == left else rightcap) and l+r <= capacity)
-                                target, origin = left+24+l, right+24
-                                if origin < target < origin+max(r, 0): good = False
+                                        and ref == 1 and profile != 21 and (l<0)==(r<0) and 0 <= abs(r) <= 128
+                                        and abs(r) <= (capacity if right == left else rightcap) and abs(l)+abs(r) <= capacity)
+                                stride = 4 if l<0 else 1
+                                copied = abs(r)*stride
+                                target, origin = left+24+abs(l)*stride, right+24
+                                if origin < target < origin+copied: good = False
                                 expected = bytearray(image)
                                 expectedwrites = []
                                 if good:
-                                    expected[target:target+r] = bytes(image[origin:origin+r])
-                                    put(expected, left, l+r, 4)
-                                    expectedwrites = [(BASE+target+i, 1) for i in range(r)]+[(BASE+left, 4)]
+                                    expected[target:target+copied] = bytes(image[origin:origin+copied])
+                                    put(expected, left, -(abs(l)+abs(r)) if l<0 else abs(l)+abs(r), 4)
+                                    expectedwrites = [(BASE+target+i, 1) for i in range(copied)]+[(BASE+left, 4)]
                                 machine.mem_write(BASE, bytes(image)); writes.clear()
                                 if arch == 'amd64':
                                     machine.reg_write(UC_X86_REG_RDI, BASE)
@@ -163,7 +178,7 @@ int emit(u32int *out, int cap, int wb, int field, int value)
                                     machine.reg_write(UC_ARM64_REG_LR, STOP)
                                     machine.reg_write(UC_ARM64_REG_FPCR, 0x800000)
                                     machine.reg_write(UC_ARM64_REG_FPSR, 0x11)
-                                machine.emu_start(CODE, STOP, count=2000)
+                                machine.emu_start(CODE, STOP, count=6000)
                                 result = machine.reg_read(UC_X86_REG_RAX if arch == 'amd64' else UC_ARM64_REG_X0)
                                 if result != good or bytes(machine.mem_read(BASE, 0x4000)) != bytes(expected) or writes != expectedwrites:
                                     raise RuntimeError((arch, wb, leftlen, rightlen, profile, alignment, slot, result, good, writes[:4]))
@@ -172,4 +187,4 @@ int emit(u32int *out, int cap, int wb, int field, int value)
                                 elif machine.reg_read(UC_ARM64_REG_FPCR) != 0x800000 or machine.reg_read(UC_ARM64_REG_FPSR) != 0x11:
                                     raise RuntimeError('FPCR/FPSR changed')
                                 checks += 1
-        print('PASS', arch, 'ASCII append:', checks, 'instruction/image/write/FP checks', flush=True)
+        print('PASS', arch, 'string append:', checks, 'instruction/image/write/FP checks', flush=True)
