@@ -47,3 +47,9 @@ It observes the actual slot during destruction, checks surrounding canaries and
 requires balanced descriptor/heap owners after success and failure. These checks
 cover snapshot result APIs; scalar and construction Loader APIs retain their
 existing contracts and separate runtime tests.
+
+The fixture keeps reusable call frames and canary arrays in static storage. This
+keeps their lifetime independent of native error unwinds and avoids stale ASan
+stack-shadow reports when the sandbox cannot discover the native stack top.
+No sanitizer is disabled; the complete WORD32/WORD64 matrix passes combined
+ASan/UBSan with these fixture owners.

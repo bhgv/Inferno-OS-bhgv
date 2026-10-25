@@ -121,9 +121,9 @@ static int slot_override; /* Select the explicit slot, including nil and H. */
 static int
 dispatch(void *unused)
 {
-	F_Loader_ifetch fi = {0};
-	F_Loader_link fl = {0};
-	F_Loader_tdesc ft = {0};
+	static F_Loader_ifetch fi; /* Stable fixture frame across native error unwinds. */
+	static F_Loader_link fl; /* No modified automatic call frame crosses longjmp. */
+	static F_Loader_tdesc ft; /* Reset all used fields before every dispatch. */
 
 	(void)unused;
 	fi.ret = fl.ret = ft.ret = slot_override ? snapshot_slot : &result;
@@ -314,7 +314,8 @@ bounds(void)
 static int
 slots(void)
 {
-    uchar bytes[40], expected[40];
+    static uchar bytes[40]; /* Stable fixture storage survives native error unwinds. */
+    static uchar expected[40]; /* Independent expected image, including all outer canaries. */
     void *empty = H;
     Array *value;
     int op, offset, pass, ok;
