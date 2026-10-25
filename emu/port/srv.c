@@ -23,6 +23,8 @@ srvclear(void *slot)
 {
 	void *old, *empty;
 
+	if(slot == nil || slot == H)
+		error(exNilref);
 	memmove(&old, slot, sizeof(old));
 	empty = H;
 	memmove(slot, &empty, sizeof(empty));
@@ -62,6 +64,9 @@ srvhostlist(char **hosts, int count, int capacity, void *slot)
 			error(exHeap);
 		length = strlen(hosts[i-1]);
 		if(length > 0x7fffffff)
+			error(exHeap);
+		/* Validate before allocation/publication or a signed descriptor increment. */
+		if(Tptr.ref <= 0 || Tptr.ref == 0x7fffffff)
 			error(exHeap);
 		list = cons(sizeof(text), slot);
 		text = newstring(length);

@@ -161,6 +161,63 @@ selected(char *name, int value)
 	return text==nil || atoi(text)==value;
 }
 
+/* Reject invalid result slots and exhausted pointer descriptors before native/VM allocation.
+ * No arguments; returns zero with a diagnostic on an ownership or lock imbalance.
+ * All temporary result owners are cleared before returning to the ordinary matrix. */
+static int
+preflight(void)
+{
+    F_Srv_iph2a forward = {0};
+    F_Srv_ipa2h reverse = {0};
+    F_Srv_ipn2p service = {0};
+    void *frame;
+    List *result = H;
+    int references[] = {0, -1, 0x7fffffff};
+    int index, ok;
+
+    for(api = 0; api < 3; api++) {
+        forward.ret = nil;
+        reverse.ret = nil;
+        service.ret = nil;
+        frame = api == 0 ? (void*)&forward : api == 1 ? (void*)&reverse : (void*)&service;
+        raised = nil;
+        ok = kprotect(invoke, frame);
+        if(ok || raised != exNilref || live || native_live || !vmheld || dbheld || worker.nerr) {
+            fprintf(stderr, "Srv accepted a nil result slot or changed ownership\n");
+            return 0;
+        }
+        forward.ret = H;
+        reverse.ret = H;
+        service.ret = H;
+        raised = nil;
+        ok = kprotect(invoke, frame);
+        if(ok || raised != exNilref || live || native_live || !vmheld || dbheld || worker.nerr) {
+            fprintf(stderr, "Srv accepted a language-nil result slot\n");
+            return 0;
+        }
+    }
+    for(api = 0; api < 2; api++) {
+        for(index = 0; index < 3; index++) {
+            forward.ret = &result;
+            reverse.ret = &result;
+            frame = api == 0 ? (void*)&forward : (void*)&reverse;
+            answers = 1;
+            allocations = 0;
+            raised = nil;
+            Tptr.ref = references[index];
+            ok = kprotect(invoke, frame);
+            if(ok || raised != exHeap || result != H || allocations || live || native_live ||
+               Tptr.ref != references[index] || !vmheld || dbheld || worker.nerr) {
+                fprintf(stderr, "Srv failed descriptor preflight/rollback: api=%d ref=%d\n", api, references[index]);
+                return 0;
+            }
+            Tptr.ref = 1;
+        }
+    }
+    puts("PASS Srv preflight: six invalid slots and six descriptor-retain cases");
+    return 1;
+}
+
 /* Check every allocation failure, return alignment, native unwind and ordered payload. */
 int
 main(void)
@@ -174,6 +231,9 @@ main(void)
 	int counts[]={0,1,3,10,-1,11},ci,offset,fail,ok,bad,i,expectedalloc;
 	unsigned long checks=0;
 
+	if(!preflight()) {
+		return 1;
+	}
 	for(api=0;api<3;api++)for(ci=0;ci<(api==2 ? 2 : 6);ci++)
 	for(offset=0;offset<8;offset++)for(nativeerror=0;nativeerror<2;nativeerror++)
 	for(missing=0;missing<(api==2 ? 1 : 2);missing++)for(vectorfail=0;vectorfail<(api==2 ? 1 : 2);vectorfail++)

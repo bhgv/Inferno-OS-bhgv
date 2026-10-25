@@ -81,3 +81,19 @@ SRV_VECTOR_FAIL isolate individual parent failures. LIST_SOURCE selects an
 alternate interpreter. Physical ARM64 execution and full VM frame/GC/native-
 block ABI acceptance remain separate. Tk, security/crypto and MIPS/SPARC/
 PowerPC JIT sources are outside this checkpoint.
+
+## Srv preflight follow-up
+
+All three resolver entry points now reject C-nil and language-nil result slots
+before reading an old owner, releasing the VM lock or invoking a resolver. The
+shared host-list builder rejects dead, negative and maximum pointer-descriptor
+reference counts before allocating a node or incrementing the signed count.
+Failure keeps the result H, releases the native answer vector and all populated
+answers, and restores the VM/resolver lock and error-frame balance.
+
+`srv-results.py` adds 12 preflight cases per WORD model (24 total) to the existing
+35,200-case allocation/unaligned-owner matrix. Both native WORD64 and WORD32 run
+the actual production wrappers, cons, newstring and exception protector.
+The old implementation fails the nil-slot probe; removing only the new descriptor
+guard fails the first invalid-retain probe. These are malformed-state guards,
+not a claim that arbitrary invalid pointers are sandboxed.
