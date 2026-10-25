@@ -54,13 +54,13 @@ main(void)
 				R.PC=code;savedreg=R;
 				assert(fesetround(rounds[round])==0);feclearexcept(FE_ALL_EXCEPT);
 				if(flags)feraiseexcept(FE_DIVBYZERO);
-				if(valid && (op!=2 || co==0)){
+				if(valid && (op!=2 || co<=1)){
 					if(op==1)cvtfl();else if(op==2)cvtfx();else cvtfw();
 					expectedflags=fetestexcept(FE_ALL_EXCEPT);
 					memmove(expected,slots.bytes,sizeof(expected));memmove(slots.bytes,before,sizeof(before));
 				}else expectedflags=flags ? FE_DIVBYZERO : 0;
 				feclearexcept(FE_ALL_EXCEPT);if(flags)feraiseexcept(FE_DIVBYZERO);
-				native=module.jit->entry[code[op].op](&R);assert(native==(valid && (op!=2 || co==0)));
+				native=module.jit->entry[code[op].op](&R);assert(native==(valid && (op!=2 || co<=1)));
 				assert(!memcmp(&R,&savedreg,sizeof(R)));
 				assert(fegetround()==rounds[round] && fetestexcept(FE_ALL_EXCEPT)==expectedflags);
 				assert(!memcmp(slots.bytes,native ? expected : before,sizeof(before)));

@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/real-power-native.py',
     'libinterp/tests/geometry-return-slots.py',
     'libinterp/tests/real-to-integer-native.py',
     'libinterp/tests/math-return-slots.py',

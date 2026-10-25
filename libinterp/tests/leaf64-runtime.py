@@ -388,10 +388,11 @@ static void powers(Module *m) {
         }
         m->jit->entry[activeop]=entry;
     }
-    /* Floating powers stay in the VM, including full-width minimum exponents. */
-    assert(!m->jit->entry[IEXPF]);activeop=IEXPF;n=minimum;
-    for(j=0;j<2;j++)for(alias=0;alias<5;alias++) {
+    /* Exercise native and C dispatch for full-width minimum real exponents. */
+    entry=m->jit->entry[IEXPF];assert(entry);activeop=IEXPF;n=minimum;
+    for(mode=0;mode<2;mode++)for(j=0;j<2;j++)for(alias=0;alias<5;alias++) {
         REAL input=j?2.0:-1.0, answer=j?0.0:1.0;
+        m->jit->entry[IEXPF]=mode ? nil : entry;
         memset(slots.bytes,0xa5,sizeof(slots.bytes));
         memcpy(slots.bytes+4,&n,sizeof(n));memcpy(slots.bytes+20,&input,sizeof(input));
         memcpy(expected,slots.bytes,sizeof(expected));
@@ -401,6 +402,7 @@ static void powers(Module *m) {
         assert(kprotect(dispatch,nil) && R.PC==pc && !memcmp(slots.bytes,expected,sizeof(expected)));
     }
 
+    m->jit->entry[IEXPF]=entry;
 }
 /* Raw heads share memmove semantics, guard precedence and large-record fallback. */
 static void headrecords(Module *m) {
@@ -565,6 +567,7 @@ int main(void) {
     assert(m.jit->entry[IMULX0] && m.jit->entry[IDIVX0] && m.jit->entry[ICVTXX0]);
     assert(m.jit->entry[IMOVP]==nil && m.jit->entry[IMULX] && m.jit->entry[IDIVX]);
     assert(m.jit->entry[IINDX]);
+    assert(!!m.jit->entry[IEXPF]==REAL_LEAVES);
     for(i=54;i<62;i++)assert(!!m.jit->entry[instructions[i].op]==REAL_LEAVES);
     assert(protections==1 && mappings==1);
     R.s=&a;R.m=&b;R.d=&out;

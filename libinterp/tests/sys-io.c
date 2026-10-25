@@ -54,18 +54,26 @@ long kpwrite(int fd, void *p, long n, vlong off) { return transfer(fd, p, n, off
 
 IMPLEMENTATION
 
+static int returnoffset;
+
 /* Invoke all five production builtins using actual generated frame declarations. */
 static WORD
 invoke(int op, Array *a, WORD count)
 {
 	Sys_FD fd = {17};
 	WORD result = -77;
+	union { uvlong align; uchar bytes[32]; } slot;
+	uchar expected[32];
+	WORD *destination=(void*)(slot.bytes+8+returnoffset);
 	F_Sys_read r = {0}; F_Sys_readn rn = {0}; F_Sys_write w = {0};
 	F_Sys_pread pr = {0}; F_Sys_pwrite pw = {0};
 	vlong offset = ((vlong)1<<40)+123;
 
+	memset(slot.bytes,0xa5,sizeof(slot.bytes));
+	memmove(slot.bytes+8+returnoffset,&result,sizeof(result));
+	memmove(expected,slot.bytes,sizeof(expected));
 	r.fd = rn.fd = w.fd = pr.fd = pw.fd = &fd;
-	r.ret = rn.ret = w.ret = pr.ret = pw.ret = &result;
+	r.ret = rn.ret = w.ret = pr.ret = pw.ret = destination;
 	r.buf = rn.buf = w.buf = pr.buf = pw.buf = a;
 	r.n = rn.n = w.n = pr.n = pw.n = count;
 	pr.off = pw.off = offset;
@@ -78,6 +86,9 @@ invoke(int op, Array *a, WORD count)
 	}
 	assert(!released);
 	if(calls && op >= 3)assert(nativeoff == offset);
+	memmove(&result,slot.bytes+8+returnoffset,sizeof(result));
+	memmove(expected+8+returnoffset,&result,sizeof(result));
+	assert(!memcmp(slot.bytes,expected,sizeof(expected)));
 	return result;
 }
 
@@ -94,7 +105,7 @@ main(void)
 	h = calloc(1, sizeof(Heap)+sizeof(Array)); assert(h);
 	a = H2D(Array*, h);
 	base = data;
-	for(op = 0; op < 5; op++) for(mode = 0; mode < 18; mode++){
+	for(returnoffset=0;returnoffset<8;returnoffset++)for(op = 0; op < 5; op++) for(mode = 0; mode < 18; mode++){
 		h->t = &Tarray; a->t = &Tbyte; a->len = 16; a->data = data;
 		arg = a; count = 8; expected = 8;
 		calls = total = nativecount = entered = bad = 0;

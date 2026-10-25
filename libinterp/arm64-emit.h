@@ -528,19 +528,43 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			a64guard(&b, 0x54000063); /* no native address carry */
 			a64ptr(&b, 11, abi->m); a64store(&b, 14, abi->wordbytes);
 		}
+	}else if(p.kind == LeafRealPower){
+		/* Match each C multiplication and handle minimum WORD as unsigned bits. */
+		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, abi->wordbytes);
+		if(abi->wordbytes == 4)a64put(&b, 0x93407d8c);
+		a64ptr(&b, 10, abi->m); a64put(&b, 0xfd400141);
+		a64put(&b, 0xd2e0000dU | 0x3ff0<<5); a64put(&b, 0x9e6701a0);
+		done=b.n; a64put(&b, 0xb6f8000c); /* tbz exponent,#63,positive */
+		a64put(&b, 0xcb0c03ec); /* neg x12,x12 */
+		a64put(&b, 0x1e611801); /* fdiv d1,d0,d1 */
+		b.code[done] |= (b.n-done)<<5;
+		loop=b.n;
+		a64put(&b, 0x3600004c); /* tbz x12,#0,skip multiply */
+		a64put(&b, 0x1e610800); /* fmul d0,d0,d1 */
+		a64put(&b, 0xd341fd8c); /* lsr x12,x12,#1 */
+		done=b.n; a64put(&b, 0xb400000c);
+		a64put(&b, 0x1e610821); /* fmul d1,d1,d1 */
+		a64put(&b, 0x14000000U | ((u32int)(loop-b.n)&0x3ffffff));
+		b.code[done] |= (b.n-done)<<5;
+		a64ptr(&b, 11, abi->d); a64put(&b, 0xfd000160);
 	}else if(p.kind == LeafRealInteger){
 		/* Reject unsupported bits without FP exceptions or destination writes. */
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
 		if(p.alu){
 			a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, 8);
-			a64put(&b, 0xd2e0000eU | 0x3ff0<<5);
+			a64put(&b, 0xd37ff9ad); /* lsl x13,x13,#1 */
+			a64put(&b, 0xd2e0000eU | 0x7fe0<<5);
 			a64put(&b, 0xeb0e01bf); a64guard(&b, 0x54000060);
 		}
 		a64put(&b, 0xd37ff98d); /* lsl x13,x12,#1 */
 		a64put(&b, 0xd2e0000eU | (p.bytes == 4 ? 0x83a0 : 0x87a0)<<5);
 		a64put(&b, 0xeb0e01bf); a64guard(&b, 0x54000063);
 		a64put(&b, 0x9e670180); /* fmov d0,x12 */
-		if(p.alu){a64put(&b, 0xfd400141); a64put(&b, 0x1e610800);}
+		if(p.alu){
+			a64put(&b, 0xfd400141); a64put(&b, 0x1e610800);
+			a64put(&b, 0x9e66000c); /* fmov x12,d0 */
+			a64put(&b, 0xd37ff98d); /* magnitude from the scaled result */
+		}
 		a64put(&b, 0xd2e0000eU | 0x3fe0<<5);
 		/* C selects +0.5 for both signs of zero. */
 		done=b.n; a64put(&b, 0xb6f8000c); /* tbz x12,#63,positive */

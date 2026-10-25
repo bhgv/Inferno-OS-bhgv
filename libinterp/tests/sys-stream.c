@@ -135,6 +135,8 @@ setup(void)
 	failread = failwrite = -1;
 }
 
+static int returnoffset;
+
 /* Enter through the actual generated builtin frame and native pointer ABI. */
 static WORD
 invoke(WORD size)
@@ -142,13 +144,22 @@ invoke(WORD size)
 	F_Sys_stream f = {0};
 	Sys_FD src = {17}, dst = {18};
 	WORD result = -77;
+	union { uvlong align; uchar bytes[32]; } slot;
+	uchar expected[32];
+	WORD *destination=(void*)(slot.bytes+8+returnoffset);
 
+	memset(slot.bytes,0xa5,sizeof(slot.bytes));
+	memmove(slot.bytes+8+returnoffset,&result,sizeof(result));
+	memmove(expected,slot.bytes,sizeof(expected));
 	f.src = &src;
 	f.dst = &dst;
 	f.bufsiz = size;
-	f.ret = &result;
+	f.ret = destination;
 	Sys_stream(&f);
 	assert(!released && live == 0);
+	memmove(&result,slot.bytes+8+returnoffset,sizeof(result));
+	memmove(expected+8+returnoffset,&result,sizeof(result));
+	assert(!memcmp(slot.bytes,expected,sizeof(expected)));
 	return result;
 }
 
@@ -260,14 +271,16 @@ counts(void)
 int
 main(int argc, char **argv)
 {
-	if(argc == 1 || strcmp(argv[1], "transfer") == 0)
-		transfers();
-	if(argc == 1 || strcmp(argv[1], "failure") == 0)
-		failures();
-	if(argc == 1 || strcmp(argv[1], "bounds") == 0)
-		bounds();
-	if(argc == 1 || strcmp(argv[1], "count") == 0)
-		counts();
+	for(returnoffset=0;returnoffset<8;returnoffset++){
+		if(argc == 1 || strcmp(argv[1], "transfer") == 0)
+			transfers();
+		if(argc == 1 || strcmp(argv[1], "failure") == 0)
+			failures();
+		if(argc == 1 || strcmp(argv[1], "bounds") == 0)
+			bounds();
+		if(argc == 1 || strcmp(argv[1], "count") == 0)
+			counts();
+	}
 	printf("Sys.stream WORD%u: %d transfer/count/ownership cases passed\n", (unsigned)(8*sizeof(WORD)), checks);
 	return 0;
 }

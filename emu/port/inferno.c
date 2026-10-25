@@ -381,44 +381,51 @@ sysiocount(Array *a, WORD count)
 	return (int)count;
 }
 
-/* Validate byte spans and counts before entering native I/O. */
+/* Validate native I/O spans and copy results without assuming VM slot alignment. */
 void
 Sys_read(void *fp)
 {
 	int n;
 	F_Sys_read *f;
+	WORD result;
 
 	f = fp;
 	if(f->buf == (Array*)H || f->n < 0) {
-		*f->ret = 0;
+		result = 0;
+		memmove(f->ret, &result, sizeof(result));
 		return;		
 	}
 	n = sysiocount(f->buf, f->n);
 	if(n < 0){
-		*f->ret = -1;
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
 
 	release();
-	*f->ret = kread(fdchk(f->fd), f->buf->data, n);
+	result = kread(fdchk(f->fd), f->buf->data, n);
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
-/* Validate byte spans and counts before entering native I/O. */
+/* Validate native I/O spans and copy results without assuming VM slot alignment. */
 void
 Sys_readn(void *fp)
 {
 	int fd, m, n, t;
 	F_Sys_readn *f;
+	WORD result;
 
 	f = fp;
 	if(f->buf == (Array*)H || f->n < 0) {
-		*f->ret = 0;
+		result = 0;
+		memmove(f->ret, &result, sizeof(result));
 		return;		
 	}
 	n = sysiocount(f->buf, f->n);
 	if(n < 0){
-		*f->ret = -1;
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
 	fd = fdchk(f->fd);
@@ -432,30 +439,35 @@ Sys_readn(void *fp)
 			break;
 		}
 	}
-	*f->ret = t;
+	result = t;
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
-/* Validate byte spans and counts before entering native I/O. */
+/* Validate native I/O spans and copy results without assuming VM slot alignment. */
 void
 Sys_pread(void *fp)
 {
 	int n;
 	F_Sys_pread *f;
+	WORD result;
 
 	f = fp;
 	if(f->buf == (Array*)H || f->n < 0) {
-		*f->ret = 0;
+		result = 0;
+		memmove(f->ret, &result, sizeof(result));
 		return;		
 	}
 	n = sysiocount(f->buf, f->n);
 	if(n < 0){
-		*f->ret = -1;
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
 
 	release();
-	*f->ret = kpread(fdchk(f->fd), f->buf->data, n, f->off);
+	result = kpread(fdchk(f->fd), f->buf->data, n, f->off);
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
@@ -470,49 +482,57 @@ Sys_chdir(void *fp)
 	acquire();
 }
 
-/* Validate byte spans and counts before entering native I/O. */
+/* Validate native I/O spans and copy results without assuming VM slot alignment. */
 void
 Sys_write(void *fp)
 {
 	int n;
 	F_Sys_write *f;
+	WORD result;
 
 	f = fp;
 	if(f->buf == (Array*)H || f->n < 0) {
-		*f->ret = 0;
+		result = 0;
+		memmove(f->ret, &result, sizeof(result));
 		return;		
 	}
 	n = sysiocount(f->buf, f->n);
 	if(n < 0){
-		*f->ret = -1;
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
 
 	release();
-	*f->ret = kwrite(fdchk(f->fd), f->buf->data, n);
+	result = kwrite(fdchk(f->fd), f->buf->data, n);
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
-/* Validate byte spans and counts before entering native I/O. */
+/* Validate native I/O spans and copy results without assuming VM slot alignment. */
 void
 Sys_pwrite(void *fp)
 {
 	int n;
 	F_Sys_pwrite *f;
+	WORD result;
 
 	f = fp;
 	if(f->buf == (Array*)H || f->n < 0) {
-		*f->ret = 0;
+		result = 0;
+		memmove(f->ret, &result, sizeof(result));
 		return;		
 	}
 	n = sysiocount(f->buf, f->n);
 	if(n < 0){
-		*f->ret = -1;
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
 
 	release();
-	*f->ret = kpwrite(fdchk(f->fd), f->buf->data, n, f->off);
+	result = kpwrite(fdchk(f->fd), f->buf->data, n, f->off);
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
@@ -842,7 +862,7 @@ sysstreamwrite(int fd, uchar *buf, int n, UWORD *total)
 	return 0;
 }
 
-/* Validate the full VM buffer size and preserve short-write progress in both VM widths. */
+/* Preserve stream progress and copy the VM-width result into any slot alignment. */
 void
 Sys_stream(void *fp)
 {
@@ -851,18 +871,21 @@ Sys_stream(void *fp)
 	int src, dst, size, t, n;
 	UWORD nbytes;
 	F_Sys_stream *f;
+	WORD result;
 
 	f = fp;
 	if(f->bufsiz <= 0 || (uvlong)f->bufsiz > 0x7fffffff){
 		seterror(Ebadarg);
-		*f->ret = -1;
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
 	size = (int)f->bufsiz;
 	buf = malloc(size);
 	if(buf == nil){
 		kwerrstr(Enomem);
-		*f->ret = -1;
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
 	src = fdchk(f->src);
@@ -891,9 +914,10 @@ Sys_stream(void *fp)
 	free(buf);
 	/* Interpret the modular byte count at the VM's width without signed overflow. */
 	if(nbytes <= (~(UWORD)0 >> 1))
-		*f->ret = (WORD)nbytes;
+		result = (WORD)nbytes;
 	else
-		*f->ret = -1-(WORD)(~nbytes);
+		result = -1-(WORD)(~nbytes);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 void

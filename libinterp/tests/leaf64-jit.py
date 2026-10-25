@@ -21,7 +21,7 @@ int realcastoracle(uint64_t bits,int fixed,int mode,int seed,int64_t *out){
     fenv_t saved;
     int flags, result=0, modes[]={FE_TONEAREST,FE_DOWNWARD,FE_UPWARD,FE_TOWARDZERO};
     double value;
-    volatile double scale=1.0;
+    volatile double scale=fixed==2 ? -1.0 : 1.0;
     fegetenv(&saved);fesetround(modes[mode]);feclearexcept(FE_ALL_EXCEPT);
     if(seed)feraiseexcept(FE_DIVBYZERO);
     memcpy(&value,&bits,8);
@@ -36,13 +36,32 @@ int realcastoracle(uint64_t bits,int fixed,int mode,int seed,int64_t *out){
     if(flags&FE_INEXACT)result|=16;
     fesetenv(&saved);return result;
 }
+/* Compute the C repeated-squaring sequence without libm pow substitution. */
+int realpoweroracle(uint64_t bits,int64_t n,int mode,int seed,uint64_t *out){
+    fenv_t saved;
+    int flags,status=0,modes[]={FE_TONEAREST,FE_DOWNWARD,FE_UPWARD,FE_TOWARDZERO};
+    uint64_t exponent=(uint64_t)n;
+    double x,result=1.0;
+    fegetenv(&saved);fesetround(modes[mode]);feclearexcept(FE_ALL_EXCEPT);
+    if(seed)feraiseexcept(FE_DIVBYZERO);
+    memcpy(&x,&bits,8);
+    if(n<0){exponent=0-exponent;x=1/x;}
+    for(;;){if(exponent&1)result*=x;if((exponent>>=1)==0)break;x*=x;}
+    memcpy(out,&result,8);flags=fetestexcept(FE_ALL_EXCEPT);
+    if(flags&FE_INVALID)status|=1;
+    if(flags&FE_DIVBYZERO)status|=2;
+    if(flags&FE_OVERFLOW)status|=4;
+    if(flags&FE_UNDERFLOW)status|=8;
+    if(flags&FE_INEXACT)status|=16;
+    fesetenv(&saved);return status;
+}
 '''
 
 root = Path(__file__).resolve().parents[2]
 ops = '''IBEQC IBNEC IBLTC IBLEC IBGTC IBGEC ITCMP IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
-IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF ISUBF IMULF IDIVF ICVTXF ICVTFW ICVTFL ICVTFX'''.split()
+IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF ISUBF IMULF IDIVF ICVTXF ICVTFW ICVTFL ICVTFX IEXPF'''.split()
 class Layout(C.Structure):
     _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]
 class RvLayout(C.Structure):
@@ -57,7 +76,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic','realinteger'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic','realinteger','realpower'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -72,7 +91,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                           '#include "isa.h"\n#include "'+(os.environ.get('LEAF64_RISCV_EMITTER','riscv-emit.h') if rv else os.environ.get('LEAF64_'+arch.upper()+'_EMITTER',arch+'-emit.h'))+'"\n'
                           'int emit(u32int *p,int n,'+('RvLayout' if rv else 'LeafLayout')+' *l,int op){return '+('rvemit' if rv else 'leafemit')+'(p,n,l,op);}\n'
                           'int opid(int i){static int ops[]={'+','.join(ops)+'};return ops[i];}\n')
-        if case in ('','realinteger'):
+        if case in ('','realinteger','realpower'):
             with source.open('a') as output:
                 output.write(REAL_CAST_ORACLE)
         binary = td/(arch+'.so')
@@ -413,6 +432,29 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     return bytes(u.mem_read(output,16)),before,bytes(u.mem_read(output-8,32)),status
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
+            if case in ('','realpower'):
+                if rv:assert not blobs['IEXPF']
+                else:
+                    lib.realpoweroracle.argtypes=[C.c_uint64,C.c_int64,C.c_int,C.c_int,C.POINTER(C.c_uint64)]
+                    values=(0,0x8000000000000000,1,0x8000000000000001,
+                            0x3ff0000000000000,0xbff0000000000000,0x4000000000000000,0xc000000000000000,
+                            0x3ff0000000000001,0x3fe0000000000000,0x0010000000000000,0x7fefffffffffffff,
+                            0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000042,0x7ff0000000000042)
+                    exponents=(0,1,-1,2,-2,3,-3,31,32,63,64,127,-127,-(1<<(wb*8-1)),(1<<(wb*8-1))-1)
+                    for bits in values:
+                        for exponent in exponents:
+                            for mode in range(4):
+                                wanted=C.c_uint64()
+                                flags=lib.realpoweroracle(bits,exponent,mode,1,C.byref(wanted))
+                                for alias in (0,1,2,3,4,5):
+                                    out,before,after,status=run('IEXPF',a=exponent,b=bits,alias=alias,fpstate=(mode,1))
+                                    actual=int.from_bytes(out[:8],'little')
+                                    if wanted.value&0x7fffffffffffffff>0x7ff0000000000000:assert actual&0x7fffffffffffffff>0x7ff0000000000000
+                                    else:assert actual==wanted.value,(arch,wb,hex(bits),exponent,mode,hex(actual),hex(wanted.value))
+                                    if arch=='arm64':assert status==flags,(arch,wb,hex(bits),exponent,mode,status,flags)
+                                    assert after[:8]==before[:8] and after[16:]==before[16:];checks+=1
+                if case=='realpower':continue
+
             if case in ('','realinteger'):
                 names=('ICVTFW','ICVTFL','ICVTFX')
                 if rv:assert not any(blobs[name] for name in names)
@@ -429,11 +471,12 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             value=struct.unpack('<d',struct.pack('<Q',bits))[0]
                             valid=(bits&0x7fffffffffffffff)<(0x41d0000000000000 if width==4 else 0x43d0000000000000)
                             for scale in ((0x3ff0000000000000,0xbff0000000000000,0,0x4000000000000000,0x7ff0000000000042) if name=='ICVTFX' else (0,)):
-                                take=valid and (name!='ICVTFX' or scale==0x3ff0000000000000)
+                                take=valid and (name!='ICVTFX' or scale in (0x3ff0000000000000,0xbff0000000000000))
                                 for alias in range(6):
                                     out,pc,before,after,_=run(name,a=bits,b=scale,alias=alias,expect=int(take))
                                     if take:
-                                        wanted=int(value-0.5 if value<0 else value+0.5)
+                                        scaled=-value if name=='ICVTFX' and scale==0xbff0000000000000 else value
+                                        wanted=int(scaled-0.5 if scaled<0 else scaled+0.5)
                                         assert signed(int.from_bytes(out[:width],'little'),width*8)==wanted,(arch,name,bits)
                                         assert after[:8]==before[:8] and after[8+width:]==before[8+width:]
                                     else:assert before==after
@@ -445,15 +488,16 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             valid=(bits&0x7fffffffffffffff)<(0x41d0000000000000 if width==4 else 0x43d0000000000000)
                             for mode in range(4):
                                 for seed in range(2):
-                                    wanted=C.c_int64()
-                                    flags=lib.realcastoracle(bits,int(name=='ICVTFX'),mode,seed,C.byref(wanted)) if valid else (2 if seed else 0)
-                                    for alias in (0,1,4):
-                                        out,before,after,status=run(name,a=bits,b=0x3ff0000000000000,alias=alias,expect=int(valid),fpstate=(mode,seed))
-                                        # Unicorn x86 omits conversion precision flags; native tests check those.
-                                        if not valid or arch=='arm64':assert status==flags,(arch,wb,name,hex(bits),mode,seed,status,flags)
-                                        if valid:assert signed(int.from_bytes(out[:width],'little'),width*8)==wanted.value
-                                        else:assert before==after
-                                        checks+=1
+                                    for negative in range(2 if name=='ICVTFX' else 1):
+                                        wanted=C.c_int64()
+                                        flags=lib.realcastoracle(bits,(1+negative) if name=='ICVTFX' else 0,mode,seed,C.byref(wanted)) if valid else (2 if seed else 0)
+                                        for alias in (0,1,4):
+                                            out,before,after,status=run(name,a=bits,b=0xbff0000000000000 if negative else 0x3ff0000000000000,alias=alias,expect=int(valid),fpstate=(mode,seed))
+                                            # Unicorn x86 omits conversion precision flags; native tests check those.
+                                            if not valid or arch=='arm64':assert status==flags,(arch,wb,name,hex(bits),mode,seed,status,flags)
+                                            if valid:assert signed(int.from_bytes(out[:width],'little'),width*8)==wanted.value
+                                            else:assert before==after
+                                            checks+=1
                 if case=='realinteger':continue
 
             if case in ('','realarithmetic'):
