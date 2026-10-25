@@ -46,4 +46,7 @@ with tempfile.TemporaryDirectory(prefix='fixed-coeff-') as directory:
         includes = ['-I'+str(model)]+['-I'+str(root/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
         binary = td/('branches'+str(bits))
         subprocess.run(cmd+includes+[str(target),'-o',str(binary)],check=True)
-        subprocess.run([str(binary)]+shlex.split(os.environ.get('FIXED_COEFFICIENT_CASE','')),check=True)
+        cases=shlex.split(os.environ.get('FIXED_COEFFICIENT_CASE',''))
+        subprocess.run([str(binary)]+cases,check=True)
+        if not cases:
+            subprocess.run([str(binary),'vn'],check=True)

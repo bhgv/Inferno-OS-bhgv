@@ -66,6 +66,40 @@ x64signeddivide(X64Buf *b, int bytes)
 	b->bytes[done]=b->n-done-1;
 }
 
+/* Form VN correction from captured operands; invert WN polarity only for nonzero VN products. */
+static void
+x64fixedround(X64Buf *b, int alu, int wordbytes)
+{
+	int skip[3], count, sign, i;
+
+	count=0;
+	x64byte(b, 0x45); x64byte(b, 0x31); x64byte(b, 0xc9); /* r9=correction */
+	x64byte(b, 0x83); x64byte(b, 0xfe); x64byte(b, 2);
+	x64byte(b, 0x72); skip[count++]=b->n; x64byte(b, 0);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
+	x64byte(b, 0x74); skip[count++]=b->n; x64byte(b, 0);
+	if(alu == 0){
+		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2);
+		x64byte(b, 0x74); skip[count++]=b->n; x64byte(b, 0);
+	}
+	if(alu == 1){
+		x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc1);
+		x64byte(b, 0x4d); x64byte(b, 0x31); x64byte(b, 0xd9);
+		x64byte(b, 0x49); x64byte(b, 0xc1); x64byte(b, 0xf9); x64byte(b, 63);
+		x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xc9); x64byte(b, 1);
+	}else{
+		/* LEA performs the WORD-width modular a-1 without reading memory. */
+		x64byte(b, wordbytes == 4 ? 0x45 : 0x4d); x64byte(b, 0x8d); x64byte(b, 0x4b); x64byte(b, 0xff);
+		x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc0);
+		x64byte(b, 0x79); sign=b->n; x64byte(b, 0);
+		x64byte(b, wordbytes == 4 ? 0x41 : 0x49); x64byte(b, 0xf7); x64byte(b, 0xd9);
+		b->bytes[sign]=b->n-sign-1;
+		if(wordbytes == 4){x64byte(b, 0x4d); x64byte(b, 0x63); x64byte(b, 0xc9);}
+		x64byte(b, 0x49); x64byte(b, 0x0f); x64byte(b, 0xba); x64byte(b, 0xf8); x64byte(b, 63);
+	}
+	for(i=0;i<count;i++)b->bytes[skip[i]]=b->n-skip[i]-1;
+}
+
 /* Return to the VM without writes unless the preceding condition permits execution. */
 static void
 x64guard(X64Buf *b, int condition)
@@ -240,9 +274,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(p.alu == 2){x64ptr(&b, 1, abi->m); x64load(&b, 1, abi->wordbytes);}
 		else x64field(&b, 1, 9, abi->fixedtmp, abi->wordbytes);
 		if(p.condition){
-			/* Keep VN flags in C; capture WN before decoding the signed scale. */
+			/* Capture both rounding flags before decoding the signed scale. */
 			x64byte(&b, 0x89); x64byte(&b, 0xce); x64byte(&b, 0x83); x64byte(&b, 0xe6); x64byte(&b, 3);
-			x64byte(&b, 0x83); x64byte(&b, 0xfe); x64byte(&b, 1); x64guard(&b, 0x76);
 			x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xf9); x64byte(&b, 2);
 		}
 		x64byte(&b, 0x48); x64byte(&b, 0x8d); x64byte(&b, 0x41); x64byte(&b, 63);
@@ -257,10 +290,11 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc0);
 			if(p.alu == 0){x64byte(&b, 0x49); x64byte(&b, 0x31); x64byte(&b, 0xd0);}
 		}
+		if(p.condition)x64fixedround(&b, p.alu, abi->wordbytes);
 		if(p.alu != 2){x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0xaf); x64byte(&b, 0xc2);}
 		if(p.condition){
 			/* Mask selection precedes shifting and uses unmultiplied signs. */
-			x64byte(&b, 0x85); x64byte(&b, 0xf6); x64byte(&b, 0x74); done=b.n; x64byte(&b, 0);
+			x64byte(&b, 0x40); x64byte(&b, 0xf6); x64byte(&b, 0xc6); x64byte(&b, 1); x64byte(&b, 0x74); done=b.n; x64byte(&b, 0);
 			x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9); x64guard(&b, 0x78);
 			x64byte(&b, 0x48); x64byte(&b, 0xf7); x64byte(&b, 0xd9);
 			x64byte(&b, 0x48); x64byte(&b, 0xc7); x64byte(&b, 0xc2); x64word(&b, -1);
@@ -275,7 +309,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9);
 		x64byte(&b, 0x78); x64byte(&b, 5); x64byte(&b, 0x48); x64byte(&b, 0xd3); x64byte(&b, 0xe0);
 		x64byte(&b, 0xeb); x64byte(&b, 6); x64byte(&b, 0x48); x64byte(&b, 0xf7); x64byte(&b, 0xd9); x64byte(&b, 0x48); x64byte(&b, 0xd3); x64byte(&b, 0xf8);
+		if(p.condition && p.alu != 1){x64byte(&b, 0x4c); x64byte(&b, 0x01); x64byte(&b, 0xc8);}
 		x64signeddivide(&b, 8);
+		if(p.condition && p.alu == 1){x64byte(&b, 0x4c); x64byte(&b, 0x01); x64byte(&b, 0xc8);}
 		x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
 	}else if(p.kind == LeafCall){
 		/* Capture the target and old links before touching an aliased frame. */

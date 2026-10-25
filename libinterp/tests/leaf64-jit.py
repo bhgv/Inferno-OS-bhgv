@@ -109,7 +109,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic','realinteger','realpower','divide'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic','realinteger','realpower','divide','vncoefficient'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -756,25 +756,36 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         _,pc,before,after,_=run(name,expect=0,badsource=True,poison=True,badtarget=True,fixedframe=(frame,0,None,2))
                         assert pc==oldpc and before==after;checks+=1
                 if case=='coefficient':continue
-            if case in ('','roundedcoefficient'):
+            if case in ('','roundedcoefficient','vncoefficient'):
                 pairs=[(0,0),(1,1),(-1,1),(1,-1),(-7,3),(7,-3),(-(1<<(wb*8-1)),2),((1<<(wb*8-1))-1,-2)]
                 pairs += [(signed(rng.getrandbits(wb*8),wb*8),signed(rng.getrandbits(wb*8),wb*8)) for _ in range(4)]
                 for name in ('IMULX1','IDIVX1','ICVTXX1'):
                     assert blobs[name],(arch,wb,name,'missing coefficient leaf')
                     for x,y in pairs:
-                        for coefficient in (0,1,-1,2,-3):
-                            for count,flags in [(scale*4+flags,flags) for scale in (-64,-63,-33,-32,-1,0,1,31,63,64) for flags in range(4)]+[(-(1<<(wb*8-1)),0),((1<<(wb*8-1))-1,3)]:
+                        coefficients=(0,1,-1,2,-3,-(1<<(wb*8-1)),(1<<(wb*8-1))-1,-(1<<(wb*8-1))+1) if case=='vncoefficient' else (0,1,-1,2,-3)
+                        counts=[(scale*4+flags,flags) for scale in (-63,-32,-1,0,31,63) for flags in (2,3)] if case=='vncoefficient' else [(scale*4+flags,flags) for scale in (-64,-63,-33,-32,-1,0,1,31,63,64) for flags in range(4)]+[(-(1<<(wb*8-1)),0),((1<<(wb*8-1))-1,3)]
+                        for coefficient in coefficients:
+                            for count,flags in counts:
                                 divisor=y if name=='IDIVX1' else coefficient
                                 scale=count>>2
-                                valid=(flags==0 and -63<=scale<=63 or not rv and flags==1 and -63<=scale<0) and divisor!=0 and (not rv or divisor!=-1)
+                                valid=(-63<=scale<=63 and (flags==0 if rv else not(flags&1) or scale<0)) and divisor!=0 and (not rv or divisor!=-1)
                                 numerator=coefficient*x if name=='IDIVX1' else x*y if name=='IMULX1' else x
                                 numerator=signed(numerator,64)
                                 if valid:
-                                    if flags==1 and (x<=0 if name=='IDIVX1' else (x<0)!=(y<0) if name=='IMULX1' else x<0):
-                                        numerator=signed(numerator+((1<<-scale)-1),64)
+                                    zero=x==0 or name=='IMULX1' and y==0
+                                    correction=0
+                                    opposite=(x<0)!=(y<0) if name!='ICVTXX1' else x<0
+                                    if flags&2 and not zero:
+                                        correction=1 if name=='IDIVX1' else signed(coefficient-1,wb*8)
+                                        if opposite:correction=signed(-correction,wb*8)
+                                    maskneeded=x<=0 if name=='IDIVX1' else (not opposite if flags&2 else opposite)
+                                    if flags&1 and maskneeded:numerator=signed(numerator+((1<<-scale)-1),64)
                                     numerator=signed(numerator<<scale,64) if scale>=0 else numerator>>-scale
+                                    if name!='IDIVX1':numerator=signed(numerator+correction,64)
                                     quotient=abs(numerator)//abs(divisor)
-                                    wanted=(-quotient if (numerator<0)!=(divisor<0) else quotient)&((1<<(8*wb))-1)
+                                    wanted=-quotient if (numerator<0)!=(divisor<0) else quotient
+                                    if name=='IDIVX1':wanted+=correction
+                                    wanted=(0 if zero else wanted)&((1<<(8*wb))-1)
                                 for alias in (0,1,2):
                                     out,pc,before,after,_=run(name,x if name=='ICVTXX1' else y,count if name=='ICVTXX1' else x,alias=alias,expect=int(valid),fixedframe=(data+0x900,count,None,coefficient),badtarget=not valid)
                                     assert pc==oldpc
@@ -792,7 +803,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     for frame in (0,(1<<64)-1):
                         _,pc,before,after,_=run(name,expect=0,badsource=True,poison=True,badtarget=True,fixedframe=(frame,0,None,2))
                         assert pc==oldpc and before==after;checks+=1
-                if case=='roundedcoefficient':continue
+                if case in ('roundedcoefficient','vncoefficient'):continue
             if case in ('','descriptor'):
                 assert blobs['IINDX'],(arch,wb,'missing descriptor leaf')
                 for width in (-1,0,1,3,7,8,16,0x7fffffff):

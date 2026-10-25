@@ -37,9 +37,10 @@ opcode IDs; RV64 fixed guards are unchanged.
 
 These figures count opcode availability, not complete semantic or performance
 coverage. Some native paths accept a bounded subset and return to C for other
-operands. For example, rounded fixed operations retain C for VN flags; WN right shifts run
-natively on AMD64/ARM64, while other WN cases retain C, and some floating operations retain C when the exact FP contract cannot
-be preserved. Instructions may therefore contribute to both native execution
+operands. Rounded fixed operations now support VN-only scales from -63 through
+63 and WN/VN+WN right shifts from -63 through -1 on AMD64/ARM64. Other rounding
+scales and error cases retain C. RV64 still declines nonzero rounding flags.
+Some floating conversions also retain C for their range/error contract. Instructions may therefore contribute to both native execution
 and fallback execution at runtime. No fully-native opcode count is asserted.
 
 The remaining commands are a list of current interpreter dispatch paths,

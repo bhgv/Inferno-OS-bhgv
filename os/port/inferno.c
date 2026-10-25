@@ -335,14 +335,30 @@ Sys_fildes(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Reject high VM argument bits before a native int parameter can silently wrap. */
+static int
+sysnativeint(WORD value)
+{
+	return value >= -0x7fffffff-1 && value <= 0x7fffffff;
+}
+
+/* Capture the native status before copying into a possibly unaligned VM return slot. */
 void
 Sys_dup(void *fp)
 {
 	F_Sys_dup *f;
+	WORD result;
 
 	f = fp;
+	if(!sysnativeint(f->old) || !sysnativeint(f->new)){
+		seterror(Ebadarg);
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
+		return;
+	}
 	release();
-	*f->ret = kdup(f->old, f->new);	
+	result = kdup(f->old, f->new);
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
@@ -369,36 +385,51 @@ Sys_create(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+/* Capture the native status before copying into a possibly unaligned VM return slot. */
 void
 Sys_remove(void *fp)
 {
 	F_Sys_remove *f;
+	WORD result;
 
 	f = fp;
 	release();
-	*f->ret = kremove(string2c(f->s));
+	result = kremove(string2c(f->s));
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
+/* Capture the native status before copying into a possibly unaligned VM return slot. */
 void
 Sys_seek(void *fp)
 {
 	F_Sys_seek *f;
+	LONG result;
 
 	f = fp;
+	if(!sysnativeint(f->start)){
+		seterror(Ebadarg);
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
+		return;
+	}
 	release();
-	*f->ret = kseek(fdchk(f->fd), f->off, f->start);
+	result = kseek(fdchk(f->fd), f->off, f->start);
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
+/* Capture the native status before copying into a possibly unaligned VM return slot. */
 void
 Sys_unmount(void *fp)
 {
 	F_Sys_unmount *f;
+	WORD result;
 
 	f = fp;
 	release();
-	*f->ret = kunmount(string2c(f->s1), string2c(f->s2));
+	result = kunmount(string2c(f->s1), string2c(f->s2));
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
@@ -506,14 +537,17 @@ Sys_pread(void *fp)
 	acquire();
 }
 
+/* Capture the native status before copying into a possibly unaligned VM return slot. */
 void
 Sys_chdir(void *fp)
 {
 	F_Sys_chdir *f;
+	WORD result;
 
 	f = fp;
 	release();
-	*f->ret = kchdir(string2c(f->path));
+	result = kchdir(string2c(f->path));
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
@@ -691,25 +725,31 @@ Sys_fd2path(void *fp)
 	free(s);
 }
 
+/* Capture the native status before copying into a possibly unaligned VM return slot. */
 void
 Sys_mount(void *fp)
 {
 	F_Sys_mount *f;
+	WORD result;
 
 	f = fp;
 	release();
-	*f->ret = kmount(fdchk(f->fd), fdchk(f->afd), string2c(f->on), f->flags, string2c(f->spec));
+	result = kmount(fdchk(f->fd), fdchk(f->afd), string2c(f->on), f->flags, string2c(f->spec));
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
+/* Capture the native status before copying into a possibly unaligned VM return slot. */
 void
 Sys_bind(void *fp)
 {
 	F_Sys_bind *f;
+	WORD result;
 
 	f = fp;
 	release();
-	*f->ret = kbind(string2c(f->s), string2c(f->on), f->flags);
+	result = kbind(string2c(f->s), string2c(f->on), f->flags);
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
@@ -1231,14 +1271,17 @@ Sys_fversion(void *fp)
 	}
 }
 
+/* Capture the native status before copying into a possibly unaligned VM return slot. */
 void
 Sys_iounit(void *fp)
 {
 	F_Sys_iounit *f;
+	WORD result;
 
 	f = fp;
 	release();
-	*f->ret = kiounit(fdchk(f->fd));
+	result = kiounit(fdchk(f->fd));
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 

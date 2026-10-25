@@ -27,28 +27,28 @@ int kprotect(int (*fn)(void*),void *arg) {return fn(arg);}
 #define OP(name) void name(void)
 IMPLEMENTATION
 
-/* Compare WN paths with the real interpreter, including error and alias effects. */
+/* Compare both rounding flags with the real interpreter, including WORD wrap and zero shortcuts. */
 static void
-wncases(void)
+roundcases(int vn)
 {
 	union {uvlong align;uchar bytes[256];} memory;
 	uchar before[256],expected[256];
 	WORD values[]={0,1,-1,(WORD)((UWORD)1<<(sizeof(WORD)*8-1)),(WORD)(((UWORD)1<<(sizeof(WORD)*8-1))-1)};
-	WORD coefficients[]={0,1,-1,2,-3};
+	WORD coefficients[]={0,1,-1,2,-3,(WORD)((UWORD)1<<(sizeof(WORD)*8-1)),(WORD)(((UWORD)1<<(sizeof(WORD)*8-1))-1),(WORD)(((UWORD)1<<(sizeof(WORD)*8-1))+1)};
 	int scales[]={-64,-63,-32,-1,0,1,31,63,64};
 	void (*ops[])(void)={mulx1,divx1,cvtxx1};
 	WORD source,middle,encoded,divisor;
 	Inst sentinel;REG saved;
-	int op,x,y,c,n,align,alias,d,accepted,ok;
+	int op,x,y,c,n,align,alias,d,accepted,ok,flags;
 	unsigned long checks=0;
 #ifdef NATIVE_COEFFICIENT
 	Module module={0};Inst code[3]={{0}};int ids[]={IMULX1,IDIVX1,ICVTXX1};
 	for(op=0;op<3;op++)code[op].op=ids[op];module.prog=code;module.nprog=3;
 	assert(compile(&module,3,nil));
 #endif
-	for(op=0;op<3;op++)for(x=0;x<5;x++)for(y=0;y<5;y++)for(c=0;c<5;c++)
-	for(n=0;n<nelem(scales);n++)for(align=0;align<8;align++)for(alias=0;alias<6;alias++){
-		encoded=scales[n]*4+1;source=op==2 ? values[x] : values[y];middle=op==2 ? encoded : values[x];
+	for(op=0;op<3;op++)for(x=0;x<5;x++)for(y=0;y<5;y++)for(c=0;c<(vn ? nelem(coefficients) : 5);c++)
+	for(flags=vn ? 2 : 1;flags<=(vn ? 3 : 1);flags++)for(n=0;n<nelem(scales);n++)for(align=0;align<8;align++)for(alias=0;alias<6;alias++){
+		encoded=scales[n]*4+flags;source=op==2 ? values[x] : values[y];middle=op==2 ? encoded : values[x];
 		memset(memory.bytes,0xa5,sizeof(memory.bytes));
 		R.s=memory.bytes+16+align;R.m=memory.bytes+48+(align*3)%8;R.FP=memory.bytes+128+align;
 		d=alias==0 ? 88 : alias==1 ? 16+align : alias==2 ? 48+(align*3)%8 : alias==3 ? 129+align+NREG*IBY2WD : alias==4 ? 128+align+NREG*IBY2WD : 128+align+(NREG+2)*IBY2WD;
@@ -60,7 +60,7 @@ wncases(void)
 		assert(!memcmp(&R,&saved,sizeof(R)));
 		if(!ok)assert(raised!=nil && !memcmp(memory.bytes,before,sizeof(before)));
 		memmove(expected,memory.bytes,sizeof(expected));memmove(memory.bytes,before,sizeof(before));
-		divisor=op==1 ? values[y] : coefficients[c];accepted=scales[n]>=-63 && scales[n]<0 && divisor!=0 ;
+		divisor=op==1 ? values[y] : coefficients[c];accepted=scales[n]>=-63 && scales[n]<=63 && (!(flags&1) || scales[n]<0) && divisor!=0;
 #ifdef NATIVE_COEFFICIENT
 		assert(module.jit->entry[ids[op]](&R)==accepted && !memcmp(&R,&saved,sizeof(R)));
 		assert(!memcmp(memory.bytes,accepted ? expected : before,sizeof(before)));
@@ -73,7 +73,7 @@ wncases(void)
 #ifdef NATIVE_COEFFICIENT
 	module.jit->freecode(module.jit->code,module.jit->size);free(module.jit);
 #endif
-	printf("PASS WN rounding: %lu C/native/alias/error cases WORD%zu\n",checks,sizeof(WORD)*8);
+	printf("PASS %s rounding: %lu C/native/alias/error cases WORD%zu\n",vn ? "VN/VN+WN" : "WN",checks,sizeof(WORD)*8);
 }
 
 /* Independently compute modular intermediates and unsigned quotient magnitudes. */
@@ -96,7 +96,7 @@ main(int argc,char **argv)
 #ifdef NATIVE_COEFFICIENT
 	Module module={0};Inst code[6]={{0}};int ids[]={IMULX0,IDIVX0,ICVTXX0,IMULX1,IDIVX1,ICVTXX1};
 #endif
-	if(argc>1 && !strcmp(argv[1],"wn")){wncases();return 0;}
+	if(argc>1 && (!strcmp(argv[1],"wn") || !strcmp(argv[1],"vn"))){roundcases(!strcmp(argv[1],"vn"));return 0;}
 #ifdef NATIVE_COEFFICIENT
 	for(op=0;op<6;op++)code[op].op=ids[op];module.prog=code;module.nprog=6;
 	assert(compile(&module,6,nil));for(op=0;op<6;op++)assert(module.jit->entry[ids[op]]);

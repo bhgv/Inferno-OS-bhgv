@@ -71,6 +71,30 @@ a64defer(A64Buf *b, u32int condition, int fallback)
 	a64put(b, condition | ((fallback-b->n)&0x7ffff)<<5);
 }
 
+/* Stage WORD-width VN corrections before multiplication can change operand signs. */
+static void
+a64fixedround(A64Buf *b, int alu, int wordbytes)
+{
+	int skip[3], count, sign, i;
+
+	count=0;
+	a64put(b, 0xd2800005); /* x5=correction */
+	skip[count++]=b->n; a64put(b, 0x36080001); /* tbz flags,#1 */
+	skip[count++]=b->n; a64put(b, 0xb400000c);
+	if(alu == 0){skip[count++]=b->n; a64put(b, 0xb400000e);}
+	if(alu == 1){
+		a64put(b, 0xca0f0185); a64put(b, 0x937ffca5); a64put(b, 0xb24000a5);
+	}else{
+		a64put(b, wordbytes == 4 ? 0x510005e5 : 0xd10005e5);
+		sign=b->n; a64put(b, 0xb6f80002);
+		a64put(b, wordbytes == 4 ? 0x4b0503e5 : 0xcb0503e5);
+		b->code[sign] |= (b->n-sign)<<5;
+		if(wordbytes == 4)a64put(b, 0x93407ca5);
+		a64put(b, 0xd2410042); /* reverse WN sign selection when VN is set */
+	}
+	for(i=0;i<count;i++)b->code[skip[i]] |= (b->n-skip[i])<<5;
+}
+
 /* Resolve signed representation lengths and one/four-byte character strides. */
 static void
 a64stringheader(A64Buf *b, int owner, int length, int stride, int lenoff, int dataoff, int fallback)
@@ -223,9 +247,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		else a64put(&b, 0x91000000U | abi->fixedtmp<<10 | 9<<5 | 10);
 		a64load(&b, 13, 10, abi->wordbytes); if(abi->wordbytes == 4)a64put(&b, 0x93407dad);
 		if(p.condition){
-			/* VN rounding stays in C; WN rounding is supported for right shifts. */
-			a64put(&b, 0x924005a1); a64put(&b, 0xf100043f);
-			a64defer(&b, 0x54000008, fallback); a64put(&b, 0x9342fdad);
+			/* Decode both rounding flags and the signed scale. */
+			a64put(&b, 0x924005a1); a64put(&b, 0x9342fdad);
 		}
 		a64put(&b, 0x9100fdaa); a64put(&b, 0xf101fd5f); a64defer(&b, 0x54000002, fallback);
 		if(p.alu == 1){
@@ -237,10 +260,11 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(abi->wordbytes == 4)a64put(&b, 0x93407d8c);
 		if(p.condition)
 			a64put(&b, p.alu == 0 ? 0xca0e0182 : 0xaa0c03e2);
+		if(p.condition)a64fixedround(&b, p.alu, abi->wordbytes);
 		if(p.alu != 2)a64put(&b, 0x9b0e7d8c);
 		if(p.condition){
 			/* Add the modular mask using the original operand signs. */
-			done=b.n; a64put(&b, 0xb4000001);
+			done=b.n; a64put(&b, 0x36000001);
 			a64put(&b, 0xf10001bf); a64defer(&b, 0x5400000a, fallback);
 			a64put(&b, 0x92800003); a64put(&b, 0xcb0d03e4);
 			a64put(&b, 0x9ac42063); a64put(&b, 0xaa2303e3);
@@ -250,7 +274,10 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			b.code[done] |= (b.n-done)<<5; b.code[other] |= (b.n-other)<<5;
 		}
 		a64put(&b, 0xf10001bf); a64put(&b, 0x5400006b); a64put(&b, 0x9acd218c); a64put(&b, 0x14000003);
-		a64put(&b, 0xcb0d03ed); a64put(&b, 0x9acd298c); a64put(&b, 0x9acf0d8c);
+		a64put(&b, 0xcb0d03ed); a64put(&b, 0x9acd298c);
+		if(p.condition && p.alu != 1)a64put(&b, 0x8b05018c);
+		a64put(&b, 0x9acf0d8c);
+		if(p.condition && p.alu == 1)a64put(&b, 0x8b05018c);
 		a64ptr(&b, 11, abi->d); a64store(&b, 12, abi->wordbytes);
 	}else if(p.kind == LeafCall){
 		/* The target may reside in either frame link about to be replaced. */
