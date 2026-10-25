@@ -16,12 +16,14 @@ struct LeafLayout {
 	int heapref, heapcolor, refbytes;
 	void *mutator, *nprop;
 	int markcolor;
+	int moduletypes, modulenty, typenp;
 };
 typedef struct LeafOp LeafOp;
 struct LeafOp {
 	int kind, bytes, input, alu, condition;
 };
 enum {
+	LeafMappedCopy = 112,
 	LeafOwner = 111,
 	LeafCaseJump = 110,
 	LeafTableJump = 109,
@@ -60,6 +62,8 @@ leafop(LeafOp *p, int op, int wordbytes)
 		p->kind = LeafRealArithmetic; p->bytes = 8;
 		p->alu = op == IADDF ? 0 : op == ISUBF ? 1 : op == IMULF ? 2 : 3;
 		break;
+	case IMOVMP: p->kind = LeafMappedCopy; break;
+	case IHEADMP: p->kind = LeafMappedCopy; p->alu = 1; break;
 	case IMOVP: p->kind = LeafOwner; break;
 	case ISELF: p->kind = LeafOwner; p->alu = 1; break;
 	case IHEADP: p->kind = LeafOwner; p->alu = 2; break;

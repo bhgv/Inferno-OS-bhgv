@@ -2,19 +2,26 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 125 commands (72.3%); 48 remain on the interpreter path. RV64 profiles
+paths for 127 commands (73.4%); 46 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 125 | 48 |
-| ARM64 | 173 | 125 | 48 |
+| AMD64 | 173 | 127 | 46 |
+| ARM64 | 173 | 127 | 46 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
 
-The latest additions are guarded IMOVP, ISELF, IHEADP and ITAIL paths on
+The latest additions are guarded IMOVMP and IHEADMP paths on AMD64/ARM64.
+They resolve the current Module.type table, accept pointer-free records of
+1 through 128 bytes, and preserve overlapping memmove order. Zero-size records
+are native no-ops after required list/type validation, independently of pointer
+map flags or temporary source reference counts. Mapped and larger records keep C.
+See [README.mapped-copy-native.md](README.mapped-copy-native.md).
+
+The preceding additions are guarded IMOVP, ISELF, IHEADP and ITAIL paths on
 AMD64/ARM64. Empty destinations retain a live source; destinations already
 holding that source skip the net-zero retain/release. Both paths now implement
 Setmark directly, including propagator-color sources and the live nprop flag.

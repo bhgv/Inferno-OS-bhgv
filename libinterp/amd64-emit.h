@@ -387,6 +387,115 @@ x64owner(X64Buf *b, LeafLayout *abi, LeafOp *p)
 	return 1;
 }
 
+/* Share a nearby rejection return while keeping every guard before copy publication. */
+static int
+x64mappedguard(X64Buf *b, int success, int fallback)
+{
+	int distance=fallback-b->n-2;
+	if(distance < -128 || distance > 127)
+		return 0;
+	x64byte(b, success^1); x64byte(b, distance);
+	return 1;
+}
+
+/* Copy small pointer-free records through the live Module.type table, never its cache. */
+static int
+x64mapped(X64Buf *b, LeafLayout *a, LeafOp *p)
+{
+	int fallback, empty, forward, loop;
+
+	if(a->module < 0 || a->module > 2047 || a->module%8 ||
+	   a->linkmodule < 0 || a->linkmodule > 2047 || a->linkmodule%8 ||
+	   a->moduletypes < 0 || a->moduletypes > 2047 || a->moduletypes%8 ||
+	   a->modulenty < 0 || a->modulenty > 2047 || a->modulenty%4 ||
+	   a->typesize < 0 || a->typesize > 2047 || a->typesize%4 ||
+	   a->typenp < 0 || a->typenp > 2047 || a->typenp%4 ||
+	   (p->alu && (a->listdata < 0 || a->listdata > 2047 ||
+	   a->heapref <= 0 || a->heapref > 255 || a->heapref%8 || a->refbytes != 8)))
+		return 0;
+	x64byte(b, 0xeb); x64byte(b, 3); fallback=b->n;
+	x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+	if(p->alu){
+		x64caseptr(b, 0, a->s); x64load(b, 0, 8);
+		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
+		if(!x64mappedguard(b, 0x75, fallback)) return 0;
+		x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
+		if(!x64mappedguard(b, 0x75, fallback)) return 0;
+		x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc3);
+	}
+	x64caseptr(b, 0, a->module);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
+	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
+	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	x64casefield(b, 0, 0, a->linkmodule, 8);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
+	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
+	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	x64casefield(b, 1, 0, a->moduletypes, 8);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
+	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff);
+	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	x64casefield(b, 2, 0, a->modulenty, 4);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2);
+	if(!x64mappedguard(b, 0x7f, fallback)) return 0;
+	/* A second return bounds backward displacements even for larger native layouts. */
+	x64byte(b, 0xeb); x64byte(b, 3); fallback=b->n;
+	x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+	x64caseptr(b, 0, a->m); x64load(b, 0, a->wordbytes);
+	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xd0);
+	if(!x64mappedguard(b, 0x72, fallback)) return 0;
+	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe0); x64byte(b, 3);
+	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xc1);
+	if(!x64mappedguard(b, 0x73, fallback)) return 0;
+	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x09);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
+	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff);
+	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	x64casefield(b, 0, 1, a->typesize, 4);
+	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, 128);
+	if(!x64mappedguard(b, 0x76, fallback)) return 0;
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
+	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
+	x64casefield(b, 2, 1, a->typenp, 4);
+	x64byte(b, 0x85); x64byte(b, 0xd2);
+	if(!x64mappedguard(b, 0x74, fallback)) return 0;
+	if(p->alu){
+		x64casefield(b, 1, 11, -a->heapref, 8);
+		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
+		if(!x64mappedguard(b, 0x75, fallback)) return 0;
+		x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff);
+		if(!x64mappedguard(b, 0x75, fallback)) return 0;
+		x64byte(b, 0x4d); x64byte(b, 0x8d); x64byte(b, 0x83); x64word(b, a->listdata);
+		x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, a->s);
+	}else
+		x64caseptr(b, 0, a->s);
+	x64caseptr(b, 2, a->d);
+	/* Select a byte stride so overlap uses memmove order without changing DF. */
+	x64byte(b, 0xbe); x64word(b, 1);
+	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xc2);
+	x64byte(b, 0x76); forward=b->n; x64byte(b, 0);
+	x64byte(b, 0x48); x64byte(b, 0xc7); x64byte(b, 0xc6); x64word(b, -1);
+	x64byte(b, 0x4d); x64byte(b, 0x8d); x64byte(b, 0x44); x64byte(b, 0x00); x64byte(b, 0xff);
+	x64byte(b, 0x4d); x64byte(b, 0x8d); x64byte(b, 0x54); x64byte(b, 0x02); x64byte(b, 0xff);
+	if(b->n > sizeof(b->bytes)) return 0;
+	b->bytes[forward]=b->n-forward-1;
+	loop=b->n;
+	x64byte(b, 0x41); x64byte(b, 0x8a); x64byte(b, 0x08);
+	x64byte(b, 0x41); x64byte(b, 0x88); x64byte(b, 0x0a);
+	x64byte(b, 0x49); x64byte(b, 0x01); x64byte(b, 0xf0);
+	x64byte(b, 0x49); x64byte(b, 0x01); x64byte(b, 0xf2);
+	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc8);
+	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
+	if(b->n > sizeof(b->bytes)) return 0;
+	b->bytes[empty]=b->n-empty-1;
+	return 1;
+}
+
 /* Emit a SysV AMD64 leaf, returning its bounded count of four-byte code units. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -404,7 +513,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafOwner){
+	if(p.kind == LeafMappedCopy){
+		if(!x64mapped(&b, abi, &p)) return 0;
+	}else if(p.kind == LeafOwner){
 		if(!x64owner(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafCaseJump){
 		if(!x64case(&b, abi, &p)) return 0;

@@ -1097,7 +1097,7 @@ moduletype(Modlink *ml, WORD index)
 	if(ml == H || ml == nil || ml->m == nil || ml->m == H)
 		error(exModule);
 	m = ml->m;
-	if(m->type == nil || index < 0 || index >= m->ntype)
+	if(m->type == nil || m->type == H || index < 0 || index >= m->ntype)
 		error("invalid type");
 	t = m->type[index];
 	if(t == nil || t == H || t->size < 0)
@@ -2329,11 +2329,12 @@ OP(headm)
 	if(n != 0)
 		memmove(R.d, l->data, n);
 }
-/* Keep the head storage alive when replacing the destination releases its list. */
+/* Validate and retain head storage before the destination can release its list. */
 OP(headmp)
 {
 	List *l;
 	Type *t;
+	Heap *h;
 	WORD index;
 
 	l = listhead();
@@ -2343,7 +2344,10 @@ OP(headmp)
 		return;
 
 	/* Resolve fallible metadata before acquiring the temporary source owner. */
-	D2H(l)->ref++;
+	h = D2H(l);
+	if(h->ref == 0 || h->ref == (ulong)-1)
+		error(exHeap);
+	h->ref++;
 	R.s = l->data;
 	incmem(R.s, t);
 	if(t->np)

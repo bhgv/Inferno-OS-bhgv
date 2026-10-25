@@ -77,6 +77,8 @@ leafcompile(void *arg)
 	abi.refbytes=sizeof(((Heap*)0)->ref);
 	abi.mutator=&mutator;
 	abi.nprop=&nprop; abi.markcolor=propagator;
+	abi.moduletypes=O(Module, type); abi.modulenty=O(Module, ntype);
+	abi.typenp=O(Type, np);
 	abi.framelr=O(Frame, lr); abi.framefp=O(Frame, fp);
 	abi.arraytype=O(Array, t); abi.typesize=O(Type, size);
 	abi.pc=O(REG, PC); abi.s=O(REG, s); abi.d=O(REG, d); abi.m=O(REG, m);

@@ -309,6 +309,84 @@ a64owner(A64Buf *b, LeafLayout *abi, LeafOp *p)
 	return 1;
 }
 
+/* Resolve current type metadata and copy a small record only when it owns no pointers. */
+static int
+a64mapped(A64Buf *b, LeafLayout *a, LeafOp *p)
+{
+	int fallback, empty, forward, loop;
+
+	if(a->module < 0 || a->module > 2047 || a->module%8 ||
+	   a->linkmodule < 0 || a->linkmodule > 2047 || a->linkmodule%8 ||
+	   a->moduletypes < 0 || a->moduletypes > 2047 || a->moduletypes%8 ||
+	   a->modulenty < 0 || a->modulenty > 2047 || a->modulenty%4 ||
+	   a->typesize < 0 || a->typesize > 2047 || a->typesize%4 ||
+	   a->typenp < 0 || a->typenp > 2047 || a->typenp%4 ||
+	   (p->alu && (a->listdata < 0 || a->listdata > 2047 ||
+	   a->heapref <= 0 || a->heapref > 255 || a->heapref%8 || a->refbytes != 8)))
+		return 0;
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	if(p->alu){
+		a64ptr(b, 9, a->s); a64load(b, 15, 9, 8);
+		a64pcguard(b, 0xb500006f, fallback);
+		a64put(b, 0xb10005ff); a64pcguard(b, 0x54000061, fallback);
+	}
+	a64ptr(b, 13, a->module);
+	a64pcguard(b, 0xb500006d, fallback);
+	a64put(b, 0xb10005bf); a64pcguard(b, 0x54000061, fallback);
+	a64field(b, 13, 13, a->linkmodule, 8);
+	a64pcguard(b, 0xb500006d, fallback);
+	a64put(b, 0xb10005bf); a64pcguard(b, 0x54000061, fallback);
+	a64field(b, 14, 13, a->moduletypes, 8);
+	a64pcguard(b, 0xb500006e, fallback);
+	a64put(b, 0xb10005df); a64pcguard(b, 0x54000061, fallback);
+	a64field(b, 2, 13, a->modulenty, 4);
+	/* Reject negative counts; unsigned bounds also reject zero counts and negative indexes. */
+	a64put(b, 0x37f80002U | ((fallback-b->n)&0x3fff)<<5);
+	a64ptr(b, 9, a->m);
+	if(a->wordbytes == 4)
+		a64put(b, 0xb980012c);
+	else
+		a64load(b, 12, 9, 8);
+	a64put(b, 0xeb02019f); a64pcguard(b, 0x54000063, fallback);
+	/* Index is bounded by a positive int, so only native pointer addition can wrap. */
+	a64put(b, 0xab0c0dcd); a64pcguard(b, 0x54000063, fallback);
+	a64load(b, 13, 13, 8);
+	a64pcguard(b, 0xb500006d, fallback);
+	a64put(b, 0xb10005bf); a64pcguard(b, 0x54000061, fallback);
+	a64put(b, 0xb9800000U | (a->typesize/4)<<10 | 13<<5 | 12);
+	a64put(b, 0xf102019f); a64pcguard(b, 0x54000069, fallback);
+	empty=b->n; a64put(b, 0xb400000c);
+	a64field(b, 14, 13, a->typenp, 4);
+	a64pcguard(b, 0x3400006e, fallback);
+	if(p->alu){
+		a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 15<<5 | 14);
+		a64pcguard(b, 0xb500006e, fallback);
+		a64put(b, 0xb10005df); a64pcguard(b, 0x54000061, fallback);
+		a64put(b, 0x910001e9U | a->listdata<<10);
+		a64put(b, 0xf9000000U | (a->s/8)<<10 | 9);
+	}else
+		a64ptr(b, 9, a->s);
+	a64ptr(b, 11, a->d);
+	/* One overlap-aware loop uses a native signed stride instead of setting host flags. */
+	a64put(b, 0xd2800022);
+	a64put(b, 0xeb09017f);
+	forward=b->n; a64put(b, 0x54000009);
+	a64put(b, 0x92800002);
+	a64put(b, 0x8b0c0129); a64put(b, 0xd1000529);
+	a64put(b, 0x8b0c016b); a64put(b, 0xd100056b);
+	if(b->n > LeafMax) return 0;
+	b->code[forward] |= (b->n-forward)<<5;
+	loop=b->n;
+	a64load(b, 13, 9, 1); a64store(b, 13, 1);
+	a64put(b, 0x8b020129); a64put(b, 0x8b02016b);
+	a64put(b, 0xf100058c);
+	a64put(b, 0x54000001U | ((loop-b->n)&0x7ffff)<<5);
+	if(b->n > LeafMax) return 0;
+	b->code[empty] |= (b->n-empty)<<5;
+	return 1;
+}
+
 /* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -328,7 +406,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafOwner){
+	if(p.kind == LeafMappedCopy){
+		if(!a64mapped(&b, abi, &p)) return 0;
+	}else if(p.kind == LeafOwner){
 		if(!a64owner(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafCaseJump){
 		if(!a64case(&b, abi, &p)) return 0;

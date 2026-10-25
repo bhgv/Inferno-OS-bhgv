@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/mapped-copy-native.py',
     'libinterp/tests/srv-results.py',
     'libinterp/tests/owner-native.py',
     'libinterp/tests/jit-unknown-kind.py',
@@ -83,6 +84,8 @@ CORE = [
     'limbo/tests/case-max.py',
 ]
 JIT = [
+    'libinterp/tests/mapped-copy-layouts.py',
+    'libinterp/tests/mapped-copy-jit.py',
     'libinterp/tests/owner-jit.py',
     'libinterp/tests/386-byte-div.py',
     'libinterp/tests/386-types.py',
@@ -95,7 +98,7 @@ def main():
     """Fail at the first failed driver, without turning missing JIT packages into a pass."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--core', action='store_true', help='run VM/compiler checks without GUI/Tk or launcher-option tests')
-    parser.add_argument('--jit', action='store_true', help='include four instruction-emulation drivers')
+    parser.add_argument('--jit', action='store_true', help='include instruction-emulation and emitter-bound checks')
     parser.add_argument('--list', action='store_true', help='list selected drivers without executing them')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]

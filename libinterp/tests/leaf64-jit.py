@@ -109,12 +109,12 @@ int realresizeoracle(uint64_t input,int width,int mode,uint64_t *out){
 '''
 
 root = Path(__file__).resolve().parents[2]
-ops = '''ISELF ICASE ICASEL IGOTO IBEQC IBNEC IBLTC IBLEC IBGTC IBGEC ITCMP IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''IMOVMP ISELF ICASE ICASEL IGOTO IBEQC IBNEC IBLTC IBLEC IBGTC IBGEC ITCMP IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF ISUBF IMULF IDIVF ICVTXF ICVTFW ICVTFL ICVTFX IEXPF'''.split()
 class Layout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype','linkcompiled','heapref','heapcolor','refbytes')]+[('mutator',C.c_void_p),('nprop',C.c_void_p),('markcolor',C.c_int)]
+    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype','linkcompiled','heapref','heapcolor','refbytes')]+[('mutator',C.c_void_p),('nprop',C.c_void_p),('markcolor',C.c_int)]+[(x,C.c_int) for x in ('moduletypes','modulenty','typenp')]
 class RvLayout(C.Structure):
     _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]
 
@@ -158,7 +158,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if profile not in ('i','zmmul','m'):raise ValueError(profile)
                 layout.hasm=int(profile!='i');layout.hasdiv=int(profile=='m')
             if not rv:
-                layout.linkcompiled=16;layout.heapref=24;layout.heapcolor=32;layout.refbytes=8;layout.mutator=0x100002000;layout.nprop=0x100002008;layout.markcolor=3
+                layout.linkcompiled=16;layout.heapref=24;layout.heapcolor=32;layout.refbytes=8;layout.mutator=0x100002000;layout.nprop=0x100002008;layout.markcolor=3;layout.moduletypes=32;layout.modulenty=40;layout.typenp=28
             layout.heaptype=24;layout.framelr=0;layout.framefp=8
             layout.arraylen=8;layout.arraydata=32;layout.stringlen=12;layout.stringdata=32;layout.listdata=24;layout.listtail=8;layout.fp=32;layout.fixedtmp=28;layout.fixedcoef=20;layout.module=40;layout.linkmodule=8;layout.moduleprog=16;layout.modulenprog=24;layout.instbytes=24;layout.arraytype=16;layout.typesize=24
             dis = Cs(CS_ARCH_X86,CS_MODE_64) if arch == 'amd64' else Cs(CS_ARCH_ARM64,0) if arch == 'arm64' else Cs(CS_ARCH_RISCV,CS_MODE_RISCV64)
@@ -216,7 +216,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     assert lib.emit(guard,64,C.byref(malformed),ids['IMOVPC'])==0
                     assert list(guard)==[0xa5a5a5a5]*64;checks+=1
             if case=='frameabi':continue
-            for name in (('ISELF','IHEADP','ITAIL','IMOVP') if rv else ())+('IHEADMP','IFRAME','IRET'):
+            for name in (('ISELF','IHEADP','ITAIL','IMOVP') if rv else ())+(('IMOVMP','IHEADMP') if rv else ())+('IFRAME','IRET'):
                 assert not blobs[name]
             code, registers, data, stack = 0x10000, 0x100020000, 0x100030000, 0x40000
             oldpc, target = 0x123456789, 0x987654321
