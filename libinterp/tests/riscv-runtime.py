@@ -52,7 +52,13 @@ REG R;
 void (*optab[256])(void);
 void (*dec[256])(void);
 int cflag;
-typedef struct { int *ret; Modlink *mp; int flag; } F_Loader_compile;
+
+typedef struct {
+    WORD *ret; // Borrowed full-width Limbo status slot.
+    Modlink *mp; // Borrowed module to compile.
+    int flag; // Explicit compilation request.
+} F_Loader_compile;
+char exNilref[]="nil";
 int kprotect(int (*fn)(void*),void *arg) {
  int r;
  assert(errdepth<8);
@@ -60,7 +66,7 @@ int kprotect(int (*fn)(void*),void *arg) {
  r=fn(arg);errdepth--;return r;
 }
 void kwerrstr(char *s, ...) { (void)s; }
-''' + extract('libinterp/loader.c','loadercompile','static int') + '\n' + extract('libinterp/loader.c','Loader_compile','void') + '\n' + extract('libinterp/load.c','freemod','void') + '\n' + extract('libinterp/xec.c','xec','void') + r'''
+''' + extract('libinterp/loader.c','loaderword','static void') + '\n' + extract('libinterp/loader.c','loadercompile','static int') + '\n' + extract('libinterp/loader.c','Loader_compile','void') + '\n' + extract('libinterp/load.c','freemod','void') + '\n' + extract('libinterp/xec.c','xec','void') + r'''
 static int natives, helpers, decoded, entered, rejected;
 static WORD output, source=7;
 static Modlink ma, mb;
@@ -103,7 +109,7 @@ int main(void) {
     Prog p={0};
     Jit *installed;
     Modlink dynamic={0};
-    int loadresult;
+    WORD loadresult;
     F_Loader_compile request={&loadresult,&dynamic,1};
     int before, n;
     prog[0].op=prog[1].op=IADDW;

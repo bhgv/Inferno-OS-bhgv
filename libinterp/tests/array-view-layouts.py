@@ -42,15 +42,15 @@ main(void)
  ulong_unused: ;
  unsigned long checks=0;
 
- for(wb=4;wb<=8;wb+=4)for(field=0;field<8;field++)for(oi=0;oi<16;oi++){
+ for(wb=4;wb<=8;wb+=4)for(field=0;field<9;field++)for(oi=0;oi<16;oi++){
   memset(&a,0,sizeof(a));a.wordbytes=wb;a.pc=0;a.s=8;a.d=16;a.m=24;
   a.arraylen=0;a.arraytype=8;a.arrayroot=16;a.arraydata=24;
-  a.typesize=24;a.typeref=0;a.heapref=24;a.refbytes=8;
+  a.typesize=24;a.typeref=0;a.typenp=28;a.heapref=24;a.refbytes=8;
   switch(field){
   case 0:a.arraylen=offsets[oi];break;case 1:a.arraytype=offsets[oi];break;
   case 2:a.arrayroot=offsets[oi];break;case 3:a.arraydata=offsets[oi];break;
   case 4:a.typesize=offsets[oi];break;case 5:a.typeref=offsets[oi];break;
-  case 6:a.heapref=offsets[oi];break;case 7:a.refbytes=offsets[oi];break;}
+  case 6:a.heapref=offsets[oi];break;case 7:a.refbytes=offsets[oi];break;case 8:a.typenp=offsets[oi];break;}
 
   n=leafemit(nil,64,&a,ISLICEA);
   if(n<0 || n>64)abort();

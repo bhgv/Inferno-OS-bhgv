@@ -2538,8 +2538,8 @@ OP(slicea)
 		error(exHeap);
 	if(t->ref <= 0)
 		error(exHeap);
-	/* A unique view already owns its root and Type; narrowing needs no retains. */
-	if(ds->root != H && D2H(ds)->ref == 1){
+	/* A unique view or pointer-free root can narrow without retiring elements. */
+	if(D2H(ds)->ref == 1 && (ds->root != H || t->np == 0)){
 		ds->len = n;
 		ds->data = data;
 		return;

@@ -870,17 +870,17 @@ a64modulecall(A64Buf *b, LeafLayout *a)
 static int
 a64arrayslice(A64Buf *b, LeafLayout *a)
 {
-	int fields[6], i, j, fallback, empty;
+	int fields[7], i, j, fallback, empty, rootcase, rootdone;
 
 	fields[0]=a->arraylen; fields[1]=a->arraydata; fields[2]=a->arraytype;
-	fields[3]=a->arrayroot; fields[4]=a->typesize; fields[5]=a->typeref;
-	for(i=0; i<6; i++)
+	fields[3]=a->arrayroot; fields[4]=a->typesize; fields[5]=a->typeref; fields[6]=a->typenp;
+	for(i=0; i<7; i++)
 		if(fields[i]<0 || fields[i]>2047 || fields[i]%(i==0 ? a->wordbytes : i<4 ? 8 : 4))return 0;
-	/* Header fields and the two int descriptor fields must occupy distinct spans. */
+	/* Header fields and the three int descriptor fields must occupy distinct spans. */
 	for(i=0; i<4; i++)for(j=i+1; j<4; j++)
 		if(fields[i]<fields[j]+(j==0 ? a->wordbytes : 8) &&
 		   fields[j]<fields[i]+(i==0 ? a->wordbytes : 8))return 0;
-	if(a->typesize==a->typeref)return 0;
+	if(a->typesize==a->typeref || a->typenp==a->typeref || a->typenp==a->typesize)return 0;
 	if(a->heapref<=0 || a->heapref>128 || a->heapref%8 || a->refbytes!=8)return 0;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
@@ -895,14 +895,23 @@ a64arrayslice(A64Buf *b, LeafLayout *a)
 	a64put(b, 0xeb0201bf); a64defer(b, 0x5400000c, fallback);
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 14<<5 | 2);
 	a64put(b, 0xf100045f); a64defer(b, 0x54000001, fallback);
-	a64field(b, 3, 14, a->arrayroot, 8);
-	a64put(b, 0x91000462); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
-	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 3<<5 | 2);
-	a64defer(b, 0xb4000002, fallback);
 	a64field(b, 15, 14, a->arraytype, 8);
 	a64put(b, 0x910005e2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
 	a64wordfield(b, 2, 15, a->typeref, 4);
 	a64put(b, 0xf100005f); a64defer(b, 0x5400000d, fallback);
+	/* A view retains its backing owner; a root requires an empty pointer map. */
+	a64field(b, 3, 14, a->arrayroot, 8);
+	a64put(b, 0x91000462);
+	rootcase=b->n; a64put(b, 0xb4000002);
+	a64defer(b, 0xb4000003, fallback);
+	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 3<<5 | 2);
+	a64defer(b, 0xb4000002, fallback);
+	rootdone=b->n; a64put(b, 0x14000000);
+	if(b->n>LeafMax)return 0;
+	b->code[rootcase] |= (b->n-rootcase)<<5;
+	a64field(b, 2, 15, a->typenp, 4); a64defer(b, 0x35000002, fallback);
+	if(b->n>LeafMax)return 0;
+	b->code[rootdone] |= b->n-rootdone;
 	a64wordfield(b, 3, 15, a->typesize, 4);
 	a64put(b, 0xf100007f); a64defer(b, 0x5400000b, fallback);
 	a64field(b, 4, 14, a->arraydata, 8);

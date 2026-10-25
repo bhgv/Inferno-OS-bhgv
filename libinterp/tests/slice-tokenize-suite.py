@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/array-copy-source.py',
     'libinterp/tests/array-view-native.py',
     'libinterp/tests/module-data-retains.py',
     'libinterp/tests/token-retains.py',

@@ -38,7 +38,7 @@ struct LeafOp {
 };
 
 enum {
-	LeafArraySlice = 121, // Narrow a uniquely owned array view without allocating.
+	LeafArraySlice = 121, // Narrow unique views or pointer-free roots without allocating.
 	LeafModuleCall = 120, // Bytecode calls between modules with equal execution modes.
 	LeafReturn = 119, // Returns without mapped cleanup, extent release or module destruction.
 	LeafFrame = 118, // Pointer-free frames within the current stack extent.

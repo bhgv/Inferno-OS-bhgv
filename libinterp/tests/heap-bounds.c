@@ -216,6 +216,7 @@ emptyviews(int faults)
         root=H2D(Array*,heap(&Tarray));
         root->len=zeroelement ? 3 : 0;
         root->data=nil; root->t=&type; root->root=H; type.ref++;
+        D2H(root)->ref++; /* Hold root separately so the first slice exercises allocation. */
         a=root; first=zeroelement ? 1 : 0; last=zeroelement ? 2 : 0;
         R.s=&first; R.m=&last; R.d=&a; which=8;
         for(repeat=0; repeat<8; repeat++) {
@@ -223,6 +224,7 @@ emptyviews(int faults)
             if(faults && repeat==0) { force_failure=1; rejects(exHeap,0); force_failure=0; }
             assert(a==saved && live==before && type.ref==typerefs);
             assert(kprotect(run,nil));
+            if(repeat==0)destroy(root); /* Transfer the remaining root owner to the view. */
             if((repeat==0 ? a==saved : a!=saved) || a->data!=nil || a->root!=root)abort();
             assert(a->len==(zeroelement ? 1 : 0) && D2H(root)->ref==1);
             first=0; last=a->len;
@@ -262,17 +264,18 @@ static void sliceslots(void)
 {
     int widths[]={0,1,3,8,16},w,sa,ma,da,k,offset;
     union {uvlong align;uchar bytes[128];} slots;
-    uchar expected[128],bytes[128];
+    uchar expected[128],bytes[128],*base;
     Array *root,*view,*source,*destination;
     WORD start=1,end=4,where;
     unsigned long cases=0;
     type.np=0;
     for(w=0;w<nelem(widths);w++)for(sa=0;sa<8;sa++)for(ma=0;ma<8;ma++)for(da=0;da<8;da++){
-        type.size=widths[w];root=H2D(Array*,heaparray(&type,5));
+        type.size=widths[w];root=H2D(Array*,heaparray(&type,5));base=root->data;
         memset(slots.bytes,0xa5,sizeof(slots.bytes));R.s=slots.bytes+8+sa;R.m=slots.bytes+40+ma;R.d=slots.bytes+80+da;
         memmove(R.s,&start,sizeof(start));memmove(R.m,&end,sizeof(end));memmove(R.d,&root,sizeof(root));
         memmove(expected,slots.bytes,sizeof(expected));which=8;assert(kprotect(run,nil));
-        memmove(&view,slots.bytes+80+da,sizeof(view));assert(view->root==root && view->len==3 && view->data==root->data+type.size);
+        memmove(&view,slots.bytes+80+da,sizeof(view));
+        if(view!=root || view->root!=H || view->len!=3 || view->data!=base+type.size)abort();
         memmove(expected+80+da,&view,sizeof(view));assert(!memcmp(slots.bytes,expected,sizeof(expected)));
         destroy(view);assert(type.ref==1 && Tarray.ref==1);cases++;
         for(offset=0;offset<4;offset++){
@@ -379,6 +382,7 @@ int main(int argc, char **argv) {
     static const int widths[]={0,1,2,4,8,16,4096,0x7fffffff};
     unsigned int i;int checks=0,limit,before;
     Array *a,*b,*old;Heap *h;
+    uchar *slicebase;
     Type *types[]={&type};Modlink ml={0};
     WORD count,first,last,offset;
     List *saved;
@@ -441,8 +445,9 @@ int main(int argc, char **argv) {
     a=H2D(Array*,heaparray(&type,5));
     for(i=0;i<5;i++)((WORD*)a->data)[i]=i+1;
     first=1;last=4;R.s=&first;R.m=&last;R.d=&a;which=8;
-    old=a;assert(kprotect(run,nil));assert(a->len==3 && a->root==old && a->data==old->data+sizeof(WORD));
-    destroy(a); /* also releases the transferred root */
+    old=a;slicebase=a->data;
+    if(!kprotect(run,nil) || a!=old || a->len!=3 || a->root!=H || a->data!=slicebase+sizeof(WORD))abort();
+    destroy(a); /* Pointer-free root storage is freed through its original Heap header. */
     a=H2D(Array*,heaparray(&type,2));first=INT_MIN;last=INT_MAX;
     rejects(exBounds,1);destroy(a);
     a=H;first=last=0;assert(kprotect(run,nil));

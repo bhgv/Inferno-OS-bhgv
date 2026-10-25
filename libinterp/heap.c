@@ -499,22 +499,38 @@ initarray(Type *t, Array *a)
 }
 
 typedef struct ArrayCopy ArrayCopy;
+
 struct ArrayCopy {
-	Array *source;
-	Array *result;
+	Array *source; // Source array stays owned by the caller throughout cloning.
+	Array *result; // Partial destination released by the error protector.
 };
 
-/* Clone mapped array fields in every element, including user descriptors. */
+
+/* Validate source spans before allocating, then clone mapped fields in every element. */
 static int
 copyarray(void *arg)
 {
 	ArrayCopy *c;
 	Array *sa, *da;
+	Type *t;
+	ulong bytes;
 	int i;
 
 	c = arg;
 	sa = c->source;
-	da = H2D(Array*, heaparray(sa->t, sa->len));
+	t = sa->t;
+	if(t == nil || t == H || sa->root == nil ||
+	   (sa->root != H && D2H(sa->root)->ref == 0))
+		error(exHeap);
+	acheck(t->size, sa->len);
+	if(sa->len != 0 && t->size != 0){
+		/* acheck has already bounded the complete multiplication and allocation. */
+		bytes = (ulong)sa->len*t->size;
+		if(sa->data == nil || sa->data == H ||
+		   (uintptr)sa->data > (uintptr)-1-bytes)
+			error(exHeap);
+	}
+	da = H2D(Array*, heaparray(t, sa->len));
 	c->result = da;
 	if(sa->t->np == 0){
 		if(da->len != 0 && da->t->size != 0)
@@ -527,6 +543,7 @@ copyarray(void *arg)
 	return 1;
 }
 
+
 /* Release the complete partial tree before propagating the original VM error. */
 void*
 arraycpy(Array *sa)
@@ -535,6 +552,8 @@ arraycpy(Array *sa)
 
 	if(sa == H)
 		return H;
+	if(sa == nil || D2H(sa)->ref == 0)
+		error(exHeap);
 	c.source = sa;
 	c.result = H;
 	if(kprotect(copyarray, &c))

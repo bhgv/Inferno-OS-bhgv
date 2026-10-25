@@ -52,7 +52,7 @@ main(void)
 	Type *types[1], *selected;
 	Module owner = {0};
 	Modlink link = {0};
-	Array *array, *original;
+	Array *array, *original, *held;
 	WORD count = 1, index = 0, start = 0, end = 0;
 	Type beforetype, beforearray;
 	REG saved;
@@ -76,8 +76,12 @@ main(void)
 		selected = alias ? &Tarray : &type;
 		types[0] = retainedtype = selected;
 		array = H;
-		if(retainoperation == 8)
+		held = H;
+		if(retainoperation == 8){
 			array = H2D(Array*, heaparray(selected, 1));
+			held = array;
+			D2H(held)->ref++;
+		}
 		original = array;
 		originalref = selected->ref; arrayref = Tarray.ref;
 		if(mode == 0)selected->ref = 0;
@@ -122,6 +126,7 @@ main(void)
 			}
 		}
 		if(original != H)destroy(original);
+		if(held != H)destroy(held);
 		if(live || type.ref != 1 || Tarray.ref != 1)abort();
 		total++;
 	}

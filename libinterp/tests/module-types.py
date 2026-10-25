@@ -32,7 +32,8 @@ parts += [function(heap, result+'\n'+name+'(') for result, name in (
     ('Type*', 'dtype'), ('void', 'freetype'), ('void', 'acheck'),
     ('Heap*', 'nheap'), ('Heap*', 'heap'), ('Heap*', 'heapz'),
     ('void', 'initarray'), ('void', 'initmem'), ('void', 'incmem'), ('void', 'freeptrs'))]
-parts += [function(loader, 'void\nLoader_tnew(')]
+parts += [function(loader, 'static void\nloaderword('),
+          function(loader, 'void\nLoader_tnew(')]
 if 'static Type*\nmoduletype(' in xec:
     parts += [function(xec, 'static Type*\nmoduletype(')]
 else:
@@ -54,7 +55,8 @@ with tempfile.TemporaryDirectory(prefix='module-types-') as directory:
             header = (root/'include/interp.h').read_text()
             header, n = re.subn(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
             header, m = re.subn(r'typedef unsigned long\s+UWORD;', 'typedef unsigned int UWORD;', header, count=1)
-            assert n == m == 1
+            if n != 1 or m != 1:
+                raise RuntimeError("WORD32 fixture header mismatch")
             (modeldir/'interp.h').write_text(header)
             override = ['-I'+str(modeldir)]
         binary = td/model

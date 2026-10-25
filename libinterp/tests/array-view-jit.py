@@ -44,10 +44,10 @@ emit(u32int *out,int cap,int wb,int bad)
 {
  LeafLayout a={0};a.wordbytes=wb;a.pc=0;a.s=8;a.d=16;a.m=24;
  a.arraylen=0;a.arraytype=8;a.arrayroot=16;a.arraydata=24;
- a.typesize=24;a.typeref=0;a.heapref=24;a.refbytes=8;
+ a.typesize=24;a.typeref=0;a.typenp=28;a.heapref=24;a.refbytes=8;
  switch(bad){case 1:a.arraylen=1;break;case 2:a.arraytype=-1;break;
  case 3:a.arrayroot=1;break;case 4:a.arraydata=2048;break;case 5:a.typesize=1;break;
- case 6:a.typeref=2048;break;case 7:a.heapref=0;break;case 8:a.refbytes=4;break;}
+ case 6:a.typeref=2048;break;case 9:a.typenp=1;break;case 10:a.typenp=a.typeref;break;case 7:a.heapref=0;break;case 8:a.refbytes=4;break;}
  return leafemit(out,cap,&a,ISLICEA);
 }
 ''')
@@ -83,13 +83,13 @@ emit(u32int *out,int cap,int wb,int bad)
                 guard = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
                 if lib.emit(guard,cap,wb,0) or list(guard)!=[0xa5a5a5a5]*64:
                     raise RuntimeError('Partial output publication')
-            for bad in range(1,9):
+            for bad in range(1,11):
                 guard = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
                 if lib.emit(guard,64,wb,bad) or list(guard)!=[0xa5a5a5a5]*64:
                     raise RuntimeError(('Malformed layout',bad))
             machine.mem_write(CODE,blob)
             machine.ctl_remove_cache(CODE,CODE+256)
-            for profile in range(40):
+            for profile in range(50):
                 for width in (0,1,4,8):
                     for fa in range(8):
                         for alignment in range(8):
@@ -98,7 +98,7 @@ emit(u32int *out,int cap,int wb,int bad)
                                 obj = 0x1800+fa
                                 array, root, descriptor = BASE+obj, BASE+0x800, BASE+0xb00
                                 length, first, last, refs, rootrefs, typerefs = 12,2,8,1,5,3
-                                size, data = width,BASE+0x2400
+                                size, data, np = width,BASE+0x2400,0
                                 if profile==1:first,last=0,12
                                 if profile==2:first,last=3,3
                                 if profile==3:first,last=0,0
@@ -131,16 +131,28 @@ emit(u32int *out,int cap,int wb,int bad)
                                 if profile==30:size=0;data=MASK
                                 if profile==31:length=last=(1<<32)+2 if wb==8 else 12;first=last-1;size=0
                                 if profile==32:root=BASE+obj
+                                if profile==33:np=1
                                 if profile==34:first=0;last=1;size=(1<<31)-1
                                 if profile==35:first=0;last=2;size=(1<<31)-1
                                 if profile==36:first=0;last=1;size=8;data=MASK-8
                                 if profile==37:first=1;last=1;size=8;data=MASK-8
                                 if profile==38:first=0;last=1;size=8;data=MASK-7
                                 if profile==39:size=0;typerefs=(1<<31)-1;rootrefs=MASK
+                                if profile>=40:root=MASK
+                                if profile==40:np=1
+                                if profile==41:np=-1
+                                if profile==42:np=(1<<31)-1
+                                if profile==43:typerefs=(1<<31)-1
+                                if profile==44:rootrefs=0
+                                if profile==45:first=0;last=1;size=8;data=MASK-8
+                                if profile==46:length=last=(1<<(wb*8-1))-1;first=last-1;size=0
+                                if profile==47:refs=2
+                                if profile==48:refs=MASK
+                                if profile==49:descriptor=MASK
                                 put(image,obj,length,wb);put(image,obj+8,descriptor)
                                 put(image,obj+16,root);put(image,obj+24,data)
                                 put(image,obj-24,refs);put(image,0x800-24,rootrefs)
-                                put(image,0xb00,typerefs,4);put(image,0xb18,size,4)
+                                put(image,0xb00,typerefs,4);put(image,0xb18,size,4);put(image,0xb1c,np,4)
                                 sa, ma, da = 0x100+alignment,0x200+alignment,0x300+alignment
                                 put(image,sa,first,wb);put(image,ma,last,wb);put(image,da,array)
                                 if alias==1:sa=obj
@@ -148,7 +160,7 @@ emit(u32int *out,int cap,int wb,int bad)
                                 put(image,8,BASE+sa);put(image,24,BASE+ma);put(image,16,BASE+da)
                                 first,last=signed(image,sa,wb),signed(image,ma,wb)
                                 actualrootrefs=refs if root==BASE+obj else rootrefs
-                                valid=array==BASE+obj and refs==1 and root not in (0,MASK) and actualrootrefs!=0 and descriptor not in (0,MASK) and typerefs>0 and size>=0 and 0<=first<=last<=length
+                                valid=array==BASE+obj and refs==1 and (np==0 if root==MASK else root!=0 and actualrootrefs!=0) and descriptor not in (0,MASK) and typerefs>0 and size>=0 and 0<=first<=last<=length
                                 if size>0:
                                     valid=valid and 0<last<=((1<<31)-1)//size and data not in (0,MASK) and data<=MASK-last*size
                                 expected=bytearray(image)

@@ -1113,17 +1113,17 @@ x64modulecall(X64Buf *b, LeafLayout *a)
 static int
 x64arrayslice(X64Buf *b, LeafLayout *a)
 {
-	int fields[6], i, j, fallback, empty;
+	int fields[7], i, j, fallback, empty, rootcase, rootdone;
 
 	fields[0]=a->arraylen; fields[1]=a->arraydata; fields[2]=a->arraytype;
-	fields[3]=a->arrayroot; fields[4]=a->typesize; fields[5]=a->typeref;
-	for(i=0; i<6; i++)
+	fields[3]=a->arrayroot; fields[4]=a->typesize; fields[5]=a->typeref; fields[6]=a->typenp;
+	for(i=0; i<7; i++)
 		if(fields[i]<0 || fields[i]>2047 || fields[i]%(i==0 ? a->wordbytes : i<4 ? 8 : 4))return 0;
-	/* Header fields and the two int descriptor fields must occupy distinct spans. */
+	/* Header fields and the three int descriptor fields must occupy distinct spans. */
 	for(i=0; i<4; i++)for(j=i+1; j<4; j++)
 		if(fields[i]<fields[j]+(j==0 ? a->wordbytes : 8) &&
 		   fields[j]<fields[i]+(i==0 ? a->wordbytes : 8))return 0;
-	if(a->typesize==a->typeref)return 0;
+	if(a->typesize==a->typeref || a->typenp==a->typeref || a->typenp==a->typesize)return 0;
 	if(a->heapref<=0 || a->heapref>128 || a->heapref%8 || a->refbytes!=8)return 0;
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
@@ -1139,16 +1139,28 @@ x64arrayslice(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x49); x64byte(b, 0x39); x64byte(b, 0xc9); x64moduleguard(b, 0x7e, fallback);
 	x64modulefield(b, 0, 10, -a->heapref, 8);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 1); x64moduleguard(b, 0x74, fallback);
-	x64modulefield(b, 0, 10, a->arrayroot, 8);
-	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x48); x64byte(b, 1);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
-	x64modulefield(b, 0, 0, -a->heapref, 8);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x75, fallback);
 	x64modulefield(b, 11, 10, a->arraytype, 8);
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x4b); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
 	x64modulefield(b, 0, 11, a->typeref, 4);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x7f, fallback);
+	/* Root arrays may reuse their header only when no element owns pointers. */
+	x64modulefield(b, 0, 10, a->arrayroot, 8);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x48); x64byte(b, 1);
+	x64byte(b, 0xe3); rootcase=b->n; x64byte(b, 0); // JRCXZ recognizes the H sentinel.
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x75, fallback);
+	x64modulefield(b, 0, 0, -a->heapref, 8);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x75, fallback);
+	x64byte(b, 0xeb); rootdone=b->n; x64byte(b, 0);
+	if(b->n>sizeof(b->bytes))return 0;
+	b->bytes[rootcase]=b->n-rootcase-1;
+	x64modulefield(b, 0, 11, a->typenp, 4);
+	x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x74, fallback);
+	if(b->n>sizeof(b->bytes))return 0;
+	b->bytes[rootdone]=b->n-rootdone-1;
+	/* Keep all remaining declines within short reach of a second private return. */
+	x64byte(b, 0xeb); x64byte(b, 3);
+	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	x64modulefield(b, 0, 11, a->typesize, 4);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x79, fallback);
 	x64modulefield(b, 6, 10, a->arraydata, 8);

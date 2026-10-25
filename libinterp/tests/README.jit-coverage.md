@@ -337,3 +337,13 @@ ctypes probes and publication/fallback fixtures are updated together.
 [Self-load retain checks](README.self-load-retains.md) also prevent Module/MP
 counter overflow before linking, without changing failure ownership contracts.
 RISC-V profiles remain 103/70, 90/83 and 87/86.
+
+## Unique pointer-free root checkpoint
+
+[Unique array slices](README.array-view.md) extends AMD64/ARM64 SLICEA to unique
+pointer-free roots, preserving original allocation ownership through repeated
+narrowing, copying and release. Mapped roots and shared owners retain C paths.
+[Array-copy source validation](README.array-copy-source.md) rejects dead owners
+and invalid nonempty byte spans before allocation. Counts remain 139/34 on
+AMD64/ARM64 and 103/70, 90/83, 87/86 on RV64 M/Zmmul/I. ARM64 execution is
+emulated; guarded command counts do not imply complete opcode semantics.
