@@ -158,7 +158,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if profile not in ('i','zmmul','m'):raise ValueError(profile)
                 layout.hasm=int(profile!='i');layout.hasdiv=int(profile=='m')
             if not rv:
-                layout.linkcompiled=16;layout.heapref=24;layout.heapcolor=32;layout.refbytes=8;layout.mutator=0x100002000;layout.nprop=0x100002008;layout.markcolor=3;layout.moduletypes=32;layout.modulenty=40;layout.typenp=28
+                layout.stringmax=16;layout.linkcompiled=16;layout.heapref=24;layout.heapcolor=32;layout.refbytes=8;layout.mutator=0x100002000;layout.nprop=0x100002008;layout.markcolor=3;layout.moduletypes=32;layout.modulenty=40;layout.typenp=28
             layout.heaptype=24;layout.framelr=0;layout.framefp=8
             layout.arraylen=8;layout.arraydata=32;layout.stringlen=12;layout.stringdata=32;layout.listdata=24;layout.listtail=8;layout.fp=32;layout.fixedtmp=28;layout.fixedcoef=20;layout.module=40;layout.linkmodule=8;layout.moduleprog=16;layout.modulenprog=24;layout.instbytes=24;layout.arraytype=16;layout.typesize=24
             dis = Cs(CS_ARCH_X86,CS_MODE_64) if arch == 'amd64' else Cs(CS_ARCH_ARM64,0) if arch == 'arm64' else Cs(CS_ARCH_RISCV,CS_MODE_RISCV64)
@@ -492,7 +492,8 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         if pointer in (0,(1<<64)-1):m=0x100050000
                         d=0x100050000;output=data+0x100
                 elif character is not None:
-                    owner,length,index,values=character
+                    owner,length,index,values=character[:4]
+                    capacity=character[4] if len(character)>4 else abs(length)
                     if poison:owner=data+0x1000-layout.stringdata
                     if alias==1:d=s
                     if alias==2:d=m
@@ -501,6 +502,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     u.mem_write(d-8,b'\xa5'*32)
                     metadata=bytearray(b'\x5a'*128)
                     metadata[layout.stringlen:layout.stringlen+4]=struct.pack('<i',length)
+                    if not rv:metadata[layout.stringmax:layout.stringmax+4]=struct.pack('<i',min(capacity,2147483647))
                     for i,bits in enumerate(values):
                         pos=layout.stringdata+i*(4 if length<0 else 1)
                         width=4 if length<0 else 1
@@ -1371,6 +1373,30 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         _,pc,before,after,_=run('IINDC',character=(data+0x500,length,index,values),expect=0,poison=True)
                         assert before==after and pc==oldpc
                         checks+=1
+                if not rv:
+                    for length in (-8,0,8,2147483647,-2147483647):
+                        for capacity in (-2147483648,-1,0,7,8,2147483647):
+                            for index in (-1,0,7,8,1<<31):
+                                for alias in (0,1,2,3):
+                                    valid=abs(length)<=capacity and 0<=signed(index,wb*8)<min(abs(length),8)
+                                    # Large backed indexes are unnecessary: only the first eight characters exist.
+                                    if abs(length)<=capacity and 8<=signed(index,wb*8)<abs(length):continue
+                                    out,pc,before,after,_=run('IINDC',alias=alias,character=(data+0x500,length,index,values,capacity),expect=int(valid))
+                                    if not valid and before!=after:raise RuntimeError("declined character leaf changed output")
+                                    if pc!=oldpc:raise RuntimeError("character leaf changed PC")
+                                    checks+=1
+                    # Place payload at an unmapped page: capacity rejection must precede reads.
+                    for length in (-8,8):
+                        _,pc,before,after,_=run('IINDC',character=(data+0x500,length,0,values,7),expect=0,poison=True)
+                        if before!=after or pc!=oldpc:raise RuntimeError('capacity fallback changed VM storage')
+                        checks+=1
+                    for field,value in (('stringmax',-1),('stringmax',1),('stringmax',16384)):
+                        previous=getattr(layout,field);setattr(layout,field,value)
+                        output=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
+                        if lib.emit(output,64,C.byref(layout),ids['IINDC'])!=0:
+                            raise RuntimeError('invalid capacity offset accepted')
+                        if list(output)!=[0xa5a5a5a5]*64:raise RuntimeError('rejected emission changed output')
+                        setattr(layout,field,previous);checks+=1
                 if case=='character':continue
             if case in ('','listlen'):
                 for length in (0,1,2,7,31,127,128,129):

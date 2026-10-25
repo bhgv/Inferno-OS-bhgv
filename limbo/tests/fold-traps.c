@@ -16,7 +16,14 @@ static struct {void *s, *m, *d;} R;
 typedef struct List List;
 struct List {List *tail; WORD data[1];};
 typedef struct String String;
-struct String {int len; char Sascii[16]; Rune Srune[16];};
+
+/* Bounded storage model for the production slice function. */
+struct String {
+	int len; // Signed logical length and representation.
+	int max; // Character capacity of either fixture representation.
+	char Sascii[16]; // ASCII payload for narrow slice cases.
+	Rune Srune[16]; // Rune payload for wide slice cases.
+};
 static String stringpool[64];
 static int stringused;
 static char exInval[] = "invalid", exZdiv[] = "zero divide", exNilref[] = "nil", exBounds[] = "bounds", exHeap[] = "heap";
@@ -38,16 +45,19 @@ movp(void)
 	*(List**)R.d = *(List**)R.s;
 }
 
+
 /* Supply bounded result storage to the actual ASCII and Rune slice implementation. */
 static String*
 newstring(int n)
 {
 	String *s;
 
-	assert(n >= 0 && n <= 16 && stringused < 64);
+	if(n < 0 || n > 16 || stringused >= 64)
+		abort();
 	s = &stringpool[stringused++];
 	memset(s, 0, sizeof(*s));
 	s->len = n;
+	s->max = 16;
 	return s;
 }
 
@@ -86,6 +96,7 @@ static EvalFrame evalframes[32];
 static int evaldepth;
 static Long run(Node*);
 
+
 /* Evaluate trap-producing operators through their actual native VM bodies. */
 static Long
 runframe(Node *n, EvalFrame *frame)
@@ -114,6 +125,7 @@ runframe(Node *n, EvalFrame *frame)
 	if(n->op == Oslice){
 		memset(&frame->original, 0, sizeof frame->original);
 		frame->original.len = frame->a;
+		frame->original.max = 16;
 		frame->slice = slicer(run(n->right->left), run(n->right->right), &frame->original);
 		return frame->slice == H ? 0 : frame->slice->len;
 	}

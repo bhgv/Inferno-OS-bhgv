@@ -542,6 +542,7 @@ a64stringstore(A64Buf *b, LeafLayout *a)
 	return 1;
 }
 
+
 /* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -830,7 +831,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64ptr(&b, 11, abi->d); a64store(&b, 14, p.bytes);
 	}else if(p.kind == LeafStringIndex){
 		if(abi->stringlen < 0 || abi->stringlen > 16380 || abi->stringlen%4 != 0 ||
-		   abi->stringdata < 0 || abi->stringdata > 4095 || abi->stringdata%4 != 0) return 0;
+		   abi->stringdata < 0 || abi->stringdata > 4095 || abi->stringdata%4 != 0 ||
+		   abi->stringmax < 0 || abi->stringmax > 16380 || abi->stringmax%4) return 0;
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
 		a64guard(&b, 0xb500006c);
 		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
@@ -838,6 +840,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64put(&b, 0x52b0000e); a64put(&b, 0x6b0e01bf); a64guard(&b, 0x54000061);
 		a64put(&b, 0x2a0d03ef); /* preserve the representation sign */
 		a64put(&b, 0x36f8004d); a64put(&b, 0x4b0d03ed);
+		/* Check signed capacity while x12 still holds the original owner. */
+		a64field(&b, 14, 12, abi->stringmax, 4);
+		a64put(&b, 0x6b0d01df); a64guard(&b, 0x5400006a);
 		a64ptr(&b, 10, abi->m); a64load(&b, 14, 10, abi->wordbytes);
 		a64put(&b, 0xeb0d01df); a64guard(&b, 0x54000063);
 		other = b.n; a64put(&b, 0x36f8000f); /* tbz w15, #31, ASCII */

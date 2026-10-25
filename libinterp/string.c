@@ -18,6 +18,7 @@ void cvtup(Rune*, String*);
 #define C(r)	*((Channel**)(R.r))
 #define T(r)	*((void**)(R.r))
 
+
 /* Validate representation and bounds before publishing an alignment-safe character. */
 OP(indc)
 {
@@ -34,6 +35,8 @@ OP(indc)
 		error(exHeap);
 	if(length < 0)
 		length = -length;
+	if(string->max < length)
+		error(exHeap);
 	if(index < 0 || index >= length)
 		error(exBounds);
 	if(string->len < 0)
@@ -108,7 +111,8 @@ OP(insc)
 	destroy(old);
 }
 
-/* Validate the representation before negation, subtraction or allocation. */
+
+/* Validate representation and backing capacity before slicing or allocating. */
 String*
 slicer(ulong start, ulong v, String *ds)
 {
@@ -126,6 +130,9 @@ slicer(ulong start, ulong v, String *ds)
 		error(exBounds);
 	}
 
+	l = ds->len < 0 ? -ds->len : ds->len;
+	if(ds->max < l)
+		error(exHeap);
 	if(v < start || v > 0x7fffffff)
 		error(exBounds);
 	nc = v - start;
@@ -178,6 +185,7 @@ cvtup(Rune *r, String *s)
 		*r++ = *bp++;
 }
 
+
 /*
  * Concatenate strings, reusing a unique destination when requested.
  * Keep source lengths unchanged until copying finishes: s1 and s2 may alias.
@@ -193,6 +201,10 @@ addstring(String *s1, String *s2, int append)
 		error(exNilref);
 	if((s1 != H && s1->len == (-0x7fffffff-1)) ||
 	   (s2 != H && s2->len == (-0x7fffffff-1)))
+		error(exHeap);
+	/* Validate both sources even when a nil operand selects a shortcut. */
+	if((s1 != H && s1->max < (s1->len < 0 ? -s1->len : s1->len)) ||
+	   (s2 != H && s2->max < (s2->len < 0 ? -s2->len : s2->len)))
 		error(exHeap);
 	if(s1 == H) {
 		if(s2 == H)
@@ -270,6 +282,7 @@ OP(addc)
 	}
 }
 
+
 /* Export UTF-8 only after validating the string representation and byte bound. */
 OP(cvtca)
 {
@@ -288,6 +301,9 @@ OP(cvtca)
 		error(exNilref);
 	if(D2H(ss)->t != &Tstring)
 		error(exType);
+	if(ss->len == (-0x7fffffff-1) ||
+	   ss->max < (ss->len < 0 ? -ss->len : ss->len))
+		error(exHeap);
 	if(ss->len < 0) {
 		if(ss->len < -(int)((0x7fffffff-sizeof(Heap)-sizeof(Array))/UTFmax))
 			error(exHeap);
@@ -587,7 +603,8 @@ newrunes(int nr)
 	return s;
 }
 
-/* Reject invalid owners and INT_MIN before duplicating either representation. */
+
+/* Reject invalid owners, lengths and capacities before allocating a duplicate. */
 String*
 stringdup(String *s)
 {
@@ -597,7 +614,8 @@ stringdup(String *s)
 		error(exNilref);
 	if(s == H)
 		return H;
-	if(s->len == (-0x7fffffff-1))
+	if(s->len == (-0x7fffffff-1) ||
+	   s->max < (s->len < 0 ? -s->len : s->len))
 		error(exHeap);
 
 	if(s->len >= 0) {

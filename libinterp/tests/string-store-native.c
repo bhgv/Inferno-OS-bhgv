@@ -4,11 +4,67 @@ void *mallocz(ulong n,int clear) {void *p=malloc(n);if(p && clear)memset(p,0,n);
 int kprotect(int (*fn)(void*),void *arg) {return fn(arg);}
 int mutator,nprop;
 
+
+/* Reject malformed capacities before native or C reads at every slot alignment. */
+static void
+checkindexcapacities(Module *module)
+{
+	/* Keep operand storage aligned while varying each slot address independently. */
+	union {
+		uvlong align; // Native alignment for the backing storage.
+		uchar bytes[128]; // Operands and surrounding canary bytes.
+	} slots;
+	uchar before[128],image[256];
+	String *owner;
+	WORD index,output;
+	int wide,capacity,sa,ma,da,pass,size,maximum,allocations;
+
+	for(wide=0;wide<2;wide++)for(capacity=-1;capacity<4;capacity++)
+	for(sa=0;sa<8;sa++)for(ma=0;ma<8;ma++)for(da=0;da<8;da++){
+		owner = wide ? newrunes(4) : newstring(4);
+		maximum = owner->max;
+		owner->len = wide ? -4 : 4;
+		owner->max = capacity;
+		size=sizeof(Heap)+sizeof(String)+(wide ? 4*sizeof(Rune) : 4)+32;
+		if(size > sizeof(image))
+			abort();
+		memmove(image,D2H(owner),size);
+		memset(slots.bytes,0xa5,sizeof(slots.bytes));
+		R.s = slots.bytes+8+sa;
+		R.m = slots.bytes+40+ma;
+		R.d = slots.bytes+80+da;
+		index = 0;
+		output = 77;
+		memmove(R.s, &owner, sizeof(owner));
+		memmove(R.m, &index, sizeof(index));
+		memmove(R.d, &output, sizeof(output));
+		memmove(before, slots.bytes, sizeof(before));
+		allocations=calls;
+		for(pass=0;pass<2;pass++){
+			if(pass==0){
+				if(module->jit->entry[IINDC](&R) != 0)
+					abort();
+			}
+			else
+				EXPECT(indc(), exHeap);
+			if(memcmp(before, slots.bytes, sizeof(before)))
+				abort();
+			if(memcmp(image, D2H(owner), size) || calls != allocations)
+				abort();
+		}
+		owner->max = maximum;
+		destroy(owner);
+		if(live)
+			abort();
+	}
+}
+
+
 /* Compare real C stores and native leaves with complete heap/operand images. */
 int
 main(void)
 {
-	Module module={0};Inst instruction={0},sentinel;
+	Module module={0};Inst instruction[2]={{0}},sentinel;
 	union {uvlong align;uchar bytes[128];} slots;
 	uchar before[128],expectedslots[128],image[512],expected[512];
 	String *old,*owner;
@@ -23,8 +79,14 @@ main(void)
 	unsigned long total=0;
 	char *selection=getenv("STRING_STORE_PROFILE");
 
-	instruction.op=IINSC;module.prog=&instruction;module.nprog=1;
-	assert(compile(&module,1,nil) && module.jit && module.jit->entry[IINSC]);
+	instruction[0].op = IINSC;
+	instruction[1].op = IINDC;
+	module.prog = instruction;
+	module.nprog = 2;
+	if(!compile(&module,2,nil) || !module.jit ||
+	   !module.jit->entry[IINSC] || !module.jit->entry[IINDC])
+		abort();
+	checkindexcapacities(&module);
 	for(wide=0;wide<2;wide++)for(profile=0;profile<12;profile++)for(vi=0;vi<8;vi++)
 	for(sa=0;sa<8;sa++)for(ma=0;ma<8;ma++)for(da=0;da<8;da++)for(alias=0;alias<2;alias++){
 		if(selection && atoi(selection)!=profile)continue;

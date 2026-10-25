@@ -28,7 +28,7 @@ def function(text, signature):
 
 
 signatures = ['String*\nnewstring(', 'String*\nnewrunes(', 'void\ncvtup(',
-              'String*\nstringdup(', 'String*\nsplitc(', 'OP(insc)', 'OP(indc)', 'OP(cvtca)',
+              'String*\nstringdup(', 'String*\naddstring(', 'String*\nslicer(', 'String*\nsplitc(', 'OP(insc)', 'OP(indc)', 'OP(cvtca)',
               'OP(cvtac)', 'OP(cvtwc)', 'char*\nstring2c(', 'String*\nc2string(']
 parts = [function(source, signature) for signature in signatures]
 parts += [function((root / 'libinterp/runt.c').read_text(), 'Array*\nmem2array(')]

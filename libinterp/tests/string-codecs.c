@@ -602,11 +602,14 @@ checkindexedstores(void)
 	}
 }
 
+
 /* Invalid logical capacities must not write terminators, scan runes or refresh caches. */
 static void
 checkcapacities(void)
 {
-	String *s;
+	String *s, *owner;
+	Array *output;
+	WORD index, value;
 	uchar before[256],cache[9];
 	int wide,mode,bytes,allocations,oldlive;
 	char *selection=getenv("STRING_CAPACITY_MODE");
@@ -620,16 +623,46 @@ checkcapacities(void)
 			string2c(s);memmove(cache,s->tmp,sizeof(cache));
 		}
 		bytes=sizeof(Heap)+sizeof(String)+(wide ? 4*sizeof(Rune) : 4)+32;
-		assert(bytes<sizeof(before));
+		if(bytes >= sizeof(before))
+			abort();
 		if(mode==0)s->max=3;
 		if(mode==1)s->max=-1;
 		if(mode==2)s->len=wide ? -1000 : 1000;
 		if(mode==3){s->len=0;s->max=-1;}
 		memmove(before,D2H(s),bytes);allocations=calls;oldlive=live;
 		EXPECT(string2c(s),exHeap);
-		assert(!memcmp(before,D2H(s),bytes) && calls==allocations && live==oldlive);
-		if(wide)assert(!memcmp(cache,s->tmp,sizeof(cache)));
-		s->len=wide ? -4 : 4;s->max=4;destroy(s);assert(!live);checks++;
+		index = 0;
+		value = 77;
+		R.s = &s;
+		R.m = &index;
+		R.d = &value;
+		EXPECT(indc(),exHeap);
+		if(value != 77)
+			abort();
+		EXPECT(slicer(0,0,s),exHeap);
+		EXPECT(slicer(0,1,s),exHeap);
+		EXPECT(stringdup(s),exHeap);
+		EXPECT(addstring(s,H,1),exHeap);
+		EXPECT(addstring(H,s,0),exHeap);
+		EXPECT(addstring(s,s,0),exHeap);
+		EXPECT(addstring(s,s,1),exHeap);
+		owner = s;
+		output = H;
+		R.s = &owner;
+		R.d = &output;
+		EXPECT(cvtca(),exHeap);
+		if(owner != s || output != H)
+			abort();
+		if(memcmp(before, D2H(s), bytes) || calls != allocations || live != oldlive)
+			abort();
+		if(wide && memcmp(cache, s->tmp, sizeof(cache)))
+			abort();
+		s->len = wide ? -4 : 4;
+		s->max = 4;
+		destroy(s);
+		if(live)
+			abort();
+		checks++;
 	}
 }
 

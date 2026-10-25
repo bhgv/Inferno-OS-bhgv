@@ -703,6 +703,7 @@ x64stringstore(X64Buf *b, LeafLayout *a)
 	return 1;
 }
 
+
 /* Emit a SysV AMD64 leaf, returning its bounded count of four-byte code units. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -1016,7 +1017,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		b.bytes[done] = b.n-done-1;
 		x64ptr(&b, 2, abi->d); x64store(&b, 2, p.bytes);
 	}else if(p.kind == LeafStringIndex){
-		if(abi->stringlen < 0 || abi->stringdata < 0) return 0;
+		if(abi->stringlen < 0 || abi->stringdata < 0 ||
+		   abi->stringmax < 0 || abi->stringmax > 2047 || abi->stringmax%4) return 0;
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
@@ -1026,6 +1028,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x89); x64byte(&b, 0xca); /* edx = representation sign */
 		x64byte(&b, 0x85); x64byte(&b, 0xc9);
 		x64byte(&b, 0x79); x64byte(&b, 2); x64byte(&b, 0xf7); x64byte(&b, 0xd9);
+		/* Reject a logical length beyond backing capacity before reading characters. */
+		x64field(&b, 0, 11, abi->stringmax, 4);
+		x64byte(&b, 0x39); x64byte(&b, 0xc8); x64guard(&b, 0x7d);
 		x64ptr(&b, 0, abi->m); x64load(&b, 0, abi->wordbytes);
 		x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xc8); x64guard(&b, 0x72);
 		x64byte(&b, 0x85); x64byte(&b, 0xd2);
