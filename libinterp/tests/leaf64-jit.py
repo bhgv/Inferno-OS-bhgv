@@ -114,9 +114,25 @@ IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF ISUBF IMULF IDIVF ICVTXF ICVTFW ICVTFL ICVTFX IEXPF'''.split()
 class Layout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype','linkcompiled','heapref','heapcolor','refbytes')]+[('mutator',C.c_void_p),('nprop',C.c_void_p),('markcolor',C.c_int)]+[(x,C.c_int) for x in ('moduletypes','modulenty','typenp','stringmax')]
+    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype','linkcompiled','heapref','heapcolor','refbytes')]+[('mutator',C.c_void_p),('nprop',C.c_void_p),('markcolor',C.c_int)]+[(x,C.c_int) for x in ('moduletypes','modulenty','typenp','linknlinks','linklinks','modlbytes','modlframe','sp','ts','frametype','framemr','framesize','stringmax')]
 class RvLayout(C.Structure):
     _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]
+
+
+def check_layout(lib, layout_type):
+    """Check the ctypes ABI against C before passing any layout to a native emitter.
+
+    lib is the freshly compiled borrowed fixture library; layout_type is its Python
+    record class. Any size/field drift raises before machine code generation.
+    """
+    lib.layout_size.restype = C.c_size_t
+    lib.layout_offset.argtypes = [C.c_uint]
+    lib.layout_offset.restype = C.c_size_t
+    if lib.layout_size() != C.sizeof(layout_type):
+        raise RuntimeError("native/Python emitter layout size mismatch")
+    for index, (name, _) in enumerate(layout_type._fields_):
+        if lib.layout_offset(index) != getattr(layout_type, name).offset:
+            raise RuntimeError("native/Python emitter layout offset mismatch: " + name)
 
 
 def signed(value, bits):
@@ -137,11 +153,24 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
         if selected_arch and arch!=selected_arch:continue
         rv = arch == 'riscv64'
         source = td/(arch+'.c')
-        source.write_text('#include <stdint.h>\n#include <string.h>\n'
+        source.write_text('#include <stdint.h>\n#include <string.h>\n#include <stddef.h>\n'
                           'typedef uint32_t u32int; typedef unsigned char uchar;\n#define nil 0\n'
                           '#include "isa.h"\n#include "'+(os.environ.get('LEAF64_RISCV_EMITTER','riscv-emit.h') if rv else os.environ.get('LEAF64_'+arch.upper()+'_EMITTER',arch+'-emit.h'))+'"\n'
                           'int emit(u32int *p,int n,'+('RvLayout' if rv else 'LeafLayout')+' *l,int op){return '+('rvemit' if rv else 'leafemit')+'(p,n,l,op);}\n'
                           'int opid(int i){static int ops[]={'+','.join(ops)+'};return ops[i];}\n')
+        # Independent C size/offset probes make future LeafLayout changes fail
+        # explicitly before ctypes can pass an undersized record to the emitter.
+        layout_type = RvLayout if rv else Layout
+        c_type = 'RvLayout' if rv else 'LeafLayout'
+        offsets = ', '.join('offsetof(' + c_type + ', ' + name + ')'
+                            for name, _ in layout_type._fields_)
+        with source.open('a') as output:
+            output.write("size_t layout_size(void)\n{\n    return sizeof(" + c_type + ");\n}\n")
+            output.write("size_t layout_offset(unsigned int index)\n{\n"
+                         "    static const size_t offsets[] = {" + offsets + "};\n"
+                         "    if (index >= sizeof(offsets) / sizeof(offsets[0])) {\n"
+                         "        return (size_t)-1;\n    }\n"
+                         "    return offsets[index];\n}\n")
         if case in ('','realinteger','realpower','resize','integerreal'):
             with source.open('a') as output:
                 output.write(FP_ORACLES)
@@ -150,6 +179,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
         cmd += shlex.split(os.environ.get('CFLAGS', '-O2 -g -fsanitize=undefined -fno-sanitize-recover=all'))
         subprocess.run(cmd+['-shared','-fPIC','-I'+str(root/'include'),'-I'+str(root/'libinterp'),str(source),'-lm','-o',str(binary)],check=True)
         lib = C.CDLL(str(binary))
+        check_layout(lib, layout_type)
         ids = {name:lib.opid(i) for i,name in enumerate(ops)}
         for wb in (4,8):
             layout = RvLayout(64,wb,1,0,8,16,24) if rv else Layout(wb,0,8,16,24)
