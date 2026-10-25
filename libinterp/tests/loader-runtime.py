@@ -11,7 +11,8 @@ import subprocess
 import tempfile
 root=Path(__file__).resolve().parents[2]
 def function(path,name,result):
-    source=(root/path).read_text()
+    selected = Path(os.environ.get('LOADER_RUNTIME_SOURCE', root/path)) if path == 'libinterp/loader.c' else root/path
+    source=selected.read_text()
     start=source.index(result+'\n'+name+'(');brace=source.index('{',start);depth=0
     for token in re.finditer(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*[\s\S]*?\*/|//[^\n]*|[{}]',source[brace:]):
         if token.group()=='{':depth+=1
@@ -35,9 +36,11 @@ void error(char *s) {(void)s;nexterror();}
 int __lsan_is_turned_off(void) {return 1;}
 static char message[128];
 void kwerrstr(char *s,...) {snprintf(message,sizeof(message),"%s",s);}
-char exNomem[]="out of memory",exHeap[]="heap";
+char exNomem[]="out of memory",exHeap[]="heap",exNilref[]="nil";
 int cflag,mutator,nprop;
 Type Tmodlink={1};
+static void *watchedowner; /* Optional old result whose publication is observed by destruction. */
+static void *watchedslot; /* Borrowed actual result slot, including unaligned byte addresses. */
 static void *owned[128];
 static size_t sizes[128];
 static int live,fail_after=-1,fail_heap,compile_mode,calls,throw_string;
@@ -97,7 +100,17 @@ int compile(Module *m,int n,Modlink *ml) {
 }
 IMPLEMENTATION
 void destroy(void *p) {
-    Heap *h;Modlink *ml;if(p==H)return;h=D2H(p);assert(h->ref>0);
+    Heap *h;Modlink *ml;
+    if(p == watchedowner && watchedowner != nil) {
+        void *published;
+        memmove(&published, watchedslot, sizeof(published));
+        if(published != H) {
+            fprintf(stderr, "Loader result owner destroyed before clearing output\n");
+            abort();
+        }
+        watchedowner = nil;
+    }
+    if(p==H)return;h=D2H(p);assert(h->ref>0);
     if(--h->ref)return;
     if(h->t==&Tmodlink) {
         ml=p;destroy(ml->MP);destroylinks(ml->m);freemod(ml->m);Tmodlink.ref--;
@@ -226,16 +239,38 @@ int main(void) {
     puts("PASS loader runtime: bitmap bounds, Type ownership, realloc/heap failures, VM errors, retry, MP restoration, compiled export rejection and transactional newmod");
 }
 '''
-loader=(root/'libinterp/loader.c').read_text()
+loader=Path(os.environ.get('LOADER_RUNTIME_SOURCE', root/'libinterp/loader.c')).read_text()
 helpers=loader[loader.index('typedef struct LoaderHeap'):loader.index('void\nLoader_dnew(')]
 parts=[function('emu/port/dis.c','kprotect','int'),function('libinterp/heap.c','dtype','Type*'),function('libinterp/heap.c','freetype','void'),helpers]
 parts += [function('libinterp/link.c','destroylinks','void'),function('libinterp/link.c','mklinkmod','Modlink*'),function('libinterp/load.c','freemod','void'),function('libinterp/load.c','brpatch','int')]
 parts += [loader[loader.index('typedef struct LoaderModule'):loader.index('void\nLoader_tnew(')]]
 parts += [function('libinterp/loader.c',n,r) for n,r in [('Loader_tnew','void'),('Loader_dnew','void'),('loadercompile','static int'),('Loader_compile','void'),('Loader_ext','void')]]
+helpers = [function('libinterp/loader.c', 'loaderclear', 'static void')]
+if 'static void\nloaderword(' in loader:
+    helpers.append(function('libinterp/loader.c', 'loaderword', 'static void'))
+# Place shared result helpers before public functions that use them.
+parts = helpers + parts
 unit=unit.replace('IMPLEMENTATION','\n'.join(parts))
+unit=unit.replace('int main(void)', 'static void existingtests(void)')
+unit += (root/'libinterp/tests/loader-results.c').read_text()
 with tempfile.TemporaryDirectory(prefix='loader-runtime-') as directory:
     td=Path(directory);p=td/'runtime.c';p.write_text(unit)
     command=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O2 -g'))
-    command += ['-I'+str(root/p) for p in ['Linux/arm/include','emu/port','include','libinterp']]
-    subprocess.run(command+[str(p),'-o',str(td/'runtime')],check=True)
-    subprocess.run([str(td/'runtime')],check=True)
+    for bits in (64, 32):
+        model = td/('word'+str(bits))
+        model.mkdir()
+        header = (root/'include/interp.h').read_text()
+        if bits == 32:
+            header, words = re.subn(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
+            header, unsigned = re.subn(r'typedef unsigned long\s+UWORD;', 'typedef unsigned int UWORD;', header, count=1)
+            if words != 1 or unsigned != 1:
+                raise RuntimeError('WORD32 fixture header mismatch')
+        (model/'interp.h').write_text(header)
+        includes = ['-I'+str(model)] + ['-I'+str(root/name) for name in
+                    ['Linux/arm/include','emu/port','include','libinterp']]
+        binary = td/('runtime'+str(bits))
+        subprocess.run(command+includes+[str(p),'-o',str(binary)],check=True)
+        subprocess.run([str(binary)],check=True)
+        subprocess.run([str(binary), "slots"],check=True)
+        for probe in range(10):
+            subprocess.run([str(binary), "nil"+str(probe)],check=True)

@@ -83,6 +83,18 @@ loaderclear(void *slot)
     destroy(old);
 }
 
+/* Publish one full Limbo WORD without requiring alignment of a borrowed result slot.
+ * slot is validated before any output store; value is copied, never retained.
+ * Invalid slots raise a VM nil-reference error before callers mutate module state. */
+static void
+loaderword(void *slot, WORD value)
+{
+    if(slot == nil || slot == H) {
+        error(exNilref);
+    }
+    memmove(slot, &value, sizeof(value));
+}
+
 enum {
 	SnapshotInst,
 	SnapshotLink,
@@ -344,8 +356,7 @@ Loader_newmod(void *a)
 	LoaderModule c;
 
 	f=a;
-	destroy(*f->ret);
-	*f->ret=H;
+	loaderclear(f->ret);
 	if(f->inst == H || f->inst == nil || f->data == H || f->data == nil ||
 	   f->name == H || f->name == nil) {
 		kwerrstr("nil parameters");
@@ -362,7 +373,7 @@ Loader_newmod(void *a)
 	}
 	c.f=f; c.m=nil; c.ml=H;
 	if(kprotect(loadernewmod,&c)) {
-		*f->ret=c.ml;
+		memmove(f->ret, &c.ml, sizeof(c.ml));
 		return;
 	}
 	if(c.m != nil) {
@@ -383,7 +394,7 @@ Loader_tnew(void *a)
 	F_Loader_tnew *f;
 
 	f = a;
-	*f->ret = -1;
+	loaderword(f->ret, -1);
 	if(f->mp == H || f->mp == nil)
 		return;
 	m = f->mp->m;
@@ -421,7 +432,7 @@ Loader_tnew(void *a)
 	}
 	mem = (m->ntype+1)*sizeof(Type*);
 	if(msize(m->type) > mem) {
-		*f->ret = m->ntype;
+		loaderword(f->ret, m->ntype);
 		m->type[m->ntype++] = t;
 		return;
 	}
@@ -433,7 +444,7 @@ Loader_tnew(void *a)
 	}
 	m->type = nt;
 	f->mp->type = nt;
-	*f->ret = m->ntype;
+	loaderword(f->ret, m->ntype);
 	m->type[m->ntype++] = t;
 }
 
@@ -446,7 +457,7 @@ Loader_ext(void *a)
 	F_Loader_ext *f;
 
 	f = a;
-	*f->ret = -1;
+	loaderword(f->ret, -1);
 	if(f->mp == H || f->mp == nil) {
 		kwerrstr("nil mp");
 		return;
@@ -479,7 +490,7 @@ Loader_ext(void *a)
 	l = &ml->links[f->idx];
 	l->u.pc = m->prog + f->pc;
 	l->frame = m->type[f->tdesc];
-	*f->ret = 0;
+	loaderword(f->ret, 0);
 }
 
 typedef struct LoaderHeap LoaderHeap;
@@ -506,8 +517,7 @@ Loader_dnew(void *a)
 	int ok;
 
 	f=a;
-	destroy(*f->ret);
-	*f->ret=H;
+	loaderclear(f->ret);
 	ar=f->map;
 	if(ar == nil) {
 		kwerrstr("nil type map");
@@ -532,8 +542,10 @@ Loader_dnew(void *a)
 	ok=kprotect(loaderheap, &c);
 	/* heapz takes its own reference; release the creator's on both paths. */
 	freetype(c.t);
-	if(ok)
-		*f->ret=H2D(Loader_Niladt*, c.h);
+	if(ok) {
+        Loader_Niladt *value = H2D(Loader_Niladt*, c.h); /* Transfer the sole newly constructed heap owner. */
+        memmove(f->ret, &value, sizeof(value));
+    }
 }
 
 static int
@@ -553,7 +565,7 @@ Loader_compile(void *a)
 	int ok;
 
 	f = a;
-	*f->ret = -1;
+	loaderword(f->ret, -1);
 	if(f->mp == H || f->mp == nil) {
 		kwerrstr("nil mp");
 		return;
@@ -567,7 +579,7 @@ Loader_compile(void *a)
 		kwerrstr("compiled module");
 		return;
 	}
-	*f->ret=0;
+	loaderword(f->ret, 0);
 	if(cflag || f->flag) {
 		savedmp=m->origmp;
 		m->origmp=f->mp->MP;
@@ -577,6 +589,6 @@ Loader_compile(void *a)
 			f->mp->prog=m->prog;
 			f->mp->compiled=m->compiled;
 		} else
-			*f->ret=-1;
+			loaderword(f->ret, -1);
 	}
 }
