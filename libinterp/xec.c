@@ -1194,12 +1194,13 @@ moduleentry(Modlink *ml, WORD index, Modl *entry)
 	return 0;
 }
 
+
 /* Compare remaining stack bytes before forming a prospective frame pointer. */
 static int
 framefits(Type *t)
 {
 	if(t == nil || t == H || t->size < (int)sizeof(Frame) ||
-	   R.SP == nil || R.TS == nil || R.SP > R.TS)
+	   R.SP == nil || R.SP == H || R.TS == nil || R.TS == H || R.SP > R.TS)
 		error(exHeap);
 	return (ulong)t->size < (ulong)(R.TS-R.SP);
 }
@@ -1227,6 +1228,8 @@ OP(frame)
 		initmem(t, f);
 	memmove(R.d, &f, sizeof(f));
 }
+
+
 /* Resolve both imported and exported frame types through checked metadata. */
 OP(mframe)
 {
@@ -1322,57 +1325,85 @@ OP(newaz)
 	destroy(at);
 }
 typedef struct ChannelBuild ChannelBuild;
+
 struct ChannelBuild {
-	Type *t;
-	void (*mover)(void);
-	int len;
-	Channel *c;
+	Type *t; // Payload descriptor retained by the buffer and mapped mover.
+	void (*mover)(void); // Transfer routine published after construction succeeds.
+	int len; // Validated buffer element count.
+	Channel *c; // Partial owner for protected cleanup on allocation failure.
 };
 
+
+/* Build resources only after cnewc has reserved all descriptor increments. */
 static int
 channelbuild(void *arg)
 {
 	ChannelBuild *b;
 	Channel *c;
-	b=arg;
-	b->c=c=H2D(Channel*,heap(&Tchannel));
+
+	b = arg;
+	c = H2D(Channel*, heap(&Tchannel));
+	b->c = c;
 	/* Make the partial channel safe for freechan before any further call. */
-	c->buf=H; c->send=nil; c->recv=nil; c->aux=nil;
-	c->mover=nil; c->mid.w=0; c->front=0; c->size=0;
-	c->send=mallocz(sizeof(Progq),1);
+	c->buf = H;
+	c->send = nil;
+	c->recv = nil;
+	c->aux = nil;
+	c->mover = nil;
+	c->mid.w = 0;
+	c->front = 0;
+	c->size = 0;
+	c->send = mallocz(sizeof(Progq), 1);
 	if(c->send == nil)
 		error(exNomem);
-	c->recv=mallocz(sizeof(Progq),1);
+	c->recv = mallocz(sizeof(Progq), 1);
 	if(c->recv == nil)
 		error(exNomem);
 	if(b->len > 0)
-		c->buf=H2D(Array*,heaparray(b->t,b->len));
+		c->buf = H2D(Array*, heaparray(b->t, b->len));
 	if(b->mover == movtmp) {
-		c->mid.t=b->t;
+		c->mid.t = b->t;
 		b->t->ref++;
 	}
-	c->mover=b->mover;
+	c->mover = b->mover;
 	return 1;
 }
 
-/* Reject missing required descriptors before creating any channel resource. */
+
+/* Reserve every descriptor increment before creating any channel resource. */
 Channel*
 cnewc(Type *t, void (*mover)(void), int len)
 {
 	ChannelBuild b;
+	int retains;
+
 	if(len < 0)
 		error(exNegsize);
 	if((len > 0 || mover == movtmp) && (t == nil || t == H))
 		error(exHeap);
 	if(len > 0)
 		acheck(t->size,len);
-	b.t=t; b.mover=mover; b.len=len; b.c=H;
-	if(!kprotect(channelbuild,&b)) {
+	if(Tchannel.ref <= 0 || Tchannel.ref == 0x7fffffff ||
+	   (len > 0 && (Tarray.ref <= 0 || Tarray.ref == 0x7fffffff)))
+		error(exHeap);
+	if(len > 0 || mover == movtmp){
+		retains = (len > 0)+(mover == movtmp)+(t == &Tchannel)+
+			(len > 0 && t == &Tarray);
+		if(t->ref <= 0 || t->ref > 0x7fffffff-retains)
+			error(exHeap);
+	}
+	b.t = t;
+	b.mover = mover;
+	b.len = len;
+	b.c = H;
+	if(!kprotect(channelbuild, &b)) {
 		destroy(b.c);
 		krethrow();
 	}
 	return b.c;
 }
+
+
 /* Capture channel capacity and replacement ownership before fallible allocation. */
 Channel*
 newc(Type *t, void (*mover)(void))

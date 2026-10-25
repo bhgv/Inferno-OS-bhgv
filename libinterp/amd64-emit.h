@@ -879,6 +879,59 @@ x64stringslice(X64Buf *b, LeafLayout *a)
 }
 
 
+/* Allocate a pointer-free frame within the current extent after write-free checks. */
+static int
+x64frame(X64Buf *b, LeafLayout *a)
+{
+	int offsets[10], i;
+
+	offsets[0]=a->module; offsets[1]=a->linkmodule; offsets[2]=a->moduletypes;
+	offsets[3]=a->sp; offsets[4]=a->ts; offsets[5]=a->frametype; offsets[6]=a->framemr;
+	offsets[7]=a->modulenty; offsets[8]=a->typenp; offsets[9]=a->typesize;
+	for(i=0; i<10; i++)
+		if(offsets[i]<0 || offsets[i]>2047 || offsets[i]%(i<7 ? 8 : 4))return 0;
+	if(a->framesize<32 || a->framesize>2047 || a->framesize%8 || a->frametype>a->framesize-8 || a->framemr>a->framesize-8 ||
+	   a->frametype==a->framemr)return 0;
+	x64ptr(b, 0, a->s); x64load(b, 0, a->wordbytes);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc6); // rsi is the complete signed index.
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xf6); x64guard(b, 0x79);
+	x64ptr(b, 0, a->module); x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0);
+	for(i=0; i<3; i++){
+		/* Pointer+1 is 0/1 for H/null; no address is dereferenced on rejection. */
+		x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
+		x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
+		if(i==0)x64field(b, 0, 0, a->linkmodule, 8);
+		if(i==1){
+			x64field(b, 1, 0, a->modulenty, 4);
+			x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64guard(b, 0x72);
+			x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x79);
+			x64field(b, 0, 0, a->moduletypes, 8);
+		}
+	}
+	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x04); x64byte(b, 0xf0);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
+	x64field(b, 1, 0, a->typesize, 4);
+	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, a->framesize); x64guard(b, 0x7d);
+	x64field(b, 2, 0, a->typenp, 4);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); x64guard(b, 0x74);
+	x64ptr(b, 0, a->sp); x64ptr(b, 1, a->ts);
+	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc0); x64guard(b, 0x75);
+	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff); x64guard(b, 0x75);
+	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xc1); x64guard(b, 0x73);
+	x64byte(b, 0x4d); x64byte(b, 0x29); x64byte(b, 0xc1);
+	x64byte(b, 0x49); x64byte(b, 0x39); x64byte(b, 0xc9); x64guard(b, 0x77);
+	/* Capture all live metadata before publishing the new stack cursor. */
+	x64ptr(b, 2, a->d);
+	x64byte(b, 0x4c); x64byte(b, 0x01); x64byte(b, 0xc1);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x8f); x64word(b, a->sp);
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0x80); x64word(b, a->frametype);
+	x64byte(b, 0x49); x64byte(b, 0xc7); x64byte(b, 0x80); x64word(b, a->framemr); x64word(b, 0);
+	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0x02);
+	return 1;
+}
+
+
 /* Emit a SysV AMD64 leaf, returning its bounded count of four-byte code units. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -896,7 +949,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafStringSlice){
+	if(p.kind == LeafFrame){
+		if(!x64frame(&b, abi))return 0;
+	}else if(p.kind == LeafStringSlice){
 		if(!x64stringslice(&b, abi)) return 0;
 	}else if(p.kind == LeafStringAppend){
 		if(!x64stringappend(&b, abi)) return 0;

@@ -266,3 +266,12 @@ extends AMD64/ARM64 SLICEC to validated zero-start prefixes without a copy-size
 limit. Direct list, byte-array and module-link constructors now reserve their
 Type references before allocation/publication. Opcode availability is unchanged:
 AMD64/ARM64 134/39; RV64+M 103/70; RV64+Zmmul 90/83; RV64I 87/86.
+
+## Pointer-free frame checkpoint
+
+[FRAME and channel descriptor reservation](README.frame-native.md) adds FRAME
+for pointer-free types that fit strictly within the current stack extent on
+AMD64/ARM64. Both now provide 135 guarded opcode paths / 38 interpreter-only
+active commands. RISC-V profiles remain 103/70, 90/83 and 87/86. Channel Type
+preflight now accounts for buffer, mover and aliased header references before
+creating any resource.
