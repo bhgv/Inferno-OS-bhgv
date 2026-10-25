@@ -317,7 +317,10 @@ OP(cvtac)
 	if(a != H){
 		if(a == nil)
 			error(exNilref);
-		if(D2H(a)->t != &Tarray || a->t != &Tbyte)
+		/* A compiler may emit its own pointer-free byte descriptor. */
+        if(D2H(a)->t != &Tarray ||
+            (a->t != &Tbyte &&
+             (a->t == nil || a->t == H || a->t->size != 1 || a->t->np != 0)))
 			error(exType);
 		if(a->len < 0 || (uvlong)a->len > 0x7fffffff)
 			error(exHeap);
