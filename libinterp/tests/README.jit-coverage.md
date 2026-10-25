@@ -292,3 +292,11 @@ pointer-free RET on AMD64/ARM64. They now provide 137 guarded paths / 36
 interpreter-only active instructions; RISC-V profiles remain 103/70, 90/83 and
 87/86. C return and unextend validate saved owners before publishing register
 changes or performing cleanup. The parallel ctypes fixture repair is retained.
+
+## Same-module call checkpoint
+
+[MCALL and module-owner preflight](README.mcall-native.md) adds nonnegative,
+same-module bytecode MCALL on AMD64/ARM64. Both now provide 138 guarded paths /
+35 interpreter-only active commands. RISC-V profiles remain 103/70, 90/83 and
+87/86. C MCALL checks module references and entry targets before frame or REG
+publication; private layout and ctypes probes are updated together.

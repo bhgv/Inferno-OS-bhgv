@@ -786,6 +786,54 @@ a64return(A64Buf *b, LeafLayout *a)
 }
 
 
+/* Publish a bytecode self-call only after ownership, index and frame checks. */
+static int
+a64modulecall(A64Buf *b, LeafLayout *a)
+{
+	int offsets[11], i, fallback;
+
+	offsets[0]=a->module; offsets[1]=a->fp; offsets[2]=a->regmp; offsets[3]=a->linkprog;
+	offsets[4]=a->linkmp; offsets[5]=a->linklinks; offsets[6]=a->framelr;
+	offsets[7]=a->framefp; offsets[8]=a->framemr; offsets[9]=a->regtemp; offsets[10]=a->linknlinks;
+	for(i=0;i<11;i++)
+		if(offsets[i]<0 || offsets[i]>2047 || offsets[i]%(i<9 ? 8 : i==9 ? a->wordbytes : 4))return 0;
+	if(a->modlbytes!=16 || a->modlpc<0 || a->modlpc>8 || a->modlpc%8 || a->heapref<=0 || a->heapref>128 || a->heapref%8 || a->refbytes!=8 ||
+	   a->framelr==a->framefp || a->framelr==a->framemr || a->framefp==a->framemr)return 0;
+	a64put(b, 0x14000003);
+	fallback=b->n; a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	a64ptr(b, 10, a->d); a64load(b, 9, 10, 8);
+	a64put(b, 0x91000523); a64put(b, 0xf100047f); a64defer(b, 0x54000009, fallback);
+	a64ptr(b, 13, a->module); a64put(b, 0xeb0d013f); a64defer(b, 0x54000001, fallback);
+	a64field(b, 12, 9, a->linkprog, 8);
+	a64put(b, 0x91000583); a64put(b, 0xf100047f); a64defer(b, 0x54000009, fallback);
+	a64ptr(b, 10, a->m); a64load(b, 12, 10, a->wordbytes);
+	if(a->wordbytes==4)a64put(b, 0x93407d8c);
+	a64wordfield(b, 13, 9, a->linknlinks, 4);
+	a64put(b, 0xf10001bf); a64defer(b, 0x5400000b, fallback);
+	a64put(b, 0xeb0d019f); a64defer(b, 0x54000002, fallback);
+	a64put(b, 0x8b0c1123); // x3 is the full-width import-entry base.
+	a64field(b, 11, 3, a->linklinks+a->modlpc, 8);
+	a64put(b, 0x91000563); a64put(b, 0xf100047f); a64defer(b, 0x54000009, fallback);
+	a64ptr(b, 14, a->s); a64load(b, 10, 14, 8);
+	a64put(b, 0x91000543); a64put(b, 0xf100047f); a64defer(b, 0x54000009, fallback);
+	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 9<<5 | 13);
+	a64put(b, 0x910005ad); a64put(b, 0xf10005bf); a64defer(b, 0x54000009, fallback);
+	a64ptr(b, 14, a->pc); a64ptr(b, 15, a->fp);
+	a64field(b, 2, 9, a->linkmp, 8);
+	a64put(b, 0xf9000000U | (u32int)(a->framelr/8)<<10 | 10<<5 | 14);
+	a64put(b, 0xf9000000U | (u32int)(a->framefp/8)<<10 | 10<<5 | 15);
+	a64put(b, 0xf9000000U | (u32int)(a->framemr/8)<<10 | 10<<5 | 9);
+	a64put(b, 0xf9000000U | (u32int)(a->fp/8)<<10 | 10);
+	a64put(b, 0xf8000000U | ((u32int)-a->heapref&511)<<12 | 9<<5 | 13);
+	a64put(b, 0xf9000000U | (u32int)(a->regmp/8)<<10 | 2);
+	a64put(b, 0xf9000000U | (u32int)(a->pc/8)<<10 | 11);
+	a64put(b, 0x52800023);
+	a64put(b, (a->wordbytes==8 ? 0xf9000000U : 0xb9000000U) |
+		(u32int)(a->regtemp/a->wordbytes)<<10 | 3);
+	return 1;
+}
+
+
 /* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -805,7 +853,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafReturn){
+	if(p.kind == LeafModuleCall){
+		if(!a64modulecall(&b, abi))return 0;
+	}else if(p.kind == LeafReturn){
 		if(!a64return(&b, abi))return 0;
 	}else if(p.kind == LeafFrame){
 		if(!a64frame(&b, abi, p.alu))return 0;

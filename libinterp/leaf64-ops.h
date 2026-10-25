@@ -22,6 +22,8 @@ struct LeafLayout {
 	int sp, ts; // Stack cursor and stack-end offsets within REG.
 	int frametype, framemr, framesize; // Frame Type/module-link offsets and minimum frame size.
 	int stringmax; // String capacity offset, measured in representation characters.
+	int regmp, regtemp, linkprog, linkmp; // Register MP/temp and module-link program/data offsets.
+	int modlpc; // Native program/runtime entry offset within an import record.
 };
 typedef struct LeafOp LeafOp;
 
@@ -35,6 +37,7 @@ struct LeafOp {
 };
 
 enum {
+	LeafModuleCall = 120, // Bytecode calls that retain the current module.
 	LeafReturn = 119, // Same-module returns without mapped cleanup or extent release.
 	LeafFrame = 118, // Pointer-free frames within the current stack extent.
 	LeafStringSlice = 117, // Nonempty slices that reuse unique string storage.
@@ -148,6 +151,7 @@ leafop(LeafOp *p, int op, int wordbytes)
 	case IGOTO: p->kind = LeafTableJump; p->bytes = 8; break;
 	case ICASE: p->kind = LeafCaseJump; break;
 	case ICASEL: p->kind = LeafCaseJump; p->bytes = 8; p->alu = 1; break;
+	case IMCALL: p->kind = LeafModuleCall; break;
 	case IRET: p->kind = LeafReturn; break;
 	case IMFRAME: p->kind = LeafFrame; p->alu = 1; break;
 	case IFRAME: p->kind = LeafFrame; break;

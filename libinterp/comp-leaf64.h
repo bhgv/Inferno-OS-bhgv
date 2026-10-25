@@ -81,6 +81,8 @@ leafcompile(void *arg)
 	abi.typenp=O(Type, np);
 	abi.linknlinks=O(Modlink, nlinks); abi.linklinks=O(Modlink, links);
 	abi.modlbytes=sizeof(Modl); abi.modlframe=O(Modl, frame);
+	abi.regmp=O(REG, MP); abi.regtemp=O(REG, t);
+	abi.linkprog=O(Modlink, prog); abi.linkmp=O(Modlink, MP); abi.modlpc=O(Modl, u);
 	abi.sp=O(REG, SP); abi.ts=O(REG, TS);
 	abi.frametype=O(Frame, t); abi.framemr=O(Frame, mr); abi.framesize=sizeof(Frame);
 	abi.framelr=O(Frame, lr); abi.framefp=O(Frame, fp);

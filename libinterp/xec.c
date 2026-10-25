@@ -1869,7 +1869,9 @@ OP(iload)
 	memmove(R.d, &ml, sizeof(ml));
 	destroy(t);
 }
-/* Resolve the complete link index before publishing a frame or changing modules. */
+
+
+/* Validate module references and the complete entry before publishing a callee frame. */
 OP(mcall)
 {
 	WORD index;
@@ -1881,11 +1883,18 @@ OP(mcall)
 	Modlink *ml;
 
 	memmove(&ml, R.d, sizeof(ml));
-	if(ml == H)
+	if(ml == nil || ml == H || R.M == nil || R.M == H)
 		error(exModule);
 	memmove(&index, R.m, sizeof(index));
 	if(!moduleentry(ml, index, &entry))
 		error("invalid mcall");
+	h = D2H(ml);
+	if(h->ref == 0 || h->ref == (ulong)-1)
+		error(exHeap);
+	if(ml->prog == H ||
+	   (ml->prog != nil && (entry.u.pc == nil || entry.u.pc == H)) ||
+	   (ml->prog == nil && (entry.u.runt == nil || entry.u.runt == (void(*)(void*))H)))
+		error(exModule);
 	memmove(&f, R.s, sizeof(f));
 	if(f == nil || f == H)
 		error(exNilref);
@@ -1896,7 +1905,6 @@ OP(mcall)
 	caller = R.M;
 	R.FP = (uchar*)f;
 	R.M = ml;
-	h = D2H(ml);
 	h->ref++;
 
 	if(ml->prog == nil) {
