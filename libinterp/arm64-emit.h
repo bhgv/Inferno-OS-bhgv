@@ -71,6 +71,23 @@ a64defer(A64Buf *b, u32int condition, int fallback)
 	a64put(b, condition | ((fallback-b->n)&0x7ffff)<<5);
 }
 
+/* Share a distant rejection return for PC-table checks without growing leaf code. */
+static void
+a64pcguard(A64Buf *b, u32int success, int fallback)
+{
+	if(fallback < 0){
+		a64guard(b, success);
+		return;
+	}
+	/* PC guards use B.cond or CBZ/CBNZ, each with a signed 19-bit displacement. */
+	success &= ~(0x7ffffU<<5);
+	if((success&0xff000010U) == 0x54000000U)
+		success ^= 1;
+	else
+		success ^= 0x01000000U;
+	a64defer(b, success, fallback);
+}
+
 /* Stage WORD-width VN corrections before multiplication can change operand signs. */
 static void
 a64fixedround(A64Buf *b, int alu, int wordbytes)
@@ -202,26 +219,51 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64put(&b, 0xf8400000U | ((u32int)-abi->heaptype&511)<<12 | 13<<5 | 15);
 		a64put(&b, 0xeb0f01df); a64guard(&b, 0x54000060);
 		b.code[empty] |= (b.n-empty)<<5;
-	}else if(p.kind == LeafProgramAddress){
+	}else if(p.kind == LeafProgramAddress || p.kind == LeafTableJump){
+		fallback = -1;
+		if(p.kind == LeafTableJump){
+			fallback = b.n+1;
+			a64put(&b, 0x14000003); a64put(&b, 0x52800000); a64put(&b, 0xd65f03c0);
+		}
 		/* All metadata offsets are supplied by the compiler's native layout adapter. */
 		if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
 		   abi->linkmodule < 0 || abi->linkmodule > 2047 || abi->linkmodule%8 ||
 		   abi->moduleprog < 0 || abi->moduleprog > 2047 || abi->moduleprog%8 ||
 		   abi->modulenprog < 0 || abi->modulenprog > 2047 || abi->modulenprog%4 ||
 		   abi->instbytes < 1 || abi->instbytes > 2047) return 0;
-		a64ptr(&b, 12, abi->module); a64guard(&b, 0xb500006c);
-		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
-		a64field(&b, 12, 12, abi->linkmodule, 8); a64guard(&b, 0xb500006c);
-		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
+		a64ptr(&b, 12, abi->module); a64pcguard(&b, 0xb500006c, fallback);
+		a64put(&b, 0xb100059f); a64pcguard(&b, 0x54000061, fallback);
+		if(p.kind == LeafTableJump){
+			if(abi->linkcompiled < 0 || abi->linkcompiled > 2047 || abi->linkcompiled%4) return 0;
+			a64field(&b, 14, 12, abi->linkcompiled, 4); a64pcguard(&b, 0x3400006e, fallback);
+		}
+		a64field(&b, 12, 12, abi->linkmodule, 8); a64pcguard(&b, 0xb500006c, fallback);
+		a64put(&b, 0xb100059f); a64pcguard(&b, 0x54000061, fallback);
 		a64put(&b, 0xb9800000U | (abi->modulenprog/4)<<10 | 12<<5 | 13);
-		a64put(&b, 0xf10001bf); a64guard(&b, 0x5400006a);
+		a64put(&b, 0xf10001bf); a64pcguard(&b, 0x5400006a, fallback);
 		a64ptr(&b, 9, abi->s); a64load(&b, 14, 9, abi->wordbytes);
-		a64put(&b, 0xeb0d01df); a64guard(&b, 0x54000063);
+		if(p.kind == LeafTableJump){
+			/* Native tables retain four-byte entries and the preceding compiler count. */
+			if(abi->wordbytes == 4)a64put(&b, 0x93407dce);
+			a64put(&b, 0xf10001df); a64pcguard(&b, 0x5400006a, fallback);
+			a64ptr(&b, 9, abi->d);
+			a64put(&b, 0xf100113f); a64pcguard(&b, 0x54000062, fallback);
+			a64put(&b, 0xb100053f); a64pcguard(&b, 0x54000061, fallback);
+			a64put(&b, 0xd100112a); a64put(&b, 0xb980014f);
+			a64put(&b, 0xf10001ff); a64pcguard(&b, 0x5400006c, fallback);
+			a64put(&b, 0xeb0f01df); a64pcguard(&b, 0x54000063, fallback);
+			a64put(&b, 0xd3400000U | 62<<16 | 61<<10 | 14<<5 | 14);
+			a64put(&b, 0xab0e012e); a64pcguard(&b, 0x54000063, fallback);
+			a64put(&b, 0xb1000ddf); a64pcguard(&b, 0x54000063, fallback);
+			a64put(&b, 0xb98001ce);
+		}
+		a64put(&b, 0xeb0d01df); a64pcguard(&b, 0x54000063, fallback);
 		a64put(&b, 0xd280000dU | abi->instbytes<<5); a64put(&b, 0x9b0d7dce);
-		a64field(&b, 15, 12, abi->moduleprog, 8); a64guard(&b, 0xb500006f);
-		a64put(&b, 0xb10005ff); a64guard(&b, 0x54000061);
-		a64put(&b, 0xab0e01ee); a64guard(&b, 0x54000063);
-		a64ptr(&b, 11, abi->d); a64store(&b, 14, 8);
+		a64field(&b, 15, 12, abi->moduleprog, 8); a64pcguard(&b, 0xb500006f, fallback);
+		a64put(&b, 0xb10005ff); a64pcguard(&b, 0x54000061, fallback);
+		a64put(&b, 0xab0e01ee); a64pcguard(&b, 0x54000063, fallback);
+		if(p.kind == LeafTableJump)a64put(&b, 0xf9000000U | (u32int)(abi->pc/8)<<10 | 14);
+		else{a64ptr(&b, 11, abi->d); a64store(&b, 14, 8);}
 	}else if(p.kind == LeafFixedCoefficient){
 		/* Coefficient slots follow the VM frame layout, not native pointer alignment. */
 		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047 ||

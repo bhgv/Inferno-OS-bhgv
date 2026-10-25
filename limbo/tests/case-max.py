@@ -48,6 +48,7 @@ data.append(function(asm, 'void\nasminitializer('))
 xec = (root / 'libinterp/xec.c').read_text()
 vm = [function(xec, 'OP('+name+')') for name in
       ('movw', 'movl', 'beqw', 'beql', 'bltw', 'bgtw', 'subw', 'jmp', 'icase', 'casel', 'igoto')]
+if 'static Inst*\ncasepc(' in xec:vm.insert(0,function(xec,'static Inst*\ncasepc('))
 unit = (root / 'limbo/tests/case-max.c').read_text()
 unit = unit.replace('COMPILER_IMPLEMENTATION', '\n'.join(compiler))
 unit = unit.replace('DATA_IMPLEMENTATION', prefix+'\n'+'\n'.join(data))

@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/goto-native.py',
     'libinterp/tests/sys-stat-slots.py',
     'libinterp/tests/real-branch-native.py',
     'libinterp/tests/sys-status-slots.py',

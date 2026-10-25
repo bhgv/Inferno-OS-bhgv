@@ -91,12 +91,12 @@ int realresizeoracle(uint64_t input,int width,int mode,uint64_t *out){
 '''
 
 root = Path(__file__).resolve().parents[2]
-ops = '''IBEQC IBNEC IBLTC IBLEC IBGTC IBGEC ITCMP IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''IGOTO IBEQC IBNEC IBLTC IBLEC IBGTC IBGEC ITCMP IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF ISUBF IMULF IDIVF ICVTXF ICVTFW ICVTFL ICVTFX IEXPF'''.split()
 class Layout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]
+    _fields_ = [(x, C.c_int) for x in ('wordbytes', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype','linkcompiled')]
 class RvLayout(C.Structure):
     _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]
 
@@ -109,7 +109,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic','realinteger','realpower','divide','vncoefficient','realbranchfp'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic','realinteger','realpower','divide','vncoefficient','realbranchfp','goto'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -139,6 +139,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 profile=os.environ.get('RV_FEATURE_PROFILE','m')
                 if profile not in ('i','zmmul','m'):raise ValueError(profile)
                 layout.hasm=int(profile!='i');layout.hasdiv=int(profile=='m')
+            if not rv:layout.linkcompiled=16
             layout.heaptype=24;layout.framelr=0;layout.framefp=8
             layout.arraylen=8;layout.arraydata=32;layout.stringlen=12;layout.stringdata=32;layout.listdata=24;layout.listtail=8;layout.fp=32;layout.fixedtmp=28;layout.fixedcoef=20;layout.module=40;layout.linkmodule=8;layout.moduleprog=16;layout.modulenprog=24;layout.instbytes=24;layout.arraytype=16;layout.typesize=24
             dis = Cs(CS_ARCH_X86,CS_MODE_64) if arch == 'amd64' else Cs(CS_ARCH_ARM64,0) if arch == 'arm64' else Cs(CS_ARCH_RISCV,CS_MODE_RISCV64)
@@ -201,6 +202,79 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
             code, registers, data, stack = 0x10000, 0x100020000, 0x100030000, 0x40000
             oldpc, target = 0x123456789, 0x987654321
 
+            if case in ('','goto'):
+                if rv:
+                    assert not blobs['IGOTO']
+                else:
+                    assert blobs['IGOTO'],(arch,wb,'missing native goto')
+                    for field,value in [('linkcompiled',-1),('linkcompiled',1),('linkcompiled',2048)]:
+                        malformed=type(layout).from_buffer_copy(layout);setattr(malformed,field,value)
+                        guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
+                        assert lib.emit(guard,64,C.byref(malformed),ids['IGOTO'])==0 and list(guard)==[0xa5a5a5a5]*64
+                        checks+=1
+
+                    def gotocheck(index,count,destination,sa=0,ta=0,alias=0,bad=None):
+                        """Check exact REG/table images using an independent packed-table decoder."""
+                        if arch=='amd64':u=Uc(UC_ARCH_X86,UC_MODE_64);arg,result=UC_X86_REG_RDI,UC_X86_REG_RAX
+                        else:u=Uc(UC_ARCH_ARM64,0);arg=result=UC_ARM64_REG_X0
+                        for address in (code,registers,data,stack):u.mem_map(address,0x1000)
+                        u.mem_write(code,blobs['IGOTO'])
+                        image=bytearray(b'\xa5'*0x1000)
+                        table=data+0x300+ta;source=data+0x100+sa
+                        if alias:source=table-(4 if alias==1 else 0)
+                        image[table-data-4:table-data]=struct.pack('<i',count)
+                        for row in range(16):image[table-data+row*4:table-data+row*4+4]=struct.pack('<I',(destination+row%3)&0xffffffff)
+                        if not alias:image[source-data:source-data+wb]=(index&((1<<(8*wb))-1)).to_bytes(wb,'little')
+                        actualindex=signed(int.from_bytes(image[source-data:source-data+wb],'little'),wb*8)
+                        valid=count>0 and 0<=actualindex<count
+                        if valid:
+                            entry=struct.unpack_from('<i',image,table-data+actualindex*4)[0]
+                            valid=0<=entry<32
+                        link=data+0x700;owner=data+0x900;program=data+0xc00;length=32;compiled=0
+                        if bad==0:link=0
+                        if bad==1:link=(1<<64)-1
+                        if bad==2:owner=0
+                        if bad==3:owner=(1<<64)-1
+                        if bad==4:compiled=1;owner=1
+                        if bad==5:length=-1
+                        if bad==6:length=0
+                        if bad==7:program=0
+                        if bad==8:program=(1<<64)-1
+                        if bad==9:program=(1<<64)-9
+                        if bad==10:table=0
+                        if bad==11:table=(1<<64)-1
+                        if bad is not None:
+                            valid=False
+                            if bad<=4:source=data+0x2000
+                        image[0x700+layout.linkmodule:0x700+layout.linkmodule+8]=struct.pack('<Q',owner)
+                        image[0x700+layout.linkcompiled:0x700+layout.linkcompiled+4]=struct.pack('<i',compiled)
+                        image[0x900+layout.moduleprog:0x900+layout.moduleprog+8]=struct.pack('<Q',program)
+                        image[0x900+layout.modulenprog:0x900+layout.modulenprog+4]=struct.pack('<i',length)
+                        u.mem_write(data,bytes(image))
+                        regs=bytearray(b'\xa5'*0x1000)
+                        regs[:40]=struct.pack('<QQQQQ',oldpc,source,table,data+0x2000,data+0x3000)
+                        regs[layout.module:layout.module+8]=struct.pack('<Q',link)
+                        expected=bytearray(regs)
+                        if valid:expected[:8]=struct.pack('<Q',program+entry*layout.instbytes)
+                        u.mem_write(registers,bytes(regs));u.reg_write(arg,registers)
+                        end=code+0x800
+                        if arch=='amd64':
+                            u.reg_write(UC_X86_REG_RSP,stack+0x800);u.mem_write(stack+0x800,struct.pack('<Q',end))
+                        else:u.reg_write(UC_ARM64_REG_LR,end)
+                        u.emu_start(code,end,count=1000)
+                        assert u.reg_read(result)==int(valid),(arch,wb,'IGOTO',index,count,destination,bad)
+                        assert bytes(u.mem_read(registers,0x1000))==bytes(expected),(arch,wb,'goto PC/REG',index,count,destination,bad)
+                        assert bytes(u.mem_read(data,0x1000))==bytes(image)
+
+                    for index in (-1,0,1,7,15,16,-(1<<(8*wb-1)),(1<<(8*wb-1))-1,1<<32):
+                        for count in (-1,0,1,2,8,16):
+                            for destination in (-1,0,1,31,32,-(1<<31),(1<<31)-1):
+                                for sa in (0,1,4,7):
+                                    for ta in (0,1,4,7):
+                                        for alias in range(3):
+                                            gotocheck(index,count,destination,sa,ta,alias);checks+=1
+                    for bad in range(12):gotocheck(0,2,1,bad=bad);checks+=1
+                if case=='goto':continue
             if case in ('','call'):
                 # Check complete REG/data images, including source/target/frame aliases.
                 for sa in ((0,4) if rv else range(8)):

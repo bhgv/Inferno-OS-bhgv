@@ -378,7 +378,10 @@ Bprint(Biobuf *b, char *format, ...)
 DATA_IMPLEMENTATION
 
 typedef struct VmInst { int index; } VmInst;
-static struct VmModule { int compiled; VmInst *prog; } vmmodule;
+static struct VmModule { int compiled; VmInst *prog; int nprog; struct VmModule *m; } vmmodule;
+char exModule[]="module",exBounds[]="bounds";
+#define Modlink struct VmModule
+#define H ((void*)-1)
 static struct VmRegs { void *s,*m,*d; VmInst *PC; struct VmModule *M; } vmregs;
 #define WORD int32_t
 #define UWORD uint32_t
@@ -390,7 +393,13 @@ static struct VmRegs { void *s,*m,*d; VmInst *PC; struct VmModule *M; } vmregs;
 #define UW(r) (*(uint32_t*)R.r)
 #define V(r) (*(Long*)R.r)
 #define JMP(r) (R.PC=(VmInst*)R.r)
+/* Valid compiler-produced dispatch must not raise a VM bounds exception. */
+static void vmerror(char *message) { fprintf(stderr,"VM error: %s\n",message); abort(); }
+#define error vmerror
 VM_IMPLEMENTATION
+#undef error
+#undef H
+#undef Modlink
 #undef WORD
 #undef UWORD
 #undef LONG
@@ -480,7 +489,7 @@ execute(Long input, Long changed, int compiled)
 		row=header+words[0]*stride;
 		if(words[row] != -1)words[row]=(uintptr)&vmprogram[words[row]];
 	}
-	vmmodule.compiled=compiled;vmmodule.prog=vmprogram;
+	vmmodule.compiled=compiled;vmmodule.prog=vmprogram;vmmodule.m=&vmmodule;vmmodule.nprog=256;
 	vmregs.M=&vmmodule;
 	while(pc < ncode){
 		assert(pc >= 0 && ++steps < 512);

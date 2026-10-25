@@ -226,7 +226,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64field(&b, 0, 1, -abi->heaptype, 8);
 		x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xd0); x64guard(&b, 0x74);
 		b.bytes[done]=b.n-done-1;
-	}else if(p.kind == LeafProgramAddress){
+	}else if(p.kind == LeafProgramAddress || p.kind == LeafTableJump){
 		/* Materialize a Dis PC only after validating the module, index and native span. */
 		if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
 		   abi->linkmodule < 0 || abi->linkmodule > 2047 || abi->linkmodule%8 ||
@@ -236,6 +236,11 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64ptr(&b, 0, abi->module); x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0xc0);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
+		if(p.kind == LeafTableJump){
+			if(abi->linkcompiled < 0 || abi->linkcompiled > 2047 || abi->linkcompiled%4) return 0;
+			x64field(&b, 2, 0, abi->linkcompiled, 4);
+			x64byte(&b, 0x85); x64byte(&b, 0xd2); x64guard(&b, 0x74);
+		}
 		x64field(&b, 0, 0, abi->linkmodule, 8);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
@@ -243,13 +248,29 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64field(&b, 1, 0, abi->modulenprog, 4);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9); x64guard(&b, 0x79);
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, abi->wordbytes);
+		if(p.kind == LeafTableJump){
+			/* The compiler's table count and destinations are signed 32-bit Dis words. */
+			x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x79);
+			x64ptr(&b, 2, abi->d);
+			x64byte(&b, 0x49); x64byte(&b, 0x83); x64byte(&b, 0xfa); x64byte(&b, 4); x64guard(&b, 0x73);
+			x64byte(&b, 0x49); x64byte(&b, 0x83); x64byte(&b, 0xfa); x64byte(&b, 0xff); x64guard(&b, 0x75);
+			x64field(&b, 2, 10, -4, 4);
+			x64byte(&b, 0x85); x64byte(&b, 0xd2); x64guard(&b, 0x7f);
+			x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xd0); x64guard(&b, 0x72);
+			x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xe0); x64byte(&b, 2);
+			x64byte(&b, 0x4c); x64byte(&b, 0x01); x64byte(&b, 0xd0); x64guard(&b, 0x73);
+			x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xfc); x64guard(&b, 0x76);
+			x64byte(&b, 0x48); x64byte(&b, 0x63); x64byte(&b, 0x00);
+		}
 		x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xc8); x64guard(&b, 0x72);
 		x64byte(&b, 0x48); x64byte(&b, 0x69); x64byte(&b, 0xc0); x64word(&b, abi->instbytes);
 		x64field(&b, 2, 11, abi->moduleprog, 8);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xd2); x64guard(&b, 0x75);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xfa); x64byte(&b, 0xff); x64guard(&b, 0x75);
 		x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xd0); x64guard(&b, 0x73);
-		x64ptr(&b, 2, abi->d); x64store(&b, 0, 8);
+		if(p.kind == LeafTableJump){
+			x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0x87); x64word(&b, abi->pc);
+		}else{x64ptr(&b, 2, abi->d); x64store(&b, 0, 8);}
 	}else if(p.kind == LeafFixedCoefficient){
 		/* Capture frame parameters and both operands before any aliased result write. */
 		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047 ||

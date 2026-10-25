@@ -2,19 +2,21 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 118 commands (68.2%); 55 remain on the interpreter path. RV64 profiles
+paths for 119 commands (68.8%); 54 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 118 | 55 |
-| ARM64 | 173 | 118 | 55 |
+| AMD64 | 173 | 119 | 54 |
+| ARM64 | 173 | 119 | 54 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
 
-The latest addition is IEXPF on AMD64/ARM64, using the same repeated-squaring
+The latest addition is IGOTO on AMD64/ARM64: it reads compiler-emitted four-byte
+table entries, validates the count/index/target and commits a Dis PC. Relocated
+native-PC tables retain C handling. Earlier additions include IEXPF, using the same repeated-squaring
 sequence as C, including negative and minimum-width exponents. Earlier additions
 include guarded ICVTFW, ICVTFL and ICVTFX paths.
 The real-to-integer paths retain C for non-finite and large inputs; ICVTFX
@@ -95,12 +97,11 @@ and RX publication are covered separately by `leaf64-runtime.py`.
 ## Current interpreter-only commands on AMD64/ARM64
 
 ```
-IALT INBALT IGOTO IFRAME ISPAWN ILOAD IMCALL IMSPAWN IMFRAME IRET ICASE IEXIT INEW
-INEWA INEWCB INEWCW INEWCF INEWCP INEWCM INEWCMP ISEND IRECV ICONSB ICONSW ICONSP
-ICONSF ICONSM ICONSMP IHEADP IHEADMP ITAIL IMOVP IMOVMP ICVTFW ICVTCA ICVTAC ICVTWC
-ICVTCW ICVTFC ICVTCF IADDF ISUBF IMULF IDIVF IINSC IADDC
-ISLICEA ISLICELA ISLICEC ICVTFL ICVTLC ICVTCL ICONSL INEWCL ICASEC
-IMNEWZ INEWZ INEWAZ IRAISE ICASEL ICVTFX ICVTXF IEXPF ISELF
+IALT INBALT IFRAME ISPAWN ILOAD IMCALL IMSPAWN IMFRAME IRET ICASE IEXIT INEW
+INEWA INEWCB INEWCW INEWCF INEWCP INEWCM INEWCMP ISEND IRECV ICONSB ICONSW
+ICONSP ICONSF ICONSM ICONSMP IHEADP IHEADMP ITAIL IMOVP IMOVMP ICVTCA ICVTAC
+ICVTWC ICVTCW ICVTFC ICVTCF IINSC IADDC ISLICEA ISLICELA ISLICEC ICVTLC ICVTCL
+ICONSL INEWCL ICASEC IMNEWZ INEWZ INEWAZ IRAISE ICASEL ISELF
 ```
 
 The list excludes invalid/unused slots. RV64+M additionally retains all six
@@ -155,7 +156,8 @@ Rune strings, mixed representations and language nil. They compare unsigned
 bytes and the C comparator's signed int Rune keys, use explicit lengths
 (including embedded NULs), and read a native target only when the predicate is
 true. Null owners and INT_MIN lengths decline before changing PC or VM storage.
-Identical owners compare equal without scanning payloads. Counts remain 109/64:
+Identical owners compare equal without scanning payloads. At that checkpoint,
+counts were 109/64:
 this broadens six existing native paths rather than adding six new opcode IDs.
 RISC-V string branches remain on the interpreter path. Physical ARM64 testing
 and full native-block/pointer-ABI completion remain separate work.

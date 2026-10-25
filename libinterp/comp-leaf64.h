@@ -68,6 +68,7 @@ leafcompile(void *arg)
 	abi.fixedtmp=(NREG+2)*IBY2WD;
 	abi.fixedcoef=NREG*IBY2WD;
 	abi.module=O(REG, M); abi.linkmodule=O(Modlink, m);
+	abi.linkcompiled=O(Modlink, compiled);
 	abi.moduleprog=O(Module, prog); abi.modulenprog=O(Module, nprog);
 	abi.instbytes=sizeof(Inst);
 	abi.heaptype=sizeof(Heap)-O(Heap, t);

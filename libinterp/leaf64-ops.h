@@ -12,12 +12,14 @@ struct LeafLayout {
 	int fixedcoef;
 	int module, linkmodule, moduleprog, modulenprog, instbytes;
 	int heaptype;
+	int linkcompiled;
 };
 typedef struct LeafOp LeafOp;
 struct LeafOp {
 	int kind, bytes, input, alu, condition;
 };
 enum {
+	LeafTableJump = 109,
 	LeafRealPower = 108,
 	LeafRealInteger = 107,
 	LeafRealArithmetic = 106,
@@ -103,6 +105,7 @@ leafop(LeafOp *p, int op, int wordbytes)
 		p->kind = LeafAddress;
 		break;
 	case IMOVPC: p->kind = LeafProgramAddress; p->bytes = 8; break;
+	case IGOTO: p->kind = LeafTableJump; p->bytes = 8; break;
 	case ICALL: p->kind = LeafCall; break;
 	case IJMP: p->kind = LeafJump; break;
 	case IADDB: p->bytes = 1; /* fall through */

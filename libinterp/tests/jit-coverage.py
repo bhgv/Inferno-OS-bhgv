@@ -35,6 +35,8 @@ def measure(arch, wordbytes, profile, names, directory):
     header = 'riscv-emit.h' if rv else arch+'-emit.h'
     if 'int heaptype;' in (ROOT/'libinterp'/('riscv-emit.h' if rv else 'leaf64-ops.h')).read_text():
         fields['heaptype'] = 24
+    if not rv and 'int linkcompiled;' in (ROOT/'libinterp/leaf64-ops.h').read_text():
+        fields['linkcompiled']=16
     if rv:
         fields.update(xlen=64, hasm=int(profile != 'i'), hasdiv=int(profile == 'm'))
     assignments = ''.join(f'abi.{key}={value};' for key, value in fields.items())
