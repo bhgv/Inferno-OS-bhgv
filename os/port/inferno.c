@@ -1154,12 +1154,26 @@ Sys_file2chan(void *fp)
 		memmove(up->env->errstr, saved, sizeof(saved));
 }
 
+/* Decode a VM list integer without narrowing an unrelated high-bit descriptor into native int. */
+static int
+sysfdword(void *slot, int *fd)
+{
+	WORD value;
+
+	memmove(&value, slot, sizeof(value));
+	if(!sysnativeint(value))
+		return 0;
+	*fd = value;
+	return 1;
+}
+
 enum
 {
 	/* the following pctl calls can block and must release the virtual machine */
 	BlockingPctl=	Sys_NEWFD|Sys_FORKFD|Sys_NEWNS|Sys_FORKNS|Sys_NEWENV|Sys_FORKENV
 };
 
+/* Publish complete pctl status and preserve descriptor-group ownership during list operations. */
 void
 Sys_pctl(void *fp)
 {
@@ -1175,6 +1189,7 @@ Sys_pctl(void *fp)
 	Fgrp *fg, *ofg, *nfg;
 	volatile struct {Egrp *ne;} ne;
 	Egrp *oe;
+	WORD result;
 
 	f = fp;
 
@@ -1189,7 +1204,8 @@ Sys_pctl(void *fp)
 		closeegrp(ne.ne);
 		if(f->flags & BlockingPctl)
 			acquire();
-		*f->ret = -1;
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
 
@@ -1200,8 +1216,7 @@ Sys_pctl(void *fp)
 		lock(ofg);
 		/* file descriptors to preserve */
 		for(l = f->movefd; l != H; l = l->tail) {
-			fd = *(int*)l->data;
-			if(fd >= 0 && fd <= ofg->maxfd) {
+			if(sysfdword(l->data, &fd) && fd >= 0 && fd <= ofg->maxfd) {
 				c = ofg->fd[fd];
 				if(c != nil && fd < nfg->nfd && nfg->fd[fd] == nil) {
 					incref(c);
@@ -1219,9 +1234,13 @@ Sys_pctl(void *fp)
 	if(f->flags & Sys_FORKFD) {
 		ofg = o->fgrp;
 		fg = dupfgrp(ofg);
-		/* file descriptors to close */
-		for(l = f->movefd; l != H; l = l->tail)
-			kclose(*(int*)l->data);
+		/* Close only in the unpublished copy; the old group may belong to other programs. */
+		for(l = f->movefd; l != H; l = l->tail){
+			if(sysfdword(l->data, &fd))
+				kfgrpclose(fg, fd);
+			else
+				seterror(Ebadarg);
+		}
 		o->fgrp = fg;
 		closefgrp(ofg);
 	}
@@ -1275,7 +1294,8 @@ Sys_pctl(void *fp)
 	if(f->flags & BlockingPctl)
 		acquire();
 
-	*f->ret = p->pid;
+	result = p->pid;
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Retain ownership of native entries and publish tuple fields without alignment assumptions. */

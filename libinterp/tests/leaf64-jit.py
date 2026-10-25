@@ -109,7 +109,7 @@ int realresizeoracle(uint64_t input,int width,int mode,uint64_t *out){
 '''
 
 root = Path(__file__).resolve().parents[2]
-ops = '''IGOTO IBEQC IBNEC IBLTC IBLEC IBGTC IBGEC ITCMP IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
+ops = '''ICASE ICASEL IGOTO IBEQC IBNEC IBLTC IBLEC IBGTC IBGEC ITCMP IMOVPC IMULX1 IDIVX1 ICVTXX1 IMULX0 IDIVX0 ICVTXX0 IINDX IMULX IDIVX ICVTRF ICVTFR ICVTWF ICVTLF ICVTXX IBEQF IBNEF IBLTF IBLEF IBGTF IBGEF IHEADM IEXPW IEXPL IINDC ILENL IHEADB IHEADW IHEADL IHEADF ILENC IMOVM INEGF ILENA IINDB IINDW IINDL IINDF IRUNT IMOVB IMOVW IMOVL IMOVF ICVTBW ICVTWB ICVTWS ICVTSW ILEA IJMP
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF ISUBF IMULF IDIVF ICVTXF ICVTFW ICVTFL ICVTFX IEXPF'''.split()
@@ -127,7 +127,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic','realinteger','realpower','divide','vncoefficient','realbranchfp','goto'):raise ValueError(case)
+if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic','realinteger','realpower','divide','vncoefficient','realbranchfp','goto','case'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -220,6 +220,97 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
             code, registers, data, stack = 0x10000, 0x100020000, 0x100030000, 0x40000
             oldpc, target = 0x123456789, 0x987654321
 
+            if case in ('','case'):
+                if rv:
+                    assert not blobs['ICASE'] and not blobs['ICASEL']
+                else:
+                    for name in ('ICASE','ICASEL'):
+                        assert blobs[name],(arch,wb,name,'missing numeric case leaf')
+                        for field,value in [('linkcompiled',-1),('linkcompiled',1),('moduleprog',1),('modulenprog',1),('instbytes',0)]:
+                            malformed=type(layout).from_buffer_copy(layout);setattr(malformed,field,value)
+                            guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
+                            assert lib.emit(guard,64,C.byref(malformed),ids[name])==0 and list(guard)==[0xa5a5a5a5]*64
+                            checks+=1
+
+                    def casecheck(name,n,value,pattern=0,seed=0,sa=0,ta=0,alias=0,bad=None):
+                        """Compare hardware search with a linear oracle over fixed-width rows."""
+                        if arch=='amd64':u=Uc(UC_ARCH_X86,UC_MODE_64);arg,result=UC_X86_REG_RDI,UC_X86_REG_RAX
+                        else:u=Uc(UC_ARCH_ARM64,0);arg=result=UC_ARM64_REG_X0
+                        for address in (code,registers,stack):u.mem_map(address,0x1000)
+                        u.mem_map(data,0x20000);u.mem_write(code,blobs[name])
+                        image=bytearray(b'\xa5'*0x20000)
+                        wide=name=='ICASEL';width=8 if wide else wb;header=8 if wide else 4;stride=24 if wide else 12
+                        table=data+0x2000+ta;source=data+0x100+sa
+                        base=-128 if pattern==0 else 0 if pattern==1 else 1<<40 if wide else -(1<<31)
+                        defaults=(-1,0,31,32);destination=defaults[seed]
+                        struct.pack_into('<i',image,table-data,n)
+                        rows=[]
+                        for row in range(max(n,0)):
+                            low=base+row*16;high=low+8;entry=(row*7+seed)%35-1
+                            at=table-data+header+row*stride
+                            struct.pack_into('<qqi' if wide else '<iii',image,at,low,high,entry)
+                            rows.append((low,high,entry))
+                        struct.pack_into('<i',image,table-data+header+max(n,0)*stride,destination)
+                        if alias:source=table if alias==1 else table+header
+                        else:image[source-data:source-data+width]=(value&((1<<(width*8))-1)).to_bytes(width,'little')
+                        actual=signed(int.from_bytes(image[source-data:source-data+width],'little'),width*8)
+                        for low,high,entry in rows:
+                            if low<=actual<high:destination=entry;break
+                        valid=0<=n<=4095 and 0<=destination<32
+                        link=data+0x700;owner=data+0x900;program=data+0xc00;length=32;compiled=0
+                        if bad==0:link=0
+                        if bad==1:link=(1<<64)-1
+                        if bad==2:owner=0
+                        if bad==3:owner=(1<<64)-1
+                        if bad==4:compiled=1;owner=1
+                        if bad==5:length=-1
+                        if bad==6:length=0
+                        if bad==7:program=0
+                        if bad==8:program=(1<<64)-1
+                        if bad==9:program=(1<<64)-9
+                        if bad==10:table=0
+                        if bad==11:table=(1<<64)-1
+                        if bad==12:table=(1<<64)-2
+                        if bad is not None:
+                            valid=False
+                            if bad<=4:source=data+0x30000
+                        struct.pack_into('<Q',image,0x700+layout.linkmodule,owner)
+                        struct.pack_into('<i',image,0x700+layout.linkcompiled,compiled)
+                        struct.pack_into('<Q',image,0x900+layout.moduleprog,program)
+                        struct.pack_into('<i',image,0x900+layout.modulenprog,length)
+                        u.mem_write(data,bytes(image))
+                        regs=bytearray(b'\xa5'*0x1000);regs[:40]=struct.pack('<QQQQQ',oldpc,source,table,data+0x30000,data+0x40000)
+                        struct.pack_into('<Q',regs,layout.module,link)
+                        expected=bytearray(regs)
+                        if valid:struct.pack_into('<Q',expected,0,program+destination*layout.instbytes)
+                        u.mem_write(registers,bytes(regs));u.reg_write(arg,registers)
+                        end=code+0x800
+                        if arch=='amd64':u.reg_write(UC_X86_REG_RSP,stack+0x800);u.mem_write(stack+0x800,struct.pack('<Q',end))
+                        else:u.reg_write(UC_ARM64_REG_LR,end)
+                        if n<0 or n>4095:
+                            def only_header(uc,access,address,size,value,user):
+                                assert not data+0x2000+ta+4<=address<data+0x1f000,(arch,name,n,'unexpected table payload read')
+                            u.hook_add(UC_HOOK_MEM_READ,only_header)
+                        u.emu_start(code,end,count=2000)
+                        assert u.reg_read(result)==int(valid),(arch,wb,name,n,value,pattern,seed,bad)
+                        assert bytes(u.mem_read(registers,0x1000))==bytes(expected),(arch,wb,name,'PC/REG',n,value,pattern,seed,bad)
+                        assert bytes(u.mem_read(data,0x20000))==bytes(image)
+
+                    for name in ('ICASE','ICASEL'):
+                        for n in (-1,0,1,2,7,8):
+                            for value in (-129,-128,-121,-120,-1,0,1,7,8,15,16,127,1<<40,-(1<<63),(1<<63)-1):
+                                for seed in range(4):
+                                    for sa,ta in ((0,0),(1,7),(4,1),(7,4)):
+                                        casecheck(name,n,value,seed=seed,sa=sa,ta=ta);checks+=1
+                        for pattern in (1,2):
+                            for value in (0,1,7,8,15,16,-(1<<31),(1<<31)-1,1<<40,(1<<40)+7,(1<<40)+8):
+                                for alias in range(3):
+                                    casecheck(name,7,value,pattern=pattern,seed=1,sa=1,ta=3,alias=alias);checks+=1
+                        for n in (33,4095,4096):
+                            for value in (-1,0,7,8,16,(n-1)*16,(n-1)*16+7,(n-1)*16+8):
+                                casecheck(name,n,value,pattern=1,seed=2,sa=1,ta=1);checks+=1
+                        for bad in range(13):casecheck(name,0,0,seed=2,bad=bad);checks+=1
+                if case=='case':continue
             if case in ('','goto'):
                 if rv:
                     assert not blobs['IGOTO']

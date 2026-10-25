@@ -19,6 +19,7 @@ struct LeafOp {
 	int kind, bytes, input, alu, condition;
 };
 enum {
+	LeafCaseJump = 110,
 	LeafTableJump = 109,
 	LeafRealPower = 108,
 	LeafRealInteger = 107,
@@ -106,6 +107,8 @@ leafop(LeafOp *p, int op, int wordbytes)
 		break;
 	case IMOVPC: p->kind = LeafProgramAddress; p->bytes = 8; break;
 	case IGOTO: p->kind = LeafTableJump; p->bytes = 8; break;
+	case ICASE: p->kind = LeafCaseJump; break;
+	case ICASEL: p->kind = LeafCaseJump; p->bytes = 8; p->alu = 1; break;
 	case ICALL: p->kind = LeafCall; break;
 	case IJMP: p->kind = LeafJump; break;
 	case IADDB: p->bytes = 1; /* fall through */

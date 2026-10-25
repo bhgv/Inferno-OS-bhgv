@@ -8,6 +8,8 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/jit-unknown-kind.py',
+    'libinterp/tests/sys-pctl.py',
     'libinterp/tests/sys-packdir.py',
     'libinterp/tests/goto-native.py',
     'libinterp/tests/sys-stat-slots.py',

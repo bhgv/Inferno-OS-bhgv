@@ -2,19 +2,22 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 119 commands (68.8%); 54 remain on the interpreter path. RV64 profiles
+paths for 121 commands (69.9%); 52 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 119 | 54 |
-| ARM64 | 173 | 119 | 54 |
+| AMD64 | 173 | 121 | 52 |
+| ARM64 | 173 | 121 | 52 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
 
-The latest addition is IGOTO on AMD64/ARM64: it reads compiler-emitted four-byte
+The latest additions are ICASE and ICASEL on AMD64/ARM64 for ordinary numeric
+tables with 0 through 4095 rows. Native binary search validates module/table/
+target metadata before committing a Dis PC; larger and relocated tables keep C.
+The preceding IGOTO addition reads compiler-emitted four-byte
 table entries, validates the count/index/target and commits a Dis PC. Relocated
 native-PC tables retain C handling. Earlier additions include IEXPF, using the same repeated-squaring
 sequence as C, including negative and minimum-width exponents. Earlier additions
@@ -100,11 +103,11 @@ and RX publication are covered separately by `leaf64-runtime.py`.
 ## Current interpreter-only commands on AMD64/ARM64
 
 ```
-IALT INBALT IFRAME ISPAWN ILOAD IMCALL IMSPAWN IMFRAME IRET ICASE IEXIT INEW
-INEWA INEWCB INEWCW INEWCF INEWCP INEWCM INEWCMP ISEND IRECV ICONSB ICONSW
-ICONSP ICONSF ICONSM ICONSMP IHEADP IHEADMP ITAIL IMOVP IMOVMP ICVTCA ICVTAC
-ICVTWC ICVTCW ICVTFC ICVTCF IINSC IADDC ISLICEA ISLICELA ISLICEC ICVTLC ICVTCL
-ICONSL INEWCL ICASEC IMNEWZ INEWZ INEWAZ IRAISE ICASEL ISELF
+IALT INBALT IFRAME ISPAWN ILOAD IMCALL IMSPAWN IMFRAME IRET IEXIT INEW INEWA
+INEWCB INEWCW INEWCF INEWCP INEWCM INEWCMP ISEND IRECV ICONSB ICONSW ICONSP
+ICONSF ICONSM ICONSMP IHEADP IHEADMP ITAIL IMOVP IMOVMP ICVTCA ICVTAC ICVTWC
+ICVTCW ICVTFC ICVTCF IINSC IADDC ISLICEA ISLICELA ISLICEC ICVTLC ICVTCL ICONSL
+INEWCL ICASEC IMNEWZ INEWZ INEWAZ IRAISE ISELF
 ```
 
 The list excludes invalid/unused slots. RV64+M additionally retains all six

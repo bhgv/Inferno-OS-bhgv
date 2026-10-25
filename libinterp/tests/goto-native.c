@@ -70,7 +70,7 @@ casechecks(Module *module,Modlink *link,Inst *code)
 	REG saved,expected;
 	LONG value,low,high,base;
 	WORD word;
-	int family,compiled,pattern,count,vi,di,sa,ta,k,header,stride,destination,entry,valid;
+	int family,compiled,pattern,count,vi,di,sa,ta,k,header,stride,destination,entry,valid,accepted;
 	unsigned long checks=0;
 
 	module->prog=code;module->nprog=32;link->m=module;link->prog=code;
@@ -117,6 +117,9 @@ casechecks(Module *module,Modlink *link,Inst *code)
 		memmove(before,memory.bytes,sizeof(before));operation=family ? casel : icase;
 		assert(invoke()==valid && (valid || raised==exBounds));
 		assert(!memcmp(&R,&expected,sizeof(R)) && !memcmp(before,memory.bytes,sizeof(before)));
+		R=saved;accepted=valid && !compiled;
+		assert(module->jit->entry[family ? ICASEL : ICASE](&R)==accepted);
+		assert(!memcmp(&R,accepted ? &expected : &saved,sizeof(R)) && !memcmp(before,memory.bytes,sizeof(before)));
 		checks++;
 	}
 	/* Invalid headers and metadata must fail before target formation or poisoned reads. */
@@ -146,9 +149,55 @@ casechecks(Module *module,Modlink *link,Inst *code)
 		saved=R;operation=family ? casel : icase;
 		assert(!invoke() && raised==(k<4 ? exModule : exBounds));
 		assert(!memcmp(&R,&saved,sizeof(R)));
+		assert(!module->jit->entry[family ? ICASEL : ICASE](&R) && !memcmp(&R,&saved,sizeof(R)));
 		checks++;
 	}
 	printf("PASS case wire tables: %lu width/alignment/metadata/relocation checks WORD%zu\n",checks,sizeof(WORD)*8);
+}
+
+/* Exercise the native table limit and retain C dispatch for larger valid tables. */
+static void
+largecases(Module *module,Modlink *link,Inst *code)
+{
+	uchar *table,*before;
+	union { uvlong align; uchar bytes[24]; } source;
+	LONG value,low,high;
+	WORD word;
+	Inst sentinel;
+	REG saved,expected;
+	int family,count,align,k,which,header,stride,destination,entry,accepted;
+	unsigned long checks=0;
+
+	module->prog=code;module->nprog=32;link->m=module;link->prog=code;link->compiled=0;
+	table=malloc(8+4096*24+32);before=malloc(8+4096*24+32);assert(table && before);
+	for(family=0;family<2;family++)for(count=4095;count<=4096;count++)for(align=1;align<=4;align+=3){
+		memset(table,0xa5,8+4096*24+32);
+		header=family ? 8 : 4;stride=family ? 24 : 12;
+		R.d=table+align;memmove(R.d,&count,4);
+		for(k=0;k<count;k++){
+			low=k*2;high=low+1;entry=k%32;
+			if(family){memmove((uchar*)R.d+header+k*stride,&low,8);memmove((uchar*)R.d+header+k*stride+8,&high,8);}
+			else{int lo=low,hi=high;memmove((uchar*)R.d+header+k*stride,&lo,4);memmove((uchar*)R.d+header+k*stride+4,&hi,4);}
+			memmove((uchar*)R.d+header+k*stride+(family ? 16 : 8),&entry,4);
+		}
+		entry=31;memmove((uchar*)R.d+header+count*stride,&entry,4);
+		memmove(before,table,8+4096*24+32);
+		for(which=0;which<8;which++){
+			value=which==0 ? -1 : which==1 ? 0 : which==2 ? 1 : which==3 ? 2 :
+				which==4 ? (count-1)*2 : which==5 ? (count-1)*2+1 : which==6 ? count*2 : 127;
+			word=value;R.s=source.bytes+1;R.M=link;R.PC=&sentinel;
+			memmove(R.s,family ? (void*)&value : (void*)&word,family ? sizeof(value) : sizeof(word));
+			destination=value>=0 && value<count*2 && value%2==0 ? (value/2)%32 : 31;
+			saved=R;expected=R;expected.PC=code+destination;operation=family ? casel : icase;
+			assert(invoke() && !memcmp(&R,&expected,sizeof(R)));
+			R=saved;accepted=count<=4095;
+			assert(module->jit->entry[family ? ICASEL : ICASE](&R)==accepted);
+			assert(!memcmp(&R,accepted ? &expected : &saved,sizeof(R)));
+			assert(!memcmp(before,table,8+4096*24+32));checks++;
+		}
+	}
+	free(before);free(table);
+	printf("PASS large native cases: %lu boundary/target/fallback checks WORD%zu\n",checks,sizeof(WORD)*8);
 }
 
 /* Compare real C/native table dispatch against a separate fixed-width table oracle. */
@@ -174,8 +223,9 @@ main(void)
 	operation=igoto;
 	for(i=0;i<32;i++)
 		code[i].op=IGOTO;
+	code[1].op=ICASE;code[2].op=ICASEL;
 	module.prog=code;module.nprog=32;
-	assert(compile(&module,32,nil) && module.jit->entry[IGOTO]);
+	assert(compile(&module,32,nil) && module.jit->entry[IGOTO] && module.jit->entry[ICASE] && module.jit->entry[ICASEL]);
 	link.m=&module;link.prog=code;
 	if(getenv("GOTO_CASE_ONLY")){
 		casechecks(&module,&link,code);
@@ -254,6 +304,7 @@ main(void)
 	link.compiled=1;link.m=(Module*)1;R.M=&link;R.s=R.d=(void*)1;R.PC=&sentinel;saved=R;
 	assert(!module.jit->entry[IGOTO](&R) && !memcmp(&R,&saved,sizeof(R)));
 	casechecks(&module,&link,code);
+	largecases(&module,&link,code);
 	module.jit->freecode(module.jit->code,module.jit->size);free(module.jit);
 	printf("PASS native goto: %lu table-width/alignment/alias/error/legacy checks WORD%zu\n",checks,sizeof(WORD)*8);
 	return 0;

@@ -175,6 +175,65 @@ a64realguard(A64Buf *b, int reg)
 	b->code[ordinary] |= (b->n-ordinary)<<5;
 }
 
+/* Search bounded numeric tables with one rejection return and no runtime helper ABI. */
+static int
+a64case(A64Buf *b, LeafLayout *abi, LeafOp *op)
+{
+	int fallback, header, stride, loop, empty, left, right, found, done;
+
+	if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
+	   abi->linkmodule < 0 || abi->linkmodule > 2047 || abi->linkmodule%8 ||
+	   abi->linkcompiled < 0 || abi->linkcompiled > 2047 || abi->linkcompiled%4 ||
+	   abi->moduleprog < 0 || abi->moduleprog > 2047 || abi->moduleprog%8 ||
+	   abi->modulenprog < 0 || abi->modulenprog > 2047 || abi->modulenprog%4 ||
+	   abi->instbytes < 1 || abi->instbytes > 2047)
+		return 0;
+	header=op->alu ? 8 : 4; stride=op->alu ? 24 : 12;
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	a64ptr(b, 12, abi->module); a64pcguard(b, 0xb500006c, fallback);
+	a64put(b, 0xb100059f); a64pcguard(b, 0x54000061, fallback);
+	a64field(b, 4, 12, abi->linkcompiled, 4); a64pcguard(b, 0x34000064, fallback);
+	a64field(b, 12, 12, abi->linkmodule, 8); a64pcguard(b, 0xb500006c, fallback);
+	a64put(b, 0xb100059f); a64pcguard(b, 0x54000061, fallback);
+	a64ptr(b, 9, abi->s);
+	if(op->bytes == 4)a64put(b, 0xb980012e); /* ldrsw x14,[x9] */
+	else a64load(b, 14, 9, 8);
+	a64ptr(b, 10, abi->d);
+	a64put(b, 0xd1000544); a64put(b, 0xb100149f); a64pcguard(b, 0x54000069, fallback);
+	a64put(b, 0xb9800141);
+	a64put(b, 0xf100003fU | 4095<<10); a64pcguard(b, 0x54000069, fallback);
+	a64put(b, 0xd2800009U | stride<<5);
+	a64put(b, 0x9b097c24); a64put(b, 0x91000084U | header<<10);
+	a64put(b, 0xab040145); a64pcguard(b, 0x54000063, fallback);
+	a64put(b, 0xb1000cbf); a64pcguard(b, 0x54000063, fallback);
+	a64put(b, 0xb98000ad); a64put(b, 0x9100014fU | header<<10);
+	loop=b->n; empty=b->n; a64put(b, 0xb4000001);
+	a64put(b, 0xd341fc22); a64put(b, 0x9b093c43);
+	a64put(b, op->alu ? 0xf9400064 : 0xb9800064);
+	a64put(b, 0xeb0401df); left=b->n; a64put(b, 0x5400000b);
+	a64put(b, op->alu ? 0xf9400464 : 0xb9800464);
+	a64put(b, 0xeb0401df); right=b->n; a64put(b, 0x5400000a);
+	a64put(b, op->alu ? 0xb980106d : 0xb980086d);
+	found=b->n; a64put(b, 0x14000000);
+	b->code[left] |= (b->n-left)<<5;
+	a64put(b, 0xd341fc21); a64put(b, 0x14000000U | ((loop-b->n)&0x3ffffff));
+	b->code[right] |= (b->n-right)<<5;
+	a64put(b, 0xcb020021); a64put(b, 0xd1000421);
+	a64put(b, 0x9100006fU | stride<<10); a64put(b, 0x14000000U | ((loop-b->n)&0x3ffffff));
+	done=b->n; b->code[empty] |= (done-empty)<<5; b->code[found] |= done-found;
+	a64field(b, 4, 12, abi->modulenprog, 4);
+	/* Reject a negative 32-bit instruction count; zero fails the destination bound. */
+	a64put(b, 0x37f80004U | ((fallback-b->n)&0x3fff)<<5);
+	a64put(b, 0xeb0401bf); a64pcguard(b, 0x54000063, fallback);
+	a64field(b, 4, 12, abi->moduleprog, 8);
+	a64put(b, 0xd1000485); a64put(b, 0xb10008bf); a64pcguard(b, 0x54000069, fallback);
+	a64put(b, 0xd2800009U | abi->instbytes<<5); a64put(b, 0x9b097dad);
+	a64put(b, 0xab0d008d); a64pcguard(b, 0x54000063, fallback);
+	a64put(b, 0xf900000dU | (u32int)(abi->pc/8)<<10);
+	return 1;
+}
+
 /* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -194,7 +253,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafStringBranch){
+	if(p.kind == LeafCaseJump){
+		if(!a64case(&b, abi, &p)) return 0;
+	}else if(p.kind == LeafStringBranch){
 		/* Mixed character widths share one bounded loop and a common fallback. */
 		if(abi->stringlen < 0 || abi->stringlen > 2047 || abi->stringlen%4 ||
 		   abi->stringdata < 0 || abi->stringdata > 2047) return 0;
@@ -689,7 +750,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	}else if(p.kind == LeafJump){
 		a64ptr(&b, 11, abi->d); a64load(&b, 12, 11, 8);
 		a64put(&b, 0xf9000000U | (u32int)(abi->pc/8)<<10 | 12);
-	}
+	}else if(p.kind != LeafNop)
+		return 0; /* A new classifier kind must never silently become a native no-op. */
 	a64put(&b, 0x52800020); a64put(&b, 0xd65f03c0);
 	if(b.n > LeafMax || b.n > cap) return 0;
 	if(out != nil) for(i = 0; i < b.n; i++) out[i] = b.code[i];
