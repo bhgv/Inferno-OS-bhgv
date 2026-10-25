@@ -66,6 +66,23 @@ brunpatch(Loader_Inst *ip, Inst *inst, Module *m)
 	}
 }
 
+/* Clear a borrowed pointer result slot before destroying its former owner.
+ * The slot may be unaligned; nil and H are rejected before any allocation.
+ * No ownership escapes: callers publish a completed snapshot with a byte copy. */
+static void
+loaderclear(void *slot)
+{
+    void *old; /* Former owned snapshot pointer, copied before publication. */
+    void *empty = H; /* Empty owner published before invoking destruction. */
+
+    if(slot == nil || slot == H) {
+        error(exNilref);
+    }
+    memmove(&old, slot, sizeof(old));
+    memmove(slot, &empty, sizeof(empty));
+    destroy(old);
+}
+
 enum {
 	SnapshotInst,
 	SnapshotLink,
@@ -176,11 +193,11 @@ void
 Loader_ifetch(void *a)
 {
 	Module *m;
+	Array *snapshot;
 	F_Loader_ifetch *f;
 
 	f = a;
-	destroy(*f->ret);
-	*f->ret = H;
+	loaderclear(f->ret);
 	if(f->mp == H || f->mp == nil || f->mp->m == H || f->mp->m == nil)
 		return;
 	m = f->mp->m;
@@ -188,7 +205,8 @@ Loader_ifetch(void *a)
 		kwerrstr("compiled module");
 		return;
 	}
-	*f->ret = loadergetsnapshot(m, Tinst, m->nprog, SnapshotInst);
+	snapshot = loadergetsnapshot(m, Tinst, m->nprog, SnapshotInst);
+	memmove(f->ret, &snapshot, sizeof(snapshot));
 }
 
 /* Native-PC modules cannot expose their export addresses as Dis indices. */
@@ -196,12 +214,12 @@ void
 Loader_link(void *a)
 {
 	Module *m;
+	Array *snapshot;
 	int nlink;
 	F_Loader_link *f;
 
 	f = a;
-	destroy(*f->ret);
-	*f->ret = H;
+	loaderclear(f->ret);
 	if(f->mp == H || f->mp == nil || f->mp->m == H || f->mp->m == nil)
 		return;
 	m = f->mp->m;
@@ -222,7 +240,8 @@ Loader_link(void *a)
 			return;
 		}
 	}
-	*f->ret = loadergetsnapshot(m, Tlink, nlink, SnapshotLink);
+	snapshot = loadergetsnapshot(m, Tlink, nlink, SnapshotLink);
+	memmove(f->ret, &snapshot, sizeof(snapshot));
 }
 
 /* Build descriptor maps in an initialized, checked and error-owned array. */
@@ -230,15 +249,16 @@ void
 Loader_tdesc(void *a)
 {
 	Module *m;
+	Array *snapshot;
 	F_Loader_tdesc *f;
 
 	f = a;
-	destroy(*f->ret);
-	*f->ret = H;
+	loaderclear(f->ret);
 	if(f->mp == H || f->mp == nil || f->mp->m == H || f->mp->m == nil)
 		return;
 	m = f->mp->m;
-	*f->ret = loadergetsnapshot(m, Tdesc, m->ntype, SnapshotType);
+	snapshot = loadergetsnapshot(m, Tdesc, m->ntype, SnapshotType);
+	memmove(f->ret, &snapshot, sizeof(snapshot));
 }
 
 typedef struct LoaderModule LoaderModule;

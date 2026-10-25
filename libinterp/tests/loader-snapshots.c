@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+static void *replacement_old; /* Observe owner retirement before its destructor runs. */
+static void *replacement_slot; /* Borrowed actual result slot for replacement observation. */
 static Proc worker;
 static char message[128];
 static int live, allocations, failat, checks;
@@ -20,7 +22,7 @@ Type Tarray = {1}, Tbyte = {1}, Tstring = {1};
 Pool *heapmem;
 int mutator, nprop;
 void (*heapmonitor)(int, void*, ulong);
-char exHeap[] = "heap", exNegsize[] = "negative";
+char exHeap[] = "heap", exNegsize[] = "negative", exNilref[] = "nil";
 
 /* Use the actual emulator error-frame protocol around snapshot construction. */
 Proc *getup(void) { return &worker; }
@@ -62,6 +64,15 @@ destroy(void *p)
 	WORD j;
 	int i, k;
 
+    if(p == replacement_old && replacement_old != nil) {
+        void *published;
+        memmove(&published, replacement_slot, sizeof(published));
+        if(published != H) {
+            fprintf(stderr, "Loader destroyed an owner before clearing its slot\n");
+            abort();
+        }
+        replacement_old = nil;
+    }
 	if(p == H)return;
 	h = D2H(p); assert(h->ref > 0);
 	if(--h->ref)return;
@@ -102,6 +113,9 @@ static Link exports[5];
 static Type types[4], *typeptrs[4];
 static Array *result;
 static int operation;
+static void *snapshot_slot; /* Optional borrowed byte slot for alignment/preflight cases. */
+static int slot_override; /* Select the explicit slot, including nil and H. */
+
 
 /* Dispatch the real generated Loader call frames through the public entry points. */
 static int
@@ -112,7 +126,7 @@ dispatch(void *unused)
 	F_Loader_tdesc ft = {0};
 
 	(void)unused;
-	fi.ret = fl.ret = ft.ret = &result;
+	fi.ret = fl.ret = ft.ret = slot_override ? snapshot_slot : &result;
 	fi.mp = fl.mp = ft.mp = &modlink;
 	switch(operation){
 	case 0: Loader_ifetch(&fi); break;
@@ -295,6 +309,71 @@ bounds(void)
 	}
 }
 
+/* Check every byte alignment, replacement publication, failure rollback and nil result slot.
+ * No arguments; returns zero with a diagnostic if any owner, canary or error frame differs. */
+static int
+slots(void)
+{
+    uchar bytes[40], expected[40];
+    void *empty = H;
+    Array *value;
+    int op, offset, pass, ok;
+
+    for(op = 0; op < 3; op++) {
+        for(offset = 0; offset < 8; offset++) {
+            for(pass = 0; pass < 2; pass++) {
+                setup();
+                operation = op;
+                memset(bytes, 0xa5, sizeof(bytes));
+                snapshot_slot = bytes + 8 + offset;
+                slot_override = 1;
+                memmove(snapshot_slot, &empty, sizeof(empty));
+                ok = kprotect(dispatch, nil);
+                memmove(&value, snapshot_slot, sizeof(value));
+                if(!ok || value == H) {
+                    fprintf(stderr, "Loader unaligned snapshot failed\n");
+                    return 0;
+                }
+                replacement_old = value;
+                replacement_slot = snapshot_slot;
+                if(pass) {
+                    failat = allocations + 1;
+                }
+                memcpy(expected, bytes, sizeof(bytes));
+                kprotect(dispatch, nil);
+                memmove(&value, snapshot_slot, sizeof(value));
+                memmove(expected + 8 + offset, &value, sizeof(value));
+                if(replacement_old != nil || (value == H) != pass ||
+                   memcmp(bytes, expected, sizeof(bytes)) || worker.nerr) {
+                    fprintf(stderr, "Loader snapshot replacement/canary/rollback failed\n");
+                    return 0;
+                }
+                destroy(value);
+                slot_override = 0;
+                if(live || Tarray.ref != 1 || Tstring.ref != 1 || Tbyte.ref != 1) {
+                    fprintf(stderr, "Loader slot test leaked a snapshot owner\n");
+                    return 0;
+                }
+                checks++;
+            }
+        }
+        for(pass = 0; pass < 2; pass++) {
+            setup();
+            operation = op;
+            slot_override = 1;
+            snapshot_slot = pass ? H : nil;
+            ok = kprotect(dispatch, nil);
+            slot_override = 0;
+            if(ok || strcmp(message, exNilref) || allocations || live || worker.nerr) {
+                fprintf(stderr, "Loader invalid slot bypassed preflight\n");
+                return 0;
+            }
+            checks++;
+        }
+    }
+    return 1;
+}
+
 /* Isolate baseline failures as well as exercising the full ownership matrix. */
 int
 main(void)
@@ -302,6 +381,9 @@ main(void)
 	char *only;
 
 	only = getenv("LOADER_SNAPSHOT_CASES");
+    if((only == nil || !strcmp(only, "slots")) && !slots()) {
+        return 1;
+    }
 	if(only == nil || !strcmp(only, "values"))values();
 	if(only == nil || !strcmp(only, "failures"))failures();
 	if(only == nil || !strcmp(only, "replace"))replace();

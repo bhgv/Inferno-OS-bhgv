@@ -35,3 +35,15 @@ Only unavailable LeakSanitizer process inspection is disabled.
 `LOADER_SNAPSHOT_CASES=values|failures|replace|branches|metadata|bounds` isolates
 failure families. This does not boot Inferno, run the real GC, execute native
 compiled code, or validate concurrent modification of source modules.
+
+## Result slot ownership follow-up
+
+`ifetch`, `link` and `tdesc` now reject nil/H result slots, copy pointer fields
+without alignment assumptions, and publish H before destroying the old snapshot.
+A complete new result is published only after protected snapshot construction.
+The fixture adds 54 cases per WORD model: all eight byte alignments, live-owner
+replacement, injected next-allocation failures and six invalid output slots.
+It observes the actual slot during destruction, checks surrounding canaries and
+requires balanced descriptor/heap owners after success and failure. These checks
+cover snapshot result APIs; scalar and construction Loader APIs retain their
+existing contracts and separate runtime tests.
