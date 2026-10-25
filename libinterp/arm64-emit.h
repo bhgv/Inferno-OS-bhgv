@@ -112,9 +112,10 @@ a64fixedround(A64Buf *b, int alu, int wordbytes)
 	for(i=0;i<count;i++)b->code[skip[i]] |= (b->n-skip[i])<<5;
 }
 
+
 /* Resolve signed representation lengths and one/four-byte character strides. */
 static void
-a64stringheader(A64Buf *b, int owner, int length, int stride, int lenoff, int dataoff, int fallback)
+a64stringheader(A64Buf *b, int owner, int length, int stride, int lenoff, int maxoff, int dataoff, int fallback)
 {
 	int empty, positive, done;
 
@@ -123,14 +124,15 @@ a64stringheader(A64Buf *b, int owner, int length, int stride, int lenoff, int da
 	a64put(b, 0xb100041fU | owner<<5);
 	empty=b->n; a64put(b, 0x54000000);
 	a64put(b, 0xb9800000U | (u32int)(lenoff/4)<<10 | owner<<5 | length);
-	a64put(b, 0x52b00009); /* w9 = INT_MIN */
-	a64put(b, 0x6b09001fU | length<<5);
-	a64defer(b, 0x54000000, fallback);
 	a64put(b, 0xf100001fU | length<<5);
 	positive=b->n; a64put(b, 0x5400000a);
 	a64put(b, 0xcb0003e0U | length<<16 | length);
 	a64put(b, 0x52800080U | stride);
 	b->code[positive] |= (b->n-positive)<<5;
+	/* Compare full signed values so INT_MIN cannot masquerade as a valid length. */
+	a64wordfield(b, 9, owner, maxoff, 4);
+	a64put(b, 0xeb09001fU | length<<5);
+	a64defer(b, 0x5400000c, fallback);
 	a64put(b, 0x91000000U | (u32int)dataoff<<10 | owner<<5 | owner);
 	done=b->n; a64put(b, 0x14000000);
 	b->code[empty] |= (b->n-empty)<<5;
@@ -457,6 +459,7 @@ a64slicecopy(A64Buf *b, LeafLayout *a)
 	return 1;
 }
 
+
 /* Parse at most nine signed decimal digits and publish only complete results. */
 static int
 a64decimal(A64Buf *b, LeafLayout *a, LeafOp *p)
@@ -486,6 +489,9 @@ a64decimal(A64Buf *b, LeafLayout *a, LeafOp *p)
 	a64put(b, 0x91000529); a64put(b, 0x510005ad);
 	b->code[digits] |= (b->n-digits)<<5;
 	a64put(b, 0x710025bf); a64guard(b, 0x54000069);
+	/* Decline sign-only real conversions before executing any FP instruction. */
+	if(p->alu)
+		a64guard(b, 0x3500006d);
 	signonly=b->n; a64put(b, 0x3400000d);
 	loop=b->n;
 	a64load(b, 10, 9, 1); a64put(b, 0x5100c14a);
@@ -500,16 +506,23 @@ a64decimal(A64Buf *b, LeafLayout *a, LeafOp *p)
 	if(b->n > LeafMax) return 0;
 	b->code[absent] |= (b->n-absent)<<5; b->code[empty] |= (b->n-empty)<<5;
 	b->code[signonly] |= (b->n-signonly)<<5; b->code[positive] |= (b->n-positive)<<5;
-	a64put(b, 0x93407dcd); /* sxtw x13,w14 */
+	if(p->alu){
+		a64put(b, 0x1e6201c0); // SCVTF d0,w14 is exact for the bounded decimal accumulator.
+		a64put(b, 0x9e66000d); // Move the binary64 representation to the integer store register.
+		a64put(b, 0xaa000000U | 15<<16 | 63<<10 | 13<<5 | 13); // Keep negative zero from its captured sign.
+	}else{
+		a64put(b, 0x93407dcd); // Sign-extend the parsed integer result.
+	}
 	a64ptr(b, 11, a->d); a64store(b, 13, p->bytes);
 	return 1;
 }
 
-/* Store one existing ASCII/Rune character without allocating or changing ownership. */
+
+/* Update or append one ASCII/Rune character within uniquely owned capacity. */
 static int
 a64stringstore(A64Buf *b, LeafLayout *a)
 {
-	int wide, done;
+	int wide, done, unchanged;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
@@ -527,18 +540,30 @@ a64stringstore(A64Buf *b, LeafLayout *a)
 	a64put(b, 0x2a0f03e2); a64put(b, 0x36f80042); a64put(b, 0x4b0203e2);
 	a64field(b, 3, 14, a->stringmax, 4);
 	a64put(b, 0x6b02007f); a64guard(b, 0x5400006a);
-	a64put(b, 0xeb0201bf); a64guard(b, 0x54000063);
+	a64put(b, 0xeb0201bf); a64guard(b, 0x54000069);
+	a64put(b, 0xeb0301bf); a64guard(b, 0x54000063);
 	wide=b->n; a64put(b, 0x37f8000f);
 	a64put(b, 0x7102019f); a64guard(b, 0x54000063);
-	a64put(b, 0x910001ceU | (u32int)a->stringdata<<10);
-	a64put(b, 0x8b0d01cb); a64store(b, 12, 1);
+	a64put(b, 0x910001cbU | (u32int)a->stringdata<<10);
+	a64put(b, 0x8b0d016b); a64store(b, 12, 1);
 	done=b->n; a64put(b, 0x14000000);
 	if(b->n > LeafMax) return 0;
 	b->code[wide] |= (b->n-wide)<<5;
-	a64put(b, 0x910001ceU | (u32int)a->stringdata<<10);
-	a64put(b, 0x8b0d09cb); a64store(b, 12, 4);
+	a64put(b, 0x910001cbU | (u32int)a->stringdata<<10);
+	a64put(b, 0x8b0d096b); a64store(b, 12, 4);
 	if(b->n > LeafMax) return 0;
 	b->code[done] |= b->n-done;
+	/* Appending within existing capacity changes only the character and signed length. */
+	a64put(b, 0xeb0201bf);
+	unchanged = b->n; a64put(b, 0x54000001);
+	a64put(b, 0x52800023);
+	a64put(b, 0x710001ff);
+	a64put(b, 0x5a83a463); /* cneg w3,w3,lt */
+	a64put(b, 0x0b0301ef);
+	a64put(b, 0xb9000000U | (u32int)(a->stringlen/4)<<10 | 14<<5 | 15);
+	if(b->n > LeafMax)
+		return 0;
+	b->code[unchanged] |= (b->n-unchanged)<<5;
 	return 1;
 }
 
@@ -577,13 +602,14 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	}else if(p.kind == LeafStringBranch){
 		/* Mixed character widths share one bounded loop and a common fallback. */
 		if(abi->stringlen < 0 || abi->stringlen > 2047 || abi->stringlen%4 ||
+		   abi->stringmax < 0 || abi->stringmax > 2047 || abi->stringmax%4 ||
 		   abi->stringdata < 0 || abi->stringdata > 2047) return 0;
 		fallback=b.n+1;
 		a64put(&b, 0x14000003); a64put(&b, 0x52800000); a64put(&b, 0xd65f03c0);
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
 		a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, 8);
-		a64stringheader(&b, 12, 14, 1, abi->stringlen, abi->stringdata, fallback);
-		a64stringheader(&b, 13, 15, 2, abi->stringlen, abi->stringdata, fallback);
+		a64stringheader(&b, 12, 14, 1, abi->stringlen, abi->stringmax, abi->stringdata, fallback);
+		a64stringheader(&b, 13, 15, 2, abi->stringlen, abi->stringmax, abi->stringdata, fallback);
 		a64put(&b, 0xeb0d019f);
 		equal=b.n; a64put(&b, 0x54000000);
 		loop=b.n;

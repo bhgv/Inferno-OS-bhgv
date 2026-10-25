@@ -44,6 +44,7 @@ enum {
 	LeafDescriptorIndex, LeafFixedFrame, LeafRealResize, LeafIntegerReal, LeafFixedShift, LeafPower, LeafHeadCopy, LeafCopy, LeafStringIndex, LeafStringLength, LeafHead, LeafListLength,
 };
 
+
 /* Classify helper-free native paths that explicitly decline to the VM when needed. */
 static int
 leafop(LeafOp *p, int op, int wordbytes)
@@ -69,6 +70,7 @@ leafop(LeafOp *p, int op, int wordbytes)
 	case IINSC: p->kind = LeafStringStore; break;
 	case ICVTCW: p->kind = LeafDecimal; break;
 	case ICVTCL: p->kind = LeafDecimal; p->bytes = 8; break;
+	case ICVTCF: p->kind = LeafDecimal; p->bytes = 8; p->alu = 1; break;
 	case ISLICELA: p->kind = LeafSliceCopy; break;
 	case IMOVMP: p->kind = LeafMappedCopy; break;
 	case IHEADMP: p->kind = LeafMappedCopy; p->alu = 1; break;

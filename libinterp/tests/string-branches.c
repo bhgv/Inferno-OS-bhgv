@@ -32,6 +32,7 @@ int kprotect(int (*fn)(void*),void *arg) {return fn(arg);}
 #endif
 IMPLEMENTATION
 
+
 /* Compare code points rather than using the production string comparison oracle. */
 int
 main(void)
@@ -58,6 +59,7 @@ main(void)
 	for(i=0;i<9;i++){
 		strings[i+1]=calloc(1,sizeof(String)+64);assert(strings[i+1]);
 		strings[i+1]->len=i<5 ? lengths[i] : -lengths[i];
+		strings[i+1]->max=16;
 		if(i<5)for(j=0;j<lengths[i];j++)strings[i+1]->Sascii[j]=text[i][j];
 		else memmove(strings[i+1]->Srune,text[i],lengths[i]*sizeof(Rune));
 	}
@@ -135,6 +137,28 @@ main(void)
 		}
 	}
 #endif
+	/* Every comparison rejects malformed storage before reading a branch target. */
+	for(i=0;i<5;i++)for(j=0;j<3;j++)for(op=0;op<6;op++){
+		String *invalid = strings[1];
+		invalid->len = i == 0 ? 0 : i == 1 ? 1 : i == 2 ? -1 : i == 3 ? 8 : -8;
+		invalid->max = i < 3 ? -1 : 7;
+		left = j == 1 ? strings[2] : invalid;
+		right = j == 0 ? strings[2] : invalid;
+		R.s = &left; R.m = &right; R.d = (void*)1; R.PC = instructions;
+#ifdef NATIVE_STRING_BRANCH
+		if(module.jit->entry[opcodes[op]](&R) != 0 || R.PC != instructions)
+			abort();
+#endif
+		raised = nil;
+		if(setjmp(boundary) == 0){
+			ops[op]();
+			abort();
+		}
+		if(raised != exHeap || R.PC != instructions)
+			abort();
+		invalid->max = 16;
+		checks++;
+	}
 	for(i=0;i<4;i++){
 		String *invalid=i<2 ? nil : strings[1];
 		if(i>=2)invalid->len=(-0x7fffffff-1);

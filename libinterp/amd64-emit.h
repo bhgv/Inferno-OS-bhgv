@@ -119,9 +119,10 @@ x64field(X64Buf *b, int result, int owner, int offset, int bytes)
 	x64word(b, offset);
 }
 
+
 /* Resolve either string representation, retaining a native character stride. */
 static void
-x64stringheader(X64Buf *b, int owner, int length, int stride, int lenoff, int dataoff)
+x64stringheader(X64Buf *b, int owner, int length, int stride, int lenoff, int maxoff, int dataoff)
 {
 	int empty, positive, done;
 
@@ -130,12 +131,14 @@ x64stringheader(X64Buf *b, int owner, int length, int stride, int lenoff, int da
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8+owner); x64byte(b, 0xff);
 	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
 	x64field(b, length, owner, lenoff, 4);
-	x64byte(b, 0x81); x64byte(b, 0xf8+length); x64word(b, 0x80000000U); x64guard(b, 0x75);
 	x64byte(b, 0x85); x64byte(b, 0xc0+length*9);
 	x64byte(b, 0x79); positive=b->n; x64byte(b, 0);
 	x64byte(b, 0x48); x64byte(b, 0xf7); x64byte(b, 0xd8+length);
 	x64byte(b, 0x41); x64byte(b, 0xb8+stride); x64word(b, 4);
 	b->bytes[positive]=b->n-positive-1;
+	/* Signed capacity bounds also reject the absolute value of INT_MIN. */
+	x64byte(b, 0x4c); x64byte(b, 0x63); x64byte(b, 0x90+owner); x64word(b, maxoff);
+	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xd0+length); x64guard(b, 0x7e);
 	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xc0+owner); x64word(b, dataoff);
 	x64byte(b, 0xeb); done=b->n; x64byte(b, 0);
 	b->bytes[empty]=b->n-empty-1;
@@ -600,6 +603,7 @@ x64slicecopy(X64Buf *b, LeafLayout *a)
 	return 1;
 }
 
+
 /* Parse short signed decimal ASCII without helpers, caches or partial stores. */
 static int
 x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
@@ -636,6 +640,10 @@ x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
 	x64byte(b, 0xff); x64byte(b, 0xc9);
 	b->bytes[digits]=b->n-digits-1;
 	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 9); x64guard(b, 0x76);
+	/* strtod rejects sign-only input; leave that case to its existing C path. */
+	if(p->alu){
+		x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x75);
+	}
 	x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x74); positive=b->n; x64byte(b, 0);
 	loop=b->n;
@@ -657,16 +665,25 @@ x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
 	for(i=0;i<4;i++)b->bytes[absent+i]=distance>>(i*8);
 	b->bytes[empty]=b->n-empty-1;
 	b->bytes[positive]=b->n-positive-1; b->bytes[minus]=b->n-minus-1;
-	x64byte(b, 0x49); x64byte(b, 0x63); x64byte(b, 0xc0);
+	if(p->alu){
+		/* Nine decimal digits convert exactly in every FP rounding mode. */
+		x64byte(b, 0xf2); x64byte(b, 0x41); x64byte(b, 0x0f); x64byte(b, 0x2a); x64byte(b, 0xc0);
+		x64byte(b, 0x66); x64byte(b, 0x48); x64byte(b, 0x0f); x64byte(b, 0x7e); x64byte(b, 0xc0);
+		x64byte(b, 0x49); x64byte(b, 0xc1); x64byte(b, 0xe1); x64byte(b, 63);
+		x64byte(b, 0x4c); x64byte(b, 0x09); x64byte(b, 0xc8); // Preserve the sign of decimal negative zero.
+	}else{
+		x64byte(b, 0x49); x64byte(b, 0x63); x64byte(b, 0xc0);
+	}
 	x64ptr(b, 2, a->d); x64store(b, 0, p->bytes);
 	return 1;
 }
 
-/* Replace an existing character only when the owner is unique and capacity is valid. */
+
+/* Update or append a character only within valid, uniquely owned capacity. */
 static int
 x64stringstore(X64Buf *b, LeafLayout *a)
 {
-	int absolute, wide, done;
+	int absolute, wide, done, unchanged, positive;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
@@ -690,7 +707,8 @@ x64stringstore(X64Buf *b, LeafLayout *a)
 	b->bytes[absolute]=b->n-absolute-1;
 	x64field(b, 0, 2, a->stringmax, 4);
 	x64byte(b, 0x39); x64byte(b, 0xc8); x64guard(b, 0x7d);
-	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64guard(b, 0x72);
+	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64guard(b, 0x76);
+	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xc6); x64guard(b, 0x72);
 	x64byte(b, 0x45); x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x78); wide=b->n; x64byte(b, 0);
 	x64byte(b, 0x41); x64byte(b, 0x81); x64byte(b, 0xf8); x64word(b, 128); x64guard(b, 0x72);
@@ -700,6 +718,18 @@ x64stringstore(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x44); x64byte(b, 0x89); x64byte(b, 0x84); x64byte(b, 0xb2); x64word(b, a->stringdata);
 	if(b->n > sizeof(b->bytes)) return 0;
 	b->bytes[done]=b->n-done-1;
+	/* Preserve the captured representation sign when extending the logical length. */
+	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce);
+	x64byte(b, 0x75); unchanged = b->n; x64byte(b, 0);
+	x64byte(b, 0xff); x64byte(b, 0xc1);
+	x64byte(b, 0x45); x64byte(b, 0x85); x64byte(b, 0xc9);
+	x64byte(b, 0x79); positive = b->n; x64byte(b, 0);
+	x64byte(b, 0xf7); x64byte(b, 0xd9);
+	b->bytes[positive] = b->n-positive-1;
+	x64byte(b, 0x89); x64byte(b, 0x8a); x64word(b, a->stringlen);
+	if(b->n > sizeof(b->bytes))
+		return 0;
+	b->bytes[unchanged] = b->n-unchanged-1;
 	return 1;
 }
 
@@ -736,11 +766,12 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	}else if(p.kind == LeafStringBranch){
 		/* Compare captured characters without touching a false branch target. */
 		if(abi->stringlen < 0 || abi->stringlen > 2047 || abi->stringlen%4 ||
+		   abi->stringmax < 0 || abi->stringmax > 2047 || abi->stringmax%4 ||
 		   abi->stringdata < 0 || abi->stringdata > 2047) return 0;
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		x64ptr(&b, 1, abi->m); x64load(&b, 1, 8);
-		x64stringheader(&b, 0, 2, 0, abi->stringlen, abi->stringdata);
-		x64stringheader(&b, 1, 6, 1, abi->stringlen, abi->stringdata);
+		x64stringheader(&b, 0, 2, 0, abi->stringlen, abi->stringmax, abi->stringdata);
+		x64stringheader(&b, 1, 6, 1, abi->stringlen, abi->stringmax, abi->stringdata);
 		x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xc8);
 		x64byte(&b, 0x74); equal=b.n; x64byte(&b, 0);
 		loop=b.n;

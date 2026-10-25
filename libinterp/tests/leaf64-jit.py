@@ -459,11 +459,16 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 expected_copy=None
                 expected_head=None
                 if stringpair is not None:
-                    left,leftlen,leftdata,right,rightlen,rightdata=stringpair
+                    left,leftlen,leftdata,right,rightlen,rightdata=stringpair[:6]
+                    capacities=stringpair[6:] if len(stringpair)>6 else (min(abs(leftlen),0x7fffffff),min(abs(rightlen),0x7fffffff))
+                    seen=set()
                     u.mem_write(s,struct.pack('<Q',left));u.mem_write(m,struct.pack('<Q',right))
-                    for address,length,payload in ((data+0x500,leftlen,leftdata),(data+0x700,rightlen,rightdata)):
+                    for address,length,payload,capacity in ((left,leftlen,leftdata,capacities[0]),(right,rightlen,rightdata,capacities[1])):
+                        if address in (0,(1<<64)-1) or address in seen:continue
+                        seen.add(address)
                         header=bytearray(b'\x5a'*256)
                         header[layout.stringlen:layout.stringlen+4]=struct.pack('<i',length)
+                        header[layout.stringmax:layout.stringmax+4]=struct.pack('<i',capacity)
                         header[layout.stringdata:layout.stringdata+len(payload)]=payload
                         u.mem_write(address,bytes(header))
                     u.mem_write(d,struct.pack('<Q',target))
@@ -847,6 +852,25 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                         _,pc,before,after,_=run(name,expect=int(valid),badtarget=not valid or not take,stringpair=(left,ll,struct.pack('<I',97) if ll<0 else b'a',right,rl,struct.pack('<I',98) if rl<0 else b'b'))
                                         assert pc==(target if valid and take else oldpc) and before==after
                                         checks+=1
+                    # Invalid capacity must decline even for identical owners and empty strings.
+                    for length in (0,1,-1,8,-8,0x7fffffff,-0x7fffffff,-0x80000000):
+                        for capacity in (-0x80000000,-1,0,7):
+                            if abs(length)<=capacity:continue
+                            for side in range(3):
+                                pair=(data+0x500,length,b'a',data+0x700,1,b'b',capacity,1)
+                                if side==1:pair=(data+0x700,1,b'b',data+0x500,length,b'a',1,capacity)
+                                if side==2:pair=(data+0x500,length,b'a',data+0x500,length,b'a',capacity,capacity)
+                                for name in names:
+                                    _,pc,before,after,_=run(name,expect=0,badtarget=True,stringpair=pair)
+                                    if pc!=oldpc or before!=after:raise RuntimeError('capacity fallback mutated VM storage')
+                                    checks+=1
+                    for name in names:
+                        for value in (-1,1,2048):
+                            malformed=type(layout).from_buffer_copy(layout);malformed.stringmax=value
+                            guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
+                            if lib.emit(guard,64,C.byref(malformed),ids[name])!=0 or list(guard)!=[0xa5a5a5a5]*64:
+                                raise RuntimeError('invalid comparison capacity offset accepted')
+                            checks+=1
                 if case=='bytebranch':continue
             if case in ('','multiply'):
                 values=[0,1,-1,2,-2,127,128,255,256,0x7fffffff,-0x80000000,(1<<63)-1,-(1<<63)]

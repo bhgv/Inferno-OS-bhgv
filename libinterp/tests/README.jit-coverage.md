@@ -220,3 +220,13 @@ shared-string copies and representation promotion retain C fallback. The
 private capacity offset also keeps decimal conversion guards consistent with
 C string2c. AMD64 and ARM64 now each have 131 native paths / 42 interpreter-only
 active instructions. RISC-V profile counts remain unchanged.
+
+## Real decimal and append checkpoint
+
+[Real decimals, append stores and comparison capacity](README.real-decimal-append.md)
+adds CVTCF for bounded decimal integers on AMD64/ARM64, extends INSC to append
+without allocation, and validates both string capacities before native
+comparisons. Both backends now provide 132 guarded native paths / 41
+interpreter-only instructions out of 173 active instructions. RISC-V profiles
+remain 103/70 with M, 90/83 with Zmmul and 87/86 for the base integer ISA.
+These counts describe available guarded paths, not full operand or VM ABI coverage.

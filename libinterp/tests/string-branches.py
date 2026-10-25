@@ -28,7 +28,7 @@ parts = [next(line for line in source.splitlines() if line.startswith('#define J
 if 'static void\nbranchstring(' in source:parts.append(function('static void\nbranchstring('))
 parts += [function('OP('+name+')') for name in ('beqc','bnec','bltc','blec','bgtc','bgec')]
 savedsource=source
-source=(root/'libinterp/string.c').read_text()
+source=Path(os.environ.get('STRING_COMPARE_SOURCE', root/'libinterp/string.c')).read_text()
 parts.insert(0,function('int\nstringcmp('))
 source=savedsource
 unit=(root/'libinterp/tests/string-branches.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))

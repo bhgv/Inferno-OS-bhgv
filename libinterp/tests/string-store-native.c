@@ -87,7 +87,7 @@ main(void)
 	   !module.jit->entry[IINSC] || !module.jit->entry[IINDC])
 		abort();
 	checkindexcapacities(&module);
-	for(wide=0;wide<2;wide++)for(profile=0;profile<12;profile++)for(vi=0;vi<8;vi++)
+	for(wide=0;wide<2;wide++)for(profile=0;profile<16;profile++)for(vi=0;vi<8;vi++)
 	for(sa=0;sa<8;sa++)for(ma=0;ma<8;ma++)for(da=0;da<8;da++)for(alias=0;alias<2;alias++){
 		if(selection && atoi(selection)!=profile)continue;
 		old=wide ? newrunes(32) : newstring(128);capacity=old->max;
@@ -104,6 +104,13 @@ main(void)
 		if(profile==9)D2H(old)->ref=0;
 		if(profile==10)D2H(old)->ref=2;
 		if(profile==11)D2H(old)->ref=(ulong)-1;
+		if(profile == 12){old->max = 8; index = 8;}
+		if(profile == 13){
+			if(wide){destroy(old);continue;}
+			old->len = 0; length = 0; index = 0;
+		}
+		if(profile == 14)index = 9;
+		if(profile == 15){old->len = wide ? -1 : 1; length = 1; index = 1;}
 		memset(slots.bytes,0xa5,sizeof(slots.bytes));memset(&R,0,sizeof(R));
 		value=(WORD)values[vi];R.s=slots.bytes+8+sa;R.m=slots.bytes+40+ma;R.d=slots.bytes+80+da;
 		memmove(R.s,&value,sizeof(value));memmove(R.m,&index,sizeof(index));memmove(R.d,&owner,sizeof(owner));
@@ -112,12 +119,20 @@ main(void)
 		if(alias && (index<0 || index>=8))R.s=old->Sascii;
 		memmove(&captured,R.s,sizeof(captured));memmove(&indexed,R.m,sizeof(indexed));rune=captured;
 		valid=owner==old && D2H(old)->ref==1 && old->len!=INT_MIN && old->max>=length &&
-			indexed>=0 && indexed<length && (wide || rune<Runeself);
-		exception=profile==3 || profile==4 ? exBounds : profile==5 || profile==6 || profile==9 ? exHeap : profile==8 ? exNilref : nil;
+			indexed>=0 && indexed<=length && indexed<old->max && (wide || rune<Runeself);
+		exception=profile==3 || profile==4 || profile==14 ? exBounds : profile==5 || profile==6 || profile==9 ? exHeap : profile==8 ? exNilref : nil;
 		size=sizeof(Heap)+sizeof(String)+128;assert(size<sizeof(image));
 		memmove(image,D2H(old),size);memmove(before,slots.bytes,sizeof(before));
 		memmove(expected,image,size);memmove(expectedslots,before,sizeof(before));
-		if(valid){offset=(uchar*)old->Sascii-(uchar*)D2H(old)+indexed*(wide ? sizeof(Rune) : 1);memmove(expected+offset,&rune,wide ? sizeof(Rune) : 1);}
+		if(valid){
+			offset=(uchar*)old->Sascii-(uchar*)D2H(old)+indexed*(wide ? sizeof(Rune) : 1);
+			memmove(expected+offset,&rune,wide ? sizeof(Rune) : 1);
+			if(indexed == length){
+				int extended = wide ? -(length+1) : length+1;
+				offset = (uchar*)&old->len-(uchar*)D2H(old);
+				memmove(expected+offset, &extended, sizeof(extended));
+			}
+		}
 		R.PC=&sentinel;saved=R;allocations=calls;round=(profile+vi+sa)%4;
 		for(pass=0;pass<2;pass++){
 			memmove(D2H(old),image,size);memmove(slots.bytes,before,sizeof(before));R=saved;raised=nil;

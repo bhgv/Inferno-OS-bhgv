@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import random
 import shlex
+import struct
 import subprocess
 import tempfile
 from capstone import Cs, CS_ARCH_X86, CS_ARCH_ARM64, CS_MODE_64
@@ -24,7 +25,8 @@ def put(image, offset, value, size=8):
 texts=[b'',b'+',b'-',b'0',b'-0',b'+0',b'1',b'-1',b'999999999',b'-999999999',
        b'+999999999',b'000000000',b'1000000000',b'2147483647',b'-2147483648',
        b'9223372036854775807',b'-9223372036854775808',b' 12',b'12 ',b'12x',
-       b'\x0012',b'1\x002',b'++1',b'--1',b'\xff',b'\t1',b'0x1']
+       b'\x0012',b'1\x002',b'++1',b'--1',b'\xff',b'\t1',b'0x1',
+       b'1.5',b'-0.0',b'1e2',b'1e-300',b'1e-999',b'1e999',b'Inf',b'nan']
 texts += [b'1'+bytes([value])+b'2' for value in range(256)]
 rng=random.Random(114)
 for length in range(1,10):
@@ -45,7 +47,7 @@ int emit(u32int *out,int cap,int wb,int big,int field,int value){
  LeafLayout a={0};a.wordbytes=wb;a.pc=0;a.s=8;a.d=16;a.m=24;
  a.stringlen=0;a.stringmax=4;a.stringdata=24;
  if(field==1)a.stringlen=value;if(field==2)a.stringdata=value;if(field==3)a.stringmax=value;
- return leafemit(out,cap,&a,big ? ICVTCL : ICVTCW);
+ return leafemit(out,cap,&a,big==2 ? ICVTCF : big ? ICVTCL : ICVTCW);
 }
 ''')
         binary=td/(arch+'.so')
@@ -61,7 +63,7 @@ int emit(u32int *out,int cap,int wb,int big,int field,int value){
             writes.append((address,size))
         machine.hook_add(UC_HOOK_MEM_WRITE,write)
         for wb in (4,8):
-            for big in (0,1):
+            for big in (0,1,2):
                 out=(C.c_uint32*64)(*[0xa5a5a5a5]*64);n=lib.emit(out,64,wb,big,0,0)
                 assert 0<n<=64 and lib.emit(None,64,wb,big,0,0)==n
                 blob=bytes(out)[:n*4];assert sum(i.size for i in dis.disasm(blob,CODE))==n*4
@@ -77,6 +79,7 @@ int emit(u32int *out,int cap,int wb,int big,int field,int value){
                 for text,fault in cases:
                     body=text[1:] if text[:1] in (b'+',b'-') else text
                     valid=(len(body)<=9 and (not body or all(48<=x<=57 for x in body)))
+                    if big==2 and text in (b'+',b'-'):valid=False
                     if fault:valid=fault==1
                     value=0 if not body or fault==1 else int(text) if valid else 0
                     for sa in range(8):
@@ -94,20 +97,27 @@ int emit(u32int *out,int cap,int wb,int big,int field,int value){
                                 put(image,0x800+sa,length,4);put(image,0x804+sa,-1 if fault==7 else len(text)-1 if fault==8 else len(text),4)
                                 image[0x818+sa:0x818+sa+len(text)+1]=text+bytes([65 if fault==6 else 0])
                                 expected=bytearray(image)
-                                if valid:put(expected,dst,value,8 if big else wb)
+                                if valid:
+                                    if big==2:
+                                        real=0.0 if fault==1 or text==b'' else float(text)
+                                        expected[dst:dst+8]=struct.pack('<d',real)
+                                    else:put(expected,dst,value,8 if big else wb)
                                 machine.mem_write(BASE,bytes(image));writes.clear()
                                 if arch=='amd64':
                                     machine.reg_write(UC_X86_REG_RDI,BASE);machine.reg_write(UC_X86_REG_RSP,CODE+0x2800)
-                                    machine.mem_write(CODE+0x2800,STOP.to_bytes(8,'little'));machine.reg_write(UC_X86_REG_MXCSR,0x3f80)
+                                    machine.mem_write(CODE+0x2800,STOP.to_bytes(8,'little'));machine.reg_write(UC_X86_REG_MXCSR,0x1f80 | (sa&3)<<13 | (0x21 if da&1 else 0))
                                 else:
                                     machine.reg_write(UC_ARM64_REG_X0,BASE);machine.reg_write(UC_ARM64_REG_LR,STOP)
-                                    machine.reg_write(UC_ARM64_REG_FPCR,0x800000);machine.reg_write(UC_ARM64_REG_FPSR,0x11)
+                                    machine.reg_write(UC_ARM64_REG_FPCR,(sa&3)<<22);machine.reg_write(UC_ARM64_REG_FPSR,0x11 if da&1 else 0)
                                 machine.emu_start(CODE,STOP,count=1000)
                                 result=machine.reg_read(UC_X86_REG_RAX if arch=='amd64' else UC_ARM64_REG_X0)
                                 assert result==valid,(arch,wb,big,text,fault,sa,da,alias,result)
                                 assert bytes(machine.mem_read(BASE,0x4000))==bytes(expected),(arch,wb,big,text,fault,sa,da,alias)
                                 if not valid:assert not writes
-                                if arch=='amd64':assert machine.reg_read(UC_X86_REG_MXCSR)==0x3f80
-                                else:assert machine.reg_read(UC_ARM64_REG_FPCR)==0x800000 and machine.reg_read(UC_ARM64_REG_FPSR)==0x11
+                                if arch=='amd64':
+                                    if machine.reg_read(UC_X86_REG_MXCSR)!=(0x1f80 | (sa&3)<<13 | (0x21 if da&1 else 0)):
+                                        raise RuntimeError('decimal leaf changed MXCSR')
+                                elif machine.reg_read(UC_ARM64_REG_FPCR)!=(sa&3)<<22 or machine.reg_read(UC_ARM64_REG_FPSR)!=(0x11 if da&1 else 0):
+                                    raise RuntimeError('decimal leaf changed ARM64 FP control/status')
                                 checks+=1
         print('PASS',arch,'decimal parse/alias/layout/FP checks, cumulative',checks)

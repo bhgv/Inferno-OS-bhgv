@@ -630,7 +630,8 @@ stringdup(String *s)
 	return ns;
 }
 
-/* Compare representation lengths and unsigned byte values before walking payloads. */
+
+/* Validate both capacities before identity shortcuts or lexicographic payload reads. */
 int
 stringcmp(String *s1, String *s2)
 {
@@ -643,6 +644,9 @@ stringcmp(String *s1, String *s2)
 		error(exNilref);
 	if((s1 != H && s1->len == (-0x7fffffff-1)) ||
 	   (s2 != H && s2->len == (-0x7fffffff-1)))
+		error(exHeap);
+	if((s1 != H && s1->max < (s1->len < 0 ? -s1->len : s1->len)) ||
+	   (s2 != H && s2->max < (s2->len < 0 ? -s2->len : s2->len)))
 		error(exHeap);
 	if(s1 == H)
 		s1 = &snil;

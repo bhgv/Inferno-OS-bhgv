@@ -32,7 +32,7 @@ def function(signature):
 
 parts=[function('OP(cvtcl)')]
 source=Path(os.environ.get('DECIMAL_STRING_SOURCE',root/'libinterp/string.c')).read_text()
-parts += [function('char*\nstring2c('),function('OP(cvtcw)')]
+parts += [function('char*\nstring2c('),function('OP(cvtcw)'),function('OP(cvtcf)')]
 unit=(root/'libinterp/tests/decimal-native.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='decimal-native-') as directory:
     td = Path(directory)

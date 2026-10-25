@@ -63,7 +63,7 @@ int emit(u32int *out,int cap,int wb,int field,int value){
                     assert lib.emit(guard,64,wb,field,value)==0 and list(guard)==[0xa5a5a5a5]*64;checks+=1
             machine.mem_write(CODE,blob);machine.ctl_remove_cache(CODE,CODE+256)
             for wide in (0,1):
-                for profile in range(16):
+                for profile in range(21):
                     for value in (0,65,127,128,0x20ac,0xffffffff,0x100000041,0x100000080):
                         for sa in range(8):
                             for mi in range(4):
@@ -86,15 +86,24 @@ int emit(u32int *out,int cap,int wb,int field,int value){
                                         if profile==13:length=(1<<31)-1
                                         if profile==14:index=(1<<31)-1
                                         if profile==15:capacity=0
+                                        if profile==16:
+                                            if wide:continue
+                                            length=0;index=0
+                                        if profile==17:capacity=8;index=8
+                                        if profile==18:index=9
+                                        if profile==19:length=-1 if wide else 1;index=1
+                                        if profile==20:capacity=0;length=0;index=0
                                         put(image,obj-24,ref);put(image,obj,length,4);put(image,obj+4,capacity,4)
                                         for i in range(8):put(image,obj+24+i*(4 if wide else 1),0x400+i if wide else 65+i,4 if wide else 1)
                                         put(image,src,value,wb);put(image,middle,index,wb);put(image,dst,owner)
                                         if alias:src=obj+24+(index if 0<=index<8 else 0)*(4 if wide else 1)
                                         put(image,8,BASE+src);put(image,24,BASE+middle);put(image,16,BASE+dst)
                                         rune=int.from_bytes(image[src:src+wb],'little')&0xffffffff
-                                        valid=owner==BASE+obj and ref==1 and length!=-(1<<31) and abs(length)<=capacity and 0<=index<abs(length) and (length<0 or rune<128)
+                                        valid=owner==BASE+obj and ref==1 and length!=-(1<<31) and abs(length)<=capacity and 0<=index<=abs(length) and index<capacity and (length<0 or rune<128)
                                         expected=bytearray(image);target=obj+24+index*(4 if wide else 1)
-                                        if valid:put(expected,target,rune,4 if wide else 1)
+                                        if valid:
+                                            put(expected,target,rune,4 if wide else 1)
+                                            if index==abs(length):put(expected,obj,-(index+1) if length<0 else index+1,4)
                                         machine.mem_write(BASE,bytes(image));writes.clear()
                                         if arch=='amd64':
                                             machine.reg_write(UC_X86_REG_RDI,BASE);machine.reg_write(UC_X86_REG_RSP,CODE+0x2800)
@@ -106,7 +115,9 @@ int emit(u32int *out,int cap,int wb,int field,int value){
                                         result=machine.reg_read(UC_X86_REG_RAX if arch=='amd64' else UC_ARM64_REG_X0)
                                         assert result==valid,(arch,wb,wide,profile,value,sa,ma,da,alias,result)
                                         assert bytes(machine.mem_read(BASE,0x4000))==bytes(expected),(arch,wb,wide,profile,value,sa,ma,da,alias)
-                                        assert writes==([(BASE+target,4 if wide else 1)] if valid else [])
+                                        expectedwrites=[(BASE+target,4 if wide else 1)] if valid else []
+                                        if valid and index==abs(length):expectedwrites.append((BASE+obj,4))
+                                        if writes!=expectedwrites:raise RuntimeError((arch,wb,wide,profile,'unexpected writes',writes,expectedwrites))
                                         if arch=='amd64':assert machine.reg_read(UC_X86_REG_MXCSR)==0x3f80
                                         else:assert machine.reg_read(UC_ARM64_REG_FPCR)==0x800000 and machine.reg_read(UC_ARM64_REG_FPSR)==0x11
                                         checks+=1
