@@ -318,9 +318,9 @@ OP(cvtac)
 		if(a == nil)
 			error(exNilref);
 		/* A compiler may emit its own pointer-free byte descriptor. */
-        if(D2H(a)->t != &Tarray ||
-            (a->t != &Tbyte &&
-             (a->t == nil || a->t == H || a->t->size != 1 || a->t->np != 0)))
+		if(D2H(a)->t != &Tarray ||
+		   (a->t != &Tbyte &&
+		    (a->t == nil || a->t == H || a->t->size != 1 || a->t->np != 0)))
 			error(exType);
 		if(a->len < 0 || (uvlong)a->len > 0x7fffffff)
 			error(exHeap);
@@ -488,7 +488,7 @@ c2string(char *cs, int len)
 		error(exHeap);
 	if(len == 0)
 		return newstring(0);
-	if(cs == nil)
+	if(cs == nil || cs == H)
 		error(exNilref);
 	isrune = 0;
 	ecs = cs+len;

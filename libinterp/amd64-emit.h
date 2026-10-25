@@ -600,6 +600,62 @@ x64slicecopy(X64Buf *b, LeafLayout *a)
 	return 1;
 }
 
+/* Parse short signed decimal ASCII without helpers, caches or partial stores. */
+static int
+x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
+{
+	int absent, empty, minus, digits, loop, positive;
+
+	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
+	   a->stringdata < 0 || a->stringdata > 2047) return 0;
+	x64ptr(b, 0, a->s); x64load(b, 0, 8);
+	x64byte(b, 0x45); x64byte(b, 0x31); x64byte(b, 0xc0); /* r8d=value */
+	x64byte(b, 0x45); x64byte(b, 0x31); x64byte(b, 0xc9); /* r9d=negative */
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64guard(b, 0x75);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
+	x64byte(b, 0x74); absent=b->n; x64byte(b, 0);
+	x64field(b, 1, 0, a->stringlen, 4);
+	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 10); x64guard(b, 0x76);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0xb0); x64word(b, a->stringdata);
+	/* string2c would terminate ASCII; decline if that would change VM bytes. */
+	x64byte(b, 0x80); x64byte(b, 0x3c); x64byte(b, 0x0e); x64byte(b, 0); x64guard(b, 0x74);
+	x64byte(b, 0x85); x64byte(b, 0xc9);
+	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
+	x64byte(b, 0x0f); x64byte(b, 0xb6); x64byte(b, 0x16);
+	x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, '-');
+	x64byte(b, 0x41); x64byte(b, 0x0f); x64byte(b, 0x94); x64byte(b, 0xc1);
+	x64byte(b, 0x74); minus=b->n; x64byte(b, 0);
+	x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, '+');
+	x64byte(b, 0x75); digits=b->n; x64byte(b, 0);
+	b->bytes[minus]=b->n-minus-1;
+	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc6);
+	x64byte(b, 0xff); x64byte(b, 0xc9);
+	b->bytes[digits]=b->n-digits-1;
+	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 9); x64guard(b, 0x76);
+	x64byte(b, 0x85); x64byte(b, 0xc9);
+	x64byte(b, 0x74); positive=b->n; x64byte(b, 0);
+	loop=b->n;
+	x64byte(b, 0x0f); x64byte(b, 0xb6); x64byte(b, 0x16);
+	x64byte(b, 0x83); x64byte(b, 0xea); x64byte(b, '0');
+	x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 9); x64guard(b, 0x76);
+	x64byte(b, 0x45); x64byte(b, 0x6b); x64byte(b, 0xc0); x64byte(b, 10);
+	x64byte(b, 0x41); x64byte(b, 0x01); x64byte(b, 0xd0);
+	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc6);
+	x64byte(b, 0xff); x64byte(b, 0xc9);
+	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
+	x64byte(b, 0x45); x64byte(b, 0x85); x64byte(b, 0xc9);
+	x64byte(b, 0x74); minus=b->n; x64byte(b, 0);
+	x64byte(b, 0x41); x64byte(b, 0xf7); x64byte(b, 0xd8);
+	if(b->n > sizeof(b->bytes)) return 0;
+	if(b->n-absent-1 > 127 || b->n-empty-1 > 127 ||
+	   b->n-positive-1 > 127 || b->n-minus-1 > 127) return 0;
+	b->bytes[absent]=b->n-absent-1; b->bytes[empty]=b->n-empty-1;
+	b->bytes[positive]=b->n-positive-1; b->bytes[minus]=b->n-minus-1;
+	x64byte(b, 0x49); x64byte(b, 0x63); x64byte(b, 0xc0);
+	x64ptr(b, 2, a->d); x64store(b, 0, p->bytes);
+	return 1;
+}
+
 /* Emit a SysV AMD64 leaf, returning its bounded count of four-byte code units. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -617,7 +673,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafSliceCopy){
+	if(p.kind == LeafDecimal){
+		if(!x64decimal(&b, abi, &p)) return 0;
+	}else if(p.kind == LeafSliceCopy){
 		if(!x64slicecopy(&b, abi)) return 0;
 	}else if(p.kind == LeafMappedCopy){
 		if(!x64mapped(&b, abi, &p)) return 0;

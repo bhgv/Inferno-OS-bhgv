@@ -168,12 +168,14 @@ bounds(void)
 	uchar data[8];
 	WORD result, offset;
 	int op, mode, i;
+	Type localbyte={0};
 
+	localbyte.size=1;localbyte.np=1;
 	a = array(data, 8);
 	g.ret = calloc(1, sizeof(*g.ret));
 	assert(g.ret);
 	f.ret = u.ret = &result;
-	for(op = 0; op < 3; op++) for(mode = 0; mode < 11; mode++){
+	for(op = 0; op < 3; op++) for(mode = 0; mode < 15; mode++){
 		a->len = 8; a->t = &Tbyte; D2H(a)->t = &Tarray; a->data = data;
 		f.buf = g.buf = u.buf = a;
 		offset = 0;
@@ -184,6 +186,10 @@ bounds(void)
 		if(mode == 4)a->t = &other;
 		if(mode == 5)D2H(a)->t = &other;
 		if(mode == 6)a->data = nil;
+		if(mode == 11)a->data = H;
+		if(mode == 12)a->t = nil;
+		if(mode == 13)a->t = H;
+		if(mode == 14)a->t = &localbyte;
 		if(mode == 7)f.buf = g.buf = u.buf = H;
 		if(mode == 8)f.buf = g.buf = u.buf = nil;
 		if(mode == 9)offset = 9;
@@ -197,13 +203,14 @@ bounds(void)
 			if(op == 2)Sys_utfbytes(&u);
 			assert(0);
 		}
-		assert(raised && result == 77);
+		assert(raised==(mode==4 || mode==5 || mode>=12 ? exType : exBounds) && result==77);
 		assert(g.ret->t0 == 77 && g.ret->t1 == 77 && g.ret->t2 == 77);
 		for(i = 0; i < sizeof(data); i++)assert(data[i] == 0xa5);
 		checks++;
 	}
 	a->len = 0; a->data = nil; a->t = &Tbyte; D2H(a)->t = &Tarray;
 	u.buf = a; u.n = 0; Sys_utfbytes(&u); assert(result == 0);
+	a->data = H; Sys_utfbytes(&u); assert(result == 0); checks++;
 	/* A full-width invalid rune must not wrap to an ASCII character. */
 	a->data = data; a->len = 8; f.buf = a; f.n = 2;
 	f.c = sizeof(WORD)>4 ? (WORD)(((uvlong)1<<32)+65) : -1;

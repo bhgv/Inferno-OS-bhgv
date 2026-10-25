@@ -234,18 +234,21 @@ checkbounds(void)
 	a = &forged.a;
 	s = c2string("keep",4); old = s;
 	R.s = &a; R.d = &s;
-	for(mode = 0; mode < 8; mode++) {
+	for(mode = 0; mode < 11; mode++) {
 		forged.a.len = mode == 0 ? -1 : mode == 1 ? 0x7fffffff :
 			mode == 2 ? (WORD)((uvlong)1<<32) : 1;
 		if(mode == 2 && sizeof(WORD) == 4) forged.a.len = -2;
 		if(mode == 3) forged.a.t = &Tstring;
 		if(mode == 4) forged.h.t = &Tstring;
 		if(mode == 5) forged.a.data = nil;
+		if(mode == 8) forged.a.data = H;
+		if(mode == 9) forged.a.t = nil;
+		if(mode == 10) forged.a.t = H;
 		if(mode == 6) a = nil;
 		if(mode == 7) { a = H; cvtac(); assert(s == H); s = c2string("keep",4); old = s; }
 		else {
 			before = calls;
-			EXPECT(cvtac(), mode <= 2 ? exHeap : mode <= 4 ? exType : exNilref);
+			EXPECT(cvtac(), mode <= 2 ? exHeap : mode <= 4 || mode>=9 ? exType : exNilref);
 			assert(s == old && calls == before);
 		}
 		forged.a.t = &Tbyte; forged.h.t = &Tarray; forged.a.data = (uchar*)1; a = &forged.a;
@@ -255,6 +258,8 @@ checkbounds(void)
 	EXPECT(c2string((char*)1,-1),exNegsize);
 	EXPECT(c2string((char*)1,0x7fffffff),exHeap);
 	EXPECT(c2string(nil,1),exNilref);
+	EXPECT(c2string(H,1),exNilref);
+	s = c2string(H,0); assert(s->len == 0); destroy(s); checks++;
 	forged.a.data = nil; forged.a.len = 0;
 	s = H; R.d = &s; cvtac(); assert(s != H && s->len == 0); destroy(s); checks++;
 	text.h.t = &Tstring; text.s.len = (-0x7fffffff-1); s = &text.s;

@@ -465,11 +465,11 @@ sysutfarray(Array *a)
 	if(a == H || a == nil)
 		error(exBounds);
 	/* A compiler may emit its own pointer-free byte descriptor. */
-        if(D2H(a)->t != &Tarray ||
-            (a->t != &Tbyte &&
-             (a->t == nil || a->t == H || a->t->size != 1 || a->t->np != 0)))
+	if(D2H(a)->t != &Tarray ||
+	   (a->t != &Tbyte &&
+	    (a->t == nil || a->t == H || a->t->size != 1 || a->t->np != 0)))
 		error(exType);
-	if(a->len < 0 || (uvlong)a->len > 0x7fffffff || (a->len != 0 && a->data == nil))
+	if(a->len < 0 || (uvlong)a->len > 0x7fffffff || (a->len != 0 && (a->data == nil || a->data == H)))
 		error(exBounds);
 	return (int)a->len;
 }

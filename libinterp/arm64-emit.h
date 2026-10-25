@@ -457,6 +457,51 @@ a64slicecopy(A64Buf *b, LeafLayout *a)
 	return 1;
 }
 
+/* Parse at most nine signed decimal digits and publish only complete results. */
+static int
+a64decimal(A64Buf *b, LeafLayout *a, LeafOp *p)
+{
+	int absent, empty, minus, digits, signonly, loop, positive;
+
+	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
+	   a->stringdata < 0 || a->stringdata > 2047) return 0;
+	a64ptr(b, 9, a->s); a64load(b, 12, 9, 8);
+	a64put(b, 0x5280000e); a64put(b, 0x5280000f);
+	a64guard(b, 0xb500006c);
+	a64put(b, 0xb100059f); absent=b->n; a64put(b, 0x54000000);
+	a64field(b, 13, 12, a->stringlen, 4);
+	a64put(b, 0x710029bf); a64guard(b, 0x54000069);
+	a64put(b, 0x91000189U | (u32int)a->stringdata<<10);
+	/* Preserve string2c's terminator mutation by declining nonterminated ASCII. */
+	a64put(b, 0x8b0d012a); a64load(b, 10, 10, 1); a64guard(b, 0x3400006a);
+	empty=b->n; a64put(b, 0x3400000d);
+	a64load(b, 10, 9, 1); a64put(b, 0x7100b55f);
+	a64put(b, 0x1a9f17ef); /* cset w15,eq */
+	minus=b->n; a64put(b, 0x54000000);
+	a64put(b, 0x7100ad5f); digits=b->n; a64put(b, 0x54000001);
+	b->code[minus] |= (b->n-minus)<<5;
+	a64put(b, 0x91000529); a64put(b, 0x510005ad);
+	b->code[digits] |= (b->n-digits)<<5;
+	a64put(b, 0x710025bf); a64guard(b, 0x54000069);
+	signonly=b->n; a64put(b, 0x3400000d);
+	loop=b->n;
+	a64load(b, 10, 9, 1); a64put(b, 0x5100c14a);
+	a64put(b, 0x7100255f); a64guard(b, 0x54000069);
+	a64put(b, 0x0b0e09ce); /* value*=5 */
+	a64put(b, 0x0b0e01ce); /* value*=2 */
+	a64put(b, 0x0b0a01ce);
+	a64put(b, 0x91000529); a64put(b, 0x710005ad);
+	a64put(b, 0x54000001U | ((loop-b->n)&0x7ffff)<<5);
+	positive=b->n; a64put(b, 0x3400000f);
+	a64put(b, 0x4b0e03ee);
+	if(b->n > LeafMax) return 0;
+	b->code[absent] |= (b->n-absent)<<5; b->code[empty] |= (b->n-empty)<<5;
+	b->code[signonly] |= (b->n-signonly)<<5; b->code[positive] |= (b->n-positive)<<5;
+	a64put(b, 0x93407dcd); /* sxtw x13,w14 */
+	a64ptr(b, 11, a->d); a64store(b, 13, p->bytes);
+	return 1;
+}
+
 /* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -476,7 +521,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafSliceCopy){
+	if(p.kind == LeafDecimal){
+		if(!a64decimal(&b, abi, &p)) return 0;
+	}else if(p.kind == LeafSliceCopy){
 		if(!a64slicecopy(&b, abi)) return 0;
 	}else if(p.kind == LeafMappedCopy){
 		if(!a64mapped(&b, abi, &p)) return 0;
