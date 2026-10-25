@@ -143,6 +143,38 @@ x64stringheader(X64Buf *b, int owner, int length, int stride, int lenoff, int da
 	b->bytes[done]=b->n-done-1;
 }
 
+/* Validate a power scale without FP effects: rax is source, rcx is scale/product magnitude. */
+static void
+x64realproduct(X64Buf *b)
+{
+	int unit;
+
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xca);
+	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe2); x64byte(b, 12);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); x64guard(b, 0x74);
+	x64byte(b, 0x48); x64byte(b, 0xd1); x64byte(b, 0xe1);
+	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe9); x64byte(b, 53);
+	x64byte(b, 0x81); x64byte(b, 0xe9); x64word(b, 1023);
+	x64byte(b, 0x8d); x64byte(b, 0x51); x64byte(b, 16);
+	x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 32); x64guard(b, 0x76);
+	x64byte(b, 0x85); x64byte(b, 0xc9);
+	x64byte(b, 0x74); unit=b->n; x64byte(b, 0);
+	/* Non-unit scales require normal input and normal exact product exponents. */
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2);
+	x64byte(b, 0x48); x64byte(b, 0xd1); x64byte(b, 0xe2);
+	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xea); x64byte(b, 53);
+	x64byte(b, 0x8d); x64byte(b, 0x72); x64byte(b, 0xff);
+	x64byte(b, 0x81); x64byte(b, 0xfe); x64word(b, 2045); x64guard(b, 0x76);
+	x64byte(b, 0x01); x64byte(b, 0xca);
+	x64byte(b, 0x83); x64byte(b, 0xea); x64byte(b, 1);
+	x64byte(b, 0x81); x64byte(b, 0xfa); x64word(b, 2045); x64guard(b, 0x76);
+	b->bytes[unit]=b->n-unit-1;
+	x64byte(b, 0x48); x64byte(b, 0x63); x64byte(b, 0xc9);
+	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe1); x64byte(b, 52);
+	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xc1);
+	x64byte(b, 0x48); x64byte(b, 0xd1); x64byte(b, 0xe1);
+}
+
 /* Reject NaNs without FP effects; finite/subnormal comparisons use host FP controls. */
 static void
 x64realguard(X64Buf *b, int reg)
@@ -622,12 +654,11 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		if(p.alu){
 			x64ptr(&b, 1, abi->m); x64load(&b, 1, 8);
+			x64realproduct(&b);
+		}else{
+			x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xc1);
 			x64byte(&b, 0x48); x64byte(&b, 0xd1); x64byte(&b, 0xe1);
-			x64byte(&b, 0x48); x64byte(&b, 0xba); x64word(&b, 0); x64word(&b, 0x7fe00000);
-			x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xd1); x64guard(&b, 0x74);
 		}
-		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xc1);
-		x64byte(&b, 0x48); x64byte(&b, 0xd1); x64byte(&b, 0xe1);
 		x64byte(&b, 0x48); x64byte(&b, 0xba); x64word(&b, p.bytes == 4 ? 0xffc00000U : 0xfffffffeU); x64word(&b, p.bytes == 4 ? 0x83bfffffU : 0x87bfffffU);
 		x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xd1); x64guard(&b, 0x72);
 		x64byte(&b, 0x66); x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0x6e); x64byte(&b, 0xc0);

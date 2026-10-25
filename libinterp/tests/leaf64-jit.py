@@ -36,6 +36,24 @@ int realcastoracle(uint64_t bits,int fixed,int mode,int seed,int64_t *out){
     if(flags&FE_INEXACT)result|=16;
     fesetenv(&saved);return result;
 }
+/* Evaluate the separately rounded fixed product for supported arbitrary power scales. */
+int realscaleoracle(uint64_t bits,uint64_t scalebits,int mode,int seed,int64_t *out){
+    fenv_t saved;
+    int flags,result=0,modes[]={FE_TONEAREST,FE_DOWNWARD,FE_UPWARD,FE_TOWARDZERO};
+    double value,rawscale;
+    volatile double scale;
+    memcpy(&value,&bits,8);memcpy(&rawscale,&scalebits,8);scale=rawscale;
+    fegetenv(&saved);fesetround(modes[mode]);feclearexcept(FE_ALL_EXCEPT);
+    if(seed)feraiseexcept(FE_DIVBYZERO);
+    value=value*scale;value=value<0 ? value-0.5 : value+0.5;*out=(int64_t)value;
+    flags=fetestexcept(FE_ALL_EXCEPT);
+    if(flags&FE_INVALID)result|=1;
+    if(flags&FE_DIVBYZERO)result|=2;
+    if(flags&FE_OVERFLOW)result|=4;
+    if(flags&FE_UNDERFLOW)result|=8;
+    if(flags&FE_INEXACT)result|=16;
+    fesetenv(&saved);return result;
+}
 /* Compute the C repeated-squaring sequence without libm pow substitution. */
 int realpoweroracle(uint64_t bits,int64_t n,int mode,int seed,uint64_t *out){
     fenv_t saved;
@@ -584,17 +602,31 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     patterns += [bound+delta | sign for bound in (0x41dfffffffe00000,0x43dfffffffffffff)
                                  for delta in (-2,-1,0,1,2) for sign in (0,1<<63)]
                     patterns += [rng.getrandbits(64) for _ in range(200)]
+                    def fixedvalid(bits,scale,width):
+                        """Classify supported exact products by exponent ranges and an independent bit value."""
+                        magnitude=scale&0x7fffffffffffffff
+                        exponent=(magnitude>>52)-1023
+                        if magnitude&((1<<52)-1) or not -16<=exponent<=16:return False
+                        source=(bits>>52)&2047
+                        if exponent and (not 1<=source<=2046 or not 1<=source+exponent<=2046):return False
+                        product=(bits&0x7fffffffffffffff)+exponent*(1<<52)
+                        return product<(0x41dfffffffe00000 if width==4 else 0x43dfffffffffffff)
+
+                    scales=(0x3ff0000000000000,0xbff0000000000000,0,0x4000000000000000,0x7ff0000000000042,
+                            0xc000000000000000,0x3fe0000000000000,0xbfe0000000000000,
+                            0x40f0000000000000,0xc0f0000000000000,0x3ef0000000000000,0xbef0000000000000,
+                            0x4100000000000000,0x3ff8000000000000)
                     for name in names:
                         width=8 if name=='ICVTFL' else wb
                         for bits in patterns:
                             value=struct.unpack('<d',struct.pack('<Q',bits))[0]
                             valid=(bits&0x7fffffffffffffff)<(0x41dfffffffe00000 if width==4 else 0x43dfffffffffffff)
-                            for scale in ((0x3ff0000000000000,0xbff0000000000000,0,0x4000000000000000,0x7ff0000000000042) if name=='ICVTFX' else (0,)):
-                                take=valid and (name!='ICVTFX' or scale in (0x3ff0000000000000,0xbff0000000000000))
+                            for scale in (scales if name=='ICVTFX' else (0,)):
+                                take=fixedvalid(bits,scale,width) if name=='ICVTFX' else valid
                                 for alias in range(6):
                                     out,pc,before,after,_=run(name,a=bits,b=scale,alias=alias,expect=int(take))
                                     if take:
-                                        scaled=-value if name=='ICVTFX' and scale==0xbff0000000000000 else value
+                                        scaled=value*struct.unpack('<d',struct.pack('<Q',scale))[0] if name=='ICVTFX' else value
                                         wanted=int(scaled-0.5 if scaled<0 else scaled+0.5)
                                         assert signed(int.from_bytes(out[:width],'little'),width*8)==wanted,(arch,name,bits)
                                         assert after[:8]==before[:8] and after[8+width:]==before[8+width:]
@@ -617,6 +649,21 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                             if valid:assert signed(int.from_bytes(out[:width],'little'),width*8)==wanted.value
                                             else:assert before==after
                                             checks+=1
+                    lib.realscaleoracle.argtypes=[C.c_uint64,C.c_uint64,C.c_int,C.c_int,C.POINTER(C.c_int64)]
+                    boundary=patterns[:36]+[0x0010000000000000,0x001fffffffffffff,0x7fefffffffffffff,0x800fffffffffffff]
+                    for bits in boundary:
+                        for scale in (0x4000000000000000,0xc000000000000000,0x40f0000000000000,0xc0f0000000000000,0x3ef0000000000000,0xbef0000000000000):
+                            take=fixedvalid(bits,scale,wb)
+                            for mode in range(4):
+                                for seed in range(2):
+                                    wanted=C.c_int64()
+                                    flags=lib.realscaleoracle(bits,scale,mode,seed,C.byref(wanted)) if take else (2 if seed else 0)
+                                    for alias in (0,4):
+                                        out,before,after,status=run('ICVTFX',a=bits,b=scale,alias=alias,expect=int(take),fpstate=(mode,seed))
+                                        if not take or arch=='arm64':assert status==flags,(arch,wb,'scaled flags',hex(bits),hex(scale),mode,status,flags)
+                                        if take:assert signed(int.from_bytes(out[:wb],'little'),wb*8)==wanted.value
+                                        else:assert before==after
+                                        checks+=1
                 if case=='realinteger':continue
 
             if case in ('','realarithmetic'):

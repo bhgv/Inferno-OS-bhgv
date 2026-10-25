@@ -20,7 +20,10 @@ native-PC tables retain C handling. Earlier additions include IEXPF, using the s
 sequence as C, including negative and minimum-width exponents. Earlier additions
 include guarded ICVTFW, ICVTFL and ICVTFX paths.
 The real-to-integer paths retain C for non-finite and large inputs; ICVTFX
-currently accepts exact +1.0 and -1.0 scales. CVTFW/CVTFL/CVTFX now accept
+accepts exact signed powers of two from 2^-16 through 2^16 when non-unit
+scaling keeps the input and product normal. Unit scales retain their earlier
+zero/subnormal support. Non-finite, underflow/overflow and unsupported-scale
+cases retain C. CVTFW/CVTFL/CVTFX now accept
 absolute source values below 2147483647.5 for a 32-bit result, or below the
 binary64 value 2^63-1024 for a 64-bit result. These symmetric bounds leave room
 for the half-unit correction in every rounding mode; remaining boundary and

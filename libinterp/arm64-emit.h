@@ -138,6 +138,28 @@ a64stringheader(A64Buf *b, int owner, int length, int stride, int lenoff, int da
 	b->code[done] |= b->n-done;
 }
 
+/* Guard raw x12 source/x13 scale and leave the shifted product magnitude in x13. */
+static void
+a64realproduct(A64Buf *b)
+{
+	int unit;
+
+	a64put(b, 0xd3400000U | 52<<16 | 51<<10 | 13<<5 | 15); /* lsl x15,x13,#12 */
+	a64guard(b, 0xb400006f);
+	a64put(b, 0xd3400000U | 52<<16 | 62<<10 | 13<<5 | 13);
+	a64put(b, 0xd1000000U | 1023<<10 | 13<<5 | 13);
+	a64put(b, 0x910041af); a64put(b, 0xf10081ff); a64guard(b, 0x54000069);
+	unit=b->n; a64put(b, 0xb400000d);
+	/* Check both exponents independently, excluding NaNs and underflow/overflow. */
+	a64put(b, 0xd3400000U | 52<<16 | 62<<10 | 12<<5 | 15);
+	a64put(b, 0xd10005e2); a64put(b, 0xf1000000U | 2045<<10 | 2<<5 | 31); a64guard(b, 0x54000069);
+	a64put(b, 0x8b0d01ef);
+	a64put(b, 0xd10005e2); a64put(b, 0xf1000000U | 2045<<10 | 2<<5 | 31); a64guard(b, 0x54000069);
+	b->code[unit] |= (b->n-unit)<<5;
+	a64put(b, 0xd3400000U | 12<<16 | 11<<10 | 13<<5 | 13); /* lsl x13,x13,#52 */
+	a64put(b, 0x8b0d018d); a64put(b, 0xd37ff9ad);
+}
+
 /* Reject NaNs before FP execution while allowing host-controlled subnormal inputs. */
 static void
 a64realguard(A64Buf *b, int reg)
@@ -575,11 +597,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
 		if(p.alu){
 			a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, 8);
-			a64put(&b, 0xd37ff9ad); /* lsl x13,x13,#1 */
-			a64put(&b, 0xd2e0000eU | 0x7fe0<<5);
-			a64put(&b, 0xeb0e01bf); a64guard(&b, 0x54000060);
-		}
-		a64put(&b, 0xd37ff98d); /* lsl x13,x12,#1 */
+			a64realproduct(&b);
+		}else a64put(&b, 0xd37ff98d); /* lsl x13,x12,#1 */
 		/* Shifted binary64 bounds: 2^31-0.5 or the representable value below 2^63. */
 		a64put(&b, 0xd2e0000eU | (p.bytes == 4 ? 0x83bf : 0x87bf)<<5);
 		a64put(&b, 0xf2c0000eU | 0xffff<<5);

@@ -640,41 +640,49 @@ unpackdir(Dir *d, void *slot)
 	memmove(slot, &result, sizeof(result));
 }
 
+/* Capture unaligned VM metadata and check every native string/allocation size before copying. */
 static Dir*
-packdir(Sys_Dir *sd)
+packdir(void *slot)
 {
 	char *nm[4], *p;
-	int i, n;
+	Sys_Dir source;
+	ulong lengths[4], size, length;
+	int i;
 	Dir *d;
 
-	nm[0] = string2c(sd->name);
-	nm[1] = string2c(sd->uid);
-	nm[2] = string2c(sd->gid);
-	nm[3] = string2c(sd->muid);
-	n = 0;
-	for(i=0; i<4; i++)
-		n += strlen(nm[i])+1;
-	d = smalloc(sizeof(*d)+n);
+	memmove(&source, slot, sizeof(source));
+	nm[0] = string2c(source.name);
+	nm[1] = string2c(source.uid);
+	nm[2] = string2c(source.gid);
+	nm[3] = string2c(source.muid);
+	size = sizeof(*d);
+	for(i = 0; i < 4; i++){
+		length = strlen(nm[i]);
+		if(length >= (ulong)-1-size)
+			error(exHeap);
+		lengths[i] = length+1;
+		size += lengths[i];
+	}
+	d = smalloc(size);
 	p = (char*)d+sizeof(*d);
-	for(i=0; i<4; i++){
-		n = strlen(nm[i])+1;
-		memmove(p, nm[i], n);
+	for(i = 0; i < 4; i++){
+		memmove(p, nm[i], lengths[i]);
 		nm[i] = p;
-		p += n;
+		p += lengths[i];
 	}
 	d->name = nm[0];
 	d->uid = nm[1];
 	d->gid = nm[2];
 	d->muid = nm[3];
-	d->qid.path = sd->qid.path;
-	d->qid.vers = sd->qid.vers;
-	d->qid.type = sd->qid.qtype;
-	d->mode = sd->mode;
-	d->atime = sd->atime;
-	d->mtime = sd->mtime;
-	d->length = sd->length;
-	d->type = sd->dtype;
-	d->dev = sd->dev;
+	d->qid.path = source.qid.path;
+	d->qid.vers = source.qid.vers;
+	d->qid.type = source.qid.qtype;
+	d->mode = source.mode;
+	d->atime = source.atime;
+	d->mtime = source.mtime;
+	d->length = source.length;
+	d->type = source.dtype;
+	d->dev = source.dev;
 	return d;
 }
 
