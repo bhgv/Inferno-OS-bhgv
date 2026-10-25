@@ -1380,26 +1380,26 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             checks+=1
                 if case=='realbranch':continue
             if case in ('','headcopy'):
-                for length in (0,1,2,3,7,8,15,16,31,32,63,64,127,128):
+                for length in (0,1,2,3,7,8,15,16,31,32,63,64,127,128,129,255,256):
                     for delta in (-17,-1,0,1,4,17,129):
                         for slot in (0x204,0x500+layout.listdata+4,0x500+layout.listdata+16):
                             _,pc,_,_,_=run('IHEADM',headcopy=(data+0x500,length,delta,slot))
-                            assert pc==oldpc
+                            if pc != oldpc:raise RuntimeError(('raw copy changed PC', arch, wb, length))
                             checks+=1
                 for pointer in (0,(1<<64)-1):
                     for length in (-1,0,1,128,129,-(1<<(wb*8-1)),(1<<(wb*8-1))-1):
                         for poison in (False,True):
                             _,pc,before,after,_=run('IHEADM',headcopy=(pointer,length,0,0x204),expect=0,poison=poison)
-                            assert pc==oldpc and before==after
+                            if pc != oldpc or before != after:raise RuntimeError(('raw-copy rejection changed state', arch, wb, length))
                             checks+=1
-                for length in (0,-1,129,256,-(1<<(wb*8-1)),(1<<(wb*8-1))-1):
+                for length in (0,-1,257,512,-(1<<(wb*8-1)),(1<<(wb*8-1))-1):
                     _,pc,before,after,_=run('IHEADM',headcopy=(data+0x500,length,0,0x204),expect=int(length==0),poison=True)
-                    assert pc==oldpc and before==after
+                    if pc != oldpc or before != after:raise RuntimeError(('raw-copy rejection changed state', arch, wb, length))
                     checks+=1
                 for length in (1,7,8,31,128):
                     for alias in (1,2):
                         _,pc,_,_,_=run('IHEADM',headcopy=(data+0x500,length,0,0x204),alias=alias)
-                        assert pc==oldpc
+                        if pc != oldpc:raise RuntimeError(('raw copy changed PC', arch, wb, length))
                         checks+=1
                 if case=='headcopy':continue
             if case in ('','power'):
@@ -1507,15 +1507,15 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             checks+=1
                 if case=='string':continue
             if case in ('','copy'):
-                for length in (0,1,2,3,7,8,15,16,31,32,63,64,127,128):
+                for length in (0,1,2,3,7,8,15,16,31,32,63,64,127,128,129,255,256):
                     for delta in (-129,-64,-17,-8,-1,0,1,3,8,17,64,129):
                         for countslot in (0x704,0x304,0x308):
                             _,pc,_,_,_=run('IMOVM',copy=(0x304,0x304+delta,length,countslot))
-                            assert pc==oldpc
+                            if pc != oldpc:raise RuntimeError('raw copy changed PC')
                             checks+=1
-                for length in (-1,-(1<<(wb*8-1)),129,256,(1<<(wb*8-1))-1):
+                for length in (-1,-(1<<(wb*8-1)),257,512,(1<<(wb*8-1))-1):
                     _,pc,_,_,_=run('IMOVM',copy=(0x304,0x305,length,0x704),expect=0)
-                    assert pc==oldpc
+                    if pc != oldpc:raise RuntimeError(('raw copy changed PC', arch, wb, length))
                     checks+=1
                 if case=='copy':continue
             if case=='control':

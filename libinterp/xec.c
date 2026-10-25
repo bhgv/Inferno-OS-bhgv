@@ -63,7 +63,9 @@ OP(movpc)
 	target = (Inst*)((uintptr)ml->m->prog+offset);
 	memmove(R.d, &target, sizeof(target));
 }
-/* Capture possibly four-byte-aligned lengths before validating or copying. */
+
+
+/* Capture counts and reject invalid nonempty native spans before raw copying. */
 OP(movm)
 {
 	WORD n;
@@ -71,8 +73,14 @@ OP(movm)
 	memmove(&n, R.m, sizeof(n));
 	if(n < 0)
 		error(exBounds);
-	if(n != 0)
+	if(n != 0){
+		if(R.s == nil || R.s == H || R.d == nil || R.d == H)
+			error(exNilref);
+		if((uintptr)R.s > (uintptr)-1-(uintptr)n ||
+		   (uintptr)R.d > (uintptr)-1-(uintptr)n)
+			error(exBounds);
 		memmove(R.d, R.s, n);
+	}
 }
 /* Preserve the active VM word-width address representation at any slot alignment. */
 OP(lea)
@@ -2428,18 +2436,32 @@ OP(headf)
 	l = listhead();
 	memmove(R.d, l->data, sizeof(REAL));
 }
-/* Validate both the list reference and raw payload size before copying. */
+
+
+/* Validate the list, payload address and destination span before raw head copying. */
 OP(headm)
 {
 	List *l;
 	WORD n;
+	uintptr source, offset;
 
 	l = listhead();
 	memmove(&n, R.m, sizeof(n));
 	if(n < 0)
 		error(exBounds);
-	if(n != 0)
-		memmove(R.d, l->data, n);
+	if(n != 0){
+		if(R.d == nil || R.d == H)
+			error(exNilref);
+		/* Form the payload address only after checking the native header offset. */
+		source = (uintptr)l;
+		offset = offsetof(List, data);
+		if(source > (uintptr)-1-offset)
+			error(exBounds);
+		source += offset;
+		if(source > (uintptr)-1-(uintptr)n || (uintptr)R.d > (uintptr)-1-(uintptr)n)
+			error(exBounds);
+		memmove(R.d, (void*)source, n);
+	}
 }
 /* Validate and retain head storage before the destination can release its list. */
 OP(headmp)

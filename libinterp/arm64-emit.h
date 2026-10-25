@@ -1371,13 +1371,18 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64put(&b, (abi->wordbytes == 8 ? 0xf100019fU : 0x7100019fU));
 		a64guard(&b, 0x5400006a); /* b.ge valid */
 		empty = b.n; a64put(&b, 0xb400000c);
-		a64put(&b, 0xf102019f); /* cmp x12, #128 */
+		a64put(&b, 0xf104019f); /* cmp x12, #256 */
 		a64guard(&b, 0x54000069); /* b.ls small */
-		if(p.kind == LeafHeadCopy)
-			a64put(&b, 0x910001e9U | (u32int)abi->listdata<<10); /* add x9, x15, data */
-		else
+		if(p.kind == LeafHeadCopy){
+			a64put(&b, 0xb10001e9U | (u32int)abi->listdata<<10); // adds x9,x15,data.
+			a64guard(&b, 0x54000063); // The payload offset must not carry.
+		}else
 			a64ptr(&b, 9, abi->s);
 		a64ptr(&b, 11, abi->d);
+		/* Empty copies skipped these pointer checks; nonempty spans must not wrap. */
+		a64guard(&b, 0xb5000069); a64guard(&b, 0xb500006b);
+		a64put(&b, 0xab0c0122); a64guard(&b, 0x54000063);
+		a64put(&b, 0xab0c0162); a64guard(&b, 0x54000063);
 		a64put(&b, 0xeb09017f); /* cmp x11, x9 */
 		other = b.n; a64put(&b, 0x54000009); /* b.ls forward */
 		a64put(&b, 0x8b0c0129); a64put(&b, 0x8b0c016b);

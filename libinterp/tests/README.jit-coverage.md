@@ -368,3 +368,12 @@ and RV64 M/Zmmul/I stay 103/70, 90/83, 87/86.
 [Conversion-source preflight](README.conversion-sources.md) rejects dead
 string/array/root owners and native byte-span wrap before reading or allocating;
 the public c2string helper also validates native spans independently.
+
+## Guarded raw-copy span checkpoint
+
+[Raw-copy spans](README.raw-copy-spans.md) adds source/destination native range
+checks to C MOVM/HEADM and AMD64/ARM64/RV64 leaves, then broadens the native
+copy loops from 128 to 256 bytes. HEADM validates payload-offset formation
+before data access. Empty-copy and owner/count error precedence remain intact.
+All three backends retain the 64-unit limit without layout/ABI changes.
+Counts remain AMD64/ARM64 141/32 and RV64 M/Zmmul/I 103/70, 90/83, 87/86.

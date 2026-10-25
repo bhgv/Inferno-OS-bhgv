@@ -1651,7 +1651,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
 	}else if(p.kind == LeafCopy || p.kind == LeafHeadCopy){
 		if(p.kind == LeafHeadCopy){
-			if(abi->listdata < 0) return 0;
+			if(abi->listdata < 0 || abi->listdata > 4095) return 0;
 			x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 			x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
 			x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
@@ -1662,12 +1662,21 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x79);
 		x64byte(&b, 0x74); empty = b.n; x64byte(&b, 0);
 		/* Leave large records to the platform's optimized memmove. */
-		x64byte(&b, 0x48); x64byte(&b, 0x3d); x64word(&b, 128); x64guard(&b, 0x76);
+		x64byte(&b, 0x48); x64byte(&b, 0x3d); x64word(&b, 256); x64guard(&b, 0x76);
 		if(p.kind == LeafHeadCopy){
-			x64byte(&b, 0x4d); x64byte(&b, 0x8d); x64byte(&b, 0x83); x64word(&b, abi->listdata);
+			x64byte(&b, 0x4d); x64byte(&b, 0x89); x64byte(&b, 0xd8);
+			x64byte(&b, 0x49); x64byte(&b, 0x81); x64byte(&b, 0xc0); x64word(&b, abi->listdata);
+			x64guard(&b, 0x73); // Carry-clear payload formation.
 		}else
 			x64ptr(&b, 0, abi->s);
 		x64ptr(&b, 2, abi->d);
+		/* Check both native spans before either forward or backward copying. */
+		x64byte(&b, 0x4d); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
+		x64byte(&b, 0x4d); x64byte(&b, 0x85); x64byte(&b, 0xd2); x64guard(&b, 0x75);
+		x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0xc1);
+		x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xc1); x64guard(&b, 0x73);
+		x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0xd1);
+		x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xc1); x64guard(&b, 0x73);
 		/* Copy downward whenever the destination follows the source. */
 		x64byte(&b, 0x4d); x64byte(&b, 0x39); x64byte(&b, 0xc2);
 		x64byte(&b, 0x76); other = b.n; x64byte(&b, 0);
