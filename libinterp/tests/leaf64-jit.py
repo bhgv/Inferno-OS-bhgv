@@ -768,7 +768,10 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             for count,flags in counts:
                                 divisor=y if name=='IDIVX1' else coefficient
                                 scale=count>>2
-                                valid=(-63<=scale<=63 and (flags==0 if rv else not(flags&1) or scale<0)) and divisor!=0 and (not rv or divisor!=-1)
+                                zero=x==0 or name=='IMULX1' and y==0
+                                opposite=(x<0)!=(y<0) if name!='ICVTXX1' else x<0
+                                native_mask=x<=0 if name=='IDIVX1' else opposite ^ (bool(flags&2) and not zero)
+                                valid=(-63<=scale<=63 and (flags==0 if rv else not(flags&1) or scale<0 or not native_mask)) and divisor!=0 and (not rv or divisor!=-1)
                                 numerator=coefficient*x if name=='IDIVX1' else x*y if name=='IMULX1' else x
                                 numerator=signed(numerator,64)
                                 if valid:
@@ -779,7 +782,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                         correction=1 if name=='IDIVX1' else signed(coefficient-1,wb*8)
                                         if opposite:correction=signed(-correction,wb*8)
                                     maskneeded=x<=0 if name=='IDIVX1' else (not opposite if flags&2 else opposite)
-                                    if flags&1 and maskneeded:numerator=signed(numerator+((1<<-scale)-1),64)
+                                    if flags&1 and maskneeded and not zero:numerator=signed(numerator+((1<<-scale)-1),64)
                                     numerator=signed(numerator<<scale,64) if scale>=0 else numerator>>-scale
                                     if name!='IDIVX1':numerator=signed(numerator+correction,64)
                                     quotient=abs(numerator)//abs(divisor)

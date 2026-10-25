@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix='sys-status-') as directory:
     for platform in ('emu','os'):
         source=Path(os.environ.get('SYS_STATUS_SOURCE',ROOT/platform/'port/inferno.c')).read_text()
         parts=[function(source,'static int\nsysnativeint(')] if 'static int\nsysnativeint(' in source else []
-        parts += [function(source,'void\nSys_'+name+'(') for name in ('dup','remove','seek','unmount','chdir','mount','bind','iounit')]
+        parts += [function(source,'void\nSys_'+name+'(') for name in ('dup','remove','seek','unmount','chdir','mount','bind','iounit','wstat','fwstat','millisec','sleep','print','fprint','werrstr')]
         target=td/(platform+'.c')
         unit=(ROOT/'libinterp/tests/sys-status-slots.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))
         if os.environ.get('SYS_STATUS_ALIGNED'):
@@ -46,5 +46,5 @@ with tempfile.TemporaryDirectory(prefix='sys-status-') as directory:
             (model/'interp.h').write_text(header)
             includes=['-I'+str(model)]+['-I'+str(ROOT/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
             binary=td/(platform+str(bits)+'-status')
-            subprocess.run(command+includes+[str(target),'-o',str(binary)],check=True)
+            subprocess.run(command+includes+['-DTEST_OS='+str(int(platform=='os')),str(target),'-o',str(binary)],check=True)
             subprocess.run([str(binary)],check=True)

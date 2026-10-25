@@ -265,11 +265,12 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(p.condition){
 			/* Add the modular mask using the original operand signs. */
 			done=b.n; a64put(&b, 0x36000001);
+			/* Preserve invalid-mask errors, but allow left shifts needing no mask. */
+			a64put(&b, 0xf100005f);
+			other=b.n; a64put(&b, p.alu == 1 ? 0x5400000c : 0x5400000a);
 			a64put(&b, 0xf10001bf); a64defer(&b, 0x5400000a, fallback);
 			a64put(&b, 0x92800003); a64put(&b, 0xcb0d03e4);
 			a64put(&b, 0x9ac42063); a64put(&b, 0xaa2303e3);
-			a64put(&b, 0xf100005f);
-			other=b.n; a64put(&b, p.alu == 1 ? 0x5400000c : 0x5400000a);
 			a64put(&b, 0x8b03018c);
 			b.code[done] |= (b.n-done)<<5; b.code[other] |= (b.n-other)<<5;
 		}

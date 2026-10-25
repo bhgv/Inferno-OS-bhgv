@@ -232,13 +232,16 @@ syserr(char *s, char *es, Prog *p)
 	return s + strlen(s);
 }
 
+/* Publish a complete scalar result without assuming VM return-slot alignment. */
 void
 Sys_millisec(void *fp)
 {
 	F_Sys_millisec *f;
+	WORD result;
 
 	f = fp;
-	*f->ret = osmillisec();
+	result = osmillisec();
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Clear an unaligned owner slot before finalization and publish only a constructed FD. */
@@ -730,6 +733,12 @@ Sys_mount(void *fp)
 	WORD result;
 
 	f = fp;
+	if(!sysnativeint(f->flags)){
+		seterror(Ebadarg);
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
+		return;
+	}
 	release();
 	result = kmount(fdchk(f->fd), fdchk(f->afd), string2c(f->on), f->flags, string2c(f->spec));
 	memmove(f->ret, &result, sizeof(result));
@@ -744,40 +753,53 @@ Sys_bind(void *fp)
 	WORD result;
 
 	f = fp;
+	if(!sysnativeint(f->flags)){
+		seterror(Ebadarg);
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
+		return;
+	}
 	release();
 	result = kbind(string2c(f->s), string2c(f->on), f->flags);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
+/* Publish a complete scalar result without assuming VM return-slot alignment. */
 void
 Sys_wstat(void *fp)
 {
 	Dir *d;
 	F_Sys_wstat *f;
+	WORD result;
 
 	f = fp;
 	d = packdir(&f->d);
 	release();
-	*f->ret = kdirwstat(string2c(f->s), d);
+	result = kdirwstat(string2c(f->s), d);
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 	free(d);
 }
 
+/* Publish a complete scalar result without assuming VM return-slot alignment. */
 void
 Sys_fwstat(void *fp)
 {
 	Dir *d;
 	F_Sys_fwstat *f;
+	WORD result;
 
 	f = fp;
 	d = packdir(&f->d);
 	release();
-	*f->ret = kdirfwstat(fdchk(f->fd), d);
+	result = kdirfwstat(fdchk(f->fd), d);
+	memmove(f->ret, &result, sizeof(result));
 	acquire();
 	free(d);
 }
 
+/* Stage the scalar status before publishing to an unaligned VM result slot. */
 void
 Sys_print(void *fp)
 {
@@ -786,22 +808,29 @@ Sys_print(void *fp)
 	Chan *c;
 	char buf[1024], *b = buf;
 	F_Sys_print *f;
+	WORD result;
+
 	f = fp;
 	c = up->env->fgrp->fd[1];
-	if(c == nil)
+	if(c == nil){
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
 		return;
+	}
 	p = currun();
 
 	release();
 	n = xprint(p, f, &f->vargs, f->s, buf, sizeof(buf));
 	if (n >= sizeof(buf)-UTFmax-2)
 		n = bigxprint(p, f, &f->vargs, f->s, &b, sizeof(buf));
-	*f->ret = kwrite(1, b, n);
+	result = kwrite(1, b, n);
+	memmove(f->ret, &result, sizeof(result));
 	if (b != buf)
 		free(b);
 	acquire();
 }
 
+/* Stage the scalar status before publishing to an unaligned VM result slot. */
 void
 Sys_fprint(void *fp)
 {
@@ -809,6 +838,7 @@ Sys_fprint(void *fp)
 	Prog *p;
 	char buf[1024], *b = buf;
 	F_Sys_fprint *f;
+	WORD result;
 
 	f = fp;
 	p = currun();
@@ -816,20 +846,24 @@ Sys_fprint(void *fp)
 	n = xprint(p, f, &f->vargs, f->s, buf, sizeof(buf));
 	if (n >= sizeof(buf)-UTFmax-2)
 		n = bigxprint(p, f, &f->vargs, f->s, &b, sizeof(buf));
-	*f->ret = kwrite(fdchk(f->fd), b, n);
+	result = kwrite(fdchk(f->fd), b, n);
+	memmove(f->ret, &result, sizeof(result));
 	if (b != buf)
 		free(b);
 	acquire();
 }
 
+/* Stage the scalar status before publishing to an unaligned VM result slot. */
 void
 Sys_werrstr(void *fp)
 {
 	F_Sys_werrstr *f;
+	WORD result;
 
 	f = fp;
-	*f->ret = 0;
 	kstrcpy(up->env->errstr, string2c(f->s), ERRMAX);
+	result = 0;
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Adopt both dial descriptors as one result, closing them on conversion failure. */
@@ -908,12 +942,20 @@ Sys_listen(void *fp)
 	memmove(f->ret, &status, sizeof(status));
 }
 
+/* Define the no-sleep result and copy it only after regaining the interpreter lock. */
 void
 Sys_sleep(void *fp)
 {
 	F_Sys_sleep *f;
+	WORD result = 0;
 
 	f = fp;
+	if(!sysnativeint(f->period)){
+		seterror(Ebadarg);
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
+		return;
+	}
 	release();
 	if(f->period > 0){
 		if(waserror()){
@@ -921,11 +963,12 @@ Sys_sleep(void *fp)
 			error("");
 		}
 		osenter();
-		*f->ret = limbosleep(f->period);
+		result = limbosleep(f->period);
 		osleave();
 		poperror();
 	}
 	acquire();
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Complete short stream writes and count only bytes acknowledged by the destination. */

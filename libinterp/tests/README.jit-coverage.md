@@ -38,8 +38,10 @@ opcode IDs; RV64 fixed guards are unchanged.
 These figures count opcode availability, not complete semantic or performance
 coverage. Some native paths accept a bounded subset and return to C for other
 operands. Rounded fixed operations now support VN-only scales from -63 through
-63 and WN/VN+WN right shifts from -63 through -1 on AMD64/ARM64. Other rounding
-scales and error cases retain C. RV64 still declines nonzero rounding flags.
+63 and WN/VN+WN right shifts from -63 through -1 on AMD64/ARM64. WN/VN+WN
+scales from 0 through 63 also stay native when the captured operand signs do
+not require a rounding mask. Invalid-mask cases retain C error handling; the
+scale guard now follows sign selection, without growing the emitter buffers. RV64 still declines nonzero rounding flags.
 Some floating conversions also retain C for their range/error contract. Instructions may therefore contribute to both native execution
 and fallback execution at runtime. No fully-native opcode count is asserted.
 

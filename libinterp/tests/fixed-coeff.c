@@ -39,7 +39,7 @@ roundcases(int vn)
 	void (*ops[])(void)={mulx1,divx1,cvtxx1};
 	WORD source,middle,encoded,divisor;
 	Inst sentinel;REG saved;
-	int op,x,y,c,n,align,alias,d,accepted,ok,flags;
+	int op,x,y,c,n,align,alias,d,accepted,ok,flags,maskneeded,opposite,zero;
 	unsigned long checks=0;
 #ifdef NATIVE_COEFFICIENT
 	Module module={0};Inst code[3]={{0}};int ids[]={IMULX1,IDIVX1,ICVTXX1};
@@ -60,7 +60,11 @@ roundcases(int vn)
 		assert(!memcmp(&R,&saved,sizeof(R)));
 		if(!ok)assert(raised!=nil && !memcmp(memory.bytes,before,sizeof(before)));
 		memmove(expected,memory.bytes,sizeof(expected));memmove(memory.bytes,before,sizeof(before));
-		divisor=op==1 ? values[y] : coefficients[c];accepted=scales[n]>=-63 && scales[n]<=63 && (!(flags&1) || scales[n]<0) && divisor!=0;
+		divisor=op==1 ? values[y] : coefficients[c];zero=values[x]==0 || (op==0 && values[y]==0);
+		opposite=op==2 ? values[x]<0 : (values[x]<0)!=(values[y]<0);
+		/* The native sign key reverses VN polarity only after a nonzero operand check. */
+		maskneeded=op==1 ? values[x]<=0 : opposite^((flags&2)!=0 && !zero);
+		accepted=scales[n]>=-63 && scales[n]<=63 && (!(flags&1) || scales[n]<0 || !maskneeded) && divisor!=0;
 #ifdef NATIVE_COEFFICIENT
 		assert(module.jit->entry[ids[op]](&R)==accepted && !memcmp(&R,&saved,sizeof(R)));
 		assert(!memcmp(memory.bytes,accepted ? expected : before,sizeof(before)));

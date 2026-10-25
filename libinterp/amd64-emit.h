@@ -295,14 +295,15 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(p.condition){
 			/* Mask selection precedes shifting and uses unmultiplied signs. */
 			x64byte(&b, 0x40); x64byte(&b, 0xf6); x64byte(&b, 0xc6); x64byte(&b, 1); x64byte(&b, 0x74); done=b.n; x64byte(&b, 0);
+			/* A scale guard is needed only when the original signs require a mask. */
+			x64byte(&b, 0x4d); x64byte(&b, 0x85); x64byte(&b, 0xc0);
+			x64byte(&b, p.alu == 1 ? 0x7f : 0x79); other=b.n; x64byte(&b, 0);
 			x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9); x64guard(&b, 0x78);
 			x64byte(&b, 0x48); x64byte(&b, 0xf7); x64byte(&b, 0xd9);
 			x64byte(&b, 0x48); x64byte(&b, 0xc7); x64byte(&b, 0xc2); x64word(&b, -1);
 			x64byte(&b, 0x48); x64byte(&b, 0xd3); x64byte(&b, 0xe2);
 			x64byte(&b, 0x48); x64byte(&b, 0xf7); x64byte(&b, 0xd2);
 			x64byte(&b, 0x48); x64byte(&b, 0xf7); x64byte(&b, 0xd9);
-			x64byte(&b, 0x4d); x64byte(&b, 0x85); x64byte(&b, 0xc0);
-			x64byte(&b, p.alu == 1 ? 0x7f : 0x79); other=b.n; x64byte(&b, 0);
 			x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xd0);
 			b.bytes[done]=b.n-done-1; b.bytes[other]=b.n-other-1;
 		}
