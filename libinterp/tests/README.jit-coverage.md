@@ -2,19 +2,26 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 127 commands (73.4%); 46 remain on the interpreter path. RV64 profiles
+paths for 128 commands (74.0%); 45 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 127 | 46 |
-| ARM64 | 173 | 127 | 46 |
+| AMD64 | 173 | 128 | 45 |
+| ARM64 | 173 | 128 | 45 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
 
-The latest additions are guarded IMOVMP and IHEADMP paths on AMD64/ARM64.
+The latest addition is guarded ISLICELA on AMD64/ARM64 for byte prefixes
+of at most 128 elements at destination index zero. It validates array bounds,
+byte/non-pointer descriptors and complete native data spans before overlap-aware
+copying. Absent sources and validated empty prefixes preserve C no-op behavior.
+Other offsets, element types, mapped owners and larger copies retain C. See
+[README.slice-prefix-native.md](README.slice-prefix-native.md).
+
+The preceding additions are guarded IMOVMP and IHEADMP paths on AMD64/ARM64.
 They resolve the current Module.type table, accept pointer-free records of
 1 through 128 bytes, and preserve overlapping memmove order. Zero-size records
 are native no-ops after required list/type validation, independently of pointer

@@ -2388,12 +2388,12 @@ arrayspan(Array *array, Type *type, WORD start, WORD count)
 	return (uchar*)((uintptr)array->data+offset);
 }
 
-/* Preserve the language slice bounds even when an empty source is VM nil. */
+/* Validate spans and backing lifetimes before allocating or publishing a view. */
 OP(slicea)
 {
 	Type *t;
 	Heap *h;
-	Array *at, *ss, *ds;
+	Array *at, *ss, *ds, *root;
 	WORD v, n, start;
 	uchar *data;
 
@@ -2415,33 +2415,38 @@ OP(slicea)
 
 	t = ds->t;
 	data = arrayspan(ds, t, start, n);
+	root = ds->root == H ? ds : ds->root;
+	if(root == nil)
+		error(exNilref);
+	if(D2H(ds)->ref == 0)
+		error(exHeap);
+	h = D2H(root);
+	if(h->ref == 0 || (ds->root != H && h->ref == (ulong)-1))
+		error(exHeap);
 	h = heap(&Tarray);
 	ss = H2D(Array*, h);
 	ss->len = n;
 	ss->data = data;
 	ss->t = t;
+	ss->root = root;
 	t->ref++;
 
-	if(ds->root != H) {			/* slicing a slice */
-		ds = ds->root;
-		h = D2H(ds);
+	h = D2H(root);
+	if(ds->root != H) {
 		h->ref++;
 		memmove(&at, R.d, sizeof(at));
 		memmove(R.d, &ss, sizeof(ss));
-		ss->root = ds;
 		destroy(at);
 	}
-	else {
-		h = D2H(ds);
-		ss->root = ds;
+	else
 		memmove(R.d, &ss, sizeof(ss));
-	}
 	Setmark(h);
 }
-/* Validate empty spans and retain mapped source storage through destination release. */
+/* Validate spans and temporary ownership before copying mapped array elements. */
 OP(slicela)
 {
 	Type *t;
+	Heap *h;
 	int l;
 	WORD dl;
 	Array *ss, *ds;
@@ -2469,7 +2474,10 @@ OP(slicela)
 		return;
 	}
 	/* A destination element can own the source array or its backing view. */
-	D2H(ss)->ref++;
+	h = D2H(ss);
+	if(h->ref == 0 || h->ref == (ulong)-1)
+		error(exHeap);
+	h->ref++;
 	sp = source;
 	dp = destination;
 

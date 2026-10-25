@@ -387,6 +387,69 @@ a64mapped(A64Buf *b, LeafLayout *a, LeafOp *p)
 	return 1;
 }
 
+/* Copy a small byte-array prefix without allocation, ownership changes or helper calls. */
+static int
+a64slicecopy(A64Buf *b, LeafLayout *a)
+{
+	int fallback, nilsource, nullsource, empty, forward, loop;
+
+	if(a->arraylen < 0 || a->arraylen > 2047 || a->arraylen%a->wordbytes ||
+	   a->arraydata < 0 || a->arraydata > 2047 || a->arraydata%8 ||
+	   a->arraytype < 0 || a->arraytype > 2047 || a->arraytype%8 ||
+	   a->typesize < 0 || a->typesize > 2047 || a->typesize%4 ||
+	   a->typenp < 0 || a->typenp > 2047 || a->typenp%4)
+		return 0;
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	a64ptr(b, 9, a->s); a64load(b, 13, 9, 8);
+	nullsource=b->n; a64put(b, 0xb400000d);
+	a64put(b, 0xb10005bf);
+	nilsource=b->n; a64put(b, 0x54000000);
+	a64ptr(b, 9, a->d); a64load(b, 14, 9, 8);
+	a64pcguard(b, 0xb500006e, fallback);
+	a64put(b, 0xb10005df); a64pcguard(b, 0x54000061, fallback);
+	a64wordfield(b, 12, 13, a->arraylen, a->wordbytes);
+	a64put(b, 0xf102019f); a64pcguard(b, 0x54000069, fallback);
+	a64ptr(b, 9, a->m); a64load(b, 2, 9, a->wordbytes);
+	a64pcguard(b, 0xb4000062, fallback);
+	a64wordfield(b, 2, 14, a->arraylen, a->wordbytes);
+	a64put(b, 0xb7f80002U | ((fallback-b->n)&0x3fff)<<5);
+	a64put(b, 0xeb02019f); a64pcguard(b, 0x54000069, fallback);
+	empty=b->n; a64put(b, 0xb400000c);
+	a64field(b, 2, 14, a->arraytype, 8);
+	a64pcguard(b, 0xb5000062, fallback);
+	a64put(b, 0xb100045f); a64pcguard(b, 0x54000061, fallback);
+	a64field(b, 3, 2, a->typesize, 4);
+	a64put(b, 0x7100047f); a64pcguard(b, 0x54000060, fallback);
+	a64field(b, 3, 2, a->typenp, 4); a64pcguard(b, 0x34000063, fallback);
+	a64field(b, 9, 13, a->arraydata, 8);
+	a64pcguard(b, 0xb5000069, fallback);
+	a64put(b, 0xb100053f); a64pcguard(b, 0x54000061, fallback);
+	a64field(b, 11, 14, a->arraydata, 8);
+	a64pcguard(b, 0xb500006b, fallback);
+	a64put(b, 0xb100057f); a64pcguard(b, 0x54000061, fallback);
+	a64put(b, 0xab0c0123); a64pcguard(b, 0x54000063, fallback);
+	a64put(b, 0xab0c0163); a64pcguard(b, 0x54000063, fallback);
+	/* One signed-stride loop preserves both directions of memmove overlap. */
+	a64put(b, 0xd2800022); a64put(b, 0xeb09017f);
+	forward=b->n; a64put(b, 0x54000009);
+	a64put(b, 0x92800002);
+	a64put(b, 0x8b0c0129); a64put(b, 0xd1000529);
+	a64put(b, 0x8b0c016b); a64put(b, 0xd100056b);
+	if(b->n > LeafMax) return 0;
+	b->code[forward] |= (b->n-forward)<<5;
+	loop=b->n;
+	a64load(b, 3, 9, 1); a64store(b, 3, 1);
+	a64put(b, 0x8b020129); a64put(b, 0x8b02016b);
+	a64put(b, 0xf100058c);
+	a64put(b, 0x54000001U | ((loop-b->n)&0x7ffff)<<5);
+	if(b->n > LeafMax) return 0;
+	b->code[empty] |= (b->n-empty)<<5;
+	b->code[nilsource] |= (b->n-nilsource)<<5;
+	b->code[nullsource] |= (b->n-nullsource)<<5;
+	return 1;
+}
+
 /* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -406,7 +469,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafMappedCopy){
+	if(p.kind == LeafSliceCopy){
+		if(!a64slicecopy(&b, abi)) return 0;
+	}else if(p.kind == LeafMappedCopy){
 		if(!a64mapped(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafOwner){
 		if(!a64owner(&b, abi, &p)) return 0;

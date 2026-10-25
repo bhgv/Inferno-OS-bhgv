@@ -540,7 +540,7 @@ static void arrays(Module *m) {
 }
 /* Compile, invoke, reject invalid metadata and retry without changing Dis PCs. */
 int main(void) {
-    Module m={0}, *owned;Inst instructions[74]={{0}};
+    Module m={0}, *owned;Inst instructions[75]={{0}};
     WORD a=3,b=7,out=0;
     int i;
     instructions[0].op=ISUBW;instructions[1].op=IADDW;
@@ -554,14 +554,14 @@ int main(void) {
     instructions[30].op=IBLEF;instructions[31].op=IBGTF;instructions[32].op=IBGEF;
     instructions[33].op=IMULX;instructions[34].op=IDIVX;instructions[35].op=IINDX;instructions[36].op=ICALL;instructions[37].op=IMULX0;instructions[38].op=IDIVX0;instructions[39].op=ICVTXX0;instructions[40].op=IMULX1;instructions[41].op=IDIVX1;instructions[42].op=ICVTXX1;instructions[43].op=IMOVPC;instructions[44].op=ITCMP;instructions[45].op=IMULB;instructions[46].op=IMULW;instructions[47].op=IMULL;instructions[48].op=IBEQC;instructions[49].op=IBNEC;instructions[50].op=IBLTC;instructions[51].op=IBLEC;instructions[52].op=IBGTC;instructions[53].op=IBGEC;
     instructions[54].op=IADDF;instructions[55].op=ISUBF;instructions[56].op=IMULF;instructions[57].op=IDIVF;instructions[58].op=ICVTXF;instructions[59].op=ICVTFW;instructions[60].op=ICVTFL;instructions[61].op=ICVTFX;
-    instructions[62].op=ICVTWF;instructions[63].op=ICVTLF;instructions[64].op=ICVTRF;instructions[65].op=ICVTFR;instructions[66].op=IGOTO;instructions[67].op=ICASE;instructions[68].op=ICASEL;instructions[69].op=ISELF;instructions[70].op=IHEADP;instructions[71].op=ITAIL;instructions[72].op=IMOVMP;instructions[73].op=IHEADMP;
-    m.prog=instructions;m.nprog=74;
+    instructions[62].op=ICVTWF;instructions[63].op=ICVTLF;instructions[64].op=ICVTRF;instructions[65].op=ICVTFR;instructions[66].op=IGOTO;instructions[67].op=ICASE;instructions[68].op=ICASEL;instructions[69].op=ISELF;instructions[70].op=IHEADP;instructions[71].op=ITAIL;instructions[72].op=IMOVMP;instructions[73].op=IHEADMP;instructions[74].op=ISLICELA;
+    m.prog=instructions;m.nprog=75;
     for(i=1;i<=5;i++) {
-        fail=i;assert(!compile(&m,74,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
+        fail=i;assert(!compile(&m,75,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
     }
     fail=0;
     assert(!compile(nil,36,nil));assert(!compile(&m,3,nil));
-    assert(compile(&m,74,nil));assert(m.jit && !m.compiled && m.prog==instructions);
+    assert(compile(&m,75,nil));assert(m.jit && !m.compiled && m.prog==instructions);
     assert(m.jit->entry[ICALL] && m.jit->entry[ITCMP]);
     assert(m.jit->entry[IMOVPC]);
     assert(m.jit->entry[IBEQC] && m.jit->entry[IBNEC] && m.jit->entry[IBLTC] && m.jit->entry[IBLEC] && m.jit->entry[IBGTC] && m.jit->entry[IBGEC]);
@@ -569,7 +569,7 @@ int main(void) {
     assert(m.jit->entry[IMULX1] && m.jit->entry[IDIVX1] && m.jit->entry[ICVTXX1]);
     assert(m.jit->entry[IMULX0] && m.jit->entry[IDIVX0] && m.jit->entry[ICVTXX0]);
     assert(m.jit->entry[IMULX] && m.jit->entry[IDIVX]);
-    for(i=69;i<74;i++)assert(!!m.jit->entry[instructions[i].op]==REAL_LEAVES);
+    for(i=69;i<75;i++)assert(!!m.jit->entry[instructions[i].op]==REAL_LEAVES);
     assert(!!m.jit->entry[IMOVP]==REAL_LEAVES);
     assert(m.jit->entry[IINDX]);
     assert(!!m.jit->entry[IEXPF]==REAL_LEAVES);
@@ -584,9 +584,9 @@ int main(void) {
     R.d=&a;assert(m.jit->entry[IADDW](&R)==1 && a==10);
     descriptorindex();fixedframe();realarithmetic();integerreal();shiftdivision();integeralu();fixedscale();scalartransfers();arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);powers(&m);headrecords(&m);realbranches(&m);
 #endif
-    assert(compile(&m,74,nil));dropmodule(&m);
-    for(i=0;i<74;i++)instructions[i].op=ISEND;
-    assert(!compile(&m,74,nil) && !m.jit);
+    assert(compile(&m,75,nil));dropmodule(&m);
+    for(i=0;i<75;i++)instructions[i].op=ISEND;
+    assert(!compile(&m,75,nil) && !m.jit);
     owned=calloc(1,sizeof(*owned));assert(owned);
     owned->prog=calloc(1,sizeof(Inst));assert(owned->prog);
     owned->nprog=1;owned->prog[0].op=IADDW;

@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/slice-copy-native.py',
     'libinterp/tests/mapped-copy-native.py',
     'libinterp/tests/srv-results.py',
     'libinterp/tests/owner-native.py',
@@ -84,6 +85,7 @@ CORE = [
     'limbo/tests/case-max.py',
 ]
 JIT = [
+    'libinterp/tests/slice-copy-jit.py',
     'libinterp/tests/mapped-copy-layouts.py',
     'libinterp/tests/mapped-copy-jit.py',
     'libinterp/tests/owner-jit.py',

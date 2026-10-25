@@ -325,6 +325,56 @@ static void slicespans(void)
     type.size=sizeof(WORD);assert(!live && !worker.nerr);printf("PASS slice spans: %lu rejected geometry/alignment cases\n",cases);
 }
 
+/* Reject invalid view roots and temporary owners before allocation or any copied byte. */
+static void
+sliceowners(void)
+{
+    struct {Heap h;Array a;} root,view,source,dest;
+    union {uvlong align;uchar bytes[128];} slots;
+    uchar expected[128],data[64],original[64];
+    Array *output,*input;
+    WORD first=0,last=1,offset=0;
+    int mode,sa,ma,da,before;
+    char *failure,*selection=getenv("SLICE_OWNER_MODE");
+    unsigned long cases=0;
+
+    for(mode=0;mode<8;mode++)for(sa=0;sa<8;sa++)for(ma=0;ma<8;ma++)for(da=0;da<8;da++){
+        if(selection && atoi(selection)!=mode)continue;
+        memset(&root,0,sizeof(root));memset(&view,0,sizeof(view));
+        memset(&source,0,sizeof(source));memset(&dest,0,sizeof(dest));
+        root.h.ref=view.h.ref=source.h.ref=dest.h.ref=10;
+        root.h.color=view.h.color=source.h.color=dest.h.color=2;
+        type.size=sizeof(WORD);type.np=0;type.map[0]=0;
+        root.a.len=view.a.len=source.a.len=dest.a.len=3;
+        root.a.t=view.a.t=source.a.t=dest.a.t=&type;
+        root.a.root=source.a.root=dest.a.root=H;view.a.root=&root.a;
+        root.a.data=view.a.data=source.a.data=data;dest.a.data=data+32;
+        memset(data,0xa5,sizeof(data));memmove(original,data,sizeof(data));
+        first=0;last=1;output=&view.a;input=&source.a;which=8;failure=exHeap;
+        if(mode==0){view.a.root=nil;failure=exNilref;}
+        if(mode==1)root.h.ref=0;
+        if(mode==2)root.h.ref=(ulong)-1;
+        if(mode==3){view.a.root=H;view.h.ref=0;}
+        if(mode==4){view.a.root=nil;first=last=0;failure=exNilref;}
+        if(mode==7)view.h.ref=0;
+        if(mode==5 || mode==6){which=9;output=&dest.a;type.np=1;source.h.ref=mode==5 ? 0 : (ulong)-1;}
+        memset(slots.bytes,0xa5,sizeof(slots.bytes));R.s=slots.bytes+8+sa;R.m=slots.bytes+40+ma;R.d=slots.bytes+80+da;
+        if(which==8){memmove(R.s,&first,sizeof(first));memmove(R.m,&last,sizeof(last));}
+        else{memmove(R.s,&input,sizeof(input));memmove(R.m,&offset,sizeof(offset));}
+        memmove(R.d,&output,sizeof(output));memmove(expected,slots.bytes,sizeof(expected));
+        before=poolcalls;last_error=nil;nprop=1;
+        assert(!kprotect(run,nil) && last_error==failure && poolcalls==before);
+        assert(!memcmp(expected,slots.bytes,sizeof(expected)) && !memcmp(original,data,sizeof(data)));
+        assert(root.h.ref==(mode==1 ? 0 : mode==2 ? (ulong)-1 : 10));
+        assert(view.h.ref==(mode==3 || mode==7 ? 0 : 10));
+        assert(source.h.ref==(mode==5 ? 0 : mode==6 ? (ulong)-1 : 10) && dest.h.ref==10);
+        assert(root.h.color==2 && view.h.color==2 && source.h.color==2 && dest.h.color==2 && nprop==1);
+        assert(type.ref==1 && Tarray.ref==1 && !live && !worker.nerr);cases++;
+    }
+    type.size=sizeof(WORD);type.np=0;
+    printf("PASS slice owners: %lu root/reference/unaligned/failure cases\n",cases);
+}
+
 int main(int argc, char **argv) {
     static const int widths[]={0,1,2,4,8,16,4096,0x7fffffff};
     unsigned int i;int checks=0,limit,before;
@@ -332,6 +382,7 @@ int main(int argc, char **argv) {
     Type *types[]={&type};Modlink ml={0};
     WORD count,first,last,offset;
     List *saved;
+    if(argc>1 && !strcmp(argv[1],"slice-owners")){sliceowners();return 0;}
     if(argc>1 && !strcmp(argv[1],"slice-slots")){sliceslots();return 0;}
     if(argc>1 && !strcmp(argv[1],"slice-spans")){slicespans();return 0;}
     if(argc>1 && !strcmp(argv[1],"borrowed-copies")) {
@@ -419,7 +470,7 @@ int main(int argc, char **argv) {
         destroy(a);assert(D2H(value)->ref==1);destroy(b);assert(scalar.ref==1);
         type.np=0;
     }
-    pointercopies(); borrowedcopies(); emptycopies(); nilslices(); emptyviews(1); sliceslots(); slicespans();
+    sliceowners(); pointercopies(); borrowedcopies(); emptycopies(); nilslices(); emptyviews(1); sliceslots(); slicespans();
     assert(live==0 && worker.nerr==0 && type.ref==1 && Tarray.ref==1 && Tmodlink.ref==1 && Tlist.ref==1);
     printf("PASS heap bounds: %d array boundaries, overflow counterexample, pool/header limits, copies, links, lists, slices, full-WORD VM sizes, 285 pointer overlaps and empty spans\n",checks);
     return 0;

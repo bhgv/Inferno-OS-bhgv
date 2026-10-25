@@ -25,22 +25,23 @@ int main(void){
  LeafLayout a;u32int out[66],before[66];
  int offsets[]={0,1,4,8,24,28,120,128,248,255,256,2040,2044,2047,2048,32760};
  int wb,op,field,oi,cap,n,m,i;unsigned long checks=0;
- for(wb=4;wb<=8;wb+=4)for(op=0;op<2;op++)for(field=0;field<14;field++)for(oi=0;oi<16;oi++){
+ for(wb=4;wb<=8;wb+=4)for(op=0;op<3;op++)for(field=0;field<17;field++)for(oi=0;oi<16;oi++){
   memset(&a,0,sizeof(a));a.wordbytes=wb;a.pc=0;a.s=8;a.d=16;a.m=24;a.module=40;
   a.linkmodule=8;a.moduletypes=32;a.modulenty=40;a.typesize=24;a.typenp=28;
-  a.listdata=24;a.heapref=24;a.refbytes=8;
+  a.listdata=24;a.heapref=24;a.refbytes=8;a.arraylen=8;a.arraytype=16;a.arraydata=32;
   switch(field){
-  case 0:a.module=a.linkmodule=a.moduletypes=a.modulenty=a.typesize=a.typenp=a.listdata=offsets[oi];a.s=a.d=a.m=a.pc=32760;break;
+  case 0:a.arraylen=a.arraytype=a.arraydata=a.module=a.linkmodule=a.moduletypes=a.modulenty=a.typesize=a.typenp=a.listdata=offsets[oi];a.s=a.d=a.m=a.pc=32760;break;
   case 1:a.module=offsets[oi];break;case 2:a.linkmodule=offsets[oi];break;
   case 3:a.moduletypes=offsets[oi];break;case 4:a.modulenty=offsets[oi];break;
   case 5:a.typesize=offsets[oi];break;case 6:a.typenp=offsets[oi];break;
   case 7:a.listdata=offsets[oi];break;case 8:a.heapref=offsets[oi];break;
   case 9:a.refbytes=offsets[oi];break;case 10:a.s=offsets[oi];break;
-  case 11:a.m=offsets[oi];break;case 12:a.d=offsets[oi];break;case 13:a.pc=offsets[oi];break;}
-  n=leafemit(nil,64,&a,op ? IHEADMP : IMOVMP);assert(n>=0 && n<=64);
+  case 11:a.m=offsets[oi];break;case 12:a.d=offsets[oi];break;case 13:a.pc=offsets[oi];break;
+  case 14:a.arraylen=offsets[oi];break;case 15:a.arraytype=offsets[oi];break;case 16:a.arraydata=offsets[oi];break;}
+  n=leafemit(nil,64,&a,op==2 ? ISLICELA : op ? IHEADMP : IMOVMP);assert(n>=0 && n<=64);
   for(cap=0;cap<=64;cap++){
    memset(out,0xa5,sizeof(out));memmove(before,out,sizeof(out));
-   m=leafemit(out+1,cap,&a,op ? IHEADMP : IMOVMP);
+   m=leafemit(out+1,cap,&a,op==2 ? ISLICELA : op ? IHEADMP : IMOVMP);
    assert(m==(n && cap>=n ? n : 0));
    if(!m)assert(!memcmp(out,before,sizeof(out)));
    else{assert(out[0]==before[0]);for(i=m+1;i<66;i++)assert(out[i]==before[i]);}
