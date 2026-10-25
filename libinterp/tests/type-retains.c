@@ -17,6 +17,34 @@ retainrun(void *unused)
 }
 
 
+/* Module-link allocation must reject invalid Type counters before touching the pool. */
+static void
+checklinkretains(void)
+{
+	int values[] = {0, -1, 0x7fffffff, 0x7ffffffe};
+	int i, before, ok;
+	Type saved;
+
+	which = 6; link_count = 0;
+	for(i = 0; i < nelem(values); i++){
+		Tmodlink.ref = values[i];
+		memmove(&saved, &Tmodlink, sizeof(saved));
+		before = poolcalls; allocated = nil; last_error = nil;
+		ok = kprotect(run, nil);
+		if(ok != (i == 3))abort();
+		if(!ok){
+			if(last_error != exHeap || poolcalls != before || allocated != nil ||
+			   memcmp(&saved, &Tmodlink, sizeof(saved)))abort();
+		}else{
+			if(poolcalls != before+1 || Tmodlink.ref != 0x7fffffff)abort();
+			destroy(H2D(void*, allocated));
+			if(Tmodlink.ref != values[i])abort();
+		}
+	}
+	Tmodlink.ref = 1;
+}
+
+
 /* Invalid descriptors must neither allocate nor alter operand, owner or Type images. */
 int
 main(void)
@@ -33,6 +61,7 @@ main(void)
 	int oi, mode, ok, expected, callsbefore, livebefore, originalref, arrayref, alias;
 	unsigned long total = 0;
 
+	checklinkretains();
 	owner.type = types; owner.ntype = 1;
 	link.m = &owner; link.type = types;
 	for(oi = 0; oi < nelem(operations); oi++)
@@ -105,6 +134,6 @@ main(void)
 			abort();
 		total++;
 	}
-	printf("PASS Type retain preflight: %lu constructor/error/boundary cases WORD%zu\n", total, sizeof(WORD)*8);
+	printf("PASS Type retain preflight: %lu constructor/error/boundary cases plus 4 module-link cases WORD%zu\n", total, sizeof(WORD)*8);
 	return 0;
 }

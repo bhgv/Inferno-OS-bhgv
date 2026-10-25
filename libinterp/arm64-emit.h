@@ -637,11 +637,11 @@ a64stringstore(A64Buf *b, LeafLayout *a)
 }
 
 
-/* Copy a bounded nonempty slice forward after all ownership and extent checks. */
+/* Update a unique prefix or copy a bounded slice after ownership and extent checks. */
 static int
 a64stringslice(A64Buf *b, LeafLayout *a)
 {
-	int ascii, done, loop;
+	int ascii, done, loop, prefix;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
@@ -664,7 +664,10 @@ a64stringslice(A64Buf *b, LeafLayout *a)
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 14<<5 | 6);
 	a64put(b, 0xf10004df); a64guard(b, 0x54000060);
 	a64put(b, 0xcb0c01a4); // x4 = end-start, validated in the character domain.
+	/* A zero-start slice retains its payload and needs no bounded copy loop. */
+	prefix=b->n; a64put(b, 0xb400000c);
 	a64put(b, 0xf102009f); a64guard(b, 0x54000069);
+	b->code[prefix] |= (b->n-prefix)<<5;
 	a64put(b, 0xaa0403e5); // x5 retains the resulting signed character count.
 	ascii=b->n; a64put(b, 0xb6f8000f);
 	a64put(b, 0xcb0503e5);

@@ -696,6 +696,8 @@ retstr(char *s, void *d)
 	destroy(old);
 }
 
+
+/* Reserve both descriptors and bound the total heap size before allocating bytes. */
 Array*
 mem2array(void *va, int n)
 {
@@ -704,6 +706,10 @@ mem2array(void *va, int n)
 
 	if(n < 0)
 		n = 0;
+	if(Tarray.ref <= 0 || Tarray.ref == 0x7fffffff ||
+	   Tbyte.ref <= 0 || Tbyte.ref == 0x7fffffff ||
+	   (ulong)n > 0x7fffffff-sizeof(Heap)-sizeof(Array))
+		error(exHeap);
 	h = nheap(sizeof(Array)+n);
 	h->t = &Tarray;
 	h->t->ref++;

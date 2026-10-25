@@ -64,6 +64,38 @@ checkrejections(Module *module)
 }
 
 
+/* Large prefixes must change only signed length, without accessing untouched pages. */
+static void
+checkprefixes(Module *module)
+{
+	Heap *header;
+	String *owner, *slot;
+	WORD start = 0, end;
+	ulong bytes;
+	int wide, pass, variant, before;
+
+	bytes = (ulong)0x66666668+sizeof(Heap)+sizeof(String)+4096;
+	header = mmap(nil, bytes, PROT_NONE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+	if(header == MAP_FAILED || mprotect(header, 4096, PROT_READ|PROT_WRITE) != 0)abort();
+	header->ref = 1; header->t = &Tstring;
+	owner = H2D(String*, header);
+	for(wide = 0; wide < 2; wide++)
+	for(pass = 0; pass < 2; pass++)
+	for(variant = 0; variant < 2; variant++){
+		owner->max = wide ? 0x1999999a : 0x66666668;
+		owner->len = wide ? -owner->max : owner->max;
+		end = variant ? owner->max : 129;
+		slot = owner; R.s = &start; R.m = &end; R.d = &slot; before = calls;
+		if(pass == 0){
+			if(module->jit->entry[ISLICEC](&R) != 1)abort();
+		}else slicec();
+		if(slot != owner || owner->len != (wide ? -end : end) || calls != before ||
+		   header->ref != 1 || owner->max != (wide ? 0x1999999a : 0x66666668))abort();
+	}
+	if(munmap(header, bytes) != 0)abort();
+}
+
+
 /* Compare production C and RX code against independent slice/ownership expectations. */
 int
 main(void)
@@ -83,6 +115,7 @@ main(void)
 	if(!compile(&module, 1, nil) || !module.jit || !module.jit->entry[ISLICEC])
 		abort();
 	checkrejections(&module);
+	checkprefixes(&module);
 	for(wide = 0; wide < 2; wide++)
 	for(shared = 0; shared < 2; shared++)
 	for(first = 0; first < 10; first++)

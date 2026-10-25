@@ -8,12 +8,13 @@ The public `slicer` helper continues to allocate and never mutates its input.
 
 Both native paths capture complete WORD bounds and the destination owner before
 any write, validate the signed representation against capacity, require exactly
-one reference, and bound the result to 128 characters. Rune byte arithmetic
+one reference, and bound copied results to 128 characters. Zero-start prefixes update only
+the length and are not subject to that copy-loop limit. Rune byte arithmetic
 uses native registers after character bounds validation. Forward byte copies
 preserve arbitrary 32-bit Rune values and handle overlapping source/destination
 ranges. A zero start skips copying. The owner pointer, capacity, heap metadata
 and cached-conversion buffer are retained; string2c rebuilds its Rune view on
-its next call. Longer valid slices retain C fallback, where no native loop
+its next call. Longer slices that move data retain C fallback, where no native loop
 limit applies. Leaves retain the existing 64-unit staging limit.
 
 The string allocator had two direct `Tstring.ref++` paths outside the heap

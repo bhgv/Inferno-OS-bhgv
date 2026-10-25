@@ -185,10 +185,12 @@ OP(slicec)
 		count = end-start;
 		if(count != 0 && D2H(old)->ref == 1){
 			if(old->len < 0){
-				memmove(old->Srune, old->Srune+start, (ulong)count*sizeof(Rune));
+				if(start != 0)
+					memmove(old->Srune, old->Srune+start, (ulong)count*sizeof(Rune));
 				old->len = -count;
 			}else{
-				memmove(old->Sascii, old->Sascii+start, count);
+				if(start != 0)
+					memmove(old->Sascii, old->Sascii+start, count);
 				old->len = count;
 			}
 			return;

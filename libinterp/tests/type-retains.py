@@ -15,6 +15,8 @@ def function(path, signature):
     selected = ROOT/path
     if path == 'libinterp/heap.c':
         selected = Path(os.environ.get('HEAP_TYPE_SOURCE', selected))
+    elif path == 'libinterp/link.c':
+        selected = Path(os.environ.get('LINK_TYPE_SOURCE', selected))
     elif path == 'libinterp/xec.c':
         selected = Path(os.environ.get('HEAP_XEC_SOURCE', selected))
     source = selected.read_text()

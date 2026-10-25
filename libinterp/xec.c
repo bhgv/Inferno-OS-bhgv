@@ -2168,19 +2168,23 @@ csendalt(Channel *c, void *ip, Type *t, int len)
 	return 1;
 }
 
-/* Validate and capture the old tail before allocating or publishing a node. */
+
+/* Preflight descriptor retention and tail ownership before allocating a node. */
 List*
 cons(ulong size, void *slot)
 {
 	Heap *h;
 	List *lv, *l;
 
-	if(size > 0x7fffffff-sizeof(Heap)-
+	if(Tlist.ref <= 0 || Tlist.ref == 0x7fffffff ||
+	   size > 0x7fffffff-sizeof(Heap)-
 	   (sizeof(List)-sizeof(((List*)0)->data)))
 		error(exHeap);
 	memmove(&lv, slot, sizeof(lv));
 	if(lv == nil)
 		error(exNilref);
+	if(lv != H && D2H(lv)->ref == 0)
+		error(exHeap);
 	h = nheap(sizeof(List) + size - sizeof(((List*)0)->data));
 	h->t = &Tlist;
 	Tlist.ref++;
@@ -2229,6 +2233,7 @@ OP(consl)
 	memmove(l->data, &value, sizeof(value));
 }
 
+
 /* Reject dead or saturated source owners before allocating or publishing a node. */
 OP(consp)
 {
@@ -2244,6 +2249,8 @@ OP(consp)
 		if(h->ref == 0 || h->ref == (ulong)-1)
 			error(exHeap);
 	}
+	if(Tptr.ref <= 0 || Tptr.ref == 0x7fffffff)
+		error(exHeap);
 	l = cons(sizeof(sv), R.d);
 	if(sv != H){
 		h = D2H(sv);
@@ -2283,6 +2290,7 @@ OP(consm)
 	memmove(R.d, &result, sizeof(result));
 }
 
+
 /* Copy mapped payload and acquire its references before publishing an aliased result. */
 OP(consmp)
 {
@@ -2292,6 +2300,8 @@ OP(consmp)
 
 	memmove(&index, R.m, sizeof(index));
 	t = moduletype(R.M, index);
+	if(t->ref <= 0 || t->ref > 0x7ffffffe - (t == &Tlist))
+		error(exHeap);
 	memmove(&result, R.d, sizeof(result));
 	l = cons(t->size, &result);
 	incmem(R.s, t);

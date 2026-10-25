@@ -8,6 +8,8 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/list-retains.py',
+    'libinterp/tests/byte-array-retains.py',
     'libinterp/tests/string-slice-native.py',
     'libinterp/tests/dis-loader.py',
     'libinterp/tests/type-retains.py',

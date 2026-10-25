@@ -85,7 +85,7 @@ int emit(u32int *out, int cap, int wb, int field, int value)
             machine.mem_write(CODE, blob)
             machine.ctl_remove_cache(CODE, CODE+256)
             for wide in (0, 1):
-                for profile in range(23):
+                for profile in range(27):
                     for sa in range(8):
                         for ma in range(8):
                             for da in range(4):
@@ -115,13 +115,17 @@ int emit(u32int *out, int cap, int wb, int field, int value)
                                 if profile == 20:start = 0; end = 9
                                 if profile == 21:length = 0; start = end = 0
                                 if profile == 22:end = -1
+                                if profile == 23:length = 160; start = 0; end = 160
+                                if profile == 24:length = (1 << 31)-1; capacity = length; start = 0; end = length
+                                if profile == 25:length = (1 << 31)-1; capacity = length; start = 0; end = 129
+                                if profile == 26:length = 160; start = 0; end = 129
                                 signedlen = -length if wide and length > 0 else length
                                 put(image, obj-24, ref); put(image, obj, signedlen, 4); put(image, obj+4, capacity, 4)
                                 stride = 4 if wide else 1
                                 for i in range(160):put(image, obj+24+i*stride, 0x80001001+i*0x10101 if wide else i*73+1, stride)
                                 put(image, src, start, wb); put(image, mid, end, wb); put(image, dst, owner)
                                 put(image, 8, BASE+src); put(image, 24, BASE+mid); put(image, 16, BASE+dst)
-                                valid = owner not in (0, MASK) and ref == 1 and length >= 0 and capacity >= length and 0 <= start < end <= length and end-start <= 128
+                                valid = owner not in (0, MASK) and ref == 1 and length >= 0 and capacity >= length and 0 <= start < end <= length and (start == 0 or end-start <= 128)
                                 expected = bytearray(image)
                                 expectedwrites = []
                                 if valid:

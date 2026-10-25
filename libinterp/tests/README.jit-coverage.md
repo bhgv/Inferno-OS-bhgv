@@ -258,3 +258,11 @@ Both backends now provide 134 guarded opcode paths / 39 interpreter-only active
 instructions. RISC-V profile counts remain 103/70, 90/83 and 87/86. String
 constructors now preflight Tstring retention; slicing and duplication reject
 dead string owners before allocation or destruction.
+
+## Large prefix and direct descriptor checkpoint
+
+[Descriptor preflight and large string prefixes](README.descriptor-prefix-preflight.md)
+extends AMD64/ARM64 SLICEC to validated zero-start prefixes without a copy-size
+limit. Direct list, byte-array and module-link constructors now reserve their
+Type references before allocation/publication. Opcode availability is unchanged:
+AMD64/ARM64 134/39; RV64+M 103/70; RV64+Zmmul 90/83; RV64I 87/86.

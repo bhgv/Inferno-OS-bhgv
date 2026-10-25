@@ -62,13 +62,15 @@ bad:
 	return -1;
 }
 
+
+/* Validate link storage and descriptor retention before allocating a module owner. */
 Modlink*
 mklinkmod(Module *m, int n)
 {
 	Heap *h;
 	Modlink *ml;
 
-	if(n < 0 || (ulong)n >
+	if(Tmodlink.ref <= 0 || Tmodlink.ref == 0x7fffffff || n < 0 || (ulong)n >
 	   (0x7fffffff-sizeof(Heap)-(sizeof(Modlink)-sizeof(ml->links[0])))/sizeof(ml->links[0]))
 		error(exHeap);
 	h = nheap(sizeof(Modlink)-sizeof(ml->links[0])+n*sizeof(ml->links[0]));

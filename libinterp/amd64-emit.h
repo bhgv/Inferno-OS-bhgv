@@ -819,11 +819,11 @@ x64stringstore(X64Buf *b, LeafLayout *a)
 }
 
 
-/* Move a bounded nonempty substring downward within its unique owner. */
+/* Update a unique prefix or move a bounded substring downward within its owner. */
 static int
 x64stringslice(X64Buf *b, LeafLayout *a)
 {
-	int positive, ascii, loop, done;
+	int positive, ascii, loop, done, prefix;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
@@ -849,7 +849,11 @@ x64stringslice(X64Buf *b, LeafLayout *a)
 	x64field(b, 6, 2, -a->heapref, 8);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfe); x64byte(b, 1); x64guard(b, 0x74);
 	x64byte(b, 0x48); x64byte(b, 0x29); x64byte(b, 0xc1);
+	/* Prefixes need only a length update, so their size does not bound a copy loop. */
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
+	x64byte(b, 0x74); prefix=b->n; x64byte(b, 0);
 	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, 128); x64guard(b, 0x76);
+	b->bytes[prefix]=b->n-prefix-1;
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc9); // r9 is the signed result length.
 	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc0);
 	x64byte(b, 0x79); ascii=b->n; x64byte(b, 0);
