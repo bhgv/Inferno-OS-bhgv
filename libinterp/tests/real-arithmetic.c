@@ -57,18 +57,6 @@ realnan(uchar *value, int width)
 	return (bits&0x7ff0000000000000ULL)==0x7ff0000000000000ULL && (bits&0xfffffffffffffULL)!=0;
 }
 
-/* Native resizing accepts only signed zero and exact normal-to-normal conversions. */
-static int
-nativeresize(uvlong bits, int input)
-{
-	uvlong magnitude,exponent;
-
-	magnitude=bits&(input==4 ? 0x7fffffffULL : 0x7fffffffffffffffULL);
-	exponent=magnitude>>(input==4 ? 23 : 52);
-	return magnitude==0 || (input==4 ? exponent>0 && exponent<255 :
-		exponent>=897 && exponent<=1150 && (magnitude&0x1fffffffULL)==0);
-}
-
 /* Compare FP effects and all byte placements; NaN arithmetic payload choice is host-defined. */
 int
 main(void)
@@ -89,7 +77,7 @@ main(void)
 	uvlong a,b;
 	fenv_t saved;
 	Inst sentinel;
-	int op,i,j,mode,seed,s,m,d,p,k,insize,outsize,middle,expectedflags,initialflags,take,nan;
+	int op,i,j,mode,seed,s,m,d,p,k,insize,outsize,middle,expectedflags,nan;
 	unsigned long checks=0;
 #ifdef NATIVE_REAL_ARITH
 	Module module;
@@ -112,10 +100,8 @@ main(void)
 			a=op==5 ? singles[i] : values[i];b=values[j];
 			assert(fesetround(modes[mode])==0);
 			feclearexcept(FE_ALL_EXCEPT);feraiseexcept(seed ? FE_ALL_EXCEPT : FE_DIVBYZERO);
-			initialflags=fetestexcept(FE_ALL_EXCEPT);
 			reference(op,a,b,wanted);expectedflags=fetestexcept(FE_ALL_EXCEPT);
 			nan=realnan(wanted,outsize);
-			take=op<5 || op==7 || ((op==5 || op==6) && nativeresize(a,insize));
 			for(s=16;s<24;s++)for(m=48;m<56;m++)for(p=0;p<12;p++){
 				d=p<8 ? 96+p : p==8 ? s : p==9 ? m : p==10 ? s+1 : m-1;
 				for(k=0;k<sizeof(memory.bytes);k++)memory.bytes[k]=(uchar)(k*37+11);
@@ -125,15 +111,13 @@ main(void)
 				R.s=memory.bytes+s;R.m=middle ? memory.bytes+m : (void*)1;R.d=memory.bytes+d;R.PC=&sentinel;
 				feclearexcept(FE_ALL_EXCEPT);feraiseexcept(seed ? FE_ALL_EXCEPT : FE_DIVBYZERO);
 #ifdef NATIVE_REAL_ARITH
-				if(op<=7){
-					assert(module.jit->entry[ids[op]](&R)==take);
-					if(take && nan){assert(realnan(memory.bytes+d,outsize));memmove(expected+d,memory.bytes+d,outsize);}
-					assert(!memcmp(memory.bytes,take ? expected : initial,sizeof(expected)));
-					assert(fetestexcept(FE_ALL_EXCEPT)==(op<4 || op==7 ? expectedflags : initialflags) && fegetround()==modes[mode]);
-					assert(R.PC==&sentinel && R.s==memory.bytes+s && R.d==memory.bytes+d);
-					memmove(memory.bytes,initial,sizeof(initial));
-					feclearexcept(FE_ALL_EXCEPT);feraiseexcept(seed ? FE_ALL_EXCEPT : FE_DIVBYZERO);
-				}else assert(!module.jit->entry[ids[op]]);
+				assert(module.jit->entry[ids[op]](&R)==1);
+				if(nan){assert(realnan(memory.bytes+d,outsize));memmove(expected+d,memory.bytes+d,outsize);}
+				assert(!memcmp(memory.bytes,expected,sizeof(expected)));
+				assert(fetestexcept(FE_ALL_EXCEPT)==expectedflags && fegetround()==modes[mode]);
+				assert(R.PC==&sentinel && R.s==memory.bytes+s && R.d==memory.bytes+d);
+				memmove(memory.bytes,initial,sizeof(initial));
+				feclearexcept(FE_ALL_EXCEPT);feraiseexcept(seed ? FE_ALL_EXCEPT : FE_DIVBYZERO);
 #endif
 				ops[op]();
 				if(nan){assert(realnan(memory.bytes+d,outsize));memmove(expected+d,memory.bytes+d,outsize);}

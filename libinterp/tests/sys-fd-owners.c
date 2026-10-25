@@ -87,6 +87,13 @@ hmsize(void *heap)
 	abort();
 }
 
+static int returnoffset;
+static union { uvlong align; uchar bytes[32]; } returnslot;
+static void *watchedowner;
+static uchar *watchedslot, *pipewatchslot;
+static void *pipewatchold[2];
+static int pipewatch;
+
 /* Validate heap guards and run the real descriptor finalizer exactly once. */
 void
 destroy(void *value)
@@ -97,6 +104,18 @@ destroy(void *value)
 
 	if(value == H)
 		return;
+	if(pipewatch && (value == pipewatchold[0] || value == pipewatchold[1])){
+		void *published[2];
+		memmove(published,pipewatchslot,sizeof(published));
+		assert(published[0] != pipewatchold[0] && published[0] != pipewatchold[1]);
+		assert(published[1] != pipewatchold[0] && published[1] != pipewatchold[1]);
+	}
+	if(value == watchedowner){
+		void *published;
+		memmove(&published,watchedslot,sizeof(published));
+		assert(published == H);
+		watchedowner = H;
+	}
 	heap = D2H(value);
 	for(i = 0; i < 256 && blocks[i].heap != heap; i++);
 	assert(i < 256 && heap->ref > 0);
@@ -299,7 +318,8 @@ static String *address, *local;
 static struct { WORD t0; Sys_Connection t1; } connection;
 static WORD status;
 static Array pipearray;
-static int pipesize;
+static int pipesize, pipebad;
+static union { uvlong align; uchar bytes[3*sizeof(Sys_FD*)+16]; } pipeslots;
 
 /* Dispatch actual generated Sys frames and retain output state outside nonlocal jumps. */
 static int
@@ -320,26 +340,26 @@ invoke(void *unused)
 		single = mkfd(issued[0]);
 		break;
 	case 1:
-		openframe.ret = &single;
+		openframe.ret = (void*)(returnslot.bytes+8+returnoffset);
 		openframe.s = address;
 		openframe.mode = 2;
 		Sys_open(&openframe);
 		break;
 	case 2:
-		createframe.ret = &single;
+		createframe.ret = (void*)(returnslot.bytes+8+returnoffset);
 		createframe.s = address;
 		createframe.mode = 2;
 		createframe.perm = 0640;
 		Sys_create(&createframe);
 		break;
 	case 3:
-		fildesframe.ret = &single;
+		fildesframe.ret = (void*)(returnslot.bytes+8+returnoffset);
 		fildesframe.fd = 17;
 		Sys_fildes(&fildesframe);
 		break;
 	case 4:
-		pipeframe.ret = &status;
-		pipeframe.fds = pipesize < 0 ? H : &pipearray;
+		pipeframe.ret = (void*)(returnslot.bytes+8+returnoffset);
+		pipeframe.fds = pipebad == 1 ? nil : pipesize < 0 ? H : &pipearray;
 		Sys_pipe(&pipeframe);
 		break;
 	case 5:
@@ -412,7 +432,10 @@ one(int fail, int shared, int firstfd)
 	}
 	previous = connection.t1;
 	pipearray.len = pipesize;
-	pipearray.data = (uchar*)slots;
+	memset(pipeslots.bytes,0xa5,sizeof(pipeslots.bytes));
+	memmove(pipeslots.bytes+returnoffset,slots,sizeof(slots));
+	pipearray.data = pipebad == 2 ? nil : pipebad == 3 ? H :
+		pipebad == 4 ? (uchar*)(uintptr)-8 : pipeslots.bytes+returnoffset;
 	status = -77;
 	nextfd = firstfd;
 	allocations = nativecalls = 0;
@@ -420,9 +443,34 @@ one(int fail, int shared, int firstfd)
 	failure = fail;
 	raised = nil;
 	strcpy(environment.errstr, "unchanged");
-	eligible = operation != 4 || pipesize >= 2;
+	eligible = operation != 4 || (pipesize >= 2 && pipebad == 0);
 	budget = operation == 4 ? 2 : operation == 5 ? 3 : operation >= 6 ? 2 : 1;
+	memset(returnslot.bytes,0xa5,sizeof(returnslot.bytes));
+	if(operation == 4)memmove(returnslot.bytes+8+returnoffset,&status,sizeof(status));
+	else memmove(returnslot.bytes+8+returnoffset,&single,sizeof(single));
+	watchedowner = operation >= 1 && operation <= 3 ? single : H;
+	watchedslot = returnslot.bytes+8+returnoffset;
+	pipewatch = operation == 4 && eligible;
+	pipewatchslot = pipeslots.bytes+returnoffset;
+	pipewatchold[0] = slots[0];pipewatchold[1] = slots[1];
 	ok = kprotect(invoke, nil);
+	pipewatch = 0;
+	if(operation >= 1 && operation <= 3){
+		uchar expected[32];
+		memmove(&single,returnslot.bytes+8+returnoffset,sizeof(single));
+		memset(expected,0xa5,sizeof(expected));
+		memmove(expected+8+returnoffset,&single,sizeof(single));
+		assert(!memcmp(returnslot.bytes,expected,sizeof(expected)) && watchedowner == H);
+	}
+	if(operation == 4){
+		uchar expected[sizeof(pipeslots.bytes)], guards[32];
+		memmove(slots,pipeslots.bytes+returnoffset,sizeof(slots));
+		memset(expected,0xa5,sizeof(expected));memmove(expected+returnoffset,slots,sizeof(slots));
+		assert(!memcmp(pipeslots.bytes,expected,sizeof(expected)));
+		memmove(&status,returnslot.bytes+8+returnoffset,sizeof(status));
+		memset(guards,0xa5,sizeof(guards));memmove(guards+8+returnoffset,&status,sizeof(status));
+		assert(!memcmp(guards,returnslot.bytes,sizeof(guards)));
+	}
 	assert(worker.nerr == 0 && !released);
 	failure = 0;
 	if(eligible && (!nativefail || operation == 0) && fail > 0 && fail <= budget){
@@ -487,12 +535,14 @@ main(int argc, char **argv)
 	for(operation = 0; operation < 8; operation++){
 		if(argc > 1 && strcmp(argv[1], "all") != 0 && strcmp(argv[1], operation == 0 ? "single" : operation == 4 ? "pipe" : operation >= 5 ? "connection" : "files") != 0)
 			continue;
+		for(returnoffset=0;returnoffset<(operation >= 1 && operation <= 4 ? 8 : 1);returnoffset++)
 		for(nativefail = 0; nativefail < (operation == 0 ? 1 : 2); nativefail++)
 		for(shared = 0; shared < (operation >= 4 ? 2 : 1); shared++)
 		for(first = 0; first < 2; first++){
 			limit = operation == 4 ? 3 : operation == 5 ? 4 : operation >= 6 ? 3 : 2;
-			for(length = 0; length < (operation == 4 ? 5 : 1); length++){
-				pipesize = length-1;
+			for(length = 0; length < (operation == 4 ? 9 : 1); length++){
+				pipesize = length < 5 ? length-1 : 2;
+				pipebad = length < 5 ? 0 : length-4;
 				for(fail = 0; fail <= (argc > 2 && strcmp(argv[2], "normal") == 0 ? 0 : limit); fail++)
 					one(fail, shared, first ? 10 : 0);
 			}

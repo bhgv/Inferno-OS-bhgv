@@ -101,9 +101,9 @@ main(void)
 			R.s=memory.bytes+s;R.d=memory.bytes+d;R.m=(void*)1;R.PC=&sentinel;
 			feclearexcept(FE_ALL_EXCEPT);feraiseexcept(seed ? FE_ALL_EXCEPT : FE_DIVBYZERO);
 #ifdef NATIVE_INTEGER_REAL
-			assert(module.jit->entry[ids[op]](&R)==exact);
-			assert(!memcmp(memory.bytes,exact ? expected : initial,sizeof(expected)));
-			assert(fetestexcept(FE_ALL_EXCEPT)==initialflags && fegetround()==modes[mode]);
+			assert(module.jit->entry[ids[op]](&R)==1);
+			assert(!memcmp(memory.bytes,expected,sizeof(expected)));
+			assert(fetestexcept(FE_ALL_EXCEPT)==expectedflags && fegetround()==modes[mode]);
 			assert(R.PC==&sentinel && R.s==memory.bytes+s && R.d==memory.bytes+d && R.m==(void*)1);
 			memmove(memory.bytes,initial,sizeof(initial));
 #endif

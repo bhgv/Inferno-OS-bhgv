@@ -538,7 +538,7 @@ static void arrays(Module *m) {
 }
 /* Compile, invoke, reject invalid metadata and retry without changing Dis PCs. */
 int main(void) {
-    Module m={0}, *owned;Inst instructions[62]={{0}};
+    Module m={0}, *owned;Inst instructions[66]={{0}};
     WORD a=3,b=7,out=0;
     int i;
     instructions[0].op=ISUBW;instructions[1].op=IADDW;
@@ -552,13 +552,14 @@ int main(void) {
     instructions[30].op=IBLEF;instructions[31].op=IBGTF;instructions[32].op=IBGEF;
     instructions[33].op=IMULX;instructions[34].op=IDIVX;instructions[35].op=IINDX;instructions[36].op=ICALL;instructions[37].op=IMULX0;instructions[38].op=IDIVX0;instructions[39].op=ICVTXX0;instructions[40].op=IMULX1;instructions[41].op=IDIVX1;instructions[42].op=ICVTXX1;instructions[43].op=IMOVPC;instructions[44].op=ITCMP;instructions[45].op=IMULB;instructions[46].op=IMULW;instructions[47].op=IMULL;instructions[48].op=IBEQC;instructions[49].op=IBNEC;instructions[50].op=IBLTC;instructions[51].op=IBLEC;instructions[52].op=IBGTC;instructions[53].op=IBGEC;
     instructions[54].op=IADDF;instructions[55].op=ISUBF;instructions[56].op=IMULF;instructions[57].op=IDIVF;instructions[58].op=ICVTXF;instructions[59].op=ICVTFW;instructions[60].op=ICVTFL;instructions[61].op=ICVTFX;
-    m.prog=instructions;m.nprog=62;
+    instructions[62].op=ICVTWF;instructions[63].op=ICVTLF;instructions[64].op=ICVTRF;instructions[65].op=ICVTFR;
+    m.prog=instructions;m.nprog=66;
     for(i=1;i<=5;i++) {
-        fail=i;assert(!compile(&m,62,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
+        fail=i;assert(!compile(&m,66,nil));assert(!m.jit && !m.compiled && m.prog==instructions && mappings==0);
     }
     fail=0;
     assert(!compile(nil,36,nil));assert(!compile(&m,3,nil));
-    assert(compile(&m,62,nil));assert(m.jit && !m.compiled && m.prog==instructions);
+    assert(compile(&m,66,nil));assert(m.jit && !m.compiled && m.prog==instructions);
     assert(m.jit->entry[ICALL] && m.jit->entry[ITCMP]);
     assert(m.jit->entry[IMOVPC]);
     assert(m.jit->entry[IBEQC] && m.jit->entry[IBNEC] && m.jit->entry[IBLTC] && m.jit->entry[IBLEC] && m.jit->entry[IBGTC] && m.jit->entry[IBGEC]);
@@ -568,6 +569,7 @@ int main(void) {
     assert(m.jit->entry[IMOVP]==nil && m.jit->entry[IMULX] && m.jit->entry[IDIVX]);
     assert(m.jit->entry[IINDX]);
     assert(!!m.jit->entry[IEXPF]==REAL_LEAVES);
+    for(i=62;i<66;i++)assert(m.jit->entry[instructions[i].op]);
     for(i=54;i<62;i++)assert(!!m.jit->entry[instructions[i].op]==REAL_LEAVES);
     assert(protections==1 && mappings==1);
     R.s=&a;R.m=&b;R.d=&out;
@@ -576,9 +578,9 @@ int main(void) {
     R.d=&a;assert(m.jit->entry[IADDW](&R)==1 && a==10);
     descriptorindex();fixedframe();realarithmetic();integerreal();shiftdivision();integeralu();fixedscale();scalartransfers();arithmetic(&m);arrays(&m);realnegation(&m);records(&m);stringlengths(&m);listheads(&m);listlengths(&m);characters(&m);powers(&m);headrecords(&m);realbranches(&m);
 #endif
-    assert(compile(&m,62,nil));dropmodule(&m);
-    for(i=0;i<62;i++)instructions[i].op=IMOVP;
-    assert(!compile(&m,62,nil) && !m.jit);
+    assert(compile(&m,66,nil));dropmodule(&m);
+    for(i=0;i<66;i++)instructions[i].op=IMOVP;
+    assert(!compile(&m,66,nil) && !m.jit);
     owned=calloc(1,sizeof(*owned));assert(owned);
     owned->prog=calloc(1,sizeof(Inst));assert(owned->prog);
     owned->nprog=1;owned->prog[0].op=IADDW;

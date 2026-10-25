@@ -232,22 +232,27 @@ Sys_millisec(void *fp)
 	*f->ret = TK2MS(MACHP(0)->ticks);
 }
 
+/* Clear an unaligned owner slot before finalization and publish only a constructed FD. */
 void
 Sys_open(void *fp)
 {
 	int fd;
 	F_Sys_open *f;
+	Sys_FD *old, *result;
 
 	f = fp;
-	destroy(*f->ret);
-	*f->ret = H;
+	memmove(&old, f->ret, sizeof(old));
+	result = H;
+	memmove(f->ret, &result, sizeof(result));
+	destroy(old);
 	release();
 	fd = kopen(string2c(f->s), f->mode);
 	acquire();
 	if(fd == -1)
 		return;
 
-	*f->ret = mkfd(fd);
+	result = mkfd(fd);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /* Replace both pipe ends only after both descriptor owners have been constructed. */
@@ -256,14 +261,18 @@ Sys_pipe(void *fp)
 {
 	Array *a;
 	int fd[2], status;
-	Sys_FD **slots, *old[2];
+	WORD outcome;
+	uchar *slots;
+	Sys_FD *old[2], *next[2];
 	F_Sys_pipe *f;
 	volatile FDResult result;
 
 	f = fp;
-	*f->ret = -1;
+	outcome = -1;
+	memmove(f->ret, &outcome, sizeof(outcome));
 	a = f->fds;
-	if(a == H || a->len < 2)
+	if(a == H || a == nil || a->len < 2 || a->data == nil || a->data == H ||
+	   (uintptr)a->data > (uintptr)-1-2*sizeof(Sys_FD*))
 		return;
 	release();
 	status = kpipe(fd);
@@ -281,31 +290,37 @@ Sys_pipe(void *fp)
 	result.handle[0] = takefd(&result.raw[0]);
 	result.handle[1] = takefd(&result.raw[1]);
 	poperror();
-	slots = (Sys_FD**)a->data;
-	old[0] = slots[0];
-	old[1] = slots[1];
-	slots[0] = result.handle[0];
-	slots[1] = result.handle[1];
+	slots = a->data;
+	memmove(old, slots, sizeof(old));
+	next[0] = result.handle[0];
+	next[1] = result.handle[1];
+	memmove(slots, next, sizeof(next));
 	destroy(old[0]);
 	destroy(old[1]);
-	*f->ret = 0;
+	outcome = 0;
+	memmove(f->ret, &outcome, sizeof(outcome));
 }
 
+/* Clear an unaligned owner slot before finalization and publish only a constructed FD. */
 void
 Sys_fildes(void *fp)
 {
 	F_Sys_fildes *f;
+	Sys_FD *old, *result;
 	int fd;
 
 	f = fp;
-	destroy(*f->ret);
-	*f->ret = H;
+	memmove(&old, f->ret, sizeof(old));
+	result = H;
+	memmove(f->ret, &result, sizeof(result));
+	destroy(old);
 	release();
 	fd = kdup(f->fd, -1);
 	acquire();
 	if(fd == -1)
 		return;
-	*f->ret = mkfd(fd);
+	result = mkfd(fd);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 void
@@ -319,22 +334,27 @@ Sys_dup(void *fp)
 	acquire();
 }
 
+/* Clear an unaligned owner slot before finalization and publish only a constructed FD. */
 void
 Sys_create(void *fp)
 {
 	int fd;
 	F_Sys_create *f;
+	Sys_FD *old, *result;
 
 	f = fp;
-	destroy(*f->ret);
-	*f->ret = H;
+	memmove(&old, f->ret, sizeof(old));
+	result = H;
+	memmove(f->ret, &result, sizeof(result));
+	destroy(old);
 	release();
 	fd = kcreate(string2c(f->s), f->mode, f->perm);
 	acquire();
 	if(fd == -1)
 		return;
 
-	*f->ret = mkfd(fd);
+	result = mkfd(fd);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 void

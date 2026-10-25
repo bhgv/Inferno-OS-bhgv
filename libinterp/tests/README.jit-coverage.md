@@ -23,6 +23,12 @@ IMULF, IDIVF and ICVTXF.
 They preserve host floating rounding and sticky exception state; numerical C
 helpers remain in use for complex operations.
 
+The latest operand-coverage expansion removes value guards from ICVTWF, ICVTLF,
+ICVTRF and ICVTFR on AMD64/ARM64. Native signed integer conversion and real
+resizing now cover their complete input representations with the platform FP
+environment. RV64 retains its exact-bit guarded implementations. No opcode IDs
+were added in that expansion.
+
 These figures count opcode availability, not complete semantic or performance
 coverage. Some native paths accept a bounded subset and return to C for other
 operands. For example, rounded fixed operations retain C for VN flags; WN right shifts run

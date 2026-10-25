@@ -14,7 +14,7 @@ from unicorn.x86_const import UC_X86_REG_RDI, UC_X86_REG_RAX, UC_X86_REG_RSP, UC
 from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR, UC_ARM64_REG_FPCR, UC_ARM64_REG_FPSR
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_RA
 
-REAL_CAST_ORACLE = r'''
+FP_ORACLES = r'''
 #include <fenv.h>
 /* Compute the rounding/exception contract in host C, restoring the caller environment. */
 int realcastoracle(uint64_t bits,int fixed,int mode,int seed,int64_t *out){
@@ -55,6 +55,39 @@ int realpoweroracle(uint64_t bits,int64_t n,int mode,int seed,uint64_t *out){
     if(flags&FE_INEXACT)status|=16;
     fesetenv(&saved);return status;
 }
+/* Read the standard sticky flags without including platform denormal-input flags. */
+static int normalizedflags(void){
+    int flags=fetestexcept(FE_ALL_EXCEPT),status=0;
+    if(flags&FE_INVALID)status|=1;
+    if(flags&FE_DIVBYZERO)status|=2;
+    if(flags&FE_OVERFLOW)status|=4;
+    if(flags&FE_UNDERFLOW)status|=8;
+    if(flags&FE_INEXACT)status|=16;
+    return status;
+}
+/* Convert through volatile native values so the requested rounding mode is observed. */
+int integerrealoracle(int64_t input,int mode,uint64_t *out){
+    fenv_t saved;
+    int flags,modes[]={FE_TONEAREST,FE_DOWNWARD,FE_UPWARD,FE_TOWARDZERO};
+    volatile int64_t value=input;
+    volatile double result;
+    double bits;
+    fegetenv(&saved);fesetround(modes[mode]);feclearexcept(FE_ALL_EXCEPT);feraiseexcept(FE_DIVBYZERO);
+    result=value;bits=result;memcpy(out,&bits,8);flags=normalizedflags();fesetenv(&saved);return flags;
+}
+/* Preserve raw signaling NaN inputs until the native resizing operation. */
+int realresizeoracle(uint64_t input,int width,int mode,uint64_t *out){
+    fenv_t saved;
+    int flags,modes[]={FE_TONEAREST,FE_DOWNWARD,FE_UPWARD,FE_TOWARDZERO};
+    float small;double large;
+    volatile float result32;
+    volatile double result64;
+    fegetenv(&saved);fesetround(modes[mode]);feclearexcept(FE_ALL_EXCEPT);feraiseexcept(FE_DIVBYZERO);
+    *out=0;
+    if(width==4){memcpy(&small,&input,4);result64=small;large=result64;memcpy(out,&large,8);}
+    else{memcpy(&large,&input,8);result32=large;small=result32;memcpy(out,&small,4);}
+    flags=normalizedflags();fesetenv(&saved);return flags;
+}
 '''
 
 root = Path(__file__).resolve().parents[2]
@@ -91,9 +124,9 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                           '#include "isa.h"\n#include "'+(os.environ.get('LEAF64_RISCV_EMITTER','riscv-emit.h') if rv else os.environ.get('LEAF64_'+arch.upper()+'_EMITTER',arch+'-emit.h'))+'"\n'
                           'int emit(u32int *p,int n,'+('RvLayout' if rv else 'LeafLayout')+' *l,int op){return '+('rvemit' if rv else 'leafemit')+'(p,n,l,op);}\n'
                           'int opid(int i){static int ops[]={'+','.join(ops)+'};return ops[i];}\n')
-        if case in ('','realinteger','realpower'):
+        if case in ('','realinteger','realpower','resize','integerreal'):
             with source.open('a') as output:
-                output.write(REAL_CAST_ORACLE)
+                output.write(FP_ORACLES)
         binary = td/(arch+'.so')
         cmd = shlex.split(os.environ.get('CC', 'cc'))
         cmd += shlex.split(os.environ.get('CFLAGS', '-O2 -g -fsanitize=undefined -fno-sanitize-recover=all'))
@@ -866,6 +899,24 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         valid=(magnitude==0 or (0<exponent<255 if insize==4 else
                                897<=exponent<=1150 and (magnitude&((1<<29)-1))==0))
                         raw=bits.to_bytes(insize,'little')
+                        if not rv:
+                            lib.realresizeoracle.argtypes=[C.c_uint64,C.c_int,C.c_int,C.POINTER(C.c_uint64)]
+                            for mode in range(4):
+                                wanted=C.c_uint64()
+                                flags=lib.realresizeoracle(bits,insize,mode,C.byref(wanted))
+                                # Default ARM FPCR detects tininess before rounding; SSE detects it after.
+                                if arch=='arm64' and insize==8 and 0<(bits&0x7fffffffffffffff)<0x3810000000000000 and flags&16:
+                                    flags |= 8
+                                for alias in (0,1,2,3,5):
+                                    out,before,after,status=run(name,alias=alias,raw=raw,poison=True,fpstate=(mode,1))
+                                    actual=int.from_bytes(out[:outsize],'little')
+                                    limit=0x7f800000 if outsize==4 else 0x7ff0000000000000
+                                    mask=(1<<(outsize*8-1))-1
+                                    if wanted.value&mask>limit:assert actual&mask>limit
+                                    else:assert actual==wanted.value,(arch,name,hex(bits),mode,hex(actual),hex(wanted.value))
+                                    if arch=='arm64':assert status==flags,(arch,name,hex(bits),mode,status,flags)
+                                    assert before[:8]==after[:8] and before[8+outsize:]==after[8+outsize:];checks+=1
+                            continue
                         if valid:
                             number=struct.unpack('<f' if insize==4 else '<d',raw)[0]
                             expected=struct.pack('<d' if outsize==8 else '<f',number)
@@ -891,6 +942,17 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 for name,width in (('ICVTWF',wb),('ICVTLF',8)):
                     for value in values:
                         number=signed(value,width*8)
+                        if not rv:
+                            lib.integerrealoracle.argtypes=[C.c_int64,C.c_int,C.POINTER(C.c_uint64)]
+                            for mode in range(4):
+                                wanted=C.c_uint64()
+                                flags=lib.integerrealoracle(number,mode,C.byref(wanted))
+                                for alias in (0,1,2,3,5):
+                                    out,before,after,status=run(name,value,alias=alias,poison=True,fpstate=(mode,1))
+                                    assert int.from_bytes(out[:8],'little')==wanted.value,(arch,name,number,mode)
+                                    if arch=='arm64':assert status==flags,(arch,name,number,mode,status,flags)
+                                    assert before[:8]==after[:8] and before[16:]==after[16:];checks+=1
+                            continue
                         valid=abs(number)<(1<<53)
                         for alias in (0,1,2,3,5):
                             out,pc,before,after,_=run(name,value,alias=alias,expect=int(valid),poison=True)

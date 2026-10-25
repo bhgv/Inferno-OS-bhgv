@@ -57,3 +57,14 @@ Parent-source substitution reproduces unowned native descriptors in `single`
 and `files`, nil-array failure in `pipe`, and premature replacement in
 `connection`. Adjacent Sys directory/I/O/stream and slice/tokenization checkpoint
 regressions are run against the combined branch state.
+
+## Owner-slot and pipe alignment checkpoint
+
+The current matrix exercises all eight return-slot offsets for open/create/fildes
+and both return/array offsets for pipe, including nil, absent and wrapping pipe
+buffers. It checks that the old owner is absent before its finalizer runs and
+that both pipe ends are published before old owners are released. The full
+matrix now passes 2,702 cases per platform/WORD configuration (10,808 total)
+under UBSan. ASan/UBSan passes all normal paths and the files allocation-failure
+subset. The nested pipe/connection ASan limitation above still applies. See
+[the complete FP and FD checkpoint](README.full-fp-fd-slots.md).

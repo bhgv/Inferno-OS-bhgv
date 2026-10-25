@@ -313,56 +313,18 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(p.alu) a64put(&b, 0x9acf0d8c);
 		a64ptr(&b, 11, abi->d); a64store(&b, 12, abi->wordbytes);
 	}else if(p.kind == LeafRealResize){
-		/* Keep signed zeros exact and reject all values that need FP handling. */
-		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, p.input);
-		a64put(&b, 0xd3400000U | (p.input == 4 ? 31 : 63)<<16 | 63<<10 | 12<<5 | 13);
-		a64put(&b, 0xd3400000U | (p.input == 4 ? 1 : 33)<<16 | (p.input == 4 ? 0 : 32)<<10 | 13<<5 | 13);
-		a64put(&b, 0xd3400000U | (p.input == 4 ? 31 : 63)<<16 | (p.input == 4 ? 30 : 62)<<10 | 12<<5 | 12);
-		a64put(&b, 0xd3400000U | (p.input == 4 ? 33 : 1)<<16 | 63<<10 | 12<<5 | 12);
-		empty=b.n; a64put(&b, 0xb400000c);
-		a64put(&b, 0xd3400000U | (p.input == 4 ? 23 : 52)<<16 | 63<<10 | 12<<5 | 14);
-		if(p.input == 4){
-			a64guard(&b, 0xb500006e);
-			a64put(&b, 0xf100001fU | 255<<10 | 14<<5); a64guard(&b, 0x54000063);
-			a64put(&b, 0xd3400000U | 35<<16 | 34<<10 | 12<<5 | 12); /* lsl payload,29 */
-			a64put(&b, 0xd280000eU | 896<<5);
-			a64put(&b, 0xd3400000U | 12<<16 | 11<<10 | 14<<5 | 14);
-			a64put(&b, 0x8b0e018c);
-		}else{
-			a64put(&b, 0xd1000000U | 897<<10 | 14<<5 | 14);
-			a64put(&b, 0xf100001fU | 254<<10 | 14<<5); a64guard(&b, 0x54000063);
-			a64put(&b, 0xd3400000U | 29<<16 | 28<<10 | 12<<5 | 15); /* low 29 bits */
-			a64guard(&b, 0xb400006f);
-			a64put(&b, 0x910005ce); /* float exponent = translated exponent + 1 */
-			a64put(&b, 0xd3400000U | 41<<16 | 40<<10 | 14<<5 | 14);
-			a64put(&b, 0xd3400000U | 52<<16 | 51<<10 | 12<<5 | 12);
-			a64put(&b, 0xd3400000U | 41<<16 | 63<<10 | 12<<5 | 12);
-			a64put(&b, 0xaa0e018c);
-		}
-		b.code[empty] |= (b.n-empty)<<5;
-		a64put(&b, 0xaa0d018c);
-		a64ptr(&b, 11, abi->d); a64store(&b, 12, p.bytes);
+		/* FPCR/FPSR supply the same conversion environment as native C. */
+		a64ptr(&b, 9, abi->s);
+		a64put(&b, p.input == 4 ? 0xbd400120 : 0xfd400120);
+		a64put(&b, p.input == 4 ? 0x1e22c000 : 0x1e624000);
+		a64ptr(&b, 11, abi->d);
+		a64put(&b, p.bytes == 4 ? 0xbd000160 : 0xfd000160);
 	}else if(p.kind == LeafIntegerReal){
-		/* Normalize exact integer bits without touching FP registers or status. */
+		/* SCVTF rounds every signed input with the active C FP environment. */
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, p.input);
-		if(p.input == 4) a64put(&b, 0x93407d8c);
-		a64put(&b, 0x937ffd8d); /* asr x13,x12,#63 */
-		a64put(&b, 0xca0d018c); a64put(&b, 0xcb0d018c); /* unsigned magnitude */
-		a64put(&b, 0xd34101ad); /* sign bit */
-		a64put(&b, 0xd375fd8f); a64guard(&b, 0xb400006f); /* magnitude < 2^53 */
-		empty=b.n; a64put(&b, 0xb400000c);
-		a64put(&b, 0xd280864e); /* mov x14,#1074 */
-		loop=b.n;
-		a64put(&b, 0xd374fd8f); /* lsr x15,x12,#52 */
-		done=b.n; a64put(&b, 0xb500000f);
-		a64put(&b, 0xd37ff98c); /* lsl x12,x12,#1 */
-		a64put(&b, 0xd10005ce); /* sub x14,x14,#1 */
-		a64put(&b, 0x14000000U | ((u32int)(loop-b.n)&0x3ffffff));
-		b.code[done] |= (b.n-done)<<5;
-		a64put(&b, 0xd34c2dce); /* lsl x14,x14,#52 */
-		a64put(&b, 0x8b0e018c); a64put(&b, 0xaa0d018c);
-		b.code[empty] |= (b.n-empty)<<5;
-		a64ptr(&b, 11, abi->d); a64store(&b, 12, 8);
+		if(p.input == 4)a64put(&b, 0x93407d8c);
+		a64put(&b, 0x9e620180); /* scvtf d0,x12 */
+		a64ptr(&b, 11, abi->d); a64put(&b, 0xfd000160);
 	}else if(p.kind == LeafFixedShift){
 		/* Validate the signed interval before fetching a possibly inaccessible source. */
 		a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, abi->wordbytes);
