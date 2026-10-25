@@ -2,14 +2,14 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 139 commands (80.3%); 34 remain on the interpreter path. RV64 profiles
+paths for 141 commands (81.5%); 32 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 139 | 34 |
-| ARM64 | 173 | 139 | 34 |
+| AMD64 | 173 | 141 | 32 |
+| ARM64 | 173 | 141 | 32 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
@@ -347,3 +347,13 @@ narrowing, copying and release. Mapped roots and shared owners retain C paths.
 and invalid nonempty byte spans before allocation. Counts remain 139/34 on
 AMD64/ARM64 and 103/70, 90/83, 87/86 on RV64 M/Zmmul/I. ARM64 execution is
 emulated; guarded command counts do not imply complete opcode semantics.
+
+## Signed integer formatting checkpoint
+
+[Integer-to-string formatting](README.integer-format.md) adds CVTWC and CVTLC
+on AMD64/ARM64 for unique ASCII destinations with at least 24 bytes of capacity.
+Both now provide 141 guarded commands / 32 remaining. The C paths reuse the same
+storage and reject dead owners or invalid output metadata before allocation.
+Shared/Rune/small/H destinations retain construction paths. RV64 M, Zmmul and I
+remain 103/70, 90/83 and 87/86. Both WORD models share these counts; ARM64
+instruction execution is emulated.

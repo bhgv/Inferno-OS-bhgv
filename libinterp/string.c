@@ -435,12 +435,22 @@ OP(cvtwc)
 	WORD value;
 
 	memmove(&value, R.s, sizeof(value));
-	ds = newstring(24);
-	ds->len = sprint(ds->Sascii, "%lld", (vlong)value);
-
 	memmove(&old, R.d, sizeof(old));
-	memmove(R.d, &ds, sizeof(ds));
-	destroy(old);
+	if(old == nil)
+		error(exNilref);
+	if(old != H && (old->len == (-0x7fffffff-1) ||
+	   old->max < (old->len < 0 ? -old->len : old->len) || D2H(old)->ref == 0))
+		error(exHeap);
+	/* Twenty decimal characters and a terminator fit in this existing capacity. */
+	if(old != H && old->len >= 0 && old->max >= 24 && D2H(old)->ref == 1)
+		ds = old;
+	else
+		ds = newstring(24);
+	ds->len = sprint(ds->Sascii, "%lld", (vlong)value);
+	if(ds != old){
+		memmove(R.d, &ds, sizeof(ds));
+		destroy(old);
+	}
 }
 
 /*
@@ -452,12 +462,22 @@ OP(cvtlc)
 	LONG value;
 
 	memmove(&value, R.s, sizeof(value));
-	ds = newstring(24);
-	ds->len = sprint(ds->Sascii, "%lld", value);
-	
 	memmove(&old, R.d, sizeof(old));
-	memmove(R.d, &ds, sizeof(ds));
-	destroy(old);
+	if(old == nil)
+		error(exNilref);
+	if(old != H && (old->len == (-0x7fffffff-1) ||
+	   old->max < (old->len < 0 ? -old->len : old->len) || D2H(old)->ref == 0))
+		error(exHeap);
+	/* Twenty decimal characters and a terminator fit in this existing capacity. */
+	if(old != H && old->len >= 0 && old->max >= 24 && D2H(old)->ref == 1)
+		ds = old;
+	else
+		ds = newstring(24);
+	ds->len = sprint(ds->Sascii, "%lld", (vlong)value);
+	if(ds != old){
+		memmove(R.d, &ds, sizeof(ds));
+		destroy(old);
+	}
 }
 
 /* Capture the real value before allocating or replacing its destination owner. */

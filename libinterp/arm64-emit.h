@@ -637,6 +637,58 @@ a64stringstore(A64Buf *b, LeafLayout *a)
 }
 
 
+/* Emit decimal digits and reverse them after all storage and owner guards succeed. */
+static int
+a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
+{
+	int positive, digits, reverse, done;
+
+	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
+	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
+	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
+	   a->stringdata < a->stringmax+4 || a->stringdata > 2047 ||
+	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 || a->refbytes != 8) return 0;
+	a64ptr(b, 9, a->s); a64load(b, 12, 9, op->bytes);
+	if(op->bytes == 4) a64put(b, 0x93407d8c); // Sign-extend the complete WORD32 input.
+	a64ptr(b, 11, a->d); a64load(b, 14, 11, 8);
+	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64guard(b, 0x54000068);
+	a64wordfield(b, 2, 14, a->stringlen, 4);
+	a64put(b, 0xf100005f); a64guard(b, 0x5400006a);
+	a64wordfield(b, 3, 14, a->stringmax, 4);
+	a64put(b, 0xeb02007f); a64guard(b, 0x5400006a);
+	a64put(b, 0xf100607f); a64guard(b, 0x5400006a);
+	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 14<<5 | 2);
+	a64put(b, 0xf100045f); a64guard(b, 0x54000060);
+	a64put(b, 0x910001cbU | (u32int)a->stringdata<<10); // x11 is the first output byte.
+	a64put(b, 0xaa0b03e9); // x9 advances through digits.
+	a64put(b, 0xf100019f);
+	positive=b->n; a64put(b, 0x5400000a);
+	a64put(b, 0x528005a3); a64put(b, 0x39000123); // Emit the minus sign.
+	a64put(b, 0x91000529); a64put(b, 0xcb0c03ec); // Negation leaves MIN as an unsigned magnitude.
+	b->code[positive] |= (b->n-positive)<<5;
+	a64put(b, 0xaa0903ea); a64put(b, 0xd280014d); // x10 is digit start; x13 is ten.
+	digits=b->n;
+	a64put(b, 0x9acd0982); // udiv x2,x12,x13.
+	a64put(b, 0x9b0db043); // msub x3,x2,x13,x12: remainder before updating magnitude.
+	a64put(b, 0x1100c063); a64put(b, 0x39000123);
+	a64put(b, 0x91000529); a64put(b, 0xaa0203ec);
+	a64put(b, 0xb500000cU | ((digits-b->n)&0x7ffff)<<5);
+	a64put(b, 0x3900013f); // Preserve the C formatter's terminating NUL.
+	a64put(b, 0xcb0b0124); a64put(b, 0xd1000529); // x4 retains length, x9 selects last digit.
+	reverse=b->n;
+	a64put(b, 0xeb09015f);
+	done=b->n; a64put(b, 0x54000002);
+	a64put(b, 0x39400142); a64put(b, 0x39400123);
+	a64put(b, 0x39000143); a64put(b, 0x39000122);
+	a64put(b, 0x9100054a); a64put(b, 0xd1000529);
+	a64put(b, 0x14000000U | ((reverse-b->n)&0x3ffffff));
+	if(b->n > LeafMax) return 0;
+	b->code[done] |= (b->n-done)<<5;
+	a64put(b, 0xb9000000U | (u32int)(a->stringlen/4)<<10 | 14<<5 | 4);
+	return 1;
+}
+
+
 /* Update a unique prefix or copy a bounded slice after ownership and extent checks. */
 static int
 a64stringslice(A64Buf *b, LeafLayout *a)
@@ -962,6 +1014,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!a64return(&b, abi))return 0;
 	}else if(p.kind == LeafFrame){
 		if(!a64frame(&b, abi, p.alu))return 0;
+	}else if(p.kind == LeafFormatInteger){
+		if(!a64formatinteger(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafStringSlice){
 		if(!a64stringslice(&b, abi)) return 0;
 	}else if(p.kind == LeafStringAppend){

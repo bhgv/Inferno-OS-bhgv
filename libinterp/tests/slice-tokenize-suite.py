@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/integer-format-native.py',
     'libinterp/tests/array-copy-source.py',
     'libinterp/tests/array-view-native.py',
     'libinterp/tests/module-data-retains.py',
@@ -108,6 +109,8 @@ CORE = [
     'limbo/tests/case-max.py',
 ]
 JIT = [
+    'libinterp/tests/integer-format-layouts.py',
+    'libinterp/tests/integer-format-jit.py',
     'libinterp/tests/array-view-jit.py',
     'libinterp/tests/array-view-layouts.py',
     'libinterp/tests/mcall-jit.py',
