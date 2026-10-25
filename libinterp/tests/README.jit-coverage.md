@@ -357,3 +357,14 @@ storage and reject dead owners or invalid output metadata before allocation.
 Shared/Rune/small/H destinations retain construction paths. RV64 M, Zmmul and I
 remain 103/70, 90/83 and 87/86. Both WORD models share these counts; ARM64
 instruction execution is emulated.
+
+## Exact-capacity formatting and conversion lifetime checkpoint
+
+[Integer formatting](README.integer-format.md) now counts sign/digits before
+publication on AMD64/ARM64, admitting unique ASCII destinations down to exact
+one-character capacity. ARM64 shares a rejection stub; both leaves keep the
+64-unit limit without layout/ABI changes. Counts stay 141/32 on both backends,
+and RV64 M/Zmmul/I stay 103/70, 90/83, 87/86.
+[Conversion-source preflight](README.conversion-sources.md) rejects dead
+string/array/root owners and native byte-span wrap before reading or allocating;
+the public c2string helper also validates native spans independently.

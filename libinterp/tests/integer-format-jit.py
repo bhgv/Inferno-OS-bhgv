@@ -83,11 +83,16 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
                 width = 8 if big else wb
                 limit = 1 << (width*8-1)
                 values = [0, 1, -1, 9, -9, 10, -10, 99, -99, 100, -100, limit-1, -limit, 123456789, -123456789]
-                for number in values:
-                    for profile in range(12):
+                # Exercise every decimal length; retain the full alignment matrix for the original seeds.
+                for power in range(1, 19):
+                    for delta in (-1, 0, 1):
+                        values.extend((10**power+delta, -(10**power+delta)))
+                for value_index, number in enumerate(values):
+                    for profile in range(34):
                         for sa in range(8):
                             for da in range(8):
                                 for alias in range(3):
+                                    if value_index >= 15 and (sa or da):continue
                                     image = bytearray(b'\xa5'*0x4000)
                                     obj = 0x800+da; owner = BASE+obj
                                     src = 0x100+sa; dst = 0x200+da
@@ -103,6 +108,7 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
                                     if profile == 9:refs = MASK
                                     if profile == 10:owner = 0
                                     if profile == 11:owner = MASK
+                                    if profile >= 12:length = 0; capacity = profile-12
                                     if alias == 1:src = obj+24
                                     if alias == 2:src = dst
                                     put(image, obj-24, refs); put(image, obj, length, 4); put(image, obj+4, capacity, 4)
@@ -111,7 +117,8 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
                                     if alias == 2:put(image, dst, owner)
                                     captured = int.from_bytes(image[src:src+width], 'little', signed=True)
                                     put(image, 8, BASE+src); put(image, 16, BASE+dst)
-                                    valid = owner not in (0, MASK) and length >= 0 and capacity >= max(24, length) and refs == 1
+                                    text = str(captured).encode()
+                                    valid = owner not in (0, MASK) and length >= 0 and capacity >= max(len(text), length) and refs == 1
                                     expected = bytearray(image)
                                     text = str(captured).encode()
                                     if valid:

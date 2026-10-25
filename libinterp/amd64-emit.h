@@ -836,11 +836,26 @@ x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x79);
 	x64field(b, 6, 2, a->stringmax, 4);
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64guard(b, 0x7d);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfe); x64byte(b, 24); x64guard(b, 0x7d);
 	x64field(b, 1, 2, -a->heapref, 8);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64guard(b, 0x74);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xd2); // r10 retains the owner through division.
-	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0xb2); x64word(b, a->stringdata);
+	/* Count sign and digits before touching even a one-character destination. */
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc0); // mov    r8,rax
+	x64byte(b, 0x41); x64byte(b, 0xbb); x64word(b, 10); // Both decimal passes divide by ten.
+	x64byte(b, 0x31); x64byte(b, 0xc9); // xor    ecx,ecx
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); // test   rax,rax
+	x64byte(b, 0x79); x64byte(b, 0x05); // jns    f <positive>
+	x64byte(b, 0x48); x64byte(b, 0xf7); x64byte(b, 0xd8); // neg    rax
+	x64byte(b, 0xff); x64byte(b, 0xc1); // inc    ecx
+	x64byte(b, 0xff); x64byte(b, 0xc1); // inc    ecx
+	x64byte(b, 0x31); x64byte(b, 0xd2); // xor    edx,edx
+	x64byte(b, 0x49); x64byte(b, 0xf7); x64byte(b, 0xf3); // div    r11
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); // test   rax,rax
+	x64byte(b, 0x75); x64byte(b, 0xf4); // jne    15 <again>
+	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); // cmp    rsi,rcx
+	x64guard(b, 0x7d);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0); // Restore the captured signed input.
+	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0xb2); x64word(b, a->stringdata);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xf1); // mov    rcx,rsi
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); // test   rax,rax
 	x64byte(b, 0x79); x64byte(b, 0x09); // jns    11 <positive>
@@ -848,7 +863,6 @@ x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc1); // inc    rcx
 	x64byte(b, 0x48); x64byte(b, 0xf7); x64byte(b, 0xd8); // neg    rax
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc9); // mov    r9,rcx
-	x64byte(b, 0x41); x64byte(b, 0xbb); x64byte(b, 0x0a); x64byte(b, 0x00); x64byte(b, 0x00); x64byte(b, 0x00); // mov    r11d,0xa
 	x64byte(b, 0x31); x64byte(b, 0xd2); // xor    edx,edx
 	x64byte(b, 0x49); x64byte(b, 0xf7); x64byte(b, 0xf3); // div    r11
 	x64byte(b, 0x80); x64byte(b, 0xc2); x64byte(b, 0x30); // add    dl,0x30

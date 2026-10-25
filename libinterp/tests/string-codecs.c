@@ -222,14 +222,23 @@ checkrunes(void)
 static void
 checkbounds(void)
 {
-	struct { Heap h; Array a; } forged;
-	struct { Heap h; String s; } text;
+
+	struct {
+		Heap h; // Independent owner metadata for the forged source array.
+		Array a; // Borrowed byte-array geometry, never released as an allocated owner.
+	} forged;
+
+	struct {
+		Heap h; // Independent owner metadata for invalid string representations.
+		String s; // Borrowed string header used only by rejection tests.
+	} text;
 	Array *a, *bytes, *oldbytes;
 	String *s, *old;
 	int mode, before;
 
 	memset(&forged,0,sizeof(forged));
 	memset(&text,0,sizeof(text));
+	forged.h.ref = 1; forged.a.root = H;
 	forged.h.t = &Tarray; forged.a.t = &Tbyte; forged.a.data = (uchar*)1;
 	a = &forged.a;
 	s = c2string("keep",4); old = s;
@@ -262,7 +271,7 @@ checkbounds(void)
 	s = c2string(H,0); assert(s->len == 0); destroy(s); checks++;
 	forged.a.data = nil; forged.a.len = 0;
 	s = H; R.d = &s; cvtac(); assert(s != H && s->len == 0); destroy(s); checks++;
-	text.h.t = &Tstring; text.s.len = (-0x7fffffff-1); s = &text.s;
+	text.h.ref = 1; text.h.t = &Tstring; text.s.len = (-0x7fffffff-1); s = &text.s;
 	bytes = mem2array("keep",4); oldbytes = bytes; R.s = &s; R.d = &bytes;
 	EXPECT(cvtca(),exHeap); assert(bytes == oldbytes);
 	EXPECT(string2c(s),exNomem);

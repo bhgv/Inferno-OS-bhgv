@@ -641,24 +641,34 @@ a64stringstore(A64Buf *b, LeafLayout *a)
 static int
 a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 {
-	int positive, digits, reverse, done;
+	int positive, digits, reverse, done, fallback, count;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
 	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
 	   a->stringdata < a->stringmax+4 || a->stringdata > 2047 ||
 	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 || a->refbytes != 8) return 0;
+	/* All rejects share one return so the counting pass keeps the 64-unit bound. */
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	a64ptr(b, 9, a->s); a64load(b, 12, 9, op->bytes);
 	if(op->bytes == 4) a64put(b, 0x93407d8c); // Sign-extend the complete WORD32 input.
 	a64ptr(b, 11, a->d); a64load(b, 14, 11, 8);
-	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64guard(b, 0x54000068);
+	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
 	a64wordfield(b, 2, 14, a->stringlen, 4);
-	a64put(b, 0xf100005f); a64guard(b, 0x5400006a);
+	a64put(b, 0xf100005f); a64defer(b, 0x5400000b, fallback);
 	a64wordfield(b, 3, 14, a->stringmax, 4);
-	a64put(b, 0xeb02007f); a64guard(b, 0x5400006a);
-	a64put(b, 0xf100607f); a64guard(b, 0x5400006a);
+	a64put(b, 0xeb02007f); a64defer(b, 0x5400000b, fallback);
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 14<<5 | 2);
-	a64put(b, 0xf100045f); a64guard(b, 0x54000060);
+	a64put(b, 0xf100045f); a64defer(b, 0x54000001, fallback);
+	/* x6 counts an unsigned magnitude while x12 retains the signed input. */
+	a64put(b, 0xf100019f);
+	a64put(b, 0xda8ca586); a64put(b, 0x9a9fa7e4);
+	a64put(b, 0xd280014d);
+	count=b->n;
+	a64put(b, 0x9acd08c6); a64put(b, 0x91000484);
+	a64put(b, 0xb5000006U | ((count-b->n)&0x7ffff)<<5);
+	a64put(b, 0xeb04007f); a64defer(b, 0x5400000b, fallback);
 	a64put(b, 0x910001cbU | (u32int)a->stringdata<<10); // x11 is the first output byte.
 	a64put(b, 0xaa0b03e9); // x9 advances through digits.
 	a64put(b, 0xf100019f);
@@ -666,7 +676,7 @@ a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 	a64put(b, 0x528005a3); a64put(b, 0x39000123); // Emit the minus sign.
 	a64put(b, 0x91000529); a64put(b, 0xcb0c03ec); // Negation leaves MIN as an unsigned magnitude.
 	b->code[positive] |= (b->n-positive)<<5;
-	a64put(b, 0xaa0903ea); a64put(b, 0xd280014d); // x10 is digit start; x13 is ten.
+	a64put(b, 0xaa0903ea); // x10 is digit start; x13 still holds ten.
 	digits=b->n;
 	a64put(b, 0x9acd0982); // udiv x2,x12,x13.
 	a64put(b, 0x9b0db043); // msub x3,x2,x13,x12: remainder before updating magnitude.

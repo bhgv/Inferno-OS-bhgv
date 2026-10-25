@@ -317,7 +317,7 @@ OP(addc)
 }
 
 
-/* Export UTF-8 only after validating the string representation and byte bound. */
+/* Validate source lifetime, representation and byte bounds before exporting UTF-8. */
 OP(cvtca)
 {
 	int l;
@@ -335,7 +335,7 @@ OP(cvtca)
 		error(exNilref);
 	if(D2H(ss)->t != &Tstring)
 		error(exType);
-	if(ss->len == (-0x7fffffff-1) ||
+	if(D2H(ss)->ref == 0 || ss->len == (-0x7fffffff-1) ||
 	   ss->max < (ss->len < 0 ? -ss->len : ss->len))
 		error(exHeap);
 	if(ss->len < 0) {
@@ -358,7 +358,8 @@ r:	memmove(&old, R.d, sizeof(old));
 	destroy(old);
 }
 
-/* Validate complete VM-array lengths before narrowing to the string constructor. */
+
+/* Validate array owners and native byte spans before entering the string constructor. */
 OP(cvtac)
 {
 	Array *a;
@@ -369,12 +370,25 @@ OP(cvtac)
 	if(a != H){
 		if(a == nil)
 			error(exNilref);
+		if(D2H(a)->t != &Tarray)
+			error(exType);
+		/* A dead owner must not lead us through its borrowed element descriptor. */
+		if(D2H(a)->ref == 0)
+			error(exHeap);
 		/* A compiler may emit its own pointer-free byte descriptor. */
-		if(D2H(a)->t != &Tarray ||
-		   (a->t != &Tbyte &&
-		    (a->t == nil || a->t == H || a->t->size != 1 || a->t->np != 0)))
+		if(a->t != &Tbyte &&
+		   (a->t == nil || a->t == H || a->t->size != 1 || a->t->np != 0))
 			error(exType);
 		if(a->len < 0 || (uvlong)a->len > 0x7fffffff)
+			error(exHeap);
+		/* Empty arrays need no payload; nonempty native byte spans must not wrap. */
+		if(a->len != 0){
+			if(a->data == nil || a->data == H)
+				error(exNilref);
+			if((uintptr)a->data > (uintptr)-1-(uintptr)a->len)
+				error(exHeap);
+		}
+		if(a->root == nil || (a->root != H && D2H(a->root)->ref == 0))
 			error(exHeap);
 		ds = c2string((char*)a->data, (int)a->len);
 	}
@@ -428,10 +442,13 @@ OP(cvtcf)
 	memmove(R.d, &value, sizeof(value));
 }
 
+
 /* Format the complete VM word, including its sign and terminating NUL. */
 OP(cvtwc)
 {
 	String *ds, *old;
+	char digits[24];
+	int length;
 	WORD value;
 
 	memmove(&value, R.s, sizeof(value));
@@ -441,17 +458,20 @@ OP(cvtwc)
 	if(old != H && (old->len == (-0x7fffffff-1) ||
 	   old->max < (old->len < 0 ? -old->len : old->len) || D2H(old)->ref == 0))
 		error(exHeap);
-	/* Twenty decimal characters and a terminator fit in this existing capacity. */
-	if(old != H && old->len >= 0 && old->max >= 24 && D2H(old)->ref == 1)
+	/* Stage the full text before checking exact logical character capacity. */
+	length = sprint(digits, "%lld", (vlong)value);
+	if(old != H && old->len >= 0 && old->max >= length && D2H(old)->ref == 1)
 		ds = old;
 	else
 		ds = newstring(24);
-	ds->len = sprint(ds->Sascii, "%lld", (vlong)value);
+	memmove(ds->Sascii, digits, length+1);
+	ds->len = length;
 	if(ds != old){
 		memmove(R.d, &ds, sizeof(ds));
 		destroy(old);
 	}
 }
+
 
 /*
  * Format every signed 64-bit value, including its sign and terminating NUL.
@@ -459,6 +479,8 @@ OP(cvtwc)
 OP(cvtlc)
 {
 	String *ds, *old;
+	char digits[24];
+	int length;
 	LONG value;
 
 	memmove(&value, R.s, sizeof(value));
@@ -468,12 +490,14 @@ OP(cvtlc)
 	if(old != H && (old->len == (-0x7fffffff-1) ||
 	   old->max < (old->len < 0 ? -old->len : old->len) || D2H(old)->ref == 0))
 		error(exHeap);
-	/* Twenty decimal characters and a terminator fit in this existing capacity. */
-	if(old != H && old->len >= 0 && old->max >= 24 && D2H(old)->ref == 1)
+	/* Stage the full text before checking exact logical character capacity. */
+	length = sprint(digits, "%lld", (vlong)value);
+	if(old != H && old->len >= 0 && old->max >= length && D2H(old)->ref == 1)
 		ds = old;
 	else
 		ds = newstring(24);
-	ds->len = sprint(ds->Sascii, "%lld", (vlong)value);
+	memmove(ds->Sascii, digits, length+1);
+	ds->len = length;
 	if(ds != old){
 		memmove(R.d, &ds, sizeof(ds));
 		destroy(old);
@@ -567,6 +591,9 @@ c2string(char *cs, int len)
 		return newstring(0);
 	if(cs == nil || cs == H)
 		error(exNilref);
+	/* Native callers must not wrap the end pointer before UTF scanning. */
+	if((uintptr)cs > (uintptr)-1-(uintptr)len)
+		error(exHeap);
 	isrune = 0;
 	ecs = cs+len;
 	p = (uchar*)cs;

@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/conversion-sources.py',
     'libinterp/tests/integer-format-native.py',
     'libinterp/tests/array-copy-source.py',
     'libinterp/tests/array-view-native.py',

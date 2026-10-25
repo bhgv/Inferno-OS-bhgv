@@ -28,8 +28,29 @@ main(void)
 {
     Module module = {0};
     Inst code[2] = {{0}, {0}};
-    LONG values[] = {0, 1, -1, 9, -9, 10, -10, 99, -99, 100, -100,
-        2147483647LL, -2147483648LL, 9223372036854775807LL, (-9223372036854775807LL-1)};
+    LONG values[] = {
+        0LL, 1LL, -1LL, 9LL, -9LL, 10LL,
+        -10LL, 99LL, -99LL, 100LL, -100LL, 2147483647LL,
+        -2147483648LL, 9223372036854775807LL, (-9223372036854775807LL-1), 9LL, -9LL, 10LL,
+        -10LL, 11LL, -11LL, 99LL, -99LL, 100LL,
+        -100LL, 101LL, -101LL, 999LL, -999LL, 1000LL,
+        -1000LL, 1001LL, -1001LL, 9999LL, -9999LL, 10000LL,
+        -10000LL, 10001LL, -10001LL, 99999LL, -99999LL, 100000LL,
+        -100000LL, 100001LL, -100001LL, 999999LL, -999999LL, 1000000LL,
+        -1000000LL, 1000001LL, -1000001LL, 9999999LL, -9999999LL, 10000000LL,
+        -10000000LL, 10000001LL, -10000001LL, 99999999LL, -99999999LL, 100000000LL,
+        -100000000LL, 100000001LL, -100000001LL, 999999999LL, -999999999LL, 1000000000LL,
+        -1000000000LL, 1000000001LL, -1000000001LL, 9999999999LL, -9999999999LL, 10000000000LL,
+        -10000000000LL, 10000000001LL, -10000000001LL, 99999999999LL, -99999999999LL, 100000000000LL,
+        -100000000000LL, 100000000001LL, -100000000001LL, 999999999999LL, -999999999999LL, 1000000000000LL,
+        -1000000000000LL, 1000000000001LL, -1000000000001LL, 9999999999999LL, -9999999999999LL, 10000000000000LL,
+        -10000000000000LL, 10000000000001LL, -10000000000001LL, 99999999999999LL, -99999999999999LL, 100000000000000LL,
+        -100000000000000LL, 100000000000001LL, -100000000000001LL, 999999999999999LL, -999999999999999LL, 1000000000000000LL,
+        -1000000000000000LL, 1000000000000001LL, -1000000000000001LL, 9999999999999999LL, -9999999999999999LL, 10000000000000000LL,
+        -10000000000000000LL, 10000000000000001LL, -10000000000000001LL, 99999999999999999LL, -99999999999999999LL, 100000000000000000LL,
+        -100000000000000000LL, 100000000000000001LL, -100000000000000001LL, 999999999999999999LL, -999999999999999999LL, 1000000000000000000LL,
+        -1000000000000000000LL, 1000000000000000001LL, -1000000000000000001LL
+    };
 
     union {
         uvlong alignment; // Native alignment for the independent operand image.
@@ -51,7 +72,8 @@ main(void)
         abort();
     for(op = 0; op < 2; op++) for(value = 0; value < sizeof(values)/sizeof(values[0]); value++)
     for(sa = 0; sa < 8; sa++) for(da = 0; da < 8; da++)
-    for(mode = 0; mode < 14; mode++) for(alias = 0; alias < 3; alias++){
+    for(mode = 0; mode < 36; mode++) for(alias = 0; alias < 3; alias++){
+        if(value >= 15 && (sa || da)) continue;
         if(getenv("FORMAT_MODE") && mode != atoi(getenv("FORMAT_MODE"))) continue;
         owner = newstring(32);
         memset(owner->Sascii, 0xa5, 33);
@@ -66,6 +88,7 @@ main(void)
         if(mode == 11) Tstring.ref = 0;
         if(mode == 12) D2H(owner)->ref = 2;
         if(mode == 13) owner->len = 33;
+        if(mode >= 14){owner->len = 0; owner->max = mode-14;}
         published = mode == 7 ? nil : mode == 8 ? H : owner;
         memset(slots.bytes, 0xa5, sizeof(slots.bytes));
         R.s = alias == 1 ? (void*)(owner->Sascii+sa) : alias == 2 ? (void*)(slots.bytes+80+da) : (void*)(slots.bytes+sa);
@@ -79,7 +102,8 @@ main(void)
         saved = R;
         memmove(before, slots.bytes, sizeof(before));
         memmove(ownerbefore, owner, sizeof(String)+33);
-        accepted = mode == 0 || mode == 9 || mode == 10 || mode == 11;
+        accepted = mode == 0 || mode == 3 || mode == 9 || mode == 10 || mode == 11 ||
+            (mode >= 14 && owner->max >= length);
         invalid = (mode >= 4 && mode <= 7) || mode == 12 || mode == 13;
         for(pass = 0; pass < 2; pass++){
             R = saved;
@@ -99,7 +123,7 @@ main(void)
                    memcmp(slots.bytes, expected, sizeof(expected))) abort();
             }else{
                 /* A pending allocation failure cannot affect unique-storage formatting. */
-                failure = mode == 9 || mode == 12 ? 0 : -1;
+                failure = mode == 9 || mode == 12 || (mode >= 14 && accepted) ? 0 : -1;
                 raised = nil;
                 if(setjmp(boundary) == 0){
                     if(op) cvtlc(); else cvtwc();

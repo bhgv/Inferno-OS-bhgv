@@ -4,6 +4,7 @@ typedef int32_t WORD;
 typedef int64_t WORD;
 #endif
 typedef unsigned char uchar;
+typedef uintptr_t uintptr; // Native byte-span width remains independent of the VM WORD.
 typedef uint32_t Rune;
 enum {Runeself = 128, UTFmax = 4};
 extern int chartorune(Rune*, char*);
