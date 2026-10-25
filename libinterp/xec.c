@@ -1789,6 +1789,10 @@ OP(ret)
 		memmove(&type, (uchar*)SEXTYPE(f)+O(Stkext, reg.TR), sizeof(type));
 	if(type == nil || type == H || type->np < 0)
 		error(exHeap);
+	/* A self-module return still owns both REG.M and the saved Frame.mr. */
+	if(m != nil && (D2H(R.M)->ref == 0 ||
+	   (m == R.M && D2H(R.M)->ref == 1)))
+		error(exHeap);
 	R.FP = links.fp;
 	R.SP = (uchar*)f;
 	R.PC = links.lr;

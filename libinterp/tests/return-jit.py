@@ -44,10 +44,13 @@ typedef uint32_t u32int;typedef unsigned char uchar;
 int emit(u32int *out,int cap,int wb,int bad)
 {
  LeafLayout a={0};a.wordbytes=wb;a.pc=0;a.s=8;a.d=16;a.m=24;
+ a.module=40;a.regmp=56;a.linkcompiled=8;a.linkmp=16;a.heapref=24;a.refbytes=8;
  a.fp=32;a.sp=48;a.frametype=16;a.framemr=24;a.framefp=8;a.framelr=0;a.typenp=28;
  switch(bad){case 1:a.fp=-1;break;case 2:a.sp=3;break;case 3:a.pc=-1;break;
  case 4:a.frametype=8;break;case 5:a.typenp=1;break;case 6:a.framemr=0;break;
- case 7:a.framelr=2048;break;case 8:a.framefp=1;break;}
+ case 7:a.framelr=2048;break;case 8:a.framefp=1;break;
+ case 9:a.module=3;break;case 10:a.regmp=-1;break;case 11:a.linkmp=1;break;
+ case 12:a.linkcompiled=2;break;case 13:a.heapref=0;break;case 14:a.refbytes=4;break;}
  return leafemit(out,cap,&a,IRET);
 }
 ''')
@@ -76,15 +79,16 @@ int emit(u32int *out,int cap,int wb,int bad)
             for cap in range(n):
                 guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
                 require(lib.emit(guard,cap,wb,0)==0 and list(guard)==[0xa5a5a5a5]*64,'partial publication')
-            for bad in range(1,9):
+            for bad in range(1,15):
                 guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
                 require(lib.emit(guard,64,wb,bad)==0 and list(guard)==[0xa5a5a5a5]*64,(arch,bad))
             machine.mem_write(CODE,blob);machine.ctl_remove_cache(CODE,CODE+256)
-            for profile in range(20):
+            for profile in range(43):
                 for alignment in range(64):
                     image=bytearray(b'\xa5'*0x4000)
                     obj=0x1800+alignment;frame=BASE+obj;descriptor=BASE+0x800
                     previous=BASE+0x2400;pc=BASE+0x3000;module=0;np=0
+                    current=BASE+0xa00;refs=3;oldmode=0;newmode=0;mp=BASE+0x3800
                     if profile==1:frame=0
                     if profile==2:frame=MASK
                     if profile==3:descriptor=0
@@ -104,14 +108,43 @@ int emit(u32int *out,int cap,int wb,int bad)
                     if profile==17:descriptor=BASE+0x900
                     if profile==18:previous=BASE+32
                     if profile==19:pc=frame
+                    if profile>=20:module=BASE+0x600
+                    if profile==21:module=current
+                    if profile==22:refs=1
+                    if profile==23:refs=0
+                    if profile==24:refs=MASK
+                    if profile==25:refs=2
+                    if profile==26:oldmode=1
+                    if profile==27:current=0
+                    if profile==28:current=MASK
+                    if profile==29:oldmode=newmode=-1
+                    if profile==30:oldmode=newmode=0x12345678
+                    if profile==31:mp=0
+                    if profile==32:mp=MASK
+                    if profile==33:module=current;refs=2
+                    if profile==34:module=current;refs=1
+                    if profile==35:module=current;refs=0
+                    if profile==36:module=current;refs=MASK
+                    if profile==37:previous=BASE+40
+                    if profile==38:pc=module
+                    if profile==39:np=1
+                    if profile==40:module=0;current=0
+                    if profile==41:module=0;current=MASK
+                    if profile==42:module=0;refs=0
+                    put(image,0xa00-24,refs);put(image,0xa08,oldmode,4);put(image,0xa10,mp)
+                    put(image,0x608,newmode,4);put(image,0x610,mp)
+                    put(image,40,current)
                     put(image,obj,pc);put(image,obj+8,previous);put(image,obj+16,descriptor);put(image,obj+24,module)
                     put(image,0x81c,np,4);put(image,0x91c,np,4)
                     put(image,32,frame)
-                    valid=frame not in (0,MASK) and descriptor not in (0,MASK) and np==0 and module==0 and previous not in (0,MASK) and pc not in (0,MASK)
+                    valid=frame not in (0,MASK) and descriptor not in (0,MASK) and np==0 and (module==0 or (module!=MASK and current not in (0,MASK) and refs>1 and (oldmode==newmode or module==current))) and previous not in (0,MASK) and pc not in (0,MASK)
                     expected=bytearray(image);expectedwrites=[]
                     if valid:
                         put(expected,32,previous);put(expected,48,frame);put(expected,0,pc)
                         expectedwrites=[(BASE+32,8),(BASE+48,8),(BASE,8)]
+                        if module:
+                            put(expected,0xa00-24,refs-1);put(expected,40,module);put(expected,56,mp)
+                            expectedwrites += [(BASE+0xa00-24,8),(BASE+40,8),(BASE+56,8)]
                     machine.mem_write(BASE,bytes(image));writes.clear()
                     mxcsr=0x3f80 if profile&1 else 0x1f80
                     fpcr=0x800000 if profile&1 else 0

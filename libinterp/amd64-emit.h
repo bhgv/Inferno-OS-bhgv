@@ -112,10 +112,10 @@ x64guard(X64Buf *b, int condition)
 static void
 x64field(X64Buf *b, int result, int owner, int offset, int bytes)
 {
-	x64byte(b, owner >= 8 ? 0x49 : 0x48);
+	x64byte(b, 0x48 | (owner >= 8) | (result >= 8 ? 4 : 0));
 	if(bytes == 1){ x64byte(b, 0x0f); x64byte(b, 0xb6); }
 	else x64byte(b, bytes == 8 ? 0x8b : 0x63);
-	x64byte(b, 0x80 | result<<3 | (owner&7));
+	x64byte(b, 0x80 | (result&7)<<3 | (owner&7));
 	x64word(b, offset);
 }
 
@@ -951,45 +951,7 @@ x64frame(X64Buf *b, LeafLayout *a, int imported)
 }
 
 
-/* Return within a module only when no mapped owner or extent cleanup is required. */
-static int
-x64return(X64Buf *b, LeafLayout *a)
-{
-	int offsets[7], i, j;
-
-	offsets[0]=a->fp; offsets[1]=a->sp; offsets[2]=a->pc;
-	offsets[3]=a->frametype; offsets[4]=a->framemr;
-	offsets[5]=a->framefp; offsets[6]=a->framelr;
-	for(i=0; i<7; i++)
-		if(offsets[i]<0 || offsets[i]>2047 || offsets[i]%8)return 0;
-	for(i=3; i<7; i++)for(j=i+1; j<7; j++)
-		if(offsets[i]==offsets[j])return 0;
-	if(a->typenp<0 || a->typenp>2047 || a->typenp%4)return 0;
-	x64ptr(b, 0, a->fp);
-	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x40); x64byte(b, 1);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 1); x64guard(b, 0x77);
-	x64field(b, 0, 8, a->frametype, 8);
-	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
-	x64field(b, 1, 0, a->typenp, 4);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x74);
-	x64field(b, 1, 8, a->framemr, 8);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x74);
-	x64field(b, 1, 8, a->framefp, 8);
-	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x51); x64byte(b, 1);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
-	x64field(b, 0, 8, a->framelr, 8);
-	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
-	/* All frame metadata is captured before the first REG store. */
-	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x8f); x64word(b, a->fp);
-	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, a->sp);
-	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, a->pc);
-	return 1;
-}
-
-
-/* Share the nearby MCALL rejection return while short branch reach permits it. */
+/* Share the nearby module-leaf rejection return while short branch reach permits it. */
 static void
 x64moduleguard(X64Buf *b, int success, int fallback)
 {
@@ -1004,7 +966,7 @@ x64moduleguard(X64Buf *b, int success, int fallback)
 }
 
 
-/* Use short field displacements where the private MCALL layout permits them. */
+/* Use short field displacements where the private module layout permits them. */
 static void
 x64modulefield(X64Buf *b, int result, int owner, int offset, int bytes)
 {
@@ -1012,10 +974,78 @@ x64modulefield(X64Buf *b, int result, int owner, int offset, int bytes)
 		x64field(b, result, owner, offset, bytes);
 		return;
 	}
-	x64byte(b, owner >= 8 ? 0x49 : 0x48);
+	x64byte(b, 0x48 | (owner >= 8) | (result >= 8 ? 4 : 0));
 	x64byte(b, bytes == 8 ? 0x8b : 0x63);
-	x64byte(b, 0x40 | result<<3 | (owner&7));
+	x64byte(b, 0x40 | (result&7)<<3 | (owner&7));
 	x64byte(b, offset);
+}
+
+
+/* Restore pointer-free frames and release retained same-mode module owners. */
+static int
+x64return(X64Buf *b, LeafLayout *a)
+{
+	int offsets[11], i, j, fallback, ordinary, done;
+
+	offsets[0]=a->fp; offsets[1]=a->sp; offsets[2]=a->pc;
+	offsets[3]=a->frametype; offsets[4]=a->framemr;
+	offsets[5]=a->framefp; offsets[6]=a->framelr;
+	offsets[7]=a->module; offsets[8]=a->regmp; offsets[9]=a->linkmp;
+	offsets[10]=a->linkcompiled;
+	for(i=0; i<11; i++)
+		if(offsets[i]<0 || offsets[i]>2047 || offsets[i]%(i==10 ? 4 : 8))return 0;
+	for(i=3; i<7; i++)for(j=i+1; j<7; j++)
+		if(offsets[i]==offsets[j])return 0;
+	if(a->typenp<0 || a->typenp>2047 || a->typenp%4 ||
+	   a->heapref<=0 || a->heapref>128 || a->heapref%8 || a->refbytes!=8)return 0;
+	x64byte(b, 0xeb); x64byte(b, 3);
+	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+	/* r8 keeps the frame, r9 the caller FP, r10 the PC and r11 the saved module. */
+	x64modulefield(b, 8, 7, a->fp, 8);
+	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64modulefield(b, 0, 8, a->frametype, 8);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64modulefield(b, 1, 0, a->typenp, 4);
+	x64byte(b, 0x85); x64byte(b, 0xc9); x64moduleguard(b, 0x74, fallback);
+	x64modulefield(b, 9, 8, a->framefp, 8);
+	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x51); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64modulefield(b, 10, 8, a->framelr, 8);
+	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x52); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	/* A nil saved module skips every current-module and heap-header read. */
+	x64modulefield(b, 11, 8, a->framemr, 8);
+	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xdb);
+	x64byte(b, 0x74); ordinary=b->n; x64byte(b, 0);
+	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x53); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64modulefield(b, 0, 7, a->module, 8);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64modulefield(b, 1, 0, a->linkcompiled, 4);
+	x64modulefield(b, 2, 11, a->linkcompiled, 4);
+	x64byte(b, 0x39); x64byte(b, 0xd1); x64moduleguard(b, 0x74, fallback);
+	/* rax/rcx capture the owner and count; rsi captures caller MP before stores. */
+	x64modulefield(b, 1, 0, -a->heapref, 8);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc9);
+	x64modulefield(b, 6, 11, a->linkmp, 8);
+	if(b->n>sizeof(b->bytes) || b->n-ordinary-1>127)return 0;
+	b->bytes[ordinary]=b->n-ordinary-1;
+	/* Capture all links and MP before restoring REG or releasing the current owner. */
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x8f); x64word(b, a->fp);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, a->sp);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x97); x64word(b, a->pc);
+	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xdb);
+	x64byte(b, 0x74); done=b->n; x64byte(b, 0);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x88); x64word(b, -a->heapref);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x9f); x64word(b, a->module);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xb7); x64word(b, a->regmp);
+	if(b->n>sizeof(b->bytes))return 0;
+	b->bytes[done]=b->n-done-1;
+	return 1;
 }
 
 

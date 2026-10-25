@@ -317,3 +317,12 @@ keeping the 64-unit staging bound. Counts remain 138/35 on both backends.
 Mapped module-data cloning now validates pointer spans and owner capacity,
 uses byte-safe field access, and leaves only acquired owners for cleanup.
 Tokenization validates both input capacities before reading either payload.
+
+## Same-mode module return checkpoint
+
+[Native module returns](README.module-returns.md) extends AMD64/ARM64 RET to
+pointer-free ordinary frames with retained same-mode module owners, including
+self-module aliases. Last-reference releases, mode changes and frame cleanup
+still use C. Owner preflight prevents C RET from publishing REG before discovering
+a dead module. Counts remain 138/35 on AMD64/ARM64 and 103/70, 90/83, 87/86 on
+RISC-V profiles. Mixed C/RX MCALL/RET round trips check exact reference restoration.

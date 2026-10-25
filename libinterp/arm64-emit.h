@@ -755,33 +755,60 @@ a64frame(A64Buf *b, LeafLayout *a, int imported)
 }
 
 
-/* Restore ordinary pointer-free frame links without calls or stack-owner changes. */
+/* Restore pointer-free frames and release retained same-mode module owners. */
 static int
 a64return(A64Buf *b, LeafLayout *a)
 {
-	int offsets[7], i, j;
+	int offsets[11], i, j, fallback, ordinary, done;
 
 	offsets[0]=a->fp; offsets[1]=a->sp; offsets[2]=a->pc;
 	offsets[3]=a->frametype; offsets[4]=a->framemr;
 	offsets[5]=a->framefp; offsets[6]=a->framelr;
-	for(i=0; i<7; i++)
-		if(offsets[i]<0 || offsets[i]>2047 || offsets[i]%8)return 0;
+	offsets[7]=a->module; offsets[8]=a->regmp; offsets[9]=a->linkmp;
+	offsets[10]=a->linkcompiled;
+	for(i=0; i<11; i++)
+		if(offsets[i]<0 || offsets[i]>2047 || offsets[i]%(i==10 ? 4 : 8))return 0;
 	for(i=3; i<7; i++)for(j=i+1; j<7; j++)
 		if(offsets[i]==offsets[j])return 0;
-	if(a->typenp<0 || a->typenp>2047 || a->typenp%4)return 0;
+	if(a->typenp<0 || a->typenp>2047 || a->typenp%4 ||
+	   a->heapref<=0 || a->heapref>128 || a->heapref%8 || a->refbytes!=8)return 0;
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	/* x9 keeps the frame, x13 the caller FP, x14 the PC and x15 the module. */
 	a64ptr(b, 9, a->fp);
-	a64put(b, 0x91000522); a64put(b, 0xf100045f); a64guard(b, 0x54000068);
+	a64put(b, 0x91000522); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
 	a64field(b, 12, 9, a->frametype, 8);
-	a64put(b, 0x91000582); a64put(b, 0xf100045f); a64guard(b, 0x54000068);
-	a64field(b, 13, 12, a->typenp, 4); a64guard(b, 0x3400006d);
-	a64field(b, 13, 9, a->framemr, 8); a64guard(b, 0xb400006d);
+	a64put(b, 0x91000582); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	a64field(b, 2, 12, a->typenp, 4); a64defer(b, 0x35000002, fallback);
 	a64field(b, 13, 9, a->framefp, 8);
-	a64put(b, 0x910005a2); a64put(b, 0xf100045f); a64guard(b, 0x54000068);
+	a64put(b, 0x910005a2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
 	a64field(b, 14, 9, a->framelr, 8);
-	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64guard(b, 0x54000068);
+	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	/* Ordinary returns never dereference the unused current-module owner. */
+	a64field(b, 15, 9, a->framemr, 8);
+	ordinary=b->n; a64put(b, 0xb400000f);
+	a64put(b, 0x910005e2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	a64ptr(b, 10, a->module);
+	a64put(b, 0x91000542); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	a64field(b, 2, 10, a->linkcompiled, 4); a64field(b, 3, 15, a->linkcompiled, 4);
+	a64put(b, 0x6b03005f); a64defer(b, 0x54000001, fallback);
+	/* x10/x11 retain the release target/count; x1 captures the caller MP. */
+	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 10<<5 | 11);
+	a64put(b, 0xf100057f); a64defer(b, 0x54000009, fallback);
+	a64put(b, 0xd100056b);
+	a64field(b, 1, 15, a->linkmp, 8);
+	if(b->n>LeafMax)return 0;
+	b->code[ordinary] |= (b->n-ordinary)<<5;
+	/* No metadata reads or failure branches follow the first VM store. */
 	a64put(b, 0xf9000000U | (u32int)(a->fp/8)<<10 | 13);
 	a64put(b, 0xf9000000U | (u32int)(a->sp/8)<<10 | 9);
 	a64put(b, 0xf9000000U | (u32int)(a->pc/8)<<10 | 14);
+	done=b->n; a64put(b, 0xb400000f);
+	a64put(b, 0xf8000000U | ((u32int)-a->heapref&511)<<12 | 10<<5 | 11);
+	a64put(b, 0xf9000000U | (u32int)(a->module/8)<<10 | 15);
+	a64put(b, 0xf9000000U | (u32int)(a->regmp/8)<<10 | 1);
+	if(b->n>LeafMax)return 0;
+	b->code[done] |= (b->n-done)<<5;
 	return 1;
 }
 

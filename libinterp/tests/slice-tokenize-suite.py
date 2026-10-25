@@ -14,6 +14,7 @@ CORE = [
     'libinterp/tests/clone-owners.py',
     'libinterp/tests/mcall-native.py',
     'libinterp/tests/return-native.py',
+    'libinterp/tests/call-return-native.py',
     'libinterp/tests/mframe-native.py',
     'libinterp/tests/frame-native.py',
     'libinterp/tests/channel-retains.py',
@@ -107,6 +108,8 @@ CORE = [
 JIT = [
     'libinterp/tests/mcall-jit.py',
     'libinterp/tests/return-jit.py',
+    'libinterp/tests/return-layouts.py',
+    'libinterp/tests/amd64-field-registers.py',
     'libinterp/tests/mframe-jit.py',
     'libinterp/tests/frame-jit.py',
     'libinterp/tests/string-slice-jit.py',
