@@ -1964,21 +1964,33 @@ OP(lena)
 		l = a->len;
 	memmove(R.d, &l, sizeof(l));
 }
-/* Validate each list link and keep operand accesses independent of alignment. */
+
+
+/* Detect cycles and bound the count before publishing an alignment-safe list length. */
 OP(lenl)
 {
-	WORD l;
-	List *a;
+	UWORD count;
+	WORD result;
+	List *a, *checkpoint;
 
 	memmove(&a, R.s, sizeof(a));
-	l = 0;
-	while(a != H) {
+	checkpoint = a;
+	count = 0;
+	while(a != H){
 		if(a == nil)
 			error(exNilref);
-		l++;
+		if(count == ((UWORD)~0>>1))
+			error(exBounds);
+		count++;
 		a = a->tail;
+		if(a == checkpoint)
+			error(exHeap);
+		/* Brent checkpoints at counts 1, 3, 7, ... require no extra link reads. */
+		if((count & (count+1)) == 0)
+			checkpoint = a;
 	}
-	memmove(R.d, &l, sizeof(l));
+	result = count;
+	memmove(R.d, &result, sizeof(result));
 }
 /* Validate and retain buffered storage before changing its ring or destination. */
 static int
@@ -2681,6 +2693,8 @@ OP(badop)
 {
 	error(exOp);
 }
+
+
 /* Validate the owner and prepare its message before publishing an exception value. */
 OP(iraise)
 {
@@ -2694,12 +2708,21 @@ OP(iraise)
 	if(v == H || v == nil)
 		error(exNilref);
 	h = D2H(v);
+	/* Reserve the exception owner before message preparation can allocate or write a cache. */
+	if(h->ref == 0 || h->ref == (ulong)-1)
+		error(exHeap);
 	if(h->t == &Tstring)
 		message = v;
 	else{
 		if(h->t == nil || h->t == H || h->t->size < (int)sizeof(message))
 			error(exType);
 		memmove(&message, v, sizeof(message));
+	}
+	if(message != H && message != nil){
+		if(D2H(message)->t != &Tstring)
+			error(exType);
+		if(D2H(message)->ref == 0)
+			error(exHeap);
 	}
 	text = string2c(message);
 	p = currun();

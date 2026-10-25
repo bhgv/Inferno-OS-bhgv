@@ -377,3 +377,13 @@ copy loops from 128 to 256 bytes. HEADM validates payload-offset formation
 before data access. Empty-copy and owner/count error precedence remain intact.
 All three backends retain the 64-unit limit without layout/ABI changes.
 Counts remain AMD64/ARM64 141/32 and RV64 M/Zmmul/I 103/70, 90/83, 87/86.
+
+## Cycle-safe bounded list-length checkpoint
+
+[Cycle-safe list lengths](README.list-length.md) adds allocation-free Brent
+cycle checks to C LENL and AMD64/ARM64/RV64 leaves. Native scans expand from
+128 to 256 nodes while preserving write-free fallback, one link read per node
+and the 64-unit bound. C also bounds the full unsigned count before publication.
+[Raise lifetime preflight](README.raise-lifetime.md) rejects dead/saturated
+exception owners and invalid message Types before preparation or publication.
+Counts stay AMD64/ARM64 141/32 and RV64 M/Zmmul/I 103/70, 90/83, 87/86.

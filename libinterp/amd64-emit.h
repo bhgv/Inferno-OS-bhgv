@@ -1613,17 +1613,23 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		b.bytes[done] = b.n-done-1;
 		x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
 	}else if(p.kind == LeafListLength){
-		/* Bounded scans decline without publishing a partial length. */
-		if(abi->listtail < 0) return 0;
+		/* Bounded Brent scans decline on cycles without publishing a partial length. */
+		if(abi->listtail < 0 || abi->listtail > 32760 || abi->listtail%8) return 0;
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
+		x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3); // r11 is the initial checkpoint.
 		x64byte(&b, 0x31); x64byte(&b, 0xc9); /* count = 0 */
 		loop = b.n;
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff);
 		x64byte(&b, 0x74); done = b.n; x64byte(&b, 0);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
-		x64byte(&b, 0x81); x64byte(&b, 0xf9); x64word(&b, 128); x64guard(&b, 0x72);
+		x64byte(&b, 0x81); x64byte(&b, 0xf9); x64word(&b, 256); x64guard(&b, 0x72);
 		x64field(&b, 0, 0, abi->listtail, 8);
 		x64byte(&b, 0xff); x64byte(&b, 0xc1);
+		x64byte(&b, 0x4c); x64byte(&b, 0x39); x64byte(&b, 0xd8); x64guard(&b, 0x75);
+		x64byte(&b, 0x8d); x64byte(&b, 0x51); x64byte(&b, 1); // edx = count+1.
+		x64byte(&b, 0x85); x64byte(&b, 0xca);
+		x64byte(&b, 0x75); x64byte(&b, 3);
+		x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3);
 		x64byte(&b, 0xeb); x64byte(&b, loop-b.n-1);
 		b.bytes[done] = b.n-done-1;
 		x64ptr(&b, 2, abi->d); x64store(&b, 1, abi->wordbytes);

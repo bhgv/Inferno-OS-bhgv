@@ -1323,17 +1323,21 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		b.code[done] |= b.n-done;
 		a64ptr(&b, 11, abi->d); a64store(&b, 13, abi->wordbytes);
 	}else if(p.kind == LeafListLength){
-		/* Bounded scans decline without publishing a partial length. */
+		/* Bounded Brent scans preserve all state until a valid terminal owner is reached. */
 		if(abi->listtail < 0 || abi->listtail > 32760 || abi->listtail%8 != 0) return 0;
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
+		a64put(&b, 0xaa0c03ef); // x15 is the initial checkpoint.
 		a64put(&b, 0x5280000d);
 		loop = b.n;
 		a64put(&b, 0xb100059f);
 		done = b.n; a64put(&b, 0x54000000);
 		a64guard(&b, 0xb500006c);
-		a64put(&b, 0x710201bf); a64guard(&b, 0x54000063); /* count < 128 */
+		a64put(&b, 0x710401bf); a64guard(&b, 0x54000063); /* count < 256 */
 		a64field(&b, 12, 12, abi->listtail, 8);
 		a64put(&b, 0x110005ad);
+		a64put(&b, 0xeb0f019f); a64guard(&b, 0x54000061); // Reject a repeated checkpoint.
+		a64put(&b, 0x110005ae); a64put(&b, 0x6a0d01df); // (count+1) & count.
+		a64put(&b, 0x54000041); a64put(&b, 0xaa0c03ef);
 		a64put(&b, 0x14000000U | ((u32int)(loop-b.n)&0x3ffffff));
 		b.code[done] |= (b.n-done)<<5;
 		a64ptr(&b, 11, abi->d); a64store(&b, 13, abi->wordbytes);

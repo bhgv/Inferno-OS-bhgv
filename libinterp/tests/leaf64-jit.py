@@ -1469,13 +1469,13 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 for length in (0,1,2,7,31,127,128,129):
                     for terminal in (0,(1<<64)-1,data+0x500):
                         for alias in (0,1):
-                            valid=length<=128 and terminal==(1<<64)-1
+                            valid=length<=256 and terminal==(1<<64)-1
                             out,pc,before,after,_=run('ILENL',alias=alias,chain=(length,terminal),expect=int(valid))
                             if valid:
-                                assert int.from_bytes(out[:wb],'little')==length
-                                assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
-                            else:assert before==after
-                            assert pc==oldpc
+                                if int.from_bytes(out[:wb],'little') != length:raise RuntimeError('wrong list length')
+                                if before[:8] != after[:8] or before[8+wb:] != after[8+wb:]:raise RuntimeError('list length changed neighboring bytes')
+                            elif before != after:raise RuntimeError('list fallback changed output')
+                            if pc != oldpc:raise RuntimeError('list length changed PC')
                             checks+=1
                 if case=='listlen':continue
             if case in ('','head'):
