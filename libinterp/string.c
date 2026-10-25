@@ -131,7 +131,7 @@ slicer(ulong start, ulong v, String *ds)
 	}
 
 	l = ds->len < 0 ? -ds->len : ds->len;
-	if(ds->max < l)
+	if(ds->max < l || D2H(ds)->ref == 0)
 		error(exHeap);
 	if(v < start || v > 0x7fffffff)
 		error(exBounds);
@@ -158,21 +158,47 @@ slicer(ulong start, ulong v, String *ds)
 	return ns;
 }
 
-/* Capture complete VM words before narrowing validated slice bounds. */
+/* Capture all operands before reusing unique storage for a nonempty slice. */
 OP(slicec)
 {
 	WORD start, end;
 	String *old, *result;
+	int length, count;
 
 	memmove(&start, R.s, sizeof(start));
 	memmove(&end, R.m, sizeof(end));
 	memmove(&old, R.d, sizeof(old));
 	if(start < 0 || end < start || (uvlong)end > 0x7fffffff)
 		error(exBounds);
+	if(old == nil)
+		error(exNilref);
+	if(old != H){
+		length = old->len;
+		if(length == (-0x7fffffff-1))
+			error(exHeap);
+		if(length < 0)
+			length = -length;
+		if(old->max < length || D2H(old)->ref == 0)
+			error(exHeap);
+		if(end > length)
+			error(exBounds);
+		count = end-start;
+		if(count != 0 && D2H(old)->ref == 1){
+			if(old->len < 0){
+				memmove(old->Srune, old->Srune+start, (ulong)count*sizeof(Rune));
+				old->len = -count;
+			}else{
+				memmove(old->Sascii, old->Sascii+start, count);
+				old->len = count;
+			}
+			return;
+		}
+	}
 	result = slicer((ulong)start, (ulong)end, old);
 	memmove(R.d, &result, sizeof(result));
 	destroy(old);
 }
+
 
 void
 cvtup(Rune *r, String *s)
@@ -557,6 +583,7 @@ c2string(char *cs, int len)
 	return s;
 }
 
+
 /*
  * Allocate an ASCII string with room for its terminator.
  * Validate the payload and heap headers before narrowing the allocation size.
@@ -569,7 +596,8 @@ newstring(int nb)
 
 	if(nb < 0)
 		error(exNegsize);
-	if((ulong)nb > 0x7fffffff-sizeof(Heap)-sizeof(String))
+	if(Tstring.ref <= 0 || Tstring.ref == 0x7fffffff ||
+	   (ulong)nb > 0x7fffffff-sizeof(Heap)-sizeof(String))
 		error(exHeap);
 	h = nheap(sizeof(String)+nb);
 	h->t = &Tstring;
@@ -580,6 +608,7 @@ newstring(int nb)
 	s->max = hmsize(h) - (sizeof(String)+sizeof(Heap));
 	return s;
 }
+
 
 /*
  * Allocate rune storage within the same heap limit as ASCII strings.
@@ -597,7 +626,8 @@ newrunes(int nr)
 		error(exHeap);
 	if(nr < 0)
 		nr = -nr;
-	if((ulong)nr > (0x7fffffff-sizeof(Heap)-sizeof(String))/sizeof(Rune))
+	if(Tstring.ref <= 0 || Tstring.ref == 0x7fffffff ||
+	   (ulong)nr > (0x7fffffff-sizeof(Heap)-sizeof(String))/sizeof(Rune))
 		error(exHeap);
 	h = nheap(sizeof(String)+nr*sizeof(Rune));
 	h->t = &Tstring;
@@ -621,7 +651,7 @@ stringdup(String *s)
 	if(s == H)
 		return H;
 	if(s->len == (-0x7fffffff-1) ||
-	   s->max < (s->len < 0 ? -s->len : s->len))
+	   s->max < (s->len < 0 ? -s->len : s->len) || D2H(s)->ref == 0)
 		error(exHeap);
 
 	if(s->len >= 0) {

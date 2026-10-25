@@ -1,23 +1,24 @@
 /* Common decoded-operation contract for 64-bit leaf backends. */
 typedef struct LeafLayout LeafLayout;
+
 struct LeafLayout {
-	int wordbytes;
-	int pc, s, d, m;
-	int arraylen, arraydata;
-	int stringlen, stringdata;
-	int listdata, listtail;
-	int fp, fixedtmp;
-	int arraytype, typesize;
-	int framelr, framefp;
-	int fixedcoef;
-	int module, linkmodule, moduleprog, modulenprog, instbytes;
-	int heaptype;
-	int linkcompiled;
-	int heapref, heapcolor, refbytes;
-	void *mutator, *nprop;
-	int markcolor;
-	int moduletypes, modulenty, typenp;
-	int stringmax;
+	int wordbytes; // VM WORD width in bytes; pointers remain native width.
+	int pc, s, d, m; // Offsets of PC and operand pointers within REG.
+	int arraylen, arraydata; // Array length and data pointer offsets.
+	int stringlen, stringdata; // Signed string length and inline character data offsets.
+	int listdata, listtail; // List payload and next-owner offsets.
+	int fp, fixedtmp; // Frame pointer in REG and fixed-point scratch within a frame.
+	int arraytype, typesize; // Element descriptor in Array and byte size within Type.
+	int framelr, framefp; // Saved return address and caller frame pointer offsets.
+	int fixedcoef; // Fixed-point coefficient offset within a frame.
+	int module, linkmodule, moduleprog, modulenprog, instbytes; // Module links, program bounds and instruction stride.
+	int heaptype; // Backward distance from an owner to its heap Type field.
+	int linkcompiled; // Native-entry flag offset within a module link.
+	int heapref, heapcolor, refbytes; // Heap field distances and reference-counter width.
+	void *mutator, *nprop; // Addresses of GC mutator color and propagation counter.
+	int markcolor; // Collector color used when publishing a retained owner.
+	int moduletypes, modulenty, typenp; // Type table, table count and pointer-map length offsets.
+	int stringmax; // String capacity offset, measured in representation characters.
 };
 typedef struct LeafOp LeafOp;
 
@@ -29,8 +30,10 @@ struct LeafOp {
 	int alu; // Arithmetic or representation variant within a leaf kind.
 	int condition; // Comparison predicate or fixed-point rounding variant.
 };
+
 enum {
-	LeafStringAppend = 116, // Concatenation that reuses unique ASCII storage.
+	LeafStringSlice = 117, // Nonempty slices that reuse unique string storage.
+	LeafStringAppend = 116, // Concatenation that reuses unique ASCII or Rune storage.
 	LeafStringStore = 115,
 	LeafDecimal = 114,
 	LeafSliceCopy = 113,
@@ -74,6 +77,7 @@ leafop(LeafOp *p, int op, int wordbytes)
 		p->kind = LeafRealArithmetic; p->bytes = 8;
 		p->alu = op == IADDF ? 0 : op == ISUBF ? 1 : op == IMULF ? 2 : 3;
 		break;
+	case ISLICEC: p->kind = LeafStringSlice; break;
 	case IADDC: p->kind = LeafStringAppend; break;
 	case IINSC: p->kind = LeafStringStore; break;
 	case ICVTCW: p->kind = LeafDecimal; break;

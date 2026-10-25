@@ -248,3 +248,13 @@ expands ADDC to matching Rune representations on AMD64 and ARM64 while keeping
 its 64-unit limit. Native opcode counts remain 133/40 on both backends; RISC-V
 profiles remain 103/70, 90/83 and 87/86. Descriptor lifetime checks now precede
 scalar heap, VM array and Dis-loader array allocation.
+
+## Unique string slice checkpoint
+
+[Unique string slicing and string descriptor retention](README.string-slice-native.md)
+adds SLICEC to AMD64/ARM64 for bounded nonempty slices of unique ASCII/Rune
+owners and gives the C instruction the same allocation-free reuse behavior.
+Both backends now provide 134 guarded opcode paths / 39 interpreter-only active
+instructions. RISC-V profile counts remain 103/70, 90/83 and 87/86. String
+constructors now preflight Tstring retention; slicing and duplication reject
+dead string owners before allocation or destruction.

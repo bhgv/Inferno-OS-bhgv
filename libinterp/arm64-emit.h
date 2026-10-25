@@ -637,6 +637,54 @@ a64stringstore(A64Buf *b, LeafLayout *a)
 }
 
 
+/* Copy a bounded nonempty slice forward after all ownership and extent checks. */
+static int
+a64stringslice(A64Buf *b, LeafLayout *a)
+{
+	int ascii, done, loop;
+
+	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
+	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
+	   a->stringdata < 0 || a->stringdata > 2047 ||
+	   a->heapref <= 0 || a->heapref > 255 || a->heapref%8 || a->refbytes != 8) return 0;
+	a64ptr(b, 9, a->s); a64load(b, 12, 9, a->wordbytes);
+	a64ptr(b, 10, a->m); a64load(b, 13, 10, a->wordbytes);
+	if(a->wordbytes == 4){a64put(b, 0x93407d8c); a64put(b, 0x93407dad);}
+	a64put(b, 0xf100019f); a64guard(b, 0x5400006a); // start >= 0.
+	a64put(b, 0xeb0c01bf); a64guard(b, 0x54000068); // end > start.
+	a64ptr(b, 11, a->d); a64load(b, 14, 11, 8);
+	a64guard(b, 0xb500006e);
+	a64put(b, 0xb10005df); a64guard(b, 0x54000061);
+	a64wordfield(b, 15, 14, a->stringlen, 4);
+	a64put(b, 0xf10001ff); // Preserve representation while deriving absolute length.
+	a64put(b, 0xda8fa5e2); // cneg x2,x15,lt.
+	a64wordfield(b, 3, 14, a->stringmax, 4);
+	a64put(b, 0xeb02007f); a64guard(b, 0x5400006a);
+	a64put(b, 0xeb0201bf); a64guard(b, 0x54000069);
+	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 14<<5 | 6);
+	a64put(b, 0xf10004df); a64guard(b, 0x54000060);
+	a64put(b, 0xcb0c01a4); // x4 = end-start, validated in the character domain.
+	a64put(b, 0xf102009f); a64guard(b, 0x54000069);
+	a64put(b, 0xaa0403e5); // x5 retains the resulting signed character count.
+	ascii=b->n; a64put(b, 0xb6f8000f);
+	a64put(b, 0xcb0503e5);
+	a64put(b, 0xd37ef58c); a64put(b, 0xd37ef484); // Scale Rune offsets/counts only after bounds checks.
+	b->code[ascii] |= (b->n-ascii)<<5;
+	done=b->n; a64put(b, 0xb400000c);
+	a64put(b, 0x910001cbU | (u32int)a->stringdata<<10);
+	a64put(b, 0x8b0c0169);
+	loop=b->n;
+	a64load(b, 6, 9, 1); a64store(b, 6, 1);
+	a64put(b, 0x91000529); a64put(b, 0x9100056b);
+	a64put(b, 0xf1000484);
+	a64put(b, 0x54000001U | ((loop-b->n)&0x7ffff)<<5);
+	if(b->n > LeafMax) return 0;
+	b->code[done] |= (b->n-done)<<5;
+	a64put(b, 0xb9000000U | (u32int)(a->stringlen/4)<<10 | 14<<5 | 5);
+	return 1;
+}
+
+
 /* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -656,7 +704,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafStringAppend){
+	if(p.kind == LeafStringSlice){
+		if(!a64stringslice(&b, abi)) return 0;
+	}else if(p.kind == LeafStringAppend){
 		if(!a64stringappend(&b, abi)) return 0;
 	}else if(p.kind == LeafStringStore){
 		if(!a64stringstore(&b, abi)) return 0;

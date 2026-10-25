@@ -12,6 +12,7 @@ typedef unsigned long ulong;
 typedef unsigned char BYTE;
 typedef uint32_t Rune;
 #define H ((void*)1)
+#define D2H(s) (s) // Static fixture owners store their reference count inline.
 static struct {void *s, *m, *d;} R;
 typedef struct List List;
 struct List {List *tail; WORD data[1];};
@@ -19,6 +20,7 @@ typedef struct String String;
 
 /* Bounded storage model for the production slice function. */
 struct String {
+	unsigned long ref; // Live ownership required by the production slice helper.
 	int len; // Signed logical length and representation.
 	int max; // Character capacity of either fixture representation.
 	char Sascii[16]; // ASCII payload for narrow slice cases.
@@ -56,6 +58,7 @@ newstring(int n)
 		abort();
 	s = &stringpool[stringused++];
 	memset(s, 0, sizeof(*s));
+	s->ref = 1;
 	s->len = n;
 	s->max = 16;
 	return s;
@@ -124,6 +127,7 @@ runframe(Node *n, EvalFrame *frame)
 	}
 	if(n->op == Oslice){
 		memset(&frame->original, 0, sizeof frame->original);
+		frame->original.ref = 1;
 		frame->original.len = frame->a;
 		frame->original.max = 16;
 		frame->slice = slicer(run(n->right->left), run(n->right->right), &frame->original);
