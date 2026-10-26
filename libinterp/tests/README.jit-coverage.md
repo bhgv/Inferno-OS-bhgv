@@ -431,3 +431,13 @@ address span; C string2c checks ASCII termination and Rune storage before cache
 preparation. Production lib9 big parsing and libmath real parsing pass separate
 native comparisons. The core suite now contains 102 host drivers. Counts remain
 AMD64/ARM64 142/31 and RV64 M/Zmmul/I 103/70, 90/83 and 87/86.
+
+## Checked string-comparison spans checkpoint
+
+[Checked comparison spans](README.string-compare-spans.md) validates C stringcmp's
+accessed common prefix while retaining payload-free identities and empty
+comparisons. All six AMD64/ARM64 predicates reject the final 16 GiB owner window
+before native payload access; C provides precise handling there. False targets
+remain unread, and both private layouts stay within 64 units without ABI changes.
+The core checkpoint now has 103 host drivers. Counts remain AMD64/ARM64 142/31
+and RV64 M/Zmmul/I 103/70, 90/83 and 87/86.

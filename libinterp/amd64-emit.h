@@ -120,16 +120,34 @@ x64field(X64Buf *b, int result, int owner, int offset, int bytes)
 }
 
 
+/* Share a nearby rejection return while short branch reach permits it. */
+static void
+x64moduleguard(X64Buf *b, int success, int fallback)
+{
+	int distance;
+
+	distance = fallback-b->n-2;
+	if(distance >= -128 && distance <= 127){
+		x64byte(b, success^1);
+		x64byte(b, distance);
+	}else
+		x64guard(b, success);
+}
+
+
 /* Resolve either string representation, retaining a native character stride. */
 static void
-x64stringheader(X64Buf *b, int owner, int length, int stride, int lenoff, int maxoff, int dataoff)
+x64stringheader(X64Buf *b, int owner, int length, int stride, int lenoff, int maxoff, int dataoff, int fallback)
 {
 	int empty, positive, done;
 
 	x64byte(b, 0x41); x64byte(b, 0xb8+stride); x64word(b, 1);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0+owner*9); x64guard(b, 0x75);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0+owner*9); x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8+owner); x64byte(b, 0xff);
 	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
+	/* r11 holds the first owner address that cannot bound every logical payload. */
+	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xd8+owner);
+	x64moduleguard(b, 0x72, fallback);
 	x64field(b, length, owner, lenoff, 4);
 	x64byte(b, 0x85); x64byte(b, 0xc0+length*9);
 	x64byte(b, 0x79); positive=b->n; x64byte(b, 0);
@@ -138,7 +156,7 @@ x64stringheader(X64Buf *b, int owner, int length, int stride, int lenoff, int ma
 	b->bytes[positive]=b->n-positive-1;
 	/* Signed capacity bounds also reject the absolute value of INT_MIN. */
 	x64byte(b, 0x4c); x64byte(b, 0x63); x64byte(b, 0x90+owner); x64word(b, maxoff);
-	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xd0+length); x64guard(b, 0x7e);
+	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xd0+length); x64moduleguard(b, 0x7e, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xc0+owner); x64word(b, dataoff);
 	x64byte(b, 0xeb); done=b->n; x64byte(b, 0);
 	b->bytes[empty]=b->n-empty-1;
@@ -615,19 +633,6 @@ x64smallfield(X64Buf *b, int result, int owner, int offset, int bytes)
 }
 
 
-/* Share a nearby rejection return while short branch reach permits it. */
-static void
-x64moduleguard(X64Buf *b, int success, int fallback)
-{
-	int distance;
-
-	distance = fallback-b->n-2;
-	if(distance >= -128 && distance <= 127){
-		x64byte(b, success^1);
-		x64byte(b, distance);
-	}else
-		x64guard(b, success);
-}
 
 
 /* Concatenate matching string representations within unique capacity and bounded copy size. */
@@ -1405,7 +1410,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 {
 	X64Buf b;
 	LeafOp p;
-	int i, patch, n, empty, other, done, scale, loop, equal;
+	int i, patch, n, empty, other, done, scale, loop, equal, fallback;
 	static uchar arithmetic[] = {0x01, 0x29, 0, 0x21, 0x09, 0x31};
 	static uchar inverse[] = {0x75, 0x74, 0x7d, 0x7f, 0x7e, 0x7c};
 	static uchar realinverse[] = {0x75, 0x74, 0x73, 0x77, 0x76, 0x72};
@@ -1446,11 +1451,18 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		/* Compare captured characters without touching a false branch target. */
 		if(abi->stringlen < 0 || abi->stringlen > 2047 || abi->stringlen%4 ||
 		   abi->stringmax < 0 || abi->stringmax > 2047 || abi->stringmax%4 ||
-		   abi->stringdata < 0 || abi->stringdata > 2047) return 0;
+		   abi->stringlen == abi->stringmax || abi->stringdata < abi->stringlen+4 ||
+		   abi->stringdata < abi->stringmax+4 || abi->stringdata > 2047) return 0;
+		x64byte(&b, 0xeb); x64byte(&b, 3);
+		fallback=b.n; x64byte(&b, 0x31); x64byte(&b, 0xc0); x64byte(&b, 0xc3);
+		/* The bounded String layout makes all data sums safe below this threshold. */
+		x64byte(&b, 0x49); x64byte(&b, 0xbb);
+		x64word(&b, (unsigned int)(0ULL-LeafStringWindow));
+		x64word(&b, (unsigned int)((0ULL-LeafStringWindow)>>32));
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		x64ptr(&b, 1, abi->m); x64load(&b, 1, 8);
-		x64stringheader(&b, 0, 2, 0, abi->stringlen, abi->stringmax, abi->stringdata);
-		x64stringheader(&b, 1, 6, 1, abi->stringlen, abi->stringmax, abi->stringdata);
+		x64stringheader(&b, 0, 2, 0, abi->stringlen, abi->stringmax, abi->stringdata, fallback);
+		x64stringheader(&b, 1, 6, 1, abi->stringlen, abi->stringmax, abi->stringdata, fallback);
 		x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xc8);
 		x64byte(&b, 0x74); equal=b.n; x64byte(&b, 0);
 		loop=b.n;

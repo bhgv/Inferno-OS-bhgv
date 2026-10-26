@@ -862,13 +862,16 @@ stringdup(String *s)
 }
 
 
-/* Validate both capacities before identity shortcuts or lexicographic payload reads. */
+/* Validate capacities and prefix spans while retaining payload-free identity comparisons. */
 int
 stringcmp(String *s1, String *s2)
 {
 	Rune *r1, *r2;
 	uchar *a1, *a2;
-	int v, n, n1, n2, c1, c2;
+	int v, n, n1, n2, c1, c2, i;
+	String *source;
+	uvlong bytes;
+	uintptr address;
 	static String snil = { 0, 0, nil };
 
 	if(s1 == nil || s2 == nil)
@@ -902,6 +905,18 @@ stringcmp(String *s1, String *s2)
 	n = n1;
 	if(n2 < n)
 		n = n2;
+	/* Only the common prefix is accessed; identities and empty prefixes read no data. */
+	if(n != 0)
+		for(i = 0; i < 2; i++){
+			source = i == 0 ? s1 : s2;
+			bytes = (uvlong)n*(source->len < 0 ? sizeof(Rune) : 1);
+			address = (uintptr)source;
+			if(address > (uintptr)-1 - offsetof(String, data))
+				error(exHeap);
+			address += offsetof(String, data);
+			if(bytes > (uintptr)-1-address)
+				error(exHeap);
+		}
 
 	switch(v) {
 	case 0:		/* Ascii Ascii */

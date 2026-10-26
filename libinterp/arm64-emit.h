@@ -113,22 +113,23 @@ a64fixedround(A64Buf *b, int alu, int wordbytes)
 }
 
 
-/* Resolve signed representation lengths and one/four-byte character strides. */
+/* Resolve signed lengths with x4 supplying the address window and x5 the Rune stride.
+ * Nil has zero length, so its unspecified stride is never used for a payload read. */
 static void
 a64stringheader(A64Buf *b, int owner, int length, int stride, int lenoff, int maxoff, int dataoff, int fallback)
 {
-	int empty, positive, done;
+	int empty, done;
 
-	a64put(b, 0x52800020U | stride);
 	a64defer(b, 0xb4000000U | owner, fallback);
 	a64put(b, 0xb100041fU | owner<<5);
 	empty=b->n; a64put(b, 0x54000000);
+	/* x4 is the conservative payload window; carry rejects its top-address range. */
+	a64put(b, 0xab04001fU | owner<<5);
+	a64defer(b, 0x54000002, fallback);
 	a64put(b, 0xb9800000U | (u32int)(lenoff/4)<<10 | owner<<5 | length);
 	a64put(b, 0xf100001fU | length<<5);
-	positive=b->n; a64put(b, 0x5400000a);
-	a64put(b, 0xcb0003e0U | length<<16 | length);
-	a64put(b, 0x52800080U | stride);
-	b->code[positive] |= (b->n-positive)<<5;
+	a64put(b, 0xda80a400U | length<<16 | length<<5 | length); // CNEG length,length,lt.
+	a64put(b, 0x9a9fb4a0U | stride); // CSINC stride,x5,xzr,lt selects four or one.
 	/* Compare full signed values so INT_MIN cannot masquerade as a valid length. */
 	a64wordfield(b, 9, owner, maxoff, 4);
 	a64put(b, 0xeb09001fU | length<<5);
@@ -1131,9 +1132,12 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		/* Mixed character widths share one bounded loop and a common fallback. */
 		if(abi->stringlen < 0 || abi->stringlen > 2047 || abi->stringlen%4 ||
 		   abi->stringmax < 0 || abi->stringmax > 2047 || abi->stringmax%4 ||
-		   abi->stringdata < 0 || abi->stringdata > 2047) return 0;
+		   abi->stringlen == abi->stringmax || abi->stringdata < abi->stringlen+4 ||
+		   abi->stringdata < abi->stringmax+4 || abi->stringdata > 2047) return 0;
 		fallback=b.n+1;
 		a64put(&b, 0x14000003); a64put(&b, 0x52800000); a64put(&b, 0xd65f03c0);
+		a64put(&b, 0xd2c00004U | (u32int)(LeafStringWindow>>32)<<5); // MOVZ x4,window>>32,lsl #32.
+		a64put(&b, 0xd2800085); // x5 supplies the Rune stride to both CSINC selections.
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
 		a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, 8);
 		a64stringheader(&b, 12, 14, 1, abi->stringlen, abi->stringmax, abi->stringdata, fallback);
