@@ -6,7 +6,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import tempfile
-from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_MODE_64, UC_HOOK_MEM_WRITE
+from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_MODE_64, UC_HOOK_MEM_WRITE, UC_HOOK_MEM_READ
 from unicorn.x86_const import UC_X86_REG_RDI, UC_X86_REG_RAX, UC_X86_REG_RSP, UC_X86_REG_MXCSR
 from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR, UC_ARM64_REG_FPCR, UC_ARM64_REG_FPSR
 
@@ -56,7 +56,7 @@ emit(u32int *out, int wb, int op, int layout)
     int codes[] = {IBEQC,IBNEC,IBLTC,IBLEC,IBGTC,IBGEC};
     a.wordbytes=wb; a.s=8; a.d=16; a.m=24;
     a.stringlen=layout ? 12 : 0; a.stringmax=4; a.stringdata=layout ? 32 : 24;
-    return leafemit(out,64,&a,codes[op]);
+    return leafemit(out,128,&a,codes[op]);
 }
 '''.replace('HEADER', '"'+str(header)+'"'))
         binary = td/(arch+'.so')
@@ -77,6 +77,7 @@ emit(u32int *out, int wb, int op, int layout)
             if mirror != start:
                 machine.mem_map(mirror,size)
         writes = []
+        probing = {"objects": False, "target": None}
 
 
         def written(machine, access, address, size, value, context):
@@ -84,22 +85,32 @@ emit(u32int *out, int wb, int op, int layout)
             writes.append((address,size))
 
 
+        # Source-slot failures precede object reads; false predicates never read target slots.
+        def readprobe(machine, access, address, size, value, context):
+            if probing['objects'] and not (BASE <= address and address+size <= BASE+0x400) and address != CODE+0x2800:
+                raise RuntimeError((arch, 'object read before source-slot preflight', address, size))
+            target = probing['target']
+            if target is not None and address < target+8 and address+size > target:
+                raise RuntimeError((arch, 'false target read', address, size))
+
+
         machine.hook_add(UC_HOOK_MEM_WRITE,written)
+        machine.hook_add(UC_HOOK_MEM_READ,readprobe)
         checks = 0
         locations = (None,LIMIT-0x100,LIMIT-8,LIMIT-1,LIMIT,LIMIT+8,TOP+0xfe0,TOP+0xff8,MASK-1)
-        profiles = range(23)
+        profiles = [] if os.environ.get("COMPARE_PROBE_ONLY") else range(23)
         if os.environ.get('COMPARE_WRAP_ONLY'):
             locations, profiles = (TOP+0xfe0,), (7,)
         for wb in (4,8):
             for layout in (0,1):
                 lenoff,dataoff = (12,32) if layout else (0,24)
                 for op in range(6):
-                    output = (C.c_uint32*64)()
+                    output = (C.c_uint32*128)()
                     count = library.emit(output,wb,op,layout)
-                    if not 0 < count <= 64:
+                    if not 0 < count <= 128:
                         raise RuntimeError((arch,wb,layout,op,'comparison unavailable'))
                     machine.mem_write(CODE,bytes(output)[:count*4])
-                    machine.ctl_remove_cache(CODE,CODE+256)
+                    machine.ctl_remove_cache(CODE,CODE+512)
                     for side in (0,1):
                         for location in locations:
                             for aw in (0,1):
@@ -201,4 +212,83 @@ emit(u32int *out, int wb, int op, int layout)
                                               machine.reg_read(UC_ARM64_REG_FPSR) != (0x11 if profile&1 else 0)):
                                             raise RuntimeError('comparison changed ARM64 FP state')
                                         checks += 1
+        preflight = 0
+        for wb in (4, 8):
+            for layout in (0, 1):
+                lenoff, dataoff = (12, 32) if layout else (0, 24)
+                for op in range(6):
+                    output = (C.c_uint32*128)()
+                    units = library.emit(output, wb, op, layout)
+                    if units <= 0:
+                        raise RuntimeError((arch, wb, op, layout, 'missing branch leaf'))
+                    machine.mem_write(CODE, bytes(output)[:units*4])
+                    machine.ctl_remove_cache(CODE, CODE+512)
+                    invalid = [0, MASK]+[MASK-i for i in range(1, 8)]
+                    probes = [(kind, pointer, 0) for kind in (0, 1) for pointer in invalid]
+                    probes += [(2, pointer, order) for pointer in invalid+[1, BASE+0x300] for order in (-1, 0, 1)]
+                    family = os.environ.get('COMPARE_PROBE_FAMILY')
+                    if family == 'nil':
+                        probes = []
+                    for kind, pointer, order in probes:
+                        if family and (kind == 2) != (family == 'targets'):
+                            continue
+                        take = (order == 0, order != 0, order < 0, order <= 0, order > 0, order >= 0)[op]
+                        if pointer in (1, BASE+0x300) and take:
+                            continue
+                        images = {BASE: bytearray(b'\xa5'*0x6000)}
+                        put(images, BASE, OLDPC)
+                        put(images, BASE+8, BASE+0x100); put(images, BASE+24, BASE+0x200); put(images, BASE+16, BASE+0x300)
+                        put(images, BASE+0x100, BASE+0x800); put(images, BASE+0x200, BASE+0x1000)
+                        put(images, BASE+0x300, TARGET)
+                        for owner in (BASE+0x800, BASE+0x1000):
+                            put(images, owner+lenoff, 1, 4); put(images, owner+4, 1, 4)
+                        put(images, BASE+0x800+dataoff, ord('b'), 1)
+                        put(images, BASE+0x1000+dataoff, ord('c') if order < 0 else ord('b') if order == 0 else ord('a'), 1)
+                        put(images, BASE+8 if kind == 0 else BASE+24 if kind == 1 else BASE+16, pointer)
+                        expected = bytes(images[BASE])
+                        machine.mem_write(BASE, expected)
+                        writes.clear()
+                        if arch == 'amd64':
+                            machine.reg_write(UC_X86_REG_RDI, BASE)
+                            machine.reg_write(UC_X86_REG_RSP, CODE+0x2800)
+                            machine.mem_write(CODE+0x2800, STOP.to_bytes(8, 'little'))
+                            machine.reg_write(UC_X86_REG_MXCSR, 0x3f81)
+                        else:
+                            machine.reg_write(UC_ARM64_REG_X0, BASE); machine.reg_write(UC_ARM64_REG_LR, STOP)
+                            machine.reg_write(UC_ARM64_REG_FPCR, 0x800000); machine.reg_write(UC_ARM64_REG_FPSR, 0x11)
+                        probing['objects'] = kind < 2
+                        probing['target'] = pointer if kind == 2 and not take else None
+                        machine.emu_start(CODE, STOP, count=12000)
+                        probing['objects'] = False; probing['target'] = None
+                        result = machine.reg_read(UC_X86_REG_RAX if arch == 'amd64' else UC_ARM64_REG_X0)
+                        if result != (kind == 2 and not take) or writes or bytes(machine.mem_read(BASE, 0x6000)) != expected:
+                            raise RuntimeError((arch, wb, layout, op, kind, pointer, order, 'preflight image/publication'))
+                        if arch == 'amd64':
+                            if machine.reg_read(UC_X86_REG_MXCSR) != 0x3f81:
+                                raise RuntimeError('preflight changed MXCSR')
+                        elif machine.reg_read(UC_ARM64_REG_FPCR) != 0x800000 or machine.reg_read(UC_ARM64_REG_FPSR) != 0x11:
+                            raise RuntimeError('preflight changed ARM64 FP state')
+                        preflight += 1
+                    if not family or family == 'nil':
+                        for left, right in ((0, BASE+0x800), (BASE+0x800, 0), (0, 1), (1, 0), (0, MASK), (MASK, 0)):
+                            images = {BASE: bytearray(b'\xa5'*0x6000)}
+                            put(images, BASE, OLDPC)
+                            put(images, BASE+8, BASE+0x100); put(images, BASE+24, BASE+0x200); put(images, BASE+16, 1)
+                            put(images, BASE+0x100, left); put(images, BASE+0x200, right)
+                            put(images, BASE+0x800+lenoff, 1, 4); put(images, BASE+0x804, 1, 4)
+                            expected = bytes(images[BASE]); machine.mem_write(BASE, expected)
+                            writes.clear()
+                            if arch == 'amd64':
+                                machine.reg_write(UC_X86_REG_RDI, BASE); machine.reg_write(UC_X86_REG_RSP, CODE+0x2800)
+                                machine.mem_write(CODE+0x2800, STOP.to_bytes(8, 'little'))
+                            else:
+                                machine.reg_write(UC_ARM64_REG_X0, BASE); machine.reg_write(UC_ARM64_REG_LR, STOP)
+                            probing['objects'] = True; probing['target'] = None
+                            machine.emu_start(CODE, STOP, count=12000)
+                            probing['objects'] = False
+                            result = machine.reg_read(UC_X86_REG_RAX if arch == 'amd64' else UC_ARM64_REG_X0)
+                            if result != 0 or writes or bytes(machine.mem_read(BASE, 0x6000)) != expected:
+                                raise RuntimeError((arch, wb, layout, op, left, right, 'nil preflight'))
+                            preflight += 1
+        print('PASS', arch, 'branch preflight:', preflight, 'slot/conditional-target/read/image/FP cases', flush=True)
         print('PASS',arch,'string comparisons:',checks,'window/predicate/image/write/FP cases',flush=True)

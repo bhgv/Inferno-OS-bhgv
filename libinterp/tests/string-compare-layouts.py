@@ -35,7 +35,7 @@ main(void)
 {
     struct {
         u32int before; // Leading publication canary.
-        u32int words[64]; // Actual caller capacity, with remaining words watched.
+        u32int words[128]; // Actual caller capacity, with remaining words watched.
         u32int after; // Trailing publication canary.
     } output;
     LeafLayout a;
@@ -56,14 +56,14 @@ main(void)
         case 3: a.heapref = value; break;
         case 4: a.refbytes = value; break;
         }
-        n = leafemit(nil, 64, &a, opcodes[opcode]);
-        if(n < 0 || n > 64) abort();
-        for(cap = 0; cap <= 64; cap += 8){
+        n = leafemit(nil, 128, &a, opcodes[opcode]);
+        if(n < 0 || n > 128) abort();
+        for(cap = 0; cap <= 128; cap += 8){
             memset(&output, 0xa5, sizeof(output));
             result = leafemit(output.words, cap, &a, opcodes[opcode]);
             if(result != (n <= cap ? n : 0) || output.before != 0xa5a5a5a5 ||
                output.after != 0xa5a5a5a5) abort();
-            for(i = result; i < 64; i++) if(output.words[i] != 0xa5a5a5a5) abort();
+            for(i = result; i < 128; i++) if(output.words[i] != 0xa5a5a5a5) abort();
             checks++;
         }
     }

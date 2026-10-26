@@ -43,6 +43,11 @@ the reference/len/max metadata, preserving payload-free prefixes; length queries
 retain their length-field-only behavior. C slicec/slicer validate metadata before
 access. See [README.slice-length-preflight.md](README.slice-length-preflight.md).
 
+All six String predicates now preflight both owner slots and both C-nil owners
+before metadata reads. Target slots are checked only on taken branches, retaining
+false-target nonaccess and comparison-error priority. See
+[README.string-branch-preflight.md](README.string-branch-preflight.md).
+
 The preceding addition is ICONSMP for pointer-free mapped payloads up to 256 bytes.
 Native code resolves a checked live Type, stages the old tail across allocation,
 copies payload bytes and publishes descriptor/owner updates. Mapped and larger

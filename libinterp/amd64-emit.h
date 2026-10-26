@@ -161,14 +161,13 @@ x64moduleguard(X64Buf *b, int success, int fallback)
 }
 
 
-/* Resolve either string representation, retaining a native character stride. */
+/* Resolve a non-null String representation, retaining a native character stride. */
 static void
 x64stringheader(X64Buf *b, int owner, int length, int stride, int lenoff, int maxoff, int dataoff, int fallback)
 {
 	int empty, positive, done;
 
 	x64byte(b, 0x41); x64byte(b, 0xb8+stride); x64word(b, 1);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0+owner*9); x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8+owner); x64byte(b, 0xff);
 	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
 	/* r11 holds the first owner address that cannot bound every logical payload. */
@@ -2456,12 +2455,18 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		   abi->stringdata < abi->stringmax+4 || abi->stringdata > 2047) return 0;
 		x64byte(&b, 0xeb); x64byte(&b, 3);
 		fallback=b.n; x64byte(&b, 0x31); x64byte(&b, 0xc0); x64byte(&b, 0xc3);
+		/* Validate both owner slots before either String can be inspected. */
+		x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, 8);
+		x64ptr(&b, 0, abi->m); x64pcspan(&b, 8, 8);
 		/* The bounded String layout makes all data sums safe below this threshold. */
 		x64byte(&b, 0x49); x64byte(&b, 0xbb);
 		x64word(&b, (unsigned int)(0ULL-LeafStringWindow));
 		x64word(&b, (unsigned int)((0ULL-LeafStringWindow)>>32));
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		x64ptr(&b, 1, abi->m); x64load(&b, 1, 8);
+		/* C detects either nil owner before inspecting either String header. */
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64moduleguard(&b, 0x75, fallback);
+		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9); x64moduleguard(&b, 0x75, fallback);
 		x64stringheader(&b, 0, 2, 0, abi->stringlen, abi->stringmax, abi->stringdata, fallback);
 		x64stringheader(&b, 1, 6, 1, abi->stringlen, abi->stringmax, abi->stringdata, fallback);
 		x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xc8);
@@ -2488,7 +2493,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x39); x64byte(&b, 0xf2);
 		b.bytes[done]=b.n-done-1;
 		x64byte(&b, inverse[p.condition]); patch=b.n; x64byte(&b, 0);
-		x64ptr(&b, 2, abi->d); x64load(&b, 2, 8);
+		/* The target slot is relevant only after the predicate is true. */
+		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, 8); x64load(&b, 2, 8);
 		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0x97); x64word(&b, abi->pc);
 		b.bytes[patch]=b.n-patch-1;
 	}else if(p.kind == LeafTypeCheck){

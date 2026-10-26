@@ -821,6 +821,11 @@ branchstring(int condition)
 	String *left, *right;
 	int order, take;
 
+	/* Both decoded owner slots must fit before either comparison input is read. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right))
+		error(exHeap);
+
 	memmove(&left, R.s, sizeof(left));
 	memmove(&right, R.m, sizeof(right));
 	order = stringcmp(left, right);
@@ -833,8 +838,12 @@ branchstring(int condition)
 	case 4: take = order > 0; break;
 	case 5: take = order >= 0; break;
 	}
-	if(take)
+	if(take){
+		/* False predicates never inspect or validate their unused target slot. */
+		if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC))
+			error(exHeap);
 		JMP(d);
+	}
 }
 
 /* Apply the captured string equality predicate without aligned pointer casts. */
