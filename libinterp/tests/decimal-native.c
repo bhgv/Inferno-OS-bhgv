@@ -77,6 +77,80 @@ __lsan_is_turned_off(void)
 IMPLEMENTATION
 
 
+/* Keep parser exceptions inside one boundary without disturbing caller locals. */
+static int
+parsechecked(int operation)
+{
+	raised = nil;
+	if(setjmp(boundary))
+		return 0;
+	if(operation == 0)cvtcw();
+	else if(operation == 1)cvtcl();
+	else cvtcf();
+	return 1;
+}
+
+
+/* Invalid slots must precede termination/cache work; wrapped owners must precede header reads. */
+static void
+checkpreflight(Module *module)
+{
+	union {
+		uvlong align; // Align the synthetic String and Rune header.
+		uchar bytes[128]; // Source header, payload and untouched surrounding bytes.
+	} object;
+	uchar before[128], slots[32], savedslots[32];
+	String *owner;
+	REG saved;
+	uintptr pointer;
+	int op, kind, mode, wide, flags, checks = 0;
+	int codes[] = {ICVTCW, ICVTCL, ICVTCF};
+
+	for(op = 0; op < 3; op++)
+	for(kind = 0; kind < 3; kind++)
+	for(mode = 0; mode < (kind == 2 ? 15 : 4); mode++)
+	for(wide = 0; wide < 2; wide++){
+		if(getenv("DECIMAL_PREFLIGHT_OWNERS_ONLY") && kind != 2)
+			continue;
+		memset(object.bytes, 0xa5, sizeof(object.bytes));
+		owner = (String*)object.bytes;
+		owner->len = wide ? -1 : 1;
+		owner->max = 1;
+		owner->tmp = nil;
+		owner->Sascii[0] = '7';
+		owner->Sascii[1] = 'X'; // An invalid destination must not trigger ASCII termination.
+		memset(slots, 0x5a, sizeof(slots));
+		memset(&R, 0, sizeof(R));
+		R.s = slots; R.d = slots+16;
+		pointer = mode == 0 ? 0 : mode == 1 ? (uintptr)H : (uintptr)-1-(mode-1);
+		if(kind == 0)R.s = (void*)pointer;
+		if(kind == 1)R.d = (void*)pointer;
+		if(kind == 2)owner = (String*)((uintptr)-2-mode);
+		memmove(slots, &owner, sizeof(owner));
+		memmove(before, object.bytes, sizeof(before));
+		memmove(savedslots, slots, sizeof(slots));
+		saved = R;
+		feclearexcept(FE_ALL_EXCEPT);
+		feraiseexcept(FE_INVALID|FE_INEXACT);
+		flags = fetestexcept(FE_ALL_EXCEPT);
+		errno = EDOM;
+		if(module->jit->entry[codes[op]](&R) != 0 ||
+		   memcmp(&R, &saved, sizeof(R)) || memcmp(slots, savedslots, sizeof(slots)) ||
+		   memcmp(object.bytes, before, sizeof(before)) ||
+		   fetestexcept(FE_ALL_EXCEPT) != flags || errno != EDOM)
+			abort();
+		if(parsechecked(op) || raised != exHeap ||
+		   memcmp(&R, &saved, sizeof(R)) || memcmp(slots, savedslots, sizeof(slots)) ||
+		   memcmp(object.bytes, before, sizeof(before)) ||
+		   fetestexcept(FE_ALL_EXCEPT) != flags || errno != EDOM)
+			abort();
+		checks++;
+	}
+	feclearexcept(FE_ALL_EXCEPT);
+	printf("PASS decimal preflight: %d C/RX/header/slot/cache/FP/errno cases WORD%zu\n", checks, sizeof(WORD)*8);
+}
+
+
 /* Compare actual C and RX conversions, full signed ranges, FP state and errno. */
 int
 main(void)
@@ -128,6 +202,8 @@ main(void)
 		abort();
 	if(!module.jit->entry[ICVTCW] || !module.jit->entry[ICVTCL] || !module.jit->entry[ICVTCF])
 		abort();
+	checkpreflight(&module);
+	if(getenv("DECIMAL_PREFLIGHT_ONLY"))goto finished;
 	for(seed = 0; seed < 2; seed++)
 	for(round = 0; round < 4; round++)
 	for(i = 0; i < sizeof(texts)/sizeof(texts[0]); i++)
@@ -272,6 +348,7 @@ main(void)
 		}
 		checks++;
 	}
+finished:
 	if(fesetround(FE_TONEAREST))
 		abort();
 	feclearexcept(FE_ALL_EXCEPT);

@@ -658,6 +658,11 @@ OP(cvtcw)
 	String *s;
 	WORD value;
 
+	/* Invalid destinations must fail before UTF-8 termination/cache mutation. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(s) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(value))
+		error(exHeap);
+
 	memmove(&s, R.s, sizeof(s));
 	value = strtol(string2c(s), nil, 10);
 	memmove(R.d, &value, sizeof(value));
@@ -668,6 +673,11 @@ OP(cvtcf)
 {
 	String *s;
 	REAL value;
+
+	/* Invalid destinations must fail before UTF-8 termination/cache mutation. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(s) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(value))
+		error(exHeap);
 
 	memmove(&s, R.s, sizeof(s));
 	value = strtod(string2c(s), nil);
@@ -841,6 +851,10 @@ string2c(String *s)
 		error(exNilref);
 	if(s == H)
 		return "";
+
+	/* Bound the complete header before reading lengths, capacities or the cache. */
+	if((uintptr)s > (uintptr)-1 - offsetof(String, data))
+		error(exHeap);
 
 	if(s->len >= 0) {
 		if(s->max < s->len)

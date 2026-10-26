@@ -863,12 +863,15 @@ x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
 	   a->stringdata < a->stringmax+4 || a->stringdata > 2047) return 0;
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
-	x64ptr(b, 0, a->s); x64load(b, 0, 8);
+	/* Bound both decoded slots before any String load or floating conversion. */
+	x64ptr(b, 2, a->d); x64pcspan(b, 10, p->bytes);
+	x64ptr(b, 0, a->s); x64pcspan(b, 8, 8); x64load(b, 0, 8);
 	x64byte(b, 0x45); x64byte(b, 0x31); x64byte(b, 0xc0); /* r8d=value */
 	x64byte(b, 0x45); x64byte(b, 0x31); x64byte(b, 0xc9); /* r9d=negative */
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
 	x64byte(b, 0x0f); x64byte(b, 0x84); absent=b->n; x64word(b, 0);
+	x64pcspan(b, 0, a->stringdata);
 	x64field(b, 1, 0, a->stringlen, 4);
 	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, p->input+1); x64moduleguard(b, 0x76, fallback);
 	x64field(b, 2, 0, a->stringmax, 4);

@@ -656,10 +656,13 @@ a64decimal(A64Buf *b, LeafLayout *a, LeafOp *p)
 	   a->stringdata < a->stringmax+4 || a->stringdata > 2047) return 0;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
-	a64ptr(b, 9, a->s); a64load(b, 12, 9, 8);
+	/* Reject invalid outputs before a parser can touch memory or FP state. */
+	a64ptr(b, 10, a->d); a64pcspan(b, 10, p->bytes, fallback);
+	a64ptr(b, 9, a->s); a64pcspan(b, 9, 8, fallback); a64load(b, 12, 9, 8);
 	a64put(b, 0x5280000e); a64put(b, 0x5280000f);
 	a64pcguard(b, 0xb500006c, fallback);
 	a64put(b, 0xb100059f); absent=b->n; a64put(b, 0x54000000);
+	a64pcspan(b, 12, a->stringdata, fallback);
 	a64field(b, 13, 12, a->stringlen, 4);
 	a64put(b, 0x710001bfU | (u32int)(p->input+1)<<10); a64pcguard(b, 0x54000069, fallback);
 	a64field(b, 10, 12, a->stringmax, 4);

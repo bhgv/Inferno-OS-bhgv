@@ -28,6 +28,11 @@ preflight and full Heap-origin validation. Tests use the existing 128-unit
 private capacity; opcode counts are unchanged. See
 [README.append-preflight.md](README.append-preflight.md).
 
+CVTCW/CVTCL/CVTCF also preflight source/destination slots and String headers
+before parsing or FP conversion. C validates outputs before ASCII termination
+or Rune-cache preparation. Coverage counts are unchanged; see
+[README.decimal-preflight.md](README.decimal-preflight.md).
+
 The preceding addition is ICONSMP for pointer-free mapped payloads up to 256 bytes.
 Native code resolves a checked live Type, stages the old tail across allocation,
 copies payload bytes and publishes descriptor/owner updates. Mapped and larger

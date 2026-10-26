@@ -917,6 +917,11 @@ OP(cvtcl)
 	String *s;
 	LONG value;
 
+	/* Validate both slots before string2c can terminate or allocate a cached view. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(s) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(value))
+		error(exHeap);
+
 	memmove(&s, R.s, sizeof(s));
 	value = strtoll(string2c(s), nil, 10);
 	memmove(R.d, &value, sizeof(value));

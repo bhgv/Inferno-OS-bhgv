@@ -74,7 +74,9 @@ main(void)
 		if(input == nil)
 			why = exNilref;
 		else if(input != H){
-			if(owner->len < -(0x7fffffff-UTFmax)/UTFmax)
+			if(begin > 0xffff)
+				why = exHeap;
+			else if(owner->len < -(0x7fffffff-UTFmax)/UTFmax)
 				why = exNomem;
 			else if(owner->max < length || begin+bytes > 0xffff)
 				why = exHeap;

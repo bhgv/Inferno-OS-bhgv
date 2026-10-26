@@ -5,10 +5,21 @@ typedef int32_t WORD;
 typedef int64_t WORD;
 #endif
 typedef int64_t LONG;
+typedef uintptr_t uintptr; // Native address width for extracted VM slot checks.
+static char exHeap[] = "heap";
 typedef struct String String;
 struct String {int len; char Sascii[1024];};
 #define H ((void*)1)
 static struct {void *s, *d;} R;
+
+/* Valid constant-cast vectors must not reach a VM operand error. */
+static void
+error(char *message)
+{
+	(void)message;
+	abort();
+}
+
 
 /* Model the native strtol result width while leaving its decimal syntax to host libc. */
 static WORD

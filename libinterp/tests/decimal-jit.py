@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Execute actual AMD64/ARM64 decimal parsers with independent memory/write oracles."""
 import ctypes as C
+import json
 import os
 from pathlib import Path
 import random
@@ -9,7 +10,7 @@ import struct
 import subprocess
 import tempfile
 from capstone import Cs, CS_ARCH_X86, CS_ARCH_ARM64, CS_MODE_64
-from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_MODE_64, UC_HOOK_MEM_WRITE
+from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_MODE_64, UC_HOOK_MEM_WRITE, UC_HOOK_MEM_READ
 from unicorn.x86_const import UC_X86_REG_RDI, UC_X86_REG_RAX, UC_X86_REG_RSP, UC_X86_REG_MXCSR
 from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR, UC_ARM64_REG_FPCR, UC_ARM64_REG_FPSR
 ROOT=Path(__file__).resolve().parents[2]
@@ -49,14 +50,14 @@ for length in range(1,20):
         texts.append(sign+bytes(rng.randrange(48,58) for _ in range(length)))
 with tempfile.TemporaryDirectory(prefix='decimal-jit-') as directory:
     td=Path(directory);checks=0
-    for arch in ('amd64','arm64'):
+    for arch in os.environ.get('DECIMAL_ARCHES', 'amd64 arm64').split():
         source=td/(arch+'.c')
         source.write_text('''#include <stdint.h>
 #include <string.h>
 typedef uint32_t u32int;typedef unsigned char uchar;
 #define nil 0
 #include "isa.h"
-#include "'''+arch+'''-emit.h"
+#include '''+json.dumps(str(Path(os.environ.get('DECIMAL_EMITTER_DIR', ROOT/'libinterp'))/(arch+'-emit.h')))+'''
 /* Derive both decimal instructions from one real staged emitter and private layout. */
 int emit(u32int *out,int cap,int wb,int big,int field,int value){
  LeafLayout a={0};a.wordbytes=wb;a.pc=0;a.s=8;a.d=16;a.m=24;
@@ -73,27 +74,38 @@ int emit(u32int *out,int cap,int wb,int big,int field,int value){
         machine=Uc(UC_ARCH_X86,UC_MODE_64) if arch=='amd64' else Uc(UC_ARCH_ARM64,0)
         machine.mem_map(CODE,0x3000);machine.mem_map(BASE,0x4000)
         writes=[]
+        probing=[False]
         # A fallback may not hide same-value stores to the VM image.
         def write(machine,access,address,size,value,context):
             writes.append((address,size))
+        # Rejected slots and wrapping owners must never reach a String read.
+        def readprobe(machine, access, address, size, value, context):
+            if probing[0] and not (BASE <= address and address+size <= BASE+0x400) and address != CODE+0x2800:
+                raise RuntimeError((arch, 'read before decimal preflight', address, size))
+
+
         machine.hook_add(UC_HOOK_MEM_WRITE,write)
+        machine.hook_add(UC_HOOK_MEM_READ,readprobe)
         for wb in (4,8):
             for big in (0,1,2):
-                out=(C.c_uint32*64)(*[0xa5a5a5a5]*64);n=lib.emit(out,64,wb,big,0,0)
-                require(0 < n <= 64 and lib.emit(None, 64, wb, big, 0, 0) == n, 'decimal sizing/layout/instruction check failed')
+                out=(C.c_uint32*128)(*[0xa5a5a5a5]*128);n=lib.emit(out,128,wb,big,0,0)
+                require(0 < n <= 128 and lib.emit(None, 128, wb, big, 0, 0) == n, 'decimal sizing/layout/instruction check failed')
                 blob=bytes(out)[:n*4]
                 require(sum((i.size for i in dis.disasm(blob, CODE))) == n * 4, 'decimal sizing/layout/instruction check failed')
                 for cap in range(n):
-                    guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                    require(lib.emit(guard, cap, wb, big, 0, 0) == 0 and list(guard) == [2779096485] * 64, 'decimal sizing/layout/instruction check failed')
+                    guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                    require(lib.emit(guard, cap, wb, big, 0, 0) == 0 and list(guard) == [2779096485] * 128, 'decimal sizing/layout/instruction check failed')
                     checks+=1
                 for field,values in ((1,(-1,1,2048)),(2,(-1,2048)),(3,(-1,1,2048))):
                     for value in values:
-                        guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                        require(lib.emit(guard, 64, wb, big, field, value) == 0 and list(guard) == [2779096485] * 64, 'decimal sizing/layout/instruction check failed')
+                        guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                        require(lib.emit(guard, 128, wb, big, field, value) == 0 and list(guard) == [2779096485] * 128, 'decimal sizing/layout/instruction check failed')
                         checks+=1
-                machine.mem_write(CODE,blob);machine.ctl_remove_cache(CODE,CODE+256)
-                cases=[(text,0) for text in texts]+[(b'12',fault) for fault in range(1,9)]
+                machine.mem_write(CODE,blob);machine.ctl_remove_cache(CODE,CODE+512)
+                cases=[(text,0) for text in texts]+[(b'12',fault) for fault in range(1,19)]
+                probe = os.environ.get('DECIMAL_PROBE')
+                if probe:
+                    cases = [case for case in cases if (9 <= case[1] <= 14 if probe == 'slots' else 12 <= case[1] <= 14 if probe == 'destination' else case[1] >= 15)]
                 for text,fault in cases:
                     body=text[1:] if text[:1] in (b'+',b'-') else text
                     valid=(len(body)<=(15 if big==2 else 10 if big==0 and wb==4 else 19) and (not body or all(48<=x<=57 for x in body)))
@@ -118,6 +130,12 @@ int emit(u32int *out,int cap,int wb,int big,int field,int value){
                                 put(image,8,BASE+src);put(image,16,BASE+dst);put(image,src,owner)
                                 put(image,0x800+sa,length,4);put(image,0x804+sa,-1 if fault==7 else len(text)-1 if fault==8 else len(text),4)
                                 image[0x818+sa:0x818+sa+len(text)+1]=text+bytes([65 if fault==6 else 0])
+                                if fault in (9, 10, 11):
+                                    put(image, 8, 0 if fault == 9 else MASK if fault == 10 else MASK-3)
+                                if fault in (12, 13, 14):
+                                    put(image, 16, 0 if fault == 12 else MASK if fault == 13 else MASK-2)
+                                if fault >= 15:
+                                    put(image, src, MASK-(1, 3, 7, 15)[fault-15])
                                 expected=bytearray(image)
                                 if valid:
                                     if big==2:
@@ -131,6 +149,7 @@ int emit(u32int *out,int cap,int wb,int big,int field,int value){
                                 else:
                                     machine.reg_write(UC_ARM64_REG_X0,BASE);machine.reg_write(UC_ARM64_REG_LR,STOP)
                                     machine.reg_write(UC_ARM64_REG_FPCR,(sa&3)<<22);machine.reg_write(UC_ARM64_REG_FPSR,0x11 if da&1 else 0)
+                                probing[0] = fault >= 9
                                 machine.emu_start(CODE,STOP,count=1000)
                                 result=machine.reg_read(UC_X86_REG_RAX if arch=='amd64' else UC_ARM64_REG_X0)
                                 require(result == valid, (arch, wb, big, text, fault, sa, da, alias, result))
