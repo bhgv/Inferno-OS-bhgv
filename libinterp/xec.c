@@ -1727,6 +1727,7 @@ casepc(Modlink *ml, int destination)
 	return (Inst*)(program+offset);
 }
 
+
 /* Search compiler-emitted 12-byte integer rows using fixed-width, unaligned reads. */
 OP(icase)
 {
@@ -1738,6 +1739,8 @@ OP(icase)
 	ml = R.M;
 	if(ml == nil || ml == H || (!ml->compiled && (ml->m == nil || ml->m == H)))
 		error(exModule);
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(value))
+		error(exBounds);
 	memmove(&value, R.s, sizeof(value));
 	table = (uintptr)R.d;
 	if(table == 0 || R.d == H || table > (uintptr)-1-3)
@@ -1768,6 +1771,7 @@ OP(icase)
 	R.PC = casepc(ml, destination);
 }
 
+
 /* Search padded 24-byte big rows without treating their word fields as native pointers. */
 OP(casel)
 {
@@ -1779,6 +1783,8 @@ OP(casel)
 	ml = R.M;
 	if(ml == nil || ml == H || (!ml->compiled && (ml->m == nil || ml->m == H)))
 		error(exModule);
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(value))
+		error(exBounds);
 	memmove(&value, R.s, sizeof(value));
 	table = (uintptr)R.d;
 	if(table == 0 || R.d == H || table > (uintptr)-1-3)
@@ -1808,65 +1814,82 @@ OP(casel)
 	}
 	R.PC = casepc(ml, destination);
 }
+
+
+/* Read one signed Dis table cell without aligned or host-WORD loads. */
+static uvlong
+caseccell(uintptr address)
+{
+	int word;
+	vlong wide;
+
+	if(IBY2WD == 4){
+		memmove(&word, (void*)address, sizeof(word));
+		return (uvlong)(vlong)word;
+	}
+	memmove(&wide, (void*)address, sizeof(wide));
+	return (uvlong)wide;
+}
+
+
+/* Resolve a checked string table using its declared cell width and commit only the selected PC. */
 OP(casec)
 {
-	WORD *l, *t, *e, n, n2, r;
-	String *sl, *sh, *sv;
-	
-	sv = S(s);
-	t = (WORD*)((WORD)R.d + IBY2WD);
-	n = t[-1];
-	e = t + n*3;
-	if(n > 2){
-		while(n > 0){
-			n2 = n>>1;
-			l = t + n2*3;
-			sl = (String*)l[0];
-			r = stringcmp(sv, sl);
-			if(r == 0){
-				e = &l[2];
-				break;
-			}
-			if(r < 0){
-				n = n2;
+	Modlink *ml;
+	String *sv, *low, *high;
+	uintptr table, rows, row, span;
+	uvlong count, destination;
+	int n, half, comparison;
+
+	ml = R.M;
+	if(ml == nil || ml == H || (!ml->compiled && (ml->m == nil || ml->m == H)))
+		error(exModule);
+	if((IBY2WD != 4 && IBY2WD != 8) || R.s == nil || R.s == H ||
+	   (uintptr)R.s > (uintptr)-1-sizeof(sv))
+		error(exBounds);
+	memmove(&sv, R.s, sizeof(sv));
+	table = (uintptr)R.d;
+	if(table == 0 || R.d == H || table > (uintptr)-1-IBY2WD)
+		error(exBounds);
+	count = caseccell(table);
+	if(count > (0x7fffffff-2*IBY2WD)/(3*IBY2WD) ||
+	   (count != 0 && sizeof(low) > IBY2WD))
+		error(exBounds);
+	span = ((uintptr)count*3+2)*IBY2WD;
+	if(table > (uintptr)-1-span)
+		error(exBounds);
+	rows = table+IBY2WD;
+	destination = caseccell(table+span-IBY2WD);
+	for(n = (int)count; n > 0;){
+		half = n/2;
+		row = rows+(uintptr)half*3*IBY2WD;
+		memmove(&low, (void*)row, sizeof(low));
+		comparison = stringcmp(sv, low);
+		if(comparison < 0){
+			n = half;
+			continue;
+		}
+		if(comparison != 0){
+			memmove(&high, (void*)(row+IBY2WD), sizeof(high));
+			if(high == H || stringcmp(sv, high) > 0){
+				rows = row+3*IBY2WD;
+				n -= half+1;
 				continue;
 			}
-			sh = (String*)l[1];
-			if(sh == H || stringcmp(sv, sh) > 0){
-				t = l+3;
-				n -= n2+1;
-				continue;
-			}
-			e = &l[2];
-			break;
 		}
-		t = e;
+		destination = caseccell(row+2*IBY2WD);
+		break;
 	}
-	else{
-		while(t < e) {
-			sl = (String*)t[0];
-			sh = (String*)t[1];
-			if(sh == H) {
-				if(stringcmp(sl, sv) == 0) {
-					t = &t[2];
-					goto found;
-				}
-			}
-			else
-			if(stringcmp(sl, sv) <= 0 && stringcmp(sh, sv) >= 0) {
-				t = &t[2];
-				goto found;
-			}
-			t += 3;
-		}
-	}
-found:
-	if(R.M->compiled) {
-		R.PC = (Inst*)*t;
+	if(ml->compiled){
+		R.PC = (Inst*)(uintptr)(IBY2WD == 4 ? (u32int)destination : destination);
 		return;
 	}
-	R.PC = R.M->prog + t[0];
+	if(destination > 0x7fffffffULL)
+		error(exBounds);
+	R.PC = casepc(ml, (int)destination);
 }
+
+
 /* Read fixed-width Dis table entries and commit a validated PC without alignment assumptions. */
 OP(igoto)
 {
@@ -1878,6 +1901,8 @@ OP(igoto)
 	ml = R.M;
 	if(ml == nil || ml == H || (!ml->compiled && (ml->m == nil || ml->m == H)))
 		error(exModule);
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(index))
+		error(exBounds);
 	memmove(&index, R.s, sizeof(index));
 	table = (uintptr)R.d;
 	if(index < 0 || table < IBY2WD || R.d == H || (uvlong)index > (uintptr)-1/IBY2WD)
