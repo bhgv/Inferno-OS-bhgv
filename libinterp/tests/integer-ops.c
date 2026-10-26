@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <string.h>
 
 #if WORD_BITS == 32
 typedef int32_t WORD;
@@ -11,6 +12,9 @@ typedef uint32_t UWORD;
 typedef int64_t WORD;
 typedef uint64_t UWORD;
 #endif
+typedef uintptr_t uintptr; /* Native decoded-slot arithmetic. */
+#define nil ((void *)0) /* Native null slot. */
+#define H ((void *)(uintptr)-1) /* Dis sentinel slot. */
 typedef int64_t LONG;
 typedef uint64_t ULONG;
 static struct {
@@ -21,6 +25,7 @@ static struct {
 #define UW(r) (*(UWORD*)R.r)
 #define V(r) (*(LONG*)R.r)
 #define UV(r) (*(ULONG*)R.r)
+static char exBounds[] = "bounds";
 static char exInval[] = "invalid";
 
 /* Valid-count arithmetic tests must never enter the VM error path. */

@@ -16,6 +16,7 @@ REG R;
 #define UW(r) (*(UWORD*)R.r)
 #define V(r) (*(LONG*)R.r)
 #define UV(r) (*(ULONG*)R.r)
+char exBounds[] = "bounds"; /* Decoded shift-slot exception identity. */
 char exInval[]="invalid", exZdiv[]="zero";
 static jmp_buf trap;
 static int armed;

@@ -2996,32 +2996,42 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64ptr(&b, 2, abi->d);
 		x64store(&b, 0, p.bytes);
 	}else if(p.kind == LeafShift || p.kind == LeafDivide){
-		x64ptr(&b, 0, abi->s);
-		x64load(&b, 0, p.kind == LeafShift ? abi->wordbytes : p.bytes);
-		if(p.kind == LeafShift){
-			/* Unsigned comparison rejects negative/full-width counts before reading m. */
-			x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, p.bytes*8);
-			x64byte(&b, 0x72); x64byte(&b, 3);
-		}else{
-			x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0);
-			x64byte(&b, 0x75); x64byte(&b, 3);
-		}
-		/* Return zero without changing VM-visible storage on rejected inputs. */
-		x64byte(&b, 0x31); x64byte(&b, 0xc0); x64byte(&b, 0xc3);
-		x64ptr(&b, 1, abi->m); x64load(&b, 1, p.bytes);
-		if(p.kind == LeafShift){
-			x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xca); /* rdx=value */
-			x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xc1); /* rcx=count */
-			if(p.bytes == 8) x64byte(&b, 0x48);
-			x64byte(&b, 0xd3); x64byte(&b, p.alu == 0 ? 0xe2 : p.alu == 1 ? 0xea : 0xfa);
-			x64ptr(&b, 2, abi->d); x64store(&b, 2, p.bytes);
-		}else{
-			x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3); /* r11=divisor */
-			x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xc8); /* rax=dividend */
-			x64signeddivide(&b, p.bytes);
-			x64ptr(&b, 2, abi->d); x64store(&b, p.alu ? 2 : 0, p.bytes);
-		}
-	}else if(p.kind == LeafRealBranch){
+        x64ptr(&b, 0, abi->s);
+        if(p.kind == LeafShift){
+            x64pcspan(&b, 8, abi->wordbytes);
+        }
+        x64load(&b, 0, p.kind == LeafShift ? abi->wordbytes : p.bytes);
+        if(p.kind == LeafShift){
+            /* Unsigned comparison rejects negative/full-width counts before reading m. */
+            x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, p.bytes*8);
+            x64byte(&b, 0x72); x64byte(&b, 3);
+        }else{
+            x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0);
+            x64byte(&b, 0x75); x64byte(&b, 3);
+        }
+        /* Return zero without changing VM-visible storage on rejected inputs. */
+        x64byte(&b, 0x31); x64byte(&b, 0xc0); x64byte(&b, 0xc3);
+        if(p.kind == LeafShift){
+            /* Preserve the captured count in rax; span guards use rdx only. */
+            x64ptr(&b, 1, abi->m);
+            x64pcspan(&b, 9, p.bytes);
+            x64ptr(&b, 2, abi->d);
+            x64pcspan(&b, 10, p.bytes);
+        }
+        x64ptr(&b, 1, abi->m); x64load(&b, 1, p.bytes);
+        if(p.kind == LeafShift){
+            x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xca); /* rdx=value */
+            x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xc1); /* rcx=count */
+            if(p.bytes == 8) x64byte(&b, 0x48);
+            x64byte(&b, 0xd3); x64byte(&b, p.alu == 0 ? 0xe2 : p.alu == 1 ? 0xea : 0xfa);
+            x64ptr(&b, 2, abi->d); x64store(&b, 2, p.bytes);
+        }else{
+            x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3); /* r11=divisor */
+            x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xc8); /* rax=dividend */
+            x64signeddivide(&b, p.bytes);
+            x64ptr(&b, 2, abi->d); x64store(&b, p.alu ? 2 : 0, p.bytes);
+        }
+    }else if(p.kind == LeafRealBranch){
 		/* Read the branch target only after an ordered hardware comparison takes it. */
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8); x64realguard(&b, 0);
 		x64ptr(&b, 1, abi->m); x64load(&b, 1, 8); x64realguard(&b, 1);

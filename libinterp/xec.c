@@ -507,100 +507,212 @@ shiftcount(WORD count, int width)
 }
 
 /* Keep byte shifts within the defined width of the byte value. */
+/* Use REG.s as a borrowed WORD count, REG.m as the value and REG.d as result.
+ * No ownership transfer or blocking occurs. Invalid slots raise exBounds;
+ * invalid counts raise exInval before value/result access. Failure preserves REG
+ * and storage; successful reads precede the possibly overlapping result store.
+ */
 OP(shlb)
 {
-	WORD n;
-	BYTE value, result;
+    WORD n;
+    BYTE value, result;
 
-	memmove(&n, R.s, sizeof(n));
-	n = shiftcount(n, 8);
-	memmove(&value, R.m, sizeof(value));
-	result = value << n;
-	memmove(R.d, &result, sizeof(result));
+    /* Reject malformed count slots before the first operand read. */
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(n)){
+        error(exBounds);
+    }
+    memmove(&n, R.s, sizeof(n));
+    n = shiftcount(n, 8);
+    /* Count errors win; both remaining slots must fit before value access. */
+    if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(value) ||
+       R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result)){
+        error(exBounds);
+    }
+    memmove(&value, R.m, sizeof(value));
+    result = value << n;
+    memmove(R.d, &result, sizeof(result));
 }
 /* Shift word bits unsigned to avoid signed-left-shift overflow. */
+/* Use REG.s as a borrowed WORD count, REG.m as the value and REG.d as result.
+ * No ownership transfer or blocking occurs. Invalid slots raise exBounds;
+ * invalid counts raise exInval before value/result access. Failure preserves REG
+ * and storage; successful reads precede the possibly overlapping result store.
+ */
 OP(shlw)
 {
-	WORD n;
-	UWORD value, result;
+    WORD n;
+    UWORD value, result;
 
-	memmove(&n, R.s, sizeof(n));
-	n = shiftcount(n, sizeof(WORD)*8);
-	memmove(&value, R.m, sizeof(value));
-	result = value << n;
-	memmove(R.d, &result, sizeof(result));
+    /* Reject malformed count slots before the first operand read. */
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(n)){
+        error(exBounds);
+    }
+    memmove(&n, R.s, sizeof(n));
+    n = shiftcount(n, sizeof(WORD)*8);
+    /* Count errors win; both remaining slots must fit before value access. */
+    if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(value) ||
+       R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result)){
+        error(exBounds);
+    }
+    memmove(&value, R.m, sizeof(value));
+    result = value << n;
+    memmove(R.d, &result, sizeof(result));
 }
 /* Shift long bits unsigned to avoid signed-left-shift overflow. */
+/* Use REG.s as a borrowed WORD count, REG.m as the value and REG.d as result.
+ * No ownership transfer or blocking occurs. Invalid slots raise exBounds;
+ * invalid counts raise exInval before value/result access. Failure preserves REG
+ * and storage; successful reads precede the possibly overlapping result store.
+ */
 OP(shll)
 {
-	WORD n;
-	ULONG value, result;
+    WORD n;
+    ULONG value, result;
 
-	memmove(&n, R.s, sizeof(n));
-	n = shiftcount(n, sizeof(LONG)*8);
-	memmove(&value, R.m, sizeof(value));
-	result = value << n;
-	memmove(R.d, &result, sizeof(result));
+    /* Reject malformed count slots before the first operand read. */
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(n)){
+        error(exBounds);
+    }
+    memmove(&n, R.s, sizeof(n));
+    n = shiftcount(n, sizeof(LONG)*8);
+    /* Count errors win; both remaining slots must fit before value access. */
+    if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(value) ||
+       R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result)){
+        error(exBounds);
+    }
+    memmove(&value, R.m, sizeof(value));
+    result = value << n;
+    memmove(R.d, &result, sizeof(result));
 }
 /* Reject invalid byte shift counts before evaluating the shift. */
+/* Use REG.s as a borrowed WORD count, REG.m as the value and REG.d as result.
+ * No ownership transfer or blocking occurs. Invalid slots raise exBounds;
+ * invalid counts raise exInval before value/result access. Failure preserves REG
+ * and storage; successful reads precede the possibly overlapping result store.
+ */
 OP(shrb)
 {
-	WORD n;
-	BYTE value, result;
+    WORD n;
+    BYTE value, result;
 
-	memmove(&n, R.s, sizeof(n));
-	n = shiftcount(n, 8);
-	memmove(&value, R.m, sizeof(value));
-	result = value >> n;
-	memmove(R.d, &result, sizeof(result));
+    /* Reject malformed count slots before the first operand read. */
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(n)){
+        error(exBounds);
+    }
+    memmove(&n, R.s, sizeof(n));
+    n = shiftcount(n, 8);
+    /* Count errors win; both remaining slots must fit before value access. */
+    if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(value) ||
+       R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result)){
+        error(exBounds);
+    }
+    memmove(&value, R.m, sizeof(value));
+    result = value >> n;
+    memmove(R.d, &result, sizeof(result));
 }
 /* Preserve arithmetic right shift for signed Limbo words. */
+/* Use REG.s as a borrowed WORD count, REG.m as the value and REG.d as result.
+ * No ownership transfer or blocking occurs. Invalid slots raise exBounds;
+ * invalid counts raise exInval before value/result access. Failure preserves REG
+ * and storage; successful reads precede the possibly overlapping result store.
+ */
 OP(shrw)
 {
-	WORD n;
-	WORD value, result;
+    WORD n;
+    WORD value, result;
 
-	memmove(&n, R.s, sizeof(n));
-	n = shiftcount(n, sizeof(WORD)*8);
-	memmove(&value, R.m, sizeof(value));
-	result = value >> n;
-	memmove(R.d, &result, sizeof(result));
+    /* Reject malformed count slots before the first operand read. */
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(n)){
+        error(exBounds);
+    }
+    memmove(&n, R.s, sizeof(n));
+    n = shiftcount(n, sizeof(WORD)*8);
+    /* Count errors win; both remaining slots must fit before value access. */
+    if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(value) ||
+       R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result)){
+        error(exBounds);
+    }
+    memmove(&value, R.m, sizeof(value));
+    result = value >> n;
+    memmove(R.d, &result, sizeof(result));
 }
 /* Preserve arithmetic right shift for signed Limbo long values. */
+/* Use REG.s as a borrowed WORD count, REG.m as the value and REG.d as result.
+ * No ownership transfer or blocking occurs. Invalid slots raise exBounds;
+ * invalid counts raise exInval before value/result access. Failure preserves REG
+ * and storage; successful reads precede the possibly overlapping result store.
+ */
 OP(shrl)
 {
-	WORD n;
-	LONG value, result;
+    WORD n;
+    LONG value, result;
 
-	memmove(&n, R.s, sizeof(n));
-	n = shiftcount(n, sizeof(LONG)*8);
-	memmove(&value, R.m, sizeof(value));
-	result = value >> n;
-	memmove(R.d, &result, sizeof(result));
+    /* Reject malformed count slots before the first operand read. */
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(n)){
+        error(exBounds);
+    }
+    memmove(&n, R.s, sizeof(n));
+    n = shiftcount(n, sizeof(LONG)*8);
+    /* Count errors win; both remaining slots must fit before value access. */
+    if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(value) ||
+       R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result)){
+        error(exBounds);
+    }
+    memmove(&value, R.m, sizeof(value));
+    result = value >> n;
+    memmove(R.d, &result, sizeof(result));
 }
 /* Validate counts before logical right shifts of unsigned word bits. */
+/* Use REG.s as a borrowed WORD count, REG.m as the value and REG.d as result.
+ * No ownership transfer or blocking occurs. Invalid slots raise exBounds;
+ * invalid counts raise exInval before value/result access. Failure preserves REG
+ * and storage; successful reads precede the possibly overlapping result store.
+ */
 OP(lsrw)
 {
-	WORD n;
-	UWORD value, result;
+    WORD n;
+    UWORD value, result;
 
-	memmove(&n, R.s, sizeof(n));
-	n = shiftcount(n, sizeof(WORD)*8);
-	memmove(&value, R.m, sizeof(value));
-	result = value >> n;
-	memmove(R.d, &result, sizeof(result));
+    /* Reject malformed count slots before the first operand read. */
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(n)){
+        error(exBounds);
+    }
+    memmove(&n, R.s, sizeof(n));
+    n = shiftcount(n, sizeof(WORD)*8);
+    /* Count errors win; both remaining slots must fit before value access. */
+    if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(value) ||
+       R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result)){
+        error(exBounds);
+    }
+    memmove(&value, R.m, sizeof(value));
+    result = value >> n;
+    memmove(R.d, &result, sizeof(result));
 }
 /* Validate counts before logical right shifts of unsigned long bits. */
+/* Use REG.s as a borrowed WORD count, REG.m as the value and REG.d as result.
+ * No ownership transfer or blocking occurs. Invalid slots raise exBounds;
+ * invalid counts raise exInval before value/result access. Failure preserves REG
+ * and storage; successful reads precede the possibly overlapping result store.
+ */
 OP(lsrl)
 {
-	WORD n;
-	ULONG value, result;
+    WORD n;
+    ULONG value, result;
 
-	memmove(&n, R.s, sizeof(n));
-	n = shiftcount(n, sizeof(LONG)*8);
-	memmove(&value, R.m, sizeof(value));
-	result = value >> n;
-	memmove(R.d, &result, sizeof(result));
+    /* Reject malformed count slots before the first operand read. */
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(n)){
+        error(exBounds);
+    }
+    memmove(&n, R.s, sizeof(n));
+    n = shiftcount(n, sizeof(LONG)*8);
+    /* Count errors win; both remaining slots must fit before value access. */
+    if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(value) ||
+       R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result)){
+        error(exBounds);
+    }
+    memmove(&value, R.m, sizeof(value));
+    result = value >> n;
+    memmove(R.d, &result, sizeof(result));
 }
 /* Capture both BYTE operands before conditionally reading the native target. */
 OP(beqb)
