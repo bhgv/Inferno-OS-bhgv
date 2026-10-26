@@ -1,5 +1,7 @@
 # 64-bit JIT opcode availability checkpoint
 
+Latest nineteen-command integer branch/JMP preflight: [README.integer-branch-preflight.md](README.integer-branch-preflight.md).
+
 Latest 24-command integer ALU/division preflight: [README.integer-slot-preflight.md](README.integer-slot-preflight.md).
 
 Latest 18-command transfer/conversion preflight: [README.transfer-slot-preflight.md](README.transfer-slot-preflight.md).
