@@ -56,6 +56,7 @@ if os.environ.get('CHANNEL_RAW_SOURCE'):
 # Reuse only the existing bounded allocator/queue model, never its legacy test main.
 preamble = (ROOT/'libinterp/tests/channels.c').read_text().split('IMPLEMENTATION')[0]
 preamble = preamble.replace('#include <assert.h>', '#include "comp-amd64.c"')
+preamble = preamble.replace('#include "comp-amd64.c"', '#include "comp-amd64.c"\n#include "tests/leaf-mapped-cons-stub.h"')
 for header in ('isa.h','interp.h','raise.h','kernel.h'):
     preamble = preamble.replace('#include \"'+header+'\"\n', '')
 preamble = preamble.replace('static Proc worker;', '''

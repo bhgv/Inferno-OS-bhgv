@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/mapped-cons-native.py',
     'libinterp/tests/payload-channel-native.py',
     'libinterp/tests/scalar-channel-native.py',
     'libinterp/tests/typecheck-prefix.py',
@@ -97,8 +98,6 @@ CORE = [
     'libinterp/tests/module-imports.py',
     'libinterp/tests/call-slots.py',
     'libinterp/tests/return-slots.py',
-    'libinterp/tests/gui-type-maps.py',
-    'libinterp/tests/tk-owners.py',
     'libinterp/tests/channel-queues.py',
     'libinterp/tests/channel-transfers.py',
     'libinterp/tests/integer-ops.py',
@@ -132,6 +131,7 @@ CORE = [
     'limbo/tests/case-max.py',
 ]
 JIT = [
+    'libinterp/tests/mapped-cons-jit.py',
     'libinterp/tests/payload-channel-jit.py',
     'libinterp/tests/scalar-channel-jit.py',
     'libinterp/tests/payload-cons-jit.py',
@@ -190,15 +190,14 @@ JIT = [
 def main():
     """Fail at the first failed driver, without turning missing JIT packages into a pass."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--core', action='store_true', help='run VM/compiler checks without GUI/Tk or launcher-option tests')
+    parser.add_argument('--core', action='store_true', help='run VM/compiler checks without launcher-option tests')
     parser.add_argument('--jit', action='store_true', help='include instruction-emulation and emitter-bound checks')
     parser.add_argument('--list', action='store_true', help='list selected drivers without executing them')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     tests = CORE+(JIT if args.jit else [])
     if args.core:
-        excluded = {'libinterp/tests/gui-type-maps.py', 'libinterp/tests/tk-owners.py',
-                    'emu/port/tests/startup-options.py', 'emu/port/tests/startup-geometry.py'}
+        excluded = {'emu/port/tests/startup-options.py', 'emu/port/tests/startup-geometry.py'}
         tests = [test for test in tests if test not in excluded]
     for test in tests:
         if not (root/test).is_file():

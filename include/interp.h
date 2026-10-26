@@ -568,6 +568,10 @@ extern	int		runeslen(Rune*, int);
 extern	String*		c2string(char*, int);
 extern	char*		string2c(String*);
 extern	List*		cons(ulong, void*);
+
+
+/* Validate a live mapped-list descriptor without allocation or source/output mutation. */
+extern	Type*		cconsmappedtype(Modlink*, WORD);
 extern	String*		slicer(ulong, ulong, String*);
 extern	String*		addstring(String*, String*, int);
 extern	int		brpatch(Inst*, Module*);

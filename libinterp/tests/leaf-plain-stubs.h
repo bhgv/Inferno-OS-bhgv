@@ -1,3 +1,4 @@
+#include "leaf-mapped-cons-stub.h"
 #include "leaf-channel-stub.h"
 #ifndef TEST_LEAF_PLAIN_STUBS_H // One definition of callback identities per linked fixture.
 #define TEST_LEAF_PLAIN_STUBS_H // Host tests which do not exercise object destruction.

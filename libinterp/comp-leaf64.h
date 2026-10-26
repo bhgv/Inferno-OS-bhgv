@@ -69,6 +69,7 @@ leafcompile(void *arg)
 	abi.stringdata=O(String, Sascii);
 	abi.listdata=O(List, data);
 	abi.consentry=(void*)cons;
+	abi.constypeentry=(void*)cconsmappedtype;
 	abi.channelentry=(void*)cnewcscalar;
 	abi.rawchannelentry=(void*)cnewcraw;
 	abi.mappedchannelentry=(void*)cnewcmapped;

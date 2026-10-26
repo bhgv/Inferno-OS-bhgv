@@ -32,8 +32,14 @@ parts += [function(source, 'static Type*\nmoduletype(')]
 if 'static List*\nlisthead(' in source:parts += [function(source,'static List*\nlisthead(')]
 parts += [function(source, 'OP('+name+')') for name in ('consb','consw','consl','consp','consf','consm','consmp','movp','movmp','headmp','headb','headw','headl','headf','headm','lenl','headp','tail')]
 heap = (root / 'libinterp/heap.c').read_text()
-parts = [function(heap, 'void\nincmem('), function(heap, 'void\nfreeptrs(')] + parts
+parts = [function(heap, 'void\nincmem('), function(heap, 'void\nfreeptrs('), function(heap, 'void\ninitmem(')] + parts
 parts.insert(0, function((root / 'emu/port/dis.c').read_text(), 'int\nkprotect('))
+# Parent snapshots retain their original constructor without the new transaction helpers.
+if 'Type*\ncconsmappedtype(' in source:
+    parts += [function(source, 'Type*\ncconsmappedtype(')]
+    parts += [source[source.index('typedef struct ConsMapped'):source.index('/* Preserve the destination, tail')]]
+    parts += [function((root/'emu/port/dis.c').read_text(), 'void\nkrethrow(')]
+parts = [part for part in parts if not part.startswith('OP(consmp)')] + [function(source, 'OP(consmp)')]
 unit = (root / 'libinterp/tests/lists.c').read_text().replace('IMPLEMENTATION', '\n'.join(parts))
 unit = unit.replace('main(int argc, char **argv)', 'listmain(int argc, char **argv)')
 unit += (root/'libinterp/tests/list-retains.c').read_text()

@@ -1535,6 +1535,83 @@ a64scalarcons(A64Buf *b, LeafLayout *a, LeafOp *p)
 }
 
 
+
+
+/* Keep descriptor validation side-effect free, then copy and publish a pointer-free mapped node. */
+static int
+a64mappedcons(A64Buf *b, LeafLayout *a)
+{
+	int fallback, framed, empty, loop, half;
+	unsigned long long entry;
+
+	if(!leafmappedconslayout(a))return 0;
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	a64ptr(b, 9, a->s);
+	a64defer(b, 0xb4000009, fallback);
+	a64put(b, 0xb104013fU); // cmn x9, #256
+	a64defer(b, 0x54000002, fallback);
+	a64ptr(b, 10, a->d);
+	a64defer(b, 0xb400000a, fallback);
+	a64put(b, 0xb100215fU);
+	a64defer(b, 0x54000002, fallback);
+	a64ptr(b, 11, a->m);
+	a64defer(b, 0xb400000b, fallback);
+	a64put(b, 0xb100017fU | (u32int)a->wordbytes<<10);
+	a64defer(b, 0x54000002, fallback);
+	a64wordfield(b, 1, 11, 0, a->wordbytes);
+	a64put(b, 0xf940014cU); // ldr x12, old tail
+	a64put(b, 0xd10103ffU); // sub sp, sp, #64
+	a64put(b, 0xa9017beaU); // stp output, LR, [sp, #16]
+	a64put(b, 0x14000005U);
+	framed=b->n;
+	a64put(b, 0xf9400ffeU);
+	a64put(b, 0x910103ffU);
+	a64put(b, 0x52800000U);
+	a64put(b, 0xd65f03c0U);
+	a64put(b, 0xa90027ecU); // stp old tail, source, [sp]
+	a64ptr(b, 0, a->module);
+	entry=(unsigned long long)a->constypeentry;
+	for(half=0;half<4;half++)
+		a64put(b, (half==0 ? 0xd2800010U : 0xf2800010U) | half<<21 | ((entry>>(half*16))&65535)<<5);
+	a64put(b, 0xd63f0200U);
+	a64put(b, 0xf90013e0U); // str Type, [sp, #32]
+	a64wordfield(b, 12, 0, a->typenp, 4);
+	a64defer(b, 0xb500000c, framed);
+	a64wordfield(b, 2, 0, a->typesize, 4);
+	a64put(b, 0xf104005fU);
+	a64defer(b, 0x54000008, framed);
+	a64put(b, 0xf90017e2U); // str size, [sp, #40]
+	a64put(b, 0xaa0203e0U);
+	a64put(b, 0x910003e1U);
+	entry=(unsigned long long)a->consentry;
+	for(half=0;half<4;half++)
+		a64put(b, (half==0 ? 0xd2800010U : 0xf2800010U) | half<<21 | ((entry>>(half*16))&65535)<<5);
+	a64put(b, 0xd63f0200U);
+	a64put(b, 0xf94007e9U);
+	a64put(b, 0xf94017e2U);
+	a64put(b, 0x9100000bU | (u32int)a->listdata<<10);
+	empty=b->n; a64put(b, 0xb4000002U);
+	loop=b->n;
+	a64put(b, 0x3840152cU);
+	a64put(b, 0x3800156cU);
+	a64put(b, 0xf1000442U);
+	a64put(b, 0x54000001U | ((loop-b->n)&0x7ffff)<<5);
+	if(b->n>LeafMax)return 0;
+	b->code[empty] |= (b->n-empty)<<5;
+	a64put(b, 0xf94013efU);
+	a64field(b, 14, 15, a->typeref, 4);
+	a64put(b, 0x110005ceU);
+	a64put(b, 0xb90001eeU | (u32int)(a->typeref/4)<<10);
+	a64put(b, 0xf900000fU | (u32int)(a->listtype/8)<<10);
+	a64put(b, 0xf9400beaU);
+	a64put(b, 0xf9400ffeU);
+	a64put(b, 0xf9000140U);
+	a64put(b, 0x910103ffU);
+	return 1;
+}
+
+
 /* Preserve source, count, destination and LR while the allocator owns only a staged tail. */
 static int
 a64rawcons(A64Buf *b, LeafLayout *a)
@@ -1840,6 +1917,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!a64slicecopy(&b, abi)) return 0;
 	}else if(p.kind == LeafMappedCopy){
 		if(!a64mapped(&b, abi, &p)) return 0;
+	}else if(p.kind == LeafMappedCons){
+		if(!a64mappedcons(&b, abi)) return 0;
 	}else if(p.kind == LeafRawCons){
 		if(!a64rawcons(&b, abi)) return 0;
 	}else if(p.kind == LeafPointerCons){

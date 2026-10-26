@@ -32,8 +32,14 @@ parts += [function(source, 'static Type*\nmoduletype(')]
 if 'static List*\nlisthead(' in source:parts += [function(source,'static List*\nlisthead(')]
 parts += [function(source, 'OP('+name+')') for name in ('consb','consw','consl','consp','consf','consm','consmp','movp','movmp','headmp','headb','headw','headl','headf','headm','lenl','headp','tail')]
 heap = (root / 'libinterp/heap.c').read_text()
-parts = [function(heap, 'void\nincmem('), function(heap, 'void\nfreeptrs(')] + parts
+parts = [function(heap, 'void\nincmem('), function(heap, 'void\nfreeptrs('), function(heap, 'void\ninitmem(')] + parts
 parts.insert(0, function((root / 'emu/port/dis.c').read_text(), 'int\nkprotect('))
+# Parent snapshots retain their original constructor without the new transaction helpers.
+if 'Type*\ncconsmappedtype(' in source:
+    parts += [function(source, 'Type*\ncconsmappedtype(')]
+    parts += [source[source.index('typedef struct ConsMapped'):source.index('/* Preserve the destination, tail')]]
+    parts += [function((root/'emu/port/dis.c').read_text(), 'void\nkrethrow(')]
+parts = [part for part in parts if not part.startswith('OP(consmp)')] + [function(source, 'OP(consmp)')]
 unit = (root / 'libinterp/tests/lists.c').read_text().replace('IMPLEMENTATION', '\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='lists-') as directory:
     td = Path(directory)
@@ -58,7 +64,8 @@ with tempfile.TemporaryDirectory(prefix='lists-') as directory:
                 header, n = re.subn(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
                 header, m = re.subn(r'typedef unsigned long\s+UWORD;',
                                    'typedef unsigned int UWORD;', header, count=1)
-                assert n == m == 1
+                if n != 1 or m != 1:
+                    raise RuntimeError("WORD32 fixture header mismatch")
             (modeldir / 'interp.h').write_text(header)
             override = ['-I'+str(modeldir)]
         binary = td / ('codecs-'+model)

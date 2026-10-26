@@ -38,7 +38,7 @@ def measure(arch, wordbytes, profile, names, directory):
     if not rv and 'int linkcompiled;' in (ROOT/'libinterp/leaf64-ops.h').read_text():
         fields['linkcompiled']=16
     if not rv:
-        fields.update(rawchannelentry="(void*)0x100008080ULL",mappedchannelentry="(void*)0x100008090ULL",channelmid=40,channelentry="(void*)0x100008070ULL",listtail=0,listtype=8,ptrtype="(void*)0x100008060ULL",listdata=16,consentry="(void*)0x100008050ULL",heapref=24,heapcolor=32,refbytes=8,mutator='(void*)0x100008000ULL',nprop='(void*)0x100008008ULL',markcolor=3,moduletypes=32,modulenty=40,typenp=28,stringmax=4,sp=48,ts=56,frametype=16,framemr=24,framesize=32,linknlinks=48,linklinks=56,modlbytes=16,modlframe=8,regmp=64,regtemp=72,linkprog=24,linkmp=0,modlpc=0,arrayroot=24,typeref=0,stringtype="(void*)0x100008010ULL",arrayidentity="(void*)0x100008020ULL",typefree=8,typemark=16,plainfree="(void*)0x100008030ULL",plainmark="(void*)0x100008040ULL")
+        fields.update(constypeentry="(void*)0x100008100ULL",rawchannelentry="(void*)0x100008080ULL",mappedchannelentry="(void*)0x100008090ULL",channelmid=40,channelentry="(void*)0x100008070ULL",listtail=0,listtype=8,ptrtype="(void*)0x100008060ULL",listdata=16,consentry="(void*)0x100008050ULL",heapref=24,heapcolor=32,refbytes=8,mutator='(void*)0x100008000ULL',nprop='(void*)0x100008008ULL',markcolor=3,moduletypes=32,modulenty=40,typenp=28,stringmax=4,sp=48,ts=56,frametype=16,framemr=24,framesize=32,linknlinks=48,linklinks=56,modlbytes=16,modlframe=8,regmp=64,regtemp=72,linkprog=24,linkmp=0,modlpc=0,arrayroot=24,typeref=0,stringtype="(void*)0x100008010ULL",arrayidentity="(void*)0x100008020ULL",typefree=8,typemark=16,plainfree="(void*)0x100008030ULL",plainmark="(void*)0x100008040ULL")
     if rv:
         fields.update(xlen=64, hasm=int(profile != 'i'), hasdiv=int(profile == 'm'))
     assignments = ''.join(f'abi.{key}={value};' for key, value in fields.items())
@@ -57,9 +57,11 @@ def measure(arch, wordbytes, profile, names, directory):
     subprocess.run(command+['-I'+str(ROOT/'include'), '-I'+str(ROOT/'libinterp'),
                             str(source), '-o', str(binary)], check=True)
     output = [int(value) for value in subprocess.check_output([str(binary)], text=True).split()]
-    assert output[0] == len(names), 'opcode enum parsing disagrees with MAXDIS'
+    if not output or output[0] != len(names):
+        raise RuntimeError('opcode enum parsing disagrees with MAXDIS')
     indices = output[1:]
-    assert all(0 <= value < len(names) for value in indices)
+    if any(value < 0 or value >= len(names) for value in indices) or len(indices) != len(set(indices)):
+        raise RuntimeError('invalid or duplicate opcode index in emitter report')
     available = [names[value] for value in indices]
     remaining = [name for name in names if name not in available]
     return dict(architecture=arch, wordbits=wordbytes*8, profile=profile,

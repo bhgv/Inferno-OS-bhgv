@@ -43,6 +43,12 @@ parts += [function(xec, 'static void\nnewrecord('), function(xec, 'static void\n
 parts += [function(xec, signature) for signature in ('static int\nframefits(', 'static int\nmoduleentry(', 'List*\ncons(')]
 parts += [function(xec, 'OP('+name+')') for name in
           ('new', 'newz', 'mnewz', 'newa', 'newaz', 'newcmp', 'consmp', 'movmp', 'frame', 'mcall')]
+# Parent snapshots retain their original constructor without the new transaction helpers.
+if 'Type*\ncconsmappedtype(' in xec:
+    parts += [function(xec, 'Type*\ncconsmappedtype(')]
+    parts += [xec[xec.index('typedef struct ConsMapped'):xec.index('/* Preserve the destination, tail')]]
+    parts += [function((root/'emu/port/dis.c').read_text(), 'void\nkrethrow(')]
+parts = [part for part in parts if not part.startswith('OP(consmp)')] + [function(xec, 'OP(consmp)')]
 unit = (root/'libinterp/tests/module-types.c').read_text().replace('IMPLEMENTATION', '\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='module-types-') as directory:
     td = Path(directory); target = td/'test.c'; target.write_text(unit)

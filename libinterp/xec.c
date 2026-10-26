@@ -2618,26 +2618,129 @@ OP(consm)
 }
 
 
-/* Copy mapped payload and acquire its references before publishing an aliased result. */
-OP(consmp)
+/* Resolve a list descriptor and reserve its payload retain before reading any map byte. */
+Type*
+cconsmappedtype(Modlink *module, WORD index)
 {
-	List *l, *result;
 	Type *t;
-	WORD index;
+	uintptr address;
+	int i, bit;
 
-	memmove(&index, R.m, sizeof(index));
-	t = moduletype(R.M, index);
-	if(t->ref <= 0 || t->ref > 0x7ffffffe - (t == &Tlist))
+	t = moduletype(module, index);
+	address = (uintptr)t;
+	if(address%sizeof(void*) != 0 ||
+	   address > (uintptr)-1-(offsetof(Type, np)+sizeof(t->np)))
 		error(exHeap);
-	memmove(&result, R.d, sizeof(result));
-	l = cons(t->size, &result);
-	incmem(R.s, t);
+	if(t->ref <= 0 || t->ref > 0x7ffffffe - (t == &Tlist) ||
+	   (ulong)t->size > 0x7fffffff-sizeof(Heap)-
+	   (sizeof(List)-sizeof(((List*)0)->data)) || t->np < 0 ||
+	   t->np > t->size/(8*sizeof(void*))+(t->size%(8*sizeof(void*)) != 0))
+		error(exHeap);
+	if(t->np != 0 && (address > (uintptr)-1 - offsetof(Type, map) ||
+	   address+offsetof(Type, map) > (uintptr)-1-(uintptr)t->np))
+		error(exHeap);
+	for(i = 0; i < t->np; i++)
+		for(bit = 0; bit < 8; bit++)
+			if((t->map[i] & (0x80>>bit)) &&
+			   ((ulong)i*8+bit >= (ulong)t->size/sizeof(void*)))
+				error(exHeap);
+	return t;
+}
+
+typedef struct ConsMapped ConsMapped;
+
+struct ConsMapped {
+	Type *type; // Live module descriptor retained by a completed node.
+	void *source; // Borrowed payload remains unchanged until output publication.
+	List *tail; // Existing output owner is transferred only after all head retains succeed.
+	List *node; // Partial owner released by the protected caller on a VM error.
+};
+
+
+/* Acquire mapped heads into an unpublished, safely destructible node one field at a time. */
+static int
+consmapped(void *arg)
+{
+	ConsMapped *b;
+	Type *t;
+	List *l, *tail;
+	Heap *h, header;
+	void *owner;
+	uintptr address;
+	ulong offset;
+	int i, bit;
+
+	b = arg;
+	t = b->type;
+	tail = b->tail;
+	l = cons(t->size, &tail);
+	b->node = l;
+	/* The output still owns the old tail; rollback must never release it. */
+	l->tail = H;
 	if(t->size != 0)
-		memmove(l->data, R.s, t->size);
+		memmove(l->data, b->source, t->size);
+	initmem(t, l->data);
 	l->t = t;
 	t->ref++;
-	memmove(R.d, &result, sizeof(result));
+	for(i = 0; i < t->np; i++){
+		for(bit = 0; bit < 8; bit++){
+			if(!(t->map[i] & (0x80>>bit)))
+				continue;
+			offset = ((ulong)i*8+bit)*sizeof(owner);
+			memmove(&owner, (uchar*)b->source+offset, sizeof(owner));
+			if(owner == H)
+				continue;
+			address = (uintptr)owner;
+			if(address <= sizeof(Heap) || address%sizeof(void*) != 0)
+				error(exHeap);
+			memmove(&header, (uchar*)owner-sizeof(Heap), sizeof(header));
+			if(header.ref == 0 || header.ref == (ulong)-1)
+				error(exHeap);
+			h = D2H(owner);
+			h->ref++;
+			Setmark(h);
+			memmove((uchar*)l->data+offset, &owner, sizeof(owner));
+		}
+	}
+	/* No fallible work remains: transfer the old slot's tail reference without retaining twice. */
+	l->tail = b->tail;
+	return 1;
 }
+
+
+/* Preserve the destination, tail and all head references if mapped construction fails. */
+OP(consmp)
+{
+	ConsMapped b;
+	WORD index;
+	uintptr address;
+	void *slot;
+
+	address = (uintptr)R.m;
+	if(R.m == nil || R.m == H || address > (uintptr)-1-sizeof(index))
+		error(exHeap);
+	memmove(&index, R.m, sizeof(index));
+	b.type = cconsmappedtype(R.M, index);
+	slot = R.d;
+	address = (uintptr)slot;
+	if(slot == nil || slot == H || address > (uintptr)-1-sizeof(b.tail))
+		error(exHeap);
+	b.source = R.s;
+	if(b.type->size != 0){
+		address = (uintptr)b.source;
+		if(b.source == nil || b.source == H || address > (uintptr)-1-(uintptr)b.type->size)
+			error(exHeap);
+	}
+	memmove(&b.tail, slot, sizeof(b.tail));
+	b.node = H;
+	if(!kprotect(consmapped, &b)){
+		destroy(b.node);
+		krethrow();
+	}
+	memmove(slot, &b.node, sizeof(b.node));
+}
+
+
 /* Capture a possibly four-byte-aligned owner before reading list storage. */
 static List*
 listhead(void)
