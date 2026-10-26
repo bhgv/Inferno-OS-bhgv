@@ -197,6 +197,17 @@ a64realguard(A64Buf *b, int reg)
 	b->code[ordinary] |= (b->n-ordinary)<<5;
 }
 
+
+/* Validate PC-table owners before loads; x4 is scratch and other owners stay live. */
+static void
+a64pcspan(A64Buf *b, int owner, int extent, int fallback)
+{
+	a64put(b, 0xd1000004U | 1<<10 | owner<<5); // sub x4,owner,#1.
+	a64put(b, 0xb100009fU | (u32int)(extent+1)<<10); // cmn x4,#extent+1.
+	a64pcguard(b, 0x54000063, fallback); // Continue only without unsigned carry.
+}
+
+
 /* Search bounded numeric tables with one rejection return and no runtime helper ABI. */
 static int
 a64case(A64Buf *b, LeafLayout *abi, LeafOp *op)
@@ -210,19 +221,22 @@ a64case(A64Buf *b, LeafLayout *abi, LeafOp *op)
 	   abi->modulenprog < 0 || abi->modulenprog > 2047 || abi->modulenprog%4 ||
 	   abi->instbytes < 1 || abi->instbytes > 2047)
 		return 0;
-	header=op->alu ? 8 : 4; stride=op->alu ? 24 : 12;
+	header=op->alu ? 2*IBY2WD : IBY2WD;
+	stride=op->alu ? 2*IBY2LG+2*IBY2WD : 3*IBY2WD;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
-	a64ptr(b, 12, abi->module); a64pcguard(b, 0xb500006c, fallback);
-	a64put(b, 0xb100059f); a64pcguard(b, 0x54000061, fallback);
+	a64ptr(b, 12, abi->module);
+	a64pcspan(b, 12,
+		abi->linkmodule+8 > abi->linkcompiled+4 ? abi->linkmodule+8 : abi->linkcompiled+4, fallback);
 	a64field(b, 4, 12, abi->linkcompiled, 4); a64pcguard(b, 0x34000064, fallback);
-	a64field(b, 12, 12, abi->linkmodule, 8); a64pcguard(b, 0xb500006c, fallback);
-	a64put(b, 0xb100059f); a64pcguard(b, 0x54000061, fallback);
+	a64field(b, 12, 12, abi->linkmodule, 8);
+	a64pcspan(b, 12,
+		abi->moduleprog+8 > abi->modulenprog+4 ? abi->moduleprog+8 : abi->modulenprog+4, fallback);
 	a64ptr(b, 9, abi->s);
+	a64pcspan(b, 9, op->bytes, fallback);
 	if(op->bytes == 4)a64put(b, 0xb980012e); /* ldrsw x14,[x9] */
 	else a64load(b, 14, 9, 8);
-	a64ptr(b, 10, abi->d);
-	a64put(b, 0xd1000544); a64put(b, 0xb100149f); a64pcguard(b, 0x54000069, fallback);
+	a64ptr(b, 10, abi->d); a64pcspan(b, 10, 4, fallback);
 	a64put(b, 0xb9800141);
 	a64put(b, 0xf100003fU | 4095<<10); a64pcguard(b, 0x54000069, fallback);
 	a64put(b, 0xd2800009U | stride<<5);
@@ -234,9 +248,9 @@ a64case(A64Buf *b, LeafLayout *abi, LeafOp *op)
 	a64put(b, 0xd341fc22); a64put(b, 0x9b093c43);
 	a64put(b, op->alu ? 0xf9400064 : 0xb9800064);
 	a64put(b, 0xeb0401df); left=b->n; a64put(b, 0x5400000b);
-	a64put(b, op->alu ? 0xf9400464 : 0xb9800464);
+	a64put(b, op->alu ? 0xf9400464 : 0xb9800064U | (IBY2WD/4)<<10);
 	a64put(b, 0xeb0401df); right=b->n; a64put(b, 0x5400000a);
-	a64put(b, op->alu ? 0xb980106d : 0xb980086d);
+	a64put(b, op->alu ? 0xb980106d : 0xb980006dU | (2*IBY2WD/4)<<10);
 	found=b->n; a64put(b, 0x14000000);
 	b->code[left] |= (b->n-left)<<5;
 	a64put(b, 0xd341fc21); a64put(b, 0x14000000U | ((loop-b->n)&0x3ffffff));
@@ -2006,30 +2020,32 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		   abi->moduleprog < 0 || abi->moduleprog > 2047 || abi->moduleprog%8 ||
 		   abi->modulenprog < 0 || abi->modulenprog > 2047 || abi->modulenprog%4 ||
 		   abi->instbytes < 1 || abi->instbytes > 2047) return 0;
-		a64ptr(&b, 12, abi->module); a64pcguard(&b, 0xb500006c, fallback);
-		a64put(&b, 0xb100059f); a64pcguard(&b, 0x54000061, fallback);
+		a64ptr(&b, 12, abi->module); a64pcspan(&b, 12, abi->linkmodule+8, fallback);
 		if(p.kind == LeafTableJump){
 			if(abi->linkcompiled < 0 || abi->linkcompiled > 2047 || abi->linkcompiled%4) return 0;
+			a64pcspan(&b, 12, abi->linkcompiled+4, fallback);
 			a64field(&b, 14, 12, abi->linkcompiled, 4); a64pcguard(&b, 0x3400006e, fallback);
 		}
-		a64field(&b, 12, 12, abi->linkmodule, 8); a64pcguard(&b, 0xb500006c, fallback);
-		a64put(&b, 0xb100059f); a64pcguard(&b, 0x54000061, fallback);
+		a64field(&b, 12, 12, abi->linkmodule, 8);
+		a64pcspan(&b, 12,
+		abi->moduleprog+8 > abi->modulenprog+4 ? abi->moduleprog+8 : abi->modulenprog+4, fallback);
 		a64put(&b, 0xb9800000U | (abi->modulenprog/4)<<10 | 12<<5 | 13);
 		a64put(&b, 0xf10001bf); a64pcguard(&b, 0x5400006a, fallback);
-		a64ptr(&b, 9, abi->s); a64load(&b, 14, 9, abi->wordbytes);
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, abi->wordbytes, fallback);
+		a64load(&b, 14, 9, abi->wordbytes);
 		if(p.kind == LeafTableJump){
 			/* Native tables retain four-byte entries and the preceding compiler count. */
 			if(abi->wordbytes == 4)a64put(&b, 0x93407dce);
 			a64put(&b, 0xf10001df); a64pcguard(&b, 0x5400006a, fallback);
-			a64ptr(&b, 9, abi->d);
-			a64put(&b, 0xf100113f); a64pcguard(&b, 0x54000062, fallback);
+			a64ptr(&b, 9, abi->d); a64pcspan(&b, 9, IBY2WD, fallback);
+			a64put(&b, 0xf100013fU | IBY2WD<<10); a64pcguard(&b, 0x54000062, fallback);
 			a64put(&b, 0xb100053f); a64pcguard(&b, 0x54000061, fallback);
-			a64put(&b, 0xd100112a); a64put(&b, 0xb980014f);
+			a64put(&b, 0xd100012aU | IBY2WD<<10); a64put(&b, 0xb980014f);
 			a64put(&b, 0xf10001ff); a64pcguard(&b, 0x5400006c, fallback);
 			a64put(&b, 0xeb0f01df); a64pcguard(&b, 0x54000063, fallback);
-			a64put(&b, 0xd3400000U | 62<<16 | 61<<10 | 14<<5 | 14);
+			a64put(&b, 0xd3400000U | (IBY2WD == 8 ? 61 : 62)<<16 | (IBY2WD == 8 ? 60 : 61)<<10 | 14<<5 | 14);
 			a64put(&b, 0xab0e012e); a64pcguard(&b, 0x54000063, fallback);
-			a64put(&b, 0xb1000ddf); a64pcguard(&b, 0x54000063, fallback);
+			a64put(&b, 0xb10001dfU | (IBY2WD-1)<<10); a64pcguard(&b, 0x54000063, fallback);
 			a64put(&b, 0xb98001ce);
 		}
 		a64put(&b, 0xeb0d01df); a64pcguard(&b, 0x54000063, fallback);
@@ -2038,7 +2054,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64put(&b, 0xb10005ff); a64pcguard(&b, 0x54000061, fallback);
 		a64put(&b, 0xab0e01ee); a64pcguard(&b, 0x54000063, fallback);
 		if(p.kind == LeafTableJump)a64put(&b, 0xf9000000U | (u32int)(abi->pc/8)<<10 | 14);
-		else{a64ptr(&b, 11, abi->d); a64store(&b, 14, 8);}
+		else{
+			a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, 8, fallback); a64store(&b, 14, 8);
+		}
 	}else if(p.kind == LeafFixedCoefficient){
 		/* Coefficient slots follow the VM frame layout, not native pointer alignment. */
 		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047 ||

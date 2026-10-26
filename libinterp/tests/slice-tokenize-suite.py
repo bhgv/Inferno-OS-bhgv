@@ -55,6 +55,8 @@ CORE = [
     'libinterp/tests/module-byte-descriptors.py',
     'libmath/tests/native-dtoa-host.py',
     'limbo/tests/big-constant-host.py',
+    'limbo/tests/case-cell-layouts.py',
+    'limbo/tests/layout-bounds.py',
     'libinterp/tests/slice-copy-native.py',
     'libinterp/tests/mapped-copy-native.py',
     'libinterp/tests/srv-results.py',
@@ -64,6 +66,7 @@ CORE = [
     'libinterp/tests/sys-packdir.py',
     'libinterp/tests/goto-native.py',
     'libinterp/tests/string-case-c.py',
+    'libinterp/tests/pc-tables-native.py',
     'libinterp/tests/sys-stat-slots.py',
     'libinterp/tests/real-branch-native.py',
     'libinterp/tests/sys-status-slots.py',
@@ -132,6 +135,7 @@ CORE = [
     'limbo/tests/case-max.py',
 ]
 JIT = [
+    'libinterp/tests/pc-tables-jit.py',
     'libinterp/tests/mapped-cons-jit.py',
     'libinterp/tests/payload-channel-jit.py',
     'libinterp/tests/scalar-channel-jit.py',

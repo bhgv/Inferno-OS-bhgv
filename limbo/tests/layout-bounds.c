@@ -1,5 +1,4 @@
 #include "limbo.h"
-#include <assert.h>
 #include <limits.h>
 #include <stdio.h>
 #include <sys/wait.h>
@@ -8,9 +7,30 @@ char debug[256];
 int storespace[Dend];
 static int checks;
 
+/* Keep layout oracles enabled when the host compiler defines NDEBUG. */
+static void
+layoutcheck(int condition)
+{
+	if(!condition)
+		abort();
+}
+
+
 /* Reject invalid compiler layouts through the ordinary fatal diagnostic path. */
-void fatal(char *fmt, ...) { assert(fmt != nil); _Exit(73); }
-void usedty(Type *t) { assert(t != nil); }
+void
+fatal(char *fmt, ...)
+{
+	layoutcheck(fmt != nil);
+	_Exit(73);
+}
+
+
+/* Require the type identity supplied to the standalone layout fixture. */
+void
+usedty(Type *t)
+{
+	layoutcheck(t != nil);
+}
 IMPLEMENTATION
 
 /* Use a separate bounded arithmetic expression for ordinary layout expectations. */
@@ -19,6 +39,7 @@ roundoffset(long offset, int alignment)
 {
 	return ((offset+alignment-1)/alignment)*alignment;
 }
+
 
 /* Compare thousands of declaration lists with independent offsets and final sizes. */
 static void
@@ -50,11 +71,11 @@ ordinary(void)
 		result = sizeids(ids, offset);
 		for(i = 0; i < 8; i++){
 			expected = roundoffset(expected, types[i].align);
-			assert(ids[i].offset == expected);
+			layoutcheck(ids[i].offset == expected);
 			expected += types[i].size;
 		}
-		assert(result.size == expected && result.align == maxalign);
-		assert(idoffsets(ids, offset, 8) == roundoffset(expected, 8));
+		layoutcheck(result.size == expected && result.align == maxalign);
+		layoutcheck(idoffsets(ids, offset, 8) == roundoffset(expected, 8));
 		checks++;
 	}
 	/* Reused locals retain their preassigned slots and consume no new extent. */
@@ -67,9 +88,10 @@ ordinary(void)
 	ids[0].ty = types;
 	ids[0].link = &ids[1];
 	ids[1].offset = 24;
-	assert(idoffsets(ids, 48, 8) == 48 && ids[0].offset == 24);
+	layoutcheck(idoffsets(ids, 48, 8) == 48 && ids[0].offset == 24);
 	checks++;
 }
+
 
 /* Cover table multiplication limits without allocating the tables themselves. */
 static void
@@ -85,7 +107,7 @@ tables(void)
 
 	for(i = 0; i < nelem(kinds); i++)
 	for(wild = 0; wild <= 1; wild++){
-		stride = strides[i]*IBY2WD;
+		stride = kinds[i] == Tcasel ? 2*IBY2LG+2*IBY2WD : strides[i]*IBY2WD;
 		overhead = (headers[i]+(kinds[i] == Tgoto && wild))*IBY2WD;
 		for(n = 0; n < 4; n++){
 			count = n == 0 ? 0 : n == 1 ? 1 : n == 2 ? 12345 : (0x7fffffff-overhead)/stride;
@@ -97,12 +119,14 @@ tables(void)
 			table.nlab = count;
 			table.iwild = wild ? (Inst*)1 : nil;
 			sizetype(&type);
-			assert(type.size == (long)count*stride+overhead);
-			assert(type.align == (kinds[i] == Tcasel ? IBY2LG : IBY2WD));
+			if(type.size != (long)count*stride+overhead ||
+			   type.align != (kinds[i] == Tcasel ? IBY2LG : IBY2WD))
+				abort();
 			checks++;
 		}
 	}
 }
+
 
 /* Exercise every checked failure in a child to keep parent compiler fixtures intact. */
 static void
@@ -151,6 +175,7 @@ badlayout(int mode)
 	_Exit(74);
 }
 
+
 /* Require range rejection before any narrowing or signed arithmetic overflow. */
 static void
 failures(void)
@@ -160,14 +185,15 @@ failures(void)
 
 	for(mode = 0; mode < 14; mode++){
 		child = fork();
-		assert(child >= 0);
+		layoutcheck(child >= 0);
 		if(child == 0)
 			badlayout(mode);
-		assert(waitpid(child, &status, 0) == child);
-		assert(WIFEXITED(status) && WEXITSTATUS(status) == 73);
+		layoutcheck(waitpid(child, &status, 0) == child);
+		layoutcheck(WIFEXITED(status) && WEXITSTATUS(status) == 73);
 		checks++;
 	}
 }
+
 
 /* Test finite storage extents at ordinary, table and invalid arithmetic boundaries. */
 int

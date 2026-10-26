@@ -113,6 +113,14 @@ ops = '''ISLICELA IMOVMP ISELF ICASE ICASEL IGOTO IBEQC IBNEC IBLTC IBLEC IBGTC 
 IADDB IADDW ISUBB ISUBW IMULB IMULW IANDB IANDW IORB IORW IXORB IXORW
 IADDL ISUBL IMULL IANDL IORL IXORL IBEQB IBEQW IBNEB IBNEW IBLTB IBLTW
 IBLEB IBLEW IBGTB IBGTW IBGEB IBGEW ICVTWL ICVTLW ISHLB ISHLW ISHLL ISHRB ISHRW ISHRL ILSRW ILSRL IDIVB IDIVW IDIVL IMODB IMODW IMODL IBEQL IBNEL IBLTL IBLEL IBGTL IBGEL IHEADP IHEADMP ITAIL IMOVP IFRAME ICALL IRET IADDF ISUBF IMULF IDIVF ICVTXF ICVTFW ICVTFL ICVTFX IEXPF'''.split()
+
+
+# Keep instruction, buffer and oracle checks active under optimized Python execution.
+def require(condition, detail):
+    if not condition:
+        raise RuntimeError(detail)
+
+
 class Layout(C.Structure):
     _fields_ = (
         [(x, C.c_int) for x in (
@@ -127,7 +135,7 @@ class Layout(C.Structure):
             'modlbytes', 'modlframe', 'sp', 'ts', 'frametype', 'framemr',
             'framesize', 'stringmax', 'regmp', 'regtemp', 'linkprog', 'linkmp',
             'modlpc', 'arrayroot', 'typeref')]
-        + [('stringtype', C.c_void_p), ('arrayidentity', C.c_void_p), ('typefree', C.c_int), ('typemark', C.c_int), ('plainfree', C.c_void_p), ('plainmark', C.c_void_p), ('channelentry', C.c_void_p), ('consentry', C.c_void_p), ('listtype', C.c_int), ('ptrtype', C.c_void_p)]
+        + [('stringtype', C.c_void_p), ('arrayidentity', C.c_void_p), ('typefree', C.c_int), ('typemark', C.c_int), ('plainfree', C.c_void_p), ('plainmark', C.c_void_p), ('rawchannelentry', C.c_void_p), ('mappedchannelentry', C.c_void_p), ('channelmid', C.c_int), ('channelentry', C.c_void_p), ('constypeentry', C.c_void_p), ('consentry', C.c_void_p), ('listtype', C.c_int), ('ptrtype', C.c_void_p)]
     )
 class RvLayout(C.Structure):
     _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]
@@ -208,15 +216,15 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
             dis = Cs(CS_ARCH_X86,CS_MODE_64) if arch == 'amd64' else Cs(CS_ARCH_ARM64,0) if arch == 'arm64' else Cs(CS_ARCH_RISCV,CS_MODE_RISCV64)
             blobs = {}
             for name in ops:
-                out = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                n = lib.emit(out,64,C.byref(layout),ids[name])
+                out = (C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                n = lib.emit(out,128,C.byref(layout),ids[name])
                 blobs[name] = bytes(out)[:n*4]
-                assert lib.emit(None,64,C.byref(layout),ids[name]) == n
+                require(lib.emit(None,128,C.byref(layout),ids[name]) == n, 'leaf regression near source line 214')
                 if n:
-                    assert sum(i.size for i in dis.disasm(blobs[name],0x10000)) == n*4
-                    guard = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                    assert lib.emit(guard,n-1,C.byref(layout),ids[name]) == 0
-                    assert list(guard)[n-1:] == [0xa5a5a5a5]*(65-n)
+                    require(sum(i.size for i in dis.disasm(blobs[name],0x10000)) == n*4, 'leaf regression near source line 216')
+                    guard = (C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                    require(lib.emit(guard,n-1,C.byref(layout),ids[name]) == 0, 'leaf regression near source line 218')
+                    require(list(guard)[n-1:] == [0xa5a5a5a5]*(len(guard)+1-n), 'leaf regression near source line 219')
                 checks += 1
             # Reject malformed frame descriptions before exposing any emitted output.
             for name in ('IMULX','IDIVX'):
@@ -225,56 +233,56 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 for field,value in invalid:
                     malformed=type(layout).from_buffer_copy(layout)
                     setattr(malformed,field,value)
-                    guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                    assert lib.emit(guard,64,C.byref(malformed),ids[name])==0
-                    assert list(guard)==[0xa5a5a5a5]*64
+                    guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                    require(lib.emit(guard,128,C.byref(malformed),ids[name])==0, 'leaf regression near source line 229')
+                    require(list(guard)==[0xa5a5a5a5]*128, 'leaf regression near source line 230')
                     checks+=1
             for field in ('arraylen','arraydata','arraytype','typesize'):
                 for value in (-1,1,2048):
                     malformed=type(layout).from_buffer_copy(layout)
                     setattr(malformed,field,value)
-                    guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                    assert lib.emit(guard,64,C.byref(malformed),ids['IINDX'])==0
-                    assert list(guard)==[0xa5a5a5a5]*64
+                    guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                    require(lib.emit(guard,128,C.byref(malformed),ids['IINDX'])==0, 'leaf regression near source line 237')
+                    require(list(guard)==[0xa5a5a5a5]*128, 'leaf regression near source line 238')
                     checks+=1
             for field in ('fp','framelr','framefp'):
                 for value in (-1,1,2048):
                     malformed=type(layout).from_buffer_copy(layout);setattr(malformed,field,value)
-                    guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                    assert lib.emit(guard,64,C.byref(malformed),ids['ICALL'])==0
-                    assert list(guard)==[0xa5a5a5a5]*64
+                    guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                    require(lib.emit(guard,128,C.byref(malformed),ids['ICALL'])==0, 'leaf regression near source line 244')
+                    require(list(guard)==[0xa5a5a5a5]*128, 'leaf regression near source line 245')
                     checks+=1
             malformed=type(layout).from_buffer_copy(layout);malformed.framefp=malformed.framelr
-            assert lib.emit(None,64,C.byref(malformed),ids['ICALL'])==0
+            require(lib.emit(None,128,C.byref(malformed),ids['ICALL'])==0, 'leaf regression near source line 248')
             checks+=1
             for name in ('IMULX0','IDIVX0','ICVTXX0','IMULX1','IDIVX1','ICVTXX1'):
                 for field,value in [('fixedcoef',-1),('fixedcoef',2048)]+([('fixedcoef',1)] if rv else []):
                     malformed=type(layout).from_buffer_copy(layout);setattr(malformed,field,value)
-                    guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                    assert lib.emit(guard,64,C.byref(malformed),ids[name])==0
-                    assert list(guard)==[0xa5a5a5a5]*64;checks+=1
+                    guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                    require(lib.emit(guard,128,C.byref(malformed),ids[name])==0, 'leaf regression near source line 254')
+                    require(list(guard)==[0xa5a5a5a5]*128, 'leaf regression near source line 255');checks+=1
             for field in ('module','linkmodule','moduleprog','modulenprog','instbytes'):
                 for value in (-1,1 if field!='instbytes' else 0,2048):
                     malformed=type(layout).from_buffer_copy(layout);setattr(malformed,field,value)
-                    guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                    assert lib.emit(guard,64,C.byref(malformed),ids['IMOVPC'])==0
-                    assert list(guard)==[0xa5a5a5a5]*64;checks+=1
+                    guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                    require(lib.emit(guard,128,C.byref(malformed),ids['IMOVPC'])==0, 'leaf regression near source line 260')
+                    require(list(guard)==[0xa5a5a5a5]*128, 'leaf regression near source line 261');checks+=1
             if case=='frameabi':continue
             for name in (('ISELF','IHEADP','ITAIL','IMOVP') if rv else ())+(('IMOVMP','IHEADMP') if rv else ())+('IFRAME','IRET'):
-                assert not blobs[name]
+                require(not blobs[name], 'leaf regression near source line 264')
             code, registers, data, stack = 0x10000, 0x100020000, 0x100030000, 0x40000
             oldpc, target = 0x123456789, 0x987654321
 
             if case in ('','case'):
                 if rv:
-                    assert not blobs['ICASE'] and not blobs['ICASEL']
+                    require(not blobs['ICASE'] and not blobs['ICASEL'], 'leaf regression near source line 270')
                 else:
                     for name in ('ICASE','ICASEL'):
-                        assert blobs[name],(arch,wb,name,'missing numeric case leaf')
+                        require(blobs[name], (arch,wb,name,'missing numeric case leaf'))
                         for field,value in [('linkcompiled',-1),('linkcompiled',1),('moduleprog',1),('modulenprog',1),('instbytes',0)]:
                             malformed=type(layout).from_buffer_copy(layout);setattr(malformed,field,value)
-                            guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                            assert lib.emit(guard,64,C.byref(malformed),ids[name])==0 and list(guard)==[0xa5a5a5a5]*64
+                            guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                            require(lib.emit(guard,128,C.byref(malformed),ids[name])==0 and list(guard)==[0xa5a5a5a5]*128, 'leaf regression near source line 277')
                             checks+=1
 
                     def casecheck(name,n,value,pattern=0,seed=0,sa=0,ta=0,alias=0,bad=None):
@@ -334,12 +342,12 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         else:u.reg_write(UC_ARM64_REG_LR,end)
                         if n<0 or n>4095:
                             def only_header(uc,access,address,size,value,user):
-                                assert not data+0x2000+ta+4<=address<data+0x1f000,(arch,name,n,'unexpected table payload read')
+                                require(not data+0x2000+ta+4<=address<data+0x1f000, (arch,name,n,'unexpected table payload read'))
                             u.hook_add(UC_HOOK_MEM_READ,only_header)
                         u.emu_start(code,end,count=2000)
-                        assert u.reg_read(result)==int(valid),(arch,wb,name,n,value,pattern,seed,bad)
-                        assert bytes(u.mem_read(registers,0x1000))==bytes(expected),(arch,wb,name,'PC/REG',n,value,pattern,seed,bad)
-                        assert bytes(u.mem_read(data,0x20000))==bytes(image)
+                        require(u.reg_read(result)==int(valid), (arch,wb,name,n,value,pattern,seed,bad))
+                        require(bytes(u.mem_read(registers,0x1000))==bytes(expected), (arch,wb,name,'PC/REG',n,value,pattern,seed,bad))
+                        require(bytes(u.mem_read(data,0x20000))==bytes(image), 'leaf regression near source line 342')
 
                     for name in ('ICASE','ICASEL'):
                         for n in (-1,0,1,2,7,8):
@@ -358,13 +366,13 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 if case=='case':continue
             if case in ('','goto'):
                 if rv:
-                    assert not blobs['IGOTO']
+                    require(not blobs['IGOTO'], 'leaf regression near source line 361')
                 else:
-                    assert blobs['IGOTO'],(arch,wb,'missing native goto')
+                    require(blobs['IGOTO'], (arch,wb,'missing native goto'))
                     for field,value in [('linkcompiled',-1),('linkcompiled',1),('linkcompiled',2048)]:
                         malformed=type(layout).from_buffer_copy(layout);setattr(malformed,field,value)
-                        guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                        assert lib.emit(guard,64,C.byref(malformed),ids['IGOTO'])==0 and list(guard)==[0xa5a5a5a5]*64
+                        guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                        require(lib.emit(guard,128,C.byref(malformed),ids['IGOTO'])==0 and list(guard)==[0xa5a5a5a5]*128, 'leaf regression near source line 367')
                         checks+=1
 
                     def gotocheck(index,count,destination,sa=0,ta=0,alias=0,bad=None):
@@ -416,9 +424,9 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             u.reg_write(UC_X86_REG_RSP,stack+0x800);u.mem_write(stack+0x800,struct.pack('<Q',end))
                         else:u.reg_write(UC_ARM64_REG_LR,end)
                         u.emu_start(code,end,count=1000)
-                        assert u.reg_read(result)==int(valid),(arch,wb,'IGOTO',index,count,destination,bad)
-                        assert bytes(u.mem_read(registers,0x1000))==bytes(expected),(arch,wb,'goto PC/REG',index,count,destination,bad)
-                        assert bytes(u.mem_read(data,0x1000))==bytes(image)
+                        require(u.reg_read(result)==int(valid), (arch,wb,'IGOTO',index,count,destination,bad))
+                        require(bytes(u.mem_read(registers,0x1000))==bytes(expected), (arch,wb,'goto PC/REG',index,count,destination,bad))
+                        require(bytes(u.mem_read(data,0x1000))==bytes(image), 'leaf regression near source line 421')
 
                     for index in (-1,0,1,7,15,16,-(1<<(8*wb-1)),(1<<(8*wb-1))-1,1<<32):
                         for count in (-1,0,1,2,8,16):
@@ -457,12 +465,12 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                 else:u.reg_write(UC_ARM64_REG_LR if arch=='arm64' else UC_RISCV_REG_RA,end)
                                 if rv:
                                     def aligned_call(uc,access,address,size,value,user):
-                                        assert address%size==0,(hex(address),size)
+                                        require(address%size==0, (hex(address),size))
                                     u.hook_add(UC_HOOK_MEM_READ|UC_HOOK_MEM_WRITE,aligned_call)
                                 u.emu_start(code,end,count=1000)
-                                assert u.reg_read(result)==1,(arch,wb,alias)
-                                assert bytes(u.mem_read(data,0x1000))==expected,(arch,wb,alias,framealign)
-                                assert bytes(u.mem_read(registers,40))==struct.pack('<QQQQQ',target,sp,dp,0xdeadbeef,frame)
+                                require(u.reg_read(result)==1, (arch,wb,alias))
+                                require(bytes(u.mem_read(data,0x1000))==expected, (arch,wb,alias,framealign))
+                                require(bytes(u.mem_read(registers,40))==struct.pack('<QQQQQ',target,sp,dp,0xdeadbeef,frame), 'leaf regression near source line 465')
                                 checks+=1
                 # Rejected frames must not read even an unmapped target slot.
                 for frame in ((0,(1<<64)-1,data+0x501,data+0x502,data+0x503) if rv else (0,(1<<64)-1)):
@@ -476,7 +484,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     if arch=='amd64':u.reg_write(UC_X86_REG_RSP,stack+0x800);u.mem_write(stack+0x800,struct.pack('<Q',end))
                     else:u.reg_write(UC_ARM64_REG_LR if arch=='arm64' else UC_RISCV_REG_RA,end)
                     u.emu_start(code,end,count=1000)
-                    assert u.reg_read(result)==0 and bytes(u.mem_read(registers,40))==saved
+                    require(u.reg_read(result)==0 and bytes(u.mem_read(registers,40))==saved, 'leaf regression near source line 479')
                     checks+=1
                 if case=='call':continue
 
@@ -663,7 +671,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 else: u.reg_write(UC_ARM64_REG_LR if arch == 'arm64' else UC_RISCV_REG_RA,end)
                 if rv:
                     def aligned_access(uc, access, address, size, value, user):
-                        assert address % size == 0, (name, hex(address), size)
+                        require(address % size == 0, (name, hex(address), size))
                     u.hook_add(UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE, aligned_access)
                 if stringpair is not None:
                     def exact_string_reads(uc,access,address,size,value,user):
@@ -671,7 +679,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             start=base+layout.stringdata
                             if start<=address<base+256:
                                 limit=start+abs(length)*(4 if length<0 else 1)
-                                assert address+size<=limit,(arch,name,hex(address),size,length)
+                                require(address+size<=limit, (arch,name,hex(address),size,length))
                     u.hook_add(UC_HOOK_MEM_READ,exact_string_reads)
                 if fpstate is not None:
                     mode,seed=fpstate
@@ -686,33 +694,33 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     if arch=='arm64':u.reg_write(UC_ARM64_REG_FPSR,2 if seed else 0)
                 # Bounded list scans need enough instructions to reach their normal decline.
                 u.emu_start(code,end,count=100000 if chain is not None else 4000)
-                if expected_head is not None:assert bytes(u.mem_read(data,0x1000))==bytes(expected_head),(arch,wb,name,head,alias)
-                if expected_copy is not None:assert bytes(u.mem_read(data,0x1000))==expected_copy,(arch,wb,copy)
-                assert u.reg_read(result) == expect,(arch,wb,name,a,b,u.reg_read(result),expect)
-                assert bytes(u.mem_read(registers+8,32)) == struct.pack('<QQQQ',s,d,m,fp)
+                if expected_head is not None:require(bytes(u.mem_read(data,0x1000))==bytes(expected_head), (arch,wb,name,head,alias))
+                if expected_copy is not None:require(bytes(u.mem_read(data,0x1000))==expected_copy, (arch,wb,copy))
+                require(u.reg_read(result) == expect, (arch,wb,name,a,b,u.reg_read(result),expect))
+                require(bytes(u.mem_read(registers+8,32)) == struct.pack('<QQQQ',s,d,m,fp), 'leaf regression near source line 692')
                 if programaddress is not None:
-                    assert bytes(u.mem_read(data+0x500,64))==linkbytes and bytes(u.mem_read(data+0x700,64))==ownerbytes
-                    assert int.from_bytes(u.mem_read(registers+layout.module,8),'little')==programaddress[0]
-                if typedata is not None:assert bytes(u.mem_read(data+0x700,64))==bytes(typedata)
-                if metadata is not None and head is None:assert bytes(u.mem_read(data+0x500,64))==metadata
+                    require(bytes(u.mem_read(data+0x500,64))==linkbytes and bytes(u.mem_read(data+0x700,64))==ownerbytes, 'leaf regression near source line 694')
+                    require(int.from_bytes(u.mem_read(registers+layout.module,8),'little')==programaddress[0], 'leaf regression near source line 695')
+                if typedata is not None:require(bytes(u.mem_read(data+0x700,64))==bytes(typedata), 'leaf regression near source line 696')
+                if metadata is not None and head is None:require(bytes(u.mem_read(data+0x500,64))==metadata, 'leaf regression near source line 697')
                 if branchstate is not None:
                     hardware=u.reg_read(UC_X86_REG_MXCSR if arch=='amd64' else UC_ARM64_REG_FPSR)
-                    if arch=='amd64':assert hardware&~63==control
-                    else:assert u.reg_read(UC_ARM64_REG_FPCR)==control
+                    if arch=='amd64':require(hardware&~63==control, 'leaf regression near source line 700')
+                    else:require(u.reg_read(UC_ARM64_REG_FPCR)==control, 'leaf regression near source line 701')
                     return int.from_bytes(u.mem_read(registers,8),'little'),before,bytes(u.mem_read(output-8,32)),hardware& (63 if arch=='amd64' else 255)
                 if fpstate is not None:
                     if arch=='amd64':
                         status=u.reg_read(UC_X86_REG_MXCSR)
-                        assert status&~63==0x1f80 | fpstate[0]<<13
+                        require(status&~63==0x1f80 | fpstate[0]<<13, 'leaf regression near source line 706')
                         status=(status&1) | ((status>>1)&30)
                     else:
-                        assert u.reg_read(UC_ARM64_REG_FPCR)==(0,2,1,3)[fpstate[0]]<<22
+                        require(u.reg_read(UC_ARM64_REG_FPCR)==(0,2,1,3)[fpstate[0]]<<22, 'leaf regression near source line 709')
                         status=u.reg_read(UC_ARM64_REG_FPSR)&31
                     return bytes(u.mem_read(output,16)),before,bytes(u.mem_read(output-8,32)),status
                 return bytes(u.mem_read(output,16)), int.from_bytes(u.mem_read(registers,8),'little'), before, bytes(u.mem_read(output-8,32)),s
 
             if case in ('','realpower'):
-                if rv:assert not blobs['IEXPF']
+                if rv:require(not blobs['IEXPF'], 'leaf regression near source line 715')
                 else:
                     lib.realpoweroracle.argtypes=[C.c_uint64,C.c_int64,C.c_int,C.c_int,C.POINTER(C.c_uint64)]
                     values=(0,0x8000000000000000,1,0x8000000000000001,
@@ -728,15 +736,15 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                 for alias in (0,1,2,3,4,5):
                                     out,before,after,status=run('IEXPF',a=exponent,b=bits,alias=alias,fpstate=(mode,1))
                                     actual=int.from_bytes(out[:8],'little')
-                                    if wanted.value&0x7fffffffffffffff>0x7ff0000000000000:assert actual&0x7fffffffffffffff>0x7ff0000000000000
-                                    else:assert actual==wanted.value,(arch,wb,hex(bits),exponent,mode,hex(actual),hex(wanted.value))
-                                    if arch=='arm64':assert status==flags,(arch,wb,hex(bits),exponent,mode,status,flags)
-                                    assert after[:8]==before[:8] and after[16:]==before[16:];checks+=1
+                                    if wanted.value&0x7fffffffffffffff>0x7ff0000000000000:require(actual&0x7fffffffffffffff>0x7ff0000000000000, 'leaf regression near source line 731')
+                                    else:require(actual==wanted.value, (arch,wb,hex(bits),exponent,mode,hex(actual),hex(wanted.value)))
+                                    if arch=='arm64':require(status==flags, (arch,wb,hex(bits),exponent,mode,status,flags))
+                                    require(after[:8]==before[:8] and after[16:]==before[16:], 'leaf regression near source line 734');checks+=1
                 if case=='realpower':continue
 
             if case in ('','realinteger'):
                 names=('ICVTFW','ICVTFL','ICVTFX')
-                if rv:assert not any(blobs[name] for name in names)
+                if rv:require(not any(blobs[name] for name in names), 'leaf regression near source line 739')
                 else:
                     patterns=[0,1,0x8000000000000000,0x8000000000000001,
                               0x3fe0000000000000,0xbfe0000000000000,
@@ -772,10 +780,10 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                     if take:
                                         scaled=value*struct.unpack('<d',struct.pack('<Q',scale))[0] if name=='ICVTFX' else value
                                         wanted=int(scaled-0.5 if scaled<0 else scaled+0.5)
-                                        assert signed(int.from_bytes(out[:width],'little'),width*8)==wanted,(arch,name,bits)
-                                        assert after[:8]==before[:8] and after[8+width:]==before[8+width:]
-                                    else:assert before==after
-                                    assert pc==oldpc;checks+=1
+                                        require(signed(int.from_bytes(out[:width],'little'),width*8)==wanted, (arch,name,bits))
+                                        require(after[:8]==before[:8] and after[8+width:]==before[8+width:], 'leaf regression near source line 776')
+                                    else:require(before==after, 'leaf regression near source line 777')
+                                    require(pc==oldpc, 'leaf regression near source line 778');checks+=1
                     lib.realcastoracle.argtypes=[C.c_uint64,C.c_int,C.c_int,C.c_int,C.POINTER(C.c_int64)]
                     for name in names:
                         width=8 if name=='ICVTFL' else wb
@@ -789,9 +797,9 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                         for alias in (0,1,4):
                                             out,before,after,status=run(name,a=bits,b=0xbff0000000000000 if negative else 0x3ff0000000000000,alias=alias,expect=int(valid),fpstate=(mode,seed))
                                             # Unicorn x86 omits conversion precision flags; native tests check those.
-                                            if not valid or arch=='arm64':assert status==flags,(arch,wb,name,hex(bits),mode,seed,status,flags)
-                                            if valid:assert signed(int.from_bytes(out[:width],'little'),width*8)==wanted.value
-                                            else:assert before==after
+                                            if not valid or arch=='arm64':require(status==flags, (arch,wb,name,hex(bits),mode,seed,status,flags))
+                                            if valid:require(signed(int.from_bytes(out[:width],'little'),width*8)==wanted.value, 'leaf regression near source line 793')
+                                            else:require(before==after, 'leaf regression near source line 794')
                                             checks+=1
                     lib.realscaleoracle.argtypes=[C.c_uint64,C.c_uint64,C.c_int,C.c_int,C.POINTER(C.c_int64)]
                     boundary=patterns[:36]+[0x0010000000000000,0x001fffffffffffff,0x7fefffffffffffff,0x800fffffffffffff]
@@ -804,16 +812,16 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                     flags=lib.realscaleoracle(bits,scale,mode,seed,C.byref(wanted)) if take else (2 if seed else 0)
                                     for alias in (0,4):
                                         out,before,after,status=run('ICVTFX',a=bits,b=scale,alias=alias,expect=int(take),fpstate=(mode,seed))
-                                        if not take or arch=='arm64':assert status==flags,(arch,wb,'scaled flags',hex(bits),hex(scale),mode,status,flags)
-                                        if take:assert signed(int.from_bytes(out[:wb],'little'),wb*8)==wanted.value
-                                        else:assert before==after
+                                        if not take or arch=='arm64':require(status==flags, (arch,wb,'scaled flags',hex(bits),hex(scale),mode,status,flags))
+                                        if take:require(signed(int.from_bytes(out[:wb],'little'),wb*8)==wanted.value, 'leaf regression near source line 808')
+                                        else:require(before==after, 'leaf regression near source line 809')
                                         checks+=1
                 if case=='realinteger':continue
 
             if case in ('','realarithmetic'):
                 names=('IADDF','ISUBF','IMULF','IDIVF','ICVTXF')
                 if rv:
-                    assert not any(blobs[name] for name in names)
+                    require(not any(blobs[name] for name in names), 'leaf regression near source line 816')
                 else:
                     # Independent host binary64 oracle; NaN payload selection is host-defined.
                     patterns=(0,1,0x8000000000000000,0x8000000000000001,
@@ -834,24 +842,24 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                 for alias in range(6):
                                     out,pc,before,after,_=run(name,a=a,b=b,alias=alias)
                                     actual=struct.unpack('<d',out[:8])[0]
-                                    if wanted!=wanted:assert actual!=actual,(arch,name,a,b)
-                                    else:assert out[:8]==struct.pack('<d',wanted),(arch,name,a,b,out[:8].hex(),wanted)
-                                    assert after[:8]==before[:8] and after[16:]==before[16:]
-                                    assert pc==oldpc
+                                    if wanted!=wanted:require(actual!=actual, (arch,name,a,b))
+                                    else:require(out[:8]==struct.pack('<d',wanted), (arch,name,a,b,out[:8].hex(),wanted))
+                                    require(after[:8]==before[:8] and after[16:]==before[16:], 'leaf regression near source line 839')
+                                    require(pc==oldpc, 'leaf regression near source line 840')
                                     checks+=1
                 if case=='realarithmetic':continue
 
             if case in ('','bytebranch'):
                 names=('IBEQC','IBNEC','IBLTC','IBLEC','IBGTC','IBGEC')
                 if rv:
-                    assert not any(blobs[name] for name in names)
+                    require(not any(blobs[name] for name in names), 'leaf regression near source line 847')
                 else:
                     for name in names:
-                        assert blobs[name],(arch,wb,name)
+                        require(blobs[name], (arch,wb,name))
                         for field,value in [('stringlen',-1),('stringlen',1),('stringlen',2048),('stringdata',-1),('stringdata',2048)]:
                             malformed=type(layout).from_buffer_copy(layout);setattr(malformed,field,value)
-                            guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                            assert lib.emit(guard,64,C.byref(malformed),ids[name])==0 and list(guard)==[0xa5a5a5a5]*64
+                            guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                            require(lib.emit(guard,128,C.byref(malformed),ids[name])==0 and list(guard)==[0xa5a5a5a5]*128, 'leaf regression near source line 854')
                             checks+=1
                     texts=[b'',b'a',b'ab',b'a\0b',b'a\0c',b'\0',b'\x7f',b'\x80',b'\xff',b'x'*128,b'x'*127+b'y']
                     pairs=[(a,b) for a in texts for b in texts]
@@ -861,7 +869,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             take=(a==b,a!=b,a<b,a<=b,a>b,a>=b)[condition]
                             for shift in (0,1,4,7):
                                 _,pc,before,after,_=run(name,slotshift=shift,badtarget=not take,stringpair=(data+0x500,len(a),a,data+0x700,len(b),b))
-                                assert pc==(target if take else oldpc) and before==after
+                                require(pc==(target if take else oldpc) and before==after, 'leaf regression near source line 864')
                                 checks+=1
                     points=[(),(0,),(127,),(128,),(255,),(256,),(0x10000,),(0x10ffff,),(0x7fffffff,),(0x80000000,),(0xffffffff,),(97,0,98),(97,256),(97,257)]
                     forms=[]
@@ -875,7 +883,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             for condition,name in enumerate(names):
                                 take=(aa==bb,aa!=bb,aa<bb,aa<=bb,aa>bb,aa>=bb)[condition]
                                 _,pc,before,after,_=run(name,badtarget=not take,stringpair=(data+0x500,ll,ld,data+0x700,rl,rd))
-                                assert pc==(target if take else oldpc) and before==after,(arch,wb,name,ll,rl,aa,bb)
+                                require(pc==(target if take else oldpc) and before==after, (arch,wb,name,ll,rl,aa,bb))
                                 checks+=1
                     # Identical owners compare equal without reading even a huge payload.
                     for length in (0,1,-1,0x7fffffff,-0x7fffffff):
@@ -883,7 +891,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             take=condition in (0,3,5)
                             for shift in (0,4):
                                 _,pc,before,after,_=run(name,slotshift=shift,badtarget=not take,stringpair=(data+0x500,length,b'a',data+0x500,0,b''))
-                                assert pc==(target if take else oldpc) and before==after
+                                require(pc==(target if take else oldpc) and before==after, 'leaf regression near source line 886')
                                 checks+=1
                     for left in (0,(1<<64)-1,data+0x500):
                         for right in (0,(1<<64)-1,data+0x700):
@@ -895,7 +903,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                     for condition,name in enumerate(names):
                                         take=(aa==bb,aa!=bb,aa<bb,aa<=bb,aa>bb,aa>=bb)[condition]
                                         _,pc,before,after,_=run(name,expect=int(valid),badtarget=not valid or not take,stringpair=(left,ll,struct.pack('<I',97) if ll<0 else b'a',right,rl,struct.pack('<I',98) if rl<0 else b'b'))
-                                        assert pc==(target if valid and take else oldpc) and before==after
+                                        require(pc==(target if valid and take else oldpc) and before==after, 'leaf regression near source line 898')
                                         checks+=1
                     # Invalid capacity must decline even for identical owners and empty strings.
                     for length in (0,1,-1,8,-8,0x7fffffff,-0x7fffffff,-0x80000000):
@@ -912,8 +920,8 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     for name in names:
                         for value in (-1,1,2048):
                             malformed=type(layout).from_buffer_copy(layout);malformed.stringmax=value
-                            guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                            if lib.emit(guard,64,C.byref(malformed),ids[name])!=0 or list(guard)!=[0xa5a5a5a5]*64:
+                            guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                            if lib.emit(guard,128,C.byref(malformed),ids[name])!=0 or list(guard)!=[0xa5a5a5a5]*128:
                                 raise RuntimeError('invalid comparison capacity offset accepted')
                             checks+=1
                 if case=='bytebranch':continue
@@ -924,23 +932,23 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 for name,width in (('IMULB',1),('IMULW',wb),('IMULL',8)):
                     mask=(1<<(width*8))-1
                     if rv and not layout.hasm:
-                        assert not any(i.mnemonic.startswith(('mul','div','rem')) for i in dis.disasm(blobs[name],code))
+                        require(not any(i.mnemonic.startswith(('mul','div','rem')) for i in dis.disasm(blobs[name],code)), 'leaf regression near source line 927')
                     for a,b in pairs:
                         for alias in (0,1,2,3,4,5):
                             out,pc,before,after,_=run(name,a,b,alias=alias)
                             # Both operands are captured before any aliased result store.
                             aa=a&((1<<64)-1);bb=b&((1<<64)-1)
                             wanted=((aa&mask)*(bb&mask))&mask
-                            assert int.from_bytes(out[:width],'little')==wanted,(arch,wb,name,a,b,alias,out,wanted)
-                            assert pc==oldpc and before[:8]==after[:8] and before[8+width:]==after[8+width:]
+                            require(int.from_bytes(out[:width],'little')==wanted, (arch,wb,name,a,b,alias,out,wanted))
+                            require(pc==oldpc and before[:8]==after[:8] and before[8+width:]==after[8+width:], 'leaf regression near source line 935')
                             checks+=1
                 if case=='multiply':continue
             if case in ('','typecheck'):
                 for value in (-1,0,1,7,256,2048):
                     malformed=type(layout).from_buffer_copy(layout);malformed.heaptype=value
-                    guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                    assert lib.emit(guard,64,C.byref(malformed),ids['ITCMP'])==0
-                    assert list(guard)==[0xa5a5a5a5]*64
+                    guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                    require(lib.emit(guard,128,C.byref(malformed),ids['ITCMP'])==0, 'leaf regression near source line 942')
+                    require(list(guard)==[0xa5a5a5a5]*128, 'leaf regression near source line 943')
                     checks+=1
                 owners=(0,(1<<64)-1,data+0x540,data+0x740)
 
@@ -955,7 +963,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                     valid=source==(1<<64)-1 or (source in headers and effective in headers and headers[source]==headers[effective])
                                     for shift in ((0,4) if rv else range(8)):
                                         _,pc,before,after,_=run('ITCMP',alias=alias,slotshift=shift,expect=int(valid),typecheck=(source,effective,stype,dtype))
-                                        assert pc==oldpc and before==after
+                                        require(pc==oldpc and before==after, 'leaf regression near source line 958')
                                         checks+=1
                 if not rv:
                     # Prefix subtraction must decline before reading low memory.
@@ -968,16 +976,16 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 # A nil source is accepted without following the destination's header.
                 for source in (0,(1<<64)-1):
                     _,pc,before,after,_=run('ITCMP',expect=int(source!=0),typecheck=(source,0x100070000,0,0))
-                    assert pc==oldpc and before==after;checks+=1
+                    require(pc==oldpc and before==after, 'leaf regression near source line 971');checks+=1
                 if case=='typecheck':continue
             if case in ('','address'):
                 for shift in ((0,4) if rv else range(8)):
                     for alias in (0,1,2,3,5):
                         for unreadable in (False,True):
                             out,pc,before,after,source=run('ILEA',alias=alias,badsource=unreadable,slotshift=shift)
-                            assert int.from_bytes(out[:wb],'little')==source&((1<<(wb*8))-1)
-                            assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
-                            assert pc==oldpc
+                            require(int.from_bytes(out[:wb],'little')==source&((1<<(wb*8))-1), 'leaf regression near source line 978')
+                            require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:], 'leaf regression near source line 979')
+                            require(pc==oldpc, 'leaf regression near source line 980')
                             checks+=1
                 if case=='address':continue
             if case in ('','movpc'):
@@ -989,49 +997,49 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                     valid=link==data+0x500 and owner==data+0x700 and 0<=index<length and backing not in (0,(1<<64)-1) and backing+index*layout.instbytes<(1<<64)
                                     for alias in (0,1,3):
                                         out,pc,before,after,_=run('IMOVPC',index,alias=alias,expect=int(valid),programaddress=(link,owner,backing,length),badtarget=not valid)
-                                        assert pc==oldpc
+                                        require(pc==oldpc, 'leaf regression near source line 992')
                                         if valid:
-                                            assert int.from_bytes(out[:8],'little')==backing+index*layout.instbytes
-                                            assert before[:8]==after[:8] and before[16:]==after[16:]
-                                        else:assert before==after
+                                            require(int.from_bytes(out[:8],'little')==backing+index*layout.instbytes, 'leaf regression near source line 994')
+                                            require(before[:8]==after[:8] and before[16:]==after[16:], 'leaf regression near source line 995')
+                                        else:require(before==after, 'leaf regression near source line 996')
                                         checks+=1
                 for link,owner in ((0,data+0x700),((1<<64)-1,data+0x700),(data+0x500,0),(data+0x500,(1<<64)-1)):
                     _,pc,before,after,_=run('IMOVPC',expect=0,programaddress=(link,owner,data+0x900,4),badsource=True,badtarget=True)
-                    assert pc==oldpc and before==after;checks+=1
+                    require(pc==oldpc and before==after, 'leaf regression near source line 1000');checks+=1
                 if rv:
                     # Every accepted stride must fit the bounded leaf buffer and
                     # execute without MUL/DIV/REM on the base-I profile.
                     for stride in range(1,2048):
                         layout.instbytes=stride
-                        out=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                        n=lib.emit(out,64,C.byref(layout),ids['IMOVPC'])
-                        assert 0<n<=64,(wb,stride,n)
-                        assert lib.emit(None,64,C.byref(layout),ids['IMOVPC'])==n
-                        assert list(out)[n:]==[0xa5a5a5a5]*(64-n)
-                        guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                        assert lib.emit(guard,n-1,C.byref(layout),ids['IMOVPC'])==0
-                        assert list(guard)[n-1:]==[0xa5a5a5a5]*(65-n)
+                        out=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                        n=lib.emit(out,128,C.byref(layout),ids['IMOVPC'])
+                        require(0<n<=64, (wb,stride,n))
+                        require(lib.emit(None,128,C.byref(layout),ids['IMOVPC'])==n, 'leaf regression near source line 1009')
+                        require(list(out)[n:]==[0xa5a5a5a5]*(len(out)-n), 'leaf regression near source line 1010')
+                        guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                        require(lib.emit(guard,n-1,C.byref(layout),ids['IMOVPC'])==0, 'leaf regression near source line 1012')
+                        require(list(guard)[n-1:]==[0xa5a5a5a5]*(len(guard)+1-n), 'leaf regression near source line 1013')
                         blobs['IMOVPC']=bytes(out)[:4*n]
                         decoded=list(dis.disasm(blobs['IMOVPC'],code))
-                        assert sum(i.size for i in decoded)==4*n
+                        require(sum(i.size for i in decoded)==4*n, 'leaf regression near source line 1016')
                         if not layout.hasm:
-                            assert not any(i.mnemonic.startswith(('mul','div','rem')) for i in decoded)
+                            require(not any(i.mnemonic.startswith(('mul','div','rem')) for i in decoded), 'leaf regression near source line 1018')
                         for index,backing in ((0,data+0x900),(3,data+0x900),(0x7ffffffe,data+0x900),(3,(1<<64)-16)):
                             valid=backing+index*stride<(1<<64)
                             result,pc,before,after,_=run('IMOVPC',index,expect=int(valid),programaddress=(data+0x500,data+0x700,backing,0x7fffffff),badtarget=not valid)
-                            assert pc==oldpc
-                            if valid:assert int.from_bytes(result[:8],'little')==backing+index*stride
-                            else:assert before==after
+                            require(pc==oldpc, 'leaf regression near source line 1022')
+                            if valid:require(int.from_bytes(result[:8],'little')==backing+index*stride, 'leaf regression near source line 1023')
+                            else:require(before==after, 'leaf regression near source line 1024')
                             checks+=1
                     layout.instbytes=24
-                    out=(C.c_uint32*64)();n=lib.emit(out,64,C.byref(layout),ids['IMOVPC'])
+                    out=(C.c_uint32*128)();n=lib.emit(out,128,C.byref(layout),ids['IMOVPC'])
                     blobs['IMOVPC']=bytes(out)[:4*n]
                 if case=='movpc':continue
             if case in ('','coefficient'):
                 pairs=[(0,0),(1,1),(-1,1),(1,-1),(-7,3),(7,-3),(-(1<<(wb*8-1)),2),((1<<(wb*8-1))-1,-2)]
                 pairs += [(signed(rng.getrandbits(wb*8),wb*8),signed(rng.getrandbits(wb*8),wb*8)) for _ in range(4)]
                 for name in ('IMULX0','IDIVX0','ICVTXX0'):
-                    assert blobs[name],(arch,wb,name,'missing coefficient leaf')
+                    require(blobs[name], (arch,wb,name,'missing coefficient leaf'))
                     for x,y in pairs:
                         for coefficient in (0,1,-1,2,-3):
                             for count in (-64,-63,-1,0,1,31,63,64,-(1<<(wb*8-1))):
@@ -1045,27 +1053,27 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                     wanted=(-quotient if (numerator<0)!=(divisor<0) else quotient)&((1<<(8*wb))-1)
                                 for alias in (0,1,2):
                                     out,pc,before,after,_=run(name,x if name=='ICVTXX0' else y,count if name=='ICVTXX0' else x,alias=alias,expect=int(valid),fixedframe=(data+0x900,count,None,coefficient),badtarget=not valid)
-                                    assert pc==oldpc
-                                    if valid:assert int.from_bytes(out[:wb],'little')==wanted,(arch,wb,name,x,y,count,coefficient,out,wanted)
-                                    else:assert before==after
+                                    require(pc==oldpc, 'leaf regression near source line 1048')
+                                    if valid:require(int.from_bytes(out[:wb],'little')==wanted, (arch,wb,name,x,y,count,coefficient,out,wanted))
+                                    else:require(before==after, 'leaf regression near source line 1050')
                                     checks+=1
                     for delta in (0,layout.fixedcoef-layout.fixedtmp,4 if rv else 1):
                         out,pc,before,after,_=run(name,3,-2 if name!='ICVTXX0' else -1,expect=1,fixedframe=(data+0x900,-1,delta,2))
                         value=3 if name=='ICVTXX0' else 3*-2 if name=='IMULX0' else 2*-2
                         value>>=1;divisor=3 if name=='IDIVX0' else 2
                         wanted=-(abs(value)//divisor) if value<0 else value//divisor
-                        assert int.from_bytes(out[:wb],'little')==wanted&((1<<(8*wb))-1)
-                        assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
+                        require(int.from_bytes(out[:wb],'little')==wanted&((1<<(8*wb))-1), 'leaf regression near source line 1057')
+                        require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:], 'leaf regression near source line 1058')
                         checks+=1
                     for frame in (0,(1<<64)-1):
                         _,pc,before,after,_=run(name,expect=0,badsource=True,poison=True,badtarget=True,fixedframe=(frame,0,None,2))
-                        assert pc==oldpc and before==after;checks+=1
+                        require(pc==oldpc and before==after, 'leaf regression near source line 1062');checks+=1
                 if case=='coefficient':continue
             if case in ('','roundedcoefficient','vncoefficient'):
                 pairs=[(0,0),(1,1),(-1,1),(1,-1),(-7,3),(7,-3),(-(1<<(wb*8-1)),2),((1<<(wb*8-1))-1,-2)]
                 pairs += [(signed(rng.getrandbits(wb*8),wb*8),signed(rng.getrandbits(wb*8),wb*8)) for _ in range(4)]
                 for name in ('IMULX1','IDIVX1','ICVTXX1'):
-                    assert blobs[name],(arch,wb,name,'missing coefficient leaf')
+                    require(blobs[name], (arch,wb,name,'missing coefficient leaf'))
                     for x,y in pairs:
                         coefficients=(0,1,-1,2,-3,-(1<<(wb*8-1)),(1<<(wb*8-1))-1,-(1<<(wb*8-1))+1) if case=='vncoefficient' else (0,1,-1,2,-3)
                         counts=[(scale*4+flags,flags) for scale in (-63,-32,-1,0,31,63) for flags in (2,3)] if case=='vncoefficient' else [(scale*4+flags,flags) for scale in (-64,-63,-33,-32,-1,0,1,31,63,64) for flags in range(4)]+[(-(1<<(wb*8-1)),0),((1<<(wb*8-1))-1,3)]
@@ -1096,24 +1104,24 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                     wanted=(0 if zero else wanted)&((1<<(8*wb))-1)
                                 for alias in (0,1,2):
                                     out,pc,before,after,_=run(name,x if name=='ICVTXX1' else y,count if name=='ICVTXX1' else x,alias=alias,expect=int(valid),fixedframe=(data+0x900,count,None,coefficient),badtarget=not valid)
-                                    assert pc==oldpc
-                                    if valid:assert int.from_bytes(out[:wb],'little')==wanted,(arch,wb,name,x,y,count,coefficient,out,wanted)
-                                    else:assert before==after
+                                    require(pc==oldpc, 'leaf regression near source line 1099')
+                                    if valid:require(int.from_bytes(out[:wb],'little')==wanted, (arch,wb,name,x,y,count,coefficient,out,wanted))
+                                    else:require(before==after, 'leaf regression near source line 1101')
                                     checks+=1
                     for delta in (0,layout.fixedcoef-layout.fixedtmp,4 if rv else 1):
                         out,pc,before,after,_=run(name,3,-2 if name!='ICVTXX1' else -4,expect=1,fixedframe=(data+0x900,-4,delta,2))
                         value=3 if name=='ICVTXX1' else 3*-2 if name=='IMULX1' else 2*-2
                         value>>=1;divisor=3 if name=='IDIVX1' else 2
                         wanted=-(abs(value)//divisor) if value<0 else value//divisor
-                        assert int.from_bytes(out[:wb],'little')==wanted&((1<<(8*wb))-1)
-                        assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
+                        require(int.from_bytes(out[:wb],'little')==wanted&((1<<(8*wb))-1), 'leaf regression near source line 1108')
+                        require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:], 'leaf regression near source line 1109')
                         checks+=1
                     for frame in (0,(1<<64)-1):
                         _,pc,before,after,_=run(name,expect=0,badsource=True,poison=True,badtarget=True,fixedframe=(frame,0,None,2))
-                        assert pc==oldpc and before==after;checks+=1
+                        require(pc==oldpc and before==after, 'leaf regression near source line 1113');checks+=1
                 if case in ('roundedcoefficient','vncoefficient'):continue
             if case in ('','descriptor'):
-                assert blobs['IINDX'],(arch,wb,'missing descriptor leaf')
+                require(blobs['IINDX'], (arch,wb,'missing descriptor leaf'))
                 for width in (-1,0,1,3,7,8,16,0x7fffffff):
                     for length in (-1,0,1,8,0x80000001,(1<<63)-1):
                         for index in (-1,0,1,7,length-1,length):
@@ -1125,23 +1133,23 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                     out,pc,before,after,_=run('IINDX',array=(data+0x500,length,index,backing),arrayalias=alias,
                                                             descriptor=(data+0x700,width),expect=int(valid))
                                     if valid:
-                                        assert int.from_bytes(out[:wb],'little')==(backing+actualindex*width)&((1<<(8*wb))-1),(arch,width,length,index,backing)
-                                        assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
-                                    else:assert before==after
-                                    assert pc==oldpc
+                                        require(int.from_bytes(out[:wb],'little')==(backing+actualindex*width)&((1<<(8*wb))-1), (arch,width,length,index,backing))
+                                        require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:], 'leaf regression near source line 1129')
+                                    else:require(before==after, 'leaf regression near source line 1130')
+                                    require(pc==oldpc, 'leaf regression near source line 1131')
                                     checks+=1
                                 if not valid:
                                     _,pc,before,after,_=run('IINDX',array=(data+0x500,length,index,backing),
                                                             descriptor=(data+0x700,width),expect=0,badresult=True)
-                                    assert pc==oldpc and before==after
+                                    require(pc==oldpc and before==after, 'leaf regression near source line 1136')
                                     checks+=1
                 for owner in (0,(1<<64)-1):
                     _,pc,before,after,_=run('IINDX',array=(owner,8,0,data+0x800),descriptor=(data+0x700,3),expect=0,badtarget=True,badresult=True)
-                    assert pc==oldpc and before==after
+                    require(pc==oldpc and before==after, 'leaf regression near source line 1140')
                     checks+=1
                 for typeptr in (0,(1<<64)-1):
                     _,pc,before,after,_=run('IINDX',array=(data+0x500,8,3,data+0x800),descriptor=(typeptr,3),expect=0,badresult=True)
-                    assert pc==oldpc and before==after
+                    require(pc==oldpc and before==after, 'leaf regression near source line 1144')
                     checks+=1
                 if case=='descriptor':continue
             if case in ('','framefixed'):
@@ -1150,10 +1158,10 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                 counts=[-63,-33,-32,-1,0,1,31,32,62,63,-64,64,-(1<<(wb*8-1))]
                 for name in ('IMULX','IDIVX'):
                     if not blobs[name]:
-                        assert rv and not layout.hasdiv and name=='IDIVX'
+                        require(rv and not layout.hasdiv and name=='IDIVX', 'leaf regression near source line 1153')
                         continue
                     if rv and not layout.hasm:
-                        assert not any(i.mnemonic.startswith(('mul','div','rem')) for i in dis.disasm(blobs[name],code))
+                        require(not any(i.mnemonic.startswith(('mul','div','rem')) for i in dis.disasm(blobs[name],code)), 'leaf regression near source line 1156')
                     for a,b in pairs:
                         aa,bb=signed(a,wb*8),signed(b,wb*8)
                         for count in counts:
@@ -1166,10 +1174,10 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                     if name=='IDIVX':
                                         magnitude=abs(intermediate)//abs(aa)
                                         intermediate=-magnitude if (intermediate<0)!=(aa<0) else magnitude
-                                    assert int.from_bytes(out[:wb],'little')==intermediate&((1<<(8*wb))-1),(arch,wb,name,aa,bb,count,alias)
-                                    assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
-                                else:assert before==after
-                                assert pc==oldpc
+                                    require(int.from_bytes(out[:wb],'little')==intermediate&((1<<(8*wb))-1), (arch,wb,name,aa,bb,count,alias))
+                                    require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:], 'leaf regression near source line 1170')
+                                else:require(before==after, 'leaf regression near source line 1171')
+                                require(pc==oldpc, 'leaf regression near source line 1172')
                                 checks+=1
                     for count in range(-63,64):
                         a,b=3,-7
@@ -1178,25 +1186,25 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             value=a*b if name=='IMULX' else b
                             value=signed(value<<count,64) if count>=0 else value>>-count
                             if name=='IDIVX':value=-(abs(value)//a) if value<0 else value//a
-                            assert int.from_bytes(out[:wb],'little')==value&((1<<(8*wb))-1)
-                            assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
+                            require(int.from_bytes(out[:wb],'little')==value&((1<<(8*wb))-1), 'leaf regression near source line 1181')
+                            require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:], 'leaf regression near source line 1182')
                             checks+=1
                     if rv:
                         for delta in (1,2,3):
                             _,pc,before,after,_=run(name,expect=0,poison=True,badsource=True,fixedframe=(data+0x900+delta,0,None))
-                            assert pc==oldpc and before==after
+                            require(pc==oldpc and before==after, 'leaf regression near source line 1187')
                             checks+=1
                     for frame in (0,(1<<64)-1):
                         _,pc,before,after,_=run(name,expect=0,poison=True,badsource=True,fixedframe=(frame,0,None))
-                        assert pc==oldpc and before==after
+                        require(pc==oldpc and before==after, 'leaf regression near source line 1191')
                         checks+=1
                     for count in (-64,64,-(1<<(wb*8-1))):
                         _,pc,before,after,_=run(name,expect=0,poison=True,badsource=True,fixedframe=(data+0x900,count,None))
-                        assert pc==oldpc and before==after
+                        require(pc==oldpc and before==after, 'leaf regression near source line 1195')
                         checks+=1
                 for divisor in (((0,-1) if rv else (0,)) if blobs['IDIVX'] else ()):
                     _,pc,before,after,_=run('IDIVX',divisor,7,expect=0,poison=True,fixedframe=(data+0x900,0,None))
-                    assert pc==oldpc and before==after
+                    require(pc==oldpc and before==after, 'leaf regression near source line 1199')
                     checks+=1
                 if case=='framefixed':continue
             if case in ('','resize'):
@@ -1231,10 +1239,10 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                     actual=int.from_bytes(out[:outsize],'little')
                                     limit=0x7f800000 if outsize==4 else 0x7ff0000000000000
                                     mask=(1<<(outsize*8-1))-1
-                                    if wanted.value&mask>limit:assert actual&mask>limit
-                                    else:assert actual==wanted.value,(arch,name,hex(bits),mode,hex(actual),hex(wanted.value))
-                                    if arch=='arm64':assert status==flags,(arch,name,hex(bits),mode,status,flags)
-                                    assert before[:8]==after[:8] and before[8+outsize:]==after[8+outsize:];checks+=1
+                                    if wanted.value&mask>limit:require(actual&mask>limit, 'leaf regression near source line 1234')
+                                    else:require(actual==wanted.value, (arch,name,hex(bits),mode,hex(actual),hex(wanted.value)))
+                                    if arch=='arm64':require(status==flags, (arch,name,hex(bits),mode,status,flags))
+                                    require(before[:8]==after[:8] and before[8+outsize:]==after[8+outsize:], 'leaf regression near source line 1237');checks+=1
                             continue
                         if valid:
                             number=struct.unpack('<f' if insize==4 else '<d',raw)[0]
@@ -1242,14 +1250,14 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         for alias in (0,1,2,3,5):
                             out,pc,before,after,_=run(name,alias=alias,raw=raw,expect=int(valid),poison=True)
                             if valid:
-                                assert out[:outsize]==expected,(arch,wb,name,hex(bits),alias,out,expected)
-                                assert before[:8]==after[:8] and before[8+outsize:]==after[8+outsize:]
-                            else:assert before==after
-                            assert pc==oldpc
+                                require(out[:outsize]==expected, (arch,wb,name,hex(bits),alias,out,expected))
+                                require(before[:8]==after[:8] and before[8+outsize:]==after[8+outsize:], 'leaf regression near source line 1246')
+                            else:require(before==after, 'leaf regression near source line 1247')
+                            require(pc==oldpc, 'leaf regression near source line 1248')
                             checks+=1
                         if not valid:
                             _,pc,before,after,_=run(name,raw=raw,expect=0,poison=True,badtarget=True)
-                            assert pc==oldpc and before==after
+                            require(pc==oldpc and before==after, 'leaf regression near source line 1252')
                             checks+=1
                 if case=='resize':continue
             if case in ('','integerreal'):
@@ -1268,22 +1276,22 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                 flags=lib.integerrealoracle(number,mode,C.byref(wanted))
                                 for alias in (0,1,2,3,5):
                                     out,before,after,status=run(name,value,alias=alias,poison=True,fpstate=(mode,1))
-                                    assert int.from_bytes(out[:8],'little')==wanted.value,(arch,name,number,mode)
-                                    if arch=='arm64':assert status==flags,(arch,name,number,mode,status,flags)
-                                    assert before[:8]==after[:8] and before[16:]==after[16:];checks+=1
+                                    require(int.from_bytes(out[:8],'little')==wanted.value, (arch,name,number,mode))
+                                    if arch=='arm64':require(status==flags, (arch,name,number,mode,status,flags))
+                                    require(before[:8]==after[:8] and before[16:]==after[16:], 'leaf regression near source line 1273');checks+=1
                             continue
                         valid=abs(number)<(1<<53)
                         for alias in (0,1,2,3,5):
                             out,pc,before,after,_=run(name,value,alias=alias,expect=int(valid),poison=True)
                             if valid:
-                                assert out[:8]==struct.pack('<d',float(number)),(arch,wb,name,number,alias,out)
-                                assert before[:8]==after[:8] and before[16:]==after[16:]
-                            else:assert before==after
-                            assert pc==oldpc
+                                require(out[:8]==struct.pack('<d',float(number)), (arch,wb,name,number,alias,out))
+                                require(before[:8]==after[:8] and before[16:]==after[16:], 'leaf regression near source line 1280')
+                            else:require(before==after, 'leaf regression near source line 1281')
+                            require(pc==oldpc, 'leaf regression near source line 1282')
                             checks+=1
                         if not valid:
                             _,pc,before,after,_=run(name,value,expect=0,poison=True,badtarget=True)
-                            assert pc==oldpc and before==after
+                            require(pc==oldpc and before==after, 'leaf regression near source line 1286')
                             checks+=1
                 if case=='integerreal':continue
             if case in ('','fixed'):
@@ -1299,14 +1307,14 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             # d=m aliases preserve the same count; s=d-4/s=d+4 never overlaps m.
                             if valid:
                                 expected=((signed(value,wb*8)<<count) if count>=0 else (signed(value,wb*8)>>-count))&((1<<(wb*8))-1)
-                                assert int.from_bytes(out[:wb],'little')==expected,(arch,wb,value,count,alias,out)
-                                assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
-                            else:assert before==after
-                            assert pc==oldpc
+                                require(int.from_bytes(out[:wb],'little')==expected, (arch,wb,value,count,alias,out))
+                                require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:], 'leaf regression near source line 1303')
+                            else:require(before==after, 'leaf regression near source line 1304')
+                            require(pc==oldpc, 'leaf regression near source line 1305')
                             checks+=1
                 for count in (-64,64,65,-(1<<(wb*8-1))):
                     _,pc,before,after,_=run('ICVTXX',0,count,expect=0,badsource=True)
-                    assert pc==oldpc and before==after
+                    require(pc==oldpc and before==after, 'leaf regression near source line 1309')
                     checks+=1
                 if case=='fixed':continue
             if case in ('','scalar'):
@@ -1323,8 +1331,8 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                 signed(bits,wb*8) if name=='ICVTWL' else bits)
                         for alias in (0,1,3,5):
                             out,pc,before,after,_=run(name,alias=alias,raw=raw,poison=True)
-                            assert int.from_bytes(out[:width],'little')==wanted&((1<<(8*width))-1),(arch,wb,name,bits,alias)
-                            assert pc==oldpc and before[:8]==after[:8] and before[8+width:]==after[8+width:]
+                            require(int.from_bytes(out[:width],'little')==wanted&((1<<(8*width))-1), (arch,wb,name,bits,alias))
+                            require(pc==oldpc and before[:8]==after[:8] and before[8+width:]==after[8+width:], 'leaf regression near source line 1327')
                             checks+=1
                 if case=='scalar':continue
             if case in ('','realbranchfp'):
@@ -1348,7 +1356,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                         for seed in range(2):
                                             take=valid and predicates[condition]
                                             pc,before,after,status=run(name,a,b,expect=int(valid),badtarget=not take,branchstate=(mode,flush,seed))
-                                            assert pc==(target if take else oldpc) and before==after,(arch,wb,name,a,b,mode,flush)
+                                            require(pc==(target if take else oldpc) and before==after, (arch,wb,name,a,b,mode,flush))
                                             wanted=(4 if arch=='amd64' else 2) if seed else 0
                                             if valid and (denormal(a) or denormal(b)):
                                                 if arch=='amd64' and not flushing:wanted|=2
@@ -1356,7 +1364,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                             # Unicorn 2.1.4 omits the x86 denormal-operand sticky bit.
                                             # The physical AMD64 differential checks all MXCSR bits instead.
                                             if arch=='amd64':status&=~2;wanted&=~2
-                                            assert status==wanted,(arch,name,hex(a),hex(b),flush,status,wanted)
+                                            require(status==wanted, (arch,name,hex(a),hex(b),flush,status,wanted))
                                             checks+=1
                 if case=='realbranchfp':continue
             if case in ('','realbranch'):
@@ -1377,17 +1385,17 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         take=[left==right,left!=right,left<right,left<=right,left>right,left>=right][relation]
                         valid=(native_real(a) and native_real(b)) if rv else not (left!=left or right!=right)
                         _,pc,before,after,_=run(name,a,b,expect=int(valid))
-                        assert pc==(target if valid and take else oldpc),(arch,wb,name,hex(a),hex(b),pc)
-                        assert before==after
+                        require(pc==(target if valid and take else oldpc), (arch,wb,name,hex(a),hex(b),pc))
+                        require(before==after, 'leaf regression near source line 1381')
                         checks+=1
                         if not valid or not take:
                             _,pc,before,after,_=run(name,a,b,expect=int(valid),badtarget=True)
-                            assert pc==oldpc and before==after
+                            require(pc==oldpc and before==after, 'leaf regression near source line 1385')
                             checks+=1
                     for a in floats:
                         if not native_real(a) and (rv or (a>>52)&2047==2047):
                             _,pc,before,after,_=run(name,a,poison=True,expect=0,badtarget=True)
-                            assert pc==oldpc and before==after
+                            require(pc==oldpc and before==after, 'leaf regression near source line 1390')
                             checks+=1
                 if case=='realbranch':continue
             if case in ('','headcopy'):
@@ -1425,14 +1433,14 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                 if exponent>=0 or signed(base,width*8)!=0:
                                     actual=signed(base,width*8)
                                     wanted=pow(base,exponent,1<<(width*8)) if exponent>=0 else (1 if actual==1 else ((-1 if exponent&1 else 1)&((1<<(width*8))-1)) if actual==-1 else 0)
-                                    assert int.from_bytes(out[:width],'little')==wanted,(arch,wb,name,exponent,base)
-                                    assert before[:8]==after[:8] and before[8+width:]==after[8+width:]
-                                else:assert before==after
-                                assert pc==oldpc
+                                    require(int.from_bytes(out[:width],'little')==wanted, (arch,wb,name,exponent,base))
+                                    require(before[:8]==after[:8] and before[8+width:]==after[8+width:], 'leaf regression near source line 1429')
+                                else:require(before==after, 'leaf regression near source line 1430')
+                                require(pc==oldpc, 'leaf regression near source line 1431')
                                 checks+=1
                     for exponent in (-1,-(1<<(wb*8-1))):
                         _,pc,before,after,_=run(name,exponent,0,expect=0,badtarget=True)
-                        assert pc==oldpc and before==after
+                        require(pc==oldpc and before==after, 'leaf regression near source line 1435')
                         checks+=1
                 if case=='power':continue
             if case in ('','character'):
@@ -1443,13 +1451,13 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             for alias in (0,1,2,3):
                                 valid=pointer==data+0x500 and length!=-2147483648 and 0<=index<abs(length)
                                 out,pc,before,after,_=run('IINDC',alias=alias,character=(pointer,length,index,values),expect=int(valid))
-                                if not valid:assert before==after
-                                assert pc==oldpc
+                                if not valid:require(before==after, 'leaf regression near source line 1446')
+                                require(pc==oldpc, 'leaf regression near source line 1447')
                                 checks+=1
                 for length in (-8,8):
                     for index in (-1,8,(1<<(wb*8-1))-1):
                         _,pc,before,after,_=run('IINDC',character=(data+0x500,length,index,values),expect=0,poison=True)
-                        assert before==after and pc==oldpc
+                        require(before==after and pc==oldpc, 'leaf regression near source line 1452')
                         checks+=1
                 if not rv:
                     for length in (-8,0,8,2147483647,-2147483647):
@@ -1470,10 +1478,10 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         checks+=1
                     for field,value in (('stringmax',-1),('stringmax',1),('stringmax',16384)):
                         previous=getattr(layout,field);setattr(layout,field,value)
-                        output=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
+                        output=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
                         if lib.emit(output,64,C.byref(layout),ids['IINDC'])!=0:
                             raise RuntimeError('invalid capacity offset accepted')
-                        if list(output)!=[0xa5a5a5a5]*64:raise RuntimeError('rejected emission changed output')
+                        if list(output)!=[0xa5a5a5a5]*128:raise RuntimeError('rejected emission changed output')
                         setattr(layout,field,previous);checks+=1
                 if case=='character':continue
             if case in ('','listlen'):
@@ -1498,9 +1506,9 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             for alias in (0,1,2,3):
                                 valid=pointer==data+0x500
                                 out,pc,before,after,_=run(name,alias=alias,head=(pointer,bits),expect=int(valid))
-                                if valid:assert int.from_bytes(out[:width],'little')==bits&((1<<(8*width))-1)
-                                else:assert before==after
-                                assert pc==oldpc
+                                if valid:require(int.from_bytes(out[:width],'little')==bits&((1<<(8*width))-1), 'leaf regression near source line 1501')
+                                else:require(before==after, 'leaf regression near source line 1502')
+                                require(pc==oldpc, 'leaf regression near source line 1503')
                                 checks+=1
                 if case=='head':continue
             if case in ('','string'):
@@ -1511,10 +1519,10 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             out,pc,before,after,_=run('ILENC',alias=alias,string=(pointer,length),expect=int(valid))
                             if valid:
                                 wanted=0 if pointer==(1<<64)-1 else abs(length)
-                                assert int.from_bytes(out[:wb],'little')==wanted,(arch,wb,pointer,length)
-                                assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
-                            else:assert before==after
-                            assert pc==oldpc
+                                require(int.from_bytes(out[:wb],'little')==wanted, (arch,wb,pointer,length))
+                                require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:], 'leaf regression near source line 1515')
+                            else:require(before==after, 'leaf regression near source line 1516')
+                            require(pc==oldpc, 'leaf regression near source line 1517')
                             checks+=1
                 if case=='string':continue
             if case in ('','copy'):
@@ -1544,10 +1552,10 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                 bb=b&255 if width==1 else signed(b,width*8)
                                 take=predicate(aa,bb)
                                 _,pc,before,after,_=run(name,a,b,badtarget=not take)
-                                assert pc==(target if take else oldpc),(arch,wb,name,aa,bb)
-                                assert before==after
+                                require(pc==(target if take else oldpc), (arch,wb,name,aa,bb))
+                                require(before==after, 'leaf regression near source line 1548')
                                 checks+=1
-                assert run('IJMP')[1]==target
+                require(run('IJMP')[1]==target, 'leaf regression near source line 1550')
                 checks+=1
                 continue
             if case=='divide':
@@ -1558,7 +1566,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     pairs += [(signed(rng.getrandbits(bits),bits),signed(rng.getrandbits(bits),bits)) for _ in range(64)]
                     for name in ('IDIV'+suffix,'IMOD'+suffix):
                         if not blobs[name]:
-                            assert rv and not layout.hasdiv
+                            require(rv and not layout.hasdiv, 'leaf regression near source line 1561')
                             continue
                         for divisor,dividend in pairs:
                             a=divisor&255 if width==1 else signed(divisor,bits)
@@ -1569,18 +1577,18 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                     q=abs(b)//abs(a)
                                     if (a<0)!=(b<0):q=-q
                                     wanted=(q if name.startswith('IDIV') else b-q*a)&mask
-                                    assert int.from_bytes(out[:width],'little')==wanted,(arch,wb,name,a,b)
-                                    assert before[:8]==after[:8] and before[8+width:]==after[8+width:]
-                                else:assert before==after
-                                assert pc==oldpc;checks+=1
+                                    require(int.from_bytes(out[:width],'little')==wanted, (arch,wb,name,a,b))
+                                    require(before[:8]==after[:8] and before[8+width:]==after[8+width:], 'leaf regression near source line 1573')
+                                else:require(before==after, 'leaf regression near source line 1574')
+                                require(pc==oldpc, 'leaf regression near source line 1575');checks+=1
                         _,pc,before,after,_=run(name,0,poison=True,expect=0)
-                        assert before==after and pc==oldpc;checks+=1
+                        require(before==after and pc==oldpc, 'leaf regression near source line 1577');checks+=1
                 continue
             if case=='guard':
                 counts=[-1,wb*8,-(1<<(wb*8-1))]+([1<<32] if wb==8 else [])
                 for count in counts:
                     _,pc,before,after,_=run('ISHLW',count,poison=True,expect=0)
-                    assert before==after and pc==oldpc
+                    require(before==after and pc==oldpc, 'leaf regression near source line 1583')
                     checks+=1
                 continue
             owner=data+0x500
@@ -1589,8 +1597,8 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     for alias in (0,1):
                         out,pc,before,after,_=run('ILENA',array=(pointer,length,0,0),arrayalias=alias)
                         wanted=(length if pointer==owner else 0)&((1<<(wb*8))-1)
-                        assert int.from_bytes(out[:wb],'little')==wanted,(arch,wb,'ILENA',pointer,length,out,wanted)
-                        assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:] and pc==oldpc
+                        require(int.from_bytes(out[:wb],'little')==wanted, (arch,wb,'ILENA',pointer,length,out,wanted))
+                        require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:] and pc==oldpc, 'leaf regression near source line 1593')
                         checks+=1
             for name in ('IINDB','IINDW','IINDL','IINDF'):
                 stride=1 if name=='IINDB' else wb if name=='IINDW' else 8
@@ -1604,10 +1612,10 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                 for alias in (0,1,2):
                                     out,pc,before,after,_=run(name,expect=int(valid),array=(pointer,length,index,backing),arrayalias=alias)
                                     if valid:
-                                        assert int.from_bytes(out[:wb],'little')==(backing+actualindex*stride)&((1<<(8*wb))-1),(arch,name,length,index,backing,out)
-                                        assert before[:8]==after[:8] and before[8+wb:]==after[8+wb:]
-                                    else:assert before==after
-                                    assert pc==oldpc
+                                        require(int.from_bytes(out[:wb],'little')==(backing+actualindex*stride)&((1<<(8*wb))-1), (arch,name,length,index,backing,out))
+                                        require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:], 'leaf regression near source line 1608')
+                                    else:require(before==after, 'leaf regression near source line 1609')
+                                    require(pc==oldpc, 'leaf regression near source line 1610')
                                     checks+=1
             if case=='array':continue
             edges=[0,1,255,256,(1<<31)-1,1<<31,(1<<32)-1,1<<63,(1<<64)-1]
@@ -1621,9 +1629,9 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                 'AND':lambda:b&a,'OR':lambda:b|a,'XOR':lambda:b^a}[operation]()&mask
                         for alias in (0,1,2):
                             out,pc,before,after,_=run(name,a,b,alias)
-                            assert int.from_bytes(out[:width],'little')==wanted,(arch,wb,name,a,b,out,wanted)
-                            assert before[:8]==after[:8] and before[8+width:]==after[8+width:]
-                            assert pc==oldpc
+                            require(int.from_bytes(out[:width],'little')==wanted, (arch,wb,name,a,b,out,wanted))
+                            require(before[:8]==after[:8] and before[8+width:]==after[8+width:], 'leaf regression near source line 1625')
+                            require(pc==oldpc, 'leaf regression near source line 1626')
                             checks+=1
             relations={'EQ':lambda a,b:a==b,'NE':lambda a,b:a!=b,'LT':lambda a,b:a<b,
                        'LE':lambda a,b:a<=b,'GT':lambda a,b:a>b,'GE':lambda a,b:a>=b}
@@ -1634,16 +1642,16 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         _,pc,before,after,_=run(name,a,b)
                         aa=a&255 if width==1 else signed(a,width*8)
                         bb=b&255 if width==1 else signed(b,width*8)
-                        assert pc==(target if predicate(aa,bb) else oldpc),(arch,wb,name,aa,bb,pc)
-                        assert before==after
+                        require(pc==(target if predicate(aa,bb) else oldpc), (arch,wb,name,aa,bb,pc))
+                        require(before==after, 'leaf regression near source line 1638')
                         checks+=1
             for bits in [0,1,0x8000000000000000,0x3ff0000000000000,
                          0x7ff0000000000000,0xfff0000000000000,
                          0x7ff8000000000042,0x7ff0000000000042] + [rng.getrandbits(64) for _ in range(128)]:
                 for alias in (0,1,3):
                     out,pc,before,after,_=run('INEGF',alias=alias,raw=struct.pack('<Q',bits))
-                    assert int.from_bytes(out[:8],'little')==bits^(1<<63)
-                    assert pc==oldpc and before[:8]==after[:8] and before[16:]==after[16:]
+                    require(int.from_bytes(out[:8],'little')==bits^(1<<63), 'leaf regression near source line 1645')
+                    require(pc==oldpc and before[:8]==after[:8] and before[16:]==after[16:], 'leaf regression near source line 1646')
                     checks+=1
             for name,width in [('IMOVB' ,1),('IMOVW',wb),('IMOVL',8),('IMOVF',8),('ICVTBW',wb),('ICVTWB',1),('ICVTWS',2),('ICVTSW',wb),('ICVTWL',8),('ICVTLW',wb)]:
                 for raw in (bytes.fromhex('efcdab8967452301'),bytes.fromhex('00800000ffffffff')):
@@ -1652,8 +1660,8 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             signed(int.from_bytes(raw[:wb],'little'),wb*8) if name=='ICVTWL' else int.from_bytes(raw[:width],'little'))
                     for alias in (0,1,3):
                         out,_,before,after,_=run(name,alias=alias,raw=raw)
-                        assert int.from_bytes(out[:width],'little')==wanted&((1<<(8*width))-1),(arch,wb,name,out)
-                        assert before[:8]==after[:8] and before[8+width:]==after[8+width:]
+                        require(int.from_bytes(out[:width],'little')==wanted&((1<<(8*width))-1), (arch,wb,name,out))
+                        require(before[:8]==after[:8] and before[8+width:]==after[8+width:], 'leaf regression near source line 1656')
                         checks+=1
             for suffix,width in (('B',1),('W',wb),('L',8)):
                 bits=width*8; mask=(1<<bits)-1
@@ -1670,14 +1678,14 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                     wanted=((value<<count) if name.startswith('ISHL') else
                                             signed(value,bits)>>count if name.startswith('ISHR') and suffix!='B' else
                                             (value&mask)>>count)&mask
-                                    assert int.from_bytes(out[:width],'little')==wanted,(arch,wb,name,count,value,out,wanted)
-                                    assert before[:8]==after[:8] and before[8+width:]==after[8+width:]
-                                else: assert before==after
-                                assert pc==oldpc
+                                    require(int.from_bytes(out[:width],'little')==wanted, (arch,wb,name,count,value,out,wanted))
+                                    require(before[:8]==after[:8] and before[8+width:]==after[8+width:], 'leaf regression near source line 1674')
+                                else: require(before==after, 'leaf regression near source line 1675')
+                                require(pc==oldpc, 'leaf regression near source line 1676')
                                 checks+=1
                         if not (0<=count<bits):
                             _,pc,before,after,_=run(name,count,poison=True,expect=0)
-                            assert before==after and pc==oldpc
+                            require(before==after and pc==oldpc, 'leaf regression near source line 1680')
                             checks+=1
                 for name in ('IDIV'+suffix,'IMOD'+suffix):
                     for divisor,dividend in pairs:
@@ -1690,15 +1698,15 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                 q=abs(b)//abs(a)
                                 if (a<0)!=(b<0):q=-q
                                 wanted=(q if name.startswith('IDIV') else b-q*a)&mask
-                                assert int.from_bytes(out[:width],'little')==wanted,(arch,wb,name,a,b,out,wanted)
-                                assert before[:8]==after[:8] and before[8+width:]==after[8+width:]
-                            else: assert before==after
-                            assert pc==oldpc
+                                require(int.from_bytes(out[:width],'little')==wanted, (arch,wb,name,a,b,out,wanted))
+                                require(before[:8]==after[:8] and before[8+width:]==after[8+width:], 'leaf regression near source line 1694')
+                            else: require(before==after, 'leaf regression near source line 1695')
+                            require(pc==oldpc, 'leaf regression near source line 1696')
                             checks+=1
                     _,pc,before,after,_=run(name,0,poison=True,expect=0)
-                    assert before==after and pc==oldpc
+                    require(before==after and pc==oldpc, 'leaf regression near source line 1699')
                     checks+=1
-            assert run('IJMP')[1]==target
-            out,_,_,_,s=run('ILEA'); assert int.from_bytes(out[:wb],'little')==s&((1<<(8*wb))-1)
+            require(run('IJMP')[1]==target, 'leaf regression near source line 1701')
+            out,_,_,_,s=run('ILEA'); require(int.from_bytes(out[:wb],'little')==s&((1<<(8*wb))-1), 'leaf regression near source line 1702')
         print('PASS',arch,'native leaves',flush=True)
 print('PASS leaf64 JIT:',checks,'instruction/ABI/alias/oracle checks')

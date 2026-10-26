@@ -41,6 +41,8 @@ OP(jmp)
 {
 	JMP(d);
 }
+
+
 /* Validate a Dis program index before turning it into a code pointer. */
 OP(movpc)
 {
@@ -50,8 +52,11 @@ OP(movpc)
 	Modlink *ml;
 
 	ml = R.M;
-	if(ml == H || ml == nil || ml->m == H || ml->m == nil)
+	if(ml == H || ml == nil || (uintptr)ml > (uintptr)-1-sizeof(*ml) ||
+	   ml->m == H || ml->m == nil || (uintptr)ml->m > (uintptr)-1-sizeof(*ml->m))
 		error(exModule);
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(pc))
+		error(exBounds);
 	memmove(&pc, R.s, sizeof(pc));
 	if(pc < 0 || pc >= ml->m->nprog || ml->m->prog == nil || ml->m->prog == H)
 		error(exBounds);
@@ -61,6 +66,8 @@ OP(movpc)
 	if((uintptr)ml->m->prog > (uintptr)-1-offset)
 		error(exBounds);
 	target = (Inst*)((uintptr)ml->m->prog+offset);
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(target))
+		error(exBounds);
 	memmove(R.d, &target, sizeof(target));
 }
 
@@ -1728,16 +1735,21 @@ casepc(Modlink *ml, int destination)
 }
 
 
-/* Search compiler-emitted 12-byte integer rows using fixed-width, unaligned reads. */
+/* Search declared-cell integer rows using signed 32-bit fields and unaligned reads. */
 OP(icase)
 {
 	Modlink *ml;
 	WORD value;
 	uintptr table, rows, span, row;
 	int count, n, half, low, high, destination;
+	int header, stride;
 
+	header = IBY2WD;
+	stride = 3*IBY2WD;
 	ml = R.M;
-	if(ml == nil || ml == H || (!ml->compiled && (ml->m == nil || ml->m == H)))
+	if(ml == nil || ml == H || (uintptr)ml > (uintptr)-1-sizeof(*ml) ||
+	   (!ml->compiled && (ml->m == nil || ml->m == H ||
+	   (uintptr)ml->m > (uintptr)-1-sizeof(*ml->m))))
 		error(exModule);
 	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(value))
 		error(exBounds);
@@ -1746,25 +1758,25 @@ OP(icase)
 	if(table == 0 || R.d == H || table > (uintptr)-1-3)
 		error(exBounds);
 	memmove(&count, R.d, sizeof(count));
-	if(count < 0 || count > (0x7fffffff-4)/12)
+	if(count < 0 || count > (0x7fffffff-header)/stride)
 		error(exBounds);
-	span = 4+(uintptr)count*12;
+	span = header+(uintptr)count*stride;
 	if(table > (uintptr)-1-span-3)
 		error(exBounds);
 	memmove(&destination, (void*)(table+span), sizeof(destination));
-	rows = table+4;
+	rows = table+header;
 	for(n = count; n > 0;){
 		half = n>>1;
-		row = rows+(uintptr)half*12;
+		row = rows+(uintptr)half*stride;
 		memmove(&low, (void*)row, sizeof(low));
-		memmove(&high, (void*)(row+4), sizeof(high));
+		memmove(&high, (void*)(row+IBY2WD), sizeof(high));
 		if(value < low)
 			n = half;
 		else if(value >= high){
-			rows = row+12;
+			rows = row+stride;
 			n -= half+1;
 		}else{
-			memmove(&destination, (void*)(row+8), sizeof(destination));
+			memmove(&destination, (void*)(row+2*IBY2WD), sizeof(destination));
 			break;
 		}
 	}
@@ -1772,16 +1784,21 @@ OP(icase)
 }
 
 
-/* Search padded 24-byte big rows without treating their word fields as native pointers. */
+/* Search big rows using compiler padding and fixed-width bounds, independent of host WORD. */
 OP(casel)
 {
 	Modlink *ml;
 	LONG value, low, high;
 	uintptr table, rows, span, row;
 	int count, n, half, destination;
+	int header, stride;
 
+	header = 2*IBY2WD;
+	stride = 2*IBY2LG+2*IBY2WD;
 	ml = R.M;
-	if(ml == nil || ml == H || (!ml->compiled && (ml->m == nil || ml->m == H)))
+	if(ml == nil || ml == H || (uintptr)ml > (uintptr)-1-sizeof(*ml) ||
+	   (!ml->compiled && (ml->m == nil || ml->m == H ||
+	   (uintptr)ml->m > (uintptr)-1-sizeof(*ml->m))))
 		error(exModule);
 	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(value))
 		error(exBounds);
@@ -1790,25 +1807,25 @@ OP(casel)
 	if(table == 0 || R.d == H || table > (uintptr)-1-3)
 		error(exBounds);
 	memmove(&count, R.d, sizeof(count));
-	if(count < 0 || count > (0x7fffffff-8)/24)
+	if(count < 0 || count > (0x7fffffff-header)/stride)
 		error(exBounds);
-	span = 8+(uintptr)count*24;
+	span = header+(uintptr)count*stride;
 	if(table > (uintptr)-1-span-3)
 		error(exBounds);
 	memmove(&destination, (void*)(table+span), sizeof(destination));
-	rows = table+8;
+	rows = table+header;
 	for(n = count; n > 0;){
 		half = n>>1;
-		row = rows+(uintptr)half*24;
+		row = rows+(uintptr)half*stride;
 		memmove(&low, (void*)row, sizeof(low));
-		memmove(&high, (void*)(row+8), sizeof(high));
+		memmove(&high, (void*)(row+IBY2LG), sizeof(high));
 		if(value < low)
 			n = half;
 		else if(value >= high){
-			rows = row+24;
+			rows = row+stride;
 			n -= half+1;
 		}else{
-			memmove(&destination, (void*)(row+16), sizeof(destination));
+			memmove(&destination, (void*)(row+2*IBY2LG), sizeof(destination));
 			break;
 		}
 	}
@@ -1842,7 +1859,9 @@ OP(casec)
 	int n, half, comparison;
 
 	ml = R.M;
-	if(ml == nil || ml == H || (!ml->compiled && (ml->m == nil || ml->m == H)))
+	if(ml == nil || ml == H || (uintptr)ml > (uintptr)-1-sizeof(*ml) ||
+	   (!ml->compiled && (ml->m == nil || ml->m == H ||
+	   (uintptr)ml->m > (uintptr)-1-sizeof(*ml->m))))
 		error(exModule);
 	if((IBY2WD != 4 && IBY2WD != 8) || R.s == nil || R.s == H ||
 	   (uintptr)R.s > (uintptr)-1-sizeof(sv))
@@ -1899,7 +1918,9 @@ OP(igoto)
 	uintptr table, offset, program;
 
 	ml = R.M;
-	if(ml == nil || ml == H || (!ml->compiled && (ml->m == nil || ml->m == H)))
+	if(ml == nil || ml == H || (uintptr)ml > (uintptr)-1-sizeof(*ml) ||
+	   (!ml->compiled && (ml->m == nil || ml->m == H ||
+	   (uintptr)ml->m > (uintptr)-1-sizeof(*ml->m))))
 		error(exModule);
 	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(index))
 		error(exBounds);
@@ -2005,7 +2026,8 @@ OP(mspawn)
 	Modl entry;
 
 	memmove(&ml, R.d, sizeof(ml));
-	if(ml == H || ml == nil || ml->m == H || ml->m == nil)
+	if(ml == H || ml == nil || (uintptr)ml > (uintptr)-1-sizeof(*ml) ||
+	   ml->m == H || ml->m == nil || (uintptr)ml->m > (uintptr)-1-sizeof(*ml->m))
 		error(exModule);
 	if(ml->prog == nil)
 		error(exSpawn);

@@ -2133,6 +2133,7 @@ sizetable(int count, int stride, int overhead)
 	return (long)count*stride+overhead;
 }
 
+
 /*
  * set the sizes and field offsets for t
  * look only as deeply as needed to size this type.
@@ -2237,7 +2238,8 @@ sizetype(Type *t)
 		t->align = IBY2WD;
 		break;
 	case Tcasel:
-		t->size = sizetable(t->cse->nlab, 6*IBY2WD, 3*IBY2WD);
+		/* Keep the two big bounds independent of target/padding cell width. */
+		t->size = sizetable(t->cse->nlab, 2*IBY2LG+2*IBY2WD, 3*IBY2WD);
 		t->align = IBY2LG;
 		break;
 	case Tgoto:
