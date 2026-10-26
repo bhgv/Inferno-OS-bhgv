@@ -1,5 +1,7 @@
 # 64-bit JIT opcode availability checkpoint
 
+Latest nine-command fixed preflight and AMD64/ARM64 qword copy kernels: [README.fixed-slots-copy-chunks.md](README.fixed-slots-copy-chunks.md).
+
 Latest nine-command numeric preflight and full normal power-scale CVTFX domain: [README.numeric-slots.md](README.numeric-slots.md).
 
 Latest nineteen-command integer branch/JMP preflight: [README.integer-branch-preflight.md](README.integer-branch-preflight.md).

@@ -9,6 +9,7 @@ REG R;
 #define OP(name) void name(void)
 #define W(r) (*(WORD*)R.r)
 char exInval[]="invalid";
+char exBounds[]="bounds"; // Malformed decoded fixed slot.
 
 /* Valid scale cases must never enter the VM error path. */
 void

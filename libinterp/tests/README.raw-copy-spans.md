@@ -1,5 +1,7 @@
 # Raw byte-copy spans on AMD64, ARM64 and RV64
 
+Latest AMD64/ARM64 qword kernels and page-edge access checkpoint: [README.fixed-slots-copy-chunks.md](README.fixed-slots-copy-chunks.md).
+
 MOVM and HEADM now reject invalid nonempty source/destination byte ranges before
 memmove or the first native store. Nil/H starts keep VM nil-reference errors;
 negative counts and overflowing native end addresses raise bounds errors. HEADM
@@ -17,7 +19,7 @@ Larger valid records use C memmove. Both forward and backward loops run only
 after payload-offset/start/end guards succeed. Nil/H or wrapped native pointers
 decline without writes. HEADM offset validation remains target-specific: 0..4095
 on AMD64/ARM64 and 0..2047 on RV64. Layout fields and VM ABI are unchanged.
-The 64-unit staging bound remains intact, including WORD64 RV64 HEADM. RV64 uses
+Production staging bounds remain intact; see the guarded HEADM capacity checkpoint below. RV64 uses
 base integer instructions, so I/Zmmul/M profiles share the same expanded paths.
 
 Validation:
@@ -26,8 +28,8 @@ Validation:
   backend (411264 total). Both WORD widths, 0/1/128/129/255/256/257 boundaries,
   negative/MIN/MAX counts, null/H/wrapped starts, overflowing head offsets,
   all source byte alignments, unaligned/overwritten count slots and overlap
-  directions are checked. Successful stores must follow exact memmove byte
-  order; every native decline must be write-free.
+  directions are checked. Successful AMD64/ARM64 stores follow exact directional
+  qword/byte-tail order; RV64 retains byte order. Every native decline is write-free.
 - RISC-V FCSR is seeded/read through actual CSR instructions after enabling FS,
   with an independent seed readback. Unicorn's CSR register API is unsupported
   here. No emulated FP-state check is silently skipped.

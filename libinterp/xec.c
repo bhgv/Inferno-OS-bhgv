@@ -3941,6 +3941,8 @@ OP(iraise)
 	p->exval = v;
 	error(text);
 }
+
+
 /* Read a full VM frame word without arithmetic on nil frame identities. */
 static WORD
 fixedword(int offset)
@@ -3949,6 +3951,9 @@ fixedword(int offset)
 
 	if(R.FP == nil || R.FP == H)
 		error(exNilref);
+	/* Validate the complete field before forming its native address. */
+	if(offset < 0 || (uintptr)R.FP > (uintptr)-1-(uintptr)offset-sizeof(value))
+		error(exBounds);
 	memmove(&value, R.FP+offset, sizeof(value));
 	return value;
 }
@@ -3993,6 +3998,7 @@ fixedroundmask(WORD count)
 	return (LONG)(((uvlong)1<<amount)-1);
 }
 
+
 /* Multiply and shift fixed values using defined intermediate bit arithmetic. */
 OP(mulx)
 {
@@ -4000,6 +4006,15 @@ OP(mulx)
 	LONG r;
 
 	p = fixedword((NREG+2)*IBY2WD);
+	if(p < -63 || p > 63)
+		error(exInval);
+	/* Bound both borrowed source slots before either scalar value is read. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(WORD) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
+	/* Publish only into a complete result slot, including zero shortcuts. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result))
+		error(exBounds);
 	memmove(&x, R.m, sizeof(x));
 	memmove(&y, R.s, sizeof(y));
 	r = (LONG)((uvlong)(LONG)x*(uvlong)(LONG)y);
@@ -4008,6 +4023,7 @@ OP(mulx)
 	memmove(R.d, &result, sizeof(result));
 }
 
+
 /* Shift and divide a fixed numerator with VM errors on invalid parameters. */
 OP(divx)
 {
@@ -4015,9 +4031,19 @@ OP(divx)
 	LONG s;
 
 	p = fixedword((NREG+2)*IBY2WD);
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(divisor))
+		error(exBounds);
 	memmove(&divisor, R.s, sizeof(divisor));
 	if(divisor == 0)
 		error(exZdiv);
+	/* A zero divisor wins before the dividend/result slots are inspected. */
+	if(p < -63 || p > 63)
+		error(exInval);
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(value))
+		error(exBounds);
+	/* Publish only into a complete result slot, including zero shortcuts. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result))
+		error(exBounds);
 	memmove(&value, R.m, sizeof(value));
 	s = fixedshift((LONG)value, p);
 	s = fixeddivide(s, (LONG)divisor);
@@ -4025,18 +4051,31 @@ OP(divx)
 	memmove(R.d, &result, sizeof(result));
 }
 
+
 /* Capture unaligned fixed operands and publish only after validating the scale. */
 OP(cvtxx)
 {
 	WORD p, value, result;
 	LONG r;
 
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(p))
+		error(exBounds);
 	memmove(&p, R.m, sizeof(p));
+	/* Invalid scales decline before the potentially inaccessible input. */
+	if(p < -63 || p > 63)
+		error(exInval);
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(value))
+		error(exBounds);
+	/* Publish only into a complete result slot, including zero shortcuts. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result))
+		error(exBounds);
+
 	memmove(&value, R.s, sizeof(value));
 	r = fixedshift((LONG)value, p);
 	result = (WORD)r;
 	memmove(R.d, &result, sizeof(result));
 }
+
 
 /* Validate the coefficient before a zero shortcut and stage the product. */
 OP(mulx0)
@@ -4044,12 +4083,20 @@ OP(mulx0)
 	WORD result, x, y, p, a;
 	LONG r;
 
+	/* Bound both borrowed source slots before either scalar value is read. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(WORD) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
 	memmove(&x, R.m, sizeof(x));
 	memmove(&y, R.s, sizeof(y));
 	p = fixedword((NREG+2)*IBY2WD);
 	a = fixedword(NREG*IBY2WD);
 	if(a == 0)
 		error(exZdiv);
+	/* Publish only into a complete result slot, including zero shortcuts. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result))
+		error(exBounds);
+
 	if(x == 0 || y == 0){
 		result = 0;
 		memmove(R.d, &result, sizeof(result));
@@ -4062,18 +4109,27 @@ OP(mulx0)
 	memmove(R.d, &result, sizeof(result));
 }
 
+
 /* Reject zero divisors even when the fixed numerator is zero. */
 OP(divx0)
 {
 	WORD result, x, y, p, b;
 	LONG s;
 
+	/* Bound both borrowed source slots before either scalar value is read. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(WORD) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
 	memmove(&x, R.m, sizeof(x));
 	memmove(&y, R.s, sizeof(y));
 	p = fixedword((NREG+2)*IBY2WD);
 	b = fixedword(NREG*IBY2WD);
 	if(y == 0)
 		error(exZdiv);
+	/* Publish only into a complete result slot, including zero shortcuts. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result))
+		error(exBounds);
+
 	if(x == 0){
 		result = 0;
 		memmove(R.d, &result, sizeof(result));
@@ -4086,17 +4142,26 @@ OP(divx0)
 	memmove(R.d, &result, sizeof(result));
 }
 
+
 /* Scale a fixed value before publishing the divided result. */
 OP(cvtxx0)
 {
 	WORD result, x, p, a;
 	LONG r;
 
+	/* Bound both borrowed source slots before either scalar value is read. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(WORD) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
 	memmove(&x, R.s, sizeof(x));
 	memmove(&p, R.m, sizeof(p));
 	a = fixedword(NREG*IBY2WD);
 	if(a == 0)
 		error(exZdiv);
+	/* Publish only into a complete result slot, including zero shortcuts. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result))
+		error(exBounds);
+
 	if(x == 0){
 		result = 0;
 		memmove(R.d, &result, sizeof(result));
@@ -4109,6 +4174,7 @@ OP(cvtxx0)
 	memmove(R.d, &result, sizeof(result));
 }
 
+
 /* Apply fixed multiplication rounding with bounded masks and modular corrections. */
 OP(mulx1)
 {
@@ -4116,12 +4182,20 @@ OP(mulx1)
 	int vnz, wnz;
 	LONG w, r;
 
+	/* Bound both borrowed source slots before either scalar value is read. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(WORD) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
 	memmove(&x, R.m, sizeof(x));
 	memmove(&y, R.s, sizeof(y));
 	p = fixedword((NREG+2)*IBY2WD);
 	a = fixedword(NREG*IBY2WD);
 	if(a == 0)
 		error(exZdiv);
+	/* Publish only into a complete result slot, including zero shortcuts. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result))
+		error(exBounds);
+
 	if(x == 0 || y == 0){
 		result = 0;
 		memmove(R.d, &result, sizeof(result));
@@ -4150,6 +4224,7 @@ OP(mulx1)
 	memmove(R.d, &result, sizeof(result));
 }
 
+
 /* Apply fixed division rounding without signed intermediate overflow. */
 OP(divx1)
 {
@@ -4157,12 +4232,20 @@ OP(divx1)
 	int vnz, wnz;
 	LONG w, s;
 
+	/* Bound both borrowed source slots before either scalar value is read. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(WORD) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
 	memmove(&x, R.m, sizeof(x));
 	memmove(&y, R.s, sizeof(y));
 	p = fixedword((NREG+2)*IBY2WD);
 	b = fixedword(NREG*IBY2WD);
 	if(y == 0)
 		error(exZdiv);
+	/* Publish only into a complete result slot, including zero shortcuts. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result))
+		error(exBounds);
+
 	if(x == 0){
 		result = 0;
 		memmove(R.d, &result, sizeof(result));
@@ -4189,6 +4272,7 @@ OP(divx1)
 	memmove(R.d, &result, sizeof(result));
 }
 
+
 /* Round and scale a fixed conversion without invalid native shifts. */
 OP(cvtxx1)
 {
@@ -4196,11 +4280,19 @@ OP(cvtxx1)
 	int vnz, wnz;
 	LONG w, r;
 
+	/* Bound both borrowed source slots before either scalar value is read. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(WORD) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
 	memmove(&x, R.s, sizeof(x));
 	memmove(&p, R.m, sizeof(p));
 	a = fixedword(NREG*IBY2WD);
 	if(a == 0)
 		error(exZdiv);
+	/* Publish only into a complete result slot, including zero shortcuts. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result))
+		error(exBounds);
+
 	if(x == 0){
 		result = 0;
 		memmove(R.d, &result, sizeof(result));

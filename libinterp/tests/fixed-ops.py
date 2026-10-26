@@ -26,6 +26,7 @@ typedef int32_t WORD; typedef uint32_t UWORD;
 typedef int64_t WORD; typedef uint64_t UWORD;
 #endif
 typedef int64_t LONG; typedef uint64_t uvlong;
+typedef uintptr_t uintptr; // Native decoded-slot/frame span arithmetic.
 typedef unsigned char uchar;
 enum {NREG=5,IBY2WD=4};
 static struct {void *s,*m,*d;uchar *FP;} R;
@@ -33,6 +34,7 @@ static WORD Stmp,Dtmp;
 static jmp_buf boundary;
 static int raised;
 static char exInval[]="invalid",exZdiv[]="zero",exNilref[]="nil";
+static char exBounds[]="bounds"; // Malformed slot or wrapping frame prefix.
 #define nil ((void*)0)
 #define H ((void*)-1)
 /* Translate VM exceptions to fixture status without replacing arithmetic. */

@@ -71,6 +71,7 @@ BODY
 /* Link actual WORD32 VM instruction bodies to the selected compiler parameters. */
 typedef int32_t WORD; typedef uint32_t UWORD;
 typedef int64_t LONG; typedef uint64_t uvlong;
+typedef uintptr_t uintptr; // Native decoded-slot/frame span arithmetic.
 static struct {
     void *s; // Source operand cell.
     void *m; // Middle operand cell.
@@ -82,6 +83,7 @@ static WORD frame[NREG+3];
 #define H ((void*)(uintptr_t)~(uintptr_t)0) // VM nil sentinel.
 
 static char exInval[]="invalid",exZdiv[]="zero",exNilref[]="nil frame";
+static char exBounds[]="bounds"; // Malformed slot or wrapping frame prefix.
 
 
 /* Selected valid parameters must never raise a VM exception. */

@@ -2003,7 +2003,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 {
 	A64Buf b;
 	LeafOp p;
-	int i, empty, other, done, scale, limit, loop, patch, equal, fallback;
+	int i, empty, other, done, scale, limit, loop, patch, equal, fallback, tail, finish;
 	u32int width;
 	static u32int arithmetic[] = {0x0b000000, 0x4b000000, 0x1b007c00,
 		0x0a000000, 0x2a000000, 0x4a000000};
@@ -2176,10 +2176,14 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		/* Coefficient slots follow the VM frame layout, not native pointer alignment. */
 		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047 ||
 		   abi->fixedcoef < 0 || abi->fixedcoef > 2047) return 0;
+		/* All decoded operands must fit before frame or scalar metadata is read. */
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, abi->wordbytes, -1);
+		a64ptr(&b, 10, abi->m); a64pcspan(&b, 10, abi->wordbytes, -1);
+		a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, abi->wordbytes, -1);
 		fallback=b.n+1;
 		a64put(&b, 0x14000003); a64put(&b, 0x52800000); a64put(&b, 0xd65f03c0);
-		a64ptr(&b, 9, abi->fp); a64defer(&b, 0xb4000009, fallback);
-		a64put(&b, 0xb100053f); a64defer(&b, 0x54000000, fallback);
+		a64ptr(&b, 9, abi->fp);
+		a64pcspan(&b, 9, (p.alu == 2 || abi->fixedcoef > abi->fixedtmp ? abi->fixedcoef : abi->fixedtmp)+abi->wordbytes, fallback);
 		/* Form byte offsets explicitly, including four-byte-aligned WORD64 slots. */
 		a64put(&b, 0x91000000U | abi->fixedcoef<<10 | 9<<5 | 10); a64load(&b, 14, 10, abi->wordbytes);
 		if(abi->wordbytes == 4)a64put(&b, 0x93407dce);
@@ -2264,15 +2268,23 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	}else if(p.kind == LeafFixedFrame){
 		/* Frame temporary slots may have only four-byte alignment, even in WORD64. */
 		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047) return 0;
-		a64ptr(&b, 10, abi->fp); a64guard(&b, 0xb500006a);
-		a64put(&b, 0xb100055f); a64guard(&b, 0x54000061);
+		a64ptr(&b, 10, abi->fp);
+		a64pcspan(&b, 10, abi->fixedtmp+abi->wordbytes, -1);
 		a64put(&b, 0x91000000U | abi->fixedtmp<<10 | 10<<5 | 10);
 		a64load(&b, 13, 10, abi->wordbytes);
 		if(abi->wordbytes == 4) a64put(&b, 0x93407dad);
 		a64put(&b, 0x9100fdae); a64put(&b, 0xf101fddf); a64guard(&b, 0x54000063);
+		if(!p.alu){
+			/* Multiplication bounds both inputs and the result before either load. */
+			a64ptr(&b, 9, abi->m); a64pcspan(&b, 9, abi->wordbytes, -1);
+			a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, abi->wordbytes, -1);
+		}
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, abi->wordbytes, -1);
 		a64ptr(&b, 9, abi->s); a64load(&b, 15, 9, abi->wordbytes);
 		if(abi->wordbytes == 4) a64put(&b, 0x93407def);
 		if(p.alu){ a64guard(&b, 0xb500006f); }
+		a64ptr(&b, 9, abi->m); a64pcspan(&b, 9, abi->wordbytes, -1);
+		a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, abi->wordbytes, -1);
 		a64ptr(&b, 9, abi->m); a64load(&b, 12, 9, abi->wordbytes);
 		if(abi->wordbytes == 4) a64put(&b, 0x93407d8c);
 		if(!p.alu) a64put(&b, 0x9b0f7d8c);
@@ -2302,11 +2314,14 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64ptr(&b, 11, abi->d); a64put(&b, 0xfd000160);
 	}else if(p.kind == LeafFixedShift){
 		/* Validate the signed interval before fetching a possibly inaccessible source. */
+		a64ptr(&b, 10, abi->m); a64pcspan(&b, 10, abi->wordbytes, -1);
 		a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, abi->wordbytes);
 		if(abi->wordbytes == 4) a64put(&b, 0x93407dad); /* sxtw x13,w13 */
 		a64put(&b, 0x9100fdae); /* add x14,x13,#63 */
 		a64put(&b, 0xf101fddf); /* cmp x14,#127 */
 		a64guard(&b, 0x54000063);
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, abi->wordbytes, -1);
+		a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, abi->wordbytes, -1);
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, abi->wordbytes);
 		if(abi->wordbytes == 4) a64put(&b, 0x93407d8c);
 		a64put(&b, 0xf10001bf); a64put(&b, 0x5400006b); /* cmp count,0; b.lt negative */
@@ -2430,18 +2445,40 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64put(&b, 0xeb09017f); /* cmp x11, x9 */
 		other = b.n; a64put(&b, 0x54000009); /* b.ls forward */
 		a64put(&b, 0x8b0c0129); a64put(&b, 0x8b0c016b);
+		/* Descend by complete qwords, then finish the exact byte prefix. */
+		loop = b.n;
+		a64put(&b, 0xf100219f); /* cmp x12,#8 */
+		tail = b.n; a64put(&b, 0x54000003); /* b.lo byte tail */
+		a64put(&b, 0xd1002129); a64put(&b, 0xd100216b);
+		a64load(&b, 13, 9, 8); a64store(&b, 13, 8);
+		a64put(&b, 0xd100218c);
+		a64put(&b, 0x14000000U | ((u32int)(loop-b.n)&0x3ffffff));
+		b.code[tail] |= (b.n-tail)<<5;
+		finish = b.n; a64put(&b, 0xb400000c);
 		loop = b.n;
 		a64put(&b, 0xd1000529); a64put(&b, 0xd100056b);
 		a64load(&b, 13, 9, 1); a64store(&b, 13, 1);
 		a64put(&b, 0xf100058c); /* subs x12, x12, #1 */
 		a64put(&b, 0x54000001U | ((u32int)(loop-b.n)&0x7ffff)<<5);
+		b.code[finish] |= (b.n-finish)<<5;
 		done = b.n; a64put(&b, 0x14000000);
 		b.code[other] |= (b.n-other)<<5;
+		/* Ascend without reading a qword until at least eight bytes remain. */
+		loop = b.n;
+		a64put(&b, 0xf100219f);
+		tail = b.n; a64put(&b, 0x54000003);
+		a64load(&b, 13, 9, 8); a64store(&b, 13, 8);
+		a64put(&b, 0x91002129); a64put(&b, 0x9100216b);
+		a64put(&b, 0xd100218c);
+		a64put(&b, 0x14000000U | ((u32int)(loop-b.n)&0x3ffffff));
+		b.code[tail] |= (b.n-tail)<<5;
+		finish = b.n; a64put(&b, 0xb400000c);
 		loop = b.n;
 		a64load(&b, 13, 9, 1); a64store(&b, 13, 1);
 		a64put(&b, 0x91000529); a64put(&b, 0x9100056b);
 		a64put(&b, 0xf100058c);
 		a64put(&b, 0x54000001U | ((u32int)(loop-b.n)&0x7ffff)<<5);
+		b.code[finish] |= (b.n-finish)<<5;
 		b.code[empty] |= (b.n-empty)<<5; b.code[done] |= b.n-done;
 	}else if(p.kind == LeafLength || p.kind == LeafIndex){
 		if(abi->arraylen < 0 || abi->arraydata < 0 || abi->arraylen > 16376 ||

@@ -10,6 +10,7 @@ REG R;
 #define W(r) (*(WORD*)R.r)
 #define Dtmp (*(WORD*)(R.FP+(NREG+2)*IBY2WD))
 char exInval[]="invalid",exZdiv[]="zero",exNilref[]="nil";
+char exBounds[]="bounds"; // Malformed decoded fixed slot or frame field.
 
 /* Valid fixed-frame cases must not raise VM exceptions. */
 void

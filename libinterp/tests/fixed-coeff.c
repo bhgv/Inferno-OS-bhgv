@@ -18,6 +18,7 @@ REG R;
 /* Supply the live collector color used by guarded owner leaves. */
 int mutator, nprop;
 char exInval[]="invalid",exZdiv[]="zero",exNilref[]="nil";
+char exBounds[]="bounds"; // Malformed decoded fixed slot or frame field.
 static jmp_buf boundary;
 static char *raised;
 /* Preserve VM error identity and all destination bytes. */

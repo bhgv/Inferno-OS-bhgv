@@ -146,8 +146,21 @@ int emit(u32int *out, int cap, int wb, int head, int offset)
                                         start = src-BASE; finish = dst-BASE
                                         require(0 <= start < 0x4000-count and 0 <= finish < 0x4000-count, 'fixture geometry')
                                         expected[finish:finish+count] = image[start:start+count]
-                                        indices = range(count-1, -1, -1) if dst > src else range(count)
-                                        expectedwrites = [(dst+i, 1) for i in indices]
+                                        if arch == 'riscv64':
+                                            indices = range(count-1, -1, -1) if dst > src else range(count)
+                                            expectedwrites = [(dst+i, 1) for i in indices]
+                                        elif dst > src:
+                                            # Descending qwords precede the exact byte prefix.
+                                            left = count
+                                            while left >= 8:
+                                                left -= 8
+                                                expectedwrites.append((dst+left, 8))
+                                            expectedwrites += [(dst+i, 1) for i in range(left-1, -1, -1)]
+                                        else:
+                                            # Ascending qwords precede the exact byte suffix.
+                                            whole = count//8*8
+                                            expectedwrites = [(dst+i, 8) for i in range(0, whole, 8)]
+                                            expectedwrites += [(dst+i, 1) for i in range(whole, count)]
                                     machine.mem_write(BASE, bytes(image)); writes.clear()
                                     if arch == 'amd64':
                                         machine.reg_write(UC_X86_REG_RDI, BASE); machine.reg_write(UC_X86_REG_RSP, CODE+0x2800)
