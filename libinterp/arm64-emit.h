@@ -419,11 +419,71 @@ a64owner(A64Buf *b, LeafLayout *abi, LeafOp *p)
 	return 1;
 }
 
+
+/* Emit an inline overlap-safe copy of captured byte pointers and count.
+ * x12 is count and x9/x11 are source/destination; x13 and NZCV are scratch.
+ * Pointer/count registers advance; REG x0, stack, LR and FP state are untouched.
+ * Complete qwords precede the exact byte remainder; zero performs no accesses.
+ * Return zero only if private code staging cannot hold the completed kernel.
+ */
+static int
+a64copykernel(A64Buf *b)
+{
+	int other, done, loop, tail, finish;
+
+	a64put(b, 0xeb09017f); /* cmp x11, x9 */
+	other = b->n; a64put(b, 0x54000009); /* b.ls forward */
+	a64put(b, 0x8b0c0129); a64put(b, 0x8b0c016b);
+	/* Descend by complete qwords, then finish the exact byte prefix. */
+	loop = b->n;
+	a64put(b, 0xf100219f); /* cmp x12,#8 */
+	tail = b->n; a64put(b, 0x54000003); /* b.lo byte tail */
+	a64put(b, 0xd1002129); a64put(b, 0xd100216b);
+	a64load(b, 13, 9, 8); a64store(b, 13, 8);
+	a64put(b, 0xd100218c);
+	a64put(b, 0x14000000U | ((u32int)(loop-b->n)&0x3ffffff));
+	if(b->n > LeafMax) return 0;
+	b->code[tail] |= (b->n-tail)<<5;
+	finish = b->n; a64put(b, 0xb400000c);
+	loop = b->n;
+	a64put(b, 0xd1000529); a64put(b, 0xd100056b);
+	a64load(b, 13, 9, 1); a64store(b, 13, 1);
+	a64put(b, 0xf100058c); /* subs x12, x12, #1 */
+	a64put(b, 0x54000001U | ((u32int)(loop-b->n)&0x7ffff)<<5);
+	if(b->n > LeafMax) return 0;
+	b->code[finish] |= (b->n-finish)<<5;
+	done = b->n; a64put(b, 0x14000000);
+	if(b->n > LeafMax) return 0;
+	b->code[other] |= (b->n-other)<<5;
+	/* Ascend without reading a qword until at least eight bytes remain. */
+	loop = b->n;
+	a64put(b, 0xf100219f);
+	tail = b->n; a64put(b, 0x54000003);
+	a64load(b, 13, 9, 8); a64store(b, 13, 8);
+	a64put(b, 0x91002129); a64put(b, 0x9100216b);
+	a64put(b, 0xd100218c);
+	a64put(b, 0x14000000U | ((u32int)(loop-b->n)&0x3ffffff));
+	if(b->n > LeafMax) return 0;
+	b->code[tail] |= (b->n-tail)<<5;
+	finish = b->n; a64put(b, 0xb400000c);
+	loop = b->n;
+	a64load(b, 13, 9, 1); a64store(b, 13, 1);
+	a64put(b, 0x91000529); a64put(b, 0x9100056b);
+	a64put(b, 0xf100058c);
+	a64put(b, 0x54000001U | ((u32int)(loop-b->n)&0x7ffff)<<5);
+	if(b->n > LeafMax) return 0;
+	b->code[finish] |= (b->n-finish)<<5;
+	if(b->n > LeafMax) return 0;
+	b->code[done] |= b->n-done;
+	return 1;
+}
+
+
 /* Resolve current type metadata and copy a small record only when it owns no pointers. */
 static int
 a64mapped(A64Buf *b, LeafLayout *a, LeafOp *p)
 {
-	int fallback, empty, forward, loop;
+	int fallback, empty;
 
 	if(a->module < 0 || a->module > 2047 || a->module%8 ||
 	   a->linkmodule < 0 || a->linkmodule > 2047 || a->linkmodule%8 ||
@@ -478,24 +538,12 @@ a64mapped(A64Buf *b, LeafLayout *a, LeafOp *p)
 	}else
 		a64ptr(b, 9, a->s);
 	a64ptr(b, 11, a->d);
-	/* One overlap-aware loop uses a native signed stride instead of setting host flags. */
-	a64put(b, 0xd2800022);
-	a64put(b, 0xeb09017f);
-	forward=b->n; a64put(b, 0x54000009);
-	a64put(b, 0x92800002);
-	a64put(b, 0x8b0c0129); a64put(b, 0xd1000529);
-	a64put(b, 0x8b0c016b); a64put(b, 0xd100056b);
-	if(b->n > LeafMax) return 0;
-	b->code[forward] |= (b->n-forward)<<5;
-	loop=b->n;
-	a64load(b, 13, 9, 1); a64store(b, 13, 1);
-	a64put(b, 0x8b020129); a64put(b, 0x8b02016b);
-	a64put(b, 0xf100058c);
-	a64put(b, 0x54000001U | ((loop-b->n)&0x7ffff)<<5);
+	if(!a64copykernel(b)) return 0;
 	if(b->n > LeafMax) return 0;
 	b->code[empty] |= (b->n-empty)<<5;
 	return 1;
 }
+
 
 /* Copy a short byte-array slice after bounding both element and native address spans. */
 static int
@@ -2003,7 +2051,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 {
 	A64Buf b;
 	LeafOp p;
-	int i, empty, other, done, scale, limit, loop, patch, equal, fallback, tail, finish;
+	int i, empty, other, done, scale, limit, loop, patch, equal, fallback;
 	u32int width;
 	static u32int arithmetic[] = {0x0b000000, 0x4b000000, 0x1b007c00,
 		0x0a000000, 0x2a000000, 0x4a000000};
@@ -2244,16 +2292,28 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(abi->arraylen < 0 || abi->arraylen > 2047 || abi->arraydata < 0 || abi->arraydata > 2047 ||
 		   abi->arraytype < 0 || abi->arraytype > 2047 || abi->typesize < 0 || abi->typesize > 2047 ||
 		   (abi->arraylen|abi->arraydata|abi->arraytype)%8 || abi->typesize%4) return 0;
+		/* Bound all decoded slots before reading owners, indices or descriptors. */
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, 8, -1);
+		a64ptr(&b, 10, abi->d); a64pcspan(&b, 10, abi->wordbytes, -1);
+		a64ptr(&b, 11, abi->m); a64pcspan(&b, 11, abi->wordbytes, -1);
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8); a64guard(&b, 0xb500006c);
 		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
+		/* A negative index must reject before any array header is inspected. */
+		a64ptr(&b, 9, abi->d); a64load(&b, 14, 9, abi->wordbytes);
+		if(abi->wordbytes == 4) a64put(&b, 0x93407dce);
+		a64put(&b, 0xf10001df); a64guard(&b, 0x5400006a);
+		a64pcspan(&b, 12, abi->arraylen+abi->wordbytes, -1);
 		a64wordfield(&b, 13, 12, abi->arraylen, abi->wordbytes);
 		a64put(&b, 0xf10001bf); a64guard(&b, 0x5400006a);
-		a64ptr(&b, 9, abi->d); a64load(&b, 14, 9, abi->wordbytes);
+		/* x14 retains the checked full-width index. */
 		a64put(&b, 0xeb0d01df); a64guard(&b, 0x54000063);
+		a64pcspan(&b, 12, abi->arraytype+8, -1);
 		a64field(&b, 15, 12, abi->arraytype, 8); a64guard(&b, 0xb500006f);
 		a64put(&b, 0xb10005ff); a64guard(&b, 0x54000061);
+		a64pcspan(&b, 15, abi->typesize+4, -1);
 		a64put(&b, 0xb9800000U | (abi->typesize/4)<<10 | 15<<5 | 15); /* ldrsw stride */
 		a64put(&b, 0xf10001ff); a64guard(&b, 0x5400006a);
+		a64pcspan(&b, 12, abi->arraydata+8, -1);
 		a64field(&b, 13, 12, abi->arraydata, 8);
 		empty=b.n; a64put(&b, 0xb400000f);
 		a64put(&b, 0xd29fffec); a64put(&b, 0xf2afffec); /* x12=INT_MAX */
@@ -2442,52 +2502,24 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64guard(&b, 0xb5000069); a64guard(&b, 0xb500006b);
 		a64put(&b, 0xab0c0122); a64guard(&b, 0x54000063);
 		a64put(&b, 0xab0c0162); a64guard(&b, 0x54000063);
-		a64put(&b, 0xeb09017f); /* cmp x11, x9 */
-		other = b.n; a64put(&b, 0x54000009); /* b.ls forward */
-		a64put(&b, 0x8b0c0129); a64put(&b, 0x8b0c016b);
-		/* Descend by complete qwords, then finish the exact byte prefix. */
-		loop = b.n;
-		a64put(&b, 0xf100219f); /* cmp x12,#8 */
-		tail = b.n; a64put(&b, 0x54000003); /* b.lo byte tail */
-		a64put(&b, 0xd1002129); a64put(&b, 0xd100216b);
-		a64load(&b, 13, 9, 8); a64store(&b, 13, 8);
-		a64put(&b, 0xd100218c);
-		a64put(&b, 0x14000000U | ((u32int)(loop-b.n)&0x3ffffff));
-		b.code[tail] |= (b.n-tail)<<5;
-		finish = b.n; a64put(&b, 0xb400000c);
-		loop = b.n;
-		a64put(&b, 0xd1000529); a64put(&b, 0xd100056b);
-		a64load(&b, 13, 9, 1); a64store(&b, 13, 1);
-		a64put(&b, 0xf100058c); /* subs x12, x12, #1 */
-		a64put(&b, 0x54000001U | ((u32int)(loop-b.n)&0x7ffff)<<5);
-		b.code[finish] |= (b.n-finish)<<5;
-		done = b.n; a64put(&b, 0x14000000);
-		b.code[other] |= (b.n-other)<<5;
-		/* Ascend without reading a qword until at least eight bytes remain. */
-		loop = b.n;
-		a64put(&b, 0xf100219f);
-		tail = b.n; a64put(&b, 0x54000003);
-		a64load(&b, 13, 9, 8); a64store(&b, 13, 8);
-		a64put(&b, 0x91002129); a64put(&b, 0x9100216b);
-		a64put(&b, 0xd100218c);
-		a64put(&b, 0x14000000U | ((u32int)(loop-b.n)&0x3ffffff));
-		b.code[tail] |= (b.n-tail)<<5;
-		finish = b.n; a64put(&b, 0xb400000c);
-		loop = b.n;
-		a64load(&b, 13, 9, 1); a64store(&b, 13, 1);
-		a64put(&b, 0x91000529); a64put(&b, 0x9100056b);
-		a64put(&b, 0xf100058c);
-		a64put(&b, 0x54000001U | ((u32int)(loop-b.n)&0x7ffff)<<5);
-		b.code[finish] |= (b.n-finish)<<5;
-		b.code[empty] |= (b.n-empty)<<5; b.code[done] |= b.n-done;
+		if(!a64copykernel(&b)) return 0;
+		if(b.n > LeafMax) return 0;
+		b.code[empty] |= (b.n-empty)<<5;
 	}else if(p.kind == LeafLength || p.kind == LeafIndex){
 		if(abi->arraylen < 0 || abi->arraydata < 0 || abi->arraylen > 16376 ||
 		   abi->arraydata > 16376 || (abi->arraylen|abi->arraydata)%8 != 0) return 0;
+		/* Only length queries ignore m; address commands return through m. */
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, 8, -1);
+		a64ptr(&b, 10, abi->d); a64pcspan(&b, 10, abi->wordbytes, -1);
+		if(p.kind == LeafIndex){
+			a64ptr(&b, 11, abi->m); a64pcspan(&b, 11, abi->wordbytes, -1);
+		}
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
 		if(p.kind == LeafLength){
 			empty = b.n; a64put(&b, 0xb400000c);
 			a64put(&b, 0xb100059f); /* cmn x12, #1 */
 			other = b.n; a64put(&b, 0x54000000);
+			a64pcspan(&b, 12, abi->arraylen+abi->wordbytes, -1);
 			a64field(&b, 12, 12, abi->arraylen, abi->wordbytes);
 			done = b.n; a64put(&b, 0x14000000);
 			b.code[empty] |= (b.n-empty)<<5; b.code[other] |= (b.n-other)<<5;
@@ -2497,14 +2529,20 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		}else{
 			a64guard(&b, 0xb500006c);
 			a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
+			/* A negative index must reject before any array header is inspected. */
+			a64ptr(&b, 9, abi->d); a64load(&b, 14, 9, abi->wordbytes);
+			if(abi->wordbytes == 4) a64put(&b, 0x93407dce);
+			a64put(&b, 0xf10001df); a64guard(&b, 0x5400006a);
+			a64pcspan(&b, 12, abi->arraylen+abi->wordbytes, -1);
 			a64wordfield(&b, 13, 12, abi->arraylen, abi->wordbytes);
 			a64put(&b, 0xf10001bf); a64guard(&b, 0x5400006a); /* nonnegative length */
-			a64ptr(&b, 9, abi->d); a64load(&b, 14, 9, abi->wordbytes);
+			/* x14 retains the checked full-width index. */
 			a64put(&b, 0xeb0d01df); a64guard(&b, 0x54000063); /* index < length */
 			scale = p.bytes == 1 ? 0 : p.bytes == 4 ? 2 : 3; limit = 0x7fffffff>>scale;
 			a64put(&b, 0xd280000fU | (limit&0xffff)<<5);
 			a64put(&b, 0xf2a0000fU | (limit>>16)<<5);
 			a64put(&b, 0xeb0f01df); a64guard(&b, 0x54000069); /* bounded byte offset */
+			a64pcspan(&b, 12, abi->arraydata+8, -1);
 			a64field(&b, 13, 12, abi->arraydata, 8);
 			a64guard(&b, 0xb500006d);
 			a64put(&b, 0xb10005bf); a64guard(&b, 0x54000061);

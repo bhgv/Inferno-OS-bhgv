@@ -1,5 +1,7 @@
 # 64-bit JIT opcode availability checkpoint
 
+Latest six-command array operand/header guards and shared raw/mapped native copy kernels: [README.array-slots-copy-kernel.md](README.array-slots-copy-kernel.md).
+
 Latest nine-command fixed preflight and AMD64/ARM64 qword copy kernels: [README.fixed-slots-copy-chunks.md](README.fixed-slots-copy-chunks.md).
 
 Latest nine-command numeric preflight and full normal power-scale CVTFX domain: [README.numeric-slots.md](README.numeric-slots.md).

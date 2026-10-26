@@ -20,8 +20,15 @@ def put(image, offset, value, size=8):
     image[offset:offset+size]=(value & ((1<<(8*size))-1)).to_bytes(size,'little')
 
 
+# Keep every evaluated oracle active under Python -O.
+def require(condition, detail='mapped-copy invariant'):
+    if not condition:
+        raise RuntimeError(detail)
+
+
 with tempfile.TemporaryDirectory(prefix='mapped-copy-jit-') as directory:
     td=Path(directory);checks=0
+    patterns={}  # Immutable per-length images avoid rebuilding identical byte patterns.
     for arch in ('amd64','arm64'):
         source=td/(arch+'.c')
         source.write_text('''#include <stdint.h>
@@ -56,24 +63,29 @@ int emit(u32int *out,int cap,int wb,int op,int field,int value){
         machine.hook_add(UC_HOOK_MEM_WRITE,write)
         for wb in (4,8):
             for op in (0,1):
-                out=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                n=lib.emit(out,64,wb,op,0,0)
-                assert 0<n<=64 and lib.emit(None,64,wb,op,0,0)==n,(arch,wb,op,n)
-                blob=bytes(out)[:n*4];assert sum(i.size for i in dis.disasm(blob,CODE))==n*4
-                for cap in (0,n-1):
-                    guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                    assert lib.emit(guard,cap,wb,op,0,0)==0 and list(guard)==[0xa5a5a5a5]*64
+                out=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                n=lib.emit(out,128,wb,op,0,0)
+                require(0<n<=128 and lib.emit(None,128,wb,op,0,0)==n,(arch,wb,op,n))
+                blob=bytes(out)[:n*4]
+                exact=(C.c_uint32*(n+1))(*([0xa5a5a5a5]*(n+1)))
+                require(lib.emit(exact,n,wb,op,0,0)==n and bytes(exact)[:n*4]==blob and exact[n]==0xa5a5a5a5,'exact capacity/canary')
+                require(sum(i.size for i in dis.disasm(blob,CODE))==n*4)
+                for cap in range(n):
+                    guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                    require(lib.emit(guard,cap,wb,op,0,0)==0 and list(guard)==[0xa5a5a5a5]*128)
                 for field in range(1,10 if op else 7):
                     values=(-1,1,2048) if field<7 else (-1,2048) if field==7 else (0,7,256) if field==8 else (0,4,16)
                     for value in values:
-                        guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                        assert lib.emit(guard,64,wb,op,field,value)==0 and list(guard)==[0xa5a5a5a5]*64,(arch,op,field,value)
+                        guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                        require(lib.emit(guard,128,wb,op,field,value)==0 and list(guard)==[0xa5a5a5a5]*128,(arch,op,field,value))
                         checks+=1
-                machine.mem_write(CODE,blob);machine.ctl_remove_cache(CODE,CODE+256)
+                machine.mem_write(CODE,blob);machine.ctl_remove_cache(CODE,CODE+512)
 
                 def run(length,sa,da,delta,fault=0,np=0):
                     """Model one decoded invocation without sharing emitter arithmetic or metadata lookup."""
-                    image=bytearray((i*37+length*11)&255 for i in range(0x4000))
+                    if length not in patterns:
+                        patterns[length]=bytes((i*37+length*11)&255 for i in range(0x4000))
+                    image=bytearray(patterns[length])
                     ma=(sa^da)&7;src=0x1018 if op else 0x1810+sa
                     dest=src+delta+da if delta not in (999,1000) else 0x200+ma if delta==999 else 0x100+sa if op else src
                     sp=BASE+0x100+sa if op else (0 if fault==23 else MASK if fault==24 else BASE+src)
@@ -120,11 +132,25 @@ int emit(u32int *out,int cap,int wb,int op,int field,int value){
                         machine.reg_write(UC_ARM64_REG_FPCR,0x800000);machine.reg_write(UC_ARM64_REG_FPSR,0x95)
                     machine.mem_write(BASE,bytes(image));writes.clear();machine.emu_start(CODE,STOP,count=2400)
                     status=machine.reg_read(UC_X86_REG_RAX if arch=='amd64' else UC_ARM64_REG_X0)
-                    assert status==int(accepted),(arch,wb,op,length,sa,da,delta,fault,np,status,accepted)
-                    assert bytes(machine.mem_read(BASE,0x4000))==expected,(arch,wb,op,length,delta,fault,np)
-                    if not accepted or length==0:assert not writes
-                    if arch=='amd64':assert machine.reg_read(UC_X86_REG_MXCSR)==0x5fa5
-                    else:assert machine.reg_read(UC_ARM64_REG_FPCR)==0x800000 and machine.reg_read(UC_ARM64_REG_FPSR)==0x95
+                    require(status==int(accepted),(arch,wb,op,length,sa,da,delta,fault,np,status,accepted))
+                    require(bytes(machine.mem_read(BASE,0x4000))==expected,(arch,wb,op,length,delta,fault,np))
+                    expectedwrites=[]
+                    if accepted and length:
+                        if op:
+                            expectedwrites.append((BASE+8,8))
+                        if dest>src:
+                            left=length
+                            while left>=8:
+                                left-=8
+                                expectedwrites.append((BASE+dest+left,8))
+                            expectedwrites += [(BASE+dest+i,1) for i in range(left-1,-1,-1)]
+                        else:
+                            whole=length//8*8
+                            expectedwrites += [(BASE+dest+i,8) for i in range(0,whole,8)]
+                            expectedwrites += [(BASE+dest+i,1) for i in range(whole,length)]
+                    require(writes==expectedwrites,(arch,wb,op,length,delta,fault,'exact store sequence'))
+                    if arch=='amd64':require(machine.reg_read(UC_X86_REG_MXCSR)==0x5fa5)
+                    else:require(machine.reg_read(UC_ARM64_REG_FPCR)==0x800000 and machine.reg_read(UC_ARM64_REG_FPSR)==0x95)
 
                 for length in (0,1,2,7,8,15,16,31,32,63,64,127,128,129,255,256,257):
                     for sa in range(8):

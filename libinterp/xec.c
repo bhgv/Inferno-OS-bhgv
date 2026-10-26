@@ -1748,30 +1748,49 @@ OP(iexpf)
 	memmove(R.d, &result, sizeof(result));
 }
 
+
 /* Validate complete indices and byte offsets before forming an element address. */
 static uchar*
 arrayaddress(Array *array, WORD index, int width)
 {
 	ulong offset;
+	WORD length;
+	Type *type;
+	uchar *data;
 
-	if(array == H || array == nil || index < 0 || index >= array->len)
+	/* Negative indices read no header; other index errors need only length. */
+	if(array == H || array == nil || index < 0 ||
+	   (uintptr)array > (uintptr)-1-(offsetof(Array, len)+sizeof(length)))
+		error(exBounds);
+	memmove(&length, (uchar*)array+offsetof(Array, len), sizeof(length));
+	if(index >= length)
 		error(exBounds);
 	if(width < 0){
-		if(array->t == nil || array->t == H || array->t->size < 0)
+		if((uintptr)array > (uintptr)-1-(offsetof(Array, t)+sizeof(type)))
 			error(exBounds);
-		width = array->t->size;
+		memmove(&type, (uchar*)array+offsetof(Array, t), sizeof(type));
+		if(type == nil || type == H ||
+		   (uintptr)type > (uintptr)-1-(offsetof(Type, size)+sizeof(width)))
+			error(exBounds);
+		memmove(&width, (uchar*)type+offsetof(Type, size), sizeof(width));
+		if(width < 0)
+			error(exBounds);
 	}
-	/* Empty records can have no backing bytes, even at a nonzero index. */
+	if((uintptr)array > (uintptr)-1-(offsetof(Array, data)+sizeof(data)))
+		error(exBounds);
+	memmove(&data, (uchar*)array+offsetof(Array, data), sizeof(data));
+	/* Zero-width records preserve even nil/H data identities without arithmetic. */
 	if(width == 0)
-		return array->data;
-	if(array->data == nil || array->data == H ||
+		return data;
+	if(data == nil || data == H ||
 	   (uvlong)index > 0x7fffffff/(uint)width)
 		error(exBounds);
 	offset = (ulong)index*width;
-	if((uintptr)array->data > (uintptr)-1-offset)
+	if((uintptr)data > (uintptr)-1-offset)
 		error(exBounds);
-	return (uchar*)((uintptr)array->data+offset);
+	return (uchar*)((uintptr)data+offset);
 }
+
 
 /* Capture decoded array slots before computing or publishing an aliased address. */
 static void
@@ -1780,11 +1799,17 @@ arrayindex(int width)
 	Array *array;
 	WORD index, address;
 
+	/* Capture sources only after all decoded slots fit, including the result. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(array) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(index) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(address))
+		error(exBounds);
 	memmove(&array, R.s, sizeof(array));
 	memmove(&index, R.d, sizeof(index));
 	address = (WORD)(uintptr)arrayaddress(array, index, width);
 	memmove(R.m, &address, sizeof(address));
 }
+
 
 /* Resolve descriptor-sized elements after checking the array and full index. */
 OP(indx)
@@ -1792,11 +1817,13 @@ OP(indx)
 	arrayindex(-1);
 }
 
+
 /* Preserve the active word stride without narrowing the index. */
 OP(indw)
 {
 	arrayindex(sizeof(WORD));
 }
+
 
 /* Real array indexing computes an address without loading a floating value. */
 OP(indf)
@@ -1804,11 +1831,13 @@ OP(indf)
 	arrayindex(sizeof(REAL));
 }
 
+
 /* Big array indexing retains the complete native byte offset. */
 OP(indl)
 {
 	arrayindex(sizeof(LONG));
 }
+
 
 /* Byte array indexing uses the same bounds and empty-storage checks. */
 OP(indb)
@@ -2963,16 +2992,25 @@ OP(mcall)
 	if(caller->compiled != R.M->compiled)
 		R.IC = 1;
 }
+
+
 /* Capture and publish array lengths without aligned operand casts. */
 OP(lena)
 {
 	WORD l;
 	Array *a;
 
+	/* Length queries need only their owner/result slots and the length field. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(a) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(l))
+		error(exBounds);
 	memmove(&a, R.s, sizeof(a));
 	l = 0;
-	if(a != H && a != nil)
-		l = a->len;
+	if(a != H && a != nil){
+		if((uintptr)a > (uintptr)-1-(offsetof(Array, len)+sizeof(l)))
+			error(exBounds);
+		memmove(&l, (uchar*)a+offsetof(Array, len), sizeof(l));
+	}
 	memmove(R.d, &l, sizeof(l));
 }
 

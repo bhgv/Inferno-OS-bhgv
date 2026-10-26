@@ -1,5 +1,7 @@
 # Checked array addresses and 64-bit leaf indexing
 
+Later decoded-slot/header-span and alignment checks: [README.array-slots-copy-kernel.md](README.array-slots-copy-kernel.md).
+
 Run `python3 libinterp/tests/array-indices.py`. `CC` and `CFLAGS` select the
 compiler and flags; UBSan is enabled by default. For ASan as well:
 
