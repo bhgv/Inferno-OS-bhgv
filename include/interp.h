@@ -423,6 +423,7 @@ extern	void		cblock(Prog*);
 extern	void*		checktype(void*, Type*, char*, int);
 extern	void		cmovw(void*, void*);
 extern	Channel*	cnewc(Type*, void (*)(void), int);
+extern	Channel*	cnewcscalar(int, int);
 extern	int		compile(Module*, int, Modlink*);
 extern	void		cqadd(Progq**, Prog*);
 extern	void		cqdel(Progq**);

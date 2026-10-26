@@ -1781,6 +1781,53 @@ x64recordobject(X64Buf *b, LeafLayout *a, int mode)
 }
 
 
+/* Capture capacity and publish a fresh channel only when the destination has no owner. */
+static int
+x64scalarchannel(X64Buf *b, LeafLayout *a, int op)
+{
+	int fallback, unbuffered;
+	unsigned long long entry;
+
+	if(a->channelentry == nil || a->channelentry == (void*)-1)
+		return 0;
+	x64byte(b, 0xeb); x64byte(b, 3);
+	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+	x64caseptr(b, 2, a->d);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xd0); // mov rax, r10
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0x01); // lea rdx, [rax+1]
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01); // cmp rdx, 1
+	x64moduleguard(b, 0x77, fallback);
+	x64readspan(b, 0, 8);
+	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0x3a); x64byte(b, 0xff); // cmp qword ptr [r10], -1
+	x64moduleguard(b, 0x74, fallback);
+	x64caseptr(b, 0, a->m);
+	x64byte(b, 0x31); x64byte(b, 0xf6); // xor esi, esi
+	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xd0); // cmp r8, r10
+	x64byte(b, 0x74); unbuffered=b->n; x64byte(b, 0);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0); // mov rax, r8
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0x01);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01);
+	x64moduleguard(b, 0x77, fallback);
+	x64readspan(b, 0, a->wordbytes);
+	x64load(b, 0, a->wordbytes);
+	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, 0x7fffffff); // cmp rax, INT_MAX
+	x64moduleguard(b, 0x76, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc6); // mov rsi, rax
+	if(b->n>sizeof(b->bytes))return 0;
+	b->bytes[unbuffered]=b->n-unbuffered-1;
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xec); x64byte(b, 0x18); // sub rsp, 24
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x14); x64byte(b, 0x24); // mov [rsp], r10
+	x64byte(b, 0xbf); x64word(b, op); // mov edi, opcode
+	entry=(unsigned long long)a->channelentry;
+	x64byte(b, 0x48); x64byte(b, 0xb8); x64word(b, entry); x64word(b, entry>>32);
+	x64byte(b, 0xff); x64byte(b, 0xd0); // call rax
+	x64byte(b, 0x4c); x64byte(b, 0x8b); x64byte(b, 0x14); x64byte(b, 0x24); // mov r10, [rsp]
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0x02); // mov [r10], rax
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xc4); x64byte(b, 0x18); // add rsp, 24
+	return 1;
+}
+
+
 /* Capture a scalar before the allocator can publish through an overlapping destination. */
 static int
 x64scalarcons(X64Buf *b, LeafLayout *a, LeafOp *p)
@@ -2129,6 +2176,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!x64rawcons(&b, abi)) return 0;
 	}else if(p.kind == LeafPointerCons){
 		if(!x64pointercons(&b, abi)) return 0;
+	}else if(p.kind == LeafScalarChannel){
+		if(!x64scalarchannel(&b, abi, p.alu)) return 0;
 	}else if(p.kind == LeafScalarCons){
 		if(!x64scalarcons(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafArrayCreate){

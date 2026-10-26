@@ -1501,6 +1501,43 @@ cnewc(Type *t, void (*mover)(void), int len)
 }
 
 
+/* Validate capacity, output storage and replacement ownership before any resource allocation. */
+static WORD
+channelargs(Channel **old)
+{
+	WORD len;
+	uintptr address;
+	Heap header;
+
+	len = 0;
+	if(R.m != R.d){
+		address = (uintptr)R.m;
+		if(R.m == nil || R.m == H || address > (uintptr)-1-sizeof(len))
+			error(exHeap);
+		memmove(&len, R.m, sizeof(len));
+		if(len < 0)
+			error(exNegsize);
+	}
+	if((uvlong)len > 0x7fffffff)
+		error(exHeap);
+	address = (uintptr)R.d;
+	if(R.d == nil || R.d == H || address > (uintptr)-1-sizeof(*old))
+		error(exHeap);
+	memmove(old, R.d, sizeof(*old));
+	if(*old == nil)
+		error(exNilref);
+	if(*old != H){
+		address = (uintptr)*old;
+		if(address <= sizeof(Heap) || address%sizeof(void*) != 0)
+			error(exHeap);
+		memmove(&header, (uchar*)*old-sizeof(Heap), sizeof(header));
+		if(header.ref == 0)
+			error(exHeap);
+	}
+	return len;
+}
+
+
 /* Capture channel capacity and replacement ownership before fallible allocation. */
 Channel*
 newc(Type *t, void (*mover)(void))
@@ -1508,30 +1545,71 @@ newc(Type *t, void (*mover)(void))
 	Channel *channel, *oldc;
 	WORD len;
 
-	len = 0;
-	if(R.m != R.d){
-		memmove(&len, R.m, sizeof(len));
-		if(len < 0)
-			error(exNegsize);
-	}
-	if((uvlong)len > 0x7fffffff)
-		error(exHeap);
-	memmove(&oldc, R.d, sizeof(oldc));
+	len = channelargs(&oldc);
 	channel = cnewc(t, mover, len);
 	memmove(R.d, &channel, sizeof(channel));
 	destroy(oldc);
 	return channel;
 }
-OP(newcl)  { newc(&Tlong, movl);  }
-OP(newcb)  { newc(&Tbyte, movb);  }
-OP(newcw)  { newc(&Tword, movw);  }
-OP(newcf)  { newc(&Treal, movf);  }
-OP(newcp)  { newc(&Tptr, movp);  }
+
+
+/* Create a big-integer channel with the shared capacity and owner checks. */
+OP(newcl)
+{
+	newc(&Tlong, movl);
+}
+
+
+/* Create a byte channel with the shared capacity and owner checks. */
+OP(newcb)
+{
+	newc(&Tbyte, movb);
+}
+
+
+/* Create a full-WORD channel without narrowing the requested capacity. */
+OP(newcw)
+{
+	newc(&Tword, movw);
+}
+
+
+/* Create a real channel while preserving the existing mover identity. */
+OP(newcf)
+{
+	newc(&Treal, movf);
+}
+
+
+/* Create a pointer channel whose buffer retains the builtin pointer map. */
+OP(newcp)
+{
+	newc(&Tptr, movp);
+}
+
+
+/* Select builtin scalar payloads for native constructors using the shared channel allocator. */
+Channel*
+cnewcscalar(int op, int len)
+{
+	switch(op){
+	case INEWCB: return cnewc(&Tbyte, movb, len);
+	case INEWCW: return cnewc(&Tword, movw, len);
+	case INEWCL: return cnewc(&Tlong, movl, len);
+	case INEWCF: return cnewc(&Treal, movf, len);
+	case INEWCP: return cnewc(&Tptr, movp, len);
+	}
+	error(exInval);
+	return H;
+}
+
 typedef struct RawChannel RawChannel;
+
 struct RawChannel {
-	Type *t;
-	WORD size;
+	Type *t; // Temporary raw payload descriptor retained during channel construction.
+	WORD size; // Full raw width captured before any aliased destination store.
 };
+
 
 /* Publish the captured raw width even when allocation replaces its source slot. */
 static int
@@ -1545,21 +1623,26 @@ rawchannel(void *arg)
 	return 1;
 }
 
+
 /* Capture raw geometry before the destination can overwrite either operand. */
 OP(newcm)
 {
 	RawChannel b;
 	WORD capacity;
+	Channel *old;
 	int ok;
+	uintptr address;
+
+	address = (uintptr)R.s;
+	if(R.s == nil || R.s == H || address > (uintptr)-1-sizeof(b.size))
+		error(exHeap);
 	memmove(&b.size, R.s, sizeof(b.size));
 	if(b.size < 0)
 		error(exNegsize);
 	if((uvlong)b.size > 0x7fffffff)
 		error(exHeap);
 	b.t=nil;
-	capacity = 0;
-	if(R.m != R.d)
-		memmove(&capacity, R.m, sizeof(capacity));
+	capacity = channelargs(&old);
 	if(R.m != R.d && capacity > 0) {
 		b.t=dtype(nil,b.size,nil,0);
 		if(b.t == nil)
@@ -1570,11 +1653,16 @@ OP(newcm)
 	if(!ok)
 		krethrow();
 }
+
 /* Create a mapped channel only after validating its payload descriptor. */
 OP(newcmp)
 {
 	WORD index;
+	uintptr address;
 
+	address = (uintptr)R.s;
+	if(R.s == nil || R.s == H || address > (uintptr)-1-sizeof(index))
+		error(exHeap);
 	memmove(&index, R.s, sizeof(index));
 	newc(moduletype(R.M, index), movtmp);
 }

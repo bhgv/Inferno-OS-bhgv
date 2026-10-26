@@ -32,6 +32,7 @@ struct LeafLayout {
 	void *arrayidentity; // Exact builtin Array identity required by byte-string conversion.
 	int typefree, typemark; // Callback offsets within a Type descriptor.
 	void *plainfree, *plainmark; // Exact standard freeheap/markheap callback identities.
+	void *channelentry; // Shared scalar channel allocator selected by opcode and int capacity.
 	void *consentry; // Runtime list allocator; scalar capture/store remains native.
 	int listtype; // Element Type field within each mapped list node.
 	void *ptrtype; // Exact live builtin pointer Type used by CONSP.
@@ -194,6 +195,7 @@ struct LeafOp {
 
 enum {
 	LeafRawCons = 128, // Allocate and copy bounded raw list payloads before publication.
+	LeafScalarChannel = 130, // Allocate scalar channels after native capacity and empty-owner checks.
 	LeafPointerCons = 129, // Retain pointer heads and mark owners after successful allocation.
 	LeafScalarCons = 127, // Capture scalar list heads natively around the shared allocator.
 	LeafArrayCreate = 126, // Reuse unique owning pointer-free arrays for NEWA/NEWAZ.
@@ -235,6 +237,8 @@ leafop(LeafOp *p, int op, int wordbytes)
 	memset(p, 0, sizeof(*p));
 	p->bytes = wordbytes;
 	switch(op){
+	case INEWCB: case INEWCW: case INEWCL: case INEWCF: case INEWCP:
+		p->kind = LeafScalarChannel; p->alu = op; break;
 	case ICONSM: p->kind = LeafRawCons; break;
 	case ICONSP: p->kind = LeafPointerCons; p->bytes = 8; p->input = 8; break;
 	case ICONSB: p->kind = LeafScalarCons; p->bytes = 1; p->input = 4; break;

@@ -13,7 +13,7 @@ Proc *getup(void) {return &worker;}
 void nexterror(void) {assert(worker.nerr>0);siglongjmp(worker.estack[--worker.nerr],1);}
 void error(char *s) {last_error=s;nexterror();}
 int __lsan_is_turned_off(void) {return 1;}
-char exNomem[]="malloc",exHeap[]="heap",exNegsize[]="negative";
+char exNomem[]="malloc",exHeap[]="heap",exNegsize[]="negative",exNilref[]="nil owner";
 static char injected[]="injected before allocation";
 static void *owned[256];
 static int live,fail_after=-1,throw_after=-1,calls;

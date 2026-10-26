@@ -1,3 +1,4 @@
+#include "leaf-channel-stub.h"
 #ifndef TEST_LEAF_CONS_STUB_H // One allocator identity for unrelated linked native fixtures.
 #define TEST_LEAF_CONS_STUB_H // Actual scalar list construction uses the production helper.
 

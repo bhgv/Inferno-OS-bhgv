@@ -1434,6 +1434,49 @@ a64recordobject(A64Buf *b, LeafLayout *a, int mode)
 }
 
 
+/* Preserve the empty destination and LR while the shared allocator creates channel resources. */
+static int
+a64scalarchannel(A64Buf *b, LeafLayout *a, int op)
+{
+	int fallback, unbuffered, half;
+	unsigned long long entry;
+
+	if(a->channelentry == nil || a->channelentry == (void*)-1)
+		return 0;
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	a64ptr(b, 10, a->d);
+	a64defer(b, 0xb400000a, fallback);
+	a64put(b, 0xb100215fU); // cmn x10, #8
+	a64defer(b, 0x54000002, fallback);
+	a64put(b, 0xf940014cU); // ldr x12, [x10]
+	a64put(b, 0xb100059fU); // cmn x12, #1
+	a64defer(b, 0x54000001, fallback);
+	a64ptr(b, 9, a->m);
+	a64put(b, 0xd2800001U); // mov x1, #0
+	a64put(b, 0xeb0a013fU); // cmp x9, x10
+	unbuffered=b->n; a64put(b, 0x54000000);
+	a64defer(b, 0xb4000009, fallback);
+	a64put(b, 0xb100013fU | (u32int)a->wordbytes<<10); // cmn x9, WORD bytes
+	a64defer(b, 0x54000002, fallback);
+	a64wordfield(b, 1, 9, 0, a->wordbytes);
+	a64put(b, 0x12b0000cU); // mov w12, #0x7fffffff
+	a64put(b, 0xeb0c003fU); // cmp x1, x12
+	a64defer(b, 0x54000008, fallback);
+	if(b->n>LeafMax)return 0;
+	b->code[unbuffered] |= (b->n-unbuffered)<<5;
+	a64put(b, 0xa9bf7beaU); // stp x10, x30, [sp, #-16]!
+	a64put(b, 0x52800000U | (u32int)op<<5); // mov w0, opcode
+	entry=(unsigned long long)a->channelentry;
+	for(half=0;half<4;half++)
+		a64put(b, (half==0 ? 0xd2800010U : 0xf2800010U) | half<<21 | ((entry>>(half*16))&65535)<<5);
+	a64put(b, 0xd63f0200U); // blr x16
+	a64put(b, 0xa8c17beaU); // ldp x10, x30, [sp], #16
+	a64put(b, 0xf9000140U); // str x0, [x10]
+	return 1;
+}
+
+
 /* Save captured scalar bits and LR in an aligned frame across the runtime allocator. */
 static int
 a64scalarcons(A64Buf *b, LeafLayout *a, LeafOp *p)
@@ -1767,6 +1810,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!a64rawcons(&b, abi)) return 0;
 	}else if(p.kind == LeafPointerCons){
 		if(!a64pointercons(&b, abi)) return 0;
+	}else if(p.kind == LeafScalarChannel){
+		if(!a64scalarchannel(&b, abi, p.alu)) return 0;
 	}else if(p.kind == LeafScalarCons){
 		if(!a64scalarcons(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafArrayCreate){

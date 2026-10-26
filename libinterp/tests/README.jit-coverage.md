@@ -2,19 +2,27 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 155 commands (89.6%); 18 remain on the interpreter path. RV64 profiles
+paths for 160 commands (92.5%); 13 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 155 | 18 |
-| ARM64 | 173 | 155 | 18 |
+| AMD64 | 173 | 160 | 13 |
+| ARM64 | 173 | 160 | 13 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
 
-The latest additions are ICONSM and ICONSP on AMD64/ARM64. ICONSM stages its
+The latest additions are INEWCB, INEWCW, INEWCL, INEWCF and INEWCP. Native
+capacity/empty-owner checks and delayed output publication surround the shared
+channel allocator; existing-owner replacements retain C. Complete WORD lengths,
+aliases, error cleanup, builtin Type references and native calling conventions
+are exercised by C/RX and AMD64/ARM64 instruction-emulation drivers. Shared C
+preflight also rejects invalid argument spans and dead replacement owners before
+allocating channel resources. See [README.scalar-channel-native.md](README.scalar-channel-native.md).
+
+The preceding additions are ICONSM and ICONSP on AMD64/ARM64. ICONSM stages its
 previous owner across allocation and copies at most 256 raw bytes before output
 publication. ICONSP validates ownership before allocation, then retains and
 marks its captured pointer natively using live GC cells and the builtin Tptr
