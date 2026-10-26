@@ -117,6 +117,7 @@ CORE = [
     'limbo/tests/case-max.py',
 ]
 JIT = [
+    'libinterp/tests/riscv-string-window.py',
     'libinterp/tests/real-format-jit.py',
     'libinterp/tests/real-format-layouts.py',
     'libinterp/tests/list-length-layouts.py',

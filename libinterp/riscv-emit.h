@@ -173,6 +173,7 @@ rvprogramscale(RvBuf *b, int stride)
 	rvi(b, 0x13, 0, Rvt4, Rvt5, 0);
 }
 
+
 /* Return instruction count, or 0 for unsupported/invalid/overflow. out==0
  * performs the same bounded sizing pass without touching memory. */
 static int
@@ -424,10 +425,16 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		break;
 	case IINDC:
 		if(abi->xlen != 64 || abi->stringlen < 0 || abi->stringlen > 2047 || abi->stringlen%4 != 0 ||
-		   abi->stringdata < 0 || abi->stringdata > 2047 || abi->stringdata%4 != 0) return 0;
+		   abi->stringdata < 0 || abi->stringdata > 2047 || abi->stringdata%4 != 0 ||
+		   abi->stringdata < abi->stringlen+4) return 0;
 		rvptr(&b, Rvt1, abi->s); rvload(&b, Rvt0, Rvt1, 8);
 		rvguard(&b, 1, Rvt0, Rvzero);
 		rvi(&b, 0x13, 0, Rvt6, Rvzero, -1); rvguard(&b, 1, Rvt0, Rvt6);
+		/* Reserve room for every int-sized Rune index and inline field offset.
+		 * Decline before metadata access; C retains the precise error contract. */
+		rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
+		rvi(&b, 0x13, 1, Rvt6, Rvt6, 34);
+		rvguard(&b, 6, Rvt0, Rvt6);
 		rvi(&b, 0x03, 2, Rvt3, Rvt0, abi->stringlen);
 		rvput(&b, 0x80000000U | Rvt6<<7 | 0x37); rvguard(&b, 1, Rvt3, Rvt6);
 		rvi(&b, 0x13, 0, Rvt4, Rvt3, 0);
@@ -469,8 +476,12 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		rvptr(&b, Rvt1, abi->s); rvload(&b, Rvt0, Rvt1, 8);
 		rvguard(&b, 1, Rvt0, Rvzero);
 		rvi(&b, 0x13, 0, Rvt6, Rvzero, -1); rvguard(&b, 1, Rvt0, Rvt6);
+		/* Validate both additions before reading a scalar list payload. */
 		rvi(&b, 0x13, 0, Rvt1, Rvt0, abi->listdata);
+		rvguard(&b, 7, Rvt1, Rvt0);
 		bytes = op == IHEADB ? 1 : op == IHEADW ? abi->wordbytes : 8;
+		rvi(&b, 0x13, 0, Rvt6, Rvt1, bytes);
+		rvguard(&b, 7, Rvt6, Rvt1);
 		rvload(&b, Rvt3, Rvt1, bytes);
 		rvptr(&b, Rvt2, abi->d); rvstore(&b, Rvt2, Rvt3, bytes);
 		break;
@@ -479,7 +490,12 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		rvptr(&b, Rvt1, abi->s); rvload(&b, Rvt0, Rvt1, 8);
 		rvguard(&b, 1, Rvt0, Rvzero);
 		rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
-		rvbranch(&b, 0, Rvt0, Rvt6, 36);
+		rvbranch(&b, 0, Rvt0, Rvt6, 56);
+		/* Reserve room for every int-sized Rune index and inline field offset.
+		 * Decline before metadata access; C retains the precise error contract. */
+		rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
+		rvi(&b, 0x13, 1, Rvt6, Rvt6, 34);
+		rvguard(&b, 6, Rvt0, Rvt6);
 		rvi(&b, 0x03, 2, Rvt3, Rvt0, abi->stringlen);
 		rvput(&b, 0x80000000U | Rvt6<<7 | 0x37);
 		rvguard(&b, 1, Rvt3, Rvt6);
