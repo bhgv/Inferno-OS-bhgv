@@ -127,7 +127,7 @@ class Layout(C.Structure):
             'modlbytes', 'modlframe', 'sp', 'ts', 'frametype', 'framemr',
             'framesize', 'stringmax', 'regmp', 'regtemp', 'linkprog', 'linkmp',
             'modlpc', 'arrayroot', 'typeref')]
-        + [('stringtype', C.c_void_p), ('arrayidentity', C.c_void_p), ('typefree', C.c_int), ('typemark', C.c_int), ('plainfree', C.c_void_p), ('plainmark', C.c_void_p)]
+        + [('stringtype', C.c_void_p), ('arrayidentity', C.c_void_p), ('typefree', C.c_int), ('typemark', C.c_int), ('plainfree', C.c_void_p), ('plainmark', C.c_void_p), ('consentry', C.c_void_p)]
     )
 class RvLayout(C.Structure):
     _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]

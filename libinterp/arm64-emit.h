@@ -1434,6 +1434,30 @@ a64recordobject(A64Buf *b, LeafLayout *a, int mode)
 }
 
 
+/* Save captured scalar bits and LR in an aligned frame across the runtime allocator. */
+static int
+a64scalarcons(A64Buf *b, LeafLayout *a, LeafOp *p)
+{
+	unsigned long long entry;
+	int half;
+
+	if(!leafscalarconslayout(a, p->bytes))
+		return 0;
+	a64ptr(b, 9, a->s); a64load(b, 9, 9, p->bytes);
+	a64ptr(b, 1, a->d);
+	a64put(b, 0xa9bf7be9U); // stp x9, x30, [sp, #-16]!
+	a64put(b, 0xd2800000U | (u32int)p->input<<5); // mov x0, allocation width
+	entry=(unsigned long long)a->consentry;
+	for(half=0;half<4;half++)
+		a64put(b, (half==0 ? 0xd2800010U : 0xf2800010U) | half<<21 | ((entry>>(half*16))&65535)<<5);
+	a64put(b, 0xd63f0200U); // blr x16
+	a64put(b, 0xa8c17be9U); // ldp x9, x30, [sp], #16
+	a64put(b, 0x9100000bU | (u32int)a->listdata<<10); // add x11, x0, payload offset
+	a64store(b, 9, p->bytes);
+	return 1;
+}
+
+
 /* Reuse unique owning pointer-free arrays without retaining or allocating. */
 static int
 a64arraycreate(A64Buf *b, LeafLayout *a, int clear)
@@ -1568,7 +1592,7 @@ a64arraycreate(A64Buf *b, LeafLayout *a, int clear)
 }
 
 
-/* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
+/* Emit bounded AAPCS64 handlers; allocating constructors stage scalar bits and LR on the stack. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 {
@@ -1609,6 +1633,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!a64slicecopy(&b, abi)) return 0;
 	}else if(p.kind == LeafMappedCopy){
 		if(!a64mapped(&b, abi, &p)) return 0;
+	}else if(p.kind == LeafScalarCons){
+		if(!a64scalarcons(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafArrayCreate){
 		if(!a64arraycreate(&b, abi, p.alu)) return 0;
 	}else if(p.kind == LeafRecordObject){

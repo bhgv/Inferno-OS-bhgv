@@ -7,7 +7,11 @@ Module.compiled remains zero because that flag denotes the older relocated-PC
 ABI. This is a baseline JIT, not a replacement for every interpreter operation
 or a complete new 64-bit operating-system/VM port.
 
-AMD64 uses the Linux SysV register convention. ARM64 uses AAPCS64. Leaves return
+Later allocating scalar list constructors use a shared runtime allocator and
+small aligned native frames; see [README.scalar-cons-native.md](README.scalar-cons-native.md).
+Current availability is tracked in [README.jit-coverage.md](README.jit-coverage.md).
+
+AMD64 uses the Linux SysV register convention. ARM64 uses AAPCS64. The original leaves return
 one on completion, take REG* as their only argument and make no helper calls or
 native stack frames. The AMD64 entry includes ENDBR64 and the AArch64 entry BTI c.
 Both emitters support WORD32 and the current native WORD64 declaration with

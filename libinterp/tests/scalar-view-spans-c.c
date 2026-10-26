@@ -1,4 +1,5 @@
 #include "comp-amd64.c"
+#include "tests/leaf-cons-stub.h"
 #include "tests/leaf-plain-stubs.h"
 
 Type Tstring = {1}, Tarray = {1}; // Exact builtin identity required by native leaf publication.

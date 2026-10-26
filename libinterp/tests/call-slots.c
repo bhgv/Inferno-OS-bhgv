@@ -1,5 +1,6 @@
 #ifdef NATIVE_CALL
 #include "comp-amd64.c"
+#include "tests/leaf-cons-stub.h"
 #include "tests/leaf-plain-stubs.h"
 /* Supply the builtin identity used by guarded numeric formatting leaves. */
 Type Tstring = {1}, Tarray = {1};

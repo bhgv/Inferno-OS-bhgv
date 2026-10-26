@@ -1,4 +1,5 @@
 #include "comp-amd64.c"
+#include "tests/leaf-cons-stub.h"
 #include "pool.h"
 #include <stddef.h>
 #include <stdio.h>

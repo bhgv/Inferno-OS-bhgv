@@ -2,19 +2,26 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 149 commands (86.1%); 24 remain on the interpreter path. RV64 profiles
+paths for 153 commands (88.4%); 20 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 149 | 24 |
-| ARM64 | 173 | 149 | 24 |
+| AMD64 | 173 | 153 | 20 |
+| ARM64 | 173 | 153 | 20 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
 
-The latest additions are INEWA and INEWAZ on AMD64/ARM64. Unique owning arrays
+The latest additions are ICONSB, ICONSW, ICONSL and ICONSF on AMD64/ARM64.
+They capture scalar bits in native code, call the shared cons allocator through
+a checked runtime ABI, then store the captured payload natively. This uses small
+aligned native stack frames, preserves aliases and retains C allocator/GC/error
+behavior; it does not replace pool allocation with a native allocator. See
+[README.scalar-cons-native.md](README.scalar-cons-native.md).
+
+The preceding additions are INEWA and INEWAZ on AMD64/ARM64. Unique owning arrays
 with the same requested type and length can reuse pointer-free payloads of at
 most 256 bytes (element width at most 256). NEWA leaves scalar bytes unspecified;
 NEWAZ clears them after complete owner/data-span checks. Empty and zero-width
@@ -150,11 +157,11 @@ and RX publication are covered separately by `leaf64-runtime.py`.
 
 ## Current interpreter-only commands on AMD64/ARM64
 
-The production sizing emitters report these 24 active commands for both WORD models:
+The production sizing emitters report these 20 active commands for both WORD models:
 
 ```
 IALT INBALT ISPAWN ILOAD IMSPAWN IEXIT INEWCB INEWCW INEWCF INEWCP
-INEWCM INEWCMP ISEND IRECV ICONSB ICONSW ICONSP ICONSF ICONSM ICONSMP ICONSL
+INEWCM INEWCMP ISEND IRECV ICONSP ICONSM ICONSMP
 INEWCL ICASEC IRAISE
 ```
 

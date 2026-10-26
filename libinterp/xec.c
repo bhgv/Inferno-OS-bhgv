@@ -2346,18 +2346,28 @@ csendalt(Channel *c, void *ip, Type *t, int len)
 List*
 cons(ulong size, void *slot)
 {
-	Heap *h;
+	Heap *h, header;
+	uintptr address;
 	List *lv, *l;
 
 	if(Tlist.ref <= 0 || Tlist.ref == 0x7fffffff ||
 	   size > 0x7fffffff-sizeof(Heap)-
 	   (sizeof(List)-sizeof(((List*)0)->data)))
 		error(exHeap);
+	address = (uintptr)slot;
+	if(slot == nil || slot == H || address > (uintptr)-1-sizeof(lv))
+		error(exHeap);
 	memmove(&lv, slot, sizeof(lv));
 	if(lv == nil)
 		error(exNilref);
-	if(lv != H && D2H(lv)->ref == 0)
-		error(exHeap);
+	if(lv != H){
+		address = (uintptr)lv;
+		if(address < sizeof(Heap) || address%sizeof(void*) != 0)
+			error(exHeap);
+		memmove(&header, (uchar*)lv-sizeof(Heap), sizeof(header));
+		if(header.ref == 0)
+			error(exHeap);
+	}
 	h = nheap(sizeof(List) + size - sizeof(((List*)0)->data));
 	h->t = &Tlist;
 	Tlist.ref++;

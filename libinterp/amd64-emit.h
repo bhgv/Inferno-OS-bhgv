@@ -1781,6 +1781,32 @@ x64recordobject(X64Buf *b, LeafLayout *a, int mode)
 }
 
 
+/* Capture a scalar before the allocator can publish through an overlapping destination. */
+static int
+x64scalarcons(X64Buf *b, LeafLayout *a, LeafOp *p)
+{
+	unsigned long long entry;
+
+	if(!leafscalarconslayout(a, p->bytes))
+		return 0;
+	x64caseptr(b, 0, a->s); x64load(b, 0, p->bytes);
+	x64caseptr(b, 1, a->d);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xce); // mov rsi, r9
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xec); x64byte(b, 0x18); // sub rsp, 24
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x04); x64byte(b, 0x24); // mov qword ptr [rsp], rax
+	x64byte(b, 0xbf); x64word(b, p->input); // mov edi, allocation width
+	entry=(unsigned long long)a->consentry;
+	x64byte(b, 0x48); x64byte(b, 0xb8); x64word(b, entry); x64word(b, entry>>32);
+	x64byte(b, 0xff); x64byte(b, 0xd0); // call rax
+	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x0c); x64byte(b, 0x24); // mov rcx, qword ptr [rsp]
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xc4); x64byte(b, 0x18); // add rsp, 24
+	x64byte(b, 0x48); x64byte(b, 0x05); x64word(b, a->listdata); // add rax, payload offset
+	x64byte(b, p->bytes == 8 ? 0x48 : 0x40); x64byte(b, p->bytes == 1 ? 0x88 : 0x89);
+	x64byte(b, 0x08); // mov byte/dword/qword ptr [rax], cl/ecx/rcx
+	return 1;
+}
+
+
 /* Reuse unique owning pointer-free arrays without retaining or allocating. */
 static int
 x64arraycreate(X64Buf *b, LeafLayout *a, int clear)
@@ -1930,7 +1956,7 @@ x64arraycreate(X64Buf *b, LeafLayout *a, int clear)
 }
 
 
-/* Emit a SysV AMD64 leaf, returning its bounded count of four-byte code units. */
+/* Emit bounded SysV AMD64 handlers, including aligned runtime calls for list allocation. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 {
@@ -1969,6 +1995,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!x64slicecopy(&b, abi)) return 0;
 	}else if(p.kind == LeafMappedCopy){
 		if(!x64mapped(&b, abi, &p)) return 0;
+	}else if(p.kind == LeafScalarCons){
+		if(!x64scalarcons(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafArrayCreate){
 		if(!x64arraycreate(&b, abi, p.alu)) return 0;
 	}else if(p.kind == LeafRecordObject){

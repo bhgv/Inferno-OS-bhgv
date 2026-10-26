@@ -68,6 +68,7 @@ leafcompile(void *arg)
 	abi.stringlen=O(String, len); abi.stringmax=O(String, max);
 	abi.stringdata=O(String, Sascii);
 	abi.listdata=O(List, data);
+	abi.consentry=(void*)cons;
 	abi.listtail=O(List, tail);
 	abi.fp=O(REG, FP);
 	abi.fixedtmp=(NREG+2)*IBY2WD;

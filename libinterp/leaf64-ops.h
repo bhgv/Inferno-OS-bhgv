@@ -32,6 +32,7 @@ struct LeafLayout {
 	void *arrayidentity; // Exact builtin Array identity required by byte-string conversion.
 	int typefree, typemark; // Callback offsets within a Type descriptor.
 	void *plainfree, *plainmark; // Exact standard freeheap/markheap callback identities.
+	void *consentry; // Runtime list allocator; scalar capture/store remains native.
 };
 typedef struct LeafOp LeafOp;
 
@@ -129,6 +130,18 @@ leafarraycreatelayout(LeafLayout *a)
 	return 1;
 }
 
+/* Validate the allocator identity and native payload offset before emitting a runtime call. */
+static int
+leafscalarconslayout(LeafLayout *a, int bytes)
+{
+	if((a->wordbytes != 4 && a->wordbytes != 8) ||
+	   (bytes != 1 && bytes != 4 && bytes != 8) ||
+	   a->listdata < 0 || a->listdata > 2047 || a->listdata%bytes ||
+	   a->consentry == nil || a->consentry == (void*)-1)
+		return 0;
+	return 1;
+}
+
 /* Record construction modes keep operand selection distinct from scalar initialization. */
 enum {
 	LeafRecordZero = 0, // NEWZ resolves a local descriptor and clears scalar bytes.
@@ -141,12 +154,13 @@ enum {
 struct LeafOp {
 	int kind; // Native leaf implementation selected for this opcode.
 	int bytes; // Width of the stored scalar result.
-	int input; // Source width, or the bounded digit count for decimal leaves.
+	int input; // Source/allocation width, or the bounded digit count for decimal leaves.
 	int alu; // Arithmetic or representation variant within a leaf kind.
 	int condition; // Comparison predicate or fixed-point rounding variant.
 };
 
 enum {
+	LeafScalarCons = 127, // Capture scalar list heads natively around the shared allocator.
 	LeafArrayCreate = 126, // Reuse unique owning pointer-free arrays for NEWA/NEWAZ.
 	LeafRecordObject = 125, // Reuse unique pointer-free standard records for NEW/NEWZ/MNEWZ.
 	LeafStringBytes = 124, // Export bounded byte-backed strings into reusable byte arrays.
@@ -186,6 +200,9 @@ leafop(LeafOp *p, int op, int wordbytes)
 	memset(p, 0, sizeof(*p));
 	p->bytes = wordbytes;
 	switch(op){
+	case ICONSB: p->kind = LeafScalarCons; p->bytes = 1; p->input = 4; break;
+	case ICONSW: p->kind = LeafScalarCons; p->input = wordbytes; break;
+	case ICONSL: case ICONSF: p->kind = LeafScalarCons; p->bytes = 8; p->input = 8; break;
 	case INEWA: p->kind = LeafArrayCreate; break;
 	case INEWAZ: p->kind = LeafArrayCreate; p->alu = 1; break;
 	case INEW: p->kind = LeafRecordObject; p->alu = LeafRecordRaw; break;
