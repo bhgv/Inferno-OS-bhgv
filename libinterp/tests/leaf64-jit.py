@@ -774,7 +774,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                         """Classify supported exact products by exponent ranges and an independent bit value."""
                         magnitude=scale&0x7fffffffffffffff
                         exponent=(magnitude>>52)-1023
-                        if magnitude&((1<<52)-1) or not -16<=exponent<=16:return False
+                        if magnitude&((1<<52)-1) or not -1022<=exponent<=1023:return False
                         source=(bits>>52)&2047
                         if exponent and (not 1<=source<=2046 or not 1<=source+exponent<=2046):return False
                         product=(bits&0x7fffffffffffffff)+exponent*(1<<52)
@@ -783,7 +783,9 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     scales=(0x3ff0000000000000,0xbff0000000000000,0,0x4000000000000000,0x7ff0000000000042,
                             0xc000000000000000,0x3fe0000000000000,0xbfe0000000000000,
                             0x40f0000000000000,0xc0f0000000000000,0x3ef0000000000000,0xbef0000000000000,
-                            0x4100000000000000,0x3ff8000000000000)
+                            0x4100000000000000,0x3ff8000000000000,
+                            0x0010000000000000,0x0170000000000000,0x3bf0000000000000,
+                            0x43f0000000000000,0x7e70000000000000,0x7fe0000000000000)
                     for name in names:
                         width=8 if name=='ICVTFL' else wb
                         for bits in patterns:

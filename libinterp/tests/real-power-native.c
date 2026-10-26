@@ -8,6 +8,7 @@ Type Tstring = {1}, Tarray = {1};
 #include <fenv.h>
 #include <math.h>
 REG R;
+char exBounds[] = "bounds"; // Invalid slot identity used by the extracted real-power handler.
 /* Supply the live collector color used by guarded owner leaves. */
 int mutator, nprop;
 /* Compile real module descriptors using owned ordinary allocations. */

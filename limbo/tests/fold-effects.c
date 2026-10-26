@@ -13,6 +13,8 @@ __lsan_is_turned_off(void)
 	return 1;
 }
 
+typedef uintptr_t uintptr; // Native arithmetic used by extracted slot guards.
+#define H ((void *)(uintptr)-1) // Dis sentinel slot.
 typedef int64_t vlong;
 typedef uint64_t uvlong;
 typedef unsigned int uint;
@@ -45,6 +47,7 @@ static struct {
 } R;
 static jmp_buf boundary;
 static char exZdiv[] = "divide by zero";
+static char exBounds[] = "bounds"; // Malformed decoded numeric slot.
 static char *raised;
 
 /* Model strict side-effect detection for variable and relational operands. */

@@ -159,6 +159,7 @@ a64stringheader(A64Buf *b, int owner, int length, int stride, int lenoff, int ma
 	b->code[done] |= b->n-done;
 }
 
+
 /* Guard raw x12 source/x13 scale and leave the shifted product magnitude in x13. */
 static void
 a64realproduct(A64Buf *b)
@@ -169,7 +170,9 @@ a64realproduct(A64Buf *b)
 	a64guard(b, 0xb400006f);
 	a64put(b, 0xd3400000U | 52<<16 | 62<<10 | 13<<5 | 13);
 	a64put(b, 0xd1000000U | 1023<<10 | 13<<5 | 13);
-	a64put(b, 0x910041af); a64put(b, 0xf10081ff); a64guard(b, 0x54000069);
+	/* Biased scale exponents 1..2046 are precisely the finite normal powers. */
+	a64put(b, 0x91000000U | 1022<<10 | 13<<5 | 15);
+	a64put(b, 0xf100001fU | 2045<<10 | 15<<5); a64guard(b, 0x54000069);
 	unit=b->n; a64put(b, 0xb400000d);
 	/* Check both exponents independently, excluding NaNs and underflow/overflow. */
 	a64put(b, 0xd3400000U | 52<<16 | 62<<10 | 12<<5 | 15);
@@ -2311,12 +2314,16 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64put(&b, 0xcb0d03ed); a64put(&b, 0x9acd298c); /* neg count; asr */
 		a64ptr(&b, 11, abi->d); a64store(&b, 12, abi->wordbytes);
 	}else if(p.kind == LeafPower){
+		/* Check both source spans before the exponent or base is read. */
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, abi->wordbytes, -1);
+		a64ptr(&b, 10, abi->m); a64pcspan(&b, 10, p.bytes, -1);
 		/* Minimum negative exponents are handled by parity without signed negation. */
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, abi->wordbytes);
 		a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, p.bytes);
 		a64put(&b, abi->wordbytes == 8 ? 0xf100019fU : 0x7100019fU);
 		scale=b.n; a64put(&b, 0x5400000a);
 		a64guard(&b, 0xb500006d);
+		a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, p.bytes, -1);
 		a64put(&b, 0xd280002e);
 		a64put(&b, p.bytes == 8 ? 0xf10005bf : 0x710005bf);
 		empty=b.n; a64put(&b, 0x54000000);
@@ -2329,6 +2336,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64ptr(&b, 11, abi->d); a64store(&b, 14, p.bytes);
 		a64put(&b, 0x52800020); a64put(&b, 0xd65f03c0);
 		b.code[scale] |= (b.n-scale)<<5;
+		a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, p.bytes, -1);
 		a64put(&b, 0x5280002e); /* result = 1 */
 		loop = b.n;
 		a64put(&b, 0x3600004c); a64put(&b, 0x9b0d7dce);
@@ -2468,6 +2476,10 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			a64ptr(&b, 11, abi->m); a64store(&b, 14, abi->wordbytes);
 		}
 	}else if(p.kind == LeafRealPower){
+		/* Preflight complete slots before loads, conversions or FP effects. */
+		a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, 8, -1);
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, abi->wordbytes, -1);
+		a64ptr(&b, 10, abi->m); a64pcspan(&b, 10, 8, -1);
 		/* Match each C multiplication and handle minimum WORD as unsigned bits. */
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, abi->wordbytes);
 		if(abi->wordbytes == 4)a64put(&b, 0x93407d8c);
@@ -2487,10 +2499,11 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		b.code[done] |= (b.n-done)<<5;
 		a64ptr(&b, 11, abi->d); a64put(&b, 0xfd000160);
 	}else if(p.kind == LeafRealInteger){
-		/* Ordinary real-to-integer casts have no scale operand. */
-		if(!p.alu){
-			a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, p.bytes, -1);
-			a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, 8, -1);
+		/* Validate the scaled and ordinary variants before parsing raw FP bits. */
+		a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, p.bytes, -1);
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, 8, -1);
+		if(p.alu){
+			a64ptr(&b, 10, abi->m); a64pcspan(&b, 10, 8, -1);
 		}
 		/* Reject unsupported bits without FP exceptions or destination writes. */
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
@@ -2520,6 +2533,10 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64put(&b, 0x9e78000c); /* fcvtzs x12,d0 */
 		a64ptr(&b, 11, abi->d); a64store(&b, 12, p.bytes);
 	}else if(p.kind == LeafRealArithmetic){
+		/* Preflight complete slots before loads, conversions or FP effects. */
+		a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, 8, -1);
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, p.alu == 4 ? abi->wordbytes : 8, -1);
+		a64ptr(&b, 10, abi->m); a64pcspan(&b, 10, 8, -1);
 		/* Load both unaligned binary64 operands before storing an aliased result.
 		 * AAPCS64 d0/d1 are volatile; FPCR/FPSR remain the host C environment. */
 		a64ptr(&b, 9, abi->m); a64put(&b, 0xfd400120); /* ldr d0, [x9] */

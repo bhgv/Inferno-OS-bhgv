@@ -22,10 +22,13 @@ typedef int32_t WORD;
 typedef int64_t WORD;
 #endif
 typedef double REAL;
+typedef uintptr_t uintptr; // Native arithmetic used by extracted slot guards.
+#define nil ((void *)0) // Native null operand slot.
+#define H ((void *)(uintptr)-1) // Dis sentinel operand slot.
 static struct {void *s,*m,*d;} R;
 static jmp_buf boundary;
 static int failed,checks;
-static char exInval[]="invalid";
+static char exInval[]="invalid", exBounds[]="bounds"; // VM conversion and slot errors.
 /* Retain the actual destination bytes when a VM conversion fails. */
 static void error(char *text) {assert(text==exInval);failed=1;longjmp(boundary,1);}
 #define OP(n) static void n(void)

@@ -1,5 +1,7 @@
 # 64-bit JIT opcode availability checkpoint
 
+Latest nine-command numeric preflight and full normal power-scale CVTFX domain: [README.numeric-slots.md](README.numeric-slots.md).
+
 Latest nineteen-command integer branch/JMP preflight: [README.integer-branch-preflight.md](README.integer-branch-preflight.md).
 
 Latest 24-command integer ALU/division preflight: [README.integer-slot-preflight.md](README.integer-slot-preflight.md).
@@ -155,7 +157,7 @@ native-PC tables retain C handling. Earlier additions include IEXPF, using the s
 sequence as C, including negative and minimum-width exponents. Earlier additions
 include guarded ICVTFW, ICVTFL and ICVTFX paths.
 The real-to-integer paths retain C for non-finite and large inputs; ICVTFX
-accepts exact signed powers of two from 2^-16 through 2^16 when non-unit
+accepts every normal exact signed power of two from 2^-1022 through 2^1023 when non-unit
 scaling keeps the input and product normal. Unit scales retain their earlier
 zero/subnormal support. Non-finite, underflow/overflow and unsupported-scale
 cases retain C. CVTFW/CVTFL/CVTFX now accept

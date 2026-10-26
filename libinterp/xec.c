@@ -323,10 +323,18 @@ OP(addl)
 	result = left + right;
 	memmove(R.d, &result, sizeof(result));
 }
+
+
 /* Capture both real operands before an overlapping, possibly unaligned store. */
 OP(addf)
 {
 	REAL left, right, result;
+
+	/* Bound every used slot before operand reads or floating-point effects. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(REAL) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(REAL) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(REAL))
+		error(exBounds);
 
 	memmove(&left, R.m, sizeof(left));
 	memmove(&right, R.s, sizeof(right));
@@ -384,10 +392,18 @@ OP(subl)
 	result = left - right;
 	memmove(R.d, &result, sizeof(result));
 }
+
+
 /* Capture both real operands before an overlapping, possibly unaligned store. */
 OP(subf)
 {
 	REAL left, right, result;
+
+	/* Bound every used slot before operand reads or floating-point effects. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(REAL) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(REAL) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(REAL))
+		error(exBounds);
 
 	memmove(&left, R.m, sizeof(left));
 	memmove(&right, R.s, sizeof(right));
@@ -462,10 +478,18 @@ OP(divl)
 		result = dividend / divisor;
 	memmove(R.d, &result, sizeof(result));
 }
+
+
 /* Capture both real operands before an overlapping, possibly unaligned store. */
 OP(divf)
 {
 	REAL left, right, result;
+
+	/* Bound every used slot before operand reads or floating-point effects. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(REAL) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(REAL) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(REAL))
+		error(exBounds);
 
 	memmove(&left, R.m, sizeof(left));
 	memmove(&right, R.s, sizeof(right));
@@ -591,10 +615,18 @@ OP(mull)
 	result = left * right;
 	memmove(R.d, &result, sizeof(result));
 }
+
+
 /* Capture both real operands before an overlapping, possibly unaligned store. */
 OP(mulf)
 {
 	REAL left, right, result;
+
+	/* Bound every used slot before operand reads or floating-point effects. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(REAL) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(REAL) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(REAL))
+		error(exBounds);
 
 	memmove(&left, R.m, sizeof(left));
 	memmove(&right, R.s, sizeof(right));
@@ -1598,17 +1630,26 @@ OP(cvtcl)
 	memmove(R.d, &value, sizeof(value));
 }
 
+
 /* Capture operands before computing a modular power or its negative-exponent rule. */
 OP(iexpw)
 {
 	WORD x, n, answer;
 	UWORD base, exponent, result;
 
+	/* Both sources must fit before either potentially aliased value is read. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(n) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(x))
+		error(exBounds);
+
 	memmove(&x, R.m, sizeof(x));
 	memmove(&n, R.s, sizeof(n));
+	/* Preserve zero-base error priority without inspecting the unused result. */
+	if(n < 0 && x == 0)
+		error(exZdiv);
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(answer))
+		error(exBounds);
 	if(n < 0){
-		if(x == 0)
-			error(exZdiv);
 		if(x == 1)
 			result = 1;
 		else if(x == -1)
@@ -1631,6 +1672,7 @@ OP(iexpw)
 	memmove(R.d, &answer, sizeof(answer));
 }
 
+
 /* Big powers use the same word-sized exponent and alignment-safe operand access. */
 OP(iexpl)
 {
@@ -1639,11 +1681,19 @@ OP(iexpl)
 	ULONG base, result;
 	UWORD exponent;
 
+	/* Both sources must fit before either potentially aliased value is read. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(n) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(x))
+		error(exBounds);
+
 	memmove(&x, R.m, sizeof(x));
 	memmove(&n, R.s, sizeof(n));
+	/* Preserve zero-base error priority without inspecting the unused result. */
+	if(n < 0 && x == 0)
+		error(exZdiv);
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(answer))
+		error(exBounds);
 	if(n < 0){
-		if(x == 0)
-			error(exZdiv);
 		if(x == 1)
 			result = 1;
 		else if(x == -1)
@@ -1666,12 +1716,19 @@ OP(iexpl)
 	memmove(R.d, &answer, sizeof(answer));
 }
 
+
 /* Handle the minimum negative exponent without signed negation or overflow. */
 OP(iexpf)
 {
 	WORD n;
 	UWORD exponent;
 	REAL x, result;
+
+	/* Bound every used slot before operand reads or floating-point effects. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(WORD) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(REAL) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(REAL))
+		error(exBounds);
 
 	memmove(&x, R.m, sizeof(x));
 	memmove(&n, R.s, sizeof(n));
@@ -4186,6 +4243,12 @@ OP(cvtfx)
 	REAL v, source, scale;
 	WORD result;
 
+	/* Bound every used slot before operand reads or floating-point effects. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(REAL) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(REAL) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
+
 	memmove(&source, R.s, sizeof(source));
 	memmove(&scale, R.m, sizeof(scale));
 	v = source*scale;
@@ -4200,11 +4263,19 @@ OP(cvtfx)
 	result = (WORD)v;
 	memmove(R.d, &result, sizeof(result));
 }
+
+
 /* Capture the fixed integer and real scale before publishing their product. */
 OP(cvtxf)
 {
 	WORD source;
 	REAL scale, result;
+
+	/* Bound every used slot before operand reads or floating-point effects. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(WORD) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(REAL) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(REAL))
+		error(exBounds);
 
 	memmove(&source, R.s, sizeof(source));
 	memmove(&scale, R.m, sizeof(scale));

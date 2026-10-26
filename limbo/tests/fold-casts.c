@@ -6,6 +6,7 @@
 #include <stdarg.h>
 #include <setjmp.h>
 
+typedef uintptr_t uintptr; // Native arithmetic used by extracted slot guards.
 typedef int64_t Long;
 typedef uint64_t uvlong;
 typedef double Real;
@@ -82,6 +83,7 @@ static WORD frame[NREG+3];
 static jmp_buf boundary;
 static int vmerror;
 static char exInval[]="invalid",exZdiv[]="zero",exNilref[]="nil frame";
+static char exBounds[]="bounds"; // Malformed decoded fixed-conversion slot.
 
 /* Preserve the destination when the VM rejects an exceptional conversion. */
 static void

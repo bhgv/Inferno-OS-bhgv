@@ -73,7 +73,7 @@ fixedaccepted(REAL value,REAL scale,int width)
 	REAL product,bound;
 
 	bound=width==4 ? 2147483647.5 : 0x1.fffffffffffffp62;
-	if(!isfinite(scale) || scale==0 || frexp(fabs(scale),&se)!=0.5 || se < -15 || se > 17)
+	if(!isfinite(scale) || scale==0 || frexp(fabs(scale),&se)!=0.5 || se < -1021 || se > 1024)
 		return 0;
 	if(fabs(scale)==1)
 		return fabs(value)<bound;
@@ -107,8 +107,10 @@ main(void)
 	uvlong base[]={0x3ff0000000000000ULL,0xbff0000000000000ULL,0,0x4000000000000000ULL,0x7ff0000000000042ULL,
 		0xc000000000000000ULL,0x3fe0000000000000ULL,0xbfe0000000000000ULL,
 		0x40f0000000000000ULL,0xc0f0000000000000ULL,0x3ef0000000000000ULL,0xbef0000000000000ULL,
-		0x4100000000000000ULL,0x3ff8000000000000ULL,0x3ee0000000000000ULL,0x7ff0000000000000ULL,1};
-	uvlong scales[80],bits;
+		0x4100000000000000ULL,0x3ff8000000000000ULL,0x3ee0000000000000ULL,0x7ff0000000000000ULL,1,
+		0x0010000000000000ULL,0x0170000000000000ULL,0x3bf0000000000000ULL,
+		0x43f0000000000000ULL,0x7e70000000000000ULL,0x7fe0000000000000ULL};
+	uvlong scales[128],bits;
 	int nscale,k,negative,j;
 	fenv_t saved;
 	REG savedreg;

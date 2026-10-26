@@ -189,6 +189,7 @@ x64stringheader(X64Buf *b, int owner, int length, int stride, int lenoff, int ma
 	b->bytes[done]=b->n-done-1;
 }
 
+
 /* Validate a power scale without FP effects: rax is source, rcx is scale/product magnitude. */
 static void
 x64realproduct(X64Buf *b)
@@ -201,8 +202,9 @@ x64realproduct(X64Buf *b)
 	x64byte(b, 0x48); x64byte(b, 0xd1); x64byte(b, 0xe1);
 	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe9); x64byte(b, 53);
 	x64byte(b, 0x81); x64byte(b, 0xe9); x64word(b, 1023);
-	x64byte(b, 0x8d); x64byte(b, 0x51); x64byte(b, 16);
-	x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 32); x64guard(b, 0x76);
+	/* Biased scale exponents 1..2046 are precisely the finite normal powers. */
+	x64byte(b, 0x8d); x64byte(b, 0x91); x64word(b, 1022);
+	x64byte(b, 0x81); x64byte(b, 0xfa); x64word(b, 2045); x64guard(b, 0x76);
 	x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x74); unit=b->n; x64byte(b, 0);
 	/* Non-unit scales require normal input and normal exact product exponents. */
@@ -2744,12 +2746,16 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x48); x64byte(&b, 0xd3); x64byte(&b, 0xf8); /* sar rax,cl */
 		x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
 	}else if(p.kind == LeafPower){
+		/* Check both source spans before the exponent or base is read. */
+		x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, abi->wordbytes);
+		x64ptr(&b, 1, abi->m); x64pcspan(&b, 9, p.bytes);
 		/* Negative exponents need only zero/one tests and parity, never negation. */
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, abi->wordbytes);
 		x64ptr(&b, 1, abi->m); x64load(&b, 1, p.bytes);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0);
 		x64byte(&b, 0x79); scale=b.n; x64byte(&b, 0);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9); x64guard(&b, 0x75);
+		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, p.bytes);
 		x64byte(&b, 0xba); x64word(&b, 1);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf9); x64byte(&b, 1);
 		x64byte(&b, 0x74); empty=b.n; x64byte(&b, 0);
@@ -2764,6 +2770,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64ptr(&b, 2, abi->d); x64store(&b, 2, p.bytes);
 		x64byte(&b, 0xb8); x64word(&b, 1); x64byte(&b, 0xc3);
 		b.bytes[scale]=b.n-scale-1;
+		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, p.bytes);
 		x64byte(&b, 0xba); x64word(&b, 1); /* rdx = result */
 		loop = b.n;
 		x64byte(&b, 0xa8); x64byte(&b, 1);
@@ -2916,6 +2923,10 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			x64ptr(&b, 2, abi->m); x64store(&b, 0, abi->wordbytes);
 		}
 	}else if(p.kind == LeafRealPower){
+		/* Preflight complete slots before loads, conversions or FP effects. */
+		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, 8);
+		x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, abi->wordbytes);
+		x64ptr(&b, 1, abi->m); x64pcspan(&b, 9, 8);
 		/* Match the C squaring order and reciprocal, including minimum WORD. */
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, abi->wordbytes);
 		x64ptr(&b, 1, abi->m);
@@ -2941,10 +2952,11 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64ptr(&b, 2, abi->d);
 		x64byte(&b, 0xf2); x64byte(&b, 0x41); x64byte(&b, 0x0f); x64byte(&b, 0x11); x64byte(&b, 0x02);
 	}else if(p.kind == LeafRealInteger){
-		/* Ordinary real-to-integer casts have no scale operand. */
-		if(!p.alu){
-			x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, p.bytes);
-			x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, 8);
+		/* Validate the scaled and ordinary variants before parsing raw FP bits. */
+		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, p.bytes);
+		x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, 8);
+		if(p.alu){
+			x64ptr(&b, 1, abi->m); x64pcspan(&b, 9, 8);
 		}
 		/* Guard bits before any FP effects; rejected leaves must preserve FP status.
 		 * The symmetric bounds leave room for the half-unit addition in every FP mode. */
@@ -2979,6 +2991,10 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0xf2); x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0x2c); x64byte(&b, 0xc0);
 		x64ptr(&b, 2, abi->d); x64store(&b, 0, p.bytes);
 	}else if(p.kind == LeafRealArithmetic){
+		/* Preflight complete slots before loads, conversions or FP effects. */
+		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, 8);
+		x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, p.alu == 4 ? abi->wordbytes : 8);
+		x64ptr(&b, 1, abi->m); x64pcspan(&b, 9, 8);
 		/* Snapshot both operands before an overlapping destination store.
 		 * Scalar SSE2 inherits the C host's rounding mode and sticky exceptions. */
 		x64ptr(&b, 0, abi->m);
