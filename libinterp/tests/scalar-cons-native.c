@@ -7,7 +7,7 @@
 #include <fenv.h>
 
 REG R;
-Type Tstring={1}, Tarray={1}, Tlist={1};
+Type Tstring={1}, Tarray={1}, Tlist={1}, Tptr={1};
 Pool *heapmem;
 int mutator, nprop;
 void (*heapmonitor)(int, void*, ulong);
@@ -118,7 +118,7 @@ badaddresses(Jit *jit)
     uvlong value=0x0123456789abcdefULL;
     List *saved;
 
-    for(profile=0;profile<8;profile++)for(pass=0;pass<2;pass++){
+    for(profile=0;profile<9;profile++)for(pass=0;pass<2;pass++){
         memset(storage,0,sizeof(storage));h=(Heap*)storage;h->ref=1;h->t=&Tlist;
         tail=H2D(List*,h);slot=&tail;Tlist.ref=2;
         switch(profile){
@@ -130,13 +130,14 @@ badaddresses(Jit *jit)
         case 5:tail=(List*)((uchar*)tail+1);break;
         case 6:h->ref=0;break;
         case 7:Tlist.ref=0;slot=nil;break;
+        case 8:tail=(List*)(uintptr)sizeof(Heap);break;
         }
         beforecalls=calls;raised=nil;saved=tail;R.s=&value;R.d=slot;memmove(before,storage,sizeof(storage));
         if(setjmp(boundary)==0){if(pass)jit->entry[ICONSL](&R);else consl();abort();}
         if(raised!=(profile==3?exNilref:exHeap) || calls!=beforecalls || live || tail!=saved || memcmp(storage,before,sizeof(storage)))abort();
     }
     Tlist.ref=1;
-    puts("PASS scalar cons address preflight: 16 slot/tail/error-order cases");
+    puts("PASS scalar cons address preflight: 18 slot/tail/error-order cases");
 }
 
 

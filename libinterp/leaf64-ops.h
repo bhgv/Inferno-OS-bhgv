@@ -33,6 +33,8 @@ struct LeafLayout {
 	int typefree, typemark; // Callback offsets within a Type descriptor.
 	void *plainfree, *plainmark; // Exact standard freeheap/markheap callback identities.
 	void *consentry; // Runtime list allocator; scalar capture/store remains native.
+	int listtype; // Element Type field within each mapped list node.
+	void *ptrtype; // Exact live builtin pointer Type used by CONSP.
 };
 typedef struct LeafOp LeafOp;
 
@@ -142,6 +144,37 @@ leafscalarconslayout(LeafLayout *a, int bytes)
 	return 1;
 }
 
+
+/* Validate live GC cells, descriptor references and disjoint pointer-list fields. */
+static int
+leafpointerconslayout(LeafLayout *a)
+{
+	unsigned long long cells[3];
+	int i, j, fields[3];
+
+	if(!leafscalarconslayout(a, 8) || a->refbytes != 8 ||
+	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 ||
+	   a->heapcolor < a->heapref+4 || a->heapcolor > 255 || a->heapcolor%4 ||
+	   a->typeref < 0 || a->typeref > 2047 || a->typeref%4 ||
+	   a->ptrtype == nil || (unsigned long long)a->ptrtype%8 ||
+	   (unsigned long long)a->ptrtype > ~0ULL-(a->typeref+4) ||
+	   a->markcolor < 0 || a->markcolor > 255)
+		return 0;
+	fields[0]=a->listtail; fields[1]=a->listtype; fields[2]=a->listdata;
+	for(i=0;i<3;i++)
+		if(fields[i] < 0 || fields[i] > 2047 || fields[i]%8 ||
+		   fields[i] == fields[(i+1)%3] || fields[i] == fields[(i+2)%3])
+			return 0;
+	cells[0]=(unsigned long long)a->mutator; cells[1]=(unsigned long long)a->nprop;
+	cells[2]=(unsigned long long)a->ptrtype+a->typeref;
+	for(i=0;i<3;i++)
+		if(cells[i] == 0 || cells[i]%4 || cells[i] > ~0ULL-4)
+			return 0;
+	for(i=0;i<3;i++)for(j=0;j<i;j++)
+		if(cells[i] == cells[j])return 0;
+	return 1;
+}
+
 /* Record construction modes keep operand selection distinct from scalar initialization. */
 enum {
 	LeafRecordZero = 0, // NEWZ resolves a local descriptor and clears scalar bytes.
@@ -160,6 +193,8 @@ struct LeafOp {
 };
 
 enum {
+	LeafRawCons = 128, // Allocate and copy bounded raw list payloads before publication.
+	LeafPointerCons = 129, // Retain pointer heads and mark owners after successful allocation.
 	LeafScalarCons = 127, // Capture scalar list heads natively around the shared allocator.
 	LeafArrayCreate = 126, // Reuse unique owning pointer-free arrays for NEWA/NEWAZ.
 	LeafRecordObject = 125, // Reuse unique pointer-free standard records for NEW/NEWZ/MNEWZ.
@@ -200,6 +235,8 @@ leafop(LeafOp *p, int op, int wordbytes)
 	memset(p, 0, sizeof(*p));
 	p->bytes = wordbytes;
 	switch(op){
+	case ICONSM: p->kind = LeafRawCons; break;
+	case ICONSP: p->kind = LeafPointerCons; p->bytes = 8; p->input = 8; break;
 	case ICONSB: p->kind = LeafScalarCons; p->bytes = 1; p->input = 4; break;
 	case ICONSW: p->kind = LeafScalarCons; p->input = wordbytes; break;
 	case ICONSL: case ICONSF: p->kind = LeafScalarCons; p->bytes = 8; p->input = 8; break;

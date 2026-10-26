@@ -41,6 +41,7 @@ for index, part in enumerate(parts):
     if not part.startswith('OP(cvtca)'):
         continue
     # Narrow guard arithmetic only; real payload pointers retain native width.
+    part = part.replace('address <= sizeof(Heap)', '(ExportAddress)address <= sizeof(Heap)')
     part = part.replace('address < sizeof(Heap)', '(ExportAddress)address < sizeof(Heap)')
     part = part.replace('address > (uintptr)-1', '(ExportAddress)address > (ExportAddress)-1')
     part = part.replace('span > (uintptr)-1-(address+offsetof(String, data))',

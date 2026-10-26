@@ -1178,7 +1178,7 @@ newrecord(Modlink *ml, WORD index, int clear)
 		error(exNilref);
 	if(old != H){
 		address = (uintptr)old;
-		if(address < sizeof(Heap))
+		if(address <= sizeof(Heap))
 			error(exHeap);
 		memmove(&oldheap, (uchar*)old-sizeof(Heap), sizeof(oldheap));
 		if(oldheap.ref == 0)
@@ -1366,7 +1366,7 @@ newarray(int clear)
 		error(exNilref);
 	if(old != H){
 		address = (uintptr)old;
-		if(address < sizeof(Heap) || address%sizeof(void*) != 0)
+		if(address <= sizeof(Heap) || address%sizeof(void*) != 0)
 			error(exHeap);
 		memmove(&header, (uchar*)old-sizeof(Heap), sizeof(header));
 		if(header.ref == 0)
@@ -2362,7 +2362,7 @@ cons(ulong size, void *slot)
 		error(exNilref);
 	if(lv != H){
 		address = (uintptr)lv;
-		if(address < sizeof(Heap) || address%sizeof(void*) != 0)
+		if(address <= sizeof(Heap) || address%sizeof(void*) != 0)
 			error(exHeap);
 		memmove(&header, (uchar*)lv-sizeof(Heap), sizeof(header));
 		if(header.ref == 0)
@@ -2421,15 +2421,19 @@ OP(consl)
 OP(consp)
 {
 	List *l;
-	Heap *h;
+	Heap *h, header;
+	uintptr address;
 	WORD *sv;
 
 	memmove(&sv, R.s, sizeof(sv));
 	if(sv == nil)
 		error(exNilref);
 	if(sv != H){
-		h = D2H(sv);
-		if(h->ref == 0 || h->ref == (ulong)-1)
+		address = (uintptr)sv;
+		if(address <= sizeof(Heap) || address%sizeof(void*) != 0)
+			error(exHeap);
+		memmove(&header, (uchar*)sv-sizeof(Heap), sizeof(header));
+		if(header.ref == 0 || header.ref == (ulong)-1)
 			error(exHeap);
 	}
 	if(Tptr.ref <= 0 || Tptr.ref == 0x7fffffff)
@@ -2456,16 +2460,26 @@ OP(consf)
 	memmove(l->data, &value, sizeof(value));
 }
 
+
 /* Check the complete VM size and copy raw payload before replacing its source slot. */
 OP(consm)
 {
 	WORD size;
+	uintptr address;
 	List *l, *result;
 
 	memmove(&size, R.m, sizeof(size));
 	if(size < 0 || (uvlong)size > 0x7fffffff-sizeof(Heap)-
 	   (sizeof(List)-sizeof(((List*)0)->data)))
 		error(exHeap);
+	address = (uintptr)R.d;
+	if(R.d == nil || R.d == H || address > (uintptr)-1-sizeof(result))
+		error(exHeap);
+	if(size != 0){
+		address = (uintptr)R.s;
+		if(R.s == nil || R.s == H || address > (uintptr)-1-(uintptr)size)
+			error(exHeap);
+	}
 	memmove(&result, R.d, sizeof(result));
 	l = cons((ulong)size, &result);
 	if(size != 0)

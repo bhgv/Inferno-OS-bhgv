@@ -1130,7 +1130,7 @@ a64bytestring(A64Buf *b, LeafLayout *a)
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	a64ptr(b, 8, a->s); a64load(b, 8, 8, 8);
 	a64put(b, 0xf100011fU | (u32int)a->heapcolor<<10); // cmp x8, heap extent.
-	a64defer(b, 0x54000003, fallback);
+	a64defer(b, 0x54000009, fallback);
 	a64put(b, 0xb100011fU | (u32int)(header+8)<<10); // cmn x8, header extent.
 	a64defer(b, 0x54000002, fallback);
 	a64put(b, 0xf840000eU | ((u32int)-a->heaptype&511)<<12 | 8<<5);
@@ -1163,7 +1163,7 @@ a64bytestring(A64Buf *b, LeafLayout *a)
 	a64defer(b, 0x54000002, fallback);
 	a64ptr(b, 8, a->d); a64load(b, 10, 8, 8);
 	a64put(b, 0xf100015fU | (u32int)a->heapcolor<<10);
-	a64defer(b, 0x54000003, fallback);
+	a64defer(b, 0x54000009, fallback);
 	a64put(b, 0xb100015fU | (u32int)((a->stringlen > a->stringmax ? a->stringlen : a->stringmax)+4)<<10);
 	a64defer(b, 0x54000002, fallback);
 	a64put(b, 0xf840000eU | ((u32int)-a->heaptype&511)<<12 | 10<<5);
@@ -1239,7 +1239,7 @@ a64stringbytes(A64Buf *b, LeafLayout *a)
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	a64ptr(b, 8, a->s); a64load(b, 8, 8, 8);
 	a64put(b, 0xf100011fU | (u32int)a->heapcolor<<10);
-	a64defer(b, 0x54000003, fallback);
+	a64defer(b, 0x54000009, fallback);
 	a64put(b, 0xb100011fU | (u32int)((a->stringlen > a->stringmax ? a->stringlen : a->stringmax)+4)<<10);
 	a64defer(b, 0x54000002, fallback);
 	a64put(b, 0xf840000eU | ((u32int)-a->heaptype&511)<<12 | 8<<5);
@@ -1263,7 +1263,7 @@ a64stringbytes(A64Buf *b, LeafLayout *a)
 	a64defer(b, 0x54000002, fallback);
 	a64ptr(b, 8, a->d); a64load(b, 10, 8, 8);
 	a64put(b, 0xf100015fU | (u32int)a->heapcolor<<10);
-	a64defer(b, 0x54000003, fallback);
+	a64defer(b, 0x54000009, fallback);
 	a64put(b, 0xb100015fU | (u32int)(header+8)<<10);
 	a64defer(b, 0x54000002, fallback);
 	a64put(b, 0xf840000eU | ((u32int)-a->heaptype&511)<<12 | 10<<5);
@@ -1409,7 +1409,7 @@ a64recordobject(A64Buf *b, LeafLayout *a, int mode)
 	a64put(b, 0xb100055fU); // cmn x10, #1
 	a64defer(b, 0x54000000, fallback);
 	a64put(b, 0xf100015fU | (u32int)a->heapcolor<<10);
-	a64defer(b, 0x54000003, fallback);
+	a64defer(b, 0x54000009, fallback);
 	a64put(b, 0xf840000eU | ((u32int)-a->heaptype&511)<<12 | 10<<5);
 	a64put(b, 0xeb0901dfU); // cmp x14, x9
 	a64defer(b, 0x54000001, fallback);
@@ -1454,6 +1454,136 @@ a64scalarcons(A64Buf *b, LeafLayout *a, LeafOp *p)
 	a64put(b, 0xa8c17be9U); // ldp x9, x30, [sp], #16
 	a64put(b, 0x9100000bU | (u32int)a->listdata<<10); // add x11, x0, payload offset
 	a64store(b, 9, p->bytes);
+	return 1;
+}
+
+
+/* Preserve source, count, destination and LR while the allocator owns only a staged tail. */
+static int
+a64rawcons(A64Buf *b, LeafLayout *a)
+{
+	int fallback, empty, loop, half;
+	unsigned long long identity;
+
+	if(!leafscalarconslayout(a, 1))return 0;
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	a64ptr(b, 2, a->m); a64wordfield(b, 2, 2, 0, a->wordbytes);
+	a64put(b, 0xf104005fU); // cmp x2, #256
+	a64defer(b, 0x54000008, fallback);
+	a64ptr(b, 9, a->s); a64ptr(b, 10, a->d);
+	a64defer(b, 0xb400000a, fallback);
+	a64put(b, 0xb100055fU); // cmn x10, #1
+	a64defer(b, 0x54000000, fallback);
+	a64put(b, 0xb100215fU); // cmn x10, #8
+	a64defer(b, 0x54000002, fallback);
+	empty=b->n; a64put(b, 0xb4000002);
+	a64defer(b, 0xb4000009, fallback);
+	a64put(b, 0xb100053fU); // cmn x9, #1
+	a64defer(b, 0x54000000, fallback);
+	a64put(b, 0xab02013fU); // cmn x9, x2
+	a64defer(b, 0x54000002, fallback);
+	if(b->n>LeafMax)return 0;
+	b->code[empty] |= (b->n-empty)<<5;
+	a64put(b, 0xf940014bU); // ldr x11, [x10]
+	a64put(b, 0xa9bd27ebU); // stp x11, x9, [sp, #-48]!
+	a64put(b, 0xa9010beaU); // stp x10, x2, [sp, #16]
+	a64put(b, 0xf90013feU); // str x30, [sp, #32]
+	a64put(b, 0xaa0203e0U); // mov x0, x2
+	a64put(b, 0x910003e1U); // mov x1, sp
+	identity=(unsigned long long)a->consentry;
+	for(half=0;half<4;half++)
+		a64put(b, (half==0 ? 0xd2800000U : 0xf2800000U) | 16 | half<<21 | ((identity>>(half*16))&65535)<<5);
+	a64put(b, 0xd63f0200U); // blr x16
+	a64put(b, 0xa940abe9U); // ldp x9, x10, [sp, #8]
+	a64put(b, 0xf9400fe2U); // ldr x2, [sp, #24]
+	a64put(b, 0xf94013feU); // ldr x30, [sp, #32]
+	a64put(b, 0x9100000bU | (u32int)a->listdata<<10); // add x11, x0, payload offset
+	empty=b->n; a64put(b, 0xb4000002);
+	loop=b->n;
+	a64put(b, 0x3840152cU); // ldrb w12, [x9], #1
+	a64put(b, 0x3800156cU); // strb w12, [x11], #1
+	a64put(b, 0xf1000442U); // subs x2, x2, #1
+	a64put(b, 0x54000001U | ((loop-b->n)&0x7ffff)<<5);
+	if(b->n>LeafMax)return 0;
+	b->code[empty] |= (b->n-empty)<<5;
+	a64put(b, 0xf9000140U); // str x0, [x10]
+	a64put(b, 0x9100c3ffU); // add sp, sp, #48
+	return 1;
+}
+
+
+/* Retain the captured pointer only after allocation and restore LR before returning. */
+static int
+a64pointercons(A64Buf *b, LeafLayout *a)
+{
+	int fallback, empty, marked, half;
+	unsigned long long identity;
+
+	if(!leafpointerconslayout(a))return 0;
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	a64ptr(b, 9, a->s); a64load(b, 9, 9, 8);
+	a64defer(b, 0xb4000009, fallback);
+	a64put(b, 0xb100053fU); // cmn x9, #1
+	empty=b->n; a64put(b, 0x54000000);
+	a64put(b, 0xf100013fU | (u32int)a->heapcolor<<10);
+	a64defer(b, 0x54000009, fallback);
+	a64put(b, 0xf240093fU); // tst x9, #7
+	a64defer(b, 0x54000001, fallback);
+	a64put(b, 0xf840012cU | ((u32int)-a->heapref&511)<<12); // ldur x12, [x9-ref]
+	a64defer(b, 0xb400000c, fallback);
+	a64put(b, 0xb100059fU); // cmn x12, #1
+	a64defer(b, 0x54000000, fallback);
+	if(b->n>LeafMax)return 0;
+	b->code[empty] |= (b->n-empty)<<5;
+	identity=(unsigned long long)a->ptrtype;
+	for(half=0;half<4;half++)
+		a64put(b, (half==0 ? 0xd2800000U : 0xf2800000U) | 15 | half<<21 | ((identity>>(half*16))&65535)<<5);
+	a64wordfield(b, 13, 15, a->typeref, 4);
+	a64put(b, 0xf10001bfU); // cmp x13, #0
+	a64defer(b, 0x5400000d, fallback);
+	a64put(b, 0x12b0000eU); // mov w14, #0x7fffffff
+	a64put(b, 0x6b0e01bfU); // cmp w13, w14
+	a64defer(b, 0x54000000, fallback);
+	a64ptr(b, 1, a->d);
+	a64put(b, 0xa9bf7be9U); // stp x9, x30, [sp, #-16]!
+	a64put(b, 0xd2800100U); // mov x0, #8
+	identity=(unsigned long long)a->consentry;
+	for(half=0;half<4;half++)
+		a64put(b, (half==0 ? 0xd2800000U : 0xf2800000U) | 16 | half<<21 | ((identity>>(half*16))&65535)<<5);
+	a64put(b, 0xd63f0200U); // blr x16
+	a64put(b, 0xa8c17be9U); // ldp x9, x30, [sp], #16
+	a64put(b, 0xb100053fU); // cmn x9, #1
+	empty=b->n; a64put(b, 0x54000000);
+	a64put(b, 0xf840012cU | ((u32int)-a->heapref&511)<<12);
+	a64put(b, 0x9100058cU); // add x12, x12, #1
+	a64put(b, 0xf800012cU | ((u32int)-a->heapref&511)<<12);
+	a64put(b, 0xb840012cU | ((u32int)-a->heapcolor&511)<<12);
+	identity=(unsigned long long)a->mutator;
+	for(half=0;half<4;half++)
+		a64put(b, (half==0 ? 0xd2800000U : 0xf2800000U) | 13 | half<<21 | ((identity>>(half*16))&65535)<<5);
+	a64put(b, 0xb94001adU); // ldr w13, [x13]
+	a64put(b, 0x6b0d019fU); // cmp w12, w13
+	marked=b->n; a64put(b, 0x54000000);
+	a64put(b, 0x5280000cU | (u32int)a->markcolor<<5);
+	a64put(b, 0xb800012cU | ((u32int)-a->heapcolor&511)<<12);
+	identity=(unsigned long long)a->nprop;
+	for(half=0;half<4;half++)
+		a64put(b, (half==0 ? 0xd2800000U : 0xf2800000U) | 13 | half<<21 | ((identity>>(half*16))&65535)<<5);
+	a64put(b, 0x5280002cU); // mov w12, #1
+	a64put(b, 0xb90001acU); // str w12, [x13]
+	if(b->n>LeafMax)return 0;
+	b->code[marked] |= (b->n-marked)<<5;
+	b->code[empty] |= (b->n-empty)<<5;
+	identity=(unsigned long long)a->ptrtype;
+	for(half=0;half<4;half++)
+		a64put(b, (half==0 ? 0xd2800000U : 0xf2800000U) | 15 | half<<21 | ((identity>>(half*16))&65535)<<5);
+	a64field(b, 14, 15, a->typeref, 4);
+	a64put(b, 0x110005ceU); // add w14, w14, #1
+	a64put(b, 0xb90001eeU | (u32int)(a->typeref/4)<<10); // str w14, [x15+Type.ref]
+	a64put(b, 0xf900000fU | (u32int)(a->listtype/8)<<10); // str x15, [x0+List.t]
+	a64put(b, 0xf9000009U | (u32int)(a->listdata/8)<<10); // str x9, [x0+payload]
 	return 1;
 }
 
@@ -1547,7 +1677,7 @@ a64arraycreate(A64Buf *b, LeafLayout *a, int clear)
 	a64put(b, 0xb100055fU); // cmn x10, #1
 	a64defer(b, 0x54000000, fallback);
 	a64put(b, 0xf100015fU | (u32int)a->heapcolor<<10);
-	a64defer(b, 0x54000003, fallback);
+	a64defer(b, 0x54000009, fallback);
 	a64put(b, 0xf240095fU); // tst x10, #7
 	a64defer(b, 0x54000001, fallback);
 	a64put(b, 0xb100015fU | (u32int)arrayend<<10);
@@ -1633,6 +1763,10 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!a64slicecopy(&b, abi)) return 0;
 	}else if(p.kind == LeafMappedCopy){
 		if(!a64mapped(&b, abi, &p)) return 0;
+	}else if(p.kind == LeafRawCons){
+		if(!a64rawcons(&b, abi)) return 0;
+	}else if(p.kind == LeafPointerCons){
+		if(!a64pointercons(&b, abi)) return 0;
 	}else if(p.kind == LeafScalarCons){
 		if(!a64scalarcons(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafArrayCreate){

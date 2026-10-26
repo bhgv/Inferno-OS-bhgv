@@ -168,6 +168,31 @@ lookupspans(void)
 }
 
 
+/* A payload at the exact heap-prefix size would place its owner header at nil. */
+static void
+nilprefix(Jit *jit)
+{
+    Type type, *table[1];
+    Module module;
+    Modlink link, *source;
+    WORD index;
+    void *old;
+    int op, beforecalls;
+
+    memset(&type,0,sizeof(type)); type.ref=1; type.free=freeheap; type.mark=markheap;
+    memset(&module,0,sizeof(module)); memset(&link,0,sizeof(link));
+    table[0]=&type; module.type=table; module.ntype=1; link.m=&module; source=&link; index=0;
+    for(op=0;op<3;op++){
+        old=(void*)(uintptr)sizeof(Heap); R.M=&link; R.s=op==2?(void*)&source:(void*)&index; R.m=&index; R.d=&old;
+        beforecalls=calls; raised=nil;
+        if(jit->entry[op==0?INEW:op==1?INEWZ:IMNEWZ](&R)!=0 || calls!=beforecalls || old!=(void*)(uintptr)sizeof(Heap))abort();
+        if(setjmp(boundary)==0){if(op==0)new();else if(op==1)newz();else mnewz();}
+        if(raised!=exHeap || calls!=beforecalls || old!=(void*)(uintptr)sizeof(Heap) || live || type.ref!=1)abort();
+    }
+    puts("PASS record nil-prefix: 3 C/RX no-allocation cases");
+}
+
+
 /* Check map geometry independently before either constructor can allocate or initialize. */
 static void
 constructormaps(void)
@@ -237,6 +262,7 @@ main(void)
     code[0].op=INEWZ; code[1].op=IMNEWZ; codeowner.prog=code; code[2].op=INEW; codeowner.nprog=3;
     if(!compile(&codeowner,3,nil) || codeowner.jit==nil ||
        codeowner.jit->entry[INEWZ]==nil || codeowner.jit->entry[IMNEWZ]==nil || codeowner.jit->entry[INEW]==nil) abort();
+    if(!getenv("ZERO_NO_ERRORS"))nilprefix(codeowner.jit);
     link.m=&targetmodule; wronglink.m=&wrongmodule;
     targetmodule.type=table; targetmodule.ntype=4; link.type=cached;
     wrongmodule.type=cached; wrongmodule.ntype=4;

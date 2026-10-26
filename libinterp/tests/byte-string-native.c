@@ -47,7 +47,7 @@ spanerrors(Module *module)
     unsigned long total;
 
     total = 0;
-    for(mode = 0; mode < 19; mode++)
+    for(mode = 0; mode < 23; mode++)
     for(sa = 0; sa < 8; sa++)
     for(da = 0; da < 8; da++){
         a = mem2array("abc", 3);
@@ -74,6 +74,10 @@ spanerrors(Module *module)
         case 16: input = H; destination = nil; why = exNilref; break;
         case 17: input = H; destination = (String*)8; break;
         case 18: input = H; D2H(old)->ref = 0; break;
+        case 19: input = (Array*)(uintptr)sizeof(Heap); break;
+        case 20: a->root = (Array*)(uintptr)sizeof(Heap); break;
+        case 21: destination = (String*)(uintptr)sizeof(Heap); break;
+        case 22: input = H; destination = (String*)(uintptr)sizeof(Heap); break;
         }
         memset(slots, 0xa5, sizeof(slots));
         memmove(slots+sa, &input, sizeof(input));

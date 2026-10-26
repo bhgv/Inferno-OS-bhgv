@@ -70,7 +70,7 @@ main(void)
         }
         headerend = offsets[oi]+(offsetof(String, len) > offsetof(String, max) ? offsetof(String, len) : offsetof(String, max))+sizeof(int);
         dataend = offsets[oi]+offsetof(String, data)+(uvlong)n*(wide ? sizeof(Rune) : 1);
-        valid = offsets[oi] >= sizeof(Heap) && headerend <= 65535;
+        valid = offsets[oi] > sizeof(Heap) && headerend <= 65535;
         if(valid && profile == 3) why = exType;
         valid = valid && profile == 0 && (n == 0 || dataend <= 65535);
         if(profile == 1) valid = 0;

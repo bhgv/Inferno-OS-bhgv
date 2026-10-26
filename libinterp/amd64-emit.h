@@ -1454,7 +1454,7 @@ x64bytestring(X64Buf *b, LeafLayout *a)
 	fallback = b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	x64caseptr(b, 0, a->s); x64load(b, 0, 8);
 	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, a->heapcolor);
-	x64moduleguard(b, 0x73, fallback);
+	x64moduleguard(b, 0x77, fallback);
 	x64readspan(b, header, 8);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc0); // mov r8, rax
 	x64casefield(b, 1, 0, -a->heaptype, 8);
@@ -1494,7 +1494,7 @@ x64bytestring(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0xd0); // mov r8, r10
 	x64casefield(b, 0, 10, 0, 8);
 	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, a->heapcolor);
-	x64moduleguard(b, 0x73, fallback);
+	x64moduleguard(b, 0x77, fallback);
 	x64readspan(b, a->stringlen > a->stringmax ? a->stringlen : a->stringmax, 4);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc2); // mov r10, rax
 	x64casefield(b, 1, 0, -a->heaptype, 8);
@@ -1572,7 +1572,7 @@ x64stringbytes(X64Buf *b, LeafLayout *a)
 	fallback = b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	x64caseptr(b, 0, a->s); x64load(b, 0, 8);
 	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, a->heapcolor);
-	x64moduleguard(b, 0x73, fallback);
+	x64moduleguard(b, 0x77, fallback);
 	x64readspan(b, a->stringlen > a->stringmax ? a->stringlen : a->stringmax, 4);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc0); // mov r8, rax
 	x64casefield(b, 1, 0, -a->heaptype, 8);
@@ -1602,7 +1602,7 @@ x64stringbytes(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0xd0); // mov r8, r10
 	x64casefield(b, 0, 10, 0, 8);
 	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, a->heapcolor);
-	x64moduleguard(b, 0x73, fallback);
+	x64moduleguard(b, 0x77, fallback);
 	x64readspan(b, header, 8);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc2); // mov r10, rax
 	x64casefield(b, 1, 0, -a->heaptype, 8);
@@ -1753,7 +1753,7 @@ x64recordobject(X64Buf *b, LeafLayout *a, int mode)
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01); // cmp rdx, 1
 	x64moduleguard(b, 0x77, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, a->heapcolor);
-	x64moduleguard(b, 0x73, fallback);
+	x64moduleguard(b, 0x77, fallback);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc2); // mov r10, rax
 	x64casefield(b, 1, 0, -a->heaptype, 8);
 	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xc9); // cmp rcx, r9
@@ -1803,6 +1803,136 @@ x64scalarcons(X64Buf *b, LeafLayout *a, LeafOp *p)
 	x64byte(b, 0x48); x64byte(b, 0x05); x64word(b, a->listdata); // add rax, payload offset
 	x64byte(b, p->bytes == 8 ? 0x48 : 0x40); x64byte(b, p->bytes == 1 ? 0x88 : 0x89);
 	x64byte(b, 0x08); // mov byte/dword/qword ptr [rax], cl/ecx/rcx
+	return 1;
+}
+
+
+/* Stage the old owner locally so raw source bytes are copied before destination publication. */
+static int
+x64rawcons(X64Buf *b, LeafLayout *a)
+{
+	int fallback, empty, loop;
+	unsigned long long identity;
+
+	if(!leafscalarconslayout(a, 1))return 0;
+	x64byte(b, 0xeb); x64byte(b, 3);
+	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+	x64caseptr(b, 0, a->m); x64load(b, 0, a->wordbytes);
+	x64byte(b, 0x48); x64byte(b, 0x3d); x64byte(b, 0x00); x64byte(b, 0x01); x64byte(b, 0x00); x64byte(b, 0x00); // cmp rax, 256
+	x64moduleguard(b, 0x76, fallback);
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc3); // mov r11, rax
+	x64caseptr(b, 0, a->s); x64caseptr(b, 2, a->d);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xd0); // mov rax, r10
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0x01); // lea rdx, [rax+1]
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01); // cmp rdx, 1
+	x64moduleguard(b, 0x77, fallback);
+	x64readspan(b, 0, 8);
+	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xdb); // test r11, r11
+	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0); // mov rax, r8
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0x01); // lea rdx, [rax+1]
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01); // cmp rdx, 1
+	x64moduleguard(b, 0x77, fallback);
+	x64byte(b, 0x4c); x64byte(b, 0x01); x64byte(b, 0xd8); // add rax, r11
+	x64moduleguard(b, 0x73, fallback);
+	if(b->n>sizeof(b->bytes))return 0;
+	b->bytes[empty]=b->n-empty-1;
+	x64casefield(b, 1, 10, 0, 8);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xec); x64byte(b, 0x38); // sub rsp, 56
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x0c); x64byte(b, 0x24); // mov qword ptr [rsp], rcx
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x44); x64byte(b, 0x24); x64byte(b, 0x08); // mov qword ptr [rsp+8], r8
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x54); x64byte(b, 0x24); x64byte(b, 0x10); // mov qword ptr [rsp+16], r10
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x5c); x64byte(b, 0x24); x64byte(b, 0x18); // mov qword ptr [rsp+24], r11
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xdf); // mov rdi, r11
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xe6); // mov rsi, rsp
+	identity=(unsigned long long)a->consentry;
+	x64byte(b, 0x48); x64byte(b, 0xb8); x64word(b, identity); x64word(b, identity>>32);
+	x64byte(b, 0xff); x64byte(b, 0xd0); // call rax
+	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x74); x64byte(b, 0x24); x64byte(b, 0x08); // mov rsi, qword ptr [rsp+8]
+	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x4c); x64byte(b, 0x24); x64byte(b, 0x18); // mov rcx, qword ptr [rsp+24]
+	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x90); x64word(b, a->listdata); // lea r10, [rax+payload]
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); // test rcx, rcx
+	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
+	loop=b->n;
+	x64byte(b, 0x44); x64byte(b, 0x8a); x64byte(b, 0x1e); // mov r11b, byte ptr [rsi]
+	x64byte(b, 0x45); x64byte(b, 0x88); x64byte(b, 0x1a); // mov byte ptr [r10], r11b
+	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc6); // inc rsi
+	x64byte(b, 0x49); x64byte(b, 0xff); x64byte(b, 0xc2); // inc r10
+	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc9); // dec rcx
+	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
+	if(b->n>sizeof(b->bytes))return 0;
+	b->bytes[empty]=b->n-empty-1;
+	x64byte(b, 0x4c); x64byte(b, 0x8b); x64byte(b, 0x44); x64byte(b, 0x24); x64byte(b, 0x10); // mov r8, qword ptr [rsp+16]
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0x00); // mov qword ptr [r8], rax
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xc4); x64byte(b, 0x38); // add rsp, 56
+	return 1;
+}
+
+
+/* Validate pointer retention before allocation, then publish live GC and descriptor updates. */
+static int
+x64pointercons(X64Buf *b, LeafLayout *a)
+{
+	int fallback, empty, marked;
+	unsigned long long identity;
+
+	if(!leafpointerconslayout(a))return 0;
+	x64byte(b, 0xeb); x64byte(b, 3);
+	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+	x64caseptr(b, 0, a->s); x64load(b, 0, 8);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); // test rax, rax
+	x64moduleguard(b, 0x75, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff); // cmp rax, -1
+	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
+	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, a->heapcolor);
+	x64moduleguard(b, 0x77, fallback);
+	x64byte(b, 0xa8); x64byte(b, 0x07); // test al, 7
+	x64moduleguard(b, 0x74, fallback);
+	x64casefield(b, 1, 0, -a->heapref, 8);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); // test rcx, rcx
+	x64moduleguard(b, 0x75, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff); // cmp rcx, -1
+	x64moduleguard(b, 0x75, fallback);
+	if(b->n>sizeof(b->bytes))return 0;
+	b->bytes[empty]=b->n-empty-1;
+	identity=(unsigned long long)a->ptrtype;
+	x64byte(b, 0x48); x64byte(b, 0xba); x64word(b, identity); x64word(b, identity>>32);
+	x64casefield(b, 1, 2, a->typeref, 4);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); // test rcx, rcx
+	x64moduleguard(b, 0x7f, fallback);
+	x64byte(b, 0x81); x64byte(b, 0xf9); x64byte(b, 0xff); x64byte(b, 0xff); x64byte(b, 0xff); x64byte(b, 0x7f); // cmp ecx, 0x7fffffff
+	x64moduleguard(b, 0x75, fallback);
+	x64caseptr(b, 1, a->d);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xce); // mov rsi, r9
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xec); x64byte(b, 0x18); // sub rsp, 24
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x04); x64byte(b, 0x24); // mov qword ptr [rsp], rax
+	x64byte(b, 0xbf); x64byte(b, 0x08); x64byte(b, 0x00); x64byte(b, 0x00); x64byte(b, 0x00); // mov edi, 8
+	identity=(unsigned long long)a->consentry;
+	x64byte(b, 0x48); x64byte(b, 0xb8); x64word(b, identity); x64word(b, identity>>32);
+	x64byte(b, 0xff); x64byte(b, 0xd0); // call rax
+	x64byte(b, 0x4c); x64byte(b, 0x8b); x64byte(b, 0x1c); x64byte(b, 0x24); // mov r11, qword ptr [rsp]
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xc4); x64byte(b, 0x18); // add rsp, 24
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc2); // mov r10, rax
+	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xfb); x64byte(b, 0xff); // cmp r11, -1
+	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
+	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0x83); x64word(b, -a->heapref); x64byte(b, 1); // add qword ptr [r11-ref], 1
+	identity=(unsigned long long)a->mutator;
+	x64byte(b, 0x48); x64byte(b, 0xba); x64word(b, identity); x64word(b, identity>>32);
+	x64byte(b, 0x8b); x64byte(b, 0x0a); // mov ecx, dword ptr [rdx]
+	x64byte(b, 0x41); x64byte(b, 0x39); x64byte(b, 0x8b); x64word(b, -a->heapcolor); // cmp source color, ecx
+	x64byte(b, 0x74); marked=b->n; x64byte(b, 0);
+	x64byte(b, 0x41); x64byte(b, 0xc7); x64byte(b, 0x83); x64word(b, -a->heapcolor); x64word(b, a->markcolor);
+	identity=(unsigned long long)a->nprop;
+	x64byte(b, 0x48); x64byte(b, 0xba); x64word(b, identity); x64word(b, identity>>32);
+	x64byte(b, 0xc7); x64byte(b, 0x02); x64byte(b, 0x01); x64byte(b, 0x00); x64byte(b, 0x00); x64byte(b, 0x00); // mov dword ptr [rdx], 1
+	if(b->n>sizeof(b->bytes))return 0;
+	b->bytes[marked]=b->n-marked-1;
+	b->bytes[empty]=b->n-empty-1;
+	identity=(unsigned long long)a->ptrtype;
+	x64byte(b, 0x48); x64byte(b, 0xba); x64word(b, identity); x64word(b, identity>>32);
+	x64byte(b, 0x83); x64byte(b, 0x82); x64word(b, a->typeref); x64byte(b, 1); // add pointer Type.ref, 1
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0x92); x64word(b, a->listtype); // mov node.Type, rdx
+	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0x9a); x64word(b, a->listdata); // mov node.payload, r11
 	return 1;
 }
 
@@ -1903,7 +2033,7 @@ x64arraycreate(X64Buf *b, LeafLayout *a, int clear)
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01); // cmp rdx, 1
 	x64moduleguard(b, 0x77, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, a->heapcolor);
-	x64moduleguard(b, 0x73, fallback);
+	x64moduleguard(b, 0x77, fallback);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc2); // mov r10, rax
 	x64byte(b, 0xa8); x64byte(b, 0x07); // test al, 7
 	x64moduleguard(b, 0x74, fallback);
@@ -1995,6 +2125,10 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!x64slicecopy(&b, abi)) return 0;
 	}else if(p.kind == LeafMappedCopy){
 		if(!x64mapped(&b, abi, &p)) return 0;
+	}else if(p.kind == LeafRawCons){
+		if(!x64rawcons(&b, abi)) return 0;
+	}else if(p.kind == LeafPointerCons){
+		if(!x64pointercons(&b, abi)) return 0;
 	}else if(p.kind == LeafScalarCons){
 		if(!x64scalarcons(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafArrayCreate){

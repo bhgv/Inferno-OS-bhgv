@@ -48,7 +48,7 @@ spanerrors(Module *module)
     unsigned long total;
 
     total = 0;
-    for(mode = 0; mode < 29; mode++)
+    for(mode = 0; mode < 33; mode++)
     for(sa = 0; sa < 8; sa++)
     for(da = 0; da < 8; da++){
         text = newstring(16); text->len = 3;
@@ -86,6 +86,10 @@ spanerrors(Module *module)
         case 26: old->t = &dead; break;
         case 27: old->t = H; why = exType; break;
         case 28: old->t = nil; why = exType; break;
+        case 29: input = (String*)(uintptr)sizeof(Heap); break;
+        case 30: destination = (Array*)(uintptr)sizeof(Heap); break;
+        case 31: old->root = (Array*)(uintptr)sizeof(Heap); break;
+        case 32: input = H; old->root = (Array*)(uintptr)sizeof(Heap); break;
         }
         memset(slots, 0xa5, sizeof(slots));
         memmove(slots+sa, &input, sizeof(input));

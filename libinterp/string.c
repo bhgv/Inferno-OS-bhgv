@@ -406,7 +406,7 @@ OP(cvtca)
 			error(exNilref);
 		address = (uintptr)ss;
 		extent = offsetof(String, len) > offsetof(String, max) ? offsetof(String, len) : offsetof(String, max);
-		if(address < sizeof(Heap) || address > (uintptr)-1-extent-sizeof(int))
+		if(address <= sizeof(Heap) || address > (uintptr)-1-extent-sizeof(int))
 			error(exHeap);
 		memmove(&source, (uchar*)ss-sizeof(Heap), sizeof(source));
 		if(source.t != &Tstring)
@@ -437,7 +437,7 @@ OP(cvtca)
 	if(old == nil)
 		error(exNilref);
 	if(old != H){
-		if((uintptr)old < sizeof(Heap))
+		if((uintptr)old <= sizeof(Heap))
 			error(exHeap);
 		memmove(&previous, (uchar*)old-sizeof(Heap), sizeof(previous));
 		if(previous.ref == 0)
@@ -450,7 +450,7 @@ OP(cvtca)
 			if(target.root == nil)
 				error(exHeap);
 			if(target.root != H){
-				if((uintptr)target.root < sizeof(Heap))
+				if((uintptr)target.root <= sizeof(Heap))
 					error(exHeap);
 				memmove(&backing, (uchar*)target.root-sizeof(Heap), sizeof(backing));
 				if(backing.ref == 0)
@@ -519,7 +519,7 @@ OP(cvtac)
 		if(a == nil)
 			error(exNilref);
 		address = (uintptr)a;
-		if(address < sizeof(Heap) || address > (uintptr)-1-sizeof(Array))
+		if(address <= sizeof(Heap) || address > (uintptr)-1-sizeof(Array))
 			error(exHeap);
 		memmove(&owner, (uchar*)a-sizeof(Heap), sizeof(owner));
 		if(owner.t != &Tarray)
@@ -553,7 +553,7 @@ OP(cvtac)
 		if(view.root == nil)
 			error(exHeap);
 		if(view.root != H){
-			if((uintptr)view.root < sizeof(Heap))
+			if((uintptr)view.root <= sizeof(Heap))
 				error(exHeap);
 			memmove(&root, (uchar*)view.root-sizeof(Heap), sizeof(root));
 			if(root.ref == 0)
@@ -562,7 +562,7 @@ OP(cvtac)
 		if(old == nil)
 			error(exNilref);
 		if(old != H){
-			if((uintptr)old < sizeof(Heap))
+			if((uintptr)old <= sizeof(Heap))
 				error(exHeap);
 			memmove(&previous, (uchar*)old-sizeof(Heap), sizeof(previous));
 			if(previous.ref == 0)
@@ -600,7 +600,7 @@ OP(cvtac)
 		error(exNilref);
 	/* Nil input also releases an old generic owner: reject a dead owner first. */
 	if(a == H && old != H){
-		if((uintptr)old < sizeof(Heap))
+		if((uintptr)old <= sizeof(Heap))
 			error(exHeap);
 		memmove(&previous, (uchar*)old-sizeof(Heap), sizeof(previous));
 		if(previous.ref == 0)

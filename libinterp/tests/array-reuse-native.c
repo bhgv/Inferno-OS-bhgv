@@ -124,7 +124,7 @@ ownerpreflight(Jit *jit)
     int profile, clear, beforecalls, expectedcalls;
     char *expected;
 
-    for(profile=0;profile<10;profile++)for(clear=0;clear<2;clear++){
+    for(profile=0;profile<11;profile++)for(clear=0;clear<2;clear++){
         memset(storage,0x5a,sizeof(storage)); memset(&type,0,sizeof(type));
         memset(&module,0,sizeof(module)); memset(&link,0,sizeof(link));
         h=(Heap*)storage; object=H2D(Array*,h); h->t=&Tarray; h->ref=1;
@@ -142,6 +142,7 @@ ownerpreflight(Jit *jit)
         case 7: result=H; expectedcalls=1; break;
         case 8: object->data=(uchar*)object; break;
         case 9: object->data=(uchar*)object+sizeof(Array)-1; break;
+        case 10: result=(Array*)(uintptr)sizeof(Heap); break;
         }
         saved=result; table[0]=&type; module.type=table; module.ntype=1; link.m=&module;
         count=2; index=0; R.s=&count; R.m=&index; R.d=&result; R.M=&link; registers=R;
@@ -154,7 +155,7 @@ ownerpreflight(Jit *jit)
            memcmp(storage,before,sizeof(storage)) || memcmp(&R,&registers,sizeof(R)) || type.ref!=2 || Tarray.ref!=2)abort();
     }
     Tarray.ref=1;
-    puts("PASS array owner preflight: 20 nil/dead/alignment/data-span/failure cases");
+    puts("PASS array owner preflight: 22 nil/dead/alignment/data-span/failure cases");
 }
 
 

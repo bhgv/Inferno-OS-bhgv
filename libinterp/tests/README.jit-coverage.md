@@ -2,19 +2,28 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 153 commands (88.4%); 20 remain on the interpreter path. RV64 profiles
+paths for 155 commands (89.6%); 18 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 153 | 20 |
-| ARM64 | 173 | 153 | 20 |
+| AMD64 | 173 | 155 | 18 |
+| ARM64 | 173 | 155 | 18 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
 
-The latest additions are ICONSB, ICONSW, ICONSL and ICONSF on AMD64/ARM64.
+The latest additions are ICONSM and ICONSP on AMD64/ARM64. ICONSM stages its
+previous owner across allocation and copies at most 256 raw bytes before output
+publication. ICONSP validates ownership before allocation, then retains and
+marks its captured pointer natively using live GC cells and the builtin Tptr
+identity. Both call the shared cons allocator. Invalid or larger raw cases keep
+the C path. Heap-prefix checks also reject a header beginning at nil across
+record/array construction and byte/string conversions. See
+[README.payload-cons-native.md](README.payload-cons-native.md).
+
+The preceding additions are ICONSB, ICONSW, ICONSL and ICONSF on AMD64/ARM64.
 They capture scalar bits in native code, call the shared cons allocator through
 a checked runtime ABI, then store the captured payload natively. This uses small
 aligned native stack frames, preserves aliases and retains C allocator/GC/error
@@ -157,11 +166,11 @@ and RX publication are covered separately by `leaf64-runtime.py`.
 
 ## Current interpreter-only commands on AMD64/ARM64
 
-The production sizing emitters report these 20 active commands for both WORD models:
+The production sizing emitters report these 18 active commands for both WORD models:
 
 ```
 IALT INBALT ISPAWN ILOAD IMSPAWN IEXIT INEWCB INEWCW INEWCF INEWCP
-INEWCM INEWCMP ISEND IRECV ICONSP ICONSM ICONSMP
+INEWCM INEWCMP ISEND IRECV ICONSMP
 INEWCL ICASEC IRAISE
 ```
 

@@ -1,5 +1,5 @@
 /* Supply the builtin identity used by numeric leaf publication in this linked fixture. */
-Type Tstring = {1};
+Type Tstring = {1}, Tptr = {1};
 
 
 /* Keep executable-code descriptor allocation outside the bounded VM pool. */

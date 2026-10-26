@@ -1,5 +1,8 @@
 # Scalar list construction through a native allocator ABI
 
+The subsequent raw/pointer constructors and stricter heap-prefix boundaries are
+described in [README.payload-cons-native.md](README.payload-cons-native.md).
+
 AMD64 and ARM64 now compile ICONSB, ICONSW, ICONSL and ICONSF. Active opcode
 availability rises from 149 to 153 of 173 IDs; 20 remain interpreter-only. RV64
 counts are unchanged. Native operation availability is distinct from full VM
