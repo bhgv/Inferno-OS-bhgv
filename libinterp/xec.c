@@ -1096,23 +1096,37 @@ OP(indb)
 {
 	arrayindex(sizeof(BYTE));
 }
+
+
 /* Validate and retain a live reference before replacing an unaligned owner slot. */
 OP(movp)
 {
 	Heap *h;
-	WORD *dv, *sv;
+	void *dv, *sv;
 
+	/* Capture both slots before retain/mark can change aliased metadata. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(sv) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(dv))
+		error(exHeap);
 	memmove(&sv, R.s, sizeof(sv));
 	if(sv == nil)
 		error(exNilref);
-	if(sv != H) {
+	h = nil;
+	if(sv != H){
+		if((uintptr)sv <= sizeof(Heap))
+			error(exHeap);
 		h = D2H(sv);
 		if(h->ref == 0 || h->ref == (ulong)-1)
 			error(exHeap);
+	}
+	memmove(&dv, R.d, sizeof(dv));
+	/* A bad previous owner must fail before the source is retained or published. */
+	if(dv != H && ((uintptr)dv <= sizeof(Heap) || D2H(dv)->ref == 0))
+		error(exHeap);
+	if(h != nil){
 		h->ref++;
 		Setmark(h);
 	}
-	memmove(&dv, R.d, sizeof(dv));
 	memmove(R.d, &sv, sizeof(sv));
 	destroy(dv);
 }
@@ -2808,6 +2822,9 @@ listhead(void)
 {
 	List *l;
 
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(l))
+		error(exHeap);
+
 	memmove(&l, R.s, sizeof(l));
 	if(l == H || l == nil)
 		error(exNilref);
@@ -2849,12 +2866,19 @@ OP(headl)
 		error(exBounds);
 	memmove(R.d, (uchar*)l+offsetof(List, data), sizeof(LONG));
 }
+
+
 /* Validate the list before copying its pointer-valued head. */
 OP(headp)
 {
 	List *l;
 
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(void*))
+		error(exHeap);
+
 	l = listhead();
+	if((uintptr)l > (uintptr)-1-(offsetof(List, data)+sizeof(void*)))
+		error(exBounds);
 	R.s = l->data;
 	movp();
 }
@@ -2928,7 +2952,12 @@ OP(tail)
 {
 	List *l;
 
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(void*))
+		error(exHeap);
+
 	l = listhead();
+	if((uintptr)l > (uintptr)-1-(offsetof(List, tail)+sizeof(void*)))
+		error(exBounds);
 	R.s = &l->tail;
 	movp();
 }
@@ -3502,15 +3531,22 @@ OP(self)
 	Modlink *ml, *t;
 	Heap *h;
 
+	/* The unused source slot is irrelevant, but the destination must fit first. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(t))
+		error(exHeap);
 	ml = R.M;
 	if(ml == nil || ml == H)
 		error(exModule);
+	if((uintptr)ml <= sizeof(Heap))
+		error(exHeap);
 	h = D2H(ml);
 	if(h->ref == 0 || h->ref == (ulong)-1)
 		error(exHeap);
+	memmove(&t, R.d, sizeof(t));
+	if(t != H && ((uintptr)t <= sizeof(Heap) || D2H(t)->ref == 0))
+		error(exHeap);
 	h->ref++;
 	Setmark(h);
-	memmove(&t, R.d, sizeof(t));
 	memmove(R.d, &ml, sizeof(ml));
 	destroy(t);
 }

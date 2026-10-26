@@ -1,5 +1,7 @@
 # 64-bit JIT opcode availability checkpoint
 
+Latest ownership preflight fixes and validation: [README.owner-preflight.md](README.owner-preflight.md).
+
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
 paths for 164 commands (94.8%); nine remain on the interpreter path. RV64 profiles

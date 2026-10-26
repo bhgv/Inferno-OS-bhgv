@@ -462,7 +462,7 @@ static int
 x64owner(X64Buf *b, LeafLayout *abi, LeafOp *p)
 {
 	unsigned long long color;
-	int offset, empty, same, marked;
+	int offset, empty, same, marked, validated;
 
 	if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
 	   abi->heapref <= 0 || abi->heapref > 255 || abi->heapref%8 ||
@@ -473,6 +473,11 @@ x64owner(X64Buf *b, LeafLayout *abi, LeafOp *p)
 	offset=p->alu == 2 ? abi->listdata : abi->listtail;
 	if(p->alu >= 2 && (offset < 0 || offset > 2047))
 		return 0;
+	/* No operand or owner read may precede the writable destination-slot check. */
+	x64ptr(b, 2, abi->d); x64pcspan(b, 10, 8);
+	if(p->alu != 1){
+		x64ptr(b, 0, abi->s); x64pcspan(b, 8, 8);
+	}
 	if(p->alu == 1){
 		x64ptr(b, 0, abi->module);
 		x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0);
@@ -482,26 +487,38 @@ x64owner(X64Buf *b, LeafLayout *abi, LeafOp *p)
 	if(p->alu >= 2){
 		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64guard(b, 0x75);
 		x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff); x64guard(b, 0x75);
+		x64pcspan(b, 0, offset+8);
 		x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x80); x64word(b, offset);
 		x64load(b, 0, 8);
 	}
+	/* Source errors precede the old-owner load, so an unused bad destination is not read. */
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64guard(b, 0x75);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
+	validated=-1;
+	if(p->alu == 1)
+		x64guard(b, 0x75);
+	else{
+		x64byte(b, 0x74); validated=b->n; x64byte(b, 0);
+	}
+	x64byte(b, 0x48); x64byte(b, 0x3d);
+	x64word(b, abi->heapref > abi->heapcolor ? abi->heapref : abi->heapcolor);
+	x64guard(b, 0x77);
+	x64field(b, 1, 0, -abi->heapref, 8);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x75);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff); x64guard(b, 0x75);
+	if(validated >= 0)
+		b->bytes[validated]=b->n-validated-1;
 	x64ptr(b, 2, abi->d);
 	x64byte(b, 0x4d); x64byte(b, 0x8b); x64byte(b, 0x0a); /* r9=previous owner */
 	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff);
 	x64byte(b, 0x74); same=b->n; x64byte(b, 0);
 	x64byte(b, 0x49); x64byte(b, 0x39); x64byte(b, 0xc1); x64guard(b, 0x74);
 	b->bytes[same]=b->n-same-1;
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64guard(b, 0x75);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
 	empty=-1;
-	if(p->alu == 1)
-		x64guard(b, 0x75);
-	else{
+	if(p->alu != 1){
+		x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
 		x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
 	}
-	x64field(b, 1, 0, -abi->heapref, 8);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x75);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff); x64guard(b, 0x75);
 	/* An identical owner needs no retain/release pair, but must pass the same guards. */
 	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff);
 	x64byte(b, 0x75); same=b->n; x64byte(b, 0);

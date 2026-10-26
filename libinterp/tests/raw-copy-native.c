@@ -10,7 +10,7 @@ Type Tstring = {1}, Tarray = {1};
 
 REG R;
 int mutator, nprop;
-char exNilref[] = "nil", exBounds[] = "bounds";
+char exNilref[] = "nil", exBounds[] = "bounds", exHeap[] = "heap";
 static jmp_buf boundary;
 static char *raised;
 
