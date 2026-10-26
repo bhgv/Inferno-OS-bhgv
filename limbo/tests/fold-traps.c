@@ -14,6 +14,11 @@ typedef uint64_t UWORD;
 typedef int64_t LONG;
 typedef uint64_t ULONG;
 typedef unsigned long ulong;
+typedef struct Heap Heap;
+
+/* Use the production origin span; ownership in this fixture stays inline. */
+HEAP_LAYOUT
+
 typedef unsigned char BYTE;
 typedef uint32_t Rune;
 #define H ((void*)1) // Fixture nil-owner sentinel.

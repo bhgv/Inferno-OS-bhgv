@@ -43,7 +43,7 @@ emit(u32int *out, int wb, int kind, int layout)
     a.wordbytes=wb; a.s=8; a.d=16; a.m=24;
     a.stringlen=layout ? 12 : 0; a.stringmax=4;
     a.stringdata=layout ? 32 : 24; a.heapref=24; a.refbytes=8;
-    return leafemit(out,128,&a,kind == 0 ? IINDC : kind == 1 ? IINSC : ISLICEC);
+    return leafemit(out,128,&a,kind == 0 ? IINDC : kind == 1 ? IINSC : kind == 2 ? ISLICEC : ILENC);
 }
 '''.replace('HEADER', '"'+str(header)+'"'))
         binary = td/(arch+'.so')
@@ -76,12 +76,12 @@ emit(u32int *out, int wb, int kind, int layout)
 
         machine.hook_add(UC_HOOK_MEM_WRITE, written)
         machine.hook_add(UC_HOOK_MEM_READ, readprobe)
-        checks = [0, 0, 0]
+        checks = [0, 0, 0, 0]
         for wb in (4, 8):
             for layout in (0, 1):
                 lenoff, dataoff = (12, 32) if layout else (0, 24)
                 offsets = (0xf00, 0xfd0, 0xfe0) if layout else (0xf00, 0xfe0, 0xfe8, 0xff0, 0xff8)
-                for kind in map(int, os.environ.get('CELL_KINDS', '0 1 2').split()):
+                for kind in map(int, os.environ.get('CELL_KINDS', '0 1 2 3').split()):
                     output = (C.c_uint32*128)()
                     count = library.emit(output, wb, kind, layout)
                     if not 0 < count <= 128:
@@ -92,30 +92,37 @@ emit(u32int *out, int wb, int kind, int layout)
                         cases = [(length, index, value) for length in (1, 7, 128, 0x7fffffff)
                                  for index in (-1, 0, 1, 7, 127, 128, 0x7ffffffe, 0x7fffffff)
                                  for value in ((0,) if kind == 0 else (0x41, 0x7f, 0x80, 0x80000000, 0x100000041))]
+                    elif kind == 3:
+                        cases = [(length, 0, 0) for length in (0, 1, 7, 0x7fffffff, -0x80000000)]
                     else:
                         cases = [(0x7fffffff, start, end) for start, end in
                                  ((-1, 1), (1, 0), (0, 1), (0, 128), (0, 0x7fffffff),
                                   (1, 2), (1, 129), (1, 257), (1, 258), (7, 8),
                                   (7, 263), (7, 264), (0x7ffffffe, 0x7fffffff))]
-                    if os.environ.get("CELL_PROBE_ONLY"):
+                    if os.environ.get("CELL_PROBE_ONLY") or os.environ.get("CELL_GEOMETRY_ONLY"):
                         cases = []
                     for wide in (0, 1):
                         stride = 4 if wide else 1
-                        for offset in offsets:
+                        for offset in (offsets+((0xff0,) if layout else (0xffc,)) if kind == 3 else offsets):
                             for length, index, value in cases:
                                 image = bytearray(b'\xa5'*0x4000)
                                 top = bytearray(b'\x5a'*0x1000)
                                 owner = HIGH+offset
                                 put(top, offset-24, 1)
                                 put(top, offset+lenoff, -length if wide else length, 4)
-                                put(top, offset+4, 0x7fffffff, 4)
-                                put(image, 0x100, owner if kind == 0 else value if kind == 1 else index, 8 if kind == 0 else wb)
+                                if kind != 3:
+                                    put(top, offset+4, 0x7fffffff, 4)
+                                put(image, 0x100, owner if kind in (0, 3) else value if kind == 1 else index, 8 if kind in (0, 3) else wb)
                                 put(image, 0x200, index if kind < 2 else value, wb)
-                                put(image, 0x300, 0x13579 if kind == 0 else owner)
+                                put(image, 0x300, 0x13579 if kind in (0, 3) else owner)
                                 put(image, 8, BASE+0x100); put(image, 24, BASE+0x200); put(image, 16, BASE+0x300)
                                 expected, expectedtop = bytearray(image), bytearray(top)
                                 end = owner+dataoff+(index+1)*stride
-                                if kind == 0:
+                                if kind == 3:
+                                    valid = length != -0x80000000 and owner+lenoff+4 <= MASK
+                                    if valid:
+                                        put(expected, 0x300, abs(length), wb)
+                                elif kind == 0:
                                     valid = 0 <= index < length and end <= MASK
                                     if valid:
                                         begin = owner+dataoff+index*stride-HIGH
@@ -129,7 +136,8 @@ emit(u32int *out, int wb, int kind, int layout)
                                         if index == length:
                                             put(expectedtop, offset+lenoff, -(length+1) if wide else length+1, 4)
                                 else:
-                                    valid = 0 <= index < value <= length and (index == 0 or value-index <= 256)
+                                    valid = (0 <= index < value <= length and (index == 0 or value-index <= 256)
+                                             and owner+max(lenoff+4, 8) <= MASK)
                                     if index:
                                         valid = valid and owner+dataoff+value*stride <= MASK
                                     if valid:
@@ -158,30 +166,34 @@ emit(u32int *out, int wb, int kind, int layout)
         for layout in (0, 1):
             lenoff, dataoff = (12, 32) if layout else (0, 24)
             for wb in (4, 8):
-                for kind in map(int, os.environ.get('CELL_PROBE_KINDS', '0 1').split()):
+                for kind in map(int, os.environ.get('CELL_PROBE_KINDS', '0 1 2 3').split()):
                     output = (C.c_uint32*128)()
                     units = library.emit(output, wb, kind, layout)
                     if units <= 0:
                         raise RuntimeError((arch, wb, kind, layout, 'missing preflight leaf'))
                     machine.mem_write(CODE, bytes(output)[:units*4])
                     machine.ctl_remove_cache(CODE, CODE+512)
-                    probes = [(slot, pointer) for slot in ('source', 'index', 'destination')
+                    probes = [(slot, pointer) for slot in (('source', 'destination') if kind == 3 else ('source', 'index', 'destination'))
                               for pointer in (0, MASK, MASK-1, MASK-2)]
-                    probes += [('owner', pointer) for pointer in [0, MASK]+[MASK-i for i in range(1, 16)]+
-                               (list(range(1, 25)) if kind else [])]
+                    extent = lenoff+4 if kind == 3 else max(lenoff+4, 8) if kind == 2 else 16
+                    probes += [('owner', pointer) for pointer in ([0] if kind == 3 else [0, MASK])+
+                               [MASK-i for i in range(1, extent)]+
+                               (list(range(1, 25)) if kind in (1, 2) else [])]
+                    if os.environ.get('CELL_GEOMETRY_ONLY'):
+                        probes = []
                     family = os.environ.get('CELL_PROBE_FAMILY')
                     for slot, pointer in probes:
                         if family and (slot == 'owner') != (family == 'owners'):
                             continue
                         image = bytearray(b'\xa5'*0x4000)
                         put(image, 8, BASE+0x100); put(image, 24, BASE+0x200); put(image, 16, BASE+0x300)
-                        put(image, 0x100, 65 if kind else BASE+0x800, wb if kind else 8)
-                        put(image, 0x200, 0, wb)
-                        put(image, 0x300, BASE+0x800 if kind else 77, 8 if kind else wb)
+                        put(image, 0x100, BASE+0x800 if kind in (0, 3) else 65 if kind == 1 else 0, 8 if kind in (0, 3) else wb)
+                        put(image, 0x200, 1 if kind == 2 else 0, wb)
+                        put(image, 0x300, BASE+0x800 if kind in (1, 2) else 77, 8 if kind in (1, 2) else wb)
                         put(image, 0x800-24, 1)
                         put(image, 0x800+lenoff, 1, 4); put(image, 0x804, 8, 4)
                         if slot == 'owner':
-                            put(image, 0x300 if kind else 0x100, pointer)
+                            put(image, 0x300 if kind in (1, 2) else 0x100, pointer)
                         else:
                             put(image, {'source': 8, 'index': 24, 'destination': 16}[slot], pointer)
                         machine.mem_write(BASE, bytes(image))
@@ -200,4 +212,30 @@ emit(u32int *out, int wb, int kind, int layout)
                         if result != 0 or writes or bytes(machine.mem_read(BASE, 0x4000)) != image:
                             raise RuntimeError((arch, wb, kind, layout, slot, pointer, 'preflight publication'))
                         checks[kind] += 1
-        print('PASS', arch, 'INDC/INSC/SLICEC spans:', checks, 'address/image/write checks', flush=True)
+                    if kind == 2:
+                        geometry = ((0, -1), (0, -0x80000000), (0, 0x80000000),
+                                    (0, 1 << 32), (0, 0x7fffffffffffffff), (1, 0), (-1, 2))
+                        for start, end in geometry:
+                            image = bytearray(b'\xa5'*0x4000)
+                            put(image, 8, BASE+0x100); put(image, 24, BASE+0x200); put(image, 16, BASE+0x300)
+                            put(image, 0x100, start, wb); put(image, 0x200, end, wb)
+                            put(image, 0x300, BASE+0x800)
+                            put(image, 0x800-24, 1)
+                            put(image, 0x800+lenoff, 1, 4); put(image, 0x804, 8, 4)
+                            machine.mem_write(BASE, bytes(image))
+                            writes.clear()
+                            if arch == 'amd64':
+                                machine.reg_write(UC_X86_REG_RDI, BASE)
+                                machine.reg_write(UC_X86_REG_RSP, CODE+0x2800)
+                                machine.mem_write(CODE+0x2800, STOP.to_bytes(8, 'little'))
+                            else:
+                                machine.reg_write(UC_ARM64_REG_X0, BASE)
+                                machine.reg_write(UC_ARM64_REG_LR, STOP)
+                            probing[0] = True
+                            machine.emu_start(CODE, STOP, count=12000)
+                            probing[0] = False
+                            result = machine.reg_read(UC_X86_REG_RAX if arch == 'amd64' else UC_ARM64_REG_X0)
+                            if result != 0 or writes or bytes(machine.mem_read(BASE, 0x4000)) != image:
+                                raise RuntimeError((arch, wb, layout, start, end, 'geometry publication'))
+                            checks[kind] += 1
+        print('PASS', arch, 'INDC/INSC/SLICEC/LENC spans:', checks, 'address/image/write checks', flush=True)

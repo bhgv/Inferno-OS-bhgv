@@ -38,6 +38,11 @@ INSC also bounds its backward reference cell before metadata reads. C mirrors
 slot/header checks and validates full Heap origins. Existing native availability
 is unchanged. See [README.string-cell-preflight.md](README.string-cell-preflight.md).
 
+SLICEC and LENC also preflight decoded slots. Slice owner checks bound exactly
+the reference/len/max metadata, preserving payload-free prefixes; length queries
+retain their length-field-only behavior. C slicec/slicer validate metadata before
+access. See [README.slice-length-preflight.md](README.slice-length-preflight.md).
+
 The preceding addition is ICONSMP for pointer-free mapped payloads up to 256 bytes.
 Native code resolves a checked live Type, stages the old tail across allocation,
 copies payload bytes and publishes descriptor/owner updates. Mapped and larger

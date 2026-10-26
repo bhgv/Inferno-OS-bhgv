@@ -52,7 +52,8 @@ native += [function(runtime, 'OP('+name+')') for name in
 native.append(function((root / 'libinterp/string.c').read_text(), 'String*\nslicer('))
 native = re.sub(r'\berror\(', 'vmerror(', '\n'.join(native))
 unit = base+(root / 'limbo/tests/fold-traps.c').read_text()
-unit = unit.replace('EFFECT_TABLE', effects).replace('VM_IMPLEMENTATION', native)
+heap = function((root/'include/interp.h').read_text(), 'struct Heap\n')+';'
+unit = unit.replace('HEAP_LAYOUT', heap).replace('EFFECT_TABLE', effects).replace('VM_IMPLEMENTATION', native)
 with tempfile.TemporaryDirectory(prefix='fold-traps-') as directory:
     td = Path(directory)
     target = td / 'traps.c'

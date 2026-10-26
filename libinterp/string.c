@@ -170,6 +170,9 @@ slicer(ulong start, ulong v, String *ds)
 
 	if(ds == nil)
 		error(exNilref);
+	if(ds != H && ((uintptr)ds <= sizeof(Heap) ||
+	   (uintptr)ds > (uintptr)-1-(offsetof(String, max)+sizeof(ds->max))))
+		error(exHeap);
 	if(ds != H && ds->len == (-0x7fffffff-1))
 		error(exHeap);
 	if(ds == H) {
@@ -217,6 +220,12 @@ OP(slicec)
 	uvlong bytes;
 	uintptr address;
 
+	/* Reject incomplete slots before reading geometry or changing the old owner. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(start) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(end) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(old))
+		error(exHeap);
+
 	memmove(&start, R.s, sizeof(start));
 	memmove(&end, R.m, sizeof(end));
 	memmove(&old, R.d, sizeof(old));
@@ -225,6 +234,9 @@ OP(slicec)
 	if(old == nil)
 		error(exNilref);
 	if(old != H){
+		if((uintptr)old <= sizeof(Heap) ||
+		   (uintptr)old > (uintptr)-1-(offsetof(String, max)+sizeof(old->max)))
+			error(exHeap);
 		length = old->len;
 		if(length == (-0x7fffffff-1))
 			error(exHeap);
@@ -651,6 +663,11 @@ OP(lenc)
 	int l;
 	WORD length;
 	String *ss;
+
+	/* The output must be writable before either the owner slot or its length is read. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(ss) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(length))
+		error(exHeap);
 
 	l = 0;
 	memmove(&ss, R.s, sizeof(ss));

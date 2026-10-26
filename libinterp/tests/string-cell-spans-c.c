@@ -76,7 +76,10 @@ main(void)
 		reused = 0;
 		begin = offsets[offset]+dataoffset;
 		copied = counts[ci];
-		if((op == 0 || op == 1 || op == 4) && begin > 0xffff)
+		if((op == 3 || (op == 2 && index >= 0 && (uvlong)index+copied <= 0x7fffffff)) &&
+		   offsets[offset]+offsetof(String, max)+sizeof(owner->max) > 0xffff)
+			exception = exHeap;
+		else if((op == 0 || op == 1 || op == 4) && begin > 0xffff)
 			exception = exHeap;
 		else if(op == 0 || op == 1 || op == 4){
 			if(index < 0 || index > length || (op == 0 && index == length))

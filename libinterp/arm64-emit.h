@@ -915,14 +915,24 @@ a64stringslice(A64Buf *b, LeafLayout *a)
 	   a->heapref <= 0 || a->heapref > 255 || a->heapref%8 || a->refbytes != 8) return 0;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	/* Scalar geometry slots and the native owner slot have independent widths. */
+	a64ptr(b, 9, a->s); a64pcspan(b, 9, a->wordbytes, fallback);
+	a64ptr(b, 9, a->m); a64pcspan(b, 9, a->wordbytes, fallback);
+	a64ptr(b, 9, a->d); a64pcspan(b, 9, 8, fallback);
 	a64ptr(b, 9, a->s); a64load(b, 12, 9, a->wordbytes);
 	a64ptr(b, 10, a->m); a64load(b, 13, 10, a->wordbytes);
 	if(a->wordbytes == 4){a64put(b, 0x93407d8c); a64put(b, 0x93407dad);}
 	a64put(b, 0xf100019f); a64pcguard(b, 0x5400006a, fallback); // start >= 0.
 	a64put(b, 0xeb0c01bf); a64pcguard(b, 0x54000068, fallback); // end > start.
+	/* Only unsigned 31-bit end values may reach any owner metadata. */
+	a64put(b, 0xd35ffda4); // lsr x4,x13,#31.
+	a64pcguard(b, 0xb4000064, fallback);
 	a64ptr(b, 11, a->d); a64load(b, 14, 11, 8);
 	a64pcguard(b, 0xb500006e, fallback);
 	a64put(b, 0xb10005df); a64pcguard(b, 0x54000061, fallback);
+	/* Bound exactly the metadata read by prefixes, preserving payload-free reuse. */
+	a64appendowner(b, 14, a->heapref,
+		a->stringlen+4 > a->stringmax+4 ? a->stringlen+4 : a->stringmax+4, fallback);
 	a64wordfield(b, 15, 14, a->stringlen, 4);
 	a64put(b, 0xf10001ff); // Preserve representation while deriving absolute length.
 	a64put(b, 0xda8fa5e2); // cneg x2,x15,lt.
@@ -2331,6 +2341,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64ptr(&b, 11, abi->d); a64store(&b, 12, p.bytes);
 	}else if(p.kind == LeafStringLength){
 		if(abi->stringlen < 0 || abi->stringlen > 16380 || abi->stringlen%4 != 0) return 0;
+		/* Length queries must not read through malformed decoded operand slots. */
+		a64ptr(&b, 10, abi->d); a64pcspan(&b, 10, abi->wordbytes, -1);
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, 8, -1);
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
 		a64guard(&b, 0xb500006c);
 		a64put(&b, 0xb100059f); /* cmn x12, #1 */

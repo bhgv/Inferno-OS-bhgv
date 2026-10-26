@@ -1211,13 +1211,23 @@ x64stringslice(X64Buf *b, LeafLayout *a)
 	   a->heapref <= 0 || a->heapref > 255 || a->heapref%8 || a->refbytes != 8) return 0;
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+	/* Validate all slots before capturing geometry or the destination owner. */
+	x64ptr(b, 0, a->s); x64pcspan(b, 8, a->wordbytes);
+	x64ptr(b, 0, a->m); x64pcspan(b, 8, a->wordbytes);
+	x64ptr(b, 0, a->d); x64pcspan(b, 8, 8);
 	x64ptr(b, 0, a->s); x64load(b, 0, a->wordbytes);
 	x64ptr(b, 1, a->m); x64load(b, 1, a->wordbytes);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x79, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xc1); x64moduleguard(b, 0x77, fallback);
+	/* C rejects a negative or non-Dis end before inspecting the owner. */
+	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, 0x7fffffff);
+	x64moduleguard(b, 0x76, fallback);
 	x64ptr(b, 2, a->d); x64load(b, 2, 8);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0xff); x64moduleguard(b, 0x75, fallback);
+	/* Prefixes access only metadata: do not require an unused payload base to fit. */
+	x64appendowner(b, 2, a->heapref,
+		a->stringlen+4 > a->stringmax+4 ? a->stringlen+4 : a->stringmax+4, fallback);
 	/* r8 retains the signed representation; r9 is its native absolute length. */
 	x64byte(b, 0x4c); x64byte(b, 0x63); x64byte(b, 0x82); x64word(b, a->stringlen);
 	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0xc1);
@@ -2768,6 +2778,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64ptr(&b, 2, abi->d); x64store(&b, 0, p.bytes);
 	}else if(p.kind == LeafStringLength){
 		if(abi->stringlen < 0) return 0;
+		/* Reject an invalid result slot before loading the String pointer. */
+		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, abi->wordbytes);
+		x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, 8);
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff);

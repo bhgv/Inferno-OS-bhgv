@@ -70,20 +70,20 @@ int emit(u32int *out, int cap, int wb, int field, int value)
         machine.hook_add(UC_HOOK_MEM_WRITE, write)
         checks = 0
         for wb in (4, 8):
-            out = (C.c_uint32*64)()
-            n = lib.emit(out, 64, wb, 0, 0)
-            require(0 < n <= 64 and lib.emit(None, 64, wb, 0, 0) == n, (arch, wb, 'sizing'))
+            out = (C.c_uint32*128)()
+            n = lib.emit(out, 128, wb, 0, 0)
+            require(0 < n <= 128 and lib.emit(None, 128, wb, 0, 0) == n, (arch, wb, 'sizing'))
             blob = bytes(out)[:n*4]
             require(sum(i.size for i in dis.disasm(blob, CODE)) == n*4, 'instruction decoding')
             for cap in range(n):
-                guard = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                require(lib.emit(guard, cap, wb, 0, 0) == 0 and list(guard) == [0xa5a5a5a5]*64, 'partial publication')
+                guard = (C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                require(lib.emit(guard, cap, wb, 0, 0) == 0 and list(guard) == [0xa5a5a5a5]*128, 'partial publication')
             for field, values in ((1, (-1, 1, 2048)), (2, (-1, 1, 2048)), (3, (-1, 2048)), (4, (-1, 0, 1, 256)), (5, (0, 4, 16))):
                 for value in values:
-                    guard = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                    require(lib.emit(guard, 64, wb, field, value) == 0 and list(guard) == [0xa5a5a5a5]*64, (arch, field, value))
+                    guard = (C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                    require(lib.emit(guard, 128, wb, field, value) == 0 and list(guard) == [0xa5a5a5a5]*128, (arch, field, value))
             machine.mem_write(CODE, blob)
-            machine.ctl_remove_cache(CODE, CODE+256)
+            machine.ctl_remove_cache(CODE, CODE+512)
             for wide in (0, 1):
                 for profile in range(33):
                     for sa in range(8):

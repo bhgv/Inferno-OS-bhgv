@@ -34,7 +34,7 @@ def function(text, signature):
 
 
 signatures = ['String*\nnewstring(', 'String*\nnewrunes(', 'void\ncvtup(',
-              'String*\nstringdup(', 'String*\naddstring(', 'String*\nslicer(', 'String*\nsplitc(', 'OP(slicec)', 'OP(insc)', 'OP(addc)', 'OP(indc)', 'OP(cvtca)',
+              'String*\nstringdup(', 'String*\naddstring(', 'String*\nslicer(', 'String*\nsplitc(', 'OP(slicec)', 'OP(lenc)', 'OP(insc)', 'OP(addc)', 'OP(indc)', 'OP(cvtca)',
               'OP(cvtac)', 'OP(cvtwc)', 'char*\nstring2c(', 'String*\nc2string(']
 parts = [function(source, signature) for signature in signatures]
 parts += [function((root / 'libinterp/runt.c').read_text(), 'Array*\nmem2array(')]
@@ -42,6 +42,10 @@ unit = (root / 'libinterp/tests/string-codecs.c').read_text()
 unit = re.sub(r'^#include "[^"]+"\n', '', unit, flags=re.M)
 unit = '#include "comp-amd64.c"\n#include "tests/leaf-cons-stub.h"\n#include "tests/leaf-plain-stubs.h"\n#include <fenv.h>\n'+unit.replace('IMPLEMENTATION', '\n'.join(parts)).replace('main(void)', 'codecmain(void)')
 unit += (root/'libinterp/tests/string-slice-native.c').read_text()
+# Reused allocator/EXPECT predicates must remain active under NDEBUG.
+unit = ('static void slicepredicate(int);\n'
+        '#define slicecheck(condition) slicepredicate(!!(condition)) // Normalize pointer/scalar predicates.\n'
+        +unit.replace('assert(', 'slicecheck('))
 with tempfile.TemporaryDirectory(prefix='string-slice-native-') as directory:
     td = Path(directory)
     target = td / 'codecs.c'
