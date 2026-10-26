@@ -33,3 +33,9 @@ C predicates remain active under NDEBUG, and Python predicates under -O.
 Coverage remains 164 of 173 active Dis commands on AMD64 and ARM64. This series
 repairs existing guarded paths; it adds no newly native opcode. Physical ARM64
 execution and a complete Inferno boot were not checked by these fixtures.
+
+The separate `owner-optimized.py` checkpoint runs all 1,600 preflight cases
+under Python `-O` on both architectures. It clears interactive family filters
+and forces both architectures, preserving compiler/dependency settings. This
+keeps assertion-independent checks exercised in the registered JIT suite; the
+full `owner-jit.py` differential matrix remains registered separately.

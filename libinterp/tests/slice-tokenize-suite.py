@@ -192,6 +192,7 @@ JIT = [
     'libinterp/tests/mapped-copy-layouts.py',
     'libinterp/tests/mapped-copy-jit.py',
     'libinterp/tests/owner-jit.py',
+    'libinterp/tests/owner-optimized.py',
     'libinterp/tests/386-byte-div.py',
     'libinterp/tests/386-types.py',
     'libinterp/tests/arm-types.py',
