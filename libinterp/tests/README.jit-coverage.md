@@ -2,19 +2,26 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 147 commands (85.0%); 26 remain on the interpreter path. RV64 profiles
+paths for 149 commands (86.1%); 24 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 147 | 26 |
-| ARM64 | 173 | 147 | 26 |
+| AMD64 | 173 | 149 | 24 |
+| ARM64 | 173 | 149 | 24 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
 
-The latest addition is INEW on AMD64/ARM64, sharing checked descriptor/owner
+The latest additions are INEWA and INEWAZ on AMD64/ARM64. Unique owning arrays
+with the same requested type and length can reuse pointer-free payloads of at
+most 256 bytes (element width at most 256). NEWA leaves scalar bytes unspecified;
+NEWAZ clears them after complete owner/data-span checks. Empty and zero-width
+arrays skip data access. Shared owners, views and mapped elements retain C.
+See [README.array-constructor-native.md](README.array-constructor-native.md).
+
+The preceding addition is INEW on AMD64/ARM64, sharing checked descriptor/owner
 lookup with INEWZ/IMNEWZ. Unique standard pointer-free records of at most 256
 bytes reuse their owner without accessing unspecified scalar bytes. Mapped,
 shared and custom-finalizer cases retain ordinary allocation. NEWA/NEWAZ now
@@ -143,12 +150,12 @@ and RX publication are covered separately by `leaf64-runtime.py`.
 
 ## Current interpreter-only commands on AMD64/ARM64
 
-The production sizing emitters report these 26 active commands for both WORD models:
+The production sizing emitters report these 24 active commands for both WORD models:
 
 ```
-IALT INBALT ISPAWN ILOAD IMSPAWN IEXIT INEWA INEWCB INEWCW INEWCF INEWCP
+IALT INBALT ISPAWN ILOAD IMSPAWN IEXIT INEWCB INEWCW INEWCF INEWCP
 INEWCM INEWCMP ISEND IRECV ICONSB ICONSW ICONSP ICONSF ICONSM ICONSMP ICONSL
-INEWCL ICASEC INEWAZ IRAISE
+INEWCL ICASEC IRAISE
 ```
 
 The list excludes invalid/unused slots and is regenerated from jit-coverage.py.

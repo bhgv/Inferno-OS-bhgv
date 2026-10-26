@@ -1343,10 +1343,12 @@ newarray(int clear)
 {
 	WORD count, index;
 	Type *type;
-	Heap *h;
+	Heap *h, header;
 	Array *array, *old;
 	uchar *element;
 	int i;
+	uintptr address;
+	ulong bytes;
 
 	memmove(&index, R.m, sizeof(index));
 	type = moduletype(R.M, index);
@@ -1359,6 +1361,34 @@ newarray(int clear)
 	   Tarray.ref <= 0 || Tarray.ref == 0x7fffffff)
 		error(exHeap);
 	acheck(type->size, count);
+	memmove(&old, R.d, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	if(old != H){
+		address = (uintptr)old;
+		if(address < sizeof(Heap) || address%sizeof(void*) != 0)
+			error(exHeap);
+		memmove(&header, (uchar*)old-sizeof(Heap), sizeof(header));
+		if(header.ref == 0)
+			error(exHeap);
+		if(header.t == &Tarray && header.ref == 1 && type->np == 0){
+			if(address > (uintptr)-1-sizeof(Array))
+				error(exHeap);
+			if(old->t == type && old->len == count && old->root == H){
+				bytes = (ulong)type->size*count;
+				if(bytes != 0){
+					if((uintptr)old->data < address+sizeof(Array) ||
+					   old->data == H || (uintptr)old->data > (uintptr)-1-bytes)
+						error(exHeap);
+					if(clear)
+						memset(old->data, 0, bytes);
+				}
+				/* An output operand may overlap the reused scalar payload. */
+				memmove(R.d, &old, sizeof(old));
+				return;
+			}
+		}
+	}
 	/* heaparray checks both descriptor retains and every mapped pointer slot. */
 	h = heaparray(type, (int)count);
 	array = H2D(Array*, h);
@@ -1373,7 +1403,6 @@ newarray(int clear)
 			}
 		}
 	}
-	memmove(&old, R.d, sizeof(old));
 	memmove(R.d, &array, sizeof(array));
 	destroy(old);
 }

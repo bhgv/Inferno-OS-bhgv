@@ -1,5 +1,8 @@
 # Raw record reuse and checked VM array construction
 
+For the subsequent NEWA/NEWAZ native paths, see
+[README.array-constructor-native.md](README.array-constructor-native.md).
+
 INEW now has guarded native paths on AMD64 and ARM64. It joins INEWZ and IMNEWZ
 in one record-construction emitter, with named modes for local clearing,
 imported clearing and raw construction. Each backend has native paths for

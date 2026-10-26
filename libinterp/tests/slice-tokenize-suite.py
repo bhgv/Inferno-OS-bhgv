@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/array-reuse-native.py',
     'libinterp/tests/array-create.py',
     'libinterp/tests/newzero-native.py',
     'libinterp/tests/string-bytes-native.py',
@@ -123,6 +124,8 @@ CORE = [
     'limbo/tests/case-max.py',
 ]
 JIT = [
+    'libinterp/tests/array-create-jit.py',
+    'libinterp/tests/array-create-layouts.py',
     'libinterp/tests/newzero-jit.py',
     'libinterp/tests/newzero-layouts.py',
     'libinterp/tests/string-bytes-jit.py',

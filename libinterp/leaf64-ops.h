@@ -115,6 +115,20 @@ leafrecordlayout(LeafLayout *a)
 }
 
 
+/* Require complete disjoint array fields in addition to live module/type metadata. */
+static int
+leafarraycreatelayout(LeafLayout *a)
+{
+	if(!leafrecordlayout(a) || !leafbytearraylayout(a) ||
+	   a->arrayidentity == nil || a->arrayidentity == (void*)-1 ||
+	   a->arraylen < 0 || a->arraylen > 2047 || a->arraylen%a->wordbytes ||
+	   a->arraytype < 0 || a->arraytype > 2047 || a->arraytype%8 ||
+	   a->arrayroot < 0 || a->arrayroot > 2047 || a->arrayroot%8 ||
+	   a->arraydata < 0 || a->arraydata > 2047 || a->arraydata%8)
+		return 0;
+	return 1;
+}
+
 /* Record construction modes keep operand selection distinct from scalar initialization. */
 enum {
 	LeafRecordZero = 0, // NEWZ resolves a local descriptor and clears scalar bytes.
@@ -133,6 +147,7 @@ struct LeafOp {
 };
 
 enum {
+	LeafArrayCreate = 126, // Reuse unique owning pointer-free arrays for NEWA/NEWAZ.
 	LeafRecordObject = 125, // Reuse unique pointer-free standard records for NEW/NEWZ/MNEWZ.
 	LeafStringBytes = 124, // Export bounded byte-backed strings into reusable byte arrays.
 	LeafByteString = 123, // Convert bounded ASCII arrays into reusable unique strings.
@@ -171,6 +186,8 @@ leafop(LeafOp *p, int op, int wordbytes)
 	memset(p, 0, sizeof(*p));
 	p->bytes = wordbytes;
 	switch(op){
+	case INEWA: p->kind = LeafArrayCreate; break;
+	case INEWAZ: p->kind = LeafArrayCreate; p->alu = 1; break;
 	case INEW: p->kind = LeafRecordObject; p->alu = LeafRecordRaw; break;
 	case INEWZ: p->kind = LeafRecordObject; p->alu = LeafRecordZero; break;
 	case IMNEWZ: p->kind = LeafRecordObject; p->alu = LeafRecordImportedZero; break;

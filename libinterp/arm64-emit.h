@@ -1434,6 +1434,140 @@ a64recordobject(A64Buf *b, LeafLayout *a, int mode)
 }
 
 
+/* Reuse unique owning pointer-free arrays without retaining or allocating. */
+static int
+a64arraycreate(A64Buf *b, LeafLayout *a, int clear)
+{
+	int fallback, header, moduleend, empty, loop, half, arrayend;
+	unsigned long long identity;
+
+	if(!leafarraycreatelayout(a))
+		return 0;
+	arrayend=a->arraylen+a->wordbytes;
+	if(arrayend<a->arraytype+8)arrayend=a->arraytype+8;
+	if(arrayend<a->arrayroot+8)arrayend=a->arrayroot+8;
+	if(arrayend<a->arraydata+8)arrayend=a->arraydata+8;
+	header=a->typeref+4;
+	if(header<a->typesize+4)header=a->typesize+4;
+	if(header<a->typenp+4)header=a->typenp+4;
+	if(header<a->typefree+8)header=a->typefree+8;
+	if(header<a->typemark+8)header=a->typemark+8;
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	a64ptr(b, 12, a->module);
+	a64defer(b, 0xb400000c, fallback);
+	a64put(b, 0xb100059fU); // cmn x12, #1
+	a64defer(b, 0x54000000, fallback);
+	a64put(b, 0xb100019fU | (u32int)(a->linkmodule+8)<<10);
+	a64defer(b, 0x54000002, fallback);
+	a64field(b, 12, 12, a->linkmodule, 8);
+	a64defer(b, 0xb400000c, fallback);
+	a64put(b, 0xb100059fU); // cmn x12, #1
+	a64defer(b, 0x54000000, fallback);
+	moduleend=a->moduletypes+8;
+	if(moduleend<a->modulenty+4)moduleend=a->modulenty+4;
+	a64put(b, 0xb100019fU | (u32int)moduleend<<10);
+	a64defer(b, 0x54000002, fallback);
+	a64wordfield(b, 13, 12, a->modulenty, 4);
+	a64put(b, 0xf10001bfU); // cmp x13, #0
+	a64defer(b, 0x5400000d, fallback);
+	a64field(b, 12, 12, a->moduletypes, 8);
+	a64ptr(b, 14, a->m); a64wordfield(b, 14, 14, 0, a->wordbytes);
+	a64put(b, 0xeb0d01dfU); // cmp x14, x13
+	a64defer(b, 0x54000002, fallback);
+	a64defer(b, 0xb400000c, fallback);
+	a64put(b, 0xb100059fU); // cmn x12, #1
+	a64defer(b, 0x54000000, fallback);
+	a64put(b, 0xab0e0d8cU); // adds x12, x12, x14, lsl #3
+	a64defer(b, 0x54000002, fallback);
+	a64put(b, 0xb100219fU); // cmn x12, #8
+	a64defer(b, 0x54000002, fallback);
+	a64put(b, 0xf9400189U); // ldr x9, [x12]
+	a64defer(b, 0xb4000009, fallback);
+	a64put(b, 0xb100053fU); // cmn x9, #1
+	a64defer(b, 0x54000000, fallback);
+	a64put(b, 0xf240093fU); // tst x9, #7
+	a64defer(b, 0x54000001, fallback);
+	a64put(b, 0xb100013fU | (u32int)header<<10);
+	a64defer(b, 0x54000002, fallback);
+	a64wordfield(b, 14, 9, a->typeref, 4);
+	a64put(b, 0xf10001dfU); // cmp x14, #0
+	a64defer(b, 0x5400000d, fallback);
+	a64wordfield(b, 11, 9, a->typesize, 4);
+	a64put(b, 0xf104017fU); // cmp x11, #256
+	a64defer(b, 0x54000008, fallback);
+	a64wordfield(b, 14, 9, a->typenp, 4);
+	a64defer(b, 0xb500000e, fallback);
+	a64wordfield(b, 14, 9, a->typeref, 4);
+	a64put(b, 0x12b0000dU); // mov w13, #0x7fffffff
+	a64put(b, 0x6b0d01dfU); // cmp w14, w13
+	a64defer(b, 0x54000000, fallback);
+	identity=(unsigned long long)a->arrayidentity;
+	for(half=0;half<4;half++)
+		a64put(b, (half==0 ? 0xd280000fU : 0xf280000fU) | half<<21 | ((identity>>(half*16))&65535)<<5);
+	a64put(b, 0xeb0f013fU); // cmp x9, x15
+	a64defer(b, 0x54000000, fallback);
+	a64wordfield(b, 14, 15, a->typeref, 4);
+	a64put(b, 0xf10001dfU); // cmp x14, #0
+	a64defer(b, 0x5400000d, fallback);
+	a64put(b, 0x6b0d01dfU); // cmp w14, w13
+	a64defer(b, 0x54000000, fallback);
+	a64ptr(b, 12, a->s); a64wordfield(b, 12, 12, 0, a->wordbytes);
+	a64put(b, 0xeb0d019fU); // cmp x12, x13
+	a64defer(b, 0x54000008, fallback);
+	a64put(b, 0x9b0c7d6bU); // mul x11, x11, x12
+	a64put(b, 0xf104017fU); // cmp x11, #256
+	a64defer(b, 0x54000008, fallback);
+	a64ptr(b, 8, a->d); a64load(b, 10, 8, 8);
+	a64defer(b, 0xb400000a, fallback);
+	a64put(b, 0xb100055fU); // cmn x10, #1
+	a64defer(b, 0x54000000, fallback);
+	a64put(b, 0xf100015fU | (u32int)a->heapcolor<<10);
+	a64defer(b, 0x54000003, fallback);
+	a64put(b, 0xf240095fU); // tst x10, #7
+	a64defer(b, 0x54000001, fallback);
+	a64put(b, 0xb100015fU | (u32int)arrayend<<10);
+	a64defer(b, 0x54000002, fallback);
+	a64put(b, 0xf840000eU | ((u32int)-a->heaptype&511)<<12 | 10<<5);
+	a64put(b, 0xeb0f01dfU); // cmp x14, x15
+	a64defer(b, 0x54000001, fallback);
+	a64put(b, 0xf840000eU | ((u32int)-a->heapref&511)<<12 | 10<<5);
+	a64put(b, 0xf10005dfU); // cmp x14, #1
+	a64defer(b, 0x54000001, fallback);
+	a64wordfield(b, 14, 10, a->arraylen, a->wordbytes);
+	a64put(b, 0xeb0c01dfU); // cmp x14, x12
+	a64defer(b, 0x54000001, fallback);
+	a64field(b, 14, 10, a->arraytype, 8);
+	a64put(b, 0xeb0901dfU); // cmp x14, x9
+	a64defer(b, 0x54000001, fallback);
+	a64field(b, 14, 10, a->arrayroot, 8);
+	a64put(b, 0xb10005dfU); // cmn x14, #1
+	a64defer(b, 0x54000001, fallback);
+	empty=b->n; a64put(b, 0xb400000b);
+	a64field(b, 14, 10, a->arraydata, 8);
+	/* Empty arrays never inspect data; nonempty owning data must follow the header. */
+	a64put(b, 0x9100014dU | (u32int)arrayend<<10); // add x13, x10, #arrayend
+	a64put(b, 0xeb0d01dfU); // cmp x14, x13
+	a64defer(b, 0x54000003, fallback);
+	a64defer(b, 0xb400000e, fallback);
+	a64put(b, 0xb10005dfU); // cmn x14, #1
+	a64defer(b, 0x54000000, fallback);
+	a64put(b, 0xab0b01dfU); // cmn x14, x11
+	a64defer(b, 0x54000002, fallback);
+	if(clear){
+		a64put(b, 0xaa0b03edU); // mov x13, x11
+		loop=b->n;
+		a64put(b, 0xd10005adU); // sub x13, x13, #1
+		a64put(b, 0x382d69dfU); // strb wzr, [x14, x13]
+		a64put(b, 0xb500000dU | ((loop-b->n)&0x7ffff)<<5);
+	}
+	if(b->n>LeafMax)return 0;
+	b->code[empty] |= (b->n-empty)<<5;
+	a64put(b, 0xf900010aU); // str x10, [x8]
+	return 1;
+}
+
+
 /* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -1475,6 +1609,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!a64slicecopy(&b, abi)) return 0;
 	}else if(p.kind == LeafMappedCopy){
 		if(!a64mapped(&b, abi, &p)) return 0;
+	}else if(p.kind == LeafArrayCreate){
+		if(!a64arraycreate(&b, abi, p.alu)) return 0;
 	}else if(p.kind == LeafRecordObject){
 		if(!a64recordobject(&b, abi, p.alu)) return 0;
 	}else if(p.kind == LeafStringBytes){

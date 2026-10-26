@@ -12,7 +12,7 @@ Type Tarray={1};
 Pool *heapmem;
 int mutator;
 void (*heapmonitor)(int, void*, ulong);
-char exHeap[]="heap", exModule[]="module", exNegsize[]="negative";
+char exHeap[]="heap", exModule[]="module", exNegsize[]="negative", exNilref[]="nil";
 static jmp_buf boundary;
 static char *raised;
 static int calls, live, failure;
