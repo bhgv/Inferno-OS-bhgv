@@ -70,6 +70,9 @@ leafcompile(void *arg)
 	abi.listdata=O(List, data);
 	abi.consentry=(void*)cons;
 	abi.channelentry=(void*)cnewcscalar;
+	abi.rawchannelentry=(void*)cnewcraw;
+	abi.mappedchannelentry=(void*)cnewcmapped;
+	abi.channelmid=O(Channel, mid);
 	abi.listtype=O(List, t); abi.ptrtype=&Tptr;
 	abi.listtail=O(List, tail);
 	abi.fp=O(REG, FP);

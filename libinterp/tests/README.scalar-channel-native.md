@@ -46,7 +46,7 @@ Evidence:
   every case; failures preserve the old output and complete operand image.
 - Fifty preflight cases per WORD model cover scalar, raw and mapped channel
   slots, nil heap prefixes, dead owners and no-allocation behavior. Replacing
-  only the three argument-consuming functions with parent versions through
+  compatible argument-consuming functions with parent versions through
   CHANNEL_ARGUMENT_SOURCE reproduces the parent invalid-read failure under UBSan.
 - The machine-code driver passes 81,920 cases per architecture. The high-address
   callback checks opcode/capacity and delayed publication, then clobbers ordinary
@@ -64,3 +64,8 @@ Evidence:
 Physical ARM64 execution, complete compiler/VM builds, concurrent scheduling/GC
 and platform-specific native acceptance remain separate. VM and Dis layouts and
 MIPS/SPARC/PowerPC JIT sources are unchanged.
+
+Raw/mapped constructors and pre-publication raw metadata now share the same
+capture/publication protocol; see [README.payload-channel-native.md](README.payload-channel-native.md).
+The common allocator now preflights maps for unbuffered mapped channels as well
+as buffered descriptors. The historical counts above describe the scalar series.

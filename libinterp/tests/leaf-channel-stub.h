@@ -13,5 +13,28 @@ cnewcscalar(int op, int len)
 	return nil;
 }
 
+
+/* Reject unexpected raw allocation in unrelated native fixtures. */
+Channel*
+cnewcraw(int size, int len)
+{
+	(void)size;
+	(void)len;
+	abort();
+	return nil;
+}
+
+
+/* Reject unexpected mapped allocation in unrelated native fixtures. */
+Channel*
+cnewcmapped(Modlink *module, WORD index, int len)
+{
+	(void)module;
+	(void)index;
+	(void)len;
+	abort();
+	return nil;
+}
+
 #endif // TEST_LEAF_CHANNEL_RUNTIME
 #endif // TEST_LEAF_CHANNEL_STUB_H

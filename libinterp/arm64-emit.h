@@ -1436,12 +1436,18 @@ a64recordobject(A64Buf *b, LeafLayout *a, int mode)
 
 /* Preserve the empty destination and LR while the shared allocator creates channel resources. */
 static int
-a64scalarchannel(A64Buf *b, LeafLayout *a, int op)
+a64channel(A64Buf *b, LeafLayout *a, int op)
 {
-	int fallback, unbuffered, half;
+	int fallback, unbuffered, half, raw, mapped;
 	unsigned long long entry;
 
-	if(a->channelentry == nil || a->channelentry == (void*)-1)
+	raw = op == INEWCM;
+	mapped = op == INEWCMP;
+	entry = (unsigned long long)(raw ? a->rawchannelentry : mapped ? a->mappedchannelentry : a->channelentry);
+	if((raw && (a->channelmid < 40 || a->channelmid > 2047 || a->channelmid%8)) ||
+	   (mapped && (a->module < 0 || a->module > 2047 || a->module%8)))
+		return 0;
+	if(entry == 0 || entry == ~0ULL)
 		return 0;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
@@ -1452,6 +1458,18 @@ a64scalarchannel(A64Buf *b, LeafLayout *a, int op)
 	a64put(b, 0xf940014cU); // ldr x12, [x10]
 	a64put(b, 0xb100059fU); // cmn x12, #1
 	a64defer(b, 0x54000001, fallback);
+	if(raw || mapped){
+		a64ptr(b, 9, a->s);
+		a64defer(b, 0xb4000009, fallback);
+		a64put(b, 0xb100013fU | (u32int)a->wordbytes<<10);
+		a64defer(b, 0x54000002, fallback);
+		a64wordfield(b, 4, 9, 0, a->wordbytes);
+		if(raw){
+			a64put(b, 0x12b0000cU); // mov w12, #INT_MAX
+			a64put(b, 0xeb0c009fU); // cmp x4, x12
+			a64defer(b, 0x54000008, fallback);
+		}
+	}
 	a64ptr(b, 9, a->m);
 	a64put(b, 0xd2800001U); // mov x1, #0
 	a64put(b, 0xeb0a013fU); // cmp x9, x10
@@ -1465,13 +1483,29 @@ a64scalarchannel(A64Buf *b, LeafLayout *a, int op)
 	a64defer(b, 0x54000008, fallback);
 	if(b->n>LeafMax)return 0;
 	b->code[unbuffered] |= (b->n-unbuffered)<<5;
-	a64put(b, 0xa9bf7beaU); // stp x10, x30, [sp, #-16]!
-	a64put(b, 0x52800000U | (u32int)op<<5); // mov w0, opcode
-	entry=(unsigned long long)a->channelentry;
+	a64put(b, raw || mapped ? 0xa9be7beaU : 0xa9bf7beaU); // Save output/LR in a 32- or 16-byte frame.
+	if(raw || mapped){
+		a64put(b, 0xf9000be4U); // str x4, [sp, #16]
+		if(mapped){
+			a64ptr(b, 3, a->module);
+			a64put(b, 0xaa0103e2U); // mov x2, capacity
+			a64put(b, 0xaa0403e1U); // mov x1, index
+			a64put(b, 0xaa0303e0U); // mov x0, module link
+		}else{
+			a64put(b, 0xaa0403e0U); // mov x0, raw width
+		}
+	}else{
+		a64put(b, 0x52800000U | (u32int)op<<5); // mov w0, scalar opcode
+	}
 	for(half=0;half<4;half++)
 		a64put(b, (half==0 ? 0xd2800010U : 0xf2800010U) | half<<21 | ((entry>>(half*16))&65535)<<5);
 	a64put(b, 0xd63f0200U); // blr x16
-	a64put(b, 0xa8c17beaU); // ldp x10, x30, [sp], #16
+	if(raw){
+		a64put(b, 0xf9400be4U); // ldr x4, [sp, #16]
+		a64put(b, (a->wordbytes == 8 ? 0xf9000004U : 0xb9000004U) |
+			(u32int)(a->channelmid/a->wordbytes)<<10); // Store captured width before publishing.
+	}
+	a64put(b, raw || mapped ? 0xa8c27beaU : 0xa8c17beaU); // Restore output/LR and the complete native frame.
 	a64put(b, 0xf9000140U); // str x0, [x10]
 	return 1;
 }
@@ -1810,8 +1844,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!a64rawcons(&b, abi)) return 0;
 	}else if(p.kind == LeafPointerCons){
 		if(!a64pointercons(&b, abi)) return 0;
-	}else if(p.kind == LeafScalarChannel){
-		if(!a64scalarchannel(&b, abi, p.alu)) return 0;
+	}else if(p.kind == LeafChannel){
+		if(!a64channel(&b, abi, p.alu)) return 0;
 	}else if(p.kind == LeafScalarCons){
 		if(!a64scalarcons(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafArrayCreate){

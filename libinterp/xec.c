@@ -1472,7 +1472,7 @@ Channel*
 cnewc(Type *t, void (*mover)(void), int len)
 {
 	ChannelBuild b;
-	int retains;
+	int retains, i, bit;
 
 	if(len < 0)
 		error(exNegsize);
@@ -1488,6 +1488,20 @@ cnewc(Type *t, void (*mover)(void), int len)
 			(len > 0 && t == &Tarray);
 		if(t->ref <= 0 || t->ref > 0x7fffffff-retains)
 			error(exHeap);
+	}
+	/* An unbuffered mapped channel still retains and later interprets the payload map. */
+	if(len > 0 || mover == movtmp){
+		if(t->size < 0 || t->np < 0 ||
+		   t->np > t->size/(8*sizeof(void*))+(t->size%(8*sizeof(void*)) != 0))
+			error(exHeap);
+		if(t->np != 0 && ((uintptr)t > (uintptr)-1 - offsetof(Type, map) ||
+		   (uintptr)t+offsetof(Type, map) > (uintptr)-1-(uintptr)t->np))
+			error(exHeap);
+		for(i = 0; i < t->np; i++)
+			for(bit = 0; bit < 8; bit++)
+				if((t->map[i] & (0x80>>bit)) &&
+				   ((ulong)i*8+bit >= (ulong)t->size/sizeof(void*)))
+					error(exHeap);
 	}
 	b.t = t;
 	b.mover = mover;
@@ -1606,53 +1620,71 @@ cnewcscalar(int op, int len)
 typedef struct RawChannel RawChannel;
 
 struct RawChannel {
-	Type *t; // Temporary raw payload descriptor retained during channel construction.
-	WORD size; // Full raw width captured before any aliased destination store.
+	Type *t; // Temporary descriptor retained until buffered allocation finishes.
+	int len; // Validated element capacity supplied to the common allocator.
+	Channel *c; // Fresh unpublished channel returned after successful construction.
 };
 
 
-/* Publish the captured raw width even when allocation replaces its source slot. */
+/* Allocate raw channel resources without publishing through any VM operand. */
 static int
 rawchannel(void *arg)
 {
 	RawChannel *b;
-	Channel *c;
-	b=arg;
-	c=newc(b->t,movm);
-	c->mid.w=b->size;
+
+	b = arg;
+	b->c = cnewc(b->t, movm, b->len);
 	return 1;
 }
 
 
-/* Capture raw geometry before the destination can overwrite either operand. */
-OP(newcm)
+/* Keep a temporary raw descriptor alive across protected queue and buffer allocation. */
+Channel*
+cnewcraw(int size, int len)
 {
 	RawChannel b;
-	WORD capacity;
-	Channel *old;
 	int ok;
-	uintptr address;
 
-	address = (uintptr)R.s;
-	if(R.s == nil || R.s == H || address > (uintptr)-1-sizeof(b.size))
-		error(exHeap);
-	memmove(&b.size, R.s, sizeof(b.size));
-	if(b.size < 0)
+	if(size < 0 || len < 0)
 		error(exNegsize);
-	if((uvlong)b.size > 0x7fffffff)
-		error(exHeap);
-	b.t=nil;
-	capacity = channelargs(&old);
-	if(R.m != R.d && capacity > 0) {
-		b.t=dtype(nil,b.size,nil,0);
+	b.t = nil;
+	b.len = len;
+	b.c = H;
+	if(len > 0){
+		b.t = dtype(nil, size, nil, 0);
 		if(b.t == nil)
 			error(exNomem);
 	}
-	ok=kprotect(rawchannel,&b);
+	ok = kprotect(rawchannel, &b);
 	freetype(b.t);
 	if(!ok)
 		krethrow();
+	return b.c;
 }
+
+
+/* Complete raw metadata before publishing a replacement or releasing its old source owner. */
+OP(newcm)
+{
+	WORD size, capacity;
+	Channel *channel, *old;
+	uintptr address;
+
+	address = (uintptr)R.s;
+	if(R.s == nil || R.s == H || address > (uintptr)-1-sizeof(size))
+		error(exHeap);
+	memmove(&size, R.s, sizeof(size));
+	if(size < 0)
+		error(exNegsize);
+	if((uvlong)size > 0x7fffffff)
+		error(exHeap);
+	capacity = channelargs(&old);
+	channel = cnewcraw((int)size, (int)capacity);
+	channel->mid.w = size;
+	memmove(R.d, &channel, sizeof(channel));
+	destroy(old);
+}
+
 
 /* Create a mapped channel only after validating its payload descriptor. */
 OP(newcmp)
@@ -1666,6 +1698,16 @@ OP(newcmp)
 	memmove(&index, R.s, sizeof(index));
 	newc(moduletype(R.M, index), movtmp);
 }
+
+
+/* Resolve a live mapped descriptor before allocating an unpublished channel for native callers. */
+Channel*
+cnewcmapped(Modlink *module, WORD index, int len)
+{
+	return cnewc(moduletype(module, index), movtmp, len);
+}
+
+
 /* Resolve a table target without forming an out-of-range Dis instruction pointer. */
 static Inst*
 casepc(Modlink *ml, int destination)

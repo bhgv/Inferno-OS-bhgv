@@ -1781,14 +1781,20 @@ x64recordobject(X64Buf *b, LeafLayout *a, int mode)
 }
 
 
-/* Capture capacity and publish a fresh channel only when the destination has no owner. */
+/* Capture scalar/raw/mapped arguments and publish a fully initialized channel into an empty slot. */
 static int
-x64scalarchannel(X64Buf *b, LeafLayout *a, int op)
+x64channel(X64Buf *b, LeafLayout *a, int op)
 {
-	int fallback, unbuffered;
+	int fallback, unbuffered, raw, mapped;
 	unsigned long long entry;
 
-	if(a->channelentry == nil || a->channelentry == (void*)-1)
+	raw = op == INEWCM;
+	mapped = op == INEWCMP;
+	entry = (unsigned long long)(raw ? a->rawchannelentry : mapped ? a->mappedchannelentry : a->channelentry);
+	if((raw && (a->channelmid < 40 || a->channelmid > 2047 || a->channelmid%8)) ||
+	   (mapped && (a->module < 0 || a->module > 2047 || a->module%8)))
+		return 0;
+	if(entry == 0 || entry == ~0ULL)
 		return 0;
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
@@ -1800,6 +1806,20 @@ x64scalarchannel(X64Buf *b, LeafLayout *a, int op)
 	x64readspan(b, 0, 8);
 	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0x3a); x64byte(b, 0xff); // cmp qword ptr [r10], -1
 	x64moduleguard(b, 0x74, fallback);
+	if(raw || mapped){
+		x64caseptr(b, 0, a->s);
+		x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0); // mov rax, r8
+		x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0x01);
+		x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01);
+		x64moduleguard(b, 0x77, fallback);
+		x64readspan(b, 0, a->wordbytes);
+		x64load(b, 0, a->wordbytes);
+		if(raw){
+			x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, 0x7fffffff);
+			x64moduleguard(b, 0x76, fallback);
+		}
+		x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc3); // mov r11, captured width/index
+	}
 	x64caseptr(b, 0, a->m);
 	x64byte(b, 0x31); x64byte(b, 0xf6); // xor esi, esi
 	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xd0); // cmp r8, r10
@@ -1817,12 +1837,26 @@ x64scalarchannel(X64Buf *b, LeafLayout *a, int op)
 	b->bytes[unbuffered]=b->n-unbuffered-1;
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xec); x64byte(b, 0x18); // sub rsp, 24
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x14); x64byte(b, 0x24); // mov [rsp], r10
-	x64byte(b, 0xbf); x64word(b, op); // mov edi, opcode
-	entry=(unsigned long long)a->channelentry;
+	if(raw || mapped){
+		x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x5c); x64byte(b, 0x24); x64byte(b, 0x08); // mov [rsp+8], r11
+		if(mapped){
+			x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xf2); // mov rdx, capacity
+			x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xde); // mov rsi, index
+			x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0xbf); x64word(b, a->module); // mov rdi, REG.M
+		}else{
+			x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xdf); // mov rdi, raw width
+		}
+	}else{
+		x64byte(b, 0xbf); x64word(b, op); // mov edi, scalar opcode
+	}
 	x64byte(b, 0x48); x64byte(b, 0xb8); x64word(b, entry); x64word(b, entry>>32);
 	x64byte(b, 0xff); x64byte(b, 0xd0); // call rax
 	x64byte(b, 0x4c); x64byte(b, 0x8b); x64byte(b, 0x14); x64byte(b, 0x24); // mov r10, [rsp]
-	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0x02); // mov [r10], rax
+	if(raw){
+		x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x4c); x64byte(b, 0x24); x64byte(b, 0x08); // mov rcx, captured width
+		x64byte(b, a->wordbytes == 8 ? 0x48 : 0x40); x64byte(b, 0x89); x64byte(b, 0x88); x64word(b, a->channelmid); // mov Channel.mid.w, ecx/rcx
+	}
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0x02); // Publish only the initialized channel.
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xc4); x64byte(b, 0x18); // add rsp, 24
 	return 1;
 }
@@ -2176,8 +2210,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!x64rawcons(&b, abi)) return 0;
 	}else if(p.kind == LeafPointerCons){
 		if(!x64pointercons(&b, abi)) return 0;
-	}else if(p.kind == LeafScalarChannel){
-		if(!x64scalarchannel(&b, abi, p.alu)) return 0;
+	}else if(p.kind == LeafChannel){
+		if(!x64channel(&b, abi, p.alu)) return 0;
 	}else if(p.kind == LeafScalarCons){
 		if(!x64scalarcons(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafArrayCreate){

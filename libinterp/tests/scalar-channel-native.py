@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -26,9 +27,13 @@ def function(source, signature):
 
 
 xec = Path(os.environ.get('CHANNEL_XEC_SOURCE', ROOT/'libinterp/xec.c')).read_text()
+if os.environ.get('CHANNEL_TYPE_SOURCE'):
+    baseline = Path(os.environ['CHANNEL_TYPE_SOURCE']).read_text()
+    signature = 'Channel*\ncnewc('
+    xec = xec.replace(function(xec,signature),function(baseline,signature))
 if os.environ.get('CHANNEL_ARGUMENT_SOURCE'):
     baseline = Path(os.environ['CHANNEL_ARGUMENT_SOURCE']).read_text()
-    for signature in ('Channel*\nnewc(', 'OP(newcm)', 'OP(newcmp)'):
+    for signature in ('Channel*\nnewc(', 'OP(newcmp)'):
         xec = xec.replace(function(xec,signature),function(baseline,signature))
 heap = (ROOT/'libinterp/heap.c').read_text()
 dis = (ROOT/'emu/port/dis.c').read_text()
@@ -38,8 +43,16 @@ parts += [function(heap, result+'\n'+name+'(') for name, result in
            ('freeptrs','void'), ('nheap','Heap*'), ('heap','Heap*'), ('heaparray','Heap*'),
            ('initarray','void'), ('freechan','void'), ('freearray','void'), ('freeheap','void')]]
 parts += [xec[xec.index('typedef struct ChannelBuild'):xec.index('/* Select builtin scalar payloads')]]
-parts += [function(xec, 'Channel*\ncnewcscalar('), function(xec, 'static Type*\nmoduletype('), function(xec, 'OP(newcmp)')]
+parts += [function(xec, 'Channel*\ncnewcscalar('), function(xec, 'static Type*\nmoduletype('), function(xec, 'OP(newcmp)'), function(xec, 'Channel*\ncnewcmapped(')]
 parts += [xec[xec.index('typedef struct RawChannel'):xec.index('/* Create a mapped channel')]]
+if os.environ.get('CHANNEL_RAW_SOURCE'):
+    baseline = Path(os.environ['CHANNEL_RAW_SOURCE']).read_text()
+    start = baseline.index('typedef struct RawChannel')
+    stop = baseline.index('OP(newcm)',start)
+    legacy = baseline[start:stop].replace('RawChannel','LegacyRawChannel').replace('rawchannel','legacyrawchannel')
+    body = function(baseline,'OP(newcm)').replace('RawChannel','LegacyRawChannel').replace('rawchannel','legacyrawchannel')
+    current = function(xec,'OP(newcm)')
+    parts = [legacy+part.replace(current,body) if current in part else part for part in parts]
 # Reuse only the existing bounded allocator/queue model, never its legacy test main.
 preamble = (ROOT/'libinterp/tests/channels.c').read_text().split('IMPLEMENTATION')[0]
 preamble = preamble.replace('#include <assert.h>', '#include "comp-amd64.c"')
@@ -121,7 +134,32 @@ cons(ulong size, void *slot)
     return H;
 }
 '''
-unit = preamble + '\n'.join(parts) + (ROOT/'libinterp/tests/scalar-channel-native.c').read_text()
+if '--payload' in sys.argv:
+    preamble = preamble.replace('void destroy(void *p) {', r'''
+static void *publication_old; // Old owner whose release observes the newly published channel.
+static WORD publication_width; // Captured raw width required before any old-owner callback.
+static int publication_watch; // Enable one publication-order oracle during replacement.
+
+
+/* Inspect the new raw metadata at the exact old-owner release boundary. */
+static void
+checkpublication(void *object)
+{
+    Channel *published;
+
+    if(publication_watch && object==publication_old){
+        memmove(&published,R.d,sizeof(published));
+        check(published!=object && published!=H && published->mid.w==publication_width);
+        publication_watch=0;
+    }
+}
+
+
+/* Release bounded fixture owners after checking raw replacement ordering. */
+void destroy(void *p) {''')
+    preamble = preamble.replace('if(p==H)return;', 'checkpublication(p);\n    if(p==H)return;')
+fixture = 'payload-channel-native.c' if '--payload' in sys.argv else 'scalar-channel-native.c'
+unit = preamble + '\n'.join(parts) + (ROOT/'libinterp/tests'/fixture).read_text()
 if os.environ.get('CHANNEL_UNIT_OUT'):
     Path(os.environ['CHANNEL_UNIT_OUT']).write_text(unit)
 with tempfile.TemporaryDirectory(prefix='scalar-channel-native-') as directory:
