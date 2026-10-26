@@ -6,7 +6,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import tempfile
-from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_MODE_64, UC_HOOK_MEM_WRITE
+from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_MODE_64, UC_HOOK_MEM_WRITE, UC_HOOK_MEM_INVALID
 from unicorn.x86_const import UC_X86_REG_RDI, UC_X86_REG_RAX, UC_X86_REG_RSP, UC_X86_REG_MXCSR
 from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR, UC_ARM64_REG_FPCR, UC_ARM64_REG_FPSR
 
@@ -56,7 +56,10 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
         lib = C.CDLL(str(binary))
         lib.emit.argtypes = [C.POINTER(C.c_uint32)]+[C.c_int]*5
         machine = Uc(UC_ARCH_X86, UC_MODE_64) if arch == 'amd64' else Uc(UC_ARCH_ARM64, 0)
-        machine.mem_map(CODE, 0x3000); machine.mem_map(BASE, 0x4000)
+        machine.mem_map(CODE, 0x3000); machine.mem_map(BASE, 0x4000); machine.mem_map((1<<64)-0x1000, 0x1000)
+        # Mirror top-page metadata through Unicorn x86's default 52-bit physical mask.
+        # Guest owner registers retain full 64-bit values for overflow checks.
+        if arch == "amd64":machine.mem_map((1<<52)-0x1000, 0x1000)
         writes = []
 
 
@@ -65,7 +68,13 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
             writes.append((address, size))
 
 
+        # Report unmapped addresses without allowing an invalid native access.
+        def invalid(machine, access, address, size, value, context):
+            print("invalid guest access", arch, hex(address), size, flush=True)
+            return False
+
         machine.hook_add(UC_HOOK_MEM_WRITE, write)
+        machine.hook_add(UC_HOOK_MEM_INVALID, invalid)
         checks = 0
         for wb in (4, 8):
             for big in (0, 1):
@@ -87,8 +96,9 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
                 for power in range(1, 19):
                     for delta in (-1, 0, 1):
                         values.extend((10**power+delta, -(10**power+delta)))
+                if os.environ.get("FORMAT_BOUNDARY_ONLY"):values = []
                 for value_index, number in enumerate(values):
-                    for profile in range(34):
+                    for profile in range(49):
                         for sa in range(8):
                             for da in range(8):
                                 for alias in range(3):
@@ -108,7 +118,17 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
                                     if profile == 9:refs = MASK
                                     if profile == 10:owner = 0
                                     if profile == 11:owner = MASK
-                                    if profile >= 12:length = 0; capacity = profile-12
+                                    if 12 <= profile < 34:length = 0; capacity = profile-12
+                                    if 34 <= profile <= 39:capacity = profile-33; length = -capacity
+                                    if profile == 40:length = -7; capacity = 32
+                                    if profile == 41:length = -1; capacity = 0x1fffffff
+                                    if profile == 42:length = -1; capacity = 0x20000000
+                                    if profile == 43:length = -1; capacity = 0x7fffffff
+                                    if profile == 44:length = -33; capacity = 32
+                                    if profile == 45:length = -1; capacity = -1
+                                    if profile == 46:length = -7; refs = 2
+                                    if profile == 47:length = -7; refs = MASK
+                                    if profile == 48:length = -7; refs = 0
                                     if alias == 1:src = obj+24
                                     if alias == 2:src = dst
                                     put(image, obj-24, refs); put(image, obj, length, 4); put(image, obj+4, capacity, 4)
@@ -118,12 +138,14 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
                                     captured = int.from_bytes(image[src:src+width], 'little', signed=True)
                                     put(image, 8, BASE+src); put(image, 16, BASE+dst)
                                     text = str(captured).encode()
-                                    valid = owner not in (0, MASK) and length >= 0 and capacity >= max(len(text), length) and refs == 1
+                                    bytecapacity = capacity*4 if length < 0 else capacity
+                                    valid = owner not in (0, MASK) and capacity >= abs(length) and len(text) <= bytecapacity <= 0x7fffffff and refs == 1
                                     expected = bytearray(image)
                                     text = str(captured).encode()
                                     if valid:
                                         expected[obj+24:obj+25+len(text)] = text+b'\0'
                                         put(expected, obj, len(text), 4)
+                                        if length < 0:put(expected, obj+4, bytecapacity, 4)
                                     machine.mem_write(BASE, bytes(image)); writes.clear()
                                     if arch == 'amd64':
                                         machine.reg_write(UC_X86_REG_RDI, BASE); machine.reg_write(UC_X86_REG_RSP, CODE+0x2800)
@@ -138,9 +160,47 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
                                     require(bytes(machine.mem_read(BASE, 0x4000)) == expected, (detail, 'image'))
                                     if valid:
                                         require(writes[-1] == (BASE+obj, 4), (detail, 'publication'))
-                                        require(all((size == 1 and BASE+obj+24 <= address <= BASE+obj+24+len(text)) for address, size in writes[:-1]), (detail, 'write range'))
+                                        require((length >= 0 or writes[0] == (BASE+obj+4, 4)) and all((size == 1 and BASE+obj+24 <= address <= BASE+obj+24+len(text)) for address, size in writes[1 if length < 0 else 0:-1]), (detail, 'write range'))
                                     else:require(not writes, (detail, 'decline writes'))
                                     if arch == 'amd64':require(machine.reg_read(UC_X86_REG_MXCSR) == 0x3f80, 'MXCSR')
                                     else:require(machine.reg_read(UC_ARM64_REG_FPCR) == 0x800000 and machine.reg_read(UC_ARM64_REG_FPSR) == 0x11, 'FPCR/FPSR')
                                     checks += 1
+        boundarychecks = 0
+        for wb in (4, 8):
+            for big in (0, 1):
+                out = (C.c_uint32*64)(); n = lib.emit(out, 64, wb, big, 0, 0)
+                machine.mem_write(CODE, bytes(out)[:n*4]); machine.ctl_remove_cache(CODE, CODE+256)
+                width = 8 if big else wb
+                for wide in (0, 1):
+                    for offset in (0xff8, 0xfe0):
+                        for value in (0, 1234567, -(1 << (width*8-1))):
+                            high = (1 << 64)-0x1000; owner = high+offset
+                            image = bytearray(b'\xa5'*0x4000); top = bytearray(b'\xa5'*0x1000)
+                            put(image, 0x100, value, width); put(image, 0x200, owner)
+                            put(image, 8, BASE+0x100); put(image, 16, BASE+0x200)
+                            put(top, offset-24, 1); put(top, offset, -1 if wide else 0, 4); put(top, offset+4, 32, 4)
+                            text = str(value).encode(); start = owner+24
+                            valid = start <= MASK and start+len(text) <= MASK
+                            expected = bytearray(top)
+                            if valid:
+                                expected[start-high:start-high+len(text)+1] = text+b'\0'
+                                put(expected, offset, len(text), 4)
+                                if wide:put(expected, offset+4, 128, 4)
+                            physical = (1 << 52)-0x1000 if arch == "amd64" else high
+                            machine.mem_write(BASE, bytes(image)); machine.mem_write(high, bytes(top))
+                            machine.mem_write(physical, bytes(top)); writes.clear()
+                            if arch == 'amd64':
+                                machine.reg_write(UC_X86_REG_RDI, BASE); machine.reg_write(UC_X86_REG_RSP, CODE+0x2800)
+                                machine.mem_write(CODE+0x2800, STOP.to_bytes(8, 'little'))
+                            else:
+                                machine.reg_write(UC_ARM64_REG_X0, BASE); machine.reg_write(UC_ARM64_REG_LR, STOP)
+                            try:
+                                machine.emu_start(CODE, STOP, count=3000)
+                            except Exception as error:
+                                raise RuntimeError((arch, wb, big, wide, offset, value)) from error
+                            result = machine.reg_read(UC_X86_REG_RAX if arch == 'amd64' else UC_ARM64_REG_X0)
+                            require(result == valid and bytes(machine.mem_read(BASE, 0x4000)) == image and bytes(machine.mem_read(physical, 0x1000)) == expected, (arch, wb, big, wide, offset, value, 'pointer boundary'))
+                            if not valid:require(not writes, 'boundary decline wrote memory')
+                            boundarychecks += 1
+        print('PASS', arch, 'format pointer boundaries:', boundarychecks)
         print('PASS', arch, 'integer formatting:', checks, 'image/write/FP cases')

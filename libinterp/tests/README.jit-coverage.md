@@ -387,3 +387,12 @@ and the 64-unit bound. C also bounds the full unsigned count before publication.
 [Raise lifetime preflight](README.raise-lifetime.md) rejects dead/saturated
 exception owners and invalid message Types before preparation or publication.
 Counts stay AMD64/ARM64 141/32 and RV64 M/Zmmul/I 103/70, 90/83, 87/86.
+
+## Rune-buffer formatting checkpoint
+
+[Reusable Rune formatting](README.rune-format.md) extends AMD64/ARM64 CVTWC and
+CVTLC to unique Rune allocations with representable byte capacity. New start/end
+address guards precede converted max publication. Backwards final-position digit
+emission keeps the 64-unit bound without layout/ABI changes. C mirrors ownership
+and capacity semantics. Counts stay AMD64/ARM64 141/32 and RV64 M/Zmmul/I
+103/70, 90/83, 87/86.

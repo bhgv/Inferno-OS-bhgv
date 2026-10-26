@@ -823,6 +823,8 @@ x64stringstore(X64Buf *b, LeafLayout *a)
 static int
 x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 {
+	int positive, scaled, storemax;
+
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
 	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
@@ -833,9 +835,20 @@ x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x4a); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64guard(b, 0x77);
 	x64field(b, 1, 2, a->stringlen, 4);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x79);
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc9); // r9 preserves the old representation.
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
+	x64byte(b, 0x79); positive=b->n; x64byte(b, 0);
+	x64byte(b, 0x48); x64byte(b, 0xf7); x64byte(b, 0xd9);
+	if(b->n>sizeof(b->bytes))return 0;
+	b->bytes[positive]=b->n-positive-1;
 	x64field(b, 6, 2, a->stringmax, 4);
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64guard(b, 0x7d);
+	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc9);
+	x64byte(b, 0x79); scaled=b->n; x64byte(b, 0);
+	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe6); x64byte(b, 2);
+	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xfe); x64word(b, 0x7fffffff); x64guard(b, 0x7e);
+	if(b->n>sizeof(b->bytes))return 0;
+	b->bytes[scaled]=b->n-scaled-1;
 	x64field(b, 1, 2, -a->heapref, 8);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64guard(b, 0x74);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xd2); // r10 retains the owner through division.
@@ -855,34 +868,32 @@ x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); // cmp    rsi,rcx
 	x64guard(b, 0x7d);
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0); // Restore the captured signed input.
-	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0xb2); x64word(b, a->stringdata);
-	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xf1); // mov    rcx,rsi
+	/* Validate both payload sums before changing representation or writing digits. */
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xd2);
+	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xc2); x64word(b, a->stringdata); x64guard(b, 0x73);
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xd3); // r11 holds the payload base temporarily.
+	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xca); x64guard(b, 0x73);
+	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc9);
+	x64byte(b, 0x79); storemax=b->n; x64byte(b, 0);
+	x64byte(b, 0x41); x64byte(b, 0x89); x64byte(b, 0xb2); x64word(b, a->stringmax);
+	if(b->n>sizeof(b->bytes))return 0;
+	b->bytes[storemax]=b->n-storemax-1;
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xde); // rsi becomes the byte payload base.
+	x64byte(b, 0x41); x64byte(b, 0xbb); x64word(b, 10);
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc8); // mov    r8,rcx
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xd1); // mov    rcx,rdx
+	x64byte(b, 0xc6); x64byte(b, 0x01); x64byte(b, 0x00); // mov    BYTE PTR [rcx],0x0
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); // test   rax,rax
-	x64byte(b, 0x79); x64byte(b, 0x09); // jns    11 <positive>
-	x64byte(b, 0xc6); x64byte(b, 0x01); x64byte(b, 0x2d); // mov    BYTE PTR [rcx],0x2d
-	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc1); // inc    rcx
+	x64byte(b, 0x79); x64byte(b, 0x06); // jns    14 <again>
+	x64byte(b, 0xc6); x64byte(b, 0x06); x64byte(b, 0x2d); // mov    BYTE PTR [rsi],0x2d
 	x64byte(b, 0x48); x64byte(b, 0xf7); x64byte(b, 0xd8); // neg    rax
-	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc9); // mov    r9,rcx
 	x64byte(b, 0x31); x64byte(b, 0xd2); // xor    edx,edx
 	x64byte(b, 0x49); x64byte(b, 0xf7); x64byte(b, 0xf3); // div    r11
 	x64byte(b, 0x80); x64byte(b, 0xc2); x64byte(b, 0x30); // add    dl,0x30
+	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc9); // dec    rcx
 	x64byte(b, 0x88); x64byte(b, 0x11); // mov    BYTE PTR [rcx],dl
-	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc1); // inc    rcx
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); // test   rax,rax
-	x64byte(b, 0x75); x64byte(b, 0xee); // jne    1a <again>
-	x64byte(b, 0xc6); x64byte(b, 0x01); x64byte(b, 0x00); // mov    BYTE PTR [rcx],0x0
-	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc8); // mov    r8,rcx
-	x64byte(b, 0x49); x64byte(b, 0x29); x64byte(b, 0xf0); // sub    r8,rsi
-	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc9); // dec    rcx
-	x64byte(b, 0x49); x64byte(b, 0x39); x64byte(b, 0xc9); // cmp    r9,rcx
-	x64byte(b, 0x73); x64byte(b, 0x12); // jae    4f <done>
-	x64byte(b, 0x41); x64byte(b, 0x8a); x64byte(b, 0x01); // mov    al,BYTE PTR [r9]
-	x64byte(b, 0x8a); x64byte(b, 0x11); // mov    dl,BYTE PTR [rcx]
-	x64byte(b, 0x41); x64byte(b, 0x88); x64byte(b, 0x11); // mov    BYTE PTR [r9],dl
-	x64byte(b, 0x88); x64byte(b, 0x01); // mov    BYTE PTR [rcx],al
-	x64byte(b, 0x49); x64byte(b, 0xff); x64byte(b, 0xc1); // inc    r9
-	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc9); // dec    rcx
-	x64byte(b, 0xeb); x64byte(b, 0xe9); // jmp    38 <reverse>
+	x64byte(b, 0x75); x64byte(b, 0xee); // jne    14 <again>
 	x64byte(b, 0x45); x64byte(b, 0x89); x64byte(b, 0x82); x64word(b, a->stringlen);
 	return 1;
 }

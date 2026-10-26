@@ -448,7 +448,7 @@ OP(cvtwc)
 {
 	String *ds, *old;
 	char digits[24];
-	int length;
+	int length, capacity;
 	WORD value;
 
 	memmove(&value, R.s, sizeof(value));
@@ -458,12 +458,21 @@ OP(cvtwc)
 	if(old != H && (old->len == (-0x7fffffff-1) ||
 	   old->max < (old->len < 0 ? -old->len : old->len) || D2H(old)->ref == 0))
 		error(exHeap);
+	capacity = 0;
+	if(old != H){
+		if(old->len < 0 && old->max > 0x7fffffff/(int)sizeof(Rune))
+			error(exHeap);
+		capacity = old->len < 0 ? old->max*(int)sizeof(Rune) : old->max;
+	}
 	/* Stage the full text before checking exact logical character capacity. */
 	length = sprint(digits, "%lld", (vlong)value);
-	if(old != H && old->len >= 0 && old->max >= length && D2H(old)->ref == 1)
+	if(old != H && capacity >= length && D2H(old)->ref == 1)
 		ds = old;
 	else
 		ds = newstring(24);
+	/* Keep the allocation and cache while publishing byte-oriented capacity. */
+	if(ds == old && old->len < 0)
+		ds->max = capacity;
 	memmove(ds->Sascii, digits, length+1);
 	ds->len = length;
 	if(ds != old){
@@ -480,7 +489,7 @@ OP(cvtlc)
 {
 	String *ds, *old;
 	char digits[24];
-	int length;
+	int length, capacity;
 	LONG value;
 
 	memmove(&value, R.s, sizeof(value));
@@ -490,12 +499,21 @@ OP(cvtlc)
 	if(old != H && (old->len == (-0x7fffffff-1) ||
 	   old->max < (old->len < 0 ? -old->len : old->len) || D2H(old)->ref == 0))
 		error(exHeap);
+	capacity = 0;
+	if(old != H){
+		if(old->len < 0 && old->max > 0x7fffffff/(int)sizeof(Rune))
+			error(exHeap);
+		capacity = old->len < 0 ? old->max*(int)sizeof(Rune) : old->max;
+	}
 	/* Stage the full text before checking exact logical character capacity. */
 	length = sprint(digits, "%lld", (vlong)value);
-	if(old != H && old->len >= 0 && old->max >= length && D2H(old)->ref == 1)
+	if(old != H && capacity >= length && D2H(old)->ref == 1)
 		ds = old;
 	else
 		ds = newstring(24);
+	/* Keep the allocation and cache while publishing byte-oriented capacity. */
+	if(ds == old && old->len < 0)
+		ds->max = capacity;
 	memmove(ds->Sascii, digits, length+1);
 	ds->len = length;
 	if(ds != old){

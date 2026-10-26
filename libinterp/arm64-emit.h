@@ -637,11 +637,11 @@ a64stringstore(A64Buf *b, LeafLayout *a)
 }
 
 
-/* Emit decimal digits and reverse them after all storage and owner guards succeed. */
+/* Count digits, validate byte capacity, then fill unique ASCII or Rune storage backwards. */
 static int
 a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 {
-	int positive, digits, reverse, done, fallback, count;
+	int positive, digits, scaled, storemax, fallback, count;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
@@ -655,10 +655,14 @@ a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 	if(op->bytes == 4) a64put(b, 0x93407d8c); // Sign-extend the complete WORD32 input.
 	a64ptr(b, 11, a->d); a64load(b, 14, 11, 8);
 	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
-	a64wordfield(b, 2, 14, a->stringlen, 4);
-	a64put(b, 0xf100005f); a64defer(b, 0x5400000b, fallback);
+	a64wordfield(b, 7, 14, a->stringlen, 4);
+	a64put(b, 0xf10000ff); a64put(b, 0xda87a4e2); // x2 is absolute length; x7 preserves representation.
 	a64wordfield(b, 3, 14, a->stringmax, 4);
 	a64put(b, 0xeb02007f); a64defer(b, 0x5400000b, fallback);
+	scaled=b->n; a64put(b, 0xb6f80007);
+	a64put(b, 0xd37ef463); // Rune capacity becomes byte capacity only if representable.
+	a64put(b, 0xd35ffc62); a64defer(b, 0xb5000002, fallback);
+	b->code[scaled] |= (b->n-scaled)<<5;
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 14<<5 | 2);
 	a64put(b, 0xf100045f); a64defer(b, 0x54000001, fallback);
 	/* x6 counts an unsigned magnitude while x12 retains the signed input. */
@@ -669,31 +673,24 @@ a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 	a64put(b, 0x9acd08c6); a64put(b, 0x91000484);
 	a64put(b, 0xb5000006U | ((count-b->n)&0x7ffff)<<5);
 	a64put(b, 0xeb04007f); a64defer(b, 0x5400000b, fallback);
-	a64put(b, 0x910001cbU | (u32int)a->stringdata<<10); // x11 is the first output byte.
-	a64put(b, 0xaa0b03e9); // x9 advances through digits.
+	/* Form the byte payload and its end before publishing converted capacity. */
+	a64put(b, 0xb10001cbU | (u32int)a->stringdata<<10); a64defer(b, 0x54000002, fallback);
+	a64put(b, 0xab040169); a64defer(b, 0x54000002, fallback);
+	storemax=b->n; a64put(b, 0xb6f80007);
+	a64put(b, 0xb9000000U | (u32int)(a->stringmax/4)<<10 | 14<<5 | 3);
+	b->code[storemax] |= (b->n-storemax)<<5;
+	a64put(b, 0x3900013f); // Terminate at the end counted without touching the payload.
 	a64put(b, 0xf100019f);
 	positive=b->n; a64put(b, 0x5400000a);
-	a64put(b, 0x528005a3); a64put(b, 0x39000123); // Emit the minus sign.
-	a64put(b, 0x91000529); a64put(b, 0xcb0c03ec); // Negation leaves MIN as an unsigned magnitude.
+	a64put(b, 0x528005a3); a64put(b, 0x39000163); // Preserve the minus sign at the first byte.
+	a64put(b, 0xcb0c03ec);
 	b->code[positive] |= (b->n-positive)<<5;
-	a64put(b, 0xaa0903ea); // x10 is digit start; x13 still holds ten.
 	digits=b->n;
-	a64put(b, 0x9acd0982); // udiv x2,x12,x13.
-	a64put(b, 0x9b0db043); // msub x3,x2,x13,x12: remainder before updating magnitude.
-	a64put(b, 0x1100c063); a64put(b, 0x39000123);
-	a64put(b, 0x91000529); a64put(b, 0xaa0203ec);
+	a64put(b, 0x9acd0982); a64put(b, 0x9b0db043);
+	a64put(b, 0x1100c063); a64put(b, 0xd1000529); a64put(b, 0x39000123);
+	a64put(b, 0xaa0203ec);
 	a64put(b, 0xb500000cU | ((digits-b->n)&0x7ffff)<<5);
-	a64put(b, 0x3900013f); // Preserve the C formatter's terminating NUL.
-	a64put(b, 0xcb0b0124); a64put(b, 0xd1000529); // x4 retains length, x9 selects last digit.
-	reverse=b->n;
-	a64put(b, 0xeb09015f);
-	done=b->n; a64put(b, 0x54000002);
-	a64put(b, 0x39400142); a64put(b, 0x39400123);
-	a64put(b, 0x39000143); a64put(b, 0x39000122);
-	a64put(b, 0x9100054a); a64put(b, 0xd1000529);
-	a64put(b, 0x14000000U | ((reverse-b->n)&0x3ffffff));
 	if(b->n > LeafMax) return 0;
-	b->code[done] |= (b->n-done)<<5;
 	a64put(b, 0xb9000000U | (u32int)(a->stringlen/4)<<10 | 14<<5 | 4);
 	return 1;
 }
