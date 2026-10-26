@@ -522,18 +522,60 @@ OP(cvtlc)
 	}
 }
 
-/* Capture the real value before allocating or replacing its destination owner. */
+
+/* Capture real bits and prepare storage before formatting or replacing the owner. */
 OP(cvtfc)
 {
 	String *ds, *old;
 	REAL value;
+	uvlong bits;
+	vlong integer;
+	uint exponent;
+	char digits[32];
+	int length, capacity;
 
 	memmove(&value, R.s, sizeof(value));
-	ds = newstring(32);
-	ds->len = sprint(ds->Sascii, "%g", value);
+	memmove(&bits, &value, sizeof(bits));
 	memmove(&old, R.d, sizeof(old));
-	memmove(R.d, &ds, sizeof(ds));
-	destroy(old);
+	if(old == nil)
+		error(exNilref);
+	if(old != H && (old->len == (-0x7fffffff-1) ||
+	   old->max < (old->len < 0 ? -old->len : old->len) || D2H(old)->ref == 0))
+		error(exHeap);
+	capacity = 0;
+	if(old != H){
+		if(old->len < 0 && old->max > 0x7fffffff/(int)sizeof(Rune))
+			error(exHeap);
+		capacity = old->len < 0 ? old->max*(int)sizeof(Rune) : old->max;
+	}
+	/* Exact binary powers in this range have ordinary integer %g spelling.
+	 * Decode them as bits so native and C paths do not disturb FP status. */
+	exponent = (bits>>52)&2047;
+	if(bits == 0 || ((bits&0x000fffffffffffffULL) == 0 && exponent >= 1023 && exponent <= 1042)){
+		integer = bits == 0 ? 0 : (vlong)1<<(exponent-1023);
+		if(bits>>63)
+			integer = -integer;
+		length = sprint(digits, "%lld", integer);
+		if(old != H && capacity >= length && D2H(old)->ref == 1)
+			ds = old;
+		else
+			ds = newstring(32);
+	}else{
+		/* Reserve full formatter capacity before fallible allocation or FP work. */
+		if(old != H && capacity >= sizeof(digits) && D2H(old)->ref == 1)
+			ds = old;
+		else
+			ds = newstring(32);
+		length = sprint(digits, "%g", value);
+	}
+	if(ds == old && old->len < 0)
+		ds->max = capacity;
+	memmove(ds->Sascii, digits, length+1);
+	ds->len = length;
+	if(ds != old){
+		memmove(R.d, &ds, sizeof(ds));
+		destroy(old);
+	}
 }
 
 /*

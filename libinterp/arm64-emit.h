@@ -641,7 +641,7 @@ a64stringstore(A64Buf *b, LeafLayout *a)
 static int
 a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 {
-	int positive, digits, scaled, storemax, fallback, count;
+	int digits, scaled, storemax, fallback, count, decoded;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
@@ -653,6 +653,15 @@ a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	a64ptr(b, 9, a->s); a64load(b, 12, 9, op->bytes);
 	if(op->bytes == 4) a64put(b, 0x93407d8c); // Sign-extend the complete WORD32 input.
+	if(op->alu){
+		decoded=b->n; a64put(b, 0xb400000c);
+		a64put(b, 0xd340cd82); a64defer(b, 0xb5000002, fallback); // Fraction bits must be zero.
+		a64put(b, 0xd374f983); a64put(b, 0xd10ffc63);
+		a64put(b, 0xf1004c7f); a64defer(b, 0x54000008, fallback); // Exponent 0..19.
+		a64put(b, 0xd2800022); a64put(b, 0x9ac32042);
+		a64put(b, 0xf241019f); a64put(b, 0xda82544c); // Apply the original sign to the magnitude.
+		b->code[decoded] |= (b->n-decoded)<<5;
+	}
 	a64ptr(b, 11, a->d); a64load(b, 14, 11, 8);
 	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
 	a64wordfield(b, 7, 14, a->stringlen, 4);
@@ -680,14 +689,11 @@ a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 	a64put(b, 0xb9000000U | (u32int)(a->stringmax/4)<<10 | 14<<5 | 3);
 	b->code[storemax] |= (b->n-storemax)<<5;
 	a64put(b, 0x3900013f); // Terminate at the end counted without touching the payload.
-	a64put(b, 0xf100019f);
-	positive=b->n; a64put(b, 0x5400000a);
-	a64put(b, 0x528005a3); a64put(b, 0x39000163); // Preserve the minus sign at the first byte.
-	a64put(b, 0xcb0c03ec);
-	b->code[positive] |= (b->n-positive)<<5;
+	a64put(b, 0x528005a3); a64put(b, 0x39000163); // Positive digits overwrite this temporary minus.
+	a64put(b, 0xf100019f); a64put(b, 0xda8ca58c);
 	digits=b->n;
 	a64put(b, 0x9acd0982); a64put(b, 0x9b0db043);
-	a64put(b, 0x1100c063); a64put(b, 0xd1000529); a64put(b, 0x39000123);
+	a64put(b, 0x1100c063); a64put(b, 0x381ffd23); // Store byte with pre-decrement.
 	a64put(b, 0xaa0203ec);
 	a64put(b, 0xb500000cU | ((digits-b->n)&0x7ffff)<<5);
 	if(b->n > LeafMax) return 0;

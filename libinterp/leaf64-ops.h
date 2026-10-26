@@ -38,7 +38,7 @@ struct LeafOp {
 };
 
 enum {
-	LeafFormatInteger = 122, // Format signed integers into unique ASCII storage.
+	LeafFormatInteger = 122, // Format integers or selected real values into reusable strings.
 	LeafArraySlice = 121, // Narrow unique views or pointer-free roots without allocating.
 	LeafModuleCall = 120, // Bytecode calls between modules with equal execution modes.
 	LeafReturn = 119, // Returns without mapped cleanup, extent release or module destruction.
@@ -92,6 +92,7 @@ leafop(LeafOp *p, int op, int wordbytes)
 	case ISLICEA: p->kind = LeafArraySlice; break;
 	case IADDC: p->kind = LeafStringAppend; break;
 	case IINSC: p->kind = LeafStringStore; break;
+	case ICVTFC: p->kind = LeafFormatInteger; p->bytes = 8; p->alu = 1; break;
 	case ICVTWC: p->kind = LeafFormatInteger; break;
 	case ICVTLC: p->kind = LeafFormatInteger; p->bytes = 8; break;
 	case ICVTCW: p->kind = LeafDecimal; break;

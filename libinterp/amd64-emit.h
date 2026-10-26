@@ -819,82 +819,143 @@ x64stringstore(X64Buf *b, LeafLayout *a)
 }
 
 
-/* Format captured signed values without allocating, including the unsigned MIN magnitude. */
+/* Share the nearby module-leaf rejection return while short branch reach permits it. */
+static void
+x64moduleguard(X64Buf *b, int success, int fallback)
+{
+	int distance;
+
+	distance = fallback-b->n-2;
+	if(distance >= -128 && distance <= 127){
+		x64byte(b, success^1);
+		x64byte(b, distance);
+	}else
+		x64guard(b, success);
+}
+
+
+/* Decode selected binary64 values and format captured integers without allocating. */
 static int
 x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 {
-	int positive, scaled, storemax;
+	int positive, scaled, storemax, fallback, countloop, digitloop;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
 	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
 	   a->stringdata < a->stringmax+4 || a->stringdata > 2047 ||
 	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 || a->refbytes != 8) return 0;
-	x64ptr(b, 0, a->s); x64load(b, 0, op->bytes);
-	x64ptr(b, 2, a->d); x64load(b, 2, 8);
+	x64byte(b, 0xeb); x64byte(b, 3);
+	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+	x64caseptr(b, 0, a->s); x64load(b, 0, op->bytes);
+	if(op->alu){
+		/* +0 and signed powers 2^0..2^19 have exact fixed decimal spelling. */
+		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); // test   rax,rax
+		x64byte(b, 0x74); x64byte(b, 0x2c); // je     31 <ready>
+		x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2); // mov    rdx,rax
+		x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe2); x64byte(b, 0x0c); // shl    rdx,0xc
+		x64moduleguard(b, 0x74, fallback); // Fraction must be zero.
+		x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc1); // mov    rcx,rax
+		x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe9); x64byte(b, 0x34); // shr    rcx,0x34
+		x64byte(b, 0x80); x64byte(b, 0xe5); x64byte(b, 0x07); // and    ch,0x7
+		x64byte(b, 0x66); x64byte(b, 0x81); x64byte(b, 0xe9); x64byte(b, 0xff); x64byte(b, 0x03); // sub    cx,0x3ff
+		x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0x13); // cmp    ecx,0x13
+		x64moduleguard(b, 0x76, fallback); // Unbiased exponent must be 0..19.
+		x64byte(b, 0xff); x64byte(b, 0xc2); // inc    edx
+		x64byte(b, 0x48); x64byte(b, 0xd3); x64byte(b, 0xe2); // shl    rdx,cl
+		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); // test   rax,rax
+		x64byte(b, 0x89); x64byte(b, 0xd0); // mov    eax,edx
+		x64byte(b, 0x79); x64byte(b, 0x03); // jns    31 <ready>
+		x64byte(b, 0x48); x64byte(b, 0xf7); x64byte(b, 0xd8); // neg    rax
+	}
+	x64caseptr(b, 2, a->d); x64load(b, 2, 8);
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x4a); x64byte(b, 1);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64guard(b, 0x77);
-	x64field(b, 1, 2, a->stringlen, 4);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64casefield(b, 1, 2, a->stringlen, 4);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc9); // r9 preserves the old representation.
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
+	x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x79); positive=b->n; x64byte(b, 0);
-	x64byte(b, 0x48); x64byte(b, 0xf7); x64byte(b, 0xd9);
+	x64byte(b, 0xf7); x64byte(b, 0xd9);
 	if(b->n>sizeof(b->bytes))return 0;
 	b->bytes[positive]=b->n-positive-1;
-	x64field(b, 6, 2, a->stringmax, 4);
-	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64guard(b, 0x7d);
+	x64casefield(b, 6, 2, a->stringmax, 4);
+	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64moduleguard(b, 0x7d, fallback);
 	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x79); scaled=b->n; x64byte(b, 0);
 	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe6); x64byte(b, 2);
-	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xfe); x64word(b, 0x7fffffff); x64guard(b, 0x7e);
+	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xfe); x64word(b, 0x7fffffff); x64moduleguard(b, 0x7e, fallback);
 	if(b->n>sizeof(b->bytes))return 0;
 	b->bytes[scaled]=b->n-scaled-1;
-	x64field(b, 1, 2, -a->heapref, 8);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64guard(b, 0x74);
+	x64casefield(b, 1, 2, -a->heapref, 8);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x74, fallback);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xd2); // r10 retains the owner through division.
+	x64byte(b, 0xeb); x64byte(b, 3);
+	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	/* Count sign and digits before touching even a one-character destination. */
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc0); // mov    r8,rax
 	x64byte(b, 0x41); x64byte(b, 0xbb); x64word(b, 10); // Both decimal passes divide by ten.
 	x64byte(b, 0x31); x64byte(b, 0xc9); // xor    ecx,ecx
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); // test   rax,rax
+	if(!op->alu)
+		x64byte(b, 0x48); // Integer inputs need the full-width TEST.
+	x64byte(b, 0x85); x64byte(b, 0xc0);
 	x64byte(b, 0x79); x64byte(b, 0x05); // jns    f <positive>
 	x64byte(b, 0x48); x64byte(b, 0xf7); x64byte(b, 0xd8); // neg    rax
-	x64byte(b, 0xff); x64byte(b, 0xc1); // inc    ecx
-	x64byte(b, 0xff); x64byte(b, 0xc1); // inc    ecx
+	x64byte(b, 0xff); x64byte(b, 0xc1); // Count the sign.
+	countloop=b->n;
+	x64byte(b, 0xff); x64byte(b, 0xc1); // Count one decimal digit.
 	x64byte(b, 0x31); x64byte(b, 0xd2); // xor    edx,edx
 	x64byte(b, 0x49); x64byte(b, 0xf7); x64byte(b, 0xf3); // div    r11
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); // test   rax,rax
-	x64byte(b, 0x75); x64byte(b, 0xf4); // jne    15 <again>
+	if(!op->alu)
+		x64byte(b, 0x48); // Integer inputs need the full-width TEST.
+	x64byte(b, 0x85); x64byte(b, 0xc0);
+	x64byte(b, 0x75); x64byte(b, countloop-b->n-1); // Recompute after either TEST width.
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); // cmp    rsi,rcx
-	x64guard(b, 0x7d);
+	x64moduleguard(b, 0x7d, fallback);
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0); // Restore the captured signed input.
 	/* Validate both payload sums before changing representation or writing digits. */
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xd2);
-	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xc2); x64word(b, a->stringdata); x64guard(b, 0x73);
-	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xd3); // r11 holds the payload base temporarily.
-	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xca); x64guard(b, 0x73);
+	x64byte(b, 0x48); x64byte(b, a->stringdata<=127 ? 0x83 : 0x81); x64byte(b, 0xc2);
+	if(a->stringdata<=127)
+		x64byte(b, a->stringdata);
+	else
+		x64word(b, a->stringdata);
+	x64moduleguard(b, 0x73, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xd7); // rdi holds the payload after REG operands are captured.
+	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xca); x64moduleguard(b, 0x73, fallback);
 	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x79); storemax=b->n; x64byte(b, 0);
-	x64byte(b, 0x41); x64byte(b, 0x89); x64byte(b, 0xb2); x64word(b, a->stringmax);
+	if(a->stringmax<=127){
+		x64byte(b, 0x41); x64byte(b, 0x89); x64byte(b, 0x72); x64byte(b, a->stringmax);
+	}else{
+		x64byte(b, 0x41); x64byte(b, 0x89); x64byte(b, 0xb2); x64word(b, a->stringmax);
+	}
 	if(b->n>sizeof(b->bytes))return 0;
 	b->bytes[storemax]=b->n-storemax-1;
-	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xde); // rsi becomes the byte payload base.
-	x64byte(b, 0x41); x64byte(b, 0xbb); x64word(b, 10);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xfe); // rsi becomes the byte payload base.
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc8); // mov    r8,rcx
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xd1); // mov    rcx,rdx
 	x64byte(b, 0xc6); x64byte(b, 0x01); x64byte(b, 0x00); // mov    BYTE PTR [rcx],0x0
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); // test   rax,rax
+	if(!op->alu)
+		x64byte(b, 0x48); // Integer inputs need the full-width TEST.
+	x64byte(b, 0x85); x64byte(b, 0xc0);
 	x64byte(b, 0x79); x64byte(b, 0x06); // jns    14 <again>
 	x64byte(b, 0xc6); x64byte(b, 0x06); x64byte(b, 0x2d); // mov    BYTE PTR [rsi],0x2d
 	x64byte(b, 0x48); x64byte(b, 0xf7); x64byte(b, 0xd8); // neg    rax
+	digitloop=b->n;
 	x64byte(b, 0x31); x64byte(b, 0xd2); // xor    edx,edx
 	x64byte(b, 0x49); x64byte(b, 0xf7); x64byte(b, 0xf3); // div    r11
 	x64byte(b, 0x80); x64byte(b, 0xc2); x64byte(b, 0x30); // add    dl,0x30
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc9); // dec    rcx
 	x64byte(b, 0x88); x64byte(b, 0x11); // mov    BYTE PTR [rcx],dl
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); // test   rax,rax
-	x64byte(b, 0x75); x64byte(b, 0xee); // jne    14 <again>
-	x64byte(b, 0x45); x64byte(b, 0x89); x64byte(b, 0x82); x64word(b, a->stringlen);
+	if(!op->alu)
+		x64byte(b, 0x48); // Integer inputs need the full-width TEST.
+	x64byte(b, 0x85); x64byte(b, 0xc0);
+	x64byte(b, 0x75); x64byte(b, digitloop-b->n-1); // Recompute after either TEST width.
+	if(a->stringlen<=127){
+		x64byte(b, 0x45); x64byte(b, 0x89); x64byte(b, 0x42); x64byte(b, a->stringlen);
+	}else{
+		x64byte(b, 0x45); x64byte(b, 0x89); x64byte(b, 0x82); x64word(b, a->stringlen);
+	}
 	return 1;
 }
 
@@ -1028,21 +1089,6 @@ x64frame(X64Buf *b, LeafLayout *a, int imported)
 	x64byte(b, 0x49); x64byte(b, 0xc7); x64byte(b, 0x80); x64word(b, a->framemr); x64word(b, 0);
 	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0x02);
 	return 1;
-}
-
-
-/* Share the nearby module-leaf rejection return while short branch reach permits it. */
-static void
-x64moduleguard(X64Buf *b, int success, int fallback)
-{
-	int distance;
-
-	distance = fallback-b->n-2;
-	if(distance >= -128 && distance <= 127){
-		x64byte(b, success^1);
-		x64byte(b, distance);
-	}else
-		x64guard(b, success);
 }
 
 

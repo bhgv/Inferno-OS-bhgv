@@ -2,14 +2,14 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 141 commands (81.5%); 32 remain on the interpreter path. RV64 profiles
+paths for 142 commands (82.1%); 31 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 141 | 32 |
-| ARM64 | 173 | 141 | 32 |
+| AMD64 | 173 | 142 | 31 |
+| ARM64 | 173 | 142 | 31 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
@@ -396,3 +396,8 @@ address guards precede converted max publication. Backwards final-position digit
 emission keeps the 64-unit bound without layout/ABI changes. C mirrors ownership
 and capacity semantics. Counts stay AMD64/ARM64 141/32 and RV64 M/Zmmul/I
 103/70, 90/83, 87/86.
+
+The real-format checkpoint adds guarded ICVTFC paths on AMD64/ARM64 for +0
+and signed powers 2^0 through 2^19. Other real values retain C formatting.
+See [README.real-format.md](README.real-format.md) for ownership, FP-state and
+failure-ordering checks. The core checkpoint now passes 99 host drivers.

@@ -44,8 +44,8 @@ Validation:
 - The core suite now contains 96 host drivers, including the independent
   conversion-source tests described in README.conversion-sources.md.
 
-Out of 173 active Dis commands, AMD64/ARM64 retain 141 guarded native paths /
-32 remaining. RV64 M remains 103/70, Zmmul 90/83, I 87/86. These counts describe
+Out of 173 active Dis commands, AMD64/ARM64 retain 142 guarded native paths /
+31 remaining. RV64 M remains 103/70, Zmmul 90/83, I 87/86. These counts describe
 partial guarded paths, not complete opcode semantics or a full native VM ABI.
 ARM64 instruction execution is emulated; physical target acceptance is separate.
 
@@ -56,3 +56,6 @@ conversion, cache ownership and pointer-overflow guards. Rune max is measured
 in characters; successful reuse changes it to max*sizeof(Rune) bytes before
 publishing the positive ASCII length. Oversized conversions decline or raise
 before any mutation. No ABI/layout field or opcode ID is added.
+
+Selected real values now share the decimal writer; see
+[README.real-format.md](README.real-format.md).

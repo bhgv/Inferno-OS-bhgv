@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/real-format-native.py',
     'libinterp/tests/list-length-native.py',
     'libinterp/tests/raw-copy-native.py',
     'libinterp/tests/conversion-sources.py',
@@ -112,6 +113,8 @@ CORE = [
     'limbo/tests/case-max.py',
 ]
 JIT = [
+    'libinterp/tests/real-format-jit.py',
+    'libinterp/tests/real-format-layouts.py',
     'libinterp/tests/list-length-layouts.py',
     'libinterp/tests/list-length-jit.py',
     'libinterp/tests/raw-copy-layouts.py',
