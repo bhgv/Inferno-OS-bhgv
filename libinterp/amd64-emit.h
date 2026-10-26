@@ -2242,8 +2242,11 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64ptr(&b, 1, abi->d); x64load(&b, 1, 8);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff);
 		x64byte(&b, 0x74); done=b.n; x64byte(&b, 0);
-		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
-		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9); x64guard(&b, 0x75);
+        /* An owner at the field distance would read its Type at address zero. */
+        x64byte(&b, 0x48); x64byte(&b, 0x3d); x64word(&b, abi->heaptype);
+        x64guard(&b, 0x77); /* unsigned owner > backward Type distance */
+        x64byte(&b, 0x48); x64byte(&b, 0x81); x64byte(&b, 0xf9); x64word(&b, abi->heaptype);
+        x64guard(&b, 0x77);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf9); x64byte(&b, 0xff); x64guard(&b, 0x75);
 		x64field(&b, 2, 0, -abi->heaptype, 8);
 		x64field(&b, 0, 1, -abi->heaptype, 8);

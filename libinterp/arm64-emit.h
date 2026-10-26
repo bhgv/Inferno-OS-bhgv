@@ -1871,7 +1871,11 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64ptr(&b, 10, abi->d); a64load(&b, 13, 10, 8);
 		a64put(&b, 0xb100059f);
 		empty=b.n; a64put(&b, 0x54000000);
-		a64guard(&b, 0xb500006c); a64guard(&b, 0xb500006d);
+        /* Reject wrapped or nil Type-field addresses before either load. */
+        a64put(&b, 0xf100019fU | (u32int)abi->heaptype<<10); /* cmp x12, distance */
+        a64guard(&b, 0x54000068); /* b.hi over decline return */
+        a64put(&b, 0xf10001bfU | (u32int)abi->heaptype<<10); /* cmp x13, distance */
+        a64guard(&b, 0x54000068);
 		a64put(&b, 0xb10005bf); a64guard(&b, 0x54000061);
 		a64put(&b, 0xf8400000U | ((u32int)-abi->heaptype&511)<<12 | 12<<5 | 14);
 		a64put(&b, 0xf8400000U | ((u32int)-abi->heaptype&511)<<12 | 13<<5 | 15);

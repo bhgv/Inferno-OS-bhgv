@@ -127,7 +127,7 @@ class Layout(C.Structure):
             'modlbytes', 'modlframe', 'sp', 'ts', 'frametype', 'framemr',
             'framesize', 'stringmax', 'regmp', 'regtemp', 'linkprog', 'linkmp',
             'modlpc', 'arrayroot', 'typeref')]
-        + [('stringtype', C.c_void_p), ('arrayidentity', C.c_void_p), ('typefree', C.c_int), ('typemark', C.c_int), ('plainfree', C.c_void_p), ('plainmark', C.c_void_p), ('consentry', C.c_void_p), ('listtype', C.c_int), ('ptrtype', C.c_void_p)]
+        + [('stringtype', C.c_void_p), ('arrayidentity', C.c_void_p), ('typefree', C.c_int), ('typemark', C.c_int), ('plainfree', C.c_void_p), ('plainmark', C.c_void_p), ('channelentry', C.c_void_p), ('consentry', C.c_void_p), ('listtype', C.c_int), ('ptrtype', C.c_void_p)]
     )
 class RvLayout(C.Structure):
     _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]
@@ -943,6 +943,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     assert list(guard)==[0xa5a5a5a5]*64
                     checks+=1
                 owners=(0,(1<<64)-1,data+0x540,data+0x740)
+
                 types=(0,(1<<64)-1,data+0x900,data+0xa00)
                 for source in owners:
                     for destination in owners:
@@ -956,6 +957,14 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                         _,pc,before,after,_=run('ITCMP',alias=alias,slotshift=shift,expect=int(valid),typecheck=(source,effective,stype,dtype))
                                         assert pc==oldpc and before==after
                                         checks+=1
+                if not rv:
+                    # Prefix subtraction must decline before reading low memory.
+                    for low in range(1, layout.heaptype+1):
+                        for source,destination in ((low,data+0x740),(data+0x540,low)):
+                            _,pc,before,after,_=run('ITCMP',expect=0,typecheck=(source,destination,0,0))
+                            if pc!=oldpc or before!=after:
+                                raise RuntimeError('TCMP changed VM state on invalid owner')
+                            checks+=1
                 # A nil source is accepted without following the destination's header.
                 for source in (0,(1<<64)-1):
                     _,pc,before,after,_=run('ITCMP',expect=int(source!=0),typecheck=(source,0x100070000,0,0))

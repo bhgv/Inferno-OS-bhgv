@@ -9,6 +9,7 @@ import sys
 
 CORE = [
     'libinterp/tests/scalar-channel-native.py',
+    'libinterp/tests/typecheck-prefix.py',
     'limbo/tests/source-history.py',
     'limbo/tests/fixed-ops.py',
     'limbo/tests/fold-casts.py',

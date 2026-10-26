@@ -2891,15 +2891,31 @@ OP(nbalt)
 {
 	xecalt(0);
 }
-/* Compare captured runtime owners without dereferencing C-null metadata. */
+/* Compare runtime Type fields after checking their backward native spans.
+ * [GC:] This borrows immutable Type identities and never retains either owner. */
 OP(tcmp)
 {
-	void *s, *d;
+    void *s;
+    void *d;
+    Type *source;
+    Type *destination;
+    uintptr distance;
 
-	memmove(&s, R.s, sizeof(s));
-	memmove(&d, R.d, sizeof(d));
-	if(s != H && (s == nil || d == nil || d == H || D2H(s)->t != D2H(d)->t))
-		error(exTcheck);
+    memmove(&s, R.s, sizeof(s));
+    memmove(&d, R.d, sizeof(d));
+    if(s == H){
+        return;
+    }
+    distance = sizeof(Heap) - offsetof(Heap, t);
+    if((uintptr)s <= distance || (uintptr)d <= distance || d == H){
+        error(exTcheck);
+    }
+    /* Form only the field address, not an underflowing synthetic Heap pointer. */
+    memmove(&source, (uchar*)s-distance, sizeof(source));
+    memmove(&destination, (uchar*)d-distance, sizeof(destination));
+    if(source != destination){
+        error(exTcheck);
+    }
 }
 OP(eclr)
 {
