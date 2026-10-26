@@ -72,3 +72,8 @@ Active native availability is now 143/173 on x64 and ARM64; 30 commands remain
 interpreter-only. These counts include guarded partial paths. RV64 stays at
 103/70 for M, 90/83 for Zmmul and 87/86 for I. ARM64 instruction execution is
 emulated; physical target acceptance remains separate.
+
+The following CVTCA series centralizes the shared byte-conversion layout checks,
+including disjoint descriptor reference fields, and adds the reverse native
+export path. Current counts and validation are in
+[README.string-bytes-native.md](README.string-bytes-native.md).

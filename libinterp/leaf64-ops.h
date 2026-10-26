@@ -52,6 +52,35 @@ leafbytearraylayout(LeafLayout *a)
 }
 
 
+/* Validate both byte-conversion layouts before offsets or private buffers are used. */
+static int
+leafbyteconversionlayout(LeafLayout *a)
+{
+	if(a->wordbytes != 4 && a->wordbytes != 8)
+		return 0;
+	if(a->typeref < 0 || a->typeref > 2047 || a->typeref%4 ||
+	   a->typeref == a->typesize || a->typeref == a->typenp ||
+	   a->arraylen < 0 || a->arraylen > 2047 || a->arraylen%a->wordbytes ||
+	   a->arraydata < 0 || a->arraydata > 2047 || a->arraydata%8 ||
+	   a->arraytype < 0 || a->arraytype > 2047 || a->arraytype%8 ||
+	   a->arrayroot < 0 || a->arrayroot > 2047 || a->arrayroot%8 ||
+	   a->typesize < 0 || a->typesize > 2047 || a->typesize%4 ||
+	   a->typenp < 0 || a->typenp > 2047 || a->typenp%4 ||
+	   a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
+	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
+	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
+	   a->stringdata < a->stringmax+4 || a->stringdata > 2047 ||
+	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 || a->refbytes != 8 ||
+	   a->heaptype <= 0 || a->heaptype > 128 || a->heaptype%8 ||
+	   a->heapcolor < a->heapref || a->heapcolor < a->heaptype || a->heapcolor > 255 ||
+	   a->arrayidentity == nil || a->stringtype == nil)
+		return 0;
+	if(!leafbytearraylayout(a) || a->heapref == a->heaptype || a->arrayidentity == a->stringtype)
+		return 0;
+	return 1;
+}
+
+
 /* Decoded operation parameters shared by the native leaf emitters. */
 struct LeafOp {
 	int kind; // Native leaf implementation selected for this opcode.
@@ -62,6 +91,7 @@ struct LeafOp {
 };
 
 enum {
+	LeafStringBytes = 124, // Export bounded byte-backed strings into reusable byte arrays.
 	LeafByteString = 123, // Convert bounded ASCII arrays into reusable unique strings.
 	LeafFormatInteger = 122, // Format integers or selected real values into reusable strings.
 	LeafArraySlice = 121, // Narrow unique views or pointer-free roots without allocating.
@@ -99,6 +129,7 @@ leafop(LeafOp *p, int op, int wordbytes)
 	p->bytes = wordbytes;
 	switch(op){
 	case ICVTAC: p->kind = LeafByteString; break;
+	case ICVTCA: p->kind = LeafStringBytes; break;
 	case IBEQC: case IBNEC: case IBLTC: case IBLEC: case IBGTC: case IBGEC:
 		p->kind = LeafStringBranch;
 		p->condition = op == IBEQC ? 0 : op == IBNEC ? 1 : op == IBLTC ? 2 :

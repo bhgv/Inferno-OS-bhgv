@@ -80,6 +80,7 @@ main(void)
         if(selection && op*100+mode != atoi(selection)) continue;
         array = mem2array("abc", 3); backing = mem2array("xyz", 3);
         oldarray = mem2array("keep", 4);
+        if(op) D2H(oldarray)->ref++; // Retain an external owner to exercise allocating CVTCA paths.
         text = c2string("abc", 3);
         /* Keep this source-validation matrix on the allocating destination path. */
         oldtext = newrunes(4); oldtext->len = -4;
@@ -167,7 +168,6 @@ main(void)
                 arrayresult = output;
                 if(arrayresult == H || arrayresult->len != length || calls != allocations+1) conversionfail(op, mode, __LINE__);
                 if(length && memcmp(arrayresult->data, mode >= 16 ? "\xe2\x82\xac" : "abc", length)) conversionfail(op, mode, __LINE__);
-                oldarray = H;
                 destroy(arrayresult);
             }else{
                 textresult = output;
@@ -188,6 +188,7 @@ main(void)
         if(op && mode == 12) Tstring.ref = 3;
         if(op && mode == 13) Tarray.ref = 4;
         if(op && mode == 14) Tbyte.ref = 4;
+        if(oldarray != H) D2H(oldarray)->ref = 1;
         destroy(array); destroy(backing); destroy(text); destroy(oldarray); destroy(oldtext);
         if(live != 0 || Tarray.ref != 1 || Tbyte.ref != 1 || Tstring.ref != 1) conversionfail(op, mode, __LINE__);
         total++;

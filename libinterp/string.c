@@ -384,43 +384,119 @@ OP(addc)
 }
 
 
-/* Validate source lifetime, representation and byte bounds before exporting UTF-8. */
+/* Capture source storage and reuse unique byte arrays without losing generic owners. */
 OP(cvtca)
 {
-	int l;
-	Rune *r;
-	char *p;
 	String *ss;
-	Array *a, *old;
+	Array *a, *old, target;
+	Heap source, previous, backing;
+	Rune *r;
+	uchar *bytes;
+	char *p;
+	uintptr address, extent;
+	uvlong span;
+	int l, capacity, n, size, pointers, references, reusable;
 
 	memmove(&ss, R.s, sizeof(ss));
-	if(ss == H) {
-		a = mem2array(nil, 0);
-		goto r;
-	}
-	if(ss == nil)
-		error(exNilref);
-	if(D2H(ss)->t != &Tstring)
-		error(exType);
-	if(D2H(ss)->ref == 0 || ss->len == (-0x7fffffff-1) ||
-	   ss->max < (ss->len < 0 ? -ss->len : ss->len))
-		error(exHeap);
-	if(ss->len < 0) {
-		if(ss->len < -(int)((0x7fffffff-sizeof(Heap)-sizeof(Array))/UTFmax))
+	memmove(&old, R.d, sizeof(old));
+	l = 0;
+	bytes = nil;
+	if(ss != H){
+		if(ss == nil)
+			error(exNilref);
+		address = (uintptr)ss;
+		extent = offsetof(String, len) > offsetof(String, max) ? offsetof(String, len) : offsetof(String, max);
+		if(address < sizeof(Heap) || address > (uintptr)-1-extent-sizeof(int))
 			error(exHeap);
-		l = -ss->len;
-		a = mem2array(nil, runenlen(ss->Srune, l));
-		p = (char*)a->data;
-		r = ss->Srune;
-		while(l--)
-			p += runetochar(p, r++);	
-		goto r;
+		memmove(&source, (uchar*)ss-sizeof(Heap), sizeof(source));
+		if(source.t != &Tstring)
+			error(exType);
+		if(source.ref == 0)
+			error(exHeap);
+		memmove(&l, (uchar*)ss+offsetof(String, len), sizeof(l));
+		memmove(&capacity, (uchar*)ss+offsetof(String, max), sizeof(capacity));
+		if(l == (-0x7fffffff-1) || capacity < (l < 0 ? -l : l))
+			error(exHeap);
+		if(l < 0){
+			if(l < -(int)((0x7fffffff-sizeof(Heap)-sizeof(Array))/UTFmax))
+				error(exHeap);
+			span = (uvlong)-l*sizeof(Rune);
+		}else{
+			if((ulong)l > 0x7fffffff-sizeof(Heap)-sizeof(Array))
+				error(exHeap);
+			span = l;
+		}
+		/* Empty strings require no payload address or payload reads. */
+		if(span != 0){
+			if(address > (uintptr)-1 - offsetof(String, data) ||
+			   span > (uintptr)-1-(address+offsetof(String, data)))
+				error(exHeap);
+			bytes = (uchar*)(address+offsetof(String, data));
+		}
 	}
-	if((ulong)ss->len > 0x7fffffff-sizeof(Heap)-sizeof(Array))
-		error(exHeap);
-	a = mem2array(ss->Sascii, ss->len);
-
-r:	memmove(&old, R.d, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	if(old != H){
+		if((uintptr)old < sizeof(Heap))
+			error(exHeap);
+		memmove(&previous, (uchar*)old-sizeof(Heap), sizeof(previous));
+		if(previous.ref == 0)
+			error(exHeap);
+		/* Pointer temporaries can still own a String or ADT; only arrays are reusable. */
+		if(previous.t == &Tarray && previous.ref == 1){
+			if((uintptr)old > (uintptr)-1-sizeof(Array))
+				error(exHeap);
+			memmove(&target, old, sizeof(target));
+			if(target.root == nil)
+				error(exHeap);
+			if(target.root != H){
+				if((uintptr)target.root < sizeof(Heap))
+					error(exHeap);
+				memmove(&backing, (uchar*)target.root-sizeof(Heap), sizeof(backing));
+				if(backing.ref == 0)
+					error(exHeap);
+			}
+			/* Releasing a unique old array will also release its borrowed descriptor. */
+			if(target.t == nil || target.t == H)
+				error(exType);
+			extent = offsetof(Type, size) > offsetof(Type, np) ? offsetof(Type, size) : offsetof(Type, np);
+			if(extent < offsetof(Type, ref))
+				extent = offsetof(Type, ref);
+			if((uintptr)target.t > (uintptr)-1-extent-sizeof(int))
+				error(exType);
+			memmove(&references, (uchar*)target.t+offsetof(Type, ref), sizeof(references));
+			if(references <= 0)
+				error(exHeap);
+			memmove(&size, (uchar*)target.t+offsetof(Type, size), sizeof(size));
+			memmove(&pointers, (uchar*)target.t+offsetof(Type, np), sizeof(pointers));
+			reusable = l >= 0 && target.root == H && target.len >= l && (uvlong)target.len <= 0x7fffffff &&
+			           (target.t == &Tbyte || (size == 1 && pointers == 0));
+			if(reusable){
+				if(l != 0){
+					if(target.data == nil || target.data == H)
+						error(exNilref);
+					if((uintptr)target.data > (uintptr)-1-(uintptr)l)
+						error(exHeap);
+					memmove(target.data, bytes, l);
+				}
+				target.len = l;
+				memmove((uchar*)old+offsetof(Array, len), &target.len, sizeof(target.len));
+				memmove(R.d, &old, sizeof(old));
+				return;
+			}
+		}
+	}
+	if(l < 0){
+		l = -l;
+		r = (Rune*)bytes;
+		n = runenlen(r, l);
+		a = mem2array(nil, n);
+		p = (char*)a->data;
+		while(l--)
+			p += runetochar(p, r++);
+	}else
+		a = mem2array(bytes, l);
+	/* Allocation and encoding finish while the old generic owner still retains its source. */
 	memmove(R.d, &a, sizeof(a));
 	destroy(old);
 }

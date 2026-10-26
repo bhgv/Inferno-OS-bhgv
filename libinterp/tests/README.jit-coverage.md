@@ -2,14 +2,14 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 143 commands (82.7%); 30 remain on the interpreter path. RV64 profiles
+paths for 144 commands (83.2%); 29 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 143 | 30 |
-| ARM64 | 173 | 143 | 30 |
+| AMD64 | 173 | 144 | 29 |
+| ARM64 | 173 | 144 | 29 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
@@ -129,12 +129,12 @@ and RX publication are covered separately by `leaf64-runtime.py`.
 
 ## Current interpreter-only commands on AMD64/ARM64
 
-The production sizing emitters report these 30 active commands for both WORD models:
+The production sizing emitters report these 29 active commands for both WORD models:
 
 ```
 IALT INBALT ISPAWN ILOAD IMSPAWN IEXIT INEW INEWA INEWCB INEWCW INEWCF INEWCP
-INEWCM INEWCMP ISEND IRECV ICONSB ICONSW ICONSP ICONSF ICONSM ICONSMP ICVTCA
-ICONSL INEWCL ICASEC IMNEWZ INEWZ INEWAZ IRAISE
+INEWCM INEWCMP ISEND IRECV ICONSB ICONSW ICONSP ICONSF ICONSM ICONSMP ICONSL
+INEWCL ICASEC IMNEWZ INEWZ INEWAZ IRAISE
 ```
 
 The list excludes invalid/unused slots and is regenerated from jit-coverage.py.
@@ -466,3 +466,10 @@ borrowed descriptor geometry and complete payload spans. The C path also reuses
 unique ASCII buffers, retaining generic old owners through allocation failure.
 Private staging is 128 words and the compiler supplies the new builtin array
 identity. See [README.byte-string-native.md](README.byte-string-native.md).
+
+CVTCA now has a byte-backed String export path on AMD64/ARM64 (1..256 bytes).
+It reuses unique root-H byte Arrays with sufficient current length, validates
+borrowed descriptor references and all spans before copying, and preserves
+memmove/owner publication order. C additionally checks full Rune source spans
+and supports empty/larger byte-backed reuse. See
+[README.string-bytes-native.md](README.string-bytes-native.md).

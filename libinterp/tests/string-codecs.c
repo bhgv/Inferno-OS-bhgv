@@ -212,9 +212,9 @@ checkrunes(void)
 		old = s; D2H(old)->ref++; R.s = &bytes; R.d = &s; failure = 0;
 		EXPECT(cvtac(),exNomem); if(!(s == old)) abort();
 		failure = -1; D2H(old)->ref--;
-		before = live; R.s = &s; R.d = &bytes; failure = 0;
+		D2H(bytes)->ref++; before = live; R.s = &s; R.d = &bytes; failure = 0;
 		EXPECT(cvtca(),exNomem); if(!(live == before)) abort();
-		failure = -1;
+		failure = -1; D2H(bytes)->ref--;
 		destroy(s); destroy(bytes); checks += 5;
 	}
 }
