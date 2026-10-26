@@ -3042,18 +3042,43 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			x64ptr(&b, 2, abi->d); x64store(&b, p.alu ? 2 : 0, p.bytes);
 		}
 	}else if(p.kind == LeafRealBranch){
-		/* Read the branch target only after an ordered hardware comparison takes it. */
-		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8); x64realguard(&b, 0);
-		x64ptr(&b, 1, abi->m); x64load(&b, 1, 8); x64realguard(&b, 1);
-		x64byte(&b, 0x66); x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0x6e); x64byte(&b, 0xc0);
-		x64byte(&b, 0x66); x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0x6e); x64byte(&b, 0xc9);
-		x64byte(&b, 0x66); x64byte(&b, 0x0f); x64byte(&b, 0x2e); x64byte(&b, 0xc1);
-		x64byte(&b, realinverse[p.condition]); patch=b.n; x64byte(&b, 0);
-		x64ptr(&b, 2, abi->d);
-		x64byte(&b, 0x49); x64byte(&b, 0x8b); x64byte(&b, 0x02);
-		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0x87); x64word(&b, abi->pc);
-		b.bytes[patch]=b.n-patch-1;
-	}else if(p.kind == LeafAlu || p.kind == LeafBranch){
+        /* Read the branch target only after an ordered hardware comparison takes it. */
+        x64ptr(&b, 0, abi->s);
+        x64pcspan(&b, 8, 8);
+        x64ptr(&b, 1, abi->m);
+        x64pcspan(&b, 9, 8);
+        x64load(&b, 0, 8);
+        x64realguard(&b, 0);
+        x64load(&b, 1, 8);
+        x64realguard(&b, 1);
+        x64byte(&b, 0x66);
+        x64byte(&b, 0x48);
+        x64byte(&b, 0x0f);
+        x64byte(&b, 0x6e);
+        x64byte(&b, 0xc0);
+        x64byte(&b, 0x66);
+        x64byte(&b, 0x48);
+        x64byte(&b, 0x0f);
+        x64byte(&b, 0x6e);
+        x64byte(&b, 0xc9);
+        x64byte(&b, 0x66);
+        x64byte(&b, 0x0f);
+        x64byte(&b, 0x2e);
+        x64byte(&b, 0xc1);
+        x64byte(&b, realinverse[p.condition]);
+        patch=b.n;
+        x64byte(&b, 0);
+        x64ptr(&b, 2, abi->d);
+        x64pcspan(&b, 10, 8);
+        x64byte(&b, 0x49);
+        x64byte(&b, 0x8b);
+        x64byte(&b, 0x02);
+        x64byte(&b, 0x48);
+        x64byte(&b, 0x89);
+        x64byte(&b, 0x87);
+        x64word(&b, abi->pc);
+        b.bytes[patch]=b.n-patch-1;
+    }else if(p.kind == LeafAlu || p.kind == LeafBranch){
 		if(p.kind == LeafAlu){
 			/* No operand read may precede complete source/result span validation. */
 			x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, p.bytes);

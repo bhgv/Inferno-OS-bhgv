@@ -2573,14 +2573,28 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			a64ptr(&b, 11, abi->d); a64store(&b, 14, p.bytes);
 		}
 	}else if(p.kind == LeafRealBranch){
-		/* FCMP observes FPCR flushing and reads the target only for a true predicate. */
-		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8); a64realguard(&b, 12);
-		a64ptr(&b, 10, abi->m); a64load(&b, 13, 10, 8); a64realguard(&b, 13);
-		a64put(&b, 0x9e670180); a64put(&b, 0x9e6701a1); a64put(&b, 0x1e612000);
-		a64put(&b, 0x54000080U | inverse[p.condition]);
-		a64ptr(&b, 11, abi->d); a64load(&b, 12, 11, 8);
-		a64put(&b, 0xf9000000U | (u32int)(abi->pc/8)<<10 | 12);
-	}else if(p.kind == LeafAlu || p.kind == LeafBranch){
+        /* FCMP observes FPCR flushing and reads the target only for a true predicate. */
+        a64ptr(&b, 9, abi->s);
+        a64pcspan(&b, 9, 8, -1);
+        a64ptr(&b, 10, abi->m);
+        a64pcspan(&b, 10, 8, -1);
+        a64load(&b, 12, 9, 8);
+        a64realguard(&b, 12);
+        a64load(&b, 13, 10, 8);
+        a64realguard(&b, 13);
+        a64put(&b, 0x9e670180);
+        a64put(&b, 0x9e6701a1);
+        a64put(&b, 0x1e612000);
+        other = b.n;
+        a64put(&b, 0x54000000U | inverse[p.condition]);
+        a64ptr(&b, 11, abi->d);
+        a64pcspan(&b, 11, 8, -1);
+        a64load(&b, 12, 11, 8);
+        a64put(&b, 0xf9000000U | (u32int)(abi->pc/8)<<10 | 12);
+        if(other < LeafMax){
+            b.code[other] |= (b.n-other)<<5;
+        }
+    }else if(p.kind == LeafAlu || p.kind == LeafBranch){
 		if(p.kind == LeafAlu){
 			/* No operand read may precede complete source/result span validation. */
 			a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, p.bytes, -1);

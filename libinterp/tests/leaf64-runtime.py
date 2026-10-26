@@ -92,6 +92,20 @@ FREEMOD
 #define V(r) (*(LONG*)R.r)
 #define UV(r) (*(ULONG*)R.r)
 char exInval[]="invalid", exZdiv[]="zero divide", exBounds[]="bounds", exHeap[]="heap", exNilref[]="nil";
+
+/* Keep embedded transfer/FP oracle predicates active, including with NDEBUG.
+ * condition is evaluated once by the macro. Failure aborts this synchronous
+ * fixture; there is no ownership transfer or VM error publication.
+ */
+static void leaftransferpredicate(int condition)
+{
+    if(!condition){
+        abort();
+    }
+}
+#define transfercheck(condition) leaftransferpredicate(!!(condition))
+#define integercheck(condition) leaftransferpredicate(!!(condition))
+
 VM_OPERATIONS
 /* Invoke the C fallback through the fixture VM exception boundary. */
 static int fixedscaleerror(void *arg) { (void)arg;cvtxx();return 1; }

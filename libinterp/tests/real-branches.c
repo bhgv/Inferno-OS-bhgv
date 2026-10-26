@@ -5,11 +5,13 @@
 #include <assert.h>
 #include <fenv.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #ifndef REAL_TARGET_ONLY
 #define REAL_TARGET_ONLY 0
 #endif
 REG R;
+char exBounds[] = "bounds"; /* Extracted production branch-slot errors. */
 #define OP(name) void name(void)
 #define F(r) (*(REAL*)R.r)
 #define JMP(r) (R.PC = *(Inst**)R.r)
@@ -19,6 +21,13 @@ int
 __lsan_is_turned_off(void)
 {
 	return 1;
+}
+
+/* Valid fixture operands must never raise a VM bounds error. */
+void error(char *message)
+{
+    USED(message);
+    abort();
 }
 
 IMPLEMENTATION

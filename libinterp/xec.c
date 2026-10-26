@@ -1146,25 +1146,52 @@ OP(bgel)
 		JMP(d);
 }
 /* Compare captured real values and read a branch target only when it is taken. */
+/* condition selects EQ/NE/LT/LE/GT/GE (0..5); REG.s/m borrow REAL input slots
+ * and REG.d borrows a native target slot. No ownership transfer or blocking.
+ * Malformed used slots raise exBounds before publication; a false comparison
+ * ignores its target. Successful taken predicates alone replace REG.PC.
+ */
 static void
 branchreal(int condition)
 {
-	REAL left, right;
-	int take;
+    REAL left, right;
+    int take;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	take = 0;
-	switch(condition){
-	case 0: take = left == right; break;
-	case 1: take = left != right; break;
-	case 2: take = left < right; break;
-	case 3: take = left <= right; break;
-	case 4: take = left > right; break;
-	case 5: take = left >= right; break;
-	}
-	if(take)
-		memmove(&R.PC, R.d, sizeof(R.PC));
+    /* Bound both source slots before either floating-point input is read. */
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    take = 0;
+    switch(condition){
+    case 0:
+        take = left == right;
+        break;
+    case 1:
+        take = left != right;
+        break;
+    case 2:
+        take = left < right;
+        break;
+    case 3:
+        take = left <= right;
+        break;
+    case 4:
+        take = left > right;
+        break;
+    case 5:
+        take = left >= right;
+        break;
+    }
+    if(take){
+        /* A false predicate must not even validate its unused target slot. */
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        memmove(&R.PC, R.d, sizeof(R.PC));
+    }
 }
 
 /* Equality remains false for unordered real operands. */

@@ -8,6 +8,7 @@ Type Tstring = {1}, Tarray = {1};
 #include <stdio.h>
 
 REG R;
+char exBounds[] = "bounds"; /* Extracted production branch-slot errors. */
 /* Supply the live collector color used by guarded owner leaves. */
 int mutator, nprop;
 
