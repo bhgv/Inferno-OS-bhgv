@@ -36,15 +36,17 @@ typedef unsigned char uchar;
 #include HEADER
 
 
-/* Stage each production decimal leaf with independently specified string metadata. */
+/* Stage borrowed out, or size with NULL, up to cap four-byte units.
+ * wb selects VM WORD width, kind the conversion, layout the String field offsets.
+ * Return the production code size or zero without publication when cap is insufficient. */
 int
-emit(u32int *out, int wb, int kind, int layout)
+emit(u32int *out, int cap, int wb, int kind, int layout)
 {
     LeafLayout a = {0};
     a.wordbytes=wb; a.s=8; a.d=16; a.m=24;
     a.stringlen=layout ? 12 : 0; a.stringmax=4;
     a.stringdata=layout ? 32 : 24; a.heapref=24; a.refbytes=8;
-    return leafemit(out,64,&a,kind == 0 ? ICVTCW : kind == 1 ? ICVTCL : ICVTCF);
+    return leafemit(out,cap,&a,kind == 0 ? ICVTCW : kind == 1 ? ICVTCL : ICVTCF);
 }
 '''.replace('HEADER', '"'+str(header)+'"'))
         binary = td/(arch+'.so')
@@ -53,7 +55,7 @@ emit(u32int *out, int wb, int kind, int layout)
         subprocess.run(command+['-shared', '-fPIC', '-I'+str(ROOT/'include'),
                                '-I'+str(ROOT/'libinterp'), str(source), '-o', str(binary)], check=True)
         library = C.CDLL(str(binary))
-        library.emit.argtypes = [C.POINTER(C.c_uint32)]+[C.c_int]*3
+        library.emit.argtypes = [C.POINTER(C.c_uint32)]+[C.c_int]*4
         machine = Uc(UC_ARCH_X86, UC_MODE_64) if arch == 'amd64' else Uc(UC_ARCH_ARM64, 0)
         machine.mem_map(CODE, 0x3000); machine.mem_map(BASE, 0x4000)
         machine.mem_map(HIGH, 0x1000)
@@ -70,17 +72,26 @@ emit(u32int *out, int wb, int kind, int layout)
 
         machine.hook_add(UC_HOOK_MEM_WRITE, written)
         checks = [0, 0, 0]
+        capacity_checks = 0 # Exact insufficient-capacity calls checked for zero publication.
         for wb in (4, 8):
             for layout in (0, 1):
                 lenoff, dataoff = (12, 32) if layout else (0, 24)
                 offsets = (0xf00, 0xfd0, 0xfe0) if layout else (0xf00, 0xfe0, 0xfe8, 0xff0, 0xff8)
                 for kind in map(int, os.environ.get('DECIMAL_KINDS', '0 1 2').split()):
-                    output = (C.c_uint32*64)()
-                    count = library.emit(output, wb, kind, layout)
-                    if not 0 < count <= 64:
+                    output = (C.c_uint32*128)()
+                    count = library.emit(output, 128, wb, kind, layout)
+                    if not 0 < count <= 128:
                         raise RuntimeError((arch, wb, kind, layout, 'leaf unavailable'))
+                    # Production LeafMax is 128 units; smaller callers must publish nothing.
+                    if library.emit(None, 128, wb, kind, layout) != count:
+                        raise RuntimeError('decimal sizing pass disagrees with publication')
+                    for cap in range(count):
+                        capacity_checks += 1
+                        guard = (C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                        if library.emit(guard, cap, wb, kind, layout) != 0 or list(guard) != [0xa5a5a5a5]*128:
+                            raise RuntimeError((arch, wb, kind, layout, cap, 'partial decimal publication'))
                     machine.mem_write(CODE, bytes(output)[:count*4])
-                    machine.ctl_remove_cache(CODE, CODE+256)
+                    machine.ctl_remove_cache(CODE, CODE+512)
                     texts = (b'', b'+', b'-', b'0', b'-0',
                              b'2147483647', b'2147483648', b'-2147483648', b'-2147483649',
                              b'9223372036854775807', b'-9223372036854775808',
@@ -157,4 +168,5 @@ emit(u32int *out, int wb, int kind, int layout)
                                           machine.reg_read(UC_ARM64_REG_FPSR) != (0x11 if unterminated else 0)):
                                         raise RuntimeError('decimal span guard changed ARM64 FP state')
                                     checks[kind] += 1
+        print('PASS', arch, 'decimal insufficient capacities:', capacity_checks, flush=True)
         print('PASS', arch, 'CVTCW/CVTCL/CVTCF spans:', checks, 'address/image/write/FP checks', flush=True)

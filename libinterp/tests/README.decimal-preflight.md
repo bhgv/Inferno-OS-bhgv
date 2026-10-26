@@ -47,3 +47,14 @@ and remain active under NDEBUG and optimized Python.
 
 Guarded native availability stays 164/173 for AMD64/ARM64. This is improved
 validation of existing opcode paths, not an increase in fully native commands.
+
+
+Adjacent decimal-span driver capacity
+------------------------------------
+
+The independently registered decimal-spans-jit.py also uses production's existing
+128 four-byte-unit capacity. Its previous 64-unit buffer rejects a valid expanded
+ARM64 path after the slot/header preflight changes, before executing its tests.
+The driver now verifies NULL-output sizing and every smaller caller capacity for
+zero publication with canaries, then executes the unchanged complete span/image/
+write/FP matrix. Production LeafMax, emitted code and VM ABI are unchanged.
