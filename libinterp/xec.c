@@ -1095,23 +1095,44 @@ OP(movp)
 	memmove(R.d, &sv, sizeof(sv));
 	destroy(dv);
 }
-/* Resolve the full Limbo index through the owner: Loader.tnew may move its table. */
+
+
+/* Resolve live module tables through checked native spans and unaligned-safe reads. */
 static Type*
 moduletype(Modlink *ml, WORD index)
 {
 	Module *m;
-	Type *t;
+	Type **table, *type;
+	uintptr address, extent, offset;
+	int count, size;
 
-	if(ml == H || ml == nil || ml->m == nil || ml->m == H)
+	address = (uintptr)ml;
+	if(ml == nil || ml == H || address > (uintptr)-1-(offsetof(Modlink, m)+sizeof(m)))
 		error(exModule);
-	m = ml->m;
-	if(m->type == nil || m->type == H || index < 0 || index >= m->ntype)
+	memmove(&m, (uchar*)ml+offsetof(Modlink, m), sizeof(m));
+	address = (uintptr)m;
+	extent = offsetof(Module, type)+sizeof(table);
+	if(extent < offsetof(Module, ntype)+sizeof(count))
+		extent = offsetof(Module, ntype)+sizeof(count);
+	if(m == nil || m == H || address > (uintptr)-1-extent)
+		error(exModule);
+	memmove(&table, (uchar*)m+offsetof(Module, type), sizeof(table));
+	memmove(&count, (uchar*)m+offsetof(Module, ntype), sizeof(count));
+	if(table == nil || table == H || index < 0 || index >= count ||
+	   (uvlong)index > ((uintptr)-1-sizeof(type))/sizeof(type))
 		error("invalid type");
-	t = m->type[index];
-	if(t == nil || t == H || t->size < 0)
+	offset = (uintptr)index*sizeof(type);
+	if((uintptr)table > (uintptr)-1-offset-sizeof(type))
 		error("invalid type");
-	return t;
+	memmove(&type, (uchar*)table+offset, sizeof(type));
+	if(type == nil || type == H || (uintptr)type > (uintptr)-1-(offsetof(Type, size)+sizeof(size)))
+		error("invalid type");
+	memmove(&size, (uchar*)type+offsetof(Type, size), sizeof(size));
+	if(size < 0)
+		error("invalid type");
+	return type;
 }
+
 
 /* Resolve mapped metadata first; empty records neither access data nor change references. */
 OP(movmp)
@@ -1143,38 +1164,84 @@ OP(new)
 	memmove(R.d, &object, sizeof(object));
 	destroy(t);
 }
-/* Use the current module table for a zero-initialized object. */
+
+
+/* Resolve and retain the old owner until zero initialization or allocation is complete. */
+static void
+newzero(Modlink *ml, WORD index)
+{
+	Type *type;
+	Heap *h, oldheap;
+	void *old, *object;
+	uintptr address, extent;
+	int size, pointers, references;
+	void (*release)(Heap*, int);
+	void (*mark)(Type*, void*);
+
+	type = moduletype(ml, index);
+	extent = offsetof(Type, np)+sizeof(type->np);
+	if((uintptr)type%sizeof(void*) != 0 || (uintptr)type > (uintptr)-1-extent)
+		error(exHeap);
+	memmove(&size, (uchar*)type+offsetof(Type, size), sizeof(size));
+	memmove(&pointers, (uchar*)type+offsetof(Type, np), sizeof(pointers));
+	memmove(&references, (uchar*)type+offsetof(Type, ref), sizeof(references));
+	if(references <= 0 || size < 0 || (ulong)size > 0x7fffffff-sizeof(Heap))
+		error(exHeap);
+	memmove(&old, R.d, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	if(old != H){
+		address = (uintptr)old;
+		if(address < sizeof(Heap))
+			error(exHeap);
+		memmove(&oldheap, (uchar*)old-sizeof(Heap), sizeof(oldheap));
+		if(oldheap.ref == 0)
+			error(exHeap);
+		memmove(&release, (uchar*)type+offsetof(Type, free), sizeof(release));
+		memmove(&mark, (uchar*)type+offsetof(Type, mark), sizeof(mark));
+		/* Custom finalizers may own native resources even when their pointer map is empty. */
+		if(oldheap.t == type && oldheap.ref == 1 && pointers == 0 && release == freeheap && mark == markheap){
+			if(size != 0){
+				if(address > (uintptr)-1-(uintptr)size)
+					error(exHeap);
+				memset(old, 0, size);
+			}
+			/* Restore a result slot overlapping the cleared payload. */
+			memmove(R.d, &old, sizeof(old));
+			return;
+		}
+	}
+	h = heapz(type);
+	object = H2D(void*, h);
+	memmove(R.d, &object, sizeof(object));
+	destroy(old);
+}
+
+
+/* Capture the full type index before zeroing a possibly overlapping old payload. */
 OP(newz)
 {
-	Heap *h;
-	WORD *t, *object;
 	WORD index;
 
 	memmove(&index, R.s, sizeof(index));
-	h = heapz(moduletype(R.M, index));
-	memmove(&t, R.d, sizeof(t));
-	object = H2D(WORD*, h);
-	memmove(R.d, &object, sizeof(object));
-	destroy(t);
+	newzero(R.M, index);
 }
-/* Resolve the requested descriptor in the source module before allocation. */
+
+
+/* Resolve an imported type through its current Module table before creating an object. */
 OP(mnewz)
 {
-	Heap *h;
-	WORD *t, *object;
-	WORD index;
 	Modlink *ml;
+	WORD index;
 
 	memmove(&ml, R.s, sizeof(ml));
-	if(ml == H)
+	if(ml == nil || ml == H)
 		error(exModule);
 	memmove(&index, R.m, sizeof(index));
-	h = heapz(moduletype(ml, index));
-	memmove(&t, R.d, sizeof(t));
-	object = H2D(WORD*, h);
-	memmove(R.d, &object, sizeof(object));
-	destroy(t);
+	newzero(ml, index);
 }
+
+
 /* Resolve imports or named exports without narrowing the Limbo link index. */
 static int
 moduleentry(Modlink *ml, WORD index, Modl *entry)

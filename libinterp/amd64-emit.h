@@ -1670,6 +1670,114 @@ x64stringbytes(X64Buf *b, LeafLayout *a)
 }
 
 
+/* Reuse exact standard pointer-free records after checked live module/type lookup. */
+static int
+x64zeroobject(X64Buf *b, LeafLayout *a, int imported)
+{
+	int fallback, header, moduleend, empty, loop;
+	unsigned long long identity;
+
+	if(!leafzerolayout(a))
+		return 0;
+	header=a->typeref+4;
+	if(header<a->typesize+4)header=a->typesize+4;
+	if(header<a->typenp+4)header=a->typenp+4;
+	if(header<a->typefree+8)header=a->typefree+8;
+	if(header<a->typemark+8)header=a->typemark+8;
+	x64byte(b, 0xeb); x64byte(b, 3);
+	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+	if(imported){x64caseptr(b, 0, a->s); x64load(b, 0, 8);}
+	else{x64caseptr(b, 0, a->module);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0); // mov rax, r8
+	}
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0x01); // lea rdx, [rax+1]
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01); // cmp rdx, 1
+	x64moduleguard(b, 0x77, fallback);
+	x64readspan(b, a->linkmodule, 8);
+	x64casefield(b, 0, 0, a->linkmodule, 8);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0x01); // lea rdx, [rax+1]
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01); // cmp rdx, 1
+	x64moduleguard(b, 0x77, fallback);
+	moduleend=a->moduletypes+8;
+	if(moduleend<a->modulenty+4)moduleend=a->modulenty+4;
+	x64readspan(b, 0, moduleend);
+	x64casefield(b, 2, 0, a->modulenty, 4);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); // test rdx, rdx
+	x64moduleguard(b, 0x7f, fallback);
+	x64casefield(b, 1, 0, a->moduletypes, 8);
+	x64caseptr(b, 0, imported ? a->m : a->s); x64load(b, 0, a->wordbytes);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc6); // mov rsi, rax
+	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xd6); // cmp rsi, rdx
+	x64moduleguard(b, 0x72, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x51); x64byte(b, 0x01); // lea rdx, [rcx+1]
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01); // cmp rdx, 1
+	x64moduleguard(b, 0x77, fallback);
+	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe6); x64byte(b, 0x03); // shl rsi, 3
+	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xf1); // add rcx, rsi
+	x64moduleguard(b, 0x73, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc8); // mov rax, rcx
+	x64readspan(b, 0, 8);
+	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x00); // mov rax, qword ptr [rax]
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0x01); // lea rdx, [rax+1]
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01); // cmp rdx, 1
+	x64moduleguard(b, 0x77, fallback);
+	x64byte(b, 0xa8); x64byte(b, 0x07); // test al, 7
+	x64moduleguard(b, 0x74, fallback);
+	x64readspan(b, 0, header);
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc1); // mov r9, rax
+	x64casefield(b, 1, 0, a->typeref, 4);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); // test rcx, rcx
+	x64moduleguard(b, 0x7f, fallback);
+	x64casefield(b, 1, 0, a->typesize, 4);
+	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xf9); x64byte(b, 0x00); x64byte(b, 0x01); x64byte(b, 0x00); x64byte(b, 0x00); // cmp rcx, 256
+	x64moduleguard(b, 0x76, fallback);
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xcb); // mov r11, rcx
+	x64casefield(b, 2, 0, a->typenp, 4);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); // test rdx, rdx
+	x64moduleguard(b, 0x74, fallback);
+	x64casefield(b, 1, 0, a->typefree, 8);
+	identity=(unsigned long long)a->plainfree;
+	x64byte(b, 0x48); x64byte(b, 0xba); x64word(b, identity); x64word(b, identity>>32);
+	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xd1); // cmp rcx, rdx
+	x64moduleguard(b, 0x74, fallback);
+	x64casefield(b, 1, 0, a->typemark, 8);
+	identity=(unsigned long long)a->plainmark;
+	x64byte(b, 0x48); x64byte(b, 0xba); x64word(b, identity); x64word(b, identity>>32);
+	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xd1); // cmp rcx, rdx
+	x64moduleguard(b, 0x74, fallback);
+	x64caseptr(b, 2, a->d);
+	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0xd0); // mov r8, r10
+	x64casefield(b, 0, 10, 0, 8);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0x01); // lea rdx, [rax+1]
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01); // cmp rdx, 1
+	x64moduleguard(b, 0x77, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, a->heapcolor);
+	x64moduleguard(b, 0x73, fallback);
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc2); // mov r10, rax
+	x64casefield(b, 1, 0, -a->heaptype, 8);
+	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xc9); // cmp rcx, r9
+	x64moduleguard(b, 0x74, fallback);
+	x64casefield(b, 1, 0, -a->heapref, 8);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0x01); // cmp rcx, 1
+	x64moduleguard(b, 0x74, fallback);
+	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xdb); // test r11, r11
+	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2); // mov rdx, rax
+	x64byte(b, 0x4c); x64byte(b, 0x01); x64byte(b, 0xda); // add rdx, r11
+	x64moduleguard(b, 0x73, fallback);
+	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xd9); // mov rcx, r11
+	/* No fallible operations remain after the first zero store. */
+	loop=b->n;
+	x64byte(b, 0xc6); x64byte(b, 0x44); x64byte(b, 0x08); x64byte(b, 0xff); x64byte(b, 0x00); // mov byte ptr [rax+rcx-1], 0
+	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc9); // dec rcx
+	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
+	if(b->n>sizeof(b->bytes) || b->n-empty-1>127)return 0;
+	b->bytes[empty]=b->n-empty-1;
+	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0x10); // mov qword ptr [r8], r10
+	return 1;
+}
+
+
 /* Emit a SysV AMD64 leaf, returning its bounded count of four-byte code units. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -1709,6 +1817,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!x64slicecopy(&b, abi)) return 0;
 	}else if(p.kind == LeafMappedCopy){
 		if(!x64mapped(&b, abi, &p)) return 0;
+	}else if(p.kind == LeafZeroObject){
+		if(!x64zeroobject(&b, abi, p.alu)) return 0;
 	}else if(p.kind == LeafStringBytes){
 		if(!x64stringbytes(&b, abi)) return 0;
 	}else if(p.kind == LeafByteString){

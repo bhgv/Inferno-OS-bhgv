@@ -2,17 +2,23 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 144 commands (83.2%); 29 remain on the interpreter path. RV64 profiles
+paths for 146 commands (84.4%); 27 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 144 | 29 |
-| ARM64 | 173 | 144 | 29 |
+| AMD64 | 173 | 146 | 27 |
+| ARM64 | 173 | 146 | 27 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
+
+The latest additions are INEWZ and IMNEWZ on AMD64/ARM64. They reuse unique
+standard pointer-free objects of 0 through 256 bytes, resolving the live module
+type table and checking both finalizer identities. Custom finalizers, pointer
+maps, shared owners and larger payloads keep the C path. The interpreter reuses
+larger eligible objects as well. See [README.zero-object-native.md](README.zero-object-native.md).
 
 The earlier ISLICELA expansion covers arbitrary valid destination indexes for
 non-pointer byte copies of at most 128 elements on AMD64/ARM64. It checks the
@@ -129,12 +135,12 @@ and RX publication are covered separately by `leaf64-runtime.py`.
 
 ## Current interpreter-only commands on AMD64/ARM64
 
-The production sizing emitters report these 29 active commands for both WORD models:
+The production sizing emitters report these 27 active commands for both WORD models:
 
 ```
 IALT INBALT ISPAWN ILOAD IMSPAWN IEXIT INEW INEWA INEWCB INEWCW INEWCF INEWCP
 INEWCM INEWCMP ISEND IRECV ICONSB ICONSW ICONSP ICONSF ICONSM ICONSMP ICONSL
-INEWCL ICASEC IMNEWZ INEWZ INEWAZ IRAISE
+INEWCL ICASEC INEWAZ IRAISE
 ```
 
 The list excludes invalid/unused slots and is regenerated from jit-coverage.py.

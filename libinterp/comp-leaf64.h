@@ -79,6 +79,8 @@ leafcompile(void *arg)
 	abi.heaptype=sizeof(Heap)-O(Heap, t);
 	abi.stringtype=&Tstring;
 	abi.arrayidentity=&Tarray;
+	abi.typefree=O(Type, free); abi.typemark=O(Type, mark);
+	abi.plainfree=(void*)freeheap; abi.plainmark=(void*)markheap;
 	abi.heapref=sizeof(Heap)-O(Heap, ref);
 	abi.heapcolor=sizeof(Heap)-O(Heap, color);
 	abi.refbytes=sizeof(((Heap*)0)->ref);

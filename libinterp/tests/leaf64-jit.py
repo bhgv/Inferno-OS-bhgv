@@ -127,7 +127,7 @@ class Layout(C.Structure):
             'modlbytes', 'modlframe', 'sp', 'ts', 'frametype', 'framemr',
             'framesize', 'stringmax', 'regmp', 'regtemp', 'linkprog', 'linkmp',
             'modlpc', 'arrayroot', 'typeref')]
-        + [('stringtype', C.c_void_p), ('arrayidentity', C.c_void_p)]
+        + [('stringtype', C.c_void_p), ('arrayidentity', C.c_void_p), ('typefree', C.c_int), ('typemark', C.c_int), ('plainfree', C.c_void_p), ('plainmark', C.c_void_p)]
     )
 class RvLayout(C.Structure):
     _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]
@@ -684,7 +684,8 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     control=(0x1f80 | mode<<13 | (flush&1)<<6 | (flush>>1)<<15) if arch=='amd64' else ((0,2,1,3)[mode]<<22 | flush<<24)
                     u.reg_write(UC_X86_REG_MXCSR if arch=='amd64' else UC_ARM64_REG_FPCR,control | (4 if seed and arch=='amd64' else 0))
                     if arch=='arm64':u.reg_write(UC_ARM64_REG_FPSR,2 if seed else 0)
-                u.emu_start(code,end,count=4000)
+                # Bounded list scans need enough instructions to reach their normal decline.
+                u.emu_start(code,end,count=100000 if chain is not None else 4000)
                 if expected_head is not None:assert bytes(u.mem_read(data,0x1000))==bytes(expected_head),(arch,wb,name,head,alias)
                 if expected_copy is not None:assert bytes(u.mem_read(data,0x1000))==expected_copy,(arch,wb,copy)
                 assert u.reg_read(result) == expect,(arch,wb,name,a,b,u.reg_read(result),expect)

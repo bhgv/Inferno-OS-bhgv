@@ -40,7 +40,7 @@ parts = [function(source, signature) for signature in signatures]
 parts += [function((root / 'libinterp/runt.c').read_text(), 'Array*\nmem2array(')]
 unit = (root / 'libinterp/tests/string-codecs.c').read_text()
 unit = re.sub(r'^#include "[^"]+"\n', '', unit, flags=re.M)
-unit = '#include "comp-amd64.c"\n#include <fenv.h>\n'+unit.replace('IMPLEMENTATION', '\n'.join(parts)).replace('main(void)', 'codecmain(void)')
+unit = '#include "comp-amd64.c"\n#include "tests/leaf-plain-stubs.h"\n#include <fenv.h>\n'+unit.replace('IMPLEMENTATION', '\n'.join(parts)).replace('main(void)', 'codecmain(void)')
 unit += (root/'libinterp/tests/string-slice-native.c').read_text()
 with tempfile.TemporaryDirectory(prefix='string-slice-native-') as directory:
     td = Path(directory)

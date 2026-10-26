@@ -30,6 +30,8 @@ struct LeafLayout {
 	int arrayroot, typeref; // Backing array owner and signed Type reference count offsets.
 	void *stringtype; // Exact Tstring identity required before reusing numeric format destinations.
 	void *arrayidentity; // Exact builtin Array identity required by byte-string conversion.
+	int typefree, typemark; // Callback offsets within a Type descriptor.
+	void *plainfree, *plainmark; // Exact standard freeheap/markheap callback identities.
 };
 typedef struct LeafOp LeafOp;
 
@@ -81,6 +83,38 @@ leafbyteconversionlayout(LeafLayout *a)
 }
 
 
+/* Validate module lookup, descriptor callbacks and record lifetime offsets for zero reuse. */
+static int
+leafzerolayout(LeafLayout *a)
+{
+	int offsets[5], widths[5], i, j;
+
+	if((a->wordbytes != 4 && a->wordbytes != 8) ||
+	   a->module < 0 || a->module > 2047 || a->module%8 ||
+	   a->linkmodule < 0 || a->linkmodule > 2047 || a->linkmodule%8 ||
+	   a->moduletypes < 0 || a->moduletypes > 2047 || a->moduletypes%8 ||
+	   a->modulenty < 0 || a->modulenty > 2047 || a->modulenty%4 ||
+	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 ||
+	   a->heaptype <= 0 || a->heaptype > 128 || a->heaptype%8 || a->heaptype == a->heapref ||
+	   a->heapcolor < a->heapref || a->heapcolor < a->heaptype || a->heapcolor > 255 || a->refbytes != 8 ||
+	   a->plainfree == nil || a->plainmark == nil || a->plainfree == (void*)-1 || a->plainmark == (void*)-1)
+		return 0;
+	offsets[0]=a->typeref; widths[0]=4;
+	offsets[1]=a->typesize; widths[1]=4;
+	offsets[2]=a->typenp; widths[2]=4;
+	offsets[3]=a->typefree; widths[3]=8;
+	offsets[4]=a->typemark; widths[4]=8;
+	for(i=0; i<5; i++){
+		if(offsets[i] < 0 || offsets[i] > 2047 || offsets[i]%widths[i])
+			return 0;
+		for(j=0; j<i; j++)
+			if(offsets[i] < offsets[j]+widths[j] && offsets[j] < offsets[i]+widths[i])
+				return 0;
+	}
+	return 1;
+}
+
+
 /* Decoded operation parameters shared by the native leaf emitters. */
 struct LeafOp {
 	int kind; // Native leaf implementation selected for this opcode.
@@ -91,6 +125,7 @@ struct LeafOp {
 };
 
 enum {
+	LeafZeroObject = 125, // Reuse unique pointer-free standard records for NEWZ/MNEWZ.
 	LeafStringBytes = 124, // Export bounded byte-backed strings into reusable byte arrays.
 	LeafByteString = 123, // Convert bounded ASCII arrays into reusable unique strings.
 	LeafFormatInteger = 122, // Format integers or selected real values into reusable strings.
@@ -128,6 +163,8 @@ leafop(LeafOp *p, int op, int wordbytes)
 	memset(p, 0, sizeof(*p));
 	p->bytes = wordbytes;
 	switch(op){
+	case INEWZ: p->kind = LeafZeroObject; break;
+	case IMNEWZ: p->kind = LeafZeroObject; p->alu = 1; break;
 	case ICVTAC: p->kind = LeafByteString; break;
 	case ICVTCA: p->kind = LeafStringBytes; break;
 	case IBEQC: case IBNEC: case IBLTC: case IBLEC: case IBGTC: case IBGEC:

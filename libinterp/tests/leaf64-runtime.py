@@ -19,6 +19,7 @@ unit=r'''
 #define munmap fixtureunmap
 #define mprotect fixtureprotect
 #include "comp-amd64.c"
+#include "tests/leaf-plain-stubs.h"
 /* Numeric format publication requires the actual builtin type identity. */
 Type Tstring = {1}, Tarray = {1};
 #include <assert.h>

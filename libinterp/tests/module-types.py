@@ -39,6 +39,7 @@ if 'static Type*\nmoduletype(' in xec:
 else:
     # Let the independent direct lookup case compile against the previous source.
     parts += ['static Type *moduletype(Modlink *ml, WORD index) { return ml->type[index]; }']
+parts += [function(xec, 'static void\nnewzero(')]
 parts += [function(xec, signature) for signature in ('static int\nframefits(', 'static int\nmoduleentry(', 'List*\ncons(')]
 parts += [function(xec, 'OP('+name+')') for name in
           ('new', 'newz', 'mnewz', 'newa', 'newaz', 'newcmp', 'consmp', 'movmp', 'frame', 'mcall')]

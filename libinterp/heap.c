@@ -393,10 +393,21 @@ Heap*
 heapz(Type *t)
 {
 	Heap *h;
+	int i, bit;
 
 	if(t == nil || t == H || t->ref <= 0 || t->ref == 0x7fffffff ||
 	   t->size < 0 || (ulong)t->size > 0x7fffffff-sizeof(Heap))
 		error(exHeap);
+	/* Reject maps which initmem would write beyond the requested object. */
+	if(t->np < 0 || t->np > t->size/(8*sizeof(void*))+(t->size%(8*sizeof(void*)) != 0))
+		error(exHeap);
+	if(t->np != 0 && ((uintptr)t > (uintptr)-1 - offsetof(Type, map) ||
+	   (uintptr)t+offsetof(Type, map) > (uintptr)-1-(uintptr)t->np))
+		error(exHeap);
+	for(i = 0; i < t->np; i++)
+		for(bit = 0; bit < 8; bit++)
+			if((t->map[i] & (0x80>>bit)) && (ulong)i*8+bit >= (ulong)t->size/sizeof(void*))
+				error(exHeap);
 	h = poolalloc(heapmem, sizeof(Heap)+t->size);
 	if(h == nil)
 		error(exHeap);
@@ -419,10 +430,21 @@ Heap*
 heap(Type *t)
 {
 	Heap *h;
+	int i, bit;
 
 	if(t == nil || t == H || t->ref <= 0 || t->ref == 0x7fffffff ||
 	   t->size < 0 || (ulong)t->size > 0x7fffffff-sizeof(Heap))
 		error(exHeap);
+	/* Reject maps which initmem would write beyond the requested object. */
+	if(t->np < 0 || t->np > t->size/(8*sizeof(void*))+(t->size%(8*sizeof(void*)) != 0))
+		error(exHeap);
+	if(t->np != 0 && ((uintptr)t > (uintptr)-1 - offsetof(Type, map) ||
+	   (uintptr)t+offsetof(Type, map) > (uintptr)-1-(uintptr)t->np))
+		error(exHeap);
+	for(i = 0; i < t->np; i++)
+		for(bit = 0; bit < 8; bit++)
+			if((t->map[i] & (0x80>>bit)) && (ulong)i*8+bit >= (ulong)t->size/sizeof(void*))
+				error(exHeap);
 	h = poolalloc(heapmem, sizeof(Heap)+t->size);
 	if(h == nil)
 		error(exHeap);
@@ -455,6 +477,9 @@ heaparray(Type *t, int sz)
 	/* Validate before initarray publishes a header requiring mapped cleanup. */
 	if(t->np < 0 ||
 	   t->np > t->size/(8*sizeof(void*))+(t->size%(8*sizeof(void*)) != 0))
+		error(exHeap);
+	if(t->np != 0 && ((uintptr)t > (uintptr)-1 - offsetof(Type, map) ||
+	   (uintptr)t+offsetof(Type, map) > (uintptr)-1-(uintptr)t->np))
 		error(exHeap);
 	for(i = 0; i < t->np; i++)
 		for(bit = 0; bit < 8; bit++)
@@ -579,6 +604,9 @@ newmp(void *dst, void *src, Type *t)
 	   (t->size != 0 && (src == nil || src == H || dst == nil || dst == H)))
 		error(exHeap);
 	/* Reject partial pointer slots before initmem can write outside the payload. */
+	if(t->np != 0 && ((uintptr)t > (uintptr)-1 - offsetof(Type, map) ||
+	   (uintptr)t+offsetof(Type, map) > (uintptr)-1-(uintptr)t->np))
+		error(exHeap);
 	for(i = 0; i < t->np; i++)
 		for(bit = 0; bit < 8; bit++)
 			if((t->map[i] & (0x80>>bit)) &&

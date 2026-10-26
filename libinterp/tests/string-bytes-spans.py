@@ -49,7 +49,7 @@ for index, part in enumerate(parts):
 parts += [function((root / 'libinterp/runt.c').read_text(), 'Array*\nmem2array(')]
 unit = (root / 'libinterp/tests/string-codecs.c').read_text()
 unit = re.sub(r'^#include "[^"]+"\n', '', unit, flags=re.M)
-unit = '#include "comp-amd64.c"\n#include <fenv.h>\ntypedef unsigned short ExportAddress; // Reduced source-span domain only.\n'+unit.replace('IMPLEMENTATION', '\n'.join(parts)).replace('main(void)', 'codecmain(void)')
+unit = '#include "comp-amd64.c"\n#include "tests/leaf-plain-stubs.h"\n#include <fenv.h>\ntypedef unsigned short ExportAddress; // Reduced source-span domain only.\n'+unit.replace('IMPLEMENTATION', '\n'.join(parts)).replace('main(void)', 'codecmain(void)')
 # Preserve every reused fixture check under NDEBUG without introducing assert calls.
 while 'assert(' in unit:
     start = unit.index('assert(')

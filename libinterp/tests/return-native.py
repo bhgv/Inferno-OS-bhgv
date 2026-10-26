@@ -33,7 +33,7 @@ def function(signature):
 parts=[function('OP('+name+')') for name in ('ret',)]
 unit=(root/'libinterp/tests/return-slots.c').read_text().replace('IMPLEMENTATION','\n'.join(parts)).replace('main(void)','returnmain(void)')
 unit=re.sub(r'^#include \"[^\"]+\"\n','',unit,flags=re.M)
-unit='#include \"comp-amd64.c\"\n'+unit
+unit='#include \"comp-amd64.c\"\n#include \"tests/leaf-plain-stubs.h\"\n'+unit
 unit+=(root/'libinterp/tests/return-native.c').read_text()
 with tempfile.TemporaryDirectory(prefix='return-native-') as directory:
     td = Path(directory)
