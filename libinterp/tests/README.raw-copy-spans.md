@@ -50,3 +50,19 @@ There are still 173 active Dis commands: AMD64/ARM64 141 guarded paths / 32
 remaining; RV64 M 103/70, Zmmul 90/83, I 87/86. This broadens two existing
 opcodes rather than adding IDs. Native paths remain partial; ARM64/RV64
 instruction execution is emulated, with physical target acceptance separate.
+
+## Guarded HEADM image capacity
+
+The copy emulator fixture uses the existing 128-unit private emitter capacity.
+The list-slot guards added in 85cd4e5 make the ARM64 HEADM image exceed the old
+64-unit test buffer. A zero result at that insufficient capacity was expected
+emitter behavior, not an unavailable instruction. This change adjusts only the
+fixture; it does not increase production LeafMax or change the native ABI.
+
+For each architecture, WORD model and MOVM/HEADM variant the fixture checks null
+sizing, every insufficient capacity, exact-capacity image equality and a trailing
+canary. AMD64/ARM64 short publication must remain completely write-free; RV64
+retains its existing prefix-publication boundary check. Guest instruction cache
+invalidation covers the complete 128-unit staging window. The unchanged memory,
+overlap, access-span, write-order and FP oracles pass 411,264 cases under Python
+-O across AMD64, ARM64 and RV64.

@@ -16,6 +16,7 @@ BASE = 0x100000000
 CODE = 0x10000
 STOP = 0x11000
 MASK = (1 << 64)-1
+CODE_UNITS = 128  # Existing private emitter capacity; no production ABI change.
 PATTERN = bytes((i*37+11) & 255 for i in range(0x4000))
 
 
@@ -78,17 +79,34 @@ int emit(u32int *out, int cap, int wb, int head, int offset)
         checks = 0
         for wb in (4, 8):
             for head in (0, 1):
-                out = (C.c_uint32*64)()
-                n = lib.emit(out, 64, wb, head, 24)
-                require(0 < n <= 64 and lib.emit(None, 64, wb, head, 24) == n, (arch, wb, head, 'sizing', n))
+                out = (C.c_uint32*CODE_UNITS)()
+                n = lib.emit(out, CODE_UNITS, wb, head, 24)
+                require(0 < n <= CODE_UNITS and
+                        lib.emit(None, CODE_UNITS, wb, head, 24) == n,
+                        (arch, wb, head, 'sizing', n))
+                exact = (C.c_uint32*(n+1))(*([0xa5a5a5a5]*(n+1)))
+                require(lib.emit(exact, n, wb, head, 24) == n,
+                        (arch, wb, head, 'exact-capacity publication'))
+                require(bytes(exact)[:n*4] == bytes(out)[:n*4] and exact[n] == 0xa5a5a5a5,
+                        (arch, wb, head, 'exact-capacity image/trailing canary'))
+                require(lib.emit(None, n, wb, head, 24) == n,
+                        (arch, wb, head, 'exact-capacity sizing'))
                 for cap in range(n):
-                    guard = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                    require(lib.emit(guard, cap, wb, head, 24) == 0 and list(guard)[cap if arch == 'riscv64' else 0:] == [0xa5a5a5a5]*(64-(cap if arch == 'riscv64' else 0)), 'short publication')
+                    require(lib.emit(None, cap, wb, head, 24) == 0,
+                            (arch, wb, head, 'short sizing', cap))
+                    guard = (C.c_uint32*CODE_UNITS)(*[0xa5a5a5a5]*CODE_UNITS)
+                    untouched = cap if arch == 'riscv64' else 0
+                    require(lib.emit(guard, cap, wb, head, 24) == 0 and
+                            list(guard)[untouched:] == [0xa5a5a5a5]*(CODE_UNITS-untouched),
+                            (arch, wb, head, 'short publication', cap))
                 if head:
                     for offset in (-1, 4096, (1 << 31)-1):
-                        guard = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                        require(lib.emit(guard, 64, wb, head, offset) == 0 and list(guard) == [0xa5a5a5a5]*64, 'invalid list offset')
-                machine.mem_write(CODE, bytes(out)[:n*4]); machine.ctl_remove_cache(CODE, CODE+256)
+                        guard = (C.c_uint32*CODE_UNITS)(*[0xa5a5a5a5]*CODE_UNITS)
+                        require(lib.emit(guard, CODE_UNITS, wb, head, offset) == 0 and
+                                list(guard) == [0xa5a5a5a5]*CODE_UNITS,
+                                (arch, wb, head, 'invalid list offset', offset))
+                machine.mem_write(CODE, bytes(out)[:n*4])
+                machine.ctl_remove_cache(CODE, CODE+CODE_UNITS*4)
                 lengths = (0, 1, 2, 7, 8, 15, 31, 64, 127, 128, 129, 255, 256, 257, -1, -(1 << (wb*8-1)), (1 << (wb*8-1))-1)
                 for length in lengths:
                     for profile in range(12):
