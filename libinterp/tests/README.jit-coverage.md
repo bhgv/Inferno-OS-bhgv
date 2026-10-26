@@ -2,19 +2,25 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 163 commands (94.2%); ten remain on the interpreter path. RV64 profiles
+paths for 164 commands (94.8%); nine remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 163 | 10 |
-| ARM64 | 173 | 163 | 10 |
+| AMD64 | 173 | 164 | 9 |
+| ARM64 | 173 | 164 | 9 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
 
-The latest addition is ICONSMP for pointer-free mapped payloads up to 256 bytes.
+The latest addition is a guarded ICASEC path for empty string tables and exact
+lower-label owner identities in a one-row table. Equal owners retain stringcmp's
+signed length/capacity checks; H skips header reads. Different owners, larger
+tables and legacy compiled tables retain C. This is partial opcode availability,
+not a general native string search. See [README.string-case-native.md](README.string-case-native.md).
+
+The preceding addition is ICONSMP for pointer-free mapped payloads up to 256 bytes.
 Native code resolves a checked live Type, stages the old tail across allocation,
 copies payload bytes and publishes descriptor/owner updates. Mapped and larger
 records retain the protected interpreter constructor, which now rolls back
@@ -190,12 +196,10 @@ and RX publication are covered separately by `leaf64-runtime.py`.
 
 ## Current interpreter-only commands on AMD64/ARM64
 
-The production sizing emitters report these 18 active commands for both WORD models:
+The production sizing emitters report these nine active commands for both WORD models:
 
 ```
-IALT INBALT ISPAWN ILOAD IMSPAWN IEXIT INEWCB INEWCW INEWCF INEWCP
-INEWCM INEWCMP ISEND IRECV ICONSMP
-INEWCL ICASEC IRAISE
+IALT INBALT ISPAWN ILOAD IMSPAWN IEXIT ISEND IRECV IRAISE
 ```
 
 The list excludes invalid/unused slots and is regenerated from jit-coverage.py.

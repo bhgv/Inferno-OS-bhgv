@@ -211,7 +211,7 @@ struct LeafOp {
 	int bytes; // Width of the stored scalar result.
 	int input; // Source/allocation width, or the bounded digit count for decimal leaves.
 	int alu; // Arithmetic or representation variant within a leaf kind.
-	int condition; // Comparison predicate or fixed-point rounding variant.
+	int condition; // Comparison predicate, rounding variant or string-case selector.
 };
 
 enum {
@@ -359,6 +359,11 @@ leafop(LeafOp *p, int op, int wordbytes)
 		break;
 	case IMOVPC: p->kind = LeafProgramAddress; p->bytes = 8; break;
 	case IGOTO: p->kind = LeafTableJump; p->bytes = 8; break;
+	case ICASEC:
+		p->kind = LeafCaseJump;
+		p->bytes = 8;
+		p->condition = 1;
+		break;
 	case ICASE: p->kind = LeafCaseJump; break;
 	case ICASEL: p->kind = LeafCaseJump; p->bytes = 8; p->alu = 1; break;
 	case IMCALL: p->kind = LeafModuleCall; break;

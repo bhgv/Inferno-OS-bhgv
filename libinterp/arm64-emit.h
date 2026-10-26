@@ -208,11 +208,11 @@ a64pcspan(A64Buf *b, int owner, int extent, int fallback)
 }
 
 
-/* Search bounded numeric tables with one rejection return and no runtime helper ABI. */
+/* Search numeric tables and lower-label string identities through one checked rejection return. */
 static int
 a64case(A64Buf *b, LeafLayout *abi, LeafOp *op)
 {
-	int fallback, header, stride, loop, empty, left, right, found, done;
+	int fallback, header, stride, loop, empty, left, right, found, done, identity, positive;
 
 	if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
 	   abi->linkmodule < 0 || abi->linkmodule > 2047 || abi->linkmodule%8 ||
@@ -220,6 +220,10 @@ a64case(A64Buf *b, LeafLayout *abi, LeafOp *op)
 	   abi->moduleprog < 0 || abi->moduleprog > 2047 || abi->moduleprog%8 ||
 	   abi->modulenprog < 0 || abi->modulenprog > 2047 || abi->modulenprog%4 ||
 	   abi->instbytes < 1 || abi->instbytes > 2047)
+		return 0;
+	if(op->condition && (abi->stringlen < 0 || abi->stringlen > 2047 || abi->stringlen%4 ||
+	   abi->stringmax < 0 || abi->stringmax > 2047 || abi->stringmax%4 ||
+	   abi->stringlen == abi->stringmax))
 		return 0;
 	header=op->alu ? 2*IBY2WD : IBY2WD;
 	stride=op->alu ? 2*IBY2LG+2*IBY2WD : 3*IBY2WD;
@@ -237,27 +241,47 @@ a64case(A64Buf *b, LeafLayout *abi, LeafOp *op)
 	if(op->bytes == 4)a64put(b, 0xb980012e); /* ldrsw x14,[x9] */
 	else a64load(b, 14, 9, 8);
 	a64ptr(b, 10, abi->d); a64pcspan(b, 10, 4, fallback);
-	a64put(b, 0xb9800141);
-	a64put(b, 0xf100003fU | 4095<<10); a64pcguard(b, 0x54000069, fallback);
+	a64put(b, op->condition && IBY2WD == 8 ? 0xf9400141 : 0xb9800141);
+	a64put(b, 0xf100003fU | (op->condition ? 1 : 4095)<<10); a64pcguard(b, 0x54000069, fallback);
 	a64put(b, 0xd2800009U | stride<<5);
 	a64put(b, 0x9b097c24); a64put(b, 0x91000084U | header<<10);
 	a64put(b, 0xab040145); a64pcguard(b, 0x54000063, fallback);
-	a64put(b, 0xb1000cbf); a64pcguard(b, 0x54000063, fallback);
-	a64put(b, 0xb98000ad); a64put(b, 0x9100014fU | header<<10);
+	a64put(b, 0xb10000bfU | (op->condition ? IBY2WD-1 : 3)<<10); a64pcguard(b, 0x54000063, fallback);
+	a64put(b, op->condition && IBY2WD == 8 ? 0xf94000ad : 0xb98000ad); a64put(b, 0x9100014fU | header<<10);
 	loop=b->n; empty=b->n; a64put(b, 0xb4000001);
-	a64put(b, 0xd341fc22); a64put(b, 0x9b093c43);
-	a64put(b, op->alu ? 0xf9400064 : 0xb9800064);
-	a64put(b, 0xeb0401df); left=b->n; a64put(b, 0x5400000b);
-	a64put(b, op->alu ? 0xf9400464 : 0xb9800064U | (IBY2WD/4)<<10);
-	a64put(b, 0xeb0401df); right=b->n; a64put(b, 0x5400000a);
-	a64put(b, op->alu ? 0xb980106d : 0xb980006dU | (2*IBY2WD/4)<<10);
-	found=b->n; a64put(b, 0x14000000);
-	b->code[left] |= (b->n-left)<<5;
-	a64put(b, 0xd341fc21); a64put(b, 0x14000000U | ((loop-b->n)&0x3ffffff));
-	b->code[right] |= (b->n-right)<<5;
-	a64put(b, 0xcb020021); a64put(b, 0xd1000421);
-	a64put(b, 0x9100006fU | stride<<10); a64put(b, 0x14000000U | ((loop-b->n)&0x3ffffff));
-	done=b->n; b->code[empty] |= (done-empty)<<5; b->code[found] |= done-found;
+	if(op->condition){
+		if(IBY2WD < 8){
+			a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+		}else{
+			/* Equal owners still validate the same header constraints as stringcmp. */
+			a64put(b, 0xf94001e9); // ldr x9,[x15] captures the lower label.
+			a64put(b, 0xeb0901df); a64pcguard(b, 0x54000060, fallback);
+			a64put(b, 0xb100053f); identity=b->n; a64put(b, 0x54000000);
+			a64pcspan(b, 9, abi->stringlen+4 > abi->stringmax+4 ? abi->stringlen+4 : abi->stringmax+4, fallback);
+			a64wordfield(b, 4, 9, abi->stringlen, 4);
+			a64put(b, 0xf100009f); positive=b->n; a64put(b, 0x5400000a);
+			a64put(b, 0xcb0403e4); // neg x4,x4, in the native width, including INT_MIN.
+			b->code[positive] |= (b->n-positive)<<5;
+			a64wordfield(b, 5, 9, abi->stringmax, 4);
+			a64put(b, 0xeb05009f); a64pcguard(b, 0x5400006d, fallback);
+			b->code[identity] |= (b->n-identity)<<5;
+			a64field(b, 13, 15, 2*IBY2WD, 8);
+		}
+	}else{
+		a64put(b, 0xd341fc22); a64put(b, 0x9b093c43);
+		a64put(b, op->alu ? 0xf9400064 : 0xb9800064);
+		a64put(b, 0xeb0401df); left=b->n; a64put(b, 0x5400000b);
+		a64put(b, op->alu ? 0xf9400464 : 0xb9800064U | (IBY2WD/4)<<10);
+		a64put(b, 0xeb0401df); right=b->n; a64put(b, 0x5400000a);
+		a64put(b, op->alu ? 0xb980106d : 0xb980006dU | (2*IBY2WD/4)<<10);
+		found=b->n; a64put(b, 0x14000000);
+		b->code[left] |= (b->n-left)<<5;
+		a64put(b, 0xd341fc21); a64put(b, 0x14000000U | ((loop-b->n)&0x3ffffff));
+		b->code[right] |= (b->n-right)<<5;
+		a64put(b, 0xcb020021); a64put(b, 0xd1000421);
+		a64put(b, 0x9100006fU | stride<<10); a64put(b, 0x14000000U | ((loop-b->n)&0x3ffffff));
+	}
+	done=b->n; b->code[empty] |= (done-empty)<<5; if(!op->condition)b->code[found] |= done-found;
 	a64field(b, 4, 12, abi->modulenprog, 4);
 	/* Reject a negative 32-bit instruction count; zero fails the destination bound. */
 	a64put(b, 0x37f80004U | ((fallback-b->n)&0x3fff)<<5);

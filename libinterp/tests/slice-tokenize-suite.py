@@ -66,6 +66,7 @@ CORE = [
     'libinterp/tests/sys-packdir.py',
     'libinterp/tests/goto-native.py',
     'libinterp/tests/string-case-c.py',
+    'libinterp/tests/string-case-native.py',
     'libinterp/tests/pc-tables-native.py',
     'libinterp/tests/sys-stat-slots.py',
     'libinterp/tests/real-branch-native.py',
@@ -135,6 +136,7 @@ CORE = [
     'limbo/tests/case-max.py',
 ]
 JIT = [
+    'libinterp/tests/string-case-jit.py',
     'libinterp/tests/pc-tables-jit.py',
     'libinterp/tests/mapped-cons-jit.py',
     'libinterp/tests/payload-channel-jit.py',

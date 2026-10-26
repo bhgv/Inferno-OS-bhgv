@@ -262,13 +262,13 @@ x64casefield(X64Buf *b, int result, int owner, int offset, int bytes)
 	x64byte(b, 0x40 | result<<3 | (owner&7)); x64byte(b, offset);
 }
 
-/* Defer rejection to one of two nearby returns, preserving short conditional transfers. */
+/* Use full displacements so distant private fields cannot invalidate a guarded case leaf. */
 static void
 x64caseguard(X64Buf *b, int success, int *patch, int *count)
 {
-	x64byte(b, success^1);
+	x64byte(b, 0x0f); x64byte(b, (success^1)+0x10);
 	patch[(*count)++]=b->n;
-	x64byte(b, 0);
+	x64word(b, 0);
 }
 
 
@@ -287,13 +287,13 @@ x64pcspan(X64Buf *b, int owner, int extent)
 }
 
 
-/* Search fixed-width numeric tables without helper calls or VM writes before target validation. */
+/* Search numeric tables and lower-label string identities without publishing unchecked targets. */
 static int
 x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 {
-	int reject[32], count, first, last, i, displacement;
+	int reject[32], count, first, i, j, displacement;
 	int loop, empty, left, right, found, leftlabel, rightlabel, done;
-	int header, stride;
+	int header, stride, identity, positive;
 
 	if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
 	   abi->linkmodule < 0 || abi->linkmodule > 2047 || abi->linkmodule%8 ||
@@ -302,9 +302,13 @@ x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 	   abi->modulenprog < 0 || abi->modulenprog > 2047 || abi->modulenprog%4 ||
 	   abi->instbytes < 1 || abi->instbytes > 2047)
 		return 0;
+	if(op->condition && (abi->stringlen < 0 || abi->stringlen > 2047 || abi->stringlen%4 ||
+	   abi->stringmax < 0 || abi->stringmax > 2047 || abi->stringmax%4 ||
+	   abi->stringlen == abi->stringmax))
+		return 0;
 	header=op->alu ? 2*IBY2WD : IBY2WD;
 	stride=op->alu ? 2*IBY2LG+2*IBY2WD : 3*IBY2WD; count=0;
-	/* Rejection islands cover both ends without near branches or a larger code buffer. */
+	/* Every checked rejection reaches one side-effect-free return. */
 	x64byte(b, 0xeb); x64byte(b, 3); first=b->n;
 	x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	x64caseptr(b, 0, abi->module);
@@ -319,44 +323,69 @@ x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 	x64caseptr(b, 0, abi->s); x64pcspan(b, 8, op->bytes); x64load(b, 0, op->bytes);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc6); /* rsi=value */
 	x64caseptr(b, 2, abi->d); x64pcspan(b, 10, 4);
-	x64casefield(b, 1, 10, 0, 4);
-	x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, 4095); x64caseguard(b, 0x76, reject, &count);
+	x64casefield(b, 1, 10, 0, op->condition ? IBY2WD : 4);
+	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, op->condition ? 1 : 4095); x64caseguard(b, 0x76, reject, &count);
 	x64byte(b, 0x48); x64byte(b, 0x6b); x64byte(b, 0xc1); x64byte(b, stride);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xc0); x64byte(b, header);
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xd2);
 	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xc2); x64caseguard(b, 0x73, reject, &count);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0xfc); x64caseguard(b, 0x76, reject, &count);
-	x64byte(b, 0x4c); x64byte(b, 0x63); x64byte(b, 0x0a); /* r9=default */
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, op->condition ? -IBY2WD : -4); x64caseguard(b, 0x76, reject, &count);
+	x64byte(b, 0x4c); x64byte(b, op->condition && IBY2WD == 8 ? 0x8b : 0x63); x64byte(b, 0x0a); /* r9=default */
 	x64byte(b, 0x4d); x64byte(b, 0x8d); x64byte(b, 0x42); x64byte(b, header); /* r8=rows */
 	loop=b->n;
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
-	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc8);
-	x64byte(b, 0x48); x64byte(b, 0xd1); x64byte(b, 0xe8);
-	x64byte(b, 0x48); x64byte(b, 0x6b); x64byte(b, 0xc0); x64byte(b, stride);
-	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x14); x64byte(b, 0x00);
-	x64byte(b, 0x48); x64byte(b, op->alu ? 0x8b : 0x63); x64byte(b, 0x02);
-	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xc6);
-	x64byte(b, 0x7c); left=b->n; x64byte(b, 0);
-	x64byte(b, 0x48); x64byte(b, op->alu ? 0x8b : 0x63); x64byte(b, 0x42); x64byte(b, op->alu ? IBY2LG : IBY2WD);
-	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xc6);
-	x64byte(b, 0x7d); right=b->n; x64byte(b, 0);
-	x64byte(b, 0x4c); x64byte(b, 0x63); x64byte(b, 0x4a); x64byte(b, op->alu ? 2*IBY2LG : 2*IBY2WD);
-	x64byte(b, 0xeb); found=b->n; x64byte(b, 0);
-	leftlabel=b->n;
-	x64byte(b, 0x48); x64byte(b, 0xd1); x64byte(b, 0xe9);
-	x64byte(b, 0xeb); x64byte(b, loop-b->n-1);
-	rightlabel=b->n;
-	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc8);
-	x64byte(b, 0x48); x64byte(b, 0xd1); x64byte(b, 0xe8);
-	x64byte(b, 0x48); x64byte(b, 0x29); x64byte(b, 0xc1);
-	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc9);
-	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x42); x64byte(b, stride);
-	x64byte(b, 0xeb); x64byte(b, loop-b->n-1);
+	if(op->condition){
+		/* Narrow cells cannot contain native String pointers; empty tables still run. */
+		if(IBY2WD < 8){
+			x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+		}else{
+			x64casefield(b, 0, 8, 0, 8);
+			x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xc6); x64guard(b, 0x74);
+			x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
+			x64byte(b, 0x74); identity=b->n; x64byte(b, 0);
+			x64pcspan(b, 0, abi->stringlen+4 > abi->stringmax+4 ? abi->stringlen+4 : abi->stringmax+4);
+			x64casefield(b, 1, 0, abi->stringlen, 4);
+			x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
+			x64byte(b, 0x79); positive=b->n; x64byte(b, 0);
+			x64byte(b, 0x48); x64byte(b, 0xf7); x64byte(b, 0xd9);
+			b->bytes[positive]=b->n-positive-1;
+			x64casefield(b, 2, 0, abi->stringmax, 4);
+			x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xd1); x64guard(b, 0x7e);
+			b->bytes[identity]=b->n-identity-1;
+			x64byte(b, 0x4d); x64byte(b, 0x8b); x64byte(b, 0x48); x64byte(b, 2*IBY2WD);
+		}
+	}else{
+		x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc8);
+		x64byte(b, 0x48); x64byte(b, 0xd1); x64byte(b, 0xe8);
+		x64byte(b, 0x48); x64byte(b, 0x6b); x64byte(b, 0xc0); x64byte(b, stride);
+		x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x14); x64byte(b, 0x00);
+		x64byte(b, 0x48); x64byte(b, op->alu ? 0x8b : 0x63); x64byte(b, 0x02);
+		x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xc6);
+		x64byte(b, 0x7c); left=b->n; x64byte(b, 0);
+		x64byte(b, 0x48); x64byte(b, op->alu ? 0x8b : 0x63); x64byte(b, 0x42); x64byte(b, op->alu ? IBY2LG : IBY2WD);
+		x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xc6);
+		x64byte(b, 0x7d); right=b->n; x64byte(b, 0);
+		x64byte(b, 0x4c); x64byte(b, 0x63); x64byte(b, 0x4a); x64byte(b, op->alu ? 2*IBY2LG : 2*IBY2WD);
+		x64byte(b, 0xeb); found=b->n; x64byte(b, 0);
+		leftlabel=b->n;
+		x64byte(b, 0x48); x64byte(b, 0xd1); x64byte(b, 0xe9);
+		x64byte(b, 0xeb); x64byte(b, loop-b->n-1);
+		rightlabel=b->n;
+		x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc8);
+		x64byte(b, 0x48); x64byte(b, 0xd1); x64byte(b, 0xe8);
+		x64byte(b, 0x48); x64byte(b, 0x29); x64byte(b, 0xc1);
+		x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc9);
+		x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x42); x64byte(b, stride);
+		x64byte(b, 0xeb); x64byte(b, loop-b->n-1);
+	}
 	done=b->n;
 	if(b->n > sizeof(b->bytes)) return 0;
-	b->bytes[empty]=done-empty-1; b->bytes[found]=done-found-1;
-	b->bytes[left]=leftlabel-left-1; b->bytes[right]=rightlabel-right-1;
+	b->bytes[empty]=done-empty-1;
+	if(!op->condition){
+		b->bytes[found]=done-found-1;
+		b->bytes[left]=leftlabel-left-1; b->bytes[right]=rightlabel-right-1;
+	}
 	x64casefield(b, 2, 11, abi->modulenprog, 4);
 	x64byte(b, 0x85); x64byte(b, 0xd2); x64caseguard(b, 0x7f, reject, &count);
 	x64byte(b, 0x49); x64byte(b, 0x39); x64byte(b, 0xd1); x64caseguard(b, 0x72, reject, &count);
@@ -366,14 +395,11 @@ x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 	x64byte(b, 0x4d); x64byte(b, 0x69); x64byte(b, 0xc9); x64word(b, abi->instbytes);
 	x64byte(b, 0x4c); x64byte(b, 0x01); x64byte(b, 0xc8); x64caseguard(b, 0x73, reject, &count);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, abi->pc);
-	x64byte(b, 0xeb); x64byte(b, 3); last=b->n;
-	x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	if(b->n > sizeof(b->bytes)) return 0;
 	for(i=0;i<count;i++){
-		displacement=first-reject[i]-1;
-		if(displacement < -128 || displacement > 127) displacement=last-reject[i]-1;
-		if(displacement < -128 || displacement > 127) return 0;
-		b->bytes[reject[i]]=displacement;
+		displacement=first-reject[i]-4;
+		for(j = 0; j < 4; j++)
+			b->bytes[reject[i]+j]=(u32int)displacement>>(8*j);
 	}
 	return 1;
 }
