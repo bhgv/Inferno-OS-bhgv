@@ -41,3 +41,18 @@ This fixture models compiler helper behavior and exercises one compiler/runtime
 conversion path. It does not validate every fixed rounding case end to end,
 complete parsing/code emission, target libmath implementations, JIT fallback ABI
 or full Inferno boot. VM layouts and the instruction set are unchanged.
+
+## Frame dependency refresh
+
+The selection fixture now extracts the production `fixedword` helper and writes
+coefficients into an explicit WORD32 frame. The cast-folding fixture uses the
+same current dependency instead of the removed Stmp-based runtime convention.
+Both drivers are included in the core checkpoint. Their checks use explicit
+failure conditions and remain active with NDEBUG.
+
+Current validation: fixed selection passes 25,029 checks and cast folding passes
+280,463 checks under UBSan/float-cast-overflow, both with and without NDEBUG.
+The existing 112-driver core selection also passes; the three newly registered
+drivers were run separately. This is not a full compiler build or native-device
+JIT acceptance test. The new source-history ASan attempt was blocked by sandbox
+LeakSanitizer process inspection and is not counted as passing.

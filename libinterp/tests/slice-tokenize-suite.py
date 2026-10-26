@@ -9,6 +9,8 @@ import sys
 
 CORE = [
     'limbo/tests/source-history.py',
+    'limbo/tests/fixed-ops.py',
+    'limbo/tests/fold-casts.py',
     'libinterp/tests/payload-cons-native.py',
     'libinterp/tests/scalar-cons-native.py',
     'libinterp/tests/array-reuse-native.py',

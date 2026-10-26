@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -21,8 +20,19 @@ typedef struct { char *name; } Sym;
 typedef struct { Sym *sym; } Decl;
 typedef struct Node Node;
 struct Node { Type *ty; Src src; Long val; double rval; Decl *decl; };
-#define nil NULL
+#define nil NULL // Native null identity.
 static int checks;
+
+
+/* Keep every regression oracle active when NDEBUG is defined. */
+static void
+check(int condition)
+{
+	if(!condition){
+		fputs("cast folding check failed\n", stderr);
+		exit(1);
+	}
+}
 
 /* LeakSanitizer cannot inspect processes here; the fixture allocates no heap. */
 int
@@ -55,17 +65,32 @@ SELECTBODY
 #undef error
 IMPLEMENTATION
 /* Use actual VM conversion code with a local error boundary and WORD32 storage. */
+#define H ((void*)(uintptr_t)~(uintptr_t)0) // VM nil frame sentinel.
 typedef double REAL;
 typedef int32_t WORD;
 typedef uint32_t UWORD;
 typedef int64_t LONG;
-static WORD Stmp,Dtmp;
-static struct {void *s,*m,*d;} R;
+
+/* Model the WORD32 runtime frame used by selected fixed instructions. */
+static struct {
+	void *s; // Source operand cell.
+	void *m; // Middle operand cell.
+	void *d; // Destination operand cell.
+	char *FP; // Frame containing the selected coefficient.
+} R;
+static WORD frame[NREG+3];
 static jmp_buf boundary;
 static int vmerror;
-static char exInval[]="invalid",exZdiv[]="zero";
+static char exInval[]="invalid",exZdiv[]="zero",exNilref[]="nil frame";
+
 /* Preserve the destination when the VM rejects an exceptional conversion. */
-static void error(char *text) { assert(text==exInval); vmerror=1; longjmp(boundary,1); }
+static void
+error(char *text)
+{
+	check(text == exInval);
+	vmerror = 1;
+	longjmp(boundary, 1);
+}
 #define OP(n) static void n(void)
 #define F(r) (*(REAL*)R.r)
 #define W(r) (*(WORD*)R.r)
@@ -104,9 +129,9 @@ integers(void)
 				if(target == Tint) expected = int32value(expected);
 				if(target == Tbyte) expected = (uvlong)expected&255;
 				result = foldcast(&cast, &left);
-				assert(result == &left && left.ty == &types[target] && left.src.line == 99);
-				if(target == Treal) assert(left.rval == (double)expected);
-				else assert(left.val == expected);
+				check(result == &left && left.ty == &types[target] && left.src.line == 99);
+				if(target == Treal) check(left.rval == (double)expected);
+				else check(left.val == expected);
 				checks++;
 			}
 	}
@@ -136,11 +161,11 @@ strings(void)
 			expected = kind == Tint ? int32value(values[i]) : kind == Tbyte ? (Long)((uvlong)values[i]&255) : values[i];
 			original = left;
 			if(kind != Tbig && (values[i] < INT32_MIN || values[i] > INT32_MAX)){
-				assert(foldcast(&cast, &left) == &cast);
-				assert(memcmp(&left, &original, sizeof left) == 0);
+				check(foldcast(&cast, &left) == &cast);
+				check(memcmp(&left, &original, sizeof left) == 0);
 			}else{
-				assert(foldcast(&cast, &left) == &left);
-				assert(left.val == expected && left.ty == &target && left.src.line == 99);
+				check(foldcast(&cast, &left) == &left);
+				check(left.val == expected && left.ty == &target && left.src.line == 99);
 			}
 			checks++;
 		}
@@ -165,11 +190,11 @@ realcase(double value, int kind)
 	if(kind != Tbig) valid = valid && rounded >= -2147483648.0L && rounded < 2147483648.0L;
 	result = foldcast(&cast, &left);
 	if(!valid) {
-		assert(result == &cast && memcmp(&original, &left, sizeof(left)) == 0);
+		check(result == &cast && memcmp(&original, &left, sizeof(left)) == 0);
 	}else {
 		expected = (Long)rounded;
 		if(kind == Tbyte) expected = (uvlong)expected&255;
-		assert(result == &left && left.val == expected && left.ty == &target && left.src.line == 99);
+		check(result == &left && left.val == expected && left.ty == &target && left.src.line == 99);
 	}
 	checks++;
 }
@@ -192,13 +217,13 @@ fixed(void)
 			expected = kind==Tfix ? value>>1 : value>>2;
 			if(kind==Tbig) expected=(Long)(value*.25+(value<0?-.5:.5));
 			if(kind==Tbyte) expected &= 255;
-			assert(foldcast(&cast,&left) == &left);
-			assert(left.val==expected && left.ty==&target && left.src.line==99);
+			check(foldcast(&cast,&left) == &left);
+			check(left.val==expected && left.ty==&target && left.src.line==99);
 			checks++;
 		}
 	left = (Node){&source,{1},-1,0,nil};
 	cast = (Node){&source,{99},0,0,nil};
-	assert(foldcast(&cast,&left) == &left); checks++;
+	check(foldcast(&cast,&left) == &left); checks++;
 }
 
 /* Int/byte inputs use fixed instructions; big inputs follow the real precast. */
@@ -213,10 +238,11 @@ fixedinputs(void)
 		source=(Type){kind,1};
 		left=(Node){&source,{1},kind==Tbyte ? value&255 : value,0,nil};
 		original=left;cast=(Node){&target,{99},0,0,nil};
-		assert(foldcast(&cast,&left)==&left && left.val==original.val*4);
+		check(foldcast(&cast,&left)==&left && left.val==original.val*4);
 		checks++;
 	}
 }
+
 
 /* Cross-check fixed constant results with the exact selected VM instruction. */
 static void
@@ -231,15 +257,17 @@ fixedpipeline(void)
 	for(i=0;i<8;i++) for(j=0;j<8;j++) for(k=-1024;k<=1024;k++) {
 		source.factor=factors[i];target.factor=factors[j];
 		left=(Node){&source,{1},k,0,nil};cast=(Node){&target,{99},0,0,nil};
-		assert(foldcast(&cast,&left)==&left);
+		check(foldcast(&cast,&left)==&left);
 		op=fixop(ICVTXX,&source,tint,&target,&p,&a);
-		input=k;count=p;output=123;Stmp=a;
+		input=k;count=p;output=123;
+		R.FP=(char*)frame;
+		frame[NREG]=a;
 		R.s=&input;R.m=&count;R.d=&output;
 		if(op==IMOVW) output=0;
 		else if(op==ICVTXX) cvtxx();
 		else if(op==ICVTXX0) cvtxx0();
-		else { assert(op==ICVTXX1);cvtxx1(); }
-		assert(left.val==output);checks++;
+		else { check(op==ICVTXX1);cvtxx1(); }
+		check(left.val==output);checks++;
 	}
 }
 
@@ -271,11 +299,11 @@ fixedtargets(void)
 			output=12345; R.s=&input;R.m=&factor;R.d=&output;vmerror=0;
 			if(setjmp(boundary)==0) cvtfx();
 			if(valid) {
-				assert(!vmerror && result==&left && left.val==output);
-				assert(left.ty==&target && left.src.line==99);
+				check(!vmerror && result==&left && left.val==output);
+				check(left.ty==&target && left.src.line==99);
 			}else {
-				assert(vmerror && output==12345 && result==&cast);
-				assert(!memcmp(&original,&left,sizeof(left)));
+				check(vmerror && output==12345 && result==&cast);
+				check(!memcmp(&original,&left,sizeof(left)));
 			}
 			checks++;
 		}

@@ -65,7 +65,7 @@ checkstring(int i)
 	int kind, alias;
 	Long expected;
 
-	assert(vectors[i].len < sizeof(text.Sascii));
+	check(vectors[i].len < sizeof(text.Sascii));
 	memset(&text, 0, sizeof text);
 	memcpy(text.Sascii, vectors[i].text, vectors[i].len);
 	text.len = vectors[i].len;
@@ -76,14 +76,14 @@ checkstring(int i)
 		cast = (Node){&target, {99}, 0, 0, nil};
 		lexerrors = 0;
 		folded = foldcast(&cast, &left);
-		assert(lexerrors == 0);
+		check(lexerrors == 0);
 		if(kind != Tbig && !vectors[i].small){
-			assert(folded == &cast && memcmp(&left, &original, sizeof left) == 0);
+			check(folded == &cast && memcmp(&left, &original, sizeof left) == 0);
 		}else{
 			expected = kind == Tbig ? (Long)vectors[i].big :
 				kind == Tbyte ? (vectors[i].value&255) : vectors[i].value;
-			assert(folded == &left && left.ty == &target && left.src.line == 99);
-			assert(left.val == expected);
+			check(folded == &left && left.ty == &target && left.src.line == 99);
+			check(left.val == expected);
 		}
 		checks++;
 	}
@@ -94,13 +94,13 @@ checkstring(int i)
 		R.d = alias ? &output.word : &word;
 		cvtcw();
 		if(alias)word = output.word;
-		assert(word == (sizeof(WORD) == 4 ? vectors[i].word32 : vectors[i].word64));
+		check(word == (sizeof(WORD) == 4 ? vectors[i].word32 : vectors[i].word64));
 		output.pointer = &text;
 		R.s = alias ? &output.pointer : &input;
 		R.d = alias ? &output.big : &big;
 		cvtcl();
 		if(alias)big = output.big;
-		assert((uint64_t)big == vectors[i].big);
+		check((uint64_t)big == vectors[i].big);
 		checks += 2;
 	}
 }
