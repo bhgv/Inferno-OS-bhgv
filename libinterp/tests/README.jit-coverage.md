@@ -33,6 +33,11 @@ before parsing or FP conversion. C validates outputs before ASCII termination
 or Rune-cache preparation. Coverage counts are unchanged; see
 [README.decimal-preflight.md](README.decimal-preflight.md).
 
+INDC/INSC now preflight all scalar/pointer slots and complete String headers;
+INSC also bounds its backward reference cell before metadata reads. C mirrors
+slot/header checks and validates full Heap origins. Existing native availability
+is unchanged. See [README.string-cell-preflight.md](README.string-cell-preflight.md).
+
 The preceding addition is ICONSMP for pointer-free mapped payloads up to 256 bytes.
 Native code resolves a checked live Type, stages the old tail across allocation,
 copies payload bytes and publishes descriptor/owner updates. Mapped and larger

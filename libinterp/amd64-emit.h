@@ -957,9 +957,14 @@ x64stringindex(X64Buf *b, LeafLayout *a)
 	   a->stringdata < a->stringmax+4 || a->stringdata > 2047) return 0;
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+	/* Preflight every decoded slot before capturing operands or reading headers. */
+	x64ptr(b, 0, a->s); x64pcspan(b, 8, 8);
+	x64ptr(b, 0, a->m); x64pcspan(b, 8, a->wordbytes);
+	x64ptr(b, 0, a->d); x64pcspan(b, 8, a->wordbytes);
 	x64ptr(b, 0, a->s); x64load(b, 0, 8);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff); x64moduleguard(b, 0x75, fallback);
+	x64pcspan(b, 0, a->stringdata);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc3); /* r11 = owner */
 	x64field(b, 1, 0, a->stringlen, 4);
 	x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, 0x80000000U); x64moduleguard(b, 0x75, fallback);
@@ -1001,6 +1006,10 @@ x64stringstore(X64Buf *b, LeafLayout *a)
 	   a->heapref <= 0 || a->heapref > 255 || a->heapref%8 || a->refbytes != 8) return 0;
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+	/* Preflight every decoded slot before capturing operands or reading headers. */
+	x64ptr(b, 0, a->s); x64pcspan(b, 8, a->wordbytes);
+	x64ptr(b, 0, a->m); x64pcspan(b, 8, a->wordbytes);
+	x64ptr(b, 0, a->d); x64pcspan(b, 8, 8);
 	x64ptr(b, 0, a->s); x64load(b, 0, a->wordbytes);
 	x64byte(b, 0x41); x64byte(b, 0x89); x64byte(b, 0xc0); /* r8d=Rune(value) */
 	x64ptr(b, 1, a->m); x64load(b, 1, a->wordbytes);
@@ -1008,6 +1017,10 @@ x64stringstore(X64Buf *b, LeafLayout *a)
 	x64ptr(b, 2, a->d); x64load(b, 2, 8);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0xff); x64moduleguard(b, 0x75, fallback);
+	/* rax bounds the backward reference cell and forward header; r8 retains the Rune. */
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x82); x64word(b, -a->heapref-1);
+	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, -a->heapref-a->stringdata-2);
+	x64moduleguard(b, 0x76, fallback);
 	x64field(b, 0, 2, -a->heapref, 8);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 1); x64moduleguard(b, 0x74, fallback);
 	x64field(b, 1, 2, a->stringlen, 4);

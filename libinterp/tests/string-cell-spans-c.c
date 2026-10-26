@@ -76,7 +76,9 @@ main(void)
 		reused = 0;
 		begin = offsets[offset]+dataoffset;
 		copied = counts[ci];
-		if(op == 0 || op == 1 || op == 4){
+		if((op == 0 || op == 1 || op == 4) && begin > 0xffff)
+			exception = exHeap;
+		else if(op == 0 || op == 1 || op == 4){
 			if(index < 0 || index > length || (op == 0 && index == length))
 				exception = exBounds;
 			else if(op == 0 || op == 1){

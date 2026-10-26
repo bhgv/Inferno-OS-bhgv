@@ -19,6 +19,12 @@ def put(image, offset, value, size=8):
     image[offset:offset+size]=(value & ((1<<(size*8))-1)).to_bytes(size,'little')
 
 
+# Keep all test oracles active under optimized Python.
+def require(condition, detail):
+    if not condition:
+        raise RuntimeError(detail)
+
+
 with tempfile.TemporaryDirectory(prefix='string-store-jit-') as directory:
     td=Path(directory);checks=0
     for arch in ('amd64','arm64'):
@@ -51,17 +57,17 @@ int emit(u32int *out,int cap,int wb,int field,int value){
             writes.append((address,size))
         machine.hook_add(UC_HOOK_MEM_WRITE,write)
         for wb in (4,8):
-            out=(C.c_uint32*64)(*[0xa5a5a5a5]*64);n=lib.emit(out,64,wb,0,0)
-            assert 0<n<=64 and lib.emit(None,64,wb,0,0)==n
-            blob=bytes(out)[:n*4];assert sum(i.size for i in dis.disasm(blob,CODE))==n*4
+            out=(C.c_uint32*128)(*[0xa5a5a5a5]*128);n=lib.emit(out,128,wb,0,0)
+            require(0<n<=128 and lib.emit(None,128,wb,0,0)==n, "string store sizing/image/state check")
+            blob=bytes(out)[:n*4];require(sum(i.size for i in dis.disasm(blob,CODE))==n*4, "string store sizing/image/state check")
             for cap in range(n):
-                guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                assert lib.emit(guard,cap,wb,0,0)==0 and list(guard)==[0xa5a5a5a5]*64;checks+=1
+                guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                require(lib.emit(guard,cap,wb,0,0)==0 and list(guard)==[0xa5a5a5a5]*128, "string store sizing/image/state check");checks+=1
             for field,values in ((1,(-1,1,2048)),(2,(-1,1,2048)),(3,(-1,2048)),(4,(-1,0,1,256)),(5,(0,4,16))):
                 for value in values:
-                    guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                    assert lib.emit(guard,64,wb,field,value)==0 and list(guard)==[0xa5a5a5a5]*64;checks+=1
-            machine.mem_write(CODE,blob);machine.ctl_remove_cache(CODE,CODE+256)
+                    guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                    require(lib.emit(guard,128,wb,field,value)==0 and list(guard)==[0xa5a5a5a5]*128, "string store sizing/image/state check");checks+=1
+            machine.mem_write(CODE,blob);machine.ctl_remove_cache(CODE,CODE+512)
             for wide in (0,1):
                 for profile in range(21):
                     for value in (0,65,127,128,0x20ac,0xffffffff,0x100000041,0x100000080):
@@ -113,12 +119,12 @@ int emit(u32int *out,int cap,int wb,int field,int value){
                                             machine.reg_write(UC_ARM64_REG_FPCR,0x800000);machine.reg_write(UC_ARM64_REG_FPSR,0x11)
                                         machine.emu_start(CODE,STOP,count=300)
                                         result=machine.reg_read(UC_X86_REG_RAX if arch=='amd64' else UC_ARM64_REG_X0)
-                                        assert result==valid,(arch,wb,wide,profile,value,sa,ma,da,alias,result)
-                                        assert bytes(machine.mem_read(BASE,0x4000))==bytes(expected),(arch,wb,wide,profile,value,sa,ma,da,alias)
+                                        require(result==valid, "string store sizing/image/state check")
+                                        require(bytes(machine.mem_read(BASE,0x4000))==bytes(expected), "string store sizing/image/state check")
                                         expectedwrites=[(BASE+target,4 if wide else 1)] if valid else []
                                         if valid and index==abs(length):expectedwrites.append((BASE+obj,4))
                                         if writes!=expectedwrites:raise RuntimeError((arch,wb,wide,profile,'unexpected writes',writes,expectedwrites))
-                                        if arch=='amd64':assert machine.reg_read(UC_X86_REG_MXCSR)==0x3f80
-                                        else:assert machine.reg_read(UC_ARM64_REG_FPCR)==0x800000 and machine.reg_read(UC_ARM64_REG_FPSR)==0x11
+                                        if arch=='amd64':require(machine.reg_read(UC_X86_REG_MXCSR)==0x3f80, "string store sizing/image/state check")
+                                        else:require(machine.reg_read(UC_ARM64_REG_FPCR)==0x800000 and machine.reg_read(UC_ARM64_REG_FPSR)==0x11, "string store sizing/image/state check")
                                         checks+=1
         print('PASS',arch,'string store owner/capacity/alias/FP checks, cumulative',checks)

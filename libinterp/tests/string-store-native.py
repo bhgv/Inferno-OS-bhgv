@@ -36,6 +36,10 @@ unit = (root / 'libinterp/tests/string-codecs.c').read_text()
 unit = re.sub(r'^#include "[^"]+"\n', '', unit, flags=re.M)
 unit = '#include "comp-amd64.c"\n#include "tests/leaf-cons-stub.h"\n#include "tests/leaf-plain-stubs.h"\n#include <fenv.h>\n'+unit.replace('IMPLEMENTATION', '\n'.join(parts)).replace('main(void)', 'codecmain(void)')
 unit += (root/'libinterp/tests/string-store-native.c').read_text()
+# Keep the reused allocator/EXPECT fixture predicates active under NDEBUG too.
+unit = ('static void storepredicate(int);\n'
+        '#define storecheck(condition) storepredicate(!!(condition)) // Normalize pointer/scalar predicates.\n'
+        +unit.replace('assert(', 'storecheck('))
 with tempfile.TemporaryDirectory(prefix='string-store-native-') as directory:
     td = Path(directory)
     target = td / 'codecs.c'
@@ -56,7 +60,8 @@ with tempfile.TemporaryDirectory(prefix='string-store-native-') as directory:
             header, n = re.subn(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
             header, m = re.subn(r'typedef unsigned long\s+UWORD;',
                                'typedef unsigned int UWORD;', header, count=1)
-            assert n == m == 1
+            if n != 1 or m != 1:
+                raise RuntimeError("WORD32 fixture header mismatch")
             (modeldir / 'interp.h').write_text(header)
             override = ['-I'+str(modeldir)]
         binary = td / ('codecs-'+model)

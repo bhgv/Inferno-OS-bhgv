@@ -730,9 +730,14 @@ a64stringindex(A64Buf *b, LeafLayout *a)
 	   a->stringmax < 0 || a->stringmax > 16380 || a->stringmax%4) return 0;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	/* Validate scalar/pointer slot widths before reading either representation. */
+	a64ptr(b, 9, a->s); a64pcspan(b, 9, 8, fallback);
+	a64ptr(b, 9, a->m); a64pcspan(b, 9, a->wordbytes, fallback);
+	a64ptr(b, 9, a->d); a64pcspan(b, 9, a->wordbytes, fallback);
 	a64ptr(b, 9, a->s); a64load(b, 12, 9, 8);
 	a64pcguard(b, 0xb500006c, fallback);
 	a64put(b, 0xb100059f); a64pcguard(b, 0x54000061, fallback);
+	a64pcspan(b, 12, a->stringdata, fallback);
 	a64field(b, 13, 12, a->stringlen, 4);
 	a64put(b, 0x52b0000e); a64put(b, 0x6b0e01bf); a64pcguard(b, 0x54000061, fallback);
 	a64put(b, 0x2a0d03ef); /* preserve the representation sign */
@@ -772,11 +777,16 @@ a64stringstore(A64Buf *b, LeafLayout *a)
 	   a->heapref <= 0 || a->heapref > 255 || a->heapref%8 || a->refbytes != 8) return 0;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	/* Validate scalar/pointer slot widths before reading either representation. */
+	a64ptr(b, 9, a->s); a64pcspan(b, 9, a->wordbytes, fallback);
+	a64ptr(b, 9, a->m); a64pcspan(b, 9, a->wordbytes, fallback);
+	a64ptr(b, 9, a->d); a64pcspan(b, 9, 8, fallback);
 	a64ptr(b, 9, a->s); a64load(b, 12, 9, a->wordbytes);
 	a64ptr(b, 10, a->m); a64load(b, 13, 10, a->wordbytes);
 	a64ptr(b, 11, a->d); a64load(b, 14, 11, 8);
 	a64pcguard(b, 0xb500006e, fallback);
 	a64put(b, 0xb10005df); a64pcguard(b, 0x54000061, fallback);
+	a64appendowner(b, 14, a->heapref, a->stringdata, fallback);
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 14<<5 | 4);
 	a64put(b, 0xf100049f); a64pcguard(b, 0x54000060, fallback);
 	a64field(b, 15, 14, a->stringlen, 4);

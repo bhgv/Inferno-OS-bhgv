@@ -44,6 +44,9 @@ for index, part in enumerate(parts):
         part = part.replace("uintptr", "CellAddress")
         for owner in ("string", "old", "ds"):
             part = part.replace("(CellAddress)"+owner, "(CellAddress)(uintptr)"+owner)
+        # Decoded slots retain the real host address domain; only object geometry narrows.
+        part = re.sub(r'\(CellAddress\)(R\.[smd]) > \(CellAddress\)-1',
+                      r'(uintptr)\1 > (uintptr)-1', part)
         parts[index] = part
 parts += [function((root / 'libinterp/runt.c').read_text(), 'Array*\nmem2array(')]
 unit = (root / 'libinterp/tests/string-codecs.c').read_text()
