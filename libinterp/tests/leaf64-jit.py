@@ -181,7 +181,7 @@ def signed(value, bits):
 
 case=os.environ.get('LEAF64_CASE','')
 selected_arch=os.environ.get('LEAF64_ARCH','')
-if case not in ('','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic','realinteger','realpower','divide','vncoefficient','realbranchfp','goto','case'):raise ValueError(case)
+if case not in ('','alu','guard','array','control','copy','string','head','listlen','character','power','headcopy','realbranch','scalar','fixed','integerreal','resize','framefixed','frameabi','descriptor','call','coefficient','roundedcoefficient','movpc','address','typecheck','multiply','bytebranch','realarithmetic','realinteger','realpower','divide','vncoefficient','realbranchfp','goto','case'):raise ValueError(case)
 if selected_arch not in ('','amd64','arm64','riscv64'):raise ValueError(selected_arch)
 checks = 0
 rng = random.Random(0x6c696d626f)
@@ -1607,32 +1607,33 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                     require(before==after and pc==oldpc, 'leaf regression near source line 1583')
                     checks+=1
                 continue
-            owner=data+0x500
-            for pointer in (0,(1<<64)-1,owner):
-                for length in (-1,0,1,17,(1<<(wb*8-1))-1):
-                    for alias in (0,1):
-                        out,pc,before,after,_=run('ILENA',array=(pointer,length,0,0),arrayalias=alias)
-                        wanted=(length if pointer==owner else 0)&((1<<(wb*8))-1)
-                        require(int.from_bytes(out[:wb],'little')==wanted, (arch,wb,'ILENA',pointer,length,out,wanted))
-                        require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:] and pc==oldpc, 'leaf regression near source line 1593')
-                        checks+=1
-            for name in ('IINDB','IINDW','IINDL','IINDF'):
-                stride=1 if name=='IINDB' else wb if name=='IINDW' else 8
+            if case != 'alu':
+                owner=data+0x500
                 for pointer in (0,(1<<64)-1,owner):
-                    for length in (-1,0,1,8,17,1<<40):
-                        for index in (-1,0,1,7,8,16,17,1<<32,1<<39,-(1<<63)):
-                            for backing in (0,(1<<64)-1,data+0x804,(1<<64)-2):
-                                actualindex=signed(index,wb*8);actuallength=signed(length,wb*8)
-                                valid=(pointer==owner and 0<=actualindex<actuallength and actualindex<=0x7fffffff//stride and
-                                       backing not in (0,(1<<64)-1) and backing+actualindex*stride<(1<<64))
-                                for alias in (0,1,2):
-                                    out,pc,before,after,_=run(name,expect=int(valid),array=(pointer,length,index,backing),arrayalias=alias)
-                                    if valid:
-                                        require(int.from_bytes(out[:wb],'little')==(backing+actualindex*stride)&((1<<(8*wb))-1), (arch,name,length,index,backing,out))
-                                        require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:], 'leaf regression near source line 1608')
-                                    else:require(before==after, 'leaf regression near source line 1609')
-                                    require(pc==oldpc, 'leaf regression near source line 1610')
-                                    checks+=1
+                    for length in (-1,0,1,17,(1<<(wb*8-1))-1):
+                        for alias in (0,1):
+                            out,pc,before,after,_=run('ILENA',array=(pointer,length,0,0),arrayalias=alias)
+                            wanted=(length if pointer==owner else 0)&((1<<(wb*8))-1)
+                            require(int.from_bytes(out[:wb],'little')==wanted, (arch,wb,'ILENA',pointer,length,out,wanted))
+                            require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:] and pc==oldpc, 'leaf regression near source line 1593')
+                            checks+=1
+                for name in ('IINDB','IINDW','IINDL','IINDF'):
+                    stride=1 if name=='IINDB' else wb if name=='IINDW' else 8
+                    for pointer in (0,(1<<64)-1,owner):
+                        for length in (-1,0,1,8,17,1<<40):
+                            for index in (-1,0,1,7,8,16,17,1<<32,1<<39,-(1<<63)):
+                                for backing in (0,(1<<64)-1,data+0x804,(1<<64)-2):
+                                    actualindex=signed(index,wb*8);actuallength=signed(length,wb*8)
+                                    valid=(pointer==owner and 0<=actualindex<actuallength and actualindex<=0x7fffffff//stride and
+                                           backing not in (0,(1<<64)-1) and backing+actualindex*stride<(1<<64))
+                                    for alias in (0,1,2):
+                                        out,pc,before,after,_=run(name,expect=int(valid),array=(pointer,length,index,backing),arrayalias=alias)
+                                        if valid:
+                                            require(int.from_bytes(out[:wb],'little')==(backing+actualindex*stride)&((1<<(8*wb))-1), (arch,name,length,index,backing,out))
+                                            require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:], 'leaf regression near source line 1608')
+                                        else:require(before==after, 'leaf regression near source line 1609')
+                                        require(pc==oldpc, 'leaf regression near source line 1610')
+                                        checks+=1
             if case=='array':continue
             edges=[0,1,255,256,(1<<31)-1,1<<31,(1<<32)-1,1<<63,(1<<64)-1]
             pairs=[(a,b) for a in edges for b in edges]+[(rng.getrandbits(64),rng.getrandbits(64)) for _ in range(64)]
@@ -1649,6 +1650,8 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                             require(before[:8]==after[:8] and before[8+width:]==after[8+width:], 'leaf regression near source line 1625')
                             require(pc==oldpc, 'leaf regression near source line 1626')
                             checks+=1
+            if case == 'alu':
+                continue
             relations={'EQ':lambda a,b:a==b,'NE':lambda a,b:a!=b,'LT':lambda a,b:a<b,
                        'LE':lambda a,b:a<=b,'GT':lambda a,b:a>b,'GE':lambda a,b:a>=b}
             for suffix,width in (('B',1),('W',wb),('L',8)):

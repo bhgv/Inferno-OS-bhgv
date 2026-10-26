@@ -2,7 +2,6 @@
 #include "fns.h"
 #include "isa.h"
 #include "interp.h"
-#include <assert.h>
 #include <stdio.h>
 
 REG R;
@@ -13,6 +12,7 @@ REG R;
 #define V(r) (*(LONG*)R.r)
 #define UV(r) (*(ULONG*)R.r)
 
+
 /* Preserve address instrumentation without unavailable process inspection. */
 int
 __lsan_is_turned_off(void)
@@ -20,7 +20,29 @@ __lsan_is_turned_off(void)
 	return 1;
 }
 
+char exBounds[]="bounds";
+#define integercheck(condition) integerpredicate(!!(condition)) // Keep modular/alias oracles active under NDEBUG.
+
+
+/* Fail explicit predicates even when the compiler disables assertions. */
+static void
+integerpredicate(int condition)
+{
+	if(!condition)
+		abort();
+}
+
+
+/* This positive arithmetic matrix supplies valid slots and expects no VM errors. */
+void error(char *message)
+{
+	(void)message;
+	abort();
+}
+
+
 IMPLEMENTATION
+
 
 /* Compare modular integer arithmetic against byte snapshots before aliased writes. */
 int
@@ -64,8 +86,8 @@ main(void)
 		memmove(expected+d,&result,width);
 		R.s=memory.bytes+s;R.m=memory.bytes+m;R.d=memory.bytes+d;R.PC=&sentinel;
 		ops[op]();
-		assert(!memcmp(expected,memory.bytes,sizeof(expected)));
-		assert(R.PC==&sentinel && R.s==memory.bytes+s && R.m==memory.bytes+m && R.d==memory.bytes+d);
+		integercheck(!memcmp(expected,memory.bytes,sizeof(expected)));
+		integercheck(R.PC==&sentinel && R.s==memory.bytes+s && R.m==memory.bytes+m && R.d==memory.bytes+d);
 		checks++;
 	}
 	printf("PASS integer ALU: %lu boundary/alignment/alias checks WORD%zu\n",checks,sizeof(WORD)*8);

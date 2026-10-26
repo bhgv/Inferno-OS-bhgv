@@ -9,8 +9,10 @@ typedef uint64_t UWORD;
 typedef int64_t LONG;
 typedef uint64_t ULONG;
 typedef unsigned char BYTE;
+typedef uintptr_t uintptr; // Native decoded-slot arithmetic.
+#define H ((void*)-1) // VM nil-owner sentinel.
 static struct {void *s, *m, *d;} R;
-static char exInval[] = "invalid", exZdiv[] = "zero";
+static char exInval[] = "invalid", exZdiv[] = "zero", exBounds[] = "bounds";
 static jmp_buf boundary;
 static char *raised;
 
