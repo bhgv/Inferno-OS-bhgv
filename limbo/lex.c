@@ -293,12 +293,28 @@ mkfile(char *name, int abs, int off, int in, char *act, int actoff, int sbl)
 	return f;
 }
 
+
+/* Grow source history geometrically without overflowing int indices or byte sizes. */
 int
 addfile(File *f)
 {
+	int capacity;
+	ulong limit;
+
+	limit = (~(ulong)0)/sizeof(File*);
+	if(limit > 0x7fffffffUL)
+		limit = 0x7fffffffUL;
+	if(nfiles < 0 || lenfiles < 0 || (ulong)nfiles >= limit)
+		fatal("too many source files");
 	if(nfiles >= lenfiles){
-		lenfiles = nfiles+32;
-		files = reallocmem(files, lenfiles*sizeof(File*));
+		if(nfiles < 32 && limit >= 32)
+			capacity = 32;
+		else if((ulong)nfiles <= limit/2)
+			capacity = nfiles*2;
+		else
+			capacity = limit;
+		files = reallocmem(files, (ulong)capacity*sizeof(File*));
+		lenfiles = capacity;
 	}
 	files[nfiles] = f;
 	return nfiles++;
@@ -392,9 +408,8 @@ sourceline(Long line)
 	return line;
 }
 
-/*
- * convert an absolute Line into a file and line within the file
- */
+
+/* Find source coordinates without overflowing the binary-search midpoint. */
 Fline
 fline(int absline)
 {
@@ -407,7 +422,7 @@ fline(int absline)
 		l = 0;
 		r = nfiles - 1;
 		while(l <= r){
-			m = (r + l) / 2;
+			m = l + (r - l) / 2;
 			s = files[m]->abs;
 			if(s <= absline){
 				l = m + 1;

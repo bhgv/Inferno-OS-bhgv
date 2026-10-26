@@ -3332,9 +3332,8 @@ casesort(Type *t, Label *aux, Label *labs, int start, int stop)
 	memmove(&labs[start], &aux[0], (stop-start) * sizeof *labs);
 }
 
-/*
- * binary search for the label corresponding to a given value
- */
+
+/* Locate a case interval without overflowing the binary-search midpoint. */
 int
 findlab(Type *ty, Node *v, Label *labs, int nlab)
 {
@@ -3345,7 +3344,7 @@ findlab(Type *ty, Node *v, Label *labs, int nlab)
 	l = 1;
 	r = nlab - 1;
 	while(l <= r){
-		m = (r + l) / 2;
+		m = l + (r - l) / 2;
 		if(casecmp(ty, labs[m].start, v) <= 0)
 			l = m + 1;
 		else
