@@ -171,7 +171,7 @@ main(void)
 		checks++;
 	}
 	/* Identity comparisons validate headers even though no character payload is read. */
-	for(mode = 0; mode < 12; mode++)
+	for(mode = 0; mode < 13; mode++)
 	for(target = -1; target <= 32; target += target == 0 ? 31 : 1)
 	for(alignment = 0; alignment < 8; alignment++){
 		memset(&R, 0, sizeof(R));
@@ -189,10 +189,11 @@ main(void)
 		if(mode == 6 || mode == 7)strings[0]->max = 0;
 		if(mode == 7 || mode == 11)strings[0]->len = -1;
 		if(mode == 11)strings[0]->max = -1;
-		if(mode == 8)low = strings[1];
+		if(mode == 8 || mode == 12)low = strings[1];
+		if(mode == 12)strings[0]->len = strings[0]->max = strings[1]->len = strings[1]->max = 0;
 		if(mode == 9)low = H;
 		if(mode == 10)value = H;
-		valid = IBY2WD == 8 && (mode <= 3 || (mode >= 8 && mode <= 10)) && target >= 0 && target < 32;
+		valid = IBY2WD == 8 && (mode <= 3 || (mode >= 8 && mode <= 10) || mode == 12) && target >= 0 && target < 32;
 		if(getenv("STRING_CASE_SUCCESS_ONLY") && !valid)continue;
 		module.prog = code;
 		table = tablemem+alignment;
@@ -211,7 +212,7 @@ main(void)
 		operation = casec;
 		if(invoke() != valid || memcmp(&R, &expected, sizeof(R)))return 7;
 		R = saved;
-		nativevalid = valid && mode <= 3;
+		nativevalid = valid && (mode <= 3 || mode == 9 || mode == 10 || mode == 12);
 		expected = saved;
 		if(nativevalid)expected.PC = code+target;
 		if(module.jit->entry[ICASEC](&R) != nativevalid || memcmp(&R, &expected, sizeof(R)))return 8;
@@ -266,6 +267,21 @@ main(void)
 		checks++;
 	}
 	operation = casec;
+	/* An eight-byte count must decline before a read crossing the native address boundary. */
+	for(mode = 4; !getenv("STRING_CASE_SUCCESS_ONLY") && mode <= 7; mode++){
+		memset(&R, 0, sizeof(R));
+		R.M = &link;
+		R.PC = &sentinel;
+		value = H;
+		memmove(slots, &value, sizeof(value));
+		R.s = slots;
+		R.d = (void*)((uintptr)-1-(IBY2WD == 8 ? mode : 2));
+		operation = casec;
+		saved = R;
+		if(invoke() || raised != exBounds || memcmp(&R, &saved, sizeof(R)))return 9;
+		if(module.jit->entry[ICASEC](&R) || memcmp(&R, &saved, sizeof(R)))return 10;
+		checks++;
+	}
 	/* Legacy compiled empty tables retain full cell-width native destinations. */
 	for(alignment = 0; alignment < 8; alignment++){
 		memset(&R, 0, sizeof(R));

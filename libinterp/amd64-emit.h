@@ -287,13 +287,46 @@ x64pcspan(X64Buf *b, int owner, int extent)
 }
 
 
+/* Patch a complete relative displacement only inside the private code buffer. */
+static int
+x64casepatch(X64Buf *b, int at, int destination)
+{
+	int i, displacement;
+
+	if(at < 0 || at > sizeof(b->bytes)-4 || destination < 0 || destination > b->n)
+		return 0;
+	displacement = destination-at-4;
+	for(i = 0; i < 4; i++)
+		b->bytes[at+i] = (u32int)displacement>>(8*i);
+	return 1;
+}
+
+
+/* Require an empty String owner in rax; H has no header and negative capacities decline. */
+static void
+x64caseempty(X64Buf *b, LeafLayout *abi)
+{
+	int empty;
+
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
+	x64byte(b, 0x74); empty = b->n; x64byte(b, 0);
+	x64pcspan(b, 0, abi->stringlen+4 > abi->stringmax+4 ? abi->stringlen+4 : abi->stringmax+4);
+	x64casefield(b, 1, 0, abi->stringlen, 4);
+	x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x74);
+	x64casefield(b, 2, 0, abi->stringmax, 4);
+	x64byte(b, 0x85); x64byte(b, 0xd2); x64guard(b, 0x79);
+	if(empty < sizeof(b->bytes))
+		b->bytes[empty] = b->n-empty-1;
+}
+
+
 /* Search numeric tables and lower-label string identities without publishing unchecked targets. */
 static int
 x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 {
-	int reject[32], count, first, i, j, displacement;
+	int reject[32], count, first, i;
 	int loop, empty, left, right, found, leftlabel, rightlabel, done;
-	int header, stride, identity, positive;
+	int header, stride, identity, positive, same, matched;
 
 	if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
 	   abi->linkmodule < 0 || abi->linkmodule > 2047 || abi->linkmodule%8 ||
@@ -322,9 +355,13 @@ x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc3); /* r11=module */
 	x64caseptr(b, 0, abi->s); x64pcspan(b, 8, op->bytes); x64load(b, 0, op->bytes);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc6); /* rsi=value */
-	x64caseptr(b, 2, abi->d); x64pcspan(b, 10, 4);
+	x64caseptr(b, 2, abi->d); x64pcspan(b, 10, op->condition ? IBY2WD : 4);
 	x64casefield(b, 1, 10, 0, op->condition ? IBY2WD : 4);
 	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, op->condition ? 1 : 4095); x64caseguard(b, 0x76, reject, &count);
+	/* Narrow cells cannot hold native String pointers; reject before reading rows/default. */
+	if(op->condition && IBY2WD < 8){
+		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64caseguard(b, 0x74, reject, &count);
+	}
 	x64byte(b, 0x48); x64byte(b, 0x6b); x64byte(b, 0xc1); x64byte(b, stride);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xc0); x64byte(b, header);
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xd2);
@@ -334,14 +371,24 @@ x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 	x64byte(b, 0x4d); x64byte(b, 0x8d); x64byte(b, 0x42); x64byte(b, header); /* r8=rows */
 	loop=b->n;
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
-	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
+	if(op->condition){
+		x64byte(b, 0x0f); x64byte(b, 0x84); empty=b->n; x64word(b, 0);
+	}else{
+		x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
+	}
 	if(op->condition){
 		/* Narrow cells cannot contain native String pointers; empty tables still run. */
 		if(IBY2WD < 8){
 			x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 		}else{
 			x64casefield(b, 0, 8, 0, 8);
-			x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xc6); x64guard(b, 0x74);
+			x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xc6);
+			x64byte(b, 0x0f); x64byte(b, 0x84); same=b->n; x64word(b, 0);
+			x64caseempty(b, abi);
+			x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xf0); // mov rax,rsi captures the source owner.
+			x64caseempty(b, abi);
+			x64byte(b, 0xe9); matched=b->n; x64word(b, 0);
+			if(!x64casepatch(b, same, b->n))return 0;
 			x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
 			x64byte(b, 0x74); identity=b->n; x64byte(b, 0);
 			x64pcspan(b, 0, abi->stringlen+4 > abi->stringmax+4 ? abi->stringlen+4 : abi->stringmax+4);
@@ -353,6 +400,7 @@ x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 			x64casefield(b, 2, 0, abi->stringmax, 4);
 			x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xd1); x64guard(b, 0x7e);
 			b->bytes[identity]=b->n-identity-1;
+			if(!x64casepatch(b, matched, b->n))return 0;
 			x64byte(b, 0x4d); x64byte(b, 0x8b); x64byte(b, 0x48); x64byte(b, 2*IBY2WD);
 		}
 	}else{
@@ -381,7 +429,11 @@ x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 	}
 	done=b->n;
 	if(b->n > sizeof(b->bytes)) return 0;
-	b->bytes[empty]=done-empty-1;
+	if(op->condition){
+		if(!x64casepatch(b, empty, done))return 0;
+	}else{
+		b->bytes[empty]=done-empty-1;
+	}
 	if(!op->condition){
 		b->bytes[found]=done-found-1;
 		b->bytes[left]=leftlabel-left-1; b->bytes[right]=rightlabel-right-1;
@@ -396,11 +448,8 @@ x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 	x64byte(b, 0x4c); x64byte(b, 0x01); x64byte(b, 0xc8); x64caseguard(b, 0x73, reject, &count);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, abi->pc);
 	if(b->n > sizeof(b->bytes)) return 0;
-	for(i=0;i<count;i++){
-		displacement=first-reject[i]-4;
-		for(j = 0; j < 4; j++)
-			b->bytes[reject[i]+j]=(u32int)displacement>>(8*j);
-	}
+	for(i = 0; i < count; i++)
+		if(!x64casepatch(b, reject[i], first))return 0;
 	return 1;
 }
 

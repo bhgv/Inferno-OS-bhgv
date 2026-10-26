@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Execute native empty/identity string case paths and preserve all fallback images."""
 import ctypes as C
+import json
 import os
 from pathlib import Path
 import re
 import shlex
 import subprocess
 import tempfile
-from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_MODE_64
+from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_MODE_64, UC_HOOK_MEM_READ
 import unicorn.x86_const as xr
 import unicorn.arm64_const as ar
 
@@ -63,7 +64,7 @@ emit(u32int *out, int cap, int wb, int operation, int large)
     if(operation == 4)a.stringlen = 1;
     return leafemit(out, cap, &a, ops[0]);
 }
-'''.replace('HEADER', '"'+arch+'-emit.h"'))
+'''.replace('HEADER', json.dumps(os.environ.get('STRING_CASE_'+arch.upper()+'_EMITTER', arch+'-emit.h'))))
             binary = model/(arch+'.so')
             command = shlex.split(os.environ.get('CC', 'cc'))
             command += shlex.split(os.environ.get('CFLAGS', '-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
@@ -75,6 +76,16 @@ emit(u32int *out, int cap, int wb, int operation, int large)
             machine.mem_map(BASE, 0x8000)
             arg = xr.UC_X86_REG_RDI if arch == 'amd64' else ar.UC_ARM64_REG_X0
             result = xr.UC_X86_REG_RAX if arch == 'amd64' else ar.UC_ARM64_REG_X0
+            reads = {'allowed': set(), 'owner': BASE+0x6200, 'end': BASE+0x7000}
+
+
+            # Permit only exact String header reads inside the two synthetic object regions.
+            def stringread(uc, access, address, size, value, context):
+                if reads['owner'] <= address < reads['end']:
+                    require((address, size) in reads['allowed'], ('unexpected String payload read', arch, cells, address, size))
+
+
+            machine.hook_add(UC_HOOK_MEM_READ, stringread)
             for wb in (4, 8):
                 for large in (0, 1):
                     for op in (0,):
@@ -90,15 +101,20 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                         machine.ctl_remove_cache(CODE, CODE+0x2000)
                         cases = [(count, value, default, alignment, None)
                                  for count in (0, 1, 2, 5)
-                                 for value in (-2, -1, 0, 1, 2, 4, 5, 7, 8, 9, 10, 11, 31, 32, 1 << 31, 1 << 40)
+                                 for value in tuple(range(16))+(-2, -1, 31, 32, 1 << 31, 1 << 40)
                                  for default in (-1, 0, 31, 32)
                                  for alignment in (0, 1, 7)]
                         cases += [(1, 2, 31, 1, bad) for bad in (
                             's-nil', 's-H', 's-wrap', 'link-nil', 'link-H', 'link-wrap',
                             'module-nil', 'module-H', 'module-wrap', 'prog-nil', 'prog-H',
-                            'prog-wrap', 'table-nil', 'table-H', 'table-wrap', 'compiled',
+                            'prog-wrap', 'table-nil', 'table-H', 'table-wrap', 'table-narrow', 'table-count4', 'table-count5', 'table-count6', 'table-count7', 'owner-source', 'owner-low', 'compiled',
                             'count-negative', 'count-huge', 'count-upper', 'nprog-negative', 'nprog-zero',
                             'out-nil', 'out-H', 'out-wrap')]
+                        probe = os.environ.get('STRING_CASE_PROBE')
+                        if probe == 'wrap':
+                            cases = [case for case in cases if case[-1] and case[-1].startswith('table-count')]
+                        if probe == 'narrow':
+                            cases = [case for case in cases if case[-1] == 'table-narrow']
                         for count, rawvalue, default, alignment, bad in cases:
                             memory = bytearray([0xa5])*0x8000
                             link, module, table = BASE+0x1000, BASE+0x2000, BASE+0x3000+alignment
@@ -114,14 +130,22 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                             put(memory, 0x2000+(512 if large else 24), 32, 4)
                             target = default
                             start = table-BASE
-                            # Equal bytes in different owners must decline; identity validates only headers.
+                            # Empty values may have separate owners; malformed headers must still decline.
                             owner = BASE+0x6200
-                            mode = rawvalue % 7
-                            pointer = MASK if mode == 2 else 0 if mode == 3 else owner
-                            lower = owner+0x800 if mode == 6 else pointer
+                            other = owner+0x800
+                            lengthoffset = 256 if large else 12
+                            maxoffset = 512 if large else 4
+                            mode = rawvalue % 16
+                            pointer = MASK if mode in (2, 8, 11) else 0 if mode == 3 else owner
+                            lower = other if mode in (6, 9, 13, 14) else MASK if mode in (2, 7, 10) else 0 if mode == 12 else owner
+                            emptyvalue = mode >= 7
+                            length = 0 if emptyvalue else -1 if mode == 1 else -0x80000000 if mode == 4 else 1
+                            capacity = -1 if mode in (10, 11, 14) else 0 if mode == 5 or mode == 15 else 3 if emptyvalue else 1
                             put(memory, sourceptr-BASE, pointer)
-                            put(memory, owner-BASE+(256 if large else 12), -1 if mode == 1 else -0x80000000 if mode == 4 else 1, 4)
-                            put(memory, owner-BASE+(512 if large else 4), 0 if mode == 5 else 1, 4)
+                            put(memory, owner-BASE+lengthoffset, length, 4)
+                            put(memory, owner-BASE+maxoffset, capacity, 4)
+                            put(memory, other-BASE+lengthoffset, 1 if mode == 6 else 0, 4)
+                            put(memory, other-BASE+maxoffset, -1 if mode == 13 else 3, 4)
                             put(memory, start, count, cells)
                             if count:
                                 put(memory, start+cells, lower, cells)
@@ -129,10 +153,10 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                                 put(memory, start+3*cells, default, cells)
                             put(memory, start+(1+3*count)*cells, default, cells)
                             target = default
-                            valid = 0 <= target < 32 and (count == 0 or count == 1 and cells == 8 and mode in (0, 1, 2))
+                            valid = 0 <= target < 32 and (count == 0 or count == 1 and cells == 8 and mode in (0, 1, 2, 7, 8, 9, 15))
                             if bad:
                                 kind, _, issue = bad.partition('-')
-                                poisoned = 0 if issue == 'nil' else MASK if issue == 'H' else MASK-2
+                                poisoned = 0 if issue == 'nil' else MASK if issue == 'H' else MASK-int(issue[-1]) if cells == 8 and issue.startswith('count') else MASK-2
                                 if kind == 's':
                                     put(memory, 8, poisoned); valid = False
                                 elif kind == 'link':
@@ -142,9 +166,15 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                                 elif kind == 'prog':
                                     put(memory, 0x2000+(256 if large else 16), poisoned); valid = False
                                 elif kind == 'table' and op != 3:
+                                    if issue == 'narrow' and cells == 4:
+                                        poisoned = BASE+0x7ffc
+                                        put(memory, 0x7ffc, 1, 4)
                                     put(memory, 16, poisoned); valid = False
                                 elif kind == 'compiled' and op != 3:
                                     put(memory, 0x1000+(512 if large else 16), 1, 4); valid = False
+                                elif kind == 'owner':
+                                    put(memory, sourceptr-BASE if issue == 'source' else start+cells, MASK-2, 8 if issue == 'source' else cells)
+                                    valid = False
                                 elif kind == 'count' and op != 3:
                                     put(memory, start, -1 if issue == 'negative' else ((1 << 32)+1) if issue == 'upper' else 0x7fffffff, cells)
                                     valid = op == 2 and issue == 'huge'
@@ -155,6 +185,7 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                             expected = bytearray(memory)
                             if valid:
                                 put(expected, 0, BASE+0x7000+target*24)
+                            reads['allowed'] = {(base+field, 4) for base in (owner, other) for field in (lengthoffset, maxoffset)}
                             machine.mem_write(BASE, bytes(memory))
                             machine.reg_write(arg, BASE)
                             if arch == 'amd64':

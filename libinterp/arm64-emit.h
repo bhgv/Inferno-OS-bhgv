@@ -208,11 +208,28 @@ a64pcspan(A64Buf *b, int owner, int extent, int fallback)
 }
 
 
+/* Require an empty String in x9 without reading characters; H skips the header. */
+static void
+a64caseempty(A64Buf *b, LeafLayout *abi, int fallback)
+{
+	int empty;
+
+	a64put(b, 0xb100053f); empty=b->n; a64put(b, 0x54000000);
+	a64pcspan(b, 9, abi->stringlen+4 > abi->stringmax+4 ? abi->stringlen+4 : abi->stringmax+4, fallback);
+	a64wordfield(b, 4, 9, abi->stringlen, 4);
+	a64pcguard(b, 0xb4000064, fallback);
+	a64wordfield(b, 5, 9, abi->stringmax, 4);
+	a64put(b, 0xf10000bf); a64pcguard(b, 0x5400006a, fallback);
+	if(empty < LeafMax)
+		b->code[empty] |= (b->n-empty)<<5;
+}
+
+
 /* Search numeric tables and lower-label string identities through one checked rejection return. */
 static int
 a64case(A64Buf *b, LeafLayout *abi, LeafOp *op)
 {
-	int fallback, header, stride, loop, empty, left, right, found, done, identity, positive;
+	int fallback, header, stride, loop, empty, left, right, found, done, identity, positive, same, matched;
 
 	if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
 	   abi->linkmodule < 0 || abi->linkmodule > 2047 || abi->linkmodule%8 ||
@@ -240,9 +257,12 @@ a64case(A64Buf *b, LeafLayout *abi, LeafOp *op)
 	a64pcspan(b, 9, op->bytes, fallback);
 	if(op->bytes == 4)a64put(b, 0xb980012e); /* ldrsw x14,[x9] */
 	else a64load(b, 14, 9, 8);
-	a64ptr(b, 10, abi->d); a64pcspan(b, 10, 4, fallback);
+	a64ptr(b, 10, abi->d); a64pcspan(b, 10, op->condition ? IBY2WD : 4, fallback);
 	a64put(b, op->condition && IBY2WD == 8 ? 0xf9400141 : 0xb9800141);
 	a64put(b, 0xf100003fU | (op->condition ? 1 : 4095)<<10); a64pcguard(b, 0x54000069, fallback);
+	/* Reject incompatible nonempty cells before reading rows or the default. */
+	if(op->condition && IBY2WD < 8)
+		a64pcguard(b, 0xb4000061, fallback); /* cbz x1,continue */
 	a64put(b, 0xd2800009U | stride<<5);
 	a64put(b, 0x9b097c24); a64put(b, 0x91000084U | header<<10);
 	a64put(b, 0xab040145); a64pcguard(b, 0x54000063, fallback);
@@ -255,7 +275,13 @@ a64case(A64Buf *b, LeafLayout *abi, LeafOp *op)
 		}else{
 			/* Equal owners still validate the same header constraints as stringcmp. */
 			a64put(b, 0xf94001e9); // ldr x9,[x15] captures the lower label.
-			a64put(b, 0xeb0901df); a64pcguard(b, 0x54000060, fallback);
+			a64put(b, 0xeb0901df); same=b->n; a64put(b, 0x54000000);
+			a64caseempty(b, abi, fallback);
+			a64put(b, 0xaa0e03e9); // mov x9,x14 captures the source owner.
+			a64caseempty(b, abi, fallback);
+			matched=b->n; a64put(b, 0x14000000);
+			if(same >= LeafMax)return 0;
+			b->code[same] |= (b->n-same)<<5;
 			a64put(b, 0xb100053f); identity=b->n; a64put(b, 0x54000000);
 			a64pcspan(b, 9, abi->stringlen+4 > abi->stringmax+4 ? abi->stringlen+4 : abi->stringmax+4, fallback);
 			a64wordfield(b, 4, 9, abi->stringlen, 4);
@@ -265,6 +291,8 @@ a64case(A64Buf *b, LeafLayout *abi, LeafOp *op)
 			a64wordfield(b, 5, 9, abi->stringmax, 4);
 			a64put(b, 0xeb05009f); a64pcguard(b, 0x5400006d, fallback);
 			b->code[identity] |= (b->n-identity)<<5;
+			if(matched >= LeafMax)return 0;
+			b->code[matched] |= b->n-matched;
 			a64field(b, 13, 15, 2*IBY2WD, 8);
 		}
 	}else{
