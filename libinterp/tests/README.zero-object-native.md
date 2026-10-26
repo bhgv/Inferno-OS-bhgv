@@ -1,5 +1,8 @@
 # NEWZ/MNEWZ native reuse and constructor map bounds
 
+For the subsequent NEW extension and expanded regression counts, see
+[README.raw-record-arrays.md](README.raw-record-arrays.md).
+
 AMD64 and ARM64 now emit INEWZ and IMNEWZ for standard pointer-free objects
 with payload sizes from zero through 256 bytes. Both WORD32/native-pointer and
 legacy WORD64 models resolve the full index through the current Module.type

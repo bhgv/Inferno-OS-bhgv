@@ -27,7 +27,7 @@ def function(text, signature):
 xec = Path(os.environ.get('ZERO_XEC_SOURCE', ROOT/'libinterp/xec.c')).read_text()
 heap = Path(os.environ.get('ZERO_HEAP_SOURCE', ROOT/'libinterp/heap.c')).read_text()
 parts = [function(heap, sig) for sig in ('void\nfreeptrs(', 'void\ninitmem(', 'void\nfreeheap(', 'Heap*\nheapz(', 'Heap*\nheap(')]
-parts += [function(xec, sig) for sig in ('static Type*\nmoduletype(', 'static void\nnewzero(', 'OP(newz)', 'OP(mnewz)')]
+parts += [function(xec, sig) for sig in ('static Type*\nmoduletype(', 'static void\nnewrecord(', 'OP(new)', 'OP(newz)', 'OP(mnewz)')]
 unit = (ROOT/'libinterp/tests/newzero-native.c').read_text().replace('IMPLEMENTATION', '\n\n\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='newzero-native-') as temporary:
     td = Path(temporary)

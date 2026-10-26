@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sweep NEWZ/MNEWZ private layouts and caller capacities under ASan/UBSan."""
+"""Sweep NEW/NEWZ/MNEWZ private layouts and caller capacities under ASan/UBSan."""
 import os
 from pathlib import Path
 import shlex
@@ -40,10 +40,11 @@ main(void)
         u32int after; // Trailing output canary.
     } output;
     LeafLayout a;
-    int wb, field, value, cap, n, result, i;
+    int op, wb, field, value, cap, n, result, i;
     unsigned long checks;
 
     checks = 0;
+    for(op = 0; op < 3; op++)
     for(wb = 4; wb <= 8; wb += 4)
     for(field = 0; field < 25; field++)
     for(value = -8; value <= 2056; value++){
@@ -83,12 +84,12 @@ main(void)
         case 23: a.plainmark=(void*)(uintptr_t)-1; break;
         case 24: a.typemark=a.typefree; break;
         }
-        n = leafemit(nil, 128, &a, INEWZ);
+        n = leafemit(nil, 128, &a, op==0 ? INEW : op==1 ? INEWZ : IMNEWZ);
         if(n < 0 || n > 128)
             abort();
         for(cap = 0; cap <= 128; cap += 8){
             memset(&output, 0xa5, sizeof(output));
-            result = leafemit(output.words, cap, &a, INEWZ);
+            result = leafemit(output.words, cap, &a, op==0 ? INEW : op==1 ? INEWZ : IMNEWZ);
             if(result != (n <= cap ? n : 0) || output.before != 0xa5a5a5a5 || output.after != 0xa5a5a5a5)
                 abort();
             for(i = result; i < 128; i++)
@@ -97,7 +98,7 @@ main(void)
             checks++;
         }
     }
-    printf("PASS NEWZ/MNEWZ layouts: %lu sizing/publication/canary cases\\n", checks);
+    printf("PASS NEW/NEWZ/MNEWZ layouts: %lu sizing/publication/canary cases\\n", checks);
     return 0;
 }
 '''.replace('HEADER', '"'+arch+'-emit.h"'))

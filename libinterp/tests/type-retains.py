@@ -48,6 +48,7 @@ parts += [function('libinterp/link.c', 'Modlink*\nmklinkmod('),
           function('libinterp/xec.c', 'List*\ncons('),
           function('libinterp/xec.c', 'static Type*\nmoduletype('),
           function('libinterp/xec.c', 'static uchar*\narrayspan(')]
+parts += [function('libinterp/xec.c', 'static void\nnewarray(')]
 parts += [function('libinterp/xec.c', 'OP('+name+')')
           for name in ('newa', 'newaz', 'slicea', 'slicela')]
 unit = (ROOT/'libinterp/tests/heap-bounds.c').read_text()

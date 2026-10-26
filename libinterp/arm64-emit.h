@@ -1332,12 +1332,13 @@ a64stringbytes(A64Buf *b, LeafLayout *a)
 
 /* Capture current descriptor/owner state before bounded zeroing and owner publication. */
 static int
-a64zeroobject(A64Buf *b, LeafLayout *a, int imported)
+a64recordobject(A64Buf *b, LeafLayout *a, int mode)
 {
-	int fallback, header, moduleend, empty, loop, half;
+	int fallback, header, moduleend, empty, loop, half, imported;
 	unsigned long long identity;
 
-	if(!leafzerolayout(a))
+	imported = mode == LeafRecordImportedZero;
+	if(!leafrecordlayout(a))
 		return 0;
 	header=a->typeref+4;
 	if(header<a->typesize+4)header=a->typesize+4;
@@ -1418,12 +1419,14 @@ a64zeroobject(A64Buf *b, LeafLayout *a, int imported)
 	empty=b->n; a64put(b, 0xb400000b);
 	a64put(b, 0xab0b015fU); // cmn x10, x11
 	a64defer(b, 0x54000002, fallback);
-	a64put(b, 0xaa0b03edU); // mov x13, x11
-	/* No callback or validation can fail after the first payload store. */
-	loop=b->n;
-	a64put(b, 0xd10005adU); // sub x13, x13, #1
-	a64put(b, 0x382d695fU); // strb wzr, [x10, x13]
-	a64put(b, 0xb500000dU | ((loop-b->n)&0x7ffff)<<5);
+	if(mode != LeafRecordRaw){
+		a64put(b, 0xaa0b03edU); // mov x13, x11
+		/* No callback or validation can fail after the first payload store. */
+		loop=b->n;
+		a64put(b, 0xd10005adU); // sub x13, x13, #1
+		a64put(b, 0x382d695fU); // strb wzr, [x10, x13]
+		a64put(b, 0xb500000dU | ((loop-b->n)&0x7ffff)<<5);
+	}
 	if(b->n>LeafMax)return 0;
 	b->code[empty] |= (b->n-empty)<<5;
 	a64put(b, 0xf900010aU); // str x10, [x8]
@@ -1472,8 +1475,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!a64slicecopy(&b, abi)) return 0;
 	}else if(p.kind == LeafMappedCopy){
 		if(!a64mapped(&b, abi, &p)) return 0;
-	}else if(p.kind == LeafZeroObject){
-		if(!a64zeroobject(&b, abi, p.alu)) return 0;
+	}else if(p.kind == LeafRecordObject){
+		if(!a64recordobject(&b, abi, p.alu)) return 0;
 	}else if(p.kind == LeafStringBytes){
 		if(!a64stringbytes(&b, abi)) return 0;
 	}else if(p.kind == LeafByteString){

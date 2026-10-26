@@ -216,7 +216,7 @@ main(void)
     int sizes[]={0,1,7,8,15,32,128,255,256,257};
     Module codeowner={0}, targetmodule={0}, wrongmodule={0};
     Modlink link={0}, wronglink={0};
-    Inst code[2]={{0}};
+    Inst code[3]={{0}};
     Type type, other, stale, *table[4], *cached[4];
     Heap *oldheap;
     void *old, *result, *resource, *nilptr=H;
@@ -226,27 +226,29 @@ main(void)
     Type beforetype;
     REG saved;
     WORD index;
-    int si, profile, imported, sa, da, alias, failed, size, reuse, native, invalid, status;
+    int clear, si, profile, imported, sa, da, alias, failed, size, reuse, native, invalid, status;
     int beforecalls, beforelive, beforecustom, flags, oldextra, olddifferent, errorheap;
     unsigned long total;
 
     if(!getenv("ZERO_NO_ERRORS"))lookupspans();
     constructormaps();
     if(getenv("ZERO_CTOR_ONLY"))return 0;
-    code[0].op=INEWZ; code[1].op=IMNEWZ; codeowner.prog=code; codeowner.nprog=2;
-    if(!compile(&codeowner,2,nil) || codeowner.jit==nil ||
-       codeowner.jit->entry[INEWZ]==nil || codeowner.jit->entry[IMNEWZ]==nil) abort();
+    code[0].op=INEWZ; code[1].op=IMNEWZ; codeowner.prog=code; code[2].op=INEW; codeowner.nprog=3;
+    if(!compile(&codeowner,3,nil) || codeowner.jit==nil ||
+       codeowner.jit->entry[INEWZ]==nil || codeowner.jit->entry[IMNEWZ]==nil || codeowner.jit->entry[INEW]==nil) abort();
     link.m=&targetmodule; wronglink.m=&wrongmodule;
     targetmodule.type=table; targetmodule.ntype=4; link.type=cached;
     wrongmodule.type=cached; wrongmodule.ntype=4;
     total=0;
     for(si=0;si<sizeof(sizes)/sizeof(sizes[0]);si++)
     for(profile=0;profile<16;profile++)
+    for(clear=0;clear<2;clear++)
     for(imported=0;imported<2;imported++)
     for(sa=0;sa<8;sa++)
     for(da=0;da<8;da++)
     for(alias=0;alias<3;alias++)
     for(failed=0;failed<2;failed++){
+        if(!clear && imported)continue;
         if(getenv("ZERO_NO_ERRORS") && (failed || profile==8 || profile==9 || profile==10 || profile==11 || profile==14 || profile==15)) continue;
         if((profile==4 || profile==3) && alias!=0) continue;
         if(alias==2 && profile!=0 && profile!=12 && profile!=13) continue;
@@ -298,16 +300,16 @@ main(void)
         memmove(slotsbefore,slots,sizeof(slots));memmove(expectedslots,slots,sizeof(slots));
         reuse=!invalid && profile!=1 && profile!=2 && profile!=3 && profile!=4 && profile!=5 && profile!=6 && profile!=15;
         native=reuse && size<=256;
-        if(native){memset(expected,0,size);if(alias==2)memmove(expected+8,&old,sizeof(old));}
+        if(native){if(clear)memset(expected,0,size);if(alias==2)memmove(expected+8,&old,sizeof(old));}
         beforecalls=calls;beforelive=live;beforecustom=customcalls;
         fesetround(FE_DOWNWARD);feclearexcept(FE_ALL_EXCEPT);feraiseexcept(FE_DIVBYZERO);flags=fetestexcept(FE_ALL_EXCEPT);
-        status=codeowner.jit->entry[imported?IMNEWZ:INEWZ](&R);
+        status=codeowner.jit->entry[clear ? (imported ? IMNEWZ : INEWZ) : INEW](&R);
         if(status!=native || calls!=beforecalls || live!=beforelive || customcalls!=beforecustom ||
            memcmp(old,expected,512) || memcmp(oldheap,&header,sizeof(header)) ||
            memcmp(&type,&beforetype,sizeof(type)) || memcmp(slots,expectedslots,sizeof(slots)) || memcmp(&R,&saved,sizeof(R)))
             zerofail(size,profile,imported,sa,da,alias,failed,__LINE__);
         memmove(old,before,512);memmove(slots,slotsbefore,sizeof(slots));R=saved;raised=nil;failure=failed;
-        if(setjmp(boundary)==0){if(imported)mnewz();else newz();}
+        if(setjmp(boundary)==0){if(!clear)new();else if(imported)mnewz();else newz();}
         failure=0;
         if(invalid || (failed && !reuse) || (profile==12 && !reuse)){
             if(raised==nil || (errorheap ? raised!=exHeap : strcmp(raised,"invalid type")) ||
@@ -320,7 +322,7 @@ main(void)
             if(raised!=nil)zerofail(size,profile,imported,sa,da,alias,failed,__LINE__);
             memmove(&result,R.d,sizeof(result));
             if(reuse){
-                memset(expected,0,size);if(alias==2)memmove(expected+8,&old,sizeof(old));
+                if(clear)memset(expected,0,size);if(alias==2)memmove(expected+8,&old,sizeof(old));
                 if(result!=old || calls!=beforecalls || live!=beforelive || memcmp(old,expected,512) ||
                    memcmp(oldheap,&header,sizeof(header)) || memcmp(&type,&beforetype,sizeof(type)))
                     zerofail(size,profile,imported,sa,da,alias,failed,__LINE__);
@@ -329,7 +331,7 @@ main(void)
                     zerofail(size,profile,imported,sa,da,alias,failed,__LINE__);
                 for(status=0;status<size;status++){
                     int mapped=(profile==4 && status<(int)sizeof(void*)) || (profile==15 && status>=7*(int)sizeof(void*) && status<8*(int)sizeof(void*));
-                    if(((uchar*)result)[status]!=(mapped?255:0))zerofail(size,profile,imported,sa,da,alias,failed,__LINE__);
+                    if(((uchar*)result)[status]!=(mapped?255:clear?0:0xa5))zerofail(size,profile,imported,sa,da,alias,failed,__LINE__);
                 }
                 if(profile==3 && customcalls!=beforecustom+1)zerofail(size,profile,imported,sa,da,alias,failed,__LINE__);
             }
@@ -343,6 +345,9 @@ main(void)
             if(profile==7)oldheap->ref=1;
         }
         if(oldextra==2){oldheap->ref=1;destroy(old);if(result==old)result=H;}
+        /* Raw NEW leaves custom scalar resources unspecified; the application initializes them. */
+        if(!clear && profile==3 && result!=old && size>=(int)sizeof(void*))
+            memset(result,0,sizeof(void*));
         destroy(result);
         if(oldextra==1)destroy(old);
         if(live!=0 || resources!=0 || type.ref!=1 || other.ref!=1)
@@ -350,6 +355,6 @@ main(void)
         total++;
     }
     codeowner.jit->freecode(codeowner.jit->code,codeowner.jit->size);free(codeowner.jit);
-    printf("PASS NEWZ/MNEWZ C/RX: %lu callbacks/maps/owners/aliases/failure/FP cases WORD%zu\n",total,sizeof(WORD)*8);
+    printf("PASS NEW/NEWZ/MNEWZ C/RX: %lu callbacks/maps/owners/aliases/failure/FP cases WORD%zu\n",total,sizeof(WORD)*8);
     return 0;
 }

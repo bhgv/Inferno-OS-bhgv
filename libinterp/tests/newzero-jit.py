@@ -51,7 +51,7 @@ emit(u32int *out, int cap, int wb, int imported)
     a.typeref=0; a.typesize=24; a.typenp=28; a.typefree=8; a.typemark=16;
     a.heapref=24; a.heaptype=16; a.heapcolor=32; a.refbytes=8;
     a.plainfree=(void*)0x1122334455667700ULL; a.plainmark=(void*)0x8877665544332200ULL;
-    return leafemit(out,cap,&a,imported ? IMNEWZ : INEWZ);
+    return leafemit(out,cap,&a,imported==2 ? INEW : imported ? IMNEWZ : INEWZ);
 }
 '''.replace('HEADER','"'+str(Path(os.environ.get('EMITTER_DIR',ROOT/'libinterp'))/(arch+'-emit.h'))+'"'))
         binary=td/(arch+'.so')
@@ -66,14 +66,16 @@ emit(u32int *out, int cap, int wb, int imported)
         machine.hook_add(UC_HOOK_MEM_WRITE,lambda uc,access,address,size,value,context:writes.append((address,size)))
         total=0
         for wb in (4,8):
-            for imported in (0,1):
-                output=(C.c_uint32*130)(*[0xdeadbeef]*130);count=lib.emit(output,128,wb,imported)
+            for mode in (0,1,2):
+                imported=mode==1
+                clear=mode!=2
+                output=(C.c_uint32*130)(*[0xdeadbeef]*130);count=lib.emit(output,128,wb,mode)
                 require(0<count<=128,(arch,wb,imported,'size',count))
                 require(list(output)[128:]==[0xdeadbeef]*2,'output canary')
-                require(lib.emit(None,128,wb,imported)==count,'sizing differs')
+                require(lib.emit(None,128,wb,mode)==count,'sizing differs')
                 for cap in range(count):
                     short=(C.c_uint32*130)(*[0xdeadbeef]*130)
-                    require(lib.emit(short,cap,wb,imported)==0 and all(v==0xdeadbeef for v in short),'partial publication')
+                    require(lib.emit(short,cap,wb,mode)==0 and all(v==0xdeadbeef for v in short),'partial publication')
                     total+=1
                 machine.mem_write(CODE,bytes(output)[:count*4]);machine.ctl_remove_cache(CODE,CODE+512)
                 for size in (0,1,7,8,15,32,128,255,256,257):
@@ -156,7 +158,7 @@ emit(u32int *out, int cap, int wb, int imported)
                                           0<=n<=256 and pointers==0 and release==FREE and mark==MARK and
                                           old not in (0,MASK,8) and oldrefs==1 and oldtype==typevalue and (n==0 or old+n<=MASK))
                                 expected,expectedtop=bytearray(image),bytearray(top)
-                                if accepted:
+                                if accepted and clear:
                                     if old==MASK-1:expectedtop[old-HIGH:old-HIGH+n]=b'\0'*n
                                     else:expected[old-BASE:old-BASE+n]=b'\0'*n
                                     put(expected,dst,old)
@@ -171,7 +173,7 @@ emit(u32int *out, int cap, int wb, int imported)
                                 for reg in saved:machine.reg_write(reg,0xabcdef000+reg)
                                 machine.mem_write(BASE,bytes(image));machine.mem_write(HIGH,bytes(top))
                                 if physical!=HIGH:machine.mem_write(physical,bytes(top))
-                                writes.clear();detail=(arch,wb,imported,size,profile,align,alias)
+                                writes.clear();detail=(arch,wb,mode,size,profile,align,alias)
                                 try:machine.emu_start(CODE,STOP,count=10000)
                                 except Exception as error:raise RuntimeError(('execution',detail)) from error
                                 status=machine.reg_read(xr.UC_X86_REG_RAX if arch=='amd64' else ar.UC_ARM64_REG_X0)
@@ -180,11 +182,11 @@ emit(u32int *out, int cap, int wb, int imported)
                                 require(bytes(machine.mem_read(physical,len(top)))==bytes(expectedtop),('high image',detail))
                                 require(bool(writes)==bool(accepted),('writes',detail))
                                 if accepted:
-                                    allowed=set(range(old,old+n));allowed.update(range(BASE+dst,BASE+dst+8))
-                                    if arch=='amd64' and old>=HIGH:allowed.update(range(old & ((1<<52)-1),(old & ((1<<52)-1))+n))
+                                    allowed=set(range(old,old+n)) if clear else set();allowed.update(range(BASE+dst,BASE+dst+8))
+                                    if clear and arch=='amd64' and old>=HIGH:allowed.update(range(old & ((1<<52)-1),(old & ((1<<52)-1))+n))
                                     require(all(address+i in allowed for address,width in writes for i in range(width)),('write span',detail,writes))
                                 for reg in saved:require(machine.reg_read(reg)==0xabcdef000+reg,('saved register',detail,reg))
                                 if arch=='amd64':require(machine.reg_read(xr.UC_X86_REG_MXCSR)==0x3f95,'MXCSR')
                                 else:require(machine.reg_read(ar.UC_ARM64_REG_FPCR)==0x400000 and machine.reg_read(ar.UC_ARM64_REG_FPSR)==0x15,'FP state')
                                 total+=1
-                print('PASS',arch,'NEWZ/MNEWZ:',total,'checks;',count,'units, WORD',wb*8,'imported',imported)
+                print('PASS',arch,'NEW/NEWZ/MNEWZ:',total,'checks;',count,'units, WORD',wb*8,'mode',mode)

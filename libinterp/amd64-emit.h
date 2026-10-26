@@ -1672,12 +1672,13 @@ x64stringbytes(X64Buf *b, LeafLayout *a)
 
 /* Reuse exact standard pointer-free records after checked live module/type lookup. */
 static int
-x64zeroobject(X64Buf *b, LeafLayout *a, int imported)
+x64recordobject(X64Buf *b, LeafLayout *a, int mode)
 {
-	int fallback, header, moduleend, empty, loop;
+	int fallback, header, moduleend, empty, loop, imported;
 	unsigned long long identity;
 
-	if(!leafzerolayout(a))
+	imported = mode == LeafRecordImportedZero;
+	if(!leafrecordlayout(a))
 		return 0;
 	header=a->typeref+4;
 	if(header<a->typesize+4)header=a->typesize+4;
@@ -1765,12 +1766,14 @@ x64zeroobject(X64Buf *b, LeafLayout *a, int imported)
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2); // mov rdx, rax
 	x64byte(b, 0x4c); x64byte(b, 0x01); x64byte(b, 0xda); // add rdx, r11
 	x64moduleguard(b, 0x73, fallback);
-	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xd9); // mov rcx, r11
-	/* No fallible operations remain after the first zero store. */
-	loop=b->n;
-	x64byte(b, 0xc6); x64byte(b, 0x44); x64byte(b, 0x08); x64byte(b, 0xff); x64byte(b, 0x00); // mov byte ptr [rax+rcx-1], 0
-	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc9); // dec rcx
-	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
+	if(mode != LeafRecordRaw){
+		x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xd9); // mov rcx, r11
+		/* No fallible operations remain after the first zero store. */
+		loop=b->n;
+		x64byte(b, 0xc6); x64byte(b, 0x44); x64byte(b, 0x08); x64byte(b, 0xff); x64byte(b, 0x00); // mov byte ptr [rax+rcx-1], 0
+		x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc9); // dec rcx
+		x64byte(b, 0x75); x64byte(b, loop-b->n-1);
+	}
 	if(b->n>sizeof(b->bytes) || b->n-empty-1>127)return 0;
 	b->bytes[empty]=b->n-empty-1;
 	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0x10); // mov qword ptr [r8], r10
@@ -1817,8 +1820,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!x64slicecopy(&b, abi)) return 0;
 	}else if(p.kind == LeafMappedCopy){
 		if(!x64mapped(&b, abi, &p)) return 0;
-	}else if(p.kind == LeafZeroObject){
-		if(!x64zeroobject(&b, abi, p.alu)) return 0;
+	}else if(p.kind == LeafRecordObject){
+		if(!x64recordobject(&b, abi, p.alu)) return 0;
 	}else if(p.kind == LeafStringBytes){
 		if(!x64stringbytes(&b, abi)) return 0;
 	}else if(p.kind == LeafByteString){

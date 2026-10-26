@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/array-create.py',
     'libinterp/tests/newzero-native.py',
     'libinterp/tests/string-bytes-native.py',
     'libinterp/tests/string-bytes-spans.py',

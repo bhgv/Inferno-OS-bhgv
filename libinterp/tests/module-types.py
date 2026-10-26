@@ -31,7 +31,7 @@ parts = [function((root/'emu/port/dis.c').read_text(), 'int\nkprotect(')]
 parts += [function(heap, result+'\n'+name+'(') for result, name in (
     ('Type*', 'dtype'), ('void', 'freetype'), ('void', 'acheck'),
     ('Heap*', 'nheap'), ('Heap*', 'heap'), ('Heap*', 'heapz'),
-    ('void', 'initarray'), ('void', 'initmem'), ('void', 'incmem'), ('void', 'freeptrs'))]
+    ('Heap*', 'heaparray'), ('void', 'initarray'), ('void', 'initmem'), ('void', 'incmem'), ('void', 'freeptrs'))]
 parts += [function(loader, 'static void\nloaderword('),
           function(loader, 'void\nLoader_tnew(')]
 if 'static Type*\nmoduletype(' in xec:
@@ -39,7 +39,7 @@ if 'static Type*\nmoduletype(' in xec:
 else:
     # Let the independent direct lookup case compile against the previous source.
     parts += ['static Type *moduletype(Modlink *ml, WORD index) { return ml->type[index]; }']
-parts += [function(xec, 'static void\nnewzero(')]
+parts += [function(xec, 'static void\nnewrecord('), function(xec, 'static void\nnewarray(')]
 parts += [function(xec, signature) for signature in ('static int\nframefits(', 'static int\nmoduleentry(', 'List*\ncons(')]
 parts += [function(xec, 'OP('+name+')') for name in
           ('new', 'newz', 'mnewz', 'newa', 'newaz', 'newcmp', 'consmp', 'movmp', 'frame', 'mcall')]

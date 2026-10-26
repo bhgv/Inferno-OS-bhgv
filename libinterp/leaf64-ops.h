@@ -85,7 +85,7 @@ leafbyteconversionlayout(LeafLayout *a)
 
 /* Validate module lookup, descriptor callbacks and record lifetime offsets for zero reuse. */
 static int
-leafzerolayout(LeafLayout *a)
+leafrecordlayout(LeafLayout *a)
 {
 	int offsets[5], widths[5], i, j;
 
@@ -115,6 +115,14 @@ leafzerolayout(LeafLayout *a)
 }
 
 
+/* Record construction modes keep operand selection distinct from scalar initialization. */
+enum {
+	LeafRecordZero = 0, // NEWZ resolves a local descriptor and clears scalar bytes.
+	LeafRecordImportedZero = 1, // MNEWZ resolves a descriptor from the source module.
+	LeafRecordRaw = 2, // NEW leaves scalar bytes unspecified without accessing them.
+};
+
+
 /* Decoded operation parameters shared by the native leaf emitters. */
 struct LeafOp {
 	int kind; // Native leaf implementation selected for this opcode.
@@ -125,7 +133,7 @@ struct LeafOp {
 };
 
 enum {
-	LeafZeroObject = 125, // Reuse unique pointer-free standard records for NEWZ/MNEWZ.
+	LeafRecordObject = 125, // Reuse unique pointer-free standard records for NEW/NEWZ/MNEWZ.
 	LeafStringBytes = 124, // Export bounded byte-backed strings into reusable byte arrays.
 	LeafByteString = 123, // Convert bounded ASCII arrays into reusable unique strings.
 	LeafFormatInteger = 122, // Format integers or selected real values into reusable strings.
@@ -163,8 +171,9 @@ leafop(LeafOp *p, int op, int wordbytes)
 	memset(p, 0, sizeof(*p));
 	p->bytes = wordbytes;
 	switch(op){
-	case INEWZ: p->kind = LeafZeroObject; break;
-	case IMNEWZ: p->kind = LeafZeroObject; p->alu = 1; break;
+	case INEW: p->kind = LeafRecordObject; p->alu = LeafRecordRaw; break;
+	case INEWZ: p->kind = LeafRecordObject; p->alu = LeafRecordZero; break;
+	case IMNEWZ: p->kind = LeafRecordObject; p->alu = LeafRecordImportedZero; break;
 	case ICVTAC: p->kind = LeafByteString; break;
 	case ICVTCA: p->kind = LeafStringBytes; break;
 	case IBEQC: case IBNEC: case IBLTC: case IBLEC: case IBGTC: case IBGEC:
