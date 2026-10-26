@@ -218,8 +218,10 @@ leafop(LeafOp *p, int op, int wordbytes)
 	case IBGEW: p->kind = LeafBranch; p->condition = 5; break;
 	default: return 0;
 	}
-	if(p->kind == LeafDecimal)
-		p->input = p->alu ? 15 : p->bytes == 4 ? 9 : 18; // Digits bounded for exact parsing on every supported host.
+	if(p->kind == LeafDecimal){
+		/* Unsigned accumulation fits; integer leaves check the final signed limit. */
+		p->input = p->alu ? 15 : p->bytes == 4 ? 10 : 19;
+	}
 	if(p->input == 0) p->input = p->bytes;
 	return 1;
 }

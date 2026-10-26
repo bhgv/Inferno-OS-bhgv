@@ -645,9 +645,10 @@ OP(cvtfc)
 	}
 }
 
+
 /*
  * Return a NUL-terminated UTF-8 view, caching rune conversion in the string.
- * Validate logical capacity before terminating ASCII or scanning Rune storage.
+ * Validate logical capacity and native spans before accessing payload storage.
  * Bound the temporary byte count before multiplying the rune count.
  */
 char*
@@ -655,6 +656,8 @@ string2c(String *s)
 {
 	char *p, *buffer;
 	int l, nc;
+	uvlong bytes;
+	uintptr address;
 	Rune c, *r, *er;
 
 	if(s == nil)
@@ -665,6 +668,14 @@ string2c(String *s)
 	if(s->len >= 0) {
 		if(s->max < s->len)
 			error(exHeap);
+		/* Termination writes one byte beyond the logical ASCII payload. */
+		bytes = (uvlong)s->len+1;
+		address = (uintptr)s;
+		if(address > (uintptr)-1 - offsetof(String, data))
+			error(exHeap);
+		address += offsetof(String, data);
+		if(bytes > (uintptr)-1-address)
+			error(exHeap);
 		s->Sascii[s->len] = '\0';
 		return s->Sascii;
 	}
@@ -673,6 +684,14 @@ string2c(String *s)
 		error(exNomem);
 	nc = -s->len;
 	if(s->max < nc)
+		error(exHeap);
+	/* Reject wrapped Rune storage before allocation or mutation of its UTF-8 cache. */
+	bytes = (uvlong)nc*sizeof(Rune);
+	address = (uintptr)s;
+	if(address > (uintptr)-1 - offsetof(String, data))
+		error(exHeap);
+	address += offsetof(String, data);
+	if(bytes > (uintptr)-1-address)
 		error(exHeap);
 	l = (nc * UTFmax) + UTFmax;
 	if(s->tmp == nil || msize(s->tmp) < l) {

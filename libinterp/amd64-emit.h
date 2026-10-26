@@ -718,25 +718,31 @@ x64stringappend(X64Buf *b, LeafLayout *a)
 static int
 x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
 {
-	int absent, empty, minus, digits, loop, positive, i;
+	int absent, empty, minus, digits, loop, positive, i, fallback;
 	unsigned int distance;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
-	   a->stringdata < 0 || a->stringdata > 2047) return 0;
+	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
+	   a->stringdata < a->stringmax+4 || a->stringdata > 2047) return 0;
+	x64byte(b, 0xeb); x64byte(b, 3);
+	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	x64ptr(b, 0, a->s); x64load(b, 0, 8);
 	x64byte(b, 0x45); x64byte(b, 0x31); x64byte(b, 0xc0); /* r8d=value */
 	x64byte(b, 0x45); x64byte(b, 0x31); x64byte(b, 0xc9); /* r9d=negative */
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64guard(b, 0x75);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
 	x64byte(b, 0x0f); x64byte(b, 0x84); absent=b->n; x64word(b, 0);
 	x64field(b, 1, 0, a->stringlen, 4);
-	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, p->input+1); x64guard(b, 0x76);
+	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, p->input+1); x64moduleguard(b, 0x76, fallback);
 	x64field(b, 2, 0, a->stringmax, 4);
-	x64byte(b, 0x39); x64byte(b, 0xca); x64guard(b, 0x7d);
+	x64byte(b, 0x39); x64byte(b, 0xca); x64moduleguard(b, 0x7d, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0xb0); x64word(b, a->stringdata);
+	/* Include the NUL cell while checking the complete owner-relative span. */
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x54); x64byte(b, 0x0e); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xc2); x64moduleguard(b, 0x73, fallback);
 	/* string2c would terminate ASCII; decline if that would change VM bytes. */
-	x64byte(b, 0x80); x64byte(b, 0x3c); x64byte(b, 0x0e); x64byte(b, 0); x64guard(b, 0x74);
+	x64byte(b, 0x80); x64byte(b, 0x3c); x64byte(b, 0x0e); x64byte(b, 0); x64moduleguard(b, 0x74, fallback);
 	x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x74); empty=b->n; x64byte(b, 0);
 	x64byte(b, 0x0f); x64byte(b, 0xb6); x64byte(b, 0x16);
@@ -749,22 +755,33 @@ x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc6);
 	x64byte(b, 0xff); x64byte(b, 0xc9);
 	b->bytes[digits]=b->n-digits-1;
-	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, p->input); x64guard(b, 0x76);
+	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, p->input); x64moduleguard(b, 0x76, fallback);
 	/* strtod rejects sign-only input; leave that case to its existing C path. */
 	if(p->alu){
-		x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x75);
+		x64byte(b, 0x85); x64byte(b, 0xc9); x64moduleguard(b, 0x75, fallback);
 	}
 	x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x74); positive=b->n; x64byte(b, 0);
 	loop=b->n;
 	x64byte(b, 0x0f); x64byte(b, 0xb6); x64byte(b, 0x16);
 	x64byte(b, 0x83); x64byte(b, 0xea); x64byte(b, '0');
-	x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 9); x64guard(b, 0x76);
+	x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 9); x64moduleguard(b, 0x76, fallback);
 	x64byte(b, 0x4d); x64byte(b, 0x6b); x64byte(b, 0xc0); x64byte(b, 10);
 	x64byte(b, 0x49); x64byte(b, 0x01); x64byte(b, 0xd0);
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc6);
 	x64byte(b, 0xff); x64byte(b, 0xc9);
 	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
+	if(!p->alu){
+		/* At most 19 digits fit unsigned 64 bits; now enforce the selected signed range. */
+		if(p->bytes == 4){
+			x64byte(b, 0xb8); x64word(b, 0x7fffffff);
+		}else{
+			x64byte(b, 0x48); x64byte(b, 0xb8);
+			x64word(b, 0xffffffffU); x64word(b, 0x7fffffff);
+		}
+		x64byte(b, 0x4c); x64byte(b, 0x01); x64byte(b, 0xc8); // ADD rax,r9: MIN permits one extra magnitude.
+		x64byte(b, 0x49); x64byte(b, 0x39); x64byte(b, 0xc0); x64moduleguard(b, 0x76, fallback);
+	}
 	x64byte(b, 0x45); x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x74); minus=b->n; x64byte(b, 0);
 	x64byte(b, 0x49); x64byte(b, 0xf7); x64byte(b, 0xd8);

@@ -548,22 +548,29 @@ a64stringappend(A64Buf *b, LeafLayout *a)
 static int
 a64decimal(A64Buf *b, LeafLayout *a, LeafOp *p)
 {
-	int absent, empty, minus, digits, signonly, loop, positive;
+	int absent, empty, minus, digits, signonly, loop, positive, fallback;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
-	   a->stringdata < 0 || a->stringdata > 2047) return 0;
+	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
+	   a->stringdata < a->stringmax+4 || a->stringdata > 2047) return 0;
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	a64ptr(b, 9, a->s); a64load(b, 12, 9, 8);
 	a64put(b, 0x5280000e); a64put(b, 0x5280000f);
-	a64guard(b, 0xb500006c);
+	a64pcguard(b, 0xb500006c, fallback);
 	a64put(b, 0xb100059f); absent=b->n; a64put(b, 0x54000000);
 	a64field(b, 13, 12, a->stringlen, 4);
-	a64put(b, 0x710001bfU | (u32int)(p->input+1)<<10); a64guard(b, 0x54000069);
+	a64put(b, 0x710001bfU | (u32int)(p->input+1)<<10); a64pcguard(b, 0x54000069, fallback);
 	a64field(b, 10, 12, a->stringmax, 4);
-	a64put(b, 0x6b0d015f); a64guard(b, 0x5400006a);
+	a64put(b, 0x6b0d015f); a64pcguard(b, 0x5400006a, fallback);
 	a64put(b, 0x91000189U | (u32int)a->stringdata<<10);
 	/* Preserve string2c's terminator mutation by declining nonterminated ASCII. */
-	a64put(b, 0x8b0d012a); a64load(b, 10, 10, 1); a64guard(b, 0x3400006a);
+	a64put(b, 0x8b0d012a);
+	/* Bound the trailing NUL cell before reading it, including inline-offset wrap. */
+	a64put(b, 0x91000542); // ADD x2,x10,#1.
+	a64put(b, 0xeb0c005f); a64defer(b, 0x54000003, fallback);
+	a64load(b, 10, 10, 1); a64pcguard(b, 0x3400006a, fallback);
 	empty=b->n; a64put(b, 0x3400000d);
 	a64load(b, 10, 9, 1); a64put(b, 0x7100b55f);
 	a64put(b, 0x1a9f17ef); /* cset w15,eq */
@@ -572,19 +579,25 @@ a64decimal(A64Buf *b, LeafLayout *a, LeafOp *p)
 	b->code[minus] |= (b->n-minus)<<5;
 	a64put(b, 0x91000529); a64put(b, 0x510005ad);
 	b->code[digits] |= (b->n-digits)<<5;
-	a64put(b, 0x710001bfU | (u32int)p->input<<10); a64guard(b, 0x54000069);
+	a64put(b, 0x710001bfU | (u32int)p->input<<10); a64pcguard(b, 0x54000069, fallback);
 	/* Decline sign-only real conversions before executing any FP instruction. */
 	if(p->alu)
-		a64guard(b, 0x3500006d);
+		a64pcguard(b, 0x3500006d, fallback);
 	signonly=b->n; a64put(b, 0x3400000d);
 	loop=b->n;
 	a64load(b, 10, 9, 1); a64put(b, 0x5100c14a);
-	a64put(b, 0x7100255f); a64guard(b, 0x54000069);
+	a64put(b, 0x7100255f); a64pcguard(b, 0x54000069, fallback);
 	a64put(b, 0x8b0e09ce); /* value*=5 */
 	a64put(b, 0x8b0e01ce); /* value*=2 */
 	a64put(b, 0x8b0a01ce);
 	a64put(b, 0x91000529); a64put(b, 0x710005ad);
 	a64put(b, 0x54000001U | ((loop-b->n)&0x7ffff)<<5);
+	if(!p->alu){
+		/* MOVN forms the signed maximum; the captured minus sign permits MIN. */
+		a64put(b, p->bytes == 4 ? 0x12b00002 : 0x92f00002);
+		a64put(b, 0x8b0f0042); // ADD x2,x2,x15.
+		a64put(b, 0xeb0201df); a64defer(b, 0x54000008, fallback);
+	}
 	positive=b->n; a64put(b, 0x3400000f);
 	a64put(b, 0xcb0e03ee);
 	if(b->n > LeafMax) return 0;

@@ -1,5 +1,9 @@
 # Short decimal native paths and adjacent string validation
 
+Current signed-range and UTF-8 address checks are documented in
+[README.decimal-ranges.md](README.decimal-ranges.md). The checkpoint below
+records the earlier nine-digit implementation.
+
 This checkpoint was based on experiment cc9c319, including the adjacent LP64
 number/big-constant/Styx changes (3c6f5dc) and compiler-local byte descriptors
 (cc9c319). The existing compiler-local descriptor acceptance is retained;
@@ -46,8 +50,8 @@ The native fixture runs 159744 cases per WORD model through actual published
 AMD64 code and actual cvtcw/cvtcl/string2c. It compares complete operand and
 source images, source/destination alignments, exact aliases, interior output,
 nil/null owners and nonterminated fallbacks in all four FP rounding modes
-with preexisting exception flags. Rune helpers are assertion adapters and are
-not claimed as a native Rune execution test.
+with preexisting exception flags. Rune helpers reject unexpected calls; this fixture does not execute native
+Rune conversion.
 
 The Unicorn fixture independently models full images above 4 GiB, both WORD
 models, both output widths and all byte values in the scanned digit position.

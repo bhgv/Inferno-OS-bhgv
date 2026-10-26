@@ -21,7 +21,13 @@ def put(image, offset, value, size=8):
     image[offset:offset+size]=(value & ((1<<(size*8))-1)).to_bytes(size,'little')
 
 
-# The prefix parser deliberately declines whitespace, trailing text and longer integers.
+def require(condition, detail):
+    """Keep every regression active under optimized Python."""
+    if not condition:
+        raise RuntimeError(detail)
+
+
+# Native parsing declines whitespace, trailing text, overflow and longer digit sequences.
 texts=[b'',b'+',b'-',b'0',b'-0',b'+0',b'1',b'-1',b'999999999',b'-999999999',
        b'+999999999',b'000000000',b'1000000000',b'2147483647',b'-2147483648',
        b'9223372036854775807',b'-9223372036854775808',b' 12',b'12 ',b'12x',
@@ -30,6 +36,12 @@ texts=[b'',b'+',b'-',b'0',b'-0',b'+0',b'1',b'-1',b'999999999',b'-999999999',
        b'1000000000000000',b'999999999999999999',b'-999999999999999999',
        b'1000000000000000000',b'-1000000000000000000',b'123456789012345678',
        b'1.5',b'-0.0',b'1e2',b'1e-300',b'1e-999',b'1e999',b'Inf',b'nan']
+texts += [str(value).encode() for value in
+          (2147483646, 2147483648, -2147483647, -2147483649,
+           9223372036854775806, -9223372036854775807,
+           9223372036854775808, -9223372036854775809,
+           9999999999, -9999999999, 9999999999999999999, -9999999999999999999)]
+texts += [sign+b'0'*length for sign in (b'', b'+', b'-') for length in (10, 19, 20)]
 texts += [b'1'+bytes([value])+b'2' for value in range(256)]
 rng=random.Random(114)
 for length in range(1,20):
@@ -68,21 +80,28 @@ int emit(u32int *out,int cap,int wb,int big,int field,int value){
         for wb in (4,8):
             for big in (0,1,2):
                 out=(C.c_uint32*64)(*[0xa5a5a5a5]*64);n=lib.emit(out,64,wb,big,0,0)
-                assert 0<n<=64 and lib.emit(None,64,wb,big,0,0)==n
-                blob=bytes(out)[:n*4];assert sum(i.size for i in dis.disasm(blob,CODE))==n*4
+                require(0 < n <= 64 and lib.emit(None, 64, wb, big, 0, 0) == n, 'decimal sizing/layout/instruction check failed')
+                blob=bytes(out)[:n*4]
+                require(sum((i.size for i in dis.disasm(blob, CODE))) == n * 4, 'decimal sizing/layout/instruction check failed')
                 for cap in range(n):
                     guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                    assert lib.emit(guard,cap,wb,big,0,0)==0 and list(guard)==[0xa5a5a5a5]*64;checks+=1
+                    require(lib.emit(guard, cap, wb, big, 0, 0) == 0 and list(guard) == [2779096485] * 64, 'decimal sizing/layout/instruction check failed')
+                    checks+=1
                 for field,values in ((1,(-1,1,2048)),(2,(-1,2048)),(3,(-1,1,2048))):
                     for value in values:
                         guard=(C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                        assert lib.emit(guard,64,wb,big,field,value)==0 and list(guard)==[0xa5a5a5a5]*64;checks+=1
+                        require(lib.emit(guard, 64, wb, big, field, value) == 0 and list(guard) == [2779096485] * 64, 'decimal sizing/layout/instruction check failed')
+                        checks+=1
                 machine.mem_write(CODE,blob);machine.ctl_remove_cache(CODE,CODE+256)
                 cases=[(text,0) for text in texts]+[(b'12',fault) for fault in range(1,9)]
                 for text,fault in cases:
                     body=text[1:] if text[:1] in (b'+',b'-') else text
-                    valid=(len(body)<=(15 if big==2 else 9 if big==0 and wb==4 else 18) and (not body or all(48<=x<=57 for x in body)))
+                    valid=(len(body)<=(15 if big==2 else 10 if big==0 and wb==4 else 19) and (not body or all(48<=x<=57 for x in body)))
                     if big==2 and text in (b'+',b'-'):valid=False
+                    if big != 2 and valid and body:
+                        signed = int(text)
+                        bits = 8*(8 if big else wb)
+                        valid = -(1 << (bits-1)) <= signed < (1 << (bits-1))
                     if fault:valid=fault==1
                     value=0 if not body or fault==1 else int(text) if valid else 0
                     for sa in range(8):
@@ -114,9 +133,10 @@ int emit(u32int *out,int cap,int wb,int big,int field,int value){
                                     machine.reg_write(UC_ARM64_REG_FPCR,(sa&3)<<22);machine.reg_write(UC_ARM64_REG_FPSR,0x11 if da&1 else 0)
                                 machine.emu_start(CODE,STOP,count=1000)
                                 result=machine.reg_read(UC_X86_REG_RAX if arch=='amd64' else UC_ARM64_REG_X0)
-                                assert result==valid,(arch,wb,big,text,fault,sa,da,alias,result)
-                                assert bytes(machine.mem_read(BASE,0x4000))==bytes(expected),(arch,wb,big,text,fault,sa,da,alias)
-                                if not valid:assert not writes
+                                require(result == valid, (arch, wb, big, text, fault, sa, da, alias, result))
+                                require(bytes(machine.mem_read(BASE, 16384)) == bytes(expected), (arch, wb, big, text, fault, sa, da, alias))
+                                if not valid:
+                                    require(not writes, 'declined decimal parse wrote memory')
                                 if arch=='amd64':
                                     if machine.reg_read(UC_X86_REG_MXCSR)!=(0x1f80 | (sa&3)<<13 | (0x21 if da&1 else 0)):
                                         raise RuntimeError('decimal leaf changed MXCSR')
