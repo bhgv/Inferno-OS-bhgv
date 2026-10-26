@@ -141,6 +141,8 @@ toupper(s: string): string
 	return s;
 }
 
+
+# Parse a sign and a radix in the documented range, including inferred prefixes.
 startnum(s: string, base: int): (int, int, int)
 {
 	if(s == nil || base != 0 && (base < 2 || base > 36))
@@ -178,7 +180,7 @@ startnum(s: string, base: int): (int, int, int)
 		if (base == -1) {
 			i = start;
 			base = 10;
-		} else if (base == 0 || base > 36)
+		} else if (base < 2 || base > 36)
 			return (0, 0, i);
 	}
 	if(i >= len s)
@@ -235,9 +237,13 @@ toint(s: string, base: int): (int, string)
 	return (n, s[i:]);
 }
 
+
+# Decode only alphabetic digits and decimal characters within a valid radix.
 digit(c: int, base: int): int
 {
-	if ('0' <= c && c <= '0' + base - 1)
+	if(base < 2 || base > 36)
+		return -1;
+	if ('0' <= c && c <= '9' && c-'0' < base)
 		return c-'0';
 	else if ('a' <= c && c < 'a' + base - 10)
 		return (c - 'a' + 10);
@@ -281,6 +287,8 @@ match(p: string, s: string, i: int): int
 	return 1;
 }
 
+
+# Read mantissa digits in their radix and exponent digits in decimal.
 toreal(s: string, base: int): (real, string)
 {
 	neg, i: int;
@@ -323,7 +331,7 @@ toreal(s: string, base: int): (real, string)
 		}
 		if(i < len s && s[i] >= '0' && s[i] <= '9'){	# exponents are always decimal
 			for(; i < len s && (d = digit(s[i], 10)) >= 0; i++)
-				exp = exp*base + d;
+				exp = exp*10 + d;
 		}else
 			i = start;
 	}

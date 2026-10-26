@@ -56,6 +56,8 @@ CORE = [
     'libmath/tests/native-dtoa-host.py',
     'limbo/tests/big-constant-host.py',
     'limbo/tests/case-cell-layouts.py',
+    'limbo/tests/asm-roundtrip.py',
+    'appl/lib/tests/string-radix-host.py',
     'limbo/tests/layout-bounds.py',
     'libinterp/tests/slice-copy-native.py',
     'libinterp/tests/mapped-copy-native.py',

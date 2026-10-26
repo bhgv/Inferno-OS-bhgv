@@ -5,20 +5,57 @@
 #undef free
 #undef realloc
 
-void* malloc_(size_t l){
-	return malloc(l);
+/* Bridge the legacy allocation symbol to the host allocator. */
+void*
+malloc_(size_t size)
+{
+	return malloc(size);
 }
 
-void* realloc_(void*p, size_t l){
-	return realloc(p, l);
+
+/* Preserve host realloc ownership through the legacy linkage name. */
+void*
+realloc_(void *data, size_t size)
+{
+	return realloc(data, size);
 }
 
-void free_(void* p) {
-	free(p);
+
+/* Release storage through the legacy linkage name. */
+void
+free_(void *data)
+{
+	free(data);
 }
 //#endif
 
 
+/* Quote assembler bytes once, preserving embedded NUL and source-path punctuation. */
+static void
+asmquoted(char *text, long length)
+{
+	long i;
+	int c;
+
+	Bputc(bout, '"');
+	for(i = 0; i < length; i++){
+		c = (uchar)text[i];
+		if(c == '\n')
+			Bwrite(bout, "\\n", 2);
+		else if(c == 0)
+			Bwrite(bout, "\\z", 2);
+		else if(c == '"')
+			Bwrite(bout, "\\\"", 2);
+		else if(c == '\\')
+			Bwrite(bout, "\\\\", 2);
+		else
+			Bputc(bout, c);
+	}
+	Bputc(bout, '"');
+}
+
+
+/* Emit the module entry PC and frame descriptor. */
 void
 asmentry(Decl *e)
 {
@@ -27,6 +64,8 @@ asmentry(Decl *e)
 	Bprint(bout, "\tentry\t%ld, %d\n", e->pc->pc, e->desc->id);
 }
 
+
+/* Emit identifier-form module names and readable export declarations. */
 void
 asmmod(Decl *m)
 {
@@ -48,17 +87,23 @@ asmmod(Decl *m)
 	}
 }
 
-#define	NAMELEN	64
+#define NAMELEN 64 // Legacy source-path buffer unit in bytes.
 
+
+/* Preserve quoted source paths through assembly and bytecode reconstruction. */
 void
 asmpath(void)
 {
 	char name[8*NAMELEN], *sp;
 
 	sp = srcpath(name, 8*NAMELEN);
-	Bprint(bout, "\tsource\t\"%s\"\n", sp);
+	Bprint(bout, "\tsource\t");
+	asmquoted(sp, strlen(sp));
+	Bputc(bout, '\n');
 }
 
+
+/* Write pointer maps in the assembler descriptor syntax. */
 void
 asmdesc(Desc *d)
 {
@@ -73,6 +118,8 @@ asmdesc(Desc *d)
 	}
 }
 
+
+/* Emit global initializers at their declared module-data offsets. */
 void
 asmvar(long size, Decl *d)
 {
@@ -83,6 +130,8 @@ asmvar(long size, Decl *d)
 			asminitializer(d->offset, d->init);
 }
 
+
+/* Emit link-data initializers at their declared offsets. */
 void
 asmldt(long size, Decl *d)
 {
@@ -93,7 +142,8 @@ asmldt(long size, Decl *d)
 			asminitializer(d->offset, d->init);
 }
 
-/* Match binary Dis case bounds when writing textual initializers. */
+
+/* Preserve binary Dis field widths and floating bits in readable textual initializers. */
 void
 asminitializer(long offset, Node *n)
 {
@@ -102,6 +152,8 @@ asminitializer(long offset, Node *n)
 	Label *lab;
 	Decl *id;
 	ulong dv[2];
+	uvlong bits;
+	Long representation;
 	long e, last, esz, dotlen, idlen;
 	int i;
 
@@ -121,6 +173,15 @@ asminitializer(long offset, Node *n)
 		break;
 	case Treal:
 		dtocanon(n->rval, dv);
+		if((dv[0] & 0x7ff00000UL) == 0x7ff00000UL &&
+		   ((dv[0] & 0xfffffUL) != 0 || dv[1] != 0)){
+			/* The real grammar canonicalizes NaN; a long record retains its exact bits. */
+			bits = ((uvlong)dv[0]<<32) | (uvlong)dv[1];
+			memmove(&representation, &bits, sizeof(representation));
+			Bprint(bout, "\tlong\t@mp+%ld,%lld # real NaN 0x%.8lux%.8lux\n",
+				offset, representation, dv[0], dv[1]);
+			break;
+		}
 		Bprint(bout, "\treal\t@mp+%ld,%g # %.8lux%.8lux\n", offset, n->rval, dv[0], dv[1]);
 		break;
 	case Tadt:
@@ -143,12 +204,17 @@ asminitializer(long offset, Node *n)
 		break;
 	case Tcasel:
 		c = n->ty->cse;
-		Bprint(bout, "\tword\t@mp+%ld,%d", offset, c->nlab);
+		Bprint(bout, "\tword\t@mp+%ld,%d\n", offset, c->nlab);
+		offset += 2*IBY2WD;
 		for(i = 0; i < c->nlab; i++){
 			lab = &c->labs[i];
-			Bprint(bout, ",%lld,%lld,%ld", lab->start->val, caseend(lab->stop->val, 1), lab->inst->pc);
+			Bprint(bout, "\tlong\t@mp+%ld,%lld,%lld\n", offset,
+				lab->start->val, caseend(lab->stop->val, 1));
+			offset += 2*IBY2LG;
+			Bprint(bout, "\tword\t@mp+%ld,%ld\n", offset, lab->inst->pc);
+			offset += 2*IBY2WD;
 		}
-		Bprint(bout, ",%ld\n", c->iwild ? c->iwild->pc : -1);
+		Bprint(bout, "\tword\t@mp+%ld,%ld\n", offset, c->iwild ? c->iwild->pc : -1);
 		break;
 	case Tcasec:
 		c = n->ty->cse;
@@ -234,6 +300,8 @@ asminitializer(long offset, Node *n)
 	}
 }
 
+
+/* Emit exception ranges and their handler tables. */
 void
 asmexc(Except *es)
 {
@@ -271,31 +339,18 @@ asmexc(Except *es)
 	}
 }
 
+
+/* Share string-literal escaping with source paths. */
 void
 asmstring(long offset, Sym *sym)
 {
-	char *s, *se;
-	int c;
-
-	Bprint(bout, "\tstring\t@mp+%ld,\"", offset);
-	s = sym->name;
-	se = s + sym->len;
-	for(; s < se; s++){
-		c = *s;
-		if(c == '\n')
-			Bwrite(bout, "\\n", 2);
-		else if(c == '\0')
-			Bwrite(bout, "\\z", 2);
-		else if(c == '"')
-			Bwrite(bout, "\\\"", 2);
-		else if(c == '\\')
-			Bwrite(bout, "\\\\", 2);
-		else
-			Bputc(bout, c);
-	}
-	Bprint(bout, "\"\n");
+	Bprint(bout, "\tstring\t@mp+%ld,", offset);
+	asmquoted(sym->name, sym->len);
+	Bputc(bout, '\n');
 }
 
+
+/* Write reachable instructions with periodic PC annotations. */
 void
 asminst(Inst *in)
 {
