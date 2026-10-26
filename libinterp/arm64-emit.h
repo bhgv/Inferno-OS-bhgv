@@ -602,39 +602,87 @@ a64decimal(A64Buf *b, LeafLayout *a, LeafOp *p)
 }
 
 
+/* Read a selected ASCII or Rune cell through a checked native end address. */
+static int
+a64stringindex(A64Buf *b, LeafLayout *a)
+{
+	int other, done, fallback;
+
+	if(a->stringlen < 0 || a->stringlen > 16380 || a->stringlen%4 != 0 ||
+	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
+	   a->stringdata < a->stringmax+4 || a->stringdata > 2047 || a->stringdata%4 != 0 ||
+	   a->stringmax < 0 || a->stringmax > 16380 || a->stringmax%4) return 0;
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	a64ptr(b, 9, a->s); a64load(b, 12, 9, 8);
+	a64pcguard(b, 0xb500006c, fallback);
+	a64put(b, 0xb100059f); a64pcguard(b, 0x54000061, fallback);
+	a64field(b, 13, 12, a->stringlen, 4);
+	a64put(b, 0x52b0000e); a64put(b, 0x6b0e01bf); a64pcguard(b, 0x54000061, fallback);
+	a64put(b, 0x2a0d03ef); /* preserve the representation sign */
+	a64put(b, 0x36f8004d); a64put(b, 0x4b0d03ed);
+	/* Check signed capacity while x12 still holds the original owner. */
+	a64field(b, 14, 12, a->stringmax, 4);
+	a64put(b, 0x6b0d01df); a64pcguard(b, 0x5400006a, fallback);
+	a64ptr(b, 10, a->m); a64load(b, 14, 10, a->wordbytes);
+	a64put(b, 0xeb0d01df); a64pcguard(b, 0x54000063, fallback);
+	other = b->n; a64put(b, 0x36f8000f); /* tbz w15, #31, ASCII */
+	a64put(b, 0x8b0e098d); // ADD x13,x12,x14,LSL #2.
+	a64put(b, 0x910001adU | (u32int)(a->stringdata+4)<<10);
+	a64put(b, 0xeb0c01bf); a64defer(b, 0x54000003, fallback);
+	a64put(b, 0xb89fc1ad); // LDURSW x13,[x13,#-4].
+	done = b->n; a64put(b, 0x14000000);
+	b->code[other] |= (b->n-other)<<5;
+	a64put(b, 0x8b0e018d); // ADD x13,x12,x14.
+	a64put(b, 0x910001adU | (u32int)(a->stringdata+1)<<10);
+	a64put(b, 0xeb0c01bf); a64defer(b, 0x54000003, fallback);
+	a64put(b, 0x385ff1ad); // LDURB w13,[x13,#-1].
+	b->code[done] |= b->n-done;
+	a64ptr(b, 11, a->d); a64store(b, 13, a->wordbytes);
+	return 1;
+}
+
+
 /* Update or append one ASCII/Rune character within uniquely owned capacity. */
 static int
 a64stringstore(A64Buf *b, LeafLayout *a)
 {
-	int wide, done, unchanged;
+	int wide, done, unchanged, fallback;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
-	   a->stringdata < 0 || a->stringdata > 2047 ||
+	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
+	   a->stringdata < a->stringmax+4 || a->stringdata > 2047 ||
 	   a->heapref <= 0 || a->heapref > 255 || a->heapref%8 || a->refbytes != 8) return 0;
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	a64ptr(b, 9, a->s); a64load(b, 12, 9, a->wordbytes);
 	a64ptr(b, 10, a->m); a64load(b, 13, 10, a->wordbytes);
 	a64ptr(b, 11, a->d); a64load(b, 14, 11, 8);
-	a64guard(b, 0xb500006e);
-	a64put(b, 0xb10005df); a64guard(b, 0x54000061);
+	a64pcguard(b, 0xb500006e, fallback);
+	a64put(b, 0xb10005df); a64pcguard(b, 0x54000061, fallback);
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 14<<5 | 4);
-	a64put(b, 0xf100049f); a64guard(b, 0x54000060);
+	a64put(b, 0xf100049f); a64pcguard(b, 0x54000060, fallback);
 	a64field(b, 15, 14, a->stringlen, 4);
-	a64put(b, 0x52b00002); a64put(b, 0x6b0201ff); a64guard(b, 0x54000061);
+	a64put(b, 0x52b00002); a64put(b, 0x6b0201ff); a64pcguard(b, 0x54000061, fallback);
 	a64put(b, 0x2a0f03e2); a64put(b, 0x36f80042); a64put(b, 0x4b0203e2);
 	a64field(b, 3, 14, a->stringmax, 4);
-	a64put(b, 0x6b02007f); a64guard(b, 0x5400006a);
-	a64put(b, 0xeb0201bf); a64guard(b, 0x54000069);
-	a64put(b, 0xeb0301bf); a64guard(b, 0x54000063);
+	a64put(b, 0x6b02007f); a64pcguard(b, 0x5400006a, fallback);
+	a64put(b, 0xeb0201bf); a64pcguard(b, 0x54000069, fallback);
+	a64put(b, 0xeb0301bf); a64pcguard(b, 0x54000063, fallback);
 	wide=b->n; a64put(b, 0x37f8000f);
-	a64put(b, 0x7102019f); a64guard(b, 0x54000063);
-	a64put(b, 0x910001cbU | (u32int)a->stringdata<<10);
-	a64put(b, 0x8b0d016b); a64store(b, 12, 1);
+	a64put(b, 0x7102019f); a64pcguard(b, 0x54000063, fallback);
+	a64put(b, 0x8b0d01cb); // ADD x11,x14,x13.
+	a64put(b, 0x9100016bU | (u32int)(a->stringdata+1)<<10);
+	a64put(b, 0xeb0e017f); a64defer(b, 0x54000003, fallback);
+	a64put(b, 0x381ff16c); // STURB w12,[x11,#-1].
 	done=b->n; a64put(b, 0x14000000);
 	if(b->n > LeafMax) return 0;
 	b->code[wide] |= (b->n-wide)<<5;
-	a64put(b, 0x910001cbU | (u32int)a->stringdata<<10);
-	a64put(b, 0x8b0d096b); a64store(b, 12, 4);
+	a64put(b, 0x8b0d09cb); // ADD x11,x14,x13,LSL #2.
+	a64put(b, 0x9100016bU | (u32int)(a->stringdata+4)<<10);
+	a64put(b, 0xeb0e017f); a64defer(b, 0x54000003, fallback);
+	a64put(b, 0xb81fc16c); // STUR w12,[x11,#-4].
 	if(b->n > LeafMax) return 0;
 	b->code[done] |= b->n-done;
 	/* Appending within existing capacity changes only the character and signed length. */
@@ -721,32 +769,35 @@ a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 static int
 a64stringslice(A64Buf *b, LeafLayout *a)
 {
-	int ascii, done, loop, prefix;
+	int ascii, done, loop, prefix, fallback;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
-	   a->stringdata < 0 || a->stringdata > 2047 ||
+	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
+	   a->stringdata < a->stringmax+4 || a->stringdata > 2047 ||
 	   a->heapref <= 0 || a->heapref > 255 || a->heapref%8 || a->refbytes != 8) return 0;
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	a64ptr(b, 9, a->s); a64load(b, 12, 9, a->wordbytes);
 	a64ptr(b, 10, a->m); a64load(b, 13, 10, a->wordbytes);
 	if(a->wordbytes == 4){a64put(b, 0x93407d8c); a64put(b, 0x93407dad);}
-	a64put(b, 0xf100019f); a64guard(b, 0x5400006a); // start >= 0.
-	a64put(b, 0xeb0c01bf); a64guard(b, 0x54000068); // end > start.
+	a64put(b, 0xf100019f); a64pcguard(b, 0x5400006a, fallback); // start >= 0.
+	a64put(b, 0xeb0c01bf); a64pcguard(b, 0x54000068, fallback); // end > start.
 	a64ptr(b, 11, a->d); a64load(b, 14, 11, 8);
-	a64guard(b, 0xb500006e);
-	a64put(b, 0xb10005df); a64guard(b, 0x54000061);
+	a64pcguard(b, 0xb500006e, fallback);
+	a64put(b, 0xb10005df); a64pcguard(b, 0x54000061, fallback);
 	a64wordfield(b, 15, 14, a->stringlen, 4);
 	a64put(b, 0xf10001ff); // Preserve representation while deriving absolute length.
 	a64put(b, 0xda8fa5e2); // cneg x2,x15,lt.
 	a64wordfield(b, 3, 14, a->stringmax, 4);
-	a64put(b, 0xeb02007f); a64guard(b, 0x5400006a);
-	a64put(b, 0xeb0201bf); a64guard(b, 0x54000069);
+	a64put(b, 0xeb02007f); a64pcguard(b, 0x5400006a, fallback);
+	a64put(b, 0xeb0201bf); a64pcguard(b, 0x54000069, fallback);
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 14<<5 | 6);
-	a64put(b, 0xf10004df); a64guard(b, 0x54000060);
+	a64put(b, 0xf10004df); a64pcguard(b, 0x54000060, fallback);
 	a64put(b, 0xcb0c01a4); // x4 = end-start, validated in the character domain.
 	/* A zero-start slice retains its payload and needs no bounded copy loop. */
 	prefix=b->n; a64put(b, 0xb400000c);
-	a64put(b, 0xf102009f); a64guard(b, 0x54000069);
+	a64put(b, 0xf104009f); a64pcguard(b, 0x54000069, fallback);
 	b->code[prefix] |= (b->n-prefix)<<5;
 	a64put(b, 0xaa0403e5); // x5 retains the resulting signed character count.
 	ascii=b->n; a64put(b, 0xb6f8000f);
@@ -756,9 +807,12 @@ a64stringslice(A64Buf *b, LeafLayout *a)
 	done=b->n; a64put(b, 0xb400000c);
 	a64put(b, 0x910001cbU | (u32int)a->stringdata<<10);
 	a64put(b, 0x8b0c0169);
+	/* The complete selected source span also bounds the lower destination. */
+	a64put(b, 0x8b040123); // ADD x3,x9,x4.
+	a64put(b, 0xeb0e007f); a64defer(b, 0x54000003, fallback);
 	loop=b->n;
-	a64load(b, 6, 9, 1); a64store(b, 6, 1);
-	a64put(b, 0x91000529); a64put(b, 0x9100056b);
+	a64put(b, 0x38401526); // LDRB w6,[x9],#1.
+	a64put(b, 0x38001566); // STRB w6,[x11],#1.
 	a64put(b, 0xf1000484);
 	a64put(b, 0x54000001U | ((loop-b->n)&0x7ffff)<<5);
 	if(b->n > LeafMax) return 0;
@@ -1317,29 +1371,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		b.code[done] |= (b.n-done)<<5;
 		a64ptr(&b, 11, abi->d); a64store(&b, 14, p.bytes);
 	}else if(p.kind == LeafStringIndex){
-		if(abi->stringlen < 0 || abi->stringlen > 16380 || abi->stringlen%4 != 0 ||
-		   abi->stringdata < 0 || abi->stringdata > 4095 || abi->stringdata%4 != 0 ||
-		   abi->stringmax < 0 || abi->stringmax > 16380 || abi->stringmax%4) return 0;
-		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
-		a64guard(&b, 0xb500006c);
-		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
-		a64field(&b, 13, 12, abi->stringlen, 4);
-		a64put(&b, 0x52b0000e); a64put(&b, 0x6b0e01bf); a64guard(&b, 0x54000061);
-		a64put(&b, 0x2a0d03ef); /* preserve the representation sign */
-		a64put(&b, 0x36f8004d); a64put(&b, 0x4b0d03ed);
-		/* Check signed capacity while x12 still holds the original owner. */
-		a64field(&b, 14, 12, abi->stringmax, 4);
-		a64put(&b, 0x6b0d01df); a64guard(&b, 0x5400006a);
-		a64ptr(&b, 10, abi->m); a64load(&b, 14, 10, abi->wordbytes);
-		a64put(&b, 0xeb0d01df); a64guard(&b, 0x54000063);
-		other = b.n; a64put(&b, 0x36f8000f); /* tbz w15, #31, ASCII */
-		a64put(&b, 0x8b0e098c);
-		a64put(&b, 0xb9800000U | (u32int)(abi->stringdata/4)<<10 | 12<<5 | 13);
-		done = b.n; a64put(&b, 0x14000000);
-		b.code[other] |= (b.n-other)<<5;
-		a64put(&b, 0x8b0e018c); a64field(&b, 13, 12, abi->stringdata, 1);
-		b.code[done] |= b.n-done;
-		a64ptr(&b, 11, abi->d); a64store(&b, 13, abi->wordbytes);
+		if(!a64stringindex(&b, abi)) return 0;
 	}else if(p.kind == LeafListLength){
 		/* Bounded Brent scans preserve all state until a valid terminal owner is reached. */
 		if(abi->listtail < 0 || abi->listtail > 32760 || abi->listtail%8 != 0) return 0;

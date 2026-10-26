@@ -24,6 +24,8 @@ OP(indc)
 {
 	WORD index, result;
 	int length;
+	uvlong bytes;
+	uintptr address;
 	String *string;
 
 	memmove(&index, R.m, sizeof(index));
@@ -39,6 +41,14 @@ OP(indc)
 		error(exHeap);
 	if(index < 0 || index >= length)
 		error(exBounds);
+	/* Check the selected character extent before forming its native address. */
+	bytes = ((uvlong)index+1)*(string->len < 0 ? sizeof(Rune) : 1);
+	address = (uintptr)string;
+	if(address > (uintptr)-1 - offsetof(String, data))
+		error(exHeap);
+	address += offsetof(String, data);
+	if(bytes > (uintptr)-1-address)
+		error(exHeap);
 	if(string->len < 0)
 		result = (int)string->Srune[index];
 	else
@@ -46,13 +56,15 @@ OP(indc)
 	memmove(R.d, &result, sizeof(result));
 }
 
+
 /* Capture operands and validate the representation before ownership changes.
  * Publish replacement storage only after its contents are complete. */
 OP(insc)
 {
 	WORD index, value;
 	int length, wide, shared;
-	uvlong capacity;
+	uvlong capacity, bytes;
+	uintptr address;
 	Rune rune;
 	String *old, *result;
 	void *slot;
@@ -77,6 +89,14 @@ OP(insc)
 	wide = rune >= Runeself || (old != H && old->len < 0);
 	shared = old != H && D2H(old)->ref > 1;
 	if(old != H && !shared && (old->len < 0 || !wide) && index < old->max){
+		/* Reuse touches only the selected cell, including a capacity-backed append. */
+		bytes = ((uvlong)index+1)*(wide ? sizeof(Rune) : 1);
+		address = (uintptr)old;
+		if(address > (uintptr)-1 - offsetof(String, data))
+			error(exHeap);
+		address += offsetof(String, data);
+		if(bytes > (uintptr)-1-address)
+			error(exHeap);
 		if(wide)
 			old->Srune[index] = rune;
 		else
@@ -91,6 +111,16 @@ OP(insc)
 		capacity = (uvlong)length+1+length/4;
 	if(capacity > 0x7fffffff)
 		error(exHeap);
+	/* Replacement copies the complete old payload; validate before allocation. */
+	if(old != H && length != 0){
+		bytes = (uvlong)length*(old->len < 0 ? sizeof(Rune) : 1);
+		address = (uintptr)old;
+		if(address > (uintptr)-1 - offsetof(String, data))
+			error(exHeap);
+		address += offsetof(String, data);
+		if(bytes > (uintptr)-1-address)
+			error(exHeap);
+	}
 	result = wide ? newrunes((int)capacity) : newstring((int)capacity);
 	if(old != H){
 		if(wide && old->len >= 0)
@@ -118,6 +148,8 @@ slicer(ulong start, ulong v, String *ds)
 {
 	String *ns;
 	int l, nc;
+	uvlong bytes;
+	uintptr address;
 
 	if(ds == nil)
 		error(exNilref);
@@ -133,24 +165,24 @@ slicer(ulong start, ulong v, String *ds)
 	l = ds->len < 0 ? -ds->len : ds->len;
 	if(ds->max < l || D2H(ds)->ref == 0)
 		error(exHeap);
-	if(v < start || v > 0x7fffffff)
+	if(v < start || v > 0x7fffffff || v > l)
 		error(exBounds);
 	nc = v - start;
+	if(nc == 0)
+		return H;
+	/* Allocating slices read the selected span even when their start is zero. */
+	bytes = (uvlong)v*(ds->len < 0 ? sizeof(Rune) : 1);
+	address = (uintptr)ds;
+	if(address > (uintptr)-1 - offsetof(String, data))
+		error(exHeap);
+	address += offsetof(String, data);
+	if(bytes > (uintptr)-1-address)
+		error(exHeap);
 	if(ds->len < 0) {
-		l = -ds->len;
-		if(v < start || v > l)
-			error(exBounds);
-		if(nc == 0)
-			return H;
 		ns = newrunes(nc);
 		memmove(ns->Srune, &ds->Srune[start], nc*sizeof(Rune));
 	}
 	else {
-		l = ds->len;
-		if(v < start || v > l)
-			error(exBounds);
-		if(nc == 0)
-			return H;
 		ns = newstring(nc);
 		memmove(ns->Sascii, &ds->Sascii[start], nc);
 	}
@@ -158,12 +190,15 @@ slicer(ulong start, ulong v, String *ds)
 	return ns;
 }
 
+
 /* Capture all operands before reusing unique storage for a nonempty slice. */
 OP(slicec)
 {
 	WORD start, end;
 	String *old, *result;
 	int length, count;
+	uvlong bytes;
+	uintptr address;
 
 	memmove(&start, R.s, sizeof(start));
 	memmove(&end, R.m, sizeof(end));
@@ -184,6 +219,16 @@ OP(slicec)
 			error(exBounds);
 		count = end-start;
 		if(count != 0 && D2H(old)->ref == 1){
+			/* Prefixes do not access payload; moving slices must bound their source end. */
+			if(start != 0){
+				bytes = (uvlong)end*(old->len < 0 ? sizeof(Rune) : 1);
+				address = (uintptr)old;
+				if(address > (uintptr)-1 - offsetof(String, data))
+					error(exHeap);
+				address += offsetof(String, data);
+				if(bytes > (uintptr)-1-address)
+					error(exHeap);
+			}
 			if(old->len < 0){
 				if(start != 0)
 					memmove(old->Srune, old->Srune+start, (ulong)count*sizeof(Rune));
@@ -246,7 +291,7 @@ addstring(String *s1, String *s2, int append)
 			continue;
 		bytes = source->len < 0 ? (uvlong)-source->len*sizeof(Rune) : (uvlong)source->len;
 		address = (uintptr)source;
-		if(address > (uintptr)-1-offsetof(String, data))
+		if(address > (uintptr)-1 - offsetof(String, data))
 			error(exHeap);
 		address += offsetof(String, data);
 		if(bytes > (uintptr)-1-address)

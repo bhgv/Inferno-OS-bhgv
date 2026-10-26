@@ -96,6 +96,71 @@ checkprefixes(Module *module)
 }
 
 
+/* Compare moved slices around the expanded copy limit with published RX code. */
+static void
+checkcopies(Module *module)
+{
+	String *owner, *slot;
+	uchar original[2304], expected[2304], slots[128], before[128];
+	WORD start, end;
+	int starts[] = {1, 7, 127};
+	int counts[] = {127, 128, 129, 255, 256, 257, 384};
+	int wide, first, count, alignment, pass, size, stride, i, allocations, native;
+	int total = 0;
+
+	for(wide = 0; wide < 2; wide++)
+	for(first = 0; first < nelem(starts); first++)
+	for(count = 0; count < nelem(counts); count++)
+	for(alignment = 0; alignment < 8; alignment++){
+		owner = wide ? newrunes(512) : newstring(512);
+		owner->len = wide ? -512 : 512;
+		stride = wide ? sizeof(Rune) : 1;
+		size = sizeof(String)+512*stride;
+		if(size > sizeof(original))
+			abort();
+		for(i = 0; i < 512; i++){
+			if(wide)
+				owner->Srune[i] = 0x80000100U+i;
+			else
+				owner->Sascii[i] = 33+i;
+		}
+		memmove(original, owner, size);
+		memmove(expected, original, size);
+		start = starts[first];
+		end = start+counts[count];
+		memmove(expected+offsetof(String, data), original+offsetof(String, data)+start*stride,
+			counts[count]*stride);
+		((String*)expected)->len = wide ? -counts[count] : counts[count];
+		for(pass = 0; pass < 2; pass++){
+			memmove(owner, original, size);
+			slot = owner;
+			memset(slots, 0xa5, sizeof(slots));
+			R.s = slots+alignment; R.m = slots+32+alignment; R.d = slots+64+alignment;
+			memmove(R.s, &start, sizeof(start));
+			memmove(R.m, &end, sizeof(end));
+			memmove(R.d, &slot, sizeof(slot));
+			memmove(before, slots, sizeof(before));
+			allocations = calls;
+			native = counts[count] <= 256;
+			if(pass == 0){
+				if(module->jit->entry[ISLICEC](&R) != native)
+					abort();
+			}else
+				slicec();
+			if(memcmp(owner, pass == 0 && !native ? original : expected, size) ||
+			   memcmp(slots, before, sizeof(slots)) || calls != allocations ||
+			   D2H(owner)->ref != 1)
+				abort();
+			total++;
+		}
+		destroy(owner);
+		if(live || Tstring.ref != 1)
+			abort();
+	}
+	printf("PASS moved string slices: %d C/RX/copy-limit/image cases WORD%zu\n", total, sizeof(WORD)*8);
+}
+
+
 /* Compare production C and RX code against independent slice/ownership expectations. */
 int
 main(void)
@@ -116,6 +181,7 @@ main(void)
 		abort();
 	checkrejections(&module);
 	checkprefixes(&module);
+	checkcopies(&module);
 	for(wide = 0; wide < 2; wide++)
 	for(shared = 0; shared < 2; shared++)
 	for(first = 0; first < 10; first++)

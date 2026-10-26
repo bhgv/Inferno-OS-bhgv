@@ -1,4 +1,7 @@
 #include <setjmp.h>
+#include <stddef.h>
+
+typedef uintptr_t uintptr;
 #if WORD_BITS == 32
 typedef int32_t WORD;
 typedef uint32_t UWORD;
@@ -11,11 +14,20 @@ typedef uint64_t ULONG;
 typedef unsigned long ulong;
 typedef unsigned char BYTE;
 typedef uint32_t Rune;
-#define H ((void*)1)
+#define H ((void*)1) // Fixture nil-owner sentinel.
 #define D2H(s) (s) // Static fixture owners store their reference count inline.
-static struct {void *s, *m, *d;} R;
+
+static struct {
+	void *s; // Captured source slot for the production VM operators.
+	void *m; // Captured middle operand slot.
+	void *d; // Captured destination slot.
+} R;
 typedef struct List List;
-struct List {List *tail; WORD data[1];};
+
+struct List {
+	List *tail; // Next list owner consumed by head/tail VM operators.
+	WORD data[1]; // Scalar payload for the list-head cases.
+};
 typedef struct String String;
 
 /* Bounded storage model for the production slice function. */
@@ -23,14 +35,21 @@ struct String {
 	unsigned long ref; // Live ownership required by the production slice helper.
 	int len; // Signed logical length and representation.
 	int max; // Character capacity of either fixture representation.
-	char Sascii[16]; // ASCII payload for narrow slice cases.
-	Rune Srune[16]; // Rune payload for wide slice cases.
+
+	union {
+		char ascii[16]; // ASCII payload for narrow slice cases.
+		Rune runes[16]; // Rune payload for wide slice cases.
+	} data; // Shared inline payload, matching the production slice-address contract.
 };
+#define Sascii data.ascii // ASCII view of the inline payload.
+#define Srune data.runes // Rune view of the inline payload.
+
 static String stringpool[64];
 static int stringused;
 static char exInval[] = "invalid", exZdiv[] = "zero divide", exNilref[] = "nil", exBounds[] = "bounds", exHeap[] = "heap";
 static char *raised;
 static jmp_buf escape;
+
 
 /* Preserve the native exception identity while leaving compiler diagnostics independent. */
 static void
@@ -39,6 +58,7 @@ vmerror(char *message)
 	raised = message;
 	longjmp(escape, 1);
 }
+
 
 /* Successful list tail movement needs no GC in this static ownership fixture. */
 static void
@@ -64,6 +84,7 @@ newstring(int n)
 	return s;
 }
 
+
 /* Rune contents are irrelevant to same-slice comparisons, but lengths remain real. */
 static String*
 newrunes(int n)
@@ -75,25 +96,26 @@ newrunes(int n)
 	return s;
 }
 
-#define OP(name) static void name(void)
-#define W(r) (*(WORD*)R.r)
-#define B(r) (*(BYTE*)R.r)
-#define UW(r) (*(UWORD*)R.r)
-#define V(r) (*(LONG*)R.r)
-#define UV(r) (*(ULONG*)R.r)
-#define L(r) (*(List**)R.r)
+#define OP(name) static void name(void) // Local names for extracted production VM operators.
+#define W(r) (*(WORD*)R.r) // Access a VM WORD operand.
+#define B(r) (*(BYTE*)R.r) // Access a byte operand.
+#define UW(r) (*(UWORD*)R.r) // Access an unsigned VM WORD operand.
+#define V(r) (*(LONG*)R.r) // Access a wide signed operand.
+#define UV(r) (*(ULONG*)R.r) // Access a wide unsigned operand.
+#define L(r) (*(List**)R.r) // Access a captured list-owner slot.
 VM_IMPLEMENTATION
 EFFECT_TABLE
 
 /* Model VM operand slots explicitly, so numeric errors abandon no C stack-backed slots. */
 typedef struct EvalFrame EvalFrame;
+
 struct EvalFrame
 {
-	Long a, b, out;
-	WORD worda, wordb, wordout;
-	BYTE bytea, byteout;
-	List list, *lp, *tailout;
-	String original, *slice;
+	Long a, b, out; // Captured wide arithmetic operands and result.
+	WORD worda, wordb, wordout; // VM WORD operand slots and result.
+	BYTE bytea, byteout; // Byte shift operand and result.
+	List list, *lp, *tailout; // Stable list owner and pointer slots.
+	String original, *slice; // Source string owner and selected result.
 };
 static EvalFrame evalframes[32];
 static int evaldepth;
@@ -159,12 +181,16 @@ runframe(Node *n, EvalFrame *frame)
 	case Omul: return (uvlong)frame->a*(uvlong)frame->b;
 	case Osub: return (uvlong)frame->a-(uvlong)frame->b;
 	case Oand: return frame->a&frame->b;
-	case Omod: assert(frame->b == 1); return 0;
+	case Omod:
+		if(frame->b != 1)
+			abort();
+		return 0;
 	case Oeq: return frame->a == frame->b;
 	case Oneq: return frame->a != frame->b;
 	default: abort();
 	}
 }
+
 
 /* Allocate one stable operand context per recursive expression evaluation. */
 static Long
@@ -173,7 +199,8 @@ run(Node *n)
 	EvalFrame *frame;
 	Long value;
 
-	assert(evaldepth < 32);
+	if(evaldepth >= 32)
+		abort();
 	frame = &evalframes[evaldepth++];
 	value = runframe(n, frame);
 	evaldepth--;
@@ -181,7 +208,11 @@ run(Node *n)
 }
 
 typedef struct Outcome Outcome;
-struct Outcome {char *exception; Long value;};
+
+struct Outcome {
+	char *exception; // Exact native error identity, or nil on success.
+	Long value; // Observable expression result when no error is raised.
+};
 
 /* Capture value or exact native exception before and after compiler AST mutation. */
 static Outcome
@@ -200,6 +231,7 @@ capture(Node *n)
 	return result;
 }
 
+
 /* Observable errors must survive result-absorbing and same-tree rewrites. */
 static void
 compare(Node *n)
@@ -214,11 +246,13 @@ compare(Node *n)
 	if(before.exception != after.exception)
 		fprintf(stderr, "exception changed by folding: before=%s after=%s\n",
 			before.exception ? before.exception : "none", after.exception ? after.exception : "none");
-	assert(before.exception == after.exception);
-	if(before.exception == nil)
-		assert(before.value == after.value);
+	if(before.exception != after.exception)
+		abort();
+	if(before.exception == nil && before.value != after.value)
+		abort();
 	checks++;
 }
+
 
 /* Rebuild each wrapper because production folding deliberately mutates its operands. */
 static void
@@ -258,6 +292,7 @@ wrappers(int innerop, Type *type, Long a, Long b, Long end)
 	}
 }
 
+
 /* Zero-valued constant bases still require a dynamic shift-count check. */
 static void
 zeroshifts(void)
@@ -277,6 +312,7 @@ zeroshifts(void)
 		compare(&n);
 	}
 }
+
 
 /* Cover each newly classified operator with successful and exceptional executions. */
 int
@@ -309,7 +345,8 @@ main(int argc, char **argv)
 	if(argc == 1 || strcmp(argv[1], "slices") == 0)
 		for(a = 0; a <= 4; a++)for(i = -1; i <= 5; i++)for(op = -1; op <= 5; op++)
 			wrappers(Oslice, tstring, a, i, op);
-	assert(checks > 0);
+	if(checks <= 0)
+		abort();
 	printf("Compiler exception folding: %d value/error cases, WORD%d\n", checks, WORD_BITS);
 	return 0;
 }
