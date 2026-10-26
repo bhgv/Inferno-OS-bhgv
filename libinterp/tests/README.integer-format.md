@@ -59,3 +59,9 @@ before any mutation. No ABI/layout field or opcode ID is added.
 
 Selected real values now share the decimal writer; see
 [README.real-format.md](README.real-format.md).
+
+
+Current pointer-temporary handling adds an exact Tstring guard and raises the
+private AMD64/ARM64 staging bound to 80 words. This extends the earlier layout
+contract described above; the Dis instruction/container ABI is unchanged. See
+[generic pointer temporary regression](README.format-pointer-temporaries.md).

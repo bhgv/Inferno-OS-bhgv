@@ -27,6 +27,7 @@ struct LeafLayout {
 	int regmp, regtemp, linkprog, linkmp; // Register MP/temp and module-link program/data offsets.
 	int modlpc; // Native program/runtime entry offset within an import record.
 	int arrayroot, typeref; // Backing array owner and signed Type reference count offsets.
+	void *stringtype; // Exact Tstring identity required before reusing numeric format destinations.
 };
 typedef struct LeafOp LeafOp;
 

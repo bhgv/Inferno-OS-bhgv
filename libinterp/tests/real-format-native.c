@@ -47,6 +47,87 @@ nativevalue(uvlong bits)
 }
 
 
+/* Exercise a reused pointer temporary whose old owner is an array, never a String.
+ * module borrows published leaves. Inputs are captured from the retained owner's payload.
+ * Verify write-free decline/failure, then publication before the last owner release. */
+static void
+foreignowners(Module *module)
+{
+    int shared, rx, failed, op;
+    Array *owner;
+    String *slot;
+    void *source;
+    REG saved;
+    unsigned char before[64];
+    int size;
+    REAL number = 8.0;
+
+    for (shared = 0; shared < 2; shared++) {
+        for (rx = 0; rx < 2; rx++) {
+            for (failed = 0; failed < 2; failed++) {
+                for (op = 0; op < 1; op++) {
+                    owner = mem2array(nil, 64);
+                    if (shared) {
+                        D2H(owner)->ref++;
+                    }
+                    source = owner->data;
+                    memmove(source, &number, sizeof(number));
+                    size = sizeof(number);
+                    memmove(before, source, size);
+                    slot = (String *)owner;
+                    R.s = source;
+                    R.d = &slot;
+                    saved = R;
+                    if (rx && module->jit->entry[ICVTFC](&R) != 0) {
+                        fprintf(stderr, "foreign format line %d op=%d shared=%d rx=%d failed=%d raised=%s\n", __LINE__, op, shared, rx, failed, raised ? raised : "none");
+                        abort();
+                    }
+                    if (slot != (String *)owner || memcmp(source, before, size)
+                        || D2H(owner)->ref != 1+shared || memcmp(&R, &saved, sizeof(R))) {
+                        fprintf(stderr, "foreign format line %d op=%d shared=%d rx=%d failed=%d raised=%s\n", __LINE__, op, shared, rx, failed, raised ? raised : "none");
+                        abort();
+                    }
+                    raised = nil;
+                    failure = failed ? 0 : -1;
+                    if (setjmp(boundary) == 0) {
+                        cvtfc();
+                    }
+                    failure = -1;
+                    if (failed) {
+                        if (raised != exNomem || slot != (String *)owner
+                            || memcmp(owner->data, before, size) || D2H(owner)->ref != 1+shared) {
+                            fprintf(stderr, "foreign format line %d op=%d shared=%d rx=%d failed=%d raised=%s\n", __LINE__, op, shared, rx, failed, raised ? raised : "none");
+                            abort();
+                        }
+                        D2H(owner)->ref = 1;
+                        destroy(owner);
+                    } else {
+                        if (raised != nil || slot == (String *)owner || slot == H
+                            || strcmp(slot->Sascii, "8")) {
+                            fprintf(stderr, "foreign format line %d op=%d shared=%d rx=%d failed=%d raised=%s\n", __LINE__, op, shared, rx, failed, raised ? raised : "none");
+                            abort();
+                        }
+                        if (shared) {
+                            if (D2H(owner)->ref != 1 || memcmp(owner->data, before, size)) {
+                                fprintf(stderr, "foreign format line %d op=%d shared=%d rx=%d failed=%d raised=%s\n", __LINE__, op, shared, rx, failed, raised ? raised : "none");
+                                abort();
+                            }
+                            destroy(owner);
+                        }
+                        destroy(slot);
+                    }
+                    if (live != 0 || Tstring.ref != 1 || Tarray.ref != 1 || Tbyte.ref != 1) {
+                        fprintf(stderr, "foreign format line %d op=%d shared=%d rx=%d failed=%d raised=%s\n", __LINE__, op, shared, rx, failed, raised ? raised : "none");
+                        abort();
+                    }
+                }
+            }
+        }
+    }
+    printf("PASS non-string temporary formatting: C/RX decline, allocation failure and source lifetime\n");
+}
+
+
 /* Compare real formatting, output lifetime, FP flags and reuse with published RX code. */
 int
 main(void)
@@ -164,6 +245,7 @@ main(void)
         if(live || Tstring.ref != 1) abort();
         total++;
     }
+    foreignowners(&module);
     module.jit->freecode(module.jit->code, module.jit->size); free(module.jit);
     printf("PASS real formatting C/RX: %lu lifetime/reuse/image/FP cases WORD%zu\n", total, sizeof(WORD)*8);
     return 0;

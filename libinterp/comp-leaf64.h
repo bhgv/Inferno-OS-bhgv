@@ -77,6 +77,7 @@ leafcompile(void *arg)
 	abi.moduleprog=O(Module, prog); abi.modulenprog=O(Module, nprog);
 	abi.instbytes=sizeof(Inst);
 	abi.heaptype=sizeof(Heap)-O(Heap, t);
+	abi.stringtype=&Tstring;
 	abi.heapref=sizeof(Heap)-O(Heap, ref);
 	abi.heapcolor=sizeof(Heap)-O(Heap, color);
 	abi.refbytes=sizeof(((Heap*)0)->ref);

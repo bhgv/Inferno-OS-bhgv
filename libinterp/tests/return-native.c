@@ -1,3 +1,5 @@
+/* Supply the builtin identity used by numeric leaf publication in this linked fixture. */
+Type Tstring = {1};
 int mutator,nprop;
 
 

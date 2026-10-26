@@ -50,3 +50,9 @@ Guarded availability remains AMD64/ARM64 141 commands / 32 remaining, RV64 M
 103/70, Zmmul 90/83 and I 87/86 out of 173 active commands. This broadens two
 existing opcodes. Native semantics remain partial; ARM64 instruction execution
 is emulated and physical target acceptance is separate.
+
+
+Current pointer-temporary handling adds an exact Tstring guard and raises the
+private AMD64/ARM64 staging bound to 80 words. This extends the earlier layout
+contract described above; the Dis instruction/container ABI is unchanged. See
+[generic pointer temporary regression](README.format-pointer-temporaries.md).

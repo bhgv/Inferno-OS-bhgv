@@ -1,5 +1,7 @@
 #ifdef NATIVE_CALL
 #include "comp-amd64.c"
+/* Supply the builtin identity used by guarded numeric formatting leaves. */
+Type Tstring = {1};
 #else
 #include "dat.h"
 #include "fns.h"

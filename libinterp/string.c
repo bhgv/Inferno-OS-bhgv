@@ -515,25 +515,29 @@ OP(cvtwc)
 {
 	String *ds, *old;
 	char digits[24];
-	int length, capacity;
+	int length, capacity, reusable;
 	WORD value;
 
 	memmove(&value, R.s, sizeof(value));
 	memmove(&old, R.d, sizeof(old));
 	if(old == nil)
 		error(exNilref);
-	if(old != H && (old->len == (-0x7fffffff-1) ||
+	if(old != H && D2H(old)->ref == 0)
+		error(exHeap);
+	/* Pointer temporaries may still own an ADT/array: only strings are reusable. */
+	reusable = old != H && D2H(old)->t == &Tstring;
+	if(reusable && (old->len == (-0x7fffffff-1) ||
 	   old->max < (old->len < 0 ? -old->len : old->len) || D2H(old)->ref == 0))
 		error(exHeap);
 	capacity = 0;
-	if(old != H){
+	if(reusable){
 		if(old->len < 0 && old->max > 0x7fffffff/(int)sizeof(Rune))
 			error(exHeap);
 		capacity = old->len < 0 ? old->max*(int)sizeof(Rune) : old->max;
 	}
 	/* Stage the full text before checking exact logical character capacity. */
 	length = sprint(digits, "%lld", (vlong)value);
-	if(old != H && capacity >= length && D2H(old)->ref == 1)
+	if(reusable && capacity >= length && D2H(old)->ref == 1)
 		ds = old;
 	else
 		ds = newstring(24);
@@ -556,25 +560,29 @@ OP(cvtlc)
 {
 	String *ds, *old;
 	char digits[24];
-	int length, capacity;
+	int length, capacity, reusable;
 	LONG value;
 
 	memmove(&value, R.s, sizeof(value));
 	memmove(&old, R.d, sizeof(old));
 	if(old == nil)
 		error(exNilref);
-	if(old != H && (old->len == (-0x7fffffff-1) ||
+	if(old != H && D2H(old)->ref == 0)
+		error(exHeap);
+	/* Pointer temporaries may still own an ADT/array: only strings are reusable. */
+	reusable = old != H && D2H(old)->t == &Tstring;
+	if(reusable && (old->len == (-0x7fffffff-1) ||
 	   old->max < (old->len < 0 ? -old->len : old->len) || D2H(old)->ref == 0))
 		error(exHeap);
 	capacity = 0;
-	if(old != H){
+	if(reusable){
 		if(old->len < 0 && old->max > 0x7fffffff/(int)sizeof(Rune))
 			error(exHeap);
 		capacity = old->len < 0 ? old->max*(int)sizeof(Rune) : old->max;
 	}
 	/* Stage the full text before checking exact logical character capacity. */
 	length = sprint(digits, "%lld", (vlong)value);
-	if(old != H && capacity >= length && D2H(old)->ref == 1)
+	if(reusable && capacity >= length && D2H(old)->ref == 1)
 		ds = old;
 	else
 		ds = newstring(24);
@@ -599,18 +607,22 @@ OP(cvtfc)
 	vlong integer;
 	uint exponent;
 	char digits[32];
-	int length, capacity;
+	int length, capacity, reusable;
 
 	memmove(&value, R.s, sizeof(value));
 	memmove(&bits, &value, sizeof(bits));
 	memmove(&old, R.d, sizeof(old));
 	if(old == nil)
 		error(exNilref);
-	if(old != H && (old->len == (-0x7fffffff-1) ||
+	if(old != H && D2H(old)->ref == 0)
+		error(exHeap);
+	/* Pointer temporaries may still own an ADT/array: only strings are reusable. */
+	reusable = old != H && D2H(old)->t == &Tstring;
+	if(reusable && (old->len == (-0x7fffffff-1) ||
 	   old->max < (old->len < 0 ? -old->len : old->len) || D2H(old)->ref == 0))
 		error(exHeap);
 	capacity = 0;
-	if(old != H){
+	if(reusable){
 		if(old->len < 0 && old->max > 0x7fffffff/(int)sizeof(Rune))
 			error(exHeap);
 		capacity = old->len < 0 ? old->max*(int)sizeof(Rune) : old->max;
@@ -623,13 +635,13 @@ OP(cvtfc)
 		if(bits>>63)
 			integer = -integer;
 		length = sprint(digits, "%lld", integer);
-		if(old != H && capacity >= length && D2H(old)->ref == 1)
+		if(reusable && capacity >= length && D2H(old)->ref == 1)
 			ds = old;
 		else
 			ds = newstring(32);
 	}else{
 		/* Reserve full formatter capacity before fallible allocation or FP work. */
-		if(old != H && capacity >= sizeof(digits) && D2H(old)->ref == 1)
+		if(reusable && capacity >= sizeof(digits) && D2H(old)->ref == 1)
 			ds = old;
 		else
 			ds = newstring(32);

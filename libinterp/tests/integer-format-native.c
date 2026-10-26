@@ -77,6 +77,92 @@ runeroundtrip(Module *module)
 }
 
 
+/* Exercise a reused pointer temporary whose old owner is an array, never a String.
+ * module borrows published leaves. Inputs are captured from the retained owner's payload.
+ * Verify write-free decline/failure, then publication before the last owner release. */
+static void
+foreignowners(Module *module)
+{
+    int shared, rx, failed, op;
+    Array *owner;
+    String *slot;
+    void *source;
+    REG saved;
+    unsigned char before[64];
+    int size;
+    WORD word = -123;
+    LONG big = (-9223372036854775807LL-1);
+
+    for (shared = 0; shared < 2; shared++) {
+        for (rx = 0; rx < 2; rx++) {
+            for (failed = 0; failed < 2; failed++) {
+                for (op = 0; op < 2; op++) {
+                    owner = mem2array(nil, 64);
+                    if (shared) {
+                        D2H(owner)->ref++;
+                    }
+                    source = owner->data;
+                    size = op ? sizeof(big) : sizeof(word);
+                    memmove(source, op ? (void *)&big : (void *)&word, size);
+                    memmove(before, source, size);
+                    slot = (String *)owner;
+                    R.s = source;
+                    R.d = &slot;
+                    saved = R;
+                    if (rx && module->jit->entry[op ? ICVTLC : ICVTWC](&R) != 0) {
+                        fprintf(stderr, "foreign format line %d op=%d shared=%d rx=%d failed=%d raised=%s\n", __LINE__, op, shared, rx, failed, raised ? raised : "none");
+                        abort();
+                    }
+                    if (slot != (String *)owner || memcmp(source, before, size)
+                        || D2H(owner)->ref != 1+shared || memcmp(&R, &saved, sizeof(R))) {
+                        fprintf(stderr, "foreign format line %d op=%d shared=%d rx=%d failed=%d raised=%s\n", __LINE__, op, shared, rx, failed, raised ? raised : "none");
+                        abort();
+                    }
+                    raised = nil;
+                    failure = failed ? 0 : -1;
+                    if (setjmp(boundary) == 0) {
+                        if (op) {
+                            cvtlc();
+                        } else {
+                            cvtwc();
+                        }
+                    }
+                    failure = -1;
+                    if (failed) {
+                        if (raised != exNomem || slot != (String *)owner
+                            || memcmp(owner->data, before, size) || D2H(owner)->ref != 1+shared) {
+                            fprintf(stderr, "foreign format line %d op=%d shared=%d rx=%d failed=%d raised=%s\n", __LINE__, op, shared, rx, failed, raised ? raised : "none");
+                            abort();
+                        }
+                        D2H(owner)->ref = 1;
+                        destroy(owner);
+                    } else {
+                        if (raised != nil || slot == (String *)owner || slot == H
+                            || strcmp(slot->Sascii, op ? "-9223372036854775808" : "-123")) {
+                            fprintf(stderr, "foreign format line %d op=%d shared=%d rx=%d failed=%d raised=%s\n", __LINE__, op, shared, rx, failed, raised ? raised : "none");
+                            abort();
+                        }
+                        if (shared) {
+                            if (D2H(owner)->ref != 1 || memcmp(owner->data, before, size)) {
+                                fprintf(stderr, "foreign format line %d op=%d shared=%d rx=%d failed=%d raised=%s\n", __LINE__, op, shared, rx, failed, raised ? raised : "none");
+                                abort();
+                            }
+                            destroy(owner);
+                        }
+                        destroy(slot);
+                    }
+                    if (live != 0 || Tstring.ref != 1 || Tarray.ref != 1 || Tbyte.ref != 1) {
+                        fprintf(stderr, "foreign format line %d op=%d shared=%d rx=%d failed=%d raised=%s\n", __LINE__, op, shared, rx, failed, raised ? raised : "none");
+                        abort();
+                    }
+                }
+            }
+        }
+    }
+    printf("PASS non-string temporary formatting: C/RX decline, allocation failure and source lifetime\n");
+}
+
+
 /* Check actual C/RX formatting, failure preflight and ownership in both WORD models. */
 int
 main(void)
@@ -246,6 +332,7 @@ main(void)
         checks++;
     }
     runeroundtrip(&module);
+    foreignowners(&module);
     module.jit->freecode(module.jit->code, module.jit->size); free(module.jit);
     printf("PASS integer formatting C/RX: %lu cases WORD%zu\n", checks, sizeof(WORD)*8);
     return 0;

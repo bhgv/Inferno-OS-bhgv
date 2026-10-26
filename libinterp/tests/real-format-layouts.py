@@ -35,7 +35,7 @@ main(void)
 {
     struct {
         u32int before; // Leading publication canary.
-        u32int words[64]; // Actual caller capacity, with remaining words watched.
+        u32int words[80]; // Actual caller capacity, with remaining words watched.
         u32int after; // Trailing publication canary.
     } output;
     LeafLayout a;
@@ -46,7 +46,7 @@ main(void)
         memset(&a, 0, sizeof(a));
         a.wordbytes = wb; a.s = 8; a.d = 16; a.m = 24;
         a.stringlen = 0; a.stringmax = 4; a.stringdata = 24;
-        a.heapref = 24; a.refbytes = 8;
+        a.heapref = 24; a.refbytes = 8; a.heaptype = 8; a.stringtype = (void*)0x1234;
         switch(field){
         case 0: a.stringlen = value; break;
         case 1: a.stringmax = value; break;
@@ -54,14 +54,14 @@ main(void)
         case 3: a.heapref = value; break;
         case 4: a.refbytes = value; break;
         }
-        n = leafemit(nil, 64, &a, ICVTFC);
-        if(n < 0 || n > 64) abort();
-        for(cap = 0; cap <= 64; cap += 8){
+        n = leafemit(nil, 80, &a, ICVTFC);
+        if(n < 0 || n > 80) abort();
+        for(cap = 0; cap <= 80; cap += 8){
             memset(&output, 0xa5, sizeof(output));
             result = leafemit(output.words, cap, &a, ICVTFC);
             if(result != (n <= cap ? n : 0) || output.before != 0xa5a5a5a5 ||
                output.after != 0xa5a5a5a5) abort();
-            for(i = result; i < 64; i++) if(output.words[i] != 0xa5a5a5a5) abort();
+            for(i = result; i < 80; i++) if(output.words[i] != 0xa5a5a5a5) abort();
             checks++;
         }
     }

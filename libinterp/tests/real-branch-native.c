@@ -1,4 +1,6 @@
 #include "comp-amd64.c"
+/* Supply the builtin identity used by guarded numeric formatting leaves. */
+Type Tstring = {1};
 #include <assert.h>
 #include <fenv.h>
 #include <stdio.h>

@@ -448,3 +448,8 @@ Scalar-list HEADB/HEADW/HEADL/HEADF paths also validate offset and access-end
 address sums before payload reads. The 50,145-case fixture covers both WORD widths and keeps
 its checks with optimized Python. Opcode availability is unchanged. See
 [README.riscv-string-window.md](README.riscv-string-window.md).
+
+Numeric formatting now validates exact Tstring identity before native buffer reuse;
+generic ADT/array pointer temporaries decline into the ownership-safe C conversion.
+AMD64/ARM64 reserve 80 words for emission, including the full-width type guard.
+[Regression and lifetime contract](README.format-pointer-temporaries.md).

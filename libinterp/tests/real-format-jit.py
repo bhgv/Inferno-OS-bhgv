@@ -46,9 +46,9 @@ typedef uint32_t u32int;typedef unsigned char uchar;
 int emit(u32int *out, int cap, int wb, int big, int field, int value)
 {
  LeafLayout a={0};a.wordbytes=wb;a.pc=0;a.s=8;a.d=16;a.m=24;
- a.stringlen=0;a.stringmax=4;a.stringdata=24;a.heapref=24;a.refbytes=8;
+ a.stringlen=0;a.stringmax=4;a.stringdata=24;a.heapref=24;a.refbytes=8;a.heaptype=8;a.stringtype=(void*)0x1234;
  switch(field){case 1:a.stringlen=value;break;case 2:a.stringmax=value;break;
- case 3:a.stringdata=value;break;case 4:a.heapref=value;break;case 5:a.refbytes=value;break;}
+ case 3:a.stringdata=value;break;case 4:a.heapref=value;break;case 5:a.refbytes=value;break;case 6:a.heaptype=value;break;case 7:a.stringtype=nil;break;}
  return leafemit(out,cap,&a,ICVTFC);
 }
 ''')
@@ -80,17 +80,17 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
         checks = 0
         for wb in (4, 8):
             for big in (0,):
-                out = (C.c_uint32*64)()
-                n = lib.emit(out, 64, wb, big, 0, 0)
-                require(0 < n <= 64 and lib.emit(None, 64, wb, big, 0, 0) == n, (arch, wb, big, 'sizing', n))
+                out = (C.c_uint32*80)()
+                n = lib.emit(out, 80, wb, big, 0, 0)
+                require(0 < n <= 80 and lib.emit(None, 80, wb, big, 0, 0) == n, (arch, wb, big, 'sizing', n))
                 for cap in range(n):
-                    guard = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                    require(lib.emit(guard, cap, wb, big, 0, 0) == 0 and list(guard) == [0xa5a5a5a5]*64, 'short publication')
-                for field, values in ((1, (-1, 1, 4, 2048)), (2, (-1, 1, 0, 2048)), (3, (-1, 0, 4, 2048)), (4, (-1, 0, 1, 136)), (5, (0, 4, 16))):
+                    guard = (C.c_uint32*80)(*[0xa5a5a5a5]*80)
+                    require(lib.emit(guard, cap, wb, big, 0, 0) == 0 and list(guard) == [0xa5a5a5a5]*80, 'short publication')
+                for field, values in ((1, (-1, 1, 4, 2048)), (2, (-1, 1, 0, 2048)), (3, (-1, 0, 4, 2048)), (4, (-1, 0, 1, 136)), (5, (0, 4, 16)), (6, (-1, 0, 1, 136)), (7, (0,))):
                     for value in values:
-                        guard = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                        require(lib.emit(guard, 64, wb, big, field, value) == 0 and list(guard) == [0xa5a5a5a5]*64, (arch, field, value))
-                machine.mem_write(CODE, bytes(out)[:n*4]); machine.ctl_remove_cache(CODE, CODE+256)
+                        guard = (C.c_uint32*80)(*[0xa5a5a5a5]*80)
+                        require(lib.emit(guard, 80, wb, big, field, value) == 0 and list(guard) == [0xa5a5a5a5]*80, (arch, field, value))
+                machine.mem_write(CODE, bytes(out)[:n*4]); machine.ctl_remove_cache(CODE, CODE+320)
                 width = 8
                 native_text = {0: b'0'}
                 for exponent in range(20):
@@ -105,7 +105,7 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
                            (0.5, -0.5, 3.0, -3.0, 999999.0, 1000000.0, 1e-300, 1e300)]
                 values += [random.Random(seed).getrandbits(64) for seed in range(64)]
                 for value_index, number in enumerate(values):
-                    for profile in range(49):
+                    for profile in range(50):
                         for sa in range(8):
                             for da in range(8):
                                 for alias in range(3):
@@ -138,7 +138,7 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
                                     if profile == 48:length = -7; refs = 0
                                     if alias == 1:src = obj+24
                                     if alias == 2:src = dst
-                                    put(image, obj-24, refs); put(image, obj, length, 4); put(image, obj+4, capacity, 4)
+                                    put(image, obj-8, 0x5678 if profile == 49 else 0x1234); put(image, obj-24, refs); put(image, obj, length, 4); put(image, obj+4, capacity, 4)
                                     put(image, dst, owner); put(image, src, number, width)
                                     # A shared source/result slot contains the owner pointer as its integer.
                                     if alias == 2:put(image, dst, owner)
@@ -146,7 +146,7 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
                                     put(image, 8, BASE+src); put(image, 16, BASE+dst)
                                     text = native_text.get(captured, b'')
                                     bytecapacity = capacity*4 if length < 0 else capacity
-                                    valid = captured in native_text and owner not in (0, MASK) and capacity >= abs(length) and len(text) <= bytecapacity <= 0x7fffffff and refs == 1
+                                    valid = profile != 49 and captured in native_text and owner not in (0, MASK) and capacity >= abs(length) and len(text) <= bytecapacity <= 0x7fffffff and refs == 1
                                     expected = bytearray(image)
                                     text = native_text.get(captured, b'')
                                     if valid:

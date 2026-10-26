@@ -1,5 +1,5 @@
 #include "leaf64-ops.h"
-enum { LeafMax=64 };
+enum { LeafMax=80 };
 typedef struct A64Buf A64Buf;
 struct A64Buf { u32int code[LeafMax]; int n; };
 
@@ -719,13 +719,16 @@ static int
 a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 {
 	int digits, scaled, storemax, fallback, count, decoded;
+	unsigned long long identity;
+	int half;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
 	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
 	   a->stringdata < a->stringmax+4 || a->stringdata > 2047 ||
-	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 || a->refbytes != 8) return 0;
-	/* All rejects share one return so the counting pass keeps the 64-unit bound. */
+	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 || a->refbytes != 8 ||
+	   a->heaptype <= 0 || a->heaptype > 128 || a->heaptype%8 || a->stringtype == nil) return 0;
+	/* All rejects share one return so the counting pass keeps the 80-unit bound. */
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	a64ptr(b, 9, a->s); a64load(b, 12, 9, op->bytes);
@@ -741,6 +744,14 @@ a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 	}
 	a64ptr(b, 11, a->d); a64load(b, 14, 11, 8);
 	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	/* Check exact heap type before treating a reused pointer slot as String. */
+	a64put(b, 0xf8400000U | ((u32int)-a->heaptype&511)<<12 | 14<<5 | 2);
+	identity = (unsigned long long)a->stringtype;
+	a64put(b, 0xd2800003U | (identity&65535)<<5);
+	for(half = 1; half < 4; half++){
+		a64put(b, 0xf2800003U | half<<21 | ((identity>>(half*16))&65535)<<5);
+	}
+	a64put(b, 0xeb03005f); a64defer(b, 0x54000001, fallback);
 	a64wordfield(b, 7, 14, a->stringlen, 4);
 	a64put(b, 0xf10000ff); a64put(b, 0xda87a4e2); // x2 is absolute length; x7 preserves representation.
 	a64wordfield(b, 3, 14, a->stringmax, 4);

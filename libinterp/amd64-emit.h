@@ -1,5 +1,5 @@
 #include "leaf64-ops.h"
-enum { LeafMax=64 };
+enum { LeafMax=80 };
 typedef struct X64Buf X64Buf;
 struct X64Buf { uchar bytes[LeafMax*4]; int n; };
 
@@ -921,12 +921,14 @@ static int
 x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 {
 	int positive, scaled, storemax, fallback, countloop, digitloop;
+	unsigned long long identity;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
 	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
 	   a->stringdata < a->stringmax+4 || a->stringdata > 2047 ||
-	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 || a->refbytes != 8) return 0;
+	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 || a->refbytes != 8 ||
+	   a->heaptype <= 0 || a->heaptype > 128 || a->heaptype%8 || a->stringtype == nil) return 0;
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	x64caseptr(b, 0, a->s); x64load(b, 0, op->bytes);
@@ -953,6 +955,13 @@ x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 	x64caseptr(b, 2, a->d); x64load(b, 2, 8);
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x4a); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	/* Decline non-string pointer temporaries before reading a String field. */
+	x64casefield(b, 1, 2, -a->heaptype, 8);
+	identity = (unsigned long long)a->stringtype;
+	x64byte(b, 0x49); x64byte(b, 0xb8); // movabs r8,Tstring
+	x64word(b, identity); x64word(b, identity>>32);
+	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xc1); // cmp rcx,r8
+	x64moduleguard(b, 0x74, fallback);
 	x64casefield(b, 1, 2, a->stringlen, 4);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc9); // r9 preserves the old representation.
 	x64byte(b, 0x85); x64byte(b, 0xc9);
