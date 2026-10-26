@@ -46,6 +46,16 @@ a64guard(A64Buf *b, u32int condition)
 	a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 }
 
+
+/* Validate a bounded field span in x12; x14 is scratch and the owner is preserved. */
+static void
+a64readspan(A64Buf *b, int offset, int bytes)
+{
+	a64put(b, 0xd280000eU | (u32int)(offset+bytes)<<5); // mov x14, extent.
+	a64put(b, 0xab0e019f); // cmn x12, x14 detects unsigned address carry.
+	a64guard(b, 0x54000063); // Continue when the sum does not wrap.
+}
+
 /* Fetch a scalar object field after validating its owner pointer. */
 static void
 a64field(A64Buf *b, int result, int owner, int offset, int bytes)
@@ -1410,7 +1420,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64put(&b, 0xb100059f);
 		done = b.n; a64put(&b, 0x54000000);
 		a64guard(&b, 0xb500006c);
-		a64put(&b, 0x710401bf); a64guard(&b, 0x54000063); /* count < 256 */
+		a64put(&b, 0x710001bfU | LeafListLimit<<10); a64guard(&b, 0x54000063); // Count remains below the native scan budget.
+		a64readspan(&b, abi->listtail, 8);
 		a64field(&b, 12, 12, abi->listtail, 8);
 		a64put(&b, 0x110005ad);
 		a64put(&b, 0xeb0f019f); a64guard(&b, 0x54000061); // Reject a repeated checkpoint.
@@ -1424,6 +1435,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
 		a64guard(&b, 0xb500006c);
 		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
+		a64readspan(&b, abi->listdata, p.bytes);
 		a64field(&b, 12, 12, abi->listdata, p.bytes);
 		a64ptr(&b, 11, abi->d); a64store(&b, 12, p.bytes);
 	}else if(p.kind == LeafStringLength){
@@ -1432,6 +1444,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64guard(&b, 0xb500006c);
 		a64put(&b, 0xb100059f); /* cmn x12, #1 */
 		empty = b.n; a64put(&b, 0x54000000);
+		a64readspan(&b, abi->stringlen, 4);
 		a64field(&b, 12, 12, abi->stringlen, 4);
 		a64put(&b, 0x52b0000d); /* mov w13, #0x80000000 */
 		a64put(&b, 0x6b0d019f); a64guard(&b, 0x54000061);

@@ -57,8 +57,8 @@ main(void)
 {
     Module module = {0};
     Inst code = {0};
-    List nodes[514], before[514], expected[514];
-    int lengths[] = {0, 1, 2, 3, 7, 15, 31, 63, 127, 128, 129, 255, 256, 257, 513};
+    List nodes[1026], before[1026], expected[1026];
+    int lengths[] = {0, 1, 2, 3, 7, 15, 31, 63, 127, 128, 129, 255, 256, 257, 513, 1023, 1024, 1025};
 
     union {
         uvlong alignment; // Stable base for every unaligned owner/result operand.
@@ -86,7 +86,7 @@ main(void)
         R.d = alias == 0 ? slots.bytes+80+da : alias == 1 ? R.s : (void*)((uchar*)&nodes[0].tail+da);
         memmove(R.s, &owner, sizeof(owner)); saved = R;
         memmove(before, nodes, sizeof(before)); memmove(slotsbefore, slots.bytes, sizeof(slotsbefore));
-        valid = profile == 0; native = valid && lengths[size] <= 256; result = lengths[size];
+        valid = profile == 0; native = valid && lengths[size] <= 1024; result = lengths[size];
         for(pass = 0; pass < 2; pass++){
             R = saved; memmove(nodes, before, sizeof(before)); memmove(slots.bytes, slotsbefore, sizeof(slotsbefore));
             memmove(expected, before, sizeof(expected)); memmove(slotsexpected, slotsbefore, sizeof(slotsexpected));

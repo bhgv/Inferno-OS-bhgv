@@ -13,21 +13,21 @@ collector state or operand slot is published on error. This checks graph
 structure, not every arbitrary inaccessible pointer or complete heap lifetime.
 
 AMD64/ARM64/RV64 use the same checkpoint schedule inside a bounded native scan.
-The bound increases from 128 to 256 nodes, with exactly one link read per visited
+AMD64 and ARM64 now scan up to 1024 nodes; RV64 retains its 256-node budget, with exactly one link read per visited
 node and one final result publication for successful walks. Short cycles decline
 early; longer/malformed graphs return to C without writes. Valid lists longer
-than 256 still return their complete C length. Private layouts/ABIs and the
-64-unit staging bound are unchanged. RV64 uses only base integer operations.
+than the backend budget still return their complete C length. The incoming AMD64/ARM64 80-word staging bound and private ABI are preserved;
+RV64 retains its 64-word buffer and uses only base integer operations.
 
 Validation:
 
-- list-length-jit.py: 34560 independent visited-set graph/image/read/write/FP
-  checks per backend (103680 total), both WORD widths, lengths through 513,
+- list-length-jit.py: 41472 independent visited-set graph/image/read/write/FP
+  checks per backend (124416 total), both WORD widths, lengths through 1025,
   nil/H terminals, back edges at the start/middle/end, all input/output byte
   alignments, owner/result aliases and result slots inside link storage. Link
   read hooks check the bounded scan and early rejection of short cycles.
   RISC-V FP status is seeded/read through real CSR instructions.
-- list-length-native.py: 17280 actual C/RX cases per WORD model (34560 total),
+- list-length-native.py: 20736 actual C/RX cases per WORD model (41472 total),
   including valid long-list fallback, cycle/nil error identity, unchanged
   rejected images and FP state. Both models pass ASan/UBSan. An additional
   130-case reduced 8-bit arithmetic model reaches the exact positive count
@@ -45,3 +45,6 @@ Validation:
 The core suite now has 98 host drivers. Opcode availability remains AMD64/ARM64
 141 guarded commands / 32 remaining; RV64 M 103/70, Zmmul 90/83 and I 87/86
 out of 173 active commands. ARM64/RV64 instruction execution is emulated.
+
+The scalar-view checkpoint also validates the complete native next-link span
+before every AMD64/ARM64/C read. See [README.scalar-view-spans.md](README.scalar-view-spans.md).

@@ -1,6 +1,8 @@
 #include <setjmp.h>
 #include <stddef.h>
 
+typedef unsigned char uchar; // Byte view used by the extracted VM field reads.
+
 typedef uintptr_t uintptr;
 #if WORD_BITS == 32
 typedef int32_t WORD;

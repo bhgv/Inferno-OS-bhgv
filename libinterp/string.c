@@ -465,6 +465,7 @@ OP(cvtac)
 	destroy(old);
 }
 
+
 /* Reject invalid lengths before taking the absolute representation size. */
 OP(lenc)
 {
@@ -477,7 +478,9 @@ OP(lenc)
 	if(ss == nil)
 		error(exNilref);
 	if(ss != H) {
-		l = ss->len;
+		if((uintptr)ss > (uintptr)-1-(offsetof(String, len)+sizeof(ss->len)))
+			error(exHeap);
+		memmove(&l, (uchar*)ss+offsetof(String, len), sizeof(l));
 		if(l == (-0x7fffffff-1))
 			error(exHeap);
 		if(l < 0)

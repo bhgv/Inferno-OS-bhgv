@@ -1,3 +1,5 @@
+#include <stddef.h>
+
 #if WORD_BITS == 32
 typedef int32_t WORD;
 #else

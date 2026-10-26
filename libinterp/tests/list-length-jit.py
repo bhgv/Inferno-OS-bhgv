@@ -89,7 +89,7 @@ int emit(u32int *out, int cap, int wb, int offset)
                 guard = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
                 require(lib.emit(guard, 64, wb, offset) == 0 and list(guard) == [0xa5a5a5a5]*64, 'invalid tail offset')
             machine.mem_write(CODE, bytes(out)[:n*4]); machine.ctl_remove_cache(CODE, CODE+256)
-            for length in (0, 1, 2, 3, 7, 15, 31, 63, 127, 128, 129, 255, 256, 257, 513):
+            for length in (0, 1, 2, 3, 7, 15, 31, 63, 127, 128, 129, 255, 256, 257, 513, 1023, 1024, 1025):
                 for terminal in (-1, -2, 0, 1, length//2, max(0, length-1)):
                     for sa in range(8):
                         for da in range(8):
@@ -110,7 +110,7 @@ int emit(u32int *out, int cap, int wb, int offset)
                                     if not nodes:put(image, 0x1008, current)
                                     seen.add(current); count += 1
                                     current = int.from_bytes(image[current-BASE+8:current-BASE+16], 'little')
-                                valid = current == MASK and count <= 256
+                                valid = current == MASK and count <= (256 if arch == 'riscv64' else 1024)
                                 expected = bytearray(image)
                                 if valid:put(expected, dst, count, wb)
                                 machine.mem_write(BASE, bytes(image)); writes.clear(); reads.clear()
@@ -123,7 +123,7 @@ int emit(u32int *out, int cap, int wb, int offset)
                                 else:
                                     machine.reg_write(UC_RISCV_REG_A0, BASE); machine.reg_write(UC_RISCV_REG_RA, STOP)
                                     machine.emu_start(CODE+0x1808, CODE+0x1810, count=2)
-                                machine.emu_start(CODE, STOP, count=12000)
+                                machine.emu_start(CODE, STOP, count=50000)
                                 result = machine.reg_read(UC_X86_REG_RAX if arch == 'amd64' else UC_ARM64_REG_X0 if arch == 'arm64' else UC_RISCV_REG_A0)
                                 detail = (arch, wb, length, terminal, sa, da, alias)
                                 require(result == valid and bytes(machine.mem_read(BASE, 0x8000)) == expected, (detail, 'result/image', result))
@@ -131,7 +131,7 @@ int emit(u32int *out, int cap, int wb, int offset)
                                     touched = [address+i for address, size in writes for i in range(size)]
                                     require(touched == list(range(BASE+dst, BASE+dst+wb)), (detail, 'stores'))
                                     require(len(reads) == count, (detail, 'link reads'))
-                                else:require(not writes and len(reads) <= 256, (detail, 'decline'))
+                                else:require(not writes and len(reads) <= (256 if arch == 'riscv64' else 1024), (detail, 'decline'))
                                 if current not in (0, MASK) and count < 16:
                                     require(len(reads) <= 3*count+1, (detail, 'early cycle rejection'))
                                 if arch == 'amd64':require(machine.reg_read(UC_X86_REG_MXCSR) == 0x3f80, 'MXCSR')

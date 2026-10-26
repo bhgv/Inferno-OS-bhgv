@@ -1981,8 +1981,10 @@ OP(lenl)
 			error(exNilref);
 		if(count == ((UWORD)~0>>1))
 			error(exBounds);
+		if((uintptr)a > (uintptr)-1-(offsetof(List, tail)+sizeof(a->tail)))
+			error(exBounds);
 		count++;
-		a = a->tail;
+		memmove(&a, (uchar*)a+offsetof(List, tail), sizeof(a));
 		if(a == checkpoint)
 			error(exHeap);
 		/* Brent checkpoints at counts 1, 3, 7, ... require no extra link reads. */
@@ -2407,29 +2409,40 @@ listhead(void)
 	return l;
 }
 
+
 /* A nil list has no head payload. */
 OP(headb)
 {
 	List *l;
 
 	l = listhead();
-	memmove(R.d, l->data, sizeof(BYTE));
+	if((uintptr)l > (uintptr)-1-(offsetof(List, data)+sizeof(BYTE)))
+		error(exBounds);
+	memmove(R.d, (uchar*)l+offsetof(List, data), sizeof(BYTE));
 }
+
+
 /* Reject nil before reading a word list head. */
 OP(headw)
 {
 	List *l;
 
 	l = listhead();
-	memmove(R.d, l->data, sizeof(WORD));
+	if((uintptr)l > (uintptr)-1-(offsetof(List, data)+sizeof(WORD)))
+		error(exBounds);
+	memmove(R.d, (uchar*)l+offsetof(List, data), sizeof(WORD));
 }
+
+
 /* Reject nil before reading a long list head. */
 OP(headl)
 {
 	List *l;
 
 	l = listhead();
-	memmove(R.d, l->data, sizeof(LONG));
+	if((uintptr)l > (uintptr)-1-(offsetof(List, data)+sizeof(LONG)))
+		error(exBounds);
+	memmove(R.d, (uchar*)l+offsetof(List, data), sizeof(LONG));
 }
 /* Validate the list before copying its pointer-valued head. */
 OP(headp)
@@ -2440,13 +2453,17 @@ OP(headp)
 	R.s = l->data;
 	movp();
 }
+
+
 /* Reject nil before reading a real-valued list head. */
 OP(headf)
 {
 	List *l;
 
 	l = listhead();
-	memmove(R.d, l->data, sizeof(REAL));
+	if((uintptr)l > (uintptr)-1-(offsetof(List, data)+sizeof(REAL)))
+		error(exBounds);
+	memmove(R.d, (uchar*)l+offsetof(List, data), sizeof(REAL));
 }
 
 

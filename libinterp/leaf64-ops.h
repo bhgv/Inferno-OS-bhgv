@@ -1,3 +1,4 @@
+#define LeafListLimit 1024 // Maximum list nodes scanned natively before returning to C.
 #define LeafStringWindow (1ULL<<34) // Covers every int-sized Rune payload and supported inline offset.
 
 /* Common decoded-operation contract for 64-bit leaf backends. */

@@ -53,6 +53,9 @@ with tempfile.TemporaryDirectory(prefix='list-length-native-') as directory:
 #include <stdlib.h>
 #include <string.h>
 #include <setjmp.h>
+#include <stddef.h>
+typedef uintptr_t uintptr;
+typedef unsigned char uchar;
 typedef uint8_t UWORD;
 typedef int8_t WORD;
 typedef struct List List;

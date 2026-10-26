@@ -66,6 +66,7 @@ x64signeddivide(X64Buf *b, int bytes)
 	b->bytes[done]=b->n-done-1;
 }
 
+
 /* Form VN correction from captured operands; invert WN polarity only for nonzero VN products. */
 static void
 x64fixedround(X64Buf *b, int alu, int wordbytes)
@@ -106,6 +107,22 @@ x64guard(X64Buf *b, int condition)
 {
 	x64byte(b, condition); x64byte(b, 3);
 	x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+}
+
+
+/* Reject a wrapped field span in rax without changing its owner; rdx is scratch. */
+static void
+x64readspan(X64Buf *b, int offset, int bytes)
+{
+	unsigned long long limit;
+	int i;
+
+	limit = 0ULL-(unsigned long long)offset-(unsigned int)bytes;
+	x64byte(b, 0x48); x64byte(b, 0xba); // movabs rdx, first rejected owner.
+	for(i = 0; i < 8; i++)
+		x64byte(b, limit >> (i*8));
+	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xd0); // cmp rax, rdx.
+	x64guard(b, 0x72); // Continue only below the first overflowing owner.
 }
 
 /* Read a scalar header or payload field from an already validated object. */
@@ -1759,7 +1776,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff);
 		x64byte(&b, 0x74); done = b.n; x64byte(&b, 0);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
-		x64byte(&b, 0x81); x64byte(&b, 0xf9); x64word(&b, 256); x64guard(&b, 0x72);
+		x64byte(&b, 0x81); x64byte(&b, 0xf9); x64word(&b, LeafListLimit); x64guard(&b, 0x72);
+		x64readspan(&b, abi->listtail, 8);
 		x64field(&b, 0, 0, abi->listtail, 8);
 		x64byte(&b, 0xff); x64byte(&b, 0xc1);
 		x64byte(&b, 0x4c); x64byte(&b, 0x39); x64byte(&b, 0xd8); x64guard(&b, 0x75);
@@ -1775,6 +1793,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
+		x64readspan(&b, abi->listdata, p.bytes);
 		x64field(&b, 0, 0, abi->listdata, p.bytes);
 		x64ptr(&b, 2, abi->d); x64store(&b, 0, p.bytes);
 	}else if(p.kind == LeafStringLength){
@@ -1783,6 +1802,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff);
 		x64byte(&b, 0x74); empty = b.n; x64byte(&b, 0);
+		x64readspan(&b, abi->stringlen, 4);
 		x64field(&b, 0, 0, abi->stringlen, 4);
 		x64byte(&b, 0x3d); x64word(&b, 0x80000000U); x64guard(&b, 0x75);
 		x64byte(&b, 0x85); x64byte(&b, 0xc0);

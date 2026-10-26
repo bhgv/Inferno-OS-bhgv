@@ -129,17 +129,17 @@ and RX publication are covered separately by `leaf64-runtime.py`.
 
 ## Current interpreter-only commands on AMD64/ARM64
 
+The production sizing emitters report these 31 active commands for both WORD models:
+
 ```
-IALT INBALT IFRAME ISPAWN ILOAD IMCALL IMSPAWN IMFRAME IRET IEXIT INEW INEWA
-INEWCB INEWCW INEWCF INEWCP INEWCM INEWCMP ISEND IRECV ICONSB ICONSW ICONSP
-ICONSF ICONSM ICONSMP IHEADP IHEADMP ITAIL IMOVP IMOVMP ICVTCA ICVTAC ICVTWC
-ICVTCW ICVTFC ICVTCF IINSC IADDC ISLICEA ISLICELA ISLICEC ICVTLC ICVTCL ICONSL
-INEWCL ICASEC IMNEWZ INEWZ INEWAZ IRAISE ISELF
+IALT INBALT ISPAWN ILOAD IMSPAWN IEXIT INEW INEWA INEWCB INEWCW INEWCF INEWCP
+INEWCM INEWCMP ISEND IRECV ICONSB ICONSW ICONSP ICONSF ICONSM ICONSMP ICVTCA
+ICVTAC ICONSL INEWCL ICASEC IMNEWZ INEWZ INEWAZ IRAISE
 ```
 
-The list excludes invalid/unused slots. RV64+M additionally retains all six
-string comparison branches on the interpreter path. Many listed commands should remain C
-helpers when they are integrated into a native block execution path.
+The list excludes invalid/unused slots and is regenerated from jit-coverage.py.
+RV64+M additionally retains all six string comparison branches on the interpreter
+path. Native availability remains guarded and may cover only some operands.
 
 ## This series
 
@@ -453,3 +453,9 @@ Numeric formatting now validates exact Tstring identity before native buffer reu
 generic ADT/array pointer temporaries decline into the ownership-safe C conversion.
 AMD64/ARM64 reserve 80 words for emission, including the full-width type guard.
 [Regression and lifetime contract](README.format-pointer-temporaries.md).
+
+The AMD64/ARM64 scalar-view checkpoint validates HEADB/HEADW/HEADL/HEADF, LENL
+and LENC source spans before reads and matches these checks in C. Native LENL
+now covers lists through 1024 nodes on these two backends, with unchanged early
+cycle rejection and no partial publication. RV64 keeps its 256-node budget.
+Opcode counts are unchanged. See [README.scalar-view-spans.md](README.scalar-view-spans.md).
