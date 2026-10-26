@@ -401,3 +401,13 @@ The real-format checkpoint adds guarded ICVTFC paths on AMD64/ARM64 for +0
 and signed powers 2^0 through 2^19. Other real values retain C formatting.
 See [README.real-format.md](README.real-format.md) for ownership, FP-state and
 failure-ordering checks. The core checkpoint now passes 99 host drivers.
+
+## Checked append spans checkpoint
+
+[Checked append spans](README.append-spans.md) adds complete native address-range
+checks to C addstring and AMD64/ARM64 ADDC, then expands matching ASCII/Rune native
+appends from 128 to 256 source characters. Adjacent and nonadjacent metadata
+remain within the 64-unit limit. New C reduced-address and emulated top-address
+regressions fail on the parent implementations. The core checkpoint now has
+100 host drivers. Counts remain AMD64/ARM64 142/31 and RV64 M/Zmmul/I 103/70,
+90/83 and 87/86.

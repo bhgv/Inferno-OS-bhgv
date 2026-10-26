@@ -222,8 +222,10 @@ String*
 addstring(String *s1, String *s2, int append)
 {
 	Rune *r;
-	String *ns;
-	int l, l1, l2;
+	String *ns, *source;
+	uvlong bytes;
+	uintptr address;
+	int l, l1, l2, i;
 
 	if(s1 == nil || s2 == nil)
 		error(exNilref);
@@ -237,6 +239,19 @@ addstring(String *s1, String *s2, int append)
 	if((s1 != H && D2H(s1)->ref == 0) ||
 	   (s2 != H && D2H(s2)->ref == 0))
 		error(exHeap);
+	/* Check complete native payload spans before shortcuts, allocation or copying. */
+	for(i = 0; i < 2; i++){
+		source = i == 0 ? s1 : s2;
+		if(source == H)
+			continue;
+		bytes = source->len < 0 ? (uvlong)-source->len*sizeof(Rune) : (uvlong)source->len;
+		address = (uintptr)source;
+		if(address > (uintptr)-1-offsetof(String, data))
+			error(exHeap);
+		address += offsetof(String, data);
+		if(bytes > (uintptr)-1-address)
+			error(exHeap);
+	}
 	if(s1 == H) {
 		if(s2 == H)
 			return H;
@@ -255,6 +270,13 @@ addstring(String *s1, String *s2, int append)
 	if(l1 > 0x7fffffff-l2)
 		error(exHeap);
 	l = l1+l2;
+	/* Reuse must validate the extended destination span, not just its old payload. */
+	if(append && l <= s1->max && !(s1->len >= 0 && s2->len < 0)){
+		bytes = s1->len < 0 ? (uvlong)l*sizeof(Rune) : (uvlong)l;
+		address = (uintptr)s1+offsetof(String, data);
+		if(bytes > (uintptr)-1-address)
+			error(exHeap);
+	}
 	/* Growth allowance is needed only when replacement storage must be allocated. */
 	if(append && l > 0x7fffffff-l/4 &&
 	   (l > s1->max || (s1->len >= 0 && s2->len < 0)))

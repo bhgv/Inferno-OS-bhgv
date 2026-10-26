@@ -89,7 +89,7 @@ main(void)
 	String *left, *right, *source, *destination;
 	REG saved;
 	uchar slots[128], before[128], leftimage[2048], rightimage[2048], expected[2048];
-	int lengths[] = {0, 1, 8, 127, 128, 129};
+	int lengths[] = {0, 1, 8, 127, 128, 129, 255, 256, 257};
 	int li, ri, mode, sa, ma, pass, i, l, r, maximum, valid, allocations, size, wide;
 	char *exception;
 	unsigned long total = 0;
@@ -145,7 +145,7 @@ main(void)
 		memmove(R.d, &destination, sizeof(destination));
 		R.PC = &sentinel;
 		saved = R;
-		valid = (mode == 0 || mode == 6 || mode == 11) && r <= 128 && l+r <= left->max &&
+		valid = (mode == 0 || mode == 6 || mode == 11) && r <= 256 && l+r <= left->max &&
 			(left->len < 0) == (source->len < 0);
 		exception = mode == 3 || mode == 4 || mode == 5 || mode == 12 ? exHeap : mode == 10 ? exNilref : nil;
 		size = sizeof(Heap)+sizeof(String)+320*(wide ? sizeof(Rune) : 1)+32;

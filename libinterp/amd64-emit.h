@@ -615,29 +615,47 @@ x64smallfield(X64Buf *b, int result, int owner, int offset, int bytes)
 }
 
 
+/* Share a nearby rejection return while short branch reach permits it. */
+static void
+x64moduleguard(X64Buf *b, int success, int fallback)
+{
+	int distance;
+
+	distance = fallback-b->n-2;
+	if(distance >= -128 && distance <= 127){
+		x64byte(b, success^1);
+		x64byte(b, distance);
+	}else
+		x64guard(b, success);
+}
+
+
 /* Concatenate matching string representations within unique capacity and bounded copy size. */
 static int
 x64stringappend(X64Buf *b, LeafLayout *a)
 {
-	int overlap, empty, loop, narrow;
+	int overlap, empty, loop, narrow, fallback;
 
 	if(a->stringlen < 0 || a->stringlen > 127 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 127 || a->stringmax%4 ||
-	   a->stringdata < 0 || a->stringdata > 127 ||
+	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
+	   a->stringdata < a->stringmax+4 || a->stringdata > 127 ||
 	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 || a->refbytes != 8)
 		return 0;
+	x64byte(b, 0xeb); x64byte(b, 3);
+	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	x64ptr(b, 0, a->m); x64ptr(b, 1, a->d);
-	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xc8); x64guard(b, 0x74);
+	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xc8); x64moduleguard(b, 0x74, fallback);
 	x64load(b, 0, 8);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2);
 	x64ptr(b, 0, a->s); x64load(b, 0, 8);
 	/* owner+1 must be above one: this rejects both C null and language nil. */
 	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x42); x64byte(b, 1);
-	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 1); x64guard(b, 0x77);
+	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
 	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x40); x64byte(b, 1);
-	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 1); x64guard(b, 0x77);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0x7a); x64byte(b, -a->heapref); x64byte(b, 1); x64guard(b, 0x74);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0x78); x64byte(b, -a->heapref); x64byte(b, 0); x64guard(b, 0x75);
+	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0x7a); x64byte(b, -a->heapref); x64byte(b, 1); x64moduleguard(b, 0x74, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0x78); x64byte(b, -a->heapref); x64byte(b, 0); x64moduleguard(b, 0x75, fallback);
 	x64smallfield(b, 1, 2, a->stringlen, 4);
 	/* Keep a native sign mask while taking the absolute character count. */
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc9);
@@ -648,15 +666,15 @@ x64stringappend(X64Buf *b, LeafLayout *a)
 	/* Mixed representations retain the allocating/widening C implementation. */
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xf0);
 	x64byte(b, 0x4d); x64byte(b, 0x31); x64byte(b, 0xc8);
-	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc0); x64guard(b, 0x79);
+	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x79, fallback);
 	x64byte(b, 0x4c); x64byte(b, 0x31); x64byte(b, 0xce);
 	x64byte(b, 0x4c); x64byte(b, 0x29); x64byte(b, 0xce);
-	x64byte(b, 0x81); x64byte(b, 0xfe); x64word(b, 128); x64guard(b, 0x76);
+	x64byte(b, 0x81); x64byte(b, 0xfe); x64word(b, 256); x64moduleguard(b, 0x76, fallback);
 	x64byte(b, 0x4c); x64byte(b, 0x63); x64byte(b, 0x40); x64byte(b, a->stringmax);
-	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xc6); x64guard(b, 0x7e);
+	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xc6); x64moduleguard(b, 0x7e, fallback);
 	x64byte(b, 0x4c); x64byte(b, 0x63); x64byte(b, 0x52); x64byte(b, a->stringmax);
 	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x1c); x64byte(b, 0x31);
-	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xd3); x64guard(b, 0x7e);
+	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xd3); x64moduleguard(b, 0x7e, fallback);
 	/* Capacity remains in characters; only the copy geometry uses byte counts. */
 	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x79); narrow = b->n; x64byte(b, 0);
@@ -668,9 +686,16 @@ x64stringappend(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x4c); x64byte(b, 0x0a); x64byte(b, a->stringdata);
 	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x40); x64byte(b, a->stringdata);
 	x64byte(b, 0x4d); x64byte(b, 0x8d); x64byte(b, 0x14); x64byte(b, 0x30);
+	/* Each full span includes the inline offset, so a wrapped base also rejects. */
+	x64byte(b, 0x49); x64byte(b, 0x39); x64byte(b, 0xc2); // cmp r10,rax: source end versus owner.
+	x64moduleguard(b, 0x73, fallback);
+	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x04); x64byte(b, 0x31); // r8=destination end.
+	x64byte(b, 0x49); x64byte(b, 0x39); x64byte(b, 0xd0); // cmp r8,rdx.
+	x64moduleguard(b, 0x73, fallback);
+	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x40); x64byte(b, a->stringdata); // Restore source base.
 	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xc1);
 	x64byte(b, 0x76); overlap = b->n; x64byte(b, 0);
-	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xd1); x64guard(b, 0x73);
+	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xd1); x64moduleguard(b, 0x73, fallback);
 	b->bytes[overlap] = b->n-overlap-1;
 	x64byte(b, 0x85); x64byte(b, 0xf6);
 	x64byte(b, 0x74); empty = b->n; x64byte(b, 0);
@@ -816,21 +841,6 @@ x64stringstore(X64Buf *b, LeafLayout *a)
 		return 0;
 	b->bytes[unchanged] = b->n-unchanged-1;
 	return 1;
-}
-
-
-/* Share the nearby module-leaf rejection return while short branch reach permits it. */
-static void
-x64moduleguard(X64Buf *b, int success, int fallback)
-{
-	int distance;
-
-	distance = fallback-b->n-2;
-	if(distance >= -128 && distance <= 127){
-		x64byte(b, success^1);
-		x64byte(b, distance);
-	}else
-		x64guard(b, success);
 }
 
 

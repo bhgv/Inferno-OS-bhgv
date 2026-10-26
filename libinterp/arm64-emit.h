@@ -468,7 +468,8 @@ a64stringappend(A64Buf *b, LeafLayout *a)
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
-	   a->stringdata < 0 || a->stringdata > 2047 ||
+	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
+	   a->stringdata < a->stringmax+4 || a->stringdata > 2047 ||
 	   a->heapref <= 0 || a->heapref > 255 || a->heapref%8 || a->refbytes != 8)
 		return 0;
 	fallback = b->n+1;
@@ -485,21 +486,31 @@ a64stringappend(A64Buf *b, LeafLayout *a)
 	a64put(b, 0xf10005df); a64defer(b, 0x54000001, fallback);
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 13<<5 | 3);
 	a64defer(b, 0xb4000003, fallback);
-	a64wordfield(b, 14, 12, a->stringlen, 4);
+	if(a->stringmax == a->stringlen+4 && a->stringlen <= 252)
+		a64put(b, 0x69400000U | (u32int)(a->stringlen/4)<<15 | 4<<10 | 12<<5 | 14); // LDPSW x14,x4,[x12].
+	else{
+		a64wordfield(b, 14, 12, a->stringlen, 4);
+		a64wordfield(b, 4, 12, a->stringmax, 4);
+	}
 	a64put(b, 0x93400000U | 63<<16 | 63<<10 | 14<<5 | 6);
 	a64put(b, 0xf10001df);
 	a64put(b, 0xda80a400U | 14<<16 | 14<<5 | 14);
-	a64wordfield(b, 15, 13, a->stringlen, 4);
-	a64put(b, 0x93400000U | 63<<16 | 63<<10 | 15<<5 | 3);
-	a64put(b, 0xeb06007f); a64defer(b, 0x54000001, fallback);
+	if(a->stringmax == a->stringlen+4 && a->stringlen <= 252)
+		a64put(b, 0x69400000U | (u32int)(a->stringlen/4)<<15 | 3<<10 | 13<<5 | 15); // LDPSW x15,x3,[x13].
+	else{
+		a64wordfield(b, 15, 13, a->stringlen, 4);
+		a64wordfield(b, 3, 13, a->stringmax, 4);
+	}
+	a64put(b, 0xca0601e2); // EOR x2,x15,x6: representations must have equal signs.
+	a64put(b, 0xb7f80002U | ((fallback-b->n)&0x3fff)<<5); // TBNZ x2,#63,fallback.
 	a64put(b, 0xf10001ff);
 	a64put(b, 0xda80a400U | 15<<16 | 15<<5 | 15);
-	a64put(b, 0xf10201ff); a64defer(b, 0x54000008, fallback);
-	a64wordfield(b, 3, 13, a->stringmax, 4);
-	a64put(b, 0xeb0301ff); a64defer(b, 0x5400000c, fallback);
-	a64wordfield(b, 4, 12, a->stringmax, 4);
-	a64put(b, 0x8b0f01c5);
-	a64put(b, 0xeb0400bf); a64defer(b, 0x5400000c, fallback);
+	a64put(b, 0x8b0f01c5); // ADD x5,x14,x15: combined character count.
+	/* Failed predicates retain LT through NZCV=8, sharing one rejection branch. */
+	a64put(b, 0xf10401ff); // CMP x15,#256.
+	a64put(b, 0xfa4f9068); // CCMP x3,x15,#8,ls: source capacity.
+	a64put(b, 0xfa45a088); // CCMP x4,x5,#8,ge: destination capacity.
+	a64defer(b, 0x5400000b, fallback);
 	/* Preserve signed logical length before converting character offsets to bytes. */
 	a64put(b, 0xf10000df);
 	a64put(b, 0xda80a400U | 5<<16 | 5<<5 | 5);
@@ -511,14 +522,18 @@ a64stringappend(A64Buf *b, LeafLayout *a)
 	a64put(b, 0x9100018bU | (u32int)a->stringdata<<10);
 	a64put(b, 0x8b0e016b);
 	a64put(b, 0x8b0f0123);
+	/* End-to-owner comparisons cover both base-offset and extent overflow. */
+	a64put(b, 0xeb0d007f); a64defer(b, 0x54000003, fallback);
+	a64put(b, 0x8b0f0164); // ADD x4,x11,x15: destination end.
+	a64put(b, 0xeb0c009f); a64defer(b, 0x54000003, fallback);
 	a64put(b, 0xeb09017f);
 	overlap = b->n; a64put(b, 0x54000009);
 	a64put(b, 0xeb03017f); a64defer(b, 0x54000003, fallback);
 	b->code[overlap] |= (b->n-overlap)<<5;
 	empty = b->n; a64put(b, 0xb400000f);
 	loop = b->n;
-	a64load(b, 3, 9, 1); a64store(b, 3, 1);
-	a64put(b, 0x91000529); a64put(b, 0x9100056b);
+	a64put(b, 0x38401523); // LDRB w3,[x9],#1.
+	a64put(b, 0x38001563); // STRB w3,[x11],#1.
 	a64put(b, 0xf10005ef);
 	a64put(b, 0x54000001U | ((loop-b->n)&0x7ffff)<<5);
 	if(b->n > LeafMax)

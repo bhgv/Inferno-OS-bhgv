@@ -89,8 +89,8 @@ int emit(u32int *out, int cap, int wb, int field, int value)
                     checks += 1
             machine.mem_write(CODE, code)
             machine.ctl_remove_cache(CODE, CODE+256)
-            for leftlen in (0, 1, 7, 127, 128):
-                for rightlen in (0, 1, 7, 128, 129):
+            for leftlen in (0, 1, 7, 127, 128, 255, 256):
+                for rightlen in (0, 1, 7, 128, 129, 255, 256, 257):
                     for profile in range(32):
                         for alignment in (0, 1, 4, 7):
                             for slot in (0, 1, 4, 7):
@@ -155,7 +155,7 @@ int emit(u32int *out, int cap, int wb, int field, int value)
                                 put(image, destination, leftowner)
                                 put(image, 8, BASE+src); put(image, 16, BASE+destination); put(image, 24, BASE+middle)
                                 good = (destination == middle and leftowner == BASE+left and rightowner == BASE+right
-                                        and ref == 1 and profile != 21 and (l<0)==(r<0) and 0 <= abs(r) <= 128
+                                        and ref == 1 and profile != 21 and (l<0)==(r<0) and 0 <= abs(r) <= 256
                                         and abs(r) <= (capacity if right == left else rightcap) and abs(l)+abs(r) <= capacity)
                                 stride = 4 if l<0 else 1
                                 copied = abs(r)*stride
@@ -178,7 +178,7 @@ int emit(u32int *out, int cap, int wb, int field, int value)
                                     machine.reg_write(UC_ARM64_REG_LR, STOP)
                                     machine.reg_write(UC_ARM64_REG_FPCR, 0x800000)
                                     machine.reg_write(UC_ARM64_REG_FPSR, 0x11)
-                                machine.emu_start(CODE, STOP, count=6000)
+                                machine.emu_start(CODE, STOP, count=12000)
                                 result = machine.reg_read(UC_X86_REG_RAX if arch == 'amd64' else UC_ARM64_REG_X0)
                                 if result != good or bytes(machine.mem_read(BASE, 0x4000)) != bytes(expected) or writes != expectedwrites:
                                     raise RuntimeError((arch, wb, leftlen, rightlen, profile, alignment, slot, result, good, writes[:4]))
