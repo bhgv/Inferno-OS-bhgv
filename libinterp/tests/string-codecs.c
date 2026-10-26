@@ -176,6 +176,7 @@ reference(Rune r, uchar *p)
 	p[2] = 0x80|((r>>6)&63); p[3] = 0x80|(r&63); return 4;
 }
 
+
 /* Round-trip boundary and generated runes through the actual VM operations. */
 static void
 checkrunes(void)
@@ -197,22 +198,22 @@ checkrunes(void)
 		/* Store also checks high-bit runes are never misclassified as ASCII. */
 		s = H; rune = (WORD)r; index = 0;
 		R.s = &rune; R.m = &index; R.d = &s; insc();
-		assert((r < 128 && s->len == 1) || (r >= 128 && s->len == -1));
-		assert(!memcmp(string2c(s),expected,n) && string2c(s)[n] == 0);
+		if(!((r < 128 && s->len == 1) || (r >= 128 && s->len == -1))) abort();
+		if(!(!memcmp(string2c(s),expected,n) && string2c(s)[n] == 0)) abort();
 		bytes = H; R.s = &s; R.d = &bytes; cvtca();
-		assert(bytes->len == n && !memcmp(bytes->data,expected,n));
+		if(!(bytes->len == n && !memcmp(bytes->data,expected,n))) abort();
 		decoded = H; R.s = &bytes; R.d = &decoded; cvtac();
-		assert(decoded->len == (r < 128 ? 1 : -1));
-		assert(!memcmp(string2c(decoded),expected,n));
+		if(!(decoded->len == (r < 128 ? 1 : -1))) abort();
+		if(!(!memcmp(string2c(decoded),expected,n))) abort();
 		/* Either conversion must leave an existing result on VM heap failure. */
-		old = decoded; failure = 0;
-		EXPECT(cvtac(),exNomem); assert(decoded == old);
-		failure = -1; destroy(decoded);
-		old = s; R.s = &bytes; R.d = &s; failure = 0;
-		EXPECT(cvtac(),exNomem); assert(s == old);
-		failure = -1;
+		old = decoded; D2H(old)->ref++; failure = 0;
+		EXPECT(cvtac(),exNomem); if(!(decoded == old)) abort();
+		failure = -1; D2H(old)->ref--; destroy(decoded);
+		old = s; D2H(old)->ref++; R.s = &bytes; R.d = &s; failure = 0;
+		EXPECT(cvtac(),exNomem); if(!(s == old)) abort();
+		failure = -1; D2H(old)->ref--;
 		before = live; R.s = &s; R.d = &bytes; failure = 0;
-		EXPECT(cvtca(),exNomem); assert(live == before);
+		EXPECT(cvtca(),exNomem); if(!(live == before)) abort();
 		failure = -1;
 		destroy(s); destroy(bytes); checks += 5;
 	}

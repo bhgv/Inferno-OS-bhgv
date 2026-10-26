@@ -1,6 +1,6 @@
 #include "comp-amd64.c"
 
-Type Tstring = {1}; // Exact builtin identity required by native leaf publication.
+Type Tstring = {1}, Tarray = {1}; // Exact builtin identity required by native leaf publication.
 #include <stdio.h>
 #include <stddef.h>
 #include <setjmp.h>

@@ -20,7 +20,7 @@ unit=r'''
 #define mprotect fixtureprotect
 #include "comp-amd64.c"
 /* Numeric format publication requires the actual builtin type identity. */
-Type Tstring = {1};
+Type Tstring = {1}, Tarray = {1};
 #include <assert.h>
 #include <stdio.h>
 #include <setjmp.h>

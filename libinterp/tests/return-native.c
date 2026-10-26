@@ -1,5 +1,5 @@
 /* Supply the builtin identity used by numeric leaf publication in this linked fixture. */
-Type Tstring = {1};
+Type Tstring = {1}, Tarray = {1}; // Builtin identities used by native leaf publication.
 int mutator,nprop;
 
 

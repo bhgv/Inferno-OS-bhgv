@@ -34,11 +34,11 @@ def measure(arch, wordbytes, profile, names, directory):
                   wordbytes=wordbytes)
     header = 'riscv-emit.h' if rv else arch+'-emit.h'
     if 'int heaptype;' in (ROOT/'libinterp'/('riscv-emit.h' if rv else 'leaf64-ops.h')).read_text():
-        fields['heaptype'] = 24
+        fields['heaptype'] = 24 if rv else 16
     if not rv and 'int linkcompiled;' in (ROOT/'libinterp/leaf64-ops.h').read_text():
         fields['linkcompiled']=16
     if not rv:
-        fields.update(heapref=24,heapcolor=32,refbytes=8,mutator='(void*)0x100008000ULL',nprop='(void*)0x100008008ULL',markcolor=3,moduletypes=32,modulenty=40,typenp=28,stringmax=4,sp=48,ts=56,frametype=16,framemr=24,framesize=32,linknlinks=48,linklinks=56,modlbytes=16,modlframe=8,regmp=64,regtemp=72,linkprog=24,linkmp=0,modlpc=0,arrayroot=24,typeref=0,stringtype="(void*)0x100008010ULL")
+        fields.update(heapref=24,heapcolor=32,refbytes=8,mutator='(void*)0x100008000ULL',nprop='(void*)0x100008008ULL',markcolor=3,moduletypes=32,modulenty=40,typenp=28,stringmax=4,sp=48,ts=56,frametype=16,framemr=24,framesize=32,linknlinks=48,linklinks=56,modlbytes=16,modlframe=8,regmp=64,regtemp=72,linkprog=24,linkmp=0,modlpc=0,arrayroot=24,typeref=0,stringtype="(void*)0x100008010ULL",arrayidentity="(void*)0x100008020ULL")
     if rv:
         fields.update(xlen=64, hasm=int(profile != 'i'), hasdiv=int(profile == 'm'))
     assignments = ''.join(f'abi.{key}={value};' for key, value in fields.items())

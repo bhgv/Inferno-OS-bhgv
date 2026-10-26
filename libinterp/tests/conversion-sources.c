@@ -80,7 +80,9 @@ main(void)
         if(selection && op*100+mode != atoi(selection)) continue;
         array = mem2array("abc", 3); backing = mem2array("xyz", 3);
         oldarray = mem2array("keep", 4);
-        text = c2string("abc", 3); oldtext = c2string("keep", 4);
+        text = c2string("abc", 3);
+        /* Keep this source-validation matrix on the allocating destination path. */
+        oldtext = newrunes(4); oldtext->len = -4;
         data = array->data;
         custom = Tbyte; custom.size = 1; custom.np = 0;
         why = exHeap; invalid = 0; length = 3;

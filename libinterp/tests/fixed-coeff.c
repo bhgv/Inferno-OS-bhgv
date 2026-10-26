@@ -1,7 +1,7 @@
 #ifdef NATIVE_COEFFICIENT
 #include "comp-amd64.c"
 /* Supply the builtin identity used by guarded numeric formatting leaves. */
-Type Tstring = {1};
+Type Tstring = {1}, Tarray = {1};
 #else
 #include "dat.h"
 #include "fns.h"

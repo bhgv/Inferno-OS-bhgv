@@ -426,44 +426,114 @@ r:	memmove(&old, R.d, sizeof(old));
 }
 
 
-/* Validate array owners and native byte spans before entering the string constructor. */
+/* Capture source owners and reuse unique ASCII storage only after complete preflight. */
 OP(cvtac)
 {
-	Array *a;
+	Array *a, view;
 	String *ds, *old;
+	Heap owner, previous, root;
+	uchar *bytes;
+	uintptr address, extent;
+	int n, i, oldlen, capacity, size, pointers;
 
 	ds = H;
 	memmove(&a, R.s, sizeof(a));
+	memmove(&old, R.d, sizeof(old));
 	if(a != H){
 		if(a == nil)
 			error(exNilref);
-		if(D2H(a)->t != &Tarray)
-			error(exType);
-		/* A dead owner must not lead us through its borrowed element descriptor. */
-		if(D2H(a)->ref == 0)
+		address = (uintptr)a;
+		if(address < sizeof(Heap) || address > (uintptr)-1-sizeof(Array))
 			error(exHeap);
-		/* A compiler may emit its own pointer-free byte descriptor. */
-		if(a->t != &Tbyte &&
-		   (a->t == nil || a->t == H || a->t->size != 1 || a->t->np != 0))
+		memmove(&owner, (uchar*)a-sizeof(Heap), sizeof(owner));
+		if(owner.t != &Tarray)
 			error(exType);
-		if(a->len < 0 || (uvlong)a->len > 0x7fffffff)
+		if(owner.ref == 0)
 			error(exHeap);
-		/* Empty arrays need no payload; nonempty native byte spans must not wrap. */
-		if(a->len != 0){
-			if(a->data == nil || a->data == H)
+		memmove(&view, a, sizeof(view));
+		if(view.t != &Tbyte){
+			if(view.t == nil || view.t == H)
+				error(exType);
+			extent = offsetof(Type, size) > offsetof(Type, np) ? offsetof(Type, size) : offsetof(Type, np);
+			if((uintptr)view.t > (uintptr)-1-extent-sizeof(int))
+				error(exType);
+			memmove(&size, (uchar*)view.t+offsetof(Type, size), sizeof(size));
+			memmove(&pointers, (uchar*)view.t+offsetof(Type, np), sizeof(pointers));
+			if(size != 1 || pointers != 0)
+				error(exType);
+		}
+		if(view.len < 0 || (uvlong)view.len > 0x7fffffff)
+			error(exHeap);
+		n = (int)view.len;
+		if((ulong)n > 0x7fffffff-sizeof(Heap)-sizeof(String))
+			error(exHeap);
+		bytes = view.data;
+		if(n != 0){
+			if(bytes == nil || bytes == H)
 				error(exNilref);
-			if((uintptr)a->data > (uintptr)-1-(uintptr)a->len)
+			if((uintptr)bytes > (uintptr)-1-(uintptr)n)
 				error(exHeap);
 		}
-		if(a->root == nil || (a->root != H && D2H(a->root)->ref == 0))
+		if(view.root == nil)
 			error(exHeap);
-		ds = c2string((char*)a->data, (int)a->len);
+		if(view.root != H){
+			if((uintptr)view.root < sizeof(Heap))
+				error(exHeap);
+			memmove(&root, (uchar*)view.root-sizeof(Heap), sizeof(root));
+			if(root.ref == 0)
+				error(exHeap);
+		}
+		if(old == nil)
+			error(exNilref);
+		if(old != H){
+			if((uintptr)old < sizeof(Heap))
+				error(exHeap);
+			memmove(&previous, (uchar*)old-sizeof(Heap), sizeof(previous));
+			if(previous.ref == 0)
+				error(exHeap);
+			/* Generic pointer temporaries must not be interpreted as String records. */
+			if(previous.t == &Tstring && previous.ref == 1){
+				extent = offsetof(String, len) > offsetof(String, max) ? offsetof(String, len) : offsetof(String, max);
+				if((uintptr)old > (uintptr)-1-extent-sizeof(int))
+					error(exHeap);
+				memmove(&oldlen, (uchar*)old+offsetof(String, len), sizeof(oldlen));
+				memmove(&capacity, (uchar*)old+offsetof(String, max), sizeof(capacity));
+				if(oldlen >= 0 && capacity >= oldlen && capacity >= n){
+					address = (uintptr)old;
+					if(n != 0 && (address > (uintptr)-1 - offsetof(String, data) ||
+					   address+offsetof(String, data) > (uintptr)-1-(uintptr)n))
+						error(exHeap);
+					/* An incomplete UTF-8 conversion must never partially change the old owner. */
+					for(i = 0; i < n; i++)
+						if(bytes[i] >= Runeself)
+							break;
+					if(i == n){
+						if(n != 0)
+							memmove((void*)(address+offsetof(String, data)), bytes, n);
+						memmove((uchar*)old+offsetof(String, len), &n, sizeof(n));
+						/* Restore a possibly overlapping owner slot after payload publication. */
+						memmove(R.d, &old, sizeof(old));
+						return;
+					}
+				}
+			}
+		}
+		ds = c2string((char*)bytes, n);
 	}
-
-	memmove(&old, R.d, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	/* Nil input also releases an old generic owner: reject a dead owner first. */
+	if(a == H && old != H){
+		if((uintptr)old < sizeof(Heap))
+			error(exHeap);
+		memmove(&previous, (uchar*)old-sizeof(Heap), sizeof(previous));
+		if(previous.ref == 0)
+			error(exHeap);
+	}
 	memmove(R.d, &ds, sizeof(ds));
 	destroy(old);
 }
+
 
 
 /* Reject invalid lengths before taking the absolute representation size. */

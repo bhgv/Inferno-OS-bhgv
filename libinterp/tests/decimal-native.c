@@ -1,6 +1,6 @@
 #include "comp-amd64.c"
 /* Supply the builtin identity used by guarded numeric formatting leaves. */
-Type Tstring = {1};
+Type Tstring = {1}, Tarray = {1};
 #include <stdio.h>
 #include <setjmp.h>
 #include <fenv.h>

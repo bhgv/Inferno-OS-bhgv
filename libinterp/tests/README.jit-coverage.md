@@ -2,14 +2,14 @@
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 142 commands (82.1%); 31 remain on the interpreter path. RV64 profiles
+paths for 143 commands (82.7%); 30 remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 142 | 31 |
-| ARM64 | 173 | 142 | 31 |
+| AMD64 | 173 | 143 | 30 |
+| ARM64 | 173 | 143 | 30 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
@@ -129,12 +129,12 @@ and RX publication are covered separately by `leaf64-runtime.py`.
 
 ## Current interpreter-only commands on AMD64/ARM64
 
-The production sizing emitters report these 31 active commands for both WORD models:
+The production sizing emitters report these 30 active commands for both WORD models:
 
 ```
 IALT INBALT ISPAWN ILOAD IMSPAWN IEXIT INEW INEWA INEWCB INEWCW INEWCF INEWCP
 INEWCM INEWCMP ISEND IRECV ICONSB ICONSW ICONSP ICONSF ICONSM ICONSMP ICVTCA
-ICVTAC ICONSL INEWCL ICASEC IMNEWZ INEWZ INEWAZ IRAISE
+ICONSL INEWCL ICASEC IMNEWZ INEWZ INEWAZ IRAISE
 ```
 
 The list excludes invalid/unused slots and is regenerated from jit-coverage.py.
@@ -459,3 +459,10 @@ and LENC source spans before reads and matches these checks in C. Native LENL
 now covers lists through 1024 nodes on these two backends, with unchanged early
 cycle rejection and no partial publication. RV64 keeps its 256-node budget.
 Opcode counts are unchanged. See [README.scalar-view-spans.md](README.scalar-view-spans.md).
+
+CVTAC now has an ASCII byte-array reuse path on AMD64/ARM64 (1..256 bytes).
+All guards precede mutation, including exact builtin source/destination types,
+borrowed descriptor geometry and complete payload spans. The C path also reuses
+unique ASCII buffers, retaining generic old owners through allocation failure.
+Private staging is 128 words and the compiler supplies the new builtin array
+identity. See [README.byte-string-native.md](README.byte-string-native.md).

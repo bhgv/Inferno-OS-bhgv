@@ -1,7 +1,16 @@
 #include "leaf64-ops.h"
-enum { LeafMax=80 };
+
+enum {
+	LeafMax = 128, // Four-byte code units reserved for guarded native leaves.
+};
+
 typedef struct A64Buf A64Buf;
-struct A64Buf { u32int code[LeafMax]; int n; };
+
+struct A64Buf {
+	u32int code[LeafMax]; // Private instruction staging, published only after sizing succeeds.
+	int n; // Requested native instructions before bounded publication.
+};
+
 
 /* Stage fixed-width instructions without exposing a partial output buffer. */
 static void
@@ -1104,6 +1113,132 @@ a64arrayslice(A64Buf *b, LeafLayout *a)
 }
 
 
+
+
+/* Preflight the complete ASCII input before overlap-aware reuse and owner publication. */
+static int
+a64bytestring(A64Buf *b, LeafLayout *a)
+{
+	int fallback, header, scan, forward, backward, loop, jump, half;
+	unsigned long long identity;
+
+	if(a->arraylen < 0 || a->arraylen > 2047 || a->arraylen%a->wordbytes ||
+	   a->arraydata < 0 || a->arraydata > 2047 || a->arraydata%8 ||
+	   a->arraytype < 0 || a->arraytype > 2047 || a->arraytype%8 ||
+	   a->arrayroot < 0 || a->arrayroot > 2047 || a->arrayroot%8 ||
+	   a->typesize < 0 || a->typesize > 2047 || a->typesize%4 ||
+	   a->typenp < 0 || a->typenp > 2047 || a->typenp%4 ||
+	   a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
+	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
+	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
+	   a->stringdata < a->stringmax+4 || a->stringdata > 2047 ||
+	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 || a->refbytes != 8 ||
+	   a->heaptype <= 0 || a->heaptype > 128 || a->heaptype%8 ||
+	   a->heapcolor < a->heapref || a->heapcolor < a->heaptype || a->heapcolor > 255 ||
+	   a->arrayidentity == nil || a->stringtype == nil)
+		return 0;
+	if(!leafbytearraylayout(a) || a->heapref == a->heaptype || a->arrayidentity == a->stringtype)
+		return 0;
+	header = a->arraylen;
+	if(header < a->arraydata) header = a->arraydata;
+	if(header < a->arraytype) header = a->arraytype;
+	if(header < a->arrayroot) header = a->arrayroot;
+	fallback = b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	a64ptr(b, 8, a->s); a64load(b, 8, 8, 8);
+	a64put(b, 0xf100011fU | (u32int)a->heapcolor<<10); // cmp x8, heap extent.
+	a64defer(b, 0x54000003, fallback);
+	a64put(b, 0xb100011fU | (u32int)(header+8)<<10); // cmn x8, header extent.
+	a64defer(b, 0x54000002, fallback);
+	a64put(b, 0xf840000eU | ((u32int)-a->heaptype&511)<<12 | 8<<5);
+	identity = (unsigned long long)a->arrayidentity;
+	for(half = 0; half < 4; half++)
+		a64put(b, (half == 0 ? 0xd280000fU : 0xf280000fU) | half<<21 | ((identity>>(half*16))&65535)<<5);
+	a64put(b, 0xeb0f01dfU); // cmp x14, x15
+	a64defer(b, 0x54000001, fallback);
+	a64put(b, 0xf840000eU | ((u32int)-a->heapref&511)<<12 | 8<<5);
+	a64defer(b, 0xb400000e, fallback);
+	a64field(b, 14, 8, a->arrayroot, 8);
+	a64put(b, 0xb10005dfU); // cmn x14, #1
+	a64defer(b, 0x54000001, fallback);
+	a64field(b, 14, 8, a->arraytype, 8);
+	a64defer(b, 0xb400000e, fallback);
+	a64put(b, 0xb10001dfU | (u32int)((a->typesize > a->typenp ? a->typesize : a->typenp)+4)<<10);
+	a64defer(b, 0x54000002, fallback);
+	a64wordfield(b, 15, 14, a->typenp, 4);
+	a64defer(b, 0xb500000f, fallback);
+	a64wordfield(b, 15, 14, a->typesize, 4);
+	a64put(b, 0xf10005ffU); // cmp x15, #1
+	a64defer(b, 0x54000001, fallback);
+	a64wordfield(b, 11, 8, a->arraylen, a->wordbytes);
+	a64put(b, 0xd100056eU); // sub x14, x11, #1
+	a64put(b, 0xf103fddfU); // cmp x14, #255
+	a64defer(b, 0x54000008, fallback);
+	a64field(b, 9, 8, a->arraydata, 8);
+	a64defer(b, 0xb4000009, fallback);
+	a64put(b, 0xab0b013fU); // cmn x9, x11
+	a64defer(b, 0x54000002, fallback);
+	a64ptr(b, 8, a->d); a64load(b, 10, 8, 8);
+	a64put(b, 0xf100015fU | (u32int)a->heapcolor<<10);
+	a64defer(b, 0x54000003, fallback);
+	a64put(b, 0xb100015fU | (u32int)((a->stringlen > a->stringmax ? a->stringlen : a->stringmax)+4)<<10);
+	a64defer(b, 0x54000002, fallback);
+	a64put(b, 0xf840000eU | ((u32int)-a->heaptype&511)<<12 | 10<<5);
+	identity = (unsigned long long)a->stringtype;
+	for(half = 0; half < 4; half++)
+		a64put(b, (half == 0 ? 0xd280000fU : 0xf280000fU) | half<<21 | ((identity>>(half*16))&65535)<<5);
+	a64put(b, 0xeb0f01dfU); // cmp x14, x15
+	a64defer(b, 0x54000001, fallback);
+	a64put(b, 0xf840000eU | ((u32int)-a->heapref&511)<<12 | 10<<5);
+	a64put(b, 0xf10005dfU); // cmp x14, #1
+	a64defer(b, 0x54000001, fallback);
+	a64wordfield(b, 14, 10, a->stringlen, 4);
+	a64put(b, 0xf10001dfU); // cmp x14, #0
+	a64defer(b, 0x5400000b, fallback);
+	a64wordfield(b, 15, 10, a->stringmax, 4);
+	a64put(b, 0xeb0f01dfU); // cmp x14, x15
+	a64defer(b, 0x5400000c, fallback);
+	a64put(b, 0xeb0f017fU); // cmp x11, x15
+	a64defer(b, 0x5400000c, fallback);
+	a64put(b, 0xb100014cU | (u32int)a->stringdata<<10); // adds x12, x10, data offset.
+	a64defer(b, 0x54000002, fallback);
+	a64put(b, 0xab0b019fU); // cmn x12, x11
+	a64defer(b, 0x54000002, fallback);
+	a64put(b, 0xd280000dU); // mov x13, #0
+	scan = b->n;
+	a64put(b, 0x386d692eU); // ldrb w14, [x9, x13]
+	a64put(b, 0x710201dfU); // cmp w14, #128
+	a64defer(b, 0x54000002, fallback);
+	a64put(b, 0x910005adU); // add x13, x13, #1
+	a64put(b, 0xeb0b01bfU); // cmp x13, x11
+	a64put(b, 0x54000003U | ((scan-b->n)&0x7ffff)<<5);
+	/* No fallible operations remain after the first payload write. */
+	a64put(b, 0xeb09019fU); // cmp x12, x9
+	forward = b->n; a64put(b, 0x54000009);
+	a64put(b, 0xaa0b03edU); // mov x13, x11
+	backward = b->n;
+	a64put(b, 0xd10005adU); // sub x13, x13, #1
+	a64put(b, 0x386d692eU); // ldrb w14, [x9, x13]
+	a64put(b, 0x382d698eU); // strb w14, [x12, x13]
+	a64put(b, 0xb500000dU | ((backward-b->n)&0x7ffff)<<5);
+	jump = b->n; a64put(b, 0x14000000);
+	if(b->n > LeafMax) return 0;
+	b->code[forward] |= (b->n-forward)<<5;
+	a64put(b, 0xd280000dU); // mov x13, #0
+	loop = b->n;
+	a64put(b, 0x386d692eU); // ldrb w14, [x9, x13]
+	a64put(b, 0x382d698eU); // strb w14, [x12, x13]
+	a64put(b, 0x910005adU); // add x13, x13, #1
+	a64put(b, 0xeb0b01bfU); // cmp x13, x11
+	a64put(b, 0x54000003U | ((loop-b->n)&0x7ffff)<<5);
+	if(b->n > LeafMax) return 0;
+	b->code[jump] |= b->n-jump;
+	a64put(b, 0xb900014bU | (u32int)(a->stringlen/4)<<10); // Store the captured ASCII length.
+	a64put(b, 0xf900010aU); // str x10, [x8]
+	return 1;
+}
+
+
 /* Emit AAPCS64 leaves with x0 as REG*, no stack frame and no callee-saved clobbers. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)
@@ -1145,6 +1280,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!a64slicecopy(&b, abi)) return 0;
 	}else if(p.kind == LeafMappedCopy){
 		if(!a64mapped(&b, abi, &p)) return 0;
+	}else if(p.kind == LeafByteString){
+		if(!a64bytestring(&b, abi)) return 0;
 	}else if(p.kind == LeafOwner){
 		if(!a64owner(&b, abi, &p)) return 0;
 	}else if(p.kind == LeafCaseJump){

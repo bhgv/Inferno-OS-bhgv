@@ -29,8 +29,28 @@ struct LeafLayout {
 	int modlpc; // Native program/runtime entry offset within an import record.
 	int arrayroot, typeref; // Backing array owner and signed Type reference count offsets.
 	void *stringtype; // Exact Tstring identity required before reusing numeric format destinations.
+	void *arrayidentity; // Exact builtin Array identity required by byte-string conversion.
 };
 typedef struct LeafOp LeafOp;
+
+
+/* Require disjoint native Array fields before a conversion leaf can interpret them. */
+static int
+leafbytearraylayout(LeafLayout *a)
+{
+	int offsets[4], widths[4], i, j;
+
+	offsets[0] = a->arraylen; widths[0] = a->wordbytes;
+	offsets[1] = a->arraytype; widths[1] = 8;
+	offsets[2] = a->arrayroot; widths[2] = 8;
+	offsets[3] = a->arraydata; widths[3] = 8;
+	for(i = 0; i < 4; i++)
+		for(j = i+1; j < 4; j++)
+			if(offsets[i] < offsets[j]+widths[j] && offsets[j] < offsets[i]+widths[i])
+				return 0;
+	return 1;
+}
+
 
 /* Decoded operation parameters shared by the native leaf emitters. */
 struct LeafOp {
@@ -42,6 +62,7 @@ struct LeafOp {
 };
 
 enum {
+	LeafByteString = 123, // Convert bounded ASCII arrays into reusable unique strings.
 	LeafFormatInteger = 122, // Format integers or selected real values into reusable strings.
 	LeafArraySlice = 121, // Narrow unique views or pointer-free roots without allocating.
 	LeafModuleCall = 120, // Bytecode calls between modules with equal execution modes.
@@ -77,6 +98,7 @@ leafop(LeafOp *p, int op, int wordbytes)
 	memset(p, 0, sizeof(*p));
 	p->bytes = wordbytes;
 	switch(op){
+	case ICVTAC: p->kind = LeafByteString; break;
 	case IBEQC: case IBNEC: case IBLTC: case IBLEC: case IBGTC: case IBGEC:
 		p->kind = LeafStringBranch;
 		p->condition = op == IBEQC ? 0 : op == IBNEC ? 1 : op == IBLTC ? 2 :
