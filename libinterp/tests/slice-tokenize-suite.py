@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/list-slot-native.py',
     'libinterp/tests/indc-preflight.py',
     'libinterp/tests/mapped-cons-native.py',
     'libinterp/tests/payload-channel-native.py',
@@ -140,6 +141,7 @@ CORE = [
     'limbo/tests/case-max.py',
 ]
 JIT = [
+    'libinterp/tests/list-slot-jit.py',
     'libinterp/tests/indc-preflight-jit.py',
     'libinterp/tests/string-case-jit.py',
     'libinterp/tests/pc-tables-jit.py',

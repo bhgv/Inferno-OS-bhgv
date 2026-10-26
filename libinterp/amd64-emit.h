@@ -2517,6 +2517,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	}else if(p.kind == LeafTypeCheck){
 		/* Capture both owners before inspecting their immutable heap types. */
 		if(abi->heaptype <= 0 || abi->heaptype > 255 || abi->heaptype%8) return 0;
+		x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, 8);
+		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, 8);
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		x64ptr(&b, 1, abi->d); x64load(&b, 1, 8);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff);
@@ -2772,6 +2774,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	}else if(p.kind == LeafListLength){
 		/* Bounded Brent scans decline on cycles without publishing a partial length. */
 		if(abi->listtail < 0 || abi->listtail > 32760 || abi->listtail%8) return 0;
+		/* Validate decoded result/source slots before any list access. */
+		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, abi->wordbytes);
+		x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, 8);
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3); // r11 is the initial checkpoint.
 		x64byte(&b, 0x31); x64byte(&b, 0xc9); /* count = 0 */
@@ -2793,6 +2798,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64ptr(&b, 2, abi->d); x64store(&b, 1, abi->wordbytes);
 	}else if(p.kind == LeafHead){
 		if(abi->listdata < 0) return 0;
+		/* Validate decoded result/source slots before any list access. */
+		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, p.bytes);
+		x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, 8);
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
@@ -2821,11 +2829,13 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	}else if(p.kind == LeafCopy || p.kind == LeafHeadCopy){
 		if(p.kind == LeafHeadCopy){
 			if(abi->listdata < 0 || abi->listdata > 4095) return 0;
+			x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, 8);
 			x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 			x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
 			x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
 			x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3);
 		}
+		x64ptr(&b, 0, abi->m); x64pcspan(&b, 8, abi->wordbytes);
 		/* Capture the signed length before copying can overwrite its operand. */
 		x64ptr(&b, 0, abi->m); x64load(&b, 0, abi->wordbytes);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x79);

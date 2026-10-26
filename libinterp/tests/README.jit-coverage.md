@@ -1,5 +1,7 @@
 # 64-bit JIT opcode availability checkpoint
 
+Latest eight-command decoded-slot fixes: [README.list-slot-preflight.md](README.list-slot-preflight.md).
+
 Latest ownership preflight fixes and validation: [README.owner-preflight.md](README.owner-preflight.md).
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and

@@ -77,6 +77,8 @@ OP(movm)
 {
 	WORD n;
 
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(n))
+		error(exBounds);
 	memmove(&n, R.m, sizeof(n));
 	if(n < 0)
 		error(exBounds);
@@ -2265,6 +2267,10 @@ OP(lenl)
 	WORD result;
 	List *a, *checkpoint;
 
+	/* Neither the scan nor an empty-list result may use malformed slots. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(result) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(a))
+		error(exBounds);
 	memmove(&a, R.s, sizeof(a));
 	checkpoint = a;
 	count = 0;
@@ -2837,6 +2843,9 @@ OP(headb)
 {
 	List *l;
 
+	/* Validate the result before consulting potentially invalid list storage. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(BYTE))
+		error(exBounds);
 	l = listhead();
 	if((uintptr)l > (uintptr)-1-(offsetof(List, data)+sizeof(BYTE)))
 		error(exBounds);
@@ -2849,6 +2858,9 @@ OP(headw)
 {
 	List *l;
 
+	/* Validate the result before consulting potentially invalid list storage. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
 	l = listhead();
 	if((uintptr)l > (uintptr)-1-(offsetof(List, data)+sizeof(WORD)))
 		error(exBounds);
@@ -2861,6 +2873,9 @@ OP(headl)
 {
 	List *l;
 
+	/* Validate the result before consulting potentially invalid list storage. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(LONG))
+		error(exBounds);
 	l = listhead();
 	if((uintptr)l > (uintptr)-1-(offsetof(List, data)+sizeof(LONG)))
 		error(exBounds);
@@ -2889,6 +2904,9 @@ OP(headf)
 {
 	List *l;
 
+	/* Validate the result before consulting potentially invalid list storage. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(REAL))
+		error(exBounds);
 	l = listhead();
 	if((uintptr)l > (uintptr)-1-(offsetof(List, data)+sizeof(REAL)))
 		error(exBounds);
@@ -2904,6 +2922,8 @@ OP(headm)
 	uintptr source, offset;
 
 	l = listhead();
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(n))
+		error(exBounds);
 	memmove(&n, R.m, sizeof(n));
 	if(n < 0)
 		error(exBounds);
@@ -3126,31 +3146,38 @@ OP(nbalt)
 {
 	xecalt(0);
 }
+
+
 /* Compare runtime Type fields after checking their backward native spans.
  * [GC:] This borrows immutable Type identities and never retains either owner. */
 OP(tcmp)
 {
-    void *s;
-    void *d;
-    Type *source;
-    Type *destination;
-    uintptr distance;
+	void *s;
+	void *d;
+	Type *source;
+	Type *destination;
+	uintptr distance;
 
-    memmove(&s, R.s, sizeof(s));
-    memmove(&d, R.d, sizeof(d));
-    if(s == H){
-        return;
-    }
-    distance = sizeof(Heap) - offsetof(Heap, t);
-    if((uintptr)s <= distance || (uintptr)d <= distance || d == H){
-        error(exTcheck);
-    }
-    /* Form only the field address, not an underflowing synthetic Heap pointer. */
-    memmove(&source, (uchar*)s-distance, sizeof(source));
-    memmove(&destination, (uchar*)d-distance, sizeof(destination));
-    if(source != destination){
-        error(exTcheck);
-    }
+	/* Bound both captured owner slots before inspecting immutable Type fields. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(s) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(d)){
+		error(exTcheck);
+	}
+	memmove(&s, R.s, sizeof(s));
+	memmove(&d, R.d, sizeof(d));
+	if(s == H){
+		return;
+	}
+	distance = sizeof(Heap) - offsetof(Heap, t);
+	if((uintptr)s <= distance || (uintptr)d <= distance || d == H){
+		error(exTcheck);
+	}
+	/* Form only the field address, not an underflowing synthetic Heap pointer. */
+	memmove(&source, (uchar*)s-distance, sizeof(source));
+	memmove(&destination, (uchar*)d-distance, sizeof(destination));
+	if(source != destination){
+		error(exTcheck);
+	}
 }
 OP(eclr)
 {

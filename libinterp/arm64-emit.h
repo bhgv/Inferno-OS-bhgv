@@ -2104,6 +2104,8 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	}else if(p.kind == LeafTypeCheck){
 		/* The header displacement is private and independent of the Dis WORD. */
 		if(abi->heaptype <= 0 || abi->heaptype > 255 || abi->heaptype%8) return 0;
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, 8, -1);
+		a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, 8, -1);
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
 		a64ptr(&b, 10, abi->d); a64load(&b, 13, 10, 8);
 		a64put(&b, 0xb100059f);
@@ -2335,6 +2337,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	}else if(p.kind == LeafListLength){
 		/* Bounded Brent scans preserve all state until a valid terminal owner is reached. */
 		if(abi->listtail < 0 || abi->listtail > 32760 || abi->listtail%8 != 0) return 0;
+		/* Validate decoded result/source slots before any list access. */
+		a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, abi->wordbytes, -1);
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, 8, -1);
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
 		a64put(&b, 0xaa0c03ef); // x15 is the initial checkpoint.
 		a64put(&b, 0x5280000d);
@@ -2354,6 +2359,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64ptr(&b, 11, abi->d); a64store(&b, 13, abi->wordbytes);
 	}else if(p.kind == LeafHead){
 		if(abi->listdata < 0 || abi->listdata > 4095 || abi->listdata%8 != 0) return 0;
+		/* Validate decoded result/source slots before any list access. */
+		a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, p.bytes, -1);
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, 8, -1);
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
 		a64guard(&b, 0xb500006c);
 		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
@@ -2382,10 +2390,12 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	}else if(p.kind == LeafCopy || p.kind == LeafHeadCopy){
 		if(p.kind == LeafHeadCopy){
 			if(abi->listdata < 0 || abi->listdata > 4095) return 0;
+			a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, 8, -1);
 			a64ptr(&b, 9, abi->s); a64load(&b, 15, 9, 8);
 			a64guard(&b, 0xb500006f);
 			a64put(&b, 0xb10005ff); a64guard(&b, 0x54000061);
 		}
+		a64ptr(&b, 9, abi->m); a64pcspan(&b, 9, abi->wordbytes, -1);
 		/* Validate the owner first for headm, then capture the complete count. */
 		a64ptr(&b, 10, abi->m); a64load(&b, 12, 10, abi->wordbytes);
 		a64put(&b, (abi->wordbytes == 8 ? 0xf100019fU : 0x7100019fU));
