@@ -754,6 +754,18 @@ x64smallfield(X64Buf *b, int result, int owner, int offset, int bytes)
 }
 
 
+/* Check the reference cell and complete len/max span without clobbering either owner. */
+static void
+x64appendowner(X64Buf *b, int owner, int reference, int extent, int fallback)
+{
+	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x80 | owner);
+	x64word(b, -reference-1); // lea r8,[owner-reference-1].
+	x64byte(b, 0x49); x64byte(b, 0x81); x64byte(b, 0xf8);
+	x64word(b, -reference-extent-2);
+	x64moduleguard(b, 0x76, fallback);
+}
+
+
 /* Concatenate matching string representations within unique capacity and bounded copy size. */
 static int
 x64stringappend(X64Buf *b, LeafLayout *a)
@@ -770,14 +782,14 @@ x64stringappend(X64Buf *b, LeafLayout *a)
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	x64ptr(b, 0, a->m); x64ptr(b, 1, a->d);
 	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xc8); x64moduleguard(b, 0x74, fallback);
+	/* Validate both readable operand slots before capturing either owner. */
+	x64pcspan(b, 8, 8);
+	x64ptr(b, 2, a->s); x64pcspan(b, 10, 8);
 	x64load(b, 0, 8);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2);
 	x64ptr(b, 0, a->s); x64load(b, 0, 8);
-	/* owner+1 must be above one: this rejects both C null and language nil. */
-	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x42); x64byte(b, 1);
-	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
-	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x40); x64byte(b, 1);
-	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64appendowner(b, 2, a->heapref, a->stringdata, fallback);
+	x64appendowner(b, 0, a->heapref, a->stringdata, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0x7a); x64byte(b, -a->heapref); x64byte(b, 1); x64moduleguard(b, 0x74, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0x78); x64byte(b, -a->heapref); x64byte(b, 0); x64moduleguard(b, 0x75, fallback);
 	x64smallfield(b, 1, 2, a->stringlen, 4);

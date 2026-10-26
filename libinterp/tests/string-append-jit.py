@@ -70,25 +70,25 @@ int emit(u32int *out, int cap, int wb, int field, int value)
 
         machine.hook_add(UC_HOOK_MEM_WRITE, written)
         for wb in (4, 8):
-            output = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
-            count = library.emit(output, 64, wb, 0, 0)
-            if not 0 < count <= 64 or library.emit(None, 64, wb, 0, 0) != count:
+            output = (C.c_uint32*128)(*[0xa5a5a5a5]*128)
+            count = library.emit(output, 128, wb, 0, 0)
+            if not 0 < count <= 128 or library.emit(None, 128, wb, 0, 0) != count:
                 raise RuntimeError((arch, wb, 'append leaf unavailable'))
             code = bytes(output)[:count*4]
             for capacity in range(count):
-                guard = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                if library.emit(guard, capacity, wb, 0, 0) != 0 or list(guard) != [0xa5a5a5a5]*64:
+                guard = (C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                if library.emit(guard, capacity, wb, 0, 0) != 0 or list(guard) != [0xa5a5a5a5]*128:
                     raise RuntimeError('partial append publication')
                 checks += 1
             for field, values in ((1, (-1, 1, 2048)), (2, (-1, 1, 2048)),
                                   (3, (-1, 2048)), (4, (0, 1, 256)), (5, (0, 4, 16))):
                 for value in values:
-                    guard = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                    if library.emit(guard, 64, wb, field, value) != 0 or list(guard) != [0xa5a5a5a5]*64:
+                    guard = (C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                    if library.emit(guard, 128, wb, field, value) != 0 or list(guard) != [0xa5a5a5a5]*128:
                         raise RuntimeError((arch, field, value, 'invalid layout accepted'))
                     checks += 1
             machine.mem_write(CODE, code)
-            machine.ctl_remove_cache(CODE, CODE+256)
+            machine.ctl_remove_cache(CODE, CODE+512)
             for leftlen in (0, 1, 7, 127, 128, 255, 256):
                 for rightlen in (0, 1, 7, 128, 129, 255, 256, 257):
                     for profile in range(32):

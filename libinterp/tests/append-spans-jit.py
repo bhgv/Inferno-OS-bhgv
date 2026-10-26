@@ -6,7 +6,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import tempfile
-from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_MODE_64, UC_HOOK_MEM_WRITE
+from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_MODE_64, UC_HOOK_MEM_WRITE, UC_HOOK_MEM_READ
 from unicorn.x86_const import UC_X86_REG_RDI, UC_X86_REG_RAX, UC_X86_REG_RSP
 from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_LR
 
@@ -41,10 +41,13 @@ int emit(u32int *out, int wordbytes, int layout)
     a.wordbytes=wordbytes; a.s=8; a.d=16; a.m=24;
     a.stringlen=0; a.stringmax=4; a.stringdata=24;
     a.heapref=24; a.refbytes=8;
-    if(layout){
+    if(layout == 1){
         a.stringlen=12; a.stringdata=32;
     }
-    return leafemit(out,64,&a,IADDC);
+    if(layout == 2){
+        a.stringlen=120; a.stringdata=124; a.heapref=128;
+    }
+    return leafemit(out,128,&a,IADDC);
 }
 """.replace("HEADER", chr(34)+str(header)+chr(34)))
         binary = td/(arch+'.so')
@@ -62,6 +65,7 @@ int emit(u32int *out, int wordbytes, int layout)
         if physical != HIGH:
             machine.mem_map(physical, 0x1000)
         writes = []
+        probing = [False]
 
 
         def written(machine, access, address, size, value, context):
@@ -69,20 +73,28 @@ int emit(u32int *out, int wordbytes, int layout)
             writes.append((address, size))
 
 
+        # Rejected slots/owners must not trigger any object or reference-cell read.
+        def readprobe(machine, access, address, size, value, context):
+            if probing[0] and not (BASE <= address and address+size <= BASE+0x400) and address != CODE+0x2800:
+                raise RuntimeError((arch, 'read before preflight', hex(address), size))
+
+
         machine.hook_add(UC_HOOK_MEM_WRITE, written)
+        machine.hook_add(UC_HOOK_MEM_READ, readprobe)
         checks = 0
-        for layout in (0, 1):
-            lenoff, dataoff = (12, 32) if layout else (0, 24)
+        for layout in (0, 1, 2):
+            lenoff, dataoff = (120, 124) if layout == 2 else (12, 32) if layout else (0, 24)
+            reference = 128 if layout == 2 else 24
             for wb in (4, 8):
-                output = (C.c_uint32*64)()
+                output = (C.c_uint32*128)()
                 count = library.emit(output, wb, layout)
-                if not 0 < count <= 64:
+                if not 0 < count <= 128:
                     raise RuntimeError((arch, 'append unavailable'))
                 machine.mem_write(CODE, bytes(output)[:count*4])
-                machine.ctl_remove_cache(CODE, CODE+256)
+                machine.ctl_remove_cache(CODE, CODE+512)
                 for side in (0, 1):
                     for wide in (0, 1):
-                        for offset in ((0xf00, 0xfd0, 0xfe0) if layout else (0xf00, 0xfd0, 0xfe0, 0xfe8, 0xff0, 0xff8)):
+                        for offset in (() if os.environ.get('APPEND_PROBE_ONLY') else (0xf00, 0xf80) if layout == 2 else (0xf00, 0xfd0, 0xfe0) if layout else (0xf00, 0xfd0, 0xfe0, 0xfe8, 0xff0, 0xff8)):
                             for leftlen in (1, 7, 127, 256, 0x7fffffff):
                                 for rightlen in (1, 7, 128, 256, 257):
                                     image = bytearray(b'\xa5'*0x4000)
@@ -91,7 +103,7 @@ int emit(u32int *out, int wordbytes, int layout)
                                     right = HIGH+offset if side == 1 else BASE+0x1800
                                     for owner, length in ((left, leftlen), (right, rightlen)):
                                         target, index = (top, owner-HIGH) if owner >= HIGH else (image, owner-BASE)
-                                        put(target, index-24, 1)
+                                        put(target, index-reference, 1)
                                         put(target, index+lenoff, -length if wide else length, 4)
                                         put(target, index+4, 0x7fffffff, 4)
                                     put(image, 0x100, left); put(image, 0x200, right)
@@ -131,4 +143,44 @@ int emit(u32int *out, int wordbytes, int layout)
                                     if not valid and writes:
                                         raise RuntimeError('declined append wrote memory')
                                     checks += 1
+                invalid = [0, MASK]+[MASK-i for i in range(1, 8)]
+                probes = [(kind, pointer) for kind in ('source-slot', 'result-slot') for pointer in invalid]
+                probes += [(kind, pointer) for kind in ('left-owner', 'right-owner')
+                           for pointer in invalid+list(range(1, reference+1))]
+                selected = os.environ.get('APPEND_PROBE_KIND')
+                for kind, pointer in probes:
+                    if selected and kind != selected:
+                        continue
+                    image = bytearray(b'\xa5'*0x4000)
+                    put(image, 8, BASE+0x200)
+                    put(image, 16, BASE+0x100)
+                    put(image, 24, BASE+0x100)
+                    put(image, 0x100, BASE+0x800)
+                    put(image, 0x200, BASE+0x1800)
+                    for owner in (0x800, 0x1800):
+                        put(image, owner-reference, 1)
+                        put(image, owner+lenoff, 1, 4)
+                        put(image, owner+4, 8, 4)
+                    if kind == 'source-slot':
+                        put(image, 8, pointer)
+                    elif kind == 'result-slot':
+                        put(image, 16, pointer); put(image, 24, pointer)
+                    else:
+                        put(image, 0x100 if kind == 'left-owner' else 0x200, pointer)
+                    machine.mem_write(BASE, bytes(image))
+                    writes.clear()
+                    if arch == 'amd64':
+                        machine.reg_write(UC_X86_REG_RDI, BASE)
+                        machine.reg_write(UC_X86_REG_RSP, CODE+0x2800)
+                        machine.mem_write(CODE+0x2800, STOP.to_bytes(8, 'little'))
+                    else:
+                        machine.reg_write(UC_ARM64_REG_X0, BASE)
+                        machine.reg_write(UC_ARM64_REG_LR, STOP)
+                    probing[0] = True
+                    machine.emu_start(CODE, STOP, count=12000)
+                    probing[0] = False
+                    result = machine.reg_read(UC_X86_REG_RAX if arch == 'amd64' else UC_ARM64_REG_X0)
+                    if result != 0 or writes or bytes(machine.mem_read(BASE, 0x4000)) != image:
+                        raise RuntimeError((arch, wb, layout, kind, pointer, 'preflight publication'))
+                    checks += 1
         print('PASS', arch, 'append spans:', checks, 'address/image/write checks', flush=True)

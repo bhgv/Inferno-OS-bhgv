@@ -22,6 +22,12 @@ nonempty owners, unmatched midpoints, larger tables and legacy compiled tables
 retain C. This is partial opcode availability,
 not a general native string search. See [README.string-case-native.md](README.string-case-native.md).
 
+ADDC now validates decoded slots, backward reference-cell addresses and complete
+String headers before metadata reads on AMD64/ARM64. C mirrors slot/header
+preflight and full Heap-origin validation. Tests use the existing 128-unit
+private capacity; opcode counts are unchanged. See
+[README.append-preflight.md](README.append-preflight.md).
+
 The preceding addition is ICONSMP for pointer-free mapped payloads up to 256 bytes.
 Native code resolves a checked live Type, stages the old tail across allocation,
 copies payload bytes and publishes descriptor/owner updates. Mapped and larger

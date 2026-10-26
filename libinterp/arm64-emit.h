@@ -550,6 +550,16 @@ a64slicecopy(A64Buf *b, LeafLayout *a)
 }
 
 
+/* Bound the reference cell and String header while preserving the captured owner. */
+static void
+a64appendowner(A64Buf *b, int owner, int reference, int extent, int fallback)
+{
+	a64put(b, 0xd1000004U | (u32int)(reference+1)<<10 | owner<<5); // sub x4,owner,#reference+1.
+	a64put(b, 0xb100009fU | (u32int)(reference+extent+1)<<10); // cmn x4,#reference+extent+1.
+	a64defer(b, 0x54000002, fallback); // Reject unsigned carry before any owner read.
+}
+
+
 /* Append bounded matching representations after checking slots, ownership and capacities. */
 static int
 a64stringappend(A64Buf *b, LeafLayout *a)
@@ -566,12 +576,12 @@ a64stringappend(A64Buf *b, LeafLayout *a)
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	a64ptr(b, 9, a->m); a64ptr(b, 10, a->d);
 	a64put(b, 0xeb0a013f); a64defer(b, 0x54000001, fallback);
+	a64pcspan(b, 9, 8, fallback);
 	a64load(b, 12, 9, 8);
-	a64ptr(b, 9, a->s); a64load(b, 13, 9, 8);
-	a64defer(b, 0xb400000c, fallback);
-	a64put(b, 0xb100059f); a64defer(b, 0x54000000, fallback);
-	a64defer(b, 0xb400000d, fallback);
-	a64put(b, 0xb10005bf); a64defer(b, 0x54000000, fallback);
+	a64ptr(b, 9, a->s); a64pcspan(b, 9, 8, fallback);
+	a64load(b, 13, 9, 8);
+	a64appendowner(b, 12, a->heapref, a->stringdata, fallback);
+	a64appendowner(b, 13, a->heapref, a->stringdata, fallback);
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 12<<5 | 14);
 	a64put(b, 0xf10005df); a64defer(b, 0x54000001, fallback);
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 13<<5 | 3);

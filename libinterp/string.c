@@ -274,6 +274,16 @@ addstring(String *s1, String *s2, int append)
 
 	if(s1 == nil || s2 == nil)
 		error(exNilref);
+	/* Validate both headers and heap origins before any metadata read or shortcut. */
+	for(i = 0; i < 2; i++){
+		source = i == 0 ? s1 : s2;
+		if(source == H)
+			continue;
+		address = (uintptr)source;
+		if(address <= sizeof(Heap) ||
+		   address > (uintptr)-1-(offsetof(String, max)+sizeof(source->max)))
+			error(exHeap);
+	}
 	if((s1 != H && s1->len == (-0x7fffffff-1)) ||
 	   (s2 != H && s2->len == (-0x7fffffff-1)))
 		error(exHeap);
@@ -372,6 +382,12 @@ addstring(String *s1, String *s2, int append)
 OP(addc)
 {
 	String *left, *right, *old, *result;
+
+	/* No source read or result publication precedes complete pointer-slot checks. */
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(right) ||
+	   R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(left) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(old))
+		error(exHeap);
 
 	memmove(&left, R.m, sizeof(left));
 	memmove(&right, R.s, sizeof(right));

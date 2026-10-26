@@ -80,6 +80,78 @@ checklarge(Module *module)
 }
 
 
+/* Contain production exceptions without changing the caller's loop variables. */
+static int
+appendchecked(void)
+{
+	raised = nil;
+	if(setjmp(boundary))
+		return 0;
+	addc();
+	return 1;
+}
+
+
+/* Invalid slots and owner arithmetic must decline before reads, allocation or publication. */
+static void
+checkpreflight(Module *module)
+{
+	String *left, *right, *lhs, *rhs;
+	uintptr pointer;
+	REG saved;
+	uchar leftimage[64], rightimage[64];
+	int kind, mode, shortcut, before, checks = 0;
+	char *expected;
+
+	left = newstring(8);
+	right = newstring(8);
+	memmove(leftimage, D2H(left), sizeof(leftimage));
+	memmove(rightimage, D2H(right), sizeof(rightimage));
+	for(kind = 0; kind < 5; kind++)
+	for(mode = 0; mode < 42; mode++)
+	for(shortcut = 0; shortcut < 2; shortcut++){
+		if(getenv("APPEND_PREFLIGHT_OWNERS_ONLY") && kind < 3)
+			continue;
+		if(kind < 3 && shortcut)
+			continue;
+		pointer = mode == 0 ? 0 : mode < 9 ? (uintptr)-1-(mode-1) : mode-8;
+		/* Arbitrary low slots cannot be proved unmapped by an arithmetic guard. */
+		if(kind < 3 && mode >= 9)
+			continue;
+		if(kind >= 3 && (pointer == (uintptr)H || (pointer > sizeof(Heap) && mode >= 9)))
+			continue;
+		lhs = left; rhs = right;
+		memset(&R, 0, sizeof(R));
+		R.s = &rhs; R.m = R.d = &lhs;
+		if(kind == 0)R.s = (void*)pointer;
+		if(kind == 1)R.m = R.d = (void*)pointer;
+		if(kind == 2)R.d = (void*)pointer;
+		if(kind == 3)lhs = (String*)pointer;
+		if(kind == 4)rhs = (String*)pointer;
+		if(shortcut){
+			if(kind == 3)rhs = H;
+			if(kind == 4)lhs = H;
+		}
+		expected = kind >= 3 && pointer == 0 ? exNilref : exHeap;
+		saved = R;
+		before = calls;
+		/* The leaf knows its reference-cell offset, while C validates the entire Heap origin. */
+		if(kind < 3 || pointer == 0 || mode < 9 || pointer <= sizeof(Heap)-offsetof(Heap, ref)){
+			if(module->jit->entry[IADDC](&R) != 0 || memcmp(&R, &saved, sizeof(R)))
+				abort();
+		}
+		if(appendchecked() || raised != expected || calls != before ||
+		   memcmp(&R, &saved, sizeof(R)) ||
+		   memcmp(D2H(left), leftimage, sizeof(leftimage)) ||
+		   memcmp(D2H(right), rightimage, sizeof(rightimage)))
+			abort();
+		checks++;
+	}
+	destroy(left); destroy(right);
+	printf("PASS append preflight: %d C/RX/slot/header/heap/no-allocation cases WORD%zu\n", checks, sizeof(WORD)*8);
+}
+
+
 /* Compare complete heap images and operand slots on success and write-free fallback. */
 int
 main(void)
@@ -99,6 +171,10 @@ main(void)
 	module.nprog = 1;
 	if(!compile(&module, 1, nil) || !module.jit || !module.jit->entry[IADDC])
 		abort();
+	if(getenv("APPEND_PREFLIGHT_ONLY")){
+		checkpreflight(&module);
+		goto finished;
+	}
 	if(getenv("APPEND_LARGE_ONLY")){
 		checklarge(&module);
 		goto finished;
@@ -187,6 +263,7 @@ main(void)
 		total++;
 	}
 	checklarge(&module);
+	checkpreflight(&module);
 finished:
 	module.jit->freecode(module.jit->code, module.jit->size);
 	free(module.jit);
