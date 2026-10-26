@@ -259,7 +259,7 @@ a64case(A64Buf *b, LeafLayout *abi, LeafOp *op)
 	else a64load(b, 14, 9, 8);
 	a64ptr(b, 10, abi->d); a64pcspan(b, 10, op->condition ? IBY2WD : 4, fallback);
 	a64put(b, op->condition && IBY2WD == 8 ? 0xf9400141 : 0xb9800141);
-	a64put(b, 0xf100003fU | (op->condition ? 1 : 4095)<<10); a64pcguard(b, 0x54000069, fallback);
+	a64put(b, 0xf100003fU | (4095)<<10); a64pcguard(b, 0x54000069, fallback);
 	/* Reject incompatible nonempty cells before reading rows or the default. */
 	if(op->condition && IBY2WD < 8)
 		a64pcguard(b, 0xb4000061, fallback); /* cbz x1,continue */
@@ -274,6 +274,10 @@ a64case(A64Buf *b, LeafLayout *abi, LeafOp *op)
 			a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 		}else{
 			/* Equal owners still validate the same header constraints as stringcmp. */
+			/* Probe the same midpoint row as C without comparing character data. */
+			a64put(b, 0xd341fc24); // lsr x4,x1,#1.
+			a64put(b, 0xd2800009U | stride<<5); // mov x9,#stride.
+			a64put(b, 0x9b093c8f); // madd x15,x4,x9,x15.
 			a64put(b, 0xf94001e9); // ldr x9,[x15] captures the lower label.
 			a64put(b, 0xeb0901df); same=b->n; a64put(b, 0x54000000);
 			a64caseempty(b, abi, fallback);

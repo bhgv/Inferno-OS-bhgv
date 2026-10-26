@@ -22,6 +22,7 @@ CORE = [
     'libinterp/tests/newzero-native.py',
     'libinterp/tests/string-bytes-native.py',
     'libinterp/tests/string-bytes-spans.py',
+    'libinterp/tests/string-header-spans.py',
     'libinterp/tests/byte-string-native.py',
     'libinterp/tests/scalar-view-spans-c.py',
     'libinterp/tests/real-format-native.py',

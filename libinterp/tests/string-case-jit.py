@@ -81,6 +81,9 @@ emit(u32int *out, int cap, int wb, int operation, int large)
 
             # Permit only exact String header reads inside the two synthetic object regions.
             def stringread(uc, access, address, size, value, context):
+                if reads.get('upper') is not None:
+                    upper, width = reads['upper']
+                    require(address+size <= upper or address >= upper+width, ('unexpected upper-label read', arch, cells, address, size))
                 if reads['owner'] <= address < reads['end']:
                     require((address, size) in reads['allowed'], ('unexpected String payload read', arch, cells, address, size))
 
@@ -100,7 +103,7 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                         machine.mem_write(CODE, bytes(buffer)[:units*4])
                         machine.ctl_remove_cache(CODE, CODE+0x2000)
                         cases = [(count, value, default, alignment, None)
-                                 for count in (0, 1, 2, 5)
+                                 for count in (0, 1, 2, 5, 8, 127)
                                  for value in tuple(range(16))+(-2, -1, 31, 32, 1 << 31, 1 << 40)
                                  for default in (-1, 0, 31, 32)
                                  for alignment in (0, 1, 7)]
@@ -108,7 +111,7 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                             's-nil', 's-H', 's-wrap', 'link-nil', 'link-H', 'link-wrap',
                             'module-nil', 'module-H', 'module-wrap', 'prog-nil', 'prog-H',
                             'prog-wrap', 'table-nil', 'table-H', 'table-wrap', 'table-narrow', 'table-count4', 'table-count5', 'table-count6', 'table-count7', 'owner-source', 'owner-low', 'compiled',
-                            'count-negative', 'count-huge', 'count-upper', 'nprog-negative', 'nprog-zero',
+                            'count-negative', 'count-limit', 'count-huge', 'count-upper', 'nprog-negative', 'nprog-zero',
                             'out-nil', 'out-H', 'out-wrap')]
                         probe = os.environ.get('STRING_CASE_PROBE')
                         if probe == 'wrap':
@@ -147,13 +150,13 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                             put(memory, other-BASE+lengthoffset, 1 if mode == 6 else 0, 4)
                             put(memory, other-BASE+maxoffset, -1 if mode == 13 else 3, 4)
                             put(memory, start, count, cells)
-                            if count:
-                                put(memory, start+cells, lower, cells)
-                                put(memory, start+2*cells, 1, cells)
-                                put(memory, start+3*cells, default, cells)
+                            for row in range(count):
+                                put(memory, start+(1+3*row)*cells, lower if row == count//2 else 0, cells)
+                                put(memory, start+(2+3*row)*cells, 1, cells)
+                                put(memory, start+(3+3*row)*cells, default if row == count//2 else 32, cells)
                             put(memory, start+(1+3*count)*cells, default, cells)
                             target = default
-                            valid = 0 <= target < 32 and (count == 0 or count == 1 and cells == 8 and mode in (0, 1, 2, 7, 8, 9, 15))
+                            valid = 0 <= target < 32 and (count == 0 or count > 0 and cells == 8 and mode in (0, 1, 2, 7, 8, 9, 15))
                             if bad:
                                 kind, _, issue = bad.partition('-')
                                 poisoned = 0 if issue == 'nil' else MASK if issue == 'H' else MASK-int(issue[-1]) if cells == 8 and issue.startswith('count') else MASK-2
@@ -176,7 +179,7 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                                     put(memory, sourceptr-BASE if issue == 'source' else start+cells, MASK-2, 8 if issue == 'source' else cells)
                                     valid = False
                                 elif kind == 'count' and op != 3:
-                                    put(memory, start, -1 if issue == 'negative' else ((1 << 32)+1) if issue == 'upper' else 0x7fffffff, cells)
+                                    put(memory, start, -1 if issue == 'negative' else 4096 if issue == 'limit' else ((1 << 32)+1) if issue == 'upper' else 0x7fffffff, cells)
                                     valid = op == 2 and issue == 'huge'
                                 elif kind == 'nprog':
                                     put(memory, 0x2000+(512 if large else 24), -1 if issue == 'negative' else 0, 4); valid = False
@@ -185,6 +188,7 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                             expected = bytearray(memory)
                             if valid:
                                 put(expected, 0, BASE+0x7000+target*24)
+                            reads['upper'] = (table+(2+3*(count//2))*cells, cells) if count else None
                             reads['allowed'] = {(base+field, 4) for base in (owner, other) for field in (lengthoffset, maxoffset)}
                             machine.mem_write(BASE, bytes(memory))
                             machine.reg_write(arg, BASE)

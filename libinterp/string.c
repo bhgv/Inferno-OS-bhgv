@@ -1001,15 +1001,25 @@ String*
 stringdup(String *s)
 {
 	String *ns;
+	uintptr address;
+	uvlong bytes;
 
 	if(s == nil)
 		error(exNilref);
 	if(s == H)
 		return H;
+	address = (uintptr)s;
+	if(address <= sizeof(Heap) || address > (uintptr)-1-(offsetof(String, max)+sizeof(s->max)))
+		error(exHeap);
 	if(s->len == (-0x7fffffff-1) ||
 	   s->max < (s->len < 0 ? -s->len : s->len) || D2H(s)->ref == 0)
 		error(exHeap);
 
+	/* Validate the complete source before allocating or copying either representation. */
+	bytes = (uvlong)(s->len < 0 ? -s->len : s->len)*(s->len < 0 ? sizeof(Rune) : 1);
+	if(address > (uintptr)-1 - offsetof(String, data) ||
+	   bytes > (uintptr)-1-(address+offsetof(String, data)))
+		error(exHeap);
 	if(s->len >= 0) {
 		ns = newstring(s->len);
 		memmove(ns->Sascii, s->Sascii, s->len);
@@ -1037,6 +1047,10 @@ stringcmp(String *s1, String *s2)
 
 	if(s1 == nil || s2 == nil)
 		error(exNilref);
+	/* Both header spans precede length/capacity reads, including identities. */
+	if((s1 != H && (uintptr)s1 > (uintptr)-1-(offsetof(String, max)+sizeof(s1->max))) ||
+	   (s2 != H && (uintptr)s2 > (uintptr)-1-(offsetof(String, max)+sizeof(s2->max))))
+		error(exHeap);
 	if((s1 != H && s1->len == (-0x7fffffff-1)) ||
 	   (s2 != H && s2->len == (-0x7fffffff-1)))
 		error(exHeap);

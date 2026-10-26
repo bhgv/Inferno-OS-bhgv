@@ -148,7 +148,8 @@ main(void)
 		if(why == nil){
 			for(i = 0; i < 2; i++){
 				source = i == 0 ? left : right;
-				if(source != H && (source->len == (-0x7fffffff-1) ||
+				if(source != H && (((uintptr)source&0xffff)+offsetof(String, max)+sizeof(source->max) > 0xffff ||
+				   source->len == (-0x7fffffff-1) ||
 				   source->max < (source->len < 0 ? -source->len : source->len)))
 					why = exHeap;
 			}

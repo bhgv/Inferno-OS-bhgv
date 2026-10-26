@@ -2,8 +2,8 @@ Bounded native string case dispatch
 ==================================
 
 AMD64 and ARM64 now publish an ICASEC leaf for empty tables and an exact
-lower-label owner identity or equal empty values in a single-row table. This raises guarded opcode
-availability to 164 of 173 active commands (94.8%), with nine interpreter-only
+lower-label owner identity or equal empty values at the first binary-search
+midpoint. This retains guarded opcode availability to 164 of 173 active commands (94.8%), with nine interpreter-only
 commands: ALT, NBALT, SPAWN, LOAD, MSPAWN, EXIT, SEND, RECV and RAISE.
 It is not a general native string comparison/search implementation.
 
@@ -13,8 +13,8 @@ native pointers. Counts, defaults and selected destinations use the full cell
 width; nonzero upper count bits cannot slip through a 32-bit limit check.
 The count span is checked for its full cell width before the load. Nonempty
 cell4 tables decline before any row/default load, including at a mapping edge.
-Negative/large counts, distinct nonempty owners, multiple rows and legacy compiled
-modules decline without VM writes. C remains responsible for their comparison,
+Tables up to 4,095 rows probe the same midpoint as C. Negative/larger counts,
+distinct nonempty owners, unmatched midpoint labels and legacy compiled modules decline without VM writes. C remains responsible for their comparison,
 search or ordinary exception behavior.
 
 Pointer equality alone does not bypass String validation. Equal owners reject
@@ -49,13 +49,37 @@ Validation
 * ASan/UBSan/NDEBUG successful subsets: 1,952 checks. The full nonlocal VM
   exception matrix uses UBSan. LeakSanitizer process inspection is unavailable
   in this sandbox; AddressSanitizer checks remain enabled.
-* `python3 -O libinterp/tests/string-case-jit.py`: 17,392 AMD64/ARM64 instruction
+* `python3 -O libinterp/tests/string-case-jit.py`: 25,856 AMD64/ARM64 instruction
   cases, plus sizing/canary probes for invalid String layouts and insufficient
   capacity. Memory-read hooks reject character/header overreads; count-wrap and
   mapping-edge probes exercise preflight ordering. Compact/distant fields, full-width counts, complete data images,
-  callee registers, stack and FP state are checked independently.
+  callee registers, stack and FP state are checked independently. Multirow probes
+  use poisoned nonmidpoint owners/targets and forbid upper-label reads.
 * Shared numeric tables retain their 50,624 two-architecture instruction cases
   and the existing targeted numeric-case instruction regression.
 
 The host checkpoint includes the new native driver; --jit adds the instruction
 matrix. Physical ARM64 execution and full Inferno build/boot remain separate.
+
+C String preflight
+------------------
+
+Production stringcmp checks both complete len/max header spans before any field
+read, including equal-owner comparisons. This brings C fallback validation into
+line with the JIT. It does not prove an arbitrary pointer names mapped memory.
+Production stringdup rejects underflowing heap-owner addresses and wrapping
+headers before refcount/length access, then checks the complete ASCII or Rune
+source span before allocating the destination. Nil/H behavior stays unchanged.
+
+`python3 libinterp/tests/string-header-spans.py` exercises 764 cases across
+WORD32/64: real extreme pointers, a reduced 16-bit arithmetic model backed by
+real host storage, invalid lengths/capacities/references, exact copies and zero
+allocations on rejection. The full matrix also passes ASan/UBSan/NDEBUG.
+Replaying the previous string.c fails the header and payload probes separately.
+The reduced domain changes only guard arithmetic, not payload/heap pointers.
+
+The C comparison/branch regressions pass 313,344 span cases and 876,732
+Unicode/alignment/PC cases across both WORD models. Native AMD64 string
+branches additionally pass 1,666,236 C/RX cases. The span oracle now checks
+header wrap even for identities and empty prefixes. These checks and the new
+driver remain active under NDEBUG; no new assert is used.

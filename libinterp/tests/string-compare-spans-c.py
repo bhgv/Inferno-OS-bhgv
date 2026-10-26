@@ -30,7 +30,8 @@ parts += [function('OP('+name+')') for name in ('beqc','bnec','bltc','blec','bgt
 savedsource=source
 source=Path(os.environ.get('STRING_COMPARE_SOURCE', root/'libinterp/string.c')).read_text()
 body = function('int\nstringcmp(').replace('uintptr', 'CompareAddress')
-body = body.replace('(CompareAddress)source', '(CompareAddress)(uintptr)source')
+for owner in ('source', 's1', 's2'):
+    body = body.replace('(CompareAddress)'+owner, '(CompareAddress)(uintptr)'+owner)
 parts.insert(0, body)
 source=savedsource
 unit=(root/'libinterp/tests/string-compare-spans-c.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))

@@ -357,7 +357,7 @@ x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc6); /* rsi=value */
 	x64caseptr(b, 2, abi->d); x64pcspan(b, 10, op->condition ? IBY2WD : 4);
 	x64casefield(b, 1, 10, 0, op->condition ? IBY2WD : 4);
-	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, op->condition ? 1 : 4095); x64caseguard(b, 0x76, reject, &count);
+	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, 4095); x64caseguard(b, 0x76, reject, &count);
 	/* Narrow cells cannot hold native String pointers; reject before reading rows/default. */
 	if(op->condition && IBY2WD < 8){
 		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64caseguard(b, 0x74, reject, &count);
@@ -381,6 +381,11 @@ x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 		if(IBY2WD < 8){
 			x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 		}else{
+			/* Probe the same midpoint row as C; other comparisons retain its search. */
+			x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc8); // mov rax,rcx.
+			x64byte(b, 0x48); x64byte(b, 0xd1); x64byte(b, 0xe8); // shr rax,1.
+			x64byte(b, 0x48); x64byte(b, 0x6b); x64byte(b, 0xc0); x64byte(b, stride);
+			x64byte(b, 0x49); x64byte(b, 0x01); x64byte(b, 0xc0); // add r8,rax.
 			x64casefield(b, 0, 8, 0, 8);
 			x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xc6);
 			x64byte(b, 0x0f); x64byte(b, 0x84); same=b->n; x64word(b, 0);

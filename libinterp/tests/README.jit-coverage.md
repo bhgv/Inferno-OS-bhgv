@@ -15,11 +15,11 @@ configurations have the same opcode counts at this checkpoint.
 | RV64I | 173 | 87 | 86 |
 
 The latest addition is a guarded ICASEC path for empty string tables and exact
-lower-label owner identities or equal empty values in a one-row table. Equal
-owners retain stringcmp's signed length/capacity checks; distinct empty owners
+lower-label owner identities or equal empty values at the first binary-search
+midpoint of a table with up to 4,095 rows. Equal owners retain stringcmp's signed length/capacity checks; distinct empty owners
 require zero length and nonnegative capacity. H skips header reads. Different
-nonempty owners, larger
-tables and legacy compiled tables retain C. This is partial opcode availability,
+nonempty owners, unmatched midpoints, larger tables and legacy compiled tables
+retain C. This is partial opcode availability,
 not a general native string search. See [README.string-case-native.md](README.string-case-native.md).
 
 The preceding addition is ICONSMP for pointer-free mapped payloads up to 256 bytes.

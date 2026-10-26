@@ -162,7 +162,7 @@ main(void)
 			return 1;
 		}
 		R = saved;
-		nativevalid = valid && (count == 0 || (count == 1 && IBY2WD == 8 && query == 0));
+		nativevalid = valid && (count == 0 || (count > 0 && IBY2WD == 8 && query == count/2));
 		expected = saved;
 		if(nativevalid)expected.PC = code+target;
 		if(module.jit->entry[ICASEC](&R) != nativevalid ||
