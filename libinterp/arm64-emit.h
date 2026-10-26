@@ -2595,29 +2595,48 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
             b.code[other] |= (b.n-other)<<5;
         }
     }else if(p.kind == LeafAlu || p.kind == LeafBranch){
-		if(p.kind == LeafAlu){
-			/* No operand read may precede complete source/result span validation. */
-			a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, p.bytes, -1);
-			a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, p.bytes, -1);
-			a64ptr(&b, 10, abi->m); a64pcspan(&b, 10, p.bytes, -1);
-		}
-		a64ptr(&b, 9, abi->s); a64ptr(&b, 10, abi->m);
-		a64load(&b, 12, 9, p.bytes);
-		a64load(&b, 13, 10, p.bytes);
-		width = p.bytes == 8 ? 0x80000000U : 0;
-		if(p.kind == LeafAlu){
-			a64put(&b, arithmetic[p.alu] | width | 12<<16 | 13<<5 | 13);
-			a64ptr(&b, 11, abi->d); a64store(&b, 13, p.bytes);
-		}else{
-			a64put(&b, 0x6b00001fU | width | 13<<16 | 12<<5);
-			a64put(&b, 0x54000080U | inverse[p.condition]);
-			a64ptr(&b, 11, abi->d); a64load(&b, 12, 11, 8);
-			a64put(&b, 0xf9000000U | (u32int)(abi->pc/8)<<10 | 12);
-		}
-	}else if(p.kind == LeafJump){
-		a64ptr(&b, 11, abi->d); a64load(&b, 12, 11, 8);
-		a64put(&b, 0xf9000000U | (u32int)(abi->pc/8)<<10 | 12);
-	}else if(p.kind != LeafNop)
+        if(p.kind == LeafAlu){
+            /* No operand read may precede complete source/result span validation. */
+            a64ptr(&b, 11, abi->d);
+        a64pcspan(&b, 11, p.bytes, -1);
+            a64ptr(&b, 9, abi->s);
+        a64pcspan(&b, 9, p.bytes, -1);
+            a64ptr(&b, 10, abi->m);
+        a64pcspan(&b, 10, p.bytes, -1);
+        }
+        if(p.kind == LeafBranch){
+            a64ptr(&b, 9, abi->s);
+            a64pcspan(&b, 9, p.bytes, -1);
+            a64ptr(&b, 10, abi->m);
+            a64pcspan(&b, 10, p.bytes, -1);
+        }
+        a64ptr(&b, 9, abi->s);
+        a64ptr(&b, 10, abi->m);
+        a64load(&b, 12, 9, p.bytes);
+        a64load(&b, 13, 10, p.bytes);
+        width = p.bytes == 8 ? 0x80000000U : 0;
+        if(p.kind == LeafAlu){
+            a64put(&b, arithmetic[p.alu] | width | 12<<16 | 13<<5 | 13);
+            a64ptr(&b, 11, abi->d);
+        a64store(&b, 13, p.bytes);
+        }else{
+            a64put(&b, 0x6b00001fU | width | 13<<16 | 12<<5);
+            other = b.n;
+            a64put(&b, 0x54000000U | inverse[p.condition]);
+            a64ptr(&b, 11, abi->d);
+            a64pcspan(&b, 11, 8, -1);
+            a64load(&b, 12, 11, 8);
+            a64put(&b, 0xf9000000U | (u32int)(abi->pc/8)<<10 | 12);
+            if(p.kind == LeafBranch && other < LeafMax){
+                b.code[other] |= (b.n-other)<<5;
+            }
+        }
+    }else if(p.kind == LeafJump){
+        a64ptr(&b, 11, abi->d);
+            a64pcspan(&b, 11, 8, -1);
+            a64load(&b, 12, 11, 8);
+        a64put(&b, 0xf9000000U | (u32int)(abi->pc/8)<<10 | 12);
+    }else if(p.kind != LeafNop)
 		return 0; /* A new classifier kind must never silently become a native no-op. */
 	a64put(&b, 0x52800020); a64put(&b, 0xd65f03c0);
 	if(b.n > LeafMax || b.n > cap) return 0;

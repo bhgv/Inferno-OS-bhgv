@@ -42,10 +42,16 @@ OP(negf)
 	result = -source;
 	memmove(R.d, &result, sizeof(result));
 }
-/* Read native-width targets without imposing host pointer alignment. */
+/* REG.d borrows a native target slot; REG.s/m are ignored. No blocking or
+ * ownership transfer occurs. Invalid target spans raise exBounds before reads
+ * or PC publication. Native pointer width is independent of the VM WORD width.
+ */
 OP(jmp)
 {
-	JMP(d);
+    if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+        error(exBounds);
+    }
+    JMP(d);
 }
 
 
@@ -966,184 +972,418 @@ OP(lsrl)
     memmove(R.d, &result, sizeof(result));
 }
 /* Capture both BYTE operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(beqb)
 {
-	BYTE left, right;
+    BYTE left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left == right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left == right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both BYTE operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(bneb)
 {
-	BYTE left, right;
+    BYTE left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left != right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left != right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both BYTE operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(bltb)
 {
-	BYTE left, right;
+    BYTE left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left < right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left < right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both BYTE operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(bleb)
 {
-	BYTE left, right;
+    BYTE left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left <= right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left <= right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both BYTE operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(bgtb)
 {
-	BYTE left, right;
+    BYTE left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left > right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left > right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both BYTE operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(bgeb)
 {
-	BYTE left, right;
+    BYTE left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left >= right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left >= right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both WORD operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(beqw)
 {
-	WORD left, right;
+    WORD left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left == right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left == right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both WORD operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(bnew)
 {
-	WORD left, right;
+    WORD left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left != right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left != right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both WORD operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(bltw)
 {
-	WORD left, right;
+    WORD left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left < right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left < right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both WORD operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(blew)
 {
-	WORD left, right;
+    WORD left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left <= right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left <= right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both WORD operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(bgtw)
 {
-	WORD left, right;
+    WORD left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left > right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left > right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both WORD operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(bgew)
 {
-	WORD left, right;
+    WORD left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left >= right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left >= right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both LONG operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(beql)
 {
-	LONG left, right;
+    LONG left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left == right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left == right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both LONG operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(bnel)
 {
-	LONG left, right;
+    LONG left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left != right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left != right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both LONG operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(bltl)
 {
-	LONG left, right;
+    LONG left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left < right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left < right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both LONG operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(blel)
 {
-	LONG left, right;
+    LONG left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left <= right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left <= right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both LONG operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(bgtl)
 {
-	LONG left, right;
+    LONG left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left > right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left > right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Capture both LONG operands before conditionally reading the native target. */
+/* Borrow REG.s/m as comparison operands and REG.d as a native target slot.
+ * No blocking or ownership transfer. Bound both sources before either read;
+ * only a taken predicate validates/loads its target and replaces REG.PC.
+ * Malformed used slots raise exBounds without publishing PC or changing storage.
+ */
 OP(bgel)
 {
-	LONG left, right;
+    LONG left, right;
 
-	memmove(&left, R.s, sizeof(left));
-	memmove(&right, R.m, sizeof(right));
-	if(left >= right)
-		JMP(d);
+    if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(left) ||
+       R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(right)){
+        error(exBounds);
+    }
+    memmove(&left, R.s, sizeof(left));
+    memmove(&right, R.m, sizeof(right));
+    if(left >= right){
+        if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(R.PC)){
+            error(exBounds);
+        }
+        JMP(d);
+    }
 }
 /* Compare captured real values and read a branch target only when it is taken. */
 /* condition selects EQ/NE/LT/LE/GT/GE (0..5); REG.s/m borrow REAL input slots

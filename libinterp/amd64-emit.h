@@ -3079,33 +3079,66 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
         x64word(&b, abi->pc);
         b.bytes[patch]=b.n-patch-1;
     }else if(p.kind == LeafAlu || p.kind == LeafBranch){
-		if(p.kind == LeafAlu){
-			/* No operand read may precede complete source/result span validation. */
-			x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, p.bytes);
-			x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, p.bytes);
-			x64ptr(&b, 1, abi->m); x64pcspan(&b, 9, p.bytes);
-		}
-		x64ptr(&b, 0, abi->s); x64ptr(&b, 1, abi->m);
-		x64load(&b, 0, p.bytes);
-		x64load(&b, 1, p.bytes);
-		if(p.bytes == 8) x64byte(&b, 0x48);
-		if(p.kind == LeafAlu){
-			if(p.alu == 2){ x64byte(&b, 0x0f); x64byte(&b, 0xaf); x64byte(&b, 0xc8); }
-			else { x64byte(&b, arithmetic[p.alu]); x64byte(&b, 0xc1); }
-			x64ptr(&b, 2, abi->d); x64store(&b, 1, p.bytes);
-		}else{
-			x64byte(&b, 0x39); x64byte(&b, 0xc8);
-			x64byte(&b, inverse[p.condition]); patch = b.n; x64byte(&b, 0);
-			x64ptr(&b, 2, abi->d);
-			x64byte(&b, 0x49); x64byte(&b, 0x8b); x64byte(&b, 0x02);
-			x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0x87); x64word(&b, abi->pc);
-			b.bytes[patch] = b.n-patch-1;
-		}
-	}else if(p.kind == LeafJump){
-		x64ptr(&b, 2, abi->d);
-		x64byte(&b, 0x49); x64byte(&b, 0x8b); x64byte(&b, 0x02);
-		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0x87); x64word(&b, abi->pc);
-	}else if(p.kind != LeafNop)
+        if(p.kind == LeafAlu){
+            /* No operand read may precede complete source/result span validation. */
+            x64ptr(&b, 2, abi->d);
+        x64pcspan(&b, 10, p.bytes);
+            x64ptr(&b, 0, abi->s);
+        x64pcspan(&b, 8, p.bytes);
+            x64ptr(&b, 1, abi->m);
+        x64pcspan(&b, 9, p.bytes);
+        }
+        if(p.kind == LeafBranch){
+            x64ptr(&b, 0, abi->s);
+            x64pcspan(&b, 8, p.bytes);
+            x64ptr(&b, 1, abi->m);
+            x64pcspan(&b, 9, p.bytes);
+        }
+        x64ptr(&b, 0, abi->s);
+        x64ptr(&b, 1, abi->m);
+        x64load(&b, 0, p.bytes);
+        x64load(&b, 1, p.bytes);
+        if(p.bytes == 8){
+            x64byte(&b, 0x48);
+        }
+        if(p.kind == LeafAlu){
+            if(p.alu == 2){ x64byte(&b, 0x0f);
+        x64byte(&b, 0xaf);
+        x64byte(&b, 0xc8);
+        }
+            else { x64byte(&b, arithmetic[p.alu]);
+        x64byte(&b, 0xc1);
+        }
+            x64ptr(&b, 2, abi->d);
+        x64store(&b, 1, p.bytes);
+        }else{
+            x64byte(&b, 0x39);
+        x64byte(&b, 0xc8);
+            x64byte(&b, inverse[p.condition]);
+        patch = b.n;
+        x64byte(&b, 0);
+            x64ptr(&b, 2, abi->d);
+            x64pcspan(&b, 10, 8);
+            x64byte(&b, 0x49);
+        x64byte(&b, 0x8b);
+        x64byte(&b, 0x02);
+            x64byte(&b, 0x48);
+        x64byte(&b, 0x89);
+        x64byte(&b, 0x87);
+        x64word(&b, abi->pc);
+            b.bytes[patch] = b.n-patch-1;
+        }
+    }else if(p.kind == LeafJump){
+        x64ptr(&b, 2, abi->d);
+        x64pcspan(&b, 10, 8);
+        x64byte(&b, 0x49);
+        x64byte(&b, 0x8b);
+        x64byte(&b, 0x02);
+        x64byte(&b, 0x48);
+        x64byte(&b, 0x89);
+        x64byte(&b, 0x87);
+        x64word(&b, abi->pc);
+    }else if(p.kind != LeafNop)
 		return 0; /* A new classifier kind must never silently become a native no-op. */
 	x64byte(&b, 0xb8); x64word(&b, 1); x64byte(&b, 0xc3);
 	while(b.n%4 != 0) x64byte(&b, 0x90);

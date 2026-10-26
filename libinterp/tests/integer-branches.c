@@ -2,7 +2,7 @@
 #include "fns.h"
 #include "isa.h"
 #include "interp.h"
-#include <assert.h>
+#include <stdlib.h>
 #include <stdio.h>
 
 REG R;
@@ -16,6 +16,28 @@ int
 __lsan_is_turned_off(void)
 {
 	return 1;
+}
+
+char exBounds[] = "bounds"; /* Used decoded-slot bounds error. */
+
+
+/* condition is a once-evaluated fixture invariant; failure terminates the test.
+ * No ownership or blocking. Explicit checks remain active with NDEBUG.
+ */
+static void branchpredicate(int condition)
+{
+    if(!condition){
+        abort();
+    }
+}
+#define branchcheck(condition) branchpredicate(!!(condition))
+
+
+/* Valid old differential inputs must never raise the borrowed VM error message. */
+void error(char *message)
+{
+    (void)message;
+    abort();
 }
 
 IMPLEMENTATION
@@ -70,8 +92,8 @@ main(void)
 		R.PC=instructions;
 		if(!take) R.d=(void*)1;
 		ops[op]();
-		assert(R.PC==(take ? target : instructions));
-		assert(!memcmp(before,slots.bytes,sizeof(before)));
+		branchcheck(R.PC==(take ? target : instructions));
+		branchcheck(!memcmp(before,slots.bytes,sizeof(before)));
 		checks++;
 	}
 	for(z=0; z<8; z++){
@@ -79,7 +101,7 @@ main(void)
 		memmove(R.d,&target,sizeof(target));
 		R.PC=instructions;
 		jmp();
-		assert(R.PC==target);
+		branchcheck(R.PC==target);
 		checks++;
 	}
 	printf("PASS integer branches: %lu checks WORD%zu\n",checks,sizeof(WORD)*8);
