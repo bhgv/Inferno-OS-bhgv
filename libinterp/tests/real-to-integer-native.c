@@ -1,26 +1,69 @@
 #include "comp-amd64.c"
 #include "tests/leaf-cons-stub.h"
 #include "tests/leaf-plain-stubs.h"
+#define transfercheck(condition) transferpredicate(!!(condition)) // Keep RX/FP oracles active under NDEBUG.
+
+
+/* Check native execution and FP results even in optimized fixture builds. */
+static void
+transferpredicate(int condition)
+{
+	if(!condition)
+		abort();
+}
+
+
 /* Supply the builtin identity used by guarded numeric formatting leaves. */
 Type Tstring = {1}, Tarray = {1};
-#include <assert.h>
 #include <stdio.h>
 #include <fenv.h>
 #include <math.h>
 REG R;
+
+
 /* Supply the live collector color used by guarded owner leaves. */
 int mutator, nprop;
-char exInval[]="invalid";
+char exInval[]="invalid", exBounds[]="bounds";
+
+
 /* Native compilation uses ordinary owned allocations. */
-void *mallocz(ulong n,int clear) {void *p=malloc(n);if(p && clear)memset(p,0,n);return p;}
+void*
+mallocz(ulong n,int clear)
+{
+	void *p;
+
+	p=malloc(n);
+	if(p && clear)
+		memset(p,0,n);
+	return p;
+}
+
+
 /* Valid descriptor compilation must not raise a VM error. */
-int kprotect(int (*fn)(void*),void *arg) {return fn(arg);}
+int
+kprotect(int (*fn)(void*),void *arg)
+{
+	return fn(arg);
+}
+
+
 /* Only accepted, in-range integers reach the C comparison path. */
-void error(char *message) {(void)message;assert(0);}
+void error(char *message)
+{
+	(void)message;
+	abort();
+}
+
+
 /* Keep stack instrumentation without process-inspection leak checks. */
-int __lsan_is_turned_off(void) {return 1;}
+int
+__lsan_is_turned_off(void)
+{
+	return 1;
+}
 #define OP(name) void name(void)
 IMPLEMENTATION
+
 
 /* Independently classify exact powers through frexp rather than emitter bit encodings. */
 static int
@@ -42,6 +85,7 @@ fixedaccepted(REAL value,REAL scale,int width)
 	product=value*scale;
 	return fabs(product)<bound;
 }
+
 
 /* Compare native and C memory plus all rounding modes and sticky FP exceptions. */
 int
@@ -77,10 +121,10 @@ main(void)
 		for(j=0;j<nscale && scales[j]!=bits;j++);
 		if(j==nscale)scales[nscale++]=bits;
 	}
-	assert(nscale<=nelem(scales));
+	transfercheck(nscale<=nelem(scales));
 	code[0].op=ICVTFW;code[1].op=ICVTFL;code[2].op=ICVTFX;module.prog=code;module.nprog=3;
-	assert(compile(&module,3,nil) && module.jit->entry[ICVTFW] && module.jit->entry[ICVTFL] && module.jit->entry[ICVTFX]);
-	assert(fegetenv(&saved)==0);
+	transfercheck(compile(&module,3,nil) && module.jit->entry[ICVTFW] && module.jit->entry[ICVTFL] && module.jit->entry[ICVTFX]);
+	transfercheck(fegetenv(&saved)==0);
 	for(i=0;i<256;i++){
 		state=state*6364136223846793005ULL+1;
 		if(i==250)input.bits=0x7ff0000000000042ULL;
@@ -101,7 +145,7 @@ main(void)
 				R.d=alias==0 ? slots.bytes+80+da : alias==1 ? R.s : alias<4 ? (uchar*)R.s+(alias==2 ? 1 : -1) : slots.bytes+56+da+(alias==5);
 				memmove(slots.bytes+56+da,&scales[co],8);memmove(R.s,&input.bits,8);memmove(before,slots.bytes,sizeof(before));
 				R.PC=code;savedreg=R;
-				assert(fesetround(rounds[round])==0);feclearexcept(FE_ALL_EXCEPT);
+				transfercheck(fesetround(rounds[round])==0);feclearexcept(FE_ALL_EXCEPT);
 				if(flags)feraiseexcept(FE_DIVBYZERO);
 				if(accepted){
 					if(op==1)cvtfl();else if(op==2)cvtfx();else cvtfw();
@@ -109,16 +153,16 @@ main(void)
 					memmove(expected,slots.bytes,sizeof(expected));memmove(slots.bytes,before,sizeof(before));
 				}else expectedflags=flags ? FE_DIVBYZERO : 0;
 				feclearexcept(FE_ALL_EXCEPT);if(flags)feraiseexcept(FE_DIVBYZERO);
-				native=module.jit->entry[code[op].op](&R);assert(native==(accepted));
-				assert(!memcmp(&R,&savedreg,sizeof(R)));
-				assert(fegetround()==rounds[round] && fetestexcept(FE_ALL_EXCEPT)==expectedflags);
-				assert(!memcmp(slots.bytes,native ? expected : before,sizeof(before)));
+				native=module.jit->entry[code[op].op](&R);transfercheck(native==(accepted));
+				transfercheck(!memcmp(&R,&savedreg,sizeof(R)));
+				transfercheck(fegetround()==rounds[round] && fetestexcept(FE_ALL_EXCEPT)==expectedflags);
+				transfercheck(!memcmp(slots.bytes,native ? expected : before,sizeof(before)));
 
 				checks++;
 			}
 		}
 	}
-	assert(fesetenv(&saved)==0);
+	transfercheck(fesetenv(&saved)==0);
 	module.jit->freecode(module.jit->code,module.jit->size);free(module.jit);
 	printf("PASS native real-integer leaves: %lu rounding/FP-status/alignment/alias/fallback checks WORD%zu\n",checks,sizeof(WORD)*8);
 	return 0;

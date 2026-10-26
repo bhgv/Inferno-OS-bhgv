@@ -2711,6 +2711,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(p.alu){ x64signeddivide(&b, 8); }
 		x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
 	}else if(p.kind == LeafRealResize){
+		/* Preflight the complete result and source before loads or FP effects. */
+		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, p.bytes);
+		x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, p.input);
 		/* Native conversion preserves the host C rounding and sticky FP flags. */
 		x64ptr(&b, 0, abi->s);
 		x64byte(&b, p.input == 4 ? 0xf3 : 0xf2); x64byte(&b, 0x41); x64byte(&b, 0x0f); x64byte(&b, 0x10); x64byte(&b, 0x00);
@@ -2718,6 +2721,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64ptr(&b, 2, abi->d);
 		x64byte(&b, p.bytes == 4 ? 0xf3 : 0xf2); x64byte(&b, 0x41); x64byte(&b, 0x0f); x64byte(&b, 0x11); x64byte(&b, 0x02);
 	}else if(p.kind == LeafIntegerReal){
+		/* Preflight the complete result and source before loads or FP effects. */
+		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, p.bytes);
+		x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, p.input);
 		/* Convert the complete signed input, including rounded magnitudes above 2^53. */
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, p.input);
 		x64byte(&b, 0xf2); x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0x2a); x64byte(&b, 0xc0);
@@ -2935,6 +2941,11 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64ptr(&b, 2, abi->d);
 		x64byte(&b, 0xf2); x64byte(&b, 0x41); x64byte(&b, 0x0f); x64byte(&b, 0x11); x64byte(&b, 0x02);
 	}else if(p.kind == LeafRealInteger){
+		/* Ordinary real-to-integer casts have no scale operand. */
+		if(!p.alu){
+			x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, p.bytes);
+			x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, 8);
+		}
 		/* Guard bits before any FP effects; rejected leaves must preserve FP status.
 		 * The symmetric bounds leave room for the half-unit addition in every FP mode. */
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
@@ -2985,6 +2996,11 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64ptr(&b, 2, abi->d);
 		x64byte(&b, 0xf2); x64byte(&b, 0x41); x64byte(&b, 0x0f); x64byte(&b, 0x11); x64byte(&b, 0x02);
 	}else if(p.kind == LeafMove || p.kind == LeafAddress || p.kind == LeafNegReal){
+		/* Preflight the complete result and source before loads or FP effects. */
+		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, p.bytes);
+		if(p.kind != LeafAddress){
+			x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, p.input);
+		}
 		x64ptr(&b, 0, abi->s);
 		if(p.kind != LeafAddress) x64load(&b, 0, p.input);
 		else { x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0xc0); }

@@ -2,7 +2,6 @@
 #include "fns.h"
 #include "isa.h"
 #include "interp.h"
-#include <assert.h>
 #include <stdio.h>
 
 REG R;
@@ -13,6 +12,7 @@ REG R;
 #define F(r) (*(REAL*)R.r)
 #define SH(r) (*(SHORT*)R.r)
 
+
 /* Keep stack instrumentation while avoiding unsupported leak process inspection. */
 int
 __lsan_is_turned_off(void)
@@ -20,7 +20,29 @@ __lsan_is_turned_off(void)
 	return 1;
 }
 
+char exBounds[]="bounds";
+#define transfercheck(condition) transferpredicate(!!(condition)) // Keep every oracle active under NDEBUG.
+
+
+/* Fail fixture invariants explicitly so optimization cannot remove the oracles. */
+static void
+transferpredicate(int condition)
+{
+	if(!condition)
+		abort();
+}
+
+
+/* These matrices supply valid spans; an unexpected VM error fails the case. */
+void error(char *message)
+{
+	(void)message;
+	abort();
+}
+
+
 IMPLEMENTATION
+
 
 /* Construct independent byte oracles before any overlapping store can change input. */
 int
@@ -62,8 +84,8 @@ main(void)
 		memmove(expected+d,output,sizes[op]);
 		R.s=memory.bytes+s; R.d=memory.bytes+d; R.m=(void*)1; R.PC=&sentinel;
 		ops[op]();
-		assert(!memcmp(memory.bytes,expected,sizeof(expected)));
-		assert(R.PC==&sentinel && R.s==memory.bytes+s && R.d==memory.bytes+d && R.m==(void*)1);
+		transfercheck(!memcmp(memory.bytes,expected,sizeof(expected)));
+		transfercheck(R.PC==&sentinel && R.s==memory.bytes+s && R.d==memory.bytes+d && R.m==(void*)1);
 		checks++;
 	}
 	printf("PASS scalar transfers: %lu alignment/overlap checks WORD%zu\n",checks,sizeof(WORD)*8);

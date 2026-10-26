@@ -26,12 +26,18 @@ String	snil;			/* String known to be zero length */
 #define SR(r)	*((SREAL*)(R.r))
 
 OP(runt) {}
+
+
 /* Capture possibly unaligned real bits before evaluating and publishing the result. */
 OP(negf)
 {
 	REAL source;
 	REAL result;
 
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(REAL) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(REAL))
+		error(exBounds);
 	memmove(&source, R.s, sizeof(source));
 	result = -source;
 	memmove(R.d, &result, sizeof(result));
@@ -91,100 +97,171 @@ OP(movm)
 		memmove(R.d, R.s, n);
 	}
 }
+
+
 /* Preserve the active VM word-width address representation at any slot alignment. */
 OP(lea)
 {
 	WORD address;
 
-	address = (WORD)R.s;
+	/* The source is an address value; validate only the writable WORD slot. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
+	address = (WORD)(uintptr)R.s;
 	memmove(R.d, &address, sizeof(address));
 }
+
+
 /* Preserve overlapping scalar slots without requiring host alignment. */
 OP(movb)
 {
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(BYTE) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(BYTE))
+		error(exBounds);
 	memmove(R.d, R.s, sizeof(BYTE));
 }
+
+
 /* Preserve overlapping scalar slots without requiring host alignment. */
 OP(movw)
 {
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(WORD) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
 	memmove(R.d, R.s, sizeof(WORD));
 }
+
+
 /* Preserve overlapping scalar slots without requiring host alignment. */
 OP(movf)
 {
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(REAL) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(REAL))
+		error(exBounds);
 	memmove(R.d, R.s, sizeof(REAL));
 }
+
+
 /* Preserve overlapping scalar slots without requiring host alignment. */
 OP(movl)
 {
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(LONG) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(LONG))
+		error(exBounds);
 	memmove(R.d, R.s, sizeof(LONG));
 }
+
+
 /* Capture the BYTE source before converting into a possibly overlapping WORD slot. */
 OP(cvtbw)
 {
 	BYTE source;
 	WORD result;
 
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(WORD) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(BYTE))
+		error(exBounds);
 	memmove(&source, R.s, sizeof(source));
 	result = source;
 	memmove(R.d, &result, sizeof(result));
 }
+
+
 /* Capture the WORD source before converting into a possibly overlapping BYTE slot. */
 OP(cvtwb)
 {
 	WORD source;
 	BYTE result;
 
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(BYTE) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
 	memmove(&source, R.s, sizeof(source));
 	result = source;
 	memmove(R.d, &result, sizeof(result));
 }
+
+
 /* Capture possibly unaligned real bits before evaluating and publishing the result. */
 OP(cvtrf)
 {
 	SREAL source;
 	REAL result;
 
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(REAL) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(SREAL))
+		error(exBounds);
 	memmove(&source, R.s, sizeof(source));
 	result = source;
 	memmove(R.d, &result, sizeof(result));
 }
+
+
 /* Capture possibly unaligned real bits before evaluating and publishing the result. */
 OP(cvtfr)
 {
 	REAL source;
 	SREAL result;
 
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(SREAL) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(REAL))
+		error(exBounds);
 	memmove(&source, R.s, sizeof(source));
 	result = source;
 	memmove(R.d, &result, sizeof(result));
 }
+
+
 /* Capture the WORD source before converting into a possibly overlapping SHORT slot. */
 OP(cvtws)
 {
 	WORD source;
 	SHORT result;
 
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(SHORT) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
 	memmove(&source, R.s, sizeof(source));
 	result = source;
 	memmove(R.d, &result, sizeof(result));
 }
+
+
 /* Capture the SHORT source before converting into a possibly overlapping WORD slot. */
 OP(cvtsw)
 {
 	SHORT source;
 	WORD result;
 
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(WORD) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(SHORT))
+		error(exBounds);
 	memmove(&source, R.s, sizeof(source));
 	result = source;
 	memmove(R.d, &result, sizeof(result));
 }
+
+
 /* Capture the unaligned integer before converting with the current FP environment. */
 OP(cvtwf)
 {
 	WORD source;
 	REAL result;
 
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(REAL) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
 	memmove(&source, R.s, sizeof(source));
 	result = source;
 	memmove(R.d, &result, sizeof(result));
@@ -973,42 +1050,66 @@ OP(bgtc) { branchstring(4); }
 /* Apply the captured string greater-or-equal predicate without aligned pointer casts. */
 OP(bgec) { branchstring(5); }
 OP(iexit){ error(""); }
+
+
 /* Capture the WORD source before converting into a possibly overlapping LONG slot. */
 OP(cvtwl)
 {
 	WORD source;
 	LONG result;
 
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(LONG) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
 	memmove(&source, R.s, sizeof(source));
 	result = source;
 	memmove(R.d, &result, sizeof(result));
 }
+
+
 /* Capture the LONG source before converting into a possibly overlapping WORD slot. */
 OP(cvtlw)
 {
 	LONG source;
 	WORD result;
 
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(WORD) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(LONG))
+		error(exBounds);
 	memmove(&source, R.s, sizeof(source));
 	result = source;
 	memmove(R.d, &result, sizeof(result));
 }
+
+
 /* Capture the unaligned integer before converting with the current FP environment. */
 OP(cvtlf)
 {
 	LONG source;
 	REAL result;
 
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(REAL) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(LONG))
+		error(exBounds);
 	memmove(&source, R.s, sizeof(source));
 	result = source;
 	memmove(R.d, &result, sizeof(result));
 }
+
+
 /* Round first, then reject non-finite or out-of-range big conversions. */
 OP(cvtfl)
 {
 	REAL f;
 	LONG result;
 
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(LONG) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(REAL))
+		error(exBounds);
 	memmove(&f, R.s, sizeof(f));
 	f = f < 0 ? f - .5 : f + .5;
 	if(!(f >= -9223372036854775808.0 && f < 9223372036854775808.0))
@@ -1016,12 +1117,18 @@ OP(cvtfl)
 	result = (LONG)f;
 	memmove(R.d, &result, sizeof(result));
 }
+
+
 /* Check the active VM word width before publishing the rounded integer. */
 OP(cvtfw)
 {
 	REAL f;
 	WORD result;
 
+	/* Reject malformed slots before reading values or changing FP status. */
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(WORD) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(REAL))
+		error(exBounds);
 	memmove(&f, R.s, sizeof(f));
 	f = f < 0 ? f - .5 : f + .5;
 	if(sizeof(WORD) == 4){

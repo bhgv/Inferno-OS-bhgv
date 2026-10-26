@@ -2,7 +2,6 @@
 #include "fns.h"
 #include "isa.h"
 #include "interp.h"
-#include <assert.h>
 #include <stdio.h>
 #include <fenv.h>
 
@@ -12,6 +11,7 @@ REG R;
 #define SR(r) (*(SREAL*)R.r)
 #define W(r) (*(WORD*)R.r)
 
+
 /* Retain stack/address instrumentation without unsupported leak-process inspection. */
 int
 __lsan_is_turned_off(void)
@@ -19,7 +19,29 @@ __lsan_is_turned_off(void)
 	return 1;
 }
 
+char exBounds[]="bounds";
+#define transfercheck(condition) transferpredicate(!!(condition)) // Keep every oracle active under NDEBUG.
+
+
+/* Fail fixture invariants explicitly so optimization cannot remove the oracles. */
+static void
+transferpredicate(int condition)
+{
+	if(!condition)
+		abort();
+}
+
+
+/* These matrices supply valid spans; an unexpected VM error fails the case. */
+void error(char *message)
+{
+	(void)message;
+	abort();
+}
+
+
 IMPLEMENTATION
+
 
 /* Use volatile scalar inputs so every oracle observes the active FP environment. */
 static void
@@ -47,6 +69,7 @@ realoracle(int op, uvlong a, uvlong b, uchar *output)
 	memmove(output,&result,sizeof(result));
 }
 
+
 /* Classify NaNs without raising flags or quieting signaling payloads. */
 static int
 realnan(uchar *value, int width)
@@ -56,6 +79,7 @@ realnan(uchar *value, int width)
 	if(width==4)return (bits&0x7f800000ULL)==0x7f800000ULL && (bits&0x7fffffULL)!=0;
 	return (bits&0x7ff0000000000000ULL)==0x7ff0000000000000ULL && (bits&0xfffffffffffffULL)!=0;
 }
+
 
 /* Compare FP effects and all byte placements; NaN arithmetic payload choice is host-defined. */
 int
@@ -86,9 +110,9 @@ main(void)
 
 	memset(&module,0,sizeof(module));memset(code,0,sizeof(code));
 	for(k=0;k<8;k++)code[k].op=ids[k];
-	module.prog=code;module.nprog=8;assert(compile(&module,8,nil));
+	module.prog=code;module.nprog=8;transfercheck(compile(&module,8,nil));
 #endif
-	assert(fegetenv(&saved)==0);
+	transfercheck(fegetenv(&saved)==0);
 	for(op=0;op<nelem(ops);op++){
 		insize=op==5 ? 4 : op==7 ? sizeof(WORD) : 8;
 		outsize=op==6 ? 4 : 8;
@@ -98,7 +122,7 @@ main(void)
 		for(i=0;i<nelem(values);i++)
 		for(j=0;j<(middle ? nelem(values) : 1);j++){
 			a=op==5 ? singles[i] : values[i];b=values[j];
-			assert(fesetround(modes[mode])==0);
+			transfercheck(fesetround(modes[mode])==0);
 			feclearexcept(FE_ALL_EXCEPT);feraiseexcept(seed ? FE_ALL_EXCEPT : FE_DIVBYZERO);
 			reference(op,a,b,wanted);expectedflags=fetestexcept(FE_ALL_EXCEPT);
 			nan=realnan(wanted,outsize);
@@ -111,29 +135,29 @@ main(void)
 				R.s=memory.bytes+s;R.m=middle ? memory.bytes+m : (void*)1;R.d=memory.bytes+d;R.PC=&sentinel;
 				feclearexcept(FE_ALL_EXCEPT);feraiseexcept(seed ? FE_ALL_EXCEPT : FE_DIVBYZERO);
 #ifdef NATIVE_REAL_ARITH
-				assert(module.jit->entry[ids[op]](&R)==1);
-				if(nan){assert(realnan(memory.bytes+d,outsize));memmove(expected+d,memory.bytes+d,outsize);}
-				assert(!memcmp(memory.bytes,expected,sizeof(expected)));
-				assert(fetestexcept(FE_ALL_EXCEPT)==expectedflags && fegetround()==modes[mode]);
-				assert(R.PC==&sentinel && R.s==memory.bytes+s && R.d==memory.bytes+d);
+				transfercheck(module.jit->entry[ids[op]](&R)==1);
+				if(nan){transfercheck(realnan(memory.bytes+d,outsize));memmove(expected+d,memory.bytes+d,outsize);}
+				transfercheck(!memcmp(memory.bytes,expected,sizeof(expected)));
+				transfercheck(fetestexcept(FE_ALL_EXCEPT)==expectedflags && fegetround()==modes[mode]);
+				transfercheck(R.PC==&sentinel && R.s==memory.bytes+s && R.d==memory.bytes+d);
 				memmove(memory.bytes,initial,sizeof(initial));
 				feclearexcept(FE_ALL_EXCEPT);feraiseexcept(seed ? FE_ALL_EXCEPT : FE_DIVBYZERO);
 #endif
 				ops[op]();
-				if(nan){assert(realnan(memory.bytes+d,outsize));memmove(expected+d,memory.bytes+d,outsize);}
+				if(nan){transfercheck(realnan(memory.bytes+d,outsize));memmove(expected+d,memory.bytes+d,outsize);}
 				if(memcmp(memory.bytes,expected,sizeof(expected))){
 					uvlong actual=0,oracle=0;
 					memmove(&actual,memory.bytes+d,outsize);memmove(&oracle,wanted,outsize);
 					printf("MISMATCH op=%d i=%d j=%d mode=%d seed=%d s=%d m=%d d=%d got=%llx wanted=%llx\n",op,i,j,mode,seed,s,m,d,(unsigned long long)actual,(unsigned long long)oracle);fflush(stdout);
 				}
-				assert(!memcmp(memory.bytes,expected,sizeof(expected)));
-				assert(fetestexcept(FE_ALL_EXCEPT)==expectedflags && fegetround()==modes[mode]);
-				assert(R.PC==&sentinel && R.s==memory.bytes+s && R.d==memory.bytes+d && R.m==(middle ? memory.bytes+m : (void*)1));
+				transfercheck(!memcmp(memory.bytes,expected,sizeof(expected)));
+				transfercheck(fetestexcept(FE_ALL_EXCEPT)==expectedflags && fegetround()==modes[mode]);
+				transfercheck(R.PC==&sentinel && R.s==memory.bytes+s && R.d==memory.bytes+d && R.m==(middle ? memory.bytes+m : (void*)1));
 				checks++;
 			}
 		}
 	}
-	assert(fesetenv(&saved)==0);
+	transfercheck(fesetenv(&saved)==0);
 #ifdef NATIVE_REAL_ARITH
 	dropmodule(&module);
 #endif

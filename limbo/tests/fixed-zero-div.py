@@ -34,7 +34,9 @@ unit=r'''
 #include <stdlib.h>
 #include <setjmp.h>
 #include "isa.h"
-#define nil NULL
+#define nil NULL // Native null identity.
+#define H ((void*)-1) // VM nil-owner sentinel.
+typedef uintptr_t uintptr;
 typedef int64_t Long;typedef int64_t vlong;typedef uint64_t uvlong;
 typedef int32_t WORD;typedef uint32_t UWORD;
 typedef struct Src {int start;} Src;
@@ -45,7 +47,7 @@ static Type inttype={1,{0}},*tint=&inttype;
 static int compiler_errors,stores,nextconstant;
 static Node constants[8];static Inst issued;
 static jmp_buf boundary;static char *raised;
-static char exZdiv[]="zero";
+static char exZdiv[]="zero", exBounds[]="bounds";
 static struct {void *s,*m,*d;} R;
 enum {STemp=20,DTemp=28};
 /* Observe real selector diagnostics without terminating fixture setup. */

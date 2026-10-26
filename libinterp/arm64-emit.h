@@ -2279,6 +2279,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(p.alu) a64put(&b, 0x9acf0d8c);
 		a64ptr(&b, 11, abi->d); a64store(&b, 12, abi->wordbytes);
 	}else if(p.kind == LeafRealResize){
+		/* Preflight the complete result and source before loads or FP effects. */
+		a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, p.bytes, -1);
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, p.input, -1);
 		/* FPCR/FPSR supply the same conversion environment as native C. */
 		a64ptr(&b, 9, abi->s);
 		a64put(&b, p.input == 4 ? 0xbd400120 : 0xfd400120);
@@ -2286,6 +2289,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64ptr(&b, 11, abi->d);
 		a64put(&b, p.bytes == 4 ? 0xbd000160 : 0xfd000160);
 	}else if(p.kind == LeafIntegerReal){
+		/* Preflight the complete result and source before loads or FP effects. */
+		a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, p.bytes, -1);
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, p.input, -1);
 		/* SCVTF rounds every signed input with the active C FP environment. */
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, p.input);
 		if(p.input == 4)a64put(&b, 0x93407d8c);
@@ -2481,6 +2487,11 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		b.code[done] |= (b.n-done)<<5;
 		a64ptr(&b, 11, abi->d); a64put(&b, 0xfd000160);
 	}else if(p.kind == LeafRealInteger){
+		/* Ordinary real-to-integer casts have no scale operand. */
+		if(!p.alu){
+			a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, p.bytes, -1);
+			a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, 8, -1);
+		}
 		/* Reject unsupported bits without FP exceptions or destination writes. */
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
 		if(p.alu){
@@ -2522,6 +2533,11 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			p.alu == 3 ? 0x1e611800 : 0x1e610800);
 		a64ptr(&b, 11, abi->d); a64put(&b, 0xfd000160); /* str d0, [x11] */
 	}else if(p.kind == LeafMove || p.kind == LeafAddress || p.kind == LeafNegReal){
+		/* Preflight the complete result and source before loads or FP effects. */
+		a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, p.bytes, -1);
+		if(p.kind != LeafAddress){
+			a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, p.input, -1);
+		}
 		a64ptr(&b, 9, abi->s);
 		if(p.kind != LeafAddress) a64load(&b, 12, 9, p.input);
 		else a64put(&b, 0xaa0903ec); /* mov x12, x9 */

@@ -16,8 +16,8 @@ for token in re.finditer(r'[{}]',source[brace:]):
     if depth==0:
         fixedbody=source[fixed:brace+token.end()];break
 unit=r'''
-#include <assert.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -27,21 +27,51 @@ typedef int32_t WORD;
 #else
 typedef int64_t WORD;
 #endif
+typedef uintptr_t uintptr;
+#define nil 0 // Native null identity.
+#define H ((void*)-1) // VM nil-owner sentinel.
 typedef int64_t LONG;
 typedef double REAL;
-static struct {void *s,*m,*d;} R;
+
+static struct {
+    void *s; // Borrowed source slot.
+    void *m; // Borrowed scale slot for fixed conversions.
+    void *d; // Borrowed output slot.
+} R;
 static jmp_buf boundary;
 static int failed,checks;
+
+
 /* Stack/address checks remain active where leak-process inspection is unavailable. */
-int __lsan_is_turned_off(void) {return 1;}
-static char exInval[]="invalid";
+int __lsan_is_turned_off(void)
+{
+    return 1;
+}
+static char exInval[]="invalid", exBounds[]="bounds";
+
+
+/* Keep every cast/error oracle active in optimized native fixture builds. */
+static void castcheck(int condition)
+{
+    if(!condition)
+        abort();
+}
+
+
 /* Retain the actual destination bytes when a VM conversion fails. */
-static void error(char *text) {assert(text==exInval);failed=1;longjmp(boundary,1);}
+static void error(char *text)
+{
+    castcheck(text==exInval);
+    failed=1;
+    longjmp(boundary,1);
+}
 #define OP(n) static void n(void)
 #define F(r) (*(REAL*)R.r)
 #define W(r) (*(WORD*)R.r)
 #define V(r) (*(LONG*)R.r)
 BODY
+
+
 /* Compare mathematical truncation of the rounded double against exact word bounds. */
 static void check(double input,int alias,int big,int alignment,double scale)
 {
@@ -65,13 +95,15 @@ static void check(double input,int alias,int big,int alignment,double scale)
     R.d=output;failed=0;
     if(setjmp(boundary)==0){if(big==1)cvtfl();else if(big==2)cvtfx();else cvtfw();}
     if(valid){
-        assert(!failed);
+        castcheck(!failed);
         if(big==1){large=(LONG)integer;memcpy(before+((char*)output-(char*)storage.bytes),&large,sizeof(large));}
         else{word=(WORD)integer;memcpy(before+((char*)output-(char*)storage.bytes),&word,sizeof(word));}
-    }else assert(failed);
-    assert(!memcmp(before,storage.bytes,sizeof(before)));
+    }else castcheck(failed);
+    castcheck(!memcmp(before,storage.bytes,sizeof(before)));
     checks++;
 }
+
+
 /* Fixed conversions also capture independent finite, zero and non-finite scales. */
 static void checkall(double input,int alias,int big,int alignment)
 {
@@ -80,6 +112,8 @@ static void checkall(double input,int alias,int big,int alignment)
     for(i=0;i<(big==2 ? sizeof(scales)/sizeof(scales[0]) : 1);i++)
         check(input,alias,big,alignment,scales[i]);
 }
+
+
 /* Exercise ties, width boundaries, non-finite values and arbitrary bit patterns. */
 int main(void)
 {
