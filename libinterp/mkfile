@@ -35,6 +35,7 @@ OFILES=\
 	string.$O\
 
 HFILES=\
+	dec-addr.h\
 	leaf64-ops.h\
 	amd64-emit.h\
 	arm64-emit.h\

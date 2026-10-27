@@ -5115,9 +5115,13 @@ xec(Prog *p)
 		if(R.M->m->cstep != nil && R.M->m->cstep())
 			continue;
 		j = R.M->m->jit;
-		dec[R.PC->add]();
-		op = R.PC->op;
-		R.PC++;
+		/* Decoder snapshots and byte fetches also support unaligned Inst images. */
+		if(R.PC == nil || R.PC == H ||
+		   (uintptr)R.PC > (uintptr)-1-sizeof(Inst))
+			error(exBounds);
+		dec[((uchar*)R.PC)[O(Inst, add)]]();
+		op = ((uchar*)R.PC)[O(Inst, op)];
+		R.PC = (Inst*)((uchar*)R.PC+sizeof(Inst));
 		if(j != nil && j->entry[op] != nil){
 			/* Keep the direct hot path; complete entries remain callable independently. */
 			if(j->enter != nil)

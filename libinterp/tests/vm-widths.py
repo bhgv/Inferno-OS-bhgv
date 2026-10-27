@@ -25,13 +25,16 @@ limbo=limbo.replace('#include "limbo.h"','').replace('canontod(', 'compiler_cano
 big=re.search(r'\*\(LONG\*\)si = (.*);',load).group(1)
 macro=next(line for line in (root/'libinterp/dec.c').read_text().splitlines() if line.startswith('#define DIND'))
 # The generator must emit the same pointer expression as the generated file.
-assert macro.replace('\\','\\\\').replace('"','\\"') in (root/'libinterp/decgen.c').read_text()
+if macro.replace('\\','\\\\').replace('"','\\"') not in (root/'libinterp/decgen.c').read_text():
+    raise RuntimeError('decoder generator does not emit the current indirect-address macro')
 patch=extract(load,'brpatch','int')
+address=(root/'libinterp/dec-addr.h').read_text()
+helpers='\n'.join(extract(address,name,result) for name,result in [('decaddress','DecInline uchar*'),('decindirect','DecInline uchar*')]).replace('DecInline','static')
 unit=r'''
-#include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "isa.h"
 #ifdef LONG32
 #define ulong uint32_t
@@ -40,21 +43,57 @@ unit=r'''
 #endif
 #ifdef WORD32
 #define WORD int32_t
+#define UWORD uint32_t
 #else
 #define WORD int64_t
+#define UWORD uint64_t
 #endif
 typedef int64_t LONG;
 typedef uint64_t uvlong;
 typedef unsigned char uchar;
+typedef uintptr_t uintptr;
+typedef uint16_t ushort;
+#define nil NULL // Portable null in the borrowed address helpers.
+#define H ((void*)(uintptr)-1) // Native VM nil sentinel.
+static char exBounds[]="bounds", exNilref[]="nil";
+
+
+/* Retain complete width checks even when the host build defines NDEBUG. */
+static void
+check(int condition)
+{
+    if(!condition)abort();
+}
+
+
+
+/* The valid-width probe must never enter the error boundary. */
+static void error(char *message)
+{
+    (void)message;
+    abort();
+}
 ''' + vm + '\n' + limbo + r'''
 typedef struct Inst Inst;
 typedef union { WORD imm,ind; Inst *ins; struct { uint16_t f,s; } i; } Adr;
 struct Inst { int op; Adr s,d; };
 typedef struct { Inst *prog; int nprog; } Module;
 static struct { uchar *FP; Inst *PC; } R;
-''' + macro + '\n' + patch + r'''
-static LONG join(WORD hi, WORD lo) { return BIG_EXPRESSION; }
-int main(void) {
+''' + helpers + '\n' + macro + '\n' + patch + r'''
+
+
+/* Assemble canonical halves with the exact production loader expression. */
+static LONG
+join(WORD hi, WORD lo)
+{
+    return BIG_EXPRESSION;
+}
+
+
+/* Check scalar widths without narrowing native pointer cells. */
+int
+main(void)
+{
     static const uint64_t bits[]={0,0x8000000000000000ULL,0x3ff0000000000000ULL,
         0x3ff8000000000000ULL,0xbff8000000000000ULL,1,0x0010000000000000ULL,
         0x7fefffffffffffffULL,0x7ff0000000000000ULL,0xfff0000000000000ULL,
@@ -65,28 +104,29 @@ int main(void) {
     unsigned int i,j;
     union { void *aligned; uchar raw[32]; } area;
     uchar target[32];
-    Inst instructions[2]={{0}};
+    Inst instructions[2]={{0}}, pc;
     Module m={instructions,2};
     for(i=0;i<sizeof(bits)/sizeof(bits[0]);i++) {
         memcpy(&input,&bits[i],8);
         dtocanon(input,words);
-        assert(words[0]==(uint32_t)(bits[i]>>32) && words[1]==(uint32_t)bits[i]);
-        decoded=vm_canontod(words); memcpy(&result,&decoded,8); assert(result==bits[i]);
-        decoded=compiler_canontod(words); memcpy(&result,&decoded,8); assert(result==bits[i]);
-        dtocanon(decoded,again); assert(again[0]==words[0] && again[1]==words[1]);
+        check(words[0]==(uint32_t)(bits[i]>>32) && words[1]==(uint32_t)bits[i]);
+        decoded=vm_canontod(words); memcpy(&result,&decoded,8); check(result==bits[i]);
+        decoded=compiler_canontod(words); memcpy(&result,&decoded,8); check(result==bits[i]);
+        dtocanon(decoded,again); check(again[0]==words[0] && again[1]==words[1]);
     }
     for(i=0;i<sizeof(bits)/sizeof(bits[0]);i++)
         for(j=0;j<sizeof(bits)/sizeof(bits[0]);j++) {
             uint32_t hi=bits[i],lo=bits[j];
-            assert((uint64_t)join((WORD)(int32_t)hi,(WORD)(int32_t)lo)==((uint64_t)hi<<32|lo));
+            check((uint64_t)join((WORD)(int32_t)hi,(WORD)(int32_t)lo)==((uint64_t)hi<<32|lo));
         }
     *(uchar**)area.raw=target;
     R.FP=area.raw; R.PC=instructions;
     instructions[0].s.i.f=0; instructions[0].s.i.s=7;
-    assert(DIND(FP,s)==target+7); /* also with a 32-bit ulong and 64-bit pointers */
+    pc=instructions[0];
+    check(DIND(FP,s)==target+7); /* also with a 32-bit ulong and 64-bit pointers */
     instructions[0].op=IJMP; instructions[0].d.imm=1;
-    assert(brpatch(&instructions[0],&m)==1 && instructions[0].d.ins==instructions+1);
-    instructions[0].d.imm=2; assert(brpatch(&instructions[0],&m)==0);
+    check(brpatch(&instructions[0],&m)==1 && instructions[0].d.ins==instructions+1);
+    instructions[0].d.imm=2; check(brpatch(&instructions[0],&m)==0);
     return 0;
 }
 '''.replace('BIG_EXPRESSION',big)

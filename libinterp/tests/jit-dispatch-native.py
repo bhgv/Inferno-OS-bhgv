@@ -11,7 +11,7 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]  # Owning repository.
-SOURCE = (ROOT/'libinterp/xec.c').read_text()  # Production decoded execution and handlers.
+SOURCE = Path(os.environ.get('BRIDGE_XEC_SOURCE',ROOT/'libinterp/xec.c')).read_text()  # Production decoded execution and handlers.
 if platform.machine().lower() not in ('amd64','x86_64'):
     print('SKIP native tail-dispatch: requires AMD64')
     sys.exit(0)

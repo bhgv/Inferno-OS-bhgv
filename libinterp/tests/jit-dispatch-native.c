@@ -452,7 +452,9 @@ bridgeintegration(void)
 	Prog program = {0};
 	Jit *j;
 	WORD left = 17, right = -5, output = 0;
-	int i, count, before;
+	uchar image[sizeof(Inst)+8]; // One instruction at every native byte alignment.
+	Inst imageinst = {0};
+	int i, count, before, shift;
 	unsigned long checks = 0;
 
 	count = 0;
@@ -492,7 +494,30 @@ bridgeintegration(void)
 	xec(&program);
 	mappedcheck(output == 12 && bridgeentered == 1 && bridgedecoded == 1 && program.R.IC == 0 && program.R.PC == &instructions[i+1]);
 	checks++;
+	imageinst.op = IADDW;
+	for(shift = 0; shift < 8; shift++){
+		memmove(image+shift, &imageinst, sizeof(imageinst));
+		module.prog = (Inst*)(image+shift);
+		module.nprog = 1;
+		program.R.PC = module.prog;
+		bridgeentered = bridgedecoded = 0;
+		output = 0;
+		xec(&program);
+		mappedcheck(output == 12 && bridgeentered == 1 && bridgedecoded == 1);
+		mappedcheck(program.R.PC == (Inst*)(image+shift+sizeof(Inst)) && program.R.IC == 0);
+		checks++;
+	}
+	module.prog = instructions;
+	module.nprog = count;
 	if(!getenv("BRIDGE_NO_ERRORS")){
+		for(shift = 0; shift <= sizeof(Inst); shift++){
+			program.R.PC = shift == 0 ? nil : (Inst*)((uintptr)0-(uintptr)shift);
+			bridgeentered = bridgedecoded = 0;
+			raised = nil;
+			if(setjmp(boundary) == 0){ xec(&program); mappedcheck(0); }
+			mappedcheck(raised == exBounds && bridgeentered == 0 && bridgedecoded == 0);
+			checks++;
+		}
 		optab[IDIVW] = divw;
 		right = 0; output = 123;
 		raised = nil;

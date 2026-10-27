@@ -47,10 +47,22 @@ numericcondition(int condition)
     source=Path(os.environ.get('NUMERIC_XEC_SOURCE',ROOT/'libinterp/xec.c')).read_text()
     for name in ('movw','addw','subw','mulw','andw','orw','xorw'):
         fixture+='\n\n'+function(source,'OP('+name+')')
-    fixture += (ROOT/'libinterp/tests/dis-numeric-literals.c').read_text()
+    body=(ROOT/'libinterp/tests/dis-numeric-literals.c').read_text()
+    if os.environ.get('DECODE_TEST_BODY'):
+        decoder=Path(os.environ.get('DECODE_SOURCE',ROOT/'libinterp/dec.c')).read_text()
+        decoder=re.sub(r'\bD([0-9A-F]{2})\b', r'ParentDecode\1', decoder)
+        decoder=re.sub(r'^#include "(?:lib9|isa|interp)\.h"\n', '', decoder, flags=re.M)
+        fixture += '\n'+decoder
+        fixture=fixture.replace('void error(char *s) {(void)s;nexterror();}', 'static char *decodelast; // Error identity observed at the real unwind boundary.\nvoid error(char *s) {decodelast=s;nexterror();}')
+        body=body.replace('\nmain(void)', '\nnumericliterals(void)',1)
+        body += Path(os.environ['DECODE_TEST_BODY']).read_text()
+    fixture += body
     with tempfile.TemporaryDirectory(prefix='dis-numeric-literals-') as directory:
         target=Path(directory)/'fixture.c';target.write_text(fixture)
-        for width in ('4','8'):
+        widths=os.environ.get('NUMERIC_WORD_BYTES','4 8').split()
+        if not widths or any(width not in ('4','8') for width in widths):
+            raise ValueError('NUMERIC_WORD_BYTES must select 4 and/or 8')
+        for width in widths:
             env=dict(os.environ,DIS_LOAD_FIXTURE=str(target),DIS_WORD_BYTES=width)
             env.setdefault('CFLAGS','-O1 -g -DNDEBUG -fsanitize=undefined -fno-sanitize-recover=all')
             subprocess.run([sys.executable,str(ROOT/'libinterp/tests/dis-loader.py')],env=env,check=True)

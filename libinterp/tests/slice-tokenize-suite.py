@@ -68,6 +68,7 @@ CORE = [
     'libinterp/tests/string-slice-native.py',
     'libinterp/tests/dis-loader.py',
     'libinterp/tests/dis-numeric-literals.py',
+    'libinterp/tests/decoded-addresses.py',
     'libinterp/tests/type-retains.py',
     'libinterp/tests/string-append-native.py',
     'libinterp/tests/append-span-c.py',

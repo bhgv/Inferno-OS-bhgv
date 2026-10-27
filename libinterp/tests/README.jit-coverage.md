@@ -2,6 +2,8 @@
 
 Complete decoded JIT+C support now covers all 173 active commands on AMD64/ARM64. Native fast availability remains 166/173; seven complex handlers use C through complete tail entries. See [README.complete-dispatch.md](README.complete-dispatch.md) and the [per-command table](README.jit-readiness.md).
 
+Latest native-safe instruction snapshots, indirect pointers and decoder regeneration: [README.decoded-addresses.md](README.decoded-addresses.md).
+
 Latest canonical signed-word loading and complete AMD64/ARM64 cache validation: [README.dis-numeric-cache.md](README.dis-numeric-cache.md).
 
 Native Linux build tools and concrete remaining compiler/frame/pointer ABI blockers: [README.native-bootstrap.md](../../utils/tests/README.native-bootstrap.md). These opcode counts do not establish a bootable 64-bit VM.

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Bootstrap a native mk without evaluating target mk syntax as shell code.
+# Bootstrap native build tools without evaluating target mk syntax as shell code.
 set -eu
 
 ROOT=${INFERNO_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}
@@ -103,12 +103,15 @@ done
     '-DROOT="'"$ROOT"'"' \
     "$ROOT/utils/iyacc/yacc.c" "$builddir/libbio.a" "$builddir/lib9.a" \
     $LDFLAGS -o "$builddir/iyacc.native"
+# Generate VM decoder sources with the same native formatter and declarations.
+"$CC" $CFLAGS -I"$headers" -I"$ROOT/include" -I"$ROOT/utils/include" \
+    "$ROOT/libinterp/decgen.c" "$builddir/lib9.a" $LDFLAGS -o "$builddir/decgen.native"
 mkdir -p "$bindir"
 # Rename complete binaries so compilation/link failures preserve previous tools.
-for tool in mk iyacc; do
+for tool in mk iyacc decgen; do
     cp "$builddir/$tool.native" "$bindir/$tool.new.$$"
     mv "$bindir/$tool.new.$$" "$bindir/$tool"
 done
 cleanup
 trap - EXIT HUP INT TERM
-printf 'native tools installed: %s (mk, iyacc; %s/%s)\n' "$bindir" "$SYSTARG" "$hostarch"
+printf 'native tools installed: %s (mk, iyacc, decgen; %s/%s)\n' "$bindir" "$SYSTARG" "$hostarch"

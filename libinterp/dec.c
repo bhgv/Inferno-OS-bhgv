@@ -3,1809 +3,3348 @@
 #include "lib9.h"
 #include "isa.h"
 #include "interp.h"
+#include "dec-addr.h"
 
-#define DIND(reg, xxx) (*(uchar**)(R.reg+R.PC->xxx.i.f)+R.PC->xxx.i.s)
+#define DIND(reg, xxx) decindirect(R.reg, pc.xxx.i.f, pc.xxx.i.s) // Read native pointer cells without alignment assumptions.
+
+
+/* Decode addressing byte 0x00 from a stable instruction image. */
 static void
-D00(void)
+DisDecode00(void)
 {
-	R.s = R.MP+R.PC->s.ind;
-	R.d = R.MP+R.PC->d.ind;
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = decaddress(R.MP, pc.d.ind);
 	R.m = R.d;
-}
-static void
-D01(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.d;
-}
-static void
-D02(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.d;
-}
-static void
-D03(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-}
-static void
-D04(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = DIND(MP, d);
-	R.m = R.d;
-}
-static void
-D05(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = DIND(FP, d);
-	R.m = R.d;
-}
-static void
-D06(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-}
-static void
-D07(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-}
-static void
-D08(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.d;
-}
-static void
-D09(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.d;
-}
-static void
-D0A(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.d;
-}
-static void
-D0B(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-}
-static void
-D0C(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = DIND(MP, d);
-	R.m = R.d;
-}
-static void
-D0D(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = DIND(FP, d);
-	R.m = R.d;
-}
-static void
-D0E(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-}
-static void
-D0F(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-}
-static void
-D10(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.d;
-}
-static void
-D11(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.d;
-}
-static void
-D12(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.d;
-}
-static void
-D13(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-}
-static void
-D14(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = DIND(MP, d);
-	R.m = R.d;
-}
-static void
-D15(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = DIND(FP, d);
-	R.m = R.d;
-}
-static void
-D16(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-}
-static void
-D17(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-}
-static void
-D18(void)
-{
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.d;
-}
-static void
-D19(void)
-{
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.d;
-}
-static void
-D1A(void)
-{
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.d;
-}
-static void
-D1B(void)
-{
-}
-static void
-D1C(void)
-{
-	R.d = DIND(MP, d);
-	R.m = R.d;
-}
-static void
-D1D(void)
-{
-	R.d = DIND(FP, d);
-	R.m = R.d;
-}
-static void
-D1E(void)
-{
-}
-static void
-D1F(void)
-{
-}
-static void
-D20(void)
-{
-	R.s = DIND(MP, s);
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.d;
-}
-static void
-D21(void)
-{
-	R.s = DIND(MP, s);
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.d;
-}
-static void
-D22(void)
-{
-	R.s = DIND(MP, s);
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.d;
-}
-static void
-D23(void)
-{
-	R.s = DIND(MP, s);
-}
-static void
-D24(void)
-{
-	R.s = DIND(MP, s);
-	R.d = DIND(MP, d);
-	R.m = R.d;
-}
-static void
-D25(void)
-{
-	R.s = DIND(MP, s);
-	R.d = DIND(FP, d);
-	R.m = R.d;
-}
-static void
-D26(void)
-{
-	R.s = DIND(MP, s);
-}
-static void
-D27(void)
-{
-	R.s = DIND(MP, s);
-}
-static void
-D28(void)
-{
-	R.s = DIND(FP, s);
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.d;
-}
-static void
-D29(void)
-{
-	R.s = DIND(FP, s);
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.d;
-}
-static void
-D2A(void)
-{
-	R.s = DIND(FP, s);
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.d;
-}
-static void
-D2B(void)
-{
-	R.s = DIND(FP, s);
-}
-static void
-D2C(void)
-{
-	R.s = DIND(FP, s);
-	R.d = DIND(MP, d);
-	R.m = R.d;
-}
-static void
-D2D(void)
-{
-	R.s = DIND(FP, s);
-	R.d = DIND(FP, d);
-	R.m = R.d;
-}
-static void
-D2E(void)
-{
-	R.s = DIND(FP, s);
-}
-static void
-D2F(void)
-{
-	R.s = DIND(FP, s);
-}
-static void
-D30(void)
-{
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.d;
-}
-static void
-D31(void)
-{
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.d;
-}
-static void
-D32(void)
-{
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.d;
-}
-static void
-D33(void)
-{
-}
-static void
-D34(void)
-{
-	R.d = DIND(MP, d);
-	R.m = R.d;
-}
-static void
-D35(void)
-{
-	R.d = DIND(FP, d);
-	R.m = R.d;
-}
-static void
-D36(void)
-{
-}
-static void
-D37(void)
-{
-}
-static void
-D38(void)
-{
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.d;
-}
-static void
-D39(void)
-{
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.d;
-}
-static void
-D3A(void)
-{
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.d;
-}
-static void
-D3B(void)
-{
-}
-static void
-D3C(void)
-{
-	R.d = DIND(MP, d);
-	R.m = R.d;
-}
-static void
-D3D(void)
-{
-	R.d = DIND(FP, d);
-	R.m = R.d;
-}
-static void
-D3E(void)
-{
-}
-static void
-D3F(void)
-{
-}
-static void
-D40(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = R.MP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D41(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = R.FP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D42(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = (uchar*)&R.PC->d.imm;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D43(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-}
-static void
-D44(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = DIND(MP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D45(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = DIND(FP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D46(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-}
-static void
-D47(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-}
-static void
-D48(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = R.MP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D49(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = R.FP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D4A(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = (uchar*)&R.PC->d.imm;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D4B(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-}
-static void
-D4C(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = DIND(MP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D4D(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = DIND(FP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D4E(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-}
-static void
-D4F(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-}
-static void
-D50(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = R.MP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D51(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = R.FP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D52(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = (uchar*)&R.PC->d.imm;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D53(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-}
-static void
-D54(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = DIND(MP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D55(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = DIND(FP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D56(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-}
-static void
-D57(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-}
-static void
-D58(void)
-{
-	R.d = R.MP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D59(void)
-{
-	R.d = R.FP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D5A(void)
-{
-	R.d = (uchar*)&R.PC->d.imm;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D5B(void)
-{
-}
-static void
-D5C(void)
-{
-	R.d = DIND(MP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D5D(void)
-{
-	R.d = DIND(FP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D5E(void)
-{
-}
-static void
-D5F(void)
-{
-}
-static void
-D60(void)
-{
-	R.s = DIND(MP, s);
-	R.d = R.MP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D61(void)
-{
-	R.s = DIND(MP, s);
-	R.d = R.FP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D62(void)
-{
-	R.s = DIND(MP, s);
-	R.d = (uchar*)&R.PC->d.imm;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D63(void)
-{
-	R.s = DIND(MP, s);
-}
-static void
-D64(void)
-{
-	R.s = DIND(MP, s);
-	R.d = DIND(MP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D65(void)
-{
-	R.s = DIND(MP, s);
-	R.d = DIND(FP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D66(void)
-{
-	R.s = DIND(MP, s);
-}
-static void
-D67(void)
-{
-	R.s = DIND(MP, s);
-}
-static void
-D68(void)
-{
-	R.s = DIND(FP, s);
-	R.d = R.MP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D69(void)
-{
-	R.s = DIND(FP, s);
-	R.d = R.FP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D6A(void)
-{
-	R.s = DIND(FP, s);
-	R.d = (uchar*)&R.PC->d.imm;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D6B(void)
-{
-	R.s = DIND(FP, s);
-}
-static void
-D6C(void)
-{
-	R.s = DIND(FP, s);
-	R.d = DIND(MP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D6D(void)
-{
-	R.s = DIND(FP, s);
-	R.d = DIND(FP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D6E(void)
-{
-	R.s = DIND(FP, s);
-}
-static void
-D6F(void)
-{
-	R.s = DIND(FP, s);
-}
-static void
-D70(void)
-{
-	R.d = R.MP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D71(void)
-{
-	R.d = R.FP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D72(void)
-{
-	R.d = (uchar*)&R.PC->d.imm;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D73(void)
-{
-}
-static void
-D74(void)
-{
-	R.d = DIND(MP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D75(void)
-{
-	R.d = DIND(FP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D76(void)
-{
-}
-static void
-D77(void)
-{
-}
-static void
-D78(void)
-{
-	R.d = R.MP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D79(void)
-{
-	R.d = R.FP+R.PC->d.ind;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D7A(void)
-{
-	R.d = (uchar*)&R.PC->d.imm;
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D7B(void)
-{
-}
-static void
-D7C(void)
-{
-	R.d = DIND(MP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D7D(void)
-{
-	R.d = DIND(FP, d);
-	R.t = (short)R.PC->reg;
-	R.m = &R.t;
-}
-static void
-D7E(void)
-{
-}
-static void
-D7F(void)
-{
-}
-static void
-D80(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D81(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D82(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D83(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-}
-static void
-D84(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = DIND(MP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D85(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = DIND(FP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D86(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-}
-static void
-D87(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-}
-static void
-D88(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D89(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D8A(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D8B(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-}
-static void
-D8C(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = DIND(MP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D8D(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = DIND(FP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D8E(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-}
-static void
-D8F(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-}
-static void
-D90(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D91(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D92(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D93(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-}
-static void
-D94(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = DIND(MP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D95(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = DIND(FP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D96(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-}
-static void
-D97(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-}
-static void
-D98(void)
-{
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D99(void)
-{
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D9A(void)
-{
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D9B(void)
-{
-}
-static void
-D9C(void)
-{
-	R.d = DIND(MP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D9D(void)
-{
-	R.d = DIND(FP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-D9E(void)
-{
-}
-static void
-D9F(void)
-{
-}
-static void
-DA0(void)
-{
-	R.s = DIND(MP, s);
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DA1(void)
-{
-	R.s = DIND(MP, s);
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DA2(void)
-{
-	R.s = DIND(MP, s);
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DA3(void)
-{
-	R.s = DIND(MP, s);
-}
-static void
-DA4(void)
-{
-	R.s = DIND(MP, s);
-	R.d = DIND(MP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DA5(void)
-{
-	R.s = DIND(MP, s);
-	R.d = DIND(FP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DA6(void)
-{
-	R.s = DIND(MP, s);
-}
-static void
-DA7(void)
-{
-	R.s = DIND(MP, s);
-}
-static void
-DA8(void)
-{
-	R.s = DIND(FP, s);
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DA9(void)
-{
-	R.s = DIND(FP, s);
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DAA(void)
-{
-	R.s = DIND(FP, s);
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DAB(void)
-{
-	R.s = DIND(FP, s);
-}
-static void
-DAC(void)
-{
-	R.s = DIND(FP, s);
-	R.d = DIND(MP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DAD(void)
-{
-	R.s = DIND(FP, s);
-	R.d = DIND(FP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DAE(void)
-{
-	R.s = DIND(FP, s);
-}
-static void
-DAF(void)
-{
-	R.s = DIND(FP, s);
-}
-static void
-DB0(void)
-{
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DB1(void)
-{
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DB2(void)
-{
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DB3(void)
-{
-}
-static void
-DB4(void)
-{
-	R.d = DIND(MP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DB5(void)
-{
-	R.d = DIND(FP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DB6(void)
-{
-}
-static void
-DB7(void)
-{
-}
-static void
-DB8(void)
-{
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DB9(void)
-{
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DBA(void)
-{
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DBB(void)
-{
-}
-static void
-DBC(void)
-{
-	R.d = DIND(MP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DBD(void)
-{
-	R.d = DIND(FP, d);
-	R.m = R.FP+R.PC->reg;
-}
-static void
-DBE(void)
-{
-}
-static void
-DBF(void)
-{
-}
-static void
-DC0(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DC1(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DC2(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DC3(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-}
-static void
-DC4(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = DIND(MP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DC5(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-	R.d = DIND(FP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DC6(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-}
-static void
-DC7(void)
-{
-	R.s = R.MP+R.PC->s.ind;
-}
-static void
-DC8(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DC9(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DCA(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DCB(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-}
-static void
-DCC(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = DIND(MP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DCD(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-	R.d = DIND(FP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DCE(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-}
-static void
-DCF(void)
-{
-	R.s = R.FP+R.PC->s.ind;
-}
-static void
-DD0(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DD1(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DD2(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DD3(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-}
-static void
-DD4(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = DIND(MP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DD5(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-	R.d = DIND(FP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DD6(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-}
-static void
-DD7(void)
-{
-	R.s = (uchar*)&R.PC->s.imm;
-}
-static void
-DD8(void)
-{
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DD9(void)
-{
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DDA(void)
-{
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DDB(void)
-{
-}
-static void
-DDC(void)
-{
-	R.d = DIND(MP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DDD(void)
-{
-	R.d = DIND(FP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DDE(void)
-{
-}
-static void
-DDF(void)
-{
-}
-static void
-DE0(void)
-{
-	R.s = DIND(MP, s);
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DE1(void)
-{
-	R.s = DIND(MP, s);
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DE2(void)
-{
-	R.s = DIND(MP, s);
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DE3(void)
-{
-	R.s = DIND(MP, s);
-}
-static void
-DE4(void)
-{
-	R.s = DIND(MP, s);
-	R.d = DIND(MP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DE5(void)
-{
-	R.s = DIND(MP, s);
-	R.d = DIND(FP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DE6(void)
-{
-	R.s = DIND(MP, s);
-}
-static void
-DE7(void)
-{
-	R.s = DIND(MP, s);
-}
-static void
-DE8(void)
-{
-	R.s = DIND(FP, s);
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DE9(void)
-{
-	R.s = DIND(FP, s);
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DEA(void)
-{
-	R.s = DIND(FP, s);
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DEB(void)
-{
-	R.s = DIND(FP, s);
-}
-static void
-DEC(void)
-{
-	R.s = DIND(FP, s);
-	R.d = DIND(MP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DED(void)
-{
-	R.s = DIND(FP, s);
-	R.d = DIND(FP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DEE(void)
-{
-	R.s = DIND(FP, s);
-}
-static void
-DEF(void)
-{
-	R.s = DIND(FP, s);
-}
-static void
-DF0(void)
-{
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DF1(void)
-{
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DF2(void)
-{
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DF3(void)
-{
-}
-static void
-DF4(void)
-{
-	R.d = DIND(MP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DF5(void)
-{
-	R.d = DIND(FP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DF6(void)
-{
-}
-static void
-DF7(void)
-{
-}
-static void
-DF8(void)
-{
-	R.d = R.MP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DF9(void)
-{
-	R.d = R.FP+R.PC->d.ind;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DFA(void)
-{
-	R.d = (uchar*)&R.PC->d.imm;
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DFB(void)
-{
-}
-static void
-DFC(void)
-{
-	R.d = DIND(MP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DFD(void)
-{
-	R.d = DIND(FP, d);
-	R.m = R.MP+R.PC->reg;
-}
-static void
-DFE(void)
-{
-}
-static void
-DFF(void)
-{
 }
 
-void	(*dec[])(void) =
+
+/* Decode addressing byte 0x01 from a stable instruction image. */
+static void
+DisDecode01(void)
 {
-	D00,
-	D01,
-	D02,
-	D03,
-	D04,
-	D05,
-	D06,
-	D07,
-	D08,
-	D09,
-	D0A,
-	D0B,
-	D0C,
-	D0D,
-	D0E,
-	D0F,
-	D10,
-	D11,
-	D12,
-	D13,
-	D14,
-	D15,
-	D16,
-	D17,
-	D18,
-	D19,
-	D1A,
-	D1B,
-	D1C,
-	D1D,
-	D1E,
-	D1F,
-	D20,
-	D21,
-	D22,
-	D23,
-	D24,
-	D25,
-	D26,
-	D27,
-	D28,
-	D29,
-	D2A,
-	D2B,
-	D2C,
-	D2D,
-	D2E,
-	D2F,
-	D30,
-	D31,
-	D32,
-	D33,
-	D34,
-	D35,
-	D36,
-	D37,
-	D38,
-	D39,
-	D3A,
-	D3B,
-	D3C,
-	D3D,
-	D3E,
-	D3F,
-	D40,
-	D41,
-	D42,
-	D43,
-	D44,
-	D45,
-	D46,
-	D47,
-	D48,
-	D49,
-	D4A,
-	D4B,
-	D4C,
-	D4D,
-	D4E,
-	D4F,
-	D50,
-	D51,
-	D52,
-	D53,
-	D54,
-	D55,
-	D56,
-	D57,
-	D58,
-	D59,
-	D5A,
-	D5B,
-	D5C,
-	D5D,
-	D5E,
-	D5F,
-	D60,
-	D61,
-	D62,
-	D63,
-	D64,
-	D65,
-	D66,
-	D67,
-	D68,
-	D69,
-	D6A,
-	D6B,
-	D6C,
-	D6D,
-	D6E,
-	D6F,
-	D70,
-	D71,
-	D72,
-	D73,
-	D74,
-	D75,
-	D76,
-	D77,
-	D78,
-	D79,
-	D7A,
-	D7B,
-	D7C,
-	D7D,
-	D7E,
-	D7F,
-	D80,
-	D81,
-	D82,
-	D83,
-	D84,
-	D85,
-	D86,
-	D87,
-	D88,
-	D89,
-	D8A,
-	D8B,
-	D8C,
-	D8D,
-	D8E,
-	D8F,
-	D90,
-	D91,
-	D92,
-	D93,
-	D94,
-	D95,
-	D96,
-	D97,
-	D98,
-	D99,
-	D9A,
-	D9B,
-	D9C,
-	D9D,
-	D9E,
-	D9F,
-	DA0,
-	DA1,
-	DA2,
-	DA3,
-	DA4,
-	DA5,
-	DA6,
-	DA7,
-	DA8,
-	DA9,
-	DAA,
-	DAB,
-	DAC,
-	DAD,
-	DAE,
-	DAF,
-	DB0,
-	DB1,
-	DB2,
-	DB3,
-	DB4,
-	DB5,
-	DB6,
-	DB7,
-	DB8,
-	DB9,
-	DBA,
-	DBB,
-	DBC,
-	DBD,
-	DBE,
-	DBF,
-	DC0,
-	DC1,
-	DC2,
-	DC3,
-	DC4,
-	DC5,
-	DC6,
-	DC7,
-	DC8,
-	DC9,
-	DCA,
-	DCB,
-	DCC,
-	DCD,
-	DCE,
-	DCF,
-	DD0,
-	DD1,
-	DD2,
-	DD3,
-	DD4,
-	DD5,
-	DD6,
-	DD7,
-	DD8,
-	DD9,
-	DDA,
-	DDB,
-	DDC,
-	DDD,
-	DDE,
-	DDF,
-	DE0,
-	DE1,
-	DE2,
-	DE3,
-	DE4,
-	DE5,
-	DE6,
-	DE7,
-	DE8,
-	DE9,
-	DEA,
-	DEB,
-	DEC,
-	DED,
-	DEE,
-	DEF,
-	DF0,
-	DF1,
-	DF2,
-	DF3,
-	DF4,
-	DF5,
-	DF6,
-	DF7,
-	DF8,
-	DF9,
-	DFA,
-	DFB,
-	DFC,
-	DFD,
-	DFE,
-	DFF 
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x02 from a stable instruction image. */
+static void
+DisDecode02(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x03 from a stable instruction image. */
+static void
+DisDecode03(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x04 from a stable instruction image. */
+static void
+DisDecode04(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = DIND(MP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x05 from a stable instruction image. */
+static void
+DisDecode05(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = DIND(FP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x06 from a stable instruction image. */
+static void
+DisDecode06(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x07 from a stable instruction image. */
+static void
+DisDecode07(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x08 from a stable instruction image. */
+static void
+DisDecode08(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x09 from a stable instruction image. */
+static void
+DisDecode09(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x0A from a stable instruction image. */
+static void
+DisDecode0A(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x0B from a stable instruction image. */
+static void
+DisDecode0B(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x0C from a stable instruction image. */
+static void
+DisDecode0C(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = DIND(MP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x0D from a stable instruction image. */
+static void
+DisDecode0D(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = DIND(FP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x0E from a stable instruction image. */
+static void
+DisDecode0E(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x0F from a stable instruction image. */
+static void
+DisDecode0F(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x10 from a stable instruction image. */
+static void
+DisDecode10(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x11 from a stable instruction image. */
+static void
+DisDecode11(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x12 from a stable instruction image. */
+static void
+DisDecode12(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x13 from a stable instruction image. */
+static void
+DisDecode13(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+}
+
+
+/* Decode addressing byte 0x14 from a stable instruction image. */
+static void
+DisDecode14(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = DIND(MP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x15 from a stable instruction image. */
+static void
+DisDecode15(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = DIND(FP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x16 from a stable instruction image. */
+static void
+DisDecode16(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+}
+
+
+/* Decode addressing byte 0x17 from a stable instruction image. */
+static void
+DisDecode17(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+}
+
+
+/* Decode addressing byte 0x18 from a stable instruction image. */
+static void
+DisDecode18(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x19 from a stable instruction image. */
+static void
+DisDecode19(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x1A from a stable instruction image. */
+static void
+DisDecode1A(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x1B from a stable instruction image. */
+static void
+DisDecode1B(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x1C from a stable instruction image. */
+static void
+DisDecode1C(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(MP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x1D from a stable instruction image. */
+static void
+DisDecode1D(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(FP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x1E from a stable instruction image. */
+static void
+DisDecode1E(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x1F from a stable instruction image. */
+static void
+DisDecode1F(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x20 from a stable instruction image. */
+static void
+DisDecode20(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x21 from a stable instruction image. */
+static void
+DisDecode21(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x22 from a stable instruction image. */
+static void
+DisDecode22(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x23 from a stable instruction image. */
+static void
+DisDecode23(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+}
+
+
+/* Decode addressing byte 0x24 from a stable instruction image. */
+static void
+DisDecode24(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = DIND(MP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x25 from a stable instruction image. */
+static void
+DisDecode25(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = DIND(FP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x26 from a stable instruction image. */
+static void
+DisDecode26(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+}
+
+
+/* Decode addressing byte 0x27 from a stable instruction image. */
+static void
+DisDecode27(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+}
+
+
+/* Decode addressing byte 0x28 from a stable instruction image. */
+static void
+DisDecode28(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x29 from a stable instruction image. */
+static void
+DisDecode29(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x2A from a stable instruction image. */
+static void
+DisDecode2A(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x2B from a stable instruction image. */
+static void
+DisDecode2B(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+}
+
+
+/* Decode addressing byte 0x2C from a stable instruction image. */
+static void
+DisDecode2C(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = DIND(MP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x2D from a stable instruction image. */
+static void
+DisDecode2D(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = DIND(FP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x2E from a stable instruction image. */
+static void
+DisDecode2E(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+}
+
+
+/* Decode addressing byte 0x2F from a stable instruction image. */
+static void
+DisDecode2F(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+}
+
+
+/* Decode addressing byte 0x30 from a stable instruction image. */
+static void
+DisDecode30(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x31 from a stable instruction image. */
+static void
+DisDecode31(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x32 from a stable instruction image. */
+static void
+DisDecode32(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x33 from a stable instruction image. */
+static void
+DisDecode33(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x34 from a stable instruction image. */
+static void
+DisDecode34(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(MP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x35 from a stable instruction image. */
+static void
+DisDecode35(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(FP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x36 from a stable instruction image. */
+static void
+DisDecode36(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x37 from a stable instruction image. */
+static void
+DisDecode37(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x38 from a stable instruction image. */
+static void
+DisDecode38(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x39 from a stable instruction image. */
+static void
+DisDecode39(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x3A from a stable instruction image. */
+static void
+DisDecode3A(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x3B from a stable instruction image. */
+static void
+DisDecode3B(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x3C from a stable instruction image. */
+static void
+DisDecode3C(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(MP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x3D from a stable instruction image. */
+static void
+DisDecode3D(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(FP, d);
+	R.m = R.d;
+}
+
+
+/* Decode addressing byte 0x3E from a stable instruction image. */
+static void
+DisDecode3E(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x3F from a stable instruction image. */
+static void
+DisDecode3F(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x40 from a stable instruction image. */
+static void
+DisDecode40(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x41 from a stable instruction image. */
+static void
+DisDecode41(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x42 from a stable instruction image. */
+static void
+DisDecode42(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x43 from a stable instruction image. */
+static void
+DisDecode43(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x44 from a stable instruction image. */
+static void
+DisDecode44(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = DIND(MP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x45 from a stable instruction image. */
+static void
+DisDecode45(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = DIND(FP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x46 from a stable instruction image. */
+static void
+DisDecode46(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x47 from a stable instruction image. */
+static void
+DisDecode47(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x48 from a stable instruction image. */
+static void
+DisDecode48(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x49 from a stable instruction image. */
+static void
+DisDecode49(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x4A from a stable instruction image. */
+static void
+DisDecode4A(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x4B from a stable instruction image. */
+static void
+DisDecode4B(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x4C from a stable instruction image. */
+static void
+DisDecode4C(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = DIND(MP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x4D from a stable instruction image. */
+static void
+DisDecode4D(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = DIND(FP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x4E from a stable instruction image. */
+static void
+DisDecode4E(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x4F from a stable instruction image. */
+static void
+DisDecode4F(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x50 from a stable instruction image. */
+static void
+DisDecode50(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x51 from a stable instruction image. */
+static void
+DisDecode51(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x52 from a stable instruction image. */
+static void
+DisDecode52(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x53 from a stable instruction image. */
+static void
+DisDecode53(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+}
+
+
+/* Decode addressing byte 0x54 from a stable instruction image. */
+static void
+DisDecode54(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = DIND(MP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x55 from a stable instruction image. */
+static void
+DisDecode55(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = DIND(FP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x56 from a stable instruction image. */
+static void
+DisDecode56(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+}
+
+
+/* Decode addressing byte 0x57 from a stable instruction image. */
+static void
+DisDecode57(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+}
+
+
+/* Decode addressing byte 0x58 from a stable instruction image. */
+static void
+DisDecode58(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x59 from a stable instruction image. */
+static void
+DisDecode59(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x5A from a stable instruction image. */
+static void
+DisDecode5A(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x5B from a stable instruction image. */
+static void
+DisDecode5B(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x5C from a stable instruction image. */
+static void
+DisDecode5C(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(MP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x5D from a stable instruction image. */
+static void
+DisDecode5D(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(FP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x5E from a stable instruction image. */
+static void
+DisDecode5E(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x5F from a stable instruction image. */
+static void
+DisDecode5F(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x60 from a stable instruction image. */
+static void
+DisDecode60(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x61 from a stable instruction image. */
+static void
+DisDecode61(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x62 from a stable instruction image. */
+static void
+DisDecode62(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x63 from a stable instruction image. */
+static void
+DisDecode63(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+}
+
+
+/* Decode addressing byte 0x64 from a stable instruction image. */
+static void
+DisDecode64(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = DIND(MP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x65 from a stable instruction image. */
+static void
+DisDecode65(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = DIND(FP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x66 from a stable instruction image. */
+static void
+DisDecode66(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+}
+
+
+/* Decode addressing byte 0x67 from a stable instruction image. */
+static void
+DisDecode67(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+}
+
+
+/* Decode addressing byte 0x68 from a stable instruction image. */
+static void
+DisDecode68(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x69 from a stable instruction image. */
+static void
+DisDecode69(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x6A from a stable instruction image. */
+static void
+DisDecode6A(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x6B from a stable instruction image. */
+static void
+DisDecode6B(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+}
+
+
+/* Decode addressing byte 0x6C from a stable instruction image. */
+static void
+DisDecode6C(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = DIND(MP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x6D from a stable instruction image. */
+static void
+DisDecode6D(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = DIND(FP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x6E from a stable instruction image. */
+static void
+DisDecode6E(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+}
+
+
+/* Decode addressing byte 0x6F from a stable instruction image. */
+static void
+DisDecode6F(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+}
+
+
+/* Decode addressing byte 0x70 from a stable instruction image. */
+static void
+DisDecode70(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x71 from a stable instruction image. */
+static void
+DisDecode71(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x72 from a stable instruction image. */
+static void
+DisDecode72(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x73 from a stable instruction image. */
+static void
+DisDecode73(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x74 from a stable instruction image. */
+static void
+DisDecode74(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(MP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x75 from a stable instruction image. */
+static void
+DisDecode75(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(FP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x76 from a stable instruction image. */
+static void
+DisDecode76(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x77 from a stable instruction image. */
+static void
+DisDecode77(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x78 from a stable instruction image. */
+static void
+DisDecode78(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x79 from a stable instruction image. */
+static void
+DisDecode79(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x7A from a stable instruction image. */
+static void
+DisDecode7A(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x7B from a stable instruction image. */
+static void
+DisDecode7B(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x7C from a stable instruction image. */
+static void
+DisDecode7C(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(MP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x7D from a stable instruction image. */
+static void
+DisDecode7D(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(FP, d);
+	R.t = pc.reg < 32768 ? pc.reg : (int)pc.reg-65536;
+	R.m = &R.t;
+}
+
+
+/* Decode addressing byte 0x7E from a stable instruction image. */
+static void
+DisDecode7E(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x7F from a stable instruction image. */
+static void
+DisDecode7F(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x80 from a stable instruction image. */
+static void
+DisDecode80(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x81 from a stable instruction image. */
+static void
+DisDecode81(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x82 from a stable instruction image. */
+static void
+DisDecode82(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x83 from a stable instruction image. */
+static void
+DisDecode83(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x84 from a stable instruction image. */
+static void
+DisDecode84(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x85 from a stable instruction image. */
+static void
+DisDecode85(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x86 from a stable instruction image. */
+static void
+DisDecode86(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x87 from a stable instruction image. */
+static void
+DisDecode87(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x88 from a stable instruction image. */
+static void
+DisDecode88(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x89 from a stable instruction image. */
+static void
+DisDecode89(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x8A from a stable instruction image. */
+static void
+DisDecode8A(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x8B from a stable instruction image. */
+static void
+DisDecode8B(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x8C from a stable instruction image. */
+static void
+DisDecode8C(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x8D from a stable instruction image. */
+static void
+DisDecode8D(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x8E from a stable instruction image. */
+static void
+DisDecode8E(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x8F from a stable instruction image. */
+static void
+DisDecode8F(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0x90 from a stable instruction image. */
+static void
+DisDecode90(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x91 from a stable instruction image. */
+static void
+DisDecode91(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x92 from a stable instruction image. */
+static void
+DisDecode92(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x93 from a stable instruction image. */
+static void
+DisDecode93(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+}
+
+
+/* Decode addressing byte 0x94 from a stable instruction image. */
+static void
+DisDecode94(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x95 from a stable instruction image. */
+static void
+DisDecode95(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x96 from a stable instruction image. */
+static void
+DisDecode96(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+}
+
+
+/* Decode addressing byte 0x97 from a stable instruction image. */
+static void
+DisDecode97(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+}
+
+
+/* Decode addressing byte 0x98 from a stable instruction image. */
+static void
+DisDecode98(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x99 from a stable instruction image. */
+static void
+DisDecode99(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x9A from a stable instruction image. */
+static void
+DisDecode9A(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x9B from a stable instruction image. */
+static void
+DisDecode9B(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x9C from a stable instruction image. */
+static void
+DisDecode9C(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x9D from a stable instruction image. */
+static void
+DisDecode9D(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0x9E from a stable instruction image. */
+static void
+DisDecode9E(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0x9F from a stable instruction image. */
+static void
+DisDecode9F(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0xA0 from a stable instruction image. */
+static void
+DisDecodeA0(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xA1 from a stable instruction image. */
+static void
+DisDecodeA1(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xA2 from a stable instruction image. */
+static void
+DisDecodeA2(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xA3 from a stable instruction image. */
+static void
+DisDecodeA3(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+}
+
+
+/* Decode addressing byte 0xA4 from a stable instruction image. */
+static void
+DisDecodeA4(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xA5 from a stable instruction image. */
+static void
+DisDecodeA5(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xA6 from a stable instruction image. */
+static void
+DisDecodeA6(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+}
+
+
+/* Decode addressing byte 0xA7 from a stable instruction image. */
+static void
+DisDecodeA7(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+}
+
+
+/* Decode addressing byte 0xA8 from a stable instruction image. */
+static void
+DisDecodeA8(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xA9 from a stable instruction image. */
+static void
+DisDecodeA9(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xAA from a stable instruction image. */
+static void
+DisDecodeAA(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xAB from a stable instruction image. */
+static void
+DisDecodeAB(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+}
+
+
+/* Decode addressing byte 0xAC from a stable instruction image. */
+static void
+DisDecodeAC(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xAD from a stable instruction image. */
+static void
+DisDecodeAD(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xAE from a stable instruction image. */
+static void
+DisDecodeAE(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+}
+
+
+/* Decode addressing byte 0xAF from a stable instruction image. */
+static void
+DisDecodeAF(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+}
+
+
+/* Decode addressing byte 0xB0 from a stable instruction image. */
+static void
+DisDecodeB0(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xB1 from a stable instruction image. */
+static void
+DisDecodeB1(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xB2 from a stable instruction image. */
+static void
+DisDecodeB2(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xB3 from a stable instruction image. */
+static void
+DisDecodeB3(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0xB4 from a stable instruction image. */
+static void
+DisDecodeB4(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xB5 from a stable instruction image. */
+static void
+DisDecodeB5(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xB6 from a stable instruction image. */
+static void
+DisDecodeB6(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0xB7 from a stable instruction image. */
+static void
+DisDecodeB7(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0xB8 from a stable instruction image. */
+static void
+DisDecodeB8(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xB9 from a stable instruction image. */
+static void
+DisDecodeB9(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xBA from a stable instruction image. */
+static void
+DisDecodeBA(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xBB from a stable instruction image. */
+static void
+DisDecodeBB(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0xBC from a stable instruction image. */
+static void
+DisDecodeBC(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xBD from a stable instruction image. */
+static void
+DisDecodeBD(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.FP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xBE from a stable instruction image. */
+static void
+DisDecodeBE(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0xBF from a stable instruction image. */
+static void
+DisDecodeBF(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0xC0 from a stable instruction image. */
+static void
+DisDecodeC0(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xC1 from a stable instruction image. */
+static void
+DisDecodeC1(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xC2 from a stable instruction image. */
+static void
+DisDecodeC2(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xC3 from a stable instruction image. */
+static void
+DisDecodeC3(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0xC4 from a stable instruction image. */
+static void
+DisDecodeC4(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xC5 from a stable instruction image. */
+static void
+DisDecodeC5(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xC6 from a stable instruction image. */
+static void
+DisDecodeC6(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0xC7 from a stable instruction image. */
+static void
+DisDecodeC7(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.MP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0xC8 from a stable instruction image. */
+static void
+DisDecodeC8(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xC9 from a stable instruction image. */
+static void
+DisDecodeC9(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xCA from a stable instruction image. */
+static void
+DisDecodeCA(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xCB from a stable instruction image. */
+static void
+DisDecodeCB(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0xCC from a stable instruction image. */
+static void
+DisDecodeCC(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xCD from a stable instruction image. */
+static void
+DisDecodeCD(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xCE from a stable instruction image. */
+static void
+DisDecodeCE(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0xCF from a stable instruction image. */
+static void
+DisDecodeCF(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = decaddress(R.FP, pc.s.ind);
+}
+
+
+/* Decode addressing byte 0xD0 from a stable instruction image. */
+static void
+DisDecodeD0(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xD1 from a stable instruction image. */
+static void
+DisDecodeD1(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xD2 from a stable instruction image. */
+static void
+DisDecodeD2(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xD3 from a stable instruction image. */
+static void
+DisDecodeD3(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+}
+
+
+/* Decode addressing byte 0xD4 from a stable instruction image. */
+static void
+DisDecodeD4(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xD5 from a stable instruction image. */
+static void
+DisDecodeD5(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xD6 from a stable instruction image. */
+static void
+DisDecodeD6(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+}
+
+
+/* Decode addressing byte 0xD7 from a stable instruction image. */
+static void
+DisDecodeD7(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = (uchar*)R.PC+O(Inst, s);
+}
+
+
+/* Decode addressing byte 0xD8 from a stable instruction image. */
+static void
+DisDecodeD8(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xD9 from a stable instruction image. */
+static void
+DisDecodeD9(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xDA from a stable instruction image. */
+static void
+DisDecodeDA(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xDB from a stable instruction image. */
+static void
+DisDecodeDB(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0xDC from a stable instruction image. */
+static void
+DisDecodeDC(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xDD from a stable instruction image. */
+static void
+DisDecodeDD(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xDE from a stable instruction image. */
+static void
+DisDecodeDE(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0xDF from a stable instruction image. */
+static void
+DisDecodeDF(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0xE0 from a stable instruction image. */
+static void
+DisDecodeE0(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xE1 from a stable instruction image. */
+static void
+DisDecodeE1(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xE2 from a stable instruction image. */
+static void
+DisDecodeE2(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xE3 from a stable instruction image. */
+static void
+DisDecodeE3(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+}
+
+
+/* Decode addressing byte 0xE4 from a stable instruction image. */
+static void
+DisDecodeE4(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xE5 from a stable instruction image. */
+static void
+DisDecodeE5(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xE6 from a stable instruction image. */
+static void
+DisDecodeE6(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+}
+
+
+/* Decode addressing byte 0xE7 from a stable instruction image. */
+static void
+DisDecodeE7(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(MP, s);
+}
+
+
+/* Decode addressing byte 0xE8 from a stable instruction image. */
+static void
+DisDecodeE8(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xE9 from a stable instruction image. */
+static void
+DisDecodeE9(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xEA from a stable instruction image. */
+static void
+DisDecodeEA(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xEB from a stable instruction image. */
+static void
+DisDecodeEB(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+}
+
+
+/* Decode addressing byte 0xEC from a stable instruction image. */
+static void
+DisDecodeEC(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xED from a stable instruction image. */
+static void
+DisDecodeED(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xEE from a stable instruction image. */
+static void
+DisDecodeEE(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+}
+
+
+/* Decode addressing byte 0xEF from a stable instruction image. */
+static void
+DisDecodeEF(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.s = DIND(FP, s);
+}
+
+
+/* Decode addressing byte 0xF0 from a stable instruction image. */
+static void
+DisDecodeF0(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xF1 from a stable instruction image. */
+static void
+DisDecodeF1(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xF2 from a stable instruction image. */
+static void
+DisDecodeF2(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xF3 from a stable instruction image. */
+static void
+DisDecodeF3(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0xF4 from a stable instruction image. */
+static void
+DisDecodeF4(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xF5 from a stable instruction image. */
+static void
+DisDecodeF5(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xF6 from a stable instruction image. */
+static void
+DisDecodeF6(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0xF7 from a stable instruction image. */
+static void
+DisDecodeF7(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0xF8 from a stable instruction image. */
+static void
+DisDecodeF8(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.MP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xF9 from a stable instruction image. */
+static void
+DisDecodeF9(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = decaddress(R.FP, pc.d.ind);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xFA from a stable instruction image. */
+static void
+DisDecodeFA(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = (uchar*)R.PC+O(Inst, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xFB from a stable instruction image. */
+static void
+DisDecodeFB(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0xFC from a stable instruction image. */
+static void
+DisDecodeFC(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(MP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xFD from a stable instruction image. */
+static void
+DisDecodeFD(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+	R.d = DIND(FP, d);
+	R.m = decaddress(R.MP, pc.reg);
+}
+
+
+/* Decode addressing byte 0xFE from a stable instruction image. */
+static void
+DisDecodeFE(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Decode addressing byte 0xFF from a stable instruction image. */
+static void
+DisDecodeFF(void)
+{
+	Inst pc;
+
+	decinstruction(&pc);
+}
+
+
+/* Addressing byte indexes preserve the interpreter/JIT decoder ABI. */
+void (*dec[])(void) =
+{
+	DisDecode00,
+	DisDecode01,
+	DisDecode02,
+	DisDecode03,
+	DisDecode04,
+	DisDecode05,
+	DisDecode06,
+	DisDecode07,
+	DisDecode08,
+	DisDecode09,
+	DisDecode0A,
+	DisDecode0B,
+	DisDecode0C,
+	DisDecode0D,
+	DisDecode0E,
+	DisDecode0F,
+	DisDecode10,
+	DisDecode11,
+	DisDecode12,
+	DisDecode13,
+	DisDecode14,
+	DisDecode15,
+	DisDecode16,
+	DisDecode17,
+	DisDecode18,
+	DisDecode19,
+	DisDecode1A,
+	DisDecode1B,
+	DisDecode1C,
+	DisDecode1D,
+	DisDecode1E,
+	DisDecode1F,
+	DisDecode20,
+	DisDecode21,
+	DisDecode22,
+	DisDecode23,
+	DisDecode24,
+	DisDecode25,
+	DisDecode26,
+	DisDecode27,
+	DisDecode28,
+	DisDecode29,
+	DisDecode2A,
+	DisDecode2B,
+	DisDecode2C,
+	DisDecode2D,
+	DisDecode2E,
+	DisDecode2F,
+	DisDecode30,
+	DisDecode31,
+	DisDecode32,
+	DisDecode33,
+	DisDecode34,
+	DisDecode35,
+	DisDecode36,
+	DisDecode37,
+	DisDecode38,
+	DisDecode39,
+	DisDecode3A,
+	DisDecode3B,
+	DisDecode3C,
+	DisDecode3D,
+	DisDecode3E,
+	DisDecode3F,
+	DisDecode40,
+	DisDecode41,
+	DisDecode42,
+	DisDecode43,
+	DisDecode44,
+	DisDecode45,
+	DisDecode46,
+	DisDecode47,
+	DisDecode48,
+	DisDecode49,
+	DisDecode4A,
+	DisDecode4B,
+	DisDecode4C,
+	DisDecode4D,
+	DisDecode4E,
+	DisDecode4F,
+	DisDecode50,
+	DisDecode51,
+	DisDecode52,
+	DisDecode53,
+	DisDecode54,
+	DisDecode55,
+	DisDecode56,
+	DisDecode57,
+	DisDecode58,
+	DisDecode59,
+	DisDecode5A,
+	DisDecode5B,
+	DisDecode5C,
+	DisDecode5D,
+	DisDecode5E,
+	DisDecode5F,
+	DisDecode60,
+	DisDecode61,
+	DisDecode62,
+	DisDecode63,
+	DisDecode64,
+	DisDecode65,
+	DisDecode66,
+	DisDecode67,
+	DisDecode68,
+	DisDecode69,
+	DisDecode6A,
+	DisDecode6B,
+	DisDecode6C,
+	DisDecode6D,
+	DisDecode6E,
+	DisDecode6F,
+	DisDecode70,
+	DisDecode71,
+	DisDecode72,
+	DisDecode73,
+	DisDecode74,
+	DisDecode75,
+	DisDecode76,
+	DisDecode77,
+	DisDecode78,
+	DisDecode79,
+	DisDecode7A,
+	DisDecode7B,
+	DisDecode7C,
+	DisDecode7D,
+	DisDecode7E,
+	DisDecode7F,
+	DisDecode80,
+	DisDecode81,
+	DisDecode82,
+	DisDecode83,
+	DisDecode84,
+	DisDecode85,
+	DisDecode86,
+	DisDecode87,
+	DisDecode88,
+	DisDecode89,
+	DisDecode8A,
+	DisDecode8B,
+	DisDecode8C,
+	DisDecode8D,
+	DisDecode8E,
+	DisDecode8F,
+	DisDecode90,
+	DisDecode91,
+	DisDecode92,
+	DisDecode93,
+	DisDecode94,
+	DisDecode95,
+	DisDecode96,
+	DisDecode97,
+	DisDecode98,
+	DisDecode99,
+	DisDecode9A,
+	DisDecode9B,
+	DisDecode9C,
+	DisDecode9D,
+	DisDecode9E,
+	DisDecode9F,
+	DisDecodeA0,
+	DisDecodeA1,
+	DisDecodeA2,
+	DisDecodeA3,
+	DisDecodeA4,
+	DisDecodeA5,
+	DisDecodeA6,
+	DisDecodeA7,
+	DisDecodeA8,
+	DisDecodeA9,
+	DisDecodeAA,
+	DisDecodeAB,
+	DisDecodeAC,
+	DisDecodeAD,
+	DisDecodeAE,
+	DisDecodeAF,
+	DisDecodeB0,
+	DisDecodeB1,
+	DisDecodeB2,
+	DisDecodeB3,
+	DisDecodeB4,
+	DisDecodeB5,
+	DisDecodeB6,
+	DisDecodeB7,
+	DisDecodeB8,
+	DisDecodeB9,
+	DisDecodeBA,
+	DisDecodeBB,
+	DisDecodeBC,
+	DisDecodeBD,
+	DisDecodeBE,
+	DisDecodeBF,
+	DisDecodeC0,
+	DisDecodeC1,
+	DisDecodeC2,
+	DisDecodeC3,
+	DisDecodeC4,
+	DisDecodeC5,
+	DisDecodeC6,
+	DisDecodeC7,
+	DisDecodeC8,
+	DisDecodeC9,
+	DisDecodeCA,
+	DisDecodeCB,
+	DisDecodeCC,
+	DisDecodeCD,
+	DisDecodeCE,
+	DisDecodeCF,
+	DisDecodeD0,
+	DisDecodeD1,
+	DisDecodeD2,
+	DisDecodeD3,
+	DisDecodeD4,
+	DisDecodeD5,
+	DisDecodeD6,
+	DisDecodeD7,
+	DisDecodeD8,
+	DisDecodeD9,
+	DisDecodeDA,
+	DisDecodeDB,
+	DisDecodeDC,
+	DisDecodeDD,
+	DisDecodeDE,
+	DisDecodeDF,
+	DisDecodeE0,
+	DisDecodeE1,
+	DisDecodeE2,
+	DisDecodeE3,
+	DisDecodeE4,
+	DisDecodeE5,
+	DisDecodeE6,
+	DisDecodeE7,
+	DisDecodeE8,
+	DisDecodeE9,
+	DisDecodeEA,
+	DisDecodeEB,
+	DisDecodeEC,
+	DisDecodeED,
+	DisDecodeEE,
+	DisDecodeEF,
+	DisDecodeF0,
+	DisDecodeF1,
+	DisDecodeF2,
+	DisDecodeF3,
+	DisDecodeF4,
+	DisDecodeF5,
+	DisDecodeF6,
+	DisDecodeF7,
+	DisDecodeF8,
+	DisDecodeF9,
+	DisDecodeFA,
+	DisDecodeFB,
+	DisDecodeFC,
+	DisDecodeFD,
+	DisDecodeFE,
+	DisDecodeFF
 };

@@ -1,10 +1,13 @@
 # Native Linux build tools and the remaining VM ABI work
 
-`sh makemk.sh` now builds native `mk` and `iyacc` on Linux, selecting `amd64`
+`sh makemk.sh` now builds native `mk`, `iyacc` and `decgen` on Linux, selecting `amd64`
 for x86-64 and `arm64` for AArch64. Existing 386/ARM compiler selections remain
 available. The compiler identity and pointer width must match the selected host.
 The Linux/386 POSIX headers are reused for host-tool declarations only; this does
 not create or select a 64-bit emulator target profile.
+
+The decoder follow-up adds exact generator/source equality and strict compilation
+of generated `dec.c`: [README.decoded-addresses.md](../../libinterp/tests/README.decoded-addresses.md).
 
 The bootstrap no longer evaluates `mkconfig` as shell, forces `-m32`, deletes
 installed tools before compilation, or writes objects into source directories.

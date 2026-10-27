@@ -40,12 +40,15 @@ def main():
         tools = work/'native bin'
         env['MKBOOTSTRAP_BINDIR'] = str(tools)
         run(['sh', str(ROOT/'makemk.sh')], ROOT, env)
-        binaries = [tools/'mk', tools/'iyacc']
+        binaries = [tools/'mk', tools/'iyacc', tools/'decgen']
         for binary in binaries:
             header = binary.read_bytes()[:20]
             machine = int.from_bytes(header[18:20], 'little')
             if header[:5] != b'\x7fELF\x02' or machine != (62 if arch == 'amd64' else 183):
                 raise RuntimeError('bootstrap installed a non-native ELF binary: '+str(binary))
+        generated = run([str(tools/'decgen')], work, env)
+        if generated != (ROOT/'libinterp/dec.c').read_text():
+            raise RuntimeError('decgen output differs from the committed decoder')
         installed = fingerprints(binaries)
         run(['sh', str(ROOT/'makemk.sh')], ROOT, dict(env, CC='/bin/false'), False)
         wrong = 'arm64' if arch == 'amd64' else 'amd64'
@@ -75,10 +78,11 @@ def main():
         compiler = shlex.split(os.environ.get('CC', 'cc'))
         flags = shlex.split(env['CFLAGS'])
         includes = ['-I'+str(p) for p in (parser, ROOT/'Linux/386/include', ROOT/'include', ROOT/'limbo')]
+        run(compiler+flags+['-I'+str(ROOT/p) for p in ('Linux/386/include','include','libinterp')]+['-c',str(ROOT/'libinterp/dec.c'),'-o',str(parser/'dec.o')], parser, env)
         sources = sorted((ROOT/'limbo').glob('*.c')) + [parser/'y.tab.c']
         for source in sources:
             run(compiler+flags+includes+['-DINCPATH="'+str(ROOT/'module')+'"', '-c', str(source), '-o', str(parser/(source.stem+'.o'))], parser, env)
-        summary = 'PASS native '+arch+' tools: ELF64 mk/iyacc, two rejected compilers preserve binaries, recipes/includes/incremental/failure, real Limbo grammar and '+str(len(sources))+' compiler units'
+        summary = 'PASS native '+arch+' tools: ELF64 mk/iyacc/decgen, exact decoder regeneration/compilation, two rejected compilers preserve binaries, recipes/includes/incremental/failure, real Limbo grammar and '+str(len(sources))+' compiler units'
     if before != fingerprints(protected):
         raise RuntimeError('bootstrap changed existing configuration or 386 tools')
     print(summary)
