@@ -32,7 +32,7 @@ if 'static ulong\nstackhint(' in stack:
     common += [function(stack, 'static ulong\nstackhint(')]
 if 'static int\nstacksize(' in stack:
     common += [function(stack, 'static int\nstacksize(')]
-common += [function(stack, signature) for signature in ('void\nnewstack(', 'void\nextend(', 'void\nunextend(')]
+common += [function(stack, signature) for signature in ('static Stkext*\nstackextent(', 'static Type*\nstackframe(', 'void\nnewstack(', 'void\nextend(', 'void\nunextend(')]
 for signature in ('static int\nmoduleentry(', 'static int\nframefits('):
     if signature in xec:
         common += [function(xec, signature)]

@@ -106,6 +106,7 @@ CORE = [
     'libinterp/tests/prog-diagnostics.py',
     'libinterp/tests/exception-frames.py',
     'libinterp/tests/stack-lifecycle.py',
+    'libinterp/tests/stack-spans.py',
     'libinterp/tests/jit-coverage.py',
     'libinterp/tests/stack-unwind.py',
     'libinterp/tests/sys-tokenize.py',

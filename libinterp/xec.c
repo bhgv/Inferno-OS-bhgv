@@ -2152,7 +2152,9 @@ framefits(Type *t)
 		error(exHeap);
 	for(i = 0; i < pointers; i++)
 		for(bit = 0; bit < 8; bit++)
-			if((t->map[i] & (0x80>>bit)) && (ulong)i*8+bit >= (ulong)size/sizeof(void*))
+			if((t->map[i] & (0x80>>bit)) &&
+			   ((ulong)i*8+bit < sizeof(Frame)/sizeof(void*) ||
+			    (ulong)i*8+bit >= (ulong)size/sizeof(void*)))
 				error(exHeap);
 	return (uintptr)size < (uintptr)R.TS-(uintptr)R.SP;
 }

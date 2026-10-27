@@ -25,18 +25,21 @@ def function(source, signature):
 
 stack = Path(os.environ.get('LIFECYCLE_SOURCE', ROOT/'libinterp/stack.c')).read_text()
 heap = (ROOT/'libinterp/heap.c').read_text()
-signatures = ('static int\nstacksize(', 'static ulong\nstackhint(', 'void\nnewstack(',
+signatures = ('static Stkext*\nstackextent(', 'static Type*\nstackframe(', 'static int\nstacksize(', 'static ulong\nstackhint(', 'void\nnewstack(',
               'void\nextend(', 'void\nunextend(', 'void\nunframe(')
 parts = [function(heap, name) for name in ('void\ninitmem(', 'void\nfreeptrs(')]
 parts += [function(stack, name) for name in signatures if name in stack]
-unit = (ROOT/'libinterp/tests/stack-lifecycle.c').read_text().replace('IMPLEMENTATION', '\n'.join(parts))
+unit = Path(os.environ.get('LIFECYCLE_FIXTURE',ROOT/'libinterp/tests/stack-lifecycle.c')).read_text().replace('IMPLEMENTATION', '\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='stack-lifecycle-') as directory:
     td = Path(directory)
     source = td/'lifecycle.c'
     source.write_text(unit)
     command = shlex.split(os.environ.get('CC', 'cc'))
     command += shlex.split(os.environ.get('CFLAGS', '-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
-    for bits in (64, 32):
+    widths=tuple(map(int,os.environ.get("LIFECYCLE_WORD_BITS","64 32").split()))
+    if not widths or any(bits not in (32,64) for bits in widths):
+        raise ValueError("LIFECYCLE_WORD_BITS must select 32 and/or 64")
+    for bits in widths:
         model = td/str(bits)
         model.mkdir()
         header = (ROOT/'include/interp.h').read_text()

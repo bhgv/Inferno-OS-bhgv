@@ -167,6 +167,36 @@ allocationinvalid(Jit *jit)
 }
 
 
+/* A mapped control-link cell must decline natively and fail in C before any publication. */
+static unsigned long
+allocationheaders(Jit *jit)
+{
+	FrameImage image,before;
+	REG saved;
+	unsigned long checks=0;
+	int imported,sa,da,fa,slot,route,op,failed;
+
+	for(imported=0;imported<2;imported++)for(sa=0;sa<8;sa++)for(da=0;da<8;da++)
+	for(fa=0;fa<8;fa++)for(slot=0;slot<sizeof(Frame)/sizeof(void*);slot++){
+		allocationimage(&image,imported,sa,da,fa,0,0);
+		op=imported ? IMFRAME : IFRAME;
+		image.descriptor.np=1;
+		image.descriptor.map[0]=0x80>>slot;
+		memmove(&before,&image,sizeof(image));memmove(&saved,&R,sizeof(R));
+		allocationcheck(jit->entry[op](&R)==0 && !memcmp(&saved,&R,sizeof(R)) && !memcmp(&before,&image,sizeof(image)));
+		for(route=0;route<2;route++){
+			memmove(&image,&before,sizeof(image));memmove(&R,&saved,sizeof(R));
+			initialized=extensions=0;raised=nil;failed=0;
+			if(setjmp(boundary)==0){if(route==0)optab[op]();else jit->dispatch[op](&R);}else failed=1;
+			allocationcheck(failed && raised==exHeap && initialized==0 && extensions==0);
+			allocationcheck(!memcmp(&saved,&R,sizeof(R)) && !memcmp(&before,&image,sizeof(image)));
+			checks++;
+		}
+	}
+	return checks;
+}
+
+
 /* Compare synthetic unsigned extents without dereferencing their numeric stack addresses. */
 static unsigned long
 allocationextents(void)
@@ -203,7 +233,7 @@ main(void)
 {
 	Module module={0};
 	Inst program[2]={{0}};
-	unsigned long positive=0,negative=0,extents=0;
+	unsigned long positive=0,negative=0,extents=0,headers=0;
 	char *section=getenv("FRAME_ALLOCATION_SECTION");
 
 	program[0].op=IFRAME;program[1].op=IMFRAME;module.prog=program;module.nprog=2;
@@ -212,7 +242,8 @@ main(void)
 	if(section==nil || !strcmp(section,"positive"))positive=allocationpositive(module.jit);
 	if(section==nil || !strcmp(section,"invalid"))negative=allocationinvalid(module.jit);
 	if(section==nil || !strcmp(section,"extent"))extents=allocationextents();
+	if(section==nil || !strcmp(section,"headers"))headers=allocationheaders(module.jit);
 	module.jit->freecode(module.jit->code,module.jit->size);free(module.jit);
-	printf("PASS frame allocation C/RX WORD%zu: %lu image routes, %lu rejected routes, %lu integer extents\n",sizeof(WORD)*8,positive,negative,extents);
+	printf("PASS frame allocation C/RX WORD%zu: %lu image routes, %lu rejected routes, %lu integer extents, %lu header-map rejections\n",sizeof(WORD)*8,positive,negative,extents,headers);
 	return 0;
 }
