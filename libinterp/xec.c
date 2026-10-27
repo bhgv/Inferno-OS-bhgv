@@ -2240,7 +2240,8 @@ OP(mframe)
 	memmove(destination, &f, sizeof(f));
 }
 
-/* Validate pointer maps before allocation, then initialize scalar and pointer bytes separately. */
+
+/* Capture result storage before allocation and initialize scalar and mapped bytes separately. */
 static void
 newarray(int clear)
 {
@@ -2252,11 +2253,16 @@ newarray(int clear)
 	int i;
 	uintptr address;
 	ulong bytes;
+	void *destination;
 
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(index))
+		error(exHeap);
 	memmove(&index, R.m, sizeof(index));
 	type = moduletype(R.M, index);
 	if((uintptr)type%sizeof(void*) != 0 ||
 	   (uintptr)type > (uintptr)-1-(offsetof(Type, np)+sizeof(type->np)))
+		error(exHeap);
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(count))
 		error(exHeap);
 	memmove(&count, R.s, sizeof(count));
 	/* Preserve descriptor-error precedence before checking the full WORD geometry. */
@@ -2264,7 +2270,10 @@ newarray(int clear)
 	   Tarray.ref <= 0 || Tarray.ref == 0x7fffffff)
 		error(exHeap);
 	acheck(type->size, count);
-	memmove(&old, R.d, sizeof(old));
+	destination = R.d;
+	if(destination == nil || destination == H || (uintptr)destination > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(&old, destination, sizeof(old));
 	if(old == nil)
 		error(exNilref);
 	if(old != H){
@@ -2287,7 +2296,7 @@ newarray(int clear)
 						memset(old->data, 0, bytes);
 				}
 				/* An output operand may overlap the reused scalar payload. */
-				memmove(R.d, &old, sizeof(old));
+				memmove(destination, &old, sizeof(old));
 				return;
 			}
 		}
@@ -2306,7 +2315,7 @@ newarray(int clear)
 			}
 		}
 	}
-	memmove(R.d, &array, sizeof(array));
+	memmove(destination, &array, sizeof(array));
 	destroy(old);
 }
 
@@ -4207,13 +4216,18 @@ OP(tail)
 	R.s = &l->tail;
 	movp();
 }
+
+
 /* Bound slice byte geometry before forming a pointer, including empty records. */
 static uchar*
 arrayspan(Array *array, Type *type, WORD start, WORD count)
 {
 	ulong offset, bytes, limit;
 
-	if(type == nil || type == H || type->size < 0 || start < 0 || count < 0)
+	if(type == nil || type == H || (uintptr)type%sizeof(void*) != 0 ||
+	   (uintptr)type > (uintptr)-1-(offsetof(Type, np)+sizeof(type->np)))
+		error(exBounds);
+	if(type->size < 0 || start < 0 || count < 0)
 		error(exBounds);
 	if(type->size == 0)
 		return array->data;
@@ -4237,13 +4251,20 @@ OP(slicea)
 {
 	Type *t;
 	Heap *h;
-	Array *at, *ss, *ds, *root;
+	Array *ss, *ds, *root;
 	WORD v, n, start;
 	uchar *data;
+	void *slot;
+	uintptr address;
 
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(v) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(start) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(ds))
+		error(exHeap);
+	slot = R.d;
 	memmove(&v, R.m, sizeof(v));
 	memmove(&start, R.s, sizeof(start));
-	memmove(&ds, R.d, sizeof(ds));
+	memmove(&ds, slot, sizeof(ds));
 
 	if(ds == H || ds == nil){
 		if(v == start){
@@ -4253,6 +4274,10 @@ OP(slicea)
 		}
 		error(exNilref);
 	}
+	address = (uintptr)ds;
+	if(address <= sizeof(Heap) || address%sizeof(void*) != 0 ||
+	   address > (uintptr)-1-sizeof(Array))
+		error(exHeap);
 	if(start < 0 || v < start || v > ds->len)
 		error(exBounds);
 	n = v-start;
@@ -4262,6 +4287,9 @@ OP(slicea)
 	root = ds->root == H ? ds : ds->root;
 	if(root == nil)
 		error(exNilref);
+	address = (uintptr)root;
+	if(address <= sizeof(Heap) || address%sizeof(void*) != 0)
+		error(exHeap);
 	if(D2H(ds)->ref == 0)
 		error(exHeap);
 	h = D2H(root);
@@ -4291,14 +4319,15 @@ OP(slicea)
 	h = D2H(root);
 	if(ds->root != H) {
 		h->ref++;
-		memmove(&at, R.d, sizeof(at));
-		memmove(R.d, &ss, sizeof(ss));
-		destroy(at);
+		memmove(slot, &ss, sizeof(ss));
+		destroy(ds);
 	}
 	else
-		memmove(R.d, &ss, sizeof(ss));
+		memmove(slot, &ss, sizeof(ss));
 	Setmark(h);
 }
+
+
 /* Validate spans and temporary ownership before copying mapped array elements. */
 OP(slicela)
 {
@@ -4308,14 +4337,27 @@ OP(slicela)
 	WORD dl;
 	Array *ss, *ds;
 	uchar *sp, *dp, *ep, *source, *destination;
+	uintptr address;
 
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(ss))
+		error(exHeap);
 	memmove(&ss, R.s, sizeof(ss));
-	memmove(&dl, R.m, sizeof(dl));
-	memmove(&ds, R.d, sizeof(ds));
+	/* A missing source copies nothing and does not consume the other operands. */
 	if(ss == H || ss == nil)
 		return;
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(dl) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(ds))
+		error(exHeap);
+	memmove(&dl, R.m, sizeof(dl));
+	memmove(&ds, R.d, sizeof(ds));
 	if(ds == H || ds == nil)
 		error(exNilref);
+	address = (uintptr)ss;
+	if(address%sizeof(void*) != 0 || address > (uintptr)-1-sizeof(Array))
+		error(exHeap);
+	address = (uintptr)ds;
+	if(address%sizeof(void*) != 0 || address > (uintptr)-1-sizeof(Array))
+		error(exHeap);
 	if(dl < 0 || dl > ds->len || ss->len < 0 || ss->len > ds->len-dl)
 		error(exBounds);
 	if(ss->len == 0)
@@ -4331,6 +4373,8 @@ OP(slicela)
 		return;
 	}
 	/* A destination element can own the source array or its backing view. */
+	if((uintptr)ss <= sizeof(Heap))
+		error(exHeap);
 	h = D2H(ss);
 	if(h->ref == 0 || h->ref == (ulong)-1)
 		error(exHeap);

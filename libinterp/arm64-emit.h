@@ -565,7 +565,7 @@ a64mapped(A64Buf *b, LeafLayout *a, LeafOp *p)
 static int
 a64slicecopy(A64Buf *b, LeafLayout *a)
 {
-	int fallback, nilsource, nullsource, empty, forward, loop;
+	int fallback, nilsource, nullsource, empty, arrayend, typeend;
 
 	if(a->arraylen < 0 || a->arraylen > 2047 || a->arraylen%a->wordbytes ||
 	   a->arraydata < 0 || a->arraydata > 2047 || a->arraydata%8 ||
@@ -573,18 +573,27 @@ a64slicecopy(A64Buf *b, LeafLayout *a)
 	   a->typesize < 0 || a->typesize > 2047 || a->typesize%4 ||
 	   a->typenp < 0 || a->typenp > 2047 || a->typenp%4)
 		return 0;
+	arrayend=a->arraylen+a->wordbytes;
+	if(arrayend<a->arraydata+8)arrayend=a->arraydata+8;
+	if(arrayend<a->arraytype+8)arrayend=a->arraytype+8;
+	typeend=a->typesize+4>a->typenp+4 ? a->typesize+4 : a->typenp+4;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
-	a64ptr(b, 9, a->s); a64load(b, 13, 9, 8);
+	a64ptr(b, 9, a->s); a64pcspan(b, 9, 8, fallback); a64load(b, 13, 9, 8);
 	nullsource=b->n; a64put(b, 0xb400000d);
 	a64put(b, 0xb10005bf);
 	nilsource=b->n; a64put(b, 0x54000000);
-	a64ptr(b, 9, a->d); a64load(b, 14, 9, 8);
+	a64ptr(b, 9, a->d); a64pcspan(b, 9, 8, fallback); a64load(b, 14, 9, 8);
 	a64pcguard(b, 0xb500006e, fallback);
 	a64put(b, 0xb10005df); a64pcguard(b, 0x54000061, fallback);
+	a64pcspan(b, 13, arrayend, fallback); a64pcspan(b, 14, arrayend, fallback);
+	a64put(b, 0xf24009bfU); // tst x13, #7.
+	a64defer(b, 0x54000001, fallback);
+	a64put(b, 0xf24009dfU); // tst x14, #7.
+	a64defer(b, 0x54000001, fallback);
 	a64wordfield(b, 12, 13, a->arraylen, a->wordbytes);
-	a64put(b, 0xf102019f); a64pcguard(b, 0x54000069, fallback);
-	a64ptr(b, 9, a->m); a64load(b, 4, 9, a->wordbytes);
+	a64put(b, 0xf104019f); a64pcguard(b, 0x54000069, fallback);
+	a64ptr(b, 9, a->m); a64pcspan(b, 9, a->wordbytes, fallback); a64load(b, 4, 9, a->wordbytes);
 	a64wordfield(b, 3, 14, a->arraylen, a->wordbytes);
 	a64put(b, 0xb7f80003U | ((fallback-b->n)&0x3fff)<<5);
 	/* Unsigned bounds against a nonnegative destination also reject negative indexes. */
@@ -598,6 +607,12 @@ a64slicecopy(A64Buf *b, LeafLayout *a)
 	a64field(b, 2, 14, a->arraytype, 8);
 	a64pcguard(b, 0xb5000062, fallback);
 	a64put(b, 0xb100045f); a64pcguard(b, 0x54000061, fallback);
+	/* Preserve the captured index while the span helper uses x4. */
+	a64put(b, 0xaa0403e5U); // mov x5, x4.
+	a64pcspan(b, 2, typeend, fallback);
+	a64put(b, 0xaa0503e4U); // mov x4, x5.
+	a64put(b, 0xf240085fU); // tst x2, #7.
+	a64defer(b, 0x54000001, fallback);
 	a64field(b, 3, 2, a->typesize, 4);
 	a64put(b, 0x7100047f); a64pcguard(b, 0x54000060, fallback);
 	a64field(b, 3, 2, a->typenp, 4); a64pcguard(b, 0x34000063, fallback);
@@ -611,19 +626,8 @@ a64slicecopy(A64Buf *b, LeafLayout *a)
 	a64put(b, 0xab04016b); a64pcguard(b, 0x54000063, fallback);
 	a64put(b, 0xab0c0123); a64pcguard(b, 0x54000063, fallback);
 	a64put(b, 0xab0c0163); a64pcguard(b, 0x54000063, fallback);
-	/* One signed-stride loop preserves both directions of memmove overlap. */
-	a64put(b, 0xd2800022); a64put(b, 0xeb09017f);
-	forward=b->n; a64put(b, 0x54000009);
-	a64put(b, 0x92800002);
-	a64put(b, 0xd1000583);
-	a64put(b, 0x8b030129); a64put(b, 0x8b03016b);
-	if(b->n > LeafMax) return 0;
-	b->code[forward] |= (b->n-forward)<<5;
-	loop=b->n;
-	a64load(b, 3, 9, 1); a64store(b, 3, 1);
-	a64put(b, 0x8b020129); a64put(b, 0x8b02016b);
-	a64put(b, 0xf100058c);
-	a64put(b, 0x54000001U | ((loop-b->n)&0x7ffff)<<5);
+	/* Copy complete qwords and an exact tail without changing REG or FP state. */
+	if(!a64copykernel(b))return 0;
 	if(b->n > LeafMax) return 0;
 	b->code[empty] |= (b->n-empty)<<5;
 	b->code[nilsource] |= (b->n-nilsource)<<5;
@@ -1284,7 +1288,7 @@ a64modulecall(A64Buf *b, LeafLayout *a)
 static int
 a64arrayslice(A64Buf *b, LeafLayout *a)
 {
-	int fields[7], i, j, fallback, empty, rootcase, rootdone;
+	int fields[7], i, j, fallback, empty, rootcase, rootdone, arrayend, typeend;
 
 	fields[0]=a->arraylen; fields[1]=a->arraydata; fields[2]=a->arraytype;
 	fields[3]=a->arrayroot; fields[4]=a->typesize; fields[5]=a->typeref; fields[6]=a->typenp;
@@ -1296,21 +1300,36 @@ a64arrayslice(A64Buf *b, LeafLayout *a)
 		   fields[j]<fields[i]+(i==0 ? a->wordbytes : 8))return 0;
 	if(a->typesize==a->typeref || a->typenp==a->typeref || a->typenp==a->typesize)return 0;
 	if(a->heapref<=0 || a->heapref>128 || a->heapref%8 || a->refbytes!=8)return 0;
+	arrayend=a->arraylen+a->wordbytes;
+	if(arrayend<a->arraydata+8)arrayend=a->arraydata+8;
+	if(arrayend<a->arrayroot+8)arrayend=a->arrayroot+8;
+	if(arrayend<a->arraytype+8)arrayend=a->arraytype+8;
+	typeend=a->typesize+4;
+	if(typeend<a->typeref+4)typeend=a->typeref+4;
+	if(typeend<a->typenp+4)typeend=a->typenp+4;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	/* x12/x13 retain start/end, x14 the view, and x15 its element Type. */
-	a64ptr(b, 9, a->s); a64wordfield(b, 12, 9, 0, a->wordbytes);
-	a64ptr(b, 10, a->m); a64wordfield(b, 13, 10, 0, a->wordbytes);
+	a64ptr(b, 9, a->s); a64pcspan(b, 9, a->wordbytes, fallback); a64wordfield(b, 12, 9, 0, a->wordbytes);
+	a64ptr(b, 10, a->m); a64pcspan(b, 10, a->wordbytes, fallback); a64wordfield(b, 13, 10, 0, a->wordbytes);
 	a64put(b, 0xf100019f); a64defer(b, 0x5400000b, fallback);
 	a64put(b, 0xeb0c01bf); a64defer(b, 0x5400000b, fallback);
-	a64ptr(b, 11, a->d); a64field(b, 14, 11, 0, 8);
+	a64ptr(b, 11, a->d); a64pcspan(b, 11, 8, fallback); a64field(b, 14, 11, 0, 8);
 	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	a64pcspan(b, 14, arrayend, fallback);
+	a64put(b, 0xf10001dfU | (u32int)(a->heapref+8)<<10); // cmp x14, reference origin.
+	a64defer(b, 0x54000009, fallback);
+	a64put(b, 0xf24009dfU); // tst x14, #7.
+	a64defer(b, 0x54000001, fallback);
 	a64wordfield(b, 2, 14, a->arraylen, a->wordbytes);
 	a64put(b, 0xeb0201bf); a64defer(b, 0x5400000c, fallback);
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 14<<5 | 2);
 	a64put(b, 0xf100045f); a64defer(b, 0x54000001, fallback);
 	a64field(b, 15, 14, a->arraytype, 8);
 	a64put(b, 0x910005e2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	a64pcspan(b, 15, typeend, fallback);
+	a64put(b, 0xf24009ffU); // tst x15, #7.
+	a64defer(b, 0x54000001, fallback);
 	a64wordfield(b, 2, 15, a->typeref, 4);
 	a64put(b, 0xf100005f); a64defer(b, 0x5400000d, fallback);
 	/* A view retains its backing owner; a root requires an empty pointer map. */
@@ -1318,6 +1337,10 @@ a64arrayslice(A64Buf *b, LeafLayout *a)
 	a64put(b, 0x91000462);
 	rootcase=b->n; a64put(b, 0xb4000002);
 	a64defer(b, 0xb4000003, fallback);
+	a64put(b, 0xf100007fU | (u32int)(a->heapref+8)<<10); // cmp x3, reference origin.
+	a64defer(b, 0x54000009, fallback);
+	a64put(b, 0xf240087fU); // tst x3, #7.
+	a64defer(b, 0x54000001, fallback);
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 3<<5 | 2);
 	a64defer(b, 0xb4000002, fallback);
 	rootdone=b->n; a64put(b, 0x14000000);
@@ -2065,7 +2088,7 @@ a64arraycreate(A64Buf *b, LeafLayout *a, int clear)
 	a64put(b, 0xf10001bfU); // cmp x13, #0
 	a64defer(b, 0x5400000d, fallback);
 	a64field(b, 12, 12, a->moduletypes, 8);
-	a64ptr(b, 14, a->m); a64wordfield(b, 14, 14, 0, a->wordbytes);
+	a64ptr(b, 14, a->m); a64pcspan(b, 14, a->wordbytes, fallback); a64wordfield(b, 14, 14, 0, a->wordbytes);
 	a64put(b, 0xeb0d01dfU); // cmp x14, x13
 	a64defer(b, 0x54000002, fallback);
 	a64defer(b, 0xb400000c, fallback);
@@ -2105,13 +2128,13 @@ a64arraycreate(A64Buf *b, LeafLayout *a, int clear)
 	a64defer(b, 0x5400000d, fallback);
 	a64put(b, 0x6b0d01dfU); // cmp w14, w13
 	a64defer(b, 0x54000000, fallback);
-	a64ptr(b, 12, a->s); a64wordfield(b, 12, 12, 0, a->wordbytes);
+	a64ptr(b, 12, a->s); a64pcspan(b, 12, a->wordbytes, fallback); a64wordfield(b, 12, 12, 0, a->wordbytes);
 	a64put(b, 0xeb0d019fU); // cmp x12, x13
 	a64defer(b, 0x54000008, fallback);
 	a64put(b, 0x9b0c7d6bU); // mul x11, x11, x12
 	a64put(b, 0xf104017fU); // cmp x11, #256
 	a64defer(b, 0x54000008, fallback);
-	a64ptr(b, 8, a->d); a64load(b, 10, 8, 8);
+	a64ptr(b, 8, a->d); a64pcspan(b, 8, 8, fallback); a64load(b, 10, 8, 8);
 	a64defer(b, 0xb400000a, fallback);
 	a64put(b, 0xb100055fU); // cmn x10, #1
 	a64defer(b, 0x54000000, fallback);

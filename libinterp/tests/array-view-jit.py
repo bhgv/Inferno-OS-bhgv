@@ -72,23 +72,23 @@ emit(u32int *out,int cap,int wb,int bad)
         machine.hook_add(UC_HOOK_MEM_WRITE,write)
         checks = 0
         for wb in (4,8):
-            out = (C.c_uint32*64)()
-            n = lib.emit(out,64,wb,0)
-            if not 0<n<=64 or lib.emit(None,64,wb,0)!=n:
+            out = (C.c_uint32*128)()
+            n = lib.emit(out,128,wb,0)
+            if not 0<n<=128 or lib.emit(None,128,wb,0)!=n:
                 raise RuntimeError((arch,wb,'publication size',n))
             blob = bytes(out)[:n*4]
             if sum(i.size for i in dis.disasm(blob,CODE))!=n*4:
                 raise RuntimeError('Invalid instruction boundaries')
             for cap in range(n):
-                guard = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                if lib.emit(guard,cap,wb,0) or list(guard)!=[0xa5a5a5a5]*64:
+                guard = (C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                if lib.emit(guard,cap,wb,0) or list(guard)!=[0xa5a5a5a5]*128:
                     raise RuntimeError('Partial output publication')
             for bad in range(1,11):
-                guard = (C.c_uint32*64)(*[0xa5a5a5a5]*64)
-                if lib.emit(guard,64,wb,bad) or list(guard)!=[0xa5a5a5a5]*64:
+                guard = (C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                if lib.emit(guard,128,wb,bad) or list(guard)!=[0xa5a5a5a5]*128:
                     raise RuntimeError(('Malformed layout',bad))
             machine.mem_write(CODE,blob)
-            machine.ctl_remove_cache(CODE,CODE+256)
+            machine.ctl_remove_cache(CODE,CODE+512)
             for profile in range(50):
                 for width in (0,1,4,8):
                     for fa in range(8):
@@ -160,7 +160,7 @@ emit(u32int *out,int cap,int wb,int bad)
                                 put(image,8,BASE+sa);put(image,24,BASE+ma);put(image,16,BASE+da)
                                 first,last=signed(image,sa,wb),signed(image,ma,wb)
                                 actualrootrefs=refs if root==BASE+obj else rootrefs
-                                valid=array==BASE+obj and refs==1 and (np==0 if root==MASK else root!=0 and actualrootrefs!=0) and descriptor not in (0,MASK) and typerefs>0 and size>=0 and 0<=first<=last<=length
+                                valid=array==BASE+obj and array%8==0 and refs==1 and (np==0 if root==MASK else root!=0 and actualrootrefs!=0) and descriptor not in (0,MASK) and typerefs>0 and size>=0 and 0<=first<=last<=length
                                 if size>0:
                                     valid=valid and 0<last<=((1<<31)-1)//size and data not in (0,MASK) and data<=MASK-last*size
                                 expected=bytearray(image)

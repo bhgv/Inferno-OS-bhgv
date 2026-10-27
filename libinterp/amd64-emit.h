@@ -740,7 +740,7 @@ x64sliceempty(X64Buf *b, int notempty)
 static int
 x64slicecopy(X64Buf *b, LeafLayout *a)
 {
-	int fallback, forward, loop, identical;
+	int fallback, identical, arrayend, typeend;
 
 	if(a->arraylen < 0 || a->arraylen > 2047 || a->arraylen%a->wordbytes ||
 	   a->arraydata < 0 || a->arraydata > 2047 || a->arraydata%8 ||
@@ -748,32 +748,41 @@ x64slicecopy(X64Buf *b, LeafLayout *a)
 	   a->typesize < 0 || a->typesize > 2047 || a->typesize%4 ||
 	   a->typenp < 0 || a->typenp > 2047 || a->typenp%4)
 		return 0;
+	arrayend=a->arraylen+a->wordbytes;
+	if(arrayend<a->arraydata+8)arrayend=a->arraydata+8;
+	if(arrayend<a->arraytype+8)arrayend=a->arraytype+8;
+	typeend=a->typesize+4>a->typenp+4 ? a->typesize+4 : a->typenp+4;
 	x64byte(b, 0xeb); x64byte(b, 3); fallback=b->n;
 	x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
-	x64caseptr(b, 0, a->s); x64load(b, 0, 8);
+	x64caseptr(b, 0, a->s); x64pcspan(b, 8, 8); x64load(b, 0, 8);
 	/* Adding one maps C null and H onto the unsigned interval [0,1]. */
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64sliceempty(b, 0x77);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc0);
-	x64caseptr(b, 1, a->d); x64load(b, 1, 8);
+	x64caseptr(b, 1, a->d); x64pcspan(b, 9, 8); x64load(b, 1, 8);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
-	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff);
-	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc9);
+	x64pcspan(b, 8, arrayend); x64pcspan(b, 9, arrayend);
+	x64byte(b, 0x41); x64byte(b, 0xf6); x64byte(b, 0xc0); x64byte(b, 7);
+	x64moduleguard(b, 0x74, fallback);
+	x64byte(b, 0x41); x64byte(b, 0xf6); x64byte(b, 0xc1); x64byte(b, 7);
+	x64moduleguard(b, 0x74, fallback);
 	x64casefield(b, 0, 8, a->arraylen, a->wordbytes);
-	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, 128);
-	if(!x64mappedguard(b, 0x76, fallback)) return 0;
-	x64caseptr(b, 2, a->m); x64load(b, 2, a->wordbytes);
+	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, 256);
+	x64moduleguard(b, 0x76, fallback);
+	x64caseptr(b, 2, a->m); x64pcspan(b, 10, a->wordbytes); x64load(b, 2, a->wordbytes);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xd6); /* rsi=index */
 	x64casefield(b, 1, 9, a->arraylen, a->wordbytes);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
-	if(!x64mappedguard(b, 0x79, fallback)) return 0;
+	x64moduleguard(b, 0x79, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xca);
-	if(!x64mappedguard(b, 0x76, fallback)) return 0;
+	x64moduleguard(b, 0x76, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x29); x64byte(b, 0xd1);
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xc8);
-	if(!x64mappedguard(b, 0x76, fallback)) return 0;
+	x64moduleguard(b, 0x76, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64sliceempty(b, 0x75);
 	x64byte(b, 0xeb); x64byte(b, 3); fallback=b->n;
 	x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
@@ -781,54 +790,44 @@ x64slicecopy(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xc2);
 	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xea); x64byte(b, 31);
 	x64byte(b, 0x85); x64byte(b, 0xd2);
-	if(!x64mappedguard(b, 0x74, fallback)) return 0;
+	x64moduleguard(b, 0x74, fallback);
 	x64casefield(b, 2, 9, a->arraytype, 8);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2);
-	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0xff);
-	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	x64moduleguard(b, 0x75, fallback);
+	/* Keep the descriptor in RCX while the span helper borrows RDX. */
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xd1);
+	x64pcspan(b, 1, typeend);
+	x64byte(b, 0xf6); x64byte(b, 0xc1); x64byte(b, 7); x64moduleguard(b, 0x74, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xca);
 	x64casefield(b, 1, 2, a->typesize, 4);
 	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1);
-	if(!x64mappedguard(b, 0x74, fallback)) return 0;
+	x64moduleguard(b, 0x74, fallback);
 	x64casefield(b, 1, 2, a->typenp, 4);
 	x64byte(b, 0x85); x64byte(b, 0xc9);
-	if(!x64mappedguard(b, 0x74, fallback)) return 0;
+	x64moduleguard(b, 0x74, fallback);
 	x64casefield(b, 1, 8, a->arraydata, 8);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
-	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc8);
 	x64casefield(b, 1, 9, a->arraydata, 8);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
-	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xca);
 	x64byte(b, 0x49); x64byte(b, 0x01); x64byte(b, 0xf2);
-	if(!x64mappedguard(b, 0x73, fallback)) return 0;
+	x64moduleguard(b, 0x73, fallback);
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc2);
 	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xc2);
-	if(!x64mappedguard(b, 0x73, fallback)) return 0;
+	x64moduleguard(b, 0x73, fallback);
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xd2);
 	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xc2);
-	if(!x64mappedguard(b, 0x73, fallback)) return 0;
-	/* An explicit signed stride gives memmove order while preserving DF. */
-	x64byte(b, 0xbe); x64word(b, 1);
+	x64moduleguard(b, 0x73, fallback);
+	/* Equal physical spans require no stores after the complete preflight. */
 	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xc2);
-	/* All span guards precede the no-store path for identical physical ranges. */
-	x64byte(b, 0x74); identical=b->n; x64byte(b, 0);
-	x64byte(b, 0x76); forward=b->n; x64byte(b, 0);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xce); x64byte(b, 0xff);
-	x64byte(b, 0x4d); x64byte(b, 0x8d); x64byte(b, 0x44); x64byte(b, 0x00); x64byte(b, 0xff);
-	x64byte(b, 0x4d); x64byte(b, 0x8d); x64byte(b, 0x54); x64byte(b, 0x02); x64byte(b, 0xff);
-	if(b->n > sizeof(b->bytes)) return 0;
-	b->bytes[forward]=b->n-forward-1;
-	loop=b->n;
-	x64byte(b, 0x41); x64byte(b, 0x8a); x64byte(b, 0x08);
-	x64byte(b, 0x41); x64byte(b, 0x88); x64byte(b, 0x0a);
-	x64byte(b, 0x49); x64byte(b, 0x01); x64byte(b, 0xf0);
-	x64byte(b, 0x49); x64byte(b, 0x01); x64byte(b, 0xf2);
-	x64byte(b, 0xff); x64byte(b, 0xc8);
-	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
-	if(b->n > sizeof(b->bytes)) return 0;
-	b->bytes[identical]=b->n-identical-1;
+	x64byte(b, 0x0f); x64byte(b, 0x84); identical=b->n; x64word(b, 0);
+	if(!x64copykernel(b))return 0;
+	if(!x64casepatch(b, identical, b->n))return 0;
 	return 1;
 }
 
@@ -1643,7 +1642,7 @@ x64modulecall(X64Buf *b, LeafLayout *a)
 static int
 x64arrayslice(X64Buf *b, LeafLayout *a)
 {
-	int fields[7], i, j, fallback, empty, rootcase, rootdone;
+	int fields[7], i, j, fallback, empty, rootcase, rootdone, arrayend, typeend;
 
 	fields[0]=a->arraylen; fields[1]=a->arraydata; fields[2]=a->arraytype;
 	fields[3]=a->arrayroot; fields[4]=a->typesize; fields[5]=a->typeref; fields[6]=a->typenp;
@@ -1655,16 +1654,28 @@ x64arrayslice(X64Buf *b, LeafLayout *a)
 		   fields[j]<fields[i]+(i==0 ? a->wordbytes : 8))return 0;
 	if(a->typesize==a->typeref || a->typenp==a->typeref || a->typenp==a->typesize)return 0;
 	if(a->heapref<=0 || a->heapref>128 || a->heapref%8 || a->refbytes!=8)return 0;
+	arrayend=a->arraylen+a->wordbytes;
+	if(arrayend<a->arraydata+8)arrayend=a->arraydata+8;
+	if(arrayend<a->arrayroot+8)arrayend=a->arrayroot+8;
+	if(arrayend<a->arraytype+8)arrayend=a->arraytype+8;
+	typeend=a->typesize+4;
+	if(typeend<a->typeref+4)typeend=a->typeref+4;
+	if(typeend<a->typenp+4)typeend=a->typenp+4;
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	/* r8/r9 retain start/end; r10 keeps the view throughout every guard. */
-	x64ptr(b, 0, a->s); x64modulefield(b, 8, 8, 0, a->wordbytes);
-	x64ptr(b, 1, a->m); x64modulefield(b, 9, 9, 0, a->wordbytes);
+	x64ptr(b, 0, a->s); x64pcspan(b, 8, a->wordbytes); x64modulefield(b, 8, 8, 0, a->wordbytes);
+	x64ptr(b, 1, a->m); x64pcspan(b, 9, a->wordbytes); x64modulefield(b, 9, 9, 0, a->wordbytes);
 	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x79, fallback);
 	x64byte(b, 0x4d); x64byte(b, 0x39); x64byte(b, 0xc1); x64moduleguard(b, 0x7d, fallback);
-	x64ptr(b, 2, a->d); x64modulefield(b, 10, 10, 0, 8);
+	x64ptr(b, 2, a->d); x64pcspan(b, 10, 8); x64modulefield(b, 10, 10, 0, 8);
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x4a); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64pcspan(b, 10, arrayend);
+	x64byte(b, 0x49); x64byte(b, 0x81); x64byte(b, 0xfa); x64word(b, a->heapref+8);
+	x64moduleguard(b, 0x77, fallback);
+	x64byte(b, 0x41); x64byte(b, 0xf6); x64byte(b, 0xc2); x64byte(b, 7);
+	x64moduleguard(b, 0x74, fallback);
 	x64modulefield(b, 1, 10, a->arraylen, a->wordbytes);
 	x64byte(b, 0x49); x64byte(b, 0x39); x64byte(b, 0xc9); x64moduleguard(b, 0x7e, fallback);
 	x64modulefield(b, 0, 10, -a->heapref, 8);
@@ -1672,6 +1683,9 @@ x64arrayslice(X64Buf *b, LeafLayout *a)
 	x64modulefield(b, 11, 10, a->arraytype, 8);
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x4b); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64pcspan(b, 11, typeend);
+	x64byte(b, 0x41); x64byte(b, 0xf6); x64byte(b, 0xc3); x64byte(b, 7);
+	x64moduleguard(b, 0x74, fallback);
 	x64modulefield(b, 0, 11, a->typeref, 4);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x7f, fallback);
 	/* Root arrays may reuse their header only when no element owns pointers. */
@@ -1679,6 +1693,9 @@ x64arrayslice(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x48); x64byte(b, 1);
 	x64byte(b, 0xe3); rootcase=b->n; x64byte(b, 0); // JRCXZ recognizes the H sentinel.
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x75, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, a->heapref+8);
+	x64moduleguard(b, 0x77, fallback);
+	x64byte(b, 0xa8); x64byte(b, 7); x64moduleguard(b, 0x74, fallback);
 	x64modulefield(b, 0, 0, -a->heapref, 8);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0xeb); rootdone=b->n; x64byte(b, 0);
@@ -2457,17 +2474,12 @@ x64arraycreate(X64Buf *b, LeafLayout *a, int clear)
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	x64caseptr(b, 0, a->module);
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0); // mov rax, r8
-	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0x01); // lea rdx, [rax+1]
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01); // cmp rdx, 1
-	x64moduleguard(b, 0x77, fallback);
-	x64readspan(b, a->linkmodule, 8);
+	x64pcspan(b, 0, a->linkmodule+8);
 	x64casefield(b, 0, 0, a->linkmodule, 8);
-	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0x01); // lea rdx, [rax+1]
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01); // cmp rdx, 1
-	x64moduleguard(b, 0x77, fallback);
 	moduleend=a->moduletypes+8;
 	if(moduleend<a->modulenty+4)moduleend=a->modulenty+4;
-	x64readspan(b, 0, moduleend);
+	x64pcspan(b, 0, moduleend);
+	x64caseptr(b, 0, a->m); x64pcspan(b, 8, a->wordbytes);
 	x64casefield(b, 2, 0, a->modulenty, 4);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); // test rdx, rdx
 	x64moduleguard(b, 0x7f, fallback);
@@ -2485,12 +2497,9 @@ x64arraycreate(X64Buf *b, LeafLayout *a, int clear)
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc8); // mov rax, rcx
 	x64readspan(b, 0, 8);
 	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x00); // mov rax, qword ptr [rax]
-	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0x01); // lea rdx, [rax+1]
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01); // cmp rdx, 1
-	x64moduleguard(b, 0x77, fallback);
 	x64byte(b, 0xa8); x64byte(b, 0x07); // test al, 7
 	x64moduleguard(b, 0x74, fallback);
-	x64readspan(b, 0, header);
+	x64pcspan(b, 0, header);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc1); // mov r9, rax
 	x64casefield(b, 1, 0, a->typeref, 4);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); // test rcx, rcx
@@ -2517,19 +2526,16 @@ x64arraycreate(X64Buf *b, LeafLayout *a, int clear)
 	x64moduleguard(b, 0x7f, fallback);
 	x64byte(b, 0x81); x64byte(b, 0xf9); x64byte(b, 0xff); x64byte(b, 0xff); x64byte(b, 0xff); x64byte(b, 0x7f); // cmp ecx, 0x7fffffff
 	x64moduleguard(b, 0x75, fallback);
-	x64caseptr(b, 0, a->s); x64load(b, 0, a->wordbytes);
+	x64caseptr(b, 0, a->s); x64pcspan(b, 8, a->wordbytes); x64load(b, 0, a->wordbytes);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc6); // mov rsi, rax
 	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xfe); x64byte(b, 0xff); x64byte(b, 0xff); x64byte(b, 0xff); x64byte(b, 0x7f); // cmp rsi, 0x7fffffff
 	x64moduleguard(b, 0x76, fallback);
 	x64byte(b, 0x4c); x64byte(b, 0x0f); x64byte(b, 0xaf); x64byte(b, 0xde); // imul r11, rsi
 	x64byte(b, 0x49); x64byte(b, 0x81); x64byte(b, 0xfb); x64byte(b, 0x00); x64byte(b, 0x01); x64byte(b, 0x00); x64byte(b, 0x00); // cmp r11, 256
 	x64moduleguard(b, 0x76, fallback);
-	x64caseptr(b, 2, a->d);
+	x64caseptr(b, 2, a->d); x64pcspan(b, 10, 8);
 	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0xd0); // mov r8, r10
 	x64casefield(b, 0, 10, 0, 8);
-	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0x01); // lea rdx, [rax+1]
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01); // cmp rdx, 1
-	x64moduleguard(b, 0x77, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, a->heapcolor);
 	x64moduleguard(b, 0x77, fallback);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc2); // mov r10, rax
@@ -2564,9 +2570,6 @@ x64arraycreate(X64Buf *b, LeafLayout *a, int clear)
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x92); x64word(b, arrayend); // lea rdx, [r10+arrayend]
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xd0); // cmp rax, rdx
 	x64moduleguard(b, 0x73, fallback);
-	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0x01); // lea rdx, [rax+1]
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0x01); // cmp rdx, 1
-	x64moduleguard(b, 0x77, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2); // mov rdx, rax
 	x64byte(b, 0x4c); x64byte(b, 0x01); x64byte(b, 0xda); // add rdx, r11
 	x64moduleguard(b, 0x73, fallback);
