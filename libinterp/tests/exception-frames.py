@@ -366,6 +366,74 @@ pendingconstruction(void)
 }
 
 
+/* Reject bad explicit/default destinations before touching frames or held owners. */
+static void
+invalidtargets(void)
+{
+    ulong targets[]={4,5,(ulong)-1,(ulong)-2,0x80000000UL};
+    int mode,otherwise,later;
+    REG before;
+    uchar saved[256];
+
+    for(mode=0;mode<5;mode++)for(otherwise=0;otherwise<2;otherwise++)
+    for(later=0;later<2;later++){
+        setup(0,0,0,0,0,0);
+        if(otherwise){entries[0].s="different";entries[1].pc=targets[mode];}
+        else entries[0].pc=targets[mode];
+        if(later){
+            handlers[1]=handlers[0];
+            handlers[1].etab=entries+1;
+            entries[1].s=nil;entries[1].pc=2;
+            if(otherwise)handlers[0].pc2=0;
+        }
+        memmove(saved,fp,framesize);before=R;
+        framecheck(handler("match")==later);
+        if(later){
+            framecheck(R.PC==instructions+2 && oldvalue.h.ref==0);
+            framecheck(getowner(fp+handlers[1].eoff)==newvalue.data);
+        }else{
+            framecheck(!memcmp(saved,fp,framesize) && !memcmp(&before,&R,sizeof(R)));
+            framecheck(oldvalue.h.ref==1 && diagnostics==0 && newstrings==0);
+        }
+        finish();checks++;
+    }
+}
+
+
+/* Exhaust near-limit byte offsets separately from interpreted instruction indices.
+ * Synthetic code tokens are inspected only and never dereferenced or executed. */
+static void
+targetboundaries(void)
+{
+    Modlink link;
+    Module image;
+    uintptr limit=(uintptr)-1;
+    int compiled,room,index,expected;
+
+    memset(&link,0,sizeof(link));memset(&image,0,sizeof(image));
+    link.m=&image;image.nprog=8;
+    for(compiled=0;compiled<2;compiled++)for(room=0;room<512;room++)
+    for(index=0;index<64;index++){
+        link.compiled=compiled;link.prog=(Inst*)(limit-room);
+        if(compiled)expected=room>0 && index<room;
+        else expected=room>0 && index<8 &&
+            (index+1)*sizeof(Inst)<=(uintptr)room;
+        framecheck(exceptiontarget(&link,index)==expected);checks++;
+    }
+    link.prog=instructions;image.nprog=4;link.compiled=0;
+    framecheck(exceptiontarget(&link,0) && exceptiontarget(&link,3));
+    framecheck(!exceptiontarget(&link,4));
+    image.nprog=0;framecheck(!exceptiontarget(&link,0));
+    image.nprog=-1;framecheck(!exceptiontarget(&link,0));
+    link.compiled=1;
+    framecheck(exceptiontarget(&link,0) && exceptiontarget(&link,1));
+    framecheck(!exceptiontarget(&link,(ulong)-1));
+    link.prog=nil;framecheck(!exceptiontarget(&link,0));
+    link.prog=H;framecheck(!exceptiontarget(&link,0));
+    framecheck(!exceptiontarget(nil,0) && !exceptiontarget(H,0));
+}
+
+
 /* Run selected handler and ownership families at every frame alignment. */
 int main(void)
 {
@@ -375,6 +443,8 @@ int main(void)
     if(!only || !strcmp(only,"uncalled"))uncalledframe();
     if(!only || !strcmp(only,"sentinel"))unmatchedhandler();
     if(!only || !strcmp(only,"pc"))invalidpcs();
+    if(!only || !strcmp(only,"targets"))invalidtargets();
+    if(!only || !strcmp(only,"boundaries"))targetboundaries();
     if(!only || !strcmp(only,"valid"))validhandlers();
     if(!only || !strcmp(only,"invalid"))invalidhandlers();
     if(!only || !strcmp(only,"later"))laterhandler();
@@ -397,6 +467,7 @@ for variant in ('emu','os'):
     signatures = ['static int\nematch(', 'static void\nfreeframe(']
     if 'static Type*\nframetype(' in source: signatures += ['static Type*\nframetype(']
     if 'static int\nexceptionframe(' in source: signatures += ['static int\nexceptionframe(']
+    if 'static int\nexceptiontarget(' in source: signatures += ['static int\nexceptiontarget(']
     if 'static ulong\nexceptionpc(' in source: signatures += ['static ulong\nexceptionpc(']
     parts = [function(heap, s) for s in ('void\nfreeptrs(', 'void\ninitmem(')]
     stack=(root/'libinterp/stack.c').read_text()

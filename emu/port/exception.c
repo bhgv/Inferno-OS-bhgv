@@ -167,6 +167,34 @@ exceptionpc(Modlink *module, Inst *nextpc)
 }
 
 
+/* Validate the selected destination before diagnostics or stack ownership changes.
+ * Compiled PCs use byte offsets; their allocation extent is not stored here. */
+static int
+exceptiontarget(Modlink *module, ulong pc)
+{
+	uintptr base, offset, limit;
+
+	if(pc == NOPC || module == nil || module == H ||
+	   module->prog == nil || module->prog == H)
+		return 0;
+	base = (uintptr)module->prog;
+	limit = (uintptr)-1;
+	if(module->compiled){
+		if(pc > limit-base)
+			return 0;
+		offset = pc;
+	}else{
+		if(module->m == nil || module->m == H || module->m->nprog <= 0 ||
+		   pc >= (ulong)module->m->nprog || pc > limit/sizeof(Inst))
+			return 0;
+		offset = pc*sizeof(Inst);
+		if(offset > limit-base || sizeof(Inst) > limit-base-offset)
+			return 0;
+	}
+	return base+offset != (uintptr)H;
+}
+
+
 /* Search only usable handlers, retaining diagnostic storage on allocation failure. */
 int
 handler(char *estr)
@@ -201,13 +229,14 @@ handler(char *estr)
 				eoff = h->eoff;
 				zt = h->t;
 				for(e = h->etab, ne = h->ne; e->s != nil; e++, ne--){
-					if(ematch(e->s, estr) && (str && ne <= 0 || !str && ne > 0)){
+					if(ematch(e->s, estr) && (str && ne <= 0 || !str && ne > 0) &&
+					   exceptiontarget(m, e->pc)){
 						newpc = e->pc;
 						goto found;
 					}
 				}
 				newpc = e->pc;
-				if(newpc != NOPC)
+				if(exceptiontarget(m, newpc))
 					goto found;
 			}
 		}

@@ -94,3 +94,32 @@ RV64+M; 90 / 83 for RV64+Zmmul; 87 / 86 for RV64I, out of 173 active commands.
 Some paths are guarded/partial. These counts do not require replacing complex
 C helpers and do not represent completion of native block execution or the
 64-bit pointer ABI. Physical ARM64/RISC-V acceptance remains separate.
+
+
+## Selected destination checks
+
+Both emu and os validate explicit and default handler PCs before diagnostics,
+stack cleanup or publication of exception owners. Interpreted destinations must
+name a complete instruction within `nprog`; multiplication, address addition,
+`NOPC`, nil/H program bases and the H destination are rejected. Compiled handlers
+retain byte offsets and reject address wrap and H without pretending that the
+module stores the extent of its generated allocation. Invalid targets do not
+hide subsequent valid handlers.
+
+`exception-frames.py` now runs 526,000 cases per runtime/scalar profile, or
+2,104,000 for emu/os and WORD32/WORD64 together. This includes 640 new handler
+selection cases and 2,097,152 near-limit interpreted/compiled target checks,
+besides the 6,208 existing frame and ownership cases. Run with:
+
+```sh
+CFLAGS='-O1 -g -DNDEBUG -fsanitize=address,undefined -fno-sanitize-recover=all' python3 libinterp/tests/exception-frames.py
+```
+
+The preceding handler reproduces a selection failure in the new `targets`
+family with an active explicit predicate (SIGABRT), rather than a compilation
+failure. The pure target helper is supplied for fixture linkage in that negative
+control; the preceding handler itself remains unchanged. Boundary code tokens
+are synthetic and never dereferenced. These checks do not constitute a native
+ARM64 host run or solve the outstanding compiler/reference/frame ABI mismatch.
+Opcode coverage remains 173/173 complete entries including C and 166/173 guarded
+native paths for each priority architecture.
