@@ -1823,6 +1823,8 @@ x64bytestring(X64Buf *b, LeafLayout *a)
 	x64caseptr(b, 2, a->d);
 	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0xd0); // mov r8, r10
 	x64casefield(b, 0, 10, 0, 8);
+	x64byte(b, 0xa8); x64byte(b, 7); // test al,7 before inspecting an owning result.
+	x64moduleguard(b, 0x74, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, a->heapcolor);
 	x64moduleguard(b, 0x77, fallback);
 	x64readspan(b, a->stringlen > a->stringmax ? a->stringlen : a->stringmax, 4);
@@ -1933,6 +1935,8 @@ x64stringbytes(X64Buf *b, LeafLayout *a)
 	x64caseptr(b, 2, a->d);
 	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0xd0); // mov r8, r10
 	x64casefield(b, 0, 10, 0, 8);
+	x64byte(b, 0xa8); x64byte(b, 7); // test al,7 before inspecting an owning result.
+	x64moduleguard(b, 0x74, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, a->heapcolor);
 	x64moduleguard(b, 0x77, fallback);
 	x64readspan(b, header, 8);
@@ -1954,6 +1958,8 @@ x64stringbytes(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x49); x64byte(b, 0x39); x64byte(b, 0xcb); // cmp r11, rcx
 	x64moduleguard(b, 0x76, fallback);
 	x64casefield(b, 0, 10, a->arraytype, 8);
+	x64byte(b, 0xa8); x64byte(b, 7); // Reused array descriptors must be naturally aligned.
+	x64moduleguard(b, 0x74, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); // test rax, rax
 	x64moduleguard(b, 0x75, fallback);
 	header = a->typesize > a->typenp ? a->typesize : a->typenp;

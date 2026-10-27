@@ -1452,6 +1452,8 @@ a64bytestring(A64Buf *b, LeafLayout *a)
 	a64put(b, 0xab0b013fU); // cmn x9, x11
 	a64defer(b, 0x54000002, fallback);
 	a64ptr(b, 8, a->d); a64load(b, 10, 8, 8);
+	a64put(b, 0xf240095fU); // tst x10,#7 before inspecting an owning result.
+	a64defer(b, 0x54000001, fallback);
 	a64put(b, 0xf100015fU | (u32int)a->heapcolor<<10);
 	a64defer(b, 0x54000009, fallback);
 	a64put(b, 0xb100015fU | (u32int)((a->stringlen > a->stringmax ? a->stringlen : a->stringmax)+4)<<10);
@@ -1554,6 +1556,8 @@ a64stringbytes(A64Buf *b, LeafLayout *a)
 	a64put(b, 0xab0b013fU); // cmn x9, x11
 	a64defer(b, 0x54000002, fallback);
 	a64ptr(b, 8, a->d); a64load(b, 10, 8, 8);
+	a64put(b, 0xf240095fU); // tst x10,#7 before inspecting an owning result.
+	a64defer(b, 0x54000001, fallback);
 	a64put(b, 0xf100015fU | (u32int)a->heapcolor<<10);
 	a64defer(b, 0x54000009, fallback);
 	a64put(b, 0xb100015fU | (u32int)(header+8)<<10);
@@ -1576,6 +1580,8 @@ a64stringbytes(A64Buf *b, LeafLayout *a)
 	a64put(b, 0xeb0e017fU); // cmp x11, x14
 	a64defer(b, 0x54000008, fallback);
 	a64field(b, 14, 10, a->arraytype, 8);
+	a64put(b, 0xf24009dfU); // tst x14,#7: reused array descriptors must be aligned.
+	a64defer(b, 0x54000001, fallback);
 	a64defer(b, 0xb400000e, fallback);
 	header = a->typesize > a->typenp ? a->typesize : a->typenp;
 	if(header < a->typeref) header = a->typeref;

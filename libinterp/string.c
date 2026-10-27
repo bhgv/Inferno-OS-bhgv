@@ -447,12 +447,12 @@ OP(cvtca)
 	String *ss;
 	Array *a, *old, target;
 	Heap source, previous, backing;
-	Rune *r;
+	Rune rune;
 	uchar *bytes;
-	char *p;
+	char *p, encoded[UTFmax];
 	uintptr address, extent;
 	uvlong span;
-	int l, capacity, n, size, pointers, references, reusable;
+	int l, capacity, n, size, pointers, references, reusable, i;
 
 	void *slot;
 
@@ -500,7 +500,8 @@ OP(cvtca)
 	if(old == nil)
 		error(exNilref);
 	if(old != H){
-		if((uintptr)old <= sizeof(Heap))
+		if((uintptr)old <= sizeof(Heap) ||
+		   (((uintptr)old-sizeof(Heap)) & (sizeof(void*)-1)) != 0)
 			error(exHeap);
 		memmove(&previous, (uchar*)old-sizeof(Heap), sizeof(previous));
 		if(previous.ref == 0)
@@ -513,14 +514,15 @@ OP(cvtca)
 			if(target.root == nil)
 				error(exHeap);
 			if(target.root != H){
-				if((uintptr)target.root <= sizeof(Heap))
+				if((uintptr)target.root <= sizeof(Heap) ||
+				   (((uintptr)target.root-sizeof(Heap)) & (sizeof(void*)-1)) != 0)
 					error(exHeap);
 				memmove(&backing, (uchar*)target.root-sizeof(Heap), sizeof(backing));
 				if(backing.ref == 0)
 					error(exHeap);
 			}
 			/* Releasing a unique old array will also release its borrowed descriptor. */
-			if(target.t == nil || target.t == H)
+			if(target.t == nil || target.t == H || (uintptr)target.t%sizeof(void*) != 0)
 				error(exType);
 			extent = offsetof(Type, size) > offsetof(Type, np) ? offsetof(Type, size) : offsetof(Type, np);
 			if(extent < offsetof(Type, ref))
@@ -551,12 +553,18 @@ OP(cvtca)
 	}
 	if(l < 0){
 		l = -l;
-		r = (Rune*)bytes;
-		n = runenlen(r, l);
+		/* Borrowed Rune payloads can be packed; count and encode aligned locals. */
+		n = 0;
+		for(i = 0; i < l; i++) {
+			memmove(&rune, bytes+(ulong)i*sizeof(Rune), sizeof(rune));
+			n += runetochar(encoded, &rune);
+		}
 		a = mem2array(nil, n);
 		p = (char*)a->data;
-		while(l--)
-			p += runetochar(p, r++);
+		for(i = 0; i < l; i++) {
+			memmove(&rune, bytes+(ulong)i*sizeof(Rune), sizeof(rune));
+			p += runetochar(p, &rune);
+		}
 	}else
 		a = mem2array(bytes, l);
 	/* Allocation and encoding finish while the old generic owner still retains its source. */
@@ -631,7 +639,8 @@ OP(cvtac)
 		if(old == nil)
 			error(exNilref);
 		if(old != H){
-			if((uintptr)old <= sizeof(Heap))
+			if((uintptr)old <= sizeof(Heap) ||
+			   (((uintptr)old-sizeof(Heap)) & (sizeof(void*)-1)) != 0)
 				error(exHeap);
 			memmove(&previous, (uchar*)old-sizeof(Heap), sizeof(previous));
 			if(previous.ref == 0)
@@ -669,7 +678,8 @@ OP(cvtac)
 		error(exNilref);
 	/* Nil input also releases an old generic owner: reject a dead owner first. */
 	if(a == H && old != H){
-		if((uintptr)old <= sizeof(Heap))
+		if((uintptr)old <= sizeof(Heap) ||
+		   (((uintptr)old-sizeof(Heap)) & (sizeof(void*)-1)) != 0)
 			error(exHeap);
 		memmove(&previous, (uchar*)old-sizeof(Heap), sizeof(previous));
 		if(previous.ref == 0)

@@ -94,3 +94,7 @@ ownership for duplicates with active release-mode predicates in both models.
 [String owner preflight](README.string-owner-preflight.md) extends this to
 INSC, SLICEC, slicing, concatenation and split/expansion, with matching AMD64/ARM64
 guards and packed read-only INDC support.
+
+[Codec owner checks](README.string-codec-owners.md) cover packed borrowed
+String/Array inputs, byte-safe Rune export, aligned result/backing/descriptor
+ownership and matching AMD64/ARM64 CVTAC/CVTCA guards.
