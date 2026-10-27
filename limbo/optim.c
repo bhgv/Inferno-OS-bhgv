@@ -671,11 +671,13 @@ bzero(Bits b)
 	return 1;
 }
 
-/* Count set positions across all stored cells. */
-static int
+
+/* Count set positions without signed overflow in a large padded bitmap. */
+static uvlong
 bitcnt(Bits b)
 {
-	int i, m, n;
+	int i, m;
+	uvlong n;
 
 	m = b.n;
 	n = 0;
@@ -932,10 +934,13 @@ allocbits(int nv, int npc)
 	return defs;
 }
 
-static int
+
+/* Preserve aggregate use/def counts beyond the signed and unsigned 32-bit limits. */
+static uvlong
 bitcount(Bits *bs, int nv)
 {
-	int i, n;
+	int i;
+	uvlong n;
 
 	n = 0;
 	for(i = 0; i < nv; i++)
@@ -1216,19 +1221,68 @@ ckblocks(Inst *in, Block *b, int nb)
 		fatal("N - %d %d\n", n, nb);
 }
 
+typedef struct OptWalk OptWalk;
+
+struct OptWalk
+{
+	Block *block; // Current node awaiting postorder completion.
+	Blist *next; // Next successor or predecessor edge to inspect.
+};
+
+
+/* Preserve recursive discovery/postorder without consuming one C frame per block.
+ * Small graphs use local storage; growth stays inside compiler allocation limits. */
+static void
+optwalk(Block *root, int *number, int backwards)
+{
+	OptWalk local[64], *stack, *larger;
+	Block *child;
+	Blist *edge;
+	int depth, capacity;
+
+	stack = local;
+	capacity = nelem(local);
+	depth = 1;
+	root->flags = 1;
+	stack[0].block = root;
+	stack[0].next = backwards ? root->pred : root->succ;
+	while(depth != 0){
+		edge = stack[depth-1].next;
+		if(edge == nil){
+			if(number != nil)
+				stack[depth-1].block->dfn = --(*number);
+			depth--;
+			continue;
+		}
+		stack[depth-1].next = edge->next;
+		child = edge->block;
+		if(child->flags != 0)
+			continue;
+		if(depth == capacity){
+			if((ulong)capacity > 0x7fffffff/(2*sizeof(*stack)))
+				fatal("optimizer graph too deep");
+			larger = allocmem((ulong)capacity*2*sizeof(*stack));
+			memmove(larger, stack, (ulong)depth*sizeof(*stack));
+			if(stack != local)
+				free(stack);
+			stack = larger;
+			capacity *= 2;
+		}
+		child->flags = 1;
+		stack[depth].block = child;
+		stack[depth].next = backwards ? child->pred : child->succ;
+		depth++;
+	}
+	if(stack != local)
+		free(stack);
+}
+
+
+/* Number successors in the same postorder as the historical recursive walk. */
 static void
 dfs0(Block *b, int *n)
 {
-	Block *s;
-	Blist *bl;
-
-	b->flags = 1;
-	for(bl = b->succ; bl != nil; bl = bl->next){
-		s = bl->block;
-		if(s->flags == 0)
-			dfs0(s, n);
-	}
-	b->dfn = --(*n);
+	optwalk(b, n, 0);
 }
 
 static int
@@ -1262,18 +1316,12 @@ dfs(Block *b, int nb)
 	return nb-u;
 }
 
+
+/* Mark loop predecessors without recursion, retaining previously marked barriers. */
 static void
 loop0(Block *b)
 {
-	Block *p;
-	Blist *bl;
-
-	b->flags = 1;
-	for(bl = b->pred; bl != nil; bl = bl->next){
-		p = bl->block;
-		if(p->flags == 0)
-			loop0(p);
-	}
+	optwalk(b, nil, 1);
 }
 
 /* b1->b2 a back edge */
@@ -1836,10 +1884,13 @@ ckflags(void)
 	}
 }
 
+
+/* Optimize the control-flow graph while retaining wide diagnostic counters. */
 void
 optim(Inst *in, Decl *d)
 {
-	int nb, npc, nv, nd, nu;
+	int nb, npc, nv;
+	uvlong nd, nu;
 	Block *b;
 	Bits *uses, *defs;
 	Decl *sd;
@@ -1884,6 +1935,6 @@ optim(Inst *in, Decl *d)
 	freebits(uses, nv);
 	freebits(defs, nv);
 	if(debug['o'])
-		print("nb=%d npc=%d nv=%d nd=%d nu=%d\n", nb, npc, nv, nd, nu);
+		print("nb=%d npc=%d nv=%d nd=%llud nu=%llud\n", nb, npc, nv, nd, nu);
 }
 

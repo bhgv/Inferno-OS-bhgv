@@ -30,3 +30,9 @@ The fixture also passes ASan+UBSan with `ASAN_OPTIONS=detect_leaks=0`; the sandb
 cannot support LeakSanitizer process inspection. Every fixture allocation is
 explicitly freed. Full optimized Limbo program compilation remains outside this
 helper-level fixture.
+
+
+Latest graph traversal and wide bitmap/aggregate counters:
+[README.optimizer-graphs.md](README.optimizer-graphs.md). The bitmap fixture now
+uses explicit predicates and a leak-inspection hook, retaining its full oracle
+under NDEBUG and ASan/UBSan without relying on assertions.

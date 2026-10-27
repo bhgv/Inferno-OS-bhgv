@@ -13,7 +13,7 @@ enums = source[source.index('enum\n{\n\tBclr'):source.index('enum\n{\n\tSuse')]
 struct = source[source.index('struct Bits\n'):source.index('struct Blist\n')]
 body = source[source.index('static int\nbitc('):source.index('static char*\ndecname(')]
 unit = r'''
-#include <assert.h>
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +21,7 @@ unit = r'''
 #include <stdarg.h>
 typedef unsigned int uint;
 typedef uint32_t u32int;
+typedef uint64_t uvlong;
 #ifdef LONG32
 typedef uint32_t hostulong;
 #else
@@ -32,6 +33,22 @@ typedef struct Bits Bits;
 MACROS
 ENUMS
 STRUCT
+/* Preserve instrumented checks without unavailable process-based leak scanning. */
+int
+__lsan_is_turned_off(void)
+{
+    return 1;
+}
+
+
+/* Keep inherited bitmap predicates active in optimized fixture builds. */
+static void
+bitpredicate(int condition)
+{
+    if(!condition)
+        abort();
+}
+#define bitcheck(condition) bitpredicate(!!(condition)) // Normalize scalar and pointer predicates.
 static unsigned long checks;
 static int printed[1024], nprinted;
 /* Track diagnostic positions instead of parsing formatted output. */
@@ -40,7 +57,7 @@ static void print(const char *format, ...) {
     va_start(ap, format); printed[nprinted++] = va_arg(ap, int); va_end(ap);
 }
 /* Keep production allocation and zero-length semantics bounded and explicit. */
-static void *allocmem(ulong n) { void *p = malloc(n ? n : 1); assert(p); return p; }
+static void *allocmem(ulong n) { void *p = malloc(n ? n : 1); bitcheck(p); return p; }
 /* Abort on a production invariant violation. */
 static void fatal(const char *format, ...) { (void)format; abort(); }
 BODY
@@ -48,14 +65,14 @@ BODY
 static void verify(Bits b, const unsigned char *model, int count) {
     int i, total = 0, first = -1, last = -1;
     for(i = 0; i < count; i++) {
-        assert(!!bmem(b,i) == !!model[i]);
+        bitcheck(!!bmem(b,i) == !!model[i]);
         if(model[i]) { if(first < 0) first = i; last = i; total++; }
         checks++;
     }
-    assert(bitcnt(b) == total && lowbit(b) == first && topbit(b) == last);
-    assert(!!bzero(b) == (total == 0));
-    nprinted = 0; pbits(b); assert(nprinted == total);
-    for(i = 0; i < nprinted; i++) assert(model[printed[i]]);
+    bitcheck(bitcnt(b) == total && lowbit(b) == first && topbit(b) == last);
+    bitcheck(!!bzero(b) == (total == 0));
+    nprinted = 0; pbits(b); bitcheck(nprinted == total);
+    for(i = 0; i < nprinted; i++) bitcheck(model[printed[i]]);
     checks += 4;
 }
 /* Supply varied patterns with deterministic unsigned arithmetic. */
@@ -84,7 +101,7 @@ int main(void) {
     int size, i, lo, hi, op, trial, last;
     for(size = 0; size <= 257; size++) {
         b = bnew(size, 1);
-        assert(b.n == (size+31)/32); checks++;
+        bitcheck(b.n == (size+31)/32); checks++;
         memset(model,0,sizeof(model)); verify(b,model,b.n*32);
         for(i = 0; i < size; i++) {
             bset(b,i); model[i] = 1; verify(b,model,b.n*32);
@@ -114,13 +131,13 @@ int main(void) {
             right[i] = (b.b[i/32] >> (i%32)) & 1;
             model[i] = truth(op,left[i],right[i]);
         }
-        boper(Bstore,b,copy); assert(beq(b,copy));
+        boper(Bstore,b,copy); bitcheck(beq(b,copy));
         boper(op,a,b); verify(b,model,288);
         boper(op,a,a);
         for(i = 0; i < 288; i++) model[i]=truth(op,left[i],left[i]);
         verify(a,model,288);
         last = topbit(copy);
-        if(last >= 0) { boper(Bstore,copy,b); bclr(copy,last); assert(!beq(copy,b)); }
+        if(last >= 0) { boper(Bstore,copy,b); bclr(copy,last); bitcheck(!beq(copy,b)); }
         bfree(a); bfree(b); bfree(copy);
     }
     printf("PASS optimizer bits: %lu membership/range/truth-table/query checks, ulong%zu\n",checks,sizeof(ulong)*8);
