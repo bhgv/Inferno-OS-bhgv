@@ -134,6 +134,38 @@ exceptionframe(uchar *fp, Handler *handler)
 	return 1;
 }
 
+/* Resolve the predecessor PC without subtracting unrelated native pointers.
+ * module and nextpc are borrowed. Builtins have no bytecode and return NOPC;
+ * interpreted PCs must be aligned, nonzero and within the declared image.
+ * Compiled handlers retain their historical byte-offset coordinates. */
+static ulong
+exceptionpc(Modlink *module, Inst *nextpc)
+{
+    uintptr base, current, offset;
+
+    if(module == nil || module == H || module->prog == nil || module->prog == H ||
+       nextpc == nil || nextpc == H){
+        return NOPC;
+    }
+    base = (uintptr)module->prog;
+    current = (uintptr)nextpc;
+    if(current <= base){
+        return NOPC;
+    }
+    offset = current-base;
+    if(module->compiled){
+        if(offset-1 > 0xffffffffUL){
+            return NOPC;
+        }
+        return offset-1;
+    }
+    if(module->m == nil || module->m == H || module->m->nprog < 0 ||
+       offset%sizeof(Inst) != 0 || offset/sizeof(Inst) > (ulong)module->m->nprog){
+        return NOPC;
+    }
+    return offset/sizeof(Inst)-1;
+}
+
 /* Search only usable handlers, retaining diagnostic storage on allocation failure. */
 int
 handler(char *estr)
@@ -155,11 +187,7 @@ handler(char *estr)
 		return 0;
 	str = p->exval == H || D2H(p->exval)->t == &Tstring;
 	m = R.M;
-	if(m->compiled)
-		pc = (ulong)R.PC-(ulong)m->prog;
-	else
-		pc = R.PC-m->prog;
-	pc--;
+	pc = exceptionpc(m, R.PC);
 	fp = R.FP;
 
 	while(fp != nil){		/* look for a handler */
@@ -196,11 +224,7 @@ handler(char *estr)
 			break;
 		if(frame.mr != nil)
 			m = frame.mr;
-		if(m->compiled)
-			pc = (ulong)frame.lr-(ulong)m->prog;
-		else
-			pc = frame.lr-m->prog;
-		pc--;
+		pc = exceptionpc(m, frame.lr);
 		fp = frame.fp;
 	}
 	destroy(p->exval);

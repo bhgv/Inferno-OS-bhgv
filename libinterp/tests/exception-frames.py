@@ -270,12 +270,38 @@ static void uncalledframe(void)
     for(int i=0;i<32;i++)assert(storage[i]==0xa5 && temporary[framesize+i]==0xa5);
     free(storage);free(diagnostic);checks++;
 }
+/* Reject a PC inside an instruction even if truncating pointer subtraction
+ * would have incorrectly mapped it into an enclosing exception handler. */
+static void invalidpcs(void)
+{
+    int mode;
+    for(mode = 0; mode < 4; mode++){
+        setup(0, 0, 0, 0, 0, 0);
+        if(mode == 0){
+            R.PC = (Inst*)((uintptr)instructions + sizeof(Inst) + 1);
+        }else if(mode == 1){
+            R.PC = (Inst*)((uintptr)instructions + 5*sizeof(Inst));
+        }else if(mode == 2){
+            instance.prog = nil;
+        }else{
+            R.PC = nil;
+        }
+        if(handler("match") || diagnostics || newstrings || oldvalue.h.ref != 1 ||
+           getowner(fp+handlers[0].eoff) != oldvalue.data){
+            fprintf(stderr, "invalid exception PC selected a handler: %d\n", mode);
+            exit(1);
+        }
+        finish();
+        checks++;
+    }
+}
 int main(void)
 {
     char *only=getenv("EXCEPTION_CASES");
     for(alignment=0;alignment<8;alignment++){
     if(!only || !strcmp(only,"extension"))unwindextension();
     if(!only || !strcmp(only,"uncalled"))uncalledframe();
+    if(!only || !strcmp(only,"pc"))invalidpcs();
     if(!only || !strcmp(only,"valid"))validhandlers();
     if(!only || !strcmp(only,"invalid"))invalidhandlers();
     if(!only || !strcmp(only,"later"))laterhandler();
@@ -294,6 +320,7 @@ for variant in ('emu','os'):
     signatures = ['static int\nematch(', 'static void\nfreeframe(']
     if 'static Type*\nframetype(' in source: signatures += ['static Type*\nframetype(']
     if 'static int\nexceptionframe(' in source: signatures += ['static int\nexceptionframe(']
+    if 'static ulong\nexceptionpc(' in source: signatures += ['static ulong\nexceptionpc(']
     parts = [function(heap, s) for s in ('void\nfreeptrs(', 'void\ninitmem(')]
     parts += [function((root/'libinterp/stack.c').read_text(), 'void\nunextend(')]
     parts += [function(source, s) for s in signatures+['int\nhandler(']]
