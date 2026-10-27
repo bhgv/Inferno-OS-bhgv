@@ -28,6 +28,11 @@ def function(source, signature):
 
 
 parts = [function(xec, 'void\n'+name+'(') for name in ('cqadd', 'cqdel', 'cqdelp')]
+# New SEND/RECV share production span/peer checks; retain the old-source override.
+# Extract the real helpers rather than weakening guards with fixture stubs.
+if 'static int\nchannelspan(' in xec:
+    parts += [function(xec, 'static int\nchannelspan('),
+              function(xec, 'static Prog*\nchannelpeer(')]
 parts += [function(xec, 'OP('+name+')') for name in ('isend', 'irecv')]
 parts += [re.sub(r'^#include[^\n]*\n', '', alt, flags=re.M)]
 unit = (root/'libinterp/tests/channel-queues.c').read_text()
