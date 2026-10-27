@@ -11,7 +11,8 @@ Regex: module {
 
 # internal identifiers, not normally imported
 
-	ALT, CAT, DOT, SET, HAT, DOL, NUL, PCLO, CLO, OPT, LPN, RPN : con (1<<16)+iota;
+	# Tags must not collide with any Unicode scalar (U+0000 through U+10FFFF).
+	ALT, CAT, DOT, SET, HAT, DOL, NUL, PCLO, CLO, OPT, LPN, RPN : con (1<<21)+iota;
 
 	refRex : type int;	# used instead of ref Rex to avoid circularity
 

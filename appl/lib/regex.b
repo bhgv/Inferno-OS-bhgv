@@ -34,7 +34,7 @@ include "regex.m";
 
 NIL : con -1;		# a refRex constant
 NONE: con -2;		# ditto, for an un-set value
-BAD: con 1<<16;		# a non-character 
+BAD: con ALT;		# End-of-pattern sentinel outside the Unicode scalar range.
 HUGE: con (1<<31) - 1;
 
 # the data structures of re.m would like to be ref-linked, but are
