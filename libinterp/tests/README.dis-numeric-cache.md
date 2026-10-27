@@ -97,3 +97,13 @@ domains. Seven complex operations retain C: ALT, NBALT, SPAWN, MSPAWN, LOAD,
 EXIT and RAISE. The remaining compiler/runtime layout blockers are documented in
 [the native tool report](../../utils/tests/README.native-bootstrap.md). RV64,
 Tk, security/crypto and MIPS/SPARC/PowerPC JIT sources remain outside this series.
+
+
+## Complete fast-entry extents
+
+Cached native fast entries must fit their entire emitted body, just like their
+dispatch bridges. An aligned entry in the last four bytes of a mapping is not
+sufficient for IADDW. Cache validation sizes the fast body with the same complete
+LeafLayout as fresh compilation and rejects a truncated span without allocation
+or publication. The native dispatch regression now includes that endpoint in
+both WORD32 and WORD64 models; the parent accepted it.

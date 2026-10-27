@@ -41,7 +41,7 @@ struct LeafCompile {
 
 /* Reuse only complete cached tables whose entries fit the owned native mapping. */
 static int
-leafcachevalid(Jit *j, Module *m, int size)
+leafcachevalid(Jit *j, Module *m, int size, LeafLayout *abi)
 {
 	LeafOp operation;
 	uintptr first, last, target;
@@ -52,8 +52,9 @@ leafcachevalid(Jit *j, Module *m, int size)
 	for(op = 0; op < 256; op++){
 		if(j->entry[op] != nil){
 			target = (uintptr)j->entry[op];
-			if(target < first || target >= last || target%sizeof(u32int) != 0 ||
-			   !leafop(&operation, op, sizeof(WORD)))
+			n = leafemit(nil, LeafMax, abi, op);
+			if(n <= 0 || target < first || target >= last || target%sizeof(u32int) != 0 ||
+			   (uintptr)n*sizeof(u32int) > last-target || !leafop(&operation, op, sizeof(WORD)))
 				return 0;
 		}
 		if(j->dispatch[op] == nil)
@@ -104,16 +105,7 @@ leafcompile(void *arg)
 		if(op <= INOP || op >= MAXDIS || op == IECLR)
 			return 0;
 	}
-	if(m->jit != nil){
-		j=m->jit;
-		if(j == H || (uintptr)j > (uintptr)-1-sizeof(*j) ||
-		   (uintptr)j%sizeof(void*) != 0 || j->nprog != size ||
-		   j->code == nil || j->code == H || j->size <= 0 || j->size%sizeof(u32int) != 0 ||
-		   (uintptr)j->code%sizeof(u32int) != 0 ||
-		   (uintptr)j->code > (uintptr)-1-(uintptr)j->size)
-			return 0;
-		return leafcachevalid(j, m, size);
-	}
+
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
 	return 0;
 #endif
@@ -160,6 +152,17 @@ leafcompile(void *arg)
 	abi.arraytype=O(Array, t); abi.typesize=O(Type, size);
 	abi.arrayroot=O(Array, root); abi.typeref=O(Type, ref);
 	abi.pc=O(REG, PC); abi.s=O(REG, s); abi.d=O(REG, d); abi.m=O(REG, m);
+	/* Cache span sizing uses exactly the same complete native layout as emission. */
+	if(m->jit != nil){
+		j=m->jit;
+		if(j == H || (uintptr)j > (uintptr)-1-sizeof(*j) ||
+		   (uintptr)j%sizeof(void*) != 0 || j->nprog != size ||
+		   j->code == nil || j->code == H || j->size <= 0 || j->size%sizeof(u32int) != 0 ||
+		   (uintptr)j->code%sizeof(u32int) != 0 ||
+		   (uintptr)j->code > (uintptr)-1-(uintptr)j->size)
+			return 0;
+		return leafcachevalid(j, m, size, &abi);
+	}
 	memset(count, 0, sizeof(count));
 	memset(bridge, 0, sizeof(bridge));
 	memset(fn, 0, sizeof(fn));

@@ -264,7 +264,7 @@ bridgegeometrychecks(void)
 			mappedcheck(!compile(&m, 1, nil) && m.jit == cache);
 			mappedcheck(bridgeallocations == before);
 			cache->dispatch[IADDW] = dispatch;
-			if(index > 0 && index < 5){
+			if(index > 0){
 				cache->entry[IADDW] = (int(*)(REG*))targets[index];
 				mappedcheck(!compile(&m, 1, nil) && m.jit == cache);
 				mappedcheck(bridgeallocations == before);
