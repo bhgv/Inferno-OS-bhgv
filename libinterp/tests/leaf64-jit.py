@@ -146,6 +146,8 @@ class Layout(C.Structure):
             ('rawchannelentry', C.c_void_p),
             ('mappedchannelentry', C.c_void_p),
             ('channelmid', C.c_int),
+            # Keep the buffered-transfer callback in its exact C record position.
+            ('channeltransferentry', C.c_void_p),
             ('channelentry', C.c_void_p),
             ('constypeentry', C.c_void_p),
             ('consentry', C.c_void_p),
