@@ -1230,14 +1230,15 @@ a64return(A64Buf *b, LeafLayout *a)
 static int
 a64modulecall(A64Buf *b, LeafLayout *a)
 {
-	int offsets[11], i, fallback, extent, origin;
+	int offsets[11], i, fallback, extent, origin, native;
 
 	offsets[0]=a->module; offsets[1]=a->fp; offsets[2]=a->regmp; offsets[3]=a->linkprog;
 	offsets[4]=a->linkmp; offsets[5]=a->linklinks; offsets[6]=a->framelr;
 	offsets[7]=a->framefp; offsets[8]=a->framemr; offsets[9]=a->regtemp; offsets[10]=a->linknlinks;
 	for(i=0;i<11;i++)
 		if(offsets[i]<0 || offsets[i]>2047 || offsets[i]%(i<9 ? 8 : i==9 ? a->wordbytes : 4))return 0;
-	if(a->linkcompiled<0 || a->linkcompiled>2047 || a->linkcompiled%4 ||
+	if(a->instbytes<=0 || a->instbytes>2047 ||
+	   a->linkcompiled<0 || a->linkcompiled>2047 || a->linkcompiled%4 ||
 	   a->modlbytes!=16 || a->modlpc<0 || a->modlpc>8 || a->modlpc%8 || a->heapref<=0 || a->heapref>128 || a->heapref%8 || a->refbytes!=8 ||
 	   a->framelr==a->framefp || a->framelr==a->framemr || a->framefp==a->framemr)return 0;
 	a64put(b, 0x14000003);
@@ -1270,6 +1271,11 @@ a64modulecall(A64Buf *b, LeafLayout *a)
 	a64pcspan(b, 3, a->linklinks+a->modlpc+8, fallback);
 	a64field(b, 11, 3, a->linklinks+a->modlpc, 8);
 	a64put(b, 0x91000563); a64put(b, 0xf100047f); a64defer(b, 0x54000009, fallback);
+	/* Only bytecode targets require a complete Inst span. */
+	a64field(b, 13, 9, a->linkcompiled, 4);
+	native=b->n; a64put(b, 0x3500000d); // cbnz w13,native.
+	a64pcspan(b, 11, a->instbytes, fallback);
+	b->code[native] |= (b->n-native)<<5;
 	a64ptr(b, 14, a->s); a64pcspan(b, 14, 8, fallback); a64load(b, 10, 14, 8);
 	a64put(b, 0x91000543); a64put(b, 0xf100047f); a64defer(b, 0x54000009, fallback);
 	extent=a->framelr;
@@ -2463,8 +2469,13 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(p.condition && p.alu == 1)a64put(&b, 0x8b05018c);
 		a64ptr(&b, 11, abi->d); a64store(&b, 12, abi->wordbytes);
 	}else if(p.kind == LeafCall){
-		/* The target may reside in either frame link about to be replaced. */
-		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 ||
+		int ordinary;
+
+		/* Capture aliased targets and reject wrapped bytecode before link publication. */
+		if(abi->instbytes <= 0 || abi->instbytes > 2047 ||
+		   abi->module < 0 || abi->module > 2047 || abi->module%8 ||
+		   abi->linkcompiled < 0 || abi->linkcompiled > 2047 || abi->linkcompiled%4 ||
+		   abi->fp < 0 || abi->fp > 2047 || abi->fp%8 ||
 		   abi->framelr < 0 || abi->framelr > 2047 || abi->framelr%8 ||
 		   abi->framefp < 0 || abi->framefp > 2047 || abi->framefp%8 ||
 		   abi->framelr == abi->framefp) return 0;
@@ -2472,6 +2483,14 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
 		a64pcspan(&b, 12, (abi->framelr>abi->framefp ? abi->framelr : abi->framefp)+8, -1);
 		a64ptr(&b, 9, abi->d); a64pcspan(&b, 9, 8, -1); a64load(&b, 13, 9, 8);
+		a64pcspan(&b, 13, 1, -1);
+		a64put(&b, 0xd10005a4); // sub x4,x13,#1.
+		a64put(&b, 0xb100009fU | (u32int)(abi->instbytes+1)<<10);
+		ordinary=b.n; a64put(&b, 0x54000003); // b.cc ordinary.
+		a64ptr(&b, 9, abi->module); a64pcspan(&b, 9, abi->linkcompiled+4, -1);
+		a64field(&b, 14, 9, abi->linkcompiled, 4);
+		a64guard(&b, 0x3500006e); // cbnz w14 permits opaque native targets.
+		b.code[ordinary] |= (b.n-ordinary)<<5;
 		a64ptr(&b, 14, abi->pc); a64ptr(&b, 15, abi->fp);
 		a64put(&b, 0xf9000000U | (abi->framelr/8)<<10 | 12<<5 | 14);
 		a64put(&b, 0xf9000000U | (abi->framefp/8)<<10 | 12<<5 | 15);

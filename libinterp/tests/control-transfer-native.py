@@ -11,8 +11,10 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]  # Owning VM source tree.
 SOURCE = Path(os.environ.get('CONTROL_SOURCE',ROOT/'libinterp/xec.c')).read_text()
-if platform.machine().lower() not in ('amd64','x86_64'):
-    print('SKIP native control transfers: requires AMD64')
+machine=platform.machine().lower()
+backend='amd64' if machine in ('amd64','x86_64') else 'arm64' if machine in ('aarch64','arm64') else None
+if backend is None:
+    print('SKIP native control transfers: requires AMD64 or ARM64')
     sys.exit(0)
 
 
@@ -30,6 +32,7 @@ def function(signature):
 
 
 prefix=(ROOT/'libinterp/tests/mcall-native.c').read_text().split('#define OP(name)')[0]
+prefix=prefix.replace('comp-amd64.c','comp-'+backend+'.c')
 unit='#define TEST_LEAF_DISPATCH_RUNTIME // Link the real decoded executor.\n'+prefix
 unit+='''void (*optab[256])(void);
 char exOp[]="opcode";
@@ -54,7 +57,10 @@ with tempfile.TemporaryDirectory(prefix='control-transfer-native-') as temporary
     source=td/'control.c'
     source.write_text(unit)
     command=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1 -g -DNDEBUG -fsanitize=undefined -fno-sanitize-recover=all'))
-    for bits in (32,64):
+    widths=tuple(map(int,os.environ.get('CONTROL_WORD_BITS','32 64').split()))
+    if not widths or any(bits not in (32,64) for bits in widths):
+        raise ValueError('CONTROL_WORD_BITS must select 32 and/or 64')
+    for bits in widths:
         model=td/str(bits)
         model.mkdir()
         header=(ROOT/'include/interp.h').read_text()

@@ -1574,14 +1574,15 @@ x64return(X64Buf *b, LeafLayout *a)
 static int
 x64modulecall(X64Buf *b, LeafLayout *a)
 {
-	int offsets[11], i, fallback, extent, origin;
+	int offsets[11], i, fallback, extent, origin, native;
 
 	offsets[0]=a->module; offsets[1]=a->fp; offsets[2]=a->regmp; offsets[3]=a->linkprog;
 	offsets[4]=a->linkmp; offsets[5]=a->linklinks; offsets[6]=a->framelr;
 	offsets[7]=a->framefp; offsets[8]=a->framemr; offsets[9]=a->regtemp; offsets[10]=a->linknlinks;
 	for(i=0;i<11;i++)
 		if(offsets[i]<0 || offsets[i]>2047 || offsets[i]%(i<9 ? 8 : i==9 ? a->wordbytes : 4))return 0;
-	if(a->linkcompiled<0 || a->linkcompiled>2047 || a->linkcompiled%4 ||
+	if(a->instbytes<=0 || a->instbytes>2047 ||
+	   a->linkcompiled<0 || a->linkcompiled>2047 || a->linkcompiled%4 ||
 	   a->modlbytes!=16 || a->modlpc<0 || a->modlpc>8 || a->modlpc%8 || a->heapref<=0 || a->heapref>128 || a->heapref%8 || a->refbytes!=8 ||
 	   a->framelr==a->framefp || a->framelr==a->framemr || a->framefp==a->framemr)return 0;
 	x64byte(b, 0xeb); x64byte(b, 3);
@@ -1623,6 +1624,12 @@ x64modulecall(X64Buf *b, LeafLayout *a)
 	x64modulefield(b, 10, 10, a->linklinks+a->modlpc, 8);
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x52); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	/* Compiled callees carry opaque native PC tokens, not Inst objects. */
+	x64modulefield(b, 1, 8, a->linkcompiled, 4);
+	x64byte(b, 0x85); x64byte(b, 0xc9);
+	x64byte(b, 0x75); native=b->n; x64byte(b, 0);
+	x64pcspan(b, 10, a->instbytes);
+	b->bytes[native]=b->n-native-1;
 	x64ptr(b, 1, a->s); x64pcspan(b, 9, 8); x64load(b, 1, 8);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc9); // r9 is the captured frame.
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc1);
@@ -2878,8 +2885,13 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(p.condition && p.alu == 1){x64byte(&b, 0x4c); x64byte(&b, 0x01); x64byte(&b, 0xc8);}
 		x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
 	}else if(p.kind == LeafCall){
-		/* Capture the target and old links before touching an aliased frame. */
-		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 ||
+		int ordinary;
+
+		/* Validate bytecode spans while preserving opaque compiled target tokens. */
+		if(abi->instbytes <= 0 || abi->instbytes > 2047 ||
+		   abi->module < 0 || abi->module > 2047 || abi->module%8 ||
+		   abi->linkcompiled < 0 || abi->linkcompiled > 2047 || abi->linkcompiled%4 ||
+		   abi->fp < 0 || abi->fp > 2047 || abi->fp%8 ||
 		   abi->framelr < 0 || abi->framelr > 2047 || abi->framelr%8 ||
 		   abi->framefp < 0 || abi->framefp > 2047 || abi->framefp%8 ||
 		   abi->framelr == abi->framefp) return 0;
@@ -2888,6 +2900,13 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
 		x64pcspan(&b, 0, (abi->framelr > abi->framefp ? abi->framelr : abi->framefp)+8);
 		x64ptr(&b, 1, abi->d); x64pcspan(&b, 9, 8); x64load(&b, 1, 8);
+		x64pcspan(&b, 1, 1);
+		x64byte(&b, 0x48); x64byte(&b, 0x81); x64byte(&b, 0xf9); x64word(&b, -abi->instbytes-1);
+		x64byte(&b, 0x76); ordinary=b.n; x64byte(&b, 0);
+		x64ptr(&b, 0, abi->module); x64pcspan(&b, 8, abi->linkcompiled+4);
+		x64field(&b, 2, 8, abi->linkcompiled, 4);
+		x64byte(&b, 0x85); x64byte(&b, 0xd2); x64guard(&b, 0x75);
+		b.bytes[ordinary]=b.n-ordinary-1;
 		x64ptr(&b, 0, abi->pc); x64ptr(&b, 1, abi->fp);
 		x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0x80); x64word(&b, abi->framelr);
 		x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0x88); x64word(&b, abi->framefp);

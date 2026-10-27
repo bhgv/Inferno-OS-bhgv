@@ -10,6 +10,9 @@ from unicorn import Uc,UC_ARCH_X86,UC_ARCH_ARM64,UC_MODE_64,UC_HOOK_MEM_WRITE,UC
 from unicorn.x86_const import UC_X86_REG_RDI,UC_X86_REG_RAX,UC_X86_REG_RSP,UC_X86_REG_MXCSR
 from unicorn.arm64_const import UC_ARM64_REG_X0,UC_ARM64_REG_LR,UC_ARM64_REG_FPCR,UC_ARM64_REG_FPSR
 
+STRIDE=int(os.environ.get('CONTROL_INST_BYTES','24'))  # Independent bytecode instruction extent.
+if not 1<=STRIDE<=2047:raise ValueError('CONTROL_INST_BYTES must be 1..2047')
+
 ROOT=Path(__file__).resolve().parents[2]  # Production interpreter and emitter tree.
 BASE=0x100000000  # REG, operand cells and live synthetic VM objects above 4 GiB.
 TOP=(1<<64)-0x10000  # Mapped high-address metadata for entry-addition overflow.
@@ -33,7 +36,7 @@ with tempfile.TemporaryDirectory(prefix='control-transfer-jit-') as temporary:
     td=Path(temporary)
     for arch in os.environ.get('CONTROL_ARCHES','amd64 arm64').split():
         require(arch in ('amd64','arm64'),arch)
-        header=Path(os.environ.get('CONTROL_EMITTER_DIR',ROOT/'libinterp'))/(arch+'-emit.h')
+        header=(Path(os.environ.get('CONTROL_EMITTER_DIR',ROOT/'libinterp'))/(arch+'-emit.h')).resolve()
         source=td/'emit.c'
         source.write_text('''#include <stdint.h>
 #include <string.h>
@@ -44,10 +47,22 @@ typedef unsigned char uchar;
 #include "'''+str(header)+'''"
 
 
+static int invalidfield, invalidvalue; // Explicit malformed ABI field selected by the driver.
+
+
+/* Select invalid layouts without changing the independent execution oracle. */
+void
+configure(int field,int value)
+{
+    invalidfield=field;
+    invalidvalue=value;
+}
+
+
 /* Shift independent REG, frame, Type and module offsets without copying host structs. */
 int emit(u32int *out,int cap,int wb,int bias,int operation)
 {
-    LeafLayout a={0};
+    LeafLayout a={0};a.instbytes=24;
     int ops[]={ICALL,IMCALL,IRET};
     a.wordbytes=wb;a.pc=bias;a.s=8+bias;a.d=16+bias;a.m=24+bias;
     a.fp=32+bias;a.module=40+bias;a.sp=48+bias;a.regmp=64+bias;a.regtemp=72+bias;
@@ -55,9 +70,12 @@ int emit(u32int *out,int cap,int wb,int bias,int operation)
     a.linkmp=bias;a.linkcompiled=16+bias;a.linkprog=24+bias;
     a.linknlinks=48+bias;a.linklinks=56+bias;a.modlbytes=16;a.modlpc=0;
     a.typenp=28+bias;a.heapref=24;a.refbytes=8;
+    if(invalidfield==1)a.instbytes=invalidvalue;
+    if(invalidfield==2)a.module=invalidvalue;
+    if(invalidfield==3)a.linkcompiled=invalidvalue;
     return leafemit(out,cap,&a,ops[operation]);
 }
-''')
+'''.replace('a.instbytes=24;', 'a.instbytes='+str(STRIDE)+';'))
         binary=td/(arch+'.so')
         command=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
         subprocess.run(command+['-shared','-fPIC','-I'+str(ROOT/'include'),'-I'+str(ROOT/'libinterp'),str(source),'-o',str(binary)],check=True)
@@ -92,6 +110,14 @@ int emit(u32int *out,int cap,int wb,int bias,int operation)
                 r=dict(pc=bias,s=8+bias,d=16+bias,m=24+bias,fp=32+bias,module=40+bias,sp=48+bias,mp=64+bias,t=72+bias)
                 for op in range(3):
                     if os.environ.get("CONTROL_GUEST_OP") and op!=int(os.environ["CONTROL_GUEST_OP"]):continue
+                    if op==0 and not os.environ.get('CONTROL_SKIP_ABI'):
+                        for field,values in ((1,(-1,0,2048)),(2,(-1,1,2048)),(3,(-1,1,2048))):
+                            for value in values:
+                                lib.configure(field,value)
+                                canary=(C.c_uint32*130)(*([0xa5a5a5a5]*130))
+                                require(lib.emit(canary,128,wb,bias,op)==0 and list(canary)==[0xa5a5a5a5]*130,
+                                        (arch,wb,bias,'invalid CALL ABI',field,value))
+                        lib.configure(0,0)
                     out=(C.c_uint32*130)(*([0xa5a5a5a5]*130))
                     n=lib.emit(out,128,wb,bias,op)
                     require(0<n<=128 and out[n]==0xa5a5a5a5,(arch,wb,bias,op,'sizing'))
@@ -146,7 +172,37 @@ int emit(u32int *out,int cap,int wb,int bias,int operation)
                             for bad in range(1,25):
                                 edited=bytearray(image);put(edited,cell,bad)
                                 cases.append(('heap-origin',edited,high,edited,0))
+                        if op in (0,1):
+                            edited=bytearray(image);wanted=bytearray(expected)
+                            cell=destcell if op==0 else callee+56+bias
+                            put(edited,cell,MASK-STRIDE);put(wanted,cell,MASK-STRIDE)
+                            put(wanted,r['pc'],MASK-STRIDE)
+                            cases.append(('last-complete-bytecode-span',edited,high,wanted,1))
+                        if op==0:
+                            for bad in [0]+[MASK-k for k in range(STRIDE)]:
+                                edited=bytearray(image);put(edited,destcell,bad)
+                                cases.append(('call-invalid-pc',edited,high,edited,0))
+                            for bad in ([0]+[MASK-k for k in range(20+bias)] if STRIDE>1 else []):
+                                edited=bytearray(image);put(edited,destcell,MASK-1)
+                                put(edited,r['module'],bad)
+                                cases.append(('call-current-prefix',edited,high,edited,0))
+                            for token in (MASK-1,MASK-23):
+                                edited=bytearray(image);wanted=bytearray(expected)
+                                put(edited,caller+16+bias,1,4);put(wanted,caller+16+bias,1,4)
+                                put(edited,destcell,token);put(wanted,destcell,token);put(wanted,r['pc'],token)
+                                cases.append(('call-native-token',edited,high,wanted,1))
                         if op==1:
+                            for bad in [0]+[MASK-k for k in range(STRIDE)]:
+                                edited=bytearray(image);put(edited,callee+56+bias,bad)
+                                cases.append(('bytecode-pc-span',edited,high,edited,0))
+                            # Opaque compiled tokens may be near the native address limit.
+                            for token in (MASK-1,MASK-23):
+                                edited=bytearray(image);wanted=bytearray(expected)
+                                for owner in (callee,caller):
+                                    put(edited,owner+16+bias,1,4);put(wanted,owner+16+bias,1,4)
+                                put(edited,callee+56+bias,token);put(wanted,callee+56+bias,token)
+                                put(wanted,r['pc'],token)
+                                cases.append(('compiled-pc-token',edited,high,wanted,1))
                             for owner,index,count in [(MASK-bias-60,0,1),(MASK-0x1000,0x7ffffffe,0x7fffffff)]:
                                 edited=bytearray(image);top=bytearray(high)
                                 put(edited,destcell,owner);put(edited,middlecell,index,wb)

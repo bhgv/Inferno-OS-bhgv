@@ -2865,11 +2865,12 @@ OP(igoto)
 }
 
 
-/* Validate and capture both operands before frame-link stores can overwrite an alias. */
+/* Capture aliased operands and validate bytecode spans before publishing call links. */
 OP(call)
 {
 	Frame *f;
 	Inst *target;
+	int compiled;
 
 	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(f))
 		error(exBounds);
@@ -2881,6 +2882,16 @@ OP(call)
 	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(target))
 		error(exBounds);
 	memmove(&target, R.d, sizeof(target));
+	if(target == nil || target == H)
+		error(exBounds);
+	if((uintptr)target > (uintptr)-1-sizeof(Inst)){
+		if(R.M == nil || R.M == H ||
+		   (uintptr)R.M > (uintptr)-1-(O(Modlink, compiled)+sizeof(compiled)))
+			error(exModule);
+		memmove(&compiled, (uchar*)R.M+O(Modlink, compiled), sizeof(compiled));
+		if(!compiled)
+			error(exBounds);
+	}
 	memmove((uchar*)f+offsetof(Frame, lr), &R.PC, sizeof(f->lr));
 	memmove((uchar*)f+offsetof(Frame, fp), &R.FP, sizeof(f->fp));
 	R.FP = (uchar*)f;
@@ -3180,7 +3191,8 @@ OP(mcall)
 	memmove(&calleemode, (uchar*)ml+O(Modlink, compiled), sizeof(calleemode));
 	memmove(&mp, (uchar*)ml+O(Modlink, MP), sizeof(mp));
 	if(program == H ||
-	   (program != nil && (entry.u.pc == nil || entry.u.pc == H)) ||
+	   (program != nil && (entry.u.pc == nil || entry.u.pc == H ||
+	    (!calleemode && (uintptr)entry.u.pc > (uintptr)-1-sizeof(Inst)))) ||
 	   (program == nil && (entry.u.runt == nil || entry.u.runt == (void(*)(void*))H)))
 		error(exModule);
 	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(f))

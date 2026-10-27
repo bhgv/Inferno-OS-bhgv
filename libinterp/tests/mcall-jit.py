@@ -43,7 +43,7 @@ typedef uint32_t u32int;typedef unsigned char uchar;
 /* Use independent import, register, frame and heap layouts for MCALL. */
 int emit(u32int *out,int cap,int wb,int bad)
 {
- LeafLayout a={0};a.wordbytes=wb;a.pc=0;a.s=8;a.d=16;a.m=24;
+ LeafLayout a={0};a.instbytes=24;a.wordbytes=wb;a.pc=0;a.s=8;a.d=16;a.m=24;
  a.fp=32;a.module=40;a.regmp=64;a.regtemp=72;a.linkcompiled=16;
  a.framelr=0;a.framefp=8;a.framemr=24;
  a.linknlinks=48;a.linklinks=56;a.modlbytes=16;a.modlpc=0;
@@ -52,7 +52,8 @@ int emit(u32int *out,int cap,int wb,int bad)
  case 3:a.framemr=8;break;case 4:a.heapref=0;break;case 5:a.refbytes=4;break;
  case 6:a.linknlinks=3;break;case 7:a.linklinks=2048;break;case 8:a.modlbytes=8;break;
  case 9:a.modlpc=3;break;case 10:a.linkprog=-1;break;
- case 11:a.linkcompiled=-1;break;case 12:a.linkcompiled=1;break;case 13:a.linkcompiled=2048;break;}
+ case 11:a.linkcompiled=-1;break;case 12:a.linkcompiled=1;break;case 13:a.linkcompiled=2048;break;
+ case 14:a.instbytes=-1;break;case 15:a.instbytes=0;break;case 16:a.instbytes=2048;break;}
  return leafemit(out,cap,&a,IMCALL);
 }
 ''')
@@ -82,7 +83,7 @@ int emit(u32int *out,int cap,int wb,int bad)
                 for cap in range(n):
                     guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
                     require(lib.emit(guard,cap,wb,-variant)==0 and list(guard)==[0xa5a5a5a5]*128,'partial publication')
-                for bad in range(1,14):
+                for bad in range(1,17):
                     guard=(C.c_uint32*128)(*[0xa5a5a5a5]*128)
                     require(lib.emit(guard,128,wb,bad)==0 and list(guard)==[0xa5a5a5a5]*128,(arch,bad))
                 machine.mem_write(CODE,blob);machine.ctl_remove_cache(CODE,CODE+512)

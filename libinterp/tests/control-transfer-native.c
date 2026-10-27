@@ -151,6 +151,58 @@ controlpositive(Jit *jit)
 }
 
 
+/* Preserve opaque legacy machine-code tokens without executing their destinations. */
+static unsigned long
+controltokens(Jit *jit)
+{
+	ControlImage image, before, expected;
+	REG saved, wanted;
+	Modlink *callee, *caller;
+	Inst *target;
+	uchar *address;
+	ulong references;
+	int flags[]={0,1,-1,0x12345678};
+	int operation, mode, offset, route, op;
+	unsigned long checks=0;
+
+	for(operation=0; operation<2; operation++)
+	for(mode=0; mode<4; mode++)for(offset=2; offset<=sizeof(Inst)+1; offset++){
+		if(mode==0 && offset<=sizeof(Inst))continue;
+		op=operation==0 ? ICALL : IMCALL;
+		controlimage(&image,op,0,0,0,0);
+		callee=(Modlink*)(image.bytes+512);
+		caller=(Modlink*)(image.bytes+1024);
+		address=image.bytes+2048;
+		target=(Inst*)((uintptr)-offset);
+		memmove((uchar*)callee+O(Modlink,compiled),&flags[mode],sizeof(int));
+		memmove((uchar*)caller+O(Modlink,compiled),&flags[mode],sizeof(int));
+		if(op==ICALL)memmove(R.d,&target,sizeof(target));
+		else memmove((uchar*)callee+O(Modlink,links)+O(Modl,u),&target,sizeof(target));
+		memmove(&before,&image,sizeof(image));memmove(&expected,&image,sizeof(image));
+		memmove(&saved,&R,sizeof(R));memmove(&wanted,&R,sizeof(R));
+		memmove(expected.bytes+2048+O(Frame,lr),&saved.PC,sizeof(saved.PC));
+		memmove(expected.bytes+2048+O(Frame,fp),&saved.FP,sizeof(saved.FP));
+		wanted.FP=address;wanted.PC=target;
+		if(op==IMCALL){
+			memmove(expected.bytes+2048+O(Frame,mr),&caller,sizeof(caller));
+			wanted.M=callee;wanted.MP=nil;wanted.t=1;
+			references=4;
+			memmove(expected.bytes+512-sizeof(Heap)+O(Heap,ref),&references,sizeof(references));
+		}
+		for(route=0; route<3; route++){
+			memmove(&image,&before,sizeof(image));memmove(&R,&saved,sizeof(R));raised=nil;
+			if(route==0)optab[op]();
+			else if(route==1)controlcheck(jit->entry[op](&R)==1);
+			else controlcheck(jit->dispatch[op](&R)==1);
+			controlcheck(!memcmp(&image,&expected,sizeof(image)) &&
+				!memcmp(&R,&wanted,sizeof(R)) && raised==nil);
+			checks++;
+		}
+	}
+	return checks;
+}
+
+
 /* Exercise pure import/export lookup, including shifted metadata and atomic refusals. */
 static unsigned long
 controlentries(void)
@@ -214,7 +266,7 @@ controlinvalid(Jit *jit)
 	int operation,kind,offset,route,op,failed;
 
 	if(getenv("CONTROL_NO_ERRORS"))return 0;
-	for(operation=0;operation<3;operation++)for(kind=0;kind<13;kind++)for(offset=0;offset<128;offset++){
+	for(operation=0;operation<3;operation++)for(kind=0;kind<16;kind++)for(offset=0;offset<128;offset++){
 		op=ops[operation];
 		if(getenv("CONTROL_BAD") && kind!=atoi(getenv("CONTROL_BAD")))continue;
 		if(getenv("CONTROL_OP") && op!=atoi(getenv("CONTROL_OP")))continue;
@@ -247,6 +299,20 @@ controlinvalid(Jit *jit)
 			if(kind==9)memmove((uchar*)R.FP+O(Frame,lr),&bad,sizeof(bad));
 			if(kind==10)memmove((uchar*)R.FP+O(Frame,mr),&bad,sizeof(bad));
 			if(kind>=11)R.M=bad;
+		}else if(kind==13 && op==ICALL){
+			if(offset>1)continue;
+			bad=offset==0 ? nil : H;
+			memmove(R.d,&bad,sizeof(bad));
+		}else if(kind==14 && (op==ICALL || op==IMCALL)){
+			if(offset>sizeof(Inst))continue;
+			if(op==ICALL)memmove(R.d,&bad,sizeof(bad));
+			else memmove(image.bytes+512+O(Modlink,links)+O(Modl,u),&bad,sizeof(bad));
+		}else if(kind==15 && op==ICALL){
+			Inst *target=(Inst*)((uintptr)-2);
+
+			if(offset>O(Modlink,compiled)+sizeof(int))continue;
+			memmove(R.d,&target,sizeof(target));
+			R.M=bad;
 		}else continue;
 		memmove(&before,&image,sizeof(image));memmove(&saved,&R,sizeof(R));
 		if(getenv("CONTROL_TRACE"))fprintf(stderr,"negative op=%d kind=%d offset=%d\n",op,kind,offset);
@@ -268,7 +334,7 @@ main(void)
 {
 	Module module={0};
 	Inst program[3]={{0}};
-	unsigned long positive=0,negative=0,entries=0;
+	unsigned long positive=0,negative=0,entries=0,tokens=0;
 	char *section=getenv("CONTROL_SECTION");
 
 	program[0].op=ICALL;program[1].op=IMCALL;program[2].op=IRET;
@@ -278,7 +344,8 @@ main(void)
 	if(section==nil || !strcmp(section,"positive"))positive=controlpositive(module.jit);
 	if(section==nil || !strcmp(section,"invalid"))negative=controlinvalid(module.jit);
 	if(section==nil || !strcmp(section,"entry"))entries=controlentries();
+	if(section==nil || !strcmp(section,"tokens"))tokens=controltokens(module.jit);
 	module.jit->freecode(module.jit->code,module.jit->size);free(module.jit);
-	printf("PASS control C/RX WORD%zu: %lu complete-image routes, %lu rejected routes, %lu entry checks\n",sizeof(WORD)*8,positive,negative,entries);
+	printf("PASS control C/RX WORD%zu: %lu complete-image routes, %lu rejected routes, %lu entry checks, %lu native-token constructions\n",sizeof(WORD)*8,positive,negative,entries,tokens);
 	return 0;
 }
