@@ -14,12 +14,15 @@
 #include "lib9.h"
 #include "fmtdef.h"
 
+
+/* Compare native endpoint coordinates before forming the bounded output range. */
 char*
 vseprint(char *buf, char *e, char *fmt, va_list args)
 {
 	Fmt f;
 
-	if(e <= buf)
+	if(buf == nil || (uintptr)buf == (uintptr)-1 ||
+	   (uintptr)e <= (uintptr)buf || fmt == nil || (uintptr)fmt == (uintptr)-1)
 		return nil;
 	f.runes = 0;
 	f.start = buf;

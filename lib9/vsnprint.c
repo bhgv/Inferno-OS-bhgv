@@ -14,12 +14,15 @@
 #include "lib9.h"
 #include "fmtdef.h"
 
+
+/* Reject invalid output spans before pointer formation or formatter side effects. */
 int
 vsnprint(char *buf, int len, char *fmt, va_list args)
 {
 	Fmt f;
 
-	if(len <= 0)
+	if(len <= 0 || buf == nil || (uintptr)buf == (uintptr)-1 ||
+	   (uintptr)buf > (uintptr)-1-(uintptr)len || fmt == nil || (uintptr)fmt == (uintptr)-1)
 		return -1;
 	f.runes = 0;
 	f.start = buf;

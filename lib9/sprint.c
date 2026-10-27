@@ -13,20 +13,22 @@
  */
 #include "lib9.h"
 
+
+/* Bound the deprecated uncounted formatter in native uintptr arithmetic. */
 int
 sprint(char *buf, char *fmt, ...)
 {
 	int n;
-	uint len;
+	int len;
+	uintptr remaining;
 	va_list args;
 
-	len = 1<<30;  /* big number, but sprint is deprecated anyway */
-	/*
-	 * the stack might be near the top of memory, so
-	 * we must be sure not to overflow a 32-bit pointer.
-	 */
-	if((uintptr)buf+len < (uintptr)buf)
-		len = -(uint)buf-1;
+	if(buf == nil || (uintptr)buf == (uintptr)-1)
+		return -1;
+	len = 1<<30;
+	remaining = (uintptr)-1-(uintptr)buf;
+	if(remaining < (uintptr)len)
+		len = remaining;
 
 	va_start(args, fmt);
 	n = vsnprint(buf, len, fmt, args);

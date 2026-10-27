@@ -21,8 +21,8 @@ void free_(void* p) {
  * all these are 32 bit
  */
 #define TBITSET		((32+NTERMS)/32)	/* BOTCH?? +31 */
-#define BIT(a,i)	((a)[(i)>>5] & (1<<((i)&037)))
-#define SETBIT(a,i)	((a)[(i)>>5] |= (1<<((i)&037)))
+#define BIT(a,i)	((a)[(i)>>5] & (1U<<((i)&037))) // Test a terminal bit without signed shifts.
+#define SETBIT(a,i)	((a)[(i)>>5] |= (1U<<((i)&037))) // Set all 32 positions with defined unsigned shifts.
 #define NWORDS(n)	(((n)+32)/32)
 
 #ifndef PARSER
