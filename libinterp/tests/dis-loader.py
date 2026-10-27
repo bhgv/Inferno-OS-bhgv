@@ -31,11 +31,20 @@ parts.append((root/'libinterp/disc.c').read_text().replace('#include "lib9.h"','
 parts += [function('libinterp/heap.c',n,r) for n,r in [('dtype','Type*'),('freetype','void'),('initmem','void'),('initarray','void')]]
 parts += [function('libinterp/link.c',n,r) for n,r in [('newlink','static void'),('mlink','void'),('destroylinks','void')]]
 parts += [function('libinterp/load.c',n,r) for n,r in [('operand','static int'),('disw','static ulong'),('canontod','double'),('brpatch','int'),('freemod','void')]]
-unit=(root/'libinterp/tests/dis-loader.c').read_text().replace('IMPLEMENTATION','\n'.join(parts)+'\n'+parser)
+if 'dissignedword(' in source:
+    parts.append(function('libinterp/load.c','dissignedword','static WORD'))
+unit=Path(os.environ.get('DIS_LOAD_FIXTURE',root/'libinterp/tests/dis-loader.c')).read_text().replace('IMPLEMENTATION','\n'.join(parts)+'\n'+parser)
 with tempfile.TemporaryDirectory(prefix='dis-loader-') as directory:
     td=Path(directory);p=td/'loader.c';p.write_text(unit)
     command=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O2 -g'))
-    command += ['-Wno-sign-compare']
+    model=td/'model'
+    model.mkdir()
+    header=(root/'include/interp.h').read_text()
+    if os.environ.get('DIS_WORD_BYTES') == '4':
+        header=re.sub(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
+        header=re.sub(r'typedef unsigned long\s+UWORD;', 'typedef unsigned int UWORD;', header, count=1)
+    (model/'interp.h').write_text(header)
+    command += ['-Wno-sign-compare','-I'+str(model)]
     command += ['-I'+str(root/p) for p in ['Linux/arm/include','emu/port','include','libinterp']]
     subprocess.run(command+[str(p),'-o',str(td/'loader')],check=True)
     subprocess.run([str(td/'loader')],check=True)

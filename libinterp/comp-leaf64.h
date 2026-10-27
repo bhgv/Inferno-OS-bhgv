@@ -39,6 +39,40 @@ struct LeafCompile {
 };
 
 
+/* Reuse only complete cached tables whose entries fit the owned native mapping. */
+static int
+leafcachevalid(Jit *j, Module *m, int size)
+{
+	LeafOp operation;
+	uintptr first, last, target;
+	int op, n, i;
+
+	first = (uintptr)j->code;
+	last = first+(uintptr)j->size;
+	for(op = 0; op < 256; op++){
+		if(j->entry[op] != nil){
+			target = (uintptr)j->entry[op];
+			if(target < first || target >= last || target%sizeof(u32int) != 0 ||
+			   !leafop(&operation, op, sizeof(WORD)))
+				return 0;
+		}
+		if(j->dispatch[op] == nil)
+			continue;
+		target = (uintptr)j->dispatch[op];
+		n = leafbridgeemit(nil, LeafMax, (void*)cjitexec, op, (void*)j->entry[op]);
+		if(n <= 0 || target < first || target >= last || target%sizeof(u32int) != 0 ||
+		   (uintptr)n*sizeof(u32int) > last-target)
+			return 0;
+	}
+	for(i = 0; i < size; i++){
+		op = ((uchar*)m->prog)[(uintptr)i*sizeof(Inst)+O(Inst, op)];
+		if(j->dispatch[op] == nil)
+			return 0;
+	}
+	return 1;
+}
+
+
 /* Reject invalid module storage before sizing or publishing native leaf code. */
 static int
 leafcompile(void *arg)
@@ -64,14 +98,21 @@ leafcompile(void *arg)
 		return 0;
 	if((uintptr)m->prog > (uintptr)-1-(uintptr)size*sizeof(Inst))
 		return 0;
+	/* Check every byte opcode, including cached and mixed active/reserved programs. */
+	for(i = 0; i < size; i++){
+		op = ((uchar*)m->prog)[(uintptr)i*sizeof(Inst)+O(Inst, op)];
+		if(op <= INOP || op >= MAXDIS || op == IECLR)
+			return 0;
+	}
 	if(m->jit != nil){
 		j=m->jit;
 		if(j == H || (uintptr)j > (uintptr)-1-sizeof(*j) ||
 		   (uintptr)j%sizeof(void*) != 0 || j->nprog != size ||
-		   j->code == nil || j->code == H || j->size <= 0 ||
+		   j->code == nil || j->code == H || j->size <= 0 || j->size%sizeof(u32int) != 0 ||
+		   (uintptr)j->code%sizeof(u32int) != 0 ||
 		   (uintptr)j->code > (uintptr)-1-(uintptr)j->size)
 			return 0;
-		return 1;
+		return leafcachevalid(j, m, size);
 	}
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
 	return 0;

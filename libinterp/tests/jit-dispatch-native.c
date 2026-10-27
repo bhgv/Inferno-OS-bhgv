@@ -166,6 +166,131 @@ bridgecompilerentries(void)
 }
 
 
+/* Reject reserved byte opcodes before allocation, including a cached mixed program. */
+static unsigned long
+bridgemixedchecks(void)
+{
+	Module m = {0};
+	Inst program[2] = {{0}};
+	Jit *cache;
+	unsigned long checks = 0, before;
+	int op, position;
+	char *phase = getenv("BRIDGE_OPCODE_PHASE");
+
+	m.prog = program;
+	m.nprog = 2;
+	if(phase == nil || strcmp(phase, "cached"))
+	for(position = 0; position < 2; position++){
+		for(op = 0; op < 256; op++){
+			if(op > INOP && op < MAXDIS && op != IECLR)
+				continue;
+			program[0].op = program[1].op = IADDW;
+			program[position].op = op;
+			before = bridgeallocations;
+			mappedcheck(!compile(&m, 2, nil) && m.jit == nil);
+			mappedcheck(bridgeallocations == before);
+			checks++;
+		}
+	}
+	program[0].op = program[1].op = IADDW;
+	mappedcheck(compile(&m, 2, nil) && m.jit != nil);
+	cache = m.jit;
+	before = bridgeallocations;
+	if(phase == nil || strcmp(phase, "uncached"))
+	for(position = 0; position < 2; position++){
+		for(op = 0; op < 256; op++){
+			if(op > INOP && op < MAXDIS && op != IECLR)
+				continue;
+			program[0].op = program[1].op = IADDW;
+			program[position].op = op;
+			mappedcheck(!compile(&m, 2, nil) && m.jit == cache);
+			mappedcheck(bridgeallocations == before);
+			checks++;
+		}
+	}
+	cache->freecode(cache->code, cache->size);
+	free(cache);
+	return checks;
+}
+
+
+/* Cached native mappings must retain instruction alignment and whole-word extents. */
+static unsigned long
+bridgegeometrychecks(void)
+{
+	Module m = {0};
+	Inst program = {0};
+	Jit *cache;
+	uchar *code;
+	unsigned long checks = 0, before;
+	int size, shift;
+	char *phase = getenv("BRIDGE_GEOMETRY_PHASE");
+
+	m.prog = &program;
+	m.nprog = 1;
+	program.op = IADDW;
+	mappedcheck(compile(&m, 1, nil) && m.jit != nil);
+	cache = m.jit;
+	code = cache->code;
+	size = cache->size;
+	before = bridgeallocations;
+	if(phase == nil || strcmp(phase, "entries"))
+	for(shift = 1; shift < 4; shift++){
+		cache->code = code+shift;
+		mappedcheck(!compile(&m, 1, nil));
+		mappedcheck(m.jit == cache && bridgeallocations == before);
+		cache->code = code;
+		cache->size = size+shift;
+		mappedcheck(!compile(&m, 1, nil));
+		mappedcheck(m.jit == cache && bridgeallocations == before);
+		cache->size = size;
+		mappedcheck(compile(&m, 1, nil));
+		checks += 3;
+	}
+	if(phase == nil || strcmp(phase, "alignment")){
+		int (*fast)(REG*) = cache->entry[IADDW];
+		int (*dispatch)(REG*) = cache->dispatch[IADDW];
+		uintptr targets[6];
+		int index;
+
+		targets[0] = 0;
+		targets[1] = (uintptr)-1;
+		targets[2] = (uintptr)code-4;
+		targets[3] = (uintptr)code+size;
+		targets[4] = (uintptr)code+1;
+		targets[5] = (uintptr)code+size-4;
+		for(index = 0; index < 6; index++){
+			cache->dispatch[IADDW] = (int(*)(REG*))targets[index];
+			mappedcheck(!compile(&m, 1, nil) && m.jit == cache);
+			mappedcheck(bridgeallocations == before);
+			cache->dispatch[IADDW] = dispatch;
+			if(index > 0 && index < 5){
+				cache->entry[IADDW] = (int(*)(REG*))targets[index];
+				mappedcheck(!compile(&m, 1, nil) && m.jit == cache);
+				mappedcheck(bridgeallocations == before);
+				cache->entry[IADDW] = fast;
+				checks++;
+			}
+			checks++;
+		}
+		cache->dispatch[IECLR] = dispatch;
+		mappedcheck(!compile(&m, 1, nil));
+		cache->dispatch[IECLR] = nil;
+		cache->entry[IALT] = fast;
+		mappedcheck(!compile(&m, 1, nil));
+		cache->entry[IALT] = nil;
+		program.op = ISUBW;
+		mappedcheck(!compile(&m, 1, nil));
+		program.op = IADDW;
+		mappedcheck(compile(&m, 1, nil) && bridgeallocations == before);
+		checks += 4;
+	}
+	cache->freecode(code, size);
+	free(cache);
+	return checks;
+}
+
+
 /* Reject invalid headers, bytecode spans and stale cache geometry before allocation. */
 static unsigned long
 bridgecompilerchecks(void)
@@ -237,6 +362,10 @@ bridgecompilerchecks(void)
 			checks++;
 		}
 	}
+	if(selected == nil || !strcmp(selected, "opcodes"))
+		checks += bridgemixedchecks();
+	if(selected == nil || !strcmp(selected, "geometry"))
+		checks += bridgegeometrychecks();
 	if(selected == nil)
 		checks += bridgecompilerentries();
 	return checks;

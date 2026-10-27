@@ -4,11 +4,13 @@
 #include "raise.h"
 #include <kernel.h>
 
-#define	A(r)	*((Array**)(r))
+#define	A(r)	*((Array**)(r)) // Array owner stored in a checked module-data pointer slot.
 
 Module*	modules;
 int	dontcompile;
 
+
+/* Decode signed Dis operands without narrowing an out-of-range unsigned value. */
 static int
 operand(uchar **p)
 {
@@ -30,18 +32,20 @@ operand(uchar **p)
 			c |= ~0x3F;
 		else
 			c &= 0x3F;
-		return (int)(((unsigned int)c<<8)|cp[1]);
+		return c*256+cp[1];
 	case 0xC0:
 		*p = cp+4;
 		if(c & 0x20)
 			c |= ~0x3F;
 		else
 			c &= 0x3F;
-		return (int)(((unsigned int)c<<24)|(cp[1]<<16)|(cp[2]<<8)|cp[3]);
+		return c*16777216+(cp[1]<<16)+(cp[2]<<8)+cp[3];
 	}
 	return 0;	
 }
 
+
+/* Read one canonical unsigned 32-bit word independently of native ulong width. */
 static ulong
 disw(uchar **p)
 {
@@ -57,6 +61,18 @@ disw(uchar **p)
 	return v;
 }
 
+
+/* Sign-extend a canonical int into either supported VM WORD without a narrowing cast. */
+static WORD
+dissignedword(ulong bits)
+{
+	if(bits & 0x80000000UL)
+		return -1-(WORD)(0xffffffffUL-bits);
+	return bits;
+}
+
+
+/* Decode canonical IEEE words without depending on the width of native ulong. */
 double
 canontod(ulong v[2])
 {
@@ -124,11 +140,12 @@ brpatch(Inst *ip, Module *m)
 	return 1;
 }
 
+
 /* Check the complete encoded operand before the legacy decoder reads it. */
 static int
 disneed(uchar *p, uchar *end, ulong n)
 {
-	return p <= end && n <= (ulong)(end-p);
+	return (uintptr)p <= (uintptr)end && n <= (uintptr)end-(uintptr)p;
 }
 
 static int
@@ -190,12 +207,13 @@ displain(Type *t, int offset, int n)
 }
 
 typedef struct DisLoad DisLoad;
+
 struct DisLoad {
-	char *path;
-	uchar *code;
-	ulong length;
-	Dir *dir;
-	Module *m;
+	char *path; // Borrowed source path copied only after parsing succeeds.
+	uchar *code; // Borrowed complete canonical image; never retained by the module.
+	ulong length; // Checked byte extent of the image.
+	Dir *dir; // Borrowed aligned metadata used during construction.
+	Module *m; // Partial owner retained for cleanup across protected VM errors.
 };
 
 
@@ -222,8 +240,14 @@ disparse(void *arg)
 	Link *l;
 
 	c=arg; path=c->path; code=c->code; length=c->length; dir=c->dir;
-	if(code == nil || length > 0x7fffffff) {
+	if(code == nil || code == H || length > 0x7fffffff ||
+	   (uintptr)code > (uintptr)-1-(uintptr)length) {
 		kwerrstr("bad Dis length");
+		return 0;
+	}
+	if(path == nil || path == H || dir == nil || dir == H ||
+	   (uintptr)dir > (uintptr)-1-sizeof(*dir) || (uintptr)dir%sizeof(void*) != 0){
+		kwerrstr("bad Dis storage");
 		return 0;
 	}
 	end=code+length;
@@ -504,7 +528,7 @@ disparse(void *arg)
 			for(i = 0; i < n; i++) {
 				if(!disneed(istream,end,4))
 					goto truncated;
-				*(WORD*)si = disw(isp);
+				*(WORD*)si = dissignedword(disw(isp));
 				si += sizeof(WORD);
 			}
 			break;

@@ -67,6 +67,7 @@ CORE = [
     'libinterp/tests/byte-array-retains.py',
     'libinterp/tests/string-slice-native.py',
     'libinterp/tests/dis-loader.py',
+    'libinterp/tests/dis-numeric-literals.py',
     'libinterp/tests/type-retains.py',
     'libinterp/tests/string-append-native.py',
     'libinterp/tests/append-span-c.py',
