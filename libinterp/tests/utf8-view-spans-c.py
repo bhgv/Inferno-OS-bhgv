@@ -42,6 +42,11 @@ for index, part in enumerate(parts):
     if "string2c(" in part.split("{", 1)[0]:
         part = part.replace("uintptr", "ViewAddress")
         part = part.replace("(ViewAddress)s", "(ViewAddress)(uintptr)s")
+        # The view implementation now uses address for payload access too.
+        # Preserve reduced-width overflow checks while retaining the actual
+        # native backing pointer for termination, Rune reads and return values.
+        part = part.replace("(char*)address", "((char*)s+offsetof(String, data))")
+        part = part.replace("(uchar*)address", "((uchar*)s+offsetof(String, data))")
         parts[index] = part
 parts += [function((root / 'libinterp/runt.c').read_text(), 'Array*\nmem2array(')]
 unit = (root / 'libinterp/tests/string-codecs.c').read_text()

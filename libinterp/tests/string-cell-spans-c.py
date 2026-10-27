@@ -44,6 +44,11 @@ for index, part in enumerate(parts):
         part = part.replace("uintptr", "CellAddress")
         for owner in ("string", "old", "ds"):
             part = part.replace("(CellAddress)"+owner, "(CellAddress)(uintptr)"+owner)
+        # Packed indc now loads via its checked address variable. Keep the
+        # 16-bit geometry for guard probes, but dereference the real native
+        # String payload rather than converting that narrowed value to a pointer.
+        if "OP(indc)" in signature:
+            part = part.replace("(uchar*)address", "((uchar*)string+offsetof(String, data))")
         # Decoded slots retain the real host address domain; only object geometry narrows.
         part = re.sub(r'\(CellAddress\)(R\.[smd]) > \(CellAddress\)-1',
                       r'(uintptr)\1 > (uintptr)-1', part)

@@ -66,3 +66,17 @@ oracles and complete-entry publication. Availability remains 173/173 JIT+C and
 166/173 guarded native paths for both AMD64 and ARM64. These counts describe
 opcode dispatch and partial native operand domains. Full native VM ABI/layout
 migration, boot acceptance and physical ARM64 execution remain separate.
+
+## Reduced-address fixture follow-up
+
+The older string-cell-spans-c and utf8-view-spans-c drivers narrow address
+arithmetic to 16 bits to test overflow with real allocated backing storage.
+Byte-safe indc/string2c now also use that address variable for payload access;
+blindly narrowing it made those test fixtures dereference a truncated pointer.
+The adapters retain every reduced-width guard and independent extent oracle,
+but use the original native String data pointer for actual loads, termination
+and returned UTF views. No production handler or guard is replaced or weakened.
+
+Старые обвязки с 16-битной моделью адресной арифметики теперь сохраняют полный
+указатель для реального доступа к данным. Все проверки переполнения и независимые
+ожидания остаются; исправлена обвязка, а не обработчики интерпретатора.
