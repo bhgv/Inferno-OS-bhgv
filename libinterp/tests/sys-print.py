@@ -30,11 +30,15 @@ def function(text, signature):
 start = source.index('typedef struct XprintCall')
 end = source.index('/* Keep the allocated output', start)
 parts = [source[start:end]]
+if 'typedef struct XprintString' in source:
+    a=source.index('typedef struct XprintString')
+    b=source.index('static void\nxprintstring(',a)
+    parts.insert(0,source[a:b])
 if 'typedef struct XprintResult' in source:
     a = source.index('typedef struct XprintResult')
     b = source.index('/* Build a new VM owner', a)
     parts.append(source[a:b])
-for signature in ('static int\nxsnprint(', 'int\nxprint(', 'static int\nxprintcall(', 'int\nbigxprint(',
+for signature in ('static void\nxprintstring(', 'static uchar*\nxprintargument(', 'static int\nxsnprint(', 'int\nxprint(', 'static int\nxprintcall(', 'int\nbigxprint(',
                   'static int\nbuildprintresult(', 'static void*\nprintresult(',
                   'void\nSys_sprint(', 'void\nSys_aprint('):
     if signature in source:
@@ -42,6 +46,10 @@ for signature in ('static int\nxsnprint(', 'int\nxprint(', 'static int\nxprintca
 guard = (root / 'emu/port/dis.c').read_text()
 guard = guard[guard.index('int\nkprotect('):]
 unit = (root / 'libinterp/tests/sys-print.c').read_text()
+extra=os.environ.get('SYS_PRINT_EXTRA')
+if extra:
+    unit=unit.replace('static void*\nprintworker(', 'static int printspanmain(void);\n\nstatic void*\nprintworker(',1)
+    unit=unit.replace('*status=printmain();','*status=printspanmain();',1)+Path(extra).read_text()
 unit = unit.replace('IMPLEMENTATION', '\n'.join(parts)).replace('GUARD', guard)
 with tempfile.TemporaryDirectory(prefix='sys-print-') as directory:
     td = Path(directory)
@@ -59,9 +67,11 @@ with tempfile.TemporaryDirectory(prefix='sys-print-') as directory:
             header, n = re.subn(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
             header, m = re.subn(r'typedef unsigned long\s+UWORD;',
                                'typedef unsigned int UWORD;', header, count=1)
-            assert n == m == 1
+            if n != 1 or m != 1:raise RuntimeError('WORD32 header mismatch')
             (modeldir / 'interp.h').write_text(header)
             override = ['-I'+str(modeldir)]
         binary = td / ('codecs-'+model)
-        subprocess.run(cmd+override+includes+[str(target),*[str(root / ('lib9/'+p+'.c')) for p in ('rune','sprint','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')],'-lm','-o',str(binary)],check=True)
-        subprocess.run([str(binary)],check=True)
+        subprocess.run(cmd+override+includes+[str(target),*[str(root / ('lib9/'+p+'.c')) for p in ('rune','sprint','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')],'-pthread','-lm','-o',str(binary)],check=True)
+        families=[os.environ['SYS_PRINT_CASE']] if os.environ.get('SYS_PRINT_CASE') else ['buffer','arguments','metadata','packed','heap','growth'] if extra else ['alignment','invalid','embedded','legacy']
+        for family in families:
+            subprocess.run([str(binary)],env=dict(os.environ,SYS_PRINT_CASE=family),check=True)

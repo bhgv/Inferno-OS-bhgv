@@ -16,6 +16,7 @@ sysmodinit(void)
 	builtinmod("$Sys", Sysmodtab, Sysmodlen);
 }
 
+
 /* A full destination consumes no bytes, even when vsnprint returns -1. */
 static int
 xsnprint(char *buf, int n, char *format, ...)
@@ -31,6 +32,73 @@ xsnprint(char *buf, int n, char *format, ...)
 	return written < 0 ? 0 : written;
 }
 
+typedef struct XprintString XprintString;
+
+struct XprintString
+{
+	uchar *data; // Validated inline ASCII or Rune storage.
+	int length; // Nonnegative count of logical characters.
+	int wide; // Whether characters occupy native Rune cells.
+};
+
+
+/* Validate borrowed string metadata and exactly the payload the formatter uses. */
+static void
+xprintstring(String *string, int terminate, XprintString *view)
+{
+	int length, capacity;
+	uintptr address, extent;
+	uvlong bytes;
+
+	if(string == nil)
+		error(exNilref);
+	view->data = (uchar*)"";
+	view->length = view->wide = 0;
+	if(string == H)
+		return;
+	address = (uintptr)string;
+	extent = O(String, len) > O(String, max) ? O(String, len) : O(String, max);
+	if(address > (uintptr)-1-extent-sizeof(length))
+		error(exHeap);
+	memmove(&length, (uchar*)string+O(String, len), sizeof(length));
+	memmove(&capacity, (uchar*)string+O(String, max), sizeof(capacity));
+	if(length == (-0x7fffffff-1))
+		error(exInval);
+	view->wide = length < 0;
+	view->length = length < 0 ? -length : length;
+	if(capacity < view->length)
+		error(exHeap);
+	/* An empty format reads no payload; string arguments still need a terminator. */
+	if(view->length == 0 && !terminate)
+		return;
+	bytes = ((uvlong)view->length+terminate)*(view->wide ? sizeof(Rune) : 1);
+	if(address > (uintptr)-1-O(String, data) ||
+	   bytes > (uintptr)-1-(address+O(String, data)))
+		error(exHeap);
+	view->data = (uchar*)(address+O(String, data));
+	/* The lib9 Rune formatter consumes Rune*, whereas pattern reads use byte copies. */
+	if(terminate && view->wide && (uintptr)view->data%sizeof(Rune) != 0)
+		error(exHeap);
+}
+
+
+/* Align by native coordinates and bound an argument before copying its bytes. */
+static uchar*
+xprintargument(void *frame, uchar *argument, int bytes, int alignment)
+{
+	uintptr address, padding;
+
+	if(argument == nil || argument == H)
+		error(exNilref);
+	address = (uintptr)argument;
+	padding = ((uintptr)frame-address)&(alignment-1);
+	if(padding > (uintptr)-1-address ||
+	   (uintptr)bytes > (uintptr)-1-address-padding)
+		error(exBounds);
+	return (uchar*)(address+padding);
+}
+
+
 /* Consume arguments even after output fills, bounding each format specification. */
 int
 xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
@@ -45,7 +113,9 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 	uchar *fp, *va;
 	int nc, c, isbig, isr, sip;
 	char *b, *eb, *f, fmt[32];
-	Rune r;
+	Rune r, zero = 0;
+	XprintString pattern, text;
+	ulong references;
 
 	fp = vfp;
 	va = vva;
@@ -56,19 +126,21 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 		return 0;
 	if(s1 == nil || buf == nil || buf == H)
 		error(exNilref);
-	if(s1->len == (-0x7fffffff-1))
-		error(exInval);
-	nc = s1->len;
-	if(nc < 0) {
-		nc = -nc;
-		isr = 1;
-	}
+	if((uintptr)buf > (uintptr)-1-(uintptr)n)
+		error(exBounds);
+	xprintstring(s1, 0, &pattern);
+	nc = pattern.length;
+	isr = pattern.wide;
 
 	b = buf;
 	eb = buf+n-1;
 	while(nc > 0) {
 		nc--;
-		c = isr ? s1->Srune[sip] : (uchar)s1->Sascii[sip];
+		if(isr){
+			memmove(&r, pattern.data+(uintptr)sip*sizeof(r), sizeof(r));
+			c = r;
+		}else
+			c = pattern.data[sip];
 		sip++;
 		if(c != '%') {
 			if(b < eb) {
@@ -86,7 +158,11 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 			nc--;
 			if(f-fmt > sizeof(fmt)-UTFmax-1)
 				error(exInval);
-			c = isr ? s1->Srune[sip] : (uchar)s1->Sascii[sip];
+			if(isr){
+				memmove(&r, pattern.data+(uintptr)sip*sizeof(r), sizeof(r));
+				c = r;
+			}else
+				c = pattern.data[sip];
 			sip++;
 			*f++ = c;
 			*f = '\0';
@@ -95,6 +171,7 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 				continue;
 			case '*':
 				/* Dis integer arguments occupy four bytes, even on LP64 hosts. */
+				va = xprintargument(fp, va, IBY2WD, 1);
 				memmove(&i, va, IBY2WD);
 				f--;
 				/* Widths need at most eleven decimal bytes and a terminator. */
@@ -115,23 +192,21 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 				break;
 			case 'q':
 			case 's':
+				va = xprintargument(fp, va, sizeof(ss), 1);
 				memmove(&ss, va, sizeof(ss));
-				if(ss == nil)
-					error(exNilref);
-				if(ss != H && ss->len == (-0x7fffffff-1))
-					error(exInval);
+				xprintstring(ss, 1, &text);
 				va += IBY2WD;
 				if(ss == H)
 					p = "";
 				else
-				if(ss->len < 0) {
+				if(text.wide) {
 					f[-1] += 'A'-'a';
-					ss->Srune[-ss->len] = L'\0';
-					p = ss->Srune;
+					memmove(text.data+(uintptr)text.length*sizeof(zero), &zero, sizeof(zero));
+					p = text.data;
 				}
 				else {
-					ss->Sascii[ss->len] = '\0';
-					p = ss->Sascii;
+					text.data[text.length] = '\0';
+					p = text.data;
 				}
 				b += xsnprint(b, eb-b+1, fmt, p);
 				break;
@@ -145,8 +220,7 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 			case 'f':
 			case 'g':
 			case 'G':
-				while((va - fp) & (sizeof(REAL)-1))
-					va++;
+				va = xprintargument(fp, va, sizeof(d), sizeof(REAL));
 				memmove(&d, va, sizeof(d));
 				b += xsnprint(b, eb-b+1, fmt, d);
 				va += sizeof(REAL);
@@ -157,14 +231,14 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 			case 'X':
 			case 'c':
 				if(isbig) {
-					while((va - fp) & (IBY2LG-1))
-						va++;
+					va = xprintargument(fp, va, sizeof(bg), IBY2LG);
 					memmove(&bg, va, sizeof(bg));
 					b += xsnprint(b, eb-b+1, fmt, bg);
 					va += IBY2LG;
 				}
 				else {
 					/* Dis integer arguments occupy four bytes, even on LP64 hosts. */
+					va = xprintargument(fp, va, IBY2WD, 1);
 					memmove(&i, va, IBY2WD);
 					/* always a unicode character */
 					if(c == 'c')
@@ -179,16 +253,19 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 				break;
 /* Debugging formats - may disappear */
 			case 'H':
+				va = xprintargument(fp, va, sizeof(ptr), 1);
 				memmove(&ptr, va, sizeof(ptr));
 				if(ptr == nil)
 					error(exNilref);
-				c = -1;
 				t = nil;
 				if(ptr != H) {
-					c = D2H(ptr)->ref;
+					if((uintptr)ptr <= sizeof(Heap) || (uintptr)ptr%sizeof(void*) != 0)
+						error(exHeap);
+					references = D2H(ptr)->ref;
 					t = D2H(ptr)->t;
-				}
-				b += xsnprint(b, eb-b+1, "%d.%.8lux", c, (ulong)t);
+					b += xsnprint(b, eb-b+1, "%lud.%.8lux", references, (ulong)t);
+				}else
+					b += xsnprint(b, eb-b+1, "%d.%.8lux", -1, (ulong)t);
 				va += IBY2WD;
 				break;
 			}
@@ -199,16 +276,18 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 }
 
 typedef struct XprintCall XprintCall;
+
 struct XprintCall
 {
-	Prog *prog;
-	void *frame;
-	void *args;
-	String *format;
-	char *buf;
-	int size;
-	int written;
+	Prog *prog; // Borrowed process used for error-string formatting.
+	void *frame; // Borrowed frame-relative argument alignment anchor.
+	void *args; // Initial packed argument cursor for each formatting attempt.
+	String *format; // Borrowed format retained by the calling VM frame.
+	char *buf; // Owned temporary output released when protected formatting fails.
+	int size; // Current output capacity in bytes.
+	int written; // Successful byte count, including embedded NUL characters.
 };
+
 
 /* Keep the allocated output visible to cleanup if formatting raises a VM error. */
 static int
@@ -222,6 +301,7 @@ xprintcall(void *arg)
 	return 1;
 }
 
+
 /* Grow without signed overflow and free temporary output before propagating errors. */
 int
 bigxprint(Prog *xp, void *vfp, void *vva, String *s1, char **buf, int s)
@@ -231,6 +311,10 @@ bigxprint(Prog *xp, void *vfp, void *vva, String *s1, char **buf, int s)
 
 	if(s <= 0)
 		error(exInval);
+	if(buf == nil || buf == H)
+		error(exNilref);
+	if((uintptr)buf > (uintptr)-1-sizeof(*buf))
+		error(exBounds);
 	call.prog = xp;
 	call.frame = vfp;
 	call.args = vva;
@@ -252,18 +336,20 @@ bigxprint(Prog *xp, void *vfp, void *vva, String *s1, char **buf, int s)
 			break;
 		free(call.buf);
 	}
-	*buf = call.buf;
+	memmove(buf, &call.buf, sizeof(call.buf));
 	return call.written;
 }
 
 typedef struct XprintResult XprintResult;
+
 struct XprintResult
 {
-	char *text;
-	int length;
-	int array;
-	void *value;
+	char *text; // Borrowed formatted bytes used while constructing the result.
+	int length; // Exact byte count, independent of embedded NULs.
+	int array; // Whether the VM result is a byte array instead of a String.
+	void *value; // Newly constructed result published only after success.
 };
+
 
 /* Build a new VM owner without touching the caller's previous result. */
 static int
@@ -278,6 +364,7 @@ buildprintresult(void *arg)
 		result->value = c2string(result->text, result->length);
 	return 1;
 }
+
 
 /* Release dynamic formatting storage on both conversion success and VM error. */
 static void*
@@ -297,6 +384,7 @@ printresult(char *text, int length, int array, int allocated)
 		krethrow();
 	return result.value;
 }
+
 
 /* Publish a formatted string only after conversion, retaining old results on error. */
 void
@@ -318,6 +406,7 @@ Sys_sprint(void *fp)
 	destroy(old);
 }
 
+
 /* Publish a formatted byte array after allocation and temporary-buffer cleanup. */
 void
 Sys_aprint(void *fp)
@@ -336,6 +425,7 @@ Sys_aprint(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 	destroy(old);
 }
+
 
 /* Compare unsigned byte characters with runes; nil denotes no separators. */
 static int
@@ -434,6 +524,7 @@ buildtokens(void *arg)
 	return 1;
 }
 
+
 /* Publish tuple fields through byte copies after every allocation succeeds. */
 void
 Sys_tokenize(void *fp)
@@ -464,6 +555,7 @@ Sys_tokenize(void *fp)
 	destroy(old);
 }
 
+
 /* Validate byte-array metadata and full VM lengths before native UTF routines. */
 static int
 sysutfarray(Array *a)
@@ -480,6 +572,7 @@ sysutfarray(Array *a)
 	return (int)a->len;
 }
 
+
 /* Validate result slots before UTF operations can modify an aliased byte array. */
 static uchar*
 sysutfresult(void *slot)
@@ -488,6 +581,7 @@ sysutfresult(void *slot)
 		error(exNilref);
 	return slot;
 }
+
 
 /* Count complete UTF sequences and publish WORD without requiring alignment. */
 void
@@ -510,6 +604,7 @@ Sys_utfbytes(void *fp)
 	result = nbyte;
 	memmove(ret, &result, sizeof(result));
 }
+
 
 /* Decode the complete tuple before publishing into a possibly unaligned slot. */
 void
@@ -547,6 +642,7 @@ Sys_byte2char(void *fp)
 	result[2] = valid;
 	memmove(ret, result, sizeof(result));
 }
+
 
 /* Encode before publishing the count, preserving the full rune and offset. */
 void
@@ -590,6 +686,7 @@ struct BuiltinModule
 	Module *module;
 };
 
+
 /* Keep every frame descriptor reachable by cleanup while export names can fail. */
 static int
 buildbuiltin(void *arg)
@@ -627,6 +724,7 @@ buildbuiltin(void *arg)
 	}
 	return 1;
 }
+
 
 /* Validate table bounds, build under one error owner, then publish exactly once. */
 Module*
@@ -669,6 +767,7 @@ badtable:
 	return nil;
 }
 
+
 /* Prepare the string before publishing through a potentially unaligned return slot. */
 void
 retnstr(char *s, int n, void *d)
@@ -682,6 +781,7 @@ retnstr(char *s, int n, void *d)
 	memmove(d, &s1, sizeof(s1));
 	destroy(old);
 }
+
 
 /* Retain the original owner until conversion and byte-addressed slot publication succeed. */
 void
@@ -730,6 +830,7 @@ mem2array(void *va, int n)
 
 	return a;
 }
+
 
 /* Empty prefixes need no data pointer; compare remaining bytes within the span. */
 static int

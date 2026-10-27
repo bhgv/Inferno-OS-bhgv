@@ -34,3 +34,7 @@ selects `native`, `word32`, or both.
 `SYS_PRINT_CASE=alignment`, `invalid` and `embedded` select the new isolated
 ASan/UBSan families; `legacy` selects the original matrix. See
 README.movpc-print.md for native PC materialization and embedded-NUL checks.
+
+
+Latest output/argument spans, packed borrowed string views, native-width `%H`
+and dynamic-result publication: [README.sys-print-spans.md](README.sys-print-spans.md).

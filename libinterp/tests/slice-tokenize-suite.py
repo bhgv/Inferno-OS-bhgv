@@ -128,6 +128,7 @@ CORE = [
     'libinterp/tests/string-codecs.py',
     'libinterp/tests/lists.py',
     'libinterp/tests/sys-print.py',
+    'libinterp/tests/sys-print-spans.py',
     'libinterp/tests/sys-utf.py',
     'libinterp/tests/heap-clones.py',
     'libinterp/tests/heap-preflight.py',
