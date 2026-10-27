@@ -33,6 +33,7 @@ static void *output;
 REG R;
 int mutator, nprop;
 char exHeap[] = "heap", exNomem[] = "memory", exModule[] = "module", exSpawn[] = "spawn", exNilref[] = "nil";
+char exBounds[] = "bounds"; // Invalid decoded frame operand range.
 char Enomem[] = "memory";
 
 /* Preserve real emulator error frames and error identity. */

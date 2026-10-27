@@ -1368,7 +1368,7 @@ x64stringslice(X64Buf *b, LeafLayout *a)
 static int
 x64frame(X64Buf *b, LeafLayout *a, int imported)
 {
-	int offsets[10], i;
+	int offsets[10], i, extent, origin;
 
 	offsets[0]=a->module; offsets[1]=a->linkmodule; offsets[2]=a->moduletypes;
 	offsets[3]=a->sp; offsets[4]=a->ts; offsets[5]=a->frametype; offsets[6]=a->framemr;
@@ -1382,20 +1382,28 @@ x64frame(X64Buf *b, LeafLayout *a, int imported)
 	   a->frametype==a->framemr)return 0;
 	if(imported){
 		/* Resolve a nonnegative import index without reading the legacy module Type table. */
-		x64ptr(b, 0, a->s); x64load(b, 0, 8);
+		x64ptr(b, 0, a->s); x64pcspan(b, 8, 8); x64load(b, 0, 8);
+		extent=a->linknlinks+4>a->linklinks ? a->linknlinks+4 : a->linklinks;
+		x64pcspan(b, 0, extent);
+		origin=a->heapref;
+		if(a->heapcolor>origin && a->heapcolor<=255)origin=a->heapcolor;
+		if(a->heaptype>origin && a->heaptype<=255)origin=a->heaptype;
+		x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, origin); x64guard(b, 0x77);
 		x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
 		x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
 		/* Invalid module owners must decline before reading the index operand. */
-		x64ptr(b, 1, a->m); x64field(b, 6, 9, 0, a->wordbytes);
+		x64ptr(b, 1, a->m); x64pcspan(b, 9, a->wordbytes); x64field(b, 6, 9, 0, a->wordbytes);
 		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xf6); x64guard(b, 0x79);
 		x64field(b, 1, 0, a->linknlinks, 4);
 		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x79);
 		x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64guard(b, 0x72);
 		x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe6); x64byte(b, 4);
-		x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x84); x64byte(b, 0x30);
-		x64word(b, a->linklinks+a->modlframe);
+		x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xf0); // add rax,rsi detects entry-base carry.
+		x64guard(b, 0x73);
+		x64pcspan(b, 0, a->linklinks+a->modlbytes);
+		x64field(b, 0, 0, a->linklinks+a->modlframe, 8);
 	}else{
-		x64ptr(b, 0, a->s); x64load(b, 0, a->wordbytes);
+		x64ptr(b, 0, a->s); x64pcspan(b, 8, a->wordbytes); x64load(b, 0, a->wordbytes);
 		x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc6); // rsi is the complete signed index.
 		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xf6); x64guard(b, 0x79);
 		x64ptr(b, 0, a->module); x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0);
@@ -1403,18 +1411,27 @@ x64frame(X64Buf *b, LeafLayout *a, int imported)
 			/* Pointer+1 is 0/1 for H/null; no address is dereferenced on rejection. */
 			x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
 			x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
-			if(i==0)x64field(b, 0, 0, a->linkmodule, 8);
+			if(i==0){x64pcspan(b, 0, a->linkmodule+8); x64field(b, 0, 0, a->linkmodule, 8);}
 			if(i==1){
+				extent=a->moduletypes+8>a->modulenty+4 ? a->moduletypes+8 : a->modulenty+4;
+				x64pcspan(b, 0, extent);
 				x64field(b, 1, 0, a->modulenty, 4);
 				x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64guard(b, 0x72);
 				x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x79);
 				x64field(b, 0, 0, a->moduletypes, 8);
 			}
 		}
-		x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x04); x64byte(b, 0xf0);
+		x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xf2); // mov rdx,rsi.
+		x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe2); x64byte(b, 3);
+		x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xd0); // add rax,rdx detects table-slot carry.
+		x64guard(b, 0x73);
+		x64pcspan(b, 0, 8);
+		x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x00);
 	}
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64guard(b, 0x77);
+	x64pcspan(b, 0, a->typesize+4>a->typenp+4 ? a->typesize+4 : a->typenp+4);
+	x64byte(b, 0xa8); x64byte(b, 7); x64guard(b, 0x74); // Type must have native pointer alignment.
 	x64field(b, 1, 0, a->typesize, 4);
 	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, a->framesize); x64guard(b, 0x7d);
 	x64field(b, 2, 0, a->typenp, 4);
@@ -1426,7 +1443,7 @@ x64frame(X64Buf *b, LeafLayout *a, int imported)
 	x64byte(b, 0x4d); x64byte(b, 0x29); x64byte(b, 0xc1);
 	x64byte(b, 0x49); x64byte(b, 0x39); x64byte(b, 0xc9); x64guard(b, 0x77);
 	/* Capture all live metadata before publishing the new stack cursor. */
-	x64ptr(b, 2, a->d);
+	x64ptr(b, 2, a->d); x64pcspan(b, 10, 8);
 	x64byte(b, 0x4c); x64byte(b, 0x01); x64byte(b, 0xc1);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x8f); x64word(b, a->sp);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0x80); x64word(b, a->frametype);

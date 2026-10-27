@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/frame-allocation-native.py',
     'libinterp/tests/control-transfer-native.py',
     'limbo/tests/optimizer-ranges.py',
     'libinterp/tests/jit-dispatch-native.py',
@@ -157,6 +158,7 @@ CORE = [
     'limbo/tests/case-max.py',
 ]
 JIT = [
+    'libinterp/tests/frame-allocation-jit.py',
     'libinterp/tests/control-transfer-jit.py',
     'libinterp/tests/jit-dispatch-jit.py',
     'libinterp/tests/buffered-transfer-jit.py',

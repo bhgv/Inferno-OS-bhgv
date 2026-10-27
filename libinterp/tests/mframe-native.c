@@ -8,7 +8,7 @@ Type Tstring = {1}, Tarray = {1};
 
 REG R;
 int mutator, nprop;
-char exHeap[]="heap", exModule[]="module";
+char exHeap[]="heap", exModule[]="module", exBounds[]="bounds";
 static jmp_buf boundary;
 static char *raised;
 static int extensions, initialized;

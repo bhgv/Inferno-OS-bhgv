@@ -79,6 +79,8 @@ DOMAINS = {  # Audited scope descriptions; numeric percentages come only from ac
     'LeafBranch': 'Нативное целое сравнение; target читается только на взятой ветви.',
 }
 SCOPES = {  # Refine shared families when individual command domains differ.
+    'IFRAME': 'Частично: проверенные слоты, заголовки и выбранная запись Type-таблицы; выровненный Type без указателей и запас в текущем стеке; карты/расширение → C.',
+    'IMFRAME': 'Частично: проверенные слоты, import record и Type; pointer-free кадр с запасом в текущем стеке; экспорты/карты/расширение → C.',
     'ICALL': 'Частично: проверенные диапазоны слотов и сохраняемых frame links; захват alias-операндов до записи, исходный bytecode PC.',
     'IMCALL': 'Частично: проверенные слоты, module/frame headers и адрес записи импорта; одинаковые режимы bytecode-вызова; builtins/экспорты/смена режима → C.',
     'IRET': 'Частично: проверенные frame/Type/module поля и обратный refcount; pointer-free cleanup; карты/освобождение extent/уничтожение модуля → C.',

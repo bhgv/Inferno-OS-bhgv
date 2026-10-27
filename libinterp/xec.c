@@ -2116,73 +2116,118 @@ moduleentry(Modlink *ml, WORD index, Modl *entry)
 	return 0;
 }
 
-/* Compare remaining stack bytes before forming a prospective frame pointer. */
+
+/* Validate descriptor maps before comparing native integer stack extents. */
 static int
 framefits(Type *t)
 {
-	if(t == nil || t == H || t->size < (int)sizeof(Frame) || t->np < 0 ||
-	   R.SP == nil || R.SP == H || R.TS == nil || R.TS == H || R.SP > R.TS)
+	int i, bit, size, pointers;
+	uintptr address;
+
+	if(t == nil || t == H || (uintptr)t%sizeof(void*) != 0 ||
+	   (uintptr)t > (uintptr)-1-(O(Type, np)+sizeof(t->np)))
 		error(exHeap);
-	return (ulong)t->size < (ulong)(R.TS-R.SP);
+	size = t->size;
+	pointers = t->np;
+	if(size < (int)sizeof(Frame) || pointers < 0 ||
+	   R.SP == nil || R.SP == H || R.TS == nil || R.TS == H ||
+	   (uintptr)R.SP > (uintptr)R.TS)
+		error(exHeap);
+	if(pointers > size/(8*sizeof(void*))+(size%(8*sizeof(void*)) != 0))
+		error(exHeap);
+	address = (uintptr)t;
+	if(pointers != 0 && (address > (uintptr)-1-O(Type, map) ||
+	   address+O(Type, map) > (uintptr)-1-(uintptr)pointers))
+		error(exHeap);
+	for(i = 0; i < pointers; i++)
+		for(bit = 0; bit < 8; bit++)
+			if((t->map[i] & (0x80>>bit)) && (ulong)i*8+bit >= (ulong)size/sizeof(void*))
+				error(exHeap);
+	return (uintptr)size < (uintptr)R.TS-(uintptr)R.SP;
 }
 
-/* Validate the complete descriptor index and stack span before allocating a frame. */
+
+/* Capture the index and destination before stack growth or aliased frame stores. */
 OP(frame)
 {
 	Type *t;
 	Frame *f;
+	Modlink *module;
+	void *destination;
 	WORD index;
+	int fits, size, pointers;
 
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(index))
+		error(exBounds);
 	memmove(&index, R.s, sizeof(index));
 	t = moduletype(R.M, index);
-	if(!framefits(t)) {
+	fits = framefits(t);
+	destination = R.d;
+	if(destination == nil || destination == H || (uintptr)destination > (uintptr)-1-sizeof(f))
+		error(exBounds);
+	if(!fits){
 		R.s = t;
 		extend();
-		memmove(R.d, &R.s, sizeof(R.s));
+		memmove(destination, &R.s, sizeof(R.s));
 		return;
 	}
+	size = t->size;
+	pointers = t->np;
 	f = (Frame*)R.SP;
-	R.SP += t->size;
-	f->t  = t;
-	f->mr = nil;
-	if (t->np)
+	R.SP = (uchar*)((uintptr)R.SP+(uintptr)size);
+	module = nil;
+	memmove((uchar*)f+O(Frame, t), &t, sizeof(t));
+	memmove((uchar*)f+O(Frame, mr), &module, sizeof(module));
+	if(pointers)
 		initmem(t, f);
-	memmove(R.d, &f, sizeof(f));
+	memmove(destination, &f, sizeof(f));
 }
 
 
-/* Resolve both imported and exported frame types through checked metadata. */
+/* Resolve checked import/export metadata before growth or alignment-safe publication. */
 OP(mframe)
 {
 	Type *t;
 	Frame *f;
+	Modlink *module;
+	void *destination;
 	WORD index;
 	Modl entry;
 	Modlink *ml;
+	int fits, size, pointers;
 
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(ml))
+		error(exBounds);
 	memmove(&ml, R.s, sizeof(ml));
 	if(ml == H || ml == nil)
 		error(exModule);
-
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(index))
+		error(exBounds);
 	memmove(&index, R.m, sizeof(index));
 	if(!moduleentry(ml, index, &entry))
 		error("invalid mframe");
 	t = entry.frame;
-	if(!framefits(t)) {
+	fits = framefits(t);
+	destination = R.d;
+	if(destination == nil || destination == H || (uintptr)destination > (uintptr)-1-sizeof(f))
+		error(exBounds);
+	if(!fits){
 		R.s = t;
 		extend();
-		memmove(R.d, &R.s, sizeof(R.s));
+		memmove(destination, &R.s, sizeof(R.s));
 		return;
 	}
+	size = t->size;
+	pointers = t->np;
 	f = (Frame*)R.SP;
-	R.SP += t->size;
-	f->t = t;
-	f->mr = nil;
-	if (t->np)
+	R.SP = (uchar*)((uintptr)R.SP+(uintptr)size);
+	module = nil;
+	memmove((uchar*)f+O(Frame, t), &t, sizeof(t));
+	memmove((uchar*)f+O(Frame, mr), &module, sizeof(module));
+	if(pointers)
 		initmem(t, f);
-	memmove(R.d, &f, sizeof(f));
+	memmove(destination, &f, sizeof(f));
 }
-
 
 /* Validate pointer maps before allocation, then initialize scalar and pointer bytes separately. */
 static void

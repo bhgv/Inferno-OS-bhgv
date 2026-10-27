@@ -2,6 +2,8 @@
 
 Complete decoded JIT+C support now covers all 173 active commands on AMD64/ARM64. Native fast availability remains 166/173; seven complex handlers use C through complete tail entries. See [README.complete-dispatch.md](README.complete-dispatch.md) and the [per-command table](README.jit-readiness.md).
 
+Latest FRAME/MFRAME spans, descriptor-map preflight and captured publication: [README.frame-allocation-spans.md](README.frame-allocation-spans.md).
+
 Latest CALL/MCALL/RET native+C address spans, import-entry carry and RET error ordering: [README.control-transfer-spans.md](README.control-transfer-spans.md).
 
 Latest priority AMD64/ARM64 binding/ABI, pure channel preflight and Limbo range fixes: [README.priority-dispatch-ranges.md](README.priority-dispatch-ranges.md).

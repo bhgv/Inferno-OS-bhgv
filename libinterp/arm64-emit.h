@@ -1055,7 +1055,7 @@ a64stringslice(A64Buf *b, LeafLayout *a)
 static int
 a64frame(A64Buf *b, LeafLayout *a, int imported)
 {
-	int offsets[10], i, fallback;
+	int offsets[10], i, fallback, extent, origin;
 
 	offsets[0]=a->module; offsets[1]=a->linkmodule; offsets[2]=a->moduletypes;
 	offsets[3]=a->sp; offsets[4]=a->ts; offsets[5]=a->frametype; offsets[6]=a->framemr;
@@ -1071,34 +1071,49 @@ a64frame(A64Buf *b, LeafLayout *a, int imported)
 	fallback=b->n; a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	if(imported){
 		/* Keep the full WORD index; negative export ordinals retain C lookup. */
-		a64ptr(b, 9, a->s); a64load(b, 13, 9, 8);
+		a64ptr(b, 9, a->s); a64pcspan(b, 9, 8, fallback); a64load(b, 13, 9, 8);
+		extent=a->linknlinks+4>a->linklinks ? a->linknlinks+4 : a->linklinks;
+		a64pcspan(b, 13, extent, fallback);
+		origin=a->heapref;
+		if(a->heapcolor>origin && a->heapcolor<=255)origin=a->heapcolor;
+		if(a->heaptype>origin && a->heaptype<=255)origin=a->heaptype;
+		a64put(b, 0xf10001bfU | (u32int)origin<<10); a64defer(b, 0x54000009, fallback);
 		a64put(b, 0x910005a2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
 		/* Match the C error boundary before fetching a possibly inaccessible index. */
-		a64ptr(b, 10, a->m); a64load(b, 12, 10, a->wordbytes);
+		a64ptr(b, 10, a->m); a64pcspan(b, 10, a->wordbytes, fallback); a64load(b, 12, 10, a->wordbytes);
 		if(a->wordbytes==4)a64put(b, 0x93407d8c);
 		a64wordfield(b, 14, 13, a->linknlinks, 4);
 		a64put(b, 0xf10001df); a64defer(b, 0x5400000b, fallback);
 		a64put(b, 0xeb0e019f); a64defer(b, 0x54000002, fallback);
-		a64put(b, 0x8b0c11ad); // add x13,x13,x12,lsl #4.
+		a64put(b, 0xab0c11ad); // adds x13,x13,x12,lsl #4 detects entry-base carry.
+		a64defer(b, 0x54000002, fallback);
+		a64pcspan(b, 13, a->linklinks+a->modlbytes, fallback);
 		a64field(b, 14, 13, a->linklinks+a->modlframe, 8);
 	}else{
-		a64ptr(b, 9, a->s); a64load(b, 12, 9, a->wordbytes);
+		a64ptr(b, 9, a->s); a64pcspan(b, 9, a->wordbytes, fallback); a64load(b, 12, 9, a->wordbytes);
 		if(a->wordbytes==4)a64put(b, 0x93407d8c);
 		a64ptr(b, 13, a->module);
 		for(i=0; i<3; i++){
 			a64put(b, 0x910005a2); a64put(b, 0xf100045f);
 			a64defer(b, 0x54000009, fallback);
-			if(i==0)a64field(b, 13, 13, a->linkmodule, 8);
+			if(i==0){a64pcspan(b, 13, a->linkmodule+8, fallback); a64field(b, 13, 13, a->linkmodule, 8);}
 			if(i==1){
+				extent=a->moduletypes+8>a->modulenty+4 ? a->moduletypes+8 : a->modulenty+4;
+				a64pcspan(b, 13, extent, fallback);
 				a64wordfield(b, 14, 13, a->modulenty, 4);
 				a64put(b, 0xf10001df); a64defer(b, 0x5400000b, fallback);
 				a64put(b, 0xeb0e019f); a64defer(b, 0x54000002, fallback);
 				a64field(b, 13, 13, a->moduletypes, 8);
 			}
 		}
-		a64put(b, 0xf86c79ae); // ldr x14,[x13,x12,lsl #3].
+		a64put(b, 0xab0c0dad); // adds x13,x13,x12,lsl #3 detects selected-slot carry.
+		a64defer(b, 0x54000002, fallback);
+		a64pcspan(b, 13, 8, fallback);
+		a64field(b, 14, 13, 0, 8);
 	}
 	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	a64pcspan(b, 14, a->typesize+4>a->typenp+4 ? a->typesize+4 : a->typenp+4, fallback);
+	a64put(b, 0xf24009df); a64defer(b, 0x54000001, fallback); // Type must have native pointer alignment.
 	a64wordfield(b, 15, 14, a->typesize, 4);
 	a64put(b, 0xd2800002U | (u32int)a->framesize<<5);
 	a64put(b, 0xeb0201ff); a64defer(b, 0x5400000b, fallback);
@@ -1108,7 +1123,7 @@ a64frame(A64Buf *b, LeafLayout *a, int imported)
 	a64put(b, 0xb100055f); a64defer(b, 0x54000000, fallback);
 	a64put(b, 0xeb09015f); a64defer(b, 0x54000003, fallback);
 	a64put(b, 0xcb090142); a64put(b, 0xeb0f005f); a64defer(b, 0x54000009, fallback);
-	a64ptr(b, 11, a->d);
+	a64ptr(b, 11, a->d); a64pcspan(b, 11, 8, fallback);
 	a64put(b, 0x8b0f0122);
 	a64put(b, 0xf9000000U | (u32int)(a->sp/8)<<10 | 2);
 	a64put(b, 0xf9000000U | (u32int)(a->frametype/8)<<10 | 9<<5 | 14);
