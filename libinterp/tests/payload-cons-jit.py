@@ -182,7 +182,7 @@ emit(u32int *output, int cap, int wb, int pointer)
                                     destvalid=dst not in (0,MASK) and dst+8<=MASK
                                     if pointer:
                                         srcrefs=2 if sv==TAIL else href
-                                        preflight=(0<prefs<(1<<31)-1 and (sv==MASK or (sv>32 and sv%8==0 and srcrefs not in (0,MASK))))
+                                        preflight=(destvalid and 0<prefs<(1<<31)-1 and (sv==MASK or (sv>32 and sv%8==0 and srcrefs not in (0,MASK))))
                                     else:preflight=0<=amount<=256 and destvalid and (amount==0 or (src not in (0,MASK) and src+amount<=MASK))
                                     helpervalid=not failed and lrefs>0 and tail!=0 and (tail==MASK or (href!=0 if not pointer else True)) and destvalid
                                     valid=preflight and helpervalid

@@ -133,7 +133,7 @@ badaddresses(Jit *jit)
         case 8:tail=(List*)(uintptr)sizeof(Heap);break;
         }
         beforecalls=calls;raised=nil;saved=tail;R.s=&value;R.d=slot;memmove(before,storage,sizeof(storage));
-        if(setjmp(boundary)==0){if(pass)jit->entry[ICONSL](&R);else consl();abort();}
+        if(setjmp(boundary)==0){if(pass){if(!jit->entry[ICONSL](&R))consl();}else consl();abort();}
         if(raised!=(profile==3?exNilref:exHeap) || calls!=beforecalls || live || tail!=saved || memcmp(storage,before,sizeof(storage)))abort();
     }
     Tlist.ref=1;

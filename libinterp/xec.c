@@ -2455,16 +2455,18 @@ channelargs(Channel **old)
 }
 
 
-/* Capture channel capacity and replacement ownership before fallible allocation. */
+/* Capture capacity, result storage and old ownership before allocating C callbacks. */
 Channel*
 newc(Type *t, void (*mover)(void))
 {
 	Channel *channel, *oldc;
 	WORD len;
+	void *destination;
 
 	len = channelargs(&oldc);
+	destination = R.d;
 	channel = cnewc(t, mover, len);
-	memmove(R.d, &channel, sizeof(channel));
+	memmove(destination, &channel, sizeof(channel));
 	destroy(oldc);
 	return channel;
 }
@@ -2572,6 +2574,7 @@ OP(newcm)
 	WORD size, capacity;
 	Channel *channel, *old;
 	uintptr address;
+	void *destination;
 
 	address = (uintptr)R.s;
 	if(R.s == nil || R.s == H || address > (uintptr)-1-sizeof(size))
@@ -2582,9 +2585,10 @@ OP(newcm)
 	if((uvlong)size > 0x7fffffff)
 		error(exHeap);
 	capacity = channelargs(&old);
+	destination = R.d;
 	channel = cnewcraw((int)size, (int)capacity);
 	channel->mid.w = size;
-	memmove(R.d, &channel, sizeof(channel));
+	memmove(destination, &channel, sizeof(channel));
 	destroy(old);
 }
 
@@ -3779,16 +3783,20 @@ cons(ulong size, void *slot)
 	return l;
 }
 
+
 /* Capture source values before publishing a node into a possibly aliased slot. */
 OP(consb)
 {
 	BYTE value;
 	List *l;
 
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(value))
+		error(exHeap);
 	memmove(&value, R.s, sizeof(value));
 	l = cons(IBY2WD, R.d);
 	memmove(l->data, &value, sizeof(value));
 }
+
 
 /* Host WORD storage must fit the complete interpreter value. */
 OP(consw)
@@ -3796,10 +3804,13 @@ OP(consw)
 	WORD value;
 	List *l;
 
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(value))
+		error(exHeap);
 	memmove(&value, R.s, sizeof(value));
 	l = cons(sizeof(value), R.d);
 	memmove(l->data, &value, sizeof(value));
 }
+
 
 /* Retain the source big integer if publishing the list changes its source slot. */
 OP(consl)
@@ -3807,6 +3818,8 @@ OP(consl)
 	LONG value;
 	List *l;
 
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(value))
+		error(exHeap);
 	memmove(&value, R.s, sizeof(value));
 	l = cons(sizeof(value), R.d);
 	memmove(l->data, &value, sizeof(value));
@@ -3821,6 +3834,8 @@ OP(consp)
 	uintptr address;
 	WORD *sv;
 
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(sv))
+		error(exHeap);
 	memmove(&sv, R.s, sizeof(sv));
 	if(sv == nil)
 		error(exNilref);
@@ -3845,42 +3860,50 @@ OP(consp)
 	memmove(l->data, &sv, sizeof(sv));
 }
 
+
 /* Capture the real argument before the destination slot becomes a list owner. */
 OP(consf)
 {
 	REAL value;
 	List *l;
 
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(value))
+		error(exHeap);
 	memmove(&value, R.s, sizeof(value));
 	l = cons(sizeof(value), R.d);
 	memmove(l->data, &value, sizeof(value));
 }
 
 
-/* Check the complete VM size and copy raw payload before replacing its source slot. */
+/* Capture raw operands before allocation and copy the head before publishing its owner. */
 OP(consm)
 {
 	WORD size;
 	uintptr address;
 	List *l, *result;
+	void *source, *destination;
 
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(size))
+		error(exHeap);
 	memmove(&size, R.m, sizeof(size));
+	source = R.s;
+	destination = R.d;
 	if(size < 0 || (uvlong)size > 0x7fffffff-sizeof(Heap)-
 	   (sizeof(List)-sizeof(((List*)0)->data)))
 		error(exHeap);
-	address = (uintptr)R.d;
-	if(R.d == nil || R.d == H || address > (uintptr)-1-sizeof(result))
+	address = (uintptr)destination;
+	if(destination == nil || destination == H || address > (uintptr)-1-sizeof(result))
 		error(exHeap);
 	if(size != 0){
-		address = (uintptr)R.s;
-		if(R.s == nil || R.s == H || address > (uintptr)-1-(uintptr)size)
+		address = (uintptr)source;
+		if(source == nil || source == H || address > (uintptr)-1-(uintptr)size)
 			error(exHeap);
 	}
-	memmove(&result, R.d, sizeof(result));
+	memmove(&result, destination, sizeof(result));
 	l = cons((ulong)size, &result);
 	if(size != 0)
-		memmove(l->data, R.s, (int)size);
-	memmove(R.d, &result, sizeof(result));
+		memmove(l->data, source, (int)size);
+	memmove(destination, &result, sizeof(result));
 }
 
 

@@ -159,7 +159,12 @@ checkpublication(void *object)
 /* Release bounded fixture owners after checking raw replacement ordering. */
 void destroy(void *p) {''')
     preamble = preamble.replace('if(p==H)return;', 'checkpublication(p);\n    if(p==H)return;')
-fixture = 'payload-channel-native.c' if '--payload' in sys.argv else 'scalar-channel-native.c'
+if '--captured' in sys.argv:
+    preamble = '#define TEST_LEAF_DISPATCH_RUNTIME // Exercise real complete dispatch.\n'+preamble
+    preamble += '\nvoid (*optab[256])(void);\nchar exOp[]="opcode";\n'
+    parts.append(function(xec, 'int\ncjitexec('))
+fixture = ('channel-capture-native.c' if '--captured' in sys.argv else
+           'payload-channel-native.c' if '--payload' in sys.argv else 'scalar-channel-native.c')
 unit = preamble + '\n'.join(parts) + (ROOT/'libinterp/tests'/fixture).read_text()
 if os.environ.get('CHANNEL_UNIT_OUT'):
     Path(os.environ['CHANNEL_UNIT_OUT']).write_text(unit)

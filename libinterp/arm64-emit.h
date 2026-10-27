@@ -1799,12 +1799,14 @@ static int
 a64scalarcons(A64Buf *b, LeafLayout *a, LeafOp *p)
 {
 	unsigned long long entry;
-	int half;
+	int half, fallback;
 
 	if(!leafscalarconslayout(a, p->bytes))
 		return 0;
-	a64ptr(b, 9, a->s); a64load(b, 9, 9, p->bytes);
-	a64ptr(b, 1, a->d);
+	fallback=b->n+1;
+	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
+	a64ptr(b, 9, a->s); a64pcspan(b, 9, p->bytes, fallback); a64load(b, 9, 9, p->bytes);
+	a64ptr(b, 1, a->d); a64pcspan(b, 1, 8, fallback);
 	a64put(b, 0xa9bf7be9U); // stp x9, x30, [sp, #-16]!
 	a64put(b, 0xd2800000U | (u32int)p->input<<5); // mov x0, allocation width
 	entry=(unsigned long long)a->consentry;
@@ -1905,7 +1907,7 @@ a64rawcons(A64Buf *b, LeafLayout *a)
 	if(!leafscalarconslayout(a, 1))return 0;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
-	a64ptr(b, 2, a->m); a64wordfield(b, 2, 2, 0, a->wordbytes);
+	a64ptr(b, 2, a->m); a64pcspan(b, 2, a->wordbytes, fallback); a64wordfield(b, 2, 2, 0, a->wordbytes);
 	a64put(b, 0xf104005fU); // cmp x2, #256
 	a64defer(b, 0x54000008, fallback);
 	a64ptr(b, 9, a->s); a64ptr(b, 10, a->d);
@@ -1960,7 +1962,7 @@ a64pointercons(A64Buf *b, LeafLayout *a)
 	if(!leafpointerconslayout(a))return 0;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
-	a64ptr(b, 9, a->s); a64load(b, 9, 9, 8);
+	a64ptr(b, 9, a->s); a64pcspan(b, 9, 8, fallback); a64load(b, 9, 9, 8);
 	a64defer(b, 0xb4000009, fallback);
 	a64put(b, 0xb100053fU); // cmn x9, #1
 	empty=b->n; a64put(b, 0x54000000);
@@ -1983,7 +1985,7 @@ a64pointercons(A64Buf *b, LeafLayout *a)
 	a64put(b, 0x12b0000eU); // mov w14, #0x7fffffff
 	a64put(b, 0x6b0e01bfU); // cmp w13, w14
 	a64defer(b, 0x54000000, fallback);
-	a64ptr(b, 1, a->d);
+	a64ptr(b, 1, a->d); a64pcspan(b, 1, 8, fallback);
 	a64put(b, 0xa9bf7be9U); // stp x9, x30, [sp, #-16]!
 	a64put(b, 0xd2800100U); // mov x0, #8
 	identity=(unsigned long long)a->consentry;

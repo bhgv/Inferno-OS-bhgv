@@ -2200,8 +2200,8 @@ x64scalarcons(X64Buf *b, LeafLayout *a, LeafOp *p)
 
 	if(!leafscalarconslayout(a, p->bytes))
 		return 0;
-	x64caseptr(b, 0, a->s); x64load(b, 0, p->bytes);
-	x64caseptr(b, 1, a->d);
+	x64caseptr(b, 0, a->s); x64pcspan(b, 8, p->bytes); x64load(b, 0, p->bytes);
+	x64caseptr(b, 1, a->d); x64pcspan(b, 9, 8);
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xce); // mov rsi, r9
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xec); x64byte(b, 0x18); // sub rsp, 24
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x04); x64byte(b, 0x24); // mov qword ptr [rsp], rax
@@ -2315,7 +2315,7 @@ x64rawcons(X64Buf *b, LeafLayout *a)
 	if(!leafscalarconslayout(a, 1))return 0;
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
-	x64caseptr(b, 0, a->m); x64load(b, 0, a->wordbytes);
+	x64caseptr(b, 0, a->m); x64pcspan(b, 8, a->wordbytes); x64load(b, 0, a->wordbytes);
 	x64byte(b, 0x48); x64byte(b, 0x3d); x64byte(b, 0x00); x64byte(b, 0x01); x64byte(b, 0x00); x64byte(b, 0x00); // cmp rax, 256
 	x64moduleguard(b, 0x76, fallback);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc3); // mov r11, rax
@@ -2377,7 +2377,7 @@ x64pointercons(X64Buf *b, LeafLayout *a)
 	if(!leafpointerconslayout(a))return 0;
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
-	x64caseptr(b, 0, a->s); x64load(b, 0, 8);
+	x64caseptr(b, 0, a->s); x64pcspan(b, 8, 8); x64load(b, 0, 8);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); // test rax, rax
 	x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff); // cmp rax, -1
@@ -2400,7 +2400,7 @@ x64pointercons(X64Buf *b, LeafLayout *a)
 	x64moduleguard(b, 0x7f, fallback);
 	x64byte(b, 0x81); x64byte(b, 0xf9); x64byte(b, 0xff); x64byte(b, 0xff); x64byte(b, 0xff); x64byte(b, 0x7f); // cmp ecx, 0x7fffffff
 	x64moduleguard(b, 0x75, fallback);
-	x64caseptr(b, 1, a->d);
+	x64caseptr(b, 1, a->d); x64pcspan(b, 9, 8);
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xce); // mov rsi, r9
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xec); x64byte(b, 0x18); // sub rsp, 24
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x04); x64byte(b, 0x24); // mov qword ptr [rsp], rax
