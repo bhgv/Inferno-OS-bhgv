@@ -115,6 +115,57 @@ bridgeenter(void)
 }
 
 
+/* Verify complete compiler binding, absent slots and cached reuse for every byte opcode. */
+static unsigned long
+bridgecompilerentries(void)
+{
+	Module module = {0};
+	Inst instruction = {0};
+	LeafOp operation;
+	u32int expected[LeafMax];
+	Jit *jit;
+	uintptr first, last, target;
+	unsigned long checks = 0, before;
+	int op, other, active, n;
+
+	module.prog = &instruction;
+	module.nprog = 1;
+	for(op = 0; op < 256; op++){
+		instruction.op = op;
+		active = op > INOP && op < MAXDIS && op != IECLR;
+		before = bridgeallocations;
+		if(!active){
+			mappedcheck(!compile(&module, 1, nil) && module.jit == nil && bridgeallocations == before);
+			checks++;
+			continue;
+		}
+		mappedcheck(compile(&module, 1, nil) && module.jit != nil);
+		jit = module.jit;
+		first = (uintptr)jit->code;
+		last = first+jit->size;
+		for(other = 0; other < 256; other++){
+			mappedcheck((jit->dispatch[other] != nil) == (other == op));
+			if(other != op)
+				mappedcheck(jit->entry[other] == nil);
+		}
+		target = (uintptr)jit->dispatch[op];
+		mappedcheck(target >= first && target < last && target%4 == 0);
+		mappedcheck((jit->entry[op] != nil) == leafop(&operation, op, sizeof(WORD)));
+		if(jit->entry[op] != nil)
+			mappedcheck((uintptr)jit->entry[op] == first && first < target);
+		n = leafbridgeemit(expected, LeafMax, (void*)cjitexec, op, (void*)jit->entry[op]);
+		mappedcheck(n > 0 && target+(uintptr)n*4 == last && !memcmp((void*)target, expected, n*4));
+		before = bridgeallocations;
+		mappedcheck(compile(&module, 1, nil) && module.jit == jit && bridgeallocations == before);
+		jit->freecode(jit->code, jit->size);
+		free(jit);
+		module.jit = nil;
+		checks++;
+	}
+	return checks;
+}
+
+
 /* Reject invalid headers, bytecode spans and stale cache geometry before allocation. */
 static unsigned long
 bridgecompilerchecks(void)
@@ -186,6 +237,8 @@ bridgecompilerchecks(void)
 			checks++;
 		}
 	}
+	if(selected == nil)
+		checks += bridgecompilerentries();
 	return checks;
 }
 
@@ -375,7 +428,7 @@ main(void)
 	unsigned long compiler, routes, integration;
 
 	compiler = bridgecompilerchecks();
-	if(getenv("BRIDGE_COMPILER_CASE")){
+	if(getenv("BRIDGE_COMPILER_CASE") || getenv("BRIDGE_PREFLIGHT_ONLY")){
 		printf("PASS compiler bridge preflight WORD%zu: %lu cases\n", sizeof(WORD)*8, compiler);
 		return 0;
 	}

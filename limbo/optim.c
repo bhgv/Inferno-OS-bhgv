@@ -1311,39 +1311,57 @@ loops(Block *b)
 	}
 }
 
+
+/* Keep optimizer byte sizes inside the same signed range as frame layout. */
+static int
+optsize(long bytes)
+{
+	if(bytes < 0 || bytes > 0x7fffffff)
+		fatal("invalid optimizer byte size");
+	return bytes;
+}
+
+
+/* Capture a bounded raw-copy immediate without narrowing a host-long value. */
 static int
 imm(int m, Addr *a)
 {
 	if(m == Aimm)
-		return a->offset;
+		return optsize(a->offset);
 	fatal("bad immediate value");
 	return -1;
 }
 
+
+/* Validate mapped-copy descriptor ownership before reading its byte size. */
 static int
 desc(int m, Addr *a)
 {
-	if(m == Adesc)
-		return a->decl->desc->size;
+	if(m == Adesc && a->decl != nil && a->decl->desc != nil)
+		return optsize(a->decl->desc->size);
 	fatal("bad descriptor value");
 	return -1;
 }
 
+
+/* Form a frame offset only after checking both host-long terms and their sum. */
 static int
 fpoff(int m, Addr *a)
 {
-	int off;
-	Decl *d;
+	long base, displacement;
 
-	if(m == Afp || m == Afpind){
-		off = a->reg;
-		if((d = a->decl) != nil)
-			off += d->offset;
-		return off;
-	}
-	return -1;
+	if(m != Afp && m != Afpind)
+		return -1;
+	base = a->decl == nil ? 0 : a->decl->offset;
+	displacement = a->reg;
+	if(base < 0 || base > 0x7fffffff || displacement < -base ||
+	   displacement > 0x7fffffff-base)
+		fatal("invalid optimizer frame offset");
+	return base+displacement;
 }
 
+
+/* Decode aggregate widths before marking declaration uses and definitions. */
 static int
 size(Inst *i)
 {
@@ -1353,7 +1371,7 @@ size(Inst *i)
 	case IALT:
 	case INBALT:
 	case ILEA:
-		return i->m.offset;
+		return optsize(i->m.offset);
 	case IMOVM:
 	case IHEADM:
 	case ICONSM:
@@ -1400,31 +1418,57 @@ sharedecls(Decl *d)
 	return d;
 }
 
+
+/* Validate a declaration before forming its exclusive frame endpoint. */
+static int
+optdeclend(Decl *d)
+{
+	if(d == nil || d->ty == nil || d->offset < 0 || d->offset > 0x7fffffff ||
+	   d->ty->size < 0 || d->ty->size > 0x7fffffff-d->offset)
+		fatal("invalid optimizer declaration extent");
+	return d->offset+d->ty->size;
+}
+
+
+/* Resolve a complete byte range before publishing its declaration count.
+ * Aggregate moves can cover several declarations and alignment gaps. Missing
+ * tails and unrepresentable endpoints must diagnose instead of walking nil or
+ * wrapping an int into a smaller, silently incomplete use/def range.
+ */
 static int
 finddec(int o, int s, Decl *vars, int *nv, Inst *i)
 {
-	int m, n;
+	int m, n, end, limit;
 	Decl *d;
 
+	if(o < 0 || s < 0 || s > 0x7fffffff-o)
+		fatal("invalid optimizer byte range");
+	end = o+s;
 	n = 0;
 	for(d = vars; d != nil; d = d->next){
-		if(o >= d->offset && o < d->offset+d->ty->size){
+		limit = optdeclend(d);
+		if(o >= d->offset && o < limit){
 			m = 1;
-			while(o+s > d->offset+d->ty->size){
-				m++;
+			while(end > limit){
 				d = d->next;
+				if(d == nil)
+					goto missing;
+				limit = optdeclend(d);
+				m++;
 			}
 			*nv = m;
 			return n;
 		}
 		n++;
 	}
-	// print("%d %d missing\n", o, s);
+missing:
 	pins(i);
 	fatal("missing decl");
 	return -1;
 }
 
+
+/* Publish already validated use/def rows into the instruction bit sets. */
 static void
 setud(Bits *b, int id, int n, int pc)
 {

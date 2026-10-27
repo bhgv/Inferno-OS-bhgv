@@ -8,6 +8,8 @@ import shlex
 import subprocess
 import tempfile
 from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_MODE_64, UC_HOOK_CODE, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
+import unicorn.x86_const as X86
+import unicorn.arm64_const as ARM64
 from unicorn.x86_const import UC_X86_REG_RDI, UC_X86_REG_RSI, UC_X86_REG_RDX, UC_X86_REG_RAX, UC_X86_REG_RSP, UC_X86_REG_MXCSR
 from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_X1, UC_ARM64_REG_X2, UC_ARM64_REG_LR, UC_ARM64_REG_SP, UC_ARM64_REG_FPCR, UC_ARM64_REG_FPSR
 
@@ -34,6 +36,7 @@ def require(condition, detail):
 with tempfile.TemporaryDirectory(prefix='jit-dispatch-jit-') as temporary:
     td = Path(temporary)
     for arch in os.environ.get('JIT_DISPATCH_ARCHES','amd64 arm64').split():
+        if arch not in ('amd64','arm64'): raise ValueError(arch)
         header = Path(os.environ.get('JIT_DISPATCH_EMITTER_DIR',ROOT/'libinterp'))/(arch+'-emit.h')
         source = td/'emit.c'
         source.write_text('''#include <stdint.h>
@@ -62,6 +65,10 @@ int emit(u32int *out,int cap,int op,uint64_t executor,uint64_t fast)
         machine.mem_map(BASE,0x1000)
         machine.mem_map(EXECUTOR,0x1000)
         machine.mem_write(EXECUTOR,b'\xc3' if arch=='amd64' else (0xd65f03c0).to_bytes(4,'little'))
+        if arch=='amd64':
+            preserved = [getattr(X86,'UC_X86_REG_'+name) for name in ('RBX','RBP','R12','R13','R14','R15')]
+        else:
+            preserved = [getattr(ARM64,'UC_ARM64_REG_X'+str(n)) for n in range(19,30)]+[getattr(ARM64,'UC_ARM64_REG_D'+str(n)) for n in range(8,16)]
         state, calls, reads, writes = {}, [], [], []
 
 
@@ -106,16 +113,17 @@ int emit(u32int *out,int cap,int op,uint64_t executor,uint64_t fast)
                     checks+=1
                     continue
                 require(lib.emit(None,128,op,EXECUTOR,fast)==n and out[n]==0xa5a5a5a5,'size/canary')
-                for cap in range(n+1):
+                for cap in [-0x80000000,-1]+list(range(n+1)):
                     private = (C.c_uint32*129)(*([0xa5a5a5a5]*129))
                     result = lib.emit(private,cap,op,EXECUTOR,fast)
                     require(result==(n if cap==n else 0),'capacity result')
                     require(bytes(private)[:n*4]==bytes(out)[:n*4] if result else list(private)==[0xa5a5a5a5]*129,'no partial output')
                     require(private[n]==0xa5a5a5a5,'capacity neighbor')
                 for invalid in (0,MASK): require(lib.emit(None,128,op,invalid,fast)==0,'invalid executor')
-                machine.mem_write(CODE,bytes(out)[:n*4])
-                machine.ctl_remove_cache(CODE,CODE+512)
                 for wb in (4,8):
+                    start = CODE+(4 if wb==8 else 0)
+                    machine.mem_write(start,bytes(out)[:n*4])
+                    machine.ctl_remove_cache(CODE,CODE+512)
                     for register in (0,1,BASE,BASE+7,0x123456789abcde00,MASK):
                         for result in (0,1):
                             image = b'\xa5'*4096
@@ -134,14 +142,17 @@ int emit(u32int *out,int cap,int op,uint64_t executor,uint64_t fast)
                                 machine.reg_write(UC_ARM64_REG_FPCR,0)
                                 machine.reg_write(UC_ARM64_REG_FPSR,2)
                             machine.mem_write(STACK,bytes(stackimage))
+                            saved = {reg: (0x1234567800000000+i*0x1020304) for i,reg in enumerate(preserved)}
+                            for reg,value in saved.items(): machine.reg_write(reg,value)
                             calls.clear(); reads.clear(); writes.clear()
-                            machine.emu_start(CODE,STOP,count=100)
+                            machine.emu_start(start,STOP,count=100)
                             detail = (arch,op,fast,wb,register,result)
                             require(calls==[(register,op,fast)],(detail,'C arguments'))
                             require(machine.reg_read(UC_X86_REG_RAX if arch=='amd64' else UC_ARM64_REG_X0)==result,(detail,'C return'))
                             require(machine.reg_read(UC_X86_REG_RSP if arch=='amd64' else UC_ARM64_REG_SP)==STACK+(0x2010 if arch=='amd64' else 0x2000),(detail,'caller stack'))
                             require(not writes and not reads and bytes(machine.mem_read(BASE,4096))==image,(detail,'VM/stack access'))
                             require(bytes(machine.mem_read(STACK,0x4000))==stackimage,(detail,'stack image'))
+                            require(all(machine.reg_read(reg)==value for reg,value in saved.items()),(detail,'callee-saved registers'))
                             require(machine.reg_read(UC_X86_REG_MXCSR)==0x1f84 if arch=='amd64' else machine.reg_read(UC_ARM64_REG_FPCR)==0 and machine.reg_read(UC_ARM64_REG_FPSR)==2,(detail,'FP state'))
                             checks+=1
         print('PASS',arch,'complete tail entries/arguments/stack/capacity:',checks,'cases',flush=True)

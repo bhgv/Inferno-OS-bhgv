@@ -3322,16 +3322,21 @@ cchanleaf(REG *r, int receive, void *transaction)
 	ChannelLeaf leaf;
 	Progq *queue;
 	Prog *peer;
-	void *value, *slot;
+	void *value, *slot, *source, *destination;
 	int width, status, i;
-	void *objects[4];
-	uintptr extents[4];
+	void *objects[6];
+	uintptr extents[6];
 	ulong references;
 
 	if(sizeof(void*) != 8 || sizeof(leaf) != 64 ||
-	   (receive != 0 && receive != 1) || !channelspan(r, sizeof(*r)))
+	   (receive != 0 && receive != 1) || !channelspan(r, sizeof(*r)) ||
+	   !channelspan(transaction, sizeof(leaf)) ||
+	   !channeloutside(transaction, sizeof(leaf), r, sizeof(*r)))
 		return 0;
-	slot = receive ? r->s : r->d;
+	/* A decoded REG image may be unaligned; do not impose a hidden C-only ABI. */
+	memmove(&source, (uchar*)r+offsetof(REG, s), sizeof(source));
+	memmove(&destination, (uchar*)r+offsetof(REG, d), sizeof(destination));
+	slot = receive ? source : destination;
 	if(!channelspan(slot, sizeof(c)))
 		return 0;
 	memmove(&c, slot, sizeof(c));
@@ -3367,21 +3372,27 @@ cchanleaf(REG *r, int receive, void *transaction)
 		if(references == 0 || references == (ulong)-1)
 			return 0;
 	}
-	value = receive ? r->d : r->s;
+	value = receive ? destination : source;
 	if(width != 0 && !channelspan(value, width))
 		return 0;
 	leaf.source = receive ? buffer.slot : value;
 	leaf.destination = receive ? value : buffer.slot;
+	if(!channeloutside(transaction, sizeof(leaf), leaf.source, width) ||
+	   !channeloutside(transaction, sizeof(leaf), leaf.destination, width))
+		return 0;
 	leaf.bytes = width;
 	/* C changes ring counters, REG operands and a temporary buffer reference. */
 	objects[0] = r; extents[0] = sizeof(*r);
 	objects[1] = (uchar*)c-sizeof(Heap); extents[1] = sizeof(Heap)+sizeof(*c);
 	objects[2] = (uchar*)buffer.array-sizeof(Heap); extents[2] = sizeof(Heap)+sizeof(Array);
 	objects[3] = buffer.type; extents[3] = sizeof(Type);
-	for(i = 0; i < 4; i++){
+	objects[4] = queue; extents[4] = offsetof(Progq, prog)+sizeof(peer);
+	objects[5] = slot; extents[5] = sizeof(c);
+	for(i = 0; i < 6; i++){
 		if(!channelspan(objects[i], extents[i]) ||
-		   !channeloutside(leaf.source, width, objects[i], extents[i]) ||
-		   !channeloutside(leaf.destination, width, objects[i], extents[i]))
+		   !channeloutside(transaction, sizeof(leaf), objects[i], extents[i]) ||
+		   (i < 4 && (!channeloutside(leaf.source, width, objects[i], extents[i]) ||
+		   !channeloutside(leaf.destination, width, objects[i], extents[i]))))
 			return 0;
 	}
 	leaf.front = &c->front;

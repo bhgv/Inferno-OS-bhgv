@@ -71,11 +71,16 @@ code. A C-only active module now successfully publishes its complete entries.
 
 ## Evidence
 
+The [priority AMD64/ARM64 continuation](README.priority-dispatch-ranges.md) adds
+all-byte compiler binding, explicit callee-saved ABI checks, pure channel scratch
+validation and Limbo optimizer range fixes.
+
 | New driver | Primary checks | Scope |
 | --- | ---: | --- |
-| jit-dispatch-native.py | 363,608 | Real C executor, AMD64 RX tails, compiler and xec, WORD32/64 |
+| jit-dispatch-native.py | 364,120 | Real C executor, AMD64 RX tails, compiler and xec, WORD32/64 |
 | jit-dispatch-jit.py | 33,762 | AMD64/ARM64 Unicorn argument/tail/stack/FP/capacity cases |
-| Primary total | 397,370 | Full UBSan/NDEBUG matrix |
+| ARM64 compiler-only WORD32/64 | 9,292 | Production binding/preflight, no foreign execution |
+| Primary total | 407,174 | Full UBSan/NDEBUG matrix |
 | jit-dispatch-coverage.py | 264,192 capacity probes | All byte opcodes, both targets/WORD models, nil/non-nil fast targets |
 
 Every active opcode has a distinct test C handler, so a wrong opcode argument

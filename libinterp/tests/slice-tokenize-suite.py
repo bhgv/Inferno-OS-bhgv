@@ -8,7 +8,9 @@ import subprocess
 import sys
 
 CORE = [
+    'limbo/tests/optimizer-ranges.py',
     'libinterp/tests/jit-dispatch-native.py',
+    'libinterp/tests/arm64-dispatch-compiler.py',
     'libinterp/tests/jit-dispatch-coverage.py',
     'libinterp/tests/buffered-transfer-native.py',
     'libinterp/tests/mapped-preflight-native.py',

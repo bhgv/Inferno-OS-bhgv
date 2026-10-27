@@ -50,11 +50,18 @@ static void bridgerecord(int);
 '''
 unit = unit.replace('IMPLEMENTATION',prelude+callbacks+'\n\n'+'\n\n'.join(parts))
 unit += (ROOT/'libinterp/tests/jit-dispatch-native.c').read_text()
+backend = os.environ.get('BRIDGE_BACKEND','amd64')
+if backend not in ('amd64','arm64'): raise ValueError(backend)
+if backend!='amd64':
+    if not os.environ.get('BRIDGE_PREFLIGHT_ONLY'):
+        raise RuntimeError('foreign compiler fixture must not execute guest code on the AMD64 host')
+    unit = unit.replace('comp-amd64.c','comp-'+backend+'.c')
 with tempfile.TemporaryDirectory(prefix='jit-dispatch-native-') as temporary:
     td = Path(temporary)
     if os.environ.get('BRIDGE_COMPILER_SOURCE'):
         (td/'parent-compiler.h').write_text(Path(os.environ['BRIDGE_COMPILER_SOURCE']).read_text())
-        (td/'comp-amd64.c').write_text('#define LEAF_EMITTER "amd64-emit.h" // Select current emitter declarations for parent replay.\n#include "parent-compiler.h"\n')
+        prefix = '#define LEAF_EMITTER "'+backend+'-emit.h" // Select current emitter declarations for parent replay.\n'
+        (td/('comp-'+backend+'.c')).write_text(prefix+'#include "parent-compiler.h"\n')
     source = td/'fixture.c'
     source.write_text(unit)
     command = shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1 -g -DNDEBUG -fsanitize=undefined -fno-sanitize-recover=all'))

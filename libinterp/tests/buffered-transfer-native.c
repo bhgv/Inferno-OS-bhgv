@@ -134,6 +134,70 @@ bufferunknown(void)
 }
 
 
+/* Check private scratch ownership and shifted REG images without executing VM writes. */
+static unsigned long
+bufferpreflight(void)
+{
+	BufferedImage image, before;
+	REG registers;
+	Channel *channel;
+	ChannelLeaf leaf;
+	uchar regbytes[sizeof(REG)+8], saved[sizeof(REG)+8], scratch[sizeof(ChannelLeaf)+8];
+	void *objects[8], *output;
+	uintptr extents[8];
+	int receive, shift, result, object, offset, direction;
+	unsigned long checks = 0;
+
+	for(receive = 0; receive < 2; receive++){
+		bufferimage(&image, 8, 3, 0, receive ? 1 : 0, 0);
+		channel = &image.channel;
+		memset(&registers, 0xa5, sizeof(registers));
+		registers.s = receive ? image.slots : image.value;
+		registers.d = receive ? image.value : image.slots;
+		memmove(image.slots, &channel, sizeof(channel));
+		memmove(&before, &image, sizeof(image));
+		for(shift = 0; shift < (getenv("BUFFER_PREFLIGHT_ALIASES_ONLY") ? 0 : 8); shift++){
+			memset(regbytes, 0xa5, sizeof(regbytes));
+			memmove(regbytes+shift, &registers, sizeof(registers));
+			memmove(saved, regbytes, sizeof(saved));
+			memset(scratch, 0x5a, sizeof(scratch));
+			result = cchanleaf((REG*)(regbytes+shift), receive, scratch+shift);
+			mappedcheck(result == 1 && !memcmp(&image, &before, sizeof(image)) && !memcmp(saved, regbytes, sizeof(saved)));
+			memmove(&leaf, scratch+shift, sizeof(leaf));
+			mappedcheck(leaf.source == (receive ? image.data+8 : image.value) && leaf.destination == (receive ? image.value : image.data+8) && leaf.bytes == 8);
+			for(offset = 0; offset < sizeof(scratch); offset++)
+				if(offset < shift || offset >= shift+sizeof(leaf))
+					mappedcheck(scratch[offset] == 0x5a);
+			checks++;
+		}
+		if(getenv("BUFFER_PREFLIGHT_ALIGNMENT_ONLY"))
+			continue;
+		objects[0] = &registers; extents[0] = sizeof(registers);
+		objects[1] = &image.channelheap; extents[1] = sizeof(Heap)+sizeof(Channel);
+		objects[2] = &image.arrayheap; extents[2] = sizeof(Heap)+sizeof(Array);
+		objects[3] = &image.type; extents[3] = sizeof(Type);
+		objects[4] = receive ? (void*)&image.send : (void*)&image.receive; extents[4] = offsetof(Progq, prog)+sizeof(Prog*);
+		objects[5] = image.slots; extents[5] = sizeof(channel);
+		objects[6] = image.data+8; extents[6] = 8;
+		objects[7] = image.value; extents[7] = 8;
+		for(object = 0; object < 8; object++)
+		for(offset = 1-(int)sizeof(leaf); offset < (int)extents[object]; offset++){
+			output = (void*)((uintptr)objects[object]+offset);
+			mappedcheck(cchanleaf(&registers, receive, output) == 0);
+			mappedcheck(!memcmp(&image, &before, sizeof(image)));
+			checks++;
+		}
+		for(direction = -1; direction <= 2; direction++)
+		for(offset = 0; offset < sizeof(leaf); offset++){
+			output = offset == 0 ? nil : (void*)((uintptr)-1-(offset-1));
+			mappedcheck(cchanleaf(&registers, direction, output) == 0 && !memcmp(&image, &before, sizeof(image)));
+			checks++;
+		}
+	}
+	return checks;
+}
+
+
 /* Sweep ring wrap, all supported byte widths, overlap, unaligned decoded owners and fallback. */
 int
 main(void)
@@ -148,9 +212,14 @@ main(void)
 	void (*movers[])(void) = {movb, movw, movl, movf};
 	int widths[] = {1, sizeof(WORD), 8, 8};
 	int capacities[] = {1, 3, 8};
-	unsigned long checks = 0, rejected = 0;
+	unsigned long checks = 0, rejected = 0, preflight;
 	char *expectederror;
 
+	preflight = bufferpreflight();
+	if(getenv("BUFFER_PREFLIGHT_ONLY")){
+		printf("PASS buffered private preflight WORD%zu: %lu cases\n", sizeof(WORD)*8, preflight);
+		return 0;
+	}
 	instructions[0].op = ISEND;
 	instructions[1].op = IRECV;
 	module.prog = instructions;
@@ -284,6 +353,6 @@ main(void)
 	}
 	module.jit->freecode(module.jit->code, module.jit->size);
 	free(module.jit);
-	printf("PASS buffered C/RX WORD%zu: %lu accepted, %lu declined cases\n", sizeof(WORD)*8, checks, rejected);
+	printf("PASS buffered C/RX WORD%zu: %lu accepted, %lu declined, %lu private-preflight cases\n", sizeof(WORD)*8, checks, rejected, preflight);
 	return 0;
 }
