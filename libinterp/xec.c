@@ -1883,7 +1883,7 @@ OP(movp)
 		error(exNilref);
 	h = nil;
 	if(sv != H){
-		if((uintptr)sv <= sizeof(Heap))
+		if((uintptr)sv <= sizeof(Heap) || (uintptr)sv%sizeof(void*) != 0)
 			error(exHeap);
 		h = D2H(sv);
 		if(h->ref == 0 || h->ref == (ulong)-1)
@@ -1891,7 +1891,8 @@ OP(movp)
 	}
 	memmove(&dv, R.d, sizeof(dv));
 	/* A bad previous owner must fail before the source is retained or published. */
-	if(dv != H && ((uintptr)dv <= sizeof(Heap) || D2H(dv)->ref == 0))
+	if(dv != H && ((uintptr)dv <= sizeof(Heap) ||
+	   (uintptr)dv%sizeof(void*) != 0 || D2H(dv)->ref == 0))
 		error(exHeap);
 	if(h != nil){
 		h->ref++;
@@ -5049,13 +5050,14 @@ OP(self)
 	ml = R.M;
 	if(ml == nil || ml == H)
 		error(exModule);
-	if((uintptr)ml <= sizeof(Heap))
+	if((uintptr)ml <= sizeof(Heap) || (uintptr)ml%sizeof(void*) != 0)
 		error(exHeap);
 	h = D2H(ml);
 	if(h->ref == 0 || h->ref == (ulong)-1)
 		error(exHeap);
 	memmove(&t, R.d, sizeof(t));
-	if(t != H && ((uintptr)t <= sizeof(Heap) || D2H(t)->ref == 0))
+	if(t != H && ((uintptr)t <= sizeof(Heap) ||
+	   (uintptr)t%sizeof(void*) != 0 || D2H(t)->ref == 0))
 		error(exHeap);
 	h->ref++;
 	Setmark(h);

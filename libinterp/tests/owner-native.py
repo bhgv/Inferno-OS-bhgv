@@ -9,8 +9,10 @@ import shlex
 import subprocess
 import tempfile
 
-if platform.machine().lower() not in ('x86_64','amd64'):
-    print('SKIP native AMD64 owner operations: requires an x86-64 host')
+machine=platform.machine().lower()
+backend='amd64' if machine in ('x86_64','amd64') else 'arm64' if machine in ('aarch64','arm64') else None
+if backend is None:
+    print('SKIP native owner operations: requires AMD64 or ARM64')
     sys.exit(0)
 
 root = Path(__file__).resolve().parents[2]
@@ -30,8 +32,9 @@ def function(signature):
     raise ValueError(signature)
 
 
-parts=[function('OP(movp)'),function('OP(self)'),function('static List*\nlisthead('),function('OP(headp)'),function('OP(tail)')]
+parts=[function('OP(movp)'),function('OP(self)'),function('static List*\nlisthead('),function('OP(headp)'),function('OP(tail)'),function('int\ncjitexec(')]
 unit=(root/'libinterp/tests/owner-native.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))
+unit=unit.replace('#include "comp-amd64.c"','#include "comp-'+backend+'.c"')
 with tempfile.TemporaryDirectory(prefix='owner-native-') as directory:
     td = Path(directory)
     target = td/'branches.c'

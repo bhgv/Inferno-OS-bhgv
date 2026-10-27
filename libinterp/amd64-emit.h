@@ -506,6 +506,8 @@ x64owner(X64Buf *b, LeafLayout *abi, LeafOp *p)
 	x64byte(b, 0x48); x64byte(b, 0x3d);
 	x64word(b, abi->heapref > abi->heapcolor ? abi->heapref : abi->heapcolor);
 	x64guard(b, 0x77);
+	/* Heap metadata requires native alignment even when operand slots are packed. */
+	x64byte(b, 0xa8); x64byte(b, 7); x64guard(b, 0x74); // test al,7; decline misaligned owners.
 	x64field(b, 1, 0, -abi->heapref, 8);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x75);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff); x64guard(b, 0x75);

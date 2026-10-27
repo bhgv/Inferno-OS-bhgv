@@ -375,6 +375,8 @@ a64owner(A64Buf *b, LeafLayout *abi, LeafOp *p)
 	}
 	a64put(b, 0xf100019fU | (u32int)(abi->heapref > abi->heapcolor ? abi->heapref : abi->heapcolor)<<10);
 	a64pcguard(b, 0x54000068, fallback);
+	/* Packed operand cells do not make Heap objects byte-aligned allocations. */
+	a64put(b, 0xf240099f); a64pcguard(b, 0x54000060, fallback); // tst x12,#7; require aligned owner.
 	a64put(b, 0xf8400000U | ((u32int)-abi->heapref&511)<<12 | 12<<5 | 13);
 	a64pcguard(b, 0xb500006d, fallback);
 	a64put(b, 0xb10005bf); a64pcguard(b, 0x54000061, fallback);

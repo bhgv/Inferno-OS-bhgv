@@ -167,6 +167,7 @@ int emit(u32int *out,int cap,int wb,int op,int bad){
                 probes = [(kind, pointer) for kind in ('source-slot', 'destination-slot') for pointer in invalid
                           if op != 1 or kind != 'source-slot']
                 probes += [('source-owner', pointer) for pointer in [0]+list(range(1, 33))+([MASK] if op == 1 else [])]
+                probes += [('source-alignment', shift) for shift in range(1,8)]
                 if op >= 2:
                     probes += [('list-span', MASK-i) for i in range(1, (24 if op == 2 else 8)+8)]
                 probes += [('source-priority', mode) for mode in range(4) if mode != 1 or op == 1]
@@ -183,6 +184,7 @@ int emit(u32int *out,int cap,int wb,int op,int bad){
                     if kind == 'source-slot':source = parameter
                     if kind == 'destination-slot':destination = parameter
                     if kind == 'source-owner':value = parameter
+                    if kind == 'source-alignment':value += parameter
                     if kind == 'list-span':node = parameter
                     if kind == 'source-priority':
                         destination = 1
@@ -192,7 +194,7 @@ int emit(u32int *out,int cap,int wb,int op,int bad){
                     if kind == 'unused-source':source = parameter
                     put(image, 0, BASE+0x3000); put(image, 8, source); put(image, 16, destination); put(image, 40, value)
                     put(image, 0x100, node if op >= 2 else value); put(image, 0x180, old)
-                    put(image, 0x540-24, refs); put(image, 0x540-32, 0, 4)
+                    put(image, 0x540-24+(parameter if kind == 'source-alignment' else 0), refs); put(image, 0x540-32, 0, 4)
                     put(image, 0x900+(24 if op == 2 else 8), value)
                     put(image, 0x1800-24, 0)
                     put(image, 0x2000, 1, 4); put(image, 0x2008, 7, 4)
@@ -206,7 +208,7 @@ int emit(u32int *out,int cap,int wb,int op,int bad){
                         probing['allowed'].add((BASE+0x540-24, 8))
                     if op >= 2 and kind not in ('source-slot', 'destination-slot', 'list-span'):
                         probing['allowed'].add((selected, 8))
-                    probing['previous'] = kind == 'source-owner'
+                    probing['previous'] = kind in ('source-owner','source-alignment')
                     machine.mem_write(BASE, bytes(image))
                     if arch == 'amd64':
                         machine.reg_write(UC_X86_REG_RDI, BASE); machine.reg_write(UC_X86_REG_RSP, CODE+0x2800)

@@ -1,3 +1,4 @@
+#define TEST_LEAF_DISPATCH_RUNTIME // Link the production JIT-to-C executor.
 #include "comp-amd64.c"
 #include "tests/leaf-cons-stub.h"
 #include "tests/leaf-plain-stubs.h"
@@ -21,6 +22,10 @@ ownerpredicate(int condition)
 
 REG R;
 int mutator, nprop;
+void (*optab[256])(void); // Production C dispatch slots for complete native entries.
+char exOp[]="opcode"; // Invalid complete-dispatch opcode identity.
+static Jit *ownerjit; // Executable table used by the selected preflight entry.
+static int ownerop; // Current decoded opcode for complete-entry error checks.
 char exNilref[]="nil", exModule[]="module", exHeap[]="heap", exBounds[]="bounds";
 static jmp_buf boundary;
 static char *raised;
@@ -84,6 +89,14 @@ ownerchecked(void (*operation)(void))
 }
 
 
+/* Execute the published tail and its real C fallback under the same error boundary. */
+static void
+ownercomplete(void)
+{
+	ownercheck(ownerjit->dispatch[ownerop](&R));
+}
+
+
 /* Failed owner preflight cannot retain, mark, release or publish any heap bytes. */
 static void
 checkpreflight(Module *module)
@@ -103,12 +116,12 @@ checkpreflight(Module *module)
 	int codes[] = {IMOVP, ISELF, IHEADP, ITAIL};
 
 	for(op = 0; op < 4; op++)
-	for(family = 0; family < 6; family++){
+	for(family = 0; family < 8; family++){
 		if(family == 2 && op < 2)
 			continue;
 		limit = family == 0 ? 8 : family == 1 ? sizeof(Heap) :
 			family == 2 ? (op == 2 ? offsetof(List, data) : offsetof(List, tail))+sizeof(void*)-1 :
-			family == 3 ? 4 : family == 4 ? sizeof(Heap)+2 : 1;
+			family == 3 ? 4 : family == 4 ? sizeof(Heap)+2 : family >= 6 ? 7 : 1;
 		for(mode = 0; mode < limit; mode++)
 		for(alignment = 0; alignment < 8; alignment++){
 			if((family == 0 && op == 1 && mode < 4) || (family == 3 && op != 1 && mode == 1))
@@ -131,6 +144,17 @@ checkpreflight(Module *module)
 				if(mode <= sizeof(Heap))old = (void*)(uintptr)mode;
 				else { old = H2D(void*, &previous.heap); previous.heap.ref = 0; }
 			}
+			/* Valid-looking reference bytes must not excuse an unaligned Heap identity. */
+			if(family == 6){
+				ulong refs = 1;
+				value = (uchar*)value+mode+1;
+				memmove((uchar*)value-sizeof(Heap)+O(Heap, ref), &refs, sizeof(refs));
+			}
+			if(family == 7){
+				ulong refs = 1;
+				old = (uchar*)H2D(void*, &previous.heap)+mode+1;
+				memmove((uchar*)old-sizeof(Heap)+O(Heap, ref), &refs, sizeof(refs));
+			}
 			list = H2D(List*, &container.heap);
 			memmove(list->data, &value, sizeof(value)); list->tail = value;
 			memmove(R.s, op >= 2 ? &node : &value, sizeof(value)); memmove(R.d, &old, sizeof(old));
@@ -149,6 +173,8 @@ checkpreflight(Module *module)
 			mutator = 1; nprop = 7; releases = 0;
 			ownercheck(module->jit->entry[codes[op]](&R) == 0 && !memcmp(&R, &saved, sizeof(R)));
 			ownercheck(!ownerchecked(handlers[op]) && raised == why && !memcmp(&R, &expected, sizeof(R)));
+			R = saved; ownerjit = module->jit; ownerop = codes[op];
+			ownercheck(!ownerchecked(ownercomplete) && raised == why && !memcmp(&R, &expected, sizeof(R)));
 			ownercheck(nprop == 7 && releases == 0 && !memcmp(slots, before, sizeof(slots)) &&
 				!memcmp(&source, sourceimage, sizeof(source)) && !memcmp(&previous, previousimage, sizeof(previous)) &&
 				!memcmp(&container, listimage, sizeof(container)));
@@ -230,8 +256,10 @@ main(void)
 	previous=calloc(1,sizeof(Heap)+sizeof(Modlink));
 	list=calloc(1,sizeof(List)+sizeof(void*));
 	ownercheck(heap && previous && list);
-	for(op=0;op<4;op++)
+	for(op=0;op<4;op++){
 		instructions[op].op=codes[op];
+		optab[codes[op]]=handlers[op];
+	}
 	module.prog=instructions; module.nprog=4;
 	ownercheck(compile(&module,4,nil));
 	for(op=0;op<4;op++)
@@ -274,7 +302,7 @@ main(void)
 		memmove(source,&result,sizeof(result)); memmove(destination,&old,sizeof(old));
 		memmove(before,slots.bytes,sizeof(before)); memmove(expected,before,sizeof(expected));
 		if(valid)memmove(expected+((uchar*)destination-slots.bytes),&value,sizeof(value));
-		for(pass=0;pass<2;pass++){
+		for(pass=0;pass<3;pass++){
 			memmove(slots.bytes,before,sizeof(before));
 			memset(&R,0,sizeof(R)); R.s=source;R.d=destination;R.M=value;R.PC=&sentinel;
 			heap->ref=refs; heap->color=color; previous->ref=10; previous->color=2;
@@ -290,11 +318,13 @@ main(void)
 					continue;
 				}
 			}else if(setjmp(boundary)==0){
-				handlers[op](); ownercheck(valid);
+				if(pass==2)ownercheck(module.jit->dispatch[codes[op]](&R));
+				else handlers[op]();
+				ownercheck(valid);
 			}else
 				ownercheck(!valid && raised==failure);
 			ownercheck(!memcmp(expected,slots.bytes,sizeof(expected)));
-			ownercheck(heap->ref==wanted && previous->ref==oldwanted && releases==(pass ? oldrelease : 0));
+			ownercheck(heap->ref==wanted && previous->ref==oldwanted && releases==((pass==1 || (pass==2 && !native)) ? oldrelease : 0));
 			ownercheck(heap->color==(marked ? propagator : color) && nprop==(marked ? 1 : seed) && previous->color==2);
 			ownercheck(R.PC==&sentinel && R.M==value && R.d==destination);
 			ownercheck(R.s==(op>=2 ? (op==2 ? (void*)list->data : (void*)&list->tail) : source));
