@@ -70,6 +70,7 @@ destroy(void *p)
 #define L(r) *((List**)(R.r))
 #define P(r) *((WORD**)(R.r))
 #define BIT(bt,nb) ((bt)&(1<<(nb)))
+char exType[] = "type"; // Invalid record descriptor.
 IMPLEMENTATION
 
 /* Dispatch actual interpreter instructions without substituting their logic. */

@@ -135,6 +135,7 @@ destroy(void *value)
 #define OP(fn) void fn(void)
 #define W(r) (*(WORD*)R.r)
 #define C(r) (*(Channel**)R.r)
+char exBounds[] = "bounds"; // Invalid complete operand span.
 IMPLEMENTATION
 
 /* Keep one external owner so the independent reference oracle can inspect every child. */

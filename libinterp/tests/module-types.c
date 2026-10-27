@@ -79,6 +79,7 @@ void newc(Type *t, void (*mover)(void)) { assert(mover == movtmp); seen = t; eff
 #define T(r) (*(void**)R.r)
 #define L(r) (*(List**)R.r)
 #define BIT(bt,nb) ((bt)&(1<<(nb)))
+char exType[] = "type", exBounds[] = "bounds"; // Mapped move failures.
 IMPLEMENTATION
 
 /* Drive ten consumers with the same full-width descriptor index. */

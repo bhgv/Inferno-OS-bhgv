@@ -479,12 +479,16 @@ a64copykernel(A64Buf *b)
 }
 
 
-/* Resolve current type metadata and copy a small record only when it owns no pointers. */
+/* Resolve live metadata and check every used span before pointer-free record copying. */
 static int
 a64mapped(A64Buf *b, LeafLayout *a, LeafOp *p)
 {
-	int fallback, empty;
+	int fallback, empty, extent, heapbase;
 
+	/* The real adapter supplies the distance to the first Heap field as well. */
+	heapbase=a->heapref;
+	if(a->heapcolor > heapbase && a->heapcolor <= 255)
+		heapbase=a->heapcolor;
 	if(a->module < 0 || a->module > 2047 || a->module%8 ||
 	   a->linkmodule < 0 || a->linkmodule > 2047 || a->linkmodule%8 ||
 	   a->moduletypes < 0 || a->moduletypes > 2047 || a->moduletypes%8 ||
@@ -497,21 +501,18 @@ a64mapped(A64Buf *b, LeafLayout *a, LeafOp *p)
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	if(p->alu){
-		a64ptr(b, 9, a->s); a64load(b, 15, 9, 8);
+		a64ptr(b, 9, a->s); a64pcspan(b, 9, 8, fallback); a64load(b, 15, 9, 8);
 		a64pcguard(b, 0xb500006f, fallback);
 		a64put(b, 0xb10005ff); a64pcguard(b, 0x54000061, fallback);
 	}
-	a64ptr(b, 13, a->module);
-	a64pcguard(b, 0xb500006d, fallback);
-	a64put(b, 0xb10005bf); a64pcguard(b, 0x54000061, fallback);
+	a64ptr(b, 9, a->m); a64pcspan(b, 9, a->wordbytes, fallback);
+	a64ptr(b, 13, a->module); a64pcspan(b, 13, a->linkmodule+8, fallback);
 	a64field(b, 13, 13, a->linkmodule, 8);
-	a64pcguard(b, 0xb500006d, fallback);
-	a64put(b, 0xb10005bf); a64pcguard(b, 0x54000061, fallback);
+	extent=a->moduletypes+8 > a->modulenty+4 ? a->moduletypes+8 : a->modulenty+4;
+	a64pcspan(b, 13, extent, fallback);
 	a64field(b, 14, 13, a->moduletypes, 8);
-	a64pcguard(b, 0xb500006e, fallback);
-	a64put(b, 0xb10005df); a64pcguard(b, 0x54000061, fallback);
 	a64field(b, 2, 13, a->modulenty, 4);
-	/* Reject negative counts; unsigned bounds also reject zero counts and negative indexes. */
+	/* Reject negative counts; unsigned bounds reject zero counts and negative indices. */
 	a64put(b, 0x37f80002U | ((fallback-b->n)&0x3fff)<<5);
 	a64ptr(b, 9, a->m);
 	if(a->wordbytes == 4)
@@ -519,25 +520,40 @@ a64mapped(A64Buf *b, LeafLayout *a, LeafOp *p)
 	else
 		a64load(b, 12, 9, 8);
 	a64put(b, 0xeb02019f); a64pcguard(b, 0x54000063, fallback);
-	/* Index is bounded by a positive int, so only native pointer addition can wrap. */
+	a64pcspan(b, 14, 8, fallback);
+	/* A bounded int index cannot overflow its shift; addition and the cell can wrap. */
 	a64put(b, 0xab0c0dcd); a64pcguard(b, 0x54000063, fallback);
+	a64pcspan(b, 13, 8, fallback);
 	a64load(b, 13, 13, 8);
-	a64pcguard(b, 0xb500006d, fallback);
-	a64put(b, 0xb10005bf); a64pcguard(b, 0x54000061, fallback);
+	a64pcspan(b, 13, a->typesize+4, fallback);
 	a64put(b, 0xb9800000U | (a->typesize/4)<<10 | 13<<5 | 12);
 	a64put(b, 0xf104019f); a64pcguard(b, 0x54000069, fallback);
 	empty=b->n; a64put(b, 0xb400000c);
+	/* Empty records do not read np, payload bytes or list heap metadata. */
+	a64pcspan(b, 13, a->typenp+4, fallback);
+	a64put(b, 0xf24009bf); a64pcguard(b, 0x54000060, fallback); // tst x13,#7.
 	a64field(b, 14, 13, a->typenp, 4);
 	a64pcguard(b, 0x3400006e, fallback);
+	if(p->alu){
+		a64put(b, 0xf10001ffU | heapbase<<10); a64pcguard(b, 0x54000068, fallback);
+		a64put(b, 0xf24009ff); a64pcguard(b, 0x54000060, fallback); // tst x15,#7.
+		a64pcspan(b, 15, a->listdata+1, fallback);
+		a64put(b, 0x910001e9U | a->listdata<<10);
+	}else
+		a64ptr(b, 9, a->s);
+	a64ptr(b, 11, a->d);
+	/* The size-plus-one carry check covers nil, H and wrapping complete payloads. */
+	a64put(b, 0x91000585); // add x5,x12,#1.
+	a64put(b, 0xd1000524); // sub x4,x9,#1.
+	a64put(b, 0xab05009f); a64pcguard(b, 0x54000063, fallback);
+	a64put(b, 0xd1000564); // sub x4,x11,#1.
+	a64put(b, 0xab05009f); a64pcguard(b, 0x54000063, fallback);
 	if(p->alu){
 		a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 15<<5 | 14);
 		a64pcguard(b, 0xb500006e, fallback);
 		a64put(b, 0xb10005df); a64pcguard(b, 0x54000061, fallback);
-		a64put(b, 0x910001e9U | a->listdata<<10);
 		a64put(b, 0xf9000000U | (a->s/8)<<10 | 9);
-	}else
-		a64ptr(b, 9, a->s);
-	a64ptr(b, 11, a->d);
+	}
 	if(!a64copykernel(b)) return 0;
 	if(b->n > LeafMax) return 0;
 	b->code[empty] |= (b->n-empty)<<5;

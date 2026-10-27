@@ -3,32 +3,99 @@
 #include "tests/leaf-plain-stubs.h"
 /* Supply the builtin identity used by guarded numeric formatting leaves. */
 Type Tstring = {1}, Tarray = {1};
-#include <assert.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <setjmp.h>
 #include <fenv.h>
+
+
+/* Keep all fixture checks active when NDEBUG is set. */
+static void
+mappedcheck(int condition)
+{
+	if(!condition)
+		abort();
+}
+
 REG R;
-int mutator,nprop;
-char exModule[]="module",exNilref[]="nil",exHeap[]="heap";
+int mutator, nprop;
+char exModule[] = "module", exNilref[] = "nil", exHeap[] = "heap";
 static jmp_buf boundary;
 static char *raised;
-static int retained,released;
+static int retained, released;
 
-/* Allocate only production compiler descriptors; executable ownership stays in the adapter. */
-void *mallocz(ulong n,int clear) {void *p=malloc(n);if(p && clear)memset(p,0,n);return p;}
-/* Compilation is valid and does not inject exceptions in this differential fixture. */
-int kprotect(int (*f)(void*),void *arg) {return f(arg);}
-/* Keep an exact bounded exception observation around the extracted C handlers. */
-void error(char *message) {raised=message;longjmp(boundary,1);}
-/* Non-pointer records have no mapped owners; reject accidental fixture broadening. */
-void incmem(void *value,Type *t) {(void)value;assert(t->np==0);retained++;}
-void freeptrs(void *value,Type *t) {(void)value;(void)t;assert(0);}
-/* The C head copy releases only its temporary source-list retention. */
-void destroy(void *value) {assert(value!=nil && value!=H && D2H(value)->ref>1);D2H(value)->ref--;released++;}
-/* Keep sanitizer stack checks without unavailable process-based leak inspection. */
-int __lsan_is_turned_off(void) {return 1;}
-#define OP(name) void name(void)
+
+/* Allocate compiler descriptors; executable ownership stays in the adapter. */
+void*
+mallocz(ulong n, int clear)
+{
+	void *p;
+
+	p = malloc(n);
+	if(p != nil && clear)
+		memset(p, 0, n);
+	return p;
+}
+
+
+/* Compile without injecting a protected runtime exception in this fixture. */
+int
+kprotect(int (*f)(void*), void *arg)
+{
+	return f(arg);
+}
+
+
+/* Preserve the borrowed VM exception identity at the synchronous boundary. */
+void
+error(char *message)
+{
+	raised = message;
+	longjmp(boundary, 1);
+}
+
+
+/* Non-pointer records own no mapped fields; reject accidental broadening. */
+void
+incmem(void *value, Type *t)
+{
+	(void)value;
+	mappedcheck(t->np == 0);
+	retained++;
+}
+
+
+/* Native pointer-free cases cannot release destination mapped fields. */
+void
+freeptrs(void *value, Type *t)
+{
+	(void)value;
+	(void)t;
+	mappedcheck(0);
+}
+
+
+/* Release exactly the temporary list retention acquired by the C head copy. */
+void
+destroy(void *value)
+{
+	mappedcheck(value != nil && value != H && D2H(value)->ref > 1);
+	D2H(value)->ref--;
+	released++;
+}
+
+
+/* Keep sanitizer stack checks without unavailable leak-process inspection. */
+int
+__lsan_is_turned_off(void)
+{
+	return 1;
+}
+
+#define OP(name) void name(void) // Extracted production handler signature.
+char exType[] = "type", exBounds[] = "bounds"; // Mapped metadata/data failures.
 IMPLEMENTATION
+
 
 /* Observe exact C failures before any data, reference, operand or propagation change. */
 static unsigned long
@@ -81,18 +148,19 @@ mappederrors(Module *code)
 		for(pass=0;pass<2;pass++){
 			R=saved;nprop=1;retained=released=0;raised=nil;
 			if(pass==0){
-				status=code->jit->entry[ops[op]](&R);assert(status==(profile==0));
+				status=code->jit->entry[ops[op]](&R);mappedcheck(status==(profile==0));
 			}else if(profile!=18){
-				if(setjmp(boundary)==0){handlers[op]();assert(profile==0);}
-				else assert(profile!=0 && !strcmp(raised,failure));
+				if(setjmp(boundary)==0){handlers[op]();mappedcheck(profile==0);}
+				else mappedcheck(profile!=0 && !strcmp(raised,failure));
 			}
-			assert(!memcmp(&saved,&R,sizeof(R)) && !memcmp(expected,slots.bytes,sizeof(expected)));
-			assert(!memcmp(before,aligned.bytes,sizeof(before)) && retained==0 && released==0 && nprop==1);
+			mappedcheck(!memcmp(&saved,&R,sizeof(R)) && !memcmp(expected,slots.bytes,sizeof(expected)));
+			mappedcheck(!memcmp(before,aligned.bytes,sizeof(before)) && retained==0 && released==0 && nprop==1);
 		}
 		checks++;
 	}
 	return checks;
 }
+
 
 /* Check whole memory images, aliases and moving live tables against libc memmove and C. */
 int
@@ -111,10 +179,10 @@ main(void)
 	unsigned long checks=0;
 	ulong length=sizeof(Heap)+sizeof(List)+1024;
 
-	block=malloc(length);expected=malloc(length);assert(block && expected);
+	block=malloc(length);expected=malloc(length);mappedcheck(block && expected);
 	heap=(Heap*)block;list=H2D(List*,heap);
 	instructions[0].op=IMOVMP;instructions[1].op=IHEADMP;module.prog=instructions;module.nprog=2;
-	assert(compile(&module,2,nil) && module.jit->entry[IMOVMP] && module.jit->entry[IHEADMP]);
+	mappedcheck(compile(&module,2,nil) && module.jit->entry[IMOVMP] && module.jit->entry[IHEADMP]);
 	link.m=&owner;link.type=first;owner.ntype=2;
 	if(getenv("MAPPED_ERROR_ONLY"))goto errors;
 	for(op=0;op<2;op++)for(sa=0;sa<8;sa++)for(da=0;da<8;da++)for(ma=0;ma<8;ma++)
@@ -146,12 +214,12 @@ main(void)
 			if(pass==0){
 				valid=n<=256;
 				if(module.jit->entry[ops[op]](&R)!=valid)abort();
-				if(!valid){assert(!memcmp(before,slots.bytes,sizeof(before)) && heap->ref==10 && R.s==(op ? slots.bytes+8+sa : source));continue;}
+				if(!valid){mappedcheck(!memcmp(before,slots.bytes,sizeof(before)) && heap->ref==10 && R.s==(op ? slots.bytes+8+sa : source));continue;}
 			}else handlers[op]();
-			assert(!memcmp(expected,block,length) && !memcmp(expectedslots,slots.bytes,sizeof(before)));
-			assert(R.s==wanted && R.M==&link && R.PC==&sentinel && R.d==destination && R.m==slots.bytes+128+ma);
-			assert(retained==(pass && n!=0) && released==(pass && op && n!=0) && nprop==1);
-			assert(fetestexcept(FE_ALL_EXCEPT)==FE_DIVBYZERO);
+			mappedcheck(!memcmp(expected,block,length) && !memcmp(expectedslots,slots.bytes,sizeof(before)));
+			mappedcheck(R.s==wanted && R.M==&link && R.PC==&sentinel && R.d==destination && R.m==slots.bytes+128+ma);
+			mappedcheck(retained==(pass && n!=0) && released==(pass && op && n!=0) && nprop==1);
+			mappedcheck(fetestexcept(FE_ALL_EXCEPT)==FE_DIVBYZERO);
 		}
 		checks++;
 	}

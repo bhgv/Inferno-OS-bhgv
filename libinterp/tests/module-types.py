@@ -41,6 +41,8 @@ else:
     parts += ['static Type *moduletype(Modlink *ml, WORD index) { return ml->type[index]; }']
 parts += [function(xec, 'static void\nnewrecord('), function(xec, 'static void\nnewarray(')]
 parts += [function(xec, signature) for signature in ('static int\nframefits(', 'static int\nmoduleentry(', 'List*\ncons(')]
+if 'static int\nmappedcopytype(' in xec:
+    parts += [function(xec, 'static int\nmappedcopytype(')]
 parts += [function(xec, 'OP('+name+')') for name in
           ('new', 'newz', 'mnewz', 'newa', 'newaz', 'newcmp', 'consmp', 'movmp', 'frame', 'mcall')]
 # Parent snapshots retain their original constructor without the new transaction helpers.

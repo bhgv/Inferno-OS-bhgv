@@ -30,6 +30,8 @@ heap = (root / 'libinterp/heap.c').read_text()
 parts = [function(heap, result+'\n'+name+'(') for result, name in
          [('void','incmem'),('void','freeptrs'),('void','initmem'),('void','acheck'),
           ('Heap*','nheap'),('Heap*','heaparray'),('void','initarray'),('void','freearray')]]
+if 'static int\nmappedcopytype(' in source:
+    parts += [function(source, 'static int\nmappedcopytype(')]
 parts += [function(source, 'static Type*\nmoduletype('), function(source, 'OP(movmp)'), function(source, 'void\nmovtmp(')]
 parts += [function(source, 'static int\n'+name+'(') for name in ('cgetb','cputb')]
 parts += [function(source, 'void\n'+name+'(') for name in ('cqadd','cqdel')]

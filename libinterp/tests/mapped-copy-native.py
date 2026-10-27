@@ -31,6 +31,9 @@ def function(signature):
 
 
 parts=[function('static Type*\nmoduletype('),function('static List*\nlisthead('),function('OP(movmp)'),function('OP(headmp)')]
+if 'static int\nmappedcopytype(' in source:
+    parts.insert(0, function('static int\nmappedcopytype('))
+
 unit=(root/'libinterp/tests/mapped-copy-native.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='mapped-copy-native-') as directory:
     td = Path(directory)

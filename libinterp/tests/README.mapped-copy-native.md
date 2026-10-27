@@ -1,5 +1,7 @@
 # Native typed-record copy checkpoint
 
+Current operand/metadata/payload preflight: [README.mapped-preflight.md](README.mapped-preflight.md).
+
 The latest shared qword kernels, 128-unit fixture checks and current counts are documented in [README.array-slots-copy-kernel.md](README.array-slots-copy-kernel.md). The evidence below records the original byte-loop checkpoint.
 
 AMD64 and ARM64 now publish IMOVMP and IHEADMP leaves for pointer-free records

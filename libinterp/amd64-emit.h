@@ -630,12 +630,16 @@ x64copykernel(X64Buf *b)
 }
 
 
-/* Copy small pointer-free records through the live Module.type table, never its cache. */
+/* Resolve live types and bound every accessed span before copying pointer-free records. */
 static int
 x64mapped(X64Buf *b, LeafLayout *a, LeafOp *p)
 {
-	int fallback, empty;
+	int fallback, empty, extent, heapbase;
 
+	/* The real adapter supplies the distance to the first Heap field as well. */
+	heapbase=a->heapref;
+	if(a->heapcolor > heapbase && a->heapcolor <= 255)
+		heapbase=a->heapcolor;
 	if(a->module < 0 || a->module > 2047 || a->module%8 ||
 	   a->linkmodule < 0 || a->linkmodule > 2047 || a->linkmodule%8 ||
 	   a->moduletypes < 0 || a->moduletypes > 2047 || a->moduletypes%8 ||
@@ -648,65 +652,76 @@ x64mapped(X64Buf *b, LeafLayout *a, LeafOp *p)
 	x64byte(b, 0xeb); x64byte(b, 3); fallback=b->n;
 	x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	if(p->alu){
-		x64caseptr(b, 0, a->s); x64load(b, 0, 8);
+		x64caseptr(b, 0, a->s); x64pcspan(b, 8, 8); x64load(b, 0, 8);
 		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
 		if(!x64mappedguard(b, 0x75, fallback)) return 0;
 		x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
 		if(!x64mappedguard(b, 0x75, fallback)) return 0;
 		x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc3);
 	}
-	x64caseptr(b, 0, a->module);
-	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
-	if(!x64mappedguard(b, 0x75, fallback)) return 0;
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
-	if(!x64mappedguard(b, 0x75, fallback)) return 0;
-	x64casefield(b, 0, 0, a->linkmodule, 8);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
-	if(!x64mappedguard(b, 0x75, fallback)) return 0;
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
-	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	/* The type-index slot is required even when the selected record is empty. */
+	x64caseptr(b, 0, a->m); x64pcspan(b, 8, a->wordbytes);
+	x64caseptr(b, 0, a->module); x64pcspan(b, 8, a->linkmodule+8);
+	x64casefield(b, 0, 8, a->linkmodule, 8);
+	extent=a->moduletypes+8 > a->modulenty+4 ? a->moduletypes+8 : a->modulenty+4;
+	x64pcspan(b, 0, extent);
 	x64casefield(b, 1, 0, a->moduletypes, 8);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
-	if(!x64mappedguard(b, 0x75, fallback)) return 0;
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff);
-	if(!x64mappedguard(b, 0x75, fallback)) return 0;
 	x64casefield(b, 2, 0, a->modulenty, 4);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2);
-	if(!x64mappedguard(b, 0x7f, fallback)) return 0;
-	/* A second return bounds backward displacements even for larger native layouts. */
+	x64guard(b, 0x7f);
+	/* Reset the local rejection distance before vector/index checks. */
 	x64byte(b, 0xeb); x64byte(b, 3); fallback=b->n;
 	x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	x64caseptr(b, 0, a->m); x64load(b, 0, a->wordbytes);
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xd0);
 	if(!x64mappedguard(b, 0x72, fallback)) return 0;
+	/* Check the vector identity before addition; then bound the complete cell. */
+	x64pcspan(b, 1, 8);
 	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe0); x64byte(b, 3);
 	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xc1);
 	if(!x64mappedguard(b, 0x73, fallback)) return 0;
+	x64pcspan(b, 1, 8);
 	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x09);
-	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
-	if(!x64mappedguard(b, 0x75, fallback)) return 0;
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff);
-	if(!x64mappedguard(b, 0x75, fallback)) return 0;
+	x64pcspan(b, 1, a->typesize+4);
 	x64casefield(b, 0, 1, a->typesize, 4);
 	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, 256);
 	if(!x64mappedguard(b, 0x76, fallback)) return 0;
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
 	x64byte(b, 0x0f); x64byte(b, 0x84); empty=b->n; x64word(b, 0);
+	/* Empty records do not consult maps, payload addresses or heap storage. */
+	x64pcspan(b, 1, a->typenp+4);
+	x64byte(b, 0xf6); x64byte(b, 0xc1); x64byte(b, 7); x64guard(b, 0x74);
 	x64casefield(b, 2, 1, a->typenp, 4);
-	x64byte(b, 0x85); x64byte(b, 0xd2);
-	if(!x64mappedguard(b, 0x74, fallback)) return 0;
+	x64byte(b, 0x85); x64byte(b, 0xd2); x64guard(b, 0x74);
+	x64byte(b, 0xeb); x64byte(b, 3); fallback=b->n;
+	x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
+	if(p->alu){
+		/* Bound the backward reference cell and payload base without a load. */
+		x64byte(b, 0x49); x64byte(b, 0x81); x64byte(b, 0xfb); x64word(b, heapbase);
+		if(!x64mappedguard(b, 0x77, fallback)) return 0;
+		x64byte(b, 0x41); x64byte(b, 0xf6); x64byte(b, 0xc3); x64byte(b, 7);
+		if(!x64mappedguard(b, 0x74, fallback)) return 0;
+		x64pcspan(b, 11, a->listdata+1);
+		x64byte(b, 0x4d); x64byte(b, 0x8d); x64byte(b, 0x83); x64word(b, a->listdata);
+	}else
+		x64caseptr(b, 0, a->s);
+	x64caseptr(b, 2, a->d);
+	/* (pointer-1)+(size+1) rejects nil, H and a wrapping exclusive end. */
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x48); x64byte(b, 1);
+	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0xff);
+	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xca);
+	if(!x64mappedguard(b, 0x73, fallback)) return 0;
+	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x52); x64byte(b, 0xff);
+	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xca);
+	if(!x64mappedguard(b, 0x73, fallback)) return 0;
 	if(p->alu){
 		x64casefield(b, 1, 11, -a->heapref, 8);
 		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
 		if(!x64mappedguard(b, 0x75, fallback)) return 0;
 		x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff);
 		if(!x64mappedguard(b, 0x75, fallback)) return 0;
-		x64byte(b, 0x4d); x64byte(b, 0x8d); x64byte(b, 0x83); x64word(b, a->listdata);
 		x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, a->s);
-	}else
-		x64caseptr(b, 0, a->s);
-	x64caseptr(b, 2, a->d);
+	}
 	if(!x64copykernel(b)) return 0;
 	if(b->n > sizeof(b->bytes) || !x64casepatch(b, empty, b->n)) return 0;
 	return 1;

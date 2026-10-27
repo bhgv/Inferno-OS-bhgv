@@ -126,7 +126,7 @@ int emit(u32int *out,int cap,int wb,int head)
                             for dest_end in (0,1):
                                 src = sp+4096-count if source_end else sp
                                 dst = dp+4096-count if dest_end else dp
-                                accepted = 0 <= count <= 256
+                                accepted = 0 <= count <= 256 and (not head or count==0 or src%8==0)
                                 if not 0 < count <= 256:
                                     src,dst = 1,1  # Empty/rejected payloads cannot be accessed.
                                 registers = bytearray(b'\xa5'*4096)
@@ -144,13 +144,13 @@ int emit(u32int *out,int cap,int wb,int head)
                                 put(registers,0xb18,count,4)
                                 put(registers,0xb1c,0,4)
                                 expectedregisters = bytearray(registers)
-                                if head and 0 < count <= 256:
+                                if head and accepted and count:
                                     put(expectedregisters,8,src)
                                 expected = {page:bytearray(PATTERN*2) for page in PAGES}
-                                if 0 < count <= 256:
+                                if accepted and count:
                                     expected[dp][4096+dst-dp:4096+dst-dp+count] = PATTERN[src-sp:src-sp+count]
-                                    if head:
-                                        put(expected[sp],4096+src-sp-48,10)
+                                if head and 0 < count <= 256:
+                                    put(expected[sp],4096+src-sp-48,10)
                                 machine.mem_write(BASE,bytes(registers))
                                 for page in PAGES:
                                     machine.mem_write(page-4096,PATTERN*2)
@@ -168,8 +168,8 @@ int emit(u32int *out,int cap,int wb,int head)
                                 machine.emu_start(CODE,STOP,count=5000)
                                 returned = machine.reg_read(UC_X86_REG_RAX if arch=='amd64' else UC_ARM64_REG_X0)
                                 detail = (arch,wb,head,count,direction,source_end,dest_end)
-                                wanted_reads,wanted_writes = accesses(src,dst,count) if 0 < count <= 256 else ([],[])
-                                if head and 0 < count <= 256:
+                                wanted_reads,wanted_writes = accesses(src,dst,count) if accepted and count else ([],[])
+                                if head and accepted and count:
                                     wanted_reads = [(src-48,8)]+wanted_reads
                                     wanted_writes = [(BASE+8,8)]+wanted_writes
                                 require(returned==int(accepted) and reads==wanted_reads and writes==wanted_writes,detail)

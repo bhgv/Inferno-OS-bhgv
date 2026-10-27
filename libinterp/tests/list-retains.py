@@ -30,6 +30,8 @@ def function(text, signature):
 parts = [function(source, 'List*\ncons(')]
 parts += [function(source, 'static Type*\nmoduletype(')]
 if 'static List*\nlisthead(' in source:parts += [function(source,'static List*\nlisthead(')]
+if 'static int\nmappedcopytype(' in source:
+    parts += [function(source, 'static int\nmappedcopytype(')]
 parts += [function(source, 'OP('+name+')') for name in ('consb','consw','consl','consp','consf','consm','consmp','movp','movmp','headmp','headb','headw','headl','headf','headm','lenl','headp','tail')]
 heap = (root / 'libinterp/heap.c').read_text()
 parts = [function(heap, 'void\nincmem('), function(heap, 'void\nfreeptrs('), function(heap, 'void\ninitmem(')] + parts

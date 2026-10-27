@@ -1917,21 +1917,66 @@ moduletype(Modlink *ml, WORD index)
 }
 
 
-/* Resolve mapped metadata first; empty records neither access data nor change references. */
+/* Validate mapped metadata before payload access or reference-count changes.
+ * Empty records need only their size field. Nonempty descriptors must support
+ * typed ownership visitors, and every marked pointer must fit the copied bytes.
+ */
+static int
+mappedcopytype(Type *t)
+{
+	uintptr address;
+	int size, pointers, i, bit;
+
+	address = (uintptr)t;
+	if(t == nil || t == H || address > (uintptr)-1-(offsetof(Type, size)+sizeof(size)))
+		error(exType);
+	memmove(&size, (uchar*)t+offsetof(Type, size), sizeof(size));
+	if(size < 0)
+		error(exType);
+	if(size == 0)
+		return 0;
+	if(address%sizeof(void*) != 0 ||
+	   address > (uintptr)-1-(offsetof(Type, np)+sizeof(pointers)))
+		error(exHeap);
+	memmove(&pointers, (uchar*)t+offsetof(Type, np), sizeof(pointers));
+	if(pointers < 0 || pointers > size/(8*sizeof(void*))+(size%(8*sizeof(void*)) != 0))
+		error(exHeap);
+	if(pointers != 0 && (address > (uintptr)-1 - offsetof(Type, map) ||
+	   address+offsetof(Type, map) > (uintptr)-1-(uintptr)pointers))
+		error(exHeap);
+	for(i = 0; i < pointers; i++)
+		for(bit = 0; bit < 8; bit++)
+			if((t->map[i] & (0x80>>bit)) &&
+			   ((ulong)i*8+bit >= (ulong)size/sizeof(void*)))
+				error(exHeap);
+	return size;
+}
+
+
+/* Resolve metadata first; empty records neither access data nor change references. */
 OP(movmp)
 {
 	Type *t;
 	WORD index;
+	int size;
 
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(index))
+		error(exBounds);
 	memmove(&index, R.m, sizeof(index));
 	t = moduletype(R.M, index);
-	if(t->size == 0)
+	size = mappedcopytype(t);
+	if(size == 0)
 		return;
+	if(R.s == nil || R.s == H || R.d == nil || R.d == H)
+		error(exNilref);
+	if((uintptr)R.s > (uintptr)-1-(uintptr)size ||
+	   (uintptr)R.d > (uintptr)-1-(uintptr)size)
+		error(exBounds);
 
 	incmem(R.s, t);
-	if (t->np)
+	if(t->np)
 		freeptrs(R.d, t);
-	memmove(R.d, R.s, t->size);
+	memmove(R.d, R.s, size);
 }
 
 
@@ -3696,32 +3741,50 @@ OP(headm)
 		memmove(R.d, (void*)source, n);
 	}
 }
-/* Validate and retain head storage before the destination can release its list. */
+
+
+/* Validate head storage before retaining its owner or publishing its payload. */
 OP(headmp)
 {
 	List *l;
 	Type *t;
 	Heap *h;
 	WORD index;
+	uintptr source;
+	int size;
 
 	l = listhead();
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(index))
+		error(exBounds);
 	memmove(&index, R.m, sizeof(index));
 	t = moduletype(R.M, index);
-	if(t->size == 0)
+	size = mappedcopytype(t);
+	if(size == 0)
 		return;
+	if(R.d == nil || R.d == H)
+		error(exNilref);
+	source = (uintptr)l;
+	if(source > (uintptr)-1 - offsetof(List, data) ||
+	   source+offsetof(List, data) > (uintptr)-1-(uintptr)size ||
+	   (uintptr)R.d > (uintptr)-1-(uintptr)size)
+		error(exBounds);
+	if(source <= sizeof(Heap) || source%sizeof(void*) != 0)
+		error(exHeap);
 
-	/* Resolve fallible metadata before acquiring the temporary source owner. */
+	/* All fallible address/map checks precede the temporary retention. */
 	h = D2H(l);
 	if(h->ref == 0 || h->ref == (ulong)-1)
 		error(exHeap);
 	h->ref++;
-	R.s = l->data;
+	R.s = (void*)(source+offsetof(List, data));
 	incmem(R.s, t);
 	if(t->np)
 		freeptrs(R.d, t);
-	memmove(R.d, R.s, t->size);
+	memmove(R.d, R.s, size);
 	destroy(l);
 }
+
+
 /* The tail operation must raise a VM nil-reference error on an empty list. */
 OP(tail)
 {
@@ -4495,22 +4558,30 @@ irestore(Prog *p)
 	R.IC = 1;
 }
 
-/* Channel metadata is a native Type pointer, independently of the VM word width. */
+
+/* Check native descriptor and data spans before moving channel records with ownership. */
 void
 movtmp(void)
 {
 	Type *t;
+	int size;
 
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(t))
+		error(exBounds);
 	memmove(&t, R.m, sizeof(t));
-	if(t == nil || t == H || t->size < 0)
-		error(exType);
-	if(t->size == 0)
+	size = mappedcopytype(t);
+	if(size == 0)
 		return;
+	if(R.s == nil || R.s == H || R.d == nil || R.d == H)
+		error(exNilref);
+	if((uintptr)R.s > (uintptr)-1-(uintptr)size ||
+	   (uintptr)R.d > (uintptr)-1-(uintptr)size)
+		error(exBounds);
 
 	incmem(R.s, t);
-	if (t->np)
+	if(t->np)
 		freeptrs(R.d, t);
-	memmove(R.d, R.s, t->size);
+	memmove(R.d, R.s, size);
 }
 
 extern OP(cvtca);
