@@ -15,7 +15,11 @@ ROOT = Path(__file__).resolve().parents[2]  # Owning repository.
 DIRECTORY = ROOT/'libinterp/tests'  # Git-backed generated reports.
 SPEC = importlib.util.spec_from_file_location('jit_coverage',DIRECTORY/'jit-coverage.py')  # One real ABI fixture for all reports.
 COVERAGE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(COVERAGE)
+# Compile the borrowed fixture directly: exec_module may create __pycache__ even
+# in --check mode, dirtying read-only/vendor snapshots. Keep normal module globals
+# from the spec without changing the process-wide bytecode policy.
+exec(compile((DIRECTORY / 'jit-coverage.py').read_bytes(),
+             str(DIRECTORY / 'jit-coverage.py'), 'exec'), COVERAGE.__dict__)
 DOMAINS = {  # Audited scope descriptions; numeric percentages come only from actual emission.
     'LeafTransfer': 'Частично: буфер, нет ожидающего peer, np=0, 0–256 байт; C-preflight, нативные copy/commit. Блокировка/ALT/rendezvous → C.',
     'LeafChannel': 'Частично: пустой выходной владелец; нативные аргументы/публикация, общий C-аллокатор; замена владельца → C.',
