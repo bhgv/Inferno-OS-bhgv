@@ -85,3 +85,8 @@ cache, rejects replacement, checks retained pointer and bytes, retries, and free
 the string. `msize` deliberately reports zero to force the replacement path.
 The previous implementation fails the retained-pointer assertion. This extends
 the driver to 39,963 checks per model; ASan/UBSan and VM reference accounting pass.
+
+Packed borrowed headers and Rune payloads are additionally checked by
+[string-view-native.py](README.string-view-native.md). It covers byte-safe UTF
+cache publication and comparison, failed cache replacement, and aligned Heap
+ownership for duplicates with active release-mode predicates in both models.
