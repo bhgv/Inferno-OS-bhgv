@@ -25,6 +25,7 @@ def function(signature):
 
 
 parts = [next(line for line in source.splitlines() if line.startswith('#define JMP('))]
+if 'static void\nbranchpc(' in source:parts.append(function('static void\nbranchpc('))
 parts += [function('OP('+name+')') for name in ['jmp']+['b'+r+t for t in ('b','w','l') for r in ('eq','ne','lt','le','gt','ge')]]
 unit = (root/'libinterp/tests/integer-branches.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='integer-branches-') as directory:

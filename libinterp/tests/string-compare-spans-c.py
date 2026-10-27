@@ -25,6 +25,7 @@ def function(signature):
 
 
 parts = [next(line for line in source.splitlines() if line.startswith('#define JMP('))]
+if 'static void\nbranchpc(' in source:parts.append(function('static void\nbranchpc('))
 if 'static void\nbranchstring(' in source:parts.append(function('static void\nbranchstring('))
 parts += [function('OP('+name+')') for name in ('beqc','bnec','bltc','blec','bgtc','bgec')]
 savedsource=source

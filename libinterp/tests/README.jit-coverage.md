@@ -1,5 +1,7 @@
 # 64-bit JIT opcode availability checkpoint
 
+Latest direct-branch sentinel checks across all 31 operations and real C/JIT fallback matrices: [README.direct-targets.md](README.direct-targets.md).
+
 Opcode percentages below describe dispatch availability, not completion of the x64/ARM64 ports. The native compiler/loader/frame/GC ABI is still incompatible. Latest complete instruction-span fixes and measured port blockers: [README.pc-target-boundaries.md](README.pc-target-boundaries.md).
 
 Latest packed descriptor/GC and native builtin cleanup checks: [README.gc-packed-maps.md](README.gc-packed-maps.md).

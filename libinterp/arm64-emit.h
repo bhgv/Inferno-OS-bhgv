@@ -2347,6 +2347,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		patch=b.n; a64put(&b, 0x54000000U | inverse[p.condition]);
 		/* Preserve false-target nonaccess while bounding a taken target load. */
 		a64ptr(&b, 11, abi->d); a64pcspan(&b, 11, 8, fallback); a64load(&b, 12, 11, 8);
+		a64pcspan(&b, 12, 1, fallback);
 		a64put(&b, 0xf9000000U | (abi->pc/8)<<10 | 12);
 		b.code[patch] |= (b.n-patch)<<5;
 	}else if(p.kind == LeafTypeCheck){
@@ -2894,6 +2895,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
         a64ptr(&b, 11, abi->d);
         a64pcspan(&b, 11, 8, -1);
         a64load(&b, 12, 11, 8);
+        a64pcspan(&b, 12, 1, -1);
         a64put(&b, 0xf9000000U | (u32int)(abi->pc/8)<<10 | 12);
         if(other < LeafMax){
             b.code[other] |= (b.n-other)<<5;
@@ -2930,6 +2932,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
             a64ptr(&b, 11, abi->d);
             a64pcspan(&b, 11, 8, -1);
             a64load(&b, 12, 11, 8);
+            a64pcspan(&b, 12, 1, -1);
             a64put(&b, 0xf9000000U | (u32int)(abi->pc/8)<<10 | 12);
             if(p.kind == LeafBranch && other < LeafMax){
                 b.code[other] |= (b.n-other)<<5;
@@ -2939,6 +2942,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
         a64ptr(&b, 11, abi->d);
             a64pcspan(&b, 11, 8, -1);
             a64load(&b, 12, 11, 8);
+        a64pcspan(&b, 12, 1, -1);
         a64put(&b, 0xf9000000U | (u32int)(abi->pc/8)<<10 | 12);
     }else if(p.kind != LeafNop)
 		return 0; /* A new classifier kind must never silently become a native no-op. */

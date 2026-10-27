@@ -24,10 +24,12 @@ def function(signature):
     raise ValueError(signature)
 
 
-parts = []
+parts = [next(line for line in source.splitlines() if line.startswith('#define JMP('))]
+if 'static void\nbranchpc(' in source:parts.append(function('static void\nbranchpc('))
 if 'static void\nbranchreal(' in source:parts.append(function('static void\nbranchreal('))
 parts += [function('OP('+name+')') for name in ('beqf','bnef','bltf','blef','bgtf','bgef')]
-unit = (root/'libinterp/tests/real-branches.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))
+unit = (root/'libinterp/tests/real-branches.c').read_text()
+unit = re.sub(r'^#define JMP\([^\n]*\n','',unit,flags=re.M).replace('IMPLEMENTATION','\n'.join(parts))
 selected = os.environ.get('REAL_BRANCH_CASE','')
 if selected not in ('','target'):raise ValueError(selected)
 with tempfile.TemporaryDirectory(prefix='real-branches-') as directory:

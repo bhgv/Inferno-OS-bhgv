@@ -30,7 +30,9 @@ def function(signature):
     raise ValueError(signature)
 
 
-parts=[function('static void\nbranchreal(')]+[function('OP('+name+')') for name in ('beqf','bnef','bltf','blef','bgtf','bgef')]
+parts=[next(line for line in source.splitlines() if line.startswith('#define JMP('))]
+if 'static void\nbranchpc(' in source:parts.append(function('static void\nbranchpc('))
+parts += [function('static void\nbranchreal(')]+[function('OP('+name+')') for name in ('beqf','bnef','bltf','blef','bgtf','bgef')]
 unit=(root/'libinterp/tests/real-branch-native.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='real-branch-native-') as directory:
     td = Path(directory)

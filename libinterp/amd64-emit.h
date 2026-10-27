@@ -2758,8 +2758,10 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		b.bytes[done]=b.n-done-1;
 		x64byte(&b, inverse[p.condition]); patch=b.n; x64byte(&b, 0);
 		/* The target slot is relevant only after the predicate is true. */
-		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, 8); x64load(&b, 2, 8);
-		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0x97); x64word(&b, abi->pc);
+		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, 8);
+		x64byte(&b, 0x49); x64byte(&b, 0x8b); x64byte(&b, 0x02); // Capture [r10] in rax; rdx is validation scratch.
+		x64pcspan(&b, 0, 1);
+		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0x87); x64word(&b, abi->pc);
 		b.bytes[patch]=b.n-patch-1;
 	}else if(p.kind == LeafTypeCheck){
 		/* Capture both owners before inspecting their immutable heap types. */
@@ -3370,6 +3372,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
         x64byte(&b, 0x49);
         x64byte(&b, 0x8b);
         x64byte(&b, 0x02);
+        x64pcspan(&b, 0, 1);
         x64byte(&b, 0x48);
         x64byte(&b, 0x89);
         x64byte(&b, 0x87);
@@ -3419,6 +3422,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
             x64byte(&b, 0x49);
         x64byte(&b, 0x8b);
         x64byte(&b, 0x02);
+            x64pcspan(&b, 0, 1);
             x64byte(&b, 0x48);
         x64byte(&b, 0x89);
         x64byte(&b, 0x87);
@@ -3431,6 +3435,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
         x64byte(&b, 0x49);
         x64byte(&b, 0x8b);
         x64byte(&b, 0x02);
+        x64pcspan(&b, 0, 1);
         x64byte(&b, 0x48);
         x64byte(&b, 0x89);
         x64byte(&b, 0x87);

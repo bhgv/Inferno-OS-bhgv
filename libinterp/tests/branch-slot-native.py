@@ -33,7 +33,10 @@ def function(signature):
 
 
 unit = (ROOT / 'libinterp/tests/branch-slot-native.c').read_text()
-parts = [function('OP(' + name + ')') for name in OPS]
+parts = [next(line for line in SOURCE.splitlines() if line.startswith('#define JMP('))]
+if 'static void\nbranchpc(' in SOURCE:parts.append(function('static void\nbranchpc('))
+parts += [function('OP(' + name + ')') for name in OPS]
+unit = re.sub(r'^#define JMP\([^\n]*\n','',unit,flags=re.M)
 unit = unit.replace('IMPLEMENTATION', '\n\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='branch-slot-native-') as temporary:
     td = Path(temporary)
