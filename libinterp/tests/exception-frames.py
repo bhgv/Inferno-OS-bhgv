@@ -270,6 +270,21 @@ static void uncalledframe(void)
     for(int i=0;i<32;i++)assert(storage[i]==0xa5 && temporary[framesize+i]==0xa5);
     free(storage);free(diagnostic);checks++;
 }
+/* The loader stores missing default handlers as native ulong -1. A string
+ * that matches no pattern must not publish that sentinel as a destination PC. */
+static void unmatchedhandler(void)
+{
+    setup(0, 0, 0, 0, 0, 0);
+    entries[0].s = "different";
+    entries[1].pc = (ulong)-1;
+    if(handler("match") || diagnostics || newstrings || oldvalue.h.ref != 1 ||
+       getowner(fp+handlers[0].eoff) != oldvalue.data){
+        fprintf(stderr, "missing native-width handler selected as a target\n");
+        exit(1);
+    }
+    finish();
+    checks++;
+}
 /* Reject a PC inside an instruction even if truncating pointer subtraction
  * would have incorrectly mapped it into an enclosing exception handler. */
 static void invalidpcs(void)
@@ -301,6 +316,7 @@ int main(void)
     for(alignment=0;alignment<8;alignment++){
     if(!only || !strcmp(only,"extension"))unwindextension();
     if(!only || !strcmp(only,"uncalled"))uncalledframe();
+    if(!only || !strcmp(only,"sentinel"))unmatchedhandler();
     if(!only || !strcmp(only,"pc"))invalidpcs();
     if(!only || !strcmp(only,"valid"))validhandlers();
     if(!only || !strcmp(only,"invalid"))invalidhandlers();
@@ -325,7 +341,12 @@ for variant in ('emu','os'):
     parts += [function((root/'libinterp/stack.c').read_text(), 'void\nunextend(')]
     parts += [function(source, s) for s in signatures+['int\nhandler(']]
     with tempfile.TemporaryDirectory(prefix='exception-frames-') as directory:
-        td=Path(directory);target=td/'test.c';target.write_text(unit.replace('IMPLEMENTATION','\n'.join(parts)))
+        td=Path(directory);target=td/'test.c'
+        # Preserve the production sentinel width; the missing-handler probe uses
+        # the loader's actual ulong -1 rather than the driver's historical value.
+        sentinel=re.search(r'^#define NOPC[^\n]*',source,re.MULTILINE).group()
+        current=unit.replace('#define NOPC 0xffffffff',sentinel)
+        target.write_text(current.replace('IMPLEMENTATION','\n'.join(parts)))
         cmd=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
         includes=['-I'+str(root/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
         for model in ('native','word32'):

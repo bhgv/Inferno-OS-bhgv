@@ -62,7 +62,7 @@ newestring(char *estr)
 	return s;
 }
 
-#define NOPC	0xffffffff
+#define NOPC	((ulong)-1) /* Match the loader's native-width absent-handler sentinel. */
 
 /* Read Dis frame metadata without requiring native C structure alignment. */
 static Type*

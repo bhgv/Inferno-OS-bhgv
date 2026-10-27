@@ -26,3 +26,11 @@ covered by that same matrix. This does not claim a full Inferno boot.
 Родительский код ошибочно выбирает обработчик для PC посреди инструкции. Новый
 тест воспроизводит это, а исправленная версия проходит все 1312 случаев для
 каждого emu/os и native/WORD32 под UBSan. Полная загрузка Inferno не проверялась.
+
+
+The absent-handler sentinel now has native `ulong` width, matching the loader's
+`(ulong)-1`. A new no-pattern-match probe rejects the former LP64 jump before
+the image. The matrix contains 1320 cases per implementation/model.
+Значение отсутствующего обработчика имеет native-ширину `ulong`, как в loader.
+Новый тест несовпавшего шаблона воспроизводит ошибочный переход перед образом
+на LP64; обновлённая матрица содержит 1320 случаев на вариант/модель.
