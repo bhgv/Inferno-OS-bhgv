@@ -1970,7 +1970,7 @@ x64recordobject(X64Buf *b, LeafLayout *a, int mode)
 	if(header<a->typemark+8)header=a->typemark+8;
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
-	if(imported){x64caseptr(b, 0, a->s); x64load(b, 0, 8);}
+	if(imported){x64caseptr(b, 0, a->s); x64pcspan(b, 8, 8); x64load(b, 0, 8);}
 	else{x64caseptr(b, 0, a->module);
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xc0); // mov rax, r8
 	}
@@ -1985,6 +1985,8 @@ x64recordobject(X64Buf *b, LeafLayout *a, int mode)
 	moduleend=a->moduletypes+8;
 	if(moduleend<a->modulenty+4)moduleend=a->modulenty+4;
 	x64readspan(b, 0, moduleend);
+	/* Span validation borrows RDX; load the module count only after it. */
+	x64caseptr(b, 0, imported ? a->m : a->s); x64pcspan(b, 8, a->wordbytes);
 	x64casefield(b, 2, 0, a->modulenty, 4);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); // test rdx, rdx
 	x64moduleguard(b, 0x7f, fallback);
@@ -2029,7 +2031,7 @@ x64recordobject(X64Buf *b, LeafLayout *a, int mode)
 	x64byte(b, 0x48); x64byte(b, 0xba); x64word(b, identity); x64word(b, identity>>32);
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xd1); // cmp rcx, rdx
 	x64moduleguard(b, 0x74, fallback);
-	x64caseptr(b, 2, a->d);
+	x64caseptr(b, 2, a->d); x64pcspan(b, 10, 8);
 	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0xd0); // mov r8, r10
 	x64casefield(b, 0, 10, 0, 8);
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 0x01); // lea rdx, [rax+1]

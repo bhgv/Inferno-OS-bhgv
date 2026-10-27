@@ -11,7 +11,7 @@ Type Tstring={1}, Tarray={1};
 Pool *heapmem;
 int mutator, nprop;
 void (*heapmonitor)(int, void*, ulong);
-char exHeap[]="heap", exModule[]="module", exNilref[]="nil";
+char exHeap[]="heap", exModule[]="module", exNilref[]="nil", exBounds[]="bounds";
 static jmp_buf boundary;
 static char *raised;
 static int calls, live, failure, customcalls, resources;

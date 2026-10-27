@@ -1583,7 +1583,7 @@ a64recordobject(A64Buf *b, LeafLayout *a, int mode)
 	if(header<a->typemark+8)header=a->typemark+8;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
-	if(imported){a64ptr(b, 12, a->s); a64load(b, 12, 12, 8);}
+	if(imported){a64ptr(b, 12, a->s); a64pcspan(b, 12, 8, fallback); a64load(b, 12, 12, 8);}
 	else a64ptr(b, 12, a->module);
 	a64defer(b, 0xb400000c, fallback);
 	a64put(b, 0xb100059fU); // cmn x12, #1
@@ -1602,7 +1602,7 @@ a64recordobject(A64Buf *b, LeafLayout *a, int mode)
 	a64put(b, 0xf10001bfU); // cmp x13, #0
 	a64defer(b, 0x5400000d, fallback);
 	a64field(b, 12, 12, a->moduletypes, 8);
-	a64ptr(b, 14, imported ? a->m : a->s); a64wordfield(b, 14, 14, 0, a->wordbytes);
+	a64ptr(b, 14, imported ? a->m : a->s); a64pcspan(b, 14, a->wordbytes, fallback); a64wordfield(b, 14, 14, 0, a->wordbytes);
 	a64put(b, 0xeb0d01dfU); // cmp x14, x13
 	a64defer(b, 0x54000002, fallback);
 	a64defer(b, 0xb400000c, fallback);
@@ -1640,7 +1640,7 @@ a64recordobject(A64Buf *b, LeafLayout *a, int mode)
 		a64put(b, (half==0 ? 0xd280000fU : 0xf280000fU) | half<<21 | ((identity>>(half*16))&65535)<<5);
 	a64put(b, 0xeb0f01dfU); // cmp x14, x15
 	a64defer(b, 0x54000001, fallback);
-	a64ptr(b, 8, a->d); a64load(b, 10, 8, 8);
+	a64ptr(b, 8, a->d); a64pcspan(b, 8, 8, fallback); a64load(b, 10, 8, 8);
 	a64defer(b, 0xb400000a, fallback);
 	a64put(b, 0xb100055fU); // cmn x10, #1
 	a64defer(b, 0x54000000, fallback);

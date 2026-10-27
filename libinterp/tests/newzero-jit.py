@@ -16,6 +16,7 @@ BASE,CODE,STOP=0x100000000,0x10000,0x11000
 MASK=(1<<64)-1
 HIGH=(1<<64)-0x1000
 FREE,MARK=0x1122334455667700,0x8877665544332200
+PROFILES=[int(value) for value in os.environ.get('ZERO_PROFILES',' '.join(map(str,range(43)))).split()]  # Select parent-replay families.
 
 
 # Serialize VM/native cells without sharing instruction-selection logic.
@@ -79,7 +80,7 @@ emit(u32int *out, int cap, int wb, int imported)
                     total+=1
                 machine.mem_write(CODE,bytes(output)[:count*4]);machine.ctl_remove_cache(CODE,CODE+512)
                 for size in (0,1,7,8,15,32,128,255,256,257):
-                    for profile in range(40):
+                    for profile in PROFILES:
                         for align in range(8):
                             for alias in range(4):
                                 image=bytearray(b'\xa5'*0x8000);top=bytearray(b'\x5a'*0x1000)
@@ -153,7 +154,12 @@ emit(u32int *out, int cap, int wb, int imported)
                                 actualindex=int.from_bytes(image[(mid if imported else src):(mid if imported else src)+wb],'little',signed=True)
                                 put(image,8,BASE+src);put(image,24,BASE+mid);put(image,16,BASE+dst);put(image,40,link)
                                 if profile==35:put(image,24 if imported else 8,BASE+0x9000)
-                                accepted=(link==BASE+0x1000 and modulevalue==module and tablevalue in (table,table+0x200) and
+                                # Reject malformed decoded cells before any dependent load or store.
+                                badcell=(0,MASK,MASK-1,MASK-2)[align%4]
+                                if profile==40:put(image,8,badcell)
+                                if profile==41:put(image,16,badcell)
+                                if profile==42 and imported:put(image,24,badcell)
+                                accepted=(profile not in (40,41) and not (profile==42 and imported) and link==BASE+0x1000 and modulevalue==module and tablevalue in (table,table+0x200) and
                                           0<=actualindex<counttypes and actualindex==2 and typevalue==descriptor and refs>0 and
                                           0<=n<=256 and pointers==0 and release==FREE and mark==MARK and
                                           old not in (0,MASK,8) and oldrefs==1 and oldtype==typevalue and (n==0 or old+n<=MASK))

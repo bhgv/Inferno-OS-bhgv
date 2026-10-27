@@ -36,6 +36,7 @@ CORE = [
     'libinterp/tests/array-reuse-native.py',
     'libinterp/tests/array-create.py',
     'libinterp/tests/newzero-native.py',
+    'libinterp/tests/record-slots-native.py',
     'libinterp/tests/string-bytes-native.py',
     'libinterp/tests/string-bytes-spans.py',
     'libinterp/tests/string-header-spans.py',

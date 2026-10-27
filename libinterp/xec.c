@@ -1980,13 +1980,13 @@ OP(movmp)
 }
 
 
-/* Resolve and retain the old owner until zero initialization or allocation is complete. */
+/* Capture the result cell and retain its owner through zeroing or allocating C callbacks. */
 static void
 newrecord(Modlink *ml, WORD index, int clear)
 {
 	Type *type;
 	Heap *h, oldheap;
-	void *old, *object;
+	void *old, *object, *destination;
 	uintptr address, extent;
 	int size, pointers, references;
 	void (*release)(Heap*, int);
@@ -2001,7 +2001,10 @@ newrecord(Modlink *ml, WORD index, int clear)
 	memmove(&references, (uchar*)type+offsetof(Type, ref), sizeof(references));
 	if(references <= 0 || size < 0 || (ulong)size > 0x7fffffff-sizeof(Heap))
 		error(exHeap);
-	memmove(&old, R.d, sizeof(old));
+	destination = R.d;
+	if(destination == nil || destination == H || (uintptr)destination > (uintptr)-1-sizeof(old))
+		error(exBounds);
+	memmove(&old, destination, sizeof(old));
 	if(old == nil)
 		error(exNilref);
 	if(old != H){
@@ -2022,13 +2025,13 @@ newrecord(Modlink *ml, WORD index, int clear)
 					memset(old, 0, size);
 			}
 			/* Restore a result slot overlapping the cleared payload. */
-			memmove(R.d, &old, sizeof(old));
+			memmove(destination, &old, sizeof(old));
 			return;
 		}
 	}
 	h = clear ? heapz(type) : heap(type);
 	object = H2D(void*, h);
-	memmove(R.d, &object, sizeof(object));
+	memmove(destination, &object, sizeof(object));
 	destroy(old);
 }
 
@@ -2038,6 +2041,8 @@ OP(new)
 {
 	WORD index;
 
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(index))
+		error(exBounds);
 	memmove(&index, R.s, sizeof(index));
 	newrecord(R.M, index, 0);
 }
@@ -2048,6 +2053,8 @@ OP(newz)
 {
 	WORD index;
 
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(index))
+		error(exBounds);
 	memmove(&index, R.s, sizeof(index));
 	newrecord(R.M, index, 1);
 }
@@ -2059,9 +2066,13 @@ OP(mnewz)
 	Modlink *ml;
 	WORD index;
 
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(ml))
+		error(exBounds);
 	memmove(&ml, R.s, sizeof(ml));
 	if(ml == nil || ml == H)
 		error(exModule);
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(index))
+		error(exBounds);
 	memmove(&index, R.m, sizeof(index));
 	newrecord(ml, index, 1);
 }
