@@ -1,5 +1,7 @@
 # 64-bit JIT opcode availability checkpoint
 
+Latest native JIT-to-C RAISE preflight and emu/os exception-owner transfer: [README.exception-publication.md](README.exception-publication.md).
+
 Latest direct-branch sentinel checks across all 31 operations and real C/JIT fallback matrices: [README.direct-targets.md](README.direct-targets.md).
 
 Opcode percentages below describe dispatch availability, not completion of the x64/ARM64 ports. The native compiler/loader/frame/GC ABI is still incompatible. Latest complete instruction-span fixes and measured port blockers: [README.pc-target-boundaries.md](README.pc-target-boundaries.md).

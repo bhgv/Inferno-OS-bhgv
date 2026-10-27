@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/raise-native.py',
     'libinterp/tests/direct-target-native.py',
     'libinterp/tests/pc-target-boundary.py',
     'libinterp/tests/gc-maps.py',

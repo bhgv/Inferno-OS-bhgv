@@ -4555,23 +4555,43 @@ OP(iraise)
 	String *message;
 	char *text;
 	Heap *h;
+	Type *type;
+	int size;
 	Prog *p;
 
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(v))
+		error(exHeap);
 	memmove(&v, R.s, sizeof(v));
 	if(v == H || v == nil)
 		error(exNilref);
+	if((uintptr)v <= sizeof(Heap) || (uintptr)v%sizeof(void*) != 0 ||
+	   (uintptr)v > (uintptr)-1-sizeof(message))
+		error(exHeap);
 	h = D2H(v);
-	/* Reserve the exception owner before message preparation can allocate or write a cache. */
+	/* Reject unusable borrowed owners before fallible message preparation. */
 	if(h->ref == 0 || h->ref == (ulong)-1)
 		error(exHeap);
-	if(h->t == &Tstring)
+	type = h->t;
+	if(type == &Tstring){
+		if((uintptr)v > (uintptr)-1-O(String, data))
+			error(exHeap);
 		message = v;
-	else{
-		if(h->t == nil || h->t == H || h->t->size < (int)sizeof(message))
+	}else{
+		if(type == nil || type == H ||
+		   (uintptr)type > (uintptr)-1-(O(Type, size)+sizeof(size)))
 			error(exType);
+		memmove(&size, (uchar*)type+O(Type, size), sizeof(size));
+		if(size < (int)sizeof(message))
+			error(exType);
+		if((uintptr)v > (uintptr)-1-sizeof(message))
+			error(exHeap);
 		memmove(&message, v, sizeof(message));
 	}
 	if(message != H && message != nil){
+		if((uintptr)message <= sizeof(Heap) ||
+		   (uintptr)message%sizeof(void*) != 0 ||
+		   (uintptr)message > (uintptr)-1-O(String, data))
+			error(exHeap);
 		if(D2H(message)->t != &Tstring)
 			error(exType);
 		if(D2H(message)->ref == 0)

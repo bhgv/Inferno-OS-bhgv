@@ -1,5 +1,7 @@
 # Exception frame storage and diagnostic ownership
 
+Latest native JIT-to-C RAISE preflight and emu/os exception-owner transfer: [README.exception-publication.md](README.exception-publication.md).
+
 Both emu and native-kernel handler searches now reject unusable handler records
 before selecting a target, formatting diagnostics, unwinding frames or writing
 the exception value. The exception slot offset must be a multiple of the native pointer width, outside the

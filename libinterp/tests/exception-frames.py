@@ -26,10 +26,17 @@ unit = r'''
 #include "fns.h"
 #include "isa.h"
 #include "interp.h"
-#include <assert.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+/* Keep inherited frame and ownership predicates enabled with NDEBUG. */
+static void
+exceptioncheck(int condition)
+{
+    if(!condition)abort();
+}
+#define framecheck(condition) exceptioncheck(!!(condition)) // Normalize pointer/scalar predicates.
+
 REG R;
 char exHeap[]="heap", exNilref[]="nil";
 
@@ -54,32 +61,42 @@ static struct {Heap h;uchar data[128];} oldvalue,newvalue,exceptionvalue;
 static uchar *storage,*fp;
 static size_t framesize,headersize;
 static char *diagnostic;
-static int faildiag,diagnostics,newstrings,destroys,checks,alignment,observepublication;
-#define BIT(bt,nb) ((bt)&(1<<(nb)))
+static int faildiag,diagnostics,newstrings,destroys,checks,alignment,observepublication,newpending;
+#define BIT(bt,nb) ((bt)&(1<<(nb))) // Bit helper retained for parent-source replay.
 #define NOPC 0xffffffff
-#define FRTYPE(f) ((f)->t==nil ? SEXTYPE(f)->reg.TR : (f)->t)
+#define FRTYPE(f) ((f)->t==nil ? SEXTYPE(f)->reg.TR : (f)->t) // Legacy frame lookup for source substitution.
 static void *getowner(void*);
 /* Heap ownership remains observable even when no allocator or GC is running. */
 Prog *currun(void) {return &process;}
 void destroy(void *p) {
     if(p==H)return;
-    assert(p==oldvalue.data || p==newvalue.data || p==exceptionvalue.data);
-    assert(D2H(p)->ref>0);
-    if(observepublication && p==oldvalue.data)assert(getowner(fp+handlers[0].eoff)==H);
+    framecheck(p==oldvalue.data || p==newvalue.data || p==exceptionvalue.data);
+    framecheck(D2H(p)->ref>0);
+    if(observepublication && p==oldvalue.data)framecheck(getowner(fp+handlers[0].eoff)==H);
     D2H(p)->ref--;destroys++;
     if(p==exceptionvalue.data && D2H(p)->ref==0 && D2H(p)->t==&othertype &&
        getowner(exceptionvalue.data)==newvalue.data)destroy(newvalue.data);
 }
-WORD modstatus(REG *r,char *name,int n) {(void)r;assert(n>8);strcpy(name,"fixture");return 2;}
-static String *newestring(char *message) {assert(!strcmp(message,"match"));newstrings++;return (String*)newvalue.data;}
+WORD modstatus(REG *r,char *name,int n) {(void)r;framecheck(n>8);strcpy(name,"fixture");return 2;}
+
+
+/* Message construction can leave a separately held process exception to clean up. */
+static String*
+newestring(char *message)
+{
+    framecheck(!strcmp(message,"match"));
+    newstrings++;
+    if(newpending)process.exval=exceptionvalue.data;
+    return (String*)newvalue.data;
+}
 /* A failed diagnostic resize must retain the old allocation and its contents. */
 static void *diagnosticrealloc(void *p,size_t n) {
-    assert(p==diagnostic);diagnostics++;
+    framecheck(p==diagnostic);diagnostics++;
     if(faildiag)return nil;
-    diagnostic=realloc(p,n);assert(diagnostic);return diagnostic;
+    diagnostic=realloc(p,n);framecheck(diagnostic);return diagnostic;
 }
 int snprint(char *p,int n,char *format,...) {
-    (void)format;assert(p==diagnostic && n>16);strcpy(p,"new diagnostic");return 14;
+    (void)format;framecheck(p==diagnostic && n>16);strcpy(p,"new diagnostic");return 14;
 }
 #define realloc diagnosticrealloc
 IMPLEMENTATION
@@ -102,7 +119,7 @@ static void setup(int compiled,int extended,int payload,int clear,int failure,in
     framesize=sizeof(Frame)+4*sizeof(void*);
     headersize=extended?OA(Stkext,reg.tos.fu):0;
     shift=extended?0:alignment;
-    storage=malloc(32+headersize+framesize+32+shift);assert(storage);memset(storage,0xa5,32+headersize+framesize+32+shift);
+    storage=malloc(32+headersize+framesize+32+shift);framecheck(storage);memset(storage,0xa5,32+headersize+framesize+32+shift);
     fp=storage+32+headersize+shift;memset(fp,0,framesize);f=(Frame*)fp;
     frame.size=framesize;frame.np=(framesize/sizeof(void*)+7)/8;
     for(slot=sizeof(Frame)/sizeof(void*);slot<(int)(framesize/sizeof(void*));slot++)
@@ -119,16 +136,16 @@ static void setup(int compiled,int extended,int payload,int clear,int failure,in
     entries[1].pc=NOPC;
     putowner(fp+handlers[0].eoff,oldvalue.data);
     process.exval=payload?exceptionvalue.data:H;process.kill="pending";
-    diagnostic=malloc(32);assert(diagnostic);strcpy(diagnostic,"previous diagnostic");process.exstr=diagnostic;
+    diagnostic=malloc(32);framecheck(diagnostic);strcpy(diagnostic,"previous diagnostic");process.exstr=diagnostic;
     R.FP=fp;R.SP=fp+framesize;R.TS=R.SP;R.EX=storage+32;R.M=&instance;
     R.PC=compiled?(Inst*)((uchar*)instructions+1):instructions+1;
-    diagnostics=newstrings=destroys=observepublication=0;faildiag=failure;
+    diagnostics=newstrings=destroys=observepublication=newpending=0;faildiag=failure;
 }
 /* Guards include the extension's original registers and the entire frame header. */
 static void finish(void)
 {
     int i;
-    for(i=0;i<32;i++)assert(storage[i]==0xa5 && fp[framesize+i]==0xa5);
+    for(i=0;i<32;i++)framecheck(storage[i]==0xa5 && fp[framesize+i]==0xa5);
     free(storage);free(diagnostic);
 }
 /* Check both pointer ownership and the copied process registers after a match. */
@@ -141,14 +158,14 @@ static void validhandlers(void)
     for(failure=0;failure<2;failure++)for(last=0;last<2;last++){
         setup(compiled,extended,payload,clear,failure,last);memmove(&header,fp,sizeof(header));
         observepublication=!clear;
-        assert(handler("match"));
-        assert(!memcmp(&header,fp,sizeof(header)) && oldvalue.h.ref==0);
-        assert(getowner(fp+handlers[0].eoff)==(payload?exceptionvalue.data:newvalue.data));
-        assert((payload?exceptionvalue.h.ref:newvalue.h.ref)==1 && process.exval==H && process.kill==nil);
-        assert(newstrings==!payload && diagnostics==1 && process.exstr==diagnostic);
-        assert(!strcmp(process.exstr,failure?"previous diagnostic":"new diagnostic"));
-        assert(R.PC==(compiled?(Inst*)((uchar*)instructions+4):instructions+2));
-        assert(!memcmp(&process.R,&R,sizeof(R)));
+        framecheck(handler("match"));
+        framecheck(!memcmp(&header,fp,sizeof(header)) && oldvalue.h.ref==0);
+        framecheck(getowner(fp+handlers[0].eoff)==(payload?exceptionvalue.data:newvalue.data));
+        framecheck((payload?exceptionvalue.h.ref:newvalue.h.ref)==1 && process.exval==H && process.kill==nil);
+        framecheck(newstrings==!payload && diagnostics==1 && process.exstr==diagnostic);
+        framecheck(!strcmp(process.exstr,failure?"previous diagnostic":"new diagnostic"));
+        framecheck(R.PC==(compiled?(Inst*)((uchar*)instructions+4):instructions+2));
+        framecheck(!memcmp(&process.R,&R,sizeof(R)));
         finish();checks++;
     }
 }
@@ -157,7 +174,7 @@ static void invalidhandlers(void)
 {
     int mode,extended;uchar saved[256];REG before;
     for(extended=0;extended<2;extended++)for(mode=0;mode<18;mode++){
-        setup(0,extended,0,1,0,0);assert(framesize<=sizeof(saved));
+        setup(0,extended,0,1,0,0);framecheck(framesize<=sizeof(saved));
         switch(mode){
         case 0:handlers[0].eoff=(ulong)-1;break;
         case 1:handlers[0].eoff=0;break;
@@ -179,10 +196,10 @@ static void invalidhandlers(void)
         case 17:if(extended)SEXTYPE((Frame*)fp)->reg.TR=H;else {Type *bad=H;memmove(fp+O(Frame,t),&bad,sizeof(bad));}break;
         }
         memcpy(saved,fp,framesize);memcpy(&before,&R,sizeof(R));
-        assert(!handler("match"));
-        assert(!memcmp(saved,fp,framesize) && !memcmp(&before,&R,sizeof(R)));
-        assert(oldvalue.h.ref==1 && process.exval==H && diagnostics==0 && newstrings==0);
-        assert(process.exstr==diagnostic && !strcmp(diagnostic,"previous diagnostic"));
+        framecheck(!handler("match"));
+        framecheck(!memcmp(saved,fp,framesize) && !memcmp(&before,&R,sizeof(R)));
+        framecheck(oldvalue.h.ref==1 && process.exval==H && diagnostics==0 && newstrings==0);
+        framecheck(process.exstr==diagnostic && !strcmp(diagnostic,"previous diagnostic"));
         finish();checks++;
     }
 }
@@ -190,8 +207,8 @@ static void invalidhandlers(void)
 static void laterhandler(void)
 {
     setup(0,0,0,0,0,0);handlers[1]=handlers[0];handlers[0].eoff=(ulong)-1;
-    assert(handler("match") && getowner(fp+handlers[1].eoff)==newvalue.data);
-    assert(oldvalue.h.ref==0 && diagnostics==1);finish();checks++;
+    framecheck(handler("match") && getowner(fp+handlers[1].eoff)==newvalue.data);
+    framecheck(oldvalue.h.ref==0 && diagnostics==1);finish();checks++;
 }
 /* Validate a caller before unwinding a normal frame, including string conversion. */
 static void unwindhandlers(void)
@@ -199,7 +216,7 @@ static void unwindhandlers(void)
     int compiled,payload,clear,i;uchar *expanded,*child;Frame header;
     for(compiled=0;compiled<2;compiled++)for(payload=0;payload<3;payload++)for(clear=0;clear<2;clear++){
         setup(compiled,0,payload,clear,0,0);
-        expanded=malloc(32+2*framesize+32+2*alignment);assert(expanded);memset(expanded,0xa5,32+2*framesize+32+2*alignment);
+        expanded=malloc(32+2*framesize+32+2*alignment);framecheck(expanded);memset(expanded,0xa5,32+2*framesize+32+2*alignment);
         memcpy(expanded+32+alignment,fp,framesize);free(storage);storage=expanded;fp=storage+32+alignment;
         child=fp+framesize+alignment;memset(child,0,framesize);initmem(&frame,child);
         memset(&header,0,sizeof(header));header.t=&frame;header.fp=fp;
@@ -209,12 +226,12 @@ static void unwindhandlers(void)
         if(payload==2)putowner(exceptionvalue.data,newvalue.data);
         R.FP=child;R.EX=storage+32;R.TS=R.SP=child+framesize;
         R.PC=compiled?(Inst*)((uchar*)instructions+3):instructions+3;
-        assert(handler("match") && R.FP==fp && R.SP==child);
-        assert(getowner(fp+handlers[0].eoff)==(payload==1?exceptionvalue.data:newvalue.data));
-        assert(oldvalue.h.ref==0 && process.exval==H);
-        if(payload==2)assert(exceptionvalue.h.ref==0 && newvalue.h.ref==1);
-        assert(!memcmp(&process.R,&R,sizeof(R)));
-        for(i=0;i<32;i++)assert(storage[i]==0xa5 && child[framesize+i]==0xa5);
+        framecheck(handler("match") && R.FP==fp && R.SP==child);
+        framecheck(getowner(fp+handlers[0].eoff)==(payload==1?exceptionvalue.data:newvalue.data));
+        framecheck(oldvalue.h.ref==0 && process.exval==H);
+        if(payload==2)framecheck(exceptionvalue.h.ref==0 && newvalue.h.ref==1);
+        framecheck(!memcmp(&process.R,&R,sizeof(R)));
+        for(i=0;i<32;i++)framecheck(storage[i]==0xa5 && child[framesize+i]==0xa5);
         free(storage);free(diagnostic);checks++;
     }
 }
@@ -224,7 +241,7 @@ static void unwindextension(void)
     int compiled,payload,clear;Stkext *sx;Frame header={0};uchar *child;
     for(compiled=0;compiled<2;compiled++)for(payload=0;payload<3;payload++)for(clear=0;clear<2;clear++){
         setup(compiled,0,payload,clear,0,0);
-        sx=calloc(1,sizeof(Stkext)+framesize);assert(sx);child=sx->reg.tos.fu;
+        sx=calloc(1,sizeof(Stkext)+framesize);framecheck(sx);child=sx->reg.tos.fu;
         sx->reg.TR=&frame;sx->reg.SP=fp+framesize;sx->reg.TS=fp+framesize;sx->reg.EX=storage+32;
         initmem(&frame,child);header.fp=fp;
         header.lr=compiled?(Inst*)((uchar*)instructions+1):instructions+1;
@@ -233,9 +250,9 @@ static void unwindextension(void)
         if(payload==2)putowner(exceptionvalue.data,newvalue.data);
         R.FP=child;R.EX=(uchar*)sx;R.TS=R.SP=child+framesize;
         R.PC=compiled?(Inst*)((uchar*)instructions+3):instructions+3;
-        assert(handler("match") && R.FP==fp && R.SP==fp+framesize && R.EX==storage+32);
-        assert(getowner(fp+handlers[0].eoff)==(payload==1?exceptionvalue.data:newvalue.data));
-        assert(oldvalue.h.ref==0 && process.exval==H && !memcmp(&process.R,&R,sizeof(R)));
+        framecheck(handler("match") && R.FP==fp && R.SP==fp+framesize && R.EX==storage+32);
+        framecheck(getowner(fp+handlers[0].eoff)==(payload==1?exceptionvalue.data:newvalue.data));
+        framecheck(oldvalue.h.ref==0 && process.exval==H && !memcmp(&process.R,&R,sizeof(R)));
         finish();checks++;
     }
 }
@@ -245,10 +262,10 @@ static void emptydiagnostic(void)
     int failure;
     for(failure=0;failure<2;failure++){
         setup(0,0,0,0,failure,0);free(diagnostic);diagnostic=process.exstr=nil;
-        assert(handler("match") && process.exstr==diagnostic);
-        if(failure)assert(process.exstr==nil);
-        else assert(!strcmp(process.exstr,"new diagnostic"));
-        assert(getowner(fp+handlers[0].eoff)==newvalue.data && oldvalue.h.ref==0);
+        framecheck(handler("match") && process.exstr==diagnostic);
+        if(failure)framecheck(process.exstr==nil);
+        else framecheck(!strcmp(process.exstr,"new diagnostic"));
+        framecheck(getowner(fp+handlers[0].eoff)==newvalue.data && oldvalue.h.ref==0);
         finish();checks++;
     }
 }
@@ -257,17 +274,17 @@ static void uncalledframe(void)
 {
     uchar *expanded,*temporary;Frame header={0};
     setup(0,0,0,0,0,0);
-    expanded=malloc(32+2*framesize+32+alignment);assert(expanded);
+    expanded=malloc(32+2*framesize+32+alignment);framecheck(expanded);
     memset(expanded,0xa5,32+2*framesize+32+alignment);
     memcpy(expanded+32+alignment,fp,framesize);free(storage);storage=expanded;fp=expanded+32+alignment;
     temporary=fp+framesize;memset(temporary,0,framesize);initmem(&frame,temporary);
     header.t=&frame;memmove(temporary,&header,sizeof(header));
     oldvalue.h.ref++;putowner(temporary+sizeof(Frame),oldvalue.data);
     R.FP=fp;R.EX=storage+32;R.TS=R.SP=temporary+framesize;
-    assert(handler("match") && R.FP==fp && R.SP==temporary);
-    assert(oldvalue.h.ref==0 && getowner(fp+handlers[0].eoff)==newvalue.data);
-    assert(getowner(temporary+sizeof(Frame))==oldvalue.data);
-    for(int i=0;i<32;i++)assert(storage[i]==0xa5 && temporary[framesize+i]==0xa5);
+    framecheck(handler("match") && R.FP==fp && R.SP==temporary);
+    framecheck(oldvalue.h.ref==0 && getowner(fp+handlers[0].eoff)==newvalue.data);
+    framecheck(getowner(temporary+sizeof(Frame))==oldvalue.data);
+    for(int i=0;i<32;i++)framecheck(storage[i]==0xa5 && temporary[framesize+i]==0xa5);
     free(storage);free(diagnostic);checks++;
 }
 /* The loader stores missing default handlers as native ulong -1. A string
@@ -310,6 +327,46 @@ static void invalidpcs(void)
         checks++;
     }
 }
+
+
+/* Transfer the held exception owner without a transient zero count at saturation. */
+static void
+transferowners(void)
+{
+    ulong counts[]={1,2,(ulong)-2,(ulong)-1};
+    ulong expected;
+    int payload,profile,clear,alias;
+
+    for(payload=1;payload<=2;payload++)for(profile=0;profile<4;profile++)
+    for(clear=0;clear<2;clear++)for(alias=0;alias<2;alias++){
+        if(alias && counts[profile]<2)continue;
+        setup(0,0,payload,clear,0,0);
+        exceptionvalue.h.ref=counts[profile];
+        if(alias){oldvalue.h.ref=0;putowner(fp+handlers[0].eoff,exceptionvalue.data);}
+        expected=counts[profile]-alias;
+        framecheck(handler("match"));
+        framecheck(process.exval==H && getowner(fp+handlers[0].eoff)==exceptionvalue.data);
+        framecheck(exceptionvalue.h.ref==expected && !memcmp(&process.R,&R,sizeof(R)));
+        framecheck(newstrings==0);
+        finish();checks++;
+    }
+}
+
+
+/* Keep cleanup of a new pending exception created by message construction. */
+static void
+pendingconstruction(void)
+{
+    setup(0,0,0,0,0,0);newpending=1;
+    putowner(exceptionvalue.data,H);
+    framecheck(handler("match"));
+    framecheck(exceptionvalue.h.ref==0 && newvalue.h.ref==1 && process.exval==H);
+    framecheck(getowner(fp+handlers[0].eoff)==newvalue.data && oldvalue.h.ref==0);
+    finish();checks++;
+}
+
+
+/* Run selected handler and ownership families at every frame alignment. */
 int main(void)
 {
     char *only=getenv("EXCEPTION_CASES");
@@ -323,11 +380,15 @@ int main(void)
     if(!only || !strcmp(only,"later"))laterhandler();
     if(!only || !strcmp(only,"unwind"))unwindhandlers();
     if(!only || !strcmp(only,"diagnostic"))emptydiagnostic();
+    if(!only || !strcmp(only,"transfer"))transferowners();
+    if(!only || !strcmp(only,"pending"))pendingconstruction();
     }
     printf("exception frames: %d cases\n",checks);return 0;
 }
 int __lsan_is_turned_off(void) {return 1;}
 '''
+if os.environ.get('EXCEPTION_MODEL') not in (None,'native','word32'):
+    raise ValueError('EXCEPTION_MODEL must select native or word32')
 heap = (root/'libinterp/heap.c').read_text()
 for variant in ('emu','os'):
     if os.environ.get('EXCEPTION_VARIANT') not in (None,variant): continue
@@ -338,7 +399,8 @@ for variant in ('emu','os'):
     if 'static int\nexceptionframe(' in source: signatures += ['static int\nexceptionframe(']
     if 'static ulong\nexceptionpc(' in source: signatures += ['static ulong\nexceptionpc(']
     parts = [function(heap, s) for s in ('void\nfreeptrs(', 'void\ninitmem(')]
-    parts += [function((root/'libinterp/stack.c').read_text(), 'void\nunextend(')]
+    stack=(root/'libinterp/stack.c').read_text()
+    parts += [function(stack,s) for s in ('static int\nstacksize(','static Stkext*\nstackextent(','void\nunextend(')]
     parts += [function(source, s) for s in signatures+['int\nhandler(']]
     with tempfile.TemporaryDirectory(prefix='exception-frames-') as directory:
         td=Path(directory);target=td/'test.c'
@@ -350,6 +412,7 @@ for variant in ('emu','os'):
         cmd=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
         includes=['-I'+str(root/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
         for model in ('native','word32'):
+            if os.environ.get('EXCEPTION_MODEL') not in (None,model):continue
             override=[]
             if model=='word32':
                 folder=td/'word32';folder.mkdir();header=(root/'include/interp.h').read_text()

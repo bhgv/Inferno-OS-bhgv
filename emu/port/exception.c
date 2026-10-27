@@ -166,13 +166,14 @@ exceptionpc(Modlink *module, Inst *nextpc)
     return offset/sizeof(Inst)-1;
 }
 
+
 /* Search only usable handlers, retaining diagnostic storage on allocation failure. */
 int
 handler(char *estr)
 {
 	Prog *p;
 	Modlink *m, *mr;
-	int str, ne;
+	int str, ne, transfer;
 	ulong pc, newpc;
 	long eoff;
 	uchar *fp, *eadr;
@@ -281,13 +282,15 @@ found:
 	v = H;
 	memmove(eadr, &v, sizeof(v));
 	destroy(old);
-	if(p->exval == H)
+	transfer = p->exval != H;
+	if(!transfer)
 		v = newestring(estr);	/* might fail; the result slot already owns nil */
-	else{
-		D2H(p->exval)->ref++;
+	else
 		v = p->exval;
-	}
+	/* Publish the held reference before removing its process root. */
 	memmove(eadr, &v, sizeof(v));
+	if(transfer)
+		p->exval = H;
 	if(m->compiled)
 		R.PC = (Inst*)((ulong)m->prog+newpc);
 	else

@@ -1,5 +1,7 @@
 # Exception-owner and message lifetime preflight
 
+Latest native JIT-to-C RAISE preflight and emu/os exception-owner transfer: [README.exception-publication.md](README.exception-publication.md).
+
 IRAISE now rejects dead and saturated exception-owner reference counts before
 following tuple descriptors, terminating ASCII text or allocating UTF-8 caches.
 After resolving a tuple message it also requires a live String owner, unless
