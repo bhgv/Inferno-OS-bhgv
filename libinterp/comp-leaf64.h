@@ -9,7 +9,7 @@
 
 
 /* Leaf JIT keeps original Inst PCs and uses the existing decoder/optab for
- * unsupported operations. No patching of frames, GC maps or case tables.
+ * complete decoded dispatch with guarded fast paths and C handlers. No patching of frames, GC maps or case tables.
  * compiled remains 0: its historical meaning is a relocated native-PC VM.
  */
 void (*comvec)(void);
@@ -50,16 +50,29 @@ leafcompile(void *arg)
 	Jit *j;
 	u32int *code;
 	int (*fn[256])(REG*);
-	int count[256], i, n, op, used;
+	int count[256], bridge[256], i, n, op, used, complete;
 
 	c=arg; m=c->m; size=c->size;
-	if(m == nil || m == H || m->compiled || size <= 0 || size != m->nprog ||
+	/* Public Module/header failures must reject before the first typed read. */
+	if(m == nil || m == H || (uintptr)m > (uintptr)-1-sizeof(*m) ||
+	   (uintptr)m%sizeof(void*) != 0)
+		return 0;
+	if(m->compiled || size <= 0 || size != m->nprog ||
 	   m->prog == nil || m->prog == H || size > 0x7fffffff/sizeof(Inst) ||
 	   sizeof(u32int) != 4 || sizeof(void*) != 8 ||
 	   (sizeof(WORD) != 4 && sizeof(WORD) != 8))
 		return 0;
-	if(m->jit != nil)
+	if((uintptr)m->prog > (uintptr)-1-(uintptr)size*sizeof(Inst))
+		return 0;
+	if(m->jit != nil){
+		j=m->jit;
+		if(j == H || (uintptr)j > (uintptr)-1-sizeof(*j) ||
+		   (uintptr)j%sizeof(void*) != 0 || j->nprog != size ||
+		   j->code == nil || j->code == H || j->size <= 0 ||
+		   (uintptr)j->code > (uintptr)-1-(uintptr)j->size)
+			return 0;
 		return 1;
+	}
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
 	return 0;
 #endif
@@ -107,19 +120,25 @@ leafcompile(void *arg)
 	abi.arrayroot=O(Array, root); abi.typeref=O(Type, ref);
 	abi.pc=O(REG, PC); abi.s=O(REG, s); abi.d=O(REG, d); abi.m=O(REG, m);
 	memset(count, 0, sizeof(count));
+	memset(bridge, 0, sizeof(bridge));
 	memset(fn, 0, sizeof(fn));
 	n=0;
 	for(i=0; i<size; i++) {
-		op=m->prog[i].op;
+		op=((uchar*)m->prog)[(uintptr)i*sizeof(Inst)+O(Inst, op)];
 		if(count[op] == 0) {
 			used=leafemit(nil, LeafMax, &abi, op);
 			count[op]=used == 0 ? -1 : used;
-			if(used > 0) {
-				/* Keep both the instruction count and allocation size representable. */
-				if(used > 0x7fffffff/(int)sizeof(u32int)-n)
-					return 0;
-				n+=used;
-			}
+			complete=leafbridgeemit(nil, LeafMax, (void*)cjitexec, op, nil);
+			bridge[op]=complete;
+			if(op > INOP && op < MAXDIS && op != IECLR && complete == 0)
+				return 0;
+			/* Both fixed bridge size and fast code must fit the same owned mapping. */
+			if(used < 0 || complete < 0 || used > 0x7fffffff/(int)sizeof(u32int)-n)
+				return 0;
+			n+=used;
+			if(complete > 0x7fffffff/(int)sizeof(u32int)-n)
+				return 0;
+			n+=complete;
 		}
 	}
 	if(n == 0)
@@ -144,8 +163,16 @@ leafcompile(void *arg)
 			goto bad;
 		code+=used;
 	}
-	for(op=0; op<256; op++)
+	for(op=0; op<256; op++){
 		j->entry[op]=fn[op];
+		if(bridge[op] <= 0)
+			continue;
+		j->dispatch[op]=(int(*)(REG*))code;
+		used=leafbridgeemit(code, bridge[op], (void*)cjitexec, op, (void*)fn[op]);
+		if(used != bridge[op])
+			goto bad;
+		code+=used;
+	}
 	if(leafcodepublish(j->code, j->size) != 0)
 		goto bad;
 	/* Publish only fully generated, synchronized code. Failure is atomic. */

@@ -2108,6 +2108,39 @@ a64arraycreate(A64Buf *b, LeafLayout *a, int clear)
 }
 
 
+/* Tail-enter the shared C executor with the original caller's LR and stack.
+ * x0 retains REG; w1 is the opcode and x2 the optional guarded fast entry.
+ * BR, rather than BLR, allows the C handler to free this module's code mapping.
+ */
+static int
+leafbridgeemit(u32int *out, int cap, void *executor, int op, void *fast)
+{
+	A64Buf b;
+	unsigned long long entry, native;
+	int half, i;
+
+	entry = (unsigned long long)executor;
+	native = (unsigned long long)fast;
+	if(cap <= 0 || entry == 0 || entry == ~0ULL || native == ~0ULL ||
+	   op <= INOP || op >= MAXDIS || op == IECLR)
+		return 0;
+	b.n = 0;
+	a64put(&b, 0xd503245f); // BTI c.
+	a64put(&b, 0x52800001U | (u32int)op<<5); // mov w1, opcode.
+	for(half = 0; half < 4; half++)
+		a64put(&b, (half == 0 ? 0xd2800002U : 0xf2800002U) | half<<21 | ((native>>(half*16))&65535)<<5);
+	for(half = 0; half < 4; half++)
+		a64put(&b, (half == 0 ? 0xd2800010U : 0xf2800010U) | half<<21 | ((entry>>(half*16))&65535)<<5);
+	a64put(&b, 0xd61f0200U); // br x16: LR remains the original C caller's return address.
+	if(b.n > cap || b.n > LeafMax)
+		return 0;
+	if(out != nil)
+		for(i = 0; i < b.n; i++)
+			out[i] = b.code[i];
+	return b.n;
+}
+
+
 /* Emit bounded AAPCS64 handlers; allocating constructors stage scalar bits and LR on the stack. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)

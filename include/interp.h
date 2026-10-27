@@ -279,15 +279,16 @@ struct DisC
 	DisC *next;
 };
 
-/* Optional native leaf operations; Dis PCs and interpreter metadata survive. */
+/* Guarded fast entries and complete decoded dispatch retain original Dis PCs. */
 struct Jit
 {
-	uchar*	code;
-	int	size;		/* bytes of generated instructions */
-	int	nprog;
-	void	(*freecode)(uchar*, int); /* optional mapping owner; nil uses free */
-	void	(*enter)(void); /* optional current-hart instruction synchronization */
-	int	(*entry[256])(REG*); /* opcode; nil/return 0 uses optab */
+	uchar *code; // Generated instructions, owned by the immutable executable mapping.
+	int size; // Byte length of the complete generated mapping.
+	int nprog; // Instruction count of the original Dis program.
+	void (*freecode)(uchar*, int); // Mapping release callback; nil selects ordinary free.
+	void (*enter)(void); // Optional current-hart instruction synchronization.
+	int (*entry[256])(REG*); // Guarded fast paths; nil/zero retains the C implementation.
+	int (*dispatch[256])(REG*); // Complete tail entries: fast path followed by C when needed.
 };
 
 struct Module
@@ -436,6 +437,10 @@ extern	Channel*	cnewcraw(int, int);
 
 /* Resolve a live module Type and return one mapped channel owner, unwinding VM allocation errors. */
 extern	Channel*	cnewcmapped(Modlink*, WORD, int);
+/* Complete one decoded operation; never retain a Module/Jit pointer across its C handler. */
+extern	int		cjitexec(REG*, int, int (*)(REG*));
+
+
 extern	int		compile(Module*, int, Modlink*);
 extern	void		cqadd(Progq**, Prog*);
 extern	void		cqdel(Progq**);

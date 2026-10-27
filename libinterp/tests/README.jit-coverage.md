@@ -1,5 +1,7 @@
 # 64-bit JIT opcode availability checkpoint
 
+Complete decoded JIT+C support now covers all 173 active commands on AMD64/ARM64. Native fast availability remains 166/173; seven complex handlers use C through complete tail entries. See [README.complete-dispatch.md](README.complete-dispatch.md) and the [per-command table](README.jit-readiness.md).
+
 Latest native buffered SEND/RECV and ring preflight: [README.buffered-transfer.md](README.buffered-transfer.md).
 
 Full per-command AMD64/ARM64 percentages, definition and domains: [README.jit-readiness.md](README.jit-readiness.md) ([CSV](jit-readiness.csv)).
@@ -24,11 +26,11 @@ Latest ownership preflight fixes and validation: [README.owner-preflight.md](REA
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 166 commands (95.95%); seven remain on the interpreter path. RV64 profiles
+fast paths for 166 commands (95.95%); seven use C through complete JIT entries. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
-| Backend/profile | Active commands | Native path | C interpreter path |
+| Backend/profile | Active commands | Native fast path | C implementation without fast path |
 | --- | ---: | ---: | ---: |
 | AMD64 | 173 | 166 | 7 |
 | ARM64 | 173 | 166 | 7 |

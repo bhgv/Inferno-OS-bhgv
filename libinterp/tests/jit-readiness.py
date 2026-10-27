@@ -96,14 +96,14 @@ SCOPES = {  # Refine shared families when individual command domains differ.
     'IMULF': 'Нативное real-умножение с проверками слотов и FP-контрактом.',
     'IDIVF': 'Нативное real-деление с проверками слотов и FP-контрактом.',
 }
-PENDING = {  # No native entry is published for these commands at this checkpoint.
-    'IALT': 'Пока C: выбор альтернатив, очереди, блокировка и пробуждение.',
-    'INBALT': 'Пока C: неблокирующий выбор альтернатив и очистка регистраций.',
-    'ISPAWN': 'Пока C: создание Prog, владение frame и регистрация в scheduler.',
-    'IMSPAWN': 'Пока C: межмодульный spawn и владение модулем/frame.',
-    'ILOAD': 'Пока C: загрузчик, imports, Module/MP и ошибки линковки.',
-    'IEXIT': 'Пока C: завершение процесса и освобождение runtime-ресурсов.',
-    'IRAISE': 'Пока C: exception value, текст сообщения и раскрутка VM error frames.',
+C_HANDLERS = {  # Complex handlers are reached through complete native tail entries.
+    'IALT': 'C через JIT: выбор альтернатив, очереди, блокировка и пробуждение.',
+    'INBALT': 'C через JIT: неблокирующий выбор альтернатив и очистка регистраций.',
+    'ISPAWN': 'C через JIT: создание Prog, владение frame и регистрация в scheduler.',
+    'IMSPAWN': 'C через JIT: межмодульный spawn и владение модулем/frame.',
+    'ILOAD': 'C через JIT: загрузчик, imports, Module/MP и ошибки линковки.',
+    'IEXIT': 'C через JIT: завершение процесса и освобождение runtime-ресурсов.',
+    'IRAISE': 'C через JIT: exception value, текст сообщения и раскрутка VM error frames.',
 }
 
 
@@ -161,10 +161,15 @@ main(void)
 # Measure both emitters and WORD models; exact and short-capacity canaries are mandatory.
 def reports():
     names = COVERAGE.opnames()
+    spec = importlib.util.spec_from_file_location('dispatch_coverage',DIRECTORY/'jit-dispatch-coverage.py')
+    dispatch_coverage = importlib.util.module_from_spec(spec)
+    exec(compile((DIRECTORY/'jit-dispatch-coverage.py').read_bytes(),
+                 str(DIRECTORY/'jit-dispatch-coverage.py'), 'exec'), dispatch_coverage.__dict__)
     with tempfile.TemporaryDirectory(prefix='jit-readiness-') as temporary:
         directory = Path(temporary)
         classification = families(names,directory)
         measurements = {(arch,wb): COVERAGE.measure(arch,wb,'base',names,directory) for arch in ('amd64','arm64') for wb in (4,8)}
+        dispatch = {arch: dispatch_coverage.measure(arch,names,directory) for arch in ('amd64','arm64')}
     rows = []
     for opcode in names:
         if opcode in ('INOP','IECLR'): continue
@@ -173,35 +178,44 @@ def reports():
             values = [int(opcode in measurements[arch,wb]['available']) for wb in (4,8)]
             row[arch+'_percent'] = 50*sum(values)
             row[arch+'_word32'],row[arch+'_word64'] = values
+            complete = [int(opcode in dispatch[arch][wb]) for wb in (4,8)]
+            row[arch+'_dispatch_percent'] = 50*sum(complete)
+            row[arch+'_dispatch_word32'],row[arch+'_dispatch_word64'] = complete
+            row[arch+'_mode'] = 'быстрый путь + C' if sum(values) else 'C через JIT' if sum(complete) else 'C вне JIT'
         kind = classification.get(opcode,'C')
         if kind!='C' and kind not in DOMAINS: raise RuntimeError(('missing domain annotation',kind,opcode))
         row['family'] = kind
-        row['scope'] = SCOPES.get(opcode,DOMAINS[kind]) if kind!='C' else PENDING[opcode]
+        row['scope'] = SCOPES.get(opcode,DOMAINS[kind]) if kind!='C' else C_HANDLERS[opcode]
         rows.append(row)
     active = len(rows)
     native = {arch: sum(row[arch+'_percent']>0 for row in rows) for arch in ('amd64','arm64')}
-    md = '''# Готовность генерации JIT по отдельным командам Dis
+    complete = {arch: sum(row[arch+'_dispatch_percent']==100 for row in rows) for arch in ('amd64','arm64')}
+    md = '''# Поддержка отдельных команд Dis из JIT: быстрый путь + C
 
-Процент в каждой строке — **доля проверенных конфигураций WORD32/WORD64,
-для которых production-эмиттер действительно создаёт код**: 0/2 = 0%,
-1/2 = 50%, 2/2 = 100%. Проверяются точный размер выходного буфера,
-его канарейки и атомарный отказ на коротком буфере.
+Проценты — доля проверенных WORD32/WORD64-конфигураций: 0/2 = 0%,
+1/2 = 50%, 2/2 = 100%. **Полный вход** означает вызываемый вход Jit.dispatch,
+который пробует быстрый путь и при отказе выполняет штатный C-обработчик.
+**Быстрый путь** означает отдельный Jit.entry с собственной нативной реализацией
+поддерживаемого случая. Проверяются фактическая генерация, точная ёмкость,
+канарейки и атомарный отказ на коротком буфере.
 
-**100% здесь не означает полный перенос всех случаев команды.** Нативный путь
-может быть ограничен guards и возвращать управление C. Область применения
-указана отдельно. Процент всей семантики не измерен: нет определённого конечного
-знаменателя всех возможных значений, состояний GC, очередей и ошибок. Выдуманные
-оценки вроде «SEND готов на 80%» в эту таблицу не включены.
+Полный вход не требует переписывать сложную команду на ассемблер. ALT/NBALT,
+SPAWN/MSPAWN, LOAD, EXIT и RAISE выполняются в C через хвостовой вход JIT.
+Остальные команды имеют нативный быстрый путь и C-подхват. Ни одна из этих
+цифр не является процентом всех входных состояний, производительности или
+готовности всей 64-битной VM. Ограничения быстрых путей указаны отдельно.
 
 '''
-    md += '| Архитектура | Команд с нативным путём | Только C | Доля команд |\n| --- | ---: | ---: | ---: |\n'
+    md += '| Архитектура | Полные входы JIT+C | Быстрые пути | C через JIT без быстрого пути |\n| --- | ---: | ---: | ---: |\n'
     for arch,title in (('amd64','x86-64'),('arm64','ARM64')):
-        md += f'| {title} | {native[arch]}/{active} | {active-native[arch]} | {100*native[arch]/active:.2f}% |\n'
+        md += f'| {title} | {complete[arch]}/{active} ({100*complete[arch]/active:.2f}%) | {native[arch]}/{active} ({100*native[arch]/active:.2f}%) | {complete[arch]-native[arch]} |\n'
     md += '\n175 enum-слотов минус недопустимый INOP и неиспользуемый IECLR = 173 активные команды.\n'
-    md += '\nНовые SEND/RECV выполняют copy и обновление кольца нативно; проверка геометрии —\nобщая чистая C-функция. Блокировка, ALT/rendezvous, указатели в payload и\nразмеры больше 256 байт сохраняют C-путь.\n'
+    md += '\nХвостовой переход в общий C-диспетчер сохраняет возврат в исходный цикл VM,\nдаже если обработчик освободил модуль с его JIT-кодом. Декодированный цикл\nсохраняет прямой вызов быстрых входов; сложные команды используют полный вход.\nЭто per-opcode JIT с исходными Dis PC; многокомандные блоки ещё не реализованы.\n'
     md += '\nФизический ARM64 и полная загрузка Inferno не проверены этим измерением.\n'
-    md += '\n| Команда | x86-64, % | ARM64, % | Нативный путь и ограничения |\n| --- | ---: | ---: | --- |\n'
-    for row in rows: md += f"| {row['opcode']} | {row['amd64_percent']}% | {row['arm64_percent']}% | {row['scope']} |\n"
+    md += '\n| Команда | Полный x64, % | Полный ARM64, % | Быстрый x64, % | Быстрый ARM64, % | Режим | Область быстрого пути / C-обработчик |\n| --- | ---: | ---: | ---: | ---: | --- | --- |\n'
+    for row in rows:
+        mode = row['amd64_mode'] if row['amd64_mode']==row['arm64_mode'] else 'x64: '+row['amd64_mode']+'; ARM64: '+row['arm64_mode']
+        md += f"| {row['opcode']} | {row['amd64_dispatch_percent']}% | {row['arm64_dispatch_percent']}% | {row['amd64_percent']}% | {row['arm64_percent']}% | {mode} | {row['scope']} |\n"
     md += '\nВоспроизведение: `python3 libinterp/tests/jit-readiness.py --check`.\n'
     csvout = io.StringIO(newline='')
     writer = csv.DictWriter(csvout,fieldnames=list(rows[0]),lineterminator='\n')
@@ -223,7 +237,7 @@ def main():
         if args.write: path.write_text(content,newline='')
         elif args.check:
             if not path.exists() or path.read_text()!=content.replace('\r\n','\n'): raise RuntimeError(('stale readiness artifact',name))
-    if args.write or args.check: print('PASS readiness: 173 command rows, AMD64/ARM64, both WORD models, exact/short emission canaries')
+    if args.write or args.check: print('PASS readiness: 173 complete rows, fast/C modes, AMD64/ARM64 WORD32/64 and capacity canaries')
     else: print(files['README.jit-readiness.md'],end='')
 
 

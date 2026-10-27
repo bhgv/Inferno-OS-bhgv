@@ -4839,6 +4839,32 @@ extern OP(cvtlc);
 
 #include "optab.h"
 
+
+/* Execute a decoded operation after the native tail entry has left module code.
+ * The caller already decoded operands and advanced PC. C handlers may block,
+ * switch modules or raise through the ordinary VM error frames. They can also
+ * release the source Jit mapping: do not dereference it after either callback.
+ */
+int
+cjitexec(REG *r, int op, int (*fast)(REG*))
+{
+	void (*handler)(void);
+
+	if(r != &R || op <= INOP || op >= MAXDIS || op == IECLR ||
+	   (uintptr)fast == (uintptr)-1)
+		return 0;
+	if(fast != nil && fast(r))
+		return 1;
+	handler = optab[op];
+	if(handler == nil || (uintptr)handler == (uintptr)-1){
+		error(exOp);
+		return 0;
+	}
+	handler();
+	return 1;
+}
+
+
 void
 opinit(void)
 {
@@ -4849,6 +4875,8 @@ opinit(void)
 			optab[i] = badop;
 }
 
+
+/* Decode once and execute a complete JIT entry, a legacy fast leaf, or C. */
 void
 xec(Prog *p)
 {
@@ -4878,10 +4906,17 @@ xec(Prog *p)
 		dec[R.PC->add]();
 		op = R.PC->op;
 		R.PC++;
-		if(j != nil && j->entry[op] != nil) {
+		if(j != nil && j->entry[op] != nil){
+			/* Keep the direct hot path; complete entries remain callable independently. */
 			if(j->enter != nil)
 				j->enter();
 			if(!j->entry[op](&R))
+				optab[op]();
+		}else if(j != nil && j->dispatch[op] != nil){
+			if(j->enter != nil)
+				j->enter();
+			/* The C-only tail may release j and its mapping before returning here. */
+			if(!j->dispatch[op](&R))
 				optab[op]();
 		}else
 			optab[op]();

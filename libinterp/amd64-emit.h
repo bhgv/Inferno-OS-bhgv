@@ -2522,6 +2522,42 @@ x64arraycreate(X64Buf *b, LeafLayout *a, int clear)
 }
 
 
+/* Tail-enter shared C dispatch without leaving a return address in module code.
+ * rdi retains REG; esi is the opcode and rdx the optional guarded fast entry.
+ * The shared dispatcher returns directly to the original caller, even when the
+ * C handler has freed this stub's mapping. Emission is fixed-size and atomic.
+ */
+static int
+leafbridgeemit(u32int *out, int cap, void *executor, int op, void *fast)
+{
+	X64Buf b;
+	unsigned long long entry, native;
+	int i, n;
+
+	entry = (unsigned long long)executor;
+	native = (unsigned long long)fast;
+	if(cap <= 0 || entry == 0 || entry == ~0ULL || native == ~0ULL ||
+	   op <= INOP || op >= MAXDIS || op == IECLR)
+		return 0;
+	b.n = 0;
+	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa); // ENDBR64.
+	x64byte(&b, 0xbe); x64word(&b, op); // mov esi, opcode.
+	x64byte(&b, 0x48); x64byte(&b, 0xba); x64word(&b, native); x64word(&b, native>>32); // mov rdx, fast.
+	x64byte(&b, 0x48); x64byte(&b, 0xb8); x64word(&b, entry); x64word(&b, entry>>32); // mov rax, executor.
+	x64byte(&b, 0xff); x64byte(&b, 0xe0); // jmp rax: no module-owned return address.
+	while(b.n%4 != 0)
+		x64byte(&b, 0x90);
+	n = b.n/4;
+	if(n > cap || b.n > sizeof(b.bytes))
+		return 0;
+	if(out != nil)
+		for(i = 0; i < n; i++)
+			out[i] = (u32int)b.bytes[i*4] | (u32int)b.bytes[i*4+1]<<8 |
+				(u32int)b.bytes[i*4+2]<<16 | (u32int)b.bytes[i*4+3]<<24;
+	return n;
+}
+
+
 /* Emit bounded SysV AMD64 handlers, including aligned runtime calls for list allocation. */
 static int
 leafemit(u32int *out, int cap, LeafLayout *abi, int op)

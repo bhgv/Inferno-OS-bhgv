@@ -1,3 +1,4 @@
+#include "leaf-dispatch-stub.h"
 #ifndef TEST_LEAF_TRANSFER_STUB_H // One preflight identity per unrelated compiler fixture.
 #define TEST_LEAF_TRANSFER_STUB_H // Buffered transfer tests provide the real VM helper.
 #ifndef TEST_LEAF_TRANSFER_RUNTIME // Unrelated tests never execute SEND/RECV native entries.

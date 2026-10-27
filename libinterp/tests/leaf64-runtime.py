@@ -625,13 +625,18 @@ int main(void) {
 #endif
     if(!compile(&m,82,nil))abort();
     dropmodule(&m);
-    /* EXIT still exercises a module containing only unsupported commands. */
-    for(i=0;i<sizeof(instructions)/sizeof(instructions[0]);i++)instructions[i].op=IEXIT;
+    /* Invalid opcode slots never become callable complete JIT entries. */
+    for(i=0;i<sizeof(instructions)/sizeof(instructions[0]);i++)instructions[i].op=INOP;
     if(compile(&m,82,nil) || m.jit)abort();
     /* SEND/RECV publish on AMD64/ARM64; RV64 retains their interpreter paths. */
     for(i=0;i<sizeof(instructions)/sizeof(instructions[0]);i++)instructions[i].op=i&1 ? IRECV : ISEND;
     if(REAL_LEAVES){
         if(!compile(&m,82,nil) || !m.jit || !m.jit->entry[ISEND] || !m.jit->entry[IRECV])abort();
+        dropmodule(&m);
+    }else if(compile(&m,82,nil) || m.jit)abort();
+    for(i=0;i<sizeof(instructions)/sizeof(instructions[0]);i++)instructions[i].op=IEXIT;
+    if(REAL_LEAVES){
+        if(!compile(&m,82,nil) || !m.jit || m.jit->entry[IEXIT] || !m.jit->dispatch[IEXIT])abort();
         dropmodule(&m);
     }else if(compile(&m,82,nil) || m.jit)abort();
     owned=calloc(1,sizeof(*owned));assert(owned);
