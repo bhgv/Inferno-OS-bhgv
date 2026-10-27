@@ -7,13 +7,16 @@ import re
 import shlex
 import subprocess
 import tempfile
-from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_MODE_64
+from unicorn import Uc, UC_ARCH_X86, UC_ARCH_ARM64, UC_MODE_64, UC_HOOK_MEM_WRITE
 import unicorn.x86_const as xr
 import unicorn.arm64_const as ar
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE, CODE, STOP = 0x100000000, 0x10000, 0x11000
 MASK = (1 << 64)-1
+STRIDE = int(os.environ.get("PC_TARGET_STRIDE", "24"))  # Independent instruction extent.
+if not 1 <= STRIDE <= 2047:
+    raise ValueError("PC_TARGET_STRIDE must be 1..2047")
 
 
 # Store oracle cells independently of any emitted instruction encoding.
@@ -35,7 +38,8 @@ with tempfile.TemporaryDirectory(prefix='pc-tables-jit-') as directory:
         model.mkdir()
         isa = re.sub(r'IBY2WD\s*=\s*4', 'IBY2WD = '+str(cells), (ROOT/'include/isa.h').read_text())
         (model/'isa.h').write_text(isa)
-        for arch in ('amd64', 'arm64'):
+        for arch in os.environ.get('PC_TARGET_ARCHES','amd64 arm64').split():
+            require(arch in ('amd64','arm64'),arch)
             source = model/(arch+'.c')
             source.write_text('''#include <stdint.h>
 #include <string.h>
@@ -50,16 +54,17 @@ typedef unsigned char uchar;
 int
 emit(u32int *out, int cap, int wb, int operation, int large)
 {
-    int ops[] = {ICASE, ICASEL, IGOTO, IMOVPC};
+    int ops[] = {ICASE, ICASEL, IGOTO, IMOVPC, ICASEC};
     LeafLayout a = {0};
     a.wordbytes = wb; a.pc = 0; a.s = 8; a.d = 16; a.m = 24;
     a.module = 40; a.linkmodule = large ? 256 : 8;
     a.linkcompiled = large ? 512 : 16;
     a.moduleprog = large ? 256 : 16; a.modulenprog = large ? 512 : 24;
-    a.instbytes = 24;
+    a.stringlen = 12; a.stringmax = 16;
+    a.instbytes = INSTSTRIDE;
     return leafemit(out, cap, &a, ops[operation]);
 }
-'''.replace('HEADER', '"'+arch+'-emit.h"'))
+'''.replace('HEADER', '"'+str((Path(os.environ.get('PC_TARGET_EMITTER_DIR',ROOT/'libinterp'))/(arch+'-emit.h')).resolve())+'"').replace('INSTSTRIDE',str(STRIDE)))
             binary = model/(arch+'.so')
             command = shlex.split(os.environ.get('CC', 'cc'))
             command += shlex.split(os.environ.get('CFLAGS', '-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
@@ -69,14 +74,25 @@ emit(u32int *out, int cap, int wb, int operation, int large)
             machine = Uc(UC_ARCH_X86, UC_MODE_64) if arch == 'amd64' else Uc(UC_ARCH_ARM64, 0)
             machine.mem_map(CODE, 0x2000)
             machine.mem_map(BASE, 0x8000)
+            writes = []
+            machine.hook_add(UC_HOOK_MEM_WRITE, lambda uc, access, address, size, value, context: writes.append((address,size)))
             arg = xr.UC_X86_REG_RDI if arch == 'amd64' else ar.UC_ARM64_REG_X0
             result = xr.UC_X86_REG_RAX if arch == 'amd64' else ar.UC_ARM64_REG_X0
             for wb in (4, 8):
                 for large in (0, 1):
-                    for op in range(4):
-                        buffer = (C.c_uint32*128)()
+                    for op in range(5):
+                        if os.environ.get("PC_TARGET_GUEST_OP") and op!=int(os.environ["PC_TARGET_GUEST_OP"]):continue
+                        buffer = (C.c_uint32*130)(*([0xa5a5a5a5]*130))
                         units = lib.emit(buffer, 128, wb, op, large)
-                        require(units > 0, ('missing native path', arch, cells, wb, large, op))
+                        require(0 < units <= 128, ('missing native path', arch, cells, wb, large, op))
+                        require(lib.emit(None,128,wb,op,large)==units, 'sizing mismatch')
+                        require(list(buffer)[units:]==[0xa5a5a5a5]*(130-units), 'code suffix overwritten')
+                        for capacity in (-1,0,units-1):
+                            canary=(C.c_uint32*130)(*([0xa5a5a5a5]*130))
+                            require(lib.emit(canary,capacity,wb,op,large)==0 and list(canary)==[0xa5a5a5a5]*130,
+                                    ('partial publication',arch,cells,wb,large,op,capacity))
+                        exact=(C.c_uint32*130)(*([0xa5a5a5a5]*130))
+                        require(lib.emit(exact,units,wb,op,large)==units and list(exact)==list(buffer), 'exact capacity')
                         machine.mem_write(CODE, bytes(buffer)[:units*4])
                         machine.ctl_remove_cache(CODE, CODE+0x2000)
                         cases = [(count, value, default, alignment, None)
@@ -90,11 +106,19 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                             'prog-wrap', 'table-nil', 'table-H', 'table-wrap', 'compiled',
                             'count-negative', 'count-huge', 'nprog-negative', 'nprog-zero',
                             'out-nil', 'out-H', 'out-wrap')]
+                        if op==4:
+                            cases=[(0,0,default,alignment,bad) for default in (-1,0,31,32)
+                                   for alignment in (0,1,7) for bad in (None,'prog-nil','prog-H','prog-wrap')]
+                        tails=sorted({0,1,2,STRIDE-1,STRIDE,STRIDE+1,STRIDE+2})
+                        cases += [(1 if op==2 else 0, index if op==3 else 0, index, alignment, 'target-'+str(tail))
+                                  for index in (0,1,7,31) for alignment in (0,1,7) for tail in tails]
+                        if os.environ.get('PC_TARGET_BOUNDARY_ONLY'):
+                            cases=[case for case in cases if case[-1] and case[-1].startswith('target-')]
                         for count, rawvalue, default, alignment, bad in cases:
                             memory = bytearray([0xa5])*0x8000
                             link, module, table = BASE+0x1000, BASE+0x2000, BASE+0x3000+alignment
                             sourceptr, output = BASE+0x5000+alignment, BASE+0x6000+alignment
-                            valuewidth = 8 if op == 1 else wb
+                            valuewidth = 8 if op in (1,4) else wb
                             value = rawvalue & ((1 << (valuewidth*8))-1)
                             if value & (1 << (valuewidth*8-1)):
                                 value -= 1 << (valuewidth*8)
@@ -107,7 +131,7 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                             put(memory, 0x1000+(512 if large else 16), 0, 4)
                             put(memory, 0x2000+(256 if large else 16), BASE+0x7000)
                             put(memory, 0x2000+(512 if large else 24), 32, 4)
-                            put(memory, sourceptr-BASE, value, wb if op != 1 else 8)
+                            put(memory, sourceptr-BASE, MASK if op==4 else value, valuewidth)
                             target = default
                             start = table-BASE
                             if op < 2:
@@ -130,20 +154,30 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                                     put(memory, start+row*cells, default if row == 0 else row+1, 4)
                                 target = default if value == 0 else value+1
                                 valid = 0 <= value < count and 0 <= target < 32
-                            else:
+                            elif op==3:
                                 target = value
                                 valid = 0 <= target < 32
+                            else:
+                                put(memory,start,0,cells);put(memory,start+cells,default,cells)
+                                target=default;valid=0<=target<32
+                            program=BASE+0x7000
                             if bad:
                                 kind, _, issue = bad.partition('-')
                                 poisoned = 0 if issue == 'nil' else MASK if issue == 'H' else MASK-2
-                                if kind == 's':
+                                if kind == 'target':
+                                    tail=int(issue);program=MASK-tail-target*STRIDE
+                                    put(memory,0x2000+(256 if large else 16),program)
+                                    valid=valid and tail>=STRIDE
+                                elif kind == 's':
                                     put(memory, 8, poisoned); valid = False
                                 elif kind == 'link':
                                     put(memory, 40, poisoned); valid = False
                                 elif kind == 'module':
                                     put(memory, 0x1000+(256 if large else 8), poisoned); valid = False
                                 elif kind == 'prog':
-                                    put(memory, 0x2000+(256 if large else 16), poisoned); valid = False
+                                    program=poisoned
+                                    put(memory, 0x2000+(256 if large else 16), program)
+                                    valid=valid and issue=='wrap' and program+target*STRIDE+STRIDE<=MASK
                                 elif kind == 'table' and op != 3:
                                     put(memory, 16, poisoned); valid = False
                                 elif kind == 'compiled' and op != 3:
@@ -157,7 +191,7 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                                     put(memory, 16, poisoned); valid = False
                             expected = bytearray(memory)
                             if valid:
-                                put(expected, output-BASE if op == 3 else 0, BASE+0x7000+target*24)
+                                put(expected, output-BASE if op == 3 else 0, program+target*STRIDE)
                             machine.mem_write(BASE, bytes(memory))
                             machine.reg_write(arg, BASE)
                             if arch == 'amd64':
@@ -174,6 +208,7 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                             for register in preserved:
                                 machine.reg_write(register, 0x13579bdf2468ace0+register)
                             context = (arch, cells, wb, large, op, count, rawvalue, default, alignment, bad)
+                            writes.clear()
                             try:
                                 machine.emu_start(CODE, STOP, count=2000)
                             except Exception as error:
@@ -184,6 +219,7 @@ emit(u32int *out, int cap, int wb, int operation, int large)
                             require(machine.reg_read(sp) == BASE+0x7800+(8 if arch == 'amd64' else 0), ('stack', context))
                             for register in preserved:
                                 require(machine.reg_read(register) == 0x13579bdf2468ace0+register, ('callee register', register, context))
+                            require(valid or not writes, ('write on decline',context,writes))
                             require(machine.reg_read(result) == int(valid), ('status', machine.reg_read(result), context))
                             require(bytes(machine.mem_read(BASE, 0x8000)) == bytes(expected), ('publication', context))
                             if arch == 'amd64':

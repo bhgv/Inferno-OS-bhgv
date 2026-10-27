@@ -55,7 +55,7 @@ OP(jmp)
 }
 
 
-/* Validate a Dis program index before turning it into a code pointer. */
+/* Validate the full Dis instruction span before publishing a program address. */
 OP(movpc)
 {
 	WORD pc;
@@ -75,7 +75,8 @@ OP(movpc)
 	if((uvlong)pc > (uintptr)-1/sizeof(Inst))
 		error(exBounds);
 	offset = (uintptr)pc*sizeof(Inst);
-	if((uintptr)ml->m->prog > (uintptr)-1-offset)
+	if(offset > (uintptr)-1-sizeof(Inst) ||
+	   (uintptr)ml->m->prog > (uintptr)-1-offset-sizeof(Inst))
 		error(exBounds);
 	target = (Inst*)((uintptr)ml->m->prog+offset);
 	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(target))
@@ -2626,7 +2627,7 @@ cnewcmapped(Modlink *module, WORD index, int len)
 }
 
 
-/* Resolve a table target without forming an out-of-range Dis instruction pointer. */
+/* Resolve a table target only when its complete Dis instruction span fits. */
 static Inst*
 casepc(Modlink *ml, int destination)
 {
@@ -2640,7 +2641,8 @@ casepc(Modlink *ml, int destination)
 		error(exBounds);
 	offset = (uintptr)destination*sizeof(Inst);
 	program = (uintptr)ml->m->prog;
-	if(program > (uintptr)-1-offset)
+	if(offset > (uintptr)-1-sizeof(Inst) ||
+	   program > (uintptr)-1-offset-sizeof(Inst))
 		error(exBounds);
 	return (Inst*)(program+offset);
 }
@@ -2820,7 +2822,7 @@ OP(casec)
 }
 
 
-/* Read fixed-width Dis table entries and commit a validated PC without alignment assumptions. */
+/* Read fixed-width table cells and publish only a complete Dis instruction span. */
 OP(igoto)
 {
 	Modlink *ml;
@@ -2859,7 +2861,8 @@ OP(igoto)
 		error(exBounds);
 	offset = (uintptr)destination*sizeof(Inst);
 	program = (uintptr)ml->m->prog;
-	if(program > (uintptr)-1-offset)
+	if(offset > (uintptr)-1-sizeof(Inst) ||
+	   program > (uintptr)-1-offset-sizeof(Inst))
 		error(exBounds);
 	R.PC = (Inst*)(program+offset);
 }

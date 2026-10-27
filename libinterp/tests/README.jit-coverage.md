@@ -1,5 +1,7 @@
 # 64-bit JIT opcode availability checkpoint
 
+Opcode percentages below describe dispatch availability, not completion of the x64/ARM64 ports. The native compiler/loader/frame/GC ABI is still incompatible. Latest complete instruction-span fixes and measured port blockers: [README.pc-target-boundaries.md](README.pc-target-boundaries.md).
+
 Latest packed descriptor/GC and native builtin cleanup checks: [README.gc-packed-maps.md](README.gc-packed-maps.md).
 
 Latest AMD64/ARM64 CALL/MCALL bytecode-span checks and legacy native-target compatibility: [README.call-targets.md](README.call-targets.md).

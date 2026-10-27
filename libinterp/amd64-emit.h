@@ -452,6 +452,7 @@ x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0xfd); x64caseguard(b, 0x76, reject, &count);
 	x64byte(b, 0x4d); x64byte(b, 0x69); x64byte(b, 0xc9); x64word(b, abi->instbytes);
 	x64byte(b, 0x4c); x64byte(b, 0x01); x64byte(b, 0xc8); x64caseguard(b, 0x73, reject, &count);
+	x64pcspan(b, 0, abi->instbytes);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, abi->pc);
 	if(b->n > sizeof(b->bytes)) return 0;
 	for(i = 0; i < count; i++)
@@ -2821,6 +2822,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xd2); x64guard(&b, 0x75);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xfa); x64byte(&b, 0xff); x64guard(&b, 0x75);
 		x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xd0); x64guard(&b, 0x73);
+		x64pcspan(&b, 0, abi->instbytes);
 		if(p.kind == LeafTableJump){
 			x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0x87); x64word(&b, abi->pc);
 		}else{

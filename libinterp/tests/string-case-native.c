@@ -107,6 +107,8 @@ main(void)
 	link.m = &module;
 	link.prog = code+1;
 	memset(code, 0, sizeof(code));
+	for(row=0; row<nelem(code); row++)
+		code[row].op=IRUNT;
 	code[0].op = ICASEC;
 	if(!compile(&module, nelem(code), nil) || module.jit->entry[ICASEC] == nil)
 		return 5;

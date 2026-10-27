@@ -98,6 +98,8 @@ main(void)
 	memset(code, 0, sizeof(code));
 	memset(&module, 0, sizeof(module));
 	memset(&link, 0, sizeof(link));
+	for(family = 0; family < nelem(code); family++)
+		code[family].op = IRUNT;
 	for(family = 0; family < nelem(opcodes); family++)
 		code[family].op = opcodes[family];
 	module.prog = code;
