@@ -850,6 +850,9 @@ x64smallfield(X64Buf *b, int result, int owner, int offset, int bytes)
 static void
 x64appendowner(X64Buf *b, int owner, int reference, int extent, int fallback)
 {
+	/* Heap-backed strings must be aligned before reference or header loads. */
+	x64byte(b, 0xf6); x64byte(b, 0xc0 | owner); x64byte(b, 7); // test owner low byte,7.
+	x64moduleguard(b, 0x74, fallback);
 	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x80 | owner);
 	x64word(b, -reference-1); // lea r8,[owner-reference-1].
 	x64byte(b, 0x49); x64byte(b, 0x81); x64byte(b, 0xf8);
@@ -1109,6 +1112,8 @@ x64stringstore(X64Buf *b, LeafLayout *a)
 	x64ptr(b, 2, a->d); x64load(b, 2, 8);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0xff); x64moduleguard(b, 0x75, fallback);
+	x64byte(b, 0xf6); x64byte(b, 0xc2); x64byte(b, 7); // test dl,7 before owner reads.
+	x64moduleguard(b, 0x74, fallback);
 	/* rax bounds the backward reference cell and forward header; r8 retains the Rune. */
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x82); x64word(b, -a->heapref-1);
 	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, -a->heapref-a->stringdata-2);

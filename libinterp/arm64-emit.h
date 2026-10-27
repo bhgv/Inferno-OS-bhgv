@@ -669,7 +669,11 @@ a64stringappend(A64Buf *b, LeafLayout *a)
 	a64load(b, 12, 9, 8);
 	a64ptr(b, 9, a->s); a64pcspan(b, 9, 8, fallback);
 	a64load(b, 13, 9, 8);
+	a64put(b, 0xf240081fU | 12<<5); // tst owner,#7 before Heap or String loads.
+	a64defer(b, 0x54000001, fallback);
 	a64appendowner(b, 12, a->heapref, a->stringdata, fallback);
+	a64put(b, 0xf240081fU | 13<<5); // tst owner,#7 before Heap or String loads.
+	a64defer(b, 0x54000001, fallback);
 	a64appendowner(b, 13, a->heapref, a->stringdata, fallback);
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 12<<5 | 14);
 	a64put(b, 0xf10005df); a64defer(b, 0x54000001, fallback);
@@ -875,6 +879,8 @@ a64stringstore(A64Buf *b, LeafLayout *a)
 	a64ptr(b, 11, a->d); a64load(b, 14, 11, 8);
 	a64pcguard(b, 0xb500006e, fallback);
 	a64put(b, 0xb10005df); a64pcguard(b, 0x54000061, fallback);
+	a64put(b, 0xf240081fU | 14<<5); // tst owner,#7 before Heap or String loads.
+	a64defer(b, 0x54000001, fallback);
 	a64appendowner(b, 14, a->heapref, a->stringdata, fallback);
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 14<<5 | 4);
 	a64put(b, 0xf100049f); a64pcguard(b, 0x54000060, fallback);
@@ -1031,6 +1037,8 @@ a64stringslice(A64Buf *b, LeafLayout *a)
 	a64pcguard(b, 0xb500006e, fallback);
 	a64put(b, 0xb10005df); a64pcguard(b, 0x54000061, fallback);
 	/* Bound exactly the metadata read by prefixes, preserving payload-free reuse. */
+	a64put(b, 0xf240081fU | 14<<5); // tst owner,#7 before Heap or String loads.
+	a64defer(b, 0x54000001, fallback);
 	a64appendowner(b, 14, a->heapref,
 		a->stringlen+4 > a->stringmax+4 ? a->stringlen+4 : a->stringmax+4, fallback);
 	a64wordfield(b, 15, 14, a->stringlen, 4);

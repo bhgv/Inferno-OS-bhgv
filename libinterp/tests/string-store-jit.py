@@ -105,7 +105,7 @@ int emit(u32int *out,int cap,int wb,int field,int value){
                                         if alias:src=obj+24+(index if 0<=index<8 else 0)*(4 if wide else 1)
                                         put(image,8,BASE+src);put(image,24,BASE+middle);put(image,16,BASE+dst)
                                         rune=int.from_bytes(image[src:src+wb],'little')&0xffffffff
-                                        valid=owner==BASE+obj and ref==1 and length!=-(1<<31) and abs(length)<=capacity and 0<=index<=abs(length) and index<capacity and (length<0 or rune<128)
+                                        valid=owner==BASE+obj and obj%8==0 and ref==1 and length!=-(1<<31) and abs(length)<=capacity and 0<=index<=abs(length) and index<capacity and (length<0 or rune<128)
                                         expected=bytearray(image);target=obj+24+index*(4 if wide else 1)
                                         if valid:
                                             put(expected,target,rune,4 if wide else 1)

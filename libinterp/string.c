@@ -23,7 +23,8 @@ void cvtup(Rune*, String*);
 OP(indc)
 {
 	WORD index, result;
-	int length;
+	int length, capacity, wide;
+	Rune rune;
 	uvlong bytes;
 	uintptr address;
 	String *string;
@@ -40,27 +41,30 @@ OP(indc)
 		error(exNilref);
 	if((uintptr)string > (uintptr)-1 - offsetof(String, data))
 		error(exHeap);
-	length = string->len;
+	memmove(&length, (uchar*)string+offsetof(String, len), sizeof(length));
+	memmove(&capacity, (uchar*)string+offsetof(String, max), sizeof(capacity));
+	wide = length < 0;
 	if(length == (-0x7fffffff-1))
 		error(exHeap);
 	if(length < 0)
 		length = -length;
-	if(string->max < length)
+	if(capacity < length)
 		error(exHeap);
 	if(index < 0 || index >= length)
 		error(exBounds);
 	/* Check the selected character extent before forming its native address. */
-	bytes = ((uvlong)index+1)*(string->len < 0 ? sizeof(Rune) : 1);
+	bytes = ((uvlong)index+1)*(wide ? sizeof(Rune) : 1);
 	address = (uintptr)string;
 	if(address > (uintptr)-1 - offsetof(String, data))
 		error(exHeap);
 	address += offsetof(String, data);
 	if(bytes > (uintptr)-1-address)
 		error(exHeap);
-	if(string->len < 0)
-		result = (int)string->Srune[index];
-	else
-		result = (uchar)string->Sascii[index];
+	if(wide) {
+		memmove(&rune, (uchar*)address+(ulong)index*sizeof(Rune), sizeof(rune));
+		result = (int)rune;
+	} else
+		result = ((uchar*)address)[index];
 	memmove(R.d, &result, sizeof(result));
 }
 
@@ -91,6 +95,7 @@ OP(insc)
 	if(old == nil)
 		error(exNilref);
 	if(old != H && ((uintptr)old <= sizeof(Heap) ||
+	   (((uintptr)old-sizeof(Heap)) & (sizeof(void*)-1)) != 0 ||
 	   (uintptr)old > (uintptr)-1 - offsetof(String, data)))
 		error(exHeap);
 	length = old == H ? 0 : old->len;
@@ -171,6 +176,7 @@ slicer(ulong start, ulong v, String *ds)
 	if(ds == nil)
 		error(exNilref);
 	if(ds != H && ((uintptr)ds <= sizeof(Heap) ||
+	   (((uintptr)ds-sizeof(Heap)) & (sizeof(void*)-1)) != 0 ||
 	   (uintptr)ds > (uintptr)-1-(offsetof(String, max)+sizeof(ds->max))))
 		error(exHeap);
 	if(ds != H && ds->len == (-0x7fffffff-1))
@@ -237,6 +243,7 @@ OP(slicec)
 		error(exNilref);
 	if(old != H){
 		if((uintptr)old <= sizeof(Heap) ||
+		   (((uintptr)old-sizeof(Heap)) & (sizeof(void*)-1)) != 0 ||
 		   (uintptr)old > (uintptr)-1-(offsetof(String, max)+sizeof(old->max)))
 			error(exHeap);
 		length = old->len;
@@ -312,6 +319,7 @@ addstring(String *s1, String *s2, int append)
 			continue;
 		address = (uintptr)source;
 		if(address <= sizeof(Heap) ||
+		   ((address-sizeof(Heap)) & (sizeof(void*)-1)) != 0 ||
 		   address > (uintptr)-1-(offsetof(String, max)+sizeof(source->max)))
 			error(exHeap);
 	}
@@ -780,7 +788,7 @@ OP(cvtwc)
 		ds = newstring(24);
 	/* Keep the allocation and cache while publishing byte-oriented capacity. */
 	address = (uintptr)ds;
-	if(address > (uintptr)-1- offsetof(String, data) ||
+	if(address > (uintptr)-1 - offsetof(String, data) ||
 	   address+offsetof(String, data) > (uintptr)-1-(uintptr)length-1)
 		error(exHeap);
 	if(ds == old && old->len < 0)
@@ -841,7 +849,7 @@ OP(cvtlc)
 		ds = newstring(24);
 	/* Keep the allocation and cache while publishing byte-oriented capacity. */
 	address = (uintptr)ds;
-	if(address > (uintptr)-1- offsetof(String, data) ||
+	if(address > (uintptr)-1 - offsetof(String, data) ||
 	   address+offsetof(String, data) > (uintptr)-1-(uintptr)length-1)
 		error(exHeap);
 	if(ds == old && old->len < 0)
@@ -917,7 +925,7 @@ OP(cvtfc)
 		length = sprint(digits, "%g", value);
 	}
 	address = (uintptr)ds;
-	if(address > (uintptr)-1- offsetof(String, data) ||
+	if(address > (uintptr)-1 - offsetof(String, data) ||
 	   address+offsetof(String, data) > (uintptr)-1-(uintptr)length-1)
 		error(exHeap);
 	if(ds == old && old->len < 0)
@@ -1278,20 +1286,45 @@ ne:	if(c1 < c2)
 	return 1;
 }
 
-/* Duplicate before publication, including an empty H owner and unaligned slots. */
+
+/* Validate split ownership and source geometry before allocation or publication. */
 String*
 splitc(String **s, int expand)
 {
 	String *ss, *ns;
+	uintptr address;
+	uvlong bytes;
+	int length, capacity;
+	ulong references;
 
+	/* The caller cell can be packed, but must contain a complete native owner. */
+	if(s == nil || s == H || (uintptr)s > (uintptr)-1-sizeof(ss))
+		error(exHeap);
 	memmove(&ss, s, sizeof(ss));
 	if(ss == nil)
 		error(exNilref);
-	if(expand && ss != H && ss->len > 0) {
-		ns = newrunes(ss->len);
-		cvtup(ns->Srune, ss);
+	length = 0;
+	if(ss != H) {
+		address = (uintptr)ss;
+		if(address <= sizeof(Heap) ||
+		   ((address-sizeof(Heap)) & (sizeof(void*)-1)) != 0 ||
+		   address > (uintptr)-1-(offsetof(String, max)+sizeof(capacity)))
+			error(exHeap);
+		memmove(&length, (uchar*)ss+offsetof(String, len), sizeof(length));
+		memmove(&capacity, (uchar*)ss+offsetof(String, max), sizeof(capacity));
+		memmove(&references, (uchar*)ss-sizeof(Heap)+offsetof(Heap, ref), sizeof(references));
+		if(length == (-0x7fffffff-1) || references == 0 ||
+		   capacity < (length < 0 ? -length : length))
+			error(exHeap);
+		bytes = (uvlong)(length < 0 ? -length : length)*(length < 0 ? sizeof(Rune) : 1);
+		if(address > (uintptr)-1 - offsetof(String, data) ||
+		   bytes > (uintptr)-1-(address+offsetof(String, data)))
+			error(exHeap);
 	}
-	else
+	if(expand && length > 0) {
+		ns = newrunes(length);
+		cvtup(ns->Srune, ss);
+	} else
 		ns = stringdup(ss);
 
 	memmove(s, &ns, sizeof(ns));

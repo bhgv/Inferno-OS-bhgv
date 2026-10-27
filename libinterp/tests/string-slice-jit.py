@@ -129,7 +129,7 @@ int emit(u32int *out, int cap, int wb, int field, int value)
                                 for i in range(512 if profile >= 27 else 160):put(image, obj+24+i*stride, 0x80001001+i*0x10101 if wide else i*73+1, stride)
                                 put(image, src, start, wb); put(image, mid, end, wb); put(image, dst, owner)
                                 put(image, 8, BASE+src); put(image, 24, BASE+mid); put(image, 16, BASE+dst)
-                                valid = owner not in (0, MASK) and ref == 1 and length >= 0 and capacity >= length and 0 <= start < end <= length and (start == 0 or end-start <= 256)
+                                valid = obj%8 == 0 and owner not in (0, MASK) and ref == 1 and length >= 0 and capacity >= length and 0 <= start < end <= length and (start == 0 or end-start <= 256)
                                 expected = bytearray(image)
                                 expectedwrites = []
                                 if valid:

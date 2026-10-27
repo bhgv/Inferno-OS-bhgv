@@ -154,7 +154,7 @@ int emit(u32int *out, int cap, int wb, int field, int value)
                                 put(image, middle, leftowner); put(image, src, rightowner)
                                 put(image, destination, leftowner)
                                 put(image, 8, BASE+src); put(image, 16, BASE+destination); put(image, 24, BASE+middle)
-                                good = (destination == middle and leftowner == BASE+left and rightowner == BASE+right
+                                good = (left%8 == 0 and right%8 == 0 and destination == middle and leftowner == BASE+left and rightowner == BASE+right
                                         and ref == 1 and profile != 21 and (l<0)==(r<0) and 0 <= abs(r) <= 256
                                         and abs(r) <= (capacity if right == left else rightcap) and abs(l)+abs(r) <= capacity)
                                 stride = 4 if l<0 else 1

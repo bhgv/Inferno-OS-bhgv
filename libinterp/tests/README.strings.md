@@ -90,3 +90,7 @@ Packed borrowed headers and Rune payloads are additionally checked by
 [string-view-native.py](README.string-view-native.md). It covers byte-safe UTF
 cache publication and comparison, failed cache replacement, and aligned Heap
 ownership for duplicates with active release-mode predicates in both models.
+
+[String owner preflight](README.string-owner-preflight.md) extends this to
+INSC, SLICEC, slicing, concatenation and split/expansion, with matching AMD64/ARM64
+guards and packed read-only INDC support.
