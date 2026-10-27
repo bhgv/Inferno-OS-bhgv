@@ -46,3 +46,8 @@ Both new drivers are included in `slice-tokenize-suite.py`. Physical ARM64 and a
 complete Inferno boot remain separate acceptance checks. Opcode availability
 remains 164 native paths and nine interpreter-only commands out of 173 active
 commands on both AMD64 and ARM64; these paths remain guarded/partial.
+
+The overlap-copy read oracle admits both byte tails and complete eight-byte
+blocks wholly inside the requested source span. Optimized copy kernels must
+not be rejected merely for using qword loads; crossing either source boundary
+remains forbidden, and refused copies still admit no payload reads or writes.

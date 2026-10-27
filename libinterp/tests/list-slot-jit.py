@@ -227,6 +227,10 @@ int emit(u32int *out, int cap, int wb, int op)
                                     put(image, 8, BASE+start)
                                 if count <= 256:
                                     allowed.update((BASE+start+i, 1) for i in range(count))
+                                    # Production copy kernels also read full qword blocks.
+                                    # Permit only loads entirely within this source span;
+                                    # short tails and fallback cases remain byte-bounded.
+                                    allowed.update((BASE+start+i, 8) for i in range(max(0, count-7)))
                                 # Distinct bytes make both overlap directions observable.
                                 for i in range(512):
                                     image[0x700+i] = i*37 & 255
