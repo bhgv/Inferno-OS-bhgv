@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/control-transfer-native.py',
     'limbo/tests/optimizer-ranges.py',
     'libinterp/tests/jit-dispatch-native.py',
     'libinterp/tests/arm64-dispatch-compiler.py',
@@ -156,6 +157,7 @@ CORE = [
     'limbo/tests/case-max.py',
 ]
 JIT = [
+    'libinterp/tests/control-transfer-jit.py',
     'libinterp/tests/jit-dispatch-jit.py',
     'libinterp/tests/buffered-transfer-jit.py',
     'libinterp/tests/mapped-preflight-jit.py',

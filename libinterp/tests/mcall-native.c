@@ -9,6 +9,7 @@ Type Tstring = {1}, Tarray = {1};
 REG R;
 int mutator,nprop;
 char exHeap[]="heap",exModule[]="module",exNilref[]="nil";
+char exBounds[]="bounds"; // Malformed decoded operand span.
 static jmp_buf boundary;
 static char *raised;
 static Prog running;

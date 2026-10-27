@@ -1122,7 +1122,7 @@ a64frame(A64Buf *b, LeafLayout *a, int imported)
 static int
 a64return(A64Buf *b, LeafLayout *a)
 {
-	int offsets[11], i, j, fallback, ordinary, done;
+	int offsets[11], i, j, fallback, ordinary, done, extent, origin, early;
 
 	offsets[0]=a->fp; offsets[1]=a->sp; offsets[2]=a->pc;
 	offsets[3]=a->frametype; offsets[4]=a->framemr;
@@ -1138,21 +1138,41 @@ a64return(A64Buf *b, LeafLayout *a)
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	/* x9 keeps the frame, x13 the caller FP, x14 the PC and x15 the module. */
-	a64ptr(b, 9, a->fp);
+	origin=a->heapref;
+	if(a->heapcolor>origin && a->heapcolor<=255)origin=a->heapcolor;
+	if(a->heaptype>origin && a->heaptype<=255)origin=a->heaptype;
+	extent=a->frametype;
+	if(a->framemr>extent)extent=a->framemr;
+	if(a->framefp>extent)extent=a->framefp;
+	if(a->framelr>extent)extent=a->framelr;
+	a64ptr(b, 9, a->fp); a64pcspan(b, 9, extent+8, fallback);
 	a64put(b, 0x91000522); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
-	a64field(b, 12, 9, a->frametype, 8);
-	a64put(b, 0x91000582); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
-	a64field(b, 2, 12, a->typenp, 4); a64defer(b, 0x35000002, fallback);
 	a64field(b, 13, 9, a->framefp, 8);
 	a64put(b, 0x910005a2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
 	a64field(b, 14, 9, a->framelr, 8);
 	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	/* Root and invalid-link failures must not read an otherwise unused Type. */
+	a64field(b, 15, 9, a->framemr, 8);
+	a64put(b, 0xb10005ff); a64defer(b, 0x54000000, fallback); // H saved module.
+	early=b->n; a64put(b, 0xb400000f);
+	a64ptr(b, 10, a->module);
+	a64put(b, 0x91000542); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	if(b->n>LeafMax)return 0;
+	b->code[early] |= (b->n-early)<<5;
+	a64field(b, 12, 9, a->frametype, 8);
+	a64put(b, 0x91000582); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	a64pcspan(b, 12, a->typenp+4, fallback);
+	a64field(b, 2, 12, a->typenp, 4); a64defer(b, 0x35000002, fallback);
 	/* Ordinary returns never dereference the unused current-module owner. */
 	a64field(b, 15, 9, a->framemr, 8);
 	ordinary=b->n; a64put(b, 0xb400000f);
 	a64put(b, 0x910005e2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
 	a64ptr(b, 10, a->module);
 	a64put(b, 0x91000542); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	a64pcspan(b, 15, a->linkmp+8>a->linkcompiled+4 ? a->linkmp+8 : a->linkcompiled+4, fallback);
+	a64pcspan(b, 10, a->linkcompiled+4, fallback);
+	a64put(b, 0xf100015fU | (u32int)origin<<10); // cmp x10,heapref.
+	a64defer(b, 0x54000009, fallback);
 	a64field(b, 2, 10, a->linkcompiled, 4); a64field(b, 3, 15, a->linkcompiled, 4);
 	a64put(b, 0x6b03005f); a64defer(b, 0x54000001, fallback);
 	/* x10/x11 retain the release target/count; x1 captures the caller MP. */
@@ -1180,7 +1200,7 @@ a64return(A64Buf *b, LeafLayout *a)
 static int
 a64modulecall(A64Buf *b, LeafLayout *a)
 {
-	int offsets[11], i, fallback;
+	int offsets[11], i, fallback, extent, origin;
 
 	offsets[0]=a->module; offsets[1]=a->fp; offsets[2]=a->regmp; offsets[3]=a->linkprog;
 	offsets[4]=a->linkmp; offsets[5]=a->linklinks; offsets[6]=a->framelr;
@@ -1192,31 +1212,47 @@ a64modulecall(A64Buf *b, LeafLayout *a)
 	   a->framelr==a->framefp || a->framelr==a->framemr || a->framefp==a->framemr)return 0;
 	a64put(b, 0x14000003);
 	fallback=b->n; a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
-	a64ptr(b, 10, a->d); a64load(b, 9, 10, 8);
+	origin=a->heapref;
+	if(a->heapcolor>origin && a->heapcolor<=255)origin=a->heapcolor;
+	if(a->heaptype>origin && a->heaptype<=255)origin=a->heaptype;
+	extent=a->linkprog+8;
+	if(a->linkcompiled+4>extent)extent=a->linkcompiled+4;
+	if(a->linknlinks+4>extent)extent=a->linknlinks+4;
+	if(a->linkmp+8>extent)extent=a->linkmp+8;
+	if(a->linklinks>extent)extent=a->linklinks;
+	a64ptr(b, 10, a->d); a64pcspan(b, 10, 8, fallback); a64load(b, 9, 10, 8);
+	a64pcspan(b, 9, extent, fallback);
+	a64put(b, 0xf100013fU | (u32int)origin<<10); // cmp x9,heapref.
+	a64defer(b, 0x54000009, fallback);
 	a64put(b, 0x91000523); a64put(b, 0xf100047f); a64defer(b, 0x54000009, fallback);
-	a64ptr(b, 4, a->module);
-	a64put(b, 0x91000483); a64put(b, 0xf100047f); a64defer(b, 0x54000009, fallback);
-	a64field(b, 13, 9, a->linkcompiled, 4); a64field(b, 14, 4, a->linkcompiled, 4);
+	a64ptr(b, 5, a->module); a64pcspan(b, 5, a->linkcompiled+4, fallback);
+	a64field(b, 13, 9, a->linkcompiled, 4); a64field(b, 14, 5, a->linkcompiled, 4);
 	a64put(b, 0x6b0e01bf); a64defer(b, 0x54000001, fallback);
 	a64field(b, 12, 9, a->linkprog, 8);
 	a64put(b, 0x91000583); a64put(b, 0xf100047f); a64defer(b, 0x54000009, fallback);
-	a64ptr(b, 10, a->m); a64load(b, 12, 10, a->wordbytes);
+	a64ptr(b, 10, a->m); a64pcspan(b, 10, a->wordbytes, fallback); a64load(b, 12, 10, a->wordbytes);
 	if(a->wordbytes==4)a64put(b, 0x93407d8c);
 	a64wordfield(b, 13, 9, a->linknlinks, 4);
 	a64put(b, 0xf10001bf); a64defer(b, 0x5400000b, fallback);
 	a64put(b, 0xeb0d019f); a64defer(b, 0x54000002, fallback);
-	a64put(b, 0x8b0c1123); // x3 is the full-width import-entry base.
+	a64put(b, 0xab0c1123); // adds x3,x9,x12,lsl #4 detects entry-base wrap.
+	a64defer(b, 0x54000002, fallback);
+	a64pcspan(b, 3, a->linklinks+a->modlpc+8, fallback);
 	a64field(b, 11, 3, a->linklinks+a->modlpc, 8);
 	a64put(b, 0x91000563); a64put(b, 0xf100047f); a64defer(b, 0x54000009, fallback);
-	a64ptr(b, 14, a->s); a64load(b, 10, 14, 8);
+	a64ptr(b, 14, a->s); a64pcspan(b, 14, 8, fallback); a64load(b, 10, 14, 8);
 	a64put(b, 0x91000543); a64put(b, 0xf100047f); a64defer(b, 0x54000009, fallback);
+	extent=a->framelr;
+	if(a->framefp>extent)extent=a->framefp;
+	if(a->framemr>extent)extent=a->framemr;
+	a64pcspan(b, 10, extent+8, fallback);
 	a64put(b, 0xf8400000U | ((u32int)-a->heapref&511)<<12 | 9<<5 | 13);
 	a64put(b, 0x910005ad); a64put(b, 0xf10005bf); a64defer(b, 0x54000009, fallback);
 	a64ptr(b, 14, a->pc); a64ptr(b, 15, a->fp);
 	a64field(b, 2, 9, a->linkmp, 8);
 	a64put(b, 0xf9000000U | (u32int)(a->framelr/8)<<10 | 10<<5 | 14);
 	a64put(b, 0xf9000000U | (u32int)(a->framefp/8)<<10 | 10<<5 | 15);
-	a64put(b, 0xf9000000U | (u32int)(a->framemr/8)<<10 | 10<<5 | 4);
+	a64put(b, 0xf9000000U | (u32int)(a->framemr/8)<<10 | 10<<5 | 5);
 	a64put(b, 0xf9000000U | (u32int)(a->fp/8)<<10 | 10);
 	a64put(b, 0xf9000000U | (u32int)(a->module/8)<<10 | 9);
 	a64put(b, 0xf8000000U | ((u32int)-a->heapref&511)<<12 | 9<<5 | 13);
@@ -2377,9 +2413,10 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		   abi->framelr < 0 || abi->framelr > 2047 || abi->framelr%8 ||
 		   abi->framefp < 0 || abi->framefp > 2047 || abi->framefp%8 ||
 		   abi->framelr == abi->framefp) return 0;
-		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8); a64guard(&b, 0xb500006c);
+		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, 8, -1); a64load(&b, 12, 9, 8); a64guard(&b, 0xb500006c);
 		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
-		a64ptr(&b, 9, abi->d); a64load(&b, 13, 9, 8);
+		a64pcspan(&b, 12, (abi->framelr>abi->framefp ? abi->framelr : abi->framefp)+8, -1);
+		a64ptr(&b, 9, abi->d); a64pcspan(&b, 9, 8, -1); a64load(&b, 13, 9, 8);
 		a64ptr(&b, 14, abi->pc); a64ptr(&b, 15, abi->fp);
 		a64put(&b, 0xf9000000U | (abi->framelr/8)<<10 | 12<<5 | 14);
 		a64put(&b, 0xf9000000U | (abi->framefp/8)<<10 | 12<<5 | 15);

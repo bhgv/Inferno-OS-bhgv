@@ -2067,35 +2067,54 @@ OP(mnewz)
 }
 
 
-/* Resolve imports or named exports without narrowing the Limbo link index. */
+/* Resolve bounded imports and byte-copied named exports without narrowing indices. */
 static int
 moduleentry(Modlink *ml, WORD index, Modl *entry)
 {
-	Link *l;
+	Module *module;
+	Link link;
+	Link *exports;
+	uintptr address, offset;
+	int count;
 
-	if(ml == nil || ml == H || ml->nlinks < 0 ||
-	   (ml->nlinks != 0 && ml->links == nil))
+	address = (uintptr)ml;
+	if(ml == nil || ml == H || address <= sizeof(Heap) || address > (uintptr)-1-O(Modlink, links))
+		return 0;
+	memmove(&count, (uchar*)ml+O(Modlink, nlinks), sizeof(count));
+	if(count < 0)
 		return 0;
 	if(index >= 0){
-		if(index >= ml->nlinks)
+		if(index >= count || (uvlong)index > ((uintptr)-1-O(Modlink, links)-sizeof(*entry))/sizeof(*entry))
 			return 0;
-		*entry = ml->links[index];
+		offset = O(Modlink, links)+(uintptr)index*sizeof(*entry);
+		if(address > (uintptr)-1-offset-sizeof(*entry))
+			return 0;
+		memmove(entry, (uchar*)ml+offset, sizeof(*entry));
 		return 1;
 	}
-	if(ml->m == nil || ml->m == H)
+	memmove(&module, (uchar*)ml+O(Modlink, m), sizeof(module));
+	if(module == nil || module == H || (uintptr)module > (uintptr)-1-sizeof(*module))
 		return 0;
-	if(ml->m->ext == H)
+	memmove(&exports, (uchar*)module+O(Module, ext), sizeof(exports));
+	if(exports == nil || exports == H)
 		return 0;
-	if(ml->m->ext != nil)
-		for(l = ml->m->ext; l->name != nil; l++, index++)
-			if(index == -1){
-				entry->u = l->u;
-				entry->frame = l->frame;
-				return 1;
-			}
+	address = (uintptr)exports;
+	for(;;){
+		if(address > (uintptr)-1-sizeof(link))
+			return 0;
+		memmove(&link, (void*)address, sizeof(link));
+		if(link.name == nil)
+			return 0;
+		if(index == -1){
+			entry->u = link.u;
+			entry->frame = link.frame;
+			return 1;
+		}
+		index++;
+		address += sizeof(link);
+	}
 	return 0;
 }
-
 
 /* Compare remaining stack bytes before forming a prospective frame pointer. */
 static int
@@ -2773,26 +2792,36 @@ OP(igoto)
 		error(exBounds);
 	R.PC = (Inst*)(program+offset);
 }
-/* Capture both operands before frame-link stores can overwrite an aliased target. */
+
+
+/* Validate and capture both operands before frame-link stores can overwrite an alias. */
 OP(call)
 {
 	Frame *f;
 	Inst *target;
 
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(f))
+		error(exBounds);
 	memmove(&f, R.s, sizeof(f));
 	if(f == nil || f == H)
 		error(exNilref);
+	if((uintptr)f > (uintptr)-1-(O(Frame, fp)+sizeof(f->fp)))
+		error(exHeap);
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(target))
+		error(exBounds);
 	memmove(&target, R.d, sizeof(target));
 	memmove((uchar*)f+offsetof(Frame, lr), &R.PC, sizeof(f->lr));
 	memmove((uchar*)f+offsetof(Frame, fp), &R.FP, sizeof(f->fp));
 	R.FP = (uchar*)f;
 	R.PC = target;
 }
+
 typedef struct SpawnProg SpawnProg;
+
 struct SpawnProg {
-	Modlink *module;
-	Inst *pc;
-	Prog initial;
+	Modlink *module; // Borrowed child module retained by scheduler publication.
+	Inst *pc; // Original Dis entry captured before child-stack allocation.
+	Prog initial; // Private child registers until all allocation succeeds.
 };
 
 /* Build the child's stack before newprog makes it visible to the scheduler. */
@@ -2865,10 +2894,16 @@ OP(ret)
 	Frame *f, links;
 	Modlink *m;
 	Type *type;
+	uchar *mp;
+	uintptr extent;
+	ulong references;
+	int pointers, currentmode, previousmode;
 
 	if(R.FP == nil || R.FP == H)
 		error(exNilref);
 	f = (Frame*)R.FP;
+	if((uintptr)f > (uintptr)-1-sizeof(*f))
+		error(exHeap);
 	memmove(&links, f, sizeof(links));
 	if(links.fp == nil)
 		error("");
@@ -2878,33 +2913,55 @@ OP(ret)
 	if(m == H || (m != nil && (R.M == nil || R.M == H)))
 		error(exModule);
 	type = links.t;
-	if(type == nil)
-		memmove(&type, (uchar*)SEXTYPE(f)+O(Stkext, reg.TR), sizeof(type));
-	if(type == nil || type == H || type->np < 0)
+	if(type == nil){
+		if((uintptr)f < OA(Stkext, reg.tos.fu))
+			error(exHeap);
+		extent = (uintptr)f-OA(Stkext, reg.tos.fu);
+		if(extent > (uintptr)-1-(O(Stkext, reg.TR)+sizeof(type)))
+			error(exHeap);
+		memmove(&type, (void*)(extent+O(Stkext, reg.TR)), sizeof(type));
+	}
+	if(type == nil || type == H || (uintptr)type > (uintptr)-1-(O(Type, np)+sizeof(pointers)))
+		error(exHeap);
+	memmove(&pointers, (uchar*)type+O(Type, np), sizeof(pointers));
+	if(pointers < 0)
 		error(exHeap);
 	/* A self-module return still owns both REG.M and the saved Frame.mr. */
-	if(m != nil && (D2H(R.M)->ref == 0 ||
-	   (m == R.M && D2H(R.M)->ref == 1)))
-		error(exHeap);
+	currentmode = previousmode = 0;
+	mp = nil;
+	if(m != nil){
+		if((uintptr)m > (uintptr)-1-(O(Modlink, compiled)+sizeof(previousmode)) ||
+		   (uintptr)R.M <= sizeof(Heap) ||
+		   (uintptr)R.M > (uintptr)-1-(O(Modlink, compiled)+sizeof(currentmode)))
+			error(exModule);
+		memmove(&references, (uchar*)D2H(R.M)+O(Heap, ref), sizeof(references));
+		if(references == 0 || (m == R.M && references == 1))
+			error(exHeap);
+		memmove(&currentmode, (uchar*)R.M+O(Modlink, compiled), sizeof(currentmode));
+		memmove(&previousmode, (uchar*)m+O(Modlink, compiled), sizeof(previousmode));
+		memmove(&mp, (uchar*)m+O(Modlink, MP), sizeof(mp));
+	}
 	R.FP = links.fp;
 	R.SP = (uchar*)f;
 	R.PC = links.lr;
 
 	if(links.t == nil)
 		unextend(f);
-	else if (links.t->np)
+	else if(pointers)
 		freeptrs(f, links.t);
 
 	if(m != nil) {
-		if(R.M->compiled != m->compiled) {
+		if(currentmode != previousmode) {
 			R.IC = 1;
 			R.t = 1;
 		}
 		destroy(R.M);
 		R.M = m;
-		R.MP = m->MP;
+		R.MP = mp;
 	}
 }
+
+
 /* Resolve a full-width import index without stepping beyond the table sentinel. */
 static Import*
 moduleimports(Module *m, WORD index)
@@ -2984,38 +3041,59 @@ OP(mcall)
 	Heap *h;
 	Prog *p;
 	Frame *f, links;
-	Modlink *caller;
 	Modl entry;
 	Modlink *ml;
+	Inst *program;
+	uchar *mp;
+	ulong references;
+	int callermode, calleemode;
 
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(ml))
+		error(exBounds);
 	memmove(&ml, R.d, sizeof(ml));
 	if(ml == nil || ml == H || R.M == nil || R.M == H)
 		error(exModule);
+	if((uintptr)ml <= sizeof(Heap) || (uintptr)ml > (uintptr)-1-O(Modlink, links) ||
+	   (uintptr)R.M > (uintptr)-1-(O(Modlink, compiled)+sizeof(R.M->compiled)))
+		error(exModule);
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(index))
+		error(exBounds);
 	memmove(&index, R.m, sizeof(index));
 	if(!moduleentry(ml, index, &entry))
 		error("invalid mcall");
 	h = D2H(ml);
-	if(h->ref == 0 || h->ref == (ulong)-1)
+	memmove(&references, (uchar*)h+O(Heap, ref), sizeof(references));
+	if(references == 0 || references == (ulong)-1)
 		error(exHeap);
-	if(ml->prog == H ||
-	   (ml->prog != nil && (entry.u.pc == nil || entry.u.pc == H)) ||
-	   (ml->prog == nil && (entry.u.runt == nil || entry.u.runt == (void(*)(void*))H)))
+	memmove(&program, (uchar*)ml+O(Modlink, prog), sizeof(program));
+	memmove(&callermode, (uchar*)R.M+O(Modlink, compiled), sizeof(callermode));
+	memmove(&calleemode, (uchar*)ml+O(Modlink, compiled), sizeof(calleemode));
+	memmove(&mp, (uchar*)ml+O(Modlink, MP), sizeof(mp));
+	if(program == H ||
+	   (program != nil && (entry.u.pc == nil || entry.u.pc == H)) ||
+	   (program == nil && (entry.u.runt == nil || entry.u.runt == (void(*)(void*))H)))
 		error(exModule);
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(f))
+		error(exBounds);
 	memmove(&f, R.s, sizeof(f));
 	if(f == nil || f == H)
 		error(exNilref);
+	if((uintptr)f > (uintptr)-1-(program == nil ? sizeof(*f) : O(Frame, mr)+sizeof(f->mr)))
+		error(exHeap);
 	memmove((uchar*)f+offsetof(Frame, lr), &R.PC, sizeof(f->lr));
 	memmove((uchar*)f+offsetof(Frame, fp), &R.FP, sizeof(f->fp));
 	memmove((uchar*)f+offsetof(Frame, mr), &R.M, sizeof(f->mr));
 
-	caller = R.M;
 	R.FP = (uchar*)f;
 	R.M = ml;
-	h->ref++;
+	references++;
+	memmove((uchar*)h+O(Heap, ref), &references, sizeof(references));
 
-	if(ml->prog == nil) {
+	if(program == nil) {
 		entry.u.runt(f);
-		h->ref--;
+		memmove(&references, (uchar*)h+O(Heap, ref), sizeof(references));
+		references--;
+		memmove((uchar*)h+O(Heap, ref), &references, sizeof(references));
 		memmove(&links, f, sizeof(links));
 		R.M = links.mr;
 		R.SP = R.FP;
@@ -3030,11 +3108,11 @@ OP(mcall)
 		R.t = 0;
 		return;
 	}
-	R.MP = R.M->MP;
+	R.MP = mp;
 	R.PC = entry.u.pc;
 	R.t = 1;
 
-	if(caller->compiled != R.M->compiled)
+	if(callermode != calleemode)
 		R.IC = 1;
 }
 

@@ -1455,7 +1455,7 @@ x64modulefield(X64Buf *b, int result, int owner, int offset, int bytes)
 static int
 x64return(X64Buf *b, LeafLayout *a)
 {
-	int offsets[11], i, j, fallback, ordinary, done;
+	int offsets[11], i, j, fallback, ordinary, done, extent, origin, early;
 
 	offsets[0]=a->fp; offsets[1]=a->sp; offsets[2]=a->pc;
 	offsets[3]=a->frametype; offsets[4]=a->framemr;
@@ -1471,29 +1471,53 @@ x64return(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
 	/* r8 keeps the frame, r9 the caller FP, r10 the PC and r11 the saved module. */
+	origin=a->heapref;
+	if(a->heapcolor>origin && a->heapcolor<=255)origin=a->heapcolor;
+	if(a->heaptype>origin && a->heaptype<=255)origin=a->heaptype;
+	extent=a->frametype;
+	if(a->framemr>extent)extent=a->framemr;
+	if(a->framefp>extent)extent=a->framefp;
+	if(a->framelr>extent)extent=a->framelr;
 	x64modulefield(b, 8, 7, a->fp, 8);
+	x64pcspan(b, 8, extent+8);
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
-	x64modulefield(b, 0, 8, a->frametype, 8);
-	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
-	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
-	x64modulefield(b, 1, 0, a->typenp, 4);
-	x64byte(b, 0x85); x64byte(b, 0xc9); x64moduleguard(b, 0x74, fallback);
 	x64modulefield(b, 9, 8, a->framefp, 8);
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x51); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
 	x64modulefield(b, 10, 8, a->framelr, 8);
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x52); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	/* Preserve C root/invalid-link precedence before touching a descriptor. */
+	x64modulefield(b, 11, 8, a->framemr, 8);
+	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xfb); x64byte(b, 0xff);
+	x64moduleguard(b, 0x75, fallback);
+	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xdb);
+	x64byte(b, 0x0f); x64byte(b, 0x84); early=b->n; x64word(b, 0);
+	x64modulefield(b, 6, 7, a->module, 8);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x56); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1);
+	x64moduleguard(b, 0x77, fallback);
+	if(!x64casepatch(b, early, b->n))return 0;
+	x64modulefield(b, 0, 8, a->frametype, 8);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64pcspan(b, 0, a->typenp+4);
+	x64modulefield(b, 1, 0, a->typenp, 4);
+	x64byte(b, 0x85); x64byte(b, 0xc9); x64moduleguard(b, 0x74, fallback);
 	/* A nil saved module skips every current-module and heap-header read. */
 	x64modulefield(b, 11, 8, a->framemr, 8);
 	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xdb);
-	x64byte(b, 0x74); ordinary=b->n; x64byte(b, 0);
+	x64byte(b, 0x0f); x64byte(b, 0x84); ordinary=b->n; x64word(b, 0);
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x53); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
 	x64modulefield(b, 0, 7, a->module, 8);
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64pcspan(b, 11, a->linkmp+8>a->linkcompiled+4 ? a->linkmp+8 : a->linkcompiled+4);
+	x64pcspan(b, 0, a->linkcompiled+4);
+	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, origin);
+	x64moduleguard(b, 0x77, fallback);
 	x64modulefield(b, 1, 0, a->linkcompiled, 4);
 	x64modulefield(b, 2, 11, a->linkcompiled, 4);
 	x64byte(b, 0x39); x64byte(b, 0xd1); x64moduleguard(b, 0x74, fallback);
@@ -1502,8 +1526,7 @@ x64return(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc9);
 	x64modulefield(b, 6, 11, a->linkmp, 8);
-	if(b->n>sizeof(b->bytes) || b->n-ordinary-1>127)return 0;
-	b->bytes[ordinary]=b->n-ordinary-1;
+	if(b->n>sizeof(b->bytes) || !x64casepatch(b, ordinary, b->n))return 0;
 	/* Capture all links and MP before restoring REG or releasing the current owner. */
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x8f); x64word(b, a->fp);
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, a->sp);
@@ -1523,7 +1546,7 @@ x64return(X64Buf *b, LeafLayout *a)
 static int
 x64modulecall(X64Buf *b, LeafLayout *a)
 {
-	int offsets[11], i, fallback;
+	int offsets[11], i, fallback, extent, origin;
 
 	offsets[0]=a->module; offsets[1]=a->fp; offsets[2]=a->regmp; offsets[3]=a->linkprog;
 	offsets[4]=a->linkmp; offsets[5]=a->linklinks; offsets[6]=a->framelr;
@@ -1535,31 +1558,51 @@ x64modulecall(X64Buf *b, LeafLayout *a)
 	   a->framelr==a->framefp || a->framelr==a->framemr || a->framefp==a->framemr)return 0;
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
-	x64ptr(b, 0, a->d); x64load(b, 0, 8);
+	origin=a->heapref;
+	if(a->heapcolor>origin && a->heapcolor<=255)origin=a->heapcolor;
+	if(a->heaptype>origin && a->heaptype<=255)origin=a->heaptype;
+	extent=a->linkprog+8;
+	if(a->linkcompiled+4>extent)extent=a->linkcompiled+4;
+	if(a->linknlinks+4>extent)extent=a->linknlinks+4;
+	if(a->linkmp+8>extent)extent=a->linkmp+8;
+	if(a->linklinks>extent)extent=a->linklinks;
+	x64ptr(b, 0, a->d); x64pcspan(b, 8, 8); x64load(b, 0, 8);
+	x64pcspan(b, 0, extent);
+	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, origin);
+	x64moduleguard(b, 0x77, fallback);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc0); // r8 is the module owner.
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x50); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
 	x64byte(b, 0x4c); x64byte(b, 0x8b); x64byte(b, 0x9f); x64word(b, a->module);
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x53); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64pcspan(b, 11, a->linkcompiled+4);
 	x64modulefield(b, 1, 8, a->linkcompiled, 4);
 	x64modulefield(b, 2, 11, a->linkcompiled, 4);
 	x64byte(b, 0x39); x64byte(b, 0xd1); x64moduleguard(b, 0x74, fallback);
 	x64modulefield(b, 1, 0, a->linkprog, 8);
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
-	x64ptr(b, 1, a->m); x64modulefield(b, 6, 9, 0, a->wordbytes);
+	x64ptr(b, 1, a->m); x64pcspan(b, 9, a->wordbytes); x64modulefield(b, 6, 9, 0, a->wordbytes);
 	x64modulefield(b, 1, 0, a->linknlinks, 4);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64moduleguard(b, 0x79, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64moduleguard(b, 0x72, fallback);
 	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe6); x64byte(b, 4);
-	x64byte(b, 0x4c); x64byte(b, 0x8b); x64byte(b, 0x94); x64byte(b, 0x30); x64word(b, a->linklinks+a->modlpc);
+	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc2); // mov r10,rax.
+	x64byte(b, 0x49); x64byte(b, 0x01); x64byte(b, 0xf2); // add r10,rsi detects entry-base wrap.
+	x64moduleguard(b, 0x73, fallback);
+	x64pcspan(b, 10, a->linklinks+a->modlpc+8);
+	x64modulefield(b, 10, 10, a->linklinks+a->modlpc, 8);
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x52); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
-	x64ptr(b, 1, a->s); x64load(b, 1, 8);
+	x64ptr(b, 1, a->s); x64pcspan(b, 9, 8); x64load(b, 1, 8);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc9); // r9 is the captured frame.
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	extent=a->framelr;
+	if(a->framefp>extent)extent=a->framefp;
+	if(a->framemr>extent)extent=a->framemr;
+	x64pcspan(b, 9, extent+8);
 	x64modulefield(b, 1, 0, -a->heapref, 8);
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
@@ -2802,10 +2845,11 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		   abi->framelr < 0 || abi->framelr > 2047 || abi->framelr%8 ||
 		   abi->framefp < 0 || abi->framefp > 2047 || abi->framefp%8 ||
 		   abi->framelr == abi->framefp) return 0;
-		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
+		x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, 8); x64load(&b, 0, 8);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
-		x64ptr(&b, 1, abi->d); x64load(&b, 1, 8);
+		x64pcspan(&b, 0, (abi->framelr > abi->framefp ? abi->framelr : abi->framefp)+8);
+		x64ptr(&b, 1, abi->d); x64pcspan(&b, 9, 8); x64load(&b, 1, 8);
 		x64ptr(&b, 0, abi->pc); x64ptr(&b, 1, abi->fp);
 		x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0x80); x64word(&b, abi->framelr);
 		x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0x88); x64word(&b, abi->framefp);

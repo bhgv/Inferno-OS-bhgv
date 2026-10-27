@@ -79,6 +79,9 @@ DOMAINS = {  # Audited scope descriptions; numeric percentages come only from ac
     'LeafBranch': 'Нативное целое сравнение; target читается только на взятой ветви.',
 }
 SCOPES = {  # Refine shared families when individual command domains differ.
+    'ICALL': 'Частично: проверенные диапазоны слотов и сохраняемых frame links; захват alias-операндов до записи, исходный bytecode PC.',
+    'IMCALL': 'Частично: проверенные слоты, module/frame headers и адрес записи импорта; одинаковые режимы bytecode-вызова; builtins/экспорты/смена режима → C.',
+    'IRET': 'Частично: проверенные frame/Type/module поля и обратный refcount; pointer-free cleanup; карты/освобождение extent/уничтожение модуля → C.',
     'ISEND': 'Частично: буфер имеет место, нет ожидающего получателя, np=0, 0–256 байт; C-preflight, нативные copy/commit; блокировка/rendezvous → C.',
     'IRECV': 'Частично: буфер содержит данные, нет ожидающего отправителя, np=0, 0–256 байт; C-preflight, нативные copy/commit; блокировка/refill → C.',
     'ICASE': 'Частично: проверенная целая CASE-таблица до 4095 строк; bytecode PC и подходящая ширина ячеек.',

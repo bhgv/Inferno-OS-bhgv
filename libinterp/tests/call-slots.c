@@ -18,6 +18,7 @@ REG R;
 /* Supply the live collector color used by guarded owner leaves. */
 int mutator, nprop;
 char exNilref[]="nil";
+char exHeap[]="heap", exBounds[]="bounds"; // Malformed decoded operand span.
 static jmp_buf boundary;
 static int errors;
 /* Retain stack instrumentation without sandbox process inspection. */
