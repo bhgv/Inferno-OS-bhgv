@@ -10,6 +10,8 @@ import sys
 CORE = [
     'libinterp/tests/frame-allocation-native.py',
     'libinterp/tests/control-transfer-native.py',
+    'libinterp/tests/module-transition-native.py',
+    'libinterp/tests/spawn-preflight.py',
     'limbo/tests/optimizer-ranges.py',
     'libinterp/tests/jit-dispatch-native.py',
     'libinterp/tests/arm64-dispatch-compiler.py',

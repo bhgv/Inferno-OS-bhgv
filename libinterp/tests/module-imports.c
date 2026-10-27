@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <setjmp.h>
+#include <stddef.h>
 
 #if WORD_BITS == 32
 typedef int32_t WORD;
@@ -10,6 +11,7 @@ typedef int32_t WORD;
 typedef int64_t WORD;
 #endif
 typedef unsigned char uchar;
+typedef uintptr_t uintptr; // Native address arithmetic in the real loader.
 typedef unsigned long ulong;
 typedef struct Import Import;
 typedef struct Module Module;
@@ -54,6 +56,7 @@ struct SelfData {
 };
 
 static FixtureReg R;
+#define O(t,e) offsetof(t,e) // Actual fixture field offsets for byte-safe metadata reads.
 #define nil NULL // Native null pointer distinct from VM nil.
 #define H ((void*)-1) // VM nil sentinel.
 #define HASLDT 1 // Module has a live import table.
@@ -64,6 +67,7 @@ static FixtureReg R;
 #define S(r) (*(String**)R.r) // Legacy string fixture access.
 static char exModule[] = "module";
 static char exHeap[] = "heap";
+static char exBounds[] = "bounds"; // Invalid decoded cell span.
 static jmp_buf boundary;
 static int failed, conversions, reads, links, destroyed, fail_link, checks;
 static Import *expected;

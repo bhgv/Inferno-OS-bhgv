@@ -2895,6 +2895,7 @@ struct SpawnProg {
 	Prog initial; // Private child registers until all allocation succeeds.
 };
 
+
 /* Build the child's stack before newprog makes it visible to the scheduler. */
 static int
 spawnready(void *arg)
@@ -2912,6 +2913,7 @@ spawnready(void *arg)
 	return 1;
 }
 
+
 /* On failure the source frame still owns its arguments; release only stack storage. */
 static void
 spawnmodule(Modlink *ml, Inst *pc)
@@ -2928,16 +2930,24 @@ spawnmodule(Modlink *ml, Inst *pc)
 	unframe();
 }
 
+
 /* Spawn only after the frame and process can both be constructed. */
 OP(spawn)
 {
 	Inst *target;
 
-	if(R.M == nil || R.M == H)
+	if(R.M == nil || R.M == H || (uintptr)R.M%sizeof(void*) != 0 ||
+	   (uintptr)R.M > (uintptr)-1-sizeof(*R.M))
 		error(exModule);
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(target))
+		error(exBounds);
 	memmove(&target, R.d, sizeof(target));
+	if(target == nil || target == H ||
+	   (!R.M->compiled && (uintptr)target > (uintptr)-1-sizeof(*target)))
+		error(exSpawn);
 	spawnmodule(R.M, target);
 }
+
 
 /* Validate module ownership before reading a child entry or creating its stack. */
 OP(mspawn)
@@ -2946,15 +2956,23 @@ OP(mspawn)
 	Modlink *ml;
 	Modl entry;
 
+	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(ml))
+		error(exBounds);
 	memmove(&ml, R.d, sizeof(ml));
-	if(ml == H || ml == nil || (uintptr)ml > (uintptr)-1-sizeof(*ml) ||
-	   ml->m == H || ml->m == nil || (uintptr)ml->m > (uintptr)-1-sizeof(*ml->m))
+	if(ml == H || ml == nil || (uintptr)ml%sizeof(void*) != 0 ||
+	   (uintptr)ml > (uintptr)-1-sizeof(*ml) || ml->m == H || ml->m == nil ||
+	   (uintptr)ml->m%sizeof(void*) != 0 || (uintptr)ml->m > (uintptr)-1-sizeof(*ml->m))
 		error(exModule);
-	if(ml->prog == nil)
+	if(ml->prog == nil || ml->prog == H)
 		error(exSpawn);
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(index))
+		error(exBounds);
 	memmove(&index, R.m, sizeof(index));
 	if(!moduleentry(ml, index, &entry))
 		error("invalid mspawn");
+	if(entry.u.pc == nil || entry.u.pc == H ||
+	   (!ml->compiled && (uintptr)entry.u.pc > (uintptr)-1-sizeof(*entry.u.pc)))
+		error(exSpawn);
 	spawnmodule(ml, entry.u.pc);
 }
 
@@ -3037,17 +3055,25 @@ OP(ret)
 static Import*
 moduleimports(Module *m, WORD index)
 {
-	Import **table;
+	Import **table, *entry;
 	WORD i;
+	uintptr address;
 
-	if(index < 0 || m->ldt == nil || m->ldt == H)
+	if(m == nil || m == H || (uintptr)m > (uintptr)-1-sizeof(*m) || index < 0)
 		error(exModule);
-	table = m->ldt;
+	memmove(&table, (uchar*)m+O(Module, ldt), sizeof(table));
+	if(table == nil || table == H)
+		error(exModule);
+	address = (uintptr)table;
 	for(i = 0; ; i++){
-		if(table[i] == nil || table[i] == H)
+		if(address > (uintptr)-1-sizeof(entry))
+			error(exModule);
+		memmove(&entry, (void*)address, sizeof(entry));
+		if(entry == nil || entry == H)
 			error(exModule);
 		if(i == index)
-			return table[i];
+			return entry;
+		address += sizeof(entry);
 	}
 }
 
@@ -3058,28 +3084,41 @@ OP(iload)
 	char *n;
 	Import *ldt;
 	Module *m;
-	Modlink *ml, *t;
+	Modlink *ml, *t, *current;
 	uchar *mp;
+	void *destination;
 	String *name;
 	WORD index;
 	Heap *h;
 
-	if(R.M == H || R.M == nil || R.M->m == H || R.M->m == nil)
+	current = R.M;
+	if(current == nil || current == H || (uintptr)current > (uintptr)-1-sizeof(*current))
 		error(exModule);
-	m = R.M->m;
+	memmove(&m, (uchar*)current+O(Modlink, m), sizeof(m));
+	if(m == nil || m == H || (uintptr)m%sizeof(void*) != 0 ||
+	   (uintptr)m > (uintptr)-1-sizeof(*m))
+		error(exModule);
 	if(!(m->rt & HASLDT))
 		error("obsolete dis");
+	/* Bound and capture the result cell before any conversion/linker callback. */
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(index) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(name) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(ml))
+		error(exBounds);
+	destination = R.d;
+	memmove(&mp, (uchar*)current+O(Modlink, MP), sizeof(mp));
 	memmove(&index, R.m, sizeof(index));
 	memmove(&name, R.s, sizeof(name));
 	ldt = moduleimports(m, index);
 	n = string2c(name);
 	if(strcmp(n, "$self") == 0) {
-		mp = R.M->MP;
 		if(mp == nil || m->ref <= 0 || m->ref == 0x7fffffff)
 			error(exModule);
 		h = nil;
 		if(mp != H){
-			h = D2H(mp);
+			if((uintptr)mp <= sizeof(Heap) || ((uintptr)mp-sizeof(Heap))%sizeof(void*) != 0)
+				error(exHeap);
+			h = (Heap*)((uintptr)mp-sizeof(Heap));
 			if(h->ref == 0 || h->ref == (ulong)-1)
 				error(exHeap);
 		}
@@ -3099,8 +3138,8 @@ OP(iload)
 		ml = linkmod(m, ldt, 1);
 	}
 
-	memmove(&t, R.d, sizeof(t));
-	memmove(R.d, &ml, sizeof(ml));
+	memmove(&t, destination, sizeof(t));
+	memmove(destination, &ml, sizeof(ml));
 	destroy(t);
 }
 
@@ -3117,7 +3156,7 @@ OP(mcall)
 	Inst *program;
 	uchar *mp;
 	ulong references;
-	int callermode, calleemode;
+	int callermode, calleemode, pointers;
 
 	if(R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(ml))
 		error(exBounds);
@@ -3162,16 +3201,27 @@ OP(mcall)
 
 	if(program == nil) {
 		entry.u.runt(f);
+		/* Cleanup belongs to the captured callee, even if C changed live REG fields. */
+		memmove(&links, f, sizeof(links));
+		pointers = 0;
+		if(links.t != nil){
+			if(links.t == H || (uintptr)links.t > (uintptr)-1-(O(Type, np)+sizeof(pointers)))
+				error(exHeap);
+			memmove(&pointers, (uchar*)links.t+O(Type, np), sizeof(pointers));
+			if(pointers < 0)
+				error(exHeap);
+		}
 		memmove(&references, (uchar*)h+O(Heap, ref), sizeof(references));
+		if(references == 0)
+			error(exHeap);
 		references--;
 		memmove((uchar*)h+O(Heap, ref), &references, sizeof(references));
-		memmove(&links, f, sizeof(links));
 		R.M = links.mr;
-		R.SP = R.FP;
+		R.SP = (uchar*)f;
 		R.FP = links.fp;
 		if(links.t == nil)
 			unextend(f);
-		else if (links.t->np)
+		else if(pointers)
 			freeptrs(f, links.t);
 		p = currun();
 		if(p->kill != nil)

@@ -41,7 +41,10 @@ common += [function(xec, 'OP('+name+')') for name in ('frame', 'mframe')]
 if 'typedef struct SpawnProg' in xec:
     common += [xec[xec.index('typedef struct SpawnProg'):xec.index('OP(spawn)')]]
 common += [function(xec, 'OP('+name+')') for name in ('spawn', 'mspawn')]
-for variant in ('emu', 'os'):
+if os.environ.get('STACK_WORD_BITS') and os.environ['STACK_WORD_BITS'] not in ('32','64'):
+    raise ValueError('STACK_WORD_BITS must select 32 or 64')
+for variant in os.environ.get('STACK_VARIANTS','emu os').split():
+    if variant not in ('emu','os'):raise ValueError(variant)
     source = Path(os.environ.get('STACK_DIS_SOURCE', root/variant/'port/dis.c')).read_text()
     parts = [function(source, signature) for signature in ('int\nkprotect(', 'void\nkrethrow(')]
     if 'static int\nnewrootgrp(' in source:
@@ -52,20 +55,23 @@ for variant in ('emu', 'os'):
     if 'typedef struct SchedModule' in source:
         parts += [source[source.index('typedef struct SchedModule'):source.index('Prog*\nschedmod(')]]
     parts += [function(source, 'Prog*\nschedmod(')]
-    unit = (root/'libinterp/tests/stack-startup.c').read_text().replace('IMPLEMENTATION', '\n'.join(common+parts))
+    unit = Path(os.environ.get('STACK_FIXTURE',root/'libinterp/tests/stack-startup.c')).read_text().replace('IMPLEMENTATION', '\n'.join(common+parts))
     with tempfile.TemporaryDirectory(prefix='stack-startup-') as directory:
         td = Path(directory); target = td/'test.c'; target.write_text(unit)
         cmd = shlex.split(os.environ.get('CC', 'cc'))
         cmd += shlex.split(os.environ.get('CFLAGS', '-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
         includes = ['-I'+str(root/p) for p in ('Linux/arm/include', 'emu/port', 'include', 'libinterp')]
         for model in ('native', 'word32'):
+            if os.environ.get('STACK_WORD_BITS') and model != ('word32' if os.environ['STACK_WORD_BITS']=='32' else 'native'):
+                continue
             override = []
             if model == 'word32':
                 modeldir = td/model; modeldir.mkdir()
                 header = (root/'include/interp.h').read_text()
                 header, n = re.subn(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
                 header, m = re.subn(r'typedef unsigned long\s+UWORD;', 'typedef unsigned int UWORD;', header, count=1)
-                assert n == m == 1
+                if n != 1 or m != 1:
+                    raise RuntimeError('WORD32 fixture header mismatch')
                 (modeldir/'interp.h').write_text(header)
                 override = ['-I'+str(modeldir)]
             binary = td/('test-'+model)
@@ -78,11 +84,23 @@ for variant in ('emu', 'os'):
                 for family in families:
                     environment = dict(os.environ, STACK_CASES=family)
                     print('family', family, flush=True)
-                    subprocess.run([str(binary)], check=True, env=environment, timeout=60)
+                    # Separate C and tail-JIT unwind topologies without disabling ASan stack checks.
+                    if family=='spawnpreflight':
+                        routes=[environment['SPAWN_ROUTE']] if environment.get('SPAWN_ROUTE') else ['0','1']
+                        imports=[environment['SPAWN_IMPORTED']] if environment.get('SPAWN_IMPORTED') else ['0','1']
+                        for route in routes:
+                            for imported in imports:
+                                selected=dict(environment,SPAWN_ROUTE=route,SPAWN_IMPORTED=imported)
+                                subprocess.run([str(binary)],check=True,env=selected,timeout=60)
+                                if not selected.get('SPAWN_PREFLIGHT_CASE'):
+                                    subprocess.run([str(binary)],check=True,env=dict(selected,SPAWN_PREFLIGHT_CASE='legacy'),timeout=60)
+                    else:
+                        subprocess.run([str(binary)], check=True, env=environment, timeout=60)
 
             # Seed only the private counter to test exhaustion without billions of spawns.
             pid_unit = unit.replace('static int pidnum;', 'static int pidnum = 0x7fffffff;')
-            assert pid_unit != unit
+            if pid_unit == unit:
+                raise RuntimeError('pid exhaustion fixture did not seed the private counter')
             target.write_text(pid_unit)
             pid_binary = td/('pid-'+model)
             subprocess.run(cmd+override+includes+[str(target), '-o', str(pid_binary)], check=True)
