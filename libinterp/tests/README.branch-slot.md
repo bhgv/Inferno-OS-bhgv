@@ -51,3 +51,22 @@ partial operand coverage. Physical ARM64 and full Inferno boot are separate chec
 57 запусков старой версии воспроизводят ошибку. Старые 3 115 024 проверки C
 сохранены и активны при NDEBUG. Проверяется арифметика слота, а не принадлежность
 произвольного адреса выделенной памяти. ABI и доступность команд не менялись.
+
+## Aliased target sentinel oracle
+
+The priority emitters already decline a taken branch whose captured target is nil
+or H, before PC publication. When the target cell aliases a big comparison operand,
+the older test still expected a successful store for those sentinel values. The
+fixture now computes the target from the completed input image, expects decline
+without writes for nil/H, and retains opaque MASK-1 acceptance. Both native WORD
+models, all eight byte alignments, every integer predicate and false-target
+nonaccess remain covered. This corrects the oracle, not the production emitter.
+
+Запрет публикации nil/H уже был в JIT; исправлена ошибочная проверка при
+совпадении ячейки цели с операндом big. MASK-1 остаётся допустимым непрозрачным
+токеном. Набор предикатов, моделей WORD и смещений не сокращён.
+
+Companion arithmetic extraction now includes the production `branchpc` helper
+and JMP macro, and the CALL fixture supplies the real `exModule` error identity.
+These restore complete compile/link closure after earlier handler refactoring;
+no production operation is replaced and no oracle is removed.

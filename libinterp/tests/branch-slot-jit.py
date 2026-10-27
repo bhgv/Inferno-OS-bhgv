@@ -114,11 +114,11 @@ int emit(u32int *out, int cap, int wb, int op)
                     cases += [('slot', slot, pointer) for slot in ('s', 'm') for pointer in badsource]
                     cases += [('false-slot', 'd', pointer) for pointer in badtarget + [1]]
                     edges = (0, 1, 127, 128, 255, 256, 0x7fffffff, 0x80000000,
-                             0xffffffff, 0x100000000, 0x7fffffffffffffff, 1 << 63, MASK)
+                             0xffffffff, 0x100000000, 0x7fffffffffffffff, 1 << 63, MASK - 1, MASK)
                     cases += [('compare', a, b) for a in edges for b in edges]
                 for kind, parameter, value in cases:
                     for alignment in range(8):
-                        aliases = (0, 1, 2, 3) if kind == 'compare' and value in (0, MASK) else (0,)
+                        aliases = (0, 1, 2, 3) if kind == 'compare' and value in (0, MASK - 1, MASK) else (0,)
                         for alias in aliases:
                             image = bytearray(b'\xa5' * 0x4000)
                             source, middle, dest = BASE + 0x100 + alignment, BASE + 0x200 + alignment, BASE + 0x300 + alignment
@@ -156,7 +156,12 @@ int emit(u32int *out, int cap, int wb, int op)
                             expected = bytearray(image)
                             if valid and take:
                                 target = int.from_bytes(image[dest - BASE:dest - BASE + 8], 'little')
-                                put(expected, 0, target)
+                                # Aliasing may expose nil/H as the captured PC. The
+                                # production direct-target guard declines before any store;
+                                # MASK-1 remains an accepted opaque non-sentinel token.
+                                valid = target not in (0, MASK)
+                                if valid:
+                                    put(expected, 0, target)
                             machine.mem_write(BASE, bytes(image))
                             if arch == 'amd64':
                                 machine.reg_write(UC_X86_REG_RDI, BASE)

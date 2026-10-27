@@ -32,7 +32,7 @@ def function(signature):
 
 
 unit = (ROOT / 'libinterp/tests/arithmetic-slot-native.c').read_text()
-parts = [function('static void\nbranchreal(')] + [function('OP(' + name + ')') for name in OPS]
+parts = [function('static void\nbranchpc('), function('static void\nbranchreal(')] + [function('OP(' + name + ')') for name in OPS]
 unit = unit.replace('IMPLEMENTATION', '\n\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='arithmetic-slot-native-') as temporary:
     td = Path(temporary)

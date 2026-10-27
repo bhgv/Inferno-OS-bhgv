@@ -18,6 +18,7 @@ typedef uint64_t ULONG; /* Unsigned big arithmetic bits. */
 typedef uintptr_t uintptr; /* Native pointer arithmetic width. */
 #define nil ((void *)0) /* Native null slot. */
 #define H ((void *)(uintptr)-1) /* Dis sentinel slot. */
+#define JMP(r) branchpc(R.r, exBounds) /* Use the captured-target guard from production. */
 #define OP(name) static void name(void) /* Actual handler extraction. */
 
 
