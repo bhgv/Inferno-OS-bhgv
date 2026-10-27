@@ -2,6 +2,8 @@
 
 Complete decoded JIT+C support now covers all 173 active commands on AMD64/ARM64. Native fast availability remains 166/173; seven complex handlers use C through complete tail entries. See [README.complete-dispatch.md](README.complete-dispatch.md) and the [per-command table](README.jit-readiness.md).
 
+Latest codec/formatter slots, overlapping output restoration and seven-command C allocation capture: [README.string-conversion-capture.md](README.string-conversion-capture.md).
+
 Latest array operand/header preflight, captured C output and 256-byte SLICELA qword kernels: [README.array-spans-kernels.md](README.array-spans-kernels.md).
 
 Latest six list and seven channel constructor operand/callback fixes: [README.constructor-capture.md](README.constructor-capture.md).

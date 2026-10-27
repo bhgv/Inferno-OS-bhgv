@@ -918,7 +918,7 @@ a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 {
 	int digits, scaled, storemax, fallback, count, decoded;
 	unsigned long long identity;
-	int half;
+	int half, header, origin;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
 	   a->stringmax < 0 || a->stringmax > 2047 || a->stringmax%4 ||
@@ -927,9 +927,14 @@ a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 || a->refbytes != 8 ||
 	   a->heaptype <= 0 || a->heaptype > 128 || a->heaptype%8 || a->stringtype == nil) return 0;
 	/* All rejects share one return so the counting pass keeps the 80-unit bound. */
+	header = a->stringlen > a->stringmax ? a->stringlen+4 : a->stringmax+4;
+	origin = a->heapref > a->heaptype ? a->heapref : a->heaptype;
+	if(a->heapcolor > origin && a->heapcolor <= 255)origin=a->heapcolor;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
-	a64ptr(b, 9, a->s); a64load(b, 12, 9, op->bytes);
+	/* Validate both decoded cells before consuming either value. */
+	a64ptr(b, 9, a->d); a64pcspan(b, 9, 8, fallback);
+	a64ptr(b, 9, a->s); a64pcspan(b, 9, op->bytes, fallback); a64load(b, 12, 9, op->bytes);
 	if(op->bytes == 4) a64put(b, 0x93407d8c); // Sign-extend the complete WORD32 input.
 	if(op->alu){
 		decoded=b->n; a64put(b, 0xb400000c);
@@ -942,6 +947,9 @@ a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 	}
 	a64ptr(b, 11, a->d); a64load(b, 14, 11, 8);
 	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	a64appendowner(b, 14, origin, header, fallback);
+	a64put(b, 0xf24009dfU); // tst x14,#7.
+	a64defer(b, 0x54000001, fallback);
 	/* Check exact heap type before treating a reused pointer slot as String. */
 	a64put(b, 0xf8400000U | ((u32int)-a->heaptype&511)<<12 | 14<<5 | 2);
 	identity = (unsigned long long)a->stringtype;
@@ -971,9 +979,11 @@ a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 	/* Form the byte payload and its end before publishing converted capacity. */
 	a64put(b, 0xb10001cbU | (u32int)a->stringdata<<10); a64defer(b, 0x54000002, fallback);
 	a64put(b, 0xab040169); a64defer(b, 0x54000002, fallback);
+	a64put(b, 0xb100053fU); a64defer(b, 0x54000000, fallback); // Keep the terminating byte below H.
 	storemax=b->n; a64put(b, 0xb6f80007);
 	a64put(b, 0xb9000000U | (u32int)(a->stringmax/4)<<10 | 14<<5 | 3);
 	b->code[storemax] |= (b->n-storemax)<<5;
+	a64ptr(b, 5, a->d); // Capture result cell before writing any formatted bytes.
 	a64put(b, 0x3900013f); // Terminate at the end counted without touching the payload.
 	a64put(b, 0x528005a3); a64put(b, 0x39000163); // Positive digits overwrite this temporary minus.
 	a64put(b, 0xf100019f); a64put(b, 0xda8ca58c);
@@ -984,6 +994,7 @@ a64formatinteger(A64Buf *b, LeafLayout *a, LeafOp *op)
 	a64put(b, 0xb500000cU | ((digits-b->n)&0x7ffff)<<5);
 	if(b->n > LeafMax) return 0;
 	a64put(b, 0xb9000000U | (u32int)(a->stringlen/4)<<10 | 14<<5 | 4);
+	a64put(b, 0xf90000aeU); // str x14,[x5]: restore the captured output owner.
 	return 1;
 }
 
@@ -1387,7 +1398,9 @@ a64bytestring(A64Buf *b, LeafLayout *a)
 	if(header < a->arrayroot) header = a->arrayroot;
 	fallback = b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
-	a64ptr(b, 8, a->s); a64load(b, 8, 8, 8);
+	/* Validate both decoded cells before consuming either value. */
+	a64ptr(b, 9, a->d); a64pcspan(b, 9, 8, fallback);
+	a64ptr(b, 8, a->s); a64pcspan(b, 8, 8, fallback); a64load(b, 8, 8, 8);
 	a64put(b, 0xf100011fU | (u32int)a->heapcolor<<10); // cmp x8, heap extent.
 	a64defer(b, 0x54000009, fallback);
 	a64put(b, 0xb100011fU | (u32int)(header+8)<<10); // cmn x8, header extent.
@@ -1496,7 +1509,9 @@ a64stringbytes(A64Buf *b, LeafLayout *a)
 	if(header < a->arrayroot) header = a->arrayroot;
 	fallback = b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
-	a64ptr(b, 8, a->s); a64load(b, 8, 8, 8);
+	/* Validate both decoded cells before consuming either value. */
+	a64ptr(b, 9, a->d); a64pcspan(b, 9, 8, fallback);
+	a64ptr(b, 8, a->s); a64pcspan(b, 8, 8, fallback); a64load(b, 8, 8, 8);
 	a64put(b, 0xf100011fU | (u32int)a->heapcolor<<10);
 	a64defer(b, 0x54000009, fallback);
 	a64put(b, 0xb100011fU | (u32int)((a->stringlen > a->stringmax ? a->stringlen : a->stringmax)+4)<<10);

@@ -30,7 +30,7 @@ def require(condition, detail):
 
 with tempfile.TemporaryDirectory(prefix='integer-format-jit-') as directory:
     td = Path(directory)
-    for arch in ('amd64', 'arm64'):
+    for arch in os.environ.get('FORMAT_ARCHES', 'amd64 arm64').split():
         source = td/(arch+'.c')
         source.write_text('''#include <stdint.h>
 #include <string.h>
@@ -52,7 +52,7 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
 ''')
         binary = td/(arch+'.so')
         command = shlex.split(os.environ.get('CC', 'cc'))+shlex.split(os.environ.get('CFLAGS', '-O1'))
-        subprocess.run(command+['-shared', '-fPIC', '-I'+str(ROOT/'include'), '-I'+str(ROOT/'libinterp'), str(source), '-o', str(binary)], check=True)
+        subprocess.run(command+['-shared', '-fPIC', '-I'+str(ROOT/'include'), '-I'+str(Path(os.environ.get('FORMAT_EMITTER_DIR',ROOT/'libinterp'))), '-I'+str(ROOT/'libinterp'), str(source), '-o', str(binary)], check=True)
         lib = C.CDLL(str(binary))
         lib.emit.argtypes = [C.POINTER(C.c_uint32)]+[C.c_int]*5
         machine = Uc(UC_ARCH_X86, UC_MODE_64) if arch == 'amd64' else Uc(UC_ARCH_ARM64, 0)
@@ -78,16 +78,16 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
         checks = 0
         for wb in (4, 8):
             for big in (0, 1):
-                out = (C.c_uint32*80)()
-                n = lib.emit(out, 80, wb, big, 0, 0)
-                require(0 < n <= 80 and lib.emit(None, 80, wb, big, 0, 0) == n, (arch, wb, big, 'sizing', n))
+                out = (C.c_uint32*128)()
+                n = lib.emit(out, 128, wb, big, 0, 0)
+                require(0 < n <= 128 and lib.emit(None, 128, wb, big, 0, 0) == n, (arch, wb, big, 'sizing', n))
                 for cap in range(n):
-                    guard = (C.c_uint32*80)(*[0xa5a5a5a5]*80)
-                    require(lib.emit(guard, cap, wb, big, 0, 0) == 0 and list(guard) == [0xa5a5a5a5]*80, 'short publication')
+                    guard = (C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                    require(lib.emit(guard, cap, wb, big, 0, 0) == 0 and list(guard) == [0xa5a5a5a5]*128, 'short publication')
                 for field, values in ((1, (-1, 1, 4, 2048)), (2, (-1, 1, 0, 2048)), (3, (-1, 0, 4, 2048)), (4, (-1, 0, 1, 136)), (5, (0, 4, 16)), (6, (-1, 0, 1, 136)), (7, (0,))):
                     for value in values:
-                        guard = (C.c_uint32*80)(*[0xa5a5a5a5]*80)
-                        require(lib.emit(guard, 80, wb, big, field, value) == 0 and list(guard) == [0xa5a5a5a5]*80, (arch, field, value))
+                        guard = (C.c_uint32*128)(*[0xa5a5a5a5]*128)
+                        require(lib.emit(guard, 128, wb, big, field, value) == 0 and list(guard) == [0xa5a5a5a5]*128, (arch, field, value))
                 machine.mem_write(CODE, bytes(out)[:n*4]); machine.ctl_remove_cache(CODE, CODE+320)
                 width = 8 if big else wb
                 limit = 1 << (width*8-1)
@@ -98,7 +98,7 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
                         values.extend((10**power+delta, -(10**power+delta)))
                 if os.environ.get("FORMAT_BOUNDARY_ONLY"):values = []
                 for value_index, number in enumerate(values):
-                    for profile in range(50):
+                    for profile in [int(value) for value in os.environ.get('FORMAT_PROFILES',' '.join(map(str,range(52)))).split()]:
                         for sa in range(8):
                             for da in range(8):
                                 for alias in range(3):
@@ -129,23 +129,26 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
                                     if profile == 46:length = -7; refs = 2
                                     if profile == 47:length = -7; refs = MASK
                                     if profile == 48:length = -7; refs = 0
+                                    if profile >= 50:dst = obj+24+sa
+                                    if profile == 51:length = -7
                                     if alias == 1:src = obj+24
                                     if alias == 2:src = dst
                                     put(image, obj-8, 0x5678 if profile == 49 else 0x1234); put(image, obj-24, refs); put(image, obj, length, 4); put(image, obj+4, capacity, 4)
                                     put(image, dst, owner); put(image, src, number, width)
                                     # A shared source/result slot contains the owner pointer as its integer.
-                                    if alias == 2:put(image, dst, owner)
+                                    if alias == 2 or profile >= 50:put(image, dst, owner)
                                     captured = int.from_bytes(image[src:src+width], 'little', signed=True)
                                     put(image, 8, BASE+src); put(image, 16, BASE+dst)
                                     text = str(captured).encode()
                                     bytecapacity = capacity*4 if length < 0 else capacity
-                                    valid = profile != 49 and owner not in (0, MASK) and capacity >= abs(length) and len(text) <= bytecapacity <= 0x7fffffff and refs == 1
+                                    valid = profile != 49 and owner not in (0, MASK) and owner%8 == 0 and capacity >= abs(length) and len(text) <= bytecapacity <= 0x7fffffff and refs == 1
                                     expected = bytearray(image)
                                     text = str(captured).encode()
                                     if valid:
                                         expected[obj+24:obj+25+len(text)] = text+b'\0'
                                         put(expected, obj, len(text), 4)
                                         if length < 0:put(expected, obj+4, bytecapacity, 4)
+                                        put(expected, dst, owner)
                                     machine.mem_write(BASE, bytes(image)); writes.clear()
                                     if arch == 'amd64':
                                         machine.reg_write(UC_X86_REG_RDI, BASE); machine.reg_write(UC_X86_REG_RSP, CODE+0x2800)
@@ -159,8 +162,8 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
                                     require(result == valid, (detail, 'return', result))
                                     require(bytes(machine.mem_read(BASE, 0x4000)) == expected, (detail, 'image'))
                                     if valid:
-                                        require(writes[-1] == (BASE+obj, 4), (detail, 'publication'))
-                                        require((length >= 0 or writes[0] == (BASE+obj+4, 4)) and all((size == 1 and BASE+obj+24 <= address <= BASE+obj+24+len(text)) for address, size in writes[1 if length < 0 else 0:-1]), (detail, 'write range'))
+                                        require(writes[-1] == (BASE+dst, 8) and writes[-2] == (BASE+obj, 4), (detail, 'publication'))
+                                        require((length >= 0 or writes[0] == (BASE+obj+4, 4)) and all((size == 1 and BASE+obj+24 <= address <= BASE+obj+24+len(text)) for address, size in writes[1 if length < 0 else 0:-2]), (detail, 'write range'))
                                     else:require(not writes, (detail, 'decline writes'))
                                     if arch == 'amd64':require(machine.reg_read(UC_X86_REG_MXCSR) == 0x3f80, 'MXCSR')
                                     else:require(machine.reg_read(UC_ARM64_REG_FPCR) == 0x800000 and machine.reg_read(UC_ARM64_REG_FPSR) == 0x11, 'FPCR/FPSR')
@@ -168,7 +171,7 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
         boundarychecks = 0
         for wb in (4, 8):
             for big in (0, 1):
-                out = (C.c_uint32*80)(); n = lib.emit(out, 80, wb, big, 0, 0)
+                out = (C.c_uint32*128)(); n = lib.emit(out, 128, wb, big, 0, 0)
                 machine.mem_write(CODE, bytes(out)[:n*4]); machine.ctl_remove_cache(CODE, CODE+320)
                 width = 8 if big else wb
                 for wide in (0, 1):
@@ -180,7 +183,7 @@ int emit(u32int *out, int cap, int wb, int big, int field, int value)
                             put(image, 8, BASE+0x100); put(image, 16, BASE+0x200)
                             put(top, offset-8, 0x1234); put(top, offset-24, 1); put(top, offset, -1 if wide else 0, 4); put(top, offset+4, 32, 4)
                             text = str(value).encode(); start = owner+24
-                            valid = start <= MASK and start+len(text) <= MASK
+                            valid = start <= MASK and start+len(text) < MASK
                             expected = bytearray(top)
                             if valid:
                                 expected[start-high:start-high+len(text)+1] = text+b'\0'

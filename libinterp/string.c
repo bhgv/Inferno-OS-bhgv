@@ -219,6 +219,7 @@ OP(slicec)
 	int length, count;
 	uvlong bytes;
 	uintptr address;
+	void *slot;
 
 	/* Reject incomplete slots before reading geometry or changing the old owner. */
 	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(start) ||
@@ -226,9 +227,10 @@ OP(slicec)
 	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(old))
 		error(exHeap);
 
+	slot = R.d;
 	memmove(&start, R.s, sizeof(start));
 	memmove(&end, R.m, sizeof(end));
-	memmove(&old, R.d, sizeof(old));
+	memmove(&old, slot, sizeof(old));
 	if(start < 0 || end < start || (uvlong)end > 0x7fffffff)
 		error(exBounds);
 	if(old == nil)
@@ -271,7 +273,7 @@ OP(slicec)
 		}
 	}
 	result = slicer((ulong)start, (ulong)end, old);
-	memmove(R.d, &result, sizeof(result));
+	memmove(slot, &result, sizeof(result));
 	destroy(old);
 }
 
@@ -411,6 +413,7 @@ addstring(String *s1, String *s2, int append)
 OP(addc)
 {
 	String *left, *right, *old, *result;
+	void *slot;
 
 	/* No source read or result publication precedes complete pointer-slot checks. */
 	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(right) ||
@@ -418,12 +421,13 @@ OP(addc)
 	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(old))
 		error(exHeap);
 
+	slot = R.d;
 	memmove(&left, R.m, sizeof(left));
 	memmove(&right, R.s, sizeof(right));
-	memmove(&old, R.d, sizeof(old));
+	memmove(&old, slot, sizeof(old));
 	result = addstring(left, right, R.m == R.d);
 	if(result != old){
-		memmove(R.d, &result, sizeof(result));
+		memmove(slot, &result, sizeof(result));
 		destroy(old);
 	}
 }
@@ -442,8 +446,14 @@ OP(cvtca)
 	uvlong span;
 	int l, capacity, n, size, pointers, references, reusable;
 
+	void *slot;
+
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(void*) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(void*))
+		error(exHeap);
+	slot = R.d;
 	memmove(&ss, R.s, sizeof(ss));
-	memmove(&old, R.d, sizeof(old));
+	memmove(&old, slot, sizeof(old));
 	l = 0;
 	bytes = nil;
 	if(ss != H){
@@ -526,7 +536,7 @@ OP(cvtca)
 				}
 				target.len = l;
 				memmove((uchar*)old+offsetof(Array, len), &target.len, sizeof(target.len));
-				memmove(R.d, &old, sizeof(old));
+				memmove(slot, &old, sizeof(old));
 				return;
 			}
 		}
@@ -542,7 +552,7 @@ OP(cvtca)
 	}else
 		a = mem2array(bytes, l);
 	/* Allocation and encoding finish while the old generic owner still retains its source. */
-	memmove(R.d, &a, sizeof(a));
+	memmove(slot, &a, sizeof(a));
 	destroy(old);
 }
 
@@ -557,9 +567,15 @@ OP(cvtac)
 	uintptr address, extent;
 	int n, i, oldlen, capacity, size, pointers;
 
+	void *slot;
+
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(void*) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(void*))
+		error(exHeap);
+	slot = R.d;
 	ds = H;
 	memmove(&a, R.s, sizeof(a));
-	memmove(&old, R.d, sizeof(old));
+	memmove(&old, slot, sizeof(old));
 	if(a != H){
 		if(a == nil)
 			error(exNilref);
@@ -633,7 +649,7 @@ OP(cvtac)
 							memmove((void*)(address+offsetof(String, data)), bytes, n);
 						memmove((uchar*)old+offsetof(String, len), &n, sizeof(n));
 						/* Restore a possibly overlapping owner slot after payload publication. */
-						memmove(R.d, &old, sizeof(old));
+						memmove(slot, &old, sizeof(old));
 						return;
 					}
 				}
@@ -651,7 +667,7 @@ OP(cvtac)
 		if(previous.ref == 0)
 			error(exHeap);
 	}
-	memmove(R.d, &ds, sizeof(ds));
+	memmove(slot, &ds, sizeof(ds));
 	destroy(old);
 }
 
@@ -727,10 +743,22 @@ OP(cvtwc)
 	int length, capacity, reusable;
 	WORD value;
 
+	void *slot;
+	uintptr address, extent;
+
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(value) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	slot = R.d;
 	memmove(&value, R.s, sizeof(value));
-	memmove(&old, R.d, sizeof(old));
+	memmove(&old, slot, sizeof(old));
 	if(old == nil)
 		error(exNilref);
+	extent = offsetof(String, len) > offsetof(String, max) ? offsetof(String, len) : offsetof(String, max);
+	address = (uintptr)old;
+	if(old != H && (address <= sizeof(Heap) || address%sizeof(void*) != 0 ||
+	   address > (uintptr)-1-extent-sizeof(int)))
+		error(exHeap);
 	if(old != H && D2H(old)->ref == 0)
 		error(exHeap);
 	/* Pointer temporaries may still own an ADT/array: only strings are reusable. */
@@ -751,14 +779,18 @@ OP(cvtwc)
 	else
 		ds = newstring(24);
 	/* Keep the allocation and cache while publishing byte-oriented capacity. */
+	address = (uintptr)ds;
+	if(address > (uintptr)-1- offsetof(String, data) ||
+	   address+offsetof(String, data) > (uintptr)-1-(uintptr)length-1)
+		error(exHeap);
 	if(ds == old && old->len < 0)
 		ds->max = capacity;
 	memmove(ds->Sascii, digits, length+1);
 	ds->len = length;
-	if(ds != old){
-		memmove(R.d, &ds, sizeof(ds));
+	/* Restore an owner slot overlapping formatted bytes as well as new allocations. */
+	memmove(slot, &ds, sizeof(ds));
+	if(ds != old)
 		destroy(old);
-	}
 }
 
 
@@ -772,10 +804,22 @@ OP(cvtlc)
 	int length, capacity, reusable;
 	LONG value;
 
+	void *slot;
+	uintptr address, extent;
+
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(value) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	slot = R.d;
 	memmove(&value, R.s, sizeof(value));
-	memmove(&old, R.d, sizeof(old));
+	memmove(&old, slot, sizeof(old));
 	if(old == nil)
 		error(exNilref);
+	extent = offsetof(String, len) > offsetof(String, max) ? offsetof(String, len) : offsetof(String, max);
+	address = (uintptr)old;
+	if(old != H && (address <= sizeof(Heap) || address%sizeof(void*) != 0 ||
+	   address > (uintptr)-1-extent-sizeof(int)))
+		error(exHeap);
 	if(old != H && D2H(old)->ref == 0)
 		error(exHeap);
 	/* Pointer temporaries may still own an ADT/array: only strings are reusable. */
@@ -796,14 +840,18 @@ OP(cvtlc)
 	else
 		ds = newstring(24);
 	/* Keep the allocation and cache while publishing byte-oriented capacity. */
+	address = (uintptr)ds;
+	if(address > (uintptr)-1- offsetof(String, data) ||
+	   address+offsetof(String, data) > (uintptr)-1-(uintptr)length-1)
+		error(exHeap);
 	if(ds == old && old->len < 0)
 		ds->max = capacity;
 	memmove(ds->Sascii, digits, length+1);
 	ds->len = length;
-	if(ds != old){
-		memmove(R.d, &ds, sizeof(ds));
+	/* Restore an owner slot overlapping formatted bytes as well as new allocations. */
+	memmove(slot, &ds, sizeof(ds));
+	if(ds != old)
 		destroy(old);
-	}
 }
 
 
@@ -818,11 +866,23 @@ OP(cvtfc)
 	char digits[32];
 	int length, capacity, reusable;
 
+	void *slot;
+	uintptr address, extent;
+
+	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(value) ||
+	   R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	slot = R.d;
 	memmove(&value, R.s, sizeof(value));
 	memmove(&bits, &value, sizeof(bits));
-	memmove(&old, R.d, sizeof(old));
+	memmove(&old, slot, sizeof(old));
 	if(old == nil)
 		error(exNilref);
+	extent = offsetof(String, len) > offsetof(String, max) ? offsetof(String, len) : offsetof(String, max);
+	address = (uintptr)old;
+	if(old != H && (address <= sizeof(Heap) || address%sizeof(void*) != 0 ||
+	   address > (uintptr)-1-extent-sizeof(int)))
+		error(exHeap);
 	if(old != H && D2H(old)->ref == 0)
 		error(exHeap);
 	/* Pointer temporaries may still own an ADT/array: only strings are reusable. */
@@ -856,14 +916,18 @@ OP(cvtfc)
 			ds = newstring(32);
 		length = sprint(digits, "%g", value);
 	}
+	address = (uintptr)ds;
+	if(address > (uintptr)-1- offsetof(String, data) ||
+	   address+offsetof(String, data) > (uintptr)-1-(uintptr)length-1)
+		error(exHeap);
 	if(ds == old && old->len < 0)
 		ds->max = capacity;
 	memmove(ds->Sascii, digits, length+1);
 	ds->len = length;
-	if(ds != old){
-		memmove(R.d, &ds, sizeof(ds));
+	/* Restore an owner slot overlapping formatted bytes as well as new allocations. */
+	memmove(slot, &ds, sizeof(ds));
+	if(ds != old)
 		destroy(old);
-	}
 }
 
 

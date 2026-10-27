@@ -1156,7 +1156,7 @@ x64stringstore(X64Buf *b, LeafLayout *a)
 static int
 x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 {
-	int positive, scaled, storemax, fallback, countloop, digitloop;
+	int header, origin, positive, scaled, storemax, fallback, countloop, digitloop;
 	unsigned long long identity;
 
 	if(a->stringlen < 0 || a->stringlen > 2047 || a->stringlen%4 ||
@@ -1165,9 +1165,14 @@ x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 	   a->stringdata < a->stringmax+4 || a->stringdata > 2047 ||
 	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 || a->refbytes != 8 ||
 	   a->heaptype <= 0 || a->heaptype > 128 || a->heaptype%8 || a->stringtype == nil) return 0;
+	header = a->stringlen > a->stringmax ? a->stringlen+4 : a->stringmax+4;
+	origin = a->heapref > a->heaptype ? a->heapref : a->heaptype;
+	if(a->heapcolor > origin && a->heapcolor <= 255)origin=a->heapcolor;
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
-	x64caseptr(b, 0, a->s); x64load(b, 0, op->bytes);
+	/* Validate both decoded cells before consuming either value. */
+	x64caseptr(b, 2, a->d); x64pcspan(b, 10, 8);
+	x64caseptr(b, 0, a->s); x64pcspan(b, 8, op->bytes); x64load(b, 0, op->bytes);
 	if(op->alu){
 		/* +0 and signed powers 2^0..2^19 have exact fixed decimal spelling. */
 		x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); // test   rax,rax
@@ -1191,6 +1196,11 @@ x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 	x64caseptr(b, 2, a->d); x64load(b, 2, 8);
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x4a); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	/* Bound the backward Heap cells and header without changing the captured value. */
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x8a); x64word(b, -origin-1);
+	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, -origin-header-2);
+	x64moduleguard(b, 0x76, fallback);
+	x64byte(b, 0xf6); x64byte(b, 0xc2); x64byte(b, 7); x64moduleguard(b, 0x74, fallback);
 	/* Decline non-string pointer temporaries before reading a String field. */
 	x64casefield(b, 1, 2, -a->heaptype, 8);
 	identity = (unsigned long long)a->stringtype;
@@ -1247,8 +1257,8 @@ x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 	else
 		x64word(b, a->stringdata);
 	x64moduleguard(b, 0x73, fallback);
-	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xd7); // rdi holds the payload after REG operands are captured.
 	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xca); x64moduleguard(b, 0x73, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 0xff); x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x79); storemax=b->n; x64byte(b, 0);
 	if(a->stringmax<=127){
@@ -1258,7 +1268,8 @@ x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 	}
 	if(b->n>sizeof(b->bytes))return 0;
 	b->bytes[storemax]=b->n-storemax-1;
-	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xfe); // rsi becomes the byte payload base.
+	x64caseptr(b, 1, a->d); // Keep the original result slot in r9 before payload writes.
+	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0xb2); x64word(b, a->stringdata); // lea rsi,[r10+data].
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc8); // mov    r8,rcx
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xd1); // mov    rcx,rdx
 	x64byte(b, 0xc6); x64byte(b, 0x01); x64byte(b, 0x00); // mov    BYTE PTR [rcx],0x0
@@ -1283,6 +1294,7 @@ x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 	}else{
 		x64byte(b, 0x45); x64byte(b, 0x89); x64byte(b, 0x82); x64word(b, a->stringlen);
 	}
+	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0x11); // Restore owner through captured r9.
 	return 1;
 }
 
@@ -1752,7 +1764,9 @@ x64bytestring(X64Buf *b, LeafLayout *a)
 	if(header < a->arrayroot) header = a->arrayroot;
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback = b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
-	x64caseptr(b, 0, a->s); x64load(b, 0, 8);
+	/* Validate both decoded cells before consuming either value. */
+	x64caseptr(b, 2, a->d); x64pcspan(b, 10, 8);
+	x64caseptr(b, 0, a->s); x64pcspan(b, 8, 8); x64load(b, 0, 8);
 	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, a->heapcolor);
 	x64moduleguard(b, 0x77, fallback);
 	x64readspan(b, header, 8);
@@ -1870,7 +1884,9 @@ x64stringbytes(X64Buf *b, LeafLayout *a)
 	if(header < a->arrayroot) header = a->arrayroot;
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback = b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
-	x64caseptr(b, 0, a->s); x64load(b, 0, 8);
+	/* Validate both decoded cells before consuming either value. */
+	x64caseptr(b, 2, a->d); x64pcspan(b, 10, 8);
+	x64caseptr(b, 0, a->s); x64pcspan(b, 8, 8); x64load(b, 0, 8);
 	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, a->heapcolor);
 	x64moduleguard(b, 0x77, fallback);
 	x64readspan(b, a->stringlen > a->stringmax ? a->stringlen : a->stringmax, 4);
