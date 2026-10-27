@@ -6,8 +6,18 @@
 #include "kernel.h"
 #include "pool.h"
 #include "runt.h"
-#include <assert.h>
+#include <stdlib.h>
 #include <stdio.h>
+
+
+/* Retain all inherited queue and transfer oracles when NDEBUG is enabled. */
+static void
+channelpredicate(int condition)
+{
+	if(!condition)
+		abort();
+}
+#define channelcheck(condition) channelpredicate(!!(condition)) // Normalize pointer and scalar predicates.
 
 static Proc worker;
 static Prog current, peers[3], *running = &current;
@@ -21,19 +31,21 @@ Pool *heapmem;
 int mutator, nprop;
 void (*heapmonitor)(int, void*, ulong);
 
+
 /* Retain production Proc error frames while stubbing scheduler transitions. */
 Proc *getup(void) { return &worker; }
-void nexterror(void) { assert(worker.nerr > 0); siglongjmp(worker.estack[--worker.nerr], 1); }
+void nexterror(void) { channelcheck(worker.nerr > 0); siglongjmp(worker.estack[--worker.nerr], 1); }
 void error(char *s) { last_error = s; nexterror(); }
 int __lsan_is_turned_off(void) { return 1; }
 Prog *currun(void) { return running; }
 Prog *delrun(int state) { removed++; running->state = state; return running; }
 void addrun(Prog *p) { awakened++; p->state = Pready; }
-void acquire(void) { assert(!acquired); acquired = 1; }
-void release(void) { assert(acquired); acquired = 0; }
-void cblock(Prog *p) { (void)p; assert(!"unexpected native block"); }
-int print(char *fmt, ...) { (void)fmt; assert(!"unexpected diagnostic"); return 0; }
+void acquire(void) { channelcheck(!acquired); acquired = 1; }
+void release(void) { channelcheck(acquired); acquired = 0; }
+void cblock(Prog *p) { (void)p; channelcheck(!"unexpected native block"); }
+int print(char *fmt, ...) { (void)fmt; channelcheck(!"unexpected diagnostic"); return 0; }
 GUARD
+
 
 /* Bound the real heaparray allocation path and inject pool allocation failure. */
 void*
@@ -44,9 +56,10 @@ poolalloc(Pool *pool, ulong n)
 	(void)pool; allocations++;
 	if(fail_after == 0 || n > 16384) return nil;
 	if(fail_after > 0) fail_after--;
-	p = calloc(1, n); assert(p); live++;
+	p = calloc(1, n); channelcheck(p); live++;
 	return p;
 }
+
 
 /* Model ordinary reference destruction and recursively release actual array maps. */
 void
@@ -57,16 +70,17 @@ destroy(void *v)
 	WORD i;
 
 	if(v == H) return;
-	h = D2H(v); assert(h->ref > 0);
+	h = D2H(v); channelcheck(h->ref > 0);
 	if(--h->ref) return;
 	if(h->t == &Tarray){
 		a = v;
-		assert(a->root == H);
+		channelcheck(a->root == H);
 		for(i = 0; i < a->len; i++) freeptrs(a->data+i*a->t->size, a->t);
 		a->t->ref--; Tarray.ref--;
 	}
 	free(h); live--;
 }
+
 
 /* Queue allocations are accounted separately from payload and buffer ownership. */
 static void*
@@ -74,15 +88,16 @@ nodealloc(ulong n)
 {
 	void *p;
 
-	p = calloc(1, n); assert(p); nodes++;
+	p = calloc(1, n); channelcheck(p); nodes++;
 	return p;
 }
+
 
 /* Release a queue node exactly once. */
 static void
 nodefree(void *p)
 {
-	assert(p && nodes > 0); nodes--; free(p);
+	channelcheck(p && nodes > 0); nodes--; free(p);
 }
 
 #define BIT(bt, nb) ((bt)&(1<<(nb)))
@@ -96,6 +111,7 @@ IMPLEMENTATION
 #undef malloc
 #undef free
 
+
 /* Create a live scalar payload with one external owner. */
 static void*
 payload(WORD value)
@@ -106,6 +122,7 @@ payload(WORD value)
 	*(WORD*)H2D(void*, h) = value;
 	return H2D(void*, h);
 }
+
 
 /* Initialize channel storage with the real heap prefix needed by alt dispatch. */
 typedef struct TestChannel TestChannel;
@@ -122,6 +139,7 @@ openchannel(TestChannel *box, int capacity, int pointers)
 	c->mover = pointers ? movp : movw;
 }
 
+
 /* Release buffers and remaining queue nodes after checking all expected outcomes. */
 static void
 closechannel(Channel *c)
@@ -129,7 +147,7 @@ closechannel(Channel *c)
 	Progq *q, *next;
 	int direction;
 
-	assert(D2H(c)->ref == 1);
+	channelcheck(D2H(c)->ref == 1);
 	destroy(c->buf);
 	for(direction = 0; direction < 2; direction++){
 		q = direction ? c->recv : c->send;
@@ -137,41 +155,51 @@ closechannel(Channel *c)
 	}
 }
 
+
 /* Transmit one scalar or pointer through the actual VM send instruction. */
 static void
 sendvalue(Channel *c, WORD value, int pointers)
 {
-	void *p;
-	union {uvlong align;uchar bytes[80];} slots;
-	uchar before[80];
+	static void *p;
+	static union {
+		uvlong align; // Natural alignment for independently shifted operand cells.
+		uchar bytes[80]; // Stable slot image across protected error paths.
+	} slots;
+	static uchar before[80];
 	int sa=(UWORD)value&7,ca=((UWORD)value*3+1)&7;
 
 	p = pointers ? payload(value) : H;
 	memset(slots.bytes,0xa5,sizeof(slots.bytes));R.s=slots.bytes+8+sa;R.d=slots.bytes+40+ca;
 	memmove(R.s,pointers ? (void*)&p : (void*)&value,pointers ? sizeof(p) : sizeof(value));
 	memmove(R.d,&c,sizeof(c));memmove(before,slots.bytes,sizeof(before));
-	isend();assert(!memcmp(before,slots.bytes,sizeof(before)));
+	isend();channelcheck(!memcmp(before,slots.bytes,sizeof(before)));
 	if(pointers) destroy(p);
 }
+
 
 /* Receive into an owned destination and verify exact pointer replacement. */
 static void
 receivevalue(Channel *c, WORD expected, int pointers)
 {
-	void *p,*destination;
-	WORD value=-1;
-	union {uvlong align;uchar bytes[80];} slots;
-	uchar before[80];
+	static void *p,*destination;
+	static WORD value;
+	static union {
+		uvlong align; // Natural alignment for independently shifted operand cells.
+		uchar bytes[80]; // Stable slot image across protected error paths.
+	} slots;
+	static uchar before[80];
 	int ca=(UWORD)expected&7,da=((UWORD)expected*5+2)&7;
 
+	value=-1;
 	p = pointers ? payload(-77) : H;
 	memset(slots.bytes,0xa5,sizeof(slots.bytes));R.s=slots.bytes+8+ca;R.d=destination=slots.bytes+40+da;
 	memmove(R.s,&c,sizeof(c));memmove(destination,pointers ? (void*)&p : (void*)&value,pointers ? sizeof(p) : sizeof(value));
 	memmove(before,slots.bytes,sizeof(before));irecv();
-	memmove(before+40+da,destination,pointers ? sizeof(p) : sizeof(value));assert(!memcmp(before,slots.bytes,sizeof(before)));
-	if(pointers){memmove(&p,destination,sizeof(p));assert(*(WORD*)p==expected && D2H(p)->ref==1);destroy(p);}
-	else{memmove(&value,destination,sizeof(value));assert(value==expected);}
+	memmove(before+40+da,destination,pointers ? sizeof(p) : sizeof(value));channelcheck(!memcmp(before,slots.bytes,sizeof(before)));
+	if(pointers){memmove(&p,destination,sizeof(p));channelcheck(*(WORD*)p==expected && D2H(p)->ref==1);destroy(p);}
+	else{memmove(&value,destination,sizeof(value));channelcheck(value==expected);}
 }
+
 
 /* Compare long mixed ring-buffer sequences with an independent FIFO. */
 static void
@@ -196,14 +224,15 @@ checkfifo(void)
 			}else{
 				receivevalue(c, expected[head], pointers); head = (head+1)%32; count--;
 			}
-			assert(c->size == count && c->front >= 0 && c->front < capacity);
-			assert(live == 1+(pointers ? count : 0) && removed == before);
+			channelcheck(c->size == count && c->front >= 0 && c->front < capacity);
+			channelcheck(live == 1+(pointers ? count : 0) && removed == before);
 			checks++;
 		}
 		while(count){ receivevalue(c, expected[head], pointers); head = (head+1)%32; count--; }
-		closechannel(c); assert(!live && !nodes);
+		closechannel(c); channelcheck(!live && !nodes);
 	}
 }
+
 
 /* A full buffer drains oldest-first while waking and appending queued senders. */
 static void
@@ -230,14 +259,15 @@ checksenders(void)
 		for(i = 1; i <= capacity+2; i++){
 			receivevalue(c, i, pointers);
 			if(i <= 2){
-				assert(awakened == i && peers[i-1].ptr == nil && peers[i-1].state == Pready);
+				channelcheck(awakened == i && peers[i-1].ptr == nil && peers[i-1].state == Pready);
 				if(pointers) destroy(objects[i-1]);
 			}
 		}
-		assert(c->size == 0 && c->send->prog == nil && !c->send->next && awakened == 2);
-		closechannel(c); assert(!live && !nodes); checks++;
+		channelcheck(c->size == 0 && c->send->prog == nil && !c->send->next && awakened == 2);
+		closechannel(c); channelcheck(!live && !nodes); checks++;
 	}
 }
+
 
 /* Native best-effort sends can drop, deliver directly, or allocate bounded buffering. */
 static void
@@ -260,13 +290,13 @@ checknative(void)
 		input = pointers ? payload(99) : H; value = 99;
 		memset(&R, 0x55, sizeof(R)); saved = R; before = allocations;
 		result = csendalt(c, pointers ? (void*)&input : (void*)&value, pointers ? &pointer : &scalar, limit);
-		assert(!memcmp(&R, &saved, sizeof(R)));
-		assert(result == (capacity ? occupied < capacity : limit > 0));
-		assert(allocations == before+(!capacity && limit > 0));
-		assert(!removed);
+		channelcheck(!memcmp(&R, &saved, sizeof(R)));
+		channelcheck(result == (capacity ? occupied < capacity : limit > 0));
+		channelcheck(allocations == before+(!capacity && limit > 0));
+		channelcheck(!removed);
 		for(value = 1; value <= occupied; value++) receivevalue(c, value, pointers);
 		if(result) receivevalue(c, 99, pointers);
-		closechannel(c); assert(!live && !nodes); checks++;
+		closechannel(c); channelcheck(!live && !nodes); checks++;
 	}
 	for(pointers = 0; pointers < 2; pointers++)
 	for(limit = -2; limit <= 3; limit++){
@@ -278,14 +308,15 @@ checknative(void)
 		peers[0].ptr = pointers ? (void*)&output : (void*)&received;
 		cqadd(&c->recv, &peers[0]); awakened = 0;
 		memset(&R, 0x55, sizeof(R)); saved = R; before = allocations;
-		assert(csendalt(c, pointers ? (void*)&input : (void*)&value, pointers ? &pointer : &scalar, limit));
-		assert(!memcmp(&R, &saved, sizeof(R)) && allocations == before);
-		assert(awakened == 1 && peers[0].ptr == nil && peers[0].state == Pready);
-		if(pointers){ assert(*(WORD*)output == 99 && D2H(output)->ref == 1); destroy(output); }
-		else assert(received == 99);
-		closechannel(c); assert(!live && !nodes); checks++;
+		channelcheck(csendalt(c, pointers ? (void*)&input : (void*)&value, pointers ? &pointer : &scalar, limit));
+		channelcheck(!memcmp(&R, &saved, sizeof(R)) && allocations == before);
+		channelcheck(awakened == 1 && peers[0].ptr == nil && peers[0].state == Pready);
+		if(pointers){ channelcheck(*(WORD*)output == 99 && D2H(output)->ref == 1); destroy(output); }
+		else channelcheck(received == 99);
+		closechannel(c); channelcheck(!live && !nodes); checks++;
 	}
 }
+
 
 /* Ready scalar/array guards select only live peers or available buffer slots. */
 static void
@@ -337,28 +368,29 @@ checkready(void)
 		}
 		memmove(rawalt+(repeat&7),a,sizeof(storage));a=(Alt*)(rawalt+(repeat&7));
 		result=-1;memmove(rawresult+((repeat>>3)&7),&result,sizeof(result));R.s=a;R.d=rawresult+((repeat>>3)&7); awakened = 0;
-		xecalt(1);memmove(&result,rawresult+((repeat>>3)&7),sizeof(result));assert(result == 1 && !removed);
-		assert(awakened == !buffered);
-		if(!buffered) assert(peers[0].ptr == nil && peers[0].state == Pready);
+		xecalt(1);memmove(&result,rawresult+((repeat>>3)&7),sizeof(result));channelcheck(result == 1 && !removed);
+		channelcheck(awakened == !buffered);
+		if(!buffered) channelcheck(peers[0].ptr == nil && peers[0].state == Pready);
 		if(sending && buffered){
 			if(pointers){ destroy(input); input = H; }
 			receivevalue(c, 99, pointers);
 		}
 		else{
-			if(wide && !sending){memmove(&selected,index,sizeof(selected));assert(selected==2 || selected==3);}
+			if(wide && !sending){memmove(&selected,index,sizeof(selected));channelcheck(selected==2 || selected==3);}
 			if(pointers){
-				memmove(&output,destination,sizeof(output)); assert(*(WORD*)output == 99);
-			}else{memmove(&received,destination,sizeof(received));assert(received==99);}
+				memmove(&output,destination,sizeof(output)); channelcheck(*(WORD*)output == 99);
+			}else{memmove(&received,destination,sizeof(received));channelcheck(received==99);}
 		}
 		if(pointers){ destroy(input); destroy(output); }
 		for(i = 0; i < 2; i++){
-			assert(boxes[i].c.recv->prog == nil && !boxes[i].c.recv->next);
-			assert(boxes[i].c.send->prog == nil && !boxes[i].c.send->next);
+			channelcheck(boxes[i].c.recv->prog == nil && !boxes[i].c.recv->next);
+			channelcheck(boxes[i].c.send->prog == nil && !boxes[i].c.send->next);
 			closechannel(&boxes[i].c);
 		}
-		assert(!live && !nodes && !worker.nerr); checks++;
+		channelcheck(!live && !nodes && !worker.nerr); checks++;
 	}
 }
+
 
 /* Empty receive-array guards neither form data pointers nor hide a ready scalar guard. */
 static void
@@ -394,17 +426,18 @@ checkemptyguards(void)
 		}
 		R.s = a; R.d = &result;
 		xecalt(position >= 0);
-		assert(result == (position >= 0 ? position : count));
-		assert(tuple[0] == -11 && tuple[1] == -22 && !removed);
+		channelcheck(result == (position >= 0 ? position : count));
+		channelcheck(tuple[0] == -11 && tuple[1] == -22 && !removed);
 		if(position >= 0){
-			assert(received == 99 && box.c.size == 0);
-			assert(box.c.recv->prog == nil && box.c.recv->next == nil);
+			channelcheck(received == 99 && box.c.size == 0);
+			channelcheck(box.c.recv->prog == nil && box.c.recv->next == nil);
 			closechannel(&box.c);
-		}else assert(received == -33);
-		assert(!live && !nodes && !worker.nerr);
+		}else channelcheck(received == -33);
+		channelcheck(!live && !nodes && !worker.nerr);
 		checks++;
 	}
 }
+
 
 /* Wake actual blocked alt registrations from a second modeled VM process. */
 static void
@@ -445,25 +478,25 @@ checkblockedwake(void)
 		result=-1;memmove(rawresult+((repeat>>3)&7),&result,sizeof(result));R.s=a;R.d=rawresult+((repeat>>3)&7);
 		current.state = Pready; awakened = 0; before = removed;
 		xecalt(1);
-		assert(removed == before+1 && current.state == Palt && result == -1);
+		channelcheck(removed == before+1 && current.state == Palt && result == -1);
 		running = &peers[0]; peers[0].state = Pready;
 		if(sending){ R.s = &c; R.d = destination; irecv(); }
 		else{ R.s = pointers ? (void*)&input : (void*)&value; R.d = &c; isend(); }
 		running = &current;memmove(&result,rawresult+((repeat>>3)&7),sizeof(result));
-		assert(current.state == Pready && current.ptr == nil && result == 1 && awakened == 1);
-		assert(removed == before+1);
-		if(wide && !sending){memmove(&selected,index,sizeof(selected));assert(selected==2);}
+		channelcheck(current.state == Pready && current.ptr == nil && result == 1 && awakened == 1);
+		channelcheck(removed == before+1);
+		if(wide && !sending){memmove(&selected,index,sizeof(selected));channelcheck(selected==2);}
 		if(pointers){
 			memmove(&output,destination,sizeof(output));
-			assert(output == input && *(WORD*)output == 99 && D2H(output)->ref == 2);
+			channelcheck(output == input && *(WORD*)output == 99 && D2H(output)->ref == 2);
 			destroy(input); destroy(output);
-		}else{memmove(&received,destination,sizeof(received));assert(received==99);}
+		}else{memmove(&received,destination,sizeof(received));channelcheck(received==99);}
 		for(i = 0; i < 2; i++){
-			assert(boxes[i].c.recv->prog == nil && !boxes[i].c.recv->next);
-			assert(boxes[i].c.send->prog == nil && !boxes[i].c.send->next);
+			channelcheck(boxes[i].c.recv->prog == nil && !boxes[i].c.recv->next);
+			channelcheck(boxes[i].c.send->prog == nil && !boxes[i].c.send->next);
 			closechannel(&boxes[i].c);
 		}
-		assert(!live && !nodes && !worker.nerr); checks++;
+		channelcheck(!live && !nodes && !worker.nerr); checks++;
 	}
 	removed = 0;
 }
@@ -477,6 +510,7 @@ struct NativeAttempt
 	int result;
 };
 
+
 /* Save native send outcomes outside the runtime's nonlocal error frame. */
 static int
 attemptnative(void *arg)
@@ -487,6 +521,7 @@ attemptnative(void *arg)
 	a->result = csendalt(a->channel, a->input, a->type, 3);
 	return 1;
 }
+
 
 /* Allocation errors preserve unconsumed inputs and permit a successful retry. */
 static void
@@ -507,29 +542,30 @@ checkfaults(void)
 		attempt.result = -1;
 		memset(&R, 0x55, sizeof(R)); saved = R;
 		fail_after = 0;
-		assert(!kprotect(attemptnative, &attempt) && last_error == exHeap);
+		channelcheck(!kprotect(attemptnative, &attempt) && last_error == exHeap);
 		fail_after = -1;
-		assert(!memcmp(&R, &saved, sizeof(R)) && box.c.buf == H && attempt.result == -1);
-		if(pointers) assert(D2H(input)->ref == 1);
+		channelcheck(!memcmp(&R, &saved, sizeof(R)) && box.c.buf == H && attempt.result == -1);
+		if(pointers) channelcheck(D2H(input)->ref == 1);
 		attempt.channel = nil;
-		assert(!kprotect(attemptnative, &attempt) && last_error == exNilref);
-		assert(!memcmp(&R,&saved,sizeof(R)) && attempt.result==-1);
-		if(pointers)assert(D2H(input)->ref==1);
+		channelcheck(!kprotect(attemptnative, &attempt) && last_error == exNilref);
+		channelcheck(!memcmp(&R,&saved,sizeof(R)) && attempt.result==-1);
+		if(pointers)channelcheck(D2H(input)->ref==1);
 		attempt.channel = H;
-		assert(!kprotect(attemptnative, &attempt) && last_error == exNilref);
-		if(pointers) assert(D2H(input)->ref == 1);
+		channelcheck(!kprotect(attemptnative, &attempt) && last_error == exNilref);
+		if(pointers) channelcheck(D2H(input)->ref == 1);
 		attempt.channel = &box.c;
 		box.c.buf = nil;
-		assert(!kprotect(attemptnative, &attempt) && last_error == exNilref);
-		assert(!memcmp(&R,&saved,sizeof(R)) && attempt.result==-1);
-		if(pointers) assert(D2H(input)->ref==1);
+		channelcheck(!kprotect(attemptnative, &attempt) && last_error == exNilref);
+		channelcheck(!memcmp(&R,&saved,sizeof(R)) && attempt.result==-1);
+		if(pointers) channelcheck(D2H(input)->ref==1);
 		box.c.buf = H;
-		assert(kprotect(attemptnative, &attempt) && attempt.result == 1);
-		assert(!memcmp(&R, &saved, sizeof(R)));
+		channelcheck(kprotect(attemptnative, &attempt) && attempt.result == 1);
+		channelcheck(!memcmp(&R, &saved, sizeof(R)));
 		receivevalue(&box.c, 99, pointers);
-		closechannel(&box.c); assert(!live && !nodes && !worker.nerr); checks++;
+		closechannel(&box.c); channelcheck(!live && !nodes && !worker.nerr); checks++;
 	}
 }
+
 
 /* Run the real FileIO close-notification caller with no receiver available. */
 static int
@@ -538,6 +574,7 @@ notifyservice(void *file)
 	srvunblock(file, 42);
 	return 1;
 }
+
 
 /* Service close uses the negative-capacity sentinel for both read and write requests. */
 static void
@@ -560,13 +597,14 @@ checkservice(void)
 		file.read = mode&1 ? &boxes[0].c : H;
 		file.write = mode&2 ? &boxes[1].c : H;
 		before = allocations;
-		assert(kprotect(notifyservice, &file));
-		assert(!acquired && !removed && allocations == before);
-		assert(boxes[0].c.buf == H && boxes[1].c.buf == H);
+		channelcheck(kprotect(notifyservice, &file));
+		channelcheck(!acquired && !removed && allocations == before);
+		channelcheck(boxes[0].c.buf == H && boxes[1].c.buf == H);
 		closechannel(&boxes[0].c); closechannel(&boxes[1].c);
-		assert(!live && !nodes && !worker.nerr); checks++;
+		channelcheck(!live && !nodes && !worker.nerr); checks++;
 	}
 }
+
 
 /* Route the actual receive instruction through the production exception protector. */
 static int
@@ -577,19 +615,27 @@ retainrecv(void *unused)
 	return 1;
 }
 
+
 /* A bad temporary owner must not dequeue, mutate ring data or publish a receive result. */
 static void
 checkretains(void)
 {
-	TestChannel box,before;
-	Channel *c;
-	Array *buffer;
-	Prog peerbefore;
-	Progq sendbefore,recvbefore;
-	REG saved;
-	union {uvlong align;uchar bytes[80];} slots;
-	union {void *pointer;WORD word;} outgoing;
-	uchar expected[80],data[32];
+	/* Stable oracle storage survives error paths with different instrumented stack depths. */
+	static TestChannel box,before;
+	static Channel *c;
+	static Array *buffer;
+	static Prog peerbefore;
+	static Progq sendbefore,recvbefore;
+	static REG saved;
+	static union {
+		uvlong align; // Natural alignment for independently shifted operand cells.
+		uchar bytes[80]; // Stable slot image across protected error paths.
+	} slots;
+	static union {
+		void *pointer; // Native pointer payload for a queued sender.
+		WORD word; // Scalar payload in the selected VM word model.
+	} outgoing;
+	static uchar expected[80],data[32];
 	void *empty=H;
 	int queued,kind,pointers,sa,da,oldlive,oldnodes,oldallocations;
 	char *failure,*selection=getenv("CHANNEL_RETAIN_KIND");
@@ -616,16 +662,17 @@ checkretains(void)
 		memmove(expected,slots.bytes,sizeof(expected));memmove(data,buffer->data,buffer->len*buffer->t->size);
 		before=box;saved=R;peerbefore=peers[0];sendbefore=*c->send;recvbefore=*c->recv;
 		oldlive=live;oldnodes=nodes;oldallocations=allocations;awakened=removed=0;last_error=nil;
-		assert(!kprotect(retainrecv,nil) && last_error==failure);
-		assert(!memcmp(&before,&box,sizeof(box)) && !memcmp(&saved,&R,sizeof(R)));
-		assert(!memcmp(&peerbefore,&peers[0],sizeof(peerbefore)) && !memcmp(&sendbefore,c->send,sizeof(sendbefore)));
-		assert(!memcmp(&recvbefore,c->recv,sizeof(recvbefore)) && !memcmp(expected,slots.bytes,sizeof(expected)));
-		assert(!memcmp(data,buffer->data,buffer->len*buffer->t->size));
-		assert(live==oldlive && nodes==oldnodes && allocations==oldallocations && !awakened && !removed && !worker.nerr);
+		channelcheck(!kprotect(retainrecv,nil) && last_error==failure);
+		channelcheck(!memcmp(&before,&box,sizeof(box)) && !memcmp(&saved,&R,sizeof(R)));
+		channelcheck(!memcmp(&peerbefore,&peers[0],sizeof(peerbefore)) && !memcmp(&sendbefore,c->send,sizeof(sendbefore)));
+		channelcheck(!memcmp(&recvbefore,c->recv,sizeof(recvbefore)) && !memcmp(expected,slots.bytes,sizeof(expected)));
+		channelcheck(!memcmp(data,buffer->data,buffer->len*buffer->t->size));
+		channelcheck(live==oldlive && nodes==oldnodes && allocations==oldallocations && !awakened && !removed && !worker.nerr);
 		box.h.ref=1;D2H(buffer)->ref=1;c->buf=buffer;
-		closechannel(c);assert(!live && !nodes);checks++;
+		closechannel(c);channelcheck(!live && !nodes);checks++;
 	}
 }
+
 
 /* Route an ordinary VM send through the production error protector. */
 static int
@@ -635,6 +682,7 @@ ringsend(void *unused)
 	isend();
 	return 1;
 }
+
 
 /* Reject null buffered storage before publishing operands or queue registrations. */
 static void
@@ -655,14 +703,15 @@ checknullbuffer(void)
 		memmove(R.s,&value,sizeof(value));memmove(R.d,&c,sizeof(c));
 		saved=R;before=box;memmove(expected,slots.bytes,sizeof(expected));
 		oldallocations=allocations;awakened=removed=0;
-		assert(!kprotect(ringsend,nil) && last_error==exNilref);
-		assert(!memcmp(&saved,&R,sizeof(R)) && !memcmp(&before,&box,sizeof(box)));
-		assert(!memcmp(expected,slots.bytes,sizeof(expected)));
-		assert(!c->send->prog && !c->recv->prog && !awakened && !removed);
-		assert(allocations==oldallocations && !worker.nerr);
-		c->buf=H;closechannel(c);assert(!live && !nodes);checks++;
+		channelcheck(!kprotect(ringsend,nil) && last_error==exNilref);
+		channelcheck(!memcmp(&saved,&R,sizeof(R)) && !memcmp(&before,&box,sizeof(box)));
+		channelcheck(!memcmp(expected,slots.bytes,sizeof(expected)));
+		channelcheck(!c->send->prog && !c->recv->prog && !awakened && !removed);
+		channelcheck(allocations==oldallocations && !worker.nerr);
+		c->buf=H;closechannel(c);channelcheck(!live && !nodes);checks++;
 	}
 }
+
 
 /* Exercise large ring metadata while only the selected physical slot is backed. */
 static void
@@ -690,18 +739,19 @@ checkringedges(void)
 		memset(slots.bytes,0xa5,sizeof(slots.bytes));memset(&R,0,sizeof(R));
 		if(direction){
 			value=67890;memmove(slots.bytes+shift,&value,sizeof(value));
-			assert(cputb(c,slots.bytes+shift)==1 && c->size==3 && c->front==oldfront);
-			memmove(&result,base,sizeof(result));assert(result==value);
+			channelcheck(cputb(c,slots.bytes+shift)==1 && c->size==3 && c->front==oldfront);
+			memmove(&result,base,sizeof(result));channelcheck(result==value);
 		}else{
-			assert(cgetb(c,slots.bytes+shift)==1 && c->size==0);
-			assert(c->front==(oldfront==0x7ffffffe ? 0 : oldfront+1));
-			memmove(&result,slots.bytes+shift,sizeof(result));assert(result==value);
+			channelcheck(cgetb(c,slots.bytes+shift)==1 && c->size==0);
+			channelcheck(c->front==(oldfront==0x7ffffffe ? 0 : oldfront+1));
+			memmove(&result,slots.bytes+shift,sizeof(result));channelcheck(result==value);
 		}
-		assert(D2H(a)->ref==1);
+		channelcheck(D2H(a)->ref==1);
 		a->data=base;a->len=4;c->front=c->size=0;
-		closechannel(c);assert(!live && !nodes);checks++;
+		closechannel(c);channelcheck(!live && !nodes);checks++;
 	}
 }
+
 
 /* Require all references, descriptors and queue nodes to balance across each matrix. */
 int
@@ -718,8 +768,8 @@ main(void)
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "service")) checkservice();
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "faults")) checkfaults();
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "wake")) checkblockedwake();
-	assert(!live && !nodes && !worker.nerr && !removed);
-	assert(scalar.ref == 1 && pointer.ref == 1 && Tarray.ref == 1);
+	channelcheck(!live && !nodes && !worker.nerr && !removed);
+	channelcheck(scalar.ref == 1 && pointer.ref == 1 && Tarray.ref == 1);
 	printf("PASS channel transfers: %d FIFO/buffer/wakeup/native/reference scenarios, WORD%zu\n", checks, sizeof(WORD)*8);
 	return 0;
 }

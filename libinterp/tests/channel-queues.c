@@ -4,8 +4,18 @@
 #include "interp.h"
 #include "raise.h"
 #include "kernel.h"
-#include <assert.h>
+#include <stdlib.h>
 #include <stdio.h>
+
+
+/* Retain all inherited queue and transfer oracles when NDEBUG is enabled. */
+static void
+channelpredicate(int condition)
+{
+	if(!condition)
+		abort();
+}
+#define channelcheck(condition) channelpredicate(!!(condition)) // Normalize pointer and scalar predicates.
 
 static Proc worker;
 static Prog current, others[3];
@@ -19,12 +29,14 @@ char exNomem[] = "allocation", exNilref[] = "nil", exAlt[] = "self alt", exBound
 REG R;
 Type Tarray;
 
+
 /* Use the emulator's real error-stack layout for every injected failure. */
 Proc *getup(void) { return &worker; }
-void nexterror(void) { assert(worker.nerr > 0); siglongjmp(worker.estack[--worker.nerr], 1); }
+void nexterror(void) { channelcheck(worker.nerr > 0); siglongjmp(worker.estack[--worker.nerr], 1); }
 void error(char *s) { last_error = s; nexterror(); }
 int __lsan_is_turned_off(void) { return 1; }
 GUARD
+
 
 /* Account for all queue nodes and fail a chosen allocation deterministically. */
 static void*
@@ -37,27 +49,39 @@ nodealloc(ulong size)
 	if(fail_after > 0)
 		fail_after--;
 	p = malloc(size);
-	assert(p);
+	channelcheck(p);
 	live++;
 	return p;
 }
+
 
 /* Every production queue free must balance a fixture allocation. */
 static void
 nodefree(void *p)
 {
-	assert(p && live > 0);
+	channelcheck(p && live > 0);
 	live--;
 	free(p);
 }
+
 
 /* Model only runnable-list transitions, leaving queue logic in production code. */
 Prog *currun(void) { return &current; }
 Prog *delrun(int state) { removed++; current.state = state; return &current; }
 void addrun(Prog *p) { awakened++; p->state = Pready; }
-int print(char *fmt, ...) { (void)fmt; assert(0); return 0; }
-static int cputb(Channel *c, void *v) { (void)c; (void)v; assert(0); return 0; }
-static int cgetb(Channel *c, void *v) { (void)c; (void)v; assert(0); return 0; }
+int print(char *fmt, ...) { (void)fmt; channelcheck(0); return 0; }
+static int cputb(Channel *c, void *v) { (void)c; (void)v; channelcheck(0); return 0; }
+static int cgetb(Channel *c, void *v) { (void)c; (void)v; channelcheck(0); return 0; }
+
+
+/* This queue-only fixture never transfers a retained buffered owner. */
+void
+destroy(void *value)
+{
+	(void)value;
+	channelcheck(0);
+}
+
 #define OP(fn) void fn(void)
 #define C(r) (*(Channel**)R.r)
 #define malloc nodealloc
@@ -65,6 +89,7 @@ static int cgetb(Channel *c, void *v) { (void)c; (void)v; assert(0); return 0; }
 IMPLEMENTATION
 #undef malloc
 #undef free
+
 
 /* Model wakeup, interruption and killcomm cleanup at the native blocking boundary. */
 void
@@ -79,6 +104,7 @@ cblock(Prog *p)
 		error(interrupted);
 }
 
+
 /* Construct the same permanent empty-head invariant as channel creation. */
 static Progq*
 emptyqueue(void)
@@ -91,13 +117,14 @@ emptyqueue(void)
 	return q;
 }
 
+
 /* Free a fixture queue after production operations have finished. */
 static void
 releasequeue(Progq *q)
 {
 	Progq *next;
 
-	assert(q);
+	channelcheck(q);
 	while(q){
 		next = q->next;
 		nodefree(q);
@@ -105,23 +132,25 @@ releasequeue(Progq *q)
 	}
 }
 
+
 /* Check exact FIFO survivors, with no empty nodes inside a nonempty queue. */
 static void
 queueequals(Progq *q, Prog **expected, int n)
 {
 	int i;
 
-	assert(q);
+	channelcheck(q);
 	if(n == 0){
-		assert(q->prog == nil && q->next == nil);
+		channelcheck(q->prog == nil && q->next == nil);
 		return;
 	}
 	for(i = 0; i < n; i++){
-		assert(q && q->prog == expected[i]);
+		channelcheck(q && q->prog == expected[i]);
 		q = q->next;
 	}
-	assert(q == nil);
+	channelcheck(q == nil);
 }
+
 
 /* Exhaust every ternary queue through length eight and every removal target. */
 static void
@@ -149,10 +178,10 @@ checkqueues(void)
 			cqadd(&q, &current); expected[n++] = &current;
 			queueequals(q, expected, n);
 			for(i = 0; i < n; i++){
-				assert(q->prog == expected[i]); cqdel(&q);
+				channelcheck(q->prog == expected[i]); cqdel(&q);
 			}
 			queueequals(q, expected, 0);
-			releasequeue(q); assert(live == 0); checks++;
+			releasequeue(q); channelcheck(live == 0); checks++;
 		}
 		patterns *= 3;
 	}
@@ -160,6 +189,7 @@ checkqueues(void)
 
 static Channel *selected;
 static int sending, blocking;
+
 
 /* Invoke actual send/receive instructions inside the real VM error boundary. */
 static int
@@ -169,6 +199,7 @@ communicate(void *unused)
 	if(sending) isend(); else irecv();
 	return 1;
 }
+
 
 /* Exercise allocation failure before and successful transition after registration. */
 static void
@@ -191,23 +222,24 @@ checkblocking(void)
 		R.IC = 17; R.t = 23; selected = &c; removed = 0;
 		fail_after = fault ? -1 : 0;
 		if(!fault){
-			assert(!kprotect(communicate, nil) && last_error == exNomem);
-			assert(!removed && current.state == Pready);
-			assert(current.ptr == &data && current.chan == (Channel*)1);
-			assert(R.IC == 17 && R.t == 23);
+			channelcheck(!kprotect(communicate, nil) && last_error == exNomem);
+			channelcheck(!removed && current.state == Pready);
+			channelcheck(current.ptr == &data && current.chan == (Channel*)1);
+			channelcheck(R.IC == 17 && R.t == 23);
 			expected[0] = &others[0];
 			queueequals(sending ? c.send : c.recv, expected, 1);
 		}else{
-			assert(kprotect(communicate, nil));
-			assert(removed == 1 && current.state == (sending ? Psend : Precv));
-			assert(current.ptr == &data && current.chan == &c && R.IC == 1 && R.t == 1);
+			channelcheck(kprotect(communicate, nil));
+			channelcheck(removed == 1 && current.state == (sending ? Psend : Precv));
+			channelcheck(current.ptr == &data && current.chan == &c && R.IC == 1 && R.t == 1);
 			expected[0] = &others[0]; expected[1] = &current;
 			queueequals(sending ? c.send : c.recv, expected, 2);
 		}
 		fail_after = -1;
-		releasequeue(c.send); releasequeue(c.recv); assert(live == 0); checks++;
+		releasequeue(c.send); releasequeue(c.recv); channelcheck(live == 0); checks++;
 	}
 }
+
 
 /* Invalid channel owners must fail before touching queues, data or decoded registers. */
 static void checknilslots(void)
@@ -225,11 +257,12 @@ static void checknilslots(void)
 		memmove(expected,slot.bytes,sizeof(expected));
 		R.s=sending ? (void*)&data : slot.bytes+align;R.d=sending ? slot.bytes+align : (void*)&data;
 		R.IC=17;R.t=23;before=R;
-		assert(!kprotect(communicate,nil) && last_error==exNilref);
-		assert(!memcmp(&R,&before,sizeof(R)) && !memcmp(expected,slot.bytes,sizeof(expected)) && data==42 && live==0);
+		channelcheck(!kprotect(communicate,nil) && last_error==exNilref);
+		channelcheck(!memcmp(&R,&before,sizeof(R)) && !memcmp(expected,slot.bytes,sizeof(expected)) && data==42 && live==0);
 		checks++;
 	}
 }
+
 
 /* Run complete alt preparation rather than replacing its registration logic. */
 static int
@@ -239,6 +272,7 @@ prepare(void *unused)
 	xecalt(blocking);
 	return 1;
 }
+
 
 /* Fail each registration of repeated scalar/array guards and preserve other waiters. */
 static void
@@ -281,29 +315,31 @@ checkalts(void)
 		ok = kprotect(prepare, nil);
 		fail_after = -1;
 		if(!ok){
-			assert(last_error == exNomem || ((mode == 2 || mode == 4) && last_error == exNilref));
-			assert(result == -77 && !removed && current.state == Pready);
+			channelcheck(last_error == exNomem || ((mode == 2 || mode == 4) && last_error == exNilref));
+			channelcheck(result == -77 && !removed && current.state == Pready);
 		}else if(blocking){
-			assert(removed == 1 && current.state == Palt && result == -77);
+			channelcheck(removed == 1 && current.state == Palt && result == -77);
 			altdone(a, &current, nil, -1);
-		}else assert(!removed && result == 8);
-		assert(live == count);
+		}else channelcheck(!removed && result == 8);
+		channelcheck(live == count);
 		expected[0] = &others[0];
 		for(i = 0; i < 3; i++){
 			queueequals(channels[i]->recv, expected, mode >= 3 ? 0 : foreign);
 			queueequals(channels[i]->send, expected, mode >= 3 ? foreign : 0);
 			releasequeue(channels[i]->send); releasequeue(channels[i]->recv);
 		}
-		assert(live == 0 && worker.nerr == 0); checks++;
+		channelcheck(live == 0 && worker.nerr == 0); checks++;
 	}
 }
+
 
 /* A rejected conflict must never reach communication or wake a foreign peer. */
 static void
 unexpectedtransfer(void)
 {
-	assert(!"conflicting alt reached data transfer");
+	channelcheck(!"conflicting alt reached data transfer");
 }
+
 
 /* Detect scalar/array receive registrations at every depth behind other waiters. */
 static void
@@ -339,13 +375,14 @@ checkselfalt(void)
 		a->ac[0].ptr = a->ac[1].ptr = data;
 		result = -77; R.s = a; R.d = &result;
 		current.state = Pready; removed = 0;
-		assert(!kprotect(prepare, nil) && last_error == exAlt);
-		assert(result == -77 && !removed && current.state == Pready);
+		channelcheck(!kprotect(prepare, nil) && last_error == exAlt);
+		channelcheck(result == -77 && !removed && current.state == Pready);
 		queueequals(box.c.send, nil, 0); queueequals(box.c.recv, expected, foreign);
 		releasequeue(box.c.send); releasequeue(box.c.recv);
-		assert(live == 0 && worker.nerr == 0); checks++;
+		channelcheck(live == 0 && worker.nerr == 0); checks++;
 	}
 }
+
 
 /* Native channel helpers clean stale payload pointers even if queue allocation fails. */
 static void
@@ -362,18 +399,19 @@ checknative(void)
 		blockedqueue = &q; current.ptr = &payload; blockcalls = 0;
 		fail_after = fault ? -1 : 0;
 		if(waserror()){
-			assert(last_error == (fault ? interrupted : exNomem));
+			channelcheck(last_error == (fault ? interrupted : exNomem));
 		}else{
 			ccom(&q, &current);
-			assert(fault && blockmode == 0);
+			channelcheck(fault && blockmode == 0);
 			poperror();
 		}
 		fail_after = -1;
-		assert(current.ptr == nil && blockcalls == fault);
+		channelcheck(current.ptr == nil && blockcalls == fault);
 		expected[0] = &others[0]; queueequals(q, expected, 1);
-		releasequeue(q); assert(live == 0 && worker.nerr == 0); checks++;
+		releasequeue(q); channelcheck(live == 0 && worker.nerr == 0); checks++;
 	}
 }
+
 
 /* Exercise actual registration and wakeup selection through independently aligned slots. */
 static void
@@ -410,19 +448,20 @@ checkaltslots(void)
 		memset(outputs,0xa5,sizeof(outputs));memset(payload,0xa5,sizeof(payload));memmove(before,payload,sizeof(payload));
 		current.R.d=outputs+oa;
 		altrdy(a,&current);altdone(a,&current,&boxes[1].c,kind==0 ? 0 : 1);
-		memmove(&result,outputs+oa,sizeof(result));assert(result==1);
-		if(kind==2){memmove(&index,payload+pa,sizeof(index));assert(index==2);memmove(before+pa,&index,sizeof(index));}
-		assert(current.ptr==payload+pa+(kind==2 ? sizeof(WORD) : 0));
-		assert(!memcmp(payload,before,sizeof(payload)));
-		for(i=0;i<48;i++)if(i<oa || i>=oa+(int)sizeof(WORD))assert(outputs[i]==0xa5);
+		memmove(&result,outputs+oa,sizeof(result));channelcheck(result==1);
+		if(kind==2){memmove(&index,payload+pa,sizeof(index));channelcheck(index==2);memmove(before+pa,&index,sizeof(index));}
+		channelcheck(current.ptr==payload+pa+(kind==2 ? sizeof(WORD) : 0));
+		channelcheck(!memcmp(payload,before,sizeof(payload)));
+		for(i=0;i<48;i++)if(i<oa || i>=oa+(int)sizeof(WORD))channelcheck(outputs[i]==0xa5);
 		expected[0]=&others[0];
 		for(i=0;i<2;i++){
 			queueequals(boxes[i].c.send,expected,foreign);queueequals(boxes[i].c.recv,expected,foreign);
 			releasequeue(boxes[i].c.send);releasequeue(boxes[i].c.recv);
 		}
-		assert(!live);checks++;
+		channelcheck(!live);checks++;
 	}
 }
+
 
 /* Partial cleanup must tolerate null channels, malformed arrays and rejected headers. */
 static void
@@ -450,24 +489,94 @@ checkaltgeometry(void)
 		if(mode==8)storage.nrecv=-1;
 		if(mode==9)storage.nsend=0x7fffffff;
 		R.s=mode==10 ? nil : mode==11 ? H : (void*)&storage;R.d=&result;result=-77;removed=0;blocking=0;
-		assert(!kprotect(prepare,nil));assert(!removed && result==-77);
-		assert(last_error==((mode<3 || mode>=10) ? exNilref : exBounds));
+		channelcheck(!kprotect(prepare,nil));channelcheck(!removed && result==-77);
+		channelcheck(last_error==((mode<3 || mode>=10) ? exNilref : exBounds));
 		queueequals(box.c.send,nil,0);queueequals(box.c.recv,nil,0);
-		releasequeue(box.c.send);releasequeue(box.c.recv);assert(!live && !worker.nerr);checks++;
+		releasequeue(box.c.send);releasequeue(box.c.recv);channelcheck(!live && !worker.nerr);checks++;
 	}
 }
+
+
+/* Reject wrapped headers and output cells before queue registration or scheduling. */
+static void
+checkaltspans(void)
+{
+	uchar header[sizeof(Alt)+8];
+	REG saved;
+	WORD result;
+	int shift, mode, offset;
+
+	for(shift=0;shift<8;shift++)for(blocking=0;blocking<2;blocking++)
+	for(mode=0;mode<2;mode++){
+		if(getenv("ALT_SPAN_KIND") && strcmp(getenv("ALT_SPAN_KIND"),mode ? "result" : "header"))continue;
+		for(offset=0;offset<(int)(mode ? sizeof(WORD)+2 : offsetof(Alt,ac));offset++){
+			memset(header,0,sizeof(header));memset(&R,0,sizeof(R));
+			result=-77;R.s=header+shift;R.d=&result;
+			if(mode)R.d=offset==0 ? nil : offset==1 ? H : (void*)((uintptr)-1-(offset-2));
+			else R.s=(void*)((uintptr)-1-offset);
+			saved=R;removed=awakened=0;
+			channelcheck(!kprotect(prepare,nil));
+			channelcheck(last_error==(!mode && offset==0 ? exNilref : exBounds));
+			channelcheck(!memcmp(&R,&saved,sizeof(R)) && result==-77);
+			channelcheck(!removed && !awakened && !live && !worker.nerr);checks++;
+		}
+	}
+}
+
+
+/* Communication faults must remove only this process's scalar/array registrations. */
+static void
+checkalttransfererrors(void)
+{
+	struct {int nsend,nrecv;Altc ac[4];} storage;
+	struct {Heap h;Channel c;} box;
+	struct {Heap h;Array a;} array;
+	uchar rawalt[sizeof(storage)+8],rawresult[sizeof(WORD)+8];
+	Channel *members[4];
+	Prog *expected[3];
+	WORD payload=11,tuple[2],result;
+	int shift,outshift,wide,foreign,duplicates,senders,i,before;
+
+	for(shift=0;shift<8;shift++)for(outshift=0;outshift<8;outshift++)
+	for(wide=0;wide<2;wide++)for(foreign=0;foreign<4;foreign++)
+	for(duplicates=1;duplicates<=4;duplicates++)for(senders=1;senders<=3;senders++){
+		memset(&storage,0,sizeof(storage));memset(&box,0,sizeof(box));memset(&array,0,sizeof(array));
+		box.h.ref=1;box.c.send=emptyqueue();box.c.recv=emptyqueue();box.c.buf=nil;
+		for(i=0;i<foreign;i++){expected[i]=&others[i];cqadd(&box.c.recv,expected[i]);}
+		for(i=0;i<senders;i++){others[i].state=Psend;others[i].ptr=&payload;cqadd(&box.c.send,&others[i]);}
+		for(i=0;i<duplicates;i++)members[i]=&box.c;
+		array.h.t=&Tarray;array.a.data=(uchar*)members;array.a.len=duplicates;
+		storage.nrecv=wide ? 1 : duplicates;
+		for(i=0;i<storage.nrecv;i++){storage.ac[i].c=wide ? (Channel*)&array.a : &box.c;storage.ac[i].ptr=tuple;}
+		memmove(rawalt+shift,&storage,sizeof(storage));memset(rawresult,0xa5,sizeof(rawresult));
+		result=-77;memmove(rawresult+outshift,&result,sizeof(result));tuple[0]=tuple[1]=-99;
+		R.s=rawalt+shift;R.d=rawresult+outshift;before=live;removed=awakened=0;blocking=0;
+		channelcheck(!kprotect(prepare,nil) && last_error==exNilref);
+		queueequals(box.c.recv,expected,foreign);
+		for(i=0;i<senders;i++)expected[i]=&others[i];
+		queueequals(box.c.send,expected,senders);
+		channelcheck(!removed && !awakened && live==before && !worker.nerr && payload==11);
+		for(i=0;i<outshift;i++)channelcheck(rawresult[i]==0xa5);
+		for(i=outshift+sizeof(WORD);i<(int)sizeof(rawresult);i++)channelcheck(rawresult[i]==0xa5);
+		releasequeue(box.c.send);releasequeue(box.c.recv);channelcheck(!live);checks++;
+	}
+}
+
 
 /* Require balanced allocations and error frames after every scenario. */
 int
 main(void)
 {
+	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"),"altspans"))checkaltspans();
+	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"),"alttransfererrors"))checkalttransfererrors();
 	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"),"altslots"))checkaltslots();
 	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"),"altgeometry"))checkaltgeometry();
 	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"), "queues")) checkqueues();
 	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"), "blocking")) { checkblocking(); checknilslots(); }
-	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"), "alt")){ checkalts(); checkselfalt(); }
+	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"), "alt") || !strcmp(getenv("QUEUE_CASE"), "altregister"))checkalts();
+	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"), "alt") || !strcmp(getenv("QUEUE_CASE"), "altconflicts"))checkselfalt();
 	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"), "native")) checknative();
-	assert(live == 0 && worker.nerr == 0 && awakened == 0);
+	channelcheck(live == 0 && worker.nerr == 0 && awakened == 0);
 	printf("PASS channel queues: %d FIFO/duplicate/removal/allocation/alt scenarios, WORD%zu\n", checks, sizeof(WORD)*8);
 	return 0;
 }

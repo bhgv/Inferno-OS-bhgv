@@ -71,3 +71,63 @@ is insufficient: C's final float-to-integer conversion can set FE_INEXACT even
 for an integral source after adding the rounding half. Future native versions
 must preserve the target FP rounding, status and trap behavior as well as the
 integer result. GP-only reconstruction would lose those observable effects.
+
+
+## ALT header/result spans and communication error cleanup
+
+ALT/NBALT now reject a wrapping fixed header before copying either signed count.
+The selection result must hold a complete WORD before any queue registration or
+scheduler transition. `altstore` checks the same output geometry when publishing
+asynchronous selections. Byte-aligned result cells and guard tables remain valid.
+
+The selected communication runs inside a real VM protected boundary. If it raises,
+all registrations belonging to the current alt are cancelled before rethrowing
+the original error. Scalar guards, channel arrays and duplicate registrations
+preserve unrelated queue members and FIFO order. This does not roll back payload
+operations, peer wakeups or selection/index stores that already happened before
+a transfer error; it closes the registration leak.
+
+The queue driver supports `QUEUE_JIT_ROUTE=1`: it compiles actual complete ALT
+and NBALT tails for the host backend, links production `cjitexec` and the real C
+handlers, and executes the same queue matrices through those published RX entries.
+Both entries deliberately have no native fast leaf. The run here uses AMD64;
+the driver selects ARM64 on an ARM64 host, whose physical run is still pending.
+
+Validation with ASan/UBSan and NDEBUG:
+
+```sh
+CFLAGS='-O1 -g -DNDEBUG -fsanitize=address,undefined -fno-sanitize-recover=all' python3 libinterp/tests/channel-queues.py
+QUEUE_JIT_ROUTE=1 CFLAGS='-O1 -g -DNDEBUG -fsanitize=address,undefined -fno-sanitize-recover=all' python3 libinterp/tests/channel-queues.py
+CFLAGS='-O1 -g -DNDEBUG -fsanitize=address,undefined -fno-sanitize-recover=all' python3 libinterp/tests/channel-transfers.py
+```
+
+The direct and complete-JIT queue matrices pass 243,860 cases each across emu/os
+and WORD32/WORD64. The real payload transfer matrix passes 599,408 cases, including
+buffer FIFO/rings, retained references, ready ALT transfers and blocked wakeups.
+These are native-pointer models, not a completed native VM ABI.
+
+The added span family passes 288 cases per WORD64 runtime and 224 per WORD32
+runtime, per route. The transfer-error family adds 6,144 cases per runtime/model
+and route: both guard kinds, eight table/result shifts, duplicate registrations,
+foreign waiters and queued senders. The communication error is raised before the
+foreign sender is removed; the fixture proves its payload and queue survive.
+Together these new families account for 51,200 C/RX cases.
+
+Six independent preceding-source controls fail: header, result and communication
+families through direct C and complete JIT. The old header reaches SIGSEGV, the
+old result reaches UBSan's nil-output diagnostic, and the old communication path
+fails the active survivor-queue predicate. `ALT_SOURCE`, `QUEUE_CASE=altspans`,
+`ALT_SPAN_KIND=header|result`, `QUEUE_CASE=alttransfererrors` and
+`QUEUE_JIT_ROUTE=0|1` select the controls.
+
+Both fixtures now use explicit predicates, retaining all inherited checks under
+NDEBUG. The queue-only fixture explicitly rejects any unexpected buffered-owner
+destruction. Drivers isolate unrelated error-stack topologies in fresh processes;
+transfer oracle buffers use stable storage across protected error paths. This
+keeps ASan instrumentation active in the runner without proc-based stack discovery.
+The legacy `QUEUE_CASE=alt` alias still selects both registration/conflict groups;
+the default runner launches `altregister` and `altconflicts` separately.
+
+Availability stays 173/173 complete JIT+C entries and 166/173 guarded native
+paths per priority architecture. No RV64-specific, MIPS/SPARC/PowerPC JIT, Tk or
+security/crypto changes are included. Full native ABI work remains unfinished.

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Execute production channel queues/alt preparation with real types/error frames."""
 import os
+import platform
 from pathlib import Path
 import re
 import shlex
@@ -36,6 +37,42 @@ if 'static int\nchannelspan(' in xec:
 parts += [function(xec, 'OP('+name+')') for name in ('isend', 'irecv')]
 parts += [re.sub(r'^#include[^\n]*\n', '', alt, flags=re.M)]
 unit = (root/'libinterp/tests/channel-queues.c').read_text()
+# Optional integration route uses published native tails and the real C executor.
+if os.environ.get('QUEUE_JIT_ROUTE') == '1':
+    machine=platform.machine().lower()
+    backend='amd64' if machine in ('amd64','x86_64') else 'arm64' if machine in ('arm64','aarch64') else None
+    if backend is None:raise RuntimeError('native queue JIT route needs AMD64 or ARM64')
+    for header in ('isa.h','raise.h','kernel.h'):
+        unit=unit.replace('#include "'+header+'"\n','')
+    unit=unit.replace('#include "interp.h"', '#define TEST_LEAF_DISPATCH_RUNTIME // Link the real complete-entry executor.\n#include "comp-'+backend+'.c"\n#include "tests/leaf-cons-stub.h"\n#include "tests/leaf-plain-stubs.h"')
+    unit=unit.replace('Type Tarray;', r'''Type Tarray, Tstring;
+int mutator,nprop; // Required collector identities for unrelated native entries.
+void (*optab[256])(void); // Real C opcode bindings behind the native tails.
+char exOp[]="opcode"; // Invalid decoded opcode identity.
+static Jit *queuejit; // Owned native table for ALT and NBALT.
+
+
+/* Keep native publication allocations separate from queue failure injection. */
+void*
+mallocz(ulong size,int clear)
+{
+    return clear ? calloc(1,size) : malloc(size);
+}
+''')
+    parts += [function(xec,'OP(alt)'),function(xec,'OP(nbalt)'),function(xec,'int\ncjitexec(')]
+    unit=unit.replace('xecalt(blocking);','channelcheck(queuejit->dispatch[blocking ? IALT : INBALT](&R));')
+    unit=unit.replace('int\nmain(void)\n{', r'''int
+main(void)
+{
+    Module module={0};
+    Inst program[2]={{0}};
+    program[0].op=IALT;program[1].op=INBALT;
+    module.prog=program;module.nprog=2;
+    optab[IALT]=alt;optab[INBALT]=nbalt;
+    channelcheck(compile(&module,2,nil));queuejit=module.jit;
+    channelcheck(queuejit->entry[IALT]==nil && queuejit->entry[INBALT]==nil);
+''')
+    unit=unit.replace('printf("PASS channel queues:', 'queuejit->freecode(queuejit->code,queuejit->size);free(queuejit);\n\tprintf("PASS channel queues:')
 for runtime in ('emu/port/dis.c', 'os/port/dis.c'):
     guard = (root/runtime).read_text()
     native = Path(os.environ.get('CCOM_SOURCE', root/runtime.replace('dis.c','inferno.c'))).read_text()
@@ -58,4 +95,7 @@ for runtime in ('emu/port/dis.c', 'os/port/dis.c'):
             includes += ['-I'+str(root/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
             binary = td/('queues'+str(bits))
             subprocess.run(cmd+includes+[str(source),'-o',str(binary)],check=True)
-            subprocess.run([str(binary)],check=True)
+            # Keep unrelated longjmp stack topologies in separate instrumented processes.
+            families=[os.environ["QUEUE_CASE"]] if os.environ.get("QUEUE_CASE") else ['altspans', 'alttransfererrors', 'altslots', 'altgeometry', 'queues', 'blocking', 'altregister', 'altconflicts', 'native']
+            for family in families:
+                subprocess.run([str(binary)],env=dict(os.environ, **{"QUEUE_CASE":family}),check=True)

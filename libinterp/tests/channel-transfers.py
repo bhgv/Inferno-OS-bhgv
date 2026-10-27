@@ -62,4 +62,7 @@ for runtime in ('emu/port/dis.c', 'os/port/dis.c'):
             includes += ['-I'+str(root/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
             binary = td/('queues'+str(bits))
             subprocess.run(cmd+includes+[str(source),'-o',str(binary)],check=True)
-            subprocess.run([str(binary)],check=True)
+            # Keep unrelated longjmp stack topologies in separate instrumented processes.
+            families=[os.environ["CHANNEL_TRANSFER_CASE"]] if os.environ.get("CHANNEL_TRANSFER_CASE") else ['ring', 'retains', 'fifo', 'senders', 'native', 'ready', 'empty', 'service', 'faults', 'wake']
+            for family in families:
+                subprocess.run([str(binary)],env=dict(os.environ, **{"CHANNEL_TRANSFER_CASE":family}),check=True)

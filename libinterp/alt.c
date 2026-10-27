@@ -4,21 +4,33 @@
 #include "raise.h"
 #include "kernel.h"
 
-#define OP(fn)	void fn(void)
-#define W(p)	*((WORD*)(p))
+#define OP(fn)	void fn(void) // Shared C instruction declarations.
+#define W(p)	*((WORD*)(p)) // Legacy VM word accessor.
 
-#define CANGET(c)	((c)->size > 0)
-#define CANPUT(c)	((c)->buf != H && (c)->size < (c)->buf->len)
+#define CANGET(c)	((c)->size > 0) // Buffered receive readiness.
+#define CANPUT(c)	((c)->buf != H && (c)->size < (c)->buf->len) // Buffered send readiness.
 
 extern	OP(isend);
 extern	OP(irecv);
+
+
+/* Reject an unusable selection cell before registering or waking any process. */
+static void
+altresult(void *slot)
+{
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
+}
+
 
 /* Store a VM selection word without requiring native slot alignment. */
 static void
 altstore(void *slot, WORD value)
 {
+	altresult(slot);
 	memmove(slot, &value, sizeof(value));
 }
+
 
 /* Capture a possibly four-byte-aligned alt header before forming table spans. */
 static int
@@ -26,7 +38,7 @@ altheader(Alt *a, int *nsend, int *nrecv)
 {
 	uvlong bytes;
 
-	if(a == nil || a == H)
+	if(a == nil || a == H || (uintptr)a > (uintptr)-1- offsetof(Alt, ac))
 		return 0;
 	memmove(nsend, (uchar*)a+offsetof(Alt, nsend), sizeof(*nsend));
 	memmove(nrecv, (uchar*)a+offsetof(Alt, nrecv), sizeof(*nrecv));
@@ -35,6 +47,7 @@ altheader(Alt *a, int *nsend, int *nrecv)
 	bytes = (uvlong)(*nsend+*nrecv)*sizeof(Altc)+offsetof(Alt, ac);
 	return (uintptr)a <= (uintptr)-1-bytes;
 }
+
 
 /* Invalid array geometry must also be safe to revisit during partial cleanup. */
 static int
@@ -51,6 +64,7 @@ altarrayvalid(Array *a)
 	bytes = (uvlong)a->len*sizeof(Channel*);
 	return (uintptr)a->data <= (uintptr)-1-bytes;
 }
+
 
 /*
  * Count the number of ready channels in an array of channels
@@ -86,6 +100,7 @@ altmark(Channel *c, Prog *p)
 	return nrdy;
 }
 
+
 /*
  * Remove alt references by index, including empty views with nil data.
  */
@@ -113,6 +128,7 @@ altunmark(Channel *c, WORD *ptr, Prog *p, int sr, Channel **sel, int dn)
 	}
 }
 
+
 /* Detect this alt's receive registration even behind unrelated waiters. */
 static int
 altreceives(Channel *c, Prog *p)
@@ -124,6 +140,7 @@ altreceives(Channel *c, Prog *p)
 			return 1;
 	return 0;
 }
+
 
 /*
  * ALT Pass 1 - Count the number of ready channels and mark
@@ -196,6 +213,7 @@ altrdy(Alt *a, Prog *p)
 	return nrdy;
 }
 
+
 /*
  * ALT Pass 3 - Pull out of an ALT cancelling the channel pointers in each item
  */
@@ -251,6 +269,7 @@ altdone(Alt *a, Prog *p, Channel *sel, int sr)
 		n++;
 	}
 }
+
 
 /*
  * ALT Pass 2 - Communicate on the chosen channel; empty array guards read no data.
@@ -332,12 +351,15 @@ altgone(Prog *p)
 }
 
 typedef struct AltReady AltReady;
+
 struct AltReady
 {
-	Alt *alt;
-	Prog *prog;
-	int ready;
+	Alt *alt; // Captured guard table used by preparation and cleanup.
+	Prog *prog; // Process whose registrations must be removed on error.
+	int ready; // Number of ready guard alternatives.
+	int choice; // Selected ready alternative for protected communication.
 };
+
 
 /* Keep the partial-registration context outside the VM error jump frame. */
 static int
@@ -350,7 +372,20 @@ altready(void *arg)
 	return 1;
 }
 
-/* Cancel all partial registrations if preparing an alt raises a VM error. */
+
+/* Keep transfer errors inside a boundary that still owns this alt's registrations. */
+static int
+altcommunicate(void *arg)
+{
+	AltReady *r;
+
+	r = arg;
+	altcomm(r->alt, r->choice);
+	return 1;
+}
+
+
+/* Cancel this process's registrations when preparation or communication raises. */
 void
 xecalt(int block)
 {
@@ -367,6 +402,7 @@ xecalt(int block)
 		error(exNilref);
 	if(!altheader(a, &nsend, &nrecv))
 		error(exBounds);
+	altresult(R.d);
 	ready.alt = a;
 	ready.prog = p;
 	if(!kprotect(altready, &ready)){
@@ -389,6 +425,10 @@ xecalt(int block)
 	}
 
 	xrand = xrand*1103515245 + 12345;
-	altcomm(a, (xrand>>8)%nrdy);
+	ready.choice = (xrand>>8)%nrdy;
+	if(!kprotect(altcommunicate, &ready)){
+		altdone(a, p, nil, -1);
+		krethrow();
+	}
 	altdone(a, p, nil, -1);
 }
