@@ -13,14 +13,14 @@ SOURCE=Path(os.environ.get('TRANSITION_SOURCE',ROOT/'libinterp/xec.c')).read_tex
 
 
 # Borrow real operation bodies without interpreting braces in comments or strings.
-def function(signature):
-    start=SOURCE.index(signature);brace=SOURCE.index('{',start);depth=0
+def function(signature, source=SOURCE):
+    start=source.index(signature);brace=source.index('{',start);depth=0
     pattern=r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*[\s\S]*?\*/|//[^\n]*|[{}]'
-    for token in re.finditer(pattern,SOURCE[brace:]):
+    for token in re.finditer(pattern,source[brace:]):
         if token.group()=='{':depth+=1
         elif token.group()=='}':
             depth-=1
-            if depth==0:return SOURCE[start:brace+token.end()]
+            if depth==0:return source[start:brace+token.end()]
     raise RuntimeError(signature)
 
 
@@ -33,12 +33,14 @@ def main():
         return
     prefix=(ROOT/'libinterp/tests/mcall-native.c').read_text().split('#define OP(name)')[0]
     prefix=prefix.replace('comp-amd64.c','comp-'+backend+'.c')
-    prefix=prefix.replace('static int callbacks;', 'static int callbacks;\nstatic int transitionfreecalls; // Observed mapped-cleanup calls at the native boundary.\nstatic int transitionbuiltinmode; // Callback register mutation selected by the oracle.\nstatic uchar *transitionbuiltinfp; // Independent frame identity published by a callback.\n')
-    prefix=prefix.replace('(void)frame;(void)type;\n\tabort();','(void)frame;(void)type;\n\ttransitionfreecalls++;',1)
+    prefix=prefix.replace('static int callbacks;', 'static int callbacks;\nvoid transitionfreeptrs(void*,Type*); // Actual heap-map cleanup borrowed below.\nstatic int transitionfreecalls; // Observed mapped-cleanup calls at the native boundary.\nstatic int transitionbuiltinmode; // Callback register mutation selected by the oracle.\nstatic uchar *transitionbuiltinfp; // Independent frame identity published by a callback.\n')
+    prefix=prefix.replace('(void)frame;(void)type;\n\tabort();','transitionfreecalls++;\n\ttransitionfreeptrs(frame,type);',1)
     prefix=prefix.replace('callbacks++;','callbacks++;\n\tif(transitionbuiltinmode==1)R.FP=transitionbuiltinfp;\n\tif(transitionbuiltinmode==2)D2H(R.M)->ref=0;',1)
+    heap=Path(os.environ.get('TRANSITION_HEAP_SOURCE',ROOT/'libinterp/heap.c')).read_text()
+    cleanup=function('void\nfreeptrs(',heap).replace('freeptrs(', 'transitionfreeptrs(',1)
     body=(ROOT/'libinterp/tests/module-transition-native.c').read_text()
     parts='\n\n'.join(function(s) for s in ('static Import*\nmoduleimports(','OP(iload)','static int\nmoduleentry(','OP(mcall)','int\ncjitexec('))
-    unit='#define TEST_LEAF_DISPATCH_RUNTIME // Use the production complete-entry executor.\n'+prefix+body.replace('IMPLEMENTATION',parts)
+    unit='#define TEST_LEAF_DISPATCH_RUNTIME // Use the production complete-entry executor.\n'+prefix+cleanup+'\n'+body.replace('IMPLEMENTATION',parts)
     with tempfile.TemporaryDirectory(prefix='module-transition-native-') as directory:
         td=Path(directory);source=td/'transition.c';source.write_text(unit)
         command=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1 -g -DNDEBUG -fsanitize=address,undefined -fno-sanitize-recover=all'))
@@ -54,7 +56,7 @@ def main():
             includes=['-I'+str(model)]+['-I'+str(ROOT/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
             binary=model/'transition'
             subprocess.run(command+includes+[str(source),'-o',str(binary)],check=True)
-            families=[os.environ['TRANSITION_CASE']] if os.environ.get('TRANSITION_CASE') else ['loads','errors','builtins','builtinerrors']
+            families=[os.environ['TRANSITION_CASE']] if os.environ.get('TRANSITION_CASE') else ['loads','errors','builtins','builtinerrors','mappedbuiltins']
             for family in families:
                 routes=['0','1'] if family=='builtinerrors' and not os.environ.get('TRANSITION_ERROR_ROUTE') else [os.environ.get('TRANSITION_ERROR_ROUTE')]
                 for route in routes:

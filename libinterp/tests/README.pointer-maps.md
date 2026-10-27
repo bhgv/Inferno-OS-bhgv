@@ -1,5 +1,7 @@
 # Byte-safe pointer maps and list construction
 
+Latest packed descriptor/GC and native builtin cleanup checks: [README.gc-packed-maps.md](README.gc-packed-maps.md).
+
 Heap pointer-map helpers now access mapped fields through memmove rather than
 casting record bytes to WORD**. This permits four-byte or packed alignment on
 64-bit native-pointer hosts and avoids forming data pointers for descriptors

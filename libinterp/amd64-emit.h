@@ -1513,6 +1513,7 @@ x64return(X64Buf *b, LeafLayout *a)
 	x64modulefield(b, 9, 8, a->framefp, 8);
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x51); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);
+	x64pcspan(b, 9, extent+8);
 	x64modulefield(b, 10, 8, a->framelr, 8);
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0x52); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, 1); x64moduleguard(b, 0x77, fallback);

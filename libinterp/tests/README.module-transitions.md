@@ -1,5 +1,7 @@
 # LOAD, builtin returns and C-only spawn transitions
 
+Latest packed descriptor/GC and native builtin cleanup checks: [README.gc-packed-maps.md](README.gc-packed-maps.md).
+
 Complex LOAD/SPAWN/MSPAWN work remains in shared C, reachable through complete
 AMD64/ARM64 JIT tail entries. Bytecode MCALL keeps its guarded native fast path;
 builtin calls decline into C. No new opcode availability is claimed by counting

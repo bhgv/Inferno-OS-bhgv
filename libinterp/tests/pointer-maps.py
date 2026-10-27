@@ -38,7 +38,10 @@ with tempfile.TemporaryDirectory(prefix='pointer-maps-') as directory:
     cmd = shlex.split(os.environ.get('CC','cc'))
     cmd += shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
     if selected:cmd += ['-DMAP_OPERATION='+str(choices[selected])]
-    for bits in (64,32):
+    widths=tuple(map(int,os.environ.get('POINTER_MAP_WORD_BITS','64 32').split()))
+    if not widths or any(bits not in (32,64) for bits in widths):
+        raise ValueError('POINTER_MAP_WORD_BITS must select 32 and/or 64')
+    for bits in widths:
         model = td/('word'+str(bits))
         model.mkdir()
         header = (root/'include/interp.h').read_text()

@@ -1179,6 +1179,7 @@ a64return(A64Buf *b, LeafLayout *a)
 	a64put(b, 0x91000522); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
 	a64field(b, 13, 9, a->framefp, 8);
 	a64put(b, 0x910005a2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
+	a64pcspan(b, 13, extent+8, fallback);
 	a64field(b, 14, 9, a->framelr, 8);
 	a64put(b, 0x910005c2); a64put(b, 0xf100045f); a64defer(b, 0x54000009, fallback);
 	/* Root and invalid-link failures must not read an otherwise unused Type. */

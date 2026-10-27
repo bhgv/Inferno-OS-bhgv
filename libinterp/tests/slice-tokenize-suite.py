@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/gc-maps.py',
     'libinterp/tests/frame-allocation-native.py',
     'libinterp/tests/control-transfer-native.py',
     'libinterp/tests/module-transition-native.py',

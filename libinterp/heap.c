@@ -27,16 +27,19 @@ void	(*heapmonitor)(int, void*, ulong);
 
 #define	BIT(bt, nb)	(bt & (1<<nb))
 
-/* Release mapped pointers without imposing native alignment on record bytes. */
+
+/* Release mapped pointers using byte-safe descriptor and record reads. */
 void
 freeptrs(void *v, Type *t)
 {
 	void *x;
 	int i, bit, c, n;
+	uchar *map;
 
-	n = t->np;
+	memmove(&n, (uchar*)t+O(Type, np), sizeof(n));
+	map = (uchar*)t+O(Type, map);
 	for(i = 0; i < n; i++){
-		c = t->map[i];
+		c = map[i];
 		if(c == 0)
 			continue;
 		/* Preserve the historical reverse order within each map byte. */
@@ -290,16 +293,20 @@ freetype(Type *t)
 	free(t);
 }
 
+
 /* Retain mapped fields using byte-safe loads and the existing mark barrier. */
 void
 incmem(void *v, Type *t)
 {
 	Heap *h;
 	void *x;
-	int i, bit, c;
+	int i, bit, c, n;
+	uchar *map;
 
-	for(i = 0; i < t->np; i++){
-		c = t->map[i];
+	memmove(&n, (uchar*)t+O(Type, np), sizeof(n));
+	map = (uchar*)t+O(Type, map);
+	for(i = 0; i < n; i++){
+		c = map[i];
 		if(c == 0)
 			continue;
 		for(bit = 0; bit < 8; bit++){
@@ -315,15 +322,19 @@ incmem(void *v, Type *t)
 	}
 }
 
+
 /* Visit mapped pointers in their original order without aligned-pointer casts. */
 void
 scanptrs(void *v, Type *t, void (*f)(void*))
 {
 	void *x;
-	int i, bit, c;
+	int i, bit, c, n;
+	uchar *map;
 
-	for(i = 0; i < t->np; i++){
-		c = t->map[i];
+	memmove(&n, (uchar*)t+O(Type, np), sizeof(n));
+	map = (uchar*)t+O(Type, map);
+	for(i = 0; i < n; i++){
+		c = map[i];
 		if(c == 0)
 			continue;
 		for(bit = 0; bit < 8; bit++){
@@ -336,16 +347,20 @@ scanptrs(void *v, Type *t, void (*f)(void*))
 	}
 }
 
-/* Initialize only mapped fields, leaving scalar bytes and padding unchanged. */
+
+/* Read packed descriptors and initialize only mapped fields, preserving scalar bytes. */
 void
 initmem(Type *t, void *v)
 {
 	void *x;
-	int i, bit, c;
+	int i, bit, c, n;
+	uchar *map;
 
 	x = H;
-	for(i = 0; i < t->np; i++){
-		c = t->map[i];
+	memmove(&n, (uchar*)t+O(Type, np), sizeof(n));
+	map = (uchar*)t+O(Type, map);
+	for(i = 0; i < n; i++){
+		c = map[i];
 		if(c == 0)
 			continue;
 		for(bit = 0; bit < 8; bit++){

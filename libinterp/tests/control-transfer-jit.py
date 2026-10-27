@@ -209,6 +209,10 @@ int emit(u32int *out,int cap,int wb,int bias,int operation)
                                 for offset,value,size in [(-24,3,8),(bias,BASE+0x8200,8),(bias+16,0,4),(bias+24,BASE+0x6000,8),(bias+48,count,4)]:put(top,owner+offset-TOP,value,size)
                                 cases.append(('entry-wrap-'+str(index),edited,top,edited,0))
                         if op==2:
+                            for bad in [MASK-k for k in range(32+bias)]:
+                                edited=bytearray(image);put(edited,frame+8+bias,bad)
+                                put(edited,frame+16+bias,BASE+0x20000)
+                                cases.append(('caller-frame-prefix',edited,high,edited,0))
                             for label,field,bad in [('root',frame+8+bias,0),('bad-pc',frame+bias,0),('bad-saved',frame+24+bias,MASK),('nil-current',r['module'],0),('H-current',r['module'],MASK)]:
                                 edited=bytearray(image);put(edited,field,bad)
                                 put(edited,frame+16+bias,BASE+0x20000)

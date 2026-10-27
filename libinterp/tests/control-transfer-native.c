@@ -266,7 +266,7 @@ controlinvalid(Jit *jit)
 	int operation,kind,offset,route,op,failed;
 
 	if(getenv("CONTROL_NO_ERRORS"))return 0;
-	for(operation=0;operation<3;operation++)for(kind=0;kind<16;kind++)for(offset=0;offset<128;offset++){
+	for(operation=0;operation<3;operation++)for(kind=0;kind<17;kind++)for(offset=0;offset<128;offset++){
 		op=ops[operation];
 		if(getenv("CONTROL_BAD") && kind!=atoi(getenv("CONTROL_BAD")))continue;
 		if(getenv("CONTROL_OP") && op!=atoi(getenv("CONTROL_OP")))continue;
@@ -313,6 +313,9 @@ controlinvalid(Jit *jit)
 			if(offset>O(Modlink,compiled)+sizeof(int))continue;
 			memmove(R.d,&target,sizeof(target));
 			R.M=bad;
+		}else if(kind==16 && op==IRET){
+			if(offset==0 || offset>sizeof(Frame))continue;
+			memmove((uchar*)R.FP+O(Frame,fp),&bad,sizeof(bad));
 		}else continue;
 		memmove(&before,&image,sizeof(image));memmove(&saved,&R,sizeof(R));
 		if(getenv("CONTROL_TRACE"))fprintf(stderr,"negative op=%d kind=%d offset=%d\n",op,kind,offset);

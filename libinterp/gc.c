@@ -101,41 +101,44 @@ noptrs(Type *t, void *vw)
 
 static int markdepth;
 
-/* code simpler with a depth search compared to a width search*/
+
+/* Trace packed native pointer slots without aligned record or descriptor accesses. */
 void
 markheap(Type *t, void *vw)
 {
 	Heap *h;
-	uchar *p;
-	int i, c, m;
-	WORD **w, **q;
+	uchar *map;
+	void *value;
+	int i, bit, c, pointers;
 	Type *t1;
 
-	if(t == nil || t->np == 0)
+	if(t == nil)
+		return;
+	memmove(&pointers, (uchar*)t+O(Type, np), sizeof(pointers));
+	if(pointers == 0)
 		return;
 
 	markdepth++;
-	w = (WORD**)vw;
-	p = t->map;
-	for(i = 0; i < t->np; i++) {
-		c = *p++;
-		if(c != 0) {
-			q = w;
-			for(m = 0x80; m != 0; m >>= 1) {
-				if((c & m) && *q != H) {
-					h = D2H(*q);
-					Setmark(h);
-					if(h->color == propagator && --visit >= 0 && markdepth < 64){
-						gce--;
-						h->color = mutator;
-						if((t1 = h->t) != nil)
-							t1->mark(t1, H2D(void*, h));
-					}
-				}
-				q++;
+	map = (uchar*)t+O(Type, map);
+	for(i = 0; i < pointers; i++){
+		c = map[i];
+		if(c == 0)
+			continue;
+		for(bit = 0; bit < 8; bit++){
+			if(!(c & (0x80>>bit)))
+				continue;
+			memmove(&value, (uchar*)vw+((ulong)i*8+bit)*sizeof(value), sizeof(value));
+			if(value == H)
+				continue;
+			h = D2H(value);
+			Setmark(h);
+			if(h->color == propagator && --visit >= 0 && markdepth < 64){
+				gce--;
+				h->color = mutator;
+				if((t1 = h->t) != nil)
+					t1->mark(t1, H2D(void*, h));
 			}
 		}
-		w += 8;
 	}
 	markdepth--;
 }

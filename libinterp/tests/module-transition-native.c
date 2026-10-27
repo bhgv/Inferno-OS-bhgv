@@ -103,6 +103,11 @@ destroy(void *owner)
     Modlink *published;
     Heap *heap;
 
+    if(owner==transdata.data){
+        transitioncheck(transdata.heap.ref>8);
+        transdata.heap.ref--;transdestroys++;
+        return;
+    }
     if(owner==H)return;
     memmove(&published,transdestination,sizeof(published));
     transitioncheck(published==(transfailure ? H : &transresult.link));
@@ -268,6 +273,55 @@ transitionbuiltins(Jit *jit)
 }
 
 
+/* Run real freeptrs after a builtin returns through C or a complete native tail. */
+static unsigned long
+transitionmappedbuiltins(Jit *jit)
+{
+    uchar frames[1024],expectedbytes[1024],types[sizeof(Type)+8],cells[3][32];
+    Frame frame,expected;
+    Type type;
+    Frame *argument;
+    Modlink *callee=&transresult.link;
+    REG saved,wanted;
+    WORD index=0;
+    void *value;
+    int sa,fa,ta,mask,phase,route,slot,releases;
+    unsigned long checks=0;
+
+    for(sa=0;sa<8;sa++)for(fa=0;fa<8;fa++)for(ta=0;ta<8;ta++)
+    for(mask=0;mask<16;mask++)for(phase=0;phase<2;phase++)for(route=0;route<3;route++){
+        memset(&R,0,sizeof(R));memset(frames,0xa5,sizeof(frames));memset(&type,0,sizeof(type));
+        memset(&transresult,0,sizeof(transresult));memset(&transcurrent,0,sizeof(transcurrent));
+        memset(&frame,0,sizeof(frame));memset(&transdata,0,sizeof(transdata));
+        type.np=1;type.size=sizeof(Frame)+4*sizeof(void*);type.map[0]=mask;
+        memmove(types+ta,&type,sizeof(type));frame.t=(Type*)(types+ta);
+        argument=(Frame*)(frames+64+fa);memmove(argument,&frame,sizeof(frame));
+        releases=0;transdata.heap.ref=12;
+        for(slot=0;slot<4;slot++){
+            value=phase && slot%2 ? H : transdata.data;
+            memmove((uchar*)argument+sizeof(Frame)+slot*sizeof(value),&value,sizeof(value));
+            if((mask & (8>>slot)) && value!=H)releases++;
+        }
+        transresult.heap.ref=5;callee->nlinks=1;callee->m=&transmodule;callee->links[0].u.runt=builtin;
+        R.M=&transcurrent.link;R.MP=H;R.PC=(Inst*)(frames+800);R.FP=frames+512;R.SP=frames+600;
+        R.s=cells[0]+sa;R.m=cells[1]+sa;R.d=cells[2]+sa;R.IC=29;R.t=17;
+        memmove(R.s,&argument,sizeof(argument));memmove(R.m,&index,sizeof(index));memmove(R.d,&callee,sizeof(callee));
+        memmove(&saved,&R,sizeof(R));memmove(&wanted,&R,sizeof(R));wanted.SP=(uchar*)argument;wanted.t=0;
+        expected=frame;expected.lr=saved.PC;expected.fp=saved.FP;expected.mr=saved.M;
+        memmove(expectedbytes,frames,sizeof(frames));memmove(expectedbytes+64+fa,&expected,sizeof(expected));
+        callbacks=transitionfreecalls=transdestroys=transitionbuiltinmode=0;
+        if(route==0)mcall();
+        else if(route==1){transitioncheck(jit->entry[IMCALL](&R)==0 && !memcmp(&saved,&R,sizeof(R)));mcall();}
+        else transitioncheck(jit->dispatch[IMCALL](&R)==1);
+        transitioncheck(callbacks==1 && transitionfreecalls==1 && transdestroys==releases);
+        transitioncheck(transdata.heap.ref==12-releases && transresult.heap.ref==5);
+        transitioncheck(!memcmp(&R,&wanted,sizeof(R)) && !memcmp(frames,expectedbytes,sizeof(frames)));
+        checks++;
+    }
+    return checks;
+}
+
+
 /* Reject invalid callback-return metadata before decrementing owners or publishing caller state. */
 static unsigned long
 transitionbuiltinerrors(Jit *jit)
@@ -315,7 +369,7 @@ main(void)
 {
     Module compiled={0};
     Inst instructions[2]={{0}};
-    unsigned long loads=0,errors=0,builtins=0,returns=0;
+    unsigned long loads=0,errors=0,builtins=0,returns=0,mapped=0;
     char *family=getenv("TRANSITION_CASE");
 
     instructions[0].op=ILOAD;instructions[1].op=IMCALL;compiled.prog=instructions;compiled.nprog=2;
@@ -325,8 +379,9 @@ main(void)
     if(family==nil || !strcmp(family,"errors"))errors=transitionloaderrors(compiled.jit);
     if(family==nil || !strcmp(family,"builtins"))builtins=transitionbuiltins(compiled.jit);
     if(family==nil || !strcmp(family,"builtinerrors"))returns=transitionbuiltinerrors(compiled.jit);
-    transitioncheck(loads || errors || builtins || returns);
+    if(family==nil || !strcmp(family,"mappedbuiltins"))mapped=transitionmappedbuiltins(compiled.jit);
+    transitioncheck(loads || errors || builtins || returns || mapped);
     compiled.jit->freecode(compiled.jit->code,compiled.jit->size);free(compiled.jit);
-    printf("PASS module transitions WORD%zu: %lu LOAD C/RX routes, %lu rejections, %lu builtin C/RX routes, %lu callback-return errors\n",sizeof(WORD)*8,loads,errors,builtins,returns);
+    printf("PASS module transitions WORD%zu: %lu LOAD C/RX routes, %lu rejections, %lu builtin C/RX routes, %lu callback-return errors, %lu mapped builtin routes\n",sizeof(WORD)*8,loads,errors,builtins,returns,mapped);
     return 0;
 }

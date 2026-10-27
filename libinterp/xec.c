@@ -3007,7 +3007,8 @@ OP(ret)
 	memmove(&links, f, sizeof(links));
 	if(links.fp == nil)
 		error("");
-	if(links.fp == H || links.lr == nil || links.lr == H)
+	if(links.fp == H || (uintptr)links.fp > (uintptr)-1-sizeof(Frame) ||
+	   links.lr == nil || links.lr == H)
 		error(exHeap);
 	m = links.mr;
 	if(m == H || (m != nil && (R.M == nil || R.M == H)))
