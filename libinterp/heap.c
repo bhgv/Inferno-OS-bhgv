@@ -410,7 +410,10 @@ heapz(Type *t)
 	Heap *h;
 	int i, bit;
 
-	if(t == nil || t == H || t->ref <= 0 || t->ref == 0x7fffffff ||
+	if(t == nil || t == H || (uintptr)t%sizeof(void*) != 0 ||
+	   (uintptr)t > (uintptr)-1-O(Type, map))
+		error(exHeap);
+	if(t->ref <= 0 || t->ref == 0x7fffffff ||
 	   t->size < 0 || (ulong)t->size > 0x7fffffff-sizeof(Heap))
 		error(exHeap);
 	/* Reject maps which initmem would write beyond the requested object. */
@@ -447,7 +450,10 @@ heap(Type *t)
 	Heap *h;
 	int i, bit;
 
-	if(t == nil || t == H || t->ref <= 0 || t->ref == 0x7fffffff ||
+	if(t == nil || t == H || (uintptr)t%sizeof(void*) != 0 ||
+	   (uintptr)t > (uintptr)-1-O(Type, map))
+		error(exHeap);
+	if(t->ref <= 0 || t->ref == 0x7fffffff ||
 	   t->size < 0 || (ulong)t->size > 0x7fffffff-sizeof(Heap))
 		error(exHeap);
 	/* Reject maps which initmem would write beyond the requested object. */
@@ -485,7 +491,10 @@ heaparray(Type *t, int sz)
 	int i, bit;
 
 	/* Header and element descriptors can be the same Type, requiring two retains. */
-	if(t == nil || t == H || t->ref <= 0 ||
+	if(t == nil || t == H || (uintptr)t%sizeof(void*) != 0 ||
+	   (uintptr)t > (uintptr)-1-O(Type, map))
+		error(exHeap);
+	if(t->ref <= 0 ||
 	   t->ref > 0x7ffffffe - (t == &Tarray) || Tarray.ref <= 0 || Tarray.ref == 0x7fffffff)
 		error(exHeap);
 	acheck(t->size,sz);
@@ -559,8 +568,11 @@ copyarray(void *arg)
 	c = arg;
 	sa = c->source;
 	t = sa->t;
-	if(t == nil || t == H || sa->root == nil ||
-	   (sa->root != H && D2H(sa->root)->ref == 0))
+	if(t == nil || t == H || (uintptr)t%sizeof(void*) != 0 ||
+	   (uintptr)t > (uintptr)-1-O(Type, map) || sa->root == nil)
+		error(exHeap);
+	if(sa->root != H && ((uintptr)sa->root <= sizeof(Heap) ||
+	   (uintptr)sa->root%sizeof(void*) != 0 || D2H(sa->root)->ref == 0))
 		error(exHeap);
 	acheck(t->size, sa->len);
 	if(sa->len != 0 && t->size != 0){
@@ -592,7 +604,9 @@ arraycpy(Array *sa)
 
 	if(sa == H)
 		return H;
-	if(sa == nil || D2H(sa)->ref == 0)
+	if(sa == nil || (uintptr)sa <= sizeof(Heap) ||
+	   (uintptr)sa%sizeof(void*) != 0 || (uintptr)sa > (uintptr)-1-sizeof(*sa) ||
+	   D2H(sa)->ref == 0)
 		error(exHeap);
 	c.source = sa;
 	c.result = H;
@@ -604,34 +618,42 @@ arraycpy(Array *sa)
 }
 
 
-/* Validate mapped spans, then publish only acquired owners for failure cleanup. */
+/* Read packed maps and validate complete spans before publishing acquired owners. */
 void
 newmp(void *dst, void *src, Type *t)
 {
 	Heap *h;
-	int c, i, bit;
+	int c, i, bit, size, pointers;
 	ulong offset;
 	void *wp, *owned;
-	uchar *q;
+	uchar *q, *map;
 
-	if(t == nil || t == H || t->size < 0 || t->np < 0 ||
-	   t->np > t->size/(8*sizeof(void*))+(t->size%(8*sizeof(void*)) != 0) ||
-	   (t->size != 0 && (src == nil || src == H || dst == nil || dst == H)))
+	if(t == nil || t == H || (uintptr)t > (uintptr)-1-(O(Type, np)+sizeof(pointers)))
+		error(exHeap);
+	memmove(&size, (uchar*)t+O(Type, size), sizeof(size));
+	memmove(&pointers, (uchar*)t+O(Type, np), sizeof(pointers));
+	if(size < 0 || pointers < 0 ||
+	   pointers > size/(8*sizeof(void*))+(size%(8*sizeof(void*)) != 0))
+		error(exHeap);
+	if(size != 0 && (src == nil || src == H || dst == nil || dst == H ||
+	   (uintptr)src > (uintptr)-1-(uintptr)size ||
+	   (uintptr)dst > (uintptr)-1-(uintptr)size))
 		error(exHeap);
 	/* Reject partial pointer slots before initmem can write outside the payload. */
-	if(t->np != 0 && ((uintptr)t > (uintptr)-1 - offsetof(Type, map) ||
-	   (uintptr)t+offsetof(Type, map) > (uintptr)-1-(uintptr)t->np))
+	if(pointers != 0 && ((uintptr)t > (uintptr)-1 - offsetof(Type, map) ||
+	   (uintptr)t+offsetof(Type, map) > (uintptr)-1-(uintptr)pointers))
 		error(exHeap);
-	for(i = 0; i < t->np; i++)
+	map = (uchar*)t+O(Type, map);
+	for(i = 0; i < pointers; i++)
 		for(bit = 0; bit < 8; bit++)
-			if((t->map[i] & (0x80>>bit)) &&
-			   ((ulong)i*8+bit >= (ulong)t->size/sizeof(void*)))
+			if((map[i] & (0x80>>bit)) &&
+			   ((ulong)i*8+bit >= (ulong)size/sizeof(void*)))
 				error(exHeap);
-	if(t->size != 0)
-		memmove(dst, src, t->size);
+	if(size != 0)
+		memmove(dst, src, size);
 	initmem(t, dst);
-	for(i = 0; i < t->np; i++){
-		c = t->map[i];
+	for(i = 0; i < pointers; i++){
+		c = map[i];
 		if(c == 0)
 			continue;
 		for(bit = 0; c != 0 && bit < 8; bit++){
@@ -642,7 +664,8 @@ newmp(void *dst, void *src, Type *t)
 			memmove(&wp, (uchar*)src+offset, sizeof(wp));
 			if(wp == H)
 				continue;
-			if(wp == nil)
+			if(wp == nil || (uintptr)wp <= sizeof(Heap) ||
+			   (uintptr)wp%sizeof(void*) != 0)
 				error(exHeap);
 			h = D2H(wp);
 			if(h->ref == 0 || h->t == nil || h->t == H)

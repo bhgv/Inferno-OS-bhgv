@@ -47,7 +47,7 @@ unit += '\n\n'.join(function(XEC, signature) for signature in (
     'static Type*\nmoduletype(', 'static void\nnewrecord(',
     'OP(new)', 'OP(newz)', 'OP(mnewz)', 'int\ncjitexec(',
 ))
-unit += (ROOT/'libinterp/tests/record-slots-native.c').read_text()
+unit += '\n#include <pthread.h>\n'+(ROOT/'libinterp/tests/record-slots-native.c').read_text()
 
 with tempfile.TemporaryDirectory(prefix='record-slots-native-') as temporary:
     directory = Path(temporary)
@@ -71,5 +71,5 @@ with tempfile.TemporaryDirectory(prefix='record-slots-native-') as temporary:
         includes += ['-I'+str(ROOT/path) for path in (
             'Linux/arm/include', 'emu/port', 'include', 'libinterp',
         )]
-        subprocess.run(command+includes+[str(source), '-lm', '-o', str(binary)], check=True)
+        subprocess.run(command+includes+[str(source), '-pthread', '-lm', '-o', str(binary)], check=True)
         subprocess.run([str(binary)], check=True, timeout=180)

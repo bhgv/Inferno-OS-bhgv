@@ -226,8 +226,8 @@ recordinvalid(Jit *jit)
 
 
 /* Verify real constructor entries and both native WORD layouts. */
-int
-main(void)
+static int
+recordmain(void)
 {
     Module module={0};
     Inst program[3]={{0}};
@@ -249,4 +249,29 @@ main(void)
     free(module.jit);
     printf("PASS record slots C/RX WORD%zu: %lu ownership/map/callback routes, %lu rejected routes\n",sizeof(WORD)*8,positive,negative);
     return 0;
+}
+
+
+/* Use a tracked pthread stack so ASan can restore shadow state after VM longjmp. */
+static void*
+recordworker(void *argument)
+{
+    int *status;
+
+    status=argument;
+    *status=recordmain();
+    return nil;
+}
+
+
+/* Join before observing status; the fixture still executes on exactly one VM thread. */
+int
+main(void)
+{
+    pthread_t worker;
+    int status=-1;
+
+    recordcheck(pthread_create(&worker,nil,recordworker,&status)==0);
+    recordcheck(pthread_join(worker,nil)==0);
+    return status;
 }

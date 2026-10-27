@@ -130,6 +130,7 @@ CORE = [
     'libinterp/tests/sys-print.py',
     'libinterp/tests/sys-utf.py',
     'libinterp/tests/heap-clones.py',
+    'libinterp/tests/heap-preflight.py',
     'libinterp/tests/pointer-maps.py',
     'libinterp/tests/mapped-moves.py',
     'libinterp/tests/module-types.py',

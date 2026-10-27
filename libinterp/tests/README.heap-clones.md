@@ -47,3 +47,7 @@ Only unsupported LeakSanitizer process inspection is disabled.
 independently fail nested separation, partial MP ownership and instance module
 reference cleanup. Existing heap-bounds and module-links fixtures continue to
 exercise their original boundary and lookup regressions.
+
+
+Latest constructor/source prefix guards, packed module maps and complete copy
+span preflight: [README.heap-preflight.md](README.heap-preflight.md).
