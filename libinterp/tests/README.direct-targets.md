@@ -109,3 +109,9 @@ layout still disagree, as measured in
 [README.pc-target-boundaries.md](README.pc-target-boundaries.md). Full VM/Limbo
 boot and physical ARM64 acceptance remain outstanding. RV64 emitter work, Tk,
 security/crypto and MIPS/SPARC/PowerPC JIT sources are outside this series.
+
+
+The standalone `leaf64-runtime.py` fixture also borrows the production `JMP`
+macro and `branchpc` body before extracting `branchreal`. Run it with default
+WORD64 and `LEAF_WORD_BITS=32`; omitting those dependencies fails compilation
+before the native diagnostic can exercise either real-branch path.
