@@ -4,22 +4,25 @@
 
 static int depth;
 
-/* Read mapped native owner slots without imposing C pointer alignment. */
+
+/* Read packed descriptor fields and mapped native slots without C alignment assumptions. */
 void
 memchk(void *p, Type *t)
 {
 	Heap *h;
-	int i, j;
+	int i, j, pointers;
 	void *v;
-	uchar *base;
+	uchar *base, *map;
 
 	if(depth > 100)
 		return;
 	depth++;
 	base = p;
-	for(i = 0; i < t->np; i++) {
+	memmove(&pointers, (uchar*)t+O(Type, np), sizeof(pointers));
+	map = (uchar*)t+O(Type, map);
+	for(i = 0; i < pointers; i++) {
 		for(j = 0; j < 8; j++) {
-			if(t->map[i] & (1<<(7-j))) {
+			if(map[i] & (1<<(7-j))) {
 				memmove(&v, base+((ulong)i*8+j)*sizeof(v), sizeof(v));
 				if(v != H) {
 					h = D2H(v);
@@ -34,6 +37,7 @@ memchk(void *p, Type *t)
 	}
 	depth--;
 }
+
 
 /* Follow frame metadata through byte copies, including extension root frames. */
 void

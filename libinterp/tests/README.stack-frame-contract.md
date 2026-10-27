@@ -68,7 +68,7 @@ do; it no longer relies on an uninitialized descriptor that old unframe ignored.
 | Captured sizes and saved parent cursors | 512 | 1024 |
 | FRAME/MFRAME C and complete-JIT header-map rejection | 8192 | 16384 |
 | Existing lifecycle copy/pop/extent/error checks | 3045 | 6090 |
-| Existing stack unwind owner/alignment checks | 4096 | 8192 |
+| Stack unwind, packed maps and destructor callbacks | 98304 | 196608 |
 
 The actual FRAME/MFRAME C/RX suite additionally retains 54336 successful image
 routes per model and its earlier error/extent cases. The guest native-code
@@ -81,6 +81,38 @@ families in both WORD models, plus the FRAME/MFRAME header-map family: seven
 parent probes. Replay uses `LIFECYCLE_SOURCE`, `LIFECYCLE_WORD_BITS=32|64`,
 `STACK_SPAN_CASES=maps|geometry|capture`, `FRAME_ALLOCATION_SOURCE` and
 `FRAME_ALLOCATION_SECTION=headers`.
+
+## Packed diagnostics and captured teardown roots
+
+`memchk` and `destroystack` now copy `Type.np` through bytes, matching the
+existing byte-safe pointer-map helpers. Diagnostic bitmap access uses byte
+addresses as well. This removes typed accesses through packed read-only Type
+prefixes without changing map order, recursion limits, frame links or owner
+release counts. It does not establish a general mutable-Type/callback contract.
+
+`destroystack` captures each extension's parent and root Type before running
+mapped-owner destructors. A destructor changing saved EX or TR can no longer
+redirect or truncate the remaining cleanup, or suppress the root frame's mapped
+owners. Saved frame links and module owners remain captured before cleanup.
+
+The unwind fixture varies eight Type byte shifts in addition to both ordinary
+frame shifts, all module-switch masks and extension-root forms. Three destructor
+profiles leave metadata alone, overwrite the current extension's parent, or
+replace its saved root descriptor. Expected owner releases and extension order
+are independent of those overwritten fields. Assertions were replaced by
+explicit predicates, so NDEBUG preserves the full oracle.
+
+The latest matrix passed 98,304 cases per WORD model (196,608 together) under
+ASan/UBSan, NDEBUG and strict compiler warnings. Header-only unknown pragmas and
+an inherited unused parameter require `-Wno-unknown-pragmas` and
+`-Wno-unused-parameter` with `-Wall -Wextra -Werror`. Eight independent preceding
+source probes fail as expected: packed diagnostic maps, packed teardown maps,
+redirected parents and replaced root Types, each in WORD32/WORD64. The first two
+reach UBSan alignment diagnostics; the latter two fail active ownership checks.
+Use `UNWIND_WORD_BITS`, `UNWIND_TYPE_SHIFT`, `UNWIND_CALLBACK_MODE` and the
+existing `UNWIND_XEC_SOURCE`/`UNWIND_CHECK_SOURCE`/`UNWIND_VALID_SOURCE` controls
+for isolated replay. This matrix runs native C cleanup on AMD64; it does not
+constitute a physical ARM64 acceptance run.
 
 ## Priority JIT status
 

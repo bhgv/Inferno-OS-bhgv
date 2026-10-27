@@ -36,7 +36,10 @@ with tempfile.TemporaryDirectory(prefix='stack-unwind-') as directory:
     source.write_text(unit)
     command = shlex.split(os.environ.get('CC', 'cc'))
     command += shlex.split(os.environ.get('CFLAGS', '-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
-    for bits in (64, 32):
+    widths=tuple(map(int,os.environ.get('UNWIND_WORD_BITS','64 32').split()))
+    if not widths or any(bits not in (32,64) for bits in widths):
+        raise ValueError('UNWIND_WORD_BITS must select 32 and/or 64')
+    for bits in widths:
         model = td/str(bits)
         model.mkdir()
         header = (ROOT/'include/interp.h').read_text()

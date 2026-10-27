@@ -5065,21 +5065,26 @@ OP(self)
 	destroy(t);
 }
 
-/* Capture frame links before releasing owners in possibly four-byte aligned frames. */
+
+/* Capture extent roots and frame links before cleanup; read packed map counts safely. */
 void
 destroystack(REG *reg)
 {
-	Type *t;
+	Type *t, *root;
 	Frame *f, *fp;
 	Modlink *m;
 	Stkext *sx;
-	uchar *ex, *next;
+	uchar *ex, *next, *parent;
+	int pointers;
 
 	ex = reg->EX;
 	reg->EX = nil;
 	while(ex != nil) {
 		sx = (Stkext*)ex;
 		fp = sx->reg.tos.fr;
+		/* Destructors must not redirect the remaining extent or root descriptor. */
+		parent = sx->reg.EX;
+		root = sx->reg.TR;
 		do {
 			f = (Frame*)reg->FP;
 			if(f == nil)
@@ -5088,16 +5093,17 @@ destroystack(REG *reg)
 			memmove(&t, (uchar*)f+O(Frame, t), sizeof(t));
 			reg->FP = next;
 			if(t == nil)
-				t = sx->reg.TR;
+				t = root;
 			memmove(&m, (uchar*)f+O(Frame, mr), sizeof(m));
-			if (t->np)
+			memmove(&pointers, (uchar*)t+O(Type, np), sizeof(pointers));
+			if(pointers)
 				freeptrs(f, t);
 			if(m != nil) {
 				destroy(reg->M);
 				reg->M = m;
 			}
 		} while(f != fp);
-		ex = sx->reg.EX;
+		ex = parent;
 		free(sx);
 	}
 	destroy(reg->M);
