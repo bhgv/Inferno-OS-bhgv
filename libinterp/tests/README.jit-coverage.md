@@ -1,5 +1,7 @@
 # 64-bit JIT opcode availability checkpoint
 
+Latest exact opcode/cache-code binding validation: [README.cache-bindings.md](README.cache-bindings.md).
+
 Latest native JIT-to-C RAISE preflight and emu/os exception-owner transfer: [README.exception-publication.md](README.exception-publication.md).
 
 Latest direct-branch sentinel checks across all 31 operations and real C/JIT fallback matrices: [README.direct-targets.md](README.direct-targets.md).

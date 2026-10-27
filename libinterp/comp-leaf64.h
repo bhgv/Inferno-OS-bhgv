@@ -39,32 +39,51 @@ struct LeafCompile {
 };
 
 
-/* Reuse only complete cached tables whose entries fit the owned native mapping. */
+/* Reuse only canonical opcode bindings with the exact emitted instructions.
+ * Bounds alone cannot distinguish another valid entry inside the same mapping. */
 static int
 leafcachevalid(Jit *j, Module *m, int size, LeafLayout *abi)
 {
 	LeafOp operation;
-	uintptr first, last, target;
+	u32int expected[LeafMax];
+	uintptr cursor, last, bytes;
 	int op, n, i;
 
-	first = (uintptr)j->code;
-	last = first+(uintptr)j->size;
+	if(j->freecode != leafcodefree || j->enter != leafenter)
+		return 0;
+	cursor = (uintptr)j->code;
+	last = cursor+(uintptr)j->size;
+	/* Compiler publication orders all fast entries before all complete tails. */
 	for(op = 0; op < 256; op++){
-		if(j->entry[op] != nil){
-			target = (uintptr)j->entry[op];
-			n = leafemit(nil, LeafMax, abi, op);
-			if(n <= 0 || target < first || target >= last || target%sizeof(u32int) != 0 ||
-			   (uintptr)n*sizeof(u32int) > last-target || !leafop(&operation, op, sizeof(WORD)))
-				return 0;
-		}
+		if(j->entry[op] == nil)
+			continue;
+		if(j->dispatch[op] == nil || (uintptr)j->entry[op] != cursor ||
+		   !leafop(&operation, op, sizeof(WORD)))
+			return 0;
+		n = leafemit(expected, LeafMax, abi, op);
+		if(n <= 0)
+			return 0;
+		bytes = (uintptr)n*sizeof(u32int);
+		if(bytes > last-cursor || memcmp((void*)cursor, expected, bytes) != 0)
+			return 0;
+		cursor += bytes;
+	}
+	for(op = 0; op < 256; op++){
 		if(j->dispatch[op] == nil)
 			continue;
-		target = (uintptr)j->dispatch[op];
-		n = leafbridgeemit(nil, LeafMax, (void*)cjitexec, op, (void*)j->entry[op]);
-		if(n <= 0 || target < first || target >= last || target%sizeof(u32int) != 0 ||
-		   (uintptr)n*sizeof(u32int) > last-target)
+		if((uintptr)j->dispatch[op] != cursor ||
+		   (j->entry[op] == nil && leafemit(nil, LeafMax, abi, op) > 0))
 			return 0;
+		n = leafbridgeemit(expected, LeafMax, (void*)cjitexec, op, (void*)j->entry[op]);
+		if(n <= 0)
+			return 0;
+		bytes = (uintptr)n*sizeof(u32int);
+		if(bytes > last-cursor || memcmp((void*)cursor, expected, bytes) != 0)
+			return 0;
+		cursor += bytes;
 	}
+	if(cursor != last)
+		return 0;
 	for(i = 0; i < size; i++){
 		op = ((uchar*)m->prog)[(uintptr)i*sizeof(Inst)+O(Inst, op)];
 		if(j->dispatch[op] == nil)
