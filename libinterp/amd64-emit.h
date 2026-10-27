@@ -2004,6 +2004,51 @@ x64recordobject(X64Buf *b, LeafLayout *a, int mode)
 }
 
 
+/* Call pure channel preflight, then copy and publish a captured buffered transaction.
+ * The 64-byte transaction and saved REG use an aligned 88-byte SysV frame.
+ * No runtime call remains after the first payload store. Blocking paths decline.
+ */
+static int
+x64transfer(X64Buf *b, LeafLayout *a, int receive)
+{
+	unsigned long long entry;
+
+	entry = (unsigned long long)a->channeltransferentry;
+	if(entry == 0 || entry == ~0ULL)
+		return 0;
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xec); x64byte(b, 0x58); // sub rsp, 88
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x7c); x64byte(b, 0x24); x64byte(b, 0x40); // mov qword ptr [rsp+64], rdi
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xe2); // mov rdx, rsp
+	x64byte(b, 0xbe); x64word(b, receive); // mov esi, direction.
+	x64byte(b, 0x48); x64byte(b, 0xb8); x64word(b, entry); x64word(b, entry>>32);
+	x64byte(b, 0xff); x64byte(b, 0xd0); // call rax
+	x64byte(b, 0x85); x64byte(b, 0xc0); // test eax, eax
+	x64byte(b, 0x75); x64byte(b, 0x07); // Skip the failure epilogue after successful preflight.
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xc4); x64byte(b, 0x58); // add rsp, 88
+	x64byte(b, 0x31); x64byte(b, 0xc0); // xor eax, eax
+	x64byte(b, 0xc3); // ret
+	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x7c); x64byte(b, 0x24); x64byte(b, 0x40); // mov rdi, qword ptr [rsp+64]
+	x64byte(b, 0x4c); x64byte(b, 0x8b); x64byte(b, 0x04); x64byte(b, 0x24); // mov r8, qword ptr [rsp]
+	x64byte(b, 0x4c); x64byte(b, 0x8b); x64byte(b, 0x54); x64byte(b, 0x24); x64byte(b, 0x08); // mov r10, qword ptr [rsp+8]
+	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x44); x64byte(b, 0x24); x64byte(b, 0x10); // mov rax, qword ptr [rsp+16]
+	if(!x64copykernel(b)) return 0;
+	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x4c); x64byte(b, 0x24); x64byte(b, 0x18); // mov rcx, qword ptr [rsp+24]
+	x64byte(b, 0x8b); x64byte(b, 0x44); x64byte(b, 0x24); x64byte(b, 0x28); // mov eax, dword ptr [rsp+40]
+	x64byte(b, 0x89); x64byte(b, 0x01); // mov dword ptr [rcx], eax
+	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x4c); x64byte(b, 0x24); x64byte(b, 0x20); // mov rcx, qword ptr [rsp+32]
+	x64byte(b, 0x8b); x64byte(b, 0x44); x64byte(b, 0x24); x64byte(b, 0x30); // mov eax, dword ptr [rsp+48]
+	x64byte(b, 0x89); x64byte(b, 0x01); // mov dword ptr [rcx], eax
+	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x04); x64byte(b, 0x24); // mov rax, qword ptr [rsp]
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, a->s); // Publish REG.s.
+	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x44); x64byte(b, 0x24); x64byte(b, 0x08); // mov rax, qword ptr [rsp+8]
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, a->d); // Publish REG.d.
+	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x44); x64byte(b, 0x24); x64byte(b, 0x38); // mov rax, qword ptr [rsp+56]
+	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, a->m); // Publish REG.m.
+	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xc4); x64byte(b, 0x58); // add rsp, 88
+	return 1;
+}
+
+
 /* Capture scalar/raw/mapped arguments and publish a fully initialized channel into an empty slot. */
 static int
 x64channel(X64Buf *b, LeafLayout *a, int op)
@@ -2494,7 +2539,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	b.n = 0;
 	/* ENDBR64 also permits entry when the host enables indirect-branch tracking. */
 	x64byte(&b, 0xf3); x64byte(&b, 0x0f); x64byte(&b, 0x1e); x64byte(&b, 0xfa);
-	if(p.kind == LeafArraySlice){
+	if(p.kind == LeafTransfer){
+		if(!x64transfer(&b, abi, p.alu)) return 0;
+	}else if(p.kind == LeafArraySlice){
 		if(!x64arrayslice(&b, abi))return 0;
 	}else if(p.kind == LeafModuleCall){
 		if(!x64modulecall(&b, abi))return 0;

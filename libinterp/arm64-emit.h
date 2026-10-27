@@ -1619,6 +1619,53 @@ a64recordobject(A64Buf *b, LeafLayout *a, int mode)
 }
 
 
+/* Keep a private transaction, REG and LR in an aligned 80-byte AAPCS64 frame.
+ * Pure preflight may decline; the accepted copy and ring/operand publication
+ * perform no allocation, scheduler transition, GC callback or further C call.
+ */
+static int
+a64transfer(A64Buf *b, LeafLayout *a, int receive)
+{
+	unsigned long long entry;
+	int half;
+
+	entry = (unsigned long long)a->channeltransferentry;
+	if(entry == 0 || entry == ~0ULL)
+		return 0;
+	a64put(b, 0xd10143ffU); // sub sp, sp, #80
+	a64put(b, 0xa9047be0U); // stp x0, x30, [sp, #64]
+	a64put(b, 0x910003e2U); // mov x2, sp
+	a64put(b, 0x52800001U | (u32int)receive<<5); // mov w1, direction.
+	for(half = 0; half < 4; half++)
+		a64put(b, (half == 0 ? 0xd2800010U : 0xf2800010U) | half<<21 | ((entry>>(half*16))&65535)<<5);
+	a64put(b, 0xd63f0200U); // blr x16
+	a64put(b, 0x350000a0U); // cbnz w0, #20
+	a64put(b, 0xf94027feU); // ldr x30, [sp, #72]
+	a64put(b, 0x910143ffU); // add sp, sp, #80
+	a64put(b, 0x52800000U); // mov w0, #0
+	a64put(b, 0xd65f03c0U); // ret
+	a64put(b, 0xf94023e0U); // ldr x0, [sp, #64]
+	a64put(b, 0xa9402fe9U); // ldp x9, x11, [sp]
+	a64put(b, 0xf9400becU); // ldr x12, [sp, #16]
+	if(!a64copykernel(b)) return 0;
+	a64put(b, 0xf9400fe9U); // ldr x9, [sp, #24]
+	a64put(b, 0xb9402beaU); // ldr w10, [sp, #40]
+	a64put(b, 0xb900012aU); // str w10, [x9]
+	a64put(b, 0xf94013e9U); // ldr x9, [sp, #32]
+	a64put(b, 0xb94033eaU); // ldr w10, [sp, #48]
+	a64put(b, 0xb900012aU); // str w10, [x9]
+	a64put(b, 0xf94003eaU); // ldr x10, [sp, #0]
+	a64put(b, 0xf900000aU | (u32int)(a->s/8)<<10); // Publish REG.s.
+	a64put(b, 0xf94007eaU); // ldr x10, [sp, #8]
+	a64put(b, 0xf900000aU | (u32int)(a->d/8)<<10); // Publish REG.d.
+	a64put(b, 0xf9401feaU); // ldr x10, [sp, #56]
+	a64put(b, 0xf900000aU | (u32int)(a->m/8)<<10); // Publish REG.m.
+	a64put(b, 0xf94027feU); // ldr x30, [sp, #72]
+	a64put(b, 0x910143ffU); // add sp, sp, #80
+	return 1;
+}
+
+
 /* Preserve the empty destination and LR while the shared allocator creates channel resources. */
 static int
 a64channel(A64Buf *b, LeafLayout *a, int op)
@@ -2080,7 +2127,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
 	a64put(&b, 0xd503245f); /* BTI c; a compatible hint on earlier cores */
-	if(p.kind == LeafArraySlice){
+	if(p.kind == LeafTransfer){
+		if(!a64transfer(&b, abi, p.alu)) return 0;
+	}else if(p.kind == LeafArraySlice){
 		if(!a64arrayslice(&b, abi))return 0;
 	}else if(p.kind == LeafModuleCall){
 		if(!a64modulecall(&b, abi))return 0;

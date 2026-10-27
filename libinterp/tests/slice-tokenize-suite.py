@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/buffered-transfer-native.py',
     'libinterp/tests/mapped-preflight-native.py',
     'libinterp/tests/array-slot-native.py',
     'libinterp/tests/fixed-slot-native.py',
@@ -151,6 +152,7 @@ CORE = [
     'limbo/tests/case-max.py',
 ]
 JIT = [
+    'libinterp/tests/buffered-transfer-jit.py',
     'libinterp/tests/mapped-preflight-jit.py',
     'libinterp/tests/array-slot-jit.py',
     'libinterp/tests/mapped-copy-edges-jit.py',

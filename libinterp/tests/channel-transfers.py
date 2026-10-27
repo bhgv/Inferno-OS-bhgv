@@ -30,6 +30,8 @@ def function(source, signature):
 heap = (root/'libinterp/heap.c').read_text()
 parts = [function(heap, result+'\n'+name+'(') for name,result in [('nheap','Heap*'),('acheck','void'),('initmem','void'),('initarray','void'),('heaparray','Heap*'),('freeptrs','void')]]
 parts += [function(xec, 'void\n'+name+'(') for name in ('cqadd', 'cqdel', 'cqdelp')]
+if 'typedef struct ChannelBuffer' in xec:
+    parts += [xec[xec.index('typedef struct ChannelBuffer'):xec.index('/* Validate and retain buffered storage')]]
 parts += [function(xec, 'static int\n'+name+'(') for name in ('cgetb','cputb')]
 parts += [function(xec, 'int\ncsendalt(')]
 parts += [function(xec, 'OP('+name+')') for name in ('isend', 'irecv', 'movp', 'movw')]

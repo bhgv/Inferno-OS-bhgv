@@ -625,8 +625,15 @@ int main(void) {
 #endif
     if(!compile(&m,82,nil))abort();
     dropmodule(&m);
-    for(i=0;i<sizeof(instructions)/sizeof(instructions[0]);i++)instructions[i].op=ISEND;
+    /* EXIT still exercises a module containing only unsupported commands. */
+    for(i=0;i<sizeof(instructions)/sizeof(instructions[0]);i++)instructions[i].op=IEXIT;
     if(compile(&m,82,nil) || m.jit)abort();
+    /* SEND/RECV publish on AMD64/ARM64; RV64 retains their interpreter paths. */
+    for(i=0;i<sizeof(instructions)/sizeof(instructions[0]);i++)instructions[i].op=i&1 ? IRECV : ISEND;
+    if(REAL_LEAVES){
+        if(!compile(&m,82,nil) || !m.jit || !m.jit->entry[ISEND] || !m.jit->entry[IRECV])abort();
+        dropmodule(&m);
+    }else if(compile(&m,82,nil) || m.jit)abort();
     owned=calloc(1,sizeof(*owned));assert(owned);
     owned->prog=calloc(1,sizeof(Inst));assert(owned->prog);
     owned->nprog=1;owned->prog[0].op=IADDW;

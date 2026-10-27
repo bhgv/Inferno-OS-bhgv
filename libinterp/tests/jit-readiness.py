@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+"""Generate per-opcode AMD64/ARM64 emission percentages and explicit native domains."""
+import argparse
+import csv
+import importlib.util
+import io
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[2]  # Owning repository.
+DIRECTORY = ROOT/'libinterp/tests'  # Git-backed generated reports.
+SPEC = importlib.util.spec_from_file_location('jit_coverage',DIRECTORY/'jit-coverage.py')  # One real ABI fixture for all reports.
+COVERAGE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(COVERAGE)
+DOMAINS = {  # Audited scope descriptions; numeric percentages come only from actual emission.
+    'LeafTransfer': 'Частично: буфер, нет ожидающего peer, np=0, 0–256 байт; C-preflight, нативные copy/commit. Блокировка/ALT/rendezvous → C.',
+    'LeafChannel': 'Частично: пустой выходной владелец; нативные аргументы/публикация, общий C-аллокатор; замена владельца → C.',
+    'LeafMappedCons': 'Частично: карта без указателей, до 256 байт; проверка Type и выделение через C, копирование нативно.',
+    'LeafRawCons': 'Частично: сырые головы до 256 байт; C-аллокатор и нативное копирование.',
+    'LeafPointerCons': 'Частично: проверенные refcount/GC-условия; C-аллокатор, нативное удержание/публикация.',
+    'LeafScalarCons': 'Скаляр захвачен нативно; C-аллокатор, нативная запись/публикация.',
+    'LeafArrayCreate': 'Частично: повторное использование уникального pointer-free массива; новое выделение и карты → C.',
+    'LeafRecordObject': 'Частично: повторное использование уникальной plain-записи; выделение/деструкторы/карты → C.',
+    'LeafStringBytes': 'Частично: поддерживаемые байтовые строки и повторно используемый массив.',
+    'LeafByteString': 'Частично: ограниченный ASCII и уникальная повторно используемая строка.',
+    'LeafStringBranch': 'Частично: поддерживаемые представления и проверенные строковые диапазоны; остальные случаи → C.',
+    'LeafRealPower': 'Нативное возведение real в целую степень; проверки операндов и FP-контракт.',
+    'LeafRealInteger': 'Частично: проверенный диапазон FP→integer; CVTFX ограничивает масштаб обычными степенями двух.',
+    'LeafRealArithmetic': 'Нативная real-арифметика; CVTXF использует проверенный fixed-point масштаб.',
+    'LeafStringSlice': 'Частично: переиспользование уникального строкового буфера.',
+    'LeafArraySlice': 'Частично: уникальное представление или pointer-free корень без выделения.',
+    'LeafStringAppend': 'Частично: уникальный ASCII/Rune буфер с достаточной ёмкостью.',
+    'LeafStringStore': 'Частично: проверенный индекс, уникальный владелец и готовая ёмкость; смена представления → C.',
+    'LeafFormatInteger': 'Частично: переиспользование строки; целые и поддерживаемое подмножество real-форматирования.',
+    'LeafDecimal': 'Частично: ограниченный проверенный ASCII decimal; остальные форматы → C.',
+    'LeafSliceCopy': 'Частично: короткая byte-array копия с проверенными геометрией и адресами.',
+    'LeafMappedCopy': 'Частично: Type без указателей, 0–256 байт; карты и большие записи → C.',
+    'LeafOwner': 'Частично: поддерживаемые refcount/GC/старый-владелец условия; освобождение сложных владельцев → C.',
+    'LeafTypeCheck': 'Нативная проверка идентичности Type через проверенные поля Heap.',
+    'LeafRealBranch': 'Нативное сравнение real и выбранный PC; FP/NaN-контракт.',
+    'LeafDescriptorIndex': 'Адрес по Type.size; положительный байтовый offset ≤ INT_MAX, нулевой stride сохраняет WORD-индекс.',
+    'LeafFixedCoefficient': 'Частично: проверенные коэффициенты fixed-point и ограниченные арифметические пути.',
+    'LeafFixedFrame': 'Частично: проверенный frame/scale и поддерживаемая fixed-point арифметика.',
+    'LeafRealResize': 'Нативное преобразование float32/float64 с сохранением FP-контракта.',
+    'LeafIntegerReal': 'Нативное integer→real по активной ширине WORD/LONG.',
+    'LeafFixedShift': 'Нативный проверенный fixed-point сдвиг; неиспользуемый frame не читается.',
+    'LeafPower': 'Нативное целое возведение в степень с модульной арифметикой.',
+    'LeafHead': 'Нативная скалярная голова списка после проверок owner/полей/выхода.',
+    'LeafListLength': 'Частично: до 1024 узлов с обнаружением циклов; длинные списки → C.',
+    'LeafStringIndex': 'Частично: проверенное строковое представление и индекс.',
+    'LeafStringLength': 'Нативная длина по поддерживаемому заголовку; без чтения символов.',
+    'LeafHeadCopy': 'Частично: сырая голова 0–256 байт; большие размеры → C.',
+    'LeafCopy': 'Частично: memmove 0–256 байт; большие размеры → C.',
+    'LeafNegReal': 'Нативное отрицание real.',
+    'LeafLength': 'Нативная длина массива; nil/H → 0, остальные владельцы требуют только len.',
+    'LeafIndex': 'Нативный адрес элемента; проверенный индекс/stride и байтовый offset ≤ INT_MAX.',
+    'LeafNop': 'Штатный RUNT без изменения VM-данных.',
+    'LeafMove': 'Нативный скалярный перенос/целочисленное преобразование с правильной шириной и alias-захватом.',
+    'LeafAddress': 'Нативная запись адресного значения в WORD; ширина WORD остаётся частью VM ABI.',
+    'LeafProgramAddress': 'Частично: проверенные Module.prog/index/stride и адресная арифметика.',
+    'LeafTableJump': 'Частично: проверенная таблица PC и bytecode-модуль.',
+    'LeafCaseJump': 'Частично: bounded CASE/CASEL; CASEC — пустая таблица или совпадение первого midpoint, до 4095 строк.',
+    'LeafModuleCall': 'Частично: bytecode-вызовы при совместимых режимах исполнения; смена режима/сложный runtime → C.',
+    'LeafReturn': 'Частично: возврат без mapped-cleanup, освобождения extent и уничтожения модуля.',
+    'LeafFrame': 'Частично: pointer-free frame в текущем stack extent; выделение/карты → C.',
+    'LeafCall': 'Частично: проверенный frame и bytecode PC без нового native-PC ABI.',
+    'LeafJump': 'Нативная запись проверенного PC из декодированного слота.',
+    'LeafAlu': 'Нативная целая модульная арифметика/битовые операции.',
+    'LeafShift': 'Нативный сдвиг с правилами Dis для ширины и знака.',
+    'LeafDivide': 'Нативное деление/остаток, включая MIN/−1; нулевой делитель → C-ошибка.',
+    'LeafBranch': 'Нативное целое сравнение; target читается только на взятой ветви.',
+}
+SCOPES = {  # Refine shared families when individual command domains differ.
+    'ISEND': 'Частично: буфер имеет место, нет ожидающего получателя, np=0, 0–256 байт; C-preflight, нативные copy/commit; блокировка/rendezvous → C.',
+    'IRECV': 'Частично: буфер содержит данные, нет ожидающего отправителя, np=0, 0–256 байт; C-preflight, нативные copy/commit; блокировка/refill → C.',
+    'ICASE': 'Частично: проверенная целая CASE-таблица до 4095 строк; bytecode PC и подходящая ширина ячеек.',
+    'ICASEL': 'Частично: проверенная LONG CASE-таблица до 4095 строк; bytecode PC и подходящая ширина ячеек.',
+    'ICASEC': 'Частично: пустая таблица либо точный owner/равные пустые строки на первом midpoint; до 4095 строк; общий поиск → C.',
+    'ICVTFW': 'Частично: проверенный диапазон real→WORD с округлением Dis; остальные случаи → C.',
+    'ICVTFL': 'Частично: проверенный диапазон real→LONG с округлением Dis; остальные случаи → C.',
+    'ICVTFX': 'Частично: проверенный диапазон real→fixed; масштаб — обычная степень двух; остальные случаи → C.',
+    'ICVTWC': 'Частично: integer WORD→ASCII в уникальной строке с достаточной ёмкостью.',
+    'ICVTLC': 'Частично: integer LONG→ASCII в уникальной строке с достаточной ёмкостью.',
+    'ICVTFC': 'Частично: выбранные real→ASCII значения в переиспользуемой строке; общее форматирование → C.',
+    'ICVTXF': 'Частично: fixed→real с проверенным масштабом/коэффициентом.',
+    'IADDF': 'Нативное real-сложение с проверками слотов и FP-контрактом.',
+    'ISUBF': 'Нативное real-вычитание с проверками слотов и FP-контрактом.',
+    'IMULF': 'Нативное real-умножение с проверками слотов и FP-контрактом.',
+    'IDIVF': 'Нативное real-деление с проверками слотов и FP-контрактом.',
+}
+PENDING = {  # No native entry is published for these commands at this checkpoint.
+    'IALT': 'Пока C: выбор альтернатив, очереди, блокировка и пробуждение.',
+    'INBALT': 'Пока C: неблокирующий выбор альтернатив и очистка регистраций.',
+    'ISPAWN': 'Пока C: создание Prog, владение frame и регистрация в scheduler.',
+    'IMSPAWN': 'Пока C: межмодульный spawn и владение модулем/frame.',
+    'ILOAD': 'Пока C: загрузчик, imports, Module/MP и ошибки линковки.',
+    'IEXIT': 'Пока C: завершение процесса и освобождение runtime-ресурсов.',
+    'IRAISE': 'Пока C: exception value, текст сообщения и раскрутка VM error frames.',
+}
+
+
+# Ask the shared production classifier for each opcode family, without guessing enum values.
+def families(names, directory):
+    header = (ROOT/'libinterp/leaf64-ops.h').read_text()
+    enum = header[header.index('enum {\n\tLeafTransfer'):header.index('/* Classify guarded')]
+    kinds = list(dict.fromkeys(re.findall(r'\bLeaf[A-Z][A-Za-z]*\b',re.sub(r'/\*.*?\*/|//[^\n]*','',enum,flags=re.S))))
+    cases = ''.join('case '+kind+': return "'+kind+'";' for kind in kinds)
+    source = directory/'families.c'
+    source.write_text('''#include <stdint.h>
+#include <string.h>
+#include <stdio.h>
+typedef uint32_t u32int;
+typedef unsigned char uchar;
+#define nil 0 // Classifier has no runtime dependencies.
+#include "isa.h"
+#include "leaf64-ops.h"
+
+
+/* Map real classifier IDs back to their source identifiers. */
+static const char*
+family(int kind)
+{
+    switch(kind){'''+cases+'''}
+    return "unknown";
+}
+
+
+/* Query WORD32/64 families independently of a guessed opcode ordering. */
+int
+main(void)
+{
+    LeafOp p;
+    int i, wb;
+    for(wb=4; wb<=8; wb+=4)
+        for(i=0; i<MAXDIS; i++)
+            if(leafop(&p,i,wb))
+                printf("%d %d %s\\n",wb,i,family(p.kind));
+    return 0;
+}
+''')
+    binary = directory/'families'
+    command = shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1'))
+    subprocess.run(command+['-I'+str(ROOT/'include'),'-I'+str(ROOT/'libinterp'),str(source),'-o',str(binary)],check=True)
+    result = {}
+    for line in subprocess.check_output([str(binary)],text=True).splitlines():
+        wb,index,kind = line.split()
+        name = names[int(index)]
+        if name in result and result[name]!=kind: raise RuntimeError(('WORD family mismatch',name))
+        result[name] = kind
+    return result
+
+
+# Measure both emitters and WORD models; exact and short-capacity canaries are mandatory.
+def reports():
+    names = COVERAGE.opnames()
+    with tempfile.TemporaryDirectory(prefix='jit-readiness-') as temporary:
+        directory = Path(temporary)
+        classification = families(names,directory)
+        measurements = {(arch,wb): COVERAGE.measure(arch,wb,'base',names,directory) for arch in ('amd64','arm64') for wb in (4,8)}
+    rows = []
+    for opcode in names:
+        if opcode in ('INOP','IECLR'): continue
+        row = dict(opcode=opcode[1:])
+        for arch in ('amd64','arm64'):
+            values = [int(opcode in measurements[arch,wb]['available']) for wb in (4,8)]
+            row[arch+'_percent'] = 50*sum(values)
+            row[arch+'_word32'],row[arch+'_word64'] = values
+        kind = classification.get(opcode,'C')
+        if kind!='C' and kind not in DOMAINS: raise RuntimeError(('missing domain annotation',kind,opcode))
+        row['family'] = kind
+        row['scope'] = SCOPES.get(opcode,DOMAINS[kind]) if kind!='C' else PENDING[opcode]
+        rows.append(row)
+    active = len(rows)
+    native = {arch: sum(row[arch+'_percent']>0 for row in rows) for arch in ('amd64','arm64')}
+    md = '''# Готовность генерации JIT по отдельным командам Dis
+
+Процент в каждой строке — **доля проверенных конфигураций WORD32/WORD64,
+для которых production-эмиттер действительно создаёт код**: 0/2 = 0%,
+1/2 = 50%, 2/2 = 100%. Проверяются точный размер выходного буфера,
+его канарейки и атомарный отказ на коротком буфере.
+
+**100% здесь не означает полный перенос всех случаев команды.** Нативный путь
+может быть ограничен guards и возвращать управление C. Область применения
+указана отдельно. Процент всей семантики не измерен: нет определённого конечного
+знаменателя всех возможных значений, состояний GC, очередей и ошибок. Выдуманные
+оценки вроде «SEND готов на 80%» в эту таблицу не включены.
+
+'''
+    md += '| Архитектура | Команд с нативным путём | Только C | Доля команд |\n| --- | ---: | ---: | ---: |\n'
+    for arch,title in (('amd64','x86-64'),('arm64','ARM64')):
+        md += f'| {title} | {native[arch]}/{active} | {active-native[arch]} | {100*native[arch]/active:.2f}% |\n'
+    md += '\n175 enum-слотов минус недопустимый INOP и неиспользуемый IECLR = 173 активные команды.\n'
+    md += '\nНовые SEND/RECV выполняют copy и обновление кольца нативно; проверка геометрии —\nобщая чистая C-функция. Блокировка, ALT/rendezvous, указатели в payload и\nразмеры больше 256 байт сохраняют C-путь.\n'
+    md += '\nФизический ARM64 и полная загрузка Inferno не проверены этим измерением.\n'
+    md += '\n| Команда | x86-64, % | ARM64, % | Нативный путь и ограничения |\n| --- | ---: | ---: | --- |\n'
+    for row in rows: md += f"| {row['opcode']} | {row['amd64_percent']}% | {row['arm64_percent']}% | {row['scope']} |\n"
+    md += '\nВоспроизведение: `python3 libinterp/tests/jit-readiness.py --check`.\n'
+    csvout = io.StringIO(newline='')
+    writer = csv.DictWriter(csvout,fieldnames=list(rows[0]),lineterminator='\n')
+    writer.writeheader()
+    writer.writerows(rows)
+    return {'README.jit-readiness.md': md, 'jit-readiness.csv': csvout.getvalue()}
+
+
+# Save or validate deterministic Git-backed artifacts; stdout remains read-only by default.
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--write',action='store_true')
+    mode.add_argument('--check',action='store_true')
+    args = parser.parse_args()
+    files = reports()
+    for name,content in files.items():
+        path = DIRECTORY/name
+        if args.write: path.write_text(content,newline='')
+        elif args.check:
+            if not path.exists() or path.read_text()!=content.replace('\r\n','\n'): raise RuntimeError(('stale readiness artifact',name))
+    if args.write or args.check: print('PASS readiness: 173 command rows, AMD64/ARM64, both WORD models, exact/short emission canaries')
+    else: print(files['README.jit-readiness.md'],end='')
+
+
+if __name__=='__main__':
+    main()

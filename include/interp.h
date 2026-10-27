@@ -426,6 +426,10 @@ extern	Channel*	cnewc(Type*, void (*)(void), int);
 extern	Channel*	cnewcscalar(int, int);
 
 
+/* Stage a private 64-byte pointer-free buffered transfer; return zero without VM stores. */
+extern	int		cchanleaf(REG*, int, void*);
+
+
 /* Return an unpublished raw channel; the caller sets its width and transfers the new owner. */
 extern	Channel*	cnewcraw(int, int);
 

@@ -3092,68 +3092,307 @@ OP(lenl)
 	result = count;
 	memmove(R.d, &result, sizeof(result));
 }
+typedef struct ChannelBuffer ChannelBuffer;
+typedef struct ChannelLeaf ChannelLeaf;
+
+struct ChannelBuffer {
+	Array *array; // Borrowed buffered Array whose lifetime stays unchanged during preflight.
+	Type *type; // Aligned live element descriptor captured before ring changes.
+	void *slot; // Selected ring payload address, including zero-width identities.
+	int width; // Validated element width in native bytes.
+	int front; // Next front index for a completed receive.
+	int size; // Next occupied count for the selected direction.
+	char *error; // Borrowed VM error identity on a rejected geometry.
+};
+
+struct ChannelLeaf {
+	void *source; // Captured copy source at byte offset zero in the native transaction.
+	void *destination; // Captured copy destination at native byte offset eight.
+	uintptr bytes; // Copy length at byte offset sixteen; native leaves support 0..256.
+	int *front; // Ring-front publication address at byte offset twenty-four.
+	int *size; // Occupancy publication address at byte offset thirty-two.
+	uintptr nextfront; // Captured int front value at byte offset forty.
+	uintptr nextsize; // Captured int occupancy value at byte offset forty-eight.
+	void *middle; // Channel mover metadata address at byte offset fifty-six.
+};
+
+
+/* Numeric span checks do not establish virtual mapping or allocation ownership. */
+static int
+channelspan(void *p, uintptr bytes)
+{
+	return p != nil && p != H && (uintptr)p <= (uintptr)-1-bytes;
+}
+
+
+/* Stage ring geometry without allocation, VM stores, callbacks or reference changes.
+ * Return one for an active slot, zero for an unavailable/declined ring, and minus
+ * one with a borrowed error identity for malformed metadata. Empty receives and
+ * full sends never inspect an unused element descriptor or backing data.
+ */
+static int
+channelbuffer(Channel *c, int receive, int pointerfree, ChannelBuffer *out)
+{
+	Channel channel;
+	Array array;
+	Type *type;
+	uintptr address, bytes, offset;
+	WORD index;
+	int width, pointers, i, bit;
+
+	out->error = exHeap;
+	if(c == nil || c == H){
+		out->error = exNilref;
+		return -1;
+	}
+	if(!channelspan(c, sizeof(channel)) || (uintptr)c%sizeof(void*) != 0)
+		return -1;
+	memmove(&channel, c, sizeof(channel));
+	if(channel.buf == H)
+		return 0;
+	if(channel.buf == nil){
+		out->error = exNilref;
+		return -1;
+	}
+	if(channel.size < 0)
+		return -1;
+	if(receive && channel.size == 0)
+		return 0;
+	if(!channelspan(channel.buf, sizeof(array)) ||
+	   (uintptr)channel.buf <= sizeof(Heap) || (uintptr)channel.buf%sizeof(void*) != 0)
+		return -1;
+	memmove(&array, channel.buf, sizeof(array));
+	if(array.len < 0 || (uvlong)array.len > 0x7fffffff || channel.size > array.len)
+		return -1;
+	if(!receive && channel.size == array.len)
+		return 0;
+	if(array.len == 0 || channel.front < 0 || channel.front >= array.len)
+		return -1;
+	if(channel.mover == nil || (uintptr)channel.mover == (uintptr)-1)
+		return -1;
+	type = array.t;
+	if(!channelspan(type, offsetof(Type, np)+sizeof(pointers)) ||
+	   (uintptr)type%sizeof(void*) != 0)
+		return -1;
+	memmove(&width, (uchar*)type+offsetof(Type, size), sizeof(width));
+	memmove(&pointers, (uchar*)type+offsetof(Type, np), sizeof(pointers));
+	/* Decline large/mapped native transfers before walking maps only C will use. */
+	if(pointerfree && (width < 0 || width > 256 || pointers != 0))
+		return 0;
+	if(width < 0 || pointers < 0 ||
+	   pointers > width/(8*sizeof(void*))+(width%(8*sizeof(void*)) != 0))
+		return -1;
+	address = (uintptr)type;
+	if(pointers != 0 && (address > (uintptr)-1 - offsetof(Type, map) ||
+	   address+offsetof(Type, map) > (uintptr)-1-(uintptr)pointers))
+		return -1;
+	for(i = 0; i < pointers; i++)
+		for(bit = 0; bit < 8; bit++)
+			if((((uchar*)type+offsetof(Type, map))[i] & (0x80>>bit)) &&
+			   ((ulong)i*8+bit >= (ulong)width/sizeof(void*)))
+				return -1;
+	if(width != 0 && (uvlong)array.len > (uintptr)-1/(uint)width)
+		return -1;
+	bytes = (uintptr)array.len*(uint)width;
+	if(bytes != 0 && !channelspan(array.data, bytes)){
+		out->error = array.data == nil || array.data == H ? exNilref : exBounds;
+		return -1;
+	}
+	if(receive)
+		index = channel.front;
+	else if(channel.front >= array.len-channel.size)
+		index = channel.front-(array.len-channel.size);
+	else
+		index = channel.front+channel.size;
+	offset = (uintptr)index*(uint)width;
+	out->array = channel.buf;
+	out->type = type;
+	out->width = width;
+	out->slot = (void*)((uintptr)array.data+offset);
+	out->front = receive ? (channel.front == array.len-1 ? 0 : channel.front+1) : channel.front;
+	out->size = channel.size+(receive ? -1 : 1);
+	return 1;
+}
+
+
+/* Check the channel and peer-queue prefix before any scheduler queue access. */
+static Prog*
+channelpeer(Channel *c, int receive)
+{
+	Progq *queue;
+	Prog *peer;
+
+	if(c == nil || c == H)
+		error(exNilref);
+	if(!channelspan(c, sizeof(*c)) || (uintptr)c%sizeof(void*) != 0)
+		error(exHeap);
+	queue = receive ? c->send : c->recv;
+	if(!channelspan(queue, offsetof(Progq, prog)+sizeof(peer)))
+		error(exHeap);
+	memmove(&peer, (uchar*)queue+offsetof(Progq, prog), sizeof(peer));
+	return peer;
+}
+
+
 /* Validate and retain buffered storage before changing its ring or destination. */
 static int
 cgetb(Channel *c, void *v)
 {
+	ChannelBuffer buffer;
 	Array *a;
 	Heap *h;
 	void *w;
+	int status;
 
-	if((a = c->buf) == H)
+	status = channelbuffer(c, 1, 0, &buffer);
+	if(status < 0)
+		error(buffer.error);
+	if(status == 0)
 		return 0;
-	if(a == nil)
-		error(exNilref);
-	if(c->size > 0){
-		h = D2H(a);
-		if(h->ref == 0 || h->ref == (ulong)-1)
-			error(exHeap);
-		h->ref++;
-		w = a->data+(ulong)c->front*a->t->size;
-		c->front++;
-		if(c->front == c->buf->len)
-			c->front = 0;
-		c->size--;
-		R.s = w;
-		R.m = &c->mid;
-		R.d = v;
-		c->mover();
-		if(a->t->np){
-			freeptrs(w, a->t);
-			initmem(a->t, w);
-		}
-		destroy(a);
-		return 1;
+	if(buffer.width != 0 && !channelspan(v, buffer.width))
+		error(v == nil || v == H ? exNilref : exBounds);
+	a = buffer.array;
+	h = D2H(a);
+	if(h->ref == 0 || h->ref == (ulong)-1)
+		error(exHeap);
+	h->ref++;
+	w = buffer.slot;
+	c->front = buffer.front;
+	c->size = buffer.size;
+	R.s = w;
+	R.m = &c->mid;
+	R.d = v;
+	c->mover();
+	if(a->t->np){
+		freeptrs(w, a->t);
+		initmem(a->t, w);
 	}
-	return 0;
+	destroy(a);
+	return 1;
 }
-/* Compute wrapped indexes without signed sums and use native-width byte offsets. */
+
+
+/* Capture validated ring geometry before raw or mapped send publication. */
 static int
 cputb(Channel *c, void *v)
 {
-	Array *a;
-	WORD len, r;
+	ChannelBuffer buffer;
+	int status;
 
-	if((a = c->buf) == H)
+	status = channelbuffer(c, 0, 0, &buffer);
+	if(status < 0)
+		error(buffer.error);
+	if(status == 0)
 		return 0;
-	if(a == nil)
-		error(exNilref);
-	len = a->len;
-	if(c->size < len){
-		/* Subtract the distance to the end before adding an occupied prefix. */
-		if(c->front >= len-c->size)
-			r = c->front-(len-c->size);
-		else
-			r = c->front+c->size;
-		c->size++;
-		R.s = v;
-		R.m = &c->mid;
-		R.d = a->data+(ulong)r*a->t->size;
-		c->mover();
-		return 1;
-	}
-	return 0;
+	if(buffer.width != 0 && !channelspan(v, buffer.width))
+		error(v == nil || v == H ? exNilref : exBounds);
+	c->size = buffer.size;
+	R.s = v;
+	R.m = &c->mid;
+	R.d = buffer.slot;
+	c->mover();
+	return 1;
 }
+
+
+/* Reject payload aliases with metadata whose C transfer order is observable. */
+static int
+channeloutside(void *payload, uintptr bytes, void *object, uintptr extent)
+{
+	uintptr first, other;
+
+	if(bytes == 0)
+		return 1;
+	first = (uintptr)payload;
+	other = (uintptr)object;
+	return first+bytes <= other || other+extent <= first;
+}
+
+
+/* Stage a bounded pointer-free buffered send/receive without changing the VM.
+ * Blocking, queued peers, custom movers, mapped pointers and metadata aliases
+ * decline to the existing interpreter. The caller owns a private 64-byte native
+ * transaction; success only writes that transaction, never operands or headers.
+ */
+int
+cchanleaf(REG *r, int receive, void *transaction)
+{
+	Channel *c;
+	ChannelBuffer buffer;
+	ChannelLeaf leaf;
+	Progq *queue;
+	Prog *peer;
+	void *value, *slot;
+	int width, status, i;
+	void *objects[4];
+	uintptr extents[4];
+	ulong references;
+
+	if(sizeof(void*) != 8 || sizeof(leaf) != 64 ||
+	   (receive != 0 && receive != 1) || !channelspan(r, sizeof(*r)))
+		return 0;
+	slot = receive ? r->s : r->d;
+	if(!channelspan(slot, sizeof(c)))
+		return 0;
+	memmove(&c, slot, sizeof(c));
+	if(!channelspan(c, sizeof(*c)) || (uintptr)c <= sizeof(Heap) ||
+	   (uintptr)c%sizeof(void*) != 0)
+		return 0;
+	queue = receive ? c->send : c->recv;
+	if(!channelspan(queue, offsetof(Progq, prog)+sizeof(peer)))
+		return 0;
+	memmove(&peer, (uchar*)queue+offsetof(Progq, prog), sizeof(peer));
+	if(peer != nil)
+		return 0;
+	status = channelbuffer(c, receive, 1, &buffer);
+	if(status != 1 || buffer.width > 256 || buffer.type->np != 0)
+		return 0;
+	width = buffer.width;
+	if(c->mover == movb){
+		if(width != sizeof(BYTE)) return 0;
+	}else if(c->mover == movw){
+		if(width != sizeof(WORD)) return 0;
+	}else if(c->mover == movl){
+		if(width != sizeof(LONG)) return 0;
+	}else if(c->mover == movf){
+		if(width != sizeof(REAL)) return 0;
+	}else if(c->mover == movm){
+		if(c->mid.w != width) return 0;
+	}else if(c->mover == movtmp){
+		if(c->mid.t != buffer.type) return 0;
+	}else
+		return 0;
+	if(receive){
+		memmove(&references, (uchar*)buffer.array-sizeof(Heap)+offsetof(Heap, ref), sizeof(references));
+		if(references == 0 || references == (ulong)-1)
+			return 0;
+	}
+	value = receive ? r->d : r->s;
+	if(width != 0 && !channelspan(value, width))
+		return 0;
+	leaf.source = receive ? buffer.slot : value;
+	leaf.destination = receive ? value : buffer.slot;
+	leaf.bytes = width;
+	/* C changes ring counters, REG operands and a temporary buffer reference. */
+	objects[0] = r; extents[0] = sizeof(*r);
+	objects[1] = (uchar*)c-sizeof(Heap); extents[1] = sizeof(Heap)+sizeof(*c);
+	objects[2] = (uchar*)buffer.array-sizeof(Heap); extents[2] = sizeof(Heap)+sizeof(Array);
+	objects[3] = buffer.type; extents[3] = sizeof(Type);
+	for(i = 0; i < 4; i++){
+		if(!channelspan(objects[i], extents[i]) ||
+		   !channeloutside(leaf.source, width, objects[i], extents[i]) ||
+		   !channeloutside(leaf.destination, width, objects[i], extents[i]))
+			return 0;
+	}
+	leaf.front = &c->front;
+	leaf.size = &c->size;
+	leaf.nextfront = buffer.front;
+	leaf.nextsize = buffer.size;
+	leaf.middle = &c->mid;
+	memmove(transaction, &leaf, sizeof(leaf));
+	return 1;
+}
+
 /*
 int
 cqsize(Progq *q)
@@ -3226,17 +3465,18 @@ cqdelp(Progq **q, Prog *p)
 		free(f);
 	}
 }
-/* Queue a blocked sender before removing it from the runnable scheduler list. */
+
+
+/* Resolve a checked channel/peer before enqueueing or transferring a sender. */
 OP(isend)
 {
 	Channel *c;
- 	Prog *p;
+	Prog *p;
 
+	if(!channelspan(R.d, sizeof(c)))
+		error(exHeap);
 	memmove(&c, R.d, sizeof(c));
-	if(c == H || c == nil)
-		error(exNilref);
-
-	if((p = c->recv->prog) == nil) {
+	if((p = channelpeer(c, 0)) == nil) {
 		if(c->buf != H && cputb(c, R.s))
 			return;
 		p = currun();
@@ -3244,7 +3484,7 @@ OP(isend)
 		p = delrun(Psend);
 		p->ptr = R.s;
 		p->chan = c;	/* for killprog */
-		R.IC = 1;	
+		R.IC = 1;
 		R.t = 1;
 		return;
 	}
@@ -3263,19 +3503,19 @@ OP(isend)
 	addrun(p);
 	R.t = 0;
 }
-/* Queue blocked receivers safely and retain buffered channels through refill. */
-/* Validate buffered temporary owners before dequeuing or refilling a sender. */
+
+
+/* Capture a checked channel owner and retain buffered storage through sender refill. */
 OP(irecv)
 {
 	Channel *c;
 	Prog *p;
 	Heap *h;
 
+	if(!channelspan(R.s, sizeof(c)))
+		error(exHeap);
 	memmove(&c, R.s, sizeof(c));
-	if(c == H || c == nil)
-		error(exNilref);
-
-	if((p = c->send->prog) == nil) {
+	if((p = channelpeer(c, 1)) == nil) {
 		if(c->buf != H && cgetb(c, R.d))
 			return;
 		p = currun();

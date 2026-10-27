@@ -1,5 +1,9 @@
 # 64-bit JIT opcode availability checkpoint
 
+Latest native buffered SEND/RECV and ring preflight: [README.buffered-transfer.md](README.buffered-transfer.md).
+
+Full per-command AMD64/ARM64 percentages, definition and domains: [README.jit-readiness.md](README.jit-readiness.md) ([CSV](jit-readiness.csv)).
+
 Latest MOVMP/HEADMP span guards and MOVTMP descriptor/map preflight: [README.mapped-preflight.md](README.mapped-preflight.md).
 
 Latest six-command array operand/header guards and shared raw/mapped native copy kernels: [README.array-slots-copy-kernel.md](README.array-slots-copy-kernel.md).
@@ -20,19 +24,19 @@ Latest ownership preflight fixes and validation: [README.owner-preflight.md](REA
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-paths for 164 commands (94.8%); nine remain on the interpreter path. RV64 profiles
+paths for 166 commands (95.95%); seven remain on the interpreter path. RV64 profiles
 retain their earlier counts. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native path | C interpreter path |
 | --- | ---: | ---: | ---: |
-| AMD64 | 173 | 164 | 9 |
-| ARM64 | 173 | 164 | 9 |
+| AMD64 | 173 | 166 | 7 |
+| ARM64 | 173 | 166 | 7 |
 | RV64 + M | 173 | 103 | 70 |
 | RV64 + Zmmul | 173 | 90 | 83 |
 | RV64I | 173 | 87 | 86 |
 
-The latest addition is a guarded ICASEC path for empty string tables and exact
+The preceding addition is a guarded ICASEC path for empty string tables and exact
 lower-label owner identities or equal empty values at the first binary-search
 midpoint of a table with up to 4,095 rows. Equal owners retain stringcmp's signed length/capacity checks; distinct empty owners
 require zero length and nonnegative capacity. H skips header reads. Different

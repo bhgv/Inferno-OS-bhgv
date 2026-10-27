@@ -34,6 +34,7 @@ struct LeafLayout {
 	void *plainfree, *plainmark; // Exact standard freeheap/markheap callback identities.
 	void *rawchannelentry, *mappedchannelentry; // Unpublished raw and mapped channel allocators.
 	int channelmid; // Raw-width/descriptor union offset within a newly allocated Channel.
+	void *channeltransferentry; // Pure buffered-transfer preflight; native code copies and commits.
 	void *channelentry; // Shared scalar channel allocator selected by opcode and int capacity.
 	void *constypeentry; // Pure mapped-list descriptor validation before native allocation.
 	void *consentry; // Runtime list allocator; scalar capture/store remains native.
@@ -215,6 +216,7 @@ struct LeafOp {
 };
 
 enum {
+	LeafTransfer = 132, // Copy pointer-free buffered SEND/RECV after pure runtime preflight.
 	LeafMappedCons = 131, // Resolve live descriptors and copy pointer-free mapped payloads.
 	LeafRawCons = 128, // Allocate and copy bounded raw list payloads before publication.
 	LeafChannel = 130, // Construct typed channels after native argument and empty-owner checks.
@@ -252,13 +254,15 @@ enum {
 };
 
 
-/* Classify helper-free native paths that explicitly decline to the VM when needed. */
+/* Classify guarded native and helper-assisted paths that explicitly decline to the VM when needed. */
 static int
 leafop(LeafOp *p, int op, int wordbytes)
 {
 	memset(p, 0, sizeof(*p));
 	p->bytes = wordbytes;
 	switch(op){
+	case ISEND: p->kind = LeafTransfer; p->alu = 0; break;
+	case IRECV: p->kind = LeafTransfer; p->alu = 1; break;
 	case INEWCM: case INEWCMP:
 		p->kind = LeafChannel; p->alu = op; break;
 	case INEWCB: case INEWCW: case INEWCL: case INEWCF: case INEWCP:

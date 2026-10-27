@@ -71,6 +71,7 @@ leafcompile(void *arg)
 	abi.consentry=(void*)cons;
 	abi.constypeentry=(void*)cconsmappedtype;
 	abi.channelentry=(void*)cnewcscalar;
+	abi.channeltransferentry=(void*)cchanleaf;
 	abi.rawchannelentry=(void*)cnewcraw;
 	abi.mappedchannelentry=(void*)cnewcmapped;
 	abi.channelmid=O(Channel, mid);
