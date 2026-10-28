@@ -41,7 +41,7 @@ with tempfile.TemporaryDirectory(prefix='limbo-node-chains-') as temporary:
         '-O1 -g -DNDEBUG -fno-optimize-sibling-calls -fsanitize=address,undefined -fno-sanitize-recover=all'))
     includes = ['-I'+str(ROOT / path) for path in ('Linux/arm/include', 'include', 'limbo')]
     subprocess.run(command+includes+[str(source), '-o', str(binary)], check=True)
-    families = [os.environ['NODE_CHAIN_CASE']] if os.environ.get('NODE_CHAIN_CASE') else ['small', 'varinit', 'caselist', 'occurs']
+    families = [os.environ['NODE_CHAIN_CASE']] if os.environ.get('NODE_CHAIN_CASE') else ['small', 'varinit', 'caselist', 'occurs', 'occurs-left']
     for family in families:
         print('compiler chains '+family, flush=True)
         subprocess.run([str(binary)]+([] if family == 'small' else [family]), check=True)

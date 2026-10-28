@@ -62,3 +62,32 @@ The verified host is AMD64; ARM64 hardware, full interpreter boot and coordinate
 64-bit compiler/loader/frame/GC layouts require separate acceptance tests.
 Priority opcode coverage remains 173/173 JIT+C entries and 166/173 guarded native
 paths for each of AMD64 and ARM64.
+
+## Both associations in occurs / Оба направления occurs
+
+The follow-up removes the remaining left-child recursion from declaration-use
+counting. A fixed 64-pointer work area handles small trees; checked geometric heap
+growth handles larger pending branches. Nodes and declaration references are never
+mutated. Oname stays terminal even when its child fields contain cyclic metadata;
+DAG edges retain their ordinary per-edge occurrence meaning. Temporary work memory
+is freed on success. Allocation/size exhaustion or signed count overflow is fatal,
+as with other internal compiler resource failures; this is not recoverable API state.
+
+The `occurs-left` family mirrors 100000 right-associated nodes under the same
+256 KiB C-stack limit. It reproduces ASan stack overflow on 3523d0d before the fix.
+Small structural checks cover both directions, while existing varinit/caselist
+and right-chain cases remain unchanged. This bounds this counter's C stack, not
+every compiler/optimizer traversal or total AST work.
+
+Дополнительное исправление убирает оставшуюся рекурсию по левому потомку при
+подсчёте использований объявления. Малые деревья используют 64 указателя на
+фиксированном C-стеке, большие — проверенное геометрическое расширение в куче.
+Узлы и счётчики ссылок объявлений не меняются. Oname остаётся терминальным даже
+с циклическими служебными полями; общие ветви DAG считаются по каждому ребру.
+Временная память освобождается при успехе; нехватка памяти, переполнение размера
+или signed-счётчика — fatal внутреннего компилятора, без обещания восстановления.
+
+Семейство `occurs-left` зеркалит 100000 узлов при лимите C-стека 256 КиБ.
+На 3523d0d до исправления воспроизводится stack overflow ASan. Малые структурные
+проверки охватывают оба направления, прежние varinit/caselist/right-chain сохранены.
+Это ограничение стека именно occurs, а не всех обходов компилятора/оптимизатора.

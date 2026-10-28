@@ -37,6 +37,14 @@ allocmem(ulong size)
 	return &arena[used++];
 }
 
+/* The production counter fails explicitly rather than overflowing a signed count. */
+void
+fatal(char *format, ...)
+{
+	fprintf(stderr, "unexpected compiler fatal: %s\n", format);
+	abort();
+}
+
 IMPLEMENTATION
 
 
@@ -152,7 +160,7 @@ labels(int count, int suffix, int pattern)
 
 /* Build the reference-counting input independently of either chain constructor. */
 static void
-references(int count)
+references(int count, int left)
 {
 	Node *nodes;
 	Decl declarations[17];
@@ -170,6 +178,13 @@ references(int count)
 		/* Name nodes are terminal; even populated child links must be ignored. */
 		nodes[2*i+1].left = &nodes[2*i];
 		nodes[2*i+1].right = nodes;
+	}
+	if(left){
+		for(i = 0; i < count; i++){
+			Node *child = nodes[2*i].left;
+			nodes[2*i].left = nodes[2*i].right;
+			nodes[2*i].right = child;
+		}
 	}
 	for(selected = 0; selected < 17; selected++){
 		expected = selected == 16 || selected >= count ? 0 : (count-1-selected)/16+1;
@@ -205,12 +220,15 @@ main(int argc, char **argv)
 		else if(strcmp(argv[1], "caselist") == 0)
 			labels(100000, 4, 7);
 		else if(strcmp(argv[1], "occurs") == 0)
-			references(100000);
+			references(100000, 0);
+		else if(strcmp(argv[1], "occurs-left") == 0)
+			references(100000, 1);
 		else
 			chaincheck(0);
 	}else{
 		for(count = 1; count <= 512; count++){
-			references(count);
+			references(count, 0);
+			references(count, 1);
 			for(pattern = 0; pattern < 16; pattern++)
 				initializers(count, pattern);
 			for(suffix = 0; suffix <= 4; suffix++)

@@ -280,19 +280,55 @@ sametree(Node *n1, Node *n2)
 }
 
 
-/* Count declaration uses without growing the C stack along right-associated chains. */
+/* Count uses with bounded C stack for either association and mixed trees.
+ * Nodes/Decl are borrowed and never changed; Oname remains terminal even if it
+ * has populated child metadata. Temporary work storage is released on success.
+ * Allocation, storage-size or signed-count exhaustion is a compiler fatal. */
 int
 occurs(Decl *d, Node *n)
 {
+	enum { InlineNodes = 64 };
+	Node *inlinework[InlineNodes], **work, **next;
+	ulong used, capacity;
 	int count;
 
+	work = inlinework;
+	used = 0;
+	capacity = InlineNodes;
 	count = 0;
-	while(n != nil){
-		if(n->op == Oname)
-			return count+(d == n->decl);
-		count += occurs(d, n->left);
-		n = n->right;
+	for(;;){
+		while(n != nil){
+			if(n->op == Oname){
+				if(d == n->decl){
+					if(count == 0x7fffffff)
+						fatal("declaration use count overflow");
+					count++;
+				}
+				break;
+			}
+			if(n->right != nil){
+				if(used == capacity){
+					if(capacity > (ulong)-1/2/sizeof(*work))
+						fatal("declaration traversal storage overflow");
+					next = malloc(2*capacity*sizeof(*work));
+					if(next == nil)
+						fatal("out of memory counting declaration uses");
+					memmove(next, work, used*sizeof(*work));
+					if(work != inlinework)
+						free(work);
+					work = next;
+					capacity *= 2;
+				}
+				work[used++] = n->right;
+			}
+			n = n->left;
+		}
+		if(used == 0)
+			break;
+		n = work[--used];
 	}
+	if(work != inlinework)
+		free(work);
 	return count;
 }
 
