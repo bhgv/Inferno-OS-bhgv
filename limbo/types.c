@@ -4347,111 +4347,265 @@ tparentx(Type *t1, Type* t2)
 }
 */
 
+/* Deferred tuple fields retain the predicate's left-to-right short-circuit order. */
+typedef struct ParentFields ParentFields;
+
+struct ParentFields {
+	Decl *left; // Next declaration in the first tuple.
+	Decl *right; // Corresponding declaration in the second tuple.
+};
+
+/* Build continuations retain a source pair and copy-on-change tuple cursors. */
+typedef struct ParentBuild ParentBuild;
+
+struct ParentBuild {
+	Type *left; // Borrowed first Type, normalized when paired with an ADT pick.
+	Type *right; // Borrowed second Type after the same normalization.
+	Type *copy; // Private tuple Type created only after its first changed field.
+	Decl *first; // Current field in the original first tuple.
+	Decl *second; // Current field in the second tuple.
+	Decl *output; // Corresponding field within the private copied tuple.
+	int phase; // Entry, wrapper-return or tuple-field continuation.
+};
+
+enum {
+	ParentEnter, // Normalize and expand one compatible Type pair.
+	ParentWrapper, // Reuse or rebuild a wrapper after its element returns.
+	ParentNext, // Select the next tuple field pair.
+	ParentReturned, // Publish a changed field into a lazily copied tuple.
+};
+
+
+/* Grow the private result-building stack before exposing a new continuation. */
+static void
+parentbuildpush(ParentBuild **work, ParentBuild *inlinework, int *used, int *capacity,
+	Type *left, Type *right)
+{
+	ParentBuild *grown, *frame;
+
+	if(*used == *capacity){
+		if(*capacity > 0x7fffffff/2/sizeof(**work))
+			fatal("parent type too complex");
+		*capacity *= 2;
+		grown = allocmem(*capacity*sizeof(*grown));
+		memmove(grown, *work, *used*sizeof(*grown));
+		if(*work != inlinework)
+			free(*work);
+		*work = grown;
+	}
+	frame = &(*work)[(*used)++];
+	memset(frame, 0, sizeof(*frame));
+	frame->left = left;
+	frame->right = right;
+	frame->phase = ParentEnter;
+}
+
+
+/* Check structural parent compatibility without recursion through wrappers or tuples. */
 static int
 tparent0(Type *t1, Type *t2)
 {
+	ParentFields inlinework[64], *work, *grown;
 	Decl *id1, *id2;
+	int used, capacity, result;
 
-	if(t1 == t2)
-		return 1;
-	if(t1 == nil || t2 == nil)
-		return 0;
-	if(t1->kind == Tadt && t2->kind == Tadtpick)
-		t2 = t2->decl->dot->ty;
-	if(t1->kind == Tadtpick && t2->kind == Tadt)
-		t1 = t1->decl->dot->ty;
-	if(t1->kind != t2->kind)
-		return 0;
-	switch(t1->kind){
-	default:
-		fatal("unknown type %t v %t in tparent", t1, t2);
-		break;
-	case Terror:
-	case Tstring:
-	case Tnone:
-	case Tint:
-	case Tbig:
-	case Tbyte:
-	case Treal:
-	case Tany:
-		return 1;
-	case Texception:
-	case Tfix:
-	case Tfn:
-	case Tadt:
-	case Tmodule:
-	case Tpoly:
-		return tcompat(t1, t2, 0);
-	case Tref:
-	case Tlist:
-	case Tarray:
-	case Tchan:
-		return tparent0(t1->tof, t2->tof);
-	case Ttuple:
-		for(id1 = t1->ids, id2 = t2->ids; id1 != nil && id2 != nil; id1 = id1->next, id2 = id2->next)
-			if(!tparent0(id1->ty, id2->ty))
-				return 0;
-		return id1 == nil && id2 == nil;
-	case Tadtpick:
-		return tequal(t1->decl->dot->ty, t2->decl->dot->ty);
+	work = inlinework;
+	capacity = nelem(inlinework);
+	used = 0;
+	result = 0;
+	for(;;){
+		if(t1 == t2)
+			goto matched;
+		if(t1 == nil || t2 == nil)
+			break;
+		if(t1->kind == Tadt && t2->kind == Tadtpick)
+			t2 = t2->decl->dot->ty;
+		if(t1->kind == Tadtpick && t2->kind == Tadt)
+			t1 = t1->decl->dot->ty;
+		if(t1->kind != t2->kind)
+			break;
+		switch(t1->kind){
+		default:
+			fatal("unknown type %t v %t in tparent", t1, t2);
+			goto done;
+		case Terror:
+		case Tstring:
+		case Tnone:
+		case Tint:
+		case Tbig:
+		case Tbyte:
+		case Treal:
+		case Tany:
+			goto matched;
+		case Texception:
+		case Tfix:
+		case Tfn:
+		case Tadt:
+		case Tmodule:
+		case Tpoly:
+			if(!tcompat(t1, t2, 0))
+				goto done;
+			goto matched;
+		case Tref:
+		case Tlist:
+		case Tarray:
+		case Tchan:
+			t1 = t1->tof;
+			t2 = t2->tof;
+			continue;
+		case Ttuple:
+			id1 = t1->ids;
+			id2 = t2->ids;
+			goto fields;
+		case Tadtpick:
+			if(!tequal(t1->decl->dot->ty, t2->decl->dot->ty))
+				goto done;
+			goto matched;
+		}
+matched:
+		if(used == 0){
+			result = 1;
+			break;
+		}
+		used--;
+		id1 = work[used].left;
+		id2 = work[used].right;
+fields:
+		if(id1 == nil || id2 == nil){
+			if(id1 != id2)
+				break;
+			goto matched;
+		}
+		if(id1->next != nil || id2->next != nil){
+			if(used == capacity){
+				if(capacity > 0x7fffffff/2/sizeof(*work))
+					fatal("parent type comparison too complex");
+				capacity *= 2;
+				grown = allocmem(capacity*sizeof(*grown));
+				memmove(grown, work, used*sizeof(*grown));
+				if(work != inlinework)
+					free(work);
+				work = grown;
+			}
+			work[used].left = id1->next;
+			work[used].right = id2->next;
+			used++;
+		}
+		t1 = id1->ty;
+		t2 = id2->ty;
 	}
-	return 0;
+done:
+	if(work != inlinework)
+		free(work);
+	return result;
 }
 
+
+/* Generalize a compatible pair while reusing every unchanged Type and declaration list. */
 static Type*
 tparent1(Type *t1, Type *t2)
 {
-	Type *t, *nt;
-	Decl *id, *id1, *id2, *idt;
+	ParentBuild inlinework[64], *work, *frame;
+	Type *result, *left, *right;
+	Decl *id;
+	int used, capacity;
 
-	if(t1->kind == Tadt && t2->kind == Tadtpick)
-		t2 = t2->decl->dot->ty;
-	if(t1->kind == Tadtpick && t2->kind == Tadt)
-		t1 = t1->decl->dot->ty;
-	switch(t1->kind){
-	default:
-		return t1;
-	case Tref:
-	case Tlist:
-	case Tarray:
-	case Tchan:
-		t = tparent1(t1->tof, t2->tof);
-		if(t == t1->tof)
-			return t1;
-		return mktype(&t1->src.start, &t1->src.stop, t1->kind, t, nil);
-	case Ttuple:
-		nt = nil;
-		id = nil;
-		for(id1 = t1->ids, id2 = t2->ids; id1 != nil && id2 != nil; id1 = id1->next, id2 = id2->next){
-			t = tparent1(id1->ty, id2->ty);
-			if(t != id1->ty){
-				if(nt == nil){
-					nt = mktype(&t1->src.start, &t1->src.stop, Ttuple, nil, dupdecls(t1->ids));
-					for(id = nt->ids, idt = t1->ids; idt != id1; id = id->next, idt = idt->next)
-						;
-				}
-				id->ty = t;
-			}
-			if(id != nil)
-				id = id->next;
+	work = inlinework;
+	capacity = nelem(inlinework);
+	used = 0;
+	result = nil;
+	parentbuildpush(&work, inlinework, &used, &capacity, t1, t2);
+	while(used != 0){
+		frame = &work[used-1];
+		left = frame->left;
+		right = frame->right;
+		if(frame->phase == ParentWrapper){
+			if(result == left->tof)
+				result = left;
+			else
+				result = mktype(&left->src.start, &left->src.stop, left->kind, result, nil);
+			used--;
+			continue;
 		}
-		if(nt == nil)
-			return t1;
-		return nt;
-	case Tadtpick:
-		if(tequal(t1, t2))
-			return t1;
-		return t1->decl->dot->ty;
+		if(frame->phase == ParentReturned){
+			if(result != frame->first->ty){
+				if(frame->copy == nil){
+					frame->copy = mktype(&left->src.start, &left->src.stop,
+						Ttuple, nil, dupdecls(left->ids));
+					frame->output = frame->copy->ids;
+					for(id = left->ids; id != frame->first; id = id->next)
+						frame->output = frame->output->next;
+				}
+				frame->output->ty = result;
+			}
+			if(frame->output != nil)
+				frame->output = frame->output->next;
+			frame->first = frame->first->next;
+			frame->second = frame->second->next;
+			frame->phase = ParentNext;
+		}
+		if(frame->phase == ParentNext){
+			if(frame->first == nil || frame->second == nil){
+				result = frame->copy != nil ? frame->copy : left;
+				used--;
+				continue;
+			}
+			frame->phase = ParentReturned;
+			parentbuildpush(&work, inlinework, &used, &capacity,
+				frame->first->ty, frame->second->ty);
+			continue;
+		}
+		if(left == right){
+			result = left;
+			used--;
+			continue;
+		}
+		if(left->kind == Tadt && right->kind == Tadtpick)
+			right = right->decl->dot->ty;
+		if(left->kind == Tadtpick && right->kind == Tadt)
+			left = left->decl->dot->ty;
+		frame->left = left;
+		frame->right = right;
+		switch(left->kind){
+		case Tref:
+		case Tlist:
+		case Tarray:
+		case Tchan:
+			frame->phase = ParentWrapper;
+			parentbuildpush(&work, inlinework, &used, &capacity, left->tof, right->tof);
+			break;
+		case Ttuple:
+			frame->first = left->ids;
+			frame->second = right->ids;
+			frame->phase = ParentNext;
+			break;
+		case Tadtpick:
+			result = tequal(left, right) ? left : left->decl->dot->ty;
+			used--;
+			break;
+		default:
+			result = left;
+			used--;
+			break;
+		}
 	}
+	if(work != inlinework)
+		free(work);
+	return result;
 }
 
+
+/* Identical identities, including nil, need neither compatibility work nor reconstruction. */
 Type*
 tparent(Type *t1, Type *t2)
 {
+	if(t1 == t2)
+		return t1;
 	if(tparent0(t1, t2))
 		return tparent1(t1, t2);
 	return t1;
 }
+
 
 /*
  * make the tuple type used to initialize an exception type

@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'limbo/tests/type-parent.py',
     'limbo/tests/type-walks.py',
     'limbo/tests/diagnostic-print.py',
     'lib9/tests/allocated-format.py',
