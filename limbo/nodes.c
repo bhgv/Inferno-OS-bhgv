@@ -1757,6 +1757,8 @@ etconv(Fmt *f)
 	return fmtstrcpy(f, buf);
 }
 
+
+/* Reserve the closing quote and NUL even when expression text fills its span. */
 int
 expconv(Fmt *f)
 {
@@ -1769,225 +1771,268 @@ expconv(Fmt *f)
 	if(f->r == 'V')
 		*p++ = '\'';
 	p = eprint(p, buf+sizeof(buf)-1, n);
+	if(p >= buf+sizeof(buf)-1)
+		p = buf+sizeof(buf)-2;
 	if(f->r == 'V')
 		*p++ = '\'';
 	*p = 0;
 	return fmtstrcpy(f, buf);
 }
 
-char*
-eprint(char *buf, char *end, Node *n)
+
+#define NodePrintPlan 16 // Maximum actions in one diagnostic node expansion.
+
+/* Pending diagnostic actions retain traversal order without using the C call stack. */
+typedef struct NodePrint NodePrint;
+
+struct NodePrint {
+	int kind; // Node, list, text, Type or debug-dump action.
+	Node *node; // Borrowed AST node; diagnostics never mutate the tree.
+	char *text; // Borrowed text or list separator.
+	Type *ty; // Borrowed Type for an interleaved type conversion.
+	int indent; // Nonnegative indentation for a debug dump.
+};
+
+enum {
+	PrintNode, // Expand one expression into ordered output actions.
+	PrintList, // Expand one sequence cell without recursive list traversal.
+	PrintText, // Copy literal text through the bounded diagnostic helper.
+	PrintType, // Render a Type at its original place in the output stream.
+	PrintAtom, // Render one leaf expression or statement.
+	PrintDump, // Render a debug node before its two children.
+};
+
+
+/* Append a small expansion; callers bound every node expansion to sixteen actions. */
+static void
+nodeprintadd(NodePrint *plan, int *count, int kind, Node *n, char *text, Type *ty)
 {
+	NodePrint *p;
+
+	if(*count >= NodePrintPlan)
+		fatal("diagnostic node expansion too large");
+	p = &plan[(*count)++];
+	p->kind = kind;
+	p->node = n;
+	p->text = text;
+	p->ty = ty;
+	p->indent = 0;
+}
+
+
+/* Expand a node in reading order; the driver reverses these actions onto its stack. */
+static int
+nodeprintplan(NodePrint *plan, NodePrint *current)
+{
+	Node *n;
+	int count;
+
+#define PN(node) nodeprintadd(plan, &count, PrintNode, (node), nil, nil) // Schedule an expression.
+#define PL(node, sep) nodeprintadd(plan, &count, PrintList, (node), (sep), nil) // Schedule a sequence.
+#define PT(text) nodeprintadd(plan, &count, PrintText, nil, (text), nil) // Schedule literal output.
+#define PY(type) nodeprintadd(plan, &count, PrintType, nil, nil, (type)) // Schedule a Type conversion.
+
+	n = current->node;
+	count = 0;
 	if(n == nil)
-		return buf;
+		return 0;
+	if(current->kind == PrintList){
+		if(n->right == nil){
+			PN(n->left);
+		}else if(n->op == Onothing){
+			PL(n->right, current->text);
+		}else if(n->left->op != Ofnptr){
+			PN(n->left);
+			if(n->right->left->op != Ofnptr)
+				PT(current->text);
+			PL(n->right, current->text);
+		}
+		return count;
+	}
 	if(n->flags & PARENS)
-		buf = secpy(buf, end, "(");
+		PT("(");
 	switch(n->op){
 	case Obreak:
 	case Ocont:
-		buf = secpy(buf, end, opname[n->op]);
-		if(n->decl != nil){
-			buf = seprint(buf, end, " %s", n->decl->sym->name);
-		}
-		break;
 	case Oexit:
 	case Owild:
-		buf = secpy(buf, end, opname[n->op]);
+	case Oname:
+	case Oconst:
+		nodeprintadd(plan, &count, PrintAtom, n, nil, nil);
 		break;
 	case Onothing:
 		break;
 	case Oadr:
 	case Oused:
-		buf = eprint(buf, end, n->left);
+		PN(n->left);
 		break;
 	case Oseq:
-		buf = eprintlist(buf, end, n, ", ");
-		break;
-	case Oname:
-		if(n->decl == nil)
-			buf = secpy(buf, end, "<nil>");
-		else
-			buf = seprint(buf, end, "%s", n->decl->sym->name);
-		break;
-	case Oconst:
-		if(n->ty->kind == Tstring){
-			buf = stringpr(buf, end, n->decl->sym);
-			break;
-		}
-		if(n->decl != nil && n->decl->sym != nil){
-			buf = seprint(buf, end, "%s", n->decl->sym->name);
-			break;
-		}
-		switch(n->ty->kind){
-		case Tint:
-		case Tbyte:
-			buf = seprint(buf, end, "%ld", (long)n->val);
-			break;
-		case Tbig:
-			buf = seprint(buf, end, "%lld", n->val);
-			break;
-		case Treal:
-			buf = seprint(buf, end, "%g", n->rval);
-			break;
-		case Tfix:
-			buf = seprint(buf, end, "%ld(%g)", (long)n->val, n->ty->val->rval);
-			break;
-		default:
-			buf = secpy(buf, end, opname[n->op]);
-			break;
-		}
+		PL(n, ", ");
 		break;
 	case Ocast:
-		buf = seprint(buf, end, "%T ", n->ty);
-		buf = eprint(buf, end, n->left);
+		PY(n->ty);
+		PT(" ");
+		PN(n->left);
 		break;
 	case Otuple:
 		if(n->ty != nil && n->ty->kind == Tadt)
-			buf = seprint(buf, end, "%s", n->ty->decl->sym->name);
-		buf = seprint(buf, end, "(");
-		buf = eprintlist(buf, end, n->left, ", ");
-		buf = secpy(buf, end, ")");
+			PT(n->ty->decl->sym->name);
+		PT("(");
+		PL(n->left, ", ");
+		PT(")");
 		break;
 	case Ochan:
-		if(n->left){
-			buf = secpy(buf, end, "chan [");
-			buf = eprint(buf, end, n->left);
-			buf = secpy(buf, end, "] of ");
-			buf = seprint(buf, end, "%T", n->ty->tof);
+		if(n->left != nil){
+			PT("chan [");
+			PN(n->left);
+			PT("] of ");
 		}else
-			buf = seprint(buf, end, "chan of %T", n->ty->tof);
+			PT("chan of ");
+		PY(n->ty->tof);
 		break;
 	case Oarray:
-		buf = secpy(buf, end, "array [");
-		if(n->left != nil)
-			buf = eprint(buf, end, n->left);
-		buf = secpy(buf, end, "] of ");
+		PT("array [");
+		PN(n->left);
+		PT("] of ");
 		if(n->right != nil){
-			buf = secpy(buf, end, "{");
-			buf = eprintlist(buf, end, n->right, ", ");
-			buf = secpy(buf, end, "}");
-		}else{
-			buf = seprint(buf, end, "%T", n->ty->tof);
-		}
+			PT("{");
+			PL(n->right, ", ");
+			PT("}");
+		}else
+			PY(n->ty->tof);
 		break;
 	case Oelem:
 	case Olabel:
 		if(n->left != nil){
-			buf = eprintlist(buf, end, n->left, " or ");
-			buf = secpy(buf, end, " =>");
+			PL(n->left, " or ");
+			PT(" =>");
 		}
-		buf = eprint(buf, end, n->right);
+		PN(n->right);
 		break;
 	case Orange:
-		buf = eprint(buf, end, n->left);
-		buf = secpy(buf, end, " to ");
-		buf = eprint(buf, end, n->right);
+		PN(n->left);
+		PT(" to ");
+		PN(n->right);
 		break;
 	case Ospawn:
-		buf = secpy(buf, end, "spawn ");
-		buf = eprint(buf, end, n->left);
-		break;
 	case Oraise:
-		buf = secpy(buf, end, "raise ");
-		buf = eprint(buf, end, n->left);
+		PT(n->op == Ospawn ? "spawn " : "raise ");
+		PN(n->left);
 		break;
 	case Ocall:
-		buf = eprint(buf, end, n->left);
-		buf = secpy(buf, end, "(");
-		buf = eprintlist(buf, end, n->right, ", ");
-		buf = secpy(buf, end, ")");
+		PN(n->left);
+		PT("(");
+		PL(n->right, ", ");
+		PT(")");
 		break;
 	case Oinc:
 	case Odec:
-		buf = eprint(buf, end, n->left);
-		buf = secpy(buf, end, opname[n->op]);
+		PN(n->left);
+		PT(opname[n->op]);
 		break;
 	case Oindex:
 	case Oindx:
 	case Oinds:
-		buf = eprint(buf, end, n->left);
-		buf = secpy(buf, end, "[");
-		buf = eprint(buf, end, n->right);
-		buf = secpy(buf, end, "]");
+		PN(n->left);
+		PT("[");
+		PN(n->right);
+		PT("]");
 		break;
 	case Oslice:
-		buf = eprint(buf, end, n->left);
-		buf = secpy(buf, end, "[");
-		buf = eprint(buf, end, n->right->left);
-		buf = secpy(buf, end, ":");
-		buf = eprint(buf, end, n->right->right);
-		buf = secpy(buf, end, "]");
+		PN(n->left);
+		PT("[");
+		PN(n->right->left);
+		PT(":");
+		PN(n->right->right);
+		PT("]");
 		break;
 	case Oload:
-		buf = seprint(buf, end, "load %T ", n->ty);
-		buf = eprint(buf, end, n->left);
+		PT("load ");
+		PY(n->ty);
+		PT(" ");
+		PN(n->left);
 		break;
 	case Oref:
 	case Olen:
 	case Ohd:
 	case Otl:
 	case Otagof:
-		buf = secpy(buf, end, opname[n->op]);
-		buf = secpy(buf, end, " ");
-		buf = eprint(buf, end, n->left);
+		PT(opname[n->op]);
+		PT(" ");
+		PN(n->left);
 		break;
 	default:
 		if(n->right == nil){
-			buf = secpy(buf, end, opname[n->op]);
-			buf = eprint(buf, end, n->left);
+			PT(opname[n->op]);
+			PN(n->left);
 		}else{
-			buf = eprint(buf, end, n->left);
-			buf = secpy(buf, end, opname[n->op]);
-			buf = eprint(buf, end, n->right);
+			PN(n->left);
+			PT(opname[n->op]);
+			PN(n->right);
 		}
 		break;
 	}
 	if(n->flags & PARENS)
-		buf = secpy(buf, end, ")");
-	return buf;
+		PT(")");
+	return count;
+#undef PN
+#undef PL
+#undef PT
+#undef PY
 }
 
-char*
-eprintlist(char *buf, char *end, Node *elist, char *sep)
+
+/* Preserve leaf spelling and numeric conversion independently of traversal storage. */
+static char*
+nodeprintatom(char *buf, char *end, Node *n)
 {
-	if(elist == nil)
+	switch(n->op){
+	case Obreak:
+	case Ocont:
+		buf = secpy(buf, end, opname[n->op]);
+		if(n->decl != nil)
+			buf = seprint(buf, end, " %s", n->decl->sym->name);
 		return buf;
-	for(; elist->right != nil; elist = elist->right){
-		if(elist->op == Onothing)
-			continue;
-		if(elist->left->op == Ofnptr)
-			return buf;
-		buf = eprint(buf, end, elist->left);
-		if(elist->right->left->op != Ofnptr)
-			buf = secpy(buf, end, sep);
+	case Oexit:
+	case Owild:
+		return secpy(buf, end, opname[n->op]);
+	case Oname:
+		if(n->decl == nil)
+			return secpy(buf, end, "<nil>");
+		return seprint(buf, end, "%s", n->decl->sym->name);
+	case Oconst:
+		if(n->ty->kind == Tstring)
+			return stringpr(buf, end, n->decl->sym);
+		if(n->decl != nil && n->decl->sym != nil)
+			return seprint(buf, end, "%s", n->decl->sym->name);
+		switch(n->ty->kind){
+		case Tint:
+	case Tbyte:
+			return seprint(buf, end, "%ld", (long)n->val);
+		case Tbig:
+			return seprint(buf, end, "%lld", n->val);
+		case Treal:
+			return seprint(buf, end, "%g", n->rval);
+		case Tfix:
+			return seprint(buf, end, "%ld(%g)", (long)n->val, n->ty->val->rval);
+		default:
+			return secpy(buf, end, opname[n->op]);
+		}
 	}
-	buf = eprint(buf, end, elist->left);
 	return buf;
 }
 
-int
-nodeconv(Fmt *f)
-{
-	Node *n;
-	char buf[4096];
 
-	n = va_arg(f->args, Node*);
-	buf[0] = 0;
-	nprint(buf, buf+sizeof(buf), n, 0);
-	return fmtstrcpy(f, buf);
-}
-
-char*
-nprint(char *buf, char *end, Node *n, int indent)
+/* Render one debug header, bounding indentation before visiting any descendants. */
+static char*
+nodeprintdump(char *buf, char *end, Node *n, int indent)
 {
 	int i;
 
-	if(n == nil)
-		return buf;
 	buf = seprint(buf, end, "\n");
-	for(i = 0; i < indent; i++)
-		if(buf < end-1)
-			*buf++ = ' ';
+	for(i = 0; i < indent && buf < end-1; i++)
+		*buf++ = ' ';
+	*buf = 0;
 	switch(n->op){
 	case Oname:
 		if(n->decl == nil)
@@ -2007,9 +2052,109 @@ nprint(char *buf, char *end, Node *n, int indent)
 		buf = seprint(buf, end, "%O", n->op);
 		break;
 	}
-	buf = seprint(buf, end, " %T %d %d", n->ty, n->addable, n->temps);
-	indent += 2;
-	buf = nprint(buf, end, n->left, indent);
-	buf = nprint(buf, end, n->right, indent);
+	return seprint(buf, end, " %T %d %d", n->ty, n->addable, n->temps);
+}
+
+
+/* Stop when output is full and use checked heap storage for deferred siblings. */
+static char*
+nodeprintwork(char *buf, char *end, Node *n, int kind, char *sep, int indent)
+{
+	NodePrint inlinework[64], plan[NodePrintPlan], current, *work, *grown;
+	int used, capacity, count, i, next;
+
+	if(buf >= end || n == nil)
+		return buf;
+	*buf = 0;
+	work = inlinework;
+	capacity = nelem(inlinework);
+	used = 0;
+	nodeprintadd(work, &used, kind, n, sep, nil);
+	work[0].indent = indent;
+	while(used != 0 && buf < end-1){
+		current = work[--used];
+		count = 0;
+		switch(current.kind){
+		case PrintText:
+			buf = secpy(buf, end, current.text);
+			break;
+		case PrintType:
+			buf = seprint(buf, end, "%T", current.ty);
+			break;
+		case PrintAtom:
+			buf = nodeprintatom(buf, end, current.node);
+			break;
+		case PrintDump:
+			if(current.node == nil)
+				break;
+			buf = nodeprintdump(buf, end, current.node, current.indent);
+			next = current.indent > 0x7fffffff-2 ? 0x7fffffff : current.indent+2;
+			nodeprintadd(plan, &count, PrintDump, current.node->left, nil, nil);
+			nodeprintadd(plan, &count, PrintDump, current.node->right, nil, nil);
+			plan[0].indent = plan[1].indent = next;
+			break;
+		default:
+			count = nodeprintplan(plan, &current);
+			break;
+		}
+		/* secpy historically returns end on truncation; expose the live NUL cursor. */
+		if(buf >= end-1){
+			buf = end-1;
+			*buf = 0;
+			break;
+		}
+		if(count > capacity-used){
+			if(capacity > 0x7fffffff/2/sizeof(*work))
+				fatal("diagnostic expression too complex");
+			capacity *= 2;
+			grown = allocmem(capacity*sizeof(*work));
+			memmove(grown, work, used*sizeof(*work));
+			if(work != inlinework)
+				free(work);
+			work = grown;
+		}
+		for(i = count; i != 0; i--)
+			work[used++] = plan[i-1];
+	}
+	if(work != inlinework)
+		free(work);
 	return buf;
+}
+
+
+/* Print a complete expression without recursion through its AST edges. */
+char*
+eprint(char *buf, char *end, Node *n)
+{
+	return nodeprintwork(buf, end, n, PrintNode, nil, 0);
+}
+
+
+/* Print sequence cells with their historical separators and function-pointer stop rule. */
+char*
+eprintlist(char *buf, char *end, Node *elist, char *sep)
+{
+	return nodeprintwork(buf, end, elist, PrintList, sep, 0);
+}
+
+
+/* Convert a debug tree through the bounded nonrecursive printer. */
+int
+nodeconv(Fmt *f)
+{
+	Node *n;
+	char buf[4096];
+
+	n = va_arg(f->args, Node*);
+	buf[0] = 0;
+	nprint(buf, buf+sizeof(buf), n, 0);
+	return fmtstrcpy(f, buf);
+}
+
+
+/* Print debug headers and descendants using the same bounded action stack. */
+char*
+nprint(char *buf, char *end, Node *n, int indent)
+{
+	return nodeprintwork(buf, end, n, PrintDump, nil, indent);
 }

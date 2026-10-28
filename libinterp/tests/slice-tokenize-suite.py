@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'limbo/tests/diagnostic-print.py',
     'lib9/tests/allocated-format.py',
     'libbio/tests/boundaries.py',
     'libbio/tests/print-state.py',
