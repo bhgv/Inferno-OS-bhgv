@@ -365,24 +365,27 @@ if(0)
 	}
 }
 
-/*
- * emit an expicit pad field for aligning emitted c structs
- * according to limbo's definition
- */
+
+/* Emit explicit C padding only for representable, power-of-two Limbo layouts. */
 static long
 stubalign(long offset, int a, char **buf, char *end)
 {
-	long x;
+	long x, aligned;
 
+	offset = addsize(offset, 0);
+	if(a <= 0 || (a & (a-1)) != 0)
+		fatal("invalid compiler stub alignment");
 	x = offset & (a-1);
 	if(x == 0)
 		return offset;
 	x = a - x;
+	/* Validate the aligned layout before publishing its explicit padding. */
+	aligned = addsize(offset, x);
 	if(buf == nil)
 		print("\tuchar\t_pad%ld[%ld];\n", offset, x);
 	else
 		*buf = seprint(*buf, end, "uchar\t_pad%ld[%ld]; ", offset, x);
-	offset += x;
+	offset = aligned;
 	if((offset & (a-1)) || x >= a)
 		fatal("compiler stub misalign");
 	return offset;
@@ -433,17 +436,42 @@ mapconv(Fmt *f)
 	return fmtstrcpy(f, buf);
 }
 
+
+/* Print a qualified declaration from its root without recursive C calls. */
 char*
 dotprint(char *buf, char *end, Decl *d, int dot)
 {
-	if(d->dot != nil){
-		buf = dotprint(buf, end, d->dot, dot);
-		if(buf < end)
-			*buf++ = dot;
-	}
-	if(d->sym == nil)
+	Decl **work, *local[32], **grown;
+	int used, capacity, i;
+
+	if(buf >= end)
 		return buf;
-	return seprint(buf, end, "%s", d->sym->name);
+	*buf = 0;
+	work = local;
+	used = 0;
+	capacity = nelem(local);
+	for(; d != nil; d = d->dot){
+		if(used == capacity){
+			if(capacity > 0x7fffffff/2/sizeof(*work))
+				fatal("qualified stub name too complex");
+			capacity *= 2;
+			grown = allocmem(capacity*sizeof(*grown));
+			memmove(grown, work, used*sizeof(*grown));
+			if(work != local)
+				free(work);
+			work = grown;
+		}
+		work[used++] = d;
+	}
+	for(i = used-1; i >= 0 && buf < end; i--){
+		if(i != used-1)
+			buf = seprint(buf, end, "%c", dot);
+		if(work[i]->sym != nil)
+			buf = seprint(buf, end, "%s", work[i]->sym->name);
+	}
+	if(work != local)
+		free(work);
+	return buf;
 }
 
 char *ckindname[Tend] =
@@ -483,18 +511,63 @@ char *ckindname[Tend] =
 	/* Tinst */	"?inst?",
 };
 
+/* A C spelling continuation preserves layout checks across a nested field. */
+typedef struct StubPrint StubPrint;
+
+struct StubPrint {
+	Type *type; // Borrowed enclosing anonymous aggregate, or nil for a reference.
+	Decl *field; // Aggregate field whose Type is being printed.
+	long offset; // Aligned offset preceding that field.
+};
+
+
+/* Grow the private C spelling stack before saving the enclosing layout. */
+static void
+stubprintpush(StubPrint **work, StubPrint *local, int *used, int *capacity,
+	Type *type, Decl *field, long offset)
+{
+	StubPrint *grown, *frame;
+
+	if(*used == *capacity){
+		if(*capacity > 0x7fffffff/2/sizeof(**work))
+			fatal("C stub type too complex");
+		*capacity *= 2;
+		grown = allocmem(*capacity*sizeof(*grown));
+		memmove(grown, *work, *used*sizeof(*grown));
+		if(*work != local)
+			free(*work);
+		*work = grown;
+	}
+	frame = &(*work)[(*used)++];
+	frame->type = type;
+	frame->field = field;
+	frame->offset = offset;
+}
+
+
+/* Spell nested C types iteratively and retain layout validation on truncated output. */
 char*
 ctprint(char *buf, char *end, Type *t)
 {
 	Decl *id;
 	Type *tt;
 	long offset;
+	StubPrint local[32], *work, frame;
+	int used, capacity;
 
-	if(t == nil)
-		return secpy(buf, end, "void");
+	work = local;
+	used = 0;
+	capacity = nelem(local);
+enter:
+	if(t == nil){
+		buf = secpy(buf, end, "void");
+		goto returned;
+	}
 	switch(t->kind){
 	case Tref:
-		return seprint(buf, end, "%R*", t->tof);
+		stubprintpush(&work, local, &used, &capacity, nil, nil, 0);
+		t = t->tof;
+		goto enter;
 	case Tarray:
 	case Tlist:
 	case Tint:
@@ -508,27 +581,35 @@ ctprint(char *buf, char *end, Type *t)
 	case Tmodule:
 	case Tfix:
 	case Tpoly:
-		return seprint(buf, end, "%s", ckindname[t->kind]);
+		buf = seprint(buf, end, "%s", ckindname[t->kind]);
+		break;
 	case Tadtpick:
-		return ctprint(buf, end, t->decl->dot->ty);
+		t = t->decl->dot->ty;
+		goto enter;
 	case Tadt:
 	case Ttuple:
-		if(t->decl->sym != anontupsym)
-			return dotprint(buf, end, t->decl, '_');
+		if(t->decl->sym != anontupsym){
+			buf = dotprint(buf, end, t->decl, '_');
+			break;
+		}
 		offset = 0;
 		buf = secpy(buf, end, "struct{ ");
-		for(id = t->ids; id != nil; id = id->next){
+		id = t->ids;
+nextfield:
+		if(id != nil){
 			tt = id->ty;
 			offset = stubalign(offset, tt->align, &buf, end);
 			if(offset != id->offset)
 				fatal("ctypeconv tuple bad offset");
-			buf = seprint(buf, end, "%R %s; ", tt, id->sym->name);
-			offset += tt->size;
+			stubprintpush(&work, local, &used, &capacity, t, id, offset);
+			t = tt;
+			goto enter;
 		}
 		offset = stubalign(offset, t->align, &buf, end);
 		if(offset != t->size)
 			fatal("ctypeconv tuple bad t=%T size=%ld offset=%ld", t, t->size, offset);
-		return secpy(buf, end, "}");
+		buf = secpy(buf, end, "}");
+		break;
 	default:
 		if(t->kind >= Tend)
 			yyerror("no C equivalent for type %d", t->kind);
@@ -536,7 +617,24 @@ ctprint(char *buf, char *end, Type *t)
 			yyerror("no C equivalent for type %s", kindname[t->kind]);
 		break;
 	}
-	return buf;
+returned:
+	if(used == 0){
+		if(work != local)
+			free(work);
+		return buf;
+	}
+	frame = work[--used];
+	if(frame.type == nil){
+		buf = secpy(buf, end, "*");
+		goto returned;
+	}
+	t = frame.type;
+	id = frame.field;
+	offset = frame.offset;
+	buf = seprint(buf, end, " %s; ", id->sym->name);
+	offset = addsize(offset, id->ty->size);
+	id = id->next;
+	goto nextfield;
 }
 
 static void
