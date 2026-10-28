@@ -25,3 +25,7 @@ the builtin through a JIT, reproduce a complete 32-bit pointer ABI, or run GC.
 LeakSanitizer process inspection is disabled for the sandbox; AddressSanitizer
 and UndefinedBehaviorSanitizer remain enabled. `SYS_UTF_SOURCE` can select an
 alternate production file for regression comparisons.
+
+[Complete UTF span checks](README.sys-utf-spans.md) add packed generated frames,
+Array/Type inputs, complete WORD/tuple results, overlapping publication and
+preflight failures before payload reads or writes.

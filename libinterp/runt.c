@@ -558,27 +558,49 @@ Sys_tokenize(void *fp)
 
 /* Validate byte-array metadata and full VM lengths before native UTF routines. */
 static int
-sysutfarray(Array *a)
+sysutfarray(Array *a, uchar **data)
 {
+	Array view;
+	Heap owner;
+	int size, pointers;
+	uintptr address, extent;
+
 	if(a == H || a == nil)
 		error(exBounds);
-	/* A compiler may emit its own pointer-free byte descriptor. */
-	if(D2H(a)->t != &Tarray ||
-	   (a->t != &Tbyte &&
-	    (a->t == nil || a->t == H || a->t->size != 1 || a->t->np != 0)))
-		error(exType);
-	if(a->len < 0 || (uvlong)a->len > 0x7fffffff || (a->len != 0 && (a->data == nil || a->data == H)))
+	address = (uintptr)a;
+	if(address <= sizeof(Heap) || address > (uintptr)-1-sizeof(view))
 		error(exBounds);
-	return (int)a->len;
+	/* Input arrays and read-only compiler descriptors may be packed. */
+	memmove(&owner, (uchar*)a-sizeof(Heap), sizeof(owner));
+	if(owner.t != &Tarray)
+		error(exType);
+	memmove(&view, a, sizeof(view));
+	if(view.t != &Tbyte) {
+		extent = offsetof(Type, size) > offsetof(Type, np) ? offsetof(Type, size) : offsetof(Type, np);
+		if(view.t == nil || view.t == H || (uintptr)view.t > (uintptr)-1-extent-sizeof(int))
+			error(exType);
+		memmove(&size, (uchar*)view.t+offsetof(Type, size), sizeof(size));
+		memmove(&pointers, (uchar*)view.t+offsetof(Type, np), sizeof(pointers));
+		if(size != 1 || pointers != 0)
+			error(exType);
+	}
+	if(view.len < 0 || (uvlong)view.len > 0x7fffffff ||
+	   (view.len != 0 && (view.data == nil || view.data == H ||
+	    (uintptr)view.data > (uintptr)-1-(uintptr)view.len)))
+		error(exBounds);
+	*data = view.data;
+	return (int)view.len;
 }
 
 
-/* Validate result slots before UTF operations can modify an aliased byte array. */
+/* Bound the complete result before encoding can modify an aliased byte array. */
 static uchar*
-sysutfresult(void *slot)
+sysutfresult(void *slot, uintptr bytes)
 {
 	if(slot == nil || slot == H)
 		error(exNilref);
+	if((uintptr)slot > (uintptr)-1-bytes)
+		error(exBounds);
 	return slot;
 }
 
@@ -590,17 +612,21 @@ Sys_utfbytes(void *fp)
 	Array *a;
 	int nbyte, length;
 	WORD result;
-	uchar *ret;
-	F_Sys_utfbytes *f;
+	uchar *ret, *data;
+	F_Sys_utfbytes f;
 
-	f = fp;
-	ret = sysutfresult(f->ret);
-	a = f->buf;
-	length = sysutfarray(a);
-	if(f->n < 0 || f->n > length)
+	if(fp == nil || fp == H)
+		error(exNilref);
+	if((uintptr)fp > (uintptr)-1-sizeof(f))
+		error(exBounds);
+	memmove(&f, fp, sizeof(f));
+	ret = sysutfresult(f.ret, sizeof(result));
+	a = f.buf;
+	length = sysutfarray(a, &data);
+	if(f.n < 0 || f.n > length)
 		error(exBounds);
 
-	utfnleng((char*)a->data, (int)f->n, &nbyte);
+	utfnleng((char*)data, (int)f.n, &nbyte);
 	result = nbyte;
 	memmove(ret, &result, sizeof(result));
 }
@@ -614,21 +640,25 @@ Sys_byte2char(void *fp)
 	char *p;
 	int n, w, valid, length;
 	WORD result[3];
-	uchar *ret;
+	uchar *ret, *data;
 	Array *a;
-	F_Sys_byte2char *f;
+	F_Sys_byte2char f;
 
-	f = fp;
-	ret = sysutfresult(f->ret);
-	a = f->buf;
-	length = sysutfarray(a);
-	if(f->n < 0 || f->n >= length)
+	if(fp == nil || fp == H)
+		error(exNilref);
+	if((uintptr)fp > (uintptr)-1-sizeof(f))
 		error(exBounds);
-	n = (int)f->n;
-	r = a->data[n];
+	memmove(&f, fp, sizeof(f));
+	ret = sysutfresult(f.ret, sizeof(result));
+	a = f.buf;
+	length = sysutfarray(a, &data);
+	if(f.n < 0 || f.n >= length)
+		error(exBounds);
+	n = (int)f.n;
+	r = data[n];
 	w = valid = 1;
 	if(r >= Runeself){
-		p = (char*)a->data+n;
+		p = (char*)data+n;
 		if(length-n >= UTFmax || fullrune(p, length-n)){
 			w = chartorune(&r, p);
 			valid = r != Runeerror || w != 1;
@@ -648,31 +678,35 @@ Sys_byte2char(void *fp)
 void
 Sys_char2byte(void *fp)
 {
-	F_Sys_char2byte *f;
+	F_Sys_char2byte f;
 	Array *a;
 	int n, length;
 	WORD c, result;
 	Rune r;
-	uchar *ret;
+	uchar *ret, *data;
 
-	f = fp;
-	ret = sysutfresult(f->ret);
-	a = f->buf;
-	length = sysutfarray(a);
-	c = f->c;
-	if(f->n < 0 || f->n >= length)
+	if(fp == nil || fp == H)
+		error(exNilref);
+	if((uintptr)fp > (uintptr)-1-sizeof(f))
 		error(exBounds);
-	n = (int)f->n;
+	memmove(&f, fp, sizeof(f));
+	ret = sysutfresult(f.ret, sizeof(result));
+	a = f.buf;
+	length = sysutfarray(a, &data);
+	c = f.c;
+	if(f.n < 0 || f.n >= length)
+		error(exBounds);
+	n = (int)f.n;
 	if(c < 0 || c > Runemax)
 		c = Runeerror;
 	result = 0;
 	if(c < Runeself){
-		a->data[n] = c;
+		data[n] = c;
 		result = 1;
 	}else{
 		r = c;
 		if(length-n >= UTFmax || runelen(c) <= length-n)
-			result = runetochar((char*)a->data+n, &r);
+			result = runetochar((char*)data+n, &r);
 	}
 	memmove(ret, &result, sizeof(result));
 }
