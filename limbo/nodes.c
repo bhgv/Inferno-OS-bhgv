@@ -279,18 +279,23 @@ sametree(Node *n1, Node *n2)
 	return n1->decl == n2->decl && sametree(n1->left, n2->left) && sametree(n1->right, n2->right);
 }
 
+
+/* Count declaration uses without growing the C stack along right-associated chains. */
 int
 occurs(Decl *d, Node *n)
 {
-	if(n == nil)
-		return 0;
-	if(n->op == Oname){
-		if(d == n->decl)
-			return 1;
-		return 0;
+	int count;
+
+	count = 0;
+	while(n != nil){
+		if(n->op == Oname)
+			return count+(d == n->decl);
+		count += occurs(d, n->left);
+		n = n->right;
 	}
-	return occurs(d, n->left) + occurs(d, n->right);
+	return count;
 }
+
 
 /* Preserve IEEE values and boolean normalization in same-tree identities. */
 Node*
@@ -1224,16 +1229,31 @@ foldr(Node *n)
 	return n;
 }
 
+
+/* Build right-associated declaration assignments without one C frame per name. */
 Node*
 varinit(Decl *d, Node *e)
 {
-	Node *n;
+	Node *names, *name, *result;
 
-	n = mkdeclname(&e->src, d);
-	if(d->next == nil)
-		return mkbin(Oas, n, e);
-	return mkbin(Oas, n, varinit(d->next, e));
+	/* Private name links retain the recursive constructor's allocation order. */
+	names = nil;
+	do{
+		name = mkdeclname(&e->src, d);
+		name->right = names;
+		names = name;
+		d = d->next;
+	}while(d != nil);
+	result = e;
+	while(names != nil){
+		name = names;
+		names = name->right;
+		name->right = nil;
+		result = mkbin(Oas, name, result);
+	}
+	return result;
 }
+
 
 /*
  * given: an Oseq list with left == next or the last child
@@ -1259,20 +1279,22 @@ rotater(Node *e)
 	return e;
 }
 
-/*
- * reverse the case labels list
- */
+
+/* Reverse label links iteratively, retaining any existing suffix and node metadata. */
 Node*
 caselist(Node *s, Node *nr)
 {
-	Node *r;
+	Node *next;
 
-	r = s->right;
-	s->right = nr;
-	if(r == nil)
-		return s;
-	return caselist(r, s);
+	do{
+		next = s->right;
+		s->right = nr;
+		nr = s;
+		s = next;
+	}while(s != nil);
+	return nr;
 }
+
 
 /*
  * e is a seq of expressions; make into cons's to build a list

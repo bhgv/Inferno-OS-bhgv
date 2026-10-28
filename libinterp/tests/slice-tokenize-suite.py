@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'limbo/tests/node-chains.py',
     'libinterp/tests/sys-pctl-capture.py',
     'libinterp/tests/sys-file2chan-capture.py',
     'emu/port/tests/dial-paths.py',
