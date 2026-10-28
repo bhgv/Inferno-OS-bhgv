@@ -3413,20 +3413,53 @@ altcheck(Node *an, Type *ret)
 	an->ty = mktalt(c);
 }
 
+
+/* Find the first communication in preorder without depth-proportional C recursion.
+ * All nodes are borrowed; release pending work on both misses and early hits. */
 Node*
 hascomm(Node *n)
 {
-	Node *r;
+	enum { InlineNodes = 64 }; // Pending right branches kept on the host stack.
+	Node *inlinework[InlineNodes], **work, **next, *result;
+	ulong used, capacity;
 
-	if(n == nil)
-		return nil;
-	if(n->op == Osnd || n->op == Orcv)
-		return n;
-	r = hascomm(n->left);
-	if(r != nil)
-		return r;
-	return hascomm(n->right);
+	work = inlinework;
+	used = 0;
+	capacity = InlineNodes;
+	result = nil;
+	for(;;){
+		while(n != nil){
+			if(n->op == Osnd || n->op == Orcv){
+				result = n;
+				goto done;
+			}
+			if(n->right != nil){
+				if(used == capacity){
+					if(capacity > (ulong)-1/2/sizeof(*work))
+						fatal("communication traversal storage overflow");
+					next = malloc(2*capacity*sizeof(*work));
+					if(next == nil)
+						fatal("out of memory finding communication");
+					memmove(next, work, used*sizeof(*work));
+					if(work != inlinework)
+						free(work);
+					work = next;
+					capacity *= 2;
+				}
+				work[used++] = n->right;
+			}
+			n = n->left;
+		}
+		if(used == 0)
+			break;
+		n = work[--used];
+	}
+done:
+	if(work != inlinework)
+		free(work);
+	return result;
 }
+
 
 void
 raisescheck(Type *t)
@@ -3649,22 +3682,46 @@ checkraises(Node *n)
 	efree(el);
 }
 
-/* sort all globals in modules now that we've finished with 'last' pointers
- * and before any code generation
- */
+
+/* Sort verified module globals in source order after declaration tails expire.
+ * Traverse only Oseq branches, retaining terminal-node and callback ordering. */
 void
 gsort(Node *n)
 {
+	enum { InlineNodes = 64 }; // Pending sequence branches kept on the host stack.
+	Node *inlinework[InlineNodes], **work, **next;
+	ulong used, capacity;
+
+	work = inlinework;
+	used = 0;
+	capacity = InlineNodes;
 	for(;;){
-		if(n == nil)
-			return;
-		if(n->op != Oseq)
+		while(n != nil && n->op == Oseq){
+			if(n->right != nil){
+				if(used == capacity){
+					if(capacity > (ulong)-1/2/sizeof(*work))
+						fatal("global sort traversal storage overflow");
+					next = malloc(2*capacity*sizeof(*work));
+					if(next == nil)
+						fatal("out of memory traversing global declarations");
+					memmove(next, work, used*sizeof(*work));
+					if(work != inlinework)
+						free(work);
+					work = next;
+					capacity *= 2;
+				}
+				work[used++] = n->right;
+			}
+			n = n->left;
+		}
+		if(n != nil && n->op == Omoddecl && (n->ty->ok & OKverify)){
+			n->ty->ids = namesort(n->ty->ids);
+			sizeids(n->ty->ids, 0);
+		}
+		if(used == 0)
 			break;
-		gsort(n->left);
-		n = n->right;
+		n = work[--used];
 	}
-	if(n->op == Omoddecl && n->ty->ok & OKverify){
-		n->ty->ids = namesort(n->ty->ids);
-		sizeids(n->ty->ids, 0);
-	}
+	if(work != inlinework)
+		free(work);
 }

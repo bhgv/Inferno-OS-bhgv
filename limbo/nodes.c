@@ -1559,21 +1559,70 @@ etolist(Node *e)
 	return e;
 }
 
+
+typedef struct NodeCopy NodeCopy;
+
+/* Pending source edges and private output slots for preorder tree copying. */
+struct NodeCopy {
+	Node *source; // Borrowed subtree copied when earlier left branches finish.
+	Node **destination; // Child cell belonging to an already allocated copy.
+};
+
+
+/* Duplicate every tree edge in the original allocation order with bounded C stack.
+ * Type/Decl and other metadata remain borrowed, and source positions are optional.
+ * Shared subtrees are duplicated per edge, preserving the recursive contract. */
 Node*
 dupn(int resrc, Src *src, Node *n)
 {
-	Node *nn;
+	enum { InlineNodes = 64 }; // Pending right subtrees on the fixed host stack.
+	NodeCopy inlinework[InlineNodes], *work, *next;
+	Node *root, *nn, **destination;
+	ulong used, capacity;
 
-	nn = allocmem(sizeof *nn);
-	*nn = *n;
-	if(resrc)
-		nn->src = *src;
-	if(nn->left != nil)
-		nn->left = dupn(resrc, src, nn->left);
-	if(nn->right != nil)
-		nn->right = dupn(resrc, src, nn->right);
-	return nn;
+	root = nil;
+	destination = &root;
+	work = inlinework;
+	used = 0;
+	capacity = InlineNodes;
+	for(;;){
+		nn = allocmem(sizeof(*nn));
+		*nn = *n;
+		if(resrc)
+			nn->src = *src;
+		*destination = nn;
+		if(n->right != nil){
+			if(used == capacity){
+				if(capacity > (ulong)-1/2/sizeof(*work))
+					fatal("node copy storage overflow");
+				next = malloc(2*capacity*sizeof(*work));
+				if(next == nil)
+					fatal("out of memory copying nodes");
+				memmove(next, work, used*sizeof(*work));
+				if(work != inlinework)
+					free(work);
+				work = next;
+				capacity *= 2;
+			}
+			work[used].source = n->right;
+			work[used++].destination = &nn->right;
+		}
+		if(n->left != nil){
+			n = n->left;
+			destination = &nn->left;
+			continue;
+		}
+		if(used == 0)
+			break;
+		used--;
+		n = work[used].source;
+		destination = work[used].destination;
+	}
+	if(work != inlinework)
+		free(work);
+	return root;
 }
+
 
 Node*
 mkn(int op, Node *left, Node *right)
