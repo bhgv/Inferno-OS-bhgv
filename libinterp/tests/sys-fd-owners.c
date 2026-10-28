@@ -455,6 +455,7 @@ static struct { WORD t0; Sys_Connection t1; } connection;
 static union { uvlong align; uchar bytes[sizeof(connection)+16]; } connectionreturn;
 static WORD status;
 static Array pipearray;
+static Type pipeelement; // Explicit pointer-element layout for the borrowed pipe array.
 static int pipesize, pipebad;
 static union { uvlong align; uchar bytes[3*sizeof(Sys_FD*)+16]; } pipeslots;
 
@@ -574,6 +575,31 @@ one(int fail, int shared, int firstfd)
 	}
 	previous = connection.t1;
 	pipearray.len = pipesize;
+	pipeelement.size = sizeof(Sys_FD*);
+	pipeelement.np = 1;
+	pipeelement.map[0] = 0x80;
+	pipearray.t = &pipeelement;
+	if(pipebad == 5) {
+		pipearray.t = nil;
+	}
+	if(pipebad == 6) {
+		pipearray.t = (Type*)H;
+	}
+	if(pipebad == 7) {
+		pipeelement.size = 1;
+	}
+	if(pipebad == 8) {
+		pipeelement.np = 0;
+	}
+	if(pipebad == 9) {
+		pipeelement.map[0] = 0x40;
+	}
+	if(pipebad == 10) {
+		pipearray.t = (Type*)1;
+	}
+	if(pipebad == 11) {
+		pipearray.t = (Type*)((uintptr)-1-1);
+	}
 	memset(pipeslots.bytes,0xa5,sizeof(pipeslots.bytes));
 	memmove(pipeslots.bytes+returnoffset,slots,sizeof(slots));
 	pipearray.data = pipebad == 2 ? nil : pipebad == 3 ? H :
@@ -801,6 +827,7 @@ multipreflight(int mode)
 	ends[1] = previous.cfd;
 	memset(&array, 0, sizeof(array));
 	array.len = 2;
+	array.t = &pipeelement;
 	array.data = (uchar*)ends;
 	memset(connectionreturn.bytes, 0xa5, sizeof(connectionreturn.bytes));
 	ret = connectionreturn.bytes;
@@ -885,6 +912,21 @@ fdmatrix(int argc, char **argv)
 	environment.fgrp = &group;
 	environment.errstr = environment.errbuf0;
 	group.r.ref = 1;
+	pipeelement.size = sizeof(Sys_FD*);
+	pipeelement.np = 1;
+	pipeelement.map[0] = 0x80;
+	if(getenv("FD_OWNER_PIPE_TYPES")) {
+		operation = 4;
+		pipesize = 2;
+		nativefail = 0;
+		returnoffset = 0;
+		for(pipebad = 5; pipebad <= 11; pipebad++) {
+			one(0, 0, 0);
+		}
+		fdtest(checks == 7);
+		printf("PASS Sys pipe element preflight: %d cases\n", checks);
+		return 0;
+	}
 	capturekeepframe = getenv("FD_OWNER_KEEP_FRAME") != nil;
 	if(getenv("FD_OWNER_MULTI_PREFLIGHT")) {
 		for(operation=4; operation<8; operation++)

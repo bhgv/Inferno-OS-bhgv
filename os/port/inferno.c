@@ -416,6 +416,7 @@ void
 Sys_pipe(void *fp)
 {
 	Array *a, view;
+	Type element;
 	int fd[2], status;
 	WORD outcome;
 	uchar *slots;
@@ -434,6 +435,13 @@ Sys_pipe(void *fp)
 	memmove(&view, a, sizeof(view));
 	if(view.len < 2 || view.data == nil || view.data == H ||
 	   (uintptr)view.data > (uintptr)-1-2*sizeof(Sys_FD*))
+		goto Empty;
+	/* [GC:] A byte or scalar array cannot own two pointer-sized replacement slots. */
+	if(view.t == nil || view.t == (Type*)H ||
+	   (uintptr)view.t < sizeof(void*) || (uintptr)view.t > (uintptr)-1-sizeof(element))
+		goto Empty;
+	memmove(&element, view.t, sizeof(element));
+	if(element.size != sizeof(Sys_FD*) || element.np != 1 || element.map[0] != 0x80)
 		goto Empty;
 	slots = view.data;
 	memmove(old, slots, sizeof(old));
