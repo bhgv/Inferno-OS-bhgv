@@ -2225,6 +2225,7 @@ a64arraycreate(A64Buf *b, LeafLayout *a, int clear)
 
 /* Tail-enter the shared C executor with the original caller's LR and stack.
  * x0 retains REG; w1 is the opcode and x2 the optional guarded fast entry.
+ * Reject unaligned instruction targets before sizing or publishing any output.
  * BR, rather than BLR, allows the C handler to free this module's code mapping.
  */
 static int
@@ -2237,6 +2238,7 @@ leafbridgeemit(u32int *out, int cap, void *executor, int op, void *fast)
 	entry = (unsigned long long)executor;
 	native = (unsigned long long)fast;
 	if(cap <= 0 || entry == 0 || entry == ~0ULL || native == ~0ULL ||
+	   (entry|native)%4 != 0 ||
 	   op <= INOP || op >= MAXDIS || op == IECLR)
 		return 0;
 	b.n = 0;

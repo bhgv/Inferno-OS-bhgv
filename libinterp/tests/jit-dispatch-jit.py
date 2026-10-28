@@ -103,10 +103,10 @@ int emit(u32int *out,int cap,int op,uint64_t executor,uint64_t fast)
         checks = 0
         for op in list(range(-8,len(NAMES)+8))+[-0x80000000,0x7fffffff]:
             active = 0<op<len(NAMES) and NAMES[op]!='IECLR'
-            for fast in (0,BASE+0x1230,0x123456789abcde00,MASK-1,MASK):
+            for fast in (0,BASE+0x1230,0x123456789abcde00,BASE+1,BASE+2,BASE+3,MASK-1,MASK):
                 out = (C.c_uint32*129)(*([0xa5a5a5a5]*129))
                 n = lib.emit(out,128,op,EXECUTOR,fast)
-                accepted = active and fast!=MASK
+                accepted = active and fast!=MASK and (arch != 'arm64' or fast%4 == 0)
                 require((n>0)==accepted and n<=128,(arch,op,fast,'sizing'))
                 if not accepted:
                     require(list(out)==[0xa5a5a5a5]*129,(arch,op,fast,'rejected output'))

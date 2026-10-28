@@ -1,5 +1,7 @@
 # Complete decoded JIT dispatch: native fast path plus C
 
+Latest [ARM64 target-alignment checks and compiler-query checkpoint](README.jit-target-alignment.md) retain full native+C dispatch availability.
+
 AMD64 and ARM64 now publish a complete Jit.dispatch entry for every active
 opcode used by a compiled module, including modules containing only complex C
 operations. There are 173 supported active opcode IDs in both WORD models:

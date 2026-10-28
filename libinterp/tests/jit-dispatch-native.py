@@ -65,6 +65,10 @@ with tempfile.TemporaryDirectory(prefix='jit-dispatch-native-') as temporary:
     source = td/'fixture.c'
     source.write_text(unit)
     command = shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1 -g -DNDEBUG -fsanitize=undefined -fno-sanitize-recover=all'))
+    # Foreign ARM64 emission borrows host function identities, never host code.
+    # AMD64 O1 functions may be byte-aligned; model real AArch64 target alignment.
+    if backend == 'arm64':
+        command += ['-falign-functions=4']
     widths = tuple(map(int, os.environ.get("BRIDGE_WORD_BITS", "32 64").split()))
     if not widths or any(width not in (32,64) for width in widths):
         raise ValueError("BRIDGE_WORD_BITS must select 32 and/or 64")

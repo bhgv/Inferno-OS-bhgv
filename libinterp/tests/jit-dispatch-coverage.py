@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]  # Owning source tree.
 # Validate both nil/non-nil fast targets, every capacity, and inactive opcode rejection.
 def measure(arch, names, directory):
     source = directory/'dispatch-coverage.c'
-    source.write_text('''#include <stdint.h>
+    source.write_text(('#define TARGET_ARM64 1 // Fixed-width instruction addresses.\n' if arch == 'arm64' else '')+'''#include <stdint.h>
 #include <string.h>
 #include <stdio.h>
 typedef uint32_t u32int;
@@ -30,7 +30,7 @@ main(void)
     u32int out[LeafMax+2];
     void *entry=(void*)0x100009000ULL;
     void *fast;
-    int wb, op, mode, n, cap, k, result, active;
+    int wb, op, mode, n, cap, k, result, active, misalignment, target;
 
     printf("%d\\n",MAXDIS);
     for(wb=4; wb<=8; wb+=4)
@@ -57,6 +57,28 @@ main(void)
                    leafbridgeemit(nil,LeafMax,entry,op,(void*)-1)!=0)
                     return 6;
             }
+            /* All three bad low-bit patterns reject atomically on ARM64.
+             * AMD64 instruction targets are byte-addressable and stay accepted. */
+            if(active)
+                for(misalignment=1; misalignment<4; misalignment++)
+                    for(target=0; target<2; target++){
+                        memset(out,0xa5,sizeof(out));
+                        result=leafbridgeemit(out+1,LeafMax,
+                            (void*)((uintptr_t)entry+(target ? 0 : misalignment)),op,
+                            (void*)(0x123456789abcde00ULL+(target ? misalignment : 0)));
+#ifdef TARGET_ARM64
+                        if(result!=0 || leafbridgeemit(nil,LeafMax,
+                            (void*)((uintptr_t)entry+(target ? 0 : misalignment)),op,
+                            (void*)(0x123456789abcde00ULL+(target ? misalignment : 0)))!=0)
+                            return 7;
+                        for(k=0; k<LeafMax+2; k++)
+                            if(out[k]!=0xa5a5a5a5U)
+                                return 8;
+#else
+                        if(result!=n || out[0]!=0xa5a5a5a5U)
+                            return 9;
+#endif
+                    }
             if(active)
                 printf("%d %d\\n",wb,op);
         }
