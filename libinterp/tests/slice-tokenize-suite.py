@@ -10,6 +10,7 @@ import sys
 CORE = [
     'libinterp/tests/emitter-layouts.py',
     'limbo/tests/node-chains.py',
+    'limbo/tests/node-queries.py',
     'libinterp/tests/sys-pctl-capture.py',
     'libinterp/tests/sys-file2chan-capture.py',
     'emu/port/tests/dial-paths.py',
