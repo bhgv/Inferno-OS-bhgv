@@ -43,8 +43,15 @@ for signature in ('static void\nxprintstring(', 'static uchar*\nxprintargument('
                   'void\nSys_sprint(', 'void\nSys_aprint('):
     if signature in source:
         parts.append(function(source, signature))
-guard = (root / 'emu/port/dis.c').read_text()
-guard = guard[guard.index('int\nkprotect('):]
+io_source = os.environ.get('SYS_PRINT_IO_SOURCE')
+if io_source:
+    port = Path(io_source).read_text()
+    parts += ['char Ebadarg[]="bad argument"; // Controlled native argument-error identity.']
+    parts += [next(line for line in port.splitlines() if line.startswith('#define fdchk('))]
+    parts += [function(port, signature) for signature in ('static int\nsysnativeint(',
+              'void\nSys_print(', 'void\nSys_fprint(', 'void\nSys_werrstr(')]
+guard = Path(os.environ.get('SYS_PRINT_GUARD_SOURCE', root/'emu/port/dis.c')).read_text()
+guard = '\n'.join(function(guard, signature) for signature in ('int\nkprotect(', 'void\nkrethrow('))
 unit = (root / 'libinterp/tests/sys-print.c').read_text()
 extra=os.environ.get('SYS_PRINT_EXTRA')
 if extra:

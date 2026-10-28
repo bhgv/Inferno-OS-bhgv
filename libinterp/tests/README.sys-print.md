@@ -42,3 +42,7 @@ and dynamic-result publication: [README.sys-print-spans.md](README.sys-print-spa
 [Public result snapshots](README.sys-print-public.md) check complete fixed frame
 prefixes and return cells, packed frame access, original-cell publication across
 allocation callbacks, shared old owners and error cleanup.
+
+[Native output snapshots](README.sys-print-io.md) cover emu/os print, fprint
+and werrstr frame/result preflight, callback-safe publication and native FD
+width checks, with the actual formatter and controlled I/O boundaries.

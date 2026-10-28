@@ -4,9 +4,22 @@
 #include "interp.h"
 #include "runt.h"
 #include "kernel.h"
-#include <assert.h>
+#include "raise.h"
 #include <stdio.h>
 
+
+/* Keep every inherited status/call/ownership predicate active under NDEBUG. */
+static void
+statuspredicate(int test)
+{
+	if(!test) {
+		fprintf(stderr, "Sys status predicate failed\n");
+		abort();
+	}
+}
+#define statuscheck(test) statuspredicate(!!(test)) // Normalize pointer and scalar predicates.
+
+char exNilref[] = "nil", exBounds[] = "bounds";
 char Ebadarg[]="bad argument";
 static int released,calls,entered,bad,operation,wantold,wantnew,wantflags;
 static int nativeint,printmode;
@@ -24,7 +37,7 @@ __lsan_is_turned_off(void)
 void
 release(void)
 {
-	assert(!released);
+	statuscheck(!released);
 	released=1;
 	entered++;
 }
@@ -33,7 +46,7 @@ release(void)
 void
 acquire(void)
 {
-	assert(released && calls<=1);
+	statuscheck(released && calls<=1);
 	released=0;
 }
 
@@ -41,7 +54,7 @@ acquire(void)
 void
 seterror(char *message,...)
 {
-	assert(message==Ebadarg);
+	statuscheck(message==Ebadarg);
 	bad++;
 }
 
@@ -49,10 +62,10 @@ seterror(char *message,...)
 char*
 string2c(String *s)
 {
-	assert(released || operation==14);
+	statuscheck(released || operation==14);
 	if(s==&strings[0])return "first";
 	if(s==&strings[1])return "second";
-	assert(s==&strings[2]);
+	statuscheck(s==&strings[2]);
 	return "spec";
 }
 
@@ -60,7 +73,7 @@ string2c(String *s)
 static void
 nativecall(int op)
 {
-	assert(released && operation==op && !calls);
+	statuscheck(released && operation==op && !calls);
 	calls++;
 }
 
@@ -69,7 +82,7 @@ int
 kdup(int old,int new)
 {
 	nativecall(0);
-	assert(old==wantold && new==wantnew);
+	statuscheck(old==wantold && new==wantnew);
 	return nativeint;
 }
 
@@ -78,7 +91,7 @@ int
 kremove(char *s)
 {
 	nativecall(1);
-	assert(!strcmp(s,"first"));
+	statuscheck(!strcmp(s,"first"));
 	return nativeint;
 }
 
@@ -87,7 +100,7 @@ vlong
 kseek(int fd,vlong off,int start)
 {
 	nativecall(2);
-	assert(fd==17 && off==wantoff && start==wantold);
+	statuscheck(fd==17 && off==wantoff && start==wantold);
 	return nativebig;
 }
 
@@ -96,7 +109,7 @@ int
 kunmount(char *a,char *b)
 {
 	nativecall(3);
-	assert(!strcmp(a,"first") && !strcmp(b,"second"));
+	statuscheck(!strcmp(a,"first") && !strcmp(b,"second"));
 	return nativeint;
 }
 
@@ -105,7 +118,7 @@ int
 kchdir(char *s)
 {
 	nativecall(4);
-	assert(!strcmp(s,"first"));
+	statuscheck(!strcmp(s,"first"));
 	return nativeint;
 }
 
@@ -114,8 +127,8 @@ int
 kmount(int fd,int afd,char *on,int flags,char *spec)
 {
 	nativecall(5);
-	assert(fd==17 && afd==-1 && flags==wantflags);
-	assert(!strcmp(on,"second") && !strcmp(spec,"spec"));
+	statuscheck(fd==17 && afd==-1 && flags==wantflags);
+	statuscheck(!strcmp(on,"second") && !strcmp(spec,"spec"));
 	return nativeint;
 }
 
@@ -124,7 +137,7 @@ int
 kbind(char *s,char *on,int flags)
 {
 	nativecall(6);
-	assert(flags==wantflags && !strcmp(s,"first") && !strcmp(on,"second"));
+	statuscheck(flags==wantflags && !strcmp(s,"first") && !strcmp(on,"second"));
 	return nativeint;
 }
 
@@ -133,7 +146,7 @@ int
 kiounit(int fd)
 {
 	nativecall(7);
-	assert(fd==17);
+	statuscheck(fd==17);
 	return nativeint;
 }
 
@@ -147,9 +160,9 @@ static Dir*
 packdir(Sys_Dir *d)
 {
 	USED(d);
-	assert(!released);
+	statuscheck(!released);
 	packed=malloc(sizeof(*packed));
-	assert(packed);
+	statuscheck(packed);
 	return packed;
 }
 
@@ -158,7 +171,7 @@ int
 kdirwstat(char *path,Dir *d)
 {
 	nativecall(8);
-	assert(d==packed && !strcmp(path,"first"));
+	statuscheck(d==packed && !strcmp(path,"first"));
 	return nativeint;
 }
 
@@ -167,7 +180,7 @@ int
 kdirfwstat(int fd,Dir *d)
 {
 	nativecall(9);
-	assert(fd==17 && d==packed);
+	statuscheck(fd==17 && d==packed);
 	return nativeint;
 }
 
@@ -175,7 +188,7 @@ kdirfwstat(int fd,Dir *d)
 long
 osmillisec(void)
 {
-	assert(!released && operation==10 && !calls);
+	statuscheck(!released && operation==10 && !calls);
 	calls++;
 	return nativeint;
 }
@@ -194,7 +207,7 @@ osmillisec(void)
 void
 osenter(void)
 {
-	assert(released && !osentered);
+	statuscheck(released && !osentered);
 	osentered=1;
 }
 
@@ -202,7 +215,7 @@ osenter(void)
 void
 osleave(void)
 {
-	assert(released && osentered);
+	statuscheck(released && osentered);
 	osentered=0;
 }
 
@@ -211,7 +224,7 @@ int
 limbosleep(ulong period)
 {
 	nativecall(11);
-	assert(osentered && period==(ulong)wantperiod);
+	statuscheck(osentered && period==(ulong)wantperiod);
 	return nativeint;
 }
 
@@ -228,7 +241,7 @@ void
 tsleep(Rendez *r,int (*predicate)(void*),void *arg,int period)
 {
 	nativecall(11);
-	assert(r==&process.sleep && predicate==return0 && arg==0 && period==wantperiod);
+	statuscheck(r==&process.sleep && predicate==return0 && arg==0 && period==wantperiod);
 }
 
 /* Unexpected error-frame paths are failures rather than silent fixture exits. */
@@ -236,7 +249,7 @@ void
 error(char *message)
 {
 	USED(message);
-	assert(0);
+	statuscheck(0);
 }
 
 static Prog program;
@@ -248,7 +261,7 @@ static Fgrp group;
 Prog*
 currun(void)
 {
-	assert(!released);
+	statuscheck(!released);
 	return &program;
 }
 
@@ -257,7 +270,7 @@ int
 xprint(Prog *p,void *frame,void *args,String *s,char *buf,int size)
 {
 	USED(frame);USED(args);
-	assert(released && p==&program && s==&strings[0] && size==1024);
+	statuscheck(released && p==&program && s==&strings[0] && size==1024);
 	memset(buf,'x',3);
 	return printmode==1 ? size : 3;
 }
@@ -267,9 +280,9 @@ int
 bigxprint(Prog *p,void *frame,void *args,String *s,char **buf,int size)
 {
 	USED(frame);USED(args);
-	assert(released && p==&program && s==&strings[0] && size==1024 && printmode==1);
+	statuscheck(released && p==&program && s==&strings[0] && size==1024 && printmode==1);
 	*buf=malloc(2048);
-	assert(*buf);
+	statuscheck(*buf);
 	memset(*buf,'x',2048);
 	return 2048;
 }
@@ -279,10 +292,10 @@ long
 kwrite(int fd,void *buf,long count)
 {
 	nativecall(operation);
-	assert(operation==12 || operation==13);
-	assert(fd==(operation==12 ? 1 : printmode==2 ? -1 : 17));
-	assert(count==(printmode==1 ? 2048 : 3));
-	assert(((char*)buf)[0]=='x' && ((char*)buf)[count-1]=='x');
+	statuscheck(operation==12 || operation==13);
+	statuscheck(fd==(operation==12 ? 1 : printmode==2 ? -1 : 17));
+	statuscheck(count==(printmode==1 ? 2048 : 3));
+	statuscheck(((char*)buf)[0]=='x' && ((char*)buf)[count-1]=='x');
 	return nativeint;
 }
 
@@ -290,8 +303,8 @@ kwrite(int fd,void *buf,long count)
 void
 kstrcpy(char *dst,char *src,int size)
 {
-	assert(!released && operation==14 && dst==process.env->errstr && size==ERRMAX);
-	assert(!strcmp(src,"first"));
+	statuscheck(!released && operation==14 && dst==process.env->errstr && size==ERRMAX);
+	statuscheck(!strcmp(src,"first"));
 	calls++;
 	strcpy(dst,src);
 }
@@ -301,7 +314,7 @@ int
 export(int fd,char *directory,int flags)
 {
 	nativecall(15);
-	assert(fd==17 && !strcmp(directory,"first") && flags==(3&Sys_EXPASYNC));
+	statuscheck(fd==17 && !strcmp(directory,"first") && flags==(3&Sys_EXPASYNC));
 	return nativeint;
 }
 
@@ -424,9 +437,9 @@ main(void)
 		if(operation==14)wordresult=0;
 		width=operation==2 ? sizeof(LONG) : sizeof(WORD);
 		memmove(expected+8+offset,operation==2 ? (void*)&bigresult : (void*)&wordresult,width);
-		assert(!memcmp(memory.bytes,expected,sizeof(expected)) && !released);
-		assert(calls==(valid && (operation!=11 || first>0) && (operation!=12 || printmode!=2)));
-		assert(entered==(valid && operation!=10 && operation!=14 && (operation!=12 || printmode!=2)) && bad==!valid && !osentered);
+		statuscheck(!memcmp(memory.bytes,expected,sizeof(expected)) && !released);
+		statuscheck(calls==(valid && (operation!=11 || first>0) && (operation!=12 || printmode!=2)));
+		statuscheck(entered==(valid && operation!=10 && operation!=14 && (operation!=12 || printmode!=2)) && bad==!valid && !osentered);
 		checks++;
 	}
 	printf("PASS Sys status slots: %lu alignment/native-width/error/scheduler cases WORD%zu\n",checks,sizeof(WORD)*8);

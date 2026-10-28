@@ -8,6 +8,7 @@
 #include "interp.h"
 #include "runt.h"
 #include "kernel.h"
+#include "raise.h"
 
 /*
  * here because Sys_FileIO is not public
@@ -851,7 +852,8 @@ Sys_fwstat(void *fp)
 	free(d);
 }
 
-/* Stage the scalar status before publishing to an unaligned VM result slot. */
+
+/* Capture the original format/result before releasing the VM for output. */
 void
 Sys_print(void *fp)
 {
@@ -859,63 +861,120 @@ Sys_print(void *fp)
 	Prog *p;
 	Chan *c;
 	char buf[1024], *b = buf;
-	F_Sys_print *f;
+	String *format;
+	void *ret, *args;
 	WORD result;
 
-	f = fp;
+	if(fp == nil || fp == H)
+		error(exNilref);
+	if((uintptr)fp > (uintptr)-1-O(F_Sys_print, vargs))
+		error(exBounds);
+	memmove(&ret, (uchar*)fp+O(F_Sys_print, ret), sizeof(ret));
+	memmove(&format, (uchar*)fp+O(F_Sys_print, s), sizeof(format));
+	args = (uchar*)fp+O(F_Sys_print, vargs);
+	if(ret == nil || ret == H)
+		error(exNilref);
+	if((uintptr)ret > (uintptr)-1-sizeof(result))
+		error(exBounds);
 	c = up->env->fgrp->fd[1];
 	if(c == nil){
 		result = -1;
-		memmove(f->ret, &result, sizeof(result));
+		memmove(ret, &result, sizeof(result));
 		return;
 	}
 	p = currun();
 
 	release();
-	n = xprint(p, f, &f->vargs, f->s, buf, sizeof(buf));
+	n = xprint(p, fp, args, format, buf, sizeof(buf));
 	if (n >= sizeof(buf)-UTFmax-2)
-		n = bigxprint(p, f, &f->vargs, f->s, &b, sizeof(buf));
+		n = bigxprint(p, fp, args, format, &b, sizeof(buf));
 	result = kwrite(1, b, n);
-	memmove(f->ret, &result, sizeof(result));
+	memmove(ret, &result, sizeof(result));
 	if (b != buf)
 		free(b);
 	acquire();
 }
 
-/* Stage the scalar status before publishing to an unaligned VM result slot. */
+
+/* Validate the native FD and capture packed operands before output side effects. */
 void
 Sys_fprint(void *fp)
 {
 	int n;
 	Prog *p;
 	char buf[1024], *b = buf;
-	F_Sys_fprint *f;
-	WORD result;
+	String *format;
+	void *ret, *args;
+	WORD result, number;
+	Sys_FD *handle;
+	int descriptor;
 
-	f = fp;
+	if(fp == nil || fp == H)
+		error(exNilref);
+	if((uintptr)fp > (uintptr)-1-O(F_Sys_fprint, vargs))
+		error(exBounds);
+	memmove(&ret, (uchar*)fp+O(F_Sys_fprint, ret), sizeof(ret));
+	memmove(&format, (uchar*)fp+O(F_Sys_fprint, s), sizeof(format));
+	args = (uchar*)fp+O(F_Sys_fprint, vargs);
+	if(ret == nil || ret == H)
+		error(exNilref);
+	if((uintptr)ret > (uintptr)-1-sizeof(result))
+		error(exBounds);
+	memmove(&handle, (uchar*)fp+O(F_Sys_fprint, fd), sizeof(handle));
+	if(handle == (Sys_FD*)H)
+		number = -1;
+	else {
+		if(handle == nil)
+			error(exNilref);
+		if((uintptr)handle > (uintptr)-1-(O(Sys_FD, fd)+sizeof(number)))
+			error(exBounds);
+		memmove(&number, (uchar*)handle+O(Sys_FD, fd), sizeof(number));
+	}
+	if(!sysnativeint(number)) {
+		seterror(Ebadarg);
+		result = -1;
+		memmove(ret, &result, sizeof(result));
+		return;
+	}
+	descriptor = (int)number;
 	p = currun();
 	release();
-	n = xprint(p, f, &f->vargs, f->s, buf, sizeof(buf));
+	n = xprint(p, fp, args, format, buf, sizeof(buf));
 	if (n >= sizeof(buf)-UTFmax-2)
-		n = bigxprint(p, f, &f->vargs, f->s, &b, sizeof(buf));
-	result = kwrite(fdchk(f->fd), b, n);
-	memmove(f->ret, &result, sizeof(result));
+		n = bigxprint(p, fp, args, format, &b, sizeof(buf));
+	result = kwrite(descriptor, b, n);
+	memmove(ret, &result, sizeof(result));
 	if (b != buf)
 		free(b);
 	acquire();
 }
 
-/* Stage the scalar status before publishing to an unaligned VM result slot. */
+
+/* Validate and capture both error-text and scalar result publication addresses. */
 void
 Sys_werrstr(void *fp)
 {
-	F_Sys_werrstr *f;
+	String *source;
+	void *ret;
+	char *text, *destination;
 	WORD result;
 
-	f = fp;
-	kstrcpy(up->env->errstr, string2c(f->s), ERRMAX);
+	if(fp == nil || fp == H)
+		error(exNilref);
+	if((uintptr)fp > (uintptr)-1-(O(F_Sys_werrstr, s)+sizeof(source)))
+		error(exBounds);
+	memmove(&ret, (uchar*)fp+O(F_Sys_werrstr, ret), sizeof(ret));
+	memmove(&source, (uchar*)fp+O(F_Sys_werrstr, s), sizeof(source));
+	if(ret == nil || ret == H)
+		error(exNilref);
+	if((uintptr)ret > (uintptr)-1-sizeof(result))
+		error(exBounds);
+	/* Conversion may allocate; keep both original output addresses authoritative. */
+	destination = up->env->errstr;
+	text = string2c(source);
+	kstrcpy(destination, text, ERRMAX);
 	result = 0;
-	memmove(f->ret, &result, sizeof(result));
+	memmove(ret, &result, sizeof(result));
 }
 
 /* Adopt both dial descriptors as one result, closing them on conversion failure. */
