@@ -8,17 +8,24 @@ import struct
 import subprocess
 import tempfile
 
+# Keep integration predicates active under Python -O and C NDEBUG.
+def require(condition, detail):
+    if not condition:
+        raise RuntimeError(detail)
+
+
 root = Path(__file__).resolve().parents[3]
 isa = re.sub(r'/\*.*?\*/', '', (root/'include/isa.h').read_text(), flags=re.S)
 ops = [s.strip() for s in isa[isa.index('INOP'):isa.index('};')].split(',') if s.strip()]
 opcode = {name: i for i, name in enumerate(ops)}
 table = re.sub(r'/\*.*?\*/', '', (root/'libinterp/optab.h').read_text(), flags=re.S)
 handlers = [s.strip() for s in table[table.index('{')+1:table.index('};')].split(',') if s.strip()]
-assert len(ops) == len(handlers)
+require(len(ops) == len(handlers), 'integration invariant')
 
 
+# Encode one signed canonical Dis operand.
 def operand(n):
-    assert -536870912 <= n <= 536870911
+    require(-536870912 <= n <= 536870911, 'integration invariant')
     if -64 <= n <= 63:
         return bytes([n & 127])
     if -8192 <= n <= 8191:
@@ -26,6 +33,7 @@ def operand(n):
     return bytes([0xc0 | ((n >> 24) & 63), (n >> 16) & 255, (n >> 8) & 255, n & 255])
 
 
+# Encode exactly the fields selected by the addressing modes.
 def instruction(op, src=3, dst=3, mid=0, s=0, d=0, m=0):
     data = bytes([opcode[op], (src << 3) | dst | mid])
     if mid:
@@ -40,6 +48,7 @@ def instruction(op, src=3, dst=3, mid=0, s=0, d=0, m=0):
     return data
 
 
+# Build a bounded image with optional imports and exception metadata.
 def module(code, rich=False):
     flags = 97 if rich else 0  # MUSTCOMPILE, HASLDT, HASEXCEPT
     data = b''.join(operand(v) for v in [819248, flags, 1024, len(code), 128, 1, int(rich), 0, 0])
@@ -53,6 +62,7 @@ def module(code, rich=False):
     return data+b'sum.b\0'
 
 
+# Extract production C definitions without counting comment or literal braces.
 def function(source, signature):
     start = source.index(signature)
     brace = source.index('{', start)
@@ -71,9 +81,9 @@ def function(source, signature):
 with tempfile.TemporaryDirectory(prefix='dis2c-test-') as directory:
     td = Path(directory)
     cc = shlex.split(os.environ.get('CC', 'cc'))
-    flags = shlex.split(os.environ.get('CFLAGS', '-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
+    flags = shlex.split(os.environ.get('CFLAGS', '-O1 -g -DNDEBUG -fsanitize=undefined -fno-sanitize-recover=all'))
     tool = td/'dis2c'
-    subprocess.run(cc+flags+['-std=c99', '-Wall', '-Wextra', '-Werror', '-I'+str(root/'include'), str(root/'utils/dis2c/dis2c.c'), '-o', str(tool)], check=True)
+    subprocess.run(cc+flags+['-std=c99', '-Wall', '-Wextra', '-Werror', '-I'+str(root/'include'), '-I'+str(root/'utils/dis2c'), str(Path(os.environ.get('DIS2C_NATIVE_SOURCE', root/'utils/dis2c/dis2c.c'))), '-o', str(tool)], check=True)
     loop = [instruction('IMOVW', 2, 1, s=0, d=64), instruction('IMOVW', 2, 1, s=1, d=72),
             instruction('IBGTW', 1, 2, 64, s=72, d=6, m=10),
             instruction('IADDW', 1, 1, 128, s=72, d=64, m=64),
@@ -99,15 +109,15 @@ with tempfile.TemporaryDirectory(prefix='dis2c-test-') as directory:
         result = subprocess.run([str(tool), '--check', str(td/'bad.dis')], capture_output=True)
         # A source path is optional to the loader; its complete omission is legal.
         if source[:length].endswith(b'\0') and source[length:] == b'sum.b\0':
-            assert result.returncode == 0
+            require(result.returncode == 0, 'integration invariant')
         else:
-            assert result.returncode != 0, length
+            require(result.returncode != 0, length)
     (td/'bad.dis').write_bytes(b'bad')
     (td/'protected.c').write_text('keep')
-    assert subprocess.run([str(tool), '-o', str(td/'protected.c'), str(td/'bad.dis')], capture_output=True).returncode != 0
-    assert (td/'protected.c').read_text() == 'keep'
-    assert subprocess.run([str(tool), '-n', 'bad-name', str(td/'loop.dis')], capture_output=True).returncode != 0
-    assert subprocess.run([str(tool), '-o', str(td/'loop.dis'), str(td/'loop.dis')], capture_output=True).returncode != 0
+    require(subprocess.run([str(tool), '-o', str(td/'protected.c'), str(td/'bad.dis')], capture_output=True).returncode != 0, 'integration invariant')
+    require((td/'protected.c').read_text() == 'keep', 'integration invariant')
+    require(subprocess.run([str(tool), '-n', 'bad-name', str(td/'loop.dis')], capture_output=True).returncode != 0, 'integration invariant')
+    require(subprocess.run([str(tool), '-o', str(td/'loop.dis'), str(td/'loop.dis')], capture_output=True).returncode != 0, 'integration invariant')
     malformed = [module([instruction('IJMP', 3, 2, d=1)]),
                  module([instruction('IRUNT', 2, 1, 64, m=65536)]),
                  module([bytes([opcode['IRUNT'], (6<<3)|3])]),
@@ -115,7 +125,7 @@ with tempfile.TemporaryDirectory(prefix='dis2c-test-') as directory:
                  images['loop']+b'junk']
     for raw in malformed:
         (td/'bad.dis').write_bytes(raw)
-        assert subprocess.run([str(tool), '--check', str(td/'bad.dis')], capture_output=True).returncode != 0
+        require(subprocess.run([str(tool), '--check', str(td/'bad.dis')], capture_output=True).returncode != 0, 'integration invariant')
     # Compile the emitted files against the actual VM headers as separate units.
     includes = ['-I'+str(root/p) for p in ('Linux/arm/include', 'emu/port', 'include', 'libinterp')]
     objects = []
@@ -130,7 +140,7 @@ with tempfile.TemporaryDirectory(prefix='dis2c-test-') as directory:
     parts = [function((root/'emu/port/dis.c').read_text(), 'int\nkprotect(')]
     parts += [function(heap, sig) for sig in ('Type*\ndtype(', 'void\nfreetype(', 'void\ninitmem(', 'void\ninitarray(')]
     parts += [function(link, sig) for sig in ('static void\nnewlink(', 'void\nmlink(', 'void\ndestroylinks(')]
-    parts += [function(load, sig) for sig in ('static int\noperand(', 'static ulong\ndisw(', 'double\ncanontod(', 'int\nbrpatch(', 'void\nfreemod(')]
+    parts += [function(load, sig) for sig in ('static int\noperand(', 'static ulong\ndisw(', 'static WORD\ndissignedword(', 'double\ncanontod(', 'int\nbrpatch(', 'void\nfreemod(')]
     base = base.replace('IMPLEMENTATION', '\n'.join(parts)+'\n'+parser)
     actual = {'runt', 'movw', 'movb', 'movl', 'movf', 'addw', 'subw', 'mulw', 'andw', 'orw', 'xorw',
               'addl', 'subl', 'mull', 'andl', 'orl', 'xorl', 'jmp', 'bgtw', 'beqw'}
@@ -144,7 +154,7 @@ with tempfile.TemporaryDirectory(prefix='dis2c-test-') as directory:
     fixture = (root/'utils/dis2c/tests/runtime.c').read_text()
     fixture = fixture.replace('OPERATIONS', '\n'.join(bodies)).replace('DISPATCH', (root/'libinterp/optab.h').read_text())
     fixture = fixture.replace('EXECUTOR', function(xec, 'void\nxec('))
-    (td/'runtime.c').write_text(base+'\n'+fixture)
+    (td/'runtime.c').write_text('static void runtimepredicate(int);\n#define runtimecheck(c) runtimepredicate(!!(c)) // Preserve inherited fixture predicates.\n'+base.replace('assert(', 'runtimecheck(')+'\n'+fixture)
     binary = td/'runtime'
     subprocess.run(cc+flags+includes+[str(td/'runtime.c'), str(root/'libinterp/disc.c'), str(root/'libinterp/dec.c')]+objects+['-o', str(binary)], check=True)
     subprocess.run([str(binary), str(td/'loop.dis')], check=True)
@@ -159,5 +169,5 @@ with tempfile.TemporaryDirectory(prefix='dis2c-test-') as directory:
     # The checked-in mapping is a reproducible view of authoritative VM metadata.
     before = (root/'utils/dis2c/ops.h').read_bytes()
     subprocess.run(['python3', str(root/'utils/dis2c/genops.py')], check=True)
-    assert before == (root/'utils/dis2c/ops.h').read_bytes()
+    require(before == (root/'utils/dis2c/ops.h').read_bytes(), 'integration invariant')
     print('dis2c: C99 build, generated C compilation, malformed inputs, metadata and runtime differential checks passed')

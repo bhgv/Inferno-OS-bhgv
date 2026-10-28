@@ -11,18 +11,26 @@
 
 typedef struct Reader Reader;
 typedef struct Instruction Instruction;
+
+/* Bounded view of one borrowed Dis wire image. */
 struct Reader {
-	const unsigned char *data;
-	size_t size, at;
+	const unsigned char *data; // Owned input bytes, retained through C emission.
+	size_t size, at; // Total image extent and next unread byte offset.
 };
+
+/* Decoded wire operands used to specialize the emitted checked decoder. */
 struct Instruction {
-	int op, add, reg, src, dst, sf, ss, df, ds;
+	int op, add, reg; // Opcode, addressing modes and encoded middle operand.
+	int src, dst; // Signed direct offsets or immediate values.
+	int sf, ss, df, ds; // First/second offsets for indirect source and destination.
 };
-static Reader input;
-static Instruction *program;
-static unsigned char *type_seen;
-static int nprog;
-static const char *prefix = "dis_module";
+
+static Reader input; // Current bounded input reader.
+static Instruction *program; // Owned specialized instruction records.
+static unsigned char *type_seen; // Temporary descriptor uniqueness bitmap.
+static int nprog; // Validated instruction count for generation and attachment.
+static const char *prefix = "dis_module"; // Portable namespace for generated functions.
+
 
 /* Report byte positions without interpreting input as a formatting string. */
 static void
@@ -41,6 +49,7 @@ fail(const char *format, ...)
 	exit(1);
 }
 
+
 /* Consume only spans proven to fit, including empty spans at the input end. */
 static const unsigned char*
 take(size_t n)
@@ -53,6 +62,7 @@ take(size_t n)
 	input.at += n;
 	return p;
 }
+
 
 /* Decode signed 7/14/30-bit operands without signed shift overflow. */
 static int
@@ -81,6 +91,7 @@ operand(void)
 	return v <= INT32_MAX ? (int)v : -1-(int)(UINT32_MAX-v);
 }
 
+
 /* Dis words are fixed-width big-endian values, independently of host long. */
 static uint32_t
 word(void)
@@ -90,6 +101,7 @@ word(void)
 	return (uint32_t)p[0]<<24 | (uint32_t)p[1]<<16 | (uint32_t)p[2]<<8 | p[3];
 }
 
+
 /* Bound variable record counts by their minimum remaining wire footprint. */
 static int
 count(int n, size_t minimum)
@@ -98,6 +110,7 @@ count(int n, size_t minimum)
 		fail("invalid record count");
 	return n;
 }
+
 
 /* Skip one bounded NUL-terminated wire name without a speculative strlen. */
 static void
@@ -111,6 +124,7 @@ name(void)
 		fail("unterminated name");
 	input.at += (size_t)(end-p)+1;
 }
+
 
 /* The loader patches these immediate destinations into original Inst pointers. */
 static int
@@ -127,6 +141,7 @@ branch(int op)
 	}
 	return 0;
 }
+
 
 /* Read exactly the fields selected by one valid Dis addressing mode. */
 static void
@@ -145,6 +160,7 @@ address(int mode, int *value, int *first, int *second)
 	if(*first < 0 || *first > 65535 || *second < 0 || *second > 65535)
 		fail("indirect offset does not fit Inst");
 }
+
 
 /* Validate the wire format; native pointer maps and allocation remain loader-owned. */
 static void
@@ -291,19 +307,22 @@ parse(void)
 		fail("trailing bytes after source path");
 }
 
-/* Specialize operand decoding into literal C expressions, preserving untouched registers. */
+
+/* Specialize checked native address decoding while preserving unused registers. */
 static void
 emitaddress(FILE *out, const char *reg, int mode, int value, int first, int second)
 {
 	if(mode == AMP || mode == AFP)
-		fprintf(out, "\t\tR.%s = R.%s + (%d);\n", reg, mode == AMP ? "MP" : "FP", value);
+		fprintf(out, "\t\tR.%s = decaddress(R.%s, %d);\n", reg, mode == AMP ? "MP" : "FP", value);
 	else if(mode == AIMM)
-		fprintf(out, "\t\tR.%s = &ip->%s.imm;\n", reg, reg);
+		fprintf(out, "\t\tR.%s = (uchar*)ip+O(Inst, %s);\n", reg, reg);
 	else if(mode == (AIND|AMP) || mode == (AIND|AFP))
-		fprintf(out, "\t\tR.%s = *(uchar**)(R.%s + %d) + %d;\n", reg, mode == (AIND|AMP) ? "MP" : "FP", first, second);
+		fprintf(out, "\t\tR.%s = decindirect(R.%s, %d, %d);\n", reg, mode == (AIND|AMP) ? "MP" : "FP", first, second);
 }
 
-/* Emit defined modular integer arithmetic directly; complex operations share VM helpers. */
+
+/* Keep modular arithmetic inline after complete slot checks and unaligned captures.
+ * Moves preserve raw bits and overlap; complex operations retain VM handlers. */
 static void
 emitoperation(FILE *out, int op)
 {
@@ -328,13 +347,30 @@ emitoperation(FILE *out, int op)
 	case IXORL: type = "ULONG"; symbol = "^"; break;
 	}
 	if(type != NULL){
-		if(symbol != NULL)
-			fprintf(out, "\t\t*(%s*)R.d = *(%s*)R.m %s *(%s*)R.s;\n", type, type, symbol, type);
-		else
-			fprintf(out, "\t\t*(%s*)R.d = *(%s*)R.s;\n", type, type);
+		fprintf(out, "\t\t{\n");
+		if(symbol != NULL){
+			fprintf(out, "\t\t\t%s source, middle, result;\n", type);
+			fprintf(out,
+				"\t\t\tif(!%s_slot(R.d, sizeof(result)) || !%s_slot(R.s, sizeof(source)) || !%s_slot(R.m, sizeof(middle))){\n"
+				"\t\t\t\terror(exBounds);\n"
+				"\t\t\t\treturn 0;\n"
+				"\t\t\t}\n", prefix, prefix, prefix);
+			fprintf(out, "\t\t\tmemmove(&source, R.s, sizeof(source));\n\t\t\tmemmove(&middle, R.m, sizeof(middle));\n");
+			fprintf(out, "\t\t\tresult = middle %s source;\n", symbol);
+			fprintf(out, "\t\t\tmemmove(R.d, &result, sizeof(result));\n");
+		}else{
+			fprintf(out,
+				"\t\t\tif(!%s_slot(R.d, sizeof(%s)) || !%s_slot(R.s, sizeof(%s))){\n"
+				"\t\t\t\terror(exBounds);\n"
+				"\t\t\t\treturn 0;\n"
+				"\t\t\t}\n", prefix, type, prefix, type);
+			fprintf(out, "\t\t\tmemmove(R.d, R.s, sizeof(%s));\n", type);
+		}
+		fprintf(out, "\t\t}\n");
 	}else
 		fprintf(out, "\t\t%s();\n", handlers[op]);
 }
+
 
 /* Emit ordinary C code plus the exact image needed by the authoritative module loader. */
 static void
@@ -345,12 +381,34 @@ emit(FILE *out)
 	Instruction *ins;
 
 	fprintf(out, "/* Generated by dis2c. Link with the matching Inferno runtime. */\n");
-	fprintf(out, "#include \"lib9.h\"\n#include \"isa.h\"\n#include \"interp.h\"\n#include \"raise.h\"\n\n");
+	fprintf(out, "#include \"lib9.h\"\n#include \"isa.h\"\n#include \"interp.h\"\n#include \"raise.h\"\n#include \"dec-addr.h\"\n\n");
 	for(i = 0; i < MAXDIS; i++)
 		fprintf(out, "extern void %s(void);\n", handlers[i]);
-	fprintf(out, "\n/* One translated Dis instruction; scheduler and exception PCs remain Dis PCs. */\nstatic int\n%s_step(void)\n{\n", prefix);
-	fprintf(out, "\tInst *ip;\n\tuintptr pc, base;\n\tip = R.PC;\n\tpc = (uintptr)ip;\n\tbase = (uintptr)R.M->prog;\n");
-	fprintf(out, "\tif(pc < base || (pc-base)%%sizeof(Inst) != 0 || (pc-base)/sizeof(Inst) >= (ulong)R.M->m->nprog){\n\t\terror(exBounds);\n\t\treturn 0;\n\t}\n");
+	fprintf(out,
+		"\n"
+		"\n"
+		"/* Bound full decoded operand cells independently of VM WORD width. */\n"
+		"static int\n"
+		"%s_slot(void *slot, uintptr width)\n"
+		"{\n"
+		"\treturn slot != nil && slot != H && (uintptr)slot <= (uintptr)-1-width;\n"
+		"}\n", prefix);
+	fprintf(out, "\n\n/* One translated Dis instruction; scheduler and exception PCs remain Dis PCs. */\nstatic int\n%s_step(void)\n{\n", prefix);
+	fprintf(out, "\tInst *ip, *program;\n\tModule *module;\n\tint count;\n\tuintptr pc, base;\n\n\tip = R.PC;\n\tpc = (uintptr)ip;\n");
+	fprintf(out, "\tif(!%s_slot(R.M, O(Modlink, prog)+sizeof(program))){\n\t\terror(exModule);\n\t\treturn 0;\n\t}\n", prefix);
+	fprintf(out,
+		"\tmemmove(&module, (uchar*)R.M+O(Modlink, m), sizeof(module));\n"
+		"\tmemmove(&program, (uchar*)R.M+O(Modlink, prog), sizeof(program));\n");
+	fprintf(out, "\tif(!%s_slot(module, O(Module, nprog)+sizeof(count))){\n\t\terror(exModule);\n\t\treturn 0;\n\t}\n", prefix);
+	fprintf(out, "\tmemmove(&count, (uchar*)module+O(Module, nprog), sizeof(count));\n\tbase = (uintptr)program;\n");
+	fprintf(out,
+		"\tif(count != %d || count <= 0 || program == nil || program == H ||\n"
+		"\t   (uintptr)count > (uintptr)-1/sizeof(Inst) ||\n"
+		"\t   base > (uintptr)-1-(uintptr)count*sizeof(Inst) ||\n"
+		"\t   pc < base || (pc-base)%%sizeof(Inst) != 0 || (pc-base)/sizeof(Inst) >= (uintptr)count){\n"
+		"\t\terror(exBounds);\n"
+		"\t\treturn 0;\n"
+		"\t}\n", nprog);
 	fprintf(out, "\tswitch((pc-base)/sizeof(Inst)){\n");
 	for(i = 0; i < nprog; i++){
 		ins = &program[i];
@@ -364,9 +422,9 @@ emit(FILE *out)
 			else if(mode == AXIMM)
 				fprintf(out, "\t\tR.t = (short)%d;\n\t\tR.m = &R.t;\n", ins->reg);
 			else
-				fprintf(out, "\t\tR.m = R.%s + %d;\n", mode == AXINF ? "FP" : "MP", ins->reg);
+				fprintf(out, "\t\tR.m = decaddress(R.%s, %d);\n", mode == AXINF ? "FP" : "MP", ins->reg);
 		}
-		fprintf(out, "\t\tR.PC = ip+1;\n");
+		fprintf(out, "\t\tR.PC = (Inst*)(pc+sizeof(Inst));\n");
 		emitoperation(out, ins->op);
 		fprintf(out, "\t\treturn 1;\n");
 	}
@@ -377,9 +435,26 @@ emit(FILE *out)
 		fprintf(out, "0x%02x,%s", input.data[at], at%12 == 11 ? "\n" : " ");
 	}
 	fprintf(out, "\n};\nstatic DisC %s_code = { %s_image, sizeof(%s_image), %d, %s_step, nil };\n", prefix, prefix, prefix, nprog, prefix);
-	fprintf(out, "\n/* Register before loading this exact image; repeated registration is harmless. */\nint\n%s_register(void)\n{\n\treturn disc_register(&%s_code);\n}\n", prefix, prefix);
-	fprintf(out, "\n/* Load embedded metadata through the normal checked and signed-module loader. */\nModule*\n%s_load(char *path, Dir *dir)\n{\n\tif(path == nil || dir == nil || !%s_register())\n\t\treturn nil;\n\treturn parsemod(path, %s_image, sizeof(%s_image), dir);\n}\n", prefix, prefix, prefix, prefix);
+	fprintf(out,
+		"\n"
+		"/* Register before loading this exact image; repeated registration is harmless. */\n"
+		"int\n"
+		"%s_register(void)\n"
+		"{\n"
+		"\treturn disc_register(&%s_code);\n"
+		"}\n", prefix, prefix);
+	fprintf(out,
+		"\n"
+		"/* Load embedded metadata through the normal checked and signed-module loader. */\n"
+		"Module*\n"
+		"%s_load(char *path, Dir *dir)\n"
+		"{\n"
+		"\tif(path == nil || dir == nil || !%s_register())\n"
+		"\t\treturn nil;\n"
+		"\treturn parsemod(path, %s_image, sizeof(%s_image), dir);\n"
+		"}\n", prefix, prefix, prefix, prefix);
 }
+
 
 /* Restrict generated symbol prefixes to portable, non-reserved C identifiers. */
 static int
@@ -392,6 +467,7 @@ identifier(const char *s)
 			return 0;
 	return 1;
 }
+
 
 /* Keep the host tool buildable as C99 with no Inferno libraries or Python at run time. */
 int

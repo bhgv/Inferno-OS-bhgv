@@ -67,6 +67,14 @@ containing both Dis files. Its interpreted caller loads the C-backed Sum module
 and prints `sum(10) = 55`. The compiler accepts the same input/output options in
 both implementations; the translator itself does not depend on either frontend.
 
+## Checked native decoding and scalar operations
+
+Generated code now shares the checked inline address helpers in `dec-addr.h`,
+uses alignment-independent, overlap-safe scalar access, and validates complete
+native program/header spans. Sixteen simple operations remain inline; complex
+operations retain their VM C handlers. Regenerate older emitted files with the
+matching runtime. See [native-slot regression evidence](tests/README.native-slots.md).
+
 ## Runtime contract and limits
 
 The loader attaches a translation only when the **entire original image** and

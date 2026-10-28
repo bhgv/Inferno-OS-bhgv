@@ -13,6 +13,7 @@ regen:
 
 test:
 	python3 tests/test.py
+	python3 tests/native-slots.py
 
 clean:
 	rm -f dis2c
