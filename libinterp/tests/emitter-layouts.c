@@ -367,10 +367,198 @@ owners(void)
 }
 
 
+/* Compare complete packed output images with their canonical staged instructions. */
+static void
+viewoutput(int bridge, int wrapped)
+{
+	uchar output[LeafMax*sizeof(u32int)+32], saved[sizeof(output)], expected[sizeof(output)];
+	u32int code[LeafMax];
+	LeafLayout a, original;
+	unsigned long long invalid[4];
+	int op, n, shift, result, i;
+
+	for(op = INOP+1; op < MAXDIS; op++){
+		if(op == IECLR)
+			continue;
+		a = baseline();
+		original = a;
+		n = bridge ? leafbridgeemit(code, LeafMax, (void*)0x10000, op, nil) :
+			leafemit(code, LeafMax, &a, op);
+		if(n == 0)
+			continue;
+		for(shift = 0; !wrapped && shift < 16; shift++){
+			memset(output, 0xa5, sizeof(output));
+			memmove(saved, output, sizeof(output));
+			memmove(expected, output, sizeof(output));
+			memmove(expected+8+shift, code, n*sizeof(*code));
+			result = bridge ? leafbridgeemit((u32int*)(output+8+shift), INT_MAX, (void*)0x10000, op, nil) :
+				leafemit((u32int*)(output+8+shift), INT_MAX, &a, op);
+			layoutcheck(result == n && !memcmp(output, expected, sizeof(output)));
+			layoutcheck(!memcmp(&a, &original, sizeof(a)));
+			memmove(output, saved, sizeof(output));
+			result = bridge ? leafbridgeemit((u32int*)(output+8+shift), n-1, (void*)0x10000, op, nil) :
+				leafemit((u32int*)(output+8+shift), n-1, &a, op);
+			layoutcheck(result == 0 && !memcmp(output, saved, sizeof(output)));
+			checks += 2;
+		}
+		invalid[0] = ~0ULL;
+		invalid[1] = ~0ULL-1;
+		invalid[2] = ~0ULL-3;
+		invalid[3] = ~0ULL-n*sizeof(*code)+1;
+		for(i = wrapped ? 3 : 0; i < nelem(invalid); i++){
+			result = bridge ? leafbridgeemit((u32int*)invalid[i], LeafMax, (void*)0x10000, op, nil) :
+				leafemit((u32int*)invalid[i], LeafMax, &a, op);
+			layoutcheck(result == 0 && !memcmp(&a, &original, sizeof(a)));
+			checks++;
+		}
+	}
+}
+
+
+/* Borrow complete layouts at every byte alignment and retain their exact native code. */
+static void
+viewlayouts(void)
+{
+	uchar packed[sizeof(LeafLayout)+8], saved[sizeof(packed)];
+	u32int output[LeafMax], expected[LeafMax];
+	LeafLayout a;
+	int op, shift, n, result;
+
+	for(op = INOP+1; op < MAXDIS; op++){
+		if(op == IECLR)
+			continue;
+		a = baseline();
+		n = leafemit(expected, LeafMax, &a, op);
+		for(shift = 0; shift < 8; shift++){
+			memset(packed, 0xa5, sizeof(packed));
+			memmove(packed+shift, &a, sizeof(a));
+			memmove(saved, packed, sizeof(packed));
+			memset(output, 0xa5, sizeof(output));
+			result = leafemit(output, LeafMax, (LeafLayout*)(packed+shift), op);
+			layoutcheck(result == n && !memcmp(output, expected, n*sizeof(*output)));
+			layoutcheck(leafemit(nil, LeafMax, (LeafLayout*)(packed+shift), op) == n);
+			layoutcheck(!memcmp(packed, saved, sizeof(packed)));
+			checks++;
+		}
+	}
+}
+
+
+/* Reject incomplete layout identities before any typed read or caller-output write. */
+static void
+viewbounds(void)
+{
+	unsigned long long invalid[] = {0, ~0ULL, ~0ULL-1, ~0ULL-sizeof(LeafLayout)+1};
+	u32int output[LeafMax], saved[LeafMax];
+	int op, i;
+
+	for(op = INOP+1; op < MAXDIS; op++){
+		if(op == IECLR)
+			continue;
+		for(i = 0; i < nelem(invalid); i++){
+			memset(output, 0xa5, sizeof(output));
+			memmove(saved, output, sizeof(output));
+			layoutcheck(leafemit(nil, LeafMax, (LeafLayout*)invalid[i], op) == 0);
+			layoutcheck(leafemit(output, LeafMax, (LeafLayout*)invalid[i], op) == 0);
+			layoutcheck(!memcmp(output, saved, sizeof(output)));
+			checks++;
+		}
+		layoutcheck(leafemit(output, 0, (LeafLayout*)1, op) == 0);
+		layoutcheck(leafemit(output, -1, (LeafLayout*)1, op) == 0);
+		checks += 2;
+	}
+}
+
+
+/* Freeze metadata before publication even when packed input and output views overlap. */
+static void
+viewaliases(void)
+{
+	uchar storage[sizeof(LeafLayout)+LeafMax*sizeof(u32int)+32], expected[sizeof(storage)];
+	u32int code[LeafMax];
+	LeafLayout a;
+	int op, input, output, n;
+
+	for(op = INOP+1; op < MAXDIS; op++){
+		if(op == IECLR)
+			continue;
+		a = baseline();
+		n = leafemit(code, LeafMax, &a, op);
+		if(n == 0)
+			continue;
+		for(input = 0; input < 8; input++)
+		for(output = 0; output < 8; output++){
+			memset(storage, 0xa5, sizeof(storage));
+			memmove(storage+8+input, &a, sizeof(a));
+			memmove(expected, storage, sizeof(storage));
+			memmove(expected+8+output, code, n*sizeof(*code));
+			layoutcheck(leafemit((u32int*)(storage+8+output), n,
+				(LeafLayout*)(storage+8+input), op) == n);
+			layoutcheck(!memcmp(storage, expected, sizeof(storage)));
+			checks++;
+		}
+	}
+}
+
+
+/* Dump deterministic opcode images for byte-for-byte parent/current comparison. */
+static void
+viewcanonical(void)
+{
+	u32int code[LeafMax], bridge[LeafMax];
+	LeafLayout a;
+	int op, n, m, i;
+
+	for(op = INOP+1; op < MAXDIS; op++){
+		if(op == IECLR)
+			continue;
+		a = baseline();
+		n = leafemit(code, LeafMax, &a, op);
+		m = leafbridgeemit(bridge, LeafMax, (void*)0x10000, op, nil);
+		printf("CANONICAL %d %d ", op, n);
+		for(i = 0; i < n*sizeof(*code); i++)
+			printf("%02x", ((uchar*)code)[i]);
+		printf(" %d ", m);
+		for(i = 0; i < m*sizeof(*bridge); i++)
+			printf("%02x", ((uchar*)bridge)[i]);
+		printf("\n");
+		checks++;
+	}
+}
+
+
+/* Isolate packed output, metadata and numeric-span parent-source probes. */
+static void
+views(void)
+{
+	char *selected;
+
+	selected = getenv("EMIT_LAYOUT_VIEW_CASE");
+	if(selected != nil && !strcmp(selected, "canonical"))
+		viewcanonical();
+	if(selected != nil && !strcmp(selected, "wrap"))
+		viewoutput(0, 1);
+	if(selected != nil && !strcmp(selected, "bridgewrap"))
+		viewoutput(1, 1);
+	if(selected == nil || !strcmp(selected, "output"))
+		viewoutput(0, 0);
+	if(selected == nil || !strcmp(selected, "bridge"))
+		viewoutput(1, 0);
+	if(selected == nil || !strcmp(selected, "layout"))
+		viewlayouts();
+	if(selected == nil || !strcmp(selected, "bounds"))
+		viewbounds();
+	if(selected == nil || !strcmp(selected, "alias"))
+		viewaliases();
+}
+
+
 /* Exercise shared Array layout rules and the complete priority leaf opcode set. */
 int
 main(void)
 {
+	if(!getenv("EMIT_LAYOUT_CASE") || !strcmp(getenv("EMIT_LAYOUT_CASE"), "views"))
+		views();
 	if(!getenv("EMIT_LAYOUT_CASE") || !strcmp(getenv("EMIT_LAYOUT_CASE"), "owners"))
 		owners();
 	if(!getenv("EMIT_LAYOUT_CASE") || !strcmp(getenv("EMIT_LAYOUT_CASE"), "callbacks"))

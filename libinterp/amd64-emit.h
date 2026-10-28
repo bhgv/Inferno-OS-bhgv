@@ -2634,7 +2634,7 @@ leafbridgeemit(u32int *out, int cap, void *executor, int op, void *fast)
 {
 	X64Buf b;
 	unsigned long long entry, native;
-	int i, n;
+	int n;
 
 	entry = (unsigned long long)executor;
 	native = (unsigned long long)fast;
@@ -2652,11 +2652,7 @@ leafbridgeemit(u32int *out, int cap, void *executor, int op, void *fast)
 	n = b.n/4;
 	if(n > cap || b.n > sizeof(b.bytes))
 		return 0;
-	if(out != nil)
-		for(i = 0; i < n; i++)
-			out[i] = (u32int)b.bytes[i*4] | (u32int)b.bytes[i*4+1]<<8 |
-				(u32int)b.bytes[i*4+2]<<16 | (u32int)b.bytes[i*4+3]<<24;
-	return n;
+	return leafcodecopy(out, cap, b.bytes, n);
 }
 
 
@@ -2666,12 +2662,16 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 {
 	X64Buf b;
 	LeafOp p;
-	int i, patch, n, empty, other, done, scale, loop, equal, fallback;
+	LeafLayout layout;
+	int patch, n, empty, other, done, scale, loop, equal, fallback;
 	static uchar arithmetic[] = {0x01, 0x29, 0, 0x21, 0x09, 0x31};
 	static uchar inverse[] = {0x75, 0x74, 0x7d, 0x7f, 0x7e, 0x7c};
 	static uchar realinverse[] = {0x75, 0x74, 0x73, 0x77, 0x76, 0x72};
 
-	if(cap <= 0 || (abi->wordbytes != 4 && abi->wordbytes != 8) ||
+	if(cap <= 0 || !leaflayoutcopy(&layout, abi))
+		return 0;
+	abi = &layout;
+	if((abi->wordbytes != 4 && abi->wordbytes != 8) ||
 	   abi->pc < 0 || abi->s < 0 || abi->d < 0 || abi->m < 0 ||
 	   !leafop(&p, op, abi->wordbytes)) return 0;
 	b.n = 0;
@@ -3460,8 +3460,5 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 	while(b.n%4 != 0) x64byte(&b, 0x90);
 	n = b.n/4;
 	if(b.n > sizeof(b.bytes) || n > cap) return 0;
-	if(out != nil) for(i = 0; i < n; i++)
-		out[i] = (u32int)b.bytes[i*4] | (u32int)b.bytes[i*4+1]<<8 |
-			(u32int)b.bytes[i*4+2]<<16 | (u32int)b.bytes[i*4+3]<<24;
-	return n;
+	return leafcodecopy(out, cap, b.bytes, n);
 }

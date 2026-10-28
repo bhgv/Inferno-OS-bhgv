@@ -44,6 +44,40 @@ struct LeafLayout {
 typedef struct LeafOp LeafOp;
 
 
+/* Snapshot a complete borrowed layout before accessing possibly packed metadata. */
+static int
+leaflayoutcopy(LeafLayout *copy, const void *source)
+{
+	unsigned long long address;
+
+	address = (unsigned long long)source;
+	if(source == nil || address > ~0ULL-sizeof(*copy))
+		return 0;
+	memmove(copy, source, sizeof(*copy));
+	return 1;
+}
+
+
+/* Publish staged bytes only after the entire native destination span fits. */
+static int
+leafcodecopy(void *out, int cap, const void *code, int words)
+{
+	unsigned long long address, bytes;
+
+	if(words <= 0 || words > cap)
+		return 0;
+	if(out == nil)
+		return words;
+	address = (unsigned long long)out;
+	bytes = (unsigned long long)words*sizeof(u32int);
+	if(address > ~0ULL-bytes)
+		return 0;
+	/* Copies, unlike typed stores, also permit packed caller output buffers. */
+	memmove(out, code, bytes);
+	return words;
+}
+
+
 /* Bound complete native Array fields before testing whether their spans overlap. */
 static int
 leafbytearraylayout(LeafLayout *a)

@@ -2236,7 +2236,7 @@ leafbridgeemit(u32int *out, int cap, void *executor, int op, void *fast)
 {
 	A64Buf b;
 	unsigned long long entry, native;
-	int half, i;
+	int half;
 
 	entry = (unsigned long long)executor;
 	native = (unsigned long long)fast;
@@ -2254,10 +2254,7 @@ leafbridgeemit(u32int *out, int cap, void *executor, int op, void *fast)
 	a64put(&b, 0xd61f0200U); // br x16: LR remains the original C caller's return address.
 	if(b.n > cap || b.n > LeafMax)
 		return 0;
-	if(out != nil)
-		for(i = 0; i < b.n; i++)
-			out[i] = b.code[i];
-	return b.n;
+	return leafcodecopy(out, cap, b.code, b.n);
 }
 
 
@@ -2267,13 +2264,17 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 {
 	A64Buf b;
 	LeafOp p;
-	int i, empty, other, done, scale, limit, loop, patch, equal, fallback;
+	LeafLayout layout;
+	int empty, other, done, scale, limit, loop, patch, equal, fallback;
 	u32int width;
 	static u32int arithmetic[] = {0x0b000000, 0x4b000000, 0x1b007c00,
 		0x0a000000, 0x2a000000, 0x4a000000};
 	static int inverse[] = {1, 0, 10, 12, 13, 11};
 
-	if(cap <= 0 || (abi->wordbytes != 4 && abi->wordbytes != 8) ||
+	if(cap <= 0 || !leaflayoutcopy(&layout, abi))
+		return 0;
+	abi = &layout;
+	if((abi->wordbytes != 4 && abi->wordbytes != 8) ||
 	   abi->pc < 0 || abi->s < 0 || abi->d < 0 || abi->m < 0 ||
 	   abi->pc > 32760 || abi->s > 32760 || abi->d > 32760 || abi->m > 32760 ||
 	   (abi->pc|abi->s|abi->d|abi->m)%8 != 0 ||
@@ -2969,6 +2970,5 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		return 0; /* A new classifier kind must never silently become a native no-op. */
 	a64put(&b, 0x52800020); a64put(&b, 0xd65f03c0);
 	if(b.n > LeafMax || b.n > cap) return 0;
-	if(out != nil) for(i = 0; i < b.n; i++) out[i] = b.code[i];
-	return b.n;
+	return leafcodecopy(out, cap, b.code, b.n);
 }
