@@ -25,3 +25,19 @@ runevseprint(Rune *buf, Rune *e, char *fmt, va_list args)
 	return f.to;
 }
 
+
+
+/* Check a Rune count before constructing the bounded endpoint. */
+int
+runevsnprint(Rune *buf, int len, char *fmt, va_list args)
+{
+	Rune *end;
+
+	if(len <= 0 || buf == nil || (uintptr)buf%sizeof(Rune) ||
+	   (uintptr)len > ((uintptr)-1-(uintptr)buf)/sizeof(Rune))
+		return -1;
+	end = runevseprint(buf, buf+len, fmt, args);
+	if(end == nil)
+		return -1;
+	return end-buf;
+}

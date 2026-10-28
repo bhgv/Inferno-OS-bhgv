@@ -308,6 +308,74 @@ runes(void)
 }
 
 
+/* Check moving Rune growth, Unicode counts, bounded wrappers and each allocation failure. */
+static void
+runeallocated(void)
+{
+	Rune *result, bounded[8];
+	char text[4097];
+	Fmt f, saved;
+	int length, i, count, total, failure;
+
+	memset(text, 'x', sizeof(text)-1);
+	text[sizeof(text)-1] = 0;
+	for(length = 0; length <= 4096; length++){
+		text[length] = 0;
+		reset(0);
+		count = -1;
+		result = runesmprint("%s%s%n", text, "\xe2\x82\xac", &count);
+		check(result == owner && result != nil && count == length+1);
+		for(i = 0; i < length; i++)
+			check(result[i] == 'x');
+		check(result[length] == 0x20ac && result[length+1] == 0);
+		ownedfree(result);
+		text[length] = 'x';
+		cases++;
+	}
+	text[4096] = 0;
+	reset(0);
+	result = runesmprint("%s", text);
+	check(result != nil);
+	total = attempts;
+	ownedfree(result);
+	for(failure = 1; failure <= total; failure++){
+		reset(failure);
+		check(runesmprint("%s", text) == nil && owner == nil);
+		cases++;
+	}
+	for(length = 1; length <= nelem(bounded); length++){
+		check(runesnprint(bounded, length, "ab\xe2\x82\xac") == (length < 4 ? length-1 : 3));
+		check(bounded[length < 4 ? length-1 : 3] == 0);
+		cases++;
+	}
+	reset(0);
+	check(runefmtstrinit(&f) == 0);
+	saved = f;
+	f.to = (char*)f.start+1;
+	check(runefmtstrflush(&f) == nil);
+	f = saved;
+	check(runefmtstrflush(&f) == owner && *(Rune*)owner == 0);
+	ownedfree(owner);
+	check(runefmtstrinit(nil) == -1 && runefmtstrflush(nil) == nil);
+	check(runesnprint(bounded, 0, "%Z") == -1);
+	reset(0);
+	mode = 1;
+	check(runesmprint("%Z") == nil && owner == nil && invoked == 1);
+	cases += 4;
+	reset(0);
+	mode = 2;
+	check(runesmprint("%Z") == nil && owner == nil && invoked == 1);
+	reset(0);
+	check(runesmprint(nil) == nil && attempts == 0);
+	check(runesmprint((char*)-1) == nil && attempts == 0);
+	check(runesnprint(nil, 2, "%Z") == -1 && invoked == 0);
+	check(runesnprint((Rune*)-1, 2, "%Z") == -1 && invoked == 0);
+	check(runesnprint((Rune*)((uintptr)bounded+1), 2, "%Z") == -1 && invoked == 0);
+	check(runesnprint((Rune*)((uintptr)-1-3), INT_MAX, "%Z") == -1 && invoked == 0);
+	cases += 7;
+}
+
+
 /* Isolate before/after probes without replacing the real formatter engine. */
 int
 main(int argc, char **argv)
@@ -321,6 +389,8 @@ main(int argc, char **argv)
 		views();
 	else if(!strcmp(argv[1], "flush"))
 		flushes();
+	else if(!strcmp(argv[1], "runealloc"))
+		runeallocated();
 	else
 		runes();
 	check(owner == nil);

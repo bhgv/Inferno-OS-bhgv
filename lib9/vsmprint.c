@@ -114,3 +114,83 @@ vsmprint(char *fmt, va_list args)
 		free(f.start);
 	return result;
 }
+
+
+/* Grow an owned Rune buffer in Rune units, retaining its cursor across realloc. */
+static int
+runeStrGrow(Fmt *f)
+{
+	uintptr start, capacity, used, next;
+	Rune *grown;
+
+	if(f == nil || f->runes != 1 || f->start == nil)
+		return 0;
+	start = (uintptr)f->start;
+	capacity = (uintptr)f->farg;
+	if(capacity == 0 || capacity >= 0x7fffffff/sizeof(Rune) ||
+	   start%sizeof(Rune) || start > (uintptr)-1-capacity*sizeof(Rune) ||
+	   (uintptr)f->stop != start+(capacity-1)*sizeof(Rune) ||
+	   (uintptr)f->to < start || (uintptr)f->to > (uintptr)f->stop ||
+	   ((uintptr)f->to-start)%sizeof(Rune))
+		return 0;
+	used = ((uintptr)f->to-start)/sizeof(Rune);
+	next = capacity > (0x7fffffff/sizeof(Rune))/2 ?
+		0x7fffffff/sizeof(Rune) : capacity*2;
+	grown = realloc(f->start, next*sizeof(Rune));
+	if(grown == nil){
+		free(f->start);
+		f->start = nil;
+		f->to = nil;
+		f->stop = nil;
+		f->farg = nil;
+		return 0;
+	}
+	f->start = grown;
+	f->to = grown+used;
+	f->stop = grown+next-1;
+	f->farg = (void*)next;
+	return 1;
+}
+
+
+/* Initialize an allocated Rune formatter with a reserved terminator slot. */
+int
+runefmtstrinit(Fmt *f)
+{
+	if(f == nil)
+		return -1;
+	memset(f, 0, sizeof(*f));
+	f->runes = 1;
+	f->start = malloc(32*sizeof(Rune));
+	if(f->start == nil)
+		return -1;
+	f->to = f->start;
+	f->stop = (Rune*)f->start+31;
+	f->farg = (void*)(uintptr)32;
+	f->flush = runeStrGrow;
+	return 0;
+}
+
+
+/* Format directly in Rune mode so counts and custom conversions retain their semantics. */
+Rune*
+runevsmprint(char *fmt, va_list args)
+{
+	Fmt f;
+	Rune *result;
+	int n;
+
+	if(fmt == nil || (uintptr)fmt == (uintptr)-1 || runefmtstrinit(&f) < 0)
+		return nil;
+	va_copy(f.args, args);
+	n = dofmt(&f, fmt);
+	va_end(f.args);
+	if(n < 0){
+		free(f.start);
+		return nil;
+	}
+	result = runefmtstrflush(&f);
+	if(result == nil)
+		free(f.start);
+	return result;
+}

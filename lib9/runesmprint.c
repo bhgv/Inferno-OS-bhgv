@@ -1,5 +1,7 @@
 #include "lib9.h"
 
+
+/* Return an owned Rune string through the shared variadic allocator. */
 Rune*
 runesmprint(char *fmt, ...)
 {

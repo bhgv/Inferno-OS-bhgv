@@ -25,3 +25,18 @@ fmtstrflush(Fmt *f)
 	*(char*)f->to = '\0';
 	return f->start;
 }
+
+
+/* Terminate an aligned Rune view without transferring or freeing caller ownership. */
+Rune*
+runefmtstrflush(Fmt *f)
+{
+	if(f == nil || f->runes != 1 || f->start == nil || f->to == nil || f->stop == nil ||
+	   (uintptr)f->start == (uintptr)-1 ||
+	   (uintptr)f->start%sizeof(Rune) || (uintptr)f->to%sizeof(Rune) ||
+	   (uintptr)f->stop%sizeof(Rune) ||
+	   (uintptr)f->to < (uintptr)f->start || (uintptr)f->to > (uintptr)f->stop)
+		return nil;
+	*(Rune*)f->to = 0;
+	return f->start;
+}

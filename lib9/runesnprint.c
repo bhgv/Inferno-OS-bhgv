@@ -1,5 +1,7 @@
 #include "lib9.h"
 
+
+/* Format a bounded Rune string through the checked variadic core. */
 int
 runesnprint(Rune *buf, int len, char *fmt, ...)
 {
