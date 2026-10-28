@@ -443,72 +443,138 @@ Sys_unmount(void *fp)
 	acquire();
 }
 
-/* Clamp full VM counts before narrowing and before releasing the interpreter. */
+
+/* Capture a borrowed byte-array view without typed reads from packed headers. */
 static int
-sysiocount(Array *a, WORD count)
+sysiocount(Array *a, WORD count, uchar **data)
 {
-	if(a == nil || D2H(a)->t != &Tarray || a->t != &Tbyte ||
-	   a->len < 0 || (uvlong)a->len > 0x7fffffff || (a->len != 0 && a->data == nil)){
-		seterror(Ebadarg);
-		return -1;
-	}
-	if(count > a->len)
-		count = a->len;
+	Heap owner;
+	Array view;
+	uintptr address;
+
+	address = (uintptr)a;
+	if(a == nil || address <= sizeof(Heap) ||
+	   address > (uintptr)-1-sizeof(view))
+		goto Invalid;
+	memmove(&owner, (uchar*)a-sizeof(Heap), sizeof(owner));
+	if(owner.t != &Tarray)
+		goto Invalid;
+	memmove(&view, a, sizeof(view));
+	if(view.t != &Tbyte || view.len < 0 ||
+	   (uvlong)view.len > 0x7fffffff ||
+	   (view.len != 0 && (view.data == nil || view.data == H ||
+	   (uintptr)view.data > (uintptr)-1-(uintptr)view.len)))
+		goto Invalid;
+	if(count > view.len)
+		count = view.len;
+	*data = view.data;
 	return (int)count;
+
+Invalid:
+	seterror(Ebadarg);
+	return -1;
 }
 
-/* Validate native I/O spans and copy results without assuming VM slot alignment. */
+
+/* Validate complete frame and result spans before touching native I/O operands. */
+static void
+sysioframe(void *fp, void *copy, uintptr size, uintptr retoffset)
+{
+	void *ret;
+
+	if(fp == nil || fp == H)
+		error(exNilref);
+	if((uintptr)fp > (uintptr)-1-size)
+		error(exBounds);
+	memmove(copy, fp, size);
+	memmove(&ret, (uchar*)copy+retoffset, sizeof(ret));
+	if(ret == nil || ret == H)
+		error(exNilref);
+	if((uintptr)ret > (uintptr)-1-sizeof(WORD))
+		error(exBounds);
+}
+
+
+/* Capture a packed FD number and reject narrowing before releasing the VM. */
+static int
+sysiofd(Sys_FD *handle, int *descriptor)
+{
+	WORD number;
+
+	if(handle == (Sys_FD*)H)
+		number = -1;
+	else {
+		if(handle == nil)
+			error(exNilref);
+		if((uintptr)handle > (uintptr)-1-(O(Sys_FD, fd)+sizeof(number)))
+			error(exBounds);
+		memmove(&number, (uchar*)handle+O(Sys_FD, fd), sizeof(number));
+	}
+	if(!sysnativeint(number)) {
+		seterror(Ebadarg);
+		return 0;
+	}
+	*descriptor = (int)number;
+	return 1;
+}
+
+
+/* Snapshot I/O operands before callbacks and publish to the original result cell. */
 void
 Sys_read(void *fp)
 {
-	int n;
-	F_Sys_read *f;
+	F_Sys_read local, *f;
+	uchar *data;
+	int fd, n;
 	WORD result;
 
-	f = fp;
+	sysioframe(fp, &local, sizeof(local), O(F_Sys_read, ret));
+	f = &local;
 	if(f->buf == (Array*)H || f->n < 0) {
 		result = 0;
 		memmove(f->ret, &result, sizeof(result));
-		return;		
+		return;
 	}
-	n = sysiocount(f->buf, f->n);
-	if(n < 0){
+	n = sysiocount(f->buf, f->n, &data);
+	if(n < 0 || !sysiofd(f->fd, &fd)) {
 		result = -1;
 		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
 
 	release();
-	result = kread(fdchk(f->fd), f->buf->data, n);
+	result = kread(fd, data, n);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
-/* Validate native I/O spans and copy results without assuming VM slot alignment. */
+
+/* Snapshot I/O operands before callbacks and publish to the original result cell. */
 void
 Sys_readn(void *fp)
 {
-	int fd, m, n, t;
-	F_Sys_readn *f;
+	F_Sys_readn local, *f;
+	uchar *data;
+	int fd, n, m, t;
 	WORD result;
 
-	f = fp;
+	sysioframe(fp, &local, sizeof(local), O(F_Sys_readn, ret));
+	f = &local;
 	if(f->buf == (Array*)H || f->n < 0) {
 		result = 0;
 		memmove(f->ret, &result, sizeof(result));
-		return;		
+		return;
 	}
-	n = sysiocount(f->buf, f->n);
-	if(n < 0){
+	n = sysiocount(f->buf, f->n, &data);
+	if(n < 0 || !sysiofd(f->fd, &fd)) {
 		result = -1;
 		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
-	fd = fdchk(f->fd);
 
 	release();
 	for(t = 0; t < n; t += m){
-		m = kread(fd, (char*)f->buf->data+t, n-t);
+		m = kread(fd, data+t, n-t);
 		if(m <= 0){
 			if(t == 0)
 				t = m;
@@ -520,29 +586,32 @@ Sys_readn(void *fp)
 	acquire();
 }
 
-/* Validate native I/O spans and copy results without assuming VM slot alignment. */
+
+/* Snapshot I/O operands before callbacks and publish to the original result cell. */
 void
 Sys_pread(void *fp)
 {
-	int n;
-	F_Sys_pread *f;
+	F_Sys_pread local, *f;
+	uchar *data;
+	int fd, n;
 	WORD result;
 
-	f = fp;
+	sysioframe(fp, &local, sizeof(local), O(F_Sys_pread, ret));
+	f = &local;
 	if(f->buf == (Array*)H || f->n < 0) {
 		result = 0;
 		memmove(f->ret, &result, sizeof(result));
-		return;		
+		return;
 	}
-	n = sysiocount(f->buf, f->n);
-	if(n < 0){
+	n = sysiocount(f->buf, f->n, &data);
+	if(n < 0 || !sysiofd(f->fd, &fd)) {
 		result = -1;
 		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
 
 	release();
-	result = kpread(fdchk(f->fd), f->buf->data, n, f->off);
+	result = kpread(fd, data, n, f->off);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
@@ -561,56 +630,62 @@ Sys_chdir(void *fp)
 	acquire();
 }
 
-/* Validate native I/O spans and copy results without assuming VM slot alignment. */
+
+/* Snapshot I/O operands before callbacks and publish to the original result cell. */
 void
 Sys_write(void *fp)
 {
-	int n;
-	F_Sys_write *f;
+	F_Sys_write local, *f;
+	uchar *data;
+	int fd, n;
 	WORD result;
 
-	f = fp;
+	sysioframe(fp, &local, sizeof(local), O(F_Sys_write, ret));
+	f = &local;
 	if(f->buf == (Array*)H || f->n < 0) {
 		result = 0;
 		memmove(f->ret, &result, sizeof(result));
-		return;		
+		return;
 	}
-	n = sysiocount(f->buf, f->n);
-	if(n < 0){
+	n = sysiocount(f->buf, f->n, &data);
+	if(n < 0 || !sysiofd(f->fd, &fd)) {
 		result = -1;
 		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
 
 	release();
-	result = kwrite(fdchk(f->fd), f->buf->data, n);
+	result = kwrite(fd, data, n);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
-/* Validate native I/O spans and copy results without assuming VM slot alignment. */
+
+/* Snapshot I/O operands before callbacks and publish to the original result cell. */
 void
 Sys_pwrite(void *fp)
 {
-	int n;
-	F_Sys_pwrite *f;
+	F_Sys_pwrite local, *f;
+	uchar *data;
+	int fd, n;
 	WORD result;
 
-	f = fp;
+	sysioframe(fp, &local, sizeof(local), O(F_Sys_pwrite, ret));
+	f = &local;
 	if(f->buf == (Array*)H || f->n < 0) {
 		result = 0;
 		memmove(f->ret, &result, sizeof(result));
-		return;		
+		return;
 	}
-	n = sysiocount(f->buf, f->n);
-	if(n < 0){
+	n = sysiocount(f->buf, f->n, &data);
+	if(n < 0 || !sysiofd(f->fd, &fd)) {
 		result = -1;
 		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
 
 	release();
-	result = kpwrite(fdchk(f->fd), f->buf->data, n, f->off);
+	result = kpwrite(fd, data, n, f->off);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }

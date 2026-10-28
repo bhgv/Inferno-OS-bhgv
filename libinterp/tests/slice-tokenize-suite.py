@@ -136,6 +136,7 @@ CORE = [
     'libinterp/tests/sys-print-spans.py',
     'libinterp/tests/sys-print-public.py',
     'libinterp/tests/sys-print-io.py',
+    'libinterp/tests/sys-io.py',
     'libinterp/tests/sys-utf.py',
     'libinterp/tests/sys-utf-spans.py',
     'libinterp/tests/heap-clones.py',
