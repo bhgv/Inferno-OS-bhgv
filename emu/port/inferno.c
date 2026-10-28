@@ -1458,17 +1458,23 @@ Sys_export(void *fp)
 	acquire();
 }
 
-/* Build both channels before registration, releasing partial results on every error. */
+
+/* Capture the result owner and inputs before constructing or registering either channel. */
 void
 Sys_file2chan(void *fp)
 {
-	F_Sys_file2chan *f;
-	volatile struct { Sys_FileIO *file; int released; } result;
+	F_Sys_file2chan local, *f;
+	volatile struct {
+		Sys_FileIO *file; // Partial channel pair owned until publication.
+		int released; // Restore VM ownership when registration raises.
+	} result;
 	Sys_FileIO *old, *published;
 	char *directory, *name, saved[ERRMAX];
 	int status;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_file2chan, ret), sizeof(*local.ret));
+	f = &local;
+	old = sysresultowner(f->ret);
 	/* String conversion can allocate and must run while the VM is acquired. */
 	directory = string2c(f->dir);
 	name = string2c(f->file);
@@ -1496,7 +1502,6 @@ Sys_file2chan(void *fp)
 		destroy(result.file);
 		result.file = H;
 	}
-	memmove(&old, f->ret, sizeof(old));
 	published = result.file;
 	memmove(f->ret, &published, sizeof(published));
 	destroy(old);
