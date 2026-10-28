@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'lib9/tests/allocated-format.py',
     'libbio/tests/boundaries.py',
     'libbio/tests/print-state.py',
     'libbio/tests/refill-windows.py',

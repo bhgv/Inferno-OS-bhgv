@@ -13,10 +13,14 @@
  */
 #include "lib9.h"
 
+
+/* Terminate only a valid byte view, retaining caller ownership when validation fails. */
 char*
 fmtstrflush(Fmt *f)
 {
-	if(f->start == nil)
+	if(f == nil || f->runes || f->start == nil || f->to == nil || f->stop == nil ||
+	   (uintptr)f->start == (uintptr)-1 ||
+	   (uintptr)f->to < (uintptr)f->start || (uintptr)f->to > (uintptr)f->stop)
 		return nil;
 	*(char*)f->to = '\0';
 	return f->start;
