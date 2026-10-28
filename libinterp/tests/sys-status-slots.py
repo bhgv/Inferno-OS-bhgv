@@ -30,6 +30,7 @@ with tempfile.TemporaryDirectory(prefix='sys-status-') as directory:
     for platform in ('emu','os'):
         source=Path(os.environ.get('SYS_STATUS_SOURCE',ROOT/platform/'port/inferno.c')).read_text()
         parts=[function(source,'static int\nsysnativeint(')] if 'static int\nsysnativeint(' in source else []
+        parts += [function(source, signature) for signature in ('static void\nsysstatusframe(', 'static int\nsysiofd(') if signature in source]
         parts += [function(source,'void\nSys_'+name+'(') for name in ('dup','remove','seek','unmount','chdir','mount','bind','iounit','wstat','fwstat','millisec','sleep','print','fprint','werrstr','export')]
         target=td/(platform+'.c')
         unit=(ROOT/'libinterp/tests/sys-status-slots.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))

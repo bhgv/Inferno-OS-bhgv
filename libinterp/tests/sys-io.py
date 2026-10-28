@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory(prefix='sys-io-') as directory:
     includes = ['-I'+str(root / p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
     for platform in PORTS:
         source = Path(os.environ.get('SYS_IO_SOURCE', root / (platform+'/port/inferno.c'))).read_text()
-        signatures = ['static int\nsysnativeint(', 'static int\nsysiocount(', 'static void\nsysioframe(', 'static int\nsysiofd('] + ['void\nSys_'+name+'(' for name in ('read','readn','write','pread','pwrite')]
+        signatures = ['static void\nsysstatusframe(', 'static int\nsysnativeint(', 'static int\nsysiocount(', 'static void\nsysioframe(', 'static int\nsysiofd('] + ['void\nSys_'+name+'(' for name in ('read','readn','write','pread','pwrite')]
         unit = (root / 'libinterp/tests/sys-io.c').read_text().replace('IMPLEMENTATION', '\n'.join(function(source, sig) for sig in signatures if sig in source))
         target = td / (platform+'.c')
         target.write_text(unit)

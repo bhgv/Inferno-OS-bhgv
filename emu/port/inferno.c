@@ -233,14 +233,67 @@ syserr(char *s, char *es, Prog *p)
 	return s + strlen(s);
 }
 
-/* Publish a complete scalar result without assuming VM return-slot alignment. */
+
+/* Reject high VM argument bits before a native int parameter can silently wrap. */
+static int
+sysnativeint(WORD value)
+{
+	return value >= -0x7fffffff-1 && value <= 0x7fffffff;
+}
+
+
+/* Capture a packed FD number and reject narrowing before releasing the VM. */
+static int
+sysiofd(Sys_FD *handle, int *descriptor)
+{
+	WORD number;
+
+	if(handle == (Sys_FD*)H)
+		number = -1;
+	else {
+		if(handle == nil)
+			error(exNilref);
+		if((uintptr)handle > (uintptr)-1-(O(Sys_FD, fd)+sizeof(number)))
+			error(exBounds);
+		memmove(&number, (uchar*)handle+O(Sys_FD, fd), sizeof(number));
+	}
+	if(!sysnativeint(number)) {
+		seterror(Ebadarg);
+		return 0;
+	}
+	*descriptor = (int)number;
+	return 1;
+}
+
+
+/* Copy fixed builtin operands and validate their complete original result cell. */
+static void
+sysstatusframe(void *fp, void *copy, uintptr size, uintptr retoffset, uintptr resultbytes)
+{
+	void *ret;
+
+	if(fp == nil || fp == H)
+		error(exNilref);
+	if((uintptr)fp > (uintptr)-1-size)
+		error(exBounds);
+	memmove(copy, fp, size);
+	memmove(&ret, (uchar*)copy+retoffset, sizeof(ret));
+	if(ret == nil || ret == H)
+		error(exNilref);
+	if((uintptr)ret > (uintptr)-1-resultbytes)
+		error(exBounds);
+}
+
+
+/* Capture fixed operands before callbacks and retain the original scalar result cell. */
 void
 Sys_millisec(void *fp)
 {
-	F_Sys_millisec *f;
+	F_Sys_millisec local, *f;
 	WORD result;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_millisec, ret), sizeof(*local.ret));
+	f = &local;
 	result = osmillisec();
 	memmove(f->ret, &result, sizeof(result));
 }
@@ -314,12 +367,6 @@ Sys_pipe(void *fp)
 	memmove(f->ret, &outcome, sizeof(outcome));
 }
 
-/* Reject high VM argument bits before a native int parameter can silently wrap. */
-static int
-sysnativeint(WORD value)
-{
-	return value >= -0x7fffffff-1 && value <= 0x7fffffff;
-}
 
 /* Clear an unaligned owner slot before finalization and publish only a constructed FD. */
 void
@@ -349,14 +396,16 @@ Sys_fildes(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
-/* Capture the native status before copying into a possibly unaligned VM return slot. */
+
+/* Capture fixed operands before callbacks and retain the original scalar result cell. */
 void
 Sys_dup(void *fp)
 {
-	F_Sys_dup *f;
+	F_Sys_dup local, *f;
 	WORD result;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_dup, ret), sizeof(*local.ret));
+	f = &local;
 	if(!sysnativeint(f->old) || !sysnativeint(f->new)){
 		seterror(Ebadarg);
 		result = -1;
@@ -392,48 +441,60 @@ Sys_create(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
-/* Capture the native status before copying into a possibly unaligned VM return slot. */
+
+/* Capture fixed operands before callbacks and retain the original scalar result cell. */
 void
 Sys_remove(void *fp)
 {
-	F_Sys_remove *f;
+	F_Sys_remove local, *f;
 	WORD result;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_remove, ret), sizeof(*local.ret));
+	f = &local;
 	release();
 	result = kremove(string2c(f->s));
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
-/* Capture the native status before copying into a possibly unaligned VM return slot. */
+
+/* Capture fixed operands before callbacks and retain the original scalar result cell. */
 void
 Sys_seek(void *fp)
 {
-	F_Sys_seek *f;
+	F_Sys_seek local, *f;
 	LONG result;
+	int fd;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_seek, ret), sizeof(*local.ret));
+	f = &local;
 	if(!sysnativeint(f->start)){
 		seterror(Ebadarg);
 		result = -1;
 		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
+	if(!sysiofd(f->fd, &fd)) {
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
+		return;
+	}
 	release();
-	result = kseek(fdchk(f->fd), f->off, f->start);
+	result = kseek(fd, f->off, f->start);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
-/* Capture the native status before copying into a possibly unaligned VM return slot. */
+
+/* Capture fixed operands before callbacks and retain the original scalar result cell. */
 void
 Sys_unmount(void *fp)
 {
-	F_Sys_unmount *f;
+	F_Sys_unmount local, *f;
 	WORD result;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_unmount, ret), sizeof(*local.ret));
+	f = &local;
 	release();
 	result = kunmount(string2c(f->s1), string2c(f->s2));
 	memmove(f->ret, &result, sizeof(result));
@@ -477,42 +538,7 @@ Invalid:
 static void
 sysioframe(void *fp, void *copy, uintptr size, uintptr retoffset)
 {
-	void *ret;
-
-	if(fp == nil || fp == H)
-		error(exNilref);
-	if((uintptr)fp > (uintptr)-1-size)
-		error(exBounds);
-	memmove(copy, fp, size);
-	memmove(&ret, (uchar*)copy+retoffset, sizeof(ret));
-	if(ret == nil || ret == H)
-		error(exNilref);
-	if((uintptr)ret > (uintptr)-1-sizeof(WORD))
-		error(exBounds);
-}
-
-
-/* Capture a packed FD number and reject narrowing before releasing the VM. */
-static int
-sysiofd(Sys_FD *handle, int *descriptor)
-{
-	WORD number;
-
-	if(handle == (Sys_FD*)H)
-		number = -1;
-	else {
-		if(handle == nil)
-			error(exNilref);
-		if((uintptr)handle > (uintptr)-1-(O(Sys_FD, fd)+sizeof(number)))
-			error(exBounds);
-		memmove(&number, (uchar*)handle+O(Sys_FD, fd), sizeof(number));
-	}
-	if(!sysnativeint(number)) {
-		seterror(Ebadarg);
-		return 0;
-	}
-	*descriptor = (int)number;
-	return 1;
+	sysstatusframe(fp, copy, size, retoffset, sizeof(WORD));
 }
 
 
@@ -613,14 +639,16 @@ Sys_pread(void *fp)
 	acquire();
 }
 
-/* Capture the native status before copying into a possibly unaligned VM return slot. */
+
+/* Capture fixed operands before callbacks and retain the original scalar result cell. */
 void
 Sys_chdir(void *fp)
 {
-	F_Sys_chdir *f;
+	F_Sys_chdir local, *f;
 	WORD result;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_chdir, ret), sizeof(*local.ret));
+	f = &local;
 	release();
 	result = kchdir(string2c(f->path));
 	memmove(f->ret, &result, sizeof(result));
@@ -850,34 +878,44 @@ Sys_fd2path(void *fp)
 	free(s);
 }
 
-/* Capture the native status before copying into a possibly unaligned VM return slot. */
+
+/* Capture fixed operands before callbacks and retain the original scalar result cell. */
 void
 Sys_mount(void *fp)
 {
-	F_Sys_mount *f;
+	F_Sys_mount local, *f;
 	WORD result;
+	int fd, afd;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_mount, ret), sizeof(*local.ret));
+	f = &local;
 	if(!sysnativeint(f->flags)){
 		seterror(Ebadarg);
 		result = -1;
 		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
+	if(!sysiofd(f->fd, &fd) || !sysiofd(f->afd, &afd)) {
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
+		return;
+	}
 	release();
-	result = kmount(fdchk(f->fd), fdchk(f->afd), string2c(f->on), f->flags, string2c(f->spec));
+	result = kmount(fd, afd, string2c(f->on), f->flags, string2c(f->spec));
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
 
-/* Capture the native status before copying into a possibly unaligned VM return slot. */
+
+/* Capture fixed operands before callbacks and retain the original scalar result cell. */
 void
 Sys_bind(void *fp)
 {
-	F_Sys_bind *f;
+	F_Sys_bind local, *f;
 	WORD result;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_bind, ret), sizeof(*local.ret));
+	f = &local;
 	if(!sysnativeint(f->flags)){
 		seterror(Ebadarg);
 		result = -1;
@@ -890,15 +928,17 @@ Sys_bind(void *fp)
 	acquire();
 }
 
-/* Publish a complete scalar result without assuming VM return-slot alignment. */
+
+/* Capture fixed operands before callbacks and retain the original scalar result cell. */
 void
 Sys_wstat(void *fp)
 {
 	Dir *d;
-	F_Sys_wstat *f;
+	F_Sys_wstat local, *f;
 	WORD result;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_wstat, ret), sizeof(*local.ret));
+	f = &local;
 	d = packdir(&f->d);
 	release();
 	result = kdirwstat(string2c(f->s), d);
@@ -907,18 +947,26 @@ Sys_wstat(void *fp)
 	free(d);
 }
 
-/* Publish a complete scalar result without assuming VM return-slot alignment. */
+
+/* Capture fixed operands before callbacks and retain the original scalar result cell. */
 void
 Sys_fwstat(void *fp)
 {
 	Dir *d;
-	F_Sys_fwstat *f;
+	F_Sys_fwstat local, *f;
 	WORD result;
+	int fd;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_fwstat, ret), sizeof(*local.ret));
+	f = &local;
+	if(!sysiofd(f->fd, &fd)) {
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
+		return;
+	}
 	d = packdir(&f->d);
 	release();
-	result = kdirfwstat(fdchk(f->fd), d);
+	result = kdirfwstat(fd, d);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 	free(d);
@@ -1528,16 +1576,24 @@ Sys_fversion(void *fp)
 	}
 }
 
-/* Capture the native status before copying into a possibly unaligned VM return slot. */
+
+/* Capture fixed operands before callbacks and retain the original scalar result cell. */
 void
 Sys_iounit(void *fp)
 {
-	F_Sys_iounit *f;
+	F_Sys_iounit local, *f;
 	WORD result;
+	int fd;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_iounit, ret), sizeof(*local.ret));
+	f = &local;
+	if(!sysiofd(f->fd, &fd)) {
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
+		return;
+	}
 	release();
-	result = kiounit(fdchk(f->fd));
+	result = kiounit(fd);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
