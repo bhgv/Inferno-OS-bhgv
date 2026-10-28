@@ -4172,32 +4172,113 @@ ctypeconv(Fmt *f)
 	return fmtstrcpy(f, buf);
 }
 
+/* Continuation kinds keep Type diagnostics independent of C recursion depth. */
+enum {
+	PrintArrow, // Resume after printing the arrow base.
+	PrintDot, // Resume after printing the qualified base.
+	PrintInstanceBase, // Resume after printing the instance base.
+	PrintInstanceArgument, // Resume after printing the instance argument.
+	PrintReference, // Resume after printing the referenced type.
+	PrintElement, // Resume after printing the container element.
+	PrintMappedParameter, // Resume after printing the mapped parameter.
+	PrintTupleField, // Resume after printing the tuple field.
+	PrintFunctionArgument, // Resume after printing the function argument.
+	PrintFunctionResult, // Resume after printing the function result.
+};
+
+/* A diagnostic continuation borrows Types and preserves list traversal order. */
+typedef struct TypePrint TypePrint;
+
+struct TypePrint {
+	Type *type; // Parent Type whose child is being printed.
+	Decl *decl; // Current tuple, argument or generic parameter declaration.
+	Typelist *list; // Current instantiated Type argument.
+	int resume; // Continuation following the completed child.
+};
+
+
+/* Grow the private continuation stack without modifying compiler-owned Types. */
+static void
+typeprintpush(TypePrint **work, TypePrint *local, int *used, int *capacity,
+	Type *type, Decl *decl, Typelist *list, int resume)
+{
+	TypePrint *grown, *frame;
+
+	if(*used == *capacity){
+		if(*capacity > 0x7fffffff/2/sizeof(**work))
+			fatal("type diagnostic too complex");
+		*capacity *= 2;
+		grown = allocmem(*capacity*sizeof(*grown));
+		memmove(grown, *work, *used*sizeof(*grown));
+		if(*work != local)
+			free(*work);
+		*work = grown;
+	}
+	frame = &(*work)[(*used)++];
+	frame->type = type;
+	frame->decl = decl;
+	frame->list = list;
+	frame->resume = resume;
+}
+
+
+/* Print Types with explicit continuations, stopping once the output span is full. */
 char*
 tprint(char *buf, char *end, Type *t)
 {
 	Decl *id;
+	TypePrint *work, local[32], frame;
+	int used, capacity;
 	Typelist *tl;
 
+	work = local;
+	used = 0;
+	capacity = nelem(local);
+enter:
+	id = nil;
+	tl = nil;
+	if(buf >= end)
+		goto done;
+	if(end-buf == 1){
+		*buf = 0;
+		goto done;
+	}
 	if(t == nil)
-		return buf;
-	if(t->kind >= Tend)
-		return seprint(buf, end, "kind %d", t->kind);
+		goto returned;
+	if(t->kind >= Tend){
+		buf = seprint(buf, end, "kind %d", t->kind);
+		goto returned;
+	}
 	switch(t->kind){
 	case Tarrow:
-		buf = seprint(buf, end, "%T->%s", t->tof, t->decl->sym->name);
+		typeprintpush(&work, local, &used, &capacity, t, id, tl, PrintArrow);
+		t = t->tof;
+		goto enter;
+typePrintArrow:;
+		buf = seprint(buf, end, "->%s", t->decl->sym->name);
 		break;
 	case Tdot:
-		buf = seprint(buf, end, "%T.%s", t->tof, t->decl->sym->name);
+		typeprintpush(&work, local, &used, &capacity, t, id, tl, PrintDot);
+		t = t->tof;
+		goto enter;
+typePrintDot:;
+		buf = seprint(buf, end, ".%s", t->decl->sym->name);
 		break;
 	case Tid:
 	case Tpoly:
 		buf = seprint(buf, end, "%s", t->decl->sym->name);
 		break;
 	case Tinst:
-		buf = tprint(buf, end, t->tof);
+		typeprintpush(&work, local, &used, &capacity, t, id, tl, PrintInstanceBase);
+		t = t->tof;
+		goto enter;
+typePrintInstanceBase:;
 		buf = secpy(buf ,end, "[");
 		for(tl = t->u.tlist; tl != nil; tl = tl->nxt){
-			buf = tprint(buf, end, tl->t);
+			typeprintpush(&work, local, &used, &capacity, t, id, tl, PrintInstanceArgument);
+			t = tl->t;
+			goto enter;
+typePrintInstanceArgument:;
 			if(tl->nxt != nil)
 				buf = secpy(buf, end, ", ");
 		}
@@ -4227,13 +4308,19 @@ tprint(char *buf, char *end, Type *t)
 		break;
 	case Tref:
 		buf = secpy(buf, end, "ref ");
-		buf = tprint(buf, end, t->tof);
+		typeprintpush(&work, local, &used, &capacity, t, id, tl, PrintReference);
+		t = t->tof;
+		goto enter;
+typePrintReference:;
 		break;
 	case Tchan:
 	case Tarray:
 	case Tlist:
 		buf = seprint(buf, end, "%s of ", kindname[t->kind]);
-		buf = tprint(buf, end, t->tof);
+		typeprintpush(&work, local, &used, &capacity, t, id, tl, PrintElement);
+		t = t->tof;
+		goto enter;
+typePrintElement:;
 		break;
 	case Tadtpick:
 		buf = seprint(buf, end, "%s.%s", t->decl->dot->sym->name, t->decl->sym->name);
@@ -4246,9 +4333,12 @@ tprint(char *buf, char *end, Type *t)
 		if(t->polys != nil){
 			buf = secpy(buf ,end, "[");
 			for(id = t->polys; id != nil; id = id->next){
-				if(t->u.tmap != nil)
-					buf = tprint(buf, end, valtmap(id->ty, t->u.tmap));
-				else
+				if(t->u.tmap != nil){
+					typeprintpush(&work, local, &used, &capacity, t, id, tl, PrintMappedParameter);
+					t = valtmap(id->ty, t->u.tmap);
+					goto enter;
+typePrintMappedParameter:;
+				}else
 					buf = seprint(buf, end, "%s", id->sym->name);
 				if(id->next != nil)
 					buf = secpy(buf, end, ", ");
@@ -4262,7 +4352,10 @@ tprint(char *buf, char *end, Type *t)
 	case Ttuple:
 		buf = secpy(buf, end, "(");
 		for(id = t->ids; id != nil; id = id->next){
-			buf = tprint(buf, end, id->ty);
+			typeprintpush(&work, local, &used, &capacity, t, id, tl, PrintTupleField);
+			t = id->ty;
+			goto enter;
+typePrintTupleField:;
 			if(id->next != nil)
 				buf = secpy(buf, end, ", ");
 		}
@@ -4287,7 +4380,10 @@ tprint(char *buf, char *end, Type *t)
 				buf = seprint(buf, end, "%s: ", id->sym->name);
 			if(id->implicit)
 				buf = secpy(buf, end, "self ");
-			buf = tprint(buf, end, id->ty);
+			typeprintpush(&work, local, &used, &capacity, t, id, tl, PrintFunctionArgument);
+			t = id->ty;
+			goto enter;
+typePrintFunctionArgument:;
 			if(id->next != nil)
 				buf = secpy(buf, end, ", ");
 		}
@@ -4297,7 +4393,10 @@ tprint(char *buf, char *end, Type *t)
 			buf = secpy(buf, end, "*");
 		if(t->tof != nil && t->tof->kind != Tnone){
 			buf = secpy(buf, end, "): ");
-			buf = tprint(buf, end, t->tof);
+			typeprintpush(&work, local, &used, &capacity, t, id, tl, PrintFunctionResult);
+			t = t->tof;
+			goto enter;
+typePrintFunctionResult:;
 			break;
 		}
 		buf = secpy(buf, end, ")");
@@ -4306,9 +4405,33 @@ tprint(char *buf, char *end, Type *t)
 		yyerror("tprint: unknown type kind %d", t->kind);
 		break;
 	}
+returned:
+	if(used == 0)
+		goto done;
+	frame = work[--used];
+	t = frame.type;
+	id = frame.decl;
+	tl = frame.list;
+	switch(frame.resume){
+	case PrintArrow: goto typePrintArrow;
+	case PrintDot: goto typePrintDot;
+	case PrintInstanceBase: goto typePrintInstanceBase;
+	case PrintInstanceArgument: goto typePrintInstanceArgument;
+	case PrintReference: goto typePrintReference;
+	case PrintElement: goto typePrintElement;
+	case PrintMappedParameter: goto typePrintMappedParameter;
+	case PrintTupleField: goto typePrintTupleField;
+	case PrintFunctionArgument: goto typePrintFunctionArgument;
+	case PrintFunctionResult: goto typePrintFunctionResult;
+	}
+done:
+	if(work != local)
+		free(work);
 	return buf;
 }
 
+
+/* Add the short diagnostic category before the same bounded Type traversal. */
 char*
 stprint(char *buf, char *end, Type *t)
 {
