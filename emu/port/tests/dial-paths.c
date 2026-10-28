@@ -27,6 +27,9 @@ static int opens, closes, failopen, rejectopen;
 static long reported, secondcount;
 static int reads, tworeads;
 static unsigned long cases;
+static int writecalls; // Number of native command writes observed.
+static int failwrite; // One-based write call with an injected reply; zero disables it.
+static long writeresult; // Exact injected native result, including oversized values.
 
 
 /* Keep predicates active when the production source is compiled with NDEBUG. */
@@ -146,6 +149,12 @@ kwrite(int fd, void *buf, long size)
 {
 	USED(fd);
 	USED(buf);
+	writecalls++;
+	if(writecalls == failwrite){
+		if(writeresult < 0)
+			kwerrstr("native write failed");
+		return writeresult;
+	}
 	return size;
 }
 
@@ -168,6 +177,8 @@ static void
 reset(const char *text, long count)
 {
 	opens = closes = failopen = reads = tworeads = rejectopen = 0;
+	writecalls = failwrite = 0;
+	writeresult = 0;
 	reported = count;
 	snprint(reply, sizeof(reply), "%s", text);
 	opened[0] = errorbuf[0] = 0;
@@ -360,6 +371,54 @@ testclone(void)
 }
 
 
+/* Reject partial/oversized native writes without opening data or publishing cfd.
+ * Each operation owns its handles; adapters only count native boundaries. */
+static void
+testwrite(void)
+{
+	long results[] = {-1, 0, 1, LONG_MAX};
+	unsigned int index;
+	int operation;
+
+	for(operation = 0; operation < 4; operation++){
+		for(index = 0; index < sizeof(results)/sizeof(results[0]); index++){
+			DS ds;
+			char file[128], address[128], directory[NETPATHLEN];
+			int control = -77;
+			int result;
+
+			reset(operation == 1 ? "1" : "/net/tcp/clone host",
+			      operation == 1 ? 1 : strlen("/net/tcp/clone host"));
+			memset(&ds, 0, sizeof(ds));
+			ds.netdir = "/net";
+			ds.proto = "tcp";
+			ds.rem = "host";
+			ds.cfdp = &control;
+			strcpy(file, "/net/tcp/clone");
+			failwrite = operation == 3 ? 2 : 1;
+			writeresult = results[index];
+			if(operation == 0)
+				result = csdial(&ds);
+			else if(operation == 1)
+				result = call(file, "host", &ds);
+			else if(operation == 2)
+				result = nettrans("tcp!host", address, sizeof(address), file, sizeof(file));
+			else{
+				tworeads = 1;
+				secondcount = 1;
+				result = kannounce("tcp!host", directory);
+			}
+			check(result < 0, "incomplete command must not succeed");
+			check(control == -77, "failed command must not publish control ownership");
+			check(opens == (operation == 3 ? 2 : 1) && closes == opens,
+			      "failed command closes every opened handle and never opens data");
+			check(strstr(errorbuf, results[index] < 0 ? "native write" : "incomplete dial command") != nil,
+			      "native error or explicit incomplete-write diagnostic preserved");
+		}
+	}
+}
+
+
 /* Run all families or one independently reproducible regression control. */
 int
 main(int argc, char **argv)
@@ -376,6 +435,8 @@ main(int argc, char **argv)
 		testannounce();
 	if(argc == 1 || strcmp(argv[1], "clone") == 0)
 		testclone();
+	if(argc == 1 || strcmp(argv[1], "write") == 0)
+		testwrite();
 	printf("PASS dial paths: %lu predicates\n", cases);
 	return 0;
 }

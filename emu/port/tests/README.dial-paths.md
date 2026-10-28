@@ -42,3 +42,23 @@ change its parsing behavior. The current sources require no normalization.
 
 The adapters provide deterministic kernel return values; this is not a live
 network, scheduler-unwind, boot, ARM64-hardware, or complete native-ABI test.
+
+## Complete command writes / Полная запись управляющих команд
+
+The `write` family injects negative, zero, positive-short and oversized native
+results into connection-server requests, clone connect commands and announce.
+Only an exact count is success. A short control write is not retried as a tail:
+these devices interpret each write as a separate command. Existing negative
+native errors are preserved; nonnegative mismatches receive an explicit error.
+Every opened descriptor is closed on failure and no data descriptor is opened
+or control ownership published. The new family fails against 275bc64 before
+this correction. Both complete production port bodies run under ASan and UBSan.
+
+Семейство `write` подставляет отрицательный, нулевой, короткий положительный и
+завышенный результат записи запросов cs, connect и announce. Успешна только
+полная запись. Хвост команды отдельно не дописывается: устройство разбирает каждую
+запись как самостоятельную команду. Отрицательная нативная ошибка сохраняется,
+для остальных несовпадений задаётся явная ошибка. При отказе закрываются все
+открытые дескрипторы; data не открывается, владение control не публикуется.
+Тест падает на 275bc64 до исправления. Полные тела обоих портов проверяются
+ASan/UBSan; реальные сетевые соединения fixture не создаёт.

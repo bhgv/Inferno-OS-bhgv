@@ -14,7 +14,7 @@ def main():
     """Run active predicates with address/undefined sanitizers and NDEBUG."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--revision', help='test an earlier git source without modifying the checkout')
-    parser.add_argument('--case', choices=('parse', 'translate', 'count', 'listen', 'announce', 'clone'))
+    parser.add_argument('--case', choices=('parse', 'translate', 'count', 'listen', 'announce', 'clone', 'write'))
     parser.add_argument('--port', choices=('emu', 'os'))
     parser.add_argument('--profile', choices=('address', 'undefined'))
     args = parser.parse_args()

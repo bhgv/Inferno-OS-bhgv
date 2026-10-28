@@ -31,6 +31,24 @@ struct DS
 };
 
 
+/* Submit one complete control command to a borrowed descriptor.
+ * Return zero only for an exact write. Preserve negative native errors; partial,
+ * zero and oversized replies get an explicit diagnostic. Do not retry a tail:
+ * the device interprets each write as a separate command. Caller closes handles. */
+static int
+dialwrite(int fd, char *bytes, long count)
+{
+	long written;
+
+	written = kwrite(fd, bytes, count);
+	if(written == count)
+		return 0;
+	if(written >= 0)
+		kwerrstr("incomplete dial command write");
+	return -1;
+}
+
+
 /*
  *  the dialstring is of the form '[/net/]proto!dest'
  */
@@ -101,7 +119,7 @@ csdial(DS *ds)
 	 *  ask connection server to translate
 	 */
 	sprint(buf, "%s!%s", ds->proto, ds->rem);
-	if(kwrite(fd, buf, strlen(buf)) < 0){
+	if(dialwrite(fd, buf, strlen(buf)) < 0){
 		kerrstr(err, sizeof err);
 		kclose(fd);
 		kwerrstr("%s (%s)", err, buf);
@@ -191,7 +209,7 @@ call(char *clone, char *dest, DS *ds)
 		snprint(name, sizeof(name), "connect %s %s", dest, ds->local);
 	else
 		snprint(name, sizeof(name), "connect %s", dest);
-	if(kwrite(cfd, name, strlen(name)) < 0){
+	if(dialwrite(cfd, name, strlen(name)) < 0){
 		err[0] = 0;
 		kerrstr(err, sizeof err);
 		kclose(cfd);
@@ -309,7 +327,7 @@ kannounce(char *addr, char *dir)
 	 *  make the call
 	 */
 	n = snprint(buf2, sizeof buf2, "announce %s", naddr);
-	if(kwrite(ctl, buf2, n)!=n){
+	if(dialwrite(ctl, buf2, n) < 0){
 		kclose(ctl);
 		return -1;
 	}
@@ -441,7 +459,7 @@ nettrans(char *addr, char *naddr, int na, char *file, int nf)
 	fd = kopen(buf, ORDWR);
 	if(fd < 0)
 		return identtrans(netdir, addr, naddr, na, file, nf);
-	if(kwrite(fd, addr, strlen(addr)) < 0){
+	if(dialwrite(fd, addr, strlen(addr)) < 0){
 		kclose(fd);
 		return -1;
 	}
