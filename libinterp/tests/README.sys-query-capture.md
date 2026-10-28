@@ -85,3 +85,6 @@ These tests do not boot an emulator or kernel, use a real filesystem, or prove
 the complete compiler/loader/GC 64-bit ABI. WORD32 retains host pointers.
 Sys builtins are C module operations reached through MCALL, not additional Dis
 opcodes; this series does not add new native opcode fast paths.
+
+For pipe/dial/announce/listen and captured aggregate owners, see
+[captured pipe and connection ownership](README.sys-multi-capture.md).

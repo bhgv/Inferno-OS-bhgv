@@ -139,6 +139,7 @@ CORE = [
     'libinterp/tests/sys-io.py',
     'libinterp/tests/sys-status-capture.py',
     'libinterp/tests/sys-query-capture.py',
+    'libinterp/tests/sys-multi-capture.py',
     'libinterp/tests/sys-stream-directory-capture.py',
     'libinterp/tests/sys-utf.py',
     'libinterp/tests/sys-utf-spans.py',

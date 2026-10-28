@@ -162,15 +162,16 @@ connectionresultslot(void *result)
 	return (uchar*)result + ((uchar*)&frame.ret->t1-layout.bytes);
 }
 
-/* Clear all connection fields together, including an earlier directory string. */
+
+/* Clear the original connection before releasing its captured previous owners. */
 static void
-clearconnection(void *slot)
+clearconnection(void *slot, const Sys_Connection *previous)
 {
 	Sys_Connection old, empty;
 	char saved[ERRMAX];
 
 	memmove(saved, up->env->errstr, sizeof(saved));
-	memmove(&old, slot, sizeof(old));
+	old = *previous;
 	empty.dfd = empty.cfd = H;
 	empty.dir = H;
 	memmove(slot, &empty, sizeof(empty));
@@ -180,13 +181,15 @@ clearconnection(void *slot)
 	memmove(up->env->errstr, saved, sizeof(saved));
 }
 
-/* Build a complete connection before replacing any of the previous managed owners. */
+
+/* Build a complete connection before replacing the captured previous result. */
 static void
-makeconnection(int datafd, int controlfd, char *directory, void *slot)
+makeconnection(int datafd, int controlfd, char *directory, void *slot, const Sys_Connection *previous)
 {
 	volatile FDResult result;
 	Sys_Connection old, replacement;
 
+	old = *previous;
 	result.raw[0] = datafd;
 	result.raw[1] = controlfd;
 	result.handle[0] = result.handle[1] = H;
@@ -199,7 +202,6 @@ makeconnection(int datafd, int controlfd, char *directory, void *slot)
 	result.handle[1] = takefd(&result.raw[1]);
 	result.directory = c2string(directory, strlen(directory));
 	poperror();
-	memmove(&old, slot, sizeof(old));
 	replacement.dfd = result.handle[0];
 	replacement.cfd = result.handle[1];
 	replacement.dir = result.directory;
@@ -308,6 +310,32 @@ sysresultowner(void *slot)
 }
 
 
+/* Validate captured multi-owner results before any native call or partial construction. */
+static void
+sysfdresultowners(void *slots, int count)
+{
+	void *owners[3];
+	ulong references;
+	int i, j, copies;
+
+	if(count < 1 || count > 3)
+		error(exBounds);
+	for(i = 0; i < count; i++)
+		owners[i] = sysresultowner((uchar*)slots+i*sizeof(void*));
+	for(i = 0; i < count; i++) {
+		if(owners[i] == H)
+			continue;
+		copies = 0;
+		for(j = 0; j < count; j++)
+			if(owners[j] == owners[i])
+				copies++;
+		memmove(&references, (uchar*)owners[i]-sizeof(Heap)+O(Heap, ref), sizeof(references));
+		if(references < copies)
+			error(exHeap);
+	}
+}
+
+
 /* Check every directory owner, including the references consumed by duplicate slots. */
 static void
 sysdirowners(void *slot)
@@ -379,25 +407,35 @@ Sys_open(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
-/* Replace both pipe ends only after both descriptor owners have been constructed. */
+
+/* Capture packed pipe operands and both old owners before constructing replacements. */
 void
 Sys_pipe(void *fp)
 {
-	Array *a;
+	Array *a, view;
 	int fd[2], status;
 	WORD outcome;
 	uchar *slots;
 	Sys_FD *old[2], *next[2];
-	F_Sys_pipe *f;
+	F_Sys_pipe local, *f;
 	volatile FDResult result;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_pipe, ret), sizeof(*local.ret));
+	f = &local;
 	outcome = -1;
-	memmove(f->ret, &outcome, sizeof(outcome));
 	a = f->fds;
-	if(a == H || a == nil || a->len < 2 || a->data == nil || a->data == H ||
-	   (uintptr)a->data > (uintptr)-1-2*sizeof(Sys_FD*))
-		return;
+	if(a == H || a == nil)
+		goto Empty;
+	if((uintptr)a < sizeof(void*) || (uintptr)a > (uintptr)-1-sizeof(view))
+		error(exBounds);
+	memmove(&view, a, sizeof(view));
+	if(view.len < 2 || view.data == nil || view.data == H ||
+	   (uintptr)view.data > (uintptr)-1-2*sizeof(Sys_FD*))
+		goto Empty;
+	slots = view.data;
+	memmove(old, slots, sizeof(old));
+	sysfdresultowners(old, 2);
+	memmove(f->ret, &outcome, sizeof(outcome));
 	release();
 	status = kpipe(fd);
 	acquire();
@@ -414,14 +452,13 @@ Sys_pipe(void *fp)
 	result.handle[0] = takefd(&result.raw[0]);
 	result.handle[1] = takefd(&result.raw[1]);
 	poperror();
-	slots = a->data;
-	memmove(old, slots, sizeof(old));
 	next[0] = result.handle[0];
 	next[1] = result.handle[1];
 	memmove(slots, next, sizeof(next));
 	destroy(old[0]);
 	destroy(old[1]);
 	outcome = 0;
+Empty:
 	memmove(f->ret, &outcome, sizeof(outcome));
 }
 
@@ -1182,16 +1219,23 @@ Sys_werrstr(void *fp)
 	memmove(ret, &result, sizeof(result));
 }
 
-/* Adopt both dial descriptors as one result, closing them on conversion failure. */
+
+/* Capture the complete frame and previous connection before native and owner callbacks. */
 void
 Sys_dial(void *fp)
 {
 	int datafd, controlfd;
 	char dir[NETPATHLEN], *address, *local;
-	F_Sys_dial *f;
+	F_Sys_dial localframe, *f;
+	Sys_Connection previous;
+	uchar *resultslot;
 	WORD status;
 
-	f = fp;
+	sysstatusframe(fp, &localframe, sizeof(localframe), O(F_Sys_dial, ret), sizeof(*localframe.ret));
+	f = &localframe;
+	resultslot = connectionresultslot(f->ret);
+	memmove(&previous, resultslot, sizeof(previous));
+	sysfdresultowners(&previous, 3);
 	address = string2c(f->addr);
 	local = string2c(f->local);
 	release();
@@ -1200,24 +1244,31 @@ Sys_dial(void *fp)
 	status = -1;
 	memmove(f->ret, &status, sizeof(status));
 	if(datafd < 0){
-		clearconnection(connectionresultslot(f->ret));
+		clearconnection(resultslot, &previous);
 		return;
 	}
-	makeconnection(datafd, controlfd, dir, connectionresultslot(f->ret));
+	makeconnection(datafd, controlfd, dir, resultslot, &previous);
 	status = 0;
 	memmove(f->ret, &status, sizeof(status));
 }
 
-/* Adopt the announce control descriptor only after the complete result is ready. */
+
+/* Capture the complete frame and previous connection before native and owner callbacks. */
 void
 Sys_announce(void *fp)
 {
 	char dir[NETPATHLEN], *address;
 	int fd;
-	F_Sys_announce *f;
+	F_Sys_announce localframe, *f;
+	Sys_Connection previous;
+	uchar *resultslot;
 	WORD status;
 
-	f = fp;
+	sysstatusframe(fp, &localframe, sizeof(localframe), O(F_Sys_announce, ret), sizeof(*localframe.ret));
+	f = &localframe;
+	resultslot = connectionresultslot(f->ret);
+	memmove(&previous, resultslot, sizeof(previous));
+	sysfdresultowners(&previous, 3);
 	address = string2c(f->addr);
 	release();
 	fd = kannounce(address, dir);
@@ -1225,24 +1276,31 @@ Sys_announce(void *fp)
 	status = -1;
 	memmove(f->ret, &status, sizeof(status));
 	if(fd < 0){
-		clearconnection(connectionresultslot(f->ret));
+		clearconnection(resultslot, &previous);
 		return;
 	}
-	makeconnection(-1, fd, dir, connectionresultslot(f->ret));
+	makeconnection(-1, fd, dir, resultslot, &previous);
 	status = 0;
 	memmove(f->ret, &status, sizeof(status));
 }
 
-/* Keep earlier connection owners valid until the new listening result is complete. */
+
+/* Capture the complete frame and previous connection before native and owner callbacks. */
 void
 Sys_listen(void *fp)
 {
-	F_Sys_listen *f;
+	F_Sys_listen localframe, *f;
+	Sys_Connection previous;
+	uchar *resultslot;
 	WORD status;
 	char dir[NETPATHLEN], *directory;
 	int fd;
 
-	f = fp;
+	sysstatusframe(fp, &localframe, sizeof(localframe), O(F_Sys_listen, ret), sizeof(*localframe.ret));
+	f = &localframe;
+	resultslot = connectionresultslot(f->ret);
+	memmove(&previous, resultslot, sizeof(previous));
+	sysfdresultowners(&previous, 3);
 	directory = string2c(f->c.dir);
 	release();
 	fd = klisten(directory, dir);
@@ -1250,10 +1308,10 @@ Sys_listen(void *fp)
 	status = -1;
 	memmove(f->ret, &status, sizeof(status));
 	if(fd < 0){
-		clearconnection(connectionresultslot(f->ret));
+		clearconnection(resultslot, &previous);
 		return;
 	}
-	makeconnection(-1, fd, dir, connectionresultslot(f->ret));
+	makeconnection(-1, fd, dir, resultslot, &previous);
 	status = 0;
 	memmove(f->ret, &status, sizeof(status));
 }

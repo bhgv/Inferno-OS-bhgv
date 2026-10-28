@@ -10,7 +10,10 @@
 
 #define fdtest(test) fdpredicate(!!(test), __LINE__) // Retain all ownership predicates under NDEBUG.
 static int captureactive, capturephase, captureframeoffset, capturemutated;
-static uchar captureframe[sizeof(F_Sys_create)+sizeof(F_Sys_open)+sizeof(F_Sys_fildes)+32];
+static int capturearrayoffset, capturearrayactive, capturekeepframe;
+static uchar capturearray[sizeof(Array)+32], capturearrayimage[sizeof(capturearray)];
+static uchar *capturearrayoriginal;
+static uchar captureframe[sizeof(F_Sys_listen)+sizeof(F_Sys_dial)+sizeof(F_Sys_create)+32];
 static uchar captureimage[sizeof(captureframe)];
 static uchar *captureoriginal;
 static uintptr capturesize;
@@ -35,7 +38,16 @@ capturecallback(int point)
 	if(!captureactive || capturephase != point || capturemutated)
 		return;
 	capturemutated = 1;
-	memset(captureoriginal, 0xa7, capturesize);
+	if(!capturekeepframe)
+		memset(captureoriginal, 0xa7, capturesize);
+	if(capturearrayactive) {
+		WORD length = 0;
+		uchar *data = H;
+		memmove(capturearrayoriginal+O(Array, len), &length, sizeof(length));
+		memmove(capturearrayoriginal+O(Array, data), &data, sizeof(data));
+		memmove(capturearrayimage+8+capturearrayoffset+O(Array, len), &length, sizeof(length));
+		memmove(capturearrayimage+8+capturearrayoffset+O(Array, data), &data, sizeof(data));
+	}
 }
 
 
@@ -43,10 +55,25 @@ capturecallback(int point)
 static void
 capturecall(void (*fn)(void*), void *frame, uintptr size)
 {
+	Array *array;
+
+	capturearrayactive = 0;
 	capturesize = size;
 	captureoriginal = captureframe+8+captureframeoffset;
 	memset(captureframe, 0x3c, sizeof(captureframe));
 	memmove(captureoriginal, frame, size);
+	if(fn == Sys_pipe) {
+		memmove(&array, (uchar*)frame+O(F_Sys_pipe, fds), sizeof(array));
+		if(array != nil && array != H) {
+			memset(capturearray, 0x4d, sizeof(capturearray));
+			capturearrayoriginal = capturearray+8+capturearrayoffset;
+			memmove(capturearrayoriginal, array, sizeof(*array));
+			memmove(capturearrayimage, capturearray, sizeof(capturearrayimage));
+			array = (Array*)capturearrayoriginal;
+			memmove(captureoriginal+O(F_Sys_pipe, fds), &array, sizeof(array));
+			capturearrayactive = 1;
+		}
+	}
 	memmove(captureimage, captureframe, sizeof(captureimage));
 	captureactive = 1;
 	capturemutated = 0;
@@ -61,9 +88,11 @@ capturefinish(void)
 	if(!captureactive)
 		return;
 	captureactive = 0;
-	if(capturemutated)
+	if(capturemutated && !capturekeepframe)
 		memset(captureimage+(captureoriginal-captureframe), 0xa7, capturesize);
 	fdtest(!memcmp(captureframe, captureimage, sizeof(captureimage)));
+	if(capturearrayactive)
+		fdtest(!memcmp(capturearray, capturearrayimage, sizeof(capturearrayimage)));
 }
 
 
@@ -469,23 +498,23 @@ invoke(void *unused)
 	case 4:
 		pipeframe.ret = (void*)(returnslot.bytes+8+returnoffset);
 		pipeframe.fds = pipebad == 1 ? nil : pipesize < 0 ? H : &pipearray;
-		Sys_pipe(&pipeframe);
+		capturecall(Sys_pipe, &pipeframe, sizeof(pipeframe));
 		break;
 	case 5:
 		dialframe.ret = (void*)(connectionreturn.bytes+returnoffset);
 		dialframe.addr = address;
 		dialframe.local = local;
-		Sys_dial(&dialframe);
+		capturecall(Sys_dial, &dialframe, sizeof(dialframe));
 		break;
 	case 6:
 		announceframe.ret = (void*)(connectionreturn.bytes+returnoffset);
 		announceframe.addr = address;
-		Sys_announce(&announceframe);
+		capturecall(Sys_announce, &announceframe, sizeof(announceframe));
 		break;
 	case 7:
 		listenframe.ret = (void*)(connectionreturn.bytes+returnoffset);
 		listenframe.c = connection.t1;
-		Sys_listen(&listenframe);
+		capturecall(Sys_listen, &listenframe, sizeof(listenframe));
 		break;
 	}
 	return 1;
@@ -729,6 +758,122 @@ creationpreflight(int mode)
 }
 
 
+
+
+/* Enter directly when invalid multi-owner frames must reach production validation. */
+static int
+rawmulti(void *frame)
+{
+	if(operation == 4)Sys_pipe(frame);
+	else if(operation == 5)Sys_dial(frame);
+	else if(operation == 6)Sys_announce(frame);
+	else Sys_listen(frame);
+	return 1;
+}
+
+
+/* Preserve all previous handles, strings and tuple bytes on multi-owner preflight errors. */
+static void
+multipreflight(int mode)
+{
+	F_Sys_pipe pipeframe = {0};
+	F_Sys_dial dialframe = {0};
+	F_Sys_announce announceframe = {0};
+	F_Sys_listen listenframe = {0};
+	Sys_Connection previous;
+	Sys_FD *ends[2];
+	Array array;
+	void *frame, *ret, *slot, *candidate;
+	uchar before[sizeof(connectionreturn.bytes)], beforeends[sizeof(ends)];
+	WORD status = -77;
+	char *expected;
+	int ok, i;
+
+	fdtest(live == 0 && group.r.ref == 1);
+	captureactive = 0;
+	failure = 0;
+	memset(active, 0, sizeof(active));
+	nextfd = 100;
+	previous.dfd = mkfd(newfd());
+	previous.cfd = mkfd(newfd());
+	previous.dir = c2string("previous directory", 18);
+	ends[0] = previous.dfd;
+	ends[1] = previous.cfd;
+	memset(&array, 0, sizeof(array));
+	array.len = 2;
+	array.data = (uchar*)ends;
+	memset(connectionreturn.bytes, 0xa5, sizeof(connectionreturn.bytes));
+	ret = connectionreturn.bytes;
+	memmove(ret, &status, sizeof(status));
+	slot = operation == 4 ? (void*)ends : (void*)connectionresultslot(ret);
+	if(operation != 4)
+		memmove(slot, &previous, sizeof(previous));
+	candidate = previous.dfd;
+	if(mode == 6)candidate = nil;
+	if(mode == 7)candidate = (void*)1;
+	if(mode == 8)candidate = (uchar*)previous.dfd+1;
+	if(mode >= 6 && mode <= 8)
+		memmove(slot, &candidate, sizeof(candidate));
+	if(mode == 9)D2H(previous.dfd)->ref = 0;
+	if(mode == 10)
+		memmove((uchar*)slot+sizeof(void*), &previous.dfd, sizeof(previous.dfd));
+	candidate = previous.dir;
+	if(mode == 11)candidate = nil;
+	if(mode == 12)candidate = (void*)1;
+	if(mode == 13)candidate = (uchar*)previous.dir+1;
+	if(mode >= 11 && mode <= 13)
+		memmove((uchar*)slot+2*sizeof(void*), &candidate, sizeof(candidate));
+	if(mode == 14)D2H(previous.dir)->ref = 0;
+	memmove(before, connectionreturn.bytes, sizeof(before));
+	memmove(beforeends, ends, sizeof(ends));
+	if(mode == 3)ret = nil;
+	if(mode == 4)ret = H;
+	if(mode == 5)ret = (void*)((uintptr)-1-(operation == 4 ? sizeof(WORD)-1 : sizeof(WORD)+1));
+	pipeframe.ret = ret;
+	pipeframe.fds = &array;
+	if(mode == 15)pipeframe.fds = (Array*)((uintptr)-1-1);
+	if(mode == 16)pipeframe.fds = (Array*)1;
+	dialframe.ret = ret;
+	dialframe.addr = (String*)1;
+	dialframe.local = (String*)1;
+	announceframe.ret = ret;
+	announceframe.addr = (String*)1;
+	listenframe.ret = ret;
+	listenframe.c = previous;
+	switch(operation) {
+	case 4: frame = &pipeframe; break;
+	case 5: frame = &dialframe; break;
+	case 6: frame = &announceframe; break;
+	default: frame = &listenframe; break;
+	}
+	if(mode == 0)frame = nil;
+	if(mode == 1)frame = H;
+	if(mode == 2)frame = (void*)((uintptr)-1-1);
+	if(mode == 2 || mode == 5 || mode >= 15)
+		expected = exBounds;
+	else if((mode >= 7 && mode <= 10) || (mode >= 12 && mode <= 14))
+		expected = exHeap;
+	else
+		expected = exNilref;
+	allocations = nativecalls = 0;
+	watchedowner = H;
+	pipewatch = connectionwatch = 0;
+	raised = nil;
+	ok = kprotect(rawmulti, frame);
+	fdtest(!ok && raised == expected && !released && !nativecalls && !allocations && worker.nerr == 0);
+	fdtest(!memcmp(connectionreturn.bytes, before, sizeof(before)) && !memcmp(ends, beforeends, sizeof(ends)));
+	fdtest(live == 3 && active[100] && active[101] && TFD->ref == 3 && Tstring.ref == 2 && group.r.ref == 3);
+	if(mode == 9)D2H(previous.dfd)->ref = 1;
+	if(mode == 14)D2H(previous.dir)->ref = 1;
+	destroy(previous.dfd);
+	destroy(previous.cfd);
+	destroy(previous.dir);
+	for(i=0; i<256; i++)fdtest(!active[i]);
+	fdtest(!live && TFD->ref == 1 && Tstring.ref == 1 && group.r.ref == 1);
+	checks++;
+}
+
+
 /* Cover direct adoption, open/create/dup, pipes and connection construction at every failure. */
 static int
 fdmatrix(int argc, char **argv)
@@ -740,6 +885,19 @@ fdmatrix(int argc, char **argv)
 	environment.fgrp = &group;
 	environment.errstr = environment.errbuf0;
 	group.r.ref = 1;
+	capturekeepframe = getenv("FD_OWNER_KEEP_FRAME") != nil;
+	if(getenv("FD_OWNER_MULTI_PREFLIGHT")) {
+		for(operation=4; operation<8; operation++)
+		for(mode=0; mode<17; mode++) {
+			if((operation == 4 && mode >= 11 && mode <= 14) || (operation != 4 && mode >= 15))continue;
+			if(getenv("FD_OWNER_OPERATION") && operation != atoi(getenv("FD_OWNER_OPERATION")))continue;
+			if(getenv("FD_OWNER_ERROR") && mode != atoi(getenv("FD_OWNER_ERROR")))continue;
+			multipreflight(mode);
+		}
+		fdtest(checks != 0);
+		printf("PASS Sys multi-owner preflight: %d cases\n", checks);
+		return 0;
+	}
 	if(getenv("FD_OWNER_PREFLIGHT")) {
 		for(operation=1; operation<4; operation++)
 		for(mode=0; mode<10; mode++) {
@@ -751,8 +909,8 @@ fdmatrix(int argc, char **argv)
 		printf("PASS Sys creation preflight: %d cases\n", checks);
 		return 0;
 	}
-	for(capturephase=0; capturephase<(getenv("FD_OWNER_CAPTURE") ? 7 : 1); capturephase++)
-	for(captureframeoffset=0; captureframeoffset<(getenv("FD_OWNER_CAPTURE") ? 8 : 1); captureframeoffset++)
+	for(capturephase=0; capturephase<((getenv("FD_OWNER_CAPTURE") || getenv("FD_OWNER_MULTI")) ? 7 : 1); capturephase++)
+	for(captureframeoffset=0; captureframeoffset<((getenv("FD_OWNER_CAPTURE") || getenv("FD_OWNER_MULTI")) ? 8 : 1); captureframeoffset++)
 	for(operation = 0; operation < 8; operation++){
 		if(getenv("FD_OWNER_OPERATION") && operation != atoi(getenv("FD_OWNER_OPERATION")))
 			continue;
@@ -762,8 +920,10 @@ fdmatrix(int argc, char **argv)
 			continue;
 		if(argc > 1 && strcmp(argv[1], "all") != 0 && strcmp(argv[1], operation == 0 ? "single" : operation == 4 ? "pipe" : operation >= 5 ? "connection" : "files") != 0)
 			continue;
+		for(capturearrayoffset=0; capturearrayoffset<(getenv("FD_OWNER_MULTI") && operation==4 ? 8 : 1); capturearrayoffset++)
 		for(argument=0;argument<(operation==3 || (getenv("FD_OWNER_CAPTURE") && (operation==1 || operation==2)) ? nelem(arguments) : 1);argument++){
 			if(getenv("FD_OWNER_ARGUMENT") && argument != atoi(getenv("FD_OWNER_ARGUMENT")))continue;
+			if(getenv("FD_OWNER_ARRAY_SHIFT") && capturearrayoffset != atoi(getenv("FD_OWNER_ARRAY_SHIFT")))continue;
 			descriptorarg=arguments[argument];
 			modearg=getenv("FD_OWNER_CAPTURE") ? arguments[argument] : 2;
 			for(returnoffset=0;returnoffset<(operation >= 1 ? 8 : 1);returnoffset++)
@@ -772,6 +932,7 @@ fdmatrix(int argc, char **argv)
 			for(first = 0; first < 2; first++){
 				limit = operation == 4 ? 3 : operation == 5 ? 4 : operation >= 6 ? 3 : 2;
 				for(length = 0; length < (operation == 4 ? 9 : 1); length++){
+					if(getenv("FD_OWNER_MULTI") && operation==4 && length!=3 && length!=4)continue;
 					pipesize = length < 5 ? length-1 : 2;
 					pipebad = length < 5 ? 0 : length-4;
 					for(fail = 0; fail <= (argc > 2 && strcmp(argv[2], "normal") == 0 ? 0 : limit); fail++)
