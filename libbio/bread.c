@@ -1,12 +1,14 @@
 #include	"lib9.h"
 #include	<bio.h>
 
+
+/* Bound native refill results before moving bytes or publishing buffer counts. */
 long
 Bread(Biobuf *bp, void *ap, long count)
 {
-	long c;
+	long c, i;
 	uchar *p;
-	int i, n, ic;
+	int n, ic;
 
 	p = ap;
 	c = count;
@@ -20,9 +22,9 @@ Bread(Biobuf *bp, void *ap, long count)
 			if(bp->state != Bractive)
 				break;
 			i = read(bp->fid, bp->bbuf, bp->bsize);
-			if(i <= 0) {
+			if(i <= 0 || i > bp->bsize) {
 				bp->state = Bracteof;
-				if(i < 0)
+				if(i < 0 || i > bp->bsize)
 					bp->state = Binactive;
 				break;
 			}

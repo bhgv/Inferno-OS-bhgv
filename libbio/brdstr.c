@@ -1,6 +1,7 @@
 #include	"lib9.h"
 #include	<bio.h>
 
+
 /* Append within the signed line-length limit, consuming the old owner on failure. */
 static char*
 badd(char *p, int *np, char *data, int ndata, int delim, int nulldelim)
@@ -31,12 +32,14 @@ badd(char *p, int *np, char *data, int ndata, int delim, int nulldelim)
 	return p;
 }
 
+
 /* Stop immediately if a line cannot be allocated; do not return a later suffix. */
 char*
 Brdstr(Biobuf *bp, int delim, int nulldelim)
 {
 	char *ip, *ep, *p;
 	int i, j;
+	long nread;
 
 	i = -bp->icount;
 	bp->rdline = 0;
@@ -66,18 +69,32 @@ Brdstr(Biobuf *bp, int delim, int nulldelim)
 	/*
 	 * copy data to beginning of buffer
 	 */
-	if(i < bp->bsize)
+	p = nil;
+	if(i >= bp->bsize){
+		/* Append from the true unread start, including the reserved prefix. */
+		p = badd(nil, &bp->rdline, ip, i, 0, 0);
+		i = 0;
+		bp->icount = 0;
+		bp->gbuf = bp->ebuf;
+		if(p == nil)
+			return nil;
+	}else{
 		memmove(bp->bbuf, ip, i);
-	bp->gbuf = bp->bbuf;
+		bp->gbuf = bp->bbuf;
+	}
 
 	/*
 	 * append to buffer looking for the delim
 	 */
-	p = nil;
 	for(;;){
 		ip = (char*)bp->bbuf + i;
 		while(i < bp->bsize) {
-			j = read(bp->fid, ip, bp->bsize-i);
+			nread = bp->state == Bractive ? read(bp->fid, ip, bp->bsize-i) : -1;
+			if(nread > bp->bsize-i){
+				bp->state = Binactive;
+				nread = -1;
+			}
+			j = nread <= 0 ? -1 : nread;
 			if(j <= 0 && i == 0)
 				return p;
 			if(j <= 0 && i > 0){

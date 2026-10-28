@@ -7,6 +7,7 @@ int
 Bgetc(Biobuf *bp)
 {
 	int i;
+	long nread;
 
 loop:
 	i = bp->icount;
@@ -25,14 +26,15 @@ loop:
 	 * buffer to allow that many ungets.
 	 */
 	memmove(bp->bbuf-Bungetsize, bp->ebuf-Bungetsize, Bungetsize);
-	i = read(bp->fid, bp->bbuf, bp->bsize);
+	nread = read(bp->fid, bp->bbuf, bp->bsize);
 	bp->gbuf = bp->bbuf;
-	if(i <= 0) {
+	if(nread <= 0 || nread > bp->bsize) {
 		bp->state = Bracteof;
-		if(i < 0)
+		if(nread < 0 || nread > bp->bsize)
 			bp->state = Binactive;
 		return Beof;
 	}
+	i = nread;
 	if(i < bp->bsize) {
 		memmove(bp->ebuf-i-Bungetsize, bp->bbuf-Bungetsize, i+Bungetsize);
 		bp->gbuf = bp->ebuf-i;

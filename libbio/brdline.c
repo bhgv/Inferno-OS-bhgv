@@ -1,11 +1,14 @@
 #include	"lib9.h"
 #include	<bio.h>
 
+
+/* Preserve complete pushback windows and validate every native refill count. */
 void*
 Brdline(Biobuf *bp, int delim)
 {
 	char *ip, *ep;
 	int i, j;
+	long nread;
 
 	i = -bp->icount;
 	if(i == 0) {
@@ -33,6 +36,13 @@ Brdline(Biobuf *bp, int delim)
 		return ip;
 	}
 
+	/* A valid unget window may extend into the reserved prefix beyond bsize. */
+	if(i >= bp->bsize){
+		bp->rdline = i;
+		bp->gbuf = (uchar*)ip;
+		return nil;
+	}
+
 	/*
 	 * copy data to beginning of buffer
 	 */
@@ -45,7 +55,12 @@ Brdline(Biobuf *bp, int delim)
 	 */
 	ip = (char*)bp->bbuf + i;
 	while(i < bp->bsize) {
-		j = read(bp->fid, ip, bp->bsize-i);
+		nread = bp->state == Bractive ? read(bp->fid, ip, bp->bsize-i) : -1;
+		if(nread > bp->bsize-i){
+			bp->state = Binactive;
+			nread = -1;
+		}
+		j = nread <= 0 ? -1 : nread;
 		if(j <= 0) {
 			/*
 			 * end of file with no delim
@@ -86,6 +101,8 @@ Brdline(Biobuf *bp, int delim)
 	return 0;
 }
 
+
+/* Return the full available line-window length, including valid pushback bytes. */
 int
 Blinelen(Biobuf *bp)
 {
