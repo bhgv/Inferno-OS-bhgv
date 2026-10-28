@@ -25,17 +25,21 @@
 #endif
 
 
-
-
-/* Complete short writes, retaining only an unwritten suffix after failure. */
+/* Validate byte-view extents before writes and retain only an unwritten suffix on failure. */
 int
 _fmtFdFlush(Fmt *f)
 {
 	char *p;
-	int n, nr, fd;
+	int n, fd;
+	long nr;
 
+	if(f == nil || f->runes || f->start == nil || f->stop == nil ||
+	   (uintptr)f->start == (uintptr)-1 ||
+	   (uintptr)f->to < (uintptr)f->start || (uintptr)f->stop < (uintptr)f->to ||
+	   (uintptr)f->stop-(uintptr)f->start > 0x7fffffff)
+		return 0;
 	p = f->start;
-	n = (char*)f->to-p;
+	n = (uintptr)f->to-(uintptr)p;
 	fd = (int)(uintptr)f->farg;
 #ifdef ANDROID
 	/* Log only the occupied span; a full formatting buffer has no spare NUL. */
@@ -52,7 +56,7 @@ _fmtFdFlush(Fmt *f)
 #endif
 	while(n > 0){
 		nr = write(fd, p, n);
-		if(nr <= 0){
+		if(nr <= 0 || nr > n){
 			memmove(f->start, p, n);
 			f->to = (char*)f->start+n;
 			return 0;
@@ -64,6 +68,8 @@ _fmtFdFlush(Fmt *f)
 	return 1;
 }
 
+
+/* Dispatch only a valid format, then report final native write failures. */
 int
 vfprint(int fd, char *fmt, va_list args)
 {
@@ -71,19 +77,13 @@ vfprint(int fd, char *fmt, va_list args)
 	char buf[256];
 	int n;
 
-//#ifdef ANDROID
-//  if(fd > 2){
-//#endif
-	fmtfdinit(&f, fd, buf, sizeof(buf));
+	if(fmt == nil || (uintptr)fmt == (uintptr)-1 ||
+	   fmtfdinit(&f, fd, buf, sizeof(buf)) < 0)
+		return -1;
 	va_copy(f.args, args);
 	n = dofmt(&f, fmt);
 	va_end(f.args);
 	if(n > 0 && _fmtFdFlush(&f) == 0)
 		return -1;
 	return n;
-//#ifdef ANDROID
-//  }else{
-//	return -1;
-//  }
-//#endif
 }

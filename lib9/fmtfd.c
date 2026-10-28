@@ -14,10 +14,8 @@
 #include "lib9.h"
 #include "fmtdef.h"
 
-/*
- * public routine for final flush of a formatting buffer
- * to a file descriptor; returns total char count.
- */
+
+/* Flush a validated byte view and retain the formatter's total character count. */
 int
 fmtfdflush(Fmt *f)
 {
@@ -26,12 +24,14 @@ fmtfdflush(Fmt *f)
 	return f->nfmt;
 }
 
-/*
- * initialize an output buffer for buffered printing
- */
+
+/* Reject invalid spans before changing the caller's formatter; empty buffers remain valid. */
 int
 fmtfdinit(Fmt *f, int fd, char *buf, int size)
 {
+	if(f == nil || buf == nil || (uintptr)buf == (uintptr)-1 || size < 0 ||
+	   (uintptr)buf > (uintptr)-1-(uintptr)size)
+		return -1;
 	f->runes = 0;
 	f->start = buf;
 	f->to = buf;
