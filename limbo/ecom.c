@@ -176,6 +176,7 @@ rewritecontrol(Node *n)
 	return n;
 }
 
+
 /*
  * rewrite an expression to make it easiser to compile,
  * or give the correct results
@@ -503,7 +504,7 @@ if(debug['U']) print("call %n\n", left);
 		if(selfdecl == nil){
 			d = selfdecl = mkids(&n->src, enter(strdup(".self"), 5), tany, nil);
 			installids(Dglobal, d);
-			d->refs++;
+			d->refs = declrefsum(d->refs, 1);
 		}
 		nn = mkn(Oload, nil, nil);
 		nn->src = n->src;
@@ -2441,6 +2442,7 @@ tupsaliased(Node *n, Node *e)
 	}
 }
 
+
 /*
  * put unaddressable constants in the global data area
  */
@@ -2458,11 +2460,13 @@ globalconst(Node *n)
 		d = mkids(&n->src, s, tint, nil);
 		installids(Dglobal, d);
 		d->init = n;
-		d->refs++;
+		d->refs = declrefsum(d->refs, 1);
 	}
 	return d;
 }
 
+
+/* Intern a big constant without losing its full bit pattern or reference count. */
 Decl*
 globalBconst(Node *n)
 {
@@ -2478,11 +2482,13 @@ globalBconst(Node *n)
 		d = mkids(&n->src, s, tbig, nil);
 		installids(Dglobal, d);
 		d->init = n;
-		d->refs++;
+		d->refs = declrefsum(d->refs, 1);
 	}
 	return d;
 }
 
+
+/* Intern a byte constant and account for its initial declaration reference. */
 Decl*
 globalbconst(Node *n)
 {
@@ -2497,11 +2503,13 @@ globalbconst(Node *n)
 		d = mkids(&n->src, s, tbyte, nil);
 		installids(Dglobal, d);
 		d->init = n;
-		d->refs++;
+		d->refs = declrefsum(d->refs, 1);
 	}
 	return d;
 }
 
+
+/* Intern a real constant and account for its initial declaration reference. */
 Decl*
 globalfconst(Node *n)
 {
@@ -2518,11 +2526,13 @@ globalfconst(Node *n)
 		d = mkids(&n->src, s, treal, nil);
 		installids(Dglobal, d);
 		d->init = n;
-		d->refs++;
+		d->refs = declrefsum(d->refs, 1);
 	}
 	return d;
 }
 
+
+/* Intern a string constant and retain each use with a checked count. */
 Decl*
 globalsconst(Node *n)
 {
@@ -2536,7 +2546,7 @@ globalsconst(Node *n)
 		installids(Dglobal, d);
 		d->init = n;
 	}
-	d->refs++;
+	d->refs = declrefsum(d->refs, 1);
 	return d;
 }
 

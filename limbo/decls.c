@@ -123,8 +123,8 @@ redecl(Decl *d)
 }
 
 
-/* Keep aggregated compiler reference counts representable before updating metadata. */
-static int
+/* Keep compiler declaration and temporary reference counts representable before updates. */
+int
 declrefsum(int count, int delta)
 {
 	vlong total;
@@ -341,6 +341,8 @@ fndecl(Node *n, Type *t, Node *body)
 	return n;
 }
 
+
+/* Install a function declaration and account for its defining reference. */
 void
 fndecled(Node *n)
 {
@@ -355,7 +357,7 @@ fndecled(Node *n)
 			installids(Dfn, d);
 		}
 		left->decl = d;
-		d->refs++;
+		d->refs = declrefsum(d->refs, 1);
 	}
 	if(left->op == Odot)
 		pushscope(nil, Sother);
@@ -584,7 +586,7 @@ decltuplewalk(Node *n, int store, int *nid, int marking)
 					warn(d->src.start, "redeclaration of %K, previously declared as %k on line %L",
 						d, old, old->src.start);
 				n->decl = d;
-				d->refs++;
+				d->refs = declrefsum(d->refs, 1);
 				d->das = 1;
 				if(*nid >= 0){
 					if(*nid == 0x7fffffff)

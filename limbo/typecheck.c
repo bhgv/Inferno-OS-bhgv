@@ -12,11 +12,12 @@ void checkraises(Node *n);
 #define rewind rewind_
 
 
+/* Retain every declaration in an import link chain with checked counts. */
 static void
 increfs(Decl *id)
 {
 	for( ; id != nil; id = id->link)
-		id->refs++;
+		id->refs = declrefsum(id->refs, 1);
 }
 
 static int
@@ -199,6 +200,8 @@ fnref(Node *n, Decl *id)
 		nerror(n, "cannot have a polymorphic adt function reference %s", id->sym->name);
 }
 
+
+/* Check global declarations and retain their referenced module bindings. */
 Decl*
 typecheck(int checkimp)
 {
@@ -258,7 +261,7 @@ typecheck(int checkimp)
 		 */
 		for(dm = impdecls; dm != nil; dm = dm->next){
 			im = dm->d;
-			im->refs++;
+			im->refs = declrefsum(im->refs, 1);
 			im->ty = usetype(im->ty);
 			if(im->store != Dtype || im->ty->kind != Tmodule){
 				error(im->src.start, "cannot implement %K", im);
@@ -275,7 +278,7 @@ typecheck(int checkimp)
 			im = dm->d;
 			for(m = im->ty->ids; m != nil; m = m->next){
 				m->ty = usetype(m->ty);
-				m->refs++;
+				m->refs = declrefsum(m->refs, 1);
 	
 				if(m->sym == s && m->ty->kind == Tfn && entry == nil)
 					entry = m;
@@ -287,7 +290,7 @@ typecheck(int checkimp)
 					for(d = m->ty->ids; d != nil; d = d->next){
 						d->ty = usetype(d->ty);
 						modrefable(d->ty);
-						d->refs++;
+						d->refs = declrefsum(d->refs, 1);
 					}
 				}
 			}
@@ -610,6 +613,8 @@ fncheck(Decl *d)
 	d->caninline = fninline(d);
 }
 
+
+/* Check statements and retain referenced labels without wrapping their counts. */
 Node*
 scheck(Node *n, Type *ret, int kind)
 {
@@ -758,7 +763,7 @@ scheck(Node *n, Type *ret, int kind)
 					&& labstack[i]->op != Ofor && labstack[i]->op != Odo)
 						continue;
 					if(s != nil)
-						labstack[i]->decl->refs++;
+						labstack[i]->decl->refs = declrefsum(labstack[i]->decl->refs, 1);
 					return top;
 				}
 			}
@@ -966,6 +971,8 @@ importcheck(Node *n, int isglobal)
 	}
 }
 
+
+/* Rewrite a call while retaining the declaration references it introduces. */
 static Decl*
 rewcall(Node *n, Decl *d)
 {
@@ -981,10 +988,11 @@ rewcall(Node *n, Decl *d)
 	else
 		fatal("bad op in Ocall rewcall");
 	n->ty = n->right->ty = d->ty;
-	d->refs++;
+	d->refs = declrefsum(d->refs, 1);
 	usetype(d->ty);
 	return d;
 }
+
 
 /*
  * annotate the expression with types
@@ -1114,9 +1122,9 @@ echeck(Node *n, int typeok, int isglobal, Node *par)
 			ok.allok = 0;
 			break;
 		}
-if(n->ty->tof->decl->refs != 0)
-n->ty->tof->decl->refs++;
-n->ty->decl->refs++;
+		if(n->ty->tof->decl->refs != 0)
+			n->ty->tof->decl->refs = declrefsum(n->ty->tof->decl->refs, 1);
+		n->ty->decl->refs = declrefsum(n->ty->decl->refs, 1);
 		usetype(n->ty->tof);
 		break;
 	case Oref:
@@ -1188,7 +1196,7 @@ n->ty->decl->refs++;
 			/* save a little space */
 			s->unbound = nil;
 			n->decl = id;
-			id->refs++;
+			id->refs = declrefsum(id->refs, 1);
 		}
 		n->ty = id->ty = usetype(id->ty);
 		switch(id->store){
@@ -1632,7 +1640,7 @@ n->ty->decl->refs++;
 			ok.ok = ok.allok = 0;
 			return ok;
 		}
-		id->refs++;
+		id->refs = declrefsum(id->refs, 1);
 		right->decl = id;
 		n->ty = id->ty = usetype(id->ty);
 		if(id->store == Dglobal)
@@ -2476,7 +2484,7 @@ if(debug['w']){
 if(debug['v']) print("fnlookup: %p\n", id);
 			if(id == nil)	/* error flagged already */
 				continue;
-			id->refs++;
+			id->refs = declrefsum(id->refs, 1);
 			id->caninline = -1;
 			if(tt->kind == Tmodule){	/* mod an actual parameter */
 				for(;;){
@@ -2973,6 +2981,7 @@ casecheck(Node *cn, Type *ret)
 	t->cse = c;
 }
 
+
 /*
  * check the labels and bodies of a pick statment
  */
@@ -3065,7 +3074,7 @@ pickcheck(Node *n, Type *ret)
 			q->left = fold(q->left);
 
 	d = popscope();
-	d->refs++;
+	d->refs = declrefsum(d->refs, 1);
 	if(d->next != nil)
 		fatal("pickcheck: installing more than one id");
 	fndecls = appdecls(fndecls, d);

@@ -12,24 +12,26 @@ SOURCE = Path(os.environ.get('NODE_CHAIN_SOURCE', ROOT / 'limbo/nodes.c')).read_
 
 
 # Extract complete production bodies without counting braces in literals or comments.
-def function(signature):
-    start = SOURCE.index(signature)
-    brace = SOURCE.index('{', start)
+def function(signature, source=SOURCE):
+    start = source.index(signature)
+    brace = source.index('{', start)
     depth = 0
     tokens = r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*[\s\S]*?\*/|//[^\n]*|[{}]'
-    for token in re.finditer(tokens, SOURCE[brace:]):
+    for token in re.finditer(tokens, source[brace:]):
         if token.group() == '{':
             depth += 1
         elif token.group() == '}':
             depth -= 1
             if depth == 0:
-                return SOURCE[start:brace+token.end()]
+                return source[start:brace+token.end()]
     raise RuntimeError(signature)
 
 
 parts = [function('Node*\n'+name+'(') for name in
          ('mkn', 'mkdeclname', 'mkbin', 'varinit', 'caselist')]
 parts += [function('int\noccurs(')]
+decls = (ROOT/'limbo/decls.c').read_text()
+parts.insert(0, function('int\ndeclrefsum(', decls))
 fixture = (ROOT / 'limbo/tests/node-chains.c').read_text()
 with tempfile.TemporaryDirectory(prefix='limbo-node-chains-') as temporary:
     work = Path(temporary)

@@ -117,6 +117,8 @@ tdecls(void)
 	return appdecls(wtemp, bigtemp);
 }
 
+
+/* Acquire or allocate a temporary with checked usage and reference accounting. */
 Node*
 talloc(Node *n, Type *t, Node *nok)
 {
@@ -136,15 +138,15 @@ talloc(Node *n, Type *t, Node *nok)
 	if(tattr[t->kind].big){
 		desc = mktdesc(t);
 		if(ok != nil && ok->desc == desc){
-			ok->tref++;
-			ok->refs++;
+			ok->tref = declrefsum(ok->tref, 1);
+			ok->refs = declrefsum(ok->refs, 1);
 			n->decl = ok;
 			return n;
 		}
 		for(d = bigtemp; d != nil; d = d->next){
 			if(d->tref == 1 && d->desc == desc && d->ty->align == t->align){
-				d->tref++;
-				d->refs++;
+				d->tref = declrefsum(d->tref, 1);
+				d->refs = declrefsum(d->refs, 1);
 				n->decl = d;
 				return n;
 			}
@@ -163,7 +165,7 @@ talloc(Node *n, Type *t, Node *nok)
 	if(ok != nil
 	&& tattr[ok->ty->kind].isptr == tattr[t->kind].isptr
 	&& ok->ty->size == t->size){
-		ok->tref++;
+		ok->tref = declrefsum(ok->tref, 1);
 		n->decl = ok;
 		return n;
 	}
@@ -172,7 +174,7 @@ talloc(Node *n, Type *t, Node *nok)
 		&& tattr[d->ty->kind].isptr == tattr[t->kind].isptr
 		&& d->ty->size == t->size
 		&& d->ty->align == t->align){
-			d->tref++;
+			d->tref = declrefsum(d->tref, 1);
 			n->decl = d;
 			return n;
 		}
@@ -188,6 +190,8 @@ talloc(Node *n, Type *t, Node *nok)
 	return n;
 }
 
+
+/* Release a temporary and zero it when its last live use ends. */
 void
 tfree(Node *n)
 {
@@ -195,10 +199,13 @@ tfree(Node *n)
 		return;
 	if(n->decl->tref == 1)
 		fatal("double free of temporary %s", n->decl->sym->name);
-	if (--n->decl->tref == 1)
+	n->decl->tref = declrefsum(n->decl->tref, -1);
+	if(n->decl->tref == 1)
 		zcom1(n, nil);
 }
 
+
+/* Defer zeroing after the last use while retaining a checked temporary hold. */
 void
 tfreelater(Node *n)
 {
@@ -206,16 +213,19 @@ tfreelater(Node *n)
 		return;
 	if(n->decl->tref == 1)
 		fatal("double free of temporary %s", n->decl->sym->name);
-	if(--n->decl->tref == 1){
+	n->decl->tref = declrefsum(n->decl->tref, -1);
+	if(n->decl->tref == 1){
 		Node *nn = mkn(Oname, nil, nil);
 
 		*nn = *n;
 		nn->left = ntoz;
 		ntoz = nn;
-		n->decl->tref++;
+		n->decl->tref = declrefsum(n->decl->tref, 1);
 	}
 }
 
+
+/* Consume deferred temporary holds and perform their pending zeroing. */
 void
 tfreenow()
 {
@@ -226,11 +236,12 @@ tfreenow()
 		n->left = nil;
 		if(n->decl->tref != 2)
 			fatal("bad free of temporary %s", n->decl->sym->name);
-		--n->decl->tref;
+		n->decl->tref = declrefsum(n->decl->tref, -1);
 		zcom1(n, nil);
 	}
 	ntoz = nil;
 }
+
 
 /*
  * realloc a temporary after it's been freed
@@ -244,10 +255,12 @@ tacquire(Node *n)
 	if(n->decl->tref != 1)
 		fatal("tacquire ref != 1: %d", n->decl->tref);
 */
-	n->decl->tref++;
+	n->decl->tref = declrefsum(n->decl->tref, 1);
 	return n;
 }
 
+
+/* Release a temporary hold with checked arithmetic and double-release diagnostics. */
 void
 trelease(Node *n)
 {
@@ -255,7 +268,7 @@ trelease(Node *n)
 		return;
 	if(n->decl->tref == 1)
 		fatal("double release of temporary %s", n->decl->sym->name);
-	n->decl->tref--;
+	n->decl->tref = declrefsum(n->decl->tref, -1);
 }
 
 Inst*

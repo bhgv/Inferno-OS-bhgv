@@ -70,6 +70,7 @@ Decl	*declsort(Decl*);
 void	declstart(void);
 void	decltozero(Node *n);
 void	deldecl(Decl*);
+int	declrefsum(int, int); // Checked compiler declaration and temporary reference arithmetic.
 int	dequal(Decl*, Decl*, int);
 long	descmap(Decl*, uchar*, long, long);
 void	disaddr(int, Addr*);

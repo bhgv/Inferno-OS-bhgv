@@ -79,7 +79,7 @@ decls = Path(os.environ.get('REF_SORT_DECLS', ROOT/'limbo/decls.c')).read_text()
 com = Path(os.environ.get('REF_SORT_COM', ROOT/'limbo/com.c')).read_text()
 parts = []
 if 'declrefsum(int count' in decls:
-    parts.append(function(decls, 'static int\ndeclrefsum('))
+    parts.append(function(decls, 'int\ndeclrefsum('))
 parts += [function(decls, sig) for sig in ('void\ncheckrefs(', 'Decl*\npopscope(', 'static void\nfreeloc(')]
 if 'declcompare(Decl *e' in com:
     parts.append(function(com, 'static int\ndeclcompare('))

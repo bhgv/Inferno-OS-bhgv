@@ -8,6 +8,7 @@
 #define nil NULL                   /* Retained compiler null value. */
 #define Dglobal 1                  /* Fixture's declaration-store identity. */
 typedef unsigned long ulong;       /* Actual native host formatting width. */
+typedef long long vlong; // Checked compiler arithmetic uses native signed 64-bit intermediates.
 typedef unsigned long long uvlong; /* Full unsigned constant width. */
 
 typedef struct Node Node;
@@ -125,6 +126,15 @@ static void installids(int store, Decl *declaration)
 {
     (void)store;
     (void)declaration;
+}
+
+
+/* Unexpected arithmetic rejection is a fixture failure for these small use counts. */
+static void
+fatal(char *message, ...)
+{
+    fprintf(stderr, "%s\n", message);
+    abort();
 }
 
 

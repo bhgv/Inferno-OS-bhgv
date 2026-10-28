@@ -35,6 +35,9 @@ def main():
     source = Path(os.environ.get("ECOM_SOURCE", ROOT / "limbo/ecom.c")).read_text()
     body = function(source, "Decl*\nglobalBconst(")
     template = Path(__file__).with_suffix(".c").read_text()
+    if "declrefsum(" in body:
+        provider = (ROOT/"limbo/decls.c").read_text()
+        body = function(provider, "int\ndeclrefsum(")+"\n\n"+body
     with tempfile.TemporaryDirectory(prefix="big-constant-host-") as temporary:
         directory = Path(temporary)
         unit = directory / "identity.c"

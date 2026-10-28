@@ -1658,6 +1658,8 @@ mkbin(int op, Node *left, Node *right)
 	return n;
 }
 
+
+/* Build a name node and retain its borrowed declaration with a checked count. */
 Node*
 mkdeclname(Src *src, Decl *d)
 {
@@ -1667,7 +1669,7 @@ mkdeclname(Src *src, Decl *d)
 	n->src = *src;
 	n->decl = d;
 	n->ty = d->ty;
-	d->refs++;
+	d->refs = declrefsum(d->refs, 1);
 	return n;
 }
 

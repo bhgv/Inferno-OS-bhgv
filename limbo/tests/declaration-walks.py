@@ -29,6 +29,8 @@ decls = Path(os.environ.get('DECL_WALK_SOURCE', ROOT/'limbo/decls.c')).read_text
 ecom = Path(os.environ.get('DECL_WALK_ECOM', ROOT/'limbo/ecom.c')).read_text()
 types = (ROOT/'limbo/types.c').read_text()
 parts = []
+if 'declrefsum(int count' in decls:
+    parts.append(function(decls, 'int\ndeclrefsum('))
 if 'struct DeclWalk {' in decls:
     start = decls.index('/* Pending declaration lists')
     parts.append(decls[start:decls.index('int\ndasdecl(', start)])

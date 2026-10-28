@@ -1711,6 +1711,7 @@ teqclass(Type *t)
 	eqclass[t->kind] = t->eq;
 }
 
+
 /*
  * record that we've used the type
  * using a type uses all types reachable from that type
@@ -1724,7 +1725,7 @@ reftype(Type *t)
 		return;
 	t->ok |= OKref;
 	if(t->decl != nil && t->decl->refs == 0)
-		t->decl->refs++;
+		t->decl->refs = declrefsum(t->decl->refs, 1);
 	switch(t->kind){
 	case Terror:
 	case Tint:
@@ -2326,6 +2327,7 @@ resizetype(Type *t)
 	}
 }
 
+
 /*
  * check if a module is accessable from t
  * if so, mark that module interface
@@ -2360,7 +2362,7 @@ modrefable(Type *t)
 		break;
 	case Tmodule:
 		t->tof->linkall = 1;
-		t->decl->refs++;
+		t->decl->refs = declrefsum(t->decl->refs, 1);
 		for(id = t->ids; id != nil; id = id->next){
 			switch(id->store){
 			case Dglobal:
