@@ -55,3 +55,10 @@ The [per-command table](README.jit-readiness.md) remains valid and is checked
 against actual production sizing emitters. These are entry-availability metrics;
 physical ARM64 execution and coordinated compiler/loader/frame/GC ABI acceptance
 remain outstanding before claiming a complete bootable native 64-bit VM.
+
+The leaf64-runtime fixture must also explicitly align its abort-only `cjitexec`
+identity in the copied interface header. With unsanitized `CFLAGS=-O1 -g`, the
+x64 host may place that cold stub at an odd address even when the six list/channel
+helpers are aligned. This is a fixture-model correction: the production ARM64
+alignment guard remains active, and no host code is executed as AArch64.
+Both WORD32 and WORD64 publication paths are checked with and without UBSan.

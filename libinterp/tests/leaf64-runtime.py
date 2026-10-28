@@ -738,7 +738,7 @@ with tempfile.TemporaryDirectory(prefix='leaf64-runtime-') as directory:
             header=re.sub(r'typedef unsigned long\s+UWORD;', 'typedef unsigned int UWORD;',header,count=1)
         # Model aligned AArch64 targets even for cold abort-only AMD64 host stubs.
         if backend=='arm64':
-            for name in ('cons', 'cconsmappedtype', 'cnewcscalar', 'cnewcraw', 'cnewcmapped', 'cchanleaf'):
+            for name in ('cons', 'cconsmappedtype', 'cnewcscalar', 'cnewcraw', 'cnewcmapped', 'cchanleaf', 'cjitexec'):
                 header=re.sub(r'(extern[^\n]*\b'+name+r'\([^;\n]*\));',
                               r'\1 __attribute__((aligned(4)));',header)
         (td/'interp.h').write_text(header)
