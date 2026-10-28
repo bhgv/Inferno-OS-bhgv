@@ -22,9 +22,11 @@ nodes, declaration references or function bodies are rewritten by this check.
 
 This is a single-threaded internal compiler traversal. Allocator/storage exhaustion
 is fatal, consistent with adjacent compiler passes; no recoverable fatal-state
-rollback is promised. Ordinary AST child edges must remain acyclic. Shared inline
-dependencies may be revisited after their restoration barrier, preserving the
-previous per-edge meaning rather than introducing a persistent memoization cache.
+rollback is promised. Ordinary AST child edges must remain acyclic. Successful dependency bodies receive the query-local marker -3 after their
+restoration barrier. Reused candidates skip that already verified body. A separate
+checked cleanup vector restores both active and completed marks on every ordinary
+return. This cache is discarded after each query; no persistent compiler state is
+introduced. Ordinary shared AST child graphs are not memoized.
 
 Small tests compare 2,304 acyclic graph results with the original recursive rules,
 check nil and disabled candidates, and exercise shared transitive dependencies.
@@ -46,3 +48,15 @@ overflow. Compilation failures are not accepted as regression evidence.
 Native bootstrap regenerates the grammar and compiles all 17 Limbo units.
 This fixture is registered in the default interpreter checkpoint. Other recursive
 compiler passes and native VM ABI integration remain separate acceptance work.
+
+## Shared candidate DAG regression
+
+A 256-candidate diamond chain used to expand exponentially, although its unique
+function bodies were small. The shared fixture has a ten-second execution alarm
+so an old-source replay terminates rather than leaving exponential work running.
+The successful query, deep rejection, rejection after a completed cached subtree
+and successful retry all preserve declaration bytes and private-work ownership.
+The fixed checker visits each candidate body at most once per query. This retains
+the boolean dependency result, terminal-name rules and active-cycle refusal.
+The additional cleanup storage uses checked geometric growth and is released
+on success and rejection; allocator exhaustion remains fatal as documented.

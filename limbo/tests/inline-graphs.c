@@ -1,6 +1,7 @@
 #include "limbo.h"
 #include <stdio.h>
 #include <sys/resource.h>
+#include <unistd.h>
 
 #define check(test) predicate(!!(test), __LINE__) // Keep graph oracles active under NDEBUG.
 
@@ -211,6 +212,53 @@ deep(char *family)
 }
 
 
+/* A compact candidate diamond must not expand exponentially through shared callees.
+ * Query success, a later independent rejection and success again with exact flag
+ * restoration. The final missing body is a valid empty candidate for this oracle. */
+static void
+shared(void)
+{
+	enum { Count = 256 };
+	Decl decls[Count], saved[Count], target;
+	Node functions[Count], bodies[Count], names[Count], root, terminal;
+	int i, pass;
+
+	memset(decls, 0, sizeof(decls));
+	memset(functions, 0, sizeof(functions));
+	memset(bodies, 0, sizeof(bodies));
+	memset(names, 0, sizeof(names));
+	memset(&target, 0, sizeof(target));
+	memset(&root, 0, sizeof(root));
+	memset(&terminal, 0, sizeof(terminal));
+	root.op = Oseq;
+	root.left = names;
+	terminal.op = Oname;
+	terminal.decl = &target;
+	alarm(10); // Bound old-source regressions instead of leaving exponential work running.
+	for(i = 0; i < Count; i++){
+		decls[i].caninline = 1;
+		decls[i].init = &functions[i];
+		names[i].op = Oname;
+		names[i].decl = &decls[i];
+		if(i+1 < Count){
+			functions[i].right = &bodies[i];
+			bodies[i].op = Oseq;
+			bodies[i].left = &names[i+1];
+			bodies[i].right = &names[i+1];
+		}
+	}
+	memmove(saved, decls, sizeof(saved));
+	for(pass = 0; pass < 4; pass++){
+		names[Count-1].decl = pass == 1 ? &target : &decls[Count-1];
+		root.right = pass == 2 ? &terminal : nil;
+		check(ckinline0(&root, &target) == (pass == 0 || pass == 3));
+		check(!memcmp(saved, decls, sizeof(saved)) && livework == 0);
+	}
+	alarm(0);
+	printf("PASS shared inline DAG: 256 candidates, query-local cache and exact cleanup\n");
+}
+
+
 /* Isolate each regression so stack failures remain attributable to their graph shape. */
 int
 main(int argc, char **argv)
@@ -218,6 +266,8 @@ main(int argc, char **argv)
 	check(argc == 2);
 	if(strcmp(argv[1], "small") == 0)
 		small();
+	else if(strcmp(argv[1], "shared") == 0)
+		shared();
 	else
 		deep(argv[1]);
 	return 0;

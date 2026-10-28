@@ -187,22 +187,28 @@ struct InlineWalk {
 
 /* Check inline dependencies without recursion or looping through unrelated cycles.
  * Oname is terminal except for candidate function bodies. Temporarily mark active
- * declarations and restore every mark on both success and early rejection. */
+ * declarations, cache completed bodies for this query, and restore every mark
+ * on both success and early rejection. Shared candidate DAGs are not expanded
+ * once per incoming path. Ordinary AST child edges must still be acyclic. */
 static int
 ckinline0(Node *n, Decl *d)
 {
 	enum {
 		InlineNodes = 64, // Pending tasks kept on a fixed host stack.
 		InlineVisiting = -2, // Private active-path marker, never retained on return.
+		InlineChecked = -3, // Successful dependency body, cached only during this query.
 	};
 	InlineWalk inlinework[InlineNodes], *work, *next;
-	Decl *dd;
-	ulong used, capacity;
+	Decl *dd, *inlinechanged[InlineNodes], **changed, **grown;
+	ulong used, capacity, changes, change_capacity, i;
 	int result;
 
 	work = inlinework;
 	used = 0;
 	capacity = InlineNodes;
+	changed = inlinechanged;
+	changes = 0;
+	change_capacity = InlineNodes;
 	result = 1;
 	for(;;){
 		while(n != nil){
@@ -234,6 +240,19 @@ ckinline0(Node *n, Decl *d)
 			work[used].restore = dd;
 			work[used++].node = dd == nil ? n->right : nil;
 			if(dd != nil){
+				if(changes == change_capacity){
+					if(change_capacity > (ulong)-1/2/sizeof(*changed))
+						fatal("inline cleanup storage overflow");
+					grown = malloc(2*change_capacity*sizeof(*changed));
+					if(grown == nil)
+						fatal("out of memory retaining inline cleanup");
+					memmove(grown, changed, changes*sizeof(*changed));
+					if(changed != inlinechanged)
+						free(changed);
+					changed = grown;
+					change_capacity *= 2;
+				}
+				changed[changes++] = dd;
 				dd->caninline = InlineVisiting;
 				n = dd->init->right;
 			}else
@@ -243,20 +262,19 @@ ckinline0(Node *n, Decl *d)
 			break;
 		used--;
 		if(work[used].restore != nil)
-			work[used].restore->caninline = 1;
+			work[used].restore->caninline = InlineChecked;
 		n = work[used].node;
 	}
 done:
-	while(used != 0){
-		used--;
-		if(work[used].restore != nil)
-			work[used].restore->caninline = 1;
-	}
+	/* Completed bodies and active-path marks are private to this one query. */
+	for(i = 0; i < changes; i++)
+		changed[i]->caninline = 1;
+	if(changed != inlinechanged)
+		free(changed);
 	if(work != inlinework)
 		free(work);
 	return result;
 }
-
 
 /* Publish the dependency check only after its temporary candidate marks are restored. */
 static void

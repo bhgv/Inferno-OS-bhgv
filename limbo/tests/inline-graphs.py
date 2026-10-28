@@ -35,5 +35,5 @@ with tempfile.TemporaryDirectory(prefix='limbo-inline-graphs-') as temporary:
     command += shlex.split(os.environ.get('CFLAGS', '-O1 -g -DNDEBUG -fno-optimize-sibling-calls -fsanitize=address,undefined -fno-sanitize-recover=all'))
     command += ['-I'+str(ROOT/p) for p in ('Linux/arm/include', 'include', 'limbo')]
     subprocess.run(command+[str(source), '-o', str(binary)], check=True)
-    for family in ([os.environ['INLINE_GRAPH_CASE']] if os.environ.get('INLINE_GRAPH_CASE') else ['small', 'tree', 'chain', 'cycle']):
+    for family in ([os.environ['INLINE_GRAPH_CASE']] if os.environ.get('INLINE_GRAPH_CASE') else ['small', 'tree', 'chain', 'cycle', 'shared']):
         subprocess.run([str(binary), family], check=True)
