@@ -40,3 +40,7 @@ Parent-source substitution independently reproduces incorrect nil-delimiter
 results, overwritten allocation guards from four-byte pointer payloads, and
 leaked partial lists on allocation failure. Existing list, string, codec, Sys UTF
 and Sys print suites provide adjacent regression coverage.
+
+[Token frame and delimiter spans](README.token-spans.md) add packed borrowed
+delimiters, complete generated frames and return tuples, old-owner preflight
+and allocation-failure cleanup with active ASan/UBSan release-mode checks.

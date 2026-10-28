@@ -431,23 +431,27 @@ Sys_aprint(void *fp)
 static int
 tokdelim(int c, String *d)
 {
-	int l;
-	uchar *p;
-	Rune *r;
+	int length, i;
+	uchar *data;
+	Rune rune;
 
 	if(d == H)
 		return 0;
-	l = d->len;
-	if(l < 0) {
-		l = -l;
-		for(r = d->Srune; l != 0; l--)
-			if(*r++ == c)
-				return 1;
+	/* buildtokens has already validated both metadata and the complete payload. */
+	memmove(&length, (uchar*)d+offsetof(String, len), sizeof(length));
+	if(length == 0)
 		return 0;
-	}
-	for(p = (uchar*)d->Sascii; l != 0; l--)
-		if(*p++ == c)
-			return 1;
+	data = (uchar*)d+offsetof(String, data);
+	if(length < 0) {
+		for(i = 0; i < -length; i++) {
+			memmove(&rune, data+(ulong)i*sizeof(rune), sizeof(rune));
+			if(rune == (Rune)c)
+				return 1;
+		}
+	} else
+		for(i = 0; i < length; i++)
+			if(data[i] == c)
+				return 1;
 	return 0;
 }
 
@@ -458,6 +462,7 @@ struct TokenizeResult
 	String *source; // Input string retained by the caller throughout construction.
 	String *delimiters; // Delimiter set in either string representation.
 	List *words; // Partial word list owned by protected cleanup.
+	List *previous; // Captured old result, validated after input metadata and before allocation.
 	int count; // Number of complete words built before publication.
 };
 
@@ -469,39 +474,82 @@ buildtokens(void *arg)
 	TokenizeResult *result;
 	String *s, *d;
 	List **h, *nl;
-	int c, nc, first, last, srune;
+	int c, nc, first, last, srune, i, length[2], capacity;
+	String *view, *word;
+	uchar *data;
+	uintptr address;
+	uvlong bytes;
+	ulong references;
+	Rune rune;
 
 	result = arg;
 	s = result->source;
 	d = result->delimiters;
-	if(s == H)
-		return 1;
-	if(s == nil || d == nil)
+	if(s != H && (s == nil || d == nil))
 		error(exNilref);
-	/* Validate before negating rune counts or allocating partial words. */
-	if(s->len == (-0x7fffffff-1) || s->max < 0 ||
-	   (s->len < 0 ? -s->len : s->len) > s->max ||
-	   (d != H && (d->len == (-0x7fffffff-1) || d->max < 0 ||
-	   (d->len < 0 ? -d->len : d->len) > d->max)))
-		error(exInval);
+	/* Reject malformed views before scanning or publishing any partial word. */
+	length[0] = length[1] = 0;
+	for(i = 0; s != H && i < 2; i++) {
+		view = i == 0 ? s : d;
+		if(view == H)
+			continue;
+		address = (uintptr)view;
+		if(address > (uintptr)-1-(offsetof(String, max)+sizeof(capacity)))
+			error(exHeap);
+		if(i == 0) {
+			/* slicer copies an owning String and requires a valid Heap prefix. */
+			if(address <= sizeof(Heap) || (address-sizeof(Heap))%sizeof(void*) != 0)
+				error(exHeap);
+			memmove(&references, (uchar*)view-sizeof(Heap)+offsetof(Heap, ref), sizeof(references));
+			if(references == 0)
+				error(exHeap);
+		}
+		memmove(&length[i], (uchar*)view+offsetof(String, len), sizeof(length[i]));
+		memmove(&capacity, (uchar*)view+offsetof(String, max), sizeof(capacity));
+		if(length[i] == (-0x7fffffff-1) || capacity < 0 ||
+		   (length[i] < 0 ? -length[i] : length[i]) > capacity)
+			error(exInval);
+		bytes = (uvlong)(length[i] < 0 ? -length[i] : length[i])*(length[i] < 0 ? sizeof(Rune) : 1);
+		if(bytes != 0 && (address > (uintptr)-1 - offsetof(String, data) ||
+		   bytes > (uintptr)-1-(address+offsetof(String, data))))
+			error(exHeap);
+	}
+	/* Input errors retain priority over malformed old result owners. */
+	if(result->previous == nil)
+		error(exNilref);
+	if(result->previous != H) {
+		address = (uintptr)result->previous;
+		if(address <= sizeof(Heap) || (address-sizeof(Heap))%sizeof(void*) != 0)
+			error(exHeap);
+		memmove(&references, (uchar*)result->previous-sizeof(Heap)+offsetof(Heap, ref), sizeof(references));
+		if(references == 0)
+			error(exHeap);
+	}
 	h = &result->words;
 	first = 0;
-	srune = 0;
-	nc = s->len;
-	if(nc < 0){
-		nc = -nc;
-		srune = 1;
-	}
+	srune = length[0] < 0;
+	nc = srune ? -length[0] : length[0];
+	if(nc == 0)
+		return 1;
+	data = (uchar*)s+offsetof(String, data);
 	while(first < nc){
 		while(first < nc){
-			c = srune ? s->Srune[first] : (uchar)s->Sascii[first];
+			if(srune) {
+				memmove(&rune, data+(ulong)first*sizeof(rune), sizeof(rune));
+				c = rune;
+			} else
+				c = data[first];
 			if(!tokdelim(c, d))
 				break;
 			first++;
 		}
 		last = first;
 		while(last < nc){
-			c = srune ? s->Srune[last] : (uchar)s->Sascii[last];
+			if(srune) {
+				memmove(&rune, data+(ulong)last*sizeof(rune), sizeof(rune));
+				c = rune;
+			} else
+				c = data[last];
 			if(tokdelim(c, d))
 				break;
 			last++;
@@ -515,8 +563,10 @@ buildtokens(void *arg)
 		nl->t = &Tptr;
 		Tptr.ref++;
 		/* slicer can raise an error after the list node has been published. */
-		*(String**)nl->data = H;
-		*(String**)nl->data = slicer(first, last, s);
+		word = H;
+		memmove(nl->data, &word, sizeof(word));
+		word = slicer(first, last, s);
+		memmove(nl->data, &word, sizeof(word));
 		h = &nl->tail;
 		first = last;
 		result->count++;
@@ -529,27 +579,39 @@ buildtokens(void *arg)
 void
 Sys_tokenize(void *fp)
 {
-	typedef struct { WORD count; List *words; } Value;
-	F_Sys_tokenize *f;
+	typedef struct Value Value;
+
+	struct Value {
+		WORD count; // Complete token count published after construction.
+		List *words; // Old owner is replaced only after all allocations succeed.
+	};
+	F_Sys_tokenize f;
 	TokenizeResult result;
 	List *old;
 	WORD count;
 	uchar *ret;
 
-	f = fp;
-	ret = (uchar*)f->ret;
+	if(fp == nil || fp == H)
+		error(exNilref);
+	if((uintptr)fp > (uintptr)-1-sizeof(f))
+		error(exHeap);
+	memmove(&f, fp, sizeof(f));
+	ret = (uchar*)f.ret;
 	if(ret == nil || ret == H)
 		error(exNilref);
-	result.source = f->s;
-	result.delimiters = f->delim;
+	if((uintptr)ret > (uintptr)-1-sizeof(Value))
+		error(exHeap);
+	memmove(&old, ret+O(Value, words), sizeof(old));
+	result.source = f.s;
+	result.delimiters = f.delim;
 	result.words = H;
+	result.previous = old;
 	result.count = 0;
 	if(!kprotect(buildtokens, &result)){
 		destroy(result.words);
 		krethrow();
 	}
 	count = result.count;
-	memmove(&old, ret+O(Value, words), sizeof(old));
 	memmove(ret+O(Value, count), &count, sizeof(count));
 	memmove(ret+O(Value, words), &result.words, sizeof(result.words));
 	destroy(old);
