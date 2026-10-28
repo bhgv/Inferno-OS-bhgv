@@ -22,6 +22,7 @@ CORE = [
     'libinterp/tests/jit-dispatch-coverage.py',
     'libinterp/tests/buffered-transfer-native.py',
     'libinterp/tests/mapped-preflight-native.py',
+    'libinterp/tests/mapped-capture-native.py',
     'libinterp/tests/array-slot-native.py',
     'libinterp/tests/fixed-slot-native.py',
     'libinterp/tests/numeric-slot-native.py',

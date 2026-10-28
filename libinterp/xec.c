@@ -1982,6 +1982,7 @@ OP(movmp)
 	Type *t;
 	WORD index;
 	int size;
+	void *source, *destination;
 
 	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(index))
 		error(exBounds);
@@ -1996,10 +1997,13 @@ OP(movmp)
 	   (uintptr)R.d > (uintptr)-1-(uintptr)size)
 		error(exBounds);
 
-	incmem(R.s, t);
+	/* Destructors can borrow REG; the original copy operands remain authoritative. */
+	source = R.s;
+	destination = R.d;
+	incmem(source, t);
 	if(t->np)
-		freeptrs(R.d, t);
-	memmove(R.d, R.s, size);
+		freeptrs(destination, t);
+	memmove(destination, source, size);
 }
 
 
@@ -4259,6 +4263,7 @@ OP(headmp)
 	WORD index;
 	uintptr source;
 	int size;
+	void *payload, *destination;
 
 	l = listhead();
 	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(index))
@@ -4283,11 +4288,13 @@ OP(headmp)
 	if(h->ref == 0 || h->ref == (ulong)-1)
 		error(exHeap);
 	h->ref++;
-	R.s = (void*)(source+offsetof(List, data));
-	incmem(R.s, t);
+	destination = R.d;
+	payload = (void*)(source+offsetof(List, data));
+	R.s = payload;
+	incmem(payload, t);
 	if(t->np)
-		freeptrs(R.d, t);
-	memmove(R.d, R.s, size);
+		freeptrs(destination, t);
+	memmove(destination, payload, size);
 	destroy(l);
 }
 
@@ -5134,6 +5141,7 @@ movtmp(void)
 {
 	Type *t;
 	int size;
+	void *source, *destination;
 
 	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(t))
 		error(exBounds);
@@ -5147,10 +5155,13 @@ movtmp(void)
 	   (uintptr)R.d > (uintptr)-1-(uintptr)size)
 		error(exBounds);
 
-	incmem(R.s, t);
+	/* Destructors can borrow REG; the original copy operands remain authoritative. */
+	source = R.s;
+	destination = R.d;
+	incmem(source, t);
 	if(t->np)
-		freeptrs(R.d, t);
-	memmove(R.d, R.s, size);
+		freeptrs(destination, t);
+	memmove(destination, source, size);
 }
 
 extern OP(cvtca);

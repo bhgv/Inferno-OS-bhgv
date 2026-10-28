@@ -83,3 +83,7 @@ missing channel owner during refill. Run just the new matrix with
 `MAPPED_MOVE_CASE=borrowed`. Queue/scheduler boundaries remain modeled, not native
 concurrent threads. No complete VM boot, GC cycle or target JIT execution is
 claimed. Tk, security/cryptography and backend sources are unchanged.
+
+[Mapped copy callback captures](README.mapped-capture-native.md) verify that
+MOVMP, HEADMP and movtmp keep their original source/result addresses when old
+field destructors borrow REG, including complete AMD64 JIT fallback entries.
