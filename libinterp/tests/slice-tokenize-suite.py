@@ -8,6 +8,8 @@ import subprocess
 import sys
 
 CORE = [
+    'emu/port/tests/native-io.py',
+    'libinterp/tests/readmod-io.py',
     'limbo/tests/type-parent.py',
     'limbo/tests/type-walks.py',
     'limbo/tests/diagnostic-print.py',

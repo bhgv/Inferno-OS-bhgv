@@ -4,12 +4,14 @@
 #include "kernel.h"
 #include "dynld.h"
 
-/* Read the complete module image even when the backing file returns short reads. */
+
+/* Validate full-width native replies before advancing a complete module image. */
 Module*
 readmod(char *path, Module *m, int sync)
 {
 	Dir *d;
-	int fd, n, nr, dynld;
+	int fd, n, dynld;
+	long nr;
 	uchar *code;
 	Module *ans;
 	ulong length;
@@ -63,7 +65,11 @@ readmod(char *path, Module *m, int sync)
 		nr = kread(fd, code+n, length-n);
 		if(nr <= 0)
 			break;
-		n += nr;
+		if((ulong)nr > length-n){
+			kwerrstr("invalid module read count");
+			break;
+		}
+		n += (int)nr;
 	}
 	if(n != length) {
 		free(code);

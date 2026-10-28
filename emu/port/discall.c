@@ -1,6 +1,7 @@
 #include "dat.h"
 #include "fns.h"
 #include <interp.h>
+#include "kernel.h"
 
 #define	QP(l)	(Prog**)((char*)(l)+sizeof(QLock))
 
@@ -70,47 +71,97 @@ libseek(int fd, vlong off, int whence)
 	return off;
 }
 
+
+/* Bound an int-result transfer before native calls or caller-pointer arithmetic. */
+static int
+libiospan(void *buffer, long count)
+{
+	if(count < 0 || count > 0x7fffffff ||
+	   (count != 0 && (buffer == nil || buffer == H ||
+	   (uintptr)buffer > (uintptr)-1-(uintptr)count))){
+		kwerrstr("invalid library I/O span");
+		return 0;
+	}
+	return 1;
+}
+
+
+/* Preserve representable errors and reject native replies before int narrowing. */
+static int
+libioresult(long result, int requested)
+{
+	if(result < 0)
+		return result < (-0x7fffffff-1) ? -1 : (int)result;
+	if(result > requested){
+		kwerrstr("invalid library I/O count");
+		return -1;
+	}
+	return (int)result;
+}
+
+
+/* Keep the complete native read result until the interpreter lock is reacquired. */
 int
 libread(int fd, void *buf, int n)
 {
+	long result;
+
+	if(!libiospan(buf, n))
+		return -1;
 	release();
-	n = kread(fd, buf, n);
+	result = kread(fd, buf, n);
 	acquire();
-	return n;
+	return libioresult(result, n);
 }
 
+
+/* Advance only by checked native replies, retaining ordinary partial-read semantics. */
 int
 libreadn(int fd, void *av, long n)
 {
 	char *a;
 	long m, t;
+	int bad;
 
+	if(!libiospan(av, n))
+		return -1;
 	a = av;
-	t = 0;
+	t = m = 0;
+	bad = 0;
 	release();
 	while(t < n){
 		m = kread(fd, a+t, n-t);
-		if(m <= 0){
-			if(t == 0){
-				acquire();
-				return m;
-			}
+		if(m <= 0)
+			break;
+		if(m > n-t){
+			bad = 1;
 			break;
 		}
 		t += m;
 	}
 	acquire();
-	return t;
+	if(bad)
+		return libioresult(m, (int)(n-t));
+	if(t == 0 && m < 0)
+		return libioresult(m, (int)n);
+	return (int)t;
 }
 
+
+/* Validate the complete native write reply before publishing its int result. */
 int
 libwrite(int fd, void *buf, int n)
 {
+	long result;
+
+	if(!libiospan(buf, n))
+		return -1;
 	release();
-	n = kwrite(fd, buf, n);
+	result = kwrite(fd, buf, n);
 	acquire();
-	return n;
+	return libioresult(result, n);
 }
+
 
 int
 libopen(char *name, int omode)
