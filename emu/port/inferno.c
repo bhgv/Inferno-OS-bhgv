@@ -1522,31 +1522,76 @@ sysfdword(void *slot, int *fd)
 	return 1;
 }
 
+
+/* Read a borrowed descriptor-list link without requiring a host-aligned node. */
+static List*
+sysfdlink(List *node)
+{
+	List *next;
+	uintptr address, bytes;
+
+	if(node == nil || node == H)
+		error(exNilref);
+	address = (uintptr)node;
+	bytes = O(List, data)+sizeof(WORD);
+	if(address < sizeof(void*) || address > (uintptr)-1-bytes)
+		error(exBounds);
+	memmove(&next, (uchar*)node+O(List, tail), sizeof(next));
+	return next;
+}
+
+
+/* Reject malformed or cyclic descriptor lists before releasing or changing native groups. */
+static void
+sysfdlist(List *head)
+{
+	List *slow, *fast;
+
+	slow = fast = head;
+	while(fast != H){
+		fast = sysfdlink(fast);
+		if(fast == H)
+			break;
+		fast = sysfdlink(fast);
+		slow = sysfdlink(slow);
+		if(fast != H && fast == slow)
+			error(exHeap);
+	}
+}
+
 enum
 {
 	/* the following pctl calls can block and must release the virtual machine */
-	BlockingPctl=	Sys_NEWFD|Sys_FORKFD|Sys_NEWNS|Sys_FORKNS|Sys_NEWENV|Sys_FORKENV
+	BlockingPctl=	Sys_NEWFD|Sys_FORKFD|Sys_NEWNS|Sys_FORKNS|Sys_NEWENV|Sys_FORKENV // Operations that can block.
 };
 
-/* Publish complete pctl status and preserve descriptor-group ownership during list operations. */
+
+/* Capture pctl operands and validate descriptor links before native group callbacks. */
 void
 Sys_pctl(void *fp)
 {
 	int fd;
 	Prog *p;
-	List *l;
+	List *l, *next;
 	Chan *c;
-	volatile struct {Pgrp *np;} np;
+	volatile struct {
+		Pgrp *np; // Unpublished namespace group released on errors.
+	} np;
 	Pgrp *opg;
 	Chan *dot;
 	Osenv *o;
-	F_Sys_pctl *f;
+	F_Sys_pctl local, *f;
 	Fgrp *fg, *ofg, *nfg;
-	volatile struct {Egrp *ne;} ne;
+	volatile struct {
+		Egrp *ne; // Unpublished environment group released on errors.
+	} ne;
 	Egrp *oe;
 	WORD result;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_pctl, ret), sizeof(*local.ret));
+	f = &local;
+	if(f->flags & (Sys_NEWFD|Sys_FORKFD))
+		sysfdlist(f->movefd);
 
 	p = currun();
 	if(f->flags & BlockingPctl)
@@ -1570,8 +1615,9 @@ Sys_pctl(void *fp)
 		nfg = newfgrp(ofg);
 		lock(&ofg->l);
 		/* file descriptors to preserve */
-		for(l = f->movefd; l != H; l = l->tail) {
-			if(sysfdword(l->data, &fd) && fd >= 0 && fd <= ofg->maxfd) {
+		for(l = f->movefd; l != H; l = next) {
+			memmove(&next, (uchar*)l+O(List, tail), sizeof(next));
+			if(sysfdword((uchar*)l+O(List, data), &fd) && fd >= 0 && fd <= ofg->maxfd) {
 				c = ofg->fd[fd];
 				if(c != nil && fd < nfg->nfd && nfg->fd[fd] == nil) {
 					incref(&c->r);
@@ -1590,8 +1636,9 @@ Sys_pctl(void *fp)
 		ofg = o->fgrp;
 		fg = dupfgrp(ofg);
 		/* Close only in the unpublished copy; the old group may belong to other programs. */
-		for(l = f->movefd; l != H; l = l->tail){
-			if(sysfdword(l->data, &fd))
+		for(l = f->movefd; l != H; l = next){
+			memmove(&next, (uchar*)l+O(List, tail), sizeof(next));
+			if(sysfdword((uchar*)l+O(List, data), &fd))
 				kfgrpclose(fg, fd);
 			else
 				seterror(Ebadarg);

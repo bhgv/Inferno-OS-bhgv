@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/sys-pctl-capture.py',
     'libinterp/tests/sys-file2chan-capture.py',
     'emu/port/tests/dial-paths.py',
     'libinterp/tests/sys-pipe-types.py',

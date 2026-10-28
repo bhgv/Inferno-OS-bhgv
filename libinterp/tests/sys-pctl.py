@@ -7,9 +7,15 @@ import shlex
 import subprocess
 import tempfile
 
-ROOT=Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[2]
+
+if os.environ.get("PCTL_PLATFORM", "emu") not in ("emu", "os"):
+    raise ValueError("PCTL_PLATFORM must be emu or os")
+if os.environ.get("PCTL_WORD", "64") not in ("32", "64"):
+    raise ValueError("PCTL_WORD must be 32 or 64")
 
 
+# Preserve complete production bodies while ignoring braces in literals and comments.
 def function(source, signature):
     """Extract source functions without counting braces in literals and comments."""
     start=source.index(signature)
@@ -26,8 +32,10 @@ def function(source, signature):
 template=(ROOT/'libinterp/tests/sys-pctl.c').read_text()
 with tempfile.TemporaryDirectory(prefix='sys-pctl-') as directory:
     td=Path(directory)
-    command=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all'))
+    command=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1 -g -DNDEBUG -fsanitize=address,undefined -fno-sanitize-recover=all'))
     for platform in ('emu','os'):
+        if os.environ.get('PCTL_PLATFORM', platform) != platform:
+            continue
         source=Path(os.environ.get('PCTL_SOURCE',ROOT/platform/'port/inferno.c')).read_text()
         guard=(ROOT/platform/'port/dis.c').read_text()
         bodies=[function(guard,'int\nkprotect(')]
@@ -36,12 +44,18 @@ with tempfile.TemporaryDirectory(prefix='sys-pctl-') as directory:
         bodies += [source[start:end],function(source,'static int\nsysnativeint(')]
         helper=source if 'static int\nsysfdword(' in source else (ROOT/platform/'port/inferno.c').read_text()
         bodies.append(function(helper,'static int\nsysfdword('))
-        bodies.append(function(source,'void\nSys_pctl('))
+        current = (ROOT/platform/'port/inferno.c').read_text()
+        for signature in ('static void\nsysstatusframe(', 'static List*\nsysfdlink(',
+                          'static void\nsysfdlist('):
+            bodies.append(function(source if signature in source else current, signature))
+        bodies.append(function(source, 'void\nSys_pctl('))
         target=td/(platform+'.c')
         # Adapt Plan 9 anonymous Lock/Ref promotions to the explicit emu host structs.
         bridge=('#define lock(p) lock(&((Fgrp*)(p))->l)\n#define unlock(p) unlock(&((Fgrp*)(p))->l)\n#define incref(p) incref(&((Chan*)(p))->r)\n') if platform=='os' else ''
         target.write_text(template.replace('IMPLEMENTATION',bridge+'\n'.join(bodies)+'\n#undef lock\n#undef unlock\n#undef incref\n'))
         for bits in (64,32):
+            if int(os.environ.get('PCTL_WORD', bits)) != bits:
+                continue
             model=td/(platform+str(bits))
             model.mkdir()
             header=(ROOT/'include/interp.h').read_text()
@@ -51,5 +65,5 @@ with tempfile.TemporaryDirectory(prefix='sys-pctl-') as directory:
             (model/'interp.h').write_text(header)
             includes=['-I'+str(model)]+['-I'+str(ROOT/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
             binary=td/(platform+str(bits)+'-pctl')
-            subprocess.run(command+includes+[str(target),'-o',str(binary)],check=True)
+            subprocess.run(command+['-pthread']+includes+[str(target),'-o',str(binary)],check=True)
             subprocess.run([str(binary)],check=True)

@@ -102,3 +102,6 @@ python3 libinterp/tests/jit-unknown-kind.py
 python3 libinterp/tests/jit-coverage.py
 python3 libinterp/tests/slice-tokenize-suite.py --core
 ```
+
+The later [packed-frame and descriptor-list series](README.sys-pctl-capture.md)
+extends these pctl checks; opcode counts above describe this historical checkpoint.
