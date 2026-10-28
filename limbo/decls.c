@@ -122,21 +122,36 @@ redecl(Decl *d)
 		d, old, old->src.start);
 }
 
+
+/* Keep aggregated compiler reference counts representable before updating metadata. */
+static int
+declrefsum(int count, int delta)
+{
+	vlong total;
+
+	total = (vlong)count+delta;
+	if(total < (-0x7fffffff-1) || total > 0x7fffffff)
+		fatal("declaration reference count overflow");
+	return (int)total;
+}
+
+
+/* Propagate reference usage and diagnostics without wrapping any destination count. */
 void
 checkrefs(Decl *d)
 {
 	Decl *id, *m;
-	long refs;
+	int refs;
 
 	for(; d != nil; d = d->next){
 		if(d->das)
-			d->refs--;
+			d->refs = declrefsum(d->refs, -1);
 		switch(d->store){
 		case Dtype:
 			refs = d->refs;
 			if(d->ty->kind == Tadt){
 				for(id = d->ty->ids; id != nil; id = id->next){
-					d->refs += id->refs;
+					d->refs = declrefsum(d->refs, id->refs);
 					if(id->store != Dfn)
 						continue;
 					if(id->init == nil && id->link == nil && d->importid == nil)
@@ -147,14 +162,14 @@ checkrefs(Decl *d)
 			}
 			if(d->ty->kind == Tmodule){
 				for(id = d->ty->ids; id != nil; id = id->next){
-					refs += id->refs;
+					refs = declrefsum(refs, id->refs);
 					if(id->iface != nil)
-						id->iface->refs += id->refs;
+						id->iface->refs = declrefsum(id->iface->refs, id->refs);
 					if(id->store == Dtype){
 						for(m = id->ty->ids; m != nil; m = m->next){
-							refs += m->refs;
+							refs = declrefsum(refs, m->refs);
 							if(m->iface != nil)
-								m->iface->refs += m->refs;
+								m->iface->refs = declrefsum(m->iface->refs, m->refs);
 						}
 					}
 				}
@@ -176,7 +191,7 @@ checkrefs(Decl *d)
 			if(superwarn && !d->refs && d->sym != nil)
 				warn(d->src.start, "%K not referenced", d);
 			if(d->ty == tstring && d->init != nil)
-				d->init->decl->refs += d->refs;
+				d->init->decl->refs = declrefsum(d->init->decl->refs, d->refs);
 			break;
 		case Dfn:
 			if(d->init == nil && d->importid == nil)
@@ -190,7 +205,7 @@ checkrefs(Decl *d)
 			break;
 		}
 		if(d->das)
-			d->refs++;
+			d->refs = declrefsum(d->refs, 1);
 	}
 }
 
@@ -731,30 +746,25 @@ curscope(void)
 	return scopes[scope];
 }
 
-/*
- * revert to old declarations for each symbol in the currect scope.
- * remove the effects of any imported adt types
- * whenever the adt is imported from a module,
- * we record in the type's decl the module to use
- * when calling members.  the process is reversed here.
- */
+
+/* Restore symbol/import bindings and propagate checked reference counts on scope exit. */
 Decl*
 popscope(void)
 {
 	Decl *id;
 	Type *t;
 
-if (debug['X'])
-	print("popscope\n");
+	if(debug['X'])
+		print("popscope\n");
 	for(id = scopes[scope]; id != nil; id = id->next){
 		if(id->sym != nil){
-if (debug['X'])
-	print("%s : %s %d\n", id->sym->name, kindname[id->ty->kind], id->init != nil ? id->init->op : 0);
+			if(debug['X'])
+				print("%s : %s %d\n", id->sym->name, kindname[id->ty->kind], id->init != nil ? id->init->op : 0);
 			id->sym->decl = id->old;
 			id->old = nil;
 		}
 		if(id->importid != nil)
-			id->importid->refs += id->refs;
+			id->importid->refs = declrefsum(id->importid->refs, id->refs);
 		t = id->ty;
 		if(id->store == Dtype
 		&& t->decl != nil

@@ -1357,29 +1357,39 @@ rewritecomm(Node *n, Node *comm, Node *tmp, Node *slot)
 	return n;
 }
 
-/*
- * merge together two sorted lists, yielding a sorted list
- */
+
+/* Compare local groups by reuse, size, references and name without signed subtraction. */
+static int
+declcompare(Decl *e, Decl *f)
+{
+	long es, fs;
+	int order;
+
+	es = e->ty->size;
+	fs = f->ty->size;
+	order = (e->link == nil)-(f->link == nil);
+	if(order == 0 && (es <= IBY2WD || fs <= IBY2WD))
+		order = (fs > es)-(fs < es);
+	if(order == 0)
+		order = (e->refs > f->refs)-(e->refs < f->refs);
+	if(order == 0)
+		order = (fs > es)-(fs < es);
+	if(order == 0)
+		order = strcmp(f->sym->name, e->sym->name);
+	return order;
+}
+
+
+/* Merge sorted local lists stably, retaining every continuation in its original group. */
 static Decl*
 declmerge(Decl *e, Decl *f)
 {
 	Decl rock, *d;
-	int es, fs, v;
+	int v;
 
 	d = &rock;
 	while(e != nil && f != nil){
-		fs = f->ty->size;
-		es = e->ty->size;
-		/* v = 0; */
-		v = (e->link == nil) - (f->link == nil);
-		if(v == 0 && (es <= IBY2WD || fs <= IBY2WD))
-			v = fs - es;
-		if(v == 0)
-			v = e->refs - f->refs;
-		if(v == 0)
-			v = fs - es;
-		if(v == 0)
-			v = -strcmp(e->sym->name, f->sym->name);
+		v = declcompare(e, f);
 		if(v >= 0){
 			d->next = e;
 			d = e;
@@ -1397,7 +1407,6 @@ declmerge(Decl *e, Decl *f)
 				f = f->next;
 			}
 		}
-		/* d = d->next; */
 	}
 	if(e != nil)
 		d->next = e;

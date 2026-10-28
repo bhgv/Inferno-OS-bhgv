@@ -18,6 +18,7 @@ CORE = [
     'limbo/tests/type-print.py',
     'limbo/tests/stub-print.py',
     'limbo/tests/declaration-walks.py',
+    'limbo/tests/reference-sort.py',
     'lib9/tests/allocated-format.py',
     'libbio/tests/boundaries.py',
     'libbio/tests/print-state.py',
