@@ -1,6 +1,7 @@
 #include	"lib9.h"
 #include	<bio.h>
 
+
 /* Seek only after validated arithmetic/flush, retaining read buffers on native failure. */
 vlong
 Bseek(Biobuf *bp, vlong offset, int base)
@@ -18,6 +19,8 @@ Bseek(Biobuf *bp, vlong offset, int base)
 		n = offset;
 		if(base == 1){
 			current = Boffset(bp);
+			if(current == Beof)
+				return Beof;
 			maximum = (vlong)(~(uvlong)0 >> 1);
 			if((offset > 0 && current > maximum-offset) ||
 			   (offset < 0 && current < (-maximum-1)-offset))

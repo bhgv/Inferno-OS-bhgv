@@ -1,6 +1,8 @@
 #include	"lib9.h"
 #include	<bio.h>
 
+
+/* Read a byte while retaining the allocated history prefix across refills. */
 int
 Bgetc(Biobuf *bp)
 {
@@ -40,14 +42,20 @@ loop:
 	goto loop;
 }
 
+
+/* Rewind only within the allocated pushback prefix and representable count range. */
 int
 Bungetc(Biobuf *bp)
 {
+	vlong next;
 
-	if(bp->state == Bracteof)
-		bp->state = Bractive;
-	if(bp->state != Bractive)
+	if((bp->state != Bractive && bp->state != Bracteof) ||
+	   bp->bsize < 0 || bp->icount > 0)
 		return Beof;
-	bp->icount--;
+	next = (vlong)bp->icount-1;
+	if(next < (-2147483647-1) || next < -(vlong)bp->bsize-Bungetsize)
+		return Beof;
+	bp->icount = next;
+	bp->state = Bractive;
 	return 1;
 }

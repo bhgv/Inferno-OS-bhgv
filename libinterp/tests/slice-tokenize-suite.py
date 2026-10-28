@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'libbio/tests/boundaries.py',
     'libinterp/tests/emitter-layouts.py',
     'limbo/tests/node-chains.py',
     'limbo/tests/node-queries.py',

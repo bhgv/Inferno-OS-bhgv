@@ -1,6 +1,7 @@
 #include	"lib9.h"
 #include	<bio.h>
 
+
 /*
  * Decode one rune while retaining bytes beyond the decoder's consumed prefix.
  * Invalid or truncated UTF advances by one byte and can be ungot like a rune.
@@ -38,16 +39,22 @@ Bgetrune(Biobuf *bp)
 	return rune;
 }
 
-/* Rewind exactly the bytes returned by the last successful rune read. */
+
+/* Rewind the last rune only when its complete byte span fits the pushback area.
+ * A zero rune size retains the historical successful no-op for an active reader. */
 int
 Bungetrune(Biobuf *bp)
 {
+	vlong next;
 
-	if(bp->state == Bracteof)
-		bp->state = Bractive;
-	if(bp->state != Bractive)
+	if((bp->state != Bractive && bp->state != Bracteof) ||
+	   bp->bsize < 0 || bp->icount > 0 || bp->runesize < 0 || bp->runesize > UTFmax)
 		return Beof;
-	bp->icount -= bp->runesize;
+	next = (vlong)bp->icount-bp->runesize;
+	if(next < (-2147483647-1) || next < -(vlong)bp->bsize-Bungetsize)
+		return Beof;
+	bp->icount = next;
 	bp->runesize = 0;
+	bp->state = Bractive;
 	return 1;
 }
