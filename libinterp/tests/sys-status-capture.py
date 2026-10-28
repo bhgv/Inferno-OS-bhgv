@@ -40,6 +40,8 @@ def mocks():
         ('int', 'kdirwstat', 'char *s, Dir *d', 8, '!strcmp(s, "first")', 'nativeint'),
         ('int', 'kdirfwstat', 'int fd, Dir *d', 9, 'fd == wantfd', 'nativeint'),
         ('long', 'osmillisec', 'void', 10, '!released', 'nativeint'),
+        ('int', 'limbosleep', 'ulong period', 11, 'sleepentered && period == (ulong)wantperiod', 'nativeint'),
+        ('int', 'export', 'int fd, char *path, int flags', 12, 'fd == wantfd && !strcmp(path, "first") && flags == (3 & Sys_EXPASYNC)', 'nativeint'),
     ]
     result = []
     for kind, name, arguments, op, test, value in cases:
@@ -68,7 +70,7 @@ with tempfile.TemporaryDirectory(prefix='sys-capture-') as directory:
     for port in ports:
         source = Path(os.environ.get('SYS_CAPTURE_SOURCE', ROOT/port/'port/inferno.c')).read_text()
         signatures = ['static int\nsysnativeint(', 'static void\nsysstatusframe(', 'static int\nsysiofd(', 'static Dir*\npackdir(']
-        signatures += ['void\nSys_'+name+'(' for name in ('dup', 'remove', 'seek', 'unmount', 'chdir', 'mount', 'bind', 'iounit', 'wstat', 'fwstat', 'millisec')]
+        signatures += ['void\nSys_'+name+'(' for name in ('dup', 'remove', 'seek', 'unmount', 'chdir', 'mount', 'bind', 'iounit', 'wstat', 'fwstat', 'millisec', 'sleep', 'export')]
         parts = [function(source, sig) for sig in signatures if sig in source]
         unit = (ROOT/'libinterp/tests/sys-status-capture.c').read_text()
         unit = unit.replace('NATIVE_MOCKS', mocks()).replace('IMPLEMENTATION', '\n\n\n'.join(parts))
@@ -86,12 +88,17 @@ with tempfile.TemporaryDirectory(prefix='sys-capture-') as directory:
             (modeldir/'interp.h').write_text(header)
             includes = ['-I'+str(modeldir)]+['-I'+str(ROOT/p) for p in ('Linux/arm/include', 'emu/port', 'include', 'libinterp')]
             binary = td/(port+model+'-capture')
-            subprocess.run(command+includes+['-pthread', str(target), '-o', str(binary)], check=True)
+            subprocess.run(command+includes+['-DTEST_OS='+str(int(port=='os')), '-pthread', str(target), '-o', str(binary)], check=True)
             for family in families:
                 if family != 'preflight':
                     subprocess.run([str(binary)], env=dict(os.environ, SYS_CAPTURE_FAMILY=family), check=True)
                 else:
-                    keys = [op*8+mode for op in range(11) for mode in range(8) if mode < 6 or op in (2, 5, 7, 9)]
-                    keys += [88, 89, 90, 91]
+                    keys = [op*8+mode for op in range(13) for mode in range(8) if mode < 6 or op in (2, 5, 7, 9, 12)]
+                    keys += [104, 105, 106, 107]
+                    if os.environ.get('SYS_CAPTURE_PREFLIGHT') is not None:
+                        key = int(os.environ['SYS_CAPTURE_PREFLIGHT'])
+                        if key not in keys:
+                            raise ValueError('unknown fixed Sys preflight case')
+                        keys = [key]
                     for key in keys:
                         subprocess.run([str(binary)], env=dict(os.environ, SYS_CAPTURE_ERROR=str(key)), check=True)

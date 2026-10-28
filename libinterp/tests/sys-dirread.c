@@ -212,9 +212,11 @@ IMPLEMENTATION
 static int
 invoke(void *frame)
 {
+	frame = dirbegin(frame);
 	Sys_dirread(frame);
 	return 1;
 }
+
 
 /* Compare converted characters with a separately decoded expected string. */
 static void
@@ -238,7 +240,101 @@ checkstring(String *string, char *text)
 	assert(string != H && (string->len < 0 ? -string->len : string->len) == i);
 }
 
+static int dirphase, dirframeoffset, dirfdoffset, diractive, dirmutated, dirbadfd, dirbadargs;
+static WORD dirnumber = 17;
+static int dirsentinel;
+static uchar dirframe[sizeof(F_Sys_dirread)+32], dirimage[sizeof(dirframe)];
+static uchar dirhandle[sizeof(Sys_FD)+8];
+static uchar *diroriginal;
+
+
+/* Keep all allocation, metadata and owner predicates active under NDEBUG. */
+static void
+dirpredicate(int valid, int line)
+{
+	if(!valid) {
+		fprintf(stderr, "Sys dirread predicate failed at %d phase=%d\n", line, dirphase);
+		abort();
+	}
+}
+
+
+/* Supply a small owned buffer while reporting an intentionally impossible native count. */
+static int
+dircountreport(Dir **entries)
+{
+	Dir *dir;
+
+	if(!dirreportactive)
+		return 0;
+	dir = calloc(1, sizeof(Dir));
+	dirtest(dir != nil);
+	nativebuffer = dir;
+	nativelive = 1;
+	*entries = dir;
+	return 1;
+}
+
+
+/* Observe descriptor narrowing failures before native entry and allocation. */
+void
+seterror(char *message, ...)
+{
+	dirtest(message == Ebadarg && !released);
+	dirbadargs++;
+}
+
+
+/* Preserve changes to the original frame and borrowed FD at every reached boundary. */
+static void
+dircallback(int point)
+{
+	WORD number = 99;
+
+	if(!diractive || dirphase != point || dirmutated)
+		return;
+	dirmutated = 1;
+	memset(diroriginal, 0xa7, sizeof(F_Sys_dirread));
+	memmove(dirhandle+dirfdoffset+O(Sys_FD, fd), &number, sizeof(number));
+}
+
+
+/* Supply packed fixed frames and byte-readable FD views to the actual wrapper. */
+static void*
+dirbegin(void *frame)
+{
+	Sys_FD handle;
+	Sys_FD *pointer;
+
+	diroriginal = dirframe+8+dirframeoffset;
+	memset(dirframe, 0x3c, sizeof(dirframe));
+	memmove(diroriginal, frame, sizeof(F_Sys_dirread));
+	memset(&handle, 0, sizeof(handle));
+	handle.fd = dirnumber;
+	memmove(dirhandle+dirfdoffset, &handle, sizeof(handle));
+	pointer = dirsentinel ? (Sys_FD*)H : (Sys_FD*)(dirhandle+dirfdoffset);
+	memmove(diroriginal+O(F_Sys_dirread, fd), &pointer, sizeof(pointer));
+	memmove(dirimage, dirframe, sizeof(dirimage));
+	diractive = 1;
+	dirmutated = dirbadargs = 0;
+	return diroriginal;
+}
+
+
+/* Compare complete original frame images even after partial-conversion cleanup. */
+static void
+dirfinish(void)
+{
+	diractive = 0;
+	if(dirmutated)
+		memset(dirimage+(diroriginal-dirframe), 0xa7, sizeof(F_Sys_dirread));
+	dirtest(!memcmp(dirframe, dirimage, sizeof(dirimage)));
+	dirtest(dirbadargs == (dirbadfd || dirreportactive));
+}
+
+
 static int returnoffset;
+
 
 /* Each failure must return (-1,nil), release old/partial results and free native entries. */
 static void
@@ -246,9 +342,15 @@ one(int count, int fail)
 {
 	F_Sys_dirread frame = {0};
 	Sys_FD fd = {17};
-	struct { WORD t0; Array *t1; } result;
+	struct {
+		WORD t0; // Leading status from the generated tuple layout.
+		Array *t1; // Pointer-aligned previous or published VM array.
+	} result;
 	Sys_Dir *record;
-	union { uvlong align; uchar bytes[64]; } returnslot;
+	union {
+		uvlong align; // Align the tuple backing store before applying byte shifts.
+		uchar bytes[64]; // Keep canaries around the complete result tuple.
+	} returnslot;
 	uchar expected[64];
 	int i, budget;
 
@@ -270,57 +372,205 @@ one(int count, int fail)
 	allocations = 0;
 	failure = fail;
 	raised = nil;
-	assert(kprotect(invoke, &frame));
-	assert(watchedarray==H);
+	dirtest(kprotect(invoke, &frame));
+	dirfinish();
+	dirtest(watchedarray==H);
 	memmove(&result,returnslot.bytes+8+returnoffset,sizeof(result));
 	memmove(expected+8+returnoffset,&result.t0,sizeof(result.t0));
 	memmove(expected+8+returnoffset+((uchar*)&result.t1-(uchar*)&result),&result.t1,sizeof(result.t1));
-	assert(!memcmp(expected,returnslot.bytes,sizeof(expected)));
-	assert(worker.nerr == 0 && !released && !nativelive);
+	dirtest(!memcmp(expected,returnslot.bytes,sizeof(expected)));
+	dirtest(worker.nerr == 0 && !released && !nativelive);
 	failure = 0;
-	budget = count > 0 ? 1+(pattern ? 3 : 4)*count : 0;
+	budget = !dirbadfd && count > 0 ? 1+(pattern ? 3 : 4)*count : 0;
 	if(fail > 0 && fail <= budget){
-		assert(result.t0 == -1 && result.t1 == H && raised == exHeap);
-	}else if(count <= 0){
-		assert(result.t0 == count && result.t1 == H);
+		dirtest(result.t0 == -1 && result.t1 == H && raised == exHeap);
+	}else if(count <= 0 || dirbadfd){
+		dirtest(result.t0 == (dirbadfd ? -1 : count) && result.t1 == H);
 	}else{
-		assert(result.t0 == count && result.t1 != H && result.t1->len == count);
-		assert(result.t1->t == Tdir);
+		dirtest(result.t0 == count && result.t1 != H && result.t1->len == count);
+		dirtest(result.t1->t == Tdir);
 		record = (Sys_Dir*)result.t1->data;
 		for(i = 0; i < count; i++){
 			checkstring(record[i].name, texts[0]);
 			checkstring(record[i].uid, pattern ? nil : texts[1]);
 			checkstring(record[i].gid, texts[2]);
 			checkstring(record[i].muid, texts[3]);
-			assert(record[i].qid.path == ((uvlong)1<<48)+i);
-			assert(record[i].qid.vers == 123+i && record[i].qid.qtype == (i&1));
-			assert(record[i].mode == 0640+i && record[i].atime == 1000+i && record[i].mtime == 2000+i);
-			assert(record[i].length == ((vlong)1<<45)+i);
-			assert(record[i].dtype == 7+i && record[i].dev == 11+i);
+			dirtest(record[i].qid.path == ((uvlong)1<<48)+i);
+			dirtest(record[i].qid.vers == 123+i && record[i].qid.qtype == (i&1));
+			dirtest(record[i].mode == 0640+i && record[i].atime == 1000+i && record[i].mtime == 2000+i);
+			dirtest(record[i].length == ((vlong)1<<45)+i);
+			dirtest(record[i].dtype == 7+i && record[i].dev == 11+i);
 		}
 	}
 	destroy(result.t1);
-	assert(!live && Tdir->ref == 1 && Tstring.ref == 1 && Tarray.ref == 1);
+	dirtest(!live && Tdir->ref == 1 && Tstring.ref == 1 && Tarray.ref == 1);
 	checks++;
 }
 
-/* Cover EOF, native errors, every field allocation and multi-record native strides. */
-int
-main(int argc, char **argv)
+
+/* Enter directly when deliberately invalid frames must reach production preflight. */
+static int
+rawdirectory(void *frame)
 {
-	int count, fail, maximum;
+	Sys_dirread(frame);
+	return 1;
+}
+
+
+/* Keep the previous result and every tuple byte intact when metadata preflight fails. */
+static void
+dirpreflight(int mode)
+{
+	F_Sys_dirread frame = {0};
+	Sys_FD fd = {17};
+	struct {
+		WORD status; // Preserve the complete leading status sentinel.
+		Array *array; // Retain the old owner throughout invalid metadata checks.
+	} result;
+	Array *old, *candidate;
+	uchar bytes[64], before[64];
+	void *fp, *ret;
+	uintptr offset;
+	char *expected;
+	int ok;
+
+	failure = 0;
+	old = H2D(Array*, heaparray(Tdir, 1));
+	memset(&result, 0xa5, sizeof(result));
+	result.status = -77;
+	result.array = old;
+	memset(bytes, 0x3c, sizeof(bytes));
+	memmove(bytes+8, &result, sizeof(result));
+	offset = (uchar*)&result.array-(uchar*)&result;
+	ret = bytes+8;
+	candidate = old;
+	if(mode == 6)candidate = nil;
+	if(mode == 7)candidate = (Array*)1;
+	if(mode == 8)candidate = (Array*)((uchar*)old+1);
+	if(mode == 9)D2H(old)->ref = 0;
+	memmove((uchar*)ret+offset, &candidate, sizeof(candidate));
+	memmove(before, bytes, sizeof(before));
+	if(mode == 3)ret = nil;
+	if(mode == 4)ret = H;
+	if(mode == 5)ret = (void*)((uintptr)-1-sizeof(WORD)-1);
+	frame.ret = ret;
+	frame.fd = &fd;
+	if(mode == 10)frame.fd = nil;
+	if(mode == 11)frame.fd = (Sys_FD*)((uintptr)-1-1);
+	fp = &frame;
+	if(mode == 0)fp = nil;
+	if(mode == 1)fp = H;
+	if(mode == 2)fp = (void*)((uintptr)-1-1);
+	expected = mode == 2 || mode == 5 || mode == 11 ? exBounds : mode >= 7 && mode <= 9 ? exHeap : exNilref;
+	diractive = 0;
+	dirbadargs = allocations = 0;
+	watchedarray = H;
+	raised = nil;
+	ok = kprotect(rawdirectory, fp);
+	dirtest(!ok && raised == expected && worker.nerr == 0 && !released);
+	dirtest(!nativelive && !allocations && !dirbadargs && !memcmp(bytes, before, sizeof(bytes)));
+	if(mode == 9)D2H(old)->ref = 1;
+	destroy(old);
+	dirtest(!live && Tdir->ref == 1 && Tarray.ref == 1 && Tstring.ref == 1);
+	checks++;
+}
+
+
+/* Cover EOF, native errors, every field allocation and multi-record native strides. */
+static int
+dirmatrix(int argc, char **argv)
+{
+	int count, fail, maximum, index, mode;
+	vlong reports[] = {2147483648LL, -2147483649LL, 4294967297LL,
+		-1099511627776LL, 9223372036854775807LL, -9223372036854775807LL-1};
+	vlong numbers[] = {17, 0, -1, 0x7fffffff, -0x7fffffff-1, -1,
+		2147483648LL, -2147483649LL, 4294967313LL, -1099511627776LL,
+		9223372036854775807LL, -9223372036854775807LL-1};
+	char *family = getenv("DIRREAD_FAMILY");
 
 	sysinit();
-	if(argc == 1 || strcmp(argv[1], "layout") == 0)
-		assert(Tdir->size == sizeof(Sys_Dir));
+	dirtest(Tdir->size == sizeof(Sys_Dir));
+	if(family != nil && !strcmp(family, "preflight")) {
+		for(mode=0; mode<12; mode++) {
+			if(getenv("DIRREAD_ERROR") && mode != atoi(getenv("DIRREAD_ERROR")))continue;
+			dirpreflight(mode);
+		}
+	} else if(family != nil && !strcmp(family, "nativecount")) {
+		dirtest(sizeof(long) >= 8);
+		dirreportactive = 1;
+		for(index=0; index<6; index++)
+		for(dirphase=0; dirphase<7; dirphase++)
+		for(dirframeoffset=0; dirframeoffset<8; dirframeoffset++)
+		for(dirfdoffset=0; dirfdoffset<8; dirfdoffset++)
+		for(returnoffset=0; returnoffset<8; returnoffset++) {
+			if(getenv("DIRREAD_REPORT") && index != atoi(getenv("DIRREAD_REPORT")))continue;
+			dirreported = reports[index];
+			one(-1, 0);
+		}
+	} else if(family != nil && !strcmp(family, "nativefd")) {
+		for(index=0; index<(sizeof(WORD)>4 ? 12 : 6); index++)
+		for(dirframeoffset=0; dirframeoffset<8; dirframeoffset++)
+		for(dirfdoffset=0; dirfdoffset<8; dirfdoffset++)
+		for(returnoffset=0; returnoffset<8; returnoffset++)
+		for(pattern=0; pattern<2; pattern++)
+		for(fail=0; fail<12; fail++) {
+			if(getenv("DIRREAD_NUMBER") && index != atoi(getenv("DIRREAD_NUMBER")))continue;
+			dirphase = getenv("DIRREAD_PHASE") == nil ? 1 : atoi(getenv("DIRREAD_PHASE"));
+			dirnumber = numbers[index];
+			dirsentinel = index == 5;
+			dirbadfd = index >= 6;
+			dirwantfd = dirbadfd ? 17 : (int)numbers[index];
+			one(2, fail);
+		}
+	} else {
 	if(argc == 1 || strcmp(argv[1], "failure") == 0 || strcmp(argv[1], "content") == 0){
+		for(dirphase=0; dirphase<(getenv("DIRREAD_CAPTURE") ? 7 : 1); dirphase++)
+		for(dirframeoffset=0; dirframeoffset<(getenv("DIRREAD_CAPTURE") ? 8 : 1); dirframeoffset++)
+		for(dirfdoffset=0; dirfdoffset<(getenv("DIRREAD_CAPTURE") ? 8 : 1); dirfdoffset++)
 		for(returnoffset=0;returnoffset<8;returnoffset++)
-		for(pattern = 0; pattern < 2; pattern++)for(count = -1; count <= 16; count++){
+		for(pattern = 0; pattern < 2; pattern++)for(count = -1; count <= (getenv("DIRREAD_CAPTURE") ? 3 : 16); count++){
+			if(getenv("DIRREAD_PHASE") && dirphase != atoi(getenv("DIRREAD_PHASE")))continue;
+			if(getenv("DIRREAD_FRAME") && dirframeoffset != atoi(getenv("DIRREAD_FRAME")))continue;
+			if(getenv("DIRREAD_FD_SHIFT") && dirfdoffset != atoi(getenv("DIRREAD_FD_SHIFT")))continue;
 			maximum = argc > 1 && strcmp(argv[1], "content") == 0 ? 0 : (count > 0 ? 4*count+2 : 2);
 			for(fail = 0; fail <= maximum; fail++)
 				one(count, fail);
 		}
 	}
+	}
+	dirtest(checks > 0 || (argc > 1 && !strcmp(argv[1], "layout")));
 	printf("Sys dirread: %d layout/metadata/ownership/failure cases\n", checks+1);
+	return 0;
+}
+
+/* Preserve command-line families while exercising real VM errors on a tracked stack. */
+struct DirectoryArguments {
+	int argc; // Number of layout/content/failure selectors.
+	char **argv; // Native fixture arguments.
+};
+
+
+/* Joinable workers retain every real nested protection frame and owner check. */
+static void*
+dirworker(void *argument)
+{
+	struct DirectoryArguments *args = argument;
+
+	dirtest(dirmatrix(args->argc, args->argv) == 0);
+	return nil;
+}
+
+
+/* Return success only after all native and VM ownership checks finish. */
+int
+main(int argc, char **argv)
+{
+	struct DirectoryArguments args;
+	pthread_t thread;
+
+	args.argc = argc;
+	args.argv = argv;
+	dirtest(pthread_create(&thread, nil, dirworker, &args) == 0);
+	dirtest(pthread_join(thread, nil) == 0);
 	return 0;
 }

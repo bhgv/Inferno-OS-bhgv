@@ -3,7 +3,7 @@
 Run `python3 libinterp/tests/sys-status-capture.py` from the repository root.
 This test is included in the CORE checkpoint. It extracts both ports' actual
 `dup`, `remove`, `seek`, `unmount`, `chdir`, `mount`, `bind`, `iounit`, `wstat`,
-`fwstat`, `millisec`, the shared fixed-frame/descriptor validators and real
+`fwstat`, `millisec`, `sleep`, `export`, the shared fixed-frame/descriptor validators and real
 `packdir`. Generated frames and directory declarations remain authoritative.
 Native namespace and scheduler operations are controlled observers.
 
@@ -11,15 +11,15 @@ Default ASan/UBSan/NDEBUG runs exercise these four profiles:
 
 | Family | WORD64 per port | WORD32 per port | Both ports and models |
 | --- | ---: | ---: | ---: |
-| Ordinary capture | 168,960 | 168,960 | 675,840 |
-| Descriptor boundaries | 153,600 | 76,800 | 460,800 |
-| Scalar integer boundaries | 128,000 | 76,800 | 409,600 |
-| Preflight and allocation failures | 78 | 78 | 312 |
+| Ordinary capture | 199,680 | 199,680 | 798,720 |
+| Descriptor boundaries | 184,320 | 92,160 | 552,960 |
+| Scalar integer boundaries | 153,600 | 92,160 | 491,520 |
+| Preflight and allocation failures | 92 | 92 | 368 |
 
-The three ordinary families total **1,546,240** scenarios. All predicates are
+The three ordinary families total **1,843,200** scenarios. All predicates are
 explicit checks and remain active under `NDEBUG`.
 
-Ordinary capture crosses 11 operations, six callback phases, eight frame
+Ordinary capture crosses 13 operations, six callback phases, eight frame
 shifts, eight result shifts, eight FD-header shifts and five native result
 values. The phases are none, release, string conversion, native call,
 allocation, and acquire. A callback fires only at a boundary reached by the
@@ -29,8 +29,8 @@ operands and must never restore the original frame. Full frame and result
 images detect unintended stores; seek checks complete signed 64-bit offsets
 and results, including their minimum and maximum values.
 
-Descriptor cases cover five targets: seek FD, mount FD, mount authentication
-FD, iounit FD and fwstat FD. Six valid cases include zero, negative one,
+Descriptor cases cover six targets: seek FD, mount FD, mount authentication
+FD, iounit FD, fwstat FD and export FD. Six valid cases include zero, negative one,
 INT_MIN, INT_MAX and the H handle convention. Six additional WORD64 cases
 check positive and negative numbers outside native int, including nonzero
 upper bits whose lower bits resemble an ordinary FD. Rejection must publish
@@ -38,13 +38,13 @@ minus one without converting strings, allocating a directory, releasing the
 VM or calling native code. Callbacks are enabled for valid cases.
 
 Scalar cases independently vary dup's old and new descriptors, seek's start,
-and mount/bind flags. Six representable values and four WORD64-only values
+mount/bind flags and the sleep period. Six representable values and four WORD64-only values
 cover signed boundaries and high bits. Invalid seek/mount numeric arguments
 are accompanied by a nil FD to verify that native argument rejection retains
 its priority over inspecting unused descriptor operands.
 
-Preflight launches fresh processes for 66 invalid frame/result cases,
-eight invalid main FD cases, two invalid mount authentication FD cases and
+Preflight launches fresh processes for 78 invalid frame/result cases,
+ten invalid main FD cases, two invalid mount authentication FD cases and
 two directory-allocation failures per profile. It checks exact VM error
 identities, untouched complete result images and absence of native side
 effects. On allocation failure the real packer has converted exactly four
@@ -65,9 +65,9 @@ select profiles. Ordinary selectors `SYS_CAPTURE_OP`, `SYS_CAPTURE_PHASE`,
 selectors `SYS_CAPTURE_TARGET`, `SYS_CAPTURE_NUMBER` isolate regressions.
 Native-FD phase defaults to release; phase zero isolates descriptor narrowing
 from callback capture. Any selected ordinary family must execute at least
-one scenario.
+one scenario. `SYS_CAPTURE_PREFLIGHT` isolates one validated preflight key.
 
-The parent `2bc34ef` is checked with 114 independent runtime failures:
+The earlier 11-operation checkpoint against parent `2bc34ef` was checked with 114 independent runtime failures:
 packed frames and callback capture for each of 11 operations in both ports
 and models (88 controls), conversion/allocation callbacks for both directory
 wrappers in both ports and models (16 controls), and five wide-FD targets in
@@ -80,3 +80,9 @@ host pointers. Packed FD headers are borrowed byte views without ownership
 transfer. Clock reads are controlled observations rather than elapsed-time
 measurements. Sys builtins are reached through native module calls; they are
 not additional Dis opcodes or new native JIT fast paths.
+
+Sleep adapters are controlled observers: positive waits check their captured
+period, nonpositive waits return zero, and kernel waits return zero after
+completion. This fixture does not inject nonlocal scheduler errors. See
+[stream and directory capture](README.sys-stream-directory-capture.md) for
+the newer stream/count and directory matrices and their parent controls.

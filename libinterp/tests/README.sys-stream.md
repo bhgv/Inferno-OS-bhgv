@@ -35,3 +35,6 @@ and the multi-gigabyte count case triggers UBSan. LeakSanitizer process inspecti
 is disabled; owned buffers are counted. Kernel calls, scheduler transitions and
 cancellation are deterministic adapters, not a full Inferno boot, actual device
 I/O, asynchronous error unwinding or execution through a JIT.
+
+For packed fixed frames, callback capture, full native counts and descriptor
+boundaries, see [stream and directory capture](README.sys-stream-directory-capture.md).

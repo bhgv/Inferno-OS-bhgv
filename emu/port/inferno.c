@@ -1258,14 +1258,16 @@ Sys_listen(void *fp)
 	memmove(f->ret, &status, sizeof(status));
 }
 
-/* Define the no-sleep result and copy it only after regaining the interpreter lock. */
+
+/* Capture fixed operands and complete result slots before native and allocation callbacks. */
 void
 Sys_sleep(void *fp)
 {
-	F_Sys_sleep *f;
+	F_Sys_sleep local, *f;
 	WORD result = 0;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_sleep, ret), sizeof(*local.ret));
+	f = &local;
 	if(!sysnativeint(f->period)){
 		seterror(Ebadarg);
 		result = -1;
@@ -1287,39 +1289,50 @@ Sys_sleep(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+
 /* Complete short stream writes and count only bytes acknowledged by the destination. */
 static int
 sysstreamwrite(int fd, uchar *buf, int n, UWORD *total)
 {
-	int done, wrote;
+	int done;
+	long wrote;
 
 	for(done = 0; done < n; done += wrote){
 		wrote = kwrite(fd, buf+done, n-done);
-		if(wrote <= 0)
+		if(wrote <= 0 || wrote > n-done)
 			return -1;
 		*total += (UWORD)wrote;
 	}
 	return 0;
 }
 
-/* Preserve stream progress and copy the VM-width result into any slot alignment. */
+
+/* Capture fixed operands and complete result slots before native and allocation callbacks. */
 void
 Sys_stream(void *fp)
 {
 	Prog *p;
 	uchar *buf;
-	int src, dst, size, t, n;
+	int src, dst, size, t;
+	long n;
 	UWORD nbytes;
-	F_Sys_stream *f;
+	F_Sys_stream local, *f;
 	WORD result;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_stream, ret), sizeof(*local.ret));
+	f = &local;
 	if(f->bufsiz <= 0 || (uvlong)f->bufsiz > 0x7fffffff){
 		seterror(Ebadarg);
 		result = -1;
 		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
+	if(!sysiofd(f->src, &src) || !sysiofd(f->dst, &dst)) {
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
+		return;
+	}
+	p = currun();
 	size = (int)f->bufsiz;
 	buf = malloc(size);
 	if(buf == nil){
@@ -1328,16 +1341,13 @@ Sys_stream(void *fp)
 		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
-	src = fdchk(f->src);
-	dst = fdchk(f->dst);
-	p = currun();
 
 	release();
 	t = 0;
 	nbytes = 0;
 	while(p->kill == nil){
 		n = kread(src, buf+t, size-t);
-		if(n <= 0)
+		if(n <= 0 || n > size-t)
 			break;
 		t += n;
 		if(t == size){
@@ -1360,16 +1370,24 @@ Sys_stream(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
-/* Capture the native export status before publishing an unaligned VM result. */
+
+/* Capture fixed operands and complete result slots before native and allocation callbacks. */
 void
 Sys_export(void *fp)
 {
-	F_Sys_export *f;
+	F_Sys_export local, *f;
 	WORD result;
+	int fd;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_export, ret), sizeof(*local.ret));
+	f = &local;
+	if(!sysiofd(f->c, &fd)) {
+		result = -1;
+		memmove(f->ret, &result, sizeof(result));
+		return;
+	}
 	release();
-	result = export(fdchk(f->c), string2c(f->dir), f->flag&Sys_EXPASYNC);
+	result = export(fd, string2c(f->dir), f->flag&Sys_EXPASYNC);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
@@ -1564,32 +1582,49 @@ Sys_pctl(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
-/* Retain ownership of native entries and publish tuple fields without alignment assumptions. */
+
+/* Capture fixed operands and complete result slots before native and allocation callbacks. */
 void
 Sys_dirread(void *fp)
 {
 	Dir *entries;
 	Sys_Dir *record;
-	F_Sys_dirread *f;
-	volatile struct { Heap *array; } result;
-	struct { WORD status; Array *array; } layout;
+	F_Sys_dirread local, *f;
+	volatile struct {
+		Heap *array; // Own only the partially constructed VM result during cleanup.
+	} result;
+	struct {
+		WORD status; // Match the generated leading status field.
+		Array *array; // Match the generated pointer-aligned array field.
+	} layout;
 	Array *old, *published;
 	uchar *arrayslot;
 	WORD status;
-	int i, count, fd;
+	int i, count, fd, valid;
+	long received;
 
-	f = fp;
-	fd = fdchk(f->fd);
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_dirread, ret), sizeof(*local.ret));
+	f = &local;
+	valid = sysiofd(f->fd, &fd);
 	arrayslot = (uchar*)f->ret+((uchar*)&layout.array-(uchar*)&layout);
 	status = -1;
-	memmove(&old, arrayslot, sizeof(old));
+	old = sysresultowner(arrayslot);
 	published = H;
 	memmove(f->ret, &status, sizeof(status));
 	memmove(arrayslot, &published, sizeof(published));
 	destroy(old);
+	if(!valid)
+		return;
 	release();
-	count = kdirread(fd, &entries);
+	entries = nil;
+	received = kdirread(fd, &entries);
 	acquire();
+	if(received < -0x7fffffff-1 || received > 0x7fffffff) {
+		seterror(Ebadarg);
+		free(entries);
+		return;
+	}
+	count = (int)received;
 	if(count <= 0){
 		status = count;
 		memmove(f->ret, &status, sizeof(status));

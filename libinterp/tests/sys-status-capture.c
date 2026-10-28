@@ -15,6 +15,9 @@
 char exNilref[] = "nil", exBounds[] = "bounds", exHeap[] = "heap";
 char Ebadarg[] = "argument";
 static int operation, phase, mutated, released, entries, calls, bad, conversions;
+static int sleepentered;
+static WORD wantperiod;
+static Proc sleepworker;
 static int wantfd, wantafd, wantold, wantnew, wantflags, wantstart, nativeint, failallocation, allocations, frees;
 static vlong nativebig, wantoff;
 static uchar *originalframe;
@@ -100,7 +103,7 @@ release(void)
 void
 acquire(void)
 {
-	check(released && calls == 1);
+	check(released && calls == (operation == 11 && wantperiod <= 0 ? 0 : 1) && !sleepentered);
 	callback(5);
 	released = 0;
 }
@@ -170,6 +173,54 @@ nativecall(int op)
 	callback(3);
 }
 
+/* Route the kernel wait queue through a stable worker without starting a scheduler. */
+Proc*
+getup(void)
+{
+	return &sleepworker;
+}
+
+
+/* Observe entry to the emulator's native sleep adapter. */
+void
+osenter(void)
+{
+	check(released && !sleepentered);
+	sleepentered = 1;
+}
+
+
+/* Leave the adapter before the wrapper reacquires its interpreter. */
+void
+osleave(void)
+{
+	check(released && sleepentered);
+	sleepentered = 0;
+}
+
+
+/* Supply the existing kernel wait predicate without actually delaying execution. */
+int
+return0(void *arg)
+{
+	USED(arg);
+	return 0;
+}
+
+
+/* Verify the complete kernel sleep operand at its native boundary. */
+void
+tsleep(Rendez *queue, int (*waitpredicate)(void*), void *arg, int period)
+{
+	nativecall(11);
+	check(queue == &sleepworker.sleep && waitpredicate == return0 && arg == nil && period == wantperiod);
+}
+
+#undef waserror
+#define waserror() 0 // Native wait errors are covered separately by scheduler tests.
+#undef poperror
+#define poperror() ((void)0) // The controlled wait does not install a runtime frame.
+
 NATIVE_MOCKS
 
 #define free(p) freepacked(p) // Observe only production directory cleanup.
@@ -189,6 +240,8 @@ union StatusFrame {
 	F_Sys_wstat wstat; // Path and complete directory value.
 	F_Sys_fwstat fwstat; // Descriptor and complete directory value.
 	F_Sys_millisec millisec; // Scalar clock result.
+	F_Sys_sleep sleep; // Signed native sleep period.
+	F_Sys_export exportframe; // Export descriptor, directory and masked flags.
 };
 
 static union StatusFrame frame;
@@ -296,6 +349,16 @@ prepare(int frameshift, int resultshift, int fdshift)
 	case 10:
 		selectframe(millisec, millisec);
 		break;
+	case 11:
+		frame.sleep.period = 3;
+		selectframe(sleep, sleep);
+		break;
+	case 12:
+		frame.exportframe.c = originalfd;
+		frame.exportframe.dir = &strings[0];
+		frame.exportframe.flag = 3;
+		selectframe(exportframe, export);
+		break;
 	}
 	fdoffset = 0;
 	afdoffset = 0;
@@ -305,6 +368,7 @@ prepare(int frameshift, int resultshift, int fdshift)
 		afdoffset = O(F_Sys_mount, afd);
 	}
 	if(operation == 7)fdoffset = O(F_Sys_iounit, fd);
+	if(operation == 12)fdoffset = O(F_Sys_export, c);
 	if(operation == 9)fdoffset = O(F_Sys_fwstat, fd);
 	originalframe = framebytes+8+frameshift;
 	ret = resultslot+8+resultshift;
@@ -317,6 +381,8 @@ prepare(int frameshift, int resultshift, int fdshift)
 	wantnew = 18;
 	wantflags = 3;
 	wantstart = 1;
+	wantperiod = 3;
+	sleepentered = 0;
 	wantfd = 17;
 	wantafd = -1;
 	packed = nil;
@@ -333,11 +399,11 @@ run(int resultshift, int valid)
 	LONG big;
 
 	invoke(originalframe);
-	check(!released && calls == valid && entries == (valid && operation != 10));
+	check(!released && !sleepentered && calls == (valid && (operation != 11 || wantperiod > 0)) && entries == (valid && operation != 10));
 	check(bad == !valid && packed == nil);
 	check(allocations == (valid && (operation == 8 || operation == 9)) && frees == allocations);
 	memmove(expected, originalresult, sizeof(expected));
-	word = valid ? nativeint : -1;
+	word = valid ? (operation == 11 && (TEST_OS || wantperiod <= 0) ? 0 : nativeint) : -1;
 	big = valid ? nativebig : -1;
 	memmove(expected+8+resultshift, operation == 2 ? (void*)&big : (void*)&word, resultwidth);
 	check(!memcmp(expected, resultslot, sizeof(expected)));
@@ -368,9 +434,9 @@ preflight(int key)
 
 	operation = key/8;
 	mode = key%8;
-	if(key >= 88) {
-		operation = key < 90 ? 5 : key == 90 ? 8 : 9;
-		mode = key < 90 ? key-80 : 10;
+	if(key >= 104) {
+		operation = key < 106 ? 5 : key == 106 ? 8 : 9;
+		mode = key < 106 ? key-96 : 10;
 	}
 	phase = 0;
 	prepare(0, 0, 0);
@@ -407,8 +473,8 @@ worker(void *unused)
 	vlong numbers[] = {17, 0, -1, 0x7fffffff, -0x7fffffff-1, -1,
 		2147483648LL, -2147483649LL, 4294967313LL, -1099511627776LL,
 		9223372036854775807LL, -9223372036854775807LL-1};
-	int targets[] = {2, 5, 5, 7, 9};
-	int scalarops[] = {0, 0, 2, 5, 6};
+	int targets[] = {2, 5, 5, 7, 9, 12};
+	int scalarops[] = {0, 0, 2, 5, 6, 11};
 	vlong scalars[] = {0, 1, -1, 17, 0x7fffffff, -0x7fffffff-1,
 		4294967313LL, -1099511627776LL, 9223372036854775807LL, -9223372036854775807LL-1};
 	int fs, rs, ds, r, target, index, valid;
@@ -423,7 +489,7 @@ worker(void *unused)
 		preflight(atoi(getenv("SYS_CAPTURE_ERROR")));
 	check(family != nil);
 	if(!strcmp(family, "ordinary")) {
-		for(operation=0; operation<11; operation++)
+		for(operation=0; operation<13; operation++)
 		for(phase=0; phase<6; phase++)
 		for(fs=0; fs<8; fs++)
 		for(rs=0; rs<8; rs++)
@@ -440,7 +506,7 @@ worker(void *unused)
 			checks++;
 		}
 	} else if(!strcmp(family, "nativeint")) {
-		for(target=0; target<5; target++)
+		for(target=0; target<6; target++)
 		for(index=0; index<(sizeof(WORD)>4 ? 10 : 6); index++)
 		for(fs=0; fs<8; fs++)
 		for(rs=0; rs<8; rs++)
@@ -460,7 +526,8 @@ worker(void *unused)
 			case 1: offset = O(F_Sys_dup, new); break;
 			case 2: offset = O(F_Sys_seek, start); break;
 			case 3: offset = O(F_Sys_mount, flags); break;
-			default: offset = O(F_Sys_bind, flags); break;
+			case 4: offset = O(F_Sys_bind, flags); break;
+			default: offset = O(F_Sys_sleep, period); break;
 			}
 			memmove(originalframe+offset, &number, sizeof(number));
 			valid = index < 6;
@@ -468,7 +535,8 @@ worker(void *unused)
 				if(target == 0)wantold = number;
 				if(target == 1)wantnew = number;
 				if(target == 2)wantstart = number;
-				if(target >= 3)wantflags = number;
+				if(target == 3 || target == 4)wantflags = number;
+				if(target == 5)wantperiod = number;
 			} else if(target == 2 || target == 3) {
 				/* Invalid flags/start must reject before inspecting the unused FD. */
 				handle = nil;
@@ -480,7 +548,7 @@ worker(void *unused)
 		}
 	} else {
 		check(!strcmp(family, "nativefd"));
-		for(target=0; target<5; target++)
+		for(target=0; target<6; target++)
 		for(index=0; index<(sizeof(WORD)>4 ? 12 : 6); index++)
 		for(fs=0; fs<8; fs++)
 		for(rs=0; rs<8; rs++)

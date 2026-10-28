@@ -39,3 +39,6 @@ only its descriptor-size correction still reproduces record overlap in the
 content subset. Applying both layout corrections to the parent source isolates
 its prematurely removed error frame: field-allocation errors escape instead of
 cleaning up and returning the documented `(-1,nil)` result.
+
+For packed fixed frames, callback capture, full native counts and descriptor
+boundaries, see [stream and directory capture](README.sys-stream-directory-capture.md).
