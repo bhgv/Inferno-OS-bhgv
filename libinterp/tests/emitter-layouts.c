@@ -260,10 +260,119 @@ callbacks(void)
 }
 
 
+/* Model metadata as forward intervals in a wide integer coordinate system. */
+static int
+ownergcoracle(LeafLayout *a)
+{
+	long long ref, color;
+	unsigned long long x, y;
+
+	ref = -(long long)a->heapref;
+	color = -(long long)a->heapcolor;
+	x = (unsigned long long)a->mutator;
+	y = (unsigned long long)a->nprop;
+	return a->heapref > 0 && a->heapref <= 255 && a->heapref%8 == 0 &&
+	       a->heapcolor > 0 && a->heapcolor <= 255 && a->heapcolor%4 == 0 &&
+	       a->refbytes == 8 && a->markcolor >= 0 && a->markcolor <= 255 &&
+	       !(ref < color+4 && color < ref+8) &&
+	       x != 0 && y != 0 && x%4 == 0 && y%4 == 0 &&
+	       x <= ~0ULL-4 && y <= ~0ULL-4 && x != y;
+}
+
+
+/* Check one owner ABI against the oracle, deterministic sizing and atomic rejection. */
+static void
+ownerimage(LeafLayout *a)
+{
+	int ops[] = {IMOVP, ISELF, IHEADP, ITAIL};
+	u32int output[LeafMax+2], saved[LeafMax+2];
+	LeafLayout original;
+	int op, n, result, valid;
+
+	original = *a;
+	valid = ownergcoracle(a);
+	layoutcheck(leafownergclayout(a) == valid);
+	for(op = 0; op < nelem(ops); op++){
+		memset(output, 0xa5, sizeof(output));
+		memmove(saved, output, sizeof(output));
+		n = leafemit(nil, LeafMax, a, ops[op]);
+		layoutcheck((n > 0) == valid);
+		result = leafemit(output+1, LeafMax, a, ops[op]);
+		layoutcheck(result == n && !memcmp(a, &original, sizeof(*a)));
+		layoutcheck(output[0] == saved[0]);
+		layoutcheck(!memcmp(output+n+1, saved+n+1, (LeafMax+1-n)*sizeof(*output)));
+		checks++;
+	}
+}
+
+
+/* Exhaust boundary metadata layouts and invalid, wrapping or aliased collector cells. */
+static void
+owners(void)
+{
+	LeafLayout a;
+	int refs[] = {INT_MIN, -8, -1, 0, 1, 4, 8, 16, 24, 32, 248, 256, INT_MAX};
+	int colors[] = {INT_MIN, -4, -1, 0, 1, 4, 8, 12, 16, 24, 32, 252, 256, INT_MAX};
+	unsigned long long cells[] = {0, 1, 2, 3, 4, 8, ~0ULL, ~0ULL-1, ~0ULL-3,
+	                             ~0ULL-4, ~0ULL-7, 0x100000000ULL, 0x100000004ULL};
+	int i, j, field;
+	void *target;
+	int conversions[] = {ICVTAC, ICVTCA, ICVTWC, ICVTLC, ICVTFC};
+	u32int output[LeafMax], saved[LeafMax];
+
+	for(i = 0; i < nelem(refs); i++)
+	for(j = 0; j < nelem(colors); j++){
+		if(getenv("EMIT_LAYOUT_OWNER_CASE") && strcmp(getenv("EMIT_LAYOUT_OWNER_CASE"), "metadata"))
+			continue;
+		a = baseline();
+		a.heapref = refs[i];
+		a.heapcolor = colors[j];
+		ownerimage(&a);
+	}
+	for(i = 0; i < nelem(cells); i++)
+	for(j = 0; j < nelem(cells); j++){
+		if(getenv("EMIT_LAYOUT_OWNER_CASE") && strcmp(getenv("EMIT_LAYOUT_OWNER_CASE"), "cells"))
+			continue;
+		a = baseline();
+		a.mutator = (void*)cells[i];
+		a.nprop = (void*)cells[j];
+		ownerimage(&a);
+	}
+	for(i = -1; i <= 256; i++){
+		if(getenv("EMIT_LAYOUT_OWNER_CASE") && strcmp(getenv("EMIT_LAYOUT_OWNER_CASE"), "metadata"))
+			continue;
+		a = baseline(); a.markcolor = i; ownerimage(&a);
+		a = baseline(); a.refbytes = i; ownerimage(&a);
+	}
+	for(field = 0; field < 2; field++)
+	for(i = 0; i < 2; i++)
+	for(j = 0; j < nelem(conversions); j++){
+		if(field == 1 && j >= 2)
+			continue;
+		if(getenv("EMIT_LAYOUT_OWNER_CASE") && strcmp(getenv("EMIT_LAYOUT_OWNER_CASE"), "identities"))
+			continue;
+		a = baseline();
+		target = i == 0 ? nil : (void*)-1;
+		if(field == 0)
+			a.stringtype = target;
+		else
+			a.arrayidentity = target;
+		memset(output, 0xa5, sizeof(output));
+		memmove(saved, output, sizeof(output));
+		layoutcheck(leafemit(nil, LeafMax, &a, conversions[j]) == 0);
+		layoutcheck(leafemit(output, LeafMax, &a, conversions[j]) == 0);
+		layoutcheck(!memcmp(output, saved, sizeof(output)));
+		checks++;
+	}
+}
+
+
 /* Exercise shared Array layout rules and the complete priority leaf opcode set. */
 int
 main(void)
 {
+	if(!getenv("EMIT_LAYOUT_CASE") || !strcmp(getenv("EMIT_LAYOUT_CASE"), "owners"))
+		owners();
 	if(!getenv("EMIT_LAYOUT_CASE") || !strcmp(getenv("EMIT_LAYOUT_CASE"), "callbacks"))
 		callbacks();
 	if(!getenv("EMIT_LAYOUT_CASE") || !strcmp(getenv("EMIT_LAYOUT_CASE"), "array"))

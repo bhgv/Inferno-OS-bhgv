@@ -14,8 +14,8 @@ if os.environ.get('EMIT_LAYOUT_ARCH', 'amd64') not in ('amd64', 'arm64'):
     raise ValueError('EMIT_LAYOUT_ARCH must be amd64 or arm64')
 if os.environ.get('EMIT_LAYOUT_WORD', '64') not in ('32', '64'):
     raise ValueError('EMIT_LAYOUT_WORD must be 32 or 64')
-if os.environ.get('EMIT_LAYOUT_CASE', 'array') not in ('array', 'publication', 'span', 'callbacks'):
-    raise ValueError('EMIT_LAYOUT_CASE must be array, publication, span or callbacks')
+if os.environ.get('EMIT_LAYOUT_CASE', 'array') not in ('array', 'publication', 'span', 'callbacks', 'owners'):
+    raise ValueError('EMIT_LAYOUT_CASE must be array, publication, span, callbacks or owners')
 if os.environ.get('EMIT_LAYOUT_CASE') == 'span' and (not AMD64_HOST or os.environ.get('EMIT_LAYOUT_ARCH') == 'arm64'):
     raise ValueError('span execution requires the AMD64 host backend')
 shared = (ROOT / 'libinterp/leaf64-ops.h').read_text()

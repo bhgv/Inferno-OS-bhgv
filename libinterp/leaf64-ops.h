@@ -67,6 +67,28 @@ leafbytearraylayout(LeafLayout *a)
 }
 
 
+/* Require disjoint complete native GC cells and nonoverlapping owner metadata.
+ * These numeric guards do not establish mapping ownership of supplied addresses. */
+static int
+leafownergclayout(LeafLayout *a)
+{
+	unsigned long long mutator, propagation;
+
+	if(a->heapref <= 0 || a->heapref > 255 || a->heapref%8 ||
+	   a->heapcolor <= 0 || a->heapcolor > 255 || a->heapcolor%4 ||
+	   a->refbytes != 8 || a->markcolor < 0 || a->markcolor > 255)
+		return 0;
+	if(a->heapcolor < a->heapref+4 && a->heapref < a->heapcolor+8)
+		return 0;
+	mutator = (unsigned long long)a->mutator;
+	propagation = (unsigned long long)a->nprop;
+	if(mutator == 0 || propagation == 0 || (mutator|propagation)%4 ||
+	   mutator > ~0ULL-4 || propagation > ~0ULL-4 || mutator == propagation)
+		return 0;
+	return 1;
+}
+
+
 /* Validate both byte-conversion layouts before offsets or private buffers are used. */
 static int
 leafbyteconversionlayout(LeafLayout *a)
@@ -88,7 +110,8 @@ leafbyteconversionlayout(LeafLayout *a)
 	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 || a->refbytes != 8 ||
 	   a->heaptype <= 0 || a->heaptype > 128 || a->heaptype%8 ||
 	   a->heapcolor < a->heapref || a->heapcolor < a->heaptype || a->heapcolor > 255 ||
-	   a->arrayidentity == nil || a->stringtype == nil)
+	   a->arrayidentity == nil || a->arrayidentity == (void*)-1 ||
+	   a->stringtype == nil || a->stringtype == (void*)-1)
 		return 0;
 	if(!leafbytearraylayout(a) || a->heapref == a->heaptype || a->arrayidentity == a->stringtype)
 		return 0;

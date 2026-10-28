@@ -1,6 +1,8 @@
 # Complete decoded JIT dispatch: native fast path plus C
 
-Latest [list/channel runtime callback checks](README.jit-callback-alignment.md) cover the six helper identities used by guarded fast paths.
+Latest [owner GC layout and builtin identity checks](README.owner-gc-layout.md) cover both priority native backends.
+
+Previous [list/channel runtime callback checks](README.jit-callback-alignment.md) cover the six helper identities used by guarded fast paths.
 
 Previous [ARM64 target-alignment checks and compiler-query checkpoint](README.jit-target-alignment.md) retain full native+C dispatch availability.
 

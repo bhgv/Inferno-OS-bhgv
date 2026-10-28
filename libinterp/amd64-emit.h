@@ -468,10 +468,7 @@ x64owner(X64Buf *b, LeafLayout *abi, LeafOp *p)
 	int offset, empty, same, marked, validated;
 
 	if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
-	   abi->heapref <= 0 || abi->heapref > 255 || abi->heapref%8 ||
-	   abi->heapcolor <= 0 || abi->heapcolor > 255 || abi->heapcolor%4 ||
-	   abi->refbytes != 8 || abi->mutator == nil || abi->nprop == nil ||
-	   abi->markcolor < 0 || abi->markcolor > 255)
+	   !leafownergclayout(abi))
 		return 0;
 	offset=p->alu == 2 ? abi->listdata : abi->listtail;
 	if(p->alu >= 2 && (offset < 0 || offset > 2047))
@@ -1172,7 +1169,9 @@ x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
 	   a->stringdata < a->stringmax+4 || a->stringdata > 2047 ||
 	   a->heapref <= 0 || a->heapref > 128 || a->heapref%8 || a->refbytes != 8 ||
-	   a->heaptype <= 0 || a->heaptype > 128 || a->heaptype%8 || a->stringtype == nil) return 0;
+	   a->heaptype <= 0 || a->heaptype > 128 || a->heaptype%8 ||
+	   a->stringtype == nil || a->stringtype == (void*)-1)
+		return 0;
 	header = a->stringlen > a->stringmax ? a->stringlen+4 : a->stringmax+4;
 	origin = a->heapref > a->heaptype ? a->heapref : a->heaptype;
 	if(a->heapcolor > origin && a->heapcolor <= 255)origin=a->heapcolor;
