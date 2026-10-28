@@ -14,8 +14,10 @@
 static void
 printpredicate(int condition)
 {
-	if(!condition)
+	if(!condition) {
+		fprintf(stderr, "Sys print ownership/format predicate failed\n");
 		abort();
+	}
 }
 #define printcheck(condition) printpredicate(!!(condition)) // Normalize pointer and scalar predicates.
 
@@ -24,65 +26,175 @@ static Proc worker;
 static char *raised;
 static int checks, live, allocations, failalloc, vmfail, vmlive;
 static void *owners[16];
+static void (*vmallocationhook)(void); // Model the VM heapmonitor callback during result allocation.
 char exInval[] = "invalid", exNomem[] = "memory", exNilref[]="nil", exHeap[]="heap", exBounds[]="bounds";
 
 
-/* Preserve the real emulator error stack across protected formatting calls. */
-Proc *getup(void) { return &worker; }
-void nexterror(void) {
+/* Preserve the emulator's real error stack during protected formatting. */
+Proc*
+getup(void)
+{
+	return &worker;
+}
+
+
+/* Propagate the original error through the active VM protection frame. */
+void
+nexterror(void)
+{
 	printcheck(worker.nerr > 0);
 	siglongjmp(worker.estack[--worker.nerr], 1);
 }
-void error(char *message) { raised = message; nexterror(); }
+
+
+/* Retain the original VM error identity for cleanup and publication checks. */
+void
+error(char *message)
+{
+	raised = message;
+	nexterror();
+}
+
+
 /* Native error text is deterministic and respects an empty destination. */
-char *syserr(char *p, char *end, Prog *prog) {
+char*
+syserr(char *p, char *end, Prog *prog)
+{
 	(void)prog;
-	if(p < end)*p++ = '!';
+	if(p < end)
+		*p++ = '!';
 	return p;
 }
-void rerrstr(char *p, uint n) { if(n)snprintf(p, n, "fixture"); }
-/* Count only the buffers owned by production bigxprint, with bounded allocation. */
-static void *outputmalloc(size_t n) {
+
+
+/* Supply deterministic native error text without changing its formatting ABI. */
+void
+rerrstr(char *p, uint n)
+{
+	if(n)
+		snprintf(p, n, "fixture");
+}
+
+
+/* Count only buffers owned by production bigxprint, with bounded allocation. */
+static void*
+outputmalloc(size_t n)
+{
 	void *p;
+
 	allocations++;
-	if(failalloc || n > 16384)return nil;
-	p = malloc(n); printcheck(p); live++;
+	if(failalloc || n > 16384)
+		return nil;
+	p = malloc(n);
+	printcheck(p);
+	live++;
 	return p;
 }
-static void outputfree(void *p) { if(p){ printcheck(live > 0); live--; free(p); } }
+
+
+/* Require each protected formatting buffer to be released exactly once. */
+static void
+outputfree(void *p)
+{
+	if(p) {
+		printcheck(live > 0);
+		live--;
+		free(p);
+	}
+}
+
+
 /* LeakSanitizer cannot inspect processes in this sandbox. */
-int __lsan_is_turned_off(void) { return 1; }
-/* Bound VM result allocation while retaining actual Array/String declarations. */
-static void *vmalloc(size_t n) {
+int
+__lsan_is_turned_off(void)
+{
+	return 1;
+}
+
+
+/* Bound result allocation with live Heap prefixes and actual VM layouts. */
+static void*
+vmalloc(size_t n)
+{
 	void *p;
 	int i;
-	if(vmfail)error(exNomem);
-	p = calloc(1, n); printcheck(p);
-	for(i = 0; i < 16 && owners[i]; i++);
-	printcheck(i < 16); owners[i] = p; vmlive++;
+
+	if(vmfail)
+		error(exNomem);
+	p = calloc(1, sizeof(Heap)+n);
+	printcheck(p);
+	((Heap*)p)->ref = 1;
+	p = (Heap*)p+1;
+	for(i = 0; i < 16 && owners[i]; i++)
+		;
+	printcheck(i < 16);
+	owners[i] = p;
+	vmlive++;
+	if(vmallocationhook)
+		vmallocationhook();
 	return p;
 }
-String *c2string(char *text, int n) {
+
+
+/* Model successful ASCII conversion while exposing its fallible allocation. */
+String*
+c2string(char *text, int n)
+{
 	String *s;
-	if(n == 0)return H;
-	s = vmalloc(sizeof(String)+n+1); s->len = n; s->max = n;
-	memmove(s->Sascii, text, n); return s;
+
+	if(n == 0)
+		return H;
+	s = vmalloc(sizeof(String)+n+1);
+	s->len = n;
+	s->max = n;
+	memmove(s->Sascii, text, n);
+	return s;
 }
-Array *mem2array(void *text, int n) {
-	Array *a = vmalloc(sizeof(Array)+n);
-	a->len = n; a->data = (uchar*)(a+1);
-	memmove(a->data, text, n); return a;
+
+
+/* Model byte-array construction with a separately checked owning Heap. */
+Array*
+mem2array(void *text, int n)
+{
+	Array *a;
+
+	a = vmalloc(sizeof(Array)+n);
+	a->len = n;
+	a->data = (uchar*)(a+1);
+	memmove(a->data, text, n);
+	return a;
 }
-void destroy(void *p) {
+
+
+/* Release exactly one VM reference, preserving shared old result owners. */
+void
+destroy(void *p)
+{
 	int i;
-	if(p == H)return;
-	for(i = 0; i < 16 && owners[i] != p; i++);
-	printcheck(i < 16); owners[i] = nil; vmlive--; free(p);
+
+	if(p == H)
+		return;
+	for(i = 0; i < 16 && owners[i] != p; i++)
+		;
+	printcheck(i < 16 && D2H(p)->ref > 0);
+	if(--D2H(p)->ref)
+		return;
+	owners[i] = nil;
+	vmlive--;
+	free(D2H(p));
 }
-Prog *currun(void) { return nil; }
+
+
+/* Public wrappers need no scheduled Prog for these non-error-string formats. */
+Prog*
+currun(void)
+{
+	return nil;
+}
+
 GUARD
-#define malloc outputmalloc
-#define free outputfree
+#define malloc outputmalloc // Count only dynamic formatter buffers.
+#define free outputfree // Enforce dynamic formatter buffer ownership.
 IMPLEMENTATION
 #undef malloc
 #undef free

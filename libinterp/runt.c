@@ -393,16 +393,42 @@ Sys_sprint(void *fp)
 	int n;
 	char buf[256], *b = buf;
 	String *result, *old;
-	F_Sys_sprint *f;
+	String *format;
+	Prog *prog;
+	void *ret, *args;
+	uintptr address;
+	ulong references;
 
-	f = fp;
-	n = xprint(currun(), f, &f->vargs, f->s, buf, sizeof(buf));
+	if(fp == nil || fp == H)
+		error(exNilref);
+	if((uintptr)fp > (uintptr)-1-O(F_Sys_sprint, vargs))
+		error(exBounds);
+	/* Retain the original frame as the packed argument alignment anchor. */
+	memmove(&ret, (uchar*)fp+O(F_Sys_sprint, ret), sizeof(ret));
+	memmove(&format, (uchar*)fp+O(F_Sys_sprint, s), sizeof(format));
+	args = (uchar*)fp+O(F_Sys_sprint, vargs);
+	if(ret == nil || ret == H)
+		error(exNilref);
+	if((uintptr)ret > (uintptr)-1-sizeof(old))
+		error(exBounds);
+	memmove(&old, ret, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	if(old != H) {
+		address = (uintptr)old;
+		if(address <= sizeof(Heap) || (address-sizeof(Heap))%sizeof(void*) != 0)
+			error(exHeap);
+		memmove(&references, (uchar*)old-sizeof(Heap)+O(Heap, ref), sizeof(references));
+		if(references == 0)
+			error(exHeap);
+	}
+	prog = currun();
+	n = xprint(prog, fp, args, format, buf, sizeof(buf));
 	if(n >= sizeof(buf)-UTFmax-2)
-		n = bigxprint(currun(), f, &f->vargs, f->s, &b, sizeof(buf));
+		n = bigxprint(prog, fp, args, format, &b, sizeof(buf));
 	b[n] = '\0';
 	result = printresult(b, n, 0, b != buf);
-	memmove(&old, f->ret, sizeof(old));
-	memmove(f->ret, &result, sizeof(result));
+	memmove(ret, &result, sizeof(result));
 	destroy(old);
 }
 
@@ -414,15 +440,41 @@ Sys_aprint(void *fp)
 	int n;
 	char buf[256], *b = buf;
 	Array *result, *old;
-	F_Sys_aprint *f;
+	String *format;
+	Prog *prog;
+	void *ret, *args;
+	uintptr address;
+	ulong references;
 
-	f = fp;
-	n = xprint(currun(), f, &f->vargs, f->s, buf, sizeof(buf));
+	if(fp == nil || fp == H)
+		error(exNilref);
+	if((uintptr)fp > (uintptr)-1-O(F_Sys_aprint, vargs))
+		error(exBounds);
+	/* Retain the original frame as the packed argument alignment anchor. */
+	memmove(&ret, (uchar*)fp+O(F_Sys_aprint, ret), sizeof(ret));
+	memmove(&format, (uchar*)fp+O(F_Sys_aprint, s), sizeof(format));
+	args = (uchar*)fp+O(F_Sys_aprint, vargs);
+	if(ret == nil || ret == H)
+		error(exNilref);
+	if((uintptr)ret > (uintptr)-1-sizeof(old))
+		error(exBounds);
+	memmove(&old, ret, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	if(old != H) {
+		address = (uintptr)old;
+		if(address <= sizeof(Heap) || (address-sizeof(Heap))%sizeof(void*) != 0)
+			error(exHeap);
+		memmove(&references, (uchar*)old-sizeof(Heap)+O(Heap, ref), sizeof(references));
+		if(references == 0)
+			error(exHeap);
+	}
+	prog = currun();
+	n = xprint(prog, fp, args, format, buf, sizeof(buf));
 	if(n >= sizeof(buf)-UTFmax-2)
-		n = bigxprint(currun(), f, &f->vargs, f->s, &b, sizeof(buf));
+		n = bigxprint(prog, fp, args, format, &b, sizeof(buf));
 	result = printresult(b, n, 1, b != buf);
-	memmove(&old, f->ret, sizeof(old));
-	memmove(f->ret, &result, sizeof(result));
+	memmove(ret, &result, sizeof(result));
 	destroy(old);
 }
 

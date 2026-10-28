@@ -38,3 +38,7 @@ README.movpc-print.md for native PC materialization and embedded-NUL checks.
 
 Latest output/argument spans, packed borrowed string views, native-width `%H`
 and dynamic-result publication: [README.sys-print-spans.md](README.sys-print-spans.md).
+
+[Public result snapshots](README.sys-print-public.md) check complete fixed frame
+prefixes and return cells, packed frame access, original-cell publication across
+allocation callbacks, shared old owners and error cleanup.
