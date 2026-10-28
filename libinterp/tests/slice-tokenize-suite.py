@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CORE = [
+    'emu/port/tests/dial-paths.py',
     'libinterp/tests/sys-pipe-types.py',
     'libinterp/tests/raise-native.py',
     'libinterp/tests/direct-target-native.py',

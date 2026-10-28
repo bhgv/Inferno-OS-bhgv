@@ -10,25 +10,26 @@ typedef struct DS DS;
 
 static int	call(char*, char*, DS*);
 static int	csdial(DS*);
-static void	_dial_string_parse(char*, DS*);
+static int	_dial_string_parse(char*, DS*);
 static int	nettrans(char*, char*, int na, char*, int);
 
 enum
 {
-	Maxstring=	128,
-	Maxpath=	100
+	Maxstring=	128,	// Maximum dial string including its terminator.
+	Maxpath=	100	// Maximum connection-server path or reply.
 };
 
 struct DS
 {
-	char	buf[Maxstring];			/* dist string */
-	char	*netdir;
-	char	*proto;
-	char	*rem;
-	char	*local;				/* other args */
-	char	*dir;
-	int	*cfdp;
+	char	buf[Maxstring];	// Private mutable dial string.
+	char	*netdir;	// Network mount directory.
+	char	*proto;	// Protocol within the private buffer.
+	char	*rem;	// Destination within the private buffer.
+	char	*local;	// Optional local address.
+	char	*dir;	// Optional result directory.
+	int	*cfdp;	// Optional result control descriptor.
 };
+
 
 /*
  *  the dialstring is of the form '[/net/]proto!dest'
@@ -44,7 +45,8 @@ kdial(char *dest, char *local, char *dir, int *cfdp)
 	ds.dir = dir;
 	ds.cfdp = cfdp;
 
-	_dial_string_parse(dest, &ds);
+	if(_dial_string_parse(dest, &ds) < 0)
+		return -1;
 	if(ds.netdir)
 		return csdial(&ds);
 
@@ -75,10 +77,13 @@ kdial(char *dest, char *local, char *dir, int *cfdp)
 	return rv;
 }
 
+
+/* Translate a destination and try each connection-server clone path. */
 static int
 csdial(DS *ds)
 {
-	int n, fd, rv;
+	int fd, rv;
+	long n;
 	char *p, buf[Maxstring], clone[Maxpath], err[ERRMAX], besterr[ERRMAX];
 
 	/*
@@ -112,6 +117,12 @@ csdial(DS *ds)
 	rv = -1;
 	kseek(fd, 0, 0);
 	while((n = kread(fd, buf, sizeof(buf) - 1)) > 0){
+		if(n >= sizeof(buf)){
+			kwerrstr("invalid connection server read count");
+			kerrstr(err, sizeof err);
+			besterr[0] = 0;
+			break;
+		}
 		buf[n] = 0;
 		p = strchr(buf, ' ');
 		if(p == 0)
@@ -134,10 +145,13 @@ csdial(DS *ds)
 	return rv;
 }
 
+
+/* Open a clone and publish the control descriptor only after data opens. */
 static int
 call(char *clone, char *dest, DS *ds)
 {
-	int fd, cfd, n;
+	int fd, cfd;
+	long n;
 	char name[Maxpath], data[Maxpath], err[ERRMAX], *p;
 
 	cfd = kopen(clone, ORDWR);
@@ -149,7 +163,9 @@ call(char *clone, char *dest, DS *ds)
 
 	/* get directory name */
 	n = kread(cfd, name, sizeof(name)-1);
-	if(n < 0){
+	if(n < 0 || n >= sizeof(name)){
+		if(n >= sizeof(name))
+			kwerrstr("invalid clone read count");
 		kerrstr(err, sizeof err);
 		kclose(cfd);
 		kwerrstr("read %s: %s", clone, err);
@@ -160,6 +176,11 @@ call(char *clone, char *dest, DS *ds)
 		;
 	sprint(name, "%ld", strtoul(p, 0, 0));
 	p = strrchr(clone, '/');
+	if(p == nil){
+		kclose(cfd);
+		kwerrstr("bad clone path");
+		return -1;
+	}
 	*p = 0;
 	if(ds->dir)
 		snprint(ds->dir, NETPATHLEN, "%s/%s", clone, name);
@@ -195,16 +216,20 @@ call(char *clone, char *dest, DS *ds)
 	return fd;
 }
 
+
 /*
  *  parse a dial string
  */
-static void
+static int
 _dial_string_parse(char *str, DS *ds)
 {
 	char *p, *p2;
 
-	strncpy(ds->buf, str, Maxstring);
-	ds->buf[Maxstring-1] = 0;
+	if(strlen(str) >= sizeof(ds->buf)){
+		kwerrstr("dial string too long");
+		return -1;
+	}
+	strcpy(ds->buf, str);
 
 	p = strchr(ds->buf, '!');
 	if(p == 0) {
@@ -216,8 +241,12 @@ _dial_string_parse(char *str, DS *ds)
 			ds->netdir = 0;
 			ds->proto = ds->buf;
 		} else {
-			for(p2 = p; *p2 != '/'; p2--)
+			for(p2 = p; p2 > ds->buf && *p2 != '/'; p2--)
 				;
+			if(*p2 != '/'){
+				kwerrstr("bad dial string: %s", str);
+				return -1;
+			}
 			*p2++ = 0;
 			ds->netdir = ds->buf;
 			ds->proto = p2;
@@ -225,7 +254,9 @@ _dial_string_parse(char *str, DS *ds)
 		*p = 0;
 		ds->rem = p + 1;
 	}
+	return 0;
 }
+
 
 /*
  *  announce a network service.
@@ -233,7 +264,8 @@ _dial_string_parse(char *str, DS *ds)
 int
 kannounce(char *addr, char *dir)
 {
-	int ctl, n, m;
+	int ctl, n;
+	long m;
 	char buf[NETPATHLEN];
 	char buf2[Maxpath];
 	char netdir[NETPATHLEN];
@@ -258,10 +290,17 @@ kannounce(char *addr, char *dir)
 	/*
 	 *  find out which line we have
 	 */
-	n = sprint(buf, "%.*s/", sizeof buf, netdir);
-	m = kread(ctl, &buf[n], sizeof(buf)-n-1);
-	if(m <= 0){
+	if(strlen(netdir) + 2 > sizeof(buf)){
 		kclose(ctl);
+		kwerrstr("network directory too long");
+		return -1;
+	}
+	n = snprint(buf, sizeof(buf), "%s/", netdir);
+	m = kread(ctl, &buf[n], sizeof(buf)-n-1);
+	if(m <= 0 || m >= sizeof(buf)-n){
+		kclose(ctl);
+		if(m >= sizeof(buf)-n)
+			kwerrstr("invalid network directory read count");
 		return -1;
 	}
 	buf[n+m] = 0;
@@ -283,19 +322,26 @@ kannounce(char *addr, char *dir)
 	return ctl;
 }
 
+
 /*
  *  listen for an incoming call
  */
 int
 klisten(char *dir, char *newdir)
 {
-	int ctl, n, m;
+	int ctl, n;
+	long m;
 	char buf[NETPATHLEN];
 	char *cp;
 
 	/*
 	 *  open listen, wait for a call
 	 */
+	if(strlen(dir) + sizeof("/listen") > sizeof(buf) ||
+	   strrchr(dir, '/') == nil){
+		kwerrstr("bad listen directory");
+		return -1;
+	}
 	snprint(buf, sizeof buf, "%s/listen", dir);
 	ctl = kopen(buf, ORDWR);
 	if(ctl < 0)
@@ -309,8 +355,10 @@ klisten(char *dir, char *newdir)
 	*++cp = 0;
 	n = cp-buf;
 	m = kread(ctl, cp, sizeof(buf) - n - 1);
-	if(m <= 0){
+	if(m <= 0 || m >= sizeof(buf)-n){
 		kclose(ctl);
+		if(m >= sizeof(buf)-n)
+			kwerrstr("invalid network directory read count");
 		return -1;
 	}
 	buf[n+m] = 0;
@@ -323,6 +371,7 @@ klisten(char *dir, char *newdir)
 	return ctl;
 
 }
+
 
 /*
  *  perform the identity translation (in case we can't reach cs)
@@ -348,6 +397,7 @@ identtrans(char *netdir, char *addr, char *naddr, int na, char *file, int nf)
 
 	return 1;
 }
+
 
 /*
  *  call up the connection server and get a translation
@@ -398,8 +448,11 @@ nettrans(char *addr, char *naddr, int na, char *file, int nf)
 	kseek(fd, 0, 0);
 	n = kread(fd, buf, sizeof(buf)-1);
 	kclose(fd);
-	if(n <= 0)
+	if(n <= 0 || n >= sizeof(buf)){
+		if(n >= sizeof(buf))
+			kwerrstr("invalid connection server read count");
 		return -1;
+	}
 	buf[n] = 0;
 
 	/*
@@ -412,7 +465,9 @@ nettrans(char *addr, char *naddr, int na, char *file, int nf)
 	strncpy(naddr, p, na);
 	naddr[na-1] = 0;
 
-	if(buf[0] == '/'){
+	if(buf[0] != '/')
+		p = buf;
+	else{
 		p = strchr(buf+1, '/');
 		if(p == nil)
 			p = buf;
