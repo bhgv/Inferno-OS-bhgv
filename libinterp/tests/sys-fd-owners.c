@@ -4,8 +4,68 @@
 #include "interp.h"
 #include "runt.h"
 #include "kernel.h"
-#include <assert.h>
+#include "raise.h"
+#include <pthread.h>
 #include <stdio.h>
+
+#define fdtest(test) fdpredicate(!!(test), __LINE__) // Retain all ownership predicates under NDEBUG.
+static int captureactive, capturephase, captureframeoffset, capturemutated;
+static uchar captureframe[sizeof(F_Sys_create)+sizeof(F_Sys_open)+sizeof(F_Sys_fildes)+32];
+static uchar captureimage[sizeof(captureframe)];
+static uchar *captureoriginal;
+static uintptr capturesize;
+static WORD modearg = 2;
+
+
+/* Report failures without depending on assertion build flags. */
+static void
+fdpredicate(int valid, int line)
+{
+	if(!valid) {
+		fprintf(stderr, "Sys FD predicate failed at %d phase=%d\n", line, capturephase);
+		abort();
+	}
+}
+
+
+/* Mutate the borrowed frame at allocation, finalization and scheduler boundaries. */
+static void
+capturecallback(int point)
+{
+	if(!captureactive || capturephase != point || capturemutated)
+		return;
+	capturemutated = 1;
+	memset(captureoriginal, 0xa7, capturesize);
+}
+
+
+/* Keep the complete original frame available for post-error image comparisons. */
+static void
+capturecall(void (*fn)(void*), void *frame, uintptr size)
+{
+	capturesize = size;
+	captureoriginal = captureframe+8+captureframeoffset;
+	memset(captureframe, 0x3c, sizeof(captureframe));
+	memmove(captureoriginal, frame, size);
+	memmove(captureimage, captureframe, sizeof(captureimage));
+	captureactive = 1;
+	capturemutated = 0;
+	fn(captureoriginal);
+}
+
+
+/* Check callbacks even when a real VM allocation error escaped through kprotect. */
+static void
+capturefinish(void)
+{
+	if(!captureactive)
+		return;
+	captureactive = 0;
+	if(capturemutated)
+		memset(captureimage+(captureoriginal-captureframe), 0xa7, capturesize);
+	fdtest(!memcmp(captureframe, captureimage, sizeof(captureimage)));
+}
+
 
 static Proc worker;
 char Ebadarg[]="bad argument";
@@ -30,13 +90,15 @@ getup(void)
 	return &worker;
 }
 
+
 /* Route allocation errors through the runtime's nested nonlocal error frames. */
 void
 nexterror(void)
 {
-	assert(worker.nerr > 0);
+	fdtest(worker.nerr > 0);
 	siglongjmp(worker.estack[--worker.nerr], 1);
 }
+
 
 /* Keep the original VM error observable after cleanup and rethrow. */
 void
@@ -47,12 +109,14 @@ error(char *message)
 	nexterror();
 }
 
+
 /* Heap blocks are counted explicitly; process inspection for LSan is unavailable. */
 int
 __lsan_is_turned_off(void)
 {
 	return 1;
 }
+
 
 /* Poison exact-sized payloads and fail individual VM-owner allocations. */
 Heap*
@@ -61,21 +125,23 @@ nheap(int size)
 	Heap *heap;
 	int i;
 
+	capturecallback(1);
 	if(++allocations == failure)
 		error(exHeap);
-	assert(size >= 0 && size < 4096);
+	fdtest(size >= 0 && size < 4096);
 	heap = malloc(sizeof(Heap)+size+32);
-	assert(heap);
+	fdtest(heap);
 	memset(heap, 0, sizeof(Heap));
 	memset(heap+1, 0xa5, size+32);
 	heap->ref = 1;
 	for(i = 0; i < 256 && blocks[i].heap; i++);
-	assert(i < 256);
+	fdtest(i < 256);
 	blocks[i].heap = heap;
 	blocks[i].size = size;
 	live++;
 	return heap;
 }
+
 
 /* Expose exact payload bounds to the production string constructors. */
 int
@@ -98,6 +164,7 @@ static int pipewatch, connectionwatch;
 static uchar *connectionslot;
 static void *connectionold[3];
 
+
 /* Validate heap guards and run the real descriptor finalizer exactly once. */
 void
 destroy(void *value)
@@ -111,35 +178,36 @@ destroy(void *value)
 	if(connectionwatch && (value == connectionold[0] || value == connectionold[1] || value == connectionold[2])){
 		Sys_Connection published;
 		memmove(&published,connectionslot,sizeof(published));
-		assert(published.dfd != connectionold[0] && published.dfd != connectionold[1]);
-		assert(published.cfd != connectionold[0] && published.cfd != connectionold[1]);
-		assert(published.dir != connectionold[2]);
+		fdtest(published.dfd != connectionold[0] && published.dfd != connectionold[1]);
+		fdtest(published.cfd != connectionold[0] && published.cfd != connectionold[1]);
+		fdtest(published.dir != connectionold[2]);
 	}
 	if(pipewatch && (value == pipewatchold[0] || value == pipewatchold[1])){
 		void *published[2];
 		memmove(published,pipewatchslot,sizeof(published));
-		assert(published[0] != pipewatchold[0] && published[0] != pipewatchold[1]);
-		assert(published[1] != pipewatchold[0] && published[1] != pipewatchold[1]);
+		fdtest(published[0] != pipewatchold[0] && published[0] != pipewatchold[1]);
+		fdtest(published[1] != pipewatchold[0] && published[1] != pipewatchold[1]);
 	}
 	if(value == watchedowner){
 		void *published;
 		memmove(&published,watchedslot,sizeof(published));
-		assert(published == H);
+		fdtest(published == H);
 		watchedowner = H;
 	}
+	capturecallback(2);
 	heap = D2H(value);
 	for(i = 0; i < 256 && blocks[i].heap != heap; i++);
-	assert(i < 256 && heap->ref > 0);
+	fdtest(i < 256 && heap->ref > 0);
 	for(j = 0; j < 32; j++)
-		assert(((uchar*)(heap+1))[blocks[i].size+j] == 0xa5);
+		fdtest(((uchar*)(heap+1))[blocks[i].size+j] == 0xa5);
 	if(--heap->ref)
 		return;
 	if(heap->t == TFD){
 		freeFD(heap, 0);
 		TFD->ref--;
 	}else{
-		assert(heap->t == &Tstring);
-		assert(((String*)value)->tmp == nil);
+		fdtest(heap->t == &Tstring);
+		fdtest(((String*)value)->tmp == nil);
 		Tstring.ref--;
 	}
 	blocks[i].heap = nil;
@@ -151,13 +219,14 @@ static int active[256], nextfd, nativefail, released, operation, nativecalls;
 static int issued[2];
 static char returnedpath[] = "/net/t\303\251st/17";
 
+
 /* Descriptor heap allocation is the fallible boundary used by the real constructor. */
 Heap*
 heap(Type *type)
 {
 	Heap *h;
 
-	assert(type == TFD);
+	fdtest(type == TFD);
 	h = nheap(type->size);
 	h->t = type;
 	type->ref++;
@@ -172,37 +241,44 @@ msize(void *pointer)
 	abort();
 }
 
+
 /* A descriptor owner retains precisely one reference to its native file group. */
 int
 incref(Ref *reference)
 {
-	assert(reference == &group.r);
+	fdtest(reference == &group.r);
 	return ++reference->ref;
 }
+
 
 /* Finalization must release each retained file-group reference. */
 void
 closefgrp(Fgrp *fgrp)
 {
-	assert(fgrp == &group && fgrp->r.ref > 1);
+	fdtest(fgrp == &group && fgrp->r.ref > 1);
 	fgrp->r.ref--;
 }
+
 
 /* Native I/O and closing descriptors may run only outside the VM scheduler lock. */
 void
 release(void)
 {
-	assert(!released);
+	fdtest(!released);
 	released = 1;
+	capturecallback(3);
 }
+
 
 /* Every native transition must restore scheduler ownership even during error cleanup. */
 void
 acquire(void)
 {
-	assert(released);
+	fdtest(released);
+	capturecallback(4);
 	released = 0;
 }
+
 
 /* Allocate distinct native descriptors, including descriptor zero. */
 static int
@@ -211,20 +287,22 @@ newfd(void)
 	int fd;
 
 	fd = nextfd++;
-	assert(fd >= 0 && fd < 256 && !active[fd]);
+	fdtest(fd >= 0 && fd < 256 && !active[fd]);
 	active[fd] = 1;
 	return fd;
 }
+
 
 /* Detect leaks and double closes; deliberately replace the error string during close. */
 int
 kfgrpclose(Fgrp *fgrp, int fd)
 {
-	assert(released && fgrp == &group && fd >= 0 && fd < 256 && active[fd]);
+	fdtest(released && fgrp == &group && fd >= 0 && fd < 256 && active[fd]);
 	active[fd] = 0;
 	strcpy(environment.errstr, "close changed error");
 	return 0;
 }
+
 
 /* Raw descriptors belong to the same current file group as newly wrapped handles. */
 int
@@ -233,11 +311,13 @@ kclose(int fd)
 	return kfgrpclose(&group, fd);
 }
 
+
 /* Native errors produce no descriptors and expose a recognizable error string. */
 static int
 nativebegin(void)
 {
-	assert(released);
+	fdtest(released);
+	capturecallback(5);
 	nativecalls++;
 	if(nativefail){
 		strcpy(environment.errstr, "native failure");
@@ -246,49 +326,54 @@ nativebegin(void)
 	return 1;
 }
 
+
 /* Simulate opening one data descriptor without replacing the production Sys wrapper. */
 int
 kopen(char *path, int mode)
 {
-	assert(operation == 1 && strcmp(path, "address") == 0 && mode == 2);
+	fdtest(operation == 1 && strcmp(path, "address") == 0 && mode == (int)modearg);
 	if(!nativebegin())
 		return -1;
 	return issued[0] = newfd();
 }
+
 
 /* Simulate native create with the exact arguments passed by the real builtin. */
 int
 kcreate(char *path, int mode, ulong permissions)
 {
-	assert(operation == 2 && strcmp(path, "address") == 0 && mode == 2 && permissions == 0640);
+	fdtest(operation == 2 && strcmp(path, "address") == 0 && mode == (int)modearg && permissions == 0640);
 	if(!nativebegin())
 		return -1;
 	return issued[0] = newfd();
 }
+
 
 /* Preserve a normal argument error without throwing through an ownership transition. */
 void
 seterror(char *message,...)
 {
-	assert(message==Ebadarg);
+	fdtest(message==Ebadarg);
 	strcpy(environment.errstr,message);
 }
+
 
 /* Simulate duplication of a numeric descriptor into a new native slot. */
 int
 kdup(int fd, int destination)
 {
-	assert(operation == 3 && fd == (int)descriptorarg && destination == -1);
+	fdtest(operation == 3 && fd == (int)descriptorarg && destination == -1);
 	if(!nativebegin())
 		return -1;
 	return issued[0] = newfd();
 }
 
+
 /* A successful pipe returns two independent descriptors that must both be adopted. */
 int
 kpipe(int *fd)
 {
-	assert(operation == 4);
+	fdtest(operation == 4);
 	if(!nativebegin())
 		return -1;
 	fd[0] = issued[0] = newfd();
@@ -296,11 +381,12 @@ kpipe(int *fd)
 	return 0;
 }
 
+
 /* Dial supplies both data and control owners plus a UTF-8 directory. */
 int
 kdial(char *address, char *local, char *directory, int *controlfd)
 {
-	assert(operation == 5 && strcmp(address, "address") == 0 && strcmp(local, "local") == 0);
+	fdtest(operation == 5 && strcmp(address, "address") == 0 && strcmp(local, "local") == 0);
 	if(!nativebegin())
 		return -1;
 	strcpy(directory, returnedpath);
@@ -308,22 +394,24 @@ kdial(char *address, char *local, char *directory, int *controlfd)
 	return issued[0] = newfd();
 }
 
+
 /* Announce supplies only a control descriptor. */
 int
 kannounce(char *address, char *directory)
 {
-	assert(operation == 6 && strcmp(address, "address") == 0);
+	fdtest(operation == 6 && strcmp(address, "address") == 0);
 	if(!nativebegin())
 		return -1;
 	strcpy(directory, returnedpath);
 	return issued[1] = newfd();
 }
 
+
 /* Listen may borrow its input directory from the previous result. */
 int
 klisten(char *input, char *directory)
 {
-	assert(operation == 7 && strcmp(input, "previous directory") == 0);
+	fdtest(operation == 7 && strcmp(input, "previous directory") == 0);
 	if(!nativebegin())
 		return -1;
 	strcpy(directory, returnedpath);
@@ -340,6 +428,7 @@ static WORD status;
 static Array pipearray;
 static int pipesize, pipebad;
 static union { uvlong align; uchar bytes[3*sizeof(Sys_FD*)+16]; } pipeslots;
+
 
 /* Dispatch actual generated Sys frames and retain output state outside nonlocal jumps. */
 static int
@@ -362,20 +451,20 @@ invoke(void *unused)
 	case 1:
 		openframe.ret = (void*)(returnslot.bytes+8+returnoffset);
 		openframe.s = address;
-		openframe.mode = 2;
-		Sys_open(&openframe);
+		openframe.mode = modearg;
+		capturecall(Sys_open, &openframe, sizeof(openframe));
 		break;
 	case 2:
 		createframe.ret = (void*)(returnslot.bytes+8+returnoffset);
 		createframe.s = address;
-		createframe.mode = 2;
+		createframe.mode = modearg;
 		createframe.perm = 0640;
-		Sys_create(&createframe);
+		capturecall(Sys_create, &createframe, sizeof(createframe));
 		break;
 	case 3:
 		fildesframe.ret = (void*)(returnslot.bytes+8+returnoffset);
 		fildesframe.fd = descriptorarg;
-		Sys_fildes(&fildesframe);
+		capturecall(Sys_fildes, &fildesframe, sizeof(fildesframe));
 		break;
 	case 4:
 		pipeframe.ret = (void*)(returnslot.bytes+8+returnoffset);
@@ -402,6 +491,7 @@ invoke(void *unused)
 	return 1;
 }
 
+
 /* Compare the converted UTF-8 path independently of the production string decoder. */
 static void
 checkpath(String *s)
@@ -409,10 +499,11 @@ checkpath(String *s)
 	Rune expected[] = {'/', 'n', 'e', 't', '/', 't', 0xe9, 's', 't', '/', '1', '7'};
 	int i;
 
-	assert(s != H && s->len == -12);
+	fdtest(s != H && s->len == -12);
 	for(i = 0; i < 12; i++)
-		assert(s->Srune[i] == expected[i]);
+		fdtest(s->Srune[i] == expected[i]);
 }
+
 
 /* Preserve old multi-owner results on VM failure; release every new raw/managed owner. */
 static void
@@ -424,7 +515,7 @@ one(int fail, int shared, int firstfd)
 	uchar initialconnection[sizeof(connection)];
 	int connectionoffset=(uchar*)&connection.t1-(uchar*)&connection;
 
-	assert(live == 0 && group.r.ref == 1);
+	fdtest(live == 0 && group.r.ref == 1);
 	nextfd = 100;
 	memset(active, 0, sizeof(active));
 	failure = 0;
@@ -466,7 +557,8 @@ one(int fail, int shared, int firstfd)
 	raised = nil;
 	strcpy(environment.errstr, "unchanged");
 	eligible = (operation != 4 || (pipesize >= 2 && pipebad == 0)) &&
-		(operation != 3 || (WORD)(int)descriptorarg==descriptorarg);
+		(operation != 3 || (WORD)(int)descriptorarg==descriptorarg) &&
+		((operation != 1 && operation != 2) || (WORD)(int)modearg==modearg);
 	budget = operation == 4 ? 2 : operation == 5 ? 3 : operation >= 6 ? 2 : 1;
 	memset(returnslot.bytes,0xa5,sizeof(returnslot.bytes));
 	if(operation == 4)memmove(returnslot.bytes+8+returnoffset,&status,sizeof(status));
@@ -483,13 +575,14 @@ one(int fail, int shared, int firstfd)
 	connectionslot = connectionreturn.bytes+returnoffset+connectionoffset;
 	connectionold[0] = connection.t1.dfd;connectionold[1] = connection.t1.cfd;connectionold[2] = connection.t1.dir;
 	ok = kprotect(invoke, nil);
+	capturefinish();
 	connectionwatch = 0;
 	if(operation >= 5){
 		uchar expected[sizeof(connectionreturn.bytes)];
 		memmove(&connection,connectionreturn.bytes+returnoffset,sizeof(connection));
 		memset(expected,0xa5,sizeof(expected));memmove(expected+returnoffset,&connection,sizeof(connection));
 		memmove(expected+returnoffset+sizeof(WORD),initialconnection+sizeof(WORD),connectionoffset-sizeof(WORD));
-		assert(!memcmp(expected,connectionreturn.bytes,sizeof(expected)));
+		fdtest(!memcmp(expected,connectionreturn.bytes,sizeof(expected)));
 	}
 	pipewatch = 0;
 	if(operation >= 1 && operation <= 3){
@@ -497,59 +590,59 @@ one(int fail, int shared, int firstfd)
 		memmove(&single,returnslot.bytes+8+returnoffset,sizeof(single));
 		memset(expected,0xa5,sizeof(expected));
 		memmove(expected+8+returnoffset,&single,sizeof(single));
-		assert(!memcmp(returnslot.bytes,expected,sizeof(expected)) && watchedowner == H);
+		fdtest(!memcmp(returnslot.bytes,expected,sizeof(expected)) && watchedowner == H);
 	}
 	if(operation == 4){
 		uchar expected[sizeof(pipeslots.bytes)], guards[32];
 		memmove(slots,pipeslots.bytes+returnoffset,sizeof(slots));
 		memset(expected,0xa5,sizeof(expected));memmove(expected+returnoffset,slots,sizeof(slots));
-		assert(!memcmp(pipeslots.bytes,expected,sizeof(expected)));
+		fdtest(!memcmp(pipeslots.bytes,expected,sizeof(expected)));
 		memmove(&status,returnslot.bytes+8+returnoffset,sizeof(status));
 		memset(guards,0xa5,sizeof(guards));memmove(guards+8+returnoffset,&status,sizeof(status));
-		assert(!memcmp(guards,returnslot.bytes,sizeof(guards)));
+		fdtest(!memcmp(guards,returnslot.bytes,sizeof(guards)));
 	}
-	assert(worker.nerr == 0 && !released);
+	fdtest(worker.nerr == 0 && !released);
 	failure = 0;
 	if(eligible && (!nativefail || operation == 0) && fail > 0 && fail <= budget){
-		assert(!ok && raised == exHeap && strcmp(environment.errstr, exHeap) == 0);
+		fdtest(!ok && raised == exHeap && strcmp(environment.errstr, exHeap) == 0);
 		if(operation == 4)
-			assert(slots[0] == old[0] && slots[1] == old[1]);
+			fdtest(slots[0] == old[0] && slots[1] == old[1]);
 		if(operation >= 5)
-			assert(memcmp(&previous, &connection.t1, sizeof(previous)) == 0);
+			fdtest(memcmp(&previous, &connection.t1, sizeof(previous)) == 0);
 	}else{
-		assert(ok && raised == nil);
+		fdtest(ok && raised == nil);
 		if(!eligible){
-			assert(nativecalls == 0);
-			if(operation==3)
-				assert(single==H && strcmp(environment.errstr,Ebadarg)==0);
+			fdtest(nativecalls == 0);
+			if(operation>=1 && operation<=3)
+				fdtest(single==H && strcmp(environment.errstr,Ebadarg)==0);
 			else{
-				assert(status == -1);
-				assert(slots[0] == old[0] && slots[1] == old[1]);
+				fdtest(status == -1);
+				fdtest(slots[0] == old[0] && slots[1] == old[1]);
 			}
 		}else if(nativefail && operation > 0){
-			assert(strcmp(environment.errstr, "native failure") == 0);
+			fdtest(strcmp(environment.errstr, "native failure") == 0);
 			if(operation <= 3)
-				assert(single == H);
+				fdtest(single == H);
 			else if(operation == 4)
-				assert(status == -1 && slots[0] == old[0] && slots[1] == old[1]);
+				fdtest(status == -1 && slots[0] == old[0] && slots[1] == old[1]);
 			else
-				assert(connection.t0 == -1 && connection.t1.dfd == H && connection.t1.cfd == H && connection.t1.dir == H);
+				fdtest(connection.t0 == -1 && connection.t1.dfd == H && connection.t1.cfd == H && connection.t1.dir == H);
 		}else if(operation <= 3){
-			assert(single != H && active[single->fd] && single->fd == issued[0]);
+			fdtest(single != H && active[single->fd] && single->fd == issued[0]);
 		}else if(operation == 4){
-			assert(status == 0 && slots[0] != H && slots[1] != H && slots[0] != slots[1]);
-			assert(slots[0]->fd == issued[0] && slots[1]->fd == issued[1]);
+			fdtest(status == 0 && slots[0] != H && slots[1] != H && slots[0] != slots[1]);
+			fdtest(slots[0]->fd == issued[0] && slots[1]->fd == issued[1]);
 		}else{
-			assert(connection.t0 == 0 && connection.t1.cfd != H);
-			assert((connection.t1.dfd != H) == (operation == 5));
-			assert(connection.t1.cfd->fd == issued[1]);
+			fdtest(connection.t0 == 0 && connection.t1.cfd != H);
+			fdtest((connection.t1.dfd != H) == (operation == 5));
+			fdtest(connection.t1.cfd->fd == issued[1]);
 			if(operation == 5)
-				assert(connection.t1.dfd->fd == issued[0]);
+				fdtest(connection.t1.dfd->fd == issued[0]);
 			checkpath(connection.t1.dir);
 		}
 	}
 	if(operation == 4)
-		assert(slots[2] == old[2]);
+		fdtest(slots[2] == old[2]);
 	destroy(single);
 	for(i = 0; i < 3; i++)
 		destroy(slots[i]);
@@ -559,27 +652,120 @@ one(int fail, int shared, int firstfd)
 	destroy(address);
 	destroy(local);
 	for(i = 0; i < 256; i++)
-		assert(!active[i]);
-	assert(live == 0 && TFD->ref == 1 && Tstring.ref == 1 && group.r.ref == 1);
+		fdtest(!active[i]);
+	fdtest(live == 0 && TFD->ref == 1 && Tstring.ref == 1 && group.r.ref == 1);
 	checks++;
 }
 
-/* Cover direct adoption, open/create/dup, pipes and connection construction at every failure. */
-int
-main(int argc, char **argv)
+
+
+
+/* Invoke deliberately invalid creation frames before the fixture can copy them. */
+static int
+rawcreation(void *frame)
 {
-	int fail, shared, first, limit, length, argument;
+	if(operation == 1)Sys_open(frame);
+	else if(operation == 2)Sys_create(frame);
+	else Sys_fildes(frame);
+	return 1;
+}
+
+
+/* Preserve the old FD and every result byte when frame or owner preflight fails. */
+static void
+creationpreflight(int mode)
+{
+	F_Sys_open openframe = {0};
+	F_Sys_create createframe = {0};
+	F_Sys_fildes fildesframe = {0};
+	Sys_FD *old, *candidate;
+	void *frame, *ret;
+	uchar before[32];
+	char *expected;
+	int ok, i;
+
+	fdtest(live == 0 && group.r.ref == 1);
+	captureactive = 0;
+	failure = 0;
+	memset(active, 0, sizeof(active));
+	nextfd = 100;
+	old = mkfd(newfd());
+	candidate = old;
+	memset(returnslot.bytes, 0xa5, sizeof(returnslot.bytes));
+	ret = returnslot.bytes+8;
+	if(mode == 6)candidate = nil;
+	if(mode == 7)candidate = (Sys_FD*)1;
+	if(mode == 8)candidate = (Sys_FD*)((uchar*)old+1);
+	if(mode == 9)D2H(old)->ref = 0;
+	memmove(ret, &candidate, sizeof(candidate));
+	memmove(before, returnslot.bytes, sizeof(before));
+	if(mode == 3)ret = nil;
+	if(mode == 4)ret = H;
+	if(mode == 5)ret = (void*)((uintptr)-1-sizeof(old)+1);
+	openframe.ret = ret;
+	openframe.mode = 2;
+	createframe.ret = ret;
+	createframe.mode = 2;
+	createframe.perm = 0640;
+	fildesframe.ret = ret;
+	fildesframe.fd = 17;
+	frame = operation == 1 ? (void*)&openframe : operation == 2 ? (void*)&createframe : (void*)&fildesframe;
+	if(mode == 0)frame = nil;
+	if(mode == 1)frame = H;
+	if(mode == 2)frame = (void*)((uintptr)-1-1);
+	expected = mode == 2 || mode == 5 ? exBounds : mode >= 7 ? exHeap : exNilref;
+	allocations = nativecalls = 0;
+	watchedowner = H;
+	raised = nil;
+	ok = kprotect(rawcreation, frame);
+	fdtest(!ok && raised == expected && !released && !nativecalls && !allocations && worker.nerr == 0);
+	fdtest(!memcmp(returnslot.bytes, before, sizeof(before)) && live == 1 && active[100]);
+	fdtest(TFD->ref == 2 && group.r.ref == 2);
+	if(mode == 9)D2H(old)->ref = 1;
+	destroy(old);
+	for(i=0; i<256; i++)fdtest(!active[i]);
+	fdtest(!live && TFD->ref == 1 && group.r.ref == 1);
+	checks++;
+}
+
+
+/* Cover direct adoption, open/create/dup, pipes and connection construction at every failure. */
+static int
+fdmatrix(int argc, char **argv)
+{
+	int fail, shared, first, limit, length, argument, mode;
 	WORD arguments[]={17,0,-1,0x7fffffff,(-0x7fffffff-1),(WORD)((uvlong)1<<32),(WORD)((uvlong)1<<40),(WORD)(-((vlong)1<<40))};
 
 	worker.env = &environment;
 	environment.fgrp = &group;
 	environment.errstr = environment.errbuf0;
 	group.r.ref = 1;
+	if(getenv("FD_OWNER_PREFLIGHT")) {
+		for(operation=1; operation<4; operation++)
+		for(mode=0; mode<10; mode++) {
+			if(getenv("FD_OWNER_OPERATION") && operation != atoi(getenv("FD_OWNER_OPERATION")))continue;
+			if(getenv("FD_OWNER_ERROR") && mode != atoi(getenv("FD_OWNER_ERROR")))continue;
+			creationpreflight(mode);
+		}
+		fdtest(checks != 0);
+		printf("PASS Sys creation preflight: %d cases\n", checks);
+		return 0;
+	}
+	for(capturephase=0; capturephase<(getenv("FD_OWNER_CAPTURE") ? 7 : 1); capturephase++)
+	for(captureframeoffset=0; captureframeoffset<(getenv("FD_OWNER_CAPTURE") ? 8 : 1); captureframeoffset++)
 	for(operation = 0; operation < 8; operation++){
+		if(getenv("FD_OWNER_OPERATION") && operation != atoi(getenv("FD_OWNER_OPERATION")))
+			continue;
+		if(getenv("FD_OWNER_PHASE") && capturephase != atoi(getenv("FD_OWNER_PHASE")))
+			continue;
+		if(getenv("FD_OWNER_FRAME") && captureframeoffset != atoi(getenv("FD_OWNER_FRAME")))
+			continue;
 		if(argc > 1 && strcmp(argv[1], "all") != 0 && strcmp(argv[1], operation == 0 ? "single" : operation == 4 ? "pipe" : operation >= 5 ? "connection" : "files") != 0)
 			continue;
-		for(argument=0;argument<(operation==3 ? nelem(arguments) : 1);argument++){
+		for(argument=0;argument<(operation==3 || (getenv("FD_OWNER_CAPTURE") && (operation==1 || operation==2)) ? nelem(arguments) : 1);argument++){
+			if(getenv("FD_OWNER_ARGUMENT") && argument != atoi(getenv("FD_OWNER_ARGUMENT")))continue;
 			descriptorarg=arguments[argument];
+			modearg=getenv("FD_OWNER_CAPTURE") ? arguments[argument] : 2;
 			for(returnoffset=0;returnoffset<(operation >= 1 ? 8 : 1);returnoffset++)
 			for(nativefail = 0; nativefail < (operation == 0 ? 1 : 2); nativefail++)
 			for(shared = 0; shared < (operation >= 4 ? 2 : 1); shared++)
@@ -594,7 +780,39 @@ main(int argc, char **argv)
 			}
 		}
 	}
-	assert(checks > 0);
+	fdtest(checks > 0);
 	printf("Sys FD owners: %d adoption/pipe/connection/failure cases\n", checks);
+	return 0;
+}
+
+/* Preserve normal test arguments while executing VM errors on a tracked pthread stack. */
+struct FdArguments {
+	int argc; // Number of fixture command-line arguments.
+	char **argv; // Fixture family and failure-budget selections.
+};
+
+
+/* Run the complete owner matrix without losing its real nested VM error frames. */
+static void*
+fdworker(void *argument)
+{
+	struct FdArguments *args = argument;
+
+	fdtest(fdmatrix(args->argc, args->argv) == 0);
+	return nil;
+}
+
+
+/* Join before returning so all heap, descriptor and file-group checks complete. */
+int
+main(int argc, char **argv)
+{
+	struct FdArguments args;
+	pthread_t thread;
+
+	args.argc = argc;
+	args.argv = argv;
+	fdtest(pthread_create(&thread, nil, fdworker, &args) == 0);
+	fdtest(pthread_join(thread, nil) == 0);
 	return 0;
 }

@@ -288,6 +288,58 @@ sysstatusframe(void *fp, void *copy, uintptr size, uintptr retoffset, uintptr re
 }
 
 
+/* Validate an old result owner before callbacks can make its destruction unsafe. */
+static void*
+sysresultowner(void *slot)
+{
+	void *old;
+	uintptr address;
+	ulong references;
+
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	if(old != H) {
+		address = (uintptr)old;
+		if(address <= sizeof(Heap) || (address-sizeof(Heap))%sizeof(void*) != 0)
+			error(exHeap);
+		memmove(&references, (uchar*)old-sizeof(Heap)+O(Heap, ref), sizeof(references));
+		if(references == 0)
+			error(exHeap);
+	}
+	return old;
+}
+
+
+/* Check every directory owner, including the references consumed by duplicate slots. */
+static void
+sysdirowners(void *slot)
+{
+	void *owners[4];
+	uintptr offsets[4];
+	ulong references;
+	int i, j, copies;
+
+	offsets[0] = O(Sys_Dir, name);
+	offsets[1] = O(Sys_Dir, uid);
+	offsets[2] = O(Sys_Dir, gid);
+	offsets[3] = O(Sys_Dir, muid);
+	for(i = 0; i < 4; i++)
+		owners[i] = sysresultowner((uchar*)slot+offsets[i]);
+	for(i = 0; i < 4; i++) {
+		if(owners[i] == H)
+			continue;
+		copies = 0;
+		for(j = 0; j < 4; j++)
+			if(owners[j] == owners[i])
+				copies++;
+		memmove(&references, (uchar*)owners[i]-sizeof(Heap)+O(Heap, ref), sizeof(references));
+		if(references < copies)
+			error(exHeap);
+	}
+}
+
+
 /* Capture fixed operands before callbacks and retain the original scalar result cell. */
 void
 Sys_millisec(void *fp)
@@ -301,19 +353,25 @@ Sys_millisec(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
-/* Clear an unaligned owner slot before finalization and publish only a constructed FD. */
+
+/* Snapshot creation operands and the original owner slot before finalization callbacks. */
 void
 Sys_open(void *fp)
 {
 	int fd;
-	F_Sys_open *f;
+	F_Sys_open local, *f;
 	Sys_FD *old, *result;
 
-	f = fp;
-	memmove(&old, f->ret, sizeof(old));
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_open, ret), sizeof(*local.ret));
+	f = &local;
+	old = sysresultowner(f->ret);
 	result = H;
 	memmove(f->ret, &result, sizeof(result));
 	destroy(old);
+	if(!sysnativeint(f->mode)) {
+		seterror(Ebadarg);
+		return;
+	}
 	release();
 	fd = kopen(string2c(f->s), f->mode);
 	acquire();
@@ -371,18 +429,19 @@ Sys_pipe(void *fp)
 }
 
 
-/* Clear an unaligned owner slot before finalization and publish only a constructed FD. */
+/* Snapshot creation operands and the original owner slot before finalization callbacks. */
 void
 Sys_fildes(void *fp)
 {
-	F_Sys_fildes *f;
+	F_Sys_fildes local, *f;
 	Sys_FD *old, *result;
 	WORD source;
 	int fd;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_fildes, ret), sizeof(*local.ret));
+	f = &local;
 	source = f->fd;
-	memmove(&old, f->ret, sizeof(old));
+	old = sysresultowner(f->ret);
 	result = H;
 	memmove(f->ret, &result, sizeof(result));
 	destroy(old);
@@ -421,19 +480,25 @@ Sys_dup(void *fp)
 	acquire();
 }
 
-/* Clear an unaligned owner slot before finalization and publish only a constructed FD. */
+
+/* Snapshot creation operands and the original owner slot before finalization callbacks. */
 void
 Sys_create(void *fp)
 {
 	int fd;
-	F_Sys_create *f;
+	F_Sys_create local, *f;
 	Sys_FD *old, *result;
 
-	f = fp;
-	memmove(&old, f->ret, sizeof(old));
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_create, ret), sizeof(*local.ret));
+	f = &local;
+	old = sysresultowner(f->ret);
 	result = H;
 	memmove(f->ret, &result, sizeof(result));
 	destroy(old);
+	if(!sysnativeint(f->mode)) {
+		seterror(Ebadarg);
+		return;
+	}
 	release();
 	fd = kcreate(string2c(f->s), f->mode, f->perm);
 	acquire();
@@ -790,23 +855,33 @@ packdir(void *slot)
 	return d;
 }
 
-/* Keep partial directory ownership valid while publishing unaligned status and fields. */
+
+/* Capture query operands and validate old owners before native or allocation callbacks. */
 void
 Sys_fstat(void *fp)
 {
 	Dir *d;
-	F_Sys_fstat *f;
+	F_Sys_fstat local, *f;
 	F_Sys_fstat layout;
-	union { uvlong align; uchar bytes[sizeof(*f->ret)]; } scratch;
+	union {
+		uvlong align; // Align only the scratch layout used to compute tuple offsets.
+		uchar bytes[sizeof(*f->ret)]; // Preserve the generated tuple's complete extent.
+	} scratch;
 	uchar *recordslot;
 	WORD status;
 	int fd;
 
-	f = fp;
-	fd = fdchk(f->fd);
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_fstat, ret), sizeof(*local.ret));
+	f = &local;
 	/* Generated return tuples can contain explicit padding beyond native alignment. */
 	layout.ret = (void*)scratch.bytes;
 	recordslot = (uchar*)f->ret+((uchar*)&layout.ret->t1-scratch.bytes);
+	if(!sysiofd(f->fd, &fd)) {
+		status = -1;
+		memmove(f->ret, &status, sizeof(status));
+		return;
+	}
+	sysdirowners(recordslot);
 	status = -1;
 	memmove(f->ret, &status, sizeof(status));
 	release();
@@ -823,23 +898,29 @@ Sys_fstat(void *fp)
 	free(d);
 }
 
-/* Keep partial directory ownership valid while publishing unaligned status and fields. */
+
+/* Capture query operands and validate old owners before native or allocation callbacks. */
 void
 Sys_stat(void *fp)
 {
 	Dir *d;
-	F_Sys_stat *f;
+	F_Sys_stat local, *f;
 	F_Sys_stat layout;
-	union { uvlong align; uchar bytes[sizeof(*f->ret)]; } scratch;
+	union {
+		uvlong align; // Align only the scratch layout used to compute tuple offsets.
+		uchar bytes[sizeof(*f->ret)]; // Preserve the generated tuple's complete extent.
+	} scratch;
 	uchar *recordslot;
 	WORD status;
 	String *path;
 
-	f = fp;
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_stat, ret), sizeof(*local.ret));
+	f = &local;
 	path = f->s;
 	/* Generated return tuples can contain explicit padding beyond native alignment. */
 	layout.ret = (void*)scratch.bytes;
 	recordslot = (uchar*)f->ret+((uchar*)&layout.ret->t1-scratch.bytes);
+	sysdirowners(recordslot);
 	status = -1;
 	memmove(f->ret, &status, sizeof(status));
 	release();
@@ -856,21 +937,25 @@ Sys_stat(void *fp)
 	free(d);
 }
 
-/* Clear the string owner before finalization and retain the native path until conversion ends. */
+
+/* Capture query operands and validate old owners before native or allocation callbacks. */
 void
 Sys_fd2path(void *fp)
 {
-	F_Sys_fd2path *f;
+	F_Sys_fd2path local, *f;
 	char *s;
 	String *old, *empty;
-	int fd;
+	int fd, valid;
 
-	f = fp;
-	fd = fdchk(f->fd);
-	memmove(&old, f->ret, sizeof(old));
+	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_fd2path, ret), sizeof(*local.ret));
+	f = &local;
+	valid = sysiofd(f->fd, &fd);
+	old = sysresultowner(f->ret);
 	empty = H;
 	memmove(f->ret, &empty, sizeof(empty));
 	destroy(old);
+	if(!valid)
+		return;
 	release();
 	s = kfd2path(fd);
 	acquire();

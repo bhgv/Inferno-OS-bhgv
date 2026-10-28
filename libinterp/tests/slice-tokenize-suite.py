@@ -138,6 +138,7 @@ CORE = [
     'libinterp/tests/sys-print-io.py',
     'libinterp/tests/sys-io.py',
     'libinterp/tests/sys-status-capture.py',
+    'libinterp/tests/sys-query-capture.py',
     'libinterp/tests/sys-utf.py',
     'libinterp/tests/sys-utf-spans.py',
     'libinterp/tests/heap-clones.py',

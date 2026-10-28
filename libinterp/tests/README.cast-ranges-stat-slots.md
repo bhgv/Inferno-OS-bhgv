@@ -99,3 +99,6 @@ python3 libinterp/tests/sys-status-slots.py
 CFLAGS='-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all' python3 libinterp/tests/sys-dirread.py
 python3 libinterp/tests/slice-tokenize-suite.py --core
 ```
+
+For packed fixed frames, callback capture, complete result/owner preflight and
+native FD/mode widths, see [native file-query and creation capture](README.sys-query-capture.md).

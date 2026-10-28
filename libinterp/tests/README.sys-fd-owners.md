@@ -77,3 +77,6 @@ inside finalization, and checks allocation failures with shared old handles and
 a listen input borrowing the old directory. Full UBSan coverage is 3,430 cases
 per configuration; ASan/UBSan passes 866 normal-path and 288 files-failure cases
 per configuration. See [the division/connection checkpoint](README.minus-one-connections.md).
+
+For packed fixed frames, callback capture, complete result/owner preflight and
+native FD/mode widths, see [native file-query and creation capture](README.sys-query-capture.md).
