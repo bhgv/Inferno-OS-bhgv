@@ -730,10 +730,12 @@ decltozero(Node *n)
 	}
 }
 
+
+/* Reserve an in-range scope index before publishing its empty declaration lists. */
 void
 pushscope(Node *scp, int kind)
 {
-	if(scope >= MaxScope)
+	if(scope >= MaxScope-1)
 		fatal("scope too deep");
 	scope++;
 	scopes[scope] = nil;
@@ -778,9 +780,9 @@ popscope(void)
 	return scopes[scope--];
 }
 
+
 /*
- * make a new scope,
- * preinstalled with some previously installed identifiers
+ * reserve an in-range scope, preinstalled with previously installed identifiers
  * don't add the identifiers to the scope chain,
  * so they remain separate from any newly installed ids
  *
@@ -791,7 +793,7 @@ repushids(Decl *ids)
 {
 	Sym *s;
 
-	if(scope >= MaxScope)
+	if(scope >= MaxScope-1)
 		fatal("scope too deep");
 	scope++;
 	scopes[scope] = nil;

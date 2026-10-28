@@ -362,74 +362,133 @@ gdecl(Node *n)
 	}
 }
 
-/*
- * bind all global type ids,
- * including those nested inside modules
- * this needs to be done, since we may use such
- * a type later in a nested scope, so if we bound
- * the type ids then, the type could get bound
- * to a nested declaration
- */
+
+/* Binding continuations preserve lexical scope teardown after a nested declaration. */
+typedef struct GlobalBind GlobalBind;
+
+struct GlobalBind {
+	Node *node; // Parent whose sibling or scope cleanup is deferred.
+	Decl *declaration; // Pick declaration captured before its body is bound.
+	int phase; // Sequence continuation, pick entry/exit or aggregate scope exit.
+};
+
+enum {
+	BindSequence, // Read the parent's right subtree after its left subtree returns.
+	BindPickEnter, // Bind and expose pick fields after the common fields finish.
+	BindPickExit, // Restore pick fields and propagate newly undefined identifiers.
+	BindAggregateExit, // Restore aggregate fields, then its generic parameters.
+};
+
+
+/* Save a lexical binding continuation without changing source AST links. */
+static void
+globalbindpush(GlobalBind **work, GlobalBind *local, int *used, int *capacity,
+	Node *node, Decl *declaration, int phase)
+{
+	GlobalBind *grown, *frame;
+
+	if(*used == *capacity){
+		if(*capacity > 0x7fffffff/2/sizeof(**work))
+			fatal("global binding expression too complex");
+		*capacity *= 2;
+		grown = allocmem(*capacity*sizeof(*grown));
+		memmove(grown, *work, *used*sizeof(*grown));
+		if(*work != local)
+			free(*work);
+		*work = grown;
+	}
+	frame = &(*work)[(*used)++];
+	frame->node = node;
+	frame->declaration = declaration;
+	frame->phase = phase;
+}
+
+
+/* Bind global Type identifiers before nested scopes can hide their declarations. */
 void
 gbind(Node *n)
 {
+	GlobalBind local[32], *work, frame;
 	Decl *d, *ids;
+	int used, capacity;
 
+	work = local;
+	used = 0;
+	capacity = nelem(local);
 	for(;;){
 		if(n == nil)
-			return;
-		if(n->op != Oseq)
+			goto returned;
+		switch(n->op){
+		case Oseq:
+			globalbindpush(&work, local, &used, &capacity, n, nil, BindSequence);
+			n = n->left;
+			continue;
+		case Oas:
+		case Ocondecl:
+		case Odas:
+		case Oexdecl:
+		case Ofunc:
+		case Oimport:
+		case Onothing:
+		case Ovardecl:
+		case Ovardecli:
 			break;
-		gbind(n->left);
-		n = n->right;
+		case Ofielddecl:
+			bindtypes(n->decl->ty);
+			break;
+		case Otypedecl:
+			bindtypes(n->decl->ty);
+			n = n->left;
+			continue;
+		case Opickdecl:
+			globalbindpush(&work, local, &used, &capacity, n, nil, BindPickEnter);
+			n = n->left;
+			continue;
+		case Oadtdecl:
+		case Omoddecl:
+			bindtypes(n->ty);
+			if(n->ty->polys != nil)
+				repushids(n->ty->polys);
+			repushids(n->ty->ids);
+			globalbindpush(&work, local, &used, &capacity, n, nil, BindAggregateExit);
+			n = n->left;
+			continue;
+		default:
+			fatal("can't deal with %O in gbind", n->op);
+		}
+returned:
+		if(used == 0)
+			break;
+		frame = work[--used];
+		n = frame.node;
+		switch(frame.phase){
+		case BindSequence:
+			n = n->right;
+			continue;
+		case BindPickEnter:
+			d = n->right->left->decl;
+			bindtypes(d->ty);
+			repushids(d->ty->ids);
+			globalbindpush(&work, local, &used, &capacity, n, d, BindPickExit);
+			n = n->right->right;
+			continue;
+		case BindPickExit:
+			ids = popids(frame.declaration->ty->ids);
+			if(ids != nil)
+				installids(Dundef, ids);
+			break;
+		case BindAggregateExit:
+			ids = popids(n->ty->ids);
+			if(ids != nil)
+				installids(Dundef, ids);
+			if(n->ty->polys != nil)
+				popids(n->ty->polys);
+			break;
+		}
+		n = nil;
 	}
-	switch(n->op){
-	case Oas:
-	case Ocondecl:
-	case Odas:
-	case Oexdecl:
-	case Ofunc:
-	case Oimport:
-	case Onothing:
-	case Ovardecl:
-	case Ovardecli:
-		break;
-	case Ofielddecl:
-		bindtypes(n->decl->ty);
-		break;
-	case Otypedecl:
-		bindtypes(n->decl->ty);
-		if(n->left != nil)
-			gbind(n->left);
-		break;
-	case Opickdecl:
-		gbind(n->left);
-		d = n->right->left->decl;
-		bindtypes(d->ty);
-		repushids(d->ty->ids);
-		gbind(n->right->right);
-		/* get new ids for undefined types; propagate outwards */
-		ids = popids(d->ty->ids);
-		if(ids != nil)
-			installids(Dundef, ids);
-		break;
-	case Oadtdecl:
-	case Omoddecl:
-		bindtypes(n->ty);
-		if(n->ty->polys != nil)
-			repushids(n->ty->polys);
-		repushids(n->ty->ids);
-		gbind(n->left);
-		/* get new ids for undefined types; propagate outwards */
-		ids = popids(n->ty->ids);
-		if(ids != nil)
-			installids(Dundef, ids);
-		if(n->ty->polys != nil)
-			popids(n->ty->polys);
-		break;
-	default:
-		fatal("can't deal with %O in gbind", n->op);
-	}
+	if(work != local)
+		free(work);
 }
 
 /*
@@ -791,15 +850,26 @@ scheck(Node *n, Type *ret, int kind)
 	return top;
 }
 
+
+/* Grow the label stack only after count and native byte capacity have been checked. */
 void
 pushlabel(Node *n)
 {
 	Sym *s;
-	int i;
+	Node **grown;
+	int i, capacity;
 
-	if(labdep >= maxlabdep){
-		maxlabdep += MaxScope;
-		labstack = reallocmem(labstack, maxlabdep * sizeof *labstack);
+	if(labdep < 0 || maxlabdep < 0 || labdep > maxlabdep)
+		fatal("invalid label stack depth");
+	if(labdep == maxlabdep){
+		if(maxlabdep > 0x7fffffff-MaxScope)
+			fatal("label stack too large");
+		capacity = maxlabdep+MaxScope;
+		if((ulong)capacity > (ulong)-1/sizeof(*labstack))
+			fatal("label stack too large");
+		grown = reallocmem(labstack, (ulong)capacity*sizeof(*labstack));
+		labstack = grown;
+		maxlabdep = capacity;
 	}
 	if(n->decl != nil){
 		s = n->decl->sym;
