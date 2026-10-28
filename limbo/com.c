@@ -176,24 +176,89 @@ reve(Except *e)
 	return l;
 }
 
+typedef struct InlineWalk InlineWalk;
+
+/* Pending AST branches and restoration barriers for inline dependency traversal. */
+struct InlineWalk {
+	Node *node; // Next borrowed AST subtree, nil for a restoration barrier.
+	Decl *restore; // Declaration whose temporary visiting state expires here.
+};
+
+
+/* Check inline dependencies without recursion or looping through unrelated cycles.
+ * Oname is terminal except for candidate function bodies. Temporarily mark active
+ * declarations and restore every mark on both success and early rejection. */
 static int
 ckinline0(Node *n, Decl *d)
 {
+	enum {
+		InlineNodes = 64, // Pending tasks kept on a fixed host stack.
+		InlineVisiting = -2, // Private active-path marker, never retained on return.
+	};
+	InlineWalk inlinework[InlineNodes], *work, *next;
 	Decl *dd;
+	ulong used, capacity;
+	int result;
 
-	if(n == nil)
-		return 1;
-	if(n->op == Oname){
-		dd = n->decl;
-		if(d == dd)
-			return 0;
-		if(dd->caninline == 1)
-			return ckinline0(dd->init->right, d);
-		return 1;
+	work = inlinework;
+	used = 0;
+	capacity = InlineNodes;
+	result = 1;
+	for(;;){
+		while(n != nil){
+			dd = nil;
+			if(n->op == Oname){
+				dd = n->decl;
+				if(dd == d || dd->caninline == InlineVisiting){
+					result = 0;
+					goto done;
+				}
+				if(dd->caninline != 1)
+					break;
+			}else if(n->right == nil){
+				n = n->left;
+				continue;
+			}
+			if(used == capacity){
+				if(capacity > (ulong)-1/2/sizeof(*work))
+					fatal("inline traversal storage overflow");
+				next = malloc(2*capacity*sizeof(*work));
+				if(next == nil)
+					fatal("out of memory checking inline dependencies");
+				memmove(next, work, used*sizeof(*work));
+				if(work != inlinework)
+					free(work);
+				work = next;
+				capacity *= 2;
+			}
+			work[used].restore = dd;
+			work[used++].node = dd == nil ? n->right : nil;
+			if(dd != nil){
+				dd->caninline = InlineVisiting;
+				n = dd->init->right;
+			}else
+				n = n->left;
+		}
+		if(used == 0)
+			break;
+		used--;
+		if(work[used].restore != nil)
+			work[used].restore->caninline = 1;
+		n = work[used].node;
 	}
-	return ckinline0(n->left, d) && ckinline0(n->right, d);
+done:
+	while(used != 0){
+		used--;
+		if(work[used].restore != nil)
+			work[used].restore->caninline = 1;
+	}
+	if(work != inlinework)
+		free(work);
+	return result;
 }
 
+
+/* Publish the dependency check only after its temporary candidate marks are restored. */
 static void
 ckinline(Decl *d)
 {
