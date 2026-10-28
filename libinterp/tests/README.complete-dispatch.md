@@ -1,6 +1,8 @@
 # Complete decoded JIT dispatch: native fast path plus C
 
-Latest [ARM64 target-alignment checks and compiler-query checkpoint](README.jit-target-alignment.md) retain full native+C dispatch availability.
+Latest [list/channel runtime callback checks](README.jit-callback-alignment.md) cover the six helper identities used by guarded fast paths.
+
+Previous [ARM64 target-alignment checks and compiler-query checkpoint](README.jit-target-alignment.md) retain full native+C dispatch availability.
 
 AMD64 and ARM64 now publish a complete Jit.dispatch entry for every active
 opcode used by a compiled module, including modules containing only complex C

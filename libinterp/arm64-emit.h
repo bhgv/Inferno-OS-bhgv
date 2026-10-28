@@ -1743,7 +1743,7 @@ a64transfer(A64Buf *b, LeafLayout *a, int receive)
 	int half;
 
 	entry = (unsigned long long)a->channeltransferentry;
-	if(entry == 0 || entry == ~0ULL)
+	if(entry == 0 || entry == ~0ULL || entry%4 != 0)
 		return 0;
 	a64put(b, 0xd10143ffU); // sub sp, sp, #80
 	a64put(b, 0xa9047be0U); // stp x0, x30, [sp, #64]
@@ -1792,7 +1792,7 @@ a64channel(A64Buf *b, LeafLayout *a, int op)
 	if((raw && (a->channelmid < 40 || a->channelmid > 2047 || a->channelmid%8)) ||
 	   (mapped && (a->module < 0 || a->module > 2047 || a->module%8)))
 		return 0;
-	if(entry == 0 || entry == ~0ULL)
+	if(entry == 0 || entry == ~0ULL || entry%4 != 0)
 		return 0;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
@@ -1863,7 +1863,7 @@ a64scalarcons(A64Buf *b, LeafLayout *a, LeafOp *p)
 	unsigned long long entry;
 	int half, fallback;
 
-	if(!leafscalarconslayout(a, p->bytes))
+	if(!leafscalarconslayout(a, p->bytes) || (unsigned long long)a->consentry%4 != 0)
 		return 0;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
@@ -1891,7 +1891,9 @@ a64mappedcons(A64Buf *b, LeafLayout *a)
 	int fallback, framed, empty, loop, half;
 	unsigned long long entry;
 
-	if(!leafmappedconslayout(a))return 0;
+	if(!leafmappedconslayout(a) ||
+	   ((unsigned long long)a->consentry|(unsigned long long)a->constypeentry)%4 != 0)
+		return 0;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	a64ptr(b, 9, a->s);
@@ -1966,7 +1968,8 @@ a64rawcons(A64Buf *b, LeafLayout *a)
 	int fallback, empty, loop, half;
 	unsigned long long identity;
 
-	if(!leafscalarconslayout(a, 1))return 0;
+	if(!leafscalarconslayout(a, 1) || (unsigned long long)a->consentry%4 != 0)
+		return 0;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	a64ptr(b, 2, a->m); a64pcspan(b, 2, a->wordbytes, fallback); a64wordfield(b, 2, 2, 0, a->wordbytes);
@@ -2021,7 +2024,8 @@ a64pointercons(A64Buf *b, LeafLayout *a)
 	int fallback, empty, marked, half;
 	unsigned long long identity;
 
-	if(!leafpointerconslayout(a))return 0;
+	if(!leafpointerconslayout(a) || (unsigned long long)a->consentry%4 != 0)
+		return 0;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	a64ptr(b, 9, a->s); a64pcspan(b, 9, 8, fallback); a64load(b, 9, 9, 8);

@@ -79,6 +79,12 @@ with tempfile.TemporaryDirectory(prefix='jit-dispatch-native-') as temporary:
         if wb==32:
             header = re.sub(r'typedef long\s+WORD;','typedef int WORD;',header,count=1)
             header = re.sub(r'typedef unsigned long\s+UWORD;','typedef unsigned int UWORD;',header,count=1)
+        # GCC may leave cold aborting stubs byte-aligned despite -falign-functions.
+        # Foreign emission encodes these identities as AArch64 call targets.
+        if backend == 'arm64':
+            for name in ('cons', 'cconsmappedtype', 'cnewcscalar', 'cnewcraw', 'cnewcmapped', 'cchanleaf'):
+                header = re.sub(r'(extern[^\n]*\b'+name+r'\([^;\n]*\));',
+                                r'\1 __attribute__((aligned(4)));', header)
         (model/'interp.h').write_text(header)
         includes = ['-I'+str(model)]+['-I'+str(ROOT/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
         binary = td/('word'+str(wb))

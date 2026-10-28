@@ -189,10 +189,83 @@ spans(void)
 #endif
 
 
+/* Describe only helpers called by a given opcode, leaving unused identities alone. */
+static int
+usescallback(int field, int op)
+{
+	switch(field){
+	case 0:
+		return op == ICONSB || op == ICONSW || op == ICONSL || op == ICONSF ||
+		       op == ICONSM || op == ICONSMP || op == ICONSP;
+	case 1: return op == ICONSMP;
+	case 2:
+		return op == INEWCB || op == INEWCW || op == INEWCL || op == INEWCF || op == INEWCP;
+	case 3: return op == INEWCM;
+	case 4: return op == INEWCMP;
+	default: return op == ISEND || op == IRECV;
+	}
+}
+
+
+/* Reject bad called targets atomically, preserve unused fields and AMD64 byte targets. */
+static void
+callbacks(void)
+{
+	size_t offsets[] = {offsetof(LeafLayout, consentry), offsetof(LeafLayout, constypeentry),
+	                    offsetof(LeafLayout, channelentry), offsetof(LeafLayout, rawchannelentry),
+	                    offsetof(LeafLayout, mappedchannelentry), offsetof(LeafLayout, channeltransferentry)};
+	unsigned long long values[] = {0, ~0ULL, 0x123456780000ULL, 0x123456780001ULL,
+	                              0x123456780002ULL, 0x123456780003ULL, ~3ULL};
+	LeafLayout a, saved;
+	u32int output[LeafMax+2], original[LeafMax+2];
+	void *target;
+	int field, value, op, baselinecount, expected, result, called;
+
+	for(field = 0; field < nelem(offsets); field++)
+	for(op = INOP+1; op < MAXDIS; op++){
+		if(op == IECLR)
+			continue;
+		if(getenv("EMIT_LAYOUT_CALLBACK_FIELD") && field != atoi(getenv("EMIT_LAYOUT_CALLBACK_FIELD")))
+			continue;
+		if(getenv("EMIT_LAYOUT_CALLBACK_OP") && op != atoi(getenv("EMIT_LAYOUT_CALLBACK_OP")))
+			continue;
+		a = baseline();
+		baselinecount = leafemit(nil, LeafMax, &a, op);
+		called = usescallback(field, op);
+		if(called)
+			layoutcheck(baselinecount > 0);
+		for(value = 0; value < nelem(values); value++){
+			a = baseline();
+			target = (void*)values[value];
+			memmove((uchar*)&a+offsets[field], &target, sizeof(target));
+			saved = a;
+			expected = baselinecount;
+			if(called && (values[value] == 0 || values[value] == ~0ULL))
+				expected = 0;
+#ifdef EMITTER_ARM64
+			if(called && values[value]%4 != 0)
+				expected = 0;
+#endif
+			memset(output, 0xa5, sizeof(output));
+			memmove(original, output, sizeof(output));
+			layoutcheck(leafemit(nil, LeafMax, &a, op) == expected);
+			result = leafemit(output+1, LeafMax, &a, op);
+			layoutcheck(result == expected && !memcmp(&a, &saved, sizeof(a)));
+			layoutcheck(output[0] == original[0]);
+			layoutcheck(!memcmp(output+result+1, original+result+1,
+			                   (LeafMax+1-result)*sizeof(*output)));
+			checks++;
+		}
+	}
+}
+
+
 /* Exercise shared Array layout rules and the complete priority leaf opcode set. */
 int
 main(void)
 {
+	if(!getenv("EMIT_LAYOUT_CASE") || !strcmp(getenv("EMIT_LAYOUT_CASE"), "callbacks"))
+		callbacks();
 	if(!getenv("EMIT_LAYOUT_CASE") || !strcmp(getenv("EMIT_LAYOUT_CASE"), "array"))
 		arrays();
 	if(!getenv("EMIT_LAYOUT_CASE") || !strcmp(getenv("EMIT_LAYOUT_CASE"), "publication"))
@@ -202,6 +275,6 @@ main(void)
 		spans();
 #endif
 	layoutcheck(checks > 0);
-	printf("PASS emitter layouts: %lu array/publication cases\n", checks);
+	printf("PASS emitter layouts: %lu array/publication/callback cases\n", checks);
 	return 0;
 }
