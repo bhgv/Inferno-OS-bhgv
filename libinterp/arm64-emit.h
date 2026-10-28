@@ -818,9 +818,9 @@ a64stringindex(A64Buf *b, LeafLayout *a)
 	int other, done, fallback;
 
 	if(a->stringlen < 0 || a->stringlen > 16380 || a->stringlen%4 != 0 ||
+	   a->stringmax < 0 || a->stringmax > 16380 || a->stringmax%4 ||
 	   a->stringlen == a->stringmax || a->stringdata < a->stringlen+4 ||
-	   a->stringdata < a->stringmax+4 || a->stringdata > 2047 || a->stringdata%4 != 0 ||
-	   a->stringmax < 0 || a->stringmax > 16380 || a->stringmax%4) return 0;
+	   a->stringdata < a->stringmax+4 || a->stringdata > 2047 || a->stringdata%4 != 0) return 0;
 	fallback=b->n+1;
 	a64put(b, 0x14000003); a64put(b, 0x52800000); a64put(b, 0xd65f03c0);
 	/* Validate scalar/pointer slot widths before reading either representation. */

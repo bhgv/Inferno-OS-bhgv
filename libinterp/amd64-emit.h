@@ -273,14 +273,14 @@ x64caseguard(X64Buf *b, int success, int *patch, int *count)
 }
 
 
-/* Reject null, H and wrapping spans before PC-table loads; rdx is scratch. */
+/* Reject null, H and wrapping spans; positive extents must fit the signed compare limit. */
 static void
 x64pcspan(X64Buf *b, int owner, int extent)
 {
 	x64byte(b, owner >= 8 ? 0x49 : 0x48);
 	x64byte(b, 0x8d); x64byte(b, 0x50 | (owner&7)); x64byte(b, 0xff);
-	x64byte(b, 0x48); x64byte(b, extent+2 <= 128 ? 0x83 : 0x81); x64byte(b, 0xfa);
-	if(extent+2 <= 128)
+	x64byte(b, 0x48); x64byte(b, extent <= 126 ? 0x83 : 0x81); x64byte(b, 0xfa);
+	if(extent <= 126)
 		x64byte(b, -extent-2);
 	else
 		x64word(b, -extent-2);
@@ -3175,7 +3175,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		if(!x64copykernel(&b)) return 0;
 		if(!x64casepatch(&b, empty, b.n)) return 0;
 	}else if(p.kind == LeafLength || p.kind == LeafIndex){
-		if(abi->arraylen < 0 || abi->arraydata < 0) return 0;
+		/* Both field extents and their negative imm32 limits must remain representable. */
+		if(abi->arraylen < 0 || abi->arraylen > 0x7ffffffe - abi->wordbytes ||
+		   abi->arraydata < 0 || abi->arraydata > 0x7ffffffe - 8) return 0;
 		/* Only length queries ignore m; address commands return through m. */
 		x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, 8);
 		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, abi->wordbytes);

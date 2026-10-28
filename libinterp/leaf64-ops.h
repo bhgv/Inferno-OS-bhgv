@@ -44,7 +44,7 @@ struct LeafLayout {
 typedef struct LeafOp LeafOp;
 
 
-/* Require disjoint native Array fields before a conversion leaf can interpret them. */
+/* Bound complete native Array fields before testing whether their spans overlap. */
 static int
 leafbytearraylayout(LeafLayout *a)
 {
@@ -54,6 +54,11 @@ leafbytearraylayout(LeafLayout *a)
 	offsets[1] = a->arraytype; widths[1] = 8;
 	offsets[2] = a->arrayroot; widths[2] = 8;
 	offsets[3] = a->arraydata; widths[3] = 8;
+	if(a->wordbytes != 4 && a->wordbytes != 8)
+		return 0;
+	for(i = 0; i < 4; i++)
+		if(offsets[i] < 0 || offsets[i] > 0x7fffffff-widths[i])
+			return 0;
 	for(i = 0; i < 4; i++)
 		for(j = i+1; j < 4; j++)
 			if(offsets[i] < offsets[j]+widths[j] && offsets[j] < offsets[i]+widths[i])
