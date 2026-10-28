@@ -541,12 +541,16 @@ bop(int o, u32int s, u32int d)
 	return 0;
 }
 
-/* Allocate zeroed cells, rounding bit counts without signed addition overflow. */
+
+/* Bound bitmap storage and every padded bit index before allocation.
+ * Cell-mode callers must obey the same signed-position limit as bit-mode callers. */
 static Bits
 bnew(int n, int bits)
 {
 	Bits b;
 
+	if(n < 0 || (!bits && n > 0x7fffffff/BLEN+1))
+		fatal("optimizer bitmap too large");
 	if(bits)
 		b.n = n/BLEN+(n%BLEN != 0);
 	else
@@ -645,13 +649,16 @@ boper(int o, Bits a, Bits b)
 	return b;
 }
 
-/* Compare stored cells of equally sized bit sets. */
+
+/* Reject incompatible bitmap rows before comparing their storage. */
 static int
 beq(Bits a, Bits b)
 {
 	int i, n;
 
 	n = a.n;
+	if(b.n != n)
+		fatal("beq %d %d", a.n, b.n);
 	for(i = 0; i < n; i++)
 		if(a.b[i] != b.b[i])
 			return 0;
@@ -775,6 +782,8 @@ warning(Inst *i, char *s, Decl *d, Decl *sd)
 	free(f);
 }
 
+
+/* Keep instruction counts representable before assigning signed bitmap PCs. */
 static int
 inspc(Inst *in)
 {
@@ -782,8 +791,11 @@ inspc(Inst *in)
 	Inst *i;
 
 	n = 0;
-	for(i = in; i != nil; i = i->next)
+	for(i = in; i != nil; i = i->next){
+		if(n == 0x7fffffff)
+			fatal("too many optimizer instructions");
 		i->pc = n++;
+	}
 	return n;
 }
 
@@ -911,24 +923,33 @@ freeblks(Block *b)
 	}
 }
 
+
+/* Count declarations without wrapping use/def row indices. */
 static int
 len(Decl *d)
 {
 	int n;
 
 	n = 0;
-	for( ; d != nil; d = d->next)
+	for( ; d != nil; d = d->next){
+		if(n == 0x7fffffff)
+			fatal("too many optimizer declarations");
 		n++;
+	}
 	return n;
 }
 
+
+/* Check row bytes and position counts before allocating any use/def row. */
 static Bits*
 allocbits(int nv, int npc)
 {
 	int i;
 	Bits *defs;
 
-	defs = (Bits*)allocmem(nv*sizeof(Bits));
+	if(nv <= 0 || (ulong)nv > 0x7fffffff/sizeof(Bits) || npc < 0)
+		fatal("optimizer use/def table too large");
+	defs = (Bits*)allocmem((ulong)nv*sizeof(Bits));
 	for(i = 0; i < nv; i++)
 		defs[i] = bnew(npc, 1);
 	return defs;
@@ -970,18 +991,24 @@ mkblist(Block *b, Blist *nbl)
 	return bl;
 }
 
+
+/* Grow the leader table within compiler byte limits before publishing a block. */
 static void
 leader(Inst *i, Array *ab)
 {
-	int m, n;
+	int m, n, capacity, limit;
 	Block *b, **a;
 
 	if(i != nil && i->pc == 0){
 		if((n = ab->n) == (m = ab->m)){
+			limit = 0x7fffffff/sizeof(Block*);
+			if(m <= 0 || m >= limit)
+				fatal("too many optimizer blocks");
+			capacity = m > limit/2 ? limit : 2*m;
 			a = ab->a;
-			ab->a = allocmem(2*m*sizeof(Block*));
-			memcpy(ab->a, a, m*sizeof(Block*));
-			ab->m = 2*m;
+			ab->a = allocmem((ulong)capacity*sizeof(Block*));
+			memcpy(ab->a, a, (ulong)m*sizeof(Block*));
+			ab->m = capacity;
 			free(a);
 		}
 		b = mkblock(i);
@@ -991,13 +1018,15 @@ leader(Inst *i, Array *ab)
 	}
 }
 
+
+/* Resolve only leader indices owned by this graph. */
 static Block*
 findb(Inst *i, Array *ab)
 {
 	if(i == nil)
 		return nil;
-	if(i->pc <= 0)
-		fatal("pc <= 0 in findb");
+	if(i->pc <= 0 || i->pc > ab->n)
+		fatal("invalid pc in findb");
 	return ab->a[i->pc-1];
 }
 
@@ -1042,6 +1071,8 @@ predsucc(Block *b1, Block *b2)
 		b1->succ = mkblist(b2, b1->succ);
 }
 	
+
+/* Build graph edges and release the temporary list sentinel after assembly. */
 static Block*
 mkblocks(Inst *in, int *nb)
 {
@@ -1149,6 +1180,7 @@ mkblocks(Inst *in, int *nb)
 	free(ab);
 	b = firstb->next;
 	b->prev = nil;
+	free(firstb);
 	return b;
 }
 
@@ -1885,11 +1917,21 @@ ckflags(void)
 }
 
 
+/* Combine instruction and dummy-definition positions before signed arithmetic. */
+static int
+optpositions(int npc, int nv)
+{
+	if(npc < 0 || nv <= 0 || npc > 0x7fffffff-nv)
+		fatal("too many optimizer positions");
+	return npc+nv;
+}
+
+
 /* Optimize the control-flow graph while retaining wide diagnostic counters. */
 void
 optim(Inst *in, Decl *d)
 {
-	int nb, npc, nv;
+	int nb, npc, nv, positions;
 	uvlong nd, nu;
 	Block *b;
 	Bits *uses, *defs;
@@ -1916,8 +1958,9 @@ optim(Inst *in, Decl *d)
 		pblocks(b, nb);
 	loops(b);
 	nv = len(d);
-	uses = allocbits(nv, npc+nv);
-	defs = allocbits(nv, npc+nv);
+	positions = optpositions(npc, nv);
+	uses = allocbits(nv, positions);
+	defs = allocbits(nv, positions);
 	dummydefs(defs, nv, npc);
 	usedef(in, d, uses, defs);
 	if(debug['o']){
