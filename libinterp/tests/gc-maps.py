@@ -30,7 +30,12 @@ def function(signature):
 # Keep native pointers while independently checking both VM scalar widths.
 def main():
     unit = (ROOT/'libinterp/tests/gc-maps.c').read_text()
-    unit = unit.replace('IMPLEMENTATION', function('void\nmarkheap('))
+    parts = []
+    for signature in ('static int\ngcintadd(', 'static void\ngcspend('):
+        if signature in SOURCE:
+            parts.append(function(signature))
+    parts.append(function('void\nmarkheap('))
+    unit = unit.replace('IMPLEMENTATION', '\n\n\n'.join(parts))
     with tempfile.TemporaryDirectory(prefix='gc-maps-') as directory:
         td = Path(directory)
         target = td/'maps.c'

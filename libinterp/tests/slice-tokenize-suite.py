@@ -8,6 +8,8 @@ import subprocess
 import sys
 
 CORE = [
+    'libinterp/tests/gc-arithmetic.py',
+    'libinterp/tests/gc-idle.py',
     'emu/port/tests/native-io.py',
     'libinterp/tests/readmod-io.py',
     'limbo/tests/type-parent.py',

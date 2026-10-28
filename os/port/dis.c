@@ -98,10 +98,12 @@ accountant(void)
 		p->ticks++;
 }
 
+
+/* Run up to three completed GC epochs without adding to a signed color selector. */
 static void
 execatidle(void)
 {
-	int done;
+	ulong epoch;
 
 	if(tready(nil))
 		return;
@@ -111,8 +113,8 @@ execatidle(void)
 	up->iprog = nil;
 	addrun(up->prog);
 
-	done = gccolor+3;
-	while(gccolor < done && gcruns()) {
+	epoch = gcepochs;
+	while((ulong)(gcepochs-epoch) < 3 && gcruns()) {
 		if(isched.vmq != nil || isched.runhd != isched.runtl) {
 			gcpartial++;
 			break;

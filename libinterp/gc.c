@@ -2,11 +2,10 @@
 #include "interp.h"
 #include "pool.h"
 
-enum
-{
-	Quanta		= 50,		/* Allocated blocks to sweep each time slice usually */
-	MaxQuanta	= 15*Quanta,
-	PTRHASH		= (1<<5)
+enum {
+	Quanta = 50, // Minimum allocated-block work per collector slice.
+	MaxQuanta = 15*Quanta, // Maximum adaptive collector slice.
+	PTRHASH = (1<<5), // Buckets holding native external roots.
 };
 
 static int quanta = Quanta;
@@ -102,6 +101,62 @@ noptrs(Type *t, void *vw)
 static int markdepth;
 
 
+/* Clamp collector estimates before narrowing an int-sized accounting update. */
+static int
+gcintadd(int value, int delta)
+{
+	vlong next;
+
+	next = (vlong)value+delta;
+	if(next < (-0x7fffffff-1))
+		return -0x7fffffff-1;
+	if(next > 0x7fffffff)
+		return 0x7fffffff;
+	return (int)next;
+}
+
+
+/* Exhausted work stays exhausted even after a large array or nested mark callback. */
+static void
+gcspend(uvlong count)
+{
+	uvlong remaining;
+
+	remaining = (vlong)visit-(-0x7fffffff-1);
+	if(count > remaining)
+		visit = -0x7fffffff-1;
+	else
+		visit = (int)((vlong)visit-(vlong)count);
+}
+
+
+/* Compute feedback at wide precision, then clamp to the scheduler's supported range. */
+static int
+gcnextquanta(int balance, int inspected)
+{
+	vlong next;
+
+	if(inspected <= 0)
+		return Quanta;
+	next = (MaxQuanta+Quanta)/2 + ((MaxQuanta-Quanta)/20)*((100LL*balance)/inspected);
+	if(next < Quanta)
+		return Quanta;
+	if(next > MaxQuanta)
+		return MaxQuanta;
+	return (int)next;
+}
+
+
+/* Preserve the next three-color phase when the legacy signed selector reaches its limit. */
+static int
+gcnextcolor(int color)
+{
+	if(color == 0x7fffffff)
+		return 2;
+	return color+1;
+}
+
+
 /* Trace packed native pointer slots without aligned record or descriptor accesses. */
 void
 markheap(Type *t, void *vw)
@@ -132,24 +187,27 @@ markheap(Type *t, void *vw)
 				continue;
 			h = D2H(value);
 			Setmark(h);
-			if(h->color == propagator && --visit >= 0 && markdepth < 64){
-				gce--;
-				h->color = mutator;
-				if((t1 = h->t) != nil)
-					t1->mark(t1, H2D(void*, h));
+			if(h->color == propagator){
+				gcspend(1);
+				if(visit >= 0 && markdepth < 64){
+					gce = gcintadd(gce, -1);
+					h->color = mutator;
+					if((t1 = h->t) != nil)
+						t1->mark(t1, H2D(void*, h));
+				}
 			}
 		}
 	}
 	markdepth--;
 }
 
-/*
- * This routine should be modified to be incremental, but how?
- */
+
+/* Preserve array element order; scanning itself remains nonincremental.
+ * Charge a bounded work estimate after the element scan. */
 void
 markarray(Type *t, void *vw)
 {
-	int i;
+	WORD i;
 	Heap *h;
 	uchar *v;
 	Array *a;
@@ -171,9 +229,12 @@ markarray(Type *t, void *vw)
 		markheap(t, v);
 		v += t->size;
 	}
-	visit -= a->len;
+	if(a->len > 0)
+		gcspend((uvlong)a->len);
 }
 
+
+/* Trace list payloads and defer the remaining tail once the work budget is spent. */
 void
 marklist(Type *t, void *vw)
 {
@@ -190,7 +251,7 @@ marklist(Type *t, void *vw)
 		h = D2H(l);
 		Setmark(h);
 		markheap(l->t, l->data);
-		visit--;
+		gcspend(1);
 	}
 	l = l->tail;
 	if(l != H) {
@@ -299,6 +360,8 @@ domflag(Heap *h)
 		abort();
 }
 
+
+/* Sweep bounded work and finish epochs without overflowing estimates or color state. */
 void
 rungc(Prog *p)
 {
@@ -328,20 +391,20 @@ rungc(Prog *p)
 
 	for(visit = quanta; visit > 0; ) {
 		if(ptr->magic == MAGIC_A) {
-			visit--;
-			gct++;
+			gcspend(1);
+			gct = gcintadd(gct, 1);
 			gcinspects++;
 			h = B2D(ptr);
 			t = h->t;
 			if(h->color == propagator) {
-				gce--;
+				gce = gcintadd(gce, -1);
 				h->color = mutator;
 				if(t != nil)
 					t->mark(t, H2D(void*, h));
 			}
 			else
 			if(h->color == sweeper) {
-				gce++;
+				gce = gcintadd(gce, 1);
 				if(0 && mflag)
 					domflag(h);
 				if(heapmonitor != nil)
@@ -366,17 +429,13 @@ rungc(Prog *p)
 		}
 	}
 
-	quanta = (MaxQuanta+Quanta)/2 + ((MaxQuanta-Quanta)/20)*((100*gce)/gct);
-	if(quanta < Quanta)
-		quanta = Quanta;
-	if(quanta > MaxQuanta)
-		quanta = MaxQuanta;
+	quanta = gcnextquanta(gce, gct);
 
 	if(base != nil)		/* Completed this iteration ? */
 		return;
 	if(nprop == 0) {	/* Completed the epoch ? */
 		gcepochs++;
-		gccolor++;
+		gccolor = gcnextcolor(gccolor);
 		rootset(p);
 		gce = 0;
 		gct = 1;

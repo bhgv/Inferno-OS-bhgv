@@ -798,18 +798,20 @@ distime(int report, void *va, long n, ulong offset)
  */
 static int nidle;
 
+
+/* Measure completed epochs using the unsigned epoch counter across selector wrap. */
 int
 idlegc(void *p)
 {
-	int done;
+	ulong epoch;
 	Prog *head;
 	vlong t0, t1, tot;
 	USED(p);
 
 	head = progn(0);	/* isched.head */
-	done = gccolor + 3;
+	epoch = gcepochs;
 	tot = 0;
-	while(gccolor < done && gcruns()) {
+	while((ulong)(gcepochs-epoch) < 3 && gcruns()) {
 		if(tready(nil))
 			break;
 		t0 = archrdtsc();

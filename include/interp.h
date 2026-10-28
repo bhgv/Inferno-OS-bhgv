@@ -410,7 +410,8 @@ extern	Module*	modules;
 extern	int	mutator;
 extern	int	nprop;
 extern	int	gchalt;
-extern	int	gccolor;
+extern	int	gccolor; // Three-color selector; not an elapsed-epoch counter.
+extern	ulong	gcepochs; // Completed epochs; unsigned differences remain valid across wrap.
 extern	int	minvalid;
 
 extern	int		Dconv(Fmt*);
