@@ -771,38 +771,64 @@ mktn(Type *t)
 	return n;
 }
 
-/* does a tuple of the form (a, b, ...) form a contiguous block
- * of memory on the stack when offsets are assigned later
- * - only when (a, b, ...) := rhs and none of the names nil
- * can we guarantee this
- */
+
+/* Check whether (a, b, ...) forms one contiguous stack block after layout.
+ * Only fresh := names without nil entries can guarantee that adjacency.
+ * Use explicit continuations and preserve the partial last-Decl output on failure. */
 static int
 tupblk0(Node *n, Decl **dd)
 {
+	Node *local[32], **work, **grown, *list;
 	Decl *d;
-	int nid;
+	int used, capacity, ok, nid;
 
-	switch(n->op){
-	case Otuple:
-		for(n = n->left; n != nil; n = n->right)
-			if(!tupblk0(n->left, dd))
-				return 0;
-		return 1;
-	case Oname:
-		if(n->decl == nildecl)
-			return 0;
-		d = *dd;
-		if(d != nil && d->next != n->decl)
-			return 0;
-		nid = n->decl->nid;
-		if(d == nil && nid == 1)
-			return 0;
-		if(d != nil && nid != 0)
-			return 0;
-		*dd = n->decl;
-		return 1;
+	work = local;
+	used = 0;
+	capacity = nelem(local);
+	ok = 1;
+	for(;;){
+		if(n->op == Otuple){
+			list = n->left;
+			if(list != nil)
+				goto descend;
+		}else if(n->op == Oname){
+			if(n->decl == nildecl)
+				goto mismatch;
+			d = *dd;
+			if(d != nil && d->next != n->decl)
+				goto mismatch;
+			nid = n->decl->nid;
+			if((d == nil && nid == 1) || (d != nil && nid != 0))
+				goto mismatch;
+			*dd = n->decl;
+		}else
+			goto mismatch;
+		if(used == 0)
+			break;
+		list = work[--used];
+descend:
+		if(list->right != nil){
+			if(used == capacity){
+				if(capacity > 0x7fffffff/2/sizeof(*work))
+					fatal("tuple block expression too complex");
+				capacity *= 2;
+				grown = allocmem(capacity*sizeof(*grown));
+				memmove(grown, work, used*sizeof(*grown));
+				if(work != local)
+					free(work);
+				work = grown;
+			}
+			work[used++] = list->right;
+		}
+		n = list->left;
 	}
-	return 0;
+	goto done;
+mismatch:
+	ok = 0;
+done:
+	if(work != local)
+		free(work);
+	return ok;
 }
 
 /* could force locals to be next to each other

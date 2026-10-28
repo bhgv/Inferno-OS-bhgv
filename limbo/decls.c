@@ -499,61 +499,116 @@ vars(Decl *d)
 	return d;
 }
 
-/*
- * declare variables from the left side of a := statement
- */
+/* Pending declaration lists and delayed global assignment declarations. */
+typedef struct DeclWalk DeclWalk;
+
+struct DeclWalk {
+	Node *node; // Borrowed list continuation or expression subtree.
+	int install; // Declare a saved assignment left side after its right side.
+};
+
+
+/* Grow private traversal storage without changing compiler-owned AST links. */
+static void
+declwalkpush(DeclWalk **work, DeclWalk *local, int *used, int *capacity,
+	Node *node, int install)
+{
+	DeclWalk *grown;
+
+	if(node == nil)
+		return;
+	if(*used == *capacity){
+		if(*capacity > 0x7fffffff/2/sizeof(**work))
+			fatal("declaration expression too complex");
+		*capacity *= 2;
+		grown = allocmem(*capacity*sizeof(*grown));
+		memmove(grown, *work, *used*sizeof(*grown));
+		if(*work != local)
+			free(*work);
+		*work = grown;
+	}
+	(*work)[*used].node = node;
+	(*work)[*used].install = install;
+	(*used)++;
+}
+
+
+/* Visit tuple names eagerly from left to right, retaining nil-name and nid rules. */
+static int
+decltuplewalk(Node *n, int store, int *nid, int marking)
+{
+	DeclWalk local[32], *work;
+	Node *list;
+	Decl *d, *old;
+	int used, capacity, ok;
+
+	work = local;
+	used = 0;
+	capacity = nelem(local);
+	ok = 1;
+	for(;;){
+		if(n->op == Otuple){
+			list = n->left;
+			if(list != nil){
+				declwalkpush(&work, local, &used, &capacity, list->right, 0);
+				n = list->left;
+				continue;
+			}
+		}else if(n->op == Oname){
+			if(marking){
+				n->decl->nid = *nid;
+				*nid = 0;
+			}else if(n->decl == nildecl)
+				*nid = -1;
+			else{
+				d = mkids(&n->src, n->decl->sym, nil, nil);
+				installids(store, d);
+				old = d->old;
+				if(old != nil && old->store != Dfn
+				&& old->store != Dwundef && old->store != Dundef)
+					warn(d->src.start, "redeclaration of %K, previously declared as %k on line %L",
+						d, old, old->src.start);
+				n->decl = d;
+				d->refs++;
+				d->das = 1;
+				if(*nid >= 0){
+					if(*nid == 0x7fffffff)
+						fatal("declaration name count overflow");
+					(*nid)++;
+				}
+			}
+		}else if(!marking)
+			ok = 0;
+		if(used == 0)
+			break;
+		list = work[--used].node;
+		declwalkpush(&work, local, &used, &capacity, list->right, 0);
+		n = list->left;
+	}
+	if(work != local)
+		free(work);
+	return ok;
+}
+
+
+/* Declare every tuple name even when another tuple member is invalid. */
 static int
 recdasdecl(Node *n, int store, int *nid)
 {
-	Decl *d, *old;
-	int ok;
-
-	switch(n->op){
-	case Otuple:
-		ok = 1;
-		for(n = n->left; n != nil; n = n->right)
-			ok &= recdasdecl(n->left, store, nid);
-		return ok;
-	case Oname:
-		if(n->decl == nildecl){
-			*nid = -1;
-			return 1;
-		}
-		d = mkids(&n->src, n->decl->sym, nil, nil);
-		installids(store, d);
-		old = d->old;
-		if(old != nil
-		&& old->store != Dfn
-		&& old->store != Dwundef
-		&& old->store != Dundef)
-			warn(d->src.start,  "redeclaration of %K, previously declared as %k on line %L",
-				d, old, old->src.start);
-		n->decl = d;
-		d->refs++;
-		d->das = 1;
-		if(*nid >= 0)
-			(*nid)++;
-		return 1;
-	}
-	return 0;
+	return decltuplewalk(n, store, nid, 0);
 }
 
+
+/* Put the sharing group count on the first name and zero on later names. */
 static int
 recmark(Node *n, int nid)
 {
-	switch(n->op){
-	case Otuple:
-		for(n = n->left; n != nil; n = n->right)
-			nid = recmark(n->left, nid);
-		break;
-	case Oname:
-		n->decl->nid = nid;
-		nid = 0;
-		break;
-	}
+	decltuplewalk(n, 0, &nid, 1);
 	return nid;
 }
 
+
+/* Choose storage scope and mark only successful local declaration groups. */
 int
 dasdecl(Node *n)
 {
@@ -573,22 +628,37 @@ dasdecl(Node *n)
 	return ok;
 }
 
-/*
- * declare global variables in nested := expressions
- */
+
+/* Declare nested global := expressions after their right side, without recursion. */
 void
 gdasdecl(Node *n)
 {
-	if(n == nil)
-		return;
+	DeclWalk local[32], *work, frame;
+	int used, capacity;
 
-	if(n->op == Odas){
-		gdasdecl(n->right);
-		dasdecl(n->left);
-	}else{
-		gdasdecl(n->left);
-		gdasdecl(n->right);
+	work = local;
+	used = 0;
+	capacity = nelem(local);
+	for(;;){
+		while(n != nil){
+			if(n->op == Odas){
+				declwalkpush(&work, local, &used, &capacity, n->left, 1);
+				n = n->right;
+			}else{
+				declwalkpush(&work, local, &used, &capacity, n->right, 0);
+				n = n->left;
+			}
+		}
+		if(used == 0)
+			break;
+		frame = work[--used];
+		if(frame.install)
+			dasdecl(frame.node);
+		else
+			n = frame.node;
 	}
+	if(work != local)
+		free(work);
 }
 
 Decl*

@@ -193,7 +193,7 @@ struct Decl
 	Src	src;			/* where declaration */
 	Sym	*sym;
 	uchar	store;			/* storage class */
-	uchar	nid;		/* block grouping for locals */
+	int	nid;		// Full local declaration group count; zero marks later members.
 	schar	caninline;	/* inline function */
 	uchar	das;		/* declared with := */
 	Decl	*dot;			/* parent adt or module */
