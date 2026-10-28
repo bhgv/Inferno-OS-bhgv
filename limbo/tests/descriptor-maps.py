@@ -33,6 +33,10 @@ for signature in ('long\naddsize(', 'static long\nmapmark(', 'static long\ndescb
         parts.append(function(types, signature))
     elif 'addsize' in signature or 'descbytes' in signature:
         parts.append(function((root / 'limbo/types.c').read_text(), signature))
+if 'struct MapWalk {' in types:
+    start = types.index('/* A descriptor continuation')
+    stop = types.index('/* Return the highest marked offset independently', start)
+    parts.append(types[start:stop])
 for signature in ('Desc*\ngendesc(', 'Desc*\nmkdesc(', 'Desc*\nmktdesc(',
                   'Desc*\nenterdesc(', 'Desc*\nusedesc(', 'long\ndescmap(', 'long\ntdescmap('):
     parts.append(function(types, signature))

@@ -2553,93 +2553,188 @@ mapmark(uchar *map, long offset, long size)
 	return offset;
 }
 
-/* Return the highest marked offset even when declaration order differs from storage order. */
+/* A descriptor continuation retains one declaration list or active aggregate. */
+typedef struct MapWalk MapWalk;
+
+struct MapWalk {
+	Type *type; // Borrowed Type, or active aggregate whose recursion mark must be cleared.
+	Decl *decl; // Current declaration in a borrowed field list.
+	long offset; // Absolute byte offset within the complete descriptor extent.
+	long last; // Highest pointer offset returned by completed declarations.
+	int phase; // Entry or return continuation for a Type or declaration list.
+};
+
+enum {
+	MapType, // Inspect a Type and mark its pointer slots.
+	MapDecls, // Enter a declaration list and report its base offset.
+	MapNext, // Select the next declaration with actual storage.
+	MapReturned, // Consume a declaration Type's result before advancing its list.
+	MapAggregate, // Clear an aggregate's active recursion mark after its fields return.
+};
+
+
+/* Grow private continuations before publishing a new frame or retaining its address. */
+static void
+mapwalkpush(MapWalk **work, MapWalk *inlinework, int *used, int *capacity,
+	int phase, Type *type, Decl *decl, long offset)
+{
+	MapWalk *grown, *frame;
+
+	if(*used == *capacity){
+		if(*capacity > 0x7fffffff/2/sizeof(**work))
+			fatal("descriptor type too complex");
+		*capacity *= 2;
+		grown = allocmem(*capacity*sizeof(*grown));
+		memmove(grown, *work, *used*sizeof(*grown));
+		if(*work != inlinework)
+			free(*work);
+		*work = grown;
+	}
+	frame = &(*work)[(*used)++];
+	frame->type = type;
+	frame->decl = decl;
+	frame->offset = offset;
+	frame->last = -1;
+	frame->phase = phase;
+}
+
+
+/* Preserve depth-first map checks and active-type marks without native recursion. */
+static long
+mapwalk(Type *type, Decl *decl, uchar *map, long offset, long size, int phase)
+{
+	MapWalk inlinework[64], *work, *frame;
+	Type *t;
+	Decl *d;
+	Label *lab;
+	long result, at, i, end;
+	int used, capacity;
+
+	work = inlinework;
+	capacity = nelem(inlinework);
+	used = 0;
+	result = -1;
+	mapwalkpush(&work, inlinework, &used, &capacity, phase, type, decl, offset);
+	while(used != 0){
+		frame = &work[used-1];
+		if(frame->phase == MapReturned){
+			d = frame->decl;
+			if(debug['D']){
+				at = addsize(frame->offset, d->offset);
+				if(d->sym != nil)
+					print("descmap %s type %T offset %ld returns %ld\n",
+						d->sym->name, d->ty, at, result);
+				else
+					print("descmap type %T offset %ld returns %ld\n", d->ty, at, result);
+			}
+			if(result > frame->last)
+				frame->last = result;
+			frame->decl = d->next;
+			frame->phase = MapNext;
+			continue;
+		}
+		if(frame->phase == MapAggregate){
+			frame->type->rec = 0;
+			used--;
+			continue;
+		}
+		if(frame->phase == MapDecls){
+			if(debug['D'])
+				print("descmap offset %ld\n", frame->offset);
+			frame->phase = MapNext;
+		}
+		if(frame->offset < 0 || size < 0 || frame->offset > size || size > 0x7fffffff)
+			fatal("invalid descriptor extent");
+		if(frame->phase == MapNext){
+			d = frame->decl;
+			while(d != nil && ((d->store == Dtype && d->ty->kind == Tmodule) ||
+			      d->store == Dfn || d->store == Dconst ||
+			      (d->store == Dlocal && d->link != nil)))
+				d = d->next;
+			frame->decl = d;
+			if(d == nil){
+				result = frame->last;
+				used--;
+				continue;
+			}
+			at = addsize(frame->offset, d->offset);
+			frame->phase = MapReturned;
+			mapwalkpush(&work, inlinework, &used, &capacity, MapType, d->ty, nil, at);
+			continue;
+		}
+		t = frame->type;
+		at = frame->offset;
+		result = -1;
+		if(t == nil){
+			used--;
+			continue;
+		}
+		if(t->kind == Talt || t->kind == Tcasec){
+			end = t->cse->nlab;
+			if(end < 0)
+				fatal("invalid descriptor table");
+			if(t->kind == Talt){
+				lab = t->cse->labs;
+				at = addsize(at, 2*IBY2WD);
+				for(i = 0; i < end; i++){
+					if(lab[i].isptr)
+						result = mapmark(map, at, size);
+					at = addsize(at, 2*IBY2WD);
+				}
+			}else{
+				at = addsize(at, IBY2WD);
+				for(i = 0; i < end; i++){
+					mapmark(map, at, size);
+					at = addsize(at, IBY2WD);
+					result = mapmark(map, at, size);
+					at = addsize(at, 2*IBY2WD);
+				}
+			}
+			used--;
+			continue;
+		}
+		if(t->kind >= Tend)
+			fatal("invalid descriptor type kind");
+		if(tattr[t->kind].isptr){
+			result = mapmark(map, at, size);
+			used--;
+			continue;
+		}
+		if(t->kind == Tadtpick)
+			t = t->tof;
+		if(t->kind == Ttuple || t->kind == Tadt || t->kind == Texception){
+			if(debug['D'])
+				print("descmap adt offset %ld\n", at);
+			if(t->rec != 0)
+				fatal("illegal cyclic type %t in tdescmap", t);
+			t->rec = 1;
+			frame->type = t;
+			frame->phase = MapAggregate;
+			mapwalkpush(&work, inlinework, &used, &capacity, MapDecls, nil, t->ids, at);
+		}else
+			used--;
+	}
+	if(work != inlinework)
+		free(work);
+	return result;
+}
+
+
+/* Return the highest marked offset independently of declaration storage order. */
 long
 descmap(Decl *decls, uchar *map, long start, long size)
 {
-	Decl *d;
-	long last, m, at;
-
-	if(debug['D'])
-		print("descmap offset %ld\n", start);
-	if(start < 0 || size < 0 || start > size || size > 0x7fffffff)
-		fatal("invalid descriptor extent");
-	last = -1;
-	for(d = decls; d != nil; d = d->next){
-		if((d->store == Dtype && d->ty->kind == Tmodule) ||
-		   d->store == Dfn || d->store == Dconst)
-			continue;
-		if(d->store == Dlocal && d->link != nil)
-			continue;
-		at = addsize(start, d->offset);
-		m = tdescmap(d->ty, map, at, size);
-		if(debug['D']){
-			if(d->sym != nil)
-				print("descmap %s type %T offset %ld returns %ld\n",
-					d->sym->name, d->ty, at, m);
-			else
-				print("descmap type %T offset %ld returns %ld\n", d->ty, at, m);
-		}
-		if(m > last)
-			last = m;
-	}
-	return last;
+	return mapwalk(nil, decls, map, start, size, MapDecls);
 }
 
-/* Propagate descriptor capacity through nested types before setting any pointer bit. */
+
+/* Propagate the complete descriptor extent through an iterative Type traversal. */
 long
 tdescmap(Type *t, uchar *map, long offset, long size)
 {
-	Label *lab;
-	long i, e, m;
-
-	if(offset < 0 || size < 0 || offset > size || size > 0x7fffffff)
-		fatal("invalid descriptor extent");
-	if(t == nil)
-		return -1;
-	m = -1;
-	if(t->kind == Talt){
-		lab = t->cse->labs;
-		e = t->cse->nlab;
-		if(e < 0)
-			fatal("invalid descriptor table");
-		offset = addsize(offset, 2*IBY2WD);
-		for(i = 0; i < e; i++){
-			if(lab[i].isptr)
-				m = mapmark(map, offset, size);
-			offset = addsize(offset, 2*IBY2WD);
-		}
-		return m;
-	}
-	if(t->kind == Tcasec){
-		e = t->cse->nlab;
-		if(e < 0)
-			fatal("invalid descriptor table");
-		offset = addsize(offset, IBY2WD);
-		for(i = 0; i < e; i++){
-			mapmark(map, offset, size);
-			offset = addsize(offset, IBY2WD);
-			m = mapmark(map, offset, size);
-			offset = addsize(offset, 2*IBY2WD);
-		}
-		return m;
-	}
-	if(tattr[t->kind].isptr)
-		return mapmark(map, offset, size);
-	if(t->kind == Tadtpick)
-		t = t->tof;
-	if(t->kind == Ttuple || t->kind == Tadt || t->kind == Texception){
-		if(debug['D'])
-			print("descmap adt offset %ld\n", offset);
-		if(t->rec != 0)
-			fatal("illegal cyclic type %t in tdescmap", t);
-		t->rec = 1;
-		m = descmap(t->ids, map, offset, size);
-		t->rec = 0;
-		return m;
-	}
-	return -1;
+	return mapwalk(t, nil, map, offset, size, MapType);
 }
+
 
 /*
  * can a t2 be assigned to a t1?
@@ -3961,31 +4056,75 @@ clearrec(Type *t)
 	return n;
 }
 
-/* must a variable of the given type be zeroed ? (for uninitialized declarations inside loops) */
+
+/* Query nested value fields without consuming native stack or mutating Type marks. */
+static int
+zerowalk(Type *type, Decl *decl)
+{
+	Decl *inlinework[64], **work, **grown;
+	Type *t;
+	int used, capacity, result;
+
+	work = inlinework;
+	capacity = nelem(inlinework);
+	used = 0;
+	result = 0;
+	t = type;
+	for(;;){
+		if(t != nil){
+			if(t->kind >= Tend)
+				fatal("invalid zero-initialization type kind");
+			if(tattr[t->kind].isptr){
+				result = 1;
+				break;
+			}
+			if(t->kind == Tadtpick)
+				t = t->tof;
+			if(t->kind == Ttuple || t->kind == Tadt){
+				if(decl != nil){
+					if(used == capacity){
+						if(capacity > 0x7fffffff/2/sizeof(*work))
+							fatal("zero-initialization type too complex");
+						capacity *= 2;
+						grown = allocmem(capacity*sizeof(*grown));
+						memmove(grown, work, used*sizeof(*grown));
+						if(work != inlinework)
+							free(work);
+						work = grown;
+					}
+					work[used++] = decl;
+				}
+				decl = t->ids;
+			}
+		}
+		if(decl == nil && used != 0)
+			decl = work[--used];
+		if(decl == nil)
+			break;
+		t = decl->ty;
+		decl = decl->next;
+	}
+	if(work != inlinework)
+		free(work);
+	return result;
+}
+
+
+/* Decide whether a local value contains a reference that must start as nil. */
 int
 tmustzero(Type *t)
 {
-	if(t==nil)
-		return 0;
-	if(tattr[t->kind].isptr)
-		return 1;
-	if(t->kind == Tadtpick)
-		t = t->tof;
-	if(t->kind == Ttuple || t->kind == Tadt)
-		return mustzero(t->ids);
-	return 0;
+	return zerowalk(t, nil);
 }
 
+
+/* Retain declaration-order short-circuiting while inspecting nested value fields. */
 int
 mustzero(Decl *decls)
 {
-	Decl *d;
-
-	for (d = decls; d != nil; d = d->next)
-		if (tmustzero(d->ty))
-			return 1;
-	return 0;
+	return zerowalk(nil, decls);
 }
+
 
 int
 typeconv(Fmt *f)
