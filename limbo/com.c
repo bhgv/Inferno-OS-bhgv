@@ -1315,46 +1315,93 @@ excom(Node *en)
 	c->iwild = wild;
 }
 
-/*
- * rewrite the communication operand
- * allocate any temps needed for holding value to send or receive
- */
-Node*
-rewritecomm(Node *n, Node *comm, Node *tmp, Node *slot)
-{
-	Node *adr;
-	Inst *p;
 
-	if(n == nil)
-		return nil;
-	adr = nil;
-	if(n == comm){
-		if(comm->op == Osnd && sumark(n->right)->addable < Rcant)
-			adr = n->right;
-		else{
-			adr = talloc(tmp, n->ty, nil);
-			tmp->src = n->src;
-			if(comm->op == Osnd){
-				ecom(&n->right->src, tmp, n->right);
-				tfreenow();
-			}
-			else
-				trelease(tmp);
+/* Deferred operand cells are read only after all earlier left-subtree callbacks finish. */
+typedef struct CommRewrite CommRewrite;
+
+struct CommRewrite {
+	Node **slot; // Root or child cell receiving the completed result.
+	Node *node; // Captured subtree returned after both children finish.
+	int finish; // Publish a completed subtree instead of entering a new child.
+};
+
+
+/* Rewrite communication operands in preorder while preserving callback and mutation order. */
+Node*
+rewritecomm(Node *root, Node *comm, Node *tmp, Node *slot)
+{
+	CommRewrite local[32], *work, *grown, frame;
+	Node *n, *adr, **slotp;
+	Inst *p;
+	int used, capacity;
+
+	work = local;
+	used = 1;
+	capacity = nelem(local);
+	work[0].slot = &root;
+	work[0].node = nil;
+	work[0].finish = 0;
+	while(used != 0){
+		frame = work[--used];
+		slotp = frame.slot;
+		if(frame.finish){
+			*slotp = frame.node;
+			continue;
 		}
+		n = *slotp;
+		if(n == nil)
+			continue;
+		adr = nil;
+		if(n == comm){
+			if(comm->op == Osnd && sumark(n->right)->addable < Rcant)
+				adr = n->right;
+			else{
+				adr = talloc(tmp, n->ty, nil);
+				tmp->src = n->src;
+				if(comm->op == Osnd){
+					ecom(&n->right->src, tmp, n->right);
+					tfreenow();
+				}
+				else
+					trelease(tmp);
+			}
+		}
+		if(n->right == comm && n->op == Oas && comm->op == Orcv
+		&& sumark(n->left)->addable < Rcant && (n->left->op != Oname || n->left->decl != nildecl))
+			adr = n->left;
+		if(adr != nil){
+			p = genrawop(&comm->left->src, ILEA, adr, nil, slot);
+			p->m.offset = adr->ty->size;	/* for optimizer */
+			if(comm->op == Osnd)
+				p->m.reg = 1;	/* for optimizer */
+			*slotp = adr;
+			continue;
+		}
+		/* Publish the captured subtree only after its deferred children return. */
+		if(capacity-used < 3){
+			if(capacity > 0x7fffffff/2/sizeof(*work))
+				fatal("communication expression too complex");
+			capacity *= 2;
+			grown = allocmem(capacity*sizeof(*grown));
+			memmove(grown, work, used*sizeof(*grown));
+			if(work != local)
+				free(work);
+			work = grown;
+		}
+		work[used].slot = slotp;
+		work[used].node = n;
+		work[used++].finish = 1;
+		/* Read even initially nil cells after earlier callbacks have finished. */
+		work[used].slot = &n->right;
+		work[used].node = nil;
+		work[used++].finish = 0;
+		work[used].slot = &n->left;
+		work[used].node = nil;
+		work[used++].finish = 0;
 	}
-	if(n->right == comm && n->op == Oas && comm->op == Orcv
-	&& sumark(n->left)->addable < Rcant && (n->left->op != Oname || n->left->decl != nildecl))
-		adr = n->left;
-	if(adr != nil){
-		p = genrawop(&comm->left->src, ILEA, adr, nil, slot);
-		p->m.offset = adr->ty->size;	/* for optimizer */
-		if(comm->op == Osnd)
-			p->m.reg = 1;	/* for optimizer */
-		return adr;
-	}
-	n->left = rewritecomm(n->left, comm, tmp, slot);
-	n->right = rewritecomm(n->right, comm, tmp, slot);
-	return n;
+	if(work != local)
+		free(work);
+	return root;
 }
 
 

@@ -2408,38 +2408,88 @@ pickdupcom(Src *src, Node *nto, Node *n)
 	installids(Dglobal, d);
 }
 
-/*
- * see if name n occurs anywhere in e
- */
-int
-tupaliased(Node *n, Node *e)
+
+/* Save a borrowed sibling for an ordered alias query without changing AST links. */
+static void
+aliassave(Node ***work, Node **local, int *used, int *capacity, Node *n)
 {
-	for(;;){
-		if(e == nil)
-			return 0;
-		if(e->op == Oname && e->decl == n->decl)
-			return 1;
-		if(tupaliased(n, e->left))
-			return 1;
-		e = e->right;
+	Node **grown;
+
+	if(n == nil)
+		return;
+	if(*used == *capacity){
+		if(*capacity > 0x7fffffff/2/sizeof(**work))
+			fatal("tuple alias query too complex");
+		*capacity *= 2;
+		grown = allocmem(*capacity*sizeof(*grown));
+		memmove(grown, *work, *used*sizeof(*grown));
+		if(*work != local)
+			free(*work);
+		*work = grown;
 	}
+	(*work)[(*used)++] = n;
 }
 
-/*
- * see if any name in n occurs anywere in e
- */
+
+/* Find the same declaration in preorder, including metadata children of nonmatching names. */
+int
+tupaliased(Node *name, Node *e)
+{
+	Node *local[32], **work;
+	int used, capacity, found;
+
+	work = local;
+	used = 0;
+	capacity = nelem(local);
+	found = 0;
+	for(;;){
+		while(e != nil){
+			if(e->op == Oname && e->decl == name->decl){
+				found = 1;
+				goto done;
+			}
+			aliassave(&work, local, &used, &capacity, e->right);
+			e = e->left;
+		}
+		if(used == 0)
+			break;
+		e = work[--used];
+	}
+done:
+	if(work != local)
+		free(work);
+	return found;
+}
+
+
+/* Test tuple names in preorder and stop at the first matching expression declaration. */
 int
 tupsaliased(Node *n, Node *e)
 {
+	Node *local[32], **work;
+	int used, capacity, found;
+
+	work = local;
+	used = 0;
+	capacity = nelem(local);
+	found = 0;
 	for(;;){
-		if(n == nil)
-			return 0;
-		if(n->op == Oname && tupaliased(n, e))
-			return 1;
-		if(tupsaliased(n->left, e))
-			return 1;
-		n = n->right;
+		while(n != nil){
+			if(n->op == Oname && tupaliased(n, e)){
+				found = 1;
+				goto done;
+			}
+			aliassave(&work, local, &used, &capacity, n->right);
+			n = n->left;
+		}
+		if(used == 0)
+			break;
+		n = work[--used];
 	}
+done:
+	if(work != local)
+		free(work);
+	return found;
 }
 
 

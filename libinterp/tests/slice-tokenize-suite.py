@@ -20,6 +20,7 @@ CORE = [
     'limbo/tests/declaration-walks.py',
     'limbo/tests/reference-sort.py',
     'limbo/tests/reference-uses.py',
+    'limbo/tests/comm-alias-walks.py',
     'lib9/tests/allocated-format.py',
     'libbio/tests/boundaries.py',
     'libbio/tests/print-state.py',
