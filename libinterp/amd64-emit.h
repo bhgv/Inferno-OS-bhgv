@@ -20,6 +20,21 @@ x64byte(X64Buf *b, int value)
 	b->n++;
 }
 
+
+/* Patch only a staged instruction byte. The requested size keeps growing after
+ * capacity exhaustion so leafemit can decline publication; late branch fixups
+ * must not bypass the bounded writer while measuring an oversized candidate.
+ * b is borrowed private staging, at is a byte offset, value retains low 8 bits.
+ * No allocation, VM access, callbacks or publication occurs in this helper.
+ */
+static void
+x64patchbyte(X64Buf *b, int at, int value)
+{
+    if(at >= 0 && (unsigned int)at < sizeof(b->bytes) && at < b->n) {
+        b->bytes[at] = value;
+    }
+}
+
 /* Write little-endian displacements without unaligned host stores. */
 static void
 x64word(X64Buf *b, int value)
@@ -68,11 +83,11 @@ x64signeddivide(X64Buf *b, int bytes)
 	x64byte(b, 0x48); x64byte(b, 0xf7); x64byte(b, 0xd8);
 	x64byte(b, 0x31); x64byte(b, 0xd2);
 	x64byte(b, 0xeb); done=b->n; x64byte(b, 0);
-	b->bytes[ordinary]=b->n-ordinary-1;
+	x64patchbyte(b, ordinary, b->n-ordinary-1);
 	if(bytes == 8)x64byte(b, 0x48);
 	x64byte(b, 0x99);
 	x64byte(b, bytes == 8 ? 0x49 : 0x41); x64byte(b, 0xf7); x64byte(b, 0xfb);
-	b->bytes[done]=b->n-done-1;
+	x64patchbyte(b, done, b->n-done-1);
 }
 
 
@@ -103,7 +118,7 @@ x64fixedround(X64Buf *b, int alu, int wordbytes)
 		x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc0);
 		x64byte(b, 0x79); sign=b->n; x64byte(b, 0);
 		x64byte(b, wordbytes == 4 ? 0x41 : 0x49); x64byte(b, 0xf7); x64byte(b, 0xd9);
-		b->bytes[sign]=b->n-sign-1;
+		x64patchbyte(b, sign, b->n-sign-1);
 		if(wordbytes == 4){x64byte(b, 0x4d); x64byte(b, 0x63); x64byte(b, 0xc9);}
 		x64byte(b, 0x49); x64byte(b, 0x0f); x64byte(b, 0xba); x64byte(b, 0xf8); x64byte(b, 63);
 	}
@@ -178,15 +193,15 @@ x64stringheader(X64Buf *b, int owner, int length, int stride, int lenoff, int ma
 	x64byte(b, 0x79); positive=b->n; x64byte(b, 0);
 	x64byte(b, 0x48); x64byte(b, 0xf7); x64byte(b, 0xd8+length);
 	x64byte(b, 0x41); x64byte(b, 0xb8+stride); x64word(b, 4);
-	b->bytes[positive]=b->n-positive-1;
+	x64patchbyte(b, positive, b->n-positive-1);
 	/* Signed capacity bounds also reject the absolute value of INT_MIN. */
 	x64byte(b, 0x4c); x64byte(b, 0x63); x64byte(b, 0x90+owner); x64word(b, maxoff);
 	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xd0+length); x64moduleguard(b, 0x7e, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xc0+owner); x64word(b, dataoff);
 	x64byte(b, 0xeb); done=b->n; x64byte(b, 0);
-	b->bytes[empty]=b->n-empty-1;
+	x64patchbyte(b, empty, b->n-empty-1);
 	x64byte(b, 0x31); x64byte(b, 0xc0+length*9);
-	b->bytes[done]=b->n-done-1;
+	x64patchbyte(b, done, b->n-done-1);
 }
 
 
@@ -216,7 +231,7 @@ x64realproduct(X64Buf *b)
 	x64byte(b, 0x01); x64byte(b, 0xca);
 	x64byte(b, 0x83); x64byte(b, 0xea); x64byte(b, 1);
 	x64byte(b, 0x81); x64byte(b, 0xfa); x64word(b, 2045); x64guard(b, 0x76);
-	b->bytes[unit]=b->n-unit-1;
+	x64patchbyte(b, unit, b->n-unit-1);
 	x64byte(b, 0x48); x64byte(b, 0x63); x64byte(b, 0xc9);
 	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe1); x64byte(b, 52);
 	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xc1);
@@ -237,7 +252,7 @@ x64realguard(X64Buf *b, int reg)
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc2+reg*8);
 	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe2); x64byte(b, 12);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xd2); x64guard(b, 0x74);
-	b->bytes[ordinary]=b->n-ordinary-1;
+	x64patchbyte(b, ordinary, b->n-ordinary-1);
 }
 
 /* Prefer short private-layout displacements without restricting future native field offsets. */
@@ -298,7 +313,7 @@ x64casepatch(X64Buf *b, int at, int destination)
 		return 0;
 	displacement = destination-at-4;
 	for(i = 0; i < 4; i++)
-		b->bytes[at+i] = (u32int)displacement>>(8*i);
+		x64patchbyte(b, at+i, (u32int)displacement>>(8*i));
 	return 1;
 }
 
@@ -317,7 +332,7 @@ x64caseempty(X64Buf *b, LeafLayout *abi)
 	x64casefield(b, 2, 0, abi->stringmax, 4);
 	x64byte(b, 0x85); x64byte(b, 0xd2); x64guard(b, 0x79);
 	if(empty < sizeof(b->bytes))
-		b->bytes[empty] = b->n-empty-1;
+		x64patchbyte(b, empty, b->n-empty-1);
 }
 
 
@@ -402,10 +417,10 @@ x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 			x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
 			x64byte(b, 0x79); positive=b->n; x64byte(b, 0);
 			x64byte(b, 0x48); x64byte(b, 0xf7); x64byte(b, 0xd9);
-			b->bytes[positive]=b->n-positive-1;
+			x64patchbyte(b, positive, b->n-positive-1);
 			x64casefield(b, 2, 0, abi->stringmax, 4);
 			x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xd1); x64guard(b, 0x7e);
-			b->bytes[identity]=b->n-identity-1;
+			x64patchbyte(b, identity, b->n-identity-1);
 			if(!x64casepatch(b, matched, b->n))return 0;
 			x64byte(b, 0x4d); x64byte(b, 0x8b); x64byte(b, 0x48); x64byte(b, 2*IBY2WD);
 		}
@@ -438,11 +453,11 @@ x64case(X64Buf *b, LeafLayout *abi, LeafOp *op)
 	if(op->condition){
 		if(!x64casepatch(b, empty, done))return 0;
 	}else{
-		b->bytes[empty]=done-empty-1;
+		x64patchbyte(b, empty, done-empty-1);
 	}
 	if(!op->condition){
-		b->bytes[found]=done-found-1;
-		b->bytes[left]=leftlabel-left-1; b->bytes[right]=rightlabel-right-1;
+		x64patchbyte(b, found, done-found-1);
+		x64patchbyte(b, left, leftlabel-left-1); x64patchbyte(b, right, rightlabel-right-1);
 	}
 	x64casefield(b, 2, 11, abi->modulenprog, 4);
 	x64byte(b, 0x85); x64byte(b, 0xd2); x64caseguard(b, 0x7f, reject, &count);
@@ -509,13 +524,13 @@ x64owner(X64Buf *b, LeafLayout *abi, LeafOp *p)
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9); x64guard(b, 0x75);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff); x64guard(b, 0x75);
 	if(validated >= 0)
-		b->bytes[validated]=b->n-validated-1;
+		x64patchbyte(b, validated, b->n-validated-1);
 	x64ptr(b, 2, abi->d);
 	x64byte(b, 0x4d); x64byte(b, 0x8b); x64byte(b, 0x0a); /* r9=previous owner */
 	x64byte(b, 0x49); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff);
 	x64byte(b, 0x74); same=b->n; x64byte(b, 0);
 	x64byte(b, 0x49); x64byte(b, 0x39); x64byte(b, 0xc1); x64guard(b, 0x74);
-	b->bytes[same]=b->n-same-1;
+	x64patchbyte(b, same, b->n-same-1);
 	empty=-1;
 	if(p->alu != 1){
 		x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 0xff);
@@ -527,7 +542,7 @@ x64owner(X64Buf *b, LeafLayout *abi, LeafOp *p)
 	/* No fallible checks remain after the first owner mutation. */
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc1);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x88); x64word(b, -abi->heapref);
-	b->bytes[same]=b->n-same-1;
+	x64patchbyte(b, same, b->n-same-1);
 	x64field(b, 2, 0, -abi->heapcolor, 4);
 	color=(unsigned long long)abi->mutator;
 	x64byte(b, 0x49); x64byte(b, 0xbb); x64word(b, color); x64word(b, color>>32);
@@ -537,9 +552,9 @@ x64owner(X64Buf *b, LeafLayout *abi, LeafOp *p)
 	color=(unsigned long long)abi->nprop;
 	x64byte(b, 0x49); x64byte(b, 0xbb); x64word(b, color); x64word(b, color>>32);
 	x64byte(b, 0x41); x64byte(b, 0xc7); x64byte(b, 0x03); x64word(b, 1);
-	b->bytes[marked]=b->n-marked-1;
+	x64patchbyte(b, marked, b->n-marked-1);
 	if(empty >= 0)
-		b->bytes[empty]=b->n-empty-1;
+		x64patchbyte(b, empty, b->n-empty-1);
 	if(p->alu >= 2){
 		x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x87); x64word(b, abi->s);
 	}
@@ -586,7 +601,7 @@ x64copykernel(X64Buf *b)
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xe8); x64byte(b, 8);
 	x64byte(b, 0xeb); x64byte(b, loop-b->n-1);
 	if(b->n > sizeof(b->bytes)) return 0;
-	b->bytes[tail] = b->n-tail-1;
+	x64patchbyte(b, tail, b->n-tail-1);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
 	x64byte(b, 0x74); finish = b->n; x64byte(b, 0);
 	loop = b->n;
@@ -597,10 +612,10 @@ x64copykernel(X64Buf *b)
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc8);
 	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
 	if(b->n > sizeof(b->bytes)) return 0;
-	b->bytes[finish] = b->n-finish-1;
+	x64patchbyte(b, finish, b->n-finish-1);
 	x64byte(b, 0xeb); done = b->n; x64byte(b, 0);
 	if(b->n > sizeof(b->bytes)) return 0;
-	b->bytes[other] = b->n-other-1;
+	x64patchbyte(b, other, b->n-other-1);
 	/* Forward qword blocks leave at most seven individually bounded bytes. */
 	loop = b->n;
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf8); x64byte(b, 8);
@@ -612,7 +627,7 @@ x64copykernel(X64Buf *b)
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xe8); x64byte(b, 8);
 	x64byte(b, 0xeb); x64byte(b, loop-b->n-1);
 	if(b->n > sizeof(b->bytes)) return 0;
-	b->bytes[tail] = b->n-tail-1;
+	x64patchbyte(b, tail, b->n-tail-1);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
 	x64byte(b, 0x74); finish = b->n; x64byte(b, 0);
 	loop = b->n;
@@ -623,9 +638,9 @@ x64copykernel(X64Buf *b)
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc8);
 	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
 	if(b->n > sizeof(b->bytes)) return 0;
-	b->bytes[finish] = b->n-finish-1;
+	x64patchbyte(b, finish, b->n-finish-1);
 	if(b->n > sizeof(b->bytes)) return 0;
-	b->bytes[done] = b->n-done-1;
+	x64patchbyte(b, done, b->n-done-1);
 	return 1;
 }
 
@@ -921,7 +936,7 @@ x64stringappend(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe1); x64byte(b, 2);
 	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe6); x64byte(b, 2);
 	x64byte(b, 0x49); x64byte(b, 0xf7); x64byte(b, 0xdb);
-	b->bytes[narrow] = b->n-narrow-1;
+	x64patchbyte(b, narrow, b->n-narrow-1);
 	/* The signed capacity comparison bounds the sum by INT_MAX before any store. */
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x4c); x64byte(b, 0x0a); x64byte(b, a->stringdata);
 	x64byte(b, 0x4c); x64byte(b, 0x8d); x64byte(b, 0x40); x64byte(b, a->stringdata);
@@ -936,7 +951,7 @@ x64stringappend(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xc1);
 	x64byte(b, 0x76); overlap = b->n; x64byte(b, 0);
 	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xd1); x64moduleguard(b, 0x73, fallback);
-	b->bytes[overlap] = b->n-overlap-1;
+	x64patchbyte(b, overlap, b->n-overlap-1);
 	x64byte(b, 0x85); x64byte(b, 0xf6);
 	x64byte(b, 0x74); empty = b->n; x64byte(b, 0);
 	loop = b->n;
@@ -948,7 +963,7 @@ x64stringappend(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
 	if(b->n > sizeof(b->bytes))
 		return 0;
-	b->bytes[empty] = b->n-empty-1;
+	x64patchbyte(b, empty, b->n-empty-1);
 	x64byte(b, 0x44); x64byte(b, 0x89); x64byte(b, 0x5a); x64byte(b, a->stringlen);
 	return 1;
 }
@@ -994,10 +1009,10 @@ x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
 	x64byte(b, 0x74); minus=b->n; x64byte(b, 0);
 	x64byte(b, 0x83); x64byte(b, 0xfa); x64byte(b, '+');
 	x64byte(b, 0x75); digits=b->n; x64byte(b, 0);
-	b->bytes[minus]=b->n-minus-1;
+	x64patchbyte(b, minus, b->n-minus-1);
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc6);
 	x64byte(b, 0xff); x64byte(b, 0xc9);
-	b->bytes[digits]=b->n-digits-1;
+	x64patchbyte(b, digits, b->n-digits-1);
 	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, p->input); x64moduleguard(b, 0x76, fallback);
 	/* strtod rejects sign-only input; leave that case to its existing C path. */
 	if(p->alu){
@@ -1032,9 +1047,9 @@ x64decimal(X64Buf *b, LeafLayout *a, LeafOp *p)
 	if(b->n-empty-1 > 127 ||
 	   b->n-positive-1 > 127 || b->n-minus-1 > 127) return 0;
 	distance=b->n-absent-4;
-	for(i=0;i<4;i++)b->bytes[absent+i]=distance>>(i*8);
-	b->bytes[empty]=b->n-empty-1;
-	b->bytes[positive]=b->n-positive-1; b->bytes[minus]=b->n-minus-1;
+	for(i=0;i<4;i++)x64patchbyte(b, absent+i, distance>>(i*8));
+	x64patchbyte(b, empty, b->n-empty-1);
+	x64patchbyte(b, positive, b->n-positive-1); x64patchbyte(b, minus, b->n-minus-1);
 	if(p->alu){
 		/* Fifteen decimal digits convert exactly in every FP rounding mode. */
 		x64byte(b, 0xf2); x64byte(b, 0x49); x64byte(b, 0x0f); x64byte(b, 0x2a); x64byte(b, 0xc0);
@@ -1087,11 +1102,11 @@ x64stringindex(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xde); x64moduleguard(b, 0x73, fallback);
 	x64byte(b, 0x0f); x64byte(b, 0xb6); x64byte(b, 0x46); x64byte(b, -1);
 	x64byte(b, 0xeb); done = b->n; x64byte(b, 0);
-	b->bytes[other] = b->n-other-1;
+	x64patchbyte(b, other, b->n-other-1);
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0xb4); x64byte(b, 0x83); x64word(b, a->stringdata+4);
 	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xde); x64moduleguard(b, 0x73, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x63); x64byte(b, 0x46); x64byte(b, -4);
-	b->bytes[done] = b->n-done-1;
+	x64patchbyte(b, done, b->n-done-1);
 	x64ptr(b, 2, a->d); x64store(b, 0, a->wordbytes);
 	return 1;
 }
@@ -1135,7 +1150,7 @@ x64stringstore(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x79); absolute=b->n; x64byte(b, 0);
 	x64byte(b, 0xf7); x64byte(b, 0xd9);
-	b->bytes[absolute]=b->n-absolute-1;
+	x64patchbyte(b, absolute, b->n-absolute-1);
 	x64field(b, 0, 2, a->stringmax, 4);
 	x64byte(b, 0x39); x64byte(b, 0xc8); x64moduleguard(b, 0x7d, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64moduleguard(b, 0x76, fallback);
@@ -1147,12 +1162,12 @@ x64stringstore(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xd0); x64moduleguard(b, 0x73, fallback);
 	x64byte(b, 0x44); x64byte(b, 0x88); x64byte(b, 0x40); x64byte(b, -1); // Store through the checked end minus one.
 	x64byte(b, 0xeb); done=b->n; x64byte(b, 0);
-	b->bytes[wide]=b->n-wide-1;
+	x64patchbyte(b, wide, b->n-wide-1);
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x84); x64byte(b, 0xb2); x64word(b, a->stringdata+4);
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xd0); x64moduleguard(b, 0x73, fallback);
 	x64byte(b, 0x44); x64byte(b, 0x89); x64byte(b, 0x40); x64byte(b, -4); // Store through the checked Rune end.
 	if(b->n > sizeof(b->bytes)) return 0;
-	b->bytes[done]=b->n-done-1;
+	x64patchbyte(b, done, b->n-done-1);
 	/* Preserve the captured representation sign when extending the logical length. */
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce);
 	x64byte(b, 0x75); unchanged = b->n; x64byte(b, 0);
@@ -1160,11 +1175,11 @@ x64stringstore(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x45); x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x79); positive = b->n; x64byte(b, 0);
 	x64byte(b, 0xf7); x64byte(b, 0xd9);
-	b->bytes[positive] = b->n-positive-1;
+	x64patchbyte(b, positive, b->n-positive-1);
 	x64byte(b, 0x89); x64byte(b, 0x8a); x64word(b, a->stringlen);
 	if(b->n > sizeof(b->bytes))
 		return 0;
-	b->bytes[unchanged] = b->n-unchanged-1;
+	x64patchbyte(b, unchanged, b->n-unchanged-1);
 	return 1;
 }
 
@@ -1233,7 +1248,7 @@ x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 	x64byte(b, 0x79); positive=b->n; x64byte(b, 0);
 	x64byte(b, 0xf7); x64byte(b, 0xd9);
 	if(b->n>sizeof(b->bytes))return 0;
-	b->bytes[positive]=b->n-positive-1;
+	x64patchbyte(b, positive, b->n-positive-1);
 	x64casefield(b, 6, 2, a->stringmax, 4);
 	x64byte(b, 0x48); x64byte(b, 0x39); x64byte(b, 0xce); x64moduleguard(b, 0x7d, fallback);
 	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc9);
@@ -1241,7 +1256,7 @@ x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe6); x64byte(b, 2);
 	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xfe); x64word(b, 0x7fffffff); x64moduleguard(b, 0x7e, fallback);
 	if(b->n>sizeof(b->bytes))return 0;
-	b->bytes[scaled]=b->n-scaled-1;
+	x64patchbyte(b, scaled, b->n-scaled-1);
 	x64casefield(b, 1, 2, -a->heapref, 8);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1); x64moduleguard(b, 0x74, fallback);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xd2); // r10 retains the owner through division.
@@ -1286,7 +1301,7 @@ x64formatinteger(X64Buf *b, LeafLayout *a, LeafOp *op)
 		x64byte(b, 0x41); x64byte(b, 0x89); x64byte(b, 0xb2); x64word(b, a->stringmax);
 	}
 	if(b->n>sizeof(b->bytes))return 0;
-	b->bytes[storemax]=b->n-storemax-1;
+	x64patchbyte(b, storemax, b->n-storemax-1);
 	x64caseptr(b, 1, a->d); // Keep the original result slot in r9 before payload writes.
 	x64byte(b, 0x49); x64byte(b, 0x8d); x64byte(b, 0xb2); x64word(b, a->stringdata); // lea rsi,[r10+data].
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc8); // mov    r8,rcx
@@ -1354,7 +1369,7 @@ x64stringslice(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x79); positive=b->n; x64byte(b, 0);
 	x64byte(b, 0x49); x64byte(b, 0xf7); x64byte(b, 0xd9);
-	b->bytes[positive]=b->n-positive-1;
+	x64patchbyte(b, positive, b->n-positive-1);
 	x64field(b, 6, 2, a->stringmax, 4);
 	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xce); x64moduleguard(b, 0x7d, fallback);
 	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xc9); x64moduleguard(b, 0x76, fallback);
@@ -1365,14 +1380,14 @@ x64stringslice(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
 	x64byte(b, 0x74); prefix=b->n; x64byte(b, 0);
 	x64byte(b, 0x48); x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, 256); x64moduleguard(b, 0x76, fallback);
-	b->bytes[prefix]=b->n-prefix-1;
+	x64patchbyte(b, prefix, b->n-prefix-1);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc9); // r9 is the signed result length.
 	x64byte(b, 0x4d); x64byte(b, 0x85); x64byte(b, 0xc0);
 	x64byte(b, 0x79); ascii=b->n; x64byte(b, 0);
 	x64byte(b, 0x49); x64byte(b, 0xf7); x64byte(b, 0xd9);
 	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe0); x64byte(b, 2);
 	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe1); x64byte(b, 2);
-	b->bytes[ascii]=b->n-ascii-1;
+	x64patchbyte(b, ascii, b->n-ascii-1);
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0);
 	x64byte(b, 0x74); done=b->n; x64byte(b, 0);
 	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0xb2); x64word(b, a->stringdata);
@@ -1388,7 +1403,7 @@ x64stringslice(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc9);
 	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
 	if(b->n > sizeof(b->bytes)) return 0;
-	b->bytes[done]=b->n-done-1;
+	x64patchbyte(b, done, b->n-done-1);
 	x64byte(b, 0x44); x64byte(b, 0x89); x64byte(b, 0x8a); x64word(b, a->stringlen);
 	return 1;
 }
@@ -1585,7 +1600,7 @@ x64return(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x9f); x64word(b, a->module);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xb7); x64word(b, a->regmp);
 	if(b->n>sizeof(b->bytes))return 0;
-	b->bytes[done]=b->n-done-1;
+	x64patchbyte(b, done, b->n-done-1);
 	return 1;
 }
 
@@ -1649,7 +1664,7 @@ x64modulecall(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64byte(b, 0x75); native=b->n; x64byte(b, 0);
 	x64pcspan(b, 10, a->instbytes);
-	b->bytes[native]=b->n-native-1;
+	x64patchbyte(b, native, b->n-native-1);
 	x64ptr(b, 1, a->s); x64pcspan(b, 9, 8); x64load(b, 1, 8);
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0xc9); // r9 is the captured frame.
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc1);
@@ -1739,11 +1754,11 @@ x64arrayslice(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x75, fallback);
 	x64byte(b, 0xeb); rootdone=b->n; x64byte(b, 0);
 	if(b->n>sizeof(b->bytes))return 0;
-	b->bytes[rootcase]=b->n-rootcase-1;
+	x64patchbyte(b, rootcase, b->n-rootcase-1);
 	x64modulefield(b, 0, 11, a->typenp, 4);
 	x64byte(b, 0x85); x64byte(b, 0xc0); x64moduleguard(b, 0x74, fallback);
 	if(b->n>sizeof(b->bytes))return 0;
-	b->bytes[rootdone]=b->n-rootdone-1;
+	x64patchbyte(b, rootdone, b->n-rootdone-1);
 	/* Keep all remaining declines within short reach of a second private return. */
 	x64byte(b, 0xeb); x64byte(b, 3);
 	fallback=b->n; x64byte(b, 0x31); x64byte(b, 0xc0); x64byte(b, 0xc3);
@@ -1765,7 +1780,7 @@ x64arrayslice(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x49); x64byte(b, 0x0f); x64byte(b, 0xaf); x64byte(b, 0xc0);
 	x64byte(b, 0x48); x64byte(b, 0x01); x64byte(b, 0xc6);
 	if(b->n>sizeof(b->bytes) || b->n-empty-1>127)return 0;
-	b->bytes[empty]=b->n-empty-1;
+	x64patchbyte(b, empty, b->n-empty-1);
 	/* The operand slot, backing root, element Type and all counters stay intact. */
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0xca);
 	x64byte(b, 0x4c); x64byte(b, 0x29); x64byte(b, 0xc2);
@@ -1882,7 +1897,7 @@ x64bytestring(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x75); x64byte(b, backward-b->n-1);
 	x64byte(b, 0xeb); jump = b->n; x64byte(b, 0);
 	if(b->n > sizeof(b->bytes)) return 0;
-	done = b->n; b->bytes[forward] = done-forward-1;
+	done = b->n; x64patchbyte(b, forward, done-forward-1);
 	x64byte(b, 0x31); x64byte(b, 0xc9); // xor ecx, ecx
 	loop = b->n;
 	x64byte(b, 0x41); x64byte(b, 0x8a); x64byte(b, 0x04); x64byte(b, 0x09); // mov al, byte ptr [r9+rcx]
@@ -1891,7 +1906,7 @@ x64bytestring(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xd9); // cmp rcx, r11
 	x64byte(b, 0x72); x64byte(b, loop-b->n-1);
 	if(b->n > sizeof(b->bytes)) return 0;
-	b->bytes[jump] = b->n-jump-1;
+	x64patchbyte(b, jump, b->n-jump-1);
 	x64byte(b, 0x45); x64byte(b, 0x89); x64byte(b, 0x9a); x64word(b, a->stringlen);
 	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0x10); // mov qword ptr [r8], r10
 	return 1;
@@ -2003,7 +2018,7 @@ x64stringbytes(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x75); x64byte(b, backward-b->n-1);
 	x64byte(b, 0xeb); jump = b->n; x64byte(b, 0);
 	if(b->n > sizeof(b->bytes)) return 0;
-	done = b->n; b->bytes[forward] = done-forward-1;
+	done = b->n; x64patchbyte(b, forward, done-forward-1);
 	x64byte(b, 0x31); x64byte(b, 0xc9); // xor ecx, ecx
 	loop = b->n;
 	x64byte(b, 0x41); x64byte(b, 0x8a); x64byte(b, 0x04); x64byte(b, 0x09); // mov al, byte ptr [r9+rcx]
@@ -2012,7 +2027,7 @@ x64stringbytes(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x4c); x64byte(b, 0x39); x64byte(b, 0xd9); // cmp rcx, r11
 	x64byte(b, 0x72); x64byte(b, loop-b->n-1);
 	if(b->n > sizeof(b->bytes)) return 0;
-	b->bytes[jump] = b->n-jump-1;
+	x64patchbyte(b, jump, b->n-jump-1);
 	x64byte(b, a->wordbytes == 8 ? 0x4d : 0x45); x64byte(b, 0x89); x64byte(b, 0x9a); x64word(b, a->arraylen);
 	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0x10); // mov qword ptr [r8], r10
 	return 1;
@@ -2126,7 +2141,7 @@ x64recordobject(X64Buf *b, LeafLayout *a, int mode)
 		x64byte(b, 0x75); x64byte(b, loop-b->n-1);
 	}
 	if(b->n>sizeof(b->bytes) || b->n-empty-1>127)return 0;
-	b->bytes[empty]=b->n-empty-1;
+	x64patchbyte(b, empty, b->n-empty-1);
 	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0x10); // mov qword ptr [r8], r10
 	return 1;
 }
@@ -2230,7 +2245,7 @@ x64channel(X64Buf *b, LeafLayout *a, int op)
 	x64moduleguard(b, 0x76, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xc6); // mov rsi, rax
 	if(b->n>sizeof(b->bytes))return 0;
-	b->bytes[unbuffered]=b->n-unbuffered-1;
+	x64patchbyte(b, unbuffered, b->n-unbuffered-1);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xec); x64byte(b, 0x18); // sub rsp, 24
 	x64byte(b, 0x4c); x64byte(b, 0x89); x64byte(b, 0x14); x64byte(b, 0x24); // mov [rsp], r10
 	if(raw || mapped){
@@ -2360,7 +2375,7 @@ x64mappedcons(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc9);
 	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
 	if(b->n>sizeof(b->bytes))return 0;
-	b->bytes[empty]=b->n-empty-1;
+	x64patchbyte(b, empty, b->n-empty-1);
 	x64byte(b, 0x48); x64byte(b, 0x8b); x64byte(b, 0x54); x64byte(b, 0x24); x64byte(b, 24);
 	x64byte(b, 0x83); x64byte(b, 0x82); x64word(b, a->typeref); x64byte(b, 1);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x90); x64word(b, a->listtype);
@@ -2400,7 +2415,7 @@ x64rawcons(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x4c); x64byte(b, 0x01); x64byte(b, 0xd8); // add rax, r11
 	x64moduleguard(b, 0x73, fallback);
 	if(b->n>sizeof(b->bytes))return 0;
-	b->bytes[empty]=b->n-empty-1;
+	x64patchbyte(b, empty, b->n-empty-1);
 	x64casefield(b, 1, 10, 0, 8);
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xec); x64byte(b, 0x38); // sub rsp, 56
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0x0c); x64byte(b, 0x24); // mov qword ptr [rsp], rcx
@@ -2425,7 +2440,7 @@ x64rawcons(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x48); x64byte(b, 0xff); x64byte(b, 0xc9); // dec rcx
 	x64byte(b, 0x75); x64byte(b, loop-b->n-1);
 	if(b->n>sizeof(b->bytes))return 0;
-	b->bytes[empty]=b->n-empty-1;
+	x64patchbyte(b, empty, b->n-empty-1);
 	x64byte(b, 0x4c); x64byte(b, 0x8b); x64byte(b, 0x44); x64byte(b, 0x24); x64byte(b, 0x10); // mov r8, qword ptr [rsp+16]
 	x64byte(b, 0x49); x64byte(b, 0x89); x64byte(b, 0x00); // mov qword ptr [r8], rax
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xc4); x64byte(b, 0x38); // add rsp, 56
@@ -2458,7 +2473,7 @@ x64pointercons(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x48); x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 0xff); // cmp rcx, -1
 	x64moduleguard(b, 0x75, fallback);
 	if(b->n>sizeof(b->bytes))return 0;
-	b->bytes[empty]=b->n-empty-1;
+	x64patchbyte(b, empty, b->n-empty-1);
 	identity=(unsigned long long)a->ptrtype;
 	x64byte(b, 0x48); x64byte(b, 0xba); x64word(b, identity); x64word(b, identity>>32);
 	x64casefield(b, 1, 2, a->typeref, 4);
@@ -2490,8 +2505,8 @@ x64pointercons(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0x48); x64byte(b, 0xba); x64word(b, identity); x64word(b, identity>>32);
 	x64byte(b, 0xc7); x64byte(b, 0x02); x64byte(b, 0x01); x64byte(b, 0x00); x64byte(b, 0x00); x64byte(b, 0x00); // mov dword ptr [rdx], 1
 	if(b->n>sizeof(b->bytes))return 0;
-	b->bytes[marked]=b->n-marked-1;
-	b->bytes[empty]=b->n-empty-1;
+	x64patchbyte(b, marked, b->n-marked-1);
+	x64patchbyte(b, empty, b->n-empty-1);
 	identity=(unsigned long long)a->ptrtype;
 	x64byte(b, 0x48); x64byte(b, 0xba); x64word(b, identity); x64word(b, identity>>32);
 	x64byte(b, 0x83); x64byte(b, 0x82); x64word(b, a->typeref); x64byte(b, 1); // add pointer Type.ref, 1
@@ -2630,7 +2645,7 @@ x64arraycreate(X64Buf *b, LeafLayout *a, int clear)
 		x64byte(b, 0x75); x64byte(b, loop-b->n-1);
 	}
 	if(b->n>sizeof(b->bytes) || b->n-empty-1>127)return 0;
-	b->bytes[empty]=b->n-empty-1;
+	x64patchbyte(b, empty, b->n-empty-1);
 	x64byte(b, 0x4d); x64byte(b, 0x89); x64byte(b, 0x10); // mov qword ptr [r8], r10
 	return 1;
 }
@@ -2776,17 +2791,17 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x4c); x64byte(&b, 0x01); x64byte(&b, 0xc9);
 		x64byte(&b, 0xff); x64byte(&b, 0xca); x64byte(&b, 0xff); x64byte(&b, 0xce);
 		x64byte(&b, 0xeb); x64byte(&b, loop-b.n-1);
-		b.bytes[empty]=b.n-empty-1; b.bytes[other]=b.n-other-1;
-		b.bytes[equal]=b.n-equal-1;
+		x64patchbyte(&b, empty, b.n-empty-1); x64patchbyte(&b, other, b.n-other-1);
+		x64patchbyte(&b, equal, b.n-equal-1);
 		x64byte(&b, 0x39); x64byte(&b, 0xf2);
-		b.bytes[done]=b.n-done-1;
+		x64patchbyte(&b, done, b.n-done-1);
 		x64byte(&b, inverse[p.condition]); patch=b.n; x64byte(&b, 0);
 		/* The target slot is relevant only after the predicate is true. */
 		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, 8);
 		x64byte(&b, 0x49); x64byte(&b, 0x8b); x64byte(&b, 0x02); // Capture [r10] in rax; rdx is validation scratch.
 		x64pcspan(&b, 0, 1);
 		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0x87); x64word(&b, abi->pc);
-		b.bytes[patch]=b.n-patch-1;
+		x64patchbyte(&b, patch, b.n-patch-1);
 	}else if(p.kind == LeafTypeCheck){
 		/* Capture both owners before inspecting their immutable heap types. */
 		if(abi->heaptype <= 0 || abi->heaptype > 255 || abi->heaptype%8) return 0;
@@ -2805,7 +2820,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64field(&b, 2, 0, -abi->heaptype, 8);
 		x64field(&b, 0, 1, -abi->heaptype, 8);
 		x64byte(&b, 0x48); x64byte(&b, 0x39); x64byte(&b, 0xd0); x64guard(&b, 0x74);
-		b.bytes[done]=b.n-done-1;
+		x64patchbyte(&b, done, b.n-done-1);
 	}else if(p.kind == LeafProgramAddress || p.kind == LeafTableJump){
 		/* Materialize a Dis PC only after validating the module, index and native span. */
 		if(abi->module < 0 || abi->module > 2047 || abi->module%8 ||
@@ -2904,7 +2919,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			x64byte(&b, 0x48); x64byte(&b, 0xf7); x64byte(&b, 0xd2);
 			x64byte(&b, 0x48); x64byte(&b, 0xf7); x64byte(&b, 0xd9);
 			x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xd0);
-			b.bytes[done]=b.n-done-1; b.bytes[other]=b.n-other-1;
+			x64patchbyte(&b, done, b.n-done-1); x64patchbyte(&b, other, b.n-other-1);
 		}
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9);
 		x64byte(&b, 0x78); x64byte(&b, 5); x64byte(&b, 0x48); x64byte(&b, 0xd3); x64byte(&b, 0xe0);
@@ -2935,7 +2950,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64ptr(&b, 0, abi->module); x64pcspan(&b, 8, abi->linkcompiled+4);
 		x64field(&b, 2, 8, abi->linkcompiled, 4);
 		x64byte(&b, 0x85); x64byte(&b, 0xd2); x64guard(&b, 0x75);
-		b.bytes[ordinary]=b.n-ordinary-1;
+		x64patchbyte(&b, ordinary, b.n-ordinary-1);
 		x64ptr(&b, 0, abi->pc); x64ptr(&b, 1, abi->fp);
 		x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0x80); x64word(&b, abi->framelr);
 		x64byte(&b, 0x4c); x64byte(&b, 0x89); x64byte(&b, 0x88); x64word(&b, abi->framefp);
@@ -2983,9 +2998,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xfa); x64byte(&b, 0xff); x64guard(&b, 0x75);
 		x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xd0); x64guard(&b, 0x73);
 		x64byte(&b, 0xeb); done=b.n; x64byte(&b, 0);
-		b.bytes[empty]=b.n-empty-1;
+		x64patchbyte(&b, empty, b.n-empty-1);
 		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xd0);
-		b.bytes[done]=b.n-done-1;
+		x64patchbyte(&b, done, b.n-done-1);
 		x64ptr(&b, 2, abi->m); x64store(&b, 0, abi->wordbytes);
 	}else if(p.kind == LeafFixedFrame){
 		/* Read the explicit frame layout before capturing either arithmetic operand. */
@@ -3080,10 +3095,10 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x48); x64byte(&b, 0xf7); x64byte(&b, 0xda);
 		x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xd2);
 		x64byte(&b, 0x48); x64byte(&b, 0xff); x64byte(&b, 0xc2);
-		b.bytes[empty]=b.n-empty-1; b.bytes[other]=b.n-other-1;
+		x64patchbyte(&b, empty, b.n-empty-1); x64patchbyte(&b, other, b.n-other-1);
 		x64ptr(&b, 2, abi->d); x64store(&b, 2, p.bytes);
 		x64byte(&b, 0xb8); x64word(&b, 1); x64byte(&b, 0xc3);
-		b.bytes[scale]=b.n-scale-1;
+		x64patchbyte(&b, scale, b.n-scale-1);
 		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, p.bytes);
 		x64byte(&b, 0xba); x64word(&b, 1); /* rdx = result */
 		loop = b.n;
@@ -3094,7 +3109,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x74); done = b.n; x64byte(&b, 0);
 		x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0xaf); x64byte(&b, 0xc9);
 		x64byte(&b, 0xeb); x64byte(&b, loop-b.n-1);
-		b.bytes[done] = b.n-done-1;
+		x64patchbyte(&b, done, b.n-done-1);
 		x64ptr(&b, 2, abi->d); x64store(&b, 2, p.bytes);
 	}else if(p.kind == LeafStringIndex){
 		if(!x64stringindex(&b, abi)) return 0;
@@ -3121,7 +3136,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x75); x64byte(&b, 3);
 		x64byte(&b, 0x49); x64byte(&b, 0x89); x64byte(&b, 0xc3);
 		x64byte(&b, 0xeb); x64byte(&b, loop-b.n-1);
-		b.bytes[done] = b.n-done-1;
+		x64patchbyte(&b, done, b.n-done-1);
 		x64ptr(&b, 2, abi->d); x64store(&b, 1, abi->wordbytes);
 	}else if(p.kind == LeafHead){
 		if(abi->listdata < 0) return 0;
@@ -3149,9 +3164,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x85); x64byte(&b, 0xc0);
 		x64byte(&b, 0x79); x64byte(&b, 2); x64byte(&b, 0xf7); x64byte(&b, 0xd8);
 		x64byte(&b, 0xeb); done = b.n; x64byte(&b, 0);
-		b.bytes[empty] = b.n-empty-1;
+		x64patchbyte(&b, empty, b.n-empty-1);
 		x64byte(&b, 0x31); x64byte(&b, 0xc0);
-		b.bytes[done] = b.n-done-1;
+		x64patchbyte(&b, done, b.n-done-1);
 		x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
 	}else if(p.kind == LeafCopy || p.kind == LeafHeadCopy){
 		if(p.kind == LeafHeadCopy){
@@ -3204,9 +3219,9 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			x64pcspan(&b, 0, abi->arraylen+abi->wordbytes);
 			x64field(&b, 0, 0, abi->arraylen, abi->wordbytes);
 			x64byte(&b, 0xeb); done = b.n; x64byte(&b, 0);
-			b.bytes[empty] = b.n-empty-1; b.bytes[other] = b.n-other-1;
+			x64patchbyte(&b, empty, b.n-empty-1); x64patchbyte(&b, other, b.n-other-1);
 			x64byte(&b, 0x31); x64byte(&b, 0xc0);
-			b.bytes[done] = b.n-done-1;
+			x64patchbyte(&b, done, b.n-done-1);
 			x64ptr(&b, 2, abi->d); x64store(&b, 0, abi->wordbytes);
 		}else{
 			x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
@@ -3248,7 +3263,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x66); x64byte(&b, 0x0f); x64byte(&b, 0x28); x64byte(&b, 0xd0);
 		x64byte(&b, 0xf2); x64byte(&b, 0x0f); x64byte(&b, 0x5e); x64byte(&b, 0xd1);
 		x64byte(&b, 0x66); x64byte(&b, 0x0f); x64byte(&b, 0x28); x64byte(&b, 0xca);
-		b.bytes[done]=b.n-done-1;
+		x64patchbyte(&b, done, b.n-done-1);
 		loop=b.n;
 		x64byte(&b, 0xa8); x64byte(&b, 1);
 		x64byte(&b, 0x74); x64byte(&b, 4);
@@ -3257,7 +3272,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x74); done=b.n; x64byte(&b, 0);
 		x64byte(&b, 0xf2); x64byte(&b, 0x0f); x64byte(&b, 0x59); x64byte(&b, 0xc9);
 		x64byte(&b, 0xeb); x64byte(&b, loop-b.n-1);
-		b.bytes[done]=b.n-done-1;
+		x64patchbyte(&b, done, b.n-done-1);
 		x64ptr(&b, 2, abi->d);
 		x64byte(&b, 0xf2); x64byte(&b, 0x41); x64byte(&b, 0x0f); x64byte(&b, 0x11); x64byte(&b, 0x02);
 	}else if(p.kind == LeafRealInteger){
@@ -3294,7 +3309,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc9);
 		x64byte(&b, 0x74); other=b.n; x64byte(&b, 0);
 		x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0xba); x64byte(&b, 0xfa); x64byte(&b, 63);
-		b.bytes[done]=b.n-done-1; b.bytes[other]=b.n-other-1;
+		x64patchbyte(&b, done, b.n-done-1); x64patchbyte(&b, other, b.n-other-1);
 		x64byte(&b, 0x66); x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0x6e); x64byte(&b, 0xca);
 		x64byte(&b, 0xf2); x64byte(&b, 0x0f); x64byte(&b, 0x58); x64byte(&b, 0xc1);
 		x64byte(&b, 0xf2); x64byte(&b, 0x48); x64byte(&b, 0x0f); x64byte(&b, 0x2c); x64byte(&b, 0xc0);
@@ -3403,7 +3418,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
         x64byte(&b, 0x89);
         x64byte(&b, 0x87);
         x64word(&b, abi->pc);
-        b.bytes[patch]=b.n-patch-1;
+        x64patchbyte(&b, patch, b.n-patch-1);
     }else if(p.kind == LeafAlu || p.kind == LeafBranch){
         if(p.kind == LeafAlu){
             /* No operand read may precede complete source/result span validation. */
@@ -3453,7 +3468,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
         x64byte(&b, 0x89);
         x64byte(&b, 0x87);
         x64word(&b, abi->pc);
-            b.bytes[patch] = b.n-patch-1;
+            x64patchbyte(&b, patch, b.n-patch-1);
         }
     }else if(p.kind == LeafJump){
         x64ptr(&b, 2, abi->d);
