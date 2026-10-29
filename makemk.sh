@@ -16,6 +16,11 @@ case $SYSTARG in
     *) echo "native bootstrap currently supports Linux hosts" >&2; exit 1 ;;
 esac
 
+case ${MKBOOTSTRAP_LIMBO:-0} in
+    0|1) buildlimbo=${MKBOOTSTRAP_LIMBO:-0} ;;
+    *) echo "MKBOOTSTRAP_LIMBO must be 0 or 1" >&2; exit 1 ;;
+esac
+
 CC=${CC:-cc}
 AR=${AR:-ar}
 CFLAGS=${CFLAGS:--O2 -g -fno-strict-aliasing}
@@ -106,12 +111,40 @@ done
 # Generate VM decoder sources with the same native formatter and declarations.
 "$CC" $CFLAGS -I"$headers" -I"$ROOT/include" -I"$ROOT/utils/include" \
     "$ROOT/libinterp/decgen.c" "$builddir/lib9.a" $LDFLAGS -o "$builddir/decgen.native"
+# Optional native compiler: retain the existing Dis target layout and encodings.
+# Existing digest sources are linked unchanged for module type signatures.
+installtools="mk iyacc decgen"
+if test "$buildlimbo" = 1; then
+    buildlib 9 "$ROOT/lib9/getwd-posix.c" "$ROOT/lib9/readn.c" "$ROOT/lib9/isnan-posix.c" "$ROOT"/lib9/cistr*.c
+    buildlib math "$ROOT/libmath/dtoa.c" "$ROOT/libmath/g_fmt.c" \
+        "$ROOT/libmath/gfltconv.c" "$ROOT/libmath/FPcontrol-native.c"
+    mkdir -p "$builddir/limbo" "$builddir/signature"
+    for source in md5 md5block; do
+        "$CC" $CFLAGS -c -I"$headers" -I"$ROOT/include" -I"$ROOT/libmp/port" \
+            "$ROOT/libsec/port/$source.c" -o "$builddir/signature/$source.o"
+    done
+    # Build the real grammar with the freshly linked native generator.
+    (cd "$builddir/limbo" && ROOT="$ROOT" "$builddir/iyacc.native" -d "$ROOT/limbo/limbo.y")
+    for source in "$ROOT"/limbo/*.c "$builddir/limbo/y.tab.c"; do
+        if test "$source" = "$ROOT/limbo/y.tab.c"; then
+            continue
+        fi
+        object=$builddir/limbo/$(basename "$source" .c).o
+        "$CC" $CFLAGS -c -I"$headers" -I"$ROOT/include" -I"$builddir/limbo" \
+            -I"$ROOT/limbo" '-DINCPATH="'"$ROOT/module"'"' "$source" -o "$object"
+    done
+    "$CC" $CFLAGS $LDFLAGS -o "$builddir/limbo.native" "$builddir"/limbo/*.o \
+        "$builddir"/signature/*.o "$builddir/libbio.a" "$builddir/libmath.a" \
+        "$builddir/lib9.a" -lm
+    installtools="$installtools limbo"
+fi
+
 mkdir -p "$bindir"
 # Rename complete binaries so compilation/link failures preserve previous tools.
-for tool in mk iyacc decgen; do
+for tool in $installtools; do
     cp "$builddir/$tool.native" "$bindir/$tool.new.$$"
     mv "$bindir/$tool.new.$$" "$bindir/$tool"
 done
 cleanup
 trap - EXIT HUP INT TERM
-printf 'native tools installed: %s (mk, iyacc, decgen; %s/%s)\n' "$bindir" "$SYSTARG" "$hostarch"
+printf 'native tools installed: %s (%s; %s/%s)\n' "$bindir" "$installtools" "$SYSTARG" "$hostarch"

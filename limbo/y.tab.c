@@ -1355,6 +1355,8 @@ int	yyerrflag = 0;		/* error recovery flag */
 extern	int	fprint(int, char*, ...);
 extern	int	sprint(char*, char*, ...);
 
+
+/* Name a token without reading outside the optional debug table. */
 char*
 yytokname(int yyc)
 {
@@ -1367,6 +1369,8 @@ yytokname(int yyc)
 	return x;
 }
 
+
+/* Name a state without requiring debug tables in ordinary parsers. */
 char*
 yystatname(int yys)
 {
@@ -1379,6 +1383,8 @@ yystatname(int yys)
 	return x;
 }
 
+
+/* Translate lexer tokens through the generated terminal maps. */
 long
 yylex1(void)
 {
@@ -1419,18 +1425,20 @@ out:
 	return c;
 }
 
+
+/* Keep a real in-array sentinel and bound every stack push and recovery pop. */
 int
 yyparse(void)
 {
 	struct
 	{
-		YYSTYPE	yyv;
-		int	yys;
-	} yys[YYMAXDEPTH], *yyp, *yypt;
+		YYSTYPE	yyv; // Semantic value belonging to this live parser state.
+		int	yys; // Generated state number for shifts and reductions.
+	} yys[YYMAXDEPTH+1], *yyp, *yypt;
 	short *yyxi;
 	int yyj, yym, yystate, yyn, yyg;
 	long yychar;
-	YYSTYPE save1, save2;
+	YYSTYPE save1, save2, empty = {0};
 	int save3, save4;
 
 	save1 = yylval;
@@ -1442,7 +1450,7 @@ yyparse(void)
 	yychar = -1;
 	yynerrs = 0;
 	yyerrflag = 0;
-	yyp = &yys[-1];
+	yyp = yys; // Slot zero is reserved; live states begin at slot one.
 	goto yystack;
 
 ret0:
@@ -1465,11 +1473,11 @@ yystack:
 	if(yydebug >= 4)
 		fprint(2, "char %s in %s", yytokname(yychar), yystatname(yystate));
 
-	yyp++;
 	if(yyp >= &yys[YYMAXDEPTH]) {
 		yyerror("yacc stack overflow");
 		goto ret1;
 	}
+	yyp++;
 	yyp->yys = yystate;
 	yyp->yyv = yyval;
 
@@ -1528,7 +1536,7 @@ yydefault:
 			yyerrflag = 3;
 
 			/* find a state where "error" is a legal shift action */
-			while(yyp >= yys) {
+			while(yyp > yys) {
 				yyn = yypact[yyp->yys] + YYERRCODE;
 				if(yyn >= 0 && yyn < YYLAST) {
 					yystate = yyact[yyn];  /* simulate a shift of "error" */
@@ -1537,9 +1545,13 @@ yydefault:
 				}
 
 				/* the current yyp has no shift onn "error", pop stack */
-				if(yydebug >= 2)
-					fprint(2, "error recovery pops state %d, uncovers %d\n",
-						yyp->yys, (yyp-1)->yys );
+				if(yydebug >= 2){
+					if(yyp > yys+1)
+						fprint(2, "error recovery pops state %d, uncovers %d\n",
+							yyp->yys, (yyp-1)->yys);
+					else
+						fprint(2, "error recovery pops state %d, empties stack\n", yyp->yys);
+				}
 				yyp--;
 			}
 			/* there is no state on the stack with an error shift ... abort */
@@ -1561,7 +1573,11 @@ yydefault:
 
 	yypt = yyp;
 	yyp -= yyr2[yyn];
-	yyval = (yyp+1)->yyv;
+	/* Empty productions have no first RHS value, including at stack capacity. */
+	if(yyr2[yyn] != 0)
+		yyval = (yyp+1)->yyv;
+	else
+		yyval = empty;
 	yym = yyn;
 
 	/* consult goto table to find next state */
