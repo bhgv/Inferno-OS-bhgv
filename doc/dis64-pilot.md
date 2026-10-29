@@ -87,3 +87,11 @@ compiler-to-runtime acceptance. ARM64 host run этим не заменяетс�
 Следующий gate: actual module allocation, entry setup, production EXIT/scheduler,
 затем скалярные программы/branches, C calls и отдельные GC/result-slot/unwind
 fixtures. Ref headers/temps не становятся roots из-за размеров полей.
+
+## Unpublished native Module construction
+
+The newer [runtime adapter](dis64-runtime-build.md) constructs actual Module/Inst
+and heap storage from the same semantic pilot. Its connected C/AMD64 RX test now
+executes the real decoder/xec loop, IEXIT/error and stack cleanup. The single-leaf
+fixture described above retains its narrower scope. Automatic readmod routing,
+complete emulator startup/process exit, calling ABI and live GC remain unproven.

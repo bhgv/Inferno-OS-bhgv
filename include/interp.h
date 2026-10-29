@@ -545,6 +545,8 @@ extern	void		noptrs(Type*, void*);
 extern	int		nprog(void);
 extern	void		opinit(void);
 extern	Module*		parsemod(char*, uchar*, ulong, Dir*);
+/* Experimental scalar construction returns an unpublished owner; no readmod routing. */
+extern	Module*		prepare64pilot(char*, uchar*, ulong, int);
 extern	Module*		parsedmod(char*, int, ulong, Qid);
 extern	void		prefabmodinit(void);
 extern	Prog*		progn(int);

@@ -8,7 +8,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCES = ("alt", "conv", "dec", "disc", "gc", "heap", "heapaudit", "link",
-           "load", "readmod", "raise", "stack", "validstk", "xec", "string",
+           "load", "load64", "readmod", "raise", "stack", "validstk", "xec", "string",
            "comp-amd64", "comp-arm64", "comp-riscv64")
 PROBE = r'''
 #include <lib9.h>
