@@ -7,7 +7,7 @@ to cover payload destruction; callbacks in either stage could corrupt the native
 caller's decoded register state, including its PC/module/scheduler fields.
 
 `include/vmchannel.h` now shares checked readiness and a protected ready-transfer
-entry. It validates channel alignment/extent, the complete relevant queue head,
+entry. It validates channel alignment/extent, both complete queue heads,
 peer Prog extent, buffer sentinel/span and count/capacity consistency before
 native callers register a waiter, allocate or replace REG. These are numeric
 extent/layout checks, not proof that arbitrary pointers are mapped.
@@ -119,3 +119,38 @@ serve complex SEND/RECV fallbacks. Native RX execution is AMD64 and ARM64
 validation is compiler-only in this series; full native VM boots and physical
 ARM64 execution remain unverified. Tk, security/crypto and MIPS/SPARC/PowerPC
 JIT sources are unchanged.
+
+## Direct SEND/RECV readiness and both queue heads
+
+Direct interpreter instructions and JIT C fallbacks now use the same readiness
+validation as native C entry. Previously `channelpeer` only checked a queue's
+`prog` prefix: a misaligned head, wrapping complete head, or invalid Prog could
+reach typed queue/scheduler operations. A malformed opposite queue could also
+reach waiter registration. Both queues now require aligned, nonwrapping complete
+headers, with nonnil peers covering a complete aligned Prog. Buffer sentinel,
+negative counts and count/capacity mismatches reject before queue changes.
+No queue-chain traversal or mapped-address proof is implied by these checks.
+
+`direct-invalid` adds 4,608 cases per runtime/WORD profile (18,432 total): two
+instructions, two independently damaged queue directions, 18 malformed metadata
+variants and all 8-by-8 channel-cell/payload alignments. It checks error identity,
+the complete REG byte image, payload canaries, allocation/node counts and scheduler
+transitions. The parent `bfa5253` fails this matrix at runtime. All 632,384 channel
+transfer scenarios pass under UBSan with NDEBUG; 315,576 queue/ALT scenarios also
+pass. The isolated new matrix also completes with ASan/UBSan, although this
+sandbox's libasan emits its existing stack/no-return warnings; this is not a claim
+that the full injected-callback exception matrix passes ASan.
+
+The pure buffered JIT preflight matches both-head checks without raising. It also
+excludes native transaction scratch from both complete queue heads, including
+`next`, so preparing a transaction cannot overwrite queue metadata. The AMD64
+RX/C suite passes 796,128 accepted and 640 declined cases per WORD model, plus
+2,414/2,430 private preflight cases for WORD32/64. The added 224 declines per model
+cover nil/H/misaligned/wrapping heads and invalid peers in both directions; each
+also checks the authoritative instruction's unchanged-state error. The parent
+pure preflight fails `BUFFER_BAD_ONLY=1 BUFFER_BAD=34` at runtime.
+
+Coverage remains 173/173 JIT+C commands and 166/173 guarded native fast commands
+for AMD64 and ARM64. This series changes shared channel correctness, not the count
+of native opcodes. ARM64 validation is compiler-only (6,215 checks per WORD model);
+actual RX execution here is AMD64.

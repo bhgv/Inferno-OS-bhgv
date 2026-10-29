@@ -74,7 +74,7 @@ for runtime in ('emu/port/dis.c', 'os/port/dis.c'):
             else:
                 families = [
                     'entry-move', 'entry-allocate', 'entry-destroy', 'entry-block',
-                    'entry-invalid', 'entry-refill', 'ring', 'retains', 'fifo',
+                    'entry-invalid', 'entry-refill', 'direct-invalid', 'ring', 'retains', 'fifo',
                     'senders', 'native', 'ready', 'empty', 'service', 'faults', 'wake',
                 ]
             if not families:

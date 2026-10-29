@@ -143,8 +143,8 @@ bufferpreflight(void)
 	Channel *channel;
 	ChannelLeaf leaf;
 	uchar regbytes[sizeof(REG)+8], saved[sizeof(REG)+8], scratch[sizeof(ChannelLeaf)+8];
-	void *objects[8], *output;
-	uintptr extents[8];
+	void *objects[9], *output;
+	uintptr extents[9];
 	int receive, shift, result, object, offset, direction;
 	unsigned long checks = 0;
 
@@ -176,11 +176,12 @@ bufferpreflight(void)
 		objects[1] = &image.channelheap; extents[1] = sizeof(Heap)+sizeof(Channel);
 		objects[2] = &image.arrayheap; extents[2] = sizeof(Heap)+sizeof(Array);
 		objects[3] = &image.type; extents[3] = sizeof(Type);
-		objects[4] = receive ? (void*)&image.send : (void*)&image.receive; extents[4] = offsetof(Progq, prog)+sizeof(Prog*);
+		objects[4] = receive ? (void*)&image.send : (void*)&image.receive; extents[4] = sizeof(Progq);
 		objects[5] = image.slots; extents[5] = sizeof(channel);
 		objects[6] = image.data+8; extents[6] = 8;
 		objects[7] = image.value; extents[7] = 8;
-		for(object = 0; object < 8; object++)
+		objects[8] = receive ? (void*)&image.receive : (void*)&image.send; extents[8] = sizeof(Progq);
+		for(object = 0; object < 9; object++)
 		for(offset = 1-(int)sizeof(leaf); offset < (int)extents[object]; offset++){
 			output = (void*)((uintptr)objects[object]+offset);
 			mappedcheck(cchanleaf(&registers, receive, output) == 0);
@@ -272,7 +273,7 @@ main(void)
 		checks++;
 	}
 	for(receive = 0; receive < 2; receive++)
-	for(bad = 0; bad < 27; bad++)
+	for(bad = 0; bad < 41; bad++)
 	for(shift = 0; shift < 8; shift++){
 		if(getenv("BUFFER_BAD") && bad != atoi(getenv("BUFFER_BAD")))
 			continue;
@@ -324,6 +325,22 @@ main(void)
 		}
 		if(bad == 25)image.channel.mover = nil;
 		if(bad == 26)image.channel.mover = (void(*)(void))(uintptr)-1;
+		if(bad >= 27){
+			Progq **owner, *head;
+			int kind;
+
+			/* Exercise the selected queue and the opposite enqueue queue independently. */
+			owner = (bad < 34 ? receive : !receive) ? &image.channel.send : &image.channel.recv;
+			head = *owner;
+			kind = (bad-27)%7;
+			if(kind == 0) *owner = nil;
+			if(kind == 1) *owner = H;
+			if(kind == 2) *owner = (void*)1;
+			if(kind == 3) *owner = (void*)((uintptr)-1 & ~(uintptr)(sizeof(void*)-1));
+			if(kind == 4) head->prog = H;
+			if(kind == 5) head->prog = (void*)1;
+			if(kind == 6) head->prog = (void*)((uintptr)-1 & ~(uintptr)(sizeof(void*)-1));
+		}
 		/* Send has no temporary Array retain, so dead-ref rejection is receive-only. */
 		if(!receive && (bad == 11 || bad == 12))
 			continue;

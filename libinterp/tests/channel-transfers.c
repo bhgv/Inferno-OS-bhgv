@@ -799,6 +799,7 @@ main(void)
 	if(entry == nil || !strcmp(entry, "entry-block")) checkentryblocking();
 	if(entry == nil || !strcmp(entry, "entry-refill")) checkentryrefill();
 	if(entry == nil || !strcmp(entry, "entry-invalid")) checkentryinvalid();
+	if(entry == nil || !strcmp(entry, "direct-invalid")) checkdirectinvalid();
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "ring")) {scalar.size=sizeof(WORD);checkringedges();checknullbuffer();}
 	scalar.size = sizeof(WORD); pointer.size = sizeof(void*); pointer.np = 1; pointer.map[0] = 0x80;
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "retains"))checkretains();

@@ -112,3 +112,9 @@ ALT, NBALT, SPAWN, MSPAWN, LOAD, EXIT and RAISE still have no native entry. Thei
 scheduler/error-frame/module ownership boundaries require dedicated paths and
 regressions. SEND/RECV also retain C for queued, blocking and pointer-map cases;
 opcode availability must not be reported as full semantic completion.
+
+Both queue heads now receive complete span/alignment and peer validation before
+native buffered acceptance, matching authoritative SEND/RECV readiness. Private
+transaction storage must avoid both complete heads. See
+[the readiness regression matrix](README.native-channel-entry.md#direct-sendrecv-readiness-and-both-queue-heads)
+for the added malformed-queue cases, counts and parent controls.

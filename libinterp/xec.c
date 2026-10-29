@@ -3458,20 +3458,16 @@ channelbuffer(Channel *c, int receive, int pointerfree, ChannelBuffer *out)
 }
 
 
-/* Check the channel and peer-queue prefix before any scheduler queue access. */
+/* Apply native readiness guards before direct/JIT fallback queue or peer dereferences. */
 static Prog*
 channelpeer(Channel *c, int receive)
 {
 	Progq *queue;
 	Prog *peer;
 
-	if(c == nil || c == H)
-		error(exNilref);
-	if(!channelspan(c, sizeof(*c)) || (uintptr)c%sizeof(void*) != 0)
-		error(exHeap);
+	/* Readiness validates complete aligned headers and unbuffered/buffered counts. */
+	vmchanready(c, receive);
 	queue = receive ? c->send : c->recv;
-	if(!channelspan(queue, offsetof(Progq, prog)+sizeof(peer)))
-		error(exHeap);
 	memmove(&peer, (uchar*)queue+offsetof(Progq, prog), sizeof(peer));
 	return peer;
 }
@@ -3626,8 +3622,8 @@ cchanleaf(REG *r, int receive, void *transaction)
 	Prog *peer;
 	void *value, *slot, *source, *destination;
 	int width, status, i;
-	void *objects[6];
-	uintptr extents[6];
+	void *objects[7];
+	uintptr extents[7];
 	ulong references;
 
 	if(sizeof(void*) != 8 || sizeof(leaf) != 64 ||
@@ -3645,12 +3641,19 @@ cchanleaf(REG *r, int receive, void *transaction)
 	if(!channelspan(c, sizeof(*c)) || (uintptr)c <= sizeof(Heap) ||
 	   (uintptr)c%sizeof(void*) != 0)
 		return 0;
+	/* Match C readiness for both queues without raising or modifying VM state. */
+	for(i = 0; i < 2; i++){
+		queue = i ? c->send : c->recv;
+		if(!channelspan(queue, sizeof(*queue)) || (uintptr)queue%sizeof(void*) != 0)
+			return 0;
+		memmove(&peer, (uchar*)queue+offsetof(Progq, prog), sizeof(peer));
+		if(peer != nil && (!channelspan(peer, sizeof(*peer)) ||
+		   (uintptr)peer%sizeof(void*) != 0))
+			return 0;
+		if(i == receive && peer != nil)
+			return 0;
+	}
 	queue = receive ? c->send : c->recv;
-	if(!channelspan(queue, offsetof(Progq, prog)+sizeof(peer)))
-		return 0;
-	memmove(&peer, (uchar*)queue+offsetof(Progq, prog), sizeof(peer));
-	if(peer != nil)
-		return 0;
 	status = channelbuffer(c, receive, 1, &buffer);
 	if(status != 1 || buffer.width > 256 || buffer.type->np != 0)
 		return 0;
@@ -3688,9 +3691,10 @@ cchanleaf(REG *r, int receive, void *transaction)
 	objects[1] = (uchar*)c-sizeof(Heap); extents[1] = sizeof(Heap)+sizeof(*c);
 	objects[2] = (uchar*)buffer.array-sizeof(Heap); extents[2] = sizeof(Heap)+sizeof(Array);
 	objects[3] = buffer.type; extents[3] = sizeof(Type);
-	objects[4] = queue; extents[4] = offsetof(Progq, prog)+sizeof(peer);
+	objects[4] = queue; extents[4] = sizeof(*queue);
 	objects[5] = slot; extents[5] = sizeof(c);
-	for(i = 0; i < 6; i++){
+	objects[6] = receive ? c->recv : c->send; extents[6] = sizeof(*queue);
+	for(i = 0; i < 7; i++){
 		if(!channelspan(objects[i], extents[i]) ||
 		   !channeloutside(transaction, sizeof(leaf), objects[i], extents[i]) ||
 		   (i < 4 && (!channeloutside(leaf.source, width, objects[i], extents[i]) ||

@@ -4,6 +4,7 @@
 #include "interp.h"
 #include "raise.h"
 #include "kernel.h"
+#include "vmchannel.h"
 #include <stdlib.h>
 #include <stdio.h>
 

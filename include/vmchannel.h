@@ -19,20 +19,12 @@ struct VmChannelCall
 };
 
 
-/* Validate readiness metadata before native callers decide to wait or borrow REG. */
-VmChannelInline int
-vmchanready(Channel *c, int receive)
+/* Validate the complete queue head and peer before queue mutation or scheduler access. */
+VmChannelInline Prog*
+vmchanqueue(Progq *queue)
 {
-	Progq *queue;
 	Prog *peer;
-	Array *buffer;
-	WORD length;
 
-	if(c == nil || c == H)
-		error(exNilref);
-	if((uintptr)c%sizeof(void*) != 0 || (uintptr)c > (uintptr)-1-sizeof(*c))
-		error(exHeap);
-	queue = receive ? c->send : c->recv;
 	if(queue == nil || queue == H || (uintptr)queue%sizeof(void*) != 0 ||
 	   (uintptr)queue > (uintptr)-1-sizeof(*queue))
 		error(exHeap);
@@ -40,6 +32,25 @@ vmchanready(Channel *c, int receive)
 	if(peer != nil && (peer == H || (uintptr)peer%sizeof(void*) != 0 ||
 	   (uintptr)peer > (uintptr)-1-sizeof(*peer)))
 		error(exHeap);
+	return peer;
+}
+
+
+/* Validate both queue heads before native or bytecode callers transfer or register a waiter. */
+VmChannelInline int
+vmchanready(Channel *c, int receive)
+{
+	Prog *sender, *receiver, *peer;
+	Array *buffer;
+	WORD length;
+
+	if(c == nil || c == H)
+		error(exNilref);
+	if((uintptr)c%sizeof(void*) != 0 || (uintptr)c > (uintptr)-1-sizeof(*c))
+		error(exHeap);
+	sender = vmchanqueue(c->send);
+	receiver = vmchanqueue(c->recv);
+	peer = receive ? sender : receiver;
 	buffer = c->buf;
 	if(buffer == nil)
 		error(exNilref);

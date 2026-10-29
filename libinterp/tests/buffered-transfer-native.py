@@ -39,6 +39,7 @@ preflight = Path(os.environ['BUFFER_PREFLIGHT_SOURCE']).read_text() if os.enviro
 parts += [function('int\ncchanleaf(',preflight)]
 parts += [function('OP('+name+')',baseline) for name in ('isend','irecv')]
 unit = '#define TEST_LEAF_TRANSFER_RUNTIME // Link real pure channel preflight.\n'+(ROOT/'libinterp/tests/mapped-copy-native.c').read_text()
+unit = unit.replace('#include "comp-amd64.c"', '#include "comp-amd64.c"\n#include "vmchannel.h"')
 unit = unit.replace('main(void)','mappedlegacy(void)',1)
 unit = unit.replace('IMPLEMENTATION',(ROOT/'libinterp/tests/buffered-transfer-stubs.h').read_text()+'\n\n'+'\n\n'.join(parts))
 unit += (ROOT/'libinterp/tests/buffered-transfer-native.c').read_text()

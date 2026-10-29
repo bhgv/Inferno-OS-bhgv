@@ -253,3 +253,90 @@ checkentryrefill(void)
 	}
 	awakened = 0;
 }
+
+
+/* Invoke the same authoritative instruction used by the interpreter and JIT C fallback. */
+static int
+directchannelattempt(void *arg)
+{
+	int *receive;
+
+	receive = arg;
+	if(*receive) irecv(); else isend();
+	return 1;
+}
+
+
+/* Reject malformed readiness before payload, REG, peer queues or scheduler publication. */
+static void
+checkdirectinvalid(void)
+{
+	TestChannel box;
+	Channel *channel;
+	Progq queue, *original;
+	Array fake;
+	REG saved;
+	uchar slot[32], payloadcell[32], beforepayload[32];
+	WORD value;
+	int receive, side, bad, ca, pa, before, oldnodes, oldremoved, oldawakened;
+
+	for(receive = 0; receive < 2; receive++)
+	for(side = 0; side < 2; side++)
+	for(bad = 0; bad < 18; bad++)
+	for(ca = 0; ca < 8; ca++)
+	for(pa = 0; pa < 8; pa++){
+		openchannel(&box, 0, 0);
+		channel = &box.c;
+		memset(&fake, 0, sizeof(fake));
+		memset(&queue, 0, sizeof(queue));
+		original = side ? box.c.send : box.c.recv;
+		if(bad == 0) channel = nil;
+		if(bad == 1) channel = H;
+		if(bad == 2) channel = (void*)1;
+		if(bad == 3) box.c.buf = nil;
+		if(bad == 4) box.c.size = -1;
+		if(bad == 5) box.c.size = 1;
+		if(bad == 6){ box.c.buf = &fake; fake.len = -1; }
+		if(bad == 7){ box.c.buf = &fake; fake.len = 1; box.c.size = 2; }
+		if(bad == 8){ box.c.buf = &fake; fake.len = -1; }
+		if(bad >= 9 && bad < 16){
+			if(bad == 9) queue.prog = H;
+			if(bad == 10) queue.prog = (void*)1;
+			if(bad == 11) queue.prog = (void*)((uintptr)-1-sizeof(Prog)+1);
+			if(side) box.c.send = &queue; else box.c.recv = &queue;
+			if(bad >= 12){
+				Progq *invalid;
+
+				invalid = bad == 12 ? nil : bad == 13 ? H : bad == 14 ?
+					(void*)((uintptr)-1-sizeof(Progq)+1) : (void*)1;
+				if(side) box.c.send = invalid; else box.c.recv = invalid;
+			}
+		}
+		if(bad == 16) box.c.buf = (void*)1;
+		if(bad == 17) box.c.buf = (void*)((uintptr)-1-sizeof(Array)+1);
+		memset(slot, 0x77, sizeof(slot));
+		memset(payloadcell, 0x66, sizeof(payloadcell));
+		value = 99;
+		memmove(slot+ca, &channel, sizeof(channel));
+		memmove(payloadcell+pa, &value, sizeof(value));
+		memmove(beforepayload, payloadcell, sizeof(payloadcell));
+		memset(&R, 0x55, sizeof(R));
+		R.s = receive ? slot+ca : payloadcell+pa;
+		R.d = receive ? payloadcell+pa : slot+ca;
+		memmove(&saved, &R, sizeof(saved));
+		before = allocations; oldnodes = nodes;
+		oldremoved = removed; oldawakened = awakened;
+		channelcheck(!kprotect(directchannelattempt, &receive));
+		channelcheck(last_error == (bad == 0 || bad == 1 || bad == 3 ? exNilref : exHeap));
+		channelcheck(!memcmp(&R, &saved, sizeof(R)));
+		channelcheck(!memcmp(payloadcell, beforepayload, sizeof(payloadcell)));
+		channelcheck(allocations == before && nodes == oldnodes);
+		channelcheck(removed == oldremoved && awakened == oldawakened);
+		if(side) box.c.send = original; else box.c.recv = original;
+		channelcheck(original->prog == nil && original->next == nil);
+		box.c.buf = H; box.c.size = 0;
+		closechannel(&box.c);
+		channelcheck(!live && !nodes && !worker.nerr);
+		checks++;
+	}
+}
