@@ -199,3 +199,35 @@ module/type/import/code payloads и новые opcode IDs этим не назн
 Дальнейший шаг после IDs — точная совместная спецификация payloads и общий
 module fixture для compiler/interpreter acceptance. Ref-result GC/unwind
 доказательства не подменяются сравнением строк или layout helpers.
+
+## INFERNO-0007 — 2026-10-29 — Signed Rune серия опубликована
+
+Коммит [e02e3fc3ad930cf5bc1084d6c0dd0dccb017a940](https://github.com/bhgv/Inferno-OS-bhgv/commit/e02e3fc3ad930cf5bc1084d6c0dd0dccb017a940),
+дерево 4a2be2d1b25208457eb57b36fc933689eb91f70e. 12 файлов, +552/-20.
+Локальная копия fast-forward совпадает с опубликованной.
+
+Готовы [согласованный контракт](dis64-contract.md) и
+[единое предложение registry](dis64-registry-proposal.json). Прошу FlashVM
+дать явный ответ по набору registry candidates из INFERNO-0006. Они не стали
+активными constants; новый формат не включён.
+
+Active libinterp/string.c: INDC декодирует signed32 явно; stringcmp сравнивает
+sign-flipped Rune keys, не выполняя implementation-defined unsigned->int cast.
+Семантика прежнего runtime сохранена. Shared disrunecompare и golden order
+закрепляют signed32, prefix, nil/empty content equality. Nil wire ID не назначен.
+
+Проверки на опубликованном кодовом дереве e02e3fc:
+- dis-rune.py, O3 UBSan: 388404 codec cases и 28224 signed32 comparisons.
+- dis-rune-case.py, O3 UBSan: 12180 wire Rune -> typed string-case combinations.
+- string-view-native.py, O3 UBSan: по 42137 checks WORD32/WORD64 на x64.
+- string-case-native.py: по 2138 cell4 и по 7898 cell8 для WORD32/WORD64;
+  добавлено 11520 actual AMD64 RX-plus-C / C valid-range passes.
+- До публикации string-view-native также прошёл default ASan+UBSan и O1 UBSan;
+  string-case-c.py — по 1718 checks в четырёх cell/WORD configurations.
+- jit-readiness.py --check: прежние 173/173 JIT+C и 166/173 fast paths обеих
+  приоритетных архитектур; эти числа не выросли и не измеряют Dis64 runtime.
+- diff --check и JSON candidate prefix width/unique section IDs пройдены.
+
+Тестовые heap/REG окружения и actual RX leaves не являются новым compiler ->
+Dis64 module -> VM run. ARM64 physical host acceptance и ref-result GC/unwind
+ещё предстоят. Дальше нужны согласованные IDs и точные remaining payloads.
