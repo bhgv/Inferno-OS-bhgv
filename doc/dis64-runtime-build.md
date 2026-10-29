@@ -76,7 +76,7 @@ MP/FP offsets, integer boundary arithmetic, checked shifts, divide errors, binar
 bit preservation, empty data, truncation, limits and each tracked metadata/pool
 allocation failure. Executable-mapping allocation failures are not injected.
 Guarded pool/OS boundaries remain fixture implementations; a live collector and
-newprog/run-queue/progexit lifecycle are not executed. Native execution is AMD64.
+newprog/run-queue/progexit lifecycle are not executed. Native execution is Linux/AMD64.
 
 Both hand-written golden images reach actual IEXIT->error("") through the real
 VM loop and then actual stack/module cleanup in this test. That is stronger than

@@ -335,11 +335,17 @@ main(int argc, char **argv)
 	unsigned long long expected;
 	FILE *file;
 	Module *module;
+	Dis64Pilot semantic;
 	int jit, failure, count;
 
-	if(argc == 2 && strcmp(argv[1], "--unsupported") == 0){
+	if(argc == 3 && strcmp(argv[1], "--unsupported") == 0){
 		require(sizeof(WORD) != 4);
-		require(prepare64pilot("fixture", nil, 0, 0) == nil && allocations == 0);
+		file = fopen(argv[2], "rb");
+		require(file != nil);
+		bytes = fread(image, 1, sizeof(image), file);
+		require(!ferror(file) && feof(file) && fclose(file) == 0);
+		require(dis64pilotcheck(image, bytes, 4096, 64, &semantic));
+		require(prepare64pilot("fixture", image, bytes, 0) == nil && allocations == 0);
 		printf("PASS unchanged legacy model rejects Dis64 construction before allocation\n");
 		return 0;
 	}

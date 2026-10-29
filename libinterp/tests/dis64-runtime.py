@@ -60,8 +60,8 @@ def image(instructions, data=4, frame=64, name='Pilot', initialized=40, datatype
 
 # Compile real source closures, then check independent inputs and result bits.
 def main():
-    if platform.machine().lower() not in ('x86_64', 'amd64'):
-        print('SKIP Dis64 runtime RX: requires AMD64 host')
+    if platform.system() != 'Linux' or platform.machine().lower() not in ('x86_64', 'amd64'):
+        print('SKIP Dis64 runtime RX: requires Linux/AMD64 host')
         return
     heap = (ROOT/'libinterp/heap.c').read_text()
     xec = (ROOT/'libinterp/xec.c').read_text()
@@ -182,7 +182,9 @@ def main():
         binary = work/'runtime'
         sources = [str(source), str(ROOT/'libinterp/dec.c')]
         subprocess.run(command+sources+['-o', str(binary), '-lm', '-Wl,--wrap=free'], check=True)
-        subprocess.run([str(binary), '--unsupported'], check=True)
+        legacy_image = work/'legacy-rejection.dis64'
+        legacy_image.write_bytes(cases[0][0])
+        subprocess.run([str(binary), '--unsupported', str(legacy_image)], check=True)
         subprocess.run(command+['-DDIS_WORD32=1']+sources+['-o', str(binary), '-lm', '-Wl,--wrap=free'], check=True)
         predicates = 0
         for index, (payload, width, expected) in enumerate(cases):
