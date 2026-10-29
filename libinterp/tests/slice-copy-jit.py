@@ -78,12 +78,12 @@ emit(u32int *out,int cap,int wb,int field,int value)
                     require(lib.emit(guard,128,wb,field,value)==0 and list(guard)==[0xa5a5a5a5]*128, 'slice-copy oracle');checks+=1
             machine.mem_write(CODE,blob);machine.ctl_remove_cache(CODE,CODE+512)
 
-            def run(length,sa,da,delta,fault=0,offset=0):
+            def run(length,sa,da,delta,fault=0,offset=0,stride=1):
                 """Compute prefix validity and memmove results without emitter arithmetic."""
                 image=bytearray(bytes((i*37+length*11)&255 for i in range(256))*64)
                 ma=(sa^da)&7;src=0x1200+sa;dest=src+delta+da if delta not in (999,1000) else 0x200+ma if delta==999 else 0x100+sa
                 source=BASE+0x500;target=BASE+0x700;count=length;capacity=300;start=offset
-                typeptr=BASE+0x900;width=1;np=0;sp=BASE+src;dp=BASE+dest
+                typeptr=BASE+0x900;width=stride;np=0;sp=BASE+src;dp=BASE+dest
                 if fault==1:source=0
                 if fault==2:source=MASK
                 if fault==3:target=0
@@ -127,9 +127,9 @@ emit(u32int *out,int cap,int wb,int field,int value)
                 put(image,0x900+24,width,4);put(image,0x900+28,np,4)
                 absent=source in (0,MASK)
                 accepted=absent or (target not in (0,MASK) and 0<=count<=256 and capacity>=0 and 0<=start<=capacity and count<=capacity-start and
-                    (count==0 or (start+count<=0x7fffffff and typeptr not in (0,MASK) and width==1 and np==0 and sp not in (0,MASK) and dp not in (0,MASK) and sp<=MASK-count and dp<=MASK-start-count)))
+                    (count==0 or (start+count<=0x7fffffff and typeptr not in (0,MASK) and 1<=width<=256 and count*width<=256 and (start+count)*width<=0x7fffffff and np==0 and sp not in (0,MASK) and dp not in (0,MASK) and sp<=MASK-count*width and dp<=MASK-(start+count)*width)))
                 expected=bytearray(image)
-                if accepted and not absent and count:expected[dp+start-BASE:dp+start-BASE+count]=bytes(image[src:src+count])
+                if accepted and not absent and count:expected[dp+start*width-BASE:dp+start*width-BASE+count*width]=bytes(image[src:src+count*width])
                 if arch=='amd64':
                     put(image,0x3f00,STOP);put(expected,0x3f00,STOP)
                     machine.reg_write(UC_X86_REG_RDI,BASE);machine.reg_write(UC_X86_REG_RSP,BASE+0x3f00);machine.reg_write(UC_X86_REG_MXCSR,0x5fa5)
@@ -145,15 +145,15 @@ emit(u32int *out,int cap,int wb,int field,int value)
                 for owner,offset,widthbytes in ((BASE+0x100+sa,0,8),(BASE+0x300+da,0,8),(BASE+0x200+ma,0,wb),(source,0,wb),(source,24,8),(target,0,wb),(target,8,8),(target,24,8),(typeptr,24,4),(typeptr,28,4)):
                     allowedreads.update(range(owner+offset,owner+offset+widthbytes))
                 if accepted and not absent and count>0:
-                    allowedreads.update(range(sp,sp+count))
-                    allowedwrites=set(range(dp+start,dp+start+count))
+                    allowedreads.update(range(sp,sp+count*width))
+                    allowedwrites=set(range(dp+start*width,dp+(start+count)*width))
                     require(all(address+i in allowedwrites for address,widthbytes in writes for i in range(widthbytes)),('write extent',arch,wb,length,delta,fault))
-                    if count>=8 and sp!=dp+start:
+                    if count*width>=8 and sp!=dp+start*width:
                         require(any(widthbytes==8 for address,widthbytes in writes),('missing qword copy',arch,wb,length,delta,fault))
                 require(all(address+i in allowedreads for address,widthbytes in reads if BASE<=address<BASE+0x4000 for i in range(widthbytes)),('read extent',arch,wb,length,delta,fault))
 
                 require(bytes(machine.mem_read(BASE,0x4000))==expected, (arch,wb,length,delta,fault))
-                if not accepted or absent or count==0 or (arch=='amd64' and sp==dp+start):require(not writes, 'slice-copy oracle')
+                if not accepted or absent or count==0 or (arch=='amd64' and sp==dp+start*width):require(not writes, 'slice-copy oracle')
                 if arch=='amd64':require(machine.reg_read(UC_X86_REG_MXCSR)==0x5fa5, 'slice-copy oracle')
                 else:require(machine.reg_read(UC_ARM64_REG_FPCR)==0x800000 and machine.reg_read(UC_ARM64_REG_FPSR)==0x95, 'slice-copy oracle')
 
@@ -162,6 +162,13 @@ emit(u32int *out,int cap,int wb,int field,int value)
                     for da in range(8):
                         for delta in (-32,-1,0,1,7,8,31,63,127,128,256,999,1000):
                             for offset in (0,1,7,31):run(length,sa,da,delta,offset=offset);checks+=1
+            # Exercise record strides independently of count and overlapping byte spans.
+            for stride in (2,3,4,7,8,15,16,31,32,63,64,127,128,129,255,256,257):
+                for length in (1,2,3,7,8,15,16,31,32,63,64,127,128,129,255,256):
+                    for delta in (-32,-1,0,1,7,8,31,127,256,999,1000):
+                        for shift in range(8):
+                            run(length,shift,7-shift,delta,offset=1,stride=stride)
+                            checks+=1
             for fault in range(1,37):
                 for length in ((0,128) if fault in (23,24,25,35) else (0,1,128)):
                     for shift in range(8):run(length,shift,shift,256,fault);checks+=1

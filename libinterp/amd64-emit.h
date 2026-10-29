@@ -736,7 +736,8 @@ x64sliceempty(X64Buf *b, int notempty)
 	x64byte(b, 0xb8); x64word(b, 1); x64byte(b, 0xc3);
 }
 
-/* Copy short byte slices with complete geometry/span guards and no owner helpers. */
+
+/* Copy short pointer-free record slices after complete byte/span preflight. */
 static int
 x64slicecopy(X64Buf *b, LeafLayout *a)
 {
@@ -802,7 +803,18 @@ x64slicecopy(X64Buf *b, LeafLayout *a)
 	x64byte(b, 0xf6); x64byte(b, 0xc1); x64byte(b, 7); x64moduleguard(b, 0x74, fallback);
 	x64byte(b, 0x48); x64byte(b, 0x89); x64byte(b, 0xca);
 	x64casefield(b, 1, 2, a->typesize, 4);
+	/* Positive bounded stride; products fit 64 bits before their byte guards. */
 	x64byte(b, 0x83); x64byte(b, 0xf9); x64byte(b, 1);
+	x64moduleguard(b, 0x7d, fallback);
+	x64byte(b, 0x81); x64byte(b, 0xf9); x64word(b, 256);
+	x64moduleguard(b, 0x7e, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x0f); x64byte(b, 0xaf); x64byte(b, 0xc1); // imul rax,rcx: byte count.
+	x64byte(b, 0x48); x64byte(b, 0x0f); x64byte(b, 0xaf); x64byte(b, 0xf1); // imul rsi,rcx: byte offset.
+	x64byte(b, 0x48); x64byte(b, 0x3d); x64word(b, 256);
+	x64moduleguard(b, 0x76, fallback);
+	x64byte(b, 0x48); x64byte(b, 0x8d); x64byte(b, 0x0c); x64byte(b, 0x06); // lea rcx,[rsi+rax].
+	x64byte(b, 0x48); x64byte(b, 0xc1); x64byte(b, 0xe9); x64byte(b, 31);
+	x64byte(b, 0x48); x64byte(b, 0x85); x64byte(b, 0xc9);
 	x64moduleguard(b, 0x74, fallback);
 	x64casefield(b, 1, 2, a->typenp, 4);
 	x64byte(b, 0x85); x64byte(b, 0xc9);

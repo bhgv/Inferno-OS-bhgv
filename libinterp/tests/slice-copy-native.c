@@ -152,6 +152,72 @@ indexedges(Module *module)
 }
 
 
+/* Reject invalid map counts and out-of-record pointers before any ownership visitor. */
+static unsigned long
+descriptoredges(Module *module)
+{
+	struct {
+		Heap heap; // Source array owner preceding its public header.
+		Array array; // Descriptor consumed by the real opcode.
+	} source, destination;
+	Type type;
+	Array *s, *d;
+	WORD index;
+	REG saved;
+	uchar bytes[256], before[256];
+	int size, profile, bit, pass;
+	unsigned long checks;
+
+	checks = 0;
+	for(size = 1; size <= 2*sizeof(void*); size++)
+	for(profile = 0; profile < 3; profile++)
+	for(bit = 0; bit < 8; bit++){
+		/* A set bit is invalid only when its complete pointer exceeds the record. */
+		if(profile == 2 && bit < size/sizeof(void*))
+			continue;
+		memset(&source, 0, sizeof(source));
+		memset(&destination, 0, sizeof(destination));
+		memset(&type, 0, sizeof(type));
+		type.size = size;
+		type.np = profile == 0 ? -1 : profile == 1 ? 2 : 1;
+		if(profile == 2)
+			type.map[0] = 0x80>>bit;
+		s = &source.array;
+		d = &destination.array;
+		source.heap.ref = destination.heap.ref = 10;
+		s->len = d->len = 1;
+		s->t = d->t = &type;
+		s->data = bytes+32;
+		d->data = bytes+128;
+		index = 0;
+		memset(&R, 0, sizeof(R));
+		R.s = &s;
+		R.d = &d;
+		R.m = &index;
+		saved = R;
+		memset(bytes, 0x53, sizeof(bytes));
+		memmove(before, bytes, sizeof(bytes));
+		for(pass = 0; pass < 2; pass++){
+			retains = releases = destroys = 0;
+			raised = nil;
+			if(pass == 0)
+				check(module->jit->entry[ISLICELA](&R) == 0);
+			else if(setjmp(boundary) == 0){
+				slicela();
+				check(0);
+			}else
+				check(raised == exBounds);
+			check(!retains && !releases && !destroys);
+			check(source.heap.ref == 10 && destination.heap.ref == 10);
+			check(!memcmp(bytes, before, sizeof(bytes)));
+			check(!memcmp(&R, &saved, sizeof(R)));
+			checks++;
+		}
+	}
+	return checks;
+}
+
+
 /* Compare slice acceptance and all C fallback variants against independent memmove images. */
 int
 main(void)
@@ -171,6 +237,13 @@ main(void)
 
 	instruction.op=ISLICELA;module.prog=&instruction;module.nprog=1;
 	check(compile(&module,1,nil) && module.jit->entry[ISLICELA]);
+	if(getenv("SLICE_COPY_DESCRIPTORS")){
+		checks = descriptoredges(&module);
+		module.jit->freecode(module.jit->code,module.jit->size);
+		free(module.jit);
+		printf("PASS slice descriptors: %lu transactional map cases WORD%zu\n", checks, sizeof(WORD)*8);
+		return 0;
+	}
 	for(sa=0;sa<8;sa++)for(ma=0;ma<8;ma++)for(da=0;da<8;da++)
 	for(si=0;si<17;si++)for(di=0;di<13;di++)for(width=0;width<3;width++)
 	for(mapped=0;mapped<2;mapped++)for(index=0;index<8;index++){
@@ -189,7 +262,7 @@ main(void)
 		memmove(saved,slots.bytes,sizeof(saved));memmove(expectedslots,saved,sizeof(saved));memmove(expected,data.bytes,sizeof(expected));
 		if(di<11)memmove(expected+(dp-data.bytes)+index*width,sp,bytes);
 		else memmove(expectedslots+(dp-slots.bytes)+index*width,sp,bytes);
-		native=n<=256 && (n==0 || (width==1 && mapped==0));
+		native=n<=256 && (n==0 || (width>0 && bytes<=256 && mapped==0));
 		for(pass=0;pass<2;pass++){
 			for(i=0;i<sizeof(data.bytes);i++)data.bytes[i]=(i*37+si*11)&255;
 			memmove(slots.bytes,saved,sizeof(saved));source.heap.ref=10;
@@ -209,6 +282,7 @@ main(void)
 		checks++;
 	}
 	checks+=indexedges(&module);
+	checks+=descriptoredges(&module);
 	module.jit->freecode(module.jit->code,module.jit->size);free(module.jit);
 	printf("PASS slice copy native: %lu byte-prefix/type/offset/overlap/alias/FP cases WORD%zu\n",checks,sizeof(WORD)*8);
 	return 0;

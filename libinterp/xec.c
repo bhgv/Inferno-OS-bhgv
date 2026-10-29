@@ -4456,7 +4456,8 @@ OP(tail)
 static uchar*
 arrayspan(Array *array, Type *type, WORD start, WORD count)
 {
-	ulong offset, bytes, limit;
+	ulong offset, bytes, limit, slot;
+	int i, bit, pointers;
 
 	if(type == nil || type == H || (uintptr)type%sizeof(void*) != 0 ||
 	   (uintptr)type > (uintptr)-1-(offsetof(Type, np)+sizeof(type->np)))
@@ -4465,6 +4466,22 @@ arrayspan(Array *array, Type *type, WORD start, WORD count)
 		error(exBounds);
 	if(type->size == 0)
 		return array->data;
+	/* A slice can later visit every mapped owner: reject malformed maps first. */
+	pointers = type->np;
+	if(pointers < 0 || pointers > type->size/(8*sizeof(void*))+
+	   (type->size%(8*sizeof(void*)) != 0))
+		error(exBounds);
+	if(pointers != 0 && ((uintptr)type > (uintptr)-1-O(Type, map) ||
+	   (uintptr)type+O(Type, map) > (uintptr)-1-(uintptr)pointers))
+		error(exBounds);
+	for(i = 0; i < pointers; i++)
+		for(bit = 0; bit < 8; bit++){
+			if(!(type->map[i] & (0x80>>bit)))
+				continue;
+			slot = (ulong)i*8+bit;
+			if(slot >= (ulong)type->size/sizeof(void*))
+				error(exBounds);
+		}
 	limit = 0x7fffffff/(uint)type->size;
 	if((uvlong)start > limit || (uvlong)count > limit-(ulong)start)
 		error(exBounds);

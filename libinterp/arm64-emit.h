@@ -561,7 +561,7 @@ a64mapped(A64Buf *b, LeafLayout *a, LeafOp *p)
 }
 
 
-/* Copy a short byte-array slice after bounding both element and native address spans. */
+/* Copy short pointer-free records after bounding element, byte and address spans. */
 static int
 a64slicecopy(A64Buf *b, LeafLayout *a)
 {
@@ -614,7 +614,14 @@ a64slicecopy(A64Buf *b, LeafLayout *a)
 	a64put(b, 0xf240085fU); // tst x2, #7.
 	a64defer(b, 0x54000001, fallback);
 	a64field(b, 3, 2, a->typesize, 4);
-	a64put(b, 0x7100047f); a64pcguard(b, 0x54000060, fallback);
+	/* Bound the stride and resulting copy before forming native payload addresses. */
+	a64put(b, 0x7100047f); a64pcguard(b, 0x5400006a, fallback); // cmp w3,#1; require ge.
+	a64put(b, 0x7104007f); a64pcguard(b, 0x5400006d, fallback); // cmp w3,#256; require le.
+	a64put(b, 0x9b037d8c); // mul x12,x12,x3: byte count.
+	a64put(b, 0x9b037c84); // mul x4,x4,x3: byte offset.
+	a64put(b, 0xf104019f); a64pcguard(b, 0x54000069, fallback); // cmp x12,#256; require ls.
+	a64put(b, 0x8b0c0083); // add x3,x4,x12.
+	a64put(b, 0xd35ffc63); a64pcguard(b, 0xb4000063, fallback); // Require byte end <= INT_MAX.
 	a64field(b, 3, 2, a->typenp, 4); a64pcguard(b, 0x34000063, fallback);
 	a64field(b, 9, 13, a->arraydata, 8);
 	a64pcguard(b, 0xb5000069, fallback);
