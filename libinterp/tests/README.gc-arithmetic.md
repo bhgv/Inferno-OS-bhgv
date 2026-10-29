@@ -93,3 +93,12 @@ JIT availability is unchanged: AMD64/ARM64 each retain 173/173 complete JIT+C
 entries, 166/173 guarded native fast paths and seven C-only entries. Full 64-bit
 VM compiler/loader/frame/GC ABI and boot acceptance remain separate. Tk,
 security/crypto and MIPS/SPARC/PowerPC JIT sources are unchanged.
+
+## Benchmark waiter helper dependency
+
+After benchmark timer subtraction moved to `tickspan`, `gc-idle.py` also extracts
+that production helper from the same selected source before `idlegc`. The fixture
+must not replace the helper with a test subtraction or accidentally depend on an
+external device object. Older `GC_IDLE_SOURCE` parent replays without `tickspan`
+retain their original complete waiter body. This changes test assembly only;
+collector/scheduler/timer production behavior is unchanged.

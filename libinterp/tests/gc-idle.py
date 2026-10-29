@@ -35,6 +35,10 @@ with tempfile.TemporaryDirectory(prefix='gc-idle-') as temporary:
             continue
         code = Path(os.environ.get('GC_IDLE_SOURCE', ROOT/path)).read_text()
         definition = function(code, 'int\nidlegc(' if name == 'bench' else 'static void\nexecatidle(')
+        # The benchmark waiter now uses its production checked timer helper.
+        # Extract it from the same selected source, retaining older parent replay.
+        if name == 'bench' and 'static vlong\ntickspan(' in code:
+            definition = function(code, 'static vlong\ntickspan(')+'\n\n'+definition
         fixture = (ROOT/'libinterp/tests/gc-idle.c').read_text().replace('IMPLEMENTATION', definition)
         if name == 'bench':
             fixture = '#define TEST_BENCH 1 // Execute the actual benchmark waiter.\n'+fixture
