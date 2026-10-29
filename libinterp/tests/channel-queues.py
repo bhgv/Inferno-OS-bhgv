@@ -42,7 +42,7 @@ parts += [function(xec, 'OP('+name+')') for name in ('isend', 'irecv')]
 parts += [function(xec, 'OP(alt)'), function(xec, 'OP(nbalt)')]
 parts += [re.sub(r'^#include[^\n]*\n', '', alt, flags=re.M)]
 unit = (root/'libinterp/tests/channel-queues.c').read_text()
-unit = unit.replace('int\nmain(void)', (root/'libinterp/tests/alt-publication.c').read_text()+'\n\nint\nmain(void)')
+unit = unit.replace('int\nmain(void)', (root/'libinterp/tests/alt-publication.c').read_text()+'\n\n'+(root/'libinterp/tests/queue-chain.c').read_text()+'\n\nint\nmain(void)')
 # Optional integration route uses published native tails and the real C executor.
 if os.environ.get('QUEUE_JIT_ROUTE') == '1':
     machine=platform.machine().lower()
@@ -107,6 +107,7 @@ for runtime in ('emu/port/dis.c', 'os/port/dis.c'):
                 families = os.environ['QUEUE_CASES'].split()
             else:
                 families = [
+                    'queue-chains', 'queue-slots', 'queue-pop', 'queue-long',
                     'publication-bad-ready', 'publication-bad-wake', 'publication-bad-output',
                     'publication-idle', 'publication-wake', 'publication-wake-tuple',
                     'publication-result', 'publication-payload', 'publication-tuple',
@@ -117,8 +118,8 @@ for runtime in ('emu/port/dis.c', 'os/port/dis.c'):
                 raise ValueError('QUEUE_CASES must select at least one family')
             for family in families:
                 try:
-                    subprocess.run([str(binary)],env=dict(os.environ, **{"QUEUE_CASE":family}),check=True)
-                except subprocess.CalledProcessError:
+                    subprocess.run([str(binary)],env=dict(os.environ, **{"QUEUE_CASE":family}),check=True,timeout=60)
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                     if os.environ.get('QUEUE_KEEP_ARTIFACT'):
                         shutil.copy2(binary, os.environ['QUEUE_KEEP_ARTIFACT'])
                         shutil.copy2(source, os.environ['QUEUE_KEEP_ARTIFACT']+'.c')

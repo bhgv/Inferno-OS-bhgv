@@ -118,3 +118,10 @@ native buffered acceptance, matching authoritative SEND/RECV readiness. Private
 transaction storage must avoid both complete heads. See
 [the readiness regression matrix](README.native-channel-entry.md#direct-sendrecv-readiness-and-both-queue-heads)
 for the added malformed-queue cases, counts and parent controls.
+
+Empty heads with nonnil successors now decline in both queue directions, matching
+C readiness before any transfer. Six new variants add 96 declines per WORD model:
+796,128 accepted, 736 declined, and 2,414/2,430 private preflight cases pass for
+WORD32/64. Parent `7e4613b` accepts the malformed `BUFFER_BAD=41` input and fails
+the rejection oracle at runtime. No additional opcode becomes native in this
+series; ARM64 validation remains compiler-only and RX execution remains AMD64.

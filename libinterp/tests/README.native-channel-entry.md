@@ -154,3 +154,11 @@ Coverage remains 173/173 JIT+C commands and 166/173 guarded native fast commands
 for AMD64 and ARM64. This series changes shared channel correctness, not the count
 of native opcodes. ARM64 validation is compiler-only (6,215 checks per WORD model);
 actual RX execution here is AMD64.
+
+The subsequent chain-validation series extends `direct-invalid` to 26 metadata
+variants, adding empty heads with successors and malformed dequeue/enqueue links.
+It now runs 6,656 cases per runtime/WORD profile (26,624 total), and the full
+transfer matrix passes 640,576 cases. See
+[queue chain checks](README.channel-queues.md#chain-validation-before-append-and-cancellation)
+for the queue-operation contract and separate negative controls. Existing REG
+restoration and temporary-reference guarantees remain unchanged.

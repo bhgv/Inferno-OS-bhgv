@@ -32,7 +32,51 @@ vmchanqueue(Progq *queue)
 	if(peer != nil && (peer == H || (uintptr)peer%sizeof(void*) != 0 ||
 	   (uintptr)peer > (uintptr)-1-sizeof(*peer)))
 		error(exHeap);
+	if(peer == nil && queue->next != nil)
+		error(exHeap);
 	return peer;
+}
+
+
+/* Read an aligned native queue-owner cell before typed pointer updates. */
+VmChannelInline Progq*
+vmchanhead(Progq **owner)
+{
+	Progq *head;
+
+	if(owner == nil || owner == H || (uintptr)owner%sizeof(void*) != 0 ||
+	   (uintptr)owner > (uintptr)-1-sizeof(*owner))
+		error(exHeap);
+	memmove(&head, owner, sizeof(head));
+	vmchanqueue(head);
+	return head;
+}
+
+
+/* Validate an entire linear queue before append/cancellation can allocate or mutate. */
+VmChannelInline Progq*
+vmchanend(Progq **owner)
+{
+	Progq *head, *node, *next, *checkpoint;
+	uintptr count;
+
+	head = vmchanhead(owner);
+	node = checkpoint = head;
+	count = 0;
+	for(;;){
+		if(vmchanqueue(node) == nil && (node != head || node->next != nil))
+			error(exHeap);
+		next = node->next;
+		if(next == nil)
+			return node;
+		if(next == checkpoint || count == (uintptr)-1)
+			error(exHeap);
+		count++;
+		/* Brent checkpoints need one link read per node and no extra storage. */
+		if((count & (count+1)) == 0)
+			checkpoint = next;
+		node = next;
+	}
 }
 
 

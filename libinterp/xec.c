@@ -3650,6 +3650,8 @@ cchanleaf(REG *r, int receive, void *transaction)
 		if(peer != nil && (!channelspan(peer, sizeof(*peer)) ||
 		   (uintptr)peer%sizeof(void*) != 0))
 			return 0;
+		if(peer == nil && queue->next != nil)
+			return 0;
 		if(i == receive && peer != nil)
 			return 0;
 	}
@@ -3723,44 +3725,61 @@ cqsize(Progq *q)
 	return n;
 }
 */
+
+
+/* Validate the existing chain and process before allocating an unpublished tail. */
 void
 cqadd(Progq **q, Prog *p)
 {
-	Progq *n;
+	Progq *tail, *n;
 
-	if((*q)->prog == nil){
-		(*q)->prog = p;
+	if(p == nil || p == H || (uintptr)p%sizeof(void*) != 0 ||
+	   (uintptr)p > (uintptr)-1-sizeof(*p))
+		error(exHeap);
+	tail = vmchanend(q);
+	if(tail->prog == nil){
+		tail->prog = p;
 		return;
 	}
-	n = (Progq*)malloc(sizeof(Progq));
+	n = (Progq*)malloc(sizeof(*n));
 	if(n == nil)
 		error(exNomem);
 	n->prog = p;
 	n->next = nil;
-	for( ; *q != nil; q = &(*q)->next)
-		;
-	*q = n;
+	tail->next = n;
 }
+
+
+/* Check the head and its successor before constant-time FIFO removal. */
 void
 cqdel(Progq **q)
 {
-	Progq *f;
+	Progq *head, *next;
 
-	if((*q)->next == nil){
-		(*q)->prog = nil;
+	head = vmchanhead(q);
+	next = head->next;
+	if(next == nil){
+		head->prog = nil;
 		return;
 	}
-	f = *q;
-	*q = f->next;
-	free(f);
+	if(head->prog == nil || next == head || vmchanqueue(next) == nil)
+		error(exHeap);
+	*q = next;
+	free(head);
 }
-/* Remove every registration while retaining the queue's mandatory empty node. */
+
+
+/* Validate before removing every match, retaining the mandatory empty head. */
 void
 cqdelp(Progq **q, Prog *p)
 {
 	Progq *f;
 	Progq **head;
 
+	vmchanend(q);
+	if(p == nil || p == H || (uintptr)p%sizeof(void*) != 0 ||
+	   (uintptr)p > (uintptr)-1-sizeof(*p))
+		error(exHeap);
 	head = q;
 	while(*q != nil){
 		if((*q)->prog != p){

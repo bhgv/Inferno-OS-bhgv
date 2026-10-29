@@ -273,7 +273,7 @@ checkdirectinvalid(void)
 {
 	TestChannel box;
 	Channel *channel;
-	Progq queue, *original;
+	Progq queue, successor, *original;
 	Array fake;
 	REG saved;
 	uchar slot[32], payloadcell[32], beforepayload[32];
@@ -282,13 +282,14 @@ checkdirectinvalid(void)
 
 	for(receive = 0; receive < 2; receive++)
 	for(side = 0; side < 2; side++)
-	for(bad = 0; bad < 18; bad++)
+	for(bad = 0; bad < 26; bad++)
 	for(ca = 0; ca < 8; ca++)
 	for(pa = 0; pa < 8; pa++){
 		openchannel(&box, 0, 0);
 		channel = &box.c;
 		memset(&fake, 0, sizeof(fake));
 		memset(&queue, 0, sizeof(queue));
+		memset(&successor, 0, sizeof(successor));
 		original = side ? box.c.send : box.c.recv;
 		if(bad == 0) channel = nil;
 		if(bad == 1) channel = H;
@@ -314,6 +315,13 @@ checkdirectinvalid(void)
 		}
 		if(bad == 16) box.c.buf = (void*)1;
 		if(bad == 17) box.c.buf = (void*)((uintptr)-1-sizeof(Array)+1);
+		if(bad >= 18){
+			if(side) box.c.send = &queue; else box.c.recv = &queue;
+			queue.prog = bad >= 21 ? &peers[0] : nil;
+			queue.next = bad == 18 || bad == 21 ? H : bad == 19 || bad == 24 ? &queue :
+				bad == 22 ? (void*)1 : bad == 23 ?
+				(void*)((uintptr)-1 & ~(uintptr)(sizeof(void*)-1)) : &successor;
+		}
 		memset(slot, 0x77, sizeof(slot));
 		memset(payloadcell, 0x66, sizeof(payloadcell));
 		value = 99;

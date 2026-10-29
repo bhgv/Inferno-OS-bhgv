@@ -273,7 +273,7 @@ main(void)
 		checks++;
 	}
 	for(receive = 0; receive < 2; receive++)
-	for(bad = 0; bad < 41; bad++)
+	for(bad = 0; bad < 47; bad++)
 	for(shift = 0; shift < 8; shift++){
 		if(getenv("BUFFER_BAD") && bad != atoi(getenv("BUFFER_BAD")))
 			continue;
@@ -325,7 +325,7 @@ main(void)
 		}
 		if(bad == 25)image.channel.mover = nil;
 		if(bad == 26)image.channel.mover = (void(*)(void))(uintptr)-1;
-		if(bad >= 27){
+		if(bad >= 27 && bad < 41){
 			Progq **owner, *head;
 			int kind;
 
@@ -340,6 +340,15 @@ main(void)
 			if(kind == 4) head->prog = H;
 			if(kind == 5) head->prog = (void*)1;
 			if(kind == 6) head->prog = (void*)((uintptr)-1 & ~(uintptr)(sizeof(void*)-1));
+		}
+		if(bad >= 41){
+			Progq *head;
+			int kind;
+
+			head = (bad < 44 ? receive : !receive) ? &image.send : &image.receive;
+			kind = (bad-41)%3;
+			head->next = kind == 0 ? H : kind == 1 ? head :
+				(bad < 44 ? (receive ? &image.receive : &image.send) : (receive ? &image.send : &image.receive));
 		}
 		/* Send has no temporary Array retain, so dead-ref rejection is receive-only. */
 		if(!receive && (bad == 11 || bad == 12))

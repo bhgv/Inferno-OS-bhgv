@@ -60,3 +60,51 @@ The blocking group additionally checks 32 nil/H owner cases per scheduler/word
 combination at all byte alignments. It asserts the VM nil-reference error before
 queue allocation and checks unchanged data, decoded registers and operand bytes.
 The focused blocking group passes ASan/UBSan in all four combinations.
+
+## Chain validation before append and cancellation
+
+`cqadd` used to allocate before walking the queue. A cyclic chain could loop
+forever after allocation, while a damaged tail could fault with the new node
+still unpublished. `cqdelp` could remove/free earlier matches before reaching a
+bad tail, or loop forever when the target was absent from a cycle.
+
+The shared `vmchanhead`/`vmchanend` helpers now validate the owner cell, complete
+aligned nodes, peer spans and the permanent-empty-head invariant. A one-link-read
+Brent scan detects cycles without allocation or recursion. Append validates and
+captures the existing tail before allocating; cancellation validates the whole
+chain before removing any match. Both remain O(n); cancellation uses a validation
+pass followed by its removal pass. FIFO dequeue stays O(1), checking only the
+head and immediate successor before changing the owner/freeing the former head.
+This does not promise full-tail validation for dequeue, mapped-memory proof,
+repair of corrupt queues, or rollback after arbitrary allocator/free callbacks.
+
+An empty node with a successor is invalid even in readiness checks. Both native
+C callers and direct SEND/RECV reject it before transfer/registration; the pure
+buffered JIT helper declines it without modifying the private transaction or VM.
+No public queue/Prog/REG/Dis layout or calling convention changes.
+
+`queue-chain.c` adds four independently selectable families:
+
+| QUEUE_CASE | Cases per runtime/WORD profile | Purpose |
+| --- | ---: | --- |
+| queue-chains | 2,174 | Interior metadata errors and every cycle entry through length 16 |
+| queue-slots | 32 | Invalid root cells, heads and append/cancellation targets |
+| queue-pop | 10 | Constant-time head/successor rejection before freeing |
+| queue-long | 204 | Valid lengths through 257, duplicates, absent targets and failed append |
+
+The 9,680 new cases across emu/os and WORD32/64 check exception identity, complete
+node/REG preservation, unchanged root and balanced allocations/error frames. Queue
+families have a 60-second process timeout so a cycle regression cannot hang CI.
+All 325,256 queue/ALT scenarios pass UBSan with NDEBUG; the native AMD64 ALT route
+also passes the inherited matrix and all four new families. The isolated 9,680
+new cases complete ASan/UBSan, with the sandbox's existing libasan no-return/stack
+warnings; this is not a clean-ASan claim for every injected callback test.
+
+Controls using parent `7e4613b` compile and fail at runtime for malformed append,
+cancellation and dequeue. The parent's absent-target cancellation on a cyclic
+queue times out. Its pure buffered preflight fails the new `BUFFER_BAD=41` case.
+
+```
+QUEUE_CASES='queue-chains queue-slots queue-pop queue-long' CFLAGS='-O1 -g -DNDEBUG -fsanitize=undefined -fno-sanitize-recover=all' python3 libinterp/tests/channel-queues.py
+QUEUE_JIT_ROUTE=1 QUEUE_CASES='queue-chains queue-slots queue-pop queue-long' python3 libinterp/tests/channel-queues.py
+```

@@ -585,6 +585,10 @@ main(void)
 	char *publication;
 
 	publication = getenv("QUEUE_CASE");
+	if(publication == nil || !strcmp(publication, "queue-chains")) checkqueuechains();
+	if(publication == nil || !strcmp(publication, "queue-slots")) checkqueueslots();
+	if(publication == nil || !strcmp(publication, "queue-pop")) checkqueuepop();
+	if(publication == nil || !strcmp(publication, "queue-long")) checkqueuelong();
 	if(publication == nil || !strcmp(publication, "publication-bad-ready")) checkbadpublication(0);
 	if(publication == nil || !strcmp(publication, "publication-bad-wake")) checkbadpublication(1);
 	if(publication == nil || !strcmp(publication, "publication-bad-output")) checkbadpublication(2);
