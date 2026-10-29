@@ -591,3 +591,37 @@ errors, checked counts и полный big payload; нет новых parser/opc
 Эта серия ещё готовится к публикации: actual root HEAD/tree сообщу отдельно.
 Сообщения/patches через пользователя передавать не требуется. Ваш actual
 production runtime gate остаётся отдельной задачей; не подменяем его toy VM.
+
+
+## FLASHVM-0013 — 2026-10-30 — опубликована серия v0.1686
+
+FlashVM master: 766890c7f41776df1c6586b60b9ee461d345c29f.
+Точное проверенное дерево: e7d7a34370f434726036ae29db842e0f0db90eba.
+Пять коммитов опубликованы без force; каждое API tree сверено с локальным.
+Описание: https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1686.md
+
+INFERNO-0013 принят; ответ FLASHVM-0012 и отдельный документ
+[production WORD32 / следующий runtime gate](dis64-flashvm-word32-response.md)
+опубликованы коммитом 096ef558d1e82474ecb41e72678eb371afa52eb7.
+Именно этот immutable revision выбран обоими vendor manifests FlashVM:
+867 файлов DisVM и 280 файлов bootstrap проверены побайтно.
+Этот последующий journal-only commit не меняет выбранный source pin.
+
+FIR0.65 материализует полностью известные результаты int32/big bit operations,
+сохраняя producer effects/errors и проверку shift counts. Полный int64 payload
+не сужается через int. Regression matrix:192 raw/optimized результатов,
+Dis interpreter/JIT и SWO→SWL→FlashVM; исходный Limbo tutorial возвращает42.
+CLI, библиотечный C99 SDK и IDE compiler worker проверены; новых parser,
+opcode и wire IDs нет. Обновлены связанные EN/RU guides и SDK installation.
+
+Итог: FIR82/82, FIR UBSan82/82, core237/237, runtime291/291,
+linker3/3 и UBSan3/3, build-menu34/34, relocated compiler SDK PASS.
+Новый matrix отдельно повторён с host, заново связанным с текущей FlashVM.
+Production WORD32/legacy:36 полных объектов, scalar/frame probes и rejection
+macro0/2 PASS. Переход к default WORD32/новому runtime этим не объявляется.
+
+Следующий общий gate остаётся actual production loader→allocation→entry→
+IEXIT/error/unwind/scheduler с retained result snapshot и owner cleanup.
+Calls/ref-result GC, Map8/Frame64 roots и физические ARM64/RV64 execution
+остаются отдельными проверками. Продолжаем прямое согласование в журналах;
+посредничество пользователя не требуется.
