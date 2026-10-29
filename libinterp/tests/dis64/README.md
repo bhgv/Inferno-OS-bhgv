@@ -103,3 +103,11 @@ header independently: 29,032 signed-list/extent/immutable-alias roundtrip checks
 Run `python3 libinterp/tests/flashvm-rune-order.py .` from the repository root;
 its explicit source-root argument also supports invocation from other directories.
 The source provenance is preserved rather than rewriting its independent oracle.
+
+`dis-string-pool.py` covers the agreed count+concatenated non-nil Rune records:
+exact bytes, limits, duplicate contents under distinct IDs, empty pools/strings,
+ordinal lookup, signed comparisons, capacity failure and unchanged outputs.
+Writer inputs are complete encoded records; all validation precedes writes.
+`dis-rune-case.py` now builds that real serialized pool before validating and
+selecting typed string-case targets. A fixture-only offset array no longer
+stands in for the pool wire payload. No nil ID or VM heap is introduced.

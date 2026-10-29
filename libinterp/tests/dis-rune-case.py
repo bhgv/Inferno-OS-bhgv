@@ -9,26 +9,14 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = r'''
-#include "dis-rune.h"
+#include "dis-string-pool.h"
 #include "dis-control.h"
 
-/* Fixture-owned pool index; its array position does not assign a wire nil ID. */
-typedef struct Pool Pool;
-struct Pool {
-    DisRuneView views[64]; // Decoded non-nil records owned by the test.
-    unsigned int count; // Available fixture IDs.
-};
-
-
-/* Resolve fixture IDs and use the actual shared signed32 comparison helper. */
+/* Compare serialized-pool IDs with the real shared reader and Rune order. */
 static int
 compare(void *context, unsigned int a, unsigned int b, int *order)
 {
-    Pool *pool = context;
-
-    if(a >= pool->count || b >= pool->count)
-        return 0;
-    return disrunecompare(&pool->views[a], &pool->views[b], order);
+    return disstringpoolcompare((DisStringPoolView*)context, a, b, order);
 }
 
 
@@ -38,17 +26,23 @@ query(const unsigned char *table, unsigned int bytes,
     const unsigned char **records, const unsigned int *lengths,
     unsigned int count, unsigned int id, unsigned int *target)
 {
-    Pool pool;
+    DisStringPoolView pool;
+    DisStringPoolRecord records_to_write[64];
+    unsigned char poolbytes[4096];
+    unsigned int written;
     DisControlView view;
     unsigned char key[4];
     unsigned int i;
 
     if(count > 64)
         return 0;
-    pool.count = count;
-    for(i=0; i<count; i++)
-        if(!disrunecheck(records[i], lengths[i], &pool.views[i]))
-            return 0;
+    for(i=0; i<count; i++){
+        records_to_write[i].data = records[i];
+        records_to_write[i].bytes = lengths[i];
+    }
+    if(!disstringpoolwrite(poolbytes, sizeof(poolbytes), records_to_write, count, &written) ||
+       !disstringpoolcheck(poolbytes, written, 64, &pool))
+        return 0;
     if(!discontrolcheck(DisControlString, table, bytes, 8, compare, &pool, &view))
         return 0;
     disruneput(key, id);
@@ -118,7 +112,7 @@ def main():
                             wanted if index < len(strings) else 0x12345678):
                         raise RuntimeError("wire Rune/string-case integration mismatch")
                     cases += 1
-    print("PASS Rune32 -> typed string case:", cases, "range/ID/lookup combinations")
+    print("PASS wire string pool -> Rune32 -> typed string case:", cases, "range/ID/lookup combinations")
 
 
 if __name__ == "__main__":
