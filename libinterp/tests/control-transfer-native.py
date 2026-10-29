@@ -65,8 +65,7 @@ with tempfile.TemporaryDirectory(prefix='control-transfer-native-') as temporary
         model.mkdir()
         header=(ROOT/'include/interp.h').read_text()
         if bits==32:
-            header=re.sub(r'typedef long\s+WORD;','typedef int WORD;',header,count=1)
-            header=re.sub(r'typedef unsigned long\s+UWORD;','typedef unsigned int UWORD;',header,count=1)
+            header = '#define DIS_WORD32 1 // Select the production experimental scalar model.\n'+header
         (model/'interp.h').write_text(header)
         includes=['-I'+str(model)]+['-I'+str(ROOT/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
         binary=model/'control'

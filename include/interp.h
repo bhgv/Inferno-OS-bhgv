@@ -1,6 +1,21 @@
 typedef uchar		BYTE;		/* 8  bits */
+/* Select the scalar model explicitly for experimental WORD32 target builds.
+ * Every object in one runtime must use the same setting; this does not select
+ * a loader, pointer map, frame ABI or on-disk format. */
+#if defined(DIS_WORD32)
+#include <limits.h>
+#if CHAR_BIT != 8 || INT_MAX != 2147483647 || UINT_MAX != 0xffffffffU
+#error DIS_WORD32 requires 8-bit bytes and 32-bit int and unsigned int
+#endif
+#if DIS_WORD32 != 1
+#error DIS_WORD32 must be 1 when the experimental scalar model is selected
+#endif
+typedef int		WORD;		// Experimental 32-bit signed Dis scalar.
+typedef unsigned int	UWORD;		// Experimental 32-bit unsigned Dis scalar.
+#else
 typedef long		WORD;		/* 32 bits */
 typedef unsigned long	UWORD;		/* 32 bits */
+#endif
 typedef vlong		LONG;		/* 64 bits */
 typedef uvlong		ULONG;		/* 64 bits */
 typedef double		REAL;		/* 64 double IEEE754 */

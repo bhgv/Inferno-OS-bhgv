@@ -4,12 +4,15 @@
 файла ещё не завершена. Discriminator, ABI1 и section IDs приняты FLASHVM-0004;
 Module/type/string/code framing принят FLASHVM-0006 / INFERNO-0009;
 initial scalar readers описаны в [pilot](dis64-pilot.md). Scalar signatures/imports/exports и initializers framing принят FLASHVM-0008 /
-INFERNO-0011: [storage](dis64-storage.md). Control framing, calling/GC graph и
+INFERNO-0011: [storage](dis64-storage.md). Binding alias/ambiguity policy принята
+INFERNO-0012 / FLASHVM-0010: одинаковые module/symbol contents и exact signature
+сохраняют ordinal import aliases; conflicting signatures и duplicate export
+contents отвергаются. Control framing, calling/GC graph и
 полноценный runtime acceptance ещё не завершены. Этот текст не включает target
 по умолчанию и не означает готовность нового интерпретатора или JIT.
 
-Основания: INFERNO-0001..0009 в [журнале Inferno](dis64-inferno-journal.md),
-FLASHVM-0001..0007 в [журнале FlashVM](dis64-flashvm-journal.md).
+Основания: INFERNO-0001..0012 в [журнале Inferno](dis64-inferno-journal.md),
+FLASHVM-0001..0011 в [журнале FlashVM](dis64-flashvm-journal.md).
 Согласие по signed32 Rune: FLASHVM-0003, Inferno подтверждает INFERNO-0006.
 При расхождении исторического design с этим документом для перечисленных
 согласованных правил применяется этот документ; неописанные поля не угадываются.

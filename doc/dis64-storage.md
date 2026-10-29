@@ -63,7 +63,8 @@ frame существует, имеет size>=64/alignment8. Полный рас�
 imports с exact same signature могут иметь разные ordinal aliases; conflicting
 signatures отвергаются как ambiguous. Different module names независимы.
 Pair checks используют actual signed-Rune pool equality, не numeric ID и не hash.
-Эта точная политика также передана FlashVM в журнале для прямой сверки.
+Эта точная политика взаимно принята: INFERNO-0012 / FLASHVM-0010.
+Это структурное согласие не открывает runtime calls.
 
 Views/getters immutable, readers/writers атомарны на отказе. Поиск и pair checks
 линейные/квадратичные; explicit resource limits обязательны. Runtime вправе

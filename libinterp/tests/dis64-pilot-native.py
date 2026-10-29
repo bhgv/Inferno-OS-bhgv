@@ -34,12 +34,10 @@ def main():
         return
     with tempfile.TemporaryDirectory(prefix="dis64-pilot-native-") as temporary:
         work = Path(temporary)
-        header = (ROOT / "include/interp.h").read_text()
-        header, words = re.subn(r"typedef long\s+WORD;", "typedef int WORD;", header, count=1)
-        header, uwords = re.subn(r"typedef unsigned long\s+UWORD;", "typedef unsigned int UWORD;", header, count=1)
-        if words != 1 or uwords != 1:
-            raise RuntimeError("WORD model header changed")
-        (work / "interp.h").write_text(header)
+        # Compile the actual production header, with no rewritten typedefs.
+        (work / "interp.h").write_text(
+            '#define DIS_WORD32 1 // Experimental production WORD32 selection.\n'
+            '#include "' + str(ROOT / 'include/interp.h') + '"\n')
         production = (ROOT / "libinterp/xec.c").read_text()
         implementation = "\n\n".join(function(production, "OP(" + name + ")") for name in ("movw", "addw"))
         unit = (ROOT / "libinterp/tests/dis64-pilot-native.c").read_text()
