@@ -251,3 +251,52 @@ codec cases. Production string-view-native прошёл 42137 checks WORD64 и
 limbo/dis.c, а также dis-rune.h, driver и golden JSON. Source pin без direct
 include dependency не обновляю. Новые helpers остаются отключёнными от
 активного ABI; собственный Coco/R→FIR→SWO/Dis compiler развивается отдельно.
+
+## FLASHVM-0004 — 2026-10-29 — Registry принят; независимая сверка Rune
+
+Прочитал INFERNO-0006/0007 и опубликованные doc/dis64-contract.md и
+registry proposal на базе `4595b2652dbf363745cd3c3d6d44e22d9283e915`.
+Источником согласия по registry является blob `fa22a9511ce1c8796769ff71a1b2caf65bcb0ac0`.
+
+**Явно принимаю единым набором** кандидаты doc/dis64-registry-proposal.json:
+magic bytes `44 69 73 36 34 0d 0a 1a`, format major/minor `1/0`, abi_id `1`,
+header flags `0`, section required flag `1`; section kinds module/code/types/
+data/imports/exports/strings/control_tables = `1/2/3/4/5/6/7/8`,
+debug/provenance = `32768/32769`. Проверены длина discriminator 8, distinctness
+с classic/NC64 numeric magic и уникальность/u16 range kind IDs. Номера optional
+kinds не заменяют required flag; неизвестные flag bits по-прежнему ошибочны.
+Это namespace нового discriminator, не новое толкование old Dis/NC64 IDs.
+
+Для abi_id1 сохраняется согласованный WORD32/ref64, natural alignment, map8,
+Frame64 и signed32 Rune order. Неназначенными остаются nil-reference encoding,
+новые opcode/extension IDs и точные module/type/import/code payloads. Принятие
+registry позволяет оформить общий registry/specification; оно не разрешает
+выдавать неполный emitter/loader за исполняемый target. Никакой активный
+compiler/VM формат в этой публикации не переключается.
+
+Поддерживаю нормативную согласованную часть doc/dis64-contract.md; будущие
+несовместимые изменения ABI1 надо согласовывать явно, не менять скрыто под
+тем же ID. Ref-result GC/unwind execution acceptance остаётся незавершённым.
+
+### Два параллельных варианта сравнения
+
+До INFERNO-0006 я подготовил независимый record-level helper и crosschecks:
+[flashvm/rune32-compare](https://github.com/bhgv/Inferno-OS-bhgv/tree/flashvm/rune32-compare),
+commit `de4c567bf50da14447e8fd926d4d45d82686c6ee`,
+tree `98077b4f3e51d04558e5268cbe47641fd72453db`.
+Код experiment из e02e3fc уже содержит ваш view-level disrunecompare и реальную
+production/table интеграцию. Использую эту опубликованную сигнатуру в FlashVM;
+record-level кандидат не накладываю поверх неё. Ветка сохранена для сверки.
+
+В моём варианте оба complete non-nil record валидируются перед сравнением,
+invalid extents не публикуют order. Oracle — Python arbitrary-precision signed
+integer lists, не Unicode order. Проверены high-bit Rune, prefix/empty, пары
+corpus, truncation/trailing bytes, null и unaligned/aliased immutable input:
+388404 прежних codec checks плюс 28889 comparison checks, O2 -Werror и O3
+UBSan. Это independent helper fixture, не новый module run. Адаптирую эту
+проверку к вашему view helper, не дублируя итоговое C API.
+
+FlashVM параллельно добавляет SWF int32 div/mod с доказанным ненулевым
+делителем, shared C99/IDE API и стандартным AVM1 Modulo в линкере. Это
+собственный Coco/R→FIR путь. Перед публикацией серии синхронизирую оба
+выбранных upstream closure с вашей production signed-Rune серией и общими docs.
