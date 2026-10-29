@@ -36,8 +36,9 @@ declarations = debug[debug.index('typedef struct Bpt'):debug.index('#define\tQSH
 declarations += profile[profile.index('typedef struct Record'):profile.index('\nstruct\n{\n\tLock\tl;')]
 # Current private type declarations and stat body are shared with parent replays;
 # the changed loop/lookup/reset/name bodies themselves come from INSTRUMENT_SOURCE.
-start = bench.index('typedef struct  {', bench.index('/* DIS operation timing */'))
+start = bench.index('typedef struct {', bench.index('/* DIS operation timing */'))
 declarations += bench[start:bench.index('extern struct', start)]
+declarations = '#include \"bench-fp-adapter.h\"\n'+function(bench, 'static vlong\ntickspan(')+'\n'+declarations
 xec = (ROOT/'libinterp/xec.c').read_text()
 parts = [function(xec, 'OP(addw)')]
 selected = os.environ.get('INSTRUMENT_KIND')
@@ -60,7 +61,7 @@ with tempfile.TemporaryDirectory(prefix='instrument-loops-') as temporary:
             header = re.sub(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
             header = re.sub(r'typedef unsigned long\s+UWORD;', 'typedef unsigned int UWORD;', header, count=1)
         (model/'interp.h').write_text(header)
-        includes = ['-I'+str(model)]+['-I'+str(ROOT/p) for p in ('Linux/arm/include','emu/port','include','libinterp','lib9')]
+        includes = ['-I'+str(model)]+['-I'+str(ROOT/p) for p in ('Linux/arm/include','emu/port','include','libinterp','libinterp/tests','lib9')]
         decoder = model/'decoder.o'
         subprocess.run(cc+flags+includes+['-Ddec=realdec','-c',str(ROOT/'libinterp/dec.c'),'-o',str(decoder)], check=True)
         for kind in ([selected] if selected else KINDS):
@@ -94,7 +95,7 @@ with tempfile.TemporaryDirectory(prefix='instrument-loops-') as temporary:
             target.write_text(unit)
             binary = model/kind
             formatter = [str(ROOT/'lib9'/(name+'.c')) for name in ('rune','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen')]
-            subprocess.run(cc+flags+includes+[str(target),str(decoder)]+formatter+['-o',str(binary)], check=True)
+            subprocess.run(cc+flags+includes+[str(target),str(decoder)]+formatter+['-lm','-o',str(binary)], check=True)
             try:
                 subprocess.run([str(binary)], check=True, timeout=60)
             except subprocess.CalledProcessError:

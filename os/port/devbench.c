@@ -9,6 +9,7 @@
 #include <isa.h>
 #include "kernel.h"
 #include "vmfetch.h"
+#include "mathi.h"
 
 /* Builtin module support */
 #include "bench.h"
@@ -54,17 +55,26 @@ clear(void)
 	bench.wpos = bench.buf;
 }
 
+
+/* Validate the logical read extent before forming a pointer into the report buffer. */
 static long
 rep(void *to, long n, ulong offset)
 {
-	long left = bench.wpos - bench.buf - offset;
-	if(left < 0)
-		left = 0;
-	if(n > left)
+	uintptr used, left;
+
+	if(n <= 0 || bench.buf == nil || bench.wpos == nil ||
+	   (uintptr)bench.wpos < (uintptr)bench.buf)
+		return 0;
+	used = (uintptr)bench.wpos-(uintptr)bench.buf;
+	if(bench.bufsz <= 0 || used > (uintptr)bench.bufsz || offset >= used)
+		return 0;
+	left = used-offset;
+	if((uintptr)n > left)
 		n = left;
 	memmove(to, bench.buf+offset, n);
 	return n;
 }
+
 
 static long
 notest(int report, void *va, long n, ulong offset)
@@ -75,32 +85,100 @@ notest(int report, void *va, long n, ulong offset)
 	return 0;
 }
 
-// Calibration
-static long MS2TS = 0;	// time stamps per millisec
-static long US2TS = 0;	// time stamps per microsecond
+/* Calibration is ticks per millisecond, independent of the host long width. */
+static vlong MS2TS; // Positive calibrated timer frequency; zero means unavailable.
 
+
+/* Scale ticks exactly without overflowing a product or touching the VM floating environment. */
+static vlong
+tickmicro(uvlong ticks)
+{
+	uvlong frequency, whole, remainder, fraction, residue, result;
+	int bit;
+
+	if(MS2TS <= 0)
+		return 0;
+	frequency = MS2TS;
+	whole = ticks/frequency;
+	if(whole > 0x7fffffffffffffffULL/1000)
+		return 0x7fffffffffffffffLL;
+	remainder = ticks%frequency;
+	if(remainder <= ~0ULL/1000)
+		fraction = remainder*1000/frequency;
+	else{
+		/* Each residue is below frequency <= INT64_MAX, so both additions fit. */
+		fraction = residue = 0;
+		for(bit = 512; bit != 0; bit >>= 1){
+			fraction *= 2;
+			residue *= 2;
+			if(residue >= frequency){
+				residue -= frequency;
+				fraction++;
+			}
+			if(1000&bit){
+				residue += remainder;
+				if(residue >= frequency){
+					residue -= frequency;
+					fraction++;
+				}
+			}
+		}
+	}
+	result = whole*1000;
+	if(fraction > 0x7fffffffffffffffULL-result)
+		return 0x7fffffffffffffffLL;
+	return result+fraction;
+}
+
+
+/* Subtract timer bit patterns without signed overflow; discard backward/stale samples. */
+static vlong
+tickspan(vlong end, vlong start)
+{
+	uvlong span;
+
+	span = (uvlong)end-(uvlong)start;
+	if(span > 0x7fffffffffffffffULL)
+		return 0;
+	return span;
+}
+
+
+/* Bound a measured quantity before conversion, including values rounded up to 2^63. */
+static vlong
+tickint(double value)
+{
+	if(!(value > 0.0))
+		return 0;
+	if(value >= 9223372036854775808.0)
+		return 0x7fffffffffffffffLL;
+	return (vlong)value;
+}
+
+
+/* Accumulate low 32-bit hardware intervals in a wide total before averaging. */
 static long
 cal(int report, void *va, long n, ulong offset)
 {
-	int tot, i, lim, low, max, pl, mdelay;
-	ulong t;
+	uvlong tot;
+	u32int t, low, max;
+	int i, lim, pl, mdelay;
+
 	if(report)
 		return rep(va, n, offset);
 	clear();
 	setpri(PriRealtime);
 	lim = 1000;
-	low = 64000000;
+	low = ~0U;
 	max = 0;
 	tot = 0;
 	mdelay = 1000;
-	for(i=0; i<lim; i++){
-		do{
-			pl = splhi();
-			t = archrdtsc32();
-			microdelay(mdelay);
-			t = archrdtsc32() - t;
-			splx(pl);
-		} while(t < 0);
+	for(i = 0; i < lim; i++){
+		pl = splhi();
+		t = (u32int)archrdtsc32();
+		microdelay(mdelay);
+		t = (u32int)archrdtsc32()-t;
+		splx(pl);
 		if(t < low)
 			low = t;
 		if(t > max)
@@ -108,88 +186,81 @@ cal(int report, void *va, long n, ulong offset)
 		tot += t;
 	}
 	MS2TS = tot/lim;
-	US2TS = MS2TS/1000;
 	if(va)
-		log("mdelay=%lud lim=%lud tot=%lud low=%lud max=%lud\n", mdelay, lim, tot, low, max);
+		log("mdelay=%d lim=%d tot=%llud low=%ud max=%ud\n", mdelay, lim, tot, low, max);
 	setpri(PriNormal);
 	return n;
 }
 
-/*
- * ticks to format string
- */
-/*static*/ char *
+
+/* Format calibrated ticks without integer threshold overflow or division by zero. */
+char*
 ts2str(vlong ticks)
 {
-#define Nbuf 5
-	static char b[Nbuf][40];
-	static int n=Nbuf-1;
-	char *fmt, *unit;
-	double d;
+	enum { Nbuf = 5 }; // Retain all fields of one timing report until it is printed.
+	static char b[Nbuf][40]; // Rotating result storage used by the report formatter.
+	static int next; // Next result slot.
+	char *unit;
+	double value, magnitude;
+	char *out;
 
-	if(0){
-		print("ticks=%lld MS2TS=%ld\n", ticks, MS2TS);
-		d = (double)ticks;
-		print("1:%f\n", d);
-		d = (double)ticks*1000;
-		//print("2:%f\n", d);
-		d = ((double)ticks)/MS2TS;
-		//print("3:%f\n", d);
+	out = b[next];
+	next = (next+1)%Nbuf;
+	if(MS2TS <= 0){
+		snprint(out, sizeof(b[0]), "%lld ticks", ticks);
+		return out;
 	}
-	n = (n+1)%Nbuf;
-	if(ticks > MS2TS*1000) {
-		fmt = "%.2f %s";
+	value = (double)ticks/(double)MS2TS;
+	magnitude = value < 0.0 ? -value : value;
+	if(magnitude >= 1000.0){
 		unit = "s";
-		d = ((double)ticks/MS2TS) * 1000.0;
-	} else if(ticks > MS2TS) {
-		fmt = "%.2f %s";
+		value /= 1000.0;
+	}else if(magnitude >= 1.0)
 		unit = "ms";
-		d = (double)ticks/MS2TS;
-	} else if(ticks > MS2TS/1000) {
-		fmt = "%.2f %s";
+	else if(magnitude >= 0.001){
 		unit = "us";
-		d = ((double)ticks*1000)/MS2TS;
-	} else {
-		fmt = "%.2f %s";
+		value *= 1000.0;
+	}else{
 		unit = "ns";
-		d = ((double)ticks*1000*1000)/MS2TS;
+		value *= 1000000.0;
 	}
-	sprint(b[n], fmt, d, unit);
-	return b[n];
+	snprint(out, sizeof(b[0]), "%.2f %s", value, unit);
+	return out;
 }
 
-/*
- * ticks to microseconds
- */
+
+/* Uncalibrated measurements have no time-unit conversion. */
 static double
 ts2us(vlong ticks)
 {
-	return ((double)ticks*1000)/MS2TS;
+	if(MS2TS <= 0)
+		return 0.0;
+	return ((double)ticks/(double)MS2TS)*1000.0;
 }
 
-/*
- * microseconds timestamp
- */
+
+/* Reset the origin even before calibration, then return bounded elapsed microseconds. */
 static vlong
 bus(int reset)
 {
 	vlong now;
-	if(US2TS == 0)
-		return 0;
-	if(reset) {
-		bench.tickstart = archrdtsc();
+
+	now = archrdtsc();
+	if(reset){
+		bench.tickstart = now;
 		return 0;
 	}
-	now = archrdtsc();
-	return ((now-bench.tickstart))/US2TS;
+	return tickmicro(tickspan(now, bench.tickstart));
 }
 
-// Base
+
+/* Measure the timer-read overhead with a wide accumulator and explicit low-word wrap. */
 static long
 base(int report, void *va, long n, ulong offset)
 {
-	int tot, i, lim, low, max, pl;
-	ulong t;
+	uvlong tot;
+	u32int t, low, max;
+	int i, lim, pl;
 	char *bm;
 
 	if(report)
@@ -197,17 +268,14 @@ base(int report, void *va, long n, ulong offset)
 	clear();
 	setpri(PriRealtime);
 	lim = 1000;
-	low = 64000000;
+	low = ~0U;
 	max = 0;
 	tot = 0;
-	for(i=0; i<lim; i++){
-		do {
-			pl = splhi();
-			t = archrdtsc32();
-			// do nothing
-			t = archrdtsc32() - t;
-			splx(pl);
-		} while(t < 0);
+	for(i = 0; i < lim; i++){
+		pl = splhi();
+		t = (u32int)archrdtsc32();
+		t = (u32int)archrdtsc32()-t;
+		splx(pl);
 		if(t < low)
 			low = t;
 		if(t > max)
@@ -215,7 +283,7 @@ base(int report, void *va, long n, ulong offset)
 		tot += t;
 	}
 	bm = ts2str(tot/lim);
-	log("%d %lud %lud %lud %lud (%s)\n", up->pid, lim, tot, low, max, bm);
+	log("%d %d %llud %ud %ud (%s)\n", up->pid, lim, tot, low, max, bm);
 	setpri(PriNormal);
 	return n;
 }
@@ -250,11 +318,14 @@ timev(void *a)
 	return *(int*)a;
 }
 
+
+/* Measure every selected operation once, keeping the total wider than a low-word sample. */
 static void
 timeop0(void *ap)
 {
-	int tot, i, lim, low, max;
-	ulong t;
+	uvlong tot;
+	u32int t, low, max;
+	int i, lim;
 	Psync *ps;
 	char *bm;
 
@@ -264,15 +335,13 @@ timeop0(void *ap)
 	sleep(&ps->r, timev, &ps->flag);
 	rlock(&sync);
 	lim = 1000;
-	low = 64000000;
+	low = ~0U;
 	max = 0;
 	tot = 0;
-	for(i=0; i<lim; i++){
-		do{
-			t = archrdtsc32();
-			(*bench.op)();
-			t = archrdtsc32() - t;
-		}while(t < 0);
+	for(i = 0; i < lim; i++){
+		t = (u32int)archrdtsc32();
+		(*bench.op)();
+		t = (u32int)archrdtsc32()-t;
 		if(t < low)
 			low = t;
 		if(t > max)
@@ -280,7 +349,7 @@ timeop0(void *ap)
 		tot += t;
 	}
 	bm = ts2str(tot/lim);
-	log("%d %lud %lud %lud %lud (%s)\n", up->pid, lim, tot, low, max, bm);
+	log("%d %d %llud %ud %ud (%s)\n", up->pid, lim, tot, low, max, bm);
 	runlock(&sync);
 	pexit("", 0);
 }
@@ -426,12 +495,12 @@ intrtime(int report, void *va, long n, ulong offset)
 
 /* DIS operation timing */
 
-typedef struct  {
-	vlong	n;		/* count */
-	vlong	min;
-	vlong 	max;
-	vlong	sum;
-	vlong	sumsq;	/* sum of squares */
+typedef struct {
+	vlong n; // Number of accepted samples, bounded before increment or merge.
+	vlong min, max; // Exact minimum and maximum observed tick counts.
+	vlong origin; // Exact first sample; centering retains small spreads near huge timestamps.
+	double mean; // Mean offset from origin, avoiding overflowing integer sums.
+	double m2; // Sum of squared deviations from the mean, not raw squared samples.
 } Stat;
 
 enum
@@ -441,41 +510,96 @@ enum
 };
 
 
-/* Accumulate one sample with the existing timing representation. */
+/* Form a signed difference as a magnitude before floating conversion, including opposite signs. */
+static double
+statoffset(vlong value, vlong origin)
+{
+	if(value >= origin)
+		return (double)((uvlong)value-(uvlong)origin);
+	return -(double)((uvlong)origin-(uvlong)value);
+}
+
+
+/* Welford accumulation avoids signed squares and cancellation in near-constant samples. */
 static void
 stat(int op, Stat *c, vlong val)
 {
-	switch(op) {
-	case	Reset:
-		c->n = 0;
-		c->sum = 0;
-		c->sumsq = 0;
-		c->min = 0;
-		c->max = 0;
-		break;
-	case Inc:
-		c->n++;
-		c->sum += val;
-		c->sumsq += val*val;
-		break;
+	double delta, value;
+	ulong control, status;
+
+	if(op == Reset){
+		memset(c, 0, sizeof(*c));
+		return;
 	}
-	if(val < c->min || c->n == 1)
+	if(op != Inc || c->n == 0x7fffffffffffffffLL)
+		return;
+	if(c->n == 0){
+		c->n = 1;
+		c->min = c->max = c->origin = val;
+		c->mean = c->m2 = 0.0;
+		return;
+	}
+	/* Sampling must not change the measured VM's rounding, traps or sticky flags. */
+	control = FPcontrol(RND_NR, RND_MASK|INVAL|ZDIV|OVFL|UNFL|INEX);
+	status = FPstatus(0, INVAL|ZDIV|OVFL|UNFL|INEX);
+	value = statoffset(val, c->origin);
+	delta = value-c->mean;
+	c->n++;
+	c->mean += delta/(double)c->n;
+	c->m2 += delta*(value-c->mean);
+	FPstatus(status, INVAL|ZDIV|OVFL|UNFL|INEX);
+	FPcontrol(control, RND_MASK|INVAL|ZDIV|OVFL|UNFL|INEX);
+	if(val < c->min)
 		c->min = val;
-	if(val > c->max || c->n == 1)
+	if(val > c->max)
 		c->max = val;
 }
 
+
+/* Merge independent centered populations without overflowing count or integer sums. */
 static void
 statinc(Stat *d, Stat *s)
 {
-	d->n += s->n;
-	d->sum += s->sum;
-	d->sumsq += s->sumsq;
-	if(s->min < d->min || d->n == s->n)
-		d->min = s->min;
-	if(s->max > d->max || d->n == s->n)
-		d->max = s->max;
+	Stat source;
+	vlong count;
+	double delta, fraction;
+
+	source = *s;
+	if(source.n <= 0 || d->n > 0x7fffffffffffffffLL-source.n)
+		return;
+	if(d->n == 0){
+		*d = source;
+		return;
+	}
+	count = d->n+source.n;
+	delta = statoffset(source.origin, d->origin)+source.mean-d->mean;
+	fraction = (double)source.n/(double)count;
+	d->m2 += source.m2+delta*delta*((double)d->n*fraction);
+	d->mean += delta*fraction;
+	d->n = count;
+	if(source.min < d->min)
+		d->min = source.min;
+	if(source.max > d->max)
+		d->max = source.max;
 }
+
+
+/* Bound conversion at the signed limit where double rounds INT64_MAX up to 2^63. */
+static vlong
+statmean(Stat *s)
+{
+	double value;
+
+	if(s->n <= 0)
+		return 0;
+	value = (double)s->origin+s->mean;
+	if(value >= 9223372036854775808.0)
+		return s->max;
+	if(value <= -9223372036854775808.0)
+		return s->min;
+	return (vlong)value;
+}
+
 
 enum
 {
@@ -629,7 +753,7 @@ bxec(Prog *p)
 					is->op = fetched.op;
 					is->pc = pc;
 				}
-				stat(Inc, &is->t, t-t0);
+				stat(Inc, &is->t, tickspan(t, t0));
 			}
 		}
 		if(fetched.op == ISPAWN || fetched.op == IMSPAWN){
@@ -680,7 +804,7 @@ dopostcomp(vlong t)
 	if(C.op == Nop){
 		vlong base;
 
-		base = C.t-C.t0;
+		base = tickspan(C.t, C.t0);
 		if(C.base == 0 || base < C.base)
 			C.base = base;
 	}
@@ -689,7 +813,7 @@ dopostcomp(vlong t)
 			is->op = C.op;
 			is->pc = C.pc;
 		}
-		stat(Inc, &is->t, C.t-C.t0);
+		stat(Inc, &is->t, tickspan(C.t, C.t0));
 	}
 }
 
@@ -748,17 +872,18 @@ precomp(void)
 	C.t0 = archrdtsc();
 }
 
-/* standard deviation */
+
+/* Population deviation is zero for empty or constant data; bound the final conversion. */
 static vlong
 sdev(Stat *s)
 {
 	extern double sqrt(double);
-	vlong var;
-	var = s->sum;
-	var *= var/s->n;
-	var = (s->sumsq - var)/s->n;
-	return (vlong)sqrt(var);
+
+	if(s->n <= 0 || !(s->m2 > 0.0))
+		return 0;
+	return tickint(sqrt(s->m2/(double)s->n));
 }
+
 
 /*
  * Use the sequence:
@@ -798,7 +923,7 @@ distime(int report, void *va, long n, ulong offset)
 			ep = mp->inst + mp->ninst;
 			for(ip=mp->inst; ip<ep; ip++)
 				if(ip->count > 0) {
-					char *mean = ts2str(ip->t.sum/ip->count);
+					char *mean = ts2str(statmean(&ip->t));
 					char *min = ts2str(ip->t.min);
 					char *max = ts2str(ip->t.max);
 					char *std = ts2str(sdev(&ip->t));
@@ -824,7 +949,7 @@ distime(int report, void *va, long n, ulong offset)
 			char *max = "0.00 ms";
 			char *std = "0.00 ms";
 			if(t->n > 0) {
-				mean = ts2str(t->sum/t->n);
+				mean = ts2str(statmean(t));
 				min = ts2str(t->min);
 				max = ts2str(t->max);
 				std = ts2str(sdev(t));
@@ -863,8 +988,11 @@ idlegc(void *p)
 		t0 = archrdtsc();
 		rungc(head);
 		t1 = archrdtsc();
-		t1 -= t0;
-		tot += t1;
+		t1 = tickspan(t1, t0);
+		if(tot > 0x7fffffffffffffffLL-t1)
+			tot = 0x7fffffffffffffffLL;
+		else
+			tot += t1;
 //		log(" %.2f",  ts2us(t1));
 	}
 	log(" %.2f",  ts2us(tot));
@@ -903,7 +1031,7 @@ gctime(int report, void *va, long n, ulong offset)
 			t0 = archrdtsc();
 			rungc(head);
 			t1 = archrdtsc();
-			log(" %.2f",  ts2us(t1-t0));
+			log(" %.2f",  ts2us(tickspan(t1, t0)));
 			release();
 			acquire();
 		}
@@ -919,7 +1047,7 @@ gctime(int report, void *va, long n, ulong offset)
 			release();
 			acquire();
 			t1 = archrdtsc();
-			log(" %.2f",  ts2us(t1-t0));
+			log(" %.2f",  ts2us(tickspan(t1, t0)));
 		}
 		log("\n");
 	}
@@ -938,7 +1066,7 @@ ms2ts(int report, void *va, long n, ulong offset)
 {
 	if(report)
 		return rep(va, n, offset);
-	log("%.ld\n", MS2TS);
+	log("%lld\n", MS2TS);
 	return n;
 }
 
@@ -1120,7 +1248,9 @@ benchclose(Chan*)
 {
 }
 
-static long	 
+
+/* Honor read offsets and expose a bounded zero value until timer calibration is available. */
+static long
 benchread(Chan *c, void *buf, long n, vlong offset)
 {
 	vlong us;
@@ -1134,10 +1264,9 @@ benchread(Chan *c, void *buf, long n, vlong offset)
 		return Test[bench.test](1, buf, n, offset);
 
 	case Benchusqid:
-		us = archrdtsc();
-		us /= US2TS;
-		snprint(tmp, sizeof(tmp), "%.lld", us);
-		return readstr(0, buf, n, tmp);
+		us = tickmicro((uvlong)archrdtsc());
+		snprint(tmp, sizeof(tmp), "%lld", us);
+		return readstr(offset, buf, n, tmp);
 	default:
 		n = 0;
 		break;

@@ -39,7 +39,7 @@ static int blockedmode, childmissing, budgetmode, requestedbudget, resetmode, sw
 static int qcount; // Number of queued debugger notifications.
 static char queued[16][ERRMAX+10], reply[ERRMAX+10]; // Captured protocol text.
 static Record *active; // Current coverage record, replaced by reset callbacks.
-static ulong clockticks; // Deterministic native timing source.
+static uvlong clockticks; // Deterministic native timing source.
 static void *owned[128]; // Private timing/profile allocations owned by the fixture.
 static int reenter, reentered; // Reentrant allocator callback boundary.
 static int live, fail_after = -1, allocations; // Allocation ownership and failure-injection boundary.
@@ -172,8 +172,11 @@ mlook(Module *m PROFILE_ARGS)
 static vlong
 archrdtsc(void)
 {
+	vlong value;
+
 	clockticks += 10;
-	return clockticks;
+	memmove(&value, &clockticks, sizeof(value));
+	return value;
 }
 
 
@@ -718,6 +721,39 @@ compiledhooks(void)
 }
 
 
+/* Counter sign-bit and full-width rollover must produce the same small C/native sample. */
+static void
+timerwrap(int native)
+{
+	uvlong starts[] = { 0, 0x7fffffffffffffffULL-15, ~0ULL-15 };
+	ulong pc, op;
+	Mstat *record;
+	int i;
+
+	pc = 0;
+	op = IADDW;
+	for(i = 0; i < nelem(starts); i++){
+		prepare(IRUNT, 1, 0);
+		clockticks = starts[i];
+		if(native){
+			R = process.R;
+			R.m = &pc;
+			R.s = &op;
+			C.timing = 1;
+			/* precomp has an initial clock read before the measured origin. */
+			clockticks -= 10;
+			precomp();
+			postcomp();
+		}else
+			EXECUTE(&process);
+		record = vmstat.list;
+		check(record != nil && record->inst[0].count == 1);
+		check(record->inst[0].t.n == 1 && record->inst[0].t.min == 10 && record->inst[0].t.max == 10);
+		cleanup();
+	}
+}
+
+
 /* Resolve every real metadata key and keep missing/inactive opcode diagnostics bounded. */
 static void
 names(void)
@@ -815,6 +851,8 @@ main(void)
 	if(family == nil || !strcmp(family, "lookup")) lookupbounds();
 	if(family == nil || !strcmp(family, "names")) names();
 	if(family == nil || !strcmp(family, "compiled")) compiledhooks();
+	if(family == nil || !strcmp(family, "clock-c")) timerwrap(0);
+	if(family == nil || !strcmp(family, "clock-jit")) timerwrap(1);
 	if(family == nil || !strcmp(family, "reentry")) reentrancy();
 #endif
 	cleanup();

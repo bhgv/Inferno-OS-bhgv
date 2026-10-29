@@ -1,5 +1,9 @@
 # Shared checked fetch for instrumented executors
 
+Subsequent [benchmark numeric checks](README.bench-numeric.md) replace the legacy
+statistical arithmetic and add C/native-hook timer boundary matrices. Counts
+below describe the original shared-fetch checkpoint.
+
 The normal `xec`, emu/os debugger and coverage executors, and OS benchmark now
 share `include/vmfetch.h`. It checks the process, quantum, module/program span,
 relative PC, opcode and callback entries before use. Opcode/addressing identity

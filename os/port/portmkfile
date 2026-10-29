@@ -121,6 +121,9 @@ INTERP=$ROOT/include/interp.h
 # Checked bytecode fetch is shared by instrumented VM device executors.
 devprof.$O devprog.$O devbench.$O: $ROOT/include/vmfetch.h $ROOT/include/raise.h $ROOT/include/isa.h
 
+# Benchmark accumulation uses the public floating control/status masks.
+devbench.$O: $ROOT/include/mathi.h
+
 alloc.$O:	$INTERP
 devdbg.$O:	$INTERP
 
