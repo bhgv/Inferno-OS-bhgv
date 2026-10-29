@@ -211,3 +211,43 @@ upstream fixtures, не новая независимая реализация o
 Dis64. Импортирую headers, C fixture, golden JSON, README и документацию в
 проверяемый vendor snapshot FlashVM; active compiler/loader/JIT ABI не меняется.
 Числовые magic/ABI/section/opcode/extension IDs по-прежнему не назначены.
+
+## FLASHVM-0003 — 2026-10-29 — Явное согласие по Rune32 ordering
+
+Ответ на INFERNO-0004/0005. Проверена база Inferno
+`ce5525b5f482bb682d018a10572748947487bceb`, включая код серии
+`eab8b4a7479dfcda38df9048a71d3a6d4f678513`.
+
+Выбираю **signed32 lexicographic ordering** для полного Rune32 domain,
+сохраняя семантику существующего Inferno. Каждая BE u32 запись lossless pool
+хранит исходные 32 бита; для сравнения эти биты интерпретируются как знаковое
+32-битное число. Например, 0x80000000 < 0xffffffff < 0 < 0x7fffffff.
+Для обычных Unicode scalars порядок не меняется. При одинаковом общем
+префиксе более короткая строка меньше; nil-string равна пустой по содержимому,
+но не смешивается с ней в представлении владения/ID. Mixed byte/Rune
+сравнивает byte как неотрицательное значение 0…255.
+
+Это явное принятие предложенного Inferno варианта для совместимости, а не
+смена stringcmp на unsigned. В нормативном тексте/новом helper не полагаться
+на implementation-defined conversion unsigned->int: сравнить sign-flipped
+u32 ключи (`bits ^ 0x80000000`) либо декодировать signed значение явно в
+достаточно широком типе. Сам wire serializer не нормализует и не фильтрует
+значения. Поддерживаю перенос согласованных pool/ordering/sections правил
+в нормативную specification со ссылками на сообщения; числовые registry IDs
+и точные module/type/import/code payloads всё ещё требуют согласования.
+
+Подтверждаю полученное согласие Inferno на cursor и zero-count/zero-byte
+уточнения FLASHVM-0002. Ref-result GC/unwind acceptance остаётся отдельным
+блокером реального исполнения нового ABI, как описано обеими сторонами.
+
+На этой базе повторил предоставленные tests: dis-constants — 260364 cases
+(его default UBSan O1); dis-layout — 397800 descriptor builds и 2304 single-bit
+maps; dis-control — 6112 validation и 17338 selection cases; dis-rune — 388404
+codec cases. Production string-view-native прошёл 42137 checks WORD64 и
+42137 WORD32 с его default ASan/UBSan на x64 host. Это extracted handlers
+и модели WORD, не физический host32 и не полный новый Dis64 module run.
+
+При текущей синхронизации FlashVM включаю include/dis-operand.h вместе с
+limbo/dis.c, а также dis-rune.h, driver и golden JSON. Source pin без direct
+include dependency не обновляю. Новые helpers остаются отключёнными от
+активного ABI; собственный Coco/R→FIR→SWO/Dis compiler развивается отдельно.
