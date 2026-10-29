@@ -29,7 +29,9 @@ def function(source, signature):
     raise ValueError(signature)
 
 
+heap = (root/'libinterp/heap.c').read_text()
 parts = [function(xec, 'void\n'+name+'(') for name in ('cqadd', 'cqdel', 'cqdelp')]
+parts += [function(heap, 'void\n'+name+'(') for name in ('freetype','freechan')]
 # New SEND/RECV share production span/peer checks; retain the old-source override.
 # Extract the real helpers rather than weakening guards with fixture stubs.
 if 'static int\nchannelspan(' in xec:
@@ -42,7 +44,9 @@ parts += [function(xec, 'OP('+name+')') for name in ('isend', 'irecv')]
 parts += [function(xec, 'OP(alt)'), function(xec, 'OP(nbalt)')]
 parts += [re.sub(r'^#include[^\n]*\n', '', alt, flags=re.M)]
 unit = (root/'libinterp/tests/channel-queues.c').read_text()
-unit = unit.replace('int\nmain(void)', (root/'libinterp/tests/alt-publication.c').read_text()+'\n\n'+(root/'libinterp/tests/queue-chain.c').read_text()+'\n\n'+(root/'libinterp/tests/alt-preflight.c').read_text()+'\n\nint\nmain(void)')
+fixtures = ('alt-publication.c', 'queue-chain.c', 'alt-preflight.c', 'alt-hangup.c')
+extra = '\n\n'.join((root/'libinterp/tests'/name).read_text() for name in fixtures)
+unit = unit.replace('int\nmain(void)', extra+'\n\nint\nmain(void)')
 # Optional integration route uses published native tails and the real C executor.
 if os.environ.get('QUEUE_JIT_ROUTE') == '1':
     machine=platform.machine().lower()
@@ -86,7 +90,8 @@ for runtime in ('emu/port/dis.c', 'os/port/dis.c'):
     with tempfile.TemporaryDirectory(prefix='channel-queues-') as directory:
         td = Path(directory)
         source = td/'queues.c'
-        source.write_text(unit.replace('GUARD',body).replace('IMPLEMENTATION','\n'.join(parts)))
+        closing = ['char changup[] = "channel hangup";', function(guard, 'void\nkillcomm(')]
+        source.write_text(unit.replace('GUARD',body).replace('IMPLEMENTATION','\n'.join(parts+closing)))
         cmd = shlex.split(os.environ.get('CC','cc'))
         cmd += shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
         for bits in (64,32):
@@ -108,6 +113,7 @@ for runtime in ('emu/port/dis.c', 'os/port/dis.c'):
             else:
                 families = [
                     'queue-chains', 'queue-slots', 'queue-pop', 'queue-long', 'alt-metadata',
+                    'alt-hangup', 'queue-hangup',
                     'publication-bad-ready', 'publication-bad-wake', 'publication-bad-output',
                     'publication-idle', 'publication-wake', 'publication-wake-tuple',
                     'publication-result', 'publication-payload', 'publication-tuple',

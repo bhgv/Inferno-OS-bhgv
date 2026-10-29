@@ -639,3 +639,6 @@ and supports empty/larger byte-backed reuse. See
 
 See [ALT metadata preflight](README.alt-preflight.md) for validation before the
 first registration, malformed later-guard regressions and direct/JIT C-tail checks.
+
+See [channel finalization and blocked ALT](README.alt-hangup.md) for drained-queue
+cancellation, actual emu/os killcomm integration and duplicate/multi-process checks.

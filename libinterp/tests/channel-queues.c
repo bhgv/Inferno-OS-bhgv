@@ -22,6 +22,8 @@ channelpredicate(int condition, int line)
 
 static Proc worker;
 static Prog current, others[3];
+static Prog *queuerunning = &current; // Select the modeled process entering actual ALT or its JIT tail.
+static int hangupwatch, hangupinterrupts; // Check one wakeup per blocked process and count native interrupts.
 static char *last_error;
 static int fail_after = -1, live, removed, awakened, checks;
 static uvlong nodeattempts; // Observe registration allocation attempts, including injected failures.
@@ -75,10 +77,50 @@ nodefree(void *p)
 }
 
 
-/* Model only runnable-list transitions, leaving queue logic in production code. */
-Prog *currun(void) { return &current; }
-Prog *delrun(int state) { removed++; current.state = state; return &current; }
-void addrun(Prog *p) { awakened++; p->state = Pready; }
+/* Return the modeled interpreter process selected by each entry test. */
+Prog*
+currun(void)
+{
+	return queuerunning;
+}
+
+
+/* Record blocking without implementing the host scheduler's runnable list. */
+Prog*
+delrun(int state)
+{
+	removed++;
+	queuerunning->state = state;
+	return queuerunning;
+}
+
+
+/* A channel hangup must never schedule an already awakened process twice. */
+void
+addrun(Prog *p)
+{
+	if(hangupwatch)
+		channelcheck(p->state != Pready);
+	awakened++;
+	p->state = Pready;
+}
+
+
+/* Observe the native-thread interrupt branch without modeling host process locks. */
+static void
+swiprog(Prog *p)
+{
+	channelcheck(p->state == Prelease);
+	hangupinterrupts++;
+}
+
+
+/* Finalization identifies this mover but must never execute a payload copy. */
+void
+movtmp(void)
+{
+	channelcheck(0);
+}
 int print(char *fmt, ...) { (void)fmt; channelcheck(0); return 0; }
 static int cputb(Channel *c, void *v) { (void)c; (void)v; channelcheck(0); return 0; }
 static int cgetb(Channel *c, void *v) { (void)c; (void)v; channelcheck(0); return 0; }
@@ -587,6 +629,8 @@ main(void)
 	char *publication;
 
 	publication = getenv("QUEUE_CASE");
+	if(publication == nil || !strcmp(publication, "alt-hangup")) checkalthangup();
+	if(publication == nil || !strcmp(publication, "queue-hangup")) checkqueuehangup();
 	if(publication == nil || !strcmp(publication, "alt-metadata")) checkaltmetadata();
 	if(publication == nil || !strcmp(publication, "queue-chains")) checkqueuechains();
 	if(publication == nil || !strcmp(publication, "queue-slots")) checkqueueslots();

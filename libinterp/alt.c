@@ -183,7 +183,7 @@ struct AltSelection
 };
 
 
-/* Remove array registrations while staging the selected tuple until all guards are cancelled. */
+/* Cancel array registrations, including a queue already drained by channel finalization. */
 static void
 altunmark(Channel *c, void *ptr, Prog *p, int sr, Channel **sel, int dn, AltSelection *selected)
 {
@@ -197,7 +197,7 @@ altunmark(Channel *c, void *ptr, Prog *p, int sr, Channel **sel, int dn, AltSele
 	ca = (Channel**)a->data;
 	for(n = 0; n < a->len; n++){
 		memmove(&c, (uchar*)ca+n*sizeof(c), sizeof(c));
-		if(c != H && c != nil && c->recv->prog)
+		if(c != H && c != nil && c->recv != nil && c->recv->prog)
 			cqdelp(&c->recv, p);
 		if(sr == 1 && c != nil && c != H && *sel == c){
 			selected->array = 1;
@@ -296,7 +296,7 @@ altrdy(Alt *a, Prog *p)
 }
 
 
-/* Cancel every registration before publishing a wakeup that can overwrite guard metadata. */
+/* Cancel surviving registrations before publication; killcomm may have drained one queue. */
 void
 altdone(Alt *a, Prog *p, Channel *sel, int sr)
 {
@@ -321,7 +321,7 @@ altdone(Alt *a, Prog *p, Channel *sel, int sr)
 	while(ac < eac) {
 		memmove(&c, (uchar*)ac+offsetof(Altc, c), sizeof(c));
 		if(c != H && c != nil) {
-			if(c->send->prog)
+			if(c->send != nil && c->send->prog)
 				cqdelp(&c->send, p);
 			if(sr == 0 && c == sel) {
 				memmove(&selected.payload, (uchar*)ac+offsetof(Altc, ptr), sizeof(selected.payload));
