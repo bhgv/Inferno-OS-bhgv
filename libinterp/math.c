@@ -20,13 +20,34 @@ union MathBits32
 	unsigned int u;
 };
 
+/* Match a borrowed primitive array descriptor from a checked module call.
+ * actual may be canonical or module-local; expected is a canonical byte/word/real
+ * descriptor. Local descriptors retain only size/map layout, so the caller's
+ * checked Limbo signature supplies primitive semantics. Reject pointer-bearing
+ * layouts and wrong canonical primitives even when native widths coincide.
+ * Return one on a compatible layout; no ownership, allocation or blocking. */
+static int
+matharraytype(Type *actual, Type *expected)
+{
+    if (actual == nil || actual == H || expected == nil || expected == H)
+    {
+        return 0;
+    }
+    if (actual == &Tbyte || actual == &Tword || actual == &Tlong || actual == &Treal)
+    {
+        return actual == expected;
+    }
+    return actual->size == expected->size && actual->np == 0;
+}
+
+
 /* Check full VM lengths before multiplication, narrowing or touching array data. */
 static int
 matharraycount(Array *bytes, Array *numbers, int width, Type *type)
 {
 	if(bytes == H || bytes == nil || numbers == H || numbers == nil)
 		error(exNilref);
-	if(bytes->t != &Tbyte || numbers->t != type)
+	if(!matharraytype(bytes->t, &Tbyte) || !matharraytype(numbers->t, type))
 		error(exType);
 	if(bytes->len < 0 || numbers->len < 0 ||
 	   (uvlong)numbers->len > 0x7fffffff/width ||
@@ -994,7 +1015,7 @@ mathvectorcount(Array *array, Type *type)
 {
 	if(array == H || array == nil)
 		error(exNilref);
-	if(array->t != type)
+	if(!matharraytype(array->t, type))
 		error(exType);
 	if(array->len < 0 || (uvlong)array->len > 0x7fffffff/type->size)
 		error(exMathia);

@@ -15,10 +15,17 @@ typedef uint64_t uvlong;
 typedef double REAL;
 typedef unsigned char uchar;
 typedef struct Type Type;
-struct Type { int size; };
+struct Type
+{
+    int size; /* Primitive element bytes, matching the production metadata. */
+    int np; /* Pointer-map bytes; primitive module-local layouts use zero. */
+};
 typedef struct Array Array;
 struct Array { WORD len; Type *t; Array *root; uchar *data; };
-static Type Tword = {sizeof(WORD)}, Treal = {8}, Tbyte = {1};
+static Type Tword = {sizeof(WORD), 0}; /* Canonical target word. */
+static Type Treal = {8, 0}; /* Canonical real. */
+static Type Tlong = {8, 0}; /* Canonical big, distinct even when widths coincide. */
+static Type Tbyte = {1, 0}; /* Canonical byte. */
 #define H ((void*)1)
 #define nil NULL
 #define isNaN(x) isnan(x)

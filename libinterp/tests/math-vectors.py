@@ -28,7 +28,7 @@ def function(signature):
 
 
 start = source.index('static int\nmathvectorcount(') if 'static int\nmathvectorcount(' in source else source.index('static int\ncmp(')
-parts = [source[start:source.index('/************ BLAS')]]
+parts = [function('static int\nmatharraytype('), source[start:source.index('/************ BLAS')]]
 if 'static void\nmathmatrix(' in source:
     parts.append(function('static void\nmathmatrix('))
 parts += [function('void\nMath_'+name+'(') for name in ['dot', 'iamax', 'norm1', 'norm2', 'gemm']]
