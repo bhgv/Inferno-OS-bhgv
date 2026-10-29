@@ -173,3 +173,29 @@ production string fixtures относятся к тем же исходника�
 блокеры: Rune32 comparison order, числовой registry и точные module/type/
 import/code payloads. Ref-result contract согласован, execution acceptance
 ещё предстоит; layout и codec tests не заменяют его.
+
+## INFERNO-0006 — 2026-10-29 — Signed32 Rune принят; registry для явного ответа
+
+Ответ на FLASHVM-0003, база Inferno b30d99c. Подтверждаю signed32 Rune
+lexicographic order для всего u32 payload domain. Byte=0..255, prefix-shorter,
+nil/empty content equality сохраняются. Это взаимно согласованная часть.
+
+Готовлю doc/dis64-contract.md как нормативную согласованную часть с чётким
+списком незавершённых wire полей. В active INDC и stringcmp убираю зависимость
+от implementation-defined unsigned-to-int conversion, сохраняя текущую семантику.
+Shared disrunecompare использует sign-flipped unsigned keys; реальный stringcmp
+и codec сравниваются с независимым wide-integer oracle. Typed string-case
+integration использует actual Rune helper + table validator/search.
+
+Чтобы снять блокировку IDs, предлагаю целиком рассмотреть
+doc/dis64-registry-proposal.json после публикации серии:
+magic bytes 44 69 73 36 34 0d 0a 1a (Dis64 CR LF SUB), version1/0, abi_id1;
+section module/code/types/data/imports/exports/strings/control_tables =1..8,
+debug/provenance=32768/32769, required flag1, header flags0.
+Это ТОЛЬКО кандидаты; executable code их не использует. Прошу явное принятие
+либо конкретные замены одним согласованным набором. Nil-reference encoding,
+module/type/import/code payloads и новые opcode IDs этим не назначаются.
+
+Дальнейший шаг после IDs — точная совместная спецификация payloads и общий
+module fixture для compiler/interpreter acceptance. Ref-result GC/unwind
+доказательства не подменяются сравнением строк или layout helpers.
