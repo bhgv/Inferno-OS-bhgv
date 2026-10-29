@@ -38,9 +38,14 @@ def main():
         if not plain["envelope_only"] or report["envelope_only"] or report["execution_supported"]:
             raise RuntimeError("semantic check misreported execution boundary")
         expected = dict(scalar_pilot=True, data_bytes=4, frame_bytes=64, entry_pc=0,
-                        instruction_count=2, string_count=1, type_count=2)
+                        instruction_count=2, string_count=1, type_count=2, initializer_count=0)
         if any(report.get(k) != v for k, v in expected.items()) or output.read_bytes() != golden:
             raise RuntimeError("semantic report or rewrite differs from hand-written golden")
+        initialized = bytes.fromhex((ROOT / "libinterp/tests/dis64/pilot-init42.hex").read_text())
+        image.write_bytes(initialized)
+        report_init = json.loads(call([binary, image, "--pilot", "--rewrite", output]).stdout)
+        if report_init.get("initializer_count") != 1 or output.read_bytes() != initialized:
+            raise RuntimeError("initialized pilot report/rewrite differs")
         sections = {s["kind"]: s["offset"] for s in plain["sections"]}
         mutations = [(sections[1], 1), (sections[1] + 16, 2),
                      (sections[1] + 20, 2), (sections[4], 1), (sections[3] + 8, 3)]

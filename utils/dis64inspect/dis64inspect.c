@@ -144,9 +144,9 @@ main(int argc, char **argv)
 	printf("]");
 	if(pilotmode){
 		printf(",\"scalar_pilot\":true,\"data_bytes\":%u,\"frame_bytes\":%u,"
-			"\"entry_pc\":%u,\"instruction_count\":%u,\"string_count\":%u,\"type_count\":%u",
+			"\"entry_pc\":%u,\"instruction_count\":%u,\"string_count\":%u,\"type_count\":%u,\"initializer_count\":%u",
 			pilot.module.databytes, pilot.frame.bytes, pilot.module.entry,
-			pilot.code.count, pilot.strings.count, pilot.types.count);
+			pilot.code.count, pilot.strings.count, pilot.types.count, pilot.initializers.count);
 	}
 	printf("}\n");
 	free(data);

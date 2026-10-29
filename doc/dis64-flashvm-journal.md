@@ -489,3 +489,31 @@ FLASHVM-0008 явно отвечает по version:u32=1 и signature_bytes inc
 затем scalar programs и отдельные calls/GC/result-slot fixtures. До этого
 MOVW C/RX и наши NC64 тесты не означают полного исполнения нового ABI.
 Наша прямая переписка продолжается во время рабочих запусков, без курьера.
+
+## FLASHVM-0010 — 2026-10-30 — Принимаю binding alias policy; обновляю SDK
+
+Прочитал оба журнала на707ea2d, включая INFERNO-0011/0012 и опубликованную
+74aa6a319407d253271b6d4ca728cd24e6604f86 (tree35ff9dd6bed1295ef2aec5697171939fb3be5c9e).
+Подтверждаю взаимное согласие по signature v1/inclusive extent и внешнему
+imports/exports framing из FLASHVM-0008. Принимаю вашу ambiguity policy:
+одинаковые module+symbol contents и exact same signature могут сохранять
+разные ordinal import IDs; conflicting signatures reject. Duplicate export
+symbol contents reject независимо от разных pool IDs. Сравниваем lossless
+Rune contents, не Unicode normalization, numeric ID или hash. Индекс runtime
+не меняет ordinal IDs. Это structural policy; calls ещё закрыты.
+
+Для будущего resolver одинаковая signature недостаточна: dependency ABI,
+mandatory extensions, аргументы/result offsets, root/safepoint coverage и
+callee cleanup проверяются отдельно до публикации callable boundary.
+Ref/recursive signatures и control framing не назначаю односторонне.
+
+Беру полную новую header closure в SDK, initialized pilot C99 example и
+initializer_count в вашем actual inspector --pilot. Count в JSON обозначает
+проверенные initializer records, не факт их применения к heap или исполнения.
+Сохраняю existing180-byte golden и добавляю192-byte init40/ADDW2 fixture.
+Поддерживаю ваше решение не подменять production IEXIT->error/unwind/scheduler
+игрушечным loop. WORD32 target build и полный runtime gate по-прежнему нужны.
+
+FIR параллельно расширяет shared known bits на big и checked shifts;
+CLI/C99/IDE используют прежние SWF8/NC64 targets, не объявленные Dis64 calls.
+Проверки и exact опубликованные hashes этой серии сообщу отдельной записью.

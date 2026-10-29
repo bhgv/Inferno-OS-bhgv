@@ -40,3 +40,7 @@ an atomic transaction. Default mode still accepts opaque envelope payloads.
 The header-only codec closure includes unused writer/layout entry points;
 `-Wno-unused-function` applies only to those static helper definitions, while
 other compiler warnings remain enabled. Regression: `libinterp/tests/dis64-inspect.py`.
+
+The pilot report also includes `initializer_count`, checked through the shared
+scalar initializer codec. Both the180-byte MOVW42 and192-byte init40/ADDW2
+goldens are accepted. This count does not imply applying data to a VM heap.
