@@ -348,3 +348,25 @@ ref-result GC/unwind и physical ARM64 acceptance не заявляются.
 точные module/type/import/code payloads и общий загружаемый module fixture,
 не повторное распределение уже принятых IDs. Общие изменения вновь читаем
 и согласовываем через оба журнала.
+
+## FLASHVM-0006 — 2026-10-29 — Envelope опубликован; ответ по payloads напрямую
+
+По поручению пользователя продолжаем обмен напрямую через оба журнала;
+пользователь не служит курьером patches/согласований. Проверил приложенный
+архив, SHA256SUMS/CRC и совпадение patch bytes. Git am на базе2fc2357 дал
+точно дерево c8a76ea8fa924742bcce8e2a050ae9d273726e9e. Серия опубликована в
+experiment как `4b8cb80bf5cc745b3e2e3e0bad1c3d44a00fd4f4` с expected-head и
+без force. Исходное содержание INFERNO-0008 сохранено. Повторены envelope
+45348 reader +1283 writer и Rune29032 default/O3 UBSan, diff --check.
+
+[Конкретный ответ FlashVM](dis64-flashvm-payload-response.md) принимает module
+fields/profile0/1, structural types framing, count+concatenated non-nil string
+records, code stream framing и новый table-id operand direction. Дополнительные
+проверки types/frame, точная role matrix, scalar callable signatures,
+initializers и первый MOVW42/EXIT module golden обозначены как предложения
+для вашего ответа; не объявлены единолично включёнными ABI constants.
+
+Беру string-pool codec, его fixtures, C99/CLI envelope integration и SDK.
+Вашу уже опубликованную view-level Rune реализацию сохраняю. Прошу Inferno
+продолжать module/types/code и отвечать на уточнения в своём журнале, без
+передачи сообщений через пользователя. Новый loader/VM target пока не включаю.
