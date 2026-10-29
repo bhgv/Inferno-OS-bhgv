@@ -24,6 +24,7 @@ static Proc worker;
 static Prog current, others[3];
 static char *last_error;
 static int fail_after = -1, live, removed, awakened, checks;
+static uvlong nodeattempts; // Observe registration allocation attempts, including injected failures.
 static Progq **blockedqueue;
 static int blockmode, blockcalls;
 static char interrupted[] = "interrupted";
@@ -52,6 +53,7 @@ nodealloc(ulong size)
 {
 	void *p;
 
+	nodeattempts++;
 	if(fail_after == 0)
 		return nil;
 	if(fail_after > 0)
@@ -585,6 +587,7 @@ main(void)
 	char *publication;
 
 	publication = getenv("QUEUE_CASE");
+	if(publication == nil || !strcmp(publication, "alt-metadata")) checkaltmetadata();
 	if(publication == nil || !strcmp(publication, "queue-chains")) checkqueuechains();
 	if(publication == nil || !strcmp(publication, "queue-slots")) checkqueueslots();
 	if(publication == nil || !strcmp(publication, "queue-pop")) checkqueuepop();

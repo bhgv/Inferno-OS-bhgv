@@ -3,6 +3,7 @@
 #include "interp.h"
 #include "raise.h"
 #include "kernel.h"
+#include "vmchannel.h"
 
 #define OP(fn)	void fn(void) // Shared C instruction declarations.
 
@@ -62,6 +63,72 @@ altarrayvalid(Array *a)
 		return 0;
 	bytes = (uvlong)a->len*sizeof(Channel*);
 	return (uintptr)a->data <= (uintptr)-1-bytes;
+}
+
+
+/* Identify a channel/array only after its complete native header and heap prefix fit. */
+static int
+altobject(Channel *c)
+{
+	Type *type;
+	uintptr bytes;
+
+	if(c == nil || c == H)
+		error(exNilref);
+	if((uintptr)c <= sizeof(Heap) || (uintptr)c%sizeof(void*) != 0)
+		error(exHeap);
+	bytes = sizeof(Array) < sizeof(Channel) ? sizeof(Array) : sizeof(Channel);
+	if((uintptr)c > (uintptr)-1-bytes)
+		error(exHeap);
+	/* Reading only the preceding Type cell does not require a Channel-sized array. */
+	memmove(&type, (uchar*)c-sizeof(Heap)+offsetof(Heap, t), sizeof(type));
+	bytes = type == &Tarray ? sizeof(Array) : sizeof(Channel);
+	if((uintptr)c > (uintptr)-1-bytes)
+		error(exHeap);
+	return type == &Tarray;
+}
+
+
+/* Validate both chains before registration makes cancellation responsible for this channel. */
+static void
+altchannel(Channel *c, int receive)
+{
+	if(altobject(c))
+		error(exHeap);
+	vmchanready(c, receive);
+	vmchanend(&c->send);
+	vmchanend(&c->recv);
+}
+
+
+/* Check every guard/member before the first allocation or partial ALT registration. */
+static void
+altvalidate(Alt *a, int nsend, int nrecv)
+{
+	Channel *c, *member;
+	Array *array;
+	WORD n;
+	int guard, receive;
+
+	for(guard = 0; guard < nsend+nrecv; guard++){
+		memmove(&c, (uchar*)a+offsetof(Alt, ac)+
+			(uintptr)guard*sizeof(Altc)+offsetof(Altc, c), sizeof(c));
+		receive = guard >= nsend;
+		if(!altobject(c)){
+			altchannel(c, receive);
+			continue;
+		}
+		if(!receive)
+			error(exHeap);
+		array = (Array*)c;
+		if(!altarrayvalid(array))
+			error(exBounds);
+		for(n = 0; n < array->len; n++){
+			memmove(&member, array->data+(uintptr)n*sizeof(member), sizeof(member));
+			if(member != H)
+				altchannel(member, 1);
+		}
+	}
 }
 
 
@@ -471,6 +538,7 @@ xecalt(int block)
 		error(exBounds);
 	result = R.d;
 	altresult(result);
+	altvalidate(a, nsend, nrecv);
 	ready.alt = a;
 	ready.prog = p;
 	ready.registered = 1;

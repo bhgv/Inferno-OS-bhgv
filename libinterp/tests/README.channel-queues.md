@@ -108,3 +108,6 @@ queue times out. Its pure buffered preflight fails the new `BUFFER_BAD=41` case.
 QUEUE_CASES='queue-chains queue-slots queue-pop queue-long' CFLAGS='-O1 -g -DNDEBUG -fsanitize=undefined -fno-sanitize-recover=all' python3 libinterp/tests/channel-queues.py
 QUEUE_JIT_ROUTE=1 QUEUE_CASES='queue-chains queue-slots queue-pop queue-long' python3 libinterp/tests/channel-queues.py
 ```
+
+See [ALT metadata preflight](README.alt-preflight.md) for validation before the
+first registration, malformed later-guard regressions and direct/JIT C-tail checks.

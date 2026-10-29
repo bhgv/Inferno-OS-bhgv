@@ -103,3 +103,6 @@ AMD64; this is neither physical ARM64 validation nor a complete 64-bit VM boot.
 Fresh availability remains 173/173 complete JIT+C operations and 166/173 guarded
 native fast paths on each priority architecture. Tk, security/crypto and
 MIPS/SPARC/PowerPC JIT sources are unchanged.
+
+See [ALT metadata preflight](README.alt-preflight.md) for validation before the
+first registration, malformed later-guard regressions and direct/JIT C-tail checks.

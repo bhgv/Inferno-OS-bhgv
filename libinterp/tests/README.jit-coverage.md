@@ -636,3 +636,6 @@ borrowed descriptor references and all spans before copying, and preserves
 memmove/owner publication order. C additionally checks full Rune source spans
 and supports empty/larger byte-backed reuse. See
 [README.string-bytes-native.md](README.string-bytes-native.md).
+
+See [ALT metadata preflight](README.alt-preflight.md) for validation before the
+first registration, malformed later-guard regressions and direct/JIT C-tail checks.
