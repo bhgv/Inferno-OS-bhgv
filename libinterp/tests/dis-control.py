@@ -33,6 +33,21 @@ int probe(int kind, const unsigned char *data, unsigned int bytes,
     *count = view.count;
     return 1;
 }
+
+
+/* Exercise selection only after the common validation contract has succeeded. */
+int query(int kind, const unsigned char *data, unsigned int bytes,
+    unsigned int instructions, DisControlCompare compare,
+    const unsigned char *key, unsigned int index, unsigned int *target)
+{
+    DisControlView view;
+
+    if(!discontrolcheck(kind, data, bytes, instructions, compare, 0, &view))
+        return 0;
+    if(kind == DisControlGoto)
+        return discontrolgoto(&view, index, target);
+    return discontrolcase(kind, &view, key, compare, 0, target);
+}
 '''
 
 
@@ -94,10 +109,70 @@ def main():
         command += shlex.split(os.environ.get("CFLAGS", "-O2 -g -Wall -Wextra -Werror"))
         command += ["-shared", "-fPIC", "-I" + str(ROOT / "include"), str(source), "-o", str(library)]
         subprocess.run(command, check=True)
-        probe = ctypes.CDLL(str(library)).probe
+        loaded = ctypes.CDLL(str(library))
+        probe = loaded.probe
         probe.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint,
                           callback_type, ctypes.POINTER(ctypes.c_uint)]
         probe.restype = ctypes.c_int
+        query = loaded.query
+        query.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint,
+                          callback_type, ctypes.c_void_p, ctypes.c_uint,
+                          ctypes.POINTER(ctypes.c_uint)]
+        query.restype = ctypes.c_int
+        selections = 0
+        selection_entries = list(fixture["valid"])
+        for kind, width in (("i32", 4), ("big", 8)):
+            for count in range(65):
+                image = count.to_bytes(4, "big")
+                for index in range(count):
+                    lo = (index * 4 - count * 2).to_bytes(width, "big", signed=True)
+                    hi = (index * 4 - count * 2 + 1).to_bytes(width, "big", signed=True)
+                    image += lo + hi + (index % 3).to_bytes(4, "big")
+                image += (3).to_bytes(4, "big")
+                selection_entries.append({"name": kind + "-search-" + str(count),
+                                          "kind": kind, "hex": image.hex(), "queries": count})
+        for entry in selection_entries:
+            payload = bytes.fromhex(entry["hex"])
+            kind = entry["kind"]
+            width = 8 if kind == "big" else 4
+            rowbytes = 4 if kind == "goto" else width * 2 + 4
+            count = int.from_bytes(payload[:4], "big")
+            values = range(len(strings) + 1) if kind == "string" else (
+                -2 ** (width * 8 - 1), -100, -1, 0, 1, 100, 2 ** (width * 8 - 1) - 1)
+            if kind == "goto":
+                values = range(count + 2)
+            if "queries" in entry:
+                values = range(-count * 2 - 2, count * 2 + 3)
+            for value in values:
+                want_ok = not (kind == "string" and value >= len(strings))
+                if kind == "goto":
+                    want_ok = value < count
+                    wanted = int.from_bytes(payload[4 + value * 4:8 + value * 4], "big")
+                else:
+                    wanted = int.from_bytes(payload[-4:], "big")
+                    for row in range(count):
+                        image = payload[4 + row * rowbytes:4 + (row + 1) * rowbytes]
+                        if kind == "string":
+                            lo, hi = (strings[int.from_bytes(image[at:at + 4], "big")]
+                                      for at in (0, 4))
+                            selected = want_ok and lo <= strings[value] <= hi
+                        else:
+                            lo = int.from_bytes(image[:width], "big", signed=True)
+                            hi = int.from_bytes(image[width:width * 2], "big", signed=True)
+                            selected = lo <= value <= hi
+                        if selected:
+                            wanted = int.from_bytes(image[-4:], "big")
+                            break
+                key = (value % (1 << (width * 8))).to_bytes(width, "big")
+                output = ctypes.c_uint(0x12345678)
+                data_storage = ctypes.create_string_buffer(payload)
+                key_storage = ctypes.create_string_buffer(key)
+                ok = query(KINDS[kind], data_storage, len(payload), 4, callback,
+                           key_storage, value if kind == "goto" else 0, ctypes.byref(output))
+                if ok != int(want_ok) or output.value != (wanted if want_ok else 0x12345678):
+                    raise RuntimeError("selection mismatch: " + entry["name"])
+                selections += 1
+
         for validity in ("valid", "invalid"):
             for entry in fixture[validity]:
                 original = bytes.fromhex(entry["hex"])
@@ -126,7 +201,8 @@ def main():
                             raise RuntimeError("wrong row count")
                         cases += 1
     print("PASS Dis64 candidate typed tables:", cases,
-          "golden/truncation/mutation/PC cases; active loader unchanged")
+          "golden/truncation/mutation/PC cases;", selections,
+          "case/goto selections; active loader unchanged")
 
 
 if __name__ == "__main__":

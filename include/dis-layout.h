@@ -183,6 +183,36 @@ disabmap(const DisAbi *abi, unsigned int size, const unsigned char *map, unsigne
 }
 
 
+/* Add repeated reference fields for compiler array/nested descriptors atomically.
+ * Existing map bits are validated first. Zero stride represents the same slot;
+ * callers enumerate nested reference offsets independently of scalar fields. */
+static int
+disabmaprefs(const DisAbi *abi, unsigned int size, unsigned char *map,
+	unsigned int nmap, unsigned int offset, unsigned int stride, unsigned int count)
+{
+	unsigned int i, bit;
+
+	if(!disabmap(abi, size, map, nmap) || offset > size)
+		return 0;
+	if(count == 0)
+		return 1;
+	if(offset%abi->ptrbytes != 0 || size-offset < abi->ptrbytes)
+		return 0;
+	if(count > 1 && (stride%abi->ptrbytes != 0 ||
+	   (stride != 0 && count-1 > (size-offset-abi->ptrbytes)/stride)))
+		return 0;
+	if(stride == 0)
+		count = 1;
+	for(i=0; i<count; i++){
+		bit = offset/abi->mapquantum;
+		map[bit/8] |= 0x80U>>(bit%8);
+		if(i+1 < count)
+			offset += stride;
+	}
+	return 1;
+}
+
+
 /* Publish explicit VM offsets; these do not describe SysV, Windows or AAPCS. */
 static int
 disabframes(const DisAbi *abi, DisFrameLayout *frame)

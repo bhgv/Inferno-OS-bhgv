@@ -124,4 +124,71 @@ discontrolcheck(int kind, const unsigned char *data, unsigned int bytes,
 	*result = view;
 	return 1;
 }
+
+/* Select a case target from an immutable view already accepted by check.
+ * A key is BE i32/i64 or a resolved string ID; no native PC is produced. */
+static int
+discontrolcase(int kind, const DisControlView *view, const unsigned char *key,
+	DisControlCompare compare, void *context, unsigned int *target)
+{
+	unsigned int first, limit, middle, width, rowbytes, selected, id;
+	const unsigned char *row;
+	int order;
+
+	if(view == 0 || key == 0 || target == 0)
+		return 0;
+	width = kind == DisControlBig ? 8 : 4;
+	rowbytes = 2*width+4;
+	if((kind != DisControlI32 && kind != DisControlBig && kind != DisControlString) ||
+	   view->rowbytes != rowbytes || (view->count != 0 && view->rows == 0))
+		return 0;
+	id = 0;
+	if(kind == DisControlString){
+		id = discontrolu32(key);
+		if(compare == 0 || !compare(context, id, id, &order))
+			return 0;
+	}
+	selected = view->fallback;
+	first = 0;
+	limit = view->count;
+	while(first < limit){
+		middle = first+(limit-first)/2;
+		row = view->rows+middle*rowbytes;
+		if(kind == DisControlString){
+			if(!compare(context, id, discontrolu32(row), &order))
+				return 0;
+		}else
+			order = discontrolsigned(key, row, width);
+		if(order < 0){
+			limit = middle;
+			continue;
+		}
+		if(kind == DisControlString){
+			if(!compare(context, id, discontrolu32(row+width), &order))
+				return 0;
+		}else
+			order = discontrolsigned(key, row+width, width);
+		if(order > 0){
+			first = middle+1;
+			continue;
+		}
+		selected = discontrolu32(row+rowbytes-4);
+		break;
+	}
+	*target = selected;
+	return 1;
+}
+
+
+/* Preserve goto index order; an out-of-range index leaves the target untouched. */
+static int
+discontrolgoto(const DisControlView *view, unsigned int index, unsigned int *target)
+{
+	if(view == 0 || target == 0 || view->rowbytes != 4 || view->rows == 0 ||
+	   index >= view->count)
+		return 0;
+	*target = discontrolu32(view->rows+index*4);
+	return 1;
+}
+
 #endif

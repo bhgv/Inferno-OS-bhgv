@@ -22,5 +22,22 @@ invalid wide negatives. Rejected values must emit no bytes; buffer guards
 must remain intact. Output and fatal-error reporting are injected boundaries.
 LeakSanitizer process inspection alone is disabled in the fixture.
 `DIS_CONSTANT_SOURCE` selects an alternate `dis.c`; pre-fix sources fail the
-range-rejection assertion. This does not run a complete Limbo compilation or
+range-rejection check. This does not run a complete Limbo compilation or
 execute its output in Inferno.
+
+## Shared encoder preparation for Dis64
+
+Both active compiler writers now use `include/dis-operand.h`. It emits the same
+shortest signed30 bytes with unsigned shifts, independent of host signed-shift
+behavior. The helper bounds capacity before any write. `disword` likewise
+serializes the low 32 bits with explicit unsigned shifts and byte masks.
+The classic magic and operand representation remain unchanged.
+
+The fixture now uses always-on `if` predicates, also exercises capacities 0..8,
+NULL output and fixed-width word emission. On LP64 it runs 260,364 checks over
+the same 20,028 values. `native-limbo.py` separately builds and invokes the real
+compiler; helper tests alone do not prove a new ABI runtime.
+
+When importing the updated `limbo/dis.c` into a selected vendor snapshot,
+`include/dis-operand.h` must be imported too. Do not keep the source pin while
+omitting this direct include dependency.

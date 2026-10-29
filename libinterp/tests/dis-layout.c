@@ -42,6 +42,38 @@ maps(DisAbi *abi, unsigned int *cases)
 }
 
 
+/* Construct maps from array geometry and independently mark expected byte slots. */
+static int
+builders(DisAbi *abi, unsigned int *cases)
+{
+	unsigned char map[2], expected[2], saved[2];
+	unsigned int size, bytes, offset, stride, count, i, end;
+	int valid;
+
+	for(size=0; size<=64; size++)
+	for(offset=0; offset<=size+1; offset++)
+	for(stride=0; stride<=17; stride++)
+	for(count=0; count<=4; count++){
+		CHECK(disabmapbytes(abi, size, &bytes));
+		memset(map, 0, sizeof(map));
+		memcpy(saved, map, sizeof(map));
+		memset(expected, 0, sizeof(expected));
+		valid = offset <= size;
+		for(i=0; i<count && valid; i++){
+			end = offset+i*stride;
+			if(end%abi->ptrbytes != 0 || end > size || size-end < abi->ptrbytes)
+				valid = 0;
+			else
+				expected[(end/abi->mapquantum)/8] |= 0x80U>>((end/abi->mapquantum)%8);
+		}
+		CHECK(disabmaprefs(abi, size, map, bytes, offset, stride, count) == valid);
+		CHECK(memcmp(map, valid ? expected : saved, sizeof(map)) == 0);
+		(*cases)++;
+	}
+	return 0;
+}
+
+
 /* Exercise both targets, mixed/nested records, arrays and atomic rejection. */
 int
 main(void)
@@ -49,10 +81,10 @@ main(void)
 	DisAbi abi, bad;
 	DisLayout layout, saved, nested;
 	DisFrameLayout frame;
-	unsigned int p, offset, size, stride, i, cases, bytes;
+	unsigned int p, offset, size, stride, i, cases, bytes, built;
 	unsigned char map;
 
-	cases = 0;
+	cases = built = 0;
 	for(p=4; p<=8; p+=4){
 		CHECK(disabinit(&abi, p));
 		CHECK(disabvalid(&abi));
@@ -95,6 +127,15 @@ main(void)
 		CHECK(disabmapbytes(&abi, DisMaxOffset, &bytes));
 		CHECK(bytes == (unsigned int)DisMaxOffset/(p*8)+1);
 		CHECK(maps(&abi, &cases) == 0);
+		CHECK(builders(&abi, &built) == 0);
+		map = 0x80;
+		CHECK(disabmaprefs(&abi, p*3, &map, 1, p*2, 0, 0xffffffffU));
+		CHECK(map == 0xa0);
+		CHECK(!disabmaprefs(&abi, p*3, &map, 1, p, p, 0xffffffffU));
+		CHECK(map == 0xa0);
+		map = 0x81;
+		CHECK(!disabmaprefs(&abi, p*3, &map, 1, 0, p, 0));
+		CHECK(map == 0x81);
 		CHECK(disabmap(&abi, 0, 0, 0));
 		CHECK(!disabmap(&abi, p, 0, 1));
 	}
@@ -107,6 +148,6 @@ main(void)
 	CHECK(!disabvalid(&bad) && disabsize(&bad, DisPointer) == 0 && disabframe(&bad) == 0);
 	CHECK(!disabmapbytes(&bad, 4, &bytes));
 	CHECK(!disabinit(0, 8) && !disabframes(&abi, 0));
-	printf("PASS ABI32/map4 and ABI64/map8 layout, nested records, frame, arrays; %u single-bit map fixtures\n", cases);
+	printf("PASS ABI32/map4 and ABI64/map8 layout, nested records, frame, arrays; %u single-bit map fixtures, %u descriptor builds\n", cases, built);
 	return 0;
 }

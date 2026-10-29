@@ -1,0 +1,5 @@
+{
+  "status": "non-nil record payload only; no pool section or nil-reference ID assigned",
+  "runes": [0, 55296, 1114111, 1114112, 2147483647, 2147483648, 4294967295],
+  "hex": "00000007 00000000 0000d800 0010ffff 00110000 7fffffff 80000000 ffffffff"
+}

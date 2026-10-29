@@ -1,4 +1,5 @@
 #include "limbo.h"
+#include "dis-operand.h"
 
 static	void	disbig(long, Long);
 static	void	disbyte(long, int);
@@ -17,34 +18,35 @@ static	int	lastoff;
 static	int	lastkind;
 static	int	lencache;
 
-/* Reject values outside the signed 30-bit Dis operand before emitting bytes. */
+
+/* Encode once before publishing any byte to the streaming output. */
 void
 discon(long val)
 {
-	if(val >= -64 && val <= 63) {
-		Bputc(bout, val & ~0x80);
-		return;
-	}
-	if(val >= -8192 && val <= 8191) {
-		Bputc(bout, ((val>>8) & ~0xC0) | 0x80);
-		Bputc(bout, val);
-		return;
-	}
-	if(val < -536870912L || val > 536870911L)
+	uchar encoded[4];
+	unsigned int count, i;
+
+	count = disoperand(encoded, sizeof(encoded), val);
+	if(count == 0){
 		fatal("overflow in constant 0x%lux\n", val);
-	Bputc(bout, (val>>24) | 0xC0);
-	Bputc(bout, val>>16);
-	Bputc(bout, val>>8);
-	Bputc(bout, val);
+		return;
+	}
+	for(i=0; i<count; i++)
+		Bputc(bout, encoded[i]);
 }
 
+
+/* Serialize exactly four canonical bytes without right-shifting signed long. */
 void
 disword(long w)
 {
-	Bputc(bout, w >> 24);
-	Bputc(bout, w >> 16);
-	Bputc(bout, w >> 8);
-	Bputc(bout, w);
+	unsigned long bits;
+
+	bits = (unsigned long)w;
+	Bputc(bout, (bits>>24)&0xff);
+	Bputc(bout, (bits>>16)&0xff);
+	Bputc(bout, (bits>>8)&0xff);
+	Bputc(bout, bits&0xff);
 }
 
 /* Validate the complete record count before writing even its header byte. */
@@ -660,23 +662,19 @@ disaddr(int m, Addr *a)
 	disbcon(val);
 }
 
-/* Apply the same wire-width check to buffered instruction operands. */
+
+/* Use the same complete encoding for buffered instruction operands. */
 void
 disbcon(long val)
 {
-	if(val >= -64 && val <= 63){
-		ibuf[nibuf++] = val & ~0x80;
-		return;
-	}
-	if(val >= -8192 && val <= 8191){
-		ibuf[nibuf++] = val>>8 & ~0xC0 | 0x80;
-		ibuf[nibuf++] = val;
-		return;
-	}
-	if(val < -536870912L || val > 536870911L)
+	uchar encoded[4];
+	unsigned int count, i;
+
+	count = disoperand(encoded, sizeof(encoded), val);
+	if(count == 0){
 		fatal("overflow in constant 16r%lux", val);
-	ibuf[nibuf++] = val>>24 | 0xC0;
-	ibuf[nibuf++] = val>>16;
-	ibuf[nibuf++] = val>>8;
-	ibuf[nibuf++] = val;
+		return;
+	}
+	for(i=0; i<count; i++)
+		ibuf[nibuf++] = encoded[i];
 }

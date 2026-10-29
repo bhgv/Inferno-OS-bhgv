@@ -158,6 +158,7 @@ cachemalloc(ulong size)
 }
 
 #define malloc cachemalloc // Inject native cache allocation failure.
+#define OP(name) void name(void) // Extracted production operator declaration.
 IMPLEMENTATION
 #undef malloc
 
@@ -284,7 +285,7 @@ checkcomparisons(void)
 		uchar bytes[128]; // Independent second operand.
 	} right;
 	String *other;
-	Rune keys[] = {0, 0x7f, 0x80, 0xff, 0x100, 0x20ac, 0x7fffffff, 0x80000000, 0xffffffff};
+	Rune keys[] = {0, 0x7f, 0x80, 0xff, 0x100, 0x20ac, 0xd800, 0x10ffff, 0x110000, 0x7fffffff, 0x80000000, 0xffffffff};
 	Rune leftkey, rightkey;
 	char *cache;
 	int ls, rs, lw, rw, li, ri, length, capacity, expected, actual;
@@ -322,6 +323,39 @@ checkcomparisons(void)
 }
 
 
+/* Execute actual INSC/INDC before comparing high-bit Rune payloads. */
+static void
+checkrunecells(void)
+{
+	Rune keys[] = {0, 0xd800, 0x10ffff, 0x110000, 0x7fffffff, 0x80000000, 0xffffffff};
+	Rune stored;
+	String *owner;
+	WORD index, input, output;
+	int i;
+
+	for(i=0; i<nelem(keys); i++){
+		owner = newrunes(1);
+		index = 0;
+		input = (int)keys[i];
+		memset(&R, 0, sizeof(R));
+		R.s = &input;
+		R.m = &index;
+		R.d = &owner;
+		insc();
+		memmove(&stored, owner->Srune, sizeof(stored));
+		viewcheck(stored == keys[i]);
+		output = 123;
+		R.s = &owner;
+		R.d = &output;
+		indc();
+		viewcheck(output == (WORD)(int)keys[i]);
+		viewcheck(stringcmp(owner, owner) == 0);
+		destroy(owner);
+		checks++;
+	}
+}
+
+
 /* Run on a registered pthread stack so ASan tracks VM longjmp correctly. */
 static void*
 viewworker(void *unused)
@@ -335,6 +369,7 @@ viewworker(void *unused)
 		checkviews();
 	if(getenv("STRING_VIEW_OWNERS") == nil)
 		checkcomparisons();
+	checkrunecells();
 	checkrejections();
 	viewcheck(live == 0 && Tstring.ref == 1);
 	printf("PASS string views: %d checks, WORD%zu\n", checks, sizeof(WORD)*8);

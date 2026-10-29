@@ -1,6 +1,6 @@
 # Dis64: кандидат матрицы секций и оставшиеся решения
 
-Дата: 2026-10-29. Предложение Inferno к FLASHVM-0001, а не принятая wire spec.
+Дата: 2026-10-29. Матрица принята FLASHVM-0002; полная wire spec ещё не готова.
 Числовые magic/ABI/section/opcode IDs пока не выделены. Действующий loader эти
 секции не читает. [Журнал согласования](dis64-inferno-journal.md).
 
@@ -24,7 +24,7 @@
 | debug | Необязательно | Singleton | Требует определения собственной версии | 0 |
 | provenance | Необязательно | Singleton | Требует определения собственной версии | 0 |
 
-Это логические kinds без номеров. Полное внутреннее кодирование module, types,
+Это согласованные логические kinds без номеров. Полное внутреннее кодирование module, types,
 initializers и imports ещё требуется описать. Типы для чисто native интерфейсов,
 библиотеки без code и несколько entry не входят в первый профиль; при надобности
 для них нужен явно согласованный профиль, а не угадывание отсутствующих секций.
@@ -40,8 +40,13 @@ Directory начинается сразу после manifest, header_bytes со
 последней записи directory. Предлагаю alignment 1 для wire payloads: числовые
 поля декодируются по байтам и не читаются через casts C structs. Runtime объекты
 размещаются отдельно по target alignment. Это снимает зависимость wire от padding.
-Политика промежутков между payloads и trailing bytes пока требует согласования;
-предлагаю для v1 плотное размещение без таких промежутков, кроме нулевых секций.
+Плотное размещение принято FLASHVM-0002: cursor=header_bytes, для каждой
+записи offset==cursor, length<=file_size-cursor, затем cursor+=length;
+после последней записи cursor==file_size. Нулевые секции не двигают cursor.
+Нулевой count не равен нулевой byte_length: imports/exports/strings/control
+с count=0 всё равно обязаны содержать внутренний header собственного формата.
+Data при data_bytes=0 может отсутствовать либо иметь нулевой payload; при
+ненулевом data_bytes требуется payload ровно указанного размера.
 
 ## Согласованные части, реализуемые независимо от registry IDs
 
@@ -65,9 +70,11 @@ slot, nil до вызова, один сильный владелец после
 
 Сравнение строк — Rune lexicographic, nil равно пустой строке по содержимому.
 Строгий scalar-only UTF-8 pool пока не принимается: текущий insc сохраняет WORD
-в Rune без фильтра surrogates/out-of-range. Предлагаю обсудить lossless BE u32
-Rune sequence (length в Rune), либо два явно помеченных pool encoding. Выбор
-ещё не принят; Python Unicode fixtures не доказывают runtime Rune32 acceptance.
+в Rune без фильтра surrogates/out-of-range. Lossless BE u32 Rune sequence
+с rune_count:u32 принята FLASHVM-0002. Каждый non-nil record содержит ровно
+count*4 байт payload после count; empty record имеет 4 байта. Nil остаётся
+отдельным ссылочным initializer без назначенного пока ID. Кодек прототипа
+include/dis-rune.h сохраняет все u32 bits, но не включает новый runtime ABI.
 Не вводить молчаливую замену несовместимых Rune на U+FFFD.
 
 ## Текущие проверки прототипа
@@ -83,3 +90,14 @@ Golden payloads: libinterp/tests/dis64/control-golden.json. Это только 
 после разрешения pool IDs; helper не определяет encoding pool или nil ID.
 
 Проверки layout/table helpers не заменяют compiler → module → interpreter/JIT.
+
+## Уточнение существующего Rune порядка
+
+Дополнительный аудит stringcmp и string-view-native.c показал: нынешние Rune
+перед сравнением переводятся в signed int; тест ожидает именно такой порядок
+для 0x80000000..0xffffffff. Поэтому «Rune lexicographic» недостаточно точно
+задаёт порядок всего u32-домена. Для valid Unicode scalar значения порядок
+совпадает. Открытый выбор: сохранить signed32 порядок всего существующего
+домена либо согласовать отдельное изменение семантики с unsigned Rune order.
+До согласования production stringcmp не меняется; comparator typed-table
+helper передаётся явно. Предложение lossless pool не решает этот вопрос само.

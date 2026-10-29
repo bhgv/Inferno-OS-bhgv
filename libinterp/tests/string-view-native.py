@@ -28,7 +28,8 @@ def function(text, signature):
 
 
 signatures = ['String*\nnewstring(', 'String*\nnewrunes(',
-              'int\nstringcmp(', 'String*\nstringdup(', 'char*\nstring2c(']
+              'int\nstringcmp(', 'String*\nstringdup(', 'char*\nstring2c(',
+              'void\ncvtup(', 'OP(insc)', 'OP(indc)']
 parts = [function(source, signature) for signature in signatures]
 unit = (root / 'libinterp/tests/string-view-native.c').read_text()
 unit = unit.replace('IMPLEMENTATION', '\n'.join(parts))

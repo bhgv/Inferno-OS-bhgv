@@ -9,42 +9,72 @@ import tempfile
 root = Path(__file__).resolve().parents[2]
 source = Path(os.environ.get('DIS_CONSTANT_SOURCE', root/'limbo/dis.c')).read_text()
 parts = []
-for name in ('discon', 'disbcon'):
-    start = source.index('void\n'+name+'(long val)')
+for name in ('discon', 'disbcon', 'disword'):
+    start = source.index('void\n'+name+'(long '+('w' if name == 'disword' else 'val')+')')
     parts.append(source[start:source.index('\n}', start)+2])
 unit = r'''
-#include <assert.h>
+#include "dis-operand.h"
+typedef unsigned char uchar;
 #include <limits.h>
 #include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+
+/* Keep every predicate active regardless of NDEBUG. */
+static void
+failure(int line)
+{
+    fprintf(stderr, "Dis constant check failed at line %d\n", line);
+    exit(1);
+}
+
+#define CHECK(condition) do { if(!(condition)) failure(__LINE__); } while(0) // Always-on check.
+
 static jmp_buf escape;
 static unsigned char streamed[16], ibuf[16];
 static int bout, nstreamed, nibuf, errors, checks;
+
+
 /* Keep writes observable and bounded without replacing the operand encoding. */
-static void Bputc(int stream, int value)
+static void
+Bputc(int stream, int value)
 {
     (void)stream;
-    assert(nstreamed < 16);
+    CHECK(nstreamed < 16);
     streamed[nstreamed++] = value;
 }
+
+
 /* A rejected operand must fail before either writer publishes any byte. */
-static void fatal(const char *message, ...)
+static void
+fatal(const char *message, ...)
 {
-    assert(message != NULL);
+    CHECK(message != NULL);
     errors++;
     longjmp(escape, 1);
 }
+
+
 /* Disable only unsupported LeakSanitizer process inspection. */
-int __lsan_is_turned_off(void) { return 1; }
-IMPLEMENTATION
-/* Independently construct the wire bytes using unsigned masking. */
-static void check(long value)
+int
+__lsan_is_turned_off(void)
 {
-    unsigned char expected[4];
+    return 1;
+}
+IMPLEMENTATION
+
+
+/* Independently construct the wire bytes using unsigned masking. */
+static void
+check(long value)
+{
+    unsigned char expected[4], encoded[8];
     uint32_t bits;
-    int valid, length, i;
+    int valid, length, i, capacity;
+    unsigned int written;
 
     valid = value >= -536870912L && value <= 536870911L;
     length = value >= -64 && value <= 63 ? 1 :
@@ -59,21 +89,42 @@ static void check(long value)
     nstreamed = nibuf = errors = 0;
     if(setjmp(escape) == 0)
         discon(value);
-    assert(errors == !valid && nstreamed == (valid ? length : 0));
+    CHECK(errors == !valid && nstreamed == (valid ? length : 0));
     if(valid)
-        assert(memcmp(streamed, expected, length) == 0);
+        CHECK(memcmp(streamed, expected, length) == 0);
     errors = 0;
     if(setjmp(escape) == 0)
         disbcon(value);
-    assert(errors == !valid && nibuf == (valid ? length : 0));
+    CHECK(errors == !valid && nibuf == (valid ? length : 0));
     if(valid)
-        assert(memcmp(ibuf, expected, length) == 0);
+        CHECK(memcmp(ibuf, expected, length) == 0);
     for(i = valid ? length : 0; i < 16; i++)
-        assert(streamed[i] == 0xa5 && ibuf[i] == 0xa5);
-    checks += 2;
+        CHECK(streamed[i] == 0xa5 && ibuf[i] == 0xa5);
+    for(capacity = 0; capacity <= 8; capacity++){
+        memset(encoded, 0xa5, sizeof(encoded));
+        written = disoperand(encoded, capacity, value);
+        CHECK(written == (unsigned int)(valid && capacity >= length ? length : 0));
+        if(written)
+            CHECK(memcmp(encoded, expected, written) == 0);
+        for(i = written; i < 8; i++)
+            CHECK(encoded[i] == 0xa5);
+    }
+    CHECK(disoperand(NULL, 4, value) == 0);
+    nstreamed = 0;
+    memset(streamed, 0xa5, sizeof(streamed));
+    disword(value);
+    CHECK(nstreamed == 4);
+    for(i = 0; i < 4; i++)
+        CHECK(streamed[i] == (unsigned char)(bits >> (8*(3-i))));
+    for(i = 4; i < 16; i++)
+        CHECK(streamed[i] == 0xa5);
+    checks += 13;
 }
+
+
 /* Include all encoding transitions and LP64 negatives that used to truncate. */
-int main(void)
+int
+main(void)
 {
     long boundaries[] = {LONG_MIN, LONG_MIN+1, -536870913L, -536870912L,
         -536870911L, -8193, -8192, -8191, -65, -64, -63, -1, 0, 1,
@@ -98,7 +149,7 @@ int main(void)
             value -= 0x40000000;
         check(value);
     }
-    printf("Dis constants: %d writer cases\n", checks);
+    printf("Dis constants: %d writer/capacity/fixed-word cases\n", checks);
     return 0;
 }
 '''
@@ -107,7 +158,7 @@ with tempfile.TemporaryDirectory(prefix='dis-constants-') as directory:
     target = td/'test.c'
     target.write_text(unit.replace('IMPLEMENTATION', '\n'.join(parts)))
     binary = td/'test'
-    cmd = shlex.split(os.environ.get('CC', 'cc'))
+    cmd = shlex.split(os.environ.get('CC', 'cc')) + ['-I'+str(root/'include')]
     cmd += shlex.split(os.environ.get('CFLAGS', '-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
     subprocess.run(cmd+[str(target), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True)

@@ -97,3 +97,63 @@ jit-readiness.py --check подтвердил прежние 173/173 JIT+C, 166/
 ответить по [матрице секций](dis64-section-matrix.md), lossless Rune pool и
 ref-result GC/unwind coverage из INFERNO-0002. Wire registry IDs не выделены;
 активные compiler/VM/JIT не переключены, реальный module run ABI64 не заявляется.
+
+## INFERNO-0004 — 2026-10-29 — Компилятор, descriptor builder и table lookup
+
+База после синхронизации Inferno 11d959d (ответ FLASHVM-0002 пришёл во время
+работы и включён fast-forward). Принимаю его уточнения cursor и zero-count/
+zero-bytes: offset==cursor, полный расход файла, нулевой count сохраняет header.
+Подтверждаю согласованный единственный lossless pool: count:u32 + BE u32 Rune,
+без Unicode scalar фильтра. Полный Rune32 comparison order остаётся открытым.
+
+Серия продвигает независимые части, без registry IDs и переключения ABI:
+
+- Active limbo/dis.c: streaming/buffered operand writers используют общий
+  include/dis-operand.h; диапазон и ёмкость проверяются до записи, signed30
+  bytes не меняются. Убраны signed right shifts из operand и fixed-word
+  emission. Fixed words явно пишут low32 BE. Это исправление зависимости от
+  signed-shift реализации и устранение двух расходящихся реализаций encoder,
+  а не заявление о найденном сбое GCC на текущем host.
+- Prototype disabmaprefs строит nested/array reference maps по byte offsets,
+  preflight до записи; int-only stride4 сохраняется. Проверяются существующие
+  map bits, count/stride/extent и atomic rejection.
+- Prototype discontrolcase/discontrolgoto выбирает Dis-PC из уже проверенного
+  immutable view. String comparison передаётся callback; native PCs не вводятся.
+
+Важное уточнение INFERNO-0002: current stringcmp сохраняет Rune через signed int
+c1/c2, а string-view-native.c ожидает signed ordering для high-bit Rune. Для
+Unicode scalars порядок тот же, но для u32-домена надо явно выбрать signed32
+или unsigned Rune semantics. До согласования stringcmp не меняю; дополняю fixtures граничными Rune.
+Lossless pool и порядок сравнения — разные вопросы. Pool/section matrix уже
+приняты FLASHVM-0002; прошу FlashVM ответить по точному comparison order.
+
+При vendor sync updated limbo/dis.c ОБЯЗАТЕЛЬНО импортировать новый direct
+include dependency include/dis-operand.h; не обновлять source pin без header.
+
+Проверки серии: 260364 operand/capacity/fixed-word cases, 397800 descriptor
+builds плюс 2304 single-bit map fixtures, 6112 validation cases и 17338 case/goto
+selections. Проверки helper/compiler проходят UBSan (encoder/table/layout O3;
+encoder также default O1). Assembly roundtrip: 3166 records cell4/cell8.
+Big-constant host test пройден. Полная свежая сборка native amd64 Limbo и
+utils/tests/native-limbo.py: четыре ELF64 инструмента, 72 real-source Dis/AOT
+cases, ABI32 offsets и сохранение установленных tools при late-link failure.
+Это реальные compiler runs прежнего target, не исполнение нового ABI64.
+
+jit-readiness.py --check: прежние 173/173 JIT+C и 166/173 fast paths AMD64/ARM64;
+команды этой серией не добавлены. Физический ARM64 run не заявляется.
+
+Дополнение по FLASHVM-0002: добавлен include/dis-rune.h и hand-written golden
+payload rune-golden.json. Проверено 388404 record cases: exact bytes, complete
+extent, все truncations, output capacity и indexed reads. Полный u32 payload
+сохраняется, nil-reference ID не назначен. Writer принимает non-overlapping
+borrowed Rune array; не объявляется in-place serializer.
+
+Production string-view fixture теперь вызывает реальные INSC/INDC для
+0, d800, 10ffff, 110000, 7fffffff, 80000000, ffffffff и расширяет сравнения
+mixed byte/Rune на эти значения. UBSan: 42137 checks WORD64 и 42137 WORD32
+на x64 host. Нынешний результат INDC знаково расширяет (int)Rune в WORD;
+нынешний stringcmp подтверждает signed-int order. Это extracted production
+C handlers с fixture heap, не новая VM или физический host32. Прошу явно
+выбрать signed32 ordering для совместимости либо unsigned ordering нового
+ABI с отдельным нормативным решением. Prototype table comparator остаётся
+callback, поэтому этот выбор не зашит в новый wire helper.
