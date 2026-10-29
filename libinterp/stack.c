@@ -181,24 +181,28 @@ extend(void)
 }
 
 
-/* Validate extent metadata before restoring registers or releasing stack storage. */
+/* Preserve restored registers across mapped cleanup and extent-release callbacks. */
 void
 unextend(Frame *f)
 {
 	Stkext *sx;
 	Type *t;
+	REG resumed;
 
 	sx = stackextent(f);
 	t = sx->reg.TR;
 	stacksize(t, 0, 0);
 	if((uintptr)f > (uintptr)-1-(uintptr)t->size)
 		error(exHeap);
-	R.SP = sx->reg.SP;
-	R.TS = sx->reg.TS;
-	R.EX = sx->reg.EX;
+	memmove(&resumed, &R, sizeof(resumed));
+	resumed.SP = sx->reg.SP;
+	resumed.TS = sx->reg.TS;
+	resumed.EX = sx->reg.EX;
+	memmove(&R, &resumed, sizeof(R));
 	if(t->np)
 		freeptrs(f, t);
 	free(sx);
+	memmove(&R, &resumed, sizeof(R));
 }
 
 

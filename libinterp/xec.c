@@ -3019,11 +3019,12 @@ OP(mspawn)
 }
 
 
-/* Validate captured return metadata before changing registers or releasing owners. */
+/* Validate return metadata and preserve resumed registers across ownership cleanup. */
 OP(ret)
 {
 	Frame *f, links;
-	Modlink *m;
+	Modlink *m, *departed;
+	REG resumed;
 	Type *type;
 	uchar *mp;
 	uintptr extent;
@@ -3073,23 +3074,31 @@ OP(ret)
 		memmove(&previousmode, (uchar*)m+O(Modlink, compiled), sizeof(previousmode));
 		memmove(&mp, (uchar*)m+O(Modlink, MP), sizeof(mp));
 	}
+	departed = R.M;
 	R.FP = links.fp;
 	R.SP = (uchar*)f;
 	R.PC = links.lr;
+	memmove(&resumed, &R, sizeof(resumed));
 
-	if(links.t == nil)
+	if(links.t == nil){
 		unextend(f);
-	else if(pointers)
+		/* unextend preserves its completed SP/TS/EX publication across callbacks. */
+		memmove(&resumed, &R, sizeof(resumed));
+	}else if(pointers)
 		freeptrs(f, links.t);
+	memmove(&R, &resumed, sizeof(R));
 
-	if(m != nil) {
-		if(currentmode != previousmode) {
-			R.IC = 1;
-			R.t = 1;
+	if(m != nil){
+		if(currentmode != previousmode){
+			resumed.IC = 1;
+			resumed.t = 1;
 		}
-		destroy(R.M);
-		R.M = m;
-		R.MP = mp;
+		resumed.M = m;
+		resumed.MP = mp;
+		/* Publish the caller before releasing the departed module's final owner. */
+		memmove(&R, &resumed, sizeof(R));
+		destroy(departed);
+		memmove(&R, &resumed, sizeof(R));
 	}
 }
 
@@ -5201,49 +5210,70 @@ OP(self)
 }
 
 
-/* Capture extent roots and frame links before cleanup; read packed map counts safely. */
+/* Publish only the surviving cleanup roots after a destructor borrows decoded REG fields. */
+static void
+unwindstate(REG *reg, uchar *frame, Modlink *module)
+{
+	reg->EX = nil;
+	reg->FP = frame;
+	reg->M = module;
+}
+
+
+/* Keep frame, extent and module ownership cursors independent of destructor REG borrowing. */
 void
 destroystack(REG *reg)
 {
 	Type *t, *root;
-	Frame *f, *fp;
-	Modlink *m;
+	Frame *f, *bottom;
+	Modlink *module, *caller, *old;
 	Stkext *sx;
-	uchar *ex, *next, *parent;
+	uchar *ex, *next, *parent, *cursor;
 	int pointers;
 
 	ex = reg->EX;
-	reg->EX = nil;
-	while(ex != nil) {
+	cursor = reg->FP;
+	module = reg->M;
+	unwindstate(reg, cursor, module);
+	while(ex != nil){
 		sx = (Stkext*)ex;
-		fp = sx->reg.tos.fr;
-		/* Destructors must not redirect the remaining extent or root descriptor. */
+		bottom = sx->reg.tos.fr;
+		/* Capture links and fallback Type before any frame/module destructor runs. */
 		parent = sx->reg.EX;
 		root = sx->reg.TR;
-		do {
-			f = (Frame*)reg->FP;
+		do{
+			f = (Frame*)cursor;
 			if(f == nil)
 				break;
 			memmove(&next, (uchar*)f+O(Frame, fp), sizeof(next));
 			memmove(&t, (uchar*)f+O(Frame, t), sizeof(t));
-			reg->FP = next;
+			memmove(&caller, (uchar*)f+O(Frame, mr), sizeof(caller));
 			if(t == nil)
 				t = root;
-			memmove(&m, (uchar*)f+O(Frame, mr), sizeof(m));
 			memmove(&pointers, (uchar*)t+O(Type, np), sizeof(pointers));
+			cursor = next;
+			unwindstate(reg, cursor, module);
 			if(pointers)
 				freeptrs(f, t);
-			if(m != nil) {
-				destroy(reg->M);
-				reg->M = m;
+			if(caller != nil){
+				old = module;
+				module = caller;
+				/* Transfer the saved caller root before releasing the departed module. */
+				unwindstate(reg, cursor, module);
+				destroy(old);
 			}
-		} while(f != fp);
+			unwindstate(reg, cursor, module);
+		}while(f != bottom);
 		ex = parent;
 		free(sx);
+		unwindstate(reg, cursor, module);
 	}
-	destroy(reg->M);
-	reg->M = H;	/* for devprof */
+	/* The final destructor may borrow REG too; never reread its temporary module image. */
+	unwindstate(reg, cursor, H);
+	destroy(module);
+	unwindstate(reg, cursor, H);	/* Keep the detached module identity visible to devprof. */
 }
+
 
 Prog*
 isave(void)

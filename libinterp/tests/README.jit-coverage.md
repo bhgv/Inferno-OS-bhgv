@@ -642,3 +642,6 @@ first registration, malformed later-guard regressions and direct/JIT C-tail chec
 
 See [channel finalization and blocked ALT](README.alt-hangup.md) for drained-queue
 cancellation, actual emu/os killcomm integration and duplicate/multi-process checks.
+
+See [stack cleanup across REG borrowing](README.stack-callbacks.md) for private
+unwind cursors, resumed RET/extension state and destructor regression matrices.

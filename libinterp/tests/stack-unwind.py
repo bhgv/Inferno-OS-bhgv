@@ -27,7 +27,10 @@ xec = Path(os.environ.get('UNWIND_XEC_SOURCE', ROOT/'libinterp/xec.c')).read_tex
 valid = Path(os.environ.get('UNWIND_VALID_SOURCE', ROOT/'libinterp/validstk.c')).read_text()
 check = Path(os.environ.get('UNWIND_CHECK_SOURCE', ROOT/'libinterp/validstk.c')).read_text()
 heap = (ROOT/'libinterp/heap.c').read_text()
-parts = [function(heap, 'void\nfreeptrs('), function(check, 'void\nmemchk('),
+parts = []
+if 'static void\nunwindstate(' in xec:
+    parts += [function(xec, 'static void\nunwindstate(')]
+parts += [function(heap, 'void\nfreeptrs('), function(check, 'void\nmemchk('),
          function(valid, 'void\nvalidstk('), function(xec, 'void\ndestroystack(')]
 unit = (ROOT/'libinterp/tests/stack-unwind.c').read_text().replace('IMPLEMENTATION', '\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='stack-unwind-') as directory:

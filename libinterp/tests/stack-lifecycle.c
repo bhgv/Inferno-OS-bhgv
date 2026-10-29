@@ -23,6 +23,8 @@ static char *raised;
 static int failure,allocations,releases,checks;
 static void *owned;
 static ulong ownedsize;
+static int extentborrow, extentdestroyed; // Callback stages borrowing the global REG image.
+static void *extentpayload; // Live mapped payload used only by the callback regression.
 
 
 /* Observe the actual VM error identity at an independent fixture boundary. */
@@ -38,11 +40,15 @@ __lsan_is_turned_off(void)
 {
 	return 1;
 }
-/* Stack payload maps contain language nil references in this fixture. */
+/* Existing maps contain nil; the callback family also owns one live payload. */
 void
 destroy(void *p)
 {
-	lifecyclecheck(p==H);
+	if(p == H) return;
+	lifecyclecheck(p == extentpayload && D2H(p)->ref == 1);
+	D2H(p)->ref--;
+	extentdestroyed++;
+	if(extentborrow & 1) memset(&R, 0x66, sizeof(R));
 }
 
 
@@ -71,6 +77,7 @@ releaseextent(void *p)
 	lifecyclecheck(p==owned);
 	for(i=0;i<32;i++)lifecyclecheck(((uchar*)p)[ownedsize+i]==0x5a);
 	free(p);owned=nil;releases++;
+	if(extentborrow & 2) memset(&R, 0x66, sizeof(R));
 }
 
 #define mallocz(n,c) allocate((n),(c))
@@ -213,6 +220,50 @@ extentcycle(void)
 }
 
 
+/* Restore the complete resumed REG after actual mapped cleanup and native extent release. */
+static void
+extentcallbacks(void)
+{
+	struct {
+		Heap heap; // Live mapped owner whose last reference belongs to the extent.
+		uchar bytes[8]; // Payload identity, not copied during frame cleanup.
+	} payload;
+	Type type;
+	Module module;
+	Modlink link;
+	REG before, expected;
+	Frame *frame;
+	ulong hints[] = {0, 128, 1024};
+	int mode, mapped, hint;
+
+	for(mode = 1; mode < 4; mode++)
+	for(mapped = 0; mapped < 2; mapped++)
+	for(hint = 0; hint < nelem(hints); hint++){
+		memset(&payload, 0, sizeof(payload)); memset(&type, 0, sizeof(type));
+		memset(&module, 0, sizeof(module)); memset(&link, 0, sizeof(link));
+		type.size = sizeof(Frame)+32; type.np = mapped;
+		type.map[0] = 1<<(7-sizeof(Frame)/sizeof(void*));
+		payload.heap.ref = 1; extentpayload = payload.bytes;
+		module.ss = hints[hint]; link.m = &module;
+		memset(&R, 0, sizeof(R)); R.s = &type; R.M = &link;
+		R.SP = (uchar*)1; R.TS = (uchar*)2; R.EX = (uchar*)3; R.IC = 17; R.t = 27;
+		memmove(&before, &R, sizeof(R));
+		failure = allocations = releases = extentdestroyed = 0;
+		extend(); frame = R.s;
+		if(mapped) memmove((uchar*)frame+sizeof(Frame), &extentpayload, sizeof(extentpayload));
+		memmove(&expected, &R, sizeof(R));
+		expected.SP = before.SP; expected.TS = before.TS; expected.EX = before.EX;
+		extentborrow = mode;
+		unextend(frame);
+		extentborrow = 0;
+		lifecyclecheck(!memcmp(&R, &expected, sizeof(R)) && releases == 1 && owned == nil);
+		lifecyclecheck(extentdestroyed == mapped && payload.heap.ref == (ulong)(1-mapped));
+		checks++;
+	}
+	extentpayload = nil;
+}
+
+
 /* Invalid owners/descriptors must fail before allocation or register publication. */
 static void
 invalid(void)
@@ -335,6 +386,7 @@ main(int argc,char **argv)
 	if(!strcmp(argv[1],"copy"))copyframes();
 	if(!strcmp(argv[1],"pop"))popframes();
 	if(!strcmp(argv[1],"extent"))extentcycle();
+	if(!strcmp(argv[1],"borrow"))extentcallbacks();
 	if(!strcmp(argv[1],"invalid")){invalid();negativemaps();invalidunextend();}
 	lifecyclecheck(checks>0 && owned==nil);
 	printf("PASS stack lifecycle: %d %s checks WORD%zu\n",checks,argv[1],sizeof(WORD)*8);

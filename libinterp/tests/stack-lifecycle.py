@@ -50,6 +50,6 @@ with tempfile.TemporaryDirectory(prefix='stack-lifecycle-') as directory:
         includes = ['-I'+str(model)]+['-I'+str(ROOT/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
         binary = td/('lifecycle-'+str(bits))
         subprocess.run(command+includes+[str(source), '-o', str(binary)], check=True)
-        families = [os.environ['LIFECYCLE_CASE']] if os.environ.get('LIFECYCLE_CASE') else ['copy','pop','extent','invalid']
+        families = [os.environ['LIFECYCLE_CASE']] if os.environ.get('LIFECYCLE_CASE') else ['copy','pop','extent','borrow','invalid']
         for family in families:
             subprocess.run([str(binary), family], check=True)

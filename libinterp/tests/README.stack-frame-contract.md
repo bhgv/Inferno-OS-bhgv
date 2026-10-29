@@ -127,3 +127,6 @@ The native frame/reference ABI work described in
 required before a full 64-bit VM boot. ARM64 guest execution is not a physical
 ARM64 acceptance run. RV64 is deferred; Tk, security/crypto and
 MIPS/SPARC/PowerPC JIT sources are unchanged.
+
+See [stack cleanup across REG borrowing](README.stack-callbacks.md) for private
+unwind cursors, resumed RET/extension state and destructor regression matrices.

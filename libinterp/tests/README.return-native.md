@@ -32,3 +32,6 @@ Current availability among 173 active commands (partial guarded native paths):
 
 INOP and unused IECLR are excluded. Complete operand coverage and the complete
 native VM ABI remain separate work. ARM64 is tested through emulation.
+
+See [stack cleanup across REG borrowing](README.stack-callbacks.md) for private
+unwind cursors, resumed RET/extension state and destructor regression matrices.

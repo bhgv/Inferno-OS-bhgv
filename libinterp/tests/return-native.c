@@ -23,6 +23,62 @@ kprotect(int (*fn)(void*),void *arg)
 }
 
 
+/* Compare direct RET and native decline-to-C routes when real cleanup owners borrow REG. */
+static unsigned long
+returnborrowing(Jit *jit)
+{
+	union {uvlong alignment; uchar bytes[512];} arena;
+	ReturnOwner departed, caller;
+	REG expected;
+	Frame links;
+	Type type;
+	Inst code[3];
+	int alignment, kind, restore, oldmode, newmode, pass, fast;
+	unsigned long checks = 0;
+
+	for(alignment = 0; alignment < 8; alignment++)
+	for(kind = 0; kind < 3; kind++)
+	for(restore = 0; restore < 2; restore++)
+	for(oldmode = 0; oldmode < 2; oldmode++)
+	for(newmode = 0; newmode < 2; newmode++)
+	for(returnborrow = 0; returnborrow < 4; returnborrow++)
+	for(pass = 0; pass < 2; pass++){
+		if(getenv("RETURN_BORROW_MODE") && returnborrow != atoi(getenv("RETURN_BORROW_MODE"))) continue;
+		memset(&departed, 0, sizeof(departed)); memset(&caller, 0, sizeof(caller));
+		memset(&type, 0, sizeof(type)); memset(&links, 0, sizeof(links));
+		memset(arena.bytes, 0x55, sizeof(arena.bytes)); memset(&R, 0, sizeof(R));
+		departed.heap.ref = caller.heap.ref = 1;
+		departed.link.compiled = oldmode; caller.link.compiled = newmode;
+		caller.link.MP = arena.bytes+400;
+		type.np = kind == 2;
+		expectedframe = (Frame*)(arena.bytes+128+alignment);
+		expectedtype = &type; expectedmodule = &departed.link;
+		links.fp = arena.bytes+320; links.lr = code+2;
+		links.t = kind == 0 ? nil : &type;
+		links.mr = restore ? &caller.link : nil;
+		memmove(expectedframe, &links, sizeof(links));
+		if(kind == 0) memmove((uchar*)SEXTYPE(expectedframe)+offsetof(Stkext, reg.TR), &expectedtype, sizeof(expectedtype));
+		R.FP = (uchar*)expectedframe; R.M = &departed.link; R.PC = code;
+		R.MP = arena.bytes+448; R.SP = arena.bytes+480; R.IC = 17; R.t = 27;
+		memmove(&expected, &R, sizeof(R));
+		expected.FP = links.fp; expected.SP = (uchar*)expectedframe; expected.PC = links.lr;
+		if(restore){
+			expected.M = &caller.link; expected.MP = caller.link.MP;
+			if(oldmode != newmode){ expected.IC = 1; expected.t = 1; }
+		}
+		released = extended = mapped = 0;
+		fast = pass == 0 ? jit->entry[IRET](&R) : 0;
+		if(fast && (kind != 1 || restore)) abort();
+		if(!fast) ret();
+		if(memcmp(&R, &expected, sizeof(R)) || departed.heap.ref != (ulong)(1-restore) ||
+		   released != restore || extended != (kind == 0) || mapped != (kind == 2)) abort();
+		checks++;
+	}
+	returnborrow = 0;
+	return checks;
+}
+
+
 /* Execute exact return images, cleanup fallback and write-free metadata failures. */
 int
 main(void)
@@ -105,6 +161,7 @@ main(void)
 		}
 		total++;
 	}
+	printf("PASS RET callback borrowing: %lu C/RX cases WORD%zu\n", returnborrowing(module.jit), sizeof(WORD)*8);
 	module.jit->freecode(module.jit->code,module.jit->size);free(module.jit);
 	printf("PASS RET C/RX: %lu metadata/cleanup/REG/alias cases WORD%zu\n",total,sizeof(WORD)*8);
 	return 0;

@@ -12,6 +12,7 @@ static int released,extended,mapped;
 static Frame *expectedframe;
 static Type *expectedtype;
 static Modlink *expectedmodule;
+static int returnborrow; // One borrows REG during mapped cleanup, two during module destruction.
 typedef struct ReturnOwner ReturnOwner;
 
 struct ReturnOwner {
@@ -54,6 +55,7 @@ freeptrs(void *frame,Type *type)
 	if(frame!=expectedframe || type!=expectedtype)abort();
 	mapped++;
 	memset(frame,0x5a,sizeof(Frame));
+	if(returnborrow & 1) memset(&R, 0x66, sizeof(R));
 }
 
 
@@ -64,6 +66,7 @@ destroy(void *module)
 	if(module!=expectedmodule || D2H(module)->ref==0)abort();
 	D2H(module)->ref--;
 	released++;
+	if(returnborrow & 2) memset(&R, 0x66, sizeof(R));
 }
 
 #define OP(name) void name(void) // Production interpreter instruction entry.

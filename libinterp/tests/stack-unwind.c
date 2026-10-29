@@ -18,6 +18,8 @@ unwindcheck(int condition)
 REG R;
 static int depth, releases, checksizes;
 static int callbackmode, mutate; // Controlled metadata changes during real owner cleanup.
+static REG *unwindreg; // Active target may be the global R or a saved process REG.
+static int globaltarget; // Exercise the real global teardown route independently of saved REG.
 static Type emptytype; // Pointer-free descriptor used to expose a late root lookup.
 static Heap *owners[9];
 static Stkext *extensions[2];
@@ -40,6 +42,13 @@ destroy(void *value)
 	if(mutate && releases < 2){
 		if(callbackmode == 1)extensions[releases]->reg.EX = nil;
 		if(callbackmode == 2)extensions[releases]->reg.TR = &emptytype;
+	}
+	if(mutate && callbackmode >= 3){
+		if(callbackmode == 7)
+			memset(unwindreg, 0x66, sizeof(*unwindreg));
+		if(callbackmode == 3 || callbackmode >= 6) unwindreg->FP = nil;
+		if(callbackmode == 4 || callbackmode >= 6) unwindreg->M = H;
+		if(callbackmode == 5 || callbackmode >= 6) unwindreg->EX = (uchar*)1;
 	}
 	owners[i]->ref--;
 	observed[i]++;
@@ -141,8 +150,9 @@ one(int firstalign, int secondalign, int mask, int roots, int typealign)
 	R=reg;checksizes=0;mutate=0;validstk();
 	unwindcheck(depth==0 && checksizes==4);
 	for(i=0; i<(int)nelem(owners); i++)unwindcheck(owners[i]->ref==20 && observed[i]==0);
-	releases=0;mutate=1;destroystack(&reg);mutate=0;
-	unwindcheck(releases==2 && reg.EX==nil && reg.FP==nil && reg.M==H);
+	unwindreg = globaltarget ? &R : &reg;
+	releases=0;mutate=1;destroystack(unwindreg);mutate=0;
+	unwindcheck(releases==2 && unwindreg->EX==nil && unwindreg->FP==nil && unwindreg->M==H);
 	visits=0;
 	for(i=0; i<(int)nelem(owners); i++){
 		unwindcheck(observed[i]==expected[i] && owners[i]->ref==(ulong)(20-expected[i]));
@@ -156,20 +166,64 @@ one(int firstalign, int secondalign, int mask, int roots, int typealign)
 }
 
 
+/* Release a module-only process image even when its final destructor borrows REG. */
+static void
+emptyunwind(void)
+{
+	REG reg;
+	int i;
+
+	for(i = 0; i < nelem(owners); i++){
+		owners[i] = calloc(1, sizeof(Heap)+sizeof(Modlink));
+		unwindcheck(owners[i] != nil);
+		owners[i]->ref = 20;
+		expected[i] = observed[i] = 0;
+	}
+	expected[4] = 1;
+	memset(&reg, 0, sizeof(reg));
+	reg.M = H2D(Modlink*, owners[4]);
+	memmove(&R, &reg, sizeof(reg));
+	unwindreg = globaltarget ? &R : &reg;
+	releases = 0; mutate = 1;
+	destroystack(unwindreg);
+	mutate = 0;
+	unwindcheck(releases == 0 && unwindreg->EX == nil && unwindreg->FP == nil && unwindreg->M == H);
+	for(i = 0; i < nelem(owners); i++){
+		unwindcheck(observed[i] == expected[i] && owners[i]->ref == (ulong)(20-expected[i]));
+		free(owners[i]);
+	}
+}
+
+
 /* Vary both ordinary-frame alignments, all module switches and root descriptors. */
 int
 main(void)
 {
-	int a,b,mask,roots,typealign,checks=0;
+	int a,b,mask,roots,typealign,checks=0,emptychecks=0;
+	char *family;
 
-	for(callbackmode=0; callbackmode<3; callbackmode++)
+	family = getenv("UNWIND_CASE");
+	if(family == nil || !strcmp(family, "frames"))
+	for(callbackmode=0; callbackmode<8; callbackmode++)
+	for(globaltarget=0; globaltarget<2; globaltarget++)
 	for(typealign=0; typealign<8; typealign++)
 	for(a=0; a<8; a++)for(b=0; b<8; b++)
 	for(mask=0; mask<16; mask++)for(roots=0; roots<4; roots++){
+		if(callbackmode < 3 && globaltarget != 0)continue;
+		if(getenv("UNWIND_GLOBAL_TARGET") && globaltarget != atoi(getenv("UNWIND_GLOBAL_TARGET")))continue;
 		if(getenv("UNWIND_TYPE_SHIFT") && typealign != atoi(getenv("UNWIND_TYPE_SHIFT")))continue;
 		if(getenv("UNWIND_CALLBACK_MODE") && callbackmode != atoi(getenv("UNWIND_CALLBACK_MODE")))continue;
 		one(a,b,mask,roots,typealign);checks++;
 	}
+	if(family == nil || !strcmp(family, "empty"))
+	for(callbackmode = 0; callbackmode < 8; callbackmode++)
+	for(globaltarget = 0; globaltarget < 2; globaltarget++){
+		if(callbackmode == 1 || callbackmode == 2) continue;
+		if(getenv("UNWIND_GLOBAL_TARGET") && globaltarget != atoi(getenv("UNWIND_GLOBAL_TARGET"))) continue;
+		if(getenv("UNWIND_CALLBACK_MODE") && callbackmode != atoi(getenv("UNWIND_CALLBACK_MODE"))) continue;
+		emptyunwind(); emptychecks++;
+	}
+	printf("PASS empty stack unwind: %d module-only cleanup checks WORD%zu\n", emptychecks, sizeof(WORD)*8);
 	printf("PASS stack unwind: %d alignment/extension/type/owner checks WORD%zu\n",checks,sizeof(WORD)*8);
 	return 0;
 }
