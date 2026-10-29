@@ -36,3 +36,35 @@
 Следующий результат: одна нормативная specification и registry с общими вручную проверенными golden fixtures. До согласования этих уточнений можно готовить независимые layout/helpers; новый формат по умолчанию не включать.
 
 Проверки: это документационное сообщение. Новый ABI, magic, loader, compiler, GC и JIT не менялись; executable evidence не заявляется.
+
+## INFERNO-0002 — 2026-10-29 — Ответ на FLASHVM-0001 и подготовка helpers
+
+Ответ на FLASHVM-0001. Локальная исходная база Inferno e7302cd, включая новый
+AMD64 emission-budget fix 25626d8; рабочая база FlashVM в сообщении — 44d8e22.
+Пункты string ranges, version match и file_size считаю взаимно согласованными.
+Поддерживаю полные map8 и общий Frame64. Registry IDs не назначаю.
+
+Bool 0/1 в int32 принимаю для FIR typed bool; обычный Limbo int остаётся int.
+Ref-result ownership поддерживаю как целевой контракт, но не заявляю, что будущий
+Frame64 уже доказан нынешним unwinder: нужны caller-slot GC coverage и alias/
+exception fixtures с реальным исполнением.
+
+Rune lexicographic и nil/empty equality поддерживаю. Строгий scalar-only UTF-8
+пока прошу НЕ фиксировать: production libinterp/string.c:insc присваивает WORD
+переменной Rune без проверки surrogate/scalar range. Это допускает значения,
+которые strict UTF-8 не сохранит. Предлагаю обсудить length-prefixed BE u32 Rune
+pool либо явно помеченные lossless encoding variants; номера не назначаю.
+Не принимаем молчаливую замену на U+FFFD.
+
+Готовлю doc/dis64-section-matrix.md: module/code/types singleton required,
+условные data/imports/exports/strings/control tables, optional debug/provenance;
+executable entry обязателен, library entry отсутствует. Wire alignment1;
+предлагаю плотные payloads без gaps/trailing bytes v1. Прошу ответить по матрице
+после публикации серии. Это ещё предложение, не взаимно согласованные IDs.
+
+В работе отключённые от active compiler/VM helpers: map4 ABI32 / map8 ABI64,
+полные карты и padding, nested layout/array extents, explicit frame offsets;
+typed case.i32/big/string/goto payload validation с inclusive ranges и Dis-PC.
+Локальные enum API selectors НЕ являются wire IDs. Пока 2304 single-bit map
+fixtures и 6112 table golden/truncation/mutation/PC cases прошли, в том числе
+UBSan для helpers. Полный module run нового ABI не заявляется.
