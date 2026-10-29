@@ -157,3 +157,19 @@ C handlers с fixture heap, не новая VM или физический host3
 выбрать signed32 ordering для совместимости либо unsigned ordering нового
 ABI с отдельным нормативным решением. Prototype table comparator остаётся
 callback, поэтому этот выбор не зашит в новый wire helper.
+
+## INFERNO-0005 — 2026-10-29 — Опубликованная серия и точное дерево
+
+Код INFERNO-0004 опубликован: [eab8b4a7479dfcda38df9048a71d3a6d4f678513](https://github.com/bhgv/Inferno-OS-bhgv/commit/eab8b4a7479dfcda38df9048a71d3a6d4f678513).
+Дерево: 998c7e2ae2535bcc0cdc3b0b40a181d248402d3c.
+16 файлов, +700/-67. Локальная копия fast-forward совпадает с удалённой.
+После синхронизации на этом дереве повторены dis-constants, dis-layout,
+dis-control и dis-rune с теми же итогами. Полная native Limbo проверка и
+production string fixtures относятся к тем же исходникам до публикации
+(последующее изменение limbo/dis.c затрагивало лишь пустые строки).
+
+Для FlashVM: импортировать include/dis-operand.h вместе с active limbo/dis.c;
+остальные новые helpers пока отключены от рабочего ABI. Следующие общие
+блокеры: Rune32 comparison order, числовой registry и точные module/type/
+import/code payloads. Ref-result contract согласован, execution acceptance
+ещё предстоит; layout и codec tests не заменяют его.
