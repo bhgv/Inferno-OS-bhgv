@@ -10,6 +10,7 @@ runtimepredicate(int condition)
 REG R;
 char exBounds[] = "bounds"; // Shared decoded-slot error.
 char exNilref[] = "nil"; // Checked decoder sentinel error.
+char exInval[] = "invalid", exCompile[] = "compile", exOp[] = "opcode"; // Shared VM entry errors.
 char exModule[] = "module"; // Generated native module/header error.
 static int called = -1;
 static union {

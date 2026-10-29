@@ -1,5 +1,7 @@
 # 64-bit JIT opcode availability checkpoint
 
+Latest normal VM fetch, opcode/REG alias, scheduler completion and native-context checks: [README.xec-fetch.md](README.xec-fetch.md).
+
 Latest exact opcode/cache-code binding validation: [README.cache-bindings.md](README.cache-bindings.md).
 
 Latest native JIT-to-C RAISE preflight and emu/os exception-owner transfer: [README.exception-publication.md](README.exception-publication.md).

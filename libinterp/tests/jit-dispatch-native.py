@@ -43,6 +43,7 @@ unit = unit.replace('main(void)','mappedlegacy(void)',1).replace('p = malloc(n);
 prelude = '''void (*optab[256])(void);
 void (*dec[256])(void);
 char exOp[]="opcode", exZdiv[]="divide", bridgeexception[]="bridge exception";
+char exInval[]="invalid", exCompile[]="compile"; // VM entry/budget errors.
 
 
 /* Each generated callback reports its own real opcode identity. */
@@ -50,8 +51,13 @@ static void bridgerecord(int);
 '''
 unit = unit.replace('IMPLEMENTATION',prelude+callbacks+'\n\n'+'\n\n'.join(parts))
 unit += (ROOT/'libinterp/tests/jit-dispatch-native.c').read_text()
+if os.environ.get('BRIDGE_FETCH_TEST'):
+    unit = unit.replace('int\nmain(void)', 'int\nbridgelegacy(void)')
+    unit += (ROOT/'libinterp/tests/xec-fetch-native.c').read_text()
 backend = os.environ.get('BRIDGE_BACKEND','amd64')
 if backend not in ('amd64','arm64'): raise ValueError(backend)
+if os.environ.get('BRIDGE_FETCH_TEST') and backend != 'amd64':
+    raise RuntimeError('VM fetch execution requires the native AMD64 fixture')
 if backend!='amd64':
     if not os.environ.get('BRIDGE_PREFLIGHT_ONLY'):
         raise RuntimeError('foreign compiler fixture must not execute guest code on the AMD64 host')
@@ -88,5 +94,10 @@ with tempfile.TemporaryDirectory(prefix='jit-dispatch-native-') as temporary:
         (model/'interp.h').write_text(header)
         includes = ['-I'+str(model)]+['-I'+str(ROOT/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
         binary = td/('word'+str(wb))
-        subprocess.run(command+includes+[str(source),'-lm','-o',str(binary)],check=True)
+        extra = []
+        if os.environ.get('BRIDGE_FETCH_TEST'):
+            decoder = model/'fetch-dec.o'
+            subprocess.run(command+includes+['-Ddec=fetchdec','-c',str(ROOT/'libinterp/dec.c'),'-o',str(decoder)],check=True)
+            extra.append(str(decoder))
+        subprocess.run(command+includes+[str(source)]+extra+['-lm','-o',str(binary)],check=True)
         subprocess.run([str(binary)],check=True)

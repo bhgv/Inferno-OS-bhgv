@@ -58,7 +58,7 @@ typedef struct {
     Modlink *mp; // Borrowed module to compile.
     int flag; // Explicit compilation request.
 } F_Loader_compile;
-char exNilref[]="nil";
+char exNilref[]="nil", exHeap[]="heap", exInval[]="invalid", exModule[]="module", exBounds[]="bounds", exCompile[]="compile", exOp[]="opcode"; // Errors used by the shared VM executor.
 int kprotect(int (*fn)(void*),void *arg) {
  int r;
  assert(errdepth<8);
@@ -157,7 +157,7 @@ int main(void) {
 
     /* Real xec loop: current opcode lookup, next PC, helper fallback,
      * module changes, quanta, and a compiled-module entry remain coherent. */
-    a.prog=ia; a.jit=&ja; b.prog=ib; b.jit=&jb;
+    a.prog=ia; a.nprog=3; a.jit=&ja; b.prog=ib; b.nprog=2; b.jit=&jb;
     ma.m=&a; ma.prog=ia; ma.MP=(uchar*)"a";
     mb.m=&b; mb.prog=ib; mb.MP=(uchar*)"b";
     ia[0].op=IRUNT; ia[1].op=IMOVW; ia[2].op=IMCALL;
