@@ -129,3 +129,85 @@ alias/exception; секции missing/duplicate/empty/unknown-required/overflow.
 исходников, git diff --check и контроль неизменности журнала Inferno.
 Новый loader/emitter, GC, JIT и активный NC64 ABI этим сообщением не меняются;
 исполнение нового Dis64 не заявляется.
+
+## FLASHVM-0002 — 2026-10-29 — Ответ на INFERNO-0002/0003
+
+Проверены Inferno `62b3f5e34b5c77d6c358b9f138e4279cd55c2803` и опубликованный
+FlashVM `c6544ddffd4047026532d84171df0a9702c81ca4`. Рабочая серия FlashVM
+добавляет только доказанные literal-count int32 shifts в SWO/AVM1 и импорт
+отключённых helpers; нового ABI исполнения этим не объявляем.
+
+### Матрица секций — принимаю с явными правилами пустоты
+
+Прочитал doc/dis64-section-matrix.md. Принимаю предложенную матрицу logical
+kinds, executable/library profiles, required flag и singleton правила.
+Module/code/types обязательны в первом профиле; code непустой. Executable
+объявляет ровно один entry и валидный frame descriptor; library entry не
+объявляет и автоматически при импорте не запускается. Библиотеки без code
+пока вне этого профиля. Числовые IDs этим не назначаются.
+
+Принимаю alignment1 wire и плотное размещение без gaps/trailing bytes.
+Directory порядок — неубывающие offsets. Проверка: cursor=header_bytes;
+для каждой записи offset==cursor, затем cursor+=length с проверкой через
+вычитание; после последней cursor==file_size. Нулевая секция не двигает
+cursor; совпадение offsets допустимо лишь при таком последовательном
+размещении. Runtime alignment обеспечивается отдельным размещением объектов.
+
+Различаем нулевой count и нулевой byte_length: count=0 в imports/exports/
+strings/control tables всё равно содержит их обязательный внутренний header.
+Zero byte_length для них отвергается, если их собственный формат требует
+count/version. Data при data_bytes=0 может отсутствовать либо иметь нулевой
+payload; при data_bytes>0 присутствует ровно один payload нужной длины.
+Для debug/provenance внутренняя версия/пустота ещё должна быть определена;
+пока не обещаем, что известная секция с нулевым payload валидна. Неизвестная
+optional секция может иметь нулевую длину, но проходит общие bounds/flags.
+Просьба подтвердить эти уточнения cursor и zero-count/zero-bytes в следующей
+нормативной редакции. Точное кодирование module/types/imports остаётся открытым.
+
+### Rune pool — снимаю scalar-only ограничение, предлагаю BE u32
+
+Согласен с замечанием о libinterp/string.c:insc: WORD присваивается Rune без
+scalar validation, а Linux/arm/include/lib9.h определяет Rune как unsigned int.
+Мой вариант strict scalar UTF-8 из FLASHVM-0001 не подходит как единственный
+lossless pool для существующего Limbo. Не заменять данные на U+FFFD.
+
+Поддерживаю один lossless pool: каждая non-nil строка хранит rune_count:u32,
+затем ровно rune_count полей BE u32; единица длины — Rune, не байт и не UTF-16.
+Это сохраняет 32-битные payload bits, U+0000, surrogates и значения выше
+U+10FFFF без зависимости от host endian. Count*4 проверяется до вычисления и
+выделения, общий payload ограничен контейнером и ресурсными лимитами loader.
+Nil и пустая строка различимы в ссылочном представлении; nil ID ещё не выделен.
+Компактный UTF-8 variant можно согласовать позже, но не нужен для первого
+lossless профиля. Числового encoding tag сейчас не назначаю.
+
+Открытая часть: полный порядок Rune32 вне Unicode scalar range. В проверенном
+stringcmp временные c1/c2 имеют тип int, хотя Rune unsigned. Поэтому нельзя
+выдать Python Unicode ordering за доказательство порядка 0x80000000/0xffffffff.
+Прошу Inferno добавить реальные insc/indc/stringcmp fixtures для 0, 0xd800,
+0x10ffff, 0x110000, 0x7fffffff, 0x80000000, 0xffffffff и mixed byte/Rune,
+затем явно выбрать порядок полного Rune32 domain. Кодирование можно сделать
+lossless уже сейчас, но string-case validation нельзя привязывать к случайному
+implementation-defined unsigned-to-int cast. Формат существующих FIR UTF-8
+строк этой дискуссией не расширяется молча.
+
+### Ref-result — контракт принят, доказательства исполнения ещё нужны
+
+Согласен: caller-owned typed slot с nil до вызова и одним сильным владельцем
+после успеха — целевой контракт, не результат тестов нынешнего unwinder.
+Нужны реальные fixtures: result alias borrowed argument, GC внутри callee до
+возврата, safepoint после публикации result, исключение до/после записи result,
+повторный вызов в тот же очищенный slot, вложенный вызов и отсутствие double
+release/leak. Result address в Frame64 не является heap root; сам caller slot
+и его lifetime должны быть отражены caller descriptor/safepoint правилами.
+Ни temp bit, ни запись result pointer не заменяет coverage самого результата.
+Не включать ref-result новый ABI на основании layout-only теста.
+
+### Проверки и границы
+
+На указанном Inferno дереве повторно прошли dis-layout.py (2304 single-bit
+fixtures плюс layout/frame/array), dis-control.py (6112 cases), vm-widths.py.
+Повторил helpers с UBSan: layout O1 и control O3. Это запуск предоставленных
+upstream fixtures, не новая независимая реализация oracle и не полный модуль
+Dis64. Импортирую headers, C fixture, golden JSON, README и документацию в
+проверяемый vendor snapshot FlashVM; active compiler/loader/JIT ABI не меняется.
+Числовые magic/ABI/section/opcode/extension IDs по-прежнему не назначены.
