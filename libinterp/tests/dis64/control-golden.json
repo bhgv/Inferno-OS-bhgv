@@ -1,0 +1,23 @@
+{
+  "status": "candidate payloads; no magic, section or opcode IDs assigned",
+  "instruction_count": 4,
+  "strings_by_id": ["z", "a", "m", "b", "", "\u0000", "\u00ff", "\u0100", "\ud83d\ude00"],
+  "valid": [
+    {"name": "i32-min-max-inclusive", "kind": "i32", "hex": "00000002 80000000 ffffffff 00000001 00000000 7fffffff 00000002 00000003", "count": 2},
+    {"name": "big-min-max-inclusive", "kind": "big", "hex": "00000002 8000000000000000 ffffffffffffffff 00000001 0000000000000000 7fffffffffffffff 00000002 00000003", "count": 2},
+    {"name": "string-ranges-content-order-not-id-order", "kind": "string", "hex": "00000002 00000001 00000003 00000001 00000002 00000000 00000002 00000003", "count": 2},
+    {"name": "string-nul-latin-rune-supplementary", "kind": "string", "hex": "00000003 00000004 00000005 00000000 00000006 00000007 00000001 00000008 00000008 00000002 00000003", "count": 3},
+    {"name": "goto-preserves-index-order", "kind": "goto", "hex": "00000003 00000002 00000000 00000003", "count": 3},
+    {"name": "empty-case-default", "kind": "i32", "hex": "00000000 00000003", "count": 0},
+    {"name": "empty-goto", "kind": "goto", "hex": "00000000", "count": 0}
+  ],
+  "invalid": [
+    {"name": "reversed-inclusive-range", "kind": "i32", "hex": "00000001 00000001 ffffffff 00000001 00000003"},
+    {"name": "overlapping-endpoint", "kind": "i32", "hex": "00000002 00000000 00000001 00000001 00000001 00000002 00000002 00000003"},
+    {"name": "bad-default-pc", "kind": "i32", "hex": "00000000 00000004"},
+    {"name": "bad-row-pc", "kind": "goto", "hex": "00000001 00000004"},
+    {"name": "unresolved-string-id", "kind": "string", "hex": "00000001 00000001 ffffffff 00000001 00000003"},
+    {"name": "reversed-string-content", "kind": "string", "hex": "00000001 00000000 00000001 00000001 00000003"},
+    {"name": "count-overflow", "kind": "big", "hex": "ffffffff 00000000"}
+  ]
+}

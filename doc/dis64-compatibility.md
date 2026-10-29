@@ -1,8 +1,8 @@
 # Dis64 и совместимость с FlashVM / DisVM
 
 Предложение для совместного ревью с FlashVM/FIR (2026-10-29):
-[Dis64: Codex handoff](dis64-flashvm-proposal.md). Оно рекомендует GC-map8
-вместо описанного здесь GC-map4; это ещё не принятое изменение ABI.
+[Dis64: Codex handoff](dis64-flashvm-proposal.md). GC-map8 и полные карты приняты как направление обеими сторонами
+в INFERNO-0001 / FLASHVM-0001; это ещё не включённый runtime ABI.
 
 Решение уточнено пользователем 2026-10-29: DisVM активно разрабатывается,
 сохранение уже собранных NC64-программ **не требуется**. Предыдущая обязательная
@@ -50,7 +50,7 @@ FlashVM: `master`, commit
 | `WORD` / ячейка int | 4 | 8 | 4 |
 | Pointer/ref cell | 4 | 8 | 8 |
 | `big`, `real` | 8 | 8 | 8 |
-| Quantum pointer bitmap | 4 | 8 | 4 |
+| Quantum pointer bitmap | 4 | 8 | 8 |
 | Четыре link/type поля обычного Frame | 16 | 32 | 32 |
 | Offset result-pointer slot обычного вызова | 16 | 32 | 32 |
 | Область обычного frame с ret и temps | 32 | 64 | 64 |
@@ -93,10 +93,10 @@ FIR i32 в текущем NC64 явно нормализуется до signed32
 4. Сохранить обычную семантику Limbo int32, big64 и binary64. Восемь байт
    указателя не должны расширять int-арифметику. Фиксировать signedness,
    переполнение, shifts, MIN/-1, NaN и signed zero независимыми оракулами.
-5. Pointer-map quantum в предлагаемом ABI64 — четыре байта. Отмечается начало
-   полного восьмибайтового, выровненного ref; вторая половина не отмечается.
-   GC/RC, init/copy/free, списки, массивы, каналы и исключения обязаны использовать
-   байтовый offset карты, а не шаг `sizeof(void*)` как в текущем NC64.
+5. Pointer-map quantum ABI64 — восемь байт, полная wire-карта ceil(size/64).
+   Отмечается полный восьмибайтовый ref; padding bits нулевые. Int-only записи
+   могут иметь stride4. GC/RC, init/copy/free, списки, массивы, каналы и исключения
+   используют явные target offsets; одного совпадения quantum с NC64 недостаточно.
 6. Обычный frame содержит четыре восьмибайтовых runtime поля, затем result
    pointer и три pointer-capable temporary slots: всего 64 байта до аргументов.
    Компилятор, xec, JIT и generated C stubs должны брать один и тот же layout.

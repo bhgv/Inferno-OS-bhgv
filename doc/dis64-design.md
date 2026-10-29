@@ -1,8 +1,8 @@
 # Dis64: план перехода к 64-битным адресам
 
 Предложение для совместного ревью с FlashVM/FIR (2026-10-29):
-[Dis64: Codex handoff](dis64-flashvm-proposal.md). Оно рекомендует GC-map8
-вместо описанного здесь GC-map4; это ещё не принятое изменение ABI.
+[Dis64: Codex handoff](dis64-flashvm-proposal.md). GC-map8 и полные карты приняты как направление обеими сторонами
+в журналах INFERNO-0001 / FLASHVM-0001. Прототип обновлён; активный ABI не включён.
 
 Статус: проект ABI и проверяемый прототип layout, **не включённый режим VM**.
 `include/dis-layout.h` пока не подключён к активным заголовкам компилятора и
@@ -27,7 +27,7 @@
 | big / real | 8 | 8 |
 | Указатель, ref, string, list, array, chan, module | 4 | 8 |
 | Выравнивание указателя | 4 | 8 |
-| Шаг bitmap GC | 4 | 4 |
+| Шаг bitmap GC | 4 | 8 |
 | Зарезервированная область frame с ret и temps | 32 | 64 |
 | Индексы инструкций и смещения в формате файла | 32 | 32 на первом этапе |
 
@@ -51,12 +51,14 @@ Inferno ABI32 остаётся отдельным существующим ре�
 | ABI | a | b | c | Размер | Bitmap |
 |---|---:|---:|---:|---:|---|
 | ABI32 | 0 | 4 | 8 | 12 | 0x40 |
-| ABI64 | 0 | 8 | 16 | 24 | 0x20 |
+| ABI64 | 0 | 8 | 16 | 24 | 0x40 |
 
-Bitmap сохраняет шаг четыре байта. В ABI64 отмечается начало 8-байтного
-указателя, вторая половина не отмечается. Валидатор отвергает невыравненные
-и выходящие за размер объекта указатели. Это позволяет упаковывать int32
-без превращения каждого значения в 8-байтную ячейку.
+ABI32 использует map4, ABI64 — map8. Каждый бит отмечает полный указатель
+по кратному quantum байтовому смещению. Wire-карта полная: ceil(size/32)
+байт для ABI32 прототипа и ceil(size/64) для ABI64; padding bits нулевые.
+Усечённые карты прототип отвергает. Это не изменение старого wire ABI32.
+Упаковка int32 независима от карты: int-only записи сохраняют alignment/stride4.
+Валидатор проверяет полное размещение каждой отмеченной ссылки.
 
 `freeptrs`, `markheap`, `initmem`, копирование объектов и аудит heap должны
 идти по **байтовому смещению bitmap**, затем загружать нативный указатель.
@@ -159,7 +161,10 @@ CFLAGS='-O1 -g -fsanitize=undefined' python3 libinterp/tests/vm-widths.py
 CFLAGS='-O1 -g -fsanitize=undefined' python3 libinterp/tests/dis-loader.py
 ```
 
-`dis-layout.py` проверяет предлагаемый layout и bitmap, не активный GC.
+`dis-layout.py` проверяет явные frame offsets, nested layout, array extents
+и полные map4/map8, не активный GC. `dis-control.py` проверяет candidate typed
+table payloads по golden bytes и независимому Python oracle. Числовые registry
+IDs не назначены; helpers не подключены к действующему loader/JIT.
 `vm-widths.py` проверяет реальные scalar/pointer функции в моделях LP64,
 word32/pointer64 и LLP64 (последняя моделируется typedef в тесте).
 `dis-loader.py` выполняет production parsemod на ограниченных fixtures;
