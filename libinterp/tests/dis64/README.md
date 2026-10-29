@@ -64,3 +64,11 @@ The existing `string-view-native.py` additionally executes extracted production
 INSC/INDC on all seven requested boundary Runes and signed-order comparisons.
 Those tests preserve and document existing behavior; they are not new-ABI
 module acceptance. Full Rune32 ordering still requires a joint decision.
+
+`disrunecompare` compares two complete non-nil BE Rune32 records using signed32
+lexicographic ordering agreed in FLASHVM-0003. Sign-bit flipping avoids a
+host-dependent unsigned-to-int cast. Empty/prefix ordering and the full u32
+payload domain are preserved; nil reference IDs remain outside this helper.
+The driver compares every pair of its deterministic record corpus against
+independent signed Python integer lists, including invalid extents, output
+preservation and unaligned/aliased read-only input. No active stringcmp changes.

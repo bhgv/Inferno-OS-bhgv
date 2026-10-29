@@ -34,6 +34,14 @@ int writerecord(unsigned char *output, unsigned int capacity,
 {
     return disrunewrite(output, capacity, values, count, bytes);
 }
+
+
+/* Expose the production record comparison without changing caller output on failure. */
+int comparerecords(const unsigned char *left, unsigned int leftbytes,
+    const unsigned char *right, unsigned int rightbytes, int *order)
+{
+    return disrunecompare(left, leftbytes, right, rightbytes, order);
+}
 '''
 
 
@@ -65,6 +73,43 @@ def main():
         write = loaded.writerecord
         write.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p,
                           ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+        compare = loaded.comparerecords
+        compare.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p,
+                            ctypes.c_uint, ctypes.POINTER(ctypes.c_int)]
+        compare_checks = 0
+        # Python's unbounded signed integers provide an independent order;
+        # no Unicode string encoding or host signed cast defines this oracle.
+        for left in records:
+            a = len(left).to_bytes(4, "big") + b"".join(x.to_bytes(4, "big") for x in left)
+            signed_left = [x if x < 0x80000000 else x - 0x100000000 for x in left]
+            for right in records:
+                b = len(right).to_bytes(4, "big") + b"".join(x.to_bytes(4, "big") for x in right)
+                signed_right = [x if x < 0x80000000 else x - 0x100000000 for x in right]
+                expected_order = (signed_left > signed_right) - (signed_left < signed_right)
+                result = ctypes.c_int(12345)
+                if compare(a, len(a), b, len(b), ctypes.byref(result)) != 1 or result.value != expected_order:
+                    raise RuntimeError("signed Rune32 record comparison differs")
+                compare_checks += 1
+                for bad_left, bad_right in ((a[:-1], b), (a, b[:-1]), (a+b"\x00", b), (a, b+b"\x00")):
+                    result.value = 12345
+                    if compare(bad_left, len(bad_left), bad_right, len(bad_right), ctypes.byref(result)) != 0 or result.value != 12345:
+                        raise RuntimeError("invalid Rune record comparison published a result")
+                    compare_checks += 1
+        # The helper accepts unaligned complete records and aliases read-only
+        # input, but rejects null records/output even for an empty sequence.
+        for values in ([], keys, [0x80000000, 0, 0xffffffff]):
+            payload = len(values).to_bytes(4, "big") + b"".join(x.to_bytes(4, "big") for x in values)
+            storage = ctypes.create_string_buffer(b"!" + payload)
+            shifted = ctypes.cast(ctypes.byref(storage, 1), ctypes.c_void_p)
+            result = ctypes.c_int(12345)
+            if compare(shifted, len(payload), shifted, len(payload), ctypes.byref(result)) != 1 or result.value != 0:
+                raise RuntimeError("unaligned/aliased Rune comparison differs")
+            result.value = 12345
+            if compare(None, 0, payload, len(payload), ctypes.byref(result)) or result.value != 12345:
+                raise RuntimeError("null Rune record published a comparison")
+            if compare(payload, len(payload), payload, len(payload), None):
+                raise RuntimeError("null comparison destination admitted")
+            compare_checks += 3
         for values in records:
             expected = len(values).to_bytes(4, "big")
             expected += b"".join(value.to_bytes(4, "big") for value in values)
@@ -91,7 +136,7 @@ def main():
                     if result != want or output.value != (values[index] if want == 1 else 0x12345678):
                         raise RuntimeError("Rune record read/publication mismatch")
                     checks += 1
-    print("PASS lossless Rune32:", checks, "BE bytes, capacities, truncations and indexed reads")
+    print("PASS lossless Rune32:", checks, "BE bytes/capacities/truncations/reads;", compare_checks, "signed-order checks")
 
 
 if __name__ == "__main__":

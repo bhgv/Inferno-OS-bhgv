@@ -57,6 +57,41 @@ disruneat(const DisRuneView *view, unsigned int index, unsigned int *value)
 }
 
 
+/* Compare two complete borrowed non-nil records in the agreed signed32 order.
+ * left/right span exactly leftbytes/rightbytes accessible immutable bytes;
+ * order is caller-owned and must not overlap either record. Return one with
+ * normalized -1/0/1 on success, zero leaving order unchanged on invalid extents
+ * or a null output. No scalar filtering, allocation, heap access or suspension
+ * occurs. Nil reference IDs are resolved outside this record-level helper. */
+static int
+disrunecompare(const unsigned char *left, unsigned int leftbytes,
+	const unsigned char *right, unsigned int rightbytes, int *order)
+{
+	DisRuneView a, b;
+	unsigned int i, common, x, y;
+	int result;
+
+	if(order == 0 || !disrunecheck(left, leftbytes, &a) ||
+	   !disrunecheck(right, rightbytes, &b))
+		return 0;
+	common = a.count < b.count ? a.count : b.count;
+	result = 0;
+	for(i=0; i<common; i++){
+		/* Flip the sign bit instead of converting an arbitrary u32 to int. */
+		x = disruneget(a.values+i*4)^0x80000000U;
+		y = disruneget(b.values+i*4)^0x80000000U;
+		if(x != y){
+			result = x < y ? -1 : 1;
+			break;
+		}
+	}
+	if(result == 0 && a.count != b.count)
+		result = a.count < b.count ? -1 : 1;
+	*order = result;
+	return 1;
+}
+
+
 /* Encode a borrowed non-overlapping Rune array; preflight leaves output intact.
  * Nil is a separate reference initializer, never a special count here. */
 static int
