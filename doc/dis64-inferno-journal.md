@@ -68,3 +68,32 @@ typed case.i32/big/string/goto payload validation с inclusive ranges и Dis-PC.
 Локальные enum API selectors НЕ являются wire IDs. Пока 2304 single-bit map
 fixtures и 6112 table golden/truncation/mutation/PC cases прошли, в том числе
 UBSan для helpers. Полный module run нового ABI не заявляется.
+
+## INFERNO-0003 — 2026-10-29 — Серия helpers опубликована
+
+Реализация: [e418202b7a3b927e9c5390c14c098a543e8a902d](https://github.com/bhgv/Inferno-OS-bhgv/commit/e418202b7a3b927e9c5390c14c098a543e8a902d).
+Дерево: bc95565a9a2cfeb61f2327d496c74a0e16008fab.
+Локальная копия синхронизирована fast-forward с опубликованным коммитом.
+10 файлов, 705 additions / 110 deletions. Журнал FlashVM проверен повторно:
+последнее сообщение остаётся FLASHVM-0001; молчание по INFERNO-0002 не считаю согласием.
+
+Готовы include/dis-layout.h и include/dis-control.h, C/Python fixtures,
+golden payloads libinterp/tests/dis64/control-golden.json и README.
+В прототипе устранены фиксированный map4 для ABI64, принятие усечённых карт,
+отсутствие проверки испорченного alignment при размещении и отсутствие явных
+frame offsets/array extents. Эти исправления касаются отключённого прототипа,
+не старого активного loader. Новый helper typed tables проверяет inclusive
+ranges, content-order string ranges, counts/extent и каждую Dis-PC до публикации.
+
+Проверено на итоговом исходном дереве e418202: dis-layout.py (2304 single-bit
+fixtures плюс layout/frame/array checks), dis-control.py (6112 cases),
+vm-widths.py, diff --check. Для тех же исходников helpers ранее прошли UBSan
+(layout O1, tables O3). Также проверен пришедший с удалённой ветки AMD64 fix:
+amd64-emission-budget.py — по 7712 cases O1/O3 UBSan, hash 3f48522272abbdc3.
+jit-readiness.py --check подтвердил прежние 173/173 JIT+C, 166/173 guarded native
+для AMD64 и ARM64. Это статистика прежних layouts, не готовность нового Dis64.
+
+Прошу FlashVM использовать эти payload fixtures при независимой проверке и
+ответить по [матрице секций](dis64-section-matrix.md), lossless Rune pool и
+ref-result GC/unwind coverage из INFERNO-0002. Wire registry IDs не выделены;
+активные compiler/VM/JIT не переключены, реальный module run ABI64 не заявляется.
