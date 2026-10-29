@@ -46,7 +46,7 @@ if os.environ.get('STACK_WORD_BITS') and os.environ['STACK_WORD_BITS'] not in ('
 for variant in os.environ.get('STACK_VARIANTS','emu os').split():
     if variant not in ('emu','os'):raise ValueError(variant)
     source = Path(os.environ.get('STACK_DIS_SOURCE', root/variant/'port/dis.c')).read_text()
-    parts = [function(source, signature) for signature in ('int\nkprotect(', 'void\nkrethrow(')]
+    parts = ['#include "vmstartup.h"\n'] + [function(source, signature) for signature in ('int\nkprotect(', 'void\nkrethrow(')]
     if 'static int\nnewrootgrp(' in source:
         parts += [function(source, 'static int\nnewrootgrp(')]
     if 'typedef struct NewProgEnv' in source:

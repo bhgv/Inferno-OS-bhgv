@@ -1,4 +1,5 @@
 PORTHFILES=\
+	$ROOT/include/vmstartup.h\
 	../port/error.h\
 	../port/lib.h\
 	../port/portdat.h\

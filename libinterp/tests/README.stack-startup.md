@@ -3,9 +3,9 @@
 Run `python3 libinterp/tests/stack-startup.py` from the repository root.
 
 The fixture executes both emulator and native-kernel scheduler bodies through
-real emulator declarations and a native incref adapter. Each scheduler runs
-2,229 native-WORD cases and 2,217 word32 cases, plus one seeded PID-exhaustion
-case per model (8,896 cases total). Independent exception families run in fresh
+real emulator declarations and a native incref adapter. The current default matrix runs
+2,614 native-WORD cases and 2,602 word32 cases per scheduler, including seeded
+PID exhaustion (10,432 cases total). Independent exception families run in fresh
 processes. Pointers keep host width; word32 is not a complete
 32-bit ABI build.
 
@@ -69,3 +69,12 @@ The complete ASan run is not claimed: the pre-existing root-startup family repor
 a stack diagnostic at krethrow after siglongjmp, alongside the environment's
 missing stack-top warning. `STACK_CASES=root` reproduces the same diagnostic with
 parent 77a1a89 xec.c; stack instrumentation has not been disabled to hide it.
+
+Root startup now uses include/vmstartup.h before cloning MP or creating a Prog.
+Missing, one-past and misaligned relative bytecode entry PCs, invalid program
+counts and unusable frame metadata are rejected before publication. Existing
+opaque native-PC entries remain supported. schedmod rejects nil/invalid owner
+representations without trying to consume a nonexistent Module reference.
+The root fixture now supplies the real program span required by this contract.
+Actual Dis64 scheduling and terminal cleanup have a separate connected driver:
+`python3 libinterp/tests/dis64-scheduler.py`; see doc/dis64-scheduler.md.

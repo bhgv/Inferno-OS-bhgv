@@ -8,6 +8,7 @@
 #include <interp.h>
 #include <kernel.h>
 #include "raise.h"
+#include "vmstartup.h"
 
 	void	vmachine(void*);
 
@@ -813,15 +814,17 @@ currun(void)
 }
 
 typedef struct SchedModule SchedModule;
+
 struct SchedModule {
-	Module *m;
-	Modlink *ml;
-	Prog initial;
-	Prog *result;
-	Frame *frame;
-	void *saved;
-	int transferred;
+	Module *m; // Module reference consumed by startup or failure cleanup.
+	Modlink *ml; // Partial runtime instance, owned until Prog publication.
+	Prog initial; // Unpublished root registers and stack extent.
+	Prog *result; // Published process, assigned only after newprog succeeds.
+	Frame *frame; // Temporary full-sized source frame.
+	void *saved; // Caller scratch register restored on all protected paths.
+	int transferred; // linkmod has consumed the input Module reference.
 };
+
 
 /* Build complete module data and a full-sized root frame before scheduling. */
 static int
@@ -834,10 +837,7 @@ schedmodule(void *arg)
 	Prog *p;
 
 	c = arg;
-	t = c->m->entryt;
-	if(t == nil || t->size < sizeof(Frame) ||
-	   (ulong)t->size > 0x7fffffff-OA(Stkext, reg.tos.fu) || c->m->ss > 0x7fffffff)
-		error(exHeap);
+	t = vmstartup(c->m);
 	empty.name = nil;
 	c->transferred = 1;
 	c->ml = linkmod(c->m, &empty, 1);
@@ -859,6 +859,7 @@ schedmodule(void *arg)
 	return 1;
 }
 
+
 /* Restore scratch registers and release every unpublished startup resource. */
 Prog*
 schedmod(Module *m)
@@ -866,6 +867,9 @@ schedmod(Module *m)
 	SchedModule c;
 	int ok;
 
+	if(m == nil || m == H || (uintptr)m%sizeof(void*) != 0 ||
+	   (uintptr)m > (uintptr)-1-sizeof(*m))
+		error(exModule);
 	memset(&c, 0, sizeof(c));
 	c.m = m;
 	c.ml = H;

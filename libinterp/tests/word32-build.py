@@ -50,13 +50,15 @@ def main():
         probe.write_text(PROBE)
         for label, selection in (("legacy", []), ("WORD32", ["-DDIS_WORD32=1"])):
             command = compiler + flags + selection + includes
-            for name in SOURCES:
-                subprocess.run(command + ["-c", str(ROOT / "libinterp" / (name + ".c")),
-                               "-o", str(work / (label + name + ".o"))], check=True)
+            sources = [ROOT/"libinterp"/(name+".c") for name in SOURCES]
+            sources.append(ROOT/"emu/port/dis.c")
+            for source in sources:
+                subprocess.run(command + ["-c", str(source),
+                               "-o", str(work / (label + source.stem + ".o"))], check=True)
             binary = work / label
             subprocess.run(command + [str(probe), "-o", str(binary)], check=True)
             subprocess.run([str(binary)], check=True)
-            print("PASS", label, len(SOURCES), "complete core objects and native scalar/frame probe",
+            print("PASS", label, len(sources), "complete core objects and native scalar/frame probe",
                   flush=True)
         for value in ("0", "2"):
             result = subprocess.run(compiler + includes + ["-DDIS_WORD32=" + value,

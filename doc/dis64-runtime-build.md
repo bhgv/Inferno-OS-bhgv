@@ -10,9 +10,9 @@ Never reuse legacy objects when changing it: discard the entire object tree,
 including generated interface consumers and native libraries. It is not safe
 to link the two scalar models together. No default mkconfig target is changed.
 
-`python3 libinterp/tests/word32-build.py` builds 19 complete core translation
+`python3 libinterp/tests/word32-build.py` builds 20 complete core translation
 units for both selections: dispatch/decoder, allocation/GC, loading, strings,
-stack/unwind, and AMD64/ARM64/RV64 compiler sources. The native probe includes
+stack/unwind, AMD64/ARM64/RV64 compiler sources, and the full emulator scheduler. The native probe includes
 actual interp.h and checks scalar sizes and existing frame-link offsets.
 It does not link an emulator or execute emitted ARM64/RV64 machine code.
 Compilation on one host does not certify a physical target.
@@ -83,8 +83,10 @@ VM loop and then actual stack/module cleanup in this test. That is stronger than
 the earlier single-leaf pilots; it is still not a full emulator Dis64 run.
 The original dis64-pilot-native.py intentionally remains a separate leaf-level test.
 
-The next integration must establish scheduler-owned startup and exception cleanup,
-then exercise actual process exit and module lifetime in a complete runtime build.
-Existing Frame links matching the first32 bytes of Frame64 do not establish
-argument/result/temporary-slot compatibility. Calls, dependency resolution,
-reference signatures and map8 GC remain separate acceptance gates.
+The newer [scheduler integration fixture](dis64-scheduler.md) also runs actual
+schedmod/newprog and terminal progexit/delprog, including PID/run-queue removal
+and retained instance-MP results. Its host worker, pool and OS resource boundaries
+remain controlled fixtures. Automatic readmod routing and a complete emulator boot
+are still not enabled. Existing Frame links matching the first32 bytes of Frame64
+do not establish argument/result/temporary-slot compatibility. Calls, dependency
+resolution, reference signatures and map8 GC remain separate acceptance gates.

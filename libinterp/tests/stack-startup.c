@@ -153,6 +153,7 @@ setup(void)
 	type.ref = 1; type.size = sizeof(Frame)+64; type.np = 1;
 	type.map[0] = 0x80>>(sizeof(Frame)/sizeof(void*)); types[0] = &type;
 	module.ref = 2; module.origmp = H; module.entryt = &type; module.entry = code;
+	module.prog = code; module.nprog = nelem(code);
 	module.type = types; module.ntype = 1; module.ext = exports;
 	exports[0].name = "entry"; exports[0].frame = &type; exports[0].u.pc = code+1;
 	allocations = 0; failat = -1; raised = nil; unframes = 0; created = result = nil; user_error = 0;

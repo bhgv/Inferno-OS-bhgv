@@ -94,4 +94,6 @@ The newer [runtime adapter](dis64-runtime-build.md) constructs actual Module/Ins
 and heap storage from the same semantic pilot. Its connected C/AMD64 RX test now
 executes the real decoder/xec loop, IEXIT/error and stack cleanup. The single-leaf
 fixture described above retains its narrower scope. Automatic readmod routing,
-complete emulator startup/process exit, calling ABI and live GC remain unproven.
+complete emulator startup, calling ABI and live GC remain unproven.
+The [scheduler fixture](dis64-scheduler.md) separately exercises actual root
+publication, process exit and terminal cleanup under controlled OS boundaries.

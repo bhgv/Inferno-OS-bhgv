@@ -39,8 +39,9 @@ Native operations include byte/word moves, bit-preserving real/big moves,
 byte/short/word conversions, compatible-width lea, add/subtract, bitwise
 operations, shifts, M-extension multiplication, jumps and six byte/word
 relations. Out-of-range shift counts return 0 before any visible store.
-Division/modulo retain VM exception behavior through helpers. Float
-arithmetic also stays in helpers: the K210 target is RV64IMAFC, without D.
+With the division extension, bounded RV64 integer division/modulo have native
+paths; zero divisors decline to the C handlers to preserve VM exceptions. Without
+the extension they remain in C. Float arithmetic also stays in helpers: the K210 target is RV64IMAFC, without D.
 
 The encoder supports RV32/word32, RV64/word32 and the repository's current
 RV64/legacy-word64 configuration. The last matches the current interpreter's
@@ -105,3 +106,13 @@ validates the complete FreeRTOS SDK on hardware.
   <https://riscv-non-isa.github.io/riscv-elf-psabi-doc/>
 - Hart-local instruction synchronization:
   <https://docs.riscv.org/reference/isa/unpriv/zifencei.html>
+
+## Current measured opcode availability
+
+See [jit64-status.md](jit64-status.md) for the reproducible profile comparison.
+RV64I has87/173 guarded native paths, RV64I+Zmmul90/173 and RV64M103/173.
+These are emission-availability counts, not performance percentages or complete
+Dis64 runtime acceptance. Missing/declined RV leaves return to the existing VM
+C dispatch; RV does not yet have the AMD64/ARM64 complete tail-entry table.
+Complex allocation, scheduling, linking and ownership handlers should remain in C
+when that is the appropriate implementation; a useful JIT need not duplicate them.
