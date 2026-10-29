@@ -4,6 +4,10 @@
 [Dis64: Codex handoff](dis64-flashvm-proposal.md). GC-map8 и полные карты приняты как направление обеими сторонами
 в журналах INFERNO-0001 / FLASHVM-0001. Прототип обновлён; активный ABI не включён.
 
+Согласованная нормативная часть: [dis64-contract.md](dis64-contract.md).
+По FLASHVM-0003 принят lossless BE Rune32 pool и signed32 lexicographic order;
+точные registry IDs и оставшиеся payloads пока открыты.
+
 Статус: проект ABI и проверяемый прототип layout, **не включённый режим VM**.
 `include/dis-layout.h` пока не подключён к активным заголовкам компилятора и
 интерпретатора. Обычные Dis-файлы не переключаются на новый layout молча.

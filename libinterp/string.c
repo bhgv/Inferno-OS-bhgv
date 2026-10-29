@@ -62,7 +62,11 @@ OP(indc)
 		error(exHeap);
 	if(wide) {
 		memmove(&rune, (uchar*)address+(ulong)index*sizeof(Rune), sizeof(rune));
-		result = (int)rune;
+		/* Decode signed32 explicitly, including INT_MIN, on either WORD width. */
+		if(rune&0x80000000U)
+			result = -(WORD)(~rune&0x7fffffffU)-1;
+		else
+			result = (WORD)rune;
 	} else
 		result = ((uchar*)address)[index];
 	memmove(R.d, &result, sizeof(result));
@@ -1172,14 +1176,14 @@ stringdup(String *s)
 }
 
 
-/* Compare byte-safe headers and Rune prefixes; identities need no payload reads. */
+/* Compare signed32 Rune keys through byte-safe headers; identities need no payload reads. */
 int
 stringcmp(String *s1, String *s2)
 {
 	uchar *r1, *r2;
-	Rune rune;
+	Rune rune, c1, c2;
 	uchar *a1, *a2;
-	int v, n, n1, n2, c1, c2, i, length1, length2, capacity1, capacity2;
+	int v, n, n1, n2, i, length1, length2, capacity1, capacity2;
 	String *source;
 	uvlong bytes;
 	uintptr address;
@@ -1291,7 +1295,9 @@ stringcmp(String *s1, String *s2)
 	}
 	return n1 - n2;
 
-ne:	if(c1 < c2)
+ne:
+	/* Compare signed32 keys without implementation-defined unsigned-to-int casts. */
+	if((c1^0x80000000U) < (c2^0x80000000U))
 		return -1;
 	return 1;
 }

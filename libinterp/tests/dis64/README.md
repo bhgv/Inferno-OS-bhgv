@@ -63,4 +63,25 @@ Input arrays to the writer must not overlap output storage.
 The existing `string-view-native.py` additionally executes extracted production
 INSC/INDC on all seven requested boundary Runes and signed-order comparisons.
 Those tests preserve and document existing behavior; they are not new-ABI
-module acceptance. Full Rune32 ordering still requires a joint decision.
+module acceptance. Full Rune32 ordering is signed32, explicitly agreed in FLASHVM-0003 / INFERNO-0006.
+
+
+## Agreed signed32 ordering and production parity
+
+`disrunecompare` orders full Rune32 bit patterns as signed32 keys, using sign-bit
+flips without unsigned-to-signed casts. Prefix length decides equal prefixes;
+a null view explicitly represents nil content and compares equal to empty.
+The wire nil-reference ID remains unassigned. `rune-order-golden.json` records
+hand-written equality/order groups; the Python oracle independently subtracts
+2^32 for high-bit Runes. `dis-rune.py` checks all pairs of fixture and generated
+strings, as well as the existing codec matrix.
+
+`dis-rune-case.py` combines actual Rune decoding/comparison with the actual
+typed-table validator and binary search: 12,180 range/ID/lookup combinations.
+Pool indices here are test-local, not a proposal for nil-reference encoding.
+
+`string-view-native.py` compares production stringcmp, wire ordering and a
+wide-integer oracle for every mixed byte/Rune pair and packed-header alignment.
+Production INDC is checked against explicit mathematical signed32 values.
+These checks cover current runtime semantics on WORD32/64 models, while the
+shared wire helpers remain disconnected from the active module loader.

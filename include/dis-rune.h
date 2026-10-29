@@ -75,4 +75,32 @@ disrunewrite(unsigned char *output, unsigned int capacity, const unsigned int *v
 	*bytes = length;
 	return 1;
 }
+
+/* Compare validated strings in the agreed signed32 Rune lexicographic order.
+ * Null views represent VM nil strings and compare equal to empty contents;
+ * callers retain the distinct nil/empty ownership and wire-reference tags. */
+static int
+disrunecompare(const DisRuneView *left, const DisRuneView *right, int *order)
+{
+	unsigned int nl, nr, n, i, a, b;
+
+	if(order == 0 || (unsigned int)-1 != 0xffffffffU)
+		return 0;
+	nl = left == 0 ? 0 : left->count;
+	nr = right == 0 ? 0 : right->count;
+	if((nl != 0 && left->values == 0) || (nr != 0 && right->values == 0))
+		return 0;
+	n = nl < nr ? nl : nr;
+	for(i=0; i<n; i++){
+		a = disruneget(left->values+i*4)^0x80000000U;
+		b = disruneget(right->values+i*4)^0x80000000U;
+		if(a != b){
+			*order = a < b ? -1 : 1;
+			return 1;
+		}
+	}
+	*order = nl < nr ? -1 : nl > nr;
+	return 1;
+}
+
 #endif

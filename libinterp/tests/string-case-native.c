@@ -79,6 +79,85 @@ invoke(void)
 }
 
 
+/* Compare real C and RX-plus-C case paths over signed32 Rune endpoints. */
+static int
+runecases(Module *module, Modlink *link, Inst *code)
+{
+	union {
+		uvlong align; // Natural alignment of every synthetic String header.
+		uchar bytes[128]; // Rune or byte payload and independent header.
+	} storage[9];
+	Rune keys[] = {0x80000000U, 0xffffffffU, 0, 0xff, 0xd800, 0x10ffff, 0x110000, 0x7fffffff};
+	String *strings[9], *low, *high, *value;
+	uchar table[128], before[128], source[32];
+	REG saved, expected;
+	vlong lo, hi, key;
+	int i, a, b, q, shift, route, target, fast, checks;
+
+	if(IBY2WD != sizeof(void*))
+		return 0;
+	memset(storage, 0, sizeof(storage));
+	for(i=0; i<9; i++){
+		strings[i] = (String*)storage[i].bytes;
+		strings[i]->len = i == 8 ? 1 : -1;
+		strings[i]->max = 1;
+		if(i == 8)
+			strings[i]->Sascii[0] = 0xff;
+		else
+			memmove(strings[i]->Srune, &keys[i], sizeof(Rune));
+	}
+	module->prog = code;
+	link->compiled = 0;
+	operation = casec;
+	checks = 0;
+	for(a=0; a<8; a++)
+	for(b=a; b<8; b++)
+	for(q=0; q<10; q++)
+	for(shift=0; shift<8; shift++){
+		low = strings[a];
+		high = strings[b];
+		value = q == 9 ? H : strings[q];
+		lo = keys[a];
+		hi = keys[b];
+		key = q == 8 ? 0xff : q == 9 ? 0 : keys[q];
+		if(lo > 0x7fffffffLL)
+			lo -= 0x100000000LL;
+		if(hi > 0x7fffffffLL)
+			hi -= 0x100000000LL;
+		if(key > 0x7fffffffLL)
+			key -= 0x100000000LL;
+		target = q != 9 && key >= lo && key <= hi ? 5 : 31;
+		memset(table, 0, sizeof(table));
+		cell(table+shift, 0, 1);
+		memmove(table+shift+IBY2WD, &low, sizeof(low));
+		memmove(table+shift+2*IBY2WD, &high, sizeof(high));
+		cell(table+shift, 3, 5);
+		cell(table+shift, 4, 31);
+		memcpy(before, table, sizeof(table));
+		memmove(source+shift, &value, sizeof(value));
+		memset(&saved, 0, sizeof(saved));
+		saved.M = link;
+		saved.s = source+shift;
+		saved.d = table+shift;
+		saved.PC = code+30;
+		expected = saved;
+		expected.PC = code+target;
+		for(route=0; route<2; route++){
+			R = saved;
+			fast = route == 0 ? 0 : module->jit->entry[ICASEC](&R);
+			if(!fast){
+				if(memcmp(&R, &saved, sizeof(R)) != 0 || !invoke())
+					return -1;
+			}
+			if(memcmp(&R, &expected, sizeof(R)) != 0 || memcmp(table, before, sizeof(table)) != 0)
+				return -1;
+			checks++;
+		}
+	}
+	return checks;
+}
+
+
 /* Compare sorted singleton/range tables with a linear oracle and preserve all other state. */
 int
 main(void)
@@ -299,6 +378,10 @@ main(void)
 			return 3;
 		checks++;
 	}
+	mode = runecases(&module, &link, code);
+	if(mode < 0)
+		return 11;
+	checks += mode;
 	module.jit->freecode(module.jit->code, module.jit->size);
 	free(module.jit);
 	printf("string case C/RX: %d checks, cell=%d WORD=%zu\n", checks, IBY2WD, sizeof(WORD));

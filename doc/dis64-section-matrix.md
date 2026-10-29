@@ -91,13 +91,11 @@ Golden payloads: libinterp/tests/dis64/control-golden.json. Это только 
 
 Проверки layout/table helpers не заменяют compiler → module → interpreter/JIT.
 
-## Уточнение существующего Rune порядка
+## Согласованный Rune порядок
 
-Дополнительный аудит stringcmp и string-view-native.c показал: нынешние Rune
-перед сравнением переводятся в signed int; тест ожидает именно такой порядок
-для 0x80000000..0xffffffff. Поэтому «Rune lexicographic» недостаточно точно
-задаёт порядок всего u32-домена. Для valid Unicode scalar значения порядок
-совпадает. Открытый выбор: сохранить signed32 порядок всего существующего
-домена либо согласовать отдельное изменение семантики с unsigned Rune order.
-До согласования production stringcmp не меняется; comparator typed-table
-helper передаётся явно. Предложение lossless pool не решает этот вопрос само.
+FLASHVM-0003 и INFERNO-0006 закрепляют signed32 lexicographic order для всего
+Rune32 domain: 80000000 < ffffffff < 0 < 7fffffff. Nil и empty равны по содержимому,
+префикс короче — меньше; byte в mixed comparison имеет значение0..255.
+Production INDC и stringcmp теперь выражают эту семантику без implementation-defined
+unsigned-to-int conversion. Кодек не меняет payload bits. Подробности и границы
+нормативной части: [dis64-contract.md](dis64-contract.md).

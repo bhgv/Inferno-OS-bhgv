@@ -1,0 +1,34 @@
+{
+  "status": "PROPOSAL ONLY: requires explicit FlashVM agreement; not active constants",
+  "date": "2026-10-29",
+  "registry_owner": "Inferno doc, mirrored in FlashVM after joint agreement",
+  "magic_hex_candidate": "44697336340d0a1a",
+  "magic_description": "Dis64 followed by CR LF SUB; 8 bytes, distinct from existing Dis/NC64 magic",
+  "format_major_candidate": 1,
+  "format_minor_candidate": 0,
+  "abi_id_candidate": 1,
+  "abi_description": "WORD32/ref64, natural alignment, map8, Frame64, signed32 Rune ordering",
+  "flags_candidate": 0,
+  "section_required_flag_candidate": 1,
+  "section_kind_candidates": {
+    "module": 1,
+    "code": 2,
+    "types": 3,
+    "data": 4,
+    "imports": 5,
+    "exports": 6,
+    "strings": 7,
+    "control_tables": 8,
+    "debug": 32768,
+    "provenance": 32769
+  },
+  "new_opcode_ids": [],
+  "extension_ids": [],
+  "nil_reference_id": null,
+  "notes": [
+    "No executable emitter/loader may use these candidates before explicit joint agreement.",
+    "Existing opcode semantics and future extension allocation require the common registry; no numeric extension ranges assigned here.",
+    "Nil-reference encoding and module/type/import/code payloads remain open.",
+    "This proposal does not reuse classic 819248/923426 or experimental NC64 819264/923442."
+  ]
+}

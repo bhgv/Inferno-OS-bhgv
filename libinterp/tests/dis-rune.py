@@ -34,6 +34,20 @@ int writerecord(unsigned char *output, unsigned int capacity,
 {
     return disrunewrite(output, capacity, values, count, bytes);
 }
+
+/* Nil is an explicit fixture argument, never guessed from a record's bytes. */
+int comparestrings(const unsigned char *a, unsigned int na,
+    const unsigned char *b, unsigned int nb, int *order)
+{
+    DisRuneView left, right;
+
+    if(a != 0 && !disrunecheck(a, na, &left))
+        return 0;
+    if(b != 0 && !disrunecheck(b, nb, &right))
+        return 0;
+    return disrunecompare(a == 0 ? 0 : &left, b == 0 ? 0 : &right, order);
+}
+
 '''
 
 
@@ -62,6 +76,47 @@ def main():
         read = loaded.readrecord
         read.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint,
                          ctypes.POINTER(ctypes.c_uint)]
+        compare = loaded.comparestrings
+        compare.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p,
+                            ctypes.c_uint, ctypes.POINTER(ctypes.c_int)]
+        comparisons = 0
+        order_fixture = json.loads((ROOT / "libinterp/tests/dis64/rune-order-golden.json").read_text())
+        groups = order_fixture["equal_sorted_groups"]
+        contents = order_fixture["strings"] + [None] + records + [[key, tail] for key in keys for tail in keys]
+        ranks = {}
+        for rank, group in enumerate(groups):
+            for index in group:
+                ranks[index] = rank
+        for left_index, left in enumerate(order_fixture["strings"]):
+            for right_index, right in enumerate(order_fixture["strings"]):
+                a = [value if value < 2**31 else value - 2**32 for value in (left or [])]
+                b = [value if value < 2**31 else value - 2**32 for value in (right or [])]
+                if ((a > b) - (a < b)) != ((ranks[left_index] > ranks[right_index]) -
+                                                         (ranks[left_index] < ranks[right_index])):
+                    raise RuntimeError("inconsistent hand-written Rune order golden")
+        for left in contents:
+            for right in contents:
+                payloads = []
+                expected_keys = []
+                for values in (left, right):
+                    if values is None:
+                        payloads.append(None)
+                        expected_keys.append([])
+                    else:
+                        image = len(values).to_bytes(4, "big")
+                        image += b"".join(value.to_bytes(4, "big") for value in values)
+                        payloads.append(ctypes.create_string_buffer(image))
+                        expected_keys.append([value if value < 2**31 else value - 2**32
+                                              for value in values])
+                expected_order = ((expected_keys[0] > expected_keys[1]) -
+                                  (expected_keys[0] < expected_keys[1]))
+                order = ctypes.c_int(17)
+                ok = compare(payloads[0], 0 if payloads[0] is None else len(payloads[0].raw) - 1,
+                             payloads[1], 0 if payloads[1] is None else len(payloads[1].raw) - 1,
+                             ctypes.byref(order))
+                if ok != 1 or order.value != expected_order:
+                    raise RuntimeError("signed32 Rune comparison mismatch")
+                comparisons += 1
         write = loaded.writerecord
         write.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p,
                           ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
@@ -91,7 +146,8 @@ def main():
                     if result != want or output.value != (values[index] if want == 1 else 0x12345678):
                         raise RuntimeError("Rune record read/publication mismatch")
                     checks += 1
-    print("PASS lossless Rune32:", checks, "BE bytes, capacities, truncations and indexed reads")
+    print("PASS lossless Rune32:", checks, "BE bytes, capacities, truncations and indexed reads;", comparisons,
+          "signed32 string comparisons")
 
 
 if __name__ == "__main__":

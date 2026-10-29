@@ -8,6 +8,7 @@
 #include <limits.h>
 #include <setjmp.h>
 #include <stddef.h>
+#include "dis-rune.h"
 /* Keep every ownership and payload predicate active with NDEBUG. */
 #define viewcheck(test) do { if(!(test)) { fprintf(stderr, "view check line %d\n", __LINE__); abort(); } } while(0) // Active predicate.
 
@@ -287,6 +288,11 @@ checkcomparisons(void)
 	String *other;
 	Rune keys[] = {0, 0x7f, 0x80, 0xff, 0x100, 0x20ac, 0xd800, 0x10ffff, 0x110000, 0x7fffffff, 0x80000000, 0xffffffff};
 	Rune leftkey, rightkey;
+	vlong signedleft, signedright;
+	DisRuneView wireleft, wireright;
+	unsigned char leftbytes[8], rightbytes[8];
+	unsigned int encoded, decoded;
+	int wireorder;
 	char *cache;
 	int ls, rs, lw, rw, li, ri, length, capacity, expected, actual;
 
@@ -314,7 +320,19 @@ checkcomparisons(void)
 			memmove((uchar*)other+offsetof(String, data), &rightkey, sizeof(rightkey));
 		else
 			*((uchar*)other+offsetof(String, data)) = rightkey;
-		expected = (int)leftkey < (int)rightkey ? -1 : (int)leftkey > (int)rightkey;
+		signedleft = leftkey;
+		signedright = rightkey;
+		if(signedleft > 0x7fffffffLL)
+			signedleft -= 0x100000000LL;
+		if(signedright > 0x7fffffffLL)
+			signedright -= 0x100000000LL;
+		expected = signedleft < signedright ? -1 : signedleft > signedright;
+		viewcheck(disrunewrite(leftbytes, sizeof(leftbytes), &leftkey, 1, &encoded));
+		viewcheck(disrunewrite(rightbytes, sizeof(rightbytes), &rightkey, 1, &encoded));
+		viewcheck(disrunecheck(leftbytes, encoded, &wireleft));
+		viewcheck(disrunecheck(rightbytes, encoded, &wireright));
+		viewcheck(disruneat(&wireleft, 0, &decoded) && decoded == leftkey);
+		viewcheck(disrunecompare(&wireleft, &wireright, &wireorder) && wireorder == expected);
 		actual = stringcmp(view, other);
 		viewcheck((actual < 0 ? -1 : actual > 0) == expected);
 		viewcheck(stringcmp(view, view) == 0);
@@ -332,11 +350,15 @@ checkrunecells(void)
 	String *owner;
 	WORD index, input, output;
 	int i;
+	vlong signedkey;
 
 	for(i=0; i<nelem(keys); i++){
 		owner = newrunes(1);
 		index = 0;
-		input = (int)keys[i];
+		signedkey = keys[i];
+		if(signedkey > 0x7fffffffLL)
+			signedkey -= 0x100000000LL;
+		input = signedkey;
 		memset(&R, 0, sizeof(R));
 		R.s = &input;
 		R.m = &index;
@@ -348,7 +370,7 @@ checkrunecells(void)
 		R.s = &owner;
 		R.d = &output;
 		indc();
-		viewcheck(output == (WORD)(int)keys[i]);
+		viewcheck(output == input);
 		viewcheck(stringcmp(owner, owner) == 0);
 		destroy(owner);
 		checks++;
