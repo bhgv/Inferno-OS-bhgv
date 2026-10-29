@@ -85,3 +85,21 @@ wide-integer oracle for every mixed byte/Rune pair and packed-header alignment.
 Production INDC is checked against explicit mathematical signed32 values.
 These checks cover current runtime semantics on WORD32/64 models, while the
 shared wire helpers remain disconnected from the active module loader.
+
+## Accepted envelope and independent FlashVM fixture
+
+`dis-envelope.py` compiles `include/dis64.h` and the standalone inspector. The
+hand-written `envelope-golden.json` uses opaque M/C/T markers, not executable
+payloads. An independent Python parser checks 45,348 reader/feature/unaligned
+cases; 1,283 writer cases check exact bytes, capacity and unchanged outputs.
+The inspector's rewrite is verified byte-for-byte, with explicit no-execution
+status. Registry and limits are documented in `doc/dis64-envelope.md`.
+
+`libinterp/tests/flashvm-rune-order.py` is imported byte-for-byte from
+`bhgv/flashVM` commit `757ea0d952bb8ace5fa37f54c468f660a688dcc1`, path
+`disVM/tests/rune_order_crosscheck.py`, blob
+`5f9109ad4c1fdb060cc96faeb6e36b690007ecc3`. It checks this repository's actual
+header independently: 29,032 signed-list/extent/immutable-alias roundtrip checks.
+Run `python3 libinterp/tests/flashvm-rune-order.py .` from the repository root;
+its explicit source-root argument also supports invocation from other directories.
+The source provenance is preserved rather than rewriting its independent oracle.

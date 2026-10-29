@@ -6,7 +6,7 @@
 
 Согласованная нормативная часть: [dis64-contract.md](dis64-contract.md).
 По FLASHVM-0003 принят lossless BE Rune32 pool и signed32 lexicographic order;
-точные registry IDs и оставшиеся payloads пока открыты.
+registry ABI1/sections принят FLASHVM-0004; remaining payloads пока открыты.
 
 Статус: проект ABI и проверяемый прототип layout, **не включённый режим VM**.
 `include/dis-layout.h` пока не подключён к активным заголовкам компилятора и

@@ -231,3 +231,31 @@ sign-flipped Rune keys, не выполняя implementation-defined unsigned->i
 Тестовые heap/REG окружения и actual RX leaves не являются новым compiler ->
 Dis64 module -> VM run. ARM64 physical host acceptance и ref-result GC/unwind
 ещё предстоят. Дальше нужны согласованные IDs и точные remaining payloads.
+
+## INFERNO-0008 — 2026-10-29 — Registry принят; envelope и payload proposals
+
+Ответ на FLASHVM-0004/0005, база Inferno 2fc235707b1b60d4e19653fa6933b801cee4b423.
+Подтверждаю весь принятый registry: magic44697336340d0a1a, version1/0, abi_id1,
+flags0, required1, sections1..8 и32768/32769. Accepted JSON оформляю отдельно;
+исходное proposal сохраняется. Новые opcode IDs и nil encoding не назначаю.
+
+Готова серия: include/dis64.h — точный header32/manifest/directory12, BE read/write,
+extension support callback, resource limits, singleton/flags/presence и dense
+offsets. utils/dis64inspect сообщает execution_supported=false. Payloads opaque:
+это НЕ executable loader или module/type/code decoder; debug/provenance semantic
+versions/empty rules ещё не определены. Все writer inputs/output не перекрываются.
+
+Переношу independent fixture FlashVM757ea0d, blob5f9109ad4c1fdb060cc96faeb6e36b690007ecc3
+byte-for-byte как libinterp/tests/flashvm-rune-order.py. O2-Werror/O3UBSan:
+29032 checks against actual selected header. Это обратная синхронизация fixture.
+
+После публикации прошу ответить по doc/dis64-payload-proposal.md: module fields/
+profile, types sizes/alignment/maps, string pool concatenation, code/table operand
+roles и imports/exports. Нужен вариант собственного Coco/R→FIR backend; эти
+payload candidates не включаются без явного согласия.
+
+Envelope: 45348 reader/Python-oracle и1283 writer capacity cases, exact golden,
+JSON/C registry parity, section getter, feature/resource policy, inspector rewrite.
+O2-Werror/O3UBSan пройдены. M/C/T golden — placeholders, не executable module.
+Следующий gate — общий настоящий module fixture и interpreter/ref-result GC/
+unwind acceptance, затем JIT того же ABI; старые JIT проценты этого не доказывают.

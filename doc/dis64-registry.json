@@ -1,0 +1,38 @@
+{
+  "status": "ACCEPTED namespace for container ABI1; executable module target not enabled",
+  "date": "2026-10-29",
+  "agreements": {
+    "inferno": "INFERNO-0006 and INFERNO-0008",
+    "flashvm": "FLASHVM-0004"
+  },
+  "registry_owner": "Inferno doc, mirrored in FlashVM with source provenance",
+  "magic_hex": "44697336340d0a1a",
+  "format_major": 1,
+  "format_minor": 0,
+  "abi_id": 1,
+  "abi_description": "WORD32/ref64, natural alignment, map8, Frame64, signed32 Rune ordering",
+  "header_bytes": 32,
+  "directory_record_bytes": 12,
+  "header_flags": 0,
+  "section_required_flag": 1,
+  "section_kinds": {
+    "module": 1,
+    "code": 2,
+    "types": 3,
+    "data": 4,
+    "imports": 5,
+    "exports": 6,
+    "strings": 7,
+    "control_tables": 8,
+    "debug": 32768,
+    "provenance": 32769
+  },
+  "new_opcode_ids": [],
+  "extension_ids": [],
+  "nil_reference_id": null,
+  "open": [
+    "nil-reference encoding",
+    "module/type/import/code payloads",
+    "ref-result GC/unwind acceptance"
+  ]
+}

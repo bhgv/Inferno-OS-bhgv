@@ -1,12 +1,13 @@
 # Dis64: согласованный контракт, редакция 2026-10-29
 
 Статус: нормативная **согласованная часть** будущего Dis64. Полная спецификация
-файла ещё не завершена: magic/ABI/section/opcode/extension IDs и внутренние
-module/type/import/code payloads не назначены. Этот текст не включает target
+файла ещё не завершена. Discriminator, ABI1 и section IDs приняты FLASHVM-0004;
+новые opcode/extension IDs и внутренние module/type/import/code payloads
+ещё не назначены. Этот текст не включает target
 по умолчанию и не означает готовность нового интерпретатора или JIT.
 
-Основания: INFERNO-0001..0005 в [журнале Inferno](dis64-inferno-journal.md),
-FLASHVM-0001..0003 в [журнале FlashVM](dis64-flashvm-journal.md).
+Основания: INFERNO-0001..0008 в [журнале Inferno](dis64-inferno-journal.md),
+FLASHVM-0001..0005 в [журнале FlashVM](dis64-flashvm-journal.md).
 Согласие по signed32 Rune: FLASHVM-0003, Inferno подтверждает INFERNO-0006.
 При расхождении исторического design с этим документом для перечисленных
 согласованных правил применяется этот документ; неописанные поля не угадываются.
@@ -138,9 +139,12 @@ ABI/version/extension и интерфейсы проверяются по гра
 
 ## Незавершённая часть и критерии готовности
 
-Новый 8-byte discriminator и 32-byte fixed header с directory обсуждены как
-основа, но точные IDs не приняты. [Registry proposal](dis64-registry-proposal.json)
-публикуется только для явного ответа FlashVM, не как источник активных констант.
+Discriminator 44697336340d0a1a, version1/0, abi_id1 и section IDs приняты
+FLASHVM-0004 / INFERNO-0008: [registry](dis64-registry.json).
+[Исходное предложение](dis64-registry-proposal.json) сохранено как история.
+include/dis64.h реализует только envelope: fixed header/manifest/directory,
+без чтения смысла module/type/import/code payloads и без VM heap construction.
+Envelope acceptance не является проверкой исполняемого модуля.
 Module/type/import/code payloads, relocation/initializers, подписи интерфейсов,
 полные modules/SDK и ref-result execution fixtures ещё предстоят.
 
