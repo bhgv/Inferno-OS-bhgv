@@ -263,7 +263,7 @@ def main():
         if probe(feature, len(feature.raw) - 1, 0, 64, 2, 0, info) != 0:
             raise RuntimeError("extension resource limit ignored")
         tool = directory / "dis64inspect"
-        subprocess.run(command + flags + ["-std=c99", "-I" + str(ROOT / "include"),
+        subprocess.run(command + flags + ["-std=c99", "-Wno-unused-function", "-I" + str(ROOT / "include"),
                        str(ROOT / "utils/dis64inspect/dis64inspect.c"), "-o", str(tool)], check=True)
         filename = directory / "envelope.dis64"
         rewritten = directory / "rewritten.dis64"

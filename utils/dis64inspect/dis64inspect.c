@@ -2,7 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "dis64.h"
+#include "isa.h"
+#include "dis64-pilot.h"
 
 #define InspectLimit (64U*1024U*1024U) // Explicit host-tool file resource limit.
 
@@ -94,11 +95,17 @@ main(int argc, char **argv)
 {
 	unsigned char *data;
 	unsigned int bytes, i;
+	int pilotmode, rewriteindex;
+	Dis64Pilot pilot = {0};
 	Dis64View view;
 	Dis64Section section;
 
-	if(argc != 2 && !(argc == 4 && strcmp(argv[2], "--rewrite") == 0)){
-		fprintf(stderr, "usage: dis64inspect input [--rewrite output]\n");
+	/* Flags have one unambiguous order and never execute container code. */
+	pilotmode = argc > 2 && strcmp(argv[2], "--pilot") == 0;
+	rewriteindex = pilotmode ? 3 : 2;
+	if(argc != rewriteindex && !(argc == rewriteindex+2 &&
+	   strcmp(argv[rewriteindex], "--rewrite") == 0)){
+		fprintf(stderr, "usage: dis64inspect input [--pilot] [--rewrite output]\n");
 		return 2;
 	}
 	data = readimage(argv[1], &bytes);
@@ -112,14 +119,20 @@ main(int argc, char **argv)
 		free(data);
 		return 1;
 	}
-	if(argc == 4 && !rewrite(argv[3], &view)){
+	/* Semantic rejection precedes opening the optional rewrite destination. */
+	if(pilotmode && !dis64pilotcheck(data, bytes, InspectLimit, 1048576, &pilot)){
+		fprintf(stderr, "unsupported or invalid scalar pilot payloads\n");
+		free(data);
+		return 1;
+	}
+	if(argc == rewriteindex+2 && !rewrite(argv[rewriteindex+1], &view)){
 		fprintf(stderr, "cannot write canonical envelope\n");
 		free(data);
 		return 1;
 	}
-	printf("{\"envelope_only\":true,\"execution_supported\":false,\"format_major\":%u,"
+	printf("{\"envelope_only\":%s,\"execution_supported\":false,\"format_major\":%u,"
 		"\"format_minor\":%u,\"abi_id\":%u,\"bytes\":%u,\"header_bytes\":%u,\"sections\":[",
-		Dis64Major, Dis64Minor, Dis64Abi, view.bytes, view.headerbytes);
+		pilotmode ? "false" : "true", Dis64Major, Dis64Minor, Dis64Abi, view.bytes, view.headerbytes);
 	for(i=0; i<view.sections; i++){
 		if(!dis64section(&view, i, &section)){
 			free(data);
@@ -128,7 +141,14 @@ main(int argc, char **argv)
 		printf("%s{\"kind\":%u,\"flags\":%u,\"offset\":%u,\"bytes\":%u}",
 			i == 0 ? "" : ",", section.kind, section.flags, section.offset, section.bytes);
 	}
-	printf("]}\n");
+	printf("]");
+	if(pilotmode){
+		printf(",\"scalar_pilot\":true,\"data_bytes\":%u,\"frame_bytes\":%u,"
+			"\"entry_pc\":%u,\"instruction_count\":%u,\"string_count\":%u,\"type_count\":%u",
+			pilot.module.databytes, pilot.frame.bytes, pilot.module.entry,
+			pilot.code.count, pilot.strings.count, pilot.types.count);
+	}
+	printf("}\n");
 	free(data);
 	return 0;
 }

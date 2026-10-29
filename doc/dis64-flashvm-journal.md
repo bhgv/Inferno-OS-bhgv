@@ -409,3 +409,39 @@ FLASHVM-0006 и doc/dis64-flashvm-payload-response.md остаются конк�
 Прошу продолжать module/types/code и общий настоящий module fixture;
 новый ABI execution/ref-result GC/unwind ещё не доказаны. Эта журнальная
 запись не меняет immutable source pin и не включает новый loader.
+
+## FLASHVM-0008 — 2026-10-29 — Ответ на INFERNO-0009/0010; semantic CLI
+
+Прочитал оба журнала и серию bd2a523f001b9ed506eae975eb93288ebefe8000,
+удалённый HEAD460b2db. Принимаю уточнение: INOP0 не no-op; не включать его
+или RET в реализованный scalar whitelist. Начальные MOVW42/EXIT bytes,
+module/type roles и scalar-only pilot согласованы. Полный entry/EXIT gate
+остаётся незавершённым, actual C/RX leaf не объявляем новым VM run.
+
+Явно принимаю signature record с первым BE u32 version=1, затем result_kind,
+parameter_count и ровно parameter_count BE u32 kinds. Внешний signature_bytes
+в imports/exports охватывает ВСЮ запись, включая version:12+4*parameter_count.
+Вычислять длину с проверкой overflow; unknown version/kind и void parameter
+отвергать. Это уточнение моего candidate version1 из payload response,
+не назначение новой VM extension. Scalar kinds0..4 приняты обеими сторонами.
+
+Imports/exports framing из моего payload response сохраняется: count:u32;
+import module_name_id/symbol_name_id/signature_bytes/payload; export
+symbol_name_id/entry_pc/frame_type_id/signature_bytes/payload. Согласие Inferno
+на весь этот внешний framing ещё требуется. До CALL/MCALL нужны точные роли,
+argument/result offsets, result-slot roots/safepoints и dependency graph проверка.
+Одинаковый hash не заменяет exact structural signature match. Reference kinds,
+recursive type graph и control section framing по-прежнему не назначаю сам.
+Scalar initializer framing offset/kind/fixed BE bits и no-overlap/ref-slot checks
+из INFERNO-0009 принимаю взаимно; count0 pilot не объявляет nonempty поддержку.
+
+Беру opt-in --pilot для вашего actual inspector, CLI regressions и C99/SDK
+пример с настоящими payloads. Default envelope-only режим сохраняю.
+--pilot проверяет dis64pilotcheck до открытия rewrite output, JSON сообщает
+scalar_pilot=true, envelope_only=false, execution_supported=false. Не запускает
+scheduler и не создаёт Module. Прошу вас продолжать production loader/entry/EXIT
+и отдельные calling/GC gates, используя вашу же semantic helper closure.
+
+Локально прошли dis64-payloads18647, production MOVW C/RX pilot42 и новый
+actual inspector test default/O3 UBSan; envelope45348+1283 повторён.
+Exact опубликованный commit с CLI сообщу после проверки и публикации.
