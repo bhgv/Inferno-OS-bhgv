@@ -4,6 +4,7 @@
 #include "raise.h"
 #include "pool.h"
 #include "kernel.h"
+#include "vmfetch.h"
 
 REG	R;			/* Virtual Machine registers */
 String	snil;			/* String known to be zero length */
@@ -5222,79 +5223,28 @@ opinit(void)
 void
 xec(Prog *p)
 {
-	Module *module;
-	Modlink *link;
-	Inst *program;
+	VmFetch fetched;
 	Jit *j;
-	uintptr pc, base, bytes;
-	void (*decode)(void), (*handler)(void), (*enter)(void);
+	void (*enter)(void);
 	int (*step)(void), (*fast)(REG*), (*complete)(REG*);
-	int op, add, count, compiled, first;
+	int op;
 
-	if(p == nil || p == H || (uintptr)p%sizeof(void*) != 0 ||
-	   (uintptr)p > (uintptr)-1-sizeof(*p))
-		error(exHeap);
-	if(p->quanta <= 0)
-		error(exInval);
-	R = p->R;
-	R.IC = p->quanta;
-	if(p->kill != nil){
-		char *message;
-
-		message = p->kill;
-		p->kill = nil;
-		error(message);
-	}
-	first = 1;
+	vmstart(p);
 	for(;;){
-		/* Only the fixed link prefix is needed; inline imports may be absent. */
-		link = R.M;
-		if(link == nil || link == H ||
-		   (uintptr)link > (uintptr)-1-(O(Modlink, compiled)+sizeof(compiled)))
-			error(exModule);
-		if(first){
-			memmove(&R.MP, (uchar*)link+O(Modlink, MP), sizeof(R.MP));
-			first = 0;
-		}
-		memmove(&compiled, (uchar*)link+O(Modlink, compiled), sizeof(compiled));
-		if(compiled){
-			if(comvec == nil || comvec == (void(*)(void))H)
-				error(exCompile);
-			comvec();
+		if(!vmfetch(&fetched)){
+			vmnative();
 			break;
 		}
-		memmove(&module, (uchar*)link+O(Modlink, m), sizeof(module));
-		if(module == nil || module == H ||
-		   (uintptr)module > (uintptr)-1-sizeof(*module))
-			error(exModule);
-		memmove(&program, (uchar*)module+O(Module, prog), sizeof(program));
-		memmove(&count, (uchar*)module+O(Module, nprog), sizeof(count));
-		if(count <= 0 || program == nil || program == H ||
-		   (uintptr)count > (uintptr)-1/sizeof(Inst))
-			error(exBounds);
-		base = (uintptr)program;
-		bytes = (uintptr)count*sizeof(Inst);
-		pc = (uintptr)R.PC;
-		if(base > (uintptr)-1-bytes || pc < base || pc-base >= bytes ||
-		   (pc-base)%sizeof(Inst) != 0)
-			error(exBounds);
-		op = ((uchar*)pc)[O(Inst, op)];
-		add = ((uchar*)pc)[O(Inst, add)];
-		if(op <= INOP || op >= MAXDIS || op == IECLR)
-			error(exOp);
+		op = fetched.op;
 		/* Successful translated steps own their register/PC publication. */
-		memmove(&step, (uchar*)module+O(Module, cstep), sizeof(step));
+		memmove(&step, (uchar*)fetched.module+O(Module, cstep), sizeof(step));
 		if(step == (int(*)(void))H)
 			error(exCompile);
 		if(step != nil && step())
 			goto executed;
-		decode = dec[add];
-		if(decode == nil || decode == (void(*)(void))H)
-			error(exOp);
-		decode();
-		R.PC = (Inst*)(pc+sizeof(Inst));
+		vmdecode(&fetched);
 
-		memmove(&j, (uchar*)module+O(Module, jit), sizeof(j));
+		memmove(&j, (uchar*)fetched.module+O(Module, jit), sizeof(j));
 		fast = complete = nil;
 		enter = nil;
 		if(j != nil){
@@ -5317,17 +5267,10 @@ xec(Prog *p)
 			}else if(complete(&R))
 				goto executed;
 		}
-		handler = optab[op];
-		if(handler == nil || handler == (void(*)(void))H)
-			error(exOp);
-		handler();
+		vmrun(&fetched);
 executed:
-		/* Zero/negative callback budgets mean yield; never decrement through INT_MIN. */
-		if(R.IC <= 1){
-			R.IC = 0;
+		if(!vmyield())
 			break;
-		}
-		R.IC--;
 	}
 	p->R = R;
 }

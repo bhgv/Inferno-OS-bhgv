@@ -1,4 +1,5 @@
 /* The production loader's allocator/error adapters precede this fixture. */
+#include "vmfetch.h"
 /* Retain loader/runtime predicates even when NDEBUG is enabled. */
 static void
 runtimepredicate(int condition)

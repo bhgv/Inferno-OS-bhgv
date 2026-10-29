@@ -37,9 +37,9 @@ Prog.R is saved only after normal completion, as before. Bounds checks establish
 numeric extents and expected layout, not mapping ownership of arbitrary pointers.
 No opcode, frame, Dis image, native-PC layout or module ABI is changed.
 
-Specialized debugger, coverage-profiler and benchmark loops in emu/os remain
-separate executors and are not changed by this series. Their duplicated fetch
-logic is a follow-up target; the checks above describe the normal `xec` route.
+The subsequent [instrumented-loop series](README.instrument-loops.md) shares
+these checks with debugger, coverage-profiler and benchmark executors in emu/os.
+The measurements below describe the normal `xec` route.
 
 ## Verification
 

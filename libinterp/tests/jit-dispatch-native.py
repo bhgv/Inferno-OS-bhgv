@@ -40,7 +40,8 @@ callbacks += '\n\nstatic void (*bridgehandlers[])(void) = {'+','.join('bridgeop'
 parts = [function(s) for s in ('static Type*\nmoduletype(','static int\nmappedcopytype(','static List*\nlisthead(','OP(movmp)','OP(headmp)','OP(addw)','OP(divw)','int\ncjitexec(','void\nxec(')]
 unit = '#define TEST_LEAF_DISPATCH_RUNTIME // Link the real shared executor.\nstatic unsigned long bridgeallocations;\n'+(ROOT/'libinterp/tests/mapped-copy-native.c').read_text()
 unit = unit.replace('main(void)','mappedlegacy(void)',1).replace('p = malloc(n);','bridgeallocations++;\n\tp = malloc(n);',1)
-prelude = '''void (*optab[256])(void);
+prelude = '''#include "vmfetch.h"
+void (*optab[256])(void);
 void (*dec[256])(void);
 char exOp[]="opcode", exZdiv[]="divide", bridgeexception[]="bridge exception";
 char exInval[]="invalid", exCompile[]="compile"; // VM entry/budget errors.

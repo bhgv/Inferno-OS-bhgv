@@ -117,6 +117,9 @@ $ROOT/libinterp/runt.h:
 		mk 'SHELLTYPE='$SHELLTYPE 'SYSTARG='$SYSTARG 'OBJTYPE='$OBJTYPE runt.h
 
 INTERP=$ROOT/include/interp.h
+
+# Checked bytecode fetch is shared by instrumented VM device executors.
+devprof.$O devprog.$O: $ROOT/include/vmfetch.h $ROOT/include/raise.h $ROOT/include/isa.h
 RUNT=$ROOT/libinterp/runt.h		# for culling dependencies
 
 alloc.$O: ../../include/pool.h\

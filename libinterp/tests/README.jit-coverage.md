@@ -1,5 +1,7 @@
 # 64-bit JIT opcode availability checkpoint
 
+Latest shared normal/debug/profile/benchmark fetch and reset-lifetime checks: [README.instrument-loops.md](README.instrument-loops.md).
+
 Latest normal VM fetch, opcode/REG alias, scheduler completion and native-context checks: [README.xec-fetch.md](README.xec-fetch.md).
 
 Latest exact opcode/cache-code binding validation: [README.cache-bindings.md](README.cache-bindings.md).

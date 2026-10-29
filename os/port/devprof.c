@@ -7,6 +7,7 @@
 #include	<interp.h>
 #include	<isa.h>
 #include	"runt.h"
+#include "vmfetch.h"
 
 static void	cpxec(Prog *);
 static void memprof(int, Heap*, ulong);
@@ -548,52 +549,44 @@ sampler(void* a)
  *	coverage profiling
  */
 
+/* Profile checked original Dis PCs without retaining module records across callbacks. */
 static void
 cpxec(Prog *p)
 {
-	int op, i;
-	Module *m;
+	VmFetch fetched;
 	Record *r;
-	Prog *n;
+	Prog *child;
+	uintptr pc, base, index;
 
-	R = p->R;
-	R.MP = R.M->MP;
-	R.IC = p->quanta;
-
-	if(p->kill != nil){
-		char *m;
-		m = p->kill;
-		p->kill = nil;
-		error(m);
+	vmstart(p);
+	for(;;){
+		if(!vmfetch(&fetched)){
+			vmnative();
+			break;
+		}
+		/* A blocking C handler can let profile controls replace the record list. */
+		r = profiler == Pcov ? mlook(fetched.module, 1, 1, 0) : nil;
+		if(r != nil && r->size > 0){
+			pc = (uintptr)fetched.pc;
+			base = (uintptr)r->base;
+			if(pc >= base && (pc-base)%sizeof(Inst) == 0){
+				index = (pc-base)/sizeof(Inst);
+				if(index < (uintptr)r->size)
+					r->bucket[index]++;
+			}
+		}
+		vmdecode(&fetched);
+		vmrun(&fetched);
+		if(fetched.op == ISPAWN || fetched.op == IMSPAWN){
+			child = delruntail(Pdebug);
+			if(child == nil || child == H)
+				error(exSpawn);
+			child->xec = cpxec;
+			addrun(child);
+		}
+		if(!vmyield())
+			break;
 	}
-
-	if(R.M->compiled)
-		comvec();
-	else{
-		m = R.M->m;
-		r = profiler == Pcov ? mlook(m, 1, 1, 0) : nil;
-		do{
-			dec[R.PC->add]();
-			op = R.PC->op;
-			if(r != nil){
-				i = R.PC-r->base;
-				if(i >= 0 && i < r->size)
-					r->bucket[i]++;
-			}
-			R.PC++;
-			optab[op]();
-			if(op == ISPAWN || op == IMSPAWN){
-				n = delruntail(Pdebug);	// any state will do
-				n->xec = cpxec;
-				addrun(n);
-			}
-			if(m != R.M->m){
-				m = R.M->m;
-				r = profiler == Pcov ? mlook(m, 1, 1, 0) : nil;
-			}
-		}while(--R.IC != 0);
-	}
-
 	p->R = R;
 }
 

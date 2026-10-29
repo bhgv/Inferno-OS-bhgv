@@ -8,6 +8,7 @@
 #include "../port/error.h"
 #include <isa.h>
 #include "kernel.h"
+#include "vmfetch.h"
 
 /* Builtin module support */
 #include "bench.h"
@@ -433,8 +434,16 @@ typedef struct  {
 	vlong	sumsq;	/* sum of squares */
 } Stat;
 
+enum
+{
+	Reset, // Clear accumulated timing values.
+	Inc, // Include one completed timing sample.
+};
+
+
+/* Accumulate one sample with the existing timing representation. */
 static void
-stat(enum { Reset, Inc } op, Stat *c, vlong val)
+stat(int op, Stat *c, vlong val)
 {
 	switch(op) {
 	case	Reset:
@@ -494,8 +503,9 @@ struct Mstat {
 
 struct
 {
-	Mstat*	hash[HSIZE];
-	Mstat*	list;
+	Mstat *hash[HSIZE]; // Private timing records indexed by copied module names.
+	Mstat *list; // All owned records, released by mreset.
+	uvlong epoch; // Reset generation checked after callbacks that can release the VM.
 } vmstat;
 
 extern struct			/* see ../../interp/tab.h:/keywds/ */
@@ -505,32 +515,40 @@ extern struct			/* see ../../interp/tab.h:/keywds/ */
 	int	terminal;
 }keywds[];
 
-static char *
+/* Resolve opcode names by their explicit table key, including gaps in ISA slots. */
+static char*
 opname(int op)
 {
-	char *name;
+	int i;
 
 	if(op < 0 || op >= MAXDIS)
 		return "Unknown";
-	return keywds[op].name;
-	if(name == 0)
-		name = "<Noname>";
-	return name;
+	for(i = 0; keywds[i].name != nil; i++)
+		if(keywds[i].op == op)
+			return keywds[i].name;
+	return "<Noname>";
 }
 
+
+/* Invalidate pending timing pointers before releasing every owned record/string. */
 static void
 mreset(void)
 {
-	Mstat *mp, *link;
+	Mstat *m, *next;
 
-	for(mp=vmstat.list; mp; mp=link) {
-		link = mp->link;
-		free(mp->inst);
-		free(mp);
+	vmstat.epoch++;
+	m = vmstat.list;
+	vmstat.list = nil;
+	memset(vmstat.hash, 0, sizeof(vmstat.hash));
+	for(; m != nil; m = next){
+		next = m->link;
+		free(m->name);
+		free(m->path);
+		free(m->inst);
+		free(m);
 	}
-	vmstat.list = 0;
-	memset(vmstat.hash, 0, HSIZE*sizeof(Mstat*));
 }
+
 
 static ulong
 hash(void *s)
@@ -543,28 +561,32 @@ hash(void *s)
 	return sum%HSIZE;
 }
 
-static Mstat *
+/* Allocate complete timing storage before publishing a module record. */
+static Mstat*
 mlookup(Module *mod)
 {
 	Mstat *m;
 	ulong h;
 
-	for(m=vmstat.hash[hash(mod->name)]; m; m=m->hash)
-		if(strcmp(m->name, mod->name) == 0
-		&& strcmp(m->path, mod->path) == 0) {
+	for(m = vmstat.hash[hash(mod->name)]; m != nil; m = m->hash)
+		if(strcmp(m->name, mod->name) == 0 && strcmp(m->path, mod->path) == 0)
 			return m;
-		}
-
-
-	m = malloc(sizeof(Mstat));
-	if(m == 0)
-		return 0;
+	if(mod->nprog <= 0 || (ulong)mod->nprog > 0x7fffffff/sizeof(Istat))
+		return nil;
+	m = malloc(sizeof(*m));
+	if(m == nil)
+		return nil;
 	kstrdup(&m->name, mod->name);
 	kstrdup(&m->path, mod->path);
 	m->ninst = mod->nprog;
-	m->inst = malloc(m->ninst*sizeof(Istat));
-	if(m->path == 0 || m->inst == 0)
-		return 0;
+	m->inst = malloc((ulong)m->ninst*sizeof(*m->inst));
+	if(m->name == nil || m->path == nil || m->inst == nil){
+		free(m->name);
+		free(m->path);
+		free(m->inst);
+		free(m);
+		return nil;
+	}
 	m->base = mod->prog;
 	m->link = vmstat.list;
 	vmstat.list = m;
@@ -574,103 +596,105 @@ mlookup(Module *mod)
 	return m;
 }
 
-/* interpreted code Dis timing */
+
+/* Time checked C steps and discard samples whose record list was reset by C. */
 void
 bxec(Prog *p)
 {
-	int op, pc;
+	VmFetch fetched;
 	vlong t0, t;
-	Mstat*	ms;
-	Istat*	is;
-	Module *om;
+	Mstat *ms;
+	Istat *is;
+	Prog *child;
+	uvlong epoch;
+	int pc;
 
-	R = p->R;
-	R.MP = R.M->MP;
-	R.IC = p->quanta;
-
-	if(p->kill != nil) {
-		char *m;
-		m = p->kill;
-		p->kill = nil;
-		error(m);
-	}
-
-	if(R.M->compiled)
-		comvec();
-	else {
-		om = 0;
-		ms = mlookup(R.M->m);
-		do {
-			op = R.PC->op;
-			pc = R.PC-R.M->prog;
-			if(om != R.M->m) {
-				om = R.M->m;
-				ms = mlookup(R.M->m);
-			}
-
-			t0 = archrdtsc();
-			dec[R.PC->add]();
-			R.PC++;
-			optab[op]();
-			t = archrdtsc();
-			if(ms) {
-				is = &ms->inst[pc];
-				if(is->count < MAXCOUNT) {
-					if(is->count++ == 0) {
-						is->op = op;
-						is->pc = pc;
-					}
-					stat(Inc, &is->t, t-t0);
+	vmstart(p);
+	for(;;){
+		if(!vmfetch(&fetched)){
+			vmnative();
+			break;
+		}
+		ms = mlookup(fetched.module);
+		pc = fetched.index;
+		epoch = vmstat.epoch;
+		t0 = archrdtsc();
+		vmdecode(&fetched);
+		vmrun(&fetched);
+		t = archrdtsc();
+		if(epoch == vmstat.epoch && ms != nil && ms->inst != nil && pc < ms->ninst){
+			is = &ms->inst[pc];
+			if(is->count < MAXCOUNT){
+				if(is->count++ == 0){
+					is->op = fetched.op;
+					is->pc = pc;
 				}
+				stat(Inc, &is->t, t-t0);
 			}
-			if(op==ISPAWN || op==IMSPAWN) {
-				Prog *new = delruntail(Pdebug);
-				new->xec = bxec;
-				addrun(new);
-			}
-		} while(--R.IC != 0);
+		}
+		if(fetched.op == ISPAWN || fetched.op == IMSPAWN){
+			child = delruntail(Pdebug);
+			if(child == nil || child == H)
+				error(exSpawn);
+			child->xec = bxec;
+			addrun(child);
+		}
+		if(!vmyield())
+			break;
 	}
-
 	p->R = R;
 }
 
 /* compiled code Dis timing */
 
-static struct {			/* compiled code timing */
-	int		set;
-	int 		op, pc;		/* Dis opcode and program counter */
-	vlong	t0, t;			/* time-in and time-out */
-	vlong	base;		/* cost of doing the timing */
-	Mstat	*ms;
-	Module	*om;
-	int		timing;		/* between "dis timer start" and stop */
+static struct { // Pending compiled-code timing sample; private to this device.
+	int set; // A pre-hook has opened a timing interval.
+	int op, pc; // Dis opcode and validated original instruction index.
+	vlong t0, t; // Start/end timestamps for the current sample.
+	vlong base; // Measured NOP calibration cost.
+	Mstat *ms; // Borrowed record, valid only while epoch matches vmstat.
+	Module *om; // Source identity retained for diagnostics, never dereferenced after C.
+	uvlong epoch; // Reset generation when the sample's record was acquired.
+	int timing; // Timer start/stop selection.
 } C;
 
-enum { Nop = 0 };	/* opcode value for Dis NOP instruction */
+enum { Nop = 0 }; // Synthetic native NOP used for timing calibration.
+
+
+/* Close only samples whose record and instruction row survived intervening callbacks. */
 void
 dopostcomp(vlong t)
 {
-	Istat*	is;
+	Istat *is;
 
 	C.t = t;
 	C.set = 0;
-	if(C.ms != 0) {
-		is = &C.ms->inst[C.pc];
-		if(C.op == Nop) {			/* NOP  calibration */
-			vlong newbase = C.t - C.t0;
-			if(C.base == 0 || newbase < C.base)
-				C.base = newbase;
+	if(C.epoch != vmstat.epoch){
+		C.ms = nil;
+		C.om = nil;
+		return;
+	}
+	if(C.ms == nil || C.ms->inst == nil || C.pc < 0 || C.pc >= C.ms->ninst)
+		return;
+	is = &C.ms->inst[C.pc];
+	if(C.op == Nop){
+		vlong base;
+
+		base = C.t-C.t0;
+		if(C.base == 0 || base < C.base)
+			C.base = base;
+	}
+	if(is->count < MAXCOUNT){
+		if(is->count++ == 0){
+			is->op = C.op;
+			is->pc = C.pc;
 		}
-		if(is->count < MAXCOUNT) {
-			if(is->count++ == 0) {
-				is->op = C.op;
-				is->pc = C.pc;
-			}
-			stat(Inc, &is->t, C.t-C.t0/*-C.base*/);
-		}
+		stat(Inc, &is->t, C.t-C.t0);
 	}
 }
 
+
+/* A stopped or unopened timer has no pending sample to publish. */
 void
 postcomp(void)
 {
@@ -682,22 +706,44 @@ postcomp(void)
 	dopostcomp(t);
 }
 
+
+/* Capture legacy native-ulong hook cells without alignment or stale-owner assumptions. */
 void
 precomp(void)
 {
+	Module *module;
+	ulong pc, op;
 	vlong t;
+	int count;
 
 	t = archrdtsc();
 	if(C.timing == 0)
 		return;
 	if(C.set)
 		dopostcomp(t);
-	C.pc = *(ulong *)R.m;
-	C.op = *(ulong *)R.s;
-	if(C.om != R.M->m) {
-		C.om = R.M->m;
-		C.ms = mlookup(R.M->m);
-	}
+	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(pc) ||
+	   R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(op))
+		error(exBounds);
+	memmove(&pc, R.m, sizeof(pc));
+	memmove(&op, R.s, sizeof(op));
+	if(pc > 0x7fffffffUL)
+		error(exBounds);
+	if(op >= MAXDIS)
+		error(exOp);
+	if(R.M == nil || R.M == H ||
+	   (uintptr)R.M > (uintptr)-1-(O(Modlink, m)+sizeof(module)))
+		error(exModule);
+	memmove(&module, (uchar*)R.M+O(Modlink, m), sizeof(module));
+	if(module == nil || module == H || (uintptr)module > (uintptr)-1-sizeof(*module))
+		error(exModule);
+	memmove(&count, (uchar*)module+O(Module, nprog), sizeof(count));
+	if(count <= 0 || pc >= (ulong)count)
+		error(exBounds);
+	C.pc = pc;
+	C.op = op;
+	C.om = module;
+	C.ms = mlookup(module);
+	C.epoch = vmstat.epoch;
 	C.set = 1;
 	C.t0 = archrdtsc();
 }

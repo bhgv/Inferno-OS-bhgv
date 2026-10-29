@@ -7,6 +7,7 @@
 #include	<interp.h>
 #include	<isa.h>
 #include	"runt.h"
+#include "vmfetch.h"
 
 /*
  * Enable the heap device for environments that allow debugging =>
@@ -1404,17 +1405,22 @@ dbgblock(Prog *p)
 		qproduce(ctl->q, "run", 3);
 }
 
+/* Execute checked C steps while retaining debugger stop, child and breakpoint notifications. */
 void
 dbgxec(Prog *p)
 {
+	VmFetch fetched;
+	Module *module;
+	String *load;
+	void *loadslot;
 	Bpt *b;
 	Prog *kid;
 	Osenv *env;
 	Progctl *ctl;
 	int op, pc, n;
-	char buf[ERRMAX+10];
-	extern void (*dec[])(void);
+	char buf[ERRMAX+10], *path;
 
+	vmprocess(p);
 	env = p->osenv;
 	ctl = env->debug;
 	ctl->ref++;
@@ -1423,11 +1429,10 @@ dbgxec(Prog *p)
 		nexterror();
 	}
 
-	R = p->R;
-	R.MP = R.M->MP;
-
-	R.IC = p->quanta;
-	if((ulong)R.IC > ctl->step)
+	vmstart(p);
+	if(ctl->step < 0)
+		error(exInval);
+	if(R.IC > ctl->step)
 		R.IC = ctl->step;
 	if(ctl->stop)
 		R.IC = 0;
@@ -1435,22 +1440,17 @@ dbgxec(Prog *p)
 
 	buf[0] = '\0';
 
-	if(R.IC != 0 && R.M->compiled) {
-		comvec();
-		if(p != currun())
-			dbgblock(p);
-		goto save;
-	}
-
-	while(R.IC != 0) {
-		if(0)
-			print("step: %lux: %s %4ld %D\n",
-				(ulong)p, R.M->m->name, R.PC-R.M->prog, R.PC);
-
-		dec[R.PC->add]();
-		op = R.PC->op;
-		R.PC++;
-		optab[op]();
+	while(R.IC > 0){
+		if(!vmfetch(&fetched)){
+			vmnative();
+			if(p != currun())
+				dbgblock(p);
+			goto save;
+		}
+		op = fetched.op;
+		vmdecode(&fetched);
+		loadslot = R.s;
+		vmrun(&fetched);
 
 		/*
 		 * check notification about new progs
@@ -1458,12 +1458,17 @@ dbgxec(Prog *p)
 		if(op == ISPAWN || op == IMSPAWN) {
 			/* pick up the kid from the end of the run queue */
 			kid = delruntail(Pdebug);
+			if(kid == nil || kid == H)
+				error(exSpawn);
 			n = snprint(buf, sizeof buf, "new %d", kid->pid);
 			qproduce(ctl->q, buf, n);
 			buf[0] = '\0';
 		}
 		if(op == ILOAD) {
-			n = snprint(buf, sizeof buf, "load %s", string2c(*(String**)R.s));
+			if(loadslot == nil || loadslot == H || (uintptr)loadslot > (uintptr)-1-sizeof(load))
+				error(exBounds);
+			memmove(&load, loadslot, sizeof(load));
+			n = snprint(buf, sizeof buf, "load %s", string2c(load));
 			qproduce(ctl->q, buf, n);
 			buf[0] = '\0';
 		}
@@ -1477,18 +1482,23 @@ dbgxec(Prog *p)
 		/*
 		 * check for blocked progs
 		 */
-		if(R.IC == 1 && p != currun())
+		if(R.IC <= 1 && p != currun())
 			dbgblock(p);
 		if(ctl->stop)
 			R.IC = 1;
-		R.IC--;
+		vmyield();
 		if(ctl->bpts == nil)
 			continue;
-		pc = R.PC - R.M->prog;
+		pc = vmlocation(&module);
+		if(pc < 0)
+			continue;
+		memmove(&path, (uchar*)module+O(Module, path), sizeof(path));
+		if(path == nil || path == H)
+			error(exModule);
 		for(b = ctl->bpts; b != nil; b = b->next) {
 			if(pc == b->pc &&
-			  (strcmp(R.M->m->path, b->path) == 0 ||
-			   strcmp(R.M->m->path, b->file) == 0)) {
+			  (strcmp(path, b->path) == 0 ||
+			   strcmp(path, b->file) == 0)) {
 				strcpy(buf, "breakpoint");
 				goto save;
 			}

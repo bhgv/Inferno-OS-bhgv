@@ -27,6 +27,7 @@ unit=r'''
 #define mallocz testmallocz
 #define free testfree
 #include "comp-riscv64.c"
+#include "vmfetch.h"
 #include <assert.h>
 #include <stdio.h>
 #include <setjmp.h>

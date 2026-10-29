@@ -45,6 +45,8 @@ HFILES=\
 	jit-tables.h\
 	$ROOT/include/interp.h\
 	$ROOT/include/isa.h\
+	$ROOT/include/vmfetch.h\
+	$ROOT/include/raise.h\
 	runt.h\
 	tab.h\
 
