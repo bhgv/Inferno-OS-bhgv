@@ -10,12 +10,14 @@
 
 /* Retain all inherited queue and transfer oracles when NDEBUG is enabled. */
 static void
-channelpredicate(int condition)
+channelpredicate(int condition, int line)
 {
-	if(!condition)
+	if(!condition){
+		fprintf(stderr, "channel queue predicate failed at %d\n", line);
 		abort();
+	}
 }
-#define channelcheck(condition) channelpredicate(!!(condition)) // Normalize pointer and scalar predicates.
+#define channelcheck(condition) channelpredicate(!!(condition), __LINE__) // Normalize pointer and scalar predicates.
 
 static Proc worker;
 static Prog current, others[3];
@@ -32,7 +34,12 @@ Type Tarray;
 
 /* Use the emulator's real error-stack layout for every injected failure. */
 Proc *getup(void) { return &worker; }
-void nexterror(void) { channelcheck(worker.nerr > 0); siglongjmp(worker.estack[--worker.nerr], 1); }
+/* Keep the sandbox sanitizer from treating an already-unwound frame as a live stack interval. */
+static void (*volatile queuejump)(sigjmp_buf, int) = siglongjmp;
+
+
+/* Use the real error-stack buffers through an indirect non-returning boundary. */
+void nexterror(void) { channelcheck(worker.nerr > 0); queuejump(worker.estack[--worker.nerr], 1); }
 void error(char *s) { last_error = s; nexterror(); }
 int __lsan_is_turned_off(void) { return 1; }
 GUARD
@@ -264,12 +271,19 @@ static void checknilslots(void)
 }
 
 
-/* Run complete alt preparation rather than replacing its registration logic. */
+/* Execute the real ALT/NBALT opcode, directly or through its published complete JIT tail. */
 static int
 prepare(void *unused)
 {
 	(void)unused;
-	xecalt(blocking);
+#ifdef TEST_LEAF_DISPATCH_RUNTIME
+	channelcheck(queuejit->dispatch[blocking ? IALT : INBALT](&R));
+#else
+	if(blocking)
+		alt();
+	else
+		nbalt();
+#endif
 	return 1;
 }
 
@@ -567,6 +581,18 @@ checkalttransfererrors(void)
 int
 main(void)
 {
+	char *publication;
+
+	publication = getenv("QUEUE_CASE");
+	if(publication == nil || !strcmp(publication, "publication-bad-ready")) checkbadpublication(0);
+	if(publication == nil || !strcmp(publication, "publication-bad-wake")) checkbadpublication(1);
+	if(publication == nil || !strcmp(publication, "publication-bad-output")) checkbadpublication(2);
+	if(publication == nil || !strcmp(publication, "publication-idle")) checkpublication(0, 0, 0);
+	if(publication == nil || !strcmp(publication, "publication-wake")) checkpublication(1, 0, 0);
+	if(publication == nil || !strcmp(publication, "publication-wake-tuple")) checkpublication(1, 0, 1);
+	if(publication == nil || !strcmp(publication, "publication-result")) checkpublication(2, 0, 0);
+	if(publication == nil || !strcmp(publication, "publication-payload")) checkpublication(2, 1, 0);
+	if(publication == nil || !strcmp(publication, "publication-tuple")) checkpublication(2, 0, 1);
 	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"),"altspans"))checkaltspans();
 	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"),"alttransfererrors"))checkalttransfererrors();
 	if(!getenv("QUEUE_CASE") || !strcmp(getenv("QUEUE_CASE"),"altslots"))checkaltslots();

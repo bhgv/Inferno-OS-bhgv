@@ -1,5 +1,7 @@
 # 64-bit JIT opcode availability checkpoint
 
+Latest ALT/NBALT guard/result/payload publication and real C/RX cancellation checks: [README.alt-publication.md](README.alt-publication.md).
+
 Latest interpreter/JIT benchmark arithmetic, clock boundaries and report checks: [README.bench-numeric.md](README.bench-numeric.md).
 
 Latest shared normal/debug/profile/benchmark fetch and reset-lifetime checks: [README.instrument-loops.md](README.instrument-loops.md).

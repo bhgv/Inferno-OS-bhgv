@@ -1,5 +1,7 @@
 # Complete decoded JIT dispatch: native fast path plus C
 
+Latest [ALT/NBALT publication and cancellation checks](README.alt-publication.md) cover both direct C and published complete RX tails.
+
 Latest [owner GC layout and builtin identity checks](README.owner-gc-layout.md) cover both priority native backends.
 
 Previous [list/channel runtime callback checks](README.jit-callback-alignment.md) cover the six helper identities used by guarded fast paths.

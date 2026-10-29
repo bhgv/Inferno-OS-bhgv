@@ -5,6 +5,7 @@ import platform
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import tempfile
 
@@ -35,8 +36,10 @@ if 'static int\nchannelspan(' in xec:
     parts += [function(xec, 'static int\nchannelspan('),
               function(xec, 'static Prog*\nchannelpeer(')]
 parts += [function(xec, 'OP('+name+')') for name in ('isend', 'irecv')]
+parts += [function(xec, 'OP(alt)'), function(xec, 'OP(nbalt)')]
 parts += [re.sub(r'^#include[^\n]*\n', '', alt, flags=re.M)]
 unit = (root/'libinterp/tests/channel-queues.c').read_text()
+unit = unit.replace('int\nmain(void)', (root/'libinterp/tests/alt-publication.c').read_text()+'\n\nint\nmain(void)')
 # Optional integration route uses published native tails and the real C executor.
 if os.environ.get('QUEUE_JIT_ROUTE') == '1':
     machine=platform.machine().lower()
@@ -59,8 +62,7 @@ mallocz(ulong size,int clear)
     return clear ? calloc(1,size) : malloc(size);
 }
 ''')
-    parts += [function(xec,'OP(alt)'),function(xec,'OP(nbalt)'),function(xec,'int\ncjitexec(')]
-    unit=unit.replace('xecalt(blocking);','channelcheck(queuejit->dispatch[blocking ? IALT : INBALT](&R));')
+    parts += [function(xec,'int\ncjitexec(')]
     unit=unit.replace('int\nmain(void)\n{', r'''int
 main(void)
 {
@@ -96,6 +98,25 @@ for runtime in ('emu/port/dis.c', 'os/port/dis.c'):
             binary = td/('queues'+str(bits))
             subprocess.run(cmd+includes+[str(source),'-o',str(binary)],check=True)
             # Keep unrelated longjmp stack topologies in separate instrumented processes.
-            families=[os.environ["QUEUE_CASE"]] if os.environ.get("QUEUE_CASE") else ['altspans', 'alttransfererrors', 'altslots', 'altgeometry', 'queues', 'blocking', 'altregister', 'altconflicts', 'native']
+            if os.environ.get('QUEUE_CASE'):
+                families = [os.environ['QUEUE_CASE']]
+            elif os.environ.get('QUEUE_CASES'):
+                families = os.environ['QUEUE_CASES'].split()
+            else:
+                families = [
+                    'publication-bad-ready', 'publication-bad-wake', 'publication-bad-output',
+                    'publication-idle', 'publication-wake', 'publication-wake-tuple',
+                    'publication-result', 'publication-payload', 'publication-tuple',
+                    'altspans', 'alttransfererrors', 'altslots', 'altgeometry',
+                    'queues', 'blocking', 'altregister', 'altconflicts', 'native',
+                ]
+            if not families:
+                raise ValueError('QUEUE_CASES must select at least one family')
             for family in families:
-                subprocess.run([str(binary)],env=dict(os.environ, **{"QUEUE_CASE":family}),check=True)
+                try:
+                    subprocess.run([str(binary)],env=dict(os.environ, **{"QUEUE_CASE":family}),check=True)
+                except subprocess.CalledProcessError:
+                    if os.environ.get('QUEUE_KEEP_ARTIFACT'):
+                        shutil.copy2(binary, os.environ['QUEUE_KEEP_ARTIFACT'])
+                        shutil.copy2(source, os.environ['QUEUE_KEEP_ARTIFACT']+'.c')
+                    raise

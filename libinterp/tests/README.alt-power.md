@@ -1,5 +1,8 @@
 # ALT slots, partial cleanup and negative integer powers
 
+Subsequent [ALT publication checks](README.alt-publication.md) cancel registrations
+before result/index/payload aliases can overwrite guard metadata.
+
 This series repairs the shared ALT implementation rather than changing the
 public Alt/Altc or channel ABI. It covers preparation, selection, wakeup and
 cancellation, plus the native send helper and string-to-big VM conversion.

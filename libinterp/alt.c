@@ -5,7 +5,6 @@
 #include "kernel.h"
 
 #define OP(fn)	void fn(void) // Shared C instruction declarations.
-#define W(p)	*((WORD*)(p)) // Legacy VM word accessor.
 
 #define CANGET(c)	((c)->size > 0) // Buffered receive readiness.
 #define CANPUT(c)	((c)->buf != H && (c)->size < (c)->buf->len) // Buffered send readiness.
@@ -101,11 +100,25 @@ altmark(Channel *c, Prog *p)
 }
 
 
-/*
- * Remove alt references by index, including empty views with nil data.
- */
+typedef struct AltSelection AltSelection;
+
+/* Capture chosen operands before result/tuple/payload writes can replace the guard table. */
+struct AltSelection
+{
+	Channel *channel; // Selected concrete channel, including an array member.
+	void *payload; // Original selected send source or receive destination.
+	void *result; // Selection output captured before cancellation or publication.
+	void *tuple; // Optional array-member index cell before the receive payload.
+	WORD guard, member; // Guard ordinal and optional channel-array member ordinal.
+	int array; // Nonzero requires publishing a receive-array member index.
+	int receive; // Nonzero selects receive rather than send.
+	int found; // Complete selection was captured without publishing output.
+};
+
+
+/* Remove array registrations while staging the selected tuple until all guards are cancelled. */
 static void
-altunmark(Channel *c, WORD *ptr, Prog *p, int sr, Channel **sel, int dn)
+altunmark(Channel *c, void *ptr, Prog *p, int sr, Channel **sel, int dn, AltSelection *selected)
 {
 	WORD n;
 	Array *a;
@@ -119,10 +132,12 @@ altunmark(Channel *c, WORD *ptr, Prog *p, int sr, Channel **sel, int dn)
 		memmove(&c, (uchar*)ca+n*sizeof(c), sizeof(c));
 		if(c != H && c != nil && c->recv->prog)
 			cqdelp(&c->recv, p);
-		if(sr == 1 && *sel == c) {
-			altstore(p->R.d, dn);
-			p->ptr = (uchar*)ptr+sizeof(WORD);
-			memmove(ptr, &n, sizeof(n));
+		if(sr == 1 && c != nil && c != H && *sel == c){
+			selected->array = 1;
+			selected->tuple = ptr;
+			selected->guard = dn;
+			selected->member = n;
+			selected->found = 1;
 			*sel = nil;
 		}
 	}
@@ -214,20 +229,25 @@ altrdy(Alt *a, Prog *p)
 }
 
 
-/*
- * ALT Pass 3 - Pull out of an ALT cancelling the channel pointers in each item
- */
+/* Cancel every registration before publishing a wakeup that can overwrite guard metadata. */
 void
 altdone(Alt *a, Prog *p, Channel *sel, int sr)
 {
-	int n, nsend, nrecv;
-	WORD *ptr;
+	int n, nsend, nrecv, selecting;
+	void *ptr;
+	AltSelection selected;
 	Type *t;
 	Channel *c;
 	Altc *ac, *eac;
 
 	if(!altheader(a, &nsend, &nrecv))
 		return;
+	selecting = sel != nil && (sr == 0 || sr == 1);
+	if(selecting){
+		selected.found = 0;
+		selected.array = 0;
+		selected.result = p->R.d;
+	}
 	n = 0;
 	ac = (Altc*)((uchar*)a+offsetof(Alt, ac));
 	eac = (Altc*)((uchar*)a+offsetof(Alt, ac))+nsend;
@@ -237,8 +257,9 @@ altdone(Alt *a, Prog *p, Channel *sel, int sr)
 			if(c->send->prog)
 				cqdelp(&c->send, p);
 			if(sr == 0 && c == sel) {
-				memmove(&p->ptr, (uchar*)ac+offsetof(Altc, ptr), sizeof(p->ptr));
-				altstore(p->R.d, n);
+				memmove(&selected.payload, (uchar*)ac+offsetof(Altc, ptr), sizeof(selected.payload));
+				selected.guard = n;
+				selected.found = 1;
 				sel = nil;
 			}
 		}
@@ -253,14 +274,15 @@ altdone(Alt *a, Prog *p, Channel *sel, int sr)
 			t = D2H(c)->t;
 			if(t == &Tarray){
 				memmove(&ptr, (uchar*)ac+offsetof(Altc, ptr), sizeof(ptr));
-				altunmark(c, ptr, p, sr, &sel, n);
+				altunmark(c, ptr, p, sr, &sel, n, &selected);
 			}
 			else {
 				if(c->recv && c->recv->prog)
 					cqdelp(&c->recv, p);
 				if(sr == 1 && c == sel) {
-					memmove(&p->ptr, (uchar*)ac+offsetof(Altc, ptr), sizeof(p->ptr));
-					altstore(p->R.d, n);
+					memmove(&selected.payload, (uchar*)ac+offsetof(Altc, ptr), sizeof(selected.payload));
+					selected.guard = n;
+					selected.found = 1;
 					sel = nil;
 				}
 			}
@@ -268,75 +290,112 @@ altdone(Alt *a, Prog *p, Channel *sel, int sr)
 		ac++;
 		n++;
 	}
+	if(selecting && selected.found){
+		altresult(selected.result);
+		if(selected.array){
+			altresult(selected.tuple);
+			selected.payload = (uchar*)selected.tuple+sizeof(WORD);
+		}
+		p->ptr = selected.payload;
+		altstore(selected.result, selected.guard);
+		if(selected.array)
+			memmove(selected.tuple, &selected.member, sizeof(selected.member));
+	}
 }
 
 
-/*
- * ALT Pass 2 - Communicate on the chosen channel; empty array guards read no data.
- */
+/* Resolve one ready alternative without changing registers, queues or output cells. */
 static void
-altcomm(Alt *a, int which)
+altchoose(Alt *a, int which, AltSelection *selected)
 {
 	Type *t;
 	Array *r;
 	int n, nsend, nrecv;
 	WORD an;
-	WORD *ptr;
+	void *ptr;
 	Altc *ac, *eac;
 	Channel *c, **ca;
 
 	if(!altheader(a, &nsend, &nrecv))
 		error(exBounds);
+	memset(selected, 0, sizeof(*selected));
+	selected->result = R.d;
 	n = 0;
 	ac = (Altc*)((uchar*)a+offsetof(Alt, ac));
-	eac = ac + nsend;
-	while(ac < eac) {
+	eac = ac+nsend;
+	while(ac < eac){
 		memmove(&c, (uchar*)ac+offsetof(Altc, c), sizeof(c));
-		if((c->recv->prog != nil || CANPUT(c)) && which-- == 0) {
-			altstore(R.d, n);
-			memmove(&R.s, (uchar*)ac+offsetof(Altc, ptr), sizeof(R.s));
-			R.d = &c;
-			isend();
+		if((c->recv->prog != nil || CANPUT(c)) && which-- == 0){
+			selected->channel = c;
+			selected->guard = n;
+			memmove(&selected->payload, (uchar*)ac+offsetof(Altc, ptr), sizeof(selected->payload));
+			selected->found = 1;
 			return;
 		}
 		ac++;
 		n++;
 	}
 
-	eac = eac + nrecv;
-	while(ac < eac) {
+	eac += nrecv;
+	selected->receive = 1;
+	while(ac < eac){
 		memmove(&c, (uchar*)ac+offsetof(Altc, c), sizeof(c));
 		t = D2H(c)->t;
-		if(t == &Tarray) {
+		if(t == &Tarray){
 			r = (Array*)c;
 			ca = (Channel**)r->data;
 			for(an = 0; an < r->len; an++){
 				memmove(&c, (uchar*)ca+an*sizeof(c), sizeof(c));
-				if(c != H && c != nil && (c->send->prog != nil || CANGET(c)) && which-- == 0) {
-					altstore(R.d, n);
-					R.s = &c;
+				if(c != H && c != nil && (c->send->prog != nil || CANGET(c)) && which-- == 0){
 					memmove(&ptr, (uchar*)ac+offsetof(Altc, ptr), sizeof(ptr));
-					R.d = (uchar*)ptr+sizeof(WORD);
-					memmove(ptr, &an, sizeof(an));
-					irecv();
+					altresult(ptr);
+					selected->array = 1;
+					selected->tuple = ptr;
+					selected->member = an;
+					selected->payload = (uchar*)ptr+sizeof(WORD);
+					selected->channel = c;
+					selected->guard = n;
+					selected->found = 1;
 					return;
 				}
 			}
-		}
-		else
-		if((c->send->prog != nil || CANGET(c)) && which-- == 0) {
-			altstore(R.d, n);
-			R.s = &c;
-			memmove(&R.d, (uchar*)ac+offsetof(Altc, ptr), sizeof(R.d));
-			irecv();
-			return;	
+		}else if((c->send->prog != nil || CANGET(c)) && which-- == 0){
+			selected->channel = c;
+			selected->guard = n;
+			memmove(&selected->payload, (uchar*)ac+offsetof(Altc, ptr), sizeof(selected->payload));
+			selected->found = 1;
+			return;
 		}
 		ac++;
 		n++;
 	}
-	return;
 }
 
+
+/* Transfer only captured operands after no registration cleanup can revisit overwritten guards. */
+static void
+alttransfer(AltSelection *selected)
+{
+	Channel *c;
+
+	c = selected->channel;
+	altstore(selected->result, selected->guard);
+	if(selected->array)
+		memmove(selected->tuple, &selected->member, sizeof(selected->member));
+	if(selected->receive){
+		R.s = &c;
+		R.d = selected->payload;
+		irecv();
+	}else{
+		R.s = selected->payload;
+		R.d = &c;
+		isend();
+	}
+}
+
+
+
+/* Wake an abandoned blocked alternative after removing its registrations. */
 void
 altgone(Prog *p)
 {
@@ -358,6 +417,7 @@ struct AltReady
 	Prog *prog; // Process whose registrations must be removed on error.
 	int ready; // Number of ready guard alternatives.
 	int choice; // Selected ready alternative for protected communication.
+	int registered; // Cleanup still owns the guard table until cancellation completes.
 };
 
 
@@ -373,14 +433,20 @@ altready(void *arg)
 }
 
 
-/* Keep transfer errors inside a boundary that still owns this alt's registrations. */
+/* Snapshot ready operands, cancel once, then transfer without revisiting mutable guard storage. */
 static int
 altcommunicate(void *arg)
 {
 	AltReady *r;
+	AltSelection selected;
 
 	r = arg;
-	altcomm(r->alt, r->choice);
+	altchoose(r->alt, r->choice, &selected);
+	if(selected.found){
+		altdone(r->alt, r->prog, nil, -1);
+		r->registered = 0;
+		alttransfer(&selected);
+	}
 	return 1;
 }
 
@@ -393,6 +459,7 @@ xecalt(int block)
 	Prog *p;
 	int nrdy, nsend, nrecv;
 	AltReady ready;
+	void *result;
 	static ulong xrand = 0x20342;
 
 	p = currun();
@@ -402,9 +469,11 @@ xecalt(int block)
 		error(exNilref);
 	if(!altheader(a, &nsend, &nrecv))
 		error(exBounds);
-	altresult(R.d);
+	result = R.d;
+	altresult(result);
 	ready.alt = a;
 	ready.prog = p;
+	ready.registered = 1;
 	if(!kprotect(altready, &ready)){
 		altdone(a, p, nil, -1);
 		krethrow();
@@ -419,16 +488,18 @@ xecalt(int block)
 			R.t = 1;
 			return;
 		}
-		altstore(R.d, nsend+nrecv);
 		altdone(a, p, nil, -1);
+		altstore(result, nsend+nrecv);
 		return;
 	}
 
 	xrand = xrand*1103515245 + 12345;
 	ready.choice = (xrand>>8)%nrdy;
 	if(!kprotect(altcommunicate, &ready)){
-		altdone(a, p, nil, -1);
+		if(ready.registered)
+			altdone(a, p, nil, -1);
 		krethrow();
 	}
-	altdone(a, p, nil, -1);
+	if(ready.registered)
+		altdone(a, p, nil, -1);
 }
