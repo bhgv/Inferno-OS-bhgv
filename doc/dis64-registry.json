@@ -32,7 +32,17 @@
   "nil_reference_id": null,
   "open": [
     "nil-reference encoding",
-    "module/type/import/code payloads",
+    "imports/exports/signatures and nonempty initializers",
+    "control section framing",
+    "production loader/entry/EXIT acceptance",
     "ref-result GC/unwind acceptance"
-  ]
+  ],
+  "scalar_kinds": {
+    "void": 0,
+    "int32": 1,
+    "big": 2,
+    "real": 3,
+    "bool": 4
+  },
+  "scalar_kind_scope": "FLASHVM payload proposal accepted INFERNO-0009; signature version/framing and calls still pending"
 }

@@ -111,3 +111,17 @@ Writer inputs are complete encoded records; all validation precedes writes.
 `dis-rune-case.py` now builds that real serialized pool before validating and
 selecting typed string-case targets. A fixture-only offset array no longer
 stands in for the pool wire payload. No nil ID or VM heap is introduced.
+
+## Module/types/code and actual scalar pilot instruction
+
+`pilot42.hex` is a hand-written complete 180-byte ABI1 container, with real
+metadata/descriptors/code/string-pool records. It contains MOVW #42, MP[0]; EXIT.
+`dis64-payloads.py` checks actual module/type writers, readers/getters, signed30
+operand decoding, the supported scalar operand-role matrix and pilot linking.
+The builder uses the shared FlashVM pool codec, not a replacement implementation.
+
+`dis64-pilot-native.py` validates that file and executes its MOVW through the
+actual production C body and actual AMD64 RX leaf in WORD32/ref64 configuration.
+EXIT is decoded only. No full VM entry, scheduler, new-ABI GC or ref-result run
+is claimed. Unsupported roles never fall back to the classic module decoder.
+Full scope/resource/subset limits: `doc/dis64-pilot.md`.

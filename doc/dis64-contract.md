@@ -2,12 +2,13 @@
 
 Статус: нормативная **согласованная часть** будущего Dis64. Полная спецификация
 файла ещё не завершена. Discriminator, ABI1 и section IDs приняты FLASHVM-0004;
-новые opcode/extension IDs и внутренние module/type/import/code payloads
-ещё не назначены. Этот текст не включает target
+Module/type/string/code framing принят FLASHVM-0006 / INFERNO-0009;
+initial scalar readers описаны в [pilot](dis64-pilot.md). Imports/signatures,
+initializers, control framing и полноценный runtime acceptance ещё не завершены. Этот текст не включает target
 по умолчанию и не означает готовность нового интерпретатора или JIT.
 
-Основания: INFERNO-0001..0008 в [журнале Inferno](dis64-inferno-journal.md),
-FLASHVM-0001..0005 в [журнале FlashVM](dis64-flashvm-journal.md).
+Основания: INFERNO-0001..0009 в [журнале Inferno](dis64-inferno-journal.md),
+FLASHVM-0001..0007 в [журнале FlashVM](dis64-flashvm-journal.md).
 Согласие по signed32 Rune: FLASHVM-0003, Inferno подтверждает INFERNO-0006.
 При расхождении исторического design с этим документом для перечисленных
 согласованных правил применяется этот документ; неописанные поля не угадываются.
@@ -145,8 +146,10 @@ FLASHVM-0004 / INFERNO-0008: [registry](dis64-registry.json).
 include/dis64.h реализует только envelope: fixed header/manifest/directory,
 без чтения смысла module/type/import/code payloads и без VM heap construction.
 Envelope acceptance не является проверкой исполняемого модуля.
-Module/type/import/code payloads, relocation/initializers, подписи интерфейсов,
-полные modules/SDK и ref-result execution fixtures ещё предстоят.
+Module/types/code framing реализован в отдельном scalar pilot checker;
+это не подключение к production loader. Imports/exports, signatures, nonempty
+initializers, ref relocations, полноценный SDK target и ref-result acceptance
+ещё предстоят. Декодированный EXIT не заменяет production scheduler execution.
 
 Helpers и золотые payloads не являются загружаемой программой нового Dis64.
 Доказательство: freshly built compiler → module → interpreter, затем JIT+C на
