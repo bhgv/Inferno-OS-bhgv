@@ -40,7 +40,7 @@ error(char *message)
 }
 
 #define OP(name) void name(void) // Actual extracted scalar instruction declaration.
-MOVW_IMPLEMENTATION
+SCALAR_IMPLEMENTATION
 
 
 /* Decode the full module, then exercise its scalar instruction in production C/RX.
@@ -71,30 +71,37 @@ main(int argc, char **argv)
 	if(fclose(file) != 0 || !dis64pilotcheck(image, bytes, 4096, 64, &pilot) ||
 	   pilot.module.entry != 0 || pilot.module.databytes != 4 || pilot.code.count != 2 ||
 	   !dis64codeget(&pilot.code, 0, &first) || !dis64codeget(&pilot.code, 1, &last) ||
-	   first.op != IMOVW || first.mode != (SRC(AIMM)|DST(AMP)) ||
-	   first.source != 42 || first.destination != 0 || last.op != IEXIT)
+	   (first.op != IMOVW && first.op != IADDW) || first.mode != (SRC(AIMM)|DST(AMP)) ||
+	   first.source != (first.op == IMOVW ? 42 : 2) || first.destination != 0 || last.op != IEXIT)
 		return 3;
 	memset(&module, 0, sizeof(module));
 	memset(instructions, 0, sizeof(instructions));
-	instructions[0].op = IMOVW;
+	instructions[0].op = first.op;
 	instructions[1].op = IEXIT;
 	module.prog = instructions;
 	module.nprog = 2;
-	if(!compile(&module, 2, nil) || module.jit->entry[IMOVW] == nil)
+	if(!compile(&module, 2, nil) || module.jit->entry[first.op] == nil)
 		return 4;
 	immediate = first.source;
 	for(route=0; route<2; route++){
 		memset(memory, 0xa5, sizeof(memory));
-		memset(memory, 0, pilot.module.databytes);
+		if(!dis64initializersapply(&pilot.initializers, &pilot.data, memory, sizeof(memory), nil))
+			return 8;
 		memcpy(before, memory, sizeof(memory));
 		memset(&R, 0, sizeof(R));
 		R.s = &immediate;
 		R.d = memory+first.destination;
+		if(first.op == IADDW)
+			R.m = R.d;
 		R.PC = instructions+1;
 		expected = R;
-		if(route == 0)
-			movw();
-		else if(module.jit->entry[IMOVW](&R) != 1)
+		if(route == 0){
+			if(first.op == IMOVW)
+				movw();
+			else
+				addw();
+		}
+		else if(module.jit->entry[first.op](&R) != 1)
 			return 5;
 		memmove(&result, memory, sizeof(result));
 		if(result != 42 || memcmp(&R, &expected, sizeof(R)) != 0)
@@ -105,6 +112,6 @@ main(int argc, char **argv)
 	}
 	module.jit->freecode(module.jit->code, module.jit->size);
 	free(module.jit);
-	printf("PASS linked pilot42: production WORD32 MOVW C/RX, result42; EXIT decoded only, no VM entry/scheduler claim\n");
+	printf("PASS linked pilot42: production WORD32 opcode%u C/RX, native init -> result42; EXIT decoded only, no VM entry/scheduler claim\n", first.op);
 	return 0;
 }

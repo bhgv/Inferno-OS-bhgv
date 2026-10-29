@@ -11,7 +11,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 
 
-# Extract the actual checked MOVW body, never a mirrored implementation.
+# Extract the actual checked scalar bodies, never a mirrored implementation.
 def function(source, signature):
     start = source.index(signature)
     brace = source.index("{", start)
@@ -40,10 +40,11 @@ def main():
         if words != 1 or uwords != 1:
             raise RuntimeError("WORD model header changed")
         (work / "interp.h").write_text(header)
-        implementation = function((ROOT / "libinterp/xec.c").read_text(), "OP(movw)")
+        production = (ROOT / "libinterp/xec.c").read_text()
+        implementation = "\n\n".join(function(production, "OP(" + name + ")") for name in ("movw", "addw"))
         unit = (ROOT / "libinterp/tests/dis64-pilot-native.c").read_text()
         source = work / "pilot.c"
-        source.write_text(unit.replace("MOVW_IMPLEMENTATION", implementation))
+        source.write_text(unit.replace("SCALAR_IMPLEMENTATION", implementation))
         image = work / "pilot42.dis64"
         image.write_bytes(bytes.fromhex((ROOT / "libinterp/tests/dis64/pilot42.hex").read_text()))
         command = shlex.split(os.environ.get("CC", "cc"))
@@ -53,6 +54,8 @@ def main():
                     ("Linux/arm/include", "emu/port", "include", "libinterp")]
         binary = work / "pilot"
         subprocess.run(command + [str(source), "-o", str(binary), "-lm"], check=True)
+        subprocess.run([str(binary), str(image)], check=True)
+        image.write_bytes(bytes.fromhex((ROOT / "libinterp/tests/dis64/pilot-init42.hex").read_text()))
         subprocess.run([str(binary), str(image)], check=True)
 
 

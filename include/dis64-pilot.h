@@ -1,9 +1,11 @@
 /* Allocation-free semantic gate for the first scalar executable Dis64 profile. */
 #ifndef DIS64_PILOT_H
 #define DIS64_PILOT_H // First scalar module semantic validation guard.
+#define Dis64PilotInitializers 1024U // Explicit resource cap for pairwise initializer validation.
 
 #include "dis64-module.h"
 #include "dis64-types.h"
+#include "dis64-data.h"
 #include "dis64-code.h"
 #include "dis-string-pool.h"
 
@@ -14,7 +16,8 @@ struct Dis64Pilot {
 	Dis64TypeTable types; // Structural descriptor view.
 	DisStringPoolView strings; // Actual agreed pool, including duplicate contents.
 	Dis64CodeView code; // Validated initial scalar subset.
-	Dis64Type data; // Descriptor for zero-initialized scalar module data.
+	Dis64Type data; // Descriptor for scalar module data.
+	Dis64Initializers initializers; // Validated scalar initialization payload, if present.
 	Dis64Type frame; // Entry frame, with no managed references in this pilot.
 };
 
@@ -52,8 +55,7 @@ dis64pilotscalar(const Dis64Type *type)
 
 
 /* Link metadata, descriptors, strings and scalar code without allocating a VM.
- * Import/export/control payload semantics and nonempty initializers are deliberately
- * outside this pilot and rejected explicitly, never sent to the legacy loader. */
+ * Import/export/control execution semantics are deliberately outside this pilot and rejected explicitly, never sent to the legacy loader. */
 static int
 dis64pilotcheck(const unsigned char *data, unsigned int bytes,
 	unsigned int objectlimit, unsigned int instructionlimit, Dis64Pilot *result)
@@ -88,11 +90,16 @@ dis64pilotcheck(const unsigned char *data, unsigned int bytes,
 	   pilot.data.bytes != pilot.module.databytes || !dis64pilotscalar(&pilot.data)))
 		return 0;
 	if(dis64pilotsection(&pilot.envelope, Dis64Data, &section)){
-		/* The first program uses initializer_count0; scalar records follow later. */
-		if(section.bytes != 4 || dis64u32(data+section.offset) != 0)
+		if(!dis64initializerscheck(data+section.offset, section.bytes, &pilot.data,
+		   Dis64PilotInitializers, &pilot.initializers))
 			return 0;
-	}else if(pilot.module.databytes != 0)
-		return 0;
+	}else{
+		if(pilot.module.databytes != 0)
+			return 0;
+		pilot.initializers.data = 0;
+		pilot.initializers.bytes = 0;
+		pilot.initializers.count = 0;
+	}
 	for(i=Dis64Imports; i<=Dis64Control; i++){
 		if(i == Dis64Strings)
 			continue;

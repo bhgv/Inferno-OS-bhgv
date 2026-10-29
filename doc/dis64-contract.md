@@ -1,10 +1,11 @@
-# Dis64: согласованный контракт, редакция 2026-10-29
+# Dis64: согласованный контракт, редакция 2026-10-30
 
 Статус: нормативная **согласованная часть** будущего Dis64. Полная спецификация
 файла ещё не завершена. Discriminator, ABI1 и section IDs приняты FLASHVM-0004;
 Module/type/string/code framing принят FLASHVM-0006 / INFERNO-0009;
-initial scalar readers описаны в [pilot](dis64-pilot.md). Imports/signatures,
-initializers, control framing и полноценный runtime acceptance ещё не завершены. Этот текст не включает target
+initial scalar readers описаны в [pilot](dis64-pilot.md). Scalar signatures/imports/exports и initializers framing принят FLASHVM-0008 /
+INFERNO-0011: [storage](dis64-storage.md). Control framing, calling/GC graph и
+полноценный runtime acceptance ещё не завершены. Этот текст не включает target
 по умолчанию и не означает готовность нового интерпретатора или JIT.
 
 Основания: INFERNO-0001..0009 в [журнале Inferno](dis64-inferno-journal.md),
@@ -147,9 +148,9 @@ include/dis64.h реализует только envelope: fixed header/manifest/
 без чтения смысла module/type/import/code payloads и без VM heap construction.
 Envelope acceptance не является проверкой исполняемого модуля.
 Module/types/code framing реализован в отдельном scalar pilot checker;
-это не подключение к production loader. Imports/exports, signatures, nonempty
-initializers, ref relocations, полноценный SDK target и ref-result acceptance
-ещё предстоят. Декодированный EXIT не заменяет production scheduler execution.
+это не подключение к production loader. Scalar initializers и structural signatures/bindings реализованы отдельно;
+реальные imports/calls, ref relocations, полноценный runtime target и ref-result
+acceptance ещё предстоят. Декодированный EXIT не заменяет production scheduler execution.
 
 Helpers и золотые payloads не являются загружаемой программой нового Dis64.
 Доказательство: freshly built compiler → module → interpreter, затем JIT+C на

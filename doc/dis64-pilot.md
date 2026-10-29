@@ -65,8 +65,8 @@ hex проверяется независимо. Межсекционные IDs,
 roles проверяет dis64pilotcheck до публикации borrowed view.
 
 Этот pilot проверяет executable profile1, no extensions, scalar data/frame,
-initializer_count0. Imports/exports/control sections и nonempty initializers
-пока отвергаются как unsupported. General metadata codec принимает profile0,
+scalar initializers из [storage framing](dis64-storage.md). Imports/exports/control
+sections пока отвергаются как unsupported; nonempty scalar initializers проверяются. General metadata codec принимает profile0,
 но code-less library и dependency resolution не объявлены реализованными.
 
 ```
@@ -76,8 +76,10 @@ python3 libinterp/tests/dis64-pilot-native.py
 
 Первый тест проверяет writers/readers/getters, signed operands, role matrix,
 capacity/rejection atomicity и whole-module linking. Второй читает весь golden,
-проверяет semantic references, затем исполняет **один MOVW** через production
-xec.c и actual AMD64 RX в WORD32/ref64 модели. Он проверяет MP[0]==42 и guards.
+проверяет semantic references, применяет scalar initialization и исполняет один
+MOVW либо ADDW через production xec.c и actual AMD64 RX в WORD32/ref64 модели.
+Для нового192-byte pilot-init42 MP[0] сначала40, затем ADDW2 даёт42.
+Он проверяет native bits, MP[0]==42 и guards.
 EXIT только декодируется как terminal opcode; production scheduler/EXIT не
 вызывается. Harness не объявляется полной VM, bytecode loader или полноценным
 compiler-to-runtime acceptance. ARM64 host run этим не заменяется.

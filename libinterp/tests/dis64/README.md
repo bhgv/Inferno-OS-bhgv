@@ -125,3 +125,18 @@ actual production C body and actual AMD64 RX leaf in WORD32/ref64 configuration.
 EXIT is decoded only. No full VM entry, scheduler, new-ABI GC or ref-result run
 is claimed. Unsupported roles never fall back to the classic module decoder.
 Full scope/resource/subset limits: `doc/dis64-pilot.md`.
+
+
+## Nonempty initialization and scalar interface records
+
+`dis64-storage.py` checks actual scalar data/signature/import/export codecs
+against independent Python bit/geometry/name oracles, guard preservation and
+exact writer bytes. Native initialization supplies nil explicitly and never
+turns zero bytes into an assumed pointer representation. Bit patterns include
+signed minima, binary64 signed zero/NaN/infinity and a nonzero nil fixture.
+
+`pilot-init42.hex` is a hand-written192-byte complete ABI1 module. Shared actual
+writers produce the same bytes; MP[0]=40 initializer followed by ADDW #2 yields42
+through production C and actual AMD64 RX in the existing scalar harness.
+Both this file and original MOVW42 pass the native driver. EXIT is decoded only.
+`doc/dis64-storage.md` documents exact structural scope and pending calls/GC gates.

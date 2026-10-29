@@ -132,19 +132,25 @@ pilotprobe(const unsigned char *data, unsigned int bytes, unsigned int *fields)
 
 
 /* Produce the golden using shared metadata/type/string/envelope writers. */
-int
-buildpilot(unsigned char *out, unsigned int capacity, unsigned int *written)
+static int
+buildpilotmode(unsigned char *out, unsigned int capacity, unsigned int *written, unsigned int initialized)
 {
     unsigned char metadata[24], code[]={0,0,0,2,IMOVW,SRC(AIMM)|DST(AMP),42,0,IEXIT,SRC(AXXX)|DST(AXXX)};
-    unsigned char typesbytes[32], runes[24], strings[32], zero[4]={0}, map=0;
-    unsigned int name[]={80,105,108,111,116}, nmodule, ntypes, nrunes, nstrings;
+    unsigned char typesbytes[32], runes[24], strings[32], data[16], map=0;
+    unsigned int name[]={80,105,108,111,116}, nmodule, ntypes, nrunes, nstrings, ndata;
     Dis64ModuleInfo module={0,1,4,0,0,1};
     Dis64Type types[]={{4,4,&map,1},{64,8,&map,1}};
     DisStringPoolRecord record;
+    Dis64Initializer initializer={0,Dis64Int,0,40};
     Dis64Payload sections[5];
+    if(initialized){
+        code[4]=IADDW;
+        code[6]=2;
+    }
     if(!dis64modulewrite(metadata,sizeof(metadata),&module,&nmodule) ||
        !dis64typeswrite(typesbytes,sizeof(typesbytes),types,2,&ntypes) ||
-       !disrunewrite(runes,sizeof(runes),name,5,&nrunes))
+       !disrunewrite(runes,sizeof(runes),name,5,&nrunes) ||
+       !dis64initializerswrite(data,sizeof(data),&types[0],&initializer,initialized,&ndata))
         return 0;
     record.data = runes;
     record.bytes = nrunes;
@@ -153,10 +159,26 @@ buildpilot(unsigned char *out, unsigned int capacity, unsigned int *written)
     sections[0]=(Dis64Payload){Dis64Module,1,metadata,nmodule};
     sections[1]=(Dis64Payload){Dis64Code,1,code,sizeof(code)};
     sections[2]=(Dis64Payload){Dis64Types,1,typesbytes,ntypes};
-    sections[3]=(Dis64Payload){Dis64Data,1,zero,4};
+    sections[3]=(Dis64Payload){Dis64Data,1,data,ndata};
     sections[4]=(Dis64Payload){Dis64Strings,1,strings,nstrings};
     return dis64write(out,capacity,0,0,sections,5,written);
 }
+
+/* Preserve the original zero-initialized MOVW golden producer. */
+int
+buildpilot(unsigned char *out, unsigned int capacity, unsigned int *written)
+{
+    return buildpilotmode(out, capacity, written, 0);
+}
+
+
+/* Exercise the nonempty initializer codec in a complete ADDW module producer. */
+int
+buildinitpilot(unsigned char *out, unsigned int capacity, unsigned int *written)
+{
+    return buildpilotmode(out, capacity, written, 1);
+}
+
 '''
 
 
@@ -203,6 +225,7 @@ def main():
         lib.operandprobe.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_long), ctypes.POINTER(ctypes.c_uint)]
         lib.pilotprobe.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
         lib.buildpilot.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+        lib.buildinitpilot.argtypes = lib.buildpilot.argtypes
         for profile in (0, 1, 2):
             for size in (0, 4):
                 module = Module(3, profile, size, 7, 11, 13)
@@ -324,6 +347,17 @@ def main():
             if out.raw != wanted:
                 raise RuntimeError("produced pilot differs from hand-written golden")
             checks += 1
+        initgolden=bytes.fromhex((ROOT / "libinterp/tests/dis64/pilot-init42.hex").read_text())
+        for capacity in range(len(initgolden)+2):
+            out=ctypes.create_string_buffer(b"\xa5"*(len(initgolden)+4))
+            written=ctypes.c_uint(12345)
+            valid=capacity>=len(initgolden)
+            if lib.buildinitpilot(out,capacity,ctypes.byref(written))!=int(valid):
+                raise RuntimeError("initialized pilot writer capacity mismatch")
+            wanted=initgolden+b"\xa5"*4+b"\0" if valid else b"\xa5"*(len(initgolden)+4)+b"\0"
+            if out.raw!=wanted or written.value!=(len(initgolden) if valid else 12345):
+                raise RuntimeError("initialized module differs from independent golden")
+            checks+=1
         bad = [golden[:end] for end in range(len(golden))] + [golden + b"\0"]
         for offset, width, value in ((92,4,1),(96,4,2),(100,4,8),(104,4,2),(108,4,2),(112,4,0),
                                      (134,4,3),(138,1,128),(139,4,56),(147,1,1),
@@ -331,7 +365,7 @@ def main():
             image = bytearray(golden)
             image[offset:offset+width] = value.to_bytes(width, "big")
             bad.append(bytes(image))
-        for payload, valid in [(golden, True)] + [(image, False) for image in bad]:
+        for payload, valid in [(golden, True),(initgolden, True)] + [(image, False) for image in bad]:
             output = (ctypes.c_uint * 4)(*([12345] * 4))
             ok = lib.pilotprobe(payload, len(payload), output)
             if ok != int(valid) or list(output) != ([4,64,0,2] if valid else [12345] * 4):
