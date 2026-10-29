@@ -35,6 +35,9 @@ parts = [function(xec, 'void\n'+name+'(') for name in ('cqadd', 'cqdel', 'cqdelp
 if 'static int\nchannelspan(' in xec:
     parts += [function(xec, 'static int\nchannelspan('),
               function(xec, 'static Prog*\nchannelpeer(')]
+if 'typedef struct ChannelRefill' in xec:
+    start = xec.index('struct ChannelRefill\n{')
+    parts += ['typedef struct ChannelRefill ChannelRefill;\n'+xec[start:xec.index('/* The refill callback', start)], function(xec, 'static int\nchannelrefill(')]
 parts += [function(xec, 'OP('+name+')') for name in ('isend', 'irecv')]
 parts += [function(xec, 'OP(alt)'), function(xec, 'OP(nbalt)')]
 parts += [re.sub(r'^#include[^\n]*\n', '', alt, flags=re.M)]

@@ -5,6 +5,7 @@
 #include "pool.h"
 #include "kernel.h"
 #include "vmfetch.h"
+#include "vmchannel.h"
 
 REG	R;			/* Virtual Machine registers */
 String	snil;			/* String known to be zero length */
@@ -3476,6 +3477,67 @@ channelpeer(Channel *c, int receive)
 }
 
 
+typedef struct ChannelRead ChannelRead;
+typedef struct ChannelRefill ChannelRefill;
+
+/* Retain the original backing owner while a mover or mapped cleanup borrows REG or raises. */
+struct ChannelRead
+{
+	Channel *channel; // Original channel supplies the mover's metadata.
+	Array *array; // Temporary reference released on both protected exits.
+	void *slot; // Captured ring source, independent of later front/REG changes.
+	void *destination; // Original receive output cell.
+};
+
+/* Hold a queued sender's channel across both buffered copy stages. */
+struct ChannelRefill
+{
+	Channel *channel; // Temporary reference protects receive and refill callbacks.
+	Prog *sender; // Queued sender whose payload is cleared only after successful refill.
+	void *destination; // Original receiver cell, not a mover's borrowed REG.d.
+	void *source; // Original sender payload captured before the receive callback.
+};
+
+/* The refill callback is declared before the authoritative buffered helpers. */
+static int cgetb(Channel*, void*);
+static int cputb(Channel*, void*);
+
+
+/* Perform a buffered receive while its caller owns the temporary array reference. */
+static int
+channelread(void *arg)
+{
+	ChannelRead *read;
+	Array *array;
+
+	read = arg;
+	array = read->array;
+	R.s = read->slot;
+	R.m = &read->channel->mid;
+	R.d = read->destination;
+	read->channel->mover();
+	if(array->t->np){
+		freeptrs(read->slot, array->t);
+		initmem(array->t, read->slot);
+	}
+	return 1;
+}
+
+
+/* Preserve the original destination and sender source across receive callbacks. */
+static int
+channelrefill(void *arg)
+{
+	ChannelRefill *refill;
+
+	refill = arg;
+	cgetb(refill->channel, refill->destination);
+	cputb(refill->channel, refill->source);
+	refill->sender->ptr = nil;
+	return 1;
+}
+
+
 /* Validate and retain buffered storage before changing its ring or destination. */
 static int
 cgetb(Channel *c, void *v)
@@ -3483,8 +3545,8 @@ cgetb(Channel *c, void *v)
 	ChannelBuffer buffer;
 	Array *a;
 	Heap *h;
-	void *w;
-	int status;
+	ChannelRead read;
+	int status, ok;
 
 	status = channelbuffer(c, 1, 0, &buffer);
 	if(status < 0)
@@ -3498,18 +3560,16 @@ cgetb(Channel *c, void *v)
 	if(h->ref == 0 || h->ref == (ulong)-1)
 		error(exHeap);
 	h->ref++;
-	w = buffer.slot;
+	read.channel = c;
+	read.array = a;
+	read.slot = buffer.slot;
+	read.destination = v;
 	c->front = buffer.front;
 	c->size = buffer.size;
-	R.s = w;
-	R.m = &c->mid;
-	R.d = v;
-	c->mover();
-	if(a->t->np){
-		freeptrs(w, a->t);
-		initmem(a->t, w);
-	}
+	ok = kprotect(channelread, &read);
 	destroy(a);
+	if(!ok)
+		krethrow();
 	return 1;
 }
 
@@ -3764,6 +3824,8 @@ OP(irecv)
 	Channel *c;
 	Prog *p;
 	Heap *h;
+	ChannelRefill refill;
+	int ok;
 
 	if(!channelspan(R.s, sizeof(c)))
 		error(exHeap);
@@ -3805,10 +3867,14 @@ OP(irecv)
 	if(c->buf != H){
 		/* The destination can release c; keep it alive through sender refill. */
 		D2H(c)->ref++;
-		cgetb(c, R.d);
-		cputb(c, p->ptr);
-		p->ptr = nil;
+		refill.channel = c;
+		refill.sender = p;
+		refill.destination = R.d;
+		refill.source = p->ptr;
+		ok = kprotect(channelrefill, &refill);
 		destroy(c);
+		if(!ok)
+			krethrow();
 	}
 	else{
 		R.m = &c->mid;
@@ -3819,30 +3885,68 @@ OP(irecv)
 	addrun(p);
 	R.t = 0;
 }
-/* Best-effort native sends never block or allocate a nonpositive buffer. */
+
+
+typedef struct CsendAlt CsendAlt;
+
+/* Preserve the native call's addresses and outcome across protected allocator/mover/destructor callbacks. */
+struct CsendAlt
+{
+	Channel *channel; // Original channel owner used after callbacks borrow REG.
+	void *payload; // Original source whose references are consumed only on drop or successful send.
+	Type *type; // Original payload map used by the existing cleanup contract.
+	int capacity; // Positive permits creating a buffer; nonpositive retains best-effort dropping.
+	int result; // Published native outcome after cleanup completes.
+};
+
+
+/* Preserve ordinary partial-transfer errors; never consume the input again on an exception. */
+static int
+csendaltcall(void *arg)
+{
+	CsendAlt *send;
+	VmChannelCall call;
+	Channel *channel;
+
+	send = arg;
+	channel = send->channel;
+	if(!vmchanready(channel, 0)){
+		if(channel->buf != H || send->capacity <= 0){
+			freeptrs(send->payload, send->type);
+			send->result = 0;
+			return 1;
+		}
+		channel->buf = H2D(Array*, heaparray(send->type, send->capacity));
+	}
+	call.channel = channel;
+	call.payload = send->payload;
+	call.receive = 0;
+	vmchanrun(&call);
+	freeptrs(send->payload, send->type);
+	send->result = 1;
+	return 1;
+}
+
+
+/* Restore REG after allocation, transfer and payload cleanup, including every VM error exit. */
 int
 csendalt(Channel *c, void *ip, Type *t, int len)
 {
-	REG rsav;
+	CsendAlt send;
+	REG saved;
+	int ok;
 
-	if(c == H || c == nil || c->buf == nil)
-		error(exNilref);
-
-	if(c->recv->prog == nil && (c->buf == H || c->size == c->buf->len)){
-		if(c->buf != H || len <= 0){
-			freeptrs(ip, t);
-			return 0;
-		}
-		c->buf = H2D(Array*, heaparray(t, len));
-	}
-
-	rsav = R;
-	R.s = ip;
-	R.d = &c;
-	isend();
-	R = rsav;
-	freeptrs(ip, t);
-	return 1;
+	send.channel = c;
+	send.payload = ip;
+	send.type = t;
+	send.capacity = len;
+	send.result = 0;
+	memmove(&saved, &R, sizeof(saved));
+	ok = kprotect(csendaltcall, &send);
+	memmove(&R, &saved, sizeof(R));
+	if(!ok)
+		krethrow();
+	return send.result;
 }
 
 

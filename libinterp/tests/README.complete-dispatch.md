@@ -1,5 +1,7 @@
 # Complete decoded JIT dispatch: native fast path plus C
 
+Latest [native channel entry and temporary-owner checks](README.native-channel-entry.md) strengthen shared buffered SEND/RECV C paths.
+
 Latest [ALT/NBALT publication and cancellation checks](README.alt-publication.md) cover both direct C and published complete RX tails.
 
 Latest [owner GC layout and builtin identity checks](README.owner-gc-layout.md) cover both priority native backends.

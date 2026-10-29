@@ -18,7 +18,9 @@ char exHeap[] = "heap", exNegsize[] = "negative", exNomem[] = "memory", exNilref
 static int live, checks, wakes;
 static struct { Heap *heap; ulong size; } blocks[256];
 static Prog current, peer;
-static jmp_buf boundary;
+static jmp_buf boundary, nested[8]; // Oracle and protected buffered callback error frames.
+static char *nestedmessage; // Preserve the exact original VM error through temporary-owner cleanup.
+static int nesteddepth; // Current nested protection depth.
 static int expectederror;
 void freearray(Heap*, int);
 
@@ -57,10 +59,40 @@ altdone(Alt *selection, Prog *program, Channel *channel, int sending)
 void
 error(char *message)
 {
-	(void)message;
-	assert(expectederror);
+	nestedmessage = message;
+	if(nesteddepth)
+		longjmp(nested[nesteddepth-1], 1);
+	if(!expectederror)
+		abort();
 	longjmp(boundary, 1);
 }
+
+/* Keep nested buffered callback cleanup active before propagating to the outer error oracle. */
+int
+kprotect(int (*fn)(void*), void *arg)
+{
+	int slot, result;
+
+	slot = nesteddepth++;
+	if(slot >= nelem(nested))
+		abort();
+	if(setjmp(nested[slot])){
+		nesteddepth = slot;
+		return 0;
+	}
+	result = fn(arg);
+	nesteddepth = slot;
+	return result;
+}
+
+
+/* Preserve the fixture's synchronous error expectation after cleanup. */
+void
+krethrow(void)
+{
+	error(nestedmessage);
+}
+
 
 /* Valid direct rendezvous must not emit buffer-state diagnostics. */
 int

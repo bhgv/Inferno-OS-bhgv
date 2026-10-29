@@ -1,5 +1,7 @@
 # 64-bit JIT opcode availability checkpoint
 
+Latest native channel entry, protected REG borrowing and buffered temporary-owner cleanup: [README.native-channel-entry.md](README.native-channel-entry.md).
+
 Latest ALT/NBALT guard/result/payload publication and real C/RX cancellation checks: [README.alt-publication.md](README.alt-publication.md).
 
 Latest interpreter/JIT benchmark arithmetic, clock boundaries and report checks: [README.bench-numeric.md](README.bench-numeric.md).

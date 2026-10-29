@@ -20,7 +20,8 @@ mappedcheck(int condition)
 REG R;
 int mutator, nprop;
 char exModule[] = "module", exNilref[] = "nil", exHeap[] = "heap";
-static jmp_buf boundary;
+static jmp_buf boundary, nested[8]; // Outer oracle and nested protected runtime callbacks.
+static int nesteddepth; // Count of active native callback error boundaries.
 static char *raised;
 static int retained, released;
 
@@ -38,11 +39,22 @@ mallocz(ulong n, int clear)
 }
 
 
-/* Compile without injecting a protected runtime exception in this fixture. */
+/* Model nested VM protection so temporary owners are released before the outer oracle sees an error. */
 int
 kprotect(int (*f)(void*), void *arg)
 {
-	return f(arg);
+	int slot, result;
+
+	slot = nesteddepth++;
+	if(slot >= nelem(nested))
+		abort();
+	if(setjmp(nested[slot])){
+		nesteddepth = slot;
+		return 0;
+	}
+	result = f(arg);
+	nesteddepth = slot;
+	return result;
 }
 
 
@@ -51,7 +63,17 @@ void
 error(char *message)
 {
 	raised = message;
+	if(nesteddepth)
+		longjmp(nested[nesteddepth-1], 1);
 	longjmp(boundary, 1);
+}
+
+
+/* Rethrow the same identity after the protected caller has released temporary ownership. */
+void
+krethrow(void)
+{
+	error(raised);
 }
 
 

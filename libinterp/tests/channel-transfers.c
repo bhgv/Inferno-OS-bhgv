@@ -4,6 +4,7 @@
 #include "interp.h"
 #include "raise.h"
 #include "kernel.h"
+#include "vmchannel.h"
 #include "pool.h"
 #include "runt.h"
 #include <stdlib.h>
@@ -12,17 +13,23 @@
 
 /* Retain all inherited queue and transfer oracles when NDEBUG is enabled. */
 static void
-channelpredicate(int condition)
+channelpredicate(int condition, int line)
 {
-	if(!condition)
+	if(!condition){
+		fprintf(stderr, "channel transfer failure at %d\n", line);
 		abort();
+	}
 }
-#define channelcheck(condition) channelpredicate(!!(condition)) // Normalize pointer and scalar predicates.
+#define channelcheck(condition) channelpredicate(!!(condition), __LINE__) // Normalize pointer and scalar predicates.
 
 static Proc worker;
 static Prog current, peers[3], *running = &current;
 static char *last_error;
 static int live, nodes, allocations, fail_after = -1, awakened, removed, checks, acquired;
+static int entrypool, entrydestroy, entryblock, entrytouches; // Callback perturbations used only by native entry families.
+static REG entrypoison, entryresume; // Borrowed callback image and simulated scheduler-resume image.
+static char entryerror[] = "native channel callback"; // Stable error identity for nested boundaries.
+static void entrytouch(int); // Callback hook declared before allocator/destructor adapters.
 char exNomem[] = "allocation", exNilref[] = "nil", exAlt[] = "self alt", exBounds[] = "bounds";
 char exHeap[] = "heap", exNegsize[] = "negative";
 REG R;
@@ -34,7 +41,11 @@ void (*heapmonitor)(int, void*, ulong);
 
 /* Retain production Proc error frames while stubbing scheduler transitions. */
 Proc *getup(void) { return &worker; }
-void nexterror(void) { channelcheck(worker.nerr > 0); siglongjmp(worker.estack[--worker.nerr], 1); }
+static void (*volatile transferjump)(sigjmp_buf, int) = siglongjmp; // Avoid duplicate sandbox sanitizer cleanup on VM error jumps.
+
+
+/* Jump through the real runtime error buffers without a second compiler no-return stack pass. */
+void nexterror(void) { channelcheck(worker.nerr > 0); transferjump(worker.estack[--worker.nerr], 1); }
 void error(char *s) { last_error = s; nexterror(); }
 int __lsan_is_turned_off(void) { return 1; }
 Prog *currun(void) { return running; }
@@ -42,9 +53,28 @@ Prog *delrun(int state) { removed++; running->state = state; return running; }
 void addrun(Prog *p) { awakened++; p->state = Pready; }
 void acquire(void) { channelcheck(!acquired); acquired = 1; }
 void release(void) { channelcheck(acquired); acquired = 0; }
-void cblock(Prog *p) { (void)p; channelcheck(!"unexpected native block"); }
+void cblock(Prog *p)
+{
+	if(!entryblock) channelcheck(!"unexpected native block");
+	R = entryresume;
+	if(entryblock == 2) error(entryerror);
+	cqdelp(&p->chan->recv, p);
+	cqdelp(&p->chan->send, p);
+	p->ptr = nil;
+}
 int print(char *fmt, ...) { (void)fmt; channelcheck(!"unexpected diagnostic"); return 0; }
 GUARD
+
+
+/* Borrow every REG field and optionally raise before the controlled callback completes. */
+static void
+entrytouch(int mode)
+{
+	if(!mode) return;
+	entrytouches++;
+	R = entrypoison;
+	if(mode == 2) error(entryerror);
+}
 
 
 /* Bound the real heaparray allocation path and inject pool allocation failure. */
@@ -54,6 +84,7 @@ poolalloc(Pool *pool, ulong n)
 	void *p;
 
 	(void)pool; allocations++;
+	entrytouch(entrypool);
 	if(fail_after == 0 || n > 16384) return nil;
 	if(fail_after > 0) fail_after--;
 	p = calloc(1, n); channelcheck(p); live++;
@@ -70,6 +101,7 @@ destroy(void *v)
 	WORD i;
 
 	if(v == H) return;
+	entrytouch(entrydestroy);
 	h = D2H(v); channelcheck(h->ref > 0);
 	if(--h->ref) return;
 	if(h->t == &Tarray){
@@ -757,6 +789,16 @@ checkringedges(void)
 int
 main(void)
 {
+	char *entry;
+
+	scalar.size = sizeof(WORD); pointer.size = sizeof(void*); pointer.np = 1; pointer.map[0] = 0x80;
+	entry = getenv("CHANNEL_TRANSFER_CASE");
+	if(entry == nil || !strcmp(entry, "entry-move")) checkentry(0);
+	if(entry == nil || !strcmp(entry, "entry-allocate")) checkentry(1);
+	if(entry == nil || !strcmp(entry, "entry-destroy")) checkentry(2);
+	if(entry == nil || !strcmp(entry, "entry-block")) checkentryblocking();
+	if(entry == nil || !strcmp(entry, "entry-refill")) checkentryrefill();
+	if(entry == nil || !strcmp(entry, "entry-invalid")) checkentryinvalid();
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "ring")) {scalar.size=sizeof(WORD);checkringedges();checknullbuffer();}
 	scalar.size = sizeof(WORD); pointer.size = sizeof(void*); pointer.np = 1; pointer.map[0] = 0x80;
 	if(!getenv("CHANNEL_TRANSFER_CASE") || !strcmp(getenv("CHANNEL_TRANSFER_CASE"), "retains"))checkretains();

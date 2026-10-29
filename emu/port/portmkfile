@@ -118,6 +118,9 @@ $ROOT/libinterp/runt.h:
 
 INTERP=$ROOT/include/interp.h
 
+# Native C channel entries share readiness checks and protected REG borrowing.
+inferno.$O: $ROOT/include/vmchannel.h $ROOT/include/raise.h
+
 # Checked bytecode fetch is shared by instrumented VM device executors.
 devprof.$O devprog.$O: $ROOT/include/vmfetch.h $ROOT/include/raise.h $ROOT/include/isa.h
 RUNT=$ROOT/libinterp/runt.h		# for culling dependencies

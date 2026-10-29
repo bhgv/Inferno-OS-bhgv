@@ -1,5 +1,7 @@
 # Channel transfer, ready-alt and FileIO regressions
 
+Subsequent [native channel entry checks](README.native-channel-entry.md) restore REG on callback errors and balance temporary Array/Channel retains.
+
 Run from the repository root:
 
 ```sh

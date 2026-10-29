@@ -9,6 +9,7 @@
 #include "runt.h"
 #include "kernel.h"
 #include "raise.h"
+#include "vmchannel.h"
 
 /*
  * here because Sys_FileIO is not public
@@ -1857,42 +1858,34 @@ ccom(Progq **cl, Prog *p)
 	poperror();
 }
 
+
+/* Wait through the scheduler normally; protect REG only while executing a ready C receive. */
 void
 crecv(Channel *c, void *ip)
 {
 	Prog *p;
-	REG rsav;
 
-	if(c->send->prog == nil && c->size == 0) {
+	if(!vmchanready(c, 1)){
 		p = currun();
 		p->ptr = ip;
 		ccom(&c->recv, p);
 		return;
 	}
-
-	rsav = R;
-	R.s = &c;
-	R.d = ip;
-	irecv();
-	R = rsav;
+	vmchantransfer(c, ip, 1);
 }
 
+
+/* Blocking retains acquire/irestore semantics; ready sends restore REG even when the mover raises. */
 void
 csend(Channel *c, void *ip)
 {
- 	Prog *p;
-	REG rsav;
+	Prog *p;
 
-	if(c->recv->prog == nil && (c->buf == H || c->size == c->buf->len)) {
+	if(!vmchanready(c, 0)){
 		p = currun();
 		p->ptr = ip;
 		ccom(&c->send, p);
 		return;
 	}
-
-	rsav = R;
-	R.s = ip;
-	R.d = &c;
-	isend();
-	R = rsav;
+	vmchantransfer(c, ip, 0);
 }
