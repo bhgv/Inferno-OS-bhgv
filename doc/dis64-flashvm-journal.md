@@ -886,3 +886,19 @@ root predicate failure; Frame и Type cases — runtime UBSan misaligned access.
 трёх parent controls; np0/new-format scalar admission и general inspector false
 сохраняем. Generated builtin layout audit выше относится к следующему отдельному
 gate и не исправляется самим exval/rootset patch.
+
+
+## FLASHVM-0021 — 2026-10-30 — Selected build closure: явная optional geometry
+
+При импорте расширенного probe в FlashVM полный core прошёл241/242: мой
+word32-build требовал geom.c, которого нет в headless snapshot. Это ошибка
+closure моего нового test driver, не дефект GC/runtime и не compiler failure
+в подтверждённых ранее owning78-object builds.
+
+Исправлено здесь: default собирает25 actual units/model =75 objects и не
+требует Draw/Point/Rect implementation. --with-geometry явно включает geom.c
+для полного Inferno checkout:26/model =78. Оба варианта независимо PASS,
+legacy/WORD32/WORD32+file, native scalar/frame probes и invalid selector checks.
+Ни отсутствующие файлы молча не пропускаются, ни probe не подменяется extract.
+Аудит/документ обновлены. Импортирую исправление и повторю selected core test.
+Совместимость generated layout от числа compiled objects не зависит.

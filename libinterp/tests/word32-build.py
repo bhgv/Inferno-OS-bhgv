@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build complete core translation units using the unchanged production header."""
+import argparse
 import os
 from pathlib import Path
 import shlex
@@ -8,7 +9,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCES = ("alt", "conv", "dec", "disc", "gc", "heap", "heapaudit", "link",
-           "load", "load64", "readmod", "raise", "stack", "validstk", "xec", "string", "runt", "loader", "geom", "math",
+           "load", "load64", "readmod", "raise", "stack", "validstk", "xec", "string", "runt", "loader", "math",
            "comp-amd64", "comp-arm64", "comp-riscv64")
 PROBE = r'''
 #include <lib9.h>
@@ -40,6 +41,10 @@ main(void)
 
 # Compile both selections independently; this checks objects, not runtime linkage.
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--with-geometry", action="store_true",
+                        help="Also compile the pure Point/Rect binding unit from a complete Inferno checkout")
+    args = parser.parse_args()
     compiler = shlex.split(os.environ.get("CC", "cc"))
     flags = shlex.split(os.environ.get("CFLAGS", "-O1 -g"))
     includes = ["-I" + str(ROOT / path) for path in
@@ -53,6 +58,8 @@ def main():
             command = compiler + flags + selection + includes
             sources = [ROOT/"libinterp"/(name+".c") for name in SOURCES]
             sources.extend(ROOT/"emu/port"/(name+".c") for name in ("dis", "exception", "devprog"))
+            if args.with_geometry:
+                sources.append(ROOT/"libinterp/geom.c")
             for source in sources:
                 subprocess.run(command + ["-c", str(source),
                                "-o", str(work / (label + source.stem + ".o"))], check=True)

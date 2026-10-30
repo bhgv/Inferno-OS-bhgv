@@ -48,9 +48,12 @@ Do not repair this by changing only `_size` constants or suppressing diagnostics
 
 ## Broader whole-object compilation
 
-`word32-build.py` now additionally compiles complete runt.c, loader.c, geom.c,
-math.c, emu/port/exception.c and devprog.c. It builds26 actual translation units
-for each of legacy, WORD32 and WORD32+file-routing:78 objects. The existing
+`word32-build.py` now additionally compiles complete runt.c, loader.c,
+math.c, emu/port/exception.c and devprog.c. The selected headless closure builds25
+actual translation units per model:75 objects. An explicit `--with-geometry`
+adds geom.c for a complete Inferno checkout, yielding26 units/model or78 objects.
+Both selections were exercised. The default must not silently depend on an
+unselected Draw/Point/Rect implementation in a downstream headless snapshot. The existing
 actual scalar/frame probes and invalid selector checks remain. Successful object
 compilation is separate from descriptor/layout compatibility and runtime linkage.
 Draw/Tk/Prefab/security/crypto implementation or full emulator boot is not added.
