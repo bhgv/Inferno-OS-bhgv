@@ -105,3 +105,7 @@ Its bounded arena evidence does not enable mapped types in this scalar loader.
 The [native-consumer audit](dis64-native-consumer-audit.md) separates75 selected (78 with explicit geometry) complete
 object builds from representative generated-layout blockers; WORD32 alone does
 not select Frame64/native map8 compatibility.
+
+The [exception/GC checkpoint](dis64-exception-gc.md) covers the existing native
+exval-to-frame handoff and terminal cleanup with actual collector epochs. It does
+not resolve the generated-consumer layout blockers or enable new-format calls.

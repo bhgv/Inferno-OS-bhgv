@@ -110,3 +110,7 @@ The later [GC-root checkpoint](dis64-gc-roots.md) separately runs the real
 collector across exception-only cycles and packed native frames. It fixes
 missing process exval tracing and unaligned frame metadata reads; it does not
 replace this vmachine fixture's bounded GC service or enable Dis64 references.
+
+The [exception/GC checkpoint](dis64-exception-gc.md) additionally combines
+actual RAISE/handlers with collector epochs in a separate bounded native graph
+fixture. This vmachine test retains its declared GC/OS boundaries.

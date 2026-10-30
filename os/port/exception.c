@@ -198,7 +198,8 @@ exceptiontarget(Modlink *module, ulong pc)
 }
 
 
-/* Search only usable handlers, retaining diagnostic storage on allocation failure. */
+/* Select usable handlers; release terminal exceptions after clearing their process root.
+ * Empty error text still owns exval even though no table is selected. */
 int
 handler(char *estr)
 {
@@ -215,8 +216,10 @@ handler(char *estr)
 	void *v, *old;
 
 	p = currun();
-	if(*estr == 0 || p == nil)
+	if(p == nil)
 		return 0;
+	if(*estr == 0)
+		goto unhandled;
 	str = p->exval == H || D2H(p->exval)->t == &Tstring;
 	m = R.M;
 	pc = exceptionpc(m, R.PC);
@@ -259,8 +262,10 @@ handler(char *estr)
 		pc = exceptionpc(m, frame.lr);
 		fp = frame.fp;
 	}
-	destroy(p->exval);
+unhandled:
+	v = p->exval;
 	p->exval = H;
+	destroy(v);
 	return 0;
 found:
 	{
@@ -328,7 +333,8 @@ found:
 		R.PC = m->prog+newpc;
 	memmove(&p->R, &R, sizeof(R));
 	p->kill = nil;
-	destroy(p->exval);
+	v = p->exval;
 	p->exval = H;
+	destroy(v);
 	return 1;
 }

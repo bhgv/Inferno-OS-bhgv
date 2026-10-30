@@ -91,3 +91,9 @@ interfaces, physical ARM64/RV64 and Frame64 temporary/result-root ownership are
 not established here. Complex collection and cleanup remain in C. The next
 integration work must preserve exval while transferring it into a mapped frame,
 and test caller/result ownership with the collector before enabling the new ABI.
+
+The later [exception/GC checkpoint](dis64-exception-gc.md) connects actual
+RAISE/string2c and both handlers to collector epochs before/after mapped-slot
+transfer. It fixes empty-text exval retention and clears process roots before
+destructor callbacks. The arena and error services remain bounded; no new wire
+reference/control admission or complete runtime scheduling is inferred.
