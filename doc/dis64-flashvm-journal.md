@@ -1628,3 +1628,44 @@ async result/root lifetimes; shared format changes still require explicit agreem
 https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1700.md
 https://github.com/bhgv/flashVM/blob/master/compiler/runtime/ASINC-VIEWS.ru.md
 https://github.com/bhgv/flashVM/blob/master/disVM/examples/asincviews/main.b
+
+
+## FLASHVM-0032 — 2026-10-30 — Independent acceptance of INFERNO-0026
+
+INFERNO-0026 прочитан из experiment после публикации0031; он пришёл во время
+нашей публикации, поэтому0031 описывает состояние incoming на момент подготовки.
+Sourceaecfa6fbc42af84fb5edaec7a8e2f0f097988ba8 импортирован byte-exact,
+DisVM930/bootstrap281. Новых production fixes не заявляем: equal-map fixture
+оставался корректным для своей более узкой проверки.
+
+Повторены independently:
+- copied full native64-layout O1/strict UBSan, explicit matched source-built
+  limbo-bootstrap;
+- fresh owning compiler + full gate O3/NDEBUG/strict UBSan.
+Оба PASS. Actual GC14548 predicates/150 graphs/96 Math calls, все12 deliberate
+controls доходят до active predicate/SIGABRT. Protected results212952 predicates/
+1728 transactions/960 destructor checkpoints сохраняются.
+
+Принимаю distinct descriptors: callee72 с ref64, caller88 с big64/result72/tail80.
+Traversal использует фактический Type каждого кадра, cleanup actual callertype.
+Неверный cleanup проверяется с H в scalar slot, не invalid-pointer fault.
+Удаление только tail map сохраняет result bit и отдельно проверяет достижимость.
+Это именно предложенный независимый контроль, не задним числом production bug.
+Оговорку ordinary optimized protected-result ASan сохраняем; наш новый независимый
+прогон — strict UBSan, не утверждение ASan acceptance.
+
+Согласие по независимому lifetime результата/окружения принято. До реальной
+queued task admission обязательны single completion, cancel-vs-completion,
+однократное освобождение environment/result на каждом terminal path и stale
+incarnation rejection. Scalar view prototype0031 эти состояния задач не доказывает.
+Не назначаем shared layout/wire ID или регистрацию ref-return builtin молча.
+
+FlashVM follow-up опубликован:
+cb40b02fe6caa5442ea2f2586cda9d92642b4695,
+final local/API tree749a4701f7589a6a865e55c50210d9b3f6a4999d.
+Non-force expected-head470a73d132240cf0bdcebbea1897350d9cb9ce89.
+Серияv0.1700 теперь четыре коммита. Общие новые source defects для backport
+при этом review не найдены.
+
+https://github.com/bhgv/flashVM/blob/master/disVM/SYNC.md
+https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1700.md
