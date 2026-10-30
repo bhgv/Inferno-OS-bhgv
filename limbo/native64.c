@@ -458,6 +458,17 @@ native64frame(Decl *function, int emit)
 	name[0] = 'F';
 	name[1] = '_';
 	native64descriptor(name, &frame);
+	if(!function->ty->varargs){
+		print("#ifdef LIMBO_NATIVE64_ENTRIES\n");
+		print("static const uchar limbo_native64_%s_map[] = %s_map; // Complete fixed-frame map8.\n", name+2, name);
+		print("static const LimboNative64Entry limbo_native64_%s_entry = {\n", name+2);
+		print("\t\"%s\", // Source symbol.\n", function->sym->name);
+		print("\t%s, // Actual C entry point.\n", name+2);
+		print("\t0x%luxU, // Existing Limbo signature hash.\n", (ulong)sign(function));
+		print("\t%ld, // Complete fixed-frame bytes.\n", frame.size);
+		print("\t%ld, // Complete map8 bytes.\n", bytes);
+		print("\tlimbo_native64_%s_map // Borrowed immutable map.\n};\n#endif\n", name+2);
+	}
 	free(frame.map);
 }
 
@@ -664,6 +675,8 @@ native64stubs(Decl *globals)
 	print("\tif(CHAR_BIT != 8 || FLT_RADIX != 2 || DBL_MANT_DIG != 53 || DBL_MAX_EXP != 1024 ||\n\t   sizeof(WORD) != 4 || sizeof(void*) != 8 || sizeof(LONG) != 8 || sizeof(REAL) != 8 ||\n");
 	print("\t   offsetof(LimboNative64WordAlign, value) != 4 || offsetof(LimboNative64RefAlign, value) != 8 ||\n\t   offsetof(LimboNative64BigAlign, value) != 8 || offsetof(LimboNative64RealAlign, value) != 8 ||\n\t   sizeof(Frame) != 32 || offsetof(Frame, lr) != 0 || offsetof(Frame, fp) != 8 ||\n");
 	print("\t   offsetof(Frame, mr) != 16 || offsetof(Frame, t) != 24)\n\t\treturn 0;\n\treturn 1;\n}\n#endif\n");
+	print("#if defined(LIMBO_NATIVE64_ENTRIES) && !defined(LIMBO_NATIVE64_ENTRY_TYPE)\n#define LIMBO_NATIVE64_ENTRY_TYPE // Private metadata record, never the runtime Runtab.\n");
+	print("\ntypedef struct {\n\tconst char *name; // Borrowed source symbol.\n\tvoid (*function)(void*); // Actual C entry; no runtime registration is implied.\n\tUWORD legacy_signature; // Existing Limbo signature hash, not a Dis64 wire signature.\n\tunsigned int frame_size; // Full fixed-frame byte extent.\n\tunsigned int map_bytes; // Full map extent; never truncated to map[16].\n\tconst uchar *map; // Borrowed immutable full map8 storage.\n} LimboNative64Entry;\n#endif\n");
 	for(layout=native64types; layout != nil; layout=layout->next){
 		if((layout->type->kind == Tadt || layout->type->kind == Ttuple) &&
 		   layout->type->decl != nil && layout->type->decl->sym != anontupsym){

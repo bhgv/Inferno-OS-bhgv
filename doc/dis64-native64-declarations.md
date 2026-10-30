@@ -43,7 +43,8 @@ and reserved temporary storage acquire no new GC ownership contract here.
 Variadic functions emit their fixed prefix and a `_variadic` marker; variable
 arguments, va-list layout and callable frame size remain unsupported.
 
-No Runtab/function table or native-call signature is generated. `-H` rejects
+No runtime Runtab or new Dis64 native-call signature is generated.
+Opt-in private function records are described in [the Math consumer checkpoint](dis64-native64-math.md). `-H` rejects
 `-t`, `-T`/`-d`, `-A`, `-S`, an explicit `-o` and multiple input files. Existing
 `-t` still has its old16-byte table-map ABI; the new full maps must not be
 silently copied into it. A150-reference argument fixture deliberately needs

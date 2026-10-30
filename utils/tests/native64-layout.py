@@ -32,6 +32,7 @@ def main():
             buildenv = dict(env, INFERNO_ROOT=str(ROOT), MKBOOTSTRAP_LIMBO='1', MKBOOTSTRAP_BINDIR=str(tools))
             run(['sh', ROOT/'makemk.sh'], work, buildenv)
             limbo = tools/'limbo'
+        print(run([sys.executable, ROOT/'utils/tests/native64-math.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
         args = ', '.join('a'+str(i)+': string' for i in range(150))
         source = work/'probe.m'
         source.write_text('''Probe: module {
@@ -69,6 +70,12 @@ def main():
             binary = work/label
             run(compiler+flags+selection+includes+[ROOT/'utils/tests/native64-layout.c', '-o', binary], work, env)
             print(run([binary], work, env).stdout.strip(), flush=True)
+        if 'limbo_native64_Probe_vari_entry' in generated:
+            raise RuntimeError('variadic prefix must not produce a fixed native entry')
+        binary = work/'entry-limits'
+        run(compiler+flags+['-DDIS_WORD32=1']+includes+[ROOT/'utils/tests/native64-entries.c',
+            '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections', '-o', binary], work, env)
+        run([binary], work, env)
         sysheader = work/'sys.h'
         sysheader.write_text(run([limbo, '-H', ROOT/'module/sys.m'], work, env).stdout)
         report = run([sys.executable, ROOT/'libinterp/tests/native-consumer-layout.py', '--header', sysheader,

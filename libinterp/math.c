@@ -1,10 +1,20 @@
 #include "lib9.h"
 #include "interp.h"
 #include "isa.h"
+/* Explicit consumer probe; ordinary builds retain the checked-in native ABI. */
+#ifdef DIS_NATIVE64_MATH_HEADER
+#ifndef DIS_WORD32
+#error experimental native64 Math requires DIS_WORD32=1
+#endif
+#include DIS_NATIVE64_MATH_HEADER
+#else
 #include "runt.h"
+#endif
 #include "raise.h"
 #include "mathi.h"
+#ifndef DIS_NATIVE64_MATH_HEADER
 #include "mathmod.h"
+#endif
 
 typedef union MathBits64 MathBits64;
 union MathBits64
@@ -66,9 +76,15 @@ mathsigned32(unsigned int bits)
 	return (WORD)bits;
 }
 
+
+/* Keep experimental declarations out of the legacy builtin registration path. */
 void
 mathmodinit(void)
 {
+#ifdef DIS_NATIVE64_MATH_HEADER
+	error("experimental native64 Math registration is not supported");
+	return;
+#else
 	builtinmod("$Math", Mathmodtab, Mathmodlen);
 	fmtinstall('g', gfltconv);
 	fmtinstall('G', gfltconv);
@@ -76,6 +92,7 @@ mathmodinit(void)
 	/* fmtinstall('E', gfltconv); */	/* avoid clash with ether address */
 	fmtinstall(0x00c9, gfltconv);	/* L'É' */
 	fmtinstall('f', gfltconv);
+#endif
 }
 
 /* Decode big-endian signed 32-bit values into complete VM-word slots. */
@@ -275,7 +292,8 @@ Math_realbits32(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
-/* Convert a scalar bit representation without shared mutable scratch state. */
+
+/* Preserve every binary64 bit without an unsigned-to-signed value conversion. */
 void
 Math_realbits64(void *fp)
 {
@@ -285,7 +303,7 @@ Math_realbits64(void *fp)
 
 	f = fp;
 	bits64.x = f->x;
-	result = bits64.u;
+	memmove(&result, &bits64.u, sizeof(result));
 	memmove(f->ret, &result, sizeof(result));
 }
 

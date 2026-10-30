@@ -114,3 +114,7 @@ The [experimental native64 declaration generator](dis64-native64-declarations.md
 now computes matching representative C/metadata layouts through explicit `limbo -H`.
 It does not replace runt.h, emit native function tables or enable new-format calls;
 complete native-consumer rebuilding and callable ownership remain separate.
+
+The [explicit native64 Math consumer](dis64-native64-math.md) links selected
+actual C entry points against generated declarations and full-map records;
+experimental builtin registration remains refused.
