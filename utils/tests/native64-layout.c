@@ -42,6 +42,7 @@ main(void)
 	static const uchar zero[] = {0};
 	static const uchar pointer[] = {0x40};
 	static const uchar outer[] = {0x48};
+	static const uchar nested[] = {0x20};
 	static const uchar work[] = {0x80};
 	static const uchar frame[] = {0, 0x52};
 	static const uchar noop[] = {0};
@@ -51,16 +52,19 @@ main(void)
 
 #ifdef NATIVE64_UNSUPPORTED
 	check(!limbo_native64_model());
+	check(!limbo_native64_Probe_layout());
 	printf("PASS native64 unsupported host/model gate\n");
 	return 0;
 #endif
 	check(limbo_native64_model());
+	check(limbo_native64_Probe_layout());
 	Verify(Probe_Tail, pointer);
 	Verify(Probe_Pair, zero);
 	Verify(Probe_Byte4, zero);
 	Verify(Probe_Inner, pointer);
 	Verify(Probe_Outer, outer);
 	Verify(Probe_Tuple, pointer);
+	Verify(Probe_Nested, nested);
 	Verify(Probe_Reply, pointer);
 	Verify(Probe_Work, work);
 	Verify(Probe_Work_out, pointer);
@@ -81,6 +85,6 @@ main(void)
 	many[19] = 0xfc;
 	Verify(F_Probe_many, many);
 	check(sizeof(F_Probe_many) == 1264 && offsetof(F_Probe_many, a149) == 1256);
-	printf("PASS native64 declarations: %d predicates, 13 actual maps, natural aggregates, channel payloads and Frame64\n", predicates);
+	printf("PASS native64 declarations: %d predicates, 14 actual maps, natural aggregates, channel payloads and Frame64\n", predicates);
 	return 0;
 }

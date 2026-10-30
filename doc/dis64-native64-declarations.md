@@ -96,7 +96,7 @@ python3 utils/tests/native-limbo.py
 
 The new driver builds a fresh real Limbo tool unless NATIVE64_LIMBO explicitly
 selects an already rebuilt executable. O1 and O3/NDEBUG strict UBSan runs pass
-13 actual declaration/map checks in each compatible model, including the shared
+14 actual declaration/map checks in each compatible model, including the shared
 map8 validator, forward/nested aggregates, a recursive reference, byte/scalar
 strides, anonymous tuples, channel payloads, Frame64 offsets, aliases and the
 150-argument frame. There are49 active predicates in each compatible model and
@@ -135,3 +135,34 @@ Limbo build. Import limbo/native64.c with the CLI/header/mkfile changes; the
 native bootstrap wildcard already compiles it. Preserve matching limbo.y and
 regenerated y.tab.c. The parser tables/y.tab.h and grammar productions do not
 change; -H is only a compiler-driver branch.
+
+
+## Complete emitted C geometry predicates
+
+Each module now has a distinct generated predicate, for example
+`limbo_native64_Sys_layout()` or `limbo_native64_Math_layout()`. Call it before
+consuming that header's metadata. It first rejects an incompatible scalar/frame
+model, then compares actual C sizes and field offsets against independently
+computed literal extents. It checks named aggregates, type aliases, channel
+payload declarations, fixed frames, result pointee sizes and argument fields.
+Nested by-value members, including anonymous tuples, are checked through their
+full enclosing member paths. Pointer referents are not followed as objects.
+For a multi-module input each predicate validates the complete emitted header.
+No pointer is dereferenced: member size expressions are unevaluated sizeof.
+
+The separate names let standalone Sys and Math headers share one translation
+unit; the existing guarded model helper is emitted once. Headers must still be
+included once and ordinary duplicate source declarations remain C errors.
+These predicates test geometry, not maps, native function signatures, calling
+conventions, result/temporary rooting or reference ownership. In particular,
+an anonymous result pointee has a checked size, without an independent field
+reflection API. Existing fixture checks separately validate full map8 bytes.
+
+The regression builds real Sys and Math declarations separately and together,
+then executes their generated predicates under WORD32. A negative control
+swaps the two equal-sized Pair fields in generated C while preserving the model
+and aggregate size: compilation succeeds, model check succeeds, and the new
+layout predicate rejects the changed offsets at runtime. Compatible fixture
+models each execute53 active predicates and14 independent map checks; both
+unsupported models now check the model and layout rejection paths. No builtin
+implementation is rebuilt or invoked using these declarations in this gate.

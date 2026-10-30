@@ -462,6 +462,117 @@ native64frame(Decl *function, int emit)
 }
 
 
+/* Check nested members through their actual enclosing C type, including anonymous tuples. */
+static void
+native64checkfields(char *name, Decl *fields, long start, char *prefix)
+{
+	Native64Type *child;
+	Decl *field;
+	long offset, aligned;
+	char unnamed[64], *member;
+
+	offset = start;
+	for(field=fields; field != nil; field=field->next){
+		if(field->store != Dfield && field->store != Darg)
+			continue;
+		child = native64type(field->ty, 0);
+		aligned = native64align(offset, child->alignment);
+		if(field->sym == nil)
+			snprint(unnamed, sizeof(unnamed), "__limbo_native64_arg%ld", offset);
+		member = allocmem(strlen(prefix)+(field->sym != nil ? strlen(field->sym->name) : strlen(unnamed))+2);
+		sprint(member, "%s%s", prefix, field->sym != nil ? field->sym->name : unnamed);
+		print("\tif(offsetof(%s, %s) != %ld || sizeof(((%s*)0)->%s) != %ld)\n\t\treturn 0;\n",
+			name, member, aligned, name, member, child->size);
+		if(field->ty->kind == Tadt || field->ty->kind == Ttuple){
+			strcat(member, ".");
+			native64checkfields(name, field->ty->ids, aligned, member);
+		}
+		free(member);
+		offset = native64end(aligned, child->size);
+	}
+}
+
+
+/* Compare every generated aggregate and fixed frame with the consuming C compiler. */
+static void
+native64checkbody(Decl *globals)
+{
+	Native64Type *layout, *child;
+	Decl *module, *declaration, *function;
+	long size;
+	char name[2*StrSize], frame[2*StrSize+2];
+
+	print("\tif(!limbo_native64_model())\n\t\treturn 0;\n");
+	for(layout=native64types; layout != nil; layout=layout->next){
+		if((layout->type->kind != Tadt && layout->type->kind != Ttuple) ||
+		   layout->type->decl == nil || layout->type->decl->sym == anontupsym)
+			continue;
+		native64name(layout->type->decl, name, sizeof(name));
+		print("\tif(sizeof(%s) != %ld)\n\t\treturn 0;\n", name, layout->size);
+		native64checkfields(name, layout->type->ids, 0, "");
+		for(declaration=layout->type->ids; declaration != nil; declaration=declaration->next){
+			if(declaration->store != Dfield || declaration->ty->kind != Tchan)
+				continue;
+			native64name(declaration, name, sizeof(name));
+			child = native64type(declaration->ty->tof, 0);
+			print("\tif(sizeof(%s) != %ld)\n\t\treturn 0;\n", name, child->size);
+			if(child->type->kind == Tadt || child->type->kind == Ttuple)
+				native64checkfields(name, child->type->ids, 0, "");
+		}
+	}
+	for(module=globals; module != nil; module=module->next){
+		if(module->store != Dtype || module->ty->kind != Tmodule)
+			continue;
+		for(declaration=module->ty->ids; declaration != nil; declaration=declaration->next){
+			if(declaration->store != Dtype)
+				continue;
+			native64name(declaration, name, sizeof(name));
+			child = native64type(declaration->ty, 0);
+			if(declaration->ty->kind == Tchan)
+				child = native64type(declaration->ty->tof, 0);
+			print("\tif(sizeof(%s) != %ld)\n\t\treturn 0;\n", name, child->size);
+			if(child->type->kind == Tadt || child->type->kind == Ttuple)
+				native64checkfields(name, child->type->ids, 0, "");
+		}
+		for(function=module->ty->tof->ids; function != nil; function=function->next){
+			native64name(function, name, sizeof(name)-2);
+			snprint(frame, sizeof(frame), "F_%s", name);
+			size = 64;
+			for(declaration=function->ty->ids; declaration != nil; declaration=declaration->next){
+				child = native64type(declaration->ty, 0);
+				size = native64end(native64align(size, child->alignment), child->size);
+			}
+			print("\tif(sizeof(%s) != %ld || offsetof(%s, regs) != 0 ||\n", frame, native64align(size, 8), frame);
+			print("\t   offsetof(%s, %s) != 32 || offsetof(%s, temps) != 40)\n\t\treturn 0;\n",
+				frame, function->ty->tof->kind == Tnone ? "noret" : "ret", frame);
+			if(function->ty->tof->kind != Tnone){
+				child = native64type(function->ty->tof, 0);
+				print("\tif(sizeof(*((%s*)0)->ret) != %ld)\n\t\treturn 0;\n", frame, child->size);
+			}
+			native64checkfields(frame, function->ty->ids, 64, "");
+		}
+	}
+	print("\treturn 1;\n}\n");
+}
+
+
+/* Give each module a distinct predicate so separately generated headers can coexist. */
+static void
+native64checks(Decl *globals)
+{
+	Decl *module;
+	char name[2*StrSize];
+
+	for(module=globals; module != nil; module=module->next){
+		if(module->store != Dtype || module->ty->kind != Tmodule)
+			continue;
+		native64name(module, name, sizeof(name));
+		print("\n\n/* Validate emitted C geometry; calls and GC ownership require separate gates. */\nstatic int\nlimbo_native64_%s_layout(void)\n{\n", name);
+		native64checkbody(globals);
+	}
+}
+
+
 /* Preflight every supported declaration before output; keep legacy target metadata immutable. */
 void
 native64stubs(Decl *globals)
@@ -480,6 +591,7 @@ native64stubs(Decl *globals)
 	for(module=globals; module != nil; module=module->next){
 		if(module->store != Dtype || module->ty->kind != Tmodule)
 			continue;
+		native64name(module, name, sizeof(name));
 		for(declaration=module->ty->ids; declaration != nil; declaration=declaration->next){
 			if(declaration->store == Dglobal)
 				fatal("native64 module data is not supported");
@@ -596,6 +708,7 @@ native64stubs(Decl *globals)
 			native64descriptor(name, native64type(field->ty->tof, 0));
 		}
 	}
+	native64checks(globals);
 	for(layout=native64types; layout != nil; layout=next){
 		next = layout->next;
 		free(layout->map);

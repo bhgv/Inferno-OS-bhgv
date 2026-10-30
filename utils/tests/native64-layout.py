@@ -41,6 +41,7 @@ def main():
     Pair: adt { a, b: int; };
     Byte4: adt { a, b, c, d: byte; };
     Tuple: type (int, string, big);
+    Nested: adt { tag: byte; pair: (int, string); tail: int; };
     Reply: type chan of (int, string);
     Work: adt { out: chan of (int, ref Tail); };
     value: fn(x: int, y: string, z: Outer): (int, ref Tail);
@@ -74,6 +75,33 @@ def main():
                       '--require-coherent'], work, env)
         if not json.loads(report.stdout)['representative_checks_match'] or json.loads(report.stdout)['full_native_abi_verified']:
             raise RuntimeError('representative metadata was confused with full native ABI acceptance')
+        # Exercise all emitted Sys/Math fields and frames, not just representative offsets.
+        for name in ('sys', 'math'):
+            complete = run([limbo, '-H', ROOT/('module/'+name+'.m')], work, env).stdout
+            selected = work/(name+'-complete.h')
+            selected.write_text(complete)
+            probe = work/(name+'-complete.c')
+            probe.write_text('#include "lib9.h"\n#include "isa.h"\n#include "interp.h"\n#include "'+selected.name+'"\nint main(void) { return limbo_native64_'+name.capitalize()+'_layout() ? 0 : 1; }\n')
+            binary = work/(name+'-complete')
+            run(compiler+flags+['-DDIS_WORD32=1']+includes+[probe, '-o', binary], work, env)
+            run([binary], work, env)
+        combined = work/'combined.c'
+        combined.write_text('#include "lib9.h"\n#include "isa.h"\n#include "interp.h"\n#include "sys-complete.h"\n#include "math-complete.h"\nint main(void) { return limbo_native64_Sys_layout() && limbo_native64_Math_layout() ? 0 : 1; }\n')
+        binary = work/'combined'
+        run(compiler+flags+['-DDIS_WORD32=1']+includes+[combined, '-o', binary], work, env)
+        run([binary], work, env)
+        # Alter an actual named field while preserving its size and all aggregate extents.
+        if 'WORD a; // Offset 0, 4 bytes.' not in generated:
+            raise RuntimeError('missing concrete Pair mutation target')
+        damaged = generated.replace('WORD a; // Offset 0, 4 bytes.', 'WORD b; // Offset 0, 4 bytes.', 1)
+        damaged = damaged.replace('WORD b; // Offset 4, 4 bytes.', 'WORD a; // Offset 4, 4 bytes.', 1)
+        header.write_text(damaged)
+        negative = work/'layout-negative.c'
+        negative.write_text('#include "lib9.h"\n#include "isa.h"\n#include "interp.h"\n#include "native64.h"\nint main(void) { return limbo_native64_model() && !limbo_native64_Probe_layout() ? 0 : 1; }\n')
+        binary = work/'layout-negative'
+        run(compiler+flags+['-DDIS_WORD32=1']+includes+[negative, '-o', binary], work, env)
+        run([binary], work, env)
+        header.write_text(generated)
         for name in ('sys', 'math'):
             baseline = run([limbo, '-a', ROOT/('module/'+name+'.m')], work, env).stdout
             if baseline != run([limbo, '-a', ROOT/('module/'+name+'.m')], work, env).stdout:
@@ -110,7 +138,7 @@ def main():
             result = run([limbo, '-H', invalid], work, env, False)
             if result.stdout or diagnostic not in result.stderr:
                 raise RuntimeError('unsupported '+name+' metadata was not rejected before publication\n'+result.stdout+result.stderr)
-        print('PASS native64: real compiler, 2 compatible/2 rejected models, Sys representative audit, legacy unchanged model, deterministic output and 14 preflight/CLI rejections', flush=True)
+        print('PASS native64: real compiler, 2 compatible/2 rejected models, Sys/Math complete geometry, runtime offset negative control, legacy unchanged model, deterministic output and 14 preflight/CLI rejections', flush=True)
 
 
 if __name__ == '__main__':
