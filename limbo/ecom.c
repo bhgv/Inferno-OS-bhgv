@@ -1358,13 +1358,28 @@ ecom(Src *src, Node *nto, Node *n)
 		tfree(&tl);
 		break;
 	case Oarray:
-		if(left->addable >= Rcant)
-			left = eacom(left, &tl, nto);
-		genrawop(esrc(src, &left->src, nto), arrayz ? INEWAZ : INEWA, left, mktn(n->ty->tof), nto);
-		if(right != nil)
-			arraycom(nto, right);
-		tfree(&tl);
-		break;
+        if(left->addable >= Rcant) {
+            left = eacom(left, &tl, nto);
+        }
+        if(right != nil) {
+            /* [GC:] Keep the old destination reachable while initializer values
+             * may read it, including through an ADT field or another alias.
+             * A fresh typed temporary roots the new array until all elements
+             * are initialized; publish only then and release the temporary. */
+            talloc(&tto, n->ty, nil);
+            genrawop(esrc(src, &left->src, nto), arrayz ? INEWAZ : INEWA,
+                     left, mktn(n->ty->tof), &tto);
+            arraycom(&tto, right);
+            if(nto != nil) {
+                genmove(src, Mas, n->ty, &tto, nto);
+            }
+            tfree(&tto);
+        } else {
+            genrawop(esrc(src, &left->src, nto), arrayz ? INEWAZ : INEWA,
+                     left, mktn(n->ty->tof), nto);
+        }
+        tfree(&tl);
+        break;
 	case Oslice:
 		tn = right->right;
 		right = right->left;
