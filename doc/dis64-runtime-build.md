@@ -118,3 +118,7 @@ complete native-consumer rebuilding and callable ownership remain separate.
 The [explicit native64 Math consumer](dis64-native64-math.md) links selected
 actual C entry points against generated declarations and full-map records;
 experimental builtin registration remains refused.
+
+The [native64 frame/collector gate](dis64-native64-gc.md) builds complete actual
+heap/Math objects and traces generated maps through the actual collector, including
+a20-byte frame map and explicit C temporary-to-caller root transfer.

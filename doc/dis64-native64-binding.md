@@ -75,3 +75,7 @@ Reference arguments/results, caller/result/temporary roots, forced collector
 checkpoints during ownership transfer, unwind, shared structural signatures and
 runtime registration remain separate gates. The43-op np0 scalar file profile is
 unchanged. This is not full new-format execution or physical ARM64/RV64 testing.
+
+The next [generated-frame/collector checkpoint](dis64-native64-gc.md) exercises
+actual dtype/heap maps, selected C argument consumers and a private reference
+result root transfer without extending runtime call admission.

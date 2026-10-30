@@ -171,3 +171,7 @@ implementation is rebuilt or invoked using these declarations in this gate.
 [Private generated tables and binding](dis64-native64-binding.md) now match
 selected actual C records before invocation and preserve qualified ADT method
 names. This leaves shared call/ownership admission unchanged.
+
+[Actual collector checks](dis64-native64-gc.md) now connect copied full-map Type
+descriptors to generated frames and an explicit temporary-to-caller root transfer.
+They leave general reference-call signatures and registration open.
