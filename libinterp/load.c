@@ -4,6 +4,13 @@
 #include "raise.h"
 #include <kernel.h>
 
+#if defined(DIS64_PILOT_LOADER)
+#if DIS64_PILOT_LOADER != 1
+#error DIS64_PILOT_LOADER must be 1 when experimental file routing is selected
+#endif
+#include "dis64.h"
+#endif
+
 #define	A(r)	*((Array**)(r)) // Array owner stored in a checked module-data pointer slot.
 
 Module*	modules;
@@ -217,6 +224,38 @@ struct DisLoad {
 };
 
 
+#if defined(DIS64_PILOT_LOADER)
+
+
+/* Apply existing unsigned-file admission before constructing a checked Dis64 owner.
+ * The constructor leaves its result unpublished; only this successful parser path
+ * attaches filesystem identity and inserts it in the ordinary module cache. */
+static int
+dis64parse(DisLoad *load)
+{
+	Module *module;
+	Dir *directory;
+
+	if(mustbesigned(load->path, load->code, load->length, load->dir)){
+		kwerrstr("security violation: not signed");
+		return 0;
+	}
+	load->m = module = prepare64pilot(load->path, load->code, load->length,
+		cflag && !dontcompile);
+	if(module == nil)
+		return 0;
+	directory = load->dir;
+	module->dev = directory->dev;
+	module->dtype = directory->type;
+	module->qid = directory->qid;
+	module->mtime = directory->mtime;
+	module->link = modules;
+	modules = module;
+	return 1;
+}
+#endif
+
+
 /* Parse and validate module data before publishing any owned runtime objects. */
 static int
 disparse(void *arg)
@@ -233,7 +272,8 @@ disparse(void *arg)
 	Module *m;
 	Array *ary;
 	ulong ul[2];
-	WORD lo, hi;
+	ulong lo, hi;
+	uvlong bigbits;
 	int lsize, id, v, entry, entryt, tnp, tsz, siglen;
 	int de, pc, i, n, isize, dsize, hsize, dasp, addrsize, sizestack[DADEPTH];
 	uchar *mod, sm, *istream, **isp, *si, *addr, *end, *dastack[DADEPTH];
@@ -253,6 +293,12 @@ disparse(void *arg)
 	end=code+length;
 	istream = code;
 	isp = &istream;
+
+#if defined(DIS64_PILOT_LOADER)
+	/* A recognized Dis64 image never falls through to the legacy operand reader. */
+	if(disneed(code, end, sizeof(dis64magic)) && memcmp(code, dis64magic, sizeof(dis64magic)) == 0)
+		return dis64parse(c);
+#endif
 
 	c->m = m = mallocz(sizeof(Module),1);
 	if(m == nil)
@@ -545,7 +591,9 @@ disparse(void *arg)
 				if(!disneed(istream,end,4))
 					goto truncated;
 				lo = disw(isp);
-				*(LONG*)si = (LONG)((uvlong)(unsigned int)hi << 32 | (unsigned int)lo);
+				/* Preserve all canonical bits without narrowing through signed WORD/LONG. */
+				bigbits = ((uvlong)hi<<32)|lo;
+				memmove(si, &bigbits, sizeof(bigbits));
 				si += sizeof(LONG);
 			}
 			break;
@@ -856,6 +904,8 @@ bad:
 	return 0;
 }
 
+
+/* Keep protected parsing and partial-owner cleanup common to both selected formats. */
 Module*
 parsemod(char *path, uchar *code, ulong length, Dir *dir)
 {

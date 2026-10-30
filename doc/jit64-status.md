@@ -28,6 +28,8 @@ fixture runs all43 through actual C/AMD64 RX decoder/VM paths. The scheduler
 fixture separately exercises MOVW, ADDW, DIVW and IEXIT with actual root and
 terminal process ownership. This does not enable the remaining130 opcodes in
 that new-format loader, nor references/calls/GC, nor a default format switch.
+An explicit DIS64_PILOT_LOADER=1 build now connects the file reader/parser to
+the same scalar constructor; see [file-loader evidence](dis64-fileloader.md).
 
 Reproduce from the repository root:
 

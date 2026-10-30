@@ -11,7 +11,7 @@ including generated interface consumers and native libraries. It is not safe
 to link the two scalar models together. No default mkconfig target is changed.
 
 `python3 libinterp/tests/word32-build.py` builds 20 complete core translation
-units for both selections: dispatch/decoder, allocation/GC, loading, strings,
+units for legacy, WORD32 and WORD32 plus opt-in file routing (60 objects): dispatch/decoder, allocation/GC, loading, strings,
 stack/unwind, AMD64/ARM64/RV64 compiler sources, and the full emulator scheduler. The native probe includes
 actual interp.h and checks scalar sizes and existing frame-link offsets.
 It does not link an emulator or execute emitted ARM64/RV64 machine code.
@@ -31,9 +31,10 @@ cleanup. Construction never inserts the module in the global module cache.
 The API consumes neither the input bytes nor a caller module reference.
 The immutable image and caller label must stay valid throughout the call.
 
-This API is explicitly separate from `readmod`/`parsemod`: automatic format
-routing, filesystem admission and emulator startup are not enabled. No existing
-file policy is changed. `jit=0/1` requests C or the selected native leaf compiler;
+This construction API remains separate from readmod/parsemod. The
+[opt-in file-loader path](dis64-fileloader.md) now selects it when
+DIS64_PILOT_LOADER=1; default format selection and existing file policy remain
+unchanged. Emulator startup/boot still needs separate acceptance. `jit=0/1` requests C or the selected native leaf compiler;
 a failed requested compiler causes construction failure, with all owners released.
 `compiled` retains its existing meaning and stays zero for leaf JIT modules.
 
@@ -86,7 +87,7 @@ The original dis64-pilot-native.py intentionally remains a separate leaf-level t
 The newer [scheduler integration fixture](dis64-scheduler.md) also runs actual
 schedmod/newprog and terminal progexit/delprog, including PID/run-queue removal
 and retained instance-MP results. Its host worker, pool and OS resource boundaries
-remain controlled fixtures. Automatic readmod routing and a complete emulator boot
-are still not enabled. Existing Frame links matching the first32 bytes of Frame64
+remain controlled fixtures. Dis64 readmod routing is available only under the explicit experimental build
+selection; a complete emulator boot remains unverified. Existing Frame links matching the first32 bytes of Frame64
 do not establish argument/result/temporary-slot compatibility. Calls, dependency
 resolution, reference signatures and map8 GC remain separate acceptance gates.

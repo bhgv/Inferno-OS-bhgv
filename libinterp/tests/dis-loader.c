@@ -82,6 +82,21 @@ int verifysigner(uchar *a,int b,uchar *c,ulong d) {(void)a;(void)b;(void)c;(void
 int compile(Module *m,int n,Modlink *ml) {
     (void)m;(void)n;(void)ml;if(throw_compile)error("compile injected");return 0;
 }
+
+
+/* The independent legacy matrix must never route any image to the Dis64 constructor. */
+Module*
+prepare64pilot(char *path, uchar *image, ulong bytes, int jit)
+{
+    (void)path;
+    (void)image;
+    (void)bytes;
+    (void)jit;
+    abort();
+    return nil;
+}
+
+
 IMPLEMENTATION
 static uchar buffer[2048];
 static int at,map_at,arraylen_at,exportpc_at,exporttype_at,exportname_at,handlertype_at,handlerpc_at;
@@ -114,6 +129,36 @@ static void fixture(void) {
     integer(1);integer(0);integer(0);integer(1);handlertype_at=at;integer(1);
     integer(0x10001);name("exception");handlerpc_at=at;integer(0);integer(-1);byte(0);
 }
+
+
+/* Encode canonical big payloads independently of the production signed representation. */
+static void
+bigfixture(uvlong bits)
+{
+    at = 0;
+    integer(XMAGIC);
+    integer(0); // Runtime flags.
+    integer(1024); // Stack hint.
+    integer(1); // Instruction count.
+    integer(8); // Module-data bytes.
+    integer(1); // Type count.
+    integer(0); // Export count.
+    integer(0); // Entry instruction.
+    integer(0); // Entry type, not scheduled by this data-only fixture.
+    byte(IRET);
+    byte(SRC(AXXX)|DST(AXXX));
+    integer(0); // Data descriptor ID.
+    integer(8); // Descriptor extent.
+    integer(0); // No managed fields.
+    byte(DBYTE(DEFL, 1));
+    integer(0); // Initializer byte offset.
+    word((ulong)(bits>>32));
+    word((ulong)(bits&0xffffffffULL));
+    byte(0);
+    name("canonical-big");
+}
+
+
 static void instructionfixture(int add,int first,int second) {
     at=0;
     integer(XMAGIC);integer(0);integer(1024);integer(1);
@@ -145,6 +190,26 @@ main(void)
 {
     static const int values[]={-536870912,-8193,-8192,-65,-64,-1,0,1,63,64,8191,8192,536870911};
     Module *m;Array *ar;uchar *p;unsigned int i;int n,total,j,mutations=0,failures=0,successes=0;
+    {
+        static const uvlong expected[] = {
+            0, 1, 0x7fffffffULL, 0x80000000ULL, 0xffffffffULL,
+            0x100000000ULL, 0x7fffffffffffffffULL, 0x8000000000000000ULL,
+            0x80000000ffffffffULL, 0xffffffff00000000ULL, 0xffffffffffffffffULL
+        };
+        uvlong observed;
+        unsigned int bigcase;
+
+        for(bigcase=0; bigcase<nelem(expected); bigcase++){
+            bigfixture(expected[bigcase]);
+            m = parse(at);
+            if(m == nil)
+                abort();
+            memmove(&observed, m->origmp, sizeof(observed));
+            if(observed != expected[bigcase])
+                abort();
+            drop(m);
+        }
+    }
     /* Reject an unavailable array descriptor before allocating or publishing its header. */
     for(n=0;n<2;n++){
         fixture();Tarray.ref=n ? 0x7fffffff : 0;

@@ -93,7 +93,8 @@ fixtures. Ref headers/temps не становятся roots из-за разме
 The newer [runtime adapter](dis64-runtime-build.md) constructs actual Module/Inst
 and heap storage from the same semantic pilot. Its connected C/AMD64 RX test now
 executes the real decoder/xec loop, IEXIT/error and stack cleanup. The single-leaf
-fixture described above retains its narrower scope. Automatic readmod routing,
-complete emulator startup, calling ABI and live GC remain unproven.
+fixture described above retains its narrower scope. The [opt-in file route](dis64-fileloader.md) now joins actual readmod/parsemod
+to this constructor. Complete emulator startup, calling ABI and live GC remain
+unproven.
 The [scheduler fixture](dis64-scheduler.md) separately exercises actual root
 publication, process exit and terminal cleanup under controlled OS boundaries.

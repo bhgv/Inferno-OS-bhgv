@@ -3,7 +3,9 @@
 The experimental constructor still returns an unpublished Module. The connected
 scheduler fixture now passes that owner to the actual schedmod/newprog path and
 executes the process's actual xec entry in C and AMD64 RX configurations.
-Automatic filesystem routing and a complete emulator boot are not enabled.
+The [experimental file route](dis64-fileloader.md) separately connects actual
+readmod/parsemod to these components. Default routing and a complete emulator
+boot remain unchanged/unverified.
 
 ## Root admission fix
 

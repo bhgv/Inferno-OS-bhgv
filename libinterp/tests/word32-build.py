@@ -48,7 +48,8 @@ def main():
         work = Path(temporary)
         probe = work / "probe.c"
         probe.write_text(PROBE)
-        for label, selection in (("legacy", []), ("WORD32", ["-DDIS_WORD32=1"])):
+        for label, selection in (("legacy", []), ("WORD32", ["-DDIS_WORD32=1"]),
+                                 ("Dis64-loader", ["-DDIS_WORD32=1", "-DDIS64_PILOT_LOADER=1"])):
             command = compiler + flags + selection + includes
             sources = [ROOT/"libinterp"/(name+".c") for name in SOURCES]
             sources.append(ROOT/"emu/port/dis.c")
@@ -65,7 +66,12 @@ def main():
                                     "-fsyntax-only", str(probe)], capture_output=True)
             if result.returncode == 0 or b"DIS_WORD32 must be 1" not in result.stderr:
                 raise RuntimeError("invalid scalar selection was not rejected")
-        print("PASS invalid scalar selections rejected; no loader/link/VM execution claim")
+        for value in ("0", "2"):
+            result = subprocess.run(compiler + includes + ["-DDIS64_PILOT_LOADER=" + value,
+                                    "-fsyntax-only", str(ROOT/"libinterp/load.c")], capture_output=True)
+            if result.returncode == 0 or b"DIS64_PILOT_LOADER must be 1" not in result.stderr:
+                raise RuntimeError("invalid file-routing selection was not rejected")
+        print("PASS invalid scalar/file-routing selections rejected; object compilation is not emulator boot")
 
 
 if __name__ == "__main__":

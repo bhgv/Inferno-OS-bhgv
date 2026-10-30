@@ -15,10 +15,7 @@ function = SUPPORT['function']
 
 
 # Assemble unchanged production bodies around the existing bounded host/pool fixture.
-def main():
-    if platform.system() != 'Linux' or platform.machine().lower() not in ('amd64', 'x86_64'):
-        print('SKIP Dis64 scheduler RX: requires Linux/AMD64')
-        return
+def buildunit():
     heap = (ROOT/'libinterp/heap.c').read_text()
     load = (ROOT/'libinterp/load.c').read_text()
     link = (ROOT/'libinterp/link.c').read_text()
@@ -59,6 +56,15 @@ def main():
     unit = prefix+(ROOT/'libinterp/tests/dis64-scheduler.c').read_text()
     unit = unit.replace('SCHEDULER_IMPLEMENTATION', '\n\n'.join(parts))
     unit = unit.replace('HANDLERS', 'optab[IMOVW]=countmovw; optab[IADDW]=countaddw; optab[IDIVW]=countdivw; optab[ISHLW]=countshlw; optab[IEXIT]=countexit;')
+    return unit
+
+
+# Execute the connected scheduler fixture without enabling filesystem routing.
+def main():
+    if platform.system() != 'Linux' or platform.machine().lower() not in ('amd64', 'x86_64'):
+        print('SKIP Dis64 scheduler RX: requires Linux/AMD64')
+        return
+    unit = buildunit()
     with tempfile.TemporaryDirectory(prefix='dis64-scheduler-') as temporary:
         work = Path(temporary)
         source = work/'scheduler.c'

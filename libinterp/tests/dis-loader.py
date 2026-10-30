@@ -26,7 +26,7 @@ def function(path,name,result):
     raise ValueError(name)
 source=Path(os.environ.get('DIS_LOAD_SOURCE', root/'libinterp/load.c')).read_text()
 parser=source[source.index('/* Check the complete encoded operand'):source.index('Module*\nnewmod(')]
-parts=[function('emu/port/dis.c','kprotect','int')]
+parts=['#include "dis64.h"\n', function('emu/port/dis.c','kprotect','int')]
 parts.append((root/'libinterp/disc.c').read_text().replace('#include "lib9.h"','').replace('#include "isa.h"','').replace('#include "interp.h"',''))
 parts += [function('libinterp/heap.c',n,r) for n,r in [('dtype','Type*'),('freetype','void'),('initmem','void'),('initarray','void')]]
 parts += [function('libinterp/link.c',n,r) for n,r in [('newlink','static void'),('mlink','void'),('destroylinks','void')]]
@@ -41,8 +41,7 @@ with tempfile.TemporaryDirectory(prefix='dis-loader-') as directory:
     model.mkdir()
     header=(root/'include/interp.h').read_text()
     if os.environ.get('DIS_WORD_BYTES') == '4':
-        header=re.sub(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
-        header=re.sub(r'typedef unsigned long\s+UWORD;', 'typedef unsigned int UWORD;', header, count=1)
+        header='#define DIS_WORD32 1 // Select the actual production scalar model.\n'+header
     (model/'interp.h').write_text(header)
     command += ['-Wno-sign-compare','-I'+str(model)]
     command += ['-I'+str(root/p) for p in ['Linux/arm/include','emu/port','include','libinterp']]
