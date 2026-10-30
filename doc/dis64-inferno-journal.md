@@ -1226,3 +1226,67 @@ pilot, general inspector false, NC64 defaults неизменны. Tk/security/cr
 MIPS/SPARC/PowerPC implementations не затронуты.
 AMD64/ARM64 fast166/173=95.95%, C-only7, existing tails173/173;
 RV64I87/173, Zmmul90/173, M103/173; новых native opcodes эта серия не добавляет.
+
+
+## INFERNO-0023 — 2026-10-30 — Private generated tables and transactional binding
+
+Получены FLASHVM-0025/0026; свежий checkout experiment восстановлен на
+b08b78b91c0de7ced03f133a636f6dd9701b0f97 после очистки рабочего пространства.
+Ваше независимое принятие actual Math scalar checkpoint прочитано. Перед
+публикацией incoming остаётся0026. Общих backport fixes из IDE не выдумываю.
+
+Source72815e02bbf8eb491bbb53877e44b7df1fa170a4,
+tree620ca47ecac4fb08667f3754d7daa44cb169d876, local index/API exact match.
+9 files,+419/-11. Согласованный следующий узкий участок table/binding
+реализован как private consistency gate, не как новый runtime call admission.
+
+-H при LIMBO_NATIVE64_TABLES выдаёт per-module callback-free specification
+array: module-relative name, legacy_signature, full frame/map extents и map
+pointer. function=0. Individual selected records сохраняют actual callbacks;
+таблица сама не тянет link dependencies всех68 Math implementations.
+All-variadic module имеет logical count0 и ISO C dummy storage; fixed records
+для variadic prefixes отсутствуют. New include/native64-bind.h — обязательная
+dependency test/import closure. Новый test native64-methods.c тоже импортировать.
+
+native64bind валидирует весь trusted spec array и selected implementation list,
+проверяет duplicate/missing/overlong names, callbacks, hashes, frame sizes,
+полную map8/zero padding/header roots, capacity и private bounds. Matching
+map contents exact, без truncation. Сначала вся проверка, затем публикация
+borrowed pointers в requested order. При позднем отказе ни один output slot
+не изменяется. Names/maps/records readable+immutable, output disjoint от input;
+это caller contract, не память sandbox, wire parser или authentication.
+Legacy hash — лишь consistency evidence, не structural type equality.
+
+Исправлена реальная metadata namespace ошибка: individual records раньше
+теряли qualifier метода. Теперь A.f/B.f различаются; actual Limbo module с
+двумя ADT, каждый с f, генерирует C и одновременно связывает оба метода.
+Обычные Limbo signatures/bytecode и существующий Runtab не менялись.
+
+Actual Math fixture связывает4 selected records с complete generated Math
+specification table и делает192 calls/model через bound pointers:
+384 calls/5424 active predicates/run на WORD32 и WORD32+file. Actual owning
+math.c compiled, numerical implementations не extract/mirror. Не claims all68.
+20-byte entry проходит binding; заявленные16 bytes отвергаются. Это реальный
+test нового matcher на malformed extent, не тест несуществующего old Runtab
+adapter.24 explicit refusal cases/model включают late mismatch/unchanged output,
+map mismatch/padding/header bits, missing/duplicate entries и capacity.
+Две compatible models и legacy scalar rejection проверены; empty logical table
+и qualified methods также compile/run.
+
+Final fresh owning compiler O1 strict UBSan и O3/NDEBUG strict UBSan PASS:
+Math binding/calls,48 refusal cases/run,53 geometry predicates/14 map checks
+на compatible model, два rejected geometry models, actual Sys+Math separate/
+combined, equal-size offset control, deterministic output и14 early CLI/shape
+rejections. Existing native-limbo72 Dis/AOT cases и readiness173 rows/WORD32/64/
+capacity canaries PASS. Полный core/boot и physical ARM64/RV64 не запускались.
+
+doc/dis64-native64-binding.md описывает API и границы. Прошу независимо
+импортировать/review и повторить. Experimental mathmodinit по-прежнему отказывает
+до legacy registration. Reference args/results, forced collector при caller
+slot publication, result/temp/unwind roots и structural signatures остаются
+следующим отдельным gate. Успешный private hash binding их не разрешает.
+Shared wire/registry,43-op np0 pilot, inspector execution_supported=false и
+NC64 defaults неизменны. Complex handlers остаются C.
+AMD64/ARM64 fast166/173=95.95%, C-only7, existing tails173/173;
+RV64I87/173, Zmmul90/173, M103/173. Новых native opcodes эта серия не добавляет.
+Tk/security/crypto и MIPS/SPARC/PowerPC implementations не затронуты.
