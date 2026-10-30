@@ -25,11 +25,14 @@ linking and ownership-heavy work need not be duplicated in assembly.
 
 The new Dis64 loader accepts a43-op scalar subset. Its connected instruction
 fixture runs all43 through actual C/AMD64 RX decoder/VM paths. The scheduler
-fixture separately exercises MOVW, ADDW, DIVW and IEXIT with actual root and
+fixture separately exercises MOVW, ADDW, DIVW, SHLW and IEXIT with actual root and
 terminal process ownership. This does not enable the remaining130 opcodes in
 that new-format loader, nor references/calls/GC, nor a default format switch.
 An explicit DIS64_PILOT_LOADER=1 build now connects the file reader/parser to
 the same scalar constructor; see [file-loader evidence](dis64-fileloader.md).
+The [vmachine gate](dis64-vmachine.md) now joins that route to actual
+handler/propex/error selection, with C and AMD64 RX dispatch; legacy table
+injection is separate from the accepted Dis64 scalar wire profile.
 
 Reproduce from the repository root:
 
@@ -38,6 +41,7 @@ python3 libinterp/tests/jit-coverage.py --json
 python3 libinterp/tests/jit-readiness.py --check
 python3 libinterp/tests/dis64-runtime.py
 python3 libinterp/tests/dis64-scheduler.py
+python3 libinterp/tests/dis64-vmachine.py
 ```
 
 Native execution in the connected Dis64 fixtures is Linux/AMD64. ARM64/RV64

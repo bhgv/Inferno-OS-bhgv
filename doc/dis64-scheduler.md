@@ -69,7 +69,9 @@ object compilation covers20 core/scheduler files in each scalar model (40 object
 Host workers, acquire/release blocking, allocator pools, namespace/file/environment
 closure and final OS exit remain fixture boundaries. Root environment setup is
 performed at the disinit boundary before execution. There is no live concurrent
-worker, full vmachine exception-selection loop, debugger, collector or compaction
-run. Scalar maps remain np0; no managed-reference/calling ABI is enabled.
+worker, debugger, collector or compaction run. This older fixture invokes
+progexit explicitly; the newer [vmachine gate](dis64-vmachine.md) runs actual
+handler/propex selection in the standing VM error loop. Scalar maps in the accepted image remain np0;
+no managed-reference/calling ABI is enabled.
 This is connected production-component evidence, not complete OS/runtime acceptance.
 Physical ARM64/RV64 execution remains separate.

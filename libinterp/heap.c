@@ -240,8 +240,9 @@ dtype(void (*destroy)(Heap*, int), int size, uchar *map, int mapsize)
 	Type *t;
 	int i, bit, slots;
 
-	/* The active VM map advances by native pointer slots. Dis64's proposed
-	 * four-byte bitmap quantum is a separate, not yet activated ABI. */
+	/* The active VM map advances by native pointer slots. Shared Dis64 maps
+	 * use eight-byte reference slots and are validated by their own codec;
+	 * a matching native pointer width alone does not enable its GC ABI. */
 	if(size < 0 || mapsize < 0 || (mapsize != 0 && map == nil) ||
 	   mapsize > 0x7fffffff-(sizeof(Type)-sizeof(t->map)))
 		return nil;

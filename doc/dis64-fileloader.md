@@ -78,8 +78,12 @@ in unsigned64 storage and copy exact bits, avoiding intermediate signed WORD
 narrowing and out-of-range unsigned-to-LONG conversion.
 
 This is Linux/AMD64 connected-component evidence. Native shared libraries,
-real filesystem/worker blocking, the full vmachine handler/propex selection
-loop, live GC/compaction, generated builtin-interface compatibility and a full
-emulator boot remain separate checks. No inspector execution_supported flag,
+real filesystem/worker blocking, live GC/compaction, generated builtin-interface
+compatibility and a full emulator boot remain separate checks. No inspector execution_supported flag,
 reference/calling ABI, default target, ARM64/RV64 physical acceptance or legacy
 Dis pointer-layout compatibility is inferred from the scalar tests.
+
+The newer [vmachine gate](dis64-vmachine.md) connects this same file route to
+the unchanged vmachine handler/propex loop, including retained broken roots,
+group propagation and separately injected legacy in-memory exception tables.
+It does not assign or enable a Dis64 control-section format.

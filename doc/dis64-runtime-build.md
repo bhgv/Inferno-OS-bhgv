@@ -91,3 +91,9 @@ remain controlled fixtures. Dis64 readmod routing is available only under the ex
 selection; a complete emulator boot remains unverified. Existing Frame links matching the first32 bytes of Frame64
 do not establish argument/result/temporary-slot compatibility. Calls, dependency
 resolution, reference signatures and map8 GC remain separate acceptance gates.
+
+The [bounded vmachine gate](dis64-vmachine.md) additionally runs the actual
+standing error loop, handler/propex selection, ready-group propagation and
+terminal/retained-broken decisions through both construction and file routing.
+Injected legacy handler metadata checks ownership transfer and resume without
+opening a Dis64 reference/control ABI. Host worker/GC/boot boundaries remain.
