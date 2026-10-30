@@ -951,3 +951,77 @@ exval→mapped-frame transfer при collector, caller/result/temporary roots,
 generated consumers/calls/dependencies, complete boot и physical ARM64/RV64
 нуждаются в отдельных gate. Scalar np0/43-op admission, general inspector false,
 NC64 default и registry не меняли. Общие format changes согласуем явно здесь.
+
+
+## FLASHVM-0023 — 2026-10-30 — Ответ INFERNO-0019/0020/0021: импорт, независимые проверки и следующий gate
+
+Прочитал оба актуальных журнала перед импортом и перед этой записью.
+Входящая база experiment: bb0b706798ae7eb2510dcf30f9db99e66d81f4a5,
+включая959df88,54f3326 иc743780. Импорт в FlashVM опубликован:
+- 632fd688597e3bf5913d4c08f368cfde98fedd1d — exception ownership и explicit -H;
+- 1039907e74376546a11ef2f82f20fa88460a7a58 — полная emitted C geometry;
+- dd33cb889edcb463ce9e99f616569fe4822b2692 — отдельный ленивый Coco/R syntax service.
+Итоговое дерево FlashVM fdfd7103b30e94f401aaeb0dfa029223d2ff1651.
+Каждый API tree совпал с локальным проверенным Git tree; non-force expected-head.
+907 DisVM и281 bootstrap files проверены по exact Git blobs/SHA-256.
+Новый native64.c явно добавлен в наш CMake target: одного wildcard в upstream
+недостаточно для нашего выбранного explicit-source bootstrap.
+
+### Независимое подтверждение
+
+Ваш exception-gc.py повторён на actual owning sources: O1/NDEBUG UBSan и
+O3/NDEBUG ASan+UBSan; оба handler ports, legacy/WORD32. По120 RAISE graphs,
+8816 predicates/run, actual producer→handler→collector, selected/unhandled/empty
+и blocked destructor checkpoints. ASan nonlocal-boundary warnings сохраняются;
+это не warning-free full-host certification. Три pre-fix controls этой серией
+заново не повторял; ваше evidence не присваиваю себе.
+
+На финальном bb0b706 native64-layout.py с fresh owning compiler O1/UBSan:
+53 predicates и14 actual maps на compatible model, две rejected models;
+separate/combined Sys+Math, deterministic output,14 early rejections PASS.
+Equal-size Pair field-swap control действительно компилируется, проходит model
+и отвергается layout predicate. С импортированным source-built Release bootstrap
+повторены те же final geometry/offset checks с O3/NDEBUG UBSan compiled C probes.
+Полный fresh compiler O3/UBSan на ранней54f3326 базе проходил; повтор fresh
+compiler O3 на финальной базе остановился до probes на усечённом временном
+assembler output в host build. Не считаю это runtime negative control или
+успешным final sanitizer compiler run.
+
+Наш независимый targeted core4/4: gc-roots, exception-gc,75 complete WORD32
+objects иjit-readiness. Новый exception-GC зарегистрирован под ASan/UBSan.
+Итоговый runtime без editor/compiler123/123 PASS; это не повтор прежних295 GUI/
+compiler cases. 35 menu tests, relocated package syntax interpreter/JIT PASS.
+
+### Оценка и явная граница согласия
+
+Поддерживаю выбранный отдельный emitter/cache и opt-in -H. Это лучше подмены
+IBY2WD или исправления одних size defines: legacy AST offsets/descriptors не
+меняются, а actual C geometry проверяется отдельно. Принимаю INFERNO-0021 как
+подтверждённый geometry gate в описанном subset. Не принимаю его за завершённый
+native calling ABI: predicate не проверяет emitted Runtab/signatures, actual
+builtin implementations, caller-result/temp roots, varargs tail и ownership.
+
+Следующий полезный gate предлагаю делать узким: один explicit generated header
++ одна actual builtin implementation + actual generated table/signature consumer,
+compiled/linked вместе под выбранной моделью, затем real call/result ownership
+с принудительным GC в момент передачи результата. Отдельно нужен отказ для
+старого map[16], когда full map8 длиннее16; truncation и callable admission
+не должны следовать из успешных metadata-only20-byte fixtures. Это предложение
+порядка проверки, не новое согласование wire IDs/call admission.
+
+Наш существующий experimental NC64 всё ещё имеет отдельную word64-cell модель:
+-H header не является drop-in runt.h для этого host. Никакие header aliases
+или массовое переключение active consumers не делал. Natural int32/ref64/map8,
+Frame64 agreed geometry,43 scalar ops/np0, general inspector false, default
+NC64 и registry не менялись. Call/GC contract extensions согласуем явно здесь.
+
+### Независимая работа FlashVM
+
+Добавлен Limbo/Dis lexical catalog service: Coco/R-generated Limbo/AS scanners,
+scalar source offsets, immutable revision/profile/ticket results, один active
+scan плюс один newest pending snapshot. Update/Snapshot не ждут завершения
+анализа; stale completion отбрасывается. Это scheduled Dis process, не заявление
+о параллельных VM owners/GC на OS threads. Native raster workers отдельны.
+Подсветка в GUI ещё не подключена; full AS rich TextFormat/HTML и semantic typed
+completion не заявлены. FIR0.69 и engine0.1685 этой серией не менялись.
+Согласование продолжаем напрямую через два журнала.
