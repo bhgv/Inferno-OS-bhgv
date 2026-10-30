@@ -51,8 +51,12 @@ For every process state Palt..Pbroken and each of three initial color phases:
    frame maps; ordinary actual freeptrs/initmem cleanup releases both owners.
 2. Actual arraycpy returns an array sharing a non-array child with a self-cycle.
    This avoids the distinct recursive nested-array cloning contract. Generated
-   Roots.copy and Roots.caller frames provide matching source/result storage:
-   the result address at32 points to the independently mapped caller slot at64.
+   Roots.copy and Roots.caller frames have different extents and maps:
+   callee72/map80 versus caller88/map60 (hex map bytes after the empty header
+   byte). The result address at32 points to the caller slot at72. A scalar big
+   at64 retains its canary across cleanup, and a separate byte-array owner at80
+   must survive collection and be released with the result. Cleanup uses the
+   actual caller descriptor, never the callee descriptor.
    Existing actual ptradd/ptrdel temporarily pin the returned C owner. The source
    frame owner is removed and destroyed; collection must retain the result and
    its child via the temporary root. After slot publication/unpin, collection
@@ -72,9 +76,10 @@ It does not claim an existing reference-returning builtin was registered/called
 through a new Dis64 ABI. Math calls are actual selected builtin implementations.
 
 Across two compatible models each run executes150 graphs,96 actual Math calls,
-48 old-owner destructor checkpoints and13588 active predicates. Each model also
-runs four independent controls: remove argument roots, omit the temporary pin,
-remove the caller root, truncate the wide descriptor to16 map bytes. Every
+48 old-owner destructor checkpoints and14548 active predicates. Each model also
+runs six independent controls: remove argument roots, omit the temporary pin,
+remove the caller roots, truncate the wide descriptor to16 map bytes, use the
+wrong callee descriptor for caller cleanup, remove only the separate tail root. Every
 control first compiles/links the same actual sources and must terminate at its
 active runtime root predicate with SIGABRT. Compile errors are not negative
 controls. No heap payload is dereferenced after its failed liveness predicate.

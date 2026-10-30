@@ -59,7 +59,7 @@ def main():
             GC['run'](['sh', ROOT/'makemk.sh'], work, build)
             limbo = work/'tools/limbo'
         roots = work/'roots.m'
-        roots.write_text('Roots: module { Node: adt { next: ref Node; }; copy: fn(source: array of ref Node): array of ref Node; caller: fn(result: array of byte); many: fn('+', '.join('a'+str(i)+': array of byte' for i in range(150))+'); };')
+        roots.write_text('Roots: module { Node: adt { next: ref Node; }; copy: fn(source: array of ref Node): array of ref Node; caller: fn(padding: big, result: array of byte, tail: array of byte); many: fn('+', '.join('a'+str(i)+': array of byte' for i in range(150))+'); };')
         for module, modulefile in (('math', ROOT/'module/math.m'), ('roots', roots)):
             (work/(module+'-native64.h')).write_bytes(subprocess.check_output([str(limbo), '-H', str(modulefile)], cwd=work, env=env))
         includes = ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/386/include', 'emu/port', 'include', 'libinterp')]

@@ -43,7 +43,7 @@ def main():
             run(['sh', ROOT/'makemk.sh'], work, build)
             limbo = work/'tools/limbo'
         roots = work/'roots.m'
-        roots.write_text('Roots: module { Node: adt { next: ref Node; }; copy: fn(source: array of ref Node): array of ref Node; caller: fn(result: array of ref Node); many: fn('+', '.join('a'+str(i)+': array of byte' for i in range(150))+'); };')
+        roots.write_text('Roots: module { Node: adt { next: ref Node; }; copy: fn(source: array of ref Node): array of ref Node; caller: fn(padding: big, result: array of ref Node, tail: array of byte); many: fn('+', '.join('a'+str(i)+': array of byte' for i in range(150))+'); };')
         for module, source in (('math', ROOT/'module/math.m'), ('roots', roots)):
             (work/(module+'-native64.h')).write_bytes(subprocess.check_output([str(limbo), '-H', str(source)], cwd=work, env=env))
         source = work/'collector.c'
@@ -60,11 +60,11 @@ def main():
             binary = work/label
             run(command+[source]+objects+['-Wl,--gc-sections', '-lm', '-o', binary], work, env)
             run([binary], work, env)
-            for control in ('arguments', 'temporary', 'caller', 'wide'):
+            for control in ('arguments', 'temporary', 'caller', 'wide', 'cleanup', 'tail'):
                 rejected = subprocess.run([str(binary), control], cwd=work, env=env, capture_output=True, text=True)
                 if rejected.returncode != -signal.SIGABRT or 'GC root predicate failed' not in rejected.stderr:
                     raise RuntimeError('root-removal control did not reach its active runtime predicate: '+control+'\n'+rejected.stdout+rejected.stderr)
-            print('PASS native64 GC negative controls:', label, 'argument/temporary/caller/wide roots')
+            print('PASS native64 GC negative controls:', label, 'argument/temporary/caller/wide/tail roots and wrong cleanup descriptor')
         print('PASS generated native64 frame maps with actual dtype, heap, C calls, arraycpy and collector; bounded pool, not runtime registration')
 
 

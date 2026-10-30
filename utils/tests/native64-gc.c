@@ -295,17 +295,21 @@ copyresult(const LimboNative64Entry *record, const LimboNative64Entry *callerrec
 	F_Roots_caller *caller;
 	F_Roots_copy *callee;
 	Array *source, *copy, *old;
-	int copyindex, before;
+	int copyindex, tailindex, before;
 	void *empty;
 
 	startcase(phase, state);
 	type = native64frametype(record);
 	check(type != nil);
 	callertype = native64frametype(callerrecord);
-	check(callertype != nil && callertype != type && callertype->size == type->size);
-	caller = (F_Roots_caller*)stackframes(type, 2);
-	caller->regs.t = callertype;
-	callee = (F_Roots_copy*)((uchar*)caller+type->size);
+	check(callertype != nil && callertype != type);
+	check(callertype->size > type->size && callertype->map[1] != type->map[1]);
+	caller = (F_Roots_caller*)stackframes(callertype, 2);
+	caller->padding = control == 5 ? -1 : 0x123456789abcdefLL;
+	callee = (F_Roots_copy*)((uchar*)caller+callertype->size);
+	callee->regs.t = type;
+	initmem(type, callee);
+	process.R.SP = (uchar*)callee+type->size;
 	callee->ret = &caller->result;
 	source = H2D(Array*, heaparray(&Tptr, 1));
 	callee->source = source;
@@ -330,6 +334,8 @@ copyresult(const LimboNative64Entry *record, const LimboNative64Entry *callerrec
 	check(memcmp(copy->data, &node, sizeof(node)) == 0 && D2H(node)->ref == 3);
 	if(control != 2)
 		ptradd(D2H(copy));
+	caller->tail = H2D(Array*, heaparray(&Tbyte, 0));
+	tailindex = replace ? 6 : 5;
 	empty = H;
 	memmove(&callee->source, &empty, sizeof(empty));
 	destroy(source);
@@ -350,10 +356,16 @@ copyresult(const LimboNative64Entry *record, const LimboNative64Entry *callerrec
 	}
 	if(control == 3)
 		callertype->map[1] = 0;
+	if(control == 6)
+		callertype->map[1] &= ~0x20; // Remove only the caller tail at offset80; keep result at72.
 	epochs(6);
 	check(freed[2] == 1 && !freed[3] && !freed[copyindex] && D2H(copy)->ref == 1);
-	freeptrs(caller, type);
-	initmem(type, caller);
+	check(!freed[tailindex]);
+	check(caller->padding == (control == 5 ? -1 : 0x123456789abcdefLL));
+	freeptrs(caller, control == 5 ? type : callertype);
+	initmem(callertype, caller);
+	check(freed[tailindex] == 1 && caller->result == H && caller->tail == H);
+	check(caller->padding == (control == 5 ? -1 : 0x123456789abcdefLL));
 	check(freed[copyindex] == 1 && !freed[3] && D2H(node)->ref == 1);
 	process.R.EX = process.R.SP = nil;
 	epochs(6);
@@ -434,6 +446,8 @@ main(int argc, char **argv)
 		else if(strcmp(argv[1], "temporary") == 0) control = 2;
 		else if(strcmp(argv[1], "caller") == 0) control = 3;
 		else if(strcmp(argv[1], "wide") == 0) control = 4;
+		else if(strcmp(argv[1], "cleanup") == 0) control = 5;
+		else if(strcmp(argv[1], "tail") == 0) control = 6;
 		else check(0);
 	}else
 		check(argc == 1);
@@ -447,7 +461,7 @@ main(int argc, char **argv)
 		for(state=Palt; state<=Pbroken; state++){
 			if(control == 0 || control == 1)
 				matharguments(bound[0], bound[1], phase, state);
-			if(control == 0 || control == 2 || control == 3)
+			if(control == 0 || control == 2 || control == 3 || control == 5 || control == 6)
 				copyresult(boundroots[0], boundroots[1], phase, state, 0);
 			if(control == 0)
 				copyresult(boundroots[0], boundroots[1], phase, state, 1);
