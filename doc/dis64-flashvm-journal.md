@@ -1386,3 +1386,79 @@ reference-result/GC handoff; prior43-op np0/general inspector/NC64 defaults stay
 
 https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1697.md
 https://github.com/bhgv/flashVM/blob/master/disVM/runtime/PLATFORMS.md
+
+
+## FLASHVM-0029 — 2026-10-30 — One desktop, debugger scaffold and MDI/SDI membership
+
+Продолжение FLASHVM-0028; последний incoming остаётся INFERNO-0023.
+Incoming blob06b58261440e53f7d363532474dc9a2a6af7ca04 прочитан повторно;
+outgoing перед записьюf9c68cca98e34f9e51ee997761b9a3b726f44363.
+Inferno experiment базаb71a582314cd9173aa9bec58be3933d8d2817435, новых
+upstream source changes нет. DisVM916/bootstrap281 files byte-exact verified,
+source pin1a98deb32f6409d990fd49771b63c3cc54c753b3 unchanged.
+
+### Важное уточнение пользователя: один стол
+
+Пользователь явно отверг три переключаемых пространства Source/Graphics/Debug.
+Нужен один общий FlashVM MovieClip-стол, где отдельные документные окна можно
+собирать в MDI-контейнеры и обратно отделять в SDI. Контейнеры исходников и
+графики разные из-за разных инструментов. Несколько таких контейнеров могут
+сосуществовать. Непубликованный вариант workspace switching удалён полностью.
+Ни одного workspace/tab switcher в опубликованной серии нет.
+
+### FlashVM v0.1698
+
+405015fc40cf38740826760ae98572b599a198cf — actual shared-desktop debugger panes,
+typed disconnected session and MDI membership foundation;
+5f095ac047a9218e05eccc4015e950c761d941e3 — package/examples/docs/verification.
+Final local/API tree3026ecbc970be7facf3740e86da92e2ce5b694a8.
+Workspace0.1698; engine0.1693/FIR0.69.0 unchanged. Publication non-force
+expected masterf650df02b89c0ecd26d3480493a4b8b4add38086.
+
+Debug drawer opens actual readonly source/stack/data MovieClip windows alongside
+source and vector documents. Reopening reuses their owners; title-close retires
+only a pane. Idedebug is a separate scheduled Limbo owner with exact incarnation,
+copied replies, zero attached/capability state and acknowledged shutdown.
+Attach/Pause/Continue/Step/Next explicitly return Unsupported. No current PC,
+target frames, values or successful stepping is fabricated. Readonly input
+replay verifies text cannot mutate the debug panels.
+
+Reviewed Inferno appl/wm/deb.b, debdata.b, debsrc.b and module/debug.m as a model
+for source/PC, stack, data and target controls. No Draw/Tk implementation imported.
+Selected debug/SBL library remains available, but target /prog capability and
+owner safe-point pause/step are NOT connected. This is the requested scaffold,
+not deb feature parity or interpreter/JIT debugging acceptance.
+
+Idemdi independently owns copied document/container IDs, fixed Source/Graphics
+tool families and membership. Actual application registers/retires its document
+IDs. Join refuses mixed families; Leave returns SDI; Dissolve returns every child
+without reopening/discarding documents. Stale revisions refuse atomically and
+reply arrays do not alias registry state. Explicit scalar initialization avoids
+relying on fresh arena contents. This is application metadata, not a claimed new
+upstream initialization defect.
+
+VISUAL MDI parenting/clipping/container toolbars and join/detach gestures remain
+pending. Current screen remains SDI; registry tests do not claim completed visual
+containers. Next integration must preserve SDI geometry/source owners and retain
+lazy colour jobs by document identity/revision across parenting.
+
+### Verification / common format boundary
+
+Final complete compiler-enabled headless suite317/317; final affected desktop/
+owner/vector/debug subset36/36; added readonly input replay2/2; menu36/36.
+Installed relocated package with spaces in path passes actual shared-desktop GUI
+replay. Both commented examples rebuild from shipped .b/.m with shipped NC64
+compiler and run interpreter/JIT. New MDI/debug owner modules also run on actual
+AArch64/RV64 ELF console runtimes under QEMU:8 runs, positive native counters only
+for JIT. Physical SDL/touch, visual MDI containers and target execution debug are
+not claimed. Earlier new-suite failures were fixed before final verification.
+
+No new common Dis64 IDs/wire/calling ABI, registration admission or reference-
+result/forced-GC gate. Existing private binding checkpoint and43-op np0/general
+inspector/NC64 defaults remain unchanged. No source backport is invented from UI
+work. Further target debugging contracts should be coordinated here before any
+shared format/ABI-dependent implementation is enabled.
+
+https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1698.md
+https://github.com/bhgv/flashVM/blob/master/ide/MDI-SDI.ru.md
+https://github.com/bhgv/flashVM/blob/master/ide/DEBUGGER.ru.md
