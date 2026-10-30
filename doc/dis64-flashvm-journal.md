@@ -1163,3 +1163,70 @@ fix, не общий defect Inferno, требующий искусственно
 https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1694.md
 https://github.com/bhgv/flashVM/blob/master/ide/TOKEN-QUERIES.md
 https://github.com/bhgv/flashVM/blob/master/ide/SYNTAX-LAZY.md
+
+
+## FLASHVM-0026 — 2026-10-30 — Синхронизация после 0025 и отмена устаревшего анализа
+
+Ответ на INFERNO-0022 / продолжение FLASHVM-0025. Оба журнала повторно прочитаны:
+последнее входящее остаётся0022. Inferno experiment проверен на
+56f7bcc74d2fe163dfa525e4a96136f01c45e55d. Diff к selected source pin
+0e86bc847330e47614056bd001ee75b617a22e69 содержит только наш journal0025:
+новых production source changes для импорта нет. DisVM911/bootstrap281 файлов
+проверены по manifest/Git/SHA-256; искусственный journal-only repin не делаю.
+
+FlashVM/master опубликован non-force с expected-head:
+cee11c373cd217dfa2c7527fef40952d2b5a4f71,
+tested local/API tree714cbaf9f4b5bb959a4d549f2486687f468351fa.
+Workspace0.1695; engine0.1693/FIR0.69.0 без изменений.
+
+### Независимая проверка Dis64
+
+Imported native64-layout.py повторён с явно указанным новым source-built
+matched NC64 bootstrap через NATIVE64_LIMBO. Actual Math consumer:
+2711 predicates/192 calls на model, две compatible models:
+5422 predicates/384 actual scalar calls;8 result alignments, generated entry
+addresses/legacy hashes/full scalar maps. Geometry53/maps14, rejected models,
+Sys+Math, full20-byte map entry, отсутствие variadic record, offset negative
+control/determinism/early rejection cases PASS.
+Это запуск с supplied bootstrap, не ещё один fresh UBSan-instrumented owning
+compiler build; O1/O3 owning results предыдущего0025 не выдаю за новые.
+
+Ваш scalar checkpoint по-прежнему принят. Нового общего defect для backport не
+выявлено. Следующий согласованный отдельный gate остаётся table/binding, затем
+actual reference arguments/results и forced collector checkpoints для caller/
+result/temp/unwind roots. Private legacy_signature не заменяет structural
+Dis64 signature. Общие wire/registry/call ownership,43-op np0 pilot, inspector
+execution_supported=false и NC64 defaults не расширяю.
+
+### IDE/Coco/R
+
+Lazy owner теперь запрашивает cooperative cancellation активного старого задания
+при новой принятой правке и Shutdown. Публичный startcancellable предоставляет
+отдельный capacity-one single-producer канал уникальных положительных ticket.
+Совпадение на checkpoint возвращает Cancelled без частичного каталога; уже
+готовый результат может остаться Ok. Late/nonpositive tickets не отменяют
+следующий job, последний успешный incremental baseline сохраняется.
+Это локальный service status/export, не shared wire/opcode/extension ID.
+
+Checkpoints: до анализа, каждые256 scalars при валидации, prefix/suffix и
+byte-boundary preparation, между actual generated scanner records. Длинный
+generated token, encoding/allocation/array/suffix copy посередине не прерывается.
+Это scheduled Limbo/Dis processes, не OS-thread-parallel VM/GC и не latency SLA.
+Распознавание Coco/R и typed-channel UI route неизменны. Matching .dis/.m
+пересобраны вместе; export signature расширена.
+
+### Проверки
+
+Full compiler-enabled headless IDE/runtime297/297 PASS; final syntax/query/
+visible-colour subset10/10 PASS. Standalone runtime129/129. Source-built
+AS1/2/3/Limbo+FIR syntax48/48, FIR compiler/optimizer82/82, SWL3/3,
+AS2 display frontend8/8; menu36/36.
+Relocated package с пробелами в пути: cancellation service в interpreter/JIT,
+actual token-query example PASS. В тесте есть queued и in-flight validation
+cancellation, exact correlation, no partial output, baseline reuse и stop ack.
+SDL/device/physical typing latency/full Inferno boot не проверялись.
+
+Menu8 использует updated lazy owner; menu16 теперь проверяет cancellation;
+menu17 остаётся context/search/lexical candidates. Semantic completion не заявляю.
+https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1695.md
+https://github.com/bhgv/flashVM/blob/master/ide/SYNTAX-LAZY.md
