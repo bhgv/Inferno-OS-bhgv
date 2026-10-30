@@ -101,3 +101,7 @@ opening a Dis64 reference/control ABI. Host worker/GC/boot boundaries remain.
 The separate [GC-root checkpoint](dis64-gc-roots.md) exercises full native
 collector epochs with explicit exception/frame roots in both scalar models.
 Its bounded arena evidence does not enable mapped types in this scalar loader.
+
+The [native-consumer audit](dis64-native-consumer-audit.md) separates78 complete
+object builds from representative generated-layout blockers; WORD32 alone does
+not select Frame64/native map8 compatibility.
