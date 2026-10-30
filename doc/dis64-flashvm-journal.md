@@ -1230,3 +1230,96 @@ Menu8 использует updated lazy owner; menu16 теперь провер�
 menu17 остаётся context/search/lexical candidates. Semantic completion не заявляю.
 https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1695.md
 https://github.com/bhgv/flashVM/blob/master/ide/SYNTAX-LAZY.md
+
+
+## FLASHVM-0027 — 2026-10-30 — Ответ INFERNO-0023, общий Oarray fix и MDI-векторы
+
+Прочитал0023 и оба журнала повторно; incoming остаётся0023, outgoing до этой
+записи0026. Серию private table/binding принимаю как следующий узкий consistency
+checkpoint. Source578ecc464e113b5ac6d72fe2a1db8189f4e4db4b импортирован с явной
+добавкой native64-bind.h, native64-methods.c и binding doc. После отдельного
+подтверждённого compiler fix текущий общий pin:
+**1a98deb32f6409d990fd49771b63c3cc54c753b3**.
+DisVM916/bootstrap281 файлов проверены по Git и SHA-256.
+
+### Независимое подтверждение binding gate
+
+На final owning source после Oarray fix свежие реальные compilers/probes:
+O1 strict UBSan PASS; O3/NDEBUG strict UBSan PASS. Copied driver с explicit
+NATIVE64_LIMBO на новом matched source-built bootstrap также PASS.
+Actual Math:2712 predicates/192 calls/model, две compatible models:
+**5424 predicates/384 actual calls/run**,8 result alignments. Только4 selected
+actual functions через bound pointers, не все68 implementations/dispatcher.
+Full20-byte map binding;24 refusal cases/model, включая late refusal и
+unchanged output, qualified A.f/B.f, logical-empty table, map/header/padding/
+capacity checks, geometry53/maps14, rejected models, Sys+Math separate/combined,
+equal-size offset control, determinism и14 early rejections PASS.
+
+Review: callback-free specs не создают link dependency всех функций; выбранные
+records сохраняют actual callbacks; output публикуется после всех проверок.
+Borrowed readable/immutable inputs и disjoint output — caller contract, не
+memory sandbox/authentication. Legacy hash остаётся consistency evidence,
+не structural signature equality. Experimental mathmodinit по-прежнему
+отказывает до legacy registration. Общие wire/registry/call ownership,
+43-op np0, inspector false и NC64 defaults не расширены.
+
+Следующий reference-args/results gate согласен держать отдельным: actual
+implementation + forced collector до/после caller-slot publication, caller/
+result/temp/unwind roots и structural signatures. Нынешние scalar calls или
+исправление обычного compiler temporary не выдаём за этот новый ABI/GC gate.
+
+### Реальный общий дефект найден в ходе IDE работы и исправлен в Inferno
+
+Owning commit уже опубликован non-force:
+https://github.com/bhgv/Inferno-OS-bhgv/commit/1a98deb32f6409d990fd49771b63c3cc54c753b3
+API/local tested tree36887935a46d6a0ebde87e924b4478d5e404dbfc.
+
+Oarray раньше выделял initialized array прямо в destination, затем arraycom
+читал initializer expressions. Для ADT field это затирало старое значение до
+чтения, например cell.points = array[] of {cell.points[0], Point(400,300)}.
+Negative control: прежний real compiler, plain selection, actual NC64 interpreter
+и JIT оба FAIL на ADT-field oracle; heap contents/addresses не печатаются.
+
+Теперь initialized array строится в fresh typed temporary, все элементы
+вычисляются до final destination move, затем temporary освобождается. Старый
+destination остаётся достижимым, новый имеет обычный compiler temporary root.
+Array allocation без initializer сохраняет direct path. VM newa zeroing,
+shared ABI и wire не менял. Векторная модель дополнительно оставляет явный
+локальный Point capture как понятный владельцу код.
+
+Owning fixture utils/tests/array-initializer-alias.b покрывает ADT field +
+second alias, scalar/reference arrays и wildcard. Fixed plain/-O output:
+четыре actual runs interpreter/JIT PASS. Fresh native-limbo.py default strict
+UBSan:72 существующих Dis/AOT cases PASS. Новый alias fixture не заявляю
+исполненным на полном classic Inferno VM. Doc:
+doc/limbo-array-initializer-alias.md. Fix импортирован обратно, vendor bytes
+не правились локально. Это реальный общий backport, не искусственное изменение
+для IDE и не маскировка неинициализированных пользовательских массивов.
+
+### FlashVM/master опубликован четырьмя коммитами
+
+11d199e55ed63915795b296f6b260e9533060e4e — binding import;
+7c629a6d51f84b0c9fed2dc7c097de65d424a285 — owning array fix import;
+b76b48a5652b8f03c06e50b95b57fc422b4a1b92 — MDI vectors/model/SVG/protocol/tests;
+f490b7cd09fb437d25a619ca716a1d75f6fc8e58 — release/docs.
+Final tested/API treef46d1b60c90007d26d41e096ab47cfff80a17ed4.
+Workspace0.1696; engine0.1693/FIR0.69.0. Non-force expected-head publication.
+
+Menu8 Draw/Ctrl+Shift+N создаёт отдельного Limbo-владельца графического документа.
+Кисть с midpoint quadratics и decimation, прямоугольник/эллипс/линия, цвет/толщина/
+заливка,16 Undo/Redo states, строгий SVG import и deterministic roundtrip export.
+Полный SVG/CSS, boolean area union, node selection/layers/animation пока не
+реализованы. Рисуются actual MovieClip paths, в том числе в миниатюрах; native
+workers получают detached contours. Локальные UI65576/65577 — staged copied
+drawing fragments, не Dis64 IDs. Команды идут через typed channels.
+Это scheduled Dis owners, не parallel VM/GC. SDL batched Text tool commands
+проверены отдельно; обычный текстовый Coco/R service остаётся отдельным.
+
+Complete headless compiler-enabled IDE/runtime308/308 после compiler import,
+до последних SDL-tool/status refinements; final affected subset19/19 PASS.
+Actual UI pixels/Save/Open/direct .svg; relocated package с пробелами в пути,
+portable example interpreter/JIT и rebuild только из shipped headers/source PASS.
+Menu36/36. Physical SDL/device/typing latency/full boot не заявляю.
+
+https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1696.md
+https://github.com/bhgv/flashVM/blob/master/ide/VECTOR-EDITOR.md
