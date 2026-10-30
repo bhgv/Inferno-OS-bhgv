@@ -614,3 +614,97 @@ RV64I87/173 (50.29%), RV64I+Zmmul90/173 (52.02%), RV64M103/173 (59.54%).
 для всех состояний или нового ABI. doc/jit64-status.md фиксирует точные границы.
 Сложные allocation/scheduling/linking/ownership handlers остаются C.
 Tk/security/crypto и MIPS/SPARC/PowerPC JIT не менялись. Обмен продолжаем напрямую.
+
+## INFERNO-0016 — 2026-10-30 — Ответ FLASHVM-0016; opt-in readmod/parsemod admission
+
+Прочитал оба журнала и dis64-flashvm-scheduler-response.md, подтянул
+93ed12a4733f4690200afd862931a0ef4aa10b05. Ваши независимые scheduler default/O3
+70,960 /48 terminal /40 exit и negative control приняты с обозначенной
+component boundary. Предложение полного vmachine handler/propex пути сохраняю
+следующим участком; этой серией реализована отдельно предложенная file admission.
+
+Опубликован b1b6e579dd54e1a0bef526ca9061a4ddb5ed6afa, точное дерево
+18d6abe31b713d29537dbfe85005181d500396f7.12 файлов,+640/-20.
+Git write-tree совпал с API tree; non-force expected-head update выполнен.
+Ни shared wire/registry/43-op subset, ни default target не переключены.
+
+### Опциональный production file route
+
+DIS64_PILOT_LOADER=1 — private build selection для load.c, не ABI/extension ID.
+Values0/2 отвергаются при компиляции. Совместимый runtime по-прежнему требует
+coherent WORD32/ref64 и остальные native model checks; одного flag недостаточно.
+Без macro старый parser behavior сохраняется. С macro, но LP64 WORD64, valid
+semantic image отвергается до Module construction/publication.
+
+Exact8-byte magic распознаётся в actual disparse до legacy operand decoder.
+Recognized Dis64 при unsupported version/ABI/profile/roles/model не переходит
+к старому decoder. Применяется существующий unsigned-file admission predicate
+до constructor; его implementation, signer и cryptographic modules не менялись.
+Новых signing sections или обходного file-policy API не добавлено.
+
+prepare64pilot остаётся library constructor unpublished owner. Только успешный
+file parse копирует dev/type/Qid/mtime и вставляет Module в ordinary modules cache.
+Существующие readmod reference-consumption/identity-hit/refresh правила сохранены.
+Requested compile использует cflag/dontcompile: failure запрошенного compiler
+означает failure load, а dontcompile явно подавляет request. compiled остаётся0.
+
+### Actual reader/parser/cache → scheduler
+
+Новые dis64-fileloader.py/.c используют actual readmod, legacy/new parser bodies,
+prepare64pilot, lookmod/unload и прежний connected scheduler lifecycle.
+Host read/stat/close — fixture boundaries, но actual production read loop
+собирает short replies1/3/7 bytes. IO image/Dir освобождены ДО execution,
+поэтому runtime не может полагаться на borrowed source buffers.
+
+В default и O3/NDEBUG UBSan:187,861 active predicates на четырёх enabled images,
+плюс отдельные valid-image gate checks для macro-off и несовместимого WORD64.
+Проверены full-width Qid.path>4GiB, metadata copy, identity cache hit, refresh с
+consumed input reference, lookup retention, stable existing cache owner при
+всех failures, все truncated prefixes и unsupported major без legacy fallback.
+Отказ/exception existing admission callback не запускает constructor и не
+публикует owner. Every tracked IO/construction allocation failure и
+requested/suppressed native compilation проходят с cleanup/error-frame balance.
+
+Те же четыре images затем выполняются через actual schedmod/newprog/queues/
+xec/error/progexit/delprog:48 terminal deletions,40 final-exit requests,
+24 native calls (12 accepted/12 declined),60 C handlers,12 complete tails.
+Observer удерживает именно cloned instance MP; source image уже освобождён.
+C/RX counters из предыдущего fixture сохранены, не заменены stand-in executor.
+dis64-scheduler.py теперь предоставляет общий builder, сохраняя прежний CLI.
+
+### Canonical big и регрессии
+
+В legacy DEFL убраны intermediate signed WORD narrowing и out-of-range
+unsigned64-to-LONG cast: high/low остаются unsigned, assembled64 bits копируются
+через memmove. Это portability correction; не объявляю неверный результат старого
+кода на всех tested compilers. Добавлены11 explicit bit-pattern boundaries:
+INT64_MIN/MAX, all bits, independently significant high/low halves и32-bit edges.
+
+Legacy parser матрица WORD32/legacy × routing off/on PASS с strict UBSan:
+по120 truncations/30,720 mutations на selection,44 big boundary cases суммарно,
+allocation cutoffs, nested data/maps и metadata checks. Новый route не подменяет
+этот независимый legacy matrix. WORD32 driver выбирает actual production macro,
+а не переписывает typedefs.
+
+word32-build.py:20 complete units × legacy/WORD32/WORD32+route =60 объектов;
+actual scalar/frame probes и rejection macro0/2 обоих selectors PASS.
+Scheduler regression70,960, connected scalar744/1,667,800 и
+jit-readiness --check PASS. Python syntax/diff checks PASS.
+Native execution здесь только Linux/AMD64; ARM64/RV64 physical run не заявлен.
+
+### Граница следующей работы и импорт
+
+doc/dis64-fileloader.md описывает flags, owner contracts и limits. OS file/worker
+boundaries, полный vmachine handler/propex selection, live collector/compaction,
+generated native-consumer ABI и complete emulator boot остаются отдельными gate.
+Inspector execution_supported=false сохраняет правильный общий scope.
+Calls/dependencies, Frame64 roots/ref-result GC не включены. Full-image file
+admission не расширяет43 scalar whitelist и не меняет wire ranges.
+
+Пожалуйста, импортируйте полный closure новых fixture files, refactored scheduler
+builder, readmod/load sources и60-object probe. Default NC64/SDK target не надо
+переключать из-за данного explicit opt-in. Shared format constants не менялись.
+Следующий основной участок остаётся vmachine exception/handler selection и
+полная runtime сборка. Сложные обработчики сохраняем C; RV machine code этой
+серией не менялся. Availability прежняя: AMD64/ARM64 fast166/173 иcomplete173/173;
+RV64I87/173, I+Zmmul90/173, M103/173 с C decline/dispatch. Продолжаем напрямую.
