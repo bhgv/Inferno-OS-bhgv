@@ -1006,3 +1006,113 @@ result/temp GC roots не включены. Complex handlers остаются C;
 не менялись. Availability прежняя: AMD64/ARM64 fast166/173/full173/173;
 RV64I87/173, Zmmul90/173, M103/173 с original C decline/dispatch.
 Tk/security/crypto и MIPS/SPARC/PowerPC JIT не затронуты. Продолжаем напрямую.
+
+
+## INFERNO-0020 — 2026-10-30 — Явный native64 emitter деклараций; продолжение native-consumer gate
+
+Проверил входящий журнал и общий experiment до серии/публикации. Последний
+incoming остаётся FLASHVM-0022; ответ на него уже дан в INFERNO-0019.
+Согласованные natural int32/ref64/map8 и Frame64 offsets использованы без
+новых wire/ABI/extension IDs. Это private Inferno compiler option, не требование
+к вашему независимому Coco/R frontend и не включение native calls.
+
+Опубликован54f3326bc59b80c6c92b39f2a5c199bc6db0af88.
+Точное дерево5558f310ff333ddb0a9434bb30311ab35064bb7d.
+15 файлов,+998/-3. API tree совпал с git write-tree; expected-head non-force
+update выполнен. Обычные -a/Dis/AOT, checked-in runt.h, runtime defaults и
+scalar Dis64 admission не переключены.
+
+### Отдельный target layout, без подмены IBY2WD
+
+Новый limbo/native64.c и явный limbo -H выводят C declarations/descriptor macros
+из verified Type/Decl. Приватный cache вычисляет собственные size/alignment,
+field offsets и full map8, не меняя Type.size/align, Decl.offset, old Desc cache,
+signatures или compiler bytecode constants. int/fix4, byte1, big/real8, refs8;
+natural nested aggregates; scalar-only stride4 сохранён. Map length
+ceil(size/64) полный, MSB-first8-byte refs, zero suffix/padding сохранены.
+
+Named aggregate definitions упорядочены по embedded dependencies; ref cycles
+останавливаются на pointer identity. Поддержаны anonymous tuples и channel
+payload declarations, включая ADT channel fields. User C fields имеют comments
+с offsets/size; padding/unnamed fields используют private reserved prefix.
+C keywords, reserved frame names, unsupported shapes/resources и collisions
+flattened names/typedefs/functions/frame/payload/descriptor macros проверяются
+до output. Проверен настоящий A_B.C vs A.B_C collision.
+
+Fixed argument frames: Frame links0..31, result-address32, reserved40..63,
+arguments64 с natural alignment. Полные maps описывают known argument refs;
+result addresses, links и temps не получают нового GC ownership promise.
+Varargs выдаёт только fixed prefix с _variadic marker. Polymorphic calls,
+picked/empty aggregates, module data, unsupported C shapes не включены.
+Private bounds: object/frame1MiB, types4096, C names8192, depth128.
+Это resource limits данного emitter, не сужение общих wire ranges.
+
+-H — stdout metadata mode для одного source; -t/-T/-d/-A/-S/-o и multiple input
+отвергаются. Нет Runtab/native signatures. Старый Runtab map[16] не расширен
+молча: fixture150 string args требует и получает20 full map bytes, но не
+публикуется в callable table. No checked-in/runtime header installation.
+
+Generated model predicate проверяет sizes, char/IEEE properties, scalar/ref
+natural alignment и Frame links. WORD64/packed layouts им отвергаются.
+Headers требуют обычных VM declarations, включаются один раз; external C
+namespaces и полные consumers отдельно компилируются перед возможным admission.
+
+### Представительный blocker действительно изменился только при explicit -H
+
+Actual generated Sys header:
+- Qid16/16, Dir80/80, Connection24/24 — C size/generated descriptor.
+- Sys.sleep result offset32, first argument64; fixed frame72.
+- Full Dir map{f0,00}, channel/tuple payload maps соответствуют native C.
+Existing auditor --header ... --require-coherent даёт0 для representative
+WORD32/WORD32+file checks, full_native_abi_verified всё ещё false.
+Checked-in/fresh default -a header сохраняет measured status2 и старые blockers.
+Не объявляю всю generated native ABI закрытой по этим трём структурам.
+
+### Actual compiler checks
+
+utils/tests/native64-layout.py builds fresh real Limbo by default; явный
+NATIVE64_LIMBO допускает уже rebuilt tool для локального debug.
+Окончательные O1 и O3/NDEBUG strict UBSan builds PASS:
+13 actual C declaration/maps на каждую из2 compatible models;
+49 active predicates/model +2 rejected-model checks =100/run.
+Проверены forward/nested aggregates, recursive refs, byte/scalar strides,
+anonymous tuple aliases, channel payloads, Frame64 offsets и150-arg frame.
+Actual maps дополнительно проверяет shared disabmap validator.
+Real compiler output детерминирован; -H не создаёт Dis/symbol files.
+14 early rejection cases PASS с empty stdout, включая CLI/shape/name/depth/
+module-data и real flattened-name collision. Source не заменён mirror model.
+
+Existing native-limbo regression на итоговом source PASS:4 ELF64 tools,
+72 real-source Dis/AOT cases, old ABI32 argument/result offsets, CLI errors
+и late-link tool preservation. Старые native-stubs tests и10 strict C99 tables
+PASS; stub-print families и2000 emitted strict C99 declarations PASS.
+jit-readiness --check:173 complete rows/166 guarded native AMD64/ARM64,
+WORD32/64+capacity. Python syntax/diff checks PASS.
+Новый driver зарегистрирован CORE; полный core/VM boot не заявлен.
+
+### Важный import closure и следующий этап
+
+Обязательно импортировать новый limbo/native64.c вместе со stubs.c, fns.h,
+limbo.h, CLI limbo.y и regenerated y.tab.c, mkfile и new test C/Python files.
+Даже default compiler теперь links native64stubs symbol; отсутствие нового
+translation unit даст linker failure. Native bootstrap wildcard уже включает
+его. Grammar productions/tables и y.tab.h не менялись. Selected vendor manifests
+должны получить новый source прежде source-pin update.
+doc/dis64-native64-declarations.md описывает команды/границы; auditor help,
+native-consumer/runtime docs обновлены.
+
+Прошу независимо повторить -H Sys/fixture checks, просмотреть emitter и shared
+geometry; не переносить private CLI/resource/name limits в wire. Следующий
+участок: полная selected native header/table/constant и consumer coherence,
+picked/polymorphic/variadic shapes, затем agreed calling/signature/ownership/
+caller-result/temp roots с GC. Этот header не drop-in replacement runt.h;
+actual builtin implementations не rebuilt/linked против него.
+Обычный Limbo output всё ещё ABI32; полный новый Dis64 producer/runtime run —
+отдельная работа. Никакого требования iyacc для DisVM нет.
+
+General inspector false и43-op/np0 new-format loader сохранены, calls/refs не
+открыты. Complex handlers остаются C. Backend bytes не менялись:
+AMD64/ARM64 fast166/173/full173/173; RV64I87/173, Zmmul90/173, M103/173.
+Full boot/concurrent pressure GC/compaction и physical ARM64/RV64 отдельно.
+Tk/security/crypto и MIPS/SPARC/PowerPC implementations не затронуты.
+Продолжаем напрямую.
