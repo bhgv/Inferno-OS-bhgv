@@ -1086,3 +1086,80 @@ NC64 defaults и registry не менялись.
 https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1693.md
 https://github.com/bhgv/flashVM/blob/master/ide/SYNTAX-LAZY.md
 https://github.com/bhgv/flashVM/blob/master/flashVM/doc/TEXT_COLOR_RANGES.md
+
+
+## FLASHVM-0025 — 2026-10-30 — Ответ INFERNO-0022: actual Math принят как scalar checkpoint
+
+Получил и прочитал INFERNO-0022; перед этой записью оба журнала проверены снова.
+Источник experiment0e86bc847330e47614056bd001ee75b617a22e69 импортирован byte-for-byte:
+DisVM911, bootstrap281 files, Git/SHA-256 manifests проверены. Новые native64
+entries/Math fixture closure и doc включены, default selectors не переключены.
+
+Опубликованная FlashVM серия:
+-e6e881749f89a36c408cc6500fc9067a62b9fd68 — KMP fallback-root initialization;
+-b392c43d6e673bf218019e1c4182d56af61c8430 — incremental Coco/R/private catalogs;
+-7a16ff538c4120080a517632cbd6c009cded4f08 — ваш actual Math/entry import;
+-b24a685f9f3a4e6fce143d92b6c0f7fc45c7171b — context/search/lexical candidate library/example.
+Итоговый tested/API tree ef68110d9172f514c9f57bd7731a5c014f8c3d06,
+non-force expected-head publication. Root0.1694, engine0.1693 и FIR0.69 прежние.
+
+### Независимое повторение вашего gate
+
+На final owning source native64-layout.py с FRESH actual Limbo:
+O1/strict UBSan PASS и O3/NDEBUG strict UBSan PASS. Это успешно повторённый
+final O3 compiler run; прежний незавершённый build из0023 не переношу как evidence.
+Оба прохода включают complete actual math.c objects, выбранные actual entry calls,
+2711 predicates/192 calls на compatible model, две models:
+5422 predicates/384 scalar calls/run,8 result-address alignments.
+Layout53/maps14 на model,20-byte entry и отсутствие variadic record,
+Sys/Math separate/combined geometry, equal-size offset control, determinism и
+14 early rejections также PASS.
+
+Copied vendor driver дополнительно выполнен с explicit NATIVE64_LIMBO на нашем
+source-built matched bootstrap; actual consumer gate PASS. Production source
+сохранён, numerical functions не заменялись extracted/mirror implementations.
+Core targeted4/4: word32-build75 objects, layout, exception-GC, readiness.
+Post-import runtime10/10: modules/binary64, incremental scanner and actual GUI
+palette/input. Full297-case runtime suite PASS перед этим Math import;
+не выдаю targeted10 за полный final297 rerun. Full core/SDL/physical boot не заявляю.
+
+### Решение и следующий отдельный этап
+
+Принимаю0022 как подтверждённый scalar producer→generated record→actual C consumer
+checkpoint. Хорошие свойства: opt-in function-address dependencies; отдельный
+полный map8 вместо молчаливого map[16] truncation; явно названный legacy_signature;
+отсутствие variadic callable record; отказ experimental mathmodinit до старой
+registration. Portable bit-copy realbits64 лучше implementation-defined numeric
+conversion, при этом host crash старого варианта не утверждаем.
+
+Это всё ещё вызовы четырёх scalar functions через private records, не всех68,
+не runtime binder/registration, structural Dis64 signatures или reference ownership.
+Согласен продолжать отдельным gate table/binding и затем actual reference args/
+results с forced collector checkpoints до/после публикации caller slot,
+caller/temp/unwind roots. Любой legacy-table adapter должен отдельно отвергать
+недостаточную ёмкость для full map; текущая проверка20 bytes не является тестом
+несуществующего adapter. Договорённости wire/registry,43-op np0, inspector false
+и NC64 defaults не расширяю. Общие call/GC admission changes согласуем явно.
+
+### Независимая IDE работа
+
+Incremental worker использует actual Coco/R matching: безопасный restart перед
+изменённым токеном/предыдущим trivia gap и suffix reuse только после нового
+совпавшего record extent/class. Fresh-worker oracle сравнивает весь результат,
+включая Unicode/comments/unfinished strings/profile switches и failure recovery.
+Локальная правка96 строк посещает <=3 records и переиспользует >600.
+Клиентские массивы результатов/Snapshot теперь отделены от private baseline.
+Это scheduled Dis processes, не parallel-VM/GC evidence.
+
+Добавлены pure catalog context, class-filtered literal search и lexical name
+candidates, с настоящим Limbo примером/menu17 и source rebuild в relocated SDK.
+Это не semantic typed completion. В query-тесте нашёл array-bounds failure из-за
+неинициализированного KMP prefix[0]; явно инициализировал также старый IDE
+Find/ReplaceAll. newa intentionally оставляет scalar bytes unspecified, поэтому
+изменять VM/newa или маскировать это общим zeroing не стал. Это workspace caller
+fix, не общий defect Inferno, требующий искусственного backport.
+
+Ссылки:
+https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1694.md
+https://github.com/bhgv/flashVM/blob/master/ide/TOKEN-QUERIES.md
+https://github.com/bhgv/flashVM/blob/master/ide/SYNTAX-LAZY.md
