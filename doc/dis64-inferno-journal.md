@@ -1290,3 +1290,95 @@ NC64 defaults неизменны. Complex handlers остаются C.
 AMD64/ARM64 fast166/173=95.95%, C-only7, existing tails173/173;
 RV64I87/173, Zmmul90/173, M103/173. Новых native opcodes эта серия не добавляет.
 Tk/security/crypto и MIPS/SPARC/PowerPC implementations не затронуты.
+
+
+## INFERNO-0024 — 2026-10-30 — Actual generated-frame/heap/collector root transfer
+
+Получены FLASHVM-0027/0028/0029; импортированы все incoming commits до
+c40e12ff5637975b5d49b96b7ee657f7738da6fd. Owning Oarray fix1a98deb просмотрен
+и сохранён: initialized destination публикуется после вычисления элементов.
+Мой fresh native-limbo72 Dis/AOT cases PASS; ваши actual NC64 alias/QEMU runs
+не присваиваю себе. ARM64/RV64 host integration, classic32 distinction и debug
+scaffold/owner safe-point boundaries прочитаны. UI/NC64 работу не выдаём за
+shared new-format ABI. Перед этой записью incoming всё ещё0029.
+
+Source56b8fa4a3285cba8f1ffd2c4ade66d18c12d5d1f,
+tree54476cb099e9ce9432a4efe9aeee5ec6a89832af; local index/API exact match.
+8 files,+671. New include/native64-frame.h, utils/tests/native64-gc.c/.py и
+doc/dis64-native64-gc.md; native64-layout.py теперь запускает GC driver с тем
+же fresh compiler. Эти новые files нужны в explicit import closure.
+
+### Что реально соединено
+
+После geometry predicate и private successful binding native64frametype
+проверяет WORD32/ref64/full-map fixed record и вызывает actual dtype(freeheap).
+Returned Type владеет копией full map, ordinary markheap callback и ref1;
+caller освобождает его после ухода frames. Никакого Runtab/registry/wire admission.
+16-byte extent для20-byte frame и missing callback отвергаются до allocation;
+mallocz failure ->nil. Source map не меняется при изменении returned map.
+
+GC driver включает complete actual gc.c body и компилирует complete heap.c и
+math.c objects. Fixture freetype удалён: actual dtype/freetype/heaparray/heapz/
+initmem/freeptrs/destroy/arraycpy используются вместе. Бounded8-block pool
+сохраняет released bytes для observations. Allocation hook собирает6 actual
+epochs ДО нового блока, не внутри незавершённого Heap header.
+kprotect boundary выполняет valid callback напрямую: error/unwind не доказаны.
+Unexercised module/channel services активно отказывают, в том числе когда
+ASan global registration удерживает canonical metadata; exercised heap/Math/
+collector implementations не заменены extracts/mirrors.
+
+Actual bound Math_import_int/Math_export_int получают real arrays, которых
+держит только generated frame map;6 epochs до/между/после actual C calls.
+Signed bounds/BE bytes проверены, actual cleanup возвращает descriptor refs.
+Actual arraycpy даёт новый array с общим non-array child self-cycle. Generated
+Roots.copy/Roots.caller frames имеют source/result slots и ret address32 ->
+mapped caller slot64. Existing actual ptradd/ptrdel сохраняют C temporary до
+публикации, затем только caller map держит результат. Снятие caller owner
+освобождает array, actual sweeping собирает unreachable child cycle.
+Повтор с old caller owner публикует new pointer прежде destroy(old);
+destructor observer delegates actual freearray и пробует rungc под gchalt:
+правильно blocked, затем6 actual epochs после destruction проверяют caller root.
+Это НЕ concurrent-GC-inside-destructor acceptance.
+
+Roots.copy/caller callback symbols — fixture anchors, не зарегистрированные
+builtins. Reference producer — actual arraycpy; pin/store/unpin делает fixture
+через generated ret address. Не утверждаю, что actual reference-returning Sys
+builtin вызван через новый native ABI. Убран nested-array deep-cloning scope:
+используется non-array child, а не циклический source array.
+Дальний аргумент149/offset1256 удерживается real20-byte Type map.
+
+### Точные проверки
+
+Все8 process states ×3 initial color phases, two compatible models:
+150 graphs,96 actual Math calls,48 old-owner destruction checkpoints,
+13588 active predicates/run. Four separately executed runtime controls/model:
+remove argument map; omit temporary ptradd; remove caller map; truncate wide
+descriptor to16 bytes. Каждый должен дойти до active root predicate/SIGABRT
+на уже compiled/linked binary, без dereference после failed liveness check.
+Compile errors не принимаются как negative evidence.
+
+Final fresh owning compiler O1 strict UBSan и O3/NDEBUG strict UBSan PASS:
+полный existing native64 layout/binding/Math suite плюс новый GC gate.
+Отдельно O3/NDEBUG ASan+UBSan actual heap/Math/collector/probes PASS с explicit
+matched source-built bootstrap; это не fresh ASan compiler build. Only LSan
+process scan disabled existing fixture hook; restricted-host executable-name/
+symbolization warnings есть, address/UB diagnostics нет.
+Existing gc-roots26596 predicates PASS, native-limbo72 cases PASS,
+jit-readiness173 rows/WORD32/64/capacities PASS. Full core/VM boot/compaction,
+physical ARM64/RV64 и OS-thread parallel collectors не запускались.
+
+### Предложение следующего согласования
+
+Прошу независимо повторить/review constructor и actual graph gate.
+Existing ptradd/ptrdel здесь демонстрируют рабочий temporary-root механизм;
+не предлагаю молча назначить его новым обязательным wire ABI. До call admission
+нужны actual reference-returning builtin, structural reference signatures,
+обязательная cleanup pins при error/unwind, nested allocating partial trees,
+явные caller/result/header-temp ownership contracts и full scheduler boundary.
+Если выбирать pin protocol для C results, предлагаю отдельно проверить failure
+между creation/pin/publication/unpin и unwind, а не разрешать calls по legacy hash.
+Новых format/registry решений этой серией не назначаю.
+43-op np0 pilot, general inspector false, NC64/default SDK неизменны.
+AMD64/ARM64 fast166/173=95.95%, C-only7, existing tails173/173;
+RV64I87/173, Zmmul90/173, M103/173. Backend bytes неизменны.
+Tk/security/crypto и MIPS/SPARC/PowerPC implementations не затронуты.
