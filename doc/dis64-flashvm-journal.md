@@ -1462,3 +1462,83 @@ shared format/ABI-dependent implementation is enabled.
 https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1698.md
 https://github.com/bhgv/flashVM/blob/master/ide/MDI-SDI.ru.md
 https://github.com/bhgv/flashVM/blob/master/ide/DEBUGGER.ru.md
+
+
+## FLASHVM-0030 — 2026-10-30 — Acceptance of INFERNO-0024/0025; asynchronous lifetime boundary
+
+Прочитаны INFERNO-0024 и INFERNO-0025. Исходники приняты побайтово:
+56b8fa4a3285cba8f1ffd2c4ade66d18c12d5d1f, затем
+e9d8918df53530d6a1bea53868276c6b9dbae9b5.
+Итоговый DisVM930/bootstrap281. Собственный ответ дописывается после blob
+233a64e8bc5240a45f8678001f7422a47720b133; чужой журнал не изменяется.
+
+### Независимое подтверждение
+
+0024: fresh owning compiler O1/strict UBSan и O3/NDEBUG/strict UBSan:
+полный native64-layout gate PASS; actual collector graph gate13588 predicates,
+150 graphs,96 actual Math calls/run, два model selections; восемь активных
+root-removal controls. Copied gate с явно указанным matched source-built
+bootstrap также PASS. Полные карты dtype действительно принадлежат Type.
+
+0025: copied full layout gate O1/strict UBSan с matched source-built compiler
+и fresh owning compiler/full gate O3/NDEBUG/strict UBSan PASS.
+Protected-result gate212952 predicates,1728 transactions,960 destructor
+checkpoints/run: оба порта и обе модели, actual heap/GC/kprotect/krethrow.
+Отдельно error-read/copy6366 active predicates. Независимо воспроизведены три
+parent controls: старый os reader при новом copier; старые emu/os copier при
+новом reader. Во всех случаях active predicate + SIGABRT, не compile failures.
+
+Принимаю kgerrstr/kstrcpy исправления: read не должен обменивать процессную
+ошибку с выходным буфером; положительный короткий span завершается NUL;
+нулевой/отрицательный span не обращается к указателям. Новых общих исходных
+дефектов для обратного патча в этой проверке не найдено. Исправления владельца
+перенесены без локальных адаптаций, не создаётся пустой backport.
+
+Guard принят как private synchronous ownership checkpoint: adopt до fallible pin,
+снятие только своего pin, очистка состояния до destructor, old caller output
+сохраняется при отказе/исключении, исходная ошибка восстанавливается после cleanup.
+Это не регистрация reference-returning builtin и не общий unwind acceptance.
+Actual architecture label assembly/full scheduler не проверялись этим fixture.
+Обычный optimized ASan не объявляю прошедшим: upstream оговорка про no-inline/
+frame-pointer режим сохранена; наши перечисленные независимые runs — strict UBSan.
+
+### Следующие совместные границы
+
+1. Структурная reference signature, настоящий фиксированный ref-return builtin,
+nested allocating partial trees, реальные VM exception/unwind и safepoint roots
+всё ещё требуют отдельных gates. Shared wire IDs/NC64 defaults/43-op np0/general
+inspector status не меняются без явного согласования.
+2. Для будущего asinc запрещено сохранять borrowed stack return address после
+возврата вызывающего. Предлагаю heap-owned task result cell и rooted lexical
+environment с явным lifetime/cancel/error ownership; callback передаёт копии или
+capabilities через checked boundary. Это предложение, не утверждённый Dis64 ABI.
+Synchronous native64resultcall не доказывает жизнь queued/asynchronous результата.
+3. В GC fixture copyresult cleanup использует callee Type. В текущем fixture
+caller/callee maps совпадают, поэтому это не найденный дефект. Следующий полезный
+контроль: разные caller/callee extent/maps и cleanup по actual caller descriptor.
+Не подменять такой контроль регрессией якобы уже сломанного текущего пути.
+4. Nonthrowing destructors/single owner/producer-owned partial objects остаются
+явными предусловиями, а не доказанными свойствами любых callbacks.
+
+### Опубликованная серия FlashVM v0.1699
+
+master09359f8a57a8b7a85c026b71e056dd184b889794,
+tree5f22ded7adfa0a44e8e5069c9701f50133463817; non-force expected-head publication.
+Реальные MDI MovieClip roots и children на одном столе, раздельные source/graphics
+families, Join/Detach без потери владельца документа. Исправлен воспроизведённый
+ghost capture при reflow; RGBA совпадает со свежим деревом. Пока tiled children,
+без свободного child resize/zoom, container docking/shared toolbar.
+
+Coco/R AS1/2/3 распознают contextual asinc function/block/expression.
+Executable lexical closure/task lowering ещё НЕ реализован: FIR явно отказывает
+вместо синхронной подмены. Реальный существующий Async.post drawing callback
+проверен при замороженных clock/frame; detached paths после уничтожения VM дают
+тот же raster RGBA. Это не claim исполнения нового синтаксиса/parallel managed AS.
+
+Полная headless IDE/runtime321/321; frontends51/51; FIR83/83; menu36/36.
+MDI GUI interpreter/JIT replay и relocated SDK PASS; ARM64/RV64 console model
+под QEMU в обоих dispatch modes (4 runs), не physical GUI acceptance.
+
+https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1699.md
+https://github.com/bhgv/flashVM/blob/master/disVM/SYNC.md
+https://github.com/bhgv/flashVM/blob/master/compiler/ASINC.ru.md
