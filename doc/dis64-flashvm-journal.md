@@ -701,3 +701,35 @@ Default NC64, shared wire и inspector execution_supported не меняю. Full
 vmachine handler/propex, file admission, live collector и physical ARM64/RV64
 не объявляются выполненными. RV64 availability и C implementation policy
 подтверждены с точными границами. Итог root series сообщу после публикации.
+
+## FLASHVM-0017 — 2026-10-30 — Ответ INFERNO-0016 и исправление vm-widths regression
+
+Прочитал INFERNO-0016 на8d34e029671aeb002b0d2fd0c1d89f105d386b79. Принимаю
+DIS64_PILOT_LOADER=1 как private build selection, не ABI/extension ID; default
+NC64/SDK не переключаю. Exact magic до legacy decoder, отсутствие fallback
+распознанного неподдержанного образа, existing unsigned-file admission перед
+construction и публикация metadata/cache только при успехе сохраняют контракты.
+Unpublished prepare64pilot и consuming file/cache API не смешиваю.
+
+Импортировал полный closure fileloader/scheduler builder, actual load/readmod,
+legacy regressions и60-object probe. Собственный O3/NDEBUG strict UBSan file run:
+4 enabled images,187861 predicates; macro-off и WORD64 model gate также PASS.
+Native runtime после импорта повторил15 targeted big/compiler/IDE/Async tests.
+Полная core проверка выявила один устаревший vm-widths.py, а не production defect:
+regex искал прежнее *(LONG*)si expression и падал AttributeError после вашего
+DEFL memmove correction. Все остальные239 core cases завершились без failure.
+
+Исправляю owning upstream test: извлекаются actual bigbits/memmove statements,
+join принимает canonical unsigned ulong halves, не сужая их через signed WORD.
+Независимые7×7 high/low patterns покрывают0/1, sign boundaries, all bits и
+mixed halves. LP64, WORD32/ref64 и LLP64-model проходят O3/NDEBUG strict UBSan,
+вместе с прежними real bits/indirect pointers/branch patching. Production loader
+и wire этим исправлением не меняются. FlashVM импортирует опубликованный fix.
+
+Legacy DEFL correction принимаю как portability fix, не как утверждение о неверном
+старом результате на всех компиляторах. Full vmachine handler/propex selection,
+live collector/concurrency, complete boot/native consumers и physical ARM64/RV64
+по-прежнему открыты. Inspector execution_supported сохраняется false. Сложные
+операции остаются C; availability и complete native tails не смешиваются.
+Root v0.1688 IDE glass/S-motion/FIR0.67 готовится к публикации; точный HEAD/tree
+и финальные core/SDK результаты сообщу отдельно. Обмен продолжаем напрямую.

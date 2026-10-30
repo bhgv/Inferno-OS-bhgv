@@ -22,7 +22,10 @@ load=(root/'libinterp/load.c').read_text()
 limbo=(root/'limbo/dtocanon.c').read_text()
 vm=extract(load,'canontod','double').replace('canontod(', 'vm_canontod(')
 limbo=limbo.replace('#include "limbo.h"','').replace('canontod(', 'compiler_canontod(')
-big=re.search(r'\*\(LONG\*\)si = (.*);',load).group(1)
+big = re.search(r'bigbits = \(\(uvlong\)hi<<32\)\|lo;\s*memmove\(si, &bigbits, sizeof\(bigbits\)\);', load)
+if big is None:
+    raise RuntimeError('canonical big loader statements changed; update the borrowed-body probe')
+big = big.group(0)
 macro=next(line for line in (root/'libinterp/dec.c').read_text().splitlines() if line.startswith('#define DIND'))
 # The generator must emit the same pointer expression as the generated file.
 if macro.replace('\\','\\\\').replace('"','\\"') not in (root/'libinterp/decgen.c').read_text():
@@ -82,11 +85,17 @@ static struct { uchar *FP; Inst *PC; } R;
 ''' + helpers + '\n' + macro + '\n' + patch + r'''
 
 
-/* Assemble canonical halves with the exact production loader expression. */
+/* Assemble unsigned canonical hi/lo halves with unchanged loader statements.
+ * Return the exact LONG payload through copied native bits, without a signed
+ * narrowing conversion. Scratch belongs to this synchronous probe only. */
 static LONG
-join(WORD hi, WORD lo)
+join(ulong hi, ulong lo)
 {
-    return BIG_EXPRESSION;
+    uvlong bigbits;
+    LONG value;
+    uchar *si = (uchar*)&value;
+    BIG_STATEMENTS
+    return value;
 }
 
 
@@ -98,6 +107,8 @@ main(void)
         0x3ff8000000000000ULL,0xbff8000000000000ULL,1,0x0010000000000000ULL,
         0x7fefffffffffffffULL,0x7ff0000000000000ULL,0xfff0000000000000ULL,
         0x7ff8123456789abcULL};
+    static const uint32_t halves[]={0,1,0x7fffffffU,0x80000000U,0xffffffffU,
+        0x01234567U,0x89abcdefU}; // Independent canonical halves, including both signed boundaries.
     ulong words[2],again[2];
     uint64_t result;
     double input,decoded;
@@ -114,10 +125,10 @@ main(void)
         decoded=compiler_canontod(words); memcpy(&result,&decoded,8); check(result==bits[i]);
         dtocanon(decoded,again); check(again[0]==words[0] && again[1]==words[1]);
     }
-    for(i=0;i<sizeof(bits)/sizeof(bits[0]);i++)
-        for(j=0;j<sizeof(bits)/sizeof(bits[0]);j++) {
-            uint32_t hi=bits[i],lo=bits[j];
-            check((uint64_t)join((WORD)(int32_t)hi,(WORD)(int32_t)lo)==((uint64_t)hi<<32|lo));
+    for(i=0;i<sizeof(halves)/sizeof(halves[0]);i++)
+        for(j=0;j<sizeof(halves)/sizeof(halves[0]);j++) {
+            uint32_t hi=halves[i],lo=halves[j];
+            check((uint64_t)join(hi,lo)==((uint64_t)hi<<32|lo));
         }
     *(uchar**)area.raw=target;
     R.FP=area.raw; R.PC=instructions;
@@ -129,7 +140,7 @@ main(void)
     instructions[0].d.imm=2; check(brpatch(&instructions[0],&m)==0);
     return 0;
 }
-'''.replace('BIG_EXPRESSION',big)
+'''.replace('BIG_STATEMENTS',big)
 with tempfile.TemporaryDirectory(prefix='vm-widths-') as td:
     td=Path(td)
     src=td/'widths.c';src.write_text(unit)
@@ -140,4 +151,4 @@ with tempfile.TemporaryDirectory(prefix='vm-widths-') as td:
                        shlex.split(os.environ.get('CFLAGS','-O1 -g'))+
                        ['-I'+str(root/'include')]+defines+[str(src),'-o',str(exe)],check=True)
         subprocess.run([str(exe)],check=True)
-print('PASS VM widths: canonical real bit patterns, big halves, indirect pointers and branch patching in three data models')
+print('PASS VM widths: canonical real bit patterns, 49 independent big-half pairs, indirect pointers and branch patching in three data models')
