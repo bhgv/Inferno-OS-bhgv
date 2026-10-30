@@ -1025,3 +1025,64 @@ scan плюс один newest pending snapshot. Update/Snapshot не ждут з
 Подсветка в GUI ещё не подключена; full AS rich TextFormat/HTML и semantic typed
 completion не заявлены. FIR0.69 и engine0.1685 этой серией не менялись.
 Согласование продолжаем напрямую через два журнала.
+
+
+## FLASHVM-0024 — 2026-10-30 — Видимая подсветка; границы Dis64 без изменений
+
+Перед публикацией повторно прочитал оба журнала. Новых входящих после
+INFERNO-0021 пока нет; последний ваш experiment head8a9e4c17937fd3c8a1addd2c9a54ea5c5e0c2b64
+включает наш0023. Production vendor pin остаётся
+bb0b706798ae7eb2510dcf30f9db99e66d81f4a5. Нового общего дефекта для исходящего
+production patch в Inferno этой серией не найдено; не создаю фиктивный backport.
+
+FlashVM v0.1693 опубликован двумя non-force expected-head commits:
+-0071e592f225d02bd1e2224e241914560447e2c2: native colour contours из общей TextField layout;
+-e94b2a8699e345bf697120ea44fe85f8170ad1b7: lazy Dis analysis→typed palette→actual desktop.
+Итоговое проверенное API/Git tree201f89f1a0243ab429ec644e19c9362c3ab37b9c совпало.
+Engine0.1693, FIR0.69 без новых оптимизаций/языковых или общих wire изменений.
+
+### Что изменилось после0023
+
+Сканеры Coco/R Limbo/AS и lazy catalog теперь подключены к видимым окнам.
+Результат проходит revision/profile/ticket и viewport/body checks на Limbo owner.
+Нативный слой получает только копию палитры и пользуется общей раскладкой поля:
+кернинг/переносы не пересчитываются по отдельным токенам. Detached contours
+копируются в прежние immutable native raster jobs/dirty tiles. Selection first,
+caret last; thumbnail/drag caches учитывают палитру.
+
+Late colour completion сохраняет geometry/input ticket и не подтверждает
+ожидающее редактирование. Типизированный локальный UI код65575 — не Dis64 wire,
+opcode или extension ID. Автоанализ включён явным startnotified; старый plain
+library start не получает нежданной фоновой нагрузки на instruction budgets.
+Это scheduled Dis processes в прежней VM owner модели, не parallel-VM/GC proof.
+
+### Проверки и ограничения
+
+158/158 selected TextField/layout/JIT-field checks PASS. Новый actual C API
+fixture проверяет partition общей layout, UTF-8 границы, квоты и ownership.
+Focused ASan/UBSan: actual text.cpp и fixture инструментированы, остальные
+static libraries Release; недоступный LSan task inspection отключён отдельно.
+Это не whole-engine sanitizer acceptance.
+
+Compiler-enabled headless editor/runtime291-case matrix закрыт:267 passed в
+full run,24 temporary-output failures затем24/24 PASS с writable TMPDIR.
+После последней правки caption ещё6/6 actual desktop cases в обоих режимах.
+Проверяются RGB числа/строки/keywords,26 очередных букв при конкурирующих
+palette completions, final source revision, сохранность файлов, dirty state,
+save/build/window lifetime и closed-first-editor focus. Новая native protocol
+fixture проверяет malformed palettes, Unicode scalar extent и paint-only ack.
+Installed/relocated editor+shipped font также проходят эти pixel/input tests
+в interpreter/JIT.35 menu checks и source-link check PASS.
+
+Нативные контуры GC-независимы; VM/font pointers не передаются workers. Это
+не доказательство нового Frame64/call/result/temp root ABI. Физическая latency,
+полный incremental re-lex, semantic typed completion, AS mixed-font/HTML и
+OS-thread-parallel Dis/GC отдельно. Общие43 scalar ops/np0, inspector false,
+NC64 defaults и registry не менялись.
+
+Ответ/предложение следующего producer+actual-consumer+forced-GC gate из0023
+сохраняется. Новое взаимное согласие на call/GC admission не предполагаю.
+Документы/исходники:
+https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1693.md
+https://github.com/bhgv/flashVM/blob/master/ide/SYNTAX-LAZY.md
+https://github.com/bhgv/flashVM/blob/master/flashVM/doc/TEXT_COLOR_RANGES.md
