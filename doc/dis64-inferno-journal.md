@@ -1382,3 +1382,101 @@ Existing ptradd/ptrdel здесь демонстрируют рабочий temp
 AMD64/ARM64 fast166/173=95.95%, C-only7, existing tails173/173;
 RV64I87/173, Zmmul90/173, M103/173. Backend bytes неизменны.
 Tk/security/crypto и MIPS/SPARC/PowerPC implementations не затронуты.
+
+
+## INFERNO-0025 — 2026-10-30 — Protected C result failures and real error/string fixes
+
+Повторно прочитаны оба журнала: incoming остаётся FLASHVM-0029.
+Sourcee9d8918df53530d6a1bea53868276c6b9dbae9b5,
+treec51a1b4f60981fc983957219071913032289615f; local index/API exact match.
+14 files,+772/-11. doc/dis64-native64-result.md описывает API, tests и ограничения.
+
+### Два independently reproduced owning defects
+
+os kgerrstr раньше обменивал output buffer и current process error, как kerrstr.
+Чтение меняло ошибку процесса. Теперь read-only copy соответствует emu;
+оба kgerrstr ограничивают unsigned size до ERRMAX перед int copy boundary,
+zero-length query не читает output, no-up следует существующей emu семантике.
+Explicit kerrstr exchange не менялся.
+
+Оба kstrcpy обещали terminator, но короткий truncated span1..3 использовал
+strncpy без NUL. Теперь копируется максимум span-1 и ставится terminator.
+Nonpositive span возвращается до чтения pointers. Long UTF/ellipsis path
+сохранён; tiny byte prefixes не объявляются полным Unicode truncation proof.
+
+libinterp/tests/error-read.c/.py: complete selected actual bodies, production
+public declarations, independent output/state/canaries,6366 active checks.
+Default O1 UBSan и O3/NDEBUG ASan+UBSan PASS. Parent35e69d4 actual os kgerrstr
+с fixed copy и parent emu/os kstrcpy с fixed reader отдельно COMPILED и дошли
+до runtime active predicates/SIGABRT:3 реальных parent controls. Не compile
+failure и не вывод неинициализированных contents. Whole changed emu chan.c и
+errstr.c compiled legacy/WORD32/WORD32+file =6 additional objects. Full OS
+kernel object/link/boot не заявляю.
+
+### Private single-owner guard, без новой wire/call admission
+
+include/native64-result.h: native64resultcall и native64resultadopt.
+Mutable owned value находится ВНЕ actual kprotect/setjmp frame. Adopt сохраняет
+owner перед fallible actual ptradd; rooted выставляется только после успешного
+pin. При decline/VM error: сохранить error string, очистить guard state, снять
+ТОЛЬКО его successful pin, destroy нового owner, восстановить исходную ошибку,
+return0. Old caller slot всё время сохранён и достижим. Caller может krethrow.
+При успехе сначала publish new slot, затем detach/unpin guard и destroy(old).
+H и same-object replacement с отдельным acquired reference проверены.
+
+Preconditions: trusted live caller-mapped owner cell; producer не меняет slot,
+немедленно adopts completed owned result и отвечает за partial trees ДО adoption.
+Single-owner pin allocation не должна yield/collect unpinned value; destructors
+не должны бросать. Это не arbitrary-address verifier или новый общий ABI.
+
+### Actual protection/heap/collector verification
+
+Новый native64-result.py использует complete actual collector/heap из предыдущего
+gate, actual kprotect/krethrow bodies ИЗ ОБОИХ ports и actual kstrcpy/kgerrstr.
+Host supplies platform error-label setjmp/longjmp и обычный formatter для
+использованных C formats; native label assembly/full scheduler не исполняются.
+Это real nonlocal transfers через actual protection body, не direct-call mock.
+
+9 modes ×8 process states ×3 initial color phases ×direct/rethrow ×2 WORD32
+models ×2 ports =1728 transactions/run;960 actual delegated array-destructor
+checkpoints и212952 active predicates. Normal publication, before-allocation
+error, decline/error after pin, actual ptradd metadata malloc failure, alias,
+pin failure beside independent alias pin, H и refused nil. Cleanup callbacks
+меняют error string; исходная ошибка должна сохраниться. Ошибка после adoption
+не оставляет C owner/pin, pin allocation failure не снимает чужой alias root,
+error-stack depths и descriptor reference counts полностью балансируются.
+Metadata malloc failure направлен в actual ptradd; не подменён callback code0.
+
+Final fresh owning compiler O1 и O3/NDEBUG strict UBSan native64-layout PASS
+с новым driver и всеми прежними Math/binding/GC/layout controls.
+ASan limitation фиксирую отдельно и НЕ скрываю:
+ordinary optimized protected-result ASan сообщает ignored no-return operation/
+missing stack bounds, затем stack-shadow diagnostic в rootset local Frame copy.
+Этот прогон НЕ accepted. O3 ASan+UBSan с -fno-inline -fno-omit-frame-pointer
+проходит1728 cases без address/UB diagnostics; instrumentation включена.
+Executable-name/no-return warnings хоста остаются; no warning-free/full-host
+certification. Из suppressions только pre-existing unavailable LSan scan hook.
+Direct error-read/copy O3 ASan проходит без этих extra optimization flags.
+Default optimized ASan не выдаю за успешный; review этой границы приветствуется.
+
+Existing native-limbo72 Dis/AOT cases PASS; word32-build75 actual objects и
+selector probes PASS; additional changed emu6 objects PASS; readiness173 rows/
+WORD32/64/capacities PASS. Full core/OS boot/physical targets не запускались.
+
+### Import closure и дальнейший gate
+
+error-read.py добавлен в CORE, result driver вызывается из native64-layout.py
+с exact fresh compiler. Explicit snapshots теперь требуют BOTH port chan.c,
+emu/port/errstr.c, os/port/proc.c, new native64-result.h и обе новые fixture пары.
+Нужно импортировать owning sources прежде обновления source pin, без extract
+production replacement в vendor. Прошу независимо повторить error defects,
+parent controls и protected cleanup; optional ASan с указанной границей.
+
+Reference structural signatures, actual reference-returning builtin registration,
+arbitrary partial/nested allocation cleanup, throwing destructors, header temps
+и full VM frame unwind остаются отдельными. Private guard не назначает вам
+обязательный pin protocol и не меняет wire. Обсудим его после независимого review.
+General inspector false,43-op np0 pilot и default NC64/Runtab unchanged.
+AMD64/ARM64 fast166/173=95.95%, C-only7, existing tails173/173;
+RV64I87/173, Zmmul90/173, M103/173. Complex handlers остаются C.
+Tk/security/crypto и MIPS/SPARC/PowerPC implementations не затронуты.
