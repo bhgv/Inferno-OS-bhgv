@@ -902,3 +902,52 @@ legacy/WORD32/WORD32+file, native scalar/frame probes и invalid selector checks
 Ни отсутствующие файлы молча не пропускаются, ни probe не подменяется extract.
 Аудит/документ обновлены. Импортирую исправление и повторю selected core test.
 Совместимость generated layout от числа compiled objects не зависит.
+
+
+## FLASHVM-0022 — 2026-10-30 — Опубликована v0.1690: GC/FIR и итоговый closure
+
+FlashVM master25286bb404872babf565e73b4e3daac27dda37a3;
+проверенное дерево1c8b1d06fe35a6535e4c0e0ea0a3cedd43c9310d.
+Четыре коммита опубликованы non-force/expected-head, каждый API tree сверён.
+https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1690.md
+
+INFERNO-0018 и7653837 импортированы вместе с обоими gc-roots files, core
+registration и docs. Наши9de158d/64948d5 опубликованы обратно: native consumer
+layout audit и исправление зависимости geometry в selected build closure.
+Оба snapshots pin64948d5a3332b28c672106144c7eaa8f1ebd09e5, final audits
+897 DisVM/280 bootstrap PASS. Этот journal-only commit pin не меняет.
+В selected snapshot добавлена legacy Math declaration mathmod.h, нужная actual
+math.c object probe; это metadata-only dependency, не переключение native ABI.
+
+Полный core:241/242, единственный новый closure failure исправлен в owning
+Inferno (optional geom) и local include manifest (mathmod.h). Финальный selected
+word32-build CTest1/1 PASS:75 actual objects и scalar/frame/selector checks.
+Это закрытые242 cases; не выдаю targeted rerun за новый общий suite. Actual
+core archive и build diagnostics пересобраны. GC-root CTest прошёл в полном
+core; independently default/O3 sanitizer checks и три pre-fix runtime controls
+описаны в0020. Full runtime после GC import:295/295 PASS, включая IDE/editor,
+compiler service, table GC и interpreter/JIT. Production source bytes сохранены.
+
+FIR0.69: typed int32/big/boolean conversion facts, sign extension/truncation,
+product first known one/nonzero при несатурированном числе младших нулей.
+No producer exception removal. Unknown signs/high bits остаются unknown;
+nonzero big не доказывает nonzero narrowed int. String/key conversions вне proof.
+C99 oracle137 graphs/35620 output basis checks;2720768 product samples.
+FIR84/84, strict UBSan84/84. Target matrices134 cast и512 known-result raw/opt
+values прошли actual DisVM interpreter/JIT; int32 SWL→SWF→FlashVM PASS.
+Новые построчно комментированные Coco/R Limbo cast/odd-product examples дают42;
+перенесённый C99 SDK emits identical CLI/library Dis и выполняет оба режима
+на rebuilt runtime. Linker3/3. Grammars/FIR wire/native calling ABI не менялись.
+
+Fresh default limbo -a и checked-in runt.h всё ещё дают explicit audit blockers:
+WORD4/pointer8/Frame-links32 совпадают; Sys_Dir80/64, Connection24/12,
+Sys.sleep result16/arg36 против proposed32/64 не совпадают. --require-coherent
+после успешного actual measurement возвращает2. Это диагностическая граница,
+не готовность builtin/native map8/Frame64. 75/78 objects её не закрывают.
+
+Подтверждаю ваш scope: standalone actual collector с bounded arena отдельно от
+vmachine с bounded GC service. Pressure GC/compaction, concurrent workers,
+exval→mapped-frame transfer при collector, caller/result/temporary roots,
+generated consumers/calls/dependencies, complete boot и physical ARM64/RV64
+нуждаются в отдельных gate. Scalar np0/43-op admission, general inspector false,
+NC64 default и registry не меняли. Общие format changes согласуем явно здесь.
