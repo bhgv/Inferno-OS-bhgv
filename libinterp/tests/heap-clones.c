@@ -22,6 +22,8 @@ clonepredicate(int condition)
 static Proc worker;
 static char *raised;
 static int live, allocations, failat, checks;
+static Heap *pins[512]; // Bounded external-root service; actual tracing is checked separately.
+static int npins, pincalls, pinfail = -1; // One pin per successful acquisition, with independent failure injection.
 static struct CloneBlock { Heap *heap; ulong size; } blocks[512];
 void freearray(Heap*, int);
 void freemodlink(Heap*, int);
@@ -40,6 +42,30 @@ void nexterror(void) { clonecheck(worker.nerr > 0); siglongjmp(worker.estack[--w
 void error(char *s) { raised = s; nexterror(); }
 /* LeakSanitizer process inspection is unavailable in this sandbox. */
 int __lsan_is_turned_off(void) { return 1; }
+
+
+/* Fail before acquiring a pin, independently of successful heap allocation. */
+void
+ptradd(Heap *heap)
+{
+	if(++pincalls == pinfail)
+		error(exHeap);
+	clonecheck(heap != nil && heap->ref > 0 && npins < 512);
+	pins[npins++] = heap;
+}
+
+
+/* Remove exactly one successful pin; failed acquisitions must not reach this service. */
+void
+ptrdel(Heap *heap)
+{
+	int i;
+
+	for(i = 0; i < npins && pins[i] != heap; i++)
+		;
+	clonecheck(i < npins);
+	pins[i] = pins[--npins];
+}
 
 
 /* Inject allocation failure and guard the exact real heap payload. */
@@ -72,6 +98,8 @@ destroy(void *p)
 	if(p == H)return;
 	h = D2H(p); clonecheck(h->ref > 0);
 	if(--h->ref)return;
+	for(j = 0; j < npins; j++)
+		clonecheck(pins[j] != h);
 	for(i = 0; i < 512 && blocks[i].heap != h; i++);
 	clonecheck(i < 512);
 	for(j = 0; j < 32; j++)clonecheck(((uchar*)h)[blocks[i].size+j] == 0xa5);
@@ -146,7 +174,7 @@ run(void *unused)
 static void
 setup(void)
 {
-	clonecheck(live == 0 && worker.nerr == 0);
+	clonecheck(live == 0 && worker.nerr == 0 && npins == 0);
 	Tarray.size = sizeof(Array);
 	leaf.size = sizeof(WORD);
 	pointer.size = sizeof(void*); pointer.np = 1; pointer.map[0] = 0x80;
@@ -154,6 +182,8 @@ setup(void)
 	atom.size = sizeof(WORD);
 	mp.size = 4*sizeof(void*); mp.np = 1; mp.map[0] = 0xf0;
 	allocations = 0; failat = -1; source = result = H; mp_source = mp_dest = H;
+	pincalls = 0;
+	pinfail = -1;
 }
 
 
@@ -226,7 +256,7 @@ unchanged(Snapshot *s)
 {
 	int i;
 
-	clonecheck(live == s->count && worker.nerr == 0);
+	clonecheck(live == s->count && worker.nerr == 0 && npins == 0);
 	for(i = 0; i < s->count; i++)clonecheck(s->heap[i]->ref == s->refs[i]);
 	clonecheck(Tarray.ref == s->types[0] && leaf.ref == s->types[1] && pointer.ref == s->types[2]);
 	clonecheck(record.ref == s->types[3] && atom.ref == s->types[4] && mp.ref == s->types[5]);
@@ -298,6 +328,39 @@ ownedmp(void)
 		if(D2H(s[i])->t == &Tarray)clonecheck(d[i] != s[i]);
 		else clonecheck(d[i] == s[i] && D2H(s[i])->ref == 2);
 	}
+}
+
+
+/* Fail every mapped-array pin acquisition after allocation, including nested owners. */
+static void
+pinerrors(void)
+{
+	Snapshot original;
+	int count, point;
+
+	setup();
+	operation = 0;
+	source = tree(4);
+	save(&original);
+	pincalls = 0;
+	clonecheck(kprotect(run, nil));
+	count = pincalls;
+	clonecheck(count > 1 && npins == 0);
+	destroy(result);
+	result = H;
+	unchanged(&original);
+	for(point = 1; point <= count; point++){
+		pincalls = 0;
+		pinfail = point;
+		raised = nil;
+		clonecheck(!kprotect(run, nil) && raised == exHeap && result == H);
+		unchanged(&original);
+		checks++;
+	}
+	pinfail = -1;
+	destroy(source);
+	source = H;
+	clonecheck(live == 0 && npins == 0);
 }
 
 
@@ -415,6 +478,7 @@ main(void)
 
 	only = getenv("HEAP_CLONE_CASES");
 	if(only == nil || !strcmp(only, "arrays"))arrays();
+	if(only == nil || !strcmp(only, "pins"))pinerrors();
 	if(only == nil || !strcmp(only, "mp"))moduledata();
 	if(only == nil || !strcmp(only, "instances"))instances();
 	if(only == nil || !strcmp(only, "maps"))mapbytes();

@@ -24,6 +24,34 @@ Type Tarray={1,0,0,sizeof(Array)},Tmodlink={1},Tlist={1};
 REG R;
 static ulong requested;
 static int poolcalls,live,force_failure;
+static Heap *clonepins[512]; // Bounded root service; this fixture does not implement a collector.
+static int nclonepins; // Successful pin acquisitions awaiting their matching release.
+
+
+/* Record one live owner without adding an ordinary reference-count owner. */
+void
+ptradd(Heap *heap)
+{
+    if(heap == nil || heap->ref == 0 || nclonepins == 512)
+        abort();
+    clonepins[nclonepins++] = heap;
+}
+
+
+/* Detect unbalanced pin release even when NDEBUG disables inherited assertions. */
+void
+ptrdel(Heap *heap)
+{
+    int i;
+
+    for(i = 0; i < nclonepins && clonepins[i] != heap; i++)
+        ;
+    if(i == nclonepins)
+        abort();
+    clonepins[i] = clonepins[--nclonepins];
+}
+
+
 void *poolalloc(Pool *p,ulong n) {
     void *v;(void)p;requested=n;poolcalls++;
     if(force_failure || n>1024*1024)return nil;

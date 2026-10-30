@@ -3,12 +3,17 @@
 import ctypes
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import tempfile
 root=Path(__file__).resolve().parents[2]
 source=(root/'libinterp/comp-riscv.c').read_text()
-fragment=source[source.index('#ifdef __riscv_mul'):source.index('\tabi.pc=O(REG, PC);')]
+start=source.index('#ifdef __riscv_mul')
+boundary=re.search(r'\n\s*abi\.pc\s*=', source[start:])
+if boundary is None:
+    raise RuntimeError('RISC-V feature block boundary missing')
+fragment=source[start:start+boundary.start()]
 unit='struct {int hasm,hasdiv;} abi;\nint features(void){\n'+fragment+'return abi.hasm+2*abi.hasdiv;}\n'
 with tempfile.TemporaryDirectory(prefix='riscv-features-') as directory:
     td=Path(directory)
@@ -19,5 +24,6 @@ with tempfile.TemporaryDirectory(prefix='riscv-features-') as directory:
         command+=['-shared','-fPIC','-U__riscv_mul','-U__riscv_div']
         command+=['-D'+macro+'=1' for macro in definitions]
         subprocess.run(command+[str(td/'features.c'),'-o',str(binary)],check=True)
-        assert ctypes.CDLL(str(binary)).features()==expected
+        if ctypes.CDLL(str(binary)).features()!=expected:
+            raise RuntimeError('RISC-V compiler selected the wrong ISA features')
 print('PASS RISC-V compiler feature profiles: I, Zmmul, M')

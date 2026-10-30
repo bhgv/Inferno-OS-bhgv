@@ -111,3 +111,8 @@ host; incoming FlashVM QEMU ARM64/RV64 reports are separate peer evidence.
 The next [protected C result checkpoint](dis64-native64-result.md) exercises
 producer errors and pin-allocation failure with actual port kprotect/rethrow
 bodies, preserving the old owner and original error during cleanup.
+
+
+The [nested array regression](dis64-native64-nested.md) additionally forces
+collection while actual arraycpy allocates descendants, exercising construction
+roots that are separate from caller publication roots.

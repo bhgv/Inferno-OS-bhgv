@@ -553,6 +553,7 @@ typedef struct ArrayCopy ArrayCopy;
 struct ArrayCopy {
 	Array *source; // Source array stays owned by the caller throughout cloning.
 	Array *result; // Partial destination released by the error protector.
+	int rooted; // One successful external pin while descendant allocations can collect.
 };
 
 
@@ -590,6 +591,9 @@ copyarray(void *arg)
 			memmove(da->data, sa->data, da->len*da->t->size);
 		return 1;
 	}
+	/* The collector does not scan this C stack while nested arrays allocate. */
+	ptradd(D2H(da));
+	c->rooted = 1;
 	/* Dis data declarations limit nesting to DADEPTH. */
 	for(i = 0; i < sa->len; i++)
 		newmp(da->data+i*da->t->size, sa->data+i*sa->t->size, sa->t);
@@ -611,8 +615,14 @@ arraycpy(Array *sa)
 		error(exHeap);
 	c.source = sa;
 	c.result = H;
-	if(kprotect(copyarray, &c))
+	c.rooted = 0;
+	if(kprotect(copyarray, &c)){
+		if(c.rooted)
+			ptrdel(D2H(c.result));
 		return c.result;
+	}
+	if(c.rooted)
+		ptrdel(D2H(c.result));
 	destroy(c.result);
 	krethrow();
 	return H;

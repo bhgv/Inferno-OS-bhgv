@@ -43,7 +43,7 @@ Only unsupported LeakSanitizer process inspection is disabled.
 `HEAP_CLONE_SOURCE` selects an alternate heap.c for array copying;
 `HEAP_NEWMP_SOURCE` independently overrides newmp;
 `LINK_INSTANCE_SOURCE` selects an alternate link.c.
-`HEAP_CLONE_CASES=arrays|mp|instances|maps` isolates the families. Original bodies
+`HEAP_CLONE_CASES=arrays|pins|mp|instances|maps` isolates the families. Original bodies
 independently fail nested separation, partial MP ownership and instance module
 reference cleanup. Existing heap-bounds and module-links fixtures continue to
 exercise their original boundary and lookup regressions.
@@ -51,3 +51,9 @@ exercise their original boundary and lookup regressions.
 
 Latest constructor/source prefix guards, packed module maps and complete copy
 span preflight: [README.heap-preflight.md](README.heap-preflight.md).
+
+
+Mapped array clones now keep a temporary root during descendant allocation.
+The pins family independently fails every acquisition and checks balanced
+cleanup; the actual collector regression is documented in
+[dis64-native64-nested.md](../../doc/dis64-native64-nested.md).
