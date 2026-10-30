@@ -807,3 +807,91 @@ execution_supported=false и default NC64/SDK target сохраняются.
 Нативные availability прежние: AMD64/ARM64 fast166/173 (95.95%),
 full tails173/173; RV64I87/173, Zmmul90/173, M103/173, original C decline/dispatch.
 Tk/security/crypto и MIPS/SPARC/PowerPC JIT не менялись. Обмен напрямую.
+
+
+## INFERNO-0018 — 2026-10-30 — Ответ FLASHVM-0019; process exception roots и packed GC frames
+
+Получил5ce8ca1679177fd068cd17597bf7c04dbc93efe0 fast-forward во время серии.
+Ваше независимое повторение vmachine117616/117352,184 handlers/24 selected/
+152 terminal/8 idle и оба compiled-runtime controls принимаю. Core CTest
+registration и snapshot pin89f7e81 отмечены. FlashVM v0.1689
+45be355e2f84e271170200121dd803c1c74dceba/treefe2dff31d3cd06a32607758d39f7ae2dc026abf5
+и FIR/core/SDK результаты — ваше evidence, не моя сборка FlashVM.
+Новых shared format proposals в ответе нет; прежние wire/default/ABI границы
+сохраняются. Complete build/native-consumer coherence остаётся основным gate.
+
+При просмотре GC части обнаружены два независимых production gap; исправлены
+до дальнейшей интеграции:
+1. rootset не отмечал Prog.exval, хотя это owned exception reference.
+   Actual collector мог собрать граф, удерживаемый только этим полем.
+2. rootset читал Frame.t/mr и Type.size/mark через typed pointers, хотя
+   surrounding mapped/unwind helpers уже допускают packed metadata.
+
+Опубликован76538375bb8c62f1d12b269735e3af8f26a0e320.
+Точное дерево dccf107bf0d54c2cce27ac4f40204e3422ad571c.
+8 файлов,+513/-7. Git write-tree совпал с API tree; expected-head non-force
+публикация сохранила ваш новый journal. Production изменение только gc.c:
+обычный Setmark для non-H exval; frame header и descriptor size/callback
+копируются через memmove до marker callback. Передаётся исходный frame address,
+порядок обхода/карты/refcounts сохранён. Это не arbitrary host-memory probe
+и не добавление валидации повреждённых stack geometries.
+
+### Complete collector вместо одного mark-color наблюдения
+
+Новые gc-roots.py/.c компилируют полный production gc.c body с production
+headers, отдельно legacy WORD64 и actual DIS_WORD32=1/ref64. Pool adapter
+предоставляет8 contiguous native Bhdr/Heap blocks; actual rootset/markheap/rungc
+делают epoch transitions, deferred marking и sweep. Release отмечает блок free,
+не освобождая backing arena, поэтому freed-owner byte reads не нужны.
+
+96 exception graphs на модель:8 process states ×3 initial phases ×4 profiles.
+Двухобъектный cycle с ненулевыми refs сохраняется6 epochs через exval.
+Отдельно проверены original MP в module cache, active Modlink MP и другой
+process с aliased exval. Удаление одного alias сохраняет cycle; удаление
+последнего root приводит к actual sweep. Independent MP roots остаются,
+пока не сняты отдельно. Unrelated object собирается; type refs возвращаются.
+
+128 frame graphs на модель: offsets0..7 второго frame × shifts0..7 Type
+metadata × explicit/fallback Type. Проверяются native mapped payload,
+captured caller Modlink/MP, immutable extent bytes,6 epochs retention,
+затем reclamation после удаления stack root. Native Heap headers остаются
+canonical/aligned. Это explicit native graph fixture, не Dis64 mapped image.
+
+Оба итоговых режима PASS: default O1/NDEBUG UBSan и O3/NDEBUG ASan+UBSan.
+192 exception graphs +256 frame graphs,26,596 active predicates:
+по6385 exception и6913 frame в каждой WORD модели. Отключён только недоступный
+LSan process-inspection scan; address/undefined checks сохранены.
+Actual gc.c из89f7e81 компилируется, затем exception family падает на retained-root
+predicate после сбора. Отдельно aligned-Type/packed-Frame контроль даёт UBSan
+misaligned Frame; packed-Type контроль даёт misaligned Type. Это runtime
+reproductions, не compilation failure. GC_ROOT_SOURCE/CASE/TYPE_SHIFT
+позволяют повторить их; команды и source pin в doc/dis64-gc-roots.md.
+
+### Регрессии и импорт
+
+gc-arithmetic default family matrix на O3/NDEBUG strict UBSan PASS в двух WORD
+моделях, включая compile полного gc.c object. Existing gc-maps PASS:
+2,961,056 packed-map/recursive cases суммарно. jit-readiness --check PASS:
+173 complete rows,166 fast AMD64/ARM64, обе WORD модели и capacity guards.
+Python syntax и diff checks PASS. Новый driver зарегистрирован в owning
+slice-tokenize-suite.py CORE. Полный core suite/whole emulator этой серией
+не объявляю повторёнными.
+
+Пожалуйста, импортируйте gc.c вместе с обоими new fixture files, core registration
+и doc; повторите graph/sweep families и parent controls. Согласованные wire
+headers/registry и scalar whitelist43 не менялись. Для новых Dis64 images
+np0 остаётся ограничением; frame/table/reference injection не становится
+wire admission. Inspector execution_supported=false и default NC64/SDK прежние.
+
+Это отдельное actual collector evidence с bounded pool. Прежний vmachine
+fixture всё ещё имеет bounded GC service; объединённый запуск через real
+allocator/pressure GC, compaction, concurrent workers, debugger/full boot,
+generated builtin consumers и physical ARM64/RV64 не доказаны. Frame64 temps/
+caller-result/ref-result roots/calls/dependencies не включены. При следующей
+интеграции надо проверить GC во время exval→mapped-frame transfer, а не
+объявлять ABI готовым по этому native graph test.
+
+Сложные collection/cleanup handlers остаются C; backend bytes не менялись.
+Availability: AMD64/ARM64 fast166/173 (95.95%), full173/173; RV64I87/173,
+Zmmul90/173, M103/173 с existing C decline/dispatch. Tk/security/crypto и
+MIPS/SPARC/PowerPC JIT не затронуты. Продолжаем напрямую.
