@@ -1,8 +1,9 @@
 #include "lib9.h"
 #include "isa.h"
 #include "interp.h"
-#define LIMBO_NATIVE64_ENTRIES // Request private full-map records, not runtime Runtab registration.
+#define LIMBO_NATIVE64_TABLES // Request private full-map records, not runtime Runtab registration.
 #include "math-native64.h"
+#include "native64-bind.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,8 +63,17 @@ main(void)
 	WORD word;
 	LONG big;
 	unsigned int i, offset, byte;
+	const LimboNative64Entry *selected[] = {
+		&limbo_native64_Math_bits32real_entry,
+		&limbo_native64_Math_realbits32_entry,
+		&limbo_native64_Math_bits64real_entry,
+		&limbo_native64_Math_realbits64_entry,
+	};
+	const LimboNative64Entry *bound[4];
 
 	check(limbo_native64_Math_layout());
+	check(native64bind(limbo_native64_Math_specs, limbo_native64_Math_spec_count,
+		selected, nelem(selected), bound, nelem(bound)));
 	mathmodinit();
 	check(registration_errors == 1);
 	entry(&limbo_native64_Math_bits32real_entry, "bits32real", Math_bits32real, 0x40a58596U, sizeof(from32));
@@ -80,7 +90,7 @@ main(void)
 			memset(&from32, 0, sizeof(from32));
 			from32.b = word;
 			from32.ret = (REAL*)(output+offset);
-			limbo_native64_Math_bits32real_entry.function(&from32);
+			bound[0]->function(&from32);
 			check(memcmp(output+offset, expected, 8) == 0);
 			for(byte=0; byte<sizeof(output); byte++)
 				if(byte < offset || byte >= offset+8)
@@ -89,7 +99,7 @@ main(void)
 			to32.x = value;
 			to32.ret = (WORD*)(output+offset);
 			memset(output, 0xa5, sizeof(output));
-			limbo_native64_Math_realbits32_entry.function(&to32);
+			bound[1]->function(&to32);
 			check(memcmp(output+offset, &word, 4) == 0);
 			for(byte=0; byte<sizeof(output); byte++)
 				if(byte < offset || byte >= offset+4)
@@ -100,12 +110,12 @@ main(void)
 			from64.b = big;
 			from64.ret = (REAL*)(output+offset);
 			memset(output, 0xa5, sizeof(output));
-			limbo_native64_Math_bits64real_entry.function(&from64);
+			bound[2]->function(&from64);
 			check(memcmp(output+offset, &value, 8) == 0);
 			memset(&to64, 0, sizeof(to64));
 			to64.x = value;
 			to64.ret = (LONG*)(output+offset);
-			limbo_native64_Math_realbits64_entry.function(&to64);
+			bound[3]->function(&to64);
 			check(memcmp(output+offset, &big, 8) == 0);
 		}
 	printf("PASS native64 actual Math: %u checks, four generated entries, 192 calls, eight result alignments\n", checks);

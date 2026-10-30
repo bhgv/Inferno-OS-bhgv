@@ -167,3 +167,7 @@ layout predicate rejects the changed offsets at runtime. Compatible fixture
 models each execute53 active predicates and14 independent map checks; both
 unsupported models now check the model and layout rejection paths. No builtin
 implementation is rebuilt or invoked using these declarations in this gate.
+
+[Private generated tables and binding](dis64-native64-binding.md) now match
+selected actual C records before invocation and preserve qualified ADT method
+names. This leaves shared call/ownership admission unchanged.

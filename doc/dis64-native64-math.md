@@ -17,6 +17,8 @@ record and a separate complete map array:
 - full fixed-frame size, map byte count and borrowed immutable map pointer.
 
 These are individually addressable records, not an installed runtime table.
+The next [private table/binding checkpoint](dis64-native64-binding.md) adds
+callback-free generated specification tables and matching before invocation.
 There is no conversion to Runtab, no map[16] copy and no callable-module
 admission. The old hash is useful for this owning compiler/C consistency check;
 it is not a structural Dis64 signature or agreement on reference calls.
@@ -40,7 +42,8 @@ builtinmod/table/formatter operation. The fixture observes this refusal.
 No normal build target sets the selector.
 
 The test compiles the complete actual math.c with the generated Math header,
-then links the selected generated records and real Math_bits32real,
+then binds the selected generated records against the complete generated
+Math specification table and links real Math_bits32real,
 Math_realbits32, Math_bits64real and Math_realbits64 implementations. Function/
 data sections and linker garbage collection discard unexercised routines and
 their platform services. This is not a link/run of every Math implementation.

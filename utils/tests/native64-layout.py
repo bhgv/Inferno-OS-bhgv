@@ -72,9 +72,28 @@ def main():
             print(run([binary], work, env).stdout.strip(), flush=True)
         if 'limbo_native64_Probe_vari_entry' in generated:
             raise RuntimeError('variadic prefix must not produce a fixed native entry')
-        binary = work/'entry-limits'
-        run(compiler+flags+['-DDIS_WORD32=1']+includes+[ROOT/'utils/tests/native64-entries.c',
-            '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections', '-o', binary], work, env)
+        for label, selection in (
+            ('entries-WORD32', ['-DDIS_WORD32=1']),
+            ('entries-WORD32-file', ['-DDIS_WORD32=1', '-DDIS64_PILOT_LOADER=1']),
+            ('entries-legacy-rejected', ['-DNATIVE64_UNSUPPORTED']),
+        ):
+            binary = work/label
+            run(compiler+flags+selection+includes+[ROOT/'utils/tests/native64-entries.c',
+                '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections', '-o', binary], work, env)
+            print(run([binary], work, env).stdout, end='', flush=True)
+        methods = work/'methods.m'
+        methods.write_text('MethodProbe: module { A: adt { x: int; f: fn(); }; B: adt { x: int; f: fn(); }; };')
+        (work/'methods-native64.h').write_text(run([limbo, '-H', methods], work, env).stdout)
+        binary = work/'methods'
+        run(compiler+flags+['-DDIS_WORD32=1']+includes+[ROOT/'utils/tests/native64-methods.c', '-o', binary], work, env)
+        run([binary], work, env)
+        empty = work/'empty.m'
+        empty.write_text('Only: module { f: fn(fmt: string, *): int; };')
+        (work/'empty-native64.h').write_text(run([limbo, '-H', empty], work, env).stdout)
+        emptyprobe = work/'empty.c'
+        emptyprobe.write_text('#include "lib9.h"\n#include "isa.h"\n#include "interp.h"\n#define LIMBO_NATIVE64_TABLES // Explicit empty logical table.\n#include "empty-native64.h"\n#include "native64-bind.h"\n\n\n/* An all-variadic module has no fixed callable record. */\nint main(void) { return limbo_native64_Only_spec_count == 0 && native64bind(limbo_native64_Only_specs, 0, 0, 0, 0, 0) ? 0 : 1; }\n')
+        binary = work/'empty'
+        run(compiler+flags+['-DDIS_WORD32=1']+includes+[emptyprobe, '-o', binary], work, env)
         run([binary], work, env)
         sysheader = work/'sys.h'
         sysheader.write_text(run([limbo, '-H', ROOT/'module/sys.m'], work, env).stdout)

@@ -399,6 +399,49 @@ native64descriptor(char *name, Native64Type *layout)
 }
 
 
+/* Keep method names distinct inside one module's metadata namespace. */
+static void
+native64symbol(Decl *function)
+{
+	print("\"");
+	if(function->dot != nil && function->dot->ty->kind != Tmodule)
+		print("%s.", function->dot->sym->name);
+	print("%s\"", function->sym->name);
+}
+
+
+/* Emit callback-free specifications; referencing a table need not link every C routine. */
+static void
+native64table(Decl *module)
+{
+	Decl *function;
+	char name[2*StrSize], moduleid[2*StrSize];
+	int count;
+
+	native64name(module, moduleid, sizeof(moduleid));
+	print("\n#ifdef LIMBO_NATIVE64_TABLES\n");
+	print("static const LimboNative64Entry limbo_native64_%s_specs[] = {\n", moduleid);
+	count = 0;
+	for(function=module->ty->tof->ids; function != nil; function=function->next){
+		if(function->ty->varargs)
+			continue;
+		native64name(function, name, sizeof(name)-2);
+		print("\t{\n\t\t");
+		native64symbol(function);
+		print(", // Module-relative symbol; methods keep their ADT qualifier.\n");
+		print("\t\t0, // Specification only, never a callable entry.\n");
+		print("\t\t0x%luxU, // Existing Limbo hash, not a structural Dis64 signature.\n", (ulong)sign(function));
+		print("\t\tF_%s_size, // Full fixed-frame extent.\n", name);
+		print("\t\tsizeof(limbo_native64_%s_map), // Full map8 extent.\n", name);
+		print("\t\tlimbo_native64_%s_map // Borrowed immutable map storage.\n\t},\n", name);
+		count++;
+	}
+	if(count == 0)
+		print("\t{0} // ISO C requires storage even for an empty logical table.\n");
+	print("};\n#define limbo_native64_%s_spec_count %d // Fixed entries; variadic prefixes are excluded.\n#endif\n", moduleid, count);
+}
+
+
 /* Lay out fixed function arguments after Frame64; variadic tails remain explicitly unsupported. */
 static void
 native64frame(Decl *function, int emit)
@@ -462,7 +505,9 @@ native64frame(Decl *function, int emit)
 		print("#ifdef LIMBO_NATIVE64_ENTRIES\n");
 		print("static const uchar limbo_native64_%s_map[] = %s_map; // Complete fixed-frame map8.\n", name+2, name);
 		print("static const LimboNative64Entry limbo_native64_%s_entry = {\n", name+2);
-		print("\t\"%s\", // Source symbol.\n", function->sym->name);
+		print("\t");
+		native64symbol(function);
+		print(", // Module-relative source symbol.\n");
 		print("\t%s, // Actual C entry point.\n", name+2);
 		print("\t0x%luxU, // Existing Limbo signature hash.\n", (ulong)sign(function));
 		print("\t%ld, // Complete fixed-frame bytes.\n", frame.size);
@@ -664,6 +709,7 @@ native64stubs(Decl *globals)
 			native64register(symbol, function);
 		}
 	}
+	print("#if defined(LIMBO_NATIVE64_TABLES) && !defined(LIMBO_NATIVE64_ENTRIES)\n#define LIMBO_NATIVE64_ENTRIES // Table maps share opt-in entry storage.\n#endif\n");
 	print("/* Experimental native64 declarations only; shared wire and runtime admission are unchanged. */\n");
 	print("#include <stddef.h>\n#include <limits.h>\n#include <float.h>\n#ifndef LIMBO_NATIVE64_MODEL_HELPER\n#define LIMBO_NATIVE64_MODEL_HELPER // Emit the native-model predicate once.\n");
 	print("\n/* Natural C alignment probes; these fields never enter a VM frame. */\n");
@@ -706,6 +752,7 @@ native64stubs(Decl *globals)
 		}
 		for(function=module->ty->tof->ids; function != nil; function=function->next)
 			native64frame(function, 1);
+		native64table(module);
 	}
 	for(layout=native64types; layout != nil; layout=layout->next){
 		if((layout->type->kind != Tadt && layout->type->kind != Ttuple) ||
