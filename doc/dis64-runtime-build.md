@@ -97,3 +97,7 @@ standing error loop, handler/propex selection, ready-group propagation and
 terminal/retained-broken decisions through both construction and file routing.
 Injected legacy handler metadata checks ownership transfer and resume without
 opening a Dis64 reference/control ABI. Host worker/GC/boot boundaries remain.
+
+The separate [GC-root checkpoint](dis64-gc-roots.md) exercises full native
+collector epochs with explicit exception/frame roots in both scalar models.
+Its bounded arena evidence does not enable mapped types in this scalar loader.

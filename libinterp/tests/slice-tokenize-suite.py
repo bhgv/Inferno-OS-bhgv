@@ -12,6 +12,7 @@ CORE = [
     'utils/tests/native-limbo.py',
     'libmath/tests/native-fp-control.py',
     'libinterp/tests/gc-arithmetic.py',
+    'libinterp/tests/gc-roots.py',
     'libinterp/tests/gc-idle.py',
     'emu/port/tests/native-io.py',
     'libinterp/tests/readmod-io.py',

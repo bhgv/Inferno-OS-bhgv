@@ -104,3 +104,11 @@ compiler/frame/loader ABI described in
 [README.native-bootstrap.md](../../utils/tests/README.native-bootstrap.md).
 Neither a full 64-bit VM boot nor physical ARM64 acceptance is claimed. RV64,
 Tk, security/crypto and MIPS/SPARC/PowerPC JIT sources remain outside this series.
+
+## Process-root traversal follow-up
+
+The map helpers above did not make the enclosing rootset frame walk byte-safe.
+The [process-root checkpoint](../../doc/dis64-gc-roots.md) now copies frame links
+and descriptor size/callback fields, traces Prog.exval, and verifies complete
+collector epochs and reclamation with a bounded arena. Run gc-roots.py for the
+separate exception-graph and packed-frame matrices and parent-source controls.

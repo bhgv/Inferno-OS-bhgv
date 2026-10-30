@@ -105,3 +105,8 @@ The new-format loader still admits43 scalar opcodes only. Complex lifecycle,
 linking and allocation work remains in C, reached through native tails where
 available. Remaining integration should address complete build/native consumers,
 then agreed calls/dependencies and reference/result/root ownership gates.
+
+The later [GC-root checkpoint](dis64-gc-roots.md) separately runs the real
+collector across exception-only cycles and packed native frames. It fixes
+missing process exval tracing and unaligned frame metadata reads; it does not
+replace this vmachine fixture's bounded GC service or enable Dis64 references.

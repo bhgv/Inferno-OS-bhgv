@@ -260,22 +260,30 @@ marklist(Type *t, void *vw)
 	}
 }
 
+
+/* Trace process exceptions alongside stack/module roots without aligned frame reads. */
 static void
 rootset(Prog *root)
 {
 	Heap *h;
 	Type *t;
-	Frame *f;
+	Frame frame;
 	Module *m;
 	Stkext *sx;
 	Modlink *ml;
-	uchar *fp, *sp, *ex, *mp;
+	uchar *fp, *sp, *ex, *mp, *current;
+	void (*mark)(Type*, void*);
+	int size;
 
 	mutator = gccolor % 3;
 	marker = (gccolor-1)%3;
 	sweeper = (gccolor-2)%3;
 
 	while(root != nil) {
+		if(root->exval != H){
+			h = D2H(root->exval);
+			Setmark(h);
+		}
 		ml = root->R.M;
 		h = D2H(ml);
 		Setmark(h);
@@ -291,13 +299,16 @@ rootset(Prog *root)
 			sx = (Stkext*)ex;
 			fp = sx->reg.tos.fu;
 			while(fp != sp) {
-				f = (Frame*)fp;
-				t = f->t;
+				memmove(&frame, fp, sizeof(frame));
+				t = frame.t;
 				if(t == nil)
 					t = sx->reg.TR;
-				fp += t->size;
-				t->mark(t, f);
-				ml = f->mr;
+				memmove(&size, (uchar*)t+O(Type, size), sizeof(size));
+				memmove(&mark, (uchar*)t+O(Type, mark), sizeof(mark));
+				current = fp;
+				fp += size;
+				mark(t, current);
+				ml = frame.mr;
 				if(ml != nil) {
 					h = D2H(ml);
 					Setmark(h);
