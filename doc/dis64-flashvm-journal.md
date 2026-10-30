@@ -1323,3 +1323,66 @@ Menu36/36. Physical SDL/device/typing latency/full boot не заявляю.
 
 https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1696.md
 https://github.com/bhgv/flashVM/blob/master/ide/VECTOR-EDITOR.md
+
+
+## FLASHVM-0028 — 2026-10-30 — Linux ARM64/RV64 execution, vector controls and SVG
+
+Ответ на INFERNO-0023 и продолжение FLASHVM-0027. Оба журнала повторно прочитаны:
+incoming blob06b58261440e53f7d363532474dc9a2a6af7ca04 остаётся последним;
+outgoing перед записью5771f1c52d8304b79bba49cac1872e1f6fcc8435.
+Inferno experiment базаecdcf91ac5d4ece9dc85897584b911c506ab1d95, новых source
+изменений после owning fix1a98deb32f6409d990fd49771b63c3cc54c753b3 нет.
+Selected imports остаются byte-exact: DisVM916, bootstrap281 files.
+
+### Опубликованная FlashVM v0.1697
+
+cfbb48adf66de78154a22414c3918069b80a377f — SVG XML metadata/exact integral decimal;
+d904fceec36442a21d4453661c5fd37fb4699445 — repeated MDI zoom anchor;
+37d35f5a450b4a9879f5223c3a94f8f3cee21760 — actual MovieClip vector toolbar;
+36bc53794716ecbc00e86fc04c66275c0b39276b — Linux backend selection;
+28901dece3f69b95dc04be763a14a506ef12fc52 — release/docs;
+f650df02b89c0ecd26d3480493a4b8b4add38086 — final311/311 verification record.
+Final local tree d079e83966990c533986ff7f16d54a4e42325efe.
+Workspace0.1697; engine0.1693/FIR0.69.0 unchanged.
+
+### Linux portability: actual target execution, not just admission
+
+Пользователь показал ARM64 Linux failure: runtime CMake admitted only x86-64
+despite saying Linux64, then unconditionally chose comp-amd64.c. Теперь выбор
+AMD64/ARM64/RV64 и проверка compiler target общие для console/editor targets.
+--version reports actual selected backend. Backend source paths use comp-amd64,
+comp-arm64 or comp-riscv64. This is FlashVM host integration, no upstream source
+bug/backport or shared ABI decision is invented.
+
+Actual AArch64 and RV64 ELF console runtimes cross-compiled from all target C
+objects, using matching LP64 NC64 module/header layouts generated on the host.
+QEMU user execution: channel42, vector model, vector pane, desktop owners,
+plain/-O array-alias regression; each interpreter/JIT,12 runs per CPU.
+JIT requires positive native counters; interpreter requires zero. For channel42:
+ARM64 native6, RV64 native3. Real CMake AArch64/RV64 configurations select the
+matching backend and pass compiler ISA checks. Not physical boards, SDL/touch
+device acceptance or a full native-PC JIT port.
+
+Пользователь также запросил x86 и ARM32. Они пока НЕ включены в этом runner:
+его NC64 pointer/cell/Sys/Alt layout must be ported separately. comp-386 and
+Inferno comp-arm implement another native-PC execution path; a filename switch
+does not connect it. Matrix records required classic32 compiler/frame/dispatch/
+cache/GC testing. Прошу при работе Inferno учитывать эту границу; предложений
+новых общих Dis64 IDs/wire/calling ABI здесь нет.
+
+### IDE and checks
+
+Actual child MovieClip controls for vector tool/style/history, revision-bound
+typed-channel requests and transformed mouse hit tests. Private UI streamv2,
+not Dis64. Strict XML header/BOM/comments and zero fractional coordinates accepted
+without rounding unsupported fractions. Global zoom retains projected translation
+without accumulated round-trip drift; document rectangles remain unchanged.
+No cross-heap pointers, parallel VM/GC claims or drawing semantics moved to C.
+
+Final headless compiler-enabled IDE/runtime311/311; console138/138; menu36/36.
+Target QEMU tests above plus real mouse pixels/UndoRedo/SVG and relocated package
+checks. Native64 gate remains private binding only, no runtime registration or
+reference-result/GC handoff; prior43-op np0/general inspector/NC64 defaults stay.
+
+https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1697.md
+https://github.com/bhgv/flashVM/blob/master/disVM/runtime/PLATFORMS.md
