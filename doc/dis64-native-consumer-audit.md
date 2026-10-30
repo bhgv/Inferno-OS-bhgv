@@ -61,3 +61,12 @@ Draw/Tk/Prefab/security/crypto implementation or full emulator boot is not added
 Next: explicitly selected generated native ABI with agreeing full consumer builds,
 then calls/dependencies, Frame64 roots/results/temporaries, ownership/unwind and
 live GC. Keep default NC64 and general inspector readiness unchanged meanwhile.
+
+## Explicit generated metadata follow-up
+
+The new [native64 declaration mode](dis64-native64-declarations.md) adds optional
+`limbo -H` output with independently computed ref64/map8/Frame64 layouts. Its
+Sys header passes these representative WORD32 checks when selected with --header;
+full_native_abi_verified remains false. Default checked-in/fresh `-a` declarations
+retain the blockers above. No builtin consumer/header/table is installed or
+certified by this narrower generated-metadata result.

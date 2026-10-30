@@ -244,6 +244,7 @@ int	mpatof(char*, double*);
 Decl	*namedot(Decl*, Sym*);
 Decl	*namesort(Decl*);
 void	narrowmods(void);
+void	native64stubs(Decl*);
 void	nerror(Node*, char*, ...);
 #pragma	varargck	argpos	nerror	2
 int	nested(void);

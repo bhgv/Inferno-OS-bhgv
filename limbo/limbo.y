@@ -1747,6 +1747,9 @@ main(int argc, char *argv[])
 	case 'S':
 		gendis = 0;
 		break;
+	case 'H':
+		emitstub = emitnative64 = 1;
+		break;
 	case 'a':
 		emitstub = 1;
 		break;
@@ -1822,6 +1825,9 @@ main(int argc, char *argv[])
 		break;
 	}ARGEND
 
+	if(emitnative64 && (argc != 1 || ofile != nil || emitdyn ||
+	   emittab != nil || emitcode != nil || signdump != nil || !gendis))
+		usage();
 	rootincludes();
 
 	if(argc == 0){
@@ -1856,7 +1862,7 @@ main(int argc, char *argv[])
 static void
 usage(void)
 {
-	fprint(2, "usage: limbo [-CGSacgwe] [-I incdir] [-o outfile] [-{T|t|d} module] [-D debug] file ...\n");
+	fprint(2, "usage: limbo [-CGSHacgwe] [-I incdir] [-o outfile] [-{T|t|d} module] [-D debug] file ...\n");
 	exits("usage");
 }
 

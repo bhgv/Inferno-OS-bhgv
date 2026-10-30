@@ -24,6 +24,10 @@ emit(Decl *globals)
 			}
 		}
 	}
+	if(emitnative64){
+		native64stubs(globals);
+		return;
+	}
 	if(emitstub){
 		adtstub(globals);
 		modstub(globals);

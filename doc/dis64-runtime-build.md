@@ -109,3 +109,8 @@ not select Frame64/native map8 compatibility.
 The [exception/GC checkpoint](dis64-exception-gc.md) covers the existing native
 exval-to-frame handoff and terminal cleanup with actual collector epochs. It does
 not resolve the generated-consumer layout blockers or enable new-format calls.
+
+The [experimental native64 declaration generator](dis64-native64-declarations.md)
+now computes matching representative C/metadata layouts through explicit `limbo -H`.
+It does not replace runt.h, emit native function tables or enable new-format calls;
+complete native-consumer rebuilding and callable ownership remain separate.

@@ -11,6 +11,7 @@ OFILES=	asm.$O\
 	gen.$O\
 	lex.$O\
 	nodes.$O\
+	native64.$O\
 	optab.$O\
 	optim.$O\
 	sbl.$O\

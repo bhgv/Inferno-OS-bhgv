@@ -85,3 +85,11 @@ The compiler-to-Dis/AOT tests stop before executing those legacy frames in an
 LP64 VM. Merely changing OBJTYPE, widening WORD or reporting 100% opcode dispatch
 cannot resolve these layout conflicts. See ../../doc/dis64-design.md for the
 explicit ABI migration contract. No VM ABI or wire encoding is changed here.
+
+## Experimental native64 metadata
+
+`limbo -H` now emits independent native64 aggregate/maps and fixed Frame64
+argument declarations. See [the generator checkpoint](../../doc/dis64-native64-declarations.md)
+for the supported shapes, model predicate and actual C checks. Normal `-a` and
+Dis/AOT remain on the existing target; this metadata mode does not emit a new
+Dis64 program, install native headers or enable builtin calls.

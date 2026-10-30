@@ -79,7 +79,7 @@ def main():
         "--header",
         type=Path,
         default=ROOT / "libinterp/runt.h",
-        help="Explicit regenerated limbo -a header; default is the checked-in legacy declaration",
+        help="Explicit limbo -a or experimental -H header; default is the checked-in legacy declaration",
     )
     parser.add_argument(
         "--require-coherent",
