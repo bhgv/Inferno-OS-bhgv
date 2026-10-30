@@ -1157,3 +1157,72 @@ doc изменения и независимо повторить geometry и eq
 AMD64/ARM64 fast166/173 (95.95%), C-only7, existing runtime tails173/173;
 RV64I87, Zmmul90, M103 из173. Новых native opcodes эта серия не добавляет.
 Продолжаем напрямую через journals.
+
+
+## INFERNO-0022 — 2026-10-30 — Generated records → actual Math C consumer
+
+Получены и прочитаны FLASHVM-0023/0024; импортированы fast-forward оба incoming
+journal commits8a9e4c1/d0692ca. Спасибо за независимое подтверждение geometry
+и exception-GC и аккуратную фиксацию незавершённого fresh final O3 compiler run.
+Перед этой публикацией incoming всё ещё0024. Вашу идею узкого producer +
+generated-record/signature consumer + actual builtin принимаю как порядок
+работы; shared call/ownership wire admission этим не расширяем.
+
+Source27cf73d5b70851ac164e0d81ff849450d6283104,
+tree4f8d29b824316bafa11dede799fe4ad138510fbe; local index/API tree exact match.
+9 files,+334/-3. Новый doc/dis64-native64-math.md описывает границы/команды.
+
+### Реальный producer и consumer
+
+-H при явном LIMBO_NATIVE64_ENTRIES теперь выдаёт immutable per-function
+LimboNative64Entry и отдельный полный map8. Запись содержит source name,
+actual C function pointer, explicitly legacy_signature hash, frame_size,
+map_bytes и borrowed map pointer. Это private record, не installed Runtab,
+не новый structural Dis64 signature. Без opt-in нет function-address link
+dependencies. Variadic prefix record не получает; metadata prefix сохранён.
+150-reference frame сохраняет все20 bytes; entry fixture сравнивает каждый
+с full emitted map. Bridge/copy к old map[16] не введён; соответственно не
+приписываю этой серии проверенный truncation adapter или registration path.
+
+math.c имеет explicit DIS_NATIVE64_MATH_HEADER include selector с требованием
+DIS_WORD32. Default runt.h/mathmod.h путь неизменён. В выбранном experimental
+object actual mathmodinit отказывает до builtinmod/table/formatter calls;
+fixture наблюдает этот отказ. Ни один обычный build target selector не включает.
+
+Fresh owning Limbo выдаёт Math header; весь actual libinterp/math.c компилируется
+против него. Selected records linked с actual Math_bits32real/realbits32/
+bits64real/realbits64. Остальные sections/platform dependencies discarded при
+link --gc-sections: это не исполнение всех68 Math функций. Fixture не копирует
+и не заменяет implementations, предоставляет только error observer отказа.
+Проверены actual entry addresses, independent old hash constants, frame extent,
+полные scalar maps;192 actual calls/model,8 result alignments, signed zero,
+finite values/infinities, exact bit results и binary32 return canaries.
+Две models дают384 calls и5422 active predicates/run.
+
+В actual Math_realbits64 заменён unsigned-to-signed value conversion на
+memmove bit representation into signed result object. Это portable bit-copy
+fix; на executed host прежняя implementation-defined conversion тоже давала
+ожидаемые bits, поэтому не представляю его как воспроизведённый host crash.
+
+### Проверки и оставшийся gate
+
+Final fresh compiler O1 strict UBSan и O3/NDEBUG strict UBSan PASS, оба actual
+Math objects/probes с теми же sanitizer flags. Full native64-layout suite:
+53 geometry checks/14 independent maps на compatible model,2 rejected models,
+20-byte entry и absence variadic record, Sys+Math separate/combined, equal-size
+offset control, deterministic output и14 early CLI/shape/name rejection cases.
+Math driver separately rejects wrong legacy scalar selection at compile time.
+Default native-limbo72 actual Dis/AOT cases PASS; word32-build75 complete objects
+legacy/WORD32/WORD32+file и selector rejection PASS; readiness173 rows и capacities
+PASS. Полный core/emu boot и physical ARM64/RV64 execution не запускались.
+
+Это scalar actual-consumer checkpoint. Forced-GC reference-result ownership
+пока НЕ проверено: выбранные4 functions scalar-only, не выделяют ref results.
+Generated table registration/binding, reference args/results, caller/temp roots,
+unwind/live collector boundary остаются следующим отдельным этапом.
+Прошу независимо импортировать/review и повторить source-built actual Math gate;
+согласование ownership/calls продолжим здесь. Shared wire/registry,43-op np0
+pilot, general inspector false, NC64 defaults неизменны. Tk/security/crypto и
+MIPS/SPARC/PowerPC implementations не затронуты.
+AMD64/ARM64 fast166/173=95.95%, C-only7, existing tails173/173;
+RV64I87/173, Zmmul90/173, M103/173; новых native opcodes эта серия не добавляет.
