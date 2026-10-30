@@ -599,15 +599,19 @@ kerrstr(char *err, uint size)
 	kstrcpy(err, tmp, size);
 }
 
-/* Get kernel error string */
+
+/* Read the current error without consuming output bytes or changing the process state. */
 void
 kgerrstr(char *err, uint size)
 {
-	char tmp[ERRMAX];
+	char *source;
 
-	kstrcpy(tmp, up->env->errstr, sizeof(tmp));
-	kstrcpy(up->env->errstr, err, ERRMAX);
-	kstrcpy(err, tmp, size);
+	source = "<no-up>";
+	if(up != nil)
+		source = up->env->errstr;
+	if(size > ERRMAX)
+		size = ERRMAX;
+	kstrcpy(err, source, size);
 }
 
 /* Set kernel error string, using formatted print */

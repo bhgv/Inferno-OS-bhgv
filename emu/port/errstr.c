@@ -26,13 +26,17 @@ kerrstr(char *err, uint size)
 	kstrcpy(err, tmp, size);
 }
 
+
+/* Read the current error without consuming output bytes or changing the process state. */
 void
 kgerrstr(char *err, uint size)
 {
-	char *s;
+	char *source;
 
-	s = "<no-up>";
+	source = "<no-up>";
 	if(up != nil)
-		s = up->env->errstr;
-	kstrcpy(err, s, size);	/* TO DO */
+		source = up->env->errstr;
+	if(size > ERRMAX)
+		size = ERRMAX;
+	kstrcpy(err, source, size);
 }

@@ -75,6 +75,7 @@ decref(Ref *r)
 	return x;
 }
 
+
 /*
  * Rather than strncpy, which zeros the rest of the buffer, kstrcpy
  * truncates if necessary, always zero terminates, does not zero fill,
@@ -86,6 +87,8 @@ kstrcpy(char *s, char *t, int ns)
 {
 	int nt;
 
+	if(ns <= 0)
+		return;
 	nt = strlen(t);
 	if(nt+1 <= ns){
 		memmove(s, t, nt+1);
@@ -94,7 +97,8 @@ kstrcpy(char *s, char *t, int ns)
 	/* too long */
 	if(ns < 4){
 		/* but very short! */
-		strncpy(s, t, ns);
+		memmove(s, t, ns-1);
+		s[ns-1] = '\0';
 		return;
 	}
 	/* truncate with ... at character boundary (very rare case) */

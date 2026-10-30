@@ -34,6 +34,7 @@ def main():
             limbo = tools/'limbo'
         print(run([sys.executable, ROOT/'utils/tests/native64-math.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
         print(run([sys.executable, ROOT/'utils/tests/native64-gc.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
+        print(run([sys.executable, ROOT/'utils/tests/native64-result.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
         args = ', '.join('a'+str(i)+': string' for i in range(150))
         source = work/'probe.m'
         source.write_text('''Probe: module {

@@ -122,3 +122,7 @@ experimental builtin registration remains refused.
 The [native64 frame/collector gate](dis64-native64-gc.md) builds complete actual
 heap/Math objects and traces generated maps through the actual collector, including
 a20-byte frame map and explicit C temporary-to-caller root transfer.
+
+The [protected result/error gate](dis64-native64-result.md) adds explicit
+producer-failure cleanup and actual error-string read/copy regressions; it does
+not enable reference-call registration.

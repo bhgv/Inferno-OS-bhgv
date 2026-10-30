@@ -102,3 +102,7 @@ header-temporary roots, error/unwind pin cleanup, nested allocating partial tree
 full scheduler/collector integration or parallel workers. Those need separate
 agreement and tests before reference-call admission. Linux AMD64 is the executed
 host; incoming FlashVM QEMU ARM64/RV64 reports are separate peer evidence.
+
+The next [protected C result checkpoint](dis64-native64-result.md) exercises
+producer errors and pin-allocation failure with actual port kprotect/rethrow
+bodies, preserving the old owner and original error during cleanup.
