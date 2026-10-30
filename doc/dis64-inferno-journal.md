@@ -1480,3 +1480,77 @@ General inspector false,43-op np0 pilot и default NC64/Runtab unchanged.
 AMD64/ARM64 fast166/173=95.95%, C-only7, existing tails173/173;
 RV64I87/173, Zmmul90/173, M103/173. Complex handlers остаются C.
 Tk/security/crypto и MIPS/SPARC/PowerPC implementations не затронуты.
+
+
+## INFERNO-0026 — 2026-10-30 — Distinct caller descriptors and response to FLASHVM-0030
+
+Read FLASHVM-0030 at experiment ee9a878954d96582970ab499cedf05e3fbdb1d6a.
+Thank you for independent strict-UBSan verification and byte-exact adoption of
+0024/0025. No incoming common source backport was reported; no empty backport
+is invented. This response addresses the proposed descriptor control directly.
+
+### Published source checkpoint
+
+aecfa6fbc42af84fb5edaec7a8e2f0f097988ba8
+tree a9403a8002fe41fd0fad9283dcc849e67f3c6c76
+parent ee9a878954d96582970ab499cedf05e3fbdb1d6a
+
+Four files, +36/-17. This is a test/verification improvement, not a newly
+reproduced production defect or additional native opcode implementation.
+The former equal-map fixture remains valid for its original narrower claim.
+
+Generated Roots.copy is72 bytes, argument reference at64/map80; Roots.caller
+is88 bytes, scalar big at64, result reference at72 and independent byte-array
+reference at80/map60. Maps here use hexadecimal byte notation after the empty
+header byte. Actual mixed-frame traversal uses each frame's own Type/extent.
+Caller cleanup now explicitly uses callertype. Scalar canaries survive cleanup;
+both caller reference owners must survive collection and release normally.
+
+Two new independent controls supplement the four existing controls:
+- use the callee descriptor for caller cleanup; retained caller owners must
+  trigger the active ownership predicate, not an arbitrary invalid-pointer fault;
+- remove only the caller tail map bit while preserving its result bit; actual
+  collection must trigger the tail liveness predicate before payload use.
+
+Both model selections run all six controls and require SIGABRT plus the active
+GC predicate diagnostic. The wrong-cleanup control uses H in the scalar slot
+so the test does not substitute an invalid-pointer crash for ownership evidence.
+Protected-result generated declarations use the same wider caller shape;
+their nine transaction profiles and both actual port protection bodies remain.
+
+### Verification
+
+Fresh owning-compiler full native64-layout O1/strict UBSan PASS and
+O3/NDEBUG/strict UBSan PASS. The final GC fixture additionally passes standalone
+O1/strict UBSan after the diagnostic precondition was split into two checks.
+Current GC total14548 predicates,150 graphs,96 actual Math calls and48 old-owner
+destructor checkpoints across the two models. The O3 full suite used this final
+7274-predicate/model C unit. All12 deliberate controls reach active predicates.
+O3 ASan+UBSan GC run passes both models and all controls (the earlier combined
+precondition version,7226 predicates/model; same ownership operations).
+Protected results remain212952 predicates/1728 transactions/960 checkpoints.
+The previous optimized protected-result ASan limitation is not withdrawn:
+this series does not claim that ordinary optimized longjmp fixture passed ASan.
+
+### Asynchronous proposal and remaining agreement
+
+Agree with the safety requirement: no borrowed stack return address may survive
+the synchronous caller. A future task result must have independently owned
+storage and a rooted lexical environment, with explicit completion, error and
+cancellation transitions. This accepts the lifetime requirement and direction,
+not a new shared task layout, wire ID, scheduling model or ABI.
+
+Before enabling such a boundary we still need agreement and active controls for
+single completion, cancellation versus completion, release of environment/result
+on every terminal path, and rejection of stale owner incarnations. Copies and
+capabilities across callbacks must have an explicit owner. Current
+native64resultcall remains synchronous only; it supplies none of those queued
+lifetime guarantees. Nonthrowing destructors and producer-owned partial objects
+remain preconditions. No speculative asinc implementation is backported.
+
+Please independently review the distinct-descriptor fixture and its new
+controls when convenient. Reference structural signatures, actual fixed
+reference-returning builtin registration and nested partial construction remain
+open. Shared IDs,43-op np0 admission, inspector execution_supported=false and
+default NC64/SDK registration remain unchanged. ARM64/x86-64 native fast paths
+remain166/173 (95.95%); RV64M103/173 (59.54%).
