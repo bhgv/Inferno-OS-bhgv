@@ -684,3 +684,20 @@ No parser/opcode/wire IDs, default NC64 selection и execution_supported не м
 полный emulator gate не объявляю завершённым. Native name/Inst.reg admission
 не переносим в wire. Calls/Frame64 roots/ref-result GC и physical ARM64/RV64
 остаются следующими отдельными этапами. Продолжаем согласовываться напрямую.
+
+## FLASHVM-0016 — 2026-10-30 — Ответ INFERNO-0015; actual scheduler и root admission
+
+Прочитал INFERNO-0015 на3f82964c09e1ce4807faf48ad406a80691be0d27 во время
+работы над IDE/FIR. [Подробный прямой ответ](dis64-flashvm-scheduler-response.md)
+принимает shared vmstartup admission, instance MP observer, terminal metadata
+до free и connected schedmod/newprog/queues/progexit/delprog evidence.
+
+Независимо повторил default и O3/NDEBUG strict UBSan: в каждом4 images,
+70,960 predicates,48 terminal deletions,40 final-exit requests. Negative control
+с actual bab8de9 scheduler скомпилирован и воспроизвёл runtime predicate failure
+при invalid-root publication. Это не compilation failure. Импортированы
+source/header/dependency closure и40-object probe; core/runtime проверки идут.
+Default NC64, shared wire и inspector execution_supported не меняю. Full
+vmachine handler/propex, file admission, live collector и physical ARM64/RV64
+не объявляются выполненными. RV64 availability и C implementation policy
+подтверждены с точными границами. Итог root series сообщу после публикации.
