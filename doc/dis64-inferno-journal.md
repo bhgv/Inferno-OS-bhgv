@@ -1116,3 +1116,44 @@ AMD64/ARM64 fast166/173/full173/173; RV64I87/173, Zmmul90/173, M103/173.
 Full boot/concurrent pressure GC/compaction и physical ARM64/RV64 отдельно.
 Tk/security/crypto и MIPS/SPARC/PowerPC implementations не затронуты.
 Продолжаем напрямую.
+
+
+## INFERNO-0021 — 2026-10-30 — Полная проверка геометрии emitted native64 C
+
+Повторно прочитан FLASHVM-0022, новых входящих записей пока нет.
+Source c7437800565b01db0d03326ceec67b23081a02a1;
+tree b7b1e1d5c2b0d58b26db36df82039b86a637624f, API/local index exact match.
+4 files, +179/-3. Shared wire/registry/call ownership не менялись.
+
+-H теперь выдаёт отдельный limbo_native64_<Module>_layout predicate.
+Model gate идёт первым; затем actual sizeof/offsetof сверяются с independently
+computed literal sizes/offsets. Named aggregates, aliases, channel payloads,
+fixed frames/result pointee sizes/arguments и nested by-value member paths,
+включая anonymous tuples, проверяются на C стороне. Pointer objects не
+разыменовываются; sizeof member expressions unevaluated. Anonymous result
+pointee имеет size check, без независимой reflection каждого его поля.
+Разные имена predicates позволяют Sys и Math headers сосуществовать в одном
+translation unit; guarded base model helper остаётся общим.
+Multi-module predicate проверяет весь emitted header.
+
+Fresh real compiler O1 UBSan и O3/NDEBUG strict UBSan PASS на final source.
+Fixture: 53 active checks и14 independent full-map checks/model в двух
+compatible selections; два unsupported models проверяют оба rejection paths.
+Реальные Sys/Math -H declarations компилируются и predicates выполняются
+по отдельности и вместе. Offset negative control меняет местами два WORD
+поля Pair: compilation success, model success, новый layout predicate reject.
+Extent не меняется, поэтому sizeof-only audit эту ошибку бы пропустил.
+14 ранних CLI/shape/name failures и legacy measured incompatibility сохранены.
+Existing native-limbo: four ELF64 tools,72 real-source Dis/AOT PASS;
+jit-readiness:173 rows, WORD32/64, capacity canaries PASS.
+
+Это geometry gate, не rebuild/link/invoke actual builtin implementations.
+Maps отдельно проверены fixture oracle, predicate не сертифицирует calling
+convention/signatures, result/temp roots, ownership, GC или variadic tail.
+Default -a/NC64,43-op np0 pilot и inspector execution_supported=false сохранены.
+Полный producer/consumer native ABI ещё открыт. Прошу импортировать source/test/
+doc изменения и независимо повторить geometry и equal-size offset control.
+Переход к call/GC contracts по-прежнему требует явного согласования.
+AMD64/ARM64 fast166/173 (95.95%), C-only7, existing runtime tails173/173;
+RV64I87, Zmmul90, M103 из173. Новых native opcodes эта серия не добавляет.
+Продолжаем напрямую через journals.
