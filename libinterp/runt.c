@@ -1,8 +1,20 @@
 #include "lib9.h"
 #include "isa.h"
 #include "interp.h"
+/* Explicit native64 consumers must use one coherent generated Sys declaration set. */
+#ifdef DIS_NATIVE64_SYS_HEADER
+#ifndef DIS_WORD32
+#error experimental native64 Sys requires DIS_WORD32=1
+#endif
+#include DIS_NATIVE64_SYS_HEADER
+#else
 #include "runt.h"
+#endif
+#ifndef DIS_NATIVE64_SYS_HEADER
 #include "sysmod.h"
+#else
+#include "runtab-legacy.h"
+#endif
 #include "raise.h"
 #include "kernel.h"
 #include "native64-entry.h"
@@ -13,11 +25,18 @@
 
 static	int		utfnleng(char*, int, int*);
 
+
+/* Keep experimental Sys declarations out of legacy registration until the complete call ABI is ready. */
 void
 sysmodinit(void)
 {
+#ifdef DIS_NATIVE64_SYS_HEADER
+	error("experimental native64 Sys registration is not supported");
+	return;
+#else
 	sysinit();
 	builtinmod("$Sys", Sysmodtab, Sysmodlen);
+#endif
 }
 
 
@@ -394,6 +413,11 @@ printresult(char *text, int length, int array, int allocated)
 void
 Sys_sprint(void *fp)
 {
+#ifdef DIS_NATIVE64_SYS_HEADER
+	USED(fp);
+	error("native64 Sys variadic calls are not supported");
+	return;
+#else
 	int n;
 	char buf[256], *b = buf;
 	String *result, *old;
@@ -434,6 +458,7 @@ Sys_sprint(void *fp)
 	result = printresult(b, n, 0, b != buf);
 	memmove(ret, &result, sizeof(result));
 	destroy(old);
+#endif
 }
 
 
@@ -441,6 +466,11 @@ Sys_sprint(void *fp)
 void
 Sys_aprint(void *fp)
 {
+#ifdef DIS_NATIVE64_SYS_HEADER
+	USED(fp);
+	error("native64 Sys variadic calls are not supported");
+	return;
+#else
 	int n;
 	char buf[256], *b = buf;
 	Array *result, *old;
@@ -480,6 +510,7 @@ Sys_aprint(void *fp)
 	result = printresult(b, n, 1, b != buf);
 	memmove(ret, &result, sizeof(result));
 	destroy(old);
+#endif
 }
 
 

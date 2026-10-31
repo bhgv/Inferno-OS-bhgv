@@ -95,3 +95,7 @@ ownership and registration of the whole builtin closure remain separate work.
 The startup legacy-ABI refusal is retained. Existing43-op np0 Dis64 admission,
 NC64/SDK defaults and JIT fast-path counts are unchanged. Full native64 boot and
 physical ARM64/RV64 execution are not claimed.
+
+The subsequent [Sys consumer gate](dis64-native64-sys.md) compiles both owning
+Sys units and executes fixed-frame I/O/UTF handlers. Sys registration and its
+variadic tails remain explicitly refused in that experimental configuration.

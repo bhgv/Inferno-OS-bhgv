@@ -53,6 +53,7 @@ HFILES=\
 	$ROOT/include/dis64-scalar.h\
 	$ROOT/include/dis64-code.h\
 	$ROOT/include/dis64-pilot.h\
+	$ROOT/include/runtab-legacy.h\
 	$ROOT/include/native64-entry.h\
 	$ROOT/include/native64-bind.h\
 	$ROOT/include/dis-layout.h\

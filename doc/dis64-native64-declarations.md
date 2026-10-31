@@ -175,3 +175,7 @@ names. This leaves shared call/ownership admission unchanged.
 [Actual collector checks](dis64-native64-gc.md) now connect copied full-map Type
 descriptors to generated frames and an explicit temporary-to-caller root transfer.
 They leave general reference-call signatures and registration open.
+
+The [Sys consumer bridge](dis64-native64-sys.md) adds exact integral module
+constants and checks their generated C namespace. Variadic tails and nonintegral
+constant publication are outside that addition.

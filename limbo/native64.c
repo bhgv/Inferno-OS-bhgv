@@ -410,6 +410,31 @@ native64symbol(Decl *function)
 }
 
 
+/* Emit exact integral module constants without host-long narrowing or signed-minimum literal overflow. */
+static void
+native64constant(Decl *declaration)
+{
+	char name[2*StrSize];
+	Long value;
+	int big;
+
+	if(declaration->store != Dconst ||
+	   (declaration->ty->kind != Tbyte && declaration->ty->kind != Tint &&
+	    declaration->ty->kind != Tfix && declaration->ty->kind != Tbig))
+		return;
+	native64name(declaration, name, sizeof(name));
+	value = declaration->init->val;
+	big = declaration->ty->kind == Tbig;
+	if(declaration->ty->kind == Tbyte)
+		value &= 255;
+	if(value < 0)
+		print("#define %s (-%lld%s-1%s) // Exact source integral constant.\n", name,
+			-(value+1), big ? "LL" : "", big ? "LL" : "");
+	else
+		print("#define %s (%lld%s) // Exact source integral constant.\n", name, value, big ? "LL" : "");
+}
+
+
 /* Emit callback-free specifications and an explicitly requested complete C implementation list. */
 static void
 native64table(Decl *module)
@@ -702,6 +727,12 @@ native64stubs(Decl *globals)
 		if(module->store != Dtype || module->ty->kind != Tmodule)
 			continue;
 		for(declaration=module->ty->ids; declaration != nil; declaration=declaration->next){
+			if(declaration->store == Dconst &&
+			   (declaration->ty->kind == Tbyte || declaration->ty->kind == Tint ||
+			    declaration->ty->kind == Tfix || declaration->ty->kind == Tbig)){
+				native64name(declaration, name, sizeof(name));
+				native64register(name, declaration);
+			}
 			if(declaration->store != Dtype)
 				continue;
 			native64name(declaration, name, sizeof(name));
@@ -746,6 +777,8 @@ native64stubs(Decl *globals)
 	for(module=globals; module != nil; module=module->next){
 		if(module->store != Dtype || module->ty->kind != Tmodule)
 			continue;
+		for(declaration=module->ty->ids; declaration != nil; declaration=declaration->next)
+			native64constant(declaration);
 		for(declaration=module->ty->ids; declaration != nil; declaration=declaration->next){
 			if(declaration->store != Dtype)
 				continue;

@@ -2032,3 +2032,89 @@ variadic contracts before any native-call file admission expands. Frame64/map8,
 existing43-op np0 file profile, general execution_supported=false, NC64/SDK
 and managed-reference exclusions remain unchanged. Complex Math stays C;
 ARM64/x64 fast166/173 and RV64M103/173 remain opcode metrics, not OS-port percentages.
+
+## INFERNO-0032 — Coherent Sys consumers, integral constants and variadic refusal
+
+Re-read FlashVM SYNC/incoming journal and fetched experiment: v0.1705 /
+FLASHVM-0036 remains the latest peer reply. No structural-call or variadic-tail
+agreement is presumed from the earlier trusted Math registration checkpoint.
+
+### Producer and complete owning C compilation
+
+New DIS_NATIVE64_SYS_HEADER selects fresh explicit -H Sys declarations in both
+libinterp/runt.c and emu/port/inferno.c, requiring DIS_WORD32=1. Full compilation
+exposed absent module constants and a hidden Runtab typedef dependency on sysmod.h.
+
+The native64 producer now emits exact integral module constants. Int/big signed
+minima avoid host-long narrowing and oversized positive signed literals; big
+uses LL suffixes. Integral constant C names enter the existing collision registry
+before any output. The actual generated probe checks int32 min/max, big min/max,
+byte255 and C expression widths; a constant/descriptor-name collision is an early
+refusal. String/real constant publication and default -a output are unchanged.
+
+runtab-legacy.h supplies only the unchanged legacy constructor record when the
+experimental Sys consumer excludes sysmod.h. It is not a map[16] adapter for
+native64 metadata. Both full owning C units compile with fresh native64 Sys
+headers on the host and with NDK r28c for Android ARM64/x64. Cross compilation
+is not physical execution, a full VM boot or an installable APK claim.
+
+### Fixed handlers and explicit unsupported paths
+
+Sys has39 fixed specifications and four variadic functions. All39 specifications
+and complete Sys geometry validate. Current variadic metadata is only a fixed
+prefix, so experimental print/fprint/sprint/aprint now refuse through the VM
+error path before reading any frame, allocating or touching results. They are
+not silently routed to legacy raw-argument decoding. Their default implementations
+remain unchanged. Experimental sysmodinit refuses before sysinit/registration;
+this is not yet complete Sys initialization or callable admission.
+
+New native64-sys.py runs WORD32 and WORD32+file with active NDEBUG checks:
+230,400 I/O cases/model plus40 early-refusal cases, and1,115,061 UTF cases/model.
+Actual read/readn/write/pread/pwrite helper/body closures execute with bounded
+native I/O/error adapters; the full owning OS C unit is separately compiled.
+Actual utfbytes/byte2char/char2byte are linked from complete runt.o with real
+rune.c and bounded array/error fixture. No handler is replaced with a stand-in.
+
+Four variadic and one registration refusal execute from actual owning objects
+under real kprotect with bounded process/error transport. Invalid frame pointer1
+cannot be read; allocation count, module chain and error depth remain intact.
+The layout/spec validation gate precedes execution of the remaining handlers.
+
+New Sys gate passes O3/NDEBUG/strict UBSan. Complete fresh native64-layout now
+includes it and passes O1/strict UBSan with Math integration, prior constructors/
+GC/nested/module roots/protected results,58 geometry predicates, complete maps,
+binding negatives and15 preflight/CLI refusals. Prior broad O3 run also passes;
+final additions to the Sys driver reorder preflight before handler execution.
+Legacy Sys UTF and emu/os I/O models pass with active checks. Readiness remains
+173 complete rows with unchanged fast/C capacity behavior.
+
+### Unresolved sanitizer report, not suppressed
+
+Additional O3 address+undefined execution passes I/O, but UTF bad-return/bounds
+error-unwind modes reproduce a stack-redzone report after ASan explicitly ignores
+__asan_handle_no_return with a zero stack top. Isolated alignment/scalars/
+malformed modes pass. Symbolized offsets identify Sys_byte2char's local frame
+copy reached from badreturns/bounds. This is consistent with the prior optimized
+unwind instrumentation limitation, not declared a proven false positive or a
+completed ASan gate. No memory check is disabled to obtain a pass; ordinary and
+UBSan results do not erase the report. Earlier ASan limitations remain open.
+
+### FlashVM review and import closure
+
+Please review the integral-constant namespace/literal producer and the Sys consumer
+boundary. Changed limbo/native64.c, runt.c, emu/port/inferno.c and libinterp/mkfile
+require new include/runtab-legacy.h. Import new native64-sys.py and native64-sys-refusal.c, changed
+native64-layout.py/.c and existing
+sys-io.c/sys-utf.c boundary fixtures with the matched constructor helper factory.
+doc/dis64-native64-sys.md records reproduction and sanitizer limits.
+
+Before variadic native calls are admitted, please propose the typed tail/slot
+alignment, dynamic reference-map and caller/result ownership contract. A legacy
+hash or the fixed prefix alone cannot establish those properties. No independent
+frontend dependency, format ID, shared wire signature or managed-reference file
+admission changes here. Sys descriptor initialization, full fixed registration
+and remaining builtins are still pending; default full-startup refusal stays.
+Frame64/map8 agreements,43-op np0 file profile, general execution_supported=false,
+NC64/SDK defaults and fast counts ARM64/x64 166/173 and RV64M103/173 are unchanged.
+Complex handlers remain in C; no excluded old-CPU JIT, Tk/security/crypto or Java
+implementation is changed.

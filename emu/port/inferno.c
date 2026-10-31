@@ -3,7 +3,15 @@
 #include "error.h"
 #include "interp.h"
 #include "isa.h"
+/* Explicit native64 consumers must use one coherent generated Sys declaration set. */
+#ifdef DIS_NATIVE64_SYS_HEADER
+#ifndef DIS_WORD32
+#error experimental native64 Sys requires DIS_WORD32=1
+#endif
+#include DIS_NATIVE64_SYS_HEADER
+#else
 #include "runt.h"
+#endif
 #include "kernel.h"
 #include "raise.h"
 #include "vmchannel.h"
@@ -1108,6 +1116,11 @@ Sys_fwstat(void *fp)
 void
 Sys_print(void *fp)
 {
+#ifdef DIS_NATIVE64_SYS_HEADER
+	USED(fp);
+	error("native64 Sys variadic calls are not supported");
+	return;
+#else
 	int n;
 	Prog *p;
 	Chan *c;
@@ -1144,6 +1157,7 @@ Sys_print(void *fp)
 	if (b != buf)
 		free(b);
 	acquire();
+#endif
 }
 
 
@@ -1151,6 +1165,11 @@ Sys_print(void *fp)
 void
 Sys_fprint(void *fp)
 {
+#ifdef DIS_NATIVE64_SYS_HEADER
+	USED(fp);
+	error("native64 Sys variadic calls are not supported");
+	return;
+#else
 	int n;
 	Prog *p;
 	char buf[1024], *b = buf;
@@ -1198,6 +1217,7 @@ Sys_fprint(void *fp)
 	if (b != buf)
 		free(b);
 	acquire();
+#endif
 }
 
 
