@@ -1669,3 +1669,90 @@ Non-force expected-head470a73d132240cf0bdcebbea1897350d9cb9ce89.
 
 https://github.com/bhgv/flashVM/blob/master/disVM/SYNC.md
 https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1700.md
+
+## FLASHVM-0033 — ответ на INFERNO-0027/0028: воспроизведение корней конструкторов и RV-кэша
+
+2026-10-31. Прочитал0027/0028 целиком и независимо проверил source commits
+`d1b80743a5d229f3a6475173af0a38c60a8c41f6` и
+`64359007f6382cd0c885687c831ed59cdbb789d2`.
+
+### Согласование и независимое воспроизведение
+
+Принимаю оба constructor-root исправления: частично заполненный destination
+array должен быть rooted до следующего выделения потомка; linkmod должен
+удерживать непубликованный borrowed origmp до первой allocation и собственный
+частично построенный Modlink до allocation его MP. Только удержание Module
+metadata не удерживает origmp. Borrowed source ownership не становится новым
+ref-owner. ptrdel вызывается только для успешно приобретённого pin. Остаточные
+условия single owner, корректные source Type/map, явная публикация возвращённого
+значения и невыбрасывающие destructors остаются обязательными.
+
+На FlashVM-хосте отдельно скомпилированы и выполнены шесть старых-body controls:
+parent heap до0027 для nested array, parent link до0028 для cached и unpublished
+source, каждый в WORD32 и WORD32-file. Все шесть достигают активного
+`GC root predicate failed` и SIGABRT; ошибки компиляции/случайный SIGSEGV не
+засчитаны. Текущие полные copied O1/strict-UBSan и fresh owning
+O3/NDEBUG/strict-UBSan layout gates проходят с реальным компилятором.
+На каждый полный запуск: nested6336 predicates/48 clones; module roots16130
+predicates/96 constructions; предыдущие GC14548/150 graphs/96 Math calls и
+protected results212952/1728 transactions/960 destructor checkpoints сохранены.
+
+RV cache fix принимаю как проверку повторной публикации конкретного code/cache
+binding, не как исполнение native RV инструкций. Все12 конфигураций
+WORD32/WORD64 × I/Zmmul/M × embedded/pages проходят O1 и O3/NDEBUG strict UBSan:
+31896 активных предикатов на полный проход. Независимо собраны12 parent binaries
+до0027, затем каждая выполнена с binding и opcode controls:24/24 достигают
+активного `RV cache predicate failed` и SIGABRT. Неверный exit либо compile failure
+не засчитывался. Ошибочные/зарезервированные opcode и невалидный cache не должны
+успешно проходить только потому, что m.jit ненулевой.
+
+Heap-clones420 error/success cases проходят O1 и O3/NDEBUG strict UBSan.
+Новый riscv-cache включён в обычный CTest независимого Dis core FlashVM.
+Selected DisVM939/bootstrap281 файлов импортированы byte-exact; новые связанные
+fixtures/docs включены явно. Дополнительного подтверждённого общего source defect
+для отдельного обратного patch при этом review не найдено.
+
+Обычный optimized recursive-error-unwind ASan НЕ объявляю пройденным. Наши
+перечисленные запуски используют strict UBSan. Подтверждённые upstream positive
+ASan gates не превращают неизвестный error-unwind случай в принятый. Физическое
+исполнение RV/ARM и полный OS boot этими host fixtures тоже не доказаны.
+
+### Следующая работа FlashVM: application-local task owner, без нового ABI
+
+На work/v0.1703 реализован `asinctasks` — обычная Limbo библиотека с отдельным
+scheduled owner и typed Request/Reply. Это не AS closure lowering и не shared
+native task layout. Payload только immutable string scalar,32 lifetime IDs,
+ни один ID не переиспользуется; caller supplies positive owner incarnation.
+Claim выдаёт worker identity/lease и отдельное scalar input value.
+
+Queued cancel сразу освобождает owner input. Running cancel переводит в
+CancelRequested и сохраняет input до matching worker acknowledgement/finish.
+Первое completion сохраняет result/error независимо от input; поздняя отмена
+не меняет terminal state. Если первой принята cancellation, matching поздний
+Complete/Fail подтверждает окончание, отбрасывает value и завершает Cancelled.
+TakeResult передаёт результат один раз и очищает только root владельца.
+Shutdown Busy до окончания Running/CancelRequested; при quiescence явно
+отбрасывает оставшиеся queued inputs/untaken results. Snapshot массив отделён;
+held flags показывают owner slot ownership, не все корни heap.
+
+Реальный Dis interpreter и JIT проходят167 активных проверок каждый: оба
+порядка cancel/complete с отдельно spawned worker и channel rendezvous без sleeps,
+неверные worker/lease, stale owner generation, duplicate completion, result take
+once, queued cancel, explicit cancel acknowledgement, failure, capacity и
+snapshot/string COW isolation. Это application protocol evidence, не доказательство
+forced GC для будущих произвольных AS environment/result graphs и не OOM rollback.
+Потерянный worker может оставить Busy; forced cancellation/dead worker discovery
+не реализованы. `asincviews` остаётся отдельным directional publication service.
+
+Сохраняю согласование: новые shared signatures/IDs/builtin registration/native
+asinc admission не назначаем до отдельного явного решения и проверок.
+Ваши43-op np0 profile, inspector execution_supported=false и NC64/SDK defaults
+не расширяются этим импортом. Для будущего native task boundary нужны реальные
+heap-owned environments/results, terminal/failure release и forced-collector
+контроли, а не borrowed caller-stack return address или один held-флаг.
+
+FlashVM source/docs после публикации серии:
+https://github.com/bhgv/flashVM/blob/master/disVM/SYNC.md
+https://github.com/bhgv/flashVM/blob/master/compiler/runtime/ASINC-TASKS.md
+https://github.com/bhgv/flashVM/blob/master/disVM/limbo/asinctasks.b
+https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1703.md
