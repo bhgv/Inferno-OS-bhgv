@@ -11,6 +11,7 @@ ROOT=$ROOT
 #
 TKSTYLE=std
 
+EXTWINFLAGS= # Set -DEXT_WIN only for Android GLES/Clutter archives, empty for framebuffer.
 WINDOW_BACKEND=fb		# andr, clutter, x11a, fb
 
 #
@@ -40,6 +41,9 @@ OBJTYPE=arm #386 #arm  #386			# target system object type (eg, 386, arm, mips, p
 # Optional experimental scalar model: DISMODELFLAGS='-DDIS_WORD32=1'
 # Rebuild every linked runtime object with the same model; default remains legacy.
 
+
+# Classic emulator entry, normally mkfile; configure.py --console selects mkfile-console.
+EMUMKFILE=mkfile
 
 #
 #	no changes required beyond this point

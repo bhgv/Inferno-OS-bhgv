@@ -22,6 +22,17 @@
 #include	<sys/syscall.h>
 #define	getpid()	syscall(SYS_getpid)
 
+/* Publish shared worker state before releasing locks on the hosted CPU. */
+static void
+linuxcoherence(void)
+{
+	__sync_synchronize();
+}
+
+
+void (*coherence)(void) = linuxcoherence; // Shared memory fence used by portable locks and drawing.
+
+
 enum
 {
 	DELETE	= 0x7f,

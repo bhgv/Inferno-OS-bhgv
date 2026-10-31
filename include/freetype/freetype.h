@@ -20,13 +20,8 @@
 #define __FREETYPE_H__
 #pragma incomplete _off_	/* it's too hard */
 
-#ifdef ANDROID
-typedef unsigned int size_t;
-//typedef unsigned short wchar_t;
-typedef signed int ptrdiff_t;
-
-//#define NULL ((void*)0)
-#endif
+/* Use the target compiler's size_t and ptrdiff_t instead of assuming 32-bit Android. */
+#include <stddef.h>
 
   /*************************************************************************/
   /*                                                                       */

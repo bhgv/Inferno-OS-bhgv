@@ -62,7 +62,7 @@ typedef unsigned short wchar_t;
 #else
 
 #ifdef ANDROID
-typedef __WCHAR_TYPE__ wchar_t;
+#include <stddef.h>
 #endif
 
 #endif

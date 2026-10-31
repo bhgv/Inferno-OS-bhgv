@@ -1,0 +1,6 @@
+# Terminal-only entry; command-line variables override the platform defaults.
+# Configuration and compilation remain the ordinary platform mk rules.
+<../../mkconfig
+
+default all install installall clean nuke:V:
+	mk -f mkfile CONF=emu-g CONFLIST=emu-g $target

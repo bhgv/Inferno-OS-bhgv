@@ -247,12 +247,29 @@ catchnotes()
 		signal(sigmsgs[i].sig, notifyf);
 }
 
+/* Keep mk command-line assignments usable when the host selects a writable TMPDIR. */
 char*
 maketmp(void)
 {
-	static char temp[L_tmpnam];
+	static char temp[4096]; // Keep the borrowed name alive until main removes the parsed file.
+	char *directory;
+	Symtab *symbol;
+	Word *word;
+	int fd, length;
 
-	return tmpnam(temp);
+	symbol = symlook("TMPDIR", S_VAR, nil);
+	word = symbol == nil ? nil : (Word*)symbol->value;
+	directory = word == nil ? nil : word->s;
+	if(directory == nil || directory[0] == 0)
+		directory = "/tmp";
+	length = snprintf(temp, sizeof(temp), "%s/mk-XXXXXX", directory);
+	if(length < 0 || (unsigned)length >= sizeof(temp))
+		return nil;
+	fd = mkstemp(temp);
+	if(fd < 0)
+		return nil;
+	close(fd);
+	return temp;
 }
 
 int

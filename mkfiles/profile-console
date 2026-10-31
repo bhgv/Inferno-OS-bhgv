@@ -1,0 +1,15 @@
+# Build the terminal emulator with the existing portable device configuration.
+# GUI libraries and graphics devices are omitted from this build series.
+EMUMKFILE=mkfile-console
+EMUDIRS=\
+	lib9\
+	libbio\
+	libmp\
+	libsec\
+	libmath\
+	utils/iyacc\
+	limbo\
+	libinterp\
+	libkeyring\
+	libdynld\
+	emu\

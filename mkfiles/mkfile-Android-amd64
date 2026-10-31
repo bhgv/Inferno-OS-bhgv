@@ -14,10 +14,10 @@ ASFLAGS= -fPIC
 CC= $NDK_TOOLCHAIN/x86_64-linux-android$ANDROID_API-clang -c
 CFLAGS= -O2 -g -fPIC -fno-strict-aliasing\
  -I$ROOT/Android/amd64/include -I$ROOT/Android/arm/include -I$ROOT/include\
- -DANDROID -include $ROOT/include/native64-target.h -DLINUX_AMD64 -DEXT_WIN $DISMODELFLAGS
+ -DANDROID -include $ROOT/include/native64-target.h -DLINUX_AMD64 $EXTWINFLAGS $DISMODELFLAGS
 ANSICPP=
 LD= $NDK_TOOLCHAIN/x86_64-linux-android$ANDROID_API-clang
 LDFLAGS= -llog
-SYSLIBS=
+SYSLIBS=-lm
 YACC= iyacc
 YFLAGS= -d

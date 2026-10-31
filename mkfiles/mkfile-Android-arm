@@ -24,7 +24,7 @@ CFLAGS=		-O\
 		-I$ROOT/Android/arm/include\
 		-I$ROOT/include\
 		-DLINUX_ARM\
-		-DEXT_WIN\
+		$EXTWINFLAGS\
 		-D__arm__\
 		-D__ANDROID_API__=17 -DANDROID\
 		-ffunction-sections -funwind-tables \
@@ -43,7 +43,7 @@ LD=		arm-linux-androideabi-gcc
 LDFLAGS=	-L$ROOT/ndk_toolchain/sysroot/usr/lib -llog 
 #-lbfd
 
-SYSLIBS=
+SYSLIBS=-lm
 
 YACC=		iyacc
 YFLAGS=		-d

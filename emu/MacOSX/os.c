@@ -39,6 +39,17 @@
 #include <architecture/ppc/cframe.h>
 #endif
 
+/* Publish shared worker state before releasing locks on the hosted CPU. */
+static void
+macosxcoherence(void)
+{
+	__sync_synchronize();
+}
+
+
+void (*coherence)(void) = macosxcoherence; // Shared memory fence used by portable locks and drawing.
+
+
 enum
 {
     DELETE = 0x7F

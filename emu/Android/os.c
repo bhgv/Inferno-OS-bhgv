@@ -32,6 +32,17 @@
 
 
 
+/* Publish memory updates across Android worker threads on every supported CPU. */
+static void
+androidcoherence(void)
+{
+	__sync_synchronize();
+}
+
+
+void (*coherence)(void) = androidcoherence; // Shared fence used by core locks and drawing.
+
+
 void *sig_ctx = nil;
 
 

@@ -1,3 +1,7 @@
+/* Hosted GCC/Clang builds use the compiler's ABI types, including LP64 and Android. */
+#if defined(__GNUC__) || defined(__clang__)
+#include_next <stddef.h>
+#else
 /* there's a better way.  we should use it. */
 #ifdef _STDDEF_H_
 #define	__STDDEF_H
@@ -34,3 +38,5 @@ typedef unsigned short wchar_t;
 #undef _BSD_WCHAR_T
 
 #endif /* __STDDEF_H */
+
+#endif

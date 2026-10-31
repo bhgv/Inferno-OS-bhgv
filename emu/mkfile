@@ -7,13 +7,13 @@ clean:V:	clean-$HOSTMODEL
 nuke:V:	nuke-$HOSTMODEL
 
 &-Posix:QV:
-	echo "(cd $SYSTARG; mk $MKFLAGS $stem)"
-	(cd $SYSTARG; mk $MKFLAGS $stem) || exit 1
+	echo "(cd $SYSTARG; mk -f $EMUMKFILE $MKFLAGS $stem)"
+	(cd $SYSTARG; mk -f $EMUMKFILE $MKFLAGS $stem) || exit 1
 
 &-Nt:QV:
-	echo '@{builtin cd' $SYSTARG '; mk $MKFLAGS $stem}'
-	@{builtin cd $SYSTARG; mk $MKFLAGS $stem }
+	echo '@{builtin cd' $SYSTARG '; mk -f $EMUMKFILE $MKFLAGS $stem}'
+	@{builtin cd $SYSTARG; mk -f $EMUMKFILE $MKFLAGS $stem }
 
 &-Plan9:QV:
-	echo '@{builtin cd' $SYSTARG '; mk $MKFLAGS $stem}'
-	@{builtin cd $SYSTARG; mk $MKFLAGS $stem }
+	echo '@{builtin cd' $SYSTARG '; mk -f $EMUMKFILE $MKFLAGS $stem}'
+	@{builtin cd $SYSTARG; mk -f $EMUMKFILE $MKFLAGS $stem }
