@@ -1,98 +1,89 @@
 #!/usr/bin/env python3
-"""Run the actual Android POSIX path resolver without depending on an APK or storage grants."""
+"""Check actual fixed-root C code against bounded stat/access interfaces."""
 import ctypes as C
-import os
+import errno
 from pathlib import Path
-import shlex
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
+CORE = (ROOT/'emu/Android/storage.c').is_file()
+SOURCE = ROOT/('emu/Android/storage.c' if CORE else 'app/jni/inferno_storage.c' if (ROOT/'app/jni').is_dir() else 'app/src/main/cpp/inferno_storage.c')
+ADAPTER = r'''
+#include <sys/stat.h>
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
+static int mode;
+static int calls;
 
 
-# Exercise real filesystem paths, bounded publication, fallback and atomic configuration.
-def main():
-    compiler = shlex.split(os.environ.get('CC', 'cc'))
-    flags = shlex.split(os.environ.get('CFLAGS', '-O2 -g -fsanitize=undefined -fno-sanitize-recover=all'))
-    with tempfile.TemporaryDirectory(prefix='android-storage-', dir=ROOT) as directory:
-        work = Path(directory)
-        library = work/'storage.so'
-        subprocess.run(compiler+flags+['-shared', '-fPIC', str(ROOT/'emu/Android/storage.c'), '-o', str(library)], check=True)
-        api = C.CDLL(str(library))
-        api.inferno_android_set_storage.argtypes = [C.c_char_p, C.c_char_p]
-        api.inferno_android_root.argtypes = [C.c_void_p, C.c_size_t]
-        checks = 0
-
-        def check(condition):
-            nonlocal checks
-            if not condition:
-                raise RuntimeError('Android storage predicate failed at '+str(checks))
-            checks += 1
-
-        def configure(inside=None, outside=None):
-            return api.inferno_android_set_storage(None if inside is None else os.fsencode(inside),
-                                                  None if outside is None else os.fsencode(outside))
-
-        def resolve(expected=None, size=4096):
-            buffer = C.create_string_buffer(b'X'*4096)
-            before = bytes(buffer)
-            result = api.inferno_android_root(buffer, size)
-            if expected is None:
-                check(result == -1 and bytes(buffer) == before)
-            else:
-                check(result == 0 and os.fsdecode(buffer.value) == str(expected))
-                end = len(os.fsencode(expected))+1
-                check(bytes(buffer)[end:] == before[end:])
-
-        keys = ('INFERNO_ROOT', 'INFERNO_FILES_DIR', 'EXTERNAL_STORAGE')
-        previous = {key: os.environ.get(key) for key in keys}
-        try:
-            for key in keys:
-                os.environ.pop(key, None)
-            check(configure() == 0)
-            resolve()
-            inside, outside, legacy = (work/name for name in ('private files', 'external', 'legacy'))
-            for path in (inside, outside, legacy):
-                path.mkdir()
-            check(configure(inside, outside) == 0)
-            resolve(inside/'Inferno')
-            check((inside/'Inferno').is_dir())
-            check(configure('relative', outside) == -1)
-            resolve(inside/'Inferno')
-            check(configure('/'+'x'*4096, outside) == -1)
-            resolve(inside/'Inferno')
-            check(configure(work/'missing', outside) == 0)
-            resolve(outside/'Inferno')
-            check(configure() == 0)
-            os.environ['EXTERNAL_STORAGE'] = str(legacy)
-            resolve()
-            check(not (legacy/'Inferno').exists())
-            (legacy/'Inferno').mkdir()
-            resolve(legacy/'Inferno')
-            os.environ['INFERNO_FILES_DIR'] = str(inside)
-            resolve(inside/'Inferno')
-            override = work/'explicit root'
-            os.environ['INFERNO_ROOT'] = str(override)
-            resolve(override)
-            check(override.is_dir())
-            os.environ['INFERNO_ROOT'] = 'content://not-a-posix-directory'
-            resolve()
-            os.environ['INFERNO_ROOT'] = str(work/'plain-file')
-            (work/'plain-file').write_text('data')
-            resolve()
-            os.environ.pop('INFERNO_ROOT')
-            os.environ.pop('EXTERNAL_STORAGE')
-            for length in (0, 1, 2, len(os.fsencode(inside/'Inferno'))):
-                resolve(size=length)
-            check(api.inferno_android_root(None, 4096) == -1)
-        finally:
-            for key, value in previous.items():
-                if value is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = value
-        print('PASS Android storage:', checks, 'actual filesystem/publication predicates; no Android device claim')
+/* Select success, absent directory, non-directory or denied access. */
+void fixture_mode(int value) { mode=value; calls=0; }
 
 
-if __name__ == '__main__':
-    main()
+/* Expose whether an invalid output requested a filesystem operation. */
+int fixture_calls(void) { return calls; }
+
+
+/* Accept only the exact shared path, never an internal or environment-provided path. */
+int __wrap_stat(const char *path, struct stat *state)
+{
+    calls++;
+    if(strcmp(path,"/sdcard/Inferno") != 0) { errno=EINVAL; return -1; }
+    if(mode==1) { errno=ENOENT; return -1; }
+    memset(state,0,sizeof(*state));
+    state->st_mode=mode==2 ? S_IFREG : S_IFDIR;
+    return 0;
+}
+
+
+/* Verify required permissions without emulating Android's permission policy. */
+int __wrap_access(const char *path,int flags)
+{
+    calls++;
+    if(strcmp(path,"/sdcard/Inferno") != 0 || flags!=(R_OK|W_OK|X_OK)) { errno=EINVAL; return -1; }
+    if(mode==3) { errno=EACCES; return -1; }
+    return 0;
+}
+'''
+with tempfile.TemporaryDirectory(prefix='shared-storage-',dir=ROOT) as directory:
+    work=Path(directory)
+    (work/'adapter.c').write_text(ADAPTER)
+    subprocess.run(['cc','-shared','-fPIC','-Wall','-Wextra','-Werror','-O2','-fsanitize=undefined','-fno-sanitize-recover=all',str(SOURCE),str(work/'adapter.c'),'-Wl,--wrap=stat','-Wl,--wrap=access','-o',str(work/'storage.so')],check=True)
+    api=C.CDLL(str(work/'storage.so'),use_errno=True)
+    libc=C.CDLL(None)
+    libc.getenv.restype=C.c_char_p
+    libc.setenv.argtypes=[C.c_char_p,C.c_char_p,C.c_int]
+    for key in (b'INFERNO_ROOT',b'INFERNO_FILES_DIR',b'EXTERNAL_STORAGE'):
+        libc.setenv(key,b'/private/forbidden',1)
+    def check(condition):
+        if not condition:
+            raise RuntimeError('Shared root predicate failed')
+    if CORE:
+        api.inferno_android_root.argtypes=[C.c_char_p,C.c_size_t]
+        def run():
+            out=C.create_string_buffer(b'unchanged',64)
+            result=api.inferno_android_root(out,len(out))
+            check(out.value==(b'/sdcard/Inferno' if result==0 else b'unchanged'))
+            return result
+        api.fixture_mode(0)
+        check(api.inferno_android_root(None,64)==-1 and C.get_errno()==errno.EINVAL)
+        out=C.create_string_buffer(b'same')
+        check(api.inferno_android_root(out,0)==-1 and C.get_errno()==errno.EINVAL)
+        check(api.inferno_android_root(out,4)==-1 and C.get_errno()==errno.ENAMETOOLONG)
+        check(out.value==b'same' and api.fixture_calls()==0)
+    else:
+        def run():
+            return api.ioa_prepare_storage()
+    for mode,error in ((0,0),(1,errno.ENOENT),(2,errno.ENOTDIR),(3,errno.EACCES)):
+        api.fixture_mode(mode)
+        result=run()
+        check(result==(0 if mode==0 else -1))
+        if error:
+            check(C.get_errno()==error)
+        check(api.fixture_calls()==(2 if mode in (0,3) else 1))
+    if not CORE:
+        check(libc.getenv(b'EXTERNAL_STORAGE')==b'/sdcard')
+        check(libc.getenv(b'INFERNO_FILES_DIR')==b'/private/forbidden')
+    print('PASS fixed /sdcard/Inferno:', 'core output bounds and environment isolation' if CORE else 'launcher compatibility environment', '; missing/non-directory/denied storage; bounded host interfaces')

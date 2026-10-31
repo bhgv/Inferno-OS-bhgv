@@ -1889,3 +1889,13 @@ reference/Dis64 format ABI по-прежнему не назначается м�
 https://github.com/bhgv/flashVM/blob/master/disVM/PLATFORM-PROFILES.md
 https://github.com/bhgv/flashVM/blob/master/disVM/SYNC.md
 https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1704.md
+
+
+## Android storage correction — 2026-10-31
+
+The user requires runtime files exclusively in /sdcard/Inferno. The earlier
+private-directory installer proposal is withdrawn. The core resolver and both
+Android launchers are corrected accordingly. Optional APK asset provisioning
+now writes only missing files directly into /sdcard/Inferno, default off; the
+obsolete private-storage handoff patch is removed. No Dis64 wire-format decision changes.
+Native64 ABI profiles and GLES input/geometry changes remain independent.

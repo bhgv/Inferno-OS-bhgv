@@ -306,9 +306,9 @@ amain(void)
 	quotefmtinstall();
 //	savestartup(argc, argv);
 
-	/* The native launcher supplies its app directory before startup; explicit -r can still override it. */
+	/* The runtime tree belongs in shared storage and is never installed by the launcher. */
 	if(inferno_android_root(rootdir, sizeof(rootdir)) != 0){
-		LOGE("No accessible Inferno root; call inferno_android_set_storage before amain");
+		LOGE("Cannot access /sdcard/Inferno; check shared-storage permissions");
 		is_run = 0;
 		return;
 	}

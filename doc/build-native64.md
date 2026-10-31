@@ -41,51 +41,30 @@ compilers/NDK are not installed in the host verification environment. Public
 lib9 headers forward to shared platform declarations; architecture execution
 contexts remain separate port work.
 
-# Android root selection, entirely native
+# Android shared runtime tree
 
-emu/Android/amain.c used EXTERNAL_STORAGE/Inferno with a fixed128-byte temporary.
-It now calls storage.c, accepts native launcher paths, preserves complete path
-bounds and refuses unavailable storage instead of formatting a null environment
-value. Startup options quote the root as one argument; trace output uses the
-same selected root and closes FILE streams with fclose.
+The Android runtime root is `/sdcard/Inferno`. Native startup validates that
+this existing directory is accessible; it never creates or selects an internal
+app directory. INFERNO_ROOT, INFERNO_FILES_DIR and NativeActivity data paths do
+not redirect this resolver. Launcher compatibility sets EXTERNAL_STORAGE to
+/sdcard only for older bundled amain implementations.
 
-The native APK launcher reads NativeActivity data-path fields and supplies the
-result through the environment. Another native entry point may call
-inferno_android_set_storage(internal, external) before amain on the same startup
-thread. Android activity and asset APIs remain in the separate APK repository;
-no Java source or JNI method call is required. The preferred root is the internal
-app directory's Inferno child, with optional app-specific external fallback.
-INFERNO_FILES_DIR supplies an equivalent native environment interface.
-An explicit INFERNO_ROOT is respected; an existing accessible legacy
-EXTERNAL_STORAGE/Inferno is used only as fallback.
+The APK repositories optionally bundle compiled runtime assets and extract
+missing files directly into `/sdcard/Inferno`; the option is off by default.
+Otherwise populate `/sdcard/Inferno` yourself, including dis/emuinit.dis.
+Existing files are preserved and no internal runtime copy is used. If Android denies
+shared-storage access, startup fails explicitly. No automatic private fallback
+or claim of access on every Android version is made. Android permissions and
+storage policy must be handled in the Android launcher repositories.
 
-The actual APK entry and C asset deployment are maintained in:
+The previously published private-storage installer and its handoff patch were
+withdrawn because they contradicted the required shared-tree location. ABI
+selection and GLES fixes remain independent of this correction.
+
+Companion source and build notes:
 https://github.com/bhgv/Inferno-OS_Android/blob/master/docs/native-storage.md
-It stages the runtime filesystem and populates the private root before amain,
-including compatibility with its bundled older Inferno startup. App-specific
-storage does not grant other apps access and is removed on uninstall; this does
-not bypass scoped storage for an arbitrary public /sdcard directory.
+https://github.com/bhgv/Inferno-OS_Android-Clutter3d/blob/master/doc/native-gles.md
 
-emu/Android/tests/storage.py checks32 actual filesystem/publication predicates.
-The existing startup-option gate retains1542 capacity/quote cases. Those are
-host checks, not a device/NDK/APK acceptance across every Android release.
-
-References:
-https://developer.android.com/ndk/reference/struct/a-native-activity
-https://developer.android.com/training/data-storage/app-specific
-
-# APK publication
-
-The companion native APK change is published in Inferno-OS_Android master:
-https://github.com/bhgv/Inferno-OS_Android/commit/ed9ac7d8406bdbf8be26aa553aaba6f8746aa860
-
-Its exact tree is85d09b557b2378b5b14d39c318ee0627c27506ce. It contains native
-startup, asset staging/deployment, ABI selection, host tests and documentation.
-It introduces no Java source or JNI calls. Repository access was granted and
-publication completed; the earlier integration403 block is resolved.
-
-[Inferno-OS_Android-native-storage.patch](patches/Inferno-OS_Android-native-storage.patch)
-is retained as a reproducible handoff from the old master
-3b09124172446fca6a4c843b78601b7dc3cfc90d. Do not reapply it to the updated master.
-Host native-storage and CMake configuration checks passed; a complete APK/NDK
-build and device execution remain unverified in this environment.
+Host resolver tests check fixed-root selection, denied/missing storage and
+output bounds. Startup-option tests check quoting/capacity separately. These
+checks do not replace an Android APK/device acceptance test.
