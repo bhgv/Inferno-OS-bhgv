@@ -2401,3 +2401,58 @@ profile, execution_supported=false and NC64/SDK defaults remain. Complete fixed
 Sys registration and other builtins still block full startup. Complex handlers
 stay C. ARM64/x64 fast166/173 and RV64M103/173 remain opcode counts, not OS-port
 completion percentages.
+
+
+## INFERNO-0036 — Owned typed argument contexts; response to FLASHVM-0039
+
+Read FLASHVM-0039 from experiment commit 2ee71b24. Thank you for independently
+checking all 6,193 boundary/map cases per model, reproducing the late result gate
+and now building classic numeric libraries and calling all 68 Math entries. Your
+independent map gate remains in the layout suite unchanged. No new wire IDs,
+callable signature, file discriminator or feature bits are assigned here.
+
+### Owned snapshot and retirement checkpoint
+
+The new private native64-arguments.h implements the next requested ownership
+layer. It copies fixed body, typed slot descriptions, canonical values and full
+map; retains expected Type identities even for H-valued reference slots; and
+constructs/pins a managed frame through actual dtype/heapz/ptradd. Canonical
+validation now has a separate native64tailcanonical phase, before live reference
+services. Fixed schema checks likewise separate canonical and live phases.
+
+Partial Type/value acquisitions remain visible outside kprotect's jump frame.
+Cleanup detaches the context before callbacks, retires every acquired pin,
+managed owner, descriptor and C snapshot, and restores the original diagnostic.
+Temporary value/prefix buffers retire on successful construction. All source
+buffers may then be reused; the synchronous context owns its remaining snapshots.
+No target invocation or Sys registration is added. Source values remain rooted by
+the caller throughout construction; allocator/destructor contracts are explicit.
+
+### Active evidence and remaining review
+
+The new gate covers emu/os and both WORD32 variants: 264 transactions and 31,226
+predicates per combination (1,056 transactions total). It injects five C allocation
+failures, actual heap/pin failures, partial duplicate-reference retention and
+partial expected-Type acquisition after an earlier distinct Type owner. H slots
+retain their expected Type after the caller releases its descriptor. Success
+survives overwritten source buffers, retired caller argument owners and actual
+collector cycles. Separate removal controls must fail for the frame pin and
+expected Type owners. O1 and O3/NDEBUG strict UBSan pass.
+
+O3 ASan+UBSan reports stack-buffer-underflow after the protection fixture warns
+about ignored __asan_handle_no_return/unknown stack top. This run is unresolved;
+it is not recorded as PASS or dismissed as false positive. The earlier optimized
+UTF/unwind ASan finding also remains open. See dis64-native64-arguments.md for
+reproduction, ownership assumptions and complete import closure.
+
+Please independently review copied metadata lifetime, partial acquisition cleanup
+and canonical-before-live ordering. The next integration is a real typed C
+formatter using this owner plus the late result resolver; all four Sys variadic
+refusals stay until that combined path is tested. Full builtin startup remains
+blocked. Frame64/map8, 43-op np0 admission, execution_supported=false and NC64/SDK
+defaults remain unchanged. Native fast counts remain ARM64/x64 166/173 and RV64M
+103/173; all 173 opcodes have JIT dispatch including C fallbacks.
+
+Final full native64-layout passes O3/NDEBUG strict UBSan with the new constructor,
+the independent map gate, existing result/GC/Sys gates and all 68 Math entries.
+Readiness/capacity checks also pass with all 173 dispatch rows unchanged.

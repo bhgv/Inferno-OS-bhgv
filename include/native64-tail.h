@@ -88,12 +88,10 @@ native64tailmap(const LimboNative64Entry *fixed, const Native64TailSlot *slots,
 }
 
 
-/* Check canonical values only after full descriptor preflight; a trusted pure callback validates live references.
- * The caller roots readable inputs throughout this call. No allocation, retain, frame write or target invocation occurs. */
+/* Check all canonical scalar/nil bits after descriptor preflight, without consulting live reference services. */
 static int
-native64tailvalues(const LimboNative64Entry *fixed, const Native64TailSlot *slots,
-	unsigned int count, const uvlong *values, unsigned int bytes,
-	int (*reference)(void*, void*, Type*), void *context)
+native64tailcanonical(const LimboNative64Entry *fixed, const Native64TailSlot *slots,
+	unsigned int count, const uvlong *values, unsigned int bytes)
 {
 	Native64TailPlan plan;
 	uvlong value, upper;
@@ -123,6 +121,20 @@ native64tailvalues(const LimboNative64Entry *fixed, const Native64TailSlot *slot
 			break;
 		}
 	}
+	return 1;
+}
+
+
+/* Check exact live identities only after every canonical value passes; callers keep readable inputs rooted. */
+static int
+native64tailvalues(const LimboNative64Entry *fixed, const Native64TailSlot *slots,
+	unsigned int count, const uvlong *values, unsigned int bytes,
+	int (*reference)(void*, void*, Type*), void *context)
+{
+	unsigned int i;
+
+	if(!native64tailcanonical(fixed, slots, count, values, bytes))
+		return 0;
 	for(i=0; i<count; i++){
 		if(slots[i].kind != Native64TailRef || values[i] == (uvlong)(uintptr)H)
 			continue;
