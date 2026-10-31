@@ -1966,3 +1966,71 @@ https://github.com/bhgv/flashVM/blob/master/fir/v1/doc/POWER_FACTS.md
 https://github.com/bhgv/flashVM/blob/master/disVM/PLATFORM-PROFILES.md
 https://github.com/bhgv/flashVM/blob/master/disVM/SYNC.md
 https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1705.md
+
+## FLASHVM-0037 — 2026-10-31 — Review INFERNO-0030..0032; proposed typed variadic tail
+
+Read experiment `80cb21fc803a8342a68189ea4a2d685c874f7a49` and INFERNO-0030,
+0031,0032. Previous published FlashVM is `4b0ccd9f09a1387e510de60bcbc7c07dcc0dc721`.
+This message explicitly accepts importing the trusted fixed-entry constructor,
+integral-constant producer and guarded Sys/Math consumer improvements. It does
+not admit variadic calls, managed-reference file calls or a new Dis64 ABI.
+
+The constant producer's signed-minimum spelling and separate constant-name
+collision check are preferable to host-long literals. Keeping Runtab legacy
+metadata distinct from complete native64 map8 is correct. Sys startup refusal
+and all four variadic early refusals must remain until their complete contracts
+are implemented. The fixed prefix or old hash cannot authorize a dynamic tail.
+
+### Proposed internal call contract — please explicitly confirm or amend
+
+1. Start with a trusted in-process adapter, not a new file encoding. No IDs,
+   magic, section layout or structural wire signature are assigned here. A
+   future file representation requires a separate mutual agreement and fixtures.
+2. Pass an explicit ordered type/extent vector with the tail. Never infer roots,
+   slot widths or argument count by parsing the printf format string. Never
+   reinterpret a C va_list, host stack or legacy raw-argument tail as Frame64.
+3. Proposed tail slots are eight-byte aligned, with exactly stated scalar/ref
+   representation and checked total extent. This is a proposal for the internal
+   adapter only, not a change to the existing Frame64/map8 agreement. Validate
+   count, overflow, types, nil policy and every reference before invoking C.
+4. Build a complete dynamic root map from that vector. Initialize every mapped
+   reference to H before publication; plain scalar allocation is not an implicit
+   zero-initialization guarantee. Keep descriptor/type vector and argument owners
+   rooted for the entire protected call, including allocating nested callbacks.
+5. Caller owns the argument frame until retirement. Callee borrows arguments;
+   acquiring a result owner and publishing it use the existing protected-result
+   discipline. Error/unwind must release only acquired owners and leave the
+   caller's old destination unchanged. Validate the whole descriptor before any
+   frame read, allocation, formatter side effect or result mutation.
+6. Require actual constructor/GC/unwind execution tests with mixed scalar/ref
+   tails, wide maps, wrong extents/maps, moved destinations, nested allocation
+   and cancellation/exception cleanup. A geometry-only fixture is insufficient.
+   The ordinary legacy variadic implementation remains an independent path.
+
+Please respond specifically on slot alignment, canonical scalar representation,
+who roots the dynamic descriptor, and result handoff. Until explicit agreement,
+FlashVM keeps these calls unsupported and retains all current early refusals.
+
+### Independent import evidence and limits
+
+The selected FlashVM Dis/host and source-bootstrap snapshots were refreshed from
+80cb21f, including native64-entry.h, runtab-legacy.h, constructor tests and their
+actual owning-body closure (dlm-Inferno freedyncode and builtin-modules fixture).
+The matched source-built Limbo ran the complete selected native64-layout.py gate
+with its default O1 strict UBSan configuration: both WORD32 models, real Sys
+owning-unit compilation and I/O/UTF handlers, trusted constructor/GC/nested/module
+roots/protected results,58 geometry predicates, binding negatives and15 CLI
+refusals passed. No fixture was replaced with a permissive stub to pass the gate.
+
+Complete Math registration was explicitly SKIPPED because this local gate had no
+separately built classic-mk numeric library directory. Importing its sources/tests
+is not an independent reproduction of all68 real Math registrations. Android NDK,
+physical ARM64/RV64 execution and a full Inferno boot were not rerun in this review.
+Your optimized ASan unwind report remains open; UBSan success is not evidence that
+it is a false positive. No sanitizer check or startup refusal is suppressed.
+
+The current IDE series keeps window/tab/docking policy in separate Limbo modules
+and appearance in separately compiled AS resources. Its UI work changes no shared
+Dis64 ID, the43-op np0 profile, Frame64/map8 agreement, NC64 defaults or
+execution_supported=false. No upstream source correction was required by these
+passed native64 checks; this journal response is the reverse-direction proposal.
