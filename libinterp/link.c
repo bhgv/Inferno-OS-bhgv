@@ -4,6 +4,8 @@
 #include "raise.h"
 #include <kernel.h>
 
+
+/* Allocate the export name before publishing its signature and frame descriptor. */
 static void
 newlink(Link *l, char *fn, int sig, Type *t)
 {
@@ -15,6 +17,8 @@ newlink(Link *l, char *fn, int sig, Type *t)
 	l->frame = t;
 }
 
+
+/* Bind a C implementation to an owned export name and borrowed frame descriptor. */
 void
 runtime(Module *m, Link *l, char *fn, int sig, void (*runt)(void*), Type *t)
 {
@@ -23,12 +27,15 @@ runtime(Module *m, Link *l, char *fn, int sig, void (*runt)(void*), Type *t)
 	l->u.runt = runt;
 }
 
+
+/* Bind a decoded export to its already validated Dis program position. */
 void
 mlink(Module *m, Link* l, uchar *fn, int sig, int pc, Type *t)
 {
 	newlink(l, (char*)fn, sig, t);
 	l->u.pc = pc < 0 ? nil : m->prog+pc;
 }
+
 
 /* Resolve exact exports and report names as text rather than error format strings. */
 static int
@@ -94,8 +101,11 @@ struct LinkModule {
 	Module *m; // Module reference consumed by the instance or failure cleanup.
 	Import *imports; // Sentinel-terminated requested bindings.
 	Modlink *result; // Partial instance retained across fallible data cloning.
+	void *source; // Borrowed original MP, still owned by the input Module.
 	int mkmp; // Whether this instance needs independent module data.
 	int linkfailed; // Distinguish binding failure from a raised VM error.
+	int rooted; // One successful external root until the instance reaches its caller.
+	int sourcerooted; // Independent source root while an input module is not yet published.
 };
 
 
@@ -136,7 +146,15 @@ linkmodule(void *arg)
 				   ((ulong)j*8+bit >= (ulong)t->size/sizeof(void*)))
 					error(exHeap);
 	}
+	if(t != nil && m->origmp != nil){
+		c->source = m->origmp;
+		ptradd(D2H(c->source));
+		c->sourcerooted = 1;
+	}
 	c->result = ml = mklinkmod(m, i);
+	/* MP cloning and dynamic initialization can collect before the caller owns ml. */
+	ptradd(D2H(ml));
+	c->rooted = 1;
 	if(c->mkmp){
 		if(m->rt == DYNMOD)
 			newdyndata(ml);
@@ -157,11 +175,13 @@ linkmodule(void *arg)
 	return 1;
 }
 
-/* Consume the module reference on all paths, including a failed first allocation. */
+
+/* Consume the module reference and remove only an acquired temporary root on every path. */
 Modlink*
 linkmod(Module *m, Import *ldt, int mkmp)
 {
 	LinkModule c;
+	int ok;
 
 	if(m == nil || m == H)
 		return H;
@@ -173,9 +193,17 @@ linkmod(Module *m, Import *ldt, int mkmp)
 	c.m = m;
 	c.imports = ldt;
 	c.result = H;
+	c.source = H;
 	c.mkmp = mkmp;
 	c.linkfailed = 0;
-	if(kprotect(linkmodule, &c))
+	c.rooted = 0;
+	c.sourcerooted = 0;
+	ok = kprotect(linkmodule, &c);
+	if(c.rooted)
+		ptrdel(D2H(c.result));
+	if(c.sourcerooted)
+		ptrdel(D2H(c.source));
+	if(ok)
 		return c.result;
 	if(c.result != H)
 		destroy(c.result);
@@ -185,6 +213,7 @@ linkmod(Module *m, Import *ldt, int mkmp)
 		krethrow();
 	return H;
 }
+
 
 /* Release partial or complete export tables, leaving repeated cleanup harmless. */
 void

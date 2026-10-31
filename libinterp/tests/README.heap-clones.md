@@ -57,3 +57,9 @@ Mapped array clones now keep a temporary root during descendant allocation.
 The pins family independently fails every acquisition and checks balanced
 cleanup; the actual collector regression is documented in
 [dis64-native64-nested.md](../../doc/dis64-native64-nested.md).
+
+
+Module construction now independently pins its partial instance and original MP
+during cloning. The instance family fails every source/instance/descendant pin
+acquisition and restores exact module/Type/object owners (210 cases per model).
+See [actual module GC roots](../../doc/dis64-native64-module-roots.md).

@@ -2,18 +2,27 @@
 int
 main(void)
 {
-	uchar payload[16],savedpayload[16];
+	uchar *payload, savedpayload[16];
+
+	struct {
+		Heap header; // Real owner prefix required by the temporary-root boundary.
+		uchar bytes[16]; // Borrowed original MP; preflight must leave these bytes unchanged.
+	} source;
 	Type beforetype,beforemodlink;
 	Type *selected;
 	int mode,ok,valid;
 	char *modevalue=getenv("MODULE_DATA_MODE");
 	ulong total=0;
 
+	payload = source.bytes;
 	for(mode=0;mode<17;mode++){
 		if(modevalue && mode!=atoi(modevalue))continue;
 		setup();memset(&module,0,sizeof(module));memset(imports,0,sizeof(imports));
-		memset(payload,0x5a,sizeof(payload));memmove(savedpayload,payload,sizeof(payload));
-		mp.size=sizeof(payload);mp.np=0;mp.ref=1;selected=&mp;moduletypes[0]=selected;
+		memset(&source, 0, sizeof(source));
+		source.header.ref = 1;
+		source.header.t = &mp;
+		memset(payload,0x5a,sizeof(source.bytes));memmove(savedpayload,payload,sizeof(source.bytes));
+		mp.size=sizeof(source.bytes);mp.np=0;mp.ref=1;selected=&mp;moduletypes[0]=selected;
 		module.ref=2;module.origmp=payload;module.type=moduletypes;module.ntype=1;
 		operation=2;make_mp=1;instance=H;
 		if(mode==0)mp.ref=0;
@@ -42,11 +51,11 @@ main(void)
 			   memcmp(&mp,&beforetype,sizeof(mp)) || memcmp(&Tmodlink,&beforemodlink,sizeof(Tmodlink)))abort();
 		}else{
 			if(allocations!=2 || instance==H || mp.ref!=beforetype.ref+1)abort();
-			if(mp.size && memcmp(instance->MP,payload,sizeof(payload)))abort();
+			if(mp.size && memcmp(instance->MP,payload,sizeof(source.bytes)))abort();
 			destroy(instance);instance=H;
 			if(live || module.ref!=1 || mp.ref!=beforetype.ref)abort();
 		}
-		if(memcmp(savedpayload,payload,sizeof(payload)))abort();
+		if(memcmp(savedpayload,payload,sizeof(source.bytes)))abort();
 		Tmodlink.ref=mp.ref=1;total++;
 	}
 	printf("PASS module-data retains: %lu descriptor/table/size/alias cases WORD%zu\n",total,sizeof(WORD)*8);

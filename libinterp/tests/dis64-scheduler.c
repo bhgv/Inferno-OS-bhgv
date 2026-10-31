@@ -1,3 +1,31 @@
+static Heap *linkpins[128]; // Bounded external roots; actual collection is checked by the module-root gate.
+static int nlinkpins; // Number of successful roots that must be released before fixture completion.
+
+
+/* Observe temporary module roots without acquiring ordinary reference-count ownership. */
+void
+ptradd(Heap *heap)
+{
+    if(heap == nil || heap->ref == 0 || nlinkpins == 128)
+        abort();
+    linkpins[nlinkpins++] = heap;
+}
+
+
+/* Remove exactly one acquired root, refusing unmatched cleanup even under NDEBUG. */
+void
+ptrdel(Heap *heap)
+{
+    int i;
+
+    for(i = 0; i < nlinkpins && linkpins[i] != heap; i++)
+        ;
+    if(i == nlinkpins)
+        abort();
+    linkpins[i] = linkpins[--nlinkpins];
+}
+
+
 static Prog *observed; // Process whose terminal marker is captured before its allocation is freed.
 static int terminalpid, terminalstate, terminals, exitrequests, releases, acquires; // Scheduler lifecycle observations.
 static Pgrp rootpgrp; // Retained host namespace boundary, shared by fixture root processes.
@@ -669,6 +697,8 @@ main(int argc, char **argv)
 	entryrejections(image, bytes);
 	invalidowners();
 	nativeentry(image, bytes);
+	if(nlinkpins != 0)
+		abort();
 	require(memcmp(original, image, bytes) == 0 && releases == acquires);
 	printf("PASS Dis64 scheduler: %d predicates, %d terminal processes, %d final-exit requests; actual schedmod/newprog/queues/progexit/delprog C/RX; native=%d accepted=%d declined=%d C=%d tails=%d; OS worker/GC mocked\n", checks, terminals, exitrequests, nativecalls, nativeaccepted, nativedeclined, ccalls, bridgecalls);
 	return 0;

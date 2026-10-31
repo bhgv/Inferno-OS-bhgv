@@ -60,6 +60,34 @@ void krethrow(void) { abort(); }
 void unload(Module *m) { assert(m->ref > 0); m->ref--; unloads++; }
 #define snprint snprintf
 #define print quiet
+static Heap *linkpins[128]; // Bounded external roots; actual collection is checked by the module-root gate.
+static int nlinkpins; // Number of successful roots that must be released before fixture completion.
+
+
+/* Observe temporary module roots without acquiring ordinary reference-count ownership. */
+void
+ptradd(Heap *heap)
+{
+    if(heap == nil || heap->ref == 0 || nlinkpins == 128)
+        abort();
+    linkpins[nlinkpins++] = heap;
+}
+
+
+/* Remove exactly one acquired root, refusing unmatched cleanup even under NDEBUG. */
+void
+ptrdel(Heap *heap)
+{
+    int i;
+
+    for(i = 0; i < nlinkpins && linkpins[i] != heap; i++)
+        ;
+    if(i == nlinkpins)
+        abort();
+    linkpins[i] = linkpins[--nlinkpins];
+}
+
+
 IMPLEMENTATION
 #undef print
 #undef snprint
@@ -195,6 +223,8 @@ int
 main(void)
 {
 	lookup(); publiclinks(); nilimports(); literalerrors();
+	if(nlinkpins != 0)
+		abort();
 	assert(live == 0 && Tmodlink.ref == 1 && unloads == 10);
 	printf("Module links: %d cases\n", checks);
 	return 0;

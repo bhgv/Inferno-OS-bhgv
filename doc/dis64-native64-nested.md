@@ -50,8 +50,9 @@ kprotect/krethrow bodies and actual recursive clone/free functions, with bounded
 allocator and external-root services. It now rejects unmatched pin releases and
 requires zero pins when snapshots are restored. It injects failure at all15
 mapped-array pin acquisitions in a depth-four clone, in addition to every
-existing heap allocation failure. All204 cases pass per WORD model (408 total)
-under O1/strict UBSan and O3/NDEBUG/strict UBSan. These services prove balanced
+existing heap allocation failure. The current suite also covers module construction pins:210 cases pass per WORD
+model (420 total) under O1/strict UBSan and O3/NDEBUG/strict UBSan. See the
+[module construction checkpoint](dis64-native64-module-roots.md). These services prove balanced
 ownership across unwind; they are not a second real collector implementation.
 Heap-bounds-derived fixtures supply matching bounded root services as well.
 

@@ -396,7 +396,7 @@ instances(void)
 {
 	Snapshot original;
 	void **p;
-	int count, point;
+	int count, point, pinsneeded;
 
 	setup(); operation = 2; make_mp = 1; instance = H;
 	mp_source = H2D(void*, heapz(&mp)); p = mp_source;
@@ -410,6 +410,7 @@ instances(void)
 	imports[0].name = "entry"; imports[0].sig = 17;
 	save(&original); module.ref = 2; allocations = 0;
 	clonecheck(kprotect(run, nil) && instance != H); count = allocations;
+	pinsneeded = pincalls;
 	verify(p[1], ((void**)instance->MP)[1]);
 	destroy(instance); instance = H; unchanged(&original); clonecheck(module.ref == 1); checks++;
 	for(point = 1; point <= count; point++){
@@ -417,7 +418,19 @@ instances(void)
 		clonecheck(!kprotect(run, nil) && raised == exHeap && instance == H);
 		unchanged(&original); clonecheck(module.ref == 1 && Tmodlink.ref == 1); checks++;
 	}
-	failat = -1; module.ref = 2; imports[0].name = "missing";
+	failat = -1;
+	for(point = 1; point <= pinsneeded; point++){
+		module.ref = 2;
+		pincalls = 0;
+		pinfail = point;
+		raised = nil;
+		clonecheck(!kprotect(run, nil) && raised == exHeap && instance == H);
+		unchanged(&original);
+		clonecheck(module.ref == 1 && Tmodlink.ref == 1);
+		checks++;
+	}
+	pinfail = -1;
+	module.ref = 2; imports[0].name = "missing";
 	clonecheck(kprotect(run, nil) && instance == H);
 	unchanged(&original); clonecheck(module.ref == 1); checks++;
 	imports[0].name = "entry"; imports[0].sig++;
