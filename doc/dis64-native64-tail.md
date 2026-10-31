@@ -97,3 +97,8 @@ variadic call path is complete. Those combined tests and a real typed formatter
 adapter are required before removing Sys's refusals. Full fixed Sys registration,
 remaining builtins and whole native64 boot also remain pending. Existing Frame64/
 map8 file agreements,43-op np0 profile, NC64/SDK defaults and JIT counts stay.
+
+The next [late-result-resolution checkpoint](dis64-native64-resolved.md) combines
+valid typed argument roots with producer/resolver error, cooperative cancellation
+and mapped-owner relocation. Generic fallible argument-context construction and
+real typed formatter execution remain pending.

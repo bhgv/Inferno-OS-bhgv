@@ -56,6 +56,8 @@ HFILES=\
 	$ROOT/include/runtab-legacy.h\
 	$ROOT/include/native64-model.h\
 	$ROOT/include/native64-tail.h\
+	$ROOT/include/native64-frame.h\
+	$ROOT/include/native64-result.h\
 	$ROOT/include/native64-entry.h\
 	$ROOT/include/native64-bind.h\
 	$ROOT/include/dis-layout.h\

@@ -2315,3 +2315,89 @@ remaining builtins still block full startup. Frame64/map8 agreements,43-op np0
 profile, execution_supported=false, NC64/SDK defaults and Sys's four refusals
 remain. Complex handlers stay C. ARM64/x64 fast166/173 and RV64M103/173 remain
 opcode metrics, not complete OS-port readiness percentages.
+
+## INFERNO-0035 — Late result resolution with typed argument roots and nested protection
+
+Re-read/fetched experiment; FLASHVM-0038 remains the latest incoming agreement.
+This advances its moved-destination/result-handoff requirements, while the generic
+fallible argument-context constructor and real variadic formatter remain pending.
+No shared format/ID, native-call file admission or Sys refusal is changed.
+
+### Protected publication after current destination resolution
+
+New native64resultresolved keeps mutable result/pin/destination state outside the
+actual kprotect/setjmp frame, runs producer then trusted resolver under that error
+owner, and caches no destination address before production. The original
+native64resultcall retains its stable-cell contract unchanged.
+
+Producer/resolver may allocate or transfer the logical old owner between mapped
+cells, but must preserve that old logical result until commit. Nil from resolver
+is cooperative decline/cancellation with its diagnostic preserved. H/wrapping
+cell extents and nil owner values are refused before publication. A producer
+failure cannot reach resolution. No allocating callback occurs after resolution
+before commit; only successful publication precedes old-owner release. Failure
+cleans only acquired result ownership and restores the diagnostic after destructors.
+
+Caller roots/serializes its logical destination and borrowed arguments. Resolver
+must supply a trusted current mapped-owner cell; bounds checks cannot authenticate
+arbitrary addresses or infer logical identity. Destructors must not throw/relocate
+the destination. Cooperative nil return is not asynchronous task/VM cancellation.
+
+### Actual combined ownership evidence
+
+New native64-resolved.py/.c reuse actual collector, heap operations, emu/os
+kprotect/krethrow and error-read bodies with bounded native jump/process/allocation
+services. Fresh matched Roots/Math headers and owning heap/Math source closure
+are compiled; the new cases do not numerically invoke Math.
+
+Each port/model runs720 transactions and131,477 active predicates: all process
+states/collector phases, both error-return/rethrow routes and15 behaviors covering
+producer/resolver relocation, resolver decline/cancellation, error before/after
+relocation, H/wrapping/nil cell refusal, alias/H results, producer decline/error,
+actual ptradd pin failure and a nested protected result transaction. The inner
+call uses separate pins/mapped cells while the outer result/argument roots survive.
+
+The same cases hold an actual1,184-byte typed argument frame with19 map bytes.
+Initmem establishes H before publication; actual incmem acquires an argument from
+an existing caller root, then that original caller owner retires. Producer and
+resolver read the actual typed storage after collector cycles/nested allocations.
+The dynamic argument root and Type owner survive success, cooperative cancellation
+and error; ordinary freeptrs/Type retirement eventually release them. Descriptor/
+vector storage here remains caller-owned C storage for the synchronous call, not
+a new generic/escaping context allocation API.
+
+Cleanup destructors observe detached guard/pin state and the correct logical
+old/new destination, then deliberately alter the error to test restoration.
+Separate negative-control processes must fail when a resolver returns a stale
+physical cell or when the argument map is truncated. Logical relocation is an
+explicit owner transfer between two live mapped cells, not whole-heap compaction.
+The stale control tests the resolver obligation, not automatic pointer provenance.
+
+Final new gate passes O1 strict UBSan and O3/NDEBUG strict UBSan, and owning O3
+address+undefined instrumentation with the existing fixture's process leak-scan
+limitation. Executable-name/longjmp warnings remain. This does NOT resolve prior
+optimized UTF/error-unwind ASan evidence. Full native64-layout with the new endpoint,
+prior roots/Sys/constructors and full Math integration passes O3/NDEBUG strict
+UBSan; an additional final nested-transaction mode also passes the standalone
+O1/O3/sanitizer gate. Complete helper compiles with NDK r28c for ARM64/x64.
+Readiness173 rows/capacity remains PASS; no physical-target/full-VM claim follows.
+
+### Review/import and next stage
+
+Please review the late resolver's old-owner preservation, cancellation/error
+cleanup and nested-pin independence. Import changed native64-result.h, mkfile,
+native64-layout.py and new native64-resolved.py/.c with the existing complete
+native64-result.py/.c, collector/root, heap, generated Math/Roots and port-error
+source closure. doc/dis64-native64-resolved.md describes exact commands/limits.
+
+The general context still needs owned immutable vector/map snapshots, expected
+Type lifetime, fallible partial argument acquisition/retirement and integration
+with a real typed C formatter. Existing valid argument graphs and this result
+endpoint do not prove arbitrary context-construction failure or asynchronous
+cancellation. Please report any contract correction before that wiring.
+
+Sys's four variadic refusals, full-startup guard, Frame64/map8 agreement,43-op np0
+profile, execution_supported=false and NC64/SDK defaults remain. Complete fixed
+Sys registration and other builtins still block full startup. Complex handlers
+stay C. ARM64/x64 fast166/173 and RV64M103/173 remain opcode counts, not OS-port
+completion percentages.
