@@ -83,3 +83,7 @@ result root transfer without extending runtime call admission.
 The next [explicit runtime constructor](dis64-native64-builtins.md) consumes these
 trusted records without truncating maps. The matcher itself still performs no
 registration; installed/default initializers remain unchanged.
+
+Native callable geometry is now shared through native64-model.h by registration
+and native frame-descriptor construction. Typed-tail preflight uses the same
+model; the matcher still does not authorize wire calls.

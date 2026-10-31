@@ -3,6 +3,7 @@
 #define NATIVE64_FRAME_H // Explicit native64-to-native-GC descriptor adapter.
 
 #include "native64-bind.h"
+#include "native64-model.h"
 
 
 /* Copy a previously bound frame map into an owned ordinary runtime descriptor.
@@ -12,7 +13,7 @@
 static Type*
 native64frametype(const LimboNative64Entry *record)
 {
-	if(sizeof(WORD) != 4 || sizeof(UWORD) != 4 || sizeof(void*) != 8 ||
+	if(!native64model() ||
 	   !native64bindrecord(record, 1))
 		return nil;
 	return dtype(freeheap, record->frame_size, (uchar*)record->map, record->map_bytes);

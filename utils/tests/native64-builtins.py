@@ -37,12 +37,12 @@ def constructor():
     parts += [function(load, s) for s in ('Module*\nnewmod(', 'void\nfreemod(', 'void\nunload(')]
     parts += [function(link, s) for s in ('static void\nnewlink(', 'void\nruntime(', 'void\ndestroylinks(')]
     parts += [function((ROOT/'libinterp/dlm-Inferno.c').read_text(), 'void\nfreedyncode(')]
-    parts += [runt[runt.index('typedef struct Native64BuiltinAlign'):runt.index('/* Prepare the string before publishing')]]
+    parts += [runt[runt.index('typedef struct Native64Builtin Native64Builtin;'):runt.index('/* Prepare the string before publishing')]]
     adapter = (ROOT/'libinterp/tests/builtin-modules.c').read_text().split('/* Build a small ABI-real table')[0]
     adapter = adapter.replace('#include <assert.h>', '#define check(test) do { if(!(test)) { fprintf(stderr,"check failed at %d\\n",__LINE__); abort(); } } while(0) // Active test oracle.')
     adapter = adapter.replace('assert(', 'check(')
     adapter = adapter.replace('RUNTAB_TYPE', (ROOT/'libinterp/sysmod.h').read_text().splitlines()[0])
-    adapter = adapter.replace('IMPLEMENTATION', '#include "native64-entry.h"\n#include "native64-bind.h"\n#include <float.h>\n'+'\n'.join(parts))
+    adapter = adapter.replace('IMPLEMENTATION', '#include "native64-entry.h"\n#include "native64-bind.h"\n#include "native64-model.h"\n'+'\n'.join(parts))
     return adapter
 
 

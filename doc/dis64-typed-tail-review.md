@@ -71,3 +71,8 @@ The prototype still requires actual constructor/GC/unwind tests with mixed value
 wide maps, malformed extents, moved result owners, nested allocation and exception/
 cancellation cleanup. Geometry-only tests are insufficient. Sys's four variadic
 refusals and all current Dis64/NC64 admission limits remain in force meanwhile.
+
+FLASHVM-0038 confirms these representations and ownership principles. The first
+[preflight/dynamic-root checkpoint](dis64-native64-tail.md) implements validation
+and map composition, with actual GC tests; full call-context/unwind/result
+execution and file admission remain separate.
