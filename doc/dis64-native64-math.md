@@ -75,3 +75,7 @@ This closes a scalar producer/record/actual-C-consumer checkpoint. Reference
 arguments/results, allocation, forced GC during result ownership transfer,
 caller/result/temporary roots, unwind, runtime registration and full new-format
 execution remain separate gates. No ARM64/RV64 hardware execution is claimed.
+
+A subsequent [complete registration checkpoint](dis64-native64-math-register.md)
+adds a separate explicit flag and exercises all68 actual exports. The selected
+consumer gate above retains its original refusal without that flag.

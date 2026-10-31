@@ -410,7 +410,7 @@ native64symbol(Decl *function)
 }
 
 
-/* Emit callback-free specifications; referencing a table need not link every C routine. */
+/* Emit callback-free specifications and an explicitly requested complete C implementation list. */
 static void
 native64table(Decl *module)
 {
@@ -439,6 +439,17 @@ native64table(Decl *module)
 	if(count == 0)
 		print("\t{0} // ISO C requires storage even for an empty logical table.\n");
 	print("};\n#define limbo_native64_%s_spec_count %d // Fixed entries; variadic prefixes are excluded.\n#endif\n", moduleid, count);
+	print("\n#ifdef LIMBO_NATIVE64_IMPLEMENTATIONS\n");
+	print("static const LimboNative64Entry *const limbo_native64_%s_implementations[] = {\n", moduleid);
+	for(function=module->ty->tof->ids; function != nil; function=function->next){
+		if(function->ty->varargs)
+			continue;
+		native64name(function, name, sizeof(name)-2);
+		print("\t&limbo_native64_%s_entry, // Trusted C implementation; fixed frame only.\n", name);
+	}
+	if(count == 0)
+		print("\t0 // Storage only; this module has no fixed callable implementation.\n");
+	print("};\n#define limbo_native64_%s_implementation_count %d // Logical count, excluding variadic tails.\n#endif\n", moduleid, count);
 }
 
 
@@ -709,6 +720,7 @@ native64stubs(Decl *globals)
 			native64register(symbol, function);
 		}
 	}
+	print("#if defined(LIMBO_NATIVE64_IMPLEMENTATIONS) && !defined(LIMBO_NATIVE64_TABLES)\n#define LIMBO_NATIVE64_TABLES // Full implementation lists require matching specifications.\n#endif\n");
 	print("#if defined(LIMBO_NATIVE64_TABLES) && !defined(LIMBO_NATIVE64_ENTRIES)\n#define LIMBO_NATIVE64_ENTRIES // Table maps share opt-in entry storage.\n#endif\n");
 	print("/* Experimental native64 declarations only; shared wire and runtime admission are unchanged. */\n");
 	print("#include <stddef.h>\n#include <limits.h>\n#include <float.h>\n#ifndef LIMBO_NATIVE64_MODEL_HELPER\n#define LIMBO_NATIVE64_MODEL_HELPER // Emit the native-model predicate once.\n");

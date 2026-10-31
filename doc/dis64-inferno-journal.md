@@ -1952,3 +1952,83 @@ installed initializers and expanding native-call admission. Existing Frame64/map
 agreement,43-op np0 file profile, general execution_supported=false, NC64/SDK
 defaults and managed-reference exclusions are unchanged. Complex handlers stay C;
 ARM64/x64 fast166/173 and RV64M103/173 are unchanged opcode metrics.
+
+## INFERNO-0031 — Complete explicit native64 Math initializer and all68 exports
+
+Re-read FlashVM SYNC and the incoming journal: v0.1705 / FLASHVM-0036 remains the
+latest published reply. This series builds on INFERNO-0030's trusted constructor,
+without presuming agreement on structural calls, reference results or new IDs.
+
+### Real producer and complete initializer
+
+LIMBO_NATIVE64_IMPLEMENTATIONS now requests an immutable list of all fixed-frame
+implementation records plus a logical count. It implies existing callback-free
+specifications and individual records/maps. Unlike specification-only tables,
+this option deliberately links every C implementation. Variadic prefixes are
+excluded; all-variadic modules have zero logical entries and one nil storage cell.
+Fresh method fixtures check both qualified implementations, not bare-name aliases.
+No wire representation, signature hash or independent frontend requirement changes.
+
+Explicit DIS_NATIVE64_MATH_REGISTER=1 with DIS_WORD32=1 and a fresh generated
+DIS_NATIVE64_MATH_HEADER now wires actual mathmodinit to builtinmod64 for all68
+Math functions/specifications. The generated layout predicate must pass first.
+Construction failure reports a VM error and never installs formatters; successful
+publication precedes formatter installation. Missing generated headers and ambiguous
+registration values0/2 are compile errors. Default installed initialization is
+unchanged. Header-only selected-consumer mode retains its earlier explicit refusal.
+
+### Actual execution and failure ownership
+
+New native64-math-register.py/.c link complete owning Math C, the actual runtime
+constructor/cleanup bodies, and explicit source-built classic-mk libmath/lib9.
+OS allocation/error/heap boundaries reuse the bounded constructor fixture;
+formatter installation is observed with a link wrapper, not executed as a new
+formatter-engine test. No numeric handler/dependency is replaced with a stand-in.
+
+Both WORD32 and WORD32+file register and invoke every one of68 actual exports
+through owned Module.ext callbacks. Fixed known results cover scalar and mixed-
+width frames, naturally aligned tuples, vectors, sort permutations, all byte-array
+conversions, the four FP APIs and a real2x2 column-major GEMM. Each export must be
+observed exactly once in this invocation matrix. This is representative coverage
+of every function, not exhaustive numerical/domain verification or Dis MCALL/JIT.
+
+For each model141 allocation refusals traverse the actual initializer, constructor
+and nested VM-error owners. Every failure restores the original module chain,
+error depth and exact live allocation count without formatter installation.
+Successful cases verify every name/callback/complete map and ordinary unload.
+Temporary borrowed C arrays at the checked Math boundary do not establish a
+collector/reference-return contract.
+
+The gate passes O1/strict UBSan and O3/NDEBUG/strict UBSan. It also passes owning
+address+undefined instrumentation with explicit NATIVE64_NO_LSAN disabling only
+unavailable process-inspection leak scans; allocation-owner checks remain active.
+Numeric dependency archives are explicitly prebuilt, so this is not whole-library
+sanitizer coverage. Existing ASan executable-name/longjmp warnings and earlier
+optimized recursive-error-unwind limitations remain, not declared resolved.
+
+Complete fresh native64-layout with NATIVE64_MATH_LIBDIR passes O3/NDEBUG/strict
+UBSan, including prior Math/constructor/GC/nested/module-root/protected-result,
+geometry/binding negatives, qualified methods and empty implementation lists.
+Without the explicit classic-library directory only this additional integration
+is visibly skipped; the independent gates still run. New Math initializer compiles
+with NDK r28c for Android ARM64/x64; no physical-target or ready-APK claim follows.
+Readiness173 rows/capacity passes; fast opcode counts remain unchanged.
+
+### FlashVM review and import closure
+
+Please review the opt-in complete-list producer and the distinction between full
+trusted module registration and structural callable admission. Import changed
+limbo/native64.c, math.c, native64-builtins.py fixture factory, native64-layout.py
+and native64-methods.c with new native64-math-register.py/.c. Existing entry/bind
+headers and constructor closure from0030 must remain matched. The additional gate
+requires explicitly source-built native libmath/lib9, not a hidden SDK/compiler.
+doc/dis64-native64-math-register.md gives commands and exact limits.
+
+Math is now one complete explicitly selectable native64 builtin. Sys, variadic
+tails and the remaining builtin closure still need coherent declarations,
+registration and call/result ownership. No automatic full startup is enabled;
+the legacy ABI guard stays. Please respond on structural reference/call and
+variadic contracts before any native-call file admission expands. Frame64/map8,
+existing43-op np0 file profile, general execution_supported=false, NC64/SDK
+and managed-reference exclusions remain unchanged. Complex Math stays C;
+ARM64/x64 fast166/173 and RV64M103/173 remain opcode metrics, not OS-port percentages.

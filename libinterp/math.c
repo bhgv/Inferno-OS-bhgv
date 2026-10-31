@@ -1,10 +1,19 @@
 #include "lib9.h"
 #include "interp.h"
 #include "isa.h"
-/* Explicit consumer probe; ordinary builds retain the checked-in native ABI. */
+/* Explicit consumers retain the checked-in native ABI unless a generated header is selected. */
+#if defined(DIS_NATIVE64_MATH_REGISTER) && DIS_NATIVE64_MATH_REGISTER != 1
+#error DIS_NATIVE64_MATH_REGISTER must be 1 when explicitly enabled
+#endif
+#if defined(DIS_NATIVE64_MATH_REGISTER) && !defined(DIS_NATIVE64_MATH_HEADER)
+#error native64 Math registration requires an explicit generated header
+#endif
 #ifdef DIS_NATIVE64_MATH_HEADER
 #ifndef DIS_WORD32
 #error experimental native64 Math requires DIS_WORD32=1
+#endif
+#ifdef DIS_NATIVE64_MATH_REGISTER
+#define LIMBO_NATIVE64_IMPLEMENTATIONS // Register the complete trusted fixed-frame implementation list.
 #endif
 #include DIS_NATIVE64_MATH_HEADER
 #else
@@ -77,22 +86,31 @@ mathsigned32(unsigned int bits)
 }
 
 
-/* Keep experimental declarations out of the legacy builtin registration path. */
+/* Register one coherent ABI and install formatters only after module construction succeeds. */
 void
 mathmodinit(void)
 {
 #ifdef DIS_NATIVE64_MATH_HEADER
+#ifdef DIS_NATIVE64_MATH_REGISTER
+	if(!limbo_native64_Math_layout() ||
+	   builtinmod64("$Math", limbo_native64_Math_specs, limbo_native64_Math_spec_count,
+		limbo_native64_Math_implementations, limbo_native64_Math_implementation_count) == nil){
+		error("native64 Math registration failed");
+		return;
+	}
+#else
 	error("experimental native64 Math registration is not supported");
 	return;
+#endif
 #else
 	builtinmod("$Math", Mathmodtab, Mathmodlen);
+#endif
 	fmtinstall('g', gfltconv);
 	fmtinstall('G', gfltconv);
 	fmtinstall('e', gfltconv);
 	/* fmtinstall('E', gfltconv); */	/* avoid clash with ether address */
 	fmtinstall(0x00c9, gfltconv);	/* L'É' */
 	fmtinstall('f', gfltconv);
-#endif
 }
 
 /* Decode big-endian signed 32-bit values into complete VM-word slots. */

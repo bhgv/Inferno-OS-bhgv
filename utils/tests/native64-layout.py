@@ -34,6 +34,10 @@ def main():
             limbo = tools/'limbo'
         print(run([sys.executable, ROOT/'utils/tests/native64-math.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
         print(run([sys.executable, ROOT/'utils/tests/native64-builtins.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
+        if env.get('NATIVE64_MATH_LIBDIR'):
+            print(run([sys.executable, ROOT/'utils/tests/native64-math-register.py', '--limbo', limbo, '--libdir', env['NATIVE64_MATH_LIBDIR']], work, env).stdout, end='', flush=True)
+        else:
+            print('SKIP complete Math registration: set NATIVE64_MATH_LIBDIR to explicit classic-mk native libraries', flush=True)
         print(run([sys.executable, ROOT/'utils/tests/native64-gc.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
         print(run([sys.executable, ROOT/'utils/tests/native64-nested.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
         print(run([sys.executable, ROOT/'utils/tests/native64-module-roots.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
@@ -96,7 +100,7 @@ def main():
         empty.write_text('Only: module { f: fn(fmt: string, *): int; };')
         (work/'empty-native64.h').write_text(run([limbo, '-H', empty], work, env).stdout)
         emptyprobe = work/'empty.c'
-        emptyprobe.write_text('#include "lib9.h"\n#include "isa.h"\n#include "interp.h"\n#define LIMBO_NATIVE64_TABLES // Explicit empty logical table.\n#include "empty-native64.h"\n#include "native64-bind.h"\n\n\n/* An all-variadic module has no fixed callable record. */\nint main(void) { return limbo_native64_Only_spec_count == 0 && native64bind(limbo_native64_Only_specs, 0, 0, 0, 0, 0) ? 0 : 1; }\n')
+        emptyprobe.write_text('#include "lib9.h"\n#include "isa.h"\n#include "interp.h"\n#define LIMBO_NATIVE64_IMPLEMENTATIONS // Explicit empty logical table.\n#include "empty-native64.h"\n#include "native64-bind.h"\n\n\n/* An all-variadic module has no fixed callable record. */\nint main(void) { return limbo_native64_Only_spec_count == 0 && limbo_native64_Only_implementation_count == 0 && limbo_native64_Only_implementations[0] == 0 && native64bind(limbo_native64_Only_specs, 0, 0, 0, 0, 0) ? 0 : 1; }\n')
         binary = work/'empty'
         run(compiler+flags+['-DDIS_WORD32=1']+includes+[emptyprobe, '-o', binary], work, env)
         run([binary], work, env)

@@ -26,6 +26,26 @@ def function(source, signature):
     raise RuntimeError('Unterminated production body: '+signature)
 
 
+# Share the actual constructor closure and the bounded allocation/error transport with integration gates.
+def constructor():
+    heap = (ROOT/'libinterp/heap.c').read_text()
+    load = (ROOT/'libinterp/load.c').read_text()
+    link = (ROOT/'libinterp/link.c').read_text()
+    runt = (ROOT/'libinterp/runt.c').read_text()
+    parts = [function((ROOT/'emu/port/dis.c').read_text(), 'int\nkprotect(')]
+    parts += [function(heap, s) for s in ('Type*\ndtype(', 'void\nfreetype(')]
+    parts += [function(load, s) for s in ('Module*\nnewmod(', 'void\nfreemod(', 'void\nunload(')]
+    parts += [function(link, s) for s in ('static void\nnewlink(', 'void\nruntime(', 'void\ndestroylinks(')]
+    parts += [function((ROOT/'libinterp/dlm-Inferno.c').read_text(), 'void\nfreedyncode(')]
+    parts += [runt[runt.index('typedef struct Native64BuiltinAlign'):runt.index('/* Prepare the string before publishing')]]
+    adapter = (ROOT/'libinterp/tests/builtin-modules.c').read_text().split('/* Build a small ABI-real table')[0]
+    adapter = adapter.replace('#include <assert.h>', '#define check(test) do { if(!(test)) { fprintf(stderr,"check failed at %d\\n",__LINE__); abort(); } } while(0) // Active test oracle.')
+    adapter = adapter.replace('assert(', 'check(')
+    adapter = adapter.replace('RUNTAB_TYPE', (ROOT/'libinterp/sysmod.h').read_text().splitlines()[0])
+    adapter = adapter.replace('IMPLEMENTATION', '#include "native64-entry.h"\n#include "native64-bind.h"\n#include <float.h>\n'+'\n'.join(parts))
+    return adapter
+
+
 # Use the existing allocation/error boundary with active checks, never disabled NDEBUG assertions.
 def main():
     env = dict(os.environ)
@@ -45,21 +65,7 @@ def main():
         header = subprocess.check_output([str(limbo), '-H', str(source)], cwd=work, env=env)
         (work/'builtin-native64.h').write_bytes(header)
         (work/'math-native64.h').write_bytes(subprocess.check_output([str(limbo), '-H', str(ROOT/'module/math.m')], cwd=work, env=env))
-        heap = (ROOT/'libinterp/heap.c').read_text()
-        load = (ROOT/'libinterp/load.c').read_text()
-        link = (ROOT/'libinterp/link.c').read_text()
-        runt = (ROOT/'libinterp/runt.c').read_text()
-        parts = [function((ROOT/'emu/port/dis.c').read_text(), 'int\nkprotect(')]
-        parts += [function(heap, s) for s in ('Type*\ndtype(', 'void\nfreetype(')]
-        parts += [function(load, s) for s in ('Module*\nnewmod(', 'void\nfreemod(', 'void\nunload(')]
-        parts += [function(link, s) for s in ('static void\nnewlink(', 'void\nruntime(', 'void\ndestroylinks(')]
-        parts += [function((ROOT/'libinterp/dlm-Inferno.c').read_text(), 'void\nfreedyncode(')]
-        parts += [runt[runt.index('typedef struct Native64BuiltinAlign'):runt.index('/* Prepare the string before publishing')]]
-        adapter = (ROOT/'libinterp/tests/builtin-modules.c').read_text().split('/* Build a small ABI-real table')[0]
-        adapter = adapter.replace('#include <assert.h>', '#define check(test) do { if(!(test)) { fprintf(stderr,"check failed at %d\\n",__LINE__); abort(); } } while(0) // Active test oracle.')
-        adapter = adapter.replace('assert(', 'check(')
-        adapter = adapter.replace('RUNTAB_TYPE', (ROOT/'libinterp/sysmod.h').read_text().splitlines()[0])
-        adapter = adapter.replace('IMPLEMENTATION', '#include "native64-entry.h"\n#include "native64-bind.h"\n#include <float.h>\n'+'\n'.join(parts))
+        adapter = constructor()
         unit = work/'test.c'
         unit.write_text(adapter+(ROOT/'utils/tests/native64-builtins.c').read_text())
         compiler = shlex.split(env.get('CC', 'cc'))

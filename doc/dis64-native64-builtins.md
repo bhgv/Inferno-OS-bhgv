@@ -86,8 +86,10 @@ experimental scalar model. That is compile evidence, not target execution.
 
 ## Remaining integration
 
-No installed module initializer calls builtinmod64 automatically yet. Math's
-existing experimental initializer still refuses the legacy registration path.
+Ordinary installed initializers are unchanged. Math can now explicitly select
+its complete native64 registration with DIS_NATIVE64_MATH_REGISTER=1 and a fresh
+generated header; see dis64-native64-math-register.md. Header-only consumer mode
+without that additional flag still refuses legacy registration.
 Sys variadic tails, structural reference/call signatures, async/native result
 ownership and registration of the whole builtin closure remain separate work.
 The startup legacy-ABI refusal is retained. Existing43-op np0 Dis64 admission,
