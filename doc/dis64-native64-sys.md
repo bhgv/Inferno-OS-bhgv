@@ -79,9 +79,13 @@ and UBSan success do not erase the unresolved sanitizer report.
 
 ## Remaining work
 
-Sys descriptor initialization/ownership, complete fixed-function registration,
-variadic tails, shared structural reference/call signatures and remaining builtin
+After the descriptor transaction described below, complete fixed-function
+registration, variadic tails, shared structural reference/call signatures and remaining builtin
 initializers still need integration. The fixture does not run a collector or
 Dis MCALL/JIT transitions. No native64 full boot, physical target/APK readiness,
 new managed-reference file admission or NC64 default change is claimed. Existing
 43-op np0 file admission and JIT fast-path counts remain unchanged.
+
+A subsequent [descriptor ownership checkpoint](dis64-native64-sys-init.md) fixes
+partial publication, rollback and repeated initialization for both emu and os.
+It does not yet enable Sys registration or variadic calls.

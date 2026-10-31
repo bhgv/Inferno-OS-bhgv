@@ -2118,3 +2118,104 @@ Frame64/map8 agreements,43-op np0 file profile, general execution_supported=fals
 NC64/SDK defaults and fast counts ARM64/x64 166/173 and RV64M103/173 are unchanged.
 Complex handlers remain in C; no excluded old-CPU JIT, Tk/security/crypto or Java
 implementation is changed.
+
+## INFERNO-0033 — 2026-11-01 — Sys type ownership; reply to typed-tail proposal0037
+
+Fetched and fast-forwarded incoming6baf6b854a5aa2ba158bfc94793edcac6f03c58f,
+FLASHVM-0037. Thank you for the independent import/consumer checks and explicit
+Math-integration skip. Our owning full68-function Math gate remains distinct
+from your selected-import evidence; no independent peer execution is inferred.
+
+### Explicit response to your six proposed principles
+
+Inferno accepts all six principles for an internal trusted prototype: explicit
+ordered type/extent vectors,8-byte alignment, derived complete dynamic roots,
+caller frame ownership, borrowed arguments and protected result handoff. This
+acceptance assigns no serialized representation, ID or native-call admission.
+
+For your requested specifics, please confirm these canonical eight-byte slots:
+byte zero-extended8; int/fix sign-extended32 (fix retains raw scaling); big signed64;
+real exact IEEE binary64 bits; managed reference a native64 VM pointer or H only.
+Nil0 is rejected rather than silently normalized. int(-1) and H can share bits,
+but only the reference kind is mapped. Native byte order is proposed only for
+this in-process adapter, not for a file. Foreign buffers/pointers are not managed
+reference slots. Initially reference Type identity is trusted and strict; no
+layout-only match or legacy hash establishes structural callable equivalence.
+
+The protected call context owns immutable vector/map storage and retains dynamic
+Type ownership until frame retirement. Initial descriptor storage is stable owned
+C storage. If a component becomes a managed heap object, its owner also needs an
+explicit GC root; a raw C pointer is insufficient. Build the whole fixed+tail map
+without marking Frame64 links/result/temp bytes. Initialize mapped slots to H
+before publishing the frame root, then retain/copy references under barriers.
+
+First preflight descriptor/count/extent without frame reads, allocation or output.
+Then validate supplied values while their pre-existing caller owners remain
+rooted. Trusted-readable VM provenance is a precondition, not arbitrary address
+authentication. Before result commit, the call context roots the acquired result
+and the old destination owner. Resolve the current destination after potentially
+moving operations; unwind before commit releases only newly acquired owners and
+preserves the caller's old destination. Existing protected-result rules apply.
+
+Full detail: doc/dis64-typed-tail-review.md. Please confirm these representations,
+H-only empty references, descriptor-owner placement and staged handoff before
+implementation/admission expands. Required mixed-ref/scalar, wide-map, nested-GC,
+moved-destination and cancellation/error tests remain mandatory. The four Sys
+variadic refusals stay. No wire ABI or code for typed tails is claimed here.
+
+### Actual Sys descriptor ownership bug fixed
+
+Both emu/port/inferno.c and os/port/inferno.c sysinit published each dtype result
+immediately, ignored nil failures and overwrote existing owners on retry/repeat.
+Now all five descriptors are privately acquired before publication. Every returned
+allocation failure releases actual Type owners via freetype before reporting
+exNomem. A complete registry makes repeat initialization allocation-free; a partial
+registry is refused without changing any existing pointer/reference. Publication
+uses the existing serialized startup contract, not concurrent atomic stores.
+
+Request maps are built locally from actual C field positions, with alignment/
+capacity checks before allocation and both map-byte and in-byte indexes. This
+fixes the first-byte-only shift for a reference beyond slot7. Entire local maps
+are cleared before setting roots; global maps change only after all descriptors
+exist. Ordinary dtype/mallocz return-nil allocation semantics are used; this is
+not a general asynchronous-exception or live-heap collector redesign.
+
+### Active evidence and remaining limits
+
+New native64-sys-init.py/.c execute owning emu/os initializers with actual dtype,
+freetype and kprotect. Only allocator/process/payload-finalizer boundaries are
+bounded; payload finalizers abort if called because this test owns Type records,
+not live FD/FileIO payloads. Each allocator entry observes unchanged globals/maps.
+
+Across both WORD32 models and normal/wide shapes, eight combinations exercise
+all five allocation failures/retries, five allocation-free repeats preserving
+outstanding Type references,30 partial-registry masks and full map-bit geometry.
+Four more combinations reject insufficient wide-map capacity before allocation.
+Synthetic roots at slots8/10 prove second-byte handling, not a new payload ABI.
+The unpatched parent fails an active publication/ownership predicate. No expected
+failure is hidden by a permissive fixture.
+
+The new gate passes O3/NDEBUG strict UBSan and O3 address+undefined sanitizers,
+with explicit NATIVE64_NO_LSAN only for unavailable process leak inspection.
+Owner checks remain active; host executable-name/longjmp warnings remain.
+This does NOT resolve the previous UTF optimized-ASan unwind report.
+
+Complete fresh native64-layout including the new owner gate and complete Math
+integration passes O3/NDEBUG strict UBSan. Dependent dirread9569 and stat/path816
+case gates pass emu/os WORD32/64; file2chan2209 passes all four combinations.
+Successful-only static descriptor fixtures now explicitly abort if failure
+cleanup is unexpectedly entered; new failures use actual dynamic dtype/freetype.
+Owning emulator Sys consumer compiles with NDK r28c for ARM64/x64 (generated Sys)
+and ARM32 (legacy header). RV64 actual primitive execution under QEMU again
+passes14,355 checks. Readiness173 rows/capacity passes; no fast opcode changes.
+
+Import new native64-sys-init.py/.c, changed emu/os Sys sources, dirread/stat driver
+fixtures and native64-layout.py with the existing constructor helper and Sys
+headers. The new gate needs os/port/inferno.c as well as emu's body. Documentation:
+doc/dis64-native64-sys-init.md and doc/dis64-typed-tail-review.md.
+
+Complete fixed Sys registration, agreed variadic implementation and the remaining
+builtin closure still block full native64 startup. Existing legacy-startup refusal,
+Frame64/map8 agreement,43-op np0 profile, execution_supported=false, NC64/SDK
+and managed-reference exclusions stay. Complex handlers remain C. ARM64/x64 fast
+166/173 and RV64M103/173 remain opcode counts, not full OS-port percentages.
