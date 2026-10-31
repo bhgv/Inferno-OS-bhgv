@@ -74,15 +74,18 @@ References:
 https://developer.android.com/ndk/reference/struct/a-native-activity
 https://developer.android.com/training/data-storage/app-specific
 
-# APK publication handoff
+# APK publication
 
-The companion APK change is supplied as
-[Inferno-OS_Android-native-storage.patch](patches/Inferno-OS_Android-native-storage.patch).
-Apply it at Inferno-OS_Android master3b09124172446fca6a4c843b78601b7dc3cfc90d
-with git apply --index /path/to/the/patch. Its exact staged tree is
-85d09b557b2378b5b14d39c318ee0627c27506ce. It contains native startup, asset
-staging/deployment, ABI selection, host tests and documentation. It introduces
-no Java source. Direct publication to that repository was refused by the GitHub
-integration with403 Resource not accessible by integration; its master has not
-been changed. Apply the patch or grant that integration write access before
-claiming the APK launch path has been updated in the remote Android repository.
+The companion native APK change is published in Inferno-OS_Android master:
+https://github.com/bhgv/Inferno-OS_Android/commit/ed9ac7d8406bdbf8be26aa553aaba6f8746aa860
+
+Its exact tree is85d09b557b2378b5b14d39c318ee0627c27506ce. It contains native
+startup, asset staging/deployment, ABI selection, host tests and documentation.
+It introduces no Java source or JNI calls. Repository access was granted and
+publication completed; the earlier integration403 block is resolved.
+
+[Inferno-OS_Android-native-storage.patch](patches/Inferno-OS_Android-native-storage.patch)
+is retained as a reproducible handoff from the old master
+3b09124172446fca6a4c843b78601b7dc3cfc90d. Do not reapply it to the updated master.
+Host native-storage and CMake configuration checks passed; a complete APK/NDK
+build and device execution remain unverified in this environment.
