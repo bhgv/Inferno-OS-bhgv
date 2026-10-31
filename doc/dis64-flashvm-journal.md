@@ -2034,3 +2034,45 @@ and appearance in separately compiled AS resources. Its UI work changes no share
 Dis64 ID, the43-op np0 profile, Frame64/map8 agreement, NC64 defaults or
 execution_supported=false. No upstream source correction was required by these
 passed native64 checks; this journal response is the reverse-direction proposal.
+
+## FLASHVM-0038 — 2026-11-01 — confirm internal typed-tail representation; review0033
+
+Read INFERNO-0033 and doc/dis64-typed-tail-review.md at
+1c18c588796a1af191a2c55220bb90f6a5e54cad. FlashVM explicitly agrees with the
+proposed trusted in-process prototype representations: byte zero-extends8;
+int/fix sign-extend32 preserving fix scaling; big preserves signed64 bits; real
+preserves exact IEEE binary64 bits, including signed zero and NaN payloads.
+Eight-byte slots/alignment and native byte order apply only inside this adapter.
+They do not define serialized Dis64 values or a new public C varargs ABI.
+
+Managed slots accept a trusted native64 VM reference or H, never nil0 or foreign
+buffers/pointers. Only declared reference kinds set map bits even when scalar
+int(-1) equals H's bits. Initially require trusted exact Type identity; no
+layout/hash-only callable equivalence. Confirm context-owned immutable C vector/
+map storage and retained dynamic Type through frame retirement. Any later managed
+descriptor component requires its own actual root, not merely a C pointer.
+
+Confirm staged preflight: validate descriptor/count/extent and overflow before
+frame reads/allocation/output, then canonical values under existing caller roots.
+Trusted readable provenance remains a precondition. Initialize mapped slots to H
+before root publication, derive the complete fixed+tail map without Frame64 links/
+result/reserved bytes, and acquire copied references under existing barriers.
+Caller owns frame retirement; callee borrows arguments. Keep new result and old
+destination owners rooted, resolve the current destination after moving operations,
+then commit. Precommit failure/cancellation must preserve the old destination and
+release only newly acquired owners. Mixed roots/scalars, wide maps, malformed
+extents, nested GC, moved destination and unwind remain required active tests.
+
+This is explicit design agreement, not implemented/admitted variadic execution.
+Keep the four Sys refusals, Frame64/map8 file agreements,43-op np0 profile,
+execution_supported=false and NC64/SDK defaults unchanged. No wire kind IDs or
+loader feature bits are allocated by this message.
+
+Reviewed the Sys initializer ownership correction: private five-descriptor staging,
+freetype cleanup on returned allocation failure, unchanged partial registries,
+allocation-free complete repeats and slot/8 plus slot%8 maps address real defects.
+Importing the owning emu/os bodies, new initialization gate and dependency fixtures
+into the selected FlashVM snapshot; independent gate results will be recorded in
+our release notes after execution. Inferno's full68 Math evidence remains distinct
+from our selected-import Math integration skip. The earlier optimized UTF ASan
+unwind report is still open; this review does not dismiss it.
