@@ -1841,3 +1841,51 @@ https://github.com/bhgv/flashVM/blob/master/disVM/limbo/asinctasks.b
 https://github.com/bhgv/flashVM/blob/master/compiler/runtime/ASINC-TASKS.md
 https://github.com/bhgv/flashVM/blob/master/ide/dis/tests/asinctasks_test.b
 https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1704.md
+
+## FLASHVM-0035 — 2026-10-31 — Supplement0034: concurrent native64 profiles/storage import
+
+Уточнение к0034 после повторной сверки актуальной experiment: пока шла серия
+FlashVM, появился daa205685c1e55acf9614dd05b603ae540d39a16 с native64 mk profiles
+и Android storage. Отдельной записи в Dis64-журнале не было: INFERNO-0028/blob
+87926ac2bb98c65c17c1647275f49b1180b41982 остаётся последним format/runtime ответом.
+Фраза0034 об отсутствии новых executable changes относится к более ранней сверке;
+новые изменения daa2056 теперь рассмотрены и выбранное замыкание импортировано.
+
+### Selected import and evidence
+
+DisVM955/bootstrap281 файлов byte-exact от c6db89cf235a94f55453c033662f2c6437d64a1a,
+затем pin будет обновлён на это journal-only дополнение. Добавлены16 выбранных
+зависимостей: пять mk-профилей, пять forwarding lib9 headers и общая Android/arm
+база объявлений, native64-target guard, реальный mk driver, Android POSIX storage
+.c/.h и его host test. Агрегатный slice-tokenize-suite теперь имеет оба новых
+зависимых драйвера; тела upstream не менялись.
+
+Собран собственный selected Inferno mk из tools/mk. Копия и owning native64-mkfiles
+проходят: actual mk expansion Linux amd64/arm64/riscv64 и Android amd64/arm64,
+actual native x86-64 compile/link/run WORD64 и WORD32, отказ mismatched compiler.
+ARM64/RV64/NDK probes не исполнялись; profile expansion не выдан за полный port.
+Согласен с LP64/architecture preflight и обязательной согласованностью DISMODELFLAGS
+всех linked objects/сгенерированных headers. Новых file/reference admissions нет.
+
+Копия Android storage:32 active filesystem/publication predicates, O2/strict UBSan.
+Owning source: те же32 predicates, O3/NDEBUG/strict UBSan. Проверяются атомарная
+конфигурация launcher paths, bounds, предпочтение app storage, fallback, ошибочные
+пути и отсутствие частичного результата. Полный Android startup/trace/mkfile и
+companion APK patch не включены в наш небольшой runtime helper closure. Это не
+NDK/APK/device acceptance или обход scoped storage.
+
+Независимое ядро теперь246/246 PASS, включая оба новых gates. DVM_MK_EXECUTABLE
+явно передаёт source-built mk; без этой необязательной настройки profile CTest
+не включается. Скрытого sibling build нет. Передача каталога вместо файла отвергается
+на configure. Для ручного upstream driver/aggregate нужен NATIVE_MK: его fallback
+makemk.sh из полного Inferno не входит в выбранный DisVM snapshot.
+
+Наш runtime/IDE343/343 остаётся пройденным. Исполняемые libinterp/bootstrap sources
+между прежним pin и daa2056 не изменились; новый POSIX storage тестируется отдельно.
+Retirement/identity/FIFO доказательства0034 остаются в силе. Нового подтверждённого
+общего source defect для обратного исправления не найдено; shared task/native
+reference/Dis64 format ABI по-прежнему не назначается молча.
+
+https://github.com/bhgv/flashVM/blob/master/disVM/PLATFORM-PROFILES.md
+https://github.com/bhgv/flashVM/blob/master/disVM/SYNC.md
+https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1704.md
