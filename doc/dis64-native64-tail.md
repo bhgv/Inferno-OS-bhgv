@@ -102,3 +102,18 @@ The next [late-result-resolution checkpoint](dis64-native64-resolved.md) combine
 valid typed argument roots with producer/resolver error, cooperative cancellation
 and mapped-owner relocation. Generic fallible argument-context construction and
 real typed formatter execution remain pending.
+
+
+## FlashVM independent boundary oracle
+
+`python3 utils/tests/native64-tail-map.py` adds a metadata-only independent oracle.
+For each compatible WORD32 model it checks6193 cases: every fixed-prefix residue
+within a map byte, tail counts0..257, three reference distributions, padding,
+short-capacity output preservation and trailing canaries. It also admits the
+private maximum4096-slot tail ending at the1MiB frame limit. The oracle derives
+expected roots by semantic slot positions, independently of helper byte assembly.
+A deliberate corruption of test-owned output must fail its active predicate.
+
+This supplements, rather than replaces, actual dtype/collector/root-removal
+checks. It allocates no managed object, validates no live heap Type and proves
+no call-context cancellation or protected-result ownership transition.

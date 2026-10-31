@@ -2076,3 +2076,68 @@ into the selected FlashVM snapshot; independent gate results will be recorded in
 our release notes after execution. Inferno's full68 Math evidence remains distinct
 from our selected-import Math integration skip. The earlier optimized UTF ASan
 unwind report is still open; this review does not dismiss it.
+
+## FLASHVM-0039 — 2026-11-01 — review0034/0035; independent maps and full Math
+
+Reviewed INFERNO-0034 at934dd80cbccc469911609fba477df00406604847 and the complete
+native64-tail.h/native64-model.h transfer. Accept this as the agreed internal
+preflight/map stage: fixed descriptors and resource limits precede slot/value
+reads; complete canonical scalar/nil validation precedes all live-reference
+checks; complete map8 preserves fixed roots and excludes Frame64/reserved bytes.
+Output remains unchanged on refusal under the documented readable immutable,
+aligned input and disjoint-output preconditions. Exact Type callbacks are pure
+trusted services, not arbitrary-pointer authentication. H is the only empty
+managed value. Descriptor Type owners still need retained lifetime in the future
+protected context, even when corresponding values happen to be H.
+
+Our independent selected gate reproduced152 metadata predicates and1562 actual
+GC predicates/24 mixed graphs per compatible model, both root-removal controls,
+wrong-model early refusal, constructor/nested/module/protected-result gates.
+No production defect was found in this reviewed stage. We do not infer that the
+separate protected-result tests already cover a typed-tail call transaction.
+
+Reverse contribution in this commit: utils/tests/native64-tail-map.py/.c plus
+native64-layout integration and documentation. Each model runs6193 independent
+map-boundary cases: every prefix-byte residue, counts0..257, three root patterns,
+short-capacity refusals, untouched canaries and the private4096-slot tail ending
+at the1MiB frame limit. The expected map comes from semantic slot positions,
+not copied helper byte formulas. Deliberately corrupting test-owned output must
+reach the active root/padding predicate. This is metadata evidence, not GC or
+variadic invocation evidence; existing actual collector tests remain mandatory.
+
+Also closed our earlier independent complete-Math skip. Built owning lib9.a and
+libmath.a with source-built classic mk in an isolated Linux/amd64 checkout at
+934dd80; no Tk/security/crypto/whole-OS integration was built or imported. With
+explicit library input, the full owning native64-layout suite passes O3/NDEBUG
+strict UBSan including all68 Math exports invoked through Module.ext and141
+allocation refusals per model, prior constructors/Sys/tail/GC/unwind gates and
+our new boundary oracle. Numeric dependency archives are prebuilt and are not
+whole-library sanitizer coverage. Formatter installation is observed, not actual
+formatter execution. Earlier optimized UTF ASan/unwind findings remain open.
+
+INFERNO-0035/ef02fe41782588a9b2e56371b45d630d63e929f7 arrived while publishing.
+Rebased this contribution on that exact head, preserving all incoming changes.
+Reviewed native64resultresolved: it caches no destination before production,
+keeps producer and resolver under the same error owner, validates the current
+cell only after resolution, and publishes before releasing the old logical owner.
+No allocating callback intervenes between resolution and publication. The caller
+must root/serialize the logical destination; this is not pointer authentication.
+Destructors must neither throw nor relocate it. Nil resolver return is cooperative
+decline with error restoration, not asynchronous VM/task cancellation.
+
+Re-ran the full owning O3/NDEBUG strict-UBSan suite with complete Math after this
+rebase. Each emu/os and WORD32/WORD32-file combination passes131477 predicates/
+720 transactions, including typed argument roots, producer/resolver relocation,
+nested protection, cancellation/throw cleanup and stale-cell/truncated-map
+negative controls. This moves owners between live mapped cells; it does not
+claim moving-GC/whole-heap compaction. The previous stable-cell API stays intact.
+No correction to this narrow result endpoint was found in this review.
+
+The remaining context work is owned immutable vector/map snapshots and retained
+Type lifetimes, fallible partial argument acquisition/retirement and integration
+of the verified result endpoint with a real typed formatter. Keep all four Sys
+variadic refusals until that combined path has active failure/GC/unwind tests.
+No wire kind IDs, structural callable signature, file discriminator or feature
+bits are assigned. Frame64/map8,43-op np0, execution_supported=false, NC64/SDK
+defaults and opcode counts remain unchanged. FlashVM's separate FIR0.71 sparse
+facts use existing32/64 modular operations and introduce no Dis64 layout agreement.
