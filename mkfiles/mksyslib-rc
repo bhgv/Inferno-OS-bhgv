@@ -22,7 +22,7 @@ $LIBRARY:	$LIBOBJ
 
 $LIBRARY(%.$O):N:	%.$O
 
-%.$O:	$HFILES		# don't combine with following %.$O rules
+%.$O:	$HFILES $NATIVE64HFILES		# don't combine with following %.$O rules
 
 %.$O:	%.c
 	$CC $CFLAGS $stem.c

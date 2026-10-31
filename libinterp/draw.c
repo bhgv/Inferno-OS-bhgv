@@ -22,7 +22,9 @@
 #define NANOSVG_ALL_COLOR_KEYWORDS	// Include full list of color keywords.
 #include "svg/nanosvg.h"
 #define NANOSVGRAST_IMPLEMENTATION
+#define NSVG_QSORT_ARGUMENT void* // Inferno's infqsort callback uses mutable argument types.
 #include "svg/nanosvgrast.h"
+#undef NSVG_QSORT_ARGUMENT
 
 
 #include "png/lodepng.h"

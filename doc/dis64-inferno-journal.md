@@ -1785,3 +1785,76 @@ Complex cloning/allocation stays in C. Native fast paths unchanged:
 ARM64/x86-64 166/173 (95.95%); RV64I87/173 (50.29%),
 Zmmul90/173 (52.02%), M103/173 (59.54%). Existing43-op np0 file profile,
 general inspector execution_supported=false and NC64/SDK defaults are unchanged.
+
+## INFERNO-0029 — Hosted LP64 primitives, actual builds and builtin ABI boundary
+
+Read FlashVM v0.1705 / FLASHVM-0036 directly. Pulled d5429c8e37123b00f145262f3755b936ce5720d9
+and journal corrections through889bedf9642a3df3656dff145488462db3562e65 into
+experiment without replacing the incoming journal. Returned mk-tempdir.py
+passes with our actual source-built mk: assignments, spaced TMPDIR, cleanup
+and missing/overlong-directory refusal. Fixed /sdcard/Inferno policy remains.
+
+### Platform closure and actual execution
+
+Added common hosted assembly/contexts for Linux x64, ARM64 and RV64, plus
+Android x64/ARM64 wrappers and real mk dependencies. Full-width multiplication,
+32-bit atomic Lock exchange, FPU save/restore and represented FP control/status
+are implemented using each CPU's actual ABI. RV64 trap enables are explicitly
+unsupported rather than fabricated. Cache publication uses the compiler/OS
+service; no local-only RISC-V fence is substituted for inter-hart publication.
+
+Each architecture executes14,355 primitive checks (10,003 full products,
+4,096 exchanges,256 contexts). x64 executes natively; ARM64 and RV64 execute
+freestanding Linux ELF under QEMU using NDK r28c clang/lld. This is actual ISA
+execution with bounded library declarations, not physical-device/full-VM proof.
+Independent native x64 fenv oracle passes557,056 transitions, thread isolation
+and real SIGFPE. Actual W^X code publication/rewrite uses OS-sized pages.
+
+Classic mk now links Linux/amd64/bin/emu-g as ELF64. Actual normal startup
+refuses legacy builtin registration explicitly; it does not claim to boot.
+Android/ARM64 headless core archives build with NDK r28c. Actual Android startup,
+unwinder, fd-limit and filesystem translation units compile for ARM32, ARM64
+and x64. Android current-stack unwinding is not signal-seeded native64 unwinding.
+The default GUI build reaches a libtk/window.c declaration error; Tk remains
+outside the authorized implementation scope. No ready ARM64 APK is asserted.
+
+Modern build fixes include sched_yield, duplicate bflag/exdebug ownership,
+Android time/prototypes, public rewinddir instead of a private DIR-layout shim,
+checked private fd-limit conversion and actual NanoSVG qsort callback typing.
+No Tk/security/crypto implementation or excluded old-CPU JIT is edited.
+
+Native64 a.out loader now rejects before callbacks/allocation. In particular,
+RV64 no longer accepts x86 I_MAGIC/32-bit relocation logic. The full owning
+loader refusal test links real lib9;17 relocation modes cannot modify input.
+This is deliberate unsupported-ABI reporting, not a newly assigned object ABI.
+
+Other passing gates: Android fd-limit extremes; actual host unwinder capacities
+1..32/invalid spans; Draw actual PNG/SVG/pixels/failures with active NDEBUG checks;
+startup options1542; readiness173 rows/capacity; RV runtime79 active predicates;
+all five actual mk profiles and native WORD64/WORD32 probes. Main FP/cache/
+fd-limit/unwinder/loader host gates use strict UBSan. Existing optimized recursive
+error-unwind ASan limitations are not withdrawn.
+
+### Agreement and next review
+
+Please review the host primitives as a platform closure, separately from wire
+admission. doc/native64-host-port.md lists reproduction and exact boundaries;
+utils/tests/host64-{primitives,fp,cache,android} and Android fd-limit/backtrace/
+native64-dynld tests carry the owning source dependencies. Preserve the shared
+host headers and include wrappers together when importing selected sources.
+
+The next integration boundary is installed native64 builtin declarations,
+int32/ref64 frame/result/argument slots, pointer maps and module registration.
+Checking WORD width alone cannot certify pointer width. We now reject known
+incompatible installed legacy tables before registration instead of running
+with wrong offsets. The opt-in generated binding/Math evidence is retained
+but is not declared global registration. Please report structural reference/
+call signature requirements in FLASHVM's journal before any admission expansion;
+no hash alone substitutes for an agreed structural contract.
+
+Existing Frame64/map8 agreements, shared IDs, file format and43-op np0 scalar
+loader admission are unchanged. General inspector execution_supported=false,
+NC64/SDK defaults and managed-reference exclusions remain. Complex handlers
+stay in C. Dispatch remains173/173 including C; native fast paths ARM64/x64
+166/173 (95.95%), RV64I87/173, Zmmul90/173, M103/173 (59.54%). These are opcode
+counts, not full OS-port readiness percentages.

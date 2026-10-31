@@ -21,13 +21,16 @@ For Android use SYSTARG=Android, OBJTYPE=arm64 or amd64, and ANDROID_NDK_HOME.
 Create the selected platform's bin/lib output directories before library builds.
 
 These profiles select compilers, target flags, archive tools, linkers and shared
-C declaration headers. Forced native64-target.h checks reject a compiler for
-the wrong architecture or a non-LP64 data model. They are useful for native core/library builds and
-cross-compilation preparation. They do NOT complete the missing native platform
-ports: emu/Linux and emu/Android still lack the corresponding mkfile-CPU,
-asm-CPU, cache-flush, FPU-context and signal-context integration. The legacy
-common emu headers used by isolated core checks must not be mistaken for those
-machine-specific execution contexts. A top-level full emu build is not certified.
+C declarations. Forced native64-target.h checks reject a mismatched compiler or
+non-LP64 data model. Hosted Linux/Android ports now provide machine-specific
+assembly, FP contexts, atomics and cache publication. Linux/x64 terminal emu
+links as ELF64; Android/ARM64 headless core archives build with NDK r28c.
+
+This is not complete VM startup: installed legacy builtin tables still require
+int32/ref32. Startup explicitly refuses them on LP64 before module registration.
+The opt-in generated native64 binding is not yet installed for all modules.
+Signal-context handling, GUI dependencies and physical-target boot remain
+separate acceptance work. See native64-host-port.md for exact tests and limits.
 
 The default scalar model remains legacy. For the opt-in WORD32/ref64 experiment,
 set DISMODELFLAGS='-DDIS_WORD32=1' and rebuild every linked runtime object with
@@ -35,11 +38,11 @@ matching generated headers. The quotes are required by mk's assignment parser.
 A 64-bit C target does not itself enable new Dis64 file/reference admission or
 certify the complete generated native module ABI. See dis64-runtime-build.md.
 
-utils/tests/native64-mkfiles.py runs the actual mk parser on all five profiles,
-then compiles, links and executes amd64 WORD64 and WORD32 probes. Other target
-compilers/NDK are not installed in the host verification environment. Public
-lib9 headers forward to shared platform declarations; architecture execution
-contexts remain separate port work.
+utils/tests/native64-mkfiles.py uses the actual mk parser on all five profiles,
+then compiles, links and executes native WORD64/WORD32 probes. The host-port
+series also executes real assembly on x64 and ARM64/RV64 under QEMU, and compiles
+the actual Android startup/compatibility sources for ARM32, ARM64 and x64 with
+an explicitly supplied NDK. These checks do not certify a complete OS boot.
 
 # Android shared runtime tree
 

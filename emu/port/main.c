@@ -2,6 +2,7 @@
 #include	"fns.h"
 #include	"error.h"
 #include	"interp.h"
+#include "legacy-native-abi.h"
 #include	"kernel.h"
 #include	"draw.h"
 #include	"version.h"
@@ -262,6 +263,10 @@ main(int argc, char *argv[])
 		option(envc, enva, envusage);
 	}
 	option(argc, argv, usage);
+	if(!legacynativeabi()){
+		fprint(2, "emu: installed legacy builtin tables require int32/ref32; native64 registration is not enabled\n");
+		exits("native64 builtin ABI");
+	}
 	eve = strdup("inferno");
 
 	opt = "interp";

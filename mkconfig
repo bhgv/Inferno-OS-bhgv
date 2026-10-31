@@ -11,6 +11,7 @@ ROOT=$ROOT
 #
 TKSTYLE=std
 
+TOUCHSCREEN_CAPACITIVE=0 # Explicit default prevents an empty -D from consuming the next include option.
 EXTWINFLAGS= # Set -DEXT_WIN only for Android GLES/Clutter archives, empty for framebuffer.
 WINDOW_BACKEND=fb		# andr, clutter, x11a, fb
 

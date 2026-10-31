@@ -2,6 +2,7 @@
 #include	"fns.h"
 #include	"error.h"
 #include	"interp.h"
+#include "legacy-native-abi.h"
 #include	"kernel.h"
 #include	"draw.h"
 #include	"version.h"
@@ -10,6 +11,7 @@
 	
 #include <android/log.h>
 #include "storage.h"
+#include "amain.h"
 	
 #define  LOG_TAG    "Inferno MAIN"
 #define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
@@ -19,7 +21,7 @@
 
 
 	int		rebootargc = 0;
-	char**		rebootargv = &"";
+	char**		rebootargv;
 	static	char	*imod = "/dis/emuinit.dis";
 extern	char*	hosttype;
 	char*	tkfont = nil;	/* for libtk/utils.c */
@@ -345,6 +347,12 @@ amain(void)
 	}
 	if(opt)
 		free(opt);
+
+	if(!legacynativeabi()){
+		LOGE("Installed legacy builtin tables require int32/ref32; native64 registration is not enabled");
+		is_run = 0;
+		return;
+	}
 
 //	option(argc, argv, usage);
 	displaychan = strtochan("x8r8g8b8");

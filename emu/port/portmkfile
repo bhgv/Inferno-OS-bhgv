@@ -30,7 +30,7 @@ $ROOT/$SYSTARG/$OBJTYPE/lib/lib%.a:N:	lib%.a
 %.$O:		../ip/%.c
 		$CC $CFLAGS -I. ../ip/$stem.c
 
-&.$O:		$HFILES $PORTHFILES
+&.$O:		$HFILES $PORTHFILES $NATIVE64HFILES
 
 $INSTALLDIR/%: %
 	cp $stem $INSTALLDIR/$stem
@@ -176,3 +176,6 @@ srv.h srvm.h:D:		$ROOT/module/srvrunt.b $ROOT/module/srv.m
 			rm -f $alltarget
 			limbo -a -I$ROOT/module $ROOT/module/srvrunt.b >srv.h
 			limbo -t Srv -I$ROOT/module $ROOT/module/srvrunt.b >srvm.h
+
+# Startup must reject mismatched installed builtin frames before module registration.
+main.$O amain.$O: $ROOT/include/legacy-native-abi.h

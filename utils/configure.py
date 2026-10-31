@@ -87,7 +87,7 @@ def main():
     os.replace(temporary,args.output)
     print('Prepared',args.output,'for',args.host,'->',target,arch, 'console' if args.console else 'platform default')
     if arch in ('amd64','arm64','riscv64'):
-        print('64-bit toolchain profile selected; complete emu assembly/FPU/signal platform ports remain separate work.')
+        print('64-bit toolchain profile selected; native builtin ABI registration and full VM boot remain pending.')
     print('Build with the classic commands: mk mkdirs; mk emuinstall; mk install')
 
 

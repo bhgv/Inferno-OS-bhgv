@@ -1,0 +1,5 @@
+# Native atomics and FP context are supplied by asm-riscv64.S.
+ARCHFILES=
+
+asm-riscv64.$O: ../port/asm-riscv64.S $ROOT/include/host64-fpu.h
+segflush-riscv64.$O: ../port/segflush-native64.c

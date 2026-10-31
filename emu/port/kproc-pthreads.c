@@ -11,6 +11,7 @@
 #include	<limits.h>
 #include	<errno.h>
 #include	<semaphore.h>
+#include	<sched.h>
 
 typedef struct Osdep Osdep;
 struct Osdep {
@@ -208,20 +209,13 @@ kprocinit(Proc *p)
 		panic("set specific thread data failed");
 }
 
-#ifdef ANDROID
-#include <sched.h>
-#endif
+/* Yield through POSIX on every pthread host; pthread_yield is not a portable exported symbol. */
 void
 osyield(void)
 {
-//	pthread_yield_np();
-	/* define pthread_yield to be sched_yield or pthread_yield_np if required */
-#ifndef ANDROID
-	pthread_yield();
-#else
 	sched_yield();
-#endif
 }
+
 
 void
 ospause(void)

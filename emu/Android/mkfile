@@ -29,7 +29,6 @@ OBJ=\
 	segflush-$OBJTYPE.$O\
 	$CONF.root.$O\
 	lock.$O\
-	telldir.$O\
 	getdtablesize.$O\
 	$DEVS\
 	$PORT\
@@ -37,7 +36,7 @@ OBJ=\
 LIBNAMES=${LIBS:%=lib%.a}
 #libs=${LIBS:%=$ROOT/$OBJDIR/lib/lib%.a}
 
-HFILES=\
+HFILES= amain.h fdlimit.h\
 
 CFLAGS='-DROOT="'$ROOT'"' -DEMU -I. -I../port -I$ROOT/$SYSTARG/$OBJTYPE/include -I$ROOT/include -I$ROOT/libinterp $CTHREADFLAGS $CFLAGS $EMUOPTIONS
 #SYSLIBS= $X11LIBS -lm -lpthread
@@ -56,7 +55,7 @@ KERNDATE=`{$NDATE}
 
 <../port/portmkfile
 
-devfs.$O:	../port/devfs-posix.c
+devfs.$O:	devfs-posix-a.c
 
 
 
@@ -96,8 +95,6 @@ $LIBRARY(%.$O):N:	%.$O
 
 
 
-
-#telldir.$O:	./compat/telldir.c
 
 #getdtablesize.$O:	./compat/getdtablesize.c
 

@@ -92,6 +92,7 @@ dynfreeimport(Dynobj *o)
 
 static char Ereloc[] = "error reading object file";
 
+/* Reject an unsupported target before file callbacks, allocations or relocation reads. */
 Dynobj*
 dynloadgen(void *file, long (*rd)(void*,void*,long), vlong (*sk)(void*,vlong,int), void (*werr)(char*), Dynsym *tab, int ntab, ulong maxsize)
 {
@@ -105,6 +106,10 @@ dynloadgen(void *file, long (*rd)(void*,void*,long), vlong (*sk)(void*,vlong,int
 	uchar *reldata, *rp, *ep;
 	vlong off;
 
+	if(dynmagic() == -1){
+		(*werr)("native64 a.out relocation is unsupported");
+		return nil;
+	}
 	err = Ereloc;	/* default */
 	off = (*sk)(file, 0, 1);
 	l = mallocz(sizeof(Dynobj), 1);
@@ -244,11 +249,14 @@ Error:
 	return nil;
 }
 
+/* A target with no relocation ABI cannot classify another CPU's object as executable. */
 int
 dynloadable(void* file, long (*rd)(void*,void*,long), vlong (*sk)(void*,vlong,int))
 {
 	long magic;
 
+	if(dynmagic() == -1)
+		return 0;
 	if((*rd)(file, &magic, sizeof(magic)) != sizeof(magic)){
 		(*sk)(file, -(signed int)sizeof(magic), 1);
 		return 0;

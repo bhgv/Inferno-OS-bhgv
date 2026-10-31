@@ -105,7 +105,7 @@ static char	Emode[] = "open/create -- unknown mode";
 static char	Edupfid[]	= "fid in use";
 static char	Eaccess[] = "read/write -- not open in suitable mode";
 static char	Ecount[] = "read/write -- count too big";
-int	exdebug = 0;
+extern int	exdebug; // The console device owns the shared export-debug switch.
 
 int
 export(int fd, char *dir, int async)

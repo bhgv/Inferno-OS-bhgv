@@ -1,3 +1,4 @@
+#include "fdlimit.h"
 #include	<sys/types.h>
 #include	<signal.h>
 #include 	<pwd.h>
@@ -41,7 +42,7 @@ childproc(Targ *t)
 	if(Debug)
 		print("devcmd: '%s'", t->args[0]);
 
-	nfd = getdtablesize();
+	nfd = inferno_android_fdlimit();
 	for(i = 0; i < nfd; i++)
 		if(i != t->fd[0] && i != t->fd[1] && i != t->fd[2] && i != t->wfd)
 			close(i);

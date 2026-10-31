@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2011-2015 CrystaX.
  * All rights reserved.
  *
@@ -27,15 +27,26 @@
  * or implied, of CrystaX.
  */
 
-#include <stdlib.h>
 #include <unistd.h>
 #include <sys/resource.h>
+#include <limits.h>
+#include "fdlimit.h"
 
-int getdtablesize()
+
+/* Keep the native descriptor bound in the caller's int range without wrapping rlim_t. */
+int
+inferno_android_fdlimit(void)
 {
-    struct rlimit rl;
-    if (getrlimit(RLIMIT_NOFILE, &rl) < 0)
-        return sysconf(_SC_OPEN_MAX);
-    return rl.rlim_cur;
-}
+	struct rlimit limit;
+	long fallback;
 
+	if(getrlimit(RLIMIT_NOFILE, &limit) == 0 && limit.rlim_cur != RLIM_INFINITY){
+		if(limit.rlim_cur > INT_MAX)
+			return INT_MAX;
+		return (int)limit.rlim_cur;
+	}
+	fallback = sysconf(_SC_OPEN_MAX);
+	if(fallback > INT_MAX)
+		return INT_MAX;
+	return (int)fallback;
+}

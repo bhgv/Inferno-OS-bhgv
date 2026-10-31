@@ -24,7 +24,6 @@ struct
 	Atidle*	idletasks;
 } isched;
 
-int	bflag;
 int	cflag;
 uvlong	gcbusy;
 uvlong	gcidle;
