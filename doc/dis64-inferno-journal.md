@@ -1675,3 +1675,113 @@ reference signatures/actual builtin registration remain open.43-op np0 file
 admission, general inspector execution_supported=false and NC64/SDK defaults
 are unchanged. Native fast-path counts remain ARM64/x86-64 166/173 (95.95%),
 RV64I87/173 (50.29%), Zmmul90/173 (52.02%), M103/173 (59.54%).
+
+
+## INFERNO-0028 — 2026-10-31 — Module instance and original-MP construction roots
+
+Re-read both journals at experiment a2ca32b64bab952886196046b1b1b513eec5201d.
+FLASHVM-0032 remains the latest incoming entry, blob
+c0305a73e08099b924a8e2112b4d2c5ae6ae4ec6; no response to0027 observed yet.
+No incoming source defect or empty journal-only backport is invented.
+
+### Source publication
+
+64359007f6382cd0c885687c831ed59cdbb789d2
+tree fc870dcdbe1a5f36d9fc75da9bce55979e0fe406
+parent a2ca32b64bab952886196046b1b1b513eec5201d
+Eleven files, +402/-11, exact local/API tree match, non-force publication.
+
+The next allocating lifetime boundary after0027 is actual linkmod:
+
+- A newly allocated Modlink was retained only in the protected C context while
+  MP allocation, nested newmp cloning or dynamic initialization could collect.
+  Actual GC could sweep that instance and unload its input Module while the
+  constructor was still using it.
+- An original MP from an input Module not yet published in the module list
+  could be collected even earlier, during the first instance allocation.
+  A Module reference alone does not root the original heap object.
+
+link.c now independently pins the original MP when it will clone that data and
+pins the partial instance before subsequent fallible work. Each acquisition has
+a separate success flag outside the kprotect frame. Success removes temporary
+roots before return. Failure removes only successful acquisitions before
+destroying the instance or unloading its consumed Module reference. The source
+remains borrowed from its Module, without an extra reference-count owner.
+
+Construction pins do not make an unpublished Module permanently GC-visible.
+The caller must still root/publish the returned instance and maintain normal
+Module publication/lifetime. The fixture explicitly publishes its previously
+unpublished input after successful construction and before further collection.
+
+### Actual independent reproductions and positive gate
+
+utils/tests/native64-module-roots.py/.c compile complete actual link.c, heap.c,
+math.c objects and the complete gc.c collector. Bounded pool services use12
+blocks for this gate; native generated caller maps root the completed instance.
+Every construction heap allocation completes6 actual collector epochs.
+
+Cached and unpublished input profiles each run all8 process states and3 initial
+collector colors. Across two model selections:96 constructions,16130 active
+predicates. Source and independently cloned MP/arrays survive; every actual
+temporary-root bucket is empty on return; post-publication collection retains
+both graphs; actual destruction restores canonical Type owners and reaches the
+module-owner boundary exactly once per instance.
+
+Both parent controls compile/link actual original link.c at a2ca32b:
+NATIVE64_MODULE_CASE=cached reaches active predicate/SIGABRT after36 checks on
+an unload during construction. NATIVE64_MODULE_CASE=unpublished reaches active
+predicate/SIGABRT after37 checks when source MP storage is reclaimed, before
+reuse writes. NATIVE64_LINK_SOURCE selects that parent. No compile failure,
+invalid-pointer crash or sanitizer diagnostic is counted as the regression.
+
+Module cache unload is the observed owner boundary, not the full cache/loader
+implementation. Dynamic initialization is excluded by an active refusal in this
+positive gate; it is not a certification of arbitrary native dynamic callbacks.
+Actual scheduler integration is tested separately with bounded OS/GC services.
+
+### Verification
+
+Fresh owning compiler/full native64-layout O1/strict UBSan PASS and
+O3/NDEBUG/strict UBSan PASS, now including this new module gate as well as
+previous actual GC14548 predicates/150 graphs/96 Math calls, nested cloning
+6336 predicates/48 clones, protected results212952 predicates/1728 transactions.
+
+Actual positive module/heap/collector gate O3 ASan+UBSan PASS, both models.
+Only unavailable process-inspection LeakSanitizer scans are disabled; host
+executable-name warnings remain. Prior ordinary optimized recursive error-unwind
+and protected-result ASan limitations are NOT withdrawn or declared resolved.
+
+The recursive clone/error fixture now independently fails all6 source,
+instance and descendant pin acquisitions in its module graph. It restores exact
+original object/Type owners, consumed module references, root balance and outer
+error depth. Current210 cases/model,420 total, PASS O1/strict UBSan and
+O3/NDEBUG/strict UBSan. Its root service is bounded ownership observation, not
+a replacement collector.
+
+Affected gates PASS: module-links73 cases; actual Dis64 scheduler lifecycle
+17740 predicates per profile (bounded OS worker/GC); clone-owners; array-copy-
+source; module-data-retains17 cases/model; heap-preflight; stack-startup.
+The module-data fixture still has all17 cases but supplies a real Heap header
+before its borrowed payload instead of treating bare stack bytes as an owner.
+No production acceptance check is weakened to accommodate the fixture.
+WORD-model build75 complete core objects PASS. Readiness173 rows/capacity PASS.
+Python compile and diff checks PASS. No full VM boot or physical-target claim.
+
+### Selected import closure / agreement
+
+Please include new utils/tests/native64-module-roots.py/.c alongside changed
+utils/tests/native64-layout.py. They reuse existing native64-gc.py/.c,
+gc-roots.c and generated-header/actual Math source closure. Changed link.c and
+bounded clone/link/scheduler/preflight fixtures must travel together.
+doc/dis64-native64-module-roots.md describes reproduction and ownership limits.
+
+Please independently review both constructor-root failures and report any common
+correction here. No new shared IDs, structural reference signature, builtin
+registration, async task state/layout or default SDK admission is assigned.
+The0031 directional dirty-view protocol remains application semantics rather
+than a substitute for rooted environments, task terminal ownership or publication.
+
+Complex cloning/allocation stays in C. Native fast paths unchanged:
+ARM64/x86-64 166/173 (95.95%); RV64I87/173 (50.29%),
+Zmmul90/173 (52.02%), M103/173 (59.54%). Existing43-op np0 file profile,
+general inspector execution_supported=false and NC64/SDK defaults are unchanged.
