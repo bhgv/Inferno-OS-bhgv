@@ -60,22 +60,21 @@ native64bindrecord(const LimboNative64Entry *record, int implementation)
 }
 
 
-/* Match trusted generated specifications to selected implementations before publishing any output.
+/* Validate trusted generated specifications and selected implementations without publishing output.
  * Names, maps and records must remain readable/immutable for this call and the borrowed result.
- * output storage must be disjoint from the input tables; this does not authenticate wire data.
+ * No output storage or allocation is required; this does not authenticate wire data.
  * A legacy hash match is consistency evidence, not structural callable-signature acceptance. */
 static int
-native64bind(const LimboNative64Entry *specs, unsigned int count,
-	const LimboNative64Entry *const *implementations, unsigned int selected,
-	const LimboNative64Entry **output, unsigned int capacity)
+native64bindcheck(const LimboNative64Entry *specs, unsigned int count,
+	const LimboNative64Entry *const *implementations, unsigned int selected)
 {
 	const LimboNative64Entry *entry, *spec;
 	unsigned int i, j, byte;
 
 	if(sizeof(UWORD) != 4 || sizeof(void*) != 8 || count > Native64BindEntries ||
-	   selected > Native64BindEntries || selected > capacity ||
+	   selected > Native64BindEntries ||
 	   (count != 0 && specs == 0) ||
-	   (selected != 0 && (implementations == 0 || output == 0)))
+	   (selected != 0 && implementations == 0))
 		return 0;
 	for(i=0; i<count; i++){
 		if(!native64bindrecord(specs+i, 0))
@@ -104,6 +103,21 @@ native64bind(const LimboNative64Entry *specs, unsigned int count,
 			if(entry->map[byte] != spec->map[byte])
 				return 0;
 	}
+	return 1;
+}
+
+
+/* Publish borrowed bindings only after complete validation; output must be disjoint from input tables. */
+static int
+native64bind(const LimboNative64Entry *specs, unsigned int count,
+	const LimboNative64Entry *const *implementations, unsigned int selected,
+	const LimboNative64Entry **output, unsigned int capacity)
+{
+	unsigned int i;
+
+	if(selected > capacity || (selected != 0 && output == 0) ||
+	   !native64bindcheck(specs, count, implementations, selected))
+		return 0;
 	for(i=0; i<selected; i++)
 		output[i] = implementations[i];
 	return 1;

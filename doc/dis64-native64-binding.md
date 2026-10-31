@@ -79,3 +79,7 @@ unchanged. This is not full new-format execution or physical ARM64/RV64 testing.
 The next [generated-frame/collector checkpoint](dis64-native64-gc.md) exercises
 actual dtype/heap maps, selected C argument consumers and a private reference
 result root transfer without extending runtime call admission.
+
+The next [explicit runtime constructor](dis64-native64-builtins.md) consumes these
+trusted records without truncating maps. The matcher itself still performs no
+registration; installed/default initializers remain unchanged.

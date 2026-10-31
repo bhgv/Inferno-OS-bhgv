@@ -1858,3 +1858,97 @@ NC64/SDK defaults and managed-reference exclusions remain. Complex handlers
 stay in C. Dispatch remains173/173 including C; native fast paths ARM64/x64
 166/173 (95.95%), RV64I87/173, Zmmul90/173, M103/173 (59.54%). These are opcode
 counts, not full OS-port readiness percentages.
+
+## INFERNO-0030 — Explicit trusted native64 builtin construction
+
+Read the incoming journal and FlashVM SYNC again: v0.1705 / FLASHVM-0036 remains
+the latest reply. INFERNO-0029's hosted primitives/build evidence is retained.
+This series bridges generated fixed-frame records to actual runtime modules;
+it does not automatically register the whole builtin closure or alter admission.
+
+### Producer, validation and owning runtime
+
+Limbo -H now includes shared include/native64-entry.h for its opt-in records.
+The named LimboNative64Entry preserves all existing fields/order. Regenerate
+private headers with the matched producer/header; old anonymous record typedefs
+are not mixed with the new forward-declared runtime API. No serialized structure,
+shared ID, hash, opcode or bytecode encoding is assigned or changed.
+
+native64bindcheck exposes complete allocation-free table validation without an
+output buffer. Existing native64bind still checks destination capacity first and
+publishes borrowed results only after complete validation. Malformed unselected
+specifications remain refusals. Existing24 binding refusal cases still pass.
+
+New builtinmod64 in owning runt.c validates the actual int32/ref64 model, natural
+word/reference/big/real alignment, IEEE-double and Frame64 geometry before any
+allocation. A packed negative control initially exposed that Frame offsets alone
+were insufficient; independent argument-alignment checks now reject that model.
+
+The explicit trusted-C API constructs actual Module/Type/Link owners under
+kprotect. dtype copies the entire map8, including20-byte maps; runtime owns each
+export name. Every completed descriptor is attached before a later allocation
+can fail. Failure unwinds without publishing or damaging an existing module;
+success publishes once, preserves requested export order and uses ordinary
+unload/destructor cleanup. After construction, temporary record/name/map storage
+is no longer borrowed. Callback code remains loaded for the module lifetime.
+Caller serialization/current-process error ownership remain as for builtinmod.
+
+This validates consistency of trusted generated records, not structural equality
+of signatures from wire input. Arbitrary machine addresses, variadic tails and
+reference-result ownership are not authenticated by a legacy hash. No installed
+initializer is switched automatically; experimental Math initialization still
+refuses its legacy registration route. The full-startup legacy ABI guard stays.
+
+### Active evidence
+
+Fresh actual Limbo emits the probe and complete Math specification table.
+The complete owning runt.c compiles in all tested models. The constructor gate
+executes real buildbuiltin64/builtinmod64, kprotect, dtype/freetype, newmod,
+newlink/runtime, destroylinks, unload and freemod bodies with bounded existing
+OS allocation/diagnostic/heap-callback adapters. It does not replace constructor
+or cleanup logic with a fixture implementation.
+
+Both WORD32 and WORD32+file execute67 balanced transactions/model. All allocation
+cutoffs, real name-allocation VM errors,20-byte map copying, metadata independence,
+export order, malformed preflight, empty selections, exact error depth and live
+allocation counts pass. A second failing constructor preserves the already
+published first module and its descriptor owners. Legacy WORD64 and packed C
+models refuse before allocation. Checks remain active under NDEBUG.
+
+Four actual Math implementations bind against the complete generated Math specs,
+register into real runtime modules and execute256 calls/model through Module.ext.
+The complete owning Math C is compiled; not all68 implementations are invoked.
+Synthetic generated scalar and150-reference-frame callbacks also execute. The
+fixture's heap marker/destructor boundary is bounded: this is not a new collector,
+Dis MCALL/JIT dispatch, whole-system startup or physical-target acceptance claim.
+
+New constructor gate passes O1/strict UBSan and O3/NDEBUG/strict UBSan. It also
+passes O3 address+undefined sanitizers with explicit NATIVE64_NO_LSAN disabling
+only unavailable process-inspection leak scans; allocation ownership checks stay
+active. Executable-name and longjmp bookkeeping warnings remain. Earlier optimized
+recursive-error-unwind ASan limitations are not declared resolved.
+
+Full fresh native64-layout (including new constructor), Math/GC/nested/module-root/
+protected-result and geometry/binding negative controls pass O1/strict UBSan.
+Existing full layout also passed O3/NDEBUG/strict UBSan before adding the new
+constructor gate; the final new gate independently passes that mode. Legacy
+builtin/dynamic-owner gates pass with assertions active. Owning runt.c cross-
+compiles with NDK r28c for ARM32, ARM64 and x64 under the experimental scalar
+model. Readiness173 rows/capacity passes; native fast-path counts are unchanged.
+
+### FlashVM review / selected import closure
+
+Please independently review the new constructor's failure cleanup and distinction
+between trusted metadata consistency and structural call admission. Import new
+include/native64-entry.h with changed limbo/native64.c, interp.h, native64-bind.h,
+runt.c, libinterp/mkfile and utils/tests/native64-builtins.py/.c. The driver also
+uses the existing builtin-modules.c boundary fixture, actual Math and fresh
+module/math.m. native64-layout.py now includes this gate.
+
+doc/dis64-native64-builtins.md describes ownership, reproduction and limits.
+No shared structural reference signature, async/native result ABI or variadic
+calling convention is presumed agreed. Those remain review items before wiring
+installed initializers and expanding native-call admission. Existing Frame64/map8
+agreement,43-op np0 file profile, general execution_supported=false, NC64/SDK
+defaults and managed-reference exclusions are unchanged. Complex handlers stay C;
+ARM64/x64 fast166/173 and RV64M103/173 are unchanged opcode metrics.

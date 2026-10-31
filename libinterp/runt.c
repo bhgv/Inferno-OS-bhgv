@@ -5,6 +5,10 @@
 #include "sysmod.h"
 #include "raise.h"
 #include "kernel.h"
+#include "native64-entry.h"
+#include "native64-bind.h"
+#include <float.h>
+#include <limits.h>
 
 
 static	int		utfnleng(char*, int, int*);
@@ -912,6 +916,110 @@ builtinmod(char *name, void *vr, int rlen)
 	return nil;
 badtable:
 	kwerrstr("bad builtin table");
+	return nil;
+}
+
+
+typedef struct Native64BuiltinAlign Native64BuiltinAlign;
+
+struct Native64BuiltinAlign
+{
+	uchar prefix; // Force the next word to reveal its natural alignment.
+	WORD word; // Expected offset4 in the int32/ref64 C model.
+	uchar reference_prefix; // Force independent reference alignment.
+	void *reference; // Expected offset16 with eight-byte pointer alignment.
+	uchar big_prefix; // Force independent big alignment.
+	LONG big; // Expected offset32 with eight-byte big alignment.
+	uchar real_prefix; // Force independent real alignment.
+	REAL real; // Expected offset48 with eight-byte real alignment.
+};
+
+typedef struct Native64Builtin Native64Builtin;
+
+struct Native64Builtin
+{
+	char *name; // Borrowed module name for the protected construction interval.
+	const LimboNative64Entry *const *entries; // Validated immutable implementation records.
+	unsigned int count; // Number of selected fixed-frame exports.
+	Module *module; // Partial owner, retained until publication or complete cleanup.
+};
+
+
+/* Retain every completed descriptor while later export-name allocations can fail. */
+static int
+buildbuiltin64(void *arg)
+{
+	Native64Builtin *build;
+	const LimboNative64Entry *entry;
+	Module *module;
+	Type *type;
+	unsigned int i;
+	int signature;
+
+	build = arg;
+	build->module = module = newmod(build->name);
+	module->ntype = build->count;
+	if(build->count != 0){
+		module->type = mallocz(build->count*sizeof(Type*), 1);
+		if(module->type == nil){
+			kwerrstr(exNomem);
+			return 0;
+		}
+	}
+	module->ext = mallocz((build->count+1)*sizeof(Link), 1);
+	if(module->ext == nil){
+		kwerrstr(exNomem);
+		return 0;
+	}
+	for(i=0; i<build->count; i++){
+		entry = build->entries[i];
+		type = dtype(freeheap, entry->frame_size, (uchar*)entry->map, entry->map_bytes);
+		if(type == nil){
+			kwerrstr("bad native64 builtin frame or out of memory");
+			return 0;
+		}
+		module->type[i] = type;
+		/* Link.sig stores the same 32 bits even when the consistency hash has bit31 set. */
+		memmove(&signature, &entry->legacy_signature, sizeof(signature));
+		runtime(module, &module->ext[i], (char*)entry->name, signature, entry->function, type);
+	}
+	return 1;
+}
+
+
+/* Register trusted fixed-frame C exports; this does not accept wire signatures or variadic tails. */
+Module*
+builtinmod64(char *name, const LimboNative64Entry *specs, unsigned int count,
+	const LimboNative64Entry *const *entries, unsigned int selected)
+{
+	Native64Builtin build;
+	Module *module;
+
+	if(CHAR_BIT != 8 || FLT_RADIX != 2 || DBL_MANT_DIG != 53 || DBL_MAX_EXP != 1024 ||
+	   sizeof(WORD) != 4 || sizeof(UWORD) != 4 || sizeof(int) != 4 ||
+	   sizeof(void*) != 8 || sizeof(LONG) != 8 || sizeof(REAL) != 8 ||
+	   O(Native64BuiltinAlign, word) != 4 || O(Native64BuiltinAlign, reference) != 16 ||
+	   O(Native64BuiltinAlign, big) != 32 || O(Native64BuiltinAlign, real) != 48 ||
+	   sizeof(Frame) != 32 || O(Frame, lr) != 0 || O(Frame, fp) != 8 ||
+	   O(Frame, mr) != 16 || O(Frame, t) != 24 || !native64bindname(name) ||
+	   !native64bindcheck(specs, count, entries, selected)){
+		kwerrstr("bad native64 builtin ABI or table");
+		return nil;
+	}
+	build.name = name;
+	build.entries = entries;
+	build.count = selected;
+	build.module = nil;
+	if(kprotect(buildbuiltin64, &build)){
+		module = build.module;
+		module->link = modules;
+		modules = module;
+		return module;
+	}
+	if(build.module != nil){
+		destroylinks(build.module);
+		freemod(build.module);
+	}
 	return nil;
 }
 

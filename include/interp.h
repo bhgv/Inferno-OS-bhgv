@@ -436,6 +436,11 @@ extern	void		altdone(Alt*, Prog*, Channel*, int);
 extern	void		altgone(Prog*);
 extern	Array*		allocimgarray(Heap*, Heap*);
 extern	Module*	builtinmod(char*, void*, int);
+
+struct LimboNative64Entry;
+/* Explicit trusted native64 registration; installed legacy tables remain separate. */
+extern Module* builtinmod64(char*, const struct LimboNative64Entry*, unsigned int,
+	const struct LimboNative64Entry *const*, unsigned int);
 extern	void		cblock(Prog*);
 extern	void*		checktype(void*, Type*, char*, int);
 extern	void		cmovw(void*, void*);

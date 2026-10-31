@@ -721,8 +721,7 @@ native64stubs(Decl *globals)
 	print("\tif(CHAR_BIT != 8 || FLT_RADIX != 2 || DBL_MANT_DIG != 53 || DBL_MAX_EXP != 1024 ||\n\t   sizeof(WORD) != 4 || sizeof(void*) != 8 || sizeof(LONG) != 8 || sizeof(REAL) != 8 ||\n");
 	print("\t   offsetof(LimboNative64WordAlign, value) != 4 || offsetof(LimboNative64RefAlign, value) != 8 ||\n\t   offsetof(LimboNative64BigAlign, value) != 8 || offsetof(LimboNative64RealAlign, value) != 8 ||\n\t   sizeof(Frame) != 32 || offsetof(Frame, lr) != 0 || offsetof(Frame, fp) != 8 ||\n");
 	print("\t   offsetof(Frame, mr) != 16 || offsetof(Frame, t) != 24)\n\t\treturn 0;\n\treturn 1;\n}\n#endif\n");
-	print("#if defined(LIMBO_NATIVE64_ENTRIES) && !defined(LIMBO_NATIVE64_ENTRY_TYPE)\n#define LIMBO_NATIVE64_ENTRY_TYPE // Private metadata record, never the runtime Runtab.\n");
-	print("\ntypedef struct {\n\tconst char *name; // Borrowed source symbol.\n\tvoid (*function)(void*); // Actual C entry; no runtime registration is implied.\n\tUWORD legacy_signature; // Existing Limbo signature hash, not a Dis64 wire signature.\n\tunsigned int frame_size; // Full fixed-frame byte extent.\n\tunsigned int map_bytes; // Full map extent; never truncated to map[16].\n\tconst uchar *map; // Borrowed immutable full map8 storage.\n} LimboNative64Entry;\n#endif\n");
+	print("#ifdef LIMBO_NATIVE64_ENTRIES\n#include \"native64-entry.h\"\n#endif\n");
 	for(layout=native64types; layout != nil; layout=layout->next){
 		if((layout->type->kind == Tadt || layout->type->kind == Ttuple) &&
 		   layout->type->decl != nil && layout->type->decl->sym != anontupsym){

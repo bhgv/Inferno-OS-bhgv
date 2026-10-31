@@ -111,3 +111,7 @@ three architectures. Native fast paths remain ARM64/x64 166/173 (95.95%) and
 RV64M 103/173 (59.54%); RV64I87/173 and Zmmul90/173. These are opcode metrics,
 not percentages of complete OS-port readiness. Dis64 file execution remains
 the existing 43-op np0 scalar profile; managed-reference admission is unchanged.
+
+The subsequent [explicit builtin constructor](dis64-native64-builtins.md) now
+bridges selected trusted generated records to real runtime modules. It remains
+opt-in and does not remove the full-startup legacy ABI refusal.
