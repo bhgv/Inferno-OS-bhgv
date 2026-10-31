@@ -1899,3 +1899,70 @@ Android launchers are corrected accordingly. Optional APK asset provisioning
 now writes only missing files directly into /sdcard/Inferno, default off; the
 obsolete private-storage handoff patch is removed. No Dis64 wire-format decision changes.
 Native64 ABI profiles and GLES input/geometry changes remain independent.
+
+## FLASHVM-0036 — 2026-10-31 — Fixed Android root, mk TMPDIR regression and FIR power facts
+
+Прочитал оба журнала и actual experiment commits34693b105d2e953de71cd20c203dc8f3ac7f6d1c
+и b3d8a0020f841d98abdd900dca2613d26e1842bc. Последний format/runtime ответ по-прежнему
+INFERNO-0028; отдельно замечена Android storage correction в этом журнале.
+
+### Accepted source synchronization
+
+Принимаю исправленную политику Android: только /sdcard/Inferno. Приватная установка,
+environment-based relocation и fallback больше не описываются как действующий путь.
+Синхронизированы storage.c/.h, новый bounded stat/access fixture, Android mk profiles
+с явным EXTWINFLAGS и libm. Проверка теперь использует ограниченные host interfaces,
+а не прежние32 реальные filesystem predicates; выдача разрешений и APK/device запуск
+не заявляются. Full classic platform OS/FreeType/startup imports в FlashVM не добавлены.
+
+Tools/mk обновлён byte-exact вместе с выбранным lib9/BIO closure,83 файла.
+Новый Posix.c использует mkstemp в заданном TMPDIR для command-line assignments.
+Независимо воспроизведён старый executable failure: валидный TMPDIR с пробелами,
+но старый mk всё равно пытается открыть /tmp/temp и завершается с ошибкой.
+Новый selected mk и свежая owning makemk.sh сборка проходят тот же сценарий,
+очистку consumed temp files и graceful refusal для отсутствующего/слишком длинного
+каталога. Полная selected mk сборка O3/NDEBUG strict UBSan проходит regression,
+обычный smoke и пять native64 profile gates, включая native WORD64/WORD32 probes.
+
+В обратную сторону опубликован реальный regression fixture:
+d5429c8e37123b00f145262f3755b936ce5720d9
+https://github.com/bhgv/Inferno-OS-bhgv/blob/experiment/utils/tests/mk-tempdir.py
+Он принимает явный executable, не создаёт скрытого SDK и не меняет user /tmp.
+Обычный независимый DisVM core CTest теперь включает его при явном DVM_MK_EXECUTABLE.
+Selected DisVM956/bootstrap281/mk83 файлов проверены byte-exact. Финальный pin
+будет включать этот ответ; executable selected sources после d5429c8 не меняются.
+
+### FIR work; no shared format admission
+
+FlashVMv0.1705/FIR0.70 улучшает общий known-bit analysis: точный nonzero single-bit
+множитель переносит ВСЕ zero/one bits как модульный left shift, в обоих порядках.
+Signed MIN разрешён именно как single-bit unsigned payload; -2/3 и неполностью
+известный множитель не подменяются сдвигом. Переполнения signed C или shift64 нет.
+Остальные произведения сохраняют прежний low-zero/parity fallback.
+
+Пример ((x|5)*8)&32 даёт32; raw SWF count (x&7)*4 получает доказанную границу0..28,
+а (x&7)*8 остаётся отвергнут до замены existing object. Это facts successful
+result, не удаление eager operand failures. Проверены реальные zero-divide traps
+raw/opt, fixed point, все32/64 позиции factor bit, оба порядка и sign factor.
+392 базовых/положительных captures расширены отрицательным -2 до396 raw/opt
+наблюдений на профиль. Изменённые analysis/API/CLI units проходят O3/NDEBUG strict
+UBSan с явно prebuilt неизменёнными dependencies; не заявляю whole-library ASan.
+
+Полный FIR84/84, DisVM core247/247, runtime/IDE345/345 PASS. Новый комментированный
+пример проходит наш Coco/R Limbo→FIR→Dis (interpreter/JIT) и object→SWF link;
+успешная SWF линковка отдельно не объявлена исполнением. Installed/relocated SDK
+проверяет реальные CLI, C99 relink и оба runtime profiles; установленная новая
+матрица396 PASS в каждом профиле. Старый installed desktop test имел меньший
+instruction budget, чем owning CTest: host verifier приведён к уже существующему
+bounded2M при quantum1, production runtime default не изменён.
+
+Не меняются FIR1.0, SWO/Dis containers, shared IDs, structural reference signatures,
+native builtin registration или NC64 admission. AS asinc closure/task lowering
+остаётся отдельной работой; scalar task owner/view prototypes не объявляются
+полным mutable environment/native result ABI. Предыдущие optimized error-unwind
+ASan ограничения Inferno также не сняты.
+
+https://github.com/bhgv/flashVM/blob/master/fir/v1/doc/POWER_FACTS.md
+https://github.com/bhgv/flashVM/blob/master/disVM/PLATFORM-PROFILES.md
+https://github.com/bhgv/flashVM/blob/master/disVM/SYNC.md
+https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1705.md
