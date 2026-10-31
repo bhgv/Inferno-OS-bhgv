@@ -159,7 +159,7 @@ void **backtrace_buf[32];
 void do_backtrace(){
 	int i, cnt = backtrace(backtrace_buf, 30);
 	char **symbs;
-	int f = open("/sdcard/Inferno/backtrace.txt", O_WRONLY);
+	int f = open(calltracelog_path, O_WRONLY);
 	if(f){
 		backtrace_symbols_fd(backtrace_buf, cnt, f);
 		close(f);
@@ -180,7 +180,7 @@ __attribute__ ((constructor))
 trace_begin (void)
 {
 //LOGI("trace_begin");
-// fp_trace = fopen("/sdcard/Inferno/trace.out", "w");
+// Trace output uses the configured app storage root.
 }
 */
 

@@ -22,6 +22,7 @@ X11LIBS= -lX11 -lXext	# can remove or override using env section in config files
 
 OBJ=\
 	asm-$OBJTYPE.$O\
+	storage.$O\
 	$ARCHFILES\
 	os.$O\
 	kproc-pthreads.$O\
@@ -102,3 +103,7 @@ $LIBRARY(%.$O):N:	%.$O
 
 #<$ROOT/mkfiles/mksyslib-$SHELLTYPE
 
+
+# Path configuration is shared by startup and the native startup resolver.
+
+storage.$O amain.$O: storage.h

@@ -1,0 +1,21 @@
+# Native Linux arm64 core/library profile; see doc/build-native64.md for port limits.
+TARGMODEL= Posix
+TARGSHTYPE= sh
+CPUS= arm64
+O= o
+OS= o
+AR= ${CROSS}ar
+ARFLAGS= ruvs
+AS= ${CROSS}gcc -c
+ASFLAGS=
+CC= ${CROSS}gcc -c
+CFLAGS= -O2 -g -fno-strict-aliasing \
+ -Wuninitialized -Wunused-variable -Wreturn-type -Wimplicit\
+ -I$ROOT/Linux/arm64/include -I$ROOT/Linux/386/include -I$ROOT/include\
+ -include $ROOT/include/native64-target.h -DLINUX_ARM64 $DISMODELFLAGS
+ANSICPP=
+LD= ${CROSS}gcc
+LDFLAGS=
+SYSLIBS=
+YACC= iyacc
+YFLAGS= -d

@@ -9,6 +9,7 @@
 #include <stdio.h>
 	
 #include <android/log.h>
+#include "storage.h"
 	
 #define  LOG_TAG    "Inferno MAIN"
 #define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
@@ -35,11 +36,19 @@ extern	int	Ysize; // = 480; //	= 480;
 	int	qflag = 0;
 	int	xtblbit = 0;
 	ulong	displaychan = 32;
-	char *cputype = "arm";
+#if defined(__aarch64__)
+    char *cputype = "arm64";
+#elif defined(__x86_64__)
+    char *cputype = "amd64";
+#elif defined(__i386__)
+    char *cputype = "386";
+#else
+    char *cputype = "arm";
+#endif
 
 	int is_run = 0;
 
-	char calltracelog_path[128];
+	char calltracelog_path[MAXROOT+32];
 
 
 static void
@@ -251,38 +260,39 @@ nofence(void)
 {
 }
 
-char* loadcmdstr(char *sdcard)
-{
-	char path[128];
-	char *cmdln = malloc(256);
-	char *tmp;
-	FILE *f;
 
-	memset(cmdln, 0, 256);
-	snprint(path, 127, "%s/lib/startup/cmd_line.txt", sdcard);
-	
-	f = fopen(path, "r");
-LOGI("amain f=%x, cmdstr-path=%s", f, path);
-	if(f){
-		fread(cmdln, 255, 1, f);
-		fclose(f);
-		tmp = strdup(cmdln);
-		snprint(cmdln, 255, "-r%s %s", sdcard, tmp);
-		free(tmp);
+/* Read bounded startup text and quote the root as one complete Plan 9 argument. */
+static char*
+loadcmdstr(char *root)
+{
+	char path[MAXROOT+64], command[4096];
+	size_t bytes;
+	FILE *file;
+
+	if(snprintf(path, sizeof(path), "%s/lib/startup/cmd_line.txt", root) >= sizeof(path))
+		return nil;
+	file = fopen(path, "r");
+	if(file == nil)
+		return nil;
+	bytes = fread(command, 1, sizeof(command)-1, file);
+	if(ferror(file) || (bytes == sizeof(command)-1 && fgetc(file) != EOF)){
+		fclose(file);
+		return nil;
 	}
-LOGI("amain cmdstr=%s", cmdln);
-	return cmdln;
+	command[bytes] = '\0';
+	fclose(file);
+	return smprint("-r%q %s", root, command);
 }
+
 
 /* Parse startup options within the argument vector before initializing the emulator. */
 void
-amain()
+amain(void)
 {
 	char *opt, *p;
 	char *enva[20];
 	int envc;
 
-	char sdcard_path[128];
 
 	FILE *f;
 
@@ -296,25 +306,32 @@ amain()
 	quotefmtinstall();
 //	savestartup(argc, argv);
 
-	/* set default root now, so either $EMU or -r can override it later */
-	snprint(sdcard_path, 127, "%s/Inferno", getenv("EXTERNAL_STORAGE"));
-	strecpy(rootdir, rootdir+sizeof(rootdir), sdcard_path);
-	
-//LOGI("%s: %d sdcard_path=%s", __func__, __LINE__, sdcard_path);
-	snprint(calltracelog_path, 127, "%s/backtrace.log", rootdir);
+	/* The native launcher supplies its app directory before startup; explicit -r can still override it. */
+	if(inferno_android_root(rootdir, sizeof(rootdir)) != 0){
+		LOGE("No accessible Inferno root; call inferno_android_set_storage before amain");
+		is_run = 0;
+		return;
+	}
+
+	snprint(calltracelog_path, sizeof(calltracelog_path), "%s/backtrace.log", rootdir);
 	f = fopen(calltracelog_path, "a");
 	if(f){
 		fprintf(f, "\n\n----! New Session !----\n");
 		fflush(f);
-		close(f);
+		fclose(f);
 	}
 
 	opt = loadcmdstr(rootdir);
 	if(opt == nil || opt[0] == '\0'){
-		if(opt == nil)
-			opt = (char*)malloc(128);
-		snprint(opt, 127, "-r%s -g%dx%d wm/awm", rootdir, Xsize, Ysize);
+		free(opt);
+		opt = smprint("-r%q -g%dx%d wm/awm", rootdir, Xsize, Ysize);
 	}
+	if(opt == nil){
+		LOGE("Cannot allocate Inferno startup command");
+		is_run = 0;
+		return;
+	}
+
 	//opt = getenv("EMU");
 	if(opt != nil && *opt != '\0') {
 		enva[0] = "emu";

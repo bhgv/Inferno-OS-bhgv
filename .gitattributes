@@ -1,0 +1,2 @@
+# Downloadable patches must preserve upstream context and CRLF bytes verbatim.
+doc/patches/*.patch -text -whitespace

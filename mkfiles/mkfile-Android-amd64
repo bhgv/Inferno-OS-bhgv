@@ -1,0 +1,23 @@
+# Modern NDK LLVM profile; the embedding APK supplies its Android platform glue.
+TARGMODEL= Posix
+TARGSHTYPE= sh
+CPUS= amd64
+O= o
+OS= o
+# Change the prebuilt host directory for a non-Linux build host.
+NDK_TOOLCHAIN= $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
+ANDROID_API= 21
+AR= $NDK_TOOLCHAIN/llvm-ar
+ARFLAGS= rcs
+AS= $NDK_TOOLCHAIN/x86_64-linux-android$ANDROID_API-clang -c
+ASFLAGS= -fPIC
+CC= $NDK_TOOLCHAIN/x86_64-linux-android$ANDROID_API-clang -c
+CFLAGS= -O2 -g -fPIC -fno-strict-aliasing\
+ -I$ROOT/Android/amd64/include -I$ROOT/Android/arm/include -I$ROOT/include\
+ -DANDROID -include $ROOT/include/native64-target.h -DLINUX_AMD64 -DEXT_WIN $DISMODELFLAGS
+ANSICPP=
+LD= $NDK_TOOLCHAIN/x86_64-linux-android$ANDROID_API-clang
+LDFLAGS= -llog
+SYSLIBS=
+YACC= iyacc
+YFLAGS= -d

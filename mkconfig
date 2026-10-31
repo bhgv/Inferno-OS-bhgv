@@ -25,6 +25,21 @@ SYSTARG=Linux #Android #Linux  #$SYSHOST		# target system OS type (Hp, Inferno, 
 #
 OBJTYPE=arm #386 #arm  #386			# target system object type (eg, 386, arm, mips, power, s800, sparc)
 #OBJTYPE=$objtype
+#
+# New 64-bit target profiles (canonical OBJTYPE names):
+# Linux x86-64: SYSHOST=Linux SYSTARG=Linux OBJTYPE=amd64 CROSS=
+# Linux AArch64/arm64: SYSHOST=Linux SYSTARG=Linux OBJTYPE=arm64
+#   CROSS=aarch64-linux-gnu- for cross compilation; empty for a native build.
+# Linux RISC-V64: SYSHOST=Linux SYSTARG=Linux OBJTYPE=riscv64
+#   CROSS=riscv64-linux-gnu- for cross compilation; empty for a native build.
+# Android: SYSHOST=Linux SYSTARG=Android OBJTYPE=arm64 (arm64-v8a)
+# Android: SYSHOST=Linux SYSTARG=Android OBJTYPE=amd64 (x86_64)
+#   Set ANDROID_NDK_HOME; API/toolchain defaults are in the selected mkfile.
+# These are core/library toolchain profiles, not completed platform emu ports.
+# See doc/build-native64.md for missing platform files and coherent model rules.
+# Optional experimental scalar model: DISMODELFLAGS='-DDIS_WORD32=1'
+# Rebuild every linked runtime object with the same model; default remains legacy.
+
 
 #
 #	no changes required beyond this point
