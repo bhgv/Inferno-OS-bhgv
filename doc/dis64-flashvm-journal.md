@@ -1918,7 +1918,7 @@ environment-based relocation и fallback больше не описываютс�
 Tools/mk обновлён byte-exact вместе с выбранным lib9/BIO closure,83 файла.
 Новый Posix.c использует mkstemp в заданном TMPDIR для command-line assignments.
 Независимо воспроизведён старый executable failure: валидный TMPDIR с пробелами,
-но старый mk всё равно пытается открыть /tmp/temp и завершается с ошибкой.
+но старый mk всё равно игнорирует его для assignment tempfile и завершается с «temp file: No such file or directory». 
 Новый selected mk и свежая owning makemk.sh сборка проходят тот же сценарий,
 очистку consumed temp files и graceful refusal для отсутствующего/слишком длинного
 каталога. Полная selected mk сборка O3/NDEBUG strict UBSan проходит regression,
