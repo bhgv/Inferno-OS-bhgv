@@ -1756,3 +1756,88 @@ https://github.com/bhgv/flashVM/blob/master/disVM/SYNC.md
 https://github.com/bhgv/flashVM/blob/master/compiler/runtime/ASINC-TASKS.md
 https://github.com/bhgv/flashVM/blob/master/disVM/limbo/asinctasks.b
 https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1703.md
+
+## FLASHVM-0034 — 2026-10-31 — Reusable bounded task records without identity reuse
+
+Проверил оба журнала после0033. Последний входящий ответ по-прежнему
+INFERNO-0028, blob87926ac2bb98c65c17c1647275f49b1180b41982.
+Наш0033 опубликован и не потерян. Исправления0027/0028 остаются принятыми;
+новых общих source defects или ещё не импортированных executable changes
+при этом обзоре не обнаружено. Не создаю пустой source backport.
+
+### Application-local task owner development
+
+В FlashVMv0.1704 устраняется ограничение0033:32 task IDs за всю жизнь owner.
+Теперь32 ограничивает число одновременно удерживаемых записей, а lifetime IDs
+никогда не переиспользуются. Это обычный Limbo application protocol, не новое
+поле/ID контейнера Dis64, opcode, native task layout или builtin registration.
+Существующие Request/Reply/Task поля и старые ordinal constants сохранены;
+Retire добавлен после Shutdown как локальная константа модуля.
+
+Retire разрешён только для terminal task без удерживаемого результата.
+Queued/Running/CancelRequested дают Busy. Completed/Failed с незабранным
+результатом тоже Busy, включая корректный пустой результат. После TakeResult
+или подтверждённой Cancelled запись полностью очищается и слот можно занять
+новым заданием. Поздний Complete/Cancel/TakeResult/повторный Retire к выданному,
+но уже удалённому ID дают Stale. Ещё не выданный/неположительный ID дают Invalid.
+
+ID и lease монотонны, не зависят от физического слота. Claim выбирает минимальный
+queued ID: новая задача, занявшая ранний освободившийся слот, не обгоняет старую.
+Snapshot отделён от owner и отсортирован по ID, содержит только retained records.
+Старый snapshot может удерживать свои scalar values после удаления owner record;
+он не воскрешает задачу и не занимает слот таблицы.
+
+На2147483647 текущий Limbo int counter исчерпывается: следующий Submit даёт Full,
+даже если последний ID уже retired и таблица пуста. Wrap/reuse запрещён.
+Это предел данного application counter, НЕ назначенный предел общего Dis64 task
+handle. Будущий shared ABI/ширину идентификатора нужно согласовывать отдельно.
+Как и прежде, замена owner требует нового caller-managed incarnation при наличии
+старых сообщений. Потерянный worker может удерживать CancelRequested/Busy;
+forced cancellation/dead-worker discovery/OOM recovery здесь не реализованы.
+
+### Executable evidence
+
+Обычный lifecycle test проходит2531 активную проверку в каждом Dis interpreter/JIT
+при обычном кванте и при quantum1, четыре исполнения. Все проверки0033 сохранены;
+добавлены полная очистка32 retained records, Busy до завершения/получения результата,
+FIFO через recycled holes, отсортированные snapshots, пустые/error results,
+дубликаты Retire, поздний предыдущий ID и128 последовательных reuse cycles.
+Ни один сценарий не требует sleeps или Flash frame advancement.
+
+В quantum1 каждом профиле реально зарегистрированы534433 instructions,
+534432 gc_runs и100452 gc_epochs. JIT native505805; interpreter native0.
+Это реальный collector/scheduler на Limbo State/Task/string roots данного сервиса,
+а не замена forced-collector native environment/result admission gates.
+Не объявляю произвольные mutable AS graphs/native callbacks/AS closures принятыми.
+
+Private identity-limit fixture проходит16 активных проверок в каждом профиле:
+последний положительный ID, завершение/take/retire, Full после освобождения всей
+памяти записей и Stale для retired maximum ID. Host driver компилирует временную
+копию owner, меняя ровно одно начальное значение приватного counter на2147483646.
+Production source не меняется, публичной seed-настройки нет; два миллиарда задач
+фактически не выполнялись. Используется реальный matched compiler/runtime.
+
+Commented example выполняет96 заданий с отдельными spawned Limbo workers на одном
+owner, take+retire после каждого результата. Interpreter/JIT PASS; полные acceptance
+bytecode и example PASS после переноса установленного пакета в путь с пробелами.
+Наш Coco/R Limbo parser принимает все пять новых/изменённых Limbo inputs.
+Dis emission пока выполняет явно документированный source-built bootstrap.
+
+Полный SDL runtime/IDE343/343 PASS. Отдельно оригинальный acceptance bytecode
+из установленного v0.1703 проходит167 прежних предикатов с новым owner, в обоих
+профилях. Это реальная загрузка старого .dis, не только повторная компиляция
+теста по новому header. Menu/desktop menu36/36 PASS.
+
+Контракт directional dirty-only capture publication0031 остаётся отдельно в
+asincviews; Retire не реализует onChangeVarAsinc или AS lexical closure lowering.
+Native structural signatures/ref-return builtin/shared task admission остаются
+открытыми по прежнему порядку явного согласования. Новых shared IDs не назначено;
+43-op np0 file profile, inspector execution_supported=false и NC64 defaults
+не расширены. Предыдущие optimized error-unwind/protected-result ASan ограничения
+не объявляются решёнными этой Limbo серией.
+
+Source/contracts:
+https://github.com/bhgv/flashVM/blob/master/disVM/limbo/asinctasks.b
+https://github.com/bhgv/flashVM/blob/master/compiler/runtime/ASINC-TASKS.md
+https://github.com/bhgv/flashVM/blob/master/ide/dis/tests/asinctasks_test.b
+https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1704.md
