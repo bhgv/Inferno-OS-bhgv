@@ -6,6 +6,8 @@ static Module *fixedmodule; // Registry owner observed during the protected call
 static Type *fixedtype; // Exact registered scalar frame descriptor.
 static int modulerefs, typerefs, fixedlive, mode, resolutions, mutate; // Independent lifetime/failure controls.
 static uchar cell[24], movedcell[24]; // Caller-owned scalar cells with surrounding canaries.
+static Prog *mappedprog; // Optional live caller whose current frame changes during producer allocation.
+static uchar *mappedtarget; // A distinct already rooted frame or an invalid interior boundary.
 static int offset; // Exercise every unaligned scalar result position.
 
 
@@ -16,6 +18,8 @@ native64testalloc(ulong bytes, int clear)
 	void *memory;
 
 	memory = zeroallocate(bytes, clear);
+	if(mappedprog != nil)
+		mappedprog->R.FP = mappedtarget;
 	if(mutate){
 		request.input = 0;
 		request.resolve = nil;
@@ -103,6 +107,62 @@ fixedcells(uvlong bits, int success)
 	check(memcmp(mode == 6 ? movedcell : cell, expected, sizeof(expected)) == 0);
 	check(memcmp(mode == 6 ? cell : movedcell, untouched, sizeof(untouched)) == 0);
 	check(live == fixedlive);
+}
+
+
+/* Prove the adapter selects the current typed frame rather than a stale physical cell. */
+static void
+fixedframes(void)
+{
+	union {
+		void *alignment; // Natural Frame64 alignment.
+		uchar bytes[OA(Stkext, reg.tos.fu)+176]; // Two complete generated-shape caller frames.
+	} stack;
+	Prog prog;
+	Type *type;
+	Stkext *extent;
+	Frame *first, *second;
+	Native64MathFrameCall call;
+	uchar map[] = {0, 0x20}; // Scalar result at72; unrelated managed field at80.
+	uvlong bits, before, observed;
+	int phase, status, allocations_before;
+
+	mode = 0;
+	type = dtype(freeheap, 88, map, sizeof(map));
+	check(type != nil);
+	for(phase=0; phase<5; phase++){
+		memset(&stack, 0, sizeof(stack));
+		memset(&prog, 0, sizeof(prog));
+		extent = (Stkext*)stack.bytes;
+		extent->reg.TR = type;
+		first = (Frame*)extent->reg.tos.fu;
+		second = (Frame*)((uchar*)first+88);
+		first->t = second->t = type;
+		prog.R.EX = stack.bytes;
+		prog.R.FP = (uchar*)first;
+		prog.R.SP = prog.R.TS = stack.bytes+sizeof(stack.bytes);
+		bits = 0x3ff0000000000000ULL;
+		before = 0x1122334455667788ULL;
+		memmove((uchar*)first+72, &before, 8);
+		memmove((uchar*)second+72, &before, 8);
+		fixedrequest(bits);
+		call.call = request; call.caller = &prog; call.type = type; call.offset = 72;
+		mappedprog = phase ? &prog : nil;
+		mappedtarget = phase == 1 ? (uchar*)second : phase == 2 ? (uchar*)second+8 : nil;
+		if(phase == 3) call.offset = 80;
+		if(phase == 4) call.type = fixedtype;
+		allocations_before = attempts;
+		status = Math_bits64realframe64(&call);
+		mappedprog = nil;
+		check(status == (phase < 2) && live == fixedlive && resolutions == 0);
+		memmove(&observed, (uchar*)first+72, 8);
+		check(observed == (phase == 0 ? bits : before));
+		memmove(&observed, (uchar*)second+72, 8);
+		check(observed == (phase == 1 ? bits : before));
+		if(phase >= 3) check(attempts == allocations_before);
+	}
+	freetype(type);
+	puts("PASS typed VM frame adapter: active/relocated cells, stale boundary, managed-slot and Type refusals");
 }
 
 
@@ -239,6 +299,7 @@ main(void)
 	check(fixedmodule->ref == modulerefs && fixedtype->ref == typerefs && worker.nerr == 0);
 	fixedcells(0, 0);
 #endif
+	fixedframes();
 	fixedrequest(0x3ff0000000000000ULL); mode = 3;
 	check(Math_bits64real64(&request));
 	check(modules == &baseline && live == 0 && worker.nerr == 0);

@@ -175,3 +175,41 @@ Math_bits64real64(const Native64MathBitsCall *request)
 	return 0;
 #endif
 }
+
+
+#if defined(DIS_NATIVE64_FIXED_MATH_CALL)
+#include "native64-frame-cell.h"
+
+
+/* Never retain a physical stack result address across a producer or safepoint. */
+static void*
+native64bitsframe(void *argument)
+{
+	Native64MathFrameCall *request;
+
+	request = argument;
+	return native64framecell(request->caller, request->type, request->offset);
+}
+#endif
+
+
+/* Adapt only a live typed current frame; actual import dispatch keeps its existing owners. */
+int
+Math_bits64realframe64(const Native64MathFrameCall *request)
+{
+#if defined(DIS_NATIVE64_FIXED_MATH_CALL)
+	Native64MathFrameCall owned;
+
+	if(request == nil)
+		return 0;
+	owned = *request;
+	if(native64bitsframe(&owned) == nil)
+		return 0;
+	owned.call.resolve = native64bitsframe;
+	owned.call.argument = &owned;
+	return Math_bits64real64(&owned.call);
+#else
+	USED(request);
+	return 0;
+#endif
+}

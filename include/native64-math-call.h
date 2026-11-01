@@ -21,4 +21,18 @@ struct Native64MathBitsCall
  * Registry/type retirement must not throw. No VM destination provenance is inferred.
  * This single Big->Real call owns no managed arguments/results; it is not generic CALL. */
 int Math_bits64real64(const Native64MathBitsCall*);
+
+typedef struct Native64MathFrameCall Native64MathFrameCall;
+
+struct Native64MathFrameCall
+{
+	Native64MathBitsCall call; // Immutable input snapshot; resolve/argument fields are ignored by this adapter.
+	Prog *caller; // Live rooted process with current REG published throughout the synchronous call.
+	Type *type; // Exact retained generated descriptor for the current caller frame.
+	unsigned int offset; // Naturally aligned scalar result field after the reserved64 bytes.
+};
+
+/* Resolve a current VM stack cell at preflight and again after production.
+ * Caller must keep Prog/extent/Type alive and GC-visible; older extents are refused. */
+int Math_bits64realframe64(const Native64MathFrameCall*);
 #endif

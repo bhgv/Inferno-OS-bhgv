@@ -332,3 +332,75 @@ pass on both targets. The complete ARM64 emulator links this optional gateway
 with actual runtime ownership and still passes both pilot programs with JIT
 off/on and closed builtin/legacy admission; that boot test does not invoke the
 new C gateway from a file. Prior optimized UTF/unwind ASan findings stay open.
+
+## Typed current-frame result adapter (INFERNO-0048)
+
+The private fixed Math call now has `Math_bits64realframe64`, taking a rooted
+Prog, its exact retained generated frame Type and an aligned eight-byte scalar
+field offset. The caller must publish its live REG into Prog before entry and
+serialize stack access throughout the synchronous call. This is an explicit C
+contract; ordinary xec global-R publication is not changed by this series.
+
+The shared native64framecell helper bounds the current stack extent by EX/SP/TS,
+walks every complete frame boundary, handles the real Stkext.TR fallback, validates
+full map8 and the exact target Type, and refuses reserved header/temp bytes,
+reference slots, interior addresses, wrong Types and incomplete extents. Only the
+active extent is accepted; suspended/older segments remain outside the profile.
+A GC map proves a non-reference eight-byte span, not the semantic difference
+between Big, Real and padding. Exact scalar kind and declared field offset still
+come from trusted compiler metadata. No arbitrary native pointer provenance is
+inferred, and no file-native call profile is enabled.
+
+The adapter validates once before dispatch and resolves again after the actual
+producer. It retains no physical result pointer across producer allocation or
+collection. The existing structural signature, module/Type ownership and
+protected cleanup in Math_bits64real64 remain in force. Both APIs still decline
+before reading requests when their explicit fixed-call experiment is disabled.
+
+Two complementary owning gates now run on x64 strict UBSan and ARM64/QEMU:
+
+```
+python3 utils/tests/native64-frame-cell.py --limbo /host/tools/limbo
+python3 utils/tests/native64-frame-cell.py --gateway --limbo /host/tools/limbo
+```
+
+Use the existing cross compiler/runner environment for ARM64. Each compatible
+WORD32/WORD32-file model runs48 standalone GC transactions and96 combined fixed
+call transactions across all process states/colors. Generated caller frames have
+a Real result at72 and an independent managed array at80. Actual heap/collector
+bodies keep those neighboring owners alive through repeated epochs and release
+them through real cleanup exactly once. Standalone cases include the extent's
+fallback Type, live-frame relocation and scalar/reference/Type/bounds refusals.
+
+The combined gate executes actual structural import matching, typed frame adapter,
+Math producer, emu kprotect/error bodies and unload reference decrement. Its
+registry bootstrap and OS pool/error-label services are explicitly bounded;
+registration itself is covered separately by the68-export gate. A test-only hook
+in a copied owning Math body forces real collection after its private result
+store and changes the logical current frame before resolution. Allocation/error
+cases preserve both old caller cells and balance module/Type/raw-frame ownership.
+This is a synchronous callback/safepoint simulation, not file-bytecode execution
+or a claim about every normal scheduler transition.
+
+```
+python3 utils/tests/native64-frame-cell.py --control scalar --limbo /host/tools/limbo
+python3 utils/tests/native64-frame-cell.py --control identity --limbo /host/tools/limbo
+python3 utils/tests/native64-frame-cell.py --control boundary --limbo /host/tools/limbo
+python3 utils/tests/native64-frame-cell.py --control map --limbo /host/tools/limbo
+python3 utils/tests/native64-frame-cell.py --gateway --control map --limbo /host/tools/limbo
+```
+
+All removals must fail active predicates: reference-cell checks, Type identity,
+frame-boundary membership, or the sole independent managed roots. The existing
+fixed import gate also exercises the new adapter with stable/moved frames and
+post-production invalid boundaries. The full static ARM64 emulator is rebuilt
+through mk with the new adapter and retains its pilot JIT-off/on and builtin/
+legacy refusal tests. Shared43-op np0 execution, defaults and the recorded
+optimized UTF/error-unwind ASan limitations remain unchanged.
+
+FLASHVM-0047's next proposal additionally requires process/frame generation and
+an owned caller-lifetime capability. The current exact-address/Type/boundary
+resolver cannot distinguish reuse at the same address with the same Type and
+does not acquire a Prog lifetime token. Its caller-rooting contract is therefore
+still trusted; these missing stale-reuse/lifetime protections must be addressed
+before file-native call admission. No such admission is implied by this series.

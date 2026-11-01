@@ -90,7 +90,7 @@ def main():
             obj = work/'disabled.o'
             subprocess.run(compiler+flags+explicit+includes+['-ffunction-sections', '-fdata-sections', '-c', str(ROOT/'libinterp/math.c'), '-o', str(obj)], env=env, check=True)
             unit = work/'disabled.c'
-            unit.write_text('#include "lib9.h"\n#include "interp.h"\n#include "native64-math-call.h"\nint main(void){return Math_bits64real64((const Native64MathBitsCall*)1)!=0;}\n')
+            unit.write_text('#include "lib9.h"\n#include "interp.h"\n#include "native64-math-call.h"\nint main(void){return Math_bits64real64((const Native64MathBitsCall*)1)!=0 || Math_bits64realframe64((const Native64MathFrameCall*)1)!=0;}\n')
             binary = work/'disabled'
             subprocess.run(compiler+flags+includes+[str(unit), str(obj), '-Wl,--gc-sections', '-lm', '-o', str(binary)], env=env, check=True)
             subprocess.run(runner+[str(binary)], env=env, check=True)
