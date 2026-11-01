@@ -52,3 +52,31 @@ JIT coverage remains distinct from file admission: ARM64/x64 have 166/173
 native fast paths (95.95%); RV64I has 87 (50.29%), Zmmul 90 (52.02%), and M
 103 (59.54%). All three retain 173/173 support through JIT plus C handlers.
 Complex operations continue to use C where appropriate.
+
+## Published validation and downloads
+
+Source commit: [ab03187](https://github.com/bhgv/Inferno-OS-bhgv/commit/ab03187119dc96800ac05c1a41afce48969354d3).
+[CI 41343429742](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41343429742)
+passes all three clean classic-mk ports: native Linux ARM64 and x64, RV64/QEMU.
+Each archived helper execution log records 18 sources / 36 whole C/JIT
+processes; the separate external-reader log records 18 images / zero execution
+processes, with all nine refusal controls active. The existing 67-case gate
+still runs 134 whole processes per architecture.
+
+| Target | Console, three source/image/map examples and complete logs |
+| --- | --- |
+| ARM64, native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41343429742/artifacts/13098273734) |
+| x64, native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41343429742/artifacts/13098770059) |
+| RV64, QEMU CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41343429742/artifacts/13097759848) |
+
+Artifacts require a GitHub login and expire according to repository retention.
+All three archives contain byte-identical procedures.dis64, SHA256
+`a07604d05c0d11efee54d2ae8fe874c5c9c5c7c467ae2bf4f6f7591c99bb2763`.
+The downloaded ARM64 console additionally executes all three bundled examples
+successfully with JIT0/1 under Linux/QEMU and an explicit ARM64 libc sysroot.
+This replay is separate from the native ARM64 CI evidence above.
+
+The owning native Limbo integration gate also passes 72 ordinary Dis/AOT source
+cases and exact ABI32/late-link checks. The previous compiler produces identical
+ordinary Dis for the scalar compatibility corpus. No APK or full shell claim
+follows from these restricted console results.

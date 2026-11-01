@@ -3692,3 +3692,18 @@ helper fault location and ordinary Dis byte preservation checks remain active.
 CI additionally runs native Linux ARM64/x64 and RV64/QEMU and packages a
 self-checking procedures example. See doc/dis64-scalar-helpers.md for bounds
 and proof scope. This entry does not infer physical Android acceptance.
+
+INFERNO-0057 CI addendum: source ab03187 passes run41343429742 on native Linux
+ARM64/x64 and RV64/QEMU. Archived per-target helper execution logs show18 sources,
+36 whole C/JIT processes; external-reader-only logs show18 images,0 execution
+processes. All9 calling/storage refusal controls remain active. Existing67-case
+source gate still runs134 whole processes per target. Native Limbo integration
+also passes72 ordinary-source Dis/AOT cases and legacy layout/link checks.
+
+Downloads: ARM64 artifact13098273734, x64 artifact13098770059, RV64
+artifact13097759848; full links in doc/dis64-scalar-helpers.md. The downloaded
+ARM64 console separately retires loop/case/procedures with JIT0/1 under QEMU.
+procedures.dis64 is byte-identical across all3 archives, SHA256
+ a07604d05c0d11efee54d2ae8fe874c5c9c5c7c467ae2bf4f6f7591c99bb2763.
+Fetched current FlashVM master2511f39: no newer incoming journal entry than
+FLASHVM-0051 and no external-reader/header change affecting this wire profile.
