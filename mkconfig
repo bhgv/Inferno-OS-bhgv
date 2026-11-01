@@ -40,6 +40,9 @@ OBJTYPE=arm #386 #arm  #386			# target system object type (eg, 386, arm, mips, p
 # These are core/library toolchain profiles, not completed platform emu ports.
 # See doc/build-native64.md for missing platform files and coherent model rules.
 # Optional experimental scalar model: DISMODELFLAGS='-DDIS_WORD32=1'
+# Experimental Linux console scalar-only startup (ARM64 cross/QEMU verified):
+# DISMODELFLAGS='-DDIS_WORD32=1 -DDIS64_PILOT_LOADER=1 -DDIS_NATIVE64_SCALAR_BOOT=1'
+# No builtin modules, legacy Dis images or native plugins in that mode.
 # Rebuild every linked runtime object with the same model; default remains legacy.
 
 

@@ -81,7 +81,13 @@ __wrap_free(void *pointer)
 }
 
 #define TEST_LEAF_DISPATCH_RUNTIME // Link the authoritative complete-entry executor.
-#include "comp-amd64.c"
+#if defined(DIS64_TEST_ARM64) && !defined(__aarch64__)
+#error the ARM64 runtime gate requires an AArch64 compiler
+#endif
+#ifndef DIS64_TEST_COMPILER
+#define DIS64_TEST_COMPILER "comp-amd64.c" // Preserve the original native test backend by default.
+#endif
+#include DIS64_TEST_COMPILER
 #include "tests/leaf-cons-stub.h"
 #include "dat.h"
 #include "fns.h"
@@ -129,6 +135,7 @@ trackedstrdup(const char *text)
 	return copy;
 }
 
+#undef strdup // Target headers may supply an ordinary libc alias.
 #define strdup(text) trackedstrdup(text) // Track the module's owned path string.
 
 

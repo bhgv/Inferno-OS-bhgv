@@ -9,6 +9,9 @@ CONF=emu			#default configuration
 CONFLIST=emu
 CLEANCONFLIST=
 
+# Keep the full build as mk's first target, before machine-specific object rules.
+default:V:	all
+
 INSTALLDIR=$ROOT/$SYSTARG/$OBJTYPE/bin	#path of directory where kernel is installed
 
 #end configurable parameters
@@ -69,7 +72,6 @@ LIBDIR=$ROOT/$OBJDIR/lib
 LIBRARY=$LIBDIR/$LIB.a
 LIBOBJ=${OFILES:%=$LIBRARY(%)}
 
-default:V:	all
 
 all install:V:	$LIBRARY
 

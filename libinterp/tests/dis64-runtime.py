@@ -58,11 +58,8 @@ def image(instructions, data=4, frame=64, name='Pilot', initialized=40, datatype
     return b'Dis64\r\n\x1a'+struct.pack('>HHIIIII', 1, 0, 32+12*len(payloads), 1, 0, 0, len(payloads))+directory+b''.join(p for _, p in payloads)
 
 
-# Compile real source closures, then check independent inputs and result bits.
-def main():
-    if platform.system() != 'Linux' or platform.machine().lower() not in ('x86_64', 'amd64'):
-        print('SKIP Dis64 runtime RX: requires Linux/AMD64 host')
-        return
+# Assemble the unchanged actual constructor/decoder/executor closure for native or cross-target gates.
+def buildunit():
     heap = (ROOT/'libinterp/heap.c').read_text()
     xec = (ROOT/'libinterp/xec.c').read_text()
     load = (ROOT/'libinterp/load.c').read_text()
@@ -92,6 +89,11 @@ def main():
     unit = unit.replace('IMPLEMENTATION', '\n\n'.join(parts))
     # Explicit bindings are compiled by C; the independent image opcodes below are fixed ISA bytes.
     unit = unit.replace('HANDLERS', '\n'.join('optab[I'+('EXIT' if name == 'iexit' else name.upper())+'] = '+name+';' for name in names))
+    return unit
+
+
+# Keep independent image bytes and expected integer results shared across target architectures.
+def runtimecases():
     exit_ = bytes.fromhex('0f1b')
     movw = lambda value, offset=0: bytes.fromhex('2d10')+operand(value)+operand(offset)
     addw = lambda value: bytes.fromhex('3a10')+operand(value)+operand(0)
@@ -171,6 +173,16 @@ def main():
     ]
     golden = image([addw(2), exit_])
     cases += [(golden[:extent], 0, 0) for extent in range(len(golden))]
+    return cases
+
+
+# Compile real source closures, then check independent inputs and result bits.
+def main():
+    if platform.system() != 'Linux' or platform.machine().lower() not in ('x86_64', 'amd64'):
+        print('SKIP Dis64 runtime RX: requires Linux/AMD64 host')
+        return
+    unit = buildunit()
+    cases = runtimecases()
     with tempfile.TemporaryDirectory(prefix='dis64-runtime-') as temporary:
         work = Path(temporary)
         source = work/'runtime.c'

@@ -27,6 +27,14 @@ def main():
         bad=subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','windows','--arch','amd64','--output',str(work/'bad')],capture_output=True)
         if bad.returncode==0 or (work/'bad').exists():
             raise RuntimeError('Missing platform port was advertised as available')
+        output=work/'scalar.mkconfig'
+        subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--arch','arm64','--console','--native64-scalar-boot','--output',str(output)],check=True,capture_output=True)
+        if "DISMODELFLAGS='-DDIS_WORD32=1 -DDIS64_PILOT_LOADER=1 -DDIS_NATIVE64_SCALAR_BOOT=1'" not in output.read_text():
+            raise RuntimeError('Scalar startup lost its coherent guarded model')
+        for options in (['--arch','386','--console'], ['--arch','arm64'], ['--target','android','--arch','arm64']):
+            bad=subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--native64-scalar-boot','--output',str(work/'invalid-scalar')]+options,capture_output=True)
+            if bad.returncode==0 or (work/'invalid-scalar').exists():
+                raise RuntimeError('Scalar startup accepted an unsupported profile')
         for target in ('Linux','MacOSX','Nt'):
             result=subprocess.run(['/bin/sh','../port/mkdevlist','emu-g'],cwd=ROOT/'emu'/target,env=dict(os.environ,ROOT=str(ROOT),AWK='awk'),capture_output=True,text=True,check=True)
             devs=next(row for row in result.stdout.splitlines() if row.startswith('DEVS='))

@@ -3,6 +3,7 @@
 #include	"error.h"
 #include	"interp.h"
 #include "legacy-native-abi.h"
+#include "native64-scalar-boot.h"
 #include	"kernel.h"
 #include	"draw.h"
 #include	"version.h"
@@ -238,6 +239,8 @@ nofence(void)
 }
 
 /* Parse startup options within the argument vector before initializing the emulator. */
+
+/* Select either the legacy builtin ABI or the explicit builtin-free scalar runtime. */
 void
 main(int argc, char *argv[])
 {
@@ -263,10 +266,19 @@ main(int argc, char *argv[])
 		option(envc, enva, envusage);
 	}
 	option(argc, argv, usage);
+#ifdef DIS_NATIVE64_SCALAR_BOOT
+	if(!native64model()){
+		fprint(2, "emu: incompatible native64 scalar layout\n");
+		exits("native64 scalar ABI");
+	}
+	if(vflag)
+		fprint(2, "emu: experimental native64 scalar startup; builtin modules are disabled\n");
+#else
 	if(!legacynativeabi()){
 		fprint(2, "emu: installed legacy builtin tables require int32/ref32; native64 registration is not enabled\n");
 		exits("native64 builtin ABI");
 	}
+#endif
 	eve = strdup("inferno");
 
 	opt = "interp";

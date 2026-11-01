@@ -55,6 +55,9 @@ struct Btail
 
 #define B2LIMIT(b)	((Bhdr*)((uchar*)b + b->csize))
 
+/* A free block must hold all tree links as well as its boundary tag. */
+#define POOLQUANTA ((sizeof(Bhdr) + sizeof(Btail) <= 32 ? 32 : 64) - 1) // Minimum block mask for ILP32 and LP64.
+
 #define BHDRSIZE	((long)(((Bhdr*)0)->u.data)+sizeof(Btail))
 
 extern	void	(*poolfault)(void *, char *, ulong);

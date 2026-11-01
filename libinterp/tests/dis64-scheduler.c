@@ -60,6 +60,7 @@ schedmalloc(size_t bytes)
 	return trackedallocate(bytes, 1);
 }
 
+#undef malloc // Platform headers may expose the emulator allocator alias.
 #define malloc(bytes) schedmalloc(bytes) // Actual newprog/newgrp allocation boundary.
 
 

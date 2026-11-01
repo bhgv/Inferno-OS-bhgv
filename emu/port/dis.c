@@ -6,6 +6,7 @@
 #include	"error.h"
 #include	"raise.h"
 #include	"vmstartup.h"
+#include "native64-scalar-boot.h"
 
 struct
 {
@@ -1010,6 +1011,8 @@ startup(void)
 	osblock();
 }
 
+
+/* Report termination, release the running program and stop an empty scheduler. */
 void
 progexit(void)
 {
@@ -1033,6 +1036,11 @@ progexit(void)
 		estr = "killed";
 
 	m = R.M->m;
+#ifdef DIS_NATIVE64_SCALAR_BOOT
+	if(vflag)
+		print("native64 scalar module %s: jit=%d, exit=\"%s\"\n",
+			m->name, m->jit != nil, estr);
+#endif
 	if(broken){
 		if(cflag){	/* only works on Plan9 for now */
 			char *pc = strstr(estr, "pc=");
@@ -1170,6 +1178,8 @@ vmachine(void *a)
 	}
 }
 
+
+/* Initialize the selected runtime and schedule its checked initial module. */
 void
 disinit(void *a)
 {
@@ -1190,7 +1200,9 @@ disinit(void *a)
 	FPsave(&up->env->fpu);
 
 	opinit();
+#ifndef DIS_NATIVE64_SCALAR_BOOT
 	modinit();
+#endif
 	excinit();
 
 	root = load(initmod);

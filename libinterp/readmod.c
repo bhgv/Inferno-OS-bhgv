@@ -3,6 +3,7 @@
 #include "interp.h"
 #include "kernel.h"
 #include "dynld.h"
+#include "native64-scalar-boot.h"
 
 
 /* Validate full-width native replies before advancing a complete module image. */
@@ -17,6 +18,10 @@ readmod(char *path, Module *m, int sync)
 	ulong length;
 
 	if(path[0] == '$') {
+#ifdef DIS_NATIVE64_SCALAR_BOOT
+		kwerrstr("builtin modules are unavailable in native64 scalar startup");
+		return nil;
+#endif
 		if(m == nil)
 			kwerrstr("module not built-in");
 		return m;
@@ -51,10 +56,12 @@ readmod(char *path, Module *m, int sync)
 		kwerrstr("implausible length");
 		goto done;
 	}
+#ifndef DIS_NATIVE64_SCALAR_BOOT
 	if((d->mode&0111) && dynldable(fd)){
 		dynld = 1;
 		goto done1;
 	}
+#endif
 	length = d->length;
 	code = mallocz(length, 0);
 	if(code == nil)

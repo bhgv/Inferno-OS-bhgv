@@ -60,6 +60,7 @@ HFILES=\
 	$ROOT/$OBJDIR/include/lib9.h\
 	$ROOT/include/arm-fp.h\
 	$ROOT/include/mathi.h\
+	$ROOT/include/fdlibm-names.h\
 	fdlibm/fdlibm.h\
 	
 <$ROOT/mkfiles/mksyslib-$SHELLTYPE

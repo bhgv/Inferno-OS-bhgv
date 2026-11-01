@@ -45,6 +45,7 @@ def main():
     parser.add_argument('--cross',type=lambda value:literal(value) if value else '')
     parser.add_argument('--ndk',type=literal)
     parser.add_argument('--console',action='store_true')
+    parser.add_argument('--native64-scalar-boot',action='store_true',help='experimental Linux console startup for checked scalar Dis64 images only')
     parser.add_argument('--renderer',choices=('framebuffer','gles'),default='framebuffer')
     parser.add_argument('--output',type=Path,default=ROOT/'mkconfig')
     args=parser.parse_args()
@@ -65,6 +66,8 @@ def main():
         parser.error('Terminal emulator entries currently exist for Linux, Windows and macOS only')
     if args.host!=target and target!='Android':
         parser.error('Hosted emulators require matching host and target; cross builds need a dedicated toolchain/port')
+    if args.native64_scalar_boot and (target!='Linux' or arch not in ('amd64','arm64','riscv64') or not args.console):
+        parser.error('Scalar Dis64 startup requires a 64-bit Linux console profile')
     text=(ROOT/'mkconfig').read_text()
     marker='# configure.py selected build flavour\n'
     if marker in text:
@@ -78,6 +81,8 @@ def main():
         text=assign(text,'CROSS',args.cross)
     if args.ndk is not None:
         text=assign(text,'ANDROID_NDK_HOME',args.ndk)
+    if args.native64_scalar_boot:
+        text=assign(text,'DISMODELFLAGS',"'-DDIS_WORD32=1 -DDIS64_PILOT_LOADER=1 -DDIS_NATIVE64_SCALAR_BOOT=1'")
     if args.console:
         text+='\n'+marker+'<$ROOT/mkfiles/profile-console\n# end configure.py flavour\n'
     args.output.parent.mkdir(parents=True,exist_ok=True)
@@ -86,7 +91,9 @@ def main():
         temporary=Path(stream.name)
     os.replace(temporary,args.output)
     print('Prepared',args.output,'for',args.host,'->',target,arch, 'console' if args.console else 'platform default')
-    if arch in ('amd64','arm64','riscv64'):
+    if args.native64_scalar_boot:
+        print('Experimental scalar Dis64 startup selected; builtin modules and legacy images are disabled. Rebuild all runtime objects.')
+    elif arch in ('amd64','arm64','riscv64'):
         print('64-bit toolchain profile selected; native builtin ABI registration and full VM boot remain pending.')
     print('Build with the classic commands: mk mkdirs; mk emuinstall; mk install')
 

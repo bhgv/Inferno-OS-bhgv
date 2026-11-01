@@ -71,3 +71,87 @@ https://github.com/bhgv/Inferno-OS_Android-Clutter3d/blob/master/doc/native-gles
 Host resolver tests check fixed-root selection, denied/missing storage and
 output bounds. Startup-option tests check quoting/capacity separately. These
 checks do not replace an Android APK/device acceptance test.
+
+## Experimental ARM64 scalar-only emulator startup (INFERNO-0044)
+
+A complete Linux ARM64 console emulator now builds with classic mk and runs
+checked scalar Dis64 modules through the real OS, filesystem, pools, scheduler
+and ARM64 JIT. This is an explicit builtin-free experiment, not general emuinit
+or shell startup. The normal legacy builtin ABI guard remains unchanged.
+
+Prepare a fresh output tree to avoid mixing scalar models:
+
+```
+python3 utils/configure.py --host linux --target linux --arch arm64 --console \
+  --cross aarch64-linux-gnu- --native64-scalar-boot
+mk mkdirs
+mk emuinstall
+```
+
+Cross builds require host-executable mk, iyacc, decgen and Limbo in the tool
+locations used by the existing build. The selected target compiler/archive tools
+must supply Linux ARM64 headers and libraries. A native ARM64 build uses an empty
+CROSS. The equivalent manual setting is:
+
+```
+DISMODELFLAGS='-DDIS_WORD32=1 -DDIS64_PILOT_LOADER=1 -DDIS_NATIVE64_SCALAR_BOOT=1'
+```
+
+Rebuild every runtime/library object coherently. The feature rejects missing or
+conflicting flags at compilation. It skips all legacy builtin initialization,
+rejects `$Sys` and other builtin imports, refuses native plugins and legacy Dis
+images, and retains the existing 43-opcode np0 Dis64 admission. No wire IDs,
+Frame64/map8 contract, execution_supported flag or SDK default changes.
+
+`-d /dis/pilot.dis64` selects the initial module (`-i` and positional arguments
+are not module selectors). `-c 0` selects interpretation; `-c 1` enables JIT.
+`-v` reports scalar module termination and whether a JIT was installed.
+Linux cleanexit kills its process group; isolate test runs with a new session.
+The automated test does this and requires a termination marker, rather than
+interpreting SIGKILL alone as success:
+
+```
+python3 utils/tests/native64-scalar-boot.py --emu /build/emu/Linux/o.emu-g \
+  --root /build --runner qemu-aarch64
+```
+
+Verified with a static ELF64 AArch64 executable, Clang/LLD from NDK r28c targeting
+Linux GNU, Debian ARM64 glibc 2.36 and QEMU user emulation. Both pilot42 and
+pilot-init42 complete with JIT off/on; builtin and legacy image refusals pass.
+A complete ordinary Inferno userspace still requires native64 builtin/module ABI
+integration. This does not resolve the previously recorded UTF/error-unwind ASan
+findings, nor prove execution on physical ARM64 or an Android APK.
+
+Separate target coverage uses actual VM source closures with bounded OS/GC
+fixtures, not the complete emulator:
+
+```
+python3 utils/tests/arm64-runtime.py --system Linux \
+  --cc aarch64-linux-gnu-gcc --runner 'qemu-aarch64 -L /arm64-sysroot'
+```
+
+Linux/glibc and Android/Bionic ARM64 both pass 744 complete image inputs and
+1,667,800 scalar runtime predicates, plus scheduler, file loader, vmachine and
+exception propagation/selection controls. The Android run uses a static target
+C executable, not Java or an APK.
+
+Pool geometry now reserves enough bytes for Bhdr's five free-list/tree pointers
+and Btail: a 32-byte quantum on ILP32, 64 bytes on LP64. A 32-byte LP64 block could
+corrupt its successor when freed; this was reproduced during real emulator boot.
+Both hosted and OS pool initializers use the shared mask. The owning hosted pool
+gate checks 10,240 allocations, 5,120 reallocations, payload preservation and
+bidirectional coalescing on AMD64/UBSan and ARM64/QEMU:
+
+```
+python3 utils/tests/pool-native64.py
+NATIVE64_ARCH=arm64 CC=aarch64-linux-gnu-gcc \
+  NATIVE64_CFLAGS='-O2 -DNDEBUG -static -fno-strict-aliasing' \
+  NATIVE64_RUNNER=qemu-aarch64 python3 utils/tests/pool-native64.py
+```
+
+Two additional actual build blockers were fixed: plain mk selected an early
+assembly-object rule instead of the full Linux/Android target, and a dead pthread
+stack probe required an undeclared GNU extension. Private fdlibm core names now
+have an Inferno prefix to avoid static glibc libm strong-alias collisions (notably
+__ieee754_pow). Rebuild libmath and its consumers together; the 68-export actual
+Math registration/invocation gate passes against the rebuilt numeric libraries.

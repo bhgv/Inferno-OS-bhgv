@@ -55,6 +55,7 @@ HFILES=\
 	$ROOT/include/dis64-pilot.h\
 	$ROOT/include/runtab-legacy.h\
 	$ROOT/include/native64-model.h\
+	$ROOT/include/native64-scalar-boot.h\
 	$ROOT/include/native64-modules.h\
 	$ROOT/include/native64-tail.h\
 	$ROOT/include/native64-arguments.h\
@@ -151,7 +152,7 @@ crypt.$O:	ipint.h runt.h cryptmod.h
 ipint.$O:	ipint.h ipintsmod.h
 loader.$O:	loadermod.h
 freetype.$O:	freetypemod.h $ROOT/include/freetype.h
-math.$O:	$ROOT/include/mathi.h
+math.$O:	$ROOT/include/mathi.h $ROOT/include/fdlibm-names.h
 
 das-spim.c:N:	das-mips.c
 comp-spim.c:N:	comp-mips.c
