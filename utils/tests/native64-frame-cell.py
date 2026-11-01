@@ -17,9 +17,12 @@ ROOT = Path(__file__).resolve().parents[2]
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--limbo', type=Path, required=True)
+    parser.add_argument('--lease', action='store_true', help='retain a generation-checked caller across the combined protected call')
     parser.add_argument('--gateway', action='store_true', help='combine the structural fixed call with real protected VM/collector bodies')
     parser.add_argument('--control', choices=('scalar', 'identity', 'boundary', 'map'))
     args = parser.parse_args()
+    if args.lease and not args.gateway:
+        parser.error('--lease requires --gateway')
     if args.gateway and args.control not in (None, 'map'):
         parser.error('The combined gateway supports the GC-map removal control; use standalone mode for cell-validation controls')
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
@@ -58,7 +61,7 @@ def main():
         (work/'test.c').write_text(source)
         includes = ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
         for label, model in (('WORD32', ['-DDIS_WORD32=1']), ('WORD32-file', ['-DDIS_WORD32=1', '-DDIS64_PILOT_LOADER=1'])):
-            command = compiler+flags+model+includes+['-ffunction-sections', '-fdata-sections']
+            command = compiler+flags+model+includes+(['-DFRAMECELL_LEASE=1', '-DDIS_NATIVE64_CALLER_GUARD=1', '-DDIS_NATIVE64_FIXED_MATH_CALL=1'] if args.lease else [])+['-ffunction-sections', '-fdata-sections']
             objects = []
             for name in ('heap', 'math'):
                 obj = work/(label+'-'+name+'.o')

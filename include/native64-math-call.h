@@ -35,4 +35,6 @@ struct Native64MathFrameCall
 /* Resolve a current VM stack cell at preflight and again after production.
  * Caller must keep Prog/extent/Type alive and GC-visible; older extents are refused. */
 int Math_bits64realframe64(const Native64MathFrameCall*);
+/* Opt-in noncopyable caller lease; ordinary frame adapter semantics remain unchanged. */
+int Math_bits64realguard64(const Native64MathFrameCall*);
 #endif

@@ -1,6 +1,7 @@
 #include "lib9.h"
 #include "isa.h"
 #include "interp.h"
+#include "native64-caller.h"
 #include "raise.h"
 #include <pool.h>
 
@@ -137,6 +138,9 @@ newstack(Prog *p)
 	f->mr = nil;
 	f->fp = nil;
 	f->t = nil;
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	native64calleradvance(p);
+#endif
 	p->R.EX = ns->stack;
 	p->R.TS = ns->stack + l;
 	p->R.SP = ns->reg.tos.fu + size;
@@ -171,6 +175,9 @@ extend(void)
 	f = ns->reg.tos.fr;
 	f->t  = nil;
 	f->mr = nil;
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	native64calleradvance(currun());
+#endif
 	R.s = f;
 	R.EX = ns->stack;
 	R.TS = ns->stack + l;
@@ -198,6 +205,9 @@ unextend(Frame *f)
 	resumed.SP = sx->reg.SP;
 	resumed.TS = sx->reg.TS;
 	resumed.EX = sx->reg.EX;
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	native64calleradvance(currun());
+#endif
 	memmove(&R, &resumed, sizeof(R));
 	if(t->np)
 		freeptrs(f, t);
@@ -228,6 +238,9 @@ unframe(void)
 	stacksize(t, 0, 0);
 	if((uintptr)f > (uintptr)-1-(uintptr)t->size)
 		error(exHeap);
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	native64calleradvance(currun());
+#endif
 	R.SP = nextsp;
 	if(source == nil){
 		sx = stackextent(f);
@@ -236,3 +249,13 @@ unframe(void)
 		free(sx);
 	}
 }
+
+
+#ifdef DIS_NATIVE64_CALLER_GUARD
+/* Expose that extent mutation invalidation hooks were compiled together. */
+int
+native64callerstackguard(void)
+{
+	return 1;
+}
+#endif

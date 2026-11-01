@@ -6,6 +6,7 @@
 #include "../port/error.h"
 #include <isa.h>
 #include <interp.h>
+#include "native64-caller.h"
 #include <kernel.h>
 #include "raise.h"
 #include "vmstartup.h"
@@ -204,6 +205,8 @@ newprog(Prog *p, Modlink *m)
 	if(n == nil)
 		error(exNomem);
 	n->pid = ++pidnum;
+	n->native64epoch = 1;
+	n->native64holds = 0;
 	n->group = nil;
 	n->flags = 0;
 	n->osenv = (Osenv*)((uchar*)n+sizeof(Prog));
@@ -260,12 +263,20 @@ newprog(Prog *p, Modlink *m)
 	return n;
 }
 
+
+/* Keep a leased caller alive before any registry, group or allocation retirement. */
 void
 delprog(Prog *p, char *msg)
 {
 	Osenv *o;
 	Prog **ph;
 
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	if(p->native64holds != 0){
+		native64calleradvance(p);
+		error("native64 caller is retained");
+	}
+#endif
 	tellsomeone(p, msg);	/* call before being removed from prog list */
 
 	o = p->osenv;
@@ -435,12 +446,22 @@ propex(Prog *p, char *estr)
 		exprog(pgl, estr);
 }
 
+
+/* A leased caller records cancellation and defers destructive process teardown. */
 int
 killprog(Prog *p, char *cause)
 {
 	Osenv *env;
 	char msg[ERRMAX+2*KNAMELEN];
 
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	if(p->native64holds != 0){
+		p->kill = "";
+		p->flags |= Pkilled;
+		native64calleradvance(p);
+		return 0;
+	}
+#endif
 	if(p == isched.runhd) {
 		p->kill = "";
 		p->flags |= Pkilled;
@@ -934,12 +955,22 @@ acquire(void)
 		isched.runtl = p;
 }
 
+
+/* A synchronous caller lease must retire before yielding VM ownership. */
 void
 release(void)
 {
 	Proc *p, **pq;
 	int f;
 
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	Prog *held;
+	held = currun();
+	if(held != nil && held->native64holds != 0){
+		native64calleradvance(held);
+		error("native64 caller cannot release VM");
+	}
+#endif
 	if(up->type == Interp){
 		if(up->iprog != nil)
 			panic("Double release (Interp)?");
@@ -1020,6 +1051,8 @@ startup(void)
 	sched();
 }
 
+
+/* Reject leased teardown before releasing the running stack and process. */
 void
 progexit(void)
 {
@@ -1039,6 +1072,12 @@ progexit(void)
 	else
 		r = currun();
 
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	if(r->native64holds != 0){
+		native64calleradvance(r);
+		error("native64 caller is retained");
+	}
+#endif
 	if(*estr == '\0' && r->flags & Pkilled)
 		estr = "killed";
 
@@ -1246,3 +1285,13 @@ krethrow(void)
 {
 	nexterror();
 }
+
+
+#ifdef DIS_NATIVE64_CALLER_GUARD
+/* Reject partial guard builds at link time through both owning lifetime mutation units. */
+int
+native64callerruntime(void)
+{
+	return native64callervmguard() == 1 && native64callerstackguard() == 1;
+}
+#endif

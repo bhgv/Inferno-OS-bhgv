@@ -404,3 +404,94 @@ resolver cannot distinguish reuse at the same address with the same Type and
 does not acquire a Prog lifetime token. Its caller-rooting contract is therefore
 still trusted; these missing stale-reuse/lifetime protections must be addressed
 before file-native call admission. No such admission is implied by this series.
+
+## Synchronous current-caller generation lease (INFERNO-0049)
+
+The explicit private profile DIS_NATIVE64_CALLER_GUARD=1 requires WORD32 and the
+fixed Math experiment. It adds a noncopyable Native64Caller lease and the
+Math_bits64realguard64 adapter. This is not a generic Prog reference count:
+acquisition is restricted to the current scheduler head in Pready, with no kill
+pending and exactly one lease. Existing scheduler ownership remains in place;
+the lease blocks its normal destructive paths and VM release until clear.
+Blocked, Prelease, exiting, suspended and noncurrent processes are refused.
+This avoids deferring a blocked-process kill without a proven wake/replay path.
+
+Prog now has private native64epoch/native64holds fields. Rebuild all linked
+runtime objects coherently even when the guard is off; neither field enters Dis
+or Frame64 wire data. New processes explicitly initialize them. With the profile
+selected, interpreter entry/steps and normal stack extent mutations advance a
+saturating64-bit invalidation epoch. delprog/progexit refuse held teardown before
+retirement, and release refuses to yield VM ownership. These attempted actions
+also invalidate the pending lease. killprog records cancellation and invalidates
+without destroying the held current process; normal VM resumption consumes the
+pending kill after the synchronous adapter releases its hold.
+
+Acquire before allocation/callbacks, retain the exact caller Type and record
+process PID/epoch/frame/extent identity. Resolve checks current scheduler identity,
+Pready/cancellation, generation and frame identity before reading stack storage.
+Copied lease records cannot resolve or release the original. Counter saturation
+refuses future acquisition; generations never wrap. A live lease can explicitly
+transfer its result to another validated frame in the same retained active
+extent. Only FP changes; module, PC, SP/TS/EX and unrelated REG fields are not
+replaced. An invalid/stale lease cannot rebind itself into validity. Clear detaches
+its identity first, drops the process hold and releases exactly one Type owner;
+repeated clear is harmless. State storage must remain live, noncopyable and
+disjoint from Prog/Type until retirement. Access is serialized by the VM owner.
+
+Ordinary global-R/Prog publication is still a trusted caller obligation. This
+profile does not acquire an independent GC root for a detached Prog, support
+VM release/blocking or prove arbitrary scheduler-list detachment/replay. It
+protects normal runtime paths for a synchronous current caller; native code
+bypassing those paths is outside the contract. File CALL/MCALL, older extents,
+managed argument/result graphs and execution_supported remain closed.
+
+```
+python3 utils/tests/native64-fixed-math.py --caller-guard \
+  --limbo /host/tools/limbo --libdir /build/Linux/arm64/lib
+python3 utils/tests/native64-fixed-math.py --caller-guard --caller-port os \
+  --limbo /host/tools/limbo --libdir /build/Linux/arm64/lib
+python3 utils/tests/native64-frame-cell.py --gateway --lease --limbo /host/tools/limbo
+```
+
+Use the existing cross environment for ARM64. Owning x64 strict-UBSan and
+ARM64/QEMU tests retain the12672-case/68-export/141-refusal Math gates and add
+lease identity/copy/Type balance, explicit transfer, same-address/same-Type stale
+reuse, poisoned retired extent, PID/current/state/cancellation mismatches,
+saturation, nested refusal and protected producer errors. The emu/OS lifecycle
+checks execute their exact early guard blocks with bounded scheduler/error
+services; they are not complete process-teardown reproductions. The full ordinary
+scheduler gate separately retains actual newprog/schedmod/progexit/delprog paths.
+
+The acquired-lease GC gate has96 transactions per model:12 current-Pready protected
+call cases and84 noncurrent-state preflight refusals. Real heap/Math/collector and
+port protection execute, with collection after the callee's private scalar store,
+explicit checked FP transfer or same-address epoch invalidation, unchanged old
+results on cancellation/error and balanced Module/Type/raw-frame/lease ownership.
+The scheduler identity/bootstrap and OS pools remain bounded. This does not prove
+an independent last-owner detached-Prog lifetime. Five compiled epoch/hold/Type/
+retirement/self controls and the GC map-removal control must reach active failures.
+`--inject-callee` additionally checks error after private result production.
+
+Full classic-mk ARM64 and x64 emulators build with the coherent opt-in flags and
+retain their two pilot JIT-off/on cases and closed builtin/legacy admission.
+No native-fast opcode counts or shared file defaults change. Earlier optimized
+UTF/injected-unwind ASan findings are not closed by these UBSan/target tests.
+
+Guard-profile coherence is also checked at link time. The scheduler marker calls
+owning VM/stack markers, and acquisition requires that runtime marker. Mixing
+Guard-enabled consumers with an unguarded scheduler, xec or stack unit fails
+linkage. This does not replace coherent Prog-layout rebuilds or a VM lock.
+The actual ARM64 classic-mk link was reproduced successfully, then repeated with
+each real owning unit recompiled without the guard: all three partial variants
+fail their intended missing symbol. Original objects/archives are preserved.
+
+```
+python3 utils/tests/native64-guard-link.py --root /build \
+  --log /logs/coherent-mk-build.log --ar aarch64-linux-gnu-ar
+```
+
+The build log must include full owning xec.c/stack.c/dis.c compile commands and
+the final o.emu-g link command. The driver uses those exact toolchain options;
+CC/archive tools must be available on PATH. Old unleased C APIs retain their
+previous trusted contracts; selecting this profile does not turn every native
+call into an acquired lease automatically.

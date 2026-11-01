@@ -1,5 +1,33 @@
 #include "native64-math-call.h"
 #include "fixed-math-golden.h"
+#ifdef FRAMECELL_LEASE
+#include "native64-caller.h"
+static Native64Caller gatewaylease; // One explicit current-process hold, moved only through checked transfer.
+
+
+/* The combined source gate bounds availability; coherent full-runtime linkage is checked separately. */
+int
+native64callerruntime(void)
+{
+	return 1;
+}
+
+
+/* Bound only scheduler identity; actual process roots and collector bodies remain active. */
+Prog*
+currun(void)
+{
+	return &process;
+}
+
+
+/* Resolve only the held generation; no physical result address survives production. */
+static void*
+gatewayleasedresolve(void *argument)
+{
+	return native64callerresolve(argument);
+}
+#endif
 
 static Module gatewaymodule; // Bounded registry bootstrap; actual binding and unload bodies run.
 static Type *gatewaytype; // Generated native callee Type retained across actual collections.
@@ -32,10 +60,21 @@ native64gatewayafter(void)
 	check(gatewaymodule.ref == 2 && gatewaytype->ref == 2 && gatewayframes == 1);
 	epochs(6);
 	check(!freed[2] && !freed[3]);
+#ifdef FRAMECELL_LEASE
+	check(gatewayprog->native64holds == 1 && gatewaylease.type->ref == 2);
+	if(gatewaymode == 1){
+		REG moved = gatewayprog->R;
+		moved.FP = gatewaynext;
+		check(native64callerrebind(&gatewaylease, moved.FP));
+	}
+	if(gatewaymode == 3)
+		native64calleradvance(gatewayprog); // Reused address/Type is not enough to revive the old capability.
+#else
 	if(gatewaymode == 1)
 		gatewayprog->R.FP = gatewaynext;
 	if(gatewaymode == 3)
 		gatewayprog->R.FP = gatewaynext+8;
+#endif
 }
 
 
@@ -89,7 +128,7 @@ gatewaytransaction(int phase, int state, int outcome)
 	Link exports[2];
 	Type *types[1];
 	uvlong bits, oldbits, observed;
-	int signature, status;
+	int signature, status, admitted = 1;
 
 	startcase(phase, state);
 	memset(&errorworker, 0, sizeof(errorworker));
@@ -124,13 +163,27 @@ gatewaytransaction(int phase, int state, int outcome)
 #ifdef FRAMECELL_ROOT_CONTROL
 	caller->map[1] = 0; // Actual GC must detect the removed adjacent owners.
 #endif
+#ifdef FRAMECELL_LEASE
+	process.pid = 77;
+	memset(&gatewaylease, 0, sizeof(gatewaylease));
+	admitted = state == Pready;
+	if(admitted)
+		check(native64callerbegin(&gatewaylease, &process, caller, 72));
+	else
+		check(!native64callerbegin(&gatewaylease, &process, caller, 72));
+	request.call.resolve = gatewayleasedresolve; request.call.argument = &gatewaylease;
+	status = admitted ? Math_bits64real64(&request.call) : 0;
+	native64callerclear(&gatewaylease); native64callerclear(&gatewaylease);
+	check(process.native64holds == 0 && caller->ref == 1);
+#else
 	status = Math_bits64realframe64(&request);
-	check(status == (outcome < 2));
+#endif
+	check(status == (outcome < 2 && admitted));
 	check(gatewayframes == 0 && gatewayallocation == nil && gatewaymodule.ref == 1 && gatewaytype->ref == 1);
 	check(errdepth == 0 && !freed[2] && !freed[3]);
-	if(outcome == 2) check(strcmp(up->env->errstr, "native scalar frame allocation error") == 0);
-	memmove(&observed, &first->result, 8); check(observed == (outcome == 0 ? bits : oldbits));
-	memmove(&observed, &second->result, 8); check(observed == (outcome == 1 ? bits : oldbits));
+	if(outcome == 2 && admitted) check(strcmp(up->env->errstr, "native scalar frame allocation error") == 0);
+	memmove(&observed, &first->result, 8); check(observed == (outcome == 0 && status ? bits : oldbits));
+	memmove(&observed, &second->result, 8); check(observed == (outcome == 1 && status ? bits : oldbits));
 	process.R.FP = (uchar*)first;
 	epochs(6);
 	freeptrs(first, caller); freeptrs(second, caller);
@@ -154,6 +207,6 @@ main(void)
 	for(state=Palt; state<=Pbroken; state++)
 	for(outcome=0; outcome<4; outcome++)
 		gatewaytransaction(phase, state, outcome);
-	printf("PASS complete mapped scalar gateway: %d actual protected Math/heap/GC transactions, current-frame moves, refusal/unwind and balanced owners\n", gatewaytransactions);
+	printf("PASS complete mapped scalar gateway: %d transactions with actual Math/heap/GC, current-frame moves, refusal/unwind and balanced owners\n", gatewaytransactions);
 	return 0;
 }

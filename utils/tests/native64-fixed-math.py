@@ -18,9 +18,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--limbo', type=Path, required=True)
     parser.add_argument('--libdir', type=Path, required=True)
+    parser.add_argument('--caller-control', choices=('epoch', 'hold', 'type', 'clear', 'self'), help='require a compiled lease-contract removal to fail its active oracle')
+    parser.add_argument('--caller-port', choices=('emu', 'os'), default='emu', help='owning lifecycle-guard source for lease checks')
+    parser.add_argument('--caller-guard', action='store_true', help='check generation/lifetime leases and guarded producer cleanup')
     parser.add_argument('--inject-callee', action='store_true', help='inject a post-production VM error in a copied owning Math unit')
     parser.add_argument('--control', choices=('signature', 'module', 'type', 'frame'), help='require a compiled old-contract mutation to fail an active predicate')
     args = parser.parse_args()
+    if args.caller_control and not args.caller_guard:
+        parser.error('--caller-control requires --caller-guard')
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     env = dict(os.environ)
     compiler = shlex.split(env.get('CC', 'cc'))
@@ -38,8 +43,33 @@ def main():
             data = bytes.fromhex((ROOT/'libinterp/tests/dis64/fixed-math'/(name+'.hex')).read_text())
             golden += 'static uchar golden_'+name+'[] = {'+','.join(str(x) for x in data)+'}; // Independent shared fixture bytes.\n'
         (work/'fixed-math-golden.h').write_text(golden)
+        if args.caller_control:
+            helper = (ROOT/'include/native64-caller.h').read_text()
+            old, replacement = {
+                'epoch': ('prog->native64epoch == caller->epoch && ', ''),
+                'hold': ('prog->native64holds = 1;', '/* Removed hold control. */'),
+                'type': ('type->ref++;', '/* Removed Type retention control. */'),
+                'clear': ('freetype(type);', '/* Removed Type retirement control. */'),
+                'self': ('if(caller == nil || caller->self != caller || caller->prog == nil)', 'if(caller == nil || caller->self == nil || caller->prog == nil)'),
+            }[args.caller_control]
+            if helper.count(old) != 1: raise RuntimeError('Lease mutation boundary changed')
+            (work/'native64-caller.h').write_text(helper.replace(old, replacement, 1))
         old = (ROOT/'utils/tests/native64-math-register.c').read_text().replace('int\nmain(void)', 'int\nnative64_full_math_main(void)', 1)
-        (work/'test.c').write_text(constructor+old+(ROOT/'utils/tests/native64-fixed-math.c').read_text())
+        fixed = (ROOT/'utils/tests/native64-fixed-math.c').read_text()
+        if args.caller_guard:
+            fixed = fixed.replace('int\nmain(void)', 'int\nnative64_fixed_call_main(void)', 1)
+            fixed = 'extern void native64callerobserve(void); // Test-only producer observation.\n'+fixed
+            fixed = fixed.replace('memory = zeroallocate(bytes, clear);', 'native64callerobserve();\n\tmemory = zeroallocate(bytes, clear);')
+            body = (ROOT/'utils/tests/native64-caller.c').read_text()
+            guards = ''
+            scheduler = (ROOT/args.caller_port/'port/dis.c').read_text()
+            for name, variable, result in (('delprog', 'p', 'return;'), ('progexit', 'r', 'return;'), ('killprog', 'p', 'return -1;'), ('release', 'unused', 'return;')):
+                function = support['function'](scheduler, ('int' if name == 'killprog' else 'void')+'\n'+name+'(')
+                start = function.index('#ifdef DIS_NATIVE64_CALLER_GUARD')
+                block = function[start:function.index('#endif', start)+len('#endif')]
+                guards += ('int' if name == 'killprog' else 'void')+' test_'+name+'(Prog *'+variable+'){\n'+block+'\n'+result+'\n}\n'
+            fixed += body.replace('LIFECYCLE_GUARDS', guards)
+        (work/'test.c').write_text(constructor+old+fixed)
         includes = ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
         mathsource = ROOT/'libinterp/math.c'
         if args.inject_callee:
@@ -65,20 +95,20 @@ def main():
             mathsource = work/'math-control.c'; mathsource.write_text(source)
         library = args.libdir.resolve()
         for label, model in (('WORD32', ['-DDIS_WORD32=1']), ('WORD32-file', ['-DDIS_WORD32=1', '-DDIS64_PILOT_LOADER=1'])):
-            command = compiler+flags+model+includes
+            command = compiler+flags+model+includes+(['-DDIS_NATIVE64_CALLER_GUARD=1', '-DDIS_NATIVE64_FIXED_MATH_CALL=1'] if args.caller_guard else [])
             obj = work/(label+'.o')
             subprocess.run(command+['-DDIS_NATIVE64_FIXED_MATH_CALL=1', '-DDIS_NATIVE64_MATH_REGISTER=1', '-DDIS_NATIVE64_MATH_HEADER="math-native64.h"', '-Dmallocz=native64testalloc', '-Dfree=native64testfree', '-c', str(mathsource), '-o', str(obj)], env=env, check=True)
             binary = work/label
             subprocess.run(command+[str(work/'test.c'), str(obj), '-Wl,--wrap=fmtinstall', '-Wl,--start-group', str(library/'libmath.a'), str(library/'lib9.a'), '-Wl,--end-group', '-lm', '-pthread', '-o', str(binary)], env=env, check=True)
-            if args.control:
+            if args.control or args.caller_control:
                 result = subprocess.run(runner+[str(binary)], env=env, capture_output=True, text=True, timeout=90)
                 if result.returncode not in (-signal.SIGABRT, 128+signal.SIGABRT) or 'check failed' not in result.stderr:
-                    raise RuntimeError('Control missed its active predicate: '+args.control+'\n'+result.stdout+result.stderr)
-                print('PASS fixed scalar control:', args.control, arch, label, flush=True)
+                    raise RuntimeError('Control missed its active predicate: '+str(args.control or args.caller_control)+'\n'+result.stdout+result.stderr)
+                print('PASS fixed scalar/lease control:', args.control or args.caller_control, arch, label, flush=True)
                 continue
             subprocess.run(runner+[str(binary)], env=env, check=True)
             print('PASS fixed scalar import owning Math:', arch, label, flush=True)
-        if not args.control:
+        if not args.control and not args.caller_control:
             explicit = ['-DDIS_WORD32=1', '-DDIS_NATIVE64_MATH_REGISTER=1', '-DDIS_NATIVE64_MATH_HEADER="math-native64.h"']
             for selection, message in ((explicit+['-DDIS_NATIVE64_FIXED_MATH_CALL=0'], 'must be 1'),
                                        (explicit+['-DDIS_NATIVE64_FIXED_MATH_CALL=2'], 'must be 1'),
@@ -90,11 +120,19 @@ def main():
             obj = work/'disabled.o'
             subprocess.run(compiler+flags+explicit+includes+['-ffunction-sections', '-fdata-sections', '-c', str(ROOT/'libinterp/math.c'), '-o', str(obj)], env=env, check=True)
             unit = work/'disabled.c'
-            unit.write_text('#include "lib9.h"\n#include "interp.h"\n#include "native64-math-call.h"\nint main(void){return Math_bits64real64((const Native64MathBitsCall*)1)!=0 || Math_bits64realframe64((const Native64MathFrameCall*)1)!=0;}\n')
+            unit.write_text('#include "lib9.h"\n#include "interp.h"\n#include "native64-math-call.h"\nint main(void){return Math_bits64real64((const Native64MathBitsCall*)1)!=0 || Math_bits64realframe64((const Native64MathFrameCall*)1)!=0 || Math_bits64realguard64((const Native64MathFrameCall*)1)!=0;}\n')
             binary = work/'disabled'
             subprocess.run(compiler+flags+includes+[str(unit), str(obj), '-Wl,--gc-sections', '-lm', '-o', str(binary)], env=env, check=True)
             subprocess.run(runner+[str(binary)], env=env, check=True)
             print('PASS fixed call: four incoherent selections and disabled pre-read refusal')
+            if args.caller_guard:
+                for selected, message in ((['-DDIS_NATIVE64_FIXED_MATH_CALL=1', '-DDIS_NATIVE64_CALLER_GUARD=0'], 'must be 1'),
+                                          (['-DDIS_NATIVE64_FIXED_MATH_CALL=1', '-DDIS_NATIVE64_CALLER_GUARD=2'], 'must be 1'),
+                                          (['-DDIS_NATIVE64_CALLER_GUARD=1'], 'requires the explicit fixed Math')):
+                    result = subprocess.run(compiler+flags+explicit+selected+includes+['-fsyntax-only', str(ROOT/'libinterp/math.c')], env=env, capture_output=True, text=True)
+                    if result.returncode == 0 or message not in result.stderr:
+                        raise RuntimeError('Caller guard accepted an incoherent selection: '+result.stderr)
+                print('PASS caller guard: three incoherent feature selections refused')
 
 
 if __name__ == '__main__':
