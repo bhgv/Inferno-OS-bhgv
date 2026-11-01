@@ -143,6 +143,7 @@ void do_backtrace(char *err_str)
 	FILE *f = fopen(calltracelog_path, "a");
 
 	if(f == nil){
+		sig_ctx = nil;
 		LOGE("Cannot open native backtrace log: %s", calltracelog_path);
 		return;
 	}

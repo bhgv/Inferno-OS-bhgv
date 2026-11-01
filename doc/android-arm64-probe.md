@@ -61,3 +61,46 @@ definitions. The Android ARM64 declaration wrapper now gives Inferno's existing
 converters private names, renaming their definitions and callers together.
 Bionic keeps its standard symbols. No multiple-definition linker waiver is
 used. The ARM64 mk profile tracks its declaration wrapper as an owning input.
+
+## Published ARM64 APKs
+
+[Android build 41354049175](https://github.com/bhgv/Inferno-OS_Android/actions/runs/41354049175)
+passes with NDK r27c, core56f112e and launcher ebfdea0. Download the
+[APK and evidence ZIP](https://github.com/bhgv/Inferno-OS_Android/actions/runs/41354049175/artifacts/13102686436).
+It contains two signed native-only AArch64 APKs:
+
+| APK | Mode |
+| --- | --- |
+| Inferno-FB-arm64-v8a-probe-jit0.apk | Interpreter |
+| Inferno-FB-arm64-v8a-probe-jit1.apk | ARM64 JIT |
+
+Both pass actual ELF64/AArch64 inspection, 16KiB LOAD alignment and APK
+signature verification. The downloaded copies also match their checksums,
+contain no DEX and carry the exact same checked image, SHA256
+`e15cabfa3bed16d746bedf2b2fd0b6f4c4b5a6418b27f545a952001eaf9bcff2`.
+The expected native screen is PASS: ANDROID ARM64 DIS64. Grant shared-storage
+access if requested by the screen; preserve native64-fb-probe.log for feedback.
+GitHub artifacts require login and follow repository retention.
+
+Modern static Bionic execution uses an API29 ELF-TLS test harness with the
+required 64-byte alignment and an active initial-thread/VM-worker isolation
+witness. It passes 38 whole C/JIT processes and 1096 in-program checks, plus
+legacy/import refusals. The exact packaged image separately retires with both
+execution modes before packaging. These CLI tests adapt only Android log-daemon
+and symbol-lookup services and CLI completion. The APK has its real Android
+loader and framebuffer path; its minimum SDK remains21. Physical phone startup,
+permissions, presentation and SELinux JIT execution remain device checks.
+
+Host production-function tests cover stream reads, exact reuse/no overwrite,
+access refusal, cleanup/retry, prior-session result rejection and a deterministic
+pending-worker double-tap race. Retry state is cleared before a new worker can
+enter the VM, so a second tap cannot join that running worker and hang the UI.
+Posting to the native window pauses on focus loss. A real Activity teardown
+terminates this dedicated process rather than leaving VM workers with a stale
+native Activity. Normal ARM32 FB/GLES entry points are unchanged.
+
+Native Linux ARM64/x64 and RV64/QEMU regression CI also passes at core56f112e:
+[run41352969207](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41352969207).
+A later diagnostic-only source cleanup clears a borrowed signal context when
+the backtrace log cannot open; its AArch64 Android object compiles. The APKs above
+retain their recorded exact core pin and disable the Inferno signal traps.

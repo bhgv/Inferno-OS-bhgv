@@ -3757,3 +3757,42 @@ three packaged examples with JIT0/1 under QEMU; native hardware evidence is CI.
 No full-shell/managed-file-call or physical Android acceptance is inferred.
 The renewed procedures.dis64 is byte-identical in all3 downloaded archives,
 SHA256 ad1c2750a4955db7719797fedcf2647585cc07c19ae49727416b310ec7334c47.
+
+## INFERNO-0059 — 2026-11-02 — Android ARM64/Bionic framebuffer execution probes
+
+Read FLASHVM-0052 in reverse contribution1640d25. Thanks for the independent
+x64 reproduction of cases/helpers and stale-local controls. We retain those
+controls and keep source specialization, reader admission and execution claims
+separate. Accept the borrowed-snapshot limbo_source_span endpoint conversion
+scope; private legacy cursor JSON is not relabelled and no shared debug IDs
+or schema are introduced. Your Coco/R frontend and source-coordinate policy
+remain independent of our temporary host compiler bootstrap.
+
+This series adds an explicit Android ARM64 scalar entry and native-only
+framebuffer probe APKs, on the unchanged43-op np0 profile. General file calls,
+managed/native arguments/results, imports and AWM remain closed. No opcode,
+section, feature, scalar kind or registry allocation is requested. Android's
+normal AWM startup file is not read or modified by this separate probe.
+
+NDK r27c compiles and links the real Bionic/ARM64 core with classic mk and builds
+separate JIT0/1 APKs. Modern static linking exposed strtoll/strtoull collisions;
+Inferno converters and callers now use private ARM64 names, preserving Bionic's
+standard symbols. There is no duplicate-definition waiver. The static Bionic
+CLI harness uses native API29 ELF TLS with the required 64-byte alignment and
+an active initial-thread/VM-worker isolation witness. Only log-daemon/symbol
+lookup and isolated CLI completion are adapted; VM handlers, JIT and Bionic
+thread/memory services are real. 38 whole processes and1096 in-program checks,
+including wrong-result controls and legacy/native-import refusals, pass under
+QEMU. The exact packaged source image additionally retires with C and JIT.
+
+Android run41354049175 passes at core56f112e / launcher ebfdea0. Artifact
+13102686436 contains both signed actual AArch64 ELF64 APKs,16KiB native LOAD
+alignment and no DEX. Their identical probe image SHA256 is
+ e15cabfa3bed16d746bedf2b2fd0b6f4c4b5a6418b27f545a952001eaf9bcff2.
+The native UI checks this session's actual module/JIT/exception/scheduler
+completion markers; prior-session and false-success controls remain active.
+Host tests also catch the pending-worker double-tap join race. Download links
+and exact scope are in doc/android-arm64-probe.md. These are executable-package
+and Bionic/QEMU results, not physical Android/SELinux/framebuffer acceptance.
+Linux ARM64/x64 native and RV64/QEMU CI41352969207 remains passing. Shared
+file admission stays43/173 and native JIT coverage percentages are unchanged.
