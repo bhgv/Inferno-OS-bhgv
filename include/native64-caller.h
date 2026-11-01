@@ -24,6 +24,7 @@ struct Native64Caller
 {
 	Native64Caller *self; // Noncopyable lease identity; nil after retirement.
 	Prog *prog; // Scheduler-owned process, protected by native64holds until clear.
+	REG *live; // Captured nil/synchronous global-register ownership, never a borrowed arbitrary REG.
 	Type *type; // One retained generated caller descriptor.
 	uchar *frame, *extent; // Exact current frame/extent captured for this generation.
 	uvlong epoch; // Captured monotonic invalidation generation.
@@ -41,6 +42,40 @@ native64calleradvance(Prog *prog)
 }
 
 
+/* Bind only after vmstart restored R; no callbacks intervene before this publication. */
+static void
+native64callerenter(Prog *prog)
+{
+	if(prog->native64holds != 0 || prog->native64live != nil)
+		error("native64 interpreter already active");
+	prog->native64live = &R;
+}
+
+
+/* Retire live register ownership on ordinary return and before scheduler exception handling. */
+static void
+native64callerleave(Prog *prog)
+{
+	if(prog != nil && prog != H){
+		if(prog->native64live == &R)
+			prog->R = R;
+		native64calleradvance(prog);
+		prog->native64live = nil;
+	}
+}
+
+
+/* A live lease may not silently follow replaced frame, extent or module roots. */
+static int
+native64callerregisters(Prog *prog)
+{
+	return prog->native64live == nil ||
+		(prog->native64live == &R && R.FP == prog->R.FP && R.EX == prog->R.EX &&
+		 R.SP == prog->R.SP && R.TS == prog->R.TS &&
+		 R.M == prog->R.M && R.MP == prog->R.MP);
+}
+
+
 /* Only the live original lease may consult the protected process or its stack. */
 static int
 native64callerready(const Native64Caller *caller)
@@ -53,6 +88,7 @@ native64callerready(const Native64Caller *caller)
 	return prog == currun() && prog->native64holds == 1 && prog->pid == caller->pid &&
 		!(prog->flags & Pkilled) && prog->kill == nil && prog->state == Pready &&
 		prog->native64epoch == caller->epoch && prog->native64epoch != ~(uvlong)0 &&
+		prog->native64live == caller->live && native64callerregisters(prog) &&
 		prog->R.FP == caller->frame && prog->R.EX == caller->extent;
 }
 
@@ -66,16 +102,40 @@ native64callerbegin(Native64Caller *caller, Prog *prog, Type *type, unsigned int
 	if(caller == nil || caller->self != nil || prog == nil || prog == H ||
 	   native64callerruntime() != 1 || prog != currun() || prog->pid <= 0 || prog->native64holds != 0 || (prog->flags & Pkilled) ||
 	   prog->kill != nil || prog->state != Pready || prog->native64epoch >= ~(uvlong)0-1 ||
-	   native64framecell(prog, type, offset) == nil || type->ref == 0x7fffffff)
+	   (!native64callerregisters(prog) || native64framecell(prog, type, offset) == nil) || type->ref == 0x7fffffff)
 		return 0;
 	native64calleradvance(prog);
 	type->ref++;
 	prog->native64holds = 1;
-	owned.self = caller; owned.prog = prog; owned.type = type;
+	owned.self = caller; owned.prog = prog; owned.live = prog->native64live; owned.type = type;
 	owned.frame = prog->R.FP; owned.extent = prog->R.EX;
 	owned.epoch = prog->native64epoch; owned.pid = prog->pid; owned.offset = offset;
 	*caller = owned;
 	return 1;
+}
+
+
+/* Validate a live snapshot before publishing it; rejected acquisition restores saved registers. */
+static int
+native64callerbeginlive(Native64Caller *caller, Prog *prog, Type *type, unsigned int offset)
+{
+	Prog candidate;
+	REG saved;
+
+	if(caller == nil || caller->self != nil || prog == nil || prog == H ||
+	   prog != currun() || prog->native64live != &R || prog->native64holds != 0 ||
+	   prog->state != Pready || prog->pid <= 0 || (prog->flags & Pkilled) || prog->kill != nil)
+		return 0;
+	memset(&candidate, 0, sizeof(candidate));
+	candidate.R = R;
+	if(native64framecell(&candidate, type, offset) == nil)
+		return 0;
+	saved = prog->R;
+	prog->R = candidate.R;
+	if(native64callerbegin(caller, prog, type, offset))
+		return 1;
+	prog->R = saved;
+	return 0;
 }
 
 
@@ -106,6 +166,8 @@ native64callerrebind(Native64Caller *caller, void *frame)
 		return 0;
 	native64calleradvance(prog);
 	prog->R.FP = candidate.R.FP;
+	if(caller->live != nil)
+		R.FP = candidate.R.FP;
 	caller->frame = prog->R.FP; caller->extent = prog->R.EX; caller->epoch = prog->native64epoch;
 	return 1;
 }
@@ -121,7 +183,7 @@ native64callerclear(Native64Caller *caller)
 	if(caller == nil || caller->self != caller)
 		return;
 	prog = caller->prog; type = caller->type;
-	caller->self = nil; caller->prog = nil; caller->type = nil;
+	caller->self = nil; caller->prog = nil; caller->live = nil; caller->type = nil;
 	caller->frame = caller->extent = nil; caller->epoch = 0;
 	prog->native64holds = 0;
 	freetype(type);

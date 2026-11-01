@@ -559,6 +559,67 @@ active failure. The OS scheduler receives the same explicit source dependencies;
 no OS kernel build is claimed by the hosted Linux gate.
 
 This reproduction is scalar boot plus private C/GC evidence. It does not connect
-the private gateway to file CALL/MCALL, automatically publish live global R into
-Prog.R, or admit a complete Limbo shell and managed native call graphs. The
-shared43-op np0 file profile and execution_supported=false remain unchanged.
+the private gateway to file CALL/MCALL or admit a complete Limbo shell and managed
+native call graphs. Live-R publication is limited to the explicit private entry
+described below; other C entry points retain their own contracts. The shared43-op
+np0 file profile and execution_supported=false remain unchanged.
+
+## Live interpreter register publication (private fixed scalar call)
+
+The caller-guard profile now binds Prog.native64live to global R only after
+vmstart restores the current process. xec refuses recursive entry before touching
+R. Its ordinary return publishes saved registers and retires the live binding;
+both port vmachine error paths retire it before handler/propex/progexit. Retirement
+also publishes R when that process still owns it. The field is private, not part
+of Dis64, and requires a coherent rebuild of every Prog consumer.
+
+Math_bits64realvm64 is a new explicit C entry for the existing Big->Real private
+experiment. Unlike the older published-frame adapter it requires current Pready
+scheduler identity and an active &R binding. It validates a candidate live frame,
+publishes its REG without allocation, then acquires the existing generation/Type/
+scheduler hold before producer allocation. Rejected acquisition restores the old
+saved REG. No arbitrary REG pointer is accepted as a live interpreter owner.
+
+The lease captures whether it was acquired from a live binding. Late resolution
+checks that binding still matches, together with current/saved FP, EX, SP, TS,
+M and MP, before reading stack cells. Generation, PID, cancellation, Type and
+map checks remain active. Checked within-extent rebind updates both saved FP and
+live R.FP. Ordinary transfer through other VM stack operations still invalidates
+the old generation; this does not authorize general frame relocation.
+
+The existing Math_bits64realguard64 retains its explicitly published-frame
+contract outside live VM execution. Selecting the profile does not automatically
+convert all native operations into the new entry. A disabled vm64 entry refuses
+before reading a request, just like the other private adapters.
+
+```
+python3 utils/tests/native64-fixed-math.py --caller-guard \
+  --limbo /host/tools/limbo --libdir /build/Linux/arm64/lib
+python3 utils/tests/native64-frame-cell.py --gateway --lease --live \
+  --limbo /host/tools/limbo
+python3 utils/tests/native64-live-vm.py
+```
+
+Use CC/NATIVE64_ARCH/NATIVE64_RUNNER for target fixtures as in the clean driver.
+The new vmachine gate instruments actual xec/scheduler/exception bodies and
+checks entry, ordinary quantum return and exception retirement in direct and
+file-loader variants, with C and RX execution. It retains the existing bounded
+OS/GC services. Its --control enter/unwind variants must fail active ownership
+predicates. The owning Math gate adds stale saved-register publication, changed
+live frame/extent/bounds/module cancellation, forged owner refusal, generation
+exhaustion rollback, recursive-entry error and synchronized FP transfer. Compiled
+--caller-control live/publish/rebind variants must fail their intended predicates.
+
+The combined --live GC gate performs96 transactions per model:12 current-ready
+acquired cases and84 nonrunning-state refusals. Saved FP/EX are deliberately
+poisoned before acquisition in admitted cases; real collector/heap/Math run only
+after the live snapshot has been validated and published. Its map-removal control
+must still fail. Forced collections before allocation and after the private
+callee result store retain adjacent managed roots and balance them on retirement.
+
+This closes one publication step, not the entire calling ABI. The binding is
+owned by trusted serialized interpreter execution, and synchronous release stays
+forbidden while held. Caller/extent descriptors are still trusted VM storage.
+Independent detached-Prog lifetime, full managed call graphs and file CALL/MCALL
+remain open. The default43-op np0 Dis64 file profile and wire IDs are unchanged.
+Earlier optimized UTF/error-unwind ASan findings remain open.

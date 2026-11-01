@@ -5406,9 +5406,14 @@ xec(Prog *p)
 
 #ifdef DIS_NATIVE64_CALLER_GUARD
 	vmprocess(p);
+	if(p->native64holds != 0 || p->native64live != nil)
+		error(exInval);
 	native64calleradvance(p);
 #endif
 	vmstart(p);
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	native64callerenter(p);
+#endif
 	for(;;){
 #ifdef DIS_NATIVE64_CALLER_GUARD
 		native64calleradvance(p);
@@ -5455,6 +5460,9 @@ executed:
 			break;
 	}
 	p->R = R;
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	native64callerleave(p);
+#endif
 }
 
 

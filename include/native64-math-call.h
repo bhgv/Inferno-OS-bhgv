@@ -37,4 +37,8 @@ struct Native64MathFrameCall
 int Math_bits64realframe64(const Native64MathFrameCall*);
 /* Opt-in noncopyable caller lease; ordinary frame adapter semantics remain unchanged. */
 int Math_bits64realguard64(const Native64MathFrameCall*);
+
+
+/* Opt-in live interpreter owner only; publishes validated R before acquiring the caller lease. */
+int Math_bits64realvm64(const Native64MathFrameCall*);
 #endif

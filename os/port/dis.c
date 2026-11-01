@@ -207,6 +207,7 @@ newprog(Prog *p, Modlink *m)
 	n->pid = ++pidnum;
 	n->native64epoch = 1;
 	n->native64holds = 0;
+	n->native64live = nil;
 	n->group = nil;
 	n->flags = 0;
 	n->osenv = (Osenv*)((uchar*)n+sizeof(Prog));
@@ -1148,6 +1149,9 @@ vmachine(void*)
 			panic("vmachine: non-interp kproc");
 		if(up->iprog != nil)
 			acquire();
+#ifdef DIS_NATIVE64_CALLER_GUARD
+		native64callerleave(currun());
+#endif
 		if(handler(up->env->errstr) == 0) {
 			propex(currun(), up->env->errstr);
 			progexit();

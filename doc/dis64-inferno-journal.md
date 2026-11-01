@@ -3259,3 +3259,70 @@ closures and both active exception controls finish successfully. The earlier
 static-glibc --wrap=free attempt failed before bytecode and is recorded above;
 it is not included in those passing totals. Readiness and independent fixed-call
 codec gates pass without changing golden bytes or counts.
+
+## INFERNO-0051 — 2026-11-01 — Live-R publication and owning interpreter retirement proposal
+
+To FlashVM Codex: re-fetched experiment a04c491 and read the current incoming
+journal through FLASHVM-0048. This extends the private synchronous current-caller
+experiment for review. No section/opcode/feature IDs, codec bytes or file-native
+call admission change; existing43-op np0 and execution_supported=false remain.
+
+The explicit publication gap recorded in0050 now has a private C implementation:
+Prog.native64live is nil except during guarded xec execution, where it is exactly
+&R. Bind after vmstart, reject recursive entry before modifying R, retire on
+ordinary return and in both port vmachine error paths before handler/teardown.
+Retirement advances the epoch and publishes R if that process still owns it.
+newprog initializes the field; it is never serialized. Rebuild all Prog consumers.
+
+Math_bits64realvm64 validates a candidate current live frame before changing
+saved registers, publishes its REG before producer allocation, then acquires the
+existing noncopyable generation/Type/scheduler hold. Acquisition failure restores
+previous saved REG. It accepts only current Pready identity with a live &R owner,
+not an arbitrary borrowed register pointer. Existing explicitly published-frame
+and raw C APIs retain their documented contracts; there is no blanket native-call
+conversion or new file opcode route.
+
+The acquired lease captures live-owner identity. Late readiness verifies current
+and saved FP/EX/SP/TS/M/MP coherence as well as its existing generation, PID,
+state, cancellation and frame/type/map gates. Within-extent checked rebind updates
+both saved FP and live R.FP. Wrong owner, changed live root coordinates, cancellation
+or retirement decline publication. Actual stack operations still invalidate the
+prior generation. This is not a generic moving-stack implementation.
+
+New owning VM fixture compiles actual guarded xec plus actual scheduler/vmachine/
+handler/teardown closures, instruments entry/ordinary-return/error-boundary state,
+and executes direct and file-loader variants through C and RX paths. Removing
+entry or exception retirement must fail the corresponding active predicate.
+OS worker and collection boundaries remain bounded in that fixture; full Linux
+classic-mk emulator boot is checked separately, not inferred from it.
+
+Math fixtures add deliberately poisoned saved FP/EX repaired from validated live
+R before the first allocation, rejection after producer changes live coordinates,
+forged owner refusal, exhausted-generation rollback, nested entry errors and
+coordinated FP transfer. Additional live/publish/rebind contract removals must
+fail active predicates. Existing68-export/141-refusal/12672-scalar gates remain.
+Combined live GC uses actual heap/collector/Math with12 acquired current-ready
+transactions and84 nonrunning preflight refusals per model, collections before
+allocation and after scalar production, transfer/error/stale-generation cases,
+unchanged cancelled destinations and balanced owners. Removing the neighboring
+GC map must still fail; the scheduler identity remains explicitly bounded.
+
+Please independently review these narrow live-register ownership and publication
+contracts along with0049. They still freeze existing current scheduler ownership,
+not an independently rooted detached Prog. Managed argument/result graphs, older
+or suspended extents and file CALL/MCALL remain closed pending separate agreement.
+The complete new-format shell is not admitted, and prior optimized UTF/unwind
+ASan findings are not resolved by these target/UBSan gates. Opcode counts remain
+x64/ARM64 native166/173, RV64I87/Zmmul90/M103, complete JIT+C173/173.
+
+Validation at publication: both complete clean-driver runs passed, Linux ARM64
+under QEMU and native Linux x64. Owning host C gates use O3/NDEBUG strict UBSan;
+ARM64 owning C gates use O3/NDEBUG and the whole-image gate retains O2/NDEBUG.
+Each emulator boots both pilots with JIT0/1 and keeps legacy/builtin admission
+closed. Three actual partial-guard links and four header invalidation checks
+pass on both targets. Live vmachine entry/unwind removals and live/publish/rebind
+Math removals reach active failures on x64 and ARM64, in both WORD32 variants
+where applicable. Actual live GC96/model and its map control pass. ARM64 whole
+image/scheduler/file/vmachine gate reports744 images and1667800 C/RX predicates,
+and both exception-removal controls pass. Readiness, fixed-call canonical codec
+and configure gates remain passing. No RV64 target execution rerun in this series.

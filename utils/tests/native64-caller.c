@@ -1,9 +1,12 @@
 #include "native64-caller.h"
 
+REG R; // Actual live-register symbol; scheduler ownership is bounded by this fixture.
+
 static Prog *leasecurrent; // Bounded single-thread scheduler identity; owning runtime supplies currun.
 static Prog *leaseprog; // Active protected producer observation, nil outside this gate.
 static Type *leasetype; // Caller descriptor whose extra owner is independently counted.
 static int leasewhich; // Select each real destructive guard independently.
+static int leaselive, livecase; // Explicit live-R publication and callback-mutation cases.
 static int leasemode, leasetyperefs, leasenested; // Explicit failure/reentry cases.
 
 
@@ -32,6 +35,21 @@ native64callerobserve(void)
 	if(leaseprog == nil)
 		return;
 	check(leaseprog->native64holds == 1 && leasetype->ref == leasetyperefs+1);
+	if(leaselive){
+		check(leaseprog->native64live == &R && leaseprog->R.FP == R.FP && leaseprog->R.EX == R.EX);
+		if(livecase == 1) R.FP += leasetype->size;
+		if(livecase == 2) R.EX = (uchar*)1;
+		if(livecase == 3) R.SP--;
+		if(livecase == 4) R.M = (Modlink*)1;
+		if(livecase == 5) leaseprog->native64live = nil;
+		if(livecase == 6) native64calleradvance(leaseprog);
+		if(livecase == 7) error("live producer failed");
+		if(livecase == 8) R.MP = (uchar*)1;
+		if(livecase == 9) R.TS--;
+		if(livecase == 10) native64callerleave(leaseprog);
+		if(livecase == 11) native64callerenter(leaseprog);
+		return;
+	}
 	if(leasemode == 1)
 		native64calleradvance(leaseprog); // Same frame address/Type must still become stale.
 	if(leasemode == 2)
@@ -89,7 +107,7 @@ main(void)
 	Prog prog;
 	Type *type;
 	Frame *first, *next;
-	REG moved, invalid;
+	REG moved, invalid, saved;
 	uchar map[] = {0,0x20}; // Scalar result at72, managed neighbor at80.
 	uvlong oldbits = 0x1122334455667788ULL, bits = 0x3ff0000000000000ULL, observed, epoch;
 	int i, base, status, modes = 9;
@@ -162,8 +180,49 @@ main(void)
 		memmove(&observed, (uchar*)next+72, 8); check(observed == oldbits);
 	}
 	check(leasenested == 1);
+	/* Publish stale saved REG from a proven live owner before the first allocating producer. */
+	leasemode = 0; mode = 0; leaselive = 1;
+	for(livecase=0; livecase<12; livecase++){
+		memset(&prog.R, 0, sizeof(prog.R));
+		prog.R.EX = stack.bytes; prog.R.FP = (uchar*)first;
+		prog.R.SP = prog.R.TS = stack.bytes+sizeof(stack.bytes);
+		prog.pid = 77; prog.state = Pready; prog.flags = 0; prog.kill = nil;
+		R = prog.R; native64callerenter(&prog);
+		prog.R.FP = (uchar*)1; prog.R.EX = (uchar*)1; // Saved REG is deliberately unreadable until publication.
+		memmove((uchar*)first+72, &oldbits, 8); memmove((uchar*)next+72, &oldbits, 8);
+		fixedrequest(bits); memset(&call, 0, sizeof(call));
+		call.call = request; call.caller = &prog; call.type = type; call.offset = 72;
+		leaseprog = &prog; leasetype = type; leasetyperefs = type->ref;
+		status = Math_bits64realvm64(&call); leaseprog = nil;
+		check(status == (livecase == 0));
+		check(prog.native64holds == 0 && type->ref == leasetyperefs && live == fixedlive && worker.nerr == 0);
+		memmove(&observed, (uchar*)first+72, 8); check(observed == (status ? bits : oldbits));
+		memmove(&observed, (uchar*)next+72, 8); check(observed == oldbits);
+		native64callerleave(&prog); check(prog.native64live == nil);
+	}
+	leaselive = 0;
+	/* Rejected publication must neither repair poisoned saved REG nor touch the destination. */
+	R.EX = stack.bytes; R.FP = (uchar*)first; R.SP = R.TS = stack.bytes+sizeof(stack.bytes);
+	prog.R = R; prog.R.FP = (uchar*)1; saved = prog.R;
+	check(!Math_bits64realvm64(&call) && memcmp(&prog.R, &saved, sizeof(saved)) == 0);
+	prog.native64live = &prog.R;
+	check(!Math_bits64realvm64(&call) && memcmp(&prog.R, &saved, sizeof(saved)) == 0);
+	prog.native64live = nil;
+	native64callerenter(&prog);
+	R.FP = (uchar*)1;
+	check(!Math_bits64realvm64(&call) && memcmp(&prog.R, &saved, sizeof(saved)) == 0);
+	R.FP = (uchar*)first;
+	prog.native64epoch = ~(uvlong)0;
+	check(!Math_bits64realvm64(&call) && memcmp(&prog.R, &saved, sizeof(saved)) == 0);
+	prog.native64epoch = 400;
+	check(native64callerbeginlive(&caller, &prog, type, 72));
+	check(native64callerrebind(&caller, next) && R.FP == (uchar*)next && prog.R.FP == R.FP);
+	check(native64callerresolve(&caller) == (uchar*)next+72);
+	native64callerclear(&caller); native64callerleave(&prog);
+	check(prog.R.FP == R.FP && prog.native64live == nil && type->ref == base);
 	unload(fixedmodule); freetype(type);
 	check(modules == &baseline && live == 0);
+	puts("PASS live VM scalar: pre-allocation publication, mutation cancellation, exhaustion rollback, coordinated rebind and retirement");
 	puts("PASS caller lease: self/copy, transfer, stale reuse, saturation, destructive guards, cancellation/unwind and nested refusal");
 	return 0;
 }

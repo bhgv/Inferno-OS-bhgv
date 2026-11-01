@@ -2,6 +2,7 @@
 #include "fixed-math-golden.h"
 #ifdef FRAMECELL_LEASE
 #include "native64-caller.h"
+REG R; // Live interpreter register symbol for the bounded current-owner GC fixture.
 static Native64Caller gatewaylease; // One explicit current-process hold, moved only through checked transfer.
 
 
@@ -167,13 +168,27 @@ gatewaytransaction(int phase, int state, int outcome)
 	process.pid = 77;
 	memset(&gatewaylease, 0, sizeof(gatewaylease));
 	admitted = state == Pready;
+#ifdef FRAMECELL_LIVE
+	R = process.R;
+	if(admitted){
+		native64callerenter(&process);
+		process.R.FP = process.R.EX = (uchar*)1; // Only validated live publication can repair these stale roots.
+		check(native64callerbeginlive(&gatewaylease, &process, caller, 72));
+	}else
+		check(!native64callerbeginlive(&gatewaylease, &process, caller, 72));
+#else
 	if(admitted)
 		check(native64callerbegin(&gatewaylease, &process, caller, 72));
 	else
 		check(!native64callerbegin(&gatewaylease, &process, caller, 72));
+#endif
 	request.call.resolve = gatewayleasedresolve; request.call.argument = &gatewaylease;
 	status = admitted ? Math_bits64real64(&request.call) : 0;
 	native64callerclear(&gatewaylease); native64callerclear(&gatewaylease);
+#ifdef FRAMECELL_LIVE
+	native64callerleave(&process);
+	check(process.native64live == nil);
+#endif
 	check(process.native64holds == 0 && caller->ref == 1);
 #else
 	status = Math_bits64realframe64(&request);

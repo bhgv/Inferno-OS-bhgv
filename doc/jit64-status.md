@@ -68,3 +68,8 @@ see [native64 build instructions](build-native64.md#clean-native64-build-and-exe
 Fast opcode counts above are unchanged by this build series. Complete JIT+C
 entry coverage remains173/173; the shared scalar file profile admits43/173
 opcodes (24.86%), and does not admit the remaining130 or file CALL/MCALL.
+
+The guarded fixed scalar experiment now has an explicit live-R C adapter, with
+publication before acquisition/allocation and owning interpreter return/error
+retirement. Actual x64 and ARM64/QEMU vmachine and live-GC gates cover that
+private contract. It does not open file CALL/MCALL or change opcode counts.

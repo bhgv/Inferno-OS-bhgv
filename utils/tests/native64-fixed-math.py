@@ -18,7 +18,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--limbo', type=Path, required=True)
     parser.add_argument('--libdir', type=Path, required=True)
-    parser.add_argument('--caller-control', choices=('epoch', 'hold', 'type', 'clear', 'self'), help='require a compiled lease-contract removal to fail its active oracle')
+    parser.add_argument('--caller-control', choices=('epoch', 'hold', 'type', 'clear', 'self', 'live', 'publish', 'rebind'), help='require a compiled lease-contract removal to fail its active oracle')
     parser.add_argument('--caller-port', choices=('emu', 'os'), default='emu', help='owning lifecycle-guard source for lease checks')
     parser.add_argument('--caller-guard', action='store_true', help='check generation/lifetime leases and guarded producer cleanup')
     parser.add_argument('--inject-callee', action='store_true', help='inject a post-production VM error in a copied owning Math unit')
@@ -46,6 +46,9 @@ def main():
         if args.caller_control:
             helper = (ROOT/'include/native64-caller.h').read_text()
             old, replacement = {
+                'live': ('prog->native64live == caller->live && native64callerregisters(prog) &&', ''),
+                'publish': ('prog->R = candidate.R;', '/* Removed live publication control. */'),
+                'rebind': ('\n\t\tR.FP = candidate.R.FP;', '\n\t\tUSED(caller); /* Removed live transfer control. */'),
                 'epoch': ('prog->native64epoch == caller->epoch && ', ''),
                 'hold': ('prog->native64holds = 1;', '/* Removed hold control. */'),
                 'type': ('type->ref++;', '/* Removed Type retention control. */'),
@@ -120,7 +123,7 @@ def main():
             obj = work/'disabled.o'
             subprocess.run(compiler+flags+explicit+includes+['-ffunction-sections', '-fdata-sections', '-c', str(ROOT/'libinterp/math.c'), '-o', str(obj)], env=env, check=True)
             unit = work/'disabled.c'
-            unit.write_text('#include "lib9.h"\n#include "interp.h"\n#include "native64-math-call.h"\nint main(void){return Math_bits64real64((const Native64MathBitsCall*)1)!=0 || Math_bits64realframe64((const Native64MathFrameCall*)1)!=0 || Math_bits64realguard64((const Native64MathFrameCall*)1)!=0;}\n')
+            unit.write_text('#include "lib9.h"\n#include "interp.h"\n#include "native64-math-call.h"\nint main(void){return Math_bits64real64((const Native64MathBitsCall*)1)!=0 || Math_bits64realframe64((const Native64MathFrameCall*)1)!=0 || Math_bits64realguard64((const Native64MathFrameCall*)1)!=0 || Math_bits64realvm64((const Native64MathFrameCall*)1)!=0;}\n')
             binary = work/'disabled'
             subprocess.run(compiler+flags+includes+[str(unit), str(obj), '-Wl,--gc-sections', '-lm', '-o', str(binary)], env=env, check=True)
             subprocess.run(runner+[str(binary)], env=env, check=True)

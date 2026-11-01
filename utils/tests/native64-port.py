@@ -102,6 +102,13 @@ def main():
     gc = [sys.executable, str(tests/'native64-frame-cell.py'), '--gateway', '--lease', '--limbo', str(tools/'limbo')]
     run(gc, build, env, logs/'gc-lease.log')
     run(gc+['--control', 'map'], build, env, logs/'gc-map-control.log')
+    run(gc+['--live'], build, env, logs/'gc-live.log')
+    run(gc+['--live', '--control', 'map'], build, env, logs/'gc-live-map-control.log')
+    if args.arch in ('amd64', 'arm64'):
+        vm = [sys.executable, str(tests/'native64-live-vm.py')]
+        run(vm, build, env, logs/'live-vm.log')
+        for control in ('enter', 'unwind'):
+            run(vm+['--control', control], build, env, logs/('live-vm-'+control+'.log'))
     if args.arch == 'arm64':
         run([sys.executable, str(tests/'arm64-runtime.py'), '--system', 'Linux', '--cc', env['CC'],
              '--runner', args.runner], build, env, logs/'arm64-runtime.log')

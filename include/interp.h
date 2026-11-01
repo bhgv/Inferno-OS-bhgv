@@ -284,6 +284,7 @@ struct Prog
 	void*	tktop; //TkTop*
 	uvlong native64epoch; // Private scalar-call invalidation generation; never serialized.
 	unsigned int native64holds; // One explicit native caller lease blocks destructive scheduler paths.
+	REG *native64live; // Live global register owner during guarded interpreter execution; never serialized.
 };
 
 /* Static Dis-to-C images keep original module data, frames and Dis PCs. */
