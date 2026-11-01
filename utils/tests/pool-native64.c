@@ -49,7 +49,7 @@ uintptr
 getcallerpc(void *p)
 {
 	USED(p);
-	return 0;
+	return 0x12345678;
 }
 
 
@@ -114,6 +114,29 @@ main(void)
 		if(mainmem->cursize != 0)
 			return 6;
 	}
+	p[0] = malloc(32);
+	if(p[0] == nil)
+		return 7;
+	memset(p[0], 0x5a, 32);
+	for(i=0; i<32; i++){
+		ulong before = mainmem->nalloc;
+		volatile size_t huge = (size_t)-1-i;
+		if(mallocz(huge, 0) != nil || malloc(huge) != nil || kmalloc(huge) != nil || realloc(p[0], huge) != nil)
+			return 8;
+		if(mainmem->nalloc != before || mainmem->cursize == 0)
+			return 9;
+		for(k=0; k<32; k++)
+			if(((uchar*)p[0])[k] != 0x5a)
+				return 10;
+	}
+	free(p[0]);
+	p[0] = realloc(nil, 32);
+	if(p[0] == nil || getmalloctag(p[0]) != 0x12345678 || getrealloctag(p[0]) != 0x12345678)
+		return 11;
+	free(p[0]);
+	if(mainmem->cursize != 0)
+		return 12;
+	puts("PASS actual allocation API: 128 oversized refusals retain owner; realloc(nil) initializes both tags");
 	puts("PASS actual pool: 10240 allocations, 5120 reallocations, payloads and coalescing");
 	return 0;
 }

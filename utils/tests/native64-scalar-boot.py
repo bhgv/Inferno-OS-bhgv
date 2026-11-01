@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--emu', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runner', default='')
+    parser.add_argument('--math', action='store_true', help='require trusted Math registration without file import admission')
     args = parser.parse_args()
     command = shlex.split(args.runner)+[str(args.emu.resolve()), '-v', '-r', str(args.root.resolve())]
     with tempfile.TemporaryDirectory(prefix='scalar-boot-', dir=args.root.resolve()) as directory:
@@ -41,13 +42,16 @@ def main():
             for jit in (0, 1):
                 path = '/'+str(image.relative_to(args.root.resolve()))
                 output = execute(command+['-c', str(jit), '-d', path])
+                registered = 'native64 startup: trusted Math registered; file imports remain disabled' in output
+                if registered != args.math:
+                    raise RuntimeError('Unexpected Math startup selection: '+output)
                 marker = 'native64 scalar module Pilot: jit='+str(jit)+', exit=""'
                 if marker not in output or 'panic:' in output or 'Broken:' in output:
                     raise RuntimeError(name+' did not complete: '+output)
                 print('PASS complete emulator:', name, 'JIT='+str(jit))
         legacy = work/'legacy.dis'; legacy.write_bytes(b'legacy image rejected before decoding')
         for path, diagnostic in (('/'+str(legacy.relative_to(args.root.resolve())), 'accepts only checked Dis64 scalar images'),
-                                 ('$Sys', 'builtin modules are unavailable')):
+                                 ('$Sys', 'builtin modules are unavailable'), ('$Math', 'builtin modules are unavailable')):
             output = execute(command+['-d', path])
             if diagnostic not in output or 'native64 scalar module ' in output:
                 raise RuntimeError('Admission guard missed '+path+': '+output)

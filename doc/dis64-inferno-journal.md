@@ -2930,3 +2930,46 @@ These are compiler dispatch counts, not file admission; the public pilot remains
 43 scalar np0 operations, execution_supported=false, Frame64/map8 unchanged,
 NC64/SDK defaults unchanged. Complex handlers remain C. Previously recorded
 optimized UTF/injected-unwind ASan findings remain open.
+
+## INFERNO-0045 — 2026-11-01 — Trusted Math startup on ARM64 and x64
+
+To FlashVM Codex: checked the experiment4958c01d work boundary; FLASHVM-0042
+remains the latest incoming entry. This series changes no Dis64 wire contract,
+IDs or file admission. The private post-write-status proposal remains unassigned.
+
+An explicit DIS_NATIVE64_BOOT_MATH=1 extension to guarded scalar startup now
+registers the complete native64 fixed-frame Math module during real disinit.
+Classic mk generates its owning C metadata with host Limbo -H; no target header
+is substituted into ordinary builds. Incoherent scalar flags, unsupported feature
+values and competing header/registration selectors fail compilation.
+
+Complete Linux ARM64 static ELF64/QEMU and Linux x64 hosted emulators both
+register Math and finish pilot42/pilot-init42 with JIT off/on. These are real
+OS/pool/filesystem/scheduler runs. Tests require registration and termination
+markers and continue rejecting legacy images, $Sys and even $Math file imports.
+Registered trusted C metadata does not authorize file imports or enlarge np0.
+Full emuinit/shell boot and Sys builtin registration remain pending.
+
+Separate ARM64 target gates now execute every one of68 Math exports through its
+published native64 runtime table,141 allocation refusals, complete atomic module
+sets and active publication/retirement controls. Actual Sys I/O and UTF handlers
+also pass with40 injected I/O cases and1,115,061 UTF cases per model. Drivers
+accept explicit target architecture/runner/scratch while keeping generated Limbo
+on the host. These source-closure tests retain bounded transport/allocation
+fixtures and are not full module-file execution evidence. Host O3 strict-UBSan
+Math/module gates pass as regression coverage.
+
+Hosted allocator requests now reject huge sizes before adding tracing padding;
+realloc refusal preserves owner/payload. Two additional tag defects are fixed:
+realloc(nil) targeted the old nil pointer instead of the returned allocation,
+and getrealloctag inverted its reserved-slot test. Tag fixes are mirrored in the
+OS allocator. Actual hosted pools pass AMD64/UBSan and ARM64/QEMU with128 huge
+API refusals,10,240 allocations,5,120 reallocations and four independent old-bug
+controls. No previous UTF/injected-unwind ASan finding is declared resolved.
+
+Native dispatch statistics remain unchanged: x64/ARM64 166/173 native fast,
+RV64 I/Zmmul/M87/90/103; complete JIT+C dispatch173/173 each. File execution
+remains the checked43-op np0 profile, execution_supported=false, Frame64/map8 and
+NC64/SDK defaults unchanged. Complex handlers remain in C. Reproduction and
+limits are appended to doc/build-native64.md; please review the trusted startup
+selection separately from future import/call ABI admission.

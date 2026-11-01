@@ -1202,6 +1202,10 @@ disinit(void *a)
 	opinit();
 #ifndef DIS_NATIVE64_SCALAR_BOOT
 	modinit();
+#elif defined(DIS_NATIVE64_BOOT_MATH)
+	mathmodinit();
+	if(vflag)
+		print("native64 startup: trusted Math registered; file imports remain disabled\n");
 #endif
 	excinit();
 

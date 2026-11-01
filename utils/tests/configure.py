@@ -35,6 +35,12 @@ def main():
             bad=subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--native64-scalar-boot','--output',str(work/'invalid-scalar')]+options,capture_output=True)
             if bad.returncode==0 or (work/'invalid-scalar').exists():
                 raise RuntimeError('Scalar startup accepted an unsupported profile')
+        subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--arch','arm64','--console','--native64-scalar-boot','--native64-math-boot','--output',str(output)],check=True,capture_output=True)
+        if 'NATIVE64_BOOT_HEADERS=math-native64.h' not in output.read_text() or '-DDIS_NATIVE64_BOOT_MATH=1' not in output.read_text():
+            raise RuntimeError('Math startup lost its generated header dependency')
+        bad=subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--arch','arm64','--console','--native64-math-boot','--output',str(work/'invalid-math')],capture_output=True)
+        if bad.returncode==0 or (work/'invalid-math').exists():
+            raise RuntimeError('Math startup accepted the legacy ABI')
         for target in ('Linux','MacOSX','Nt'):
             result=subprocess.run(['/bin/sh','../port/mkdevlist','emu-g'],cwd=ROOT/'emu'/target,env=dict(os.environ,ROOT=str(ROOT),AWK='awk'),capture_output=True,text=True,check=True)
             devs=next(row for row in result.stdout.splitlines() if row.startswith('DEVS='))

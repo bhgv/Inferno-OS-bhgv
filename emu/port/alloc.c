@@ -608,10 +608,17 @@ smalloc(size_t size)
 	return v;
 }
 
+
+
+/* Allocate a bounded kernel request with caller tracing. */
 void*
 kmalloc(size_t size)
 {
 	void *v;
+
+	/* Reject before adding tracing bytes or narrowing to the pool request. */
+	if(size >= 1024UL*1024*1024)
+		return nil;
 
 	v = dopoolalloc(mainmem, size+Npadlong*sizeof(ulong), getcallerpc(&size));
 	if(v != nil){
@@ -629,10 +636,17 @@ kmalloc(size_t size)
 
 
 
+
+
+/* Validate the requested extent before adding tracing bytes. */
 void*
 malloc(size_t size)
 {
 	void *v;
+
+	/* Reject before adding tracing bytes or narrowing to the pool request. */
+	if(size >= 1024UL*1024*1024)
+		return nil;
 
 	v = poolalloc(mainmem, size+Npadlong*sizeof(ulong));
 	if(v != nil){
@@ -649,10 +663,17 @@ malloc(size_t size)
 	return v;
 }
 
+
+
+/* Allocate a bounded request with optional clearing. */
 void*
 mallocz(ulong size, int clr)
 {
 	void *v;
+
+	/* Reject before adding tracing bytes or narrowing to the pool request. */
+	if(size >= 1024UL*1024*1024)
+		return nil;
 
 	v = poolalloc(mainmem, size+Npadlong*sizeof(ulong));
 	if(v != nil){
@@ -685,10 +706,17 @@ free(void *v)
 	}
 }
 
+
+
+/* Preserve the original owner on refusal and initialize tags on a new allocation. */
 void*
 realloc(void *v, size_t size)
 {
 	void *nv;
+
+	/* Reject before adding tracing bytes or narrowing to the pool request. */
+	if(size >= 1024UL*1024*1024)
+		return nil;
 
 	if(size == 0)
 		return malloc(size);	/* temporary change until realloc calls can be checked */
@@ -703,7 +731,7 @@ realloc(void *v, size_t size)
 		nv = (ulong*)nv+Npadlong;
 		setrealloctag(nv, getcallerpc(&v));
 		if(v == nil)
-			setmalloctag(v, getcallerpc(&v));
+			setmalloctag(nv, getcallerpc(&v));
 	} else 
 		print("realloc failed from %lux\n", getcallerpc(&v));
 	return nv;
@@ -744,11 +772,13 @@ setrealloctag(void *v, ulong pc)
 	u[-Npadlong+ReallocOffset] = pc;
 }
 
+
+/* Read the stored realloc caller only when tracing reserved its slot. */
 ulong
 getrealloctag(void *v)
 {
 	USED(v);
-	if(Npadlong <= ReallocOffset)
+	if(Npadlong > ReallocOffset)
 		return ((ulong*)v)[-Npadlong+ReallocOffset];
 	return ~0;
 }

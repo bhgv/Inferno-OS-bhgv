@@ -271,8 +271,13 @@ main(int argc, char *argv[])
 		fprint(2, "emu: incompatible native64 scalar layout\n");
 		exits("native64 scalar ABI");
 	}
-	if(vflag)
+	if(vflag){
+#ifdef DIS_NATIVE64_BOOT_MATH
+		fprint(2, "emu: experimental native64 scalar startup with trusted Math; builtin imports are disabled\n");
+#else
 		fprint(2, "emu: experimental native64 scalar startup; builtin modules are disabled\n");
+#endif
+	}
 #else
 	if(!legacynativeabi()){
 		fprint(2, "emu: installed legacy builtin tables require int32/ref32; native64 registration is not enabled\n");

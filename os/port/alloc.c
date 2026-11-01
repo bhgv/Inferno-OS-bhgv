@@ -610,6 +610,8 @@ free(void *v)
 	}
 }
 
+
+/* Preserve the old block on failure and tag the returned owner on first allocation. */
 void*
 realloc(void *v, ulong size)
 {
@@ -626,7 +628,7 @@ realloc(void *v, ulong size)
 		nv = (ulong*)nv+Npadlong;
 		setrealloctag(nv, getcallerpc(&v));
 		if(v == nil)
-			setmalloctag(v, getcallerpc(&v));
+			setmalloctag(nv, getcallerpc(&v));
 	}
 	return nv;
 }
@@ -666,11 +668,13 @@ setrealloctag(void *v, ulong pc)
 	u[-Npadlong+ReallocOffset] = pc;
 }
 
+
+/* Read the stored realloc caller only when tracing reserved its slot. */
 ulong
 getrealloctag(void *v)
 {
 	USED(v);
-	if(Npadlong <= ReallocOffset)
+	if(Npadlong > ReallocOffset)
 		return ((ulong*)v)[-Npadlong+ReallocOffset];
 	return ~0;
 }

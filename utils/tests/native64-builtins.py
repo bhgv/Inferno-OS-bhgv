@@ -74,6 +74,8 @@ def main():
     args = parser.parse_args()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     env = dict(os.environ)
+    runner = shlex.split(env.get('NATIVE64_RUNNER', ''))
+    arch = env.get('NATIVE64_ARCH', 'amd64')
     flags = shlex.split(env.get('NATIVE64_CFLAGS', '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
     with tempfile.TemporaryDirectory(prefix='native64-builtins-', dir=env.get('NATIVE64_TMPDIR', ROOT)) as directory:
         work = Path(directory)
@@ -103,7 +105,7 @@ def main():
             body += (ROOT/'utils/tests/native64-module-order.c').read_text()
         unit.write_text(adapter+body)
         compiler = shlex.split(env.get('CC', 'cc'))
-        includes = ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/amd64/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
+        includes = ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
         for label, model in [('WORD32', ['-DDIS_WORD32=1']), ('WORD32-file', ['-DDIS_WORD32=1', '-DDIS64_PILOT_LOADER=1']), ('legacy-refused', ['-DNATIVE64_REFUSED']), ('packed-refused', ['-DDIS_WORD32=1', '-fpack-struct=1', '-DNATIVE64_REFUSED'])]:
             binary = work/label
             # Compile the complete owning runtime as well as the exercised constructor closure.
@@ -113,7 +115,7 @@ def main():
                 subprocess.run(compiler+flags+model+includes+['-ffunction-sections', '-fdata-sections', '-DDIS_NATIVE64_MATH_HEADER=\"math-native64.h\"', '-c', str(ROOT/'libinterp/math.c'), '-o', str(mathobj)], env=env, check=True)
             objects = [str(mathobj)] if label != 'legacy-refused' else []
             subprocess.run(compiler+flags+model+includes+['-ffunction-sections', '-fdata-sections', str(unit)]+objects+['-Wl,--gc-sections', '-lm', '-o', str(binary)], env=env, check=True)
-            subprocess.run([str(binary)], env=env, check=True)
+            subprocess.run(runner+[str(binary)], env=env, check=True)
             if args.sets and label in ('WORD32', 'WORD32-file'):
                 for name, boundary, replacement in (
                         ('publication', 'build->staged[i] = build->current.module;', 'modules = build->current.module; build->staged[i] = build->current.module;'),
@@ -124,8 +126,8 @@ def main():
                     control.write_text((adapter+body).replace(boundary, replacement, 1))
                     target = work/(label+'-'+name)
                     subprocess.run(compiler+flags+model+includes+['-ffunction-sections', '-fdata-sections', str(control)]+objects+['-Wl,--gc-sections', '-lm', '-o', str(target)], env=env, check=True)
-                    result = subprocess.run([str(target)], env=env, capture_output=True, text=True)
-                    if result.returncode != -signal.SIGABRT or 'check failed' not in result.stderr:
+                    result = subprocess.run(runner+[str(target)], env=env, capture_output=True, text=True)
+                    if result.returncode not in (-signal.SIGABRT, 128+signal.SIGABRT) or 'check failed' not in result.stderr:
                         raise RuntimeError('Module-set removal control did not fail its predicate: '+name+'\n'+result.stdout+result.stderr)
                     print('PASS module-set removal control:', label, name, flush=True)
             print('PASS native64 builtin construction:', label, flush=True)
