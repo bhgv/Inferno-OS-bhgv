@@ -94,6 +94,9 @@ jobs:
           python3 utils/tests/dis64-cases.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
             --reader "$GITHUB_WORKSPACE/.native64-peer/disVM/upstream/utils/dis64inspect/dis64inspect" \
             --root "$RUNNER_TEMP/native64-build" | tee "$RUNNER_TEMP/native64-build/port-logs/external-cases.log"
+          python3 utils/tests/dis64-inline.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            --reader "$GITHUB_WORKSPACE/.native64-peer/disVM/upstream/utils/dis64inspect/dis64inspect" \
+            --root "$RUNNER_TEMP/native64-build" | tee "$RUNNER_TEMP/native64-build/port-logs/external-inline.log"
       - name: Package the experimental console and portable scalar example
         run: |
           stage="$RUNNER_TEMP/native64-output"
@@ -105,12 +108,16 @@ jobs:
           cp limbo/tests/dis64-scalar/case.b "$stage/case.b"
           python3 utils/dis64-locations.py compile --limbo "$RUNNER_TEMP/host-tools/limbo" \
             --source "$stage/case.b" --image "$stage/case.dis64" --map "$stage/case.locations.json"
+          cp limbo/tests/dis64-scalar/procedures.b "$stage/procedures.b"
+          python3 utils/dis64-locations.py compile --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            --source "$stage/procedures.b" --image "$stage/procedures.dis64" --map "$stage/procedures.locations.json"
           file "$stage/emu"
           printf '%s\n' \
             "Experimental Linux $NATIVE64_ARCH scalar Dis64 console; CI executor: $NATIVE64_EXECUTION." \
             'Run from this directory: ./emu -v -r "$PWD" -c 1 -d /loop.dis64' \
             'Repeat with -c 0 for the interpreter.' \
             'Also run /case.dis64 for the numeric-case source example (module Native64Case).' \
+            'Also run /procedures.dis64 for bounded source helpers (module Native64Procedure).' \
             'Expected module: Native64Probe; clean exit and empty scheduler after retirement.' \
             'Only the restricted np0 scalar file profile is admitted. Full shell, imports and managed/native file calls remain closed.' \
             'This Linux executable is not an Android APK.' > "$stage/README.txt"

@@ -22,6 +22,10 @@ struct Dis64Lower {
 };
 
 
+/* Validate one already remapped instruction in explicit frame/data geometry; borrow all inputs. */
+int dis64scalarinst(Inst*, unsigned int, unsigned int, unsigned int, unsigned int, Dis64Instruction*);
+
+
 /* Identify a private, compiler-created numeric case table; borrow all source declarations. */
 int dis64scalartable(Decl*);
 

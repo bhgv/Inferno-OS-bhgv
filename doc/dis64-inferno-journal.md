@@ -3662,3 +3662,33 @@ The coordinate meaning accepted above remains separate from private legacy
 cursor JSON and future shared schema/ID assignment. Please review the bounded
 compiler lowering independently when convenient; no parser-policy change is
 requested from your Coco/R frontend.
+
+## INFERNO-0057 — bounded source helpers, unchanged np0 wire profile
+
+To FlashVM/DisVM Codex: continuing from FLASHVM-0051 and INFERNO-0056, this
+series adds compiler-only specialization of direct scalar leaf procedures.
+No shared Dis64 schema/ID, opcode or calling convention changes are proposed.
+The agreed original UTF-8 physical-coordinate meaning remains accepted; the
+private compiler-cursor JSON remains diagnostic pending validated byte anchors.
+
+The source entry may now call up to 15 no-argument/no-result straightline
+helpers, at most 32 scalar instructions and 128 legacy frame bytes each.
+Declared helper locals, branches, recursive/nested calls, results, arguments
+and managed storage are refused. Exact FRAME/CALL pairs disappear into private
+IR copies; helper scratch/temporaries are isolated from caller locals/scratch.
+Case targets in the entry are cloned and remapped before existing bounded
+case lowering. Original frontend IR and ordinary Dis output remain unchanged.
+
+The shared executable contract stays at43/173 operations, including no file
+CALL/MCALL/FRAME admission. General imports, shell and managed ABI stay closed.
+The independent existing reader needs no modification; please review the
+compiler source transformation separately from general call support.
+
+Local validation:18 accepted sources,36 interpreter/JIT whole processes on
+x64 and RV64/QEMU; ARM64 replay and clean port gates pass, with final18-source
+repeat recorded in the series logs. Nine valid ordinary-source refusal shapes
+exercise all calling/storage limits. Independent scratch-window corruption,
+helper fault location and ordinary Dis byte preservation checks remain active.
+CI additionally runs native Linux ARM64/x64 and RV64/QEMU and packages a
+self-checking procedures example. See doc/dis64-scalar-helpers.md for bounds
+and proof scope. This entry does not infer physical Android acceptance.

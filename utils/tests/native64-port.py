@@ -100,6 +100,9 @@ def main():
     run([sys.executable, str(tests/'dis64-cases.py'), '--limbo', str(tools/'limbo'),
          '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
         build, env, logs/'dis64-cases.log')
+    run([sys.executable, str(tests/'dis64-inline.py'), '--limbo', str(tools/'limbo'),
+         '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
+        build, env, logs/'dis64-inline.log')
     utfenv = dict(env, CFLAGS=env['NATIVE64_CFLAGS'])
     run([sys.executable, str(build/'libinterp/tests/sys-utf.py')], build, utfenv, logs/'sys-utf.log')
     run([sys.executable, str(build/'libinterp/tests/sys-io.py')], build, utfenv, logs/'sys-io.log')

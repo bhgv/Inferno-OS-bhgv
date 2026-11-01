@@ -1,5 +1,6 @@
 #include "limbo.h"
 #include "dis64-lower.h"
+#include "dis64-inline.h"
 
 #define ScalarOutputLimit (8U*1024U*1024U) // Match the complete-image admission bound.
 
@@ -133,6 +134,7 @@ dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long dat
 	Dis64Payload sections[5];
 	DisStringPoolRecord string;
 	Dis64Lower lower;
+	Dis64Prepared prepared;
 	Dis64Pilot checked;
 	Decl *decl;
 	uchar *parts[5], *maps[2], *runes, *output;
@@ -146,7 +148,7 @@ dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long dat
 		return;
 	}
 	if(MaxTemp != ScalarLegacyPrefix || STemp != 20 || IBY2WD != 4 || IBY2LG != 8 || sizeof(Real) != 8 || sizeof(Long) != 8 ||
-	   nfns != 1 || fns[0] != entry || entry->pc == nil || entry->pc->pc != 0 ||
+	   entry->pc == nil ||
 	   entry->ty->ids != nil || entry->ty->varargs || entry->ty->tof->kind != Tnone ||
 	   !dis64scalarlist(entry->locals, 0) || !dis64scalarlist(globals, 1) || !dis64nomap(entry->desc) ||
 	   count <= 0 || count > ScalarCodeLimit || databytes < 0 || databytes > ScalarObjectLimit ||
@@ -169,15 +171,18 @@ dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long dat
 			dis64error(entry, "module display name must be ASCII");
 			return;
 		}
-	scratch = (entry->desc->size+ScalarNativePrefix-ScalarLegacyPrefix+7)&~7U;
-	frame = scratch+ScalarScratchBytes;
 	memset(parts, 0, sizeof(parts));
 	memset(maps, 0, sizeof(maps));
 	runes = output = nil;
 	records = nil;
 	memset(&lower, 0, sizeof(lower));
+	memset(&prepared, 0, sizeof(prepared));
 	failure = "unsupported instruction or operand shape in the existing scalar profile";
-	if(!dis64lower(instructions, count, databytes, frame, scratch, &lower))
+	if(!dis64prepare(entry, instructions, count, databytes, &prepared))
+		goto done;
+	scratch = (prepared.localbytes+ScalarNativePrefix-ScalarLegacyPrefix+7)&~7U;
+	frame = scratch+ScalarScratchBytes;
+	if(!dis64lower(prepared.instructions, prepared.count, databytes, frame, scratch, &lower))
 		goto done;
 	count = lower.count;
 	databytes = lower.databytes;
@@ -267,6 +272,7 @@ done:
 		free(maps[i]);
 	free(runes); free(output); free(records);
 	dis64lowerfree(&lower);
+	dis64preparefree(&prepared);
 	if(failure != nil)
 		dis64error(entry, failure);
 }

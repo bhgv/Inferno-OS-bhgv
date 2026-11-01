@@ -36,8 +36,8 @@ dis64address(int mode, Addr *address, unsigned int scratch, long *value, unsigne
 
 
 /* Convert one remapped instruction while retaining scalar widths and reserved-frame boundaries. */
-static int
-dis64convert(Inst *input, unsigned int count, unsigned int data, unsigned int frame, unsigned int scratch, Dis64Instruction *output)
+int
+dis64scalarinst(Inst *input, unsigned int count, unsigned int data, unsigned int frame, unsigned int scratch, Dis64Instruction *output)
 {
 	unsigned int source, middle, destination;
 
@@ -237,7 +237,7 @@ dis64lower(Inst *instructions, unsigned int count, unsigned int data,
 					return 0;
 				copy.d.offset = lower->pcs[copy.d.offset];
 			}
-			if(!dis64convert(&copy, lower->count, lower->databytes, frame, scratch, &lower->code[at]))
+			if(!dis64scalarinst(&copy, lower->count, lower->databytes, frame, scratch, &lower->code[at]))
 				return 0;
 			lower->origin[at++] = input;
 			continue;

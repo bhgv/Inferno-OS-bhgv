@@ -1,4 +1,4 @@
-# Limbo scalar Dis64 backend (series 0054)
+# Limbo scalar Dis64 backend (through series 0057)
 
 `limbo -6` emits the already agreed extension-free Dis64 v1 np0 executable
 profile. It is an explicit experimental backend, independent of `-H` C metadata.
@@ -9,9 +9,11 @@ The first accepted shape has one reachable compiled `init()` with no parameters,
 no result and pointer-free int/big/real storage. The backend runs after ordinary
 parsing, type checking, lowering and optimization. It accepts only the 43 existing
 scalar operations validated by dis64-pilot.h; no opcode, feature, section, scalar
-kind, signature or calling convention is assigned. Source helpers can only enter
-this profile if ordinary lowering has already eliminated their calls. The backend
-does not implement general function calls or a managed ABI.
+kind, signature or calling convention is assigned. Bounded no-argument, no-result
+leaf procedures can now be specialized into the entry before scalar lowering.
+See [the helper limits](../../doc/dis64-scalar-helpers.md) and
+[the self-checking example](dis64-scalar/procedures.b). General function calls
+and a managed ABI remain outside this profile.
 
 The source entry's RET becomes EXIT, preserving PCs and early entry termination.
 Imports, linkage/exception tables, other exported functions or exported module

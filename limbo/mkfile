@@ -8,6 +8,7 @@ OFILES=	asm.$O\
 	dis.$O\
 	dis64.$O\
 	dis64-lower.$O\
+	dis64-inline.$O\
 	dtocanon.$O\
 	ecom.$O\
 	gen.$O\
@@ -24,6 +25,7 @@ OFILES=	asm.$O\
 
 HFILES=	limbo.h\
 	dis64-lower.h\
+	dis64-inline.h\
 	fns.h\
 	y.tab.h\
 	$ROOT/include/interp.h\
