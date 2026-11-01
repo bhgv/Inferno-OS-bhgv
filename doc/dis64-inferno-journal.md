@@ -2556,3 +2556,60 @@ Final full native64-layout passes O3/NDEBUG strict UBSan with all68 Math exports
 peer map boundaries and the typed formatter. Standalone O3 formatter includes the
 active mismatch-removal control. Legacy print/public/span/I/O gates pass O1 and
 O3/NDEBUG strict UBSan. Readiness/capacity remains PASS for all173 dispatch rows.
+
+
+## INFERNO-0039 — Bounded typed output and String/byte-array result ownership
+
+Fetched experiment after INFERNO-0038; no newer incoming review than FLASHVM-0039
+was present. This series continues the private synchronous C path without
+assigning wire kind IDs, signatures, discriminators or feature bits.
+
+native64formatgrow now owns native output across protected formatting retries,
+with explicit initial capacity and limit. It doubles without signed overflow,
+clamps the last allocation to a non-power-of-two limit, refuses live-output
+replacement, and restarts the typed cursor for every attempt. The existing UTF
+safety margin is conservative: exhausting the limit raises exNomem rather than
+publishing unproven complete output. Exact byte length includes embedded NUL.
+All failure paths detach/free/reset native ownership and preserve the original
+diagnostic, even if native retirement changes the current error.
+
+native64formatstring and native64formatarray run actual c2string/mem2array inside
+an additional protected conversion boundary. String output uses ordinary VM UTF
+and Rune representation, not raw UTF bytes mislabeled as ASCII. Array output
+preserves bytes. Native buffers remain owned until conversion/pinning completes,
+and release on success, heap/pin refusal and error. The enclosing result guard
+owns adopted managed values and the late resolver publishes only after success.
+These helpers are private producers, not direct Sys entry registration.
+
+The gate adds384 growth/result transactions for each emu/os and WORD32/WORD32-file
+combination (1,536 total), alongside6,912 earlier formatter and1,824 construction/
+C-call transactions. Failures cover first/intermediate/final native allocations,
+hard size limit, String and array heap/pin/resolver errors, and incompatible late
+arguments. Successful cases cover multiple retries, exact-length embedded NUL,
+UTF-to-Rune String conversion and byte-preserving UTF arrays. Collector epochs
+run through argument construction/format/result resolution. All acquired frame,
+Type, native buffer and managed result owners must balance. Frees deliberately
+change the diagnostic to prove restoration. An independent compiled control
+removes final output retirement and must abort on the allocation predicate;
+kind/frame-pin/expected-Type controls remain active. Invalid geometry, live owner
+replacement, exact400-byte final clamp and repeated cleanup are also checked.
+
+Please independently review the growth completeness margin, conversion ownership
+and error precedence. Import native64-format.h, updated native64-format.c,
+native64-arguments.c/.py and the existing owner/result source closure. Tests now
+use complete c2string/mem2array bodies as well as actual newstring/newrunes, lib9,
+heap, Type, collector and both port protection bodies. See the extended
+[formatter note](dis64-native64-format.md) for contracts and reproduction.
+
+The four native64 Sys variadic refusals and full-startup registration guard stay
+active: fixed entry/variadic metadata and complete builtin startup still require
+work. Existing ASan injected-unwind and optimized UTF evidence remain open; no
+suppression or claim of resolution is introduced. Frame64/map8, default43-op np0
+admission, execution_supported=false and NC64/SDK defaults are unchanged. Dispatch
+is173/173 with C; ARM64/x64 fast166/173, RV64M fast103/173 remain opcode counts,
+not whole-port completion percentages.
+
+Final O1 and O3/NDEBUG strict UBSan growth/result gates pass. Full optimized
+native64-layout passes with all68 Math entries, peer boundary tests and both
+formatter removal controls. Complete runt.c compiles for NDK ARM64/x64 with the
+new helpers enabled; readiness/capacity remains PASS for all173 dispatch rows.

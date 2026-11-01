@@ -2,6 +2,7 @@
 #include "native64-format.h"
 
 extern int _efgfmt(Fmt*);
+static int formatscenario; // Explicit growth/failure families, never production behavior.
 
 
 typedef struct FormatTransaction FormatTransaction;
@@ -68,6 +69,31 @@ formatproduce(Native64Result *result, const Native64Arguments *arguments, void *
 	transaction->produced++;
 	epochs(6);
 	memmove(&pattern, (uchar*)arguments->frame.value+64, sizeof(pattern));
+	if(formatscenario){
+		Native64Formatted refused = {0};
+		int before;
+		contextfreediagnostic = 1;
+		before = contextattempt;
+		check(!native64formatgrow(&process, arguments, pattern, 0, 512, &refused));
+		check(contextattempt == before && refused.data == nil);
+		if(formatscenario == 1){
+			check(native64formatgrow(&process, arguments, pattern, 8, 400, &refused));
+			check(refused.capacity == 400 && refused.length == 303);
+			before = contextattempt;
+			check(!native64formatgrow(&process, arguments, pattern, 8, 400, &refused));
+			check(contextattempt == before && refused.length == 303);
+			native64formattedclear(&refused); native64formattedclear(&refused);
+			check(refused.data == nil && refused.capacity == 0 && refused.length == 0);
+		}
+		if(formatscenario == 2) contextfailure=contextattempt+1;
+		if(formatscenario == 3) contextfailure=contextattempt+2;
+		if(formatscenario == 4) contextfailure=contextattempt+7;
+		if(formatscenario == 6 || formatscenario == 13) contextheapfail=1;
+		if(formatscenario == 8 || formatscenario == 14) failpin=1;
+		if(formatscenario == 11 || formatscenario >= 13)
+			return native64formatarray(result, arguments, &process, pattern, 8, 512);
+		return native64formatstring(result, arguments, &process, pattern, 8, formatscenario == 5 ? 256 : 512);
+	}
 	memset(first, 0x5a, sizeof(first)); memset(second, 0x5a, sizeof(second));
 	n = native64format(&process, arguments, pattern, first, transaction->capacity);
 	retry = native64format(&process, arguments, pattern, second, transaction->capacity);
@@ -89,6 +115,7 @@ formatresolve(void *state)
 
 	transaction = state;
 	epochs(6);
+	if(formatscenario == 9 || formatscenario == 15) error("formatted resolver failure");
 	return &transaction->caller->result;
 }
 
@@ -99,6 +126,7 @@ formatcase(int phase, int state, int mode, int capacity)
 {
 	char *patterntext = "%d|%*bd|%.1f|%s|%c|%d|%x|%%";
 	char *expected = "-23|   -2|1.5|ok|λ|-256|ff|%";
+	char growexpected[512]; // Independent exact-length reference, including embedded NUL.
 	uchar map[] = {0, 0x80};
 	LimboNative64Entry fixed = {"format", nil, 0, 72, 2, map};
 	Native64TailSlot slots[8];
@@ -111,6 +139,7 @@ formatcase(int phase, int state, int mode, int capacity)
 	double real;
 	int i, status, baseline, expectedbytes;
 
+	if(formatscenario) patterntext = formatscenario == 10 ? "%300d%c%s" : "%300d|%s";
 	contextstart(phase, state);
 	caller_type = native64frametype(&limbo_native64_Roots_caller_entry);
 	check(caller_type != nil);
@@ -125,7 +154,7 @@ formatcase(int phase, int state, int mode, int capacity)
 		pattern = newstring(strlen(patterntext)); memmove(pattern->Sascii, patterntext, pattern->len+1);
 	}
 	transaction.caller->tail = (Array*)pattern;
-	if(mode == 7){
+	if(mode == 7 || formatscenario == 12 || formatscenario == 16){
 		text = newrunes(2); text->Srune[0]=0x3bb; text->Srune[1]=0x3b1; text->Srune[2]=0;
 	}else{
 		text = newstring(2); memmove(text->Sascii, "ok", 3);
@@ -153,20 +182,55 @@ formatcase(int phase, int state, int mode, int capacity)
 	source.slots=slots; source.count=mode == 4 ? 7 : 8;
 	source.values=values; source.value_bytes=source.count*8;
 	source.prefix_check=formatprefix; source.reference_check=contextreference;
+	if(formatscenario){
+		slots[1].kind=Native64TailRef; slots[1].type=&Tstring; values[1]=(uvlong)(uintptr)text;
+		source.count=2;
+		if(formatscenario == 7){ slots[1].type=&Tarray; values[1]=(uvlong)(uintptr)H; }
+		expected=growexpected;
+		expectedbytes=snprint(growexpected, sizeof(growexpected), "%300d|%s", -23, "ok");
+		if(formatscenario == 12 || formatscenario == 16){
+			expectedbytes=snprint(growexpected, sizeof(growexpected), "%300d|", -23);
+			memmove(growexpected+expectedbytes, "λα", 4); expectedbytes+=4;
+		}
+		if(formatscenario == 10){
+			slots[1].kind=Native64TailInt; slots[1].type=nil; values[1]=0;
+			slots[2].kind=Native64TailRef; slots[2].type=&Tstring; values[2]=(uvlong)(uintptr)text;
+			source.count=3;
+			expectedbytes=snprint(growexpected, sizeof(growexpected), "%300d", -23);
+			growexpected[expectedbytes++]=0;
+			memmove(growexpected+expectedbytes, "ok", 2); expectedbytes+=2;
+		}
+		source.value_bytes=source.count*8;
+	}
 	baseline = contextlive;
 	allocationcollections = 1;
 	status = native64argumentscall(&source, formatproduce, formatresolve, &transaction);
-	allocationcollections = 0;
-	check(status == (mode == 0 || mode >= 5) && transaction.produced == 1 && errdepth == 0);
+	contextfreediagnostic = 0;
+	allocationcollections = contextheapfail = failpin = contextfailure = 0;
+	if(formatscenario) check(cleanupobservations > 0);
+	check(status == (formatscenario ? formatscenario == 1 || formatscenario == 10 || formatscenario == 11 || formatscenario == 12 || formatscenario == 16 : mode == 0 || mode >= 5) && transaction.produced == 1 && errdepth == 0);
 	check(contextlive == baseline && freed[4] == 1);
-	if(mode == 0 || mode >= 5){
+	if(formatscenario ? formatscenario == 1 || formatscenario == 10 || formatscenario == 11 || formatscenario == 12 || formatscenario == 16 : mode == 0 || mode >= 5){
 		String *output;
+		if(formatscenario) check(strcmp(up->env->errstr, "initial argument error") == 0);
 		output = (String*)transaction.caller->result;
-		if(capacity == 128) check(output->len == expectedbytes && memcmp(output->Sascii, expected, output->len) == 0);
+		if(formatscenario == 11 || formatscenario == 16){
+			Array *bytes;
+			bytes = (Array*)output;
+			check(bytes->len == expectedbytes && memcmp(bytes->data, expected, expectedbytes) == 0);
+		}else if(formatscenario == 12){
+			check(output->len == -303 && output->Srune[300] == '|' && output->Srune[301] == 0x3bb && output->Srune[302] == 0x3b1);
+		}else if(capacity == 128 || formatscenario) check(output->len == expectedbytes && memcmp(output->Sascii, expected, output->len) == 0);
 		check(freed[3] == 1 && !freed[5]);
 	}else{
 		check(transaction.caller->result == (Array*)text && text->len == 2 && D2H(text)->ref == 1);
-		check(strcmp(up->env->errstr, mode == 4 ? exBounds : exInval) == 0);
+		if(formatscenario){
+			char *failure;
+			failure = (formatscenario == 6 || formatscenario == 13) ? exHeap : formatscenario == 7 ? exInval :
+				(formatscenario == 8 || formatscenario == 14) ? "ptradd malloc" : (formatscenario == 9 || formatscenario == 15) ? "formatted resolver failure" : exNomem;
+			check(strcmp(up->env->errstr, failure) == 0);
+		}else
+			check(strcmp(up->env->errstr, mode == 4 ? exBounds : exInval) == 0);
 	}
 	epochs(6);
 	freeptrs(transaction.caller, caller_type); initmem(caller_type, transaction.caller);
@@ -193,6 +257,12 @@ main(int argc, char **argv)
 					formatcase(phase, state, mode, capacity);
 					cases++;
 				}
+	for(formatscenario=1; formatscenario<=16; formatscenario++)
+		for(phase=0; phase<3; phase++)
+			for(state=Palt; state<=Pbroken; state++)
+				formatcase(phase, state, 0, 128);
+	formatscenario = 0;
+	printf("PASS bounded typed growth: 384 allocation/limit/heap/pin/resolver/UTF/String/array/embedded-NUL transactions\n");
 	printf("PASS actual typed formatter: %d mixed-format/Type/bounds transactions, actual lib9/heap/collector/results\n", cases);
 	return 0;
 }

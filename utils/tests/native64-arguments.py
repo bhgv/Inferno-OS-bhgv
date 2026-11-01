@@ -65,6 +65,8 @@ def main():
                     strings = (ROOT/'libinterp/string.c').read_text()
                     core += '\n'+function(strings, 'String*\nnewstring(')+'\n'
                     core += '\n'+function(strings, 'String*\nnewrunes(')+'\n'
+                    core += '\n'+function(strings, 'String*\nc2string(')+'\n'
+                    core += '\n'+function(runtime, 'Array*\nmem2array(')+'\n'
                     source = source.replace('int\nmain(int argc, char **argv)', 'int\nnative64_arguments_main(int argc, char **argv)', 1)
                     source += '\nchar exInval[]="invalid", exBounds[]="bounds"; // Actual formatter error categories.\n'
                     source += 'char *syserr(char*, char*, Prog*);\nint hmsize(void*);\n'+core
@@ -79,17 +81,19 @@ def main():
                     if result.returncode != -signal.SIGABRT or 'GC root predicate failed' not in result.stderr:
                         raise RuntimeError('Argument ownership control did not reach its predicate: '+control+'\n'+result.stdout+result.stderr)
                 if args.formatter:
-                    control_unit = work/(port+'-unchecked.c')
                     adapter = (ROOT/'include/native64-format.h').read_text()
-                    if adapter.count('if(!valid)') != 1:
-                        raise RuntimeError('Typed format refusal boundary changed')
-                    control_unit.write_text(source.replace('#include "native64-format.h"', adapter.replace('if(!valid)', 'if(0)'), 1))
-                    control_binary = work/(label+'-'+port+'-unchecked')
-                    subprocess.run(command+[str(control_unit)]+objects+extra+['-Wl,--wrap=free', '-Wl,--gc-sections', '-lm', '-o', str(control_binary)], env=env, check=True)
-                    result = subprocess.run([str(control_binary)], env=env, capture_output=True, text=True)
-                    if result.returncode != -signal.SIGABRT or 'GC root predicate failed' not in result.stderr:
-                        raise RuntimeError('Typed format mismatch control did not reach its predicate: '+result.stdout+result.stderr)
-                    print('PASS typed formatter mismatch-removal control:', port, label, flush=True)
+                    for name, boundary, replacement in (('kind', 'if(!valid)', 'if(0)'),
+                            ('output', 'native64formattedclear(&build.output);', '(void)0;')):
+                        if adapter.count(boundary) != 1:
+                            raise RuntimeError('Typed format control boundary changed: '+name)
+                        control_unit = work/(port+'-'+name+'-unchecked.c')
+                        control_unit.write_text(source.replace('#include "native64-format.h"', adapter.replace(boundary, replacement), 1))
+                        control_binary = work/(label+'-'+port+'-'+name+'-unchecked')
+                        subprocess.run(command+[str(control_unit)]+objects+extra+['-Wl,--wrap=free', '-Wl,--gc-sections', '-lm', '-o', str(control_binary)], env=env, check=True)
+                        result = subprocess.run([str(control_binary)], env=env, capture_output=True, text=True)
+                        if result.returncode != -signal.SIGABRT or 'GC root predicate failed' not in result.stderr:
+                            raise RuntimeError('Typed format control did not reach its predicate: '+name+'\n'+result.stdout+result.stderr)
+                        print('PASS typed formatter removal control:', name, port, label, flush=True)
                 print('PASS managed argument contexts:', port, label, flush=True)
 
 

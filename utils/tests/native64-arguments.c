@@ -5,6 +5,7 @@ char exNomem[] = "out of memory: main"; // Match the runtime allocation diagnost
 static void *contextblocks[64]; // Real mallocz allocations owned by Type/vector/map/scratch state.
 static int contextlive, contextattempt, contextfailure; // Exact C allocation accounting and refusal point.
 static Native64Arguments *observedcontext; // Caller-owned context observed during retirement.
+static int contextfreediagnostic; // Exercise diagnostic preservation during native output retirement.
 static int disturbdiagnostic, mutate_type; // Explicit cleanup/race test boundaries, never production policy.
 static Type *mutation_type; // Trusted descriptor whose reference reservation changes during allocation.
 static int prefixchecks, referencechecks, heapinitializations, cleanupobservations; // Active phase observations.
@@ -48,6 +49,10 @@ __wrap_free(void *pointer)
 		if(contextblocks[i] == pointer){
 			contextblocks[i] = nil;
 			contextlive--;
+			if(contextfreediagnostic){
+				cleanupobservations++;
+				kwerrstr("%s", "native output cleanup changed error");
+			}
 			if(disturbdiagnostic && observedcontext != nil && native64argumentsempty(observedcontext)){
 				cleanupobservations++;
 				kwerrstr("%s", "argument cleanup changed error");

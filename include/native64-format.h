@@ -81,4 +81,172 @@ native64format(Prog *prog, const Native64Arguments *owned, String *pattern, char
 	arguments.context = &format;
 	return xprintwithargs(prog, &arguments, pattern, output, bytes);
 }
+
+typedef struct Native64Formatted Native64Formatted;
+
+struct Native64Formatted
+{
+	char *data; // Owned native output, never a managed reference or a wire buffer.
+	int length; // Exact successful byte count, including embedded NUL characters.
+	int capacity; // Allocated byte span, bounded by the explicit caller limit.
+};
+
+typedef struct Native64FormatBuild Native64FormatBuild;
+
+struct Native64FormatBuild
+{
+	Prog *prog; // Borrowed process diagnostic source.
+	const Native64Arguments *arguments; // Borrowed pinned argument owner throughout every retry.
+	String *pattern; // Borrowed caller-rooted format.
+	Native64Formatted *output; // Mutable ownership outside the protected jump frame.
+	int initial; // First positive allocation capacity.
+	int limit; // Maximum permitted native allocation size.
+};
+
+
+/* Detach native output before releasing it and preserve the original VM diagnostic. */
+static void
+native64formattedclear(Native64Formatted *output)
+{
+	char *data;
+	char saved[ERRMAX];
+
+	if(output == nil || output->data == nil)
+		return;
+	kgerrstr(saved, sizeof(saved));
+	data = output->data;
+	memset(output, 0, sizeof(*output));
+	free(data);
+	kwerrstr("%s", saved);
+}
+
+
+/* Restart the typed cursor on every bounded retry and keep all native ownership visible to cleanup. */
+static int
+native64formatbuild(void *argument)
+{
+	Native64FormatBuild *build;
+	Native64Formatted *output;
+	int capacity;
+
+	build = argument;
+	output = build->output;
+	capacity = build->initial;
+	for(;;){
+		output->data = mallocz(capacity, 0);
+		if(output->data == nil)
+			error(exNomem);
+		output->capacity = capacity;
+		output->length = native64format(build->prog, build->arguments, build->pattern, output->data, capacity);
+		/* The shared parser can stop before the last UTF sequence fits; reserve its full safety margin. */
+		if(output->length < capacity-UTFmax-2)
+			return 1;
+		if(capacity == build->limit)
+			error(exNomem);
+		native64formattedclear(output);
+		capacity = capacity > build->limit/2 ? build->limit : capacity*2;
+	}
+}
+
+
+/* Build independent output without overwriting a live owner; zero/invalid geometry never allocates. */
+static int
+native64formatgrow(Prog *prog, const Native64Arguments *arguments, String *pattern,
+	int initial, int limit, Native64Formatted *output)
+{
+	Native64FormatBuild build;
+
+	if(output == nil || output->data != nil || output->length != 0 || output->capacity != 0 ||
+	   initial <= UTFmax+2 || limit < initial)
+		return 0;
+	build.prog = prog;
+	build.arguments = arguments;
+	build.pattern = pattern;
+	build.output = output;
+	build.initial = initial;
+	build.limit = limit;
+	if(!kprotect(native64formatbuild, &build)){
+		native64formattedclear(output);
+		memset(output, 0, sizeof(*output));
+		return 0;
+	}
+	return 1;
+}
+
+typedef struct Native64FormatResult Native64FormatResult;
+
+struct Native64FormatResult
+{
+	Native64Formatted output; // Native bytes retained until managed allocation and pinning finish.
+	Native64Result *result; // Borrowed enclosing result guard, responsible for adopted-owner cleanup.
+	const Native64Arguments *arguments; // Borrowed immutable pinned arguments.
+	Prog *prog; // Borrowed process used by percent-r formatting.
+	String *pattern; // Borrowed rooted format String.
+	int initial, limit; // Explicit bounded output geometry.
+	int array; // Zero converts UTF bytes to String; one preserves exact byte-array contents.
+};
+
+
+/* Convert through actual UTF/array routines and adopt before fallible pinning.
+ * Native bytes remain visible to outer cleanup throughout conversion. */
+static int
+native64formatresultbuild(void *argument)
+{
+	Native64FormatResult *build;
+	void *value;
+
+	build = argument;
+	if(!native64formatgrow(build->prog, build->arguments, build->pattern,
+	   build->initial, build->limit, &build->output))
+		return 0;
+	value = build->array ? (void*)mem2array(build->output.data, build->output.length) :
+		(void*)c2string(build->output.data, build->output.length);
+	if(!native64resultadopt(build->result, value)){
+		destroy(value);
+		return 0;
+	}
+	return 1;
+}
+
+
+/* Produce String or bytes under an enclosing result transaction; free output on allocation/pin/error refusal. */
+static int
+native64formatresult(Native64Result *result, const Native64Arguments *arguments, Prog *prog,
+	String *pattern, int initial, int limit, int array)
+{
+	Native64FormatResult build;
+	int status;
+
+	if(result == nil || result->value != H || result->rooted || (array != 0 && array != 1))
+		return 0;
+	memset(&build, 0, sizeof(build));
+	build.result = result;
+	build.arguments = arguments;
+	build.prog = prog;
+	build.pattern = pattern;
+	build.initial = initial;
+	build.limit = limit;
+	build.array = array;
+	status = kprotect(native64formatresultbuild, &build);
+	native64formattedclear(&build.output);
+	return status;
+}
+
+
+/* Convert complete UTF output to the VM's ordinary String representation. */
+static int
+native64formatstring(Native64Result *result, const Native64Arguments *arguments, Prog *prog,
+	String *pattern, int initial, int limit)
+{
+	return native64formatresult(result, arguments, prog, pattern, initial, limit, 0);
+}
+
+
+/* Preserve the exact formatted bytes, including embedded NUL and multibyte UTF sequences. */
+static int
+native64formatarray(Native64Result *result, const Native64Arguments *arguments, Prog *prog,
+	String *pattern, int initial, int limit)
+{
+	return native64formatresult(result, arguments, prog, pattern, initial, limit, 1);
+}
 #endif
