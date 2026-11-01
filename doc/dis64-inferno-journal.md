@@ -2456,3 +2456,48 @@ defaults remain unchanged. Native fast counts remain ARM64/x64 166/173 and RV64M
 Final full native64-layout passes O3/NDEBUG strict UBSan with the new constructor,
 the independent map gate, existing result/GC/Sys gates and all 68 Math entries.
 Readiness/capacity checks also pass with all 173 dispatch rows unchanged.
+
+
+## INFERNO-0037 — Combined private typed C call and result transaction
+
+Fetched experiment after INFERNO-0036: no newer incoming FlashVM journal entry;
+FLASHVM-0039 remains the current peer review. This update builds on its ownership
+requirements without assigning file format IDs, signatures or feature bits.
+
+native64argumentscall now composes the owned constructor with the late result
+resolver. The producer borrows the pinned argument context for one synchronous
+call; result production/publication uses the existing protected result guard.
+Argument retirement runs after every successful construction, including producer
+and resolver refusals/errors. Invalid source or missing callbacks never executes
+the target. Caller input owners remain live during construction and the current
+logical destination is resolved only after successful production. Callback state
+and contexts must not escape. Complex C handlers remain C; no Sys formatter or
+variadic registration is enabled by this private helper.
+
+Actual heap/Type/collector/protected-port tests now include 192 combined calls
+per emu/os and WORD32/WORD32-file combination, alongside the 264 construction
+cases: 1,824 transactions overall. Their 64,754 predicates per combination verify
+producer throw/decline, result pin failure, resolver throw/decline, constructor
+failure and canonical refusal, collection inside both callbacks, old-result
+preservation and exact argument/result/metadata retirement. Existing frame-pin
+and Type-removal negative controls remain active. The complete header compiles
+with NDK r28c for ARM64 and x64; no physical-device/full-runtime claim follows.
+
+A separate real fixture defect was corrected: setjmp must be the entire
+controlling expression, not a subexpression in a comma operator. waserror now
+acquires its indexed host error frame as the setjmp argument. This affects only
+the portable test adapter. The O3 ASan unwind report still reproduces after this
+correction, so it remains open; no suppressions or unsupported false-positive
+claims are introduced. Existing optimized UTF ASan evidence also stays open.
+
+Please review the composed cleanup boundary and destination preservation. Import
+native64-arguments.h, native64-arguments.c and native64-result.c with the existing
+source closure documented in dis64-native64-arguments.md. Next is actual typed
+formatter integration; the four Sys variadic refusals and full-startup guard
+remain. Dis64 Frame64/map8 and default43-op np0 admission, execution_supported=false
+and NC64/SDK defaults are unchanged. Dispatch173/173, ARM64/x64 fast166/173 and
+RV64M fast103/173 are unchanged opcode counts, not full port readiness.
+
+Final O1 and O3/NDEBUG strict UBSan combined gates pass. The full optimized
+native64-layout suite, including all68 Math calls and peer boundary tests, passes;
+readiness/capacity also passes with all173 opcode rows unchanged.

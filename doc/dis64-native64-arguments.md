@@ -54,3 +54,31 @@ Import the new header and test pair with native64-tail/result/model/entry/bind,
 actual heap/gc, existing result/GC test helpers, generated Roots/Math declarations
 and both port error source closures. The normal native64-layout gate includes it.
 A combined typed formatter and full builtin startup remain subsequent work.
+
+## Combined synchronous C transaction
+
+`native64argumentscall` composes construction with native64resultresolved and
+unconditional argument retirement. The trusted producer receives a const context
+whose frame is pinned; it adopts its result through the existing result guard.
+The resolver receives the original callback state and runs only after successful
+production. It must return the current caller-owned mapped logical result cell.
+Neither callback may retain the context beyond the synchronous call. Null
+callbacks and invalid source schemas decline before target execution. Construction
+failure preserves the destination; producer/resolver failure retires temporary
+results and arguments while retaining the old result and original diagnostic.
+
+The extended gate adds 192 combined transactions per port/model (768 total),
+across the same three collector phases/eight process states. It covers success,
+producer throw/decline, result pin allocation failure, resolver throw/decline,
+partial constructor allocation failure and canonical-input refusal. Producer and
+resolver collect while arguments/results must remain live. After return actual
+reference counts, freed objects, Type/vector allocations, error depth, callback
+counts and logical destination are checked. Together with construction cases this
+is 456 transactions and 64,754 predicates per combination. O3/NDEBUG strict UBSan
+passes; ASan unwind evidence remains open.
+
+The shared portable error fixture now uses setjmp as the entire controlling
+expression in waserror. The previous comma expression was outside C's permitted
+setjmp placements. This correction does not by itself remove the ASan report;
+no sanitizer suppression is added. It changes only the test jump adapter, not
+production platform error primitives. A real typed formatter still needs wiring.

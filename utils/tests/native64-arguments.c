@@ -267,6 +267,118 @@ contextcase(int phase, int state, int mode)
 }
 
 
+
+typedef struct ArgumentTransaction ArgumentTransaction;
+
+struct ArgumentTransaction
+{
+	F_Roots_caller *caller; // Generated mapped logical result owner, live throughout the transaction.
+	int mode; // Target/result failures plus constructor and canonical-input refusals.
+	int produced, resolved; // Exact callback entry counts.
+};
+
+
+/* Read actual mapped arguments after collection and adopt the result before any later failure. */
+static int
+argumenttransactionproduce(Native64Result *result, const Native64Arguments *arguments, void *state)
+{
+	ArgumentTransaction *transaction;
+	Array *input, *output;
+
+	transaction = state;
+	transaction->produced++;
+	epochs(6);
+	memmove(&input, (uchar*)arguments->frame.value+64, sizeof(input));
+	check(input->data[0] == 0x21 && arguments->frame.rooted && arguments->type->ref == 2);
+	output = H2D(Array*, heaparray(&Tbyte, 1));
+	output->data[0] = input->data[0]+1;
+	if(transaction->mode == 3) failpin=1;
+	check(native64resultadopt(result, output));
+	epochs(6);
+	if(transaction->mode == 1) error("argument producer failure");
+	if(transaction->mode == 2){ kwerrstr("%s", "argument producer decline"); return 0; }
+	return 1;
+}
+
+
+/* Resolve the current generated destination only after the producer returns successfully. */
+static void*
+argumenttransactionresolve(void *state)
+{
+	ArgumentTransaction *transaction;
+
+	transaction = state;
+	transaction->resolved++;
+	epochs(6);
+	if(transaction->mode == 4){ kwerrstr("%s", "argument resolver decline"); return nil; }
+	if(transaction->mode == 5) error("argument resolver failure");
+	return &transaction->caller->result;
+}
+
+
+/* Exercise combined target/result/argument retirement with actual collector and both error owners. */
+static void
+argumenttransactioncase(int phase, int state, int mode)
+{
+	uchar map[] = {0, 0x80};
+	LimboNative64Entry fixed = {"fixed", nil, 0, 72, 2, map};
+	Native64TailSlot slot = {Native64TailRef, 0, 8, &Tarray};
+	Native64ArgumentSource source;
+	ArgumentTransaction transaction;
+	Type *caller_type;
+	Array *first, *last;
+	void *prefix;
+	uvlong value;
+	int baseline, status;
+	char *expected[] = {"initial argument error", "argument producer failure", "argument producer decline",
+		"ptradd malloc", "argument resolver decline", "argument resolver failure",
+		"out of memory: main", "initial argument error"};
+
+	contextstart(phase, state);
+	caller_type = native64frametype(&limbo_native64_Roots_caller_entry);
+	check(caller_type != nil);
+	memset(&transaction, 0, sizeof(transaction));
+	transaction.caller = (F_Roots_caller*)stackframes(caller_type, 1);
+	transaction.mode = mode;
+	first = H2D(Array*, heaparray(&Tbyte, 1));
+	last = H2D(Array*, heaparray(&Tbyte, 1));
+	first->data[0] = 0x21; last->data[0] = 0x72;
+	transaction.caller->result = first; transaction.caller->tail = last;
+	prefix = first; value = (uvlong)(uintptr)last;
+	memset(&source, 0, sizeof(source));
+	source.fixed=&fixed; source.prefix=&prefix; source.prefix_bytes=8;
+	source.slots=&slot; source.count=1; source.values=&value; source.value_bytes=8;
+	source.prefix_check=contextprefix; source.reference_check=contextreference;
+	baseline = contextlive;
+	check(!native64argumentscall(&source, nil, argumenttransactionresolve, &transaction));
+	check(contextlive == baseline && transaction.produced == 0);
+	if(mode == 6) contextfailure = contextattempt+3;
+	if(mode == 7) value = 0;
+	allocationcollections = 1;
+	status = native64argumentscall(&source, argumenttransactionproduce, argumenttransactionresolve, &transaction);
+	allocationcollections = failpin = 0;
+	check(status == (mode == 0) && transaction.produced == (mode < 6));
+	check(transaction.resolved == (mode == 0 || mode == 4 || mode == 5));
+	check(contextlive == baseline && errdepth == 0 && freed[4] == (mode < 6));
+	check(strcmp(up->env->errstr, expected[mode]) == 0);
+	check(transaction.caller->tail == last && last->data[0] == 0x72 && D2H(last)->ref == 1);
+	if(mode == 0){
+		check(transaction.caller->result != first && transaction.caller->result->data[0] == 0x22);
+		check(freed[2] == 1 && !freed[5]);
+	}else{
+		check(transaction.caller->result == first && first->data[0] == 0x21 && D2H(first)->ref == 1);
+		check(!freed[2] && freed[5] == (mode < 6));
+	}
+	epochs(6);
+	freeptrs(transaction.caller, caller_type); initmem(caller_type, transaction.caller);
+	process.R.EX = process.R.SP = nil;
+	epochs(6);
+	freetype(caller_type); clearrootcache();
+	check(contextlive == 0 && Tarray.ref == 1 && Tbyte.ref == 1 && errdepth == 0);
+	heapmonitor = nil;
+}
+
+
 /* Exercise all partial acquisition stages, Type-only H slots and long-lived copied buffers in actual VM roots. */
 int
 main(int argc, char **argv)
@@ -284,7 +396,11 @@ main(int argc, char **argv)
 		for(state=Palt; state<=Pbroken; state++)
 			for(mode=0; mode<11; mode++)
 				contextcase(phase, state, mode);
+	for(phase=0; phase<3; phase++)
+		for(state=Palt; state<=Pbroken; state++)
+			for(mode=0; mode<8; mode++)
+				argumenttransactioncase(phase, state, mode);
 	check(contexttransactions == 264);
-	printf("PASS managed arguments: %d predicates, 264 owner-balanced transactions, actual heap/Type/collector and partial failures\n", checks);
+	printf("PASS managed arguments: %d predicates, 264 owner-balanced constructions + 192 combined C transactions, actual heap/Type/collector and partial failures\n", checks);
 	return 0;
 }

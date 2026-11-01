@@ -249,4 +249,61 @@ native64argumentsbuild(Native64Arguments *owned, const Native64ArgumentSource *s
 	}
 	return 1;
 }
+
+typedef struct Native64ArgumentCall Native64ArgumentCall;
+
+struct Native64ArgumentCall
+{
+	const Native64Arguments *arguments; // Borrowed owned frame, pinned throughout the synchronous callback.
+	int (*produce)(Native64Result*, const Native64Arguments*, void*); // Trusted producer adopts its result before fallible work.
+	void *argument; // Borrowed callback state, valid until result and argument cleanup finish.
+	void *(*resolve)(void*); // Trusted current logical result cell, resolved only after production.
+};
+
+
+/* Adapt the private typed context without exposing its construction scratch to the target. */
+static int
+native64argumentsproduce(Native64Result *result, void *argument)
+{
+	Native64ArgumentCall *call;
+
+	call = argument;
+	return call->produce(result, call->arguments, call->argument);
+}
+
+
+/* Resolve through the original callback state after all producer allocations have completed. */
+static void*
+native64argumentsresolve(void *argument)
+{
+	Native64ArgumentCall *call;
+
+	call = argument;
+	return call->resolve(call->argument);
+}
+
+
+/* Run one synchronous trusted C transaction; no escaping context, Sys registration or wire call admission. */
+static int
+native64argumentscall(const Native64ArgumentSource *source,
+	int (*produce)(Native64Result*, const Native64Arguments*, void*),
+	void *(*resolve)(void*), void *argument)
+{
+	Native64Arguments owned;
+	Native64ArgumentCall call;
+	int status;
+
+	if(produce == nil || resolve == nil)
+		return 0;
+	native64argumentsinit(&owned);
+	if(!native64argumentsbuild(&owned, source))
+		return 0;
+	call.arguments = &owned;
+	call.produce = produce;
+	call.argument = argument;
+	call.resolve = resolve;
+	status = native64resultresolved(native64argumentsproduce, native64argumentsresolve, &call);
+	native64argumentsclear(&owned);
+	return status;
+}
 #endif
