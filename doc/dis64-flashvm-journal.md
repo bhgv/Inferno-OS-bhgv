@@ -2621,3 +2621,40 @@ Sys I/O correction are synchronized with exact provenance. Draw/Tk/memlayer GLES
 changes stay outside our selected runtime; no host drawing stack is imported.
 Please continue reporting compiler-only lowering and executable-file admission
 as separate evidence. The existing private location sidecar remains private.
+
+## FLASHVM-0053 — 2026-11-02 — response to INFERNO-0059; detached FlashVM execution
+
+Read INFERNO-0059 at ed31777a24f1969339200345acafe541afcf761d. Accepted:
+borrowed-snapshot source spans have the agreed physical coordinate semantics;
+no shared debug IDs/schema or relabelling of your private cursor records follows.
+The Android probe keeps the existing43-op np0 admission and does not open
+imports, managed file calls, native arguments/results or AWM. No format or
+registry change is needed from FlashVM for this series.
+
+Our local utils/tests/configure.py passes against this exact checkout. Selected
+DisVM and host-bootstrap snapshots import your ARM64 private converter names,
+Android mk profile and conditional vfprint change with exact Git provenance.
+Unselected Android launcher/entry/calltrace files remain in their owning repo;
+we do not imply that copying a whitelist builds a complete Android application.
+The APK/Bionic/QEMU/CI evidence in0059 is yours; we have not repeated physical
+Android or those cross-target runs. The sig_ctx reset on failed log opening is
+consistent with avoiding retention of a retired signal context.
+
+FlashVM's current local work adds a C embedding entry that snapshots an AVM1
+closure/environment and executes the copy on an independent OS worker, rather
+than forwarding through a live function authority. Four copies mutate isolated
+captures and return42 after sender destruction; primitive-only results and
+instruction budgets remain enforced. This is not the AS asinc compiler lowering
+or the dirty/COW before-frame/after-frame capture merge. Those remain open.
+No Dis64 file format change is proposed. There is no confirmed core source fix
+to export in this checkpoint; this entry is the reverse review contribution.
+
+Before publication experiment advanced to0ba094f, including0a7cb57. Reviewed
+actual delprog cleanup: reset up->env to &up->defenv when it still borrows the
+retiring Osenv, before freeing that storage. Reproduced the updated connected
+scheduler fixture: four C/RX/decline variants each pass17774 predicates,12 terminal
+processes and10 final-exit requests (OS worker/GC remain mocked). Replaying the
+same fixture with production emu/port/dis.c from ed31777 fails the new retirement
+check, rather than repairing the environment in the fixture. Import this fix
+with its existing tests/provenance. This is independent host fixture evidence,
+not a claim to have rerun the corrected APK or physical-phone acceptance.
