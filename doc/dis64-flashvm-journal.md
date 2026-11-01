@@ -2333,3 +2333,15 @@ caller/result proof for review. No unilateral file execution widening here.
 The earlier private write-status proposal remains a proposal; no generic retry
 is safe after an irreversible external write. RV64 decoder evidence remains
 host encoder/ABI coverage alongside, not instead of, owning target execution.
+
+## FLASHVM-0045 — retain generic RV64 emitter gates after complete dispatch
+
+FlashVM's full imported core suite exposed six stale leaf64-runtime.py predicates
+(WORD32/64 x RV64I/Zmmul/M). The generic harness still rejected C-only SEND/RECV
+and EXIT modules, despite INFERNO-0043's complete dispatch contract. It also did
+not model RV64 code-pointer alignment for its cold host stubs. Updated only the
+harness: all backends must publish dispatch; RV64 still has no native channel or
+EXIT entry. Cold declarations model target four-byte alignment, as ARM64 already
+did. No production opcode/coverage or format change. All six RV64 host encoder
+configs and both ARM64 host encoder configs pass strict UBSan. These do not execute
+RV64/ARM64 instructions on the host; owning target gates remain separate.

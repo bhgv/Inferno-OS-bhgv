@@ -628,17 +628,16 @@ int main(void) {
     /* Invalid opcode slots never become callable complete JIT entries. */
     for(i=0;i<sizeof(instructions)/sizeof(instructions[0]);i++)instructions[i].op=INOP;
     if(compile(&m,82,nil) || m.jit)abort();
-    /* SEND/RECV publish on AMD64/ARM64; RV64 retains their interpreter paths. */
+    /* Every backend publishes complete dispatch; native channel leaves remain
+     * distinct from RV64's C tails and must not be counted as native coverage. */
     for(i=0;i<sizeof(instructions)/sizeof(instructions[0]);i++)instructions[i].op=i&1 ? IRECV : ISEND;
-    if(REAL_LEAVES){
-        if(!compile(&m,82,nil) || !m.jit || !m.jit->entry[ISEND] || !m.jit->entry[IRECV])abort();
-        dropmodule(&m);
-    }else if(compile(&m,82,nil) || m.jit)abort();
+    if(!compile(&m,82,nil) || !m.jit ||
+        !!m.jit->entry[ISEND]!=REAL_LEAVES || !!m.jit->entry[IRECV]!=REAL_LEAVES ||
+        !m.jit->dispatch[ISEND] || !m.jit->dispatch[IRECV])abort();
+    dropmodule(&m);
     for(i=0;i<sizeof(instructions)/sizeof(instructions[0]);i++)instructions[i].op=IEXIT;
-    if(REAL_LEAVES){
-        if(!compile(&m,82,nil) || !m.jit || m.jit->entry[IEXIT] || !m.jit->dispatch[IEXIT])abort();
-        dropmodule(&m);
-    }else if(compile(&m,82,nil) || m.jit)abort();
+    if(!compile(&m,82,nil) || !m.jit || m.jit->entry[IEXIT] || !m.jit->dispatch[IEXIT])abort();
+    dropmodule(&m);
     owned=calloc(1,sizeof(*owned));assert(owned);
     owned->prog=calloc(1,sizeof(Inst));assert(owned->prog);
     owned->nprog=1;owned->prog[0].op=IADDW;
@@ -731,13 +730,13 @@ unit=unit.replace('VM_OPERATIONS','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='leaf64-runtime-') as directory:
     td=Path(directory);source=td/'runtime.c';source.write_text(unit)
     includes=[]
-    if os.environ.get('LEAF_WORD_BITS')=='32' or backend=='arm64':
+    if os.environ.get('LEAF_WORD_BITS')=='32' or backend in ('arm64', 'riscv64'):
         header=(root/'include/interp.h').read_text()
         if os.environ.get('LEAF_WORD_BITS')=='32':
             header=re.sub(r'typedef long\s+WORD;', 'typedef int WORD;',header,count=1)
             header=re.sub(r'typedef unsigned long\s+UWORD;', 'typedef unsigned int UWORD;',header,count=1)
-        # Model aligned AArch64 targets even for cold abort-only AMD64 host stubs.
-        if backend=='arm64':
+        # Model target code alignment even for cold abort-only host stubs.
+        if backend in ('arm64', 'riscv64'):
             for name in ('cons', 'cconsmappedtype', 'cnewcscalar', 'cnewcraw', 'cnewcmapped', 'cchanleaf', 'cjitexec'):
                 header=re.sub(r'(extern[^\n]*\b'+name+r'\([^;\n]*\));',
                               r'\1 __attribute__((aligned(4)));',header)
