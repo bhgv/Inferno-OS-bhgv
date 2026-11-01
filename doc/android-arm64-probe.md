@@ -55,3 +55,9 @@ Modern NDK APK CI and download results are recorded separately after completion.
 This is an Android ARM64 execution probe, not a complete AWM desktop. General
 native64 imports, managed argument/result ABI and full GUI startup remain work.
 The shared 43-op np0 Dis64 file profile and FlashVM format IDs do not change.
+
+Modern Bionic static linking initially exposed duplicate strtoll/strtoull
+definitions. The Android ARM64 declaration wrapper now gives Inferno's existing
+converters private names, renaming their definitions and callers together.
+Bionic keeps its standard symbols. No multiple-definition linker waiver is
+used. The ARM64 mk profile tracks its declaration wrapper as an owning input.
