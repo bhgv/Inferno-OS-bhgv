@@ -46,6 +46,7 @@ schedulerfree(void *pointer)
 	if(pointer == observed && observed != nil){
 		terminalpid = observed->pid;
 		terminalstate = observed->state;
+		require(worker.env != observed->osenv);
 		require(*pidlook(terminalpid) == nil);
 		observed = nil;
 		terminals++;
@@ -195,6 +196,7 @@ void
 cleanexit(int status)
 {
 	require(status == 0 && isched.head == nil && isched.runhd == nil);
+	require(worker.env == &worker.defenv);
 	exitrequests++;
 }
 
@@ -487,8 +489,8 @@ lifecycle(uchar *image, unsigned int bytes, int jit, int broken)
 		pushrun(process);
 	}
 	progexit();
-	/* The original process allocation is gone; inspect only captured terminal metadata. */
-	worker.env = &worker.defenv;
+	/* Terminal cleanup must release the borrowed environment before host exit. */
+	require(worker.env == &worker.defenv);
 	require(terminals == before+1 && terminalpid == pid && (uint)terminalstate == 0xdeadbeefU);
 	emptyqueues();
 	require(rootpgrp.r.ref == 1 && rootfgrp.r.ref == 1 && rootegrp.r.ref == 1);
@@ -610,7 +612,7 @@ multipleprocesses(uchar *image, unsigned int bytes, int jit)
 		observed = processes[i];
 		require(currun() == processes[i] && !kprotect(executeprocess, processes[i]));
 		progexit();
-		worker.env = &worker.defenv;
+		require(worker.env == &worker.defenv);
 		require((uint)terminalstate == 0xdeadbeefU && nprog() == 1-i);
 		require(exitrequests == before+i);
 		memmove(&value, snapshots[i], sizeof(value));
