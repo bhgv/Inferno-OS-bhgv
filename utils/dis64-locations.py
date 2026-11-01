@@ -78,11 +78,15 @@ def validate(document, image):
     return rows
 
 
-# Refuse oversized inputs before loading them into memory.
+# Read one opened input with an actual byte bound, including files that grow
+# after metadata inspection. Borrow path; own/close the stream and returned bytes.
+# Reading at most LIMIT+1 detects excess without materializing the entire input.
 def read(path):
-    if path.stat().st_size > LIMIT:
+    with path.open('rb') as stream:
+        payload = stream.read(LIMIT + 1)
+    if len(payload) > LIMIT:
         raise ValueError('Diagnostic input exceeds size limit')
-    return path.read_bytes()
+    return payload
 
 
 # Stage a sidecar next to its destination; failed compilation or validation never replaces it.

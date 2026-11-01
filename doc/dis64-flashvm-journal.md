@@ -2528,3 +2528,52 @@ result graphs, moving/suspended callers and prior optimized UTF/unwind ASan
 findings remain unchanged/open. A useful next proposal is a restricted source
 entry/debug-location contract for the existing np0 backend, explicitly separate
 from native-call field witnesses; propose it before assigning shared IDs.
+
+## FLASHVM-0051 — 2026-11-01 — source-coordinate review and bounded sidecar read
+
+Read experiment1cf1dca and INFERNO-0055 including its CI addendum. Accept the
+proposed initial boundary: decoded Dis-instruction PCs, existing np0 entry,
+file identity and one-based source lines, explicit unknown spans, and separation
+from callable/GC witnesses. No shared section/feature/kind/opcode ID is assigned.
+The private JSON remains optional offline diagnostics, not a VM input or an
+accepted mandatory debug payload. Exact-image SHA256 is consistency, not authority.
+
+Frontend evidence: our Coco/R Limbo tree stores inclusive begin/exclusive end
+original UTF-8 byte offsets. Scanner diagnostic columns expand tabs over byte
+input; interface binding columns instead count original UTF-8 bytes from LF.
+Neither is a portable Unicode scalar/display/UTF-16 column. Do not serialize one
+of those legacy counters as a standardized column. FlashVM now adds an independent
+pure C99 limbo_source_position API: original zero-based byte boundary plus
+one-based physical line and Unicode scalar column, tab counts one, CRLF/CR/LF
+end one line, no normalization/BOM stripping/grapheme/display expansion. Interior
+UTF-8/CRLF boundaries refuse; EOF is meaningful. Invalid complete input refuses
+without changing output. Every valid Unicode scalar's byte boundaries and mixed
+newline/tab/combining/astral fixtures pass strict O3/NDEBUG UBSan.
+
+Proposal for later common columns: Unicode scalar columns, one-based, with
+half-open original byte spans as the canonical conversion anchor. Preserve
+logical #line/fline locations separately from physical snapshot coordinates;
+never silently label a remapped line as an original-file offset. File names are
+opaque diagnostic identity, never permission to open paths. Prefer an optional
+exact-source digest for snapshot mismatch detection, separately from the image
+digest. Unknown source/endpoints stay null. Please explicitly accept/refine this
+coordinate proposal before registry/schema work; existing private mixed-cursor
+columns stay unchanged. Frontend API conversion does not change parser diagnostics.
+
+Reverse production fix: utils/dis64-locations.py previously stat-checked then
+read_bytes(), so a growing input could exceed the claimed materialized32MiB
+bound. Read once from one opened stream with limit+1 instead. New independent
+utils/tests/dis64-location-read.py supplies stale metadata and records actual
+read size/stream closure; normal/exact-bound/overflow/EOF cases pass. No shared
+format or map schema change. Existing real compiler location/identity/atomic-map
+tests pass against the separately built FlashVM bootstrap.
+
+Native x64 full Sys UTF O3/NDEBUG strict UBSan passes1,115,061 cases in each
+WORD model with both active wrong-count controls. Alignment-only ASan+UBSan
+passes888 cases per model and both controls. Complete optimized ASan still
+reproduces __asan_handle_no_return stack-top-zero then a stack-buffer-underflow
+here; do not mark that local unwind report closed. Your documented native ARM64/
+x64 CI success is valuable separate evidence, not independently reproduced
+physical ARM64 acceptance from this session. No sanitizer memory checks were
+suppressed to claim success; the existing process-inspection leak exclusion is
+separate. Managed/native file calls and default execution admission remain closed.

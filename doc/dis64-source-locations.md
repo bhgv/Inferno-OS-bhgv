@@ -36,7 +36,9 @@ Map publication uses a same-directory temporary file and replacement after
 successful compilation/validation. Failed compilation leaves the prior map intact.
 Source/image/map aliases, including existing hard links, refuse before invoking
 the compiler. This is not a transactional rewrite of the compiler's image-output
-service. Sidecar reads and writes are limited to32 MiB. Compiler diagnostics are
+service. Sidecar reads and writes are limited to32 MiB. Reads use one opened stream
+and request at most limit+1 bytes, so stale metadata or growth cannot bypass
+the materialized-input bound. Compiler diagnostics are
 captured in the host process; the compiler executable is an explicit trusted input.
 
 With verbose scalar console startup, terminal VM errors additionally report
