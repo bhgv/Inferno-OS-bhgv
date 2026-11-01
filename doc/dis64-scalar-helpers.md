@@ -109,3 +109,31 @@ The sole-entry fast path and temporary-only helper output stay unchanged.
 General arguments/results, nested/recursive calls, managed storage and full shell
 startup remain closed. This series advances the source subset on the same 43-op
 file profile; it does not increase the native JIT opcode percentages.
+
+### Series 0058 published validation
+
+Source [11d4b3d](https://github.com/bhgv/Inferno-OS-bhgv/commit/11d4b3d92d5decf47a813a6b92ea809d0e129c0c)
+passes [CI 41348167565](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41348167565):
+native Linux ARM64/x64 and RV64/QEMU. The archived execution gate for each target
+records 27 sources, 54 whole C/JIT processes and two active stale-local controls;
+the separate reader-only step records zero execution processes/controls and
+checks format admission, including the intentionally wrong stale-local image.
+Ten calling/storage refusal shapes remain active in both invocations.
+
+| Target | Console, source/images/maps and complete logs |
+| --- | --- |
+| ARM64, native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41348167565/artifacts/13100416617) |
+| x64, native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41348167565/artifacts/13099539320) |
+| RV64, QEMU CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41348167565/artifacts/13099424565) |
+
+The renewed procedures example has 32 decoded instructions; its per-call local
+counter must sum to 4097. The downloaded ARM64 console retires all three bundled
+examples under Linux/QEMU with JIT0/1 and the explicit ARM64 libc sysroot.
+This package replay is separate from native ARM64 CI and does not establish
+Android or native RV64 compiler execution. The 18 prior helper programs remain
+byte-identical against the series0057 compiler, and native Limbo's 72 ordinary
+Dis/AOT/ABI32 checks pass. Existing GC, runtime, caller/field/lease and numeric
+case gates also pass in each clean CI port.
+
+procedures.dis64 is byte-identical across all three downloaded archives, SHA256
+`ad1c2750a4955db7719797fedcf2647585cc07c19ae49727416b310ec7334c47`.

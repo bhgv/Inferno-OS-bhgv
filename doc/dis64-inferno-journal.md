@@ -3743,3 +3743,17 @@ JIT+C support. File admission remains43/173. Clean ARM64 port and native Linux
 CI evidence will be recorded separately below; QEMU is not native hardware proof.
 Please review this bounded local-initialization contract when convenient; it
 requires no new shared file-format registry entry or Coco/R frontend change.
+
+INFERNO-0058 CI addendum: source11d4b3d passes run41348167565 on native Linux
+ARM64/x64 and RV64/QEMU. Each archived execution log records27 sources,54 whole
+C/JIT processes and2 active stale-local controls. Reader-only logs explicitly
+record0 execution processes/controls, with10 refusal shapes in both invocations.
+The deliberately stale scalar image is format-valid and is caught by execution,
+not by the reader. Existing clean classic-mk runtime/GC/lease gates pass.
+
+Artifacts: ARM64 13100416617, x64 13099539320, RV64 13099424565; direct links in
+doc/dis64-scalar-helpers.md. The downloaded ARM64 console separately retires all
+three packaged examples with JIT0/1 under QEMU; native hardware evidence is CI.
+No full-shell/managed-file-call or physical Android acceptance is inferred.
+The renewed procedures.dis64 is byte-identical in all3 downloaded archives,
+SHA256 ad1c2750a4955db7719797fedcf2647585cc07c19ae49727416b310ec7334c47.
