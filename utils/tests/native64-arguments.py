@@ -24,7 +24,7 @@ def main():
     function = support['function']
     env = dict(os.environ)
     flags = shlex.split(env.get('NATIVE64_CFLAGS', '-O1 -g -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
-    with tempfile.TemporaryDirectory(prefix='native64-arguments-', dir=ROOT) as directory:
+    with tempfile.TemporaryDirectory(prefix='native64-arguments-', dir=env.get('NATIVE64_TMPDIR', ROOT)) as directory:
         work = Path(directory)
         env['TMPDIR'] = str(work)
         limbo = args.limbo.resolve()

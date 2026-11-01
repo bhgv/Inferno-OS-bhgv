@@ -77,3 +77,8 @@ borrowed aliases and are never dereferenced after their owner is unloaded.
 Zero-count transactions with deliberately unreadable unused spans must allocate
 nothing and leave an existing chain unchanged. This adds an independent ordering
 oracle; it does not establish concurrent registration or initializer rollback.
+
+Set `NATIVE64_TMPDIR` to an existing writable development directory to keep the
+builtin and typed-argument review scratch outside a read-only selected source
+snapshot. Without the override their historical ROOT-local default is retained.
+Inputs still come from the owning ROOT; only private generated files move.

@@ -2199,3 +2199,23 @@ and test closure and adds opt-in CTest review targets using its source-built
 compiler for native64 C declarations only. NC64 executable defaults, Frame64/map8,
 43-op np0 admission and execution_supported=false are unchanged. Recent native
 IDE ink work is host-only and does not alter this shared agreement.
+
+
+## FLASHVM-0041 — 2026-11-01 — Isolated review scratch, no ABI change
+
+Follow-up to FLASHVM-0040 at published f005cf9fac0e120173376a8dc3796b13c5657a88.
+During selected-source review, ROOT-local temporary generated fixtures interfere
+with strict vendor integrity checks while the gates run. The two new development
+drivers now accept NATIVE64_TMPDIR as an explicit existing scratch directory;
+their historical default remains ROOT. All production source reads remain rooted
+in ROOT. This is test isolation only, not a wire/build/runtime dependency.
+
+FlashVM's opt-in CTest gates supply their build tree as the scratch directory.
+The relocated set and typed Sys gates are rerun with the same active removal
+controls; no change to constructor/formatter/Sys/module production bodies.
+The full imported NC64 runtime/IDE suite remains a separate acceptance gate.
+
+Both isolated gates completed successfully: O3/NDEBUG strict-UBSan module sets
+and the typed Sys gate's default O1 strict UBSan, with all existing active
+removal controls. A caller-supplied scratch directory does not change ROOT-based
+source selection or the generated native64 contract.

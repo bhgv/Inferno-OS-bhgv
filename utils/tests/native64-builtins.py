@@ -75,7 +75,7 @@ def main():
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     env = dict(os.environ)
     flags = shlex.split(env.get('NATIVE64_CFLAGS', '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
-    with tempfile.TemporaryDirectory(prefix='native64-builtins-', dir=ROOT) as directory:
+    with tempfile.TemporaryDirectory(prefix='native64-builtins-', dir=env.get('NATIVE64_TMPDIR', ROOT)) as directory:
         work = Path(directory)
         env['TMPDIR'] = str(work)
         if env.get('NATIVE64_LIMBO'):
