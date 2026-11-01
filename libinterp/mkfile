@@ -58,6 +58,8 @@ HFILES=\
 	$ROOT/include/native64-tail.h\
 	$ROOT/include/native64-arguments.h\
 	$ROOT/include/native64-format.h\
+	$ROOT/include/native64-sys-format.h\
+	$ROOT/include/native64-sys-call.h\
 	$ROOT/include/native64-frame.h\
 	$ROOT/include/native64-result.h\
 	$ROOT/include/native64-entry.h\

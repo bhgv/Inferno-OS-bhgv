@@ -30,7 +30,7 @@ def main():
         limbo = args.limbo.resolve()
         roots = work/'roots.m'
         roots.write_text('Roots: module { Node: adt { next: ref Node; }; copy: fn(source: array of ref Node): array of ref Node; caller: fn(padding: big, result: array of byte, tail: array of byte); many: fn('+','.join('a'+str(i)+': array of byte' for i in range(150))+'); };')
-        for name, source in [('math', ROOT/'module/math.m'), ('roots', roots)]:
+        for name, source in [('math', ROOT/'module/math.m'), ('sys', ROOT/'module/sys.m'), ('roots', roots)]:
             (work/(name+'-native64.h')).write_bytes(subprocess.check_output([str(limbo), '-H', str(source)], cwd=work, env=env))
         compiler = shlex.split(env.get('CC', 'cc'))
         includes = ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/386/include', 'emu/port', 'include', 'libinterp')]
@@ -70,7 +70,10 @@ def main():
                     source = source.replace('int\nmain(int argc, char **argv)', 'int\nnative64_arguments_main(int argc, char **argv)', 1)
                     source += '\nchar exInval[]="invalid", exBounds[]="bounds"; // Actual formatter error categories.\n'
                     source += 'char *syserr(char*, char*, Prog*);\nint hmsize(void*);\n'+core
-                    source += (ROOT/'utils/tests/native64-format.c').read_text()
+                    source += (ROOT/'utils/tests/native64-format.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_formatter_main(int argc, char **argv)', 1)
+                    source += (ROOT/'utils/tests/native64-sys-format.c').read_text()
+                    for signature in ('int\nSys_sprint64(', 'int\nSys_aprint64('):
+                        source += '\n'+function(runtime, signature)+'\n'
                     extra = [str(ROOT/('lib9/'+name+'.c')) for name in ('rune','sprint','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')]+['-pthread']
                 unit.write_text(source)
                 binary = work/(label+'-'+port)
@@ -81,13 +84,15 @@ def main():
                     if result.returncode != -signal.SIGABRT or 'GC root predicate failed' not in result.stderr:
                         raise RuntimeError('Argument ownership control did not reach its predicate: '+control+'\n'+result.stdout+result.stderr)
                 if args.formatter:
-                    adapter = (ROOT/'include/native64-format.h').read_text()
-                    for name, boundary, replacement in (('kind', 'if(!valid)', 'if(0)'),
-                            ('output', 'native64formattedclear(&build.output);', '(void)0;')):
+                    for name, header, boundary, replacement in (('kind', 'native64-format.h', 'if(!valid)', 'if(0)'),
+                            ('output', 'native64-format.h', 'native64formattedclear(&build.output);', '(void)0;'),
+                            ('sys-result', 'native64-sys-format.h', 'if(!native64sysformatreference(nil, old, call->array ? &Tarray : &Tstring))', 'if(0)'),
+                            ('sys-element', 'native64-sys-format.h', 'if(call->array && old != H && ((Array*)old)->t != &Tbyte)', 'if(0)')):
+                        adapter = (ROOT/('include/'+header)).read_text()
                         if adapter.count(boundary) != 1:
                             raise RuntimeError('Typed format control boundary changed: '+name)
                         control_unit = work/(port+'-'+name+'-unchecked.c')
-                        control_unit.write_text(source.replace('#include "native64-format.h"', adapter.replace(boundary, replacement), 1))
+                        control_unit.write_text(source.replace('#include "'+header+'"', adapter.replace(boundary, replacement), 1))
                         control_binary = work/(label+'-'+port+'-'+name+'-unchecked')
                         subprocess.run(command+[str(control_unit)]+objects+extra+['-Wl,--wrap=free', '-Wl,--gc-sections', '-lm', '-o', str(control_binary)], env=env, check=True)
                         result = subprocess.run([str(control_binary)], env=env, capture_output=True, text=True)

@@ -2613,3 +2613,73 @@ Final O1 and O3/NDEBUG strict UBSan growth/result gates pass. Full optimized
 native64-layout passes with all68 Math entries, peer boundary tests and both
 formatter removal controls. Complete runt.c compiles for NDK ARM64/x64 with the
 new helpers enabled; readiness/capacity remains PASS for all173 dispatch rows.
+
+
+## INFERNO-0040 — Explicit generated-prefix Sys sprint/aprint C gateways
+
+Fetched experiment after INFERNO-0039; FLASHVM-0039 is still the latest incoming
+journal review. This checkpoint exposes actual trusted C gateways in runt.c
+without defining a file variadic calling convention or assigning wire metadata.
+
+Explicit native64 Sys+formatter builds now export Sys_sprint64/Sys_aprint64 with
+Native64SysFormatRequest from native64-sys-call.h. They use actual generated
+F_Sys_sprint/F_Sys_aprint prefixes/maps, and supply their own fixed-schema and
+canonical/live reference checks. A caller provides only its rooted pattern,
+immutable typed tail, process, bounded output geometry and late logical resolver;
+it does not provide arbitrary producer/prefix checker callbacks. The synchronous
+control snapshot remains outside protected frames, while the existing constructor
+owns descriptor/map/Type/value references and pins the managed argument frame.
+
+Production delegates to the actual bounded formatter and c2string/mem2array path.
+Late resolution checks the old destination's exact Tstring or Tarray+Tbyte identity
+before guarded publication. Wrong old identities, cancellation and resolver errors
+preserve the old value and retire the newly produced owner plus argument/native
+resources. The trusted resolver still owes mapped current-cell provenance and
+serialization; numeric pointer checks cannot authenticate arbitrary addresses.
+The generated packed Sys_sprint/aprint/print/fprint entry refusals and registration
+guard remain. These distinct C exports are not registered as file-callable tails.
+
+The new gate invokes the actual exported runt.c wrapper bodies and generated Sys
+prefixes:1,104 transactions per emu/os and WORD32/WORD32-file combination,4,416
+in all. Three collector phases/eight process states cover both String and byte
+array results across23 request/failure modes. Actual roots hold source values
+through construction and collection runs inside the resolver. Tests check nonempty
+old owner retirement, UTF results, H format/argument, missing/wrong/noncanonical/
+nil tail values, span/count/descriptor refusal, invalid fixed Type, process/resolver/
+capacity refusal, old return Type mismatch, cancellation, resolver throw,
+constructor native/heap failure and output exhaustion. Rejected preflight cases
+must allocate nothing or resolve a result. Acquired resources and error depth
+must balance after every call. A separately compiled negative control removes
+old-result identity checking and must abort; the earlier kind/output/pin/Type
+controls remain active.
+
+Please review this trusted request/late return-Type contract before integration
+with file-call metadata. In particular, the old aprint result must be a byte array,
+not merely an arbitrary Tarray. Import native64-sys-call.h, native64-sys-format.h,
+runt.c/mkfile and the updated owning tests with their generated Sys/Math/Roots,
+actual C conversion, collector and protected-port closure. Reproduction and
+assumptions are documented in dis64-native64-sys-format.md. No serializer, wire
+signature, file kind or feature bit is assigned here.
+
+Complete builtin registration, typed print/fprint I/O gateways and file variadic
+metadata remain next work. Default43-op np0 admission, execution_supported=false,
+Frame64/map8 and NC64/SDK defaults are unchanged. ASan injected-unwind/optimized
+UTF findings stay open with no suppression. JIT dispatch173/173 includes C;
+ARM64/x64 fast166/173 and RV64M103/173 remain opcode counts, not full port readiness.
+
+An additional array-element removal control must detect an old Tarray whose
+element identity is Tword instead of Tbyte; ordinary heap-Type equality alone
+is insufficient for the aprint return contract.
+
+H-valued old destinations are also exercised for both result kinds while
+independent explicit roots keep unrelated old storage alive during collection.
+
+Final full native64-layout passes O3/NDEBUG strict UBSan with the existing Sys,
+Math68, collector and peer map gates. The expanded23-mode standalone Sys gateway
+gates pass O1 and O3/NDEBUG strict UBSan with old-Type and array-element removal
+controls. Readiness/capacity remains PASS for all173 dispatch rows.
+
+Complete runt.c emits both exported gateways for NDK ARM64/x64. An additional
+NDK r28c riscv64-linux-android35 compile using shared Android64 C declarations
+produces ELF64 RISC-V with both global gateway symbols. This is cross-compilation
+evidence, not Android/RISC-V runtime support, target execution or full boot.

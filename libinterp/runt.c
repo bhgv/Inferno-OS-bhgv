@@ -336,6 +336,25 @@ xprint(Prog *xp, void *frame, void *values, String *format, char *buffer, int by
 
 #ifdef DIS_NATIVE64_FORMATTER
 #include "native64-format.h"
+#ifdef DIS_NATIVE64_SYS_HEADER
+#include "native64-sys-format.h"
+
+
+/* Enter trusted native64 sprint with an explicit typed tail and late mapped-result resolver. */
+int
+Sys_sprint64(const Native64SysFormatRequest *request)
+{
+	return native64syssprint(request);
+}
+
+
+/* Enter trusted native64 aprint without reusing the legacy packed argument entry. */
+int
+Sys_aprint64(const Native64SysFormatRequest *request)
+{
+	return native64sysaprint(request);
+}
+#endif
 #endif
 
 typedef struct XprintCall XprintCall;
