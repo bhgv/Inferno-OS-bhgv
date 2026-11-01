@@ -32,3 +32,24 @@ and repeated foreground/background transitions. If a crash remains, preserve
 `/sdcard/Inferno/startup.log`, `/sdcard/Inferno/backtrace.log` and Android's native
 crash log; their evidence is distinct from the videos and host regression tests.
 No Tk or cryptographic source changes are made for this series.
+
+## Built test packages
+
+[Android CI 41345973702](https://github.com/bhgv/Inferno-OS_Android/actions/runs/41345973702)
+passed both builds and native host tests. Core is pinned to adf3a30; GLES launcher
+to fd581f12, FB/build orchestration to 77cc31e. The separately downloaded GLES
+APK also passes ZIP integrity, bundled AWM entry checks and the no-DEX check.
+
+| ARM32 test package | Signed APK, checksums and build logs |
+| --- | --- |
+| Inferno GLES window test | [Download ZIP](https://github.com/bhgv/Inferno-OS_Android/actions/runs/41345973702/artifacts/13099307392) |
+| Inferno FB window test | [Download ZIP](https://github.com/bhgv/Inferno-OS_Android/actions/runs/41345973702/artifacts/13099641147) |
+
+Unzip the artifact and install its APK. These are distinct test application IDs
+from the previous byte-I/O packages, so a changing CI signing key cannot block
+installation as an incompatible update. They share the existing /sdcard/Inferno
+runtime. Existing ready trees are reused. No private runtime tree or Java application is added.
+
+These results establish build/package and bounded native regression success.
+They do not establish physical-phone font proportions, successful Bounce
+animation or absence of further native faults. Device feedback remains needed.
