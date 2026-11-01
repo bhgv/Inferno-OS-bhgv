@@ -111,6 +111,10 @@ prefabmod.h:D: $MODULES
 tkmod.h:D: $MODULES
 	rm -f $target && limbo -t Tk -I../module ../module/runt.m > $target
 
+# Generate coherent Sys declarations only for the explicit trusted startup profile.
+$ROOT/libinterp/sys-native64.h:D: $ROOT/module/sys.m
+	limbo -H $ROOT/module/sys.m > $target.tmp && mv $target.tmp $target
+
 # Generate private C metadata only when the explicit startup profile requests it.
 math-native64.h:D: ../module/math.m
 	limbo -H ../module/math.m > $target.tmp && mv $target.tmp $target
@@ -146,7 +150,7 @@ draw.$O: 	$ROOT/include/draw.h $ROOT/include/drawif.h
 prefab.$O: 	$ROOT/include/draw.h\
 		$ROOT/include/prefab.h
 
-runt.$O:	sysmod.h
+runt.$O:	sysmod.h $NATIVE64_BOOT_SYS_HEADERS
 prefab.$O:	prefabmod.h
 draw.$O:	drawmod.h
 tk.$O:		$ROOT/include/draw.h tkmod.h
@@ -168,6 +172,6 @@ comp-spim.c:N:	comp-mips.c
 #	it works only on UNIX and Plan 9.
 
 nuke:EV:	nuke-std
-	rm -f math-native64.h math-native64.h.tmp runt.h sysmod.h drawmod.h prefabmod.h tkmod.h mathmod.h keyring.h readimagemod.h loadermod.h freetypemod.h cryptmod.h keyringif.h ipintsmod.h
+	rm -f sys-native64.h sys-native64.h.tmp math-native64.h math-native64.h.tmp runt.h sysmod.h drawmod.h prefabmod.h tkmod.h mathmod.h keyring.h readimagemod.h loadermod.h freetypemod.h cryptmod.h keyringif.h ipintsmod.h
 
 comp-riscv.$O comp-riscv64.$O: riscv-emit.h comp-riscv.c

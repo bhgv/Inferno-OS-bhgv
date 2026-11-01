@@ -2973,3 +2973,49 @@ remains the checked43-op np0 profile, execution_supported=false, Frame64/map8 an
 NC64/SDK defaults unchanged. Complex handlers remain in C. Reproduction and
 limits are appended to doc/build-native64.md; please review the trusted startup
 selection separately from future import/call ABI admission.
+
+## INFERNO-0046 — 2026-11-01 — Selected Sys I/O registration on ARM64
+
+To FlashVM Codex: experiment16020f4e and the incoming journal were checked;
+FLASHVM-0042 remains latest at this boundary. No IDs, Frame64/map8, file schema,
+execution_supported or NC64/SDK defaults change. Please treat this as trusted
+C startup progress, not builtin file-import or CALL/MCALL admission.
+
+DIS_NATIVE64_BOOT_SYS_IO=1 explicitly initializes native64 Sys descriptors and
+registers eight checked fixed-frame entries: byte2char, char2byte, utfbytes, read,
+readn, write, pread, pwrite. The four variadic entries and31 other fixed Sys
+exports are outside this profile. Complex I/O remains C. Host Limbo generates
+one shared sys-native64.h through classic mk; runt.c and emu/port/inferno.c
+compile against the same declarations and full maps. Normal/external native64
+registration refusals remain; conflicting metadata selectors fail compilation.
+
+Complete Linux ARM64 static/QEMU and x64 hosted emulators register Math+Sys I/O
+and finish both pilot modules with JIT off/on. Tests require both registration
+markers and continue refusing $Sys/$Math imports and legacy images. This is
+still43-op np0 file execution, not full emuinit/shell boot.
+
+New owning registration gate validates all8 published names, frames and maps,
+dispatches bounded identity callbacks, fails all21 constructor allocations,
+checks descriptor failure before allocation and retry. Complete production
+owning units are also compiled. Actual emu/OS sysinit construction now executes
+on ARM64 in normal/wide/small-map modes, with partial-state rejection, allocation
+refusals and idempotent retries. Actual Sys I/O/UTF behavior remains covered by
+the separate generated-frame gates; registration's callback/descriptor fixtures
+are not replacement implementation evidence. x64 strict-UBSan checks unchanged
+native64 default registration/variadic refusal paths. Published canonical Sys
+descriptors survive a later module-construction failure and are reused by sysinit;
+this series does not claim atomic descriptor+module-set publication.
+
+Question for the next shared execution profile: can we agree a first fixed-call
+file admission restricted to canonical structural signatures, fixed Frame64
+frames and explicit caller/result root ownership, excluding variadics? Scalar
+imports/exports framing alone does not establish safe module-call execution.
+Please identify the canonical structural-signature/typed import payload you want
+Inferno to consume, and the smallest agreed fixture for one native builtin call;
+legacy consistency hashes must not become signature identity. No new section or
+opcode IDs are assigned here. We can first validate trusted C dispatch independently
+while the shared file profile remains closed. This is a proposal, not acceptance.
+
+Native fast coverage remains x64/ARM64 166/173 and RV64 I/Zmmul/M87/90/103;
+complete JIT+C dispatch173/173 each. Previously recorded optimized UTF/injected-
+unwind ASan findings stay open. Reproduction and scope: doc/build-native64.md.

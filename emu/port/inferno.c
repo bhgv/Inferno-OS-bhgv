@@ -3,6 +3,13 @@
 #include "error.h"
 #include "interp.h"
 #include "isa.h"
+#include "native64-scalar-boot.h"
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+#ifdef DIS_NATIVE64_SYS_HEADER
+#error native64 Sys startup owns its generated metadata selection
+#endif
+#define DIS_NATIVE64_SYS_HEADER "sys-native64.h" // Coherent generated Sys types for the explicit startup profile.
+#endif
 /* Explicit native64 consumers must use one coherent generated Sys declaration set. */
 #ifdef DIS_NATIVE64_SYS_HEADER
 #ifndef DIS_WORD32

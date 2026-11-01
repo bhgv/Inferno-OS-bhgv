@@ -22,13 +22,15 @@ def main():
     prefix = prefix.replace('static void*\nallocate(size_t size)', 'static void observeinit(void);\n\n\n/* Observe publication before allocator entry. */\nstatic void*\nallocate(size_t size)')
     prefix = prefix.replace('\tcount = 0;\n', '\tobserveinit();\n\tcount = 0;\n', 1)
     env = dict(os.environ)
+    runner = shlex.split(env.get('NATIVE64_RUNNER', ''))
+    arch = env.get('NATIVE64_ARCH', 'amd64')
     flags = shlex.split(env.get('NATIVE64_CFLAGS', '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
-    with tempfile.TemporaryDirectory(prefix='native64-sys-init-', dir=ROOT) as directory:
+    with tempfile.TemporaryDirectory(prefix='native64-sys-init-', dir=env.get('NATIVE64_TMPDIR', ROOT)) as directory:
         work = Path(directory)
         env['TMPDIR'] = str(work)
         (work/'sys-native64.h').write_bytes(subprocess.check_output([str(args.limbo.resolve()), '-H', str(ROOT/'module/sys.m')], cwd=work, env=env))
         compiler = shlex.split(env.get('CC', 'cc'))
-        includes = ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/amd64/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
+        includes = ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
         for platform in ('emu', 'os'):
             sourcepath = args.emu_source if platform == 'emu' and args.emu_source else ROOT/(platform+'/port/inferno.c')
             source = sourcepath.read_text()
@@ -40,7 +42,7 @@ def main():
                 for mode, selection in [('normal', []), ('wide', ['-DSYS_INIT_WIDE']), ('smallmap', ['-DSYS_INIT_WIDE', '-DSYS_INIT_SMALL_MAPS'])]:
                     binary = work/(platform+'-'+label+'-'+mode)
                     subprocess.run(compiler+flags+model+selection+includes+[str(work/'test.c'), '-o', str(binary)], env=env, check=True)
-                    subprocess.run([str(binary)], env=env, check=True)
+                    subprocess.run(runner+[str(binary)], env=env, check=True)
                     print('PASS Sys initializer:', platform, label, mode, flush=True)
 
 

@@ -274,6 +274,8 @@ main(int argc, char *argv[])
 	if(vflag){
 #ifdef DIS_NATIVE64_BOOT_MATH
 		fprint(2, "emu: experimental native64 scalar startup with trusted Math; builtin imports are disabled\n");
+#elif defined(DIS_NATIVE64_BOOT_SYS_IO)
+		fprint(2, "emu: experimental native64 scalar startup with trusted Sys I/O; builtin imports are disabled\n");
 #else
 		fprint(2, "emu: experimental native64 scalar startup; builtin modules are disabled\n");
 #endif

@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--emu', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runner', default='')
+    parser.add_argument('--sys-io', action='store_true', help='require the eight-entry trusted Sys I/O startup profile')
     parser.add_argument('--math', action='store_true', help='require trusted Math registration without file import admission')
     args = parser.parse_args()
     command = shlex.split(args.runner)+[str(args.emu.resolve()), '-v', '-r', str(args.root.resolve())]
@@ -42,6 +43,9 @@ def main():
             for jit in (0, 1):
                 path = '/'+str(image.relative_to(args.root.resolve()))
                 output = execute(command+['-c', str(jit), '-d', path])
+                sysio = 'native64 startup: trusted Sys I/O registered (8 fixed exports); file imports remain disabled' in output
+                if sysio != args.sys_io:
+                    raise RuntimeError('Unexpected Sys I/O startup selection: '+output)
                 registered = 'native64 startup: trusted Math registered; file imports remain disabled' in output
                 if registered != args.math:
                     raise RuntimeError('Unexpected Math startup selection: '+output)

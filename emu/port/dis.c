@@ -1207,6 +1207,11 @@ disinit(void *a)
 	if(vflag)
 		print("native64 startup: trusted Math registered; file imports remain disabled\n");
 #endif
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+	sysmodinit();
+	if(vflag)
+		print("native64 startup: trusted Sys I/O registered (8 fixed exports); file imports remain disabled\n");
+#endif
 	excinit();
 
 	root = load(initmod);

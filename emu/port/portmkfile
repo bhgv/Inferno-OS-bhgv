@@ -181,3 +181,9 @@ srv.h srvm.h:D:		$ROOT/module/srvrunt.b $ROOT/module/srv.m
 
 # Startup must reject mismatched installed builtin frames before module registration.
 main.$O amain.$O: $ROOT/include/legacy-native-abi.h
+
+# inferno.c consumes the same generated Sys types as the owning interpreter.
+inferno.$O:	$NATIVE64_BOOT_SYS_HEADERS
+
+$ROOT/libinterp/sys-native64.h:D: $ROOT/module/sys.m
+	limbo -H $ROOT/module/sys.m > $target.tmp && mv $target.tmp $target

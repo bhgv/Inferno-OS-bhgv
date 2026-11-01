@@ -1,6 +1,14 @@
 #include "lib9.h"
 #include "isa.h"
 #include "interp.h"
+#include "native64-scalar-boot.h"
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+#ifdef DIS_NATIVE64_SYS_HEADER
+#error native64 Sys startup owns its generated metadata selection
+#endif
+#define DIS_NATIVE64_SYS_HEADER "sys-native64.h" // Coherent generated Sys types for the explicit startup profile.
+#define LIMBO_NATIVE64_TABLES // Trusted selected fixed-frame entries; variadic prefixes remain excluded.
+#endif
 /* Explicit native64 consumers must use one coherent generated Sys declaration set. */
 #ifdef DIS_NATIVE64_SYS_HEADER
 #ifndef DIS_WORD32
@@ -26,11 +34,34 @@
 static	int		utfnleng(char*, int, int*);
 
 
-/* Keep experimental Sys declarations out of legacy registration until the complete call ABI is ready. */
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+static const LimboNative64Entry *const native64sysio[] = {
+	&limbo_native64_Sys_byte2char_entry, // Checked scalar decoding.
+	&limbo_native64_Sys_char2byte_entry, // Checked scalar encoding.
+	&limbo_native64_Sys_utfbytes_entry, // Checked UTF extent.
+	&limbo_native64_Sys_read_entry, // Bounded native I/O.
+	&limbo_native64_Sys_readn_entry, // Bounded repeated reads.
+	&limbo_native64_Sys_write_entry, // Bounded native write.
+	&limbo_native64_Sys_pread_entry, // Bounded positioned read.
+	&limbo_native64_Sys_pwrite_entry, // Bounded positioned write.
+};
+#endif
+
+
+/* Register only the explicitly selected trusted profile; ordinary native64 declarations stay closed. */
 void
 sysmodinit(void)
 {
-#ifdef DIS_NATIVE64_SYS_HEADER
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+	if(!limbo_native64_Sys_layout()){
+		error("native64 Sys layout mismatch");
+		return;
+	}
+	sysinit();
+	if(builtinmod64("$Sys", limbo_native64_Sys_specs, limbo_native64_Sys_spec_count,
+	   native64sysio, sizeof(native64sysio)/sizeof(native64sysio[0])) == nil)
+		error("native64 Sys I/O registration failed");
+#elif defined(DIS_NATIVE64_SYS_HEADER)
 	error("experimental native64 Sys registration is not supported");
 	return;
 #else

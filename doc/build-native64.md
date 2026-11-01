@@ -218,3 +218,63 @@ sentinel. The latter two corrections are mirrored in the OS allocator. Hosted
 AMD64/UBSan and ARM64/QEMU tests cover128 oversized API refusals and both tags,
 with independent size-guard, new-owner-tag and inverted-read mutation controls.
 The existing minimum-block/coalescing checks remain active.
+
+## Trusted Sys I/O startup (INFERNO-0046)
+
+The explicit scalar runtime can additionally initialize native64 Sys descriptors
+and register eight fixed-frame Sys exports: byte2char, char2byte, utfbytes, read,
+readn, write, pread and pwrite. This is a selected trusted C profile, not the full
+Sys module and not a file-import admission change. Complex I/O bodies stay in C.
+
+```
+python3 utils/configure.py --host linux --target linux --arch arm64 --console \
+  --cross aarch64-linux-gnu- --native64-scalar-boot --native64-math-boot \
+  --native64-sys-io-boot
+```
+
+DIS_NATIVE64_BOOT_SYS_IO=1 requires the guarded scalar profile. Classic mk
+creates libinterp/sys-native64.h with host Limbo -H before compiling both runt.c
+and emu/port/inferno.c. Both owning translation units use the same generated Sys
+ADTs, fixed frames and complete maps. NATIVE64_BOOT_SYS_HEADERS stores an absolute
+path: mk expands assignments immediately, so a generated assignment before ROOT
+must not contain an unresolved $ROOT reference. nuke removes the generated header.
+Default and externally selected native64 Sys declarations retain the existing
+registration refusal. Explicit conflicting header selectors fail compilation.
+
+Real Linux ARM64 static/QEMU and x64 hosted emulators now initialize Sys, register
+Math and the eight-entry Sys profile, and finish both pilot modules with JIT off
+and on. Require the selected startup markers and continued closed admission:
+
+```
+python3 utils/tests/native64-scalar-boot.py --math --sys-io \
+  --emu /build/emu/Linux/o.emu-g --root /build --runner qemu-aarch64
+```
+
+The test still rejects `$Sys`, `$Math` and legacy images. It does not invoke these
+eight exports from a Dis64 file. No generic CALL/MCALL, builtin import, typed
+variadic wire metadata or general shell startup is enabled. Scalar file execution
+is still the43-op np0 profile. Native dispatch counts remain unchanged.
+
+Additional gates separate registration ownership from actual callback behavior:
+
+```
+python3 utils/tests/native64-sys-register.py --limbo /host/tools/limbo
+python3 utils/tests/native64-sys-init.py --limbo /host/tools/limbo
+python3 utils/tests/native64-sys.py --limbo /host/tools/limbo
+```
+
+All support the same NATIVE64_ARCH/CC/NATIVE64_CFLAGS/NATIVE64_RUNNER environment.
+The registration gate compiles both complete owning production units, executes
+the actual registration and constructor bodies, validates the eight published
+names/types/maps, dispatches bounded identity callbacks, fails every21 constructor
+allocation, rejects descriptor initialization before allocation, and retries.
+The callback/descriptor boundary is explicitly bounded there: use the separate
+Sys handler/initializer gates for actual implementation evidence. Registration
+failure does not retire already published canonical Sys descriptors; sysinit's
+idempotent retry contract owns those process-lifetime descriptors.
+
+ARM64 execution additionally passes actual emu/OS sysinit descriptor construction
+in normal/wide/insufficient-map modes with allocation refusals, retries and partial
+state rejection. The earlier actual I/O/UTF source gates remain active; x64 strict
+UBSan also verifies unchanged default native64 registration/variadic refusals.
+This is not closure of previously recorded optimized UTF/error-unwind ASan work.
