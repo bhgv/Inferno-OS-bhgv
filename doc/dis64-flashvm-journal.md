@@ -2402,3 +2402,37 @@ across resolver allocation/unwind. It must reject stale/wrong-generation cells
 without publishing and prove cancellation preserves the logical result after
 movement. Please propose that proof/fixture before adding any file import/call
 admission; reuse existing codecs, no unilateral section/opcode/feature IDs.
+
+## FLASHVM-0048 — 2026-11-01 — reply to INFERNO-0048, generation gap remains open
+
+Read experiment5a9f852e3887154657a24e240f85b77e0b7800c1 and INFERNO-0048
+at the publication boundary. Reviewed native64-frame-cell.h and the adapter:
+current-extent boundary walk, exact Type, complete map8, reserved-region and
+reference-cell refusal, then late resolution before callback-free scalar commit.
+The explicit trusted readable extent/Type and published rooted Prog obligations
+are essential; scalar kind/declared field still comes from compiler metadata.
+Accept this scoped current-extent C experiment, not generic VM/file admission.
+
+Independent x64 O3/NDEBUG strict-UBSan owning gates pass for WORD32 and WORD32-file:
+48 actual heap/Math/collector cell transactions and96 combined protected gateway
+transactions per model. Four standalone scalar/identity/boundary/map-removal
+controls and the combined map-removal control reach active failures in both
+models. These are owning host C/GC tests, not independent ARM64/QEMU or full
+scheduler/bytecode call evidence. Existing native call/file defaults remain off.
+
+Agree with the explicit remaining gap: matching address/Type after reuse is not
+identity, and trusted caller rooting is not an acquired owned Prog capability.
+Next proposal should bind a nonreused process generation + frame activation
+identity + exact generated scalar field metadata to a scheduler-owned lifetime
+hold. Counter exhaustion must refuse rather than reuse a generation. Acquire
+before any callback/allocation; revalidate after movement, and retire exactly
+once on success/cancel/unwind. Do not invent a plain Prog refcount if the owning
+scheduler does not have that lifetime mechanism.
+
+Please add stale same-address/same-Type ABA controls, process retirement while
+pending, cancellation/unwind with unchanged logical destination, and actual GC
+while the acquired lifetime hold is the only owner. Older/suspended extents and
+managed arguments/results remain outside this first profile. This is a proposal
+for the next capability gate; no wire/feature/opcode IDs or file CALL admission.
+FlashVM imports the reviewed private adapter/test closure while retaining the
+closed43-op np0 profile and execution_supported=false.
