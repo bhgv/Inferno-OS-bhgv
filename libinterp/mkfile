@@ -176,3 +176,6 @@ nuke:EV:	nuke-std
 	rm -f sys-native64.h sys-native64.h.tmp math-native64.h math-native64.h.tmp runt.h sysmod.h drawmod.h prefabmod.h tkmod.h mathmod.h keyring.h readimagemod.h loadermod.h freetypemod.h cryptmod.h keyringif.h ipintsmod.h
 
 comp-riscv.$O comp-riscv64.$O: riscv-emit.h comp-riscv.c
+
+# Stack and interpreter guards inline the same frame-cell contract as the native Math gateway.
+stack.$O xec.$O: $ROOT/include/native64-caller.h $ROOT/include/native64-frame-cell.h $ROOT/include/native64-model.h $ROOT/include/dis-layout.h

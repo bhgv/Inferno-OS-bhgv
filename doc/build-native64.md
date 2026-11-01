@@ -495,3 +495,70 @@ the final o.emu-g link command. The driver uses those exact toolchain options;
 CC/archive tools must be available on PATH. Old unleased C APIs retain their
 previous trusted contracts; selecting this profile does not turn every native
 call into an acquired lease automatically.
+
+## Clean native64 build and execution reproduction
+
+`utils/configure.py --native64-caller-guard` now selects the fixed Math experiment
+and caller guard together, for every owning unit. It requires explicit scalar
+and Math startup selections and the Linux 64-bit console profile. Sys I/O remains
+optional. Invalid combinations fail before replacing an existing configuration.
+The model flags are composed once, so selecting Sys cannot discard the guard.
+Changing profiles still requires a complete runtime rebuild.
+
+```
+python3 utils/configure.py --host linux --arch arm64 --console \
+  --native64-scalar-boot --native64-math-boot --native64-sys-io-boot \
+  --native64-caller-guard
+```
+
+For repeatable target testing, the new driver copies tracked source inputs,
+including their current working edits, into an empty external build directory.
+It does not copy untracked build products or alter the source mkconfig. Prepare
+native host mk/limbo/iyacc/decgen using makemk.sh first. Then run:
+
+```
+python3 utils/tests/native64-port.py \
+  --build-root /work/inferno-arm64-check \
+  --host-tools /work/host-tools --arch arm64 \
+  --cross aarch64-linux-gnu- \
+  --runner 'qemu-aarch64 -L /usr/aarch64-linux-gnu'
+```
+
+The driver prepares mkconfig, invokes classic mk in emu/Linux, and preserves each
+stage log under port-logs. It runs both scalar pilots JIT-off/on, closed admission,
+actual partial-guard relinks, incremental dependency checks, both emu/OS lease
+fixtures, post-callee unwind, actual GC/lease publication and its active map
+removal control. ARM64 additionally runs all744 independent images and actual
+scheduler/file/vmachine source closures plus exception controls. The OS lifecycle
+lease checks remain bounded guard fixtures, not full kernel boot.
+
+Use `--arch amd64` for native host reproduction; `--arch riscv64` selects that
+build profile but this series does not claim a new RV64 execution run. The target
+C gate default is O3/NDEBUG without sanitizers. For native x64 add:
+
+```
+--test-cflags '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'
+```
+
+`--test-cc` overrides the C fixture compiler command independently of the classic
+mk CROSS prefix. This matters when the emulator is linked statically: GNU static
+glibc's internal free calls can enter the fixture's --wrap=free interposer and
+correctly trip its unknown-allocation oracle before bytecode execution. Use a
+dynamic glibc compiler command and matching QEMU sysroot for these fixtures;
+do not weaken the tracked-allocation predicate or count that failure as a VM
+instruction regression. Android keeps its existing free_ boundary. Production
+libc/allocator code is unchanged.
+
+The actual stack/xec/dis objects now depend explicitly on the complete inline
+caller/frame-cell/model/layout contract. Previously a frame-cell-only edit could
+leave stale interpreter/stack/scheduler guards while Math was rebuilt. The
+new dry-run gate first requires no pending owner compilations, advances each
+header timestamp, requires all three owners to compile, then restores timestamps
+without changing header bytes. Removing the frame-cell dependency reaches the
+active failure. The OS scheduler receives the same explicit source dependencies;
+no OS kernel build is claimed by the hosted Linux gate.
+
+This reproduction is scalar boot plus private C/GC evidence. It does not connect
+the private gateway to file CALL/MCALL, automatically publish live global R into
+Prog.R, or admit a complete Limbo shell and managed native call graphs. The
+shared43-op np0 file profile and execution_supported=false remain unchanged.

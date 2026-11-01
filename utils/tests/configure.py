@@ -48,6 +48,31 @@ def main():
         bad=subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--arch','arm64','--console','--native64-sys-io-boot','--output',str(work/'invalid-sys')],capture_output=True)
         if bad.returncode==0 or (work/'invalid-sys').exists():
             raise RuntimeError('Trusted Sys startup accepted the legacy ABI')
+        # Cover every 64-bit backend and optional Sys combination: a later flag must not erase the lease.
+        for arch in ('amd64','arm64','riscv64'):
+            for sysio in (False,True):
+                command=['python3',str(ROOT/'utils/configure.py'),'--host','linux','--arch',arch,'--console',
+                         '--native64-scalar-boot','--native64-math-boot','--native64-caller-guard','--output',str(output)]
+                if sysio:
+                    command.append('--native64-sys-io-boot')
+                subprocess.run(command,check=True,capture_output=True)
+                lines=output.read_text().splitlines()
+                model=[line for line in lines if line.startswith('DISMODELFLAGS=')]
+                required=['DIS_WORD32','DIS64_PILOT_LOADER','DIS_NATIVE64_SCALAR_BOOT',
+                          'DIS_NATIVE64_BOOT_MATH','DIS_NATIVE64_FIXED_MATH_CALL','DIS_NATIVE64_CALLER_GUARD']
+                if len(model)!=1 or any(model[0].count('-D'+name+'=1')!=1 for name in required):
+                    raise RuntimeError('Caller lease flags are not coherent: '+arch)
+                if ('-DDIS_NATIVE64_BOOT_SYS_IO=1' in model[0])!=sysio:
+                    raise RuntimeError('Caller lease selected the wrong Sys profile')
+        # Validation must preserve an existing output as well as refuse creating a new one.
+        sentinel=work/'invalid-caller'; sentinel.write_text('preserve user configuration\n')
+        for options in ([],['--native64-scalar-boot'],['--native64-math-boot'],
+                        ['--native64-scalar-boot','--native64-math-boot','--arch','386'],
+                        ['--native64-scalar-boot','--native64-math-boot','--target','android']):
+            bad=subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--arch','arm64','--console',
+                                '--native64-caller-guard','--output',str(sentinel)]+options,capture_output=True)
+            if bad.returncode==0 or sentinel.read_text()!='preserve user configuration\n':
+                raise RuntimeError('Invalid caller profile changed an existing configuration')
         for target in ('Linux','MacOSX','Nt'):
             result=subprocess.run(['/bin/sh','../port/mkdevlist','emu-g'],cwd=ROOT/'emu'/target,env=dict(os.environ,ROOT=str(ROOT),AWK='awk'),capture_output=True,text=True,check=True)
             devs=next(row for row in result.stdout.splitlines() if row.startswith('DEVS='))

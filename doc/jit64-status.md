@@ -53,6 +53,18 @@ python3 libinterp/tests/dis64-scheduler.py
 python3 libinterp/tests/dis64-vmachine.py
 ```
 
-Native execution in the connected Dis64 fixtures is Linux/AMD64. RV64 complete tails additionally run under Linux/QEMU; this does not replace a
-physical target, full scheduler/GC startup or complete new-format admission.
-ARM64 availability and host compilation likewise do not establish target execution.
+Connected scalar Dis64 fixtures execute on Linux/AMD64 and Linux/ARM64 under
+QEMU. The ARM64 gate covers744 whole images and1667800 actual C/RX predicates,
+plus actual scheduler/file/vmachine closures and exception-removal controls.
+Complete classic-mk ARM64 and x64 console emulators also boot the two scalar
+pilots with JIT off/on and trusted Math/Sys registration. The lease/GC experiments
+remain private C fixtures; this does not establish a file-native calling ABI.
+RV64 complete tails additionally execute under Linux/QEMU; no new complete RV64
+emulator boot is claimed here. QEMU evidence does not replace physical hardware,
+full shell startup, general managed call graphs or complete new-format admission.
+
+The clean build/boot/lease reproduction driver is utils/tests/native64-port.py;
+see [native64 build instructions](build-native64.md#clean-native64-build-and-execution-reproduction).
+Fast opcode counts above are unchanged by this build series. Complete JIT+C
+entry coverage remains173/173; the shared scalar file profile admits43/173
+opcodes (24.86%), and does not admit the remaining130 or file CALL/MCALL.

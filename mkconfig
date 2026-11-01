@@ -46,6 +46,12 @@ OBJTYPE=arm #386 #arm  #386			# target system object type (eg, 386, arm, mips, p
 # Rebuild every linked runtime object with the same model; default remains legacy.
 
 
+# Coherent experimental caller leases (Linux amd64/arm64/riscv64 console only):
+# python3 utils/configure.py --host linux --arch arm64 --console \
+#   --native64-scalar-boot --native64-math-boot --native64-sys-io-boot \
+#   --native64-caller-guard
+# Rebuild every runtime object after changing model/guard flags; file calls remain closed.
+
 # Classic emulator entry, normally mkfile; configure.py --console selects mkfile-console.
 EMUMKFILE=mkfile
 
