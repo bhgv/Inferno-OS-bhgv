@@ -3,7 +3,7 @@
 #include "dis64-inline.h"
 
 #define ScalarInlineFunctions 16U // Bound source specialization, including the sole exported entry.
-#define ScalarInlineFrame 128U // Bound temporary storage in each straightline helper.
+#define ScalarInlineFrame 128U // Bound scalar scratch and local storage in each straightline helper.
 #define ScalarInlineBody 32U // Bound straightline helper bodies, excluding the terminal RET.
 #define ScalarInlineLabels 8U // Match the existing numeric case lowering bound.
 
@@ -14,6 +14,7 @@ struct InlineFunction {
 	unsigned int start; // Original resolved first Dis PC.
 	unsigned int end; // Exclusive original function extent.
 	unsigned int body; // Validated helper-body instruction count, excluding RET.
+	unsigned int zeros; // Four-byte stores that renew a helper with declared scalar locals.
 };
 
 typedef struct InlineTable InlineTable;
@@ -67,10 +68,16 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 	   (decl->desc->nmap != 0 && decl->desc->map == nil) ||
 	   function->end-function->start > ScalarInlineBody+1)
 		return 0;
+	function->zeros = 0;
 	for(local = decl->locals; local != nil; local = local->next){
-		if(local->sym == nil || local->sym->name == nil || local->sym->name[0] != '.' || local->ty == nil ||
+		if(local->sym == nil || local->sym->name == nil || local->ty == nil ||
 		   (local->ty->kind != Tint && local->ty->kind != Tbig && local->ty->kind != Treal))
 			return 0;
+		if(local->sym->name[0] != '.'){
+			if(decl->desc->size%IBY2WD != 0)
+				return 0;
+			function->zeros = (decl->desc->size-ScalarScratchStart)/IBY2WD;
+		}
 	}
 	for(i = 0; i < decl->desc->nmap; i++)
 		if(decl->desc->map[i] != 0)
@@ -238,7 +245,9 @@ dis64prepare(Decl *entry, Inst *instructions, unsigned int count, unsigned int d
 			callee = inlinefunction(functions, nfns, input->d.offset);
 			if(callee < 0 || callee == current)
 				goto done;
-			amount = functions[callee].body == 0 ? 1 : functions[callee].body;
+			amount = functions[callee].body+functions[callee].zeros;
+			if(amount == 0)
+				amount = 1;
 		}
 		if(input->op == ICASE || input->op == ICASEL || input->op == IGOTO)
 			tablecount++;
@@ -261,6 +270,17 @@ dis64prepare(Decl *entry, Inst *instructions, unsigned int count, unsigned int d
 		copy = &prepared->storage[at];
 		if(input->op == ICALL){
 			callee = inlinefunction(functions, nfns, input->d.offset);
+			/* Renew the entire private span, including padding and both halves of Big/Real locals. */
+			for(j = 0; j < functions[callee].zeros; j++){
+				memset(copy, 0, sizeof(*copy));
+				copy->src = input->src;
+				copy->op = IMOVW;
+				copy->sm = Aimm;
+				copy->mm = Anone;
+				copy->dm = Afp;
+				copy->d.reg = scratch+j*IBY2WD;
+				copy = &prepared->storage[++at];
+			}
 			for(j = functions[callee].start; j+1 < functions[callee].end; j++){
 				*copy = *original[j];
 				inlinerelocate(copy->sm, &copy->s, scratch);
@@ -268,7 +288,7 @@ dis64prepare(Decl *entry, Inst *instructions, unsigned int count, unsigned int d
 				inlinerelocate(copy->dm, &copy->d, scratch);
 				copy = &prepared->storage[++at];
 			}
-			if(functions[callee].body != 0)
+			if(functions[callee].body != 0 || functions[callee].zeros != 0)
 				continue;
 		}
 		*copy = *input;

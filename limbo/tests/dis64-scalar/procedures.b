@@ -10,10 +10,12 @@ result: int;
 tally: int;
 
 
-# Count calls without allocating a managed frame in the scalar output.
+# Renew a declared local on every call without allocating a managed frame.
 step()
 {
-	tally++;
+	local: int;
+	local++;
+	tally += local;
 }
 
 

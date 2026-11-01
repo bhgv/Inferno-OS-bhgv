@@ -1,4 +1,4 @@
-# Bounded scalar source procedures: series 0057
+# Bounded scalar source procedures: through series 0058
 
 `limbo -6` can specialize direct FRAME/CALL pairs into its sole exported
 `init()` before the existing numeric-case and scalar lowering passes. This is
@@ -9,8 +9,9 @@ signature, coordinate schema or wire identifier is assigned.
 The current bounds are 16 compiled functions including the entry, 32 scalar
 instructions per helper excluding its final RET, and 128 bytes of legacy helper
 frame extent. Each helper has no arguments or result, no recursion or nested
-calls, no branches or cases, no managed frame map, and no user-declared locals.
-Only scalar compiler-generated temporaries are accepted. The entry can retain
+calls, no branches or cases and no managed frame map. Series 0058 also admits
+user-declared int/big/real locals with fresh zero initialization per call.
+Byte, pointer and aggregate locals remain refused. The entry can retain
 its own loops, branches and bounded numeric cases around the calls.
 
 The compiler validates exact adjacent FRAME/CALL pairs, callee start and frame
@@ -22,11 +23,14 @@ instruction. Each helper's terminal RET disappears; the entry RET becomes EXIT.
 
 Helper scratch and compiler temporaries occupy an appended region separate
 from caller locals and the caller's scalar scratch tail. Sequential helper
-invocations reuse that region; they do not implement fresh-frame initialization
-for declared locals. Unsupported shapes fail compilation rather than emitting
+invocations reuse that region. For helpers with declared locals, series 0058
+renews the entire private span with MOVW zero stores before every call. This
+covers scratch, padding and both halves of Big/Real storage; caller locals and
+caller scratch stay separate. Helpers with compiler temporaries alone retain
+the previous output without added stores. Unsupported shapes fail compilation rather than emitting
 file CALL/FRAME or falling back to an incompatible ABI.
 
-`utils/tests/dis64-inline.py` covers 18 accepted sources, each executed once
+The series 0057 version of `utils/tests/dis64-inline.py` covered 18 accepted sources, each executed once
 through the interpreter and once through JIT. It checks helpers before and after
 the entry, empty bodies, repeated calls, loops, three numeric case forms, Big
 wraparound, Real moves, live caller Big/Real locals, scratch isolation, both
@@ -80,3 +84,28 @@ The owning native Limbo integration gate also passes 72 ordinary Dis/AOT source
 cases and exact ABI32/late-link checks. The previous compiler produces identical
 ordinary Dis for the scalar compatibility corpus. No APK or full shell claim
 follows from these restricted console results.
+
+## Series 0058: fresh scalar locals
+
+The full updated helper gate has 27 accepted sources, 54 whole C/JIT execution
+processes per architecture, two active stale-local execution controls and ten
+valid ordinary-source refusal shapes. New cases cover repeated zero-based local
+updates, mixed scalar widths, Real zero, explicit initializers, reuse after a
+different helper dirties the region, calls inside numeric cases, and the exact
+128-byte helper-frame boundary. A 136-byte scalar helper is separately refused.
+
+The stale-local control preserves all file framing and valid scalar operands.
+It replaces the second call's MOVW-zero stores with ORW-zero, leaving the first
+call initialized and then preserving its stale contents. Both interpreter and
+JIT must report the source's expected zero-divide check. The external reader
+accepts this intentionally wrong program: format admission is not a proof of
+source-language semantics. Ordinary compiler output remains unchanged.
+
+Generated initialization instructions use the source call-site diagnostic span;
+the copied helper body keeps its original helper span. No physical UTF-8 column
+schema, debug section, signature or native callable witness is introduced.
+The sole-entry fast path and temporary-only helper output stay unchanged.
+
+General arguments/results, nested/recursive calls, managed storage and full shell
+startup remain closed. This series advances the source subset on the same 43-op
+file profile; it does not increase the native JIT opcode percentages.

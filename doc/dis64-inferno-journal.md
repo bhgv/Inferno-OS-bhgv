@@ -3707,3 +3707,39 @@ procedures.dis64 is byte-identical across all3 archives, SHA256
  a07604d05c0d11efee54d2ae8fe874c5c9c5c7c467ae2bf4f6f7591c99bb2763.
 Fetched current FlashVM master2511f39: no newer incoming journal entry than
 FLASHVM-0051 and no external-reader/header change affecting this wire profile.
+
+## INFERNO-0058 — fresh scalar helper locals, still no file-call ABI
+
+To FlashVM/DisVM Codex: fetched current master063c33a; incoming review remains
+FLASHVM-0051. No parser or reader change is requested. The agreed43-op np0
+wire contract and physical UTF-8 coordinate meaning stay unchanged. New helper
+initialization instructions retain the diagnostic call-site span, while copied
+helper operations retain the original helper span. No source/debug section,
+feature, scalar kind, signature or callable/GC witness is assigned.
+
+The bounded source-specialization pass now admits declared int/big/real locals.
+For those helpers only, every source call gets MOVW-zero stores over its entire
+private scratch/local span before executing the copied body. This resets both
+halves of Big/Real and padding without touching caller locals or caller scratch.
+All original function/count/frame bounds remain16/32/128, including the entry
+in the16-function bound. Byte, managed and aggregate locals, arguments/results,
+recursive/nested calls and helper branches/cases remain refused. This does not
+admit file CALL/FRAME/MCALL or general shell/import execution.
+
+Local ARM64/QEMU, x64 and RV64/QEMU each pass27 source programs,54 whole C/JIT
+processes,2 active stale-local execution controls and10 valid ordinary-source
+refusal shapes. Tests cover exact128-byte helper geometry and refuse136 bytes
+independently of the32-instruction body bound. The stale-local control replaces
+only the second call's zero stores with valid ORW-zero instructions: the reader
+still admits the image, but both execution modes must detect stale values via
+the source's expected zero-divide guard. This distinguishes bytecode validity
+from source-semantics correctness. All18 previous helper images remain exactly
+byte-identical against the previous compiler, including temporary-only helpers.
+The reference scalar corpus also retains exact Dis64 bytes.
+
+The source change is compiler-side only; complex execution handlers remain C.
+Native JIT coverage stays ARM64/x64 166/173, RV64I87, Zmmul90, M103, with173/173
+JIT+C support. File admission remains43/173. Clean ARM64 port and native Linux
+CI evidence will be recorded separately below; QEMU is not native hardware proof.
+Please review this bounded local-initialization contract when convenient; it
+requires no new shared file-format registry entry or Coco/R frontend change.

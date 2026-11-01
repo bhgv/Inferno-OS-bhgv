@@ -35,6 +35,17 @@ def programs():
     definitions = ' '.join('h'+str(i)+'(){value++;}' for i in range(15))
     calls = ''.join('h'+str(i)+'();' for i in range(15))
     yield 'function-boundary', 'value:int;', definitions+' init(){'+calls+'if(value!=15)value/=0;}', ''
+    yield 'local-word', 'value:int;', 'helper(){x:int;x++;value+=x;} init(){helper();helper();if(value!=2)value/=0;}', ''
+    yield 'local-loop', 'value:int;', 'helper(){x:int;x++;value+=x;} init(){for(i:=0;i<4097;i++)helper();if(value!=4097)value/=0;}', ''
+    yield 'local-big', 'value:big;', 'helper(){x:big;x+=big 1;value+=x;} init(){helper();helper();if(value!=big 2)value/=big 0;}', ''
+    yield 'local-real', 'value:real;', 'helper(){x:real;value=x;} init(){value=3.5;helper();if(value!=0.0){i:=1;i/=0;}}', ''
+    yield 'local-mixed', 'value:int; wide:big; floating:real;', 'helper(){x:int;y:big;z:real;x++;y+=big 1;value+=x;wide+=y;floating=z;} init(){helper();helper();if(value!=2||wide!=big 2||floating!=0.0)value/=0;}', ''
+    yield 'local-initialized', 'value:int;', 'helper(){x:=17;x++;value+=x;} init(){helper();helper();if(value!=36)value/=0;}', ''
+    yield 'local-reuse', 'value:int; wide:big;', 'a(){x:big;x=big -1;wide=x;} b(){x:int;x++;value+=x;} init(){a();b();a();b();if(wide!=big -1||value!=2)value/=0;}', ''
+    yield 'local-case-loop', 'value:int;', 'helper(){x:int;x++;value+=x;} init(){for(i:=0;i<4097;i++){case i%3 {0=>helper();1=>helper();2=>helper();* =>value/=0;}}if(value!=4097)value/=0;}', ''
+    locals_ = ''.join('x'+str(i)+':big;' for i in range(12))
+    updates = ''.join('x'+str(i)+'+=big 1;value+=x'+str(i)+';' for i in range(12))
+    yield 'local-frame-boundary', 'value:big;', 'helper(){'+locals_+updates+'} init(){helper();helper();if(value!=big 24)value/=big 0;}', ''
     yield 'callee-error', 'value:=17;', '\nhelper(){value/=0;}\ninit(){helper();}', 'zero divide'
     yield 'wrong-answer', 'value:=17;', 'helper(){value+=3;} init(){helper();if(value!=21)value/=0;}', 'zero divide'
 
@@ -45,9 +56,12 @@ def refusals():
     yield 'result', 'value:int;', 'helper():int{value++;return value;} init(){value=helper();}'
     yield 'recursive', 'value:int;', 'helper(){value++;helper();} init(){helper();}'
     yield 'nested', 'value:int;', 'inner(){value++;} helper(){inner();} init(){helper();}'
-    yield 'declared-local', 'value:int;', 'helper(){x:int;x++;value=x;} init(){helper();}'
+    yield 'byte-local', 'value:int;', 'helper(){x:byte;x=byte value;value=int x;} init(){helper();}'
     yield 'branch-helper', 'value:=1;', 'helper(){if(value>0)value++;} init(){helper();}'
     yield 'managed', 'value: string;', 'helper(){value="hello";} init(){helper();}'
+    locals_ = ''.join('x'+str(i)+':big;' for i in range(13))
+    updates = ''.join('x'+str(i)+'+=big 1;value+=x'+str(i)+';' for i in range(13))
+    yield 'frame-limit', 'value:big;', 'helper(){'+locals_+updates+'} init(){helper();}'
     yield 'body-limit', 'value:int;', 'helper(){'+('value++;'*33)+'} init(){helper();}'
     body = ' '.join('h'+str(i)+'(){value++;}' for i in range(16))
     calls = ''.join('h'+str(i)+'();' for i in range(16))
@@ -90,6 +104,28 @@ def scratch_window(assembly, image, rows, locations, helperline):
         raise RuntimeError('Caller scratch control escaped')
 
 
+# Replace the second call's zero stores with OR zero: valid scalar code that exposes stale local state.
+def stale_locals(image, rows):
+    result = bytearray(image)
+    sections = struct.unpack_from('>I', image, 28)[0]
+    code = next(struct.unpack_from('>HHII', image, 32+12*i)[2] for i in range(sections)
+                if struct.unpack_from('>H', image, 32+12*i)[0] == 2)
+    names = re.findall(r'^\s*(I[A-Z0-9]+),', (ROOT/'include/isa.h').read_text(), re.M)
+    stores, at = [], code+4
+    for row in rows:
+        if row['op'] == names.index('IMOVW') and row['mode'] == 0x11 and row['args'][0] == 0:
+            stores.append(at)
+        at += 2
+        for unused in row['args']:
+            first = image[at]
+            at += 1 if first < 128 else 2 if first < 192 else 4
+    if len(stores) < 8 or len(stores)%2:
+        raise RuntimeError('Missing two complete helper initialization spans')
+    for at in stores[len(stores)//2:]:
+        result[at] = names.index('IORW')
+    return result
+
+
 # Compare real compiler products, preserve diagnostics, and execute whole OS processes with explicit target runners.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -101,7 +137,7 @@ def main():
     args = parser.parse_args()
     root = args.root.resolve()
     command = HELPERS['command']
-    count = processes = 0
+    count = processes = controls = 0
     with tempfile.TemporaryDirectory(prefix='inline scalar ', dir=root) as directory:
         work = Path(directory)
         source, image, smap, assembly, legacy = (work/name for name in ('source.b','image.dis64','map.json','source.s','legacy.dis'))
@@ -119,6 +155,8 @@ def main():
             locations = json.loads(smap.read_bytes())['instructions']
             if len(locations) != len(rows) or any(row['pc'] != pc or row['op'] != rows[pc]['op'] for pc,row in enumerate(locations)):
                 raise RuntimeError('Prepared source-map identity mismatch')
+            if name == 'local-frame-boundary' and not re.search(r'\tdesc\t\$\d+,128,', assembly.read_text()):
+                raise RuntimeError('Missing actual 128-byte helper frame boundary')
             if name == 'scratch':
                 helperline = next(i+1 for i,line in enumerate(text.splitlines()) if line.startswith('helper()'))
                 scratch_window(assembly.read_text(), image.read_bytes(), rows, locations, helperline)
@@ -140,6 +178,19 @@ def main():
                         if len(faults)!=1 or locations[int(faults[0])]['start']['line']!=line:
                             raise RuntimeError('Inlined error lost helper source identity')
                     processes += 1
+            if name == 'local-word':
+                corrupted = work/'stale-locals.dis64'
+                corrupted.write_bytes(stale_locals(image.read_bytes(), rows))
+                if args.reader:
+                    command([args.reader.resolve(), corrupted, '--pilot'])
+                if args.emu:
+                    for jit in (0,1):
+                        output = HELPERS['EXECUTE'](shlex.split(args.runner)+[str(args.emu.resolve()), '-v', '-r', str(root),
+                            '-c', str(jit), '-d', '/'+str(corrupted.relative_to(root))])
+                        marker = 'native64 scalar module InlineProbe: jit='+str(jit)+', exit="zero divide"'
+                        if marker not in output or 'native64 scalar scheduler empty after program retirement' not in output:
+                            raise RuntimeError('Stale helper locals control escaped\n'+output)
+                        controls += 1
             count += 1
         for name,globals_,body in refusals():
             source.write_text(PREFIX+globals_+'\n'+body+'\n')
@@ -150,7 +201,7 @@ def main():
                 raise RuntimeError('Refusal shape accepted: '+name) from failure
             if image.exists():
                 raise RuntimeError('Refused helper left an executable image: '+name)
-    print('PASS scalar helpers:',count,'sources,',processes,'whole C/JIT processes; ordinary Dis unchanged; 9 calling/storage limits refused')
+    print('PASS scalar helpers:',count,'sources,',processes,'whole C/JIT processes;',controls,'active stale-local controls; ordinary Dis unchanged; 10 calling/storage limits refused')
 
 
 if __name__ == '__main__':
