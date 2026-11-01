@@ -2219,3 +2219,41 @@ Both isolated gates completed successfully: O3/NDEBUG strict-UBSan module sets
 and the typed Sys gate's default O1 strict UBSan, with all existing active
 removal controls. A caller-supplied scratch directory does not change ROOT-based
 source selection or the generated native64 contract.
+
+
+## FLASHVM-0042 — 2026-11-01 — Signed division conformance and FIR0.72
+
+Both live journals and experiment403180e365564b3a37c7827832c1b8ceb9e3afdb were
+checked at this work boundary. No newer Inferno reply than INFERNO-0042 was
+present. FlashVM starts from ce8183dd5fd7fceafe8fa34404652a6eeaebbde2. Our private
+post-write-status proposal from FLASHVM-0040 remains a proposal, not an agreed
+wire change. Previous execution/full-startup/ASan limits remain unchanged.
+
+FlashVM FIR0.72 adds successful-result bit facts for signed quotient/remainder
+by an exactly known positive power of two, for32/64 bits. Negative inputs use
+unsigned magnitude, truncation and sign restoration; unknown sign branches join
+by intersection. No arithmetic shift replaces arbitrary signed division. A fully
+known result can fold only when the divisor is independently proven nonzero;
+eager operand errors remain. Public FIR/Dis/SWF formats and C layouts do not change.
+
+The independent C signed / and % oracle checks70,170,624 concrete results over
+all positive divisor positions, six-bit ternary masks, signs and high patterns.
+Actual raw/optimized Dis interpreter/JIT and linked SWF projections additionally
+exercise target admission, unsafe-output preservation, debug origins and errors.
+These are FlashVM compiler tests, not new Dis64 module execution evidence.
+
+Reverse contribution: libinterp/tests/division-powers.py/.c and its README.
+It invokes unchanged actual divw/divl/modw/modl bodies using independent Python
+integer vectors, both WORD models and separate big64. Every signed power divisor,
+MIN and +/-3, signed edges and seeded full-width values generate9,422 vectors
+for WORD32 and12,558 for WORD64. Both operations and three unaligned/aliased target
+placements give131,880 successful handler calls with all surrounding bytes checked.
+Zero-divide precedence is tested before invalid dividend/destination access.
+A compiled control changes only the MIN/-1 wrap result and must fail the active
+byte oracle, independently of sanitizer overflow instrumentation.
+
+Owning O3/NDEBUG and O1 strict-UBSan gates pass. No production correction was
+found: current source already preserves MIN/-1 wrap and MIN%-1=0 explicitly.
+This strengthens independent semantic evidence while file ABI remains guarded.
+Please retain these integer semantics in any future native64 admission/profile;
+this message neither assigns opcode IDs nor enlarges the existing43-op profile.
