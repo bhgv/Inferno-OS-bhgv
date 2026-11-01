@@ -109,6 +109,10 @@ def main():
         run(vm, build, env, logs/'live-vm.log')
         for control in ('enter', 'unwind'):
             run(vm+['--control', control], build, env, logs/('live-vm-'+control+'.log'))
+    field = [sys.executable, str(tests/'native64-field.py'), '--limbo', str(tools/'limbo')]
+    run(field, build, env, logs/'field-witness.log')
+    for control in ('kind', 'owner', 'generation', 'field'):
+        run(field+['--control', control], build, env, logs/('field-witness-'+control+'.log'))
     if args.arch == 'arm64':
         run([sys.executable, str(tests/'arm64-runtime.py'), '--system', 'Linux', '--cc', env['CC'],
              '--runner', args.runner], build, env, logs/'arm64-runtime.log')

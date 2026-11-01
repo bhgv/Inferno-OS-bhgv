@@ -14,6 +14,7 @@ import tempfile
 def main():
     root = Path(__file__).resolve().parents[2]
     compiler = shlex.split(os.environ.get("CC", "cc"))
+    runner = shlex.split(os.environ.get("NATIVE64_RUNNER", ""))
     flags = shlex.split(os.environ.get(
         "CFLAGS", "-O3 -g -DNDEBUG -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all"
     ))
@@ -30,7 +31,7 @@ def main():
         "hold": ("prog->native64holds = 1;", "/* Removed hold control. */"),
         "rebind": ("\n\t\tR.FP = candidate.R.FP;", "\n\t\t(void)caller; /* Removed live transfer. */"),
     }
-    with tempfile.TemporaryDirectory(prefix="caller-sequences-") as directory:
+    with tempfile.TemporaryDirectory(prefix="caller-sequences-", dir=os.environ.get("NATIVE64_TMPDIR")) as directory:
         work = Path(directory)
         for control in [None, *controls]:
             source = header
@@ -51,7 +52,7 @@ def main():
                             ("Linux/" + arch + "/include", "Linux/386/include", "emu/port", "include", "libinterp")]
                 command += [str(root / "libinterp/tests/native64-caller-sequences.c"), "-o", str(binary)]
                 subprocess.run(command, check=True)
-                result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
+                result = subprocess.run(runner + [str(binary)], capture_output=True, text=True, timeout=30)
                 if control:
                     if result.returncode != 1 or "FAIL caller sequence:" not in result.stderr:
                         raise RuntimeError("semantic control missed: " + control + result.stderr)

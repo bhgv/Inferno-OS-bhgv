@@ -37,6 +37,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix='native64-fixed-math-', dir=env.get('NATIVE64_TMPDIR', ROOT)) as directory:
         work = Path(directory)
         env['TMPDIR'] = str(work)
+        (work/'probe.m').write_text('Probe: module {caller: fn(padding: big,result: real,keep: array of byte);};')
+        (work/'probe-native64.h').write_bytes(subprocess.check_output([str(args.limbo.resolve()), '-H', str(work/'probe.m')]))
         (work/'math-native64.h').write_bytes(subprocess.check_output([str(args.limbo.resolve()), '-H', str(ROOT/'module/math.m')]))
         golden = ''
         for name in ('strings', 'imports', 'signature'):
@@ -123,7 +125,7 @@ def main():
             obj = work/'disabled.o'
             subprocess.run(compiler+flags+explicit+includes+['-ffunction-sections', '-fdata-sections', '-c', str(ROOT/'libinterp/math.c'), '-o', str(obj)], env=env, check=True)
             unit = work/'disabled.c'
-            unit.write_text('#include "lib9.h"\n#include "interp.h"\n#include "native64-math-call.h"\nint main(void){return Math_bits64real64((const Native64MathBitsCall*)1)!=0 || Math_bits64realframe64((const Native64MathFrameCall*)1)!=0 || Math_bits64realguard64((const Native64MathFrameCall*)1)!=0 || Math_bits64realvm64((const Native64MathFrameCall*)1)!=0;}\n')
+            unit.write_text('#include "lib9.h"\n#include "interp.h"\n#include "native64-math-call.h"\nint main(void){return Math_bits64real64((const Native64MathBitsCall*)1)!=0 || Math_bits64realframe64((const Native64MathFrameCall*)1)!=0 || Math_bits64realguard64((const Native64MathFrameCall*)1)!=0 || Math_bits64realvm64((const Native64MathFrameCall*)1)!=0 || Math_bits64realfield64((const Native64MathFieldCall*)1)!=0;}\n')
             binary = work/'disabled'
             subprocess.run(compiler+flags+includes+[str(unit), str(obj), '-Wl,--gc-sections', '-lm', '-o', str(binary)], env=env, check=True)
             subprocess.run(runner+[str(binary)], env=env, check=True)

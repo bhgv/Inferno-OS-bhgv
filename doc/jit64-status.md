@@ -73,3 +73,9 @@ The guarded fixed scalar experiment now has an explicit live-R C adapter, with
 publication before acquisition/allocation and owning interpreter return/error
 retirement. Actual x64 and ARM64/QEMU vmachine and live-GC gates cover that
 private contract. It does not open file CALL/MCALL or change opcode counts.
+
+The private fixed scalar adapter additionally accepts compiler-produced Real
+field witnesses tied to exact caller Module/Type/callable identity and the held
+activation generation. Its C producer checks execute on x64 and ARM64; standalone
+field and sequence checks also execute on RV64/QEMU. These are calling-contract
+checks, not new native opcode paths or expanded Dis64 file admission.

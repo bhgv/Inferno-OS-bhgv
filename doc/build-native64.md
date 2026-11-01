@@ -623,3 +623,14 @@ forbidden while held. Caller/extent descriptors are still trusted VM storage.
 Independent detached-Prog lifetime, full managed call graphs and file CALL/MCALL
 remain open. The default43-op np0 Dis64 file profile and wire IDs are unchanged.
 Earlier optimized UTF/error-unwind ASan findings remain open.
+
+## Compiler field witnesses
+
+The next opt-in C adapter is Math_bits64realfield64. It binds a compiler-declared
+Real field by source ordinal to the exact current caller Module/Type/callable,
+retains that Module and acquires the existing caller lease before protected
+production. Big, padding and a matching legacy hash do not substitute for a Real
+field. Limbo -H with LIMBO_NATIVE64_FIELDS supplies the private metadata; the
+existing entry layout, wire profile and other adapter contracts are unchanged.
+See [field witness scope and reproduction](dis64-native64-field-witness.md).
+The clean port driver includes the standalone field gate and its four controls.

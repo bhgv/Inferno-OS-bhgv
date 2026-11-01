@@ -1,5 +1,6 @@
 #ifndef INFERNO_NATIVE64_MATH_CALL_H
 #define INFERNO_NATIVE64_MATH_CALL_H // Private first fixed-call experiment; no loader or opcode admission.
+#include "native64-entry.h"
 
 typedef struct Native64MathBitsCall Native64MathBitsCall;
 
@@ -41,4 +42,22 @@ int Math_bits64realguard64(const Native64MathFrameCall*);
 
 /* Opt-in live interpreter owner only; publishes validated R before acquiring the caller lease. */
 int Math_bits64realvm64(const Native64MathFrameCall*);
+
+
+typedef struct Native64MathFieldCall Native64MathFieldCall;
+
+struct Native64MathFieldCall
+{
+	Native64MathBitsCall call; // Canonical import/input snapshot; resolver fields are ignored by this adapter.
+	Prog *caller; // Current serialized scheduler owner.
+	Module *module; // Exact owning caller module, matching the current Modlink.
+	Type *type; // Exact retained generated caller frame descriptor.
+	const LimboNative64Fields *fields; // Immutable compiler-produced callable and argument metadata.
+	unsigned int ordinal; // Declared Real argument field used as the logical result destination.
+	int live; // Exactly zero for published REG or one for the explicit live-R profile.
+};
+
+
+/* Retain a compiler-declared Real destination across protected Big->Real production and late resolution. */
+int Math_bits64realfield64(const Native64MathFieldCall*);
 #endif

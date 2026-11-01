@@ -67,6 +67,7 @@ HFILES=\
 	$ROOT/include/native64-frame.h\
 	$ROOT/include/native64-result.h\
 	$ROOT/include/native64-entry.h\
+	$ROOT/include/native64-field.h\
 	$ROOT/include/native64-bind.h\
 	$ROOT/include/dis-layout.h\
 	$ROOT/include/dis-operand.h\

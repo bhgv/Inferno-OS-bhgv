@@ -1,13 +1,24 @@
 #include "native64-caller.h"
+#define LIMBO_NATIVE64_FIELDS // Explicit generated Real field, not scalar-map inference.
+#include "probe-native64.h"
 
 REG R; // Actual live-register symbol; scheduler ownership is bounded by this fixture.
 
+static Module *leasedfieldmodule; // Extra typed caller module owner observed before producer allocation.
 static Prog *leasecurrent; // Bounded single-thread scheduler identity; owning runtime supplies currun.
 static Prog *leaseprog; // Active protected producer observation, nil outside this gate.
 static Type *leasetype; // Caller descriptor whose extra owner is independently counted.
 static int leasewhich; // Select each real destructive guard independently.
 static int leaselive, livecase; // Explicit live-R publication and callback-mutation cases.
 static int leasemode, leasetyperefs, leasenested; // Explicit failure/reentry cases.
+
+
+/* Caller callable identity for compiler field metadata; this fixture never invokes it. */
+void
+Probe_caller(void *frame)
+{
+	USED(frame);
+}
 
 
 /* Bound profile availability only; the full emulator links all three owning marker functions. */
@@ -35,6 +46,7 @@ native64callerobserve(void)
 	if(leaseprog == nil)
 		return;
 	check(leaseprog->native64holds == 1 && leasetype->ref == leasetyperefs+1);
+	if(leasedfieldmodule != nil) check(leasedfieldmodule->ref == 2);
 	if(leaselive){
 		check(leaseprog->native64live == &R && leaseprog->R.FP == R.FP && leaseprog->R.EX == R.EX);
 		if(livecase == 1) R.FP += leasetype->size;
@@ -104,6 +116,11 @@ main(void)
 	} stack;
 	Native64Caller caller = {0}, second = {0}, copied;
 	Native64MathFrameCall call;
+	Native64MathFieldCall typed;
+	Module ownermodule;
+	Modlink ownerinstance;
+	Link ownerexports[2];
+	Type *ownertypes[1];
 	Prog prog;
 	Type *type;
 	Frame *first, *next;
@@ -220,8 +237,36 @@ main(void)
 	check(native64callerresolve(&caller) == (uchar*)next+72);
 	native64callerclear(&caller); native64callerleave(&prog);
 	check(prog.R.FP == R.FP && prog.native64live == nil && type->ref == base);
+	/* Execute the new typed adapter through the actual protected owning Math gateway. */
+	memset(&ownermodule, 0, sizeof(ownermodule)); memset(&ownerinstance, 0, sizeof(ownerinstance));
+	memset(ownerexports, 0, sizeof(ownerexports)); memset(&typed, 0, sizeof(typed));
+	ownermodule.ref = 1; ownermodule.ntype = 1; ownermodule.type = ownertypes; ownermodule.ext = ownerexports;
+	ownertypes[0] = type; ownerinstance.m = &ownermodule;
+	ownerexports[0].name = "caller"; ownerexports[0].frame = type; ownerexports[0].u.runt = Probe_caller;
+	memmove(&ownerexports[0].sig, &limbo_native64_Probe_caller_entry.legacy_signature, 4);
+	leaselive = 0;
+	for(typed.live=0; typed.live<2; typed.live++){
+		for(leasemode=0; leasemode<modes; leasemode++){
+			prog.R.FP = (uchar*)first; prog.R.EX = stack.bytes; prog.R.SP = prog.R.TS = stack.bytes+sizeof(stack.bytes);
+			prog.R.M = &ownerinstance; prog.R.MP = nil; prog.pid = 77; prog.state = Pready; prog.flags = 0; prog.kill = nil;
+			R = prog.R;
+			if(typed.live) native64callerenter(&prog);
+			memmove((uchar*)first+72, &oldbits, 8); fixedrequest(bits); mode = 0;
+			typed.call = request; typed.caller = &prog; typed.module = &ownermodule; typed.type = type;
+			typed.fields = &limbo_native64_Probe_caller_field_table; typed.ordinal = 1;
+			leaseprog = &prog; leasetype = type; leasetyperefs = type->ref;
+			leasedfieldmodule = &ownermodule;
+			status = Math_bits64realfield64(&typed); leaseprog = nil; leasedfieldmodule = nil; leasecurrent = &prog;
+			check(status == (leasemode == 0 || leasemode == 5));
+			check(ownermodule.ref == 1 && type->ref == base && prog.native64holds == 0 && live == fixedlive);
+			memmove(&observed, (uchar*)first+72, 8); check(observed == (status ? bits : oldbits));
+			typed.ordinal = 0; check(!Math_bits64realfield64(&typed));
+			if(typed.live) native64callerleave(&prog);
+		}
+	}
 	unload(fixedmodule); freetype(type);
 	check(modules == &baseline && live == 0);
+	puts("PASS typed field Math: compiler Real/Big identity, module ownership, protected error/cancellation and live/published REG");
 	puts("PASS live VM scalar: pre-allocation publication, mutation cancellation, exhaustion rollback, coordinated rebind and retirement");
 	puts("PASS caller lease: self/copy, transfer, stale reuse, saturation, destructive guards, cancellation/unwind and nested refusal");
 	return 0;

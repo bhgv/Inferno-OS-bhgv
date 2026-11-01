@@ -272,3 +272,46 @@ Math_bits64realvm64(const Native64MathFrameCall *request)
 {
 	return native64bitsleased(request, 1);
 }
+
+
+#ifdef DIS_NATIVE64_CALLER_GUARD
+#include "native64-field.h"
+
+
+/* Resolve declared scalar kind and retained caller/module generation after producer safepoints. */
+static void*
+native64bitsfield(void *argument)
+{
+	return native64fieldresolve(argument);
+}
+#endif
+
+
+/* Keep the complete typed witness outside the protected producer's error frame and retire once. */
+int
+Math_bits64realfield64(const Native64MathFieldCall *request)
+{
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	Native64MathFieldCall owned;
+	Native64FieldWitness witness;
+	char saved[ERRMAX];
+	int status;
+
+	if(request == nil)
+		return 0;
+	owned = *request;
+	memset(&witness, 0, sizeof(witness));
+	if(!native64fieldbegin(&witness, owned.caller, owned.module, owned.type,
+	   owned.fields, owned.ordinal, Dis64Real, owned.live))
+		return 0;
+	owned.call.resolve = native64bitsfield; owned.call.argument = &witness;
+	status = Math_bits64real64(&owned.call);
+	kgerrstr(saved, sizeof(saved));
+	native64fieldclear(&witness);
+	kwerrstr("%s", saved);
+	return status;
+#else
+	USED(request);
+	return 0;
+#endif
+}

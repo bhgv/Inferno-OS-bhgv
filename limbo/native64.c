@@ -478,6 +478,36 @@ native64table(Decl *module)
 }
 
 
+/* Describe top-level argument fields without treating padding or mapped references as scalars. */
+static void
+native64fieldtable(Decl *function, char *name)
+{
+	Decl *argument;
+	Native64Type *child;
+	long offset;
+	int ordinal, kind;
+
+	print("#ifdef LIMBO_NATIVE64_FIELDS\n");
+	print("static const LimboNative64Field limbo_native64_%s_fields[] = {\n", name);
+	offset = 64;
+	ordinal = 0;
+	for(argument=function->ty->ids; argument != nil; argument=argument->next){
+		child = native64type(argument->ty, 0);
+		offset = native64align(offset, child->alignment);
+		kind = argument->ty->kind == Tbig ? 2 : argument->ty->kind == Treal ? 3 : 0;
+		print("\t{%d, %d, %ld, %ld}, // %s: existing Big=2/Real=3; zero means unsupported.\n",
+			ordinal++, kind, offset, child->size, argument->sym == nil ? "anonymous" : argument->sym->name);
+		offset = native64end(offset, child->size);
+	}
+	if(ordinal == 0)
+		print("\t{0, 0, 0, 0} // ISO C storage only; logical argument count is zero.\n");
+	print("};\n\nstatic const LimboNative64Fields limbo_native64_%s_field_table = {\n", name);
+	print("\t&limbo_native64_%s_entry, // Exact compiled callable identity.\n", name);
+	print("\tlimbo_native64_%s_fields, // Complete source argument sequence.\n", name);
+	print("\t%d // Declared argument count; no variadic or nested-field admission.\n};\n#endif\n", ordinal);
+}
+
+
 /* Lay out fixed function arguments after Frame64; variadic tails remain explicitly unsupported. */
 static void
 native64frame(Decl *function, int emit)
@@ -485,6 +515,7 @@ native64frame(Decl *function, int emit)
 	Native64Type frame, *child;
 	Decl *argument;
 	long offset, bytes;
+	int arguments = 0;
 	char name[2*StrSize];
 
 	native64name(function, name, sizeof(name)-2);
@@ -493,6 +524,8 @@ native64frame(Decl *function, int emit)
 	native64spellcheck(function->ty->tof, 0);
 	offset = 64;
 	for(argument=function->ty->ids; argument != nil; argument=argument->next){
+		if(++arguments > 4096)
+			fatal("too many native64 fixed arguments");
 		native64spellcheck(argument->ty, 0);
 		child = native64type(argument->ty, 0);
 		if(child->size == 0)
@@ -548,7 +581,9 @@ native64frame(Decl *function, int emit)
 		print("\t0x%luxU, // Existing Limbo signature hash.\n", (ulong)sign(function));
 		print("\t%ld, // Complete fixed-frame bytes.\n", frame.size);
 		print("\t%ld, // Complete map8 bytes.\n", bytes);
-		print("\tlimbo_native64_%s_map // Borrowed immutable map.\n};\n#endif\n", name+2);
+		print("\tlimbo_native64_%s_map // Borrowed immutable map.\n};\n", name+2);
+		native64fieldtable(function, name+2);
+		print("#endif\n");
 	}
 	free(frame.map);
 }
@@ -745,12 +780,17 @@ native64stubs(Decl *globals)
 		for(function=module->ty->tof->ids; function != nil; function=function->next){
 			native64name(function, name, sizeof(name)-2);
 			native64register(name, function);
+			seprint(symbol, symbol+sizeof(symbol), "limbo_native64_%s_fields", name);
+			native64register(symbol, function);
+			seprint(symbol, symbol+sizeof(symbol), "limbo_native64_%s_field_table", name);
+			native64register(symbol, function);
 			seprint(symbol, symbol+sizeof(symbol), "F_%s", name);
 			native64reservenamed(symbol, function);
 			seprint(symbol, symbol+sizeof(symbol), "F_%s_variadic", name);
 			native64register(symbol, function);
 		}
 	}
+	print("#if defined(LIMBO_NATIVE64_FIELDS) && !defined(LIMBO_NATIVE64_ENTRIES)\n#define LIMBO_NATIVE64_ENTRIES // Typed field witnesses require exact generated entries.\n#endif\n");
 	print("#if defined(LIMBO_NATIVE64_IMPLEMENTATIONS) && !defined(LIMBO_NATIVE64_TABLES)\n#define LIMBO_NATIVE64_TABLES // Full implementation lists require matching specifications.\n#endif\n");
 	print("#if defined(LIMBO_NATIVE64_TABLES) && !defined(LIMBO_NATIVE64_ENTRIES)\n#define LIMBO_NATIVE64_ENTRIES // Table maps share opt-in entry storage.\n#endif\n");
 	print("/* Experimental native64 declarations only; shared wire and runtime admission are unchanged. */\n");
