@@ -3,7 +3,6 @@
 #include "isa.h"
 #include "interp.h"
 #include "runt.h"
-#include <assert.h>
 #include <stdio.h>
 #include <setjmp.h>
 
@@ -13,6 +12,15 @@ static jmp_buf boundary;
 static int checks;
 static char *raised;
 
+/* Keep semantic predicates active in optimized builds with NDEBUG. */
+static void
+failure(int line)
+{
+	fprintf(stderr, "UTF predicate failed: %d\n", line);
+	exit(1);
+}
+
+
 /* Deliver VM errors to a bounded fixture without mutating the output. */
 void
 error(char *s)
@@ -20,6 +28,7 @@ error(char *s)
 	raised = s;
 	longjmp(boundary, 1);
 }
+
 
 /* The sandbox cannot provide LeakSanitizer process inspection. */
 int
@@ -38,7 +47,7 @@ array(uchar *data, int length)
 	Array *a;
 
 	h = calloc(1, sizeof(Heap)+sizeof(Array));
-	assert(h);
+	if(!(h)) failure(__LINE__);
 	h->t = &Tarray;
 	a = H2D(Array*, h);
 	a->t = &Tbyte;
@@ -46,6 +55,7 @@ array(uchar *data, int length)
 	a->len = length;
 	return a;
 }
+
 
 /* Encode scalar values independently of the linked production rune routines. */
 static int
@@ -62,6 +72,7 @@ encode(unsigned c, uchar *p)
 	p[2] = 0x80 | ((c>>6)&63); p[3] = 0x80 | (c&63);
 	return 4;
 }
+
 
 /* Compare every Unicode scalar and surrogate with an independent byte encoder. */
 static void
@@ -80,35 +91,35 @@ scalars(void)
 	f.buf = g.buf = u.buf = a;
 	f.ret = &result;
 	g.ret = calloc(1, sizeof(*g.ret));
-	assert(g.ret);
+	if(!(g.ret)) failure(__LINE__);
 	u.ret = &result;
 	for(c = 0; c <= 0x110000; c++){
 		memset(data, 0xa5, sizeof(data));
 		n = encode(c, expected);
 		f.c = c;
 		Sys_char2byte(&f);
-		assert(result == n && !memcmp(data+1, expected, n));
-		assert(data[0] == 0xa5);
+		if(!(result == n && !memcmp(data+1, expected, n))) failure(__LINE__);
+		if(!(data[0] == 0xa5)) failure(__LINE__);
 		for(i = n+1; i < sizeof(data); i++)
-			assert(data[i] == 0xa5);
+			if(!(data[i] == 0xa5)) failure(__LINE__);
 		a->len = n;
 		Sys_byte2char(&g);
-		assert(g.ret->t0 == (c > 0x10ffff || (c >= 0xd800 && c <= 0xdfff) ? 0xfffd : c));
-		assert(g.ret->t1 == n && g.ret->t2 == 1);
+		if(!(g.ret->t0 == (c > 0x10ffff || (c >= 0xd800 && c <= 0xdfff) ? 0xfffd : c))) failure(__LINE__);
+		if(!(g.ret->t1 == n && g.ret->t2 == 1)) failure(__LINE__);
 		for(i = 0; i <= n; i++){
 			u.n = i;
 			Sys_utfbytes(&u);
-			assert(result == (i == n ? n : 0));
+			if(!(result == (i == n ? n : 0))) failure(__LINE__);
 		}
 		if(n > 1){
 			a->len = n-1;
 			Sys_byte2char(&g);
-			assert(g.ret->t0 == Runeerror && g.ret->t1 == 0 && g.ret->t2 == 0);
+			if(!(g.ret->t0 == Runeerror && g.ret->t1 == 0 && g.ret->t2 == 0)) failure(__LINE__);
 			memset(data, 0xa5, sizeof(data));
 			Sys_char2byte(&f);
-			assert(result == 0);
+			if(!(result == 0)) failure(__LINE__);
 			for(i = 0; i < sizeof(data); i++)
-				assert(data[i] == 0xa5);
+				if(!(data[i] == 0xa5)) failure(__LINE__);
 		}
 		a->len = 4;
 		checks++;
@@ -116,6 +127,7 @@ scalars(void)
 	free(g.ret);
 	free(D2H(a));
 }
+
 
 /* Malformed encodings consume one byte; offsets preserve surrounding bytes. */
 static void
@@ -137,25 +149,26 @@ malformed(void)
 	g.buf = f.buf = a;
 	g.n = f.n = 2;
 	g.ret = calloc(1, sizeof(*g.ret));
-	assert(g.ret);
+	if(!(g.ret)) failure(__LINE__);
 	f.ret = &result;
 	for(i = 0; i < sizeof(invalid)/sizeof(invalid[0]); i++){
 		memset(data, 0xa5, sizeof(data));
 		memmove(data+2, invalid[i], 4);
 		Sys_byte2char(&g);
-		assert(g.ret->t0 == Runeerror && g.ret->t1 == 1 && g.ret->t2 == 0);
+		if(!(g.ret->t0 == Runeerror && g.ret->t1 == 1 && g.ret->t2 == 0)) failure(__LINE__);
 		checks++;
 	}
 	memset(data, 0xa5, sizeof(data));
 	f.c = 0x10ffff;
 	Sys_char2byte(&f);
-	assert(result == 4 && !memcmp(data+2, "\xf4\x8f\xbf\xbf", 4));
-	assert(data[0] == 0xa5 && data[1] == 0xa5 && data[6] == 0xa5 && data[7] == 0xa5);
+	if(!(result == 4 && !memcmp(data+2, "\xf4\x8f\xbf\xbf", 4))) failure(__LINE__);
+	if(!(data[0] == 0xa5 && data[1] == 0xa5 && data[6] == 0xa5 && data[7] == 0xa5)) failure(__LINE__);
 	Sys_byte2char(&g);
-	assert(g.ret->t0 == 0x10ffff && g.ret->t1 == 4 && g.ret->t2 == 1);
+	if(!(g.ret->t0 == 0x10ffff && g.ret->t1 == 4 && g.ret->t2 == 1)) failure(__LINE__);
 	free(g.ret);
 	free(D2H(a));
 }
+
 
 /* Invalid full-word counts and array metadata preserve all outputs and bytes. */
 static void
@@ -173,7 +186,7 @@ bounds(void)
 	localbyte.size=1;localbyte.np=1;
 	a = array(data, 8);
 	g.ret = calloc(1, sizeof(*g.ret));
-	assert(g.ret);
+	if(!(g.ret)) failure(__LINE__);
 	f.ret = u.ret = &result;
 	for(op = 0; op < 3; op++) for(mode = 0; mode < 15; mode++){
 		a->len = 8; a->t = &Tbyte; D2H(a)->t = &Tarray; a->data = data;
@@ -201,23 +214,24 @@ bounds(void)
 			if(op == 0)Sys_char2byte(&f);
 			if(op == 1)Sys_byte2char(&g);
 			if(op == 2)Sys_utfbytes(&u);
-			assert(0);
+			if(!(0)) failure(__LINE__);
 		}
-		assert(raised==(mode==4 || mode==5 || mode>=12 ? exType : exBounds) && result==77);
-		assert(g.ret->t0 == 77 && g.ret->t1 == 77 && g.ret->t2 == 77);
-		for(i = 0; i < sizeof(data); i++)assert(data[i] == 0xa5);
+		if(!(raised==(mode==4 || mode==5 || mode>=12 ? exType : exBounds) && result==77)) failure(__LINE__);
+		if(!(g.ret->t0 == 77 && g.ret->t1 == 77 && g.ret->t2 == 77)) failure(__LINE__);
+		for(i = 0; i < sizeof(data); i++)if(!(data[i] == 0xa5)) failure(__LINE__);
 		checks++;
 	}
 	a->len = 0; a->data = nil; a->t = &Tbyte; D2H(a)->t = &Tarray;
-	u.buf = a; u.n = 0; Sys_utfbytes(&u); assert(result == 0);
-	a->data = H; Sys_utfbytes(&u); assert(result == 0); checks++;
+	u.buf = a; u.n = 0; Sys_utfbytes(&u); if(!(result == 0)) failure(__LINE__);
+	a->data = H; Sys_utfbytes(&u); if(!(result == 0)) failure(__LINE__); checks++;
 	/* A full-width invalid rune must not wrap to an ASCII character. */
 	a->data = data; a->len = 8; f.buf = a; f.n = 2;
 	f.c = sizeof(WORD)>4 ? (WORD)(((uvlong)1<<32)+65) : -1;
 	Sys_char2byte(&f);
-	assert(result == 3 && !memcmp(data+2, "\xef\xbf\xbd", 3));
+	if(!(result == 3 && !memcmp(data+2, "\xef\xbf\xbd", 3))) failure(__LINE__);
 	free(g.ret); free(D2H(a));
 }
+
 
 /* Compare all scalar encodings with byte-aligned return slots and guard bytes. */
 static void
@@ -246,9 +260,9 @@ alignment(void)
 		memset(output, 0xa5, sizeof(output));
 		Sys_char2byte(&f);
 		memmove(&count, output+offset, sizeof(count));
-		assert(count == n && !memcmp(data+1, expected, n));
+		if(!(count == n && !memcmp(data+1, expected, n))) failure(__LINE__);
 		for(j = 0; j < sizeof(output); j++)
-			if(j < offset || j >= offset+sizeof(WORD))assert(output[j] == 0xa5);
+			if(j < offset || j >= offset+sizeof(WORD))if(!(output[j] == 0xa5)) failure(__LINE__);
 		for(mode = 0; mode < 3; mode++){
 			memset(data, 0xa5, sizeof(data));
 			memmove(data+1, expected, n);
@@ -258,13 +272,13 @@ alignment(void)
 			memset(output, 0xa5, sizeof(output));
 			Sys_byte2char(&g);
 			memmove(tuple, output+offset, sizeof(tuple));
-			assert(tuple[0] == (mode ? Runeerror : values[i] > 0x10ffff || (values[i] >= 0xd800 && values[i] <= 0xdfff) ? Runeerror : values[i]));
+			if(!(tuple[0] == (mode ? Runeerror : values[i] > 0x10ffff || (values[i] >= 0xd800 && values[i] <= 0xdfff) ? Runeerror : values[i]))) failure(__LINE__);
 			if(tuple[1] != (mode == 1 ? 0 : mode == 2 ? 1 : n))fprintf(stderr, "decode mismatch c=%x mode=%d n=%d got=%ld,%ld,%ld\n", values[i], mode, n, (long)tuple[0], (long)tuple[1], (long)tuple[2]);
-			assert(tuple[1] == (mode == 1 ? 0 : mode == 2 ? 1 : n));
-			assert(tuple[2] == (mode == 0));
+			if(!(tuple[1] == (mode == 1 ? 0 : mode == 2 ? 1 : n))) failure(__LINE__);
+			if(!(tuple[2] == (mode == 0))) failure(__LINE__);
 			size = sizeof(tuple);
 			for(j = 0; j < sizeof(output); j++)
-				if(j < offset || j >= offset+size)assert(output[j] == 0xa5);
+				if(j < offset || j >= offset+size)if(!(output[j] == 0xa5)) failure(__LINE__);
 			checks++;
 		}
 		memmove(data+1, expected, n); a->len = n;
@@ -273,15 +287,16 @@ alignment(void)
 			memset(output, 0xa5, sizeof(output));
 			Sys_utfbytes(&u);
 			memmove(&count, output+offset, sizeof(count));
-			assert(count == (prefix == n ? n : 0));
+			if(!(count == (prefix == n ? n : 0))) failure(__LINE__);
 			for(j = 0; j < sizeof(output); j++)
-				if(j < offset || j >= offset+sizeof(WORD))assert(output[j] == 0xa5);
+				if(j < offset || j >= offset+sizeof(WORD))if(!(output[j] == 0xa5)) failure(__LINE__);
 			checks++;
 		}
 		checks++;
 	}
 	free(D2H(a));
 }
+
 
 /* Bad return owners must raise before the encoder writes its byte array. */
 static void
@@ -305,14 +320,15 @@ badreturns(void)
 			if(mode == 0)Sys_char2byte(&f);
 			if(mode == 1)Sys_byte2char(&g);
 			if(mode == 2)Sys_utfbytes(&u);
-			assert(0);
+			if(!(0)) failure(__LINE__);
 		}
-		assert(raised == exNilref);
-		for(i = 0; i < sizeof(data); i++)assert(data[i] == 0xa5);
+		if(!(raised == exNilref)) failure(__LINE__);
+		for(i = 0; i < sizeof(data); i++)if(!(data[i] == 0xa5)) failure(__LINE__);
 		checks++;
 	}
 	free(D2H(a));
 }
+
 
 /* Exercise real generated builtin frames and the real UTF decoder/encoder. */
 int

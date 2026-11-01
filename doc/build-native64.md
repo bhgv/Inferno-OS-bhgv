@@ -677,3 +677,19 @@ RV64GC toolchain. Native ARM64/RV64 hosts need no QEMU runner. Target bootstrap
 and compiler execution were verified under QEMU, including identical scalar
 file bytes across x64, ARM64 and RV64 compilers. This is not physical-hardware
 acceptance or automatic binfmt setup for arbitrary child programs.
+
+## Source-level fault diagnosis and optimized UTF gates (series 0055)
+
+The scalar console reports a checked decoded Dis-PC for a terminal error when
+verbose mode is selected. `utils/dis64-locations.py` binds the successful scalar
+compiler's optional trace to the exact image and resolves that PC offline. This
+is private diagnostic tooling, not a shared debug section, new executable profile,
+source-variable witness or expanded shell/import ABI. See
+[the source-location proposal](dis64-source-locations.md).
+
+The clean port driver includes ten complete C/JIT executions checking word/big
+arithmetic failures, invalid shifts and clean retirement, with exact source-line
+resolution. It also executes the UTF C oracle with always-active predicates and
+wrong-count semantic controls. Older Sys UTF `assert` comparisons were disabled
+under NDEBUG; the new gate corrects that evidence limitation. The complete ASan
+error-unwind report remains open.

@@ -1079,9 +1079,18 @@ progexit(void)
 
 	m = R.M->m;
 #ifdef DIS_NATIVE64_SCALAR_BOOT
-	if(vflag)
+	if(vflag){
+		uintptr base, next, extent;
+
 		print("native64 scalar module %s: jit=%d, exit=\"%s\"\n",
 			m->name, m->jit != nil, estr);
+		/* Leaf execution retains Dis PCs; xec has already advanced past the failing instruction. */
+		base = (uintptr)m->prog;
+		next = (uintptr)R.PC;
+		extent = m->nprog > 0 ? (uintptr)m->nprog*sizeof(Inst) : 0;
+		if(broken && base != 0 && next > base && next-base <= extent && (next-base)%sizeof(Inst) == 0)
+			print("native64 scalar fault: dis-pc=%lud\n", (ulong)((next-base)/sizeof(Inst)-1));
+	}
 #endif
 	if(broken){
 		if(cflag){	/* only works on Plan9 for now */

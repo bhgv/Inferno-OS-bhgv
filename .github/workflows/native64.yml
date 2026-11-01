@@ -1,0 +1,103 @@
+name: Native64 scalar console
+on:
+  push:
+    branches: [experiment]
+    paths:
+      - '.github/workflows/native64.yml'
+      - 'makemk.sh'
+      - 'mkconfig'
+      - 'mkfiles/**'
+      - 'Linux/**'
+      - 'include/**'
+      - 'emu/**'
+      - 'libinterp/**'
+      - 'lib9/**'
+      - 'libmath/**'
+      - 'limbo/**'
+      - 'utils/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native64-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  console:
+    name: Linux ${{ matrix.arch }} (${{ matrix.execution }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+            execution: native
+          - arch: amd64
+            runner: ubuntu-22.04
+            execution: native
+          - arch: riscv64
+            runner: ubuntu-22.04
+            execution: QEMU
+    env:
+      NATIVE64_ARCH: ${{ matrix.arch }}
+      NATIVE64_EXECUTION: ${{ matrix.execution }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install hosted build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3 file
+          if [ "$NATIVE64_ARCH" = riscv64 ]; then
+            sudo apt-get install -y gcc-riscv64-linux-gnu binutils-riscv64-linux-gnu qemu-user
+          fi
+      - name: Bootstrap native mk and compiler
+        run: |
+          uname -a
+          if [ "$NATIVE64_ARCH" = arm64 ] && [ "$(uname -m)" != aarch64 ]; then
+            echo 'Expected a native ARM64 runner' >&2
+            exit 1
+          fi
+          MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/host-tools" sh makemk.sh
+      - name: Build with classic mk and execute port gates
+        run: |
+          cross=
+          executor=
+          flags='-O3 -g -DNDEBUG -fno-strict-aliasing'
+          if [ "$NATIVE64_ARCH" = amd64 ]; then
+            flags="$flags -fsanitize=undefined -fno-sanitize-recover=all"
+          fi
+          if [ "$NATIVE64_ARCH" = riscv64 ]; then
+            cross=riscv64-linux-gnu-
+            executor='qemu-riscv64 -L /usr/riscv64-linux-gnu'
+          fi
+          python3 utils/tests/native64-port.py --arch "$NATIVE64_ARCH" \
+            --build-root "$RUNNER_TEMP/native64-build" --host-tools "$RUNNER_TEMP/host-tools" \
+            --cross "$cross" --runner "$executor" --test-cflags="$flags"
+      - name: Package the experimental console and portable scalar example
+        run: |
+          stage="$RUNNER_TEMP/native64-output"
+          mkdir -p "$stage"
+          cp "$RUNNER_TEMP/native64-build/emu/Linux/o.emu-g" "$stage/emu"
+          cp limbo/tests/dis64-scalar/loop.b "$stage/loop.b"
+          python3 utils/dis64-locations.py compile --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            --source "$stage/loop.b" --image "$stage/loop.dis64" --map "$stage/loop.locations.json"
+          file "$stage/emu"
+          printf '%s\n' \
+            "Experimental Linux $NATIVE64_ARCH scalar Dis64 console; CI executor: $NATIVE64_EXECUTION." \
+            'Run from this directory: ./emu -v -r "$PWD" -c 1 -d /loop.dis64' \
+            'Repeat with -c 0 for the interpreter.' \
+            'Expected module: Native64Probe; clean exit and empty scheduler after retirement.' \
+            'Only the restricted np0 scalar file profile is admitted. Full shell, imports and managed/native file calls remain closed.' \
+            'This Linux executable is not an Android APK.' > "$stage/README.txt"
+          tar -czf "$RUNNER_TEMP/Inferno-Linux-$NATIVE64_ARCH-scalar.tar.gz" -C "$stage" .
+      - name: Preserve executable and complete gate logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inferno-Linux-${{ matrix.arch }}-scalar
+          path: |
+            ${{ runner.temp }}/Inferno-Linux-${{ matrix.arch }}-scalar.tar.gz
+            ${{ runner.temp }}/native64-build/port-logs/
+          if-no-files-found: warn
+          retention-days: 14

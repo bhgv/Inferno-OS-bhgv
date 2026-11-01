@@ -130,6 +130,64 @@ dis64encode(uchar *output, unsigned int *at, const Dis64Instruction *instruction
 }
 
 
+/* Escape a source name as JSON without treating its contents as a format string. */
+static void
+dis64tracequote(char *text)
+{
+	uchar *p;
+
+	fprint(2, "\"");
+	for(p = (uchar*)text; *p != 0; p++){
+		if(*p == '"' || *p == '\\')
+			fprint(2, "\\%c", *p);
+		else if(*p < 32)
+			fprint(2, "\\u%04x", *p);
+		else
+			write(2, p, 1);
+	}
+	fprint(2, "\"");
+}
+
+
+/* Preserve one compiler cursor, including an explicitly unknown source location. */
+static void
+dis64tracepoint(Line *point)
+{
+	Fline location;
+
+	if(point->line <= 0){
+		fprint(2, "null");
+		return;
+	}
+	location = fline(point->line);
+	fprint(2, "{\"file\":");
+	dis64tracequote(location.file->name);
+	fprint(2, ",\"line\":%d,\"column\":%d}", location.line, point->pos);
+}
+
+
+/* Export optional compiler diagnostics only after the complete scalar image is admitted. */
+static void
+dis64trace(Inst *instructions)
+{
+	Inst *inst;
+	char *enabled;
+
+	enabled = getenv("LIMBO_DIS64_TRACE");
+	if(enabled == nil || strcmp(enabled, "1") != 0)
+		return;
+	for(inst = instructions; inst != nil; inst = inst->next){
+		if(inst->op == INOOP)
+			continue;
+		fprint(2, "LIMBO64LOC {\"pc\":%ld,\"op\":%d,\"start\":", inst->pc, inst->op == IRET ? IEXIT : inst->op);
+		dis64tracepoint(&inst->src.start);
+		fprint(2, ",\"stop\":");
+		dis64tracepoint(&inst->src.stop);
+		fprint(2, "}\n");
+	}
+}
+
+
 /* Compile the existing np0 scalar profile; no imports, managed ABI or shared IDs are added. */
 void
 dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long databytes)
@@ -265,6 +323,7 @@ dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long dat
 		failure = "cannot write the complete checked image";
 		goto done;
 	}
+	dis64trace(instructions);
 	failure = nil;
 done:
 	for(i=0; i<5; i++)
