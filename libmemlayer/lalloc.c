@@ -9,6 +9,7 @@ extern void* attach_clutter_actor(char* buffer, int min_x, int min_y, int max_x,
 #endif
 
 
+/* Allocate a software screen view or an independently owned GLES window. */
 Memimage*
 memlalloc(Memscreen *s, Rectangle screenr, Refreshfn refreshfn, void *refreshptr, ulong val)
 {
@@ -27,21 +28,26 @@ memlalloc(Memscreen *s, Rectangle screenr, Refreshfn refreshfn, void *refreshptr
 #ifndef EXT_WIN
 	n = allocmemimaged(screenr, s->image->chan, s->image->data);
 #else
+	/* GLES windows own their pixels; a screen stride cannot describe this allocation. */
 	n = allocmemimage(screenr, s->image->chan);
-	if(n && n->data && n->data->bdata /*&& !n->ext_win*/){
-		n->ext_win = attach_clutter_actor(n->data->bdata, 
-										n->r.min.x, n->r.min.y, 
-										n->r.max.x, n->r.max.y);
-	}else{
-		n->ext_win = NULL;
+	if(n != nil){
+		n->ext_win = attach_clutter_actor(n->data->bdata,
+			screenr.min.x, screenr.min.y, screenr.max.x, screenr.max.y);
+		if(n->ext_win == nil){
+			freememimage(n);
+			return nil;
+		}
 	}
-print("clutter new window chan=%d\n", chantodepth(s->image->chan) );
 #endif
 	if(n == nil)
 		return nil;
+#ifndef EXT_WIN
+	/* Acquire the shared data before either following allocation can fail. */
+	n->data->ref++;
+#endif
 	l = malloc(sizeof(Memlayer));
 	if(l == nil){
-		free(n);
+		freememimage(n);
 		return nil;
 	}
 
@@ -52,7 +58,7 @@ print("clutter new window chan=%d\n", chantodepth(s->image->chan) );
 		l->save = allocmemimage(screenr, s->image->chan);
 		if(l->save == nil){
 			free(l);
-			free(n);
+			freememimage(n);
 			return nil;
 		}
 		/* allocmemimage doesn't initialize memory; this paints save area */
@@ -64,9 +70,11 @@ print("clutter new window chan=%d\n", chantodepth(s->image->chan) );
 	l->screenr = screenr;
 	l->delta = Pt(0,0);
 
-	n->data->ref++;
+#ifndef EXT_WIN
+	/* Only software layers share the screen data and inherit its addressing geometry. */
 	n->zero = s->image->zero;
 	n->width = s->image->width;
+#endif
 	n->layer = l;
 
 	/* start with new window behind all existing ones */
