@@ -121,9 +121,46 @@ xprintargument(void *frame, uchar *argument, int bytes, int alignment)
 }
 
 
+/* Private reader categories, never serialized as Dis64 call or file identifiers. */
+enum {
+	XprintInt, // Four-byte integer including star widths and Unicode characters.
+	XprintBig, // Eight-byte signed integer bit pattern.
+	XprintReal, // Native binary64 argument.
+	XprintStringArg, // Managed String identity, or H.
+	XprintReference, // Managed debug reference, or H.
+};
+
+typedef struct XprintArguments XprintArguments;
+
+struct XprintArguments
+{
+	void *frame; // Legacy frame-relative alignment anchor.
+	uchar *cursor; // Legacy packed argument cursor.
+	void (*read)(void*, int, void*, unsigned int); // Optional checked typed reader; nil retains legacy layout.
+	void *context; // Borrowed typed-reader state, valid throughout formatting.
+};
+
+
+/* Preserve packed legacy strides while allowing a checked reader to supply exact host values. */
+static void
+xprinttake(XprintArguments *arguments, int kind, void *output, unsigned int bytes)
+{
+	int alignment;
+
+	if(arguments->read != nil){
+		arguments->read(arguments->context, kind, output, bytes);
+		return;
+	}
+	alignment = kind == XprintReal ? sizeof(REAL) : kind == XprintBig ? IBY2LG : 1;
+	arguments->cursor = xprintargument(arguments->frame, arguments->cursor, bytes, alignment);
+	memmove(output, arguments->cursor, bytes);
+	arguments->cursor += kind == XprintReal ? sizeof(REAL) : kind == XprintBig ? IBY2LG : IBY2WD;
+}
+
+
 /* Consume arguments even after output fills, bounding each format specification. */
-int
-xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
+static int
+xprintwithargs(Prog *xp, XprintArguments *arguments, String *s1, char *buf, int n)
 {
 	int i;
 	void *p;
@@ -132,15 +169,11 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 	double d;
 	String *ss;
 	ulong *ptr;
-	uchar *fp, *va;
 	int nc, c, isbig, isr, sip;
 	char *b, *eb, *f, fmt[32];
 	Rune r, zero = 0;
 	XprintString pattern, text;
 	ulong references;
-
-	fp = vfp;
-	va = vva;
 
 	sip = 0;
 	isr = 0;
@@ -193,14 +226,13 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 				continue;
 			case '*':
 				/* Dis integer arguments occupy four bytes, even on LP64 hosts. */
-				va = xprintargument(fp, va, IBY2WD, 1);
-				memmove(&i, va, IBY2WD);
+				xprinttake(arguments, XprintInt, &i, IBY2WD);
 				f--;
 				/* Widths need at most eleven decimal bytes and a terminator. */
 				if(sizeof(fmt)-(f-fmt) < 12+UTFmax)
 					error(exInval);
 				f += snprint(f, sizeof(fmt)-(f-fmt), "%d", (int)i);
-				va += IBY2WD;
+
 				continue;
 			case 'b':
 				f[-1] = 'l';
@@ -214,10 +246,9 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 				break;
 			case 'q':
 			case 's':
-				va = xprintargument(fp, va, sizeof(ss), 1);
-				memmove(&ss, va, sizeof(ss));
+				xprinttake(arguments, XprintStringArg, &ss, sizeof(ss));
 				xprintstring(ss, 1, &text);
-				va += IBY2WD;
+
 				if(ss == H)
 					p = "";
 				else
@@ -242,10 +273,8 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 			case 'f':
 			case 'g':
 			case 'G':
-				va = xprintargument(fp, va, sizeof(d), sizeof(REAL));
-				memmove(&d, va, sizeof(d));
+				xprinttake(arguments, XprintReal, &d, sizeof(d));
 				b += xsnprint(b, eb-b+1, fmt, d);
-				va += sizeof(REAL);
 				break;
 			case 'd':
 			case 'o':
@@ -253,20 +282,18 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 			case 'X':
 			case 'c':
 				if(isbig) {
-					va = xprintargument(fp, va, sizeof(bg), IBY2LG);
-					memmove(&bg, va, sizeof(bg));
+					xprinttake(arguments, XprintBig, &bg, sizeof(bg));
 					b += xsnprint(b, eb-b+1, fmt, bg);
-					va += IBY2LG;
+
 				}
 				else {
 					/* Dis integer arguments occupy four bytes, even on LP64 hosts. */
-					va = xprintargument(fp, va, IBY2WD, 1);
-					memmove(&i, va, IBY2WD);
+					xprinttake(arguments, XprintInt, &i, IBY2WD);
 					/* always a unicode character */
 					if(c == 'c')
 						f[-1] = 'C';
 					b += xsnprint(b, eb-b+1, fmt, (int)i);
-					va += IBY2WD;
+
 				}
 				break;
 			case 'r':
@@ -275,8 +302,7 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 				break;
 /* Debugging formats - may disappear */
 			case 'H':
-				va = xprintargument(fp, va, sizeof(ptr), 1);
-				memmove(&ptr, va, sizeof(ptr));
+				xprinttake(arguments, XprintReference, &ptr, sizeof(ptr));
 				if(ptr == nil)
 					error(exNilref);
 				t = nil;
@@ -288,7 +314,6 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 					b += xsnprint(b, eb-b+1, "%lud.%.8lux", references, (ulong)t);
 				}else
 					b += xsnprint(b, eb-b+1, "%d.%.8lux", -1, (ulong)t);
-				va += IBY2WD;
 				break;
 			}
 			break;
@@ -296,6 +321,22 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 	}
 	return b - buf;
 }
+
+/* Keep the public legacy formatter on its original packed frame contract. */
+int
+xprint(Prog *xp, void *frame, void *values, String *format, char *buffer, int bytes)
+{
+	XprintArguments arguments;
+
+	memset(&arguments, 0, sizeof(arguments));
+	arguments.frame = frame;
+	arguments.cursor = values;
+	return xprintwithargs(xp, &arguments, format, buffer, bytes);
+}
+
+#ifdef DIS_NATIVE64_FORMATTER
+#include "native64-format.h"
+#endif
 
 typedef struct XprintCall XprintCall;
 

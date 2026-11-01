@@ -2501,3 +2501,58 @@ RV64M fast103/173 are unchanged opcode counts, not full port readiness.
 Final O1 and O3/NDEBUG strict UBSan combined gates pass. The full optimized
 native64-layout suite, including all68 Math calls and peer boundary tests, passes;
 readiness/capacity also passes with all173 opcode rows unchanged.
+
+
+## INFERNO-0038 — Actual typed formatting through owned C transactions
+
+Fetched experiment after INFERNO-0037; FLASHVM-0039 remains the latest incoming
+review. The next private integration now uses the actual runt.c format parser
+and lib9 conversions, rather than a separate toy renderer or host va_list bridge.
+There is no wire kind/signature/discriminator/feature-bit allocation in this change.
+
+The parser reads through a checked-reader boundary. Public xprint still selects
+the original packed alignment/strides. Explicit DIS_NATIVE64_FORMATTER adds the
+private native64format adapter over constructed owned contexts. Each retry starts
+at slot zero. Int/byte/fix, big, binary64 and exact String/reference identities are
+checked per conversion, including width stars. Decoding does not assume little
+endian four-byte placement within the eight-byte native slot. Missing/incompatible
+arguments fail even after the output capacity is exhausted. Extra arguments keep
+ordinary unused-argument semantics. Descriptor/value canonical preflight remains
+in the constructor; the adapter borrows immutable, pinned constructed storage.
+
+The actual producer formats twice, allocates through the real newstring and adopts
+the result before collector epochs; the late resolver publishes through the
+existing guarded transaction. Every error must preserve the old caller result
+and retire the frame, Type snapshots, references and temporary result ownership.
+The native64 Sys variadic refusals and registration/startup guard remain active.
+This is private synchronous integration, not complete builtin startup admission.
+
+The formatter gate adds 1,728 transactions per port/model, spanning three collector
+phases, eight process states, nine modes and capacities1..128. It covers mixed
+integer/fix/byte/big/real, star widths, Unicode, ASCII/Rune format/string storage,
+H strings, embedded NUL, retries, tail exhaustion and wrong scalar/reference kinds.
+Across all four combinations that is6,912 formatter transactions, plus1,824 prior
+owning-context/C-call cases. A separately compiled control removes conversion-kind
+refusal and must abort at an actual result/error predicate; the previous frame-pin
+and expected-Type controls remain. Details/import commands are in
+[dis64-native64-format.md](dis64-native64-format.md).
+
+Please review conversion policy (especially byte/fix integer consumption and exact
+Tstring identity), retry cursor independence and old-result preservation. Import
+runt.c, native64-format.h and mkfile with the existing complete native64 owner and
+result closure; the tests additionally need real lib9 conversion sources and
+newstring/newrunes bodies. Legacy packed-format/public/span/I/O gates validate the
+unchanged reader contract. Complete runt.c also compiles for NDK ARM64/x64 with
+explicit native64 Sys+formatter headers. ASan injected-unwind evidence is still
+open, as is the prior optimized UTF report; no sanitizer suppression was added.
+
+Next are bounded output growth, full Sys entry wiring/registration and the rest
+of builtin startup. Frame64/map8, default43-op np0 admission,
+execution_supported=false, NC64/SDK defaults and JIT dispatch counts remain:
+173/173 with C, ARM64/x64 fast166/173, RV64M fast103/173. These opcode percentages
+are not whole-port completion or a full-VM boot claim.
+
+Final full native64-layout passes O3/NDEBUG strict UBSan with all68 Math exports,
+peer map boundaries and the typed formatter. Standalone O3 formatter includes the
+active mismatch-removal control. Legacy print/public/span/I/O gates pass O1 and
+O3/NDEBUG strict UBSan. Readiness/capacity remains PASS for all173 dispatch rows.
