@@ -71,8 +71,9 @@ def main():
                     source += '\nchar exInval[]="invalid", exBounds[]="bounds"; // Actual formatter error categories.\n'
                     source += 'char *syserr(char*, char*, Prog*);\nint hmsize(void*);\n'+core
                     source += (ROOT/'utils/tests/native64-format.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_formatter_main(int argc, char **argv)', 1)
-                    source += (ROOT/'utils/tests/native64-sys-format.c').read_text()
-                    for signature in ('int\nSys_sprint64(', 'int\nSys_aprint64('):
+                    source += (ROOT/'utils/tests/native64-sys-format.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_sysformat_main(int argc, char **argv)', 1)
+                    source += (ROOT/'utils/tests/native64-sys-write.c').read_text()
+                    for signature in ('int\nSys_sprint64(', 'int\nSys_aprint64(', 'int\nSys_print64(', 'int\nSys_fprint64('):
                         source += '\n'+function(runtime, signature)+'\n'
                     extra = [str(ROOT/('lib9/'+name+'.c')) for name in ('rune','sprint','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')]+['-pthread']
                 unit.write_text(source)
@@ -87,12 +88,19 @@ def main():
                     for name, header, boundary, replacement in (('kind', 'native64-format.h', 'if(!valid)', 'if(0)'),
                             ('output', 'native64-format.h', 'native64formattedclear(&build.output);', '(void)0;'),
                             ('sys-result', 'native64-sys-format.h', 'if(!native64sysformatreference(nil, old, call->array ? &Tarray : &Tstring))', 'if(0)'),
-                            ('sys-element', 'native64-sys-format.h', 'if(call->array && old != H && ((Array*)old)->t != &Tbyte)', 'if(0)')):
+                            ('sys-element', 'native64-sys-format.h', 'if(call->array && old != H && ((Array*)old)->t != &Tbyte)', 'if(0)'),
+                            ('write-acquire', 'native64-sys-write.h', 'native64syswriteacquire(&call);', '(void)0;'),
+                            ('write-fd-map', 'native64-sys-write.h', 'uchar fprintmap[] = F_Sys_fprint_map;', 'uchar fprintmap[] = {0, 0x40};')):
                         adapter = (ROOT/('include/'+header)).read_text()
                         if adapter.count(boundary) != 1:
                             raise RuntimeError('Typed format control boundary changed: '+name)
                         control_unit = work/(port+'-'+name+'-unchecked.c')
-                        control_unit.write_text(source.replace('#include "'+header+'"', adapter.replace(boundary, replacement), 1))
+                        adapter = adapter.replace(boundary, replacement)
+                        if name == 'write-fd-map':
+                            if adapter.count('fprintmap[1] != 0xc0') != 1:
+                                raise RuntimeError('FD map guard changed')
+                            adapter = adapter.replace('fprintmap[1] != 0xc0', 'fprintmap[1] != 0x40')
+                        control_unit.write_text(source.replace('#include "'+header+'"', adapter, 1))
                         control_binary = work/(label+'-'+port+'-'+name+'-unchecked')
                         subprocess.run(command+[str(control_unit)]+objects+extra+['-Wl,--wrap=free', '-Wl,--gc-sections', '-lm', '-o', str(control_binary)], env=env, check=True)
                         result = subprocess.run([str(control_binary)], env=env, capture_output=True, text=True)

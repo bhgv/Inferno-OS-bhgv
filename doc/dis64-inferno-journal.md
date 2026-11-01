@@ -2683,3 +2683,68 @@ Complete runt.c emits both exported gateways for NDK ARM64/x64. An additional
 NDK r28c riscv64-linux-android35 compile using shared Android64 C declarations
 produces ELF64 RISC-V with both global gateway symbols. This is cross-compilation
 evidence, not Android/RISC-V runtime support, target execution or full boot.
+
+
+## INFERNO-0041 — Typed print/fprint output, scheduler pairing and late scalar commit
+
+Fetched experiment after INFERNO-0040; FLASHVM-0039 remains the latest incoming
+journal review. This checkpoint completes four explicit trusted C formatting
+exports in runt.c with Sys_print64/Sys_fprint64. It assigns no file-call metadata,
+wire signatures, kind IDs or feature bits and does not register packed variadics.
+
+The output request reuses the rooted typed pattern/tail contract and supplies a
+managed Sys_FD for fprint. Actual generated prefixes/maps are checked. fprint roots
+both the exact persistent TFD identity and its String in the complete owned frame;
+print uses descriptor1. H FD denotes -1, while nil/wrong FD identities refuse
+before allocation. The borrowed process and input/root contracts remain explicit.
+
+The gateway completes bounded formatting before side effects, resolves a valid
+current scalar result cell, releases the VM, issues one kwrite and reacquires.
+Arguments/FD and native bytes remain owned throughout. A release flag outside the
+protected frame makes native-error unwind reacquire before cleanup. Reacquisition
+preserves the native/unwind error even if the scheduler boundary changes it.
+Release/acquire themselves must be nonthrowing. After reacquisition the resolver
+runs again: the pre-write address is not cached. Exactly four bytes receive a
+valid full/short/zero/-1 write count; impossible native counts fail before commit.
+There is no write retry. Format errors precede native descriptor failure handling.
+
+Post-write cancellation, resolver error or impossible count cannot roll output
+back. They preserve the old scalar result and return a failed publication status,
+not a promise of zero side effects. Please review this explicitly split status/
+native-count contract before any wire-call admission; callers must not blindly
+retry a post-write failure. Numeric result span checks still cannot authenticate
+arbitrary addresses or replace trusted mapped current-cell provenance.
+
+New gates add1,200 transactions per emu/os and WORD32/WORD32-file combination,
+4,800 in total, alongside the prior4,416 managed Sys results and owning formatter
+cases. Three collector phases/eight process states and25 modes cover precise native
+bytes/counts; full/short/zero/-1 output; native throw; invalid return counts;
+pre/post-write cancellation and errors; logical result relocation; constructor/
+output refusal; nil/wrong/H FD and missing TFD; bad canonical values/cells; output
+limits and embedded NUL. Collection runs within native output and both resolutions.
+One case retires the caller FD owner during write: the copied fprint frame must
+keep it alive until cleanup. Scalar sentinels detect adjacent-word clobbering.
+Scheduler/native services are bounded fixtures, not full scheduler/device execution.
+
+Two compiled negative controls remove unwind reacquisition or the fprint FD map
+root (retaining a valid format-only map); each must abort at an active state/root
+predicate. Earlier kind/output/result-Type/array-element controls stay. Native
+errors are checked after a deliberately diagnostic-changing reacquire. Full source
+and import closure is in dis64-native64-sys-write.md: new write header/request,
+runt wrappers/mkfile, generated Sys/Roots/Math, actual owners/conversions/collector
+and both protected-port error bodies with bounded native services.
+
+The four packed native64 variadic refusals, Sys registration/startup guard,
+Frame64/map8, default43-op np0 admission, execution_supported=false and NC64/SDK
+defaults stay. Full builtin registration/file variadic metadata remain work.
+Prior ASan injected-unwind and optimized UTF evidence stays open without suppression.
+Dispatch remains173/173 including C; ARM64/x64 fast166/173 and RV64M103/173 are
+opcode counts rather than overall port readiness.
+
+Final O1 and O3/NDEBUG strict UBSan output gates pass, including both new removal
+controls. The combined owning/formatter/Sys gate now runs19,488 scenarios across
+the four port/model combinations. Full optimized native64-layout passes with
+Math68 and peer boundaries; readiness/capacity remains PASS for173 dispatch rows.
+Complete runt.c emits all four gateway exports for NDK ARM64/x64 and an additional
+riscv64-linux-android35 compile using shared Android64 declarations. This remains
+compile evidence rather than native device execution, scheduler proof or full boot.

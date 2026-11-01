@@ -338,6 +338,7 @@ xprint(Prog *xp, void *frame, void *values, String *format, char *buffer, int by
 #include "native64-format.h"
 #ifdef DIS_NATIVE64_SYS_HEADER
 #include "native64-sys-format.h"
+#include "native64-sys-write.h"
 
 
 /* Enter trusted native64 sprint with an explicit typed tail and late mapped-result resolver. */
@@ -353,6 +354,21 @@ int
 Sys_aprint64(const Native64SysFormatRequest *request)
 {
 	return native64sysaprint(request);
+}
+
+/* Trusted native64 print: format before output, then publish one scalar write count. */
+int
+Sys_print64(const Native64SysWriteRequest *request)
+{
+	return native64syswrite(request, 0);
+}
+
+
+/* Trusted native64 fprint retains its managed FD through native output and late result resolution. */
+int
+Sys_fprint64(const Native64SysWriteRequest *request)
+{
+	return native64syswrite(request, 1);
 }
 #endif
 #endif
