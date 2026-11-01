@@ -38,7 +38,11 @@ if 'typedef struct XprintResult' in source:
     a = source.index('typedef struct XprintResult')
     b = source.index('/* Build a new VM owner', a)
     parts.append(source[a:b])
-for signature in ('static void\nxprintstring(', 'static uchar*\nxprintargument(', 'static int\nxsnprint(', 'int\nxprint(', 'static int\nxprintcall(', 'int\nbigxprint(',
+if 'typedef struct XprintArguments' in source:
+    a=source.index('/* Private reader categories')
+    b=source.index('/* Preserve packed legacy strides', a)
+    parts.append(source[a:b])
+for signature in ('static void\nxprintstring(', 'static uchar*\nxprintargument(', 'static int\nxsnprint(', 'static void\nxprinttake(', 'static int\nxprintwithargs(', 'int\nxprint(', 'static int\nxprintcall(', 'int\nbigxprint(',
                   'static int\nbuildprintresult(', 'static void*\nprintresult(',
                   'void\nSys_sprint(', 'void\nSys_aprint('):
     if signature in source:

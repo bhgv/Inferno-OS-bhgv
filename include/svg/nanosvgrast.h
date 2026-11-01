@@ -836,7 +836,15 @@ static void nsvg__flattenShapeStroke(NSVGrasterizer* r, NSVGshape* shape, float 
 	}
 }
 
-static int nsvg__cmpEdge(const void *p, const void *q)
+/* Inferno adaptation: keep the comparator type compatible with the selected sorting API. */
+#ifndef NSVG_QSORT_ARGUMENT
+#define NSVG_QSORT_ARGUMENT const void* // Standard libc qsort uses const-qualified arguments.
+#endif
+
+
+/* Order scan edges without changing the rasterizer's geometry or element storage. */
+static int
+nsvg__cmpEdge(NSVG_QSORT_ARGUMENT p, NSVG_QSORT_ARGUMENT q)
 {
 	const NSVGedge* a = (const NSVGedge*)p;
 	const NSVGedge* b = (const NSVGedge*)q;

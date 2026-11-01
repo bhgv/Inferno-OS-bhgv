@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
+runner = shlex.split(os.environ.get('NATIVE64_RUNNER', ''))
 source = Path(os.environ.get('SYS_UTF_SOURCE', root / 'libinterp/runt.c')).read_text()
 
 
@@ -48,9 +49,22 @@ with tempfile.TemporaryDirectory(prefix='sys-utf-') as directory:
             header, n = re.subn(r'typedef long\s+WORD;', 'typedef int WORD;', header, count=1)
             header, m = re.subn(r'typedef unsigned long\s+UWORD;',
                                'typedef unsigned int UWORD;', header, count=1)
-            assert n == m == 1
+            if n != 1 or m != 1:
+                raise RuntimeError('WORD model declaration was not replaced exactly once')
             (modeldir / 'interp.h').write_text(header)
             override = ['-I'+str(modeldir)]
         binary = td / ('codecs-'+model)
         subprocess.run(cmd+override+includes+[str(target),str(root / 'lib9/rune.c'),'-o',str(binary)],check=True)
-        subprocess.run([str(binary)]+shlex.split(os.environ.get('SYS_UTF_CASE','')),check=True)
+        subprocess.run(runner+[str(binary)]+shlex.split(os.environ.get('SYS_UTF_CASE','')),check=True)
+        # Corrupt one production result; the independent oracle must still fail under NDEBUG.
+        controlled = td/'wrong-count.c'
+        broken, changed = re.subn(r'result = 1;', 'result = 2;', unit, count=1)
+        if changed != 1:
+            raise RuntimeError('UTF result control was not applied')
+        controlled.write_text(broken)
+        negative = td/('wrong-count-'+model)
+        subprocess.run(cmd+override+includes+[str(controlled),str(root/'lib9/rune.c'),'-o',str(negative)],check=True)
+        result = subprocess.run(runner+[str(negative), 'alignment'], capture_output=True, text=True)
+        if result.returncode == 0 or 'UTF predicate failed:' not in result.stderr:
+            raise RuntimeError('Wrong UTF count escaped the active semantic oracle: '+result.stderr)
+        print('PASS UTF wrong-count control:', model, flush=True)

@@ -1,6 +1,7 @@
 #include <lib9.h>
 #include "isa.h"
 #include "interp.h"
+#include "native64-caller.h"
 #include "raise.h"
 #include "pool.h"
 #include "kernel.h"
@@ -5403,8 +5404,20 @@ xec(Prog *p)
 	int (*step)(void), (*fast)(REG*), (*complete)(REG*);
 	int op;
 
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	vmprocess(p);
+	if(p->native64holds != 0 || p->native64live != nil)
+		error(exInval);
+	native64calleradvance(p);
+#endif
 	vmstart(p);
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	native64callerenter(p);
+#endif
 	for(;;){
+#ifdef DIS_NATIVE64_CALLER_GUARD
+		native64calleradvance(p);
+#endif
 		if(!vmfetch(&fetched)){
 			vmnative();
 			break;
@@ -5447,4 +5460,17 @@ executed:
 			break;
 	}
 	p->R = R;
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	native64callerleave(p);
+#endif
 }
+
+
+#ifdef DIS_NATIVE64_CALLER_GUARD
+/* Expose that VM entry and instruction invalidation hooks were compiled together. */
+int
+native64callervmguard(void)
+{
+	return 1;
+}
+#endif

@@ -98,3 +98,7 @@ throwing-destructor policy, arbitrary nested partial trees, header-temp roots,
 full VM unwind/scheduler integration, parallel collectors and physical target
 execution remain separate. Default Runtab/NC64,43-op np0 pilot and general
 inspector false are unchanged; complex C implementations remain C.
+
+A subsequent [late-resolution API](dis64-native64-resolved.md) supports a current
+logical destination resolved after production. The original stable-cell API and
+its ownership preconditions remain unchanged.

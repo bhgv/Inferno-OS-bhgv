@@ -1,19 +1,73 @@
 #include "lib9.h"
 #include "isa.h"
 #include "interp.h"
+#include "native64-scalar-boot.h"
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+#ifdef DIS_NATIVE64_SYS_HEADER
+#error native64 Sys startup owns its generated metadata selection
+#endif
+#define DIS_NATIVE64_SYS_HEADER "sys-native64.h" // Coherent generated Sys types for the explicit startup profile.
+#define LIMBO_NATIVE64_TABLES // Trusted selected fixed-frame entries; variadic prefixes remain excluded.
+#endif
+/* Explicit native64 consumers must use one coherent generated Sys declaration set. */
+#ifdef DIS_NATIVE64_SYS_HEADER
+#ifndef DIS_WORD32
+#error experimental native64 Sys requires DIS_WORD32=1
+#endif
+#include DIS_NATIVE64_SYS_HEADER
+#else
 #include "runt.h"
+#endif
+#ifndef DIS_NATIVE64_SYS_HEADER
 #include "sysmod.h"
+#else
+#include "runtab-legacy.h"
+#endif
 #include "raise.h"
 #include "kernel.h"
+#include "native64-entry.h"
+#include "native64-bind.h"
+#include "native64-model.h"
+#include "native64-modules.h"
 
 
 static	int		utfnleng(char*, int, int*);
 
+
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+static const LimboNative64Entry *const native64sysio[] = {
+	&limbo_native64_Sys_byte2char_entry, // Checked scalar decoding.
+	&limbo_native64_Sys_char2byte_entry, // Checked scalar encoding.
+	&limbo_native64_Sys_utfbytes_entry, // Checked UTF extent.
+	&limbo_native64_Sys_read_entry, // Bounded native I/O.
+	&limbo_native64_Sys_readn_entry, // Bounded repeated reads.
+	&limbo_native64_Sys_write_entry, // Bounded native write.
+	&limbo_native64_Sys_pread_entry, // Bounded positioned read.
+	&limbo_native64_Sys_pwrite_entry, // Bounded positioned write.
+};
+#endif
+
+
+/* Register only the explicitly selected trusted profile; ordinary native64 declarations stay closed. */
 void
 sysmodinit(void)
 {
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+	if(!limbo_native64_Sys_layout()){
+		error("native64 Sys layout mismatch");
+		return;
+	}
+	sysinit();
+	if(builtinmod64("$Sys", limbo_native64_Sys_specs, limbo_native64_Sys_spec_count,
+	   native64sysio, sizeof(native64sysio)/sizeof(native64sysio[0])) == nil)
+		error("native64 Sys I/O registration failed");
+#elif defined(DIS_NATIVE64_SYS_HEADER)
+	error("experimental native64 Sys registration is not supported");
+	return;
+#else
 	sysinit();
 	builtinmod("$Sys", Sysmodtab, Sysmodlen);
+#endif
 }
 
 
@@ -99,9 +153,46 @@ xprintargument(void *frame, uchar *argument, int bytes, int alignment)
 }
 
 
+/* Private reader categories, never serialized as Dis64 call or file identifiers. */
+enum {
+	XprintInt, // Four-byte integer including star widths and Unicode characters.
+	XprintBig, // Eight-byte signed integer bit pattern.
+	XprintReal, // Native binary64 argument.
+	XprintStringArg, // Managed String identity, or H.
+	XprintReference, // Managed debug reference, or H.
+};
+
+typedef struct XprintArguments XprintArguments;
+
+struct XprintArguments
+{
+	void *frame; // Legacy frame-relative alignment anchor.
+	uchar *cursor; // Legacy packed argument cursor.
+	void (*read)(void*, int, void*, unsigned int); // Optional checked typed reader; nil retains legacy layout.
+	void *context; // Borrowed typed-reader state, valid throughout formatting.
+};
+
+
+/* Preserve packed legacy strides while allowing a checked reader to supply exact host values. */
+static void
+xprinttake(XprintArguments *arguments, int kind, void *output, unsigned int bytes)
+{
+	int alignment;
+
+	if(arguments->read != nil){
+		arguments->read(arguments->context, kind, output, bytes);
+		return;
+	}
+	alignment = kind == XprintReal ? sizeof(REAL) : kind == XprintBig ? IBY2LG : 1;
+	arguments->cursor = xprintargument(arguments->frame, arguments->cursor, bytes, alignment);
+	memmove(output, arguments->cursor, bytes);
+	arguments->cursor += kind == XprintReal ? sizeof(REAL) : kind == XprintBig ? IBY2LG : IBY2WD;
+}
+
+
 /* Consume arguments even after output fills, bounding each format specification. */
-int
-xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
+static int
+xprintwithargs(Prog *xp, XprintArguments *arguments, String *s1, char *buf, int n)
 {
 	int i;
 	void *p;
@@ -110,15 +201,11 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 	double d;
 	String *ss;
 	ulong *ptr;
-	uchar *fp, *va;
 	int nc, c, isbig, isr, sip;
 	char *b, *eb, *f, fmt[32];
 	Rune r, zero = 0;
 	XprintString pattern, text;
 	ulong references;
-
-	fp = vfp;
-	va = vva;
 
 	sip = 0;
 	isr = 0;
@@ -171,14 +258,13 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 				continue;
 			case '*':
 				/* Dis integer arguments occupy four bytes, even on LP64 hosts. */
-				va = xprintargument(fp, va, IBY2WD, 1);
-				memmove(&i, va, IBY2WD);
+				xprinttake(arguments, XprintInt, &i, IBY2WD);
 				f--;
 				/* Widths need at most eleven decimal bytes and a terminator. */
 				if(sizeof(fmt)-(f-fmt) < 12+UTFmax)
 					error(exInval);
 				f += snprint(f, sizeof(fmt)-(f-fmt), "%d", (int)i);
-				va += IBY2WD;
+
 				continue;
 			case 'b':
 				f[-1] = 'l';
@@ -192,10 +278,9 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 				break;
 			case 'q':
 			case 's':
-				va = xprintargument(fp, va, sizeof(ss), 1);
-				memmove(&ss, va, sizeof(ss));
+				xprinttake(arguments, XprintStringArg, &ss, sizeof(ss));
 				xprintstring(ss, 1, &text);
-				va += IBY2WD;
+
 				if(ss == H)
 					p = "";
 				else
@@ -220,10 +305,8 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 			case 'f':
 			case 'g':
 			case 'G':
-				va = xprintargument(fp, va, sizeof(d), sizeof(REAL));
-				memmove(&d, va, sizeof(d));
+				xprinttake(arguments, XprintReal, &d, sizeof(d));
 				b += xsnprint(b, eb-b+1, fmt, d);
-				va += sizeof(REAL);
 				break;
 			case 'd':
 			case 'o':
@@ -231,20 +314,18 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 			case 'X':
 			case 'c':
 				if(isbig) {
-					va = xprintargument(fp, va, sizeof(bg), IBY2LG);
-					memmove(&bg, va, sizeof(bg));
+					xprinttake(arguments, XprintBig, &bg, sizeof(bg));
 					b += xsnprint(b, eb-b+1, fmt, bg);
-					va += IBY2LG;
+
 				}
 				else {
 					/* Dis integer arguments occupy four bytes, even on LP64 hosts. */
-					va = xprintargument(fp, va, IBY2WD, 1);
-					memmove(&i, va, IBY2WD);
+					xprinttake(arguments, XprintInt, &i, IBY2WD);
 					/* always a unicode character */
 					if(c == 'c')
 						f[-1] = 'C';
 					b += xsnprint(b, eb-b+1, fmt, (int)i);
-					va += IBY2WD;
+
 				}
 				break;
 			case 'r':
@@ -253,8 +334,7 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 				break;
 /* Debugging formats - may disappear */
 			case 'H':
-				va = xprintargument(fp, va, sizeof(ptr), 1);
-				memmove(&ptr, va, sizeof(ptr));
+				xprinttake(arguments, XprintReference, &ptr, sizeof(ptr));
 				if(ptr == nil)
 					error(exNilref);
 				t = nil;
@@ -266,7 +346,6 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 					b += xsnprint(b, eb-b+1, "%lud.%.8lux", references, (ulong)t);
 				}else
 					b += xsnprint(b, eb-b+1, "%d.%.8lux", -1, (ulong)t);
-				va += IBY2WD;
 				break;
 			}
 			break;
@@ -274,6 +353,57 @@ xprint(Prog *xp, void *vfp, void *vva, String *s1, char *buf, int n)
 	}
 	return b - buf;
 }
+
+/* Keep the public legacy formatter on its original packed frame contract. */
+int
+xprint(Prog *xp, void *frame, void *values, String *format, char *buffer, int bytes)
+{
+	XprintArguments arguments;
+
+	memset(&arguments, 0, sizeof(arguments));
+	arguments.frame = frame;
+	arguments.cursor = values;
+	return xprintwithargs(xp, &arguments, format, buffer, bytes);
+}
+
+#ifdef DIS_NATIVE64_FORMATTER
+#include "native64-format.h"
+#ifdef DIS_NATIVE64_SYS_HEADER
+#include "native64-sys-format.h"
+#include "native64-sys-write.h"
+
+
+/* Enter trusted native64 sprint with an explicit typed tail and late mapped-result resolver. */
+int
+Sys_sprint64(const Native64SysFormatRequest *request)
+{
+	return native64syssprint(request);
+}
+
+
+/* Enter trusted native64 aprint without reusing the legacy packed argument entry. */
+int
+Sys_aprint64(const Native64SysFormatRequest *request)
+{
+	return native64sysaprint(request);
+}
+
+/* Trusted native64 print: format before output, then publish one scalar write count. */
+int
+Sys_print64(const Native64SysWriteRequest *request)
+{
+	return native64syswrite(request, 0);
+}
+
+
+/* Trusted native64 fprint retains its managed FD through native output and late result resolution. */
+int
+Sys_fprint64(const Native64SysWriteRequest *request)
+{
+	return native64syswrite(request, 1);
+}
+#endif
+#endif
 
 typedef struct XprintCall XprintCall;
 
@@ -390,6 +520,11 @@ printresult(char *text, int length, int array, int allocated)
 void
 Sys_sprint(void *fp)
 {
+#ifdef DIS_NATIVE64_SYS_HEADER
+	USED(fp);
+	error("native64 Sys variadic calls are not supported");
+	return;
+#else
 	int n;
 	char buf[256], *b = buf;
 	String *result, *old;
@@ -430,6 +565,7 @@ Sys_sprint(void *fp)
 	result = printresult(b, n, 0, b != buf);
 	memmove(ret, &result, sizeof(result));
 	destroy(old);
+#endif
 }
 
 
@@ -437,6 +573,11 @@ Sys_sprint(void *fp)
 void
 Sys_aprint(void *fp)
 {
+#ifdef DIS_NATIVE64_SYS_HEADER
+	USED(fp);
+	error("native64 Sys variadic calls are not supported");
+	return;
+#else
 	int n;
 	char buf[256], *b = buf;
 	Array *result, *old;
@@ -476,6 +617,7 @@ Sys_aprint(void *fp)
 	result = printresult(b, n, 1, b != buf);
 	memmove(ret, &result, sizeof(result));
 	destroy(old);
+#endif
 }
 
 
@@ -913,6 +1055,227 @@ builtinmod(char *name, void *vr, int rlen)
 badtable:
 	kwerrstr("bad builtin table");
 	return nil;
+}
+
+
+typedef struct Native64Builtin Native64Builtin;
+
+struct Native64Builtin
+{
+	char *name; // Borrowed module name for the protected construction interval.
+	const LimboNative64Entry *const *entries; // Validated immutable implementation records.
+	unsigned int count; // Number of selected fixed-frame exports.
+	Module *module; // Partial owner, retained until publication or complete cleanup.
+};
+
+
+/* Retain every completed descriptor while later export-name allocations can fail. */
+static int
+buildbuiltin64(void *arg)
+{
+	Native64Builtin *build;
+	const LimboNative64Entry *entry;
+	Module *module;
+	Type *type;
+	unsigned int i;
+	int signature;
+
+	build = arg;
+	build->module = module = newmod(build->name);
+	module->ntype = build->count;
+	if(build->count != 0){
+		module->type = mallocz(build->count*sizeof(Type*), 1);
+		if(module->type == nil){
+			kwerrstr(exNomem);
+			return 0;
+		}
+	}
+	module->ext = mallocz((build->count+1)*sizeof(Link), 1);
+	if(module->ext == nil){
+		kwerrstr(exNomem);
+		return 0;
+	}
+	for(i=0; i<build->count; i++){
+		entry = build->entries[i];
+		type = dtype(freeheap, entry->frame_size, (uchar*)entry->map, entry->map_bytes);
+		if(type == nil){
+			kwerrstr("bad native64 builtin frame or out of memory");
+			return 0;
+		}
+		module->type[i] = type;
+		/* Link.sig stores the same 32 bits even when the consistency hash has bit31 set. */
+		memmove(&signature, &entry->legacy_signature, sizeof(signature));
+		runtime(module, &module->ext[i], (char*)entry->name, signature, entry->function, type);
+	}
+	return 1;
+}
+
+
+typedef struct Native64BuiltinSet Native64BuiltinSet;
+
+struct Native64BuiltinSet
+{
+	const Native64ModuleSpec *specs; // Borrowed immutable complete construction requests.
+	unsigned int count; // Number of independently owned modules to stage.
+	Module **staged; // Private zeroed module-owner vector, never published during allocation.
+	unsigned int completed; // Completed module owners in staged request order.
+	Native64Builtin current; // Partial module owner outside the protected jump frame.
+};
+
+
+/* Check the entire set before allocating, including duplicate module names and aggregate resource bounds. */
+static int
+native64builtinsetcheck(const Native64ModuleSpec *specs, unsigned int count, Module **output)
+{
+	unsigned int i, j, declarations, selected;
+
+	if(!native64model() || count > Native64BindEntries ||
+	   (count != 0 && (specs == nil || specs == H || output == nil || output == H ||
+		(uintptr)specs > (uintptr)-1-count*sizeof(*specs) ||
+		(uintptr)output > (uintptr)-1-count*sizeof(*output))))
+		return 0;
+	declarations = selected = 0;
+	for(i=0; i<count; i++){
+		if(output[i] != nil || !native64bindname(specs[i].name) ||
+		   specs[i].count > Native64BindEntries-declarations ||
+		   specs[i].selected > Native64BindEntries-selected ||
+		   !native64bindcheck(specs[i].specs, specs[i].count, specs[i].entries, specs[i].selected))
+			return 0;
+		for(j=0; j<i; j++)
+			if(native64bindsame(specs[j].name, specs[i].name))
+				return 0;
+		declarations += specs[i].count;
+		selected += specs[i].selected;
+	}
+	return 1;
+}
+
+
+/* Preserve each completed owner while a later module's descriptors/names can still fail. */
+static int
+buildbuiltinset64(void *argument)
+{
+	Native64BuiltinSet *build;
+	const Native64ModuleSpec *spec;
+	unsigned int i;
+
+	build = argument;
+	for(i=0; i<build->count; i++){
+		spec = build->specs+i;
+		build->current.name = spec->name;
+		build->current.entries = spec->entries;
+		build->current.count = spec->selected;
+		if(!buildbuiltin64(&build->current))
+			return 0;
+		build->staged[i] = build->current.module;
+		build->current.module = nil;
+		build->completed++;
+	}
+	return 1;
+}
+
+
+/* Detach unpublished owners before teardown; cleanup must not throw or reenter registration. */
+static void
+native64builtinsetclear(Native64BuiltinSet *build)
+{
+	Module *module;
+	char saved[ERRMAX];
+
+	kgerrstr(saved, sizeof(saved));
+	module = build->current.module;
+	build->current.module = nil;
+	if(module != nil){
+		destroylinks(module);
+		freemod(module);
+	}
+	while(build->completed != 0){
+		build->completed--;
+		module = build->staged[build->completed];
+		build->staged[build->completed] = nil;
+		destroylinks(module);
+		freemod(module);
+	}
+	kwerrstr("%s", saved);
+}
+
+
+/* Publish one complete chain only after every constructor returns; no callback or allocation occurs during commit. */
+static int
+native64builtinsetregister(const Native64ModuleSpec *specs, unsigned int count, Module **output, Module **staged)
+{
+	Native64BuiltinSet build;
+	Module *head;
+	unsigned int i;
+
+	memset(&build, 0, sizeof(build));
+	build.specs = specs;
+	build.count = count;
+	build.staged = staged;
+	if(!kprotect(buildbuiltinset64, &build)){
+		native64builtinsetclear(&build);
+		return 0;
+	}
+	head = modules;
+	for(i=0; i<count; i++){
+		staged[i]->link = head;
+		head = staged[i];
+	}
+	modules = head;
+	for(i=0; i<count; i++)
+		output[i] = staged[i];
+	return 1;
+}
+
+
+/* Atomically register a trusted native64 set; caller serializes registration and supplies disjoint nil output cells. */
+int
+builtinmods64(const Native64ModuleSpec *specs, unsigned int count, Module **output)
+{
+	Module **staged;
+	char saved[ERRMAX];
+	int status;
+
+	if(!native64builtinsetcheck(specs, count, output)){
+		kwerrstr("bad native64 builtin ABI or table");
+		return 0;
+	}
+	if(count == 0)
+		return 1;
+	staged = mallocz(count*sizeof(*staged), 1);
+	if(staged == nil){
+		kwerrstr(exNomem);
+		return 0;
+	}
+	status = native64builtinsetregister(specs, count, output, staged);
+	kgerrstr(saved, sizeof(saved));
+	free(staged);
+	kwerrstr("%s", saved);
+	return status;
+}
+
+
+/* Keep the single-module ABI and allocation sequence while sharing the complete staged-construction engine. */
+Module*
+builtinmod64(char *name, const LimboNative64Entry *specs, unsigned int count,
+	const LimboNative64Entry *const *entries, unsigned int selected)
+{
+	Native64ModuleSpec request;
+	Module *output, *staged;
+
+	request.name = name;
+	request.specs = specs;
+	request.count = count;
+	request.entries = entries;
+	request.selected = selected;
+	output = staged = nil;
+	if(!native64builtinsetcheck(&request, 1, &output)){
+		kwerrstr("bad native64 builtin ABI or table");
+		return nil;
+	}
+	if(!native64builtinsetregister(&request, 1, &output, &staged))
+		return nil;
+	return output;
 }
 
 

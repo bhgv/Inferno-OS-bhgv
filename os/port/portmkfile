@@ -140,6 +140,8 @@ devprog.$O:	$RUNT $INTERP
 devroot.$O:	errstr.h
 devsign.$O:	$RUNT $INTERP
 devsrv.$O:	$RUNT	$INTERP
+# Caller leases inline frame validation; rebuild the owner when that contract changes.
+dis.$O: $ROOT/include/native64-caller.h $ROOT/include/native64-frame-cell.h $ROOT/include/native64-model.h $ROOT/include/dis-layout.h
 dis.$O:	$INTERP
 discall.$O:	$INTERP
 exception.$O:	$RUNT	$INTERP

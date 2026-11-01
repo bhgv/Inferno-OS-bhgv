@@ -1,7 +1,7 @@
 #include "lib9.h"
 #include "isa.h"
 #include "interp.h"
-#define LIMBO_NATIVE64_TABLES // Include both qualified method specifications.
+#define LIMBO_NATIVE64_IMPLEMENTATIONS // Include both qualified methods and their callback list.
 #include "methods-native64.h"
 #include "native64-bind.h"
 #include <stdlib.h>
@@ -34,7 +34,10 @@ main(void)
 	};
 	const LimboNative64Entry *output[2];
 
-	if(!limbo_native64_MethodProbe_layout() || limbo_native64_MethodProbe_spec_count != 2 ||
+	if(limbo_native64_MethodProbe_implementation_count != 2 ||
+	   limbo_native64_MethodProbe_implementations[0] != selected[0] ||
+	   limbo_native64_MethodProbe_implementations[1] != selected[1] ||
+	   !limbo_native64_MethodProbe_layout() || limbo_native64_MethodProbe_spec_count != 2 ||
 	   strcmp(selected[0]->name, "A.f") != 0 || strcmp(selected[1]->name, "B.f") != 0 ||
 	   !native64bind(limbo_native64_MethodProbe_specs, limbo_native64_MethodProbe_spec_count,
 		selected, 2, output, 2) || output[0] != selected[0] || output[1] != selected[1])

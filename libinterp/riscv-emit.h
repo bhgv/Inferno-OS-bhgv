@@ -1,7 +1,8 @@
 /*
  * RV32I/RV64I leaf code for decoded Dis operations.
  * a0 points to REG; only caller-saved t0-t6 are clobbered. No native stack,
- * absolute addresses, compressed instructions, relocations or helper calls.
+ * absolute addresses, compressed instructions, relocations or helper calls in leaf bodies.
+ * The separate RV64 complete-tail bridge below embeds trusted executor/fast pointers.
  * Include isa.h first. u32int must be exactly 32 bits, independently of XLEN.
  */
 enum { Rvzero=0, Rvra=1, Rvt0=5, Rvt1=6, Rvt2=7, Rva0=10,
@@ -741,4 +742,47 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	rvi(&b, 0x13, 0, Rva0, Rvzero, 1); /* operation completed */
 	rvi(&b, 0x67, 0, Rvzero, Rvra, 0); /* ret */
 	return b.bad ? 0 : b.n;
+}
+
+
+enum {
+	Rva1=11, // Opcode argument to the ordinary C executor.
+	Rva2=12, // Optional native fast-entry argument.
+	RvBridgeWords=15, // Fixed RV64I tail and full-width literal pool budget.
+};
+
+
+/* Tail-enter the complete C executor without retaining a return address in disposable JIT memory.
+ * Pointer literals use two aligned32 loads, so a four-byte-aligned entry never needs an unaligned LD.
+ * This RV64I bridge leaves a0/ra/sp intact and supplies a1=opcode, a2=optional fast entry. */
+static int
+rvbridgeemit(u32int *out, int cap, unsigned long long executor, int op, unsigned long long fast)
+{
+	RvBuf buffer;
+
+	if(op <= INOP || op >= MAXDIS || op == IECLR || executor == 0 || executor == ~0ULL || fast == ~0ULL || ((executor|fast)&1) != 0)
+		return 0;
+	if(cap < RvBridgeWords)
+		return -1;
+	buffer.out = out;
+	buffer.n = 0;
+	buffer.cap = cap;
+	buffer.bad = 0;
+	buffer.abi = 0;
+	rvi(&buffer, 0x13, 0, Rva1, Rvzero, op);
+	rvput(&buffer, (u32int)Rvt0<<7 | 0x17);
+	rvi(&buffer, 0x03, 6, Rva2, Rvt0, 48);
+	rvi(&buffer, 0x03, 6, Rvt1, Rvt0, 52);
+	rvi(&buffer, 0x13, 1, Rvt1, Rvt1, 32);
+	rvr(&buffer, 0x33, 6, 0, Rva2, Rva2, Rvt1);
+	rvi(&buffer, 0x03, 6, Rvt1, Rvt0, 40);
+	rvi(&buffer, 0x03, 6, Rvt0, Rvt0, 44);
+	rvi(&buffer, 0x13, 1, Rvt0, Rvt0, 32);
+	rvr(&buffer, 0x33, 6, 0, Rvt0, Rvt0, Rvt1);
+	rvi(&buffer, 0x67, 0, Rvzero, Rvt0, 0);
+	rvput(&buffer, (u32int)executor);
+	rvput(&buffer, (u32int)(executor>>32));
+	rvput(&buffer, (u32int)fast);
+	rvput(&buffer, (u32int)(fast>>32));
+	return buffer.bad ? -1 : buffer.n;
 }

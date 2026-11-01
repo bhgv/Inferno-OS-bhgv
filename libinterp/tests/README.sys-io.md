@@ -55,3 +55,21 @@ Native I/O and scheduler boundaries are controlled stubs. This does not boot
 an emulator or kernel, perform filesystem I/O, or prove a complete 64-bit
 compiler/loader/GC ABI. WORD32 retains host pointers. Packed array and FD
 headers are borrowed byte views; these tests do not transfer their ownership.
+
+## Module-owned byte descriptors and Android AWM startup
+
+Sys I/O accepts both the builtin Tbyte singleton and module-owned descriptors
+with element size1 and no pointer map. NEWA preserves the module's descriptor;
+requiring pointer identity with Tbyte rejected normal Limbo byte buffers. Both
+emu/os implementations now validate that structural byte contract before native
+I/O. Packed descriptor prefixes use memmove; nonbyte/mapped/nil/low/wrapped
+prefixes still refuse before entering native I/O.
+
+The owning fixture adds distinct module-byte and packed descriptors plus invalid
+prefix controls across all five I/O functions and both WORD models. Each run now
+covers299520 cases. The pre-fix emu source fails the active WORD32 module-byte
+case semantically. This matches Android's reported wmlib token read failure:
+its array[32] of byte was rejected before /chan/wmctl could return the token.
+The test transports remain bounded native I/O stubs, not a complete Android AWM.
+NATIVE64_RUNNER selects an explicit target executor for the fixture. The clean
+port driver includes it; device launch/rendering still requires phone validation.

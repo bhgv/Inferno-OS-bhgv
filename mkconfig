@@ -11,6 +11,7 @@ ROOT=$ROOT
 #
 TKSTYLE=std
 
+TOUCHSCREEN_CAPACITIVE=0 # Explicit default prevents an empty -D from consuming the next include option.
 EXTWINFLAGS= # Set -DEXT_WIN only for Android GLES/Clutter archives, empty for framebuffer.
 WINDOW_BACKEND=fb		# andr, clutter, x11a, fb
 
@@ -39,8 +40,17 @@ OBJTYPE=arm #386 #arm  #386			# target system object type (eg, 386, arm, mips, p
 # These are core/library toolchain profiles, not completed platform emu ports.
 # See doc/build-native64.md for missing platform files and coherent model rules.
 # Optional experimental scalar model: DISMODELFLAGS='-DDIS_WORD32=1'
+# Experimental Linux console scalar-only startup (ARM64 cross/QEMU verified):
+# DISMODELFLAGS='-DDIS_WORD32=1 -DDIS64_PILOT_LOADER=1 -DDIS_NATIVE64_SCALAR_BOOT=1'
+# No builtin modules, legacy Dis images or native plugins in that mode.
 # Rebuild every linked runtime object with the same model; default remains legacy.
 
+
+# Coherent experimental caller leases (Linux amd64/arm64/riscv64 console only):
+# python3 utils/configure.py --host linux --arch arm64 --console \
+#   --native64-scalar-boot --native64-math-boot --native64-sys-io-boot \
+#   --native64-caller-guard
+# Rebuild every runtime object after changing model/guard flags; file calls remain closed.
 
 # Classic emulator entry, normally mkfile; configure.py --console selects mkfile-console.
 EMUMKFILE=mkfile

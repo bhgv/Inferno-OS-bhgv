@@ -11,7 +11,7 @@ Proc *up; // Explicit current-process boundary for the selected port bodies.
 static jmp_buf errorframes[16]; // Host implementation of the platform error-label boundary.
 static int errdepth, transactions, resultcallbacks; // Error-stack balance and real transaction observations.
 
-#define waserror() (errdepth++, setjmp(errorframes[errdepth-1])) // Keep setjmp in actual kprotect's own frame.
+#define waserror() setjmp(errorframes[errdepth++]) // Entire controlling expression; acquire the error frame only on entry.
 #define poperror() (--errdepth) // Match successful protected-frame retirement.
 
 

@@ -1,0 +1,49 @@
+name: Native64 UTF address checks
+on:
+  push:
+    branches: [experiment]
+    paths:
+      - '.github/workflows/native64-utf-asan.yml'
+      - 'libinterp/runt.c'
+      - 'libinterp/tests/sys-utf.c'
+      - 'libinterp/tests/sys-utf.py'
+      - 'include/interp.h'
+      - 'include/runt.h'
+      - 'lib9/rune.c'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  utf:
+    name: UTF ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the native C compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3
+      - name: Execute full optimized UTF oracle and wrong-count controls
+        env:
+          CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all'
+        run: |
+          set -euo pipefail
+          uname -a
+          python3 libinterp/tests/sys-utf.py 2>&1 | tee utf-asan.log
+      - name: Preserve complete sanitizer diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-utf-asan-${{ matrix.arch }}
+          path: utf-asan.log
+          if-no-files-found: warn
+          retention-days: 14

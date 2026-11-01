@@ -282,6 +282,9 @@ struct Prog
 	void*		osenv;
 
 	void*	tktop; //TkTop*
+	uvlong native64epoch; // Private scalar-call invalidation generation; never serialized.
+	unsigned int native64holds; // One explicit native caller lease blocks destructive scheduler paths.
+	REG *native64live; // Live global register owner during guarded interpreter execution; never serialized.
 };
 
 /* Static Dis-to-C images keep original module data, frames and Dis PCs. */
@@ -436,6 +439,14 @@ extern	void		altdone(Alt*, Prog*, Channel*, int);
 extern	void		altgone(Prog*);
 extern	Array*		allocimgarray(Heap*, Heap*);
 extern	Module*	builtinmod(char*, void*, int);
+
+struct LimboNative64Entry;
+/* Explicit trusted native64 registration; installed legacy tables remain separate. */
+extern Module* builtinmod64(char*, const struct LimboNative64Entry*, unsigned int,
+	const struct LimboNative64Entry *const*, unsigned int);
+struct Native64ModuleSpec;
+/* Publish a complete trusted native64 module set or leave the existing registry unchanged. */
+extern int builtinmods64(const struct Native64ModuleSpec*, unsigned int, Module**);
 extern	void		cblock(Prog*);
 extern	void*		checktype(void*, Type*, char*, int);
 extern	void		cmovw(void*, void*);

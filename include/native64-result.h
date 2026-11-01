@@ -100,4 +100,81 @@ native64resultcall(void *slot, int (*produce)(Native64Result*, void*), void *arg
 	return 1;
 }
 
+
+typedef struct Native64ResolvedResult Native64ResolvedResult;
+
+struct Native64ResolvedResult
+{
+	Native64ResultCall call; // Mutable result ownership remains outside the protected error frame.
+	void *(*resolve)(void*); // Trusted resolver of the current live caller-mapped owner cell.
+	void *slot; // Used only after the resolver returns, with no intervening allocating callback.
+};
+
+
+/* Produce and resolve under the same error owner; no destination address is cached before production. */
+static int
+native64resultresolve(void *argument)
+{
+	Native64ResolvedResult *resolved;
+	void *old;
+
+	resolved = argument;
+	if(!native64resultproduce(&resolved->call))
+		return 0;
+	resolved->slot = resolved->resolve(resolved->call.argument);
+	/* Nil is an explicit decline/cancellation; retain the resolver's diagnostic. */
+	if(resolved->slot == nil)
+		return 0;
+	if(resolved->slot == H || (uintptr)resolved->slot > (uintptr)-1-sizeof(void*)){
+		kwerrstr("bad native64 result destination");
+		return 0;
+	}
+	memmove(&old, resolved->slot, sizeof(old));
+	if(old == nil){
+		kwerrstr("nil native64 result owner");
+		return 0;
+	}
+	return 1;
+}
+
+
+/* Resolve a possibly relocated destination after production, preserving its old owner on every refusal.
+ * The caller roots its logical destination and input owners; resolver returns a trusted live owner cell.
+ * Resolver may allocate or throw, but must preserve the old logical result and report nil on cancellation.
+ * Caller serializes destination access; no callback runs between resolution and publication.
+ * Destructors must not throw or move the destination. */
+static int
+native64resultresolved(int (*produce)(Native64Result*, void*), void *(*resolve)(void*), void *argument)
+{
+	Native64ResolvedResult resolved;
+	void *old, *owned;
+	int rooted;
+	char saved[ERRMAX];
+
+	if(produce == nil || resolve == nil)
+		return 0;
+	resolved.call.result.value = H;
+	resolved.call.result.rooted = 0;
+	resolved.call.produce = produce;
+	resolved.call.argument = argument;
+	resolved.resolve = resolve;
+	resolved.slot = nil;
+	if(!kprotect(native64resultresolve, &resolved)){
+		kgerrstr(saved, sizeof(saved));
+		native64resultclear(&resolved.call.result);
+		kwerrstr("%s", saved);
+		return 0;
+	}
+	owned = resolved.call.result.value;
+	rooted = resolved.call.result.rooted;
+	memmove(&old, resolved.slot, sizeof(old));
+	memmove(resolved.slot, &owned, sizeof(owned));
+	resolved.call.result.value = H;
+	resolved.call.result.rooted = 0;
+	if(rooted)
+		ptrdel(D2H(owned));
+	destroy(old);
+	return 1;
+}
+
 #endif

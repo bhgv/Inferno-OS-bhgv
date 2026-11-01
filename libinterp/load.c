@@ -3,6 +3,7 @@
 #include "interp.h"
 #include "raise.h"
 #include <kernel.h>
+#include "native64-scalar-boot.h"
 
 #if defined(DIS64_PILOT_LOADER)
 #if DIS64_PILOT_LOADER != 1
@@ -298,6 +299,10 @@ disparse(void *arg)
 	/* A recognized Dis64 image never falls through to the legacy operand reader. */
 	if(disneed(code, end, sizeof(dis64magic)) && memcmp(code, dis64magic, sizeof(dis64magic)) == 0)
 		return dis64parse(c);
+#endif
+#ifdef DIS_NATIVE64_SCALAR_BOOT
+	kwerrstr("native64 scalar startup accepts only checked Dis64 scalar images");
+	return 0;
 #endif
 
 	c->m = m = mallocz(sizeof(Module),1);

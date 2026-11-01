@@ -11,6 +11,7 @@
 #include	<limits.h>
 #include	<errno.h>
 #include	<semaphore.h>
+#include	<sched.h>
 
 typedef struct Osdep Osdep;
 struct Osdep {
@@ -71,6 +72,8 @@ pexit(char *msg, int t)
 	pthread_exit(0);
 }
 
+
+/* Install worker TLS before entering the Proc; no unused host-specific stack probe is needed. */
 static void*
 tramp(void *arg)
 {
@@ -82,14 +85,6 @@ tramp(void *arg)
 	os->self = pthread_self();
 	if(pthread_setspecific(prdakey, arg))
 		panic("set specific data failed in tramp\n");
-	if(0){
-		pthread_attr_t attr;
-		memset(&attr, 0, sizeof(attr));
-		pthread_getattr_np(pthread_self(), &attr);
-		size_t s;
-		pthread_attr_getstacksize(&attr, &s);
-		print("stack size = %d\n", s);
-	}
 	p->func(p->arg);
 	pexit("{Tramp}", 0);
 	return nil;
@@ -208,20 +203,13 @@ kprocinit(Proc *p)
 		panic("set specific thread data failed");
 }
 
-#ifdef ANDROID
-#include <sched.h>
-#endif
+/* Yield through POSIX on every pthread host; pthread_yield is not a portable exported symbol. */
 void
 osyield(void)
 {
-//	pthread_yield_np();
-	/* define pthread_yield to be sched_yield or pthread_yield_np if required */
-#ifndef ANDROID
-	pthread_yield();
-#else
 	sched_yield();
-#endif
 }
+
 
 void
 ospause(void)

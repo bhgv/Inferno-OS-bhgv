@@ -30,6 +30,7 @@
 #include <errno.h>
 #define __NO_STRING_INLINES
 #include <string.h>
+#include <time.h>
 #include "math.h"
 #include <fcntl.h>
 #include <setjmp.h>
@@ -493,12 +494,12 @@ extern char *argv0;
 #define	setbinmode()
 
 /* need the inline because the link register is not saved in a known location */
-static __inline uintptr getcallerpc(void* dummy) {
-	ulong lr;
- 	__asm__(	"mov	%0, %%lr;" 
- 			: "=r" (lr) 
- 	); 
-	return lr;
+/* Native compiler return-address extraction handles AArch64 PAC and x86-64 as well as ARM32. */
+static __inline __attribute__((always_inline)) uintptr
+getcallerpc(void *dummy)
+{
+	(void)dummy;
+	return (uintptr)__builtin_extract_return_addr(__builtin_return_address(0));
 }
 
 

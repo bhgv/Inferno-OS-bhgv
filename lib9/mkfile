@@ -91,3 +91,7 @@ convM2D.$O: $ROOT/include/fcall.h
 convM2S.$O: $ROOT/include/fcall.h
 convS2M.$O: $ROOT/include/fcall.h
 fcallfmt.$O: $ROOT/include/fcall.h
+
+# The native64 architecture wrappers share actual implementations rather than copied bodies.
+setfcr-$SYSTARG-amd64.$O setfcr-$SYSTARG-arm64.$O setfcr-$SYSTARG-riscv64.$O: setfcr-native64.c
+getcallerpc-Linux-amd64.$O getcallerpc-Linux-arm64.$O getcallerpc-Linux-riscv64.$O: getcallerpc-native64.c

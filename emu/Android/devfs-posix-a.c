@@ -811,7 +811,8 @@ fsdirread(Chan *c, uchar *va, int count, vlong offset)
 	fspath(FS(c)->name, "", path);
 	ep = path+strlen(path);
 	if(FS(c)->offset != offset) {
-		seekdir(FS(c)->dir, 0);
+		/* Reset both the descriptor and libc's buffered directory state through its public API. */
+		rewinddir(FS(c)->dir);
 		FS(c)->de = nil;
 		FS(c)->eod = 0;
 		for(n=0; n<offset; ) {

@@ -9,6 +9,18 @@ import tempfile
 
 root = Path(__file__).resolve().parents[2]
 
+SUCCESS_FREETYPE = """
+
+/* This successful-only static descriptor fixture must never enter allocation-failure cleanup. */
+void
+freetype(Type *type)
+{
+	(void)type;
+	abort();
+}
+
+"""
+
 PORTS = os.environ.get('DIRREAD_PORTS', 'emu os').split()
 MODELS = os.environ.get('DIRREAD_MODELS', '64 32').split()
 if not PORTS or any(port not in ('emu', 'os') for port in PORTS):
@@ -62,7 +74,7 @@ with tempfile.TemporaryDirectory(prefix='sys-dirread-') as directory:
         template=template.replace('if(nativecount <= 0)', 'if(dircountreport(entries))\n\t\treturn dirreported;\n\tif(nativecount <= 0)')
         template=template.replace('assert(', 'dirtest(')
         template=template.replace('static int dirwantfd = 17;\nstatic int dirreportactive;\nstatic long dirreported;', 'char Ebadarg[] = "argument";\nstatic int dirwantfd = 17;\nstatic int dirreportactive;\nstatic long dirreported;')
-        target.write_text(template.replace('IMPLEMENTATION','\n'.join(parts+bodies)))
+        target.write_text(template.replace('IMPLEMENTATION', SUCCESS_FREETYPE+'\n'.join(parts+bodies)))
         cmd = shlex.split(os.environ.get('CC','cc'))
         cmd += shlex.split(os.environ.get('CFLAGS','-O1 -g -DNDEBUG -fsanitize=address,undefined -fno-sanitize-recover=all'))
         for bits in map(int, MODELS):

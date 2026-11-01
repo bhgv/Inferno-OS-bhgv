@@ -1,5 +1,6 @@
 /* derived from /netlib/fdlibm */
 #include "lib9.h"
+#include "fdlibm-names.h"
 
 /* @(#)fdlibm.h 1.5 95/01/18 */
 /*

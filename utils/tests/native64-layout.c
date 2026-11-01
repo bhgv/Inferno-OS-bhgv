@@ -62,6 +62,11 @@ main(void)
 	Verify(Probe_Pair, zero);
 	Verify(Probe_Byte4, zero);
 	Verify(Probe_Inner, pointer);
+	check(Probe_Min == (-2147483647-1) && sizeof(Probe_Min) == 4);
+	check(Probe_Max == 2147483647 && sizeof(Probe_Max) == 4);
+	check(Probe_BigMin == (-9223372036854775807LL-1LL) && sizeof(Probe_BigMin) == 8);
+	check(Probe_BigMax == 9223372036854775807LL && sizeof(Probe_BigMax) == 8);
+	check(Probe_ByteMax == 255);
 	Verify(Probe_Outer, outer);
 	Verify(Probe_Tuple, pointer);
 	Verify(Probe_Nested, nested);

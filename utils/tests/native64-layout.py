@@ -33,13 +33,29 @@ def main():
             run(['sh', ROOT/'makemk.sh'], work, buildenv)
             limbo = tools/'limbo'
         print(run([sys.executable, ROOT/'utils/tests/native64-math.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
+        print(run([sys.executable, ROOT/'utils/tests/native64-builtins.py', '--sets'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
+        print(run([sys.executable, ROOT/'utils/tests/native64-sys.py', '--limbo', limbo], work, env).stdout, end='', flush=True)
+        print(run([sys.executable, ROOT/'utils/tests/native64-sys-init.py', '--limbo', limbo], work, env).stdout, end='', flush=True)
+        print(run([sys.executable, ROOT/'utils/tests/native64-tail.py', '--limbo', limbo], work, env).stdout, end='', flush=True)
+        print(run([sys.executable, ROOT/'utils/tests/native64-tail-map.py'], work, env).stdout, end='', flush=True)
+        if env.get('NATIVE64_MATH_LIBDIR'):
+            print(run([sys.executable, ROOT/'utils/tests/native64-math-register.py', '--limbo', limbo, '--libdir', env['NATIVE64_MATH_LIBDIR']], work, env).stdout, end='', flush=True)
+        else:
+            print('SKIP complete Math registration: set NATIVE64_MATH_LIBDIR to explicit classic-mk native libraries', flush=True)
         print(run([sys.executable, ROOT/'utils/tests/native64-gc.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
         print(run([sys.executable, ROOT/'utils/tests/native64-nested.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
         print(run([sys.executable, ROOT/'utils/tests/native64-module-roots.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
         print(run([sys.executable, ROOT/'utils/tests/native64-result.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
+        print(run([sys.executable, ROOT/'utils/tests/native64-resolved.py', '--limbo', limbo], work, env).stdout, end='', flush=True)
+        print(run([sys.executable, ROOT/'utils/tests/native64-arguments.py', '--formatter', '--limbo', limbo], work, env).stdout, end='', flush=True)
         args = ', '.join('a'+str(i)+': string' for i in range(150))
         source = work/'probe.m'
         source.write_text('''Probe: module {
+    Min: con int 16r80000000;
+    Max: con 2147483647;
+    BigMin: con big 16r8000000000000000;
+    BigMax: con big 16r7fffffffffffffff;
+    ByteMax: con byte 255;
     Outer: adt { inner: Inner; lead: byte; link: string; ints: Pair; };
     Inner: adt { count: int; name: string; x: big; };
     Tail: adt { value: int; next: ref Tail; };
@@ -95,7 +111,7 @@ def main():
         empty.write_text('Only: module { f: fn(fmt: string, *): int; };')
         (work/'empty-native64.h').write_text(run([limbo, '-H', empty], work, env).stdout)
         emptyprobe = work/'empty.c'
-        emptyprobe.write_text('#include "lib9.h"\n#include "isa.h"\n#include "interp.h"\n#define LIMBO_NATIVE64_TABLES // Explicit empty logical table.\n#include "empty-native64.h"\n#include "native64-bind.h"\n\n\n/* An all-variadic module has no fixed callable record. */\nint main(void) { return limbo_native64_Only_spec_count == 0 && native64bind(limbo_native64_Only_specs, 0, 0, 0, 0, 0) ? 0 : 1; }\n')
+        emptyprobe.write_text('#include "lib9.h"\n#include "isa.h"\n#include "interp.h"\n#define LIMBO_NATIVE64_IMPLEMENTATIONS // Explicit empty logical table.\n#include "empty-native64.h"\n#include "native64-bind.h"\n\n\n/* An all-variadic module has no fixed callable record. */\nint main(void) { return limbo_native64_Only_spec_count == 0 && limbo_native64_Only_implementation_count == 0 && limbo_native64_Only_implementations[0] == 0 && native64bind(limbo_native64_Only_specs, 0, 0, 0, 0, 0) ? 0 : 1; }\n')
         binary = work/'empty'
         run(compiler+flags+['-DDIS_WORD32=1']+includes+[emptyprobe, '-o', binary], work, env)
         run([binary], work, env)
@@ -161,6 +177,7 @@ def main():
             ('deep', deep, 'nested too deeply'),
             ('moduledata', 'Probe: module { T: adt { x: int; }; item: ref T; };', 'module data'),
             ('collision', 'A_B: module { C: adt { x: int; }; }; A: module { B_C: adt { x: int; }; };', 'C name collision'),
+            ('constantcollision', 'Probe: module { A: adt { x: int; }; A_size: con 1; };', 'C name collision'),
             ('keyword', 'Probe: module { T: adt { register: int; }; };', 'C keyword'),
         ):
             invalid = work/(name+'.m')
@@ -168,7 +185,7 @@ def main():
             result = run([limbo, '-H', invalid], work, env, False)
             if result.stdout or diagnostic not in result.stderr:
                 raise RuntimeError('unsupported '+name+' metadata was not rejected before publication\n'+result.stdout+result.stderr)
-        print('PASS native64: real compiler, 2 compatible/2 rejected models, Sys/Math complete geometry, runtime offset negative control, legacy unchanged model, deterministic output and 14 preflight/CLI rejections', flush=True)
+        print('PASS native64: real compiler, 2 compatible/2 rejected models, Sys/Math complete geometry, runtime offset negative control, legacy unchanged model, deterministic output and 15 preflight/CLI rejections', flush=True)
 
 
 if __name__ == '__main__':

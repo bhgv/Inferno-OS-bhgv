@@ -67,6 +67,9 @@ Devgen	devgen;
 Chan*	devopen(Chan*, int, Dirtab*, int, Devgen*);
 Walkqid*	devwalk(Chan*, Chan*, char**, int, Dirtab*, int, Devgen*);
 void		disfault(void*, char*);
+#ifdef ANDROID
+void		do_backtrace(char*);	/* Native Android diagnostic entry. */
+#endif
 void		disinit(void*);
 int		domount(Chan**, Mhead**);
 void	drawqlock(void);
@@ -128,6 +131,7 @@ Fgrp*	newfgrp(Fgrp*);
 Mount*	newmount(Mhead*, Chan*, int, char*);
 Pgrp*	newpgrp(void);
 Proc*	newproc(void);
+int		nrand(int);	/* Console-owned bounded random helper. */
 void		nexterror(void);
 void		nofence(void);
 void		notkilled(void);

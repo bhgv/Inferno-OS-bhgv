@@ -9,6 +9,18 @@ import tempfile
 
 ROOT=Path(__file__).resolve().parents[2]
 
+SUCCESS_FREETYPE = """
+
+/* This successful-only static descriptor fixture must never enter allocation-failure cleanup. */
+void
+freetype(Type *type)
+{
+	(void)type;
+	abort();
+}
+
+"""
+
 PORTS = os.environ.get('SYS_STAT_PORTS', 'emu os').split()
 MODELS = os.environ.get('SYS_STAT_MODELS', '64 32').split()
 if not PORTS or any(port not in ('emu', 'os') for port in PORTS):
@@ -60,7 +72,7 @@ with tempfile.TemporaryDirectory(prefix='sys-stat-slots-') as directory:
         bodies += [function(source, sig) for sig in ('static int\nsysnativeint(','static int\nsysiofd(','static void\nsysstatusframe(','static void*\nsysresultowner(','static void\nsysdirowners(') if sig in source]
         bodies += [function(source,sig) for sig in ('void\nsysinit(','static void\nunpackdir(','void\nSys_stat(','void\nSys_fstat(','void\nSys_fd2path(')]
         target=td/(platform+'.c')
-        target.write_text(template.replace('IMPLEMENTATION','\n'.join(parts+bodies)))
+        target.write_text(template.replace('IMPLEMENTATION', SUCCESS_FREETYPE+'\n'.join(parts+bodies)))
         for bits in map(int, MODELS):
             model=td/(platform+str(bits))
             model.mkdir()

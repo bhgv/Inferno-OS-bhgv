@@ -1,5 +1,8 @@
 PORTHFILES=\
 	$ROOT/include/vmstartup.h\
+	$ROOT/include/native64-scalar-boot.h\
+	$ROOT/include/native64-model.h\
+	$ROOT/include/native64-caller.h\
 	$ROOT/$OBJDIR/include/lib9.h\
 	$ROOT/$OBJDIR/include/emu.h\
 	$ROOT/include/arm-fp.h\
@@ -30,7 +33,7 @@ $ROOT/$SYSTARG/$OBJTYPE/lib/lib%.a:N:	lib%.a
 %.$O:		../ip/%.c
 		$CC $CFLAGS -I. ../ip/$stem.c
 
-&.$O:		$HFILES $PORTHFILES
+&.$O:		$HFILES $PORTHFILES $NATIVE64HFILES
 
 $INSTALLDIR/%: %
 	cp $stem $INSTALLDIR/$stem
@@ -142,6 +145,8 @@ devsign.$O: $ROOT/libkeyring/keys.h
 devsrv.$O:	$ROOT/libinterp/runt.h\
 		$INTERP
 devtk.$O:	$INTERP
+# Caller leases inline frame validation; rebuild the owner when that contract changes.
+dis.$O: $ROOT/include/native64-caller.h $ROOT/include/native64-frame-cell.h $ROOT/include/native64-model.h $ROOT/include/dis-layout.h
 dis.$O:	$INTERP
 discall.$O:	$INTERP
 exception.$O:	$INTERP
@@ -176,3 +181,12 @@ srv.h srvm.h:D:		$ROOT/module/srvrunt.b $ROOT/module/srv.m
 			rm -f $alltarget
 			limbo -a -I$ROOT/module $ROOT/module/srvrunt.b >srv.h
 			limbo -t Srv -I$ROOT/module $ROOT/module/srvrunt.b >srvm.h
+
+# Startup must reject mismatched installed builtin frames before module registration.
+main.$O amain.$O: $ROOT/include/legacy-native-abi.h
+
+# inferno.c consumes the same generated Sys types as the owning interpreter.
+inferno.$O:	$NATIVE64_BOOT_SYS_HEADERS
+
+$ROOT/libinterp/sys-native64.h:D: $ROOT/module/sys.m
+	limbo -H $ROOT/module/sys.m > $target.tmp && mv $target.tmp $target

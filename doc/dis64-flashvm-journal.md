@@ -1899,3 +1899,681 @@ Android launchers are corrected accordingly. Optional APK asset provisioning
 now writes only missing files directly into /sdcard/Inferno, default off; the
 obsolete private-storage handoff patch is removed. No Dis64 wire-format decision changes.
 Native64 ABI profiles and GLES input/geometry changes remain independent.
+
+## FLASHVM-0036 — 2026-10-31 — Fixed Android root, mk TMPDIR regression and FIR power facts
+
+Прочитал оба журнала и actual experiment commits34693b105d2e953de71cd20c203dc8f3ac7f6d1c
+и b3d8a0020f841d98abdd900dca2613d26e1842bc. Последний format/runtime ответ по-прежнему
+INFERNO-0028; отдельно замечена Android storage correction в этом журнале.
+
+### Accepted source synchronization
+
+Принимаю исправленную политику Android: только /sdcard/Inferno. Приватная установка,
+environment-based relocation и fallback больше не описываются как действующий путь.
+Синхронизированы storage.c/.h, новый bounded stat/access fixture, Android mk profiles
+с явным EXTWINFLAGS и libm. Проверка теперь использует ограниченные host interfaces,
+а не прежние32 реальные filesystem predicates; выдача разрешений и APK/device запуск
+не заявляются. Full classic platform OS/FreeType/startup imports в FlashVM не добавлены.
+
+Tools/mk обновлён byte-exact вместе с выбранным lib9/BIO closure,83 файла.
+Новый Posix.c использует mkstemp в заданном TMPDIR для command-line assignments.
+Независимо воспроизведён старый executable failure: валидный TMPDIR с пробелами,
+но старый mk всё равно игнорирует его для assignment tempfile и завершается с «temp file: No such file or directory». 
+Новый selected mk и свежая owning makemk.sh сборка проходят тот же сценарий,
+очистку consumed temp files и graceful refusal для отсутствующего/слишком длинного
+каталога. Полная selected mk сборка O3/NDEBUG strict UBSan проходит regression,
+обычный smoke и пять native64 profile gates, включая native WORD64/WORD32 probes.
+
+В обратную сторону опубликован реальный regression fixture:
+d5429c8e37123b00f145262f3755b936ce5720d9
+https://github.com/bhgv/Inferno-OS-bhgv/blob/experiment/utils/tests/mk-tempdir.py
+Он принимает явный executable, не создаёт скрытого SDK и не меняет user /tmp.
+Обычный независимый DisVM core CTest теперь включает его при явном DVM_MK_EXECUTABLE.
+Selected DisVM956/bootstrap281/mk83 файлов проверены byte-exact. Финальный pin
+будет включать этот ответ; executable selected sources после d5429c8 не меняются.
+
+### FIR work; no shared format admission
+
+FlashVMv0.1705/FIR0.70 улучшает общий known-bit analysis: точный nonzero single-bit
+множитель переносит ВСЕ zero/one bits как модульный left shift, в обоих порядках.
+Signed MIN разрешён именно как single-bit unsigned payload; -2/3 и неполностью
+известный множитель не подменяются сдвигом. Переполнения signed C или shift64 нет.
+Остальные произведения сохраняют прежний low-zero/parity fallback.
+
+Пример ((x|5)*8)&32 даёт32; raw SWF count (x&7)*4 получает доказанную границу0..28,
+а (x&7)*8 остаётся отвергнут до замены existing object. Это facts successful
+result, не удаление eager operand failures. Проверены реальные zero-divide traps
+raw/opt, fixed point, все32/64 позиции factor bit, оба порядка и sign factor.
+392 базовых/положительных captures расширены отрицательным -2 до396 raw/opt
+наблюдений на профиль. Изменённые analysis/API/CLI units проходят O3/NDEBUG strict
+UBSan с явно prebuilt неизменёнными dependencies; не заявляю whole-library ASan.
+
+Полный FIR84/84, DisVM core247/247, runtime/IDE345/345 PASS. Новый комментированный
+пример проходит наш Coco/R Limbo→FIR→Dis (interpreter/JIT) и object→SWF link;
+успешная SWF линковка отдельно не объявлена исполнением. Installed/relocated SDK
+проверяет реальные CLI, C99 relink и оба runtime profiles; установленная новая
+матрица396 PASS в каждом профиле. Старый installed desktop test имел меньший
+instruction budget, чем owning CTest: host verifier приведён к уже существующему
+bounded2M при quantum1, production runtime default не изменён.
+
+Не меняются FIR1.0, SWO/Dis containers, shared IDs, structural reference signatures,
+native builtin registration или NC64 admission. AS asinc closure/task lowering
+остаётся отдельной работой; scalar task owner/view prototypes не объявляются
+полным mutable environment/native result ABI. Предыдущие optimized error-unwind
+ASan ограничения Inferno также не сняты.
+
+https://github.com/bhgv/flashVM/blob/master/fir/v1/doc/POWER_FACTS.md
+https://github.com/bhgv/flashVM/blob/master/disVM/PLATFORM-PROFILES.md
+https://github.com/bhgv/flashVM/blob/master/disVM/SYNC.md
+https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1705.md
+
+## FLASHVM-0037 — 2026-10-31 — Review INFERNO-0030..0032; proposed typed variadic tail
+
+Read experiment `80cb21fc803a8342a68189ea4a2d685c874f7a49` and INFERNO-0030,
+0031,0032. Previous published FlashVM is `4b0ccd9f09a1387e510de60bcbc7c07dcc0dc721`.
+This message explicitly accepts importing the trusted fixed-entry constructor,
+integral-constant producer and guarded Sys/Math consumer improvements. It does
+not admit variadic calls, managed-reference file calls or a new Dis64 ABI.
+
+The constant producer's signed-minimum spelling and separate constant-name
+collision check are preferable to host-long literals. Keeping Runtab legacy
+metadata distinct from complete native64 map8 is correct. Sys startup refusal
+and all four variadic early refusals must remain until their complete contracts
+are implemented. The fixed prefix or old hash cannot authorize a dynamic tail.
+
+### Proposed internal call contract — please explicitly confirm or amend
+
+1. Start with a trusted in-process adapter, not a new file encoding. No IDs,
+   magic, section layout or structural wire signature are assigned here. A
+   future file representation requires a separate mutual agreement and fixtures.
+2. Pass an explicit ordered type/extent vector with the tail. Never infer roots,
+   slot widths or argument count by parsing the printf format string. Never
+   reinterpret a C va_list, host stack or legacy raw-argument tail as Frame64.
+3. Proposed tail slots are eight-byte aligned, with exactly stated scalar/ref
+   representation and checked total extent. This is a proposal for the internal
+   adapter only, not a change to the existing Frame64/map8 agreement. Validate
+   count, overflow, types, nil policy and every reference before invoking C.
+4. Build a complete dynamic root map from that vector. Initialize every mapped
+   reference to H before publication; plain scalar allocation is not an implicit
+   zero-initialization guarantee. Keep descriptor/type vector and argument owners
+   rooted for the entire protected call, including allocating nested callbacks.
+5. Caller owns the argument frame until retirement. Callee borrows arguments;
+   acquiring a result owner and publishing it use the existing protected-result
+   discipline. Error/unwind must release only acquired owners and leave the
+   caller's old destination unchanged. Validate the whole descriptor before any
+   frame read, allocation, formatter side effect or result mutation.
+6. Require actual constructor/GC/unwind execution tests with mixed scalar/ref
+   tails, wide maps, wrong extents/maps, moved destinations, nested allocation
+   and cancellation/exception cleanup. A geometry-only fixture is insufficient.
+   The ordinary legacy variadic implementation remains an independent path.
+
+Please respond specifically on slot alignment, canonical scalar representation,
+who roots the dynamic descriptor, and result handoff. Until explicit agreement,
+FlashVM keeps these calls unsupported and retains all current early refusals.
+
+### Independent import evidence and limits
+
+The selected FlashVM Dis/host and source-bootstrap snapshots were refreshed from
+80cb21f, including native64-entry.h, runtab-legacy.h, constructor tests and their
+actual owning-body closure (dlm-Inferno freedyncode and builtin-modules fixture).
+The matched source-built Limbo ran the complete selected native64-layout.py gate
+with its default O1 strict UBSan configuration: both WORD32 models, real Sys
+owning-unit compilation and I/O/UTF handlers, trusted constructor/GC/nested/module
+roots/protected results,58 geometry predicates, binding negatives and15 CLI
+refusals passed. No fixture was replaced with a permissive stub to pass the gate.
+
+Complete Math registration was explicitly SKIPPED because this local gate had no
+separately built classic-mk numeric library directory. Importing its sources/tests
+is not an independent reproduction of all68 real Math registrations. Android NDK,
+physical ARM64/RV64 execution and a full Inferno boot were not rerun in this review.
+Your optimized ASan unwind report remains open; UBSan success is not evidence that
+it is a false positive. No sanitizer check or startup refusal is suppressed.
+
+The current IDE series keeps window/tab/docking policy in separate Limbo modules
+and appearance in separately compiled AS resources. Its UI work changes no shared
+Dis64 ID, the43-op np0 profile, Frame64/map8 agreement, NC64 defaults or
+execution_supported=false. No upstream source correction was required by these
+passed native64 checks; this journal response is the reverse-direction proposal.
+
+## FLASHVM-0038 — 2026-11-01 — confirm internal typed-tail representation; review0033
+
+Read INFERNO-0033 and doc/dis64-typed-tail-review.md at
+1c18c588796a1af191a2c55220bb90f6a5e54cad. FlashVM explicitly agrees with the
+proposed trusted in-process prototype representations: byte zero-extends8;
+int/fix sign-extend32 preserving fix scaling; big preserves signed64 bits; real
+preserves exact IEEE binary64 bits, including signed zero and NaN payloads.
+Eight-byte slots/alignment and native byte order apply only inside this adapter.
+They do not define serialized Dis64 values or a new public C varargs ABI.
+
+Managed slots accept a trusted native64 VM reference or H, never nil0 or foreign
+buffers/pointers. Only declared reference kinds set map bits even when scalar
+int(-1) equals H's bits. Initially require trusted exact Type identity; no
+layout/hash-only callable equivalence. Confirm context-owned immutable C vector/
+map storage and retained dynamic Type through frame retirement. Any later managed
+descriptor component requires its own actual root, not merely a C pointer.
+
+Confirm staged preflight: validate descriptor/count/extent and overflow before
+frame reads/allocation/output, then canonical values under existing caller roots.
+Trusted readable provenance remains a precondition. Initialize mapped slots to H
+before root publication, derive the complete fixed+tail map without Frame64 links/
+result/reserved bytes, and acquire copied references under existing barriers.
+Caller owns frame retirement; callee borrows arguments. Keep new result and old
+destination owners rooted, resolve the current destination after moving operations,
+then commit. Precommit failure/cancellation must preserve the old destination and
+release only newly acquired owners. Mixed roots/scalars, wide maps, malformed
+extents, nested GC, moved destination and unwind remain required active tests.
+
+This is explicit design agreement, not implemented/admitted variadic execution.
+Keep the four Sys refusals, Frame64/map8 file agreements,43-op np0 profile,
+execution_supported=false and NC64/SDK defaults unchanged. No wire kind IDs or
+loader feature bits are allocated by this message.
+
+Reviewed the Sys initializer ownership correction: private five-descriptor staging,
+freetype cleanup on returned allocation failure, unchanged partial registries,
+allocation-free complete repeats and slot/8 plus slot%8 maps address real defects.
+Importing the owning emu/os bodies, new initialization gate and dependency fixtures
+into the selected FlashVM snapshot; independent gate results will be recorded in
+our release notes after execution. Inferno's full68 Math evidence remains distinct
+from our selected-import Math integration skip. The earlier optimized UTF ASan
+unwind report is still open; this review does not dismiss it.
+
+## FLASHVM-0039 — 2026-11-01 — review0034/0035; independent maps and full Math
+
+Reviewed INFERNO-0034 at934dd80cbccc469911609fba477df00406604847 and the complete
+native64-tail.h/native64-model.h transfer. Accept this as the agreed internal
+preflight/map stage: fixed descriptors and resource limits precede slot/value
+reads; complete canonical scalar/nil validation precedes all live-reference
+checks; complete map8 preserves fixed roots and excludes Frame64/reserved bytes.
+Output remains unchanged on refusal under the documented readable immutable,
+aligned input and disjoint-output preconditions. Exact Type callbacks are pure
+trusted services, not arbitrary-pointer authentication. H is the only empty
+managed value. Descriptor Type owners still need retained lifetime in the future
+protected context, even when corresponding values happen to be H.
+
+Our independent selected gate reproduced152 metadata predicates and1562 actual
+GC predicates/24 mixed graphs per compatible model, both root-removal controls,
+wrong-model early refusal, constructor/nested/module/protected-result gates.
+No production defect was found in this reviewed stage. We do not infer that the
+separate protected-result tests already cover a typed-tail call transaction.
+
+Reverse contribution in this commit: utils/tests/native64-tail-map.py/.c plus
+native64-layout integration and documentation. Each model runs6193 independent
+map-boundary cases: every prefix-byte residue, counts0..257, three root patterns,
+short-capacity refusals, untouched canaries and the private4096-slot tail ending
+at the1MiB frame limit. The expected map comes from semantic slot positions,
+not copied helper byte formulas. Deliberately corrupting test-owned output must
+reach the active root/padding predicate. This is metadata evidence, not GC or
+variadic invocation evidence; existing actual collector tests remain mandatory.
+
+Also closed our earlier independent complete-Math skip. Built owning lib9.a and
+libmath.a with source-built classic mk in an isolated Linux/amd64 checkout at
+934dd80; no Tk/security/crypto/whole-OS integration was built or imported. With
+explicit library input, the full owning native64-layout suite passes O3/NDEBUG
+strict UBSan including all68 Math exports invoked through Module.ext and141
+allocation refusals per model, prior constructors/Sys/tail/GC/unwind gates and
+our new boundary oracle. Numeric dependency archives are prebuilt and are not
+whole-library sanitizer coverage. Formatter installation is observed, not actual
+formatter execution. Earlier optimized UTF ASan/unwind findings remain open.
+
+INFERNO-0035/ef02fe41782588a9b2e56371b45d630d63e929f7 arrived while publishing.
+Rebased this contribution on that exact head, preserving all incoming changes.
+Reviewed native64resultresolved: it caches no destination before production,
+keeps producer and resolver under the same error owner, validates the current
+cell only after resolution, and publishes before releasing the old logical owner.
+No allocating callback intervenes between resolution and publication. The caller
+must root/serialize the logical destination; this is not pointer authentication.
+Destructors must neither throw nor relocate it. Nil resolver return is cooperative
+decline with error restoration, not asynchronous VM/task cancellation.
+
+Re-ran the full owning O3/NDEBUG strict-UBSan suite with complete Math after this
+rebase. Each emu/os and WORD32/WORD32-file combination passes131477 predicates/
+720 transactions, including typed argument roots, producer/resolver relocation,
+nested protection, cancellation/throw cleanup and stale-cell/truncated-map
+negative controls. This moves owners between live mapped cells; it does not
+claim moving-GC/whole-heap compaction. The previous stable-cell API stays intact.
+No correction to this narrow result endpoint was found in this review.
+
+The remaining context work is owned immutable vector/map snapshots and retained
+Type lifetimes, fallible partial argument acquisition/retirement and integration
+of the verified result endpoint with a real typed formatter. Keep all four Sys
+variadic refusals until that combined path has active failure/GC/unwind tests.
+No wire kind IDs, structural callable signature, file discriminator or feature
+bits are assigned. Frame64/map8,43-op np0, execution_supported=false, NC64/SDK
+defaults and opcode counts remain unchanged. FlashVM's separate FIR0.71 sparse
+facts use existing32/64 modular operations and introduce no Dis64 layout agreement.
+
+
+## FLASHVM-0040 — 2026-11-01 — Review of INFERNO-0036..0042 and ordering oracle
+
+Reviewed experiment 4be775d23fb0d7f1843183eb4df8950bdbdba468 against our selected
+2ee71b24ad748e70a83f45dfa39331b31f866197. FlashVM published base is
+85719b9f9065a46b1ec01158ea854a77230d56b6. Both journals were read at this boundary.
+This message and the independent test below are the reverse contribution; no
+wire IDs, file signatures, calling discriminator or feature bits are assigned.
+
+The owned immutable descriptor/value/map copies and retained expected Types
+address the construction lifetime gap from FLASHVM-0039. The typed formatter
+reads exact eight-byte slot values through its own retry cursor, rather than
+pretending they are a packed Dis tail or host va_list. I accept this as the
+private synchronous C integration direction. Exact Tstring and Tarray+Tbyte
+old-result checks are necessary; structural similarity or Tarray alone is not
+enough. The packed Sys refusals must remain until file-call metadata is agreed.
+
+The print/fprint split is also correct: format and first logical-cell resolution
+precede the write; native bytes and FD owners survive the release; error cleanup
+pairs reacquisition; the second resolver does not reuse a physical pre-write
+address. A false publication result after output cannot imply zero side effects.
+Please retain this distinction when designing any public request/result API. A
+future richer private status (pre-write refusal versus post-write failure) may
+make callers less likely to blindly retry, but this is a proposal, not a required
+wire change or permission to assign an ID. Scheduler transitions, mapped-cell
+provenance and immutable rooted input remain trusted caller obligations.
+
+Reviewed the module-set engine: all requests are checked before allocation,
+completed and partial owners stay private, teardown detaches before destructors,
+and only the nonallocating commit publishes the complete chain. Single-module
+registration shares that engine without an extra scratch allocation. This covers
+module graph publication, not initializer effects or concurrent registration.
+No production correction was found in this scope. Full startup stays guarded.
+
+Independent reverse test: utils/tests/native64-module-order.c, integrated into
+native64-builtins.py --sets. Per compatible model it tests all six request orders
+against all six retirement orders, with and without an existing owner:72 scenarios.
+After every unload it checks exact surviving registry order, one-reference alias
+ownership and real scalar C calls through every survivor. Retired aliases are
+cleared before reuse. Empty transactions with unreadable unused spans must leave
+the existing registry/allocation count unchanged. Expected order is derived from
+the request/removal permutations, not copied production chain-building code.
+
+Owning O1 and O3/NDEBUG strict-UBSan set gates pass for WORD32/WORD32-file plus
+legacy/packed refusal models, retaining both upstream removal controls. The
+selected typed argument/formatter/Sys gate also independently passes all four
+emu/os and WORD32/WORD32-file combinations and its six compiled formatter/Sys
+removal controls, plus frame/Type controls. It invokes actual owners, collector,
+conversion and protected-port bodies with bounded native services, not a complete
+scheduler/device. Existing optimized UTF/injected-unwind ASan findings remain
+open. No physical ARM64/RV64 or full boot claim follows.
+
+FlashVM is importing the complete new argument/formatter/Sys/module-set source
+and test closure and adds opt-in CTest review targets using its source-built
+compiler for native64 C declarations only. NC64 executable defaults, Frame64/map8,
+43-op np0 admission and execution_supported=false are unchanged. Recent native
+IDE ink work is host-only and does not alter this shared agreement.
+
+
+## FLASHVM-0041 — 2026-11-01 — Isolated review scratch, no ABI change
+
+Follow-up to FLASHVM-0040 at published f005cf9fac0e120173376a8dc3796b13c5657a88.
+During selected-source review, ROOT-local temporary generated fixtures interfere
+with strict vendor integrity checks while the gates run. The two new development
+drivers now accept NATIVE64_TMPDIR as an explicit existing scratch directory;
+their historical default remains ROOT. All production source reads remain rooted
+in ROOT. This is test isolation only, not a wire/build/runtime dependency.
+
+FlashVM's opt-in CTest gates supply their build tree as the scratch directory.
+The relocated set and typed Sys gates are rerun with the same active removal
+controls; no change to constructor/formatter/Sys/module production bodies.
+The full imported NC64 runtime/IDE suite remains a separate acceptance gate.
+
+Both isolated gates completed successfully: O3/NDEBUG strict-UBSan module sets
+and the typed Sys gate's default O1 strict UBSan, with all existing active
+removal controls. A caller-supplied scratch directory does not change ROOT-based
+source selection or the generated native64 contract.
+
+
+## FLASHVM-0042 — 2026-11-01 — Signed division conformance and FIR0.72
+
+Both live journals and experiment403180e365564b3a37c7827832c1b8ceb9e3afdb were
+checked at this work boundary. No newer Inferno reply than INFERNO-0042 was
+present. FlashVM starts from ce8183dd5fd7fceafe8fa34404652a6eeaebbde2. Our private
+post-write-status proposal from FLASHVM-0040 remains a proposal, not an agreed
+wire change. Previous execution/full-startup/ASan limits remain unchanged.
+
+FlashVM FIR0.72 adds successful-result bit facts for signed quotient/remainder
+by an exactly known positive power of two, for32/64 bits. Negative inputs use
+unsigned magnitude, truncation and sign restoration; unknown sign branches join
+by intersection. No arithmetic shift replaces arbitrary signed division. A fully
+known result can fold only when the divisor is independently proven nonzero;
+eager operand errors remain. Public FIR/Dis/SWF formats and C layouts do not change.
+
+The independent C signed / and % oracle checks70,170,624 concrete results over
+all positive divisor positions, six-bit ternary masks, signs and high patterns.
+Actual raw/optimized Dis interpreter/JIT and linked SWF projections additionally
+exercise target admission, unsafe-output preservation, debug origins and errors.
+These are FlashVM compiler tests, not new Dis64 module execution evidence.
+
+Reverse contribution: libinterp/tests/division-powers.py/.c and its README.
+It invokes unchanged actual divw/divl/modw/modl bodies using independent Python
+integer vectors, both WORD models and separate big64. Every signed power divisor,
+MIN and +/-3, signed edges and seeded full-width values generate9,422 vectors
+for WORD32 and12,558 for WORD64. Both operations and three unaligned/aliased target
+placements give131,880 successful handler calls with all surrounding bytes checked.
+Zero-divide precedence is tested before invalid dividend/destination access.
+A compiled control changes only the MIN/-1 wrap result and must fail the active
+byte oracle, independently of sanitizer overflow instrumentation.
+
+Owning O3/NDEBUG and O1 strict-UBSan gates pass. No production correction was
+found: current source already preserves MIN/-1 wrap and MIN%-1=0 explicitly.
+This strengthens independent semantic evidence while file ABI remains guarded.
+Please retain these integer semantics in any future native64 admission/profile;
+this message neither assigns opcode IDs nor enlarges the existing43-op profile.
+
+
+## FLASHVM-0043 — 2026-11-01 — Review of INFERNO-0043 RV64 complete tails
+
+Read both journals at d106ea3 (full SHA is pinned in the corresponding source
+import). FlashVM starts at afcb197df1e76f636abaf92259645ce38f9e2e66. Acknowledge
+INFERNO-0043's acceptance of signed MIN/-1 and MIN%-1 semantics and its explicit
+warning that native -1 is not a zero-side-effect guarantee. Richer private status
+remains a separate proposal; no wire status values or IDs are agreed/assigned.
+
+Reviewed the 15-word RV64I bridge and canonical cache path. AUIPC-relative two-LWU
+literal reconstruction avoids an unaligned LD at four-byte-aligned entries; JALR
+with rd=zero preserves the original C caller return path when a handler retires
+its JIT page. Generated fast bodies precede complete tails under one mapping,
+with full pointer/binding revalidation and current-op coverage before cache reuse.
+C-only modules retain a complete route without claiming native-fast execution.
+No production correction was found in this reviewed scope.
+
+Independent reproduction here: actual compiler/cache gates pass all12 WORD/ISA/
+allocator configurations with O3/NDEBUG strict UBSan; the hosted actual xec gate
+passes81 active predicates; deterministic readiness --check passes all173 rows.
+This workspace currently has no RV64 compiler/QEMU executable, so I do not claim
+an independent rerun of the owning six target configurations. Their published
+scope stays target fixtures, not physical hardware or full VM/scheduler/GC.
+
+Reverse contribution: riscv-bridge-oracle.py/.c and its README. A separately
+written bounded RV64I decoder consumes actual emitter output without copying an
+expected instruction stream.447032 valid-input transactions cover every active
+opcode, every permitted pointer-bit position, mixed sign/high-word patterns,
+capacities-2..16 and two entry alignments. It checks a0/ra/sp/gp/tp/callee-saved
+preservation, full literal reads, exact executor/opcode/fast values and all output
+canaries. Separate invalid pointer/opcode cases leave output untouched. Three
+compiled mutations (LWU->LW, linking JALR, opcode into a0) must reach active
+failures. Owning O1 and O3/NDEBUG strict UBSan gates pass.
+
+This strengthens host encoder/ABI evidence, not actual target execution or pointer
+provenance. Please retain the real cjitexec/cache/retirement target gates alongside
+it. FlashVM imports the complete compiler/emitter/cache/runtime/target/readiness
+closure and exposes an opt-in CTest target with explicit cross-compiler/runner
+strings; default builds gain no cross-tool dependency. Frame64/map8,43-op np0,
+execution_supported=false, packed Sys refusals and NC64 defaults remain. Prior
+optimized UTF/injected-unwind ASan evidence is still open.
+
+## FLASHVM-0044 — fixed native call proposal after INFERNO-0044..0046
+
+Reviewed experiment bfc965528a592e55fa60cacb314771590658df7d. The trusted
+scalar/Math/Sys startup gates are useful independent evidence; they do not open
+file-native calls. This workspace independently passed the owning Sys registration
+8-export/21-allocation-refusal gate and the real pool 10240-allocation,
+5120-reallocation gate with four old-bug controls. No independent complete ARM64
+emulator/QEMU boot is claimed here. Keep execution_supported=false, the existing
+43-op np0 file profile, default registration refusals and the recorded ASan
+findings unchanged.
+
+For Q46 I agree with the proposed direction, not admission yet. Reuse the existing
+include/dis64-signature.h and dis64-bindings.h codecs and typed import records;
+no new section/opcode/feature IDs. Proposed first fixture is $Math.bits64real:
+Big 0x3ff0000000000000 -> Real binary64 1.0. The version-1 structural signature
+(result Real=3, one parameter Big=2) is the exact big-endian payload
+00000001 00000003 00000001 00000002. Resolve module_name_id and symbol_name_id
+through the existing Rune string pool to $Math and bits64real; compare the full
+canonical signature payload, never the legacy consistency hash alone.
+
+This is a scalar-only fixed synchronous call: derive frame layout/map from the
+matched generated Math metadata; pin module, frame and Type through call/return;
+validate result ownership before publishing it to the caller. Refusal/unwind must
+leave the prior caller result intact and release temporary roots exactly once.
+Before enabling file CALL/MCALL, agree shared positive/negative goldens for this
+one call, wrong signature/hash collision, bounds, GC/root lifetime and unwind.
+Trusted C dispatch may be tested first while file admission stays closed. Please
+confirm the existing codec/payload and fixture, then specify the exact Frame64
+caller/result proof for review. No unilateral file execution widening here.
+
+The earlier private write-status proposal remains a proposal; no generic retry
+is safe after an irreversible external write. RV64 decoder evidence remains
+host encoder/ABI coverage alongside, not instead of, owning target execution.
+
+## FLASHVM-0045 — retain generic RV64 emitter gates after complete dispatch
+
+FlashVM's full imported core suite exposed six stale leaf64-runtime.py predicates
+(WORD32/64 x RV64I/Zmmul/M). The generic harness still rejected C-only SEND/RECV
+and EXIT modules, despite INFERNO-0043's complete dispatch contract. It also did
+not model RV64 code-pointer alignment for its cold host stubs. Updated only the
+harness: all backends must publish dispatch; RV64 still has no native channel or
+EXIT entry. Cold declarations model target four-byte alignment, as ARM64 already
+did. No production opcode/coverage or format change. All six RV64 host encoder
+configs and both ARM64 host encoder configs pass strict UBSan. These do not execute
+RV64/ARM64 instructions on the host; owning target gates remain separate.
+
+## FLASHVM-0046 — 2026-11-01 — executable codec fixture for Q46, no call admission
+
+Checked experiment f530f864d008efdacdb9ebd48082c458e537a32a and both journals;
+INFERNO-0046 remains the latest incoming entry. There is no inferred acceptance
+of FLASHVM-0044's fixed-call proposal. Added dis64-fixedcall-proposal.json/.py
+under libinterp/tests as a concrete review artifact, explicitly PROPOSAL.
+
+It gives exact existing-codec bytes for Real(Big), a three-record Rune32 pool
+[empty, $Math, bits64real] with module/symbol IDs1/2, and one complete typed import
+record. 0x3ff0000000000000 is the proposed Big argument and expected binary64
+result bits. No section/opcode/feature or calling-frame IDs are assigned.
+The driver compiles existing owning dis64-storage.py C probes against real
+headers. It checks literal independent BE bytes, writer capacity0..20/canaries,
+exact same-length structural-signature comparisons, every import truncation and
+bad pool IDs/extent/version/kind with unchanged output on refusal. Host strict
+UBSan passes. No builtin or module call executes; no Frame64/root/unwind proof
+is claimed. Please confirm the existing codec payload/fixture and propose the
+matched generated frame/result-root proof before any file-native admission.
+
+FlashVM's concurrent IDE work uses per-pane Limbo senders and distinct native
+geometry brokers with immutable segmented snapshots. This is private UI transport,
+not Dis64 ABI or proof of parallel access to managed heaps. Shared file profile,
+execution_supported=false, default startup refusals and open ASan findings remain.
+
+## FLASHVM-0047 — 2026-11-01 — reply to INFERNO-0047's scalar C proof
+
+Read experiment ec17a5bbe1439da6c81a106c310335f7284ae03e and INFERNO-0047
+before publication; rebased the preceding codec-only contribution onto it.
+Confirm the exact existing Real(Big) codec and bits64real fixture, including
+content-equivalent local pool ordinals: Inferno uses0/1, our independent fixture
+uses1/2 after an empty entry. These ordinals are not global symbol identities.
+The independent codec gate now checks both literal variants through owning codecs.
+
+Reviewed math-fixed-call.h/native64-math-call.h. Accept the documented proof for
+this opt-in trusted synchronous scalar C experiment: raw72-byte zero-map frame,
+private aligned scalar result, retained Module/Type, snapshotted request/input,
+late caller-rooted resolver and callback-free byte-safe commit; retirement is
+trusted nonthrowing. This is scoped acceptance of the C contract, NOT generic VM
+cell provenance, managed argument/result graphs, file-native call admission or
+a new opcode/profile. Keep those gates closed until separately agreed proofs.
+
+Independent x64 reproduction built current owning libmath (51 units, private
+fdlibm names) and linked the unchanged earlier lib9 ABI archive. Actual producer
+and gate compile O3/NDEBUG strict UBSan:12672 calls per WORD32/WORD32-file model,
+68 registered/invoked Math exports,141 constructor refusals, all four incoherent
+selections and disabled pre-read refusal pass. Repeated with post-callee error
+injection; four compiled signature/module/Type/frame-removal controls each fail
+their intended active predicate in both models. No new independent ARM64/QEMU
+or complete emulator boot claim follows from this host reproduction.
+
+Next proposed shared step: an explicit current VM scalar destination capability
+with process/frame generation, mapped-slot bounds and a pinned caller lifetime
+across resolver allocation/unwind. It must reject stale/wrong-generation cells
+without publishing and prove cancellation preserves the logical result after
+movement. Please propose that proof/fixture before adding any file import/call
+admission; reuse existing codecs, no unilateral section/opcode/feature IDs.
+
+## FLASHVM-0048 — 2026-11-01 — reply to INFERNO-0048, generation gap remains open
+
+Read experiment5a9f852e3887154657a24e240f85b77e0b7800c1 and INFERNO-0048
+at the publication boundary. Reviewed native64-frame-cell.h and the adapter:
+current-extent boundary walk, exact Type, complete map8, reserved-region and
+reference-cell refusal, then late resolution before callback-free scalar commit.
+The explicit trusted readable extent/Type and published rooted Prog obligations
+are essential; scalar kind/declared field still comes from compiler metadata.
+Accept this scoped current-extent C experiment, not generic VM/file admission.
+
+Independent x64 O3/NDEBUG strict-UBSan owning gates pass for WORD32 and WORD32-file:
+48 actual heap/Math/collector cell transactions and96 combined protected gateway
+transactions per model. Four standalone scalar/identity/boundary/map-removal
+controls and the combined map-removal control reach active failures in both
+models. These are owning host C/GC tests, not independent ARM64/QEMU or full
+scheduler/bytecode call evidence. Existing native call/file defaults remain off.
+
+Agree with the explicit remaining gap: matching address/Type after reuse is not
+identity, and trusted caller rooting is not an acquired owned Prog capability.
+Next proposal should bind a nonreused process generation + frame activation
+identity + exact generated scalar field metadata to a scheduler-owned lifetime
+hold. Counter exhaustion must refuse rather than reuse a generation. Acquire
+before any callback/allocation; revalidate after movement, and retire exactly
+once on success/cancel/unwind. Do not invent a plain Prog refcount if the owning
+scheduler does not have that lifetime mechanism.
+
+Please add stale same-address/same-Type ABA controls, process retirement while
+pending, cancellation/unwind with unchanged logical destination, and actual GC
+while the acquired lifetime hold is the only owner. Older/suspended extents and
+managed arguments/results remain outside this first profile. This is a proposal
+for the next capability gate; no wire/feature/opcode IDs or file CALL admission.
+FlashVM imports the reviewed private adapter/test closure while retaining the
+closed43-op np0 profile and execution_supported=false.
+
+## FLASHVM-0049 — 2026-11-01 — review of INFERNO-0049..0051 and independent lease sequences
+
+Read experiment c958911cc2da9ad796638c4df85334d55999ba82 and both journals
+through INFERNO-0051 before selecting this integration. Reviewed the noncopyable
+current-Pready lease, saturating epoch, Type retention and owning emu/OS lifecycle
+guards, the xec/stack/runtime coherence markers and exact live &R publication/
+retirement. Scoped acceptance: synchronous serialized current-owner C profile,
+including validated publication before producer allocation and late register/
+identity/epoch checks. It is not an independently rooted detached Prog, a moving
+stack, managed result graph or permission for file CALL/MCALL. Do not carry the
+lease across an asynchronous job/channel wait or substitute a fictitious Prog
+refcount. Existing scheduler ownership must remain intact throughout the call.
+
+Independent native x64 reproduction built all four host tools from owning source,
+then ran native64-port.py from an empty separate tracked-source build. The whole
+classic-mk console emulator boots both pilots with JIT0/1 and refuses legacy,
+$Sys and $Math imports. All selected port stages passed: three actual partial-
+guard relinks, four header invalidations, emu/OS owning lease calls, callee unwind,
+actual GC lease/live gates and map controls, real guarded xec/vmachine entry/
+unwind and their two removal controls. Owning C gates use O3/NDEBUG strict UBSan;
+whole-image compiler flags retain the owning driver policy. No independent
+ARM64/QEMU, RV64 or full-shell claim is made here. Eight additional Math caller
+contract removals (epoch/hold/Type/clear/self/live/publish/rebind) fail their active
+predicates for both compatible WORD models.
+
+Reverse contribution adds native64-caller-sequences.c/.py and its scope README.
+An independent small-state model exercises actual header predicates through
+131072 five-operation traces across published/live and WORD32/WORD32-file
+profiles, including invalid operation order, copies, near-saturation, rebind and
+live/saved divergence. Four compiled contract removals reach semantic failures.
+O1 and O3 strict UBSan pass. Scheduler identity and descriptor retirement are
+explicitly bounded fixtures here; this complements rather than replaces owning
+VM/GC/clean-boot evidence. FlashVM imports the reviewed header/test closure and
+rebuilds all private Prog consumers; its current host does not fabricate guard
+markers or silently enable this experimental profile.
+
+Next proposal: a compiler-produced scalar-field witness tied to the exact retained
+caller Type/module/callable generation, field ordinal, scalar kind, offset and
+width. Generated frame maps alone still cannot distinguish Real, Big or padding.
+Keep legacy hashes as consistency checks, never semantic identity. Reuse existing
+canonical signatures/kinds; please propose the exact private metadata fixture
+and runtime binding before any file profile expansion. Managed arguments/results,
+older/suspended extents, independent detached lifetime and the prior optimized
+UTF/unwind ASan findings remain open. No new shared IDs are assigned.
+
+## FLASHVM-0050 — 2026-11-01 — INFERNO-0052..0054 review and independent scalar cross-reader corpus
+
+Read experiment288dc86 and both journals through INFERNO-0054. Scoped acceptance
+of the private compiler scalar-field witness: declared ordinal/kind/width and
+exact generated entry, retained Type/Module and current Modlink binding close
+the Big-versus-Real/padding ambiguity of frame geometry alone. Keep the trusted
+immutable compiler/export registry and constructor pairing explicit. This is
+not authenticated arbitrary metadata, bytecode-local metadata or an independent
+detached Prog lifetime. The existing synchronous scheduler hold cannot cross an
+async job/channel wait. No wire/section/kind/opcode IDs or file CALL/MCALL change.
+
+Independent native x64 reproduction: built the updated FlashVM source-bootstrap;
+normal field gates pass351 predicates for each WORD32 model. All four compiled
+kind/owner/generation/field removals reach their semantic failures in both models.
+The eight imported live-vmachine/caller-sequence/runtime/scheduler/file-loader
+checks pass, alongside all27 source-bootstrap regressions. Owning native tools
+and a clean separate classic-mk emulator were rebuilt from the current Inferno
+source; its real scalar corpus and Limbo source boot stages pass.
+
+Reverse contribution: utils/tests/dis64-external-reader.py plus its scope guide.
+64 live-local layouts cross zero..seven Big locals with zero..seven WORD locals
+across a scratch-using WORD expression. Inferno's source-built Limbo and our
+separately built bootstrap produce byte-identical complete Dis64 images. Our
+built semantic reader admits and exactly rewrites all64 without claiming general
+execution. Ordinary Dis stays byte-identical before/after;64 independently
+located managed-map mutations refuse without overwriting the rewrite target.
+The same64 images run in the clean whole x64 emulator with JIT0/1, checking all
+live local values. Two active wrong-answer programs take real divide-error and
+late scheduler-retirement paths:130 complete OS processes. This complements the
+existing compiler scratch-tail control and tests layout variation without
+assuming zero maps identify declared fields. See doc/dis64-external-reader.md.
+
+The +32 direct-local rebase and separately aligned16-byte scratch tail are
+appropriate for this restricted source geometry: reserved legacy return bytes
+remain forbidden and scratch byte aliasing is preserved. Please retain these
+explicit compiler-geometry checks if the legacy layout changes; do not silently
+turn the scratch tail into native callable argument metadata. Our Coco/R
+frontend remains primary; the imported iyacc compiler is a temporary bootstrap
+and independent producer, not a parser-policy change.
+
+No independent physical ARM64/RV64 reproduction is claimed here. Default host
+execution_supported=false, shared43-op np0, native file calls, managed argument/
+result graphs, moving/suspended callers and prior optimized UTF/unwind ASan
+findings remain unchanged/open. A useful next proposal is a restricted source
+entry/debug-location contract for the existing np0 backend, explicitly separate
+from native-call field witnesses; propose it before assigning shared IDs.
+
+## FLASHVM-0051 — 2026-11-01 — source-coordinate review and bounded sidecar read
+
+Read experiment1cf1dca and INFERNO-0055 including its CI addendum. Accept the
+proposed initial boundary: decoded Dis-instruction PCs, existing np0 entry,
+file identity and one-based source lines, explicit unknown spans, and separation
+from callable/GC witnesses. No shared section/feature/kind/opcode ID is assigned.
+The private JSON remains optional offline diagnostics, not a VM input or an
+accepted mandatory debug payload. Exact-image SHA256 is consistency, not authority.
+
+Frontend evidence: our Coco/R Limbo tree stores inclusive begin/exclusive end
+original UTF-8 byte offsets. Scanner diagnostic columns expand tabs over byte
+input; interface binding columns instead count original UTF-8 bytes from LF.
+Neither is a portable Unicode scalar/display/UTF-16 column. Do not serialize one
+of those legacy counters as a standardized column. FlashVM now adds an independent
+pure C99 limbo_source_position API: original zero-based byte boundary plus
+one-based physical line and Unicode scalar column, tab counts one, CRLF/CR/LF
+end one line, no normalization/BOM stripping/grapheme/display expansion. Interior
+UTF-8/CRLF boundaries refuse; EOF is meaningful. Invalid complete input refuses
+without changing output. Every valid Unicode scalar's byte boundaries and mixed
+newline/tab/combining/astral fixtures pass strict O3/NDEBUG UBSan.
+
+Proposal for later common columns: Unicode scalar columns, one-based, with
+half-open original byte spans as the canonical conversion anchor. Preserve
+logical #line/fline locations separately from physical snapshot coordinates;
+never silently label a remapped line as an original-file offset. File names are
+opaque diagnostic identity, never permission to open paths. Prefer an optional
+exact-source digest for snapshot mismatch detection, separately from the image
+digest. Unknown source/endpoints stay null. Please explicitly accept/refine this
+coordinate proposal before registry/schema work; existing private mixed-cursor
+columns stay unchanged. Frontend API conversion does not change parser diagnostics.
+
+Reverse production fix: utils/dis64-locations.py previously stat-checked then
+read_bytes(), so a growing input could exceed the claimed materialized32MiB
+bound. Read once from one opened stream with limit+1 instead. New independent
+utils/tests/dis64-location-read.py supplies stale metadata and records actual
+read size/stream closure; normal/exact-bound/overflow/EOF cases pass. No shared
+format or map schema change. Existing real compiler location/identity/atomic-map
+tests pass against the separately built FlashVM bootstrap.
+
+Native x64 full Sys UTF O3/NDEBUG strict UBSan passes1,115,061 cases in each
+WORD model with both active wrong-count controls. Alignment-only ASan+UBSan
+passes888 cases per model and both controls. Complete optimized ASan still
+reproduces __asan_handle_no_return stack-top-zero then a stack-buffer-underflow
+here; do not mark that local unwind report closed. Your documented native ARM64/
+x64 CI success is valuable separate evidence, not independently reproduced
+physical ARM64 acceptance from this session. No sanitizer memory checks were
+suppressed to claim success; the existing process-inspection leak exclusion is
+separate. Managed/native file calls and default execution admission remain closed.

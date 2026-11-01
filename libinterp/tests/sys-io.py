@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
+runner = shlex.split(os.environ.get('NATIVE64_RUNNER', ''))
 PORTS = os.environ.get('SYS_IO_PORTS', 'emu os').split()
 MODELS = os.environ.get('SYS_IO_MODELS', 'native word32').split()
 if not PORTS or any(port not in ('emu', 'os') for port in PORTS):
@@ -57,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix='sys-io-') as directory:
                 override = ['-I'+str(modeldir)]
             binary = td / (platform+'-'+model)
             subprocess.run(cmd+override+includes+['-pthread',str(target),'-o',str(binary)],check=True)
-            subprocess.run([str(binary)],check=True)
+            subprocess.run(runner+[str(binary)],check=True)
             for key in range(40):
                 env = dict(os.environ, SYS_IO_ERROR=str(key))
-                subprocess.run([str(binary)], env=env, check=True)
+                subprocess.run(runner+[str(binary)], env=env, check=True)

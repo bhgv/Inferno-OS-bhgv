@@ -6,6 +6,9 @@ OFILES=	asm.$O\
 	com.$O\
 	decls.$O\
 	dis.$O\
+	dis64.$O\
+	dis64-lower.$O\
+	dis64-inline.$O\
 	dtocanon.$O\
 	ecom.$O\
 	gen.$O\
@@ -21,10 +24,23 @@ OFILES=	asm.$O\
 	y.tab.$O\
 
 HFILES=	limbo.h\
+	dis64-lower.h\
+	dis64-inline.h\
 	fns.h\
 	y.tab.h\
 	$ROOT/include/interp.h\
 	$ROOT/include/isa.h\
+	$ROOT/include/dis64.h\
+	$ROOT/include/dis64-module.h\
+	$ROOT/include/dis64-types.h\
+	$ROOT/include/dis64-data.h\
+	$ROOT/include/dis64-scalar.h\
+	$ROOT/include/dis64-code.h\
+	$ROOT/include/dis64-pilot.h\
+	$ROOT/include/dis-string-pool.h\
+	$ROOT/include/dis-rune.h\
+	$ROOT/include/dis-layout.h\
+	$ROOT/include/dis-operand.h\
 
 LIBS=	bio\
 	math\

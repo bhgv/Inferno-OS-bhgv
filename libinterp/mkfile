@@ -53,6 +53,22 @@ HFILES=\
 	$ROOT/include/dis64-scalar.h\
 	$ROOT/include/dis64-code.h\
 	$ROOT/include/dis64-pilot.h\
+	$ROOT/include/runtab-legacy.h\
+	$ROOT/include/native64-model.h\
+	$ROOT/include/native64-caller.h\
+	$ROOT/include/native64-scalar-boot.h\
+	$ROOT/include/native64-modules.h\
+	$ROOT/include/native64-tail.h\
+	$ROOT/include/native64-arguments.h\
+	$ROOT/include/native64-format.h\
+	$ROOT/include/native64-sys-format.h\
+	$ROOT/include/native64-sys-write.h\
+	$ROOT/include/native64-sys-call.h\
+	$ROOT/include/native64-frame.h\
+	$ROOT/include/native64-result.h\
+	$ROOT/include/native64-entry.h\
+	$ROOT/include/native64-field.h\
+	$ROOT/include/native64-bind.h\
 	$ROOT/include/dis-layout.h\
 	$ROOT/include/dis-operand.h\
 	$ROOT/include/dis-rune.h\
@@ -97,6 +113,14 @@ prefabmod.h:D: $MODULES
 tkmod.h:D: $MODULES
 	rm -f $target && limbo -t Tk -I../module ../module/runt.m > $target
 
+# Generate coherent Sys declarations only for the explicit trusted startup profile.
+$ROOT/libinterp/sys-native64.h:D: $ROOT/module/sys.m
+	limbo -H $ROOT/module/sys.m > $target.tmp && mv $target.tmp $target
+
+# Generate private C metadata only when the explicit startup profile requests it.
+math-native64.h:D: ../module/math.m
+	limbo -H ../module/math.m > $target.tmp && mv $target.tmp $target
+
 mathmod.h:D: $MODULES
 	rm -f $target && limbo -t Math -I../module ../module/runt.m > $target
 
@@ -128,17 +152,17 @@ draw.$O: 	$ROOT/include/draw.h $ROOT/include/drawif.h
 prefab.$O: 	$ROOT/include/draw.h\
 		$ROOT/include/prefab.h
 
-runt.$O:	sysmod.h
+runt.$O:	sysmod.h $NATIVE64_BOOT_SYS_HEADERS
 prefab.$O:	prefabmod.h
 draw.$O:	drawmod.h
 tk.$O:		$ROOT/include/draw.h tkmod.h
-math.$O:	mathmod.h
+math.$O:	mathmod.h $NATIVE64_BOOT_HEADERS
 keyring.$O:	keyring.h ipint.h keyringif.h
 crypt.$O:	ipint.h runt.h cryptmod.h
 ipint.$O:	ipint.h ipintsmod.h
 loader.$O:	loadermod.h
 freetype.$O:	freetypemod.h $ROOT/include/freetype.h
-math.$O:	$ROOT/include/mathi.h
+math.$O:	math-fixed-call.h $ROOT/include/native64-math-call.h $ROOT/include/native64-frame-cell.h $ROOT/include/mathi.h $ROOT/include/fdlibm-names.h
 
 das-spim.c:N:	das-mips.c
 comp-spim.c:N:	comp-mips.c
@@ -150,6 +174,9 @@ comp-spim.c:N:	comp-mips.c
 #	it works only on UNIX and Plan 9.
 
 nuke:EV:	nuke-std
-	rm -f runt.h sysmod.h drawmod.h prefabmod.h tkmod.h mathmod.h keyring.h readimagemod.h loadermod.h freetypemod.h cryptmod.h keyringif.h ipintsmod.h
+	rm -f sys-native64.h sys-native64.h.tmp math-native64.h math-native64.h.tmp runt.h sysmod.h drawmod.h prefabmod.h tkmod.h mathmod.h keyring.h readimagemod.h loadermod.h freetypemod.h cryptmod.h keyringif.h ipintsmod.h
 
 comp-riscv.$O comp-riscv64.$O: riscv-emit.h comp-riscv.c
+
+# Stack and interpreter guards inline the same frame-cell contract as the native Math gateway.
+stack.$O xec.$O: $ROOT/include/native64-caller.h $ROOT/include/native64-frame-cell.h $ROOT/include/native64-model.h $ROOT/include/dis-layout.h

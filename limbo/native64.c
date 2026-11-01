@@ -410,7 +410,32 @@ native64symbol(Decl *function)
 }
 
 
-/* Emit callback-free specifications; referencing a table need not link every C routine. */
+/* Emit exact integral module constants without host-long narrowing or signed-minimum literal overflow. */
+static void
+native64constant(Decl *declaration)
+{
+	char name[2*StrSize];
+	Long value;
+	int big;
+
+	if(declaration->store != Dconst ||
+	   (declaration->ty->kind != Tbyte && declaration->ty->kind != Tint &&
+	    declaration->ty->kind != Tfix && declaration->ty->kind != Tbig))
+		return;
+	native64name(declaration, name, sizeof(name));
+	value = declaration->init->val;
+	big = declaration->ty->kind == Tbig;
+	if(declaration->ty->kind == Tbyte)
+		value &= 255;
+	if(value < 0)
+		print("#define %s (-%lld%s-1%s) // Exact source integral constant.\n", name,
+			-(value+1), big ? "LL" : "", big ? "LL" : "");
+	else
+		print("#define %s (%lld%s) // Exact source integral constant.\n", name, value, big ? "LL" : "");
+}
+
+
+/* Emit callback-free specifications and an explicitly requested complete C implementation list. */
 static void
 native64table(Decl *module)
 {
@@ -439,6 +464,47 @@ native64table(Decl *module)
 	if(count == 0)
 		print("\t{0} // ISO C requires storage even for an empty logical table.\n");
 	print("};\n#define limbo_native64_%s_spec_count %d // Fixed entries; variadic prefixes are excluded.\n#endif\n", moduleid, count);
+	print("\n#ifdef LIMBO_NATIVE64_IMPLEMENTATIONS\n");
+	print("static const LimboNative64Entry *const limbo_native64_%s_implementations[] = {\n", moduleid);
+	for(function=module->ty->tof->ids; function != nil; function=function->next){
+		if(function->ty->varargs)
+			continue;
+		native64name(function, name, sizeof(name)-2);
+		print("\t&limbo_native64_%s_entry, // Trusted C implementation; fixed frame only.\n", name);
+	}
+	if(count == 0)
+		print("\t0 // Storage only; this module has no fixed callable implementation.\n");
+	print("};\n#define limbo_native64_%s_implementation_count %d // Logical count, excluding variadic tails.\n#endif\n", moduleid, count);
+}
+
+
+/* Describe top-level argument fields without treating padding or mapped references as scalars. */
+static void
+native64fieldtable(Decl *function, char *name)
+{
+	Decl *argument;
+	Native64Type *child;
+	long offset;
+	int ordinal, kind;
+
+	print("#ifdef LIMBO_NATIVE64_FIELDS\n");
+	print("static const LimboNative64Field limbo_native64_%s_fields[] = {\n", name);
+	offset = 64;
+	ordinal = 0;
+	for(argument=function->ty->ids; argument != nil; argument=argument->next){
+		child = native64type(argument->ty, 0);
+		offset = native64align(offset, child->alignment);
+		kind = argument->ty->kind == Tbig ? 2 : argument->ty->kind == Treal ? 3 : 0;
+		print("\t{%d, %d, %ld, %ld}, // %s: existing Big=2/Real=3; zero means unsupported.\n",
+			ordinal++, kind, offset, child->size, argument->sym == nil ? "anonymous" : argument->sym->name);
+		offset = native64end(offset, child->size);
+	}
+	if(ordinal == 0)
+		print("\t{0, 0, 0, 0} // ISO C storage only; logical argument count is zero.\n");
+	print("};\n\nstatic const LimboNative64Fields limbo_native64_%s_field_table = {\n", name);
+	print("\t&limbo_native64_%s_entry, // Exact compiled callable identity.\n", name);
+	print("\tlimbo_native64_%s_fields, // Complete source argument sequence.\n", name);
+	print("\t%d // Declared argument count; no variadic or nested-field admission.\n};\n#endif\n", ordinal);
 }
 
 
@@ -449,6 +515,7 @@ native64frame(Decl *function, int emit)
 	Native64Type frame, *child;
 	Decl *argument;
 	long offset, bytes;
+	int arguments = 0;
 	char name[2*StrSize];
 
 	native64name(function, name, sizeof(name)-2);
@@ -457,6 +524,8 @@ native64frame(Decl *function, int emit)
 	native64spellcheck(function->ty->tof, 0);
 	offset = 64;
 	for(argument=function->ty->ids; argument != nil; argument=argument->next){
+		if(++arguments > 4096)
+			fatal("too many native64 fixed arguments");
 		native64spellcheck(argument->ty, 0);
 		child = native64type(argument->ty, 0);
 		if(child->size == 0)
@@ -512,7 +581,9 @@ native64frame(Decl *function, int emit)
 		print("\t0x%luxU, // Existing Limbo signature hash.\n", (ulong)sign(function));
 		print("\t%ld, // Complete fixed-frame bytes.\n", frame.size);
 		print("\t%ld, // Complete map8 bytes.\n", bytes);
-		print("\tlimbo_native64_%s_map // Borrowed immutable map.\n};\n#endif\n", name+2);
+		print("\tlimbo_native64_%s_map // Borrowed immutable map.\n};\n", name+2);
+		native64fieldtable(function, name+2);
+		print("#endif\n");
 	}
 	free(frame.map);
 }
@@ -691,6 +762,12 @@ native64stubs(Decl *globals)
 		if(module->store != Dtype || module->ty->kind != Tmodule)
 			continue;
 		for(declaration=module->ty->ids; declaration != nil; declaration=declaration->next){
+			if(declaration->store == Dconst &&
+			   (declaration->ty->kind == Tbyte || declaration->ty->kind == Tint ||
+			    declaration->ty->kind == Tfix || declaration->ty->kind == Tbig)){
+				native64name(declaration, name, sizeof(name));
+				native64register(name, declaration);
+			}
 			if(declaration->store != Dtype)
 				continue;
 			native64name(declaration, name, sizeof(name));
@@ -703,12 +780,18 @@ native64stubs(Decl *globals)
 		for(function=module->ty->tof->ids; function != nil; function=function->next){
 			native64name(function, name, sizeof(name)-2);
 			native64register(name, function);
+			seprint(symbol, symbol+sizeof(symbol), "limbo_native64_%s_fields", name);
+			native64register(symbol, function);
+			seprint(symbol, symbol+sizeof(symbol), "limbo_native64_%s_field_table", name);
+			native64register(symbol, function);
 			seprint(symbol, symbol+sizeof(symbol), "F_%s", name);
 			native64reservenamed(symbol, function);
 			seprint(symbol, symbol+sizeof(symbol), "F_%s_variadic", name);
 			native64register(symbol, function);
 		}
 	}
+	print("#if defined(LIMBO_NATIVE64_FIELDS) && !defined(LIMBO_NATIVE64_ENTRIES)\n#define LIMBO_NATIVE64_ENTRIES // Typed field witnesses require exact generated entries.\n#endif\n");
+	print("#if defined(LIMBO_NATIVE64_IMPLEMENTATIONS) && !defined(LIMBO_NATIVE64_TABLES)\n#define LIMBO_NATIVE64_TABLES // Full implementation lists require matching specifications.\n#endif\n");
 	print("#if defined(LIMBO_NATIVE64_TABLES) && !defined(LIMBO_NATIVE64_ENTRIES)\n#define LIMBO_NATIVE64_ENTRIES // Table maps share opt-in entry storage.\n#endif\n");
 	print("/* Experimental native64 declarations only; shared wire and runtime admission are unchanged. */\n");
 	print("#include <stddef.h>\n#include <limits.h>\n#include <float.h>\n#ifndef LIMBO_NATIVE64_MODEL_HELPER\n#define LIMBO_NATIVE64_MODEL_HELPER // Emit the native-model predicate once.\n");
@@ -721,8 +804,7 @@ native64stubs(Decl *globals)
 	print("\tif(CHAR_BIT != 8 || FLT_RADIX != 2 || DBL_MANT_DIG != 53 || DBL_MAX_EXP != 1024 ||\n\t   sizeof(WORD) != 4 || sizeof(void*) != 8 || sizeof(LONG) != 8 || sizeof(REAL) != 8 ||\n");
 	print("\t   offsetof(LimboNative64WordAlign, value) != 4 || offsetof(LimboNative64RefAlign, value) != 8 ||\n\t   offsetof(LimboNative64BigAlign, value) != 8 || offsetof(LimboNative64RealAlign, value) != 8 ||\n\t   sizeof(Frame) != 32 || offsetof(Frame, lr) != 0 || offsetof(Frame, fp) != 8 ||\n");
 	print("\t   offsetof(Frame, mr) != 16 || offsetof(Frame, t) != 24)\n\t\treturn 0;\n\treturn 1;\n}\n#endif\n");
-	print("#if defined(LIMBO_NATIVE64_ENTRIES) && !defined(LIMBO_NATIVE64_ENTRY_TYPE)\n#define LIMBO_NATIVE64_ENTRY_TYPE // Private metadata record, never the runtime Runtab.\n");
-	print("\ntypedef struct {\n\tconst char *name; // Borrowed source symbol.\n\tvoid (*function)(void*); // Actual C entry; no runtime registration is implied.\n\tUWORD legacy_signature; // Existing Limbo signature hash, not a Dis64 wire signature.\n\tunsigned int frame_size; // Full fixed-frame byte extent.\n\tunsigned int map_bytes; // Full map extent; never truncated to map[16].\n\tconst uchar *map; // Borrowed immutable full map8 storage.\n} LimboNative64Entry;\n#endif\n");
+	print("#ifdef LIMBO_NATIVE64_ENTRIES\n#include \"native64-entry.h\"\n#endif\n");
 	for(layout=native64types; layout != nil; layout=layout->next){
 		if((layout->type->kind == Tadt || layout->type->kind == Ttuple) &&
 		   layout->type->decl != nil && layout->type->decl->sym != anontupsym){
@@ -735,6 +817,8 @@ native64stubs(Decl *globals)
 	for(module=globals; module != nil; module=module->next){
 		if(module->store != Dtype || module->ty->kind != Tmodule)
 			continue;
+		for(declaration=module->ty->ids; declaration != nil; declaration=declaration->next)
+			native64constant(declaration);
 		for(declaration=module->ty->ids; declaration != nil; declaration=declaration->next){
 			if(declaration->store != Dtype)
 				continue;

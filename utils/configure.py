@@ -45,6 +45,10 @@ def main():
     parser.add_argument('--cross',type=lambda value:literal(value) if value else '')
     parser.add_argument('--ndk',type=literal)
     parser.add_argument('--console',action='store_true')
+    parser.add_argument('--native64-sys-io-boot',action='store_true',help='register eight trusted fixed Sys I/O/UTF exports; no file imports')
+    parser.add_argument('--native64-math-boot',action='store_true',help='register trusted Math during experimental scalar startup; no file imports')
+    parser.add_argument('--native64-scalar-boot',action='store_true',help='experimental Linux console startup for checked scalar Dis64 images only')
+    parser.add_argument('--native64-caller-guard',action='store_true',help='coherent synchronous caller lease experiment; requires scalar and Math startup, no file calls')
     parser.add_argument('--renderer',choices=('framebuffer','gles'),default='framebuffer')
     parser.add_argument('--output',type=Path,default=ROOT/'mkconfig')
     args=parser.parse_args()
@@ -65,6 +69,12 @@ def main():
         parser.error('Terminal emulator entries currently exist for Linux, Windows and macOS only')
     if args.host!=target and target!='Android':
         parser.error('Hosted emulators require matching host and target; cross builds need a dedicated toolchain/port')
+    if (args.native64_math_boot or args.native64_sys_io_boot) and not args.native64_scalar_boot:
+        parser.error('Trusted builtin startup requires --native64-scalar-boot')
+    if args.native64_scalar_boot and (target!='Linux' or arch not in ('amd64','arm64','riscv64') or not args.console):
+        parser.error('Scalar Dis64 startup requires a 64-bit Linux console profile')
+    if args.native64_caller_guard and not (args.native64_scalar_boot and args.native64_math_boot):
+        parser.error('Caller guard requires --native64-scalar-boot and --native64-math-boot')
     text=(ROOT/'mkconfig').read_text()
     marker='# configure.py selected build flavour\n'
     if marker in text:
@@ -78,6 +88,18 @@ def main():
         text=assign(text,'CROSS',args.cross)
     if args.ndk is not None:
         text=assign(text,'ANDROID_NDK_HOME',args.ndk)
+    # Compose the model once so later selections cannot discard lifetime guards.
+    if args.native64_scalar_boot:
+        flags=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DDIS_NATIVE64_SCALAR_BOOT=1']
+        if args.native64_sys_io_boot:
+            flags.append('-DDIS_NATIVE64_BOOT_SYS_IO=1')
+            text=assign(text,'NATIVE64_BOOT_SYS_HEADERS',args.root+'/libinterp/sys-native64.h')
+        if args.native64_math_boot:
+            flags.append('-DDIS_NATIVE64_BOOT_MATH=1')
+            text=assign(text,'NATIVE64_BOOT_HEADERS','math-native64.h')
+        if args.native64_caller_guard:
+            flags.extend(['-DDIS_NATIVE64_FIXED_MATH_CALL=1','-DDIS_NATIVE64_CALLER_GUARD=1'])
+        text=assign(text,'DISMODELFLAGS',"'"+' '.join(flags)+"'")
     if args.console:
         text+='\n'+marker+'<$ROOT/mkfiles/profile-console\n# end configure.py flavour\n'
     args.output.parent.mkdir(parents=True,exist_ok=True)
@@ -86,8 +108,16 @@ def main():
         temporary=Path(stream.name)
     os.replace(temporary,args.output)
     print('Prepared',args.output,'for',args.host,'->',target,arch, 'console' if args.console else 'platform default')
-    if arch in ('amd64','arm64','riscv64'):
-        print('64-bit toolchain profile selected; complete emu assembly/FPU/signal platform ports remain separate work.')
+    if args.native64_scalar_boot:
+        print('Experimental scalar Dis64 startup selected; builtin imports and legacy images are disabled. Rebuild all runtime objects.')
+        if args.native64_math_boot:
+            print('Trusted fixed-frame Math registration enabled; generated metadata is built by host Limbo through mk.')
+        if args.native64_sys_io_boot:
+            print('Trusted Sys I/O profile enabled: eight fixed exports; shared metadata is built by host Limbo through mk.')
+        if args.native64_caller_guard:
+            print('Synchronous caller lease selected in all owning units; file CALL/MCALL admission remains disabled.')
+    elif arch in ('amd64','arm64','riscv64'):
+        print('64-bit toolchain profile selected; native builtin ABI registration and full VM boot remain pending.')
     print('Build with the classic commands: mk mkdirs; mk emuinstall; mk install')
 
 

@@ -1,3 +1,5 @@
+#include "fdlibm-names.h"
+
 /*
  * floating point control and status register masks
  */

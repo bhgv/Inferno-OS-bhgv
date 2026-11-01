@@ -10,3 +10,6 @@ OFILES=\
 HFILES=$ROOT/$SYSTARG/$OBJTYPE/include/lib9.h\
 
 <$ROOT/mkfiles/mksyslib-$SHELLTYPE
+
+# Unsupported native64 relocation entries share a refusal implementation.
+dynld-amd64.$O dynld-arm64.$O dynld-riscv64.$O: dynld-native64.c

@@ -8,6 +8,9 @@ CONF=emu			#default configuration
 CONFLIST=emu
 CLEANCONFLIST=
 
+# Keep the full build as mk's first target, before machine-specific object rules.
+default:V:	$O.$CONF
+
 INSTALLDIR=$ROOT/$SYSTARG/$OBJTYPE/bin	#path of directory where kernel is installed
 
 #end configurable parameters
@@ -47,7 +50,6 @@ CFLAGS='-DROOT="'$ROOT'"' -DEMU \
 #SYSLIBS= $X11LIBS -lm -lpthread
 SYSLIBS= -lm -lpthread
 
-default:V:	$O.$CONF
 
 $O.$CONF:	$OBJ $CONF.c $CONF.root.h $LIBNAMES
 	$CC $CFLAGS '-DKERNDATE='$KERNDATE $CONF.c

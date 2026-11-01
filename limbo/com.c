@@ -389,7 +389,12 @@ if(debug['v']) print("fncom: %s %d %p\n", d->sym->name, d->refs, d);
 
 	excs = reve(excs);
 
-	if(gendis){
+	if(emitscalar64){
+		if(excs != nil || ldts != nil || impdecls->next != nil)
+			error(entry == nil ? impdecl->src.start : entry->src.start, "Dis64 scalar: imports, linkage and exception tables are not admitted");
+		else
+			dis64scalar(entry, globals, firstinst, ninst, offset);
+	}else if(gendis){
 		discon(XMAGIC);
 		hints = 0;
 		if(mustcompile)

@@ -17,7 +17,7 @@ clean:V: clean-std
 $O.out:	$OFILES $libs
 	$LD $LDFLAGS -o $target $OFILES $libs $SYSLIBS
 
-%.$O:	$HFILES		# don't combine with following %.$O rules
+%.$O:	$HFILES $NATIVE64HFILES		# don't combine with following %.$O rules
 
 %.$O:	%.c
 	$CC $CFLAGS -o $target $stem.c

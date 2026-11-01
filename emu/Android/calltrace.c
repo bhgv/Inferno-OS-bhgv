@@ -1,9 +1,10 @@
-﻿#include	"dat.h"
+#include	"dat.h"
 #include	"fns.h"
 //#include <lib9.h>
 
 #include <stdio.h>
 #include <time.h>
+#include <string.h>
 
 #include <unwind.h>
 #include <dlfcn.h>
@@ -28,29 +29,34 @@
 
 typedef struct BacktraceState
 {
-    void** current;
-    void** end;
+    void** current; // Next output slot in the bounded borrowed frame array.
+    void** end; // Exclusive end of caller-provided storage.
 } BacktraceState;
 
 
+/* Only the ARM32 EHABI helper consumes this private 32-bit register layout. */
+#if defined(__arm__)
 typedef struct
 {
-    uintptr_t r[16];
+    uintptr_t r[16]; // ARM32 r0-r15 for the legacy EHABI seed only.
 } core_regs;
 
 
 typedef struct
 {
-    uintptr_t demand_save_flags;
-    core_regs   core;
+    uintptr_t demand_save_flags; // Private ARM32 unwinder state.
+    core_regs   core; // ARM32 context, never instantiated for a native64 target.
 } phase2_vrs;
+#endif
 
 
 
 extern char calltracelog_path[];
-extern ucontext_t *sig_ctx;
+extern void *sig_ctx;
 
-extern _Unwind_Reason_Code __gnu_Unwind_Backtrace(_Unwind_Trace_Fn trace, void * trace_argument, phase2_vrs * entry_vrs);
+#if defined(__arm__)
+extern _Unwind_Reason_Code __gnu_Unwind_Backtrace(_Unwind_Trace_Fn trace, void *trace_argument, phase2_vrs *entry_vrs);
+#endif
 
 
 static _Unwind_Reason_Code unwindCallback(struct _Unwind_Context* context, void* arg)
@@ -93,11 +99,18 @@ char** dumpBacktrace(void** buffer, size_t count)
 }
 
 
-size_t captureBacktrace(void** buffer, size_t max, void *arg)
+/* Native64 uses the public current-stack unwinder, never an ARM32 signal-frame cast. */
+size_t
+captureBacktrace(void **buffer, size_t max, void *arg)
 {
 
-    BacktraceState state = {buffer, buffer + max};
+    BacktraceState state;
 
+	if(buffer == nil || max == 0 || max > (~(uintptr)0-(uintptr)buffer)/sizeof(*buffer))
+		return 0;
+	state.current = buffer;
+	state.end = buffer+max;
+#if defined(__arm__)
 	if(arg != nil){
 	    ucontext_t* signal_context = (ucontext_t*) arg;
 
@@ -106,7 +119,11 @@ size_t captureBacktrace(void** buffer, size_t max, void *arg)
 	    pre_signal_state.core = *(const core_regs*)(&(signal_context->uc_mcontext.arm_r0));
 
 	    __gnu_Unwind_Backtrace(unwindCallback, &state, &pre_signal_state);
-	}else{
+	}else
+#else
+	(void)arg;
+#endif
+	{
 		_Unwind_Backtrace(unwindCallback, &state);
 	}
 

@@ -303,10 +303,15 @@ runmatrix(void *unused)
 	uchar data[16];
 	WORD count, result;
 	int op, mode, expected, arrayshift, phase;
+	Type compilerbyte = {0};
+	uchar packedtype[sizeof(Type)+8];
 	Heap owner;
 	Array view;
 
 	USED(unused);
+	compilerbyte.size = 1;
+	compilerbyte.np = 0;
+	memmove(packedtype+3, &compilerbyte, sizeof(compilerbyte));
 	if(getenv("SYS_IO_ERROR") != nil)
 		preflight(atoi(getenv("SYS_IO_ERROR")));
 	h = calloc(1, sizeof(Heap)+sizeof(Array)+8);
@@ -319,7 +324,7 @@ runmatrix(void *unused)
 	for(phase=0; phase<3; phase++)
 	for(returnoffset=0; returnoffset<8; returnoffset++)
 	for(op=0; op<5; op++)
-	for(mode=0; mode<30; mode++){
+	for(mode=0; mode<39; mode++){
 		if(getenv("SYS_IO_ARRAY_SHIFT") != nil && arrayshift != atoi(getenv("SYS_IO_ARRAY_SHIFT")))
 			continue;
 		if(getenv("SYS_IO_FRAME_SHIFT") != nil && frameoffset != atoi(getenv("SYS_IO_FRAME_SHIFT")))
@@ -336,6 +341,7 @@ runmatrix(void *unused)
 		memmove((uchar*)a-sizeof(Heap), &owner, sizeof(owner));
 		memset(&view, 0, sizeof(view));
 		view.t = &Tbyte; view.len = 16; view.data = data;
+		compilerbyte.size = 1; compilerbyte.np = 0;
 		borrowphase = phase;
 		fdnumber = 17;
 		wantfd = 17;
@@ -467,6 +473,36 @@ runmatrix(void *unused)
 			break;
 		case 29:
 			arg = (Array*)sizeof(Heap);
+			expected = -1;
+			break;
+		case 30:
+			view.t = &compilerbyte;
+			break;
+		case 31:
+			view.t = (Type*)(packedtype+3);
+			break;
+		case 32:
+		case 33:
+		case 34:
+			compilerbyte.size = mode == 32 ? 4 : 1;
+			compilerbyte.np = mode == 33 ? 1 : mode == 34 ? -1 : 0;
+			view.t = &compilerbyte;
+			expected = -1;
+			break;
+		case 35:
+			view.t = nil;
+			expected = -1;
+			break;
+		case 36:
+			view.t = H;
+			expected = -1;
+			break;
+		case 37:
+			view.t = (Type*)((uintptr)-1-1);
+			expected = -1;
+			break;
+		case 38:
+			view.t = (Type*)1;
 			expected = -1;
 			break;
 		}

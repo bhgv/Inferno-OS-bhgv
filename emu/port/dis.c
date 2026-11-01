@@ -2,10 +2,12 @@
 #include	"fns.h"
 #include	<isa.h>
 #include	<interp.h>
+#include "native64-caller.h"
 #include	<kernel.h>
 #include	"error.h"
 #include	"raise.h"
 #include	"vmstartup.h"
+#include "native64-scalar-boot.h"
 
 struct
 {
@@ -24,13 +26,16 @@ struct
 	Atidle*	idletasks;
 } isched;
 
-int	bflag;
 int	cflag;
 uvlong	gcbusy;
 uvlong	gcidle;
 uvlong	gcidlepass;
 uvlong	gcpartial;
-int keepbroken = 1;
+#ifdef DIS_NATIVE64_SCALAR_BOOT
+int keepbroken = 0; // The scalar console has no admitted shell/debugger to resume broken programs.
+#else
+int keepbroken = 1; // Preserve ordinary Inferno debugging and broken-program retention.
+#endif
 extern int	vflag;
 static Prog*	proghash[64];
 
@@ -188,6 +193,9 @@ newprog(Prog *p, Modlink *m)
 	if(n == nil)
 		error(exNomem);
 	n->pid = ++pidnum;
+	n->native64epoch = 1;
+	n->native64holds = 0;
+	n->native64live = nil;
 	n->group = nil;
 	n->flags = 0;
 	n->osenv = (Osenv*)((uchar*)n+sizeof(Prog));
@@ -243,12 +251,20 @@ newprog(Prog *p, Modlink *m)
 	return n;
 }
 
+
+/* Keep a leased caller alive before any registry, group or allocation retirement. */
 void
 delprog(Prog *p, char *msg)
 {
 	Osenv *o;
 	Prog **ph;
 
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	if(p->native64holds != 0){
+		native64calleradvance(p);
+		error("native64 caller is retained");
+	}
+#endif
 	tellsomeone(p, msg);	/* call before being removed from prog list */
 
 	o = p->osenv;
@@ -421,12 +437,22 @@ propex(Prog *p, char *estr)
 		exprog(pgl, estr);
 }
 
+
+/* A leased caller records cancellation and defers destructive process teardown. */
 int
 killprog(Prog *p, char *cause)
 {
 	Osenv *env;
 	char msg[ERRMAX+2*KNAMELEN];
 
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	if(p->native64holds != 0){
+		p->kill = "";
+		p->flags |= Pkilled;
+		native64calleradvance(p);
+		return 0;
+	}
+#endif
 	if(p == isched.runhd) {
 		p->kill = "";
 		p->flags |= Pkilled;
@@ -930,12 +956,22 @@ acquire(void)
 	strcpy(up->text, "dis");
 }
 
+
+/* A synchronous caller lease must retire before yielding VM ownership. */
 void
 release(void)
 {
 	Proc *p, **pq;
 	int f;
 
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	Prog *held;
+	held = currun();
+	if(held != nil && held->native64holds != 0){
+		native64calleradvance(held);
+		error("native64 caller cannot release VM");
+	}
+#endif
 	if(up->type == Interp)
 		up->iprog = isave();
 	else
@@ -1011,6 +1047,8 @@ startup(void)
 	osblock();
 }
 
+
+/* Report termination, release the running program and stop an empty scheduler. */
 void
 progexit(void)
 {
@@ -1030,10 +1068,30 @@ progexit(void)
 	else
 		r = currun();
 
+#ifdef DIS_NATIVE64_CALLER_GUARD
+	if(r->native64holds != 0){
+		native64calleradvance(r);
+		error("native64 caller is retained");
+	}
+#endif
 	if(*estr == '\0' && r->flags & Pkilled)
 		estr = "killed";
 
 	m = R.M->m;
+#ifdef DIS_NATIVE64_SCALAR_BOOT
+	if(vflag){
+		uintptr base, next, extent;
+
+		print("native64 scalar module %s: jit=%d, exit=\"%s\"\n",
+			m->name, m->jit != nil, estr);
+		/* Leaf execution retains Dis PCs; xec has already advanced past the failing instruction. */
+		base = (uintptr)m->prog;
+		next = (uintptr)R.PC;
+		extent = m->nprog > 0 ? (uintptr)m->nprog*sizeof(Inst) : 0;
+		if(broken && base != 0 && next > base && next-base <= extent && (next-base)%sizeof(Inst) == 0)
+			print("native64 scalar fault: dis-pc=%lud\n", (ulong)((next-base)/sizeof(Inst)-1));
+	}
+#endif
 	if(broken){
 		if(cflag){	/* only works on Plan9 for now */
 			char *pc = strstr(estr, "pc=");
@@ -1065,8 +1123,13 @@ progexit(void)
 	delprog(r, msg);
 	gcunlock();
 
-	if(isched.head == nil)
+	if(isched.head == nil){
+#ifdef DIS_NATIVE64_SCALAR_BOOT
+		if(vflag)
+			print("native64 scalar scheduler empty after program retirement\n");
+#endif
 		cleanexit(0);
+	}
 }
 
 void
@@ -1119,6 +1182,9 @@ vmachine(void *a)
 	while(waserror()) {
 		if(up->iprog != nil)
 			acquire();
+#ifdef DIS_NATIVE64_CALLER_GUARD
+		native64callerleave(currun());
+#endif
 		if(handler(up->env->errstr) == 0) {
 			propex(currun(), up->env->errstr);
 			progexit();
@@ -1171,6 +1237,8 @@ vmachine(void *a)
 	}
 }
 
+
+/* Initialize the selected runtime and schedule its checked initial module. */
 void
 disinit(void *a)
 {
@@ -1191,7 +1259,18 @@ disinit(void *a)
 	FPsave(&up->env->fpu);
 
 	opinit();
+#ifndef DIS_NATIVE64_SCALAR_BOOT
 	modinit();
+#elif defined(DIS_NATIVE64_BOOT_MATH)
+	mathmodinit();
+	if(vflag)
+		print("native64 startup: trusted Math registered; file imports remain disabled\n");
+#endif
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+	sysmodinit();
+	if(vflag)
+		print("native64 startup: trusted Sys I/O registered (8 fixed exports); file imports remain disabled\n");
+#endif
 	excinit();
 
 	root = load(initmod);
@@ -1250,3 +1329,13 @@ krethrow(void)
 {
 	nexterror();
 }
+
+
+#ifdef DIS_NATIVE64_CALLER_GUARD
+/* Reject partial guard builds at link time through both owning lifetime mutation units. */
+int
+native64callerruntime(void)
+{
+	return native64callervmguard() == 1 && native64callerstackguard() == 1;
+}
+#endif

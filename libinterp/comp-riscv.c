@@ -13,7 +13,8 @@
 #endif
 
 /* Leaf JIT keeps original Inst PCs and uses the existing decoder/optab for
- * unsupported operations. No patching of frames, GC maps or case tables.
+ * unsupported operations. RV64 also publishes complete C-executor tails; RV32 retains
+ * the original fallback dispatcher. No patching of frames, GC maps or case tables.
  * compiled remains 0: its historical meaning is a relocated native-PC VM.
  */
 void (*comvec)(void);
@@ -79,10 +80,16 @@ rvcachevalid(Jit *j, Module *m, int size, RvLayout *abi)
 	cursor = (uintptr)j->code;
 	last = cursor+(uintptr)j->size;
 	for(op = 0; op < 256; op++){
+#if RVXLEN != 64
 		if(j->dispatch[op] != nil)
 			return 0;
+#endif
 		if(j->entry[op] == nil)
 			continue;
+#if RVXLEN == 64
+		if(j->dispatch[op] == nil)
+			return 0;
+#endif
 		if((uintptr)j->entry[op] != cursor)
 			return 0;
 		n = rvemit(expected, RvMax, abi, op);
@@ -93,12 +100,33 @@ rvcachevalid(Jit *j, Module *m, int size, RvLayout *abi)
 			return 0;
 		cursor += bytes;
 	}
+#if RVXLEN == 64
+	for(op = 0; op < 256; op++){
+		if(j->dispatch[op] == nil)
+			continue;
+		if((uintptr)j->dispatch[op] != cursor ||
+		   (j->entry[op] == nil && rvemit(nil, RvMax, abi, op) > 0))
+			return 0;
+		n = rvbridgeemit(expected, RvMax, (uvlong)(uintptr)cjitexec, op, (uvlong)(uintptr)j->entry[op]);
+		if(n <= 0)
+			return 0;
+		bytes = (uintptr)n*sizeof(u32int);
+		if(bytes > last-cursor || memcmp((void*)cursor, expected, bytes) != 0)
+			return 0;
+		cursor += bytes;
+	}
+#endif
 	if(cursor != last)
 		return 0;
 	for(i = 0; i < size; i++){
 		op = ((uchar*)m->prog)[(uintptr)i*sizeof(Inst)+O(Inst, op)];
+#if RVXLEN == 64
+		if(j->dispatch[op] == nil)
+			return 0;
+#else
 		if(j->entry[op] == nil && rvemit(nil, RvMax, abi, op) > 0)
 			return 0;
+#endif
 	}
 	return 1;
 }
@@ -116,6 +144,9 @@ rvcompile(void *arg)
 	u32int *code;
 	int (*fn[256])(REG*);
 	int count[256], i, n, op, used;
+#if RVXLEN == 64
+	int bridge[256], complete;
+#endif
 
 	c = arg;
 	m = c->m;
@@ -183,6 +214,9 @@ rvcompile(void *arg)
 			return 0;
 		return rvcachevalid(j, m, size, &abi);
 	}
+#if RVXLEN == 64
+	memset(bridge, 0, sizeof(bridge));
+#endif
 	memset(count, 0, sizeof(count));
 	memset(fn, 0, sizeof(fn));
 	n = 0;
@@ -193,6 +227,13 @@ rvcompile(void *arg)
 			if(used < 0)
 				return 0;
 			count[op] = used == 0 ? -1 : used;
+#if RVXLEN == 64
+			complete = rvbridgeemit(nil, RvMax, (uvlong)(uintptr)cjitexec, op, 0);
+			if(complete <= 0 || complete > 0x7fffffff/(int)sizeof(u32int)-n)
+				return 0;
+			bridge[op] = complete;
+			n += complete;
+#endif
 			if(used > 0) {
 				/* Keep both the instruction count and allocation size representable. */
 				if(used > 0x7fffffff/(int)sizeof(u32int)-n)
@@ -227,8 +268,18 @@ rvcompile(void *arg)
 			goto bad;
 		code += used;
 	}
-	for(op = 0; op < 256; op++)
+	for(op = 0; op < 256; op++){
 		j->entry[op] = fn[op];
+#if RVXLEN == 64
+		if(bridge[op] <= 0)
+			continue;
+		j->dispatch[op] = (int(*)(REG*))code;
+		used = rvbridgeemit(code, bridge[op], (uvlong)(uintptr)cjitexec, op, (uvlong)(uintptr)fn[op]);
+		if(used != bridge[op])
+			goto bad;
+		code += used;
+#endif
+	}
 #ifdef RV_CODE_PAGES
 	if(leafcodepublish(j->code, j->size) != 0)
 #else

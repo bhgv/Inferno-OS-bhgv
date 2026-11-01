@@ -16,6 +16,9 @@ CFLAGS= -O2 -g -fno-strict-aliasing -march=rv64gc -mabi=lp64d\
 ANSICPP=
 LD= ${CROSS}gcc
 LDFLAGS= -march=rv64gc -mabi=lp64d
-SYSLIBS=
+SYSLIBS= -lm
 YACC= iyacc
 YFLAGS= -d
+
+# Track shared native context and declaration inputs when rebuilding this profile.
+NATIVE64HFILES= $ROOT/include/native64-target.h $ROOT/include/host64-fp.h $ROOT/include/host64-fpu.h $ROOT/include/host64-emu.h $ROOT/Linux/386/include/lib9.h

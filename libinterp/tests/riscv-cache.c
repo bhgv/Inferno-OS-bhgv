@@ -35,6 +35,16 @@ check(int condition)
 }
 
 
+/* Cache tests never execute emitted RV instructions; preserve the executor identity only. */
+int __attribute__((aligned(4)))
+cjitexec(REG *registers, int opcode, int (*fast)(REG*))
+{
+	USED(registers); USED(opcode); USED(fast);
+	check(0);
+	return 0;
+}
+
+
 /* Allocate real writable storage while recording only compiler-owned blocks. */
 void*
 cachemalloc(size_t bytes)
@@ -137,12 +147,12 @@ reject(Module *module)
 
 /* Alter only owned code, restoring Linux RX permissions before each verification. */
 static void
-codeword(Jit *jit, u32int word)
+codeword(Jit *jit, void *entry, u32int word)
 {
 #ifdef RV_CODE_PAGES
 	check(mprotect(jit->code, jit->size, PROT_READ|PROT_WRITE) == 0);
 #endif
-	memmove(jit->code, &word, sizeof(word));
+	memmove(entry, &word, sizeof(word));
 #ifdef RV_CODE_PAGES
 	check(leafcodepublish(jit->code, jit->size) == 0);
 #endif
@@ -158,7 +168,8 @@ main(void)
 	Jit *jit, saved;
 	char *control;
 	u32int first;
-	int op, count, native, before, oldallocations, oldflushes;
+	int op, count, native, complete, before, oldallocations, oldflushes, part;
+	void *tailword;
 
 	memset(&module, 0, sizeof(module));
 	memset(program, 0, sizeof(program));
@@ -268,11 +279,23 @@ main(void)
 	reject(&module);
 	*jit = saved;
 	memmove(&first, jit->code, sizeof(first));
-	codeword(jit, first^1);
+	codeword(jit, jit->code, first^1);
 	reject(&module);
-	codeword(jit, first);
+	codeword(jit, jit->code, first);
+	/* Verify both executable bridge words and its full-width pointer literals. */
+	for(part=0; part<3; part++){
+		tailword=(uchar*)jit->dispatch[IADDF]+(part == 0 ? 0 : part == 1 ? 11 : 14)*sizeof(u32int);
+		memmove(&first, tailword, sizeof(first));
+		codeword(jit, tailword, first^1); reject(&module); codeword(jit, tailword, first);
+	}
+	complete=0;
 	native = 0;
 	for(op = 0; op < 256; op++){
+		if(op > INOP && op < MAXDIS && op != IECLR){ check(saved.dispatch[op] != nil); complete++; }
+		else check(saved.dispatch[op] == nil);
+		if(saved.dispatch[op] != nil){
+			jit->dispatch[op] = nil; reject(&module); *jit = saved;
+		}
 		jit->dispatch[op] = saved.entry[IADDW];
 		reject(&module);
 		*jit = saved;
@@ -293,7 +316,7 @@ main(void)
 		reject(&module);
 		*jit = saved;
 	}
-	check(native > 0);
+	check(native > 0 && complete == 173);
 	for(op = 0; op < 256; op++){
 		if(op > INOP && op < MAXDIS && op != IECLR)
 			continue;
@@ -305,6 +328,6 @@ main(void)
 	rvcodefree(jit);
 	cachefree(jit);
 	check(live == 0);
-	printf("PASS RV64 cache: %d active predicates, %d native entries, canonical code/bindings and atomic refusal\n", checks, native);
+	printf("PASS RV64 cache: %d active predicates, %d native entries, %d complete tails, canonical code/bindings and atomic refusal\n", checks, native, complete);
 	return 0;
 }
