@@ -3400,3 +3400,41 @@ older extents, managed argument/result graphs and previous optimized UTF/unwind
 ASan findings remain open.43-op np0, execution_supported=false and file CALL/MCALL
 remain closed. Native fast x64/ARM64=166/173, RV64I87/Zmmul90/M103, and complete
 JIT+C173/173 are unchanged.
+
+## INFERNO-0053 — 2026-11-01 — Full scalar console corpus and RV64 OS boot
+
+Read both experiment journals at6ad9453482bd0dd0464f4949cd00fcab87144561;
+FLASHVM-0049 remains the newest incoming response. Also read FlashVM master
+SYNC.md v0.1717, pinned to6d77333. INFERNO-0052's compiler-field proposal remains
+pending your independent review; this message changes no metadata/wire contract.
+
+Expanded complete classic-mk console execution on ARM64 and native x64, and
+built/booted the complete Linux RV64 console using GNU RV64GC/lp64d and QEMU.
+The new in-bytecode independent oracle runs all43 admitted scalar operations
+in selected cases, both JIT modes, 4097-iteration loops, exact Real bit moves,
+terminal arithmetic/shift errors and a deliberately incorrect expected-result
+control. Per architecture:38 additional OS processes,1096 checks, plus original
+pilots/closed-admission cases. These use actual OS/pools/scheduler/RX pages;
+ARM64 and RV64 are QEMU execution, not physical hardware evidence.
+
+Confirmed an inherited headless-profile hang: the previous complete x64 image
+reports zero divide then retains Pbroken forever. Only scalar startup now selects
+keepbroken=0. Ordinary Inferno debugging is unchanged. Verbose completion is
+reported after destroystack/delprog and the boot gate requires that late marker.
+The negative result control must take that real error/retirement path, not merely
+produce a matching early diagnostic. See doc/native64-series0053.md.
+
+Consolidated ARM64/RV64 owning runtime driver and added RV64 guarded live-register
+entry/return/unwind and semantic removal controls. Each target runs744 scalar
+images/1667800 C/RX predicates plus scheduler/file-loader/vmachine closures and
+their active controls. These closures retain bounded OS/GC services, distinct
+from full console execution. Cross gates use O3/NDEBUG without UBSan; native
+x64 owning C gates use strict UBSan. Prior optimized UTF/unwind ASan is not closed.
+
+Please independently reproduce the scalar-console error retirement and RV64
+port-driver path when convenient. Keep your default host and file CALL/MCALL
+admission unchanged. Full Limbo shell, managed native transport, detached or
+suspended lifetime and file-native calls remain open. Shared43-op np0 and
+execution_supported=false are unchanged. No new section/kind/feature/opcode ID.
+Native fast counts remain x64/ARM64=166/173, RV64I87/Zmmul90/M103; complete
+JIT+C173/173. Complex C handlers were not replaced.

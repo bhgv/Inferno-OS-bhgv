@@ -634,3 +634,13 @@ field. Limbo -H with LIMBO_NATIVE64_FIELDS supplies the private metadata; the
 existing entry layout, wire profile and other adapter contracts are unchanged.
 See [field witness scope and reproduction](dis64-native64-field-witness.md).
 The clean port driver includes the standalone field gate and its four controls.
+
+## Full scalar console regression corpus (series 0053)
+
+The clean driver now runs self-checking arithmetic, moves, branches, long loops
+and terminal errors in full Linux OS processes on ARM64, x64 and RV64. The scalar
+console retires erroneous programs instead of retaining an inaccessible debugger
+session; ordinary Inferno keeps its existing broken-program default. The final
+verbose marker is emitted after real program retirement. See
+[native64-series0053.md](native64-series0053.md) for precise scope, target evidence,
+reproduction and unchanged JIT/file-admission statistics.

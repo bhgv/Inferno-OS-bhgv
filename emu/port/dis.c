@@ -31,7 +31,11 @@ uvlong	gcbusy;
 uvlong	gcidle;
 uvlong	gcidlepass;
 uvlong	gcpartial;
-int keepbroken = 1;
+#ifdef DIS_NATIVE64_SCALAR_BOOT
+int keepbroken = 0; // The scalar console has no admitted shell/debugger to resume broken programs.
+#else
+int keepbroken = 1; // Preserve ordinary Inferno debugging and broken-program retention.
+#endif
 extern int	vflag;
 static Prog*	proghash[64];
 
@@ -1110,8 +1114,13 @@ progexit(void)
 	delprog(r, msg);
 	gcunlock();
 
-	if(isched.head == nil)
+	if(isched.head == nil){
+#ifdef DIS_NATIVE64_SCALAR_BOOT
+		if(vflag)
+			print("native64 scalar scheduler empty after program retirement\n");
+#endif
 		cleanexit(0);
+	}
 }
 
 void

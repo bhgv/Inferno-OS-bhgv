@@ -104,20 +104,19 @@ def main():
     run(gc+['--control', 'map'], build, env, logs/'gc-map-control.log')
     run(gc+['--live'], build, env, logs/'gc-live.log')
     run(gc+['--live', '--control', 'map'], build, env, logs/'gc-live-map-control.log')
-    if args.arch in ('amd64', 'arm64'):
-        vm = [sys.executable, str(tests/'native64-live-vm.py')]
-        run(vm, build, env, logs/'live-vm.log')
-        for control in ('enter', 'unwind'):
-            run(vm+['--control', control], build, env, logs/('live-vm-'+control+'.log'))
+    vm = [sys.executable, str(tests/'native64-live-vm.py')]
+    run(vm, build, env, logs/'live-vm.log')
+    for control in ('enter', 'unwind'):
+        run(vm+['--control', control], build, env, logs/('live-vm-'+control+'.log'))
     field = [sys.executable, str(tests/'native64-field.py'), '--limbo', str(tools/'limbo')]
     run(field, build, env, logs/'field-witness.log')
     for control in ('kind', 'owner', 'generation', 'field'):
         run(field+['--control', control], build, env, logs/('field-witness-'+control+'.log'))
-    if args.arch == 'arm64':
-        run([sys.executable, str(tests/'arm64-runtime.py'), '--system', 'Linux', '--cc', env['CC'],
-             '--runner', args.runner], build, env, logs/'arm64-runtime.log')
+    if args.arch in ('arm64', 'riscv64'):
+        run([sys.executable, str(tests/'native64-runtime.py'), '--arch', args.arch, '--system', 'Linux', '--cc', env['CC'],
+             '--runner', args.runner], build, env, logs/(args.arch+'-runtime.log'))
     print('PASS clean classic-mk native64 boot/lease gates; logs: '+str(logs))
-    print('Scope: scalar pilots and trusted C fixtures; file CALL/MCALL and full shell startup remain closed.')
+    print('Scope: self-checking scalar programs and trusted C fixtures; file CALL/MCALL and full shell startup remain closed.')
 
 
 if __name__ == '__main__':

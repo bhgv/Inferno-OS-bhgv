@@ -84,6 +84,9 @@ __wrap_free(void *pointer)
 #if defined(DIS64_TEST_ARM64) && !defined(__aarch64__)
 #error the ARM64 runtime gate requires an AArch64 compiler
 #endif
+#if defined(DIS64_TEST_RISCV64) && (!defined(__riscv) || __riscv_xlen != 64)
+#error the RV64 runtime gate requires an RV64 compiler
+#endif
 #ifndef DIS64_TEST_COMPILER
 #define DIS64_TEST_COMPILER "comp-amd64.c" // Preserve the original native test backend by default.
 #endif

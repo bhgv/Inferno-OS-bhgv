@@ -48,8 +48,10 @@ def main():
         command = compiler+flags+['-DDIS_WORD32=1', '-DDIS_NATIVE64_FIXED_MATH_CALL=1', '-DDIS_NATIVE64_CALLER_GUARD=1']
         if arch == 'arm64':
             command += ['-DDIS64_TEST_ARM64=1', '-DDIS64_TEST_COMPILER="comp-arm64.c"']
+        elif arch == 'riscv64':
+            command += ['-DDIS64_TEST_RISCV64=1', '-DDIS64_TEST_COMPILER="comp-riscv64.c"']
         elif arch != 'amd64':
-            parser.error('This owning vmachine gate currently supports amd64 and arm64')
+            parser.error('This owning vmachine gate currently supports amd64, arm64 and riscv64')
         command += ['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
         for filemode in (False, True):
             label = 'file' if filemode else 'direct'

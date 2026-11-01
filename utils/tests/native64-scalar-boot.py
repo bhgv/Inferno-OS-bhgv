@@ -4,11 +4,13 @@ from pathlib import Path
 import argparse
 import os
 import shlex
+import runpy
 import signal
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
+RETIRED = 'native64 scalar scheduler empty after program retirement'
 
 
 # Isolate the emulator process group: Linux cleanexit deliberately kills that group.
@@ -50,9 +52,22 @@ def main():
                 if registered != args.math:
                     raise RuntimeError('Unexpected Math startup selection: '+output)
                 marker = 'native64 scalar module Pilot: jit='+str(jit)+', exit=""'
-                if marker not in output or 'panic:' in output or 'Broken:' in output:
+                if marker not in output or RETIRED not in output or 'faults:' in output or 'panic:' in output or 'Broken:' in output:
                     raise RuntimeError(name+' did not complete: '+output)
                 print('PASS complete emulator:', name, 'JIT='+str(jit))
+        corpus = runpy.run_path(str(ROOT/'utils/tests/native64-boot-programs.py'))['programs']
+        programs = predicates = 0
+        for index, (name, payload, error, checks) in enumerate(corpus()):
+            image = work/('corpus-'+str(index)+'.dis64'); image.write_bytes(payload)
+            for jit in (0, 1):
+                output = execute(command+['-c', str(jit), '-d', '/'+str(image.relative_to(args.root.resolve()))])
+                marker = 'native64 scalar module '+name+': jit='+str(jit)+', exit="'+error+'"'
+                broken = '['+name+'] Broken: "'+error+'"'
+                if marker not in output or RETIRED not in output or 'faults:' in output or ('Broken:' in output) != bool(error) or (error and broken not in output) or 'panic:' in output:
+                    raise RuntimeError('Full emulator corpus failed '+name+': '+output)
+                print('PASS complete emulator corpus:', name, 'JIT='+str(jit), 'checks='+str(checks), 'error='+repr(error))
+                programs += 1; predicates += checks
+        print('PASS full OS corpus:', programs, 'processes,', predicates, 'in-program checks including active wrong-result controls')
         legacy = work/'legacy.dis'; legacy.write_bytes(b'legacy image rejected before decoding')
         for path, diagnostic in (('/'+str(legacy.relative_to(args.root.resolve())), 'accepts only checked Dis64 scalar images'),
                                  ('$Sys', 'builtin modules are unavailable'), ('$Math', 'builtin modules are unavailable')):
