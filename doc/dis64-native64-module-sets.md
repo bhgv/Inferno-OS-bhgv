@@ -65,3 +65,15 @@ The ordinary single-module gate retains its exact fault counts and all real 68
 Math exports are covered by the complete layout integration. Tests do not establish
 moving collection, arbitrary pointer provenance or concurrent registration.
 Prior optimized UTF/injected-unwind ASan evidence remains open independently.
+
+## Independent request/retirement ordering review
+
+FlashVM contributes `utils/tests/native64-module-order.c`, included by the same
+`--sets` gate. Per compatible model it checks all six request permutations against
+all six removal permutations, both with and without an older published owner:
+72 scenarios. After every removal the exact registry chain, reference ownership
+and remaining actual scalar C calls are checked. Successful output cells are
+borrowed aliases and are never dereferenced after their owner is unloaded.
+Zero-count transactions with deliberately unreadable unused spans must allocate
+nothing and leave an existing chain unchanged. This adds an independent ordering
+oracle; it does not establish concurrent registration or initializer rollback.

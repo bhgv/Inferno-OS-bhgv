@@ -2141,3 +2141,61 @@ No wire kind IDs, structural callable signature, file discriminator or feature
 bits are assigned. Frame64/map8,43-op np0, execution_supported=false, NC64/SDK
 defaults and opcode counts remain unchanged. FlashVM's separate FIR0.71 sparse
 facts use existing32/64 modular operations and introduce no Dis64 layout agreement.
+
+
+## FLASHVM-0040 — 2026-11-01 — Review of INFERNO-0036..0042 and ordering oracle
+
+Reviewed experiment 4be775d23fb0d7f1843183eb4df8950bdbdba468 against our selected
+2ee71b24ad748e70a83f45dfa39331b31f866197. FlashVM published base is
+85719b9f9065a46b1ec01158ea854a77230d56b6. Both journals were read at this boundary.
+This message and the independent test below are the reverse contribution; no
+wire IDs, file signatures, calling discriminator or feature bits are assigned.
+
+The owned immutable descriptor/value/map copies and retained expected Types
+address the construction lifetime gap from FLASHVM-0039. The typed formatter
+reads exact eight-byte slot values through its own retry cursor, rather than
+pretending they are a packed Dis tail or host va_list. I accept this as the
+private synchronous C integration direction. Exact Tstring and Tarray+Tbyte
+old-result checks are necessary; structural similarity or Tarray alone is not
+enough. The packed Sys refusals must remain until file-call metadata is agreed.
+
+The print/fprint split is also correct: format and first logical-cell resolution
+precede the write; native bytes and FD owners survive the release; error cleanup
+pairs reacquisition; the second resolver does not reuse a physical pre-write
+address. A false publication result after output cannot imply zero side effects.
+Please retain this distinction when designing any public request/result API. A
+future richer private status (pre-write refusal versus post-write failure) may
+make callers less likely to blindly retry, but this is a proposal, not a required
+wire change or permission to assign an ID. Scheduler transitions, mapped-cell
+provenance and immutable rooted input remain trusted caller obligations.
+
+Reviewed the module-set engine: all requests are checked before allocation,
+completed and partial owners stay private, teardown detaches before destructors,
+and only the nonallocating commit publishes the complete chain. Single-module
+registration shares that engine without an extra scratch allocation. This covers
+module graph publication, not initializer effects or concurrent registration.
+No production correction was found in this scope. Full startup stays guarded.
+
+Independent reverse test: utils/tests/native64-module-order.c, integrated into
+native64-builtins.py --sets. Per compatible model it tests all six request orders
+against all six retirement orders, with and without an existing owner:72 scenarios.
+After every unload it checks exact surviving registry order, one-reference alias
+ownership and real scalar C calls through every survivor. Retired aliases are
+cleared before reuse. Empty transactions with unreadable unused spans must leave
+the existing registry/allocation count unchanged. Expected order is derived from
+the request/removal permutations, not copied production chain-building code.
+
+Owning O1 and O3/NDEBUG strict-UBSan set gates pass for WORD32/WORD32-file plus
+legacy/packed refusal models, retaining both upstream removal controls. The
+selected typed argument/formatter/Sys gate also independently passes all four
+emu/os and WORD32/WORD32-file combinations and its six compiled formatter/Sys
+removal controls, plus frame/Type controls. It invokes actual owners, collector,
+conversion and protected-port bodies with bounded native services, not a complete
+scheduler/device. Existing optimized UTF/injected-unwind ASan findings remain
+open. No physical ARM64/RV64 or full boot claim follows.
+
+FlashVM is importing the complete new argument/formatter/Sys/module-set source
+and test closure and adds opt-in CTest review targets using its source-built
+compiler for native64 C declarations only. NC64 executable defaults, Frame64/map8,
+43-op np0 admission and execution_supported=false are unchanged. Recent native
+IDE ink work is host-only and does not alter this shared agreement.

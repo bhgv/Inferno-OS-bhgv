@@ -99,6 +99,8 @@ def main():
             adapter = adapter.replace('\t\t\tlive--;\n', '\t\t\tlive--;\n\t\t\tif(batchdisturb) snprintf(diagnostic, sizeof(diagnostic), "%s", "cleanup changed error");\n', 1)
             body = body.replace('int\nmain(void)', 'int\nnative64_single_main(void)', 1)
             body += (ROOT/'utils/tests/native64-module-set.c').read_text()
+            body = body.replace('int\nmain(void)', 'int\nnative64_set_main(void)', 1)
+            body += (ROOT/'utils/tests/native64-module-order.c').read_text()
         unit.write_text(adapter+body)
         compiler = shlex.split(env.get('CC', 'cc'))
         includes = ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/amd64/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
