@@ -1,13 +1,7 @@
 #include "limbo.h"
-#include "dis64-pilot.h"
+#include "dis64-lower.h"
 
-#define ScalarObjectLimit (1024U*1024U) // Match the existing experimental runtime object bound.
-#define ScalarCodeLimit 65536U // Match the existing runtime instruction bound.
 #define ScalarOutputLimit (8U*1024U*1024U) // Match the complete-image admission bound.
-#define ScalarLegacyPrefix 32U // This backend translates only the compiler's fixed legacy scalar prefix.
-#define ScalarNativePrefix 64U // Existing Dis64 np0 entry-frame reservation.
-#define ScalarScratchStart 16U // Align the legacy scratch span without admitting its return-address word.
-#define ScalarScratchBytes 16U // Preserve byte aliases in legacy scratch cells20..31 in a private frame tail.
 
 
 /* Keep diagnostics in the ordinary compiler error and output-cleanup path. */
@@ -20,10 +14,11 @@ dis64error(Decl *entry, char *message)
 
 /* Pointer-free source scalars retain their existing WORD32/eight-byte storage geometry. */
 static int
-dis64scalarlist(Decl *decl)
+dis64scalarlist(Decl *decl, int tables)
 {
 	for(; decl != nil; decl = decl->next)
-		if(decl->ty == nil || (decl->ty->kind != Tint && decl->ty->kind != Tbig && decl->ty->kind != Treal))
+		if(decl->ty == nil || ((decl->ty->kind != Tint && decl->ty->kind != Tbig && decl->ty->kind != Treal) &&
+		   !(tables && dis64scalartable(decl))))
 			return 0;
 	return 1;
 }
@@ -41,66 +36,6 @@ dis64nomap(Desc *desc)
 		if(desc->map[i] != 0)
 			return 0;
 	return 1;
-}
-
-
-/* Rebase direct locals and move scalar scratch bytes beyond the local extent, preserving aliases. */
-static int
-dis64address(int mode, Addr *address, unsigned int scratch, long *value, unsigned int *wire)
-{
-	switch(mode){
-	case Anone: *wire = AXXX; *value = 0; return 1;
-	case Aimm: case Apc: *wire = AIMM; *value = address->offset; return 1;
-	case Amp: *wire = AMP; *value = address->reg; return 1;
-	case Afp:
-		if(address->reg < STemp || address->reg > ScalarObjectLimit-ScalarNativePrefix)
-			return 0;
-		*wire = AFP;
-		if(address->reg < ScalarLegacyPrefix)
-			*value = scratch+address->reg-ScalarScratchStart;
-		else
-			*value = address->reg+ScalarNativePrefix-ScalarLegacyPrefix;
-		return 1;
-	}
-	return 0;
-}
-
-
-/* Preserve instruction PCs while turning the sole void entry's return into EXIT. */
-static int
-dis64convert(Inst *input, unsigned int count, unsigned int data, unsigned int frame, unsigned int scratch, Dis64Instruction *output)
-{
-	unsigned int source, middle, destination;
-
-	memset(output, 0, sizeof(*output));
-	if(!dis64address(input->sm, &input->s, scratch, &output->source, &source) ||
-	   !dis64address(input->mm, &input->m, scratch, &output->middle, &middle) ||
-	   !dis64address(input->dm, &input->d, scratch, &output->destination, &destination))
-		return 0;
-	output->op = input->op == IRET ? IEXIT : input->op;
-	output->mode = SRC(source)|DST(destination);
-	switch(middle){
-	case AXXX: break;
-	case AIMM:
-		if(output->middle < -32768 || output->middle > 32767)
-			return 0;
-		/* The runtime's middle immediate is WORD-sized, never a complete LONG. */
-		switch(output->op){
-		case IADDL: case ISUBL: case IMULL: case IDIVL: case IMODL:
-		case IANDL: case IORL: case IXORL: case ISHLL: case ISHRL:
-		case IBEQL: case IBNEL: case IBLTL: case IBLEL: case IBGTL: case IBGEL:
-			return 0;
-		}
-		output->mode |= AXIMM;
-		break;
-	case AFP: case AMP:
-		if(output->middle < 0 || output->middle > 65535)
-			return 0;
-		output->mode |= middle == AFP ? AXINF : AXINM;
-		break;
-	default: return 0;
-	}
-	return dis64instructioncheck(output, count, data, frame);
 }
 
 
@@ -168,18 +103,18 @@ dis64tracepoint(Line *point)
 
 /* Export optional compiler diagnostics only after the complete scalar image is admitted. */
 static void
-dis64trace(Inst *instructions)
+dis64trace(Dis64Lower *lower)
 {
 	Inst *inst;
+	unsigned int pc;
 	char *enabled;
 
 	enabled = getenv("LIMBO_DIS64_TRACE");
 	if(enabled == nil || strcmp(enabled, "1") != 0)
 		return;
-	for(inst = instructions; inst != nil; inst = inst->next){
-		if(inst->op == INOOP)
-			continue;
-		fprint(2, "LIMBO64LOC {\"pc\":%ld,\"op\":%d,\"start\":", inst->pc, inst->op == IRET ? IEXIT : inst->op);
+	for(pc = 0; pc < lower->count; pc++){
+		inst = lower->origin[pc];
+		fprint(2, "LIMBO64LOC {\"pc\":%ud,\"op\":%ud,\"start\":", pc, lower->code[pc].op);
 		dis64tracepoint(&inst->src.start);
 		fprint(2, ",\"stop\":");
 		dis64tracepoint(&inst->src.stop);
@@ -197,10 +132,9 @@ dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long dat
 	Dis64Initializer *records;
 	Dis64Payload sections[5];
 	DisStringPoolRecord string;
-	Dis64Instruction instruction;
+	Dis64Lower lower;
 	Dis64Pilot checked;
 	Decl *decl;
-	Inst *inst;
 	uchar *parts[5], *maps[2], *runes, *output;
 	ulong real[2];
 	uvlong bits;
@@ -214,7 +148,7 @@ dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long dat
 	if(MaxTemp != ScalarLegacyPrefix || STemp != 20 || IBY2WD != 4 || IBY2LG != 8 || sizeof(Real) != 8 || sizeof(Long) != 8 ||
 	   nfns != 1 || fns[0] != entry || entry->pc == nil || entry->pc->pc != 0 ||
 	   entry->ty->ids != nil || entry->ty->varargs || entry->ty->tof->kind != Tnone ||
-	   !dis64scalarlist(entry->locals) || !dis64scalarlist(globals) || !dis64nomap(entry->desc) ||
+	   !dis64scalarlist(entry->locals, 0) || !dis64scalarlist(globals, 1) || !dis64nomap(entry->desc) ||
 	   count <= 0 || count > ScalarCodeLimit || databytes < 0 || databytes > ScalarObjectLimit ||
 	   entry->desc->size < ScalarLegacyPrefix || entry->desc->size > ScalarObjectLimit-ScalarNativePrefix-ScalarScratchBytes){
 		dis64error(entry, "requires one pointer-free void init() with no parameters and bounded scalar storage");
@@ -241,21 +175,18 @@ dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long dat
 	memset(maps, 0, sizeof(maps));
 	runes = output = nil;
 	records = nil;
+	memset(&lower, 0, sizeof(lower));
 	failure = "unsupported instruction or operand shape in the existing scalar profile";
+	if(!dis64lower(instructions, count, databytes, frame, scratch, &lower))
+		goto done;
+	count = lower.count;
+	databytes = lower.databytes;
 	parts[1] = allocmem(4+14*count);
 	dis64put32(parts[1], count);
 	at = 4;
-	n = 0;
-	for(inst = instructions; inst != nil; inst = inst->next){
-		if(inst->op == INOOP)
-			continue;
-		if(n >= count || inst->pc != n || !dis64convert(inst, count, databytes, frame, scratch, &instruction) ||
-		   !dis64encode(parts[1], &at, &instruction))
+	for(n = 0; n < count; n++)
+		if(!dis64encode(parts[1], &at, &lower.code[n]))
 			goto done;
-		n++;
-	}
-	if(n != count)
-		goto done;
 	sizes[1] = at;
 	failure = "unsupported scalar initializer or too many initializers";
 	records = allocmem(Dis64PilotInitializers*sizeof(*records));
@@ -263,7 +194,7 @@ dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long dat
 	for(decl = globals; decl != nil; decl = decl->next){
 		if(decl->store != Dglobal)
 			goto done;
-		if(decl->init == nil)
+		if(decl->init == nil || dis64scalartable(decl))
 			continue;
 		if(n == Dis64PilotInitializers || decl->init->op != Oconst || decl->offset < 0 ||
 		   decl->init->ty->kind != decl->ty->kind)
@@ -280,6 +211,10 @@ dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long dat
 		}
 		n++;
 	}
+	if(lower.nconstants > Dis64PilotInitializers-n)
+		goto done;
+	for(i = 0; i < lower.nconstants; i++)
+		records[n++] = lower.constants[i];
 	memset(types, 0, sizeof(types));
 	types[0].bytes = databytes; types[0].align = databytes == 0 ? 1 : 4;
 	types[1].bytes = frame; types[1].align = 8;
@@ -323,7 +258,7 @@ dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long dat
 		failure = "cannot write the complete checked image";
 		goto done;
 	}
-	dis64trace(instructions);
+	dis64trace(&lower);
 	failure = nil;
 done:
 	for(i=0; i<5; i++)
@@ -331,6 +266,7 @@ done:
 	for(i=0; i<2; i++)
 		free(maps[i]);
 	free(runes); free(output); free(records);
+	dis64lowerfree(&lower);
 	if(failure != nil)
 		dis64error(entry, failure);
 }

@@ -703,3 +703,15 @@ The unpacked example runs with `./emu -v -r "$PWD" -c 1 -d /loop.dis64`; use
 The full O3/NDEBUG UTF ASan+UBSan oracle additionally passes on native Linux
 ARM64/x64 in run41334449491; the older local sandbox report remains separately
 reproducible rather than being relabeled a proven false positive.
+
+## Small numeric source cases (series 0056)
+
+The existing scalar backend accepts bounded numeric case IR and lowers it to
+ordinary scalar comparisons/jumps. This includes int ranges and discrete Big
+labels, dense int dispatch, nested cases and loops. CASE/CASEL/GOTO themselves
+remain outside file admission. No shared wire IDs or managed-call contract change.
+The clean port driver runs67 sources through134 additional complete interpreter/
+JIT processes and checks remapped targets/source rows; CI also consumes all67
+products through the unchanged FlashVM reader. See
+[scope, limits and reproduction](dis64-scalar-cases.md). Console archives now
+also contain the self-checking Native64Case source, image and diagnostic map.

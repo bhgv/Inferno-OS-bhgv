@@ -93,9 +93,13 @@ def main():
     run([sys.executable, str(tests/'native64-limbo-boot.py'), '--limbo', str(tools/'limbo'),
          '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
         build, env, logs/'limbo-boot.log')
+    run([sys.executable, str(tests/'dis64-location-read.py')], build, env, logs/'dis64-location-read.log')
     run([sys.executable, str(tests/'dis64-locations.py'), '--limbo', str(tools/'limbo'),
          '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
         build, env, logs/'dis64-locations.log')
+    run([sys.executable, str(tests/'dis64-cases.py'), '--limbo', str(tools/'limbo'),
+         '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
+        build, env, logs/'dis64-cases.log')
     utfenv = dict(env, CFLAGS=env['NATIVE64_CFLAGS'])
     run([sys.executable, str(build/'libinterp/tests/sys-utf.py')], build, utfenv, logs/'sys-utf.log')
     run([sys.executable, str(tests/'native64-guard-link.py'), '--root', str(build), '--log', str(logs/'mk.log'),

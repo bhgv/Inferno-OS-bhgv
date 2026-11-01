@@ -125,3 +125,12 @@ profile. Ordinary programs with Sys/Draw imports, a full shell, file CALL/MCALL,
 managed arguments/results and generic native calls remain outside admission.
 The shared execution_supported=false status and all existing default guards
 remain unchanged. Complex runtime handlers stay in C where appropriate.
+
+## Small numeric cases (series 0056)
+
+The private compiler lowering also accepts bounded int cases/ranges and discrete
+Big labels, including dense cases represented by compiler GOTO IR. It emits only
+the same43 scalar wire operations; file CASE/CASEL/GOTO remain closed. Expanded
+PCs and diagnostic rows are remapped without mutating legacy compiler IR. Larger
+or managed tables refuse. See [scope and reproduction](../../doc/dis64-scalar-cases.md)
+and the self-checking [case example](dis64-scalar/case.b).

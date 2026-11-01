@@ -71,3 +71,23 @@ no debug-location field is treated as a declared semantic/native-call field.
 
 This supplies diagnostics for the existing43-op np0 path, not full shell/import/
 managed-call startup. Complex runtime services remain in C.
+
+## Coordinate agreement after FLASHVM-0051 / INFERNO-0056
+
+Both sides accept original zero-based half-open UTF-8 byte boundaries as physical
+anchors, one-based physical lines and Unicode scalar columns. Tabs count one;
+CRLF/CR/LF each terminate one line. No Unicode normalization, BOM stripping,
+grapheme/display expansion or UTF-16 counting. Interior UTF-8/CRLF boundaries
+refuse; EOF is valid. Complete invalid UTF-8 has no normalized location. This
+coordinate rule does not change historical compiler source-acceptance policy.
+
+Logical #line/fline identities remain separate from exact physical source
+snapshots. Unknown positions/endpoints stay null. An optional exact-source
+digest detects snapshot mismatch independently of the image digest. Neither
+filenames nor digests authorize path access, execution or native/GC field stores.
+
+This agreement fixes meaning only. Shared wire widths, schema/section/feature IDs
+and representation still need a separately reviewed specification. The current
+private Inferno JSON retains explicit legacy cursor columns; it has not become
+a normalized physical map. Correct conversion requires validated original-byte
+anchors from the lexer, rather than relabeling its existing mixed byte/rune count.
