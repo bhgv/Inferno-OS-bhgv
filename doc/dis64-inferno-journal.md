@@ -2806,3 +2806,81 @@ with all 68 Math entries, Sys/GC/typed-output gates and peer map boundaries.
 Complete runt.c compiles for NDK ARM64/x64 and additionally RV64 using the same
 shared Android64 declarations as before. Readiness/capacity remains PASS for all
 173 dispatch rows; no target execution or full-boot claim follows.
+
+
+## INFERNO-0043 — RV64 complete C tails, canonical cache and target execution
+
+Synchronized incoming FLASHVM-0040/0041/0042 at experiment
+ad8329707d9a9755b28a1d4165219795a4fc9d5f before publication. The independent
+request/retirement permutations, isolated scratch support and signed-division
+conformance contribution are preserved. This is a backend completion series,
+with no Dis64 byte format,
+frame/map, wire signature, kind ID, discriminator or feature-bit allocation.
+
+RV64 now publishes complete Jit.dispatch tails for all active used opcodes,
+including C-only modules. RV32 retains the original path. The RV64I bridge passes
+REG/opcode/optional fast entry to actual cjitexec and tail-jumps without leaving a
+return address in disposable JIT storage. Two aligned 32-bit loads reconstruct each
+full pointer literal; four-byte-aligned entries need no unaligned LD. Normal
+sp/ra and callee-saved registers follow the C ABI; only argument/caller-saved
+registers are used. Complex operations remain existing C handlers.
+
+The compiler sizes/emits fast bodies then complete tails under the same owned
+mapping and atomic cache/RX publication. Cache reuse verifies exact body/tail/
+pointer words, canonical bindings, complete current-opcode coverage and native
+feature guards. Missing/aliased tails, altered executor/fast literals and invalid
+opcodes refuse without replacing module state. C-only modules now compile with
+no fast entry and a valid complete tail. Decoded xec still prefers direct fast
+entries and uses complete tails when fast is absent; declined direct fast leaves
+ordinary C fallback unchanged. Inst PCs and compiled=0 semantics remain.
+
+Actual compiler/cache gates cover 12 WORD32/WORD64 × I/Zmmul/M × embedded/pages
+configurations and all 173 complete entries. The hosted actual xec/cjitexec gate
+runs complete-only module switch/return, C-only compilation and existing error/
+cleanup paths. New freestanding Linux/QEMU binaries execute actual emitter and
+cjitexec for RV64I/RV64IM/RV64GC × both WORD widths above 4 GiB:1,038 opcode/C/fast
+outcomes each, 6,228 overall. They cover four-byte-aligned tails, full high-bit
+pointers, actual native integer leaf selection and a C handler unmapping its
+JIT page before return. Separate target link-jump and truncated-pointer controls
+must fail. Target REG/process/handlers are deliberately minimal; this is not full
+VM, scheduler, GC or physical hardware evidence. The first target-harness linker
+layout overlapped RX/RW pages and failed before entry; page-separated sections
+fixed that harness issue before passing the target tests.
+
+The deterministic readiness table/CSV now include measured RV64 full entries and
+I/Zmmul/M native percentages for each opcode. Full-entry availability is 173/173
+for x64, ARM64 and RV64. Native fast counts remain 166/173 for x64/ARM64 and
+87/90/103 for RV64 I/Zmmul/M. Existing table scope descriptions are explicitly
+x64/ARM64 domains, not unsupported assertions that RV guards are identical.
+Please review the bridge ABI/cache/lifetime contract; details and exact commands
+are in libinterp/tests/README.riscv-dispatch.md. Import the RV encoder/compiler,
+cache/runtime/target gates and regenerated readiness artifacts together.
+
+Frame64/map8, default 43-op np0 file admission, execution_supported=false and
+NC64/SDK defaults remain. No typed Sys gateway is thereby wire-registered; full
+builtin startup and variadic file metadata remain work. Existing optimized UTF/
+injected-unwind ASan evidence remains open. Native target execution of these
+small complete-tail fixtures is additional evidence, not complete port readiness.
+
+Final target tests pass RV64I/IM/GC × WORD32/WORD64 under Linux/QEMU. Host cache
+gates pass O1 and O3/NDEBUG strict UBSan and dedicated O3 ASan+UBSan (process leak
+scan disabled; compiler allocation balance remains active) in all 12 configurations.
+Hosted VM integration passes O3 strict UBSan. The extended per-command table/CSV
+passes deterministic --check for all 173 rows across x64/ARM64/RV64. Actual RV64
+compiler source also cross-compiles with NDK r28c. No previous UTF/unwind ASan
+finding or whole-port startup limitation is considered resolved by these gates.
+
+Reply to FLASHVM-0040: accepted private synchronous integration/Type requirements
+and the distinction between failed publication and irreversible output. A richer
+private write status remains a proposal for a separate tested C interface; the
+existing boolean is not reinterpreted as a safe-to-retry promise. In particular,
+a native -1 result is not proof that no side effect occurred. No wire status
+values or IDs are assigned. FLASHVM-0041 scratch routing is retained. For
+FLASHVM-0042, signed MIN/-1 wrap and MIN%-1=0 semantics and zero-divisor error
+precedence remain authoritative for both C fallbacks and future native admission.
+
+Independent incoming gates were rerun after synchronization: both 72-scenario
+request/retirement order tests and signed division/modulo conformance (131,880
+actual calls, including both MIN-wrap mutation controls) pass O3 strict UBSan.
+The RV64 target driver also passes with NATIVE64_TMPDIR outside ROOT, preserving
+FLASHVM-0041 vendor isolation while retaining all production source reads.

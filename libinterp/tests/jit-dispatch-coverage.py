@@ -85,6 +85,31 @@ main(void)
     return 0;
 }
 ''')
+    if arch == 'riscv':
+        text=source.read_text()
+        adapter = """#include "riscv-emit.h"
+#define LeafMax RvMax // Share the independent capacity oracle, not the production return convention.
+
+
+/* Normalize RV's negative short-buffer result only for this shared measurement fixture. */
+static int
+leafbridgeemit(u32int *output, int capacity, void *executor, int opcode, void *fast)
+{
+    int count;
+
+    count = rvbridgeemit(output, capacity, (uintptr_t)executor, opcode, (uintptr_t)fast);
+    return count < 0 ? 0 : count;
+}
+"""
+        text=text.replace('#include "riscv-emit.h"', adapter)
+        text=text.replace('#else\n                        if(result!=n', """#elif defined(TARGET_RV64)
+                        if(result!=((misalignment&1) ? 0 : n) || out[0]!=0xa5a5a5a5U) return 10;
+                        if(misalignment&1)
+                            for(k=0;k<LeafMax+2;k++)
+                                if(out[k]!=0xa5a5a5a5U) return 11;
+#else
+                        if(result!=n""")
+        source.write_text('#define TARGET_RV64 1 // RV C pointers are at least two-byte aligned.\n'+text)
     binary = directory/'dispatch-coverage'
     command = shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
     subprocess.run(command+['-I'+str(ROOT/'include'),'-I'+str(ROOT/'libinterp'),str(source),'-o',str(binary)],check=True)
@@ -106,7 +131,7 @@ def main():
                  str(ROOT/'libinterp/tests/jit-coverage.py'), 'exec'), coverage.__dict__)
     names = coverage.opnames()
     with tempfile.TemporaryDirectory(prefix='jit-dispatch-coverage-') as temporary:
-        for arch in ('amd64','arm64'):
+        for arch in ('amd64','arm64','riscv'):
             result = measure(arch,names,Path(temporary))
             for wb,available in result.items():
                 print('PASS',arch,'WORD'+str(wb*8),'complete entries:',str(len(available))+'/'+str(len(names)-2))

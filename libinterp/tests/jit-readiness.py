@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate per-opcode AMD64/ARM64 emission percentages and explicit native domains."""
+"""Generate per-opcode AMD64/ARM64/RV64 emission percentages and explicit native domains."""
 import argparse
 import csv
 import importlib.util
@@ -178,6 +178,8 @@ def reports():
         classification = families(names,directory)
         measurements = {(arch,wb): COVERAGE.measure(arch,wb,'base',names,directory) for arch in ('amd64','arm64') for wb in (4,8)}
         dispatch = {arch: dispatch_coverage.measure(arch,names,directory) for arch in ('amd64','arm64')}
+        rvmeasure = {(profile,wb): COVERAGE.measure('riscv64',wb,profile,names,directory) for profile in ('i','zmmul','m') for wb in (4,8)}
+        dispatch['riscv64'] = dispatch_coverage.measure('riscv',names,directory)
     rows = []
     for opcode in names:
         if opcode in ('INOP','IECLR'): continue
@@ -190,14 +192,23 @@ def reports():
             row[arch+'_dispatch_percent'] = 50*sum(complete)
             row[arch+'_dispatch_word32'],row[arch+'_dispatch_word64'] = complete
             row[arch+'_mode'] = 'быстрый путь + C' if sum(values) else 'C через JIT' if sum(complete) else 'C вне JIT'
+        for profile in ('i','zmmul','m'):
+            values=[int(opcode in rvmeasure[profile,wb]['available']) for wb in (4,8)]
+            row['riscv64_'+profile+'_percent']=50*sum(values)
+            row['riscv64_'+profile+'_word32'],row['riscv64_'+profile+'_word64']=values
+        row['riscv64_percent']=row['riscv64_m_percent']
+        complete=[int(opcode in dispatch['riscv64'][wb]) for wb in (4,8)]
+        row['riscv64_dispatch_percent']=50*sum(complete)
+        row['riscv64_dispatch_word32'],row['riscv64_dispatch_word64']=complete
+        row['riscv64_mode']='быстрый путь + C' if row['riscv64_percent'] else 'C через JIT' if sum(complete) else 'C вне JIT'
         kind = classification.get(opcode,'C')
         if kind!='C' and kind not in DOMAINS: raise RuntimeError(('missing domain annotation',kind,opcode))
         row['family'] = kind
         row['scope'] = SCOPES.get(opcode,DOMAINS[kind]) if kind!='C' else C_HANDLERS[opcode]
         rows.append(row)
     active = len(rows)
-    native = {arch: sum(row[arch+'_percent']>0 for row in rows) for arch in ('amd64','arm64')}
-    complete = {arch: sum(row[arch+'_dispatch_percent']==100 for row in rows) for arch in ('amd64','arm64')}
+    native = {arch: sum(row[arch+'_percent']>0 for row in rows) for arch in ('amd64','arm64','riscv64')}
+    complete = {arch: sum(row[arch+'_dispatch_percent']==100 for row in rows) for arch in ('amd64','arm64','riscv64')}
     md = '''# Поддержка отдельных команд Dis из JIT: быстрый путь + C
 
 Проценты — доля проверенных WORD32/WORD64-конфигураций: 0/2 = 0%,
@@ -209,21 +220,24 @@ def reports():
 
 Полный вход не требует переписывать сложную команду на ассемблер. ALT/NBALT,
 SPAWN/MSPAWN, LOAD, EXIT и RAISE выполняются в C через хвостовой вход JIT.
-Остальные команды имеют нативный быстрый путь и C-подхват. Ни одна из этих
+На x64/ARM64 остальные команды имеют нативный быстрый путь и C-подхват.
+На RV64 набор быстрых путей зависит от I/Zmmul/M; общий C-вход доступен всегда. Ни одна из этих
 цифр не является процентом всех входных состояний, производительности или
 готовности всей 64-битной VM. Ограничения быстрых путей указаны отдельно.
 
 '''
     md += '| Архитектура | Полные входы JIT+C | Быстрые пути | C через JIT без быстрого пути |\n| --- | ---: | ---: | ---: |\n'
-    for arch,title in (('amd64','x86-64'),('arm64','ARM64')):
+    for arch,title in (('amd64','x86-64'),('arm64','ARM64'),('riscv64','RV64M')):
         md += f'| {title} | {complete[arch]}/{active} ({100*complete[arch]/active:.2f}%) | {native[arch]}/{active} ({100*native[arch]/active:.2f}%) | {complete[arch]-native[arch]} |\n'
+    md += '\nRV64I: 87/173 быстрых путей; Zmmul: 90/173; M: 103/173. Полные RV64 входы используют только RV64I.\n'
     md += '\n175 enum-слотов минус недопустимый INOP и неиспользуемый IECLR = 173 активные команды.\n'
     md += '\nХвостовой переход в общий C-диспетчер сохраняет возврат в исходный цикл VM,\nдаже если обработчик освободил модуль с его JIT-кодом. Декодированный цикл\nсохраняет прямой вызов быстрых входов; сложные команды используют полный вход.\nЭто per-opcode JIT с исходными Dis PC; многокомандные блоки ещё не реализованы.\n'
-    md += '\nФизический ARM64 и полная загрузка Inferno не проверены этим измерением.\n'
-    md += '\n| Команда | Полный x64, % | Полный ARM64, % | Быстрый x64, % | Быстрый ARM64, % | Режим | Область быстрого пути / C-обработчик |\n| --- | ---: | ---: | ---: | ---: | --- | --- |\n'
+    md += '\nФизические ARM64/RV64 и полная загрузка Inferno не проверены этим измерением.\n'
+    md += '\n| Команда | Полный x64, % | Полный ARM64, % | Полный RV64, % | Быстрый x64, % | Быстрый ARM64, % | Быстрый RV64M, % | Режим | Область x64/ARM64 / C-обработчик |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |\n'
     for row in rows:
         mode = row['amd64_mode'] if row['amd64_mode']==row['arm64_mode'] else 'x64: '+row['amd64_mode']+'; ARM64: '+row['arm64_mode']
-        md += f"| {row['opcode']} | {row['amd64_dispatch_percent']}% | {row['arm64_dispatch_percent']}% | {row['amd64_percent']}% | {row['arm64_percent']}% | {mode} | {row['scope']} |\n"
+        if row['riscv64_mode'] != mode: mode += '; RV64M: '+row['riscv64_mode']
+        md += f"| {row['opcode']} | {row['amd64_dispatch_percent']}% | {row['arm64_dispatch_percent']}% | {row['riscv64_dispatch_percent']}% | {row['amd64_percent']}% | {row['arm64_percent']}% | {row['riscv64_percent']}% | {mode} | {row['scope']} |\n"
     md += '\nВоспроизведение: `python3 libinterp/tests/jit-readiness.py --check`.\n'
     csvout = io.StringIO(newline='')
     writer = csv.DictWriter(csvout,fieldnames=list(rows[0]),lineterminator='\n')
@@ -245,7 +259,7 @@ def main():
         if args.write: path.write_text(content,newline='')
         elif args.check:
             if not path.exists() or path.read_text()!=content.replace('\r\n','\n'): raise RuntimeError(('stale readiness artifact',name))
-    if args.write or args.check: print('PASS readiness: 173 complete rows, fast/C modes, AMD64/ARM64 WORD32/64 and capacity canaries')
+    if args.write or args.check: print('PASS readiness: 173 complete rows, fast/C modes, AMD64/ARM64/RV64 WORD32/64 and capacity canaries')
     else: print(files['README.jit-readiness.md'],end='')
 
 

@@ -1,6 +1,6 @@
-# 64-bit JIT opcode availability — 2026-10-30
+# 64-bit JIT opcode availability — 2026-11-01
 
-Measurements invoke actual bounded production emitters. The denominator is173
+Measurements invoke actual bounded production emitters. The denominator is 173
 active Dis opcodes:175 enum slots minus invalid INOP and unused IECLR. A guarded
 native path means only supported operand cases; declined cases use C. These
 percentages do not measure runtime input coverage, speed or complete Dis64 ABI.
@@ -17,11 +17,20 @@ Counts agree for the tested WORD32 and legacy WORD64 layouts. Actual emitted cod
 is selected according to the target multiply/divide feature flags; availability
 must not be inferred from a host build that lacks those target flags.
 
-AMD64 and ARM64 also have173/173 complete JIT tail entries, which retain complex
-operations in C. RV64 currently uses the original VM C dispatcher for missing or
-declined leaves; it does not yet publish the same complete tail-entry table.
-Keeping an operation in C is a supported design choice. Allocation, scheduling,
-linking and ownership-heavy work need not be duplicated in assembly.
+AMD64, ARM64 and RV64 now have173/173 callable complete JIT tail entries,
+including C-only operations. RV64 complete tails use RV64I instructions and work
+with I/Zmmul/M profiles; native fast availability above is unchanged. The original
+decoded VM loop still prefers a direct fast entry when present and uses the
+complete tail for C-only operations. A declined direct fast entry keeps ordinary
+C fallback. Allocation, scheduling, linking and ownership-heavy work remain C.
+
+RV64 compiler/cache gates verify complete tables in WORD32/WORD64, I/Zmmul/M and
+embedded/RW-to-RX page configurations. New Linux/QEMU target tests execute the
+actual bridge and C executor for all 173 opcodes, both four/eight-byte code-entry
+alignments, addresses above 4 GiB, native acceptance/decline/C-only routes and code
+retirement inside a C callback. Tests cover RV64I/RV64IM/RV64GC and both WORD
+layouts, with minimal target process/REG/handler services rather than a full VM.
+See [RV64 complete-tail evidence](../libinterp/tests/README.riscv-dispatch.md).
 
 The new Dis64 loader accepts a43-op scalar subset. Its connected instruction
 fixture runs all43 through actual C/AMD64 RX decoder/VM paths. The scheduler
@@ -44,5 +53,6 @@ python3 libinterp/tests/dis64-scheduler.py
 python3 libinterp/tests/dis64-vmachine.py
 ```
 
-Native execution in the connected Dis64 fixtures is Linux/AMD64. ARM64/RV64
-emitter availability and host compilation do not replace physical target runs.
+Native execution in the connected Dis64 fixtures is Linux/AMD64. RV64 complete tails additionally run under Linux/QEMU; this does not replace a
+physical target, full scheduler/GC startup or complete new-format admission.
+ARM64 availability and host compilation likewise do not establish target execution.

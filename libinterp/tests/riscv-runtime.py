@@ -128,8 +128,8 @@ kprotect(int (*fn)(void*),void *arg)
 void
 kwerrstr(char *s, ...)
 { (void)s; }
-''' + extract('libinterp/loader.c','loaderword','static void') + '\n' + extract('libinterp/loader.c','loadercompile','static int') + '\n' + extract('libinterp/loader.c','Loader_compile','void') + '\n' + extract('libinterp/load.c','freemod','void') + '\n' + extract('libinterp/xec.c','xec','void') + r'''
-static int natives, helpers, decoded, entered, rejected;
+''' + extract('libinterp/loader.c','loaderword','static void') + '\n' + extract('libinterp/loader.c','loadercompile','static int') + '\n' + extract('libinterp/loader.c','Loader_compile','void') + '\n' + extract('libinterp/load.c','freemod','void') + '\n' + extract('libinterp/xec.c','cjitexec','int') + '\n' + extract('libinterp/xec.c','xec','void') + r'''
+static int natives, helpers, decoded, entered, rejected, completecalls;
 static WORD output, source=7;
 static Modlink ma, mb;
 static Module a,b;
@@ -159,7 +159,7 @@ static int
 native(REG *r)
 {
     check(r==&R && R.PC[-1].op==IMOVW);
-    check(entered==natives+rejected+1);
+    check(entered==natives+rejected+completecalls+1);
     output=*(WORD*)r->s; natives++;
     return 1;
 }
@@ -197,6 +197,24 @@ loop_back(void)
 {
     helpers++;
     R.M=&ma; R.MP=ma.MP; R.PC=ia;
+}
+
+
+/* Host stand-ins enter the actual C executor for complete-only opcode tails. */
+static int
+completecall(REG *registers)
+{
+    completecalls++;
+    return cjitexec(registers, IMCALL, nil);
+}
+
+
+/* The C return handler may change the current module without any subsequent sidecar read. */
+static int
+completereturn(REG *registers)
+{
+    completecalls++;
+    return cjitexec(registers, IRET, nil);
 }
 
 
@@ -251,7 +269,9 @@ main(void)
     check(compile(&m,2,nil)==0 && m.jit==installed);
     testfree(m.jit->code); testfree(m.jit); m.jit=nil;
     prog[0].op=prog[1].op=prog[2].op=IADDF;
-    check(compile(&m,3,nil)==0 && !m.jit && live==before);
+    check(compile(&m,3,nil)==1 && m.jit && !m.jit->entry[IADDF] && m.jit->dispatch[IADDF]);
+    testfree(m.jit->code); testfree(m.jit); m.jit=nil;
+    check(live==before);
     m.compiled=1; prog[0].op=IADDW;
     check(compile(&m,3,nil)==0 && !m.jit);
     m.compiled=0;
@@ -269,12 +289,13 @@ main(void)
     ia[0].op=IRUNT; ia[1].op=IMOVW; ia[2].op=IMCALL;
     ib[0].op=IMOVW; ib[1].op=IRET;
     ja.enter=jb.enter=enter;
+    ja.dispatch[IMCALL]=completecall; jb.dispatch[IRET]=completereturn;
     ja.entry[IRUNT]=refuse; ja.entry[IMOVW]=jb.entry[IMOVW]=native;
     dec[0]=decode;
     optab[IRUNT]=fallback; optab[IMCALL]=module_switch; optab[IRET]=loop_back;
     p.R.M=&ma; p.R.PC=ia; p.quanta=10;
     xec(&p);
-    check(decoded==10 && natives==4 && rejected==2 && helpers==6 && entered==6);
+    check(decoded==10 && natives==4 && rejected==2 && helpers==6 && entered==10 && completecalls==4);
     check(output==source && p.R.PC==ia && p.R.M==&ma && p.R.IC==0);
     /* Runtime-modified instruction uses the current opcode, not stale code. */
     ia[1].op=IRUNT; p.quanta=2;
@@ -282,7 +303,7 @@ main(void)
     check(rejected==4 && natives==4 && helpers==8 && p.R.PC==ia+2);
     /* Module without sidecar remains entirely interpreted. */
     a.jit=nil; p.R.PC=ia; p.quanta=1;
-    xec(&p); check(helpers==9 && entered==8);
+    xec(&p); check(helpers==9 && entered==12);
     ma.compiled=1; comvec=compiled_entry;
     xec(&p); check(phase==1);
     check(live==0);
@@ -292,7 +313,7 @@ main(void)
 '''
 with tempfile.TemporaryDirectory(prefix='riscv-runtime-') as td:
     td=Path(td)
-    src=td/'runtime.c'; src.write_text(unit)
+    src=td/'runtime.c'; src.write_text(unit.replace('int\ncjitexec(', 'int __attribute__((aligned(4)))\ncjitexec('))
     binary=td/'runtime'
     subprocess.run(shlex.split(os.environ.get('CC','cc')) +
                    shlex.split(os.environ.get('CFLAGS','-O1 -g')) +
