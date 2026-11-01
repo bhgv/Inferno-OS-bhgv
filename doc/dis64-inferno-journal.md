@@ -2748,3 +2748,61 @@ Math68 and peer boundaries; readiness/capacity remains PASS for173 dispatch rows
 Complete runt.c emits all four gateway exports for NDK ARM64/x64 and an additional
 riscv64-linux-android35 compile using shared Android64 declarations. This remains
 compile evidence rather than native device execution, scheduler proof or full boot.
+
+
+## INFERNO-0042 — Atomic trusted builtin sets and shared single-module engine
+
+Fetched experiment after INFERNO-0041; FLASHVM-0039 remains the current incoming
+review. This series addresses coherent publication of a complete native64 builtin
+set. It defines only a private C request array, with no wire IDs, signatures,
+file discriminators, feature bits or expanded module admission.
+
+builtinmods64 validates the entire immutable request set and nil output cells
+before allocation, including duplicate module names and aggregate declared/
+selected-entry bounds. Actual newmod/dtype/runtime construction stages every
+module privately. A late failure detaches/retires the current partial owner and
+all completed staged modules, preserving the original diagnostic. A nonallocating
+commit builds the complete registry chain and publishes its head once; no callback
+or allocator sees a half-published set. Outputs are aliases in request order with
+the existing one-reference module ownership convention, not extra retains.
+
+The existing builtinmod64 API now uses this same engine with one stack-staged
+pointer. Its allocation order/count and public ABI are preserved. This matters
+for current actual Math registration: it exercises the new engine immediately,
+while future complete Sys/Math/other builtin sets can use its all-or-none boundary.
+The transaction covers module graph owners only; initializer effects, persistent
+Sys Type globals and formatter installation require their own ordering/ownership.
+It does not run or roll back initializers, and registration remains serialized.
+
+Per WORD32/WORD32-file model the new gate runs 60 set transactions and 654 allocator
+visibility checkpoints. It fails each of 24 native allocations in three-module
+construction, with/without an already published owner; checks unchanged registry/
+outputs on every failure; invokes actual scalar and Math C exports after success;
+retains full 20-byte maps; overwrites request names to prove owned metadata; and
+unloads a middle module while checking peers. Cleanup deliberately changes the
+current error, and the originating failure must survive. Preflight covers bad
+last requests, duplicate names, occupied outputs, pointer/count bounds and an
+actual 4096-name maximum specification followed by aggregate overflow. Wrong/packed
+models reject unreadable pointers before inspection. Compiled premature-publication
+and missing-staged-retirement controls must fail active visibility/ownership checks.
+
+Please review the atomic publication/error ownership contract and the scope of
+module-graph versus initializer effects. Import native64-modules.h, interp.h,
+runt.c/mkfile and updated builtin/layout gates with actual Type/module/link/Math
+and bounded native allocation/diagnostic services. Reproduction and limits are in
+dis64-native64-module-sets.md. The four explicit typed Sys gateways remain separate
+from generated packed-entry registration and are still tested by the full suite.
+
+Full builtin startup, wire variadic metadata and existing ASan UTF/injected-unwind
+findings remain open. Frame64/map8, default 43-op np0, execution_supported=false and
+NC64/SDK defaults are unchanged. JIT dispatch 173/173 includes C, ARM64/x64 native
+fast 166/173 and RV64M 103/173 remain command coverage, not whole-port readiness.
+
+Final set gates pass O1 and O3/NDEBUG strict UBSan; the dedicated O3 ASan+UBSan
+set gate also passes with process leak scanning disabled and tracked allocation
+balance active. Executable-name/longjmp warnings remain; prior UTF/error-unwind
+ASan findings are not thereby resolved. Full optimized native64-layout passes
+with all 68 Math entries, Sys/GC/typed-output gates and peer map boundaries.
+Complete runt.c compiles for NDK ARM64/x64 and additionally RV64 using the same
+shared Android64 declarations as before. Readiness/capacity remains PASS for all
+173 dispatch rows; no target execution or full-boot claim follows.

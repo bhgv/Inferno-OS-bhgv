@@ -33,7 +33,7 @@ def main():
             run(['sh', ROOT/'makemk.sh'], work, buildenv)
             limbo = tools/'limbo'
         print(run([sys.executable, ROOT/'utils/tests/native64-math.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
-        print(run([sys.executable, ROOT/'utils/tests/native64-builtins.py'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
+        print(run([sys.executable, ROOT/'utils/tests/native64-builtins.py', '--sets'], work, dict(env, NATIVE64_LIMBO=str(limbo), NATIVE64_CFLAGS=env['CFLAGS'])).stdout, end='', flush=True)
         print(run([sys.executable, ROOT/'utils/tests/native64-sys.py', '--limbo', limbo], work, env).stdout, end='', flush=True)
         print(run([sys.executable, ROOT/'utils/tests/native64-sys-init.py', '--limbo', limbo], work, env).stdout, end='', flush=True)
         print(run([sys.executable, ROOT/'utils/tests/native64-tail.py', '--limbo', limbo], work, env).stdout, end='', flush=True)

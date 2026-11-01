@@ -55,6 +55,7 @@ HFILES=\
 	$ROOT/include/dis64-pilot.h\
 	$ROOT/include/runtab-legacy.h\
 	$ROOT/include/native64-model.h\
+	$ROOT/include/native64-modules.h\
 	$ROOT/include/native64-tail.h\
 	$ROOT/include/native64-arguments.h\
 	$ROOT/include/native64-format.h\
