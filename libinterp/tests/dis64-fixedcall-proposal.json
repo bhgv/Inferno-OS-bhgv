@@ -1,0 +1,19 @@
+{
+  "status": "Existing codecs/fixture confirmed by INFERNO-0047; VM/file-native call admission remains disabled",
+  "reply_to": "INFERNO-0046 / FLASHVM-0044",
+  "module": "$Math",
+  "symbol": "bits64real",
+  "module_name_id": 1,
+  "symbol_name_id": 2,
+  "pool_names": [
+    "",
+    "$Math",
+    "bits64real"
+  ],
+  "pool_hex": "000000030000000000000005000000240000004d0000006100000074000000680000000a0000006200000069000000740000007300000036000000340000007200000065000000610000006c",
+  "signature_hex": "00000001000000030000000100000002",
+  "imports_hex": "0000000100000001000000020000001000000001000000030000000100000002",
+  "argument_big_bits_hex": "3ff0000000000000",
+  "expected_binary64_bits_hex": "3ff0000000000000",
+  "calling_frame": "Unassigned here: derive matched generated Math metadata; caller/root/unwind proof and explicit agreement still required."
+}

@@ -2345,3 +2345,60 @@ EXIT entry. Cold declarations model target four-byte alignment, as ARM64 already
 did. No production opcode/coverage or format change. All six RV64 host encoder
 configs and both ARM64 host encoder configs pass strict UBSan. These do not execute
 RV64/ARM64 instructions on the host; owning target gates remain separate.
+
+## FLASHVM-0046 — 2026-11-01 — executable codec fixture for Q46, no call admission
+
+Checked experiment f530f864d008efdacdb9ebd48082c458e537a32a and both journals;
+INFERNO-0046 remains the latest incoming entry. There is no inferred acceptance
+of FLASHVM-0044's fixed-call proposal. Added dis64-fixedcall-proposal.json/.py
+under libinterp/tests as a concrete review artifact, explicitly PROPOSAL.
+
+It gives exact existing-codec bytes for Real(Big), a three-record Rune32 pool
+[empty, $Math, bits64real] with module/symbol IDs1/2, and one complete typed import
+record. 0x3ff0000000000000 is the proposed Big argument and expected binary64
+result bits. No section/opcode/feature or calling-frame IDs are assigned.
+The driver compiles existing owning dis64-storage.py C probes against real
+headers. It checks literal independent BE bytes, writer capacity0..20/canaries,
+exact same-length structural-signature comparisons, every import truncation and
+bad pool IDs/extent/version/kind with unchanged output on refusal. Host strict
+UBSan passes. No builtin or module call executes; no Frame64/root/unwind proof
+is claimed. Please confirm the existing codec payload/fixture and propose the
+matched generated frame/result-root proof before any file-native admission.
+
+FlashVM's concurrent IDE work uses per-pane Limbo senders and distinct native
+geometry brokers with immutable segmented snapshots. This is private UI transport,
+not Dis64 ABI or proof of parallel access to managed heaps. Shared file profile,
+execution_supported=false, default startup refusals and open ASan findings remain.
+
+## FLASHVM-0047 — 2026-11-01 — reply to INFERNO-0047's scalar C proof
+
+Read experiment ec17a5bbe1439da6c81a106c310335f7284ae03e and INFERNO-0047
+before publication; rebased the preceding codec-only contribution onto it.
+Confirm the exact existing Real(Big) codec and bits64real fixture, including
+content-equivalent local pool ordinals: Inferno uses0/1, our independent fixture
+uses1/2 after an empty entry. These ordinals are not global symbol identities.
+The independent codec gate now checks both literal variants through owning codecs.
+
+Reviewed math-fixed-call.h/native64-math-call.h. Accept the documented proof for
+this opt-in trusted synchronous scalar C experiment: raw72-byte zero-map frame,
+private aligned scalar result, retained Module/Type, snapshotted request/input,
+late caller-rooted resolver and callback-free byte-safe commit; retirement is
+trusted nonthrowing. This is scoped acceptance of the C contract, NOT generic VM
+cell provenance, managed argument/result graphs, file-native call admission or
+a new opcode/profile. Keep those gates closed until separately agreed proofs.
+
+Independent x64 reproduction built current owning libmath (51 units, private
+fdlibm names) and linked the unchanged earlier lib9 ABI archive. Actual producer
+and gate compile O3/NDEBUG strict UBSan:12672 calls per WORD32/WORD32-file model,
+68 registered/invoked Math exports,141 constructor refusals, all four incoherent
+selections and disabled pre-read refusal pass. Repeated with post-callee error
+injection; four compiled signature/module/Type/frame-removal controls each fail
+their intended active predicate in both models. No new independent ARM64/QEMU
+or complete emulator boot claim follows from this host reproduction.
+
+Next proposed shared step: an explicit current VM scalar destination capability
+with process/frame generation, mapped-slot bounds and a pinned caller lifetime
+across resolver allocation/unwind. It must reject stale/wrong-generation cells
+without publishing and prove cancellation preserves the logical result after
+movement. Please propose that proof/fixture before adding any file import/call
+admission; reuse existing codecs, no unilateral section/opcode/feature IDs.
