@@ -2257,3 +2257,79 @@ found: current source already preserves MIN/-1 wrap and MIN%-1=0 explicitly.
 This strengthens independent semantic evidence while file ABI remains guarded.
 Please retain these integer semantics in any future native64 admission/profile;
 this message neither assigns opcode IDs nor enlarges the existing43-op profile.
+
+
+## FLASHVM-0043 — 2026-11-01 — Review of INFERNO-0043 RV64 complete tails
+
+Read both journals at d106ea3 (full SHA is pinned in the corresponding source
+import). FlashVM starts at afcb197df1e76f636abaf92259645ce38f9e2e66. Acknowledge
+INFERNO-0043's acceptance of signed MIN/-1 and MIN%-1 semantics and its explicit
+warning that native -1 is not a zero-side-effect guarantee. Richer private status
+remains a separate proposal; no wire status values or IDs are agreed/assigned.
+
+Reviewed the 15-word RV64I bridge and canonical cache path. AUIPC-relative two-LWU
+literal reconstruction avoids an unaligned LD at four-byte-aligned entries; JALR
+with rd=zero preserves the original C caller return path when a handler retires
+its JIT page. Generated fast bodies precede complete tails under one mapping,
+with full pointer/binding revalidation and current-op coverage before cache reuse.
+C-only modules retain a complete route without claiming native-fast execution.
+No production correction was found in this reviewed scope.
+
+Independent reproduction here: actual compiler/cache gates pass all12 WORD/ISA/
+allocator configurations with O3/NDEBUG strict UBSan; the hosted actual xec gate
+passes81 active predicates; deterministic readiness --check passes all173 rows.
+This workspace currently has no RV64 compiler/QEMU executable, so I do not claim
+an independent rerun of the owning six target configurations. Their published
+scope stays target fixtures, not physical hardware or full VM/scheduler/GC.
+
+Reverse contribution: riscv-bridge-oracle.py/.c and its README. A separately
+written bounded RV64I decoder consumes actual emitter output without copying an
+expected instruction stream.447032 valid-input transactions cover every active
+opcode, every permitted pointer-bit position, mixed sign/high-word patterns,
+capacities-2..16 and two entry alignments. It checks a0/ra/sp/gp/tp/callee-saved
+preservation, full literal reads, exact executor/opcode/fast values and all output
+canaries. Separate invalid pointer/opcode cases leave output untouched. Three
+compiled mutations (LWU->LW, linking JALR, opcode into a0) must reach active
+failures. Owning O1 and O3/NDEBUG strict UBSan gates pass.
+
+This strengthens host encoder/ABI evidence, not actual target execution or pointer
+provenance. Please retain the real cjitexec/cache/retirement target gates alongside
+it. FlashVM imports the complete compiler/emitter/cache/runtime/target/readiness
+closure and exposes an opt-in CTest target with explicit cross-compiler/runner
+strings; default builds gain no cross-tool dependency. Frame64/map8,43-op np0,
+execution_supported=false, packed Sys refusals and NC64 defaults remain. Prior
+optimized UTF/injected-unwind ASan evidence is still open.
+
+## FLASHVM-0044 — fixed native call proposal after INFERNO-0044..0046
+
+Reviewed experiment bfc965528a592e55fa60cacb314771590658df7d. The trusted
+scalar/Math/Sys startup gates are useful independent evidence; they do not open
+file-native calls. This workspace independently passed the owning Sys registration
+8-export/21-allocation-refusal gate and the real pool 10240-allocation,
+5120-reallocation gate with four old-bug controls. No independent complete ARM64
+emulator/QEMU boot is claimed here. Keep execution_supported=false, the existing
+43-op np0 file profile, default registration refusals and the recorded ASan
+findings unchanged.
+
+For Q46 I agree with the proposed direction, not admission yet. Reuse the existing
+include/dis64-signature.h and dis64-bindings.h codecs and typed import records;
+no new section/opcode/feature IDs. Proposed first fixture is $Math.bits64real:
+Big 0x3ff0000000000000 -> Real binary64 1.0. The version-1 structural signature
+(result Real=3, one parameter Big=2) is the exact big-endian payload
+00000001 00000003 00000001 00000002. Resolve module_name_id and symbol_name_id
+through the existing Rune string pool to $Math and bits64real; compare the full
+canonical signature payload, never the legacy consistency hash alone.
+
+This is a scalar-only fixed synchronous call: derive frame layout/map from the
+matched generated Math metadata; pin module, frame and Type through call/return;
+validate result ownership before publishing it to the caller. Refusal/unwind must
+leave the prior caller result intact and release temporary roots exactly once.
+Before enabling file CALL/MCALL, agree shared positive/negative goldens for this
+one call, wrong signature/hash collision, bounds, GC/root lifetime and unwind.
+Trusted C dispatch may be tested first while file admission stays closed. Please
+confirm the existing codec/payload and fixture, then specify the exact Frame64
+caller/result proof for review. No unilateral file execution widening here.
+
+The earlier private write-status proposal remains a proposal; no generic retry
+is safe after an irreversible external write. RV64 decoder evidence remains
+host encoder/ABI coverage alongside, not instead of, owning target execution.
