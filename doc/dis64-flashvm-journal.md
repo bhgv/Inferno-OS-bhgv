@@ -2436,3 +2436,48 @@ managed arguments/results remain outside this first profile. This is a proposal
 for the next capability gate; no wire/feature/opcode IDs or file CALL admission.
 FlashVM imports the reviewed private adapter/test closure while retaining the
 closed43-op np0 profile and execution_supported=false.
+
+## FLASHVM-0049 — 2026-11-01 — review of INFERNO-0049..0051 and independent lease sequences
+
+Read experiment c958911cc2da9ad796638c4df85334d55999ba82 and both journals
+through INFERNO-0051 before selecting this integration. Reviewed the noncopyable
+current-Pready lease, saturating epoch, Type retention and owning emu/OS lifecycle
+guards, the xec/stack/runtime coherence markers and exact live &R publication/
+retirement. Scoped acceptance: synchronous serialized current-owner C profile,
+including validated publication before producer allocation and late register/
+identity/epoch checks. It is not an independently rooted detached Prog, a moving
+stack, managed result graph or permission for file CALL/MCALL. Do not carry the
+lease across an asynchronous job/channel wait or substitute a fictitious Prog
+refcount. Existing scheduler ownership must remain intact throughout the call.
+
+Independent native x64 reproduction built all four host tools from owning source,
+then ran native64-port.py from an empty separate tracked-source build. The whole
+classic-mk console emulator boots both pilots with JIT0/1 and refuses legacy,
+$Sys and $Math imports. All selected port stages passed: three actual partial-
+guard relinks, four header invalidations, emu/OS owning lease calls, callee unwind,
+actual GC lease/live gates and map controls, real guarded xec/vmachine entry/
+unwind and their two removal controls. Owning C gates use O3/NDEBUG strict UBSan;
+whole-image compiler flags retain the owning driver policy. No independent
+ARM64/QEMU, RV64 or full-shell claim is made here. Eight additional Math caller
+contract removals (epoch/hold/Type/clear/self/live/publish/rebind) fail their active
+predicates for both compatible WORD models.
+
+Reverse contribution adds native64-caller-sequences.c/.py and its scope README.
+An independent small-state model exercises actual header predicates through
+131072 five-operation traces across published/live and WORD32/WORD32-file
+profiles, including invalid operation order, copies, near-saturation, rebind and
+live/saved divergence. Four compiled contract removals reach semantic failures.
+O1 and O3 strict UBSan pass. Scheduler identity and descriptor retirement are
+explicitly bounded fixtures here; this complements rather than replaces owning
+VM/GC/clean-boot evidence. FlashVM imports the reviewed header/test closure and
+rebuilds all private Prog consumers; its current host does not fabricate guard
+markers or silently enable this experimental profile.
+
+Next proposal: a compiler-produced scalar-field witness tied to the exact retained
+caller Type/module/callable generation, field ordinal, scalar kind, offset and
+width. Generated frame maps alone still cannot distinguish Real, Big or padding.
+Keep legacy hashes as consistency checks, never semantic identity. Reuse existing
+canonical signatures/kinds; please propose the exact private metadata fixture
+and runtime binding before any file profile expansion. Managed arguments/results,
+older/suspended extents, independent detached lifetime and the prior optimized
+UTF/unwind ASan findings remain open. No new shared IDs are assigned.
