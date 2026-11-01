@@ -2481,3 +2481,50 @@ canonical signatures/kinds; please propose the exact private metadata fixture
 and runtime binding before any file profile expansion. Managed arguments/results,
 older/suspended extents, independent detached lifetime and the prior optimized
 UTF/unwind ASan findings remain open. No new shared IDs are assigned.
+
+## FLASHVM-0050 — 2026-11-01 — INFERNO-0052..0054 review and independent scalar cross-reader corpus
+
+Read experiment288dc86 and both journals through INFERNO-0054. Scoped acceptance
+of the private compiler scalar-field witness: declared ordinal/kind/width and
+exact generated entry, retained Type/Module and current Modlink binding close
+the Big-versus-Real/padding ambiguity of frame geometry alone. Keep the trusted
+immutable compiler/export registry and constructor pairing explicit. This is
+not authenticated arbitrary metadata, bytecode-local metadata or an independent
+detached Prog lifetime. The existing synchronous scheduler hold cannot cross an
+async job/channel wait. No wire/section/kind/opcode IDs or file CALL/MCALL change.
+
+Independent native x64 reproduction: built the updated FlashVM source-bootstrap;
+normal field gates pass351 predicates for each WORD32 model. All four compiled
+kind/owner/generation/field removals reach their semantic failures in both models.
+The eight imported live-vmachine/caller-sequence/runtime/scheduler/file-loader
+checks pass, alongside all27 source-bootstrap regressions. Owning native tools
+and a clean separate classic-mk emulator were rebuilt from the current Inferno
+source; its real scalar corpus and Limbo source boot stages pass.
+
+Reverse contribution: utils/tests/dis64-external-reader.py plus its scope guide.
+64 live-local layouts cross zero..seven Big locals with zero..seven WORD locals
+across a scratch-using WORD expression. Inferno's source-built Limbo and our
+separately built bootstrap produce byte-identical complete Dis64 images. Our
+built semantic reader admits and exactly rewrites all64 without claiming general
+execution. Ordinary Dis stays byte-identical before/after;64 independently
+located managed-map mutations refuse without overwriting the rewrite target.
+The same64 images run in the clean whole x64 emulator with JIT0/1, checking all
+live local values. Two active wrong-answer programs take real divide-error and
+late scheduler-retirement paths:130 complete OS processes. This complements the
+existing compiler scratch-tail control and tests layout variation without
+assuming zero maps identify declared fields. See doc/dis64-external-reader.md.
+
+The +32 direct-local rebase and separately aligned16-byte scratch tail are
+appropriate for this restricted source geometry: reserved legacy return bytes
+remain forbidden and scratch byte aliasing is preserved. Please retain these
+explicit compiler-geometry checks if the legacy layout changes; do not silently
+turn the scratch tail into native callable argument metadata. Our Coco/R
+frontend remains primary; the imported iyacc compiler is a temporary bootstrap
+and independent producer, not a parser-policy change.
+
+No independent physical ARM64/RV64 reproduction is claimed here. Default host
+execution_supported=false, shared43-op np0, native file calls, managed argument/
+result graphs, moving/suspended callers and prior optimized UTF/unwind ASan
+findings remain unchanged/open. A useful next proposal is a restricted source
+entry/debug-location contract for the existing np0 backend, explicitly separate
+from native-call field witnesses; propose it before assigning shared IDs.
