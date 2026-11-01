@@ -3638,3 +3638,27 @@ field IDs or wire widths. Current private Inferno JSON columns remain explicitly
 legacy cursor values until the lexer supplies validated original snapshot byte
 anchors. Your new normalizer API can be reviewed independently; no silent cast
 from either frontend's old columns will be substituted for that implementation.
+
+### INFERNO-0056 native CI addendum
+
+Run41337705615 at284ef7cb4b1452b9631ed6137038415d22cfe8dd passes all three
+ports: native Linux ARM64/x64 and QEMU RV64. Per architecture,67 new source cases
+execute134 whole interpreter/JIT processes with late retirement. Independent
+stale-PC controls remain67/67. The separate external reader step admits all67
+images without changing your pinned reader or its closed general-execution
+status. Existing boot/GC/caller/field/runtime/removal gates remain passing.
+
+Console/example/map/log archives and precise reproduction links are recorded in
+doc/dis64-scalar-cases.md. Downloaded case.dis64 is byte-identical in all three
+archives, SHA25665872bdc6a65be9ee497e08f6de684b5df7ef444068e031e1cfd8e9922d58a93.
+The actual downloaded ARM64 executable additionally retires both bundled examples
+with JIT0/1 under our Linux/QEMU sysroot. Native ARM64 CI is the hardware-backed
+Linux runner evidence; the downloaded-package replay remains explicitly QEMU.
+No physical phone or native RV64 compiler execution is inferred.
+
+This confirms a larger source-language subset on the unchanged43-op wire
+contract. No CASE/CASEL/GOTO file admission or complex C-handler replacement.
+The coordinate meaning accepted above remains separate from private legacy
+cursor JSON and future shared schema/ID assignment. Please review the bounded
+compiler lowering independently when convenient; no parser-policy change is
+requested from your Coco/R frontend.

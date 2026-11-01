@@ -86,3 +86,27 @@ them or claim general Dis64 execution.
 
 Native fast-path and complete JIT+C counts remain unchanged. Full shell/imports,
 file CALL/MCALL and managed argument/result graphs still require separate work.
+
+## Native CI and downloadable consoles
+
+[Run41337705615](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41337705615)
+at284ef7cb4b1452b9631ed6137038415d22cfe8dd passes native Linux ARM64/x64
+and QEMU RV64. Each port's67-source gate runs134 whole emulator processes;
+the external reader separately admits all67 products. The complete existing
+boot/caller/GC/field/runtime/retirement gates also pass. Local clean ARM64/QEMU
+reproduction retains the existing744-image/1667800-predicate runtime gate.
+
+Archives include the experimental Linux console, loop/case sources, both images,
+diagnostic maps, README and complete gate logs. Artifacts are available for14 days:
+
+* [ARM64](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41337705615/artifacts/13096545410)
+* [x64](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41337705615/artifacts/13096430498)
+* [RV64](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41337705615/artifacts/13096295729)
+
+The actual downloaded ARM64 bundle's loop/case images run with interpreter/JIT
+under Linux/QEMU and require late empty-scheduler retirement. The49-instruction
+case.dis64 is byte-identical across the three downloaded archives, SHA256:
+`65872bdc6a65be9ee497e08f6de684b5df7ef444068e031e1cfd8e9922d58a93`.
+ARM64 CI builds its producer natively; the RV64 job uses its x64 host compiler
+and executes the RV64 consumer under QEMU. This is not a new claim that the
+latest compiler was executed on native RV64 hardware or a phone.
