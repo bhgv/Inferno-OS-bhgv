@@ -278,3 +278,57 @@ in normal/wide/insufficient-map modes with allocation refusals, retries and part
 state rejection. The earlier actual I/O/UTF source gates remain active; x64 strict
 UBSan also verifies unchanged default native64 registration/variadic refusals.
 This is not closure of previously recorded optimized UTF/error-unwind ASan work.
+
+## First structural fixed-call experiment (INFERNO-0047)
+
+Following FLASHVM-0044, an explicit private `Math_bits64real64` C gateway now
+matches the existing Rune pool/import codecs and exact v1 Real(Big) signature.
+The shared proposal bytes are in libinterp/tests/dis64/fixed-math. No new IDs,
+loader profile, file CALL/MCALL or signature hashes are introduced.
+
+Compile owning Math with DIS_NATIVE64_FIXED_MATH_CALL=1, DIS_WORD32=1 and the
+explicit native64 Math registration header/options. The startup Math profile can
+supply those generated declarations. The fixed-call experiment is off by default;
+without it the C gateway declines before reading even its request. Incorrect
+feature values, missing native64 registration metadata and wrong scalar models
+fail compilation. The flag is not added by configure.py or ordinary builds.
+
+The synchronous request supplies complete readable immutable strings/imports,
+an ordinal, input bits and a trusted logical result resolver. Preflight checks
+all canonical imports, names and exact signature before allocating. Request and
+input are snapshotted; serialized metadata is not reread after allocation starts.
+Runtime callback identity, hash consistency and generated complete frame maps are
+checked separately. The legacy hash never substitutes for structural matching.
+
+The gateway retains Module/Type, allocates a raw owned72-byte scalar Frame64,
+points its result at private aligned storage and calls the actual registered
+implementation. The zero-map frame and scalar result are not GC heap objects;
+there are no managed argument/result owners in this first profile. The resolver
+runs after the producer and may relocate, cancel or raise. It is responsible for
+current live eight-byte caller-cell provenance and caller rooting. Publication
+uses a byte-safe copy with no intervening callback. Frame, Type and module retire
+once, preserving diagnostics and the old logical result on refusal/unwind.
+This contract does not validate arbitrary VM caller layouts or reference graphs.
+
+```
+python3 utils/tests/native64-fixed-math.py --limbo /host/tools/limbo \
+  --libdir /build/Linux/arm64/lib
+```
+
+Use the previously documented NATIVE64_ARCH/CC/NATIVE64_CFLAGS/NATIVE64_RUNNER
+variables for ARM64. Actual ARM64/QEMU and x64 strict-UBSan gates each pass12,672
+calls per WORD32/WORD32-file model, after the full68-export Math registration/
+invocation and141 construction-refusal gate. Coverage includes all eight result
+alignments, finite/infinite/NaN bit patterns, late/moved cells, cancellation,
+resolver errors, module retirement, owned request snapshot, ordinal aliases,
+wrong canonical signatures and runtime metadata, all fixture byte mutations and
+truncations, and temporary-frame allocation refusal.
+
+`--inject-callee` compiles a copied actual Math producer with an error after its
+private scalar store, and checks pre-publication cleanup. Four separate
+`--control signature|module|type|frame` gates remove contract steps and must fail
+the active oracle. Incoherent-selection and disabled pre-read refusal gates also
+pass on both targets. The complete ARM64 emulator links this optional gateway
+with actual runtime ownership and still passes both pilot programs with JIT
+off/on and closed builtin/legacy admission; that boot test does not invoke the
+new C gateway from a file. Prior optimized UTF/unwind ASan findings stay open.

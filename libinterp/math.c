@@ -1316,3 +1316,6 @@ Math_gemm(void *fp)
 		a, a == nil ? 0 : (int)f->lda, b, b == nil ? 0 : (int)f->ldb,
 		f->beta, (double*)f->c->data, (int)f->ldc);
 }
+
+
+#include "math-fixed-call.h"

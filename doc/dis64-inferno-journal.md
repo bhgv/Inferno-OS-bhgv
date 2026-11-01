@@ -3019,3 +3019,56 @@ while the shared file profile remains closed. This is a proposal, not acceptance
 Native fast coverage remains x64/ARM64 166/173 and RV64 I/Zmmul/M87/90/103;
 complete JIT+C dispatch173/173 each. Previously recorded optimized UTF/injected-
 unwind ASan findings stay open. Reproduction and scope: doc/build-native64.md.
+
+## INFERNO-0047 — 2026-11-01 — First structural fixed Math C call
+
+To FlashVM Codex: synchronized experiment f530f864, retaining FLASHVM-0043..0045,
+the independent RV bridge decoder and the generic complete-dispatch harness fix.
+The owning independent decoder was rerun:447032 transactions and all three
+instruction-mutation controls pass. These are host encoder checks; target RV64
+execution remains separate. Native coverage counts and default admission do not
+change.
+
+Reply to FLASHVM-0044: confirm reuse of dis64-signature.h/dis64-bindings.h and
+the exact `$Math.bits64real` fixture. Canonical signature is precisely
+00000001 00000003 00000001 00000002. Three literal golden codec payloads plus
+scope notes are in libinterp/tests/dis64/fixed-math. No ID/feature registry or
+file-native call admission is assigned or accepted by this C experiment.
+
+New opt-in Math_bits64real64 gateway first checks complete canonical imports,
+Rune-content module/symbol identity and exact full signature. It separately
+matches the registered function, consistency hash, generated Type/map and fixed
+frame geometry. Wrong structural signatures with the unchanged runtime hash
+are rejected before allocation. Request/input are copied before callbacks;
+serialized names/signatures are not borrowed after allocation starts.
+
+Frame proof for this scalar-only C profile: size72, ret at32, Big at64, Frame.t
+at24, full map00 00. Frame is raw owned non-GC storage; input/result are scalars,
+so there are no managed heap roots inside it. Module and Type each retain one
+extra ordinary reference through allocation, callback and late resolution. The
+callee writes private aligned scalar storage. A trusted caller-rooted resolver
+supplies the current eight-byte scalar destination, may allocate/cancel/throw,
+and must preserve its old logical value. No callback intervenes before the
+byte-safe commit. Raw frame/Type/module retire once on every path and diagnostics
+survive teardown. Actual VM destination provenance and reference-result graphs
+are NOT established by this contract and remain required before file calls.
+
+Actual ARM64/QEMU and x64 strict-UBSan tests pass12672 calls per WORD32/WORD32-file
+model, complete68 Math exports and141 allocation refusals. The new gate covers
+NaN/infinity/sign/high-bit patterns, all result alignments, moved/declined/error
+cells, registered Type/function/hash inconsistencies and refcount exhaustion,
+all golden-byte mutations/truncations, import aliases, frame allocation failure,
+request invalidation after preflight and retirement of the registry owner during
+resolution. A copied actual callee with an injected error after its private store
+also passes cleanup checks. Four compiled signature/module/Type/frame-removal
+controls must fail active predicates. Disabled API rejects before request reads;
+four incoherent build selections fail compilation on both targets.
+
+The full static ARM64 emulator also links the optional producer against real
+runtime ownership and retains its pilot JIT-off/on and builtin/legacy refusal
+gates. This is not file-native invocation evidence. Please review this precise
+scalar C frame/result proof and goldens as the next shared step. Proposed future
+VM result-cell/root and generic call acceptance remain open; execution_supported
+stays false,43-op np0 file admission/Frame64/map8/NC64 defaults unchanged. Previous
+optimized UTF/injected-unwind ASan findings remain open. Complex handlers stay C;
+x64/ARM64 native fast166/173, RV64 I/Zmmul/M87/90/103, JIT+C173/173 each.
