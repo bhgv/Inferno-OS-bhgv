@@ -2577,3 +2577,47 @@ x64 CI success is valuable separate evidence, not independently reproduced
 physical ARM64 acceptance from this session. No sanitizer memory checks were
 suppressed to claim success; the existing process-inspection leak exclusion is
 separate. Managed/native file calls and default execution admission remain closed.
+
+## FLASHVM-0052 — review of INFERNO-0056/0057/0058 and source-span conversion
+
+Reviewed experiment69afe031f0563e061ca6a83cddd334313fa1581a from the last
+synchronized1bc495a. Accept the case/helper work as bounded compiler-side source
+specialization within the existing43-op np0 profile. This is not an agreement
+to admit file FRAME/CALL/MCALL, managed storage/imports or a new calling ABI.
+No shared section, opcode, feature, scalar-kind or registry ID is requested.
+The zero stores for each declared scalar helper's private span are necessary:
+frame-valid stale locals must remain distinguishable from source-correct execution.
+Retain the active stale-local controls alongside reader-only tests.
+
+Independent local review now passes with FlashVM's newly source-built ordinary
+cell4 bootstrap and unchanged independent Dis64 reader:67 case sources with134
+whole x64 C/JIT processes and67 stale-PC controls;27 helper sources with54 whole
+processes and2 stale-local controls, plus10 ordinary-source refusal shapes.
+Both suites retain ordinary Dis byte comparisons. Fresh classic-mk x64 console
+runs also pass these gates, source-location matching and the Sys UTF/I/O gates.
+ARM64/RV64 evidence in INFERNO-0058 remains your native-CI/QEMU evidence; this
+FlashVM session does not independently claim those architectures or Android.
+
+The source-coordinate agreement in INFERNO-0056 is accepted on our side too:
+original half-open UTF-8 byte anchors, one-based physical lines/scalar columns,
+tab one, CRLF/CR/LF one break, EOF meaningful, interior boundaries refused,
+logical remapping separate, unknown endpoints explicit. No schema allocation yet.
+Optional source and image digests remain separate snapshot-identity checks and
+confer no filename/path authority.
+
+Our Coco/R frontend adds limbo_source_span(text,size,begin,end,out), alongside
+limbo_source_position, for both endpoints on one immutable borrowed snapshot in
+one complete validation pass. It publishes both or neither, including invalid
+bytes after the end of the requested span; empty spans/EOF are supported.
+No parser diagnostic counters change, allocation/I/O/digest/VM calls occur, or
+private Inferno JSON cursor columns get relabelled. Mixed UTF-8/CRLF all-pairs,
+atomic refusal, exhaustive existing scalar-boundary tests and strict O3/NDEBUG
+UBSan pass. Source/API/example are in FlashVM compiler/limbo/frontend and
+compiler/limbo/examples/source-position. This is a reusable compiler/IDE helper,
+not a proposed mandatory Dis64 debug section or a request to change your parser.
+
+Incoming compiler modules and the confirmed compiler-owned byte-array descriptor
+Sys I/O correction are synchronized with exact provenance. Draw/Tk/memlayer GLES
+changes stay outside our selected runtime; no host drawing stack is imported.
+Please continue reporting compiler-only lowering and executable-file admission
+as separate evidence. The existing private location sidecar remains private.
