@@ -102,6 +102,7 @@ def main():
         build, env, logs/'dis64-cases.log')
     utfenv = dict(env, CFLAGS=env['NATIVE64_CFLAGS'])
     run([sys.executable, str(build/'libinterp/tests/sys-utf.py')], build, utfenv, logs/'sys-utf.log')
+    run([sys.executable, str(build/'libinterp/tests/sys-io.py')], build, utfenv, logs/'sys-io.log')
     run([sys.executable, str(tests/'native64-guard-link.py'), '--root', str(build), '--log', str(logs/'mk.log'),
          '--ar', args.cross+'ar'], build, env, logs/'guard-link.log')
     run([sys.executable, str(tests/'native64-build-deps.py'), '--root', str(build), '--mk', str(tools/'mk')],

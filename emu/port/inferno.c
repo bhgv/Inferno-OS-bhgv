@@ -681,7 +681,8 @@ sysiocount(Array *a, WORD count, uchar **data)
 {
 	Heap owner;
 	Array view;
-	uintptr address;
+	uintptr address, descriptor, extent;
+	int size, pointers;
 
 	address = (uintptr)a;
 	if(a == nil || address <= sizeof(Heap) ||
@@ -691,7 +692,18 @@ sysiocount(Array *a, WORD count, uchar **data)
 	if(owner.t != &Tarray)
 		goto Invalid;
 	memmove(&view, a, sizeof(view));
-	if(view.t != &Tbyte || view.len < 0 ||
+	/* NEWA keeps a module-owned byte descriptor instead of the builtin singleton. */
+	if(view.t != &Tbyte){
+		descriptor = (uintptr)view.t;
+		extent = offsetof(Type, size) > offsetof(Type, np) ? offsetof(Type, size) : offsetof(Type, np);
+		if(descriptor <= extent+sizeof(int) || descriptor > (uintptr)-1-extent-sizeof(int))
+			goto Invalid;
+		memmove(&size, (uchar*)view.t+offsetof(Type, size), sizeof(size));
+		memmove(&pointers, (uchar*)view.t+offsetof(Type, np), sizeof(pointers));
+		if(size != 1 || pointers != 0)
+			goto Invalid;
+	}
+	if(view.len < 0 ||
 	   (uvlong)view.len > 0x7fffffff ||
 	   (view.len != 0 && (view.data == nil || view.data == H ||
 	   (uintptr)view.data > (uintptr)-1-(uintptr)view.len)))
