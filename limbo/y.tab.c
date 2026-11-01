@@ -255,6 +255,9 @@ main(int argc, char *argv[])
 	case 'S':
 		gendis = 0;
 		break;
+	case '6':
+		emitscalar64 = 1;
+		break;
 	case 'H':
 		emitstub = emitnative64 = 1;
 		break;
@@ -333,6 +336,9 @@ main(int argc, char *argv[])
 		break;
 	}ARGEND
 
+	if(emitscalar64 && (argc != 1 || emitstub || emittab != nil || emitcode != nil ||
+	   emitdyn || dosym || signdump != nil || !gendis || mustcompile || dontcompile))
+		usage();
 	if(emitnative64 && (argc != 1 || ofile != nil || emitdyn ||
 	   emittab != nil || emitcode != nil || signdump != nil || !gendis))
 		usage();
@@ -348,7 +354,7 @@ main(int argc, char *argv[])
 		if(ext == nil){
 			ext = ".s";
 			if(gendis)
-				ext = ".dis";
+				ext = emitscalar64 ? ".dis64" : ".dis";
 		}
 		for(i = 0; i < argc; i++){
 			s = strrchr(argv[i], '/');
@@ -370,7 +376,7 @@ main(int argc, char *argv[])
 static void
 usage(void)
 {
-	fprint(2, "usage: limbo [-CGSHacgwe] [-I incdir] [-o outfile] [-{T|t|d} module] [-D debug] file ...\n");
+	fprint(2, "usage: limbo [-6CGSHacgwe] [-I incdir] [-o outfile] [-{T|t|d} module] [-D debug] file ...\n");
 	exits("usage");
 }
 

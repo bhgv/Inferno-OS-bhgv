@@ -393,3 +393,7 @@ int	yyparse(void);
 void	zcom(Node *, Node**);
 void zcom0(Decl *, Node**);
 void zcom1(Node *, Node**);
+
+
+/* Emit the opt-in scalar Dis64 image after ordinary IR resolution. */
+void dis64scalar(Decl*, Decl*, Inst*, long, long);

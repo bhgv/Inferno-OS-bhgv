@@ -644,3 +644,36 @@ session; ordinary Inferno keeps its existing broken-program default. The final
 verbose marker is emitted after real program retirement. See
 [native64-series0053.md](native64-series0053.md) for precise scope, target evidence,
 reproduction and unchanged JIT/file-admission statistics.
+
+## Compile scalar Limbo source to Dis64 (series 0054)
+
+Rebuild native tools from current sources. `limbo -6` emits the existing43-op np0
+profile for one pointer-free void init() with int/big/real storage. The classic
+limbo mkfile includes the new backend and its codec dependencies; makemk.sh also
+builds it through its ordinary source list. The clean port driver now checks real
+source compilation and30 whole-OS interpreter/JIT processes in addition to the
+hand-encoded corpus. See [compiler scope and example](../limbo/tests/README.dis64-scalar.md).
+
+The native bootstrap now recognizes Linux riscv64 and checks that the selected
+compiler actually targets RV64. An optional MKBOOTSTRAP_RUNNER names one executable
+that runs freshly built host tools, principally iyacc. With no runner, execution
+is unchanged. For an explicit cross-host bootstrap, select MKHOSTARCH, CC and a
+matching runner; this never disables the compiler architecture guard. A QEMU
+executable can take its sysroot through QEMU_LD_PREFIX, or the selected executable
+can be a wrapper supplying its arguments. MKBOOTSTRAP_RUNNER is one executable
+path/name, not a shell expression or a whitespace-separated command string.
+
+For example, to build tools for an ARM64 Linux host on an x64 build machine:
+
+```
+MKHOSTARCH=arm64 CC=/tools/aarch64-linux-gnu-gcc \
+  MKBOOTSTRAP_RUNNER=/tools/qemu-aarch64 \
+  QEMU_LD_PREFIX=/sysroot/aarch64-linux-gnu \
+  MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR=/build/tools-arm64 sh makemk.sh
+```
+
+Use riscv64, the matching GNU compiler/runner and lp64d sysroot for the tested
+RV64GC toolchain. Native ARM64/RV64 hosts need no QEMU runner. Target bootstrap
+and compiler execution were verified under QEMU, including identical scalar
+file bytes across x64, ARM64 and RV64 compilers. This is not physical-hardware
+acceptance or automatic binfmt setup for arbitrary child programs.

@@ -6,6 +6,7 @@ from pathlib import Path
 import platform
 import shlex
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]  # Owning compiler, libraries and bootstrap.
@@ -29,9 +30,9 @@ def fingerprints(paths):
 # Exercise real grammar, compiler/link dependencies, CLI errors and generated modules.
 def main():
     machine = platform.machine()
-    if platform.system() != 'Linux' or machine not in ('x86_64', 'aarch64'):
-        raise RuntimeError('native Limbo integration requires Linux x64 or arm64')
-    arch, elf = ('amd64', 62) if machine == 'x86_64' else ('arm64', 183)
+    if platform.system() != 'Linux' or machine not in ('x86_64', 'aarch64', 'riscv64'):
+        raise RuntimeError('native Limbo integration requires Linux x64, arm64 or riscv64')
+    arch, elf = {'x86_64': ('amd64', 62), 'aarch64': ('arm64', 183), 'riscv64': ('riscv64', 243)}[machine]
     protected = [ROOT/'mkconfig', ROOT/'limbo/y.tab.c', ROOT/'limbo/y.tab.h',
                  ROOT/'libsec/port/md5.c', ROOT/'libsec/port/md5block.c']
     before = fingerprints(protected)
@@ -52,6 +53,8 @@ def main():
             if header[:5] != b'\x7fELF\x02' or int.from_bytes(header[18:20], 'little') != elf:
                 raise RuntimeError('non-native bootstrap binary: '+str(binary))
         limbo = tools/'limbo'
+        print(run([sys.executable, ROOT/'utils/tests/native64-limbo-boot.py', '--limbo', limbo,
+                   '--root', work], work, environment), end='', flush=True)
         compiler = shlex.split(os.environ.get('CC', 'cc'))
         translator = work/'dis2c'
         run(compiler+['-std=c99', '-O2', '-I'+str(ROOT/'include'),

@@ -90,6 +90,9 @@ def main():
     tests = build/'utils/tests'
     run([sys.executable, str(tests/'native64-scalar-boot.py'), '--root', str(build),
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--math', '--sys-io'], build, env, logs/'boot.log')
+    run([sys.executable, str(tests/'native64-limbo-boot.py'), '--limbo', str(tools/'limbo'),
+         '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
+        build, env, logs/'limbo-boot.log')
     run([sys.executable, str(tests/'native64-guard-link.py'), '--root', str(build), '--log', str(logs/'mk.log'),
          '--ar', args.cross+'ar'], build, env, logs/'guard-link.log')
     run([sys.executable, str(tests/'native64-build-deps.py'), '--root', str(build), '--mk', str(tools/'mk')],

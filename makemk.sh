@@ -7,6 +7,7 @@ SYSTARG=${MKHOSTOS:-$(uname -s)}
 case ${MKHOSTARCH:-$(uname -m)} in
     x86_64|amd64) hostarch=amd64 ;;
     aarch64|arm64) hostarch=arm64 ;;
+    riscv64) hostarch=riscv64 ;;
     i?86|386) hostarch=386 ;;
     arm|armv*) hostarch=arm ;;
     *) echo "unsupported bootstrap host architecture" >&2; exit 1 ;;
@@ -42,6 +43,17 @@ trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 
 
+# Execute freshly built host tools natively, or through one explicitly selected runner executable.
+runhost()
+{
+    if test -n "${MKBOOTSTRAP_RUNNER:-}"; then
+        "$MKBOOTSTRAP_RUNNER" "$@"
+    else
+        "$@"
+    fi
+}
+
+
 # Compile a group into an isolated archive, retaining ordinary CC/CFLAGS overrides.
 buildlib()
 {
@@ -68,6 +80,9 @@ cat > "$builddir/host.c" <<'HOST'
 #endif
 #if defined(MK_HOST_arm64) && (!defined(__aarch64__) || __SIZEOF_POINTER__ != 8)
 #error compiler does not target Linux arm64
+#endif
+#if defined(MK_HOST_riscv64) && (!defined(__riscv) || __riscv_xlen != 64 || __SIZEOF_POINTER__ != 8)
+#error compiler does not target Linux riscv64
 #endif
 #if defined(MK_HOST_386) && (!defined(__i386__) || __SIZEOF_POINTER__ != 4)
 #error compiler does not target Linux 386
@@ -124,7 +139,7 @@ if test "$buildlimbo" = 1; then
             "$ROOT/libsec/port/$source.c" -o "$builddir/signature/$source.o"
     done
     # Build the real grammar with the freshly linked native generator.
-    (cd "$builddir/limbo" && ROOT="$ROOT" "$builddir/iyacc.native" -d "$ROOT/limbo/limbo.y")
+    (cd "$builddir/limbo" && ROOT="$ROOT" runhost "$builddir/iyacc.native" -d "$ROOT/limbo/limbo.y")
     for source in "$ROOT"/limbo/*.c "$builddir/limbo/y.tab.c"; do
         if test "$source" = "$ROOT/limbo/y.tab.c"; then
             continue

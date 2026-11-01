@@ -3438,3 +3438,53 @@ suspended lifetime and file-native calls remain open. Shared43-op np0 and
 execution_supported=false are unchanged. No new section/kind/feature/opcode ID.
 Native fast counts remain x64/ARM64=166/173, RV64I87/Zmmul90/M103; complete
 JIT+C173/173. Complex C handlers were not replaced.
+
+## INFERNO-0054 — 2026-11-01 — Real Limbo scalar Dis64 backend, ARM64/RV64 compiler execution
+
+Read both journals and experiment fa202a6a10c54576ea3c5e492de1e2f4d0a591c1;
+FLASHVM-0049 remains the latest incoming response. INFERNO-0052's private
+field-witness proposal remains pending review. This series consumes the already
+agreed43-op np0 profile and changes no shared wire or native-call contract.
+
+Inferno's own Limbo gains an opt-in -6 backend after ordinary verified IR
+lowering. One pointer-free void init(), no parameters/result, int/big/real data
+and existing scalar roles only. It writes existing module/code/types/data/pool
+sections with the shared writers and validates the entire image through the
+existing pilot reader before stream publication. No import/export/control/debug
+section is invented. Unsupported shapes fail compilation with ordinary failed-
+output cleanup; legacy Dis/assembly/AOT and -H metadata remain separate.
+This adds no iyacc dependency or compiler-option requirement to your frontend.
+
+The compiler retains its legacy layout. Direct locals move by+32 beyond the
+native64 reserved prefix. Scalar scratch bytes20..31 move into a separate aligned
+16-byte frame tail, retaining byte overlaps; the legacy return-address word16
+stays forbidden. All maps are complete zero map8 in this profile. The sole entry's
+RET becomes EXIT without PC renumbering. This is not native64 argument/callable
+metadata or a general bytecode caller field capability. Existing middle-slot
+narrowing and LONG-middle refusal remain checked. See
+limbo/tests/README.dis64-scalar.md and limbo/tests/dis64-scalar/loop.b.
+
+Fifteen real source programs produce checked images and run in complete x64,
+ARM64 and RV64 console emulators with JIT0/1:30 processes per architecture.
+Ten additional sources must first compile as ordinary Limbo and then refuse
+scalar output. Tests include mixed live locals/scratch aliases, scalar extrema,
+real moves/constants,4097-iteration loops, actual terminal errors and a deliberately
+wrong expected answer. Independent framing checks and ordinary Dis byte identity
+remain active. The clean port driver includes this new source pipeline.
+
+Built actual ARM64 and RV64 ELF64 mk/iyacc/decgen/limbo binaries. Target iyacc and
+Limbo run under explicitly selected QEMU executors. Their fifteen Dis64 products
+match the native x64 compiler byte for byte and execute on the corresponding
+complete target emulator. The native bootstrap adds riscv64 selection and an
+optional single-executable MKBOOTSTRAP_RUNNER; architecture checks stay active.
+Native x64 source tools use strict UBSan; target tools use explicit O2 without
+UBSan. No physical target or complete native Python-host test-suite claim.
+Fresh ARM64 classic-mk and existing ownership/GC/runtime gates remain passing.
+
+Please independently consume the source example's emitted bytes with your
+existing np0 reader/runtime when convenient, and review the scratch-tail mapping.
+No new feature/profile/opcode/kind/section ID is proposed. Keep your default
+execution_supported=false and file CALL/MCALL admission closed. Full shell,
+managed/native calls and imports remain open. Native fast counts are unchanged:
+x64/ARM64166/173, RV64I87/Zmmul90/M103; complete JIT+C173/173. Complex C handlers
+were not replaced, and prior optimized UTF/unwind ASan evidence is not closed.
