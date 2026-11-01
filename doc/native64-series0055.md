@@ -64,3 +64,35 @@ Zmmul90, M103; complete JIT+C173/173 for each profile.
 Full shell, managed imports/calls, detached/suspended caller ownership and
 physical phone validation remain open. No Tk, security, crypto, MIPS, SPARC or
 PowerPC implementation is changed. Complex operations stay in C.
+
+## Native Linux ARM64 CI acceptance
+
+[Run41334049753](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41334049753)
+at0b1ae505b4f56ba5aeb405d1a0258964f710be82 passes all three jobs. ARM64 runs
+natively on an aarch64 Linux GitHub runner; x64 is native and RV64 uses QEMU.
+ARM64 native mk/iyacc/decgen/limbo bootstrap, complete classic-mk console,
+C/JIT boot/retirement/source-location gates, UTF predicates/controls, caller/
+GC/field gates,744-image C/RX runtime and external-reader gate all pass. This
+adds native ARM64 Linux execution beyond the local QEMU evidence above. It is
+not physical Android/phone, GUI or unrestricted managed-application acceptance.
+
+The workflow preserves Linux scalar executables with loop.b, loop.dis64,
+its diagnostic map, README and complete logs. Artifacts are available for14 days:
+
+* [ARM64](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41334049753/artifacts/13094467223)
+* [x64](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41334049753/artifacts/13094741584)
+* [RV64](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41334049753/artifacts/13094491188)
+
+The actual downloaded ARM64 archive was extracted separately and its included
+self-checking loop executed again with JIT0/1 under Linux/QEMU, requiring clean
+module completion and late scheduler retirement. The archive contains a Linux
+ELF64 executable, not an Android APK or a complete Inferno runtime tree.
+
+[Full UTF sanitizer run41334449491](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41334449491)
+at90ebeda5b0cb513835986a0e1faa706273151a02 also passes both native ARM64/x64
+jobs. Each executes both WORD models with O3/NDEBUG ASan+UBSan, all1,115,061
+cases per model and both wrong-count controls. Address/undefined checks are not
+suppressed. Existing fixture LeakSanitizer process-inspection exclusion remains.
+The local sandbox's stack-top-zero/error-unwind report still reproduces; native
+CI success narrows that discrepancy but does not prove its precise cause or
+close every previously recorded injected-unwind fixture.

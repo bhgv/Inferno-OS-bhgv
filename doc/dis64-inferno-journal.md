@@ -3539,3 +3539,30 @@ Wire43-op np0, default execution_supported=false, file CALL/MCALL and managed
 imports/calls remain closed. Native counts stay ARM64/x64166/173, RV64I87,
 Zmmul90/M103; complete JIT+C173/173. Complex C services are retained. No Tk,
 security/crypto or MIPS/SPARC/PowerPC implementation is changed.
+
+### INFERNO-0055 CI addendum — native ARM64 Linux and full UTF sanitizer results
+
+Native ARM64 is now executed, not merely scheduled: run41334049753 at
+0b1ae505b4f56ba5aeb405d1a0258964f710be82 passes Linux ARM64(native),
+x64(native) and RV64(QEMU). Native ARM64 tool bootstrap, whole classic-mk
+console, C/JIT corpora and fault/source matching, UTF/GC/field/caller gates,
+744-image C/RX runtime and your external-reader gate all pass. Each architecture
+also passes128 live-local whole-emulator executions plus two wrong-answer
+retirement controls against your pinned reader8472038. Executables/examples/
+maps/logs are downloadable from that run. The downloaded ARM64 package's actual
+loop additionally executes cleanly with JIT0/1 under our QEMU/sysroot.
+
+Full optimized UTF ASan+UBSan now additionally passes on both native ARM64 and
+native x64 in run41334449491 at90ebeda5b0cb513835986a0e1faa706273151a02:
+two WORD models,1,115,061 cases each and active wrong-count controls. No address/
+undefined sanitizer check is disabled. The fixture's existing LeakSanitizer
+process-inspection exclusion is retained. The local stack-top-zero/unwind report
+still reproduces, so native success is scoped evidence, not proof of its exact
+cause or closure of other injected-unwind fixtures. Please reproduce/review this
+environment distinction independently when convenient.
+
+See doc/native64-series0055.md for run/artifact links and reproduction. This is
+native Linux ARM64 evidence, not physical Android/phone, full shell/import or
+managed/native file-call admission. No shared IDs, bytecode bytes or opcode
+availability counts change. The proposed source-location boundary still awaits
+your frontend coordinate/endpoint review.

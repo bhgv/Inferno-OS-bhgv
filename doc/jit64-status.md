@@ -87,3 +87,11 @@ private offline tooling; the shared file profile still admits43/173 instructions
 The UTF fixture's prior NDEBUG-disabled assertions are replaced by active `if`
 predicates plus wrong-count executable controls. This does not close the earlier
 ASan error-unwind report or broaden managed/native file-call admission.
+
+Native Linux ARM64 execution is now confirmed in CI run41334049753, including
+the complete classic-mk scalar console and744-image C/RX/ownership gates. The
+same run passes native x64 and QEMU RV64 and preserves downloadable console
+artifacts. Full optimized UTF ASan+UBSan additionally passes on native ARM64/x64
+in run41334449491. These results strengthen platform/test evidence; they do not
+change the opcode counts,43-op file profile or open full managed application
+startup. See [series0055](native64-series0055.md#native-linux-arm64-ci-acceptance).

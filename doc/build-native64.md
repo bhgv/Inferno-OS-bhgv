@@ -693,3 +693,13 @@ resolution. It also executes the UTF C oracle with always-active predicates and
 wrong-count semantic controls. Older Sys UTF `assert` comparisons were disabled
 under NDEBUG; the new gate corrects that evidence limitation. The complete ASan
 error-unwind report remains open.
+
+The native Linux ARM64 CI job now passes, alongside native x64 and QEMU RV64:
+[run41334049753](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41334049753).
+Downloadable experimental consoles, example images/maps, reproduction and exact
+scope are listed in [series0055](native64-series0055.md#native-linux-arm64-ci-acceptance).
+The unpacked example runs with `./emu -v -r "$PWD" -c 1 -d /loop.dis64`; use
+`-c 0` for interpreter execution. These are Linux console executables, not APKs.
+The full O3/NDEBUG UTF ASan+UBSan oracle additionally passes on native Linux
+ARM64/x64 in run41334449491; the older local sandbox report remains separately
+reproducible rather than being relabeled a proven false positive.
