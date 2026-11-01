@@ -74,6 +74,23 @@ jobs:
           python3 utils/tests/native64-port.py --arch "$NATIVE64_ARCH" \
             --build-root "$RUNNER_TEMP/native64-build" --host-tools "$RUNNER_TEMP/host-tools" \
             --cross "$cross" --runner "$executor" --test-cflags="$flags"
+      - name: Checkout the reviewed FlashVM reader
+        uses: actions/checkout@v4
+        with:
+          repository: bhgv/flashVM
+          ref: 8472038d2090e59c4dfe36f452bfd3b5ac3b3d4a
+          path: .native64-peer
+      - name: Verify scalar bytes against the external reader
+        run: |
+          make -C .native64-peer/disVM/upstream/utils/dis64inspect
+          executor=
+          if [ "$NATIVE64_ARCH" = riscv64 ]; then
+            executor='qemu-riscv64 -L /usr/riscv64-linux-gnu'
+          fi
+          python3 utils/tests/dis64-external-reader.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            --reader "$GITHUB_WORKSPACE/.native64-peer/disVM/upstream/utils/dis64inspect/dis64inspect" \
+            --root "$RUNNER_TEMP/native64-build" --emu "$RUNNER_TEMP/native64-build/emu/Linux/o.emu-g" \
+            --runner "$executor" | tee "$RUNNER_TEMP/native64-build/port-logs/external-reader.log"
       - name: Package the experimental console and portable scalar example
         run: |
           stage="$RUNNER_TEMP/native64-output"
