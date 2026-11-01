@@ -50,8 +50,11 @@ _fmtFdFlush(Fmt *f)
 			else
 				LOGE("%.*s", n, p);
 		}
+#ifndef DIS_NATIVE64_SCALAR_BOOT
 		f->to = f->start;
 		return 1;
+#endif
+		/* The native64 APK probe also records its bounded result on the redirected descriptor. */
 	}
 #endif
 	while(n > 0){

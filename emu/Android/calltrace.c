@@ -131,6 +131,9 @@ captureBacktrace(void **buffer, size_t max, void *arg)
 }
 
 
+
+
+/* Skip unwinding if the shared diagnostic destination cannot be opened. */
 void do_backtrace(char *err_str)
 {
 	size_t i, max = 30;
@@ -139,6 +142,10 @@ void do_backtrace(char *err_str)
 
 	FILE *f = fopen(calltracelog_path, "a");
 
+	if(f == nil){
+		LOGE("Cannot open native backtrace log: %s", calltracelog_path);
+		return;
+	}
 	max = captureBacktrace(buffer, max, sig_ctx );
 	
 	sym_buf = dumpBacktrace(buffer, max);

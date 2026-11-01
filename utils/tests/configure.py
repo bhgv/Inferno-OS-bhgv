@@ -31,7 +31,7 @@ def main():
         subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--arch','arm64','--console','--native64-scalar-boot','--output',str(output)],check=True,capture_output=True)
         if "DISMODELFLAGS='-DDIS_WORD32=1 -DDIS64_PILOT_LOADER=1 -DDIS_NATIVE64_SCALAR_BOOT=1'" not in output.read_text():
             raise RuntimeError('Scalar startup lost its coherent guarded model')
-        for options in (['--arch','386','--console'], ['--arch','arm64'], ['--target','android','--arch','arm64']):
+        for options in (['--arch','386','--console'], ['--arch','arm64'], ['--target','android','--arch','arm64','--renderer','gles']):
             bad=subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--native64-scalar-boot','--output',str(work/'invalid-scalar')]+options,capture_output=True)
             if bad.returncode==0 or (work/'invalid-scalar').exists():
                 raise RuntimeError('Scalar startup accepted an unsupported profile')
@@ -73,6 +73,21 @@ def main():
                                 '--native64-caller-guard','--output',str(sentinel)]+options,capture_output=True)
             if bad.returncode==0 or sentinel.read_text()!='preserve user configuration\n':
                 raise RuntimeError('Invalid caller profile changed an existing configuration')
+        android=work/'android64.mkconfig'
+        subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--target','android','--arch','arm64',
+                        '--native64-scalar-boot','--output',str(android)],check=True,capture_output=True)
+        text=android.read_text()
+        if text.index('DISMODELFLAGS=')>text.index('<$ROOT/mkfiles/mkfile-') or '-DDIS_NATIVE64_SCALAR_BOOT=1' not in text:
+            raise RuntimeError('Android scalar model must precede target profile expansion')
+        for extra in (['--renderer','gles'],['--arch','arm'],['--native64-math-boot'],['--native64-sys-io-boot']):
+            bad=subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--target','android','--arch','arm64',
+                                '--native64-scalar-boot','--output',str(work/'bad-android64')]+extra,capture_output=True)
+            if bad.returncode==0 or (work/'bad-android64').exists():
+                raise RuntimeError('Unsupported Android scalar shape was admitted')
+        result=subprocess.run(['/bin/sh','../port/mkdevlist','emu-scalar'],cwd=ROOT/'emu/Android',
+                              env=dict(os.environ,ROOT=str(ROOT),AWK='awk'),capture_output=True,text=True,check=True)
+        if 'scalar-main.' not in result.stdout or 'devdraw' in result.stdout:
+            raise RuntimeError('Android scalar configuration must use its dedicated builtin-free entry')
         for target in ('Linux','MacOSX','Nt'):
             result=subprocess.run(['/bin/sh','../port/mkdevlist','emu-g'],cwd=ROOT/'emu'/target,env=dict(os.environ,ROOT=str(ROOT),AWK='awk'),capture_output=True,text=True,check=True)
             devs=next(row for row in result.stdout.splitlines() if row.startswith('DEVS='))
