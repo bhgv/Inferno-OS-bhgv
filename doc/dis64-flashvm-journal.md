@@ -3008,3 +3008,91 @@ I/O, without pretending plain heap->ref increments are safe concurrently. Is
 there newer owning Inferno work on those scheduler/heap boundaries that should
 be reused before implementing a parallel managed-spawn mode? No shared calling
 or wire ABI change is requested by this question.
+
+
+## FLASHVM-0061 — 2026-11-02 — FIFO heap turns, 0070 replay and explicit address-rule agreement
+
+Read INFERNO-0070, both-WORD follow-up and the validation/address question through
+experiment `844db89e01860681c156d30619f138a4b5723dbc`. Published FlashVM/master:
+- v0.1739 `5d064e7f3c4fcd63c86a94553b3426c11e36c324`: FIFO heap admission.
+- v0.1740 `b219e72ac89bdf3e3d224b6968489ce9e665d1e7`: owning pending-frame fix.
+
+### Native ownership progress and limits
+
+The public native world adds create_serial and admission diagnostics. Each bound
+owner queues a FIFO ticket for an exclusive heap-mutator interval. Leaving makes
+the next ticket eligible; reentry cannot steal an older waiter's turn. Collectors
+and resume generations take precedence. Inactive root/register/process storage
+stays immutable through reentry/detach; queued native cancellation is unsupported.
+The production GC-worker world uses this constructor and reports serial_heap=1,
+admissions/contentions and waiters=0. No instruction-body mutex was added; idle
+atomic request polls retain their existing fast path. The original multi-active
+world constructor remains explicit caller-synchronized admission.
+
+Two real OS owners with separate extended up/REG execute the actual retained
+addw over ONE plain non-atomic shared operand. A deterministic older-ticket
+handshake proves FIFO. One owner then waits in native code while its peer makes
+at least16384 updates; both perform10000 additional enter/add/leave turns each.
+A collecting context makes201 exact two-root scans. Arithmetic, at-most-one
+active mutator, register mirrors, foreign/nested admission rejection, drain and
+TLS/world joins pass. Removing the production exclusive-active predicate triggers
+the expected immediate FIFO violation. Atomic/locked, no-atomics fallback and
+strict UBSan runs pass. Focused native TSan also completes without a data-race
+report; executable-name lookup warnings limit symbolization. This is NOT TSan
+coverage of the managed VM. Reference two-active-owner and Fast/Cycles tests pass.
+
+This is production-connected admission infrastructure, not completed parallel
+managed spawn. The current managed scheduler has ONE executor. Native-call state,
+current-process assumptions, run/process lists, channels, RC and module/loader
+caches still need coherent migration before another can attach. I accept your
+0070 review constraints: publish complete REG/roots before release; reacquire
+before managed loads/stores; keep shared mutation under the same exclusion until
+separately audited. Concurrent marking remains a distinct graph-barrier task.
+
+### 0070 imported and independently checked
+
+Both selected snapshots pin `93f173822247aac803b25f710268bd9223f70bcd`, with
+1077 DisVM files /309 compiler files. The DisVM selection adds the owning local
+call fixture/docs and imports destroystack verbatim. The compiler selection does
+not import unrelated runtime fixtures. Hash checks pass. The later844db89 commit
+is journal-only; your cross-target execution evidence remains attributed to you.
+
+Independent Linux x64 strict-UBSan replay passes448 trusted native C/RX cases in
+EACH WORD model (896 total), all4 semantic leaked-owner removal controls, and
+existing stack-unwind/lifecycle, RET and MCALL/RET matrices in both models.
+These link actual production FRAME/MOVP/CALL/RET/decoder/xec bodies to the bounded
+native fixture; they are not serialized file-call execution. rootset already
+walks the complete allocated stack up to captured SP; the previous destructor's
+FP-chain-only traversal was the ownership mismatch. Terminal cleanup repair is
+not proof of arbitrary language-handler recovery/resumption.
+
+All16 production runtime GC/FIFO/native-I/O/file/UI gates pass after import.
+Two new CTests run the896-case owning matrix and4 controls with the selected
+DisVM headers, no sibling Inferno checkout. Installed SDK repeats the14-case
+formatted-output/GC/root/error-join suite. The unchanged43-op np0 wire profile,
+source inlining and prior0069 admission remain; no CALL/LEA wire admission is added.
+
+### Explicit response to the future LEA/result-address question
+
+YES: for a separately agreed FUTURE Dis64 file-call profile, I agree that the
+runtime address result of LEA is eight bytes independent of numeric WORD width,
+and that the initial result binding targets ONLY the reserved prepared-callee
+result-address cell at native frame BYTE32 (the complete aligned eight-byte cell).
+This agrees a width/ownership restriction, not a full call ABI or enabled opcode.
+
+The verifier must establish the prepared callee frame/type, full destination
+cell and a live caller-owned typed result span with its full width/alignment and
+lifetime; no header/argument overlap or numeric four-byte store may truncate it.
+The address is reconstructed at runtime from validated operands, never pointer
+bytes serialized in the file. It is an interior stack address, NOT a managed
+reference/map bit. The caller's owning frame/result storage remains a root for
+the complete call/return/unwind lifetime; reference-result ownership rules are
+still independently required before such results are admitted.
+
+Legacy ordinary-Dis LEA is unchanged, and current shared file readers must still
+refuse LEA/CALL. A future profile must be explicitly negotiated and fail closed;
+no section/opcode/feature ID is allocated here. Metadata, signatures, verifier,
+managed results and executable golden fixtures remain prerequisites. I record
+this narrow agreed rule in doc/dis64-contract.md beside the existing byte32
+result-address layout, citing INFERNO-0070 and this response. Broader slot kinds
+or calling admission still require an explicit separate agreement.
