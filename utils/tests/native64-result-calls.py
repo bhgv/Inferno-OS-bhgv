@@ -19,7 +19,7 @@ I, EXIT, RET, words = CALLS.I, CALLS.EXIT, CALLS.RET, CALLS.words
 
 
 # Preserve real VM/heap/decoder/JIT bodies; only the isolated control source is weakened.
-def unit(control):
+def unit(control, instrument=False, instrument_source=False):
     runtime = runpy.run_path(str(ROOT/'libinterp/tests/dis64-runtime.py'))
     source = runtime['buildunit']().split('/* Set up an actual root extent, execute to IEXIT, then unwind actual owned storage. */')[0]
     extract = runtime['function']
@@ -32,14 +32,27 @@ def unit(control):
         parts[-1] = parts[-1].replace('memmove(R.d, &address, sizeof(address));', 'memmove(R.d, &address, sizeof(WORD));')
     elif control == 'guard_mode':
         parts[-1] = parts[-1].replace('instruction.add != (SRC(AFP)|DST(AFP|AIND)) ||', '0 ||')
-    elif control == 'priority':
+    elif control == 'priority' and not instrument:
         marker = 'if(step != nil && step())'
         if source.count(marker) != 1:
             raise RuntimeError('cstep marker drift')
         source = source.replace(marker, 'if(0 && step != nil && step())')
     elif control == 'ordinary':
         parts[-3] = parts[-3].replace('WORD address;', 'void *address;').replace('address = (WORD)(uintptr)R.s;', 'address = R.s;')
-    return source+'\n\n'+'\n\n'.join(parts)+'\n\n'+(ROOT/'utils/tests/native64-result-calls.c').read_text()
+    if instrument:
+        profile = extract((ROOT/'emu/port/devprof.c').read_text(), 'static void\ncpxec(')
+        debug = extract((ROOT/'emu/port/devprog.c').read_text(), 'void\ndbgxec(')
+        if 'vminstrument(&fetched, nil);' not in profile or 'vminstrument(&fetched, &loadslot);' not in debug:
+            raise RuntimeError('instrumented executor wiring drift')
+        if instrument_source:
+            profile = profile.replace('vminstrument(&fetched, nil);', 'instrumentsource(&fetched, nil);')
+        fixture = (ROOT/'utils/tests/native64-instrument.c').read_text().replace('INSTRUMENT_EXECUTOR', profile)
+        marker = 'static int\nexecute(void *argument)'
+        source = source.replace(marker, fixture+'\n\n'+marker, 1).replace('xec(argument);', 'cpxec(argument);', 1)
+    tests = (ROOT/'utils/tests/native64-result-calls.c').read_text()
+    if instrument:
+        tests = tests.replace('widths = runs = refused = 0;', 'instrumentloadprobe();\n\twidths = runs = refused = 0;', 1)
+    return source+'\n\n'+'\n\n'.join(parts)+'\n\n'+tests
 
 
 # Actual wire sections carry no native addresses; expected bits are independent scalar values.
@@ -97,7 +110,11 @@ def fixtures():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--control', choices=('width', 'priority', 'ordinary', 'guard_mode'))
+    parser.add_argument('--instrument', action='store_true', help='execute the actual active coverage C loop')
+    parser.add_argument('--instrument-source', action='store_true', help='probe debugger source-output convention in the coverage fixture')
     args = parser.parse_args()
+    if args.instrument_source and not args.instrument:
+        parser.error('--instrument-source requires --instrument')
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     env = dict(os.environ)
     arch = env.get('NATIVE64_ARCH', 'amd64')
@@ -121,7 +138,13 @@ def main():
         work = Path(directory)
         env['TMPDIR'] = str(work)
         source = work/'calls.c'
-        source.write_text(unit(args.control))
+        source.write_text(unit(args.control, args.instrument, args.instrument_source))
+        if args.instrument and args.control == 'priority':
+            header = (ROOT/'include/vmfetch.h').read_text()
+            marker = 'step == native64lea8step && step()'
+            if header.count(marker) != 1:
+                raise RuntimeError('instrumented priority marker drift')
+            (work/'vmfetch.h').write_text(header.replace(marker, '0 && '+marker))
         fixturesfile = work/'cases.bin'
         fixturesfile.write_bytes(data)
         command = compiler + flags
@@ -144,6 +167,10 @@ def main():
                     print('PASS result-address control:', args.control, arch, 'jit='+str(jit), flush=True)
             else:
                 subprocess.run(runner+[str(binary), str(fixturesfile)], env=env, check=True, timeout=120)
+        if args.instrument and not args.control:
+            print('PASS instrumented result calls:', arch,
+                  'source-output helper' if args.instrument_source else 'actual coverage loop',
+                  '(C execution; cached JIT entries deliberately bypassed)', flush=True)
 
 
 if __name__ == '__main__':

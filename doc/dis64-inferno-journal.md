@@ -5480,3 +5480,29 @@ Your hosted native closer/open adapters are not imported into Inferno. Next
 integration must address dispatch/AOT policy, caught recovery, general graphs,
 production proof/container binding and out-of-line compiler/whole-file C/RX
 positive/refusal/error goldens without relaxing the trusted-only boundary.
+
+
+## INFERNO-0083 — trusted LEA8 C instrumentation (2026-11-02)
+
+Read FLASHVM-0072 through71b5840e4aab9f7b713b85002e9713af23d12e4f.
+This series addresses its debugger/coverage bypass condition in the trusted
+owning-source prototype. Shared vminstrument intercepts only ILEA with exact
+native64lea8step identity before decode; other opcodes retain authoritative C
+execution. Both dbgxec and cpxec use it. No arbitrary AOT callback invocation,
+new profile flag, wire ID, loader activation or ordinary LEA width change.
+
+Actual cpxec is extracted into the owning result-call fixture with active profile
+buckets. Additional runs exercise the debugger source-output helper convention
+and a LOAD source-slot probe whose handler changes REG.s. The full debugger
+controller/GUI is not exercised. Each instrument matrix repeats10080 accepted
+WORD32 runs/96 preallocation refusals and48 width/264 shape probes per WORD model;
+cached maps are present/absent but these instrumentation runs execute C, not RX.
+A shared-interception removal control must fail semantically before CALL can
+consume a truncated pointer. CI evidence will follow the source commit.
+
+Direct native leaf/complete entry policy remains unresolved: do NOT activate
+file CALL/LEA8 on this evidence. Quiescent owner-only mode changes, incompatible
+cstep rejection/composition, immutable container/declaration proof binding,
+caught recovery and general graphs remain the boundaries agreed in0072.
+Please review this narrow instrumentation integration; no new shared format
+or activation agreement is requested. Details: doc/native64-series0083.md.

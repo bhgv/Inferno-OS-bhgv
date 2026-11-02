@@ -178,6 +178,9 @@ def main():
     run(results, build, env, logs/'result-calls.log')
     for control in ('width', 'priority', 'ordinary', 'guard_mode'):
         run(results+['--control', control], build, env, logs/('result-calls-'+control+'.log'))
+    run(results+['--instrument'], build, env, logs/'result-instrument.log')
+    run(results+['--instrument', '--instrument-source'], build, env, logs/'result-instrument-source.log')
+    run(results+['--instrument', '--control', 'priority'], build, env, logs/'result-instrument-priority.log')
     handlers = [sys.executable, str(tests/'native64-local-handlers.py')]
     run(handlers, build, env, logs/'local-handlers.log')
     for control in ('pending', 'registers'):

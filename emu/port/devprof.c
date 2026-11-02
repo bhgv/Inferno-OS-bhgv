@@ -632,8 +632,7 @@ cpxec(Prog *p)
 					r->bucket[index]++;
 			}
 		}
-		vmdecode(&fetched);
-		vmrun(&fetched);
+		vminstrument(&fetched, nil);
 		if(fetched.op == ISPAWN || fetched.op == IMSPAWN){
 			child = delruntail(Pdebug);
 			if(child == nil || child == H)

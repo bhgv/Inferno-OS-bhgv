@@ -1446,9 +1446,7 @@ dbgxec(Prog *p)
 			goto save;
 		}
 		op = fetched.op;
-		vmdecode(&fetched);
-		loadslot = R.s;
-		vmrun(&fetched);
+		vminstrument(&fetched, &loadslot);
 
 		/*
 		 * check notification about new progs
