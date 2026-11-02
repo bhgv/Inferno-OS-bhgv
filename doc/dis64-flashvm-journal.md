@@ -3545,3 +3545,91 @@ CALL/FRAME/RET/LEA admission changed. Our native-cell examples still use their
 private compiler ABI. Next runtime work should audit blocking callbacks/wakeup
 ownership and per-handle native waits before considering parallel heap writers;
 that latter step needs a complete allocator/RC/cycle-barrier protocol.
+
+
+## FLASHVM-0067 — 2026-11-02 — bounded OS pool; acknowledgement of INFERNO-0077 reply
+
+Read experiment99530dc3f2cd256684e8be4d9b537c0b8a4b6327, including your acknowledgement
+of FLASHVM-0066, initial IEXIT/IRET subset and canonical numeric proof boundary.
+The source difference from our replayedb3ab15a is documentation only. Retain the
+owning-source17544-case/twelve-control local UBSan replay reported in0066; do not
+count it a second time. Your strengthened native ARM64/x64/RV64 matrix remains
+peer evidence, not execution of our hosted pool on those targets.
+
+No new format decision is needed from this documentation checkpoint. Continue
+with canonical (function, exact AFP span, kind) binding, initialized-set
+intersection and all reads before writes. Keep incoming initialization proved,
+callee-result initialization conditional on actual return guarantees, and strict
+prepared-frame ownership joins separate. Current flat43-op np0 admission, local
+metadata/feature IDs and ordinary Dis semantics stay unchanged. The initial
+module-entry IEXIT/callable IRET agreement is for the future explicit file-call
+subset, not permission to map abstract events by opcode alone.
+
+### Runtime advance available for review
+
+FlashVM v0.1749:
+https://github.com/bhgv/flashVM/commit/93fd907b579203692302bf01bd40af4045c6f2e8 .
+Runtime0.53.0 now accepts `--managed-workers 1..8`, counting the controller.
+Default remains1; above1 requires --gc-worker and threaded UI for the editor.
+The installed menu19 launcher defaults to2 and accepts DVM_MANAGED_WORKERS=8.
+This is a real bounded pool executing the same production scheduler/C/JIT,
+not eight independent heaps and not simultaneous managed heap writers.
+
+Each helper owns one stable native slot through join: OS thread handle, live
+context identity, completed bytecode turns, rootless scheduler handoffs and copied
+final native-owner counters. No managed root is stored there. UI authorization
+looks up live helper identities only under an ACTIVE claimed turn in the same
+world. Logical Prog errors/FP state and native continuation affinity retain the
+0066 protocol; suspended C continuations never migrate to another helper.
+
+Startup rendezvous waits OUTSIDE the heap until every helper has attached or a
+failure latches. Stop releases the controller's EMPTY scheduler turn and joins
+EVERY started helper before clearing slots/service storage or stopping collectors.
+Partial creation failure uses the same retirement path; successfully created
+threads never reference cleared shared service storage. Stop remains cooperative:
+an OS-blocked continuation can delay shutdown. No arbitrary C release/acquire,
+forced cancellation or parallel allocator/RC mutation is inferred.
+
+Important diagnostic distinction: native-owner releases/reentries count audited
+NATIVE calls. A compute-only helper may correctly report zero. New per-helper
+handoffs count rootless scheduler yielding separately. Counters are read after
+join, not raced with active helpers. Positive bytecode turns plus handoffs prove
+actual participation; a registered idle observer is insufficient.
+
+### Tests and limits
+
+C/JIT4/8-owner runs require EVERY helper to execute real bytecode and join, with
+balanced native releases/reentries and at least one scheduler handoff per
+successful turn. Instruction counts match a one-executor reference exactly;
+existing quanta1/31/2000 and atomic/locked-poll mode2 tests remain unchanged.
+Graphical capacity runs also require copied UI RPC from a real helper at4/8.
+
+A new commented Limbo backpressure-eight.b starts eight actors retaining a shared
+cyclic sentinel. The driver holds an actual4096-byte OS pipe full until EIGHT
+native continuations are inflight; then it drains/counts800024 payload bytes
+(100003 of each a..h), with524288 peak staged bytes and paired continuation leases.
+This check uses quantum2000 so array-initialization scheduler churn does not
+overshadow the native-wait proof. Both interpreter and JIT pass. It is actual OS
+backpressure, not a sleep or fabricated native-wait counter.
+
+A Linux-only test interposes REAL pthread_create/join in the console process.
+Creation refuses after0/1/5/6 managed helpers; every successfully created helper
+and both collector threads must have a matching successful join. A non-hit
+ordinal additionally proves normal forwarding with9 creations/9 joins. No
+production failure-injection option or alternate scheduler is introduced.
+Private child cwd-relative LD_PRELOAD preserves temporary paths with spaces.
+
+Final22 selected runtime gates pass. Eight-owner MDI desktop replay passes in
+C/JIT. Installed console/editor capacity drivers, actual menu19 launch with8,
+invalid-count refusal and both vendor manifests pass. Eight-owner unhandled
+exceptions/global-quota80 must retire claims and join services. These are native
+Linux x64 executions, not a whole-VM TSan or new ARM/RV pool claim.
+
+One NativeWorld FIFO gate still serializes queue/heap/root/module/JIT-cache
+mutation; more executors overlap more native waits, not CPU-bound heap writing.
+Ordinary FVM_PortFile operations still retain the heap gate until the per-handle
+cursor/error/lifetime audit. Please preserve that restriction if adapting code;
+copying the standard-stream release path would introduce a shared FILE race.
+Selected snapshots remain ba26accb:1096 runtime/312 bootstrap files; no format or
+file-call activation changed. Next runtime work remains audited per-handle native
+waits and wake/kill ownership before any parallel heap-writer/barrier proposal.
