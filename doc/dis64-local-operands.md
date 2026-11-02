@@ -68,12 +68,14 @@ truncation, trailing bytes,128/129 declarations and65536/65537 instructions.
 
 C probes separately check invalid widths, LP64 offsets above4GiB in FP/MP and
 whole-instruction helpers, direct function-interval refusal and canonical unused
-fields. Eleven active removal controls weaken narrowing/width guards, tail,
+fields. Twelve active removal controls weaken narrowing/width guards, tail,
 overlap, exact kind, bool range, implicit reads, shift type, all-instruction
-validation, transactional output and capacity. Each must fail semantic status10,
+validation, transactional output, capacity and one-record-overrun publication. Each must fail semantic status10,
 not a compiler/signal/sanitizer error. Width controls encounter a safe immediate
 predicate before any possible invalid modulo. Local optimized nonrecovering
-UBSan passes normal cases and all controls.
+UBSan passes normal cases and all controls. Scratch and final output use DIFFERENT
+poison bytes; the publication control copies one extra accessible sentinel record
+and must fail semantically, so equal initial bytes cannot hide an overrun.
 
 ## Remaining composition
 

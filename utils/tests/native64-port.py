@@ -121,7 +121,7 @@ def main():
     operands = [sys.executable, str(tests/'dis64-local-operands.py')]
     run(operands, build, env, logs/'local-operands.log')
     for control in ('narrow', 'width', 'tail', 'overlap', 'kind', 'bool', 'implicit', 'shift',
-                    'unreachable', 'atomic', 'capacity'):
+                    'unreachable', 'atomic', 'capacity', 'publication'):
         run(operands+['--control', control], build, env, logs/('local-operands-'+control+'.log'))
     for control in ('entries', 'tail'):
         run(catalog+['--control', control], build, env, logs/('local-catalog-'+control+'.log'))

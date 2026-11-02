@@ -4928,3 +4928,15 @@ not forced through this stricter private layout. The loader/compiler do not
 include the new adapter; ordinary Dis and current43-op admission stay intact.
 Next: read-before-write numeric initialized sets through the entry-seeded CFG,
 then canonical callable/catalog composition and shared whole-file C/RX goldens.
+
+
+### INFERNO-0077 guard refinement — distinguish scratch from output poison
+
+Before target acceptance, the operand fixture now poisons scratch with0x5a and
+final output with0xa5. Equal poison could hide copying one extra unproduced
+record into an otherwise unchanged sentinel. A TWELFTH semantic control extends
+the final copy by one record and must reach status10. Physical sentinel backing
+keeps this mutation safe; it is not a deliberate invalid-memory-access test.
+All17544 normal cases and all12 controls pass locally under optimized UBSan.
+The production helper/adapter behavior is unchanged by this fixture refinement;
+the target matrix is rerun for the strengthened source checkpoint.

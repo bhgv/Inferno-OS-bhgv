@@ -120,7 +120,8 @@ main(int argc, char **argv)
 		memset(output.after, 0xa5, sizeof(output.after));
 		output.written = 0xa5a5a5a5U;
 		memset(output.facts, 0xa5, span*sizeof(output.facts[0]));
-		memset(scratch, 0xa5, span*sizeof(scratch[0]));
+		/* Different poison makes copying an unproduced extra record observable. */
+		memset(scratch, 0x5a, span*sizeof(scratch[0]));
 		memcpy(saved.before, output.before, sizeof(output.before));
 		memcpy(saved.after, output.after, sizeof(output.after));
 		saved.written = output.written;

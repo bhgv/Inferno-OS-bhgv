@@ -234,7 +234,7 @@ def cases():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--control', choices=('narrow', 'width', 'tail', 'overlap', 'kind', 'bool',
-                                              'implicit', 'shift', 'unreachable', 'atomic', 'capacity'))
+                                              'implicit', 'shift', 'unreachable', 'atomic', 'capacity', 'publication'))
     args = parser.parse_args()
     env = dict(os.environ)
     compiler = shlex.split(env.get('CC', 'cc'))
@@ -270,6 +270,8 @@ def main():
                             '(pc == 0 && !dis64localoperandscheck(&instruction, count, 0, count, slots, slotcount, framebytes, scratch+pc))'),
             'atomic': ('at += used;', 'at += used;\n\t\tif(pc == 0) output[0] = scratch[0];'),
             'capacity': (' || count > capacity', ''),
+            'publication': ('for(pc=0; pc<count; pc++)\n\t\toutput[pc] = scratch[pc];',
+                            'for(pc=0; pc<=count; pc++)\n\t\toutput[pc] = scratch[pc];'),
         }
         if args.control in ('narrow', 'width'):
             old, new = (' || (unsigned long)offset > 0xffffffffUL', '') if args.control == 'narrow' else (
