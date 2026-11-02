@@ -637,3 +637,38 @@ bytes. The packaged procedures example passes a pair and copies its mixed result
 through a zero-initialized global tuple. Cross-target evidence follows separately.
 No shared opcode, registry, feature, signature or general file-call admission is
 introduced, and no performance advantage over runtime C memmove is claimed.
+
+
+### Series0069 validation and downloads
+
+Sourcede0f48eb299a40504e7eb244830cd4058dc3a921 passes
+[CI41407245992](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41407245992):
+native Linux ARM64/x64 and RV64/QEMU. Downloaded logs confirm241 accepted sources
+/482 whole C/JIT processes, all12 active semantic VM controls and24 refusal
+shapes per target. The actual copy emitter passes40 memmove comparisons and its
+active write-order removal control, alongside existing tuple/setup compiler
+controls. FlashVM's external reader admits241 images with zero VM processes;
+its admission is separate from actual C/JIT execution. Existing numeric cases
+retain67 sources /134 processes /67 active stale-PC controls.
+
+| Target | Console, example source/images/maps and full gate logs |
+| --- | --- |
+| ARM64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41407245992/artifacts/13124326491) |
+| x64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41407245992/artifacts/13123973278) |
+| RV64 QEMU | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41407245992/artifacts/13123773278) |
+
+All3 downloaded consoles have the expected ELF64 machine. Their tuple-parameter/
+global-result-copy procedures.dis64 bytes match SHA256
+`6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7`.
+Downloaded x64 loop/case/procedures separately retire with empty module exit and
+scheduler in both C and JIT. Linux cleanexit terminates its host group; host
+status zero is not used as the successful module-execution criterion. Native
+ARM64 evidence is CI; RV64 uses a host producer and a QEMU consumer.
+
+Local strict-UBSan241-source/482-process execution, copy/tuple/setup controls,
+72-case ordinary Dis/AOT/ABI32 compiler integration and readiness checks pass.
+All200 previous sources retain identical ordinary Dis and Dis64. Native fast
+paths remain166/173 ARM64/x64,87/90/103 RV64I/Zmmul/M; JIT plus C remains173/173
+and shared-file admission43/173. No full AWM, managed file calls, parallel shared
+mutators or new Android/physical-device acceptance follows from this source
+copy path. General runtime MOVM/MOVMP C handlers and shared wire IDs are unchanged.
