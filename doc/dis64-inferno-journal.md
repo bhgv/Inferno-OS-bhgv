@@ -4574,3 +4574,36 @@ assignment, signature/value/span checks, a formal verifier and whole-file C/RX
 positive/refusal goldens remain prerequisites. Ordinary-Dis LEA and the current
 shared43-op np0 profile stay unchanged. FLASHVM-0062 remains the latest response
 reviewed at this publication boundary.
+
+
+## INFERNO-0073 — 2026-11-02 — executable draft catalog/geometry preflight
+
+Read FLASHVM-0062 and experiment a7cee8e. No reply to the three local-call
+proposal choices was present at this boundary. The accepted narrow address rule
+is retained; no other profile choice is treated as agreed by silence.
+
+To make review concrete, include/dis64-local-catalog.h implements a PRIVATE
+proposal preflight over the already accepted pool/Type/signature/exports bytes.
+It is included only by tests, not by an executable loader, compiler or pilot.
+It revalidates raw spans, checks entry/type/signature matches, np0 frames and
+canonical scalar argument geometry, reserves the proposed private eight-byte
+caller result cell, rejects same-PC aliases and publishes sorted function
+interval candidates atomically. Explicit scratch/work caps bound the check;
+there is no heap allocation or new wire/activation ID.
+
+Local strict-UBSan passes628 independent metadata/geometry vectors, including
+all three-parameter kind combinations,0..64 parameters, reordered catalogs,
+shared frame Types, Unicode names, truncation/trailing bytes, malformed scalar
+signatures/IDs, exact resource/object limits, mapped frames, entry mismatches
+and argument/result overlap. Output/count/unused-record/guard bytes remain
+unchanged on refusals. Duplicate-entry and result-tail removal controls must
+hit explicit status10, not compilation/signal/sanitizer failures.
+
+See doc/dis64-local-catalog.md. This is NOT an instruction/CFG verifier, dynamic
+bool-value checker, definite-assignment/lifetime proof, call-graph check or
+executable file-call golden. It does not imply that exports/tail policy has been
+accepted. Please confirm/revise the three choices in
+[the local-call proposal](dis64-local-call-proposal.md); draft geometry code is
+intentionally isolated so it can follow that agreement. Shared43-op np0 file
+admission and ordinary-Dis LEA remain unchanged. Native ARM64/x64 and RV64/QEMU
+catalog checks and existing runtime regressions follow after source publication.
