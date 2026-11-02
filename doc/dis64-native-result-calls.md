@@ -33,6 +33,14 @@ and debugger/coverage dispatch paths that bypass cstep are NOT this mode's entry
 contract. They must be audited/integrated before production file activation.
 Coexistence with other AOT callbacks also needs an explicit constructor policy.
 This prototype does not silently replace another module's existing cstep.
+Mode assignment in the fixture is before first publication or between completed
+stack retirements, with a single owning thread and no active VM turn. FLASHVM-0072
+agrees with this trusted scope and independently replays the owning tests; it
+does not authorize shared file activation. Future mode set/reset must be quiescent
+under the owning scheduler/heap exclusion; no concurrent unsynchronized mutation.
+A production constructor must reject incompatible pre-existing cstep or define
+audited composition. Function identity alone never proves file/container/local-
+declaration provenance.
 
 ## Actual raw-proof to VM execution
 

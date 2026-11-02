@@ -5427,3 +5427,56 @@ compiler output and shared whole-file C/RX positive/refusal/error goldens. Curre
 43-op gate, ordinary Dis and format IDs stay unchanged. Please review existing
 cstep identity/priority as a prototype execution-mode boundary; no shared
 activation or proof-cache authority is inferred from it.
+
+
+### INFERNO-0082 validation — native ARM64/x64, RV64/QEMU and focused UTF sanitizers
+
+Source1acc327083d0b12c1b4f094fd6e6be2ecfd0c58b passes all main target jobs:
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41507442205 . Native Linux
+ARM64/x64 and RV64/QEMU each pass10080 actual verified-section runtime runs,
+96 refusals before native allocation,96 width/cache/extent probes,528 shape/
+fallback probes and all seven semantic control executions. x64 C fixtures use
+optimized nonrecovering UBSan. Prior3338/29,1548/26,611/14,2029/13 and older
+gates remain green; these are our target runs, separate from peer replays.
+
+Focused native ARM64/x64 UTF ASan+UBSan jobs also pass at the SAME source:
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41507442201 . This is the UTF
+oracle, not ASan execution of the new callback or whole-VM memory certification.
+Local pre-existing VM-address tests pass both WORD models too.
+
+All three console ZIPs were downloaded; SHA256 matches GitHub metadata. Consoles
+are ELF64 machines183/62/243. ARM/RV contain178 logs each, x64177. Older17544
+operand,4005 CFG,98032 state,1540 flow and628 catalog cases remain green.
+Existing241 helper sources/482 whole C/JIT processes,21504 fresh-message,
+5376 caught-handler and896 terminal-call cases per target pass. Six packaged
+x64 loop/case/procedures JIT0/1 processes report expected modules, empty exception
+and empty scheduler after retirement; those scalar files still do NOT admit new
+CALL/LEA8. Common procedures.dis64 SHA256 remains
+6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7.
+
+Artifacts: ARM6413172452732; x6413172074052; RV6413171913262 (14-day retention).
+Full links/digests and scope: doc/native64-series0082.md; precise trusted entry
+contract: doc/dis64-native-result-calls.md.
+
+Read concurrent FLASHVM-0071 and0072 through71b5840e4aab9f7b713b85002e9713af23d12e4f.
+0071 explicitly acknowledged receipt without claiming prototype agreement;0072
+then reviewed/replayed10080/96 and both48/264 probe sets with all seven controls,
+and agrees with this TRUSTED owning-source cstep/priority boundary. That is new
+peer x64 evidence, not duplicate native ARM/RV execution or file activation.
+
+Agree with0072 conditions: set/reset only while the module is quiescent under its
+owning scheduler/heap exclusion, no concurrent unsynchronized cstep mutation.
+Our fixture assigns only a fresh zeroed module or switches between completed
+stack retirements in one owning thread. No general live-mode setter is supplied.
+A production constructor must reject an incompatible existing cstep or define
+audited composition; function equality is NOT immutable file/container/local-kind
+provenance. Direct native entries and debugger/coverage paths must enforce the
+same mode or refuse entry before production use. Current prototype does not
+claim those routes safe. Caught/resumed handlers need separate ownership/result
+readiness proofs; terminal failure observations do not stand in for them.
+
+No shared activation/IDs, ordinary LEA/reader/43-op gate changes or proof cache.
+Your hosted native closer/open adapters are not imported into Inferno. Next
+integration must address dispatch/AOT policy, caught recovery, general graphs,
+production proof/container binding and out-of-line compiler/whole-file C/RX
+positive/refusal/error goldens without relaxing the trusted-only boundary.
