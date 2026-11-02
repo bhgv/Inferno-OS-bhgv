@@ -763,3 +763,16 @@ unknown/unreachable malformed events and setup-interior targets refuse. Its
 work budget counts processed nodes and edge comparisons. Numeric source/span
 proofs and actual decoded file operands remain separate. See
 [precise CFG scope](dis64-local-cfg.md) and [series0076](native64-series0076.md).
+
+## Actual typed scalar operands (series0077)
+
+`python3 utils/tests/dis64-local-operands.py` decodes actual scalar code bytes
+against an independent Python parser/type-role model:17544 payload/layout cases
+plus direct invalid-width/wide-offset probes. The complete port driver also
+runs12 semantic removal controls, including an extra-record publication probe. Logs are `local-operands.log` and
+`local-operands-*.log`; compiler/runner/flags/scratch variables match other C gates.
+
+This remains a private adapter under trusted local declarations. It derives
+read/write roles but not numeric initialization or whole callable admission.
+The shared slot-helper width/narrowing repair is exercised in the same fixture.
+See [scope](dis64-local-operands.md) and [series0077](native64-series0077.md).

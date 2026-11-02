@@ -126,3 +126,11 @@ are checked. This advances abstract history proof but still does not derive
 actual decoded operand/source/span facts or enable file calls. Fast paths and
 43-op file admission are unchanged. See [CFG scope](dis64-local-cfg.md) and
 [series0076](native64-series0076.md).
+
+Checkpoint0077 repairs scalar helper width validation and pre-narrowing memory
+bounds, and derives typed numeric read/write facts from real compact code bytes.
+The17544-case byte/layout oracle and12 controls remain private fact-extraction
+evidence under trusted declarations. Numeric initialization and callable/CFG
+composition still precede new file calls. No fast-path or43-op admission count
+changes. See [operand scope](dis64-local-operands.md) and
+[series0077](native64-series0077.md).

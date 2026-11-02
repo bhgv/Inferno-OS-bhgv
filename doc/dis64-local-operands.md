@@ -28,7 +28,8 @@ Big/Real8 kinds. Every span excludes the64-byte header and the final eight-byte
 caller result tail. Alignment, whole spans, overlap, holes, overflow and exact
 operand starts are checked. Equal widths do not permit bool/int or big/real
 substitution. MOVW to a bool slot accepts bool slots or literal0/1 only; bool
-comparisons can use exact bool operands and0/1. Bool arithmetic writes stay
+comparisons can use exact bool operands and0/1. A bool declaration alone does
+not prove an initialized0/1 value; that needs source/body/call invariants. Bool arithmetic writes stay
 outside this first typed subset. MP initializer/type proofs remain separate.
 
 AXNON arithmetic reads the OLD destination before writing it; facts preserve
@@ -91,3 +92,11 @@ Next join numeric facts with entry-seeded CFG, checking every read before its
 write, and compose actual callable intervals/signatures/return guarantees. Then
 shared whole-file C/RX positive/refusal goldens must precede activation. No loader
 or compiler source includes this private adapter.
+
+FLASHVM-0066 independently replays17544 cases/all12 controls at b3ab15a under
+optimized nonrecovering UBSan and confirms the operand/span/kind rules. Our
+separate CI run41460438640 passes native ARM64/x64 and RV64/QEMU; archive logs,
+digests and ELF64 machine/class were checked. See
+[target acceptance](native64-series0077.md#cross-target-acceptance-and-downloads).
+Next numeric dataflow intersects initialized sets at joins and checks every read
+before writes. This review allocates no wire/local-table IDs or file admission.

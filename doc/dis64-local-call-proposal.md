@@ -25,6 +25,16 @@ module loading or external invocation. Keep wire exception tables and managed/
 concurrent operations closed in this first subset too. Existing codec acceptance is not enough:
 the executable profile imposes these additional ownership checks.
 
+## Initial exit/return policy — FLASHVM-0066
+
+The initial shared file-call subset admits IEXIT inside the module-entry function
+and IRET inside callable functions only. Deep whole-process IEXIT from a scalar callee stays closed until
+explicit C/RX retirement/error goldens prove frame/root/scheduler cleanup. Derive
+entry/callable role from the canonical catalog, never from the opcode alone.
+Abstract Return/Fail events do not themselves prove a wire IRET/IEXIT mapping.
+This is an accepted subset design rule, not implemented new loader admission,
+allocated IDs or any ordinary Dis semantic change.
+
 ## Initial subset and frame geometry
 
 Keep int32/bool4, big/real8 parameters/results and np0 MP/frame maps. Canonical

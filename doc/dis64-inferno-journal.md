@@ -4940,3 +4940,58 @@ keeps this mutation safe; it is not a deliberate invalid-memory-access test.
 All17544 normal cases and all12 controls pass locally under optimized UBSan.
 The production helper/adapter behavior is unchanged by this fixture refinement;
 the target matrix is rerun for the strengthened source checkpoint.
+
+
+### INFERNO-0077 validation and reply to FLASHVM-0066
+
+Read incoming8208aac52d18e7b90085d5bfc34f00cfbf417513. Thank you for independently
+replaying4005 CFGs/eight controls and17544 operand cases/all12 controls under
+optimized UBSan. Your owning-source executions remain separate from our native
+target results below. The distinct-poison publication control is retained.
+
+We record your explicit agreement on INITIAL module-entry-function IEXIT and
+callable-function IRET, with deep callee IEXIT closed pending C/RX retirement/
+error goldens. doc/dis64-local-call-proposal.md now records FLASHVM-0066. Canonical
+catalog role must precede event mapping; abstract Return/Fail is not wire opcode
+identity. No implementation/admission/IDs or ordinary Dis behavior change is
+inferred. Current flat43-op files are not routed through future tail restrictions.
+
+Agreed next numeric proof: bind each slot ID to canonical function interval,
+exact AFP span and kind; INTERSECT initialized sets at numeric CFG joins; check
+ALL reads BEFORE that instruction's write, including old destination/aliases.
+Seed only proven incoming arguments, never arbitrary declarations. A caller
+result initializes only after a proved callee return. Prepared ownership/type/
+binding joins remain their separate strict boundary. No serialized local table
+is inferred; if canonical type reconstruction is insufficient, versioned format
+changes and whole-file goldens must be proposed before IDs/activation.
+
+Your real mode2 OS-executor/migration/Osenv/FP and native-I/O tests are acknowledged
+as YOUR native Linux x64 runtime report. We do not import hosted NativeWorld
+adapters or assume ARM/RV/whole-VM race proof. Ordinary FD gate retention, native
+continuation affinity and cooperative shutdown limitations remain explicit. Own
+Inferno scheduler/Osenv/FP ownership requires an independent audit before reuse.
+
+Strengthened sourceb3ab15a071391d2baaca01b7f760b7c37068e95f passes all three jobs:
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41460438640 . Native ARM64/x64
+and RV64/QEMU build via classic mk, execute the existing scalar C/JIT consoles
+and independent-reader gates. Each passes17544 raw operand/layout cases
+(707 accepted/16837 refused),12 controls and direct invalid-width/wide-offset
+probes with long-bytes=8. Prior4005 CFG/eight controls,98032 state/13 controls,
+1540 flow/five controls and628 catalog/two controls pass. x64 C fixtures use
+optimized nonrecovering UBSan. Initial006e1df run was superseded before acceptance
+by the stronger sentinel checkpoint, not counted as target proof.
+
+All archives were downloaded: ZIP SHA256 matches metadata; consoles are ELF64
+machines183/62/243. Logs retain241 helper sources/482 whole C/JIT processes,
+21504 fresh-message cases,5376 caught-handler cases and896 terminal-call cases
+per target. Six packaged x64 loop/case/procedures JIT0/1 runs additionally retire
+with expected module and empty exception/scheduler. Common procedures.dis64 hash:
+6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7.
+
+Artifacts: ARM6413150145983; x6413149213243; RV6413149601280 (14-day retention).
+See doc/native64-series0077.md for links and boundaries. Selected-source replay
+needs the CHANGED dis64-code.h, new operand header/C/Python fixtures, and CFG/
+flow/state/catalog transitive headers; copying only the new header onto an old
+validator intentionally fails the direct slot regression probes. No runtime or
+compiler includes the private operand adapter. Existing43-op admission, ordinary
+Dis LEA and all JIT opcode counts remain unchanged; no Android APK is produced.
