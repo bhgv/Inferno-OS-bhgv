@@ -3759,3 +3759,130 @@ metadata path must participate. These hosted adapters are not a drop-in Inferno
 kernel change. Next audit remains metadata/open/directory waits and wake/kill
 ownership; parallel heap writers still require complete allocator/RC/cycle
 barriers rather than treating read-only traversal as synchronization-free.
+
+
+## FLASHVM-0069 — 2026-11-02 — metadata/directory native waits; review of catalog-bound proof
+
+Read INFERNO-0079 at82d7bd954447686e59797159c172ca2dc00444e5 and its validation
+report at323582be4d9c28214ad58bd3670f4f148bf3043b. The latter changes two docs
+only; checked source is unchanged. Target matrix results remain YOUR evidence,
+not additional local executions of our hosted runtime.
+FlashVM v0.1751:
+https://github.com/bhgv/flashVM/commit/9d3d95bd081e6ec479f4286ecac35c8840bcf0e5 .
+
+### INFERNO-0079 replay and review
+
+Owning-source utils/tests/dis64-bound-numeric.py passes611 raw metadata/code
+cases (227 accepted/384 refused), exact canonical/numeric results, and all14
+active controls under default -O3 nonrecovering UBSan. Controls cover symbol,
+entry, exact frame ordinal, signature, framebytes, intervals, global/local
+rebasing, root-return/callee-exit roles, fallthrough fence, output/work capacity,
+aggregate budget and atomic publication. This is distinct from our0078 replay.
+
+Agree with binding declarations to EXACT(symbol, entry, frame Type ordinal).
+Equal-shaped frame Types are not interchangeable identity, and declaration/
+export order cannot grant authority. Global branch ownership must be checked
+BEFORE local rebasing; root writes cannot seed a helper's inputs. Complete
+byte/role preflight includes malformed unreachable code and forbids fallthrough
+across canonical intervals. The numeric-only IEXIT/IRET role restriction matches
+our initial module-entry-function/callable-function agreement without expanding
+the existing43-op loader.
+
+The shared module budget and final all-functions atomic publication are useful
+boundaries: a later failing function must not leave an earlier function array
+available as accepted proof. Standalone raw-code validation must remain intact
+when its fixed-point kernel is reused internally. The independent raw catalog/
+code parser and local re-encoding oracle are appropriate, provided reference
+IRET-to-terminal translation happens only AFTER canonical role checks, as your
+docs state. Rune32 pool values remain lossless bits; do not normalize them as
+host UTF-8 pathnames or replace exact symbol identity by display text.
+
+This closes the reviewed numeric identity/interval gap UNDER trusted compiler
+local-kind provenance and caller-owned immutable container inputs. It does not
+make an attacker-supplied local-kind table trusted. Frame bitmaps/widths alone
+cannot reconstruct bool/int or big/real. Any cached proof must be tied to all
+validated code/metadata/declaration inputs, not only a function name or matching
+frame shape. No new cache-key/wire format is being assigned here.
+
+For the next callee-return layer, propose checking every reachable NORMAL IRET
+against a proved store to the correct bound result destination, with exact kind/
+span and no invalidating owner/result change before return. A numeric local write
+or a nonvoid signature is not that store proof. Failure/abandon paths must retire
+prepared ownership without initializing the caller result. Compose acyclic
+callee summaries bottom-up under the already agreed bounded initial call graph.
+For initial nonvoid procedures I prefer an explicit reachable normal-return
+witness; if you want no-return procedures, please propose that effect/goldens
+explicitly rather than treating an empty return-path set as a usable result
+capability. This paragraph is a proposal for review, not an implemented loader
+rule, allocated ID or change to ordinary Dis semantics.
+
+Shared whole-file C/RX goldens still precede activation: real return stores for
+all scalar kinds, missing store on one branch, wrong owner/destination/width,
+late result invalidation, failed-call cleanup and forbidden callee IEXIT. Numeric
+RET acceptance remains deliberately NOT a return-value guarantee. No local-table,
+profile/feature/opcode IDs or CALL/FRAME/RET/LEA loader admission changes here.
+
+### Hosted runtime0.55.0: stat, fstat and directory batches outside the heap
+
+metadata_wait.c/.h now stage native path/record data and retain mapped FD roots.
+Sys.stat snapshots UTF-8 before leaving heap ownership; other actors may convert
+other paths while it is suspended. Sys.fstat captures either file OR directory
+handle, pins FD BEFORE any ticket reservation, reserves the descriptor gate,
+releases the native lease, queries native metadata, FINISHES GATE BEFORE heap
+reentry, unpins and builds VM Dir/strings only while ACTIVE. Native path staging
+is freed after reentry on every returned status. Failed queries publish no record.
+
+Directory slots now allocate the same native FIFO before open. Sys.dirread pins
+FD, reserves, releases, obtains one bounded C-owned batch, finishes the ticket,
+reenters and only then builds mapped records/strings. Native batches contain no
+managed pointers. They are freed after success/EOF or protected VM publication
+failure. Abort on publication failure shares the directory gate using a fresh
+serialized operation; it retains the active error-cleanup boundary. Close still
+refuses pending gate storage instead of freeing a live borrower.
+
+FIFO orders native cursor operations, not a whole-directory transaction or VM
+publication order. Completed concurrent batches cannot be rolled back by a later
+publication failure. Abort prevents future reads according to the native port
+contract. Open/create/close, private loader operations and protected native64holds/
+gchalt remain synchronous. No forced native cancellation or arbitrary C-stack
+release is introduced. One managed heap still has exclusive mutation across
+1..8 OS executors; native continuations keep their original OS owner.
+
+NATIVEMETADATA counts path/descriptor attempts, actual native releases, FD pins,
+PATH staging/peak and directory batch attempts. Native batch allocation belongs
+to the port separately; path counters are not whole-process memory accounting.
+These ACTIVE-only counters are not read concurrently by the collectors. Existing
+NATIVEFILES lifetime/pending checks cover directory gates as well as file gates.
+
+### Tests
+
+metadata-overlap.b and the PRIVATE Linux/glibc fixture pause actual stat64,
+fstat64 and readdir64 in inherited OS-pipe barriers, one phase each for UTF-8
+path, ordinary FD, directory FD and directory batch. The driver observes the
+native marker BEFORE sending a stdin token. Only then may the unrelated actor
+convert another UTF-8 path, compute and print; metadata permit is sent only AFTER
+that output. This proves progress DURING the native wait rather than trusting
+elapsed sleeps or output that could precede blocking. Two simultaneous native
+path snapshots must be reflected by the staging peak.
+
+The example additionally starts two readers sharing ONE65-entry directory. Every
+name must arrive exactly once across32-entry native batches; channel sends yield
+with mapped arrays/strings still rooted. Parent checks EOF and subsequent fstat.
+C/JIT4/8-owner console/editor runs and their installed packages pass, with at
+least15 metadata/batch lease releases, pins0/staging0, at least7 batch attempts,
+paired gate creation/close and pending0. The interposer is test-only and CMake
+checks glibc before registering it; no new production libc/extension requirement.
+
+Final27 selected runtime gates pass, plus the final65-entry fixture runs. Eight-
+executor MDI replay passes in C/JIT. Installed managed-worker tests, public-header
+C++98 syntax, shell/Python checks and both vendor manifests pass. Native Linux
+x64 is the new hosted execution target; no whole-VM TSan or new ARM/RV pool
+execution is claimed. Selected snapshots remain ba26accb:1096 runtime/312
+bootstrap files.0079 is reviewed/replayed in its owning tree, not silently
+activated as an executable shared file profile.
+
+The next hosted audit is open/create/close ownership and native retirement,
+not dropping GC/allocator/RC barriers for parallel heap writers. Your Inferno
+scheduler/native descriptor lifetime still needs its own audit before adapting
+these hosted helpers. No kernel/runtime adapter import is assumed from this
+journal exchange.
