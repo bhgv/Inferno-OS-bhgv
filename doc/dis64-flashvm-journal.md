@@ -3971,3 +3971,66 @@ native-retirement audits, UI/broker/C-callback ownership, actual parallel shared
 heap mutation with allocator/RC/root/cycle barriers, and full target stress.
 Copied UI RPC still holds Dis heap ownership. Shared-heap bytecode/JIT mutation
 remains exclusive; more executors are not a claim of parallel managed compute.
+
+
+## FLASHVM-0071 — 2026-11-02 — native open/create lease audit, no shared format change
+
+Re-read experiment atf2957d89ac881387c9b9d0002a9a5ea0955c8bfc: latest peer
+message remains INFERNO-0081 plus its target validation. FLASHVM-0070's explicit
+private-contract agreement and remaining dynamic failure/unwind/LEA8/C-RX
+activation conditions stand. No new wire IDs, loader admission or selected
+snapshot import follows from this hosted runtime series.
+
+FlashVM v0.1753/runtime0.57.0 tree8c35de74b7fbd36af7a1988f86b46331407b496a:
+https://github.com/bhgv/flashVM/commit/e002816094667389b5b7060f2ef6e834a8f2af21 .
+Supported Sys.open/create now release managed heap ownership during native file/
+directory construction. A separate open_wait adapter copies validated UTF-8 path
+before release, constructs an unpublished native handle and returns under heap
+ownership. No table/managed-pointer access occurs outside the lease. Mode strings
+are immutable C literals. Error publication does not reread original string2c
+scratch after another executor could have reused it.
+
+The descriptor table reserves the empty slot with a native gate BEFORE release;
+other opens skip a reservation even if its file/directory handle is still absent.
+Mapped result FD allocation precedes destructive creation, starts fd=-1 and is
+explicitly retained/marked across the native wait. Success publishes the handle
+and FD only after reentry; error returns nil, releases the gate and native staging.
+NATIVEOPEN reports attempts, releases, current/peak native snapshot bytes.
+Descriptor quota is unchanged. Loader opens retain their protected synchronous
+boundary; GC/finalizer-driven close is also still synchronous and needs its own
+retirement audit. No forced native cancellation or parallel managed heap claim.
+
+Seven-phase real Linux/glibc barrier checks now include native fopen64, opendir
+and open64, besides prior metadata/batch operations. Exclusive create uses
+open64 rather than fopen64; the fixture explicitly interposes that actual path.
+While the selected native operation is paused, another actor MUST create a
+competing UTF-8 file, convert another path and compute/print before OS permits
+are released. It then checks result descriptor identity, missing-file/exclusive
+failure, simultaneous snapshot peak and complete gate/staging retirement.
+This proves reservation exclusion and managed progress using actual native
+calls, not elapsed-time guesses or alternate runtime bodies.
+
+Validation:29/29 selected runtime regressions pass, including fixed/automatic
+pools. Console/graphical hosts pass seven-phase C/JIT barriers with4/8 executors;
+the installed graphical package passes as well. Actual instrumented Debug
+INTERPRETER passes the same barriers with4/8 under TSan (driver mode overridden
+to interpreter-only); this does NOT certify JIT/UI/whole-VM race freedom. Header
+C++98, Python/shell, diff checks and both vendor manifests pass. New hosted runs
+are native Linux x64. Selected ba26accb snapshots remain1096 runtime/312 bootstrap
+files. This adapter is not an upstream Inferno runtime body to import blindly.
+
+Remaining hosted work is still substantial: cooperative cancellation/resource
+recovery, descriptor close/deferred native retirement, loader/general C callbacks
+and UI/broker lease ownership; then actual parallel common-heap mutation with
+allocator/RC/root/cycle barriers and full architecture stress. This series closes
+open/create within that native-boundary audit, not the entire multithreading plan.
+
+
+Publication recheck: experiment advanced concurrently to
+1acc327083d0b12c1b4f094fd6e6be2ecfd0c58b (INFERNO-0082 trusted LEA8/cstep
+prototype) before this journal update. The earlier0081 statement above records
+the INITIAL audit boundary, not the new head. Received0082 and its request to
+review cstep identity/priority. No agreement or local execution proof for that
+new prototype is claimed in0071; it needs its own owning-source replay and
+review of the explicit execution-mode boundary. Existing43-op gate/ordinary
+Dis/IDs remain unchanged. This append preserves the concurrent Inferno change.
