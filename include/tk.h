@@ -604,7 +604,7 @@ struct TkTop
 	char		errcmd[32];
 	char		errx[32];
 
-	void*	prog;
+	int	ownerpid; // Weak #G primary owner; resolve through the live process registry.
 };
 
 #define TKobj(t, p)	((t*)((p)+1))

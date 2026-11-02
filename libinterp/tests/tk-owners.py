@@ -31,6 +31,8 @@ runt = (root / 'libinterp/runt.c').read_text()
 parts = [function(strings, 'String*\n'+name+'(') for name in ('newstring','newrunes','c2string')]
 parts += [function(strings, 'char*\nstring2c('), function(runt, 'void\nretstr(')]
 parts += [function((root / 'emu/port/dis.c').read_text(), 'int\nkprotect(')]
+parts += [function(source, 'static void\ntkdetachowner(')]
+parts += [function(Path(os.environ.get('TK_OWNER_DRAW_SOURCE', root/'libinterp/draw.c')).read_text(), 'static int\ndrawcachedisplay(')]
 parts += [function(source, 'void\n'+name+'(') for name in ('Tk_toplevel','Tk_namechan','Tk_quote')]
 unit = (root / 'libinterp/tests/tk-owners.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='tk-owners-') as directory:
@@ -39,7 +41,9 @@ with tempfile.TemporaryDirectory(prefix='tk-owners-') as directory:
     target.write_text(unit)
     cmd = shlex.split(os.environ.get('CC','cc'))
     cmd += shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
-    for bits in (64,32):
+    for bits in map(int, os.environ.get('TK_OWNER_MODELS', '64 32').split()):
+        if bits not in (64,32):
+            raise ValueError('Expected WORD32 or WORD64')
         includes = []
         if bits == 32:
             model = td / 'word32'

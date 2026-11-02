@@ -366,6 +366,33 @@ checkdisplay(Draw_Display *dd)
 	return d;
 }
 
+
+/* Retain a cached display before replacing an aliased result; each returned value owns one reference. */
+static int
+drawcachedisplay(Draw_Display **result, String *device)
+{
+	TkTop *top;
+	Draw_Display *display;
+	void *old;
+	Heap *heap;
+
+	if(string2c(device)[0] != 0)
+		return 0;
+	top = currun()->tktop;
+	if(top == nil || top->dd == H || top->dd == nil)
+		return 0;
+	display = top->dd;
+	heap = D2H(display);
+	heap->ref++;
+	poolmutable(heap);
+	old = *result;
+	*result = display;
+	destroy(old);
+	return 1;
+}
+
+
+/* Allocate an explicit display or return an owned default-display reference. */
 void
 Display_allocate(void *fp)
 {
@@ -378,19 +405,13 @@ Display_allocate(void *fp)
 	Draw_Rect r;
 	DRef *dr;
 	Cache *c;
-	
-	TkTop *t;
 
 	f = fp;
+	if(drawcachedisplay(f->ret, f->dev))
+		return;
 	destroy(*f->ret);
 	*f->ret = H;
 
-	t = (currun())->tktop;
-	if(t && t->dd){
-		*f->ret = t->dd;
-		return;
-	}
-	
 	if(cacheqlock == nil){
 		cacheqlock = libqlalloc();
 		if(cacheqlock == nil)

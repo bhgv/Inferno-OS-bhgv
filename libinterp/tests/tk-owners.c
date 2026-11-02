@@ -7,7 +7,7 @@
 #include "draw.h"
 #include "tk.h"
 #include "pool.h"
-#include <assert.h>
+#define require(condition) do { if(!(condition)){ fprintf(stderr, "Tk owner check failed at %d\n", __LINE__); abort(); } } while(0) // Keep checks active under NDEBUG.
 #include <stdio.h>
 
 static Proc worker;
@@ -18,6 +18,12 @@ static Type topType = {1, 0, 0, sizeof(TkTop)}, channelType = {1, 0, 0, sizeof(C
 static Type *fakeTkTop = &topType;
 Type Tptr = {1};
 static Prog program;
+static int ownerlive = 1; // Registry presence may disappear before a top is collected.
+static Type displayType = {1, 0, 0, sizeof(Draw_Display)};
+static Display nativeDisplay;
+static Image nativeImage;
+static TkCtxt topcontext;
+static void tkdetachowner(TkTop*);
 int mutator, nprop;
 static int allocations, failure, live, checks;
 static struct { Heap *heap; int size; } blocks[256];
@@ -29,13 +35,15 @@ getup(void)
 	return &worker;
 }
 
+
 /* Route allocation errors through the runtime's nested nonlocal error frames. */
 void
 nexterror(void)
 {
-	assert(worker.nerr > 0);
+	require(worker.nerr > 0);
 	siglongjmp(worker.estack[--worker.nerr], 1);
 }
+
 
 /* Keep the original VM error observable after cleanup and rethrow. */
 void
@@ -45,12 +53,14 @@ error(char *message)
 	nexterror();
 }
 
+
 /* Heap blocks are counted explicitly; process inspection for LSan is unavailable. */
 int
 __lsan_is_turned_off(void)
 {
 	return 1;
 }
+
 
 /* Poison exact payloads and inject failures before VM allocation. */
 Heap*
@@ -61,19 +71,20 @@ nheap(int size)
 
 	if(++allocations == failure)
 		error(exHeap);
-	assert(size >= 0 && size < 16384);
+	require(size >= 0 && size < 16384);
 	heap = malloc(sizeof(Heap)+size+32);
-	assert(heap);
+	require(heap);
 	memset(heap, 0, sizeof(Heap));
 	memset(heap+1, 0xa5, size+32);
 	heap->ref = 1;
 	for(i = 0; i < 256 && blocks[i].heap; i++);
-	assert(i < 256);
+	require(i < 256);
 	blocks[i].heap = heap;
 	blocks[i].size = size;
 	live++;
 	return heap;
 }
+
 
 /* Expose exact payload bounds to the production string constructors. */
 int
@@ -87,6 +98,7 @@ hmsize(void *heap)
 	abort();
 }
 
+
 /* Validate guards and model only the weak program-to-top pointer on final release. */
 void
 destroy(void *value)
@@ -99,19 +111,27 @@ destroy(void *value)
 		return;
 	heap = D2H(value);
 	for(i = 0; i < 256 && blocks[i].heap != heap; i++);
-	assert(i < 256 && heap->ref > 0);
+	require(i < 256 && heap->ref > 0);
 	for(j = 0; j < 32; j++)
-		assert(((uchar*)(heap+1))[blocks[i].size+j] == 0xa5);
+		require(((uchar*)(heap+1))[blocks[i].size+j] == 0xa5);
 	if(--heap->ref)
 		return;
 	if(heap->t == fakeTkTop){
-		if(program.tktop == value)
-			program.tktop = nil;
+		TkTop *top = value;
+		tkdetachowner(top);
+		if(top->root != nil){
+			free(top->root->name);
+			free(top->root);
+		}
+		if(top->dd != nil && top->dd != H)destroy(top->dd);
+		if(top->wreq != nil && top->wreq != H)destroy(top->wreq);
 		topType.ref--;
-	}else if(heap->t == &channelType)
+	}else if(heap->t == &displayType)
+		displayType.ref--;
+	else if(heap->t == &channelType)
 		channelType.ref--;
 	else{
-		assert(heap->t == &Tstring && ((String*)value)->tmp == nil);
+		require(heap->t == &Tstring && ((String*)value)->tmp == nil);
 		Tstring.ref--;
 	}
 	blocks[i].heap = nil;
@@ -131,6 +151,7 @@ currun(void)
 	return &program;
 }
 
+
 /* Allocate bounded opaque owners using real native record sizes. */
 Heap*
 heapz(Type *type)
@@ -144,21 +165,23 @@ heapz(Type *type)
 	return h;
 }
 
-/* Reused tops must already be live before their pool mode changes. */
+
+/* Publishing either a top or a cached display requires a live heap owner. */
 void
 poolmutable(void *heap)
 {
-	assert(((Heap*)heap)->ref > 0);
+	require(((Heap*)heap)->ref > 0);
 	((Heap*)heap)->color = mutator;
 }
 
-/* New-top construction is outside the exercised reuse path. */
+
+/* Record a valid immutable allocation before the constructor publishes it. */
 void
 poolimmutable(void *heap)
 {
-	(void)heap;
-	abort();
+	require(((Heap*)heap)->ref > 0);
 }
+
 
 /* Input names are ASCII, so no string cache capacity is needed. */
 ulong
@@ -168,49 +191,69 @@ msize(void *pointer)
 	abort();
 }
 
-/* Unexpected construction of a new GUI top must terminate a reuse case. */
+
+/* Supply a live display and distinct native widget records for actual top construction. */
 Display*
 checkdisplay(Draw_Display *display)
 {
-	(void)display;
-	abort();
+	require(display != nil && display != H && D2H(display)->t == &displayType);
+	nativeImage.r.max.x = 640;
+	nativeImage.r.max.y = 480;
+	nativeDisplay.image = &nativeImage;
+	return &nativeDisplay;
 }
 
-/* Window allocation is outside existing-top ownership tests. */
+
+/* Allocate the real Tk/TkWin extent; the fixture releases it with its top. */
 Tk*
 tknewobj(TkTop *top, int kind, int size)
 {
+	Tk *widget;
+
 	(void)top;
-	(void)kind;
-	(void)size;
-	abort();
+	require(kind == TKframe && size == sizeof(Tk)+sizeof(TkWin));
+	widget = calloc(1, size);
+	require(widget != nil);
+	return widget;
 }
 
-/* Window cleanup is outside existing-top ownership tests. */
+
+/* Release only an unfinished widget allocation. */
 void
-tkfreeobj(Tk *tk)
+tkfreeobj(Tk *widget)
 {
-	(void)tk;
-	abort();
+	free(widget->name);
+	free(widget);
 }
 
-/* Context allocation is outside existing-top ownership tests. */
+
+/* Window event queues are outside this bounded ownership fixture. */
 TkCtxt*
 tknewctxt(Display *display)
 {
 	(void)display;
-	abort();
+	return &topcontext;
 }
 
-/* Native name allocation is outside existing-top ownership tests. */
+
+/* Keep the root name independent between newly allocated windows. */
 TkName*
 tkmkname(char *name)
 {
 	(void)name;
-	abort();
+	return calloc(1, sizeof(TkName)+8);
 }
 
-/* Geometry callbacks compile the unexecuted new-top branch. */
+
+/* Resolve a weak primary owner only while its process is registered. */
+Prog*
+progpid(int pid)
+{
+	return ownerlive && pid == program.pid ? &program : nil;
+}
+
+
+/* Window resizing is outside constructor and reference ownership checks. */
 void
 tkmoveresize(Tk *tk, int a, int b, int c, int d)
 {
@@ -222,45 +265,49 @@ tkmoveresize(Tk *tk, int a, int b, int c, int d)
 	abort();
 }
 
-/* New-top option parsing must never run in a reuse case. */
+
+/* Constructor options have no side effects in the bounded native-window fixture. */
 void
 tktopopt(Tk *tk, char *options)
 {
 	(void)tk;
 	(void)options;
-	abort();
 }
 
-/* Channel construction belongs to the unexecuted new-top path. */
+
+/* Construct a tracked request channel for each actual new top. */
 Channel*
 cnewc(Type *type, void (*mover)(void), int length)
 {
 	(void)type;
 	(void)mover;
-	(void)length;
-	abort();
+	require(length == 8);
+	return H2D(Channel*, heapz(&channelType));
 }
 
-/* Mover identity compiles the unexecuted new-top path. */
+
+/* The bounded channel fixture records the mover identity without moving messages. */
 void
 movp(void)
 {
 	abort();
 }
 
+
 /* Record the context lock without relying on a real native event thread. */
 static void
 lockctxt(TkCtxt *ctxt)
 {
-	assert(ctxt == &context && !locked);
+	require(ctxt == &context && !locked);
 	locked = 1;
 }
+
 
 /* Deterministically replace or remove the variable as soon as its lock is released. */
 static void
 unlockctxt(TkCtxt *ctxt)
 {
-	assert(ctxt == &context && locked);
+	require(ctxt == &context && locked);
 	locked = 0;
 	if(interleave && variable){
 		destroy(variable->value);
@@ -273,11 +320,12 @@ unlockctxt(TkCtxt *ctxt)
 	}
 }
 
+
 /* Bind unrelated variable lookup/allocation to a controlled record under the lock. */
 TkVar*
 tkmkvar(TkTop *top, char *name, int type)
 {
-	assert(top && locked && strcmp(name, "chan") == 0 && type == TkVchan);
+	require(top && locked && strcmp(name, "chan") == 0 && type == TkVchan);
 	return variablemode == 1 ? nil : variable;
 }
 
@@ -295,6 +343,7 @@ quoteinvoke(void *unused)
 	return 1;
 }
 
+
 /* Build a representation independently of the production quoting algorithm. */
 static String*
 makestring(Rune *data, int length, int wide)
@@ -307,11 +356,12 @@ makestring(Rune *data, int length, int wide)
 		if(wide)
 			s->Srune[i] = data[i];
 		else{
-			assert(data[i] < 128);
+			require(data[i] < 128);
 			s->Sascii[i] = data[i];
 		}
 	return s;
 }
+
 
 /* Check independent character escaping and old-result retention under allocation failure. */
 static void
@@ -344,20 +394,21 @@ quotecase(Rune *data, int length, int wide, int oldmode, int fail, int nilinput)
 	raised = nil;
 	ok = kprotect(quoteinvoke, nil);
 	failure = 0;
-	assert(worker.nerr == 0);
+	require(worker.nerr == 0);
 	if(fail){
-		assert(!ok && raised == exHeap && quoted == old);
+		require(!ok && raised == exHeap && quoted == old);
 	}else{
-		assert(ok && quoted != H);
-		assert((quoted->len < 0 ? -quoted->len : quoted->len) == n);
+		require(ok && quoted != H);
+		require((quoted->len < 0 ? -quoted->len : quoted->len) == n);
 		for(i = 0; i < n; i++)
-			assert((quoted->len < 0 ? quoted->Srune[i] : (uchar)quoted->Sascii[i]) == expected[i]);
+			require((quoted->len < 0 ? quoted->Srune[i] : (uchar)quoted->Sascii[i]) == expected[i]);
 	}
 	destroy(quoted);
 	destroy(quote.s);
-	assert(live == 0 && Tstring.ref == 1);
+	require(live == 0 && Tstring.ref == 1);
 	checks++;
 }
+
 
 /* Reject huge output metadata before reading source bytes or allocating a result. */
 static void
@@ -373,48 +424,70 @@ quotebounds(void)
 		old = quoted = c2string("old", 3);
 		quote.ret = &quoted; quote.s = &forged;
 		allocations = 0; raised = nil;
-		assert(!kprotect(quoteinvoke, nil));
-		assert(raised == exHeap && allocations == 0 && quoted == old);
+		require(!kprotect(quoteinvoke, nil));
+		require(raised == exHeap && allocations == 0 && quoted == old);
 		destroy(quoted);
-		assert(!live && Tstring.ref == 1);
+		require(!live && Tstring.ref == 1);
 		checks++;
 	}
 }
 
-/* Reusing a weak program top must retain a fresh result before releasing an aliased old one. */
+
+/* Every API call creates a fresh namespace; secondary destruction cannot detach the primary. */
 static void
 topcases(void)
 {
-	TkTop *top, *old;
 	F_Tk_toplevel frame = {0};
-	Tk_Toplevel *result;
-	int mode, repeat, j;
+	Tk_Toplevel *result, *primary;
+	Draw_Display *display, *cached;
+	String *device;
+	int repeat, j;
 
-	for(mode = 0; mode < 3; mode++)for(repeat = 1; repeat <= 32; repeat++){
-		top = H2D(TkTop*, heapz(fakeTkTop));
-		program.tktop = top;
+	program.pid = 17;
+	for(repeat = 1; repeat <= 32; repeat++){
+		display = H2D(Draw_Display*, heapz(&displayType));
 		result = H;
-		if(mode == 1)
-			result = (Tk_Toplevel*)H2D(TkTop*, heapz(fakeTkTop));
-		if(mode == 2)
-			result = (Tk_Toplevel*)top;
 		frame.ret = &result;
-		old = mode == 2 ? nil : top;
+		frame.d = display;
+		frame.arg = H;
+		Tk_toplevel(&frame);
+		primary = result;
+		require(program.tktop == primary && ((TkTop*)primary)->ownerpid == program.pid);
+		D2H(primary)->ref++;
 		for(j = 0; j < repeat; j++){
-			D2H(top)->color = 0;
-			nprop = 0;
 			Tk_toplevel(&frame);
-			assert(D2H(top)->color == mutator && nprop == 0);
-			assert(result == (Tk_Toplevel*)top && program.tktop == top);
-			assert(D2H(top)->ref == (old ? 2 : 1));
+			require(result != primary && program.tktop == primary);
+			require(((TkTop*)result)->root != ((TkTop*)primary)->root);
+			require(((TkTop*)result)->ownerpid == 0);
+			cached = H;
+			require(drawcachedisplay(&cached, H) && cached == display);
+			require(D2H(display)->ref == 4);
+			require(drawcachedisplay(&cached, H) && D2H(display)->ref == 4);
+			destroy(cached);
 		}
+		device = c2string("remote", 6);
+		cached = H;
+		require(!drawcachedisplay(&cached, device) && cached == H);
+		destroy(device);
 		destroy(result);
-		if(old)
-			destroy(old);
-		assert(!live && topType.ref == 1 && program.tktop == nil);
+		require(program.tktop == primary);
+		destroy(primary);
+		require(program.tktop == nil && D2H(display)->ref == 1);
+		destroy(display);
+		require(!live && topType.ref == 1 && displayType.ref == 1 && channelType.ref == 1);
 		checks++;
 	}
+	primary = (Tk_Toplevel*)H2D(TkTop*, heapz(fakeTkTop));
+	((TkTop*)primary)->ownerpid = program.pid;
+	program.tktop = primary;
+	ownerlive = 0;
+	destroy(primary);
+	program.tktop = nil;
+	ownerlive = 1;
+	require(!live);
+	checks++;
 }
+
 
 /* Exercise replacement, same-channel assignment and variable deletion immediately on unlock. */
 static void
@@ -430,7 +503,7 @@ namecases(void)
 	for(variablemode = 0; variablemode < 3; variablemode++){
 		top = H2D(TkTop*, heapz(fakeTkTop)); top->ctxt = &context;
 		channel = H2D(Channel*, heapz(&channelType));
-		variable = calloc(1, sizeof(TkVar)); assert(variable); nativevars++;
+		variable = calloc(1, sizeof(TkVar)); require(variable); nativevars++;
 		variable->type = variablemode == 2 ? TkVstring : TkVchan;
 		variable->value = same ? channel : H2D(Channel*, heapz(&channelType));
 		if(same)D2H(channel)->ref++;
@@ -438,23 +511,24 @@ namecases(void)
 		frame.t = (Tk_Toplevel*)top; frame.c = channel;
 		frame.n = c2string("chan", 4); frame.ret = &result;
 		Tk_namechan(&frame);
-		assert(!locked && result != H);
+		require(!locked && result != H);
 		if(variablemode == 0){
-			assert(D2H(channel)->ref == (interleave ? 1 : 2));
-			assert(result->len == 0 && D2H(channel)->color == propagator);
+			require(D2H(channel)->ref == (interleave ? 1 : 2));
+			require(result->len == 0 && D2H(channel)->color == propagator);
 		}else{
 			char *message = variablemode == 1 ? TkNomem : TkNotvt;
-			assert(result->len == strlen(message));
-			assert(memcmp(result->Sascii, message, result->len) == 0);
+			require(result->len == strlen(message));
+			require(memcmp(result->Sascii, message, result->len) == 0);
 		}
 		destroy(result); destroy(frame.n);
 		if(variable){ destroy(variable->value); free(variable); nativevars--; variable = nil; }
 		destroy(channel); destroy(top);
-		assert(!live && !nativevars && channelType.ref == 1 && topType.ref == 1 && Tstring.ref == 1);
+		require(!live && !nativevars && channelType.ref == 1 && topType.ref == 1 && Tstring.ref == 1);
 		checks++;
 	}
 	interleave = 0;
 }
+
 
 /* Cross representation, escaped characters, previous owners and allocation failures. */
 int
@@ -483,7 +557,7 @@ main(int argc, char **argv)
 	if(argc > 1 && strcmp(argv[1], "bounds") == 0)quotebounds();
 	if(argc == 1 || strcmp(argv[1], "top") == 0)topcases();
 	if(argc == 1 || strcmp(argv[1], "name") == 0)namecases();
-	assert(checks > 0);
+	require(checks > 0);
 	printf("Tk owners: %d quote/bounds/top/channel/interleaving cases\n", checks);
 	return 0;
 }
