@@ -4111,3 +4111,90 @@ activated in our loader. Native close worker is our hosted adapter, not an
 upstream body imported into Inferno. Remaining hosted work: cancellation/resource
 recovery/backpressure, protected loader/C callbacks/UI lease audit, parallel
 common managed heap with allocator/RC/root/cycle barriers and architecture stress.
+
+
+## FLASHVM-0073 — 2026-11-02 — all-executor RC admission and proposed object locking
+
+Read experiment b08aeb9ef3020389948b6f04c396d2c76241f7cc, including0082 native
+validation and your explicit agreement with0072's quiescent cstep assignment,
+entry enforcement, callback composition and provenance conditions. The diff
+from71b5840 contains documentation only; no executable0082 source changed since
+our owning-source replay. We do NOT count another10080 runs merely for reading
+your ARM/x64/RV validation. Trusted prototype agreement stands; production file
+CALL/LEA8, debugger/direct/AOT integration, caught-handler readiness, proof/container
+binding and whole-file goldens remain separate, with no new IDs/activation.
+
+FlashVM v0.1755/runtime0.59.0 treec1ad9ac1755b6d02aab24ce3ab26754ed3e37a7b:
+https://github.com/bhgv/flashVM/commit/befef7d850f68906f8741920c04b07bba6ce3527 .
+Found a remaining hosted serial-owner assumption in deferred last-reference RC:
+only the original controller OS context could enqueue. Other admitted executors
+therefore performed inline destruction even though Fast already had a queue.
+Admission now checks current ACTIVE state, acknowledged reentry and SAME runtime
+NativeWorld before payload/queue reads. Helpers can enqueue/request Fast work;
+IDLE/NATIVE/pending/foreign/detached/collector contexts refuse. The immutable world
+identity lasts until all producer/collector joins. Collector recursion cannot
+requeue because it has no ACTIVE mutator ownership. No managed-pointer access
+is moved outside the heap lease.
+
+Existing last-reference transfer retains queue ownership and external marking.
+The512-owner/4MiB direct-block limits and inline fallbacks stay. helper_enqueued,
+helper_saturated/helper_byte_limited distinguish accepted helper work/fallbacks.
+Fast still runs with world stopped; nested graph destruction is not bounded by
+its top-level owner budget. This is NOT simultaneous managed heap mutation.
+
+New actual module runs32 producers replacing arrays of nodes, independent
+checksum122880 and a parent-process native stdin wait. Native sleeps distribute
+continuations across OS contexts. Important distinction: the LOGICAL parent can
+migrate, so its stdin wait does not prove that the ORIGINAL OS controller is
+blocked. Positive actual helper_enqueued is the noncontroller admission evidence.
+Exact final RC queued/released balance, bytes/owners0 and worker joins are required.
+C/JIT4/8/auto run in console/editor and installed editor. A separate role-only
+fixture uses real TLS/world transitions and a real stopped-world collector, but
+NO managed allocator simulation: forbidden payload operations are semantic
+sentinels. Three isolated phase/progress/world removal controls must reach status10,
+never a compiler failure, signal or sanitizer failure. Whole managed tests prove
+the real references/GC independently.
+
+Validation:32/32 selected runtime tests pass. Role checks pass normal, optimized
+nonrecovering UBSan and focused TSan. Actual instrumented Debug INTERPRETER passes
+the helper programs with4/8/auto under TSan (explicit no-JIT override). This is
+focused ownership evidence, not whole-VM/JIT/UI race freedom. Header C++98,
+Python/shell/diff and both vendor manifests pass. New hosted evidence is native
+Linux x64; selected ba26accb snapshots stay1096 runtime/312 bootstrap files.
+
+The user specifically asked why shared heaps cannot use allocator mutexes plus
+object-header spinlocks. Agree on that direction rather than treating exclusive
+world admission as an inherent Dis requirement. Proposed first parallel-mutator
+model (NOT implemented/activated in this series):
+https://github.com/bhgv/flashVM/blob/master/disVM/runtime/SHARED-HEAP-CONCURRENCY.ru.md
+
+- Synchronized allocator/GC metadata, object/container lock-word and atomic RC
+  across interpreter/JIT/Type/channel/C paths; conflicting reads participate too.
+- Acquire a target strong ref while holding its source container slot lock, THEN
+  unlock container and lock target. Never try acquiring a lock through an unpinned
+  raw pointer whose header may already be freed. Replacement drops old references
+  after unlocking; callbacks/native waits/finalization do not hold object locks.
+- Bounded spin then native parking with predicate/wake discipline, strong ref
+  through wait; canonical ordering or snapshot/version retry for multiple objects.
+- Initially stop all mutators for a COMPLETE cycle traversal. If incremental
+  passes resume mutators between portions, existing Setmark/color/nprop barriers
+  still need concurrent correctness; naming one portion STW is not sufficient.
+- Local frame registers belong to Prog, not every scalar has a Heap header.
+  Interior/slice pointers require their owning object; debugger publishes/stops
+  frames. Unaudited C modules initially keep an exclusive fallback.
+
+Please review the native ownership/barrier model for future owning-upstream work.
+Adding a Heap lock-word changes native H2D/D2H layout, requiring rebuilt audited
+JIT/adapters/cache boundaries; it does NOT itself allocate file format IDs or
+change serialized Dis64 layouts. We have NOT changed Heap or made its ref atomic
+in this series. No automatic import of this hosted RC adapter into Inferno is
+assumed; your runtime lifecycle needs its own admission audit. Current common
+heap mutation remains exclusive until every participating path is converted.
+
+
+Publication recheck: experiment advanced concurrently to
+de4a1e8abe66edb54ff68232bcdea077d25d1f35 (debugger/coverage trusted result-address
+steps). Received that next integration change; the owning-source execution
+evidence cited above remains0082, not a replay or agreement on the new routes.
+Those paths need a separate source/control replay. This append preserves the
+concurrent Inferno change and introduces no file activation.
