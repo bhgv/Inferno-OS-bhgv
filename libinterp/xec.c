@@ -5485,10 +5485,32 @@ int
 cjitexec(REG *r, int op, int (*fast)(REG*))
 {
 	void (*handler)(void);
+	Modlink *link;
+	Module *module;
+	int (*step)(void);
+	int compiled;
 
 	if(r != &R || op <= INOP || op >= MAXDIS || op == IECLR ||
 	   (uintptr)fast == (uintptr)-1)
 		return 0;
+	/* A decoded LEA cannot reconstruct a trusted predecode binding. Refuse any
+	 * translated mode before either ordinary native code or its C fallback writes. */
+	if(op == ILEA){
+		link = R.M;
+		if(link == nil || link == H || (uintptr)link%sizeof(void*) != 0 ||
+		   (uintptr)link > (uintptr)-1-sizeof(*link))
+			error(exCompile);
+		memmove(&module, (uchar*)link+O(Modlink, m), sizeof(module));
+		memmove(&compiled, (uchar*)link+O(Modlink, compiled), sizeof(compiled));
+		if(compiled)
+			error(exCompile);
+		if(module == nil || module == H || (uintptr)module%sizeof(void*) != 0 ||
+		   (uintptr)module > (uintptr)-1-sizeof(*module))
+			error(exCompile);
+		memmove(&step, (uchar*)module+O(Module, cstep), sizeof(step));
+		if(step != nil)
+			error(exCompile);
+	}
 	if(fast != nil && fast(r))
 		return 1;
 	handler = optab[op];

@@ -8,6 +8,9 @@ static unsigned int resultqueue[ResultCode]; // Shared bounded verifier queue.
 static Dis64BoundCall resultproof[Dis64LocalFunctions]; // Complete atomic proof records.
 static Dis64TypeTable resulttypes; // Borrowed validated descriptors of the current raw vector.
 static unsigned int resultcount, resultentry, resultframe; // Current admitted fixture geometry.
+static int resultdirectcontrol; // Run direct-entry refusal probes in isolated guard-removal controls.
+static int resultentrycontrol; // Skip repeated cache reuse only when deliberately publishing a raw entry.
+static int resultdirectcount; // Number of checked decoded C/published native entry probes.
 
 
 /* Semantic controls must stop before a truncated address can be consumed by CALL. */
@@ -294,6 +297,80 @@ resultguards(Module *module, Frame *pending)
 }
 
 
+/* Invoke only published entries; arbitrary jumps into private machine code are outside this ABI. */
+static int
+resultdirect(void *argument)
+{
+	int (*entry)(REG*);
+
+	memmove(&entry, argument, sizeof(entry));
+	return entry == nil ? cjitexec(&R, ILEA, nil) : entry(&R);
+}
+
+
+/* A foreign translation callback must never be invoked by decoded LEA entries. */
+static int
+resultotherstep(void)
+{
+	resultcheck(0, "direct LEA invoked foreign translation");
+	return 0;
+}
+
+
+/* Require decoded direct entries to reject translated modes before any write. */
+static void
+resultdirects(Module *module, Frame *pending, int jit, int mode)
+{
+	REG saved;
+	VmFetch fetched;
+	Modlink *owner;
+	int (*entry)(REG*);
+	int (*step)(void);
+	uchar before[8], after[8], wanted[8];
+	WORD address;
+	int route, status, which, refused, compiled;
+
+	saved = R;
+	owner = R.M;
+	step = module->cstep;
+	compiled = owner->compiled;
+	memmove(before, (uchar*)pending+32, 8);
+	for(route=0; route<(jit ? 3 : 1); route++)
+	for(which=0; which<8; which++){
+		R = saved;
+		require(vmfetch(&fetched));
+		vmdecode(&fetched);
+		address = (WORD)(uintptr)R.s;
+		memmove(wanted, before, 8);
+		refused = mode || which != 0;
+		if(!refused)
+			memmove(wanted, &address, sizeof(address));
+		entry = route == 0 ? nil : route == 1 ? module->jit->entry[ILEA] : module->jit->dispatch[ILEA];
+		switch(which){
+		case 1: R.M = nil; break;
+		case 2: R.M = H; break;
+		case 3: owner->m = nil; break;
+		case 4: owner->m = H; break;
+		case 5: owner->compiled = 1; break;
+		case 6: module->cstep = (int(*)(void))H; break;
+		case 7: module->cstep = resultotherstep; break;
+		}
+		status = kprotect(resultdirect, &entry);
+		owner->m = module;
+		owner->compiled = compiled;
+		module->cstep = step;
+		resultcheck(refused ? status == 0 && strcmp(message, exCompile) == 0 : status == 1,
+			"direct LEA mode guard missed");
+		memmove(after, (uchar*)pending+32, 8);
+		resultcheck(memcmp(after, wanted, 8) == 0 && R.PC == saved.PC+1 && worker.nerr == 0,
+			"direct LEA mode guard missed");
+		memmove((uchar*)pending+32, before, 8);
+		resultdirectcount++;
+	}
+	R = saved;
+}
+
+
 /* Probe ordinary WORD LEA and trusted LEA8 against the SAME cached module between modes. */
 static int
 resultwidth(int jit, int grow, int pointer, int onlymode)
@@ -349,7 +426,7 @@ resultwidth(int jit, int grow, int pointer, int onlymode)
 		if(onlymode >= 0 && mode != onlymode)
 			continue;
 		module->cstep = mode ? native64lea8step : nil;
-		if(jit){
+		if(jit && !resultentrycontrol){
 			require(compile(module, 3, nil));
 			require(module->jit->code == mapping);
 		}
@@ -360,9 +437,11 @@ resultwidth(int jit, int grow, int pointer, int onlymode)
 		require(kprotect(execute, &process) == 1);
 		pending = resultprepared(root, pointer);
 		memset((uchar*)pending+32, 0xa5, 8);
+		if(onlymode < 0 || resultdirectcontrol)
+			resultdirects(module, pending, jit, mode);
 		if(mode)
 			resultguards(module, pending);
-		require(kprotect(execute, &process) == 1);
+		resultcheck(kprotect(execute, &process) == 1, "native64 trusted predecode dispatch missed");
 		address = tail;
 		memset(wanted, 0xa5, 8);
 		if(mode)
@@ -409,6 +488,8 @@ main(int argc, char **argv)
 	optab[IDIVW] = divw;
 	optab[IEXIT] = iexit;
 	onlyjit = argc == 4 ? atoi(argv[2]) : -1;
+	resultdirectcontrol = argc == 4 && (strcmp(argv[3], "direct") == 0 || strcmp(argv[3], "entry") == 0);
+	resultentrycontrol = argc == 4 && strcmp(argv[3], "entry") == 0;
 	onlymode = argc == 4 ? strcmp(argv[3], "ordinary") != 0 : -1;
 	widths = runs = refused = 0;
 	for(jit=0; jit<2; jit++){
@@ -420,6 +501,7 @@ main(int argc, char **argv)
 	}
 	if(argc == 4)
 		return 0;
+	printf("PASS decoded LEA entry guards: %d ordinary/refused C/leaf/complete probes WORD%d\n", resultdirectcount, (int)sizeof(WORD)*8);
 	if(sizeof(WORD) == 8){
 		printf("PASS native64 address isolation: %d ordinary/trusted C/RX/cache/extent probes WORD64; 264 shape/fallback probes; no wire execution\n", widths);
 		return 0;

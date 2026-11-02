@@ -66,6 +66,9 @@ static int
 rvcachevalid(Jit *j, Module *m, int size, RvLayout *abi)
 {
 	u32int expected[RvMax];
+#if RVXLEN == 64
+	void *raw[256]; // Reconstruct private fast targets without trusting published entry aliases.
+#endif
 	uintptr cursor, last, bytes;
 	int op, n, i;
 
@@ -79,6 +82,9 @@ rvcachevalid(Jit *j, Module *m, int size, RvLayout *abi)
 		return 0;
 	cursor = (uintptr)j->code;
 	last = cursor+(uintptr)j->size;
+#if RVXLEN == 64
+	memset(raw, 0, sizeof(raw));
+#endif
 	for(op = 0; op < 256; op++){
 #if RVXLEN != 64
 		if(j->dispatch[op] != nil)
@@ -90,7 +96,11 @@ rvcachevalid(Jit *j, Module *m, int size, RvLayout *abi)
 		if(j->dispatch[op] == nil)
 			return 0;
 #endif
+#if RVXLEN == 64
+		if(op == ILEA ? j->entry[op] != j->dispatch[op] : (uintptr)j->entry[op] != cursor)
+#else
 		if((uintptr)j->entry[op] != cursor)
+#endif
 			return 0;
 		n = rvemit(expected, RvMax, abi, op);
 		if(n <= 0)
@@ -98,6 +108,9 @@ rvcachevalid(Jit *j, Module *m, int size, RvLayout *abi)
 		bytes = (uintptr)n*sizeof(u32int);
 		if(bytes > last-cursor || memcmp((void*)cursor, expected, bytes) != 0)
 			return 0;
+#if RVXLEN == 64
+		raw[op] = (void*)cursor;
+#endif
 		cursor += bytes;
 	}
 #if RVXLEN == 64
@@ -107,7 +120,7 @@ rvcachevalid(Jit *j, Module *m, int size, RvLayout *abi)
 		if((uintptr)j->dispatch[op] != cursor ||
 		   (j->entry[op] == nil && rvemit(nil, RvMax, abi, op) > 0))
 			return 0;
-		n = rvbridgeemit(expected, RvMax, (uvlong)(uintptr)cjitexec, op, (uvlong)(uintptr)j->entry[op]);
+		n = rvbridgeemit(expected, RvMax, (uvlong)(uintptr)cjitexec, op, (uvlong)(uintptr)raw[op]);
 		if(n <= 0)
 			return 0;
 		bytes = (uintptr)n*sizeof(u32int);
@@ -278,6 +291,9 @@ rvcompile(void *arg)
 		if(used != bridge[op])
 			goto bad;
 		code += used;
+		/* RV64 exposes LEA only through the checked decoded-operation bridge. */
+		if(op == ILEA)
+			j->entry[op] = j->dispatch[op];
 #endif
 	}
 #ifdef RV_CODE_PAGES

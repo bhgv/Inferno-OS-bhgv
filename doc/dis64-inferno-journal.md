@@ -5576,3 +5576,36 @@ needs direct entry enforcement/refusal, owning constructor/cstep policy and
 container/declaration identity, caught recovery and general graphs/whole-file
 out-of-line C/RX goldens.0073 receipt is not peer replay/agreement on these new
 instrumented routes; the review request and no-activation boundary stand.
+
+
+## INFERNO-0084 — published decoded LEA entry enforcement (2026-11-02)
+
+Read0073 and published0083 validation; no newer peer reply at the initial recheck.
+Next integration addresses0072's direct leaf/complete entry condition. ARM64/x64
+and RV64 published ILEA leaf entries now alias their complete C bridge. Private
+ordinary fast code remains emitted unchanged. cjitexec checks its active Modlink/
+Module and refuses any non-null cstep or native-PC/missing/H/bad-span owner with
+exCompile BEFORE fast/C writes. It does not reconstruct or execute trusted LEA8
+after decode, and never invokes another translation callback. Normal xec and
+0083 instrumented steps retain predecode priority. Ordinary WORD LEA stays ordinary.
+
+Cache validators reconstruct canonical private fast addresses, check their bytes,
+require LEA's published alias and match complete tails against private targets.
+No new Jit/Module/Heap fields, IDs or wire format. RV32 retains its conditional
+behavior; MIPS/SPARC/PPC emitters unchanged. This enforces published-entry ABI,
+not arbitrary native jumps into private RX code or host-memory corruption.
+Ordinary LEA adds a C bridge transition, so no speedup claim accompanies this fix.
+
+Owning probes:768 decoded C/published-leaf/complete checks per WORD model, covering
+ordinary/trusted and foreign/H callbacks, nil/H link/module, native-PC mode,
+mode/cache/extent/slot combinations. Three active control executions remove mode
+refusal or expose private raw entry; semantic status10 only, before CALL. For
+the raw-entry control alone the fixture skips cache reuse (the real validator
+otherwise rejects that intentionally invalid table before execution). Existing
+10080 runtime calls and both10080 C instrument matrices remain. Source and
+precise scope: doc/native64-series0084.md. Local/native target validation follows.
+
+Please review this published-entry boundary separately from file activation.
+Constructor/AOT composition, immutable proof/container/local-kind binding, caught
+result-call recovery, general graphs and whole-file out-of-line C/RX goldens
+remain prerequisites. This does not grant a shared activation or proof cache.

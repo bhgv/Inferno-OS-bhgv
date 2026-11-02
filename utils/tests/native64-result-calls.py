@@ -39,6 +39,11 @@ def unit(control, instrument=False, instrument_source=False):
         source = source.replace(marker, 'if(0 && step != nil && step())')
     elif control == 'ordinary':
         parts[-3] = parts[-3].replace('WORD address;', 'void *address;').replace('address = (WORD)(uintptr)R.s;', 'address = R.s;')
+    elif control == 'direct':
+        marker = 'if(step != nil)\n\t\t\terror(exCompile);'
+        if source.count(marker) != 1:
+            raise RuntimeError('decoded LEA guard marker drift')
+        source = source.replace(marker, 'if(0 && step != nil)\n\t\t\terror(exCompile);')
     if instrument:
         profile = extract((ROOT/'emu/port/devprof.c').read_text(), 'static void\ncpxec(')
         debug = extract((ROOT/'emu/port/devprog.c').read_text(), 'void\ndbgxec(')
@@ -109,7 +114,7 @@ def fixtures():
 # Reuse the port target compiler/runner; controls must fail before a bad pointer can reach CALL.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--control', choices=('width', 'priority', 'ordinary', 'guard_mode'))
+    parser.add_argument('--control', choices=('width', 'priority', 'ordinary', 'guard_mode', 'direct', 'entry'))
     parser.add_argument('--instrument', action='store_true', help='execute the actual active coverage C loop')
     parser.add_argument('--instrument-source', action='store_true', help='probe debugger source-output convention in the coverage fixture')
     args = parser.parse_args()
@@ -139,6 +144,15 @@ def main():
         env['TMPDIR'] = str(work)
         source = work/'calls.c'
         source.write_text(unit(args.control, args.instrument, args.instrument_source))
+        if args.control == 'entry':
+            name = 'comp-riscv.c' if arch == 'riscv64' else 'comp-leaf64.h'
+            body = (ROOT/'libinterp'/name).read_text()
+            marker = '\t\tif(op == ILEA)\n\t\t\tj->entry[op] = j->dispatch[op];'
+            if body.count(marker) != 1:
+                raise RuntimeError('published LEA guard marker drift')
+            prefix = '#define RVXLEN 64\n#define RV_CODE_PAGES\n' if arch == 'riscv64' else '#define LEAF_EMITTER "'+arch+'-emit.h"\n'
+            (work/'entry-control.h').write_text(prefix+body.replace(marker, ''))
+            source.write_text(source.read_text().replace('#include DIS64_TEST_COMPILER', '#include "entry-control.h"'))
         if args.instrument and args.control == 'priority':
             header = (ROOT/'include/vmfetch.h').read_text()
             marker = 'step == native64lea8step && step()'
@@ -159,9 +173,11 @@ def main():
             binary = work/('calls'+str(bits))
             subprocess.run(command+(['-DDIS_WORD32=1'] if bits == 32 else [])+[str(source), str(ROOT/'libinterp/dec.c'), '-Wl,--wrap=free', '-lm', '-o', str(binary)], env=env, check=True)
             if args.control:
-                for jit in ((0,) if args.control == 'ordinary' else (0, 1)):
+                for jit in ((0,) if args.control == 'ordinary' else (1,) if args.control == 'entry' else (0, 1)):
                     result = subprocess.run(runner+[str(binary), str(fixturesfile), str(jit), args.control], env=env, capture_output=True, text=True, timeout=120)
-                    marker = 'ordinary LEA changed width' if args.control == 'ordinary' else 'native64 LEA8 shape guard missed' if args.control == 'guard_mode' else 'native64 result address mismatch'
+                    marker = 'direct LEA mode guard missed' if args.control in ('direct', 'entry') else 'ordinary LEA changed width' if args.control == 'ordinary' else 'native64 LEA8 shape guard missed' if args.control == 'guard_mode' else 'native64 result address mismatch'
+                    if args.control == 'priority' and not args.instrument and jit == 1:
+                        marker = 'native64 trusted predecode dispatch missed'
                     if result.returncode != 10 or marker not in result.stderr:
                         raise RuntimeError('result control missed semantic predicate, status='+str(result.returncode)+': '+result.stdout+result.stderr)
                     print('PASS result-address control:', args.control, arch, 'jit='+str(jit), flush=True)

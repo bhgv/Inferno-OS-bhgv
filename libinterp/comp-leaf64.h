@@ -46,6 +46,7 @@ leafcachevalid(Jit *j, Module *m, int size, LeafLayout *abi)
 {
 	LeafOp operation;
 	u32int expected[LeafMax];
+	void *raw[256]; // Private fast-code addresses reconstructed from canonical mapping order.
 	uintptr cursor, last, bytes;
 	int op, n, i;
 
@@ -53,11 +54,13 @@ leafcachevalid(Jit *j, Module *m, int size, LeafLayout *abi)
 		return 0;
 	cursor = (uintptr)j->code;
 	last = cursor+(uintptr)j->size;
+	memset(raw, 0, sizeof(raw));
 	/* Compiler publication orders all fast entries before all complete tails. */
 	for(op = 0; op < 256; op++){
 		if(j->entry[op] == nil)
 			continue;
-		if(j->dispatch[op] == nil || (uintptr)j->entry[op] != cursor ||
+		if(j->dispatch[op] == nil ||
+		   (op == ILEA ? j->entry[op] != j->dispatch[op] : (uintptr)j->entry[op] != cursor) ||
 		   !leafop(&operation, op, sizeof(WORD)))
 			return 0;
 		n = leafemit(expected, LeafMax, abi, op);
@@ -66,6 +69,7 @@ leafcachevalid(Jit *j, Module *m, int size, LeafLayout *abi)
 		bytes = (uintptr)n*sizeof(u32int);
 		if(bytes > last-cursor || memcmp((void*)cursor, expected, bytes) != 0)
 			return 0;
+		raw[op] = (void*)cursor;
 		cursor += bytes;
 	}
 	for(op = 0; op < 256; op++){
@@ -74,7 +78,7 @@ leafcachevalid(Jit *j, Module *m, int size, LeafLayout *abi)
 		if((uintptr)j->dispatch[op] != cursor ||
 		   (j->entry[op] == nil && leafemit(nil, LeafMax, abi, op) > 0))
 			return 0;
-		n = leafbridgeemit(expected, LeafMax, (void*)cjitexec, op, (void*)j->entry[op]);
+		n = leafbridgeemit(expected, LeafMax, (void*)cjitexec, op, raw[op]);
 		if(n <= 0)
 			return 0;
 		bytes = (uintptr)n*sizeof(u32int);
@@ -235,6 +239,9 @@ leafcompile(void *arg)
 		if(used != bridge[op])
 			goto bad;
 		code+=used;
+		/* Publish LEA only through its mode-checked tail; retain its private fast code. */
+		if(op == ILEA)
+			j->entry[op] = j->dispatch[op];
 	}
 	if(leafcodepublish(j->code, j->size) != 0)
 		goto bad;
