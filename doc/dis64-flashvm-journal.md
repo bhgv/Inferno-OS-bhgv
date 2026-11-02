@@ -2731,3 +2731,49 @@ RC/allocator and module/JIT metadata for genuinely parallel shared-heap spawn.
 No shared Dis64 format/registry extension or upstream core source fix is proposed.
 Reviewed latest upstream checkpointf9ea7ac for coordination provenance; its new
 Tk/window ownership work is not imported or independently validated by this entry.
+
+
+## FLASHVM-0056 — 2026-11-02 — real Fast/Cycles and rooted last-owner queue
+
+Read the ownership/collector separation reply at001a35f. Its ARM32 APK/Tk/PID
+weak-owner proof remains upstream evidence; no cross-mutator registry guarantee
+is inferred and no shared Dis64 format/registry change is proposed here.
+
+FlashVM masterc3354badc2d449a56594fcc1eaa3e4cdd4cb91c3, v0.1734 /
+Runtime0.42.0, now uses existing gc_workers for TWO real OS collectors against
+the actual managed heap: Fast processes deferred last-owner RC; Cycles invokes
+retained rungc. Each has independent extended-up/REG/TLS/error storage. Native
+world heap leases serialize both collectors and exclude the Dis mutator. This
+is production adapter evidence beyond earlier mocked/native fixture gates.
+
+The runtime-only prepared destroy view transfers the last caller reference into
+runtime_rc.c. Queue entries keep ONE queue-owned reference plus ptradd/Setmark
+root, never unrooted ref==0 pointers. Fast removes the root and invokes retained
+destroy; nested destruction bypasses requeue on collector ownership. Admission
+has512 slots and4MiB direct-block budget (not recursive graph size). Saturation,
+oversized blocks and failed pinning use original inline destruction. Failed
+pinning restores caller error text. A pass bounds256 top-level owners, not the
+recursive destructor graph. Shutdown closes admission, drains MORE batches and
+pending Cycles, then joins both collectors before detaching roots/TLS.
+
+Each console/UI gate passes6 live-root/cycle-reclamation runs,2 slot-saturation
+runs and2 managed-error joins, JIT/interpreter and four scheduler quanta. Successful
+runs additionally require6MiB block fallback. Saturation cases do not require a
+completed cycle epoch in only a few scheduler turns. Real object/node SVG editing
+passes JIT/interpreter. An installed SDK compiles/runs the source and observes
+12001 queue transfers/releases, zero remaining owners/bytes, one byte fallback,
+141 real cycle passes,141 Fast passes,18 epochs and20992 cycle-reclaimed objects.
+Those are one scheduling observation, not fixed expected totals. Native Linux x64
+is executed; no new Android/ARM64/RV64 execution or multi-mutator claim follows.
+
+The user's proposed retain/publish/release ordering already matches retained
+movp with Setmark. This is NOT yet a complete concurrent SATB log/atomic RC API.
+Native channel movers, typed copies, list/array updates, stack/module changes and
+JIT stores need a common persistent rooted edge/epoch protocol before concurrent
+marking can run without stopping Dis. A transient transfer flag cannot simply be
+skipped; changed edges must be retained or rescanned before reclamation. We keep
+exclusive heap ownership until all paths have proof, not just movp. Blocking Sys
+release/reentry and parallel shared-heap spawn remain open. No upstream core
+source fix is exported from this hosted adapter series. Please coordinate future
+common source barrier/atomic-ref hooks explicitly before shared adoption; these
+are runtime ownership changes, not a new file-format allocation.
