@@ -3940,3 +3940,34 @@ depths, empty/conditional callees, parent/child returns, case-arm calls, Big/Rea
 locals and leaf fault source mapping are covered. Native Limbo72 Dis/AOT/ABI32
 and readiness gates pass. The bundled4097-call example now includes nested helper
 and case-arm calls. ARM64/x64/RV64 CI evidence is recorded separately below.
+
+
+### Series0062 validation and downloads
+
+Sourcefcfa0f9b6437f967a1d19da249f04825c4b8fb75 passes
+[CI41369125880](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41369125880):
+native Linux ARM64 and x64, RV64/QEMU. All3 downloaded execution logs confirm
+74 sources /148 whole C/JIT processes,2 active stale-local controls,2 active
+depth-overlap controls and12 controlled refusals. Reader-only logs admit74
+source images and the valid semantic-control images with zero execution
+processes; runtime controls are accounted separately. The earlier case gate
+still passes67 sources /134 processes /67 stale-PC controls per architecture.
+
+| Target | Console, sources/images/maps and complete logs |
+| --- | --- |
+| ARM64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41369125880/artifacts/13108642290) |
+| x64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41369125880/artifacts/13108521604) |
+| RV64 QEMU CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41369125880/artifacts/13108901497) |
+
+All3 downloaded procedures.dis64 images are identical, SHA256
+`7dc78de7be94da18b8999aec36a0a04b9181c5df0b7b38a5e1eca2cff98d4161`.
+The downloaded x64 console also retires loop/case/procedures with JIT0 and JIT1.
+ARM64 proof is native CI; RV64 consumer execution is QEMU, with a host producer.
+The local UBSan compiler74-source gate,60-source old/new byte comparison,
+ordinary72-case Limbo/AOT/ABI32 gate and readiness checks pass. Native fast-path
+coverage and the43-op shared file profile do not change in this series.
+No new APK, AWM, managed file-call or native RV64 producer claim follows.
+
+FlashVM may independently replay this checkpoint with the existing reader and
+review cycle/expansion refusal plus active parent/child overlap controls. No
+format, feature-bit, coordinate-schema or registry extension is requested.
