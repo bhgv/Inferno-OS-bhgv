@@ -7,6 +7,8 @@
 #include "kernel.h"
 #include "raise.h"
 
+
+/* Match a literal exception name or a trailing wildcard prefix. */
 static int
 ematch(char *pat, char *exp)
 {
@@ -27,6 +29,8 @@ ematch(char *pat, char *exp)
 	return 0;
 }
 
+
+/* Reuse the emergency ASCII exception buffer without overflowing it. */
 static void
 setstr(String *s, char *p)
 {
@@ -40,6 +44,8 @@ setstr(String *s, char *p)
 
 static String *exstr;
 
+
+/* Pin the emergency message buffer before exception handling can allocate. */
 void
 excinit(void)
 {
@@ -47,6 +53,8 @@ excinit(void)
 	poolimmutable(D2H(exstr));
 }
 
+
+/* Construct a message, falling back to the pinned emergency buffer. */
 static String*
 newestring(char *estr)
 {
@@ -62,7 +70,8 @@ newestring(char *estr)
 	return s;
 }
 
-#define NOPC	((ulong)-1) /* Match the loader's native-width absent-handler sentinel. */
+#define NOPC ((ulong)-1) // Match the loader's native-width absent-handler sentinel.
+
 
 /* Read Dis frame metadata without requiring native C structure alignment. */
 static Type*
@@ -76,24 +85,67 @@ frametype(uchar *fp)
 	return type;
 }
 
-/*
- * clear up an uncalled frame
- */
+
+/* Validate and discard every prepared frame in this extent's allocated suffix. */
 static void
 freeframe(uchar *fp, int setsp)
 {
-	Frame *f;
+	uchar *scan, *end, *last, *previous;
+	Frame links;
 	Type *type;
+	REG resumed;
+	int size;
 
-	f = (Frame*)fp;
-	memmove(&type, fp+O(Frame, t), sizeof(type));
-	if(type == nil)
-		unextend(f);
-	else if(type->np)
-		freeptrs(f, type);
+	end = R.SP;
+	if((uintptr)fp > (uintptr)end || (uintptr)end > (uintptr)R.TS ||
+	   (uintptr)end-(uintptr)fp > 0x7fffffff)
+		error(exHeap);
+	/* Validate the entire suffix before changing dead frame links or owners. */
+	for(scan = fp; scan != end; scan += size){
+		if((uintptr)end-(uintptr)scan < sizeof(Frame))
+			error(exHeap);
+		memmove(&links, scan, sizeof(links));
+		if(links.t == nil &&
+		   ((uintptr)R.EX > (uintptr)-1-OA(Stkext, reg.tos.fr) ||
+		    (uintptr)scan != (uintptr)R.EX+OA(Stkext, reg.tos.fr)))
+			error(exHeap);
+		type = frametype(scan);
+		if(type == nil || type == H ||
+		   (uintptr)type > (uintptr)-1-O(Type, size)-sizeof(size))
+			error(exHeap);
+		memmove(&size, (uchar*)type+O(Type, size), sizeof(size));
+		if(size < (int)sizeof(Frame) || (uintptr)size > (uintptr)end-(uintptr)scan ||
+		   links.mr != nil)
+			error(exHeap);
+	}
+	/* Only unentered frames are relinked; active caller links stay unchanged. */
+	last = nil;
+	for(scan = fp; scan != end; scan += size){
+		type = frametype(scan);
+		memmove(&size, (uchar*)type+O(Type, size), sizeof(size));
+		previous = last;
+		memmove(scan+O(Frame, fp), &previous, sizeof(previous));
+		last = scan;
+	}
+	while(last != nil){
+		memmove(&links, last, sizeof(links));
+		type = frametype(last);
+		memmove(&resumed, &R, sizeof(resumed));
+		/* Lower pending frames remain collector-visible until their own release. */
+		resumed.SP = last;
+		memmove(&R, &resumed, sizeof(R));
+		if(links.t == nil){
+			unextend((Frame*)last);
+			memmove(&resumed, &R, sizeof(resumed));
+		}else if(type->np)
+			freeptrs(last, type);
+		memmove(&R, &resumed, sizeof(R));
+		last = links.fp;
+	}
 	if(setsp)
 		R.SP = fp;
 }
+
 
 /* Check exception storage and cleanup maps before selecting a handler. */
 static int
@@ -201,7 +253,8 @@ int
 handler(char *estr)
 {
 	Prog *p;
-	Modlink *m, *mr;
+	Modlink *m, *mr, *departed;
+	REG resumed;
 	int str, ne, transfer;
 	ulong pc, newpc;
 	long eoff;
@@ -247,7 +300,9 @@ handler(char *estr)
 			v = p->exval;
 			memmove(&p->exval, v, sizeof(p->exval));
 			D2H(p->exval)->ref++;
+			memmove(&resumed, &R, sizeof(resumed));
 			destroy(v);
+			memmove(&R, &resumed, sizeof(R));
 			str = 1;
 			continue;
 		}
@@ -263,7 +318,9 @@ handler(char *estr)
 unhandled:
 	v = p->exval;
 	p->exval = H;
+	memmove(&resumed, &R, sizeof(resumed));
 	destroy(v);
+	memmove(&R, &resumed, sizeof(R));
 	return 0;
 found:
 	{
@@ -279,47 +336,58 @@ found:
 		}
 	}
 
-	/*
-	 * there may be an uncalled frame at the top of the stack
-	 */
-	t = frametype(R.FP);
-	if(R.FP < R.EX || R.FP >= R.TS)
-		freeframe(R.EX+OA(Stkext, reg.tos.fr), 0);
-	else if(R.FP+t->size < R.SP)
-		freeframe(R.FP+t->size, 1);
-
 	m = R.M;
-	while(R.FP != fp){
+	for(;;){
+		/* Argument evaluation can leave several extents or gaps below helpers. */
+		while((uintptr)R.FP < (uintptr)R.EX || (uintptr)R.FP >= (uintptr)R.TS)
+			freeframe(R.EX+OA(Stkext, reg.tos.fr), 0);
+		t = frametype(R.FP);
+		if((uintptr)t->size < (uintptr)R.SP-(uintptr)R.FP)
+			freeframe(R.FP+t->size, 1);
+		if(R.FP == fp)
+			break;
 		f = (Frame*)R.FP;
 		memmove(&frame, R.FP, sizeof(frame));
 		R.PC = frame.lr;
 		R.FP = frame.fp;
 		R.SP = (uchar*)f;
 		mr = frame.mr;
-		if(frame.t == nil)
+		memmove(&resumed, &R, sizeof(resumed));
+		if(frame.t == nil){
 			unextend(f);
-		else if(frame.t->np)
+			memmove(&resumed, &R, sizeof(resumed));
+		}else if(frame.t->np)
 			freeptrs(f, frame.t);
+		memmove(&R, &resumed, sizeof(R));
 		if(mr != nil){
+			departed = R.M;
+			resumed.M = mr;
+			resumed.MP = mr->MP;
+			memmove(&R, &resumed, sizeof(R));
+			destroy(departed);
+			memmove(&R, &resumed, sizeof(R));
 			m = mr;
-			destroy(R.M);
-			R.M = m;
-			R.MP = m->MP;
 		}
 	}
 	if(zt != nil){
+		memmove(&resumed, &R, sizeof(resumed));
 		freeptrs(fp, zt);
+		memmove(&R, &resumed, sizeof(R));
 		initmem(zt, fp);
+		memmove(&R, &resumed, sizeof(R));
 	}
 	eadr = fp+eoff;
 	memmove(&old, eadr, sizeof(old));
 	v = H;
 	memmove(eadr, &v, sizeof(v));
+	memmove(&resumed, &R, sizeof(resumed));
 	destroy(old);
+	memmove(&R, &resumed, sizeof(R));
 	transfer = p->exval != H;
-	if(!transfer)
+	if(!transfer){
 		v = newestring(estr);	/* might fail; the result slot already owns nil */
-	else
+		memmove(&R, &resumed, sizeof(R));
+	}else
 		v = p->exval;
 	/* Publish the held reference before removing its process root. */
 	memmove(eadr, &v, sizeof(v));
@@ -333,6 +401,8 @@ found:
 	p->kill = nil;
 	v = p->exval;
 	p->exval = H;
+	memmove(&resumed, &R, sizeof(resumed));
 	destroy(v);
+	memmove(&R, &resumed, sizeof(R));
 	return 1;
 }

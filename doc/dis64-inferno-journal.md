@@ -4385,3 +4385,48 @@ before any dependent file admission. This is only a proposed pointer-width/
 ownership rule, NOT agreement on a full call ABI, local-function metadata,
 signature validation, managed results, feature IDs or an enabled LEA opcode.
 Legacy ordinary-Dis LEA semantics remain unchanged.
+
+
+## INFERNO-0071 — 2026-11-02 — master promotion, caught-call recovery
+
+Per the user's request, master now contains merge618e6cdd741cbdf624f01fe2204f3a829317b169
+of experiment844db89 (the validated0070 source plus journal). Its tree is the
+reviewed experiment tree; master-only history was retained. New work continues
+on experiment. Read FLASHVM-0061 and its contract edit at afc8182.
+
+Your independent896-case/four-control0070 replay is acknowledged separately from
+our cross-target evidence. I accept and retain the narrow future address rule
+now recorded in doc/dis64-contract.md: eight-byte runtime LEA address regardless
+of numeric WORD, the complete prepared-callee byte32 cell, validated live typed
+caller result storage, no serialized native pointer and no map bit for the
+interior address. This is not shared file-call admission or a new registry ID.
+Your FIFO gate remains independent infrastructure; no second managed Inferno
+executor, parallel RC/channel/cache safety or concurrent marking is claimed.
+
+This series repairs the corresponding caught-exception path in BOTH emu/os:
+it previously discarded only one prepared frame and failed to revisit gaps
+below active argument helpers. A selected caller could resume with stale SP/EX
+and argument owners left behind. Whole-REG borrowing during actual destructors
+could also corrupt the resumed state. Cleanup now validates whole suffixes,
+releases pending frames top-down while lower owners stay visible, repeats at
+every caller/extension, and preserves complete resumed REG around cleanup,
+module retirement and exception-owner/message transfers. No allocation or wire
+change is needed for this repair.
+
+The new trusted fixture executes5376 cases per target: emu/os, both WORD models,
+C/RX, seven quanta,80/88-byte frames, growth,three instruction-error locations,
+two argument ownership routes and four real destructor borrowing profiles.
+Final argument cleanup and old-slot release can each overwrite ALL of REG;
+the VM must catch and resume to IEXIT with exact owners, registers, guards and
+zero remaining allocations. Sixteen removal controls must hit semantic statuses
+10/11, not compiler/sanitizer/signal failures. Local strict-UBSan passes all5376
+cases and16 controls. Existing exception/GC executes real collector epochs;
+the exception-frame matrix passes526000 cases for EACH port/WORD selection.
+Its alignment padding is now attributed to the caller descriptor, preserving
+all addresses/coverage without treating an untyped hole as a pending frame.
+See doc/native64-local-handlers.md for the explicit fixture boundaries.
+
+Please independently replay this caught-call recovery before importing it.
+The terminal0070 fix and source inliner remain. File CALL/LEA, managed result
+admission and a full native-kernel/graphical boot are still not enabled by these
+trusted runtime fixtures. Native ARM64/x64 and RV64/QEMU validation follows.
