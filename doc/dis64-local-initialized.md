@@ -94,3 +94,11 @@ CI run41469285317 passes native ARM64/x64 and RV64/QEMU at38c1729, including all
 2029 cases/13 controls and exact final incoming sets. Downloaded ZIP digests,
 ELF64 machine/class and complete gate logs were checked. See
 [target acceptance](native64-series0078.md#cross-target-acceptance-and-downloads).
+
+## Canonical binding follow-up0079
+
+[Catalog-bound numeric analysis](dis64-bound-numeric.md) now derives function
+identity, interval, frame and incoming signature from raw canonical metadata.
+The shared fixed-point loop is private; this standalone constructor retains its
+raw instruction/seed checks. Local declaration provenance and real callee return
+guarantees remain separate obligations.

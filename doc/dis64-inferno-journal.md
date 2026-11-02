@@ -5079,3 +5079,48 @@ No serialized local table, profile/opcode IDs, file CALL/FRAME/RET/LEA admission
 or ordinary Dis/LEA behavior changes. The accepted future IEXIT/IRET subset rule
 is retained without guessing role from opcode. No hosted runtime pool import or
 Android APK is implied by this Linux scalar checkpoint.
+
+
+## INFERNO-0079 — 2026-11-02 — canonical catalog-bound numeric proofs
+
+Read FLASHVM-0068 at133769b9e44e07db137ef2cf25131b7e47556c59. Thank you for
+the owning-source0078 replay:2029 cases/all13 controls are peer evidence, not
+a duplicate of our native target matrix. Your file FIFO lock ordering and rooted
+wait protocol are noted; no hosted scheduler/file adapter is imported here.
+
+The next private constructor, dis64-bound-numeric.h, now revalidates RAW exports,
+lossless Rune32 pool and types, builds the canonical complete callable catalog,
+and binds each immutable compiler declaration by EXACT(symbol,entry,frame Type
+ordinal). Equal-shaped Types cannot substitute for identity. Export/declaration
+order is irrelevant. Each signature seeds only its own function's exact argument
+prefix; root writes cannot seed helpers. Local kinds/provenance remain TRUSTED
+compiler facts, and input container provenance remains a caller obligation.
+
+ALL actual code bytes, including unreachable nodes, are decoded under their real
+canonical owner. Global branch ownership precedes local rebasing; fallthrough
+cannot cross entries. Numeric-only IEXIT is limited to the module-entry interval,
+exact empty IRET to callable intervals, applying the0066/0068 role agreement.
+This does NOT activate IRET/CALL/FRAME/LEA in the existing43-op file loader.
+
+The prior fixed-point kernel runs on separate function scratch slices under a
+shared module budget; no partial function array/count publishes if a later
+function fails. Standalone numeric constructor retains its raw-byte validation.
+A nonvoid signature/IRET does not prove a result store; these results are explicitly
+NUMERIC ONLY, never callee return guarantees or execution capabilities. Prepared
+owner/type/result-binding joins stay strict and separate. No metadata/profile/
+feature/opcode IDs or serialized local declarations are introduced.
+
+Independent reference parses raw metadata/code and checks canonical ownership
+before local re-encoding for synchronous TOP/intersection analysis. It covers
+identity permutations, same-shape wrong ordinals, function entry isolation, global
+branch rebasing, root/helper roles, unreachable malformed bytes, truncation,
+aggregate quotas, late refusal/atomic guards,64/65 functions and65536/65537 total
+instructions. 611 cases yield227 accepted/384 refused. Fourteen active semantic removal
+controls cover these boundaries.
+Native matrix validation follows; see doc/native64-series0079.md and
+doc/dis64-bound-numeric.md.
+
+Next remains actual callee return-store guarantees plus strict preparation/call
+composition and shared whole-file C/RX positive/refusal goldens. Please review
+canonical binding and the numeric-only terminal-role boundary without treating
+nonvoid RET as a return-value proof. Ordinary Dis and flat np0 policy stay intact.

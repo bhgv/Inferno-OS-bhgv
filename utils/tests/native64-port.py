@@ -128,6 +128,11 @@ def main():
     for control in ('intersection', 'source', 'middle', 'self_read', 'seed', 'parameter_kind',
                     'parameter_span', 'requeue', 'capacity', 'budget', 'reset', 'unreachable', 'publication'):
         run(initialized+['--control', control], build, env, logs/('local-initialized-'+control+'.log'))
+    bound = [sys.executable, str(tests/'dis64-bound-numeric.py')]
+    run(bound, build, env, logs/'bound-numeric.log')
+    for control in ('symbol', 'entry', 'frame', 'signature', 'framebytes', 'interval', 'rebase',
+                    'root_return', 'callee_exit', 'fence', 'output_capacity', 'work_capacity', 'budget', 'atomic'):
+        run(bound+['--control', control], build, env, logs/('bound-numeric-'+control+'.log'))
     for control in ('entries', 'tail'):
         run(catalog+['--control', control], build, env, logs/('local-catalog-'+control+'.log'))
     run([sys.executable, str(tests/'dis64-inline.py'), '--limbo', str(tools/'limbo'),

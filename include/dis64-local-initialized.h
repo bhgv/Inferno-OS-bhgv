@@ -93,43 +93,23 @@ dis64initseed(const unsigned char *data, unsigned int bytes, const Dis64LocalSlo
 }
 
 
-/* Decode every actual instruction, then solve reachable definite initialization by intersection.
- * Signature/local declarations are trusted immutable context, to be canonically bound later.
- * Accessible input/scratch/queue/output spans are disjoint. Scratch is disposable on refusal.
- * Result-tail/callee guarantees and callable role validation remain outside this scalar pass.
+/* Solve only internally derived, span-checked local facts and canonical entry seeds.
+ * count/slotcount/parameters/seed and every edge/slot ID are checked by the caller.
+ * This private kernel must never serve as an admission API for client-supplied facts.
  */
 static int
-dis64initializedcheck(const unsigned char *data, unsigned int bytes,
-	const unsigned char *signature, unsigned int signaturebytes,
-	const Dis64LocalSlot *slots, unsigned int slotcount, unsigned int framebytes,
-	Dis64InitWork *scratch, unsigned int *queue, unsigned int capacity,
+dis64initializedsolve(unsigned int count, unsigned int slotcount, unsigned int parameters,
+	const unsigned int *seed, Dis64InitWork *scratch, unsigned int *queue,
 	unsigned int limit, Dis64Initialized *output)
 {
 	Dis64Initialized summary = {0};
-	Dis64Instruction instruction;
 	Dis64InitWork *node, *target;
-	unsigned int count, pc, at, used, i, j, seed[4], outgoing[4], merged[4], targets[2];
+	unsigned int pc, i, j, outgoing[4], merged[4], targets[2];
 	unsigned int head, tail, pending, visits, edges, missing, lost, first, next;
 
-	if(data == 0 || bytes < 4 || scratch == 0 || queue == 0 || output == 0 ||
-	   !dis64localslotscheck(slots, slotcount, framebytes) || limit == 0 || limit > Dis64InitLimit ||
-	   !dis64initseed(signature, signaturebytes, slots, slotcount, seed, &summary.parameters))
-		return 0;
-	count = dis64u32(data);
-	if(count == 0 || count > Dis64LocalInstructions || count > capacity || count > (bytes-4)/2)
-		return 0;
-	at = 4;
-	for(pc=0; pc<count; pc++){
-		if(!dis64instructionread(data+at, bytes-at, &instruction, &used) ||
-		   !dis64localoperandscheck(&instruction, count, 0, count, slots, slotcount, framebytes, &scratch[pc].fact))
-			return 0;
-		if((scratch[pc].fact.edge == Dis64CFGNext || scratch[pc].fact.edge == Dis64CFGBranch) && pc+1 == count)
-			return 0;
+	for(pc=0; pc<count; pc++)
 		scratch[pc].seen = scratch[pc].queued = scratch[pc].processed = 0;
-		at += used;
-	}
-	if(at != bytes)
-		return 0;
+	summary.parameters = parameters;
 	summary.instructions = count;
 	summary.slots = slotcount;
 	summary.reached = 1;
@@ -220,5 +200,41 @@ dis64initializedcheck(const unsigned char *data, unsigned int bytes,
 	}
 	*output = summary;
 	return 1;
+}
+
+
+/* Decode every actual instruction before invoking the private fixed-point kernel.
+ * Signature/local declarations are trusted immutable context, canonically bound later.
+ * All accessible input/scratch/queue/output spans are disjoint; refusal preserves output.
+ */
+static int
+dis64initializedcheck(const unsigned char *data, unsigned int bytes,
+	const unsigned char *signature, unsigned int signaturebytes,
+	const Dis64LocalSlot *slots, unsigned int slotcount, unsigned int framebytes,
+	Dis64InitWork *scratch, unsigned int *queue, unsigned int capacity,
+	unsigned int limit, Dis64Initialized *output)
+{
+	Dis64Instruction instruction;
+	unsigned int count, pc, at, used, seed[4], parameters;
+
+	if(data == 0 || bytes < 4 || scratch == 0 || queue == 0 || output == 0 ||
+	   !dis64localslotscheck(slots, slotcount, framebytes) || limit == 0 || limit > Dis64InitLimit ||
+	   !dis64initseed(signature, signaturebytes, slots, slotcount, seed, &parameters))
+		return 0;
+	count = dis64u32(data);
+	if(count == 0 || count > Dis64LocalInstructions || count > capacity || count > (bytes-4)/2)
+		return 0;
+	at = 4;
+	for(pc=0; pc<count; pc++){
+		if(!dis64instructionread(data+at, bytes-at, &instruction, &used) ||
+		   !dis64localoperandscheck(&instruction, count, 0, count, slots, slotcount, framebytes, &scratch[pc].fact))
+			return 0;
+		if((scratch[pc].fact.edge == Dis64CFGNext || scratch[pc].fact.edge == Dis64CFGBranch) && pc+1 == count)
+			return 0;
+		at += used;
+	}
+	if(at != bytes)
+		return 0;
+	return dis64initializedsolve(count, slotcount, parameters, seed, scratch, queue, limit, output);
 }
 #endif
