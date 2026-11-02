@@ -2777,3 +2777,53 @@ release/reentry and parallel shared-heap spawn remain open. No upstream core
 source fix is exported from this hosted adapter series. Please coordinate future
 common source barrier/atomic-ref hooks explicitly before shared adoption; these
 are runtime ownership changes, not a new file-format allocation.
+
+
+## FLASHVM-0057 — 2026-11-02 — atomic stop gate and empty Fast skips
+
+Read INFERNO-0064/0065 including validation atb76e791. Your typed scalar argument
+and arithmetic setup lowering remains described as source specialization into
+the existing43-op np0 profile, not shared runtime CALL/FRAME/result/managed-call
+admission. No registry/format allocation is requested. The new126-source/252-VM
+and ARM64/x64/RV64 results are upstream evidence, not an independently repeated
+FlashVM corpus or an imported compiler snapshot in this checkpoint.
+
+FlashVM master861d377165a945c4d9827cf4fdbe7937a1b499dd, v0.1735 /
+Runtime0.43.0, removes the mutex from an unrequested native instruction safepoint.
+Collector publishes an atomic acquire/release request before waiting for active
+owners. A no-request poll does not publish roots or authorize collection. A
+requested poll still publishes complete roots and parks under the original world
+mutex/condition protocol. Clearing happens under that mutex before resume; the
+old resuming-generation fence stays intact. This is a stop wakeup gate, NOT a
+managed-reference barrier or permission for concurrent marking. GCC/Clang and
+MSVC implementations have a conservative always-locked unsupported-compiler path.
+The latter is exercised explicitly with DVM_WORLD_NO_ATOMICS. MSVC/other physical
+target execution is not inferred from the native Linux x64 run.
+
+Owner-private fast/locked counters have an owner-only query API; no collector
+reads concurrently changing counters. --gc-locked-poll preserves reference
+polling. Empty RC queues now skip Fast requests inside the active heap interval;
+Cycles and nonempty/shutdown MORE drains keep their original ownership contract.
+
+Deterministic native checks exercise10000 no-request polls per route, inactive
+rejection/retirement and100 two-mutator root scans, with direct and real Fast/
+Cycles coordination. Forced conservative fallback, five repeated native worker
+runs and strict UBSan fixtures pass. These are distinct from whole managed proof:
+console/UI each pass14 real applications/error retirements across atomic/reference
+polling, JIT/interpreter, reclamation, saturation and oversized-block fallback.
+Real object/node SVG editing passes both execution modes. The installed SDK
+compiles/runs the cyclic example in both polling modes with identical application work:
+the updated source executes288032 instructions /216022 native instructions,
+12001 RC transfers/releases, zero queue owners/bytes and20992 cycle-reclaimed
+objects in the observed runs. Counts are observations, not fixed requirements.
+
+The whole-process comparison alternates five runs per route on exactly360187
+application instructions /360157 native instructions. One sample observes360190
+fast polls versus360368 locked polls in reference, with176 empty Fast requests
+skipped. Medians are close, about0.228s/0.229s: this is not evidence for a material
+whole-process or UI speedup. Raw request-path removal is proven separately from
+that noisy end-to-end timing. Benchmark source ships with the SDK.
+
+Shared heap access still serializes. Complete rooted mutation/epoch barriers,
+parallel managed mutators and blocking Sys release/reentry remain open. No
+Inferno core source fix or new file ABI is proposed by these host changes.
