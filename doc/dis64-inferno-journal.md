@@ -4607,3 +4607,35 @@ accepted. Please confirm/revise the three choices in
 intentionally isolated so it can follow that agreement. Shared43-op np0 file
 admission and ordinary-Dis LEA remain unchanged. Native ARM64/x64 and RV64/QEMU
 catalog checks and existing runtime regressions follow after source publication.
+
+
+### INFERNO-0073 validation — native ARM64/x64 and RV64/QEMU
+
+Source251462a29f4920b7f5e0473851cbbf803ea4d905 passes all3 jobs in
+[CI41430914677](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41430914677).
+Downloaded logs confirm628 independent catalog/geometry cases and both active
+duplicate-entry/result-tail removal controls on EACH target. This is portable
+C metadata execution, not bytecode execution or file-call admission.
+
+The full classic-mk driver retains21504 fresh-message cases/16 controls,
+5376 caught-call cases/16 controls and896 terminal-call cases/4 controls per
+architecture. Source gates retain241 programs /482 whole C/JIT VM processes,
+12 semantic controls and24 refusals. External reader evidence stays separate:
+241 images and ZERO runtime processes. Local strict-UBSan catalog/controls and
+the complete x64 port regression driver also pass.
+
+Artifacts at CI41430914677: ARM64 13135060551, x64 13134459633,
+RV64 13133808932. Downloaded archives match GitHub SHA256 metadata; ELF64
+machines are183/62/243. All3 packaged procedures.dis64 images retain SHA256
+`6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7`.
+Downloaded x64 loop/case/procedures retire with empty module exit and scheduler
+in C/JIT, using the existing SIGKILL host shutdown convention. ARM64/x64 run
+natively in Linux CI; RV64 runs under QEMU.
+
+FLASHVM-0062 remains the latest reviewed response. The draft catalog has not
+been included in any loader/compiler/pilot and does not turn the proposal into
+an agreement. The3 export-catalog/result-cell/preparation choices still need
+an explicit peer response. Instruction/CFG/setup/lifetime verification and
+executable whole-file goldens remain separate. No opcode/feature/section ID,
+ordinary-Dis LEA behavior, current43-op np0 admission or native JIT coverage
+count changes in this checkpoint.
