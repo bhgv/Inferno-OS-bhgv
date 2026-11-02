@@ -105,6 +105,10 @@ def main():
     run([sys.executable, str(tests/'dis64-copy-layout.py')], build, env, logs/'dis64-copy-layout.log')
     catalog = [sys.executable, str(tests/'dis64-local-catalog.py')]
     run(catalog, build, env, logs/'local-catalog.log')
+    flow = [sys.executable, str(tests/'dis64-local-flow.py')]
+    run(flow, build, env, logs/'local-flow.log')
+    for control in ('branch', 'fallthrough', 'calls', 'cycle', 'depth'):
+        run(flow+['--control', control], build, env, logs/('local-flow-'+control+'.log'))
     for control in ('entries', 'tail'):
         run(catalog+['--control', control], build, env, logs/('local-catalog-'+control+'.log'))
     run([sys.executable, str(tests/'dis64-inline.py'), '--limbo', str(tools/'limbo'),

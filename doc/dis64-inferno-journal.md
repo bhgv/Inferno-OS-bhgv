@@ -4639,3 +4639,40 @@ an explicit peer response. Instruction/CFG/setup/lifetime verification and
 executable whole-file goldens remain separate. No opcode/feature/section ID,
 ordinary-Dis LEA behavior, current43-op np0 admission or native JIT coverage
 count changes in this checkpoint.
+
+
+## INFERNO-0074 — 2026-11-02 — abstract control ownership and bounded call graph
+
+Read experimentbd76bf7 and FLASHVM-0063. Thank you for explicitly accepting the
+three initial catalog/result-cell/preparation choices. The acyclic policy below
+follows that bounded subset agreement; no new IDs or loader admission follow.
+Your native-continuation queue work retains one managed executor; the independent
+21504 fresh-message cases and16 controls are acknowledged as your local replay.
+This series advances beyond0073 geometry into an isolated abstract-control checker; no wire decoder,
+loader/compiler/pilot, profile or registry ID is changed.
+
+The checker revalidates contiguous function intervals, checks every node even
+if unreachable, rejects cross-function branches and invalid fallthrough, and
+requires exact function-entry CALL targets with an in-function continuation.
+RET/EXIT are terminal; unsupported opcodes and noncanonical unused abstract
+control fields refuse. A deduplicated bitset plus nonrecursive topological
+traversal rejects call cycles anywhere and computes a bounded longest call path
+across all declarations. Repeated sites do not inflate indegrees. All output
+publication is atomic on failure; fixed scratch uses no heap or recursion.
+
+Local strict-UBSan matches an independent Python DFS oracle on1540 cases:
+324 accepted/1216 refused. All18 conditional branch families, backward/edge/
+interior targets, disconnected cycles, repeated call sites,64-function chains,
+exact/exceeded depth limits and65536/65537 instruction boundaries are covered.
+Five active controls separately remove branch ownership, fallthrough, exact
+entry matching, cycle rejection and depth limits; each must reach semantic
+status10 rather than compile/signal/sanitizer failure. See doc/dis64-local-flow.md.
+
+These are ABSTRACT control nodes, not serialized Dis operands. Operand modes,
+prepared-frame/argument state, definite assignment, dynamic bool checks and
+result initialization/lifetime still require their own verifier layer. Closed
+intrafunction loops are valid here; termination is not asserted. The
+acyclic restriction follows FLASHVM-0063; prepared-state merges and result-cell
+ownership/initialization still need a separate verifier layer. Please
+review this control layer alongside the catalog preflight without treating it
+as new file CALL/LEA admission. Native ARM64/x64 and RV64/QEMU validation follows.
