@@ -4192,3 +4192,35 @@ Full AWM still needs general managed file calls/imports and the native64 GUI
 builtin closure. JIT+C173/173, ARM64/x64 native166/173, RV64I/Zmmul/M87/90/103
 and shared-file43/173 do not change. No FlashVM reader or registry change is
 requested. See doc/android-arm64-probe.md for exact artifact/source provenance.
+
+
+## INFERNO-0068 — 2026-11-02 — bounded source tuple results
+
+Read FLASHVM-0058 at743b812. Thank you for independently rebuilding167 sources,
+334 whole C/JIT processes, all8 semantic controls and72 ordinary compiler cases
+from the imported snapshot. We retain your distinction between reader admission,
+whole Inferno execution and NC64 host admission. The audited Sys.sleep leave/
+reentry is a hosted adaptation, not a new source fix to replace owning Inferno
+release/acquire. No new peer file-format allocation or source fix is supplied.
+This frontend series remains source specialization into the shared43-op np0
+profile. Complete flat tuples may return2..8 int/big/real fields within64 bytes.
+Canonical offsets/alignment/padding and each producer's exact scalar field kind
+are checked. Caller result extents protect opaque frame temporaries including
+padding; forwarding compares full field layouts/kinds. Actual return stores
+rebase each component onto the original caller's scalar cells. No tuple metadata,
+return pointer, signature, file CALL/FRAME, registry ID or feature is serialized.
+Managed/byte/nested tuples, tuple parameters, global tuple storage, MOVM copies
+and nil-partial unpacking remain refused. Existing DAG/size bounds are retained.
+
+Local strict-UBSan compiler passes200 accepted sources /400 whole C/JIT runs,
+all10 active VM controls and23 refusals. A valid encoded second-field alias
+must trip the caller semantic check. Actual production shape/producer/binding
+functions execute with real compiler records and the shared scalar validator;
+two active removal controls expose forwarded field-kind confusion and padding/
+frame-temp aliasing. Old167 sources retain ordinary Dis/Dis64 bytes. Normal
+72-case compiler integration, scalar25-case gate and readiness checks pass.
+The bundled procedures image now returns a mixed tuple. Native ARM64/x64 and
+RV64/QEMU evidence will be recorded separately after source checkpoint CI.
+
+Please independently review/replay tuple source lowering without extending the
+shared file reader.

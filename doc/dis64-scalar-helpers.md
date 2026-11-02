@@ -1,4 +1,4 @@
-# Bounded scalar source procedures: through series 0066
+# Bounded scalar source procedures: through series 0068
 
 `limbo -6` can specialize direct FRAME/CALL pairs into its sole exported
 `init()` before the existing numeric-case and scalar lowering passes. This is
@@ -8,13 +8,13 @@ signature, coordinate schema or wire identifier is assigned.
 
 The current bounds are 16 compiled functions including the entry, 32 original
 instructions per helper excluding its final RET, and 128 bytes of legacy helper
-frame extent. Each helper has a void or int/big/real result, no recursion and no managed frame map.
+frame extent. Each helper has a void, scalar or bounded flat numeric tuple result, no recursion and no managed frame map.
 Int/Big/Real arguments use validated consecutive scalar producers. Bounded acyclic
 helper-to-helper calls are admitted. Numeric helper case tables are admitted
 within the same eight-label bound as entry-local tables. Helpers may contain
 scalar conditional branches, loops and early returns. Series 0058 also admits
 user-declared int/big/real locals with fresh zero initialization per call.
-Byte, pointer and aggregate locals remain refused. The entry can retain
+Byte, pointer and managed/nested aggregate locals remain refused. The entry can retain
 its own loops, branches and bounded numeric cases around the calls.
 
 The compiler validates exact FRAME/argument-copy/CALL setups, callee start and frame
@@ -515,3 +515,43 @@ and87/90/103 RV64I/Zmmul/M; JIT plus C173/173 and shared-file admission43/173
 are unchanged. No new physical Android/APK, managed import/call or full shell
 acceptance is claimed. FlashVM can replay the result/forwarding controls without
 changing its shared reader or allocating a result ABI in the file registry.
+
+
+## Series0068: flat numeric tuple results
+
+Source helpers can return complete flat tuples with2..8 int/big/real fields,
+at most64 bytes, canonical field offsets and natural4/8-byte alignment. Padding
+is validated rather than treated as an addressable result component. The source
+compiler admits matching pointer-free tuple storage only in local frames, never
+as a new global initializer or shared file type. Tuple arguments, managed/byte/
+nested tuple fields, global tuple storage, whole MOVM copies and nil-partial
+unpacking remain outside this stage. Existing parameter and DAG bounds remain.
+
+Each return producer must match an exact declared field offset and scalar kind.
+Caller bindings validate the complete result extent including padding, protect
+frame-pointer temporaries, then check every scalar field against existing FP/MP
+bounds. Forwarding compares complete field kinds/offsets, not merely Ttuple or
+byte size. Every returned field is rebased onto the original caller destination;
+callee sources and middle operands still use the active private depth span.
+No tuple descriptor, return pointer, file CALL/FRAME, signature, feature or wire
+identifier is emitted. Output remains the same43-op np0 scalar file profile.
+
+Local strict-UBSan compiler execution passes200 accepted sources /400 whole
+C/JIT processes, all10 active VM controls and23 controlled refusal shapes.
+The new overlap control redirects the actual second Word field onto the first
+while retaining valid wire framing/storage; the caller must detect corruption.
+The production tuple layout/producers/binding functions execute with actual
+Type/Decl/Inst records and the real scalar validator. Two removal controls expose
+same-size Big/Real identity confusion and result padding/frame-temp aliasing.
+These owning compiler checks are wired into the native64-port matrix separately
+from actual VM execution and external reader admission.
+
+The corpus covers all9 ordered scalar pairs and6 mixed triples, three forwarded
+depths, nested result arithmetic,4097 calls with renewed locals, ignored results,
+early/case returns and an8-Big/64-byte boundary. Word/Big second-field errors,
+invalid shifts and forwarded tuple faults retain the correct helper source line.
+All167 earlier accepted sources retain identical ordinary Dis and Dis64 bytes.
+The ordinary native compiler gate keeps72 Dis/AOT/ABI32 cases; scalar compiler
+and per-opcode readiness remain unchanged. The packaged procedures example now
+returns fold's Word/Big/Real values through a caller-owned case-arm result tuple.
+Cross-target CI and downloaded-image evidence follow separately.

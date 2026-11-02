@@ -12,6 +12,10 @@ struct Dis64Prepared {
 };
 
 
+/* Validate private source scalar/flat-tuple geometry; no shared wire type or calling signature is added. */
+unsigned int dis64inlineshape(Type*);
+
+
 /* Prepare a bounded entry and acyclic scalar helpers; zero output first and free partial state on refusal. */
 int dis64prepare(Decl*, Inst*, unsigned int, unsigned int, Dis64Prepared*);
 

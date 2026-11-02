@@ -170,3 +170,11 @@ pointers are never emitted into Dis64, and the shared43-op profile is unchanged.
 The procedures example now returns fold's Word result through a private case arm.
 Managed/byte results, runtime file calls and general native pointer ABI remain
 closed; see doc/dis64-scalar-helpers.md for evidence and remaining limits.
+
+
+Series0068 admits complete flat tuple results with2..8 int/big/real fields and
+at most64 bytes. Canonical field alignment, padding and forwarded layout/kinds
+are validated before each destination is specialized. The procedures example
+now returns a mixed Word/Big/Real tuple. Tuple parameters, managed/nested tuples,
+global tuple storage and nil-partial unpacking remain outside admission. Runtime
+file calls and the existing43-op wire profile are unchanged.

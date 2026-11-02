@@ -17,10 +17,13 @@ dis64error(Decl *entry, char *message)
 static int
 dis64scalarlist(Decl *decl, int tables)
 {
-	for(; decl != nil; decl = decl->next)
-		if(decl->ty == nil || ((decl->ty->kind != Tint && decl->ty->kind != Tbig && decl->ty->kind != Treal) &&
-		   !(tables && dis64scalartable(decl))))
-			return 0;
+	for(; decl != nil; decl = decl->next){
+		if(dis64inlineshape(decl->ty) != 0 && (!tables || decl->ty->kind != Ttuple))
+			continue;
+		if(tables && dis64scalartable(decl))
+			continue;
+		return 0;
+	}
 	return 1;
 }
 

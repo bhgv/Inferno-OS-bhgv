@@ -85,6 +85,39 @@ def programs():
     yield 'helper-result-case-99', 'calls:int;key:=99;answer:int;', 'helper(a:int):int{calls++;case a {0=>return 11;1 to 10=>return 19;* =>return 23;}} init(){answer=helper(key);if(answer!=23||calls!=1)calls/=0;}', ''
     yield 'helper-result-control', 'calls:int;x:=3;', '\nhelper():int{\ncalls++;\nreturn x+calls;\n}\ninit(){answer:=helper();if(answer!=4||calls!=1)calls/=0;}', ''
     yield 'helper-result-argument-call', 'value:int;', 'inner():int{value++;return value;} helper(a:int){value+=a;} init(){helper(inner());if(value!=2)value/=0;}', ''
+    yield 'helper-tuple-shape-0', 'calls:int;x:=7;', 'helper(a:int):(int,int){calls++;return(a+1,a+1);} init(){(v0,v1):=helper(x);if(v0!=8||v1!=8||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-shape-1', 'calls:int;x:=7;', 'helper(a:int):(int,big){calls++;return(a+1,big 17);} init(){(v0,v1):=helper(x);if(v0!=8||v1!=big 17||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-shape-2', 'calls:int;x:=7;', 'helper(a:int):(int,real){calls++;return(a+1,1.25);} init(){(v0,v1):=helper(x);if(v0!=8||v1!=1.25||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-shape-3', 'calls:int;x:=7;', 'helper(a:int):(big,int){calls++;return(big 17,a+1);} init(){(v0,v1):=helper(x);if(v0!=big 17||v1!=8||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-shape-4', 'calls:int;x:=7;', 'helper(a:int):(big,big){calls++;return(big 17,big 17);} init(){(v0,v1):=helper(x);if(v0!=big 17||v1!=big 17||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-shape-5', 'calls:int;x:=7;', 'helper(a:int):(big,real){calls++;return(big 17,1.25);} init(){(v0,v1):=helper(x);if(v0!=big 17||v1!=1.25||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-shape-6', 'calls:int;x:=7;', 'helper(a:int):(real,int){calls++;return(1.25,a+1);} init(){(v0,v1):=helper(x);if(v0!=1.25||v1!=8||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-shape-7', 'calls:int;x:=7;', 'helper(a:int):(real,big){calls++;return(1.25,big 17);} init(){(v0,v1):=helper(x);if(v0!=1.25||v1!=big 17||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-shape-8', 'calls:int;x:=7;', 'helper(a:int):(real,real){calls++;return(1.25,1.25);} init(){(v0,v1):=helper(x);if(v0!=1.25||v1!=1.25||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-shape-9', 'calls:int;x:=7;', 'helper(a:int):(int,big,real){calls++;return(a+1,big 17,1.25);} init(){(v0,v1,v2):=helper(x);if(v0!=8||v1!=big 17||v2!=1.25||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-shape-10', 'calls:int;x:=7;', 'helper(a:int):(int,real,big){calls++;return(a+1,1.25,big 17);} init(){(v0,v1,v2):=helper(x);if(v0!=8||v1!=1.25||v2!=big 17||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-shape-11', 'calls:int;x:=7;', 'helper(a:int):(big,int,real){calls++;return(big 17,a+1,1.25);} init(){(v0,v1,v2):=helper(x);if(v0!=big 17||v1!=8||v2!=1.25||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-shape-12', 'calls:int;x:=7;', 'helper(a:int):(big,real,int){calls++;return(big 17,1.25,a+1);} init(){(v0,v1,v2):=helper(x);if(v0!=big 17||v1!=1.25||v2!=8||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-shape-13', 'calls:int;x:=7;', 'helper(a:int):(real,int,big){calls++;return(1.25,a+1,big 17);} init(){(v0,v1,v2):=helper(x);if(v0!=1.25||v1!=8||v2!=big 17||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-shape-14', 'calls:int;x:=7;', 'helper(a:int):(real,big,int){calls++;return(1.25,big 17,a+1);} init(){(v0,v1,v2):=helper(x);if(v0!=1.25||v1!=big 17||v2!=8||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-forward-1', 'calls:int;x:=7;', 'leaf(a:int):(int,big,real){calls++;return(a+1,big 17,1.25);}layer0(a:int):(int,big,real){calls++;return leaf(a);}init(){(u,v,w):=layer0(x);if(u!=8||v!=big 17||w!=1.25||calls!=2)calls/=0;}', ''
+    yield 'helper-tuple-forward-2', 'calls:int;x:=7;', 'leaf(a:int):(int,big,real){calls++;return(a+1,big 17,1.25);}layer0(a:int):(int,big,real){calls++;return leaf(a);}layer1(a:int):(int,big,real){calls++;return layer0(a);}init(){(u,v,w):=layer1(x);if(u!=8||v!=big 17||w!=1.25||calls!=3)calls/=0;}', ''
+    yield 'helper-tuple-forward-3', 'calls:int;x:=7;', 'leaf(a:int):(int,big,real){calls++;return(a+1,big 17,1.25);}layer0(a:int):(int,big,real){calls++;return leaf(a);}layer1(a:int):(int,big,real){calls++;return layer0(a);}layer2(a:int):(int,big,real){calls++;return layer1(a);}init(){(u,v,w):=layer2(x);if(u!=8||v!=big 17||w!=1.25||calls!=4)calls/=0;}', ''
+    yield 'helper-tuple-nested', 'calls:int;x:=7;', 'inner(a:int):(int,big){calls++;return(a,big 17);} helper(a:int):(int,big){calls++;(u,v):=inner(a);return(u+1,v+big 2);} init(){(u,v):=helper(x);if(u!=8||v!=big 19||calls!=2)calls/=0;}', ''
+    yield 'helper-tuple-loop', 'calls:int;x:=7;', 'helper(a:int):(int,int){local:int;local++;calls++;return(a,local);} init(){for(i:=0;i<4097;i++){(u,v):=helper(x);if(u!=7||v!=1)calls/=0;}if(calls!=4097)calls/=0;}', ''
+    yield 'helper-tuple-discard', 'calls:int;x:=7;', 'helper(a:int):(int,big,real){calls++;return(a,big 17,1.25);} init(){helper(x);if(calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-control', 'calls:int;x:=7;', '\nhelper():(int,int){\ncalls++;\nreturn (x+1,x+2);\n}\ninit(){(u,v):=helper();if(u!=8||v!=9||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-early-0', 'calls:int;key:=0;', 'helper(a:int):(int,big){calls++;if(a==0)return(11,big 12);return(a,big 17);} init(){(u,v):=helper(key);if(u!=11||v!=big 12||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-early-7', 'calls:int;key:=7;', 'helper(a:int):(int,big){calls++;if(a==0)return(11,big 12);return(a,big 17);} init(){(u,v):=helper(key);if(u!=7||v!=big 17||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-early-99', 'calls:int;key:=99;', 'helper(a:int):(int,big){calls++;if(a==0)return(11,big 12);return(a,big 17);} init(){(u,v):=helper(key);if(u!=99||v!=big 17||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-case-0', 'calls:int;key:=0;', 'helper(a:int):(int,big){calls++;case a {0=>return(1,big 11);1 to 10=>return(2,big 22);* =>return(3,big 33);}} init(){(u,v):=helper(key);if(u!=1||v!=big 11||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-case-7', 'calls:int;key:=7;', 'helper(a:int):(int,big){calls++;case a {0=>return(1,big 11);1 to 10=>return(2,big 22);* =>return(3,big 33);}} init(){(u,v):=helper(key);if(u!=2||v!=big 22||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-case-99', 'calls:int;key:=99;', 'helper(a:int):(int,big){calls++;case a {0=>return(1,big 11);1 to 10=>return(2,big 22);* =>return(3,big 33);}} init(){(u,v):=helper(key);if(u!=3||v!=big 33||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-boundary', 'calls:int;', 'helper():(big,big,big,big,big,big,big,big){calls++;return(big 1,big 2,big 3,big 4,big 5,big 6,big 7,big 8);} init(){(v0,v1,v2,v3,v4,v5,v6,v7):=helper();if(v0!=big 1||v1!=big 2||v2!=big 3||v3!=big 4||v4!=big 5||v5!=big 6||v6!=big 7||v7!=big 8||calls!=1)calls/=0;}', ''
+    yield 'helper-tuple-fault-word', 'calls:int;z:int;x:=7;', 'helper(a:int):(int,int){\ncalls++;\nreturn (a,a/z);\n}\ninit(){(u,v):=helper(x);}', 'zero divide'
+    yield 'helper-tuple-fault-big', 'calls:int;z:big;x:=7;', 'helper(a:int):(int,big){\ncalls++;\nreturn (a,big 17/z);\n}\ninit(){(u,v):=helper(x);}', 'zero divide'
+    yield 'helper-tuple-fault-shift', 'calls:int;z:=32;x:=7;', 'helper(a:int):(int,int){\ncalls++;\nreturn (a,a<<z);\n}\ninit(){(u,v):=helper(x);}', 'invalid argument'
+    yield 'helper-tuple-fault-forward', 'calls:int;z:big;x:=7;', 'inner(a:int):(int,big){\ncalls++;\nreturn (a,big 17/z);\n}\nhelper(a:int):(int,big){calls++;return inner(a);}\ninit(){(u,v):=helper(x);}', 'zero divide'
     yield 'before-entry', 'value:=17;', 'helper(){value+=3;}\ninit(){helper();helper();if(value!=23)value/=0;}', ''
     yield 'after-entry', 'value:=17;', 'init(){helper();if(value!=20)value/=0;}\nhelper(){value+=3;}', ''
     yield 'multiple', 'value:=17;', 'a(){value+=3;} b(){value*=2;} init(){a();b();a();if(value!=43)value/=0;}', ''
@@ -203,6 +236,13 @@ def refusals():
     yield 'managed-result', 'value:int;', 'helper():string{value++;return "x";} init(){answer:=helper();value+=len answer;}'
     yield 'byte-result', 'value:int;', 'helper():byte{value++;return byte value;} init(){answer:=helper();value+=int answer;}'
     yield 'real-arithmetic-result', 'value:int;x:real;', 'helper():real{value++;return x+1.0;} init(){answer:=helper();if(answer!=1.0)value/=0;}'
+    yield 'tuple-managed-result', 'value:int;', 'helper():(int,string){value++;return(value,"x");} init(){(a,b):=helper();value+=a+len b;}'
+    yield 'tuple-byte-result', 'value:int;', 'helper():(int,byte){value++;return(value,byte 7);} init(){(a,b):=helper();value+=a+int b;}'
+    yield 'tuple-nested-result', 'value:int;', 'helper():((int,int),big){value++;return((value,2),big 3);} init(){(a,b):=helper();(c,d):=a;value+=c+d+int b;}'
+    yield 'tuple-argument', 'value:int;', 'helper(a:(int,int)){value++;(x,y):=a;value+=x+y;} init(){helper((1,2));}'
+    yield 'tuple-global', 'value:int;state:(int,int);', 'helper():(int,int){value++;return(1,2);} init(){state=helper();(x,y):=state;value+=x+y;}'
+    yield 'tuple-field-limit', 'value:int;', 'helper():(int,int,int,int,int,int,int,int,int){value++;return(1,2,3,4,5,6,7,8,9);} init(){helper();}'
+    yield 'tuple-partial-unpack', 'calls:int;x:=7;', 'helper(a:int):(int,big,real){calls++;return(a,big 17,1.25);} init(){(u,nil,w):=helper(x);if(u!=7||w!=1.25||calls!=1)calls/=0;}'
     yield 'recursive', 'value:int;', 'helper(){value++;helper();} init(){helper();}'
     yield 'mutual-recursion', 'value:int;', 'inner(){value++;helper();} helper(){inner();} init(){helper();}'
     yield 'byte-local', 'value:int;', 'helper(){x:byte;x=byte value;value=int x;} init(){helper();}'
@@ -370,6 +410,42 @@ def wrong_result(image, rows, locations, text):
     return result
 
 
+# Alias the second actual Word result onto the first while retaining valid reader-admitted storage.
+def overlap_tuple(image, rows, locations, text):
+    names = re.findall(r'^\s*(I[A-Z0-9]+),', (ROOT/'include/isa.h').read_text(), re.M)
+    line = next(i+1 for i,value in enumerate(text.splitlines()) if value == 'return (x+1,x+2);')
+    stores = [row['args'][-1] for row,loc in zip(rows,locations)
+              if loc['start'] and loc['start']['line']==line and row['op']==names.index('IADDW')]
+    if len(stores)!=2 or stores[1]!=stores[0]+4:
+        raise RuntimeError('Missing distinct tuple result fields')
+    result = bytearray(image)
+    sections = struct.unpack_from('>I', image, 28)[0]
+    at = next(struct.unpack_from('>HHII', image, 32+12*i)[2] for i in range(sections)
+              if struct.unpack_from('>H', image, 32+12*i)[0]==2)+4
+    changed = 0
+    for row,loc in zip(rows,locations):
+        at += 2
+        for index,value in enumerate(row['args']):
+            first = image[at]
+            size = 1 if first<128 else 2 if first<192 else 4
+            if loc['start'] and loc['start']['line']==line and row['op']==names.index('IADDW') and index==len(row['args'])-1 and value==stores[1]:
+                value = stores[0]
+                if value<64:
+                    encoded = bytes([value])
+                elif value<8192:
+                    encoded = bytes([0x80|((value>>8)&63),value&255])
+                else:
+                    encoded = bytes([0xc0|((value>>24)&63),(value>>16)&255,(value>>8)&255,value&255])
+                if len(encoded)!=size:
+                    raise RuntimeError('Tuple control changed operand framing')
+                result[at:at+size] = encoded
+                changed += 1
+            at += size
+    if changed!=1:
+        raise RuntimeError('Inactive tuple overlap control')
+    return result
+
+
 # Compare real compiler products, preserve diagnostics, and execute whole OS processes with explicit target runners.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -381,7 +457,7 @@ def main():
     args = parser.parse_args()
     root = args.root.resolve()
     command = HELPERS['command']
-    count = processes = controls = depthcontrols = argcontrols = resultcontrols = refused = 0
+    count = processes = controls = depthcontrols = argcontrols = resultcontrols = tuplecontrols = refused = 0
     with tempfile.TemporaryDirectory(prefix='inline scalar ', dir=root) as directory:
         work = Path(directory)
         source, image, smap, assembly, legacy = (work/name for name in ('source.b','image.dis64','map.json','source.s','legacy.dis'))
@@ -432,9 +508,11 @@ def main():
                     marker = 'native64 scalar module InlineProbe: jit='+str(jit)+', exit="'+error+'"'
                     if marker not in output or ('Broken:' in output) != bool(error) or 'native64 scalar scheduler empty after program retirement' not in output or 'panic:' in output or 'faults:' in output:
                         raise RuntimeError(name+' JIT='+str(jit)+'\n'+output)
-                    if name in ('callee-error', 'helper-case-error', 'helper-nested-fault', 'helper-result-zero-divide', 'helper-result-invalid-shift'):
+                    if name.startswith('helper-tuple-fault-') or name in ('callee-error', 'helper-case-error', 'helper-nested-fault', 'helper-result-zero-divide', 'helper-result-invalid-shift'):
                         faults = re.findall(r'native64 scalar fault: dis-pc=(\d+)',output)
-                        if name.startswith('helper-result-'):
+                        if name.startswith('helper-tuple-fault-'):
+                            line = next(i+1 for i,s in enumerate(text.splitlines()) if s.startswith('return ('))
+                        elif name.startswith('helper-result-'):
                             line = next(i+1 for i,s in enumerate(text.splitlines()) if s.startswith('return a'))
                         else:
                             line = next(i+1 for i,s in enumerate(text.splitlines()) if s.startswith('inner()' if name == 'helper-nested-fault' else 'helper()'))
@@ -454,6 +532,19 @@ def main():
                         if marker not in output or 'native64 scalar scheduler empty after program retirement' not in output or 'panic:' in output:
                             raise RuntimeError('Parent/child overlap control escaped\n'+output)
                         depthcontrols += 1
+            if name == 'helper-tuple-control':
+                corrupted = work/'overlap-tuple.dis64'
+                corrupted.write_bytes(overlap_tuple(image.read_bytes(), rows, locations, text))
+                if args.reader:
+                    command([args.reader.resolve(), corrupted, '--pilot'])
+                if args.emu:
+                    for jit in (0,1):
+                        output = HELPERS['EXECUTE'](shlex.split(args.runner)+[str(args.emu.resolve()), '-v', '-r', str(root),
+                            '-c', str(jit), '-d', '/'+str(corrupted.relative_to(root))])
+                        marker = 'native64 scalar module InlineProbe: jit='+str(jit)+', exit="zero divide"'
+                        if marker not in output or 'native64 scalar scheduler empty after program retirement' not in output or 'panic:' in output:
+                            raise RuntimeError('Tuple result overlap control escaped\n'+output)
+                        tuplecontrols += 1
             if name == 'helper-result-control':
                 corrupted = work/'wrong-result.dis64'
                 corrupted.write_bytes(wrong_result(image.read_bytes(), rows, locations, text))
@@ -505,7 +596,7 @@ def main():
                 raise RuntimeError('Missing controlled scalar refusal: '+name+'\n'+diagnostic.decode(errors='replace'))
             if image.exists():
                 raise RuntimeError('Refused helper left an executable image: '+name)
-    print('PASS scalar helpers:',count,'sources,',processes,'whole C/JIT processes;',controls,'active stale-local controls;',depthcontrols,'active depth-overlap controls;',argcontrols,'active argument controls;',resultcontrols,'active result controls; ordinary Dis unchanged;',refused,'calling/storage limits refused')
+    print('PASS scalar helpers:',count,'sources,',processes,'whole C/JIT processes;',controls,'active stale-local controls;',depthcontrols,'active depth-overlap controls;',argcontrols,'active argument controls;',resultcontrols,'active result controls;',tuplecontrols,'active tuple controls; ordinary Dis unchanged;',refused,'calling/storage limits refused')
 
 
 if __name__ == '__main__':

@@ -5,6 +5,8 @@
 #define ScalarInlineFunctions 16U // Bound source specialization, including the sole exported entry.
 #define ScalarInlineFrame 128U // Bound scalar scratch and local storage in each scalar helper.
 #define ScalarInlineBody 32U // Bound helper bodies, excluding the terminal RET.
+#define ScalarInlineResultFields 8U // Bound flat scalar tuple results and compiler-created tuple locals.
+#define ScalarInlineResultBytes 64U // Bound complete tuple storage, including canonical alignment padding.
 #define ScalarInlineResult (STemp-IBY2WD) // Legacy result-pointer cell; never emitted as a native pointer.
 #define ScalarInlineLabels 8U // Match the existing numeric case lowering bound.
 
@@ -69,6 +71,77 @@ inlinewidth(Type *type)
 }
 
 
+/* Validate a scalar or flat numeric tuple without introducing managed layout or a shared file signature. */
+unsigned int
+dis64inlineshape(Type *type)
+{
+	Decl *field;
+	unsigned int width, end, alignment, count, offset;
+
+	width = inlinewidth(type);
+	if(width != 0)
+		return width;
+	if(type == nil || type->kind != Ttuple || type->size <= 0 || type->size > ScalarInlineResultBytes)
+		return 0;
+	end = count = 0;
+	alignment = 4;
+	for(field = type->ids; field != nil; field = field->next){
+		width = inlinewidth(field->ty);
+		if(++count > ScalarInlineResultFields || width == 0 || field->offset < 0)
+			return 0;
+		offset = (end+width-1)&~(width-1);
+		if(field->offset != offset || offset > ScalarInlineResultBytes-width)
+			return 0;
+		end = offset+width;
+		if(width > alignment)
+			alignment = width;
+	}
+	if(count < 2 || type->align != alignment || type->size != ((end+alignment-1)&~(alignment-1)))
+		return 0;
+	return type->size;
+}
+
+
+/* Resolve only an exact scalar field start; tuple padding and nested/managed fields never become stores. */
+static Type*
+inlinefield(Type *type, unsigned int offset)
+{
+	Decl *field;
+
+	if(dis64inlineshape(type) == 0)
+		return nil;
+	if(type->kind != Ttuple)
+		return offset == 0 ? type : nil;
+	for(field = type->ids; field != nil; field = field->next)
+		if(field->offset == offset)
+			return field->ty;
+	return nil;
+}
+
+
+/* Forward results only when every field kind, offset and complete storage extent agree. */
+static int
+inlinesameresult(Type *left, Type *right)
+{
+	Type *a, *b;
+	unsigned int size, offset;
+
+	size = dis64inlineshape(left);
+	if(size == 0 || size != dis64inlineshape(right) || left->kind != right->kind)
+		return 0;
+	for(offset = 0; offset < size; offset += IBY2WD){
+		a = inlinefield(left, offset);
+		b = inlinefield(right, offset);
+		if(a == nil || b == nil){
+			if(a != b)
+				return 0;
+		}else if(a->kind != b->kind)
+			return 0;
+	}
+	return 1;
+}
+
+
 /* Match scalar argument-producing operations without admitting implicit reads of the child frame. */
 static int
 inlineargument(unsigned int op, int kind)
@@ -101,6 +174,58 @@ inlineproducer(Inst *input, int kind)
 }
 
 
+/* Validate each return producer against its declared scalar component rather than the whole tuple kind. */
+static int
+inlineresultproducer(Inst *input, Type *result)
+{
+	Type *field;
+
+	if(input->dm != Afpind || input->d.reg != ScalarInlineResult || input->d.offset < 0 || input->d.offset >= ScalarInlineResultBytes)
+		return 0;
+	field = inlinefield(result, input->d.offset);
+	return field != nil && inlineproducer(input, field->kind);
+}
+
+
+/* Check the complete caller-owned result span, then independently validate every actual scalar field access. */
+static int
+inlinebinding(Inst *input, Inst *frame, Type *result, unsigned int callerbytes, unsigned int count, unsigned int data)
+{
+	Type *field;
+	Inst copy;
+	Dis64Instruction checked;
+	unsigned int width, alignment, extent, offset;
+
+	width = dis64inlineshape(result);
+	if(width == 0 || (input->sm != Afp && input->sm != Amp) || input->s.reg < 0)
+		return 0;
+	alignment = result->kind == Ttuple ? result->align : width;
+	extent = input->sm == Afp ? callerbytes : data;
+	if(width > extent || input->s.reg > extent-width || input->s.reg%alignment != 0)
+		return 0;
+	if(input->sm == Afp && (input->s.reg < STemp ||
+	   (input->s.reg < ScalarLegacyPrefix && width > ScalarLegacyPrefix-input->s.reg) ||
+	   (input->s.reg < frame->d.reg+IBY2WD && input->s.reg+width > frame->d.reg)))
+		return 0;
+	for(offset = 0; offset < width; offset += IBY2WD){
+		field = inlinefield(result, offset);
+		if(field == nil)
+			continue;
+		copy = *input;
+		copy.op = field->kind == Tint ? IMOVW : field->kind == Tbig ? IMOVL : IMOVF;
+		copy.s.reg += offset;
+		if(copy.sm == Afp)
+			copy.s.reg += ScalarLegacyPrefix-ScalarScratchStart;
+		copy.dm = Afp;
+		copy.d.reg = ScalarLegacyPrefix;
+		if(!dis64scalarinst(&copy, count, data, callerbytes+ScalarNativePrefix-ScalarScratchStart,
+		   ScalarNativePrefix, &checked))
+			return 0;
+	}
+	return 1;
+}
+
+
 /* Identify argument cells that a validated call initializes before entering the child body. */
 static int
 inlineparameter(InlineFunction *function, unsigned int offset)
@@ -127,7 +252,7 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 
 	decl = function->declaration;
 	if(decl->ty == nil || decl->ty->kind != Tfn ||
-	   decl->ty->varargs || decl->ty->tof == nil || (decl->ty->tof->kind != Tnone && inlinewidth(decl->ty->tof) == 0) ||
+	   decl->ty->varargs || decl->ty->tof == nil || (decl->ty->tof->kind != Tnone && dis64inlineshape(decl->ty->tof) == 0) ||
 	   decl->desc == nil || decl->desc->size < ScalarLegacyPrefix || decl->desc->size > ScalarInlineFrame || decl->desc->nmap < 0 ||
 	   (decl->desc->nmap != 0 && decl->desc->map == nil) ||
 	   function->end-function->start > ScalarInlineBody+1)
@@ -143,7 +268,7 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 	}
 	for(local = decl->locals; local != nil; local = local->next){
 		if(local->sym == nil || local->sym->name == nil || local->ty == nil ||
-		   (local->ty->kind != Tint && local->ty->kind != Tbig && local->ty->kind != Treal))
+		   dis64inlineshape(local->ty) == 0)
 			return 0;
 		if(local->sym->name[0] != '.'){
 			if(decl->desc->size%IBY2WD != 0)
@@ -189,8 +314,7 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 		/* Validate the whole contiguous helper span, without the legacy scratch/local discontinuity. */
 		copy = *input;
 		if(input->dm == Afpind){
-			if(input->d.reg != ScalarInlineResult || input->d.offset != 0 ||
-			   !inlineproducer(input, decl->ty->tof->kind))
+			if(!inlineresultproducer(input, decl->ty->tof))
 				return 0;
 			copy.dm = Afp;
 			copy.d.reg = ScalarScratchStart;
@@ -323,8 +447,7 @@ inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsi
 		if(input->op != IFRAME){
 			if(input->op == ICALL || input->op == ILEA)
 				return 0;
-			if(input->dm == Afpind && (input->d.reg != ScalarInlineResult || input->d.offset != 0 ||
-			   !inlineargument(input->op, function->declaration->ty->tof->kind)))
+			if(input->dm == Afpind && !inlineresultproducer(input, function->declaration->ty->tof))
 				return 0;
 			continue;
 		}
@@ -375,29 +498,15 @@ inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsi
 			if(i+1 != end)
 				return 0;
 			input = context->original[i];
-			width = inlinewidth(result);
 			if(input->op != ILEA || input->mm != Anone || input->branch != nil ||
 			   input->d.reg != frame->d.reg || input->d.offset != ScalarInlineResult)
 				return 0;
 			if(input->sm == Afpind){
 				if(input->s.reg != ScalarInlineResult || input->s.offset != 0 ||
-				   function->declaration->ty->tof->kind != result->kind)
+				   !inlinesameresult(function->declaration->ty->tof, result))
 					return 0;
-			}else{
-				if((input->sm != Afp && input->sm != Amp) ||
-				   !inlinescratch(input->sm, &input->s, function->declaration->desc->size) ||
-				   (input->sm == Afp && input->s.reg < frame->d.reg+IBY2WD && input->s.reg+width > frame->d.reg))
-					return 0;
-				copy = *input;
-				copy.op = result->kind == Tint ? IMOVW : result->kind == Tbig ? IMOVL : IMOVF;
-				if(copy.sm == Afp)
-					copy.s.reg += ScalarLegacyPrefix-ScalarScratchStart;
-				copy.dm = Afp;
-				copy.d.reg = ScalarLegacyPrefix;
-				if(!dis64scalarinst(&copy, count, data, function->declaration->desc->size+ScalarNativePrefix-ScalarScratchStart,
-				   ScalarNativePrefix, &checked))
-					return 0;
-			}
+			}else if(!inlinebinding(input, frame, result, function->declaration->desc->size, count, data))
+				return 0;
 			context->owners[i++] = pc;
 		}
 		if(i != end)
@@ -555,6 +664,7 @@ inlineemit(InlineContext *context, unsigned int index, unsigned int depth, unsig
 		if(input->dm == Afpind && input->d.reg == ScalarInlineResult){
 			copy->dm = context->resultmodes[depth];
 			copy->d = context->results[depth];
+			copy->d.reg += input->d.offset;
 		}else if(input->dm == Afpind && input->op != ILEA){
 			copy->dm = Afp;
 			copy->d.reg = context->bases[depth+1]+input->d.offset-ScalarScratchStart;

@@ -32,13 +32,13 @@ step()
 
 
 # Keep expression temporaries private even when this helper is called from another helper.
-fold(x: int, y: int, wide: big, fraction: real): int
+fold(x: int, y: int, wide: big, fraction: real): (int, big, real)
 {
 	local: int;
 	local++;
 	if(wide != big 17 || fraction != 1.25 || local != 1)
 		result /= 0;
-	return ((x^y)&65535)|65536;
+	return (((x^y)&65535)|65536, wide, fraction);
 }
 
 
@@ -49,7 +49,11 @@ mix()
 		return;
 	case b {
 	0 => result /= 0;
-	700 to 800 => result = fold(a, b, big 17, 1.25);
+	700 to 800 =>
+		(value, wide, fraction) := fold(a, b, big 17, 1.25);
+		if(wide != big 17 || fraction != 1.25)
+			result /= 0;
+		result = value;
 	* => result /= 0;
 	}
 }
