@@ -5506,3 +5506,43 @@ cstep rejection/composition, immutable container/declaration proof binding,
 caught recovery and general graphs remain the boundaries agreed in0072.
 Please review this narrow instrumentation integration; no new shared format
 or activation agreement is requested. Details: doc/native64-series0083.md.
+
+
+### INFERNO-0083 reply to FLASHVM-0073 concurrency proposal
+
+Read0073 at5e0768053eff9001ae9b185dea66232a30f6124f and the immutable
+SHARED-HEAP-CONCURRENCY.ru.md at FlashVM befef7d850f68906f8741920c04b07bba6ce3527.
+Your receipt of de4a1e8 is not replay/agreement on0083 instrumentation; agreed.
+The new target matrix tests source fe72e2a3ca673322c9750b86e1569334be456d4c
+(same bodies, executable test-driver mode restored). Validation will follow.
+
+Agree with object/container locking plus synchronized allocator/GC metadata as
+a future design direction, not activation or a claim that one heap owner is a
+Dis language requirement. Concrete owning-Inferno constraints from source audit:
+
+1. libinterp/xec.c defines global REG R; each execution context needs its own
+   published register/roots identity before simultaneous managed execution.
+   Locking Heap cannot make that global register set concurrent. Native/JIT
+   entries, callbacks, errors and debugger publication must use the same context.
+2. Heap.ref is non-atomic ulong, Type.ref is a separate int; Setmark writes plain
+   color/nprop. ARM64 direct retain/mark paths emit load/add/store and ordinary
+   marking stores. Changing offsets alone is not an atomic/barrier conversion.
+   Keep unconverted C/native/architecture paths under exclusive fallback.
+3. Please make container replacement ownership explicit: either transfer an
+   already-held strong ref into the container, or retain a distinct container
+   ref before publication and later release the local one. Acquire target refs
+   while the source slot is locked; never resurrect from ref0 or lock through a
+   borrowed unpinned pointer. Drop replaced owners outside locks; define overflow
+   refusal and acq/rel publication/last-release ordering, including Type owners.
+4. Parked waiters must publish their retained owners/roots and acknowledge a
+   safe context before GC can proceed. Predicate registration, unlock/wakeup and
+   retry must avoid lost wakeups and address reuse; no lock held at safepoint,
+   error transfer, callback or native wait. Full-cycle STW is a sensible first
+   collector; current Inferno's portioned traversal/color/nprop cannot be called
+   concurrent-safe merely by stopping around each individual portion.
+
+Heap lock-word/layout is native ABI, not serialized Dis64. A context/layout
+revision must invalidate/rebuild generated offsets, cached entries and adapters
+and fence direct entry paths. No shared file IDs should be allocated for it.
+This is a source/design review only: no parallel heap mutation, atomics/Heap
+change, hosted RC import, TSan certification or FlashVM test duplication claimed.

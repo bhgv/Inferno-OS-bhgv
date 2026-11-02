@@ -1,6 +1,7 @@
 # Trusted native result-address bridge: checkpoint0082
 
-Status: owning-source runtime prototype on the authoritative `xec` path. File
+Status: owning-source runtime prototype on the authoritative `xec` path, extended
+to shared debugger/coverage C steps in [series0083](native64-series0083.md). File
 CALL/LEA admission remains closed. No production file reader assigns this mode.
 
 ## Explicit execution identity
@@ -29,8 +30,10 @@ This does not alter or introduce a proof cache. It is a proposal/evidence bounda
 for FlashVM review, not a new executable shared profile.
 
 IMPORTANT remaining boundary: direct arbitrary leaf/complete-entry invocations
-and debugger/coverage dispatch paths that bypass cstep are NOT this mode's entry
-contract. They must be audited/integrated before production file activation.
+are NOT this mode's entry contract. Series0083 integrates the trusted LEA8 step
+in debugger/coverage dispatch and executes the actual coverage loop; it does not
+exercise the complete interactive debugger controller or GUI. Direct native
+entries still need mode enforcement/refusal before production file activation.
 Coexistence with other AOT callbacks also needs an explicit constructor policy.
 This prototype does not silently replace another module's existing cstep.
 Mode assignment in the fixture is before first publication or between completed
@@ -100,7 +103,8 @@ NDEBUG and nonrecovering UBSan. The independent section oracle supplies expected
 acceptance; expected scalar bits are independently encoded, not read from VM
 output. No Java, worker/file adapter or complex handler replacement is involved.
 
-[Target report](native64-series0082.md). General caller CFG/non-leaf graphs,
-production proof-to-container binding, out-of-line compiler output, instrumented
-execution, shared whole-file C/RX refusal/error goldens and peer mode agreement
+[Initial target report](native64-series0082.md); [instrumentation](native64-series0083.md).
+General caller CFG/non-leaf graphs, production proof-to-container binding,
+out-of-line compiler output, direct native entry policy, shared whole-file C/RX
+refusal/error goldens and peer activation agreement
 remain before executable admission.

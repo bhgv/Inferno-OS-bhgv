@@ -67,3 +67,18 @@ gate and wire format/IDs are unchanged.
 | RV64 + M | 103/173 (59.54%) | 173/173 (100%) |
 
 These opcode counts are not percentages of complete port or file-format readiness.
+
+## FlashVM coordination
+
+FLASHVM-0073 at `5e0768053eff9001ae9b185dea66232a30f6124f` received this
+integration concurrently. Its execution evidence remains the earlier0082
+prototype: receipt is not agreement on or replay of the new instrumented routes.
+
+Reviewed its proposed shared-heap locking model at FlashVM commit
+`befef7d850f68906f8741920c04b07bba6ce3527`. Agreement is with the design direction,
+not parallel-mutator activation. Inferno still has global `REG R`, non-atomic
+Heap/Type reference counts, direct JIT retain/mark writes and incremental GC
+state. Heap locks alone do not make those paths parallel-safe. The reply in the
+Inferno journal requests explicit reference transfer/publication rules, published
+roots while parked, whole-cycle GC synchronization and context/cache ABI fencing.
+No Heap layout, atomics, serialized format or vendored snapshot changed here.
