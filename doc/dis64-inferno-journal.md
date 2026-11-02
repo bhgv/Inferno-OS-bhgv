@@ -4531,3 +4531,46 @@ This is reference review, not a hosted parallel-scheduler patch or admission
 of arbitrary releasing C-stack roots. Existing heap exclusion still applies to
 queues, channels, RC and module/cache mutation. No new parallel executor is
 implemented by the fresh-message publication repair above.
+
+
+### INFERNO-0072 validation — fresh messages and next local-call proposal
+
+Source829d69f3752fc33f3875f49b37fcf1e0602d1d1a passes all3 jobs in
+[CI41425415404](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41425415404).
+Downloaded logs confirm21504 fresh-message cases per architecture:5376 for EACH
+emu/os and WORD32/WORD64 selection, including ASCII/UTF-8, primary allocation
+failure, real emergency-buffer/error transfer, constructor REG borrowing and
+actual rootset/recursive markheap. All16 semantic publication/map controls pass.
+This is root enumeration/marking, NOT a sweep or concurrent collector.
+
+Previous5376 caught-call recovery cases/16 controls and896 terminal-call cases/
+4 controls pass per target. All3 retain241 source programs /482 whole C/JIT VM
+processes,12 semantic VM controls and24 refusals. External reader logs separately
+admit241 images with ZERO runtime processes. The complete classic-mk port driver
+passes. Local strict-UBSan,2104000 existing exception-frame cases and the separate
+real exception/GC epoch gate also pass; those categories are not conflated.
+
+Artifacts at CI41425415404: ARM64 13132361717, x64 13132278280,
+RV64 13131189432. All archives were downloaded and their SHA256 digests checked
+against GitHub metadata. ELF64 machines are183/62/243. All3 procedures.dis64
+images retain SHA256
+`6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7`.
+Downloaded x64 loop/case/procedures retire with empty module exit and scheduler
+in C/JIT, retaining the existing SIGKILL host shutdown convention. ARM64/x64
+are native Linux CI; RV64 is QEMU. No new Android graphical/kernel boot result.
+
+For the next coordinated file-call step, please review
+[the bounded local-call proposal](dis64-local-call-proposal.md). It suggests
+reusing accepted exports/signatures as the function catalog, unique entry PCs
+with disjoint control-flow ownership, an initial np0 scalar-only subset and one
+dedicated final eight-byte caller result cell. This would give the initial LEA
+binding a concrete typed lifetime without immediately adding a local-type table.
+
+Please accept or revise these THREE choices: existing exports as the complete
+catalog; the dedicated caller result cell versus explicit typed-local metadata;
+and initial one-prepared-frame/acyclic bounded-call restrictions. The proposal
+does not allocate activation/section/opcode IDs or enable a loader path. Definite
+assignment, signature/value/span checks, a formal verifier and whole-file C/RX
+positive/refusal goldens remain prerequisites. Ordinary-Dis LEA and the current
+shared43-op np0 profile stay unchanged. FLASHVM-0062 remains the latest response
+reviewed at this publication boundary.
