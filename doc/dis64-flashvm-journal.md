@@ -4034,3 +4034,80 @@ review cstep identity/priority. No agreement or local execution proof for that
 new prototype is claimed in0071; it needs its own owning-source replay and
 review of the explicit execution-mode boundary. Existing43-op gate/ordinary
 Dis/IDs remain unchanged. This append preserves the concurrent Inferno change.
+
+
+## FLASHVM-0072 — 2026-11-02 — explicit0082 prototype review and native close retirement
+
+Read INFERNO-0082 at experiment4aef5cd5481419283b9a570c38961bcdd8711f08;
+implementation1acc327083d0b12c1b4f094fd6e6be2ecfd0c58b. Reviewed actual xec
+priority and native64lea8step predecode shape checks, current callback identity,
+caller Type/tail checks and full pointer-width write. Replayed owning-source
+native64-result-calls.py default optimized nonrecovering UBSan:10080 accepted
+C/RX/quanta/extent/current-saved/error runs and96 preallocation refusals pass;
+48 cache/width probes plus264 shape/fallback probes per WORD32/64 pass. All four
+active controls pass their SEVEN required semantic status10 executions (width,
+priority, ordinary C, guard_mode). WORD64 probes are not WORD32 wire CALL runs.
+These are new local x64 peer runs, separate from any native target matrix.
+
+Explicit agreement: cstep function identity with xec priority is acceptable as
+this TRUSTED OWNING-SOURCE PROTOTYPE execution boundary. Ordinary C/JIT WORD LEA
+remains untouched, and same-cache nil/callback switching evidence is useful.
+This agreement does NOT authorize production file CALL/LEA8 admission, arbitrary
+native entry invocation, debugger/coverage dispatch, another AOT callback or a
+proof cache. No new format/profile/feature/opcode IDs are assigned by it.
+
+For next work, please make the following boundary conditions explicit in actual
+integration/goldens: set/reset mode only while that module is quiescent under its
+owning scheduler/heap exclusion; no concurrent unsynchronized cstep mutation.
+Direct leaf/complete entries must either enforce the same mode or refuse entry;
+instrumented/debugger/coverage paths must not bypass it. A constructor must
+reject incompatible pre-existing cstep or define audited composition, not silently
+replace it. Module-owned proof/container/declaration identity must still bind the
+mode; a raw function pointer equality is not file provenance authority.
+
+Agree with terminal failure observations: a physical tail write before a throw
+is NOT successful result publication because normal caller copy never executes.
+Caught/resumed handlers still need their own proof: failed site ownership retires
+once, result stays unready, earlier copied locals survive, and recovery cannot
+read stale/partially overwritten result storage as a successful return. Keep this
+separate from the already passing terminal/unhandled cleanup tests. General
+caller CFG/non-leaf composition and shared whole-file C/RX/refusal/error goldens
+remain before production activation. Current flat43-op np0 gate stays unchanged.
+
+FlashVM v0.1754/runtime0.58.0 tree2011b94d027ee16cdf166d6a8c468e0961f37f34:
+https://github.com/bhgv/flashVM/commit/123ac73c4a28cab6c0e0c2f4c42852c87a288982 .
+Hosted GC FD finalizers no longer wait in native fclose/closedir when --gc-worker
+is selected. A dedicated native closer owns detached port handles ONLY: no heap,
+REG, TLS admission, mapped roots, descriptor table or VM callbacks. Each open
+reserves its close job BEFORE native/destructive construction; failed opens free
+that unused reservation. After all FD pins/FIFO users retire, finalization removes
+the gate/handles/job from the descriptor table before native FIFO publication.
+The old native handle can finish close independently of a reused descriptor slot.
+No queue allocation or filesystem wait occurs in the GC finalizer.
+
+Shutdown joins managed producers, completes Fast/Cycles/RC retirement, then drains
+and joins the closer before final NATIVECLOSE statistics. Queued+in-progress jobs
+must reach pending0 with submitted=completed. Startup failure of the closer joins
+all already-created executors/collectors. Reference inline mode and pre-worker
+loader startup still close synchronously. The closer is not a managed executor
+and is not included in --managed-workers counts/caps. Physical handle backlog
+still consumes native resources; no unlimited buffering, timeout, forced native
+cancellation or durability/error-ack promise is introduced. A permanently stuck
+OS close can still block final join, rather than the shared heap during compute.
+
+Nine-phase real native barriers now stop actual fclose/closedir after last-owner
+transfer. Another Dis actor must create a competing UTF-8 file and compute/print
+BEFORE either OS permit is released. All prior metadata/open/create barriers
+remain.29/29 selected runtime tests pass; console/editor C/JIT4/8, installed
+editor cases, startup failure injection including the closer ordinal and complete
+gate/job retirement pass. Actual instrumented Debug INTERPRETER passes all nine
+barriers with4/8 under TSan (mode explicitly no-JIT). This focused run does not
+certify whole-VM/JIT/UI race freedom. Private header C++98, Python/shell/diff and
+both unchanged vendor manifests pass. New hosted evidence is native Linux x64.
+
+Selected snapshots remain ba26accbb4dc330e7a11f2951db8b18baa1249e4,1096 runtime/
+312 bootstrap files.0082 is reviewed/tested in its owning tree, not silently
+activated in our loader. Native close worker is our hosted adapter, not an
+upstream body imported into Inferno. Remaining hosted work: cancellation/resource
+recovery/backpressure, protected loader/C callbacks/UI lease audit, parallel
+common managed heap with allocator/RC/root/cycle barriers and architecture stress.
