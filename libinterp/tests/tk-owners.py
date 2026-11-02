@@ -56,5 +56,5 @@ with tempfile.TemporaryDirectory(prefix='tk-owners-') as directory:
         includes += ['-I'+str(root / p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
         binary = td / 'owners'
         subprocess.run(cmd+includes+[str(target),str(root / 'lib9/rune.c'),'-o',str(binary)],check=True)
-        subprocess.run([str(binary)]+os.environ.get('TK_OWNER_CASE','').split(),check=True)
+        subprocess.run(shlex.split(os.environ.get('TK_OWNER_RUNNER', ''))+[str(binary)]+os.environ.get('TK_OWNER_CASE','').split(),check=True)
         print('WORD'+str(bits), flush=True)

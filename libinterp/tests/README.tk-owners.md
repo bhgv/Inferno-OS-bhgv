@@ -15,7 +15,8 @@ reference, including aliased return replacement. Explicit display paths bypass
 the default cache.
 
 `TK_OWNER_CASE=quote`, `bounds`, `top` or `name` selects a subset.
-`TK_OWNER_MODELS="32"` selects the WORD32 model. `TK_OWNER_SOURCE` and
+`TK_OWNER_MODELS="32"` selects the WORD32 model. `TK_OWNER_RUNNER` supplies
+an explicit target execution prefix when CC builds a cross-target fixture. `TK_OWNER_SOURCE` and
 `TK_OWNER_DRAW_SOURCE` select alternate Tk/Draw production sources.
 
 Run `python3 libinterp/tests/tk-window-controls.py` for two active WORD32 controls:
