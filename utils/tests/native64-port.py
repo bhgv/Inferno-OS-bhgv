@@ -118,6 +118,11 @@ def main():
     run(cfg, build, env, logs/'local-cfg.log')
     for control in ('entry', 'unreachable', 'setup', 'site', 'join', 'capacity', 'limit', 'reset'):
         run(cfg+['--control', control], build, env, logs/('local-cfg-'+control+'.log'))
+    operands = [sys.executable, str(tests/'dis64-local-operands.py')]
+    run(operands, build, env, logs/'local-operands.log')
+    for control in ('narrow', 'width', 'tail', 'overlap', 'kind', 'bool', 'implicit', 'shift',
+                    'unreachable', 'atomic', 'capacity'):
+        run(operands+['--control', control], build, env, logs/('local-operands-'+control+'.log'))
     for control in ('entries', 'tail'):
         run(catalog+['--control', control], build, env, logs/('local-catalog-'+control+'.log'))
     run([sys.executable, str(tests/'dis64-inline.py'), '--limbo', str(tools/'limbo'),

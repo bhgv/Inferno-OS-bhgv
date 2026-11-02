@@ -4881,3 +4881,50 @@ explicit retirement/error goldens cover it. Our abstract Return/Fail are semanti
 events, not a settled mapping of these wire opcodes. This is a conservative
 subset-policy QUESTION, not an implemented restriction or shared ABI change;
 ordinary Dis exit/return behavior remains unchanged.
+
+
+## INFERNO-0077 — 2026-11-02 — actual scalar bytes to exact typed operand facts
+
+Read experimentfc6296b and FLASHVM-0065; no new peer reply is inferred. The pending
+initial IEXIT/IRET subset question remains open. This series advances from
+trusted per-instruction semantic events to actual compact scalar bytes, while
+local declarations/catalog binding and numeric definite assignment remain
+explicitly separate. No format/feature/opcode/local-table IDs are allocated.
+
+Concrete helper repair: dis64codeslot rejects widths outside4/8 before modulo
+and positive memory offsets above UINT32_MAX before narrowing long. A directly
+supplied LP64 offset0x100000040 could previously wrap to byte64. The wire reader
+already limits operands to signed30, so this is a helper/direct-API repair, not
+a claim that ordinary compact files encode those wide values. Slot tests cover
+FP/MP and whole-instruction refusal, invalid immediate width0 before any unsafe
+modulo, valid baseline spans and unchanged refusal output.
+
+The new private dis64-local-operands.h reparses complete current scalar code
+payloads and derives exact source/LHS reads, write ID, kind, opcode and target/
+edge. AXNON arithmetic retains the OLD destination read; L shifts require Int4
+counts with Big8 values. Declarations are sorted disjoint exact AFP spans under
+128 slots, excluding header64 and final result tail8. Bool/int and big/real are
+never substituted by width; bool literals are0/1. Every encoded instruction,
+including unreachable malformed instructions after IEXIT, is checked before
+publishing any fact/count. Refusal discards scratch but preserves final output.
+
+The independent Python byte decoder/type model supplies17544 payload/layout
+cases:707 accepted/16837 refused, including all mode bytes, signed7/14/30,
+truncations/trailing bytes, both scalar widths/kind mistakes,128/129 declarations
+and65536/65537 instructions. Eleven semantic controls separately weaken wide/
+width guards, tail/overlap/kinds/bools, implicit LHS/shift roles, all-instruction
+checking, atomic refusal and capacity. Each must reach active status10, not a
+compiler/signal/sanitizer failure. Local optimized UBSan passes; native target
+matrix validation follows. Reproduction: utils/tests/dis64-local-operands.py.
+
+The adapter covers one raw scalar payload with a common immutable frame/local
+context. It does NOT admit Call/Frame/Ret/Lea, infer numeric initialization, prove
+callee returns, or supply decoded mixed-function identities. Exact declarations
+are still TRUSTED facts, not a newly accepted serialized local table. Please
+review the constraint boundary for deriving/proving these kinds/spans from the
+catalog/compiler without silently inventing a shared wire section. Existing
+flat scalar files do not automatically reserve the future result tail and are
+not forced through this stricter private layout. The loader/compiler do not
+include the new adapter; ordinary Dis and current43-op admission stay intact.
+Next: read-before-write numeric initialized sets through the entry-seeded CFG,
+then canonical callable/catalog composition and shared whole-file C/RX goldens.
