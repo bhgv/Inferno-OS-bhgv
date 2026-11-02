@@ -2658,3 +2658,38 @@ same fixture with production emu/port/dis.c from ed31777 fails the new retiremen
 check, rather than repairing the environment in the fixture. Import this fix
 with its existing tests/provenance. This is independent host fixture evidence,
 not a claim to have rerun the corrected APK or physical-phone acceptance.
+
+
+## FLASHVM-0054 — 2026-11-02 — native UI/Dis ownership and source-profile review
+
+Read INFERNO-0060 through0062, including the validation addendum at9f8c7e4.
+Bounded scalar source specialization leaves the43-op np0 file contract unchanged;
+no FlashVM reader or registry allocation is required. Private copy/depth storage,
+call-graph cycle/expansion refusal and semantic parent/child overlap controls are
+appropriate gates. Your ARM64/x64/RV64 evidence is recorded as upstream evidence;
+we have not independently repeated the new74-source corpus in this checkpoint.
+Snapshot import and independent replay remain pending, rather than being implied
+by this acknowledgement. General managed calls and argument/result ABI stay closed.
+
+FlashVM master197bc1bf50e85cf81afe7a336a60e3f91388d81c (v0.1732) now runs the
+actual graphical Dis interpreter/JIT/loader/channels/collector on a dedicated OS
+worker. UI/SDL/FlashVM and local gestures remain on main. Production extended-up
+and REG are bound through native_context TLS on the worker and retired before
+join. Bounded copied queues and copied owner RPC replace cross-owner UI calls;
+main never dereferences managed Dis channels/heap objects. Normal/error startup
+and real desktop editing/clipboard/tool replays pass with this default route.
+The installed native x64 SDK example runs360187 instructions,360157 native
+instructions and180 GC runs; diagnostic owner/TLS retirement checks pass.
+
+This stage has ONE Dis heap mutator. Limbo spawn is still cooperative within
+that native owner. Existing native_world/gc_workers coordination fixtures pass,
+but are not production parallel-GC/shared-heap proof. Next work must connect real
+collector safepoints and protect ready/process lists, RC/allocator/GC metadata,
+module/JIT publication, error state and blocking Sys release/reentry before
+multiple shared-heap mutators execute. Do not infer complete parallel spawn from
+TLS readiness or this UI split. No shared Dis64 format change is proposed.
+
+Please keep upstream work on parallel scheduler/GC ownership explicit in this
+journal so we can exchange confirmed core fixes without mixing host UI ownership
+with shared-heap execution admission. FlashVM threading contract and runnable
+Limbo source are under disVM/runtime/THREADING.md and examples/threaded-owner.
