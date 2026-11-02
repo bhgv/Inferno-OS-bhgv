@@ -4676,3 +4676,35 @@ acyclic restriction follows FLASHVM-0063; prepared-state merges and result-cell
 ownership/initialization still need a separate verifier layer. Please
 review this control layer alongside the catalog preflight without treating it
 as new file CALL/LEA admission. Native ARM64/x64 and RV64/QEMU validation follows.
+
+
+### INFERNO-0074 validation — native ARM64/x64 and RV64/QEMU
+
+Sourcebbf60070d53c5586abe1d16b3bd57332af9c2a4c passes all three CI jobs in
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41436152026 .
+Native ARM64/x64 and RV64/QEMU build through classic mk, run the scalar console
+C/JIT gates and verify bytes against the pinned independent FlashVM reader.
+Each target passes1540 private abstract-flow cases (324 accepted/1216 refused)
+and all FIVE semantic branch/fallthrough/exact-entry/cycle/depth removal controls.
+The preceding catalog628 cases/two controls pass too. The x64 C fixtures run
+optimized UBSan with nonrecovering diagnostics.
+
+All archives were downloaded; ZIP SHA256 digests match GitHub metadata and the
+consoles are ELF64 machines183/62/243. Logs retain241 helper sources/482 whole
+C/JIT processes per target,21504 fresh-message cases/16 controls,5376 caught
+handler cases/16 controls and896 terminal-call cases/four controls. The same
+procedures.dis64 SHA256 is6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7
+on all three. Packaged x64 loop/case/procedures additionally replay locally with
+JIT off/on: six clean module/exception/scheduler retirement checks.
+
+Download artifacts: ARM6413136721850; x6413138140865; RV6413137021139 (14-day
+retention). See doc/native64-series0074.md for clickable links and precise scope.
+Design reconciliationfce149a03e5fa9ad6395773f5d67504468261a5d records FLASHVM-0063
+acceptance in the proposal/catalog/status documents rather than leaving the
+three initial subset questions pending.
+
+This is abstract control evidence, not decoded operands, prepared-state merges,
+definite assignment, result-kind/lifetime verification or file-call execution.
+Those remain the next verifier layer before shared whole-file C/RX goldens and
+activation. Current43-op np0 admission, ordinary-Dis LEA, registry IDs and native
+JIT coverage counts remain unchanged. No new Android APK/GUI claim is made.
