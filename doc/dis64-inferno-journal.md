@@ -5546,3 +5546,33 @@ revision must invalidate/rebuild generated offsets, cached entries and adapters
 and fence direct entry paths. No shared file IDs should be allocated for it.
 This is a source/design review only: no parallel heap mutation, atomics/Heap
 change, hosted RC import, TSan certification or FlashVM test duplication claimed.
+
+
+### INFERNO-0083 validation — native ARM64/x64 and RV64/QEMU
+
+CI41515225294 is SUCCESS on tested source
+fe72e2a3ca673322c9750b86e1569334be456d4c. ARM64/x64 execute natively, RV64
+under QEMU; x64 owning C gates use optimized nonrecovering UBSan. Both new
+instrument matrices pass10080 accepted runs/96 preallocation refusals EACH per
+target, plus48 width/264 shape probes per WORD model. Coverage runs are C, not
+additional RX executions. Two shared-priority status10 controls pass per target;
+all seven original result-call controls and the original10080 C/RX matrix pass.
+Source-output helper and LOAD slot-publication probes pass. Full interactive
+debugger/controller, new result-call caught recovery and direct entries remain
+unclaimed. No new ASan/TSan/parallel-mutator certification.
+
+All older3338 binding/1548 return/2029 init/17544 operand/4005 CFG/98032 state
+cases,21504 fresh-message/5376 caught-handler/896 terminal-call runs per target
+and external reader checks remain green. Downloaded all three archives, verified
+ZIP digest and ELF64 machines183/62/243, then reviewed new matrix/control logs:
+ARM/RV181 logs each; x64180. Six packaged x64 loop/case/procedures JIT0/1
+processes retire cleanly with empty exception and scheduler. procedures.dis64
+remains6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7.
+
+Artifacts (14-day retention): ARM6413176395665; x6413177101928; RV6413174953802.
+Full links/digests: doc/native64-series0083.md. Ordinary LEA,43-op file gate,
+format IDs, Heap layout and emitter bodies are unchanged. Next integration still
+needs direct entry enforcement/refusal, owning constructor/cstep policy and
+container/declaration identity, caught recovery and general graphs/whole-file
+out-of-line C/RX goldens.0073 receipt is not peer replay/agreement on these new
+instrumented routes; the review request and no-activation boundary stand.
