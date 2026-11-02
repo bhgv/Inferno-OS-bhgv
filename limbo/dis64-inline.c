@@ -3,8 +3,8 @@
 #include "dis64-inline.h"
 
 #define ScalarInlineFunctions 16U // Bound source specialization, including the sole exported entry.
-#define ScalarInlineFrame 128U // Bound scalar scratch and local storage in each straightline helper.
-#define ScalarInlineBody 32U // Bound straightline helper bodies, excluding the terminal RET.
+#define ScalarInlineFrame 128U // Bound scalar scratch and local storage in each leaf helper.
+#define ScalarInlineBody 32U // Bound helper bodies, excluding the terminal RET.
 #define ScalarInlineLabels 8U // Match the existing numeric case lowering bound.
 
 typedef struct InlineFunction InlineFunction;
@@ -86,10 +86,16 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 		return 0;
 	for(pc = function->start; pc+1 < function->end; pc++){
 		input = original[pc];
-		if(input->op == IRET || input->op == IEXIT || input->branch != nil || input->dm == Apc ||
+		if(input->op == IEXIT ||
 		   !inlinescratch(input->sm, &input->s, decl->desc->size) ||
 		   !inlinescratch(input->mm, &input->m, decl->desc->size) ||
 		   !inlinescratch(input->dm, &input->d, decl->desc->size))
+			return 0;
+		if(input->dm == Apc){
+			if(input->d.offset < function->start || input->d.offset >= function->end ||
+			   (input->branch != nil && input->branch->pc != input->d.offset))
+				return 0;
+		}else if(input->branch != nil)
 			return 0;
 		/* Validate the whole contiguous helper span, without the legacy scratch/local discontinuity. */
 		copy = *input;
@@ -110,6 +116,29 @@ inlinerelocate(int mode, Addr *address, unsigned int scratch)
 {
 	if(mode == Afp)
 		address->reg = scratch+address->reg-ScalarScratchStart;
+}
+
+
+/* Keep helper branches inside this call copy; returns resume after its body. */
+static int
+inlineflow(Inst *copy, InlineFunction *function, unsigned int begin, Inst *flat, unsigned int count)
+{
+	unsigned int target;
+
+	if(copy->op == IRET){
+		copy->op = IJMP;
+		copy->sm = copy->mm = Anone;
+		copy->dm = Apc;
+		target = begin+function->body;
+	}else if(copy->dm == Apc)
+		target = begin+copy->d.offset-function->start;
+	else
+		return 1;
+	if(target < begin || target > begin+function->body || target >= count)
+		return 0;
+	copy->d.offset = target;
+	copy->branch = &flat[target];
+	return 1;
 }
 
 
@@ -171,7 +200,7 @@ dis64prepare(Decl *entry, Inst *instructions, unsigned int count, unsigned int d
 	InlineFunction functions[ScalarInlineFunctions];
 	Inst **original, *input, *copy, *target;
 	InlineTable *tables;
-	unsigned int *mapping, n, i, j, start, end, at, amount, tablecount, scratch, helperbytes;
+	unsigned int *mapping, n, i, j, start, end, at, amount, tablecount, scratch, helperbytes, begin;
 	int current, callee, ok;
 
 	prepared->instructions = instructions;
@@ -281,11 +310,14 @@ dis64prepare(Decl *entry, Inst *instructions, unsigned int count, unsigned int d
 				copy->d.reg = scratch+j*IBY2WD;
 				copy = &prepared->storage[++at];
 			}
+			begin = at;
 			for(j = functions[callee].start; j+1 < functions[callee].end; j++){
 				*copy = *original[j];
 				inlinerelocate(copy->sm, &copy->s, scratch);
 				inlinerelocate(copy->mm, &copy->m, scratch);
 				inlinerelocate(copy->dm, &copy->d, scratch);
+				if(!inlineflow(copy, &functions[callee], begin, prepared->storage, prepared->count))
+					goto done;
 				copy = &prepared->storage[++at];
 			}
 			if(functions[callee].body != 0 || functions[callee].zeros != 0)

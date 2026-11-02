@@ -49,6 +49,21 @@ def programs():
     yield 'callee-error', 'value:=17;', '\nhelper(){value/=0;}\ninit(){helper();}', 'zero divide'
     yield 'wrong-answer', 'value:=17;', 'helper(){value+=3;} init(){helper();if(value!=21)value/=0;}', 'zero divide'
 
+    yield 'helper-if', 'value:int;', 'helper(){if(value==0)value=7;else value+=9;} init(){helper();helper();if(value!=16)value/=0;}', ''
+    yield 'helper-for', 'value:int;', 'helper(){x:int;for(i:=0;i<9;i++)x+=i;value+=x;} init(){helper();helper();if(value!=72)value/=0;}', ''
+    yield 'helper-while', 'value:int;', 'helper(){x:int;while(x<9){x++;value+=x;}} init(){helper();helper();if(value!=90)value/=0;}', ''
+    yield 'helper-zero-loop', 'value:int;', 'helper(){x:int;while(x<0)value++;} init(){helper();if(value!=0)value/=0;}', ''
+    yield 'helper-nested', 'value:int;', 'helper(){x:int;for(i:=0;i<3;i++)for(j:=0;j<4;j++)x+=i+j;value+=x;} init(){helper();helper();if(value!=60)value/=0;}', ''
+    yield 'helper-break', 'value:int;', 'helper(){x:int;for(i:=0;i<9;i++){if(i==3)continue;if(i==7)break;x+=i;}value+=x;} init(){helper();helper();if(value!=36)value/=0;}', ''
+    yield 'helper-return', 'key:int;value:int;', 'helper(){if(key==0){value+=7;return;}value+=9;} init(){helper();key=1;helper();if(value!=16)value/=0;}', ''
+    yield 'helper-big', 'value:big;', 'helper(){x:big;for(i:=big 0;i<big 9;i++)x+=i;value+=x;} init(){helper();helper();if(value!=big 72)value/=big 0;}', ''
+    yield 'helper-real', 'value:int;key:=1.25;', 'helper(){if(key<2.0)value+=3;else value+=7;} init(){helper();key=3.5;helper();if(value!=10)value/=0;}', ''
+    yield 'helper-after-entry', 'value:int;', 'init(){helper();helper();if(value!=12)value/=0;} helper(){for(i:=0;i<3;i++)value+=i+1;}', ''
+    yield 'helper-multiple', 'value:int;', 'a(){if(value==0)value=1;else value+=2;} helper(){x:int;while(x<3){x++;value+=x;}} init(){a();helper();a();helper();if(value!=15)value/=0;}', ''
+    yield 'helper-long-caller', 'value:int;', 'helper(){x:int;for(i:=0;i<4;i++)x+=i;value+=x;} init(){for(i:=0;i<4097;i++)helper();if(value!=24582)value/=0;}', ''
+    yield 'helper-loop-error', 'value:int;', 'helper(){for(i:=0;i<4;i++){if(i==2)value/=0;value++;}} init(){helper();}', 'zero divide'
+    yield 'helper-return-continue', 'value:int;', 'helper(){if(value==0)return;value++;} init(){helper();value/=0;}', 'zero divide'
+
 
 # These sources must be valid ordinary Limbo before the scalar backend rejects their calling shapes.
 def refusals():
@@ -57,7 +72,7 @@ def refusals():
     yield 'recursive', 'value:int;', 'helper(){value++;helper();} init(){helper();}'
     yield 'nested', 'value:int;', 'inner(){value++;} helper(){inner();} init(){helper();}'
     yield 'byte-local', 'value:int;', 'helper(){x:byte;x=byte value;value=int x;} init(){helper();}'
-    yield 'branch-helper', 'value:=1;', 'helper(){if(value>0)value++;} init(){helper();}'
+    yield 'helper-table', 'value:=1;', 'helper(){case value {1=>value++;10 to 20=>value+=3;* =>value--;}} init(){helper();}'
     yield 'managed', 'value: string;', 'helper(){value="hello";} init(){helper();}'
     locals_ = ''.join('x'+str(i)+':big;' for i in range(13))
     updates = ''.join('x'+str(i)+'+=big 1;value+=x'+str(i)+';' for i in range(13))
@@ -142,6 +157,17 @@ def main():
         work = Path(directory)
         source, image, smap, assembly, legacy = (work/name for name in ('source.b','image.dis64','map.json','source.s','legacy.dis'))
         for name, globals_, body, error in programs():
+            # A correct helper return must reach a distinct caller-only fault.
+            if name.startswith('helper-') and not error:
+                begin = body.index('{', body.index('init()'))
+                depth = 1
+                end = begin+1
+                while depth:
+                    depth += (body[end] == '{')-(body[end] == '}')
+                    end += 1
+                body = body[:end-1]+'continuation_probe <<=32;'+body[end-1:]
+                globals_ += ' continuation_probe:int;'
+                error = 'invalid argument'
             text = PREFIX+globals_+'\n'+body+'\n'
             source.write_text(text)
             command([args.limbo.resolve(), '-S', '-o', assembly, source])

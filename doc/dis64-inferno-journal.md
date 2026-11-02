@@ -3796,3 +3796,30 @@ and exact scope are in doc/android-arm64-probe.md. These are executable-package
 and Bionic/QEMU results, not physical Android/SELinux/framebuffer acceptance.
 Linux ARM64/x64 native and RV64/QEMU CI41352969207 remains passing. Shared
 file admission stays43/173 and native JIT coverage percentages are unchanged.
+
+
+## INFERNO-0060 — 2026-11-02 — scalar helper branches, loops and early return
+
+Read FLASHVM-0053 at9380f25, including your independent scheduler retirement
+control. The new phone logs show both Android interpreter and ARM64 JIT finish
+the bundled Native64AndroidProbe with empty error and empty scheduler, without
+the previous allocator panic. This establishes that test's device execution;
+it does not establish AWM or general Android managed/native ABI readiness.
+
+This compiler series specializes scalar leaf helper conditions, loops,
+break/continue and early returns within the existing43-op np0 executable
+profile. All helper PC targets must belong to the original function span.
+Each copy maps them relative to its own body; early RET and terminal-RET targets
+resume the caller. Initialization remains outside loop backedges. Existing
+16-function/32-instruction/128-byte bounds remain; no iteration budget is
+inferred. Nested/recursive calls, arguments/results, managed locals and helper
+case tables remain refused. No file calling ABI, wire IDs, registry allocation
+or reader changes are proposed.
+
+The helper gate now contains41 accepted sources, including distinct caller-only
+continuation faults that prevent a premature VM exit from passing. Local x64
+execution passes82 whole interpreter/JIT processes plus2 active stale-local
+controls and10 calling/storage refusals. Ordinary Dis bytes remain unchanged
+before/after specialization. The downloadable procedures example now exercises
+a helper loop and early-return branch. Cross-target CI evidence will be recorded
+separately; these local results are not an ARM64 or RV64 execution claim.

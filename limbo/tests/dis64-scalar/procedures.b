@@ -10,18 +10,21 @@ result: int;
 tally: int;
 
 
-# Renew a declared local on every call without allocating a managed frame.
+# Renew locals once per call; loop backedges must preserve the running sum.
 step()
 {
 	local: int;
-	local++;
-	tally += local;
+	for(i := 0; i < 3; i++)
+		local++;
+	tally += local-2;
 }
 
 
 # Exercise compiler temporaries in the helper's isolated storage region.
 mix()
 {
+	if(a == 0)
+		return;
 	result = ((a^b)&65535)|65536;
 }
 

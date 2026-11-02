@@ -1,4 +1,4 @@
-# Bounded scalar source procedures: through series 0058
+# Bounded scalar source procedures: through series 0060
 
 `limbo -6` can specialize direct FRAME/CALL pairs into its sole exported
 `init()` before the existing numeric-case and scalar lowering passes. This is
@@ -9,7 +9,8 @@ signature, coordinate schema or wire identifier is assigned.
 The current bounds are 16 compiled functions including the entry, 32 scalar
 instructions per helper excluding its final RET, and 128 bytes of legacy helper
 frame extent. Each helper has no arguments or result, no recursion or nested
-calls, no branches or cases and no managed frame map. Series 0058 also admits
+calls, no helper case tables and no managed frame map. Helpers may contain
+scalar conditional branches, loops and early returns. Series 0058 also admits
 user-declared int/big/real locals with fresh zero initialization per call.
 Byte, pointer and aggregate locals remain refused. The entry can retain
 its own loops, branches and bounded numeric cases around the calls.
@@ -137,3 +138,28 @@ case gates also pass in each clean CI port.
 
 procedures.dis64 is byte-identical across all three downloaded archives, SHA256
 `ad1c2750a4955db7719797fedcf2647585cc07c19ae49727416b310ec7334c47`.
+
+
+## Series 0060: control flow inside scalar leaf procedures
+
+The compiler now accepts scalar helper conditions, loops, break/continue and
+early returns. Each copied branch is checked against the original function's
+half-open instruction span, then rebased relative to that particular call copy.
+Early RET becomes a jump to the caller continuation. Branching to the terminal
+RET has the same continuation target; it cannot terminate the whole program.
+Per-call zero initialization precedes the copied body. Loop backedges target
+the body, so they cannot repeat initialization and silently reset loop locals.
+
+The existing 16-function, 32-instruction and 128-byte frame bounds still apply;
+they bound specialization size, not execution time or loop iteration count.
+Arguments/results, nested/recursive calls, helper case tables and managed locals
+remain refused. The shared executable profile remains exactly43 operations.
+No runtime file-call ABI or FlashVM reader change is required.
+
+New whole-process tests distinguish correct caller continuation from both an
+incorrect result and a premature VM exit: after successful self-checks, each
+positive control-flow program deliberately triggers a caller-only invalid-shift
+fault. Wrong results trigger zero divide; skipping the continuation produces an
+empty exit. Tests also cover helpers after the entry, nonzero helper origins,
+repeated local initialization, nested loops, Big/Real conditions and loop faults.
+Ordinary Dis compilation is compared before/after scalar specialization.
