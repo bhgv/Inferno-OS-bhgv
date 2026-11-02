@@ -1,4 +1,4 @@
-# Bounded scalar source procedures: through series 0064
+# Bounded scalar source procedures: through series 0065
 
 `limbo -6` can specialize direct FRAME/CALL pairs into its sole exported
 `init()` before the existing numeric-case and scalar lowering passes. This is
@@ -388,3 +388,29 @@ remains173/173. Shared-file admission remains43/173, not full application
 readiness. Scalar results, general file calls, managed storage/imports and full
 shell startup remain separate work. FlashVM may independently repeat this
 checkpoint using its unchanged reader; no shared format allocation is requested.
+
+
+## Series0065: scalar expressions in argument setup
+
+A helper argument may now be produced directly by Word/Big addition, subtraction,
+multiplication, division, remainder, bitwise AND/OR/XOR or signed shifts. The
+producer must write precisely one declared parameter in order. Arithmetic needs
+an explicit middle operand: an omitted operand would read an uninitialized child
+cell. Both input operands are checked against the caller geometry and cannot
+alias its opaque FRAME temporary. Caller FP sources and middle operands relocate
+independently before the destination becomes a direct child-depth cell.
+
+MOVW/MOVL/MOVF retain their existing type and no-middle requirements. No new
+opcode is allocated; source operations lower into the agreed43-op scalar profile.
+Floating arithmetic, result pointers/LEA, managed arguments, indirection, nested
+calls during an outstanding setup and arbitrary setup side effects remain closed.
+The earlier setup-interior branch/case refusal still applies to computed stores.
+Expression faults occur before the callee body, with their original source PCs.
+
+Local bootstrap and whole x64 VM gates pass126 sources /252 C/JIT processes,
+all6 active VM controls and14 refusals. These include20 Word/Big operator cases,
+zero-divide and invalid-shift argument faults, nested FP input/middle operands,
+multiple arguments and live caller locals. The actual setup resolver/removal
+control passes. Ordinary scalar compiler tests pass25 source/refusal cases and
+30 whole VM processes. Cross-target CI must be checked separately; these local
+results do not establish native ARM64/RV64 execution of this new checkpoint.

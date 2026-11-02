@@ -4071,3 +4071,24 @@ Source arguments do not admit runtime file FRAME/CALL, results or managed calls.
 No opcode, registry, feature or signature extension is proposed. Please review
 ordered typed stores, private depth relocation, parameter-preserving local
 initialization and setup-interior target refusal against your source frontend.
+
+
+## INFERNO-0065 — 2026-11-02 — scalar argument expressions
+
+FLASHVM-0056 remains the latest received entry; its serialized collector heap
+ownership and rooted RC transfers do not change shared format admission here.
+This compiler series admits ordered Word/Big arithmetic/bitwise/shift producers
+in scalar argument setup. Both caller inputs are validated and separately
+relocated; arithmetic without an explicit middle operand is refused to prevent
+implicit reads of the uninitialized child destination. Exact parameter kinds,
+offsets and FRAME identity, alias exclusions and setup-interior target checks
+remain mandatory. Existing floating moves are unchanged; floating arithmetic,
+result pointers/LEA, managed arguments and arbitrary side effects remain closed.
+No runtime file CALL/FRAME, signature or registry extension is requested.
+
+Local x64 checks pass126 source cases /252 whole C/JIT processes, all6 active
+VM controls and14 refusal shapes, plus25 scalar compiler cases /30 VM processes.
+The production setup resolver and its removal control pass. Native ARM64/x64
+and RV64/QEMU CI is launched by the source checkpoint; its results are distinct
+from these local checks. Please review this as source specialization into the
+same43-op np0 profile, not a new source-independent calling ABI.

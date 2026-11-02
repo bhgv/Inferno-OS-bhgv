@@ -68,6 +68,26 @@ inlinewidth(Type *type)
 }
 
 
+/* Match scalar argument-producing operations without admitting implicit reads of the child frame. */
+static int
+inlineargument(unsigned int op, int kind)
+{
+	switch(op){
+	case IMOVW:
+	case IADDW: case ISUBW: case IMULW: case IDIVW: case IMODW:
+	case IANDW: case IORW: case IXORW: case ISHLW: case ISHRW:
+		return kind == Tint;
+	case IMOVL:
+	case IADDL: case ISUBL: case IMULL: case IDIVL: case IMODL:
+	case IANDL: case IORL: case IXORL: case ISHLL: case ISHRL:
+		return kind == Tbig;
+	case IMOVF:
+		return kind == Treal;
+	}
+	return 0;
+}
+
+
 /* Identify argument cells that a validated call initializes before entering the child body. */
 static int
 inlineparameter(InlineFunction *function, unsigned int offset)
@@ -130,7 +150,7 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 	for(pc = function->start; pc+1 < function->end; pc++){
 		input = original[pc];
 		if(input->op == IFRAME || input->op == ICALL ||
-		   (input->dm == Afpind && (input->op == IMOVW || input->op == IMOVL || input->op == IMOVF)))
+		   (input->dm == Afpind && (inlineargument(input->op, Tint) || inlineargument(input->op, Tbig) || inlineargument(input->op, Treal))))
 			continue; // Pair identity and recursion are checked before expansion.
 		if(input->op == IEXIT ||
 		   !inlinescratch(input->sm, &input->s, decl->desc->size) ||
@@ -262,7 +282,7 @@ inlinecall(InlineContext *context, InlineFunction *caller, unsigned int pc)
 }
 
 
-/* Validate consecutive typed argument copies, refusing expressions, aliases and incomplete setup paths. */
+/* Validate consecutive typed scalar producers, refusing aliases, implicit child reads and incomplete setup paths. */
 static int
 inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsigned int data)
 {
@@ -270,7 +290,7 @@ inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsi
 	Inst *input, *frame, copy;
 	Decl *parameter;
 	Dis64Instruction checked;
-	unsigned int pc, end, i, width, op;
+	unsigned int pc, end, i, width;
 	int callee;
 
 	function = &context->functions[index];
@@ -285,7 +305,7 @@ inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsi
 		end = pc+1;
 		while(end < function->end){
 			input = context->original[end];
-			if(input->dm != Afpind || (input->op != IMOVW && input->op != IMOVL && input->op != IMOVF))
+			if(input->dm != Afpind || !(inlineargument(input->op, Tint) || inlineargument(input->op, Tbig) || inlineargument(input->op, Treal)))
 				break;
 			end++;
 		}
@@ -299,16 +319,20 @@ inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsi
 			if(parameter == nil)
 				return 0;
 			width = inlinewidth(parameter->ty);
-			op = parameter->ty->kind == Tint ? IMOVW : parameter->ty->kind == Tbig ? IMOVL : IMOVF;
-			if(input->op != op || input->mm != Anone || input->branch != nil ||
+			if(!inlineargument(input->op, parameter->ty->kind) || input->branch != nil ||
+			   ((input->op == IMOVW || input->op == IMOVL || input->op == IMOVF) ? input->mm != Anone : input->mm == Anone) ||
 			   input->d.reg != frame->d.reg || input->d.offset != parameter->offset ||
 			   !inlinescratch(input->sm, &input->s, function->declaration->desc->size) ||
+			   !inlinescratch(input->mm, &input->m, function->declaration->desc->size) ||
+			   (input->mm == Afp && input->m.reg < frame->d.reg+IBY2WD && input->m.reg+width > frame->d.reg) ||
 			   (input->sm == Afp && input->s.reg < frame->d.reg+IBY2WD && input->s.reg+width > frame->d.reg))
 				return 0;
 			/* Validate the source in its caller frame; use a harmless direct scratch destination. */
 			copy = *input;
 			if(copy.sm == Afp)
 				copy.s.reg += ScalarLegacyPrefix-ScalarScratchStart;
+			if(copy.mm == Afp)
+				copy.m.reg += ScalarLegacyPrefix-ScalarScratchStart;
 			copy.dm = Afp;
 			copy.d.reg = ScalarLegacyPrefix;
 			if(!dis64scalarinst(&copy, count, data, function->declaration->desc->size+ScalarNativePrefix-ScalarScratchStart,
