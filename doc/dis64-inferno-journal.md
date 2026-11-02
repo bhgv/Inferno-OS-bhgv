@@ -5257,3 +5257,73 @@ new guarantee is CONDITIONAL on that incoming result address and trusted local
 provenance; it is not a file execution capability. Shared whole-file C/RX goldens
 and explicit LEA8 execution/cache mode still precede activation. No ordinary
 Dis/reader semantics, flat43-op policy, new wire IDs or hosted adapters change.
+
+
+## INFERNO-0081 — 2026-11-02 — raw linear root setup / proved leaf composition
+
+Read experiment115db7f26e799c9cee897d2dde267c63bf00a3b3; FLASHVM-0069 remains
+latest incoming review. Next private constructor is dis64-bound-call.h: real
+FRAME/argument MOV/LEA/CALL/result-copy bytes are tied to canonical metadata and
+freshly proved leaf bodies from THE SAME immutable code/metadata/declarations.
+No supplied semantic events or external return summaries become authority.
+
+Initial composition is deliberately bounded: only a LINEAR module-entry caller,
+ending in idle IEXIT, may call noncalling helpers. Helpers keep0080 branches/
+loops/typed result coverage. No nested/recursive calls or general caller CFG.
+This root-to-leaf graph is acyclic by construction, not the full proposed DAG.
+All helper bodies are checked, including uncalled helpers and unreachable bytes.
+
+FRAME selects exact Type ordinal and temp40/48/56; a disjoint island scan finds
+the closing CALL, whose EXACT canonical entry determines signature. Shared frame
+Types with different signatures are tested. Argument starts/kinds/alignment are
+computed from that signature; padding/header/interior/tail writes refuse.
+Every required argument must be established. Repeated typed stores are legal.
+A typed unknown Bool source quantifies BOTH0/1 state transitions and exact-merges
+the results; it is not assigned a fabricated concrete value. Numeric source
+initialization is independently discharged before any final acceptance.
+
+Only the dedicated caller tail may be LEA-bound to prepared callee byte32 width8,
+once, for nonvoid results. This models the FUTURE explicit eight-byte profile
+operation; ordinary Dis LEA and production readers remain unchanged. New FRAME
+invalidates old ready state. Only normal CALL continuation with the freshly
+proved leaf postcondition establishes exact result kind; typed tail-to-local
+copies initialize locals and survive later preparation. Void calls, stale cells,
+wrong owners/pointers/kinds, missing setup and reads while pending refuse.
+
+Existing direct ICVTWF is privately classified as Int32-to-Real with exact source/
+destination kinds, supplying positive Real chains without inventing initialization.
+No conversion implementation, emitter or complex C handler is replaced. The
+production43-op file gate does not admit any new opcode through this work.
+
+All bytes/setup roles preflight first, then ALL leaves are proved, then root
+numeric FIFO analysis checks argument sources and typed result-copy writes.
+No partial records/count publish on later failure. Incoming helper address
+provenance is closed for these root call sites by the dedicated caller-tail /
+pending-owner binding, still under trusted compiler local declarations and
+caller-owned immutable container inputs. Uncalled helper summaries remain
+conditional, not external/native invocation capabilities. No proof cache/IDs.
+
+Total numeric+return+linear-root quota is bounded by135*65536=8847360. Decoded
+scratch is overwritten; caller workspace is104 bytes/node on LP64,6.5MiB at the
+instruction cap, plus bounded catalog/descriptor stack and final output. No heap/
+recursion. This is verifier work, not guest quota/CPU time. Island scans are
+bounded static preflight and cover disjoint setup spans.
+
+3338 raw vectors include1790 caller cases plus1548 prior return vectors under
+the stronger contract:387 accepted/2951 refused. All scalar kinds, same-Type
+signature differences, chained calls, copied-local survival/result invalidation,
+64 mixed parameters/two argument words, bit128, wrong pointers/addresses/types,
+all256 modes, malformed/truncated sections, exact/below quotas,64/65 functions
+and65536/65537 instructions are covered.29 active removal controls must reach
+semantic status10. Independent reference parses complete root islands, uses a
+REFERENCE-ONLY root-exit projection to preserve actual helper bytes/global PCs
+for the previous independent leaf oracle, and computes linear numeric sets itself.
+The C constructor never projects bytes or accepts that reference graph.
+
+This is NORMAL-CONTINUATION STATIC composition, not dynamic cleanup proof.
+A runtime failed call must retire ownership without making a caller result ready;
+abstract fail/abandon and existing native cleanup gates are still separate until
+shared whole-file C/RX integration. General DAGs/CFGs, actual error/unwind and
+LEA8/cache-mode/runtime goldens remain before activation. No hosted scheduler/
+file/metadata adapter import. See doc/dis64-bound-call.md and
+doc/native64-series0081.md; native matrix validation follows.

@@ -140,6 +140,15 @@ def main():
                     'atomic', 'base', 'secondary', 'store_kind', 'bool', 'void', 'source', 'cut',
                     'branch', 'terminal', 'exists', 'reachable', 'return_budget'):
         run(returns+['--control', control], build, env, logs/('bound-return-'+control+'.log'))
+    calls = [sys.executable, str(tests/'dis64-bound-call.py')]
+    run(calls, build, env, logs/'bound-call.log')
+    for control in ('symbol', 'entry', 'frame', 'signature', 'callee_exit', 'work_capacity',
+                    'output_capacity', 'budget', 'steps', 'atomic', 'pointer_temp', 'frame_type',
+                    'call_pointer', 'bind_owner', 'bind_source', 'bind_destination', 'bind_width',
+                    'argument_offset', 'argument_source', 'argument_complete', 'pending', 'linear',
+                    'ready', 'result_kind', 'result_write', 'leaf_return', 'leaf_address',
+                    'conversion_source', 'conversion_destination'):
+        run(calls+['--control', control], build, env, logs/('bound-call-'+control+'.log'))
     for control in ('entries', 'tail'):
         run(catalog+['--control', control], build, env, logs/('local-catalog-'+control+'.log'))
     run([sys.executable, str(tests/'dis64-inline.py'), '--limbo', str(tools/'limbo'),
