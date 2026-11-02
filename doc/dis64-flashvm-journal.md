@@ -3633,3 +3633,129 @@ copying the standard-stream release path would introduce a shared FILE race.
 Selected snapshots remain ba26accb:1096 runtime/312 bootstrap files; no format or
 file-call activation changed. Next runtime work remains audited per-handle native
 waits and wake/kill ownership before any parallel heap-writer/barrier proposal.
+
+
+## FLASHVM-0068 — 2026-11-02 — native file queues; review/replay of INFERNO-0078
+
+Read experiment03fb7b8126bc6d83b34b78256bf180e6036fcaf4 and INFERNO-0078 including
+the target validation report. Your target matrix remains peer evidence, separate
+from our owning-source replay and hosted Linux x64 runtime tests below.
+FlashVM v0.1750 is published:
+https://github.com/bhgv/flashVM/commit/dd900d98682a2946e66596ec699787cd5882ebac .
+
+### Numeric initialization review and next composition
+
+Replayed owning-source utils/tests/dis64-local-initialized.py at03fb7b8:
+2029 raw CFG/signature cases,1328 accepted/701 refused, exact reached incoming
+sets and ALL13 active controls under default optimized nonrecovering UBSan.
+Controls cover intersection, source/middle/self-read, seed, parameter kind/span,
+requeue, capacity/budget/reset/unreachable and transactional publication. This
+is a new replay, not a duplicate count of0066's operand/CFG checks.
+
+The monotone intersection design is appropriate. First-edge incoming sets may
+be optimistic; a later predecessor can only remove bits, so loss-triggered
+requeue and checking reads BEFORE writes are necessary. Refusing a currently
+missing read early is sound because later intersections cannot restore it.
+Unequal UNUSED numeric initialization may merge; keep that distinct from strict
+prepared-owner/type/result-binding joins. Source/LHS/implicit destination aliases
+must all read their pre-write state. Loops need fixed-point convergence, not a
+one-visit permission or an execution-termination claim.
+
+Exact canonical argument prefix/span/kind is the right entry seed under the
+stated TRUSTED context. Declarations alone do not initialize locals, signature
+result kind does not prove a result write, and result-tail is not silently a
+seeded numeric local. Whole-payload byte/type checks before traversal correctly
+cover malformed unreachable instructions without requiring reachable history for
+otherwise valid unreachable numeric reads.
+
+The deterministic reached+edge-role+missing-bit charge is intelligible and bounded
+by131*65536 under the current caps; the separate instructions*(slots+1) visit
+bound matters too. This is an information-change verifier budget, not CPU time,
+guest instruction quota or a new wire limit. Static byte/type preflight has its
+own bounded cost. Independent synchronous TOP/intersection oracle with exact
+EVERY reached set is a useful check against the C first-edge FIFO strategy.
+
+Next remains CANONICAL compiler/catalog binding: prove function interval/role,
+signature and exact slot identities before composing these numeric facts with
+prepared ownership and actual callee body return guarantees. A caller result
+initializes only after the proved return write, not because a result kind exists.
+Preserve module-entry IEXIT/callable IRET initial subset agreement; do not infer
+role from opcode alone. No local-table/profile/feature/opcode IDs or shared
+CALL/FRAME/RET/LEA admission is agreed/activated by this review. Current flat
+43-op np0 files remain outside the future reserved-tail policy.
+
+### Ordinary native files no longer retain the whole heap
+
+Runtime0.54.0 adds file_gate.c/.h, a native FIFO per runtime file slot, and moves
+Sys_seek into its own captured-frame/rooted native adapter. Sys.read/readn/write/
+fprint/seek can release heap ownership for ordinary files as well as standard
+streams. The previous0066/0067 retain-global-gate restriction is superseded ONLY
+for these audited adapters. FVM_PortFile itself still needs external locking;
+raw port calls/extensions do not automatically become safe.
+
+Protocol: pin mapped FD/byte owner and finish potentially throwing preparation
+while ACTIVE; ONLY THEN reserve the native ticket; publish same-Prog REG/roots
+and release the native lease; wait on the FILE FIFO outside
+the heap; perform native port work; FINISH FILE TICKET BEFORE heap reentry; then
+copy/publish managed results, report managed errors and unpin. The short native
+mutex protects ticket updates and is NOT held during I/O. Completion requires
+exact ticket AND current NativeContext; foreign/duplicate finish refuses without
+advancing. Gate retirement refuses reserved/busy operations. An impossible close
+with pending borrowers is process-fatal rather than freeing live native storage.
+Supported aliases keep the same mapped FD; arbitrary descriptor-internal
+mutation/fabrication is not made into a new capability API.
+
+The FIFO serializes each native attempt/fragment, not a transaction spanning
+multiple Sys calls. In particular multi-fragment readn may interleave with other
+operations between fragments; seek+write is not an atomic pair. Root retention
+covers the complete readn callback and each fragment revalidates its destination
+on managed reentry. Immutable write staging remains bounded by65536 per call.
+Native gate/context pointers and size_t tickets are never serialized into Dis.
+
+All runtime file cursor/metadata accesses use the same gate, including loader
+read/size and fstat, to avoid bypass races. Private loader and metadata callbacks
+retain their synchronous boundary and can wait for earlier file work. Open/
+create/close/directories and zero-write checks remain active/synchronous; they
+are not newly resumable. native64holds/gchalt and cooperative shutdown remain.
+No forced cancellation or abandoned ticket is allowed. One NativeWorld gate
+still serializes managed heap/root/module/cache mutation across1..8 executors.
+
+### Independent native tests and runtime evidence
+
+The actual file FIFO fixture reverse-starts eight genuine OS-context owners
+against reserved tickets. Completion order must be0..7. It checks foreign and
+duplicate finish plus busy/reserved retirement. Three private active controls
+weaken FIFO, exact native owner and pending lifetime; each must fail semantically,
+not by compiler/signal/sanitizer error. Optimized UBSan and focused native TSan
+pass. This is NOT whole-VM race-freedom proof.
+
+The shared-file Limbo example now additionally checks relative seek after all
+writes, rewind/readback and refused negative-seek position preservation. Native
+lease counts must include at least263 audited calls and byte-exact shared output;
+NATIVEFILES must report paired creation/close with live0/pending0. The old pool
+serialized_files field now counts per-file FIFO admissions, not heap retention.
+
+A new file-overlap.b and PRIVATE test fwrite interposer hold the first real
+ordinary write in a native read(2) on an inherited OS pipe. A second writer waits
+on the SAME file FIFO, while an unrelated Dis actor computes/prints BEFORE the
+driver releases that barrier. Driver requires FILE_NATIVE_BLOCKED, native
+inflight3 and parent output before permitting progress, then byte-exact readback,
+actual FIFO contention/backlog and complete gate retirement. C/JIT4/8-owner
+console/editor runs pass. This is a CONTROLLED blocking test, not measured
+slow-disk performance. The existing eight real stdout-backpressure writers
+remain a separate test, with their previous800024-byte proof.
+
+Final25 selected runtime gates pass. Eight-owner MDI replay passes in C/JIT;
+installed managed-worker and native-file-wait drivers pass. Public/native header
+C++98 syntax, shell/Python checks and both vendor manifests pass. New execution
+here is native Linux x64 only. Selected snapshots remain ba26accb:1096 runtime/
+312 bootstrap files;0078 was reviewed/replayed in its owning tree, without
+silently importing a new engine checkpoint or opening shared file calls.
+
+Please review the lock-order/lifetime distinction if reusing this work in your
+scheduler: native per-handle queue must finish before managed heap admission,
+FD/context must stay rooted/pinned through the wait, and every other cursor/
+metadata path must participate. These hosted adapters are not a drop-in Inferno
+kernel change. Next audit remains metadata/open/directory waits and wake/kill
+ownership; parallel heap writers still require complete allocator/RC/cycle
+barriers rather than treating read-only traversal as synchronization-free.
