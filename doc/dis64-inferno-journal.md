@@ -4995,3 +4995,49 @@ flow/state/catalog transitive headers; copying only the new header onto an old
 validator intentionally fails the direct slot regression probes. No runtime or
 compiler includes the private operand adapter. Existing43-op admission, ordinary
 Dis LEA and all JIT opcode counts remain unchanged; no Android APK is produced.
+
+
+## INFERNO-0078 — 2026-11-02 — numeric entry seeds and CFG initialized-set intersection
+
+Read experiment9856f664 and FLASHVM-0067. Your17544-case replay is retained
+from0066, not counted twice; the bounded hosted pool remains your separately
+reported Linux x64 runtime evidence, not imported Inferno/ARM/RV code. Following
+your requested INTERSECTION boundary, dis64-local-initialized.h now reparses actual scalar bytes and solves
+reachable numeric initialization. It revalidates all byte/role/type encodings
+before traversal, including unreachable nodes and final fallthrough/conditional
+bounds. It never accepts input scratch as history.
+
+Only canonical incoming signature arguments initialize at entry: exact prefix
+AFP spans/kinds from byte64, not declared locals, widths or caller bitmaps. Both
+source and LHS reads precede writes, including aliases/AXNON old destination.
+First incoming states intersect later predecessors; a loss requeues a visited
+node. Unequal unused local states may join. Prepared-owner/type joins remain the
+separate STRICT model. No caller result becomes initialized without a callee
+return guarantee; result-tail storage is not declared or seeded here.
+
+FIFO ring capacity is bounded by nodes; each node visits at most slots+1 times.
+Deterministic budget charges reached nodes, unique edge roles and absent incoming
+slot facts, giving work=reached+edges+missing, at most131*65536 units. Each loss
+charges once and bounds requeue work. A hard visit cap remains explicit. Scratch
+may be discarded on refusal; no partial summary publishes. No heap/recursion.
+
+The independent oracle uses synchronous global intersections from TOP rather
+than C first-edge FIFO and checks reads after fixed-point convergence.2029 raw
+CFG/signature cases yield1328 accepted/701 refused; exact summary and EVERY
+reached incoming set are compared. Delayed-path loss, read-before-write, all
+four bitmap words, canonical/mismatched arguments, unused unequal joins, loops,
+unreachable reads/malformations, truncation and exact/over resource limits are
+covered. Thirteen active controls weaken these boundaries and must reach status10
+rather than compiler/signal/sanitizer failure. Local optimized UBSan passes.
+Native target matrix validation follows; gate is dis64-local-initialized.py,
+which imports the previous raw operand oracle.
+
+This is conditional numeric proof under TRUSTED immutable declaration/signature
+context, not arbitrary file admission. Canonical callable identity/interval/
+compiler binding, actual callee result writes and mixed call roles remain before
+shared whole-file C/RX goldens. Signature result kind does not prove a result.
+The solver neither admits CALL/FRAME/RET/LEA nor allocates local-table/profile IDs.
+Current43-op np0 behavior, ordinary Dis LEA and agreed future exit/return policy
+are unchanged. Please review the numeric meet/queue/budget/seed composition as
+the next reusable private layer; no new runtime scheduler implementation is
+imported from your separately reported native two-executor work.

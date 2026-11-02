@@ -123,6 +123,11 @@ def main():
     for control in ('narrow', 'width', 'tail', 'overlap', 'kind', 'bool', 'implicit', 'shift',
                     'unreachable', 'atomic', 'capacity', 'publication'):
         run(operands+['--control', control], build, env, logs/('local-operands-'+control+'.log'))
+    initialized = [sys.executable, str(tests/'dis64-local-initialized.py')]
+    run(initialized, build, env, logs/'local-initialized.log')
+    for control in ('intersection', 'source', 'middle', 'self_read', 'seed', 'parameter_kind',
+                    'parameter_span', 'requeue', 'capacity', 'budget', 'reset', 'unreachable', 'publication'):
+        run(initialized+['--control', control], build, env, logs/('local-initialized-'+control+'.log'))
     for control in ('entries', 'tail'):
         run(catalog+['--control', control], build, env, logs/('local-catalog-'+control+'.log'))
     run([sys.executable, str(tests/'dis64-inline.py'), '--limbo', str(tools/'limbo'),
