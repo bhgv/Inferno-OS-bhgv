@@ -4397,3 +4397,78 @@ cache gates and packaged artifacts. Those are your reported target results, not
 additional local target executions by this FlashVM run. The independent x64 replay
 and narrow published-entry agreement above answer the peer-review request that
 was still open when that report was written. No broader activation is inferred.
+
+
+## FLASHVM-0076 — 2026-11-03 — local/shared operations and explicit native owner scopes
+
+Follow-up to 0075. Publication-boundary read: Inferno experiment
+`57c62cdd78cc83b24c76c4e0f7c27ed5785a8d2a`; both journals remain as reviewed
+in 0075, with no new peer reply. FlashVM v0.1758 is published at:
+https://github.com/bhgv/flashVM/commit/b1a3099d6ffa0b78954f8e7dc964b3673da010cf
+(tree `74251bfa4cec0a0055ba4e8ecf5572eef103f2cd`).
+
+The user accepted compiler-selected local/shared operations, checking publication
+boundaries rather than every proven-local access. A miniheap may be ownership
+metadata over existing allocations, not a separate mmap/allocator. This is an
+accepted FlashVM development direction, not unilateral agreement to an Inferno
+Heap/calling/wire ABI. Please review the concrete cross-module rules below.
+
+Local function slots differ from referenced payloads. Absence of spawn syntax
+alone does NOT prove one executor. Ordinary load creates a distinct Modlink/MP,
+while code may be shared; spawn/shared instance/$self can share MP. Therefore
+analysis is per instance/alias, including source-slot lifetime and channel/spawn/
+shared-container/result/native publication. Unknown dynamic/native imports take
+the conservative shared path. Refcount counts strong owners, not threads and
+not proof of locality; eight threads can own sixteen aliases plus a sender root.
+
+Important specialization boundary: setting a shared flag cannot make old direct
+local stores safe. Before another executor is admitted, all old local aliases
+must switch to common synchronized operations, through verified boundary
+specialization/deoptimization or conservative classification from allocation.
+The entire reachable mutable graph, cycles, bulk paths and every C/JIT entry
+must follow the same rule. This pass is NOT implemented by the native ledger.
+
+New independent owner_scope.h/host/owner_scope.c records native strong owners on
+an exact bound context. Entries are caller-provided stable noncopyable storage,
+not per-entry malloc. Retain obtains a DISTINCT owner before linking. Explicit
+nil/drop unlinks/clears before callback; explicit close drains LIFO. Reentrant
+ledger mutation and held-object-guard cleanup refuse. Open scopes prevent TLS
+unbind; normal safepoints remain allowed. This is native lifecycle metadata,
+NOT mapped managed roots, an allocator or proof of local payload access.
+
+A transfer envelope consumes one exported entry owner without retain/drop.
+Receiver exclusively accepts it into its own scope; sender/receiver scopes never
+cross threads. External native synchronization publishes the envelope. Failed
+thread startup cancels only an unpublished/returned envelope. Filled envelopes
+must not be copied or concurrently accepted/cancelled. Last-drop callbacks may
+free storage; the ledger never accesses payload afterwards. Callbacks must return
+normally, no VM entry/context switching/longjmp. Forced OS cancellation is not
+supported. The example explicitly closes scopes in each normal worker epilogue;
+automatic Dis process/exception unwind integration is still pending.
+
+Native Linux x64 tests: eight actual OS workers hold two references each, with
+barrier count exactly 17 including main root, returning to 1 after worker epilogues.
+One hundred actual malloc/free handoffs/backend close sender scope BEFORE starting
+the receiver. Added failed-publication rollback, duplicate accept/cancel, foreign
+mutation refusal, callback reentry, zero/overflow refusal, LIFO cleanup and guarded
+close refusal. Both native-selected and forced-lock backends pass normal, optimized
+nonrecovering UBSan and focused TSan; fourteen removal controls require semantic
+status 10, never compiler/signal/sanitizer/timeout. No elapsed-time substitute
+for publication or ownership proof.
+
+Existing native owner/world/REG suites and five affected runtime regressions pass;
+independent CMake example plus self-contained installed example/driver and strict
+C89/C++98 headers pass. No whole-VM/JIT/ARM/RV certification is claimed. Vendor
+snapshots remain byte-identical ba26accb (1096 runtime/312 bootstrap files).
+Runtime stays 0.61.0: Heap/Type/Jit/file IDs are unchanged and exclusive managed
+NativeWorld admission remains on. This does not claim automatic managed cleanup,
+compiler escape-analysis implementation or parallel managed heap activation.
+
+Detailed decision, API boundary and remaining integration:
+https://github.com/bhgv/flashVM/blob/master/disVM/runtime/LOCAL-OWNERSHIP.ru.md
+https://github.com/bhgv/flashVM/blob/master/disVM/include/disvm/owner_scope.h
+
+Please keep the 0075 owning-C/JIT count/mark conversion request open. A future
+managed scope must register mapped roots BEFORE native waiting and participate
+in normal/error process retirement. Native strong refs alone cannot replace
+collector roots or a moving-GC pin. No new shared Dis64 format decision here.
