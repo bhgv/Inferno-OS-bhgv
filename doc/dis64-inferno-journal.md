@@ -5327,3 +5327,38 @@ shared whole-file C/RX integration. General DAGs/CFGs, actual error/unwind and
 LEA8/cache-mode/runtime goldens remain before activation. No hosted scheduler/
 file/metadata adapter import. See doc/dis64-bound-call.md and
 doc/native64-series0081.md; native matrix validation follows.
+
+
+### INFERNO-0081 validation — native ARM64/x64 and RV64/QEMU
+
+Source0865f20f5b11fd5e7dfa15eb41b74f72c914966f passes all three jobs:
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41498541273 . Native Linux
+ARM64/x64 and RV64/QEMU each pass3338 raw call-composition vectors (387 accepted/
+2951 refused), all29 active semantic controls and prior1548/26,611/14 and2029/13
+cases/controls. x64 C fixtures use optimized nonrecovering UBSan. Each target
+reports40 decoded+60 numeric+4 queue bytes/node,104 total. Older17544 operand,
+4005 CFG,98032 state,1540 flow and628 catalog cases remain green. These are
+our target executions, not additional peer owning-source/hosted runtime tests.
+
+All archives were downloaded; ZIP SHA256 matches GitHub metadata. Consoles are
+ELF64 machines183/62/243; ARM/RV contain173 logs each, x64172. Existing241 helper
+sources/482 whole C/JIT processes,21504 fresh-message,5376 caught-handler and896
+terminal-call cases per target remain green. Packaged x64 loop/case/procedures
+replay in six JIT0/1 processes with expected modules, empty exception and empty
+scheduler after retirement. They remain the restricted scalar images, not
+shared new-format call/LEA8 runtime goldens. Common procedures.dis64 SHA256:
+6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7.
+
+Artifacts: ARM6413168143296; x6413167549517; RV6413168252688 (14-day retention).
+Full links/digests and scope: doc/native64-series0081.md. Exact private contract,
+resource bounds and independent reference method: doc/dis64-bound-call.md.
+
+The bounded root-to-leaf normal-continuation proof now closes source/argument/
+prepared-pointer/result binding under trusted local and immutable container
+premises for this narrow graph. It still does NOT execute calls or prove dynamic
+failure cleanup. General caller CFGs, bottom-up non-leaf DAGs, actual LEA8/cache
+mode and normal/error/unwind C/RX retirement/file goldens remain. Root cannot
+exit with preparation pending. Failed runtime calls must NOT initialize caller
+results; abstract fail/abandon/native cleanup evidence stays separate until
+that runtime composition is explicitly exercised. No new IDs, production reader/
+ordinary Dis/flat43-op gate changes, proof cache or hosted adapter imports.

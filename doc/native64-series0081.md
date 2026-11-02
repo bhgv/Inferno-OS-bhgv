@@ -36,9 +36,23 @@ leaf guarantees/address and exact conversion source/destination kinds.
 
 Local optimized nonrecovering UBSan passes. Workspace is104 bytes/node on LP64:
 40 decoded+60 numeric+4 queue,6.5MiB at65536 nodes, plus bounded stack/output.
-Native ARM64/x64 and RV64/QEMU validation is pending at this source checkpoint.
-The prior1548/26,611/14,2029/13 and older gates remain in the native driver.
-No target execution is inferred from local results or previous series.
+Source: `0865f20f5b11fd5e7dfa15eb41b74f72c914966f` on `experiment`.
+CI: https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41498541273
+
+All three jobs pass: native Linux ARM64/x64 and RV64/QEMU. Each target passes
+3338 call-composition cases (387 accepted/2951 refused), all29 active semantic
+controls and prior1548/26,611/14 and2029/13 gates. x64 C fixtures use optimized
+nonrecovering UBSan. Every target reports40 decoded+60 numeric+4 queue bytes/node.
+Older17544 operand cases,4005 CFG graphs,98032 state records,1540 flow cases and
+628 catalog cases remain green. Logs retain241 helper sources/482 whole C/JIT
+processes,21504 fresh-message cases,5376 caught-handler cases and896 terminal-call
+cases per target. This is our target evidence, separate from peer replays.
+
+All ZIPs were downloaded; SHA256 matches GitHub metadata and consoles are ELF64
+machines183/62/243. ARM/RV archives contain173 logs each, x64172. Packaged x64
+loop/case/procedures replay in six JIT0/1 processes with expected module, empty
+exception and empty scheduler after retirement. These are the existing scalar
+images, not shared new-format call/LEA8 execution goldens.
 
 FLASHVM-0069 remains the latest incoming review at this source checkpoint.
 Its0079 owning-source replay and hosted metadata/file-wait work remain separate
@@ -57,3 +71,32 @@ peer evidence; no scheduler/descriptor adapter is imported into Inferno.
 New-format file admission remains43/173 (24.86%), distinct from opcode-entry JIT
 coverage and complete application readiness. This is a private verifier/Linux
 scalar-console checkpoint, not an Android APK or full managed shell/GUI release.
+
+## Downloads and archive verification
+
+| Target | Execution | Result | Archive |
+|---|---|---|---|
+| ARM64 | Native Linux | PASS | [download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41498541273/artifacts/13168143296) |
+| x64 | Native Linux, UBSan C fixtures | PASS | [download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41498541273/artifacts/13167549517) |
+| RV64 | Linux/QEMU | PASS | [download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41498541273/artifacts/13168252688) |
+
+| Target | ZIP SHA256 |
+|---|---|
+| ARM64 | `84c962d0243c43e511d8dfb03997d27847fea77b872738ade8d68521e13c945d` |
+| x64 | `e8643666a7bba5d338ef0c933ef72cde4ed28db877771e1c06c42952db95e7c4` |
+| RV64 | `3f3e24e12c843cb925098230ec85ec83033166df8fe08ce24df3b9c2f0d4f456` |
+
+All targets retain the same procedures.dis64 SHA256
+`6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7`.
+This emulator normally ends via SIGKILL after the verified retirement markers;
+exit status alone is not the packaged replay predicate. GitHub retains archives
+for14 days. They contain Linux consoles, existing scalar examples and gate logs.
+
+Remaining before executable file-call activation: general caller CFGs/non-leaf
+DAG composition, actual FRAME/LEA8/CALL runtime and cache-mode integration,
+normal/error/unwind retirement and shared whole-file C/RX positive/refusal goldens.
+The private input declaration/container provenance and full-input proof-cache
+obligations remain explicit; no untrusted kind table or cache is introduced.
+
+[Inferno outgoing journal](dis64-inferno-journal.md) and
+[FlashVM incoming journal](dis64-flashvm-journal.md) retain direct coordination.
