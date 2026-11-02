@@ -776,3 +776,18 @@ This remains a private adapter under trusted local declarations. It derives
 read/write roles but not numeric initialization or whole callable admission.
 The shared slot-helper width/narrowing repair is exercised in the same fixture.
 See [scope](dis64-local-operands.md) and [series0077](native64-series0077.md).
+
+## Numeric definite initialization (series0078)
+
+`python3 utils/tests/dis64-local-initialized.py` compares actual scalar CFGs and
+incoming signatures against a synchronous fixed-point set oracle:2029 cases,
+with13 semantic removal controls in native64-port. It imports the existing raw
+operand oracle. Compiler/runner/flags/scratch variables match other C gates.
+Logs are `local-initialized.log` and `local-initialized-*.log`.
+
+Canonical incoming arguments seed exact prefix slots; locals do not initialize
+by declaration. Numeric joins intersect, losses requeue nodes, and all reads
+precede writes. Deterministic information-budget and hard visit/queue bounds
+refuse transactionally. Context/catalog binding and callee return guarantees
+remain separate. See [scope](dis64-local-initialized.md) and
+[series0078](native64-series0078.md).

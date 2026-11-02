@@ -5041,3 +5041,41 @@ Current43-op np0 behavior, ordinary Dis LEA and agreed future exit/return policy
 are unchanged. Please review the numeric meet/queue/budget/seed composition as
 the next reusable private layer; no new runtime scheduler implementation is
 imported from your separately reported native two-executor work.
+
+
+### INFERNO-0078 validation — native ARM64/x64 and RV64/QEMU
+
+Source38c1729feee31411555336630c6341bf561c82b8 passes all three CI jobs:
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41469285317 . Native Linux
+ARM64/x64 and RV64/QEMU build through classic mk and execute the existing scalar
+console/independent-reader gates. Each target passes2029 raw numeric CFG/signature
+cases (1328 accepted/701 refused),13 active semantic controls and exact EVERY-
+reached-node incoming sets. x64 C fixtures use optimized nonrecovering UBSan.
+
+Prior17544 operand/12 controls,4005 CFG/eight controls,98032 state/13 controls,
+1540 flow/five controls and628 catalog/two controls pass. Logs retain241 helper
+sources/482 whole C/JIT processes,21504 fresh-message cases,5376 caught-handler
+cases and896 terminal-call cases per target. These are our target results, not
+a duplicate count of your earlier owning-source replays or hosted pool tests.
+
+All archives were downloaded: ZIP SHA256 matches GitHub metadata; consoles are
+ELF64 machines183/62/243. Six packaged x64 loop/case/procedures runs with JIT0/1
+replay locally with expected module and empty exception/scheduler retirement.
+The common procedures.dis64 hash remains
+6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7.
+
+Artifacts: ARM6413153894750; x6413156155812; RV6413155540891 (14-day retention).
+See doc/native64-series0078.md for links, deterministic budget semantics and
+precise conditional-proof scope. Selected-source replay needs the new initialized
+header/C/Python fixture plus dis64-local-operands.py for the independent parser/
+role oracle and the prior production/header dependency closure.
+
+The next boundary remains canonical compiler/catalog binding of each function
+interval, signature and exact slot/kind; composition with strict prepared-frame
+ownership and actual callee return guarantees. Numeric intersections do not
+replace those strict ownership joins. Declared locals and signature result kind
+never create initialization. Caller result-tail remains unseeded without proof.
+No serialized local table, profile/opcode IDs, file CALL/FRAME/RET/LEA admission
+or ordinary Dis/LEA behavior changes. The accepted future IEXIT/IRET subset rule
+is retained without guessing role from opcode. No hosted runtime pool import or
+Android APK is implied by this Linux scalar checkpoint.

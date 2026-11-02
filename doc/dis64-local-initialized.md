@@ -89,3 +89,8 @@ whole-file C/RX goldens. Do not infer a serialized local-table section or IDs.
 Current43-op np0 admission, ordinary Dis LEA and the accepted future module-entry
 IEXIT/callable IRET design remain unchanged. No runtime/compiler includes this
 private solver and no Android APK/GUI readiness is implied.
+
+CI run41469285317 passes native ARM64/x64 and RV64/QEMU at38c1729, including all
+2029 cases/13 controls and exact final incoming sets. Downloaded ZIP digests,
+ELF64 machine/class and complete gate logs were checked. See
+[target acceptance](native64-series0078.md#cross-target-acceptance-and-downloads).

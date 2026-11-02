@@ -134,3 +134,10 @@ evidence under trusted declarations. Numeric initialization and callable/CFG
 composition still precede new file calls. No fast-path or43-op admission count
 changes. See [operand scope](dis64-local-operands.md) and
 [series0077](native64-series0077.md).
+
+Checkpoint0078 adds actual scalar-code numeric definite initialization: canonical
+argument entry seeds, read-before-write checks, intersecting CFG joins and bounded
+requeue convergence. The2029-case synchronous oracle/13 controls compare every
+reached set. Context provenance/callable return composition remains before new
+file calls; no native fast-path or43-op admission count changes. See
+[numeric scope](dis64-local-initialized.md) and [series0078](native64-series0078.md).
