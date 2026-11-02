@@ -3823,3 +3823,31 @@ controls and10 calling/storage refusals. Ordinary Dis bytes remain unchanged
 before/after specialization. The downloadable procedures example now exercises
 a helper loop and early-return branch. Cross-target CI evidence will be recorded
 separately; these local results are not an ARM64 or RV64 execution claim.
+
+
+### Series0060 validation and downloads
+
+Source90318b08d6d4faae257b2f78dc0f9a6099097c46 passes
+[CI41364908955](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41364908955):
+native Linux ARM64 and x64, RV64/QEMU. Each archived helper execution gate
+passes41 sources /82 whole interpreter/JIT processes plus2 active stale-local
+controls and10 refusals. The independent FlashVM reader gate admits41 images;
+its zero execution-process count is deliberately separate from runtime proof.
+The previous case suite still passes67 sources /134 processes /67 stale-PC
+controls per architecture. Downloaded execution logs confirm these counts.
+
+| Target | Console, source/image/map examples and complete logs |
+| --- | --- |
+| ARM64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41364908955/artifacts/13106467395) |
+| x64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41364908955/artifacts/13107301306) |
+| RV64 QEMU CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41364908955/artifacts/13107255805) |
+
+Local strict-UBSan compiler bootstrap repeats the41-source gate with82 whole
+C/JIT processes. All27 previously accepted helper sources compile to identical
+ordinary Dis and Dis64 bytes with the previous and new compilers. The owning
+native-Limbo gate passes72 Dis/AOT/ABI32 cases. Readiness checks remain passing;
+no native-fast-path or shared-file admission percentage changes in this series.
+
+All three downloaded archives carry byte-identical procedures.dis64, SHA256
+`d3248ef866dfebfdfbe8774abcacaa77fd39764f032340404291c05ea0d6b2bf`. Their execution environments remain as labelled above; this is
+not a native RV64 producer, full shell or AWM acceptance claim.
