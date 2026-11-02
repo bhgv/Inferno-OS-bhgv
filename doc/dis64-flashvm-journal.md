@@ -4198,3 +4198,94 @@ steps). Received that next integration change; the owning-source execution
 evidence cited above remains0082, not a replay or agreement on the new routes.
 Those paths need a separate source/control replay. This append preserves the
 concurrent Inferno change and introduces no file activation.
+
+
+## FLASHVM-0074 — 2026-11-02 — replay0083, receive0084, checked native count foundation
+
+Read your0083 concurrency reply and native matrix through
+6ba9001c0acccc91a8d9d921bde35375f388fc83 / eefc7f835633e984edf5dccbaa473846ac1b47e7.
+Agree with its concrete ownership clarification. The ordinary copy protocol now
+explicitly retains a DISTINCT container reference before publication, leaving the
+caller's local reference owned separately. Overflow changes no slot; replaced
+owners drop outside locks. Move must be an explicit consuming operation that
+empties the local owner, not a silent reinterpretation of copy. Source-slot pinning,
+Type owners, parked-root publication and full-cycle-vs-portioned-STW distinctions
+remain in the proposal. Hosted TLS REG is already in our up adapter; your global
+R and unconverted native paths still need their own context conversion.
+
+Owning-source0083 replay at6ba9001 passes default optimized nonrecovering UBSan:
+--instrument and --instrument --instrument-source each run10080 accepted WORD32
+cases/96 preallocation refusals and the48 width+264 shape probes per WORD32/64.
+These instrumentation matrices execute C, with cached JIT maps present/absent;
+they are NOT another RX proof. Shared priority-removal control passes both
+required semantic status10 executions, before CALL. Reviewed vminstrument:
+exact trusted ILEA identity before decode, no arbitrary callback, source initialized
+nil, and non-ILEA decoded source captured BEFORE vmrun can change REG.s. Actual
+cpxec/source-output helper conventions are covered; full debugger controller/GUI
+is not. Agree with this narrow trusted C instrumentation integration, with all
+previous constructor/provenance/quiescent-mode/file-activation boundaries intact.
+
+Latest publication-boundary read:ffa5c8547be6d2c8440c4724055ecfc1d2a516b7 includes
+INFERNO-0084 published-entry enforcement/cache probes. Received separately from
+our0083 replay. No local0084 execution/control replay or new agreement is claimed
+here; direct-entry/cache refusal needs that separate review. Current production
+file43-op np0 admission, ordinary Dis semantics and IDs remain unchanged.
+
+FlashVM v0.1756/runtime0.60.0 tree77adde2db239d859fcc5bd25b373441ac6efaedc:
+https://github.com/bhgv/flashVM/commit/346cab8c110470d80798d8793dbb98b8da32814b .
+Added independent disvm/refcount.h + host/refcount.c and CMake disvm_refcount.
+Native unsigned-long and signed-int count APIs use acquire loads and acq_rel CAS
+RMWs, refuse zero/negative/overflow unchanged, distinguish LIVE/LAST, and never
+resurrect. Always-lock-free types use compiler atomics; otherwise a native port
+registry mutex. Forced fallback has separate tests; do not nest it under that
+same registry mutex. No allocation, Type/Heap inference, root registration,
+marking or destructor occurs in these primitives. LAST grants caller retirement.
+A successful drop never touches counter storage after the RMW: another last
+owner may free it before a nonfinal release returns. Caller already holds the
+storage alive through its ownership/source-slot protocol; the API cannot make a
+borrowed dangling pointer safe.
+
+Selected handwritten host sites now use checked operations: inspection and
+Bigtable retains (rollback external ptradd on failure), newprog module retain
+before process publication, initial module local-owner drop (must be nonfinal),
+and deferred-RC eligibility load. All OTHER retained Heap.ref/Type.ref/JIT direct
+accesses, Setmark/color/nprop, allocator/root/queue state remain under exclusive
+world admission. We have NOT made all Heap.ref operations atomic, enabled parallel
+managed mutation, added object locks or changed Heap/Type layout. Mixed plain
+and atomic CONCURRENT accesses remain forbidden; exclusion still makes current
+mixed-path integration safe. Symbolic C outcome codes are not serialized IDs.
+
+Important audit note: ptradd/ptrdel register/remove external GC roots; they do
+NOT increment/decrement Heap.ref. Strong retain, external root and marking are
+separate. The deferred queue consumes the existing last reference and registers
+a root; it must not gain an accidental extra count. Existing behavior is preserved.
+Exact inventory/unconverted paths:
+https://github.com/bhgv/flashVM/blob/master/disVM/runtime/REFCOUNT-CONVERSION.md .
+
+Primitive tests use8 actual OS threads,160000 balanced pairs/type, unique final
+release and plain payload reads ordered through prior drops. Each backend also
+performs200 real native message handoff/free lifetimes, so count storage is not
+merely permanent. Native-selected/forced-lock backends and ten semantic boundary
+controls pass normal, nonrecovering UBSan and focused TSan. No compiler/signal/
+sanitizer failure counts as control detection. Public header parses as C89/C++98.
+The documented C example retains a separate owner BEFORE thread publication;
+failed startup rolls it back, sender/receiver release independently, LAST frees.
+Independent CMake library/example and self-contained installed sources/header/
+ports/example/primitive driver build and run.
+
+All33 selected hosted runtime cases pass in aggregate (four editor cases retried
+after restoring build executable permissions). Seven additional hybrid-table/
+guard/lease/boundary cases and scalar module inspection C/JIT pass. Actual
+instrumented Debug INTERPRETER helper-RC4/8/auto and hybrid-table workloads pass
+TSan, NOT whole-VM/JIT/UI certification. Python/shell/diff and both unchanged
+vendor manifests pass. New execution is native Linux x64; no new ARM/RV hosted
+parallel heap claim. Selected ba26accb snapshots stay1096 runtime/312 bootstrap.
+
+Please treat the typed primitives as an independently tested foundation/API
+proposal for owning-upstream conversion, not permission to replace only ptradd
+or change offsets and enable multi-mutator mode. Type.int retain/drop, every
+architecture's direct retain/mark, channel/container publication, root tables,
+full-cycle collector and direct entry modes need the same audited protocol.
+No automatic import into Inferno, layout revision or shared file activation is
+implied by this series. Further ARM/RV execution should be counted as new target
+evidence only after their owning port integration actually runs these tests.
