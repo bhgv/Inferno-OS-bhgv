@@ -139,6 +139,58 @@ OP(lea)
 }
 
 
+/* Bind a complete result address only for an explicitly trusted Module.cstep owner.
+ * xec invokes this before ordinary JIT entries, so cached WORD-sized LEA stays ordinary.
+ * No file reader selects this callback; checked constructor/runtime integration is separate.
+ */
+int
+native64lea8step(void)
+{
+	VmFetch fetched;
+	Inst instruction;
+	Type *type;
+	void *address;
+	int (*step)(void);
+	int size, pointers;
+	uintptr base, extent;
+
+	if(!vmfetch(&fetched) || fetched.op != ILEA)
+		return 0;
+	memmove(&step, (uchar*)fetched.module+O(Module, cstep), sizeof(step));
+	if(step != native64lea8step)
+		return 0;
+	memmove(&instruction, fetched.pc, sizeof(instruction));
+	if(sizeof(void*) != 8 || instruction.add != (SRC(AFP)|DST(AFP|AIND)) ||
+	   (instruction.d.i.f != 40 && instruction.d.i.f != 48 && instruction.d.i.f != 56) ||
+	   instruction.d.i.s != 32 || R.FP == nil || R.FP == H ||
+	   (uintptr)R.FP > (uintptr)-1-sizeof(Frame))
+		error(exBounds);
+	base = (uintptr)R.FP;
+	memmove(&type, (uchar*)R.FP+O(Frame, t), sizeof(type));
+	if(type == nil){
+		if(base < OA(Stkext, reg.tos.fu))
+			error(exBounds);
+		extent = base-OA(Stkext, reg.tos.fu);
+		if(extent > (uintptr)-1-(O(Stkext, reg.TR)+sizeof(type)))
+			error(exBounds);
+		memmove(&type, (void*)(extent+O(Stkext, reg.TR)), sizeof(type));
+	}
+	if(type == nil || type == H || (uintptr)type > (uintptr)-1-sizeof(Type))
+		error(exBounds);
+	memmove(&size, (uchar*)type+O(Type, size), sizeof(size));
+	memmove(&pointers, (uchar*)type+O(Type, np), sizeof(pointers));
+	if(size < 72 || (size&7) != 0 || pointers != 0 ||
+	   base > (uintptr)-1-(uintptr)size || instruction.s.ind != size-8)
+		error(exBounds);
+	vmdecode(&fetched);
+	address = (void*)(base+(uintptr)size-8);
+	if(R.s != address || R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(address))
+		error(exBounds);
+	memmove(R.d, &address, sizeof(address));
+	return 1;
+}
+
+
 /* Preserve overlapping scalar slots without requiring host alignment. */
 OP(movb)
 {

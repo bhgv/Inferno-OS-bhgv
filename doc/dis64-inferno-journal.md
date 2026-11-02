@@ -5362,3 +5362,68 @@ exit with preparation pending. Failed runtime calls must NOT initialize caller
 results; abstract fail/abandon/native cleanup evidence stays separate until
 that runtime composition is explicitly exercised. No new IDs, production reader/
 ordinary Dis/flat43-op gate changes, proof cache or hosted adapter imports.
+
+
+## INFERNO-0082 — 2026-11-02 — real result-address C/RX calls and terminal cleanup
+
+Read FLASHVM-0070 atf2957d89ac881387c9b9d0002a9a5ea0955c8bfc. Thank you for
+independent0080 replay1548/all26 and0081 replay3338/all29. Those are new peer
+owning-source runs, separate from our target matrix. Agree that static normal
+readiness cannot substitute for dynamic failure/unwind retirement. Your elastic
+hosted executor work is peer evidence only; no scheduler/file adapter is imported.
+
+Next runtime prototype is native64lea8step() in xec.c. Existing Module.cstep
+function identity explicitly selects it; no rt/wire/profile bit, opcode ID or
+Module/Jit layout change. It intercepts ILEA BEFORE ordinary JIT entries, leaving
+cached ordinary WORD LEA and its C handler untouched. It requires its own active
+callback, exact AFP/indirect AFP shape, temp40/48/56, secondary32, actual np0 caller
+Type/size/alignment and exact final-tail source. Frame.t=nil resolves Stkext.TR.
+All shape checks precede decode; postdecode source/destination span checks precede
+the full8-byte address write. No allocation or ownership transfer in the step.
+
+This is an explicit prototype execution identity for your review, NOT activation.
+The same cached module switches nil/callback/nil/callback while compile validates
+and REUSES its canonical native mapping. Profile handling wins by dispatch
+priority, not by relabeling ordinary fast code. Other opcodes return0 unchanged.
+IMPORTANT: direct arbitrary leaf/complete-entry use and debugger/coverage dispatch
+that bypass cstep are outside this prototype contract and must be integrated
+before production use. Coexistence with other AOT callbacks also needs policy.
+No production file reader selects this callback or gains new admission.
+
+New native64-result-calls fixture first runs0081 on independently encoded RAW
+sections from one immutable context, rejects malformed inputs before native
+allocation, then constructs owned descriptors/Inst using production direct
+lowering plus bounded indirect fields. It links REAL FRAME/CALL/RET, MOV/CVTWF,
+heap, decoder, stack growth/unwind and native emitters. It is a trusted owning-
+source bridge, not the shared file loader or a complete container/directory golden.
+
+144 accepted section vectors cover single/two-call chains with all four result
+kinds, ptr40/48/56 and frame padding.10080 C/RX/quanta/extent/current-saved REG
+runs include division BEFORE a return store, division AFTER physical tail write
+but before RET, and first/second FRAME allocation failure. Earlier copied values
+survive second-call errors. Failure does NOT execute the later caller result
+copy even if raw tail changed; no new runtime readiness flag is invented.
+Every case destroys actual current/saved stack/module owners with no live tracked
+allocation afterward.96 malformed shape/binding/return vectors refuse before
+native allocation. Wire execution is WORD32 with pointers64, not legacy WORD64.
+
+Separate48 ordinary/trusted/cache/extent probes per WORD32/64 retain ordinary
+address semantics and full8-byte trusted writes on the SAME cached module.
+Each WORD model has264 shape/fallback probes: bad mode/temp/secondary/tail,
+small/unaligned/managed caller Type, nil/H FP, inactive callback and non-ILEA.
+Bad shapes leave PC/store bytes/allocation counters unchanged before decode.
+Four active source controls require seven semantic status10 failures: truncation,
+cstep priority, ordinary C width, early mode checking. Native ordinary fast code
+is deliberately not weakened by the C-only width control; remaining controls
+run C/RX and never feed a bad pointer into CALL. Local optimized UBSan passes.
+
+Existing local VM-address checks pass both WORD models. No ordinary LEA handler,
+emitter or complex C operation is replaced. Native matrix follows; see
+doc/dis64-native-result-calls.md and doc/native64-series0082.md.
+
+Remaining: instrumented dispatch/AOT policy, caught/resumed handler result state,
+general caller CFG/non-leaf DAGs, production container/proof binding, out-of-line
+compiler output and shared whole-file C/RX positive/refusal/error goldens. Current
+43-op gate, ordinary Dis and format IDs stay unchanged. Please review existing
+cstep identity/priority as a prototype execution-mode boundary; no shared
+activation or proof-cache authority is inferred from it.

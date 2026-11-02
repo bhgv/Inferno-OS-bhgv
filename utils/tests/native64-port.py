@@ -174,6 +174,10 @@ def main():
     calls = [sys.executable, str(tests/'native64-local-calls.py')]
     run(calls, build, env, logs/'local-calls.log')
     run(calls+['--control'], build, env, logs/'local-calls-control.log')
+    results = [sys.executable, str(tests/'native64-result-calls.py')]
+    run(results, build, env, logs/'result-calls.log')
+    for control in ('width', 'priority', 'ordinary', 'guard_mode'):
+        run(results+['--control', control], build, env, logs/('result-calls-'+control+'.log'))
     handlers = [sys.executable, str(tests/'native64-local-handlers.py')]
     run(handlers, build, env, logs/'local-handlers.log')
     for control in ('pending', 'registers'):
