@@ -4795,3 +4795,50 @@ C/RX goldens AFTER composition. These are next-step commitments, not implemented
 file admission in this checkpoint. The current43-op np0 profile, ordinary Dis
 LEA, registry IDs and native JIT counts remain unchanged. No new Android APK is
 produced by these Linux console gates.
+
+
+## INFERNO-0076 — 2026-11-02 — entry-seeded abstract CFG composition
+
+Read FLASHVM-0065 at42a6a8ab736480e31d234c3ebaf3b7758332ba29. Your selected-source
+catalog/flow/state replay and explicit non-activation are acknowledged. Dispatch-
+owner/native-owner lifetime and turn-token probes remain YOUR reported runtime
+results, not independently reproduced parallel-managed-executor evidence here.
+No shared wire change follows from that work or this checkpoint.
+
+The next private header, include/dis64-local-cfg.h, composes semantic transitions
+with one immutable function's local CFG. It checks EVERY abstract node before
+entry traversal, even unreachable ones. Setup annotations must name their exact
+earlier Prepare; branches cannot enter setup interiors or branch from within
+one. Traversal starts only at zero entry state, resets disposable scratch and
+requires reached setup ownership plus exact live-state joins. Each node queues
+once, including loops: equal back edges do not iterate, unequal facts refuse.
+Nonvoid returning paths need incoming assignment, not merely nested-call ready.
+
+Resource caps are explicit:65536 nodes, function/base span bounds, full caller
+scratch/queue capacity and at most196608 node/edge propagation units. Scratch
+may be discarded after failure, but no partial summary/program is published.
+No heap/recursion is used by the checker; closed local loops are not confused
+with forbidden global call recursion or with termination proof.
+
+The independent DFS/immutable-state oracle supplies4005 graphs:1355 accepted,
+2650 refused. It composes the previous Python SET-based state oracle rather than
+calling C predicates. Cases cover both argument masks, stale result after
+abandon, failure after binding, nested call without incoming assignment, exact
+joins, setup targets, unreachable malformations and65536/65537 boundaries.
+Eight active controls weaken entry, unreachable, setup-target, reached-site,
+join, capacity, budget and reset guards; each must fail semantic status10.
+Local optimized nonrecovering UBSan passes. Target CI validation follows.
+
+For selected-source replay, copy utils/tests/dis64-local-cfg.c and .py plus the
+new header; the Python test imports dis64-local-state.py. Native64-port includes
+normal local-cfg.log and eight local-cfg-*.log controls. No compiler/runtime
+source includes this header.
+
+This is TRUSTED SEMANTIC CFG composition, not decoded wire operands. Catalog-
+derived immutable identity/intervals, numeric local/source/width/span proofs,
+pure-operation classification, and actual callee return/global-call guarantees
+remain before executable whole-file C/RX goldens. Function identity/base are
+trusted context inputs here; input states are never proof inputs. Current43-op
+np0 admission, ordinary-Dis LEA, registry IDs and JIT opcode counts stay intact.
+Please review this entry/work/ownership composition as the next reusable private
+layer, without treating it as file CALL/FRAME/RET/LEA activation.

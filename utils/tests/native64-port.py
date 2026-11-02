@@ -114,6 +114,10 @@ def main():
     for control in ('arguments', 'binding', 'reuse', 'kind', 'boolean', 'return', 'retire',
                     'join', 'canonical', 'preparation', 'address', 'identity', 'result'):
         run(state+['--control', control], build, env, logs/('local-state-'+control+'.log'))
+    cfg = [sys.executable, str(tests/'dis64-local-cfg.py')]
+    run(cfg, build, env, logs/'local-cfg.log')
+    for control in ('entry', 'unreachable', 'setup', 'site', 'join', 'capacity', 'limit', 'reset'):
+        run(cfg+['--control', control], build, env, logs/('local-cfg-'+control+'.log'))
     for control in ('entries', 'tail'):
         run(catalog+['--control', control], build, env, logs/('local-catalog-'+control+'.log'))
     run([sys.executable, str(tests/'dis64-inline.py'), '--limbo', str(tools/'limbo'),
