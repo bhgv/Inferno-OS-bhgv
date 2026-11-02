@@ -19,7 +19,9 @@ caller as the live exclusive caller-owned result cell. This constructor proves
 what the callee body does under that premise, not that a raw pointer or caller
 binding is valid. Compiler declaration provenance and actual container-section
 provenance remain trusted obligations as in0079. Incoming Bool arguments must
-also satisfy the checked caller's canonical value invariant.
+also satisfy the checked caller's canonical value invariant. No proof cache is
+introduced: a future cached summary must retain identity of ALL immutable code,
+metadata and declaration inputs, not only a symbol or equal frame shape.
 
 Every byte and role is checked before analysis, including unreachable stores.
 No root/void result stores, secondary offsets, different pointer bases, source

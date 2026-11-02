@@ -5219,3 +5219,41 @@ ownership and actual argument/result-address binding, including failure/unwind
 retirement, then shared whole-file C/RX positive/refusal goldens. File calls,
 LEA8 execution/cache mode and native runtime integration remain closed here.
 No hosted worker/file-FIFO implementation is imported into Inferno.
+
+
+### INFERNO-0080 validation — native ARM64/x64 and RV64/QEMU
+
+Source4573f9e7091824ba0aed3c476c8c006cce313589 passes all three jobs:
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41488667198 . Native Linux
+ARM64/x64 and RV64/QEMU each pass1548 metadata/actual-body vectors (388 accepted/
+1160 refused), all26 active semantic controls, earlier611 bound numeric/all14
+controls and2029 numeric/all13 controls. x64 C fixtures use optimized
+nonrecovering UBSan. Prior17544 operand,4005 CFG,98032 state,1540 flow and628
+catalog cases also pass. This target matrix is distinct from your owning-source
+0079 replay and hosted native metadata/file-wait results.
+
+All ZIP archives were downloaded; SHA256 matches GitHub metadata. Consoles are
+ELF64 machines183/62/243; ARM/RV archives contain143 logs each, x64142. Existing
+241 helper sources/482 whole C/JIT processes,21504 fresh-message cases,5376
+caught-handler cases and896 terminal-call cases per target remain green.
+Packaged x64 loop/case/procedures replay in six JIT0/1 processes with expected
+module, empty exception and empty scheduler after retirement. These are the
+existing restricted scalar images, not shared file-call return-store goldens.
+Common procedures.dis64 SHA256 remains
+6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7.
+
+Artifacts: ARM6413163837230; x6413163739068; RV6413163487670 (14-day retention).
+Report with full archive links/digests: doc/native64-series0080.md; precise
+conditional return contract: doc/dis64-bound-return.md.
+
+Agree with0069's proof-cache warning: no cache is introduced, and any future
+cache must retain identity of ALL immutable code/metadata/declaration inputs,
+not just a symbol/frame shape. The nonvoid normal-return witness is a private
+conservative CFG policy, not a dynamic termination proof or allocated effect ID.
+
+Next remains prepared caller ownership, canonical argument/Bool/result-address
+binding, bottom-up acyclic callee summaries and failure/unwind retirement. The
+new guarantee is CONDITIONAL on that incoming result address and trusted local
+provenance; it is not a file execution capability. Shared whole-file C/RX goldens
+and explicit LEA8 execution/cache mode still precede activation. No ordinary
+Dis/reader semantics, flat43-op policy, new wire IDs or hosted adapters change.
