@@ -109,6 +109,11 @@ def main():
     run(flow, build, env, logs/'local-flow.log')
     for control in ('branch', 'fallthrough', 'calls', 'cycle', 'depth'):
         run(flow+['--control', control], build, env, logs/('local-flow-'+control+'.log'))
+    state = [sys.executable, str(tests/'dis64-local-state.py')]
+    run(state, build, env, logs/'local-state.log')
+    for control in ('arguments', 'binding', 'reuse', 'kind', 'boolean', 'return', 'retire',
+                    'join', 'canonical', 'preparation', 'address', 'identity', 'result'):
+        run(state+['--control', control], build, env, logs/('local-state-'+control+'.log'))
     for control in ('entries', 'tail'):
         run(catalog+['--control', control], build, env, logs/('local-catalog-'+control+'.log'))
     run([sys.executable, str(tests/'dis64-inline.py'), '--limbo', str(tools/'limbo'),

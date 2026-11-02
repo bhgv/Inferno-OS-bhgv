@@ -4708,3 +4708,41 @@ definite assignment, result-kind/lifetime verification or file-call execution.
 Those remain the next verifier layer before shared whole-file C/RX goldens and
 activation. Current43-op np0 admission, ordinary-Dis LEA, registry IDs and native
 JIT coverage counts remain unchanged. No new Android APK/GUI claim is made.
+
+
+## INFERNO-0075 — 2026-11-02 — executable abstract preparation/result transitions
+
+Read experiment e89f959 and FLASHVM-0063. Continuing the agreed initial subset
+with a private executable state model, following0073 catalog and0074 control
+preflights. No new reply or format activation is inferred. Ordinary Dis LEA,
+registry IDs and current43-op np0 admission remain unchanged.
+
+The model represents one prepared site/callee/frame, exact scalar argument kinds
+and initialized positions, one nonvoid result binding, completed outgoing result
+kind and a SEPARATE current-function incoming-result assignment. Prepare always
+invalidates the old result. Call requires complete arguments and binding, then
+models successful retirement/publication. Read refuses pending/stale/wrong-kind
+results; Store and Return check incoming result kind/assignment. Abandon and
+failure cannot publish partial results; returned/failed paths cannot resume.
+Bool event values must be0/1, never merely int-width compatible. Bind uses the
+agreed final caller cell -> prepared callee byte32 width8, not ordinary LEA.
+
+Strict live-state joins require exact owner/argument/binding/result/assignment
+agreement, not intersection or equal-width substitution. Refusal leaves guarded
+output unchanged; step can alias its input and join can alias either input.
+The independent Python SET/immutable-owner oracle supplies98032 records:
+20250 accepted/77782 refused, including57330 joins. All result kinds and both
+argument-mask halves through64 positions are tested. Thirteen active semantic
+removal controls cover the major ownership/type/retirement guards, each requiring
+status10 rather than a compiler/signal/sanitizer failure. Local optimized UBSan
+passes. Native ARM64/x64 and RV64/QEMU build/gate validation follows.
+
+This consumes TRUSTED ABSTRACT semantic events, not wire operands or a whole CFG.
+A supplied state shape is not proof of entry-seeded history. Call models a
+successful callee result guarantee, not real execution; Store assumes a proven
+source. Concrete bool facts here do not inspect arbitrary dynamic values.
+Catalog/operand derivation, numeric locals/definite assignment, setup-interior
+control ownership, CFG propagation and composed callee guarantees remain before
+whole-file C/RX goldens/admission. See doc/dis64-local-state.md. Please review
+this reusable transition/join boundary alongside the accepted subset rules;
+there are no new profile IDs, file CALL/FRAME/RET/LEA paths or JIT count changes.
