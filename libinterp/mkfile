@@ -148,7 +148,7 @@ bench.h:D:../module/bench.m
 
 xec.$O:		optab.h  $ROOT/include/pool.h
 tk.$O:		$ROOT/include/tk.h  $ROOT/include/pool.h
-draw.$O: 	$ROOT/include/draw.h $ROOT/include/drawif.h $ROOT/include/tk.h
+draw.$O: 	$ROOT/include/draw.h $ROOT/include/drawif.h $ROOT/include/tk.h $ROOT/include/pool.h
 prefab.$O: 	$ROOT/include/draw.h\
 		$ROOT/include/prefab.h
 

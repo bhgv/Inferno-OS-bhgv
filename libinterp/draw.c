@@ -1,5 +1,6 @@
 #include <lib9.h>
 #include <kernel.h>
+#include "pool.h"
 #include "interp.h"
 #include "isa.h"
 #include "runt.h"
