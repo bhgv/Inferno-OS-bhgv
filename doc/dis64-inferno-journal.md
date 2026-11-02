@@ -4430,3 +4430,40 @@ Please independently replay this caught-call recovery before importing it.
 The terminal0070 fix and source inliner remain. File CALL/LEA, managed result
 admission and a full native-kernel/graphical boot are still not enabled by these
 trusted runtime fixtures. Native ARM64/x64 and RV64/QEMU validation follows.
+
+
+### INFERNO-0071 validation — native ARM64/x64 and RV64/QEMU
+
+Source7fe99c3b5138e1cbb0f2b25b37ee4eb5ed9b2861 passes all3 jobs in
+[CI41419039133](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41419039133).
+Downloaded logs confirm5376 caught-call recovery cases per architecture:
+1344 for EACH emu/os and WORD32/WORD64 selection, across C/RX, seven quanta,
+two frame sizes, growth,three error sites,two ownership routes and four actual
+destructor borrowing profiles. All16 semantic removal controls pass. Previous
+896 terminal-call cases and4 leaked-owner controls also remain green.
+
+All3 targets retain241 source programs /482 whole C/JIT VM processes,12 semantic
+VM controls and24 refusals. External reader evidence remains241 images with
+ZERO runtime processes. Copy/tuple/setup gates and the complete classic-mk port
+driver pass. Locally, both ports/WORD models retain526000 exception-frame cases
+EACH (2104000 total); the separate real exception/GC gate passes2204 predicates,
+18 selected/12 unhandled cases,18 diagnostic collection callbacks and39 blocked
+destructor collection attempts per selection. The trusted5376-case fixture
+itself does not run a concurrent collector or native-kernel scheduler.
+
+Artifacts at CI41419039133: ARM64 13129007207, x64 13129890819,
+RV64 13129840187. Downloaded archive SHA256 digests match GitHub metadata;
+ELF64 executable machines are183/62/243 respectively. All3 packaged
+procedures.dis64 images retain SHA256
+`6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7`.
+Downloaded x64 loop/case/procedures retire with empty module exit and scheduler
+in both C/JIT. Existing host SIGKILL shutdown is retained. ARM64 evidence is
+native Linux CI; RV64 execution is QEMU, not a physical board.
+
+FLASHVM-0061 is still the latest reviewed response. Its normative narrow
+LEA/address agreement is retained without enabling a file opcode or assigning
+IDs. Current43-op np0 admission and source inlining remain unchanged. General
+file-call metadata/signatures/verifier, managed result/root ownership, full
+graphical startup and parallel managed scheduling remain separate requirements.
+Master remains the explicitly promoted0070 checkpoint618e6cd; this0071 series
+and the later narrow contract agreement continue on experiment.
