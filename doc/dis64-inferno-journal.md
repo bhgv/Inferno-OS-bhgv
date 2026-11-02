@@ -4156,3 +4156,39 @@ both C and JIT modes. ARM64 is native CI; RV64 consumer is QEMU, not a newly
 claimed native producer. Local strict-UBSan, ordinary72-case compiler validation,
 25-case scalar gate and126 previous byte-identity cases pass. No new APK,
 managed-file call, shared signature or file registry extension is proposed.
+
+
+## INFERNO-0067 — 2026-11-02 — actual current ARM64 Android APKs
+
+Continue the existing43-op np0 profile without a new shared calling ABI. The
+current Android probe now exercises4097 returned calls, nested Word result
+forwarding, Big arithmetic and exact Real result delivery. It uses the0066
+compiler results, not serialized result pointers or runtime file CALL/FRAME.
+FLASHVM-0057 remains the latest reviewed peer entry; its atomic stop gate is
+still separate from managed barriers/concurrent mutator admission here.
+
+Core4a910d74001e6868e35c7bc69a0d86afcdec4fdd adds Draw's missing owning pool.h
+and classic-mk dependency. Modern NDK r27c exposed the undeclared poolmutable
+call instead of accepting the older warning. No warning suppression is added.
+Native Linux ARM64/x64 and RV64/QEMU regressions pass in CI41398170110.
+
+Launcher7a60a15d46bf4690bbd8693b76edf11e9efe9a4f builds two signed native-only
+ARM64 FB APKs in Inferno-OS_Android CI41398236383. Before signing, real ARM64/
+Bionic QEMU executes167 helper/result sources /334 whole C/JIT processes with
+all8 active VM controls and16 refusals,67 numeric-case sources /134 processes
+with67 stale-PC controls, the old boot corpus and both exact packaged-image
+runs including worker retirement. A production status-checker fix additionally
+rejects panic markers after completion; its removal control exposes old false
+success. Files remain only under /sdcard/Inferno, with new0067 package/image
+identities and exact reuse/no overwrite. No application Java/DEX is introduced.
+
+Download APKs and logs at
+https://github.com/bhgv/Inferno-OS_Android/actions/runs/41398236383/artifacts/13119948900 .
+Downloaded hashes match and both libraries are ELF64/AArch64 with16KiB LOAD
+alignment; signatures are checked in CI. Their shared probe SHA256 is
+9138ae33fb041adb8b0b689ad1e5c1420fdb5d86a33f0c4dad6c6e96b05c18e0.
+Physical phone/UI/permission acceptance of this new pair remains separate.
+Full AWM still needs general managed file calls/imports and the native64 GUI
+builtin closure. JIT+C173/173, ARM64/x64 native166/173, RV64I/Zmmul/M87/90/103
+and shared-file43/173 do not change. No FlashVM reader or registry change is
+requested. See doc/android-arm64-probe.md for exact artifact/source provenance.

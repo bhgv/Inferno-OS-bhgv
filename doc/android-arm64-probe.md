@@ -30,7 +30,7 @@ while retaining logcat messages, so the native UI can verify this session's
 actual module completion and scheduler retirement.
 
 The APK installs only its bounded probe image into
-/sdcard/Inferno/dis/native64-apk/series0059-probe.dis64. Existing exact files are
+/sdcard/Inferno/dis/native64-apk/series0067-probe.dis64. Existing exact files are
 reused; different files are refused without overwriting. The rest of an existing
 Inferno tree is preserved. There is no private runtime directory. Storage access
 must be granted in Android settings; the native screen explains failures and
@@ -38,8 +38,8 @@ allows a tap to retry before VM entry. Diagnostics append to
 /sdcard/Inferno/native64-fb-probe.log. The probe does not read or change the normal
 AWM startup command.
 
-The source program checks 4097 calls with fresh helper locals, numeric case
-lowering, arithmetic and live caller Big/Real values. A visible PASS requires
+The current source program checks4097 result-producing calls with fresh helper
+locals, numeric cases, nested Word result forwarding and Big/Real result values. A visible PASS requires
 the correct named module, requested JIT selection, empty exception text and an
 empty retired scheduler in this session's log. Interpreter and JIT APK variants
 use the same exact image and have separate application IDs.
@@ -142,3 +142,53 @@ Downloaded files match their checksums, contain ELF64/AArch64 native libraries
 with 16KiB LOAD alignment, no DEX and the unchanged shared probe image. These
 remain scalar framebuffer probes, without AWM. Physical-phone confirmation of
 the corrected retirement path is pending.
+
+
+## Series0067: current compiler and ARM64/Bionic results
+
+ARM64 APK packaging already works. A complete AWM client is still a separate
+acceptance target: the scalar probe does not admit general runtime file calls,
+managed imports or the native64 GUI builtin closure. The remaining work is not
+measured by the166/173 ARM64 fast-opcode count.
+
+| Layer | Confirmed state | Remaining boundary |
+| --- | --- | --- |
+| Android ARM64 packaging | Two signed native-only FB APKs; ELF64 and16KiB LOAD alignment | Physical installation/window/storage acceptance of this new pair |
+| VM and JIT on Bionic | Whole QEMU processes, original VM/JIT/libc and worker cleanup | Physical phone execution of the updated corpus |
+| Scalar Limbo-to-Dis64 | Bounded arguments, expressions, nested calls and int/big/real results | General runtime file CALL/FRAME and managed values |
+| Native module registration | Restricted scalar startup; explicit import refusal | Shared ABI64 builtin/call/GC ownership across required modules |
+| AWM desktop | Existing runtime tree preserved | Full managed/GUI startup and framebuffer presentation together |
+
+Core4a910d74001e6868e35c7bc69a0d86afcdec4fdd fixes the production Draw call to
+poolmutable by including pool.h and adding its classic-mk dependency. NDK r27c
+had stopped at the missing declaration; compiler diagnostics are not suppressed.
+The source retains0066 scalar results and all earlier native64 fixes. Launcher
+7a60a15d46bf4690bbd8693b76edf11e9efe9a4f also rejects panic diagnostics after
+completion markers; a host production-function removal control exposes the
+old false-success result. Package IDs and the shared image path are versioned
+for0067, with exact reuse/no overwrite and no private runtime tree.
+
+[Android build41398236383](https://github.com/bhgv/Inferno-OS_Android/actions/runs/41398236383)
+passes with NDK r27c and both exact packaged-image C/JIT runs including actual
+worker retirement. ARM64/Bionic QEMU additionally executes167 helper/result
+sources /334 whole C/JIT processes plus8 active VM controls and16 refusals;
+67 numeric-case sources /134 processes with67 stale-PC controls; and the prior
+boot corpus. Native Linux ARM64/x64 and RV64/QEMU regression
+[CI41398170110](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41398170110)
+also passes at that core pin.
+
+[Download the two current APKs and complete evidence](https://github.com/bhgv/Inferno-OS_Android/actions/runs/41398236383/artifacts/13119948900).
+
+| APK | Mode | SHA256 |
+| --- | --- | --- |
+| Inferno-FB-arm64-v8a-series0067-jit0.apk | Interpreter | 2dbde4056d2399d1a65fedf4ee378add6bfda64f1410e37525e1776a228861d2 |
+| Inferno-FB-arm64-v8a-series0067-jit1.apk | ARM64 JIT | 0a5b7562570899e145aba2e12da3a8f2bd4c6bc9e61fddbf241b57f46ff5b2db |
+
+Downloaded copies are4608846 bytes each, match checksums, contain the expected
+ELF64/AArch64 library with16KiB LOAD alignment, no DEX and identical probe image
+SHA2569138ae33fb041adb8b0b689ad1e5c1420fdb5d86a33f0c4dad6c6e96b05c18e0.
+CI verifies v1/v2/v3 signatures and zip alignment. The expected native screen is
+PASS after4097 returned calls and all checks, with logs under /sdcard/Inferno.
+These new APKs still need physical-phone confirmation; QEMU is not NativeActivity,
+GPU, permission or16KiB-page-device acceptance. No shared format allocation or
+new managed file-import admission is introduced.
