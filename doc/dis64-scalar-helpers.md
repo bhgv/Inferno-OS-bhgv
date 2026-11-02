@@ -414,3 +414,29 @@ multiple arguments and live caller locals. The actual setup resolver/removal
 control passes. Ordinary scalar compiler tests pass25 source/refusal cases and
 30 whole VM processes. Cross-target CI must be checked separately; these local
 results do not establish native ARM64/RV64 execution of this new checkpoint.
+
+
+### Series0065 validation and downloads
+
+Source3465c50094237af46737b97fe576c9cd7ab4d7a6 passes
+[CI41393887304](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41393887304):
+native Linux ARM64/x64 and RV64/QEMU. Downloaded archives confirm126 accepted
+sources /252 whole C/JIT processes, all6 active VM controls,14 refusals and the
+production setup resolver/removal control per target. The external FlashVM reader
+admits126 source images; its zero VM processes are separate reader evidence.
+All100 prior sources retain byte-identical ordinary Dis and Dis64 locally.
+
+| Target | Console, examples/maps and complete gate logs |
+| --- | --- |
+| ARM64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41393887304/artifacts/13118885699) |
+| x64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41393887304/artifacts/13118138242) |
+| RV64 QEMU | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41393887304/artifacts/13118233915) |
+
+All3 executables have the correct ELF64 machine and unchanged procedures.dis64
+SHA256 `dd7e4f02c712f8e0a0d6fdf3d641518b241eb4c828b0321a9cb44f906128be1e`.
+The downloaded x64 console separately retires loop/case/procedures with empty
+module exit and scheduler in both C and JIT. Argument-expression programs are in
+utils/tests/dis64-inline.py; the packaged procedures example remains unchanged.
+Native fast coverage remains166/173 ARM64/x64 and87/90/103 RV64I/Zmmul/M;
+JIT plus C remains173/173 and the shared file profile43/173. No new Android/APK,
+full shell, managed file-call or scalar-result acceptance is claimed.

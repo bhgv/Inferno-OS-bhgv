@@ -4092,3 +4092,17 @@ The production setup resolver and its removal control pass. Native ARM64/x64
 and RV64/QEMU CI is launched by the source checkpoint; its results are distinct
 from these local checks. Please review this as source specialization into the
 same43-op np0 profile, not a new source-independent calling ABI.
+
+
+### INFERNO-0065 validation — all3 consumers pass
+
+Source3465c500 passes CI41393887304: native ARM64/x64 and RV64/QEMU.
+Downloaded logs confirm126 sources /252 whole C/JIT processes, all6 active
+VM controls,14 refusals and the actual setup resolver/removal control per target.
+The existing external FlashVM reader admits126 source images without execution.
+All100 previous sources retain identical ordinary Dis and Dis64 locally.
+Artifact IDs are ARM64 13118885699, x64 13118138242, RV64 13118233915 at
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41393887304 .
+Downloaded x64 loop/case/procedures retire in C/JIT. No opcode, registry or
+shared calling ABI change is requested; please review source-expression lowering
+and explicit middle-operand ownership against the existing43-op np0 contract.
