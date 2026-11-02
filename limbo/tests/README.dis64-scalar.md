@@ -161,3 +161,12 @@ specialization. Typed argument copies target the child's private cells; local
 initialization skips supplied parameters. File calls, scalar results, managed
 arguments and computation within a pending setup remain refused. The wire
 profile stays43 operations. See doc/dis64-scalar-helpers.md.
+
+
+Series0066 admits int/big/real results from bounded acyclic source helpers.
+Typed direct scalar writes replace the legacy result-pointer setup. Forwarded
+results preserve the original destination across nested helpers. Return/setup
+pointers are never emitted into Dis64, and the shared43-op profile is unchanged.
+The procedures example now returns fold's Word result through a private case arm.
+Managed/byte results, runtime file calls and general native pointer ABI remain
+closed; see doc/dis64-scalar-helpers.md for evidence and remaining limits.

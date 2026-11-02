@@ -44,6 +44,47 @@ def programs():
     yield 'helper-expr-nested-big', 'x:=big 5;value:big;', 'inner(a:big){value+=a;} helper(a:big){inner(a+big 3);} init(){helper(x);if(value!=big 8)value/=big 0;}', ''
     yield 'helper-expr-multiple', 'x:=5;value:int;', 'helper(a:int,b:int){value=a+b;} init(){helper(x+3,x*2);if(value!=18)value/=0;}', ''
     yield 'helper-expr-local', 'x:=5;value:int;', 'inner(a:int){value+=a;} helper(){a:=x;a++;inner(a*3);if(a!=6)value/=0;} init(){helper();if(value!=18)value/=0;}', ''
+    yield 'helper-result-int-8-+', 'calls:int;x:=5;answer:int;', 'helper(a:int):int{calls++;return a+3;} init(){answer=helper(x);if(answer!=8||calls!=1)calls/=0;}', ''
+    yield 'helper-result-int-2--', 'calls:int;x:=5;answer:int;', 'helper(a:int):int{calls++;return a-3;} init(){answer=helper(x);if(answer!=2||calls!=1)calls/=0;}', ''
+    yield 'helper-result-int-15-*', 'calls:int;x:=5;answer:int;', 'helper(a:int):int{calls++;return a*3;} init(){answer=helper(x);if(answer!=15||calls!=1)calls/=0;}', ''
+    yield 'helper-result-int-1-/', 'calls:int;x:=5;answer:int;', 'helper(a:int):int{calls++;return a/3;} init(){answer=helper(x);if(answer!=1||calls!=1)calls/=0;}', ''
+    yield 'helper-result-int-2-%', 'calls:int;x:=5;answer:int;', 'helper(a:int):int{calls++;return a%3;} init(){answer=helper(x);if(answer!=2||calls!=1)calls/=0;}', ''
+    yield 'helper-result-int-1-&', 'calls:int;x:=5;answer:int;', 'helper(a:int):int{calls++;return a&3;} init(){answer=helper(x);if(answer!=1||calls!=1)calls/=0;}', ''
+    yield 'helper-result-int-7-|', 'calls:int;x:=5;answer:int;', 'helper(a:int):int{calls++;return a|3;} init(){answer=helper(x);if(answer!=7||calls!=1)calls/=0;}', ''
+    yield 'helper-result-int-6-^', 'calls:int;x:=5;answer:int;', 'helper(a:int):int{calls++;return a^3;} init(){answer=helper(x);if(answer!=6||calls!=1)calls/=0;}', ''
+    yield 'helper-result-int-40-<<', 'calls:int;x:=5;answer:int;', 'helper(a:int):int{calls++;return a<<3;} init(){answer=helper(x);if(answer!=40||calls!=1)calls/=0;}', ''
+    yield 'helper-result-int-0->>', 'calls:int;x:=5;answer:int;', 'helper(a:int):int{calls++;return a>>3;} init(){answer=helper(x);if(answer!=0||calls!=1)calls/=0;}', ''
+    yield 'helper-result-big-8-+', 'calls:int;x:=big 5;answer:big;', 'helper(a:big):big{calls++;return a+big 3;} init(){answer=helper(x);if(answer!=big 8||calls!=1)calls/=0;}', ''
+    yield 'helper-result-big-2--', 'calls:int;x:=big 5;answer:big;', 'helper(a:big):big{calls++;return a-big 3;} init(){answer=helper(x);if(answer!=big 2||calls!=1)calls/=0;}', ''
+    yield 'helper-result-big-15-*', 'calls:int;x:=big 5;answer:big;', 'helper(a:big):big{calls++;return a*big 3;} init(){answer=helper(x);if(answer!=big 15||calls!=1)calls/=0;}', ''
+    yield 'helper-result-big-1-/', 'calls:int;x:=big 5;answer:big;', 'helper(a:big):big{calls++;return a/big 3;} init(){answer=helper(x);if(answer!=big 1||calls!=1)calls/=0;}', ''
+    yield 'helper-result-big-2-%', 'calls:int;x:=big 5;answer:big;', 'helper(a:big):big{calls++;return a%big 3;} init(){answer=helper(x);if(answer!=big 2||calls!=1)calls/=0;}', ''
+    yield 'helper-result-big-1-&', 'calls:int;x:=big 5;answer:big;', 'helper(a:big):big{calls++;return a&big 3;} init(){answer=helper(x);if(answer!=big 1||calls!=1)calls/=0;}', ''
+    yield 'helper-result-big-7-|', 'calls:int;x:=big 5;answer:big;', 'helper(a:big):big{calls++;return a|big 3;} init(){answer=helper(x);if(answer!=big 7||calls!=1)calls/=0;}', ''
+    yield 'helper-result-big-6-^', 'calls:int;x:=big 5;answer:big;', 'helper(a:big):big{calls++;return a^big 3;} init(){answer=helper(x);if(answer!=big 6||calls!=1)calls/=0;}', ''
+    yield 'helper-result-big-40-<<', 'calls:int;x:=big 5;answer:big;', 'helper(a:big):big{calls++;return a<<3;} init(){answer=helper(x);if(answer!=big 40||calls!=1)calls/=0;}', ''
+    yield 'helper-result-big-0->>', 'calls:int;x:=big 5;answer:big;', 'helper(a:big):big{calls++;return a>>3;} init(){answer=helper(x);if(answer!=big 0||calls!=1)calls/=0;}', ''
+    yield 'helper-result-original', 'value:int;', 'helper():int{value++;return value;} init(){value=helper();if(value!=1)value/=0;}', ''
+    yield 'helper-result-real', 'calls:int;answer:real;', 'helper(a:real):real{calls++;return a;} init(){answer=helper(1.25);if(answer!=1.25||calls!=1)calls/=0;}', ''
+    yield 'helper-result-local', 'calls:int;x:=7;', 'helper(a:int):int{calls++;return a+1;} init(){answer:=helper(x);if(answer!=8||calls!=1)calls/=0;}', ''
+    yield 'helper-result-big-local', 'calls:int;x:=big 7;', 'helper(a:big):big{calls++;return a+big 1;} init(){answer:=helper(x);if(answer!=big 8||calls!=1)calls/=0;}', ''
+    yield 'helper-result-real-local', 'calls:int;x:=1.25;', 'helper(a:real):real{calls++;return a;} init(){answer:=helper(x);if(answer!=1.25||calls!=1)calls/=0;}', ''
+    yield 'helper-result-discard', 'calls:int;', 'helper():int{calls++;return calls;} init(){helper();if(calls!=1)calls/=0;}', ''
+    yield 'helper-result-nested', 'calls:int;answer:int;', 'inner(a:int):int{calls++;return a+1;} helper(a:int):int{calls++;return inner(a)+3;} init(){answer=helper(7);if(answer!=11||calls!=2)calls/=0;}', ''
+    yield 'helper-result-forward', 'calls:int;answer:int;', 'inner(a:int):int{calls++;return a+1;} helper(a:int):int{calls++;return inner(a);} init(){answer=helper(7);if(answer!=8||calls!=2)calls/=0;}', ''
+    yield 'helper-result-big-forward', 'calls:int;answer:big;', 'inner(a:big):big{calls++;return a+big 1;} helper(a:big):big{calls++;return inner(a);} init(){answer=helper(big 7);if(answer!=big 8||calls!=2)calls/=0;}', ''
+    yield 'helper-result-real-forward', 'calls:int;answer:real;', 'inner(a:real):real{calls++;return a;} helper(a:real):real{calls++;return inner(a);} init(){answer=helper(1.25);if(answer!=1.25||calls!=2)calls/=0;}', ''
+    yield 'helper-result-repeat', 'calls:int;x:=7;', 'helper(a:int):int{local:int;local++;calls++;return a+local;} init(){for(i:=0;i<4097;i++){answer:=helper(x);if(answer!=8)calls/=0;}if(calls!=4097)calls/=0;}', ''
+    yield 'helper-result-zero-divide', 'calls:int;x:=7;z:int;', 'helper(a:int):int{\ncalls++;\nreturn a/z;\n}\ninit(){answer:=helper(x);}', 'zero divide'
+    yield 'helper-result-invalid-shift', 'calls:int;x:=7;z:=32;', 'helper(a:int):int{\ncalls++;\nreturn a<<z;\n}\ninit(){answer:=helper(x);}', 'invalid argument'
+    yield 'helper-result-early-0', 'calls:int;key:=0;answer:int;', 'helper(a:int):int{calls++;if(a==0)return 11;return a+1;} init(){answer=helper(key);if(answer!=11||calls!=1)calls/=0;}', ''
+    yield 'helper-result-early-7', 'calls:int;key:=7;answer:int;', 'helper(a:int):int{calls++;if(a==0)return 11;return a+1;} init(){answer=helper(key);if(answer!=8||calls!=1)calls/=0;}', ''
+    yield 'helper-result-early-99', 'calls:int;key:=99;answer:int;', 'helper(a:int):int{calls++;if(a==0)return 11;return a+1;} init(){answer=helper(key);if(answer!=100||calls!=1)calls/=0;}', ''
+    yield 'helper-result-case-0', 'calls:int;key:=0;answer:int;', 'helper(a:int):int{calls++;case a {0=>return 11;1 to 10=>return 19;* =>return 23;}} init(){answer=helper(key);if(answer!=11||calls!=1)calls/=0;}', ''
+    yield 'helper-result-case-7', 'calls:int;key:=7;answer:int;', 'helper(a:int):int{calls++;case a {0=>return 11;1 to 10=>return 19;* =>return 23;}} init(){answer=helper(key);if(answer!=19||calls!=1)calls/=0;}', ''
+    yield 'helper-result-case-99', 'calls:int;key:=99;answer:int;', 'helper(a:int):int{calls++;case a {0=>return 11;1 to 10=>return 19;* =>return 23;}} init(){answer=helper(key);if(answer!=23||calls!=1)calls/=0;}', ''
+    yield 'helper-result-control', 'calls:int;x:=3;', '\nhelper():int{\ncalls++;\nreturn x+calls;\n}\ninit(){answer:=helper();if(answer!=4||calls!=1)calls/=0;}', ''
+    yield 'helper-result-argument-call', 'value:int;', 'inner():int{value++;return value;} helper(a:int){value+=a;} init(){helper(inner());if(value!=2)value/=0;}', ''
     yield 'before-entry', 'value:=17;', 'helper(){value+=3;}\ninit(){helper();helper();if(value!=23)value/=0;}', ''
     yield 'after-entry', 'value:=17;', 'init(){helper();if(value!=20)value/=0;}\nhelper(){value+=3;}', ''
     yield 'multiple', 'value:=17;', 'a(){value+=3;} b(){value*=2;} init(){a();b();a();if(value!=43)value/=0;}', ''
@@ -159,7 +200,9 @@ def programs():
 # These sources must be valid ordinary Limbo before the scalar backend rejects their calling shapes.
 def refusals():
     yield 'byte-arguments', 'value:int;', 'helper(x:byte){value+=int x;} init(){helper(byte 3);}'
-    yield 'result', 'value:int;', 'helper():int{value++;return value;} init(){value=helper();}'
+    yield 'managed-result', 'value:int;', 'helper():string{value++;return "x";} init(){answer:=helper();value+=len answer;}'
+    yield 'byte-result', 'value:int;', 'helper():byte{value++;return byte value;} init(){answer:=helper();value+=int answer;}'
+    yield 'real-arithmetic-result', 'value:int;x:real;', 'helper():real{value++;return x+1.0;} init(){answer:=helper();if(answer!=1.0)value/=0;}'
     yield 'recursive', 'value:int;', 'helper(){value++;helper();} init(){helper();}'
     yield 'mutual-recursion', 'value:int;', 'inner(){value++;helper();} helper(){inner();} init(){helper();}'
     yield 'byte-local', 'value:int;', 'helper(){x:byte;x=byte value;value=int x;} init(){helper();}'
@@ -172,7 +215,7 @@ def refusals():
     body = ' '.join('h'+str(i)+'(){value++;}' for i in range(16))
     calls = ''.join('h'+str(i)+'();' for i in range(16))
     yield 'function-limit', 'value:int;', body+' init(){'+calls+'}'
-    yield 'computed-real-argument', 'value:real;x:real;', 'helper(a:real){value+=a;} init(){helper(x+1.0);}'
+    yield 'computed-real-argument', 'value:int;x:real;', 'helper(a:real){if(a!=1.0)value++;} init(){helper(x+1.0);}'
     yield 'managed-argument', 'value:int;', 'helper(s:string){value=len s;} init(){helper("x");}'
     yield 'entry-cycle', 'value:int;', 'helper(){init();} init(){helper();}'
     body = ' '.join('h'+str(i)+'(){x:=1;'+('h'+str(i+1)+'();h'+str(i+1)+'();' if i<14 else '')+'value+=x;}' for i in range(15))
@@ -305,6 +348,28 @@ def zero_argument(image, rows):
     return result
 
 
+# Change only the actual returned arithmetic value, preserving valid scalar operands and framing.
+def wrong_result(image, rows, locations, text):
+    names = re.findall(r'^\s*(I[A-Z0-9]+),', (ROOT/'include/isa.h').read_text(), re.M)
+    line = next(i+1 for i,value in enumerate(text.splitlines()) if value == 'return x+calls;')
+    result = bytearray(image)
+    sections = struct.unpack_from('>I', image, 28)[0]
+    at = next(struct.unpack_from('>HHII', image, 32+12*i)[2] for i in range(sections)
+              if struct.unpack_from('>H', image, 32+12*i)[0]==2)+4
+    changed = 0
+    for row,loc in zip(rows,locations):
+        if loc['start'] and loc['start']['line']==line and row['op']==names.index('IADDW'):
+            result[at] = names.index('ISUBW')
+            changed += 1
+        at += 2
+        for unused in row['args']:
+            first = image[at]
+            at += 1 if first<128 else 2 if first<192 else 4
+    if changed!=1:
+        raise RuntimeError('Missing unique result producer')
+    return result
+
+
 # Compare real compiler products, preserve diagnostics, and execute whole OS processes with explicit target runners.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -316,7 +381,7 @@ def main():
     args = parser.parse_args()
     root = args.root.resolve()
     command = HELPERS['command']
-    count = processes = controls = depthcontrols = argcontrols = refused = 0
+    count = processes = controls = depthcontrols = argcontrols = resultcontrols = refused = 0
     with tempfile.TemporaryDirectory(prefix='inline scalar ', dir=root) as directory:
         work = Path(directory)
         source, image, smap, assembly, legacy = (work/name for name in ('source.b','image.dis64','map.json','source.s','legacy.dis'))
@@ -367,9 +432,12 @@ def main():
                     marker = 'native64 scalar module InlineProbe: jit='+str(jit)+', exit="'+error+'"'
                     if marker not in output or ('Broken:' in output) != bool(error) or 'native64 scalar scheduler empty after program retirement' not in output or 'panic:' in output or 'faults:' in output:
                         raise RuntimeError(name+' JIT='+str(jit)+'\n'+output)
-                    if name in ('callee-error', 'helper-case-error', 'helper-nested-fault'):
+                    if name in ('callee-error', 'helper-case-error', 'helper-nested-fault', 'helper-result-zero-divide', 'helper-result-invalid-shift'):
                         faults = re.findall(r'native64 scalar fault: dis-pc=(\d+)',output)
-                        line = next(i+1 for i,s in enumerate(text.splitlines()) if s.startswith('inner()' if name == 'helper-nested-fault' else 'helper()'))
+                        if name.startswith('helper-result-'):
+                            line = next(i+1 for i,s in enumerate(text.splitlines()) if s.startswith('return a'))
+                        else:
+                            line = next(i+1 for i,s in enumerate(text.splitlines()) if s.startswith('inner()' if name == 'helper-nested-fault' else 'helper()'))
                         if len(faults)!=1 or locations[int(faults[0])]['start']['line']!=line:
                             raise RuntimeError('Inlined error lost helper source identity')
                     processes += 1
@@ -386,6 +454,19 @@ def main():
                         if marker not in output or 'native64 scalar scheduler empty after program retirement' not in output or 'panic:' in output:
                             raise RuntimeError('Parent/child overlap control escaped\n'+output)
                         depthcontrols += 1
+            if name == 'helper-result-control':
+                corrupted = work/'wrong-result.dis64'
+                corrupted.write_bytes(wrong_result(image.read_bytes(), rows, locations, text))
+                if args.reader:
+                    command([args.reader.resolve(), corrupted, '--pilot'])
+                if args.emu:
+                    for jit in (0,1):
+                        output = HELPERS['EXECUTE'](shlex.split(args.runner)+[str(args.emu.resolve()), '-v', '-r', str(root),
+                            '-c', str(jit), '-d', '/'+str(corrupted.relative_to(root))])
+                        marker = 'native64 scalar module InlineProbe: jit='+str(jit)+', exit="zero divide"'
+                        if marker not in output or 'native64 scalar scheduler empty after program retirement' not in output or 'panic:' in output:
+                            raise RuntimeError('Returned value control escaped\n'+output)
+                        resultcontrols += 1
             if name == 'helper-arg-locals':
                 corrupted = work/'zero-argument.dis64'
                 corrupted.write_bytes(zero_argument(image.read_bytes(), rows))
@@ -424,7 +505,7 @@ def main():
                 raise RuntimeError('Missing controlled scalar refusal: '+name+'\n'+diagnostic.decode(errors='replace'))
             if image.exists():
                 raise RuntimeError('Refused helper left an executable image: '+name)
-    print('PASS scalar helpers:',count,'sources,',processes,'whole C/JIT processes;',controls,'active stale-local controls;',depthcontrols,'active depth-overlap controls;',argcontrols,'active argument controls; ordinary Dis unchanged;',refused,'calling/storage limits refused')
+    print('PASS scalar helpers:',count,'sources,',processes,'whole C/JIT processes;',controls,'active stale-local controls;',depthcontrols,'active depth-overlap controls;',argcontrols,'active argument controls;',resultcontrols,'active result controls; ordinary Dis unchanged;',refused,'calling/storage limits refused')
 
 
 if __name__ == '__main__':

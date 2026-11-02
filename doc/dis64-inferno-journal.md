@@ -4106,3 +4106,33 @@ https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41393887304 .
 Downloaded x64 loop/case/procedures retire in C/JIT. No opcode, registry or
 shared calling ABI change is requested; please review source-expression lowering
 and explicit middle-operand ownership against the existing43-op np0 contract.
+
+
+## INFERNO-0066 — 2026-11-02 — typed source results, no pointer wire ABI
+
+Read FLASHVM-0057 at39485a2. Its atomic stop-request polling and empty Fast
+skips preserve exclusive shared-heap ownership. We do not treat that wakeup gate
+as a managed mutation barrier or assume parallel marking/mutators. Its hosted
+adapter checkpoint exports no shared file-format or upstream core source fix.
+
+This frontend series admits int/big/real helper results through validated exact
+legacy LEA bindings. Direct scalar FP/MP destinations must match result width,
+alignment and caller bounds and exclude the opaque frame temporary. A nested
+helper can forward only the exact existing parent result binding with the same
+result kind. Compiler-only depth records retain ownership; LEA becomes a jump
+and typed result producers become direct scalar stores. No native pointer,
+runtime file CALL/FRAME, signature, registry ID or new feature is serialized.
+The shared43-op np0 executable profile and all bounded DAG limits are unchanged.
+
+Local strict-UBSan compiler and whole x64 VM pass167 accepted sources /334 C/JIT
+processes, all8 active VM controls and16 refusal shapes. The new result-value
+control modifies actual returned arithmetic without invalidating wire framing;
+its caller must detect the wrong value. The target resolver additionally tests
+result-LEA interior refusal. Direct/early/case returns, int/big/real forwarding,
+ignored results, nested arithmetic and4097-call fresh-local results are covered.
+Return faults retain helper source lines. All126 earlier sources preserve both
+ordinary Dis and Dis64 bytes; native compiler72-case Dis/AOT/ABI32 and scalar
+25-case/30-process gates pass. The procedures example now returns its folded
+Word result. Native ARM64/x64 and RV64/QEMU CI evidence follows separately.
+Please review source result binding/forwarding against your own frontend while
+keeping source-independent result ABI and managed call admission explicit.

@@ -5,6 +5,7 @@
 #define ScalarInlineFunctions 16U // Bound source specialization, including the sole exported entry.
 #define ScalarInlineFrame 128U // Bound scalar scratch and local storage in each scalar helper.
 #define ScalarInlineBody 32U // Bound helper bodies, excluding the terminal RET.
+#define ScalarInlineResult (STemp-IBY2WD) // Legacy result-pointer cell; never emitted as a native pointer.
 #define ScalarInlineLabels 8U // Match the existing numeric case lowering bound.
 
 typedef struct InlineFunction InlineFunction;
@@ -88,6 +89,18 @@ inlineargument(unsigned int op, int kind)
 }
 
 
+/* Require explicit scalar inputs so arithmetic never reads an uninitialized result or argument destination. */
+static int
+inlineproducer(Inst *input, int kind)
+{
+	if(!inlineargument(input->op, kind))
+		return 0;
+	if(input->op == IMOVW || input->op == IMOVL || input->op == IMOVF)
+		return input->mm == Anone;
+	return input->mm != Anone;
+}
+
+
 /* Identify argument cells that a validated call initializes before entering the child body. */
 static int
 inlineparameter(InlineFunction *function, unsigned int offset)
@@ -101,7 +114,7 @@ inlineparameter(InlineFunction *function, unsigned int offset)
 }
 
 
-/* Validate one scalar-argument/no-result helper against its own scratch geometry and shared scalar roles. */
+/* Validate scalar helpers, including typed result producers whose address is specialized at each call. */
 static int
 inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsigned int data)
 {
@@ -114,7 +127,7 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 
 	decl = function->declaration;
 	if(decl->ty == nil || decl->ty->kind != Tfn ||
-	   decl->ty->varargs || decl->ty->tof == nil || decl->ty->tof->kind != Tnone ||
+	   decl->ty->varargs || decl->ty->tof == nil || (decl->ty->tof->kind != Tnone && inlinewidth(decl->ty->tof) == 0) ||
 	   decl->desc == nil || decl->desc->size < ScalarLegacyPrefix || decl->desc->size > ScalarInlineFrame || decl->desc->nmap < 0 ||
 	   (decl->desc->nmap != 0 && decl->desc->map == nil) ||
 	   function->end-function->start > ScalarInlineBody+1)
@@ -149,8 +162,9 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 		return 0;
 	for(pc = function->start; pc+1 < function->end; pc++){
 		input = original[pc];
-		if(input->op == IFRAME || input->op == ICALL ||
-		   (input->dm == Afpind && (inlineargument(input->op, Tint) || inlineargument(input->op, Tbig) || inlineargument(input->op, Treal))))
+		if(input->op == IFRAME || input->op == ICALL || input->op == ILEA ||
+		   (input->dm == Afpind && input->d.reg != ScalarInlineResult &&
+		    (inlineargument(input->op, Tint) || inlineargument(input->op, Tbig) || inlineargument(input->op, Treal))))
 			continue; // Pair identity and recursion are checked before expansion.
 		if(input->op == IEXIT ||
 		   !inlinescratch(input->sm, &input->s, decl->desc->size) ||
@@ -174,6 +188,13 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 		}
 		/* Validate the whole contiguous helper span, without the legacy scratch/local discontinuity. */
 		copy = *input;
+		if(input->dm == Afpind){
+			if(input->d.reg != ScalarInlineResult || input->d.offset != 0 ||
+			   !inlineproducer(input, decl->ty->tof->kind))
+				return 0;
+			copy.dm = Afp;
+			copy.d.reg = ScalarScratchStart;
+		}
 		if(copy.sm == Afp) copy.s.reg += ScalarLegacyPrefix-ScalarScratchStart;
 		if(copy.mm == Afp) copy.m.reg += ScalarLegacyPrefix-ScalarScratchStart;
 		if(copy.dm == Afp) copy.d.reg += ScalarLegacyPrefix-ScalarScratchStart;
@@ -250,6 +271,8 @@ struct InlineContext {
 	InlineFunction *functions; // Borrowed validated source function spans and expansion sizes.
 	unsigned int *owners; // Setup interiors point to their owning FRAME; ordinary PCs own themselves.
 	unsigned int *calls; // Validated FRAME-to-CALL boundaries in the original instruction list.
+	Addr results[ScalarInlineFunctions]; // Direct scalar result destination for each active depth.
+	int resultmodes[ScalarInlineFunctions]; // Validated direct FP/MP destination modes, never native pointers.
 	Inst **original; // Borrowed original instructions indexed by resolved PC.
 	Dis64Prepared *prepared; // Owned output arrays under construction.
 	unsigned int entry; // Sole exported function index; calls back into it are refused.
@@ -288,6 +311,7 @@ inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsi
 {
 	InlineFunction *function;
 	Inst *input, *frame, copy;
+	Type *result;
 	Decl *parameter;
 	Dis64Instruction checked;
 	unsigned int pc, end, i, width;
@@ -297,7 +321,10 @@ inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsi
 	for(pc = function->start; pc < function->end; pc++){
 		input = context->original[pc];
 		if(input->op != IFRAME){
-			if(input->op == ICALL || input->dm == Afpind)
+			if(input->op == ICALL || input->op == ILEA)
+				return 0;
+			if(input->dm == Afpind && (input->d.reg != ScalarInlineResult || input->d.offset != 0 ||
+			   !inlineargument(input->op, function->declaration->ty->tof->kind)))
 				return 0;
 			continue;
 		}
@@ -305,7 +332,8 @@ inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsi
 		end = pc+1;
 		while(end < function->end){
 			input = context->original[end];
-			if(input->dm != Afpind || !(inlineargument(input->op, Tint) || inlineargument(input->op, Tbig) || inlineargument(input->op, Treal)))
+			if(input->dm != Afpind ||
+			   !(input->op == ILEA || inlineargument(input->op, Tint) || inlineargument(input->op, Tbig) || inlineargument(input->op, Treal)))
 				break;
 			end++;
 		}
@@ -317,10 +345,9 @@ inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsi
 		for(i = pc+1; i < end; i++){
 			input = context->original[i];
 			if(parameter == nil)
-				return 0;
+				break;
 			width = inlinewidth(parameter->ty);
-			if(!inlineargument(input->op, parameter->ty->kind) || input->branch != nil ||
-			   ((input->op == IMOVW || input->op == IMOVL || input->op == IMOVF) ? input->mm != Anone : input->mm == Anone) ||
+			if(!inlineproducer(input, parameter->ty->kind) || input->branch != nil ||
 			   input->d.reg != frame->d.reg || input->d.offset != parameter->offset ||
 			   !inlinescratch(input->sm, &input->s, function->declaration->desc->size) ||
 			   !inlinescratch(input->mm, &input->m, function->declaration->desc->size) ||
@@ -342,6 +369,38 @@ inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsi
 			parameter = parameter->next;
 		}
 		if(parameter != nil)
+			return 0;
+		result = context->functions[callee].declaration->ty->tof;
+		if(result->kind != Tnone){
+			if(i+1 != end)
+				return 0;
+			input = context->original[i];
+			width = inlinewidth(result);
+			if(input->op != ILEA || input->mm != Anone || input->branch != nil ||
+			   input->d.reg != frame->d.reg || input->d.offset != ScalarInlineResult)
+				return 0;
+			if(input->sm == Afpind){
+				if(input->s.reg != ScalarInlineResult || input->s.offset != 0 ||
+				   function->declaration->ty->tof->kind != result->kind)
+					return 0;
+			}else{
+				if((input->sm != Afp && input->sm != Amp) ||
+				   !inlinescratch(input->sm, &input->s, function->declaration->desc->size) ||
+				   (input->sm == Afp && input->s.reg < frame->d.reg+IBY2WD && input->s.reg+width > frame->d.reg))
+					return 0;
+				copy = *input;
+				copy.op = result->kind == Tint ? IMOVW : result->kind == Tbig ? IMOVL : IMOVF;
+				if(copy.sm == Afp)
+					copy.s.reg += ScalarLegacyPrefix-ScalarScratchStart;
+				copy.dm = Afp;
+				copy.d.reg = ScalarLegacyPrefix;
+				if(!dis64scalarinst(&copy, count, data, function->declaration->desc->size+ScalarNativePrefix-ScalarScratchStart,
+				   ScalarNativePrefix, &checked))
+					return 0;
+			}
+			context->owners[i++] = pc;
+		}
+		if(i != end)
 			return 0;
 		context->owners[end] = pc;
 		pc = end;
@@ -484,12 +543,24 @@ inlineemit(InlineContext *context, unsigned int index, unsigned int depth, unsig
 			inlinerelocate(copy->mm, &copy->m, context->bases[depth]);
 			inlinerelocate(copy->dm, &copy->d, context->bases[depth]);
 		}
-		if(input->dm == Afpind){
+		if(input->op == ILEA){
+			if(input->sm == Afpind){
+				context->results[depth+1] = context->results[depth];
+				context->resultmodes[depth+1] = context->resultmodes[depth];
+			}else{
+				context->results[depth+1] = copy->s;
+				context->resultmodes[depth+1] = copy->sm;
+			}
+		}
+		if(input->dm == Afpind && input->d.reg == ScalarInlineResult){
+			copy->dm = context->resultmodes[depth];
+			copy->d = context->results[depth];
+		}else if(input->dm == Afpind && input->op != ILEA){
 			copy->dm = Afp;
 			copy->d.reg = context->bases[depth+1]+input->d.offset-ScalarScratchStart;
 			copy->d.offset = 0;
 			copy->d.decl = nil;
-		}else if(input->op == IFRAME || (depth != 0 && input->op == IRET)){
+		}else if(input->op == IFRAME || input->op == ILEA || (depth != 0 && input->op == IRET)){
 			copy->op = IJMP;
 			copy->sm = copy->mm = Anone;
 			copy->dm = Apc;

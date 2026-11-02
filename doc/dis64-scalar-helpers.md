@@ -1,4 +1,4 @@
-# Bounded scalar source procedures: through series 0065
+# Bounded scalar source procedures: through series 0066
 
 `limbo -6` can specialize direct FRAME/CALL pairs into its sole exported
 `init()` before the existing numeric-case and scalar lowering passes. This is
@@ -8,8 +8,8 @@ signature, coordinate schema or wire identifier is assigned.
 
 The current bounds are 16 compiled functions including the entry, 32 original
 instructions per helper excluding its final RET, and 128 bytes of legacy helper
-frame extent. Each helper has no result, no recursion and no managed frame map.
-Int/Big/Real arguments use validated consecutive scalar copies. Bounded acyclic
+frame extent. Each helper has a void or int/big/real result, no recursion and no managed frame map.
+Int/Big/Real arguments use validated consecutive scalar producers. Bounded acyclic
 helper-to-helper calls are admitted. Numeric helper case tables are admitted
 within the same eight-label bound as entry-local tables. Helpers may contain
 scalar conditional branches, loops and early returns. Series 0058 also admits
@@ -440,3 +440,44 @@ utils/tests/dis64-inline.py; the packaged procedures example remains unchanged.
 Native fast coverage remains166/173 ARM64/x64 and87/90/103 RV64I/Zmmul/M;
 JIT plus C remains173/173 and the shared file profile43/173. No new Android/APK,
 full shell, managed file-call or scalar-result acceptance is claimed.
+
+
+## Series0066: source scalar results
+
+Bounded acyclic helpers may return int/big/real. Each source call must supply one
+exact legacy LEA result binding after its ordered arguments and before CALL.
+The binding points to a typed, aligned, in-range scalar FP/MP cell in the caller,
+excluding its opaque frame temporary. A helper may instead forward its own
+result destination, but only with the exact legacy result-cell identity and the
+same result kind. Result destinations stay private compiler records per active
+depth; no address value, LEA, runtime CALL/FRAME or result signature is emitted.
+
+Typed return MOVW/MOVL/MOVF or Word/Big arithmetic producers become direct scalar
+writes to that binding. Sources/middle operands still belong to the callee's
+private depth span. An implicit arithmetic destination read is refused. Early
+RET and case-arm returns resume at the correct caller continuation. Branches and
+case arms cannot enter the LEA binding or other setup interiors. Caller storage
+survives child-local initialization and nested/forwarded results preserve their
+original owner. All16-function/32-body/128-byte-frame/8-label/65536-code bounds
+and recursion refusal remain unchanged. This is source specialization into the
+existing43-op np0 file profile, not a shared source-independent calling ABI.
+
+The owning gate passes167 sources /334 whole C/JIT processes with a strict-UBSan
+compiler locally, plus2 stale-local,2 depth-overlap,2 argument-value and2 new
+returned-value controls. Changing the actual returned ADDW to SUBW preserves
+valid framing but must trip the caller's semantic check. The production target
+resolver explicitly refuses result-LEA interiors; its ownership-removal control
+remains active. Tests cover20 Word/Big returned operator values, direct/local/
+ignored results, nested arithmetic and result forwarding for all3 scalar kinds,
+4097 repeated calls, early returns, numeric-case returns and an evaluated inner
+call used as an argument. Return-expression faults map to their helper source
+lines. All126 prior sources retain byte-identical ordinary Dis and Dis64.
+
+Sixteen refusal shapes include managed/byte results and floating arithmetic.
+The ordinary native compiler gate retains72 Dis/AOT/ABI32 cases and late-link
+preservation; scalar compiler tests retain25 cases and30 VM processes. The
+packaged procedures example now returns fold's computed Word result through
+mix's numeric case. It passes locally in C/JIT; native cross-target evidence is
+recorded separately. No new full shell, imports, managed calls or Android/APK
+acceptance follows. General runtime calls and precise managed ownership remain
+separate from this bounded scalar source path.
