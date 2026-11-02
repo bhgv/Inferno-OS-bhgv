@@ -12,7 +12,7 @@ struct Dis64Prepared {
 };
 
 
-/* Prepare a bounded entry and straightline helpers; zero output first and free partial state on refusal. */
+/* Prepare a bounded entry and acyclic scalar helpers; zero output first and free partial state on refusal. */
 int dis64prepare(Decl*, Inst*, unsigned int, unsigned int, Dis64Prepared*);
 
 

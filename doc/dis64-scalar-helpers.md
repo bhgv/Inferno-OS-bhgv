@@ -1,4 +1,4 @@
-# Bounded scalar source procedures: through series 0061
+# Bounded scalar source procedures: through series 0062
 
 `limbo -6` can specialize direct FRAME/CALL pairs into its sole exported
 `init()` before the existing numeric-case and scalar lowering passes. This is
@@ -6,10 +6,10 @@ source inlining, not a Dis64 calling ABI. The agreed np0 executable profile stil
 admits exactly 43 of 173 Dis operations. No opcode, section, feature bit,
 signature, coordinate schema or wire identifier is assigned.
 
-The current bounds are 16 compiled functions including the entry, 32 scalar
+The current bounds are 16 compiled functions including the entry, 32 original
 instructions per helper excluding its final RET, and 128 bytes of legacy helper
-frame extent. Each helper has no arguments or result, no recursion or nested
-calls and no managed frame map. Numeric helper case tables are admitted
+frame extent. Each helper has no arguments or result, no recursion and no
+managed frame map. Bounded acyclic helper-to-helper calls are admitted. Numeric helper case tables are admitted
 within the same eight-label bound as entry-local tables. Helpers may contain
 scalar conditional branches, loops and early returns. Series 0058 also admits
 user-declared int/big/real locals with fresh zero initialization per call.
@@ -24,8 +24,8 @@ compiler metadata untouched. Empty procedures become a jump to the next
 instruction. Each helper's terminal RET disappears; the entry RET becomes EXIT.
 
 Helper scratch and compiler temporaries occupy an appended region separate
-from caller locals and the caller's scalar scratch tail. Sequential helper
-invocations reuse that region. For helpers with declared locals, series 0058
+from caller locals and the caller's scalar scratch tail. Separate spans at each active helper depth preserve ancestor locals.
+Sibling invocations reuse their depth span. For helpers with declared locals, series 0058
 renews the entire private span with MOVW zero stores before every call. This
 covers scratch, padding and both halves of Big/Real storage; caller locals and
 caller scratch stay separate. Helpers with compiler temporaries alone retain
@@ -248,3 +248,39 @@ managed file-call or native RV64 producer acceptance is claimed.
 FlashVM can independently review/repeat the per-copy table target and terminal
 RET continuation checks using this source checkpoint and the existing reader.
 No reader extension or shared registry allocation is requested.
+
+
+## Series0062: acyclic nested scalar calls
+
+A scalar helper can call another scalar helper. The compiler validates adjacent
+FRAME/CALL identities at every level, rejects direct/mutual recursion and calls
+back to the exported entry, then computes finite expansion sizes before output
+allocation. The whole flattened program and final scalar lowering retain the
+65536-instruction bound. The16-function/32-original-helper-instruction/128-byte
+helper-frame/8-case-label bounds remain. At most15 helper levels can be active.
+
+Each active depth owns an appended scalar span. The largest helper at that
+depth determines its size; sequential siblings reuse it. A child cannot alias
+its parent's locals or temporaries. Declared locals are renewed per call, outside
+that helper's loop backedges. Function/depth memoization bounds layout traversal
+when shared helpers occur on several paths. Parent PC maps remain live while
+child copies are emitted, so branches, case arms and early returns resume the
+correct caller. Tables are private for each call copy, including descendants.
+
+This remains source specialization into the unchanged43-op profile. No runtime
+FRAME/CALL, recursion, arguments/results, managed objects or file calling ABI
+are admitted. All60 prior accepted sources retain byte-identical ordinary Dis
+and Dis64 output against0061. The bundled procedures example now calls bump()
+from step() and fold() from a case arm in mix(), retaining caller Big/Real locals.
+
+Local UBSan compiler tests pass74 accepted sources /148 whole C/JIT processes,
+2 stale-local controls,2 active depth-overlap controls and12 controlled refusal
+shapes. The overlap control rewrites the child's actual FP operands onto the
+parent's local while preserving canonical encoding; the reader may still admit
+this valid image, but execution must trigger the parent's zero-divide check.
+Direct/mutual/entry cycles and exponential expansion are refused with a scalar
+compiler diagnostic; a compiler signal or sanitizer failure cannot count as a
+successful refusal. Tests cover maximum depth, shared descendants at different
+depths, empty callees, conditional calls, parent/child early returns, nested case
+calls, Big/Real preservation and leaf fault source identity. The ordinary native
+Limbo72-case Dis/AOT/ABI32 gate also passes. Cross-target results follow below.

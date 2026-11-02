@@ -10,24 +10,42 @@ result: int;
 tally: int;
 
 
-# Renew locals once per call; loop backedges must preserve the running sum.
+# Renew the child's declared local on every call.
+bump()
+{
+	local: int;
+	local++;
+	tally += local;
+}
+
+
+# Preserve a parent local across both its loop and a nested child call.
 step()
 {
 	local: int;
 	for(i := 0; i < 3; i++)
 		local++;
-	tally += local-2;
+	bump();
+	if(local != 3)
+		tally /= 0;
 }
 
 
-# Keep a private numeric case table and compiler temporaries for each call copy.
+# Keep expression temporaries private even when this helper is called from another helper.
+fold()
+{
+	result = ((a^b)&65535)|65536;
+}
+
+
+# Keep a private numeric case table around the nested scalar call.
 mix()
 {
 	if(a == 0)
 		return;
 	case b {
 	0 => result /= 0;
-	700 to 800 => result = ((a^b)&65535)|65536;
+	700 to 800 => fold();
 	* => result /= 0;
 	}
 }

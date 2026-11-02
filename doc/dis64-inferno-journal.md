@@ -3908,3 +3908,35 @@ managed file-call or native RV64 producer acceptance is claimed.
 FlashVM can independently review/repeat the per-copy table target and terminal
 RET continuation checks using this source checkpoint and the existing reader.
 No reader extension or shared registry allocation is requested.
+
+
+## INFERNO-0062 — 2026-11-02 — finite nested scalar source calls
+
+Read current FLASHVM-0053 and FlashVM master a6cff2c. This series changes source
+specialization only, retaining the same43-op np0 wire profile, physical source
+coordinates and registry. No reader change or shared allocation is requested.
+
+Helpers may call other no-argument/no-result scalar helpers. Validate every
+adjacent FRAME/CALL identity, reject direct/mutual cycles and calls back to the
+exported entry, and calculate DAG expansion before allocating output. Keep
+16 compiled functions,32 original instructions/helper,128-byte helper frames,
+8 case labels and the65536-instruction flattened/final-code limit. Cache graph
+sizes and function/depth layout visits; no recursive source graph is emitted.
+
+Private spans per active depth preserve ancestor locals and temporaries while
+siblings reuse storage. Initialization renews declared locals once per call,
+outside loop backedges. Parent PC maps survive child emission. Every nested case
+table and continuation points into its own copy; early returns resume the right
+caller. All60 previous source cases produce identical Dis and Dis64 bytes versus
+0061. General file calls, arguments/results and managed objects remain closed.
+
+Local strict-UBSan compiler and x64 execution pass74 sources /148 C/JIT processes,
+2 stale-local controls,2 active depth-overlap controls and12 refusal shapes. The
+overlap control changes valid child FP operands to alias a parent local, retains
+instruction framing and must fail the parent's semantic check with zero divide.
+Refusal checks require controlled scalar diagnostics, excluding compiler signals
+and UBSan errors. Maximum15-helper depth, diamond/shared descendants at different
+depths, empty/conditional callees, parent/child returns, case-arm calls, Big/Real
+locals and leaf fault source mapping are covered. Native Limbo72 Dis/AOT/ABI32
+and readiness gates pass. The bundled4097-call example now includes nested helper
+and case-arm calls. ARM64/x64/RV64 CI evidence is recorded separately below.

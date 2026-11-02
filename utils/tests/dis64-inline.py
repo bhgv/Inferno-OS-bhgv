@@ -7,6 +7,7 @@ import re
 import runpy
 import shlex
 import struct
+import subprocess
 import sys
 import tempfile
 
@@ -82,13 +83,29 @@ def programs():
     yield 'helper-case-nested', 'key:int;other:=6;value:int;', 'helper(){case key {0=>case other {0=>value+=1;5 to 8=>value+=3;* =>value+=5;}10 to 20=>value+=7;* =>value+=9;}} init(){helper();key=15;helper();if(value!=10)value/=0;}', ''
     yield 'helper-case-error', 'key:=15;value:int;', '\nhelper(){case key {-1=>value++;10 to 20=>value/=0;* =>value--;}}\ninit(){helper();}', 'zero divide'
 
+    yield 'helper-nested-call', 'value:int;', 'inner(){value++;} helper(){inner();inner();} init(){helper();helper();if(value!=4)value/=0;}', ''
+    yield 'helper-nested-locals', 'value:int;', '\ninner(){x:int;x+=7;value+=x;}\nhelper(){x:int;x=3;inner();if(x!=3)value/=0;value+=x;}\ninit(){helper();helper();if(value!=20)value/=0;}', ''
+    yield 'helper-nested-loop', 'value:int;', 'inner(){x:int;x++;value+=x;} helper(){x:int;for(i:=0;i<9;i++){inner();x+=i;}value+=x;} init(){helper();helper();if(value!=90)value/=0;}', ''
+    yield 'helper-nested-return', 'key:int;value:int;', 'inner(){if(key==0)return;value+=7;} helper(){x:=3;inner();if(x!=3)value/=0;value+=x;} init(){helper();key=1;helper();if(value!=13)value/=0;}', ''
+    yield 'helper-nested-big-real', 'value:big;floating:real;', 'inner(){x:big;y:real;x+=big 7;value+=x;floating=y;} helper(){x:=big 17;y:=1.25;inner();if(x!=big 17||y!=1.25){i:=1;i/=0;}value+=x;} init(){helper();helper();if(value!=big 48||floating!=0.0){i:=1;i/=0;}}', ''
+    yield 'helper-nested-case-call', 'key:=15;value:int;', 'inner(){x:int;case key {-1=>x+=3;10 to 20=>x+=7;* =>x+=11;}value+=x;} helper(){x:=3;case key {-1=>inner();10 to 20=>inner();* =>inner();}if(x!=3)value/=0;value+=x;} init(){helper();helper();if(value!=20)value/=0;}', ''
+    yield 'helper-nested-shared', 'value:int;', 'leaf(){x:int;x++;value+=x;} a(){x:=3;leaf();value+=x;} b(){x:=7;leaf();value+=x;} helper(){x:=11;a();b();leaf();value+=x;} init(){helper();helper();if(value!=48)value/=0;}', ''
+    yield 'helper-nested-after-entry', 'value:int;', 'init(){helper();helper();if(value!=20)value/=0;} helper(){x:=3;inner();value+=x;} inner(){x:int;x+=7;value+=x;}', ''
+    yield 'helper-nested-parent-return', 'key:int;value:int;', 'leaf(){value+=7;} middle(){leaf();if(key==0)return;value+=3;} helper(){middle();value+=11;} init(){helper();key=1;helper();if(value!=39)value/=0;}', ''
+    yield 'helper-nested-conditional', 'key:int;value:int;', 'a(){value+=3;} b(){value+=7;} helper(){x:=11;if(key==0)a();else b();if(x!=11)value/=0;value+=x;} init(){helper();key=1;helper();if(value!=32)value/=0;}', ''
+    yield 'helper-nested-many-callers', 'value:int;', 'leaf(){x:int;x++;value+=x;} middle(){x:=3;leaf();value+=x;} helper(){x:=7;middle();value+=x;} init(){leaf();middle();helper();if(value!=16)value/=0;}', ''
+    yield 'helper-nested-empty', 'value:int;', 'empty(){} helper(){x:=3;empty();value+=x;} init(){helper();helper();if(value!=6)value/=0;}', ''
+    yield 'helper-nested-fault', 'value:int;', '\ninner(){value/=0;}\nhelper(){inner();}\ninit(){helper();}', 'zero divide'
+    definitions = ' '.join('h'+str(i)+'(){x:=1;'+('h'+str(i+1)+'();' if i<14 else '')+'value+=x;}' for i in range(15))
+    yield 'helper-nested-depth', 'value:int;', definitions+' init(){h0();h0();if(value!=30)value/=0;}', ''
+
 
 # These sources must be valid ordinary Limbo before the scalar backend rejects their calling shapes.
 def refusals():
     yield 'arguments', 'value:int;', 'helper(x:int){value+=x;} init(){helper(3);}'
     yield 'result', 'value:int;', 'helper():int{value++;return value;} init(){value=helper();}'
     yield 'recursive', 'value:int;', 'helper(){value++;helper();} init(){helper();}'
-    yield 'nested', 'value:int;', 'inner(){value++;} helper(){inner();} init(){helper();}'
+    yield 'mutual-recursion', 'value:int;', 'inner(){value++;helper();} helper(){inner();} init(){helper();}'
     yield 'byte-local', 'value:int;', 'helper(){x:byte;x=byte value;value=int x;} init(){helper();}'
     yield 'helper-table-limit', 'value:int;', 'helper(){case value {'+''.join(str(i*10)+'=>value+='+str(i+1)+';' for i in range(9))+'* =>value--;}} init(){helper();}'
     yield 'managed', 'value: string;', 'helper(){value="hello";} init(){helper();}'
@@ -99,6 +116,9 @@ def refusals():
     body = ' '.join('h'+str(i)+'(){value++;}' for i in range(16))
     calls = ''.join('h'+str(i)+'();' for i in range(16))
     yield 'function-limit', 'value:int;', body+' init(){'+calls+'}'
+    yield 'entry-cycle', 'value:int;', 'helper(){init();} init(){helper();}'
+    body = ' '.join('h'+str(i)+'(){x:=1;'+('h'+str(i+1)+'();h'+str(i+1)+'();' if i<14 else '')+'value+=x;}' for i in range(15))
+    yield 'expansion-limit', 'value:int;', body+' init(){h0();}'
 
 
 # Derive the caller-local boundary from ordinary assembly, independently of the preparer's frame arithmetic.
@@ -159,6 +179,51 @@ def stale_locals(image, rows):
     return result
 
 
+# Alias the child's actual local onto the parent's actual local, retaining valid scalar encoding.
+def overlap_depth(image, rows, locations, text):
+    names = re.findall(r'^\s*(I[A-Z0-9]+),', (ROOT/'include/isa.h').read_text(), re.M)
+    parentline = next(i+1 for i,line in enumerate(text.splitlines()) if line.startswith('helper()'))
+    childline = next(i+1 for i,line in enumerate(text.splitlines()) if line.startswith('inner()'))
+    parent = [row['args'][-1] for row,loc in zip(rows,locations) if loc['start'] and loc['start']['line']==parentline
+              and row['op']==names.index('IMOVW') and row['mode']==0x11 and row['args'][0]==3]
+    child = [row['args'][-1] for row,loc in zip(rows,locations) if loc['start'] and loc['start']['line']==childline
+             and row['op']==names.index('IADDW') and row['mode']==0x11 and row['args'][0]==7]
+    if not parent or not child or len(set(parent))!=1 or len(set(child))!=1 or child[0]<=parent[0]:
+        raise RuntimeError('Missing distinct active parent/child local witnesses')
+    bias = child[0]-parent[0]
+    result = bytearray(image)
+    sections = struct.unpack_from('>I', image, 28)[0]
+    at = next(struct.unpack_from('>HHII', image, 32+12*i)[2] for i in range(sections)
+              if struct.unpack_from('>H', image, 32+12*i)[0]==2)+4
+    changed = 0
+    for row,loc in zip(rows,locations):
+        at += 2
+        mode, index = row['mode'], 0
+        for present,fp in ((bool(mode&0xc0),(mode&0xc0)==0x80),
+                           (((mode>>3)&7)!=3,((mode>>3)&7)==1),((mode&7)!=3,(mode&7)==1)):
+            if not present:
+                continue
+            first = image[at]
+            size = 1 if first<128 else 2 if first<192 else 4
+            if fp and loc['start'] and loc['start']['line']==childline:
+                value = row['args'][index]-bias
+                if -64<=value<64:
+                    encoded = bytes([value&127])
+                elif -8192<=value<8192:
+                    encoded = bytes([0x80|((value>>8)&63),value&255])
+                else:
+                    encoded = bytes([0xc0|((value>>24)&63),(value>>16)&255,(value>>8)&255,value&255])
+                if len(encoded)!=size:
+                    raise RuntimeError('Depth control must preserve instruction framing')
+                result[at:at+size] = encoded
+                changed += 1
+            at += size
+            index += 1
+    if not changed:
+        raise RuntimeError('Inactive parent/child overlap control')
+    return result
+
+
 # Compare real compiler products, preserve diagnostics, and execute whole OS processes with explicit target runners.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -170,7 +235,7 @@ def main():
     args = parser.parse_args()
     root = args.root.resolve()
     command = HELPERS['command']
-    count = processes = controls = 0
+    count = processes = controls = depthcontrols = refused = 0
     with tempfile.TemporaryDirectory(prefix='inline scalar ', dir=root) as directory:
         work = Path(directory)
         source, image, smap, assembly, legacy = (work/name for name in ('source.b','image.dis64','map.json','source.s','legacy.dis'))
@@ -221,12 +286,25 @@ def main():
                     marker = 'native64 scalar module InlineProbe: jit='+str(jit)+', exit="'+error+'"'
                     if marker not in output or ('Broken:' in output) != bool(error) or 'native64 scalar scheduler empty after program retirement' not in output or 'panic:' in output or 'faults:' in output:
                         raise RuntimeError(name+' JIT='+str(jit)+'\n'+output)
-                    if name in ('callee-error', 'helper-case-error'):
+                    if name in ('callee-error', 'helper-case-error', 'helper-nested-fault'):
                         faults = re.findall(r'native64 scalar fault: dis-pc=(\d+)',output)
-                        line = next(i+1 for i,s in enumerate(text.splitlines()) if s.startswith('helper()'))
+                        line = next(i+1 for i,s in enumerate(text.splitlines()) if s.startswith('inner()' if name == 'helper-nested-fault' else 'helper()'))
                         if len(faults)!=1 or locations[int(faults[0])]['start']['line']!=line:
                             raise RuntimeError('Inlined error lost helper source identity')
                     processes += 1
+            if name == 'helper-nested-locals':
+                corrupted = work/'overlap-depth.dis64'
+                corrupted.write_bytes(overlap_depth(image.read_bytes(), rows, locations, text))
+                if args.reader:
+                    command([args.reader.resolve(), corrupted, '--pilot'])
+                if args.emu:
+                    for jit in (0,1):
+                        output = HELPERS['EXECUTE'](shlex.split(args.runner)+[str(args.emu.resolve()), '-v', '-r', str(root),
+                            '-c', str(jit), '-d', '/'+str(corrupted.relative_to(root))])
+                        marker = 'native64 scalar module InlineProbe: jit='+str(jit)+', exit="zero divide"'
+                        if marker not in output or 'native64 scalar scheduler empty after program retirement' not in output or 'panic:' in output:
+                            raise RuntimeError('Parent/child overlap control escaped\n'+output)
+                        depthcontrols += 1
             if name == 'local-word':
                 corrupted = work/'stale-locals.dis64'
                 corrupted.write_bytes(stale_locals(image.read_bytes(), rows))
@@ -242,15 +320,17 @@ def main():
                         controls += 1
             count += 1
         for name,globals_,body in refusals():
+            refused += 1
             source.write_text(PREFIX+globals_+'\n'+body+'\n')
             command([args.limbo.resolve(), '-o', legacy, source])
-            try:
-                command([args.limbo.resolve(), '-6', '-o', image, source],False)
-            except RuntimeError as failure:
-                raise RuntimeError('Refusal shape accepted: '+name) from failure
+            result = subprocess.run([str(args.limbo.resolve()), '-6', '-o', str(image), str(source)],
+                                    capture_output=True, timeout=30)
+            diagnostic = result.stdout+result.stderr
+            if result.returncode <= 0 or b'Dis64 scalar:' not in diagnostic or b'runtime error:' in diagnostic:
+                raise RuntimeError('Missing controlled scalar refusal: '+name+'\n'+diagnostic.decode(errors='replace'))
             if image.exists():
                 raise RuntimeError('Refused helper left an executable image: '+name)
-    print('PASS scalar helpers:',count,'sources,',processes,'whole C/JIT processes;',controls,'active stale-local controls; ordinary Dis unchanged; 10 calling/storage limits refused')
+    print('PASS scalar helpers:',count,'sources,',processes,'whole C/JIT processes;',controls,'active stale-local controls;',depthcontrols,'active depth-overlap controls; ordinary Dis unchanged;',refused,'calling/storage limits refused')
 
 
 if __name__ == '__main__':
