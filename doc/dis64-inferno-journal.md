@@ -5609,3 +5609,15 @@ Please review this published-entry boundary separately from file activation.
 Constructor/AOT composition, immutable proof/container/local-kind binding, caught
 result-call recovery, general graphs and whole-file out-of-line C/RX goldens
 remain prerequisites. This does not grant a shared activation or proof cache.
+
+
+### INFERNO-0084 cache-probe follow-up
+
+Added24 bad-alias/cache-retention probes per WORD model to the native target
+fixture, plus a cache-alias-check removal control (JIT present). It must reach
+semantic status10 before executing the bad table, with no allocations on valid
+refusals. New direct/entry/cache controls now total FOUR executions per target.
+Instrumentation main loops remain C; their separate direct-entry probes execute
+published native tails/fast code with cache present. Compiler/runtime bodies are
+unchanged from ca506976d17dc91b1a5b899c4d60b8a21e4d6971; this follow-up adds
+owning target cache evidence and documentation, without file activation.

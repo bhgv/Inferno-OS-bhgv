@@ -176,7 +176,7 @@ def main():
     run(calls+['--control'], build, env, logs/'local-calls-control.log')
     results = [sys.executable, str(tests/'native64-result-calls.py')]
     run(results, build, env, logs/'result-calls.log')
-    for control in ('width', 'priority', 'ordinary', 'guard_mode', 'direct', 'entry'):
+    for control in ('width', 'priority', 'ordinary', 'guard_mode', 'direct', 'entry', 'cache'):
         run(results+['--control', control], build, env, logs/('result-calls-'+control+'.log'))
     run(results+['--instrument'], build, env, logs/'result-instrument.log')
     run(results+['--instrument', '--instrument-source'], build, env, logs/'result-instrument-source.log')

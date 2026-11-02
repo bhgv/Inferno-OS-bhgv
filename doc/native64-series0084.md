@@ -47,6 +47,12 @@ CALL. The entry control deliberately skips repeated cache validation in that
 isolated fixture: production cache validation would correctly reject its bad
 table before execution. No compiler failure/signal/sanitizer failure counts as
 control detection. Original width/priority/ordinary/mode controls remain.
+Each model also rejects24 deliberately corrupted published LEA aliases with no
+allocation, then restores the alias and reuses the same mapping. A third new
+control removes only that cache alias check and must reach semantic status10
+before any bad entry executes. New controls total four executions per target.
+Instrumentation main loops still execute C; their separate direct-entry probes
+also execute the published native tails/private fast code when a cache is present.
 
 Generic compiler tests account for LEA's intentional leaf/complete alias; two
 old corruption mutations that now produce no change are skipped. Other alias,

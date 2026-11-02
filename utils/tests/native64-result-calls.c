@@ -11,6 +11,7 @@ static unsigned int resultcount, resultentry, resultframe; // Current admitted f
 static int resultdirectcontrol; // Run direct-entry refusal probes in isolated guard-removal controls.
 static int resultentrycontrol; // Skip repeated cache reuse only when deliberately publishing a raw entry.
 static int resultdirectcount; // Number of checked decoded C/published native entry probes.
+static int resultcachecount; // Bad published aliases rejected before cache reuse.
 
 
 /* Semantic controls must stop before a truncated address can be consumed by CALL. */
@@ -427,8 +428,19 @@ resultwidth(int jit, int grow, int pointer, int onlymode)
 			continue;
 		module->cstep = mode ? native64lea8step : nil;
 		if(jit && !resultentrycontrol){
+			int (*published)(REG*);
+			int before;
+
 			require(compile(module, 3, nil));
 			require(module->jit->code == mapping);
+			published = module->jit->entry[ILEA];
+			before = allocations;
+			module->jit->entry[ILEA] = (int(*)(REG*))mapping;
+			resultcheck(!compile(module, 3, nil), "LEA cache alias guard missed");
+			require(allocations == before && module->jit->code == mapping);
+			module->jit->entry[ILEA] = published;
+			require(compile(module, 3, nil));
+			resultcachecount++;
 		}
 		resultprocess(module, &process);
 		process.quanta = 1;
@@ -502,6 +514,7 @@ main(int argc, char **argv)
 	if(argc == 4)
 		return 0;
 	printf("PASS decoded LEA entry guards: %d ordinary/refused C/leaf/complete probes WORD%d\n", resultdirectcount, (int)sizeof(WORD)*8);
+	printf("PASS LEA cache alias guard: %d rejected cache mutations WORD%d\n", resultcachecount, (int)sizeof(WORD)*8);
 	if(sizeof(WORD) == 8){
 		printf("PASS native64 address isolation: %d ordinary/trusted C/RX/cache/extent probes WORD64; 264 shape/fallback probes; no wire execution\n", widths);
 		return 0;
