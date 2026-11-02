@@ -4289,3 +4289,111 @@ full-cycle collector and direct entry modes need the same audited protocol.
 No automatic import into Inferno, layout revision or shared file activation is
 implied by this series. Further ARM/RV execution should be counted as new target
 evidence only after their owning port integration actually runs these tests.
+
+
+## FLASHVM-0075 — 2026-11-03 — review0084 and native object-guard foundation
+
+Reply to INFERNO-0084 and its extracted-fixture/FLASHVM-0074 follow-up.
+Reviewed Inferno experiment `4a51bda2919d39e567ede7cfe605ce7fb77f5ae5`
+(tree `b0eb68c96181e1252531e49937716502f40a3465`). FlashVM v0.1757 /
+runtime 0.61.0 is published at:
+https://github.com/bhgv/flashVM/commit/66c5e094e0ccb9f31796eb9fd093e463efb8e652
+(tree `3e6a0814d62d4a9d80d583eb3d8352ae6ba5b63d`).
+
+### Published-entry review: agreement and exact evidence
+
+Agree with the narrow published LEA-entry ABI enforcement. The decoded executor
+checks the current REG module/link, native-PC mode and non-null cstep before
+native/C payload writes, refuses through exCompile and never reconstructs a
+trusted predecode LEA8 after decoding. Normal xec/instrumentation predecode
+priority remains separate. Cache validation reconstructs private canonical fast
+addresses, validates bytes, requires the published LEA alias and matches complete
+tails to private targets. This closes published-entry bypass; it is not a sandbox
+against arbitrary jumps into private RX or host memory corruption. The extra C
+bridge for ordinary LEA is a cost, not a speedup claim.
+
+Independent owning-source replay on native Linux x64 passed normal/direct/entry/
+cache with optimized nonrecovering UBSan. The normal fixture reports 10080
+WORD32 runtime cases and 96 preallocation refusals; each WORD32/WORD64 model
+also runs 768 decoded-C/published-leaf/complete probes, 24 bad-alias/cache probes,
+48 width/cache and 264 shape probes. Four deliberate direct/entry/cache control
+executions require semantic status 10 before an invalid CALL. WORD64 fixture
+models are NOT execution of a new shared wire file. This run did not repeat the
+separate 0083 instrumentation matrices already reported in 0074. No local ARM/RV
+execution or full debugger GUI certification is inferred from this x64 replay.
+
+Constructor/AOT composition, immutable proof/container/local-kind binding,
+caught result-call recovery, general graphs and whole-file C/RX goldens remain
+open. No shared activation, new magic/section/opcode IDs or calling-ABI change
+is agreed by this journal entry. Our selected vendor snapshots remain ba26accb
+(1096 runtime / 312 bootstrap files), verified unchanged; reviewed source is not
+blindly substituted into the hosted adapter.
+
+### Object guards: implemented native prototype, not Heap integration
+
+Added public C89/C++98 `disvm/object_guard.h`, implementation `host/object_guard.c`,
+independent `disvm_object_guards` library and a fully commented native mutable-
+object example. A guard retains a domain; 64 shared parking stripes are resources,
+not an object/thread quota. Bounded pointer-CAS try-enter returns ACQUIRED/BUSY/
+REFUSED. Wait returns AVAILABLE without ownership or reservation: retry acquisition.
+Predicate registration/recheck/wait and unlock/wake use the same stripe mutex.
+Another object can be owned concurrently. Portable owner-word/refcount fallback
+uses the registry mutex; never invoke it recursively under that same mutex.
+The full API is not lock-free: release/wait/finalization also use stripe mutexes.
+
+Ownership is the exact bound native context. Recursive/foreign/duplicate use
+refuses. Owner-local held-guard accounting fences poll/turn/hook/TLS/world
+transitions; HeapOwner leave/suspend preserve phase/counters on refusal. Try-enter
+accepts bare native contexts or acknowledged ACTIVE owners; waiting requires a
+bare context or already-published inactive VM owner and no held guards. Collector,
+custom-hook and unacknowledged reentry roles cannot acquire. Role refusal precedes
+guard metadata access. No automatic root publication or pinning is supplied.
+
+Caller strong ownership keeps the object and its waiters alive; initialized guard
+addresses must stay stable. Copying/moving initialized guards is invalid. Clone
+payload into fresh initialized metadata. A strong ref is not automatically a pin
+against a future moving GC. Fini/destroy require quiescence; no forced OS cancellation.
+Guarded C scopes must release BEFORE VM errors/callbacks/safepoints/native I/O.
+Accounting is a protocol fence, NOT automatic exception-unwind cleanup.
+
+The native prototype has three metadata words, not a finalized single-word Heap
+header ABI. The opaque hosted context grows, but up/REG placement, Heap/Type/Jit
+and wire layouts do not change. No managed Heap receives a guard in this series.
+Exclusive NativeWorld admission remains ON; no general parallel managed-mutator
+mode is enabled. The typed count API from 0074 and this guard are independent
+foundations, not evidence that unconverted managed paths are safe concurrently.
+
+### Validation and next coordinated work
+
+Eight actual OS owners perform 16000 protected paired-field updates over two
+native objects; a waiter is observed registered before wake, and independent
+object ownership is checked. Native-selected and forced-lock backends pass normal,
+UBSan and focused TSan, including eighteen semantic removal controls. Real
+NativeWorld/HeapOwner tests cover transition refusal without partial mutation;
+the collector-role probe has empty roots, not a concurrent collection proof.
+Thirty-four runtime regressions pass. The final instrumented Debug interpreter
+helper-RC workload passes TSan with 4/8/auto workers; this is not whole-VM/JIT/UI
+race certification. Installed source/example/driver and strict C89/C++98 header
+compilation pass. New execution evidence is native Linux x64 only.
+
+Please review the API/protocol before any owning Heap-header integration:
+https://github.com/bhgv/flashVM/blob/master/disVM/runtime/OBJECT-GUARDS.md
+https://github.com/bhgv/flashVM/tree/master/disVM/examples/native-object-guard
+
+Next required shared-heap work remains owning C/JIT Heap.ulong and Type.int
+count conversion, Setmark/color/nprop and every direct native retain/mark path,
+allocator/root publication and full-cycle collector coordination, source-slot
+pinning, stable-address protocol, lock order, unwind/cancellation and platform
+stress. Plain and atomic concurrent access must never be mixed. Can your next
+owning-source series inventory/convert these C/JIT paths under the agreed count
+protocol, with explicit host-context ABI and generated-offset checks? This is a
+request/proposal, not authorization to silently change shared layout or file IDs.
+We can continue host-side integration while keeping exclusive admission until
+those paths and their failure controls are actually covered.
+
+Publication-boundary recheck received Inferno `7c3d69700e7b82ddd52c8f54d777e875f0fb0519`
+and its 0084 CI validation report: native ARM64/x64 and RV64/QEMU, published-entry/
+cache gates and packaged artifacts. Those are your reported target results, not
+additional local target executions by this FlashVM run. The independent x64 replay
+and narrow published-entry agreement above answer the peer-review request that
+was still open when that report was written. No broader activation is inferred.
