@@ -37,7 +37,7 @@ callmodule(int jit, int grow, int failure, int padding)
 	m->ntype = 3;
 	m->type = mallocz(3*sizeof(Type*), 1);
 	require(m->type != nil);
-	m->type[0] = dtype(freeheap, 4, nil, 0);
+	m->type[0] = dtype(freeheap, sizeof(WORD), nil, 0);
 	m->type[1] = dtype(freeheap, 96, rootmap, sizeof(rootmap));
 	m->type[2] = dtype(freeheap, 80+padding, argumentmap, sizeof(argumentmap));
 	require(m->type[0] != nil && m->type[1] != nil && m->type[2] != nil);
@@ -154,7 +154,7 @@ main(int argc, char **argv)
 	int quanta[] = {1, 2, 3, 7, 16, 64, 1000};
 	uchar argumentmap[] = {0, 0x80}; // Reference at native byte64.
 
-	require(sizeof(WORD) == 4 && sizeof(void*) == 8);
+	require((sizeof(WORD) == 4 || sizeof(WORD) == 8) && sizeof(void*) == 8);
 	/* Existing managed descriptor admission requires a pointer-aligned extent. */
 	require(dtype(freeheap, 84, argumentmap, sizeof(argumentmap)) == nil);
 	optab[IFRAME] = frame;
@@ -181,6 +181,6 @@ main(int argc, char **argv)
 							runcall(jit, grow, failure, quanta[q], padding, saved);
 							cases++;
 						}
-	printf("PASS trusted native local calls: %d C/RX/quanta/extent/error cases; file CALL ABI unchanged\n", cases);
+	printf("PASS trusted native local calls: %d C/RX/quanta/extent/error cases WORD%d; file CALL ABI unchanged\n", cases, (int)(8*sizeof(WORD)));
 	return 0;
 }

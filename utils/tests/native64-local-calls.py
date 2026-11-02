@@ -40,7 +40,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='native64-local-calls-', dir=env.get('NATIVE64_TMPDIR', ROOT)) as directory:
         work = Path(directory)
         env['TMPDIR'] = str(work)
-        command = compiler+flags+['-DDIS_WORD32=1']
+        command = compiler+flags
         if arch == 'arm64':
             command += ['-DDIS64_TEST_ARM64=1', '-DDIS64_TEST_COMPILER="comp-arm64.c"']
         elif arch == 'riscv64':
@@ -50,17 +50,18 @@ def main():
         command += ['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
         source = work/'calls.c'
         source.write_text(unit(args.control))
-        binary = work/'calls'
-        subprocess.run(command+[str(source), str(ROOT/'libinterp/dec.c'), '-Wl,--wrap=free', '-lm', '-o', str(binary)], env=env, check=True)
-        if args.control:
-            for jit in (0, 1):
-                for grow in (0,):
-                    result = subprocess.run(runner+[str(binary), str(jit), str(grow)], env=env, capture_output=True, text=True, timeout=90)
+        for bits in (32, 64):
+            binary = work/('calls'+str(bits))
+            model = ['-DDIS_WORD32=1'] if bits == 32 else []
+            subprocess.run(command+model+[str(source), str(ROOT/'libinterp/dec.c'), '-Wl,--wrap=free', '-lm', '-o', str(binary)], env=env, check=True)
+            if args.control:
+                for jit in (0, 1):
+                    result = subprocess.run(runner+[str(binary), str(jit), '0'], env=env, capture_output=True, text=True, timeout=90)
                     if result.returncode != 10 or 'unentered frame owner leaked' not in result.stderr:
                         raise RuntimeError('pending ownership control missed its semantic predicate: '+result.stdout+result.stderr)
-                    print('PASS pending ownership removal control:', arch, 'jit='+str(jit), 'grow='+str(grow), flush=True)
-        else:
-            subprocess.run(runner+[str(binary)], env=env, check=True, timeout=90)
+                    print('PASS pending ownership removal control:', arch, 'WORD'+str(bits), 'jit='+str(jit), flush=True)
+            else:
+                subprocess.run(runner+[str(binary)], env=env, check=True, timeout=90)
 
 
 if __name__ == '__main__':

@@ -31,7 +31,8 @@ Only allocation/OS/collector boundaries are supplied by the existing bounded
 runtime fixture. There is no concurrent collector, OS scheduler or file loader
 in this test.
 
-The 448 cases cover C and RX dispatch, root-only and three-extent states,
+The 896 cases (448 each in WORD32 and WORD64) cover C and RX dispatch,
+root-only and three-extent states,
 80/88-byte managed callee frames, quanta 1/2/3/7/16/64/1000, global and saved REG
 cleanup, success, divide-by-zero before CALL, divide-by-zero inside an argument
 helper and a nil CALL target. Two calls share a real heap owner via actual MOVP.
@@ -40,7 +41,8 @@ extent counts, balanced module ownership, intact allocation guards and zero live
 allocations after complete teardown. The existing descriptor reader must refuse
 an 84-byte mapped extent; no new alignment policy is inferred from that refusal.
 
-Two removal controls disable pending-frame recovery in C and RX, without growth,
+Four removal controls disable pending-frame recovery in C and RX in both
+WORD models, without growth,
 and must reach the explicit leaked-owner predicate with status 10. Compilation,
 crashes or sanitizer failures do not count as successful controls.
 

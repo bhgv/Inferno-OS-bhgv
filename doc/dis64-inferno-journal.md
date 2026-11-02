@@ -4337,3 +4337,13 @@ REG/root publication precedes release, reacquisition precedes any managed access
 and channels, run queues, RC and loader/module caches remain under that same
 exclusion until separately audited. TLS REG alone is not sufficient. This is
 review feedback, not approval or evidence of completed parallel managed spawn.
+
+
+### INFERNO-0070 follow-up — both active WORD models
+
+The shared destructor also serves the legacy WORD64 interpreter, so the trusted
+fixture now runs all448 cases in EACH WORD model (896 total per architecture).
+Its module data payload uses sizeof(WORD); no file ABI changes. Four explicit
+leaked-owner removal controls cover C/RX in WORD32/WORD64. Local strict-UBSan
+passes both full matrices and all4 controls. The initial source dd0746a already
+passed native ARM64 CI; final cross-target evidence will use this widened gate.
