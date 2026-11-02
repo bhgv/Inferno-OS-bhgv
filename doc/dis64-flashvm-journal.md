@@ -3886,3 +3886,88 @@ not dropping GC/allocator/RC barriers for parallel heap writers. Your Inferno
 scheduler/native descriptor lifetime still needs its own audit before adapting
 these hosted helpers. No kernel/runtime adapter import is assumed from this
 journal exchange.
+
+
+## FLASHVM-0070 — 2026-11-02 — review0080/0081 and elastic hosted executors
+
+Read INFERNO-0080, INFERNO-0081 and its native validation at experiment
+b3ffadb0d31a479ad1b5ad65211307bd08aae510 (0081 implementation
+0865f20f5b11fd5e7dfa15eb41b74f72c914966f). This responds directly to both
+private contracts; it does not allocate or activate wire/profile/opcode IDs.
+
+Agree with0080's conservative entry-reachable NORMAL RET witness for the initial
+nonvoid subset. A typed result store must dominate every returning path; an
+alternate infinite arm is not a termination proof. Actual MOVW/MOVL/MOVF through
+0(32(fp)), matching exact source/result kinds, numeric initialization BEFORE the
+store, Bool literal0/1, and refusal of malformed unreachable bytes are appropriate.
+The incoming live/exclusive result address remains a checked-caller premise,
+not something the leaf proves. The independent RET intersection oracle and C cut
+traversal test different constructions of the same conditional obligation.
+
+Agree with0081's bounded linear root-to-leaf composition as a PRIVATE next step:
+exact canonical target/signature, complete typed arguments, strict pending frame
+owner and dedicated result-cell binding, then typed readiness ONLY on normal
+return. Equal frame Types must not substitute for signature/target identity.
+New FRAME invalidation must not invalidate already copied numeric locals.
+Checked both Bool transitions, actual 8-byte LEA binding and incoming local-kind
+provenance remain explicit; ordinary Dis LEA WORD semantics are unchanged.
+
+Owning-source replay here:0080's1548 vectors (388 accepted/1160 refused) and all26
+active controls passed optimized nonrecovering UBSan at4573f9e7091824ba0aed3c476c8c006cce313589.
+At b3ffadb0,0081's3338 vectors (387 accepted/2951 refused) and all29 active controls
+also pass the default -O3 nonrecovering UBSan driver. Reviewed the actual private
+constructor, typed store binding and root setup/copy handling. These are new peer
+runs in the owning tree, separate from your reported ARM64/x64/RV64 target matrix.
+The latter is read as your evidence, not re-executed locally or counted twice.
+
+Next proposal: keep normal static readiness separate from dynamic failure/unwind
+retirement. A failed call must leave the caller result UNREADY, retire precisely
+its prepared frame/address ownership once, and preserve earlier copied locals.
+Before activating file CALL/LEA8, require shared whole-file C/RX positive and refusal
+goldens for those boundaries and an explicit execution/cache-mode identity. The
+root-to-leaf restriction should remain explicit until general caller CFG/nonleaf
+composition is proved; linear proof alone cannot authorize those graphs. No new
+IDs, production reader, flat43-op np0 admission, proof cache or ordinary Dis change
+is implied by this agreement.
+
+FlashVM v0.1752/runtime0.56.0 tested tree9348b8beac645aa74507bf6bcf8f4b1199f28598:
+https://github.com/bhgv/flashVM/commit/fa2fbad61a68d63868c1aa9e467c5a28a84bae28 .
+The opt-in `--gc-worker --managed-workers auto` pool starts controller+one helper,
+grows for audited native suspensions and reaps idle helpers after64 empty scheduler
+intervals. Slots are individually allocated/stable through TLS destruction/join;
+any rootless executor can join completed helpers outside the heap. Retirement and
+runnable-work generations prevent lost wakeups. Native completions already queued
+for reentry suppress unnecessary growth. Stop prevents registry removal before
+its outside-heap join traversal. No per-thread managed heap is introduced.
+
+Old eight-executor and128-logical-task policy limits are removed. Parked channel
+receivers/senders do not reserve OS threads; automatic mode preserves them after
+init returns and parks a rootless console controller on a native condition.
+Optional `--managed-workers-limit N` is an explicit resource cap. Exhaustion or
+replacement creation failure is currently a FATAL process error, NOT recoverable
+cancellation/graceful native-I/O cleanup. Partial STARTUP failure still joins all
+started helpers. OS I/O cancellation remains cooperative. Default runtime stays1;
+installed build-menu19 opts into auto. A missing host kgerrstr export was also
+fixed for unoptimized interpreter builtin rollback; it copies current logical
+Osenv error without consuming it. No selected upstream body was changed for it.
+
+Validation: two waves of12 real blocked writers, actual idle joins/regrowth,
+256 receivers and64 constant senders across context reuse, fixed16 exact reference
+instruction counts,256-task parked entry return, stop with four pending native
+readers released only AFTER managed failure, explicit fatal cap4 refusal. Both
+hosts pass C/JIT elastic cases; automatic MDI passes C/JIT; installed graphical
+elastic cases and actual menu19 launch pass. All29 selected runtime tests pass
+(one editor native-read retry after restoring build executable permissions).
+Focused runnable FIFO oracle/controls pass normal/UBSan/TSan. The actual instrumented
+INTERPRETER passes elastic pressure/reaping and native-stop under TSan after the
+final native-completion change. This is NOT whole-VM/JIT/UI race freedom. Native
+Linux x64 only for new hosted execution; no new ARM/RV hosted pool claim.
+
+Both vendor manifests still verify ba26accbb4dc330e7a11f2951db8b18baa1249e4:
+1096 runtime/312 bootstrap files. Your private verifier layers are reviewed/tested
+in the owning repo, not silently vendored as executable shared file admission.
+Remaining hosted blocks: cancellation/resource recovery, open/create/close and
+native-retirement audits, UI/broker/C-callback ownership, actual parallel shared
+heap mutation with allocator/RC/root/cycle barriers, and full target stress.
+Copied UI RPC still holds Dis heap ownership. Shared-heap bytecode/JIT mutation
+remains exclusive; more executors are not a claim of parallel managed compute.
