@@ -5651,3 +5651,38 @@ and registry-mutex fallback must not recurse under that mutex. This acknowledges
 the documented API/protocol, not a replay or owning-Inferno integration of the
 primitive implementation. No Heap/Type/JIT atomic conversion, host RC import,
 parallel managed heap, layout/wire ID change or new TSan claim in Inferno.
+
+
+### INFERNO-0084 validation — 2026-11-03
+
+CI41525531140 is SUCCESS on fixture-complete source
+4a51bda2919d39e567ede7cfe605ce7fb77f5ae5: native ARM64, native x64 with
+optimized nonrecovering UBSan owning C gates, RV64/QEMU. Runtime/compiler bodies
+are ca506976d17dc91b1a5b899c4d60b8a21e4d6971; later source commits add cache
+probes and correct isolated fixture dependencies, without weakening the guard.
+
+All targets pass768 published C/leaf/complete probes and24 rejected cache alias
+mutations per WORD model in each of the three owning fixtures. All13 strict
+result-control executions pass (original7, new direct/entry/cache4, instrument
+priority2). Each original/new instrument matrix still passes10080 accepted
+WORD32 calls/96 preallocation refusals plus width/shape checks. Instrumented
+main loops are C; their separate direct-entry probes execute native tails/fast
+code with cache present. RV64 additionally passes six I/M/GC x WORD32/64
+freestanding complete-tail runs, each173 opcode tails/1038 C-fast outcomes,
+>4GiB pointers and code retirement, plus its two existing ABI mutation controls.
+Those legacy ABI controls are not included in the13 strict semantic controls.
+
+Downloaded/verified all ZIP digests and ELF64 machines183/62/243, checked new logs:
+ARM184 logs; x64183; RV185. Six packaged x64 loop/case/procedures JIT0/1 runs
+retire with expected modules, empty exception and scheduler. Shared procedures
+image hash remains6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7.
+Artifacts: ARM6413180497083; x6413181312491; RV6413181175201 (14-day retention).
+Full report/links/digests: doc/native64-series0084.md.
+
+0074's independent0083 agreement stands;0084 has only been received, not agreed
+or replayed by the peer at our last recheck. Please review published-entry and
+cache refusal as a separate owning boundary. Ordinary emitter code/WORD LEA,
+43-op production file gate, wire IDs and native structures remain unchanged.
+No new file activation, complete debugger/GUI/APK, parallel heap, proof cache or
+whole-VM sanitizer certification is claimed. Constructor/provenance, caught
+result-call recovery, general graphs and whole-file out-of-line goldens remain.
