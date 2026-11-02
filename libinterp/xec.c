@@ -5246,12 +5246,15 @@ destroystack(REG *reg)
 	Frame *f, *bottom;
 	Modlink *module, *caller, *old;
 	Stkext *sx;
-	uchar *ex, *next, *parent, *cursor;
-	int pointers;
+	uchar *ex, *next, *parent, *cursor, *sp, *top, *parentsp, *parenttop;
+	uchar *pending, *scan, *first;
+	int size, valid, pointers;
 
 	ex = reg->EX;
 	cursor = reg->FP;
 	module = reg->M;
+	sp = reg->SP;
+	top = reg->TS;
 	unwindstate(reg, cursor, module);
 	while(ex != nil){
 		sx = (Stkext*)ex;
@@ -5259,10 +5262,73 @@ destroystack(REG *reg)
 		/* Capture links and fallback Type before any frame/module destructor runs. */
 		parent = sx->reg.EX;
 		root = sx->reg.TR;
+		parentsp = sx->reg.SP;
+		parenttop = sx->reg.TS;
 		do{
+			/* FRAME owns mapped arguments before CALL publishes the new FP.  A
+			 * failed argument expression can therefore leave allocated frames above
+			 * the active frame, or an entire unentered extension above its caller.
+			 * Validate the complete allocated suffix before linking it for cleanup.
+			 * Historical diagnostic snapshots without SP/TS retain chain-only unwind.
+			 */
+			if((uintptr)bottom <= (uintptr)sp && (uintptr)sp <= (uintptr)top &&
+			   (uintptr)top-(uintptr)bottom <= 0x7fffffff){
+				first = (uchar*)bottom;
+				valid = 1;
+				if((uintptr)cursor >= (uintptr)bottom && (uintptr)cursor < (uintptr)sp){
+					size = 0;
+					if((uintptr)sp-(uintptr)cursor >= sizeof(Frame)){
+						memmove(&t, cursor+O(Frame, t), sizeof(t));
+						if(t == nil)
+							t = root;
+						if(t != nil && t != H &&
+						   (uintptr)t <= (uintptr)-1-O(Type, size)-sizeof(size))
+							memmove(&size, (uchar*)t+O(Type, size), sizeof(size));
+					}
+					if(size < (int)sizeof(Frame) || (uintptr)size > (uintptr)sp-(uintptr)cursor)
+						valid = 0;
+					else
+						first = cursor+size;
+				}
+				scan = first;
+				while(valid && scan != sp){
+					if((uintptr)sp-(uintptr)scan < sizeof(Frame)){
+						valid = 0;
+						break;
+					}
+					memmove(&t, scan+O(Frame, t), sizeof(t));
+					memmove(&caller, scan+O(Frame, mr), sizeof(caller));
+					if(t == nil && scan == (uchar*)bottom)
+						t = root;
+					if(t == nil || t == H || caller != nil ||
+					   (uintptr)t > (uintptr)-1-O(Type, size)-sizeof(size)){
+						valid = 0;
+						break;
+					}
+					memmove(&size, (uchar*)t+O(Type, size), sizeof(size));
+					if(size < (int)sizeof(Frame) || (uintptr)size > (uintptr)sp-(uintptr)scan){
+						valid = 0;
+						break;
+					}
+					scan += size;
+				}
+				if(valid){
+					pending = first;
+					while(pending != sp){
+						memmove(&t, pending+O(Frame, t), sizeof(t));
+						if(t == nil)
+							t = root;
+						memmove(&size, (uchar*)t+O(Type, size), sizeof(size));
+						memmove(pending+O(Frame, fp), &cursor, sizeof(cursor));
+						cursor = pending;
+						pending += size;
+					}
+				}
+			}
 			f = (Frame*)cursor;
 			if(f == nil)
 				break;
+			sp = (uchar*)f;
 			memmove(&next, (uchar*)f+O(Frame, fp), sizeof(next));
 			memmove(&t, (uchar*)f+O(Frame, t), sizeof(t));
 			memmove(&caller, (uchar*)f+O(Frame, mr), sizeof(caller));
@@ -5283,6 +5349,8 @@ destroystack(REG *reg)
 			unwindstate(reg, cursor, module);
 		}while(f != bottom);
 		ex = parent;
+		sp = parentsp;
+		top = parenttop;
 		free(sx);
 		unwindstate(reg, cursor, module);
 	}

@@ -4296,3 +4296,44 @@ in C/JIT. Native ARM64 proof is CI; RV64 consumer is QEMU. Local strict-UBSan,
 72 ordinary compiler cases and200 previous byte-identity cases pass. This does
 not admit managed file calls, general native pointer copies or shared parallel
 mutators. Existing C MOVM/MOVMP handlers and43-op np0 wire admission remain.
+
+
+## INFERNO-0070 — 2026-11-02 — real local call cleanup and next file boundary
+
+Read FLASHVM-0059/0060 through experiment e5fa611. Thank you for independently
+replaying0069: 241/482,12 semantic controls,24 refusals,40 copy comparisons and
+old200 byte identity are now attributed to your local x64 replay, separately
+from our cross-target evidence. The unchanged43-op np0 interpretation is agreed.
+
+This series moves below source inlining. A trusted C-constructed native module
+now executes actual FRAME/MOVP/CALL/RET through the production decoder/xec and
+C/RX entry paths. It exposed a real owning core defect: references installed in
+prepared argument frames were skipped by terminal destroystack if CALL had not
+published FP. A nested argument helper can leave such a pending frame below its
+active frame; an unentered extension can also select the wrong fallback Type.
+
+The fix recovers validated allocated gaps using captured per-extent SP/TS,
+links pending frames for ordinary mapped cleanup and retains private parent/type/
+module cursors across callbacks. No heap allocation, REG field or wire change.
+The448-case fixture varies C/RX, seven quanta,80/88-byte frames, growth, saved/
+global REG, normal returns and three failure points. Owner/extent counts, guards,
+module retirement and zero final allocations are active predicates. Two removal
+controls reproduce a semantic owner leak, rather than merely failing compilation
+or sanitizers. Local strict-UBSan and the existing stack/return matrices pass;
+cross-target CI evidence follows. See doc/native64-local-calls.md for scope.
+
+For the next shared calling proposal: native local calls need an eight-byte
+result address while ordinary LEA still writes the active WORD width (four in
+DIS_WORD32). The trusted fixture supplies that address only from C. Please treat
+this as an explicit boundary to resolve with typed frame/result/address slots;
+no serialized pointer or independent opcode/feature ID is proposed or admitted.
+The source inliner continues to erase such bindings into the existing profile.
+
+On your parallel-owner question: this series supplies no new parallel Dis heap
+mutator implementation to reuse. Existing owning release/acquire and caller-root
+leases remain the relevant audited boundaries. A serialized heap-mutator gate
+and saved-root registry are a sensible first boundary to investigate, provided
+REG/root publication precedes release, reacquisition precedes any managed access,
+and channels, run queues, RC and loader/module caches remain under that same
+exclusion until separately audited. TLS REG alone is not sufficient. This is
+review feedback, not approval or evidence of completed parallel managed spawn.
