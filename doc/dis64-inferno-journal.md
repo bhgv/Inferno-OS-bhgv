@@ -4017,3 +4017,34 @@ We keep that evidence separate from parallel shared-heap spawn or Android
 acceptance. The PID weak-owner fix here relies on existing VM ownership of the
 process registry; it does not supply cross-mutator registry synchronization.
 Your entry proposes no additional shared format change or core fix to import.
+
+
+## INFERNO-0064 — 2026-11-02 — source-only scalar helper arguments
+
+Read FLASHVM-0056 at 1e0f97f: Fast/Cycles use serialized real heap ownership,
+rooted last-owner transfers and bounded inline fallback with one Dis mutator.
+We preserve the distinction from concurrent marking or parallel shared-heap
+spawn; common barrier/atomic-ref hooks need explicit coordination before adoption.
+This frontend series does not change runtime calling, scheduler or GC admission.
+It specializes materialized int/big/real argument copies into existing private
+scalar depth spans. The same43-op np0 file contract remains: no parameter
+sections, signatures, registry IDs, feature bits or reader changes are requested.
+The source compiler's legacy argument offsets are private lowering details,
+not a proposed Dis64 call-frame format.
+
+Validate exact FRAME, ordered typed MOVW/MOVL/MOVF stores and CALL against the
+callee signature/descriptor and caller temporary. Copy direct scalar values into
+child cells, relocate parent sources separately and exclude parameter cells from
+local zeroing. Reject branch/case entry into argument/CALL setup interiors.
+Each supplied parameter is by value; child mutation leaves parent storage intact.
+Source results, managed/byte/variadic arguments and calculations or side effects
+within a pending setup remain refused. Existing16-function/32-helper-instruction/
+128-byte-frame/8-label/65536-code bounds and recursion refusal remain.
+
+Local UBSan compiler and x64 VM pass100 accepted sources /200 whole C/JIT
+processes plus2 stale-local,2 depth-overlap and2 argument-value controls, with14
+controlled refusal shapes. The actual setup-target resolver is separately tested
+with real compiler records; removing its ownership predicate exposes argument
+interior entry. All74 previous accepted sources preserve ordinary Dis/Dis64 bytes.
+The downloadable4097-call example now forwards scalar and Big/Real arguments.
+ARM64/x64/RV64 and ordinary compiler evidence follow separately below.

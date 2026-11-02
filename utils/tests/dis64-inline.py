@@ -99,10 +99,40 @@ def programs():
     definitions = ' '.join('h'+str(i)+'(){x:=1;'+('h'+str(i+1)+'();' if i<14 else '')+'value+=x;}' for i in range(15))
     yield 'helper-nested-depth', 'value:int;', definitions+' init(){h0();h0();if(value!=30)value/=0;}', ''
 
+    yield 'helper-arg-word', 'value:int;', 'helper(x:int){value+=x;} init(){helper(3);helper(7);if(value!=10)value/=0;}', ''
+    yield 'helper-arg-big', 'value:big;', 'helper(x:big){value+=x;} init(){helper(big 16r7fffffffffffffff);helper(big 1);if(value!=big 16r8000000000000000)value/=big 0;}', ''
+    yield 'helper-arg-real', 'value:real;', 'helper(x:real){value=x;} init(){helper(1.25);if(value!=1.25){i:=1;i/=0;}helper(-3.5);if(value!= -3.5){i:=1;i/=0;}}', ''
+    yield 'helper-arg-mixed', 'value:int;', 'helper(a:int,b:big,c:real){if(a==3&&b==big 7&&c==1.25)value++;else value/=0;} init(){helper(3,big 7,1.25);helper(3,big 7,1.25);if(value!=2)value/=0;}', ''
+    yield 'helper-arg-locals', 'value:int;', 'helper(x:int){y:int;y++;value+=x+y;} init(){helper(3);helper(7);if(value!=12)value/=0;}', ''
+    yield 'helper-arg-mutate', 'value:int;', 'helper(x:int){x++;value+=x;} init(){x:=3;helper(x);helper(x);if(x!=3||value!=8)value/=0;}', ''
+    yield 'helper-arg-nested', 'value:int;', 'inner(x:int){y:int;y++;value+=x+y;} helper(x:int){y:=11;inner(x);if(y!=11)value/=0;value+=x;} init(){helper(3);helper(7);if(value!=22)value/=0;}', ''
+    yield 'helper-arg-swap', 'value:int;', 'inner(a:int,b:int){value+=a*10+b;} helper(a:int,b:int){inner(b,a);if(a!=3||b!=7)value/=0;} init(){helper(3,7);helper(3,7);if(value!=146)value/=0;}', ''
+    yield 'helper-arg-loop', 'value:int;', 'helper(x:int){y:int;y++;value+=x+y;} init(){for(i:=0;i<4097;i++)helper(i);if(value!=8394753)value/=0;}', ''
+    yield 'helper-arg-branch', 'value:int;', 'helper(x:int){if(x==0)return;value+=x;} init(){helper(0);helper(7);if(value!=7)value/=0;}', ''
+    yield 'helper-arg-case', 'value:int;', 'helper(x:int){case x {-1=>value+=3;10 to 20=>value+=7;* =>value+=11;}} init(){helper(-1);helper(15);helper(99);if(value!=21)value/=0;}', ''
+    yield 'helper-arg-after-entry', 'value:int;', 'init(){helper(3);helper(7);if(value!=10)value/=0;} helper(x:int){value+=x;}', ''
+    yield 'helper-arg-caller-live', 'value:int;', 'helper(a:big,b:real){x:big;y:real;x=a;y=b;if(x!=big 17||y!=1.25)value/=0;value++;} init(){x:=big 17;y:=1.25;helper(x,y);helper(x,y);if(x!=big 17||y!=1.25||value!=2)value/=0;}', ''
+    yield 'helper-arg-case-call', 'value:int;key:=15;', 'inner(x:int){value+=x;} helper(x:int){case key {-1=>inner(x);10 to 20=>inner(x);* =>inner(x);}} init(){helper(3);helper(7);if(value!=10)value/=0;}', ''
+
+    for key,answer in ((0,3),(1,7)):
+        yield 'helper-arg-conditional-'+str(key), 'value:int;key:='+str(key)+';', 'helper(x:int){value+=x;} init(){if(key==0)helper(3);else helper(7);if(value!='+str(answer)+')value/=0;}', ''
+    for key,answer in ((0,3),(15,7),(99,11)):
+        yield 'helper-arg-case-branch-'+str(key), 'value:int;key:='+str(key)+';', 'helper(x:int){value+=x;} init(){case key {0=>helper(3);10 to 20=>helper(7);* =>helper(11);}if(value!='+str(answer)+')value/=0;}', ''
+    declarations = ','.join('x'+str(i)+':big' for i in range(12))
+    updates = ''.join('value+=x'+str(i)+';' for i in range(12))
+    arguments = ','.join('big 1' for i in range(12))
+    yield 'helper-arg-frame-boundary', 'value:big;', 'helper('+declarations+'){'+updates+'} init(){helper('+arguments+');helper('+arguments+');if(value!=big 24)value/=big 0;}', ''
+    yield 'helper-arg-empty', 'value:int;', 'helper(x:int){} init(){helper(3);helper(7);value++;if(value!=1)value/=0;}', ''
+    yield 'helper-arg-padding', 'value:int;', 'helper(a:int,b:big,c:int,d:real){x:int;x++;if(a!=3||b!=big 7||c!=11||d!=1.25)value/=0;value+=x;} init(){helper(3,big 7,11,1.25);helper(3,big 7,11,1.25);if(value!=2)value/=0;}', ''
+
+    for bound in (2147483647,-2147483648,536870912,-536870913):
+        literal = HELPERS['literal'](bound)
+        yield 'helper-arg-word-bound-'+str(bound), 'value:int;', 'helper(x:int){value=x;} init(){helper('+literal+');if(value!='+literal+')value/=0;}', ''
+
 
 # These sources must be valid ordinary Limbo before the scalar backend rejects their calling shapes.
 def refusals():
-    yield 'arguments', 'value:int;', 'helper(x:int){value+=x;} init(){helper(3);}'
+    yield 'byte-arguments', 'value:int;', 'helper(x:byte){value+=int x;} init(){helper(byte 3);}'
     yield 'result', 'value:int;', 'helper():int{value++;return value;} init(){value=helper();}'
     yield 'recursive', 'value:int;', 'helper(){value++;helper();} init(){helper();}'
     yield 'mutual-recursion', 'value:int;', 'inner(){value++;helper();} helper(){inner();} init(){helper();}'
@@ -116,6 +146,8 @@ def refusals():
     body = ' '.join('h'+str(i)+'(){value++;}' for i in range(16))
     calls = ''.join('h'+str(i)+'();' for i in range(16))
     yield 'function-limit', 'value:int;', body+' init(){'+calls+'}'
+    yield 'computed-argument', 'value:int;x:int;', 'helper(a:int){value+=a;} init(){helper(x+1);}'
+    yield 'managed-argument', 'value:int;', 'helper(s:string){value=len s;} init(){helper("x");}'
     yield 'entry-cycle', 'value:int;', 'helper(){init();} init(){helper();}'
     body = ' '.join('h'+str(i)+'(){x:=1;'+('h'+str(i+1)+'();h'+str(i+1)+'();' if i<14 else '')+'value+=x;}' for i in range(15))
     yield 'expansion-limit', 'value:int;', body+' init(){h0();}'
@@ -224,6 +256,29 @@ def overlap_depth(image, rows, locations, text):
     return result
 
 
+# Preserve framing while withholding a specific nonzero argument from the child's initialized cells.
+def zero_argument(image, rows):
+    result = bytearray(image)
+    sections = struct.unpack_from('>I', image, 28)[0]
+    at = next(struct.unpack_from('>HHII', image, 32+12*i)[2] for i in range(sections)
+              if struct.unpack_from('>H', image, 32+12*i)[0]==2)+4
+    names = re.findall(r'^\s*(I[A-Z0-9]+),', (ROOT/'include/isa.h').read_text(), re.M)
+    changed = 0
+    for row in rows:
+        at += 2
+        if row['op']==names.index('IMOVW') and row['mode']==0x11 and row['args'][0]==3:
+            if image[at]!=3:
+                raise RuntimeError('Missing canonical argument value')
+            result[at] = 0
+            changed += 1
+        for unused in row['args']:
+            first = image[at]
+            at += 1 if first<128 else 2 if first<192 else 4
+    if changed!=1:
+        raise RuntimeError('Missing unique argument copy witness')
+    return result
+
+
 # Compare real compiler products, preserve diagnostics, and execute whole OS processes with explicit target runners.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -235,7 +290,7 @@ def main():
     args = parser.parse_args()
     root = args.root.resolve()
     command = HELPERS['command']
-    count = processes = controls = depthcontrols = refused = 0
+    count = processes = controls = depthcontrols = argcontrols = refused = 0
     with tempfile.TemporaryDirectory(prefix='inline scalar ', dir=root) as directory:
         work = Path(directory)
         source, image, smap, assembly, legacy = (work/name for name in ('source.b','image.dis64','map.json','source.s','legacy.dis'))
@@ -305,6 +360,19 @@ def main():
                         if marker not in output or 'native64 scalar scheduler empty after program retirement' not in output or 'panic:' in output:
                             raise RuntimeError('Parent/child overlap control escaped\n'+output)
                         depthcontrols += 1
+            if name == 'helper-arg-locals':
+                corrupted = work/'zero-argument.dis64'
+                corrupted.write_bytes(zero_argument(image.read_bytes(), rows))
+                if args.reader:
+                    command([args.reader.resolve(), corrupted, '--pilot'])
+                if args.emu:
+                    for jit in (0,1):
+                        output = HELPERS['EXECUTE'](shlex.split(args.runner)+[str(args.emu.resolve()), '-v', '-r', str(root),
+                            '-c', str(jit), '-d', '/'+str(corrupted.relative_to(root))])
+                        marker = 'native64 scalar module InlineProbe: jit='+str(jit)+', exit="zero divide"'
+                        if marker not in output or 'native64 scalar scheduler empty after program retirement' not in output or 'panic:' in output:
+                            raise RuntimeError('Argument initialization control escaped\n'+output)
+                        argcontrols += 1
             if name == 'local-word':
                 corrupted = work/'stale-locals.dis64'
                 corrupted.write_bytes(stale_locals(image.read_bytes(), rows))
@@ -330,7 +398,7 @@ def main():
                 raise RuntimeError('Missing controlled scalar refusal: '+name+'\n'+diagnostic.decode(errors='replace'))
             if image.exists():
                 raise RuntimeError('Refused helper left an executable image: '+name)
-    print('PASS scalar helpers:',count,'sources,',processes,'whole C/JIT processes;',controls,'active stale-local controls;',depthcontrols,'active depth-overlap controls; ordinary Dis unchanged;',refused,'calling/storage limits refused')
+    print('PASS scalar helpers:',count,'sources,',processes,'whole C/JIT processes;',controls,'active stale-local controls;',depthcontrols,'active depth-overlap controls;',argcontrols,'active argument controls; ordinary Dis unchanged;',refused,'calling/storage limits refused')
 
 
 if __name__ == '__main__':

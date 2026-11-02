@@ -76,7 +76,7 @@ def refusals():
     yield 'array', PREFIX+'a: array of int; init(){ a = array[2] of int; }'
     yield 'byte', PREFIX+'b := byte 3; init(){ b += byte 1; }'
     yield 'real-arithmetic', PREFIX+'r := 1.5; init(){ r += 1.5; }'
-    yield 'call-arguments', PREFIX+'a: int; helper(x:int){a+=x;} init(){helper(7);}'
+    yield 'call-byte-argument', PREFIX+'a: int; helper(x:byte){a+=int x;} init(){helper(byte 7);}'
     yield 'arguments', 'implement FromLimbo; FromLimbo:module{init:fn(a:int);}; init(a:int){a++;}'
     yield 'result', 'implement FromLimbo; FromLimbo:module{init:fn():int;}; init():int{return 3;}'
     yield 'library', 'implement FromLimbo; FromLimbo:module{run:fn();}; run(){}'

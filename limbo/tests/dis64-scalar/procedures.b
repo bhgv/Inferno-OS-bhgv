@@ -11,11 +11,11 @@ tally: int;
 
 
 # Renew the child's declared local on every call.
-bump()
+bump(amount: int)
 {
 	local: int;
 	local++;
-	tally += local;
+	tally += local*amount;
 }
 
 
@@ -25,16 +25,20 @@ step()
 	local: int;
 	for(i := 0; i < 3; i++)
 		local++;
-	bump();
+	bump(1);
 	if(local != 3)
 		tally /= 0;
 }
 
 
 # Keep expression temporaries private even when this helper is called from another helper.
-fold()
+fold(x: int, y: int, wide: big, fraction: real)
 {
-	result = ((a^b)&65535)|65536;
+	local: int;
+	local++;
+	if(wide != big 17 || fraction != 1.25 || local != 1)
+		result /= 0;
+	result = ((x^y)&65535)|65536;
 }
 
 
@@ -45,7 +49,7 @@ mix()
 		return;
 	case b {
 	0 => result /= 0;
-	700 to 800 => fold();
+	700 to 800 => fold(a, b, big 17, 1.25);
 	* => result /= 0;
 	}
 }

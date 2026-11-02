@@ -16,6 +16,7 @@ struct InlineFunction {
 	unsigned int expanded; // Expanded body size, excluding per-call zero stores.
 	unsigned int copies; // Case tables including descendant call copies.
 	unsigned int state; // DAG visit state: unseen, active or complete.
+	unsigned int zerospan; // Four-byte candidate cells; argument cells are never cleared.
 	unsigned int zeros; // Four-byte stores that renew a helper with declared scalar locals.
 };
 
@@ -53,7 +54,34 @@ inlinescratch(int mode, Addr *address, unsigned int bytes)
 }
 
 
-/* Validate one no-argument/no-result helper against its own scratch geometry and shared scalar roles. */
+/* Admit only pointer-free scalar parameters with the same explicit widths as the wire profile. */
+static unsigned int
+inlinewidth(Type *type)
+{
+	if(type == nil)
+		return 0;
+	if(type->kind == Tint)
+		return 4;
+	if(type->kind == Tbig || type->kind == Treal)
+		return 8;
+	return 0;
+}
+
+
+/* Identify argument cells that a validated call initializes before entering the child body. */
+static int
+inlineparameter(InlineFunction *function, unsigned int offset)
+{
+	Decl *parameter;
+
+	for(parameter = function->declaration->ty->ids; parameter != nil; parameter = parameter->next)
+		if(offset >= parameter->offset && offset-parameter->offset < inlinewidth(parameter->ty))
+			return 1;
+	return 0;
+}
+
+
+/* Validate one scalar-argument/no-result helper against its own scratch geometry and shared scalar roles. */
 static int
 inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsigned int data)
 {
@@ -62,16 +90,24 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 	Decl *local;
 	Case *table;
 	Dis64Instruction checked;
-	unsigned int pc, i;
+	unsigned int pc, i, width, limit;
 
 	decl = function->declaration;
-	if(decl->ty == nil || decl->ty->kind != Tfn || decl->ty->ids != nil ||
+	if(decl->ty == nil || decl->ty->kind != Tfn ||
 	   decl->ty->varargs || decl->ty->tof == nil || decl->ty->tof->kind != Tnone ||
 	   decl->desc == nil || decl->desc->size < ScalarLegacyPrefix || decl->desc->size > ScalarInlineFrame || decl->desc->nmap < 0 ||
 	   (decl->desc->nmap != 0 && decl->desc->map == nil) ||
 	   function->end-function->start > ScalarInlineBody+1)
 		return 0;
-	function->zeros = 0;
+	function->zeros = function->zerospan = 0;
+	limit = ScalarLegacyPrefix;
+	for(local = decl->ty->ids; local != nil; local = local->next){
+		width = inlinewidth(local->ty);
+		if(width == 0 || local->offset < limit || local->offset%width != 0 ||
+		   local->offset > decl->desc->size-width)
+			return 0;
+		limit = local->offset+width;
+	}
 	for(local = decl->locals; local != nil; local = local->next){
 		if(local->sym == nil || local->sym->name == nil || local->ty == nil ||
 		   (local->ty->kind != Tint && local->ty->kind != Tbig && local->ty->kind != Treal))
@@ -82,6 +118,10 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 			function->zeros = (decl->desc->size-ScalarScratchStart)/IBY2WD;
 		}
 	}
+	function->zerospan = function->zeros;
+	for(i = 0; i < function->zerospan; i++)
+		if(inlineparameter(function, ScalarScratchStart+i*IBY2WD))
+			function->zeros--;
 	for(i = 0; i < decl->desc->nmap; i++)
 		if(decl->desc->map[i] != 0)
 			return 0;
@@ -89,7 +129,8 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 		return 0;
 	for(pc = function->start; pc+1 < function->end; pc++){
 		input = original[pc];
-		if(input->op == IFRAME || input->op == ICALL)
+		if(input->op == IFRAME || input->op == ICALL ||
+		   (input->dm == Afpind && (input->op == IMOVW || input->op == IMOVL || input->op == IMOVF)))
 			continue; // Pair identity and recursion are checked before expansion.
 		if(input->op == IEXIT ||
 		   !inlinescratch(input->sm, &input->s, decl->desc->size) ||
@@ -134,9 +175,9 @@ inlinerelocate(int mode, Addr *address, unsigned int scratch)
 
 /* Resolve an entry-local target only; entering a CALL without its paired FRAME is forbidden. */
 static Inst*
-inlinetarget(long pc, unsigned int start, unsigned int end, unsigned int *mapping, Inst **original, Inst *flat)
+inlinetarget(long pc, unsigned int start, unsigned int end, unsigned int *mapping, Inst **original, unsigned int *owners, Inst *flat)
 {
-	if(pc < start || pc >= end || original[pc]->op == ICALL)
+	if(pc < start || pc >= end || original[pc]->op == ICALL || owners[pc] != pc)
 		return nil;
 	return &flat[mapping[pc-start]];
 }
@@ -145,7 +186,7 @@ inlinetarget(long pc, unsigned int start, unsigned int end, unsigned int *mappin
 /* Clone case target metadata without changing the old compiler's table, type, initializer or constant Nodes. */
 static int
 inlinetable(Inst *copy, InlineTable *clone, unsigned int start, unsigned int end,
-	unsigned int *mapping, Inst **original, Inst *flat)
+	unsigned int *mapping, Inst **original, unsigned int *owners, Inst *flat)
 {
 	Decl *decl;
 	Case *source;
@@ -167,14 +208,14 @@ inlinetable(Inst *copy, InlineTable *clone, unsigned int start, unsigned int end
 	clone->initializer.decl = &clone->declaration;
 	clone->type.cse = &clone->table;
 	clone->table.labs = clone->labels;
-	clone->table.iwild = inlinetarget(source->iwild->pc, start, end, mapping, original, flat);
+	clone->table.iwild = inlinetarget(source->iwild->pc, start, end, mapping, original, owners, flat);
 	if(clone->table.iwild == nil)
 		return 0;
 	for(i = 0; i < source->nlab; i++){
 		if(source->labs[i].inst == nil)
 			return 0;
 		clone->labels[i] = source->labs[i];
-		clone->labels[i].inst = inlinetarget(source->labs[i].inst->pc, start, end, mapping, original, flat);
+		clone->labels[i].inst = inlinetarget(source->labs[i].inst->pc, start, end, mapping, original, owners, flat);
 		if(clone->labels[i].inst == nil)
 			return 0;
 	}
@@ -187,6 +228,8 @@ typedef struct InlineContext InlineContext;
 
 struct InlineContext {
 	InlineFunction *functions; // Borrowed validated source function spans and expansion sizes.
+	unsigned int *owners; // Setup interiors point to their owning FRAME; ordinary PCs own themselves.
+	unsigned int *calls; // Validated FRAME-to-CALL boundaries in the original instruction list.
 	Inst **original; // Borrowed original instructions indexed by resolved PC.
 	Dis64Prepared *prepared; // Owned output arrays under construction.
 	unsigned int entry; // Sole exported function index; calls back into it are refused.
@@ -197,17 +240,17 @@ struct InlineContext {
 };
 
 
-/* Match an exact adjacent source call pair against its caller and callee frame geometry. */
+/* Match an exact validated source call setup against its caller and callee frame geometry. */
 static int
 inlinecall(InlineContext *context, InlineFunction *caller, unsigned int pc)
 {
 	Inst *frame, *call;
 	int callee;
 
-	if(pc+1 >= caller->end)
+	if(pc >= caller->end || context->calls[pc] >= caller->end)
 		return -1;
 	frame = context->original[pc];
-	call = context->original[pc+1];
+	call = context->original[context->calls[pc]];
 	if(frame->op != IFRAME || call->op != ICALL || frame->sm != Adesc || frame->mm != Anone || frame->dm != Afp ||
 	   frame->d.reg < ScalarLegacyPrefix || frame->d.reg > caller->declaration->desc->size-IBY2WD ||
 	   call->sm != Afp || call->s.reg != frame->d.reg || call->mm != Anone || call->dm != Apc)
@@ -216,6 +259,70 @@ inlinecall(InlineContext *context, InlineFunction *caller, unsigned int pc)
 	if(callee < 0 || callee == context->entry || frame->s.offset != context->functions[callee].declaration->desc->id)
 		return -1;
 	return callee;
+}
+
+
+/* Validate consecutive typed argument copies, refusing expressions, aliases and incomplete setup paths. */
+static int
+inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsigned int data)
+{
+	InlineFunction *function;
+	Inst *input, *frame, copy;
+	Decl *parameter;
+	Dis64Instruction checked;
+	unsigned int pc, end, i, width, op;
+	int callee;
+
+	function = &context->functions[index];
+	for(pc = function->start; pc < function->end; pc++){
+		input = context->original[pc];
+		if(input->op != IFRAME){
+			if(input->op == ICALL || input->dm == Afpind)
+				return 0;
+			continue;
+		}
+		frame = input;
+		end = pc+1;
+		while(end < function->end){
+			input = context->original[end];
+			if(input->dm != Afpind || (input->op != IMOVW && input->op != IMOVL && input->op != IMOVF))
+				break;
+			end++;
+		}
+		context->calls[pc] = end;
+		callee = inlinecall(context, function, pc);
+		if(callee < 0)
+			return 0;
+		parameter = context->functions[callee].declaration->ty->ids;
+		for(i = pc+1; i < end; i++){
+			input = context->original[i];
+			if(parameter == nil)
+				return 0;
+			width = inlinewidth(parameter->ty);
+			op = parameter->ty->kind == Tint ? IMOVW : parameter->ty->kind == Tbig ? IMOVL : IMOVF;
+			if(input->op != op || input->mm != Anone || input->branch != nil ||
+			   input->d.reg != frame->d.reg || input->d.offset != parameter->offset ||
+			   !inlinescratch(input->sm, &input->s, function->declaration->desc->size) ||
+			   (input->sm == Afp && input->s.reg < frame->d.reg+IBY2WD && input->s.reg+width > frame->d.reg))
+				return 0;
+			/* Validate the source in its caller frame; use a harmless direct scratch destination. */
+			copy = *input;
+			if(copy.sm == Afp)
+				copy.s.reg += ScalarLegacyPrefix-ScalarScratchStart;
+			copy.dm = Afp;
+			copy.d.reg = ScalarLegacyPrefix;
+			if(!dis64scalarinst(&copy, count, data, function->declaration->desc->size+ScalarNativePrefix-ScalarScratchStart,
+			   ScalarNativePrefix, &checked))
+				return 0;
+			context->owners[i] = pc;
+			parameter = parameter->next;
+		}
+		if(parameter != nil)
+			return 0;
+		context->owners[end] = pc;
+		pc = end;
+	}
+	return 1;
 }
 
 
@@ -241,7 +348,7 @@ inlineextent(InlineContext *context, unsigned int index)
 			if(inlinecall(context, function, pc) < 0)
 				return 0;
 		}else if(input->op == ICALL){
-			if(pc == function->start || (callee = inlinecall(context, function, pc-1)) < 0 ||
+			if(pc == function->start || (callee = inlinecall(context, function, context->owners[pc])) < 0 ||
 			   !inlineextent(context, callee))
 				return 0;
 			child = &context->functions[callee];
@@ -283,7 +390,7 @@ inlineslots(InlineContext *context, unsigned int index, unsigned int depth)
 	}
 	for(pc = function->start; pc < function->end; pc++)
 		if(context->original[pc]->op == ICALL){
-			callee = inlinecall(context, function, pc-1);
+			callee = inlinecall(context, function, context->owners[pc]);
 			if(callee < 0 || !inlineslots(context, callee, depth+1))
 				return 0;
 		}
@@ -306,7 +413,9 @@ inlineemit(InlineContext *context, unsigned int index, unsigned int depth, unsig
 	tables = context->prepared->tables;
 	at = begin;
 	ok = 0;
-	for(i = 0; i < function->zeros; i++){
+	for(i = 0; i < function->zerospan; i++){
+		if(inlineparameter(function, ScalarScratchStart+i*IBY2WD))
+			continue;
 		copy = &context->prepared->storage[at++];
 		memset(copy, 0, sizeof(*copy));
 		copy->src = call->src;
@@ -324,7 +433,7 @@ inlineemit(InlineContext *context, unsigned int index, unsigned int depth, unsig
 			break; // A helper's terminal RET resumes at this copy's continuation.
 		amount = 1;
 		if(context->original[pc]->op == ICALL){
-			callee = inlinecall(context, function, pc-1);
+			callee = inlinecall(context, function, context->owners[pc]);
 			child = &context->functions[callee];
 			amount = child->zeros+child->expanded;
 			if(amount == 0)
@@ -336,7 +445,7 @@ inlineemit(InlineContext *context, unsigned int index, unsigned int depth, unsig
 	for(pc = function->start; pc < end; pc++){
 		input = context->original[pc];
 		if(input->op == ICALL){
-			callee = inlinecall(context, function, pc-1);
+			callee = inlinecall(context, function, context->owners[pc]);
 			child = &context->functions[callee];
 			if(!inlineemit(context, callee, depth+1, at, input))
 				goto done;
@@ -351,7 +460,12 @@ inlineemit(InlineContext *context, unsigned int index, unsigned int depth, unsig
 			inlinerelocate(copy->mm, &copy->m, context->bases[depth]);
 			inlinerelocate(copy->dm, &copy->d, context->bases[depth]);
 		}
-		if(input->op == IFRAME || (depth != 0 && input->op == IRET)){
+		if(input->dm == Afpind){
+			copy->dm = Afp;
+			copy->d.reg = context->bases[depth+1]+input->d.offset-ScalarScratchStart;
+			copy->d.offset = 0;
+			copy->d.decl = nil;
+		}else if(input->op == IFRAME || (depth != 0 && input->op == IRET)){
 			copy->op = IJMP;
 			copy->sm = copy->mm = Anone;
 			copy->dm = Apc;
@@ -359,11 +473,11 @@ inlineemit(InlineContext *context, unsigned int index, unsigned int depth, unsig
 			copy->branch = nil;
 		}else if(input->op == ICASE || input->op == ICASEL || input->op == IGOTO){
 			if(!inlinetable(copy, &tables[context->table++], function->start, function->end,
-			   mapping, context->original, context->prepared->storage))
+			   mapping, context->original, context->owners, context->prepared->storage))
 				goto done;
 		}else if(input->dm == Apc){
 			target = inlinetarget(input->d.offset, function->start, function->end, mapping,
-				context->original, context->prepared->storage);
+				context->original, context->owners, context->prepared->storage);
 			if(target == nil)
 				goto done;
 			copy->d.offset = target-context->prepared->storage;
@@ -411,6 +525,12 @@ dis64prepare(Decl *entry, Inst *instructions, unsigned int count, unsigned int d
 	memset(&context, 0, sizeof(context));
 	context.functions = functions;
 	context.original = original;
+	context.owners = allocmem(count*sizeof(*context.owners));
+	context.calls = allocmem(count*sizeof(*context.calls));
+	for(i = 0; i < count; i++){
+		context.owners[i] = i;
+		context.calls[i] = count;
+	}
 	context.prepared = prepared;
 	ok = 0;
 	n = 0;
@@ -456,6 +576,9 @@ dis64prepare(Decl *entry, Inst *instructions, unsigned int count, unsigned int d
 	if(input->op != IRET && input->op != IEXIT)
 		goto done;
 	for(i = 0; i < nfns; i++)
+		if(!inlinepairs(&context, i, count, data))
+			goto done;
+	for(i = 0; i < nfns; i++)
 		if(!inlineextent(&context, i))
 			goto done;
 	if(!inlineslots(&context, current, 0))
@@ -482,6 +605,8 @@ dis64prepare(Decl *entry, Inst *instructions, unsigned int count, unsigned int d
 	}
 	ok = 1;
 done:
+	free(context.calls);
+	free(context.owners);
 	free(original);
 	return ok;
 }

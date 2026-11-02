@@ -1,4 +1,4 @@
-# Bounded scalar source procedures: through series 0062
+# Bounded scalar source procedures: through series 0064
 
 `limbo -6` can specialize direct FRAME/CALL pairs into its sole exported
 `init()` before the existing numeric-case and scalar lowering passes. This is
@@ -8,15 +8,16 @@ signature, coordinate schema or wire identifier is assigned.
 
 The current bounds are 16 compiled functions including the entry, 32 original
 instructions per helper excluding its final RET, and 128 bytes of legacy helper
-frame extent. Each helper has no arguments or result, no recursion and no
-managed frame map. Bounded acyclic helper-to-helper calls are admitted. Numeric helper case tables are admitted
+frame extent. Each helper has no result, no recursion and no managed frame map.
+Int/Big/Real arguments use validated consecutive scalar copies. Bounded acyclic
+helper-to-helper calls are admitted. Numeric helper case tables are admitted
 within the same eight-label bound as entry-local tables. Helpers may contain
 scalar conditional branches, loops and early returns. Series 0058 also admits
 user-declared int/big/real locals with fresh zero initialization per call.
 Byte, pointer and aggregate locals remain refused. The entry can retain
 its own loops, branches and bounded numeric cases around the calls.
 
-The compiler validates exact adjacent FRAME/CALL pairs, callee start and frame
+The compiler validates exact FRAME/argument-copy/CALL setups, callee start and frame
 descriptor identity, and matching caller frame-pointer temporary. Branches and
 case arms cannot enter a CALL while skipping its FRAME. Flattening uses private
 instruction and case-table copies; it leaves ordinary Dis output and original
@@ -315,3 +316,38 @@ No new APK, AWM, managed file-call or native RV64 producer claim follows.
 FlashVM may independently replay this checkpoint with the existing reader and
 review cycle/expansion refusal plus active parent/child overlap controls. No
 format, feature-bit, coordinate-schema or registry extension is requested.
+
+
+## Series0064: materialized scalar arguments
+
+Acyclic helpers may take int/big/real values, without results. Source FRAME,
+consecutive typed MOVW/MOVL/MOVF argument stores and CALL must agree on the
+callee, descriptor, frame temporary, parameter order, offsets and widths. Source
+values must already be scalar immediates or direct FP/MP values. Arithmetic,
+indirection or side effects inside a pending argument setup remain refused;
+constant-folded scalar values and values computed before FRAME are admissible.
+Byte/managed/variadic arguments and scalar results remain outside this stage.
+
+Each argument store becomes a direct copy into the child's private depth span.
+Parent FP sources are relocated independently. The child's local initialization
+skips all parameter cells, including both words of Big/Real values, while still
+clearing padding and declared locals. Every call supplies every parameter before
+entry; parameters are passed by value and child mutation cannot alias a parent.
+The setup's interior argument stores and CALL cannot be branch/case targets.
+Only its FRAME entry may be entered. The actual resolver is tested with compiler
+records and an active removal-of-ownership-check control.
+
+No runtime FRAME/CALL or file calling convention is introduced. Emitted code
+uses the same43-op np0 profile; bounds remain16 functions,32 original helper
+instructions,128-byte helper frames,8 case labels and65536 emitted instructions.
+All74 previous accepted sources retain identical ordinary Dis and Dis64 bytes.
+The example now passes scalar arguments through nested bump/fold calls, including
+Big/Real values and a declared local renewed once per call.
+
+The local UBSan compiler gate passes100 sources /200 whole interpreter/JIT
+processes,2 stale-local controls,2 depth-overlap controls,2 argument-value controls
+and14 controlled refusals. Changing a valid argument copy to zero must fail the
+caller's semantic check; the independent reader may still admit that valid image.
+Cases cover value mutation, reordered forwarding, locals/padding,12 Big arguments
+at the frame boundary, conditional/case calls, large signed Word values and4097
+calls. Cross-target CI and ordinary compiler validation are recorded separately.
