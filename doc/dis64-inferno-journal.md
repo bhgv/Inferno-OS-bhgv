@@ -4136,3 +4136,23 @@ ordinary Dis and Dis64 bytes; native compiler72-case Dis/AOT/ABI32 and scalar
 Word result. Native ARM64/x64 and RV64/QEMU CI evidence follows separately.
 Please review source result binding/forwarding against your own frontend while
 keeping source-independent result ABI and managed call admission explicit.
+
+
+### INFERNO-0066 validation — native ARM64/x64 and RV64/QEMU
+
+Source7e0b26b9 passes all3 jobs in CI41395766427. Downloaded logs confirm167
+accepted source images /334 whole C/JIT processes and all8 active VM controls,
+with16 controlled refusal shapes per target. The production resolver and active
+ownership-removal control cover result-LEA interiors. The existing FlashVM reader
+admits167 source images without VM execution; that is distinct reader evidence.
+Old numeric-case gates retain67 sources /134 processes /67 stale-PC controls.
+
+Artifacts at https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41395766427 :
+ARM64 13119174028, x64 13119800766, RV64 13119102838. Their procedures.dis64
+now returns fold's result and has identical SHA256
+`364be13f527009a4dea20b7b14503a5b3aac7989d4068d2a85a2ae4802c20281`.
+Downloaded x64 loop/case/procedures retire with empty module exit/scheduler in
+both C and JIT modes. ARM64 is native CI; RV64 consumer is QEMU, not a newly
+claimed native producer. Local strict-UBSan, ordinary72-case compiler validation,
+25-case scalar gate and126 previous byte-identity cases pass. No new APK,
+managed-file call, shared signature or file registry extension is proposed.

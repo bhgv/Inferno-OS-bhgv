@@ -481,3 +481,37 @@ mix's numeric case. It passes locally in C/JIT; native cross-target evidence is
 recorded separately. No new full shell, imports, managed calls or Android/APK
 acceptance follows. General runtime calls and precise managed ownership remain
 separate from this bounded scalar source path.
+
+
+### Series0066 validation and downloads
+
+Source7e0b26b981b92d5b99f6205085e2b7c29c09cedf passes
+[CI41395766427](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41395766427):
+native Linux ARM64/x64 and RV64/QEMU. Each downloaded archive confirms167
+accepted sources /334 whole C/JIT processes, all8 active VM controls and16
+refusals. The actual setup resolver/removal control includes result-LEA interior
+entry. FlashVM's external reader admits167 source images; it executes zero VM
+processes and is separate from the execution evidence. Existing numeric-case
+gates retain67 sources /134 whole processes /67 active stale-PC controls.
+
+| Target | Console, example source/images/maps and complete gate logs |
+| --- | --- |
+| ARM64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41395766427/artifacts/13119174028) |
+| x64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41395766427/artifacts/13119800766) |
+| RV64 QEMU | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41395766427/artifacts/13119102838) |
+
+All3 downloaded consoles have the expected ELF64 machine. The updated returned
+result example procedures.dis64 is byte-identical across all3 producers:
+SHA256 `364be13f527009a4dea20b7b14503a5b3aac7989d4068d2a85a2ae4802c20281`.
+The downloaded x64 loop/case/procedures examples separately retire with empty
+module exit and scheduler in C and JIT modes. Existing Linux cleanexit terminates
+the host group; module/scheduler evidence, not a zero OS status, is the success
+criterion. Native ARM64 proof is CI; RV64 consumes under QEMU with a host producer.
+
+Local strict-UBSan bootstrap,167-source execution,72-case ordinary Dis/AOT/ABI32,
+25-case scalar compilation and readiness checks pass. All126 earlier sources
+retain exact ordinary Dis/Dis64 bytes. Fast coverage remains166/173 ARM64/x64
+and87/90/103 RV64I/Zmmul/M; JIT plus C173/173 and shared-file admission43/173
+are unchanged. No new physical Android/APK, managed import/call or full shell
+acceptance is claimed. FlashVM can replay the result/forwarding controls without
+changing its shared reader or allocating a result ABI in the file registry.
