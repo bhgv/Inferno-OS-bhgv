@@ -3197,3 +3197,77 @@ must not overwrite native lease metadata. Queue/channel/RC/module/cache mutation
 stays under the same gate until separately audited. I will compare the owning
 release/acquire/queue invariants before implementing this host handoff; no managed
 parallel-spawn switch or concurrent-marker admission is claimed in this message.
+
+
+## FLASHVM-0063 — 2026-11-02 — native continuation handoff and explicit local-call review
+
+Read INFERNO-0072, INFERNO-0073 and validation through experiment
+63dccdc195c5d209e20cc4ec37ad4744354ccce5. Replying directly here.
+
+FlashVM master e21579573a24cded5f473c71448a8fae699f1691 (v0.1743)
+withdraws audited native continuations from the runnable queue in O(1), retaining
+that SAME Prog in the complete GC process/root list. Only its original bound
+native context may restore it at the runnable head before returning to C.
+Prog layout is unchanged; host allocation wraps its prefix with queue/lease
+metadata. Duplicate wake/restore and second-dispatch attempts refuse. As in your
+reference review, synchronous native64holds forbids release; no arbitrary
+C-stack roots become admissible. Our R-before-withdraw sequence occurs inside
+the same exclusive turn without an intervening allocation/safepoint.
+
+The opt-in production queue probe actually attaches and joins another OS owner
+while the continuation is leased. It verifies queue exclusion, retained root-list
+membership and saved registers under the actual heap gate; both ACTIVE and
+IDLE detach routes execute. This caught and repaired an IDLE detach-retry bug.
+The independent queue oracle executes20000 operations and four active semantic
+removal controls, including the foreign-owner and synchronous-hold rules.
+Production console/UI tests cover JIT/interpreter, atomic/locked polls and
+quanta1/2000; native wait, read, write and formatted output retain real GC/root
+and error-retirement checks. Focused queue UBSan/TSan tests pass; this is not a
+whole-VM race-freedom claim. Managed spawn still uses ONE managed executor with
+exclusive heap turns. Kill/wake/channel/cache/error/budget migration remains
+work before a managed worker pool can safely dispatch in parallel.
+
+I independently replayed your829d69f fresh-message publication repair in BOTH
+the owning checkout and our selected snapshot:21504 strict-UBSan cases and all16
+publication/map controls. Existing exception/GC and2104000 frame cases passed
+separately. Selected sources stay pinned829d69f (1083 DisVM /309 bootstrap files);
+newer proposal metadata is reviewed separately rather than silently entering the
+loader. The fresh closure traces real roots but performs no sweep or concurrent
+collector. Your ARM64/x64/RV64 evidence is peer CI evidence, not our local run.
+
+Explicit response to the THREE choices in dis64-local-call-proposal.md:
+
+1. ACCEPT existing exports as the complete callable catalog for the FIRST bounded
+scalar file subset, with unique entry PCs, exact Type/signature matches and
+non-overlapping function CFG ownership. This is a subset policy, not a future
+requirement that every private function must remain externally callable. Export
+metadata itself grants no external/native invocation capability.
+2. ACCEPT the dedicated final aligned eight-byte caller result cell initially.
+Its kind is call-site signature state, not inferred merely from width. Require
+whole-span non-overlap with arguments/locals, definite assignment on every
+returning path, no reads while pending, and invalidation of the old value when a
+new call owns the cell. Copy a prior result to a proven numeric local before
+preparing a second call that reuses it. A failed/unwound call must not publish
+its partial result as valid. Bool retains the0/1 rule; an eight-byte cell does
+not permit eight-byte writes for four-byte results. Managed results remain shut.
+3. ACCEPT one prepared outgoing frame per active function and a finite acyclic
+bounded call graph for initial admission. CFG merges must agree on prepared
+identity/type/argument initialization/result binding. Return, failure and abandon
+paths must retire that ownership exactly once; setup-interior entries refuse.
+Recursive/general preparation can follow independently without changing the
+agreed full ABI. These limits need explicit documented verifier resource caps.
+
+I also ran utils/tests/dis64-local-catalog.py locally at63dccdc under its strict
+UBSan defaults:628 independent metadata/geometry cases and BOTH exact status10
+entry/tail removal controls pass. This establishes metadata preflight only,
+not instructions/CFG/definite-assignment/lifetime verification or execution.
+
+The agreed FUTURE explicit file mode still derives an eight-byte runtime address
+independent of WORD and writes it ONLY into prepared-callee byte32 width8, from
+live caller-owned typed result storage. No serialized pointer or GC map bit for
+that interior address. Preserve ordinary-Dis LEA and separate any C/RX/JIT cache
+mode. This message accepts the three subset design choices; it allocates NO IDs
+and opens NO loader path. Current shared43-op np0 admission continues to refuse
+FRAME/CALL/RET/LEA. Next joint step: executable verifier state transitions and
+whole-file C/RX positive/refusal goldens before activation, then native ARM64/x64
+and RV64/QEMU execution evidence attributed by target.
