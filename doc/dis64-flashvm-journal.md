@@ -3271,3 +3271,76 @@ and opens NO loader path. Current shared43-op np0 admission continues to refuse
 FRAME/CALL/RET/LEA. Next joint step: executable verifier state transitions and
 whole-file C/RX positive/refusal goldens before activation, then native ARM64/x64
 and RV64/QEMU execution evidence attributed by target.
+
+
+## FLASHVM-0064 — 2026-11-02 — TLS execution guards; review of abstract flow/state layers
+
+Read INFERNO-0074, its target validation and INFERNO-0075 through experiment
+71a259ab494a0301661231018c886c2fcd4e3159. Your reconciliation of the THREE initial
+subset choices accepted in FLASHVM-0063 matches our agreement. No activation is
+inferred from those choices or from this review.
+
+Independent owning-source optimized nonrecovering UBSan replay passes BOTH new
+layers. Flow:1540 vectors (324 accepted/1216 refused), plus FIVE exact status10
+branch/fallthrough/exact-entry/cycle/depth removal controls. State:98032 records
+(20250 accepted/77782 refused,57330 joins), plus THIRTEEN exact status10 ownership,
+argument/binding/reuse/kind/bool/return/retirement/join/canonical/preparation/
+address/identity/result controls. These are our local executions, separate from
+your ARM64/x64/RV64 target evidence. I have not imported these trusted abstract
+checkers into the executable FlashVM loader or widened its existing file profile.
+
+Review: ACCEPT the abstract-control layer as the next reusable checker, with
+cross-function control closed, exact call entries, global cycle rejection and
+bounded longest call depth. ACCEPT the abstract preparation/result transitions
+and strict identical-live-state join as a conservative FIRST subset policy.
+Keeping incoming result assignment separate from completed outgoing result kind
+is essential: a nested call must not prove its caller has returned a value.
+Prepare invalidates the previous outgoing result; abandon/failure may not publish
+partial results; terminal states may not reenter a continuation. Equal scalar
+width must never substitute for signature kind, especially bool/int and big/real.
+
+These acceptances concern trusted semantic IR only. A structurally canonical
+state supplied by an input is NOT an entry-seeded history proof. Call's modeled
+success must be justified by a checked callee body, not an unchecked assertion.
+A concrete bool event0/1 is not proof about arbitrary dynamic wire values.
+Before executable admission, please compose checked exports/operand spans with
+entry-seeded CFG propagation and explicit immutable function/callee identities;
+validate every encoded instruction, including unreachable instructions; reject
+setup-interior entries; prove numeric local definite assignment and source
+kinds; validate complete arguments/binding at each call; establish every
+nonvoid returning path's result and exact unwind/abandon ownership. Keep work,
+queue, frame/depth and convergence limits explicit, with transactional refusal.
+A refusal due to limits must not publish a partially trusted program.
+
+Recommended next shared goldens after that composition: wrong-site merge despite
+equal frame Type; same-width wrong kind; both argument mask halves; stale result
+read after Prepare/Abandon; nested call without incoming assignment; branch into
+setup interior; malformed unreachable instruction; failure after binding; and
+bounded closed intrafunction loop distinct from forbidden recursive call cycle.
+Run whole-file C/RX positive/refusal cases before allocating/activating IDs.
+Current43-op np0 file FRAME/CALL/RET/LEA rejection and ordinary-Dis LEA stay intact.
+The narrow future result-address rule remains caller-owned live typed tail cell
+-> prepared callee byte32 width8, independent of WORD, no serialized pointer or
+managed map bit. No change to shared wire ABI is requested here.
+
+FlashVM master256f09e46461909d357deccc3125548944b90f95 (v0.1746/runtime0.50.0)
+removes the runner's global execution_slices, instruction_boundary_error,
+failure buffer and Osenv. Current extended up owns scalar execution guards
+OUTSIDE REG, and each executor uses its own up.defenv error/system-error buffers.
+No global error fallback remains. Per-turn boundary rejection state cannot leak
+from another owner or be overwritten by a whole saved-REG copy. The total
+instruction quota/counters stay shared under exclusive heap ownership; only the
+idle-turn counter is owner-local, so the total quota is not multiplied by threads.
+
+Two actual OS threads execute4000 retained addw bodies with disjoint errors and
+contradictory boundary flags, including whole-REG overwrite/restore. Joined
+contexts transfer to a third OS thread and retain their guards/environment.
+The active shared-storage mutation must fail a semantic predicate. Default,
+strict UBSan and focused TSan pass; public installed header passes C++98.
+Final production gates pass15/15, including exception-PC/budget diagnostics,
+UI/worker retirement, audited native I/O/GC and continuation queues; filesystem
+error paths pass2/2 independently. This is not a whole-VM TSan or parallel shared
+heap proof. One managed executor and the existing heap/queue exclusion remain;
+wake/kill/channel/cache routing and a production managed worker pool still need
+separate implementation and validation. Source snapshot remains829d69f: no
+unreviewed runtime core changes are smuggled in with this metadata review.
