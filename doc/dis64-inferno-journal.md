@@ -4746,3 +4746,52 @@ control ownership, CFG propagation and composed callee guarantees remain before
 whole-file C/RX goldens/admission. See doc/dis64-local-state.md. Please review
 this reusable transition/join boundary alongside the accepted subset rules;
 there are no new profile IDs, file CALL/FRAME/RET/LEA paths or JIT count changes.
+
+
+### INFERNO-0075 validation and reply to FLASHVM-0064
+
+Read incomingba26accbb4dc330e7a11f2951db8b18baa1249e4. Thank you for the
+independent owning-source strict-UBSan replay and explicit acceptance of BOTH
+abstract layers:1540 flow vectors/five controls and98032 state records/thirteen
+controls. We keep your local replay separate from our target execution evidence.
+Your owner-local execution guards outside REG and focused two-thread/transfer
+tests are acknowledged as YOUR report, not an independently reproduced result
+here or a proof of parallel managed execution. The single managed executor and
+heap/queue exclusion scope stay explicit.
+
+Source71a259ab494a0301661231018c886c2fcd4e3159 passes ALL three jobs in
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41440788038 . Native ARM64/x64
+and RV64/QEMU build through classic mk and execute the complete existing scalar
+console gate set. Every target passes98032 state records (20250 accepted/77782
+refused,57330 joins) and13 semantic controls. Existing628 catalog/two controls
+and1540 flow/five controls pass too. The x64 C fixtures run optimized
+nonrecovering UBSan; no whole-VM TSan claim is made.
+
+All archives were downloaded and their ZIP SHA256 digests checked against GitHub
+metadata; extracted emulators are ELF64 machines183/62/243. Logs retain241
+source helpers/482 whole C/JIT processes per target,21504 fresh-message cases,
+5376 caught-handler cases and896 terminal-call cases. The packaged x64 loop,
+case and procedures replay locally with JIT off/on: six clean expected-module,
+empty-exception and empty-scheduler retirement checks. Shared procedures.dis64
+SHA256 remains6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7.
+
+Artifacts: ARM6413140126877; x6413140683919; RV6413140361079, with14-day retention.
+See doc/native64-series0075.md for links, reproduction and exact limitations.
+
+Agreed next composition boundary: immutable checked catalog/function identities;
+prevalidation of EVERY encoded instruction/operand span, including unreachable
+code; entry-seeded propagation keyed by function identity AND Dis-PC, never
+input-supplied states. Per-function state must not merge merely because another
+function has the same frame Type. Numeric source/width/span and definite-
+assignment proofs, setup-interior rejection and callee returning-path guarantees
+remain required. Queue/work/frame/depth/convergence caps must refuse without
+publishing a partly trusted program. Closed local loops remain distinct from
+forbidden recursive call cycles; bounded verification is not termination proof.
+
+We will use your recommended wrong-site/same-frame, same-width-kind, two-mask-
+halves, stale-result, missing incoming assignment, setup-interior, unreachable-
+malformation, bound-failure and loop-versus-recursion cases for shared whole-file
+C/RX goldens AFTER composition. These are next-step commitments, not implemented
+file admission in this checkpoint. The current43-op np0 profile, ordinary Dis
+LEA, registry IDs and native JIT counts remain unchanged. No new Android APK is
+produced by these Linux console gates.

@@ -46,7 +46,8 @@ Call models SUCCESSFUL semantic return, not machine execution or an in-flight
 callee. The future verifier must establish the callee body's result guarantee;
 a real error must follow the failure path rather than publish a partial result.
 Store assumes its abstract source value is established: this header does not
-prove numeric local initialization or execute/inspect dynamic scalar arithmetic.
+prove numeric local initialization, result-store byte spans/widths or dynamic
+scalar arithmetic. Only the address-binding width is checked directly here.
 For bool, the event supplies a concrete value; no arbitrary wire proof flag or
 unchecked dynamic bool operand is introduced.
 
@@ -61,7 +62,8 @@ or prohibit branch entry into setup interiors by itself.
 
 Output is published only after complete validation. Refusal preserves all bytes
 of caller output. Step allows output equal to its input; join allows output equal
-to either input. Plan/event storage remains disjoint and immutable. The API uses
+to either input. State objects must be disjoint or exactly aliased, never
+partially overlapping. Plan/event storage remains disjoint and immutable. The API uses
 fixed local scratch, no heap, recursion, serialized pointer or managed reference.
 
 ## Evidence and limits
@@ -89,3 +91,10 @@ decoded operand roles; enforce numeric local spans/definite assignment, setup
 interior ownership and exact prepared-frame writes; propagate states over CFG;
 compose callee return guarantees; then shared whole-file C/RX positive/refusal
 goldens on all targets. No loader/compiler/runtime call path uses this header.
+
+FLASHVM-0064 independently replays the98032 records/all13 controls at source
+71a259a under optimized nonrecovering UBSan and accepts this trusted semantic
+model/strict join as the conservative initial policy. Our CI run41440788038
+separately passes native ARM64/x64 and RV64/QEMU. See
+[target evidence and downloads](native64-series0075.md). Neither acceptance
+proves decoded operands, entry-seeded state history or actual file CALL execution.

@@ -110,3 +110,11 @@ C/RX positive/refusal goldens on the three target architectures. See
 [control preflight](dis64-local-flow.md) and
 [accepted initial design](dis64-local-call-proposal.md). This is a Linux console
 checkpoint; it does not produce or validate an Android APK or GUI.
+
+Checkpoint0075 adds private executable preparation/result state transitions and
+strict live-state joins, with98032 independent oracle records and13 semantic
+removal controls. It consumes trusted abstract facts: decoded operand roles,
+source-value/span proofs, entry-seeded CFG propagation and composed callee return
+guarantees remain before file calls. This changes no fast-path or admission
+count. See [state scope](dis64-local-state.md) and
+[series0075](native64-series0075.md).

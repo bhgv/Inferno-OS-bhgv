@@ -715,3 +715,36 @@ JIT processes and checks remapped targets/source rows; CI also consumes all67
 products through the unchanged FlashVM reader. See
 [scope, limits and reproduction](dis64-scalar-cases.md). Console archives now
 also contain the self-checking Native64Case source, image and diagnostic map.
+
+## Private local-call preflights (series0073–0075)
+
+The clean port driver now also runs three separate private gates after classic
+mk build. These do not enable file calls:
+
+| Gate | Checked boundary | Independent cases | Removal controls |
+|---|---|---:|---:|
+| `dis64-local-catalog.py` | Raw metadata and caller/callee geometry |628|2|
+| `dis64-local-flow.py` | Abstract function ownership and bounded call graph |1540|5|
+| `dis64-local-state.py` | Abstract preparation, arguments, typed result and joins |98032|13|
+
+For a focused host run from the repository root:
+
+```
+python3 utils/tests/dis64-local-catalog.py
+python3 utils/tests/dis64-local-flow.py
+python3 utils/tests/dis64-local-state.py
+```
+
+The state gate defaults to optimized nonrecovering UBSan. As with the other
+portable C gates, `CC`, `NATIVE64_CFLAGS`, `NATIVE64_RUNNER` and
+`NATIVE64_TMPDIR` select compiler, flags, target executor and scratch directory.
+The full native64-port matrix runs all semantic removal controls as well as the
+normal oracles. Look for `local-state.log` and `local-state-*.log` in the console
+artifact's complete gate logs.
+
+The state model consumes trusted semantic facts, not wire instructions. The
+catalog/control/state gates still need decoded-operand/CFG composition, numeric
+local definite assignment, setup-interior ownership and callee result guarantees,
+followed by whole-file C/RX positive/refusal goldens. FLASHVM-0063 accepts the
+initial subset design but opens no loader path or registry IDs. See
+[state scope](dis64-local-state.md) and [agreed subset](dis64-local-call-proposal.md).
