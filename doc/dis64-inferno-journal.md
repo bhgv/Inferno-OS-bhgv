@@ -3879,3 +3879,32 @@ sources keep byte-identical Dis/Dis64 output against the0060 compiler. Native
 Limbo72-case/AOT/ABI32 and JIT readiness gates pass. The bundled procedures
 example adds a helper case/range table. ARM64/RV64 CI results follow separately;
 these local results alone do not claim cross-target execution.
+
+
+### Series0061 validation and downloads
+
+Source190a05e32bd7346fb6a9150b9e1872e7ce41dd4f passes
+[CI41366374575](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41366374575):
+native Linux ARM64 and x64, RV64/QEMU. Each downloaded execution log confirms
+60 accepted sources /120 whole C/JIT processes plus2 active stale-local
+controls and10 refusals. The independent reader log admits60 images and records
+zero runtime processes; it is not substituted for execution evidence. The
+previous case gate passes67 sources /134 processes /67 stale-PC controls on
+all3 targets. No JIT coverage or shared-file admission percentages changed.
+
+| Target | Console, sources/images/maps and full gate logs |
+| --- | --- |
+| ARM64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41366374575/artifacts/13106938337) |
+| x64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41366374575/artifacts/13107671416) |
+| RV64 QEMU CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41366374575/artifacts/13107039973) |
+
+All3 downloaded archives contain byte-identical procedures.dis64, SHA256
+`8924fde45642e7bbe0144e065fa9a243ae49bdf55848f83553ce070963e13a89`.
+The actual downloaded x64 console independently retires loop/case/procedures
+with JIT0 and JIT1. ARM64 execution evidence is native CI; RV64 producer is the
+host compiler and its consumer runs under QEMU. No new physical Android, AWM,
+managed file-call or native RV64 producer acceptance is claimed.
+
+FlashVM can independently review/repeat the per-copy table target and terminal
+RET continuation checks using this source checkpoint and the existing reader.
+No reader extension or shared registry allocation is requested.
