@@ -53,7 +53,10 @@ with tempfile.TemporaryDirectory(prefix='tk-owners-') as directory:
             header = re.sub(r'typedef unsigned long\s+UWORD;', 'typedef unsigned int UWORD;', header, count=1)
             (model / 'interp.h').write_text(header)
             includes = ['-I'+str(model)]
-        includes += ['-I'+str(root / p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
+        profile = os.environ.get('TK_OWNER_PLATFORM', 'Linux/arm')
+        if profile not in ('Linux/arm', 'Android/arm'):
+            raise ValueError('Expected Linux/arm or Android/arm headers')
+        includes += ['-I'+str(root / p) for p in (profile+'/include','emu/port','include','libinterp')]
         binary = td / 'owners'
         subprocess.run(cmd+includes+[str(target),str(root / 'lib9/rune.c'),'-o',str(binary)],check=True)
         subprocess.run(shlex.split(os.environ.get('TK_OWNER_RUNNER', ''))+[str(binary)]+os.environ.get('TK_OWNER_CASE','').split(),check=True)

@@ -10,6 +10,11 @@
 #define require(condition) do { if(!(condition)){ fprintf(stderr, "Tk owner check failed at %d\n", __LINE__); abort(); } } while(0) // Keep checks active under NDEBUG.
 #include <stdio.h>
 
+#undef malloc // Native fixture allocations use libc, not the emulator pool alias.
+#undef calloc // Native widget adapters use libc allocations.
+#undef realloc // Keep temporary string storage on the same native allocator.
+#undef free // Match every native fixture allocation with libc free.
+
 static Proc worker;
 static char *raised;
 char exHeap[] = "heap", exNegsize[] = "negative", exBounds[] = "bounds", exNomem[] = "memory", exNilref[] = "nil";
