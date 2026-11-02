@@ -1,4 +1,4 @@
-# Bounded scalar source procedures: through series 0068
+# Bounded scalar source procedures: through series 0069
 
 `limbo -6` can specialize direct FRAME/CALL pairs into its sole exported
 `init()` before the existing numeric-case and scalar lowering passes. This is
@@ -9,7 +9,7 @@ signature, coordinate schema or wire identifier is assigned.
 The current bounds are 16 compiled functions including the entry, 32 original
 instructions per helper excluding its final RET, and 128 bytes of legacy helper
 frame extent. Each helper has a void, scalar or bounded flat numeric tuple result, no recursion and no managed frame map.
-Int/Big/Real arguments use validated consecutive scalar producers. Bounded acyclic
+Scalar and bounded flat numeric tuple arguments use validated ordered stores. Bounded acyclic
 helper-to-helper calls are admitted. Numeric helper case tables are admitted
 within the same eight-label bound as entry-local tables. Helpers may contain
 scalar conditional branches, loops and early returns. Series 0058 also admits
@@ -590,3 +590,50 @@ and shared-file43/173 are unchanged. This checkpoint makes no new Android APK,
 physical tuple execution, managed import or full AWM acceptance claim. FlashVM
 can independently review the bounded tuple source lowering with its unchanged
 reader; no shared ABI, registry, feature or opcode allocation is requested.
+
+
+## Series0069: bounded pointer-free value copies and tuple parameters
+
+The frontend admits immediate MOVM copies of4..64 bytes in multiples of4,
+within already pointer-free scalar/flat-tuple data and frames. Both complete
+legacy spans must fit their owning object, exclude frame headers and avoid the
+scratch/local discontinuity. Indirect source spans and MOVMP remain refused.
+Whole tuple returns and parameters must exactly match their canonical shape.
+Tuple parameters may use one bulk copy or an ordered producer for each field.
+The full parameter extent, including padding, is excluded from local renewal.
+Flat global tuple storage is admitted only without an initializer; initialized
+global aggregates, managed/nested layouts and nil-partial unpacking stay closed.
+
+After source specialization, each MOVM becomes a complete snapshot of source
+Words followed by destination stores. A64-byte private frame tail is reserved
+only when needed; no-copy files retain their previous frame/code bytes. The
+emitter excludes its private tail from normal source/destination spans, protects
+prefixes and checks output capacity. All source reads precede any write, so
+forward/backward overlap and self alias retain memmove semantics. Source branch
+and numeric-case PCs map to the first read of an expanded copy. Original source
+locations remain attached to every emitted Word move. Expansion and final frame
+bounds retain the65536-instruction/1MiB limits. Existing C MOVM/MOVMP handlers
+remain the general runtime implementation; this bounded frontend route uses
+only existing IMOVW instructions and the same43-op np0 file profile.
+
+Local strict-UBSan runs pass241 sources /482 whole C/JIT processes, all12 active
+semantic VM controls and24 controlled refusals. Cases cover literal/local/global
+tuple arguments, scalar parameters around a padded mixed tuple, mutation by
+value, whole/forwarded results, a64-byte8-Big boundary,4097 repeated calls,
+fresh tuple locals, case returns, self alias and entry-only copies without helper
+functions. Faults after expanded copies retain exact helper source locations.
+Changing one actual copied destination store into OR preserves valid wire
+framing but must trip the caller semantic check.
+
+The actual production copy emitter and role validator execute against40 libc
+memmove references over FP/MP, both overlap directions, self alias and all
+supported sizes, with full public-byte comparisons. A control interleaving reads
+and writes produces real forward-overlap corruption; a compiler failure cannot
+count as that control. Size, span, stage/header and instruction-capacity refusals
+also execute. The owning native64-port matrix now includes this fixture alongside
+tuple/setup ownership tests. The ordinary72-case compiler/AOT/ABI32 gate and
+readiness checks pass, and all200 earlier sources preserve ordinary Dis/Dis64
+bytes. The packaged procedures example passes a pair and copies its mixed result
+through a zero-initialized global tuple. Cross-target evidence follows separately.
+No shared opcode, registry, feature, signature or general file-call admission is
+introduced, and no performance advantage over runtime C memmove is claimed.

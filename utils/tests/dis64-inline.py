@@ -118,6 +118,47 @@ def programs():
     yield 'helper-tuple-fault-big', 'calls:int;z:big;x:=7;', 'helper(a:int):(int,big){\ncalls++;\nreturn (a,big 17/z);\n}\ninit(){(u,v):=helper(x);}', 'zero divide'
     yield 'helper-tuple-fault-shift', 'calls:int;z:=32;x:=7;', 'helper(a:int):(int,int){\ncalls++;\nreturn (a,a<<z);\n}\ninit(){(u,v):=helper(x);}', 'invalid argument'
     yield 'helper-tuple-fault-forward', 'calls:int;z:big;x:=7;', 'inner(a:int):(int,big){\ncalls++;\nreturn (a,big 17/z);\n}\nhelper(a:int):(int,big){calls++;return inner(a);}\ninit(){(u,v):=helper(x);}', 'zero divide'
+    yield 'helper-copy-int-int-literal', 'calls:int;x:=7;', 'helper(a:(int,int)){calls++;(v0,v1):=a;if(v0!=7||v1!=8)calls/=0;} init(){helper((x,x+1));if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-int-int-local', 'calls:int;x:=7;', 'helper(a:(int,int)){calls++;(v0,v1):=a;if(v0!=7||v1!=8)calls/=0;} init(){p:=(x,x+1);helper(p);if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-int-int-global', 'calls:int;x:=7;state:(int,int);', 'helper(a:(int,int)){calls++;(v0,v1):=a;if(v0!=7||v1!=8)calls/=0;} init(){state=(x,x+1);helper(state);if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-int-int-return', 'calls:int;x:=7;', 'helper(a:(int,int)):(int,int){calls++;return a;} init(){p:=(x,x+1);q:=helper(p);(v0,v1):=q;if(v0!=7||v1!=8||calls!=1)calls/=0;}', ''
+    yield 'helper-copy-int-big-literal', 'calls:int;x:=7;', 'helper(a:(int,big)){calls++;(v0,v1):=a;if(v0!=7||v1!=big 17)calls/=0;} init(){helper((x,big 17));if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-int-big-local', 'calls:int;x:=7;', 'helper(a:(int,big)){calls++;(v0,v1):=a;if(v0!=7||v1!=big 17)calls/=0;} init(){p:=(x,big 17);helper(p);if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-int-big-global', 'calls:int;x:=7;state:(int,big);', 'helper(a:(int,big)){calls++;(v0,v1):=a;if(v0!=7||v1!=big 17)calls/=0;} init(){state=(x,big 17);helper(state);if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-int-big-return', 'calls:int;x:=7;', 'helper(a:(int,big)):(int,big){calls++;return a;} init(){p:=(x,big 17);q:=helper(p);(v0,v1):=q;if(v0!=7||v1!=big 17||calls!=1)calls/=0;}', ''
+    yield 'helper-copy-big-int-literal', 'calls:int;x:=7;', 'helper(a:(big,int)){calls++;(v0,v1):=a;if(v0!=big 17||v1!=7)calls/=0;} init(){helper((big 17,x));if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-big-int-local', 'calls:int;x:=7;', 'helper(a:(big,int)){calls++;(v0,v1):=a;if(v0!=big 17||v1!=7)calls/=0;} init(){p:=(big 17,x);helper(p);if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-big-int-global', 'calls:int;x:=7;state:(big,int);', 'helper(a:(big,int)){calls++;(v0,v1):=a;if(v0!=big 17||v1!=7)calls/=0;} init(){state=(big 17,x);helper(state);if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-big-int-return', 'calls:int;x:=7;', 'helper(a:(big,int)):(big,int){calls++;return a;} init(){p:=(big 17,x);q:=helper(p);(v0,v1):=q;if(v0!=big 17||v1!=7||calls!=1)calls/=0;}', ''
+    yield 'helper-copy-big-real-literal', 'calls:int;x:=7;', 'helper(a:(big,real)){calls++;(v0,v1):=a;if(v0!=big 17||v1!=1.25)calls/=0;} init(){helper((big 17,1.25));if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-big-real-local', 'calls:int;x:=7;', 'helper(a:(big,real)){calls++;(v0,v1):=a;if(v0!=big 17||v1!=1.25)calls/=0;} init(){p:=(big 17,1.25);helper(p);if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-big-real-global', 'calls:int;x:=7;state:(big,real);', 'helper(a:(big,real)){calls++;(v0,v1):=a;if(v0!=big 17||v1!=1.25)calls/=0;} init(){state=(big 17,1.25);helper(state);if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-big-real-return', 'calls:int;x:=7;', 'helper(a:(big,real)):(big,real){calls++;return a;} init(){p:=(big 17,1.25);q:=helper(p);(v0,v1):=q;if(v0!=big 17||v1!=1.25||calls!=1)calls/=0;}', ''
+    yield 'helper-copy-real-big-literal', 'calls:int;x:=7;', 'helper(a:(real,big)){calls++;(v0,v1):=a;if(v0!=1.25||v1!=big 17)calls/=0;} init(){helper((1.25,big 17));if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-real-big-local', 'calls:int;x:=7;', 'helper(a:(real,big)){calls++;(v0,v1):=a;if(v0!=1.25||v1!=big 17)calls/=0;} init(){p:=(1.25,big 17);helper(p);if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-real-big-global', 'calls:int;x:=7;state:(real,big);', 'helper(a:(real,big)){calls++;(v0,v1):=a;if(v0!=1.25||v1!=big 17)calls/=0;} init(){state=(1.25,big 17);helper(state);if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-real-big-return', 'calls:int;x:=7;', 'helper(a:(real,big)):(real,big){calls++;return a;} init(){p:=(1.25,big 17);q:=helper(p);(v0,v1):=q;if(v0!=1.25||v1!=big 17||calls!=1)calls/=0;}', ''
+    yield 'helper-copy-int-big-real-literal', 'calls:int;x:=7;', 'helper(a:(int,big,real)){calls++;(v0,v1,v2):=a;if(v0!=7||v1!=big 17||v2!=1.25)calls/=0;} init(){helper((x,big 17,1.25));if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-int-big-real-local', 'calls:int;x:=7;', 'helper(a:(int,big,real)){calls++;(v0,v1,v2):=a;if(v0!=7||v1!=big 17||v2!=1.25)calls/=0;} init(){p:=(x,big 17,1.25);helper(p);if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-int-big-real-global', 'calls:int;x:=7;state:(int,big,real);', 'helper(a:(int,big,real)){calls++;(v0,v1,v2):=a;if(v0!=7||v1!=big 17||v2!=1.25)calls/=0;} init(){state=(x,big 17,1.25);helper(state);if(calls!=1)calls/=0;}', ''
+    yield 'helper-copy-int-big-real-return', 'calls:int;x:=7;', 'helper(a:(int,big,real)):(int,big,real){calls++;return a;} init(){p:=(x,big 17,1.25);q:=helper(p);(v0,v1,v2):=q;if(v0!=7||v1!=big 17||v2!=1.25||calls!=1)calls/=0;}', ''
+    yield 'helper-copy-param-original', 'value:int;', 'helper(a:(int,int)){value++;(x,y):=a;value+=x+y;} init(){helper((1,2));if(value!=4)value/=0;}', ''
+    yield 'helper-copy-global-original', 'value:int;state:(int,int);', 'helper():(int,int){value++;return(1,2);} init(){state=helper();(x,y):=state;value+=x+y;if(value!=4)value/=0;}', ''
+    yield 'helper-copy-forward', 'calls:int;x:=7;', 'inner(a:(int,big,real)):(int,big,real){calls++;return a;} helper(a:(int,big,real)):(int,big,real){calls++;return inner(a);} init(){p:=(x,big 17,1.25);(u,v,w):=helper(p);if(u!=7||v!=big 17||w!=1.25||calls!=2)calls/=0;}', ''
+    yield 'helper-copy-param-mutation', 'calls:int;x:=7;', 'helper(a:(int,int)){calls++;a=(11,12);} init(){p:=(x,8);helper(p);(u,v):=p;if(u!=7||v!=8||calls!=1)calls/=0;}', ''
+    yield 'helper-copy-repeat', 'calls:int;x:=7;', 'helper(a:(int,big)):(int,big){local:int;local++;calls++;if(local!=1)calls/=0;return a;} init(){p:=(x,big 17);for(i:=0;i<4097;i++){(u,v):=helper(p);if(u!=7||v!=big 17)calls/=0;}if(calls!=4097)calls/=0;}', ''
+    yield 'helper-copy-self-alias', 'calls:int;state:(int,big,real);', 'helper():(int,big,real){calls++;return state;} init(){state=(7,big 17,1.25);state=helper();(u,v,w):=state;if(u!=7||v!=big 17||w!=1.25||calls!=1)calls/=0;}', ''
+    yield 'helper-copy-control', 'calls:int;x:=1;target:(int,int);', '\nhelper():(int,int){calls++;return(x,2); }\ninit(){source:=helper();target=(8,16);\ntarget=source;\n(u,v):=target;if(u!=1||v!=2||calls!=1)calls/=0;}', ''
+    yield 'copy-entry-local', 'x:=7;value:int;', 'init(){p:=(x,big 17);q:=p;(u,v):=q;if(u!=7||v!=big 17)value/=0;}', ''
+    yield 'copy-entry-global', 'x:=7;value:int;state:(int,big,real);', 'init(){state=(x,big 17,1.25);(u,v,w):=state;if(u!=7||v!=big 17||w!=1.25)value/=0;}', ''
+    yield 'copy-entry-loop', 'x:=7;value:int;', 'init(){p:=(x,big 17);for(i:=0;i<4097;i++){q:=p;(u,v):=q;if(u!=7||v!=big 17)value/=0;}}', ''
+    yield 'helper-copy-mixed-params', 'calls:int;x:=7;', 'helper(i:int,a:(int,big,real),n:int):(int,big,real){calls++;(u,v,w):=a;return(u+i+n,v,w);} init(){p:=(x,big 17,1.25);(u,v,w):=helper(3,p,5);if(u!=15||v!=big 17||w!=1.25||calls!=1)calls/=0;}', ''
+    yield 'helper-copy-tuple-zero', 'calls:int;x:=7;', 'helper(a:(int,big)):(int,big){fresh:(int,big);calls++;(u,v):=fresh;if(u!=0||v!=big 0)calls/=0;fresh=a;return fresh;} init(){p:=(x,big 17);for(i:=0;i<4097;i++){(u,v):=helper(p);if(u!=7||v!=big 17)calls/=0;}if(calls!=4097)calls/=0;}', ''
+    yield 'helper-copy-fault', 'calls:int;x:=7;', 'helper(a:(int,big)):(int,big){\ncalls++;\nb:=a;\ncalls/=0;\nreturn b;\n}\ninit(){p:=(x,big 17);q:=helper(p);}', 'zero divide'
+    yield 'helper-copy-case-0', 'calls:int;x:=7;key:=0;', 'helper(a:(int,int)):(int,int){calls++;case key {0=>return a;1 to 10=>b:=a;return b;* =>a=(9,10);return a;}} init(){p:=(x,8);(u,v):=helper(p);(s,t):=p;if(u!=7||v!=8||s!=7||t!=8||calls!=1)calls/=0;}', ''
+    yield 'helper-copy-case-7', 'calls:int;x:=7;key:=7;', 'helper(a:(int,int)):(int,int){calls++;case key {0=>return a;1 to 10=>b:=a;return b;* =>a=(9,10);return a;}} init(){p:=(x,8);(u,v):=helper(p);(s,t):=p;if(u!=7||v!=8||s!=7||t!=8||calls!=1)calls/=0;}', ''
+    yield 'helper-copy-case-99', 'calls:int;x:=7;key:=99;', 'helper(a:(int,int)):(int,int){calls++;case key {0=>return a;1 to 10=>b:=a;return b;* =>a=(9,10);return a;}} init(){p:=(x,8);(u,v):=helper(p);(s,t):=p;if(u!=9||v!=10||s!=7||t!=8||calls!=1)calls/=0;}', ''
+    yield 'helper-copy-boundary', 'calls:int;', 'helper(a:(big,big,big,big,big,big,big,big)):(big,big,big,big,big,big,big,big){calls++;return a;} init(){p:=(big 1,big 2,big 3,big 4,big 5,big 6,big 7,big 8);(v0,v1,v2,v3,v4,v5,v6,v7):=helper(p);if(v0!=big 1||v1!=big 2||v2!=big 3||v3!=big 4||v4!=big 5||v5!=big 6||v6!=big 7||v7!=big 8||calls!=1)calls/=0;}', ''
     yield 'before-entry', 'value:=17;', 'helper(){value+=3;}\ninit(){helper();helper();if(value!=23)value/=0;}', ''
     yield 'after-entry', 'value:=17;', 'init(){helper();if(value!=20)value/=0;}\nhelper(){value+=3;}', ''
     yield 'multiple', 'value:=17;', 'a(){value+=3;} b(){value*=2;} init(){a();b();a();if(value!=43)value/=0;}', ''
@@ -239,10 +280,11 @@ def refusals():
     yield 'tuple-managed-result', 'value:int;', 'helper():(int,string){value++;return(value,"x");} init(){(a,b):=helper();value+=a+len b;}'
     yield 'tuple-byte-result', 'value:int;', 'helper():(int,byte){value++;return(value,byte 7);} init(){(a,b):=helper();value+=a+int b;}'
     yield 'tuple-nested-result', 'value:int;', 'helper():((int,int),big){value++;return((value,2),big 3);} init(){(a,b):=helper();(c,d):=a;value+=c+d+int b;}'
-    yield 'tuple-argument', 'value:int;', 'helper(a:(int,int)){value++;(x,y):=a;value+=x+y;} init(){helper((1,2));}'
-    yield 'tuple-global', 'value:int;state:(int,int);', 'helper():(int,int){value++;return(1,2);} init(){state=helper();(x,y):=state;value+=x+y;}'
     yield 'tuple-field-limit', 'value:int;', 'helper():(int,int,int,int,int,int,int,int,int){value++;return(1,2,3,4,5,6,7,8,9);} init(){helper();}'
     yield 'tuple-partial-unpack', 'calls:int;x:=7;', 'helper(a:int):(int,big,real){calls++;return(a,big 17,1.25);} init(){(u,nil,w):=helper(x);if(u!=7||w!=1.25||calls!=1)calls/=0;}'
+    yield 'tuple-managed-argument', 'value:int;', 'helper(a:(int,string)){value++;(x,y):=a;value+=x+len y;} init(){helper((1,"x"));}'
+    yield 'tuple-nested-argument', 'value:int;', 'helper(a:((int,int),big)){value++;(x,y):=a;(u,v):=x;value+=u+v+int y;} init(){helper(((1,2),big 3));}'
+    yield 'tuple-initialized-global', 'value:int;state:=(1,2);', 'helper(){value++;} init(){helper();(u,v):=state;value+=u+v;}'
     yield 'recursive', 'value:int;', 'helper(){value++;helper();} init(){helper();}'
     yield 'mutual-recursion', 'value:int;', 'inner(){value++;helper();} helper(){inner();} init(){helper();}'
     yield 'byte-local', 'value:int;', 'helper(){x:byte;x=byte value;value=int x;} init(){helper();}'
@@ -446,6 +488,28 @@ def overlap_tuple(image, rows, locations, text):
     return result
 
 
+# Change a real staged destination store into OR, retaining valid encoding and exposing stale copied bytes.
+def stale_copy(image, rows, locations, text):
+    names = re.findall(r'^\s*(I[A-Z0-9]+),', (ROOT/'include/isa.h').read_text(), re.M)
+    line = next(i+1 for i,value in enumerate(text.splitlines()) if value == 'target=source;')
+    result = bytearray(image)
+    sections = struct.unpack_from('>I', image, 28)[0]
+    at = next(struct.unpack_from('>HHII', image, 32+12*i)[2] for i in range(sections)
+              if struct.unpack_from('>H', image, 32+12*i)[0]==2)+4
+    changed = 0
+    for row,loc in zip(rows,locations):
+        if not changed and loc['start'] and loc['start']['line']==line and row['op']==names.index('IMOVW') and row['mode']==0x08:
+            result[at] = names.index('IORW')
+            changed += 1
+        at += 2
+        for unused in row['args']:
+            first = image[at]
+            at += 1 if first<128 else 2 if first<192 else 4
+    if changed!=1:
+        raise RuntimeError('Missing staged copy destination witness')
+    return result
+
+
 # Compare real compiler products, preserve diagnostics, and execute whole OS processes with explicit target runners.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -457,13 +521,13 @@ def main():
     args = parser.parse_args()
     root = args.root.resolve()
     command = HELPERS['command']
-    count = processes = controls = depthcontrols = argcontrols = resultcontrols = tuplecontrols = refused = 0
+    count = processes = controls = depthcontrols = argcontrols = resultcontrols = tuplecontrols = copycontrols = refused = 0
     with tempfile.TemporaryDirectory(prefix='inline scalar ', dir=root) as directory:
         work = Path(directory)
         source, image, smap, assembly, legacy = (work/name for name in ('source.b','image.dis64','map.json','source.s','legacy.dis'))
         for name, globals_, body, error in programs():
             # A correct helper return must reach a distinct caller-only fault.
-            if name.startswith('helper-') and not error:
+            if name.startswith(('helper-', 'copy-entry-')) and not error:
                 begin = body.index('{', body.index('init()'))
                 depth = 1
                 end = begin+1
@@ -481,7 +545,9 @@ def main():
                 minimum = 2 if name in ('helper-case-two-tables', 'helper-case-nested', 'helper-case-multiple') else 1
                 if len(tables) < minimum:
                     raise RuntimeError('Missing real helper case tables: '+name)
-            if '\tframe\t' not in assembly.read_text() or '\tcall\t' not in assembly.read_text():
+            if name.startswith('copy-entry-') and '\tmovm\t' not in assembly.read_text():
+                raise RuntimeError('Missing real entry block copy: '+name)
+            if not name.startswith('copy-entry-') and ('\tframe\t' not in assembly.read_text() or '\tcall\t' not in assembly.read_text()):
                 raise RuntimeError('Missing real source call: '+name)
             command([args.limbo.resolve(), '-o', legacy, source])
             before = legacy.read_bytes()
@@ -508,9 +574,11 @@ def main():
                     marker = 'native64 scalar module InlineProbe: jit='+str(jit)+', exit="'+error+'"'
                     if marker not in output or ('Broken:' in output) != bool(error) or 'native64 scalar scheduler empty after program retirement' not in output or 'panic:' in output or 'faults:' in output:
                         raise RuntimeError(name+' JIT='+str(jit)+'\n'+output)
-                    if name.startswith('helper-tuple-fault-') or name in ('callee-error', 'helper-case-error', 'helper-nested-fault', 'helper-result-zero-divide', 'helper-result-invalid-shift'):
+                    if name == 'helper-copy-fault' or name.startswith('helper-tuple-fault-') or name in ('callee-error', 'helper-case-error', 'helper-nested-fault', 'helper-result-zero-divide', 'helper-result-invalid-shift'):
                         faults = re.findall(r'native64 scalar fault: dis-pc=(\d+)',output)
-                        if name.startswith('helper-tuple-fault-'):
+                        if name == 'helper-copy-fault':
+                            line = next(i+1 for i,s in enumerate(text.splitlines()) if s == 'calls/=0;')
+                        elif name.startswith('helper-tuple-fault-'):
                             line = next(i+1 for i,s in enumerate(text.splitlines()) if s.startswith('return ('))
                         elif name.startswith('helper-result-'):
                             line = next(i+1 for i,s in enumerate(text.splitlines()) if s.startswith('return a'))
@@ -532,6 +600,19 @@ def main():
                         if marker not in output or 'native64 scalar scheduler empty after program retirement' not in output or 'panic:' in output:
                             raise RuntimeError('Parent/child overlap control escaped\n'+output)
                         depthcontrols += 1
+            if name == 'helper-copy-control':
+                corrupted = work/'stale-copy.dis64'
+                corrupted.write_bytes(stale_copy(image.read_bytes(), rows, locations, text))
+                if args.reader:
+                    command([args.reader.resolve(), corrupted, '--pilot'])
+                if args.emu:
+                    for jit in (0,1):
+                        output = HELPERS['EXECUTE'](shlex.split(args.runner)+[str(args.emu.resolve()), '-v', '-r', str(root),
+                            '-c', str(jit), '-d', '/'+str(corrupted.relative_to(root))])
+                        marker = 'native64 scalar module InlineProbe: jit='+str(jit)+', exit="zero divide"'
+                        if marker not in output or 'native64 scalar scheduler empty after program retirement' not in output or 'panic:' in output:
+                            raise RuntimeError('Staged copy control escaped\n'+output)
+                        copycontrols += 1
             if name == 'helper-tuple-control':
                 corrupted = work/'overlap-tuple.dis64'
                 corrupted.write_bytes(overlap_tuple(image.read_bytes(), rows, locations, text))
@@ -596,7 +677,7 @@ def main():
                 raise RuntimeError('Missing controlled scalar refusal: '+name+'\n'+diagnostic.decode(errors='replace'))
             if image.exists():
                 raise RuntimeError('Refused helper left an executable image: '+name)
-    print('PASS scalar helpers:',count,'sources,',processes,'whole C/JIT processes;',controls,'active stale-local controls;',depthcontrols,'active depth-overlap controls;',argcontrols,'active argument controls;',resultcontrols,'active result controls;',tuplecontrols,'active tuple controls; ordinary Dis unchanged;',refused,'calling/storage limits refused')
+    print('PASS scalar helpers:',count,'sources,',processes,'whole C/JIT processes;',controls,'active stale-local controls;',depthcontrols,'active depth-overlap controls;',argcontrols,'active argument controls;',resultcontrols,'active result controls;',tuplecontrols,'active tuple controls;',copycontrols,'active copy controls; ordinary Dis unchanged;',refused,'calling/storage limits refused')
 
 
 if __name__ == '__main__':

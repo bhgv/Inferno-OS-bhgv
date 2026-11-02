@@ -178,3 +178,13 @@ are validated before each destination is specialized. The procedures example
 now returns a mixed Word/Big/Real tuple. Tuple parameters, managed/nested tuples,
 global tuple storage and nil-partial unpacking remain outside admission. Runtime
 file calls and the existing43-op wire profile are unchanged.
+
+
+Series0069 expands bounded pointer-free MOVM copies into staged Word moves,
+retaining the same43-op wire profile. Flat numeric tuple parameters support
+ordered field producers or whole by-value copies; complete tuple copies and
+zero-initialized global tuple storage are admitted. The procedures example now
+passes a pair and copies a mixed result through global tuple storage. Managed/
+nested aggregates, initialized global tuple literals and nil-partial unpacking
+remain refused. A separate copy fixture compares40 actual emitted sequences
+with memmove and exposes forward-overlap corruption if writes are interleaved.

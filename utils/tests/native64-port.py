@@ -102,6 +102,7 @@ def main():
         build, env, logs/'dis64-cases.log')
     run([sys.executable, str(tests/'dis64-setup-targets.py')], build, env, logs/'dis64-setup-targets.log')
     run([sys.executable, str(tests/'dis64-tuple-layout.py')], build, env, logs/'dis64-tuple-layout.log')
+    run([sys.executable, str(tests/'dis64-copy-layout.py')], build, env, logs/'dis64-copy-layout.log')
     run([sys.executable, str(tests/'dis64-inline.py'), '--limbo', str(tools/'limbo'),
          '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
         build, env, logs/'dis64-inline.log')

@@ -28,7 +28,7 @@ def main():
     names = ('inlinewidth', 'dis64inlineshape', 'inlinefield', 'inlinesameresult',
              'inlineargument', 'inlineproducer', 'inlineresultproducer', 'inlinebinding')
     production = '\n\n'.join(function(source, name) for name in names)
-    production += '\n\n'+function(lower, 'dis64address')+'\n\n'+function(lower, 'dis64scalarinst')
+    production += '\n\n'+function(lower, 'dis64copywidth')+'\n\n'+function(lower, 'dis64address')+'\n\n'+function(lower, 'dis64scalarinst')
     defines = '\n'.join(re.findall(r'(?m)^#define ScalarInlineResult.*$', source))
     fixture = r'''
 #include "limbo.h"

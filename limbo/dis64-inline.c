@@ -182,6 +182,9 @@ inlineresultproducer(Inst *input, Type *result)
 
 	if(input->dm != Afpind || input->d.reg != ScalarInlineResult || input->d.offset < 0 || input->d.offset >= ScalarInlineResultBytes)
 		return 0;
+	if(input->op == IMOVM)
+		return result != nil && result->kind == Ttuple && input->d.offset == 0 &&
+			dis64copywidth(input) != 0 && dis64copywidth(input) == dis64inlineshape(result);
 	field = inlinefield(result, input->d.offset);
 	return field != nil && inlineproducer(input, field->kind);
 }
@@ -226,6 +229,39 @@ inlinebinding(Inst *input, Inst *frame, Type *result, unsigned int callerbytes, 
 }
 
 
+/* Check one scalar component or complete tuple argument against its exact callee slot and caller inputs. */
+static int
+inlineargumentstore(Inst *input, Inst *frame, Type *type, unsigned int offset,
+	unsigned int bytes, unsigned int count, unsigned int data)
+{
+	Inst copy;
+	Dis64Instruction checked;
+	unsigned int width;
+
+	width = dis64inlineshape(type);
+	if(width == 0 || input->dm != Afpind || input->branch != nil ||
+	   input->d.reg != frame->d.reg || input->d.offset != offset ||
+	   (input->sm == Afp && input->s.reg < frame->d.reg+IBY2WD && input->s.reg+width > frame->d.reg))
+		return 0;
+	if(input->op == IMOVM)
+		return type->kind == Ttuple && dis64copywidth(input) == width &&
+			dis64copyspan(input->sm, &input->s, width, bytes, data);
+	if(!inlineproducer(input, type->kind) || !inlinescratch(input->sm, &input->s, bytes) ||
+	   !inlinescratch(input->mm, &input->m, bytes) ||
+	   (input->mm == Afp && input->m.reg < frame->d.reg+IBY2WD && input->m.reg+width > frame->d.reg))
+		return 0;
+	copy = *input;
+	if(copy.sm == Afp)
+		copy.s.reg += ScalarLegacyPrefix-ScalarScratchStart;
+	if(copy.mm == Afp)
+		copy.m.reg += ScalarLegacyPrefix-ScalarScratchStart;
+	copy.dm = Afp;
+	copy.d.reg = ScalarLegacyPrefix;
+	return dis64scalarinst(&copy, count, data, bytes+ScalarNativePrefix-ScalarScratchStart,
+		ScalarNativePrefix, &checked);
+}
+
+
 /* Identify argument cells that a validated call initializes before entering the child body. */
 static int
 inlineparameter(InlineFunction *function, unsigned int offset)
@@ -233,7 +269,7 @@ inlineparameter(InlineFunction *function, unsigned int offset)
 	Decl *parameter;
 
 	for(parameter = function->declaration->ty->ids; parameter != nil; parameter = parameter->next)
-		if(offset >= parameter->offset && offset-parameter->offset < inlinewidth(parameter->ty))
+		if(offset >= parameter->offset && offset-parameter->offset < dis64inlineshape(parameter->ty))
 			return 1;
 	return 0;
 }
@@ -260,8 +296,8 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 	function->zeros = function->zerospan = 0;
 	limit = ScalarLegacyPrefix;
 	for(local = decl->ty->ids; local != nil; local = local->next){
-		width = inlinewidth(local->ty);
-		if(width == 0 || local->offset < limit || local->offset%width != 0 ||
+		width = dis64inlineshape(local->ty);
+		if(width == 0 || width > decl->desc->size || local->offset < limit || local->offset%(local->ty->kind == Ttuple ? local->ty->align : width) != 0 ||
 		   local->offset > decl->desc->size-width)
 			return 0;
 		limit = local->offset+width;
@@ -287,6 +323,17 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 		return 0;
 	for(pc = function->start; pc+1 < function->end; pc++){
 		input = original[pc];
+		if(input->op == IMOVM){
+			width = dis64copywidth(input);
+			if(width == 0 || !dis64copyspan(input->sm, &input->s, width, decl->desc->size, data))
+				return 0;
+			if(input->dm == Afpind){
+				if(input->d.reg == ScalarInlineResult && !inlineresultproducer(input, decl->ty->tof))
+					return 0;
+			}else if(!dis64copyspan(input->dm, &input->d, width, decl->desc->size, data))
+				return 0;
+			continue;
+		}
 		if(input->op == IFRAME || input->op == ICALL || input->op == ILEA ||
 		   (input->dm == Afpind && input->d.reg != ScalarInlineResult &&
 		    (inlineargument(input->op, Tint) || inlineargument(input->op, Tbig) || inlineargument(input->op, Treal))))
@@ -434,10 +481,9 @@ static int
 inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsigned int data)
 {
 	InlineFunction *function;
-	Inst *input, *frame, copy;
+	Inst *input, *frame;
 	Type *result;
-	Decl *parameter;
-	Dis64Instruction checked;
+	Decl *parameter, *field;
 	unsigned int pc, end, i, width;
 	int callee;
 
@@ -445,6 +491,12 @@ inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsi
 	for(pc = function->start; pc < function->end; pc++){
 		input = context->original[pc];
 		if(input->op != IFRAME){
+			if(input->op == IMOVM){
+				width = dis64copywidth(input);
+				if(width == 0 || !dis64copyspan(input->sm, &input->s, width, function->declaration->desc->size, data) ||
+				   (input->dm != Afpind && !dis64copyspan(input->dm, &input->d, width, function->declaration->desc->size, data)))
+					return 0;
+			}
 			if(input->op == ICALL || input->op == ILEA)
 				return 0;
 			if(input->dm == Afpind && !inlineresultproducer(input, function->declaration->ty->tof))
@@ -456,7 +508,7 @@ inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsi
 		while(end < function->end){
 			input = context->original[end];
 			if(input->dm != Afpind ||
-			   !(input->op == ILEA || inlineargument(input->op, Tint) || inlineargument(input->op, Tbig) || inlineargument(input->op, Treal)))
+			   !(input->op == ILEA || input->op == IMOVM || inlineargument(input->op, Tint) || inlineargument(input->op, Tbig) || inlineargument(input->op, Treal)))
 				break;
 			end++;
 		}
@@ -464,35 +516,24 @@ inlinepairs(InlineContext *context, unsigned int index, unsigned int count, unsi
 		callee = inlinecall(context, function, pc);
 		if(callee < 0)
 			return 0;
-		parameter = context->functions[callee].declaration->ty->ids;
-		for(i = pc+1; i < end; i++){
-			input = context->original[i];
-			if(parameter == nil)
-				break;
-			width = inlinewidth(parameter->ty);
-			if(!inlineproducer(input, parameter->ty->kind) || input->branch != nil ||
-			   input->d.reg != frame->d.reg || input->d.offset != parameter->offset ||
-			   !inlinescratch(input->sm, &input->s, function->declaration->desc->size) ||
-			   !inlinescratch(input->mm, &input->m, function->declaration->desc->size) ||
-			   (input->mm == Afp && input->m.reg < frame->d.reg+IBY2WD && input->m.reg+width > frame->d.reg) ||
-			   (input->sm == Afp && input->s.reg < frame->d.reg+IBY2WD && input->s.reg+width > frame->d.reg))
+		i = pc+1;
+		for(parameter = context->functions[callee].declaration->ty->ids; parameter != nil; parameter = parameter->next){
+			if(i >= end)
 				return 0;
-			/* Validate the source in its caller frame; use a harmless direct scratch destination. */
-			copy = *input;
-			if(copy.sm == Afp)
-				copy.s.reg += ScalarLegacyPrefix-ScalarScratchStart;
-			if(copy.mm == Afp)
-				copy.m.reg += ScalarLegacyPrefix-ScalarScratchStart;
-			copy.dm = Afp;
-			copy.d.reg = ScalarLegacyPrefix;
-			if(!dis64scalarinst(&copy, count, data, function->declaration->desc->size+ScalarNativePrefix-ScalarScratchStart,
-			   ScalarNativePrefix, &checked))
-				return 0;
-			context->owners[i] = pc;
-			parameter = parameter->next;
+			if(parameter->ty->kind == Ttuple && context->original[i]->op != IMOVM){
+				for(field = parameter->ty->ids; field != nil; field = field->next){
+					if(i >= end || !inlineargumentstore(context->original[i], frame, field->ty,
+					   parameter->offset+field->offset, function->declaration->desc->size, count, data))
+						return 0;
+					context->owners[i++] = pc;
+				}
+			}else{
+				if(!inlineargumentstore(context->original[i], frame, parameter->ty, parameter->offset,
+				   function->declaration->desc->size, count, data))
+					return 0;
+				context->owners[i++] = pc;
+			}
 		}
-		if(parameter != nil)
-			return 0;
 		result = context->functions[callee].declaration->ty->tof;
 		if(result->kind != Tnone){
 			if(i+1 != end)
@@ -721,8 +762,12 @@ dis64prepare(Decl *entry, Inst *instructions, unsigned int count, unsigned int d
 	prepared->instructions = instructions;
 	prepared->count = count;
 	prepared->localbytes = entry->desc->size;
-	if(nfns == 1)
-		return fns[0] == entry && entry->pc->pc == 0;
+	if(nfns == 1){
+		for(input = instructions; input != nil && input->op != IMOVM; input = input->next)
+			;
+		if(input == nil)
+			return fns[0] == entry && entry->pc->pc == 0;
+	}
 	if(nfns < 1 || nfns > ScalarInlineFunctions)
 		return 0;
 	original = allocmem(count*sizeof(*original));
@@ -764,7 +809,8 @@ dis64prepare(Decl *entry, Inst *instructions, unsigned int count, unsigned int d
 	if(current < 0)
 		goto done;
 	context.entry = current;
-	context.sizes[1] = ScalarLegacyPrefix-ScalarScratchStart;
+	if(nfns > 1)
+		context.sizes[1] = ScalarLegacyPrefix-ScalarScratchStart;
 	for(i = 0; i < nfns; i++){
 		for(j = 0; j < nfns; j++)
 			if(functions[j].start > functions[i].start && functions[j].start < functions[i].end)

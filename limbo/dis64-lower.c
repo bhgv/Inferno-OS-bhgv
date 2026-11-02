@@ -35,6 +35,79 @@ dis64address(int mode, Addr *address, unsigned int scratch, long *value, unsigne
 }
 
 
+/* Bound source-only raw copies; every admitted frame/data cell has already been proven pointer-free. */
+unsigned int
+dis64copywidth(Inst *input)
+{
+	if(input->op != IMOVM || input->mm != Aimm || input->branch != nil ||
+	   input->m.offset < IBY2WD || input->m.offset > ScalarCopyBytes || input->m.offset%IBY2WD != 0)
+		return 0;
+	return input->m.offset;
+}
+
+
+/* Keep raw source spans inside their owning legacy object, never across the reserved frame header. */
+int
+dis64copyspan(int mode, Addr *address, unsigned int bytes, unsigned int frame, unsigned int data)
+{
+	unsigned int extent;
+
+	if((mode != Afp && mode != Amp) || address->reg < 0 || address->reg%IBY2WD != 0 || bytes == 0)
+		return 0;
+	extent = mode == Afp ? frame : data;
+	if(bytes > extent || address->reg > extent-bytes)
+		return 0;
+	return mode != Afp || (address->reg >= STemp &&
+		(address->reg >= ScalarLegacyPrefix || bytes <= ScalarLegacyPrefix-address->reg));
+}
+
+
+/* Snapshot every source Word before any destination write, preserving memmove overlap semantics. */
+static int
+dis64copyemit(Inst *input, unsigned int data, unsigned int frame, unsigned int scratch,
+	Dis64Lower *lower, unsigned int at)
+{
+	Dis64Instruction *load, *store;
+	unsigned int width, words, i, source, destination, base;
+	long from, to;
+
+	width = dis64copywidth(input);
+	if(scratch > ScalarObjectLimit-ScalarScratchBytes || frame > ScalarObjectLimit)
+		return 0;
+	base = scratch+ScalarScratchBytes;
+	if(width == 0 || base > frame || ScalarCopyBytes > frame-base ||
+	   !dis64address(input->sm, &input->s, scratch, &from, &source) ||
+	   !dis64address(input->dm, &input->d, scratch, &to, &destination) ||
+	   from < 0 || to < 0 || from > ScalarObjectLimit || to > ScalarObjectLimit ||
+	   !dis64codeslot(source, from, IBY2WD, data, base, 0) ||
+	   !dis64codeslot(source, from+width-IBY2WD, IBY2WD, data, base, 0) ||
+	   !dis64codeslot(destination, to, IBY2WD, data, base, 0) ||
+	   !dis64codeslot(destination, to+width-IBY2WD, IBY2WD, data, base, 0))
+		return 0;
+	words = width/IBY2WD;
+	if(at > lower->count || 2*words > lower->count-at)
+		return 0;
+	for(i = 0; i < words; i++){
+		load = &lower->code[at+i];
+		store = &lower->code[at+words+i];
+		memset(load, 0, sizeof(*load));
+		memset(store, 0, sizeof(*store));
+		load->op = store->op = IMOVW;
+		load->mode = SRC(source)|DST(AFP);
+		load->source = from+i*IBY2WD;
+		load->destination = base+i*IBY2WD;
+		store->mode = SRC(AFP)|DST(destination);
+		store->source = base+i*IBY2WD;
+		store->destination = to+i*IBY2WD;
+		if(!dis64instructioncheck(load, lower->count, data, frame) ||
+		   !dis64instructioncheck(store, lower->count, data, frame))
+			return 0;
+		lower->origin[at+i] = lower->origin[at+words+i] = input;
+	}
+	return 1;
+}
+
+
 /* Convert one remapped instruction while retaining scalar widths and reserved-frame boundaries. */
 int
 dis64scalarinst(Inst *input, unsigned int count, unsigned int data, unsigned int frame, unsigned int scratch, Dis64Instruction *output)
@@ -204,6 +277,12 @@ dis64lower(Inst *instructions, unsigned int count, unsigned int data,
 			return 0;
 		lower->pcs[n++] = lower->count;
 		amount = 1;
+		if(input->op == IMOVM){
+			amount = dis64copywidth(input);
+			if(amount == 0)
+				return 0;
+			amount = 2*(amount/IBY2WD);
+		}
 		iscase = input->op == ICASE || input->op == ICASEL || input->op == IGOTO;
 		if(iscase){
 			table = dis64scalarcase(input, count);
@@ -229,6 +308,12 @@ dis64lower(Inst *instructions, unsigned int count, unsigned int data,
 	for(input = instructions; input != nil; input = input->next){
 		if(input->op == INOOP)
 			continue;
+		if(input->op == IMOVM){
+			if(!dis64copyemit(input, data, frame, scratch, lower, at))
+				return 0;
+			at += 2*(dis64copywidth(input)/IBY2WD);
+			continue;
+		}
 		iscase = input->op == ICASE || input->op == ICASEL || input->op == IGOTO;
 		if(!iscase){
 			copy = *input;

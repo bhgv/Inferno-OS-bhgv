@@ -2,6 +2,7 @@
 #define LIMBO_DIS64_LOWER_H // Private compiler translation; no shared wire definitions.
 #include "dis64-pilot.h"
 
+#define ScalarCopyBytes 64U // Bound pointer-free source block copies and their private snapshot tail.
 #define ScalarObjectLimit (1024U*1024U) // Match the existing experimental runtime object bound.
 #define ScalarCodeLimit 65536U // Match the existing runtime instruction bound.
 #define ScalarLegacyPrefix 32U // This backend translates only the compiler's fixed legacy scalar prefix.
@@ -20,6 +21,14 @@ struct Dis64Lower {
 	unsigned int databytes; // Scalar data extent including appended bounds.
 	unsigned int nconstants; // Number of initialized appended bounds.
 };
+
+
+/* Accept only bounded immediate Word-sized source block copies; no managed or indirect role is inferred. */
+unsigned int dis64copywidth(Inst*);
+
+
+/* Validate a complete legacy direct scalar span, excluding headers and the scratch/local discontinuity. */
+int dis64copyspan(int, Addr*, unsigned int, unsigned int, unsigned int);
 
 
 /* Validate one already remapped instruction in explicit frame/data geometry; borrow all inputs. */

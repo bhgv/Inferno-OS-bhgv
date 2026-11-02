@@ -8,6 +8,7 @@ a := 12345;
 b := 789;
 result: int;
 tally: int;
+state: (int, big, real);
 
 
 # Renew the child's declared local on every call.
@@ -32,9 +33,10 @@ step()
 
 
 # Keep expression temporaries private even when this helper is called from another helper.
-fold(x: int, y: int, wide: big, fraction: real): (int, big, real)
+fold(pair: (int, int), wide: big, fraction: real): (int, big, real)
 {
 	local: int;
+	(x, y) := pair;
 	local++;
 	if(wide != big 17 || fraction != 1.25 || local != 1)
 		result /= 0;
@@ -50,7 +52,8 @@ mix()
 	case b {
 	0 => result /= 0;
 	700 to 800 =>
-		(value, wide, fraction) := fold(a, b, big 17, 1.25);
+		state = fold((a, b), big 17, 1.25);
+		(value, wide, fraction) := state;
 		if(wide != big 17 || fraction != 1.25)
 			result /= 0;
 		result = value;
