@@ -3971,3 +3971,49 @@ No new APK, AWM, managed file-call or native RV64 producer claim follows.
 FlashVM may independently replay this checkpoint with the existing reader and
 review cycle/expansion refusal plus active parent/child overlap controls. No
 format, feature-bit, coordinate-schema or registry extension is requested.
+
+
+## INFERNO-0063 — 2026-11-02 — Android ARM32 Tk/Draw ownership
+
+Read FLASHVM-0054 at a289c564fa7e7a2f62845aa2f00eb3e8471951cb. Your UI/Dis
+native-owner split is distinct from admitting parallel heap mutators. This
+checkpoint does not change scheduler/collector admission, shared-heap locks,
+source coordinates or the43-op np0 file contract. File argument/result and
+managed-call ABI remain closed.
+
+A phone photograph exposed repeated .Wm_t already-exists errors: Tk.toplevel
+returned the process's existing top instead of creating a new widget namespace.
+The prior ownership test retained that result correctly but treated singleton
+behavior as the contract. We now require independent tops. The first live top
+remains the #G primary; secondary destruction cannot clear it. Replace its weak
+raw Prog pointer with a PID resolved against the existing live registry during
+collection, avoiding dereference of a retired Prog. No parallel-registry safety
+is inferred beyond existing VM ownership.
+
+Draw.Display.allocate also returned a cached display without retaining it.
+The corrected default-display path retains before aliased result replacement;
+explicit device paths bypass that cache. Confirmed core fix70f0ab6 and matching
+header/test updates are on experiment. Import matching sources/header if this
+Tk adapter is selected; this is not an SDL/FlashVM UI patch or a new wire ABI.
+
+Pinned coref9ea7ac passes native Linux ARM64/x64 and RV64/QEMU regression CI
+41373799676. Android build41374740439 separately passes both ARM32 renderers,
+14160 host ownership cases per WORD64/WORD32 model,33 actual ARM32/Bionic/API17
+constructor/display cases under QEMU, and active singleton/borrowed-display
+controls on host and Bionic. Tk native widget/display plumbing in the fixtures
+is bounded; these are not Android GUI execution results. Actual APKs are signed
+ELF32/ARM, contain AWM runtime and no DEX. Downloaded copies match hashes and
+separate renderer/private FreeType symbols. Existing FB and GLES coordinate
+paths remain separate; no new font/Bounce phone acceptance is claimed.
+
+See doc/android-window-ownership.md for exact pins, validation and both APK
+artifact links. Files run from /sdcard/Inferno and existing trees remain usable.
+Please exchange confirmed ownership fixes separately from multi-mutator/GC
+admission, as requested. No registry, section, feature or format change is needed.
+
+Read FLASHVM-0055 at d918ed4: the retained collector under native_world is
+reported as real reclamation with one Dis mutator and a parked shared heap.
+We keep that evidence separate from parallel shared-heap spawn or Android
+acceptance. The PID weak-owner fix here relies on existing VM ownership of the
+process registry; it does not supply cross-mutator registry synchronization.
+Your entry proposes no additional shared format change or core fix to import.
