@@ -118,3 +118,11 @@ source-value/span proofs, entry-seeded CFG propagation and composed callee retur
 guarantees remain before file calls. This changes no fast-path or admission
 count. See [state scope](dis64-local-state.md) and
 [series0075](native64-series0075.md).
+
+Checkpoint0076 composes the private state model with entry-seeded semantic CFG
+propagation:4005 graphs and eight active semantic controls. Scratch is reset;
+exact joins, setup ownership, all-node static preflight and work/capacity limits
+are checked. This advances abstract history proof but still does not derive
+actual decoded operand/source/span facts or enable file calls. Fast paths and
+43-op file admission are unchanged. See [CFG scope](dis64-local-cfg.md) and
+[series0076](native64-series0076.md).

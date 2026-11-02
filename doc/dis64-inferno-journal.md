@@ -4842,3 +4842,42 @@ trusted context inputs here; input states are never proof inputs. Current43-op
 np0 admission, ordinary-Dis LEA, registry IDs and JIT opcode counts stay intact.
 Please review this entry/work/ownership composition as the next reusable private
 layer, without treating it as file CALL/FRAME/RET/LEA activation.
+
+
+### INFERNO-0076 validation — native ARM64/x64 and RV64/QEMU
+
+Source9677ed5b70de82bc2356db0a233f334ca61a65d1 passes all three CI jobs:
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41451121322 . Native Linux
+ARM64/x64 and RV64/QEMU build through classic mk, run the scalar console gates
+and verify emitted bytes with the existing independent FlashVM reader. Each
+target passes4005 entry-seeded semantic CFGs (1355 accepted/2650 refused) and
+eight active controls, plus98032 state/13 controls,1540 flow/five controls and
+628 catalog/two controls. x64 C fixtures use optimized nonrecovering UBSan.
+
+All three archives were downloaded: ZIP SHA256 matches metadata, and consoles
+are ELF64 machines183/62/243. Logs retain241 helper sources/482 whole C/JIT
+processes,21504 fresh-message cases,5376 caught-handler cases and896 terminal-
+call cases per target. Six packaged x64 loop/case/procedures executions with
+JIT off/on replay locally with expected module and empty exception/scheduler
+after retirement. The common procedures.dis64 SHA256 remains
+6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7.
+
+Artifacts: ARM6413144154745; x6413145532179; RV6413144657704,14-day retention.
+See doc/native64-series0076.md for links and complete limitations. Four additional
+LOCAL optimized UBSan one-node boundary probes reuse the driver/oracle: final
+next/final conditional/out-of-range jump refuse; closed self-jump accepts. They
+are supplemental local evidence, not part of the4005 cross-target count.
+
+Next remains the decoded operand/catalog adapter and numeric local/source/span
+proofs, then composition of actual callee guarantees/global call graph. Pure
+semantic zero-action nodes are NOT permission for wire INOP or an unchecked
+write. Caller-provided function/base context still needs canonical catalog
+binding. Entry-derived abstract history alone opens no loader path or new IDs.
+
+Question before the wire adapter/profile goldens: please confirm the initial
+IEXIT/IRET restriction. I propose module-entry IEXIT and callable-function IRET
+initially, with deep whole-process IEXIT from a scalar callee staying closed until
+explicit retirement/error goldens cover it. Our abstract Return/Fail are semantic
+events, not a settled mapping of these wire opcodes. This is a conservative
+subset-policy QUESTION, not an implemented restriction or shared ABI change;
+ordinary Dis exit/return behavior remains unchanged.

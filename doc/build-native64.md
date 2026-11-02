@@ -748,3 +748,18 @@ local definite assignment, setup-interior ownership and callee result guarantees
 followed by whole-file C/RX positive/refusal goldens. FLASHVM-0063 accepts the
 initial subset design but opens no loader path or registry IDs. See
 [state scope](dis64-local-state.md) and [agreed subset](dis64-local-call-proposal.md).
+
+## Entry-seeded semantic CFG (series0076)
+
+`python3 utils/tests/dis64-local-cfg.py` checks4005 semantic graphs against an
+independent DFS oracle. Native64-port additionally runs eight semantic removal
+controls and preserves `local-cfg.log` plus `local-cfg-*.log`. Cross-target compiler,
+runner, flags and temporary-directory variables are the same as for the other
+portable preflights. The Python fixture imports `dis64-local-state.py`; copy both
+when replaying selected sources.
+
+The checker resets scratch, seeds zero entry state and requires exact joins;
+unknown/unreachable malformed events and setup-interior targets refuse. Its
+work budget counts processed nodes and edge comparisons. Numeric source/span
+proofs and actual decoded file operands remain separate. See
+[precise CFG scope](dis64-local-cfg.md) and [series0076](native64-series0076.md).

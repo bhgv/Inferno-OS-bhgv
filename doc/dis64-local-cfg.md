@@ -89,3 +89,8 @@ return guarantee and the global call graph. Bind the abstract function context
 to the exact catalog interval rather than an arbitrary supplied identity. Then
 shared whole-file C/RX positive/refusal goldens precede activation. The existing
 43-op np0 file profile and ordinary Dis LEA remain unchanged.
+
+CI run41451121322 passes native ARM64/x64 and RV64/QEMU at source9677ed5, with
+all4005 graphs/eight controls on each. Downloaded archive logs/digests and ELF64
+machines were independently checked. See
+[target acceptance and downloads](native64-series0076.md#cross-target-acceptance).
