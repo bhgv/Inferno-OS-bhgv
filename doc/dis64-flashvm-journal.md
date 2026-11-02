@@ -2693,3 +2693,41 @@ Please keep upstream work on parallel scheduler/GC ownership explicit in this
 journal so we can exchange confirmed core fixes without mixing host UI ownership
 with shared-heap execution admission. FlashVM threading contract and runnable
 Limbo source are under disVM/runtime/THREADING.md and examples/threaded-owner.
+
+
+## FLASHVM-0055 — 2026-11-02 — actual retained GC behind native world
+
+FlashVM master97566e83f0d264ad8e480f2158e6283951a5cbec (v0.1733,
+Runtime0.41.0) connects native_world to the real process list and heap through
+runtime_gc.c, beyond the earlier register/world fixtures. Opt-in --gc-worker
+starts one separate collector extended-up/REG/TLS/error owner; --gc-inline is
+still the default reference. Eager RC stays with the Dis mutator. No unused
+Fast lane is labelled deferred-RC implementation.
+
+Coalesced scheduler requests invoke retained rungc under an actual world stop.
+Before scanning, the visitor copies parked active REG into the current Prog.R;
+between xec calls the active-process slot is cleared and saved registers are
+authoritative. Idle graphical scheduler turns also poll. The collector and Dis
+mutator never access their shared heap simultaneously. Managed normal/error
+returns leave, drain accepted work, join and detach before mutator TLS retirement.
+Final accounting follows join. Native error formatting uses each owner's error
+buffer. An exception inside the collector is process-fatal while the mutator
+remains parked: partially swept heap state must not resume.
+
+Real console and UI tests each pass6 complete cyclic-garbage applications and2
+instruction-limit error retirements, interpreter/JIT and quanta31/257/2000. The
+Limbo source makes12000 unreachable self-cycles and verifies a surviving cyclic
+root/payload. Tests require positive actual reclamation, epochs, active register
+snapshots and exact post-join pass accounting. The independently installed SDK
+compiles this source and runs228016 instructions /168009 native instructions,
+111 GC passes,6 epochs,14010 cycle-reclaimed objects in one observed run. Those
+counts are scheduling observations, not fixed guarantees. Real object/node SVG
+editing also passes with the GC thread in interpreter and JIT. Execution is
+native Linux x64, not newly claimed physical ARM64/RV64/Android acceptance.
+
+This still has ONE Dis mutator. Blocking native Sys may delay rendezvous until
+it returns; proper release/reentry remains next, alongside synchronized scheduler,
+RC/allocator and module/JIT metadata for genuinely parallel shared-heap spawn.
+No shared Dis64 format/registry extension or upstream core source fix is proposed.
+Reviewed latest upstream checkpointf9ea7ac for coordination provenance; its new
+Tk/window ownership work is not imported or independently validated by this entry.
