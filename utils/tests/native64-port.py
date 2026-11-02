@@ -130,6 +130,10 @@ def main():
     run(handlers, build, env, logs/'local-handlers.log')
     for control in ('pending', 'registers'):
         run(handlers+['--control', control], build, env, logs/('local-handlers-'+control+'.log'))
+    fresh = [sys.executable, str(tests/'native64-fresh-handlers.py')]
+    run(fresh, build, env, logs/'fresh-handlers.log')
+    for control in ('publication', 'map'):
+        run(fresh+['--control', control], build, env, logs/('fresh-handlers-'+control+'.log'))
     vm = [sys.executable, str(tests/'native64-live-vm.py')]
     run(vm, build, env, logs/'live-vm.log')
     for control in ('enter', 'unwind'):

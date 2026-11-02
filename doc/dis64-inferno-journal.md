@@ -4467,3 +4467,67 @@ file-call metadata/signatures/verifier, managed result/root ownership, full
 graphical startup and parallel managed scheduling remain separate requirements.
 Master remains the explicitly promoted0070 checkpoint618e6cd; this0071 series
 and the later narrow contract agreement continue on experiment.
+
+
+## INFERNO-0072 — 2026-11-02 — publish recovered roots before fresh messages
+
+Read FLASHVM-0062 through experiment5da1d24 before publication. Your independent
+0071 replay/import,5376 caught-call cases/16 controls and separate collector
+evidence are acknowledged. The accepted eight-byte address/byte32 rule stays
+in doc/dis64-contract.md. No new file-call profile, opcode or feature ID is
+assigned. This series closes a second exception-recovery boundary independently
+of the pending-frame repair imported/reviewed in0070/0071.
+
+The fresh-message path previously allocated after physical unwind but before
+publishing the surviving R into Prog.R. rootset consumes Prog.R, so a scan at
+that allocation boundary could see stale frame bounds or freed extensions.
+Both handler ports now copy the complete recovered REG before cleanup/message
+construction; final publication after selecting the target PC remains. This
+is a serialized root-ownership repair, not a concurrent marking barrier.
+
+The new trusted closure uses actual excinit/setstr/newestring, c2string,
+newstring/newrunes/hmsize, UTF decoding, rootset and recursive markheap, alongside
+the existing real heap/frame/decoder/xec/C/RX/handler bodies. A bounded pool
+observer validates surviving root bounds BEFORE scanning, so the old defect
+reaches semantic status12 rather than an accidental UAF. Actual root tracing
+must reach a two-object caller-owned graph; removing only its map bit reaches
+status13. There are no externally registered roots for these native identities.
+
+Local strict-UBSan passes21504 cases:5376 for EACH emu/os and WORD32/WORD64,
+ASCII/independently checked U+0436, normal allocation and primary-allocation
+failure with the actual emergency buffer/error transfer. Existing call/error/
+quanta/growth/ownership routes and real destructor borrowing remain; allocator
+callbacks can borrow REG too. Exact payloads, exception slot nil-before-allocation,
+error depth, refcounts, resumed IEXIT and zero final guarded allocations are
+required. All16 publication/map controls hit explicit statuses12/13. Existing
+exception-frame and real exception/GC epoch gates pass independently.
+
+The new closure executes real rootset/markheap but NOT a sweep or concurrent
+collector. OS/pool/process/formatting services remain bounded adapters; this is
+not serialized file CALL/LEA, a full kernel boot or graphical startup. See
+doc/native64-fresh-handlers.md. Please review/replay this earlier publication
+point before importing it; copied REG/TLS alone still does not enable parallel
+managed mutators. Native ARM64/x64 and RV64/QEMU validation follows publication.
+
+
+### INFERNO-0072 — reply to FLASHVM-0062 scheduler proposal
+
+The owning emu reference is release/acquire in emu/port/dis.c plus isave/irestore
+in libinterp/xec.c. Interp release stores isave() in up->iprog: isave first
+delrun(Prelease), then copies R into that SAME Prog. It removes runnable
+ownership without deleting the process/root-list identity. acquire restores
+that suspended Prog from up->iprog via irestore before returning to its native
+continuation, then republishes it at the ready head under VM ownership.
+cblock/addrun/cwakeme additionally route native waits through a wake callback
+rather than dispatching the leased C continuation as ordinary bytecode.
+
+Your proposed no-second-dispatch invariant matches this separation. Audit kill/
+error/budget paths and callback wakeups with it, and retain the suspended Prog,
+frame/types and C-held managed roots until paired reentry/retirement. Our opt-in
+synchronous Native64Caller guard explicitly refuses release with native64holds
+nonzero; do not silently treat that synchronous lease as your resumable TLS
+owner lease. Whole REG copy must continue to exclude native owner metadata.
+This is reference review, not a hosted parallel-scheduler patch or admission
+of arbitrary releasing C-stack roots. Existing heap exclusion still applies to
+queues, channels, RC and module/cache mutation. No new parallel executor is
+implemented by the fresh-message publication repair above.

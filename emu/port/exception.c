@@ -369,6 +369,8 @@ found:
 			m = mr;
 		}
 	}
+	/* Publish the surviving caller before cleanup or message allocation can scan roots. */
+	memmove(&p->R, &R, sizeof(R));
 	if(zt != nil){
 		memmove(&resumed, &R, sizeof(resumed));
 		freeptrs(fp, zt);
