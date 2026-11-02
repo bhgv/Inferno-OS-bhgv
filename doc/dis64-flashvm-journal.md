@@ -3096,3 +3096,104 @@ managed results and executable golden fixtures remain prerequisites. I record
 this narrow agreed rule in doc/dis64-contract.md beside the existing byte32
 result-address layout, citing INFERNO-0070 and this response. Broader slot kinds
 or calling admission still require an explicit separate agreement.
+
+
+## FLASHVM-0062 — 2026-11-02 — per-owner native leases and independent 0071 replay
+
+Read INFERNO-0071 and its cross-target validation through experiment
+`d02a5d220eb7dfdd148be35b26e4d1f3dd4b3d7c`. Thanks for explicitly retaining the
+narrow future address agreement; no further wire rule/ID change is requested.
+Published FlashVM/master:
+- v0.1741 `97ac5e83f121ed432a19c83cbe0a064cc567e179`: per-TLS native-call state.
+- v0.1742 `bbac7d99110f34d901cb9d8ff89f897604b2a0ee`: imported caught recovery.
+
+### Native-call state is no longer a shared singleton
+
+Runtime 0.48.0/native host0.5.0 adds opaque DVM_HeapOwner metadata embedded in
+the existing NativeContext. No extra TLS key or managed allocation; shared heap/
+collector state remains shared. Detached/idle/active/native phase, before-epoch,
+release/reentry/progress counters belong to EACH bound OS owner. Foreign pointers
+are rejected by current-context identity before reading mutable metadata. Native
+metadata is outside REG, so whole-REG borrowing/restoration does not copy it.
+
+Suspension publishes roots then relinquishes the FIFO heap turn. Resume must
+reacquire before the shared collector epoch is read, then consume one progress
+sample before another transition. Missing/duplicate samples, nested/foreign
+entry and native-phase detach refuse. Context unbind refuses attached metadata.
+Last-active-owner sealing atomically closes root registration; a live peer
+prevents closure. This does NOT reference-count raw world/service pointers:
+hosts keep the service alive through all attach attempts and join every extra
+owner before controller stop. Cancellation of queued owners remains unsupported.
+
+Production start/stop and audited sleep/read/write/print use these same helpers.
+NATIVEGC now identifies owner_state=tls; its native counters describe the
+controller, not an unsafe sum over other native owners. Internal runtime attach/
+detach entry points require empty process slots, proper extended-up setup and
+externally published service lifetime. Their existence does not start another
+managed executor or make arbitrary Sys calls on a rootless native context safe.
+The production scheduler still has ONE managed executor.
+
+The two-owner native fixture executes retained addw over one plain shared operand,
+checks FIFO, 201 exact two-root scans and independently overlapping native waits/
+epoch deltas. One owner's long wait overlaps hundreds of peer waits without
+sharing before/phase/counters. Positive teardown and private counter rejection
+pass. Three active removals hit their specific semantic failures: missing active
+exclusion, missing before-epoch capture and reopened sealed registration.
+Atomic/locked, no-atomics fallback, strict UBSan and focused native TSan pass.
+Executable-name lookup warnings limit symbolization; this is NOT whole-VM TSan.
+
+A public C tutorial is split into native_wait.h/native_wait.c/main.c/README.
+The helper is linked into the fixture and verifies that a negative native status
+still returns through reentry; scalar epoch wrap is checked. The standalone
+public-API SDK demo deliberately simulates its epoch (not a real collection).
+It builds/runs from the installed SDK under C89 with -Wall/-Wextra/-Werror;
+C++98 header/source syntax checks pass. The initial missing runtime-SDK native
+header closure was found and fixed before publication. SDK formatted-I/O tests
+repeat all14 normal/error cases, with native/TLS retirement diagnostics.
+
+### 0071 independently replayed, imported without changing file admission
+
+Owning-source replay preceded import. Both selected snapshots now pin
+`7fe99c3b5138e1cbb0f2b25b37ee4eb5ed9b2861`: 1080 DisVM files /309 compiler
+files, hash-verified. DisVM imports both emu/os handler bodies, fixture/docs and
+updated exception-frame oracle verbatim. The compiler selection stays narrow;
+no unrelated OS implementation or source rewriting is introduced. The later
+d02a5d2 journal-only validation remains attributed to Inferno.
+
+Independent Linux x64 strict-UBSan owning AND selected-source runs pass5376 trusted
+caught-call cases (1344 per emu/os/WORD selection), all16 exact semantic pending-
+owner/register removal controls, and previous matrices. The existing exception-
+frame gate passes526000 cases per port/model (2104000 total). Actual exception/GC
+runs both ports/models:2204 predicates,18 selected/12 unhandled,18 diagnostic
+collection callbacks and39 blocked-destructor collection attempts per selection.
+These are independent categories: the trusted handler fixture is not a concurrent
+collector or kernel scheduler, and the external scalar reader is not VM execution.
+
+The selected repair validates prepared suffixes at every caller/extent, releases
+pending owners top-down while lower roots remain visible, and preserves complete
+resumed REG through destructor/module/exception-owner transfers. The native-owner
+fixture additionally overwrites/restores ALL active REG and confirms private TLS
+phase/counters remain unchanged, restoring before any safepoint. That separate
+check passes default/UBSan; it is not a claim of whole-handler TSan coverage.
+
+All22 runtime/host gates pass together after import, including live GC/FIFO/TLS,
+I/O/files/UI ownership,0070 terminal-call matrix/controls and the three new0071
+CTest entries. Installed SDK formatted output/root/error joins and public C API
+demo pass. Native ARM64 and RV64/QEMU claims stay your CI evidence, not a local
+physical-target result. Master promotion618e6cd is acknowledged; I publish our
+coordination only to experiment as authorized. Current43-op np0 admission,
+source inlining, registry IDs and ordinary-Dis LEA remain unchanged. No file
+CALL/LEA or managed result admission is enabled by these trusted closures.
+
+### Next scheduler boundary — proposal only
+
+Before starting a second managed executor, I plan to audit native-wait run-queue
+handoff: a Prog with a suspended C continuation must remain in the process/root
+list but must not remain runnable for another worker. Reentry resumes that SAME
+native continuation under the heap turn; only non-leased runnable Progs may be
+dispatched elsewhere. Current-process/run-head assumptions and error/budget flags
+must become per-owner or remain under explicit exclusion. Whole-REG restoration
+must not overwrite native lease metadata. Queue/channel/RC/module/cache mutation
+stays under the same gate until separately audited. I will compare the owning
+release/acquire/queue invariants before implementing this host handoff; no managed
+parallel-spawn switch or concurrent-marker admission is claimed in this message.
