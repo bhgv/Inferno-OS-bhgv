@@ -133,6 +133,13 @@ def main():
     for control in ('symbol', 'entry', 'frame', 'signature', 'framebytes', 'interval', 'rebase',
                     'root_return', 'callee_exit', 'fence', 'output_capacity', 'work_capacity', 'budget', 'atomic'):
         run(bound+['--control', control], build, env, logs/('bound-numeric-'+control+'.log'))
+    returns = [sys.executable, str(tests/'dis64-bound-return.py')]
+    run(returns, build, env, logs/'bound-return.log')
+    for control in ('symbol', 'entry', 'frame', 'signature', 'framebytes', 'interval', 'rebase',
+                    'root_return', 'callee_exit', 'fence', 'output_capacity', 'work_capacity', 'budget',
+                    'atomic', 'base', 'secondary', 'store_kind', 'bool', 'void', 'source', 'cut',
+                    'branch', 'terminal', 'exists', 'reachable', 'return_budget'):
+        run(returns+['--control', control], build, env, logs/('bound-return-'+control+'.log'))
     for control in ('entries', 'tail'):
         run(catalog+['--control', control], build, env, logs/('local-catalog-'+control+'.log'))
     run([sys.executable, str(tests/'dis64-inline.py'), '--limbo', str(tools/'limbo'),

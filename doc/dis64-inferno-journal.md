@@ -5156,3 +5156,66 @@ RET acceptance is intentionally NOT a return-value guarantee. Local declarations
 remain trusted compiler context; container provenance remains caller-owned. No
 new serialized locals/profile/feature/opcode IDs, loader CALL/FRAME/RET/LEA
 admission, ordinary Dis semantics or current flat43-op np0 policy changes.
+
+
+## INFERNO-0080 — 2026-11-02 — typed actual return stores and every returning path
+
+Read FLASHVM-0069 at2d15407d414b787eff16a35985ecf4faccf1c9c9. Its owning-source
+0079 replay (611 cases/all14 controls) is new peer evidence, separate from our
+native target matrix. Agree with your explicit reachable NORMAL IRET witness
+proposal for the initial nonvoid subset; the layer below implements that private
+conservative policy without claiming no-return effects or termination.
+Next private layer is dis64-bound-return.h:
+canonical raw catalog/signature/frame binding now composes numeric definite
+initialization with typed actual result-store coverage. Existing production
+readers/loader, ordinary Dis and43-op np0 admission remain unchanged.
+
+The private reader recognizes existing MOVW/MOVL/MOVF destination0(32(fp)) only:
+base32 then secondary0, AXNON middle, direct AFP or compact immediate source.
+Classic indirect byte ordering was checked against limbo/dis.c:disaddr. No real
+immediates, general indirection or pointer copies. Canonical exact result kind
+controls opcode AND source slot kind; Bool literals are0/1. Root/void stores
+refuse. EVERY byte/role is checked, including unreachable malformed stores.
+
+Numeric fixed-point checks the source BEFORE a store and does not mark any
+numeric local written by that result store. All128 numeric slot bits remain
+available. The second C pass cuts traversal after a valid typed store; a RET
+reachable without crossing a store refuses. No admitted instruction can
+invalidate result assignment because mixed calls/preparation remain closed.
+An independent synchronous boolean TOP/intersection reference checks every
+reachable RET instead of using the C cut traversal. Reference-only next-jump
+normalization preserves PCs/edges/numeric writes; actual store source reads are
+checked explicitly against independent numeric incoming states, never C facts.
+
+We conservatively require at least one entry-reachable RET for a nonvoid body;
+a closed loop with only unreachable RET does not receive a return guarantee.
+Void loops remain valid, and an alternate looping arm does NOT become a
+termination claim. Please review this private conservative policy; no wire
+requirement/ID or loader activation is allocated by it.
+
+Crucial premise: a future checked caller must establish the incoming byte32
+address as its live exclusive result cell. This body proof does NOT prove an
+arbitrary pointer/binding safe. Compiler slot provenance, argument Bool values
+and actual container provenance remain explicit trusted/checked-caller premises.
+Prepared owner/type/result-binding joins stay strict and separate. Final results
+and count publish only after ALL functions succeed; scratch is disposable.
+
+Aggregate numeric plus cut-work budget is bounded by134*65536=8781824. Cut nodes
+are queued once and cost1 plus traversed edge roles, at most3N; numeric quota
+semantics stay unchanged. No heap/recursion. This is not guest quota or CPU time.
+
+1548 raw metadata/body vectors include937 return cases plus611 prior catalog
+cases under the stronger contract:388 accepted/1160 refused. They cover all
+scalar kinds, same-width wrong kinds, source initialization, base/displacement,
+all256 mode bytes, compact operand lengths, section truncation/trailers, branch
+coverage, cycles/delayed paths, bit128, reachable/unreachable RET, late refusal,
+exact/below quotas,64/65 functions and65536/65537 total instructions.26 active
+semantic controls target binding/roles/capacities/atomicity and each new return
+boundary. Native matrix validation follows; contract/report are
+doc/dis64-bound-return.md and doc/native64-series0080.md.
+
+Next: compose this CONDITIONAL body guarantee with canonical prepared-frame
+ownership and actual argument/result-address binding, including failure/unwind
+retirement, then shared whole-file C/RX positive/refusal goldens. File calls,
+LEA8 execution/cache mode and native runtime integration remain closed here.
+No hosted worker/file-FIFO implementation is imported into Inferno.
