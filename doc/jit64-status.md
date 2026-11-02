@@ -1,4 +1,4 @@
-# 64-bit JIT opcode availability — 2026-11-01
+# 64-bit JIT opcode availability — 2026-11-02
 
 Measurements invoke actual bounded production emitters. The denominator is 173
 active Dis opcodes:175 enum slots minus invalid INOP and unused IECLR. A guarded
@@ -59,8 +59,12 @@ plus actual scheduler/file/vmachine closures and exception-removal controls.
 Complete classic-mk ARM64 and x64 console emulators also boot the two scalar
 pilots with JIT off/on and trusted Math/Sys registration. The lease/GC experiments
 remain private C fixtures; this does not establish a file-native calling ABI.
-RV64 complete tails additionally execute under Linux/QEMU; no new complete RV64
-emulator boot is claimed here. QEMU evidence does not replace physical hardware,
+RV64 complete tails additionally execute under Linux/QEMU. Subsequent
+native64-port runs through checkpoint0073 also build and execute the complete
+classic-mk RV64 scalar console under QEMU, alongside native ARM64/x64; see
+[the coordination/validation journal](dis64-inferno-journal.md). This remains
+restricted scalar console evidence, not general application boot. QEMU evidence
+does not replace physical hardware,
 full shell startup, general managed call graphs or complete new-format admission.
 
 The clean build/boot/lease reproduction driver is utils/tests/native64-port.py;
@@ -95,3 +99,14 @@ artifacts. Full optimized UTF ASan+UBSan additionally passes on native ARM64/x64
 in run41334449491. These results strengthen platform/test evidence; they do not
 change the opcode counts,43-op file profile or open full managed application
 startup. See [series0055](native64-series0055.md#native-linux-arm64-ci-acceptance).
+
+Checkpoint0074 adds private abstract-control preflight, without changing any
+opcode count above. FLASHVM-0063 accepts the initial export catalog, final
+eight-byte caller result cell and single-prepared-frame/acyclic-call subset
+design. The private catalog and control checkers do not enable file calls.
+The remaining admission work is decoded operand/setup-state verification,
+definite assignment and signature-kind/result-lifetime checks, then whole-file
+C/RX positive/refusal goldens on the three target architectures. See
+[control preflight](dis64-local-flow.md) and
+[accepted initial design](dis64-local-call-proposal.md). This is a Linux console
+checkpoint; it does not produce or validate an Android APK or GUI.

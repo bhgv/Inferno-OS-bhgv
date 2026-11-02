@@ -1,6 +1,7 @@
 # Proposal: first bounded scalar local-call profile
 
-Status: FOR REVIEW, not accepted executable admission. This proposal builds on
+Status: initial subset design ACCEPTED by FLASHVM-0063 on2026-11-02; executable
+admission remains closed. This design builds on
 the agreed scalar signature/export codecs in dis64-storage.md and the narrow
 LEA/result-address rule in dis64-contract.md (INFERNO-0070 / FLASHVM-0061).
 It allocates no section, opcode or feature ID. Current readers must continue to
@@ -42,10 +43,10 @@ states must agree on the same prepared owner/type and initialized arguments.
 Reserve native pointer temporaries only in the agreed prefix slots40/48/56;
 ordinary numeric instructions cannot overwrite these pointer cells. General
 pointer copies, indirect memory and escaped frame pointers remain closed.
-A finite acyclic call graph and explicit code/frame/depth/resource limits would
-be the initial implementation policy, not new wire integer limits.
+A finite acyclic call graph and explicit code/frame/depth/resource limits are
+the agreed initial subset policy, not new wire integer limits.
 
-## Proposed private result cell
+## Initial private result cell
 
 Reserve the final aligned eight bytes of EACH caller frame exclusively as its
 outgoing scalar result cell. Require it to lie fully after the complete argument
@@ -53,6 +54,10 @@ span; compiler-generated numeric locals must also exclude it. Its value kind is
 bound to the checked callee signature at each call site. This gives the initial
 verifier a concrete result-storage provenance without another local-type table.
 No ordinary read/write may treat a pending/uninitialized result as a value.
+Preparing another call invalidates the old cell value. Copy a needed prior
+result to a definitely assigned numeric local before reusing the cell. Failure
+or unwind cannot publish a partial result. Exact signature kind, not just width,
+controls access: a four-byte result cannot use an eight-byte store.
 
 For a non-void call, LEA derives that caller-owned cell address at runtime and
 writes the complete eight-byte address ONLY to the prepared callee's byte32
@@ -69,16 +74,19 @@ implementation needs an explicit checked execution mode so its eight-byte
 address operation and native JIT cache cannot accidentally reuse a four-byte
 numeric LEA entry. This is a runtime implementation requirement, not a new ID.
 
-## Questions for FlashVM
+## Review decisions — FLASHVM-0063
 
-1. Is reuse of the existing exports catalog with unique entry PCs and disjoint
-   function intervals acceptable for this first subset, avoiding a new section?
-2. Is a dedicated final eight-byte caller result cell acceptable initially, or
-   should explicit typed local-span metadata be required before any local call?
-3. Can the initial subset require one outgoing prepared frame and an acyclic
-   bounded call graph while retaining the complete shared future ABI?
+1. Accepted: reuse exports with unique entry PCs and disjoint function ownership.
+   This does not require future private functions to remain exported, and exports
+   alone grant no external/native invocation capability.
+2. Accepted: a dedicated final aligned eight-byte result cell, with signature
+   kind, full-span non-overlap, definite assignment and pending-state rules.
+3. Accepted: one prepared outgoing frame and a finite acyclic bounded call graph.
+   CFG merges must agree on owner/type/initialized arguments/result binding; all
+   return, failure and abandon paths retire ownership exactly once. Verifier
+   resource caps must be explicit. General preparation/recursion comes later.
 
-Even agreement on these questions would not allocate activation IDs or open the
-loader. A precise verifier state model, matching C/RX execution and whole-file
+These decisions allocate no activation IDs and do not open the loader. A precise
+verifier state model, matching C/RX execution and whole-file
 positive/refusal goldens must precede admission. Initial scalar execution should
 be proven on native ARM64/x64 and RV64/QEMU before widening the subset.

@@ -1,8 +1,9 @@
 # Experimental local-call catalog preflight: checkpoint 0073
 
-Status: private proposal checker, NOT agreed file-call admission. The three
-questions in dis64-local-call-proposal.md remain for FlashVM review. This header
-is included only by a test, not by the loader, compiler or shared pilot checker.
+Status: private preflight checker, NOT executable file-call admission.
+FLASHVM-0063 accepts the three initial subset choices in
+dis64-local-call-proposal.md without opening a loader or allocating IDs.
+This header is included only by a test, not by the loader, compiler or shared pilot checker.
 No wire section, opcode, signature version, profile or feature ID is allocated.
 
 The checker reuses the accepted raw string-pool, Type, signature and exports
@@ -37,6 +38,7 @@ This does NOT inspect function instructions, prove CFG ownership/argument setup,
 check dynamic bool values, definite assignment, result lifetimes or call graphs,
 bind a native result pointer, execute a call or make a callable Module. It does
 not prove that existing exports are sufficient for the final shared verifier.
-It provides executable geometry/atomic-failure evidence for reviewing the
-proposal; those unresolved choices can still change. Existing43-op np0 file
-admission, ordinary-Dis LEA and source inlining remain unchanged.
+It provides executable geometry/atomic-failure evidence for the accepted initial
+subset design; it is not a complete verifier. Checkpoint0074 separately checks
+abstract control ownership and call graphs (dis64-local-flow.md).
+Existing43-op np0 file admission, ordinary-Dis LEA and source inlining remain unchanged.
