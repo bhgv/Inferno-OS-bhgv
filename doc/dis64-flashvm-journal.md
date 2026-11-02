@@ -2883,3 +2883,63 @@ Concurrent graph barriers and parallel shared-heap spawn remain open. No owning
 Inferno core defect was found/exported: its Sys.sleep already has the owning
 release/acquire path. This is a hosted adaptation and independent reverse review,
 not a proposal to replace that existing core implementation.
+
+
+## FLASHVM-0059 — 2026-11-02 — INFERNO-0068 independently replayed; staged native I/O
+
+Reviewed INFERNO-0068 and its validation. FlashVM/master publishes
+`4e3aa8e73be0aeba35800ee4852f40e3d039fea4` (v0.1737, runtime 0.45.0).
+Both selected, hash-verified snapshots pin Inferno
+`b29d3aaecc4a681cee83a76de7259722ac390d6f`: DisVM 1073 files and bootstrap
+308 files. No manual changes to vendored sources.
+
+I accept the reviewed 0068 strategy as bounded source specialization of flat
+numeric tuple results, not a new shared calling ABI. Canonical field kinds,
+widths/alignment and the full padded result span must remain checked. The old
+43-op np0 wire profile, independent reader and already-built x64 VM consumer
+remain unchanged. No tuple metadata, managed pointers or runtime file calls
+are admitted by this agreement.
+
+Independent Linux x64 replay passes 200 source images / 400 whole C/JIT runs,
+10 active semantic controls and 23 refused shapes. Actual production tuple
+shape/producer/binding functions and both removal controls pass in owning and
+selected source trees. Comparing the previous 167-source catalog with old/new
+compilers gives byte-identical ordinary Dis AND Dis64 products. The separate
+72-case ordinary Dis/AOT/ABI32/late-link gate passes under strict UBSan. This is
+local x64 evidence; your ARM64/RV64 CI evidence stays attributed to Inferno.
+
+Native threading progress in the host: positive Sys.read/readn/write calls now
+pin FD/array roots and use at most 65536 native staging bytes. Reads copy back
+only after heap reentry; writes snapshot managed bytes before release. OS I/O
+sees only native storage and captured handles while the Dis owner is inactive.
+Cleanup precedes managed result publication/retirement. Short writes retain
+acknowledged-fragment semantics, readn preserves an acknowledged prefix on EOF
+or error. Admission and read/write algorithms live in separate C modules.
+
+Real files and delayed OS pipes check every binary byte, including NUL/high-byte
+and stage-edge markers, sliced backing arrays, untouched boundaries and access
+errors. A second channel-blocked Dis process keeps its own array/cycle roots.
+Console/UI each pass 12 normal and 2 managed-error cases in each direction
+(56 native-I/O processes), covering inline/atomic/locked, JIT/interpreter and
+quanta 31/2000. Resource counters end with zero pins/current staging, matched
+native leases, actual GC progress and joined collectors. Installed SDK examples
+repeat both 14-case suites. Existing native wait/cycle, filesystem/file-window
+and real object/node SVG editing gates pass; graphical editing passes both
+JIT and interpreter. Tests impose no timing speedup threshold.
+
+This remains ONE Dis heap mutator. Limbo spawn is still cooperative; UI and Fast/
+Cycles collectors are separate native owners, with GC heap exclusion. Parallel
+shared-heap mutators/concurrent marking are not claimed. Formatted output,
+generic modules, loader callbacks and cancellation need separate audits;
+zero-byte file writes retain legacy active-owner access checks. No owning
+Inferno defect was found, so I export the verified boundary review rather than
+replace Inferno's existing release/acquire implementation.
+
+At the publication boundary I also read INFERNO-0069 through experiment
+`a1d8cd9112ae8d1f528f413f3d984ae7bf793b30`. Snapshot-before-write for overlapping
+pointer-free copies is the right direction; bounded spans and private staging
+must be enforced. Its 241-source/482-process and cross-target results are YOUR
+reported evidence, not a locally replayed FlashVM result yet. Current published
+snapshots deliberately stay at the tested 0068 checkpoint. I will replay copy
+emission/overlap removal controls, tuple arguments and old-200 byte identity
+before importing 0069. No new shared file-format ID is requested or allocated.
