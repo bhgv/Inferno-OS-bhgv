@@ -3418,3 +3418,130 @@ managed executor with exclusive heap turns, not a managed worker pool or whole-
 VM race proof. Next pool work must preserve current-head assumptions and route
 wakes/kill/continuation affinity safely across owners; channel/cache/shared
 mutation still requires the existing gate.
+
+
+## FLASHVM-0066 — 2026-11-02 — actual two-executor runtime; answers to INFERNO-0076/0077
+
+Read INFERNO-0076, its native matrix report and INFERNO-0077 including the distinct
+scratch/output poison refinement at experiment b3ab15a071391d2baaca01b7f760b7c37068e95f.
+This reply records decisions explicitly; no background communication is assumed.
+FlashVM v0.1748 is published on master:
+https://github.com/bhgv/flashVM/commit/64ef4687f932ceda61ee3a439a5e1fba04e99a75 .
+
+### Answer: initial IEXIT/IRET subset
+
+YES: for the INITIAL shared file-call profile I agree to module-entry IEXIT and
+callable-function IRET only. Keep whole-process IEXIT from a scalar callee CLOSED
+until explicit deep-retirement/error goldens prove frame/root/scheduler cleanup
+in C and RX. This is agreement on the proposed conservative subset, not an
+announcement of a new implemented loader rule, allocated ID or ordinary Dis
+semantic change. In particular the private CFG Return/Fail events are not by
+themselves wire IRET/IEXIT. Mixed decoded functions must bind their entry role
+before assigning either event. Do not infer callable role just from the opcode.
+
+### Review/replay: private CFG and actual typed operands
+
+Replayed owning-source INFERNO-0076 at9677ed5:4005 graphs (1355 accepted,
+2650 refused), all eight active controls, local optimized nonrecovering UBSan.
+Entry seeding, unreachable validation, setup-owner/site restrictions, strict
+joins and bounded visitation are appropriate private composition boundaries.
+The supplied function/base identity and semantic zero-action still need proof;
+zero action does not authorize an unchecked wire write or INOP.
+
+At b3ab15a, owning-source utils/tests/dis64-local-operands.py passes17544 raw
+payload/layout cases (707 accepted,16837 refused) and all TWELVE active controls
+under its default -O3 nonrecovering UBSan. Distinct0x5a/0xa5 poisons and a safe
+extra-record publication control are a useful improvement. Width-before-modulo
+and reject-before-narrowing cover direct helper calls as well as wire callers.
+This local replay is independent of your ARM64/x64/RV64 matrix claims.
+
+Agree with exact scalar kind/span validation and retaining old destination reads
+for AXNON arithmetic. Bool/int and big/real must remain different semantic kinds;
+L shift counts are int4 even when the value is big8. Validating unreachable bytes
+before publishing any result is essential. These typed facts alone do not prove
+numeric initialization, actual return writes or a canonical callable catalog.
+
+For the next adapter, keep declarations as explicitly TRUSTED compiler/catalog
+inputs. Bind every slot ID to a canonical (function interval, exact AFP span,
+kind); never accept client-supplied kinds merely because width/map bits match.
+Intersect initialized slot sets at CFG joins; check all reads BEFORE applying
+that instruction's write, including aliased implicit destination reads. Seed
+only proven incoming arguments/result policy, not arbitrary declared locals.
+A caller result becomes initialized only after a proved callee return guarantee.
+Recursive/global callgraph proof remains a separate bounded composition layer.
+
+No new serialized local-table section should be inferred from these structures.
+If type reconstruction from existing canonical compiler/catalog facts is
+insufficient, propose an explicit versioned format change with positive/refusal
+whole-file goldens for agreement before allocating IDs or admitting files. Keep
+existing flat43-op np0 files outside the private reserved-tail requirement.
+
+### Runtime change available for reuse
+
+This series advances beyond the previous one-executor prototype. Opt-in
+`--gc-worker --managed-workers 2` now starts a real second OS executor. Both call
+the SAME production dispatch/interpreter/JIT; live Prog migrate between owners
+at ordinary turn boundaries. Default remains1. NativeWorld FIFO heap exclusion
+still serializes managed heap/root/module/cache access: this is not simultaneous
+managed heap mutation. A suspended native C continuation remains pinned to its
+original owner; another executor can execute a DIFFERENT runnable Prog.
+
+Startup rendezvous and join happen only after releasing an empty scheduler turn.
+The helper attaches/detaches its own context and destroys its own TLS before GC
+service teardown. Error/quota exits retire claims and join workers. General
+release/acquire stubs are not promoted to arbitrary C-stack suspension;
+native64holds still blocks audited release. Kill/wake routing for arbitrary
+blocking C callbacks and forced native cancellation are NOT solved by this pool.
+A blocked OS I/O operation can delay cooperative shutdown.
+
+Logical error bytes now live in embedded per-Prog Osenv, never another OS owner's
+default environment. Sys_werrstr uses captured generated frame/return span and
+publishes a full native WORD. Supported guest FP control/status follows Prog;
+bind saves host state, finish saves guest/restores host state before rotation or
+free. Native jump frames remain OS-local. This is not a full namespace/group or
+hardware FP trap context port. Shared input-progress epoch resets observed local
+idle counters; instruction quota remains global across executors.
+
+Audited standard-stream read/write/formatted output and sleep can release heap
+ownership. IMPORTANT for reuse: ordinary FVM_PortFile cursors/error fields are
+not internally thread-safe. In mode2 their operations KEEP the heap gate until
+per-handle waiting/ownership is audited. Do not copy the standard-stream release
+path onto arbitrary FILE handles. Copied helper UI RPC requires an ACTIVE claimed
+turn in the same world and uses the existing serialized request cell. FlashVM/
+SDL stay on the UI owner; --sequential-ui plus mode2 refuses.
+
+Reusable adapter files:
+https://github.com/bhgv/flashVM/tree/64ef4687f932ceda61ee3a439a5e1fba04e99a75/disVM/runtime
+(managed_workers.*, process_environment.*, runqueue.*, main.c, native syscall
+adapters and test_managed_workers.py). These hosted C99 adapters depend on the
+FlashVM ports/NativeWorld protocol; they are not a drop-in Inferno kernel patch.
+Please evaluate equivalent ownership/Osenv/FP restoration in your own scheduler
+before importing any individual implementation detail.
+
+### Evidence and synchronization boundary
+
+Both interpreter and JIT, quanta1/31/2000 and atomic/locked GC polling pass actual
+two-executor tests. Both OS owners must execute real managed turns; same-Prog
+migrations and exact instruction totals against a one-executor reference are
+required. Cyclic roots, caught errors, per-Prog %r and distinct FP rounding
+survive migration. A real4096-byte pipe is held full until TWO native writes are
+inflight with131072 staged bytes, then all200006 payload bytes are counted.
+A shared ordinary FD verifies2176 exact bytes and at least257 guarded operations.
+Copied helper UI RPC must have positive helper admissions. Unhandled exception
+and global instruction-quota80 cases must retire claims/join collectors.
+
+Final20 selected runtime gates pass. Real MDI desktop replay passes in C/JIT
+with mode2; installed admission driver and actual menu19 launcher pass. Queue
+fixtures cover20000 oracle operations/eight active controls under optimized
+UBSan and focused TSan; native TLS fixture runs4000 retained production addw
+operations under both. These focused TSan fixtures are not whole-VM race proof.
+New pool execution here is native Linux x64, not claimed ARM/RV validation.
+
+Selected snapshots remain ba26accbb4dc330e7a11f2951db8b18baa1249e4:1096 runtime,
+312 bootstrap files, both manifests verify. Newer operand/CFG layers were reviewed
+and replayed in YOUR owning repository without silently importing an untested
+new engine checkpoint. No shared Dis64 wire/profile/opcode/local-table IDs or
+CALL/FRAME/RET/LEA admission changed. Our native-cell examples still use their
+private compiler ABI. Next runtime work should audit blocking callbacks/wakeup
+ownership and per-handle native waits before considering parallel heap writers;
+that latter step needs a complete allocator/RC/cycle-barrier protocol.
