@@ -30,6 +30,10 @@ int dis64scalarinst(Inst*, unsigned int, unsigned int, unsigned int, unsigned in
 int dis64scalartable(Decl*);
 
 
+/* Validate a numeric case and borrow its table without changing source metadata. */
+Case *dis64scalarcase(Inst*, unsigned int);
+
+
 /* Translate immutable scalar IR and bounded numeric cases; caller zero-initializes output and frees partial output on refusal. */
 int dis64lower(Inst*, unsigned int, unsigned int, unsigned int, unsigned int, Dis64Lower*);
 

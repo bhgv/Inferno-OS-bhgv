@@ -64,6 +64,24 @@ def programs():
     yield 'helper-loop-error', 'value:int;', 'helper(){for(i:=0;i<4;i++){if(i==2)value/=0;value++;}} init(){helper();}', 'zero divide'
     yield 'helper-return-continue', 'value:int;', 'helper(){if(value==0)return;value++;} init(){helper();value/=0;}', 'zero divide'
 
+    for key, answer in ((-1,40),(0,10),(1,20),(2,30),(9,40)):
+        yield 'helper-dense-'+str(key), 'key:='+str(key)+';value:int;', 'helper(){case key {0=>value+=10;1=>value+=20;2=>value+=30;* =>value+=40;}} init(){helper();helper();if(value!='+str(answer*2)+')value/=0;}', ''
+    for key, answer in ((-1,3),(15,7),(99,11)):
+        yield 'helper-range-'+str(key), 'key:='+str(key)+';value:int;', 'helper(){case key {-1=>value+=3;10 to 20=>value+=7;* =>value+=11;}} init(){helper();helper();if(value!='+str(answer*2)+')value/=0;}', ''
+    yield 'helper-case-locals', 'key:int;value:int;', 'helper(){x:int;case key {0=>x++;1=>x+=3;* =>x+=5;}value+=x;} init(){helper();key=1;helper();key=8;helper();if(value!=9)value/=0;}', ''
+    yield 'helper-case-return', 'key:int;value:int;', 'helper(){case key {0=>value+=3;return;1=>value+=7;* =>value+=11;}value++;} init(){helper();key=1;helper();key=8;helper();if(value!=23)value/=0;}', ''
+    yield 'helper-case-loop', 'value:int;', 'helper(){x:int;for(i:=0;i<6;i++){case i%3 {0=>x+=1;1=>x+=3;2=>x+=5;* =>x/=0;}}value+=x;} init(){helper();helper();if(value!=36)value/=0;}', ''
+    yield 'helper-case-big', 'key:=big 16r7fffffffffffffff;value:int;', 'helper(){case key {big -1=>value+=3;big 16r7fffffffffffffff=>value+=7;* =>value+=11;}} init(){helper();key=big -1;helper();key=big 8;helper();if(value!=21)value/=0;}', ''
+    yield 'helper-case-after-entry', 'key:=15;value:int;', 'init(){helper();helper();if(value!=14)value/=0;} helper(){case key {-1=>value+=3;10 to 20=>value+=7;* =>value+=11;}}', ''
+    yield 'helper-case-multiple', 'key:int;value:int;', 'a(){case key {0=>value+=1;5 to 8=>value+=3;* =>value+=5;}} b(){case key {0=>value+=7;5 to 8=>value+=11;* =>value+=13;}} init(){a();b();key=6;a();b();key=20;a();b();if(value!=40)value/=0;}', ''
+    yield 'helper-case-caller', 'value:int;', 'helper(){x:int;case value%3 {0=>x+=1;1=>x+=1;2=>x+=1;* =>x/=0;}value+=x;} init(){for(i:=0;i<4097;i++){case i%2 {0=>helper();1=>helper();* =>value/=0;}}if(value!=4097)value/=0;}', ''
+
+    labels = ''.join(str(i*10)+'=>value+='+str(i+1)+';' for i in range(8))
+    yield 'helper-case-boundary', 'key:=70;value:int;', 'helper(){case key {'+labels+'* =>value/=0;}} init(){helper();helper();if(value!=16)value/=0;}', ''
+    yield 'helper-case-two-tables', 'key:int;value:int;', 'helper(){case key {0=>value+=1;5 to 8=>value+=3;* =>value+=5;}case key {0=>value+=7;5 to 8=>value+=11;* =>value+=13;}} init(){helper();key=6;helper();if(value!=22)value/=0;}', ''
+    yield 'helper-case-nested', 'key:int;other:=6;value:int;', 'helper(){case key {0=>case other {0=>value+=1;5 to 8=>value+=3;* =>value+=5;}10 to 20=>value+=7;* =>value+=9;}} init(){helper();key=15;helper();if(value!=10)value/=0;}', ''
+    yield 'helper-case-error', 'key:=15;value:int;', '\nhelper(){case key {-1=>value++;10 to 20=>value/=0;* =>value--;}}\ninit(){helper();}', 'zero divide'
+
 
 # These sources must be valid ordinary Limbo before the scalar backend rejects their calling shapes.
 def refusals():
@@ -72,7 +90,7 @@ def refusals():
     yield 'recursive', 'value:int;', 'helper(){value++;helper();} init(){helper();}'
     yield 'nested', 'value:int;', 'inner(){value++;} helper(){inner();} init(){helper();}'
     yield 'byte-local', 'value:int;', 'helper(){x:byte;x=byte value;value=int x;} init(){helper();}'
-    yield 'helper-table', 'value:=1;', 'helper(){case value {1=>value++;10 to 20=>value+=3;* =>value--;}} init(){helper();}'
+    yield 'helper-table-limit', 'value:int;', 'helper(){case value {'+''.join(str(i*10)+'=>value+='+str(i+1)+';' for i in range(9))+'* =>value--;}} init(){helper();}'
     yield 'managed', 'value: string;', 'helper(){value="hello";} init(){helper();}'
     locals_ = ''.join('x'+str(i)+':big;' for i in range(13))
     updates = ''.join('x'+str(i)+'+=big 1;value+=x'+str(i)+';' for i in range(13))
@@ -171,6 +189,11 @@ def main():
             text = PREFIX+globals_+'\n'+body+'\n'
             source.write_text(text)
             command([args.limbo.resolve(), '-S', '-o', assembly, source])
+            if name.startswith(('helper-case', 'helper-dense', 'helper-range')):
+                tables = re.findall(r'^\t(?:case|casel|goto)\t', assembly.read_text(), re.M)
+                minimum = 2 if name in ('helper-case-two-tables', 'helper-case-nested', 'helper-case-multiple') else 1
+                if len(tables) < minimum:
+                    raise RuntimeError('Missing real helper case tables: '+name)
             if '\tframe\t' not in assembly.read_text() or '\tcall\t' not in assembly.read_text():
                 raise RuntimeError('Missing real source call: '+name)
             command([args.limbo.resolve(), '-o', legacy, source])
@@ -198,7 +221,7 @@ def main():
                     marker = 'native64 scalar module InlineProbe: jit='+str(jit)+', exit="'+error+'"'
                     if marker not in output or ('Broken:' in output) != bool(error) or 'native64 scalar scheduler empty after program retirement' not in output or 'panic:' in output or 'faults:' in output:
                         raise RuntimeError(name+' JIT='+str(jit)+'\n'+output)
-                    if name == 'callee-error':
+                    if name in ('callee-error', 'helper-case-error'):
                         faults = re.findall(r'native64 scalar fault: dis-pc=(\d+)',output)
                         line = next(i+1 for i,s in enumerate(text.splitlines()) if s.startswith('helper()'))
                         if len(faults)!=1 or locations[int(faults[0])]['start']['line']!=line:

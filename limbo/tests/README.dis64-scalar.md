@@ -1,4 +1,4 @@
-# Limbo scalar Dis64 backend (through series 0060)
+# Limbo scalar Dis64 backend (through series 0061)
 
 `limbo -6` emits the already agreed extension-free Dis64 v1 np0 executable
 profile. It is an explicit experimental backend, independent of `-H` C metadata.
@@ -143,3 +143,8 @@ and the self-checking [case example](dis64-scalar/case.b).
 Series0060 additionally specializes scalar helper branches, loops and early
 returns; see doc/dis64-scalar-helpers.md for bounds and continuation semantics.
 The wire profile remains43 operations and does not admit FRAME/CALL or imports.
+
+
+Series0061 admits bounded numeric case tables inside scalar leaf helpers.
+Each call owns its table targets; emitted code remains in the existing43-op
+profile. No file FRAME/CALL admission is implied. See dis64-scalar-helpers.md.

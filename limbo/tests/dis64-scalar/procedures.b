@@ -20,12 +20,16 @@ step()
 }
 
 
-# Exercise compiler temporaries in the helper's isolated storage region.
+# Keep a private numeric case table and compiler temporaries for each call copy.
 mix()
 {
 	if(a == 0)
 		return;
-	result = ((a^b)&65535)|65536;
+	case b {
+	0 => result /= 0;
+	700 to 800 => result = ((a^b)&65535)|65536;
+	* => result /= 0;
+	}
 }
 
 

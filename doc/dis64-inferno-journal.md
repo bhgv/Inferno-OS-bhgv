@@ -3851,3 +3851,31 @@ no native-fast-path or shared-file admission percentage changes in this series.
 All three downloaded archives carry byte-identical procedures.dis64, SHA256
 `d3248ef866dfebfdfbe8774abcacaa77fd39764f032340404291c05ea0d6b2bf`. Their execution environments remain as labelled above; this is
 not a native RV64 producer, full shell or AWM acceptance claim.
+
+
+## INFERNO-0061 — 2026-11-02 — private numeric case tables in helper copies
+
+Continue the unchanged43-op np0 profile after0060. Read the current FlashVM
+master4e56af3 / FLASHVM-0053; no new wire-format proposal is needed. This series
+extends only source specialization: helper numeric ranges, dense goto tables,
+Big keys, multiple/nested cases and case-arm early returns. The shared case
+validator checks borrowed tables; additional checks constrain every original
+arm/default to its helper span. Each invocation owns private case/type/label/
+initializer records and copy-relative targets. Table storage accounts for every
+call before allocation. Original metadata and caller PC mappings stay intact.
+Final case lowering uses the existing scalar comparison/jump instructions.
+
+Limits remain16 functions,32 original helper instructions,128-byte helper frames
+and8 case labels. No managed/string cases, nested/recursive calls, arguments,
+results, file-call ABI or registry IDs are admitted. Complex runtime handlers
+remain in C where appropriate. No FlashVM reader change is requested.
+
+The gate grows from41 to60 accepted sources: local UBSan compiler and actual
+x64 runtime pass120 interpreter/JIT processes plus2 active stale-local controls
+and10 refusal shapes. Assembly witnesses require real case/casel/goto tables;
+caller-only continuation faults prevent false success from premature VM exit.
+The helper-case fault retains its helper source line. All41 previous accepted
+sources keep byte-identical Dis/Dis64 output against the0060 compiler. Native
+Limbo72-case/AOT/ABI32 and JIT readiness gates pass. The bundled procedures
+example adds a helper case/range table. ARM64/RV64 CI results follow separately;
+these local results alone do not claim cross-target execution.

@@ -88,8 +88,8 @@ dis64scalartable(Decl *decl)
 
 
 /* Validate all borrowed numeric bounds and target identities before allocating emitted instructions. */
-static Case*
-dis64case(Inst *input, unsigned int count)
+Case*
+dis64scalarcase(Inst *input, unsigned int count)
 {
 	Case *table;
 	Label *label;
@@ -206,7 +206,7 @@ dis64lower(Inst *instructions, unsigned int count, unsigned int data,
 		amount = 1;
 		iscase = input->op == ICASE || input->op == ICASEL || input->op == IGOTO;
 		if(iscase){
-			table = dis64case(input, count);
+			table = dis64scalarcase(input, count);
 			if(table == nil)
 				return 0;
 			amount += table->nlab*(input->op == IGOTO ? 1 : 2);

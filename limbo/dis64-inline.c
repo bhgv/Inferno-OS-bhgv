@@ -14,6 +14,7 @@ struct InlineFunction {
 	unsigned int start; // Original resolved first Dis PC.
 	unsigned int end; // Exclusive original function extent.
 	unsigned int body; // Validated helper-body instruction count, excluding RET.
+	unsigned int tables; // Number of private case-table copies needed per call.
 	unsigned int zeros; // Four-byte stores that renew a helper with declared scalar locals.
 };
 
@@ -58,6 +59,7 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 	Decl *decl;
 	Inst *input, copy;
 	Decl *local;
+	Case *table;
 	Dis64Instruction checked;
 	unsigned int pc, i;
 
@@ -69,6 +71,7 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 	   function->end-function->start > ScalarInlineBody+1)
 		return 0;
 	function->zeros = 0;
+	function->tables = 0;
 	for(local = decl->locals; local != nil; local = local->next){
 		if(local->sym == nil || local->sym->name == nil || local->ty == nil ||
 		   (local->ty->kind != Tint && local->ty->kind != Tbig && local->ty->kind != Treal))
@@ -97,6 +100,16 @@ inlinebody(InlineFunction *function, Inst **original, unsigned int count, unsign
 				return 0;
 		}else if(input->branch != nil)
 			return 0;
+		if(input->op == ICASE || input->op == ICASEL || input->op == IGOTO){
+			table = dis64scalarcase(input, count);
+			if(table == nil || table->iwild->pc < function->start || table->iwild->pc >= function->end)
+				return 0;
+			for(i = 0; i < table->nlab; i++)
+				if(table->labs[i].inst->pc < function->start || table->labs[i].inst->pc >= function->end)
+					return 0;
+			function->tables++;
+			continue;
+		}
 		/* Validate the whole contiguous helper span, without the legacy scratch/local discontinuity. */
 		copy = *input;
 		if(copy.sm == Afp) copy.s.reg += ScalarLegacyPrefix-ScalarScratchStart;
@@ -274,6 +287,7 @@ dis64prepare(Decl *entry, Inst *instructions, unsigned int count, unsigned int d
 			callee = inlinefunction(functions, nfns, input->d.offset);
 			if(callee < 0 || callee == current)
 				goto done;
+			tablecount += functions[callee].tables;
 			amount = functions[callee].body+functions[callee].zeros;
 			if(amount == 0)
 				amount = 1;
@@ -311,11 +325,19 @@ dis64prepare(Decl *entry, Inst *instructions, unsigned int count, unsigned int d
 				copy = &prepared->storage[++at];
 			}
 			begin = at;
+			/* Include the terminal RET: case arms targeting it resume after this copy. */
+			for(j = functions[callee].start; j < functions[callee].end; j++)
+				mapping[j] = begin+j-functions[callee].start;
 			for(j = functions[callee].start; j+1 < functions[callee].end; j++){
 				*copy = *original[j];
 				inlinerelocate(copy->sm, &copy->s, scratch);
 				inlinerelocate(copy->mm, &copy->m, scratch);
 				inlinerelocate(copy->dm, &copy->d, scratch);
+				if(copy->op == ICASE || copy->op == ICASEL || copy->op == IGOTO){
+					if(!inlinetable(copy, &tables[tablecount++], functions[callee].start, functions[callee].end,
+					   mapping, original, prepared->storage))
+						goto done;
+				}
 				if(!inlineflow(copy, &functions[callee], begin, prepared->storage, prepared->count))
 					goto done;
 				copy = &prepared->storage[++at];

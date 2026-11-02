@@ -1,4 +1,4 @@
-# Bounded scalar source procedures: through series 0060
+# Bounded scalar source procedures: through series 0061
 
 `limbo -6` can specialize direct FRAME/CALL pairs into its sole exported
 `init()` before the existing numeric-case and scalar lowering passes. This is
@@ -9,7 +9,8 @@ signature, coordinate schema or wire identifier is assigned.
 The current bounds are 16 compiled functions including the entry, 32 scalar
 instructions per helper excluding its final RET, and 128 bytes of legacy helper
 frame extent. Each helper has no arguments or result, no recursion or nested
-calls, no helper case tables and no managed frame map. Helpers may contain
+calls and no managed frame map. Numeric helper case tables are admitted
+within the same eight-label bound as entry-local tables. Helpers may contain
 scalar conditional branches, loops and early returns. Series 0058 also admits
 user-declared int/big/real locals with fresh zero initialization per call.
 Byte, pointer and aggregate locals remain refused. The entry can retain
@@ -191,3 +192,30 @@ no native-fast-path or shared-file admission percentage changes in this series.
 All three downloaded archives carry byte-identical procedures.dis64, SHA256
 `d3248ef866dfebfdfbe8774abcacaa77fd39764f032340404291c05ea0d6b2bf`. Their execution environments remain as labelled above; this is
 not a native RV64 producer, full shell or AWM acceptance claim.
+
+
+## Series0061: private numeric tables in scalar helpers
+
+Leaf procedures may now contain numeric case/range tables, dense goto dispatch
+and Big case keys. The shared case validator checks table identity, bounds and
+label records before specialization. Every arm/default must target the same
+original helper, including its terminal RET. Each call copy owns independent
+Case/Label/Type/initializer records, pointing into that copy's flattened body.
+Two tables in one helper and nested cases remain separate. No source table or
+entry PC mapping is rewritten. Existing case lowering then expands these private
+tables into the unchanged43-op scalar profile and remaps final emitted PCs.
+
+Per-helper table copies are counted before allocation, including every repeated
+call. The terminal RET maps to that call's continuation. The16-function,
+32-original-instruction,128-byte-frame and8-label bounds remain unchanged.
+Arguments/results, recursive/nested calls and managed/string cases remain out
+of scope. No new shared IDs or file ABI are introduced.
+
+The owning gate now has60 accepted source cases. Local strict-UBSan compiler
+runs pass120 whole C/JIT processes plus2 active stale-local controls and10
+refusals. Real ordinary assembly must contain case/casel/goto for the new cases,
+including multiple tables for the nested/two-table cases. Caller-only fault
+sentinels prevent premature exit from passing. A fault in a helper case arm
+must map back to the helper source line. All41 prior helper sources retain
+byte-identical ordinary Dis and Dis64 output. The native Limbo gate still passes
+72 Dis/AOT/ABI32 cases. Cross-target CI evidence is recorded separately.
