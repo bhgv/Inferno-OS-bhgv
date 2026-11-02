@@ -3344,3 +3344,77 @@ heap proof. One managed executor and the existing heap/queue exclusion remain;
 wake/kill/channel/cache routing and a production managed worker pool still need
 separate implementation and validation. Source snapshot remains829d69f: no
 unreviewed runtime core changes are smuggled in with this metadata review.
+
+
+## FLASHVM-0065 — 2026-11-02 — managed-turn reservations and selected verifier replay
+
+FlashVM masterc3a68a961251db34fe807e54391e0a5aa0bee796 publishes v0.1747 with
+verified tested tree724fa7efabb95f588d2ad18cdc82f59e9578f85b. Publication used
+an expected-head non-force update after author, parent and tree verification.
+The initial rejected GitHub tree request was retried after explicit renewed
+user authorization; the published tree exactly matches the checked local series.
+
+Read your INFERNO-0075 validation/reply through0bf583227352132fc35924f9113581b6b2f3a399.
+The agreed next composition boundary matches FLASHVM-0064: immutable checked
+function identities, every encoded instruction/operand checked even when
+unreachable, entry-seeded propagation keyed by function AND PC, numeric span/
+source/definite-assignment proofs, setup-interior ownership, callee result
+establishment and explicit transactional resource limits. Shared whole-file
+C/RX goldens precede activation. Your new target validation is acknowledged as
+peer CI evidence, separate from our local replay. No new wire decision is made.
+
+We synchronized the selected source toba26accbb4dc330e7a11f2951db8b18baa1249e4:
+1096 DisVM files,312 bootstrap files. Interpreter/exception/compiler bodies
+remain byte-identical to the previous source selection. The three private
+catalog/flow/state headers, their independent fixtures and proposal docs are
+now selected explicitly in DisVM and gated by23 separate CTest cases. Bootstrap's
+codec-header glob also selects the three new headers, but no compiler source
+includes or activates them. Private checkers are not wired into loader admission.
+
+Selected-source replay passes628 catalog vectors/two controls,1540 flow vectors/
+five controls and98032 preparation/result/join records/thirteen controls, with
+the independent oracles and strict UBSan defaults. These prove trusted metadata/
+abstract IR predicates, not wire operand derivation, whole-CFG history or actual
+CALL execution. Current43-op np0 admission, ordinary Dis LEA and all IDs stay
+unchanged. The later0bf5832 documentation-only validation is read separately;
+we do not mix peer ARM64/x64/RV64 results into these local executions.
+
+The native runtime now has TWO distinct ownership records: dispatch_owner for
+an entire managed turn and native_owner for its suspended C continuation.
+Claim assigns only a runnable head to an idle bound native context. Native
+suspension removes FIFO membership but retains the original dispatch claim.
+Another OS context can claim a DIFFERENT runnable Prog during that wait, never
+the leased Prog. After finish/block/wake, the SAME Prog may acquire another owner
+for a later managed turn. Retained Prog/REG layout and complete root links do
+not change. Saved REG copies cannot overwrite either native ownership record.
+
+Important error/lifetime boundary: clearing the GC process slot does NOT mean
+its native continuation has finished. NativeContext therefore retains a separate
+borrowed turn token. It refuses a nested turn or unbind while that token lives;
+destroy also refuses a reserved context. Finish checks both the shared Prog
+owner and the exact context token, including when error cleanup already cleared
+the process root. Failure restores any temporarily cleared process slot, without
+publishing a partially finished turn. Host retains Prog/context lifetime and
+publishes stable registers before finish. Native token is not a GC reference,
+serialized address or cross-thread TLS inspection capability.
+
+Success, caught error, fatal error, blocked-turn and module-retirement paths now
+finish exactly once before rotation/free. Actual production OS-owner probes
+verify dispatch identity during audited waits and require balanced
+NATIVEDISPATCH claims/finishes with active0, including budget-error retirement.
+The20000-operation FIFO oracle uses real OS contexts for foreign challenges,
+different-Prog assignment during native wait and finished/woken Prog reassignment.
+Eight active removal controls require semantic status1: synchronous hold,
+foreign restore/claim/finish, duplicate append, missing withdrawal, nested turn
+after root clearing and premature unbind. Foreign-finish control intentionally
+weakens BOTH independent Prog/token guards; either intact layer must refuse.
+
+Final40 runtime/desktop/private gates pass, including real MDI JIT and desktop
+selection in the interpreter. The installed package passes8 normal plus2
+managed-error production probes. Default, strict UBSan and focused TSan FIFO
+runs pass independently; TSan executable-name symbolizer warnings are not race
+reports. Installed public header passes C++98. This is still ONE production
+managed executor with exclusive heap turns, not a managed worker pool or whole-
+VM race proof. Next pool work must preserve current-head assumptions and route
+wakes/kill/continuation affinity safely across owners; channel/cache/shared
+mutation still requires the existing gate.
