@@ -100,6 +100,9 @@ def main():
     run([sys.executable, str(tests/'dis64-cases.py'), '--limbo', str(tools/'limbo'),
          '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
         build, env, logs/'dis64-cases.log')
+    run([sys.executable, str(tests/'dis64-setup-targets.py')], build, env, logs/'dis64-setup-targets.log')
+    run([sys.executable, str(tests/'dis64-tuple-layout.py')], build, env, logs/'dis64-tuple-layout.log')
+    run([sys.executable, str(tests/'dis64-copy-layout.py')], build, env, logs/'dis64-copy-layout.log')
     run([sys.executable, str(tests/'dis64-inline.py'), '--limbo', str(tools/'limbo'),
          '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
         build, env, logs/'dis64-inline.log')
@@ -120,6 +123,9 @@ def main():
     run(gc+['--control', 'map'], build, env, logs/'gc-map-control.log')
     run(gc+['--live'], build, env, logs/'gc-live.log')
     run(gc+['--live', '--control', 'map'], build, env, logs/'gc-live-map-control.log')
+    calls = [sys.executable, str(tests/'native64-local-calls.py')]
+    run(calls, build, env, logs/'local-calls.log')
+    run(calls+['--control'], build, env, logs/'local-calls-control.log')
     vm = [sys.executable, str(tests/'native64-live-vm.py')]
     run(vm, build, env, logs/'live-vm.log')
     for control in ('enter', 'unwind'):

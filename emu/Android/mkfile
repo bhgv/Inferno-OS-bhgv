@@ -106,3 +106,6 @@ $LIBRARY(%.$O):N:	%.$O
 # Path configuration is shared by startup and the native startup resolver.
 
 storage.$O amain.$O: storage.h
+
+# The scalar APK entry includes the portable parser and must track its transitive model gates.
+scalar-main.$O: ../port/main.c ../port/error.h $ROOT/include/version.h $ROOT/include/legacy-native-abi.h $ROOT/include/native64-scalar-boot.h $ROOT/include/native64-model.h

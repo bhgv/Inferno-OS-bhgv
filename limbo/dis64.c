@@ -17,10 +17,13 @@ dis64error(Decl *entry, char *message)
 static int
 dis64scalarlist(Decl *decl, int tables)
 {
-	for(; decl != nil; decl = decl->next)
-		if(decl->ty == nil || ((decl->ty->kind != Tint && decl->ty->kind != Tbig && decl->ty->kind != Treal) &&
-		   !(tables && dis64scalartable(decl))))
-			return 0;
+	for(; decl != nil; decl = decl->next){
+		if(dis64inlineshape(decl->ty) != 0 && (!tables || decl->ty->kind != Ttuple || decl->init == nil))
+			continue;
+		if(tables && dis64scalartable(decl))
+			continue;
+		return 0;
+	}
 	return 1;
 }
 
@@ -137,6 +140,7 @@ dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long dat
 	Dis64Prepared prepared;
 	Dis64Pilot checked;
 	Decl *decl;
+	Inst *input;
 	uchar *parts[5], *maps[2], *runes, *output;
 	ulong real[2];
 	uvlong bits;
@@ -182,6 +186,13 @@ dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long dat
 		goto done;
 	scratch = (prepared.localbytes+ScalarNativePrefix-ScalarLegacyPrefix+7)&~7U;
 	frame = scratch+ScalarScratchBytes;
+	for(input = prepared.instructions; input != nil; input = input->next)
+		if(input->op == IMOVM){
+			if(frame > ScalarObjectLimit-ScalarCopyBytes)
+				goto done;
+			frame += ScalarCopyBytes;
+			break;
+		}
 	if(!dis64lower(prepared.instructions, prepared.count, databytes, frame, scratch, &lower))
 		goto done;
 	count = lower.count;

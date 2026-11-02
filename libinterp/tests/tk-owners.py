@@ -31,6 +31,8 @@ runt = (root / 'libinterp/runt.c').read_text()
 parts = [function(strings, 'String*\n'+name+'(') for name in ('newstring','newrunes','c2string')]
 parts += [function(strings, 'char*\nstring2c('), function(runt, 'void\nretstr(')]
 parts += [function((root / 'emu/port/dis.c').read_text(), 'int\nkprotect(')]
+parts += [function(source, 'static void\ntkdetachowner(')]
+parts += [function(Path(os.environ.get('TK_OWNER_DRAW_SOURCE', root/'libinterp/draw.c')).read_text(), 'static int\ndrawcachedisplay(')]
 parts += [function(source, 'void\n'+name+'(') for name in ('Tk_toplevel','Tk_namechan','Tk_quote')]
 unit = (root / 'libinterp/tests/tk-owners.c').read_text().replace('IMPLEMENTATION','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='tk-owners-') as directory:
@@ -39,7 +41,9 @@ with tempfile.TemporaryDirectory(prefix='tk-owners-') as directory:
     target.write_text(unit)
     cmd = shlex.split(os.environ.get('CC','cc'))
     cmd += shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
-    for bits in (64,32):
+    for bits in map(int, os.environ.get('TK_OWNER_MODELS', '64 32').split()):
+        if bits not in (64,32):
+            raise ValueError('Expected WORD32 or WORD64')
         includes = []
         if bits == 32:
             model = td / 'word32'
@@ -49,8 +53,11 @@ with tempfile.TemporaryDirectory(prefix='tk-owners-') as directory:
             header = re.sub(r'typedef unsigned long\s+UWORD;', 'typedef unsigned int UWORD;', header, count=1)
             (model / 'interp.h').write_text(header)
             includes = ['-I'+str(model)]
-        includes += ['-I'+str(root / p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
+        profile = os.environ.get('TK_OWNER_PLATFORM', 'Linux/arm')
+        if profile not in ('Linux/arm', 'Android/arm'):
+            raise ValueError('Expected Linux/arm or Android/arm headers')
+        includes += ['-I'+str(root / p) for p in (profile+'/include','emu/port','include','libinterp')]
         binary = td / 'owners'
         subprocess.run(cmd+includes+[str(target),str(root / 'lib9/rune.c'),'-o',str(binary)],check=True)
-        subprocess.run([str(binary)]+os.environ.get('TK_OWNER_CASE','').split(),check=True)
+        subprocess.run(shlex.split(os.environ.get('TK_OWNER_RUNNER', ''))+[str(binary)]+os.environ.get('TK_OWNER_CASE','').split(),check=True)
         print('WORD'+str(bits), flush=True)

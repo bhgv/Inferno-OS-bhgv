@@ -298,6 +298,9 @@ delprog(Prog *p, char *msg)
 			isched.runtl = nil;
 	}
 	p->state = 0xdeadbeef;
+	/* The worker borrows this environment only while its Dis program is alive. */
+	if(up->env == o)
+		up->env = &up->defenv;
 	free(o->user);
 	free(p->killstr);
 	free(p->exstr);

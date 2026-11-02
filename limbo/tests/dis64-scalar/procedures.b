@@ -8,21 +8,57 @@ a := 12345;
 b := 789;
 result: int;
 tally: int;
+state: (int, big, real);
 
 
-# Renew a declared local on every call without allocating a managed frame.
-step()
+# Renew the child's declared local on every call.
+bump(amount: int)
 {
 	local: int;
 	local++;
-	tally += local;
+	tally += local*amount;
 }
 
 
-# Exercise compiler temporaries in the helper's isolated storage region.
+# Preserve a parent local across both its loop and a nested child call.
+step()
+{
+	local: int;
+	for(i := 0; i < 3; i++)
+		local++;
+	bump(1);
+	if(local != 3)
+		tally /= 0;
+}
+
+
+# Keep expression temporaries private even when this helper is called from another helper.
+fold(pair: (int, int), wide: big, fraction: real): (int, big, real)
+{
+	local: int;
+	(x, y) := pair;
+	local++;
+	if(wide != big 17 || fraction != 1.25 || local != 1)
+		result /= 0;
+	return (((x^y)&65535)|65536, wide, fraction);
+}
+
+
+# Keep a private numeric case table around the nested scalar call.
 mix()
 {
-	result = ((a^b)&65535)|65536;
+	if(a == 0)
+		return;
+	case b {
+	0 => result /= 0;
+	700 to 800 =>
+		state = fold((a, b), big 17, 1.25);
+		(value, wide, fraction) := state;
+		if(wide != big 17 || fraction != 1.25)
+			result /= 0;
+		result = value;
+	* => result /= 0;
+	}
 }
 
 

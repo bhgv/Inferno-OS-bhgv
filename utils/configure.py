@@ -47,7 +47,7 @@ def main():
     parser.add_argument('--console',action='store_true')
     parser.add_argument('--native64-sys-io-boot',action='store_true',help='register eight trusted fixed Sys I/O/UTF exports; no file imports')
     parser.add_argument('--native64-math-boot',action='store_true',help='register trusted Math during experimental scalar startup; no file imports')
-    parser.add_argument('--native64-scalar-boot',action='store_true',help='experimental Linux console startup for checked scalar Dis64 images only')
+    parser.add_argument('--native64-scalar-boot',action='store_true',help='experimental Linux console or Android ARM64 framebuffer probe for checked scalar Dis64 images only')
     parser.add_argument('--native64-caller-guard',action='store_true',help='coherent synchronous caller lease experiment; requires scalar and Math startup, no file calls')
     parser.add_argument('--renderer',choices=('framebuffer','gles'),default='framebuffer')
     parser.add_argument('--output',type=Path,default=ROOT/'mkconfig')
@@ -71,8 +71,12 @@ def main():
         parser.error('Hosted emulators require matching host and target; cross builds need a dedicated toolchain/port')
     if (args.native64_math_boot or args.native64_sys_io_boot) and not args.native64_scalar_boot:
         parser.error('Trusted builtin startup requires --native64-scalar-boot')
-    if args.native64_scalar_boot and (target!='Linux' or arch not in ('amd64','arm64','riscv64') or not args.console):
-        parser.error('Scalar Dis64 startup requires a 64-bit Linux console profile')
+    scalar_linux = target=='Linux' and arch in ('amd64','arm64','riscv64') and args.console
+    scalar_android = target=='Android' and arch=='arm64' and args.renderer=='framebuffer' and not args.console
+    if args.native64_scalar_boot and not (scalar_linux or scalar_android):
+        parser.error('Scalar Dis64 startup requires a 64-bit Linux console or Android ARM64 framebuffer probe')
+    if args.native64_scalar_boot and scalar_android and (args.native64_math_boot or args.native64_sys_io_boot or args.native64_caller_guard):
+        parser.error('The Android ARM64 probe is builtin-free; trusted native modules are not admitted')
     if args.native64_caller_guard and not (args.native64_scalar_boot and args.native64_math_boot):
         parser.error('Caller guard requires --native64-scalar-boot and --native64-math-boot')
     text=(ROOT/'mkconfig').read_text()
@@ -110,6 +114,8 @@ def main():
     print('Prepared',args.output,'for',args.host,'->',target,arch, 'console' if args.console else 'platform default')
     if args.native64_scalar_boot:
         print('Experimental scalar Dis64 startup selected; builtin imports and legacy images are disabled. Rebuild all runtime objects.')
+        if scalar_android:
+            print('Android probe archive: mk CONF=emu-scalar $ROOT/Android/arm64/lib/emu.a; this does not start AWM.')
         if args.native64_math_boot:
             print('Trusted fixed-frame Math registration enabled; generated metadata is built by host Limbo through mk.')
         if args.native64_sys_io_boot:

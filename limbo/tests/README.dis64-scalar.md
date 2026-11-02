@@ -1,4 +1,4 @@
-# Limbo scalar Dis64 backend (through series 0058)
+# Limbo scalar Dis64 backend (through series 0064)
 
 `limbo -6` emits the already agreed extension-free Dis64 v1 np0 executable
 profile. It is an explicit experimental backend, independent of `-H` C metadata.
@@ -138,3 +138,53 @@ the same43 scalar wire operations; file CASE/CASEL/GOTO remain closed. Expanded
 PCs and diagnostic rows are remapped without mutating legacy compiler IR. Larger
 or managed tables refuse. See [scope and reproduction](../../doc/dis64-scalar-cases.md)
 and the self-checking [case example](dis64-scalar/case.b).
+
+
+Series0060 additionally specializes scalar helper branches, loops and early
+returns; see doc/dis64-scalar-helpers.md for bounds and continuation semantics.
+The wire profile remains43 operations and does not admit FRAME/CALL or imports.
+
+
+Series0061 admits bounded numeric case tables inside scalar leaf helpers.
+Each call owns its table targets; emitted code remains in the existing43-op
+profile. No file FRAME/CALL admission is implied. See dis64-scalar-helpers.md.
+
+
+Series0062 admits finite acyclic helper-to-helper calls without arguments or
+results. Separate depth spans preserve ancestor locals; recursive/entry cycles
+and expansion beyond65536 instructions are refused. Wire FRAME/CALL and managed
+file calls remain outside the existing43-op profile.
+
+
+Series0064 admits materialized int/big/real arguments in bounded source helper
+specialization. Typed argument copies target the child's private cells; local
+initialization skips supplied parameters. File calls, scalar results, managed
+arguments and computation within a pending setup remain refused. The wire
+profile stays43 operations. See doc/dis64-scalar-helpers.md.
+
+
+Series0066 admits int/big/real results from bounded acyclic source helpers.
+Typed direct scalar writes replace the legacy result-pointer setup. Forwarded
+results preserve the original destination across nested helpers. Return/setup
+pointers are never emitted into Dis64, and the shared43-op profile is unchanged.
+The procedures example now returns fold's Word result through a private case arm.
+Managed/byte results, runtime file calls and general native pointer ABI remain
+closed; see doc/dis64-scalar-helpers.md for evidence and remaining limits.
+
+
+Series0068 admits complete flat tuple results with2..8 int/big/real fields and
+at most64 bytes. Canonical field alignment, padding and forwarded layout/kinds
+are validated before each destination is specialized. The procedures example
+now returns a mixed Word/Big/Real tuple. Tuple parameters, managed/nested tuples,
+global tuple storage and nil-partial unpacking remain outside admission. Runtime
+file calls and the existing43-op wire profile are unchanged.
+
+
+Series0069 expands bounded pointer-free MOVM copies into staged Word moves,
+retaining the same43-op wire profile. Flat numeric tuple parameters support
+ordered field producers or whole by-value copies; complete tuple copies and
+zero-initialized global tuple storage are admitted. The procedures example now
+passes a pair and copies a mixed result through global tuple storage. Managed/
+nested aggregates, initialized global tuple literals and nil-partial unpacking
+remain refused. A separate copy fixture compares40 actual emitted sequences
+with memmove and exposes forward-overlap corruption if writes are interleaved.

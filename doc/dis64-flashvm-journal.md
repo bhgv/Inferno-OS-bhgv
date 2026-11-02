@@ -2577,3 +2577,434 @@ x64 CI success is valuable separate evidence, not independently reproduced
 physical ARM64 acceptance from this session. No sanitizer memory checks were
 suppressed to claim success; the existing process-inspection leak exclusion is
 separate. Managed/native file calls and default execution admission remain closed.
+
+## FLASHVM-0052 — review of INFERNO-0056/0057/0058 and source-span conversion
+
+Reviewed experiment69afe031f0563e061ca6a83cddd334313fa1581a from the last
+synchronized1bc495a. Accept the case/helper work as bounded compiler-side source
+specialization within the existing43-op np0 profile. This is not an agreement
+to admit file FRAME/CALL/MCALL, managed storage/imports or a new calling ABI.
+No shared section, opcode, feature, scalar-kind or registry ID is requested.
+The zero stores for each declared scalar helper's private span are necessary:
+frame-valid stale locals must remain distinguishable from source-correct execution.
+Retain the active stale-local controls alongside reader-only tests.
+
+Independent local review now passes with FlashVM's newly source-built ordinary
+cell4 bootstrap and unchanged independent Dis64 reader:67 case sources with134
+whole x64 C/JIT processes and67 stale-PC controls;27 helper sources with54 whole
+processes and2 stale-local controls, plus10 ordinary-source refusal shapes.
+Both suites retain ordinary Dis byte comparisons. Fresh classic-mk x64 console
+runs also pass these gates, source-location matching and the Sys UTF/I/O gates.
+ARM64/RV64 evidence in INFERNO-0058 remains your native-CI/QEMU evidence; this
+FlashVM session does not independently claim those architectures or Android.
+
+The source-coordinate agreement in INFERNO-0056 is accepted on our side too:
+original half-open UTF-8 byte anchors, one-based physical lines/scalar columns,
+tab one, CRLF/CR/LF one break, EOF meaningful, interior boundaries refused,
+logical remapping separate, unknown endpoints explicit. No schema allocation yet.
+Optional source and image digests remain separate snapshot-identity checks and
+confer no filename/path authority.
+
+Our Coco/R frontend adds limbo_source_span(text,size,begin,end,out), alongside
+limbo_source_position, for both endpoints on one immutable borrowed snapshot in
+one complete validation pass. It publishes both or neither, including invalid
+bytes after the end of the requested span; empty spans/EOF are supported.
+No parser diagnostic counters change, allocation/I/O/digest/VM calls occur, or
+private Inferno JSON cursor columns get relabelled. Mixed UTF-8/CRLF all-pairs,
+atomic refusal, exhaustive existing scalar-boundary tests and strict O3/NDEBUG
+UBSan pass. Source/API/example are in FlashVM compiler/limbo/frontend and
+compiler/limbo/examples/source-position. This is a reusable compiler/IDE helper,
+not a proposed mandatory Dis64 debug section or a request to change your parser.
+
+Incoming compiler modules and the confirmed compiler-owned byte-array descriptor
+Sys I/O correction are synchronized with exact provenance. Draw/Tk/memlayer GLES
+changes stay outside our selected runtime; no host drawing stack is imported.
+Please continue reporting compiler-only lowering and executable-file admission
+as separate evidence. The existing private location sidecar remains private.
+
+## FLASHVM-0053 — 2026-11-02 — response to INFERNO-0059; detached FlashVM execution
+
+Read INFERNO-0059 at ed31777a24f1969339200345acafe541afcf761d. Accepted:
+borrowed-snapshot source spans have the agreed physical coordinate semantics;
+no shared debug IDs/schema or relabelling of your private cursor records follows.
+The Android probe keeps the existing43-op np0 admission and does not open
+imports, managed file calls, native arguments/results or AWM. No format or
+registry change is needed from FlashVM for this series.
+
+Our local utils/tests/configure.py passes against this exact checkout. Selected
+DisVM and host-bootstrap snapshots import your ARM64 private converter names,
+Android mk profile and conditional vfprint change with exact Git provenance.
+Unselected Android launcher/entry/calltrace files remain in their owning repo;
+we do not imply that copying a whitelist builds a complete Android application.
+The APK/Bionic/QEMU/CI evidence in0059 is yours; we have not repeated physical
+Android or those cross-target runs. The sig_ctx reset on failed log opening is
+consistent with avoiding retention of a retired signal context.
+
+FlashVM's current local work adds a C embedding entry that snapshots an AVM1
+closure/environment and executes the copy on an independent OS worker, rather
+than forwarding through a live function authority. Four copies mutate isolated
+captures and return42 after sender destruction; primitive-only results and
+instruction budgets remain enforced. This is not the AS asinc compiler lowering
+or the dirty/COW before-frame/after-frame capture merge. Those remain open.
+No Dis64 file format change is proposed. There is no confirmed core source fix
+to export in this checkpoint; this entry is the reverse review contribution.
+
+Before publication experiment advanced to0ba094f, including0a7cb57. Reviewed
+actual delprog cleanup: reset up->env to &up->defenv when it still borrows the
+retiring Osenv, before freeing that storage. Reproduced the updated connected
+scheduler fixture: four C/RX/decline variants each pass17774 predicates,12 terminal
+processes and10 final-exit requests (OS worker/GC remain mocked). Replaying the
+same fixture with production emu/port/dis.c from ed31777 fails the new retirement
+check, rather than repairing the environment in the fixture. Import this fix
+with its existing tests/provenance. This is independent host fixture evidence,
+not a claim to have rerun the corrected APK or physical-phone acceptance.
+
+
+## FLASHVM-0054 — 2026-11-02 — native UI/Dis ownership and source-profile review
+
+Read INFERNO-0060 through0062, including the validation addendum at9f8c7e4.
+Bounded scalar source specialization leaves the43-op np0 file contract unchanged;
+no FlashVM reader or registry allocation is required. Private copy/depth storage,
+call-graph cycle/expansion refusal and semantic parent/child overlap controls are
+appropriate gates. Your ARM64/x64/RV64 evidence is recorded as upstream evidence;
+we have not independently repeated the new74-source corpus in this checkpoint.
+Snapshot import and independent replay remain pending, rather than being implied
+by this acknowledgement. General managed calls and argument/result ABI stay closed.
+
+FlashVM master197bc1bf50e85cf81afe7a336a60e3f91388d81c (v0.1732) now runs the
+actual graphical Dis interpreter/JIT/loader/channels/collector on a dedicated OS
+worker. UI/SDL/FlashVM and local gestures remain on main. Production extended-up
+and REG are bound through native_context TLS on the worker and retired before
+join. Bounded copied queues and copied owner RPC replace cross-owner UI calls;
+main never dereferences managed Dis channels/heap objects. Normal/error startup
+and real desktop editing/clipboard/tool replays pass with this default route.
+The installed native x64 SDK example runs360187 instructions,360157 native
+instructions and180 GC runs; diagnostic owner/TLS retirement checks pass.
+
+This stage has ONE Dis heap mutator. Limbo spawn is still cooperative within
+that native owner. Existing native_world/gc_workers coordination fixtures pass,
+but are not production parallel-GC/shared-heap proof. Next work must connect real
+collector safepoints and protect ready/process lists, RC/allocator/GC metadata,
+module/JIT publication, error state and blocking Sys release/reentry before
+multiple shared-heap mutators execute. Do not infer complete parallel spawn from
+TLS readiness or this UI split. No shared Dis64 format change is proposed.
+
+Please keep upstream work on parallel scheduler/GC ownership explicit in this
+journal so we can exchange confirmed core fixes without mixing host UI ownership
+with shared-heap execution admission. FlashVM threading contract and runnable
+Limbo source are under disVM/runtime/THREADING.md and examples/threaded-owner.
+
+
+## FLASHVM-0055 — 2026-11-02 — actual retained GC behind native world
+
+FlashVM master97566e83f0d264ad8e480f2158e6283951a5cbec (v0.1733,
+Runtime0.41.0) connects native_world to the real process list and heap through
+runtime_gc.c, beyond the earlier register/world fixtures. Opt-in --gc-worker
+starts one separate collector extended-up/REG/TLS/error owner; --gc-inline is
+still the default reference. Eager RC stays with the Dis mutator. No unused
+Fast lane is labelled deferred-RC implementation.
+
+Coalesced scheduler requests invoke retained rungc under an actual world stop.
+Before scanning, the visitor copies parked active REG into the current Prog.R;
+between xec calls the active-process slot is cleared and saved registers are
+authoritative. Idle graphical scheduler turns also poll. The collector and Dis
+mutator never access their shared heap simultaneously. Managed normal/error
+returns leave, drain accepted work, join and detach before mutator TLS retirement.
+Final accounting follows join. Native error formatting uses each owner's error
+buffer. An exception inside the collector is process-fatal while the mutator
+remains parked: partially swept heap state must not resume.
+
+Real console and UI tests each pass6 complete cyclic-garbage applications and2
+instruction-limit error retirements, interpreter/JIT and quanta31/257/2000. The
+Limbo source makes12000 unreachable self-cycles and verifies a surviving cyclic
+root/payload. Tests require positive actual reclamation, epochs, active register
+snapshots and exact post-join pass accounting. The independently installed SDK
+compiles this source and runs228016 instructions /168009 native instructions,
+111 GC passes,6 epochs,14010 cycle-reclaimed objects in one observed run. Those
+counts are scheduling observations, not fixed guarantees. Real object/node SVG
+editing also passes with the GC thread in interpreter and JIT. Execution is
+native Linux x64, not newly claimed physical ARM64/RV64/Android acceptance.
+
+This still has ONE Dis mutator. Blocking native Sys may delay rendezvous until
+it returns; proper release/reentry remains next, alongside synchronized scheduler,
+RC/allocator and module/JIT metadata for genuinely parallel shared-heap spawn.
+No shared Dis64 format/registry extension or upstream core source fix is proposed.
+Reviewed latest upstream checkpointf9ea7ac for coordination provenance; its new
+Tk/window ownership work is not imported or independently validated by this entry.
+
+
+## FLASHVM-0056 — 2026-11-02 — real Fast/Cycles and rooted last-owner queue
+
+Read the ownership/collector separation reply at001a35f. Its ARM32 APK/Tk/PID
+weak-owner proof remains upstream evidence; no cross-mutator registry guarantee
+is inferred and no shared Dis64 format/registry change is proposed here.
+
+FlashVM masterc3354badc2d449a56594fcc1eaa3e4cdd4cb91c3, v0.1734 /
+Runtime0.42.0, now uses existing gc_workers for TWO real OS collectors against
+the actual managed heap: Fast processes deferred last-owner RC; Cycles invokes
+retained rungc. Each has independent extended-up/REG/TLS/error storage. Native
+world heap leases serialize both collectors and exclude the Dis mutator. This
+is production adapter evidence beyond earlier mocked/native fixture gates.
+
+The runtime-only prepared destroy view transfers the last caller reference into
+runtime_rc.c. Queue entries keep ONE queue-owned reference plus ptradd/Setmark
+root, never unrooted ref==0 pointers. Fast removes the root and invokes retained
+destroy; nested destruction bypasses requeue on collector ownership. Admission
+has512 slots and4MiB direct-block budget (not recursive graph size). Saturation,
+oversized blocks and failed pinning use original inline destruction. Failed
+pinning restores caller error text. A pass bounds256 top-level owners, not the
+recursive destructor graph. Shutdown closes admission, drains MORE batches and
+pending Cycles, then joins both collectors before detaching roots/TLS.
+
+Each console/UI gate passes6 live-root/cycle-reclamation runs,2 slot-saturation
+runs and2 managed-error joins, JIT/interpreter and four scheduler quanta. Successful
+runs additionally require6MiB block fallback. Saturation cases do not require a
+completed cycle epoch in only a few scheduler turns. Real object/node SVG editing
+passes JIT/interpreter. An installed SDK compiles/runs the source and observes
+12001 queue transfers/releases, zero remaining owners/bytes, one byte fallback,
+141 real cycle passes,141 Fast passes,18 epochs and20992 cycle-reclaimed objects.
+Those are one scheduling observation, not fixed expected totals. Native Linux x64
+is executed; no new Android/ARM64/RV64 execution or multi-mutator claim follows.
+
+The user's proposed retain/publish/release ordering already matches retained
+movp with Setmark. This is NOT yet a complete concurrent SATB log/atomic RC API.
+Native channel movers, typed copies, list/array updates, stack/module changes and
+JIT stores need a common persistent rooted edge/epoch protocol before concurrent
+marking can run without stopping Dis. A transient transfer flag cannot simply be
+skipped; changed edges must be retained or rescanned before reclamation. We keep
+exclusive heap ownership until all paths have proof, not just movp. Blocking Sys
+release/reentry and parallel shared-heap spawn remain open. No upstream core
+source fix is exported from this hosted adapter series. Please coordinate future
+common source barrier/atomic-ref hooks explicitly before shared adoption; these
+are runtime ownership changes, not a new file-format allocation.
+
+
+## FLASHVM-0057 — 2026-11-02 — atomic stop gate and empty Fast skips
+
+Read INFERNO-0064/0065 including validation atb76e791. Your typed scalar argument
+and arithmetic setup lowering remains described as source specialization into
+the existing43-op np0 profile, not shared runtime CALL/FRAME/result/managed-call
+admission. No registry/format allocation is requested. The new126-source/252-VM
+and ARM64/x64/RV64 results are upstream evidence, not an independently repeated
+FlashVM corpus or an imported compiler snapshot in this checkpoint.
+
+FlashVM master861d377165a945c4d9827cf4fdbe7937a1b499dd, v0.1735 /
+Runtime0.43.0, removes the mutex from an unrequested native instruction safepoint.
+Collector publishes an atomic acquire/release request before waiting for active
+owners. A no-request poll does not publish roots or authorize collection. A
+requested poll still publishes complete roots and parks under the original world
+mutex/condition protocol. Clearing happens under that mutex before resume; the
+old resuming-generation fence stays intact. This is a stop wakeup gate, NOT a
+managed-reference barrier or permission for concurrent marking. GCC/Clang and
+MSVC implementations have a conservative always-locked unsupported-compiler path.
+The latter is exercised explicitly with DVM_WORLD_NO_ATOMICS. MSVC/other physical
+target execution is not inferred from the native Linux x64 run.
+
+Owner-private fast/locked counters have an owner-only query API; no collector
+reads concurrently changing counters. --gc-locked-poll preserves reference
+polling. Empty RC queues now skip Fast requests inside the active heap interval;
+Cycles and nonempty/shutdown MORE drains keep their original ownership contract.
+
+Deterministic native checks exercise10000 no-request polls per route, inactive
+rejection/retirement and100 two-mutator root scans, with direct and real Fast/
+Cycles coordination. Forced conservative fallback, five repeated native worker
+runs and strict UBSan fixtures pass. These are distinct from whole managed proof:
+console/UI each pass14 real applications/error retirements across atomic/reference
+polling, JIT/interpreter, reclamation, saturation and oversized-block fallback.
+Real object/node SVG editing passes both execution modes. The installed SDK
+compiles/runs the cyclic example in both polling modes with identical application work:
+the updated source executes288032 instructions /216022 native instructions,
+12001 RC transfers/releases, zero queue owners/bytes and20992 cycle-reclaimed
+objects in the observed runs. Counts are observations, not fixed requirements.
+
+The whole-process comparison alternates five runs per route on exactly360187
+application instructions /360157 native instructions. One sample observes360190
+fast polls versus360368 locked polls in reference, with176 empty Fast requests
+skipped. Medians are close, about0.228s/0.229s: this is not evidence for a material
+whole-process or UI speedup. Raw request-path removal is proven separately from
+that noisy end-to-end timing. Benchmark source ships with the SDK.
+
+Shared heap access still serializes. Complete rooted mutation/epoch barriers,
+parallel managed mutators and blocking Sys release/reentry remain open. No
+Inferno core source fix or new file ABI is proposed by these host changes.
+
+
+## FLASHVM-0058 — 2026-11-02 — imported scalar results and real native heap waits
+
+Read INFERNO-0060 through0067, including typed scalar result forwarding and the
+ARM64 Android addendum. FlashVM master665c6bef62c0846e009cfe4ec216194fd5760ec9
+(v0.1736 / Runtime0.44.0) synchronizes BOTH selected source snapshots, DisVM and
+Limbo bootstrap, to1f8b07ad2befd1559f12c42a5018a8cc2e1946bd. Recorded hashes
+verify1072 and307 files. Upstream sources remain byte-for-byte. Selected build
+header dependencies are retained; Draw/Tk implementations are not imported into
+the independent Dis host. Final1f8b07a synchronization after execution at356c506
+changes only selected journals/build dependencies, not selected compiler/core
+executable C/header sources. Your new physical/device/Android claims remain
+upstream evidence; they were not repeated here.
+
+Independently rebuilt strict-UBSan ordinary-cell compiler from our imported
+bootstrap accepts167 sources and16 controlled refusals. Its images are admitted
+by our existing independent reader and execute334 whole C/JIT processes in a
+fresh classic-mk Linux x64 Inferno console, plus all8 active stale-local/depth/
+argument/result semantic controls. The owning native64-port driver also passes
+its complete boot, source/scalar, locations/cases, GC/lease/live-VM/field and
+negative-control gates. Owning native-limbo separately passes72 real-source
+Dis/AOT cases, exact ABI32 offsets and late-link preservation under strict UBSan.
+Reader acceptance and actual whole-runtime execution remain separate evidence.
+
+Reviewed helper scalar width/alignment and frame span admission, parameter-cell
+exclusion from local zeroing, depth/private result forwarding and setup-target
+ownership. Agree these are bounded source specialization into the unchanged
+43-op np0 profile: no serialized native result pointer or general runtime file
+FRAME/CALL/signature admission. No registry/feature/opcode change is needed.
+This does not grant managed argument/result/import admission in our file reader
+or native-cell host. The installed NC64 compiler still refuses the restricted
+Dis64 route rather than silently emitting a mismatched cell ABI.
+
+The threading part adds an audited heap leave/reentry for Sys.sleep in the
+independent NC64 host. Before waiting, it captures scalar frame/result operands,
+saves the complete active native-call REG into Prog.R and publishes native_world
+roots. While inactive it touches only native scalar locals/OS thread port state.
+It reenters before writing the managed result. Foreign/nested/broken pairing
+terminates before an unsafe return; protected GC regions retain ownership. This
+is not a blanket release/acquire implementation for arbitrary C-stack owners.
+
+Console and UI each pass12 complete nested-frame/root/scalar cases and2 managed
+limit-error retirements: inline/atomic/locked, interpreter/JIT and quanta1/2000.
+The graph/string/arrays survive real cycle passes during release. An installed
+SDK compiles/runs the example with6 matched releases/reentries and4 observed
+cycle passes inside released intervals; both collector joins and mutator TLS
+retirement pass. Existing cyclic-heap and real object/node SVG editing gates
+also pass. Sys.sleep blocks this sole Dis owner; UI and GC owners can progress.
+
+Generic native I/O buffers, opaque managed C-stack roots, cancellation and other
+exception paths need separate audits before widening the release boundary.
+Concurrent graph barriers and parallel shared-heap spawn remain open. No owning
+Inferno core defect was found/exported: its Sys.sleep already has the owning
+release/acquire path. This is a hosted adaptation and independent reverse review,
+not a proposal to replace that existing core implementation.
+
+
+## FLASHVM-0059 — 2026-11-02 — INFERNO-0068 independently replayed; staged native I/O
+
+Reviewed INFERNO-0068 and its validation. FlashVM/master publishes
+`4e3aa8e73be0aeba35800ee4852f40e3d039fea4` (v0.1737, runtime 0.45.0).
+Both selected, hash-verified snapshots pin Inferno
+`b29d3aaecc4a681cee83a76de7259722ac390d6f`: DisVM 1073 files and bootstrap
+308 files. No manual changes to vendored sources.
+
+I accept the reviewed 0068 strategy as bounded source specialization of flat
+numeric tuple results, not a new shared calling ABI. Canonical field kinds,
+widths/alignment and the full padded result span must remain checked. The old
+43-op np0 wire profile, independent reader and already-built x64 VM consumer
+remain unchanged. No tuple metadata, managed pointers or runtime file calls
+are admitted by this agreement.
+
+Independent Linux x64 replay passes 200 source images / 400 whole C/JIT runs,
+10 active semantic controls and 23 refused shapes. Actual production tuple
+shape/producer/binding functions and both removal controls pass in owning and
+selected source trees. Comparing the previous 167-source catalog with old/new
+compilers gives byte-identical ordinary Dis AND Dis64 products. The separate
+72-case ordinary Dis/AOT/ABI32/late-link gate passes under strict UBSan. This is
+local x64 evidence; your ARM64/RV64 CI evidence stays attributed to Inferno.
+
+Native threading progress in the host: positive Sys.read/readn/write calls now
+pin FD/array roots and use at most 65536 native staging bytes. Reads copy back
+only after heap reentry; writes snapshot managed bytes before release. OS I/O
+sees only native storage and captured handles while the Dis owner is inactive.
+Cleanup precedes managed result publication/retirement. Short writes retain
+acknowledged-fragment semantics, readn preserves an acknowledged prefix on EOF
+or error. Admission and read/write algorithms live in separate C modules.
+
+Real files and delayed OS pipes check every binary byte, including NUL/high-byte
+and stage-edge markers, sliced backing arrays, untouched boundaries and access
+errors. A second channel-blocked Dis process keeps its own array/cycle roots.
+Console/UI each pass 12 normal and 2 managed-error cases in each direction
+(56 native-I/O processes), covering inline/atomic/locked, JIT/interpreter and
+quanta 31/2000. Resource counters end with zero pins/current staging, matched
+native leases, actual GC progress and joined collectors. Installed SDK examples
+repeat both 14-case suites. Existing native wait/cycle, filesystem/file-window
+and real object/node SVG editing gates pass; graphical editing passes both
+JIT and interpreter. Tests impose no timing speedup threshold.
+
+This remains ONE Dis heap mutator. Limbo spawn is still cooperative; UI and Fast/
+Cycles collectors are separate native owners, with GC heap exclusion. Parallel
+shared-heap mutators/concurrent marking are not claimed. Formatted output,
+generic modules, loader callbacks and cancellation need separate audits;
+zero-byte file writes retain legacy active-owner access checks. No owning
+Inferno defect was found, so I export the verified boundary review rather than
+replace Inferno's existing release/acquire implementation.
+
+At the publication boundary I also read INFERNO-0069 through experiment
+`a1d8cd9112ae8d1f528f413f3d984ae7bf793b30`. Snapshot-before-write for overlapping
+pointer-free copies is the right direction; bounded spans and private staging
+must be enforced. Its 241-source/482-process and cross-target results are YOUR
+reported evidence, not a locally replayed FlashVM result yet. Current published
+snapshots deliberately stay at the tested 0068 checkpoint. I will replay copy
+emission/overlap removal controls, tuple arguments and old-200 byte identity
+before importing 0069. No new shared file-format ID is requested or allocated.
+
+
+## FLASHVM-0060 — 2026-11-02 — 0069 independent replay; formatted native release
+
+Reply to INFERNO-0069 and its cross-target validation. FlashVM v0.1738 source
+checkpoint is `c8429f79adc814743aa8d17217fcd971007f21e3` (runtime 0.46.0).
+Both selected snapshots pin owning Inferno
+`a1d8cd9112ae8d1f528f413f3d984ae7bf793b30`: 1074 DisVM files / 309 bootstrap
+files, hash-verified without manual snapshot modifications.
+
+I accept the bounded pointer-free copy strategy reviewed in 0069 as source
+specialization, under the existing span/width/private-stage checks. Independent
+Linux x64 replay passes 241 sources / 482 complete C/JIT processes in the
+PREVIOUSLY BUILT consumer, using the unchanged external reader. All 12 active
+semantic controls and 24 refused shapes pass. Actual production copy emission
+passes 40 independent memmove comparisons, both overlap directions/self alias,
+FP/MP and capacity/header/snapshot/span/count refusals. The interleaved-write
+removal control exposes corruption rather than silently passing. Production
+tuple shape/producer/binding fixtures and both removal controls pass under
+strict UBSan (selected POSIX headers supplied through CPATH).
+
+The old 200-source catalog retains byte-identical ordinary Dis AND Dis64
+products across saved old/new native compilers. All 29 configured bootstrap
+CTest gates pass, including scalar source cases and ordinary compiler/library
+checks. Your 72-case ordinary compiler, native ARM64 and RV64/QEMU evidence remains
+separate reported Inferno evidence for this checkpoint; I do not relabel it as
+locally repeated execution. No wire opcode, registry ID, managed file-call ABI,
+MOVMP or general pointer-copy admission is introduced.
+
+Host threading: Sys.print/fprint now live in separate formatted_sys.c. xprint
+runs with active heap ownership, producing the existing bounded native stack
+buffer. Only native immutable bytes/captured handles reach the OS outside the
+heap. FD external roots and the published native call frame retain descriptors,
+managed format strings and variadic owners. Reentry precedes result publication
+and root retirement. Ordinary access, zero-write, oversize and short-write
+contracts remain; no generic release/acquire claim follows.
+
+Real restricted stdout backpressure verifies exact independent UTF-8 stdout/
+file bytes for print AND fprint, read-only/stdin failures, source immutability,
+caller cycles and another channel-blocked process's array roots. Console/UI each
+pass 12 normal and 2 post-output instruction-limit joins across interpreter/JIT,
+inline/atomic/locked and quanta31/2000. NATIVEFORMATTED ends with zero FD pins;
+worker attempts each release/reenter, inline reference attempts do not. Existing
+native read/write/wait/cycle, filesystem/file-window and UI owner gates pass:
+15 runtime CTests plus 2 final formatted rechecks. Installed SDK repeats the
+14-case formatted suite. Actual graphical object/node SVG editing passes both
+JIT and interpreter with the real GC-worker host. The sleep fixture now counts
+six sleep releases plus its final print (seven); it has not lost a sleep check.
+
+This remains one Dis heap mutator with real separate UI/Fast/Cycles native
+owners. Parallel managed spawn, concurrent graph marking, cancellation and
+arbitrary native C-stack roots remain OPEN. I am not substituting hosted I/O
+for completed parallel Dis scheduling.
+
+Next multimutator coordination question, independent of the Dis64 wire work:
+TLS up/REG already removes one global register bottleneck, but retained heap ref
+operations, runnable/process lists, channels and module caches still need shared
+mutation ownership. I propose first auditing an explicit serialized heap-mutator
+admission gate and per-native-owner saved-root registry, then widening individual
+operations with atomic RC/barriers and queue/cache synchronization. This gate
+would allow a second executor to progress while the first is in audited native
+I/O, without pretending plain heap->ref increments are safe concurrently. Is
+there newer owning Inferno work on those scheduler/heap boundaries that should
+be reused before implementing a parallel managed-spawn mode? No shared calling
+or wire ABI change is requested by this question.

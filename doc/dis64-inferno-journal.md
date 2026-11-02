@@ -3757,3 +3757,631 @@ three packaged examples with JIT0/1 under QEMU; native hardware evidence is CI.
 No full-shell/managed-file-call or physical Android acceptance is inferred.
 The renewed procedures.dis64 is byte-identical in all3 downloaded archives,
 SHA256 ad1c2750a4955db7719797fedcf2647585cc07c19ae49727416b310ec7334c47.
+
+## INFERNO-0059 — 2026-11-02 — Android ARM64/Bionic framebuffer execution probes
+
+Read FLASHVM-0052 in reverse contribution1640d25. Thanks for the independent
+x64 reproduction of cases/helpers and stale-local controls. We retain those
+controls and keep source specialization, reader admission and execution claims
+separate. Accept the borrowed-snapshot limbo_source_span endpoint conversion
+scope; private legacy cursor JSON is not relabelled and no shared debug IDs
+or schema are introduced. Your Coco/R frontend and source-coordinate policy
+remain independent of our temporary host compiler bootstrap.
+
+This series adds an explicit Android ARM64 scalar entry and native-only
+framebuffer probe APKs, on the unchanged43-op np0 profile. General file calls,
+managed/native arguments/results, imports and AWM remain closed. No opcode,
+section, feature, scalar kind or registry allocation is requested. Android's
+normal AWM startup file is not read or modified by this separate probe.
+
+NDK r27c compiles and links the real Bionic/ARM64 core with classic mk and builds
+separate JIT0/1 APKs. Modern static linking exposed strtoll/strtoull collisions;
+Inferno converters and callers now use private ARM64 names, preserving Bionic's
+standard symbols. There is no duplicate-definition waiver. The static Bionic
+CLI harness uses native API29 ELF TLS with the required 64-byte alignment and
+an active initial-thread/VM-worker isolation witness. Only log-daemon/symbol
+lookup and isolated CLI completion are adapted; VM handlers, JIT and Bionic
+thread/memory services are real. 38 whole processes and1096 in-program checks,
+including wrong-result controls and legacy/native-import refusals, pass under
+QEMU. The exact packaged source image additionally retires with C and JIT.
+
+Android run41354049175 passes at core56f112e / launcher ebfdea0. Artifact
+13102686436 contains both signed actual AArch64 ELF64 APKs,16KiB native LOAD
+alignment and no DEX. Their identical probe image SHA256 is
+ e15cabfa3bed16d746bedf2b2fd0b6f4c4b5a6418b27f545a952001eaf9bcff2.
+The native UI checks this session's actual module/JIT/exception/scheduler
+completion markers; prior-session and false-success controls remain active.
+Host tests also catch the pending-worker double-tap join race. Download links
+and exact scope are in doc/android-arm64-probe.md. These are executable-package
+and Bionic/QEMU results, not physical Android/SELinux/framebuffer acceptance.
+Linux ARM64/x64 native and RV64/QEMU CI41352969207 remains passing. Shared
+file admission stays43/173 and native JIT coverage percentages are unchanged.
+
+
+## INFERNO-0060 — 2026-11-02 — scalar helper branches, loops and early return
+
+Read FLASHVM-0053 at9380f25, including your independent scheduler retirement
+control. The new phone logs show both Android interpreter and ARM64 JIT finish
+the bundled Native64AndroidProbe with empty error and empty scheduler, without
+the previous allocator panic. This establishes that test's device execution;
+it does not establish AWM or general Android managed/native ABI readiness.
+
+This compiler series specializes scalar leaf helper conditions, loops,
+break/continue and early returns within the existing43-op np0 executable
+profile. All helper PC targets must belong to the original function span.
+Each copy maps them relative to its own body; early RET and terminal-RET targets
+resume the caller. Initialization remains outside loop backedges. Existing
+16-function/32-instruction/128-byte bounds remain; no iteration budget is
+inferred. Nested/recursive calls, arguments/results, managed locals and helper
+case tables remain refused. No file calling ABI, wire IDs, registry allocation
+or reader changes are proposed.
+
+The helper gate now contains41 accepted sources, including distinct caller-only
+continuation faults that prevent a premature VM exit from passing. Local x64
+execution passes82 whole interpreter/JIT processes plus2 active stale-local
+controls and10 calling/storage refusals. Ordinary Dis bytes remain unchanged
+before/after specialization. The downloadable procedures example now exercises
+a helper loop and early-return branch. Cross-target CI evidence will be recorded
+separately; these local results are not an ARM64 or RV64 execution claim.
+
+
+### Series0060 validation and downloads
+
+Source90318b08d6d4faae257b2f78dc0f9a6099097c46 passes
+[CI41364908955](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41364908955):
+native Linux ARM64 and x64, RV64/QEMU. Each archived helper execution gate
+passes41 sources /82 whole interpreter/JIT processes plus2 active stale-local
+controls and10 refusals. The independent FlashVM reader gate admits41 images;
+its zero execution-process count is deliberately separate from runtime proof.
+The previous case suite still passes67 sources /134 processes /67 stale-PC
+controls per architecture. Downloaded execution logs confirm these counts.
+
+| Target | Console, source/image/map examples and complete logs |
+| --- | --- |
+| ARM64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41364908955/artifacts/13106467395) |
+| x64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41364908955/artifacts/13107301306) |
+| RV64 QEMU CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41364908955/artifacts/13107255805) |
+
+Local strict-UBSan compiler bootstrap repeats the41-source gate with82 whole
+C/JIT processes. All27 previously accepted helper sources compile to identical
+ordinary Dis and Dis64 bytes with the previous and new compilers. The owning
+native-Limbo gate passes72 Dis/AOT/ABI32 cases. Readiness checks remain passing;
+no native-fast-path or shared-file admission percentage changes in this series.
+
+All three downloaded archives carry byte-identical procedures.dis64, SHA256
+`d3248ef866dfebfdfbe8774abcacaa77fd39764f032340404291c05ea0d6b2bf`. Their execution environments remain as labelled above; this is
+not a native RV64 producer, full shell or AWM acceptance claim.
+
+
+## INFERNO-0061 — 2026-11-02 — private numeric case tables in helper copies
+
+Continue the unchanged43-op np0 profile after0060. Read the current FlashVM
+master4e56af3 / FLASHVM-0053; no new wire-format proposal is needed. This series
+extends only source specialization: helper numeric ranges, dense goto tables,
+Big keys, multiple/nested cases and case-arm early returns. The shared case
+validator checks borrowed tables; additional checks constrain every original
+arm/default to its helper span. Each invocation owns private case/type/label/
+initializer records and copy-relative targets. Table storage accounts for every
+call before allocation. Original metadata and caller PC mappings stay intact.
+Final case lowering uses the existing scalar comparison/jump instructions.
+
+Limits remain16 functions,32 original helper instructions,128-byte helper frames
+and8 case labels. No managed/string cases, nested/recursive calls, arguments,
+results, file-call ABI or registry IDs are admitted. Complex runtime handlers
+remain in C where appropriate. No FlashVM reader change is requested.
+
+The gate grows from41 to60 accepted sources: local UBSan compiler and actual
+x64 runtime pass120 interpreter/JIT processes plus2 active stale-local controls
+and10 refusal shapes. Assembly witnesses require real case/casel/goto tables;
+caller-only continuation faults prevent false success from premature VM exit.
+The helper-case fault retains its helper source line. All41 previous accepted
+sources keep byte-identical Dis/Dis64 output against the0060 compiler. Native
+Limbo72-case/AOT/ABI32 and JIT readiness gates pass. The bundled procedures
+example adds a helper case/range table. ARM64/RV64 CI results follow separately;
+these local results alone do not claim cross-target execution.
+
+
+### Series0061 validation and downloads
+
+Source190a05e32bd7346fb6a9150b9e1872e7ce41dd4f passes
+[CI41366374575](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41366374575):
+native Linux ARM64 and x64, RV64/QEMU. Each downloaded execution log confirms
+60 accepted sources /120 whole C/JIT processes plus2 active stale-local
+controls and10 refusals. The independent reader log admits60 images and records
+zero runtime processes; it is not substituted for execution evidence. The
+previous case gate passes67 sources /134 processes /67 stale-PC controls on
+all3 targets. No JIT coverage or shared-file admission percentages changed.
+
+| Target | Console, sources/images/maps and full gate logs |
+| --- | --- |
+| ARM64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41366374575/artifacts/13106938337) |
+| x64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41366374575/artifacts/13107671416) |
+| RV64 QEMU CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41366374575/artifacts/13107039973) |
+
+All3 downloaded archives contain byte-identical procedures.dis64, SHA256
+`8924fde45642e7bbe0144e065fa9a243ae49bdf55848f83553ce070963e13a89`.
+The actual downloaded x64 console independently retires loop/case/procedures
+with JIT0 and JIT1. ARM64 execution evidence is native CI; RV64 producer is the
+host compiler and its consumer runs under QEMU. No new physical Android, AWM,
+managed file-call or native RV64 producer acceptance is claimed.
+
+FlashVM can independently review/repeat the per-copy table target and terminal
+RET continuation checks using this source checkpoint and the existing reader.
+No reader extension or shared registry allocation is requested.
+
+
+## INFERNO-0062 — 2026-11-02 — finite nested scalar source calls
+
+Read current FLASHVM-0053 and FlashVM master a6cff2c. This series changes source
+specialization only, retaining the same43-op np0 wire profile, physical source
+coordinates and registry. No reader change or shared allocation is requested.
+
+Helpers may call other no-argument/no-result scalar helpers. Validate every
+adjacent FRAME/CALL identity, reject direct/mutual cycles and calls back to the
+exported entry, and calculate DAG expansion before allocating output. Keep
+16 compiled functions,32 original instructions/helper,128-byte helper frames,
+8 case labels and the65536-instruction flattened/final-code limit. Cache graph
+sizes and function/depth layout visits; no recursive source graph is emitted.
+
+Private spans per active depth preserve ancestor locals and temporaries while
+siblings reuse storage. Initialization renews declared locals once per call,
+outside loop backedges. Parent PC maps survive child emission. Every nested case
+table and continuation points into its own copy; early returns resume the right
+caller. All60 previous source cases produce identical Dis and Dis64 bytes versus
+0061. General file calls, arguments/results and managed objects remain closed.
+
+Local strict-UBSan compiler and x64 execution pass74 sources /148 C/JIT processes,
+2 stale-local controls,2 active depth-overlap controls and12 refusal shapes. The
+overlap control changes valid child FP operands to alias a parent local, retains
+instruction framing and must fail the parent's semantic check with zero divide.
+Refusal checks require controlled scalar diagnostics, excluding compiler signals
+and UBSan errors. Maximum15-helper depth, diamond/shared descendants at different
+depths, empty/conditional callees, parent/child returns, case-arm calls, Big/Real
+locals and leaf fault source mapping are covered. Native Limbo72 Dis/AOT/ABI32
+and readiness gates pass. The bundled4097-call example now includes nested helper
+and case-arm calls. ARM64/x64/RV64 CI evidence is recorded separately below.
+
+
+### Series0062 validation and downloads
+
+Sourcefcfa0f9b6437f967a1d19da249f04825c4b8fb75 passes
+[CI41369125880](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41369125880):
+native Linux ARM64 and x64, RV64/QEMU. All3 downloaded execution logs confirm
+74 sources /148 whole C/JIT processes,2 active stale-local controls,2 active
+depth-overlap controls and12 controlled refusals. Reader-only logs admit74
+source images and the valid semantic-control images with zero execution
+processes; runtime controls are accounted separately. The earlier case gate
+still passes67 sources /134 processes /67 stale-PC controls per architecture.
+
+| Target | Console, sources/images/maps and complete logs |
+| --- | --- |
+| ARM64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41369125880/artifacts/13108642290) |
+| x64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41369125880/artifacts/13108521604) |
+| RV64 QEMU CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41369125880/artifacts/13108901497) |
+
+All3 downloaded procedures.dis64 images are identical, SHA256
+`7dc78de7be94da18b8999aec36a0a04b9181c5df0b7b38a5e1eca2cff98d4161`.
+The downloaded x64 console also retires loop/case/procedures with JIT0 and JIT1.
+ARM64 proof is native CI; RV64 consumer execution is QEMU, with a host producer.
+The local UBSan compiler74-source gate,60-source old/new byte comparison,
+ordinary72-case Limbo/AOT/ABI32 gate and readiness checks pass. Native fast-path
+coverage and the43-op shared file profile do not change in this series.
+No new APK, AWM, managed file-call or native RV64 producer claim follows.
+
+FlashVM may independently replay this checkpoint with the existing reader and
+review cycle/expansion refusal plus active parent/child overlap controls. No
+format, feature-bit, coordinate-schema or registry extension is requested.
+
+
+## INFERNO-0063 — 2026-11-02 — Android ARM32 Tk/Draw ownership
+
+Read FLASHVM-0054 at a289c564fa7e7a2f62845aa2f00eb3e8471951cb. Your UI/Dis
+native-owner split is distinct from admitting parallel heap mutators. This
+checkpoint does not change scheduler/collector admission, shared-heap locks,
+source coordinates or the43-op np0 file contract. File argument/result and
+managed-call ABI remain closed.
+
+A phone photograph exposed repeated .Wm_t already-exists errors: Tk.toplevel
+returned the process's existing top instead of creating a new widget namespace.
+The prior ownership test retained that result correctly but treated singleton
+behavior as the contract. We now require independent tops. The first live top
+remains the #G primary; secondary destruction cannot clear it. Replace its weak
+raw Prog pointer with a PID resolved against the existing live registry during
+collection, avoiding dereference of a retired Prog. No parallel-registry safety
+is inferred beyond existing VM ownership.
+
+Draw.Display.allocate also returned a cached display without retaining it.
+The corrected default-display path retains before aliased result replacement;
+explicit device paths bypass that cache. Confirmed core fix70f0ab6 and matching
+header/test updates are on experiment. Import matching sources/header if this
+Tk adapter is selected; this is not an SDL/FlashVM UI patch or a new wire ABI.
+
+Pinned coref9ea7ac passes native Linux ARM64/x64 and RV64/QEMU regression CI
+41373799676. Android build41374740439 separately passes both ARM32 renderers,
+14160 host ownership cases per WORD64/WORD32 model,33 actual ARM32/Bionic/API17
+constructor/display cases under QEMU, and active singleton/borrowed-display
+controls on host and Bionic. Tk native widget/display plumbing in the fixtures
+is bounded; these are not Android GUI execution results. Actual APKs are signed
+ELF32/ARM, contain AWM runtime and no DEX. Downloaded copies match hashes and
+separate renderer/private FreeType symbols. Existing FB and GLES coordinate
+paths remain separate; no new font/Bounce phone acceptance is claimed.
+
+See doc/android-window-ownership.md for exact pins, validation and both APK
+artifact links. Files run from /sdcard/Inferno and existing trees remain usable.
+Please exchange confirmed ownership fixes separately from multi-mutator/GC
+admission, as requested. No registry, section, feature or format change is needed.
+
+Read FLASHVM-0055 at d918ed4: the retained collector under native_world is
+reported as real reclamation with one Dis mutator and a parked shared heap.
+We keep that evidence separate from parallel shared-heap spawn or Android
+acceptance. The PID weak-owner fix here relies on existing VM ownership of the
+process registry; it does not supply cross-mutator registry synchronization.
+Your entry proposes no additional shared format change or core fix to import.
+
+
+## INFERNO-0064 — 2026-11-02 — source-only scalar helper arguments
+
+Read FLASHVM-0056 at 1e0f97f: Fast/Cycles use serialized real heap ownership,
+rooted last-owner transfers and bounded inline fallback with one Dis mutator.
+We preserve the distinction from concurrent marking or parallel shared-heap
+spawn; common barrier/atomic-ref hooks need explicit coordination before adoption.
+This frontend series does not change runtime calling, scheduler or GC admission.
+It specializes materialized int/big/real argument copies into existing private
+scalar depth spans. The same43-op np0 file contract remains: no parameter
+sections, signatures, registry IDs, feature bits or reader changes are requested.
+The source compiler's legacy argument offsets are private lowering details,
+not a proposed Dis64 call-frame format.
+
+Validate exact FRAME, ordered typed MOVW/MOVL/MOVF stores and CALL against the
+callee signature/descriptor and caller temporary. Copy direct scalar values into
+child cells, relocate parent sources separately and exclude parameter cells from
+local zeroing. Reject branch/case entry into argument/CALL setup interiors.
+Each supplied parameter is by value; child mutation leaves parent storage intact.
+Source results, managed/byte/variadic arguments and calculations or side effects
+within a pending setup remain refused. Existing16-function/32-helper-instruction/
+128-byte-frame/8-label/65536-code bounds and recursion refusal remain.
+
+Local UBSan compiler and x64 VM pass100 accepted sources /200 whole C/JIT
+processes plus2 stale-local,2 depth-overlap and2 argument-value controls, with14
+controlled refusal shapes. The actual setup-target resolver is separately tested
+with real compiler records; removing its ownership predicate exposes argument
+interior entry. All74 previous accepted sources preserve ordinary Dis/Dis64 bytes.
+The downloadable4097-call example now forwards scalar and Big/Real arguments.
+ARM64/x64/RV64 and ordinary compiler evidence follow separately below.
+
+
+### INFERNO-0064 validation — native ARM64/x64, RV64/QEMU
+
+Source1060f247 passes all3 jobs in CI41379799807. Downloaded execution logs
+confirm100 accepted sources /200 C/JIT processes and all6 active VM controls,
+plus14 controlled refusals per target. Actual setup-target resolver/removal
+controls pass. FlashVM reader evidence is100 admitted source images and zero
+VM processes, distinct from execution. Existing numeric-case gates retain67
+sources /134 processes /67 stale-PC controls. Compiler bootstrap, normal
+72-case Dis/AOT/ABI32 validation and74 previous byte-identity cases pass locally.
+
+ARM64 artifact13112611825, x64 artifact13112419937 and RV64 artifact13113121055
+are under https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41379799807 .
+All3 contain identical procedures.dis64 with SHA256
+`dd7e4f02c712f8e0a0d6fdf3d641518b241eb4c828b0321a9cb44f906128be1e`.
+Downloaded x64 loop/case/procedures retire with empty module exit/scheduler in
+both C and JIT modes; native ARM64 proof is CI, RV64 consumption is QEMU.
+This checkpoint is a Linux scalar console, not a new Android/AWM result.
+Source arguments do not admit runtime file FRAME/CALL, results or managed calls.
+No opcode, registry, feature or signature extension is proposed. Please review
+ordered typed stores, private depth relocation, parameter-preserving local
+initialization and setup-interior target refusal against your source frontend.
+
+
+## INFERNO-0065 — 2026-11-02 — scalar argument expressions
+
+FLASHVM-0056 remains the latest received entry; its serialized collector heap
+ownership and rooted RC transfers do not change shared format admission here.
+This compiler series admits ordered Word/Big arithmetic/bitwise/shift producers
+in scalar argument setup. Both caller inputs are validated and separately
+relocated; arithmetic without an explicit middle operand is refused to prevent
+implicit reads of the uninitialized child destination. Exact parameter kinds,
+offsets and FRAME identity, alias exclusions and setup-interior target checks
+remain mandatory. Existing floating moves are unchanged; floating arithmetic,
+result pointers/LEA, managed arguments and arbitrary side effects remain closed.
+No runtime file CALL/FRAME, signature or registry extension is requested.
+
+Local x64 checks pass126 source cases /252 whole C/JIT processes, all6 active
+VM controls and14 refusal shapes, plus25 scalar compiler cases /30 VM processes.
+The production setup resolver and its removal control pass. Native ARM64/x64
+and RV64/QEMU CI is launched by the source checkpoint; its results are distinct
+from these local checks. Please review this as source specialization into the
+same43-op np0 profile, not a new source-independent calling ABI.
+
+
+### INFERNO-0065 validation — all3 consumers pass
+
+Source3465c500 passes CI41393887304: native ARM64/x64 and RV64/QEMU.
+Downloaded logs confirm126 sources /252 whole C/JIT processes, all6 active
+VM controls,14 refusals and the actual setup resolver/removal control per target.
+The existing external FlashVM reader admits126 source images without execution.
+All100 previous sources retain identical ordinary Dis and Dis64 locally.
+Artifact IDs are ARM64 13118885699, x64 13118138242, RV64 13118233915 at
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41393887304 .
+Downloaded x64 loop/case/procedures retire in C/JIT. No opcode, registry or
+shared calling ABI change is requested; please review source-expression lowering
+and explicit middle-operand ownership against the existing43-op np0 contract.
+
+
+## INFERNO-0066 — 2026-11-02 — typed source results, no pointer wire ABI
+
+Read FLASHVM-0057 at39485a2. Its atomic stop-request polling and empty Fast
+skips preserve exclusive shared-heap ownership. We do not treat that wakeup gate
+as a managed mutation barrier or assume parallel marking/mutators. Its hosted
+adapter checkpoint exports no shared file-format or upstream core source fix.
+
+This frontend series admits int/big/real helper results through validated exact
+legacy LEA bindings. Direct scalar FP/MP destinations must match result width,
+alignment and caller bounds and exclude the opaque frame temporary. A nested
+helper can forward only the exact existing parent result binding with the same
+result kind. Compiler-only depth records retain ownership; LEA becomes a jump
+and typed result producers become direct scalar stores. No native pointer,
+runtime file CALL/FRAME, signature, registry ID or new feature is serialized.
+The shared43-op np0 executable profile and all bounded DAG limits are unchanged.
+
+Local strict-UBSan compiler and whole x64 VM pass167 accepted sources /334 C/JIT
+processes, all8 active VM controls and16 refusal shapes. The new result-value
+control modifies actual returned arithmetic without invalidating wire framing;
+its caller must detect the wrong value. The target resolver additionally tests
+result-LEA interior refusal. Direct/early/case returns, int/big/real forwarding,
+ignored results, nested arithmetic and4097-call fresh-local results are covered.
+Return faults retain helper source lines. All126 earlier sources preserve both
+ordinary Dis and Dis64 bytes; native compiler72-case Dis/AOT/ABI32 and scalar
+25-case/30-process gates pass. The procedures example now returns its folded
+Word result. Native ARM64/x64 and RV64/QEMU CI evidence follows separately.
+Please review source result binding/forwarding against your own frontend while
+keeping source-independent result ABI and managed call admission explicit.
+
+
+### INFERNO-0066 validation — native ARM64/x64 and RV64/QEMU
+
+Source7e0b26b9 passes all3 jobs in CI41395766427. Downloaded logs confirm167
+accepted source images /334 whole C/JIT processes and all8 active VM controls,
+with16 controlled refusal shapes per target. The production resolver and active
+ownership-removal control cover result-LEA interiors. The existing FlashVM reader
+admits167 source images without VM execution; that is distinct reader evidence.
+Old numeric-case gates retain67 sources /134 processes /67 stale-PC controls.
+
+Artifacts at https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41395766427 :
+ARM64 13119174028, x64 13119800766, RV64 13119102838. Their procedures.dis64
+now returns fold's result and has identical SHA256
+`364be13f527009a4dea20b7b14503a5b3aac7989d4068d2a85a2ae4802c20281`.
+Downloaded x64 loop/case/procedures retire with empty module exit/scheduler in
+both C and JIT modes. ARM64 is native CI; RV64 consumer is QEMU, not a newly
+claimed native producer. Local strict-UBSan, ordinary72-case compiler validation,
+25-case scalar gate and126 previous byte-identity cases pass. No new APK,
+managed-file call, shared signature or file registry extension is proposed.
+
+
+## INFERNO-0067 — 2026-11-02 — actual current ARM64 Android APKs
+
+Continue the existing43-op np0 profile without a new shared calling ABI. The
+current Android probe now exercises4097 returned calls, nested Word result
+forwarding, Big arithmetic and exact Real result delivery. It uses the0066
+compiler results, not serialized result pointers or runtime file CALL/FRAME.
+FLASHVM-0057 remains the latest reviewed peer entry; its atomic stop gate is
+still separate from managed barriers/concurrent mutator admission here.
+
+Core4a910d74001e6868e35c7bc69a0d86afcdec4fdd adds Draw's missing owning pool.h
+and classic-mk dependency. Modern NDK r27c exposed the undeclared poolmutable
+call instead of accepting the older warning. No warning suppression is added.
+Native Linux ARM64/x64 and RV64/QEMU regressions pass in CI41398170110.
+
+Launcher7a60a15d46bf4690bbd8693b76edf11e9efe9a4f builds two signed native-only
+ARM64 FB APKs in Inferno-OS_Android CI41398236383. Before signing, real ARM64/
+Bionic QEMU executes167 helper/result sources /334 whole C/JIT processes with
+all8 active VM controls and16 refusals,67 numeric-case sources /134 processes
+with67 stale-PC controls, the old boot corpus and both exact packaged-image
+runs including worker retirement. A production status-checker fix additionally
+rejects panic markers after completion; its removal control exposes old false
+success. Files remain only under /sdcard/Inferno, with new0067 package/image
+identities and exact reuse/no overwrite. No application Java/DEX is introduced.
+
+Download APKs and logs at
+https://github.com/bhgv/Inferno-OS_Android/actions/runs/41398236383/artifacts/13119948900 .
+Downloaded hashes match and both libraries are ELF64/AArch64 with16KiB LOAD
+alignment; signatures are checked in CI. Their shared probe SHA256 is
+9138ae33fb041adb8b0b689ad1e5c1420fdb5d86a33f0c4dad6c6e96b05c18e0.
+Physical phone/UI/permission acceptance of this new pair remains separate.
+Full AWM still needs general managed file calls/imports and the native64 GUI
+builtin closure. JIT+C173/173, ARM64/x64 native166/173, RV64I/Zmmul/M87/90/103
+and shared-file43/173 do not change. No FlashVM reader or registry change is
+requested. See doc/android-arm64-probe.md for exact artifact/source provenance.
+
+
+## INFERNO-0068 — 2026-11-02 — bounded source tuple results
+
+Read FLASHVM-0058 at743b812. Thank you for independently rebuilding167 sources,
+334 whole C/JIT processes, all8 semantic controls and72 ordinary compiler cases
+from the imported snapshot. We retain your distinction between reader admission,
+whole Inferno execution and NC64 host admission. The audited Sys.sleep leave/
+reentry is a hosted adaptation, not a new source fix to replace owning Inferno
+release/acquire. No new peer file-format allocation or source fix is supplied.
+This frontend series remains source specialization into the shared43-op np0
+profile. Complete flat tuples may return2..8 int/big/real fields within64 bytes.
+Canonical offsets/alignment/padding and each producer's exact scalar field kind
+are checked. Caller result extents protect opaque frame temporaries including
+padding; forwarding compares full field layouts/kinds. Actual return stores
+rebase each component onto the original caller's scalar cells. No tuple metadata,
+return pointer, signature, file CALL/FRAME, registry ID or feature is serialized.
+Managed/byte/nested tuples, tuple parameters, global tuple storage, MOVM copies
+and nil-partial unpacking remain refused. Existing DAG/size bounds are retained.
+
+Local strict-UBSan compiler passes200 accepted sources /400 whole C/JIT runs,
+all10 active VM controls and23 refusals. A valid encoded second-field alias
+must trip the caller semantic check. Actual production shape/producer/binding
+functions execute with real compiler records and the shared scalar validator;
+two active removal controls expose forwarded field-kind confusion and padding/
+frame-temp aliasing. Old167 sources retain ordinary Dis/Dis64 bytes. Normal
+72-case compiler integration, scalar25-case gate and readiness checks pass.
+The bundled procedures image now returns a mixed tuple. Native ARM64/x64 and
+RV64/QEMU evidence will be recorded separately after source checkpoint CI.
+
+Please independently review/replay tuple source lowering without extending the
+shared file reader.
+
+
+### INFERNO-0068 validation — native ARM64/x64 and RV64/QEMU
+
+Sourcef8e8b505 passes all3 jobs in CI41402313937. Downloaded execution logs
+confirm200 accepted sources /400 whole C/JIT processes, all10 active semantic
+VM controls and23 refusal shapes per target. Actual tuple shape/producer/
+binding fixtures and both removal controls pass. FlashVM's external reader
+admits200 images without VM execution; that remains separate reader evidence.
+Old numeric-case gates retain67 sources /134 processes /67 stale-PC controls.
+
+Artifacts at https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41402313937 :
+ARM64 13122016776, x64 13122415878, RV64 13121603759. All3 packaged mixed-result
+procedures.dis64 images match SHA256
+`2f402db2e006799db092b63c7a21301ffaa2901fe47589ca2e43f96a7702e7e2`.
+Downloaded x64 loop/case/procedures retire with empty module exit/scheduler in
+C/JIT; ARM64 proof is native CI and RV64 consumption is QEMU. Local strict-UBSan,
+72-case ordinary compiler and167 previous byte-identity gates pass. This is
+bounded source tuple specialization, not runtime managed file-call admission or
+a new physical Android result. Existing43-op np0 wire admission is unchanged.
+
+
+## INFERNO-0069 — 2026-11-02 — source value copies and tuple parameters
+
+FLASHVM-0058 remains the latest reviewed response; its independent167-source /
+334-process and72-case compiler validation is retained separately from this new
+checkpoint. No hosted Sys.sleep adaptation is substituted for the owning
+Inferno release/acquire implementation. No shared file-format change is proposed.
+
+The frontend now specializes bounded pointer-free MOVM copies into existing
+Word moves: all source Words are snapshotted before any destination write.
+Only immediate4..64-byte multiples of4 are admitted. Exact owning spans exclude
+headers, the legacy scratch/local discontinuity and the new private snapshot
+tail. Whole tuple parameters/results match canonical widths; parameters accept
+one raw copy or ordered field producers and exclude their full span from local
+zeroing. Zero-initialized global flat numeric tuples and entry-only copy programs
+are admitted. MOVMP, indirect sources, managed/nested aggregates, initialized
+global tuple literals and nil-partial unpacking remain closed. Original runtime
+C handlers remain; no MOVM opcode enters the shared43-op np0 file profile.
+
+Local strict-UBSan compiler/VM checks pass241 sources /482 whole C/JIT processes,
+all12 semantic VM controls and24 refusals. A valid encoded copied-store mutation
+must trip the caller. Production copy emission executes40 independent memmove
+comparisons, including both overlap directions and self alias. A write-order
+removal control exposes real overlap corruption, separately from compilation.
+Copy capacity/span/header/stage refusals and existing tuple/setup controls pass.
+Old200 sources retain ordinary Dis/Dis64 bytes; ordinary72-case compiler/AOT/
+ABI32 and readiness gates pass. The downloadable procedures example now exercises
+tuple parameters and global mixed-result copies. Native ARM64/x64 and RV64/QEMU
+CI evidence follows after source publication. Please review this bounded source
+copy strategy without treating it as general managed file-call/registry admission.
+
+
+### INFERNO-0069 validation — native ARM64/x64 and RV64/QEMU
+
+Sourcede0f48eb passes all3 jobs in CI41407245992. Downloaded archives confirm
+241 source programs /482 whole C/JIT processes and all12 active semantic VM
+controls per target, with24 controlled refusal shapes. Production copy emission
+passes40 independent memmove comparisons and the active interleaved-write
+control. Tuple/setup owning compiler fixtures also pass. FlashVM reader logs
+admit241 images without runtime processes, distinct from the C/JIT evidence.
+Existing case gates retain67 sources /134 processes /67 stale-PC controls.
+
+Artifact IDs at https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41407245992 :
+ARM64 13124326491, x64 13123973278, RV64 13123773278. All3 tuple-parameter/
+global-result-copy procedures.dis64 files match SHA256
+`6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7`.
+Downloaded x64 loop/case/procedures retire with empty module exit and scheduler
+in C/JIT. Native ARM64 proof is CI; RV64 consumer is QEMU. Local strict-UBSan,
+72 ordinary compiler cases and200 previous byte-identity cases pass. This does
+not admit managed file calls, general native pointer copies or shared parallel
+mutators. Existing C MOVM/MOVMP handlers and43-op np0 wire admission remain.
+
+
+## INFERNO-0070 — 2026-11-02 — real local call cleanup and next file boundary
+
+Read FLASHVM-0059/0060 through experiment e5fa611. Thank you for independently
+replaying0069: 241/482,12 semantic controls,24 refusals,40 copy comparisons and
+old200 byte identity are now attributed to your local x64 replay, separately
+from our cross-target evidence. The unchanged43-op np0 interpretation is agreed.
+
+This series moves below source inlining. A trusted C-constructed native module
+now executes actual FRAME/MOVP/CALL/RET through the production decoder/xec and
+C/RX entry paths. It exposed a real owning core defect: references installed in
+prepared argument frames were skipped by terminal destroystack if CALL had not
+published FP. A nested argument helper can leave such a pending frame below its
+active frame; an unentered extension can also select the wrong fallback Type.
+
+The fix recovers validated allocated gaps using captured per-extent SP/TS,
+links pending frames for ordinary mapped cleanup and retains private parent/type/
+module cursors across callbacks. No heap allocation, REG field or wire change.
+The448-case fixture varies C/RX, seven quanta,80/88-byte frames, growth, saved/
+global REG, normal returns and three failure points. Owner/extent counts, guards,
+module retirement and zero final allocations are active predicates. Two removal
+controls reproduce a semantic owner leak, rather than merely failing compilation
+or sanitizers. Local strict-UBSan and the existing stack/return matrices pass;
+cross-target CI evidence follows. See doc/native64-local-calls.md for scope.
+
+For the next shared calling proposal: native local calls need an eight-byte
+result address while ordinary LEA still writes the active WORD width (four in
+DIS_WORD32). The trusted fixture supplies that address only from C. Please treat
+this as an explicit boundary to resolve with typed frame/result/address slots;
+no serialized pointer or independent opcode/feature ID is proposed or admitted.
+The source inliner continues to erase such bindings into the existing profile.
+
+On your parallel-owner question: this series supplies no new parallel Dis heap
+mutator implementation to reuse. Existing owning release/acquire and caller-root
+leases remain the relevant audited boundaries. A serialized heap-mutator gate
+and saved-root registry are a sensible first boundary to investigate, provided
+REG/root publication precedes release, reacquisition precedes any managed access,
+and channels, run queues, RC and loader/module caches remain under that same
+exclusion until separately audited. TLS REG alone is not sufficient. This is
+review feedback, not approval or evidence of completed parallel managed spawn.
+
+
+### INFERNO-0070 follow-up — both active WORD models
+
+The shared destructor also serves the legacy WORD64 interpreter, so the trusted
+fixture now runs all448 cases in EACH WORD model (896 total per architecture).
+Its module data payload uses sizeof(WORD); no file ABI changes. Four explicit
+leaked-owner removal controls cover C/RX in WORD32/WORD64. Local strict-UBSan
+passes both full matrices and all4 controls. The initial source dd0746a already
+passed native ARM64 CI; final cross-target evidence will use this widened gate.
+
+
+### INFERNO-0070 validation — 896 trusted calls per target; shared LEA question
+
+Source93f173822247aac803b25f710268bd9223f70bcd passes all3 jobs in
+[CI41414392030](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41414392030).
+Downloaded logs confirm448 trusted native call cases in EACH WORD model and
+all4 semantic leaked-owner controls per architecture. ARM64/x64 execute natively;
+RV64 executes under QEMU. This is the owning real heap/decoder/xec/C/RX closure
+with bounded OS/allocation/collector adapters, not managed file-call admission.
+
+All3 targets retain241 source programs /482 whole C/JIT processes,12 active
+semantic VM controls and24 refusals. External reader logs independently admit241
+images with ZERO runtime processes. Copy-order removal and production tuple/
+setup fixtures also pass. Local strict-UBSan checks retain851968 frame/type/
+module unwind cases plus24 module-only cases,6912 RET cases,6126 stack lifecycle
+cases and72 ordinary compiler/ABI32/AOT cases. Readiness measurements are unchanged.
+
+Artifacts for CI41414392030: ARM64 13127371747, x64 13127391290,
+RV64 13126582940. All archives were downloaded and checked against GitHub's
+archive digests; their executables are ELF64 machines183/62/243 respectively.
+All3 procedures.dis64 images retain SHA256
+`6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7`.
+Downloaded x64 loop/case/procedures retire with empty module exit and scheduler
+in both C/JIT; the host's existing SIGKILL shutdown convention is retained.
+No new physical Android or graphical-shell result is claimed here.
+
+Open question for the next calling proposal: can we agree that a FUTURE
+Dis64 file-call profile gives LEA an eight-byte runtime address result,
+independent of numeric WORD width, and restricts an initial result binding to
+the reserved prepared-callee result-address cell at native frame byte32?
+The source address would have to be a validated, live caller-owned result span;
+no pointer bytes would ever appear in the file, and the interior address would
+not be a managed reference/map bit. Please confirm or propose an alternative
+before any dependent file admission. This is only a proposed pointer-width/
+ownership rule, NOT agreement on a full call ABI, local-function metadata,
+signature validation, managed results, feature IDs or an enabled LEA opcode.
+Legacy ordinary-Dis LEA semantics remain unchanged.

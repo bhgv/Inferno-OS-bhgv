@@ -81,7 +81,23 @@ tkmodinit(void)
 	tksorttable();
 }
 
-/* Retain an existing top before replacing a result that may be its last owner. */
+
+/* Resolve the weak GUI owner by PID; a collected top must never dereference a retired Prog. */
+static void
+tkdetachowner(TkTop *top)
+{
+	Prog *owner;
+
+	if(top->ownerpid != 0){
+		owner = progpid(top->ownerpid);
+		if(owner != nil && owner->tktop == top)
+			owner->tktop = nil;
+		top->ownerpid = 0;
+	}
+}
+
+
+/* Create an independent widget namespace; keep only the first live top as the #G process root. */
 void
 Tk_toplevel(void *a)
 {
@@ -94,16 +110,6 @@ Tk_toplevel(void *a)
 	F_Tk_toplevel *f = a;
 	void *r;
 
-	t = (currun())->tktop;
-	if(t){
-		h = D2H(t);
-		h->ref++;
-		poolmutable(h);
-		r = *f->ret;
-		*f->ret = (Tk_Toplevel*)t;
-		destroy(r);
-		return;
-	}
 	r = *f->ret;
 	*f->ret = H;
 	destroy(r);
@@ -163,8 +169,10 @@ Tk_toplevel(void *a)
 
 	{
 		Prog *p = currun();
-		p->tktop = t;
-		t->prog = p;
+		if(p->tktop == nil){
+			p->tktop = t;
+			t->ownerpid = p->pid;
+		}
 	}
 	
 	*f->ret = (Tk_Toplevel*)t;
@@ -976,6 +984,8 @@ Tk_getimage(void *a)
 	unlockctxt(t->ctxt);
 }
 
+
+/* Release one independent namespace and detach its weak primary owner if that process still exists. */
 void
 tkfreetop(Heap *h, int swept)
 {
@@ -1066,11 +1076,7 @@ tkfreetop(Heap *h, int swept)
 		t->wmctxt = H;
 		destroy(r);
 	}
-	if(t->prog){
-		Prog* p = t->prog;
-		t->prog = nil;
-		p->tktop = nil;
-	}
+	tkdetachowner(t);
 }
 
 static void

@@ -1,4 +1,4 @@
-# Bounded scalar source procedures: through series 0058
+# Bounded scalar source procedures: through series 0069
 
 `limbo -6` can specialize direct FRAME/CALL pairs into its sole exported
 `init()` before the existing numeric-case and scalar lowering passes. This is
@@ -6,15 +6,18 @@ source inlining, not a Dis64 calling ABI. The agreed np0 executable profile stil
 admits exactly 43 of 173 Dis operations. No opcode, section, feature bit,
 signature, coordinate schema or wire identifier is assigned.
 
-The current bounds are 16 compiled functions including the entry, 32 scalar
+The current bounds are 16 compiled functions including the entry, 32 original
 instructions per helper excluding its final RET, and 128 bytes of legacy helper
-frame extent. Each helper has no arguments or result, no recursion or nested
-calls, no branches or cases and no managed frame map. Series 0058 also admits
+frame extent. Each helper has a void, scalar or bounded flat numeric tuple result, no recursion and no managed frame map.
+Scalar and bounded flat numeric tuple arguments use validated ordered stores. Bounded acyclic
+helper-to-helper calls are admitted. Numeric helper case tables are admitted
+within the same eight-label bound as entry-local tables. Helpers may contain
+scalar conditional branches, loops and early returns. Series 0058 also admits
 user-declared int/big/real locals with fresh zero initialization per call.
-Byte, pointer and aggregate locals remain refused. The entry can retain
+Byte, pointer and managed/nested aggregate locals remain refused. The entry can retain
 its own loops, branches and bounded numeric cases around the calls.
 
-The compiler validates exact adjacent FRAME/CALL pairs, callee start and frame
+The compiler validates exact FRAME/argument-copy/CALL setups, callee start and frame
 descriptor identity, and matching caller frame-pointer temporary. Branches and
 case arms cannot enter a CALL while skipping its FRAME. Flattening uses private
 instruction and case-table copies; it leaves ordinary Dis output and original
@@ -22,8 +25,8 @@ compiler metadata untouched. Empty procedures become a jump to the next
 instruction. Each helper's terminal RET disappears; the entry RET becomes EXIT.
 
 Helper scratch and compiler temporaries occupy an appended region separate
-from caller locals and the caller's scalar scratch tail. Sequential helper
-invocations reuse that region. For helpers with declared locals, series 0058
+from caller locals and the caller's scalar scratch tail. Separate spans at each active helper depth preserve ancestor locals.
+Sibling invocations reuse their depth span. For helpers with declared locals, series 0058
 renews the entire private span with MOVW zero stores before every call. This
 covers scratch, padding and both halves of Big/Real storage; caller locals and
 caller scratch stay separate. Helpers with compiler temporaries alone retain
@@ -137,3 +140,535 @@ case gates also pass in each clean CI port.
 
 procedures.dis64 is byte-identical across all three downloaded archives, SHA256
 `ad1c2750a4955db7719797fedcf2647585cc07c19ae49727416b310ec7334c47`.
+
+
+## Series 0060: control flow inside scalar leaf procedures
+
+The compiler now accepts scalar helper conditions, loops, break/continue and
+early returns. Each copied branch is checked against the original function's
+half-open instruction span, then rebased relative to that particular call copy.
+Early RET becomes a jump to the caller continuation. Branching to the terminal
+RET has the same continuation target; it cannot terminate the whole program.
+Per-call zero initialization precedes the copied body. Loop backedges target
+the body, so they cannot repeat initialization and silently reset loop locals.
+
+The existing 16-function, 32-instruction and 128-byte frame bounds still apply;
+they bound specialization size, not execution time or loop iteration count.
+Arguments/results, nested/recursive calls, helper case tables and managed locals
+remain refused. The shared executable profile remains exactly43 operations.
+No runtime file-call ABI or FlashVM reader change is required.
+
+New whole-process tests distinguish correct caller continuation from both an
+incorrect result and a premature VM exit: after successful self-checks, each
+positive control-flow program deliberately triggers a caller-only invalid-shift
+fault. Wrong results trigger zero divide; skipping the continuation produces an
+empty exit. Tests also cover helpers after the entry, nonzero helper origins,
+repeated local initialization, nested loops, Big/Real conditions and loop faults.
+Ordinary Dis compilation is compared before/after scalar specialization.
+
+
+### Series0060 validation and downloads
+
+Source90318b08d6d4faae257b2f78dc0f9a6099097c46 passes
+[CI41364908955](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41364908955):
+native Linux ARM64 and x64, RV64/QEMU. Each archived helper execution gate
+passes41 sources /82 whole interpreter/JIT processes plus2 active stale-local
+controls and10 refusals. The independent FlashVM reader gate admits41 images;
+its zero execution-process count is deliberately separate from runtime proof.
+The previous case suite still passes67 sources /134 processes /67 stale-PC
+controls per architecture. Downloaded execution logs confirm these counts.
+
+| Target | Console, source/image/map examples and complete logs |
+| --- | --- |
+| ARM64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41364908955/artifacts/13106467395) |
+| x64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41364908955/artifacts/13107301306) |
+| RV64 QEMU CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41364908955/artifacts/13107255805) |
+
+Local strict-UBSan compiler bootstrap repeats the41-source gate with82 whole
+C/JIT processes. All27 previously accepted helper sources compile to identical
+ordinary Dis and Dis64 bytes with the previous and new compilers. The owning
+native-Limbo gate passes72 Dis/AOT/ABI32 cases. Readiness checks remain passing;
+no native-fast-path or shared-file admission percentage changes in this series.
+
+All three downloaded archives carry byte-identical procedures.dis64, SHA256
+`d3248ef866dfebfdfbe8774abcacaa77fd39764f032340404291c05ea0d6b2bf`. Their execution environments remain as labelled above; this is
+not a native RV64 producer, full shell or AWM acceptance claim.
+
+
+## Series0061: private numeric tables in scalar helpers
+
+Leaf procedures may now contain numeric case/range tables, dense goto dispatch
+and Big case keys. The shared case validator checks table identity, bounds and
+label records before specialization. Every arm/default must target the same
+original helper, including its terminal RET. Each call copy owns independent
+Case/Label/Type/initializer records, pointing into that copy's flattened body.
+Two tables in one helper and nested cases remain separate. No source table or
+entry PC mapping is rewritten. Existing case lowering then expands these private
+tables into the unchanged43-op scalar profile and remaps final emitted PCs.
+
+Per-helper table copies are counted before allocation, including every repeated
+call. The terminal RET maps to that call's continuation. The16-function,
+32-original-instruction,128-byte-frame and8-label bounds remain unchanged.
+Arguments/results, recursive/nested calls and managed/string cases remain out
+of scope. No new shared IDs or file ABI are introduced.
+
+The owning gate now has60 accepted source cases. Local strict-UBSan compiler
+runs pass120 whole C/JIT processes plus2 active stale-local controls and10
+refusals. Real ordinary assembly must contain case/casel/goto for the new cases,
+including multiple tables for the nested/two-table cases. Caller-only fault
+sentinels prevent premature exit from passing. A fault in a helper case arm
+must map back to the helper source line. All41 prior helper sources retain
+byte-identical ordinary Dis and Dis64 output. The native Limbo gate still passes
+72 Dis/AOT/ABI32 cases. Cross-target CI evidence is recorded separately.
+
+
+### Series0061 validation and downloads
+
+Source190a05e32bd7346fb6a9150b9e1872e7ce41dd4f passes
+[CI41366374575](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41366374575):
+native Linux ARM64 and x64, RV64/QEMU. Each downloaded execution log confirms
+60 accepted sources /120 whole C/JIT processes plus2 active stale-local
+controls and10 refusals. The independent reader log admits60 images and records
+zero runtime processes; it is not substituted for execution evidence. The
+previous case gate passes67 sources /134 processes /67 stale-PC controls on
+all3 targets. No JIT coverage or shared-file admission percentages changed.
+
+| Target | Console, sources/images/maps and full gate logs |
+| --- | --- |
+| ARM64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41366374575/artifacts/13106938337) |
+| x64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41366374575/artifacts/13107671416) |
+| RV64 QEMU CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41366374575/artifacts/13107039973) |
+
+All3 downloaded archives contain byte-identical procedures.dis64, SHA256
+`8924fde45642e7bbe0144e065fa9a243ae49bdf55848f83553ce070963e13a89`.
+The actual downloaded x64 console independently retires loop/case/procedures
+with JIT0 and JIT1. ARM64 execution evidence is native CI; RV64 producer is the
+host compiler and its consumer runs under QEMU. No new physical Android, AWM,
+managed file-call or native RV64 producer acceptance is claimed.
+
+FlashVM can independently review/repeat the per-copy table target and terminal
+RET continuation checks using this source checkpoint and the existing reader.
+No reader extension or shared registry allocation is requested.
+
+
+## Series0062: acyclic nested scalar calls
+
+A scalar helper can call another scalar helper. The compiler validates adjacent
+FRAME/CALL identities at every level, rejects direct/mutual recursion and calls
+back to the exported entry, then computes finite expansion sizes before output
+allocation. The whole flattened program and final scalar lowering retain the
+65536-instruction bound. The16-function/32-original-helper-instruction/128-byte
+helper-frame/8-case-label bounds remain. At most15 helper levels can be active.
+
+Each active depth owns an appended scalar span. The largest helper at that
+depth determines its size; sequential siblings reuse it. A child cannot alias
+its parent's locals or temporaries. Declared locals are renewed per call, outside
+that helper's loop backedges. Function/depth memoization bounds layout traversal
+when shared helpers occur on several paths. Parent PC maps remain live while
+child copies are emitted, so branches, case arms and early returns resume the
+correct caller. Tables are private for each call copy, including descendants.
+
+This remains source specialization into the unchanged43-op profile. No runtime
+FRAME/CALL, recursion, arguments/results, managed objects or file calling ABI
+are admitted. All60 prior accepted sources retain byte-identical ordinary Dis
+and Dis64 output against0061. The bundled procedures example now calls bump()
+from step() and fold() from a case arm in mix(), retaining caller Big/Real locals.
+
+Local UBSan compiler tests pass74 accepted sources /148 whole C/JIT processes,
+2 stale-local controls,2 active depth-overlap controls and12 controlled refusal
+shapes. The overlap control rewrites the child's actual FP operands onto the
+parent's local while preserving canonical encoding; the reader may still admit
+this valid image, but execution must trigger the parent's zero-divide check.
+Direct/mutual/entry cycles and exponential expansion are refused with a scalar
+compiler diagnostic; a compiler signal or sanitizer failure cannot count as a
+successful refusal. Tests cover maximum depth, shared descendants at different
+depths, empty callees, conditional calls, parent/child early returns, nested case
+calls, Big/Real preservation and leaf fault source identity. The ordinary native
+Limbo72-case Dis/AOT/ABI32 gate also passes. Cross-target results follow below.
+
+
+### Series0062 validation and downloads
+
+Sourcefcfa0f9b6437f967a1d19da249f04825c4b8fb75 passes
+[CI41369125880](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41369125880):
+native Linux ARM64 and x64, RV64/QEMU. All3 downloaded execution logs confirm
+74 sources /148 whole C/JIT processes,2 active stale-local controls,2 active
+depth-overlap controls and12 controlled refusals. Reader-only logs admit74
+source images and the valid semantic-control images with zero execution
+processes; runtime controls are accounted separately. The earlier case gate
+still passes67 sources /134 processes /67 stale-PC controls per architecture.
+
+| Target | Console, sources/images/maps and complete logs |
+| --- | --- |
+| ARM64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41369125880/artifacts/13108642290) |
+| x64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41369125880/artifacts/13108521604) |
+| RV64 QEMU CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41369125880/artifacts/13108901497) |
+
+All3 downloaded procedures.dis64 images are identical, SHA256
+`7dc78de7be94da18b8999aec36a0a04b9181c5df0b7b38a5e1eca2cff98d4161`.
+The downloaded x64 console also retires loop/case/procedures with JIT0 and JIT1.
+ARM64 proof is native CI; RV64 consumer execution is QEMU, with a host producer.
+The local UBSan compiler74-source gate,60-source old/new byte comparison,
+ordinary72-case Limbo/AOT/ABI32 gate and readiness checks pass. Native fast-path
+coverage and the43-op shared file profile do not change in this series.
+No new APK, AWM, managed file-call or native RV64 producer claim follows.
+
+FlashVM may independently replay this checkpoint with the existing reader and
+review cycle/expansion refusal plus active parent/child overlap controls. No
+format, feature-bit, coordinate-schema or registry extension is requested.
+
+
+## Series0064: materialized scalar arguments
+
+Acyclic helpers may take int/big/real values, without results. Source FRAME,
+consecutive typed MOVW/MOVL/MOVF argument stores and CALL must agree on the
+callee, descriptor, frame temporary, parameter order, offsets and widths. Source
+values must already be scalar immediates or direct FP/MP values. Arithmetic,
+indirection or side effects inside a pending argument setup remain refused;
+constant-folded scalar values and values computed before FRAME are admissible.
+Byte/managed/variadic arguments and scalar results remain outside this stage.
+
+Each argument store becomes a direct copy into the child's private depth span.
+Parent FP sources are relocated independently. The child's local initialization
+skips all parameter cells, including both words of Big/Real values, while still
+clearing padding and declared locals. Every call supplies every parameter before
+entry; parameters are passed by value and child mutation cannot alias a parent.
+The setup's interior argument stores and CALL cannot be branch/case targets.
+Only its FRAME entry may be entered. The actual resolver is tested with compiler
+records and an active removal-of-ownership-check control.
+
+No runtime FRAME/CALL or file calling convention is introduced. Emitted code
+uses the same43-op np0 profile; bounds remain16 functions,32 original helper
+instructions,128-byte helper frames,8 case labels and65536 emitted instructions.
+All74 previous accepted sources retain identical ordinary Dis and Dis64 bytes.
+The example now passes scalar arguments through nested bump/fold calls, including
+Big/Real values and a declared local renewed once per call.
+
+The local UBSan compiler gate passes100 sources /200 whole interpreter/JIT
+processes,2 stale-local controls,2 depth-overlap controls,2 argument-value controls
+and14 controlled refusals. Changing a valid argument copy to zero must fail the
+caller's semantic check; the independent reader may still admit that valid image.
+Cases cover value mutation, reordered forwarding, locals/padding,12 Big arguments
+at the frame boundary, conditional/case calls, large signed Word values and4097
+calls. Cross-target CI and ordinary compiler validation are recorded separately.
+
+
+### Series0064 validation and downloads
+
+Source1060f2477957bf518a94c5106ed0e675d162ce2e passes
+[CI41379799807](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41379799807):
+native Linux ARM64/x64 and RV64 under QEMU. Each downloaded archive confirms
+100 sources /200 whole C/JIT processes,2 stale-local controls,2 depth-overlap
+controls,2 argument-value controls and14 controlled refusals. The actual setup
+resolver and its active ownership-removal control pass on all3 runners. The
+external FlashVM reader admits100 source images; its zero runtime processes
+are reader evidence, separate from the actual VM execution above. Existing
+case gates retain67 sources /134 processes /67 active stale-PC controls.
+
+| Target | Console, source/images/maps and full gate logs |
+| --- | --- |
+| ARM64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41379799807/artifacts/13112611825) |
+| x64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41379799807/artifacts/13112419937) |
+| RV64 QEMU CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41379799807/artifacts/13113121055) |
+
+All3 downloaded executables are ELF64 for their expected machine, and their
+procedures.dis64 bytes match SHA256
+`dd7e4f02c712f8e0a0d6fdf3d641518b241eb4c828b0321a9cb44f906128be1e`.
+The downloaded x64 console independently retires loop/case/procedures with
+JIT0 and JIT1, empty module exit text and an empty scheduler. Existing Linux
+cleanexit terminates the host process group; OS status is not used as the
+successful module-execution criterion. Native ARM64 execution proof is CI;
+RV64 uses a host compiler and QEMU consumer. No new phone, APK or full AWM
+acceptance is claimed. Local strict-UBSan bootstrap, ordinary72-source
+Dis/AOT/ABI32 gate and readiness checks also pass. The previous74 helper sources
+retain byte-identical ordinary Dis and Dis64 against the earlier compiler.
+
+Fast paths remain166/173 for ARM64/x64; RV64I87, Zmmul90, M103. JIT plus C
+remains173/173. Shared-file admission remains43/173, not full application
+readiness. Scalar results, general file calls, managed storage/imports and full
+shell startup remain separate work. FlashVM may independently repeat this
+checkpoint using its unchanged reader; no shared format allocation is requested.
+
+
+## Series0065: scalar expressions in argument setup
+
+A helper argument may now be produced directly by Word/Big addition, subtraction,
+multiplication, division, remainder, bitwise AND/OR/XOR or signed shifts. The
+producer must write precisely one declared parameter in order. Arithmetic needs
+an explicit middle operand: an omitted operand would read an uninitialized child
+cell. Both input operands are checked against the caller geometry and cannot
+alias its opaque FRAME temporary. Caller FP sources and middle operands relocate
+independently before the destination becomes a direct child-depth cell.
+
+MOVW/MOVL/MOVF retain their existing type and no-middle requirements. No new
+opcode is allocated; source operations lower into the agreed43-op scalar profile.
+Floating arithmetic, result pointers/LEA, managed arguments, indirection, nested
+calls during an outstanding setup and arbitrary setup side effects remain closed.
+The earlier setup-interior branch/case refusal still applies to computed stores.
+Expression faults occur before the callee body, with their original source PCs.
+
+Local bootstrap and whole x64 VM gates pass126 sources /252 C/JIT processes,
+all6 active VM controls and14 refusals. These include20 Word/Big operator cases,
+zero-divide and invalid-shift argument faults, nested FP input/middle operands,
+multiple arguments and live caller locals. The actual setup resolver/removal
+control passes. Ordinary scalar compiler tests pass25 source/refusal cases and
+30 whole VM processes. Cross-target CI must be checked separately; these local
+results do not establish native ARM64/RV64 execution of this new checkpoint.
+
+
+### Series0065 validation and downloads
+
+Source3465c50094237af46737b97fe576c9cd7ab4d7a6 passes
+[CI41393887304](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41393887304):
+native Linux ARM64/x64 and RV64/QEMU. Downloaded archives confirm126 accepted
+sources /252 whole C/JIT processes, all6 active VM controls,14 refusals and the
+production setup resolver/removal control per target. The external FlashVM reader
+admits126 source images; its zero VM processes are separate reader evidence.
+All100 prior sources retain byte-identical ordinary Dis and Dis64 locally.
+
+| Target | Console, examples/maps and complete gate logs |
+| --- | --- |
+| ARM64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41393887304/artifacts/13118885699) |
+| x64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41393887304/artifacts/13118138242) |
+| RV64 QEMU | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41393887304/artifacts/13118233915) |
+
+All3 executables have the correct ELF64 machine and unchanged procedures.dis64
+SHA256 `dd7e4f02c712f8e0a0d6fdf3d641518b241eb4c828b0321a9cb44f906128be1e`.
+The downloaded x64 console separately retires loop/case/procedures with empty
+module exit and scheduler in both C and JIT. Argument-expression programs are in
+utils/tests/dis64-inline.py; the packaged procedures example remains unchanged.
+Native fast coverage remains166/173 ARM64/x64 and87/90/103 RV64I/Zmmul/M;
+JIT plus C remains173/173 and the shared file profile43/173. No new Android/APK,
+full shell, managed file-call or scalar-result acceptance is claimed.
+
+
+## Series0066: source scalar results
+
+Bounded acyclic helpers may return int/big/real. Each source call must supply one
+exact legacy LEA result binding after its ordered arguments and before CALL.
+The binding points to a typed, aligned, in-range scalar FP/MP cell in the caller,
+excluding its opaque frame temporary. A helper may instead forward its own
+result destination, but only with the exact legacy result-cell identity and the
+same result kind. Result destinations stay private compiler records per active
+depth; no address value, LEA, runtime CALL/FRAME or result signature is emitted.
+
+Typed return MOVW/MOVL/MOVF or Word/Big arithmetic producers become direct scalar
+writes to that binding. Sources/middle operands still belong to the callee's
+private depth span. An implicit arithmetic destination read is refused. Early
+RET and case-arm returns resume at the correct caller continuation. Branches and
+case arms cannot enter the LEA binding or other setup interiors. Caller storage
+survives child-local initialization and nested/forwarded results preserve their
+original owner. All16-function/32-body/128-byte-frame/8-label/65536-code bounds
+and recursion refusal remain unchanged. This is source specialization into the
+existing43-op np0 file profile, not a shared source-independent calling ABI.
+
+The owning gate passes167 sources /334 whole C/JIT processes with a strict-UBSan
+compiler locally, plus2 stale-local,2 depth-overlap,2 argument-value and2 new
+returned-value controls. Changing the actual returned ADDW to SUBW preserves
+valid framing but must trip the caller's semantic check. The production target
+resolver explicitly refuses result-LEA interiors; its ownership-removal control
+remains active. Tests cover20 Word/Big returned operator values, direct/local/
+ignored results, nested arithmetic and result forwarding for all3 scalar kinds,
+4097 repeated calls, early returns, numeric-case returns and an evaluated inner
+call used as an argument. Return-expression faults map to their helper source
+lines. All126 prior sources retain byte-identical ordinary Dis and Dis64.
+
+Sixteen refusal shapes include managed/byte results and floating arithmetic.
+The ordinary native compiler gate retains72 Dis/AOT/ABI32 cases and late-link
+preservation; scalar compiler tests retain25 cases and30 VM processes. The
+packaged procedures example now returns fold's computed Word result through
+mix's numeric case. It passes locally in C/JIT; native cross-target evidence is
+recorded separately. No new full shell, imports, managed calls or Android/APK
+acceptance follows. General runtime calls and precise managed ownership remain
+separate from this bounded scalar source path.
+
+
+### Series0066 validation and downloads
+
+Source7e0b26b981b92d5b99f6205085e2b7c29c09cedf passes
+[CI41395766427](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41395766427):
+native Linux ARM64/x64 and RV64/QEMU. Each downloaded archive confirms167
+accepted sources /334 whole C/JIT processes, all8 active VM controls and16
+refusals. The actual setup resolver/removal control includes result-LEA interior
+entry. FlashVM's external reader admits167 source images; it executes zero VM
+processes and is separate from the execution evidence. Existing numeric-case
+gates retain67 sources /134 whole processes /67 active stale-PC controls.
+
+| Target | Console, example source/images/maps and complete gate logs |
+| --- | --- |
+| ARM64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41395766427/artifacts/13119174028) |
+| x64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41395766427/artifacts/13119800766) |
+| RV64 QEMU | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41395766427/artifacts/13119102838) |
+
+All3 downloaded consoles have the expected ELF64 machine. The updated returned
+result example procedures.dis64 is byte-identical across all3 producers:
+SHA256 `364be13f527009a4dea20b7b14503a5b3aac7989d4068d2a85a2ae4802c20281`.
+The downloaded x64 loop/case/procedures examples separately retire with empty
+module exit and scheduler in C and JIT modes. Existing Linux cleanexit terminates
+the host group; module/scheduler evidence, not a zero OS status, is the success
+criterion. Native ARM64 proof is CI; RV64 consumes under QEMU with a host producer.
+
+Local strict-UBSan bootstrap,167-source execution,72-case ordinary Dis/AOT/ABI32,
+25-case scalar compilation and readiness checks pass. All126 earlier sources
+retain exact ordinary Dis/Dis64 bytes. Fast coverage remains166/173 ARM64/x64
+and87/90/103 RV64I/Zmmul/M; JIT plus C173/173 and shared-file admission43/173
+are unchanged. No new physical Android/APK, managed import/call or full shell
+acceptance is claimed. FlashVM can replay the result/forwarding controls without
+changing its shared reader or allocating a result ABI in the file registry.
+
+
+## Series0068: flat numeric tuple results
+
+Source helpers can return complete flat tuples with2..8 int/big/real fields,
+at most64 bytes, canonical field offsets and natural4/8-byte alignment. Padding
+is validated rather than treated as an addressable result component. The source
+compiler admits matching pointer-free tuple storage only in local frames, never
+as a new global initializer or shared file type. Tuple arguments, managed/byte/
+nested tuple fields, global tuple storage, whole MOVM copies and nil-partial
+unpacking remain outside this stage. Existing parameter and DAG bounds remain.
+
+Each return producer must match an exact declared field offset and scalar kind.
+Caller bindings validate the complete result extent including padding, protect
+frame-pointer temporaries, then check every scalar field against existing FP/MP
+bounds. Forwarding compares complete field kinds/offsets, not merely Ttuple or
+byte size. Every returned field is rebased onto the original caller destination;
+callee sources and middle operands still use the active private depth span.
+No tuple descriptor, return pointer, file CALL/FRAME, signature, feature or wire
+identifier is emitted. Output remains the same43-op np0 scalar file profile.
+
+Local strict-UBSan compiler execution passes200 accepted sources /400 whole
+C/JIT processes, all10 active VM controls and23 controlled refusal shapes.
+The new overlap control redirects the actual second Word field onto the first
+while retaining valid wire framing/storage; the caller must detect corruption.
+The production tuple layout/producers/binding functions execute with actual
+Type/Decl/Inst records and the real scalar validator. Two removal controls expose
+same-size Big/Real identity confusion and result padding/frame-temp aliasing.
+These owning compiler checks are wired into the native64-port matrix separately
+from actual VM execution and external reader admission.
+
+The corpus covers all9 ordered scalar pairs and6 mixed triples, three forwarded
+depths, nested result arithmetic,4097 calls with renewed locals, ignored results,
+early/case returns and an8-Big/64-byte boundary. Word/Big second-field errors,
+invalid shifts and forwarded tuple faults retain the correct helper source line.
+All167 earlier accepted sources retain identical ordinary Dis and Dis64 bytes.
+The ordinary native compiler gate keeps72 Dis/AOT/ABI32 cases; scalar compiler
+and per-opcode readiness remain unchanged. The packaged procedures example now
+returns fold's Word/Big/Real values through a caller-owned case-arm result tuple.
+Cross-target CI and downloaded-image evidence follow separately.
+
+
+### Series0068 validation and downloads
+
+Sourcef8e8b5050f5a5de38228465c12af6cf80912dd27 passes
+[CI41402313937](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41402313937):
+native Linux ARM64/x64 and RV64/QEMU. Downloaded execution logs confirm200
+accepted sources /400 whole C/JIT processes, all10 active VM controls and23
+controlled refusal shapes per target. The production tuple geometry test and
+both active removal controls pass with real compiler records and scalar roles.
+The external FlashVM reader admits200 source images and executes zero VM
+processes; reader admission is separate from actual runtime evidence. Numeric
+case gates retain67 sources /134 processes /67 stale-PC controls.
+
+| Target | Console, example source/images/maps and complete gate logs |
+| --- | --- |
+| ARM64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41402313937/artifacts/13122016776) |
+| x64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41402313937/artifacts/13122415878) |
+| RV64 QEMU | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41402313937/artifacts/13121603759) |
+
+All3 downloaded consoles have the expected ELF64 machine and byte-identical
+mixed-result procedures.dis64, SHA256
+`2f402db2e006799db092b63c7a21301ffaa2901fe47589ca2e43f96a7702e7e2`.
+Downloaded x64 loop/case/procedures separately retire with empty module exit
+and scheduler in C/JIT. Existing Linux cleanexit terminates the host group;
+a zero host exit status is not the module-success criterion. Native ARM64
+proof is CI; RV64 uses a host producer and a QEMU consumer.
+
+Local strict-UBSan200-source VM execution and actual compiler controls, ordinary
+72-case Dis/AOT/ABI32 gate,167 prior byte-identity cases and readiness pass.
+Fast paths remain166/173 ARM64/x64 and87/90/103 RV64I/Zmmul/M; JIT plus C173/173
+and shared-file43/173 are unchanged. This checkpoint makes no new Android APK,
+physical tuple execution, managed import or full AWM acceptance claim. FlashVM
+can independently review the bounded tuple source lowering with its unchanged
+reader; no shared ABI, registry, feature or opcode allocation is requested.
+
+
+## Series0069: bounded pointer-free value copies and tuple parameters
+
+The frontend admits immediate MOVM copies of4..64 bytes in multiples of4,
+within already pointer-free scalar/flat-tuple data and frames. Both complete
+legacy spans must fit their owning object, exclude frame headers and avoid the
+scratch/local discontinuity. Indirect source spans and MOVMP remain refused.
+Whole tuple returns and parameters must exactly match their canonical shape.
+Tuple parameters may use one bulk copy or an ordered producer for each field.
+The full parameter extent, including padding, is excluded from local renewal.
+Flat global tuple storage is admitted only without an initializer; initialized
+global aggregates, managed/nested layouts and nil-partial unpacking stay closed.
+
+After source specialization, each MOVM becomes a complete snapshot of source
+Words followed by destination stores. A64-byte private frame tail is reserved
+only when needed; no-copy files retain their previous frame/code bytes. The
+emitter excludes its private tail from normal source/destination spans, protects
+prefixes and checks output capacity. All source reads precede any write, so
+forward/backward overlap and self alias retain memmove semantics. Source branch
+and numeric-case PCs map to the first read of an expanded copy. Original source
+locations remain attached to every emitted Word move. Expansion and final frame
+bounds retain the65536-instruction/1MiB limits. Existing C MOVM/MOVMP handlers
+remain the general runtime implementation; this bounded frontend route uses
+only existing IMOVW instructions and the same43-op np0 file profile.
+
+Local strict-UBSan runs pass241 sources /482 whole C/JIT processes, all12 active
+semantic VM controls and24 controlled refusals. Cases cover literal/local/global
+tuple arguments, scalar parameters around a padded mixed tuple, mutation by
+value, whole/forwarded results, a64-byte8-Big boundary,4097 repeated calls,
+fresh tuple locals, case returns, self alias and entry-only copies without helper
+functions. Faults after expanded copies retain exact helper source locations.
+Changing one actual copied destination store into OR preserves valid wire
+framing but must trip the caller semantic check.
+
+The actual production copy emitter and role validator execute against40 libc
+memmove references over FP/MP, both overlap directions, self alias and all
+supported sizes, with full public-byte comparisons. A control interleaving reads
+and writes produces real forward-overlap corruption; a compiler failure cannot
+count as that control. Size, span, stage/header and instruction-capacity refusals
+also execute. The owning native64-port matrix now includes this fixture alongside
+tuple/setup ownership tests. The ordinary72-case compiler/AOT/ABI32 gate and
+readiness checks pass, and all200 earlier sources preserve ordinary Dis/Dis64
+bytes. The packaged procedures example passes a pair and copies its mixed result
+through a zero-initialized global tuple. Cross-target evidence follows separately.
+No shared opcode, registry, feature, signature or general file-call admission is
+introduced, and no performance advantage over runtime C memmove is claimed.
+
+
+### Series0069 validation and downloads
+
+Sourcede0f48eb299a40504e7eb244830cd4058dc3a921 passes
+[CI41407245992](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41407245992):
+native Linux ARM64/x64 and RV64/QEMU. Downloaded logs confirm241 accepted sources
+/482 whole C/JIT processes, all12 active semantic VM controls and24 refusal
+shapes per target. The actual copy emitter passes40 memmove comparisons and its
+active write-order removal control, alongside existing tuple/setup compiler
+controls. FlashVM's external reader admits241 images with zero VM processes;
+its admission is separate from actual C/JIT execution. Existing numeric cases
+retain67 sources /134 processes /67 active stale-PC controls.
+
+| Target | Console, example source/images/maps and full gate logs |
+| --- | --- |
+| ARM64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41407245992/artifacts/13124326491) |
+| x64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41407245992/artifacts/13123973278) |
+| RV64 QEMU | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41407245992/artifacts/13123773278) |
+
+All3 downloaded consoles have the expected ELF64 machine. Their tuple-parameter/
+global-result-copy procedures.dis64 bytes match SHA256
+`6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7`.
+Downloaded x64 loop/case/procedures separately retire with empty module exit and
+scheduler in both C and JIT. Linux cleanexit terminates its host group; host
+status zero is not used as the successful module-execution criterion. Native
+ARM64 evidence is CI; RV64 uses a host producer and a QEMU consumer.
+
+Local strict-UBSan241-source/482-process execution, copy/tuple/setup controls,
+72-case ordinary Dis/AOT/ABI32 compiler integration and readiness checks pass.
+All200 previous sources retain identical ordinary Dis and Dis64. Native fast
+paths remain166/173 ARM64/x64,87/90/103 RV64I/Zmmul/M; JIT plus C remains173/173
+and shared-file admission43/173. No full AWM, managed file calls, parallel shared
+mutators or new Android/physical-device acceptance follows from this source
+copy path. General runtime MOVM/MOVMP C handlers and shared wire IDs are unchanged.
