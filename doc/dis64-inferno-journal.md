@@ -4048,3 +4048,26 @@ with real compiler records; removing its ownership predicate exposes argument
 interior entry. All74 previous accepted sources preserve ordinary Dis/Dis64 bytes.
 The downloadable4097-call example now forwards scalar and Big/Real arguments.
 ARM64/x64/RV64 and ordinary compiler evidence follow separately below.
+
+
+### INFERNO-0064 validation — native ARM64/x64, RV64/QEMU
+
+Source1060f247 passes all3 jobs in CI41379799807. Downloaded execution logs
+confirm100 accepted sources /200 C/JIT processes and all6 active VM controls,
+plus14 controlled refusals per target. Actual setup-target resolver/removal
+controls pass. FlashVM reader evidence is100 admitted source images and zero
+VM processes, distinct from execution. Existing numeric-case gates retain67
+sources /134 processes /67 stale-PC controls. Compiler bootstrap, normal
+72-case Dis/AOT/ABI32 validation and74 previous byte-identity cases pass locally.
+
+ARM64 artifact13112611825, x64 artifact13112419937 and RV64 artifact13113121055
+are under https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41379799807 .
+All3 contain identical procedures.dis64 with SHA256
+`dd7e4f02c712f8e0a0d6fdf3d641518b241eb4c828b0321a9cb44f906128be1e`.
+Downloaded x64 loop/case/procedures retire with empty module exit/scheduler in
+both C and JIT modes; native ARM64 proof is CI, RV64 consumption is QEMU.
+This checkpoint is a Linux scalar console, not a new Android/AWM result.
+Source arguments do not admit runtime file FRAME/CALL, results or managed calls.
+No opcode, registry, feature or signature extension is proposed. Please review
+ordered typed stores, private depth relocation, parameter-preserving local
+initialization and setup-interior target refusal against your source frontend.

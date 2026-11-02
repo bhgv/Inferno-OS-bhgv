@@ -351,3 +351,40 @@ caller's semantic check; the independent reader may still admit that valid image
 Cases cover value mutation, reordered forwarding, locals/padding,12 Big arguments
 at the frame boundary, conditional/case calls, large signed Word values and4097
 calls. Cross-target CI and ordinary compiler validation are recorded separately.
+
+
+### Series0064 validation and downloads
+
+Source1060f2477957bf518a94c5106ed0e675d162ce2e passes
+[CI41379799807](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41379799807):
+native Linux ARM64/x64 and RV64 under QEMU. Each downloaded archive confirms
+100 sources /200 whole C/JIT processes,2 stale-local controls,2 depth-overlap
+controls,2 argument-value controls and14 controlled refusals. The actual setup
+resolver and its active ownership-removal control pass on all3 runners. The
+external FlashVM reader admits100 source images; its zero runtime processes
+are reader evidence, separate from the actual VM execution above. Existing
+case gates retain67 sources /134 processes /67 active stale-PC controls.
+
+| Target | Console, source/images/maps and full gate logs |
+| --- | --- |
+| ARM64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41379799807/artifacts/13112611825) |
+| x64 native CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41379799807/artifacts/13112419937) |
+| RV64 QEMU CI | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41379799807/artifacts/13113121055) |
+
+All3 downloaded executables are ELF64 for their expected machine, and their
+procedures.dis64 bytes match SHA256
+`dd7e4f02c712f8e0a0d6fdf3d641518b241eb4c828b0321a9cb44f906128be1e`.
+The downloaded x64 console independently retires loop/case/procedures with
+JIT0 and JIT1, empty module exit text and an empty scheduler. Existing Linux
+cleanexit terminates the host process group; OS status is not used as the
+successful module-execution criterion. Native ARM64 execution proof is CI;
+RV64 uses a host compiler and QEMU consumer. No new phone, APK or full AWM
+acceptance is claimed. Local strict-UBSan bootstrap, ordinary72-source
+Dis/AOT/ABI32 gate and readiness checks also pass. The previous74 helper sources
+retain byte-identical ordinary Dis and Dis64 against the earlier compiler.
+
+Fast paths remain166/173 for ARM64/x64; RV64I87, Zmmul90, M103. JIT plus C
+remains173/173. Shared-file admission remains43/173, not full application
+readiness. Scalar results, general file calls, managed storage/imports and full
+shell startup remain separate work. FlashVM may independently repeat this
+checkpoint using its unchanged reader; no shared format allocation is requested.
