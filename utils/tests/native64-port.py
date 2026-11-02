@@ -200,6 +200,9 @@ def main():
     if args.arch in ('arm64', 'riscv64'):
         run([sys.executable, str(tests/'native64-runtime.py'), '--arch', args.arch, '--system', 'Linux', '--cc', env['CC'],
              '--runner', args.runner], build, env, logs/(args.arch+'-runtime.log'))
+    if args.arch == 'riscv64':
+        run([sys.executable, str(build/'libinterp/tests/riscv-dispatch.py'), '--cc', env['CC'],
+             '--runner', args.runner], build, env, logs/'riscv-complete-tails.log')
     print('PASS clean classic-mk native64 boot/lease gates; logs: '+str(logs))
     print('Scope: self-checking scalar programs and trusted C fixtures; file CALL/MCALL and full shell startup remain closed.')
 

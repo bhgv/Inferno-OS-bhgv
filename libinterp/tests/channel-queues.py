@@ -58,7 +58,7 @@ if os.environ.get('QUEUE_JIT_ROUTE') == '1':
     unit=unit.replace('Type Tarray;', r'''Type Tarray, Tstring;
 int mutator,nprop; // Required collector identities for unrelated native entries.
 void (*optab[256])(void); // Real C opcode bindings behind the native tails.
-char exOp[]="opcode"; // Invalid decoded opcode identity.
+char exOp[]="opcode", exCompile[]="compile"; // Invalid decoded opcode identity.
 static Jit *queuejit; // Owned native table for ALT and NBALT.
 
 

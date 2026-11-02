@@ -36,7 +36,7 @@ for token in re.finditer(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*[\s\S]*?\*/
             break
 if executor is None:raise RuntimeError('cjitexec')
 fixture+='\n#include "'+backend+'-emit.h"\n#include "leaf-code.h"\n'
-fixture+='\nvoid (*optab[256])(void); // Production complete-entry handler slots.\nchar exOp[]="opcode"; // Invalid opcode error identity.\n'+executor+'\n'
+fixture+='\nvoid (*optab[256])(void); // Production complete-entry handler slots.\nchar exOp[]="opcode", exCompile[]="compile"; // Invalid opcode error identity.\n'+executor+'\n'
 fixture+=(ROOT/'libinterp/tests/spawn-preflight.c').read_text()
 with tempfile.TemporaryDirectory(prefix='spawn-preflight-') as directory:
     target=Path(directory)/'spawn.c';target.write_text(fixture)

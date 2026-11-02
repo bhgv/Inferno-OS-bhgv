@@ -10,7 +10,7 @@ REG R;
 int mutator, nprop;
 void (*optab[256])(void);
 char exModule[] = "module", exHeap[] = "heap", exNilref[] = "nil";
-char exType[] = "type", exBounds[] = "bounds", exOp[] = "opcode";
+char exType[] = "type", exBounds[] = "bounds", exOp[] = "opcode", exCompile[]="compile";
 static int operation, route, count, maskkind, sa, da, redirect, pattern;
 static int callbacks, destroyed;
 static unsigned long cases;

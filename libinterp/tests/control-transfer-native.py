@@ -35,7 +35,7 @@ prefix=(ROOT/'libinterp/tests/mcall-native.c').read_text().split('#define OP(nam
 prefix=prefix.replace('comp-amd64.c','comp-'+backend+'.c')
 unit='#define TEST_LEAF_DISPATCH_RUNTIME // Link the real decoded executor.\n'+prefix
 unit+='''void (*optab[256])(void);
-char exOp[]="opcode";
+char exOp[]="opcode", exCompile[]="compile";
 #define OP(name) void name(void) // Real interpreter instruction entry.
 
 

@@ -64,6 +64,17 @@ cases per model; this is emission/cache evidence, not ARM64 execution.
 Local x64 optimized UBSan and focused fetch ASan/UBSan checks are being recorded;
 the full three-target classic-mk CI evidence will follow the source commit.
 
+The extracted executor also gains an `exCompile` dependency. Legacy isolated
+fixtures now supply that existing runtime error identity. The freestanding RV64
+bridge fixture supplies an ordinary synthetic Module/Modlink owner, byte-copy
+support and the missing native sentinel/layout definitions. It still tests a
+synthetic register layout, not the full runtime structure ABI. Its existing
+`fence.i` is encoded with unchanged bytes so assemblers requiring explicit
+Zifencei naming can compile the RV64I arithmetic profile. The RV64 port driver
+now runs this existing >4GiB complete-tail gate across I/M/GC and WORD32/64.
+Full owning result/heap tests remain separate. Host syntax checks are not counted
+as target execution; target evidence will come from the CI runner.
+
 ## Remaining boundary and coverage
 
 File CALL/LEA8 admission remains closed. Production constructor rejection of

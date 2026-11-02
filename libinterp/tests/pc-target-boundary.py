@@ -39,7 +39,7 @@ def main():
     prefix = prefix.replace('comp-amd64.c', 'comp-'+backend+'.c')
     declarations = '''
 void (*optab[256])(void); // Actual complete-entry handler table.
-char exOp[]="opcode"; // Invalid opcode error identity.
+char exOp[]="opcode", exCompile[]="compile"; // Invalid opcode error identity.
 #define OP(name) void name(void) // Real interpreter opcode definitions.
 
 

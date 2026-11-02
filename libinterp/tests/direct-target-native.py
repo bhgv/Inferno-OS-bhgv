@@ -41,7 +41,7 @@ def main():
     prefix=prefix.replace('comp-amd64.c','comp-'+backend+'.c')
     declarations='''
 void (*optab[256])(void); // Actual complete-entry C handler slots.
-char exOp[]="opcode",exHeap[]="heap",exNilref[]="nil"; // Production failure identities.
+char exOp[]="opcode", exCompile[]="compile",exHeap[]="heap",exNilref[]="nil"; // Production failure identities.
 #define OP(name) void name(void) // Borrow actual interpreter operations.
 '''
     parts=[next(line for line in SOURCE.splitlines() if line.startswith('#define JMP('))]

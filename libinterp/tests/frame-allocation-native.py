@@ -32,7 +32,7 @@ realinit=function((ROOT/'libinterp/heap.c').read_text(),'void\ninitmem(')
 realinit=realinit.replace('\tx = H;','\tinitialized++;\n\tx = H;',1)
 prefix=prefix.replace(function(prefix,'void\ninitmem('),realinit)
 unit='#define TEST_LEAF_DISPATCH_RUNTIME // Link the real complete-entry executor.\n'+prefix
-unit+='\nvoid (*optab[256])(void);\nchar exOp[]="opcode";\n#define OP(name) void name(void) // Production decoded instruction entry.\n'
+unit+='\nvoid (*optab[256])(void);\nchar exOp[]="opcode", exCompile[]="compile";\n#define OP(name) void name(void) // Production decoded instruction entry.\n'
 unit+='\n\n'.join(function(SOURCE,s) for s in ('static Type*\nmoduletype(','static int\nmoduleentry(','static int\nframefits(','OP(frame)','OP(mframe)','int\ncjitexec('))
 unit+=(ROOT/'libinterp/tests/frame-allocation-native.c').read_text()
 with tempfile.TemporaryDirectory(prefix='frame-allocation-native-') as temporary:

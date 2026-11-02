@@ -3,6 +3,7 @@
 Status: owning-source runtime prototype on the authoritative `xec` path, extended
 to shared debugger/coverage C steps in [series0083](native64-series0083.md). File
 CALL/LEA admission remains closed. No production file reader assigns this mode.
+Published decoded LEA entry refusal is added in [series0084](native64-series0084.md).
 
 ## Explicit execution identity
 
@@ -10,8 +11,10 @@ CALL/LEA admission remains closed. No production file reader assigns this mode.
 It handles ILEA only when the active module explicitly owns that SAME callback.
 Other opcodes return zero without decoding; another callback/nil is not retagged.
 The existing xec order invokes cstep before ordinary native fast/complete entries.
-Ordinary `OP(lea)`, opcode IDs, rt/wire flags, emitter layouts and JIT tables are
-unchanged. The callback writes a complete native eight-byte pointer in this mode.
+Ordinary `OP(lea)`, opcode IDs, rt/wire flags and emitter code are unchanged.
+Series0084 changes the published LEA table binding to its checked complete tail,
+without changing Jit layout. The callback writes a complete native eight-byte
+pointer in this mode.
 
 The callback requires exact AFP source and indirect AFP destination, AXNON,
 prepared-pointer prefix40/48/56 and secondary32. It resolves the current frame's
@@ -29,11 +32,12 @@ one module while compile() validates and REUSES the same original JIT mapping.
 This does not alter or introduce a proof cache. It is a proposal/evidence boundary
 for FlashVM review, not a new executable shared profile.
 
-IMPORTANT remaining boundary: direct arbitrary leaf/complete-entry invocations
-are NOT this mode's entry contract. Series0083 integrates the trusted LEA8 step
+IMPORTANT entry boundary: direct decoded LEA calls cannot reconstruct a trusted
+predecode binding. Series0084 makes published leaf/complete entries refuse any
+non-null cstep before ordinary native/C writes. Arbitrary jumps into private RX
+code are outside that ABI and are not a native sandbox. Series0083 integrates LEA8
 in debugger/coverage dispatch and executes the actual coverage loop; it does not
-exercise the complete interactive debugger controller or GUI. Direct native
-entries still need mode enforcement/refusal before production file activation.
+exercise the complete interactive debugger controller or GUI.
 Coexistence with other AOT callbacks also needs an explicit constructor policy.
 This prototype does not silently replace another module's existing cstep.
 Mode assignment in the fixture is before first publication or between completed
@@ -105,6 +109,6 @@ output. No Java, worker/file adapter or complex handler replacement is involved.
 
 [Initial target report](native64-series0082.md); [instrumentation](native64-series0083.md).
 General caller CFG/non-leaf graphs, production proof-to-container binding,
-out-of-line compiler output, direct native entry policy, shared whole-file C/RX
+out-of-line compiler output, shared whole-file C/RX
 refusal/error goldens and peer activation agreement
 remain before executable admission.

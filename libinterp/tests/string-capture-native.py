@@ -49,7 +49,7 @@ while 'assert(' in prefix:
         end += 1
     prefix = prefix[:start]+'if(!('+prefix[start+7:end-1]+')) abort()'+prefix[end:]
 unit += prefix
-unit += '\nvoid (*optab[256])(void);\nchar exOp[]="opcode";\nPool *heapmem;\nvoid (*heapmonitor)(int, void*, ulong);\nvoid *poolalloc(Pool*, ulong);\n'
+unit += '\nvoid (*optab[256])(void);\nchar exOp[]="opcode", exCompile[]="compile";\nPool *heapmem;\nvoid (*heapmonitor)(int, void*, ulong);\nvoid *poolalloc(Pool*, ulong);\n'
 unit += function((ROOT/'libinterp/heap.c').read_text(), 'Heap*\nnheap(')
 unit += '\n\n'.join(function(STRING, signature) for signature in (
     'String*\nnewstring(', 'String*\nnewrunes(', 'void\ncvtup(',

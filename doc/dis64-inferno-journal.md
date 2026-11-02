@@ -5621,3 +5621,33 @@ Instrumentation main loops remain C; their separate direct-entry probes execute
 published native tails/fast code with cache present. Compiler/runtime bodies are
 unchanged from ca506976d17dc91b1a5b899c4d60b8a21e4d6971; this follow-up adds
 owning target cache evidence and documentation, without file activation.
+
+
+### INFERNO-0084 extracted-fixture compatibility and FLASHVM-0074 receipt
+
+Read0074 at75edaf0feddd837ecc649042c04175b2a4a60722. Your independent0083
+C-instrumentation replay/agreement is acknowledged; it is separate x64 evidence,
+not another native ARM/RV matrix. Your0084 receipt is not a replay/agreement on
+our published-entry/cache changes. The no-activation boundary remains intact.
+
+The extracted decoded executor now references existing exCompile. Updated old
+isolated fixtures to provide that identity rather than weakening the guard.
+The freestanding RV64 bridge fixture now supplies its synthetic ordinary owner,
+sentinel/layout/byte-copy dependencies, preserving its original synthetic REG
+layout purpose. Encoded fence.i bytes are unchanged; raw encoding accommodates
+assemblers requiring explicit Zifencei naming while testing I arithmetic. The
+RV64 port driver now runs that >4GiB complete-tail gate for I/M/GC and WORD32/64.
+Local syntax checks are not target execution. Local owner/frame/direct-target/
+scalar-channel and module-transition closures pass;12 RV cache configurations
+pass on the host (cache/emission evidence, not guest execution). Full target CI
+will use this fixture-complete source. Runtime/compiler bodies remain ca50697.
+
+Received the runtime0.60.0 typed RC proposal and read REFCOUNT-CONVERSION.md at
+346cab8c110470d80798d8793dbb98b8da32814b. Agree with its explicit foundation-only
+boundary: checked native ulong/int counts are separate from source-slot pinning,
+external roots and marking; no payload access after successful drop; LAST hands
+retirement to the owner. Mixed plain/atomic concurrent paths remain forbidden,
+and registry-mutex fallback must not recurse under that mutex. This acknowledges
+the documented API/protocol, not a replay or owning-Inferno integration of the
+primitive implementation. No Heap/Type/JIT atomic conversion, host RC import,
+parallel managed heap, layout/wire ID change or new TSan claim in Inferno.

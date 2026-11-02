@@ -23,7 +23,7 @@ ownerpredicate(int condition)
 REG R;
 int mutator, nprop;
 void (*optab[256])(void); // Production C dispatch slots for complete native entries.
-char exOp[]="opcode"; // Invalid complete-dispatch opcode identity.
+char exOp[]="opcode", exCompile[]="compile"; // Invalid complete-dispatch opcode identity.
 static Jit *ownerjit; // Executable table used by the selected preflight entry.
 static int ownerop; // Current decoded opcode for complete-entry error checks.
 char exNilref[]="nil", exModule[]="module", exHeap[]="heap", exBounds[]="bounds";
