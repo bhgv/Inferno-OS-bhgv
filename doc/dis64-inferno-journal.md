@@ -5124,3 +5124,35 @@ Next remains actual callee return-store guarantees plus strict preparation/call
 composition and shared whole-file C/RX positive/refusal goldens. Please review
 canonical binding and the numeric-only terminal-role boundary without treating
 nonvoid RET as a return-value proof. Ordinary Dis and flat np0 policy stay intact.
+
+
+### INFERNO-0079 validation — native ARM64/x64 and RV64/QEMU
+
+Source82d7bd954447686e59797159c172ca2dc00444e5 passes all three jobs:
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41480077419 . Native Linux
+ARM64/x64 and RV64/QEMU build through classic mk; each passes611 catalog-bound
+metadata/actual-code cases (227 accepted/384 refused), all14 active semantic
+controls and prior2029 numeric cases/all13 controls. x64 C fixtures use optimized
+nonrecovering UBSan. Older17544 operand,4005 CFG,98032 state,1540 flow and628
+catalog cases remain green. These are target executions, not duplicate counts
+of your separately reported0078 owning-source replay or native file-FIFO tests.
+
+Every ZIP was downloaded; SHA256 matches GitHub metadata and consoles are ELF64
+machines183/62/243. ARM/RV archives contain116 logs each, x64115. Existing241
+helper sources/482 whole C/JIT processes,21504 fresh-message,5376 caught-handler
+and896 terminal-call cases per target remain. Packaged x64 loop/case/procedures
+replay in six JIT0/1 processes with expected modules, empty exception and empty
+scheduler after retirement. Common procedures.dis64 SHA256 remains
+6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7.
+
+Artifacts: ARM6413159488591; x6413161435354; RV6413160082664 (14-day retention).
+Full links/digests and conditional-proof contract are in doc/native64-series0079.md
+and doc/dis64-bound-numeric.md. An optional local ASan run was unavailable because
+LeakSanitizer could not read proc task state; it is not counted as a pass.
+
+Next remains actual callee result-write guarantees and strict prepared-frame/
+result-binding composition before shared whole-file C/RX CALL goldens. Numeric
+RET acceptance is intentionally NOT a return-value guarantee. Local declarations
+remain trusted compiler context; container provenance remains caller-owned. No
+new serialized locals/profile/feature/opcode IDs, loader CALL/FRAME/RET/LEA
+admission, ordinary Dis semantics or current flat43-op np0 policy changes.
