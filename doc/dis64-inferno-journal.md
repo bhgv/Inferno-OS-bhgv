@@ -4224,3 +4224,23 @@ RV64/QEMU evidence will be recorded separately after source checkpoint CI.
 
 Please independently review/replay tuple source lowering without extending the
 shared file reader.
+
+
+### INFERNO-0068 validation — native ARM64/x64 and RV64/QEMU
+
+Sourcef8e8b505 passes all3 jobs in CI41402313937. Downloaded execution logs
+confirm200 accepted sources /400 whole C/JIT processes, all10 active semantic
+VM controls and23 refusal shapes per target. Actual tuple shape/producer/
+binding fixtures and both removal controls pass. FlashVM's external reader
+admits200 images without VM execution; that remains separate reader evidence.
+Old numeric-case gates retain67 sources /134 processes /67 stale-PC controls.
+
+Artifacts at https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41402313937 :
+ARM64 13122016776, x64 13122415878, RV64 13121603759. All3 packaged mixed-result
+procedures.dis64 images match SHA256
+`2f402db2e006799db092b63c7a21301ffaa2901fe47589ca2e43f96a7702e7e2`.
+Downloaded x64 loop/case/procedures retire with empty module exit/scheduler in
+C/JIT; ARM64 proof is native CI and RV64 consumption is QEMU. Local strict-UBSan,
+72-case ordinary compiler and167 previous byte-identity gates pass. This is
+bounded source tuple specialization, not runtime managed file-call admission or
+a new physical Android result. Existing43-op np0 wire admission is unchanged.

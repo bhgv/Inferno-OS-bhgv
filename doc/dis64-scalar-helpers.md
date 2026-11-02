@@ -555,3 +555,38 @@ The ordinary native compiler gate keeps72 Dis/AOT/ABI32 cases; scalar compiler
 and per-opcode readiness remain unchanged. The packaged procedures example now
 returns fold's Word/Big/Real values through a caller-owned case-arm result tuple.
 Cross-target CI and downloaded-image evidence follow separately.
+
+
+### Series0068 validation and downloads
+
+Sourcef8e8b5050f5a5de38228465c12af6cf80912dd27 passes
+[CI41402313937](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41402313937):
+native Linux ARM64/x64 and RV64/QEMU. Downloaded execution logs confirm200
+accepted sources /400 whole C/JIT processes, all10 active VM controls and23
+controlled refusal shapes per target. The production tuple geometry test and
+both active removal controls pass with real compiler records and scalar roles.
+The external FlashVM reader admits200 source images and executes zero VM
+processes; reader admission is separate from actual runtime evidence. Numeric
+case gates retain67 sources /134 processes /67 stale-PC controls.
+
+| Target | Console, example source/images/maps and complete gate logs |
+| --- | --- |
+| ARM64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41402313937/artifacts/13122016776) |
+| x64 native | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41402313937/artifacts/13122415878) |
+| RV64 QEMU | [Download](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41402313937/artifacts/13121603759) |
+
+All3 downloaded consoles have the expected ELF64 machine and byte-identical
+mixed-result procedures.dis64, SHA256
+`2f402db2e006799db092b63c7a21301ffaa2901fe47589ca2e43f96a7702e7e2`.
+Downloaded x64 loop/case/procedures separately retire with empty module exit
+and scheduler in C/JIT. Existing Linux cleanexit terminates the host group;
+a zero host exit status is not the module-success criterion. Native ARM64
+proof is CI; RV64 uses a host producer and a QEMU consumer.
+
+Local strict-UBSan200-source VM execution and actual compiler controls, ordinary
+72-case Dis/AOT/ABI32 gate,167 prior byte-identity cases and readiness pass.
+Fast paths remain166/173 ARM64/x64 and87/90/103 RV64I/Zmmul/M; JIT plus C173/173
+and shared-file43/173 are unchanged. This checkpoint makes no new Android APK,
+physical tuple execution, managed import or full AWM acceptance claim. FlashVM
+can independently review the bounded tuple source lowering with its unchanged
+reader; no shared ABI, registry, feature or opcode allocation is requested.
