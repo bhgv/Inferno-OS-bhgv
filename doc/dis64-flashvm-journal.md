@@ -2827,3 +2827,59 @@ that noisy end-to-end timing. Benchmark source ships with the SDK.
 Shared heap access still serializes. Complete rooted mutation/epoch barriers,
 parallel managed mutators and blocking Sys release/reentry remain open. No
 Inferno core source fix or new file ABI is proposed by these host changes.
+
+
+## FLASHVM-0058 — 2026-11-02 — imported scalar results and real native heap waits
+
+Read INFERNO-0060 through0067, including typed scalar result forwarding and the
+ARM64 Android addendum. FlashVM master665c6bef62c0846e009cfe4ec216194fd5760ec9
+(v0.1736 / Runtime0.44.0) synchronizes BOTH selected source snapshots, DisVM and
+Limbo bootstrap, to1f8b07ad2befd1559f12c42a5018a8cc2e1946bd. Recorded hashes
+verify1072 and307 files. Upstream sources remain byte-for-byte. Selected build
+header dependencies are retained; Draw/Tk implementations are not imported into
+the independent Dis host. Final1f8b07a synchronization after execution at356c506
+changes only selected journals/build dependencies, not selected compiler/core
+executable C/header sources. Your new physical/device/Android claims remain
+upstream evidence; they were not repeated here.
+
+Independently rebuilt strict-UBSan ordinary-cell compiler from our imported
+bootstrap accepts167 sources and16 controlled refusals. Its images are admitted
+by our existing independent reader and execute334 whole C/JIT processes in a
+fresh classic-mk Linux x64 Inferno console, plus all8 active stale-local/depth/
+argument/result semantic controls. The owning native64-port driver also passes
+its complete boot, source/scalar, locations/cases, GC/lease/live-VM/field and
+negative-control gates. Owning native-limbo separately passes72 real-source
+Dis/AOT cases, exact ABI32 offsets and late-link preservation under strict UBSan.
+Reader acceptance and actual whole-runtime execution remain separate evidence.
+
+Reviewed helper scalar width/alignment and frame span admission, parameter-cell
+exclusion from local zeroing, depth/private result forwarding and setup-target
+ownership. Agree these are bounded source specialization into the unchanged
+43-op np0 profile: no serialized native result pointer or general runtime file
+FRAME/CALL/signature admission. No registry/feature/opcode change is needed.
+This does not grant managed argument/result/import admission in our file reader
+or native-cell host. The installed NC64 compiler still refuses the restricted
+Dis64 route rather than silently emitting a mismatched cell ABI.
+
+The threading part adds an audited heap leave/reentry for Sys.sleep in the
+independent NC64 host. Before waiting, it captures scalar frame/result operands,
+saves the complete active native-call REG into Prog.R and publishes native_world
+roots. While inactive it touches only native scalar locals/OS thread port state.
+It reenters before writing the managed result. Foreign/nested/broken pairing
+terminates before an unsafe return; protected GC regions retain ownership. This
+is not a blanket release/acquire implementation for arbitrary C-stack owners.
+
+Console and UI each pass12 complete nested-frame/root/scalar cases and2 managed
+limit-error retirements: inline/atomic/locked, interpreter/JIT and quanta1/2000.
+The graph/string/arrays survive real cycle passes during release. An installed
+SDK compiles/runs the example with6 matched releases/reentries and4 observed
+cycle passes inside released intervals; both collector joins and mutator TLS
+retirement pass. Existing cyclic-heap and real object/node SVG editing gates
+also pass. Sys.sleep blocks this sole Dis owner; UI and GC owners can progress.
+
+Generic native I/O buffers, opaque managed C-stack roots, cancellation and other
+exception paths need separate audits before widening the release boundary.
+Concurrent graph barriers and parallel shared-heap spawn remain open. No owning
+Inferno core defect was found/exported: its Sys.sleep already has the owning
+release/acquire path. This is a hosted adaptation and independent reverse review,
+not a proposal to replace that existing core implementation.
