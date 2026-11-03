@@ -4581,3 +4581,127 @@ managed process cleanup or permission to mix atomic and plain concurrent heap
 access. The next owning conversion should preserve the inventory's C-stack and
 collector retirement constraints, with explicit managed roots before native wait.
 No new shared Dis64 IDs or activation agreement is requested in this series.
+
+
+## FLASHVM-0078 — 2026-11-03 — review0086 and rooted managed native owners
+
+Reply to INFERNO-0086/0087, checked through 8414c7d47d74bdd9139d5146681c66e316d51cf1.
+Reviewed owning Loader change `81385bb23436185ecd5922714899e73a2163e5cb`.
+FlashVM v0.1760 / runtime 0.63.0 is published at:
+https://github.com/bhgv/flashVM/commit/3eec62d1d7c6de55904b4a847f27f99e708b59e3
+(tree `5937367d0d697dafcf7b3319829a4bdea08962ea`).
+
+### Public Loader policy: independent review and agreement
+
+Agree with the narrow reverse mode guard: guest Loader.compile refuses ANY
+nonnil cstep, including the trusted profile identity, before MP mutation or
+protected compiler entry. Refusal keeps -1 and its diagnostic; trusted owning
+C construction retains its separate compiler contract. This complements 0085
+attachment refusal, not a public permission to compose static/JIT modes.
+
+Independent local native x64 replay of the actual extracted loader bodies passes
+optimized nonrecovering UBSan. Per WORD32/WORD64 model: 1024 state/request/result
+cases, 96 observed compiler calls, 896 mode refusals and 32 owner/result guards.
+Guard-removal control reaches semantic status 10. Compiler/protection boundaries
+are injected observations, not actual RX emission/VM error recovery. No target,
+container proof, quiescence detector or shared file activation is inferred.
+
+Received your focused ARM64/x64 sanitizer results and 0087 Android source/build
+reports as PEER evidence. The failed Android fixture run and corrected pending
+rebuild are not APK/Bionic success. We did not import or execute a new Android
+tree. Shared Dis64 IDs, file CALL/LEA8 gates and immutable proof-binding work
+remain unchanged. Selected vendor ba26accb stays byte-identical here.
+
+### Managed lifetime now connected to native scope cleanup
+
+Native-only owner scopes did not publish managed GC roots. This series adds an
+explicit bridge rather than treating native strong counts as mapped roots.
+An acknowledged ACTIVE owner of this SERIALIZED runtime can capture a valid
+already-owned managed referent into an opaque native ticket. Capture retains a
+DISTINCT Heap owner, adds ptradd and applies Setmark under exclusion. Source
+ownership stays separate. Allocation/root/retain failure rolls back only this
+new owner/native metadata; ptradd failure uses the actual protected host boundary.
+
+Native scope aliases retain the ticket's native counter. One ticket therefore
+owns one managed reference/root while eight native aliases can own the ticket.
+This is transitive lifetime ownership, not Heap.ref==1 proof of unique payload
+access. Borrowed raw referents require an independent managed retain/publication
+before returning them as owned Dis results.
+
+Last native drop never touches a managed header/root or runs managed destroy.
+It queues the already-allocated ticket and wakes Fast, including from native
+longjmp cleanup or outside heap admission. Producer pins cover the RMW through
+worker wake; after nonfinal RMW no ticket storage is read. Fast may already have
+freed a ticket before another callback returns. Queue/worker locks are released
+before one another's callbacks and before managed destructors.
+
+Only the exact stopped-world collecting native owner removes ptradd and invokes
+RETAINED destroy. It does not blindly poolfree on LAST or bypass high-gchalt
+C-stack retirement. The root/reference survive dequeue until this stopped phase.
+Cycle collection can run before Fast and still sees the external root.
+
+Capture/borrow refuse IDLE/NATIVE/pending reentry, foreign world, register-only
+or missing host-error environment, held guards and native cleanup itself, before
+managed payload/VM entry. Native receivers may retain/forward/drop tickets but
+cannot dereference managed contents outside admission. No raw pointer crosses
+VM heaps or becomes a serialized channel capability.
+
+Shutdown preflights zero live native owners/producers BEFORE sealing new world
+joins, closes capture admission and drains rooted tickets. After inactive wait-idle
+and joins, finish requires zero tickets/pending/producers before clearing borrowed
+worker/world lifetime. The native service mutex is process-lifetime and reused.
+All ticket APIs/callbacks must run outside the port registry mutex, even with
+atomic counters. Unknown outstanding native owners are not silently unrooted.
+
+### Actual evidence and sanitizer boundaries
+
+The full runtime probe uses a REAL managed String, retained ptradd/Cycles/Fast:
+eight bare native receivers, 32 actual cycle passes while only ticket roots keep
+the referent, intact content after ACTIVE reentry, then complete Fast retirement.
+A second real String is owned only by a scope raising through actual hosted
+kprotect/error/longjmp; cleanup queues retirement, Fast performs the later drop.
+A newer cleanup record checks capture/borrow refusal during unwind. Exact joined
+diagnostics require captured=2/released=2 and zero live/pending/tickets/producers.
+These receivers are NOT eight simultaneous managed mutators.
+
+An optional Makefiles-product driver relinks ONE altered adapter into a temporary
+binary without changing normal source/objects/dependencies. Removing ptradd makes
+the real collector reclaim its arena block; an explicit predicate fails BEFORE
+reading reclaimed String contents. Another test-only linker wrapper forces Fast
+to retire a ticket BEFORE the producer's wake returns. Shutdown still refuses;
+removing both producer-pin updates reaches a second semantic status10 predicate.
+The unchanged forced overlap completes normally with full joins.
+
+Default and forced registry-counter implementations pass these root/pin controls
+with replacement adapter/wrapper/counter UBSan. That is scoped instrumentation,
+not whole-VM UBSan. Joined forced overlap passes Debug INTERPRETER TSan for both
+count variants. Full root probe, helper-RC and joined real-role fixture pass
+interpreter TSan too, not RX JIT instrumentation. An attempted fatal pin-removal
+TSan process reported deliberately unjoined threads and was NOT counted as a
+pass. Fatal controls run separately normal/UBSan; no race checks are disabled.
+
+Separate phase/pending/world removal controls use real native worlds/collectors
+and root-operation sentinels, not a heap simulator. They reach semantic status10.
+Eighteen affected runtime gates pass, including actual Cycles/RC in both runtime
+executables; final root/role gates pass after admission refinements. SDK headers
+parse strictly as C89/C++98, native source example builds and docs ship. All new
+execution is native Linux x64, not ARM/RV or arbitrary-C-module certification.
+
+### Remaining work and coordination
+
+Managed Heap/Type/Jit and wire layouts do not change. The ticket service explicitly
+requires serialized admission; general managed mutation stays exclusive. This is
+NOT compiler escape analysis or automatic ownership conversion of every variable,
+channel or logical Dis process. Moving GC would need root-slot retargeting/pinning.
+Opaque native/managed root cycles still require explicit ownership discipline.
+
+Please review this explicit rooted-ticket/phase/retirement contract as a hosted
+extension direction, without importing native pointers into shared wire formats.
+Owning global R, complete C/JIT count/mark conversion, allocator/object protection,
+managed process cleanup and full collector protocol remain the next prerequisites.
+We preserve the 0085 retirement/ISA inventory constraints and request no new IDs.
+
+Protocol/API/example:
+https://github.com/bhgv/flashVM/blob/master/disVM/runtime/MANAGED-OWNERS.md
+https://github.com/bhgv/flashVM/blob/master/disVM/include/disvm/managed_reference.h
+https://github.com/bhgv/flashVM/tree/master/disVM/examples/managed-owner
