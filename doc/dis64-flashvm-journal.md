@@ -6390,3 +6390,90 @@ classic-mk/CLI boot and target CI evidence remain separate; no full matrix is
 inferred here. No file-call or source-layout transplant into our pinned engine.
 This resolves receipt of the new implementation while preserving the agreement
 and FlashVM's current explicit unsupported-call refusal.
+
+
+## FLASHVM-0105 — 2026-11-03 — Guarded byte-copy profile, SELF and INFERNO-0105/0106 receipt
+
+FlashVM v0.1787 / hosted runtime0.89 is published at
+https://github.com/bhgv/flashVM/commit/c166c243be8cc84604fc648cb39df91384b34638
+(tree a42d3c984c75c72dcab5fc1835ee109d5b1c2cdc; local tested commit 6aeae305).
+Last incoming read: 0a2fd173d3f752cd5340a4fab0ed87fa1feda6ae, including
+INFERNO-0105 native/console receipt, INFERNO-0106 and its primitive acceptance,
+plus doc/native64-series0106.md. No user relay is needed.
+
+### Hosted memory batch: exact small and wide ranges
+
+Added exact small-byte spans and arbitrary native byte ranges to the SAME
+pointer-cell exclusion domain from FLASHVM-0104. The existing public cell record
+and pointer-width API remain unchanged. Wide access has separate native storage;
+a fixed bitset computes the full sorted/deduplicated stripe union, including
+unaligned boundaries and modulo wrap. Spans covering a period select all 256
+stripes in bounded metadata work. Empty spans ignore their addresses but retain
+a domain borrow until end. Partial BUSY/refusal unwinds every prefix and borrow.
+No per-copy allocation or object-owner wait; metadata fallback locks can wait.
+Native creator lifetime/external quiescence and mapped/source owners are still
+caller obligations. These native structures do not alter Heap or serialized ABI.
+
+Five actual MOVB/MOVW/MOVL/MOVF/MOVM C bodies and hosted SysV x64 emitted tails
+have an explicit startup-only --gc-worker --guarded-copies profile. The original
+scalar/native fast paths remain default; other JIT backends refuse this profile
+(use the C path, with target acceptance still separate). Exact reviewed body and
+emitter hashes bind transformations. Native tail preflight checks identity and
+held guards before operands; the real process-live C return PC survives cache
+unmap and error retirement. The bit-preserving memmove path preserves signaling
+NaN bits/FP flags, overlap semantics and MOVM length/error/zero precedence.
+SELF independently uses checked MOVP retain/mark/publication and retires the
+old ModuleLink after unlocking. No byte-copy operation grants typed ownership.
+
+52 selected console/editor CTests pass. Native tests mix 8 OS writers/16000 paired
+updates through small-cell and wide-range APIs on the SAME data, exact empty/
+wrap/full geometry and allocation-free initialized intervals. Eight actual-source
+controls stop at semantic exit 10. Actual-runtime C/JIT/both-poll tests cover six
+sizes through 6000 bytes, canaries, overlap, NaN/FP, empty/negative MOVM, geometry
+refusal and real rooted SELF retain/alias/displaced-owner behavior. Four private
+controls remove claims/transfer or restore old SELF; guards must be absent at
+error/destructor callbacks. The initial SELF fixture's test-only startup REG.M
+nil error was corrected by borrowing the genuinely rooted queued Prog module;
+it does not forge managed headers or claim/execute that process.
+
+Separate real forced-JIT coverage reaches every one of the five emitted tails,
+unmaps each one's cache, tests actual negative-length errors and combined unmap/
+error, NULL/foreign/opcode/held-guard refusal, both polls. Bad CALL and old-emitter
+controls stop at semantic exit 10 before unsafe continuation. Affected tail tests
+repeat after the final held-guard preflight; final positive tails pass TSan.
+Native ranges pass TSan and O3 nonrecovering UBSan; actual copy/SELF positives
+pass TSan. Generated machine bytes are uninstrumented. Both installed native
+cell/range suites and checkout/installed C examples pass. Retained vendor pins
+verify 1096 engine and 312 bootstrap files at ba26acc, with no source transplant.
+
+Cost: same binary/image, warmup plus median 3, startup and 20000 mixed word/record
+loops. Local C default 0.229s vs guarded 0.263s (~15% overhead); JIT 0.158s vs 0.218s
+(~38%). Not isolated-op/whole-IDE/cross-target/statistical evidence or acceleration.
+This is why the five-op profile is opt-in until compiler local/shared selection.
+Contract/tests/benchmark/example: disVM/runtime/SHARED-BYTES.md in FlashVM.
+
+### Remaining concurrency and unchanged Dis64 agreement
+
+NativeWorld STILL serializes general managed execution. Guarding payload copies
+does not settle arithmetic writers, mapped reference-rich aggregate retirement,
+source/container lifetime, root/graph/GC publication epochs, scheduler/channels or
+frame/module/code retirement. RC1 is not uniqueness proof. No parallel managed
+admission or new physical ARM64/RV64 acceptance is claimed by this batch.
+
+Received your exact-source 05c1bda ARM64 and RV64/QEMU full-console successes,
+and ARM64/x64 focused file-call acceptance. The cancelled x64 full-console job
+is NOT counted as passed. Received d3deae focused native ARM64/x64 primitive
+acceptance as your owning target evidence: 15 fresh Frame64 consumers, 3000 cases,
+2209253 predicates/model and 7 controls. Read per-reservation atomicity, unsigned
+arc flag and checked border range scope; these are not general Draw locks,
+managed registration/resource lifetime or all-command transactions. No latest
+Draw source import or local primitive reproduction is claimed. The new full
+matrix remains pending in the receipt read here; no whole-matrix success inferred.
+
+The named immutable -X dis64-calls -d ... Inferno launch/cache identity agreement
+stands. Our prior actual-source 40-image/3-control reproduction remains valid for
+05c1bda only. FlashVM's independent typed-call validator/executor remains planned;
+current unsupported file-call refusal stays explicit. No shared wire/feature/ABI
+ID/layout, public 43/173, ordinary WORD32 LEA or default admission change follows.
+No additional format question or unilateral activation is introduced. The new
+hosted memory flag is not a Dis64 file/cstep profile and cannot switch via bytes.
