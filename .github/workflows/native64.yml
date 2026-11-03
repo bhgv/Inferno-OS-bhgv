@@ -11,6 +11,7 @@ on:
       - 'include/**'
       - 'emu/**'
       - 'libinterp/**'
+      - 'libfreetype/**'
       - 'lib9/**'
       - 'libmath/**'
       - 'limbo/**'

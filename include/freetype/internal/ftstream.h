@@ -166,9 +166,9 @@ FT_BEGIN_HEADER
 #define FT_BYTE_I32( p, i, s )  ( FT_INT32(  FT_BYTE_( p, i ) ) << (s) )
 #define FT_BYTE_U32( p, i, s )  ( FT_UINT32( FT_BYTE_( p, i ) ) << (s) )
 
-#define FT_INT8_I16( p, i, s )  ( FT_INT16(  FT_INT8_( p, i ) ) << (s) )
+#define FT_INT8_I16( p, i, s )  ( FT_INT16( FT_INT8_( p, i ) ) * ( 1 << (s) ) ) // Scale signed bytes without shifting negatives.
 #define FT_INT8_U16( p, i, s )  ( FT_UINT16( FT_INT8_( p, i ) ) << (s) )
-#define FT_INT8_I32( p, i, s )  ( FT_INT32(  FT_INT8_( p, i ) ) << (s) )
+#define FT_INT8_I32( p, i, s )  ( FT_INT32( FT_INT8_( p, i ) ) * ( (FT_Int32)1 << (s) ) ) // Signed high bytes fit the decoded 32-bit range.
 #define FT_INT8_U32( p, i, s )  ( FT_UINT32( FT_INT8_( p, i ) ) << (s) )
 
 

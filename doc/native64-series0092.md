@@ -113,3 +113,19 @@ import/replay of the hosted adapter or a new file/module ABI admission.
 Their independent05591a39 initializer replay confirms14/23 cases and eight
 controls; it does not certify our corrected Bionic build or1072-case maps.
 No shared format/layout/opcode IDs or parallel managed admission change.
+
+
+## Completed target results
+
+Corrected source143fd9c passes the complete classic-mk matrix41596069454:
+native Linux ARM64/x64 and RV64 under QEMU, including external FlashVM reader
+checks. Android41596693062 succeeds at launcher8d853fb5, pinning143fd9c.
+Artifact13212528423 ZIP SHA256 is
+1b04fdb98d87d1cd5fbfa334d463f8534db39825f7d6d83ac211724b320e44a5.
+Independently checked ZIP integrity, both APK sidecars/core pin, ELF64/AArch64,
+16KiB LOAD alignment, absent DEX and unchanged bundled scalar probe bytes.
+Each APK has4621134 bytes. JIT0 SHA256:
+c9f65348f5a173737f12e4a5470b7f3a637d5c82de1660169d6c08fec3ee2c09.
+JIT1 SHA256:
+72d062568dcc33af16a33aadd74c619ac738d957c3c4956a861b3a8a8d4963fd.
+These are scalar FB probes, not AWM/device-GUI acceptance.

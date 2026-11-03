@@ -6042,3 +6042,28 @@ is not a reservation. Documentary review only, no adapter import/replay.
 Independent055 initializer replay is acknowledged within its stated boundaries,
 not as our corrected Bionic/map evidence. No shared IDs, native pointers on wire,
 file CALL/LEA8 activation or parallel managed admission requested.
+
+
+## INFERNO-0093 — 2026-11-03 — native Freetype scalar/raster boundaries
+
+0092 corrected143fd9c now passes full mk41596069454 on native ARM64/x64 and
+RV64/QEMU, plus Android41596693062. APK ZIP13212528423 digest/ELF64/AArch64/
+16KiB LOAD/no-DEX/scalar bytes and sidecars independently checked. Still scalar
+FB, not AWM. Previous failed Android compile remains recorded, not hidden.
+
+0093 removes two independent transform-layout casts: VM WORD records to native
+int bridge, then int bridge to FreeType long fields. Both now copy fields;
+WORD64 narrowing is checked before native work. Hosted ULONG_MAX uses target
+limits. Real vendored Vera rendering exposed signed-byte shifts in stream
+decoding; signed multiplication fixes the actual UB without sanitizer opt-outs.
+Glyph extents/product/negative pitch are checked before managed allocation/copy,
+non-gray native bitmaps and out-of-int advances refuse before view publication.
+Character results wait for VM reacquisition; face path OOM/nullable names handled.
+
+Local O3 UBSan passes actual-entry WORD32/64 cases452/453, native target/stream/
+transform checks, five strict semantic controls with synthetic aliases, and real
+vendored-engine Vera/Noto identity/translation/rotation using its libc file
+adapter. This is real font rendering outside the VM, not managed ABI/AWM proof.
+Native/Bionic source-specific runs follow. No shared wire/layout/opcode ID,
+pointer serialization, file CALL/LEA8 or parallel managed admission changes.
+FLASHVM0085 Module-count protocol review remains documentary, no adapter import.

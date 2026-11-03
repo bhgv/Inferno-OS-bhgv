@@ -9,6 +9,7 @@ static char* fterrstr(int);
 extern char rootdir[];
 #endif
 
+/* Open a native library/face pair and publish handles only after success. */
 char*
 ftnewface(char *path, int index, FTface *f, FTfaceinfo *finfo)
 {
@@ -55,6 +56,8 @@ ftnewface(char *path, int index, FTface *f, FTfaceinfo *finfo)
 	return nil;
 }
 
+
+/* Keep memory-face loading explicitly unsupported. */
 char*
 ftloadmemface(void *buf, int nbytes, int index, FTface *f, FTfaceinfo *finfo)
 {
@@ -64,6 +67,8 @@ ftloadmemface(void *buf, int nbytes, int index, FTface *f, FTfaceinfo *finfo)
 	return "not implemented";
 }
 
+
+/* Set native character metrics through the fixed integer bridge. */
 char*
 ftsetcharsize(FTface f, int pt, int hdpi, int vdpi, FTfaceinfo *finfo)
 {
@@ -78,19 +83,39 @@ ftsetcharsize(FTface f, int pt, int hdpi, int vdpi, FTfaceinfo *finfo)
 	return nil;
 }
 
+
+/* Translate fixed-width bridge fields into native FreeType long fields. */
 void
 ftsettransform(FTface f, FTmatrix *m, FTvector *v)
 {
-	/* FTMatrix and FTVector are compatible with FT_Matrix and FT_Vector */
-	FT_Set_Transform(f.ft_face, (FT_Matrix*)m, (FT_Vector*)v);
+	FT_Matrix matrix, *native_matrix = nil;
+	FT_Vector vector, *native_vector = nil;
+
+	if(m != nil){
+		matrix.xx = m->a;
+		matrix.xy = m->b;
+		matrix.yx = m->c;
+		matrix.yy = m->d;
+		native_matrix = &matrix;
+	}
+	if(v != nil){
+		vector.x = v->dx;
+		vector.y = v->dy;
+		native_vector = &vector;
+	}
+	FT_Set_Transform(f.ft_face, native_matrix, native_vector);
 }
 
+
+/* Query the native character map. */
 int
 fthaschar(FTface f, int c)
 {
 	return FT_Get_Char_Index(f.ft_face, c) != 0;
 }
 
+
+/* Publish only a byte-per-pixel glyph whose advances fit the public int ABI. */
 char*
 ftloadglyph(FTface f, int ix, FTglyph *g)
 {
@@ -105,6 +130,14 @@ ftloadglyph(FTface f, int ix, FTglyph *g)
 
 	
 	ft_glyph = ft_face->glyph;
+	if(ft_glyph->advance.x < -0x7fffffffL-1 || ft_glyph->advance.x > 0x7fffffffL ||
+	   ft_glyph->advance.y < -0x7fffffffL-1 || ft_glyph->advance.y > 0x7fffffffL)
+		return "Freetype glyph advance out of range";
+	if(ft_glyph->bitmap.width < 0 || ft_glyph->bitmap.rows < 0)
+		return "invalid Freetype glyph dimensions";
+	if(ft_glyph->bitmap.width != 0 && ft_glyph->bitmap.rows != 0 &&
+	   ft_glyph->bitmap.pixel_mode != FT_PIXEL_MODE_GRAY)
+		return "unsupported Freetype glyph pixel mode";
 	g->top = ft_glyph->bitmap_top;
 	g->left = ft_glyph->bitmap_left;
 	g->height = ft_glyph->bitmap.rows;
@@ -116,6 +149,8 @@ ftloadglyph(FTface f, int ix, FTglyph *g)
 	return nil;
 }
 
+
+/* Retire the native face before its library. */
 void
 ftdoneface(FTface f)
 {
@@ -125,24 +160,26 @@ ftdoneface(FTface f)
 		FT_Done_FreeType(f.ft_lib);
 }
 
+
 /*
  * get the freetype error strings
  */
 
 typedef struct FTerr FTerr;
 struct FTerr {
-	int		code;
-	char*	text;
+	int		code; // Native error number.
+	char*	text; // Static diagnostic text.
 };
 
-#define FT_NOERRORDEF_(l,c,t)
-#define FT_ERRORDEF_(l,c,t)	c,t,
+#define FT_NOERRORDEF_(l,c,t) // Omit the success sentinel.
+#define FT_ERRORDEF_(l,c,t)	c,t, // Expand one static diagnostic pair.
 
 static FTerr fterrs[] = {
 #include "freetype/fterrdef.h"
 	-1, "",
 };
 
+/* Translate a native FreeType error without allocating. */
 static char*
 fterrstr(int code)
 {

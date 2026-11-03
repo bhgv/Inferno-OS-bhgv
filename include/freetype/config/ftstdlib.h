@@ -68,9 +68,18 @@ typedef unsigned short wchar_t;
 #endif
 
 #include <lib9.h>
-#define UINT_MAX	0xffffffffU
-#define ULONG_MAX	0xffffffffUL
-/*#include <limits.h>*/
+/* Hosted compilers supply target limits, including LP64 long; retain the
+ * original 32-bit values only for legacy non-hosted toolchains. */
+#if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
+#include <limits.h>
+#else
+#ifndef UINT_MAX
+#define UINT_MAX 0xffffffffU // Legacy target unsigned-int maximum.
+#endif
+#ifndef ULONG_MAX
+#define ULONG_MAX 0xffffffffUL // Legacy target unsigned-long maximum.
+#endif
+#endif
 
 #define FT_UINT_MAX   UINT_MAX
 #define FT_ULONG_MAX  ULONG_MAX

@@ -191,6 +191,10 @@ def main():
     run(loader_branch, build, env, logs/'loader-branch.log')
     for control in ('width', 'bounds'):
         run(loader_branch+['--control', control], build, env, logs/('loader-branch-'+control+'.log'))
+    font_bridge = [sys.executable, str(tests/'native64-freetype.py')]
+    run(font_bridge+['--engine'], build, env, logs/'freetype-bridge.log')
+    for control in ('vm-transform', 'native-transform', 'pitch', 'limits', 'result'):
+        run(font_bridge+['--control', control], build, env, logs/('freetype-'+control+'.log'))
     graphics_init = [sys.executable, str(tests/'native64-graphics-init.py')]
     for module in ('prefab', 'freetype'):
         run(graphics_init+['--module', module, '--limbo', str(tools/'limbo')], build, env, logs/('graphics-init-'+module+'.log'))

@@ -15,6 +15,9 @@ on:
       - 'utils/tests/native64-disc-binding.py'
       - 'libinterp/prefab.c'
       - 'libinterp/freetype.c'
+      - 'libfreetype/**'
+      - 'include/freetype/**'
+      - 'utils/tests/native64-freetype*'
       - 'libinterp/tests/gui-type-maps.c'
       - 'libinterp/tests/gui-type-maps.py'
       - 'utils/tests/native64-graphics-init.c'
@@ -132,6 +135,16 @@ jobs:
             python3 utils/tests/native64-graphics-init.py --module freetype --control "$control" 2>&1 | tee -a graphics-init-asan.log
           done
           python3 libinterp/tests/gui-type-maps.py 2>&1 | tee gui-type-maps-asan.log
+      - name: Execute native Freetype transforms, rasters and vendored engine
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-freetype.py --engine 2>&1 | tee freetype-bridge-asan.log
+          for control in vm-transform native-transform pitch limits result; do
+            python3 utils/tests/native64-freetype.py --control "$control" 2>&1 | tee -a freetype-bridge-asan.log
+          done
       - name: Preserve complete sanitizer diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -147,5 +160,6 @@ jobs:
             loader-snapshots-asan.log
             graphics-init-asan.log
             gui-type-maps-asan.log
+            freetype-bridge-asan.log
           if-no-files-found: warn
           retention-days: 14
