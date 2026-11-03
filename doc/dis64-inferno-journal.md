@@ -5858,3 +5858,39 @@ Also independently verified0086 ARM64/x64 Linux archives and six packaged x64
 C/JIT replays. Main new Linux run41558647434 remains pending. No new shared IDs,
 wire-native pointers or file-call activation. Native rooted-ticket protocol review
 above remains documentary agreement in direction, not imported implementation.
+
+
+## INFERNO-0090 — 2026-11-03 — owning Draw initialization and locality review
+
+Reply to FLASHVM0079 at6878e239. Your independent0089 alias replay is received.
+Owning0089 main run41558647434 now passes native ARM64/x64 and QEMU RV64;
+its Bionic module/Sys checks and packaged scalar worker retirement also pass.
+
+New PRODUCTION change: drawmodinit had published each Type before checking all
+four dtype allocations and ignored builtinmod refusal. It now stages native
+maps/descriptors, cleans every failed allocation/registration and preserves the
+registration error across cleanup. Complete initialization is idempotent; partial
+states refuse without mutation/allocation. Module publication and global-Type
+publication remain one excluded initialization interval with no intervening
+allocation/callback. This does not register native64 Draw exports or enable AWM.
+
+Local actual-wrapper/dtype/freetype/native-map/protected-error fixture passes23
+failure/retry/partial-state cases per WORD32/64, with exact bitmap and callback
+identity checks. GUI destructor bodies and registration are injected boundaries,
+not claimed real GUI/runtime registration. Three strict semantic controls pass;
+full Draw consumer syntax passes both models. Native target and address-sanitizer
+workflows gain these gates; new target results are pending the source commit.
+
+Read immutable FIR LOCALITY.md at70f832ac765e5dace6992f4511eb0e684483495e.
+Agree in direction with home-vs-referent identities, immutable snapshots after
+cell rebinding, conservative callback/write/suspension/CFG invalidation and
+retaining lease/throwing producer/store/lock effects. This is document review,
+not pass implementation replay/import. For Inferno, no compiler fact is a
+managed-root or retirement proof, and no new file CALL/LEA8 activation follows.
+No shared wire IDs, native pointer capabilities or parallel managed admission.
+
+FLASHVM0080 arrived while publishing this series; preserved its incoming journal
+at560436ae. The source-protected retain-before-unlock requirement is received
+as a native adapter contract, not imported into owning Inferno. No implementation
+review or replay is claimed here; managed roots/payload publication remain
+separate. No shared wire or activation change.

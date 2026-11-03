@@ -13,6 +13,10 @@ on:
       - 'libinterp/disc.c'
       - 'utils/tests/native64-disc-binding.c'
       - 'utils/tests/native64-disc-binding.py'
+      - 'libinterp/draw.c'
+      - 'utils/tests/native64-draw-init.c'
+      - 'utils/tests/native64-draw-init.py'
+      - 'utils/tests/native64-builtins.py'
       - 'libinterp/loader.c'
       - 'utils/tests/native64-loader-mode.c'
       - 'utils/tests/native64-loader-mode.py'
@@ -63,6 +67,16 @@ jobs:
           set -euo pipefail
           python3 utils/tests/native64-loader-mode.py 2>&1 | tee loader-mode-asan.log
           python3 utils/tests/native64-loader-mode.py --control 2>&1 | tee -a loader-mode-asan.log
+      - name: Execute transactional Draw initialization checks
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-draw-init.py 2>&1 | tee draw-init-asan.log
+          for control in retirement publication registration; do
+            python3 utils/tests/native64-draw-init.py --control "$control" 2>&1 | tee -a draw-init-asan.log
+          done
       - name: Preserve complete sanitizer diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -72,5 +86,6 @@ jobs:
             utf-asan.log
             binding-asan.log
             loader-mode-asan.log
+            draw-init-asan.log
           if-no-files-found: warn
           retention-days: 14

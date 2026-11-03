@@ -148,34 +148,80 @@ void		freeallsubfonts(Display*);
 
 extern char rootdir[];
 
-/* Build managed-pointer maps from the native public fields of each wrapper. */
+
+/* Stage every wrapper descriptor before publishing a complete Draw module.
+ * Caller holds VM initialization exclusion. dtype returns nil; builtinmod owns
+ * its protected failure cleanup. No wrapper type escapes on either refusal. */
 void
 drawmodinit(void)
 {
-	memset(fontmap, 0, sizeof(fontmap));
-	nativefieldmap(fontmap, DFont, drawfont.name);
-	nativefieldmap(fontmap, DFont, drawfont.display);
-	memset(imagemap, 0, sizeof(imagemap));
-	nativefieldmap(imagemap, DImage, drawimage.display);
-	nativefieldmap(imagemap, DImage, drawimage.screen);
-	nativefieldmap(imagemap, DImage, drawimage.iname);
-	memset(screenmap, 0, sizeof(screenmap));
-	nativefieldmap(screenmap, DScreen, drawscreen.image);
-	nativefieldmap(screenmap, DScreen, drawscreen.fill);
-	nativefieldmap(screenmap, DScreen, drawscreen.display);
-	memset(displaymap, 0, sizeof(displaymap));
-	nativefieldmap(displaymap, DDisplay, drawdisplay.image);
-	nativefieldmap(displaymap, DDisplay, drawdisplay.white);
-	nativefieldmap(displaymap, DDisplay, drawdisplay.black);
-	nativefieldmap(displaymap, DDisplay, drawdisplay.opaque);
-	nativefieldmap(displaymap, DDisplay, drawdisplay.transparent);
+	Type *types[4] = {nil};
+	uchar fontbits[sizeof(fontmap)], imagebits[sizeof(imagemap)];
+	uchar screenbits[sizeof(screenmap)], displaybits[sizeof(displaymap)];
+	char reason[ERRMAX], *failure;
+	int i;
 
-	TFont = dtype(freedrawfont, sizeof(DFont), fontmap, sizeof(fontmap));
-	TImage = dtype(freedrawimage, sizeof(DImage), imagemap, sizeof(imagemap));
-	TScreen = dtype(freedrawscreen, sizeof(DScreen), screenmap, sizeof(screenmap));
-	TDisplay = dtype(freedrawdisplay, sizeof(DDisplay), displaymap, sizeof(displaymap));
-	builtinmod("$Draw", Drawmodtab, Drawmodlen);
+	if(TFont != nil || TImage != nil || TScreen != nil || TDisplay != nil){
+		if(TFont != nil && TImage != nil && TScreen != nil && TDisplay != nil)
+			return;
+		error("partial Draw type initialization");
+		return;
+	}
+	memset(fontbits, 0, sizeof(fontbits));
+	nativefieldmap(fontbits, DFont, drawfont.name);
+	nativefieldmap(fontbits, DFont, drawfont.display);
+	memset(imagebits, 0, sizeof(imagebits));
+	nativefieldmap(imagebits, DImage, drawimage.display);
+	nativefieldmap(imagebits, DImage, drawimage.screen);
+	nativefieldmap(imagebits, DImage, drawimage.iname);
+	memset(screenbits, 0, sizeof(screenbits));
+	nativefieldmap(screenbits, DScreen, drawscreen.image);
+	nativefieldmap(screenbits, DScreen, drawscreen.fill);
+	nativefieldmap(screenbits, DScreen, drawscreen.display);
+	memset(displaybits, 0, sizeof(displaybits));
+	nativefieldmap(displaybits, DDisplay, drawdisplay.image);
+	nativefieldmap(displaybits, DDisplay, drawdisplay.white);
+	nativefieldmap(displaybits, DDisplay, drawdisplay.black);
+	nativefieldmap(displaybits, DDisplay, drawdisplay.opaque);
+	nativefieldmap(displaybits, DDisplay, drawdisplay.transparent);
+
+	failure = exNomem;
+	types[0] = dtype(freedrawfont, sizeof(DFont), fontbits, sizeof(fontbits));
+	if(types[0] == nil)
+		goto failed;
+	types[1] = dtype(freedrawimage, sizeof(DImage), imagebits, sizeof(imagebits));
+	if(types[1] == nil)
+		goto failed;
+	types[2] = dtype(freedrawscreen, sizeof(DScreen), screenbits, sizeof(screenbits));
+	if(types[2] == nil)
+		goto failed;
+	types[3] = dtype(freedrawdisplay, sizeof(DDisplay), displaybits, sizeof(displaybits));
+	if(types[3] == nil)
+		goto failed;
+	if(builtinmod("$Draw", Drawmodtab, Drawmodlen) == nil){
+		reason[0] = 0;
+		kgerrstr(reason, sizeof(reason));
+		reason[sizeof(reason)-1] = 0;
+		failure = reason[0] != 0 ? reason : "Draw module registration failed";
+		goto failed;
+	}
+
+	/* No allocation or callback separates module registration from this publication. */
+	memmove(fontmap, fontbits, sizeof(fontmap));
+	memmove(imagemap, imagebits, sizeof(imagemap));
+	memmove(screenmap, screenbits, sizeof(screenmap));
+	memmove(displaymap, displaybits, sizeof(displaymap));
+	TFont = types[0];
+	TImage = types[1];
+	TScreen = types[2];
+	TDisplay = types[3];
+	return;
+failed:
+	for(i=0; i<4; i++)
+		freetype(types[i]);
+	error(failure);
 }
+
 
 /* Hash bytes with defined unsigned wraparound on every host word size. */
 static int
