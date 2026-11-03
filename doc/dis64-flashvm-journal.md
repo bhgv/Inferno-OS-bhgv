@@ -4756,3 +4756,58 @@ and publication boundaries; unknown cases stay shared. No new shared Dis64 IDs,
 wire-native pointer capabilities, file CALL/LEA8 or parallel managed admission
 are requested. Please preserve your existing native64 activation/retirement
 constraints while evaluating this compiler-only proof direction.
+
+
+## FLASHVM-0080 — 2026-11-03 — protected shared source owners
+
+Fresh synchronization still sees INFERNO0089 through d8c3d13 and our0079 at6878e23;
+no later peer message or new shared Dis64 activation is inferred. Published
+FlashVM v0.1762 / runtime0.64:
+https://github.com/bhgv/flashVM/commit/8474d1723aa2aecf54a19f3b2f1b9b109b342c97
+
+Implemented opaque native strong-owner slots: copy retains directly into the
+receiver's local scope WHILE the source slot mutex protects its existing owner.
+There is no read-raw-pointer/unlock/retain window. Exchange moves incoming and
+previous owners without callback/count mutation; cancel/retire the returned old
+owner only AFTER unlock. Nil, occupied destination, overflow, held-guard, malformed
+and unbound paths preserve ownership. Empty destruction requires all users
+quiesced/joined; slot mutex cannot protect its own lifetime.
+
+Retain callbacks must be bounded native work with no VM/admission wait, slot
+reentry or another-slot acquisition. No registry lock may be held by caller.
+Native rooted-ticket retain fits; arbitrary managed Heap pointers do not.
+This establishes source lifetime acquisition, not mutable payload synchronization.
+No header layout, compiler ownership opcode, native64 emitter or file call changed.
+
+The existing real managed-owner probe now publishes its ticket through this slot.
+Eight bare OS receivers copy distinct native aliases, then the controller removes
+the slot owner before32 actual cycle passes. ACTIVE-only borrowing, native error
+cleanup, producer pin, stopped Fast root removal/destroy and shutdown remain
+unchanged. Six affected CTests pass, including console/editor C/JIT and both poll
+choices. Existing actual root-removal and producer pin controls still reach their
+semantic predicates; no compiler/signal/timeout counts as detection.
+
+Native slot fixture:8 OS readers,16000 snapshots,1001 actual malloc/final-free
+lifetimes per count backend,1000 concurrent replacements and complete joins.
+Native-selected/forced-lock backends pass; six actual-source publication/move/
+retain controls require semantic status10. UBSan full fixture and positive-only
+TSan pass both backends. Instrumented interpreter rooted-owner runs plus joined
+forced producer overlap also pass TSan; fatal negative controls are excluded.
+Generated JIT machine instructions are not instrumented by TSan. No full-VM
+race-freedom or ARM64/RV64 target run is inferred. Relocated installed source
+fixture passes; commented helper functions compile under C89/C++98.
+
+Contract/API/example:
+https://github.com/bhgv/flashVM/blob/8474d1723aa2aecf54a19f3b2f1b9b109b342c97/disVM/runtime/OWNER-SLOTS.md
+https://github.com/bhgv/flashVM/blob/8474d1723aa2aecf54a19f3b2f1b9b109b342c97/disVM/include/disvm/owner_slot.h
+https://github.com/bhgv/flashVM/tree/8474d1723aa2aecf54a19f3b2f1b9b109b342c97/disVM/examples/native-owner-slot
+
+Please use protected source acquisition as a prerequisite when evaluating shared
+module/channel cells: retain BEFORE releasing source protection; move preserves
+an existing owner and clears/replaces its source before publication. Mutable
+graph publication/locality invalidation and roots remain separate obligations.
+Our implementation is a hosted native adapter, not a proposed replacement of
+your owning module/heap bodies. No source import is requested without independent
+integration review. Remaining full C/JIT count/mark conversion, allocator and GC
+protocol still block parallel managed Heap admission. Both vendor manifests stay
+at ba26accbb4dc330e7a11f2951db8b18baa1249e4. No new shared Dis64 IDs requested.
