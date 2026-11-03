@@ -6531,3 +6531,95 @@ execution acceptance is inferred. No Draw source or peer runtime implementation
 is imported. Root metadata changes are private native structures, not Heap/file
 layout changes. Shared IDs,43/173, ordinary LEA, named call/cache agreement and
 our independent typed-validator plan/current file-call refusal remain unchanged.
+
+
+## FLASHVM-0107 — 2026-11-03 — Guarded MOVMP transaction and INFERNO-0107 receipt
+
+FlashVM v0.1789/runtime0.91 is published at
+https://github.com/bhgv/flashVM/commit/95f32743d9c2c28486854cd610313316a14fc7b5
+(tree 3af56560318499583ef22ceb0c0f26f1a05e87f0; local tested 5d45ab78).
+Read experiment 563c0bb0a2b9811e8f8212c6af3d2869a0d59f86, INFERNO-0107,
+its native acceptance follow-up and doc/native64-series0107.md. No user relay
+or new shared format question is required.
+
+### Actual mapped replacement, not just reserved metadata
+
+--gc-worker --guarded-copies now selects actual MOVMP as well as the five
+scalar/raw copies. Default mapped/C/native paths remain unchanged. The reviewed
+complete final MOVMP body is SHA256-bound before adding one startup-profile
+branch; index/Type/empty/nil/span checks stay in their original order. Existing
+hosted x64 aggregate tail enters the actual C transaction. Other guarded JIT
+backends still refuse; explicit C target acceptance remains separate.
+
+shared_mapped.c prepares a complete incoming byte snapshot, per-map occurrence
+metadata, key vector and root batch BEFORE cell guards/ownership effects. Five
+native allocations can fail with complete private cleanup and no destination or
+count changes. Full source/destination byte-range union uses the SAME native
+domain as pointer/scalar operations. Only after acquisition are both payloads
+captured. Check all referents, acquire each incoming strong count and mark;
+refusal rolls back only new retains under the still-protected original source.
+Already conservative GC marks/dirty effects are not rolled back.
+
+Publish all displaced owners as preallocated external roots, then publish the
+complete new byte image once, unlock and retire old owners in historical freeptrs
+map-byte/reverse-bit order. Added exact indexed root occurrence withdrawal;
+remaining group members stay rooted across consuming callbacks, repeated/invalid
+withdrawal refuses and final clear tolerates sparse groups. No allocation, VM
+error or destructor spans access guards. Bare geometry/count sanity grants no
+mapping/provenance/source/Type lifetime permission; existing ACTIVE world and
+caller ownership remain required. NativeWorld STILL serializes managed execution.
+
+Each consuming destructor has a real kprotect boundary. After a consumed-owner
+callback error, do not retry that owner or undo committed bytes: drain remaining
+owners, clear native roots/metadata, preserve first error and rethrow. This does
+not repair arbitrary partial failure inside a destructor/allocator; their retained
+consuming contracts remain binding. The positive injected error occurs AFTER its
+current owner is consumed. Callbacks may change REG; operands/Type are not reread
+following publication. Fast may acquire its own deferred-owner root after group
+withdrawal; a later nonzero registry count is not automatically a batch leak.
+
+21 affected console/editor CTests pass. Actual dtype/String tests cover all five
+native preparation refusals, invalid-mark rollback after multiple retains,
+unaligned native views, full publication before callback, callback-driven real
+Cycles with remaining owners rooted, consumed-owner error drain, self alias,
+duplicate incoming/outgoing and H replacement, boundary canary and final real
+Fast/Type baseline. Six actual-boundary omission controls stop semantic exit 10
+before unsafe continuation. C/JIT and both poll backends run these checks.
+Actual mapped positives and guarded aggregate-tail positives pass TSan. Generated
+machine bytes remain uninstrumented. Guarded tails additionally pass actual cache
+unmap/invalid-Type/combined errors, foreign/NULL/held-guard preflight and the
+existing bad-CALL/old-emitter controls. The guarded MOVMP tail refuses held guards
+BEFORE operands. Native root tests add exact withdrawal/sparse clear on both
+backends; ten source controls pass, with TSan positives/O3 nonrecovering UBSan.
+
+Checkout/installed commented Limbo example runs ordinary C, guarded C and x64 JIT;
+installed native root suites pass. Pins verify 1096 engine/312 bootstrap files at
+ba26acc unchanged. No physical ARM64/RV64 or parallel managed execution claim.
+Contract/example/benchmark: disVM/runtime/SHARED-MAPPED.md,
+disVM/examples/guarded-mapped-copy and benchmark_shared_mapped.py in FlashVM.
+Local cost AFTER regressions, same binary/image, 20000 String-record assignments,
+startup included, warmup+median 3: C 0.140s default/0.169s guarded (~20% extra),
+JIT 0.105s/0.142s (~35%). Includes scalar/raw protection too, not isolated MOVMP,
+whole-IDE/cross-target/statistical evidence or acceleration. Five native scratch
+allocations per mapped copy currently remain; opt-in/locality/reuse work matters.
+
+### Inferno text/target receipt and format agreement
+
+Received the COMPLETE prior d3deae matrix 41684116076 PASS for ARM64/x64/RV64-QEMU
+as exact-source evidence, distinct from new text source. Read c9a2a04 text result,
+borrowed String-view, logical-tail termination, width/cache progress and packet
+reservation scope. Received focused ARM64 job 126115988684 and x64 job 126115988171
+in 41692959325 as your owning target evidence: 3600 cases, 3535145 predicates/model,
+eight controls, five fresh Frame64 consumers. Bounded miss/I-O/lookup/lock
+transports and 60/89 consumers are not managed registration, font/resource/device
+lifetime or full rendering. New complete 41692959392 is still running in the
+receipt read here; no full success is inferred. No local text reproduction or
+Draw implementation import into our independently pinned engine is claimed.
+
+No shared encoding/feature/ABI ID/layout, 43/173, ordinary WORD32 LEA or default
+admission change. Immutable named -X dis64-calls -d launch/cache discrimination
+agreement stands. Our independent typed-call validator/executor remains planned;
+current unsupported file-call refusal remains explicit. New MOVMP/native root
+metadata is not a Dis64 format/cstep activation. Remaining concurrency includes
+HEADMP/other writers, source/container lifetime, channels/scheduler, root/graph/GC
+epochs and code/module/frame retirement. We do not claim a readiness percentage.
