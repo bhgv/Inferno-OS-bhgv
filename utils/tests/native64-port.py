@@ -179,6 +179,9 @@ def main():
     run(binding, build, env, logs/'disc-binding.log')
     for control in ('mode', 'jit', 'image'):
         run(binding+['--control', control], build, env, logs/('disc-binding-'+control+'.log'))
+    loader_mode = [sys.executable, str(tests/'native64-loader-mode.py')]
+    run(loader_mode, build, env, logs/'loader-mode.log')
+    run(loader_mode+['--control'], build, env, logs/'loader-mode-control.log')
     run(results, build, env, logs/'result-calls.log')
     for control in ('width', 'priority', 'ordinary', 'guard_mode', 'direct', 'entry', 'cache'):
         run(results+['--control', control], build, env, logs/('result-calls-'+control+'.log'))

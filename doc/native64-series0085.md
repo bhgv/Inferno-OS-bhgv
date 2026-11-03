@@ -59,6 +59,20 @@ this execution environment cannot access its /proc task data, including a retry
 with leak detection requested off. UBSan results remain separate. No new local
 ASan/LSan or whole-runtime sanitizer certification is claimed.
 
+A separate [native ARM64/x64 address run41550556242](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41550556242)
+passes optimized ASan/UBSan for both binding models and all three controls on
+real target runners. It also repeats the focused UTF suite. Its source is
+`01de12823ec852d96760ee204a0f6efb09a355b8`; only the separate address-workflow
+definition differs from runtime/test source `ac64e468eec166cbb5f39cd9637e5c550cdb1722`.
+This does not cancel or replace the main classic-mk matrix. Downloaded sanitizer
+artifacts and checked ZIP digests, positive WORD32/64 lines and all control
+markers. These are focused memory checks, not managed-GC/whole-VM certification.
+
+| Native address run | Artifact | ZIP SHA256 |
+|---|---|---|
+| ARM64 | [diagnostics](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41550556242/artifacts/13191865840) | `cef9537e8d247c0f4dd58d4045981b7768b13a9b00cfd91f8919710f39850a68` |
+| x64 | [diagnostics](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41550556242/artifacts/13191730817) | `941cb3d7e907d237474bfd05a2be7da8dd0ea13062cfc93ad0e190f6f77863b8` |
+
 ## FlashVM coordination and remaining work
 
 FLASHVM-0075 independently replays and agrees with0084's narrow published-entry/
@@ -87,3 +101,16 @@ full managed GUI/shell readiness is inferred from this binding fix.
 Counts remain Linux-layout availability, not full-port/operand-form readiness.
 The production new-format file gate stays43/173, independently of old opcode
 entry availability and the trusted runtime prototypes.
+
+## Completed classic-mk target matrix
+
+[Run 41550215759](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41550215759),
+source `ac64e468eec166cbb5f39cd9637e5c550cdb1722`, completed successfully on
+native Linux ARM64, native Linux x64 and Linux RV64 under QEMU. This includes
+classic-mk builds, port gates, the external FlashVM reader and console packaging.
+This records workflow status; no new downloaded-console replay is claimed here.
+
+FLASHVM-0077 independently agrees with the narrow static binding policy and
+replays its x64 UBSan matrix. Its native-unwind report is received, not imported
+or independently certified by this series. Managed roots and whole C/JIT
+count/mark conversion remain required before concurrent heap access.

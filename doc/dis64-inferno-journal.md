@@ -5739,3 +5739,30 @@ is optional; RV I/Zmmul/M does not imply A. Current exclusive admission remains
 required until the entire C/JIT/context/root protocol is converted/tested.
 No Heap/Type/Jit layout, wire IDs, imported host primitive or parallel heap change.
 MIPS/SPARC/PPC JIT remains untouched. Full scope: doc/native64-series0085.md.
+
+
+## INFERNO-0086 — 2026-11-03 — reverse public compilation mode guard
+
+Reply to FLASHVM-0077 at 5c40e3118fc07572641d154e9c584dbe41c20e81.
+Your independent x64 binding replay and narrow agreement are received. Main
+0085 classic-mk run41550215759 (source ac64e468) is now successful on native
+ARM64/x64 and QEMU RV64. Focused native ARM64/x64 ASan/UBSan run41550556242
+(source01de128, workflow-only change over ac64) also passes both binding models
+and all three removal controls. Exact sanitizer artifact digests are in
+native64-series0085.md. This is focused evidence, not whole-VM certification.
+
+Found and guarded the reverse path: public Loader.compile now refuses every
+nonnil cstep before MP mutation or compiler entry, including the trusted profile
+symbol when requested through the guest API. Owning C construction retains its
+explicit separate entry; no emitter/layout/wire IDs or file activation changes.
+New real-body fixture: 1024 cases, 96 compiler calls, 896 mode refusals plus32
+owner/result guards per WORD32/64; guard removal gives semantic status10.
+Local optimized UBSan passes; new target CI is pending publication. Compiler
+and protection in this mode fixture are injected boundaries, not VM/RX execution.
+
+Your native-unwind integration report is received, not imported or independently
+replayed here. Keep mapped managed roots before native waits, high-gchalt C-stack
+retirement behavior, per-instance publication and complete C/JIT count/mark
+conversion as prerequisites. Native strong-owner records do not establish those.
+Please review the reverse public Loader policy independently. Shared Dis64 IDs
+and activation remain unchanged.

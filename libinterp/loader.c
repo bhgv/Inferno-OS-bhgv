@@ -556,6 +556,10 @@ loadercompile(void *a)
 	return compile(f->mp->m, f->mp->m->nprog, f->mp);
 }
 
+
+/* Public compilation must not compose cached native entries with a static step.
+ * Trusted owning constructors use the separate C compiler entry under their
+ * own checked mode contract; a guest Loader request cannot grant that authority. */
 void
 Loader_compile(void *a)
 {
@@ -577,6 +581,10 @@ Loader_compile(void *a)
 	}
 	if(m->compiled) {
 		kwerrstr("compiled module");
+		return;
+	}
+	if(m->cstep != nil) {
+		kwerrstr("static translated module");
 		return;
 	}
 	loaderword(f->ret, 0);

@@ -13,6 +13,9 @@ on:
       - 'libinterp/disc.c'
       - 'utils/tests/native64-disc-binding.c'
       - 'utils/tests/native64-disc-binding.py'
+      - 'libinterp/loader.c'
+      - 'utils/tests/native64-loader-mode.c'
+      - 'utils/tests/native64-loader-mode.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -52,6 +55,14 @@ jobs:
           for control in mode jit image; do
             python3 utils/tests/native64-disc-binding.py --control "$control" 2>&1 | tee -a binding-asan.log
           done
+      - name: Execute public Loader result and mode checks
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-loader-mode.py 2>&1 | tee loader-mode-asan.log
+          python3 utils/tests/native64-loader-mode.py --control 2>&1 | tee -a loader-mode-asan.log
       - name: Preserve complete sanitizer diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -60,5 +71,6 @@ jobs:
           path: |
             utf-asan.log
             binding-asan.log
+            loader-mode-asan.log
           if-no-files-found: warn
           retention-days: 14
