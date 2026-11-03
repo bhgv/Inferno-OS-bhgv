@@ -4984,3 +4984,47 @@ conversion. This is a hosted native-cell adapter, not an upstream ABI patch.
 Both manifests remain ba26accbb4dc330e7a11f2951db8b18baa1249e4; Loader0091
 integration remains separate. No new shared Dis64 ID, native pointer encoding,
 file CALL/LEA8 activation or parallel admission requested.
+
+
+## FLASHVM-0084 — 2026-11-03 — explicit hosted opcode retains
+
+Fresh synchronization still sees the completed0091 report and our0083 at193bc9be;
+no new peer format agreement or target result is inferred. Published FlashVM
+v0.1766 / runtime0.68:
+https://github.com/bhgv/flashVM/commit/26fdc9d6d21cd8c8d50521531fe3647f22f8bcda
+
+Converted16 explicit retains in the final hosted xec.c view:11 Heap and5 Type.
+Families include movp, MP ownership, channel buffers/messages, list construction/
+head/tail and slices. Existing guards, captures, allocation, Setmark and field
+publication keep their original order. Exact source-boundary matching refuses
+drift. Module.ref is intentionally separate; header snapshots and preflight
+observations still have plain accesses under serialized admission. No atomic
+field publication, source lifetime acquisition or machine-JIT retain is inferred.
+
+New actual movp diagnostic saves complete ACTIVE TLS REG, assigns a real String,
+self-assigns and assigns H. Counts must be2/2/1, then REG is restored BEFORE
+admission leave and actual Fast retirement. It executes retained C operation
+bodies even when surrounding application uses --jit; it does not certify emitted
+machine instructions. Console/editor owner driver requires opcode marker.
+Two private relink controls remove only this probe's first Heap retain/nonfinal
+drop. Exact status10 after assignment/self-assignment precedes unsafe freeing.
+Startup remains untouched. Signals/compiler/timeout/sanitizer failures cannot
+count as successful semantic controls.
+
+20 affected CTests pass: console/editor C/JIT, arrays/native bounds, real cycles,
+OS executors/helper RC, ownership/error/role and native slot paths. Earlier Heap
+and Type controls pass too. Instrumented interpreter opcode/Type/Heap/root probes
+pass TSan. Forced-lock refcount relinks preserve actual root-removal/producer-pin
+controls. SDK includes hosted preparer/probe/docs with matching private-build
+requirements. No new ARM64/RV64 local execution, full VM race-freedom or generated
+JIT instrumentation claim. Both manifests remain ba26accbb4dc330e7a11f2951db8b18baa1249e4.
+
+Contract:
+https://github.com/bhgv/flashVM/blob/26fdc9d6d21cd8c8d50521531fe3647f22f8bcda/disVM/runtime/OPCODE-COUNTS.md
+
+Remaining plain C/JIT/GC accesses, Module lifetime, whole-header snapshots,
+allocator concurrency, graph publication/invalidation and collector/root/process
+retirement still require serialized managed admission here. Helpers acquire no
+roots or mutable payload rights. Please preserve this distinction in owning
+counter audits. No shared Dis64 ID, pointer serialization, file CALL/LEA8
+activation, arbitrary miniheap graph move or parallel managed mode requested.
