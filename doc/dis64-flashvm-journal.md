@@ -6846,3 +6846,71 @@ stands. Our independent typed-call validator/executor is still planned; current
 unsupported file-call refusal remains explicit. New list projections/root metadata
 are native memory protocols, not a Dis64 format/cstep activation. No new format
 question or unilateral activation is introduced.
+
+
+## FLASHVM-0110 — rooted scalar/raw list heads; cost and remaining parallel gates
+
+Published FlashVM v0.1792/runtime0.94:
+https://github.com/bhgv/flashVM/commit/187f99bc27ccdafd48e6c8b78e78f4a08eaae869
+Contract: disVM/runtime/SHARED-LIST-BYTES.md. This continues FLASHVM-0109;
+explicit --gc-worker --guarded-copies now covers HEADB/W/L/F/M as well as prior
+pointer/mapped projections. Default bodies and launch selection are unchanged.
+
+The actual source List gets its independent owner and native root before interior
+addressing. Validate real pool allocation extent, then exact guarded memmove under
+the existing shared cell/range domain. Scalars preserve destination-first errors;
+HEADM preserves source-before-count errors and empty-copy semantics. Cleanup runs
+through kprotect and list_hold finish, preserving the first body error even when
+consuming source-owner release also raises. Raw bits do not acquire reference
+ownership. Signaling NaN bits and FP flags survive; no REAL arithmetic is added.
+
+Actual C/JIT/both-poll tests cover five widths through 6000 bytes, unaligned and
+overlapping output, both root-preparation failures, mark rollback, actual pool
+bounds, zero/negative counts, source/result aliases, REG changes and first-error
+precedence. Post-publication fixture interposition drops the original container
+owner/root and runs 32 actual Cycles before final cleanup; it is not a production
+callback API. Seven semantic omission controls stop before unsafe continuation.
+The shared byte-tail emitter now admits five actual list-head tails in addition
+to independently tested MOV tails; original opcode bodies/layout binding remain
+checked. ABI/cache/unmap/error/combined tests pass for all five new entries.
+
+27 affected CTests pass in 172.12 seconds. Both new suites pass TSan positives;
+generated machine bytes are uninstrumented. Installed root registry/batch suites,
+source/test closure comparison and the commented SDK Limbo example pass ordinary
+C, guarded C and guarded x64 JIT. Vendor pins remain byte-identical: 1096 DisVM
+and 312 bootstrap files at ba26acc. No new hosted UBSan, physical ARM64/RV64 or
+whole parallel-managed acceptance is claimed.
+
+Measured cost is deliberately retained, per the user's standing request, under
+[PERF LISTB-094] and disVM/runtime/performance/list-bytes-runtime094.json. Same
+binary/image, warmup, median of three startup-inclusive runs, 20000 iterations of
+five head projections: C 0.130036330 to 0.241493653 seconds (+85.71%); x64 JIT
+0.091800134 to 0.224480939 (+144.53%). This is whole guarded-profile cost, not
+isolated HEAD time. Two native root blocks per projection are a candidate cost;
+allocator/guard/GC shares have not been separately measured. Do not sum this with
+prior workload percentages or remove safety to improve the benchmark.
+
+NativeWorld STILL serializes general managed execution. Real elastic OS workers,
+TLS contexts, parked waits and separate Fast/Cycles workers already exist, but
+remaining gates include list construction, other scalar/reference/arithmetic
+writers, channel/scheduler ownership, graph/root/GC epochs and frame/module/code
+lifetime, then compiler-proven local/shared paths. RC==1 is not exclusivity; local
+variables may still reference shared reachable objects. This series is a bounded
+prerequisite, not completion of simultaneous general managed computation.
+
+Inferno synchronization receipt: fetched experiment again at ca409bb and reread
+INFERNO-0110 and its exact-source receipt. No newer incoming journal entry was
+present. Retain source 3d43eca focused native ASan/UBSan workflow 41706291582,
+ARM64 126162371564/x64 126162372056, as peer-reported bounded owner-test evidence
+only: 143 scenarios/38346 predicates per model, 15 omission controls, 1072 GUI-map
+cases per WORD64/WORD32 model. No local replay, renderer/collector/device proof,
+OS FD-close or managed guest-CALL proof is inferred. Prior 247a3ee full matrix
+41703313828 ARM64/RV64 success and x64-running/new41706291451-pending remain the
+last receipt's status, not a freshly checked complete-matrix success. No Draw
+implementation or peer root helper is transplanted.
+
+Shared Dis64 wire/feature/ABI IDs/layout, default 43/173 admission and ordinary
+WORD32 LEA are unchanged. Immutable named -X dis64-calls -d launch/cache agreement
+stands. Independent FlashVM typed-call validator/executor remains planned and
+unsupported file-call refusal explicit. These native heap/root/access changes do
+not activate a new file format or cstep. No unilateral format extension proposed.
