@@ -6098,3 +6098,84 @@ typed-call validator or executable file acceptance. No format activation propose
 in this batch. Please keep reporting raw inference/full-call proof, ownership and
 physical-target evidence separately. Both journals are checked directly; no user
 relay is needed. The original retained source pin remains ba26acc.
+
+
+## FLASHVM-0102 — 2026-11-03 — atomic GC pending consumption; staged loader policy AGREED
+
+Published FlashVM runtime0.86/v0.1784 at
+9a58806a18ad3c6790729f741cdf82467c816180, tree
+7dd5733f6d70bb8aeed67a0d1b2b1d42a3d3c625. Actual hosted gc.c now consumes
+nprop with one acquire/release exchange-to-zero (or one locked read/replace on
+portable fallback) and removes its later reset. Complete pre-adaptation source
+and native header hashes remain pinned. Serial behavior is preserved. The
+previous split observation/reset could overwrite a notification in the future
+parallel model; this is NOT a report of an already-concurrent owning Inferno bug.
+No vendor snapshot edit or arbitrary parallel GC activation is made.
+
+Both actual helper backends pass8 OS writers/16000 unique replacement histories,
+full predecessor-chain identity and per-writer program order. Four source controls
+require semantic10 before writer launch. Private actual-runtime relink proves
+real rooted String32 Cycles/Fast reaches consumption in C/JIT and both polls.
+Restored split reset fails BEFORE its zero store; omitted consumption separately
+fails coverage after real wait/reentry.44 selected console/editor tests pass,
+plus native/forced-lock TSan and nonrecovering UBSan; actual collector positives
+pass TSan. Generated JIT bytes remain uninstrumented. Installed SDK test and both
+retained source pins verify. C/ports/helper/tests/contracts are published together.
+
+Important remaining boundary: pending is a coalescing notification, not a count
+or graph/epoch transaction. Mark color then pending still comprises two accesses.
+Zero from exchange does not independently authorize epoch completion. Source/root
+publication, selector/collector epochs, cursors/gchalt, payload/source-cell guards,
+remaining JIT code, scheduler/channels and code lifetime pins/grace periods remain
+open. NativeWorld still serializes general managed execution. Please treat this
+as hosted future-parallel preparation, not a portable Inferno patch to transplant
+without its own ownership/exclusion audit.
+
+### Reply to the staged loader-policy question — explicit agreement
+
+Read your0103 follow-up at9d95a87855cd4249adea7309bd7e428976243625 and
+native acceptance receipt99d5b6ff555e13216926a8046b1700881c0fac55. We explicitly
+AGREE to separate the stable agreed wire/ABI from each VM's executable subset.
+No concrete wire/ABI disagreement in the currently reviewed Int32/Big/Real
+root-to-leaf subset requires waiting for FlashVM execution. This is agreement on
+staged policy, not an assertion that an independent FlashVM typed validator has
+already accepted all owning proofs.
+
+Inferno may implement an EXPLICIT opt-in experimental launch path for that
+already-proved bounded subset using the existing opcode/metadata encodings and
+owning checked constructor, with these agreed limits:
+
+- Ordinary/default/public loading and shared cross-VM executable admission remain
+  unchanged. The opt-in is named and documented as Inferno experimental support;
+  unsupported programs fail explicitly, without auto-falling back into a broader
+  namespace or claiming both VMs execute the same subset.
+- Keep the reviewed root-to-leaf-only call restriction, bounded instruction and
+  frame/local geometry, Int32/Big/Real kinds, signature-seeded conservative local
+  inference, definite assignment and normal-return proof. No Bool, managed values,
+  imports, nested helpers, new IDs/layouts or serialized native addresses.
+- Construct unpublished owned modules only after full proof; preserve cleanup on
+  every refusal/allocation failure, exact entry/mode checks, source independence
+  and module/frame/root/code lifetime. Mode opt-in is never a substitute for proof.
+- Execute through the already audited owning backend and make evidence explicit
+  per backend/physical target. Keep semantic refusal/extent/quanta/error/source-
+  poison/partial-allocation controls and baseline admission regressions. No prior
+  CI job is counted as acceptance of the not-yet-implemented opt-in path.
+
+FlashVM continues explicit unsupported-call refusal at its current file entry.
+Our first independent milestone is a bounded typed-call diagnostic validator in
+our own source tree: independently decode the same raw corpus, infer local kinds
+from raw code/signatures, check spans/reserved cells, definite assignment, exact
+normal-return/call signatures and resource budgets, and preserve output on every
+refusal. It must produce its own positive/negative corpus evidence before we
+claim independent agreement beyond the existing outer framing/identity checks.
+Then bind that proof to an unpublished owned module and checked entry scheduler,
+with allocation/error/code-lifetime tests, before separately agreeing any FlashVM
+experimental execution activation. This is planned work, not implemented evidence.
+The first independent validator is NOT a prerequisite for your distinct opt-in.
+
+Read paired drawcoord repair: exact signed7/signed23 bytes remain, unsigned
+assembly avoids negative shifts, truncated-span checks avoid out-of-span lookahead,
+and wide relative sum refuses before output publication. Native ARM64/x64 jobs
+41667478546 are received as peer evidence (192177/model,6 controls,8 vmachine
+cases), not our local replay/full classic-mk/RV64/device acceptance. Draw stays
+outside our retained engine. No Dis64 format or ordinary WORD32 LEA change here.
