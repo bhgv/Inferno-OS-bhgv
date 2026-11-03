@@ -2022,83 +2022,130 @@ display_open(Display *disp, char *name)
 	return image;
 }
 
+
+/* Consume a newly loaded native image, rolling it back if its managed wrapper cannot be built. */
+static Draw_Image*
+drawownedimage(Draw_Display *source, Image *image, int repl)
+{
+	Draw_Image *result;
+	Display *display;
+	int locked;
+
+	if(image == nil)
+		return H;
+	display = image->display;
+	locked = lockdisplay(display);
+	result = allocdrawimage((DDisplay*)source, DRECT(image->r), image->chan, image, repl, 0);
+	if(result == H)
+		drawdiscardimage(image);
+	if(locked)
+		unlockdisplay(display);
+	return result;
+}
+
+
+/* Keep the display and filename alive until loading and managed ownership transfer finish. */
 void
 Display_open(void *fp)
 {
-	Image *i;
-	Display *disp;
+	Image *image;
+	Display *display;
+	Draw_Display *source;
+	Draw_Image *result;
+	String *name;
 	F_Display_open *f;
+	void *old, *slot;
 
 	f = fp;
-	destroy(*f->ret);
-	*f->ret = H;
-	disp = lookupdisplay(f->d);
-	if(disp == nil)
-		return;
-	i = display_open(disp, string2c(f->name));
-	if(i == nil)
-		return;
-	*f->ret = allocdrawimage((DDisplay*)f->d, DRECT(i->r), i->chan, i, 0, 0);
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	source = f->d;
+	name = f->name;
+	display = lookupdisplay(source);
+	result = H;
+	if(display != nil){
+		image = display_open(display, string2c(name));
+		result = drawownedimage(source, image, 0);
+	}
+	drawcommitresult(slot, result, old);
 }
 
+
+/* Retain a successful named-image name before retiring a result that may own that same String. */
 void
 Display_namedimage(void *fp)
 {
 	F_Display_namedimage *f;
-	Display *d;
-	Image *i;
-	Draw_Image *di;
+	Draw_Display *source;
+	Display *display;
+	Image *image;
+	Draw_Image *result;
+	String *name;
+	char *text;
+	void *old, *slot;
 	int locked;
 
 	f = fp;
-	destroy(*f->ret);
-	*f->ret = H;
-	d = checkdisplay(f->d);
-	locked = lockdisplay(d);
-	i = namedimage(d, string2c(f->name));
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	source = f->d;
+	name = f->name;
+	display = checkdisplay(source);
+	text = string2c(name);
+	locked = lockdisplay(display);
+	image = namedimage(display, text);
 	if(locked)
-		unlockdisplay(d);
-	if(i == nil)
-		return;
-	di =  allocdrawimage((DDisplay*)f->d, DRECT(i->r), i->chan, i, i->repl, 0);
-	*f->ret = di;
-	if(di == H){
-		locked = lockdisplay(d);
-		freeimage(i);
-		if(locked)
-			unlockdisplay(d);
-	}else{
-		di->iname = f->name;
-		D2H(f->name)->ref++;
+		unlockdisplay(display);
+	result = drawownedimage(source, image, image == nil ? 0 : image->repl);
+	if(result != H){
+		result->iname = name;
+		if(name != H)
+			D2H(name)->ref++;
 	}
+	drawcommitresult(slot, result, old);
 }
 
+
+/* Capture the file descriptor and display before loading; failed wrapping consumes the new image. */
 void
 Display_readimage(void *fp)
 {
-	Image *i;
-	Display *disp;
+	Image *image;
+	Display *display;
+	Draw_Display *source;
+	Draw_Image *result;
 	F_Display_readimage *f;
 	Sys_FD *fd;
-	int locked;
+	void *old, *slot;
+	int descriptor;
 
 	f = fp;
-	destroy(*f->ret);
-	*f->ret = H;
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	source = f->d;
 	fd = f->fd;
-	if(fd == H)
-		return;
-	disp = checkdisplay(f->d);
-	i = readimage(disp, fd->fd, 1);
-	if(i == nil)
-		return;
-	*f->ret = allocdrawimage((DDisplay*)f->d, DRECT(i->r), i->chan, i, 0, 0);
-	if(*f->ret == H){
-		locked = lockdisplay(disp);
-		freeimage(i);
-		if(locked)
-			unlockdisplay(disp);
+	result = H;
+	if(fd == nil)
+		error(exNilref);
+	if(fd != H){
+		descriptor = fd->fd;
+		display = checkdisplay(source);
+		image = readimage(display, descriptor, 1);
+		result = drawownedimage(source, image, 0);
 	}
+	drawcommitresult(slot, result, old);
 }
 
 void
@@ -2654,29 +2701,34 @@ Chans_mk(void *fp)
 }
 
 
-/* Allocate a solid colour using unsigned packed RGB channel bits. */
+/* Capture colour bits and keep the display alive until publishing the newly owned image. */
 void
 Display_rgb(void *fp)
 {
-	ulong c;
-	Display *disp;
+	ulong colorbits;
+	Display *display;
+	Draw_Display *source;
+	Draw_Image *result;
 	F_Display_rgb *f;
+	void *old, *slot;
 	int locked;
-	void *r;
 
 	f = fp;
-	r = *f->ret;
-	*f->ret = H;
-	destroy(r);
-	disp = checkdisplay(f->d);
-
-	c = ((ulong)(f->r&255)<<24)|((ulong)(f->g&255)<<16)|
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	source = f->d;
+	colorbits = ((ulong)(f->r&255)<<24)|((ulong)(f->g&255)<<16)|
 		((ulong)(f->b&255)<<8)|0xFFUL;
-
-	locked = lockdisplay(disp);
-	*f->ret = color((DDisplay*)f->d, c);
+	display = checkdisplay(source);
+	locked = lockdisplay(display);
+	result = color((DDisplay*)source, colorbits);
 	if(locked)
-		unlockdisplay(disp);
+		unlockdisplay(display);
+	drawcommitresult(slot, result, old);
 }
 
 

@@ -24,7 +24,7 @@ permissions:
   contents: read
 concurrency:
   group: native64-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false # Finish the running full matrix; retain the latest pending source batch.
 jobs:
   console:
     name: Linux ${{ matrix.arch }} (${{ matrix.execution }})

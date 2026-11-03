@@ -442,7 +442,7 @@ jobs:
   draw-owners:
     name: Draw owners ASan ${{ matrix.arch }} (native)
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:

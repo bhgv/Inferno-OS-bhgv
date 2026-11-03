@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute real Heap/Type wrapper ownership, seven Frame64 factories and native Image/Screen retirement."""
+"""Execute real Heap/Type wrapper ownership, eleven Frame64 factories and native Image/Screen retirement."""
 import argparse
 import os
 from pathlib import Path
@@ -55,10 +55,10 @@ typedef struct DFont DFont;
     declarations+=fn(draw,'static int\ndrawmaketypes(')+'\n\n'
     declarations+='#ifdef DIS_NATIVE64_DRAW_HEADER\n'+fn(draw,'void\ndrawmodinit(')+'\n#endif\n'
     declarations+=draw[draw.index('typedef struct DrawHeapBuild'):draw.index('/* Hash bytes with defined unsigned wraparound')]
-    names=('display_dec','freedrawdisplay','freedrawscreen','freedrawfont','freedrawimage','lookupimage','lookupscreen','lookupfont','lookupdisplay','checkimage','checkscreen','checkdisplay','mkdrawimage','allocdrawimage','allocdrawscreen','Display_newimage','Display_colormix','Screen_allocate','Display_publicscreen','Screen_newwindow','drawownedfont','Font_open','Font_build')
-    signatures={n:('Image*' if n=='lookupimage' else 'Screen*' if n=='lookupscreen' else 'Font*' if n=='lookupfont' else 'Display*' if n=='lookupdisplay' else 'Image*' if n=='checkimage' else 'Screen*' if n=='checkscreen' else 'Display*' if n=='checkdisplay' else 'Draw_Image*' if n in ('mkdrawimage','allocdrawimage') else 'static Draw_Font*' if n=='drawownedfont' else 'static DScreen*' if n=='allocdrawscreen' else 'void')+'\n'+n+'(' for n in names}
+    names=('display_dec','freedrawdisplay','freedrawscreen','freedrawfont','freedrawimage','lookupimage','lookupscreen','lookupfont','lookupdisplay','checkimage','checkscreen','checkdisplay','mkdrawimage','allocdrawimage','allocdrawscreen','Display_newimage','Display_colormix','Screen_allocate','Display_publicscreen','Screen_newwindow','drawownedfont','Font_open','Font_build','drawownedimage','Display_rgb','Display_open','Display_namedimage','Display_readimage','color')
+    signatures={n:('Image*' if n=='lookupimage' else 'Screen*' if n=='lookupscreen' else 'Font*' if n=='lookupfont' else 'Display*' if n=='lookupdisplay' else 'Image*' if n=='checkimage' else 'Screen*' if n=='checkscreen' else 'Display*' if n=='checkdisplay' else 'Draw_Image*' if n in ('mkdrawimage','allocdrawimage') else 'static Draw_Image*' if n=='drawownedimage' else 'Draw_Image*' if n=='color' else 'static Draw_Font*' if n=='drawownedfont' else 'static DScreen*' if n=='allocdrawscreen' else 'void')+'\n'+n+'(' for n in names}
     bodies='\n\n'.join(fn(draw,signatures[n]) for n in names)
-    for name in ('Display_newimage','Display_colormix','Screen_allocate','Display_publicscreen','Screen_newwindow','Font_open','Font_build'):
+    for name in ('Display_newimage','Display_colormix','Screen_allocate','Display_publicscreen','Screen_newwindow','Font_open','Font_build','Display_rgb','Display_open','Display_namedimage','Display_readimage'):
         bodies=bodies.replace('F_'+name,'F_Draw_'+name).replace('\n'+name+'(', '\nDraw_'+name+'(')
     native='static int screenid; // Private native protocol counter from window.c.\n'
     native+='\n\n'.join(fn((ROOT/'libdraw/window.c').read_text(),sig) for sig in ('Screen*\nallocscreen(','Screen*\npublicscreen(','int\nfreescreen('))
@@ -85,6 +85,12 @@ typedef struct DFont DFont;
         actual=fn(bodies,'static Draw_Font*\ndrawownedfont(');bodies=bodies.replace(actual,actual.replace('font_close(font);','USED(font);',1),1)
     if control=='font-name':
         actual=fn(bodies,'static Draw_Font*\ndrawownedfont(');bodies=bodies.replace(actual,actual.replace('D2H(name)->ref++;','USED(name);',1),1)
+    if control=='loaded-rollback':
+        actual=fn(bodies,'static Draw_Image*\ndrawownedimage(');bodies=bodies.replace(actual,actual.replace('drawdiscardimage(image);','USED(image);',1),1)
+    if control=='loaded-name':
+        actual=fn(bodies,'void\nDraw_Display_namedimage(');bodies=bodies.replace(actual,actual.replace('D2H(name)->ref++;','USED(name);',1),1)
+    if control=='loaded-alias':
+        actual=fn(bodies,'void\nDraw_Display_readimage(');bodies=bodies.replace(actual,actual.replace('source = f->d;', 'destroy(old); old=H;\n\tsource = f->d;',1),1)
     native+='\n\n'+'\n\n'.join(re.sub(r'^#include[^\n]*\n','',(ROOT/p).read_text(),flags=re.M) for p in ('libdraw/arith.c','libdraw/chan.c'))
     if control=='window':
         start=native.index('\tif(i->screen){',native.index('int\n_freeimage1('));end=native.index('\ti->next = nil;',start)
@@ -108,7 +114,7 @@ def main():
         work=Path(directory);env['TMPDIR']=str(work)
         (work/'draw-native64.h').write_bytes(subprocess.check_output([str(args.limbo.resolve()),'-H','-M','Draw','-I'+str(ROOT/'module'),str(ROOT/'module/draw-native64.m')],env=env))
         includes=['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')]
-        for mode in ('gated','WORD32','WORD32-file','mapped','double','rollback','native','alias','swept','lookup','detach','window','retry','font-rollback','font-name'):
+        for mode in ('gated','WORD32','WORD32-file','mapped','double','rollback','native','alias','swept','lookup','detach','window','retry','font-rollback','font-name','loaded-rollback','loaded-name','loaded-alias'):
             source=work/(mode+'.c');source.write_text(support['portfixture'](unit(None if mode.startswith('WORD') or mode=='gated' else mode),'#include "vmfetch.h"'))
             binary=work/mode;flags=['-DDIS_WORD32=1']+(['-DDIS64_PILOT_LOADER=1'] if mode.endswith('file') else [])+(['-DDIS_NATIVE64_DRAW_HEADER=1'] if mode=='gated' else [])
             subprocess.run(command+flags+includes+[str(source),'-Wl,--gc-sections','-Wl,--wrap=free','-lm','-o',str(binary)],env=env,check=True)

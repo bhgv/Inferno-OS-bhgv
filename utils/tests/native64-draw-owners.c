@@ -6,6 +6,7 @@ void freedrawscreen(Heap*,int); // Actual managed screen retirement.
 void freedrawdisplay(Heap*,int); // Actual managed display retirement.
 void actualdestroy(void*); // Actual heap implementation observed by the test wrapper.
 DRAW_DECLARATIONS
+Draw_Image *color(DDisplay*, ulong); // Production solid-colour constructor declared before its caller.
 Image *lookupimage(Draw_Image*); // Actual ordinary lookup body, deliberately absent from destruction.
 
 static void nativeretire(void*,int); // Exact native resource owner retirement.
@@ -194,6 +195,35 @@ allocimage(Display *d,Rectangle r,ulong channel,int repl,ulong color)
 	image->display=d; image->r=r; image->clipr=r; image->id=nativecalls+100;
 	image->chan=channel; image->repl=repl; image->depth=32;
 	return image;
+}
+
+
+/* File decoding is a bounded owning service; no SVG/font/image parser or real device is executed. */
+Image*
+display_open(Display *display, char *name)
+{
+	USED(name);
+	require(held == 0);
+	return allocimage(display, Rect(2,3,9,11), RGBA32, 0, 0);
+}
+
+
+/* A named-image request requires display exclusion and returns one newly owned native header. */
+Image*
+namedimage(Display *display, char *name)
+{
+	USED(name);
+	require(held == 1);
+	return allocimage(display, Rect(2,3,9,11), RGBA32, 1, 0);
+}
+
+
+/* The FD scalar must be read before any aliased managed FD owner can retire. */
+Image*
+readimage(Display *display, int descriptor, int dolock)
+{
+	require(held == 0 && descriptor == 73 && dolock == 1);
+	return allocimage(display, Rect(2,3,9,11), RGBA32, 0, 0);
 }
 
 
@@ -706,6 +736,144 @@ fontfactories(int build, int alias, int failure)
 }
 
 
+/* Exercise four actual image-producing entries with owned inputs and every post-native refusal. */
+static void
+loadedfactories(int kind, int alias, int failure)
+{
+	DDisplay *dd;
+	String *name;
+	Sys_FD *fd;
+	Type *fdtype;
+	Draw_Image *result;
+	void *input, *old, *slot;
+	uchar output[24];
+	F_Draw_Display_rgb rgb;
+	F_Draw_Display_open openframe;
+	F_Draw_Display_namedimage named;
+	F_Draw_Display_readimage readframe;
+	int i;
+
+	dd=newdisplay();
+	name=H2D(String*,heapz(&Tstring));
+	fdtype=dtype(freeheap,sizeof(Sys_FD),nil,0);
+	require(fdtype != nil);
+	fd=H2D(Sys_FD*,heapz(fdtype));
+	fd->fd=73;
+	input=kind==3 ? (void*)fd : (void*)name;
+	memset(&rgb,0,sizeof(rgb));
+	memset(&openframe,0,sizeof(openframe));
+	memset(&named,0,sizeof(named));
+	memset(&readframe,0,sizeof(readframe));
+	rgb.d=openframe.d=named.d=readframe.d=(Draw_Display*)dd;
+	rgb.r=-1;
+	rgb.g=256;
+	rgb.b=-2147483647-1;
+	openframe.name=named.name=name;
+	readframe.fd=fd;
+	old=alias==1 ? (void*)dd : alias==2 ? input : H2D(void*,heapz(&Tstring));
+	memset(output,0xa5,sizeof(output));
+	slot=output+1;
+	memmove(slot,&old,sizeof(old));
+	if(alias){
+		switch(kind){
+		case 0: slot=&rgb.d; break;
+		case 1: slot=alias==1 ? (void*)&openframe.d : (void*)&openframe.name; break;
+		case 2: slot=alias==1 ? (void*)&named.d : (void*)&named.name; break;
+		default: slot=alias==1 ? (void*)&readframe.d : (void*)&readframe.fd; break;
+		}
+		factoryslot(slot,slot,old,1);
+	}
+	if(failure==1 || failure==3)
+		failat=allocations+2;
+	if(failure==2)
+		factoryfail=1;
+	if(failure==3)
+		wirefail=1;
+	if(failure==4)
+		failat=allocations+1;
+	switch(kind){
+	case 0: rgb.ret=slot; Draw_Display_rgb(&rgb); break;
+	case 1: openframe.ret=slot; Draw_Display_open(&openframe); break;
+	case 2: named.ret=slot; Draw_Display_namedimage(&named); break;
+	default: readframe.ret=slot; Draw_Display_readimage(&readframe); break;
+	}
+	memmove(&result,slot,sizeof(result));
+	aliasactive=failat=factoryfail=wirefail=0;
+	require((result!=H)==(failure==0) && held==0 && worker.nerr==0);
+	if(failure==1 || failure==3)
+		require(strcmp(message,exHeap)==0);
+	if(result!=H){
+		require(result->display==(Draw_Display*)dd);
+		require(D2H(dd)->ref==(alias==1 ? 1 : 2));
+		require(result->repl==(kind==0 || kind==2));
+		require(result->depth==(kind==0 ? 24 : 32));
+		if(kind==2){
+			require(result->iname==name);
+			require(D2H(name)->ref==(alias==2 ? 1 : 2));
+		}else
+			require(result->iname==H);
+	}
+	if(alias!=1)
+		destroy(dd);
+	if(!(alias==2 && kind!=3))
+		destroy(name);
+	if(!(alias==2 && kind==3))
+		destroy(fd);
+	if(alias==0)
+		for(i=0; i<sizeof(output); i++)
+			if(i<1 || i>=1+sizeof(void*))
+				require(output[i]==0xa5);
+	destroy(result);
+	require(fdtype->ref==1);
+	freetype(fdtype);
+	baseline();
+}
+
+
+/* Empty filenames and nil FDs/displays follow the historical refusal convention without fake heap headers. */
+static void
+loadededges(void)
+{
+	DDisplay *dd;
+	Draw_Image *result;
+	F_Draw_Display_open openframe;
+	F_Draw_Display_namedimage named;
+	F_Draw_Display_readimage readframe;
+	int kind, calls;
+
+	for(kind=0; kind<4; kind++){
+		dd=newdisplay();
+		result=H;
+		memset(&openframe,0,sizeof(openframe));
+		memset(&named,0,sizeof(named));
+		memset(&readframe,0,sizeof(readframe));
+		openframe.d=named.d=readframe.d=(Draw_Display*)dd;
+		openframe.name=named.name=H;
+		readframe.fd=H;
+		openframe.ret=named.ret=readframe.ret=&result;
+		calls=nativecalls;
+		if(kind==0)
+			Draw_Display_open(&openframe);
+		else if(kind==1)
+			Draw_Display_namedimage(&named);
+		else if(kind==2)
+			Draw_Display_readimage(&readframe);
+		else{
+			openframe.d=H;
+			Draw_Display_open(&openframe);
+		}
+		require((result!=H)==(kind<2));
+		if(kind>=2)
+			require(nativecalls==calls);
+		if(kind==1)
+			require(result->iname==H);
+		destroy(result);
+		destroy(dd);
+		baseline();
+	}
+}
+
+
 #ifdef DIS_NATIVE64_DRAW_HEADER
 /* Exercise the actual native registration refusal, without calling the private descriptor stage. */
 static int
@@ -734,8 +902,11 @@ main(void)
 	nativefailures();retirement();rollback();fontedges();
 	for(kind=0;kind<5;kind++) for(alias=0;alias<2;alias++) for(failure=0;failure<4;failure++) factories(kind,alias,failure);
 	for(kind=0;kind<2;kind++) for(alias=0;alias<4;alias++) for(failure=0;failure<5;failure++) fontfactories(kind,alias,failure);
+	for(kind=0; kind<4; kind++) for(alias=0; alias<3; alias++) if(kind!=0 || alias!=2)
+		for(failure=0; failure<5; failure++) loadedfactories(kind,alias,failure);
+	loadededges();
 	freetype(TFont);freetype(TImage);freetype(TScreen);freetype(TDisplay);
 	require(live==0 && nativecount==0 && worker.nerr==0 && gchalt==0);
-	printf("PASS Draw owners: %d predicates, 84 actual Frame64 factory scenarios, real Heap/Type/refcount/rollback; native images=%d screens=%d displays=%d, all ledgers zero; collector/device not executed\n",checks,freedimages,freedscreens,closes);
+	printf("PASS Draw owners: %d predicates, 143 actual Frame64 factory scenarios, real Heap/Type/refcount/rollback; native images=%d screens=%d displays=%d, all ledgers zero; collector/device not executed\n",checks,freedimages,freedscreens,closes);
 	return 0;
 }
