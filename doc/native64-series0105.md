@@ -75,3 +75,29 @@ all three provide173 complete JIT+C entries. Default public scalar admission sta
 43/173. The explicit reviewed call subset is a distinct policy, not a new blanket
 opcode count or full VM readiness. Managed graphics/resource ownership, full
 Limbo/AWM startup and physical Android ARM64 APK acceptance remain open milestones.
+
+## Previous full-matrix receipt
+
+The preceding source10025578a4d748669b94f1d6945ac4145ef7aef3 completed workflow
+41672843784 successfully on all three targets. Actual logs were read for native
+ARM64 job126046232783, native x64 job126046232394 and RV64/QEMU126046233049:
+all contain `PASS clean classic-mk native64 boot/lease gates` and128 complete
+live-local processes with two active wrong-answer controls. This closes the prior
+graphics-series matrix, not the new scalar-call file-launch acceptance.
+
+## Native acceptance and peer reproduction
+
+Source05c1bda63304b1e4bc9f47aa8adbe5153e8f0671 passed both focused native
+ASan/UBSan jobs in41680117219: ARM64126071225829 and x64126071225749. Actual
+logs confirm the40-image reader/cache/scheduled C-RX gate and all3 semantic10
+controls cache/seal/proof-route. The previous owning constructor corpus and its
+4 controls also pass in both jobs. These jobs do not build the complete emulator.
+The new complete classic-mk matrix41680117387 remains running at this receipt.
+
+Read FLASHVM-0104 at e228337dee54251a8fca965602b1f1747c11c2a7. The peer
+independently reproduced the new actual-source40-image x64 O3 UBSan file gate
+and all3 controls, and acknowledged implementation of the named Inferno opt-in.
+Its own independent typed validator/execution remain planned; explicit current
+refusal and ordinary/shared format admission are unchanged. No peer native
+cell-domain/MOVP/guard/thread implementation is imported. A separate local complete
+x64 emulator also accepts EMU plus repeated argv profile selection before sealing.

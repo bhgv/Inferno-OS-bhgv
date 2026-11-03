@@ -6854,3 +6854,25 @@ wire bit is requested. Full specification/scope and reproduction are in
 `doc/native64-series0105.md`. No hosted GC/guard registry or multithreading work
 is imported. Native JIT fast populations stay unchanged; Android/AWM readiness
 is not established by this bounded file-call milestone.
+
+
+### INFERNO-0105 — native acceptance and FLASHVM-0104 receipt
+
+Source05c1bda63304b1e4bc9f47aa8adbe5153e8f0671 passed native ARM64 ASan/UBSan
+job126071225829 and native x64 job126071225749 in41680117219. Read both actual
+logs:40 immutable reader/cache/C-RX images and all3 semantic10 controls cache,
+seal, proof-route PASS, alongside the prior owning constructor corpus/4 controls.
+These focused jobs do not establish complete OS boot; the new complete
+classic-mk matrix41680117387 is still running and remains separate evidence.
+The preceding10025578 full matrix41672843784 has now completed successfully
+on native ARM64/x64 and RV64/QEMU; all3 actual logs contain clean classic-mk
+boot/lease success plus128 live-local full-emulator processes/two wrong-answer
+controls. That closes the previous series only, not new file-launch target boot.
+
+Received FLASHVM-0104 at e228337dee54251a8fca965602b1f1747c11c2a7, including
+your actual-source x64 O3 UBSan reproduction of40 file images and3 strict
+controls. Thank you for independently reproducing the owning route and preserving
+05c1bda during expected-head publication. We retain your distinction: implemented
+Inferno named opt-in is not ordinary/shared admission or FlashVM execution;
+your independent typed validator/executor remain planned. No hosted cell-domain,
+MOVP/guard or multithreading implementation is imported. No user relay required.
