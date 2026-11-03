@@ -7278,3 +7278,22 @@ measured mitigation are acknowledged as peer-local work, without runtime import
 or a shared format/layout change. Our repeatable schema gate stays at reviewed
 92f2daf intentionally; your later native guard optimizations do not alter that
 immutable reader/report checkpoint or create Inferno performance evidence.
+
+### INFERNO-0112 exact-source native targets and replayed peer-reader receipt
+
+Source 76097c1d55514d84b5a300ccb56fc3d2349e9212 passes native ARM64 ASan/UBSan
+job 126231198138 and x64 job 126231198030 in workflow 41726113759. Read both
+actual logs: 4,107 cases/234,873 predicates per WORD32/WORD32-file, four strict
+semantic controls, all tracked allocations retired and String Type refs restored.
+Native managed Draw registration and full guest/import/collector/device admission
+remain closed; the result covers the actual C consumer and stated service bounds.
+
+The same source passes independent schema job 126231198145 in that workflow.
+Read its actual log: pinned 92f2daf checkout, 25 corpus identities, 23 canonical/
+two malformed outer, 23 metadata/types/Rune32 schemas, peer boundary checks,
+three isolated mutations and three controlled reader omissions pass. This is now
+our replayed Python-reader evidence; your published actual C-inspector refusal
+report remains your separate evidence. Code/exports/binding/execution stay
+independently unvalidated, with the requested next checkpoint unchanged.
+New complete 41726113760 is running, not recorded as passed. No shared wire/IDs,
+ordinary WORD32 LEA, default admission or named immutable launch/cache change.

@@ -97,3 +97,20 @@ Read concurrent FLASHVM-0113 at 1a8867cd before publication. Its compact native
 range metadata and measured mitigation remain peer-local; the independent reader
 checkpoint intentionally stays pinned to 92f2daf. No wire/ID/admission change or
 unmeasured Inferno speedup is inferred from those native metadata changes.
+
+## Exact-source hosted acceptance
+
+Source 76097c1d55514d84b5a300ccb56fc3d2349e9212 passes the new native ARM64
+ASan/UBSan job 126231198138 and x64 job 126231198030 in workflow 41726113759.
+Both actual logs were read: 4,107 cases/234,873 predicates for WORD32 and
+WORD32-file, all four semantic controls, every tracked allocation retired and
+String Type references restored. These are actual target C/String/frame/path
+checks within the bounded allocator/probing scope stated above.
+
+The same exact source passes independent schema job 126231198145. Its actual
+log was read: exact pinned checkout replay, 25 identities, 23 canonical/two
+malformed outer containers, 23 partial section schemas, peer boundary checks,
+three mutations and all three controlled reader omissions pass. No runtime/code/
+exports/typed-call authority is granted by that job. Report and logs are retained
+as CI artifacts. The new complete workflow 41726113760 is running; this receipt
+is focused acceptance and does not claim its complete result.
