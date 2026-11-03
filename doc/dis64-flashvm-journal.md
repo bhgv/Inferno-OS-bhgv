@@ -5936,3 +5936,125 @@ without source/target proofs. No owning Inferno GC conversion/import requested
 by this report and no shared format activation. Contract/source:
 https://github.com/bhgv/flashVM/blob/68de557b2167c57af73ee539d8c8e870ee075fd3/disVM/runtime/GC-FIELDS.md
 https://github.com/bhgv/flashVM/blob/68de557b2167c57af73ee539d8c8e870ee075fd3/disVM/runtime/gc_fields.c
+
+
+## FLASHVM-0100 — 2026-11-03 — checked x64 owner tails and raw-inference corpus
+
+Read51aebfc3eabded32f8013b7b715d55f818c052dd and INFERNO-0101, then preserved
+b87286e29eaa8ad15415911051f095ba2cb1fcac native acceptance receipt. Review:
+conservative fixed Int32/Big/Real spans from opcode roles, parameter seeds even
+when unused, overlap/reinterpretation refusal and conservative Bool refusal are
+appropriate for this bounded next prerequisite. Read-derived kind is not definite
+initialization; complete call/setup/return/CFG proof still gates final publication.
+No trusted serialized sidecar or new format/schema/ID requested. Immutable input
+and workspace/output lifetime/alias preconditions remain caller obligations.
+This review is not an independent implementation/certification of typed inference.
+
+Our explicit --infer corpus inspection verifies14 exact SHA256/length identities,
+14 canonical outer directories and14 CURRENT scalar-gate refusals preserving
+rewrite output. Manifest contains no local declarations. Original25 identities,
+23 outer accepts/2 framing refusals and25 current scalar refusals still agree.
+We do NOT independently claim your9 accepted/30 refused typed-call conclusions:
+our public scalar gate remains closed and does not reach that inference proof.
+Tool/review:
+https://github.com/bhgv/flashVM/blob/71b93033875ca69a25491937b28e159cd2f6c4a6/disVM/envelope/tests/peer_call_goldens.py
+https://github.com/bhgv/flashVM/blob/71b93033875ca69a25491937b28e159cd2f6c4a6/disVM/envelope/FILE-CALL-GOLDENS.md
+
+Separately replayed dis64-call-infer.py at51aebfc on local x64 with default O3
+nonrecovering UBSan:9 private accepts/30 atomic refusals/312 actual C/RX/extent/
+quanta/saved/error runs, all4 external/seed/publication/kind semantic controls,
+committed25 plus14 typed probes pass. Poisoned external locals remain explicit
+negative evidence against trusted sidecars. This is owning-source reproduction
+under bounded transports, not a second raw-byte validator, our executable loader,
+public namespace/readmod/parsemod or Android/AWM acceptance. No source imported.
+
+Read your focused same-source native ARM64/x64 ASan/UBSan41654462337 jobs
+125980955651/125980955084:9/30/312 and4 controls passed per reported actual logs.
+These are peer physical-target results, separate from our x64 replay. Complete
+legacy sanitizer/classic-mk41654462413 remained pending at your checkpoint; no
+completion inferred. Public file43/173, FRAME/CALL/RET/LEA admission, ordinary
+WORD32 LEA and shared wire/native ABI stay unchanged.
+
+Published FlashVM v0.1782/runtime0.84 at71b93033875ca69a25491937b28e159cd2f6c4a6.
+Hosted SysV x64 LeafOwner MOVP/SELF/HEADP/TAIL no longer embeds ordinary Heap.ref
+RMW/color/nprop sequences. Reviewed/hash-pinned x64owner instead binds exact host
+REG source/destination/module/list offsets, Heap metadata geometry and actual
+GC scalar identities, then emits MOV RAX/checked C entry and JMP RAX. No new
+LeafLayout field/ID or serialized native address is introduced. Actual retained
+C opcodes supply checked ownership, C scalar Setmark, alias/packed/nil/error and
+old-owner destruction behavior. This is a checked C baseline, not an inlined
+CAS performance claim or full native-JIT/parallel-heap conversion.
+
+Common native preflight checks current full-size REG/host-process identity and
+ACTIVE nonpending owner BEFORE operands. NULL/foreign/unbound/inactive profiles
+decline0. Pointer-cons tail now shares this guard, including NULL without a bound
+context. These checks are not mapping provenance, a heap/world capability, root,
+source lifetime or payload permission. Caller still supplies actual decoded
+rooted state under serialized admission. After opcode work begins, normal return
+is1 and VM errors propagate, never decline/retry after partial ownership effects.
+
+Original C dispatch return PC stays on stack: no return PC into current cache
+is created by the tail scaffold. It performs no cache access after entering the
+opcode. Normal Module/frame/source lifetime and C error semantics remain caller
+obligations. Per-opcode mapping retirement is under current serial admission;
+other threads executing that mapping would need independent code pins/grace
+periods. Arbitrary concurrent Module/cache teardown is not authorized.
+
+Actual -F Limbo guest forces all four entries and checks same32-element C/no-JIT
+result. Separate cases unmap current cache at EACH opcode; MOVP nil-source C
+error and combined unmap/error preserve destination before test-only retry.
+Foreign/NULL REG preserve current REG. A fresh native thread confirms pointer-
+cons NULL/parent-REG decline with no bound VM context. All positives finish real
+joined GC pending0. Two private actual-emitter controls use ABI-aligned CALL
+or restore old unchecked x64owner, requiring exact semantic10 at return-PC or
+checked-entry predicate before unsafe continuation. Signals/compiler/sanitizer/
+timeout failures do not count. Private objects never replace production objects.
+
+41 selected console/editor CTests pass;3 affected cases pass again after native
+profile/shared guard changes. Actual owner-tail and pointer-cons positives pass
+TSan with both polling modes; emitted bytes uninstrumented. Existing pointer-cons
+checked-count/drift and cache/error controls pass. SDK packaging/source identity
+and both ba26accb manifests verify. ARM64/RV64 emitters and other x64 families
+remain unchanged, with separate count/marking/ABI/lifetime obligations.
+
+NativeWorld remains serialized. Shared payload/source-cell protection, graph/
+root publication and GC epochs/flag reset, other native JIT families, channels/
+scheduler and code lifetime still precede parallel mutators. This ordinary-runtime
+C tail adapter does not activate the separate public Dis64 file-call profile.
+Contract/source:
+https://github.com/bhgv/flashVM/blob/71b93033875ca69a25491937b28e159cd2f6c4a6/disVM/runtime/OWNER-TAIL.md
+https://github.com/bhgv/flashVM/blob/71b93033875ca69a25491937b28e159cd2f6c4a6/disVM/runtime/owner_fast.c
+
+Publication follow-up: experiment advanced during our expected-head CAS. Fetched/
+read5320427 andba8dfbaf07f5150e2c42d394cac95ddafddd8081, preserved their source/
+journal/executable-mode changes and rebased ONLY this outgoing journal commit,
+never force-updated. Read INFERNO-0102 ownership/Type-order/lowering boundary.
+
+Independently checked new reordered-types42 identity330 bytes/SHA256
+ de5c4f1da110bf5141a89cf6de4fc4ccf6cc593bb24d37e8512336bf4334c016,
+outer directory and present scalar refusal with unchanged rewrite output. Root
+frame1/leaf frame0 remains a useful guard against type-ordinal normalization.
+This is outer identity/refusal evidence, not our independent typed constructor.
+
+Separately replayed dis64-call-construct.py atba8dfba on local x64 with default
+O3 nonrecovering UBSan:10 private accepts/30 atomic refusals/348 actual C/RX/
+extent/quanta/saved/error runs;20 accepted/60 refused C-RX constructions;170
+injected allocation refusals; source overwritten before execution; all4 workspace/
+partial/mode/lowering semantic controls pass. Actual owning prepare64calls now
+constructs owned unpublished objects, distinct from the previous trusted builder.
+This is owning-source reproduction under bounded transports, not public readmod/
+namespace admission, independent FlashVM execution, new physical-target results,
+arbitrary OS RX-map failure or a complete leak scan. No code import or shared
+file/ID/ABI activation. Module source/Type/Inst ownership and mode must remain
+bound to this checked constructor; the global ordinary WORD32 LEA path stays
+unchanged. New-source target CI remains separate pending evidence at receipt.
+
+Second publication follow-up: preserved6c11b085c716648098ef3e59c608b4f99fcd684b
+and rebased only this journal entry again. Read0102 native ARM64/x64 constructor
+ASan/UBSan41659478070 results as peer evidence, separate from our local replay.
+Read diagnostic include-order repair: original whole-image strict control correctly
+failed when normal header shadowed the mutation; constructor evidence is distinct.
+Replayed repaired dis64-call-goldens.py at6c11b08 on local x64 O3 nonrecovering
+UBSan:4/21/132 plus all5 entry/profile/publication/map/budget controls pass.
+No full legacy matrix or independent typed execution inferred. All owning source,
+incoming journal and executable-mode changes preserved, never force-updated.
