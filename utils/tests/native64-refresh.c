@@ -14,6 +14,7 @@ static int live, refuse, ownerok, balance, locked; // Observable allocation and 
 static int inputlength, inputposition, inputchunk, inputcalls, terminal, oversized; // Bounded input stream state.
 static int outputlength, outputchunk, outputcalls, outputfault; // Bounded native short-write transport.
 static uchar output[32768]; // Independent capture of actual submitted output bytes.
+static int closeonread, closeoncallback; // Valid-lifetime close publication at bounded call boundaries.
 static int phase, nextrecord, callbacks, reentrant, sequence[16], diagnostic; // Callback and error oracles.
 static unsigned long checks; // Active semantic predicates, independent of NDEBUG.
 int _drawdebug; // Existing production diagnostic option.
@@ -188,6 +189,7 @@ kchanio(void *channel, void *buffer, int bytes, int mode)
 			amount = bytes;
 		memmove(buffer, wire+inputposition, amount);
 		inputposition += amount;
+		if(closeonread) display.closing = 1;
 		return amount;
 	}
 	check(mode == OWRITE && channel == display.datachan);
@@ -231,6 +233,7 @@ notification(Image *image, Rectangle rectangle, void *context)
 		check(memcmp(&rectangle, &events[nextrecord].rectangle, sizeof(rectangle)) == 0);
 		check(locked == 1);
 		nextrecord++;
+		if(closeoncallback) display.closing = 1;
 	}else{
 		id = *(int*)context;
 		check(image == nil && live == (id == 1 || (id == 2 && reentrant) ? 1 : 0));
@@ -268,6 +271,7 @@ reset(void)
 		windows[i].next = i+1 == nelem(windows) ? nil : &windows[i+1];
 	}
 	ownerok = 1;
+	closeonread = closeoncallback = 0;
 	refuse = inputlength = inputposition = inputcalls = terminal = oversized = 0;
 	inputchunk = 100;
 	outputchunk = 7;
@@ -317,6 +321,27 @@ streams(void)
 		check(callbacks == (end == 2 ? 1 : 2));
 		check(balance == 0 && locked == 0 && diagnostic == 2);
 	}
+}
+
+
+/* A close phase stops new callbacks while the caller still retains Display storage. */
+static void
+closestreams(void)
+{
+	reset();
+	display.closing = 1;
+	refreshslave(&display);
+	check(inputcalls == 0 && callbacks == 0 && outputcalls == 0);
+	reset();
+	phase = 1; inputlength = sizeof(wire); closeonread = 1;
+	refreshslave(&display);
+	check(inputcalls == 1 && callbacks == 0 && outputcalls == 0);
+	check(balance == 0 && locked == 0);
+	reset();
+	phase = 1; inputlength = sizeof(wire); closeoncallback = 1;
+	refreshslave(&display);
+	check(inputcalls == 1 && callbacks == 1);
+	check(balance == 0 && locked == 0 && display.closing);
 }
 
 
@@ -426,6 +451,7 @@ int
 main(void)
 {
 	streams();
+	closestreams();
 	buffers();
 	queues();
 	printf("PASS native64 refresh: %lu predicates; fragmented records, native buffers and reentrant queue retirement\n", checks);

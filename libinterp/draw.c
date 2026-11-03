@@ -2799,6 +2799,8 @@ refreshslave(Display *d)
 	Image *im;
 	int locked;
 
+	if(d->closing)
+		return;
 	used = 0;
 	for(;;){
 		release();
@@ -2813,12 +2815,16 @@ refreshslave(Display *d)
 			kwerrstr("refresh: oversized response");
 			return;
 		}
+		if(d->closing)
+			return;
 		used += n;
 		complete = used-used%(5*4);
 		if(complete == 0)
 			continue;
 		locked = lockdisplay(d);
 		for(i=0; i<complete; i+=5*4){
+			if(d->closing)
+				break;
 			p = buf+i;
 			id = (int)BGLONG(p);
 			r.min.x = (int)BGLONG(p+4);
@@ -2834,7 +2840,7 @@ refreshslave(Display *d)
 		n = flushimage(d, 1);
 		if(locked)
 			unlockdisplay(d);
-		if(n < 0)
+		if(n < 0 || d->closing)
 			return;
 		used -= complete;
 		memmove(buf, buf+complete, used);
@@ -2931,7 +2937,7 @@ flushimage(Display *d, int visible)
 			*d->bufp++ = 'v';
 		}
 		ret = doflush(d);
-		if(ret < 0 || d->refhead == nil)
+		if(ret < 0 || d->refhead == nil || d->closing)
 			return ret;
 		while((r = d->refhead) != nil){
 			d->refhead = r->next;
@@ -2958,6 +2964,7 @@ delrefresh(Image *i)
 	void *refptr;
 
 	d = i->display;
+	locked = lockdisplay(d);
 	/*
 	 * Any refresh function will do, because the data pointer is nil.
 	 * Can't use nil, though, because that turns backing store back on.
@@ -2966,9 +2973,12 @@ delrefresh(Image *i)
 		drawlsetrefresh(d->dataqid, i->id, memlnorefresh, nil);
 	refptr = i->refptr;
 	i->refptr = nil;
-	if(d->refhead==nil || refptr==nil)
+	i->reffn = nil;
+	if(d->refhead == nil || refptr == nil){
+		if(locked)
+			unlockdisplay(d);
 		return;
-	locked = lockdisplay(d);
+	}
 	prev = nil;
 	for(r=d->refhead; r; r=next){
 		next = r->next;
@@ -2998,6 +3008,8 @@ queuerefresh(Image *i, Rectangle r, Reffn reffn, void *refptr)
 	if(reffn == nil)
 		return;
 	d = i->display;
+	if(d->closing)
+		return;
 	rq = malloc(sizeof(Refreshq));
 	if(rq == nil)
 		return;

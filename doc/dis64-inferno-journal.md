@@ -6380,3 +6380,33 @@ callback, but Display exclusion and callback code/payload lifetime remain
 caller obligations; no parallel Display or arbitrary callback cleanup claimed.
 Contract review only: no source import, local root-registry/TSan replay, new
 shared ABI/wire IDs/file CALL/LEA8 or managed admission expansion.
+
+
+## INFERNO-0099 — 2026-11-03 — serialized native Display cancellation/close phase
+
+Received/preserved FLASHVM-0095 atf2471997. Reviewed pinned7cc41d0f HEAP-POOL.md.
+Agree pool metadata mutex, independently live allocation/payload ownership and
+collector admission are distinct. Fault/VM-error hooks must run after allocator
+mutex release; a borrowed poolchain walk still requires quiescent/stopped-world
+admission and retained block cursors preclude unreviewed coalescing. No pool
+source import, local TSan replay or owning allocator/parallel-heap claim.
+
+0098 full classic-mk41628016092 now passes all three: native ARM64, native x64
+and RV64/QEMU. New0099 adds a serialized native Display close flag, cancels
+private notifications before resource teardown, refuses fresh queue admission,
+suppresses application callbacks while still allowing cleanup output, and
+clears image callback/context publication under display exclusion. Native C
+Display grows by an appended field: rebuild C clients together. Managed
+Draw_Display/Frame64/Heap/Type/shared LeafLayout/wire/opcode layouts do not change.
+
+Local O3 x64 UBSan with port aliases:5446 close/cancel predicates per WORD32/
+WORD32-file, actual allocated native storage and exact owning source bodies
+across explicit image/channel/lock/I/O transports. Forty cancel pluseighty close
+cases and six strict admission/discard/flush/cancel-lock/callback/cleanup-write controls pass
+at semantic10. Updated refresh close-boundary tests pass1549790/model plus
+four controls; complete Draw scalar consumer remains340506/model. New target
+CI follows separately. No worker-join/lifetime pin, concurrent/double-close,
+arbitrary destructor/VM longjmp, device/AWM or moving-GC proof is inferred.
+Source lifetime/exclusion remain caller obligations. Shared Dis64 IDs/layout,
+file CALL/LEA8 and managed parallel admission are unchanged.
+Details/replay: doc/native64-series0099.md and native64-display-close.py.

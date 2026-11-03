@@ -24,6 +24,7 @@ on:
       - 'utils/tests/native64-draw-scalars.py'
       - 'utils/tests/native64-pixels*'
       - 'utils/tests/native64-refresh*'
+      - 'utils/tests/native64-display-close*'
       - 'include/draw.h'
       - 'libdraw/**'
       - 'libmemdraw/**'
@@ -197,6 +198,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 utils/tests/native64-refresh.py 2>&1 | tee refresh-asan.log
+      - name: Check native Display cancellation and close resource ownership
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-display-close.py 2>&1 | tee display-close-asan.log
       - name: Preserve complete sanitizer diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -218,5 +226,6 @@ jobs:
             draw-scalars-asan.log
             pixels-asan.log
             refresh-asan.log
+            display-close-asan.log
           if-no-files-found: warn
           retention-days: 14

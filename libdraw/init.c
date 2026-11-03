@@ -57,8 +57,10 @@ gengetwindow(Display *d, char *winname, Image **winp, Screen **scrp, int ref)
 	return 1;
 }
 
-#define	NINFO	12*12
+#define	NINFO	(12*12) // Bound the native display information response.
 
+
+/* Create the native display with independent directory, lock and channel owners. */
 Display*
 initdisplay(char *dev, char *win, void(*error)(Display*, char*))
 {
@@ -85,10 +87,13 @@ initdisplay(char *dev, char *win, void(*error)(Display*, char*))
 		return nil;
 
 	q = libqlalloc();
-	if(q == nil)
+	if(q == nil){
+		free(t);
 		return nil;
+	}
 
-printf("\n\n>> %s: %d prog=%p, proc=%p\n", "initdisplay", __LINE__, currun(), up);
+	if(_drawdebug)
+		print("initdisplay: prog=%p, proc=%p\n", (void*)currun(), (void*)up);
 
 	sprint(buf, "%s/draw/new", dev);
 	ctlfd = libopen(buf, ORDWR);
@@ -206,10 +211,26 @@ printf("\n\n>> %s: %d prog=%p, proc=%p\n", "initdisplay", __LINE__, currun(), up
 	return disp;
 }
 
-/*
- * Call with d unlocked.
- * Note that disp->defaultfont and defaultsubfont are not freed here.
- */
+
+/* Discard private notifications under display exclusion without invoking their payloads. */
+static void
+discardrefresh(Display *disp)
+{
+	Refreshq *entry, *next;
+
+	entry = disp->refhead;
+	disp->refhead = disp->reftail = nil;
+	while(entry != nil){
+		next = entry->next;
+		free(entry);
+		entry = next;
+	}
+}
+
+
+/* Caller owns an unlocked display and has excluded or stopped its other users.
+ * Cancel notifications before resource teardown. Default fonts remain caller-owned.
+ * This function does not itself join the refresh worker or grant a lifetime pin. */
 void
 closedisplay(Display *disp)
 {
@@ -219,6 +240,8 @@ closedisplay(Display *disp)
 	if(disp == nil)
 		return;
 	libqlock(disp->qlock);
+	disp->closing = 1;
+	discardrefresh(disp);
 	if(disp->oldlabel[0]){
 		snprint(buf, sizeof buf, "%s/label", disp->windir);
 		fd = libopen(buf, OWRITE);
@@ -238,7 +261,8 @@ closedisplay(Display *disp)
 	libchanclose(disp->datachan);
 	libchanclose(disp->refchan);
 	libchanclose(disp->ctlchan);
-	/* should cause refresh slave to shut down */
+	/* Channel closure requests worker termination; caller must still exclude its users. */
+	discardrefresh(disp);
 	libqunlock(disp->qlock);
 	libqlfree(disp->qlock);
 	free(disp);

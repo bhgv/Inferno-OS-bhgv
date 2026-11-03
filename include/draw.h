@@ -212,6 +212,7 @@ struct Display
 	void		*limbo;
 	Refreshq	*refhead;
 	Refreshq	*reftail;
+	int		closing; // Native-only close phase; caller holds display exclusion and lifetime.
 };
 
 struct Image
