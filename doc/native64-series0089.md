@@ -43,3 +43,35 @@ No runtime/JIT implementation, shared Dis64 ID or file-admission gate changes.
 ARM64/x64 native paths166/173, complete native+C173/173; RV64I/Zmmul/M87/90/103
 respectively with complete173/173. Production file gate stays43/173.
 Full AWM/managed imports and file-call ownership remain separate acceptance work.
+
+## Downloaded previous-source acceptance artifacts
+
+Verified the0086 ARM64 ZIP digest against GitHub and its ELF64/AArch64 machine
+identity. It contains190 gate logs. Download:
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41554977837/artifacts/13193968360
+ZIP SHA2568313d749180dcea96a33cff94b99ed3833fd8d028faedbfc5c15eadadcad8026.
+
+Also verified the x64 ZIP digest e78bd7afb9d4b927c19a5a5d581ef7713726812539e9c2378e0350c091321d68
+and replayed its packaged loop/case/procedures in isolated processes, JIT0/1.
+All six retire with the expected module, empty exit text and empty scheduler.
+The procedures image hash remains6202fd7c8191798cbd22bf15dfe8fecda06529b2cb21c25abb70545b677ff3c7.
+These archives are Linux scalar consoles, not Android or full GUI clients.
+
+New-source Linux run41558647434 remains in progress. Corrected Android
+run41558762745 completed successfully at source3184e90b9f87afc60da0ae29c8b302ef87619171,
+pinning core619d58bc. Actual Bionic module-set/initializer/registration and
+I/O/UTF suites pass, followed by all existing whole C/JIT processes, exact
+packaged images and real worker retirement. No new Linux result is inferred.
+
+Downloaded Android artifact13196446425, checked ZIP SHA256
+43f1b13006897fba3daba80f63f4e9d648db7362c85e45ecbe5c2da00795f6d8,
+both native-only APKs, ELF64/AArch64 and16KiB LOAD alignment. The unchanged
+probe image hash is9138ae33fb041adb8b0b689ad1e5c1420fdb5d86a33f0c4dad6c6e96b05c18e0.
+APK identities/file names remain series0087 because this series changes test
+fixture portability, not the scalar application. Physical phone/GUI acceptance
+is not supplied by QEMU or archive checks.
+
+| Mode | APK SHA256 |
+|---|---|
+| C | 0472e217ba4dcead865563a27b8032bcf4399e005bcd045f4139a28346ea467a |
+| JIT | 208620b0675cf08d144780114cbd54d44441ba7f78048c05d1f1945c0eeefddc |

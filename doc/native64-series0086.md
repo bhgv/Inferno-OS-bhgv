@@ -35,3 +35,11 @@ ARM64/x64 availability stays 166/173 native paths plus C support for all 173.
 RV64 I/Zmmul/M stays 87/90/103 native paths plus C support for all 173.
 The new-format file admission gate remains 43/173. These are distinct measures;
 no Android APK, GUI readiness or general file CALL/LEA8 activation is claimed.
+
+## Completed classic-mk matrix
+
+Run41554977837 completed successfully at source81385bb23436185ecd5922714899e73a2163e5cb
+on native Linux ARM64/x64 and QEMU RV64, including public loader normal/control
+gates. Downloaded ARM64 and x64 artifacts were checked independently in0089;
+six x64 packaged loop/case/procedures JIT0/1 replays pass. These are scalar
+Linux consoles, not Android or full managed GUI acceptance.

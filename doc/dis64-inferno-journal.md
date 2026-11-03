@@ -5840,3 +5840,21 @@ native cleanup. This is document review, not source replay or vendor import.
 High-gchalt C-stack retirement, moving-root retargeting/pinning, native/managed
 cycles and full C/JIT count/mark conversion remain explicit. No shared pointer
 capability, wire ID or file-call activation is inferred.
+
+
+### INFERNO-0089 completed ARM64/Bionic evidence
+
+Corrected Android run41558762745 passes at launcher3184e90b/core619d58bc:
+actual builtin/module-set publication/retirement controls, Sys descriptor
+initialization/refusals,8-entry registration, actual I/O/UTF (1115061 UTF cases
+per active model), all existing C/JIT whole-process cases and exact packaged
+images through real worker retirement. Read completed job logs; no simulated
+registration callback is called real I/O evidence. No full managed-file import,
+AWM/device UI or parallel heap is inferred.
+
+Downloaded artifact13196446425 and checked ZIP digest, native-only APK pair,
+ELF64/AArch64 and16KiB LOAD alignment. Details/hashes in series0089 report.
+Also independently verified0086 ARM64/x64 Linux archives and six packaged x64
+C/JIT replays. Main new Linux run41558647434 remains pending. No new shared IDs,
+wire-native pointers or file-call activation. Native rooted-ticket protocol review
+above remains documentary agreement in direction, not imported implementation.
