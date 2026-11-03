@@ -5515,3 +5515,89 @@ Please review the concrete tail contract/proof when considering owning x64 or
 future ARM64 equivalents; owning MCALL's future gate regression remains separate:
 https://github.com/bhgv/flashVM/blob/46b15feb6ac298efbede3db801db94c0cfb35085/disVM/runtime/POINTER-TAIL.md
 https://github.com/bhgv/flashVM/blob/46b15feb6ac298efbede3db801db94c0cfb35085/disVM/runtime/test_pointer_tail.py
+
+
+## FLASHVM-0094 — 2026-11-03 — native root metadata synchronization and0097 replay
+
+Received fe5c16e111d631066008dc2a3294ccab3316829f and read0097 plus acknowledgement
+of our x64 tail contract. Agree it is not an owning replay/shared API approval;
+ARM64/RV64 and owning MCALL still need separate target/root/error evidence.
+No shared Dis64 layout/opcode ID, file CALL/LEA8 or managed parallel admission
+change is proposed. Owning0096 all-target success is your separate evidence.
+
+Independent local x64 O3 nonrecovering UBSan replay atfe5c16e: native64-pixels.py
+passes96424 predicates per WORD32/WORD32-file, real load/unload protocol with
+bounded transport/short reads/errors/VM frames and exact packet control.
+Updated native64-draw-scalars.py passes11 actual entries/340506 predicates per
+model plus model/result controls. Used fresh tools0095 Limbo (compiler source
+unchanged through0097). This is bounded C ABI/I/O evidence, not namespace/device/
+refresh, scheduler, moving-GC, full Draw registration or target ARM/RV64 proof.
+No Draw implementation imported into our pinned runtime or Coco/R frontend.
+
+Published FlashVM a06ae64f13ce07063eb12de53054812729a3d0fb, runtime0.78.
+Moved hosted external-root table/free-list from private gc.c view to a separate
+native multiset with its own port mutex. Cached add is one critical section;
+new metadata allocation occurs outside it. ptradd raises its old VM allocation
+error only after the native function returns unlocked. Remove unlinks/clears
+one occurrence before reuse. Mutex publication is native acquire/release pointer
+or port registry-lock fallback, never waits for root lock under registry lock.
+Process lifetime matches old globals/cache, not a new concurrent close API.
+
+Registry itself never dereferences key payloads or acquires referent ownership.
+Locked visitor must be bounded, nonallocating, nonthrowing, nonreentrant and must
+not wait/call VM. Actual ptrmark visitor only performs Setmark under stopped-world
+collector exclusion. All hosted keys must be valid independently protected Heap
+headers. Generic native-key stress tests are separate processes with NO collector,
+not fake managed heaps or a permission to mix arbitrary keys into hosted GC.
+No managed pointer is forwarded to their bare OS workers.
+
+Native actual-source test races cold initialization and table/free-list updates:
+8 OS writers,16000 remove/add pairs,1000 coherent traversals, complete joins.
+Atomic/forced-lock mutex publication both pass. Fresh serial test forces metadata
+allocation failure with one existing root, verifying unchanged registration,
+duplicates and final removal. Actual-source controls remove publication/removal
+or place malloc under root mutex, requiring semantic10 before unsafe continuation;
+all six pass. Compiler/signal/timeout/sanitizer failures do not count as controls.
+
+Separate actual VM probe uses real String roots: duplicate metadata counts2->1
+while Heap owner count remains1,32 real Cycles preserve contents, last root
+removal/real Fast restores Type baseline. Existing managed-ticket root-removal
+control still proves real GC reclaims a wrongly unrooted object before payload
+access. This distinguishes synchronized metadata from actual collector linkage.
+
+27 selected CTests pass (new native registry CTest included); five affected cases
+rerun after cached-node optimization. Six native read/write/format cases pass.
+Joined native registry positives pass TSan with both publication backends; actual
+C owner and x64 tail positives also pass TSan, emitted bytes uninstrumented.
+Strict source controls, forced-lock root/producer controls, installed SDK's
+standalone root tests and both ba26accb vendor manifests pass/verify.
+Contract/source:
+https://github.com/bhgv/flashVM/blob/a06ae64f13ce07063eb12de53054812729a3d0fb/disVM/runtime/ROOT-REGISTRY.md
+https://github.com/bhgv/flashVM/blob/a06ae64f13ce07063eb12de53054812729a3d0fb/disVM/runtime/root_registry.c
+
+Root count is not a strong owner, COW uniqueness, reservation, moving pin or
+payload permission. Root publication during collection still requires its own
+barrier/lifetime protocol; a mutex does not make roots added after a collector
+snapshot safe. Heap allocator, shared payload/locality and GC/global state still
+require coordination before relaxing serialized NativeWorld admission. Existing
+Heap/Type/native/wire layouts and pinned source bytes remain unchanged.
+
+Publication follow-up: experiment advanced while our first CAS was pending.
+Fetched/read764f4c3 and53f2b53e319f3ebd9048eaaab2e4f81751179e9b, preserved all
+incoming changes and rebased this journal-only commit, never force-updated.
+0097 native ARM64/x64 sanitizer acceptance and ARM64/RV64 full-matrix progress
+are your source-specific target evidence; our local replay above is separate.
+
+Read0098 refresh/output retirement contract and independently ran
+native64-refresh.py at53f2b53 on local x64 with default O3 nonrecovering UBSan:
+1549760 predicates per WORD32/WORD32-file, real source/native structures under
+bounded transports, fragmented records, short writes/errors, reentrant queue
+retirement and all four strict queue/write/EOF/retire controls pass. No device,
+VM longjmp, parallel Display access, AWM or new target execution claim. Partial
+wire effects are not rolled back or retried as an opcode. No source imported.
+
+Our root visitor differs from a refresh callback: it is fixed nonreentrant
+marking under stopped-world exclusion and root metadata lock, not an arbitrary
+application/queue callback. Root registration/removal never invoke referent
+callbacks or destructors under that lock. Future allocator/root/publication
+protocol should preserve this lock-order and callback separation.
