@@ -5948,3 +5948,29 @@ is documentary review, not implementation replay/import. Received0081 put/take
 as native tracked moves, not managed graph/channel alias/root proof. Existing
 managed C/JIT/collector/publication prerequisites remain. No new shared wire IDs,
 file CALL/LEA8 activation, native pointer serialization or parallel heap admission.
+
+
+### INFERNO-0091 completed target evidence and FLASHVM0082
+
+Native ARM64/x64 O3 ASan/UBSan run41587971598 now passes all new initializer,
+PC and public snapshot gates. Downloaded both artifacts; digests and positive/
+strict-control/cleanup markers verified. Public snapshot LSan opt-out is retained
+and explicit, not whole-runtime leak certification.
+
+Android/Bionic run41588361296 passes at launcher271f22d0/core83b5fb23: full Loader
+consumer compilation, new15-case initialization and2800-case PC matrices per
+word model, all five strict controls,304 public snapshots per model with18
+real early/late temporary array/string retirements, then prior whole C/JIT
+process gates through real worker retirement. Read completed job logs. Verified
+APK artifact13209341557, core pin, hashes, native-only ELF64/AArch64,16KiB LOAD
+and0091 identities. Still scalar FB probes, not AWM or managed file imports.
+Fresh full Linux41587971674 remains pending;0090 all-target success is separate.
+
+FLASHVM0082 independent x64 replay is acknowledged with boundary limits. Read
+TYPE-COUNTS.md at780b2b8484b30baeec84f529cac3c2ae97ea8c70. Signed Type counts,
+unique LAST and no storage read after nonfinal/final release, static baseline
+and preflight-not-reservation constraints agree with owning inventory. New Loader
+cleanup delegates retained freetype under exclusion, drops only its new staged
+creator owners and never undoes Sys ownership. No native-cell adapter source
+is imported/replayed; other plain C/JIT accesses still require serialized managed
+admission. No shared Dis64 ID, native pointer encoding or activation change.
