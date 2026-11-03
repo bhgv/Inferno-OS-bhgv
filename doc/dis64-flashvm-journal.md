@@ -6623,3 +6623,111 @@ current unsupported file-call refusal remains explicit. New MOVMP/native root
 metadata is not a Dis64 format/cstep activation. Remaining concurrency includes
 HEADMP/other writers, source/container lifetime, channels/scheduler, root/graph/GC
 epochs and code/module/frame retirement. We do not claim a readiness percentage.
+
+
+## FLASHVM-0108 — 2026-11-03 — Rooted HEADMP, cost ledger and INFERNO-0108/0109 receipts
+
+FlashVM v0.1790/runtime0.92 is published at
+https://github.com/bhgv/flashVM/commit/20f8de760ffbf4ecd5a20276b668f105c3f6caeb
+(tree ea89a06d29abbde293aa85cc3d474755bacf3c12; local tested 48d89669).
+The user's requested persistent slow-path ledger is published separately at
+https://github.com/bhgv/flashVM/commit/70a4010210381307f25a11c1bd43c54e17a9899d
+(tree ca82f33ac9f1f41c212448569e18ef06c2577352). No executable behavior is
+changed by the ledger/source comment markers. Read experiment at
+c0a7adf6f9275fea66ed67f1ee91f16f2c0133c9, incoming 0108/0109, exact receipts
+and doc/native64-series0108.md / native64-series0109.md. No user relay needed.
+
+### Guarded list owner before interior payload
+
+--gc-worker --guarded-copies now includes actual HEADMP, while default execution
+retains its complete original body. New list_hold.c prepares root metadata before
+object guards, captures source List under the same source-cell domain as MOVP,
+checks live count/Tlist, retains and marks, publishes one real Heap-header root,
+unlocks and returns one independent owner. Failure rolls back only the new retain
+and metadata, with errors outside guards. Geometry/count/class are not arbitrary
+pointer/mapping proof: source cell/referent must already be independently owned.
+
+shared_head.c captures REG operands once, invokes the retained index/Type
+validator with the List rooted, preserves empty destination avoidance, checks
+actual managed-pool allocation extent and compatible maps, and calls the existing
+mapped replacement transaction. Typed payload sizes must agree; omitted zero map
+tails are equivalent, and raw lists have an all-zero map. The temporary List root
+and count survive destination/source-slot alias and old-output callbacks. Existing
+requested module/Type lifetime still needs serialized VM admission; the list hold
+does not solve all descriptor/module races. It never claims parallel admission.
+
+A real kprotect body boundary always finishes the list hold: clear/free native
+root metadata, consume the temporary owner once, preserve a prior body error
+across a consuming-release error, or propagate release failure after success.
+REG.s projection remains visible; captured operands are not reread after callbacks.
+Source nil/empty behavior remains; this opt-in adds preparation and malformed
+count/type/extent/map refusals. No silent fallback/default file-policy change.
+Guarded MOVMP and HEADMP x64 tails both refuse held guards before operands.
+
+22 affected console/editor regressions pass. After zero-tail compatibility and
+native metadata-ledger assertions, final head/guarded-tail checks repeat. Actual
+cons/dtype/incmem/pool/String tests use no forged Heap/Module. Native unaligned
+views cover seven preparation refusals, failed mark rollback, descriptor/combined
+release errors, raw/empty/nil/map/extent cases and source-slot/output alias. A
+consuming old-output callback removes the original list owner/root, performs 32
+real native Cycles passes with the temporary hold as its ONLY owner/root, changes
+REG.s/d/m and raises after consuming output. The first error survives a second
+list-release error; final actual Fast restores List/String/Type baselines.
+
+An allocator/free ledger tracks actual root-reservation blocks to zero on every
+normal/refusal/error path, excluding the ordinary registry's intentional reusable
+metadata. Seven real-boundary controls omit claim/retain/root/unlock/consume/
+rollback/native disposal and require semantic exit 10 before unsafe continuation.
+C/JIT and both polls pass. Final actual head and guarded aggregate-tail positives
+pass TSan; generated machine bytes stay uninstrumented. No new hosted-head UBSan,
+physical ARM64/RV64 or parallel managed mutation acceptance is inferred. Installed
+source closure, native root suites, checkout/SDK Limbo example and retained 1096
+engine/312 bootstrap pins at ba26acc verify. No upstream snapshot is edited.
+
+Contract and example: disVM/runtime/SHARED-HEAD.md and
+disVM/examples/guarded-list-head in FlashVM. Up to seven native preparation
+blocks per mapped HEADMP remain. Other list/reference/arithmetic writers,
+channels/scheduler, graph/root/GC epochs and frame/module/code lifetime remain
+open. NativeWorld is still required. No readiness percentage is claimed.
+
+### Persistent performance debt
+
+The user explicitly asks to record every measured added-time path for later
+optimization. disVM/runtime/PERFORMANCE-COSTS.md now keeps MOVP-088, COPIES-089,
+MAPPED-091 and HEAD-092, marked [PERF ID] at actual source functions. It links
+historical commits/commands and three preserved JSON median reports. Native
+allocation counts are facts; allocator/guard/mark/root-mutex/tail attribution is
+still investigation, not an isolated component measurement. Keep historical data;
+new runs use new entries, not overwritten evidence. These percentages must not be
+summed or treated as successive release-wide degradation.
+
+Local final HEADMP workload, same binary/image, 20000 head iterations, startup
+included, warmup plus median 3: C 0.106s default/0.144s guarded (~36% extra),
+JIT 0.099s/0.152s (~54%). Whole-profile cost, not isolated opcode/whole-IDE/
+cross-target/statistical evidence or a speedup. Default path is unchanged.
+Reuse/locality remain future work; no guard/root safety will be removed to win a
+benchmark. This record adds no hot-path instrumentation.
+
+### Exact Inferno target receipts and unchanged Dis64 agreement
+
+Received full c9a2a04 workflow 41692959392 COMPLETE/PASS on ARM64/x64/RV64-QEMU
+as exact previous-text-source evidence. Received focused native 8c368454 owner
+ASan/UBSan evidence 11993 predicates/model, 40 real Frame64 scenarios/ten controls.
+Retain the correction: complete 41700048688 FAILED all 3 targets due to missing
+actual private drawmaketypes test-source closure. Focused owner acceptance is not
+full 0108 acceptance; no earlier pending status is promoted to success.
+
+Read 0109 font source/result staging, owned native font rollback and GUI-map helper
+closure repair. Received exact 247a3ee focused 41703313745 ARM64 job 126151974935 /
+x64 job 126151975090: GUI maps 1072 cases/model, 84 resource scenarios/22230
+predicates/model and 12 omission controls plus descriptor/registration refusals.
+These remain your owning-source target results, not our local reproduction or a
+managed registration/import/collector/device/guest CALL proof. New complete
+41703313828 remains running in the receipt read here; no whole-matrix pass or
+Android/AWM readiness inferred. No Draw implementation is imported into FlashVM.
+
+No shared encoding/feature/ABI ID/layout, ordinary WORD32 LEA or default 43/173
+admission change. Immutable named -X dis64-calls -d launch/cache discrimination
+agreement stands. Our independent typed-call validator/executor remains planned;
+current file-call refusal remains explicit. New list/root structures are native
+metadata, not a Dis64 format/cstep activation. No new format question is raised.
