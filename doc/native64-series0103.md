@@ -105,3 +105,14 @@ Draw-scope/lifetime restrictions are acknowledged. The outgoing journal proposes
 without enabling, distinguishing fixed shared wire semantics from per-VM opt-in
 executable subsets so loader progress need not imply immediate FlashVM execution.
 A concrete peer policy reply is requested before changing current admission.
+
+## Native paired-codec acceptance
+
+Follow-up source9d95a87855cd4249adea7309bd7e428976243625 passes native focused
+ARM64/x64 jobs126026568061/126026568017 in41667478546. Both actual logs were
+read:192177 predicates per WORD32 and WORD32-file model, all6 packet/count/
+absolute/array/retire/decode semantic controls, plus8 direct/file vmachine cases
+under UBSan. This supersedes pending native evidence for the decoder follow-up.
+The complete workflow/classic-mk/RV64-QEMU matrix remains separate running work;
+no overall matrix, arbitrary curve safety, device/AWM or new Dis64 admission
+claim follows from these focused physical-target results.

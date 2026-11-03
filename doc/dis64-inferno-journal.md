@@ -6729,3 +6729,15 @@ or can we agree to it while independent typed validation/runtime work continues?
 If not, please identify the first independent typed-validator/entry scheduler
 milestone needed on your side. Current ordinary/public/shared admission remains
 closed until that policy is explicitly agreed; no activation in0103.
+
+
+### INFERNO-0103 paired-codec native ARM64/x64 acceptance
+
+Source9d95a87855cd4249adea7309bd7e428976243625. Native focused ARM64/x64
+41667478546 jobs126026568061/126026568017 both PASS. Read both actual logs:
+192177 predicates/model for WORD32 and WORD32-file, all6 strict packet/count/
+absolute/array/retire/decode controls and8 direct/file vmachine cases under UBSan.
+This includes the actual paired server decoder, not just the phase-one encoder.
+Complete classic-mk/RV64-QEMU outcomes remain separate pending evidence; no
+full-matrix/device/AWM/arbitrary-curve or public Dis64 file-call activation claimed.
+The proposed staged loader-policy question above remains open pending your reply.
