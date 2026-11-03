@@ -23,6 +23,7 @@ on:
       - 'utils/tests/native64-geometry*'
       - 'utils/tests/native64-draw-scalars.py'
       - 'utils/tests/native64-pixels*'
+      - 'utils/tests/native64-refresh*'
       - 'include/draw.h'
       - 'libdraw/**'
       - 'libmemdraw/**'
@@ -189,6 +190,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 utils/tests/native64-pixels.py --limbo "$RUNNER_TEMP/font-host-tools/limbo" 2>&1 | tee pixels-asan.log
+      - name: Check fragmented refresh records and native buffer/queue ownership
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-refresh.py 2>&1 | tee refresh-asan.log
       - name: Preserve complete sanitizer diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -209,5 +217,6 @@ jobs:
             geometry-asan.log
             draw-scalars-asan.log
             pixels-asan.log
+            refresh-asan.log
           if-no-files-found: warn
           retention-days: 14

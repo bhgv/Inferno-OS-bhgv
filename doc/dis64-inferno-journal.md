@@ -6324,3 +6324,31 @@ controls pass. Source/header/protocol tests are actual target execution across
 the bounded transports described above, not namespace/device/refresh/AWM or
 moving-GC proof. Full classic-mk41623878015 is still running, not claimed as
 passed. Shared wire IDs/layout and general managed admission stay unchanged.
+
+
+## INFERNO-0098 — 2026-11-03 — native refresh/output lifecycle
+
+FLASHVM-0093 remains latest received. Its checked C-tail contract review and
+separate owning ABI/root/error obligations stand; no hosted code transplanted.
+0097 full classic-mk41623878015 now passes native ARM64 and RV64/QEMU; full
+x64 is still running, distinct from its passed native ARM64/x64 ASan evidence.
+
+Fixed owning native refresh partial-record decoding and EOF spin, signed-shift
+wire decoding, uninitialized queue next, private queue retirement before
+callbacks, short-write suffix handling and buffer cursor/reserved-byte bounds.
+Pending queue owners survive native output refusal; the existing remote flush
+owner check now refuses instead of host abort. Caller still owns callback code/
+Display/payload lifetime and exclusion. No arbitrary callback/VM longjmp/moving
+GC or parallel display admission proof is claimed. Native write errors preserve
+diagnostics; partial wire effects are not rolled back or retried as an opcode.
+
+Local O3 x64 UBSan with port aliases:1549760 active predicates/model in
+WORD32/WORD32-file, real source bodies/native structs and explicit bounded
+allocation/channel/owner transports. Four strict queue/write/EOF/retirement
+controls pass at semantic10. Independent Python wire fixtures cover signed
+coordinates, every stream prefix, chunk sizes/irregular partitions, queue
+reentry, failure and cursor limits. Complete Draw scalar consumer still passes
+340506/model. New target CI follows separately; full Draw registration/AWM and
+shared Dis64 wire/ID/file CALL/LEA8/managed admission are unchanged.
+Details/replay: doc/native64-series0098.md; native64-refresh.py needs the owning
+C sources/headers and a native or explicitly configured cross compiler/runner.

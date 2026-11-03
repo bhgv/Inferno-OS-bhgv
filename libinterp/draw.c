@@ -2788,38 +2788,56 @@ subfontname(char *cfname, char *fname, int maxdepth)
 	return strdup(t);
 }
 
+
+/* Accumulate complete wire records; the caller keeps Display and callback payloads alive. */
 void
 refreshslave(Display *d)
 {
-	int i, n, id;
+	int i, n, id, used, complete;
 	uchar buf[5*(5*4)], *p;
 	Rectangle r;
 	Image *im;
 	int locked;
 
+	used = 0;
 	for(;;){
 		release();
-		n = kchanio(d->refchan, buf, sizeof buf, OREAD);
+		n = kchanio(d->refchan, buf+used, sizeof(buf)-used, OREAD);
 		acquire();
-		if(n < 0)	/* probably caused by closedisplay() closing refchan */
-			return;	/* will fall off end of thread and close down */
+		if(n <= 0){
+			if(n == 0 && used != 0)
+				kwerrstr("truncated refresh record");
+			return;
+		}
+		if(n > sizeof(buf)-used){
+			kwerrstr("refresh: oversized response");
+			return;
+		}
+		used += n;
+		complete = used-used%(5*4);
+		if(complete == 0)
+			continue;
 		locked = lockdisplay(d);
-		p = buf;
-		for(i=0; i<n; i+=5*4,p+=5*4){
-			id = BGLONG(p+0*4);
-			r.min.x = BGLONG(p+1*4);
-			r.min.y = BGLONG(p+2*4);
-			r.max.x = BGLONG(p+3*4);
-			r.max.y = BGLONG(p+4*4);
+		for(i=0; i<complete; i+=5*4){
+			p = buf+i;
+			id = (int)BGLONG(p);
+			r.min.x = (int)BGLONG(p+4);
+			r.min.y = (int)BGLONG(p+8);
+			r.max.x = (int)BGLONG(p+12);
+			r.max.y = (int)BGLONG(p+16);
 			for(im=d->windows; im; im=im->next)
 				if(im->id == id)
 					break;
 			if(im && im->screen && im->reffn)
 				(*im->reffn)(im, r, im->refptr);
 		}
-		flushimage(d, 1);
+		n = flushimage(d, 1);
 		if(locked)
 			unlockdisplay(d);
+		if(n < 0)
+			return;
+		used -= complete;
+		memmove(buf, buf+complete, used);
 	}
 }
 
@@ -2829,60 +2847,103 @@ startrefresh(Display *disp)
 	USED(disp);
 }
 
-static
-int
-doflush(Display *d)
+
+/* Bound the embedded buffer numerically before pointer subtraction or append. */
+static int
+drawbuffered(Display *d, int limit)
 {
-	int m, n;
-	char err[ERRMAX];
-	uchar *tp;
+	uintptr base, current;
 
-	n = d->bufp-d->buf;
-	if(n <= 0)
-		return 1;
-
-	if(d->local == 0)
-		release();
-	if((m = kchanio(d->datachan, d->buf, n, OWRITE)) != n){
-		if(d->local == 0)
-			acquire();
-		kgerrstr(err, sizeof err);
-		if(_drawdebug || strcmp(err, "screen id in use") != 0 && strcmp(err, exImage) != 0){
-			print("flushimage fail: (%d not %d) d=%lux: %s\nbuffer: ", m, n, (ulong)d, err);
-			for(tp = d->buf; tp < d->bufp; tp++)
-				print("%.2x ", (int)*tp);
-			print("\n");
-		}
-		d->bufp = d->buf;	/* might as well; chance of continuing */
+	base = (uintptr)d->buf;
+	current = (uintptr)d->bufp;
+	if(current < base || current-base > (uintptr)limit){
+		kwerrstr("invalid display buffer cursor");
 		return -1;
 	}
+	return current-base;
+}
+
+
+/* Keep existing error filtering while reporting the exact accepted byte prefix. */
+static void
+drawflushfailed(int written, int total)
+{
+	char reason[ERRMAX];
+
+	reason[0] = 0;
+	kgerrstr(reason, sizeof(reason));
+	reason[sizeof(reason)-1] = 0;
+	if(_drawdebug || (strcmp(reason, "screen id in use") != 0 && strcmp(reason, exImage) != 0))
+		print("flushimage fail: (%d of %d bytes sent): %s\n", written, total, reason);
+}
+
+
+/* Complete short writes without retrying bytes already accepted by the channel. */
+static int
+doflush(Display *d)
+{
+	int n, written, amount;
+
+	n = drawbuffered(d, Displaybufsize+1);
+	if(n < 0)
+		return -1;
+	if(n == 0)
+		return 1;
+	written = 0;
+	while(written < n){
+		if(d->local == 0)
+			release();
+		amount = kchanio(d->datachan, d->buf+written, n-written, OWRITE);
+		if(d->local == 0)
+			acquire();
+		if(amount < 0){
+			drawflushfailed(written, n);
+			d->bufp = d->buf;
+			return -1;
+		}
+		if(amount == 0 || amount > n-written){
+			kwerrstr("incomplete display write");
+			drawflushfailed(written, n);
+			d->bufp = d->buf;
+			return -1;
+		}
+		written += amount;
+	}
 	d->bufp = d->buf;
-	if(d->local == 0)
-		acquire();
 	return 1;
 }
 
+
+/* Detach and retire private entries before callbacks; failed writes retain the queue. */
 int
 flushimage(Display *d, int visible)
 {
 	int ret;
 	Refreshq *r;
+	Reffn callback;
+	Rectangle rectangle;
+	void *context;
 
 	for(;;){
-		if(visible)
-			*d->bufp++ = 'v';	/* one byte always reserved for this */
+		if(visible){
+			if(drawbuffered(d, Displaybufsize) < 0)
+				return -1;
+			*d->bufp++ = 'v';
+		}
 		ret = doflush(d);
-		if(d->refhead == nil)
-			break;
-		while(r = d->refhead){	/* assign = */
+		if(ret < 0 || d->refhead == nil)
+			return ret;
+		while((r = d->refhead) != nil){
 			d->refhead = r->next;
 			if(d->refhead == nil)
 				d->reftail = nil;
-			r->reffn(nil, r->r, r->refptr);
+			callback = r->reffn;
+			rectangle = r->r;
+			context = r->refptr;
 			free(r);
+			callback(nil, rectangle, context);
 		}
 	}
-	return ret;
 }
 
 /*
@@ -2926,46 +2987,56 @@ delrefresh(Image *i)
 		unlockdisplay(d);
 }
 
+
+/* Caller holds display exclusion; initialize every private field before publication. */
 void
 queuerefresh(Image *i, Rectangle r, Reffn reffn, void *refptr)
 {
 	Display *d;
 	Refreshq *rq;
 
+	if(reffn == nil)
+		return;
 	d = i->display;
 	rq = malloc(sizeof(Refreshq));
 	if(rq == nil)
 		return;
+	rq->next = nil;
+	rq->reffn = reffn;
+	rq->refptr = refptr;
+	rq->r = r;
 	if(d->reftail)
 		d->reftail->next = rq;
 	else
 		d->refhead = rq;
 	d->reftail = rq;
-	rq->reffn = reffn;
-	rq->refptr = refptr;
-	rq->r = r;
 }
 
+
+/* Reserve payload bytes without constructing an out-of-array comparison pointer. */
 uchar*
 bufimage(Display *d, int n)
 {
 	uchar *p;
+	int used;
 
-	if(n<0 || n>Displaybufsize){
+	if(n < 0 || n > Displaybufsize){
 		kwerrstr("bad count in bufimage");
-		return 0;
+		return nil;
 	}
-	if(d->bufp+n > d->buf+Displaybufsize){
-		if(d->local==0 && currun()!=libqlowner(d->qlock)) {
-			print("bufimage: %lux %lux\n", (ulong)libqlowner(d->qlock), (ulong)currun());
-			abort();
+	used = drawbuffered(d, Displaybufsize);
+	if(used < 0)
+		return nil;
+	if(n > Displaybufsize-used){
+		if(d->local == 0 && currun() != libqlowner(d->qlock)){
+			kwerrstr("display buffer flush requires its owner");
+			return nil;
 		}
 		if(doflush(d) < 0)
-			return 0;
+			return nil;
 	}
 	p = d->bufp;
 	d->bufp += n;
-	/* return with buffer locked */
 	return p;
 }
 

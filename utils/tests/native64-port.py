@@ -203,6 +203,7 @@ def main():
         build, env, logs/'draw-scalars.log')
     run([sys.executable, str(tests/'native64-pixels.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'pixels.log')
+    run([sys.executable, str(tests/'native64-refresh.py')], build, env, logs/'refresh.log')
     graphics_init = [sys.executable, str(tests/'native64-graphics-init.py')]
     for module in ('prefab', 'freetype'):
         run(graphics_init+['--module', module, '--limbo', str(tools/'limbo')], build, env, logs/('graphics-init-'+module+'.log'))

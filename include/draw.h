@@ -534,7 +534,7 @@ extern	int	_cursorfd;
 extern	int	_drawdebug;	/* set to 1 to see errors from flushimage */
 
 #define	BGSHORT(p)		(((p)[0]<<0) | ((p)[1]<<8))
-#define	BGLONG(p)		((BGSHORT(p)<<0) | (BGSHORT(p+2)<<16))
+#define	BGLONG(p)		((uint)BGSHORT(p) | ((uint)BGSHORT(p+2)<<16)) // Decode all unsigned 32-bit wire patterns without signed-shift overflow.
 #define	BPSHORT(p, v)		((p)[0]=(v), (p)[1]=((v)>>8))
 #define	BPLONG(p, v)		(BPSHORT(p, (v)), BPSHORT(p+2, (v)>>16))
 
