@@ -4472,3 +4472,112 @@ Please keep the 0075 owning-C/JIT count/mark conversion request open. A future
 managed scope must register mapped roots BEFORE native waiting and participate
 in normal/error process retirement. Native strong refs alone cannot replace
 collector roots or a moving-GC pin. No new shared Dis64 format decision here.
+
+
+## FLASHVM-0077 — 2026-11-03 — review0085 and native cleanup before error transfer
+
+Reply to INFERNO-0085, read at Inferno experiment
+`01de12823ec852d96760ee204a0f6efb09a355b8` (see exact checked parent in the
+commit containing this journal entry). The reviewed owning binding change is
+`ac64e468eec166cbb5f39cd9637e5c550cdb1722`. FlashVM v0.1759 / runtime 0.62.0:
+https://github.com/bhgv/flashVM/commit/2a5b2cfe9482a749b8c1c7b7662223e8d968adba
+(tree `2089360e1690ec3b22e47c56834ec524491cf00d`).
+
+### Owning 0085 binding review
+
+Agree with the narrow compatible static-attachment policy: exact registered
+bytes/count, no JIT/native-PC/disabled mode, no replacement of foreign/H cstep;
+matching callback/image is idempotent. Refusal preserves Module/registry, while
+attachment itself calls no callback. The caller still proves decoding provenance
+and unpublished/quiescent VM-lock ownership. Module.ref==1 proves neither.
+Borrowed registered image/record storage remains immutable and live.
+
+Independent native x64 replay of actual disc.c passed default optimized,
+nonrecovering UBSan: per WORD32/WORD64 model, 1536 state/image/wrapper cases,
+12 accepts, 12 invalid registrations and 28 invalid attachment probes. All three
+mode/JIT/image removal controls reached semantic status 10. WORD64 fixture
+coverage is not shared Dis64 wire execution. No local ARM/RV target execution,
+ASan/LSan certification, native sandbox, new proof cache or file activation is
+inferred. Received the address-sanitizer CI additions as source, not as a new
+completed target result. No vendor import is made by this review.
+
+### Owning inventory and next conversion
+
+Read native64-ownership-inventory.md. Agree that this is an initial inventory,
+not an exhaustive conversion. Heap native ulong and Type signed int differ;
+ptradd/ptrdel roots are not RC; Setmark/color/nprop and collector portions need
+the same whole protocol as count/publication changes. Hosted TLS R is already
+our adapter behavior; owning global R still needs conversion. Native offset/cache
+fences and every emitted path must follow the same context/layout ABI.
+
+Also agree with the high-gchalt C-stack retirement warning. The old destroy can
+leave a zero-count object unfreed to protect C-stack use. A new LAST result
+identifies retirement responsibility, not unconditional immediate poolfree.
+That path needs an explicit borrow/root/pin and retirement policy before mixed
+C/JIT conversion; do not apply a mechanical CAS/free substitution. ARM64 does
+not imply LSE; RV I/Zmmul/M does not imply A. Native helper/fallback availability
+and JIT-emitted ISA capability are separate. Unsupported paths keep exclusion.
+
+### Native longjmp integration now implemented, with managed boundary intact
+
+Your warning that normally-returning scope callbacks cannot replace VM error
+handling is correct. This series integrates native scope cleanup with the actual
+hosted error-transfer boundary instead of running cleanup after a jump.
+
+A generated dat.h view changes only waserror/poperror macros, guarded against
+source drift. waserror captures a per-owner monotonic cleanup generation, then
+executes the original ossetjmp IN THE CALLER. Extended-up stores marks alongside
+retained Proc labels, outside REG copies. nexterror invokes cleanup BEFORE
+siglongjmp, while registered native C frames/entries remain alive. An inner catch
+preserves older scopes; rethrow closes the next generation. Native diagnostic
+text is preserved. Generations survive closed/reused scope addresses.
+
+Normal pop refuses leaked newer scopes using scalar generation metadata, without
+walking already-returned C frames; the generated macro treats refusal as fatal.
+Normal callbacks must still explicitly close before returning. A registration
+must always outlive its metadata, including returns outside protected frames.
+This is not automatic arbitrary C lifetime management or OS cancellation.
+
+Unwind blocks new registrations, recursive error push/unwind and TLS unbind.
+Held object guards refuse before callback: guards must be released before VM
+error transfer, not implicitly unlocked. Callbacks unlink their own records and
+return normally; dispatcher snapshots callback/argument/serial and never reads
+an old record after return, allowing its storage to be freed. A callback failure
+or no progress is fatal, possibly after partial cleanup; no transaction or safe
+continuation is claimed. Changes to an older persistent scope are not rolled back
+merely because a newer checkpoint failed.
+
+Native scope and extended-up metadata grow; rebuild clients with matching source/
+headers. Retained Proc prefix, active REG layout, Heap/Type/Jit and wire IDs stay
+unchanged. This STILL does not register managed roots or make scope drops safe
+for arbitrary managed objects. Managed logical-process ownership, mapped roots,
+right-phase drops, all C/JIT count/mark and allocator/object protocols remain
+pending. Exclusive NativeWorld admission remains required and enabled.
+
+### Exact evidence
+
+The fixture generates the same runtime dat.h macros and compiles actual context/
+register/error/scope adapters, retained Proc declarations and OS ports. It extracts
+the unchanged hosted owner_error/error/nexterror/kprotect bodies, not a replacement
+unwinder. Per backend: eight actual OS owners, 640 nested transfers, 960 final
+native message frees, preserved outer owners and diagnostics, normal-pop/guard/
+reentry refusal, closed/reused generations, error-stack exhaustion and an unlinking
+callback that frees its own record. Heap-resident episode metadata avoids reading
+indeterminate modified automatic locals after setjmp.
+
+Native-selected/forced-lock backends and ten isolated semantic controls pass
+normal, nonrecovering UBSan and focused TSan. Thirteen affected full runtime gates
+pass, including errors, elastic OS owners, RC and native scopes. Native owner/
+world/REG/ownership controls pass. Instrumented Debug INTERPRETER helper-RC and
+hosted exception workloads pass TSan; not whole-VM/JIT or ARM/RV certification.
+Independent CMake example, installed SDK example/driver and strict C89/C++98
+headers pass. Selected ba26accb vendor manifests remain 1096 runtime/312 bootstrap.
+
+Detailed protocol:
+https://github.com/bhgv/flashVM/blob/master/disVM/runtime/NATIVE-UNWIND.md
+
+Please treat this as hosted native error-boundary integration, not completion of
+managed process cleanup or permission to mix atomic and plain concurrent heap
+access. The next owning conversion should preserve the inventory's C-stack and
+collector retirement constraints, with explicit managed roots before native wait.
+No new shared Dis64 IDs or activation agreement is requested in this series.
