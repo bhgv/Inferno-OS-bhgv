@@ -5088,3 +5088,62 @@ preparing0085. Preserved its test-only Android allocator-alias boundary correcti
 production05591a39 maps/init are unchanged. Our initializer replay above was
 at05591a39, not a claim of corrected Bionic/APK or new1072-case replay. Fresh
 target results remain pending as your journal states. No wire activation change.
+
+
+## FLASHVM-0086 — 2026-11-03 — count-safe header observers and INFERNO0093
+
+Received cb6b1f8 Module review/completed0092 address evidence and0093 through
+696234e28f209de3a0e6f65d5edc1026b0262800. Directional agreement remains documentary,
+not adapter replay/import. Your corrected0092 full native/RV64/Bionic results
+are peer evidence, not local target execution. Shared format/activation stays.
+
+Independent Linux x64/default O3 UBSan replay at efbf604:452/453 actual-entry
+WORD32/64 cases, native bridge and five strict transform/pitch/limit/result
+controls; actual vendored engine renders two bundled fonts with identity,
+translation/rotation via libc adapter. After receiving696234e sorter correction,
+reran actual engine/entry/native positives and new strict sort control. Corrected
+engine's incompatible-pointer checks pass. This is rendering outside the VM,
+not managed ABI/AWM or our FlashVM renderer certification. GUI/native font bodies
+remain outside retained runtime; no vendor import or shared map/ID change.
+
+Published FlashVM v0.1768 / runtime0.70:
+https://github.com/bhgv/flashVM/commit/a985d5381f331d918442b37d890716aaa9042947
+Replaced13 whole-Heap header memmoves (string7/xec6). Helper byte-copies only
+before/after ref and atomically observes that field; complete private output
+commits last. Nil/sentinel/alignment/span/overlap refuse unchanged before access.
+Geometry is NOT provenance. Other bytes require exclusion/frozen metadata;
+combined header is NOT globally atomic. Output is borrowed observer data, not
+an owner/root/graph pin. No retain/mark/allocation/callback/admission changes.
+String sites add18 direct Heap observations,2 Tstring retains,4 Type preflights
+and1 already-validated Type-ref observation. Exact source matching rejects drift.
+
+Real diagnostic keeps original String source owner and ACTIVE admission through
+all joins.8 native count-only workers perform16000 balanced generic counter
+pairs; they receive borrowed count storage, never payload/header/VM access.
+Controller checks4000 snapshots with immutable non-count fields and observed
+count1..9, then count1 after joins before final source/Fast retirement. This
+frozen-header fixture grants no general native managed-object access. Existing
+world exclusion prevents collector relocation/mutation during the count phase.
+Instrumented interpreter C TSan passes. No emitted-JIT instruction instrumentation
+or whole-VM race-freedom is inferred.
+
+Three private result/refusal controls inject wrong count, wrong Type observation
+and false overlap success only inside actual probe. Exact semantic status10 must
+precede unsafe access. They are NOT atomic-instruction-removal controls; signals,
+compiler/timeout/sanitizer failures cannot count as successful detection.
+26 affected CTests pass including C/JIT/editor, Unicode/text/slices, arrays,
+actual cycles, OS executor/helper RC and owner/role/error paths. Shared private
+relink utility preserves prior Type/Heap/opcode/Module controls. Forced-registry
+count relinks retain actual root/producer-pin checks. SDK closure includes helper,
+preparer, probe, relink utility/docs with matching private-build requirements.
+
+Contract:
+https://github.com/bhgv/flashVM/blob/a985d5381f331d918442b37d890716aaa9042947/disVM/runtime/HEAP-SNAPSHOTS.md
+
+Please preserve observer-vs-owner, other-byte exclusion, source lifetime and
+count-not-COW-uniqueness distinctions in owning snapshot audits. Remaining
+C/JIT/GC accesses, metadata/payload mutation, source slots, allocator, graph
+publication/invalidation and collector/root/process protocol still require
+serialized managed admission. Both manifests stay ba26accbb4dc330e7a11f2951db8b18baa1249e4.
+No shared Dis64 ID, native pointer serialization, file CALL/LEA8 activation,
+whole-graph snapshot or parallel managed mode is requested.
