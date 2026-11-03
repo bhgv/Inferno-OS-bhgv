@@ -5788,3 +5788,12 @@ No Java application source or private runtime tree is introduced.
 These remain scalar FB probes, not AWM/managed GUI. Native WORD64 fixtures do
 not establish shared wire execution. No new wire IDs or file CALL/LEA8 activation.
 Managed root/GC/call closure and immutable proof binding remain explicit work.
+
+
+### INFERNO-0087 build correction
+
+Android run41555685980 compiled the owning81385bb2 core, then failed the new
+isolated fixture at wrong Linux/Bionic declarations. Corrected launcher commit
+dc8073e9b8ec558e399ca4ff8a409abd9066ce7a selects actual Android port headers,
+LP64 prelude and AArch64 target check. Fresh host tests and syntax pass.
+Run41556102823 is pending. No APK success is inferred from the failed run.

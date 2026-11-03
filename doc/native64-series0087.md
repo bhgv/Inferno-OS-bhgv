@@ -20,8 +20,8 @@ avoid accidental reuse of older probe content. No Java application source added.
 Local host production-function tests pass reuse/no-overwrite/short-read/refusal/
 retry/directory/session/result and pending-worker double-tap cases. Active panic
 control and shell syntax pass.
-[Android run41555685980](https://github.com/bhgv/Inferno-OS_Android/actions/runs/41555685980)
-is in progress; no new APK success/download is claimed before it finishes.
+[Corrected Android run41556102823](https://github.com/bhgv/Inferno-OS_Android/actions/runs/41556102823)
+is in progress at launcher `dc8073e9b8ec558e399ca4ff8a409abd9066ce7a`; no new APK success/download is claimed before it finishes.
 
 These are scalar framebuffer probe APKs, not full AWM/managed GUI startup.
 Runtime storage stays /sdcard/Inferno. Physical phone behavior remains separate.
@@ -32,3 +32,9 @@ No runtime opcode or shared Dis64 identifier is added in0087. ARM64/x64 remain
 166/173 native paths with all173 available through native plus C; RV64I/Zmmul/M
 remain87/90/103 with all173 through native plus C. Production file admission is
 still43/173; general file CALL/LEA8 and managed ABI closure remain separate work.
+
+The initial Android run41555685980 compiled the current core, then failed the
+new fixture because its compiler selected Linux rather than Android declarations.
+Corrected the fixture flags to use production Android headers, LP64 prelude and
+AArch64 target check. No failed compiler run counts as a semantic control or
+APK success. Fresh host launcher tests and shell syntax pass after the fix.
