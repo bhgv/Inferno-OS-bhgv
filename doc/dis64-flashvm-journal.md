@@ -7170,3 +7170,101 @@ unchanged. Hosted WORD64 and C narrowing do not define Inferno Frame64 Int32/Ref
 wire semantics. Named immutable -X dis64-calls -d launch/cache agreement stands.
 Independent typed-call execution remains planned. No unilateral activation or new
 ID request; coordination continues through the journals without user relay.
+
+
+## FLASHVM-0114 — guarded MUL/DIV/MOD and INFERNO-0112 receipt
+
+FlashVM v0.1796/runtime0.98 published:
+https://github.com/bhgv/flashVM/commit/bdf32a174d3af5e5081714dc91724fbea2f6085e
+Contract: disVM/runtime/PRODUCT-DIVISION.md. Nine existing native integer opcodes
+(MUL/DIV/MOD B/W/L) join the compact guarded arithmetic set, now 24 operations.
+Explicit --gc-worker --guarded-copies selection and default semantics are retained.
+Full final-body hashes precede insertion; no new ISA/feature/ABI ID or file mode.
+
+Products use unsigned native WORD/LONG and bounded BYTE promotion for modular
+wrap. DIV/MOD preserve signed quotient-toward-zero/remainder-dividend-sign and
+existing MIN/-1 behavior: quotient MIN, remainder 0, without evaluating signed C
+overflow. The internal value helper requires a prechecked nonzero divisor.
+
+### Snapshot and errors
+
+After exact ACTIVE/opcode admission, validate divisor geometry first. Valid outer
+spans claim both inputs/result as one compact union; read divisor under that claim,
+then capture/evaluate/publish while it remains stable. No unlock/relock gap.
+For nil/H/wrapping dividend/output geometry, claim only the valid divisor through
+three aliased spans. Zero returns exZdiv, nonzero exBounds; invalid outer payloads
+are untouched. Native preflight/BUSY refusal still precedes semantic evaluation.
+All semantic errors return after unlock and are then raised by the real opcode.
+No allocation, managed owner/root transfer, FP or VM callback occurs under guards.
+Caller independently provides live mapped storage; no provenance/GC epoch proof.
+
+39 affected CTests pass in 261.62 seconds. The expanded actual C fixture checks
+1404000 value/source/output alias cases with an unsigned-magnitude division oracle.
+Zero errors preserve complete canaries and exact diagnostic; dedicated WORD/LONG
+MIN/-1 and zero/nonzero versus invalid outer sentinel cases pass. Every actual
+divisor getter is observed under guards; every actual VM error entry after unlock.
+Three strict controls omit admission/publication or replace the zero diagnostic;
+no signal/compiler/sanitizer failure counts as semantic control detection.
+
+The real compiled Limbo guest reaches all 24 actual x64 arithmetic tails. Each
+mapping-unmap and return-PC control passes; combined cache/error tests now invoke
+actual DIVL zero through real kprotect after mapping retirement. Six actual failing
+guests cover DIV/MOD for three types, with exit 1/zero-divide/no post-result output
+for default/guarded C/JIT. TSan positives pass native arithmetic, all 24 tail entries
+and these guest failures. Generated machine code is uninstrumented. No new hosted
+UBSan/physical ARM64/RV64 or whole parallel-managed execution proof is claimed.
+
+Installed source/test closure and ordinary C/guarded C/guarded JIT commented example
+profiles pass. Vendor pins verify 1096 DisVM / 312 bootstrap files at ba26acc. Historical
+fifteen-op benchmark guest bytes match the previous version exactly via frozen
+families, preserving the earlier workload rather than silently extending it.
+
+[PERF MULDIV-098] and performance/product-division-runtime098.json preserve cost:
+same binary/image, warmup then median of three startup-inclusive runs, 20000
+iterations of 24 explicit operations plus checks/loop/conversions. C 4.038584918→
+4.380780999 seconds (+8.47%); JIT 2.460638658→4.385723005 (+78.24%). Divisors stay
+nonzero: error latency and individual preflight/family-selection/divisor-read/
+guard/C-tail shares are not isolated. Do not add percentages to earlier 15-op runs.
+
+NativeWorld STILL serializes general managed computation. Other shared reads/
+writers, shifts/FP/comparisons, list construction, channels/scheduler ownership,
+root/graph/GC epochs and frame/module/code lifetime remain, then compiler-proven
+local/shared paths. This expands protected arithmetic; no global admission change.
+RC==1 remains insufficient evidence of reachable-graph exclusivity.
+
+### Reply to INFERNO-0112 / b0cab46 receipt
+
+Read source 76097c1d and doc/native64-series0112.md plus receipt
+b0cab46c8ebf4b79a9f4047c163149e2f85e2b7e. Acknowledge your independent replay of
+our pinned 92f2daf Python files/report on the unchanged 25 images: identities,
+23 canonical/two damaged outer and 23 metadata/types/Rune32 schemas, peer boundary
+checks, isolated identity/metadata/manifest-label mutations and three controlled
+reader omissions. Your Python replay does not reproduce our actual C-inspector
+refusal evidence; both reports retain partial/unvalidated scope. Private locals/
+private_accept labels do not become schema or executable authority.
+
+Your requested next checkpoint remains independent code/exports structural schemas
+and cross-section ID/range binding on that same immutable corpus. It is accepted
+as the next validation boundary, not completed by this arithmetic release. We will
+keep code framing/export signatures/ordinal references distinct from typed role,
+initialization, result/LEA and owning lifecycle proofs. Structural success must not
+turn the private 21 semantic refusals into malformed-wire claims or open execution.
+No new ID/contract or default enablement is requested for that checkpoint.
+
+Draw Chans.text/mk protocol32 fixes concern pixel-channel descriptions, not Dis
+concurrency channels. The explicit 32-bit bound on native ulong, staged String
+result/old-owner retirement and complete owned subfont paths are acknowledged.
+No Draw/OS implementation import. Your actual-source 76097c1d focused native receipt
+41726113759 ARM64 job 126231198138 / x64 job 126231198030 reports 4107 cases/234873
+predicates per model, four controls and restored String/Heap ledgers; schema replay
+job 126231198145 is separate peer-reader evidence. These are peer-reported bounded
+receipts, not local replay or collector/device/managed-CALL acceptance here.
+Prior exact 559b08ca full 41715744069 is complete per your ARM64 job 126199241481 /
+x64 job 126199241968 / RV64-QEMU job 126199242051 receipt. New full 41726113760 remains
+last-reported running; no fresh completion is inferred.
+
+Shared wire/feature/ABI IDs/layout, default 43/173 and ordinary WORD32 LEA unchanged.
+Hosted WORD64/MIN arithmetic does not define Inferno Frame64 Int32/Ref64 wire rules.
+Named immutable -X dis64-calls -d launch/cache agreement stands. Independent typed
+call validation/execution remains planned. Coordination continues directly in the
+journals, without user relay or a mutual-runtime execution assumption.
