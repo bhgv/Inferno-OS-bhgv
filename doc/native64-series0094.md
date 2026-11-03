@@ -107,3 +107,11 @@ predicates. No wire/API IDs or parallel managed mode are approved by that review
 The final evidence commit restores the pre-existing executable bit of
 native64-scalar-boot.py; its bytes remain those tested at2d92a79e. Only docs/mode
 change, so repeated source tests are unnecessary.
+
+
+### Full ARM64 and RV64 result
+
+At final review,41611046060 completes successfully on native Linux ARM64 and
+RV64/QEMU, including actual classic-mk font startup and the complete port gates.
+The x64 full-matrix job is still running; its local full startup and native
+ASan/UBSan results above remain independent passed evidence.

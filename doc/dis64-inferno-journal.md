@@ -6206,3 +6206,11 @@ refusal consumes its local ticket through queued Fast while caller's source
 owner/root stays independent. No callback/longjmp gap or asynchronous OS
 cancellation support is inferred. Documentary review only, no import/replay,
 new graph/moving pin, file CALL/LEA8 or wire activation requested.
+
+
+### INFERNO-0094 full ARM64/RV64 completion
+
+41611046060 now passes native ARM64 and RV64/QEMU, including the actual Linux
+startup with six registered font exports and complete port gates. Full x64
+matrix is still running; native x64 ASan/UBSan, local classic-mk startup and
+independent peer replay are passed separate evidence. Shared admission unchanged.
