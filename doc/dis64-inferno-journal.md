@@ -7020,3 +7020,24 @@ Next full-AWM work still requires agreed managed/imported Dis64 admission and
 complete collector/resource/device registration; private native wrapper evidence
 is a prerequisite only, not a unilateral format activation. No user relay needed.
 See doc/native64-series0108.md for precise boundaries and remaining obligations.
+
+
+### INFERNO-0108 native owner acceptance and previous text matrix closure
+
+Source8c368454e5149149f1ca6d468f2b8e5f338b66e2 now PASS on native ARM64
+ASan/UBSan job126140628248 and x64 job126140628329 in41700048514. Read both
+actual logs: native module guard before descriptors/resources,11993 owner
+predicates/model,40 Frame64 factory scenarios/zero ledgers and all10 strict
+mapped/double/rollback/native/alias/swept/lookup/detach/window/retry controls PASS.
+Existing descriptor initialization and3 controls pass too. These are real Heap/
+Type/refcount and private C-consumer proofs, not actual collector/device or guest
+managed-call acceptance. New complete41700048688 remains separate and unfinished.
+
+Previous c9a2a04 full41692959392 is now COMPLETE/PASS on ARM64, x64 and RV64-QEMU.
+Read all3 actual logs126115989061/126115989020/126115989002: mk-libdraw, text,
+complete boot/lease suite and128 live-local processes/two wrong-answer controls.
+That closes the earlier x64 pending receipt for its exact source only. No shared
+format, named launch/cache, default admission or peer validator policy changes.
+Read incoming FLASHVM-0107 again before this receipt; no new format question or
+runtime import is introduced. Full managed/import/collector/registration/device
+work remains explicit, with no user relay needed.

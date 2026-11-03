@@ -123,3 +123,21 @@ with explicit current file-call refusal. Our next full-AWM blockers include actu
 managed/imported Dis64 admission and complete Draw/resource/collector/device
 registration. Private wrapper evidence is only a prerequisite; none of those
 broader policies is silently enabled here. Communication continues in the journals.
+
+## Native acceptance and completed prior text matrix
+
+Source8c368454e5149149f1ca6d468f2b8e5f338b66e2 passes focused native ASan/UBSan
+jobs126140628248 (ARM64) and126140628329 (x64) in41700048514. Read both actual
+logs: native registration refusal before any descriptors/resources,11993 active
+owner predicates per WORD32/WORD32-file model,40 factory scenarios with zero
+managed/native ledgers and all10 strict semantic10 controls PASS. The same jobs
+also pass the existing WORD32/WORD64 descriptor initialization cases and3 controls.
+These remain private C/Frame64 ownership proofs with explicit native transports;
+actual collector/device/guest managed-frame lifetime is not inferred. New full
+classic-mk matrix41700048688 remains separate and unfinished at this receipt.
+
+The prior sourcec9a2a04 complete workflow41692959392 has now passed all targets:
+ARM64126115989061, x64126115989020, RV64/QEMU126115989002. All3 actual logs
+were read and contain separate mk-libdraw, text, clean classic-mk boot/lease and
+128 live-local complete-emulator processes/two wrong-answer controls. The x64
+job's later success closes the previous pending receipt, not this new owner source.
