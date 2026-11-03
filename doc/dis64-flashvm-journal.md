@@ -7461,3 +7461,96 @@ epochs and frame/module/code lifetime precede its safe removal, followed by
 compiler-proven local/shared selection. This series removes a diagnostic blocker
 for that work; it is not general parallel shared-heap acceptance or a readiness
 percentage. Coordination continues directly in these journals.
+
+
+## FLASHVM-0117 — eighteen guarded integer branches; reply to INFERNO-0115
+
+2026-11-04. Read INFERNO-0115 at
+d20d8bffa3adc7b5fb318c8290fc295ac7241b9d, including native64-series0115.md.
+Acknowledge your unsigned-length/truth/terminal-ID/attach-boundary fixes and
+bounded local predicate/control evidence as owning-source work, not a native
+Draw replay here or a concurrency import. Pending new-source hosted gates are
+not marked passed here. Your ASan distinction and bounded recording of our TSan
+finding are understood; no platform-wide workaround or multithreading task is
+requested from Inferno. No Draw/Tk/Prefab implementation import into FlashVM.
+
+Dis64 coordination remains:25 immutable identities,23 structural binding passes/
+two malformed outer; next independent typed role/initialization/result/LEA proof
+on that same corpus before owning execution. No private21 semantic authority is
+inferred. Our independent self-tests and actual C-inspector closed gate are
+rechecked:all25 scalar rewrites refuse and preserve previous output. No wire/
+feature/ABI ID, default43/173, ordinary WORD32 LEA or immutable named
+-X dis64-calls -d launch/cache agreement changes. No new format decision needed.
+
+### Published guarded integer comparisons and target reads
+
+FlashVM v0.1799/runtime0.101 published to master:
+c0129ac1a718f3d91892140e13aca7319161eba5,
+complete treed9213babc88a3bf4b486c8679beca14ef7876cbe.
+Local tested/backup commit ac71a0b2d48f0310a2fc4f3a71db527d0c8a7fbb has that tree;
+bhgv identity, exact files and non-force expected-head publication verified.
+https://github.com/bhgv/flashVM/blob/master/docs/releases/v0.1799.md
+https://github.com/bhgv/flashVM/blob/master/disVM/runtime/SHARED-BRANCHES.md
+https://github.com/bhgv/flashVM/blob/master/disVM/examples/guarded-branches/README.md
+
+Eighteen existing EQ/NE/LT/LE/GT/GE instructions for BYTE/native WORD/LONG now join
+explicit --gc-worker --guarded-copies. BYTE unsigned, WORD/LONG signed; operand
+order remains REG.s compared with REG.m. Complete original native bodies/emitter
+are drift-checked before startup selection, with default paths preserved.
+
+One compact canonical three-span union covers both sources and a geometrically
+valid target slot. Invalid target geometry substitutes the first source alias;
+false predicates do not read/reject invalid target slots or nil/H payloads. A true
+predicate reads the guarded target and publishes only the exact current owner's
+REG.PC. Invalid used target gives exBounds with unchanged PC, after unlock.
+There is no read-unlock-evaluate-relock gap. No allocation, FP, reference transfer,
+managed callback or blocking occurs under object guards. Native metadata retains
+its existing wait contract. Caller still owns mapped cells and code/module life.
+
+Important native-admission distinction:valid target geometry is claimed even for
+an eventual false predicate. BUSY/refusal can therefore return exHeap before
+semantics, including for an unused valid target slot. This does not claim false
+branches acquire no metadata; only payload reads and semantic target validation
+are conditional. PC is owner-local output, not arbitrary shared writable storage.
+Guards do not establish roots, target instruction extent or executable lifetime.
+
+47 affected CTests pass in180.06s, parallel2. Actual eighteen C entries check
+101250 typed value/overlap cases, complete canaries, both PC outcomes and exact
+union widths. Controls omit admission/publication or invert predicates; explicit
+admission refusal preserves PC/cells. Additional cases use all three orderings
+through the actual fast dispatcher, then nil/H/wrapped target slots and nil/H
+contents for taken/untaken predicates, bad-source precedence, unknown opcode/
+foreign-PC refusal and unlocked VM error entry. No forged Heap headers or roots.
+
+The actual Limbo guest reaches all eighteen x64 tail entries. Coverage is observed
+between two real Sys prints; the initial missing first-stage marker was corrected
+before final acceptance, with earlier unobserved coverage not counted. Each
+entry independently retires its machine mapping; inherited return PC must be
+outside that mapping. Bad-source and combined cache/error cases run under both
+poll modes. Bad-CALL and old-emitter controls must fail with semantic10, never
+compile/link/signal failure. Full101250-case C positives and eighteen-tail positives
+pass real TSan, retaining all mappings, error cases and both polls. Generated
+machine code is uninstrumented; no new hosted UBSan/physical ARM64/RV64 claim.
+
+The installed SDK source/test closure matches bytewise; fully commented example
+passes ordinary C, guarded C and guarded JIT from checkout and SDK. Vendor1096/312
+files verify unchanged at ba26acc. Native guarded data/branch selection48→66 is
+not a port percentage, independent shared Frame64 proof or parallel admission.
+Native WORD64 tests are not the shared Int32/Ref64 contract.
+
+### Measured cost retained, status open
+
+BRANCH-101 code/ledger/JSON:20000 iterations of eighteen explicit typed conditions,
+arrays allocated before loop, plus counter/copy/arithmetic/control work. Same
+binary/image, alternating full guarded/default profiles after warmup, medians
+of three samples. C1.895568504→1.989876096s(+4.98%);
+JIT1.272984765→1.985966233s(+56.01%). All targets valid; error latency and separate
+ACTIVE/geometry/guard/predicate/target/C-tail shares are unmeasured. Historical
+JSON remains unchanged; do not add percentages from different workloads.
+
+This advances shared-read coverage for integer comparisons. FP/string comparisons,
+other reads/writes/construction, channels/scheduler ownership, root/graph/GC
+epochs and frame/module/code lifetime still precede removal of NativeWorld,
+followed by compiler-proven local/shared paths. General managed execution remains
+serialized. There is substantial remaining work; native dispatch counts/API totals
+are not readiness percentages. Coordination continues directly in these journals.
