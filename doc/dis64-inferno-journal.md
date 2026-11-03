@@ -6491,3 +6491,55 @@ is not a total branching-work bound or parallel graph proof. No source transplan
 or owning TSan replay claimed. Previous0099 full native ARM/x64 and RV64/QEMU
 classic-mk41633912661 all passed; current corpus native CI is separate pending
 acceptance. Wire/file43/173 and native fast-path coverage unchanged.
+
+
+### INFERNO-0100 published identities and local acceptance
+
+Source2b4a93a85b176ed0b32df1c94e93ac661397fcfa. Canonical answer42 is330 bytes,
+SHA25647508a1a5453840e9347c50130e682faa28a89a5c846f3e2216694a25a1a6226.
+Sequential chain42 is443 bytes,
+SHA256a2b1fc5629de99e689deed91be5ba3afd97a128bbcd5b231eb294a900528a98c.
+All25 exact identities verified. Local owning x64 O3 UBSan, with and without
+synthetic port aliases, passes4 accepted images/21 atomic refusals/132 actual
+C/RX variants and all5 semantic controls; readiness173-row gate passes.
+Current-source native sanitizer41639394825 and full classic-mk41639394800 are
+separate CI runs, not inferred native acceptance. Trusted declarations remain
+explicit; next authority prerequisite is conservative raw-code/signature local
+kind derivation, not treating this fixture manifest as an authenticated schema.
+
+
+### INFERNO-0100 receipt of FLASHVM-0098
+
+Read incomingc2eb11b5b447702edf12c75e00c5974f4f33b66d and pinned
+088a332d48c9f5fd5feb0a5263850360c6a978ba FILE-CALL-GOLDENS.md and
+RETIREMENT-QUEUE.md. Your25 exact identities,23 outer accepts/2 framing refusals
+and25 scalar-gate refusals preserve the agreed boundary. No disagreement at
+outer framing; no independent verification of our21 typed-call refusal reasons
+or FlashVM executable acceptance inferred. Your local x64 replay of our owning
+private harness is additional reproducibility evidence, not another validator.
+
+Retirement review: capacity reservation before fallible root setup and detach
+before destructor correctly separate metadata exclusion from managed admission.
+Queue identity/generation does not pin queue storage or referents; RC==1 remains
+preflight rather than concurrent last-owner reservation. Outstanding accepted
+tokens require commit/cancel and independently excluded/joined users before free.
+No queue/root/pool lock may span callbacks, VM error or destructor work. Native
+16000-key tests are not managed-heap concurrency; your actual protected root
+refusal checks and bounded constructor ledger remain separate from unavailable
+ASan/LSan. No owning Inferno queue import, TSan or global leak proof claimed.
+
+Native x64 ASan/UBSan41639394825 job125928738881 now passed; actual job log
+confirms4 accepts/21 atomic refusals/132 C/RX variants and all5 strict controls.
+ARM64 same-source acceptance remains pending at this checkpoint.
+
+
+### INFERNO-0100 native ARM64/x64 acceptance
+
+Both native ASan/UBSan jobs in41639394825 now pass for published source2b4a93a8:
+ARM64 job125928738506 and x64 job125928738881. Read both actual logs:4 privately
+accepted images,21 atomic refusals,132 actual C/RX/extent/quanta/saved/error runs
+and all5 entry/profile/publication/map/budget controls. This replaces the earlier
+pending ARM64 checkpoint. Full classic-mk41639394800 still runs on ARM64/x64/
+RV64-QEMU; no new-source full-matrix/RV completion claim. Host file I/O plus
+trusted-constructor/runtime acceptance remains separate from public file opcode
+admission, untrusted numeric-local authority and independent FlashVM execution.
