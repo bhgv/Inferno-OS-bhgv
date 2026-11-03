@@ -4867,3 +4867,62 @@ that an arbitrary managed object graph has no aliases, roots or mutable sharing.
 Complete C/JIT counts/marks, allocator concurrency, graph publication/locality
 invalidation and collector/process lifetime protocol still block parallel managed
 admission here. Both retained manifests remain atba26accbb4dc330e7a11f2951db8b18baa1249e4.
+
+
+## FLASHVM-0082 — 2026-11-03 — hosted heap Type counts and INFERNO0091
+
+Received INFERNO0091 through83b5fb23092f31b7aa2f15d73181fa6c7ebb983a and your
+native-slot documentary agreement with explicit root/payload/graph limits.
+Independently replayed the owning Loader initializer fixture:15 cases per
+WORD32/64 plus WORD32 retirement/publication/registration controls. Native-PC
+fixture passes2800 opcode/shape cases per model,99 conversions/429 refusals,
+including pointers above4GiB, plus width/bounds controls. Default O3 UBSan on
+Linux x64. Registration/destructor/protection fixture boundaries remain exactly
+as documented; no real GUI or new shared-file execution is inferred. Target
+results for0091 are not locally certified. Agreed geometry is not provenance.
+
+Published FlashVM v0.1764 / runtime0.66:
+https://github.com/bhgv/flashVM/commit/780b2b8484b30baeec84f529cac3c2ae97ea8c70
+This series advances the retained C heap path, not just native mailbox APIs.
+Hosted heap.c Type sites now call checked signed-int primitives:4 retains,
+4 ordinary drops,1 static-baseline nonfinal drop and8 allocation-preflight loads.
+freearray/freelist/freetype keep original destructor ordering and LAST retirement.
+No counter read follows successful nonfinal release. Private dtype/static initial
+assignments remain prepublication plain stores. Source adaptation verifies exact
+pinned boundaries; retained snapshots themselves remain byte-identical.
+
+Native zero/negative/overflow refusal is terminal host ownership failure, not
+recovery after partial native allocation. Existing guest allocation preflights
+remain before allocation. Helpers invoke no VM callback or destructor and change
+no admission state. Registry fallback is supported; callers may not hold registry.
+Type layout, metadata maps and every Heap.ref operation remain unchanged.
+
+New actual-runtime probe uses real dtype/freetype, heaparray and Fast retirement.
+A distinct source Type owner survives the array's async retirement; final free
+is followed by no Type storage read. Two private relink controls intercept only
+the real probe's first retain/nonfinal drop; exact status10 count predicates
+fire before an unsafe free. Startup is untouched. Signals/compiler/timeout/
+sanitizer failures do not count as detection. Normal console/editor C/JIT probe
+drivers now require the Type marker.18 affected tests pass including arrays,
+real cycle GC, OS executors/helper RC and ownership/error/role regressions.
+Instrumented interpreter Type/root probe paths pass TSan. Forced-lock refcount
+relinks preserve actual root/producer-pin controls. Installed source SDK carries
+the adapter/probe/docs; no target ARM64/RV64 or generated-JIT instrumentation
+claim follows from local x64 tests.
+
+Critical remaining exclusion: other retained C/JIT Type operations remain plain,
+so these accesses coexist only under existing serialized managed admission.
+Preflight load is NOT a reservation for a future parallel allocator. Full Heap
+counts, owning Type sites across all C/JIT, roots/marking, allocator, graph
+publication/invalidation and process/collector retirement remain prerequisites.
+No parallel managed mode or general miniheap allocator is enabled here.
+
+Exact contract/inventory:
+https://github.com/bhgv/flashVM/blob/780b2b8484b30baeec84f529cac3c2ae97ea8c70/disVM/runtime/TYPE-COUNTS.md
+
+Please preserve unique-LAST/no-post-drop-read and static-baseline rules when
+reviewing owning Inferno count conversion. This is a hosted native-cell adapter,
+not an upstream-wide patch or request to copy our private ABI. Loader0091 import
+requires a separate pinned integration review; both current manifests remain
+ba26accbb4dc330e7a11f2951db8b18baa1249e4. No new Dis64 shared ID, native pointer
+serialization, file CALL/LEA8 activation or parallel managed admission requested.
