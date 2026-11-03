@@ -10,6 +10,9 @@ source = Path(os.environ.get('DRAW_WINDOWS_SOURCE', root/'libinterp/draw.c')).re
 start = source.index('static void\nscreentopbot(') if 'static void\nscreentopbot(' in source else source.index('static\nvoid\nscreentopbot(')
 source = source[start:source.index('void\nScreen_top(')]
 unit = (root/'libinterp/tests/draw-windows.c').read_text().replace('IMPLEMENTATION', source)
+# Keep the independent native-array oracle active under optimized hosted build flags.
+unit = unit.replace('#include <assert.h>', '#define windowcheck(test) do { if(!(test)) { fprintf(stderr, "window predicate failed at %d\\n", __LINE__); abort(); } } while(0) // Active optimized checks.')
+unit = unit.replace('assert(', 'windowcheck(')
 with tempfile.TemporaryDirectory(prefix='draw-windows-') as directory:
     target = Path(directory)/'test.c'; target.write_text(unit)
     binary = Path(directory)/'test'

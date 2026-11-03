@@ -884,35 +884,53 @@ freedrawdisplay(Heap *h, int swept)
 		display_dec(reference);
 }
 
+
+/* Retain the source display until its new solid-colour image replaces any aliased result owner. */
 void
 Display_color(void *fp)
 {
 	F_Display_color *f;
-	Display *d;
+	Draw_Display *source;
+	Draw_Image *result;
+	Display *display;
+	void *old, *slot;
+	ulong bits;
 	int locked;
 
 	f = fp;
-	destroy(*f->ret);
-	*f->ret = H;
-	d = checkdisplay(f->d);
-	locked = lockdisplay(d);
-	*f->ret = color((DDisplay*)f->d, f->color);
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	source = f->d;
+	bits = f->color;
+	display = checkdisplay(source);
+	locked = lockdisplay(display);
+	result = color((DDisplay*)source, bits);
 	if(locked)
-		unlockdisplay(d);
+		unlockdisplay(display);
+	drawcommitresult(slot, result, old);
 }
 
+
+/* Capture the flush policy before resolving an image that may need a clip update. */
 void
 Image_flush(void *fp)
 {
 	F_Image_flush *f;
 	Image *d;
 	DImage *di;
-	int locked;
+	int locked, func;
+	Draw_Image *source;
 
 	f = fp;
-	d = checkimage(f->win);
-	di = (DImage*)f->win;
-	switch(f->func){
+	source = f->win;
+	func = f->func;
+	d = checkimage(source);
+	di = (DImage*)source;
+	switch(func){
 	case 0:	/* Draw->Flushoff */
 		di->flush = 0;
 		break;
@@ -1780,30 +1798,40 @@ Image_arrow(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+
+/* Acquire the new name before releasing a displaced name, including a self-aliasing String owner. */
 void
 Image_name(void *fp)
 {
 	F_Image_name *f;
-	Image *i;
-	int locked, ok;
-	char *name;
+	Draw_Image *source;
+	Image *image;
+	String *name, *replacement, *old;
+	WORD *slot, result;
+	int locked, in;
+	char *text;
 
 	f = fp;
-	*f->ret = -1;
-	i = checkimage(f->src);
-	name = string2c(f->name);
-	locked = lockdisplay(i->display);
-	*f->ret = ok = nameimage(i, name, f->in);
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(result))
+		error(exHeap);
+	source = f->src;
+	name = f->name;
+	in = f->in;
+	image = checkimage(source);
+	text = string2c(name);
+	locked = lockdisplay(image->display);
+	result = nameimage(image, text, in);
 	if(locked)
-		unlockdisplay(i->display);
-	if(ok){
-		destroy(f->src->iname);
-		if(f->in){
-			f->src->iname = f->name;
-			D2H(f->name)->ref++;
-		}else
-			f->src->iname = H;
+		unlockdisplay(image->display);
+	if(result){
+		replacement = in ? name : H;
+		if(replacement != H)
+			D2H(replacement)->ref++;
+		old = source->iname;
+		drawcommitresult(&source->iname, replacement, old);
 	}
+	memmove(slot, &result, sizeof(result));
 }
 
 /* loadimage/nsvg strides use signed int; validate before multiplying. */
@@ -2148,22 +2176,36 @@ Display_readimage(void *fp)
 	drawcommitresult(slot, result, old);
 }
 
+
+/* Complete source validation and native writing before publishing an unaligned or overlapping scalar. */
 void
 Display_writeimage(void *fp)
 {
-	Image *i;
+	Image *image;
 	F_Display_writeimage *f;
 	Sys_FD *fd;
+	Draw_Display *display;
+	Draw_Image *source;
+	WORD *slot, result;
+	int descriptor;
 
 	f = fp;
-	*f->ret = -1;
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(result))
+		error(exHeap);
 	fd = f->fd;
-	if(fd == H)
-		return;
-	i = checkimage(f->i);
-	if(checkdisplay(f->d) != i->display)
-		return;
-	*f->ret = writeimage(fd->fd, i, 1);	/* TO DO: dolock? */
+	display = f->d;
+	source = f->i;
+	result = -1;
+	if(fd == nil)
+		error(exNilref);
+	if(fd != H){
+		descriptor = fd->fd;
+		image = checkimage(source);
+		if(checkdisplay(display) == image->display)
+			result = writeimage(descriptor, image, 1);
+	}
+	memmove(slot, &result, sizeof(result));
 }
 
 Draw_Screen*
@@ -2924,28 +2966,37 @@ static void
 screentopbot(Draw_Screen *screen, Array *array, void (*topbot)(Image **, int))
 {
 	Screen *s;
-	Draw_Image **di;
+	Draw_Image *entry;
+	uchar *data;
 	Image **ip;
 	int i, n, locked;
+	WORD length;
 
 	s = checkscreen(screen);
-	if(array == H || array == nil || array->len <= 0 ||
-	   (uvlong)array->len > 0x7fffffff/sizeof(Image*))
+	if(array == H || array == nil ||
+	   (uintptr)array > (uintptr)-1 - (offsetof(Array, data)+sizeof(data)))
 		return;
-	di = (Draw_Image**)array->data;
-	ip = malloc(array->len * sizeof(Image*));
+	memmove(&length, (uchar*)array+offsetof(Array, len), sizeof(length));
+	if(length <= 0 || (uvlong)length > 0x7fffffff/sizeof(Image*))
+		return;
+	memmove(&data, (uchar*)array+offsetof(Array, data), sizeof(data));
+	if(data == nil || data == H || (uintptr)data > (uintptr)-1-(uintptr)length*sizeof(entry))
+		return;
+	ip = malloc(length * sizeof(Image*));
 	if(ip == nil)
 		return;
 	n = 0;
-	for(i=0; i<array->len; i++)
-		if(di[i] != H){
-			ip[n] = lookupimage(di[i]);
+	for(i=0; i<length; i++){
+		memmove(&entry, data+i*sizeof(entry), sizeof(entry));
+		if(entry != H){
+			ip[n] = entry == nil ? nil : lookupimage(entry);
 			if(ip[n]==nil || ip[n]->screen != s){
 				free(ip);
 				return;
 			}
 			n++;
 		}
+	}
 	if(n == 0){
 		free(ip);
 		return;
@@ -2958,6 +3009,8 @@ screentopbot(Draw_Screen *screen, Array *array, void (*topbot)(Image **, int))
 		unlockdisplay(s->display);
 }
 
+
+/* Keep filtered caller order when placing windows at the top. */
 void
 Screen_top(void *fp)
 {
@@ -2966,10 +3019,12 @@ Screen_top(void *fp)
 	screentopbot(f->screen, f->wins, topnwindows);
 }
 
+
+/* Keep filtered caller order using the generated bottom-operation frame. */
 void
 Screen_bottom(void *fp)
 {
-	F_Screen_top *f;
+	F_Screen_bottom *f;
 	f = fp;
 	screentopbot(f->screen, f->wins, bottomnwindows);
 }
@@ -3002,6 +3057,8 @@ freedrawimage(Heap *h, int swept)
 		display_dec(reference);
 }
 
+
+/* Send the resolved image to the top while holding its display exclusion. */
 void
 Image_top(void *fp)
 {
@@ -3018,31 +3075,44 @@ Image_top(void *fp)
 		unlockdisplay(i->display);
 }
 
+
+/* Capture points before native I/O and copy the final status after publishing successful geometry. */
 void
 Image_origin(void *fp)
 {
 	F_Image_origin *f;
-	Image *i;
+	Draw_Image *source;
+	Image *image;
+	Point log, scr;
+	WORD *slot, result;
 	int locked;
 
 	f = fp;
-	i = checkimage(f->win);
-	locked = lockdisplay(i->display);
-	if(originwindow(i, IPOINT(f->log), IPOINT(f->scr)) < 0)
-		*f->ret = -1;
-	else{
-		f->win->r = DRECT(i->r);
-		f->win->clipr = DRECT(i->clipr);
-		*f->ret = 1;
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(result))
+		error(exHeap);
+	source = f->win;
+	log = IPOINT(f->log);
+	scr = IPOINT(f->scr);
+	image = checkimage(source);
+	locked = lockdisplay(image->display);
+	result = -1;
+	if(originwindow(image, log, scr) > 0){
+		source->r = DRECT(image->r);
+		source->clipr = DRECT(image->clipr);
+		result = 1;
 	}
 	if(locked)
-		unlockdisplay(i->display);
+		unlockdisplay(image->display);
+	memmove(slot, &result, sizeof(result));
 }
 
+
+/* Send the resolved image to the bottom using its own generated frame type. */
 void
 Image_bottom(void *fp)
 {
-	F_Image_top *f;
+	F_Image_bottom *f;
 	Image *i;
 	int locked;
 

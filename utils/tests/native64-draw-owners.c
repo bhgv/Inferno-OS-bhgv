@@ -14,6 +14,7 @@ static void *nativeallocate(size_t,int); // Bounded native allocation service.
 static void *dropwatch; // Owner whose retirement budget is independently known.
 static int dropbudget; // Remaining permitted destroy calls for that watched owner.
 static void *aliasedowner, *aliasedslot; // Observe publication before the old aliased owner disappears.
+static void *retainwatch; // A self-replaced name must own its new reference before displaced retirement.
 static int aliasactive; // Only the selected real Frame64 invocation is observed.
 
 
@@ -21,6 +22,7 @@ static int aliasactive; // Only the selected real Frame64 invocation is observed
 void
 destroy(void *value)
 {
+	if(value==retainwatch) require(D2H(value)->ref >= 2);
 	if(value==dropwatch){ require(dropbudget>0); dropbudget--; }
 	actualdestroy(value);
 }
@@ -37,6 +39,8 @@ struct NativeOwner {
 
 static NativeOwner natives[128]; // Bounded native allocation ledger.
 static int nativecount, nativecalls, freedimages, freedscreens, closes, held; // Exact owning service observations.
+static int flushfailat; // One exact flush may refuse after a packet has been reserved.
+static int expectedin, operationfail, writes; // Bounded native naming/writing service observations.
 static int wirefail, flushfail, factoryfail, packets, flushes, reconfigures; // Bounded transport refusal and effect counters.
 static Image front; // Borrowed display channel description, not an owned graphics device.
 static DImage *retiringimage; // Observe private detachment before native free can block.
@@ -166,7 +170,7 @@ flushimage(Display *d,int visible)
 	USED(visible);
 	require(nativealive(d,4));
 	flushes++;
-	if(flushfail){kwerrstr("resource flush refused");return -1;}
+	if(flushfail || (flushfailat && flushes==flushfailat)){kwerrstr("resource flush refused");return -1;}
 	return 1;
 }
 
@@ -195,6 +199,34 @@ allocimage(Display *d,Rectangle r,ulong channel,int repl,ulong color)
 	image->display=d; image->r=r; image->clipr=r; image->id=nativecalls+100;
 	image->chan=channel; image->repl=repl; image->depth=32;
 	return image;
+}
+
+
+/* Bound vector storage through the same checked allocator used by real Heap objects. */
+static void*
+vectorallocate(ulong bytes)
+{
+	return trackedallocate(bytes,0);
+}
+
+
+/* Naming I/O is a bounded service; source/name ownership and scalar publication stay production code. */
+int
+nameimage(Image *image, char *name, int in)
+{
+	USED(name);
+	require(nativealive(image,1) && held==1 && in==expectedin);
+	return !operationfail;
+}
+
+
+/* Retain the actual input FD object through completion of the controlled native writer. */
+int
+writeimage(int descriptor, Image *image, int dolock)
+{
+	require(descriptor==73 && nativealive(image,1) && dolock==1 && held==0);
+	writes++;
+	return operationfail ? -1 : 19;
 }
 
 
@@ -748,6 +780,7 @@ loadedfactories(int kind, int alias, int failure)
 	void *input, *old, *slot;
 	uchar output[24];
 	F_Draw_Display_rgb rgb;
+	F_Draw_Display_color colorframe;
 	F_Draw_Display_open openframe;
 	F_Draw_Display_namedimage named;
 	F_Draw_Display_readimage readframe;
@@ -761,10 +794,12 @@ loadedfactories(int kind, int alias, int failure)
 	fd->fd=73;
 	input=kind==3 ? (void*)fd : (void*)name;
 	memset(&rgb,0,sizeof(rgb));
+	memset(&colorframe,0,sizeof(colorframe));
 	memset(&openframe,0,sizeof(openframe));
 	memset(&named,0,sizeof(named));
 	memset(&readframe,0,sizeof(readframe));
-	rgb.d=openframe.d=named.d=readframe.d=(Draw_Display*)dd;
+	colorframe.d=rgb.d=openframe.d=named.d=readframe.d=(Draw_Display*)dd;
+	colorframe.color=0x112233ff;
 	rgb.r=-1;
 	rgb.g=256;
 	rgb.b=-2147483647-1;
@@ -777,6 +812,7 @@ loadedfactories(int kind, int alias, int failure)
 	if(alias){
 		switch(kind){
 		case 0: slot=&rgb.d; break;
+		case 4: slot=&colorframe.d; break;
 		case 1: slot=alias==1 ? (void*)&openframe.d : (void*)&openframe.name; break;
 		case 2: slot=alias==1 ? (void*)&named.d : (void*)&named.name; break;
 		default: slot=alias==1 ? (void*)&readframe.d : (void*)&readframe.fd; break;
@@ -793,6 +829,7 @@ loadedfactories(int kind, int alias, int failure)
 		failat=allocations+1;
 	switch(kind){
 	case 0: rgb.ret=slot; Draw_Display_rgb(&rgb); break;
+	case 4: colorframe.ret=slot; Draw_Display_color(&colorframe); break;
 	case 1: openframe.ret=slot; Draw_Display_open(&openframe); break;
 	case 2: named.ret=slot; Draw_Display_namedimage(&named); break;
 	default: readframe.ret=slot; Draw_Display_readimage(&readframe); break;
@@ -805,8 +842,8 @@ loadedfactories(int kind, int alias, int failure)
 	if(result!=H){
 		require(result->display==(Draw_Display*)dd);
 		require(D2H(dd)->ref==(alias==1 ? 1 : 2));
-		require(result->repl==(kind==0 || kind==2));
-		require(result->depth==(kind==0 ? 24 : 32));
+		require(result->repl==(kind==0 || kind==2 || kind==4));
+		require(result->depth==(kind==0 || kind==4 ? 24 : 32));
 		if(kind==2){
 			require(result->iname==name);
 			require(D2H(name)->ref==(alias==2 ? 1 : 2));
@@ -874,6 +911,9 @@ loadededges(void)
 }
 
 
+WINDOW_OPERATIONS
+
+
 #ifdef DIS_NATIVE64_DRAW_HEADER
 /* Exercise the actual native registration refusal, without calling the private descriptor stage. */
 static int
@@ -902,11 +942,17 @@ main(void)
 	nativefailures();retirement();rollback();fontedges();
 	for(kind=0;kind<5;kind++) for(alias=0;alias<2;alias++) for(failure=0;failure<4;failure++) factories(kind,alias,failure);
 	for(kind=0;kind<2;kind++) for(alias=0;alias<4;alias++) for(failure=0;failure<5;failure++) fontfactories(kind,alias,failure);
-	for(kind=0; kind<4; kind++) for(alias=0; alias<3; alias++) if(kind!=0 || alias!=2)
+	for(kind=0; kind<5; kind++) for(alias=0; alias<3; alias++) if((kind!=0 && kind!=4) || alias!=2)
 		for(failure=0; failure<5; failure++) loadedfactories(kind,alias,failure);
 	loadededges();
+	windowoperations();
+	for(alias=0; alias<2; alias++){
+		for(kind=0; kind<5; kind++) nameoperations(alias,kind);
+		for(kind=0; kind<4; kind++) writeoperations(alias,kind);
+		for(kind=0; kind<6; kind++) originoperations(alias,kind);
+	}
 	freetype(TFont);freetype(TImage);freetype(TScreen);freetype(TDisplay);
 	require(live==0 && nativecount==0 && worker.nerr==0 && gchalt==0);
-	printf("PASS Draw owners: %d predicates, 143 actual Frame64 factory scenarios, real Heap/Type/refcount/rollback; native images=%d screens=%d displays=%d, all ledgers zero; collector/device not executed\n",checks,freedimages,freedscreens,closes);
+	printf("PASS Draw owners: %d predicates, 153 actual Frame64 factory scenarios plus %d window/I-O cases, real Heap/Type/refcount/rollback; native images=%d screens=%d displays=%d, all ledgers zero; collector/device not executed\n",checks,operationcases,freedimages,freedscreens,closes);
 	return 0;
 }

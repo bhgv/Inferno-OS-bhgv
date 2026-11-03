@@ -58,6 +58,8 @@ on:
       - 'utils/tests/native64-freetype*'
       - 'libinterp/tests/gui-type-maps.c'
       - 'libinterp/tests/gui-type-maps.py'
+      - 'libinterp/tests/draw-windows.py'
+      - 'libinterp/tests/draw-windows.c'
       - 'utils/tests/native64-graphics-init.c'
       - 'utils/tests/native64-graphics-init.py'
       - 'libinterp/draw.c'
@@ -466,6 +468,7 @@ jobs:
             python3 utils/tests/native64-draw-init.py --control "$control" 2>&1 | tee -a draw-owner-init.log
           done
           python3 libinterp/tests/gui-type-maps.py 2>&1 | tee draw-owner-maps.log
+          CFLAGS="$NATIVE64_CFLAGS" python3 libinterp/tests/draw-windows.py 2>&1 | tee draw-owner-windows.log
           python3 utils/tests/native64-draw-owners.py --limbo "$RUNNER_TEMP/draw-owner-tools/limbo" 2>&1 | tee draw-owners-asan.log
       - name: Preserve resource ownership diagnostics
         if: always()
@@ -475,6 +478,7 @@ jobs:
           path: |
             draw-owner-init.log
             draw-owner-maps.log
+            draw-owner-windows.log
             draw-owners-asan.log
           if-no-files-found: warn
           retention-days: 14
