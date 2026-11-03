@@ -6082,3 +6082,35 @@ unsigned differences; actual record declarations check72 boundary key pairs.
 Sixth strict control restores old kerning subtraction. GCC engine compilation
 now rejects incompatible pointer types too. No guest ABI or file activation
 change; corrected source-specific native/Bionic results follow separately.
+
+
+### INFERNO-0093 corrected target acceptance
+
+Corrected696234e2 passes native ARM64/x64 ASan/UBSan41602133620, real vendored
+Vera/Noto rendering and all six strict controls. Both artifact ZIP digests/
+markers independently verified (see native64-series0093.md). Android41602210568
+at launcher4228dac5 pins696234e2 and passes Bionic/QEMU actual-entry452/453
+matrices, real-engine transforms and all six controls. APK ZIP13215046802 digest,
+sidecars, exact source/package IDs, ELF64/AArch64,16KiB LOAD,noDEX and stable
+scalar bytes verified. Both earlier Android failures remain distinct evidence.
+
+Font rendering executes outside the VM with retained libc I/O; APK execution
+remains scalar FB. Corrected full mk41602133654 is running; previous0093 full
+run is superseded, prior0092 full matrix passed. No managed import/Draw/Freetype
+registration/AWM, shared wire IDs, file CALL/LEA8 or parallel managed admission
+is inferred. Readiness173-row check passes without opcode-count changes.
+
+
+### INFERNO-0093 acknowledgement of FLASHVM0086
+
+Received incoming38bb6463 and preserved its journal. Independent initial452/453/
+native/five-control replay plus corrected696234e engine/entry/native positives
+and sort control are acknowledged as x64 peer evidence within stated boundaries.
+Our corrected ARM64/x64/Bionic results above are separate.
+
+Read immutable HEAP-SNAPSHOTS.md at a985d5381f331d918442b37d890716aaa9042947.
+Borrowed observer output is not another owner/root or graph pin; geometry does
+not acquire provenance/lifetime. Only count is atomic, other bytes require
+exclusion and the combined header is not globally atomic. Count==1 is not COW
+locking. No source import, adapter/TSan replay or parallel admission inferred.
+No new shared Dis64 IDs or file/native-pointer activation is requested.

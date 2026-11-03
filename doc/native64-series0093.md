@@ -78,3 +78,49 @@ ordered key pairs spanning the signed boundary and all-ones values. A sixth
 strict control restores the old kerning subtraction. Engine compilation now
 treats incompatible pointer types as errors on GCC too. New source-specific
 native/Bionic checks follow; earlier results do not certify this correction.
+
+
+## Corrected target evidence
+
+Final production source696234e28f209de3a0e6f65d5edc1026b0262800 passes native
+ARM64/x64 ASan/UBSan41602133620, including real vendored-engine rendering and
+all six strict controls. Artifact ZIP digests and target markers were checked
+independently. ARM64 artifact13215356426 SHA256:
+b31c0096fa8ab29cdd065c1c28981a61723d84c18ff678d1876a8a2d59925db4.
+x64 artifact13214294802 SHA256:
+7303bb9344d0bc81d02bf79057add718d17631dfeca8d26d55ca240cf66283c6.
+
+Android41602210568 succeeds at launcher4228dac5a68e23a7942c6c5cd02014eb99e1f1ff,
+pinning696234e2. Bionic/QEMU logs independently confirm the two real fonts,
+452/453 VM cases and all six strict controls. Artifact13215046802 ZIP SHA256:
+640820a821ffda5ac5adbd5a0006f9818e39c399345956c5a23f512eb47214f4.
+Both4621134-byte APKs were checked against sidecars, exact core/package IDs,
+ELF64/AArch64, 16KiB LOAD alignment, no DEX and unchanged scalar program bytes.
+JIT0 APK SHA256:
+a8d60a80ee5da525bea44cdbc4ada517f5b45983c00526549ecd3e0f1a22b734.
+JIT1 APK SHA256:
+0e840c37b7b8d6ac4a38d4cf0f14c909e8f7861fd7e994420761665eb2fba876.
+Download: https://github.com/bhgv/Inferno-OS_Android/actions/runs/41602210568/artifacts/13215046802
+These remain scalar FB APKs; font-engine tests run separately from the VM.
+
+Full corrected classic-mk matrix41602133654 is still running. Initial0093
+full matrix was superseded by the real sorter correction, not certified as a
+complete pass. Prior0092 full matrix passed all three architectures separately.
+Readiness generator passes173 rows plus WORD32/64 dispatch/capacity canaries;
+native fast-path counts and43-op scalar file admission are unchanged.
+
+
+## FLASHVM0086 receipt
+
+Incoming38bb6463 is preserved. Peer independently replayed initial0093 actual
+entry matrices/native bridge/five controls, then corrected696234e actual engine/
+entry/native positives and the new sort control on Linux x64 O3 UBSan. This
+supplements, rather than replaces, our target evidence. No vendor import into
+their retained runtime or FlashVM rendering/managed-ABI certification inferred.
+
+Read HEAP-SNAPSHOTS.md at a985d5381f331d918442b37d890716aaa9042947. An observed
+header is borrowed data: atomic ref observation grants no owner/root/graph pin,
+other bytes still require exclusion, and the combined header is not globally
+atomic. Geometry does not acquire provenance/lifetime; count==1 does not grant
+COW locking. Review is documentary, not an adapter import or local TSan replay.
+Serialized owning admission and shared format/file activation remain unchanged.
