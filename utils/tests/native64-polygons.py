@@ -77,6 +77,7 @@ def main():
     consumer = '\n\n'.join(support['function'](draw, ('static int\n' if n == 'drawpointdata' else 'static void\n' if n.startswith('draw') else 'void\n')+n+'(') for n in names)
     consumer = consumer.replace('F_Image_', 'F_Draw_Image_').replace('\nImage_', '\nDraw_Image_')
     native = '\n\n'.join(re.sub(r'^#include[^\n]*\n', '', (ROOT/p).read_text(), flags=re.M) for p in ('libdraw/poly.c', 'libdraw/bezier.c', 'libdraw/arith.c'))
+    native += '\n\n'+support['function']((ROOT/'emu/port/devdraw.c').read_text(), 'uchar*\ndrawcoord(')
     native = '#define malloc(n) pointalloc(n) // Bounded test allocation transport.\n#define realloc(p,n) pointrealloc(p,n) // Preserve native failure semantics.\n#define free(p) pointfree(p) // Observe native retirement.\n'+native+'\n#undef malloc\n#undef realloc\n#undef free\n'
     fixture = (ROOT/'utils/tests/native64-polygons.c').read_text()
     env = dict(os.environ)
@@ -90,12 +91,13 @@ def main():
         env['TMPDIR'] = str(work)
         (work/'draw-native64.h').write_bytes(subprocess.check_output([str(args.limbo.resolve()), '-H', '-M', 'Draw', '-I'+str(ROOT/'module'), str(ROOT/'module/draw-native64.m')], env=env))
         includes = ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp', 'libdraw')]
-        for mode in ('WORD32', 'WORD32-file', 'packet', 'count', 'absolute', 'array', 'retire'):
+        for mode in ('WORD32', 'WORD32-file', 'packet', 'count', 'absolute', 'array', 'retire', 'decode'):
             body, vm = native, consumer
             if mode == 'packet': body = body.replace('BPLONG(a+19, src->id);', 'BPLONG(a+19, src->id-1);', 1)
             if mode == 'count': body = body.replace('np > 65536', '0', 1)
             if mode == 'absolute': body = body.replace('newx < -4194304 || newx > 4194303', '0', 1)
             if mode == 'array': vm = vm.replace('size != sizeof(Point) || pointers != 0', '0', 1)
+            if mode == 'decode': body = body.replace('(int)bits-8388608', '(int)bits', 1)
             if mode == 'retire': body = body.replace('free(l->p);', '/* omitted native list retirement */', 1)
             source = work/(mode+'.c')
             source.write_text(support['portfixture'](fixture.replace('NATIVE_IMPLEMENTATION', body).replace('VM_IMPLEMENTATION', vm).replace('POLYGON_ORACLES', declarations()), '#include "lib9.h"'))

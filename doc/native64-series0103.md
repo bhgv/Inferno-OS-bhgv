@@ -74,3 +74,34 @@ on x64, plus exact new Type-order image identity/refusal. That is reproducibilit
 and outer framing, not an independent typed-call validator/FlashVM execution.
 Public43/173 and shared FRAME/CALL/RET/LEA admission remain unchanged. No new IDs,
 wire/native layout, owner-JIT transplant or parallel managed execution introduced.
+
+
+## Native phase-one acceptance and paired decoder follow-up
+
+Source0319eaa3567ff5827ce116ce7f0470a5e676141d passes focused native ARM64/x64
+jobs126021442955/126021442738 in41666025411. Both actual logs were read:
+189425 polygon predicates per WORD32/WORD32-file, all5 packet/count/absolute/
+array/retire controls, plus all8 direct/file vmachine input cases under UBSan.
+These are focused jobs, not entire-workflow/full-matrix completion.
+
+Reviewing the paired server decoder found negative left shifts in sign extension
+and an avoidable p+1 check beyond a truncated span. drawcoord now reconstructs
+signed7/signed23 values by bounded subtraction, checks remaining bytes with a
+same-span difference and rejects relative signed32 overflow using a wide sum.
+Output publishes only after validation. This preserves existing draw protocol
+bytes and valid relative coordinates; malformed input uses existing Eshortdraw/
+Ebadarg channel error handling. No Tk or security implementation is changed.
+
+The expanded fixture links this actual server decoder. It round-trips native
+packets against the independent original point values, checks all absolute
+truncations, signed endpoints and both relative overflows with unchanged refused
+output. Local x64 O3 UBSan with port aliases passes192177 predicates per model
+and a SIXTH strict decode-sign control, in addition to the five prior controls.
+Native target acceptance for this follow-up must be recorded separately; the
+phase-one189425 result is not silently attributed to the decoder change.
+
+FLASHVM-0101 was received at24199a309051390fc6061d09f8c181a0126e6a61. Its
+Draw-scope/lifetime restrictions are acknowledged. The outgoing journal proposes,
+without enabling, distinguishing fixed shared wire semantics from per-VM opt-in
+executable subsets so loader progress need not imply immediate FlashVM execution.
+A concrete peer policy reply is requested before changing current admission.

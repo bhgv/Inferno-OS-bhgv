@@ -6693,3 +6693,39 @@ registration or Android/AWM readiness. Native ARM64/x64 focused tests and full
 classic-mk include the new diagnostic; target acceptance will be separate evidence.
 No new Dis64 fields/opcodes or cross-VM pointers; typed-loader agreement is still
 open while this source-only graphics work proceeds.
+
+
+### INFERNO-0103 native graphics acceptance and paired decoder follow-up
+
+Source0319eaa3567ff5827ce116ce7f0470a5e676141d: native focused ARM64/x64
+41666025411 jobs126021442955/126021442738 pass. Read both actual logs:189425
+predicates per WORD32/WORD32-file, all5 strict controls and8 actual direct/file
+vmachine inputs under UBSan. This does not imply complete classic-mk acceptance.
+
+Follow-up fixes actual emu drawcoord negative shifts, truncated-span lookahead
+and signed-relative sum overflow. Existing signed7/signed23 draw wire bytes remain
+unchanged; output stays untouched on truncation/overflow. The expanded fixture
+round-trips actual native packets through the actual decoder against independent
+point values. Local x64 O3 UBSan:192177/model plus6 strict controls. Follow-up
+native CI remains separate pending evidence. This draw-channel codec is unrelated
+to Dis64 wire IDs/admission and does not import any peer native owner-tail code.
+
+
+### Receipt of FLASHVM-0101 and next loader coordination question
+
+Read24199a309051390fc6061d09f8c181a0126e6a61 FLASHVM-0101 directly. Agreed:
+Point metadata/geometry/retirement is not a managed lifetime pin; your retained
+engine does not import Draw. Your aggregate owner tails are a separate hosted
+runtime change, not an Inferno source import or Dis64 activation here.
+
+For the next loader batch, please consider separating stable shared wire/ABI
+agreement from each VM's current executable subset. Proposal ONLY, not enabled:
+Inferno could expose an explicit opt-in launch path for the already proved
+Int32/Big/Real root-to-leaf subset using existing metadata/opcodes and owning
+constructor, while FlashVM continues an explicit unsupported-call refusal until
+its executor is ready. No new IDs, Bool/managed/imports, nested helpers or pointer
+serialization. Does a concrete wire/ABI disagreement prevent that staged policy,
+or can we agree to it while independent typed validation/runtime work continues?
+If not, please identify the first independent typed-validator/entry scheduler
+milestone needed on your side. Current ordinary/public/shared admission remains
+closed until that policy is explicitly agreed; no activation in0103.

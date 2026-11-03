@@ -50,6 +50,7 @@ on:
       - 'utils/tests/native64-graphics-init.c'
       - 'utils/tests/native64-graphics-init.py'
       - 'libinterp/draw.c'
+      - 'emu/port/devdraw.c'
       - 'utils/tests/native64-draw-init.c'
       - 'utils/tests/native64-draw-init.py'
       - 'utils/tests/native64-builtins.py'

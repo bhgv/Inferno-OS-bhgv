@@ -11,6 +11,8 @@
 char exNilref[] = "nil"; // Expected nil-array VM refusal identity.
 char exBounds[] = "bounds"; // Expected extent/alignment VM refusal identity.
 char exType[] = "type"; // Expected Point/array metadata refusal identity.
+char Ebadarg[] = "bad draw coordinate"; // Existing native channel argument refusal.
+static char Eshortdraw[] = "short draw message"; // Exact native decoder truncation identity.
 Type Tarray; // Canonical managed-array owner identity.
 static Display display, foreign; // Explicit native transport display identities.
 static Image images[2]; // Native source/destination under the bounded lookup transport.
@@ -263,6 +265,70 @@ inspect(void)
 }
 
 
+/* Recover only expected native decoder errors; output must remain untouched on refusal. */
+static int
+decodeprobe(uchar *data, int bytes, int old, int *value)
+{
+	uchar *next;
+
+	if(setjmp(recovery))
+		return 0;
+	next = drawcoord(data, data+bytes, old, value);
+	check(next == data+bytes);
+	return 1;
+}
+
+
+/* Round-trip actual packets while comparing against original independent input coordinates. */
+static void
+roundtrip(Point *points, int count)
+{
+	uchar *at, *end;
+	int x, y, i;
+
+	at = packet+31;
+	end = packet+packetlength;
+	x = y = 0;
+	for(i=0; i<count; i++){
+		at = drawcoord(at, end, x, &x);
+		at = drawcoord(at, end, y, &y);
+		check(x == points[i].x && y == points[i].y);
+	}
+	check(at == end);
+}
+
+
+/* Check signed endpoints, every absolute truncation and guarded relative overflow. */
+static void
+decodecases(void)
+{
+	uchar absolute[3] = {0x80, 0, 0x80};
+	uchar delta;
+	int value, length;
+
+	for(length=0; length<3; length++){
+		rejecting = 1;
+		expectederror = Eshortdraw;
+		value = 12345;
+		check(!decodeprobe(absolute, length, 0, &value) && value == 12345);
+	}
+	rejecting = 0;
+	check(decodeprobe(absolute, 3, 0, &value) && value == -4194304);
+	delta = 63;
+	check(decodeprobe(&delta, 1, 0x7fffffff-63, &value) && value == 0x7fffffff);
+	delta = 64;
+	check(decodeprobe(&delta, 1, (-0x7fffffff-1)+64, &value) && value == (-0x7fffffff-1));
+	rejecting = 1;
+	expectederror = Ebadarg;
+	value = 12345;
+	delta = 63;
+	check(!decodeprobe(&delta, 1, 0x7fffffff, &value) && value == 12345);
+	delta = 64;
+	check(!decodeprobe(&delta, 1, (-0x7fffffff-1), &value) && value == 12345);
+	rejecting = 0;
+}
+
+
 /* Exercise real native polygon encoders, wire endpoints and allocation/transport refusal. */
 static void
 nativecases(void)
@@ -292,6 +358,8 @@ nativecases(void)
 			else poly(&images[0], cases[i].points, cases[i].count, 3, 5, 2, &images[1], sp);
 		}
 		inspect();
+		if(fault == 0 && cases[i].bytes >= 0 && cases[i].count > 0)
+			roundtrip(cases[i].points, cases[i].count);
 	}
 	setup(65536, 131072, nil);
 	poly(&images[0], zeros, 65536, 3, 5, 2, &images[1], sp);
@@ -460,6 +528,7 @@ int
 main(void)
 {
 	nativecases();
+	decodecases();
 	curvecases();
 	vmcases();
 	printf("PASS native polygons: %lu predicates; four real encoders, eight Frame64 consumers, curve growth refusals; bounded transports\n", checks);
