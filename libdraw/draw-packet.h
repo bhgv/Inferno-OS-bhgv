@@ -2,6 +2,9 @@
 #define DRAW_PACKET_H // Private bounded reservation, no public or wire layout change.
 
 
+extern int _drawimage(Image*, Rectangle*, Image*, Point*, Image*, Point*, Drawop); // Private status-bearing rectangle staging.
+
+
 /* Reserve operator and command together so a refused command cannot leave a pending operator. */
 static uchar*
 drawpacket(Display *display, int bytes, Drawop op)

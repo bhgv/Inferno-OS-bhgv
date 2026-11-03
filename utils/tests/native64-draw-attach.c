@@ -423,6 +423,9 @@ protocolboundaries(void)
 }
 
 
+MIX_OPERATIONS
+
+
 /* Close genuine Heap/Type/native owners; malformed-control exits are independent active predicates. */
 int
 attachmain(void)
@@ -437,8 +440,11 @@ attachmain(void)
 	imageinitializers();
 	informationcases();
 	protocolboundaries();
+	mixingcases();
+	mixframes();
+	replicationcases();
 	freetype(TFont); freetype(TImage); freetype(TScreen); freetype(TDisplay);
 	require(live==0 && nativecount==0 && worker.nerr==0 && gchalt==0);
-	printf("PASS attach: %d predicates, 18 Frame64 pair scenarios, raw rollback/replacement, %d refresh service calls, all ledgers zero; no device/collector execution\n",checks,refreshcalls);
+	printf("PASS attach: %d predicates, 18 Frame64 attach plus 10 composed colormix scenarios, raw rollback/replacement, %d refresh service calls, all ledgers zero; no device/collector execution\n",checks,refreshcalls);
 	return 0;
 }

@@ -57,7 +57,7 @@ typedef struct DFont DFont;
     declarations+=draw[draw.index('typedef struct DrawHeapBuild'):draw.index('/* Hash bytes with defined unsigned wraparound')]
     names=('display_dec','freedrawdisplay','freedrawscreen','freedrawfont','freedrawimage','lookupimage','lookupscreen','lookupfont','lookupdisplay','checkimage','checkscreen','checkdisplay','mkdrawimage','allocdrawimage','allocdrawscreen','Display_newimage','Display_colormix','Screen_allocate','Display_publicscreen','Screen_newwindow','drawownedfont','Font_open','Font_build','drawownedimage','Display_rgb','Display_open','Display_namedimage','Display_readimage','color','Display_color','Image_name','Display_writeimage','Image_origin','screentopbot','Screen_top','Screen_bottom','Image_top','Image_bottom','Image_flush')
     if attach:
-        names=('display_dec','freedrawdisplay','freedrawscreen','freedrawfont','freedrawimage','lookupimage','lookupscreen','lookupfont','lookupdisplay','checkimage','checkscreen','checkdisplay','mkdrawimage','allocdrawimage','allocdrawscreen','mkdrawscreen','Display_getwindow','Display_startrefresh')
+        names=('display_dec','freedrawdisplay','freedrawscreen','freedrawfont','freedrawimage','lookupimage','lookupscreen','lookupfont','lookupdisplay','checkimage','checkscreen','checkdisplay','mkdrawimage','allocdrawimage','allocdrawscreen','mkdrawscreen','Display_getwindow','Display_startrefresh','Display_colormix')
     signatures={n:('Image*' if n=='lookupimage' else 'Screen*' if n=='lookupscreen' else 'Font*' if n=='lookupfont' else 'Display*' if n=='lookupdisplay' else 'Image*' if n=='checkimage' else 'Screen*' if n=='checkscreen' else 'Display*' if n=='checkdisplay' else 'Draw_Image*' if n in ('mkdrawimage','allocdrawimage') else 'Draw_Screen*' if n=='mkdrawscreen' else 'static Draw_Image*' if n=='drawownedimage' else 'Draw_Image*' if n=='color' else 'static Draw_Font*' if n=='drawownedfont' else 'static void' if n=='screentopbot' else 'static DScreen*' if n=='allocdrawscreen' else 'void')+'\n'+n+'(' for n in names}
     bodies='\n\n'.join(fn(draw,signatures[n]) for n in names)
     for name in ('Display_newimage','Display_colormix','Screen_allocate','Display_publicscreen','Screen_newwindow','Font_open','Font_build','Display_rgb','Display_open','Display_namedimage','Display_readimage','Display_color','Image_name','Display_writeimage','Image_origin','Screen_top','Screen_bottom','Image_top','Image_bottom','Image_flush','Display_getwindow','Display_startrefresh'):
@@ -74,6 +74,16 @@ typedef struct DFont DFont;
     if attach:
         native+='\n\n'+'\n\n'.join(fn((ROOT/'libdraw/init.c').read_text(),sig) for sig in ('static void\nwindowdiscard(','int\ngengetwindow('))
     if attach:
+        mix=(ROOT/'libdraw/draw-packet.h').read_text()+'\n'+re.sub(r'^#include[^\n]*\n','',(ROOT/'libdraw/draw.c').read_text(),flags=re.M)
+        mix+='\n'+fn((ROOT/'libdraw/allocimagemix.c').read_text(),'Image*\nallocimagemix(').replace('allocimagemix(', 'freshallocimagemix(',1)
+        mix+='\n'+re.sub(r'^#include[^\n]*\n','',(ROOT/'libdraw/drawrepl.c').read_text(),flags=re.M)
+        if control=='mix-mask-retire': mix=mix.replace('status = freeimage(mask);', 'status = 0;',1)
+        if control=='mix-source-retire': mix=mix.replace('status = freeimage(source);', 'status = 0;',1)
+        if control=='mix-draw-refusal': mix=mix.replace('if(!_drawimage(result, &rectangle, source, &origin, mask, &origin, SoverD))\n\t\tgoto Refuse;', '_drawimage(result, &rectangle, source, &origin, mask, &origin, SoverD);',1)
+        if control=='mix-shallow': mix=mix.replace('rectangle = shallow ? Rect(0,0,1,1)', 'rectangle = shallow ? Rect(0,0,2,2)',1)
+        if control=='replication-invalid': mix=mix.replace('return min;', 'return x;',1)
+        if control=='replication-wrap': mix=mix.replace('offset += period;', 'offset = 0;',1)
+        native+='\n'+mix+'\n'
         initializers=(ROOT/'libdraw/drawinfo.h').read_text()+'\n\n'+'\n\n'.join(fn((ROOT/'libdraw/alloc.c').read_text(),sig) for sig in ('Image*\n_allocimage(', 'Image*\nnamedimage(', 'int\nnameimage(', 'void\nattachtowindow('))
         initializers=initializers.replace('_allocimage(', 'freshallocimage(').replace('namedimage(', 'freshnamedimage(').replace('\nnameimage(', '\nfreshnameimage(').replace('\nattachtowindow(', '\nfreshattachtowindow(')
         if control=='image-callback': initializers=initializers.replace('i->reffn = nil;', '/* missing callback initialization */')
@@ -88,6 +98,8 @@ typedef struct DFont DFont;
         if control=='image-path': initializers=initializers.replace('i->fpath = nil;', '/* missing path initialization */')
         native+='\n#define malloc(n) poisonedimage(n) // Poison fresh headers to expose omitted field initialization.\n#define free(p) nativeretire(p,1) // Retire exact native header owners.\n'+initializers+'\n#undef malloc\n#undef free\n'
     bodies=bodies.replace('free(dr);','nativeretire(dr,5);',1)
+    if control=='mix-wrapper-rollback':
+        actual=fn(bodies,'void\nDraw_Display_colormix(');bodies=bodies.replace(actual,actual.replace('drawdiscardimage(image);','USED(image);',1),1)
     if control=='mapped':
         actual=fn(bodies,'void\nfreedrawimage('); bodies=bodies.replace(actual,actual.replace('freeptrs(di, h->t);','USED(di);',1),1)
     if control=='double':
@@ -140,14 +152,20 @@ typedef struct DFont DFont;
         actual=fn(bodies,'void\nDraw_Display_getwindow(');bodies=bodies.replace(actual,actual.replace('memmove(slot, result, sizeof(result));\n\tdestroy(old[0]);\n\tdestroy(old[1]);','destroy(old[0]);\n\tdestroy(old[1]);\n\tmemmove(slot, result, sizeof(result));',1),1)
     fixture=(ROOT/'utils/tests/native64-draw-owners.c').read_text()
     if attach:
+        declarations+='Image *freshallocimagemix(Display*, ulong, ulong); // Actual native factory composed with Frame64 consumer.\n'
+        stub=fn(fixture,'Image*\nallocimagemix(')
+        fixture=fixture.replace(stub,'Image*\nallocimagemix(Display *d, ulong a, ulong b) { return freshallocimagemix(d,a,b); }',1)
         fixture=fixture.replace('NATIVE_IMPLEMENTATION', 'ATTACH_SERVICES\nNATIVE_IMPLEMENTATION')
-        fixture=fixture.replace('static uchar wire[64];', 'static int idwatch; // Stop omitted ID guards before signed counter overflow.\nstatic int attachmode, filemode, fileopens, filecloses, refreshcalls; // Bounded attach service observations.\nstatic void **rawslot; // Publication observer for exclusively owned raw pairs.\nstatic Image *rawold; // Raw pair identity retained until publication.\nstatic void *tuplewatch; // Managed old image observed before native retirement.\nstatic void *tupleold; // Exact displaced managed image identity.\nstatic void *tupleslot; // Possibly unaligned two-owner result slot.\nstatic uchar wire[512];')
+        fixture=fixture.replace('static uchar wire[64];', 'static void mixobserve(Display*); // Inspect real rectangle packets before temporary retirement.\nstatic int mixrefuse; // Refuse only one actual draw reservation, allowing rollback I/O.\nstatic int mixwatch, mixdraws; // Observe actual mixed-image packets before temporary retirement.\nstatic uchar mixpacket[45]; // Independent packet snapshot.\nstatic int idwatch; // Stop omitted ID guards before signed counter overflow.\nstatic int attachmode, filemode, fileopens, filecloses, refreshcalls; // Bounded attach service observations.\nstatic void **rawslot; // Publication observer for exclusively owned raw pairs.\nstatic Image *rawold; // Raw pair identity retained until publication.\nstatic void *tuplewatch; // Managed old image observed before native retirement.\nstatic void *tupleold; // Exact displaced managed image identity.\nstatic void *tupleslot; // Possibly unaligned two-owner result slot.\nstatic uchar wire[512];')
+        fixture=fixture.replace('memset(wire,0xa5,sizeof(wire));', 'if(mixwatch && bytes==45 && mixrefuse){ mixrefuse=0; kwerrstr("mix reservation refused"); return nil; }\n\tif(mixwatch && bytes==45){ mixdraws++; }\n\tmemset(wire,0xa5,sizeof(wire));',1)
         fixture=fixture.replace('packets++;', 'if(idwatch) require(d->imageid >= 0 && d->imageid < 2147483647);\n\tpackets++;',1)
+        fixture=fixture.replace('flushes++;', "if(mixwatch && wire[0]=='d'){ memmove(mixpacket,wire,45); mixobserve(d); }\n\tflushes++;",1)
         fixture=fixture.replace('image=pointer;', 'image=pointer;\n\t\tif(pointer==rawold && rawslot!=nil) require(rawslot[0]!=rawold);\n\t\tif(pointer==tuplewatch){ void *pair[2]; memmove(pair,tupleslot,sizeof(pair)); require(pair[1]!=tupleold); }',1)
         fixture=fixture.replace('screen=pointer;', 'screen=pointer;\n\t\tfor(cursor=screen->display->windows;cursor!=nil;cursor=cursor->next) require(cursor->screen!=screen);',1)
         fixture=fixture.replace('Rect(2,3,9,11), RGBA32, 1, 0', 'attachmode ? Rect(0,0,100,80) : Rect(2,3,9,11), RGBA32, 1, 0')
         services, operations=(ROOT/'utils/tests/native64-draw-attach.c').read_text().split('ATTACH_CASES')
         operations=runpy.run_path(str(ROOT/'utils/tests/native64-draw-info.py'))['rows']()+operations
+        operations=operations.replace('MIX_OPERATIONS',runpy.run_path(str(ROOT/'utils/tests/native64-draw-mix.py'))['rows']()+(ROOT/'utils/tests/native64-draw-mix.c').read_text())
         fixture=fixture.replace('ATTACH_SERVICES', services)
         fixture=fixture.replace('WINDOW_OPERATIONS', operations)
         fixture=fixture.replace(fn(fixture,'int\nmain('), fn(operations,'int\nattachmain(').replace('attachmain(', 'main(',1))
@@ -171,7 +189,7 @@ def main():
         work=Path(directory);env['TMPDIR']=str(work)
         (work/'draw-native64.h').write_bytes(subprocess.check_output([str(args.limbo.resolve()),'-H','-M','Draw','-I'+str(ROOT/'module'),str(ROOT/'module/draw-native64.m')],env=env))
         includes=['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')]
-        modes=('WORD32','WORD32-file','attach-fd','attach-publish','screen-fill','screen-backing','attach-rollback','attach-tuple','image-callback','image-path','info-range','info-publication','initial-flush','info-release','name-length','image-id','attach-stop','name-flag') if args.attach_only else ('gated','WORD32','WORD32-file','mapped','double','rollback','native','alias','swept','lookup','detach','window','retry','font-rollback','font-name','loaded-rollback','loaded-name','loaded-alias','name-retain','name-result','origin-status','origin-wire','order-wire')
+        modes=('WORD32','WORD32-file','attach-fd','attach-publish','screen-fill','screen-backing','attach-rollback','attach-tuple','image-callback','image-path','info-range','info-publication','initial-flush','info-release','name-length','image-id','attach-stop','name-flag','mix-mask-retire','mix-source-retire','mix-draw-refusal','mix-shallow','replication-invalid','replication-wrap','mix-wrapper-rollback') if args.attach_only else ('gated','WORD32','WORD32-file','mapped','double','rollback','native','alias','swept','lookup','detach','window','retry','font-rollback','font-name','loaded-rollback','loaded-name','loaded-alias','name-retain','name-result','origin-status','origin-wire','order-wire')
         for mode in modes:
             source=work/(mode+'.c');source.write_text(support['portfixture'](unit(None if mode.startswith('WORD') or mode=='gated' else mode,attach=args.attach_only),'#include "vmfetch.h"'))
             binary=work/mode;flags=['-DDIS_WORD32=1']+(['-DDIS64_PILOT_LOADER=1'] if mode.endswith('file') else [])+(['-DDIS_NATIVE64_DRAW_HEADER=1'] if mode=='gated' else [])

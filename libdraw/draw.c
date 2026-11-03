@@ -19,24 +19,24 @@ _setdrawop(Display *d, Drawop op)
 }
 		
 
-/* Resolve defaults and validate displays before reserving one complete draw command. */
-static void
-draw1(Image *dst, Rectangle *r, Image *src, Point *p0, Image *mask, Point *p1, Drawop op)
+/* Report whether a complete rectangle packet was staged; public void wrappers retain their API. */
+int
+_drawimage(Image *dst, Rectangle *r, Image *src, Point *p0, Image *mask, Point *p1, Drawop op)
 {
 	uchar *a;
 
 	if(dst == nil || dst->display == nil || r == nil || p0 == nil || p1 == nil ||
 	   r->min.x > r->max.x || r->min.y > r->max.y)
-		return;
+		return 0;
 	if(src == nil)
 		src = dst->display->black;
 	if(mask == nil)
 		mask = dst->display->opaque;
 	if(src == nil || mask == nil || dst->display != src->display || dst->display != mask->display)
-		return;
+		return 0;
 	a = drawpacket(dst->display, 45, op);
 	if(a == nil)
-		return;
+		return 0;
 	a[0] = 'd';
 	BPLONG(a+1, dst->id);
 	BPLONG(a+5, src->id);
@@ -49,6 +49,7 @@ draw1(Image *dst, Rectangle *r, Image *src, Point *p0, Image *mask, Point *p1, D
 	BPLONG(a+33, p0->y);
 	BPLONG(a+37, p1->x);
 	BPLONG(a+41, p1->y);
+	return 1;
 }
 
 
@@ -56,7 +57,7 @@ draw1(Image *dst, Rectangle *r, Image *src, Point *p0, Image *mask, Point *p1, D
 void
 draw(Image *dst, Rectangle r, Image *src, Image *mask, Point p1)
 {
-	draw1(dst, &r, src, &p1, mask, &p1, SoverD);
+	_drawimage(dst, &r, src, &p1, mask, &p1, SoverD);
 }
 
 
@@ -64,7 +65,7 @@ draw(Image *dst, Rectangle r, Image *src, Image *mask, Point p1)
 void
 drawop(Image *dst, Rectangle r, Image *src, Image *mask, Point p1, Drawop op)
 {
-	draw1(dst, &r, src, &p1, mask, &p1, op);
+	_drawimage(dst, &r, src, &p1, mask, &p1, op);
 }
 
 
@@ -72,7 +73,7 @@ drawop(Image *dst, Rectangle r, Image *src, Image *mask, Point p1, Drawop op)
 void
 gendraw(Image *dst, Rectangle r, Image *src, Point p0, Image *mask, Point p1)
 {
-	draw1(dst, &r, src, &p0, mask, &p1, SoverD);
+	_drawimage(dst, &r, src, &p0, mask, &p1, SoverD);
 }
 
 
@@ -80,5 +81,5 @@ gendraw(Image *dst, Rectangle r, Image *src, Point p0, Image *mask, Point p1)
 void
 gendrawop(Image *dst, Rectangle r, Image *src, Point p0, Image *mask, Point p1, Drawop op)
 {
-	draw1(dst, &r, src, &p0, mask, &p1, op);
+	_drawimage(dst, &r, src, &p0, mask, &p1, op);
 }

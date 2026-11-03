@@ -47,6 +47,7 @@ on:
       - 'utils/tests/native64-draw-owners*'
       - 'utils/tests/native64-draw-attach.c'
       - 'utils/tests/native64-draw-info.py'
+      - 'utils/tests/native64-draw-mix*'
       - 'utils/tests/dis64-peer-binding.py'
       - 'utils/tests/native64-draw-init*'
       - 'utils/tests/native64-refresh*'
@@ -449,7 +450,7 @@ jobs:
   draw-owners:
     name: Draw owners ASan ${{ matrix.arch }} (native)
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 25
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -523,7 +524,7 @@ jobs:
   attach:
     name: Fresh window ownership and Image initialization ASan ${{ matrix.arch }} (native)
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
