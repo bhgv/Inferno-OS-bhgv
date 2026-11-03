@@ -337,6 +337,92 @@ informationcases(void)
 }
 
 
+/* Check the one-byte name count and terminal native ID without relying on undefined overflow. */
+static void
+protocolboundaries(void)
+{
+	DDisplay *display;
+	Image *base, *image;
+	char name[4097];
+	int length, operation, before, count, id, sent, flushed, result;
+	int flags[] = {0, 1, -1, 256, -256, 2147483647, (-2147483647-1)}; // Native truth values must remain true on the wire.
+
+	display = attachdisplay();
+	base = ((DImage*)display->drawdisplay.image)->image;
+	count = nativecount;
+	for(operation = 0; operation < 2; operation++){
+		for(length = 0; length <= 256; length++){
+			memset(name, 'n', length);
+			name[length] = 0;
+			before = packets;
+			if(operation == 0){
+				result = freshnameimage(base, name, 1);
+				require(result == (length < 256));
+				if(result){
+					require(wire[0] == 'N' && wire[5] == 1 && wire[6] == length);
+					require(memcmp(wire+7, name, length) == 0);
+				}
+			}else{
+				image = freshnamedimage(display->display, name);
+				require((image != nil) == (length < 256));
+				if(image != nil)
+					freeimage(image);
+			}
+			if(length == 256)
+				require(packets == before);
+			require(nativecount == count);
+		}
+	}
+	for(operation = 0; operation < nelem(flags); operation++){
+		before = packets;
+		require(freshnameimage(base, "n", flags[operation]) == 1);
+		require(packets == before+1 && wire[5] == (flags[operation] != 0));
+	}
+	memset(name, 'n', 4096);
+	name[4096] = 0;
+	before = packets;
+	require(freshnameimage(base, name, 0) == 0);
+	require(freshnamedimage(display->display, name) == nil);
+	require(freshnameimage(nil, "n", 1) == 0 && freshnameimage(base, nil, 1) == 0);
+	require(freshnamedimage(nil, "n") == nil && freshnamedimage(display->display, nil) == nil);
+	require(packets == before && nativecount == count);
+	for(operation = 0; operation < 2; operation++){
+		display->display->imageid = 2147483646;
+		if(operation == 0)
+			image = freshallocimage(nil, display->display, Rect(0,0,1,1), RGBA32,0,0,0,0);
+		else
+			image = freshnamedimage(display->display, "n");
+		require(image != nil && image->id == 2147483647 && display->display->imageid == 2147483647);
+		freeimage(image);
+		for(id = 0; id < 2; id++){
+			display->display->imageid = id == 0 ? 2147483647 : -1;
+			before = packets;
+			flushed = flushes;
+			idwatch = 1;
+			if(operation == 0)
+				image = freshallocimage(nil, display->display, Rect(0,0,1,1), RGBA32,0,0,0,0);
+			else
+				image = freshnamedimage(display->display, "n");
+			idwatch = 0;
+			require(image == nil && nativecount == count && packets == before && flushes == flushed);
+			require(display->display->imageid == (id == 0 ? 2147483647 : -1));
+		}
+	}
+	display->display->imageid = 0;
+	before = packets;
+	freshattachtowindow(nil);
+	require(packets == before);
+	flushfailat = flushes+1;
+	freshattachtowindow(base);
+	flushfailat = 0;
+	require(packets == before);
+	sent = packets;
+	freshattachtowindow(base);
+	require(packets == sent+1 && wire[0] == 'W');
+	attachclose(display);
+}
+
+
 /* Close genuine Heap/Type/native owners; malformed-control exits are independent active predicates. */
 int
 attachmain(void)
@@ -350,6 +436,7 @@ attachmain(void)
 	rawcases();
 	imageinitializers();
 	informationcases();
+	protocolboundaries();
 	freetype(TFont); freetype(TImage); freetype(TScreen); freetype(TDisplay);
 	require(live==0 && nativecount==0 && worker.nerr==0 && gchalt==0);
 	printf("PASS attach: %d predicates, 18 Frame64 pair scenarios, raw rollback/replacement, %d refresh service calls, all ledgers zero; no device/collector execution\n",checks,refreshcalls);

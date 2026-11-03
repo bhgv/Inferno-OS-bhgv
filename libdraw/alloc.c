@@ -4,50 +4,26 @@
 #include "drawinfo.h"
 
 
-/* Stop on pending-output failure before requesting a window attachment. */
+/* Refuse invalid image handles and failed pending output before requesting attachment. */
 void
-attachtowindow(Image *i)
+attachtowindow(Image *image)
 {
-	uchar *a;
-	char *err;
-//	Image *i;
-	Rectangle r;
-	int id;
-	Display *d;
+	uchar *command;
+	Display *display;
 
-	err = 0;
-
-	if(i == nil){
-		err = "bad image descriptor";
-    Error:
-		if(err)
-			kwerrstr("attachtowindow: %s", err);
-		else
-			kwerrstr("attachtowindow: %r");
+	if(image == nil || image->display == nil || image->display->closing){
+		kwerrstr("attachtowindow: invalid image descriptor");
 		return;
 	}
-	d = i->display;
-
-	/* Refuse before issuing another request if pending output failed. */
-	if(flushimage(d, 0) < 0)
-		goto Error;
-	a = bufimage(d, 1+4);
-	if(a == 0)
-		goto Error;
-	
-	id = i->id;
-	r = i->r;
-	
-	a[0] = 'W';
-	BPLONG(a+1, id);
-//	BPLONG(a+5, screenid);
-//	BPLONG(a+15, r.min.x);
-//	BPLONG(a+19, r.min.y);
-//	BPLONG(a+23, r.max.x);
-//	BPLONG(a+27, r.max.y);
-
-	if(flushimage(d, 0) < 0)
-		goto Error;
+	display = image->display;
+	if(flushimage(display, 0) < 0)
+		return;
+	command = bufimage(display, 1+4);
+	if(command == nil)
+		return;
+	command[0] = 'W';
+	BPLONG(command+1, image->id);
+	flushimage(display, 0);
 }
 
 
@@ -72,6 +48,10 @@ _allocimage(Image *ai, Display *d, Rectangle r, ulong chan, int repl, ulong val,
 	err = 0;
 	i = 0;
 
+	if(d == nil || d->closing || d->imageid < 0 || d->imageid == 2147483647){
+		kwerrstr("allocimage: unavailable image ID");
+		return nil;
+	}
 	if(chan == 0){
 		kwerrstr("bad channel descriptor");
 		return nil;
@@ -160,12 +140,17 @@ namedimage(Display *d, char *name)
 	char *err, buf[12*12+1], reason[ERRMAX];
 	Image *i;
 	int id, n;
+	uvlong length;
 
 	err = 0;
 	i = 0;
 
-	n = strlen(name);
-	if(n >= 256){
+	if(d == nil || d->closing || d->imageid < 0 || d->imageid == 2147483647 || name == nil){
+		kwerrstr("namedimage: invalid display, image ID or name");
+		return nil;
+	}
+	length = strlen(name);
+	if(length >= 256){
 		err = "name too long";
     Error:
 		if(err)
@@ -178,6 +163,7 @@ namedimage(Display *d, char *name)
 			free(i);
 		return 0;
 	}
+	n = length;
 	/* Refuse before issuing another request if pending output failed. */
 	if(flushimage(d, 0) < 0)
 		goto Error;
@@ -226,25 +212,38 @@ namedimage(Display *d, char *name)
 	return i;
 }
 
-int
-nameimage(Image *i, char *name, int in)
-{
-	uchar *a;
-	int n;
 
-	n = strlen(name);
-	a = bufimage(i->display, 1+4+1+1+n);
-	if(a == 0)
+/* Keep the one-byte name length exact; refusal must not reserve or send a truncated packet. */
+int
+nameimage(Image *image, char *name, int in)
+{
+	uchar *command;
+	uvlong length;
+	int count;
+
+	if(image == nil || image->display == nil || image->display->closing || name == nil){
+		kwerrstr("nameimage: invalid image descriptor or name");
 		return 0;
-	a[0] = 'N';
-	BPLONG(a+1, i->id);
-	a[5] = in;
-	a[6] = n;
-	memmove(a+7, name, n);
-	if(flushimage(i->display, 0) < 0)
+	}
+	length = strlen(name);
+	if(length >= 256){
+		kwerrstr("nameimage: name too long");
+		return 0;
+	}
+	count = length;
+	command = bufimage(image->display, 1+4+1+1+count);
+	if(command == nil)
+		return 0;
+	command[0] = 'N';
+	BPLONG(command+1, image->id);
+	command[5] = in != 0;
+	command[6] = count;
+	memmove(command+7, name, count);
+	if(flushimage(image->display, 0) < 0)
 		return 0;
 	return 1;
 }
+
 
 /* Unlink a retiring window before any blocking or refused I/O can leave a stale Display.windows edge. */
 int

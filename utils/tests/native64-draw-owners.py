@@ -74,13 +74,17 @@ typedef struct DFont DFont;
     if attach:
         native+='\n\n'+'\n\n'.join(fn((ROOT/'libdraw/init.c').read_text(),sig) for sig in ('static void\nwindowdiscard(','int\ngengetwindow('))
     if attach:
-        initializers=(ROOT/'libdraw/drawinfo.h').read_text()+'\n\n'+'\n\n'.join(fn((ROOT/'libdraw/alloc.c').read_text(),sig) for sig in ('Image*\n_allocimage(', 'Image*\nnamedimage('))
-        initializers=initializers.replace('_allocimage(', 'freshallocimage(').replace('namedimage(', 'freshnamedimage(')
+        initializers=(ROOT/'libdraw/drawinfo.h').read_text()+'\n\n'+'\n\n'.join(fn((ROOT/'libdraw/alloc.c').read_text(),sig) for sig in ('Image*\n_allocimage(', 'Image*\nnamedimage(', 'int\nnameimage(', 'void\nattachtowindow('))
+        initializers=initializers.replace('_allocimage(', 'freshallocimage(').replace('namedimage(', 'freshnamedimage(').replace('\nnameimage(', '\nfreshnameimage(').replace('\nattachtowindow(', '\nfreshattachtowindow(')
         if control=='image-callback': initializers=initializers.replace('i->reffn = nil;', '/* missing callback initialization */')
         if control=='info-range': initializers=initializers.replace('if(value > (limit-', 'if(0 && value > (limit-',1)
         if control=='info-publication': initializers=initializers.replace('int fields[12], index, start, end;', 'int fields[12], index, start, end; image->depth=0;',1)
         if control=='initial-flush': initializers=initializers.replace('if(flushimage(d, 0) < 0)\n\t\tgoto Error;', 'flushimage(d,0);',1)
         if control=='info-release': initializers=initializers.replace("a[0] = 'f';", "a[0] = 'x';")
+        if control=='name-length': initializers=initializers.replace('if(length >= 256)', 'if(0 && length >= 256)')
+        if control=='name-flag': initializers=initializers.replace('command[5] = in != 0;', 'command[5] = in;',1)
+        if control=='image-id': initializers=initializers.replace('d->imageid == 2147483647', '0')
+        if control=='attach-stop': initializers=initializers.replace('if(flushimage(display, 0) < 0)\n\t\treturn;', 'flushimage(display,0);',1)
         if control=='image-path': initializers=initializers.replace('i->fpath = nil;', '/* missing path initialization */')
         native+='\n#define malloc(n) poisonedimage(n) // Poison fresh headers to expose omitted field initialization.\n#define free(p) nativeretire(p,1) // Retire exact native header owners.\n'+initializers+'\n#undef malloc\n#undef free\n'
     bodies=bodies.replace('free(dr);','nativeretire(dr,5);',1)
@@ -137,7 +141,8 @@ typedef struct DFont DFont;
     fixture=(ROOT/'utils/tests/native64-draw-owners.c').read_text()
     if attach:
         fixture=fixture.replace('NATIVE_IMPLEMENTATION', 'ATTACH_SERVICES\nNATIVE_IMPLEMENTATION')
-        fixture=fixture.replace('static uchar wire[64];', 'static int attachmode, filemode, fileopens, filecloses, refreshcalls; // Bounded attach service observations.\nstatic void **rawslot; // Publication observer for exclusively owned raw pairs.\nstatic Image *rawold; // Raw pair identity retained until publication.\nstatic void *tuplewatch; // Managed old image observed before native retirement.\nstatic void *tupleold; // Exact displaced managed image identity.\nstatic void *tupleslot; // Possibly unaligned two-owner result slot.\nstatic uchar wire[64];')
+        fixture=fixture.replace('static uchar wire[64];', 'static int idwatch; // Stop omitted ID guards before signed counter overflow.\nstatic int attachmode, filemode, fileopens, filecloses, refreshcalls; // Bounded attach service observations.\nstatic void **rawslot; // Publication observer for exclusively owned raw pairs.\nstatic Image *rawold; // Raw pair identity retained until publication.\nstatic void *tuplewatch; // Managed old image observed before native retirement.\nstatic void *tupleold; // Exact displaced managed image identity.\nstatic void *tupleslot; // Possibly unaligned two-owner result slot.\nstatic uchar wire[512];')
+        fixture=fixture.replace('packets++;', 'if(idwatch) require(d->imageid >= 0 && d->imageid < 2147483647);\n\tpackets++;',1)
         fixture=fixture.replace('image=pointer;', 'image=pointer;\n\t\tif(pointer==rawold && rawslot!=nil) require(rawslot[0]!=rawold);\n\t\tif(pointer==tuplewatch){ void *pair[2]; memmove(pair,tupleslot,sizeof(pair)); require(pair[1]!=tupleold); }',1)
         fixture=fixture.replace('screen=pointer;', 'screen=pointer;\n\t\tfor(cursor=screen->display->windows;cursor!=nil;cursor=cursor->next) require(cursor->screen!=screen);',1)
         fixture=fixture.replace('Rect(2,3,9,11), RGBA32, 1, 0', 'attachmode ? Rect(0,0,100,80) : Rect(2,3,9,11), RGBA32, 1, 0')
@@ -166,7 +171,7 @@ def main():
         work=Path(directory);env['TMPDIR']=str(work)
         (work/'draw-native64.h').write_bytes(subprocess.check_output([str(args.limbo.resolve()),'-H','-M','Draw','-I'+str(ROOT/'module'),str(ROOT/'module/draw-native64.m')],env=env))
         includes=['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')]
-        modes=('WORD32','WORD32-file','attach-fd','attach-publish','screen-fill','screen-backing','attach-rollback','attach-tuple','image-callback','image-path','info-range','info-publication','initial-flush','info-release') if args.attach_only else ('gated','WORD32','WORD32-file','mapped','double','rollback','native','alias','swept','lookup','detach','window','retry','font-rollback','font-name','loaded-rollback','loaded-name','loaded-alias','name-retain','name-result','origin-status','origin-wire','order-wire')
+        modes=('WORD32','WORD32-file','attach-fd','attach-publish','screen-fill','screen-backing','attach-rollback','attach-tuple','image-callback','image-path','info-range','info-publication','initial-flush','info-release','name-length','image-id','attach-stop','name-flag') if args.attach_only else ('gated','WORD32','WORD32-file','mapped','double','rollback','native','alias','swept','lookup','detach','window','retry','font-rollback','font-name','loaded-rollback','loaded-name','loaded-alias','name-retain','name-result','origin-status','origin-wire','order-wire')
         for mode in modes:
             source=work/(mode+'.c');source.write_text(support['portfixture'](unit(None if mode.startswith('WORD') or mode=='gated' else mode,attach=args.attach_only),'#include "vmfetch.h"'))
             binary=work/mode;flags=['-DDIS_WORD32=1']+(['-DDIS64_PILOT_LOADER=1'] if mode.endswith('file') else [])+(['-DDIS_NATIVE64_DRAW_HEADER=1'] if mode=='gated' else [])
