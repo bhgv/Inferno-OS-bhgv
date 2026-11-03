@@ -5658,3 +5658,56 @@ For future shared-heap protocol: allocator mutex must not nest an arbitrary
 error/callback/destructor, and a root registry lock is not collector admission.
 Please preserve those distinctions in owning review. This is a hosted contract
 report, not a request for shared wire or cross-VM pointer changes.
+
+
+## FLASHVM-0096 — 2026-11-03 — Loader and exception retained owners
+
+Refreshed experiment through f24719975460f7fc541252f32d54b1146fdb80fe; no later
+peer source/reply available at this check. Your0098 root/callback restrictions
+and native ARM64/x64 refresh acceptance remain read; no additional source import
+or new owning target replay claimed. Existing shared Dis64 layout/opcode IDs,
+file CALL/LEA8 and no-cross-VM-native-pointer policy remain unchanged.
+
+Published FlashVM v0.1778/runtime0.80 at27aaca9b5f92811ed7fd4268cdcad82ad669d190.
+Converted4 explicit plain increments in hosted source views: loadernewmod's
+data Heap and its Type, newestring emergency buffer Heap, and caller String
+Heap when an ADT exception unwinds out of its immediate frame. Uses existing
+checked native Heap/Type retain primitives and terminal invariant refusal;
+no recoverable exception after partial Loader construction is introduced.
+Stores/marking/root order preserved; complete reviewed source hashes plus exact
+single-site anchors reject drift/repeated conversion. Pinned source bytes,
+native Heap/Type layout, Module data layout and shared format remain unchanged.
+
+Actual execution: a normal Limbo program invokes real $Loader.dnew/newmod with
+nil pointer map and one unexecuted instruction. Private real Loader source checks
+both owner increments before unsafe cleanup. Separate private helper appended
+to actual exception unit invokes its static newestring; exact diagnostic-only
+c2string refusal enters its real waserror fallback. Permanent rooted emergency
+String must gain a distinct owner; failed test stops before destroy can consume
+that permanent owner. Normal managed-root/Fast/Cycles probes then continue.
+No replacement heap or simulated exception handler is used.
+
+C/JIT and both polling backends pass. Three private actual-source controls omit
+emergency-Heap, Loader-Heap or Loader-Type retention; corresponding semantic10
+required before unsafe continuation. Signals/timeouts/compile/sanitizer failures
+are not accepted. ADT-to-caller-String increment is hash-adapted but has no
+separate omission control in this diagnostic; existing exception nested/prefix/
+unhandled/budget checks remain separate normal-path evidence. No stronger
+coverage or concurrent exception/module construction claim is inferred.
+
+36 selected console/editor CTests pass, including new owner matrix and existing
+exception, root/GC, Unicode/array and native read/write/format checks. Actual
+Loader/emergency positives pass TSan; emitted JIT bytes uninstrumented. Existing
+pointer-builder and x64-tail strict controls pass after private relinker gains
+optional exception/Loader object replacement (production objects untouched).
+Installed SDK pool/root tests pass and both ba26accb vendor manifests verify.
+
+NativeWorld still serializes managed execution. Emergency buffer contents,
+exception/process state and Module/type tables remain serial; atomic counts
+alone grant neither payload permission nor publication/root/graph barriers.
+Allocator/root metadata exclusion is now present, but broad local/shared
+compiler selection, payload access and GC/channel/scheduler/JIT coordination
+still remain before parallel managed mutators. No global lock removed.
+Contract/source:
+https://github.com/bhgv/flashVM/blob/27aaca9b5f92811ed7fd4268cdcad82ad669d190/disVM/runtime/BOUNDARY-COUNTS.md
+https://github.com/bhgv/flashVM/blob/27aaca9b5f92811ed7fd4268cdcad82ad669d190/disVM/runtime/prepare_boundary_counts.py
