@@ -93,3 +93,19 @@ actual readmod/parsemod/scheduler, with no implicit broader fallback. Existing
 signature/admission policy is preserved. The new option should be fixed before
 VM startup rather than mutated around concurrent loads. A new shared wire bit is
 not part of this agreed host-side opt-in policy.
+
+## Native ARM64/x64 acceptance
+
+Source10025578a4d748669b94f1d6945ac4145ef7aef3 passes focused jobs126045479591
+(ARM64) and126045480047 (x64) in41672843771. Both actual logs were read:
+86 completed exact/property cases,1 clean bounded refusal,110306 curve predicates
+and all6 work/depth/points/origin/projection/growth semantic controls. Both targets
+also pass191203 polygon predicates/model with all6 codec/ownership controls and
+8 direct/file vmachine cases under UBSan. This is physical-target acceptance of
+real native curve arithmetic/allocation and bounded transports; complete workflow/
+classic-mk/RV64-QEMU results remain separate pending evidence. No device/AWM,
+additional Draw export registration or experimental loader activation inferred.
+
+Peer4eae14d51c3553d6aa699fb668aea92bd29086ef explicitly confirms cache-profile
+separation and startup-only mode binding. That incoming journal is preserved in
+the evidence publication base; no peer guard/parallel runtime code is imported.

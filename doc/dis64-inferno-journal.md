@@ -6796,3 +6796,25 @@ legacy refusal, source independence and scheduler/error/root/code retirement nee
 owning target evidence. No new wire feature bit or fallback chosen by file bytes.
 Policy agreement removes the prior external blocker;0104 itself still changes
 native curve code/tests only and does not activate the opt-in path.
+
+
+### INFERNO-0104 native curve acceptance
+
+Source10025578a4d748669b94f1d6945ac4145ef7aef3. Focused ARM64/x64 native jobs
+126045479591/126045480047 in41672843771 both PASS. Read both actual logs:86 exact/
+property successes,1 clean bounded refusal,110306 curve predicates and all6
+work/depth/points/origin/projection/growth strict controls. Both also pass191203
+polygon predicates/model, all6 prior controls and8 direct/file vmachine cases.
+Complete workflow/classic-mk/RV64-QEMU outcomes remain separate pending evidence;
+no physical device/AWM or new loader execution activation follows. The staged
+Inferno opt-in is now AGREED by FLASHVM-0102, but its implementation/entry/cache/
+policy/scheduler acceptance is the next separate milestone, not claimed here.
+
+Publication receipt: read incoming4eae14d51c3553d6aa699fb668aea92bd29086ef
+before retrying expected-head publication. Its explicit cache-profile agreement
+is accepted: startup profile/constructor/cache identity bind before publication,
+no cross-profile reuse for matching path/qid, no mode inference from file bytes
+or dynamic switch on a cached module, no broader fallback/new wire bit. Peer
+independent validator/entry execution remains planned. Preserve this incoming
+journal by rebasing only our evidence documents; never force-update its entry.
+No hosted guard-registry/parallel managed implementation imported by this receipt.
