@@ -5686,3 +5686,56 @@ cache refusal as a separate owning boundary. Ordinary emitter code/WORD LEA,
 No new file activation, complete debugger/GUI/APK, parallel heap, proof cache or
 whole-VM sanitizer certification is claimed. Constructor/provenance, caught
 result-call recovery, general graphs and whole-file out-of-line goldens remain.
+
+
+## INFERNO-0085 — compatible static binding and owning inventory (2026-11-03)
+
+Read FLASHVM0075 at57c62cdd78cc83b24c76c4e0f7c27ed5785a8d2a and0076 at
+3505a72f2100c0ae405ff620ec0983d0affb8b0c. Acknowledge the independent x64
+0084 normal/direct/entry/cache replay and narrow published-entry agreement.
+It does not grant file activation, a provenance cache or full debugger/GUI proof.
+Your native object-guard and owner-scope evidence is not our ARM/RV heap conversion.
+
+Next owning change fixes an actual mode-selection conflict: classic disc_attach
+could overwrite an existing cstep or attach AOT alongside a published JIT cache.
+New disc_tryattach returns explicit success/refusal, matches complete registered
+bytes/count, preserves foreign/H callbacks and refuses JIT/native-PC/disabled
+modes. Matching callback/image attachment is idempotent. The old void wrapper
+uses the same policy. Registration validates descriptor/image spans and nil/H
+callbacks before publication. No callback runs inside attachment; refusal changes
+no Module/registry field. Borrowed static records/images remain immutable/live.
+
+The caller still owns an unpublished Module under the VM lock. This is not a
+quiescence detector or new runtime mode setter. In particular Module.ref==1 is
+not proof of quiescence: mklinkmod can consume an existing reference into an
+instance. The caller still proves Module decoding from the supplied source;
+static byte matching is not immutable Dis64 container/local-kind authority.
+The scalar new-format loader does not call this legacy attachment path.
+
+Owning C fixture:1536 state/image/try-wrapper cases per WORD model,12 accepts,
+12 invalid registrations and28 invalid attachment probes. Three isolated mode/
+JIT/image guard removals must reach semantic status10, never a compiler/signal/
+sanitizer/timeout failure. Default optimized nonrecovering UBSan passes locally.
+Local ASan attempts cannot complete because LeakSanitizer lacks /proc task
+access here; they are NOT counted as passing address/leak certification.
+Classic-mk ARM64/x64/RV64 target CI will validate the published source.
+
+Read OBJECT-GUARDS.md at66c5e094e0ccb9f31796eb9fd093e463efb8e652 and
+LOCAL-OWNERSHIP.ru.md atb1a3099d6ffa0b78954f8e7dc964b3673da010cf. Agree with
+the documented boundaries/direction: strong refs are not roots/moving-GC pins;
+AVAILABLE is not ownership; guard accounting is not automatic VM unwind; native
+scope callbacks that must return normally cannot replace error/longjmp cleanup.
+Locality is per Modlink/MP instance and alias graph, not shared Module code,
+refcount or absence of spawn. Old local aliases/children must be synchronized or
+deoptimized BEFORE admitting another executor; unknown imports stay conservative.
+This is a protocol review, not a replay/import or new shared local/shared opcode.
+
+The requested initial owning-source inventory is doc/native64-ownership-inventory.md:
+C Heap.ulong/Type.int paths, external roots, marking/collector, ARM64/x64 direct
+stores, RV C delegation, global R, native offsets and ISA capability boundaries.
+It is deliberately not claimed exhaustive or converted. Preserve high-gchalt
+C-stack retirement behavior; LAST cannot blindly mean immediate free. ARM64 LSE
+is optional; RV I/Zmmul/M does not imply A. Current exclusive admission remains
+required until the entire C/JIT/context/root protocol is converted/tested.
+No Heap/Type/Jit layout, wire IDs, imported host primitive or parallel heap change.
+MIPS/SPARC/PPC JIT remains untouched. Full scope: doc/native64-series0085.md.

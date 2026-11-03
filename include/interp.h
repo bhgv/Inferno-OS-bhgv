@@ -290,11 +290,11 @@ struct Prog
 /* Static Dis-to-C images keep original module data, frames and Dis PCs. */
 struct DisC
 {
-	const uchar *image;
-	ulong length;
-	int nprog;
-	int (*step)(void);
-	DisC *next;
+	const uchar *image; // Borrowed immutable source image; never a serialized callback pointer.
+	ulong length; // Complete source byte count, bounded before comparison.
+	int nprog; // Decoded instruction count associated with the exact source bytes.
+	int (*step)(void); // Trusted static C implementation, owned by the native host.
+	DisC *next; // Registry link; callers leave registered records unchanged.
 };
 
 /* Guarded fast entries and complete decoded dispatch retain original Dis PCs. */
@@ -423,6 +423,7 @@ extern	void	(*optab[256])(void);
 extern	void	(*comvec)(void);
 extern	void	(*dec[])(void);
 extern	int	disc_register(DisC*);
+extern	int	disc_tryattach(Module*, const uchar*, ulong); // Caller owns unpublished Module under VM lock; no AOT/JIT composition.
 extern	void	disc_attach(Module*, const uchar*, ulong);
 extern	Module*	modules;
 extern	int	mutator;

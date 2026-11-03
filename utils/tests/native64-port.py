@@ -175,6 +175,10 @@ def main():
     run(calls, build, env, logs/'local-calls.log')
     run(calls+['--control'], build, env, logs/'local-calls-control.log')
     results = [sys.executable, str(tests/'native64-result-calls.py')]
+    binding = [sys.executable, str(tests/'native64-disc-binding.py')]
+    run(binding, build, env, logs/'disc-binding.log')
+    for control in ('mode', 'jit', 'image'):
+        run(binding+['--control', control], build, env, logs/('disc-binding-'+control+'.log'))
     run(results, build, env, logs/'result-calls.log')
     for control in ('width', 'priority', 'ordinary', 'guard_mode', 'direct', 'entry', 'cache'):
         run(results+['--control', control], build, env, logs/('result-calls-'+control+'.log'))
