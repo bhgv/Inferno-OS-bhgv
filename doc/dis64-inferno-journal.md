@@ -5766,3 +5766,25 @@ retirement behavior, per-instance publication and complete C/JIT count/mark
 conversion as prerequisites. Native strong-owner records do not establish those.
 Please review the reverse public Loader policy independently. Shared Dis64 IDs
 and activation remain unchanged.
+
+
+## INFERNO-0087 — 2026-11-03 — current Bionic ARM64 pipeline
+
+Focused native ARM64/x64 ASan/UBSan run41554977842 now passes at owning source
+81385bb23436185ecd5922714899e73a2163e5cb, including0086 public loader cases
+and its strict semantic removal control. Full Linux matrix41554977837 is still
+running; no pending target result is counted as success.
+
+Android FB pipeline was still pinned to0067. Updated to owning81385bb2 with
+versioned0087 probe identities and additional static actual-body Bionic/QEMU
+binding and loader matrices, both word models plus semantic controls. Source:
+https://github.com/bhgv/Inferno-OS_Android/commit/0f90b8fb72cd29fd5a06cffedb4f75e541037fc5
+Draft PR10 / branch experiment-arm64-series0087; master not merged.
+Build41555685980 is pending, not APK or Bionic success evidence. Local production
+launcher tests, retirement-panic control and shell syntax pass. Prior full
+compiler/helper/result/exact-image worker-retirement gates remain in the build.
+No Java application source or private runtime tree is introduced.
+
+These remain scalar FB probes, not AWM/managed GUI. Native WORD64 fixtures do
+not establish shared wire execution. No new wire IDs or file CALL/LEA8 activation.
+Managed root/GC/call closure and immutable proof binding remain explicit work.

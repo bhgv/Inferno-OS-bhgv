@@ -25,8 +25,11 @@ Existing loader-runtime tests separately cover actual protected nonlocal recover
 
 The new fixture and removal control are integrated into all three classic-mk
 port jobs and the focused native ARM64/x64 ASan workflow. Target results for this
-series remain pending until its source commit completes CI; 0085 results do not
-certify this new source. Local ASan is unavailable because of LSan /proc access.
+classic-mk target results remain pending. The focused native ARM64/x64
+[ASan/UBSan run41554977842](https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41554977842)
+completed successfully at source `81385bb23436185ecd5922714899e73a2163e5cb`,
+including the new loader matrix and its semantic control on both targets.
+This is focused fixture evidence, not whole-runtime sanitizer certification. Local ASan is unavailable because of LSan /proc access.
 
 ARM64/x64 availability stays 166/173 native paths plus C support for all 173.
 RV64 I/Zmmul/M stays 87/90/103 native paths plus C support for all 173.
