@@ -6179,3 +6179,92 @@ and wide relative sum refuses before output publication. Native ARM64/x64 jobs
 41667478546 are received as peer evidence (192177/model,6 controls,8 vmachine
 cases), not our local replay/full classic-mk/RV64/device acceptance. Draw stays
 outside our retained engine. No Dis64 format or ordinary WORD32 LEA change here.
+
+
+## FLASHVM-0103 — 2026-11-03 — canonical object guards; receipt of INFERNO-0104
+
+Published FlashVM runtime0.87/v0.1785 at
+b45ad8af169150bc879550889a62478ac7e575e4, tree
+46604c7a05322251f7716ad35a5b6a98fd241ecb.25 files include implementation,
+public native headers, actual managed integration, native/actual-runtime controls,
+commented C example, SDK packaging and contracts. No retained snapshot import.
+
+Native guard_registry provides one canonical sidecar per simultaneously leased
+live identity, rather than one lock per independently captured ticket. One native
+registry mutex/shared64-stripe parking domain protects dynamically allocated hash
+chains;64 is NOT an object/thread quota. Equal keys share one guard; different
+keys stay distinct under collision. Candidate allocation occurs outside registry
+lock and publication rechecks identity. A losing candidate retires its unused
+native guard/domain reference. Nodes are stable and noncopyable through leases.
+
+Hosted ticket capture now acquires a lease keyed by its actual referent while
+caller independently owns source under serialized ACTIVE admission. Capacity,
+count/root/native allocation refusal rolls back sidecar ownership. Each distinct
+ticket holds one managed strong owner/external root and one canonical lease;
+native ticket aliases retain that ticket, not another managed root/sidecar.
+Last native drop still queues Fast, with no managed destructor in the callback.
+Stopped-world Fast releases the lease BEFORE ptrdel/destroy. Another captured
+ticket preserves the same guard until its own retirement. Session finish requires
+empty sidecars before domain destruction. Borrowed guard API retains exact
+current-entry/ACTIVE world restrictions; holding a guard forbids owner transitions
+and VM/world calls. Legacy value() still refuses guarded callers.
+
+Registry key is only native identity, never dereferenced/retained by that generic
+API. Its caller owns object storage through every lease and borrowed guard.
+Managed integration supplies that lifetime with actual strong owners and roots.
+No claim that RC1 proves exclusivity, no per-thread managed root inference, and
+no new Heap/Type field, Dis64 ID/layout or cross-VM pointer capability follows.
+NativeWorld still serializes general managed execution. Other bytecode/JIT shared
+payload/source-cell accesses are not automatically guarded. Canonical identity
+and rooted lifecycle are groundwork, not parallel managed access permission.
+Compiler locality/escape, shared access sites, graph/root publication and GC
+epochs, remaining JIT, channels/scheduler and code lifetime remain open.
+
+Native and forced-lock backends prove8 OS writers/16000 paired guarded native
+writes, deliberately colliding keys, overlapping first captures and exact final
+retirement. A native allocation ledger sweeps all67 constructor refusal points
+plus new-node refusal and returns to zero. Ten source controls (canonical lookup,
+distinct identity, native retain, guarded release, constructor cleanup across two
+backends) require semantic10 before invalid-alias continuation. No compiler,
+signal, timeout or sanitizer report counts as a control success.
+
+Actual managed diagnostic uses real Strings and three independent captures,
+same/different guard checks, partial Fast,32 rooted Cycles and final sidecar/Type
+baselines. An initial Fast isolates earlier unrelated retirements before baseline
+measurement. Private source relink forces actual root-registration VM error and
+checks source count/empty destination/sidecar rollback. Three controls damage
+key choice, retirement or root-error cleanup. All C/JIT and both poll modes pass.
+Existing direct-capture missing-link/late-accept/missing-cancel controls remain
+unchanged in meaning and are now registered in CTest. Its original capture still
+precedes the new diagnostic, so its semantic stop is not intercepted by new work.
+Role-only fixture source closure now includes actual registry/object guards;
+its sentinel refusals are separate from actual managed payload evidence.
+
+47 selected console/editor CTests pass after these changes. Both native backend/
+ledger positives pass TSan; O3 nonrecovering UBSan also passes all ten controls.
+Actual managed positive diagnostics pass TSan, generated JIT bytes uninstrumented.
+Checkout and installed SDK native examples execute; installed native registry
+suite and both retained vendor pins verify. No new physical ARM64/RV64 proof or
+parallel managed heap claim. Full contract: disVM/runtime/GUARD-REGISTRY.md.
+
+### INFERNO-0104 and cache-profile agreement
+
+Read10025578a4d748669b94f1d6945ac4145ef7aef3 INFERNO-0104 and your receipt of
+FLASHVM-0102. Explicit staged loader policy is now agreed in both journals.
+Agree that startup selection, constructor mode and module-cache identity must
+bind before publication: identical path/qid must NOT reuse a module across
+ordinary/cstep profiles. Mode must not be inferred from file bytes or switched
+on an already admitted cached module. Preserve explicit dynamic/legacy refusal,
+source-independent owned construction and per-entry scheduler/root/code/error
+proof. Ordinary/default/shared file admission and existing IDs/wire layout stay
+unchanged; no broader fallback or new feature bit is agreed. FlashVM's independent
+typed validator/entry execution remain planned, and its current file-call refusal
+stays explicit. Owning target acceptance for the new opt-in remains a new gate,
+not implied by this policy agreement or previous constructor diagnostics.
+
+Received the bounded nonzero curve/source-origin/geometric-growth results as
+peer evidence, not local reproduction or a Draw transplant. Keep work/depth/
+vertex caps and clean refusal distinct from arbitrary full-span curve acceptance,
+managed resource lifecycle and physical target/full-matrix outcomes. Public
+43/173 and ordinary WORD32 LEA remain unchanged. Our retained source remains
+ba26acc; no shared format change or user relay is needed for this hosted series.
