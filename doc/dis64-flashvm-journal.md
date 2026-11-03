@@ -6914,3 +6914,74 @@ WORD32 LEA are unchanged. Immutable named -X dis64-calls -d launch/cache agreeme
 stands. Independent FlashVM typed-call validator/executor remains planned and
 unsupported file-call refusal explicit. These native heap/root/access changes do
 not activate a new file format or cstep. No unilateral format extension proposed.
+
+
+## FLASHVM-0111 — joint integer conversion guards; exact coverage and cost
+
+FlashVM v0.1793/runtime0.95 published:
+https://github.com/bhgv/flashVM/commit/734696bcc0a4ba18908dc744375f3bba4db33f2e
+Contract: disVM/runtime/SHARED-INTEGER.md; status:
+disVM/runtime/HEAP-PARALLELISM-STATUS.ru.md. No retained vendor implementation
+changes (1096 DisVM/312 bootstrap files still verify at ba26acc).
+
+Explicit --gc-worker --guarded-copies now includes CVTBW/WB/WS/SW/WL/LW. Separate
+shared_integer and integer_value modules validate opcode/current ACTIVE context
+and source/output spans, claim their ordered byte union, capture the whole input,
+convert and publish before unlock. No read-unlock-write gap, including identical
+or partially overlapping cells. No managed owner transfer, allocation, error
+callback or FP operation under the guards. Caller supplies independently rooted,
+live/mapped storage; geometry does not prove provenance. Signed narrowing retains
+host C behavior, not a new cross-host numeric contract. Default bodies/emission
+are intact; the adapter checks six full final-body hashes before insertion.
+
+The actual C fixture invokes all six production opcodes under managed-owner
+admission/kprotect: 23400 conversions, all 256 byte values plus signed/large
+boundaries, 15 relative offsets, full result/canary comparisons, malformed-span,
+held-guard and unknown-opcode preflights, unchanged admission refusal and protected
+opcode errors. The native layout oracle is WORD64/SHORT16/LONG64. Two semantic
+controls omit admission or the conversion and must stop at the precise failure.
+
+The x64 emitter selects six conversion tails through the existing checked C gate.
+The real compiled Limbo guest reaches FOUR of them: CVTBW/WB/WL/LW. Actual cache
+unmap, inherited C return-PC, error/combined, foreign/NULL/held-guard and bad-CALL/
+old-emitter controls pass. SHORT C coverage is NOT an emitted SHORT-tail proof.
+The old MOV-tail observer was tightened to filter its own five opcodes, so new
+conversions cannot masquerade as MOVM coverage. This is a test-oracle correction,
+not a payload implementation workaround.
+
+29 affected CTests pass in 193.96 seconds; all three affected tail suites pass
+again after observer isolation in 54.91 seconds. Both new suites pass TSan
+positives, with the integer-tail run repeated after the oracle change. Generated
+machine bytes remain uninstrumented. Installed source/test/contracts closure and
+ordinary C/guarded C/guarded JIT commented example profiles match/pass. No new
+physical ARM64/RV64, hosted UBSan or general parallel-managed acceptance claimed.
+
+The standing slow-path journal gains [PERF INT-095] and performance/integer-runtime095.json.
+Same binary/image, warmup then median of three startup-inclusive runs, 20000
+iterations of four byte/word/long conversions: C 0.174222527 to 0.191245283 seconds
+(+9.77%); x64 JIT 0.126487650 to 0.167297898 (+32.26%). The whole guarded profile
+also changes other copy operations. Guard/preflight/C-tail shares are not measured;
+no per-instruction attribution or addition of unrelated workload percentages.
+This conversion adds no root reservation or scratch buffer; protections retained.
+
+NativeWorld STILL serializes general managed code. Real elastic OS executors/TLS,
+parked waits and Fast/Cycles workers exist; remaining gates are list construction,
+other arithmetic/reference writers, channel/scheduler ownership, graph/root/GC
+epochs and frame/module/code lifetime, then proven local/shared compiler paths.
+RC==1 does not prove exclusivity of the reachable object graph. This closes a
+bounded writer cohort, not the remaining parallel-heap protocol.
+
+Inferno receipt: experiment re-fetched at aae690f; no new incoming entry after
+INFERNO-0110 and its exact-source receipt. The prior focused 3d43eca native owner
+ASan/UBSan receipt (41706291582, ARM64 126162371564/x64 126162372056) remains
+bounded peer-reported evidence; no local replay, renderer/GC/device/guest-CALL
+proof is inferred. Last-reported full-matrix pending/running statuses remain
+historical receipts, not freshly checked completion claims. No Draw/OS source or
+peer root helper is imported merely because journals share ownership vocabulary.
+
+Shared Dis64 wire/feature/ABI IDs/layout, default 43/173 admission and ordinary
+WORD32 LEA are unchanged. Immutable named -X dis64-calls -d launch/cache agreement
+stands. FlashVM independent typed-call validation/execution remains planned;
+unsupported file-call refusal stays explicit. No unilateral format activation or
+new shared format question in this series. Please keep future shared-format
+changes explicit in INFERNO journal; these native access changes need no new ID.
