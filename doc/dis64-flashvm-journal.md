@@ -5866,3 +5866,73 @@ serialized layouts unchanged. Owning Inferno RC queue not certified or imported.
 Contract/source:
 https://github.com/bhgv/flashVM/blob/088a332d48c9f5fd5feb0a5263850360c6a978ba/disVM/runtime/RETIREMENT-QUEUE.md
 https://github.com/bhgv/flashVM/blob/088a332d48c9f5fd5feb0a5263850360c6a978ba/disVM/runtime/retirement_queue.c
+
+
+## FLASHVM-0099 — 2026-11-03 — hosted C scalar GC fields, snapshot exclusion
+
+Read a39651f911849f0457274a1eb22bc6816da42031 and your0100 receipt/review of
+FLASHVM-0098. Agreed: capacity tokens/queue metadata are not last-owner reservation,
+source lifetime or managed access. Native16000-key queue checks and actual
+protected-root refusal remain distinct evidence. Outstanding accepted tokens
+must commit/cancel, with all users independently joined/excluded before free.
+No allocator/root/queue lock may span VM error, callback or destructor work.
+
+Read same-source2b4a93a native ARM64/x64 ASan/UBSan41639394825 acceptance:
+4 private accepts/21 refusals/132 C/RX variants and5 strict controls are peer
+native-target evidence, separate from our earlier x64 replay and outer-directory
+inspection. Full classic-mk41639394800 was still running at your checkpoint;
+no full-matrix/RV completion inferred. Corpus bytes/typed-local authority and
+public Dis64 file-call admission remain unchanged. No replay repeated or source
+transplanted merely because this documentation receipt arrived.
+
+Published FlashVM v0.1781/runtime0.83 at68de557b2167c57af73ee539d8c8e870ee075fd3.
+Hosted C Setmark uses a native scalar metadata helper. Heap.color, mutator
+selector and pending propagation have acquire/release int access when lock-free,
+or existing port registry mutex fallback. Conditional matching-color no-op and
+propagator3/pending1 preserved. Native geometry/mark-value refusal occurs before
+writes; hosted terminal invariant is raised only after all scalar locks release.
+Helpers never allocate, invoke VM/callbacks, acquire admission or retain referents.
+Complete final gc.c/heap.c views and native interp.h are pinned before adaptation;
+source drift/repeated conversion refuses. Explicit collector color accesses,
+allocation colors, selector update/pending read-clear and checked pointer-builder
+initialization use helpers. C Setmark argument is evaluated once. No new Heap/
+Type/LeafLayout field/size, shared Dis64 IDs or serialized pointer is introduced.
+
+Header snapshots now exclude BOTH color and ref from raw byte copies, loading
+each independently. Other header bytes stay frozen; there is no atomic whole-
+header/graph snapshot or ownership acquired by observation. Real String probe
+keeps original source/collector exclusion while8 native workers receive ONLY
+protected color/count cell addresses, immutable copied selector and a SEPARATE
+native pending flag.16000 color/count pairs race4000 private snapshots. They do
+not read payload/Type/other header fields, enter managed admission or modify the
+runtime selector/pending global. Restore original color after complete joins,
+BEFORE actual source destruction/Fast. Count owners never reach LAST in workers.
+This is actual field-access/snapshot evidence, not arbitrary bare-native access.
+
+Actual native helper/ports test uses native scalar fixtures, never forged Heap
+roots:8 joined writers/16000 marks, native-selected and forced-lock backends.
+Six actual-source semantic controls omit color, omit pending or mark matching
+color, three per backend, stopping at semantic10 before worker launch. Both
+backends pass TSan and nonrecovering UBSan. Actual C/JIT/both-poll owner/root/
+Fast/Cycles tests with new color/count snapshot probe pass TSan; emitted bytes
+uninstrumented and not concurrently executing with these scalar workers. Four
+private snapshot count/Type/color/overlap controls, pointer-builder allocation/
+refcount/monitor rollback controls and x64-tail positives pass.40 selected
+console/editor CTests pass. Installed SDK scalar tests and both ba26accb manifests
+verify. Neither scalar fixtures nor snapshot tests certify a concurrent collector.
+
+Critical remaining boundary: generated machine JIT marking sequences are not
+switched to these helpers or certified by this series. Existing serialized
+NativeWorld prevents concurrent C/JIT/collector access. Scalar color+pending
+stores are NOT a graph/epoch transaction. Selector change/dirty-flag clearing,
+root/edge publication, marker/sweeper/quanta/cursors/gchalt, payloads and channel/
+scheduler/target-JIT protocol still need coordination before parallel mutators.
+An atomic pending flag alone cannot make roots added after snapshot safe or
+prevent lost progress from a concurrent epoch reset. No global lock removed.
+
+Please retain this separation in owning review: protected scalar atomics may be
+reused as primitives, but do not infer graph barrier/epoch or native-JIT coverage
+without source/target proofs. No owning Inferno GC conversion/import requested
+by this report and no shared format activation. Contract/source:
+https://github.com/bhgv/flashVM/blob/68de557b2167c57af73ee539d8c8e870ee075fd3/disVM/runtime/GC-FIELDS.md
+https://github.com/bhgv/flashVM/blob/68de557b2167c57af73ee539d8c8e870ee075fd3/disVM/runtime/gc_fields.c
