@@ -27,6 +27,7 @@ typedef struct Native64Name Native64Name;
 struct Native64Name {
 	char *name; // Owned exact generated C identifier, including macro suffixes.
 	void *owner; // Borrowed Type or Decl identity permitted to repeat this declaration.
+	int callable; // Source C functions keep their names when descriptor macros need disambiguation.
 	Native64Name *next; // Private preflight registry, never a wire symbol table.
 };
 
@@ -41,7 +42,7 @@ static void native64ctype(Type*, int);
 
 
 /* Reject ambiguous C names before printing any declaration, including descriptor macros. */
-static void
+static Native64Name*
 native64register(char *name, void *owner)
 {
 	Native64Name *entry;
@@ -50,7 +51,7 @@ native64register(char *name, void *owner)
 		if(strcmp(entry->name, name) == 0){
 			if(entry->owner != owner)
 				fatal("native64 C name collision: %s", name);
-			return;
+			return entry;
 		}
 	if(native64namecount == Native64Names)
 		fatal("too many native64 C names");
@@ -59,8 +60,10 @@ native64register(char *name, void *owner)
 	entry->name = allocmem(strlen(name)+1);
 	strcpy(entry->name, name);
 	entry->owner = owner;
+	entry->callable = 0;
 	entry->next = native64names;
 	native64names = entry;
+	return entry;
 }
 
 
@@ -73,16 +76,33 @@ native64module(Decl *module)
 }
 
 
+/* Preserve callable C spellings; only colliding metadata uses a reserved private name. */
+static void
+native64descriptorsymbol(char *name, char *suffix, char *symbol, int bytes)
+{
+	Native64Name *entry;
+
+	if(snprint(symbol, bytes, "%s_%s", name, suffix) >= bytes)
+		fatal("native64 descriptor name too long");
+	for(entry=native64names; entry != nil; entry=entry->next)
+		if(entry->callable && strcmp(entry->name, symbol) == 0){
+			if(snprint(symbol, bytes, "limbo_native64_descriptor_%s_%s", name, suffix) >= bytes)
+				fatal("native64 descriptor name too long");
+			return;
+		}
+}
+
+
 /* Reserve the complete descriptor spelling without conflating C names and runtime IDs. */
 static void
 native64reservenamed(char *name, void *owner)
 {
-	char symbol[2*StrSize+32];
+	char symbol[2*StrSize+64];
 
 	native64register(name, owner);
-	seprint(symbol, symbol+sizeof(symbol), "%s_size", name);
+	native64descriptorsymbol(name, "size", symbol, sizeof(symbol));
 	native64register(symbol, owner);
-	seprint(symbol, symbol+sizeof(symbol), "%s_map", name);
+	native64descriptorsymbol(name, "map", symbol, sizeof(symbol));
 	native64register(symbol, owner);
 }
 
@@ -396,10 +416,13 @@ static void
 native64descriptor(char *name, Native64Type *layout)
 {
 	long i, bytes;
+	char symbol[2*StrSize+64];
 
 	bytes = (layout->size+63)/64;
-	print("#define %s_size %ld // Native64 byte extent.\n", name, layout->size);
-	print("#define %s_map {", name);
+	native64descriptorsymbol(name, "size", symbol, sizeof(symbol));
+	print("#define %s %ld // Native64 byte extent.\n", symbol, layout->size);
+	native64descriptorsymbol(name, "map", symbol, sizeof(symbol));
+	print("#define %s {", symbol);
 	for(i=0; i<bytes; i++)
 		print("%s0x%2.2ux", i == 0 ? "" : ",", layout->map[i]);
 	if(bytes == 0)
@@ -450,6 +473,7 @@ native64table(Decl *module)
 {
 	Decl *function;
 	char name[2*StrSize], moduleid[2*StrSize];
+	char frame[2*StrSize+2], symbol[2*StrSize+64];
 	int count;
 
 	native64name(module, moduleid, sizeof(moduleid));
@@ -465,7 +489,9 @@ native64table(Decl *module)
 		print(", // Module-relative symbol; methods keep their ADT qualifier.\n");
 		print("\t\t0, // Specification only, never a callable entry.\n");
 		print("\t\t0x%luxU, // Existing Limbo hash, not a structural Dis64 signature.\n", (ulong)sign(function));
-		print("\t\tF_%s_size, // Full fixed-frame extent.\n", name);
+		snprint(frame, sizeof(frame), "F_%s", name);
+		native64descriptorsymbol(frame, "size", symbol, sizeof(symbol));
+		print("\t\t%s, // Full fixed-frame extent.\n", symbol);
 		print("\t\tsizeof(limbo_native64_%s_map), // Full map8 extent.\n", name);
 		print("\t\tlimbo_native64_%s_map // Borrowed immutable map storage.\n\t},\n", name);
 		count++;
@@ -525,7 +551,7 @@ native64frame(Decl *function, int emit)
 	Decl *argument;
 	long offset, bytes;
 	int arguments = 0;
-	char name[2*StrSize];
+	char name[2*StrSize], symbol[2*StrSize+64];
 
 	native64name(function, name, sizeof(name)-2);
 	if(function->ty->polys != nil)
@@ -581,7 +607,8 @@ native64frame(Decl *function, int emit)
 	native64descriptor(name, &frame);
 	if(!function->ty->varargs){
 		print("#ifdef LIMBO_NATIVE64_ENTRIES\n");
-		print("static const uchar limbo_native64_%s_map[] = %s_map; // Complete fixed-frame map8.\n", name+2, name);
+		native64descriptorsymbol(name, "map", symbol, sizeof(symbol));
+		print("static const uchar limbo_native64_%s_map[] = %s; // Complete fixed-frame map8.\n", name+2, symbol);
 		print("static const LimboNative64Entry limbo_native64_%s_entry = {\n", name+2);
 		print("\t");
 		native64symbol(function);
@@ -732,6 +759,16 @@ native64stubs(Decl *globals)
 	native64count = 0;
 	native64names = nil;
 	native64namecount = 0;
+	/* Register source functions before any metadata suffix can shadow them. */
+	for(module=globals; module != nil; module=module->next){
+		if(!native64module(module))
+			continue;
+		for(function=module->ty->tof->ids; function != nil; function=function->next){
+			native64name(function, name, sizeof(name)-2);
+			entry = native64register(name, function);
+			entry->callable = 1;
+		}
+	}
 	for(module=globals; module != nil; module=module->next){
 		if(!native64module(module))
 			continue;

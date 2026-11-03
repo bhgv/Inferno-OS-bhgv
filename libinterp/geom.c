@@ -2,8 +2,54 @@
 #include "interp.h"
 #include "isa.h"
 #include "draw.h"
+#ifdef DIS_NATIVE64_GEOMETRY_HEADER
+#if !defined(DIS_WORD32) || DIS_WORD32 != 1
+#error native64 geometry declarations require DIS_WORD32=1
+#endif
+#define Point_add Draw_Point_add // Match the generated qualified geometry symbol.
+#define F_Point_add F_Draw_Point_add // Match the generated Frame64 declaration.
+#define Point_sub Draw_Point_sub // Match the generated qualified geometry symbol.
+#define F_Point_sub F_Draw_Point_sub // Match the generated Frame64 declaration.
+#define Point_mul Draw_Point_mul // Match the generated qualified geometry symbol.
+#define F_Point_mul F_Draw_Point_mul // Match the generated Frame64 declaration.
+#define Point_div Draw_Point_div // Match the generated qualified geometry symbol.
+#define F_Point_div F_Draw_Point_div // Match the generated Frame64 declaration.
+#define Point_eq Draw_Point_eq // Match the generated qualified geometry symbol.
+#define F_Point_eq F_Draw_Point_eq // Match the generated Frame64 declaration.
+#define Point_in Draw_Point_in // Match the generated qualified geometry symbol.
+#define F_Point_in F_Draw_Point_in // Match the generated Frame64 declaration.
+#define Rect_canon Draw_Rect_canon // Match the generated qualified geometry symbol.
+#define F_Rect_canon F_Draw_Rect_canon // Match the generated Frame64 declaration.
+#define Rect_combine Draw_Rect_combine // Match the generated qualified geometry symbol.
+#define F_Rect_combine F_Draw_Rect_combine // Match the generated Frame64 declaration.
+#define Rect_eq Draw_Rect_eq // Match the generated qualified geometry symbol.
+#define F_Rect_eq F_Draw_Rect_eq // Match the generated Frame64 declaration.
+#define Rect_Xrect Draw_Rect_Xrect // Match the generated qualified geometry symbol.
+#define F_Rect_Xrect F_Draw_Rect_Xrect // Match the generated Frame64 declaration.
+#define Rect_clip Draw_Rect_clip // Match the generated qualified geometry symbol.
+#define F_Rect_clip F_Draw_Rect_clip // Match the generated Frame64 declaration.
+#define Rect_inrect Draw_Rect_inrect // Match the generated qualified geometry symbol.
+#define F_Rect_inrect F_Draw_Rect_inrect // Match the generated Frame64 declaration.
+#define Rect_contains Draw_Rect_contains // Match the generated qualified geometry symbol.
+#define F_Rect_contains F_Draw_Rect_contains // Match the generated Frame64 declaration.
+#define Rect_addpt Draw_Rect_addpt // Match the generated qualified geometry symbol.
+#define F_Rect_addpt F_Draw_Rect_addpt // Match the generated Frame64 declaration.
+#define Rect_subpt Draw_Rect_subpt // Match the generated qualified geometry symbol.
+#define F_Rect_subpt F_Draw_Rect_subpt // Match the generated Frame64 declaration.
+#define Rect_inset Draw_Rect_inset // Match the generated qualified geometry symbol.
+#define F_Rect_inset F_Draw_Rect_inset // Match the generated Frame64 declaration.
+#define Rect_dx Draw_Rect_dx // Match the generated qualified geometry symbol.
+#define F_Rect_dx F_Draw_Rect_dx // Match the generated Frame64 declaration.
+#define Rect_dy Draw_Rect_dy // Match the generated qualified geometry symbol.
+#define F_Rect_dy F_Draw_Rect_dy // Match the generated Frame64 declaration.
+#define Rect_size Draw_Rect_size // Match the generated qualified geometry symbol.
+#define F_Rect_size F_Draw_Rect_size // Match the generated Frame64 declaration.
+#include DIS_NATIVE64_GEOMETRY_HEADER
+#else
 #include "runt.h"
+#endif
 #include "raise.h"
+
 
 /* Add coordinates modulo the active VM word width, without C signed overflow. */
 void
@@ -20,6 +66,7 @@ Point_add(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+
 /* Subtract coordinates with the same modular arithmetic as VM word subtraction. */
 void
 Point_sub(void *fp)
@@ -35,6 +82,7 @@ Point_sub(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+
 /* Scale coordinates without overflowing a signed C intermediate. */
 void
 Point_mul(void *fp)
@@ -49,6 +97,7 @@ Point_mul(void *fp)
 	ret->y = (UWORD)f->p.y * (UWORD)f->i;
 	memmove(f->ret, &result, sizeof(result));
 }
+
 
 /* Raise on zero before writing either coordinate; handle minimum / -1 by wrapping. */
 void
@@ -72,6 +121,7 @@ Point_div(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+
 /* Compute the complete result before copying to an unaligned or aliased VM slot. */
 void
 Point_eq(void *fp)
@@ -83,6 +133,7 @@ Point_eq(void *fp)
 	result = f->p.x == f->q.x && f->p.y == f->q.y;
 	memmove(f->ret, &result, sizeof(result));
 }
+
 
 /* Compute the complete result before copying to an unaligned or aliased VM slot. */
 void
@@ -96,6 +147,7 @@ Point_in(void *fp)
 	       f->p.y >= f->r.min.y && f->p.y < f->r.max.y;
 	memmove(f->ret, &result, sizeof(result));
 }
+
 
 /* Compute the complete result before copying to an unaligned or aliased VM slot. */
 void
@@ -129,6 +181,7 @@ Rect_canon(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+
 /* Compute the complete result before copying to an unaligned or aliased VM slot. */
 void
 Rect_combine(void *fp)
@@ -150,6 +203,7 @@ Rect_combine(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+
 /* Compute the complete result before copying to an unaligned or aliased VM slot. */
 void
 Rect_eq(void *fp)
@@ -166,6 +220,7 @@ Rect_eq(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+
 /* Compute the complete result before copying to an unaligned or aliased VM slot. */
 void
 Rect_Xrect(void *fp)
@@ -181,6 +236,7 @@ Rect_Xrect(void *fp)
 		&& f->s.min.y < f->r.max.y;
 	memmove(f->ret, &result, sizeof(result));
 }
+
 
 /* Compute the complete result before copying to an unaligned or aliased VM slot. */
 void
@@ -231,6 +287,7 @@ Rect_clip(void *fp)
 	memmove(f->ret, result.bytes, sizeof(result.bytes));
 }
 
+
 /* Compute the complete result before copying to an unaligned or aliased VM slot. */
 void
 Rect_inrect(void *fp)
@@ -246,6 +303,7 @@ Rect_inrect(void *fp)
 		&& f->r.max.y <= f->s.max.y;
 	memmove(f->ret, &result, sizeof(result));
 }
+
 
 /* Compute the complete result before copying to an unaligned or aliased VM slot. */
 void
@@ -263,6 +321,7 @@ Rect_contains(void *fp)
 		&& y >= f->r.min.y && y < f->r.max.y;
 	memmove(f->ret, &result, sizeof(result));
 }
+
 
 /* Translate both corners with VM-width unsigned addition. */
 void
@@ -284,6 +343,7 @@ Rect_addpt(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+
 /* Translate both corners with VM-width unsigned subtraction. */
 void
 Rect_subpt(void *fp)
@@ -304,6 +364,7 @@ Rect_subpt(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+
 /* Inset corners without signed overflow, preserving noncanonical results. */
 void
 Rect_inset(void *fp)
@@ -323,6 +384,7 @@ Rect_inset(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+
 /* Measure width using the VM word subtraction rules. */
 void
 Rect_dx(void *fp)
@@ -336,6 +398,7 @@ Rect_dx(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+
 /* Measure height using the VM word subtraction rules. */
 void
 Rect_dy(void *fp)
@@ -348,6 +411,7 @@ Rect_dy(void *fp)
 	result = (UWORD)f->r.max.y - (UWORD)f->r.min.y;
 	memmove(f->ret, &result, sizeof(result));
 }
+
 
 /* Measure both dimensions without signed C overflow. */
 void

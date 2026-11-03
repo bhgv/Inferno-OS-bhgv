@@ -197,6 +197,8 @@ def main():
         run(font_bridge+['--control', control], build, env, logs/('freetype-'+control+'.log'))
     run([sys.executable, str(tests/'native64-freetype-register.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'freetype-register.log')
+    run([sys.executable, str(tests/'native64-geometry.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'geometry.log')
     graphics_init = [sys.executable, str(tests/'native64-graphics-init.py')]
     for module in ('prefab', 'freetype'):
         run(graphics_init+['--module', module, '--limbo', str(tools/'limbo')], build, env, logs/('graphics-init-'+module+'.log'))

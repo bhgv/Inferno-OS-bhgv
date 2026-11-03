@@ -18,6 +18,9 @@ on:
       - 'libfreetype/**'
       - 'limbo/**'
       - 'makemk.sh'
+      - 'libinterp/geom.c'
+      - 'module/draw-native64.m'
+      - 'utils/tests/native64-geometry*'
       - 'module/freetype-native64.m'
       - 'module/freetype.m'
       - 'module/draw.m'
@@ -160,6 +163,13 @@ jobs:
           set -euo pipefail
           MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/font-host-tools" sh makemk.sh
           python3 utils/tests/native64-freetype-register.py --limbo "$RUNNER_TEMP/font-host-tools/limbo" 2>&1 | tee freetype-register-asan.log
+      - name: Check complete native64 Draw geometry
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-geometry.py --limbo "$RUNNER_TEMP/font-host-tools/limbo" 2>&1 | tee geometry-asan.log
       - name: Preserve complete sanitizer diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -177,5 +187,6 @@ jobs:
             gui-type-maps-asan.log
             freetype-bridge-asan.log
             freetype-register-asan.log
+            geometry-asan.log
           if-no-files-found: warn
           retention-days: 14
