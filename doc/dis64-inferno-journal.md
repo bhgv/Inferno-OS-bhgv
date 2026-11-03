@@ -6907,3 +6907,19 @@ Bounded consumer-frame count55/89 is not managed registration or resource/device
 lifetime. Native fast counts/public scalar43/173 unchanged, named call policy
 separate; no encoding/feature/ABI/layout or ordinary LEA change. No peer guard/
 MOVP/parallel implementation imported. Details: doc/native64-series0106.md.
+
+
+### INFERNO-0106 native primitive acceptance
+
+Source d3deae142ad84911e8af901356fc035ed55fe4ba passes focused native ARM64
+ASan/UBSan job126085185480 and x64 job126085185370 in41684115985. Read both
+actual logs:3000 independent native/Frame64 cases,2209253 predicates per WORD32
+and WORD32-file model, all7 strict semantic10 source controls PASS. Fresh actual
+compiler declarations and byte comparisons establish bounded primitive-consumer
+coverage55/89, not managed registration or general rendering/device/GC lifetime.
+New complete classic-mk matrix41684116076 remains separate pending evidence;
+no full workflow or target-wide graphics readiness is inferred. Shared format/
+IDs, default43/173 and named call policy are unchanged; peer runtime admission
+remains independently controlled as agreed. No user relay is needed.
+
+The prior source05c1bda x64 console job126071226372 was subsequently cancelled by the new source run, not passed; its ARM64/RV64 successes remain exact-source evidence only.

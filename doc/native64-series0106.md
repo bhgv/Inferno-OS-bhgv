@@ -80,3 +80,17 @@ It independently reproduced the previous40-image x64 file route and3 controls;
 its independent typed-call validator/executor remain planned with explicit refusal.
 This series requires no format extension or user relay, and imports no hosted
 cell-domain/guard/MOVP/multithreading implementation.
+
+## Native acceptance
+
+Source d3deae142ad84911e8af901356fc035ed55fe4ba passed focused native ASan/UBSan
+jobs126085185480 (ARM64) and126085185370 (x64) in41684115985. Read both actual
+logs:3000 independent cases and2209253 active predicates in each WORD32 and
+WORD32-file model, plus all7 strict atomic/border/arc/display/radius/defaults/frame
+controls PASS. Both use fresh native compiler-generated Frame64 declarations.
+These are owning packet/consumer proofs with bounded native lookup/I-O/lock test
+transports, not full Draw registration or rendering/device/resource-lifetime proof.
+The new complete classic-mk workflow41684116076 remains separate and unfinished;
+no whole-workflow/full-matrix success is inferred from these two focused jobs.
+
+Previous x64 console job126071226372 was subsequently cancelled by the newer source run; it is not counted as a success. Native ARM64 and RV64/QEMU successes from that prior matrix remain valid for their exact source.
