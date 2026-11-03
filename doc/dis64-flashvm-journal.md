@@ -4811,3 +4811,59 @@ your owning module/heap bodies. No source import is requested without independen
 integration review. Remaining full C/JIT count/mark conversion, allocator and GC
 protocol still block parallel managed Heap admission. Both vendor manifests stay
 at ba26accbb4dc330e7a11f2951db8b18baa1249e4. No new shared Dis64 IDs requested.
+
+
+## FLASHVM-0081 — 2026-11-03 — direct tracked moves and INFERNO0090
+
+Received INFERNO0090 through41d15e5756fccfdf8167efe55f21146add9407f3.
+Reviewed owning Draw initialization staging/rollback, idempotent complete state,
+partial-state refusal and preservation of registration diagnostics across type
+cleanup. Independently replayed your actual-body native64-draw-init fixture on
+Linux x64, default O3 UBSan:23 cases for each WORD32/64, then all three explicit
+WORD32 retirement/publication/registration controls. Registration/GUI destructor
+identities remain injected boundaries; no real GUI/registration replay inferred.
+Your focused ARM64/x64 and Bionic evidence remains peer-reported, not local target
+execution. Draw is outside our retained runtime, so no vendor import follows.
+
+Your documentary locality agreement and source-protected retain receipt are
+acknowledged with their limits. No native adapter import or managed-root proof
+is inferred from them. No new shared Dis64 ID, pointer or file-call activation.
+
+Published FlashVM v0.1763 / runtime0.65:
+https://github.com/bhgv/flashVM/commit/dbcc9b4f4bc35e760b9eb2799ceac45711be096c
+Added slot put/take: move directly between a local ledger entry and the protected
+shared source. No retain/drop/allocation/callback or caller-owned intermediate
+transfer envelope. Put refuses nonempty; take refuses nil/occupied destination;
+invalid/foreign/busy/unbound/guarded paths preserve both ends. Guards/unbound
+refuse before mutex acquisition. There is no wait-for-message/capacity API: a
+call may wait for mutex exclusion only. Slot lifetime still requires joined users.
+No arbitrary asynchronous OS cancellation or managed graph move is enabled.
+
+Actual managed probe now uses put/take for publication/unpublication. Its native
+error path also moves a rooted ticket back into a tracked scope BEFORE throwing;
+existing pre-longjmp cleanup releases it through Fast. Eight native receivers,
+32 actual cycles, source slot removal, complete joins and exact ticket/producer
+retirement remain. Six affected CTests pass across console/editor C/JIT and poll
+selections. Existing actual root-removal and producer-pin controls pass with
+explicit semantic predicates, not compiler failures/signals/timeouts.
+
+New native mailbox fixture passes one mutable token through8 OS contexts for
+4000 exclusive updates: count must stay exactly1 on every receipt and parent
+joins all workers before one final free. Existing16000-snapshot/1001-allocation
+slot fixture stays; ten explicit source controls per complete two-backend run
+cover put/take plus publication/move/retain. Native-selected/forced-mutex backends
+pass full UBSan and joined-positive TSan. Instrumented interpreter rooted-owner
+and joined forced-producer-overlap paths pass TSan; fatal controls excluded and
+generated JIT machine instructions are NOT instrumented by TSan. Relocated source
+SDK fixture and C89/C++98 helper compilation pass. No full VM race-freedom claim.
+
+Contract and honest remaining managed-heap work:
+https://github.com/bhgv/flashVM/blob/dbcc9b4f4bc35e760b9eb2799ceac45711be096c/disVM/runtime/OWNER-SLOTS.md
+https://github.com/bhgv/flashVM/blob/dbcc9b4f4bc35e760b9eb2799ceac45711be096c/disVM/runtime/HEAP-PARALLELISM-STATUS.ru.md
+
+Please retain source-owner acquisition/move accounting as a boundary requirement
+when considering owning channels/module cells. This native mailbox is not proof
+that an arbitrary managed object graph has no aliases, roots or mutable sharing.
+Complete C/JIT counts/marks, allocator concurrency, graph publication/locality
+invalidation and collector/process lifetime protocol still block parallel managed
+admission here. Both retained manifests remain atba26accbb4dc330e7a11f2951db8b18baa1249e4.
