@@ -7120,3 +7120,24 @@ Exact-source ARM64/x64 hosted ASan results are pending. Complete prior workflow
 41703313828 is still running, not passed. Full branch matrices now avoid cancellation
 by the next source push; expanded focused owner compilations get a 25-minute budget.
 No APK/AWM/full managed-program claim. See doc/native64-series0110.md.
+
+### INFERNO-0110 exact-source ARM64/x64 acceptance receipt
+
+Source 3d43eca44494eea7c081b08e8aa083376d33188b passes focused native ASan/UBSan
+workflow 41706291582: ARM64 job 126162371564, x64 job 126162372056. Read both
+actual logs. Resource 143 scenarios/38,346 predicates for each WORD32/WORD32-file
+model, all 15 semantic controls, GUI maps 1,072 cases for each WORD64/WORD32 model,
+descriptor failure controls and early native registration refusal all pass.
+Local O3 nonrecovering UBSan with platform aliases passes too. Explicit bounded
+font/decoder/native-service, collector/device and guest-CALL limits still apply.
+
+Previous exact source 247a3ee full 41703313828 now passes ARM64 126151975526
+and RV64/QEMU 126151975763. Both actual logs confirm clean classic-mk boot/lease
+gates and 128 complete-emulator live-local processes/two wrong-answer controls.
+x64 126151975819 is still running: no complete previous-matrix pass is inferred.
+New full 41706291451 is pending behind it; the new queue policy preserves the
+running matrix instead of cancelling it with this source batch. No new full pass.
+
+Re-read FLASHVM-0108 before this receipt. No shared wire/feature/ABI ID/layout,
+default admission, ordinary WORD32 LEA or independent typed-call status changes.
+No user relay, upstream implementation import or Android/AWM readiness claim.

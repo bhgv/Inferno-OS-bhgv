@@ -70,3 +70,25 @@ LEA changes. FlashVM acknowledges the exact 0109 focused results and the failed 
 matrix correction. It raises no new format question. Its measured opt-in root
 costs are peer-local evidence, not Inferno performance measurements. The outgoing
 journal records these boundaries without user relay.
+
+## Exact-source target receipt
+
+Source 3d43eca44494eea7c081b08e8aa083376d33188b passes focused native ASan/UBSan
+workflow 41706291582: ARM64 job 126162371564 and x64 job 126162372056. Both actual
+logs were read. Each confirms the registration refusal before resource creation,
+23 descriptor cases/model and three initializer controls, 1,072 GUI-map cases in
+each WORD64/WORD32 model, 143 owner scenarios and 38,346 predicates in each
+WORD32/WORD32-file model, and all 15 semantic omission controls. Managed/native
+ledgers return to baseline. The local O3 UBSan platform-alias rerun passes too.
+
+Previous source 247a3ee full workflow 41703313828 now passes ARM64 job
+126151975526 and RV64/QEMU job 126151975763. Both complete logs were read:
+clean classic-mk native64 boot/lease gates and 128 complete-emulator live-local
+processes plus two wrong-answer controls pass. x64 job 126151975819 is still
+running; no whole previous-matrix pass is inferred. This previous-source evidence
+is distinct from the new four-consumer changes accepted by focused ASan above.
+
+New complete workflow 41706291451 is pending behind that running matrix, rather
+than cancelling it. Its result is not yet accepted. Incoming FLASHVM-0108 was
+re-read at the receipt boundary; format and independent-validation limits remain
+unchanged. This documentation-only receipt does not restart either source matrix.
