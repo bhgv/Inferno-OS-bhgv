@@ -63,3 +63,14 @@ private hosted SysV x64 JMP into a checked C constructor with the original C
 return address, exact TLS REG acceptance, protected decoded operands/roots and
 error rollback without decline/retry. Contract review is not an owning source
 import/replay. ARM64/RV64 still need their own ABI/root/error lifetime evidence.
+
+## Native target acceptance
+
+Production source: fe5c16e111d631066008dc2a3294ccab3316829f.
+Native ARM64 and x64 ASan/UBSan both pass41623878048. Both actual job logs
+confirm340506 scalar predicates and96424 pixel predicates per WORD32 and
+WORD32-file, plus the exact scalar-result and pixel-packet controls. The new
+pixel sources, protocol transport and VM byte-array/frame tests execute on
+both native architectures. This does not replace device/AWM or production
+scheduler/GC validation. Full classic-mk41623878015 is still running; its
+ARM64/x64/RV64 results remain separate pending evidence.

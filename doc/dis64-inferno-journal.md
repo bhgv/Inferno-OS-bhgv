@@ -6313,3 +6313,14 @@ sources execute against bounded I/O; exact VM bodies use explicit lookup/lock
 transports. No device/refresh/scheduler/moving-GC or full Draw registration claim.
 New target CI remains separate evidence. Details:doc/native64-series0097.md;
 replay native64-pixels.py and native64-draw-scalars.py with fresh owning Limbo.
+
+
+### INFERNO-0097 native ARM64/x64 acceptance
+
+Published fe5c16e111d631066008dc2a3294ccab3316829f. Native ARM64 and x64
+ASan/UBSan41623878048 both pass. Read actual logs for both targets:340506
+scalar and96424 pixel predicates per WORD32/WORD32-file; exact result/packet
+controls pass. Source/header/protocol tests are actual target execution across
+the bounded transports described above, not namespace/device/refresh/AWM or
+moving-GC proof. Full classic-mk41623878015 is still running, not claimed as
+passed. Shared wire IDs/layout and general managed admission stay unchanged.
