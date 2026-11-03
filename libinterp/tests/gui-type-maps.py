@@ -36,7 +36,8 @@ declarations = draw[start:end]
 parts = [function(heap, result+'\n'+name+'(') for result, name in
          [('Type*','dtype'), ('void','freetype'), ('void','initmem'), ('void','freeptrs'),
           ('void','incmem'), ('Heap*','heap')]]
-parts += [function(draw, 'void\ndrawmodinit('), function(prefab, 'void\nprefabmodinit('), function(font, 'void\nfreetypemodinit(')]
+# Retain the real private descriptor constructor used by the production initializer.
+parts += [function(draw, 'static int\ndrawmaketypes('), function(draw, 'void\ndrawmodinit('), function(prefab, 'void\nprefabmodinit('), function(font, 'void\nfreetypemodinit(')]
 unit = (root / 'libinterp/tests/gui-type-maps.c').read_text()
 unit = unit.replace('WRAPPERS', declarations).replace('FONT_WRAPPER', font[font.index('typedef struct Face Face;'):font.index('Type*\tTMatrix')]).replace('IMPLEMENTATION','\n'.join(parts))
 unit = unit.replace('#include <assert.h>', '#define mapcheck(test) do { if(!(test)) { fprintf(stderr,"GUI map predicate failed at %d\\n",__LINE__); abort(); } } while(0) // Active optimized predicates.')

@@ -2293,67 +2293,100 @@ freedrawscreen(Heap *h, int swept)
 		display_dec(reference);
 }
 
+
+/* Consume an opened native font only after retaining its managed name and display owners. */
+static Draw_Font*
+drawownedfont(Font *font, Draw_Display *display, String *name)
+{
+	DFont *df;
+	Heap *h;
+	DRef *reference;
+	char reason[ERRMAX];
+
+	if(font == nil)
+		return H;
+	reference = font->display->limbo;
+	h = reference == nil ? H : drawheap(TFont);
+	if(h == H){
+		kgerrstr(reason, sizeof(reason));
+		font_close(font);
+		kwerrstr("%s", reason);
+		return H;
+	}
+	df = H2D(DFont*, h);
+	df->font = font;
+	df->drawfont.name = name;
+	if(name != H)
+		D2H(name)->ref++;
+	df->drawfont.height = font->height;
+	df->drawfont.ascent = font->ascent;
+	df->drawfont.display = display;
+	D2H(display)->ref++;
+	df->dref = reference;
+	reference->ref++;
+	return &df->drawfont;
+}
+
+
+/* Build or reuse a font before replacing a result that may also contain an input owner. */
 void
 Font_build(void *fp)
 {
 	F_Font_build *f;
 	Font *font;
-	DFont *dfont;
-	Heap *h;
+	Draw_Display *display;
+	Draw_Font *result;
+	String *nameowner, *description;
 	char buf[128];
 	char *name, *data;
 	Subfont *df;
 	Display *disp;
+	Cache *c;
+	void *old, *slot;
 	int locked;
 
 	f = fp;
-	destroy(*f->ret);
-	*f->ret = H;
-	disp = checkdisplay(f->d);
-
-	name = string2c(f->name);
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	display = f->d;
+	nameowner = f->name;
+	description = f->desc;
+	disp = checkdisplay(display);
+	name = string2c(nameowner);
 	font = font_open(disp, name);
-	if(font == nil) {
-		if(strcmp(name, deffontname) == 0) {
+	if(font == nil){
+		if(strcmp(name, deffontname) == 0){
 			df = disp->defaultsubfont;
-			sprint(buf, "%d %d\n0 %d\t%s\n",
+			if(df == nil){
+				drawcommitresult(slot, H, old);
+				return;
+			}
+			snprint(buf, sizeof(buf), "%d %d\n0 %d\t%s\n",
 				df->height, df->ascent, df->n-1, name);
 			data = buf;
+		}else{
+			if(description == H){
+				drawcommitresult(slot, H, old);
+				return;
+			}
+			data = string2c(description);
 		}
-		else
-		if(f->desc == H)
-			return;
-		else
-			data = string2c(f->desc);
-
 		locked = lockdisplay(disp);
 		font = buildfont(disp, data, name);
 		if(locked)
 			unlockdisplay(disp);
-		if(font){
-			Cache *c = cacheinstall(fcache, disp, name, font, "font");
-			if(c)
+		if(font != nil){
+			c = cacheinstall(fcache, disp, name, font, "font");
+			if(c != nil)
 				c->ref++;
-		}else
-			return;
+		}
 	}
-
-	h = heap(TFont);
-	if(h == H)
-		return;
-
-	dfont = H2D(DFont*, h);
-	dfont->font = font;
-	dfont->drawfont.name = f->name;
-	D2H(f->name)->ref++;
-	dfont->drawfont.height = font->height;
-	dfont->drawfont.ascent = font->ascent;
-	dfont->drawfont.display = f->d;
-	D2H(f->d)->ref++;
-	dfont->dref = disp->limbo;
-	dfont->dref->ref++;
-
-	*f->ret = &dfont->drawfont;
+	result = drawownedfont(font, display, nameowner);
+	drawcommitresult(slot, result, old);
 }
 
 Font*
@@ -2477,40 +2510,32 @@ freesubfont(Subfont *sf)
 	freecachedsubfont(sf);
 }
 
+
+/* Keep all source owners alive until the native font and its managed wrapper are ready. */
 void
 Font_open(void *fp)
 {
-	Heap *h;
 	Font *font;
 	Display *disp;
-	DFont *df;
+	Draw_Display *display;
+	Draw_Font *result;
+	String *name;
 	F_Font_open *f;
+	void *old, *slot;
 
 	f = fp;
-
-	destroy(*f->ret);
-	*f->ret = H;
-	disp = checkdisplay(f->d);
-
-	font = font_open(disp, string2c(f->name));
-	if(font == 0)
-		return;
-
-	h = heap(TFont);
-	if(h == H)
-		return;
-
-	df = H2D(DFont*, h);
-	df->font = font;
-	df->drawfont.name = f->name;
-	D2H(f->name)->ref++;
-	df->drawfont.height = font->height;
-	df->drawfont.ascent = font->ascent;
-	df->drawfont.display = f->d;
-	D2H(f->d)->ref++;
-	df->dref = disp->limbo;
-	df->dref->ref++;
-	*f->ret = &df->drawfont;
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	display = f->d;
+	name = f->name;
+	disp = checkdisplay(display);
+	font = font_open(disp, string2c(name));
+	result = drawownedfont(font, display, name);
+	drawcommitresult(slot, result, old);
 }
 
 /* Measure the native representation directly without allocating a UTF-8 cache for Rune strings. */

@@ -465,6 +465,7 @@ jobs:
           for control in retirement publication registration; do
             python3 utils/tests/native64-draw-init.py --control "$control" 2>&1 | tee -a draw-owner-init.log
           done
+          python3 libinterp/tests/gui-type-maps.py 2>&1 | tee draw-owner-maps.log
           python3 utils/tests/native64-draw-owners.py --limbo "$RUNNER_TEMP/draw-owner-tools/limbo" 2>&1 | tee draw-owners-asan.log
       - name: Preserve resource ownership diagnostics
         if: always()
@@ -473,6 +474,7 @@ jobs:
           name: native64-draw-owners-${{ matrix.arch }}
           path: |
             draw-owner-init.log
+            draw-owner-maps.log
             draw-owners-asan.log
           if-no-files-found: warn
           retention-days: 14

@@ -220,6 +220,74 @@ allocwindow(Screen *screen,Rectangle r,int backing,ulong color)
 }
 
 
+/* This factory uses only standard integer/string conversions; the full formatter is a service boundary. */
+int
+snprint(char *target, int capacity, char *format, ...)
+{
+	va_list args;
+	int length;
+
+	va_start(args,format);
+	length=vsnprintf(target,capacity,format,args);
+	va_end(args);
+	return length;
+}
+
+
+static int fontmiss, fontrefuse, fontdefault; // Controlled font-open miss and native build refusal.
+
+
+/* Font decoding is a bounded service here; actual String conversion has its own source gate. */
+char*
+string2c(String *name)
+{
+	if(name == H)
+		return "";
+	require(name != nil && D2H(name)->t == &Tstring && D2H(name)->ref > 0);
+	return fontdefault ? "*default*" : "fixturefont";
+}
+
+
+/* Allocate a genuine native font while keeping cache lookup and device I/O outside this fixture. */
+Font*
+font_open(Display *d, char *name)
+{
+	Font *font;
+
+	USED(name);
+	if(fontmiss || fontrefuse)
+		return nil;
+	font = nativeallocate(sizeof(*font), 3);
+	if(font != nil){ font->display=d; font->height=19; font->ascent=14; }
+	return font;
+}
+
+
+/* A missing cached font may be built; parsing and native cache implementation remain separate. */
+Font*
+buildfont(Display *d, char *data, char *name)
+{
+	int miss;
+	Font *font;
+
+	USED(data);
+	require(held == 1);
+	miss=fontmiss; fontmiss=0;
+	font=font_open(d,name);
+	fontmiss=miss;
+	return font;
+}
+
+
+/* Observe the factory's cache lease request without claiming actual cache insertion coverage. */
+Cache*
+cacheinstall(Cache **table, Display *d, char *name, void *value, char *kind)
+{
+	USED(table); USED(d); USED(name); USED(value); USED(kind);
+	return nil;
+}
+
+
 /* Keep font-cache implementation separate while checking native wrapper ownership exactly once. */
 void
 font_close(Font *font)
@@ -540,6 +608,104 @@ factories(int kind,int alias,int failure)
 }
 
 
+/* Nil managed names remain H, and missing build inputs/default subfonts refuse without dereference. */
+static void
+fontedges(void)
+{
+	DDisplay *dd;
+	Draw_Font *result;
+	F_Draw_Font_open openframe;
+	F_Draw_Font_build buildframe;
+	String *name;
+	int kind;
+
+	for(kind=0; kind<4; kind++){
+		dd=newdisplay();
+		result=H;
+		memset(&openframe,0,sizeof(openframe));
+		memset(&buildframe,0,sizeof(buildframe));
+		openframe.d=buildframe.d=(Draw_Display*)dd;
+		openframe.name=buildframe.name=H;
+		openframe.ret=buildframe.ret=&result;
+		buildframe.desc=H;
+		name=H;
+		if(kind>=2){
+			name=H2D(String*,heapz(&Tstring));
+			buildframe.name=name;
+			fontmiss=1;
+			fontdefault=kind==3;
+		}
+		if(kind==0)
+			Draw_Font_open(&openframe);
+		else
+			Draw_Font_build(&buildframe);
+		fontmiss=fontdefault=0;
+		require((result!=H)==(kind<2));
+		if(result!=H)
+			require(result->name==H && D2H(dd)->ref==2);
+		destroy(name);
+		destroy(result);
+		destroy(dd);
+		baseline();
+	}
+}
+
+
+/* Check both real font factories with aliased display/name/description and unaligned result storage. */
+static void
+fontfactories(int build, int alias, int failure)
+{
+	DDisplay *dd;
+	String *name, *description;
+	Draw_Font *result;
+	void *old, *slot;
+	uchar output[24];
+	F_Draw_Font_open openframe;
+	F_Draw_Font_build buildframe;
+	int success, i;
+
+	dd=newdisplay();
+	name=H2D(String*,heapz(&Tstring));
+	description=H2D(String*,heapz(&Tstring));
+	memset(output,0xa5,sizeof(output));
+	memset(&openframe,0,sizeof(openframe));
+	memset(&buildframe,0,sizeof(buildframe));
+	openframe.d=buildframe.d=(Draw_Display*)dd;
+	openframe.name=buildframe.name=name;
+	buildframe.desc=description;
+	old=alias==1 ? (void*)dd : alias==2 ? (void*)name : alias==3 ? (void*)description : H2D(void*,heapz(&Tstring));
+	slot=output+1;
+	memmove(slot,&old,sizeof(old));
+	if(alias){
+		slot=build ? (alias==1 ? (void*)&buildframe.d : alias==2 ? (void*)&buildframe.name : (void*)&buildframe.desc) :
+			(alias==1 ? (void*)&openframe.d : (void*)&openframe.name);
+		if(!build && alias==3){ openframe.name=description; }
+		slot=factoryslot(slot,slot,old,1);
+	}
+	fontmiss=failure>=2;
+	fontrefuse=failure==4;
+	if(failure==1 || failure==3) failat=allocations+2;
+	if(build){ buildframe.ret=slot; Draw_Font_build(&buildframe); }
+	else { openframe.ret=slot; Draw_Font_open(&openframe); }
+	memmove(&result,slot,sizeof(result));
+	failat=0; fontmiss=fontrefuse=aliasactive=0;
+	success=failure==0 || (build && failure==2);
+	require((result!=H)==success && held==0 && worker.nerr==0);
+	if(success){
+		require(result->height==19 && result->ascent==14);
+		require(result->name==(!build && alias==3 ? description : name));
+		require(D2H(result->name)->ref==(alias==2 || (!build && alias==3) ? 1 : 2));
+		require(result->display==(Draw_Display*)dd && D2H(dd)->ref==(alias==1 ? 1 : 2));
+	}
+	if(failure==1 || (build && failure==3)) require(strcmp(message,exHeap)==0);
+	if(alias!=1) destroy(dd);
+	if(alias!=2) destroy(name);
+	if(alias!=3) destroy(description);
+	if(alias==0) for(i=0;i<sizeof(output);i++) if(i<1 || i>=1+sizeof(void*)) require(output[i]==0xa5);
+	destroy(result); baseline();
+}
+
+
 #ifdef DIS_NATIVE64_DRAW_HEADER
 /* Exercise the actual native registration refusal, without calling the private descriptor stage. */
 static int
@@ -565,10 +731,11 @@ main(void)
 	return 0;
 #endif
 	typesetup();baseline();
-	nativefailures();retirement();rollback();
+	nativefailures();retirement();rollback();fontedges();
 	for(kind=0;kind<5;kind++) for(alias=0;alias<2;alias++) for(failure=0;failure<4;failure++) factories(kind,alias,failure);
+	for(kind=0;kind<2;kind++) for(alias=0;alias<4;alias++) for(failure=0;failure<5;failure++) fontfactories(kind,alias,failure);
 	freetype(TFont);freetype(TImage);freetype(TScreen);freetype(TDisplay);
 	require(live==0 && nativecount==0 && worker.nerr==0 && gchalt==0);
-	printf("PASS Draw owners: %d predicates, 40 actual Frame64 factory scenarios, real Heap/Type/refcount/rollback; native images=%d screens=%d displays=%d, all ledgers zero; collector/device not executed\n",checks,freedimages,freedscreens,closes);
+	printf("PASS Draw owners: %d predicates, 84 actual Frame64 factory scenarios, real Heap/Type/refcount/rollback; native images=%d screens=%d displays=%d, all ledgers zero; collector/device not executed\n",checks,freedimages,freedscreens,closes);
 	return 0;
 }
