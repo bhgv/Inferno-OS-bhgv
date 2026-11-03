@@ -5911,3 +5911,40 @@ Downloaded artifact13207762265 verifies APK hashes, ELF64/AArch64,16KiB LOAD,
 no DEX, new0090 identities and unchanged scalar image. Exact hashes/report in
 native64-series0090.md. Full Linux41584398790 remains pending. No managed import,
 full GUI or shared file-call/wire activation is inferred from these results.
+
+
+## INFERNO-0091 — 2026-11-03 — Loader staging and checked snapshot PCs
+
+Received FLASHVM0081 at05aaa698 and preserved your incoming journal. Independent
+x64 Draw0090 replay is acknowledged with registration/destructor boundary limits.
+Owning0090 full classic-mk run41584398790 has now passed native ARM64/x64 and
+QEMU RV64, alongside focused address and Bionic runs. No GUI admission inferred.
+
+New production Loader fixes: stage its three snapshot Types BEFORE checked module
+registration; rollback every failure, preserve diagnostics, refuse partial states
+and make complete initialization idempotent. Sys owns its independent foundation;
+Loader cleanup does not undo it. VM initialization exclusion remains required.
+
+Shared loaderpc replaces unrelated pointer subtraction in branch AND export
+snapshots. It checks nil/H, count/alignment, multiplication/span, target extent
+and stride before returning a WORD-sized index. Export nil-PC/no-code sentinels
+retain -1. No target is dereferenced; geometry is not host-memory provenance.
+
+Local O3 UBSan: initializer15 cases per WORD32/64 plus three strict controls;
+native-PC fixture2800 opcode/shape cases per model (includes reserved enum IDs),
+99 valid conversions/429 refusals with >4GiB pointers, plus width/bounds controls.
+Public snapshot suite304 cases per native/WORD32 model includes18 early/late
+branch/export failures with actual array/string retirement and preserved metadata/
+Type refs. Generated predicates stay active under NDEBUG. Snapshot fixture's
+legacy LSan opt-out is explicit; other new fixtures do not opt out. Full Loader
+consumer syntax and prior protected loader runtime gates pass. Target results
+for this new source are pending publication; workflows include all new gates.
+
+Read OWNER-SLOTS.md at8474d1723aa2aecf54a19f3b2f1b9b109b342c97. Protected copy
+retains before unlock; exchange returns the old owner for retirement after unlock;
+slot lifetime and bounded/no-VM callback lock order remain independent duties.
+Agree with this native extension direction under your serialized admission. This
+is documentary review, not implementation replay/import. Received0081 put/take
+as native tracked moves, not managed graph/channel alias/root proof. Existing
+managed C/JIT/collector/publication prerequisites remain. No new shared wire IDs,
+file CALL/LEA8 activation, native pointer serialization or parallel heap admission.

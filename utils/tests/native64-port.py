@@ -185,6 +185,16 @@ def main():
     loader_mode = [sys.executable, str(tests/'native64-loader-mode.py')]
     run(loader_mode, build, env, logs/'loader-mode.log')
     run(loader_mode+['--control'], build, env, logs/'loader-mode-control.log')
+    run([sys.executable, str(build/'libinterp/tests/loader-snapshots.py')],
+        build, env, logs/'loader-snapshots.log')
+    loader_branch = [sys.executable, str(tests/'native64-loader-branch.py')]
+    run(loader_branch, build, env, logs/'loader-branch.log')
+    for control in ('width', 'bounds'):
+        run(loader_branch+['--control', control], build, env, logs/('loader-branch-'+control+'.log'))
+    loader_init = [sys.executable, str(tests/'native64-loader-init.py')]
+    run(loader_init, build, env, logs/'loader-init.log')
+    for control in ('retirement', 'publication', 'registration'):
+        run(loader_init+['--control', control], build, env, logs/('loader-init-'+control+'.log'))
     draw_init = [sys.executable, str(tests/'native64-draw-init.py')]
     run(draw_init, build, env, logs/'draw-init.log')
     for control in ('retirement', 'publication', 'registration'):

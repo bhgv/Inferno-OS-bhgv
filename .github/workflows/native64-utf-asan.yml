@@ -17,6 +17,12 @@ on:
       - 'utils/tests/native64-draw-init.c'
       - 'utils/tests/native64-draw-init.py'
       - 'utils/tests/native64-builtins.py'
+      - 'libinterp/tests/loader-snapshots.c'
+      - 'libinterp/tests/loader-snapshots.py'
+      - 'utils/tests/native64-loader-branch.c'
+      - 'utils/tests/native64-loader-branch.py'
+      - 'utils/tests/native64-loader-init.c'
+      - 'utils/tests/native64-loader-init.py'
       - 'libinterp/loader.c'
       - 'utils/tests/native64-loader-mode.c'
       - 'utils/tests/native64-loader-mode.py'
@@ -77,6 +83,33 @@ jobs:
           for control in retirement publication registration; do
             python3 utils/tests/native64-draw-init.py --control "$control" 2>&1 | tee -a draw-init-asan.log
           done
+      - name: Execute transactional Loader initialization checks
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-loader-init.py 2>&1 | tee loader-init-asan.log
+          for control in retirement publication registration; do
+            python3 utils/tests/native64-loader-init.py --control "$control" 2>&1 | tee -a loader-init-asan.log
+          done
+      - name: Execute checked Loader branch snapshots
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-loader-branch.py 2>&1 | tee loader-branch-asan.log
+          for control in width bounds; do
+            python3 utils/tests/native64-loader-branch.py --control "$control" 2>&1 | tee -a loader-branch-asan.log
+          done
+      - name: Execute public Loader snapshot rollback
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all'
+        run: |
+          set -euo pipefail
+          python3 libinterp/tests/loader-snapshots.py 2>&1 | tee loader-snapshots-asan.log
       - name: Preserve complete sanitizer diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -87,5 +120,8 @@ jobs:
             binding-asan.log
             loader-mode-asan.log
             draw-init-asan.log
+            loader-init-asan.log
+            loader-branch-asan.log
+            loader-snapshots-asan.log
           if-no-files-found: warn
           retention-days: 14
