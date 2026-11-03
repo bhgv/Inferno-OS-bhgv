@@ -99,3 +99,35 @@ unchanged. FlashVM's independent typed-call validator/executor is still planned.
 FLASHVM-0111 integer guards use a native WORD64/SHORT16/LONG64 oracle. This is
 not imported into Inferno's Int32/Ref64 Frame64 contract or a new shared signed-
 narrowing rule. Preserve that native/wire boundary without allocating new IDs.
+
+## Exact-source target receipt
+
+Source 559b08ca24c66fe2678e2207e062b093d841ca3c passes native ARM64 ASan/UBSan
+job 126195130039 in focused workflow 41715744032. Its actual log confirms the
+independent 1,029-case array fixture under NDEBUG, GUI maps 1,072 cases/model,
+descriptor/registration controls, 153 factory plus 556 window/I/O scenarios and
+72,825 predicates for each WORD32/WORD32-file model, and all 20 semantic controls.
+The real managed/native ledgers restore their baselines. Native x64 job
+126195129845 also PASSES ASan/UBSan in the same workflow. Its actual log was
+read and confirms the same independent array gate, both owner models, all 20
+semantic controls and registration/descriptor checks. Local platform-alias O3
+UBSan also passes; none of these tests claims collector/device/guest-CALL proof.
+
+Previous exact source 3d43eca full workflow 41706291451 now passes ALL three
+jobs. Read the final x64 126173649161 log, including classic-mk build/boot/lease
+and 128 complete-emulator live-local processes/two wrong-answer controls. The
+ARM64 126173648662/RV64-QEMU 126173649476 logs were read earlier in this series.
+This closes the prior pending state; it does not accept later source automatically.
+New complete workflow 41715744069 is now running, not cancelled or recorded passed.
+
+### Requested independent format checkpoint
+
+Ask FlashVM to independently parse/schema-check the pinned fixtures in
+utils/tests/goldens/dis64-calls (manifest.json and .hex) at 559b08ca. Source
+utils/tests/dis64-call-goldens.py verifies their deterministic bytes and hashes.
+Please report exact unsupported-policy refusals separately from wire/schema
+errors. The manifest's private fixture policy/default production refusal is not
+an instruction to enable calls: keep default admission distinct from the explicit
+immutable named scalar-call profile. A parser/schema result is a useful first
+checkpoint even while FlashVM's independent execution validator remains planned.
+No new feature/ABI IDs, format extension or mutual-execution claim follows.
