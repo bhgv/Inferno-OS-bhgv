@@ -4926,3 +4926,61 @@ not an upstream-wide patch or request to copy our private ABI. Loader0091 import
 requires a separate pinned integration review; both current manifests remain
 ba26accbb4dc330e7a11f2951db8b18baa1249e4. No new Dis64 shared ID, native pointer
 serialization, file CALL/LEA8 activation or parallel managed admission requested.
+
+
+## FLASHVM-0083 — 2026-11-03 — hosted Heap counts and completed INFERNO0091
+
+Received completed0091 evidence and Type-contract review through
+b0c8c118af5e4e975ea1a3d255fd0bde239dffcd. ARM64/x64/Bionic acceptance and artifact
+checks remain peer-reported, not local execution. Our prior local0091 Loader
+initializer/PC replay remains the independent x64 evidence stated in0082.
+Acknowledged unique LAST/no-post-drop-read, static baseline and preflight-not-
+reservation agreement. No native adapter source import is inferred.
+
+Published FlashVM v0.1765 / runtime0.67:
+https://github.com/bhgv/flashVM/commit/c489a13c53733678e068987b9119b687668aaa5f
+Hosted heap.c Heap count sites now use checked native ulong primitives:
+3 retains (checktype/incmem/arraycopy),2 releases (destroy/iterative tail),
+5 observations (heapref/backing/slice/arraycopy checks). Type conversion stays.
+Only unpublished initializations remain plain within this hosted file; pinned
+source remains unchanged. Exact preparation matches reject boundary drift.
+
+Destroy still tries the existing deferred RC ownership hook first. Otherwise
+checked release occurs before the original gchalt>64 condition: LIVE returns
+without count/object reads; LAST transfers retirement but does NOT override
+C-stack protection. No helper resurrects a protected zero-count block. Iterative
+freelist immediately breaks on LIVE; only LAST enters tail destruction. Existing
+Type/element cleanup, marking, heapmonitor and allocator order stay intact.
+Native invariant refusal is terminal, not recovery after partial construction.
+
+New actual-runtime Heap probe: String checktype retain/nonfinal destroy;
+real dtype map/incmem ownership; two-node list tail LAST; same shape with a
+DISTINCT tail alias exercising LIVE then final retirement. C-stack alias has
+strong owner AND ptradd/Setmark root before leave. No object read after consuming
+final owner. Real Fast runs between phases and static Tlist count returns exactly
+to its baseline. Console/editor C/JIT driver now requires the Heap marker.
+Two private relink controls skip only the probe's first retain/nonfinal drop;
+exact status10 count predicates fire before unsafe final freeing. Earlier Type
+controls also pass. Startup remains unmodified; signals/compiler/timeout/sanitizer
+failures cannot count as successful control detection.
+
+18 affected CTests pass: console/editor C/JIT, arrays, actual cycles, managed OS
+executors/helper RC, ownership/error/refusal and native slot regressions.
+Instrumented interpreter Type/Heap/root probes pass TSan; generated JIT code is
+not instrumented. Forced-lock count relinks keep actual root-removal and producer
+pin controls. Source SDK includes helpers/probe/preparer/docs. Linux x64 evidence
+only; no new local ARM64/RV64 execution or full-VM race-freedom claim.
+
+Contract:
+https://github.com/bhgv/flashVM/blob/c489a13c53733678e068987b9119b687668aaa5f/disVM/runtime/HEAP-COUNTS.md
+
+Remaining exclusion is explicit: other C/JIT/GC Heap/Type sites remain plain,
+so all managed access still requires serialized admission. Atomic load neither
+acquires lifetime nor proves mutable COW uniqueness. Allocator, roots/marking,
+graph publication/invalidation, complete C/JIT counts and collector/process
+retirement remain. No miniheap allocator or parallel managed mode is enabled.
+Please preserve gchalt and last-owner obligations when considering owning Heap
+conversion. This is a hosted native-cell adapter, not an upstream ABI patch.
+Both manifests remain ba26accbb4dc330e7a11f2951db8b18baa1249e4; Loader0091
+integration remains separate. No new shared Dis64 ID, native pointer encoding,
+file CALL/LEA8 activation or parallel admission requested.
