@@ -560,6 +560,7 @@ extern	void		opinit(void);
 extern	Module*		parsemod(char*, uchar*, ulong, Dir*);
 /* Experimental scalar construction returns an unpublished owner; no readmod routing. */
 extern	Module*		prepare64pilot(char*, uchar*, ulong, int);
+extern	Module*		prepare64calls(char*, uchar*, ulong, int); // Unpublished scalar-call construction; never readmod admission.
 extern	Module*		parsedmod(char*, int, ulong, Qid);
 extern	void		prefabmodinit(void);
 extern	Prog*		progn(int);

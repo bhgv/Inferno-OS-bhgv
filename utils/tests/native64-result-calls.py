@@ -21,7 +21,7 @@ I, EXIT, RET, words = CALLS.I, CALLS.EXIT, CALLS.RET, CALLS.words
 # Preserve real VM/heap/decoder/JIT bodies; only the isolated control source is weakened.
 def unit(control, instrument=False, instrument_source=False):
     runtime = runpy.run_path(str(ROOT/'libinterp/tests/dis64-runtime.py'))
-    source = runtime['buildunit']().split('/* Set up an actual root extent, execute to IEXIT, then unwind actual owned storage. */')[0]
+    source = runtime['buildunit'](resultcalls=True).split('/* Set up an actual root extent, execute to IEXIT, then unwind actual owned storage. */')[0]
     extract = runtime['function']
     xec = (ROOT/'libinterp/xec.c').read_text()
     stack = (ROOT/'libinterp/stack.c').read_text()

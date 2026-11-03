@@ -6,6 +6,7 @@
 #include "raise.h"
 #include "kernel.h"
 #include "dis64-pilot.h"
+#include "dis64-call-infer.h"
 
 #define Dis64RuntimeBytes (8U*1024U*1024U) // Maximum complete input image for this experimental loader.
 #define Dis64RuntimeObject (1024U*1024U) // Maximum scalar data or entry-frame extent.
@@ -20,6 +21,18 @@ struct Dis64Load {
 	Module *module; // Partial unpublished owner, visible to protected failure cleanup.
 	int jit; // Explicit request for the existing native leaf compiler.
 };
+
+
+/* Reject native models which cannot preserve Frame64, scalar widths and IEEE binary64. */
+static int
+dis64runtimemodel(void)
+{
+	return sizeof(WORD) == 4 && sizeof(UWORD) == 4 && sizeof(void*) == 8 &&
+		sizeof(LONG) == 8 && sizeof(REAL) == 8 && sizeof(Adr) >= 8 &&
+		sizeof(ushort) == 2 && CHAR_BIT == 8 && FLT_RADIX == 2 &&
+		DBL_MANT_DIG == 53 && DBL_MAX_EXP == 1024 && sizeof(Frame) == 32 &&
+		O(Frame, lr) == 0 && O(Frame, fp) == 8 && O(Frame, mr) == 16 && O(Frame, t) == 24;
+}
 
 
 /* Identify source operands whose native decoder must expose a complete LONG. */
@@ -163,11 +176,7 @@ prepare64pilot(char *path, uchar *image, ulong bytes, int jit)
 	unsigned int i, rune, at, used;
 
 	memset(&load, 0, sizeof(load));
-	if(sizeof(WORD) != 4 || sizeof(UWORD) != 4 || sizeof(void*) != 8 ||
-	   sizeof(LONG) != 8 || sizeof(REAL) != 8 || sizeof(Adr) < 8 ||
-	   sizeof(ushort) != 2 || CHAR_BIT != 8 || FLT_RADIX != 2 ||
-	   DBL_MANT_DIG != 53 || DBL_MAX_EXP != 1024 || sizeof(Frame) != 32 ||
-	   O(Frame, lr) != 0 || O(Frame, fp) != 8 || O(Frame, mr) != 16 || O(Frame, t) != 24 ||
+	if(!dis64runtimemodel() ||
 	   path == nil || path == H || image == nil || image == H ||
 	   bytes > Dis64RuntimeBytes || (uintptr)image > (uintptr)-1-bytes ||
 	   (jit != 0 && jit != 1)){
@@ -204,4 +213,179 @@ prepare64pilot(char *path, uchar *image, ulong bytes, int jit)
 	}
 	kwerrstr("Dis64 module construction failed");
 	return nil;
+}
+
+#define Dis64CallRuntimeCode 256U // Bounded experimental constructor policy, not a wire code limit.
+
+typedef struct Dis64CallRuntime Dis64CallRuntime;
+
+struct Dis64CallRuntime {
+	Dis64CallInference inferred; // Disposable raw-byte local-kind authority, never a manifest.
+	Dis64CallDecoded decoded[Dis64CallRuntimeCode]; // Owned complete lowering inputs.
+	Dis64InitWork scratch[Dis64CallRuntimeCode]; // Disposable definite-assignment/return proof workspace.
+	unsigned int queue[Dis64CallRuntimeCode]; // Bounded verification work queue.
+	Dis64BoundCall proof[Dis64LocalFunctions]; // Complete proof records, not a persistent execution token.
+	Dis64CallImage image; // Borrowed checked source, used only before constructor return.
+};
+
+typedef struct Dis64CallLoad Dis64CallLoad;
+
+struct Dis64CallLoad {
+	char *path; // Immutable caller label copied before publication.
+	Dis64CallRuntime *work; // Temporary native allocation released on all return paths.
+	DisRuneView name; // Validated ASCII name view, never installed as borrowed Module storage.
+	Module *module; // Partial unpublished owner retained across protected VM errors.
+	int jit; // Explicit request for existing guarded native leaf compilation.
+};
+
+
+/* Construct owned descriptors/instructions only after raw inference and complete semantic proof. */
+static int
+dis64callconstruct(void *argument)
+{
+	Dis64CallLoad *load;
+	Dis64CallRuntime *work;
+	Dis64Type type;
+	Dis64CallDecoded *decoded;
+	Module *module;
+	Inst *instruction;
+	unsigned int i, rune;
+
+	load = argument;
+	work = load->work;
+	load->module = module = mallocz(sizeof(*module), 1);
+	if(module == nil)
+		return 0;
+	module->origmp = H;
+	module->ref = 1;
+	module->rt = DONTCOMPILE;
+	module->ntype = work->image.types.count;
+	module->type = mallocz(module->ntype*sizeof(Type*), 1);
+	if(module->type == nil)
+		return 0;
+	/* Preserve original Type ordinals: FRAME operands refer to these exact indices. */
+	for(i=0; i<work->image.types.count; i++){
+		if(!dis64typeget(&work->image.types, i, &type))
+			return 0;
+		module->type[i] = dtype(freeheap, type.bytes, nil, 0);
+		if(module->type[i] == nil)
+			return 0;
+	}
+	module->entryt = module->type[work->image.module.frametype];
+	module->nprog = work->image.instructions;
+	module->prog = mallocz(module->nprog*sizeof(Inst), 1);
+	if(module->prog == nil)
+		return 0;
+	for(i=0; i<work->image.instructions; i++){
+		decoded = work->decoded+i;
+		instruction = module->prog+i;
+		dis64runtimeinst(instruction, &decoded->instruction, module->prog);
+		if(UDST(decoded->instruction.mode) == (AFP|AIND)){
+			instruction->d.i.f = decoded->instruction.destination;
+			instruction->d.i.s = decoded->secondary;
+		}
+	}
+	module->entry = module->prog+work->image.module.entry;
+	module->name = mallocz(load->name.count+1, 1);
+	if(module->name == nil)
+		return 0;
+	for(i=0; i<load->name.count; i++){
+		if(!disruneat(&load->name, i, &rune))
+			return 0;
+		module->name[i] = rune;
+	}
+	module->path = strdup(load->path);
+	if(module->path == nil)
+		return 0;
+	/* Full-width result-address semantics belong only to this proved unpublished Module. */
+	module->cstep = native64lea8step;
+	if(load->jit && !compile(module, module->nprog, nil))
+		return 0;
+	return 1;
+}
+
+
+/* Return an unpublished scalar-call Module with no borrowed image/workspace storage.
+ * One bounded native analysis allocation may occur before semantic refusal; no VM
+ * owner is allocated until complete proof. This API does not select file policy,
+ * cache a module, route readmod/parsemod or authorize imports/managed/Bools. */
+Module*
+prepare64calls(char *path, uchar *image, ulong bytes, int jit)
+{
+	Dis64CallLoad load;
+	Dis64CallImage structural;
+	Dis64CallDecoded *decoded;
+	Dis64Section section;
+	DisStringPoolView strings;
+	Module *module;
+	unsigned int i, rune, records;
+	int success;
+
+	memset(&load, 0, sizeof(load));
+	if(!dis64runtimemodel() || path == nil || path == H || image == nil || image == H ||
+	   bytes > Dis64CallImageBytes || (uintptr)image > (uintptr)-1-bytes ||
+	   (jit != 0 && jit != 1)){
+		kwerrstr("unsupported Dis64 call runtime model or input");
+		return nil;
+	}
+	if(!dis64callimageopen(image, bytes, Dis64RuntimeObject, &structural) ||
+	   structural.instructions == 0 || structural.instructions > Dis64CallRuntimeCode){
+		kwerrstr("unsupported Dis64 call image");
+		return nil;
+	}
+	/* Name/geometry refusals precede even the bounded temporary workspace allocation. */
+	for(i=0; i<structural.envelope.sections; i++){
+		if(!dis64section(&structural.envelope, i, &section))
+			return nil;
+		if(section.kind == Dis64Strings)
+			break;
+	}
+	if(i == structural.envelope.sections ||
+	   !disstringpoolcheck(image+section.offset, section.bytes, 65536, &strings) ||
+	   !disstringpoolget(&strings, structural.module.name, &load.name) ||
+	   load.name.count == 0 || load.name.count > Dis64RuntimeName){
+		kwerrstr("unsupported Dis64 call display name");
+		return nil;
+	}
+	for(i=0; i<load.name.count; i++)
+		if(!disruneat(&load.name, i, &rune) || rune == 0 || rune > 127){
+			kwerrstr("unsupported Dis64 call display name");
+			return nil;
+		}
+	load.work = mallocz(sizeof(*load.work), 1);
+	if(load.work == nil){
+		kwerrstr("Dis64 call workspace allocation failed");
+		return nil;
+	}
+	if(!dis64callinfercheck(image, bytes, Dis64RuntimeObject, &load.work->inferred,
+	   load.work->decoded, load.work->scratch, load.work->queue, Dis64CallRuntimeCode,
+	   Dis64CallLimit, load.work->proof, Dis64LocalFunctions, &records, &load.work->image)){
+		free(load.work);
+		kwerrstr("unsupported Dis64 scalar call module");
+		return nil;
+	}
+	for(i=0; i<load.work->image.instructions; i++){
+		decoded = load.work->decoded+i;
+		if(!dis64runtimeinstruction(&decoded->instruction) ||
+		   (UDST(decoded->instruction.mode) == (AFP|AIND) &&
+		   (decoded->instruction.destination < 0 || decoded->instruction.destination > 65535 ||
+		   decoded->secondary < 0 || decoded->secondary > 65535))){
+			free(load.work);
+			kwerrstr("unsupported Dis64 call runtime operand");
+			return nil;
+		}
+	}
+	load.path = path;
+	load.jit = jit;
+	success = kprotect(dis64callconstruct, &load);
+	module = load.module;
+	if(!success && module != nil){
+		destroy(module->origmp);
+		freemod(module);
+		module = nil;
+	}
+	free(load.work);
+	if(!success)
+		kwerrstr("Dis64 call module construction failed");
+	return module;
 }

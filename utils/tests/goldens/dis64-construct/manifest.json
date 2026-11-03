@@ -1,0 +1,9 @@
+{
+  "name": "reordered-types42",
+  "bytes": 330,
+  "sha256": "de5c4f1da110bf5141a89cf6de4fc4ccf6cc593bb24d37e8512336bf4334c016",
+  "root_frame": 1,
+  "leaf_frame": 0,
+  "result": 42,
+  "public_accept": false
+}

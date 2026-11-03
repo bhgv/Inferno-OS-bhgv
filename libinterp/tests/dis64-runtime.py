@@ -59,7 +59,7 @@ def image(instructions, data=4, frame=64, name='Pilot', initialized=40, datatype
 
 
 # Assemble the unchanged actual constructor/decoder/executor closure for native or cross-target gates.
-def buildunit():
+def buildunit(resultcalls=False):
     heap = (ROOT/'libinterp/heap.c').read_text()
     xec = (ROOT/'libinterp/xec.c').read_text()
     load = (ROOT/'libinterp/load.c').read_text()
@@ -83,6 +83,8 @@ def buildunit():
              'beql', 'bnel', 'bltl', 'blel', 'bgtl', 'bgel',
              'beqf', 'bnef', 'bltf', 'blef', 'bgtf', 'bgef', 'jmp', 'iexit')
     parts += [function(xec, 'OP('+name+')') for name in names]
+    if not resultcalls:
+        parts.append(function(xec, 'int\nnative64lea8step('))
     loader = (ROOT/'libinterp/load64.c').read_text()
     parts.append(re.sub(r'^#include[^\n]*\n', '', loader, flags=re.M))
     unit = (ROOT/'libinterp/tests/dis64-runtime.c').read_text()

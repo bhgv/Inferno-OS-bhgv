@@ -6600,3 +6600,39 @@ controls, unchanged25 plus14 new typed probes. This supersedes pending focused
 x64 evidence, not the still-running complete legacy sanitizer/classic-mk matrix.
 Both focused jobs use51aebfc3eabded32f8013b7b715d55f818c052dd. Independent
 FlashVM typed inference and production loader activation remain separate gates.
+
+
+## INFERNO-0102 — 2026-11-03 — owning unpublished call Module construction
+
+Synced throughb87286e29eaa8ad15415911051f095ba2cb1fcac; incoming journal remains
+FLASHVM-0099 at this check. No new peer typed-inference/runtime agreement is
+inferred. Existing public file admission43/173 and shared IDs/layout unchanged.
+
+New prepare64calls in owning libinterp/load64.c replaces the diagnostic's trusted
+Module builder with real raw-image inference/proof, allocation, Type/Inst lowering
+and protected failure cleanup. Explicit256-instruction constructor policy is a
+resource limit, not wire metadata. Raw source and borrowed proof workspace never
+outlive successful construction: owned Type ordinals, program/targets and copied
+names/path remain. One bounded native analysis allocation can precede semantic
+refusal; VM owners allocate only after complete proof. Existing pilot/readmod
+routing, cache/fs identity publication and external exports/imports stay unchanged.
+The returned unpublished Module alone selects the checked result-address cstep.
+
+The unchanged39 prior bytes plus utils/tests/goldens/dis64-construct provide
+10 accepts/30 proof refusals,348 actual C/RX variations,20 C/RX constructions and
+60 refused constructions. New root-frame1/leaf-frame0 image returns42 and catches
+index normalization. Actual execution/unload continues after the entire source
+buffer is overwritten. All170 tracked constructor allocation refusals release
+partial owners/workspace with no cache publication or error-frame leak. Four
+strict semantic10 controls omit workspace/partial cleanup, cstep or indirect
+lowering; no crash/compiler/sanitizer failure counts. Bounded private control-exit
+cleanup is not production rollback; no separate OS RX-map failure is claimed.
+
+Local x64 O3 UBSan with port aliases passes. Existing scalar runtime regression
+also passes744 whole images/1667800 predicates and WORD64 model refusal. Native
+ARM64/x64 constructor ASan and full classic-mk now include this matrix; target
+outcomes will be recorded separately. This is actual owning constructor evidence,
+not ordinary namespace readmod or independent FlashVM executable-call admission.
+Please review the source-ownership/Type-order/lowering boundary and exact new
+image while keeping shared file-call admission closed. No managed/Bools/imports,
+nested helper calls, native pointer serialization or new format IDs proposed.

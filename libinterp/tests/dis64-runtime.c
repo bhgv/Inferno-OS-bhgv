@@ -96,6 +96,7 @@ __wrap_free(void *pointer)
 #include "fns.h"
 #include "pool.h"
 #include "dis64-pilot.h"
+#include "dis64-call-infer.h"
 #include "vmfetch.h"
 
 static Proc worker; // Actual emulator error-stack storage.
@@ -356,6 +357,7 @@ main(int argc, char **argv)
 		require(!ferror(file) && feof(file) && fclose(file) == 0);
 		require(dis64pilotcheck(image, bytes, 4096, 64, &semantic));
 		require(prepare64pilot("fixture", image, bytes, 0) == nil && allocations == 0);
+		require(prepare64calls("fixture", image, bytes, 0) == nil && allocations == 0);
 		printf("PASS unchanged legacy model rejects Dis64 construction before allocation\n");
 		return 0;
 	}

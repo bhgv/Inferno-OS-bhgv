@@ -87,7 +87,7 @@ def unit(control):
 
 
 # Replay immutable peer corpus and fresh typed/error probes with no local declarations in the protocol.
-def main():
+def main(unit_factory=None, controls=None, label="inference", extra_rows=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--write-goldens', action='store_true')
     args = parser.parse_args()
@@ -103,6 +103,8 @@ def main():
         rows.append((item['name'], data, item['private_accept'], item['result_kind'], item['result'], item['runtime_error'], item['chain'], len(item['locals'])))
     for kind, change, data, accepted, value in extra:
         rows.append(('derived-'+str(kind)+'-'+change, data, accepted, kind, value, 0, 0, 2))
+    if extra_rows is not None:
+        rows.extend(extra_rows)
     env = dict(os.environ)
     arch = env.get('NATIVE64_ARCH', 'amd64')
     flags = shlex.split(env.get('NATIVE64_CFLAGS', '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
@@ -125,8 +127,8 @@ def main():
         elif arch != 'amd64': raise RuntimeError('Unsupported target '+arch)
         command += ['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
         source = work/'infer.c'
-        for control in (None, 'external', 'seed', 'publication', 'kind'):
-            source.write_text(unit(control))
+        for control in (controls if controls is not None else (None, 'external', 'seed', 'publication', 'kind')):
+            source.write_text((unit_factory or unit)(control))
             binary = work/(control or 'normal')
             subprocess.run(command+[str(source), str(ROOT/'libinterp/dec.c'), '-Wl,--wrap=free', '-lm', '-o', str(binary)], env=env, check=True)
             result = subprocess.run(shlex.split(env.get('NATIVE64_RUNNER', ''))+[str(binary), str(work/'cases.bin')], env=env,
@@ -136,8 +138,8 @@ def main():
                 print(result.stdout, end='', flush=True)
             elif result.returncode != 10 or not any(t in result.stderr for t in ('whole-image decision mismatch', 'whole-image refusal published output')):
                 raise RuntimeError('Inference control missed predicate: '+str(control)+' '+result.stdout+result.stderr)
-            else: print('PASS inference semantic control:', control, arch, flush=True)
-    print('PASS inference corpus: committed25 identities plus', len(rows)-25, 'typed probes; no caller local declarations', flush=True)
+            else: print('PASS '+label+' semantic control:', control, arch, flush=True)
+    print('PASS '+label+' corpus: committed25 identities plus', len(rows)-25, 'typed probes; no caller local declarations', flush=True)
 
 
 if __name__ == '__main__':

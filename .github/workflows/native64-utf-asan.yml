@@ -11,8 +11,11 @@ on:
       - 'utils/tests/dis64-call-*'
       - 'utils/tests/goldens/dis64-calls/**'
       - 'utils/tests/goldens/dis64-infer/**'
+      - 'utils/tests/goldens/dis64-construct/**'
       - 'utils/tests/native64-result-calls*'
       - 'libinterp/xec.c'
+      - 'libinterp/load64.c'
+      - 'libinterp/tests/dis64-runtime.c'
       - 'include/interp.h'
       - 'include/runt.h'
       - 'lib9/rune.c'
@@ -271,5 +274,35 @@ jobs:
         with:
           name: native64-call-inference-${{ matrix.arch }}
           path: call-inference-asan.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  call-construction:
+    name: Actual Dis64 construction ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construct owned scalar-call Modules and check every allocation failure
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-call-construct.py 2>&1 | tee call-construction-asan.log
+      - name: Preserve constructor diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-call-construction-${{ matrix.arch }}
+          path: call-construction-asan.log
           if-no-files-found: warn
           retention-days: 14
