@@ -55,7 +55,8 @@ engine and lib9 sorter are compiled with incompatible-pointer diagnostics as
 errors. Its standalone libc file adapter is explicit; this is not the Inferno
 namespace adapter or a physical-phone test.
 
-Per WORD32 and WORD32-file,754 active predicates cover all21 constructor/staged
+Locally, each WORD32 and WORD32-file run reaches754 active predicates covering
+all21 constructor/staged
 Type allocation refusals, unchanged registry/globals, successful publication,
 idempotence and final ownership. Every export is called through Module.ext with
 fresh generated frames. Vera/Noto face creation, metrics, character queries,
@@ -80,3 +81,12 @@ The shared43-op scalar file profile and closed file CALL/MCALL/managed imports
 remain. Full Draw/Tk/AWM, live-object module unload, scheduler/collector call
 boundaries and physical targets still require independent admission/evidence.
 Complex font work stays in C. No wire/layout/extension/opcode IDs are assigned.
+
+
+## Source-specific target results
+
+Source2d92a79e passes native ARM64/x64 ASan/UBSan41611046071 and Bionic/QEMU
+Android41611575016. Each native run reports758 predicates per compatible model;
+Bionic reports756 and peer replay748. c2string validates every absolute path
+byte, so this total is path-dependent. Acceptance uses the fixed six-export/
+21-failure/two-model matrix and semantic controls, not one portable count.

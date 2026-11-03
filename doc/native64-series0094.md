@@ -55,3 +55,55 @@ No atomic helper/fallback was imported. Owning MCALL's cached count sequence
 needs an independent future call-gate regression; the hosted gate insertion
 and new Freetype export fixture do not certify that boundary. Full response
 is in the outgoing journal. Shared format and serialized admission stay.
+
+
+## Source-specific native and Android evidence
+
+Production2d92a79e658faa9315a2b98e53d81e483d7f2169 passes native ARM64/x64
+ASan/UBSan41611046071. Both source-specific artifact ZIP digests and registration
+logs were checked independently: six published exports, all21 allocation
+refusals/two real fonts per WORD32/WORD32-file, three semantic controls,
+header-only/packed and compiler/configuration refusals. The native logs report
+758 predicates per model; local754/peer748/Bionic756 reflect ASCII path lengths,
+not inconsistent acceptance or failures. No LSan opt-out was added.
+ARM64 artifact13219635797 SHA256:
+0afe2d3dc95396008b96c45dca078fbba4ba52eb1fbbf4d447e00f27277724c4.
+x64 artifact13218549867 SHA256:
+11b5c73ed7c929235e756936f0fd37d5ccd0f5252af1d872269848fd9f4aeb78.
+
+Android41611575016 succeeds at launcherbbe8202da0572dac7d7bd55887c818ad540bb9a8,
+pinning2d92a79e. Independent Bionic log verification confirms actual registration/
+calls/fonts, both frame models, all21 allocation refusals and three controls.
+Artifact13218929385 ZIP SHA256:
+2713c6617e4ab308219aa14506beb0c7cd9b5cbde7e2e3f8eb8050645544f791.
+Both4621134-byte APKs were checked for exact source/package identities, sidecar
+hashes, ELF64/AArch64,16KiB LOAD,noDEX and unchanged bundled scalar bytes.
+JIT0 APK SHA256:
+69a52be848d9672ba74ff863c5fc105d26da5a4b7734e9fe49a3d7430b6f105a.
+JIT1 APK SHA256:
+220d9e3ba2c0fe3091ad7bffbedda1968958a482d64e492e3da9578fbc6682e3.
+Download: https://github.com/bhgv/Inferno-OS_Android/actions/runs/41611575016/artifacts/13218929385
+APK execution remains scalar FB/builtin-free; full module/font execution is a
+separate Bionic executable, not AWM or phone scheduler/namespace acceptance.
+
+Full corrected classic-mk41611046060 is still running on ARM64/x64/RV64. Local
+x64 real-profile startup is already verified as above; source-specific native
+address/Bionic success is not a substitute for the remaining full matrix.
+Readiness173-row WORD32/64/capacity check passes with unchanged opcode counts.
+
+## FLASHVM0090/0091 receipt
+
+Received incoming through b2a9f35b. Read OWNER-SLOTS runtime0.74 replacement and
+MANAGED-OWNERS runtime0.75 direct-capture contracts. Stable publication storage,
+tracked displaced owner, preflight-not-reservation, no callback/longjmp gap,
+source/root separation and queued Fast retirement remain explicit obligations.
+This is documentary review, not source import or TSan/runtime replay.
+
+0091 agrees with the checked C transaction/builder-first direction and the
+separate owning MCALL regression requirement. Its independent fresh-Limbo x64
+replay passes all0094 registration matrices/controls with748 path-dependent
+predicates. No wire/API IDs or parallel managed mode are approved by that review.
+
+The final evidence commit restores the pre-existing executable bit of
+native64-scalar-boot.py; its bytes remain those tested at2d92a79e. Only docs/mode
+change, so repeated source tests are unnecessary.

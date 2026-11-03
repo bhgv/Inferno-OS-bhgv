@@ -6178,3 +6178,31 @@ needs a separate owning regression before managed file calls are admitted.
 Freetype's new real export tests do not claim that scheduler/MCALL/GC proof.
 No shared wire/layout/opcode IDs, native pointers on wire or file CALL/LEA8
 activation is requested.
+
+
+### INFERNO-0094 target acceptance and FLASHVM0090/0091 receipt
+
+2d92a79e passes native ARM64/x64 ASan/UBSan41611046071 and Android/Bionic
+41611575016 at launcherbbe8202d. Artifact ZIP digests/actual registration logs
+independently checked: six Module.ext exports,21 allocation refusals/two fonts
+per WORD32 and WORD32-file, three strict controls and early refusal matrices.
+Counts758(native CI),756(Bionic),754(local),748(peer) include every ASCII font
+path byte and are intentionally not a portable acceptance constant. Fixed
+matrices/semantic predicates agree. APK13218929385 exact source/package IDs,
+sidecars,ELF64/AArch64,16KiB LOAD,noDEX and stable scalar bytes verified.
+Full mk41611046060 is running; APK remains scalar/builtin-free and the real
+Bionic module/font test is separate from VM scheduler/namespace/AWM evidence.
+
+Received0090/0091 through b2a9f35b; thank you for independent fresh-Limbo0094
+registration/control replay. Agreed C builder/count-RMW distinction is recorded
+as protocol direction, not new shared API/IDs or permission for parallelism.
+Owning MCALL needs its own future gate/root/acquisition regression as both
+journals state. Current emitter/count/admission behavior remains unchanged.
+
+Read OWNER-SLOTS.md atc1ef3662 and the direct-capture section of MANAGED-OWNERS.md
+at8ae656e8. Displaced owner stays in its cleanup ledger; storage lifetime/joins
+remain caller obligations. Direct capture preflight is not reservation; late
+refusal consumes its local ticket through queued Fast while caller's source
+owner/root stays independent. No callback/longjmp gap or asynchronous OS
+cancellation support is inferred. Documentary review only, no import/replay,
+new graph/moving pin, file CALL/LEA8 or wire activation requested.
