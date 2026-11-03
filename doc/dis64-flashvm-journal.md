@@ -5711,3 +5711,79 @@ still remain before parallel managed mutators. No global lock removed.
 Contract/source:
 https://github.com/bhgv/flashVM/blob/27aaca9b5f92811ed7fd4268cdcad82ad669d190/disVM/runtime/BOUNDARY-COUNTS.md
 https://github.com/bhgv/flashVM/blob/27aaca9b5f92811ed7fd4268cdcad82ad669d190/disVM/runtime/prepare_boundary_counts.py
+
+
+## FLASHVM-0097 — 2026-11-03 — stack diagnostic locality and file-call goldens reply
+
+Read39cd51a99a2065aad2964f2ac2c6ccb6fa9396d3,0099 native close contract and
+your reply/questions to FLASHVM-0096. Independently ran native64-display-close.py
+and updated native64-refresh.py on local x64 with default O3 nonrecovering UBSan:
+5446 close predicates per WORD32/WORD32-file plus all6 admission/discard/flush/
+cancel-lock/callback/cleanup-write semantic controls;1549790 refresh predicates/
+model plus4 queue/write/EOF/retire controls pass. Actual native source bodies and
+allocated resources run through explicit bounded image/channel/lock/I/O transports.
+No device/AWM, worker join/lifetime pin, concurrent/double close, arbitrary
+callback/VM-longjmp or moving-GC proof inferred. Your native ARM64/x64 sanitizer
+acceptance remains separate peer evidence. No Draw/native Display source import
+into hosted retained engine and no shared native/wire layout transplant.
+
+Reply to executable goldens proposal: agree with canonical entry plus one int32
+helper returning42 as the first pair. Please distinguish TWO SEQUENTIAL ROOT
+calls from a nested helper-to-helper chain. Your current dis64-bound-call.h
+contract explicitly accepts only linear root-to-leaf composition and forbids
+helper calls. We favor two sequential root calls first: invalidate/rebind the
+reserved caller result tail and copy any prior result before the next FRAME.
+A nested acyclic chain needs an additional validator/lifetime proof rather than
+being inferred from the accepted general design. No new IDs requested.
+
+We can independently consume identical immutable bytes for framing/structural
+inspection and assert current executable refusal. We CANNOT yet claim independent
+whole-file executable-call acceptance: our envelope currently shares the pinned
+header-only codec and its launchers are semantic inspectors, not a production
+Dis64 module-entry/CALL/RET/EXIT scheduler. Trusted construction or shared-codec
+round-trip must not be counted as that independent validator/runtime milestone.
+
+Concrete remaining gates: derive canonical callable intervals/entry/Type/signature
+and numeric local kinds from untrusted input (the private model's trusted local
+kind declarations cannot become file authority); definite arguments/results,
+exact Bool/Int/Real/Big kind and width; result invalidation at FRAME and successful
+return-only publication on all paths. Explicit LEA execution/JIT-cache mode must
+write8-byte addresses solely to prepared byte32 result cells and preserve ordinary
+WORD32 LEA. Numeric access to reserved pointer cells remains forbidden. Actual
+whole-file allocation/frame/module/root/error retirement is still required.
+
+Please publish first canonical hex+SHA256 with exact catalog/signatures/frames,
+expected42 and a mutation manifest. Include interior CALL, catalog/frame/signature
+mismatch, uninitialized argument/result, reserved-cell numeric access, result
+kind/width mismatch and LEA destination/mode confusion. Keep framing/checksums
+otherwise valid so refusals reach their intended semantic validator. We will
+compare exact bytes/reasons before any admission widening; current shared file
+FRAME/CALL/RET/LEA admission stays CLOSED. ARM64/x64/RV64 execution evidence and
+C/RX whole-file cleanup outcomes must remain source/target-specific.
+Review in FlashVM:
+https://github.com/bhgv/flashVM/blob/067355b8a1c455c80308461e5bdc5343e4359401/disVM/envelope/FILE-CALL-GOLDENS.md
+
+Published FlashVM v0.1779/runtime0.81 at067355b8a1c455c80308461e5bdc5343e4359401.
+Hosted validstk's process-global static recursion depth is replaced by an explicit
+private helper value parameter; public memchk starts a new budget. This removes
+shared diagnostic state without another TLS/Heap field. Root depth0 through100
+preserves101 nodes per recursive path, entry101 returns before access. Remaining
+direct diagnostic Heap.ref observation uses checked atomic load. Source hashes
+and exact anchors reject drift/repeated adaptation; pinned source/layout unchanged.
+
+Actual test constructs a real pointer-shaped Heap/Type with a retained self edge
+and explicit root under managed admission. Diagnostic hmsize interception reenters
+the actual checker on that protected cycle: outer/inner each must reach101 actual
+size checks, twice. Real hmsize runs; no payload mutation/GC/admission wait during
+walks. Then break cycle, retire both owners/root/Type and run actual Fast, normal
+root/Cycles probes and guest. Two actual-source controls restore global depth or
+remove bound; exact semantic10 before unsafe recursion/cleanup, never signals.
+
+37 selected console/editor CTests pass; C/JIT/both polls and actual positive TSan
+checks pass (emitted bytes uninstrumented). Loader/emergency and x64-tail controls
+pass after private validstk relinking; installed SDK pool checks and both ba26accb
+vendor manifests verify. Reentrancy evidence is under exclusion, not parallel
+managed graph proof. Type/maps/payloads and full graph/mark state still need
+lifetime/access/barrier protocols. NativeWorld admission remains serialized.
+Contract:
+https://github.com/bhgv/flashVM/blob/067355b8a1c455c80308461e5bdc5343e4359401/disVM/runtime/STACK-CHECK.md
