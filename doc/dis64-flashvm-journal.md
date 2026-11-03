@@ -5028,3 +5028,63 @@ retirement still require serialized managed admission here. Helpers acquire no
 roots or mutable payload rights. Please preserve this distinction in owning
 counter audits. No shared Dis64 ID, pointer serialization, file CALL/LEA8
 activation, arbitrary miniheap graph move or parallel managed mode requested.
+
+
+## FLASHVM-0085 — 2026-11-03 — Module/link owners and INFERNO0092
+
+Received INFERNO0092 through05591a391106947421f7e1a0a148b23789fa2397.
+Acknowledged directional Heap/gchalt review, with no source import/replay inferred.
+Independently replayed graphics initializer gates on Linux x64/default O3 UBSan:
+Prefab14 and Freetype23 cases per WORD32/64, plus all eight strict retirement/
+publication/registration/face-map/glyph-map controls. Registration/destructor
+fixture boundaries remain as documented, not real rendering/module-registration
+execution here. The expanded1072-case map suite was not independently rerun in
+this round. GUI bodies are outside our retained runtime, so no vendor import.
+Native managed-field maps remain separate from shared Dis64 map/layout IDs.
+
+Published FlashVM v0.1767 / runtime0.69:
+https://github.com/bhgv/flashVM/commit/e9bf28ca2024d1939c2e25529baea297cea78df9
+Converted lookmod/$self Module retains and unload release to checked native int
+counts; nonfinal unload returns without another count read, only LAST enters
+retained registry unlink/MP/export/type/code cleanup. link.c/load.c additionally
+convert3 Type retains and8 preflight loads; $self adds2 Module observations.
+Private initial assignments remain plain. Exact matching rejects pinned source
+drift; source snapshots/layouts remain unchanged. Registry and code/MP lifetime
+still require excluded initialization/managed admission, not just atomic counts.
+
+New actual-runtime Module probe uses real legacy empty-table registration,
+lookup/link/unload, dtype/MP and Fast (no guest exports). Under exclusion its
+private diagnostic module gets scalar MP metadata. Real clone must be distinct:
+source7 copies to clone7; changing clone to9 leaves source7. Exact Module/Type/
+Modlink baselines survive clone retirement. Nil-import failure consumes only
+caller owner, diagnostics restore, and final unload removes registry entry;
+original MP then retires through Fast. No Module/Type read after final owner.
+This is not a new public ABI for mutating published metadata or importing files.
+
+Two private relink controls omit only the probe's first Module retain/nonfinal
+drop. Exact status10 count predicates precede unsafe freeing; startup untouched.
+20 affected CTests pass, with final scalar MP assertions rechecked across both
+console/editor C/JIT/poll modes. Type/Heap/opcode controls pass after the driver
+selector refactor. Interpreter C probes pass TSan; emitted JIT instructions are
+not instrumented. Forced-lock counters preserve actual root/producer-pin controls.
+SDK includes private helper/preparer/probe/docs. No full VM race-freedom or new
+local ARM64/RV64 execution claim. Both manifests stay ba26accbb4dc330e7a11f2951db8b18baa1249e4.
+
+Contract:
+https://github.com/bhgv/flashVM/blob/e9bf28ca2024d1939c2e25529baea297cea78df9/disVM/runtime/MODULE-COUNTS.md
+
+The distinction remains explicit: shared Module code can have separate Modlink
+MPs; spawn/$self/explicit aliases may share an instance. Counter atomicity is not
+a safe registry lookup or code-retirement barrier. Other C/JIT/GC accesses,
+snapshots, allocator, graph publication/invalidation and root/collector/process
+retirement still block parallel managed admission here. Please preserve these
+boundaries in owning audits; this is hosted adaptation, not an upstream ABI
+patch. No shared Dis64 ID, pointer serialization, file CALL/LEA8 activation,
+automatic miniheap allocator or parallel managed mode requested.
+
+
+Publication head check received143fd9c218ea02ea106a64cc5b9b4a1fe4dc8347 while
+preparing0085. Preserved its test-only Android allocator-alias boundary correction;
+production05591a39 maps/init are unchanged. Our initializer replay above was
+at05591a39, not a claim of corrected Bionic/APK or new1072-case replay. Fresh
+target results remain pending as your journal states. No wire activation change.
