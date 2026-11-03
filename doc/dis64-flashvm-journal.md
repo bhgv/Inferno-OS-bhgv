@@ -5386,3 +5386,68 @@ ba26accb vendor checks pass. General graph/root publication, payload guards,
 allocator/GC coordination and checked JIT builders remain separate work before
 relaxing serialized NativeWorld admission. Native ticket capture is not itself
 a managed graph transfer/moving pin or parallel payload permission.
+
+
+## FLASHVM-0092 — 2026-11-03 — checked C pointer-list transaction
+
+Received through810e778db71a148663bd0036cd97818f5f50ce22: read0094 target
+acceptance and0090/0091 review. ARM64/RV64 full classic-mk success is your reported
+evidence, separate from our local x64 fresh-Limbo/font replay. Full x64 was still
+running in the received note. No new source replay needed for docs/mode updates.
+Shared wire/layout/opcode IDs and managed admission remain unchanged.
+
+Published FlashVM c9597f0d5d278ee03264fc03acd9081587c2fb0e, runtime0.76.
+Implemented the first private hosted C pointer-list transaction, following the
+agreed constructor-vs-count-RMW separation. This is not a new shared API/ABI and
+has not been transplanted into owning Inferno. Please review contract/proof for
+a future owning equivalent and native-call lowering:
+https://github.com/bhgv/flashVM/blob/c9597f0d5d278ee03264fc03acd9081587c2fb0e/disVM/runtime/POINTER-BUILDER.md
+https://github.com/bhgv/flashVM/blob/c9597f0d5d278ee03264fc03acd9081587c2fb0e/disVM/runtime/pointer_builder.c
+
+Hosted consp now captures source and original destination tail before allocation,
+including exact slot aliasing. It acquires distinct source/tail Heap owners and
+Tlist/Tptr Type owners using checked primitive RMW at acquisition, not cached
+preflight. Partial acquisitions are tracked before any error boundary. A fresh
+unpublished node is initialized coherently, owns its source/descriptors and gets
+an explicit staging root before heapmonitor. The callback can inspect/raise,
+not change slots/node ownership, publish/retain the borrowed node or leave
+managed admission. Caller keeps source/tail roots complete and stable.
+
+After success, held tail moves into node, destination publishes once, staging
+root is removed and old destination owner is consumed by checked NONFINAL Heap
+release. The node's distinct tail owner guarantees LIVE: no destructor, monitor
+or deferred-RC queue operation is needed there. Marking is preserved. Native
+null refuses; H source/tail works; a non-list tail refuses before acquisition.
+Geometry is not provenance. C callers must root any returned C-local result
+before leaving managed execution; the staging root is not a persistent pin.
+
+On error, remove staging root, undo acquired references/descriptors and rethrow
+the original VM error without changing destination. A complete private node is
+retired by checked LAST, nonfinal child/descriptor releases and poolfree, not
+destroy: a monitor-raised error must not reenter that failing monitor through
+the destructor. Node is unpublished and forbidden to escape; unexpected extra
+ownership is fatal before unsafe free. No published object uses this shortcut.
+Conservative marking may remain. No asynchronous OS cancellation claim.
+
+Actual probe: real String/list ownership, coherent monitor view/error and preserved
+diagnostic, exact source/destination aliasing, nil construction, invalid tail,
+real Fast graph retirement and Type baselines. Private controls refuse Tlist,
+Tptr or allocation and verify COMPLETE rollback before test-only retry. Two
+omission controls remove a descriptor retain or rollback, requiring semantic10
+before uncertain free. A separate gc-inline monitor failure proves no recursive
+callback and complete restoration without depending on Fast deferral.
+
+Mixed-JIT list test now counts successful primitive Tptr acquisitions:64 in both
+C/mixed JIT with both poll modes, normal payloads and other native instructions.
+Restoring old private x64 lowering still trips exact bypass predicate. Direct
+LeafPointerCons machine lowering remains declined: decoding/register/stack roots,
+native C ABI and exception/unwind boundary need separate proof before enabling
+that call. No retry of an opcode after partial native acquisition is introduced.
+
+Local x64:26 selected CTests pass; four affected owner/collector cases rerun after
+the nonfinal-tail optimization. Actual C owner probe passes TSan. Builder,
+old-lowering, direct-capture and forced-lock root/producer controls pass. SDK
+source closure and ba26accb runtime/compiler vendor manifests verify. Emitted
+JIT is not TSan-instrumented; no new ARM64/RV64 acceptance claim. Allocator/root
+registry concurrency, source publication/payload guards, GC coordination and
+remaining JIT operations still require serialized NativeWorld admission.
