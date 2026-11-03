@@ -1344,6 +1344,58 @@ Image_fillarcop(void *fp)
 	drawfillarcellipse(fp, 1, f->alpha, f->phi, f->op);
 }
 
+typedef struct DrawTextView DrawTextView;
+
+struct DrawTextView {
+	char *ascii; // Borrowed terminated byte representation, or nil for Rune input.
+	Rune *runes; // Borrowed aligned native Rune representation, or nil for ASCII.
+	int count; // Captured nonnegative logical length, never negated before validation.
+};
+
+
+/* Validate and terminate the borrowed representation before native font/cache side effects.
+ * Caller retains the String and VM admission; native font work later acquires display exclusion.
+ * This is not a GC pin or arbitrary-pointer provenance. */
+static void
+drawtextview(String *string, DrawTextView *view)
+{
+	int length, capacity;
+	uintptr address;
+	uvlong bytes;
+	Rune zero;
+
+	memset(view, 0, sizeof(*view));
+	if(string == H)
+		return;
+	if(string == nil)
+		error(exNilref);
+	address = (uintptr)string;
+	if(address > (uintptr)-1-O(String, data))
+		error(exHeap);
+	memmove(&length, (uchar*)string+O(String, len), sizeof(length));
+	memmove(&capacity, (uchar*)string+O(String, max), sizeof(capacity));
+	if(length == (-2147483647-1))
+		error(exHeap);
+	view->count = length < 0 ? -length : length;
+	if(capacity < view->count)
+		error(exHeap);
+	address += O(String, data);
+	bytes = ((uvlong)view->count+1)*(length < 0 ? sizeof(Rune) : 1);
+	if(bytes > (uintptr)-1-address || (length < 0 && address%sizeof(Rune) != 0))
+		error(exHeap);
+	/* Slices can shorten len without changing old trailing payload; bound native lookahead. */
+	if(length < 0){
+		zero = 0;
+		memmove((void*)(address+(uintptr)view->count*sizeof(Rune)), &zero, sizeof(zero));
+		view->runes = (Rune*)address;
+	}else{
+		*(char*)(address+view->count) = 0;
+		view->ascii = (char*)address;
+	}
+}
+
+
+/* Return the requested point deterministically for skipped text and capture the caller result slot. */
 static void
 drawtext(void *fp, int op)
 {
@@ -1351,38 +1403,53 @@ drawtext(void *fp, int op)
 	Font *font;
 	Point pt;
 	Image *s, *d;
-	String *str;
+	DrawTextView text;
+	Draw_Point result, *ret;
 	int locked;
 
 	f = fp;
+	ret = f->ret;
+	if(ret == nil || ret == H || (uintptr)ret > (uintptr)-1-sizeof(result))
+		error(exHeap);
+	pt = IPOINT(f->p);
 	if(f->dst == H || f->src == H)
 		goto Return;
 	if(f->font == H || f->str == H)
 		goto Return;
-	str = f->str;
+	if((unsigned int)op >= Ncomp)
+		goto Return;
+	drawtextview(f->str, &text);
+	if(text.count == 0)
+		goto Return;
 	d = checkimage(f->dst);
 	s = checkimage(f->src);
 	font = checkfont(f->font);
 	if(d->display!=s->display || d->display!=font->display)
-		return;
+		goto Return;
 	locked = lockdisplay(d->display);
-	if(str->len >= 0)
-		pt = stringnop(d, IPOINT(f->p), s, IPOINT(f->sp), font, str->Sascii, str->len, op);
+	if(text.ascii != nil)
+		pt = stringnop(d, pt, s, IPOINT(f->sp), font, text.ascii, text.count, op);
 	else
-		pt = runestringnop(d, IPOINT(f->p), s, IPOINT(f->sp), font, str->Srune, -str->len, op);
+		pt = runestringnop(d, pt, s, IPOINT(f->sp), font, text.runes, text.count, op);
 	checkflush(f->dst);
 	if(locked)
 		unlockdisplay(d->display);
-    Return:
-	P2P(*f->ret, pt);
+Return:
+	result.x = pt.x;
+	result.y = pt.y;
+	memmove(ret, &result, sizeof(result));
 }
 
+
+/* Dispatch Image_text through the checked borrowed text and captured result path. */
 void
 Image_text(void *fp)
 {
 	drawtext(fp, SoverD);
 }
 
+
+/* Dispatch Image_textop through the checked borrowed text and captured result path. */
 void
 Image_textop(void *fp)
 {
@@ -1392,6 +1459,8 @@ Image_textop(void *fp)
 	drawtext(fp, f->op);
 }
 
+
+/* Check background display identity and preserve a deterministic point on every skipped draw. */
 static void
 drawtextbg(void *fp, int op)
 {
@@ -1399,39 +1468,54 @@ drawtextbg(void *fp, int op)
 	Font *font;
 	Point pt;
 	Image *s, *d, *bg;
-	String *str;
+	DrawTextView text;
+	Draw_Point result, *ret;
 	int locked;
 
 	f = fp;
+	ret = f->ret;
+	if(ret == nil || ret == H || (uintptr)ret > (uintptr)-1-sizeof(result))
+		error(exHeap);
+	pt = IPOINT(f->p);
 	if(f->dst == H || f->src == H)
 		goto Return;
-	if(f->font == H || f->str == H)
+	if(f->font == H || f->str == H || f->bg == H)
 		goto Return;
-	str = f->str;
+	if((unsigned int)op >= Ncomp)
+		goto Return;
+	drawtextview(f->str, &text);
+	if(text.count == 0)
+		goto Return;
 	d = checkimage(f->dst);
 	s = checkimage(f->src);
 	bg = checkimage(f->bg);
 	font = checkfont(f->font);
-	if(d->display!=s->display || d->display!=font->display)
-		return;
+	if(d->display!=s->display || d->display!=font->display || d->display!=bg->display)
+		goto Return;
 	locked = lockdisplay(d->display);
-	if(str->len >= 0)
-		pt = stringnbgop(d, IPOINT(f->p), s, IPOINT(f->sp), font, str->Sascii, str->len, bg, IPOINT(f->bgp), op);
+	if(text.ascii != nil)
+		pt = stringnbgop(d, pt, s, IPOINT(f->sp), font, text.ascii, text.count, bg, IPOINT(f->bgp), op);
 	else
-		pt = runestringnbgop(d, IPOINT(f->p), s, IPOINT(f->sp), font, str->Srune, -str->len, bg, IPOINT(f->bgp), op);
+		pt = runestringnbgop(d, pt, s, IPOINT(f->sp), font, text.runes, text.count, bg, IPOINT(f->bgp), op);
 	checkflush(f->dst);
 	if(locked)
 		unlockdisplay(d->display);
-    Return:
-	P2P(*f->ret, pt);
+Return:
+	result.x = pt.x;
+	result.y = pt.y;
+	memmove(ret, &result, sizeof(result));
 }
 
+
+/* Dispatch Image_textbg through the checked borrowed text and captured result path. */
 void
 Image_textbg(void *fp)
 {
 	drawtextbg(fp, SoverD);
 }
 
+
+/* Dispatch Image_textbgop through the checked borrowed text and captured result path. */
 void
 Image_textbgop(void *fp)
 {
@@ -2304,25 +2388,31 @@ Font_open(void *fp)
 	*f->ret = &df->drawfont;
 }
 
+/* Measure the native representation directly without allocating a UTF-8 cache for Rune strings. */
 void
 Font_width(void *fp)
 {
 	F_Font_width *f;
 	Font *font;
-	char *s;
+	DrawTextView text;
+	WORD result, *ret;
 	int locked;
 
 	f = fp;
-	s = string2c(f->str);
-	if(f->f == H || s[0]=='\0')
-		*f->ret = 0;
-	else{
+	ret = f->ret;
+	if(ret == nil || ret == H || (uintptr)ret > (uintptr)-1-sizeof(result))
+		error(exHeap);
+	result = 0;
+	drawtextview(f->str, &text);
+	if(f->f != H && text.count != 0){
 		font = checkfont(f->f);
 		locked = lockdisplay(font->display);
-		*f->ret = stringwidth(font, s);
+		result = text.ascii != nil ? stringnwidth(font, text.ascii, text.count) :
+			runestringnwidth(font, text.runes, text.count);
 		if(locked)
 			unlockdisplay(font->display);
 	}
+	memmove(ret, &result, sizeof(result));
 }
 
 

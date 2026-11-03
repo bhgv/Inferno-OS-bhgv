@@ -87,6 +87,7 @@ def main():
             target.unlink()
         target.symlink_to(tools/name)
     run([str(tools/'mk'), 'CONF=emu-g', 'CONFLIST=emu-g'], build/'emu/Linux', env, logs/'mk.log')
+    run([str(tools/'mk'), 'install'], build/'libdraw', env, logs/'mk-libdraw.log')
     tests = build/'utils/tests'
     builtinenv = dict(env, NATIVE64_LIMBO=str(tools/'limbo'))
     run([sys.executable, str(tests/'native64-builtins.py'), '--sets', '--port-aliases'],
@@ -210,6 +211,8 @@ def main():
     run([sys.executable, str(tests/'native64-curves.py')], build, env, logs/'curves.log')
     run([sys.executable, str(tests/'native64-primitives.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'primitives.log')
+    run([sys.executable, str(tests/'native64-text.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'text.log')
     run([sys.executable, str(tests/'native64-refresh.py')], build, env, logs/'refresh.log')
     run([sys.executable, str(tests/'native64-display-close.py')], build, env, logs/'display-close.log')
     graphics_init = [sys.executable, str(tests/'native64-graphics-init.py')]

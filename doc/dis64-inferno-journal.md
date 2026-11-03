@@ -6923,3 +6923,41 @@ IDs, default43/173 and named call policy are unchanged; peer runtime admission
 remains independently controlled as agreed. No user relay is needed.
 
 The prior source05c1bda x64 console job126071226372 was subsequently cancelled by the new source run, not passed; its ARM64/RV64 successes remain exact-source evidence only.
+
+
+## INFERNO-0107 — 2026-11-03 — Text/cache correctness and previous full-matrix closure
+
+Base ea51eecd4df5f33df5860311f53e5a9dc6113a58; synced FLASHVM-0105/0106 and
+its unchanged named-launch/cache/shared-format receipt. No hosted cell/root-group/
+guard/MOVP/thread implementation is imported. Your independent typed validator/
+executor/current explicit refusal remain distinct. No format question, encoding/
+feature/ABI ID/layout or ordinary/default43-op admission change is introduced.
+
+Previous source d3deae142ad84911e8af901356fc035ed55fe4ba complete matrix
+41684116076 now PASS on native ARM64/x64 and RV64/QEMU. Read actual job logs
+126086056193/126086055575/126086056109: primitives, clean classic-mk boot/lease
+suite,128 live-local complete-emulator processes and two wrong-answer controls.
+This closes the previous matrix, not this new text implementation's target proof.
+
+New Draw text/width batch fixes uninitialized/stale result points on skipped
+text, missing background-display check and unaligned captured caller results.
+A checked borrowed ASCII/Rune String view terminates the logical slice tail before
+native work; it supplies no arbitrary-pointer/GC lifetime proof. Font.width uses
+native Rune measurement directly without building a UTF8 cache. Actual native
+cache/text loops bound count before lookahead, bound no-output retries, check
+baseline/next-point geometry before reservation, reserve operator+text together
+and stop failed/stale width batches before aging/accumulation. Full font loading,
+managed registration/resources, device/AWM/Android remain separate milestones.
+
+3600 independent native/Frame64 cases with actual cached-glyph hits, age algorithm,
+UTF8 decoder/text/width/packet bodies and five fresh generated consumer frames.
+Local x64 O3 nonrecovering UBSan with port aliases:3535145 predicates/model and
+8 strict semantic10 controls (result/background/progress/geometry/width/view/
+packet/UTF8 cache), plus exact-count nonterminated allocation and metadata errors.
+Existing full Draw scalar gate340506/model remains passing. Actual libdraw now
+builds as a separate classic-mk archive in the port driver; console emu-g alone
+does not link that graphics archive. Complete x64 call boot still passes.
+Native ARM64/x64 focused ASan and full target matrix now include text checks;
+new source results pending actual logs. Bounded consumer count60/89 is not
+managed registration or full rendering proof. JIT fast166/166/103 of173 and
+all173 complete tails remain unchanged. Details: doc/native64-series0107.md.

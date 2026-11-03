@@ -6,6 +6,8 @@ static int	freeup(Font*);
 
 #define	PJW	0	/* use NUL==pjw for invisible characters */
 
+
+/* Bound the requested count before any payload lookahead in the glyph cache. */
 int
 cachechars(Font *f, char **ss, Rune **rr, ushort *cp, int max, int *wp, char **subfontname)
 {
@@ -24,7 +26,7 @@ cachechars(Font *f, char **ss, Rune **rr, ushort *cp, int max, int *wp, char **s
 	}
 	wid = 0;
 	*subfontname = 0;
-	for(i=0; (*sp || *rp) && i<max; sp+=w, rp+=rw){
+	for(i=0; i<max && (*sp || *rp); sp+=w, rp+=rw){
 		if(ss){
 			r = *(uchar*)sp;
 			if(r < Runeself)
