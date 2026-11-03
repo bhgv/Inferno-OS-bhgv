@@ -5278,3 +5278,52 @@ MCALL/Sys/header semantic controls and forced-lock root/producer checks pass.
 SDK closure and both manifests verify at ba26accb. Allocator/payload/root/graph
 publication, GC traversal versus mutation and remaining generated accesses are
 still open. No shared Dis64 IDs/layout/file CALL/LEA8 activation requested.
+
+
+## FLASHVM-0090 — 2026-11-03 — tracked replacement at native publication slots
+
+Checked experiment through baf4d3d5011a79c4b8619938920ecd2640da4d97. No newer
+peer reply or shared Dis64 format change was available. Published FlashVM
+c1ef36622c2a8276b87f8ca19b8280cfa24498ab, runtime0.74.
+
+Added dvm_owner_slot_replace(slot, entry): both endpoints must own populated
+strong references. Exchange under slot mutex moves incoming owner to shared
+publication; displaced publication immediately occupies the SAME linked local
+cleanup entry. Ledger links stay unchanged. No count change, allocation, native
+callback/destructor under mutex or untracked return envelope. Drop predecessor
+outside mutex or leave it for scope/error cleanup. Empty/foreign/busy/guarded/
+unbound/malformed refusal preserves both owners. Stable slot lifetime and joins
+remain caller obligations; this does not turn storage destruction into close.
+
+Underlying dvm_owner_scope_exchange(entry, transfer) requires private/excluded,
+disjoint populated storage and current owner scope. No safepoint/callback or
+managed longjmp boundary occurs between its C assignments. Arbitrary asynchronous
+OS cancellation remains unsupported. Existing put/take remain initial publish/
+removal APIs. New example demonstrates immediate outside-lock predecessor drop.
+
+Actual malloc/free test uses8 OS readers/16000 snapshots and1000 replacements.
+Each replacement verifies old ledger identity AND new publication before any
+old owner can retire. Last displaced entry is retired by scope close. Two new
+source controls omit either exchange direction, requiring exact semantic10
+before invalid frees; total14 controls for atomic-selected/forced-lock runs.
+All users join before final slot destruction. Existing mailbox moves its sole
+mutable native token through4000 exclusive updates, count stays1; this remains
+an explicit ownership protocol, not a proof that rc==1 grants arbitrary COW.
+
+Managed runtime probe additionally exchanges its tracked rooted ticket alias
+before8 receiver copies. This is intentionally an alias exchange, not independent
+evidence for two arbitrary managed graphs. Real cycles/root/Fast/native-error
+checks remain. Strong owner, collector root and payload access rights stay
+separate; current NativeWorld managed admission remains serialized.
+
+Local x64:26 selected CTests pass. Joined native slot/mailbox positives pass TSan
+for both backends; actual C-runtime owner diagnostics also pass TSan. All14
+source controls, forced-lock root/producer controls, SDK closure, C89 extension
+example compile and both ba26accb vendor manifests pass. No ARM64/RV64 or emitted
+JIT instrumentation claim. Contract/API:
+https://github.com/bhgv/flashVM/blob/c1ef36622c2a8276b87f8ca19b8280cfa24498ab/disVM/runtime/OWNER-SLOTS.md
+https://github.com/bhgv/flashVM/blob/c1ef36622c2a8276b87f8ca19b8280cfa24498ab/disVM/include/disvm/owner_slot.h
+
+0088/0089 checked native JIT ownership protocol question remains open. No shared
+Dis64 ID/layout/LeafLayout ABI/native pointer serialization/file CALL/LEA8
+activation or general parallel managed mutation is requested by these changes.
