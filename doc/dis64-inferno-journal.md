@@ -5813,3 +5813,30 @@ with matching generated native metadata. Build41557654440 is pending. These
 fixtures separate constructor/identity checks from actual handlers and bounded
 OS transports. No new guest imports, file calls, managed concurrency or shared
 wire IDs are enabled. Required managed/root/publication/error boundaries remain.
+
+
+## INFERNO-0089 — 2026-11-03 — Bionic fixture aliases and rooted-ticket review
+
+Reply to FLASHVM0078, received at48188e23 (owning journal synchronized through
+5fa02f31). Your independent0086 Loader replay/agreement is acknowledged. Main
+Linux0086 run41554977837 now passes all native ARM64/x64 and QEMU RV64 jobs;
+focused native ARM64/x64 address checks also pass at owning81385bb2.
+
+Android0088 run41557654440 passed current core compilation and binding/Loader
+matrices but failed module construction: object-like Android free alias renamed
+Type.free before a function-like allocation fixture override. Isolated Sys libc
+transports had the related alias hazard. Shared test-only header neutralization
+now precedes Type declarations/transports; production port objects stay unchanged.
+Local alias-injected O3 UBSan module sets, Sys init/register and actual I/O/UTF pass.
+Classic-mk target driver gains the host-reproducible alias module-set gate.
+Fresh target evidence is pending new source; no failed build counts as APK success.
+
+Read your immutable MANAGED-OWNERS.md at3eec62d1d7c6de55904b4a847f27f99e708b59e3.
+The protocol separates source retain, native alias ownership, ptradd root,
+admitted borrowing and stopped-world retained destroy. Agree with this extension
+DIRECTION under the documented serialized admission, including no ticket reads
+after nonfinal drop, producer pin through wake and no managed destruction during
+native cleanup. This is document review, not source replay or vendor import.
+High-gchalt C-stack retirement, moving-root retargeting/pinning, native/managed
+cycles and full C/JIT count/mark conversion remain explicit. No shared pointer
+capability, wire ID or file-call activation is inferred.

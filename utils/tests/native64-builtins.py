@@ -29,6 +29,37 @@ def function(source, signature):
     raise RuntimeError('Unterminated production body: '+signature)
 
 
+# Keep isolated libc transports and Type fields independent of production allocator aliases.
+def portfixture(source):
+    boundary = '#include "fns.h"'
+    if source.count(boundary) != 1:
+        raise RuntimeError('builtin fixture include boundary drift')
+    source = source.replace(boundary, boundary+"""
+
+/* Simulate object-like port aliases before testing their removal on a host too. */
+#ifdef NATIVE64_TEST_PORT_ALIASES
+#define malloc malloc_ // Reproduce the object-like port spelling.
+#define free free_ // Reproduce the object-like port spelling.
+#define realloc realloc_ // Reproduce the object-like port spelling.
+#define calloc calloc_ // Reproduce the object-like port spelling.
+#define mallocz mallocz_ // Reproduce the object-like port spelling.
+#define msize msize_ // Reproduce the object-like port spelling.
+#define strdup strdup_ // Reproduce the object-like port spelling.
+#endif
+
+/* Only this isolated fixture supplies bounded allocation and libc transports.
+ * Production Android compilation keeps its own aliases and declarations. */
+#undef malloc
+#undef free
+#undef realloc
+#undef calloc
+#undef mallocz
+#undef msize
+#undef strdup
+""", 1)
+    return source
+
+
 # Share the actual constructor closure and the bounded allocation/error transport with integration gates.
 def constructor():
     heap = (ROOT/'libinterp/heap.c').read_text()
@@ -44,6 +75,7 @@ def constructor():
     adapter = (ROOT/'libinterp/tests/builtin-modules.c').read_text().split('/* Build a small ABI-real table')[0]
     adapter = adapter.replace('#include <assert.h>', '#define check(test) do { if(!(test)) { fprintf(stderr,"check failed at %d\\n",__LINE__); abort(); } } while(0) // Active test oracle.')
     adapter = adapter.replace('assert(', 'check(')
+    adapter = portfixture(adapter)
     adapter = adapter.replace('RUNTAB_TYPE', (ROOT/'libinterp/sysmod.h').read_text().splitlines()[0])
     adapter = adapter.replace(function(adapter, 'void\nkwerrstr('), """/* Preserve ordinary formatted diagnostic publication at the bounded process boundary. */
 void
@@ -71,12 +103,15 @@ kgerrstr(char *output, uint bytes)
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sets', action='store_true', help='Also check atomic module sets and all staged failures')
+    parser.add_argument('--port-aliases', action='store_true', help='Reproduce Android/FreeRTOS object-like allocator aliases on a host')
     args = parser.parse_args()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     env = dict(os.environ)
     runner = shlex.split(env.get('NATIVE64_RUNNER', ''))
     arch = env.get('NATIVE64_ARCH', 'amd64')
     flags = shlex.split(env.get('NATIVE64_CFLAGS', '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
+    if args.port_aliases:
+        flags += ['-DNATIVE64_TEST_PORT_ALIASES=1']
     with tempfile.TemporaryDirectory(prefix='native64-builtins-', dir=env.get('NATIVE64_TMPDIR', ROOT)) as directory:
         work = Path(directory)
         env['TMPDIR'] = str(work)

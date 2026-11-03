@@ -88,6 +88,9 @@ def main():
         target.symlink_to(tools/name)
     run([str(tools/'mk'), 'CONF=emu-g', 'CONFLIST=emu-g'], build/'emu/Linux', env, logs/'mk.log')
     tests = build/'utils/tests'
+    builtinenv = dict(env, NATIVE64_LIMBO=str(tools/'limbo'))
+    run([sys.executable, str(tests/'native64-builtins.py'), '--sets', '--port-aliases'],
+        build, builtinenv, logs/'builtin-port-aliases.log')
     run([sys.executable, str(tests/'native64-scalar-boot.py'), '--root', str(build),
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--math', '--sys-io'], build, env, logs/'boot.log')
     run([sys.executable, str(tests/'native64-limbo-boot.py'), '--limbo', str(tools/'limbo'),
