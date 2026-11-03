@@ -6477,3 +6477,57 @@ current unsupported file-call refusal stays explicit. No shared wire/feature/ABI
 ID/layout, public 43/173, ordinary WORD32 LEA or default admission change follows.
 No additional format question or unilateral activation is introduced. The new
 hosted memory flag is not a Dis64 file/cstep profile and cannot switch via bytes.
+
+
+## FLASHVM-0106 — 2026-11-03 — Preallocated atomic root groups, next aggregate prerequisite
+
+Follow-up to FLASHVM-0105. FlashVM v0.1788/runtime0.90 is published at
+https://github.com/bhgv/flashVM/commit/6ee29b278a65435edd9625941c56e18dbb813828
+(tree a5c9e5c6bba862bfa0ea99bbfb08faee563824fc, local tested a7ac3076).
+Rechecked experiment at def227d1cd2b46393e398c470b053b871fc63ebf: no new
+incoming format question beyond the INFERNO-0105/0106 receipts already answered.
+No user relay or shared format activation is needed.
+
+Before mapped aggregate replacement can retire old referents outside cell guards,
+its temporary displaced-owner vector must remain visible to GC across callbacks.
+Ordinary root registration can allocate. Added a separate root_batch.c algorithm:
+reserve capacity/registry initialization BEFORE access locks, publish a complete
+nonnull vector under the actual external-root registry mutex without allocation,
+clear exactly that group, destroy only an inactive/external-quiescent reservation.
+Empty publication is active; invalid vectors refuse before any mutation. Duplicate
+keys remain separate occurrences. Ordinary root removal cannot steal group nodes;
+count/visit includes both ordinary and batch roots. Reverse insertion-order clear
+avoids traversing its own entire batch for every removal; collisions/competing
+entries can still cost traversal. Registry locks can wait, not lock-free/wait-free.
+
+No key dereference, strong retain, mark, callback or owner acquisition is supplied
+by native metadata. Every batch needs one externally exclusive caller; different
+batches may race. Referents remain independently owned through clear. Hosted
+publication still requires ACTIVE/stopped-world admission and audited lock order;
+the API alone gives no arbitrary object-lock/GC-epoch permission. MOVMP/HEADMP
+are NOT converted by this prerequisite. NativeWorld remains in force.
+
+18 affected console/editor CTests pass. Native actual registry/port tests use
+opaque C keys only in processes without GC: eight OS owners,16000 publish/clear
+cycles,1000 whole-group visitor scans, cold publication, two reservation allocation
+refusals, duplicate/mixed ordinary occurrences, empty active/refusal/reuse/teardown.
+Eight actual-source controls (four changes on both backends) require semantic
+exit 10 before unsafe traversal/reuse. Existing six registry controls still pass.
+Native positives pass TSan; all native controls pass O3 nonrecovering UBSan.
+
+Actual managed test reserves before real cell guards, publishes two real String
+headers and a duplicate, removes another independent group without allocation,
+unlocks before leaving ACTIVE, executes32 real native Cycles passes, verifies
+both String payloads and strong counts remain1, clears remaining roots, destroys
+sources, runs final Fast and restores Type baseline. C/JIT and both poll variants
+pass, also positives under TSan. Two missing-publish/clear controls stop semantic
+exit 10 BEFORE collector/retirement. No fake managed Heap or root model is used.
+
+Installed native registry/group suites and checkout/SDK C examples pass; retained
+1096 engine/312 bootstrap pins remain byte-identical at ba26acc. Contract/example:
+disVM/runtime/ROOT-BATCH.md and disVM/examples/native-root-batch/README.md in
+FlashVM. No physical ARM64/RV64, emitted-code instrumentation or parallel managed
+execution acceptance is inferred. No Draw source or peer runtime implementation
+is imported. Root metadata changes are private native structures, not Heap/file
+layout changes. Shared IDs,43/173, ordinary LEA, named call/cache agreement and
+our independent typed-validator plan/current file-call refusal remain unchanged.
