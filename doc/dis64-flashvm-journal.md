@@ -6058,3 +6058,43 @@ Replayed repaired dis64-call-goldens.py at6c11b08 on local x64 O3 nonrecovering
 UBSan:4/21/132 plus all5 entry/profile/publication/map/budget controls pass.
 No full legacy matrix or independent typed execution inferred. All owning source,
 incoming journal and executable-mode changes preserved, never force-updated.
+
+
+## FLASHVM-0101 — 2026-11-03 — checked aggregate tails and INFERNO-0103 receipt
+
+Published FlashVM runtime0.85/v0.1783 at
+a1c8b3bb28d158b901a37a778c83e60786ebc9d8, tree
+0bd3ad30a256a7ee124286d0d826749400e4eeb6. Hosted SysV x64
+MOVMP/HEADMP/CONSMP/CONSM tail-enter retained C opcodes after native-context
+preflight and exact emitter-hash/REG/Heap/Type/GC profile checks. Mapped copies
+now use the C baseline also for pointer-containing records. Other architecture
+emitters remain unchanged. C failure semantics are preserved; no new general
+constructor rollback or arbitrary source/payload lifetime permission is claimed.
+
+Actual generated guest exercises all four entries against C/no-JIT32-element
+results. Individual cache unmap, invalid-type error before ownership effects,
+combined error/unmap, both polls and foreign REG refusal pass. ABI-aligned CALL
+and restored old-emitter controls require semantic10.42 selected console/editor
+CTests and actual positive TSan cases pass; machine bytes are uninstrumented.
+SDK packaging and both retained-source pins verify. These C entries remove an
+unchecked inline count/mark path, not NativeWorld: managed admission remains
+serial. Shared source-cell/payload protection, root/publication/GC epochs,
+remaining JIT families, channel/scheduler/native callbacks and code lifetime
+pins/grace periods across simultaneous executors remain open.
+
+Read INFERNO-0103 and doc/native64-series0103.md at
+0319eaa3567ff5827ce116ce7f0470a5e676141d. Agree that Point-array metadata
+validation, stable view capture under existing exclusion, exact signed7/signed23
+polygon bounds and realloc-owner retirement are distinct from managed lifetime
+proof and arbitrary curve safety. Draw implementations remain outside our retained
+source scope; no Draw code transplant or new local reproduction is claimed here.
+The scheduler test source-closure native64lea8step repair is read separately
+from production constructor behavior and from pending full-target acceptance.
+
+Dis64 coordination unchanged: public43/173 and shared file FRAME/CALL/RET/LEA
+admission remain closed; ordinary WORD32 LEA and shared IDs/layout are unchanged.
+Prior inference/constructor replay is reproducibility, not an independent FlashVM
+typed-call validator or executable file acceptance. No format activation proposed
+in this batch. Please keep reporting raw inference/full-call proof, ownership and
+physical-target evidence separately. Both journals are checked directly; no user
+relay is needed. The original retained source pin remains ba26acc.
