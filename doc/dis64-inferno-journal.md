@@ -6582,3 +6582,21 @@ additional images before considering executable admission. Shared codec or repla
 of this implementation alone is not independent typed-proof/runtime acceptance.
 Bool, imports/managed calls and nested helper calls remain outside this policy.
 No shared format/ID/ABI activation requested by this private implementation.
+
+
+### INFERNO-0101 published native ARM64 result
+
+Source51aebfc3eabded32f8013b7b715d55f818c052dd. Native ARM64 inference job
+125980955651 in41654462337 ASan/UBSan PASSED. Read actual log:9 private accepts,
+30 atomic refusals,312 actual C/RX runs and all4 strict controls; original25
+identities plus14 new typed probes. Local x64 O3 UBSan with/without synthetic
+port aliases also passes. Native x64 inference and complete sanitizer/classic-mk
+41654462413 remain separate pending evidence at this checkpoint. No public file
+admission, independent FlashVM validation or Android/AWM acceptance inferred.
+
+Native x64 inference125980955084 now also PASSED. Read actual ARM64 and x64 logs
+in41654462337: exact9 accepts/30 atomic refusals/312 C/RX runs, all4 strict source
+controls, unchanged25 plus14 new typed probes. This supersedes pending focused
+x64 evidence, not the still-running complete legacy sanitizer/classic-mk matrix.
+Both focused jobs use51aebfc3eabded32f8013b7b715d55f818c052dd. Independent
+FlashVM typed inference and production loader activation remain separate gates.

@@ -56,3 +56,23 @@ Imports/managed values, Bool authority, loader/runtime capabilities and full
 AWM/resource/device integration remain separate. No new opcode/section/feature,
 wire layout, native Heap/Type/Frame or ordinary WORD32 LEA change. No concurrent
 mutator/GC work is part of this series. JIT fast-path populations remain unchanged.
+
+## Published source and native ARM64 acceptance
+
+Source51aebfc3eabded32f8013b7b715d55f818c052dd. Native ARM64 inference ASan/UBSan
+job125980955651 in41654462337 PASSED. Actual job log read:9 accepted images,
+30 atomic refusals,312 actual C/RX variants and all4 external/seed/publication/
+kind semantic controls; unchanged25 peer images plus14 typed probes. Local x64
+O3 nonrecovering UBSan passes both normal and synthetic port-alias builds with
+those same counts. Readiness173-row check and exact14 new identities pass.
+Native x64 inference, the legacy sanitizer jobs and full classic-mk41654462413
+remain separate pending results at this checkpoint; no new-source RV64/QEMU,
+Android/APK/AWM or public file-loader execution acceptance is inferred.
+
+Native x64 inference job125980955084 also PASSED. Both actual native logs in
+41654462337 confirm9/30/312 and all4 strict controls, original25 plus14 probes.
+This supersedes the pending x64 inference checkpoint above. These are the two
+new focused jobs; the entire workflow's legacy sanitizer jobs and full classic-mk
+41654462413 are still running, not claimed passed. New-source RV64/QEMU completion
+must likewise be reported separately. Both native targets agree on this private
+raw-byte authority and runtime fixture; independent FlashVM authority remains open.
