@@ -54,6 +54,8 @@ allocimage(Display *d, Rectangle r, ulong chan, int repl, ulong val)
 	return _allocimage(nil, d, r, chan, repl, val, 0, 0);
 }
 
+
+/* Initialize fresh callback state while preserving the callback identity of an explicitly reused header. */
 Image*
 _allocimage(Image *ai, Display *d, Rectangle r, ulong chan, int repl, ulong val, int screenid, int refresh)
 {
@@ -128,6 +130,10 @@ _allocimage(Image *ai, Display *d, Rectangle r, ulong chan, int repl, ulong val,
 			goto Error;
 		}
 	}
+	if(ai == nil){
+		i->reffn = nil;
+		i->refptr = nil;
+	}
 	i->display = d;
 	i->id = id;
 	i->depth = depth;
@@ -141,6 +147,8 @@ _allocimage(Image *ai, Display *d, Rectangle r, ulong chan, int repl, ulong val,
 	return i;
 }
 
+
+/* A newly named native image starts with no path or refresh callback owner. */
 Image*
 namedimage(Display *d, char *name)
 {
@@ -211,6 +219,9 @@ namedimage(Display *d, char *name)
 	i->clipr.min.y = atoi(buf+9*12);
 	i->clipr.max.x = atoi(buf+10*12);
 	i->clipr.max.y = atoi(buf+11*12);
+	i->reffn = nil;
+	i->refptr = nil;
+	i->fpath = nil;
 	i->screen = 0;
 	i->next = 0;
 	return i;

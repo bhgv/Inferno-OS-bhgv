@@ -232,6 +232,8 @@ def main():
         run(draw_init+['--control', control], build, env, logs/('draw-init-'+control+'.log'))
     run([sys.executable, str(tests/'native64-draw-owners.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'draw-owners.log')
+    run([sys.executable, str(tests/'native64-draw-owners.py'), '--attach-only', '--limbo', str(tools/'limbo')],
+        build, env, logs/'draw-attach.log')
     run([sys.executable, str(tests/'native64-channels.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'channels.log')
     run([sys.executable, str(tests/'dis64-call-goldens.py')], build, env, logs/'call-goldens.log')

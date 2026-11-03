@@ -767,71 +767,98 @@ Display_allocate(void *fp)
 	libqunlock(display->qlock);
 }
 
+
+/* Return a fresh owned pair without rebinding aliases of the supplied handles; commit both results before retirement. */
 void
 Display_getwindow(void *fp)
 {
 	F_Display_getwindow *f;
-	Display *disp;
-	int locked;
-	Image *image;
-	Screen *screen;
-	char *wn;
-	void *r;
+	Draw_Display *source;
+	Draw_Image *inputimage, *image;
+	Draw_Screen *inputscreen, *screen;
+	Display *display;
+	Image *native, *backing;
+	Screen *nativescreen;
+	void *slot, *old[2], *result[2];
+	char *name, reason[ERRMAX];
+	int locked, backup;
 
 	f = fp;
-	r = f->ret->t0;
-	f->ret->t0 = H;
-	destroy(r);
-	r = f->ret->t1;
-	f->ret->t1 = H;
-	destroy(r);
-	disp = checkdisplay(f->d);
-	if(f->winname == H)
-		wn = "/dev/winname";
-	else
-		wn = string2c(f->winname);
-	if(f->image == H)
-		image = nil;
-	else
-		image = checkimage(f->image);
-	if(f->screen == H)
-		screen = nil;
-	else
-		screen = checkscreen(f->screen);
-	locked = lockdisplay(disp);
-	if(gengetwindow(disp, wn, &image, &screen, f->backup) < 0){
-		/* TO DO: eliminate f->image and f->screen's references to Image and Screen */
-		goto Return;
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(old, slot, sizeof(old));
+	if(old[0] == nil || old[1] == nil)
+		error(exNilref);
+	source = f->d;
+	inputimage = f->image;
+	inputscreen = f->screen;
+	backup = f->backup;
+	display = checkdisplay(source);
+	if(inputimage != H && checkimage(inputimage)->display != display)
+		error(exType);
+	if(inputscreen != H && checkscreen(inputscreen)->display != display)
+		error(exType);
+	name = f->winname == H ? "/dev/winname" : string2c(f->winname);
+	image = H;
+	screen = H;
+	native = nil;
+	nativescreen = nil;
+	locked = lockdisplay(display);
+	if(gengetwindow(display, name, &native, &nativescreen, backup) >= 0){
+		if(nativescreen == nil){
+			image = source->image;
+			if(image != H && image != nil && lookupimage(image) == native)
+				D2H(image)->ref++;
+			else{
+				image = H;
+				kwerrstr("getwindow: missing managed display image");
+			}
+		}else{
+			screen = mkdrawscreen(nativescreen, source);
+			if(screen == H){
+				kgerrstr(reason, sizeof(reason));
+				backing = nativescreen->image;
+				freeimage(native);
+				freescreen(nativescreen);
+				freeimage(backing);
+				kwerrstr("%s", reason);
+			}else{
+				image = mkdrawimage(native, screen, source, nil);
+				if(image == H){
+					kgerrstr(reason, sizeof(reason));
+					freeimage(native);
+					destroy(screen);
+					screen = H;
+					kwerrstr("%s", reason);
+				}
+			}
+		}
 	}
-	if(screen != nil){
-		if(f->screen != H){
-			f->ret->t0 = f->screen;
-			D2H(f->screen)->ref++;
-		}else
-			f->ret->t0 = mkdrawscreen(screen, f->d);
-	}
-	if(image != nil){
-		if(f->image != H){
-			f->ret->t1 = f->image;
-			D2H(f->image)->ref++;
-		}else
-			f->ret->t1 = mkdrawimage(image, f->ret->t0, f->d, nil);
-	}
-
-Return:
 	if(locked)
-		unlockdisplay(disp);
+		unlockdisplay(display);
+	result[0] = screen;
+	result[1] = image;
+	kgerrstr(reason, sizeof(reason));
+	memmove(slot, result, sizeof(result));
+	destroy(old[0]);
+	destroy(old[1]);
+	kwerrstr("%s", reason);
 }
 
+
+/* Capture the independently owned display argument before entering the synchronous refresh service. */
 void
 Display_startrefresh(void *fp)
 {
 	F_Display_startrefresh *f;
-	Display *disp;
+	Draw_Display *source;
+	Display *display;
 
 	f = fp;
-	disp = checkdisplay(f->d);
-	refreshslave(disp);
+	source = f->d;
+	display = checkdisplay(source);
+	refreshslave(display);
 }
 
 void
@@ -2208,30 +2235,51 @@ Display_writeimage(void *fp)
 	memmove(slot, &result, sizeof(result));
 }
 
+
+/* Adopt a fresh attach Screen/backing only on success; retain the display's existing white wrapper as fill. */
 Draw_Screen*
-mkdrawscreen(Screen *s, Draw_Display *display)
+mkdrawscreen(Screen *screen, Draw_Display *display)
 {
 	Heap *h;
-	DScreen *ds;
-	Draw_Image *dimage, *dfill;
+	DScreen *result;
+	DDisplay *owner;
+	Draw_Image *backing, *fill;
+	char reason[ERRMAX];
 
-	dimage = mkdrawimage(s->image, H, display, nil);
-	dfill = mkdrawimage(s->fill, H, display, nil);
-	h = heap(TScreen);
+	owner = (DDisplay*)display;
+	if(screen == nil || screen->display == nil || display == H || display == nil ||
+	   owner->display != screen->display || screen->display->limbo == nil){
+		kwerrstr("getwindow: invalid screen owner");
+		return H;
+	}
+	fill = display->white;
+	if(fill == H || fill == nil || lookupimage(fill) != screen->fill){
+		kwerrstr("getwindow: missing managed screen fill");
+		return H;
+	}
+	h = drawheap(TScreen);
 	if(h == H)
-		return nil;
-	ds = H2D(DScreen*, h);
-	ds->screen = s;
-	ds->drawscreen.fill = dfill;
-	D2H(dfill)->ref++;
-	ds->drawscreen.image = dimage;
-	D2H(dimage)->ref++;
-	ds->drawscreen.display = dimage->display;
-	D2H(dimage->display)->ref++;
-	ds->drawscreen.id = s->id;
-	ds->dref = s->display->limbo;
-	ds->dref->ref++;
-	return &ds->drawscreen;
+		return H;
+	result = H2D(DScreen*, h);
+	result->screen = nil;
+	result->dref = nil;
+	backing = mkdrawimage(screen->image, H, display, nil);
+	if(backing == H){
+		kgerrstr(reason, sizeof(reason));
+		destroy(result);
+		kwerrstr("%s", reason);
+		return H;
+	}
+	result->drawscreen.image = backing;
+	result->drawscreen.fill = fill;
+	D2H(fill)->ref++;
+	result->drawscreen.display = display;
+	D2H(display)->ref++;
+	result->drawscreen.id = screen->id;
+	result->screen = screen;
+	result->dref = screen->display->limbo;
+	result->dref->ref++;
+	return &result->drawscreen;
 }
 
 /* Construct allocdrawscreen privately; native input ownership transfers only after managed allocation succeeds. */

@@ -12,49 +12,100 @@ enum {
 	CHECKLOCKING = 0
 };
 
-/*
- * Attach, or possibly reattach, to window.
- * If reattaching, maintain value of screen pointer.
- */
+
+/* Retire an exclusively owned attach graph; native display defaults are borrowed aliases. */
+static void
+windowdiscard(Display *d, Image *window, Screen *screen)
+{
+	Image *backing;
+
+	backing = screen == nil ? nil : screen->image;
+	if(window != nil && window != d->image)
+		freeimage(window);
+	if(screen != nil)
+		freescreen(screen);
+	if(backing != nil && backing != window && backing != d->image &&
+	   backing != d->white && backing != d->black &&
+	   backing != d->opaque && backing != d->transparent)
+		freeimage(backing);
+}
+
+
+/* Stage a complete fresh native graph before replacing a caller-owned pair; refusal preserves the old pair. */
 int
 gengetwindow(Display *d, char *winname, Image **winp, Screen **scrp, int ref)
 {
 	int n, fd;
-	char buf[64+1];
-	Image *image;
+	char buf[256+1], reason[ERRMAX];
+	Image *backing, *window, *oldwindow;
+	Screen *screen, *oldscreen;
+	Rectangle rectangle;
 
+	if(d == nil || winname == nil || winp == nil || scrp == nil ||
+	   (void*)winp == (void*)scrp || d->closing){
+		kwerrstr("getwindow: invalid attach arguments");
+		return -1;
+	}
+	oldwindow = *winp;
+	oldscreen = *scrp;
+	if((oldwindow != nil && oldwindow->display != d) ||
+	   (oldscreen != nil && oldscreen->display != d) ||
+	   (oldwindow != nil && oldwindow != d->image && oldwindow->screen != oldscreen)){
+		kwerrstr("getwindow: foreign attach graph");
+		return -1;
+	}
+	backing = nil;
+	window = nil;
+	screen = nil;
 	fd = libopen(winname, OREAD);
-	if(fd<0 || (n=libread(fd, buf, sizeof buf-1))<=0){
-		*winp = d->image;
-		assert(*winp && (*winp)->chan != 0);
-		return 1;
+	n = -1;
+	if(fd >= 0){
+		n = libread(fd, buf, sizeof(buf)-1);
+		libclose(fd);
 	}
-	libclose(fd);
-	buf[n] = '\0';
-	if(*winp != nil){
-		_freeimage1(*winp);
-		freeimage((*scrp)->image);
-		freescreen(*scrp);
-		*scrp = nil;
+	if(n <= 0){
+		if(d->image == nil || d->image->chan == 0){
+			kwerrstr("getwindow: missing display image");
+			return -1;
+		}
+		window = d->image;
+	}else{
+		if(n > sizeof(buf)-1){
+			kwerrstr("getwindow: invalid window-name length");
+			return -1;
+		}
+		buf[n] = '\0';
+		backing = namedimage(d, buf);
+		if(backing == nil)
+			return -1;
+		if(backing->chan == 0 || d->white == nil ||
+		   (vlong)backing->r.max.x-backing->r.min.x <= 2*Borderwidth ||
+		   (vlong)backing->r.max.y-backing->r.min.y <= 2*Borderwidth){
+			kwerrstr("getwindow: invalid backing image");
+			goto Refuse;
+		}
+		screen = allocscreen(backing, d->white, 0);
+		if(screen == nil)
+			goto Refuse;
+		rectangle = insetrect(backing->r, Borderwidth);
+		window = _allocwindow(nil, screen, rectangle, ref, DWhite);
+		if(window == nil)
+			goto Refuse;
 	}
-	image = namedimage(d, buf);
-	if(image == 0){
-		*winp = nil;
-		return -1;
-	}
-	assert(image->chan != 0);
-
-	*scrp = allocscreen(image, d->white, 0);
-	if(*scrp == nil){
-		*winp = nil;
-		return -1;
-	}
-
-	*winp = _allocwindow(*winp, *scrp, insetrect(image->r, Borderwidth), ref, DWhite);
-	if(*winp == nil)
-		return -1;
-	assert((*winp)->chan != 0);
+	*winp = window;
+	*scrp = screen;
+	windowdiscard(d, oldwindow, oldscreen);
 	return 1;
+
+Refuse:
+	kgerrstr(reason, sizeof(reason));
+	if(window != nil)
+		freeimage(window);
+	if(screen != nil)
+		freescreen(screen);
+	freeimage(backing);
+	kwerrstr("%s", reason);
+	return -1;
 }
 
 #define	NINFO	(12*12) // Bound the native display information response.
