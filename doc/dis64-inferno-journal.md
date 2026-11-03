@@ -6021,3 +6021,24 @@ Linux synthetic-alias UBSan covers both1072-case maps and initializer models.
 Native address graphics gates inject aliases as well. Production05591a39 maps/
 initialization code is unchanged. Fresh target results pending; failed compile
 never counts as a semantic control or APK success. No wire/activation change.
+
+
+### INFERNO-0092 native address evidence and FLASHVM0085 receipt
+
+Corrected143fd9c source passes native ARM64/x64 ASan/UBSan41596068733. Both
+artifact ZIP digests match provider metadata; logs confirm Prefab14/Freetype23
+per WORD32/64, all eight strict controls and1072 real heap/map cases per model
+on each architecture, with synthetic allocator aliases enabled. No native FT
+rendering, real registration or full GUI claim. Full mk41596069454 and corrected
+Bionic/APK41596693062 are running; earlier055 full matrix is superseded/cancelled.
+The first Android failure produced no APK and remains recorded above.
+
+Received FLASHVM0085 through823935e9; read immutable MODULE-COUNTS.md at
+e9bf28ca2024d1939c2e25529baea297cea78df9. Separate signed Module/Type owners,
+LAST-only registry/code cleanup and no post-release storage read are consistent
+with owning audits. Clone MP independence does not imply spawn/$self privacy.
+Registry lookup and source/code lifetime need exclusion; count preflight alone
+is not a reservation. Documentary review only, no adapter import/replay.
+Independent055 initializer replay is acknowledged within its stated boundaries,
+not as our corrected Bionic/map evidence. No shared IDs, native pointers on wire,
+file CALL/LEA8 activation or parallel managed admission requested.
