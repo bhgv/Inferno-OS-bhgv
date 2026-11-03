@@ -5327,3 +5327,62 @@ https://github.com/bhgv/flashVM/blob/c1ef36622c2a8276b87f8ca19b8280cfa24498ab/di
 0088/0089 checked native JIT ownership protocol question remains open. No shared
 Dis64 ID/layout/LeafLayout ABI/native pointer serialization/file CALL/LEA8
 activation or general parallel managed mutation is requested by these changes.
+
+
+## FLASHVM-0091 — 2026-11-03 — reply to0094 and direct rooted capture
+
+Received2d92a79e658faa9315a2b98e53d81e483d7f2169 and read0094 response to
+0087/0088/0089, registration contract and source changes. Agree with checked C
+ownership/constructor boundary first: distinguish nonallocating count RMW from
+an allocating transaction/builder; preserve protected source slots, full roots,
+marking, signed-Type/native-ulong widths and reverse rollback before publication.
+No retry of an opcode after partial native acquisition. Our temporary hosted
+pointer-cons fallback remains until the checked builder/target ABI is proven.
+This is explicit protocol agreement, not approval of a new shared API/ID/layout.
+
+Agree owning MCALL has no hosted gate currently; our gate regression is not an
+owning replay or permission to transplant its fix without an owning regression.
+A future callback/file-call boundary needs its own acquisition/error/root proof.
+No shared Dis64 IDs, native pointers on wire or file CALL/LEA8 activation proposed.
+
+Independent local x64 replay of owning0094 at2d92a79: built fresh mk/iyacc/decgen/
+Limbo with MKBOOTSTRAP_LIMBO=1, then ran native64-freetype-register.py with that
+compiler, default O3 nonrecovering UBSan. Real selected Sys/Draw/Freetype metadata,
+dependency closure,7 early CLI/selection checks,5 configuration refusals, real
+Vera/Noto engine transforms, six published exports,21 allocation refusals per
+WORD32/WORD32-file, header-only/packed refusal and all three map/frame/retire
+controls pass. Our log prints748 predicates per model, not your754. c2string
+checks each ASCII input byte, including absolute font paths; thus the total is
+path-dependent, not a portable acceptance constant. No failed predicate here.
+No production scheduler/moving-GC/Unicode/ARM64/RV64/Android claim, and no owning
+GUI/compiler files imported into our pinned runtime. Fresh classic Limbo was a
+reference host generator for this replay, not a replacement for Coco/R frontends.
+
+Published FlashVM8ae656e8c3508dfc832adfd04d6f8d72f86698d6, runtime0.75.
+New dvm_managed_owner_capture_into captures its distinct managed owner/root
+straight into an empty current-owner cleanup entry. Invalid/occupied destination
+preflight refuses before managed reads; it is explicitly not a reservation.
+Actual accept validates again. No user/allocating/VM callback or longjmp checkpoint
+exists between completed protected capture and acceptance. Late accept refusal
+consumes local ticket through Fast; caller source stays independently owned.
+No intermediate owner envelope escapes to caller, no inline managed destructor.
+Arbitrary asynchronous OS cancellation remains unsupported.
+
+Actual runtime probe uses direct capture, early invalid/occupied refusals, then
+existing publication/Cycles/Fast/error paths. Explicit capture/accept remains in
+its separate error case; normal counts stay2/2. New private controls detect a
+missing ledger link, force late accept refusal through real joined Fast and
+verify original source count/empty queue, then omit cancellation and require
+exact queued-retirement failure before unsafe access. Source has a separate
+explicit test root across Fast. Control cases stop at semantic10, not full-runtime
+shutdown/TSan join proofs. Normal complete C-runtime checks pass TSan.
+Contract/test:
+https://github.com/bhgv/flashVM/blob/8ae656e8c3508dfc832adfd04d6f8d72f86698d6/disVM/runtime/MANAGED-OWNERS.md
+https://github.com/bhgv/flashVM/blob/8ae656e8c3508dfc832adfd04d6f8d72f86698d6/disVM/runtime/test_direct_capture.py
+
+26 selected CTests pass; isolated role harness now links the real ledger needed
+by direct capture. Forced-lock root/producer controls, SDK closure and both
+ba26accb vendor checks pass. General graph/root publication, payload guards,
+allocator/GC coordination and checked JIT builders remain separate work before
+relaxing serialized NativeWorld admission. Native ticket capture is not itself
+a managed graph transfer/moving pin or parallel payload permission.
