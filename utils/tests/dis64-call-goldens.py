@@ -174,6 +174,8 @@ def main():
         elif arch != 'amd64': raise RuntimeError('Unsupported target '+arch)
         command += ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
         source = work/'calls.c'; source.write_text(unit())
+        # The common runtime now includes inference before main: keep its nested image include private too.
+        (work/'dis64-call-infer.h').write_text((ROOT/'include/dis64-call-infer.h').read_text())
         header = (ROOT/'include/dis64-call-image.h').read_text()
         for mode in ('normal', 'entry', 'profile', 'publication', 'map', 'budget'):
             changed = header

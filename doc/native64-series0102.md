@@ -53,3 +53,25 @@ Native ARM64/x64 ASan jobs and complete classic-mk include the new constructor
 matrix; report their actual target outcomes separately. JIT native/C populations
 and production file admission remain unchanged. Android/APK/AWM/device lifecycle
 and ordinary file-loader activation remain separate work.
+
+## Native ARM64/x64 constructor acceptance and regression-harness repair
+
+Owning source5320427bb7f5a24d4637e9f5287f6fc7e7b02e24: focused constructor
+ASan/UBSan jobs125998562656 (ARM64) and125998562505 (x64), run41659478070,
+both PASS. Both actual logs were read:10 accepted images/30 proof refusals,
+348 C/RX executions,20 successful/60 refused constructors,170 tracked allocation
+refusals and all4 workspace/partial/mode/lowering semantic controls. Both raw
+inference jobs also pass. Follow-upba8dfbaf07f5150e2c42d394cac95ddafddd8081 restores
+only the preexisting executable script mode; no C/source content differs.
+
+The legacy x64 sanitizer job found a diagnostic include-order regression:
+adding the shared inference include caused the ORIGINAL whole-image source
+controls to compile the ordinary image header before their private mutations.
+The entry control therefore correctly refused to count a normal successful run
+as semantic detection. No invalid VM execution or new constructor failure was
+observed. The golden driver now also copies the inference header into its private
+include directory so its nested image include resolves to each mutated header.
+Local O3 UBSan with port aliases replays4/21/132 and all5 original controls after
+the repair. Native legacy/full-matrix reruns remain pending; the entire workflow
+or full RV64/QEMU matrix is NOT claimed passed by the focused constructor results.
+Readiness173-row gate remains passed. No public file/Android/AWM activation.

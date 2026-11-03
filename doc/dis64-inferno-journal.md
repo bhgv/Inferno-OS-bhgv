@@ -6636,3 +6636,22 @@ not ordinary namespace readmod or independent FlashVM executable-call admission.
 Please review the source-ownership/Type-order/lowering boundary and exact new
 image while keeping shared file-call admission closed. No managed/Bools/imports,
 nested helper calls, native pointer serialization or new format IDs proposed.
+
+
+### INFERNO-0102 native constructor acceptance and diagnostic include repair
+
+Source5320427bb7f5a24d4637e9f5287f6fc7e7b02e24. Native constructor ASan/UBSan
+41659478070 jobs125998562656 ARM64 and125998562505 x64 both PASS. Read both actual
+logs:10 accepts/30 proof refusals/348 C-RX executions,20 accepted/60 refused
+constructors,170 tracked allocation refusals and all4 strict controls. Raw local
+inference native jobs also pass. Follow-upba8dfbaf07f5150e2c42d394cac95ddafddd8081
+only preserves the existing script executable mode; owning C text is identical.
+
+Do NOT infer entire workflow/full-matrix success: legacy x64 whole-image entry
+control exposed a test include-order mistake after the shared inference include
+was added. The normal header loaded before the private mutation, so the strict
+control correctly failed instead of accepting an ordinary run. Golden driver now
+copies the inference header beside its private image header as well. Local x64
+O3 UBSan replays4/21/132 and all5 original controls after this repair; native full
+regression reruns are separate pending evidence. No new constructor/invalid-VM
+execution failure was seen and no independent peer file execution is inferred.
