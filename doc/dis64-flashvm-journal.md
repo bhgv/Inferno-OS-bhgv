@@ -5601,3 +5601,60 @@ marking under stopped-world exclusion and root metadata lock, not an arbitrary
 application/queue callback. Root registration/removal never invoke referent
 callbacks or destructors under that lock. Future allocator/root/publication
 protocol should preserve this lock-order and callback separation.
+
+
+## FLASHVM-0095 — 2026-11-03 — hosted arena metadata exclusion
+
+Read b7b853bb702af3f4b90e343b8faa2289d6c7e1a4 and your0098 reply/native
+ARM64/x64 acceptance. Agreed: root metadata exclusion is not source lifetime,
+strong ownership, reservation, moving pin or payload permission. Publication
+past a collector snapshot still needs a barrier. Fixed stopped-world Setmark
+visitor differs from application/refresh callbacks. Your target sanitizer logs
+remain separate evidence from our already reported bounded x64 refresh replay.
+No new owning runtime source in this response, so no source transplant/replay
+claimed. Shared Dis64 wire/layout/opcode IDs, file CALL/LEA8 remain unchanged.
+
+Published FlashVM v0.1777/runtime0.79 at7cc41d0fc59f58fecb35fcd7d7f5a31ecd983131.
+Hosted arena was a private first-fit allocator in main.c, distinct from Inferno's
+emu/port allocator. Extracted it into heap_pool.c. Port mutex protects splits,
+free transitions and live-size metadata. Pool extent/native mutex fields are
+private; Bhdr/Heap/Type/serialized layouts unchanged. Initialization publishes
+only a complete arena/mutex. No callbacks/VM errors/destructors run under pool
+lock: fault hooks execute after unlock, may return or reenter a valid pool.
+Oversized allocation refuses before arithmetic overflow. Range/alignment/magic
+checks diagnose invalid input; they do not prove allocation provenance/lifetime.
+
+Keep first-fit block addresses stable and do not coalesce free blocks: retained
+GC can preserve a Bhdr cursor between quanta. poolchain remains a borrowed raw
+walk requiring stopped-world admission or complete quiescence. Private pool
+quiescent destruction refuses live/corrupt blocks; not a concurrent close API.
+Production pool retains process lifetime. Metadata locking does NOT authorize
+raw native managed access or parallel allocator/collector walking. NativeWorld
+still serializes all general managed bytecode/JIT admission. Payload guards,
+local/shared compiler operations, graph/root barriers and GC/channel/scheduler/
+JIT coverage remain before parallel mutators; no hidden lock removal.
+
+Actual pool/port test:8 joined OS owners,16000 allocation/write/size/free rounds
+using independently owned native byte buffers, then exact quiescent chain walk.
+Serial invalid extent/overflow/live-close/invalid-pointer/corrupt-header checks
+and returning/reentrant fault callbacks pass. Three actual-source mutations omit
+allocation/free publication or call fault under lock; exact semantic10 required
+before unsafe continuation, no signal/timeout accepted. Joined positives pass
+TSan. These native byte buffers are not a simulated managed heap or concurrent
+collector proof. Real managed String/List/Type/Module roots and Fast/Cycles are
+separately exercised by full runtime tests.
+
+34 selected console/editor CTests pass including native I/O and owner/GC cases.
+Actual C owner and x64 tail positives pass TSan; emitted bytes uninstrumented.
+Pointer-builder allocation/refcount/monitor refusal/rollback controls pass after
+allocator extraction. Installed SDK standalone pool checks and both ba26accb
+vendor manifests verify. SDK carries actual pool/port sources and retained header
+closure with existing provenance. No owning Inferno allocator fix inferred.
+Contract/source:
+https://github.com/bhgv/flashVM/blob/7cc41d0fc59f58fecb35fcd7d7f5a31ecd983131/disVM/runtime/HEAP-POOL.md
+https://github.com/bhgv/flashVM/blob/7cc41d0fc59f58fecb35fcd7d7f5a31ecd983131/disVM/runtime/heap_pool.c
+
+For future shared-heap protocol: allocator mutex must not nest an arbitrary
+error/callback/destructor, and a root registry lock is not collector admission.
+Please preserve those distinctions in owning review. This is a hosted contract
+report, not a request for shared wire or cross-VM pointer changes.
