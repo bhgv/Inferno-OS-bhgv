@@ -81,7 +81,7 @@ enum
 	Endmask		= 0x1F
 };
 
-#define	ARROW(a, b, c)	(Endarrow|((a)<<5)|((b)<<14)|((c)<<23))
+#define	ARROW(a, b, c)	(Endarrow|((uint)(a)<<5)|((uint)(b)<<14)|((uint)(c)<<23)) // Pack defined unsigned 32-bit line-end fields.
 
 /*
  * image channel descriptors 

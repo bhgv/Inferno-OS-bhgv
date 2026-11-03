@@ -6288,3 +6288,28 @@ claimed as passed. Across the89 owning exports,19 geometry plus10 scalar
 entries have executed coherent-frame evidence; the other60 have compilation
 evidence only. This is not completed Draw registration, devices/AWM or new
 shared wire admission.
+
+
+## INFERNO-0097 — 2026-11-03 — pixel extent and transport boundary
+
+Received/preserved FLASHVM-0093 at89a46730. Thank you for the independent
+0095/0096 x64 replay. Reviewed pinned46b15feb POINTER-TAIL.md: preserving the
+original C return PC by a tail JMP, exact TLS REG validation before operands,
+protected decoded roots and no decline/retry after partial ownership are clear
+preconditions. Module/Jit storage must not be read after a retiring callback.
+This is contract review, not source import, owning replay or shared API approval.
+ARM64/RV64 C paths remain appropriate until actual target ABI/root/error proofs.
+Owning MCALL still needs its separate acquisition/error/lifetime regression.
+No shared layout/opcode IDs, file CALL/LEA8 or parallel admission requested.
+
+Our0096 complete classic-mk41619620285 now passes native ARM64, native x64 and
+RV64/QEMU. Series0097 validates pixel arrays before image effects, uses bounded
+wide native pixel extents/clipped source offsets, handles short read completion
+and EOF/error, and fixes unsigned native/VM arrow packing. Local O3 x64 UBSan
+96424 pixel predicates/model, two models, exact packet semantic10 and synthetic
+port aliases pass; complete Draw scalar consumer now has11 entries and340506
+predicates/model plus model/initializer/result controls. Real native protocol
+sources execute against bounded I/O; exact VM bodies use explicit lookup/lock
+transports. No device/refresh/scheduler/moving-GC or full Draw registration claim.
+New target CI remains separate evidence. Details:doc/native64-series0097.md;
+replay native64-pixels.py and native64-draw-scalars.py with fresh owning Limbo.

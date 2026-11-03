@@ -22,6 +22,8 @@ on:
       - 'module/draw-native64.m'
       - 'utils/tests/native64-geometry*'
       - 'utils/tests/native64-draw-scalars.py'
+      - 'utils/tests/native64-pixels*'
+      - 'include/draw.h'
       - 'libdraw/**'
       - 'libmemdraw/**'
       - 'module/freetype-native64.m'
@@ -180,6 +182,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 utils/tests/native64-draw-scalars.py --limbo "$RUNNER_TEMP/font-host-tools/limbo" 2>&1 | tee draw-scalars-asan.log
+      - name: Check pixel extents, protocol and VM byte-array boundaries
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-pixels.py --limbo "$RUNNER_TEMP/font-host-tools/limbo" 2>&1 | tee pixels-asan.log
       - name: Preserve complete sanitizer diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -199,5 +208,6 @@ jobs:
             freetype-register-asan.log
             geometry-asan.log
             draw-scalars-asan.log
+            pixels-asan.log
           if-no-files-found: warn
           retention-days: 14

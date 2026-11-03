@@ -1439,48 +1439,105 @@ Display_colormix(void *fp)
 	*f->ret = mkdrawimage(i, H, f->d, nil);
 }
 
+
+/* Validate a stable byte view before image lookup can synchronize display state.
+ * The VM owns the input object/root; address bounds do not establish provenance. */
+static int
+drawpixeldata(Array *a, uchar **data)
+{
+	Array view;
+	Heap owner;
+	int size, pointers;
+	uintptr address, extent;
+
+	if(a == H || a == nil)
+		error(exNilref);
+	address = (uintptr)a;
+	if(address <= sizeof(Heap) || address > (uintptr)-1-sizeof(view))
+		error(exBounds);
+	/* Copy potentially packed array and element metadata through byte views. */
+	memmove(&owner, (uchar*)a-sizeof(Heap), sizeof(owner));
+	if(owner.t != &Tarray)
+		error(exType);
+	memmove(&view, a, sizeof(view));
+	if(view.t != &Tbyte) {
+		extent = offsetof(Type, size) > offsetof(Type, np) ? offsetof(Type, size) : offsetof(Type, np);
+		if(view.t == nil || view.t == H || (uintptr)view.t > (uintptr)-1-extent-sizeof(int))
+			error(exType);
+		memmove(&size, (uchar*)view.t+offsetof(Type, size), sizeof(size));
+		memmove(&pointers, (uchar*)view.t+offsetof(Type, np), sizeof(pointers));
+		if(size != 1 || pointers != 0)
+			error(exType);
+	}
+	if(view.len < 0 || (uvlong)view.len > 0x7fffffff ||
+	   (view.len != 0 && (view.data == nil || view.data == H ||
+	    (uintptr)view.data > (uintptr)-1-(uintptr)view.len)))
+		error(exBounds);
+	*data = view.data;
+	return (int)view.len;
+}
+
+
+/* Complete the native read and unlock before copying a possibly unaligned result. */
 void
 Image_readpixels(void *fp)
 {
+	uchar *data;
+	int length;
+	WORD result;
 	F_Image_readpixels *f;
 	Rectangle r;
 	Image *i;
 	int locked;
 
 	f = fp;
+	length = drawpixeldata(f->data, &data);
 	R2R(r, f->r);
 	i = checkimage(f->src);
 	locked = lockdisplay(i->display);
-	*f->ret = unloadimage(i, r, f->data->data, f->data->len);
+	result = unloadimage(i, r, data, length);
 	if(locked)
 		unlockdisplay(i->display);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+
+/* Validate the byte view before image effects and publish the result after unlocking. */
 void
 Image_writepixels(void *fp)
 {
+	uchar *data;
+	int length;
+	WORD result;
 	Rectangle r;
 	F_Image_writepixels *f;
 	Image *i;
 	int locked;
 
 	f = fp;
+	length = drawpixeldata(f->data, &data);
 	R2R(r, f->r);
 	i = checkimage(f->dst);
 	locked = lockdisplay(i->display);
-	*f->ret = loadimage(i, r, f->data->data, f->data->len);
+	result = loadimage(i, r, data, length);
 	checkflush(f->dst);
 	if(locked)
 		unlockdisplay(i->display);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+
+/* Pack line-end bits with defined unsigned shifts before copying the VM result. */
 void
 Image_arrow(void *fp)
 {
 	F_Image_arrow *f;
+	WORD result;
 
 	f = fp;
-	*f->ret = ARROW(f->a, f->b, f->c);
+	result = (UWORD)Endarrow|((UWORD)f->a<<5)|
+		((UWORD)f->b<<14)|((UWORD)f->c<<23);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 void

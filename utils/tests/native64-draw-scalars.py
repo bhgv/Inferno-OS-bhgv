@@ -51,6 +51,9 @@ def cases(name, row, rng):
     edges = [-2147483648, 2147483647, -1, 0, 1, -17, 255, 256]
     x = edges[row%len(edges)] if row < 64 else rng.randint(-2147483648, 2147483647)
     y = edges[(row//8)%len(edges)] if row < 64 else rng.randint(-2147483648, 2147483647)
+    if name == 'Image_arrow':
+        z = rng.randint(-2147483648, 2147483647)
+        return [x, y, z], [2|(x<<5)|(y<<14)|(z<<23)]
     if name == 'Font_bbox':
         return [0, 0], [0]*4
     if name == 'Chans_eq':
@@ -101,7 +104,7 @@ def cases(name, row, rng):
 def oracle(header):
     rng = random.Random(96064)
     output, specs = [], []
-    names = ('Font_bbox', 'Chans_eq', 'Chans_depth', 'Display_cmap2rgb', 'Display_cmap2rgba',
+    names = ('Image_arrow', 'Font_bbox', 'Chans_eq', 'Chans_depth', 'Display_cmap2rgb', 'Display_cmap2rgba',
              'Display_rgb2cmap', 'setalpha', 'icossin', 'icossin2', 'bytesperline')
     for name in names:
         frame = 'F_Draw_'+name
@@ -156,6 +159,8 @@ def main():
         fixture = fixture.replace('#include "draw-native64.h"', '#include "draw-native64.h"\n#include "draw.h"\nvoid drawmodinit(void); // Actual complete consumer entry, expected to refuse header-only registration.')
         fixture = fixture.replace('unsigned int i;\n',
             'unsigned int i;\n\tRectangle rectangle;\n'
+            '\tfor(i=0; i<nelem(cases_Image_arrow); i++)\n'
+            '\t\tcheck((u32int)ARROW(cases_Image_arrow[i].input[0], cases_Image_arrow[i].input[1], cases_Image_arrow[i].input[2]) == cases_Image_arrow[i].output[0]);\n'
             '\tfor(i=0; i<nelem(cases_bytesperline); i++){\n'
             '\t\tmemmove(&rectangle, cases_bytesperline[i].input, sizeof(rectangle));\n'
             '\t\tcheck((u32int)wordsperline(rectangle, cases_bytesperline[i].input[4]) == nativewordunits[i][sizeof(ulong) == 8]);\n'
