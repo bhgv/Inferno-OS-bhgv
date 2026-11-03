@@ -46,6 +46,8 @@ on:
       - 'utils/tests/dis64-peer-schema.py'
       - 'utils/tests/native64-draw-owners*'
       - 'utils/tests/native64-draw-attach.c'
+      - 'utils/tests/native64-draw-info.py'
+      - 'utils/tests/dis64-peer-binding.py'
       - 'utils/tests/native64-draw-init*'
       - 'utils/tests/native64-refresh*'
       - 'utils/tests/native64-display-close*'
@@ -580,5 +582,38 @@ jobs:
           path: |
             peer-schema.json
             peer-schema.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  peer-binding:
+    name: Independent FlashVM structural Code and bindings
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout the independently reviewed schema reader and report
+        uses: actions/checkout@v4
+        with:
+          repository: bhgv/flashVM
+          ref: 0517104b4192ee0297f58a56a419e6f24e66cde0
+          path: .dis64-peer-binding
+          sparse-checkout: |
+            disVM/envelope/tests
+            disVM/envelope/reports
+      - name: Compare exact corpus and preserve schema versus admission boundaries
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-peer-binding.py --peer-root .dis64-peer-binding --report peer-binding.json 2>&1 | tee peer-binding.log
+          for control in identity binding unsupported authority; do
+            python3 utils/tests/dis64-peer-binding.py --peer-root .dis64-peer-binding --control "$control" 2>&1 | tee -a peer-binding.log
+          done
+      - name: Preserve independent structural-binding evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dis64-independent-structural-binding
+          path: |
+            peer-binding.json
+            peer-binding.log
           if-no-files-found: warn
           retention-days: 14

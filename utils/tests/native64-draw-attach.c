@@ -63,6 +63,10 @@ poisonedimage(size_t bytes)
 }
 
 
+static char *custominfo; // Optional exact malformed record under test.
+static int infolength = 144; // Controlled record read length.
+
+
 /* Supply one bounded native image-info record; parsing remains the actual namedimage body. */
 long
 kchanio(void *channel, void *buffer, int bytes, int mode)
@@ -79,8 +83,8 @@ kchanio(void *channel, void *buffer, int bytes, int mode)
 		memmove(record+i*12,field,12);
 	}
 	memmove(record+24,"r8g8b8a8    ",12);
-	memmove(buffer,record,144);
-	return 144;
+	memmove(buffer, custominfo == nil ? record : custominfo, 144);
+	return infolength;
 }
 
 ATTACH_CASES
@@ -251,6 +255,88 @@ imageinitializers(void)
 }
 
 
+/* Compare actual parser results and all-or-nothing output with independent protocol oracles. */
+static void
+informationcases(void)
+{
+	Image image, before, *created;
+	DDisplay *display;
+	int value, directory, index, valid, start, packetsbefore, idbefore;
+	char damaged[144];
+	static char channels[][12] = {"   r8g8b8a8 ", "         k1 ", "         r8 ", "        r3  ", "    r8 x    "}; // Exact fixed-width channel fields.
+	static ulong descriptors[] = {RGBA32, 0x31, 0x08, 0, 0}; // Independent protocol values.
+	unsigned int row;
+
+	for(row = 0; row < nelem(integercases); row++){
+		value = 19;
+		valid = drawinfointeger(integercases[row].field, &value);
+		require(valid == integercases[row].valid);
+		require(value == (valid ? integercases[row].value : 19));
+	}
+	for(row = 0; row < nelem(recordcases); row++){
+		memset(&image, 0xa5, sizeof(image));
+		before = image;
+		directory = 19;
+		valid = drawimageinfo(recordcases[row].record, &image, &directory);
+		require(valid == recordcases[row].valid);
+		if(!valid){
+			require(directory == 19 && memcmp(&image, &before, sizeof(image)) == 0);
+			continue;
+		}
+		require(directory == recordcases[row].values[0] && image.chan == RGBA32 && image.depth == 32);
+		require(image.repl == recordcases[row].values[3]);
+		require(image.r.min.x == recordcases[row].values[4] && image.r.min.y == recordcases[row].values[5]);
+		require(image.r.max.x == recordcases[row].values[6] && image.r.max.y == recordcases[row].values[7]);
+		require(image.clipr.min.x == recordcases[row].values[8] && image.clipr.min.y == recordcases[row].values[9]);
+		require(image.clipr.max.x == recordcases[row].values[10] && image.clipr.max.y == recordcases[row].values[11]);
+	}
+	for(row = 0; row < nelem(channels); row++){
+		memmove(damaged, recordcases[0].record, sizeof(damaged));
+		memmove(damaged+24, channels[row], 12);
+		memset(&image, 0xa5, sizeof(image));
+		before = image;
+		directory = 19;
+		valid = drawimageinfo(damaged, &image, &directory);
+		require(valid == (descriptors[row] != 0));
+		if(valid)
+			require(image.chan == descriptors[row]);
+		else
+			require(directory == 19 && memcmp(&image, &before, sizeof(image)) == 0);
+	}
+	display = attachdisplay();
+	for(index = 0; index < 2; index++){
+		start = nativecount;
+		packetsbefore = packets;
+		idbefore = display->display->imageid;
+		flushfailat = flushes+1;
+		if(index == 0)
+			created = freshallocimage(nil, display->display, Rect(0,0,4,4), RGBA32,0,0,0,0);
+		else
+			created = freshnamedimage(display->display, "window");
+		flushfailat = 0;
+		require(created == nil && packets == packetsbefore && nativecount == start);
+		require(display->display->imageid == idbefore);
+	}
+	for(index = 0; index < 4; index++){
+		start = nativecount;
+		infolength = index == 0 ? -1 : index == 1 ? 143 : index == 2 ? 145 : 144;
+		custominfo = nil;
+		/* Use a known bad decimal field independently of the seeded record population. */
+		if(index == 3){
+			memmove(damaged, recordcases[0].record, sizeof(damaged));
+			custominfo = damaged;
+			memset(custominfo+36, ' ', 12);
+		}
+		created = freshnamedimage(display->display, "window");
+		require(created == nil && nativecount == start && wire[0] == 'f');
+		require(strstr(message, "invalid image information") != nil);
+	}
+	custominfo = nil;
+	infolength = 144;
+	attachclose(display);
+}
+
+
 /* Close genuine Heap/Type/native owners; malformed-control exits are independent active predicates. */
 int
 attachmain(void)
@@ -263,6 +349,7 @@ attachmain(void)
 	attachcases(0,3,0);
 	rawcases();
 	imageinitializers();
+	informationcases();
 	freetype(TFont); freetype(TImage); freetype(TScreen); freetype(TDisplay);
 	require(live==0 && nativecount==0 && worker.nerr==0 && gchalt==0);
 	printf("PASS attach: %d predicates, 18 Frame64 pair scenarios, raw rollback/replacement, %d refresh service calls, all ledgers zero; no device/collector execution\n",checks,refreshcalls);

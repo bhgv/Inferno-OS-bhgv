@@ -74,9 +74,13 @@ typedef struct DFont DFont;
     if attach:
         native+='\n\n'+'\n\n'.join(fn((ROOT/'libdraw/init.c').read_text(),sig) for sig in ('static void\nwindowdiscard(','int\ngengetwindow('))
     if attach:
-        initializers='\n\n'.join(fn((ROOT/'libdraw/alloc.c').read_text(),sig) for sig in ('Image*\n_allocimage(', 'Image*\nnamedimage('))
+        initializers=(ROOT/'libdraw/drawinfo.h').read_text()+'\n\n'+'\n\n'.join(fn((ROOT/'libdraw/alloc.c').read_text(),sig) for sig in ('Image*\n_allocimage(', 'Image*\nnamedimage('))
         initializers=initializers.replace('_allocimage(', 'freshallocimage(').replace('namedimage(', 'freshnamedimage(')
         if control=='image-callback': initializers=initializers.replace('i->reffn = nil;', '/* missing callback initialization */')
+        if control=='info-range': initializers=initializers.replace('if(value > (limit-', 'if(0 && value > (limit-',1)
+        if control=='info-publication': initializers=initializers.replace('int fields[12], index, start, end;', 'int fields[12], index, start, end; image->depth=0;',1)
+        if control=='initial-flush': initializers=initializers.replace('if(flushimage(d, 0) < 0)\n\t\tgoto Error;', 'flushimage(d,0);',1)
+        if control=='info-release': initializers=initializers.replace("a[0] = 'f';", "a[0] = 'x';")
         if control=='image-path': initializers=initializers.replace('i->fpath = nil;', '/* missing path initialization */')
         native+='\n#define malloc(n) poisonedimage(n) // Poison fresh headers to expose omitted field initialization.\n#define free(p) nativeretire(p,1) // Retire exact native header owners.\n'+initializers+'\n#undef malloc\n#undef free\n'
     bodies=bodies.replace('free(dr);','nativeretire(dr,5);',1)
@@ -138,6 +142,7 @@ typedef struct DFont DFont;
         fixture=fixture.replace('screen=pointer;', 'screen=pointer;\n\t\tfor(cursor=screen->display->windows;cursor!=nil;cursor=cursor->next) require(cursor->screen!=screen);',1)
         fixture=fixture.replace('Rect(2,3,9,11), RGBA32, 1, 0', 'attachmode ? Rect(0,0,100,80) : Rect(2,3,9,11), RGBA32, 1, 0')
         services, operations=(ROOT/'utils/tests/native64-draw-attach.c').read_text().split('ATTACH_CASES')
+        operations=runpy.run_path(str(ROOT/'utils/tests/native64-draw-info.py'))['rows']()+operations
         fixture=fixture.replace('ATTACH_SERVICES', services)
         fixture=fixture.replace('WINDOW_OPERATIONS', operations)
         fixture=fixture.replace(fn(fixture,'int\nmain('), fn(operations,'int\nattachmain(').replace('attachmain(', 'main(',1))
@@ -161,7 +166,7 @@ def main():
         work=Path(directory);env['TMPDIR']=str(work)
         (work/'draw-native64.h').write_bytes(subprocess.check_output([str(args.limbo.resolve()),'-H','-M','Draw','-I'+str(ROOT/'module'),str(ROOT/'module/draw-native64.m')],env=env))
         includes=['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')]
-        modes=('WORD32','WORD32-file','attach-fd','attach-publish','screen-fill','screen-backing','attach-rollback','attach-tuple','image-callback','image-path') if args.attach_only else ('gated','WORD32','WORD32-file','mapped','double','rollback','native','alias','swept','lookup','detach','window','retry','font-rollback','font-name','loaded-rollback','loaded-name','loaded-alias','name-retain','name-result','origin-status','origin-wire','order-wire')
+        modes=('WORD32','WORD32-file','attach-fd','attach-publish','screen-fill','screen-backing','attach-rollback','attach-tuple','image-callback','image-path','info-range','info-publication','initial-flush','info-release') if args.attach_only else ('gated','WORD32','WORD32-file','mapped','double','rollback','native','alias','swept','lookup','detach','window','retry','font-rollback','font-name','loaded-rollback','loaded-name','loaded-alias','name-retain','name-result','origin-status','origin-wire','order-wire')
         for mode in modes:
             source=work/(mode+'.c');source.write_text(support['portfixture'](unit(None if mode.startswith('WORD') or mode=='gated' else mode,attach=args.attach_only),'#include "vmfetch.h"'))
             binary=work/mode;flags=['-DDIS_WORD32=1']+(['-DDIS64_PILOT_LOADER=1'] if mode.endswith('file') else [])+(['-DDIS_NATIVE64_DRAW_HEADER=1'] if mode=='gated' else [])

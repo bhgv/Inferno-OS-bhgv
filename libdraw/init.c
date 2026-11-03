@@ -1,6 +1,7 @@
 #include "lib9.h"
 #include "draw.h"
 #include "kernel.h"
+#include "drawinfo.h"
 #include "interp.h"
 
 #include "emu.h"
@@ -116,12 +117,12 @@ Display*
 initdisplay(char *dev, char *win, void(*error)(Display*, char*))
 {
 	char buf[128], info[NINFO+1], *t;
-	int datafd, ctlfd, reffd;
+	int datafd, ctlfd, reffd, directory;
+	Image parsed;
 	Display *disp;
 	Image *image;
 	Dir *dir;
 	void *q;
-	ulong chan;
 
 	fmtinstall('P', Pfmt);
 	fmtinstall('R', Rfmt);
@@ -160,22 +161,22 @@ initdisplay(char *dev, char *win, void(*error)(Display*, char*))
 	}
 	if(ctlfd < 0)
 		goto Error1;
-	if(libread(ctlfd, info, sizeof info) < NINFO){
+	if(libread(ctlfd, info, sizeof info) != NINFO){
     Error2:
 		libclose(ctlfd);
 		goto Error1;
 	}
 
-	if((chan=strtochan(info+2*12)) == 0){
-		kwerrstr("bad channel in %s", buf);
+	if(!drawimageinfo(info, &parsed, &directory)){
+		kwerrstr("invalid image information in %s", buf);
 		goto Error2;
 	}
 
-	sprint(buf, "%s/draw/%d/data", dev, atoi(info+0*12));
+	sprint(buf, "%s/draw/%d/data", dev, directory);
 	datafd = libopen(buf, ORDWR);
 	if(datafd < 0)
 		goto Error2;
-	sprint(buf, "%s/draw/%d/refresh", dev, atoi(info+0*12));
+	sprint(buf, "%s/draw/%d/refresh", dev, directory);
 	reffd = libopen(buf, OREAD);
 	if(reffd < 0){
     Error3:
@@ -199,18 +200,13 @@ initdisplay(char *dev, char *win, void(*error)(Display*, char*))
 	memset(disp, 0, sizeof(Display));
 	image->display = disp;
 	image->id = 0;
-	image->chan = chan;
-	image->depth = chantodepth(chan);
-	image->repl = atoi(info+3*12);
-	image->r.min.x = atoi(info+4*12);
-	image->r.min.y = atoi(info+5*12);
-	image->r.max.x = atoi(info+6*12);
-	image->r.max.y = atoi(info+7*12);
-	image->clipr.min.x = atoi(info+8*12);
-	image->clipr.min.y = atoi(info+9*12);
-	image->clipr.max.x = atoi(info+10*12);
-	image->clipr.max.y = atoi(info+11*12);
-	disp->dirno = atoi(info+0*12);
+	image->chan = parsed.chan;
+	image->depth = parsed.depth;
+	image->repl = parsed.repl;
+	image->r = parsed.r;
+	image->clipr = parsed.clipr;
+
+	disp->dirno = directory;
 	disp->datachan = libfdtochan(datafd, ORDWR);
 	disp->refchan = libfdtochan(reffd, OREAD);
 	disp->ctlchan = libfdtochan(ctlfd, ORDWR);

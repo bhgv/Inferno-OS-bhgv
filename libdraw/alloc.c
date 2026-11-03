@@ -1,8 +1,10 @@
 #include "lib9.h"
 #include "draw.h"
 #include "kernel.h"
+#include "drawinfo.h"
 
 
+/* Stop on pending-output failure before requesting a window attachment. */
 void
 attachtowindow(Image *i)
 {
@@ -26,8 +28,9 @@ attachtowindow(Image *i)
 	}
 	d = i->display;
 
-	/* flush pending data so we don't get error allocating the image */
-	flushimage(d, 0);
+	/* Refuse before issuing another request if pending output failed. */
+	if(flushimage(d, 0) < 0)
+		goto Error;
 	a = bufimage(d, 1+4);
 	if(a == 0)
 		goto Error;
@@ -86,8 +89,9 @@ _allocimage(Image *ai, Display *d, Rectangle r, ulong chan, int repl, ulong val,
 		return 0;
 	}
 
-	/* flush pending data so we don't get error allocating the image */
-	flushimage(d, 0);
+	/* Refuse before issuing another request if pending output failed. */
+	if(flushimage(d, 0) < 0)
+		goto Error;
 	a = bufimage(d, 1+4+4+1+4+1+4*4+4*4+4);
 	if(a == 0)
 		goto Error;
@@ -153,10 +157,9 @@ Image*
 namedimage(Display *d, char *name)
 {
 	uchar *a;
-	char *err, buf[12*12+1];
+	char *err, buf[12*12+1], reason[ERRMAX];
 	Image *i;
 	int id, n;
-	ulong chan;
 
 	err = 0;
 	i = 0;
@@ -167,14 +170,17 @@ namedimage(Display *d, char *name)
     Error:
 		if(err)
 			kwerrstr("namedimage: %s", err);
-		else
-			kwerrstr("namedimage: %r");
+		else{
+			kgerrstr(reason, sizeof(reason));
+			kwerrstr("namedimage: %s", reason);
+		}
 		if(i)
 			free(i);
 		return 0;
 	}
-	/* flush pending data so we don't get error allocating the image */
-	flushimage(d, 0);
+	/* Refuse before issuing another request if pending output failed. */
+	if(flushimage(d, 0) < 0)
+		goto Error;
 	a = bufimage(d, 1+4+1+n);
 	if(a == 0)
 		goto Error;
@@ -187,38 +193,31 @@ namedimage(Display *d, char *name)
 	if(flushimage(d, 0) < 0)
 		goto Error;
 
-	if(kchanio(d->ctlchan, buf, sizeof buf, OREAD) < 12*12)
-		goto Error;
+	if(kchanio(d->ctlchan, buf, sizeof buf, OREAD) != 12*12){
+		kwerrstr("invalid image information length");
+		goto Error1;
+	}
 	buf[12*12] = '\0';
 
 	i = malloc(sizeof(Image));
 	if(i == nil){
 	Error1:
+		kgerrstr(reason, sizeof(reason));
 		a = bufimage(d, 1+4);
 		if(a){
 			a[0] = 'f';
 			BPLONG(a+1, id);
 			flushimage(d, 0);
 		}
+		kwerrstr("%s", reason);
 		goto Error;
 	}
 	i->display = d;
 	i->id = id;
-	if((chan=strtochan(buf+2*12))==0){
-		kwerrstr("bad channel from devdraw");
+	if(!drawimageinfo(buf, i, nil)){
+		kwerrstr("invalid image information fields");
 		goto Error1;
 	}
-	i->chan = chan;
-	i->depth = chantodepth(chan);
-	i->repl = atoi(buf+3*12);
-	i->r.min.x = atoi(buf+4*12);
-	i->r.min.y = atoi(buf+5*12);
-	i->r.max.x = atoi(buf+6*12);
-	i->r.max.y = atoi(buf+7*12);
-	i->clipr.min.x = atoi(buf+8*12);
-	i->clipr.min.y = atoi(buf+9*12);
-	i->clipr.max.x = atoi(buf+10*12);
-	i->clipr.max.y = atoi(buf+11*12);
 	i->reffn = nil;
 	i->refptr = nil;
 	i->fpath = nil;
