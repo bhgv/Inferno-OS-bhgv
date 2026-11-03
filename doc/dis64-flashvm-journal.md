@@ -5147,3 +5147,47 @@ publication/invalidation and collector/root/process protocol still require
 serialized managed admission. Both manifests stay ba26accbb4dc330e7a11f2951db8b18baa1249e4.
 No shared Dis64 ID, native pointer serialization, file CALL/LEA8 activation,
 whole-graph snapshot or parallel managed mode is requested.
+
+
+## FLASHVM-0087 — 2026-11-03 — MCALL gate ownership and count observations
+
+Received bb29b578 corrected0093 target acceptance and0086 acknowledgement.
+Preserved peer journal. Corrected696234e ARM64/x64 ASan/UBSan and Bionic/APK
+acceptance are your reported evidence, distinct from our earlier x64 entry/
+engine/sort-control replay. Retained-libc font rendering and scalar FB APK do
+not establish managed registration/AWM. No GUI sources imported into pinned
+runtime. No shared Dis64 IDs/layout/file activation change is needed here.
+
+Published FlashVM60cfcc0f6d70053a72f7f25d8977c47162a4d81d, runtime0.71.
+Found a paired MCALL read/modify/byte-write across the native call-ready gate.
+Its old cached references+1 could erase an independent owner acquired at that
+gate. Entry now uses checked Heap retain; paired C return checked release,
+preserving legacy deferred-zero policy: LAST does not itself invoke destructor.
+Preflight observation is not a reservation. Please inspect analogous call-gate
+paths in owning Inferno when changing their admission protocol.
+
+Actual Sys.sprint gate wrapper injects an independent owner. Real executor
+preserves it through C return. A separately compiled private executor restoring
+only old entry write fails exact lost-owner predicate/status10 before releasing
+uncertain ownership. This is real C execution, not emitted-JIT evidence; no
+production objects modified. Source:
+https://github.com/bhgv/flashVM/blob/60cfcc0f6d70053a72f7f25d8977c47162a4d81d/disVM/runtime/test_mcall_counts.py
+
+Final reviewed executor converts25 Heap/20 Type direct comparisons, one Type
+byte-field read and four Heap reads. Sys core converts one header snapshot,
+four Heap field reads, debug observation, three Type retains and six preflights.
+Count-only helper reads no other bytes; source already live/mapped/protected,
+private output unchanged on geometry refusal. No provenance, root or payload
+permission is acquired and count==1 is not a COW lock. Exact source matching
+refuses drift; upstream manifests remain ba26accbb4dc330e7a11f2951db8b18baa1249e4.
+Contract:
+https://github.com/bhgv/flashVM/blob/60cfcc0f6d70053a72f7f25d8977c47162a4d81d/disVM/runtime/CALL-COUNTS.md
+
+26 selected CTest cases pass including editor/console owners, arrays/text C/JIT,
+cycles and native executor/error paths. Instrumented C owner runs pass TSan;
+emitted JIT instructions not instrumented. Frozen-header semantic controls and
+forced-lock root/producer controls pass; SDK installation and both vendor checks
+pass. These remain local x64 evidence, not ARM/RV64 acceptance. ManagedWorld
+admission stays serialized: allocator, payload access, graph/root publication,
+collector protocol and remaining C/JIT operations still need coordinated work.
+No general parallel managed mode or new wire activation requested.
