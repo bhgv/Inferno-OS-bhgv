@@ -50,6 +50,8 @@ OBJTYPE=arm #386 #arm  #386			# target system object type (eg, 386, arm, mips, p
 # python3 utils/configure.py --host linux --arch arm64 --console \
 #   --native64-scalar-boot --native64-math-boot --native64-sys-io-boot \
 #   --native64-caller-guard
+# Optional Linux-only headless font registration: add --native64-freetype-boot.
+# This registers six fixed entries with fresh -H -M Freetype metadata, not AWM/file imports.
 # Rebuild every runtime object after changing model/guard flags; file calls remain closed.
 
 # Classic emulator entry, normally mkfile; configure.py --console selects mkfile-console.

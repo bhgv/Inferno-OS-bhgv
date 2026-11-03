@@ -15,6 +15,7 @@ on:
       - 'lib9/**'
       - 'libmath/**'
       - 'limbo/**'
+      - 'module/**'
       - 'utils/**'
   workflow_dispatch:
 permissions:

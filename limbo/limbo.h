@@ -604,6 +604,7 @@ Extern	int	emitdyn;		/* emit stub routines as above but for dynamic modules */
 Extern	int	emitstub;		/* emit type and call frames for system modules */
 Extern	int	emitscalar64; // Emit only the checked, existing scalar Dis64 file profile.
 Extern	int	emitnative64;	// Emit experimental native64 metadata without changing the compiler target.
+Extern	char*	native64targetmodule; // Optional exact module selection for native64 metadata.
 Extern	char	*emittab;		/* emit table of runtime functions for this module */
 Extern	int	errors;
 Extern	char	escmap[256];

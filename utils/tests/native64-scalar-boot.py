@@ -34,6 +34,7 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runner', default='')
     parser.add_argument('--sys-io', action='store_true', help='require the eight-entry trusted Sys I/O startup profile')
+    parser.add_argument('--freetype', action='store_true', help='require six-entry trusted Freetype startup without file import admission')
     parser.add_argument('--math', action='store_true', help='require trusted Math registration without file import admission')
     args = parser.parse_args()
     command = shlex.split(args.runner)+[str(args.emu.resolve()), '-v', '-r', str(args.root.resolve())]
@@ -48,6 +49,9 @@ def main():
                 sysio = 'native64 startup: trusted Sys I/O registered (8 fixed exports); file imports remain disabled' in output
                 if sysio != args.sys_io:
                     raise RuntimeError('Unexpected Sys I/O startup selection: '+output)
+                font = 'native64 startup: trusted Freetype registered (6 fixed exports); file imports remain disabled' in output
+                if font != args.freetype:
+                    raise RuntimeError('Unexpected Freetype startup selection: '+output)
                 registered = 'native64 startup: trusted Math registered; file imports remain disabled' in output
                 if registered != args.math:
                     raise RuntimeError('Unexpected Math startup selection: '+output)
@@ -70,7 +74,7 @@ def main():
         print('PASS full OS corpus:', programs, 'processes,', predicates, 'in-program checks including active wrong-result controls')
         legacy = work/'legacy.dis'; legacy.write_bytes(b'legacy image rejected before decoding')
         for path, diagnostic in (('/'+str(legacy.relative_to(args.root.resolve())), 'accepts only checked Dis64 scalar images'),
-                                 ('$Sys', 'builtin modules are unavailable'), ('$Math', 'builtin modules are unavailable')):
+                                 ('$Sys', 'builtin modules are unavailable'), ('$Math', 'builtin modules are unavailable'), ('$Freetype', 'builtin modules are unavailable')):
             output = execute(command+['-d', path])
             if diagnostic not in output or 'native64 scalar module ' in output:
                 raise RuntimeError('Admission guard missed '+path+': '+output)

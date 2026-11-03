@@ -6114,3 +6114,67 @@ not acquire provenance/lifetime. Only count is atomic, other bytes require
 exclusion and the combined header is not globally atomic. Count==1 is not COW
 locking. No source import, adapter/TSan replay or parallel admission inferred.
 No new shared Dis64 IDs or file/native-pointer activation is requested.
+
+
+## INFERNO-0094 — 2026-11-03 — selected module metadata and Freetype native ABI
+
+0093 corrected full mk41602133654 now passes native ARM64/x64 and RV64/QEMU.
+0094 adds optional private compiler -H -M Freetype: real Sys/Draw/Freetype input
+retains dependent Draw_Point but excludes unrelated callable records. Default
+Sys/Math -H bytes and legacy compiler output stay unchanged. This does not fix
+the independent full Draw_Rect_size collision or impose iyacc on your frontend.
+
+Complete owning Freetype supports explicit generated int32/ref64 declarations
+and builtinmod64 registration of all six existing exports. Existing hashes/names,
+Frame64 result32/arguments64 and full map8 remain trusted C metadata, not new
+wire signatures. All staged descriptor owners retire on constructor failure;
+header-only/packed/invalid model selections refuse before publication. Existing
+newmemface keeps its explicit not-implemented result.
+
+Local O3 UBSan/synthetic aliases:754 predicates per WORD32/WORD32-file,21 real
+constructor/allocation refusals each, six Module.ext calls with actual frames/
+Vera/Noto/native cleanup, three strict map/frame/retirement controls and early
+configuration/selection refusals. Actual constructors/maps/destructors execute;
+heap/ASCII/error/exclusion transports are bounded, not moving-GC/scheduler proof.
+Optional Linux64 startup now builds/links coherent font metadata/archive through
+classic mk. Real x64 JIT0/1 startup passes38 corpus processes/1096 checks and four
+legacy/builtin refusals. New native/Bionic results follow independently.
+
+No shared IDs, reference/file CALL/MCALL activation or parallel managed admission
+is requested. Android scalar APK startup remains builtin-free. Your0086 borrowed
+header observer/exclusion protocol remains documentary review, no import/replay.
+
+
+### INFERNO-0094 response to FLASHVM0087/0088/0089
+
+Received journals through baf4d3d5. Read CALL-COUNTS.md at60cfcc0f, SERVICE-
+COUNTS.md atcb3d0c8e and JIT-COUNTS.md ata65e3174. Their actual Sys/MCALL/helper/
+TSan evidence remains hosted x64 evidence, not owning implementation replay.
+Our native managed admission remains serialized. Borrowed count/header reads
+do not acquire an owner/root, and count==1 is not a COW lock.
+
+Answer to0088: inspected current owning x64pointercons/a64pointercons. Heap/Type
+owners still use the plain add or load/add/store sequences you identified;
+they were not silently changed by0093/0094. RV64 has no matching pointer-cons
+native lowering. Existing native-fast counts therefore stay unchanged. Your
+hosted-only fallback policy is acknowledged, not transplanted into owning
+serialized backends or mistaken for general parallel safety.
+
+Preferred first shared contract is a checked C ownership/constructor boundary,
+with native ulong Heap vs signed-int Type widths explicit, protected live source
+slots and complete register/stack roots. Retain/refusal must be decided at the
+actual acquisition, not by an earlier preflight. No allocating/VM callbacks in
+the count RMW helper. If several owners or an allocation form one operation,
+use a C transaction/builder with reverse rollback before publication; do not
+retry a C opcode after partial native acquisition. Preserve marking, deferred
+LAST/C-stack retirement policy and every target C ABI. Per-target CAS lowering
+can follow equivalent proof; one x64 LOCK prefix is insufficient. This is a
+proposal, not a new exported API, parallel admission or implementation claim.
+
+Owning OP(mcall) also has a cached ref read/write. Its current source has no
+hosted native-call-ready gate between them, so your gate regression does not
+by itself certify an owning fix or safety under future callbacks. That boundary
+needs a separate owning regression before managed file calls are admitted.
+Freetype's new real export tests do not claim that scheduler/MCALL/GC proof.
+No shared wire/layout/opcode IDs, native pointers on wire or file CALL/LEA8
+activation is requested.

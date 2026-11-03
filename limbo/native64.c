@@ -64,6 +64,15 @@ native64register(char *name, void *owner)
 }
 
 
+/* Select only one module's declarations while retaining its actual dependent types. */
+static int
+native64module(Decl *module)
+{
+	return module->store == Dtype && module->ty->kind == Tmodule &&
+		(native64targetmodule == nil || strcmp(module->sym->name, native64targetmodule) == 0);
+}
+
+
 /* Reserve the complete descriptor spelling without conflating C names and runtime IDs. */
 static void
 native64reservenamed(char *name, void *owner)
@@ -648,7 +657,7 @@ native64checkbody(Decl *globals)
 		}
 	}
 	for(module=globals; module != nil; module=module->next){
-		if(module->store != Dtype || module->ty->kind != Tmodule)
+		if(!native64module(module))
 			continue;
 		for(declaration=module->ty->ids; declaration != nil; declaration=declaration->next){
 			if(declaration->store != Dtype)
@@ -691,7 +700,7 @@ native64checks(Decl *globals)
 	char name[2*StrSize];
 
 	for(module=globals; module != nil; module=module->next){
-		if(module->store != Dtype || module->ty->kind != Tmodule)
+		if(!native64module(module))
 			continue;
 		native64name(module, name, sizeof(name));
 		print("\n\n/* Validate emitted C geometry; calls and GC ownership require separate gates. */\nstatic int\nlimbo_native64_%s_layout(void)\n{\n", name);
@@ -711,12 +720,20 @@ native64stubs(Decl *globals)
 	Decl *field;
 	int previous;
 
+	if(native64targetmodule != nil){
+		previous = 0;
+		for(module=globals; module != nil; module=module->next)
+			if(native64module(module))
+				previous++;
+		if(previous != 1)
+			fatal("native64 selected module is missing or ambiguous: %s", native64targetmodule);
+	}
 	native64types = nil;
 	native64count = 0;
 	native64names = nil;
 	native64namecount = 0;
 	for(module=globals; module != nil; module=module->next){
-		if(module->store != Dtype || module->ty->kind != Tmodule)
+		if(!native64module(module))
 			continue;
 		native64name(module, name, sizeof(name));
 		for(declaration=module->ty->ids; declaration != nil; declaration=declaration->next){
@@ -759,7 +776,7 @@ native64stubs(Decl *globals)
 			}
 	}
 	for(module=globals; module != nil; module=module->next){
-		if(module->store != Dtype || module->ty->kind != Tmodule)
+		if(!native64module(module))
 			continue;
 		for(declaration=module->ty->ids; declaration != nil; declaration=declaration->next){
 			if(declaration->store == Dconst &&
@@ -815,7 +832,7 @@ native64stubs(Decl *globals)
 	for(layout=native64types; layout != nil; layout=layout->next)
 		native64definition(layout->type, 0);
 	for(module=globals; module != nil; module=module->next){
-		if(module->store != Dtype || module->ty->kind != Tmodule)
+		if(!native64module(module))
 			continue;
 		for(declaration=module->ty->ids; declaration != nil; declaration=declaration->next)
 			native64constant(declaration);

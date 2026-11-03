@@ -23,6 +23,8 @@ dev
 
 lib
 	interp
+# Optional headless font archive, before lib9 supplies its native dependencies.
+	$NATIVE64_FREETYPE_LIBS
 	math
 	keyring
 	sec

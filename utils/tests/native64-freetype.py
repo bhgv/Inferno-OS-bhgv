@@ -82,6 +82,7 @@ def engine(work, compiler, flags, includes, runner, env):
     subprocess.run(compiler+flags+includes+['-include', str(prelude), str(ROOT/'utils/tests/native64-freetype-engine.c')]+objects+['-lm', '-o', str(binary)], env=env, check=True)
     fonts = [str(ROOT/'fonts/ttf'/name) for name in ('Vera.ttf', 'noto/NotoSans-Regular.ttf')]
     subprocess.run(runner+[str(binary)]+fonts, env=env, check=True, timeout=60)
+    return objects
 
 
 # Strict controls require the expected semantic refusal, never a sanitizer or compiler failure.

@@ -87,8 +87,9 @@ def unit(module, control):
         old, new = {
             'retirement': ('\t\tfreetype(types[i]);', '\t\tUSED(types[i]);'),
             'publication': ('\tif(types[0] == nil)', '\t'+first+' = types[0];\n\tif(types[0] == nil)'),
-            'registration': ('builtinmod("$'+name+'", '+name+'modtab, '+name+'modlen) == nil',
-                             'builtinmod("$'+name+'", '+name+'modtab, '+name+'modlen) != nil'),
+            'registration': (('module == nil', 'module != nil') if module == 'freetype' else
+                             ('builtinmod("$'+name+'", '+name+'modtab, '+name+'modlen) == nil',
+                              'builtinmod("$'+name+'", '+name+'modtab, '+name+'modlen) != nil')),
         }[control]
         if body.count(old) != 1:
             raise RuntimeError('Graphics control marker drift: '+module+' '+control)

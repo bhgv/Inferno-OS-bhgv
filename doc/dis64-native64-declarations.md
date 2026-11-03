@@ -179,3 +179,23 @@ They leave general reference-call signatures and registration open.
 The [Sys consumer bridge](dis64-native64-sys.md) adds exact integral module
 constants and checks their generated C namespace. Variadic tails and nonintegral
 constant publication are outside that addition.
+
+
+## Selected owning module
+
+`limbo -H -M Freetype -I module module/freetype-native64.m` emits the real
+Freetype interface while retaining dependent Draw_Point geometry. Sys/Draw
+method frames, constants, layout predicates and implementation lists are not
+emitted. Selection is exact and optional; ordinary -H output is unchanged.
+The compiler still parses/typechecks dependencies, and a selected referent with
+an unsupported shape is refused. This does not make every unselected module's
+independent native64 C interface supported. In particular the existing complete
+Draw interface still has its own generated-name collision to resolve.
+
+-M requires -H, one nonempty module name and exactly one matching declaration.
+Duplicate flags, absent names and unsupported selected dependency shapes fail
+before stdout publication. Shared type layouts, hashes, legacy Dis/AOT output,
+normal target selection and all wire IDs remain unchanged.
+
+The complete [Freetype registration](dis64-native64-freetype-register.md) uses
+this selector to avoid pulling unrelated builtin interfaces into one C consumer.

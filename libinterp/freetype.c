@@ -2,10 +2,43 @@
 #include <kernel.h>
 #include "interp.h"
 #include "isa.h"
+#include "native64-scalar-boot.h"
+#ifdef DIS_NATIVE64_BOOT_FREETYPE
+#if defined(DIS_NATIVE64_FREETYPE_REGISTER) || defined(DIS_NATIVE64_FREETYPE_HEADER)
+#error native64 Freetype startup owns its generated metadata selection
+#endif
+#define DIS_NATIVE64_FREETYPE_REGISTER 1 // Explicit startup registers all six trusted entries.
+#define DIS_NATIVE64_FREETYPE_HEADER "freetype-native64.h" // Fresh host-Limbo metadata built through classic mk.
+#endif
+/* Explicit consumers use one generated int32/ref64 declaration set. */
+#if defined(DIS_NATIVE64_FREETYPE_REGISTER) && DIS_NATIVE64_FREETYPE_REGISTER != 1
+#error DIS_NATIVE64_FREETYPE_REGISTER must be 1 when selected
+#endif
+#if defined(DIS_NATIVE64_FREETYPE_REGISTER) && !defined(DIS_NATIVE64_FREETYPE_HEADER)
+#error native64 Freetype registration requires an explicit generated header
+#endif
+#ifdef DIS_NATIVE64_FREETYPE_HEADER
+#if !defined(DIS_WORD32) || DIS_WORD32 != 1
+#error native64 Freetype declarations require DIS_WORD32=1
+#endif
+#define Face_haschar Freetype_Face_haschar // Match the generated qualified method symbol.
+#define Face_loadglyph Freetype_Face_loadglyph // Match the generated qualified method symbol.
+#define Face_setcharsize Freetype_Face_setcharsize // Match the generated qualified method symbol.
+#define Face_settransform Freetype_Face_settransform // Match the generated qualified method symbol.
+#define F_Face_haschar F_Freetype_Face_haschar // Match the generated fixed Frame64 declaration.
+#define F_Face_loadglyph F_Freetype_Face_loadglyph // Match the generated fixed Frame64 declaration.
+#define F_Face_setcharsize F_Freetype_Face_setcharsize // Match the generated fixed Frame64 declaration.
+#define F_Face_settransform F_Freetype_Face_settransform // Match the generated fixed Frame64 declaration.
+#ifdef DIS_NATIVE64_FREETYPE_REGISTER
+#define LIMBO_NATIVE64_IMPLEMENTATIONS // Link all six trusted fixed-frame implementations.
+#endif
+#include DIS_NATIVE64_FREETYPE_HEADER
+#else
 #include "runt.h"
+#include "freetypemod.h"
+#endif
 #include "raise.h"
 #include "nativeptrmap.h"
-#include "freetypemod.h"
 #include "freetype.h"
 
 
@@ -36,11 +69,23 @@ void
 freetypemodinit(void)
 {
 	Type *types[4] = {nil};
+	Module *module;
 	uchar matrixbits[sizeof(Matrixmap)], vectorbits[sizeof(Vectormap)];
 	uchar facebits[sizeof(Facemap)], glyphbits[sizeof(Glyphmap)];
 	char reason[ERRMAX], *failure;
 	int i;
 
+#ifdef DIS_NATIVE64_FREETYPE_HEADER
+#ifdef DIS_NATIVE64_FREETYPE_REGISTER
+	if(!limbo_native64_Freetype_layout()){
+		error("native64 Freetype layout mismatch");
+		return;
+	}
+#else
+	error("experimental native64 Freetype registration is not supported");
+	return;
+#endif
+#endif
 	if(TMatrix != nil || TVector != nil || TFace != nil || TGlyph != nil){
 		if(TMatrix != nil && TVector != nil && TFace != nil && TGlyph != nil)
 			return;
@@ -68,7 +113,16 @@ freetypemodinit(void)
 	types[3] = dtype(freeheap, sizeof(Freetype_Glyph), glyphbits, sizeof(glyphbits));
 	if(types[3] == nil)
 		goto failed;
-	if(builtinmod("$Freetype", Freetypemodtab, Freetypemodlen) == nil){
+#ifdef DIS_NATIVE64_FREETYPE_REGISTER
+	module = builtinmod64("$Freetype", limbo_native64_Freetype_specs,
+		limbo_native64_Freetype_spec_count, limbo_native64_Freetype_implementations,
+		limbo_native64_Freetype_implementation_count);
+#elif defined(DIS_NATIVE64_FREETYPE_HEADER)
+	module = nil; // Header-only mode has already refused before allocation.
+#else
+	module = builtinmod("$Freetype", Freetypemodtab, Freetypemodlen);
+#endif
+	if(module == nil){
 		reason[0] = 0;
 		kgerrstr(reason, sizeof(reason));
 		reason[sizeof(reason)-1] = 0;

@@ -76,7 +76,7 @@ def main():
                NATIVE64_CFLAGS=args.test_cflags, CC=args.test_cc or shlex.join([args.cross+'gcc']))
     configure_command = [sys.executable, str(build/'utils/configure.py'), '--host', 'linux', '--arch', args.arch,
                          '--root', str(build), '--console', '--native64-scalar-boot', '--native64-math-boot',
-                         '--native64-sys-io-boot', '--native64-caller-guard', '--cross', args.cross,
+                         '--native64-sys-io-boot', '--native64-freetype-boot', '--native64-caller-guard', '--cross', args.cross,
                          '--output', str(build/'mkconfig')]
     run(configure_command, build, env, logs/'configure.log')
     binary = build/'Linux'/args.arch/'bin'; binary.mkdir(parents=True, exist_ok=True)
@@ -92,7 +92,7 @@ def main():
     run([sys.executable, str(tests/'native64-builtins.py'), '--sets', '--port-aliases'],
         build, builtinenv, logs/'builtin-port-aliases.log')
     run([sys.executable, str(tests/'native64-scalar-boot.py'), '--root', str(build),
-         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--math', '--sys-io'], build, env, logs/'boot.log')
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--math', '--sys-io', '--freetype'], build, env, logs/'boot.log')
     run([sys.executable, str(tests/'native64-limbo-boot.py'), '--limbo', str(tools/'limbo'),
          '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
         build, env, logs/'limbo-boot.log')
@@ -192,9 +192,11 @@ def main():
     for control in ('width', 'bounds'):
         run(loader_branch+['--control', control], build, env, logs/('loader-branch-'+control+'.log'))
     font_bridge = [sys.executable, str(tests/'native64-freetype.py')]
-    run(font_bridge+['--engine'], build, env, logs/'freetype-bridge.log')
+    run(font_bridge, build, env, logs/'freetype-bridge.log')
     for control in ('vm-transform', 'native-transform', 'pitch', 'limits', 'result', 'sort'):
         run(font_bridge+['--control', control], build, env, logs/('freetype-'+control+'.log'))
+    run([sys.executable, str(tests/'native64-freetype-register.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'freetype-register.log')
     graphics_init = [sys.executable, str(tests/'native64-graphics-init.py')]
     for module in ('prefab', 'freetype'):
         run(graphics_init+['--module', module, '--limbo', str(tools/'limbo')], build, env, logs/('graphics-init-'+module+'.log'))
