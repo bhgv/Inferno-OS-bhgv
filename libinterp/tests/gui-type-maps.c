@@ -4,6 +4,7 @@
 #include "runt.h"
 #include "draw.h"
 #include "prefab.h"
+#include "freetype.h"
 #include "pool.h"
 #include "raise.h"
 #include "nativeptrmap.h"
@@ -11,20 +12,25 @@
 #include <stdio.h>
 
 WRAPPERS
+FONT_WRAPPER
 static struct { void *pointer; ulong size; } blocks[256];
 static int live, checks, registrations;
+static Module registered; // Non-owning identity for the registration observation boundary.
 static Type leaf = {1, 0, 0, sizeof(WORD)};
 Type *TFont, *TImage, *TScreen, *TDisplay, *TElement, *TCompound, *TLayout;
+Type *TMatrix, *TVector, *TFace, *TGlyph; // Freetype descriptor creator owners.
 uchar fontmap[] = Draw_Font_map, imagemap[] = Draw_Image_map;
 uchar screenmap[] = Draw_Screen_map, displaymap[] = Draw_Display_map;
 uchar elementmap[] = Prefab_Element_map, compoundmap[] = Prefab_Compound_map;
 uchar layoutmap[] = Prefab_Layout_map;
-static int Drawmodtab[1], Prefabmodtab[1];
-enum {Drawmodlen = 1, Prefabmodlen = 1};
+static uchar Matrixmap[] = Freetype_Matrix_map, Vectormap[] = Freetype_Vector_map; // Scalar maps.
+static uchar Facemap[] = Freetype_Face_map, Glyphmap[] = Freetype_Glyph_map; // Rebuilt from native fields.
+static int Drawmodtab[1], Prefabmodtab[1], Freetypemodtab[1];
+enum {Drawmodlen = 1, Prefabmodlen = 1, Freetypemodlen = 1};
 Pool *heapmem;
 int mutator, nprop;
 void (*heapmonitor)(int, void*, ulong);
-char exType[] = "type", exHeap[] = "heap";
+char exType[] = "type", exHeap[] = "heap", exNomem[] = "nomem";
 
 /* Any unexpected layout or allocation error must fail the fixture. */
 void
@@ -98,10 +104,30 @@ markheap(Type *type, void *value)
 Module*
 builtinmod(char *name, void *table, int length)
 {
-	assert((strcmp(name, "$Draw") == 0 || strcmp(name, "$Prefab") == 0) && table && length == 1);
+	assert((strcmp(name, "$Draw") == 0 || strcmp(name, "$Prefab") == 0 || strcmp(name, "$Freetype") == 0) && table && length == 1);
 	registrations++;
-	return nil;
+	return &registered;
 }
+
+
+/* Registration refusal is outside this positive map fixture; provide bounded diagnostics. */
+void
+kgerrstr(char *output, uint bytes)
+{
+	if(bytes)
+		snprintf(output, bytes, "%s", "registration refused");
+}
+
+
+/* FreeType finalization requires a live library and is not exercised by map copying. */
+static void
+freeface(Heap *heap, int swept)
+{
+	(void)heap;
+	(void)swept;
+	abort();
+}
+
 
 /* Font finalization needs a live native font and is outside the map fixture. */
 void
@@ -242,12 +268,22 @@ main(int argc, char **argv)
 	ulong element[] = {offsetof(PElement, e.environ), offsetof(PElement, e.tag), offsetof(PElement, e.kids), offsetof(PElement, e.str), offsetof(PElement, e.mask), offsetof(PElement, e.image), offsetof(PElement, e.font)};
 	ulong compound[] = {offsetof(PCompound, c.image), offsetof(PCompound, c.environ), offsetof(PCompound, c.title), offsetof(PCompound, c.contents)};
 	ulong layout[] = {offsetof(Prefab_Layout, font), offsetof(Prefab_Layout, color), offsetof(Prefab_Layout, text), offsetof(Prefab_Layout, icon), offsetof(Prefab_Layout, mask), offsetof(Prefab_Layout, tag)};
-	struct Record { Type *type; ulong size, *offsets; int count; } records[7];
+	ulong scalar[] = {0};
+	ulong face[] = {offsetof(Face, freetypeface.familyname), offsetof(Face, freetypeface.stylename)};
+	ulong glyph[] = {offsetof(Freetype_Glyph, bitmap)};
+
+	struct Record {
+		Type *type; // Descriptor whose public fields must retain exactly the expected owners.
+		ulong size; // Full native record size, including deliberately unowned bytes.
+		ulong *offsets; // Independent list of managed reference locations.
+		int count; // Number of fields in that list.
+	} records[11];
 	int k, alias, mask, order;
 
 	drawmodinit();
 	prefabmodinit();
-	assert(registrations == 2);
+	freetypemodinit();
+	assert(registrations == 3);
 	records[0] = (struct Record){TFont, sizeof(DFont), font, 2};
 	records[1] = (struct Record){TImage, sizeof(DImage), image, 3};
 	records[2] = (struct Record){TScreen, sizeof(DScreen), screen, 3};
@@ -255,14 +291,18 @@ main(int argc, char **argv)
 	records[4] = (struct Record){TElement, sizeof(PElement), element, 7};
 	records[5] = (struct Record){TCompound, sizeof(PCompound), compound, 4};
 	records[6] = (struct Record){TLayout, sizeof(Prefab_Layout), layout, 6};
-	for(k = 0; k < 7; k++){
-		if(argc > 1 && strcmp(argv[1], k < 4 ? "draw" : "prefab") != 0)
+	records[7] = (struct Record){TMatrix, sizeof(Freetype_Matrix), scalar, 0};
+	records[8] = (struct Record){TVector, sizeof(Freetype_Vector), scalar, 0};
+	records[9] = (struct Record){TFace, sizeof(Face), face, 2};
+	records[10] = (struct Record){TGlyph, sizeof(Freetype_Glyph), glyph, 1};
+	for(k = 0; k < 11; k++){
+		if(argc > 1 && strcmp(argv[1], k < 4 ? "draw" : k < 7 ? "prefab" : "freetype") != 0)
 			continue;
 		for(alias = 0; alias < 2; alias++)for(order = 0; order < 2; order++)
 		for(mask = 0; mask < (1<<records[k].count); mask++)
 			one(records[k].type, records[k].size, records[k].offsets, records[k].count, alias, mask, order);
 	}
-	for(k = 0; k < 7; k++){
+	for(k = 0; k < 11; k++){
 		assert(records[k].type && records[k].type->ref == 1);
 		freetype(records[k].type);
 	}

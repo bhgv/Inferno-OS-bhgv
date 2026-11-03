@@ -13,6 +13,12 @@ on:
       - 'libinterp/disc.c'
       - 'utils/tests/native64-disc-binding.c'
       - 'utils/tests/native64-disc-binding.py'
+      - 'libinterp/prefab.c'
+      - 'libinterp/freetype.c'
+      - 'libinterp/tests/gui-type-maps.c'
+      - 'libinterp/tests/gui-type-maps.py'
+      - 'utils/tests/native64-graphics-init.c'
+      - 'utils/tests/native64-graphics-init.py'
       - 'libinterp/draw.c'
       - 'utils/tests/native64-draw-init.c'
       - 'utils/tests/native64-draw-init.py'
@@ -110,6 +116,22 @@ jobs:
         run: |
           set -euo pipefail
           python3 libinterp/tests/loader-snapshots.py 2>&1 | tee loader-snapshots-asan.log
+      - name: Execute native graphical descriptor and ownership checks
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all'
+        run: |
+          set -euo pipefail
+          for module in prefab freetype; do
+            python3 utils/tests/native64-graphics-init.py --module "$module" 2>&1 | tee -a graphics-init-asan.log
+            for control in retirement publication registration; do
+              python3 utils/tests/native64-graphics-init.py --module "$module" --control "$control" 2>&1 | tee -a graphics-init-asan.log
+            done
+          done
+          for control in face-map glyph-map; do
+            python3 utils/tests/native64-graphics-init.py --module freetype --control "$control" 2>&1 | tee -a graphics-init-asan.log
+          done
+          python3 libinterp/tests/gui-type-maps.py 2>&1 | tee gui-type-maps-asan.log
       - name: Preserve complete sanitizer diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -123,5 +145,7 @@ jobs:
             loader-init-asan.log
             loader-branch-asan.log
             loader-snapshots-asan.log
+            graphics-init-asan.log
+            gui-type-maps-asan.log
           if-no-files-found: warn
           retention-days: 14

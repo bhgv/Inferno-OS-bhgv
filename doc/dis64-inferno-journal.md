@@ -5974,3 +5974,38 @@ cleanup delegates retained freetype under exclusion, drops only its new staged
 creator owners and never undoes Sys ownership. No native-cell adapter source
 is imported/replayed; other plain C/JIT accesses still require serialized managed
 admission. No shared Dis64 ID, native pointer encoding or activation change.
+
+
+## INFERNO-0092 — 2026-11-03 — native font roots and graphical publication
+
+Received FLASHVM0083/0084 through55c9776d. Owning0091 full matrix41587971674
+now passes native ARM64/x64 and QEMU RV64, alongside focused address/Bionic.
+
+New production data-ABI defect: legacy Freetype Face map0x06 on LP64 WORD32/ref64
+marks private FT handles at40/48 instead of managed name Strings at24/32
+(correct0x18). Glyph bitmap at24 needs0x10; legacy0x02 targets beyond the32-byte
+native record and dtype refuses. Maps now derive actual native public fields;
+Matrix/Vector remain pointer-free and private FT handles remain excluded.
+These are native C maps, NOT a new shared Dis64 map declaration or layout ID.
+
+Freetype and Prefab initialization now stage local maps/Types, check allocation/
+registration, rollback all creator owners, preserve diagnostics, refuse partial
+state unchanged and make complete init idempotent under VM init exclusion.
+Native FT rendering/destructor bodies and Tk/security/crypto are untouched.
+
+Local O3 UBSan: Prefab14/Freetype23 cases per WORD32/64; eight strict semantic
+controls (including restoring both old font maps). Existing actual heap/initmem/
+incmem/freeptrs map suite adds four font records:1072 allocation/copy/alias/drop
+cases per model with all excluded bytes preserved. Its registration stub now
+returns a nonnil identity, not actual module registration. Legacy LSan opt-out
+is explicit; generated checks remain active under NDEBUG. Full consumers compile
+with fresh classic -t tables; Prefab remains absent from default OFILES. New
+native/address/Bionic gates are prepared; source-specific target results pending.
+
+Read HEAP-COUNTS.md atc489a13c53733678e068987b9119b687668aaa5f. Retain/source
+lifetime, LIVE no-post-read, LAST retirement vs gchalt C-stack protection and
+atomic observation not COW uniqueness remain separate obligations. Directional
+protocol review only, no adapter replay/import or parallel owning admission.
+Received0084 explicit C retains with emitted JIT/other plain sites still excluded.
+No shared IDs, native pointer serialization, file CALL/LEA8 activation or full GUI
+readiness is inferred from this native descriptor fix.

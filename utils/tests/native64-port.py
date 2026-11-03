@@ -191,6 +191,13 @@ def main():
     run(loader_branch, build, env, logs/'loader-branch.log')
     for control in ('width', 'bounds'):
         run(loader_branch+['--control', control], build, env, logs/('loader-branch-'+control+'.log'))
+    graphics_init = [sys.executable, str(tests/'native64-graphics-init.py')]
+    for module in ('prefab', 'freetype'):
+        run(graphics_init+['--module', module, '--limbo', str(tools/'limbo')], build, env, logs/('graphics-init-'+module+'.log'))
+        controls = ('retirement', 'publication', 'registration')+(('face-map', 'glyph-map') if module == 'freetype' else ())
+        for control in controls:
+            run(graphics_init+['--module', module, '--control', control], build, env, logs/('graphics-init-'+module+'-'+control+'.log'))
+    run([sys.executable, str(build/'libinterp/tests/gui-type-maps.py')], build, env, logs/'gui-type-maps.log')
     loader_init = [sys.executable, str(tests/'native64-loader-init.py')]
     run(loader_init, build, env, logs/'loader-init.log')
     for control in ('retirement', 'publication', 'registration'):

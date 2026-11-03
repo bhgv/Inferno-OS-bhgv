@@ -4,6 +4,7 @@
 #include "isa.h"
 #include "runt.h"
 #include "raise.h"
+#include "nativeptrmap.h"
 #include "freetypemod.h"
 #include "freetype.h"
 
@@ -27,16 +28,70 @@ static uchar	Glyphmap[] = Freetype_Glyph_map;
 static void		freeface(Heap*, int);
 static Face*	ckface(Freetype_Face*);
 
+
+/* Build pointer maps from native public fields, excluding private FT handles.
+ * Caller holds VM initialization exclusion. Stage every descriptor and retain
+ * registration diagnostics until all creator owners can be published together. */
 void
 freetypemodinit(void)
 {
-	builtinmod("$Freetype", Freetypemodtab, Freetypemodlen);
-	TMatrix = dtype(freeheap, sizeof(Freetype_Matrix), Matrixmap, sizeof(Matrixmap));
-	TVector = dtype(freeheap, sizeof(Freetype_Vector), Vectormap, sizeof(Vectormap));
-	TFace = dtype(freeface, sizeof(Face), Facemap, sizeof(Facemap));
-	TGlyph = dtype(freeheap, sizeof(Freetype_Glyph), Glyphmap, sizeof(Glyphmap));
+	Type *types[4] = {nil};
+	uchar matrixbits[sizeof(Matrixmap)], vectorbits[sizeof(Vectormap)];
+	uchar facebits[sizeof(Facemap)], glyphbits[sizeof(Glyphmap)];
+	char reason[ERRMAX], *failure;
+	int i;
+
+	if(TMatrix != nil || TVector != nil || TFace != nil || TGlyph != nil){
+		if(TMatrix != nil && TVector != nil && TFace != nil && TGlyph != nil)
+			return;
+		error("partial Freetype type initialization");
+		return;
+	}
+	memset(matrixbits, 0, sizeof(matrixbits));
+	memset(vectorbits, 0, sizeof(vectorbits));
+	memset(facebits, 0, sizeof(facebits));
+	nativefieldmap(facebits, Face, freetypeface.familyname);
+	nativefieldmap(facebits, Face, freetypeface.stylename);
+	memset(glyphbits, 0, sizeof(glyphbits));
+	nativefieldmap(glyphbits, Freetype_Glyph, bitmap);
+
+	failure = exNomem;
+	types[0] = dtype(freeheap, sizeof(Freetype_Matrix), matrixbits, sizeof(matrixbits));
+	if(types[0] == nil)
+		goto failed;
+	types[1] = dtype(freeheap, sizeof(Freetype_Vector), vectorbits, sizeof(vectorbits));
+	if(types[1] == nil)
+		goto failed;
+	types[2] = dtype(freeface, sizeof(Face), facebits, sizeof(facebits));
+	if(types[2] == nil)
+		goto failed;
+	types[3] = dtype(freeheap, sizeof(Freetype_Glyph), glyphbits, sizeof(glyphbits));
+	if(types[3] == nil)
+		goto failed;
+	if(builtinmod("$Freetype", Freetypemodtab, Freetypemodlen) == nil){
+		reason[0] = 0;
+		kgerrstr(reason, sizeof(reason));
+		reason[sizeof(reason)-1] = 0;
+		failure = reason[0] != 0 ? reason : "Freetype module registration failed";
+		goto failed;
+	}
+	memmove(Matrixmap, matrixbits, sizeof(Matrixmap));
+	memmove(Vectormap, vectorbits, sizeof(Vectormap));
+	memmove(Facemap, facebits, sizeof(Facemap));
+	memmove(Glyphmap, glyphbits, sizeof(Glyphmap));
+	TMatrix = types[0];
+	TVector = types[1];
+	TFace = types[2];
+	TGlyph = types[3];
+	return;
+failed:
+	for(i=0; i<4; i++)
+		freetype(types[i]);
+	error(failure);
 }
 
+
+/* Query native character coverage while releasing VM exclusion for library work. */
 void
 Face_haschar(void *fp)
 {
