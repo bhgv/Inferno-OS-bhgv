@@ -1,7 +1,10 @@
 #include "lib9.h"
 #include "draw.h"
 
-static char channames[] = "rgbkamx";
+static char channames[] = "rgbkamx"; // Native nibble-to-protocol component names.
+
+
+/* Emit at most four protocol components; a native ulong is not a wider channel format. */
 char*
 chantostr(char *buf, ulong cc)
 {
@@ -28,6 +31,7 @@ chantostr(char *buf, ulong cc)
 	return buf;
 }
 
+
 /* avoid pulling in ctype when using with drawterm etc. */
 static int
 iswhitespace(char c)
@@ -35,14 +39,19 @@ iswhitespace(char c)
 	return c==' ' || c== '\t' || c=='\r' || c=='\n';
 }
 
+
+/* Parse one canonical 32-bit channel token without silently dropping earlier components. */
 ulong
 strtochan(char *s)
 {
 	char *p, *q;
 	ulong c;
-	int t, n;
+	int t, n, count;
 
 	c = 0;
+	count = 0;
+	if(s == nil)
+		return 0;
 	p=s;
 	while(*p && iswhitespace(*p))
 		p++;
@@ -54,17 +63,24 @@ strtochan(char *s)
 		if(p[1] < '0' || p[1] > '9')
 			return 0;
 		n = p[1]-'0';
+		if(n < 1 || n > 8 || count == 4)
+			return 0;
+		count++;
 		c = (c<<8) | __DC(t, n);
 		p += 2;
 	}
-	return c;
+	return chantodepth(c) == 0 ? 0 : c;
 }
 
+
+/* Keep depth within the protocol width on both 32-bit and 64-bit native hosts. */
 int
 chantodepth(ulong c)
 {
 	int n;
 
+	if((uvlong)c > 0xffffffffUL)
+		return 0;
 	for(n=0; c; c>>=8){
 		if(TYPE(c) >= NChan || NBITS(c) > 8 || NBITS(c) <= 0)
 			return 0;

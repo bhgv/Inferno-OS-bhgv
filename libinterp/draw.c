@@ -2694,17 +2694,29 @@ freedrawfont(Heap *h, int swept)
 		display_dec(reference);
 }
 
+
+/* Finish channel conversion and String allocation before replacing an aliased old result owner. */
 void
 Chans_text(void *fp)
 {
 	F_Chans_text *f;
 	char buf[16];
+	String *created;
+	void *old, *slot;
+	ulong descriptor;
 
 	f = fp;
-	destroy(*f->ret);
-	*f->ret = H;
-	if(chantostr(buf, f->c.desc) != nil)
-		retstr(buf, f->ret);
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	descriptor = f->c.desc;
+	created = H;
+	if(chantostr(buf, descriptor) != nil)
+		retstr(buf, &created);
+	drawcommitresult(slot, created, old);
 }
 
 
@@ -2733,13 +2745,23 @@ Chans_eq(void *fp)
 	memmove(f->ret, &result, sizeof(result));
 }
 
+
+/* Capture the source String and publish the complete channel value without requiring result alignment. */
 void
 Chans_mk(void *fp)
 {
 	F_Chans_mk *f;
+	Draw_Chans result;
+	String *source;
+	void *slot;
 
 	f = fp;
-	f->ret->desc = strtochan(string2c(f->s));
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(result))
+		error(exHeap);
+	source = f->s;
+	result.desc = strtochan(string2c(source));
+	memmove(slot, &result, sizeof(result));
 }
 
 
@@ -3199,45 +3221,68 @@ installsubfont(char *name, Subfont *subfont)
 		c->ref++;
 }
 
-/*
- * BUG version
- */
+
+/* Build an owned full path and probe complete suffixes without fixed buffers or truncation. */
 char*
 subfontname(char *cfname, char *fname, int maxdepth)
 {
-	char *t, *u, tmp1[256], tmp2[256];
+	char *path, *slash;
+	uvlong namesize, prefix, length;
 	int i, fd;
 
+	if(cfname == nil)
+		return nil;
 	if(strcmp(cfname, deffontname) == 0)
 		return strdup(cfname);
-	t = cfname;
-	if(t[0] != '/'){
-		strcpy(tmp2, fname);
-		u = utfrrune(tmp2, '/');
-		if(u)
-			u[0] = 0;
-		else
-			strcpy(tmp2, ".");
-		snprint(tmp1, sizeof tmp1, "%s/%s", tmp2, t);
-		t = tmp1;
+	namesize = strlen(cfname);
+	prefix = 0;
+	slash = nil;
+	length = namesize;
+	if(cfname[0] != '/'){
+		if(fname == nil)
+			return nil;
+		slash = strrchr(fname, '/');
+		prefix = slash == nil ? 1 : (uvlong)(slash-fname);
+		if(namesize >= 0x7ffffffcUL || prefix > 0x7ffffffbUL-namesize){
+			kwerrstr("subfont path too long");
+			return nil;
+		}
+		length += prefix+1;
 	}
-
+	if(length > 0x7ffffffcUL){
+		kwerrstr("subfont path too long");
+		return nil;
+	}
+	path = malloc((ulong)length+3);
+	if(path == nil)
+		return nil;
+	if(cfname[0] == '/')
+		memmove(path, cfname, namesize);
+	else{
+		if(slash == nil)
+			path[0] = '.';
+		else
+			memmove(path, fname, prefix);
+		path[prefix] = '/';
+		memmove(path+prefix+1, cfname, namesize);
+	}
+	path[length] = '\0';
 	if(maxdepth > 8)
 		maxdepth = 8;
-
-	for(i=3; i>=0; i--){
+	for(i = 3; i >= 0; i--){
 		if((1<<i) > maxdepth)
 			continue;
-		/* try i-bit grey */
-		snprint(tmp2, sizeof tmp2, "%s.%d", t, i);
-		fd = libopen(tmp2, OREAD);
+		path[length] = '.';
+		path[length+1] = '0'+i;
+		path[length+2] = '\0';
+		fd = libopen(path, OREAD);
 		if(fd >= 0){
 			libclose(fd);
-			return strdup(tmp2);
+			return path;
 		}
 	}
-
-	return strdup(t);
+	path[length] = '\0';
+	return path;
 }
 
 

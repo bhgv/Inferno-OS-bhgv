@@ -42,6 +42,8 @@ on:
       - 'utils/tests/native64-curves*'
       - 'utils/tests/native64-primitives*'
       - 'utils/tests/native64-text*'
+      - 'utils/tests/native64-channels*'
+      - 'utils/tests/dis64-peer-schema.py'
       - 'utils/tests/native64-draw-owners*'
       - 'utils/tests/native64-draw-init*'
       - 'utils/tests/native64-refresh*'
@@ -480,5 +482,70 @@ jobs:
             draw-owner-maps.log
             draw-owner-windows.log
             draw-owners-asan.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  channels:
+    name: Channels and full subfont paths ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap compiler for the owning channel Frame64 declarations
+        run: MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/channel-tools" sh makemk.sh
+      - name: Check protocol width, actual String owners and complete file paths
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-channels.py --limbo "$RUNNER_TEMP/channel-tools/limbo" 2>&1 | tee channels-asan.log
+      - name: Preserve channel diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-channels-${{ matrix.arch }}
+          path: channels-asan.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  peer-schema:
+    name: Independent FlashVM partial Dis64 schema
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout the independently reviewed schema reader and report
+        uses: actions/checkout@v4
+        with:
+          repository: bhgv/flashVM
+          ref: 92f2dafdb21e7554ea91b3de679f56505762bf5b
+          path: .dis64-peer-schema
+          sparse-checkout: |
+            disVM/envelope/tests
+            disVM/envelope/reports
+      - name: Compare exact corpus and preserve schema versus admission boundaries
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-peer-schema.py --peer-root .dis64-peer-schema --report peer-schema.json 2>&1 | tee peer-schema.log
+          for control in identity schema authority; do
+            python3 utils/tests/dis64-peer-schema.py --peer-root .dis64-peer-schema --control "$control" 2>&1 | tee -a peer-schema.log
+          done
+      - name: Preserve independent partial-schema evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dis64-independent-partial-schema
+          path: |
+            peer-schema.json
+            peer-schema.log
           if-no-files-found: warn
           retention-days: 14
