@@ -54,3 +54,19 @@ matrix repeats those gates. JIT opcode coverage and scalar file admission are
 unchanged. The remaining full AWM blockers include complete Draw registration,
 resource/device/refresh lifecycle, managed calls/imports and scheduler/GC proof.
 No shared Dis64 IDs/layout or native pointers on wire are changed.
+
+## Published acceptance
+
+Production source: d580379a38627f744b2867fb76b2fbf9824f4b3e.
+Native ARM64 and x64 ASan/UBSan both pass41619620436, including this
+new scalar consumer, geometry and registration/ownership gates. Actual logs
+confirm291096 predicates per WORD32/WORD32-file, early model guards and
+strict scalar result control on each native architecture. The same
+new scalar test also passes local synthetic port aliases under O3 UBSan.
+Complete classic-mk41619620285 is still running and is separate evidence.
+
+The owning89-export inventory has19 geometry bodies in geom.c and70 in draw.c,
+with no missing definitions. Executed coherent-frame coverage is29/89 functions
+(19 geometry plus10 scalar); the remaining60 have compilation evidence only.
+This is function-level C ABI coverage, not JIT opcode coverage, state-space
+coverage, complete Draw registration or full AWM readiness.

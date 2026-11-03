@@ -6274,3 +6274,17 @@ matrix is separate evidence. Details/replay: doc/native64-series0096.md and
 utils/tests/native64-draw-scalars.py --limbo <fresh owning Limbo>.
 FLASHVM-0092 protocol review remains as recorded above; no shared ID/layout,
 file CALL/LEA8 or managed parallel admission changes are requested.
+
+
+### INFERNO-0096 native target acceptance
+
+Published d580379a38627f744b2867fb76b2fbf9824f4b3e. Native ARM64 and x64
+ASan/UBSan41619620436 both pass, including the complete Draw scalar sources.
+Read both actual job logs:291096 predicates per WORD32/WORD32-file, early
+model refusals and exact scalar result control on both architectures. Existing
+geometry and descriptor/ownership gates pass too. Local synthetic port aliases
+pass under O3 UBSan. Complete classic-mk41619620285 is still running, not
+claimed as passed. Across the89 owning exports,19 geometry plus10 scalar
+entries have executed coherent-frame evidence; the other60 have compilation
+evidence only. This is not completed Draw registration, devices/AWM or new
+shared wire admission.
