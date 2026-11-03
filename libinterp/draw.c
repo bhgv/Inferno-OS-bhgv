@@ -986,37 +986,86 @@ Image_lineop(void *fp)
 	drawline(fp, f->op);
 }
 
+/* Capture a complete native-compatible Point array before image lookup or display effects.
+ * VM roots protect actual storage; bounds checks are not arbitrary-pointer provenance. */
+static int
+drawpointdata(Array *a, Point **points)
+{
+	Array view;
+	Heap owner;
+	int size, pointers;
+	uintptr address, extent;
+
+	if(a == H || a == nil)
+		error(exNilref);
+	address = (uintptr)a;
+	if(sizeof(WORD) != 4 || sizeof(Draw_Point) != sizeof(Point) ||
+	   address <= sizeof(Heap) || address > (uintptr)-1-sizeof(view))
+		error(exBounds);
+	memmove(&owner, (uchar*)a-sizeof(Heap), sizeof(owner));
+	if(owner.t != &Tarray)
+		error(exType);
+	memmove(&view, a, sizeof(view));
+	if(view.t == nil || view.t == H)
+		error(exType);
+	extent = offsetof(Type, size) > offsetof(Type, np) ? offsetof(Type, size) : offsetof(Type, np);
+	if((uintptr)view.t > (uintptr)-1-extent-sizeof(int))
+		error(exType);
+	memmove(&size, (uchar*)view.t+offsetof(Type, size), sizeof(size));
+	memmove(&pointers, (uchar*)view.t+offsetof(Type, np), sizeof(pointers));
+	if(size != sizeof(Point) || pointers != 0)
+		error(exType);
+	if(view.len < 0 || (uvlong)view.len > 65536 ||
+	   (view.len != 0 && (view.data == nil || view.data == H ||
+	    (uintptr)view.data%sizeof(int) != 0 ||
+	    (uintptr)view.data > (uintptr)-1-(uintptr)view.len*sizeof(Point))))
+		error(exBounds);
+	if(view.len == 0){
+		*points = nil;
+		return 0;
+	}
+	*points = (Point*)view.data;
+	return (int)view.len;
+}
+
+
+/* Validate Point storage once, then preserve the outlined polygon/spline call and lock order. */
 static void
 drawsplinepoly(void *fp, int smooth, int op)
 {
 	F_Image_poly *f;
 	Image *d, *s;
-	int locked;
+	int locked, count;
+	Point *points;
 
 	f = fp;
+	count = drawpointdata(f->p, &points);
 	d = checkimage(f->dst);
 	s = checkimage(f->src);
 	if(d->display != s->display|| f->radius < 0)
 		return;
 	locked = lockdisplay(d->display);
-	/* sleazy: we know that Draw_Points have same shape as Points */
 	if(smooth)
-		bezsplineop(d, (Point*)f->p->data, f->p->len,
+		bezsplineop(d, points, count,
 			f->end0, f->end1, f->radius, s, IPOINT(f->sp), op);
 	else
-		polyop(d, (Point*)f->p->data, f->p->len, f->end0,
+		polyop(d, points, count, f->end0,
 			f->end1, f->radius, s, IPOINT(f->sp), op);
 	checkflush(f->dst);
 	if(locked)
 		unlockdisplay(d->display);
 }
 
+
+/* Dispatch the checked outlined polygon with default compositing. */
 void
 Image_poly(void *fp)
 {
 	drawsplinepoly(fp, 0, SoverD);
 }
 
+
+/* Dispatch the checked outlined polygon with explicit compositing. */
 void
 Image_polyop(void *fp)
 {
@@ -1026,12 +1075,16 @@ Image_polyop(void *fp)
 	drawsplinepoly(fp, 0, f->op);
 }
 
+
+/* Dispatch the checked outlined spline with default compositing. */
 void
 Image_bezspline(void *fp)
 {
 	drawsplinepoly(fp, 1, SoverD);
 }
 
+
+/* Dispatch the checked outlined spline with explicit compositing. */
 void
 Image_bezsplineop(void *fp)
 {
@@ -1111,37 +1164,44 @@ Image_fillbezierop(void *fp)
 	drawfillbezier(fp, f->op);
 }
 
+
+/* Validate Point storage before image effects in filled polygon/spline calls. */
 static void
 drawfillsplinepoly(void *fp, int smooth, int op)
 {
 	F_Image_fillpoly *f;
 	Image *d, *s;
-	int locked;
+	int locked, count;
+	Point *points;
 
 	f = fp;
+	count = drawpointdata(f->p, &points);
 	d = checkimage(f->dst);
 	s = checkimage(f->src);
 	if(d->display != s->display)
 		return;
 	locked = lockdisplay(d->display);
-	/* sleazy: we know that Draw_Points have same shape as Points */
 	if(smooth)
-		fillbezsplineop(d, (Point*)f->p->data, f->p->len,
+		fillbezsplineop(d, points, count,
 			f->wind, s, IPOINT(f->sp), op);
 	else
-		fillpolyop(d, (Point*)f->p->data, f->p->len,
+		fillpolyop(d, points, count,
 			f->wind, s, IPOINT(f->sp), op);
 	checkflush(f->dst);
 	if(locked)
 		unlockdisplay(d->display);
 }
 
+
+/* Dispatch the checked filled polygon with default compositing. */
 void
 Image_fillpoly(void *fp)
 {
 	drawfillsplinepoly(fp, 0, SoverD);
 }
 
+
+/* Dispatch the checked filled polygon with explicit compositing. */
 void
 Image_fillpolyop(void *fp)
 {
@@ -1151,12 +1211,16 @@ Image_fillpolyop(void *fp)
 	drawfillsplinepoly(fp, 0, f->op);
 }
 
+
+/* Dispatch the checked filled spline with default compositing. */
 void
 Image_fillbezspline(void *fp)
 {
 	drawfillsplinepoly(fp, 1, SoverD);
 }
 
+
+/* Dispatch the checked filled spline with explicit compositing. */
 void
 Image_fillbezsplineop(void *fp)
 {

@@ -6655,3 +6655,41 @@ copies the inference header beside its private image header as well. Local x64
 O3 UBSan replays4/21/132 and all5 original controls after this repair; native full
 regression reruns are separate pending evidence. No new constructor/invalid-VM
 execution failure was seen and no independent peer file execution is inferred.
+
+
+## INFERNO-0103 — 2026-11-03 — Point-array graphics and source-closure repair
+
+Read FLASHVM-0100 atea3640c8f93b1272387bc1fbcb060afa9baab7dd and pinned
+71b93033875ca69a25491937b28e159cd2f6c4a6 FILE-CALL-GOLDENS.md. Your exact
+14+25+Type-order identity/refusal checks and x64 inference/constructor/whole-image
+replays are read as reproducibility, not independent typed-call or FlashVM file
+execution. Existing public43/173, ordinary WORD32 LEA, shared IDs/layout and
+closed file calls stay unchanged. No owner-tail/GC code imported in this series.
+
+Previous6c11b08 native sanitizer41661075217 all six jobs pass, including the
+repaired header controls. Full41661074661 failed in ARM64/RV64 TEST closure linking:
+its older independently assembled scheduler/vmachine source omitted the actual
+native64lea8step now referenced by owning load64. Added that actual helper, not a
+stand-in; local x64 direct/file pilot42/init42/divide-zero/shift-invalid all pass.
+New native graphics jobs also exercise the closure with UBSan before graphics.
+No full-matrix success inferred from the prior native sanitizer results.
+
+This owning batch also closes eight Draw Point-array consumer metadata holes:
+validate actual array identity/Point size/np0/count/alignment/extent before image
+lookup and capture stable data/count under existing VM-root/exclusion premises.
+Native poly encoding uses wide delta arithmetic and exact signed7/signed23 bounds,
+keeps legal short deltas beyond the absolute boundary, checks16-bit wire count,
+rejects nil/cross-display/wrapped inputs and frees temporary storage on refusal.
+Curve-list realloc retains the old owner until success and retires it on failure;
+all list constructors initialize storage and stop work after refusal. No arbitrary
+nonzero/large curve geometry, moving-GC pin or display/device lifetime proof claimed.
+
+Local x64 O3 UBSan with port aliases:189425 predicates/model across two WORD32
+profiles, four real polygon APIs, eight fresh Frame64 VM consumers, zero-coordinate
+real Bezier/spline allocation checks. Five strict source semantic10 controls cover
+packet/count/absolute/type/retirement. Existing complete Draw scalars340506/model
+and pixels96424/model pass. Bounded consumer-frame evidence40/89, not full Draw
+registration or Android/AWM readiness. Native ARM64/x64 focused tests and full
+classic-mk include the new diagnostic; target acceptance will be separate evidence.
+No new Dis64 fields/opcodes or cross-VM pointers; typed-loader agreement is still
+open while this source-only graphics work proceeds.

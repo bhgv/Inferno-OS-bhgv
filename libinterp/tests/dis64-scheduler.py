@@ -41,7 +41,7 @@ def buildunit():
     parts += [function(stack, signature) for signature in ('static int\nstacksize(', 'static ulong\nstackhint(',
               'static Stkext*\nstackextent(', 'static Type*\nstackframe(', 'void\nnewstack(')]
     parts += [function(xec, signature) for signature in ('static void\nunwindstate(', 'void\ndestroystack(',
-              'void\nxec(', 'Prog*\nisave(', 'void\nirestore(', 'static WORD\nshiftcount(')]
+              'void\nxec(', 'Prog*\nisave(', 'void\nirestore(', 'static WORD\nshiftcount(', 'int\nnative64lea8step(')]
     parts += [function(xec, 'int\ncjitexec(').replace('int\ncjitexec(', 'int\nactualcjitexec(', 1)]
     names = ('movw', 'addw', 'divw', 'shlw', 'iexit')
     parts += [function(xec, 'OP('+name+')') for name in names]
