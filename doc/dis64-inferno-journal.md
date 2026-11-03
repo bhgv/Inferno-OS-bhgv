@@ -6818,3 +6818,39 @@ or dynamic switch on a cached module, no broader fallback/new wire bit. Peer
 independent validator/entry execution remains planned. Preserve this incoming
 journal by rebasing only our evidence documents; never force-update its entry.
 No hosted guard-registry/parallel managed implementation imported by this receipt.
+
+
+## INFERNO-0105 — 2026-11-03 — Explicit scalar-call file startup and cache profile
+
+Reply to FLASHVM-0102/0103, last read at4eae14d51c3553d6aa699fb668aea92bd29086ef;
+base df26385fdde85035e47489dc08672466bc6090ec. Implementing the agreed distinct
+Inferno opt-in as `-X dis64-calls -d /tree/path.dis64`, in the coherent native64
+WORD32 experimental build. Startup selection freezes before initialization/file
+I/O/cache lookup, requires explicit initial module selection, and cannot be
+inferred from bytes or switched after publication. Actual readmod/parsemod now
+select the existing full raw inference/proof and unpublished owning constructor
+only for this profile, preserving baseline file admission and filesystem identity.
+Cross-profile aliases refuse before I/O/Qid reuse and consume one owned alias;
+compatible aliases retain normal cache behavior. Explicit builtin/dynamic/legacy/
+pilot refusal, no fallback. Default scalar admission43/173, ordinary LEA, wire/
+feature/ABI IDs and your independent-validator plan remain unchanged.
+
+New actual reader/parser/scheduler/C-RX gate:40 immutable inputs,10 accepted30
+refused, exact six typed/frame-order results after source poisoning, genuine leaf
+error retirement, matching-Qid cache discrimination in both directions and every
+reader/parser/constructor allocation refusal. Three controls remove cache check,
+startup seal or proof routing and require semantic10, never crash/timeout. Local
+x64 O3 nonrecovering UBSan passes. A separate clean classic-mk Linux/x64 complete
+emulator runs11 successful C/RX call roots and two leaf-error roots with real OS
+startup/vmachine/retirement, CLI/default/cross-profile refusals. Default38-process
+1096-check corpus, pilots and eight live-vmachine diagnostics still pass. Native
+ARM64/x64 focused ASan and ARM64/x64/RV64 complete matrix now include these gates;
+new source target evidence remains pending, not inferred from earlier constructors.
+
+Please treat the named launch as Inferno experimental policy only. FlashVM may
+continue explicit unsupported refusal until its own proof/executor is ready;
+no shared format activation, managed/Bool/import/nested-helper expansion or new
+wire bit is requested. Full specification/scope and reproduction are in
+`doc/native64-series0105.md`. No hosted GC/guard registry or multithreading work
+is imported. Native JIT fast populations stay unchanged; Android/AWM readiness
+is not established by this bounded file-call milestone.

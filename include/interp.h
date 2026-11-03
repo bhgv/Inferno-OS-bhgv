@@ -558,9 +558,12 @@ extern	void		noptrs(Type*, void*);
 extern	int		nprog(void);
 extern	void		opinit(void);
 extern	Module*		parsemod(char*, uchar*, ulong, Dir*);
-/* Experimental scalar construction returns an unpublished owner; no readmod routing. */
+/* Scalar constructors return unpublished owners; file admission belongs to the selected loader. */
 extern	Module*		prepare64pilot(char*, uchar*, ulong, int);
-extern	Module*		prepare64calls(char*, uchar*, ulong, int); // Unpublished scalar-call construction; never readmod admission.
+extern	Module*		prepare64calls(char*, uchar*, ulong, int); // Unpublished checked owner; caller supplies file policy.
+extern	int		dis64selectlaunch(char*); // Startup-only named Inferno experimental selection.
+extern	int		dis64launchmode(void); // Freeze and read host startup policy, not wire admission.
+extern	int		dis64launchcompatible(Module*); // Cache profile compatibility, never proof authority.
 extern	Module*		parsedmod(char*, int, ulong, Qid);
 extern	void		prefabmodinit(void);
 extern	Prog*		progn(int);

@@ -141,3 +141,15 @@ requeue convergence. The2029-case synchronous oracle/13 controls compare every
 reached set. Context provenance/callable return composition remains before new
 file calls; no native fast-path or43-op admission count changes. See
 [numeric scope](dis64-local-initialized.md) and [series0078](native64-series0078.md).
+
+## Explicit scalar-call startup (series0105)
+
+The ordinary/default43-op admission remains unchanged. A distinct startup-only
+`-X dis64-calls -d module.dis64` now selects full raw-image proof and owned scalar
+root-to-leaf Int32/Big/Real lowering through actual file loading; it never falls
+back to ordinary/pilot/dynamic/builtin loading or switches a cached module's mode.
+This is the staged Inferno policy explicitly agreed in FLASHVM-0102/0103, not
+FlashVM executor acceptance or full managed bytecode admission. Native fast and
+complete JIT+C populations above do not change. See [series0105](native64-series0105.md)
+for matching-Qid cache isolation, exact scheduled C/RX results, complete classic-mk
+emulator evidence and separate pending native target acceptance.

@@ -241,8 +241,10 @@ dis64parse(DisLoad *load)
 		kwerrstr("security violation: not signed");
 		return 0;
 	}
-	load->m = module = prepare64pilot(load->path, load->code, load->length,
-		cflag && !dontcompile);
+	if(dis64launchmode())
+		load->m = module = prepare64calls(load->path, load->code, load->length, cflag && !dontcompile);
+	else
+		load->m = module = prepare64pilot(load->path, load->code, load->length, cflag && !dontcompile);
 	if(module == nil)
 		return 0;
 	directory = load->dir;
@@ -299,6 +301,10 @@ disparse(void *arg)
 	/* A recognized Dis64 image never falls through to the legacy operand reader. */
 	if(disneed(code, end, sizeof(dis64magic)) && memcmp(code, dis64magic, sizeof(dis64magic)) == 0)
 		return dis64parse(c);
+	if(dis64launchmode()){
+		kwerrstr("experimental dis64-calls requires a checked Dis64 call image");
+		return 0;
+	}
 #endif
 #ifdef DIS_NATIVE64_SCALAR_BOOT
 	kwerrstr("native64 scalar startup accepts only checked Dis64 scalar images");

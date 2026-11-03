@@ -18,6 +18,14 @@ readmod(char *path, Module *m, int sync)
 	ulong length;
 
 	if(path[0] == '$') {
+#ifdef DIS64_PILOT_LOADER
+		if(dis64launchmode()){
+			kwerrstr("experimental dis64-calls does not admit builtin imports");
+			if(m != nil)
+				unload(m);
+			return nil;
+		}
+#endif
 #ifdef DIS_NATIVE64_SCALAR_BOOT
 		kwerrstr("builtin modules are unavailable in native64 scalar startup");
 		return nil;
@@ -26,6 +34,16 @@ readmod(char *path, Module *m, int sync)
 			kwerrstr("module not built-in");
 		return m;
 	}
+
+#ifdef DIS64_PILOT_LOADER
+	/* Seal before releasing VM admission and reject cache aliases across profiles. */
+	(void)dis64launchmode();
+	if(m != nil && !dis64launchcompatible(m)){
+		kwerrstr("module cache does not match the selected Dis64 launch profile");
+		unload(m);
+		return nil;
+	}
+#endif
 
 	ans = nil;
 	code = nil;
@@ -57,7 +75,11 @@ readmod(char *path, Module *m, int sync)
 		goto done;
 	}
 #ifndef DIS_NATIVE64_SCALAR_BOOT
-	if((d->mode&0111) && dynldable(fd)){
+	if(
+#ifdef DIS64_PILOT_LOADER
+	   !dis64launchmode() &&
+#endif
+	   (d->mode&0111) && dynldable(fd)){
 		dynld = 1;
 		goto done1;
 	}

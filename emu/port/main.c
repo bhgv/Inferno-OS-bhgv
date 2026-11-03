@@ -11,6 +11,7 @@
 int		rebootargc = 0;
 char**		rebootargv;
 static	char	*imod = "/dis/emuinit.dis";
+static int imodexplicit; // A selected call profile requires an explicit initial module.
 extern	char*	hosttype;
 char*	tkfont;	/* for libtk/utils.c */
 int	tkstylus;	/* libinterp/tk.c */
@@ -36,6 +37,7 @@ usage(void)
 		"\t-gXxY\n"
 		"\t-c[0-9]\n"
 		"\t-d file.dis\n"
+		"\t-X dis64-calls (experimental; requires -d module.dis64)\n"
 		"\t-s\n"
 		"\t-v\n"
 		"\t-p<poolname>=maxsize\n"
@@ -119,6 +121,8 @@ poolopt(char *str)
 		usage();
 }
 
+
+/* Apply explicit command-line or EMU startup options before namespace initialization. */
 static void
 option(int argc, char *argv[], void (*badusage)(void))
 {
@@ -147,9 +151,18 @@ option(int argc, char *argv[], void (*badusage)(void))
 	case 'I':	/* (temporary option) run without cons */
 		dflag++;
 		break;
+	case 'X':		/* Explicit startup-only experimental file profile. */
+#ifdef DIS64_PILOT_LOADER
+		if(!dis64selectlaunch(EARGF(badusage())))
+			badusage();
+#else
+		badusage();
+#endif
+		break;
 	case 'd':		/* run as a daemon */
 		dflag++;
 		imod = EARGF(badusage());
+		imodexplicit = 1;
 		break;
 	case 's':		/* No trap handling */
 		sflag++;
@@ -191,6 +204,18 @@ option(int argc, char *argv[], void (*badusage)(void))
 		vflag = 1;	/* print startup messages */
 		break;
 	} ARGEND
+}
+
+
+/* Finish profile selection after all EMU/argv options and before initializing the VM. */
+static int
+launchoptions(void)
+{
+#ifdef DIS64_PILOT_LOADER
+	return !dis64launchmode() || imodexplicit;
+#else
+	return 1;
+#endif
 }
 
 static void
@@ -266,6 +291,10 @@ main(int argc, char *argv[])
 		option(envc, enva, envusage);
 	}
 	option(argc, argv, usage);
+	if(!launchoptions()){
+		fprint(2, "emu: experimental dis64-calls requires -d module.dis64\n");
+		usage();
+	}
 #ifdef DIS_NATIVE64_SCALAR_BOOT
 	if(!native64model()){
 		fprint(2, "emu: incompatible native64 scalar layout\n");

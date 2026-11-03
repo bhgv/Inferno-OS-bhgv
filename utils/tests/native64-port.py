@@ -93,6 +93,8 @@ def main():
         build, builtinenv, logs/'builtin-port-aliases.log')
     run([sys.executable, str(tests/'native64-scalar-boot.py'), '--root', str(build),
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--math', '--sys-io', '--freetype'], build, env, logs/'boot.log')
+    run([sys.executable, str(tests/'dis64-call-boot.py'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'call-boot.log')
     run([sys.executable, str(tests/'native64-limbo-boot.py'), '--limbo', str(tools/'limbo'),
          '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
         build, env, logs/'limbo-boot.log')
@@ -226,6 +228,9 @@ def main():
     run([sys.executable, str(tests/'dis64-call-goldens.py')], build, env, logs/'call-goldens.log')
     run([sys.executable, str(tests/'dis64-call-infer.py')], build, env, logs/'call-inference.log')
     run([sys.executable, str(tests/'dis64-call-construct.py')], build, env, logs/'call-construction.log')
+    run([sys.executable, str(tests/'dis64-file-calls.py')], build, env, logs/'file-calls.log')
+    for control in ('cache', 'seal', 'proof-route'):
+        run([sys.executable, str(tests/'dis64-file-calls.py'), '--control', control], build, env, logs/('file-calls-'+control+'.log'))
     run(results, build, env, logs/'result-calls.log')
     for control in ('width', 'priority', 'ordinary', 'guard_mode', 'direct', 'entry', 'cache'):
         run(results+['--control', control], build, env, logs/('result-calls-'+control+'.log'))
@@ -255,7 +260,7 @@ def main():
         run([sys.executable, str(build/'libinterp/tests/riscv-dispatch.py'), '--cc', env['CC'],
              '--runner', args.runner], build, env, logs/'riscv-complete-tails.log')
     print('PASS clean classic-mk native64 boot/lease gates; logs: '+str(logs))
-    print('Scope: self-checking scalar programs and trusted C fixtures; file CALL/MCALL and full shell startup remain closed.')
+    print('Scope: self-checking scalar programs and trusted C fixtures; default file calls/MCALL and full shell startup remain closed; dis64-calls is explicit bounded opt-in.')
 
 
 if __name__ == '__main__':

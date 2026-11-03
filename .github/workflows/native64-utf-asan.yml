@@ -9,6 +9,12 @@ on:
       - 'libinterp/tests/sys-utf.py'
       - 'include/dis64*.h'
       - 'utils/tests/dis64-call-*'
+      - 'utils/tests/dis64-file-calls*'
+      - 'libinterp/tests/dis64-fileloader*'
+      - 'libinterp/tests/dis64-scheduler*'
+      - 'libinterp/readmod.c'
+      - 'libinterp/load.c'
+      - 'emu/port/main.c'
       - 'utils/tests/goldens/dis64-calls/**'
       - 'utils/tests/goldens/dis64-infer/**'
       - 'utils/tests/goldens/dis64-construct/**'
@@ -301,12 +307,18 @@ jobs:
         run: |
           set -euo pipefail
           python3 utils/tests/dis64-call-construct.py 2>&1 | tee call-construction-asan.log
+          python3 utils/tests/dis64-file-calls.py 2>&1 | tee file-calls-asan.log
+          for control in cache seal proof-route; do
+            python3 utils/tests/dis64-file-calls.py --control "$control" 2>&1 | tee -a file-calls-asan.log
+          done
       - name: Preserve constructor diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: native64-call-construction-${{ matrix.arch }}
-          path: call-construction-asan.log
+          path: |
+            call-construction-asan.log
+            file-calls-asan.log
           if-no-files-found: warn
           retention-days: 14
 

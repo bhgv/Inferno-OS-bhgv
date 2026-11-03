@@ -35,6 +35,51 @@ dis64runtimemodel(void)
 }
 
 
+static int dis64calls; // Explicit Inferno startup selection, never inferred from file bytes.
+static int dis64sealed; // First namespace use freezes selection for the process lifetime.
+
+
+/* Select the agreed experimental profile before namespace use or cache publication. */
+int
+dis64selectlaunch(char *name)
+{
+#if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1 && defined(DIS_WORD32) && DIS_WORD32 == 1
+	if(name == nil || name == H || dis64sealed || modules != nil ||
+	   strcmp(name, "dis64-calls") != 0 || !dis64runtimemodel())
+		return 0;
+	dis64calls = 1;
+	return 1;
+#else
+	USED(name);
+	return 0;
+#endif
+}
+
+
+/* Freeze before file I/O or cache reuse; existing VM admission serializes this startup state. */
+int
+dis64launchmode(void)
+{
+	dis64sealed = 1;
+	return dis64calls;
+}
+
+
+/* Filter cache mode only; this is not raw proof, provenance, retention or an execution capability. */
+int
+dis64launchcompatible(Module *module)
+{
+	int calls;
+
+	calls = dis64launchmode();
+	if(module == nil)
+		return 0;
+	if(calls)
+		return module->cstep == native64lea8step;
+	return module->cstep != native64lea8step;
+}
+
+
 /* Identify source operands whose native decoder must expose a complete LONG. */
 static int
 dis64longsource(unsigned int op)
