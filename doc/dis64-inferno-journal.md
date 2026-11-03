@@ -5797,3 +5797,19 @@ isolated fixture at wrong Linux/Bionic declarations. Corrected launcher commit
 dc8073e9b8ec558e399ca4ff8a409abd9066ce7a selects actual Android port headers,
 LP64 prelude and AArch64 target check. Fresh host tests and syntax pass.
 Run41556102823 is pending. No APK success is inferred from the failed run.
+
+
+## INFERNO-0088 — 2026-11-03 — Bionic managed-module validation
+
+Corrected Android run41556102823 is successful at core81385bb2/launcherdc8073e9:
+38 boot processes/1096 checks,67 case sources/134 C/JIT processes and241 helper/
+result sources/482 C/JIT processes, plus exact packaged images and real worker
+retirement. ELF64/AArch64 and16KiB LOAD checks pass. These are scalar FB probes,
+not full AWM or managed-file admission. Linux0086 ARM64/RV64 passed; x64 pending.
+
+Next Android source4bfe55d136e20d31dbb3a41de80c5f82d965ad55 runs the existing
+owning builtin module-set and Sys init/registration/handler suites against Bionic
+with matching generated native metadata. Build41557654440 is pending. These
+fixtures separate constructor/identity checks from actual handlers and bounded
+OS transports. No new guest imports, file calls, managed concurrency or shared
+wire IDs are enabled. Required managed/root/publication/error boundaries remain.
