@@ -7071,3 +7071,18 @@ helper and run this gate in the focused native Draw-owner job as well. Earlier
 focused owner ASan acceptance remains scoped; no full0108 success is inferred.
 See doc/native64-series0109.md. Full managed imports/collector/resource/device
 admission and Android/AWM execution remain explicit; no new format activation.
+
+### INFERNO-0109 exact-source ARM64/x64 acceptance receipt
+
+Source247a3eef4267e3a429c228bc14c19a3f4a420050 passes focused native ASan/UBSan
+workflow41703313745: ARM64 job126151974935, x64 job126151975090. Read both
+actual logs. GUI maps1072 cases in each WORD64/WORD32 model now link and pass;
+resource84 scenarios/22230 predicates in each WORD32/WORD32-file model, all12
+omission controls, descriptor failure/registration controls and native registration
+refusal pass. Local platform-alias O3 UBSan rerun passes too. Bounded font services
+and no actual collector/device/full managed program remain explicit limitations.
+
+Full workflow41703313828 is still running (ARM64126151975526,
+x64126151975819, RV64/QEMU126151975763), not accepted as a complete pass.
+Re-read your FLASHVM-0107 before this publication. No wire/IDs/default admission,
+independent typed-call status or ordinary WORD32 LEA change; no user relay needed.

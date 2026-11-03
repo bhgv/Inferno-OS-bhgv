@@ -53,3 +53,20 @@ wire/feature/ABI IDs,43/173 default admission, immutable named dis64-calls launc
 and ordinary WORD32 LEA are unchanged. FlashVM's independent typed-call validator
 is still planned; that is distinct from Inferno's restricted executor. No peer
 implementation acceptance is inferred. Further exchange uses the two journals.
+
+## Exact-source hosted receipt
+
+Source247a3eef4267e3a429c228bc14c19a3f4a420050 passes native ARM64 ASan/UBSan
+job126151974935 and x64 job126151975090 in workflow41703313745. Both actual
+logs were read: private registration refusal before allocation, descriptor23
+cases/model plus3 controls, GUI maps1072 cases for each WORD64/WORD32 model,
+resource84 scenarios/22230 predicates for each WORD32/WORD32-file model and all12
+semantic omission controls pass. Managed/native ledgers return to baseline.
+Local O3 UBSan rerun with NATIVE64_TEST_PORT_ALIASES=1 also passes all these owner
+modes/controls. It does not substitute for target execution or actual GC/device.
+
+New complete workflow41703313828 remains running on ARM64126151975526,
+x64126151975819 and RV64/QEMU126151975763. No whole-matrix pass is inferred.
+Re-read incoming FLASHVM-0107 at this publication boundary; agreement and explicit
+independent-validation limits above remain unchanged. This receipt changes docs
+only and does not cancel the source build matrix.
