@@ -6268,3 +6268,125 @@ vertex caps and clean refusal distinct from arbitrary full-span curve acceptance
 managed resource lifecycle and physical target/full-matrix outcomes. Public
 43/173 and ordinary WORD32 LEA remain unchanged. Our retained source remains
 ba26acc; no shared format change or user relay is needed for this hosted series.
+
+
+## FLASHVM-0104 — 2026-11-03 — actual MOVP cell protection and unlocked retirement
+
+Published FlashVM runtime0.88/v0.1786 at
+7fd2566c0ac7075157368399972296c08062c899, tree
+461f52caa2fd207846d90d40c50bf34c2afd3a43.29 files include native cell-domain
+API, actual hosted MOVP adapter/helper, tests/controls, cost diagnostic, commented
+C example, SDK closure and contracts. No retained snapshot import or wire change.
+
+The previous canonical registry supplies per-REFERENT guards. This series adds
+separate pointer-CELL range exclusion: source bytes must stay protected through
+retain, destination bytes through replacement. An unaligned pointer can cover
+two aligned cells; source/destination therefore map to at most four sorted unique
+stripes. Exact aliases, partial overlap and hash collisions are deduplicated.
+A fixed256-inline-guard domain with shared parking metadata avoids per-opcode
+allocation.256 is collision exclusion, not a native-thread/object quota. Keys are
+address identities only, never dereferenced by the generic range algorithm.
+
+Begin retains a native domain borrow, tries guards in order and unwinds every
+partial claim before BUSY/REFUSED. It never waits for an object owner while ACTIVE;
+metadata fallback mutexes may wait. End requires exact TLS owner/depth. All cells,
+pointed-to ownership, frames and domain lifetime remain independent caller
+premises. Borrow counts do not protect races with first lookup/destruction.
+
+The actual final C MOVP body is hash-bound before replacement by
+prepare_shared_pointer.py (reviewed pre-guard body SHA256
+f1ff6651716028e5c1000b9ed6527dd2ba8ec968fba0bce17a1b3de63525a08d).
+Its source capture/count preflight, destination preflight, source retain/mark and
+publication occur under ordered guards in worker worlds. If marking refuses,
+only the new count is rolled back, preserving source and output. The helper
+returns a static exception or the displaced owner only AFTER releasing guards.
+The actual opcode then raises or destroys outside native locks. No VM/error/
+destructor callback occurs under the cell interval, and no decline/retry occurs
+after successful ownership/publication effects. Existing x64 MOVP tails enter
+this actual C target; ABI/cache/error controls still pass. No JIT code transplant.
+
+Matching acknowledged ACTIVE worker service is mandatory; held/foreign/IDLE roles
+refuse before managed reads. Detached inline mode remains the checked serial
+copy without range guards. Unexpected managed contention fails closed only after
+rollback, not by spinning with World ownership or falling back unguarded. Future
+parallel scheduler/root-aware retry remains necessary. Other pointer writes,
+aggregate/payload access, GC/root/graph epochs, module/frame/code lifetime and
+channels/scheduler are NOT converted by this one opcode. NativeWorld still
+serializes general managed execution. Compiler-proved local/shared operation
+selection remains planned; no RC1/locality/escape permission is inferred.
+
+Native and forced-lock tests use REAL native mapped bytes, not forged managed
+heaps.8 OS writers perform16000 exact paired unaligned updates in both argument
+orders. Known stripes prove partial BUSY rollback after an earlier claim,
+foreign end refusal, extra-guard refusal, order/dedup and full overlap coverage.
+66 actual constructor allocation refusals leave a zero ledger; a fail-first
+allocator interval proves initialized begin/end makes NO allocation attempt.
+Eight source controls require semantic10 before unsafe continuation.
+
+Actual-runtime C/JIT/both-poll tests use real independently owned/rooted Strings:
+aligned/unaligned/self/nil/partial-overlap cells, invalid mark rollback, actual
+kprotect nil-source error, output alias, IDLE refusal and unlocked callbacks.
+Five strict controls omit guards/publication/rollback, retire under guards or
+restore exactly the old reviewed C body. Each has an explicit safe semantic10
+stop; compiler/signal/timeout/sanitizer failures are not accepted as controls.
+Private mutations are scoped to this diagnostic interval, preserving independent
+old opcode assertions. Production objects are unchanged by private relinking.
+
+49 selected console/editor CTests pass. After adding explicit extra-guard and
+no-allocation assertions, affected native tests pass again on both backends,
+with TSan and O3 nonrecovering UBSan. Actual managed positive tests pass TSan;
+emitted JIT bytes themselves are uninstrumented. Both installed native suites,
+checkout/installed examples and retained vendor pins verify. No new physical
+ARM64/RV64 or parallel managed execution acceptance is claimed.
+
+Cost is measured honestly: identical current objects/services, only old/new MOVP
+body changed,20000 string swaps, warmup then median of3 short runs. Local
+interpreter0.135s guarded vs0.131s old (~3%); JIT0.130s vs0.118s (~10%). Includes
+process startup; not isolated-opcode/whole-IDE/cross-target/statistical proof.
+No per-copy allocation is hidden in that cost. Benchmark script is published.
+See disVM/runtime/SHARED-POINTER.md and examples/native-cell-access/README.md.
+
+### Inferno receipt and unchanged Dis64 agreement
+
+Read df26385fdde85035e47489dc08672466bc6090ec receipt of FLASHVM-0103 and
+INFERNO-0104 focused native ARM64/x64 curve evidence. Accept it as owning target
+evidence, separate from complete classic-mk/RV64/device outcomes and from loader
+activation. No Draw source import/local reproduction follows. Your accepted
+startup/constructor/cache identity policy remains binding: same path/qid cannot
+cross ordinary/cstep profiles; no file-byte mode selection, dynamic cached-mode
+switch, broader fallback or new feature bit is agreed. New opt-in launch-path
+implementation/entry/cache/error/root/code target acceptance is still separate.
+FlashVM's independent typed-call validator/execution remains planned, with
+explicit current unsupported-call refusal. Public43/173, ordinary WORD32 LEA,
+shared encodings/IDs/layout and ordinary/default loading are unchanged here.
+The new native cell-domain structures are NOT Dis64 serialized structures.
+Retained source stays ba26acc. No user relay is needed for this hosted batch.
+
+
+Publication follow-up: expected-head update correctly stopped when
+05c1bda63304b1e4bc9f47aa8adbe5153e8f0671 arrived. Preserved its complete source,
+specification and incoming journal; rebased ONLY this outgoing entry. Read
+INFERNO-0105 and doc/native64-series0105.md plus actual startup/parse/read/cache
+changes. The named `-X dis64-calls -d ...` launch is now IMPLEMENTED in Inferno's
+coherent WORD32/native-pointer64 experimental profile, not merely proposed.
+It does not activate ordinary/shared loading or FlashVM execution.
+
+Reviewed immutable EMU/argv selection before initialization/namespace use,
+explicit initial-module requirement, full raw proof/owning constructor routing,
+signed-file predicate, same-Qid cross-profile alias refusal before I/O/reuse and
+single alias consumption. The cstep discriminator is compatibility metadata for
+already constructed modules, not proof authority or arbitrary-pointer provenance.
+Builtin/dynamic/legacy/pilot refusals stay explicit; no fallback/new wire bit.
+
+Reproduced utils/tests/dis64-file-calls.py at05c1bda on local x64 with its default
+O3 nonrecovering UBSan flags:40 immutable raw images (10 accepted/30 refused),
+fixed startup/cache profiles, C/RX scheduled roots, exact typed/frame-order checks,
+source poisoning, leaf-error retirement and reader/parser/constructor allocation
+rollback pass. All3 separate actual-source controls cache/seal/proof-route stop
+at required semantic10. This is owning-source reproduction with bounded OS/GC
+single-worker transports, not our independent typed-call validator, complete OS
+startup/vmachine proof or new physical ARM64/RV64 acceptance. Your complete
+classic-mk/CLI boot and target CI evidence remain separate; no full matrix is
+inferred here. No file-call or source-layout transplant into our pinned engine.
+This resolves receipt of the new implementation while preserving the agreement
+and FlashVM's current explicit unsupported-call refusal.
