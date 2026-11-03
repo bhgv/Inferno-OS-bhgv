@@ -236,6 +236,7 @@ nameimage(Image *i, char *name, int in)
 	return 1;
 }
 
+/* Unlink a retiring window before any blocking or refused I/O can leave a stale Display.windows edge. */
 int
 _freeimage1(Image *i)
 {
@@ -247,13 +248,6 @@ _freeimage1(Image *i)
 		return 0;
 	/* make sure no refresh events occur on this if we block in the write */
 	d = i->display;
-	/* flush pending data so we don't get error deleting the image */
-	flushimage(d, 0);
-	a = bufimage(d, 1+4);
-	if(a == 0)
-		return -1;
-	a[0] = 'f';
-	BPLONG(a+1, i->id);
 	if(i->screen){
 		w = d->windows;
 		if(w == i)
@@ -267,6 +261,14 @@ _freeimage1(Image *i)
 				w = w->next;
 			}
 	}
+	i->next = nil;
+	/* flush pending data so we don't get error deleting the image */
+	flushimage(d, 0);
+	a = bufimage(d, 1+4);
+	if(a == 0)
+		return -1;
+	a[0] = 'f';
+	BPLONG(a+1, i->id);
 	if(flushimage(d, i->screen!=0) < 0)
 		return -1;
 

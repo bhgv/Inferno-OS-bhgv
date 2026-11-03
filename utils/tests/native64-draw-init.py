@@ -20,7 +20,7 @@ def unit(control):
     adapter = adapter.replace('\tcount = 0;\n', '\tdrawobserve();\n\tcount = 0;\n', 1)
     adapter = adapter.replace('\t\t\tlive--;\n', '\t\t\tlive--;\n\t\t\tif(disturb) strcpy(diagnostic, "cleanup diagnostic");\n', 1)
     draw = (ROOT/'libinterp/draw.c').read_text()
-    body = support['function'](draw, 'void\ndrawmodinit(')
+    body = support['function'](draw, 'static int\ndrawmaketypes(')+'\n\n'+support['function'](draw, 'void\ndrawmodinit(')
     if control:
         old, new = {
             'retirement': ('\t\tfreetype(types[i]);', '\t\tUSED(types[i]);'),

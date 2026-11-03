@@ -6,6 +6,8 @@ typedef struct Memimage Memimage;
 
 static int	screenid;
 
+
+/* Reserve only valid same-display screens, with bounded positive native IDs and complete refusal cleanup. */
 Screen*
 allocscreen(Image *image, Image *fill, int public)
 {
@@ -14,6 +16,8 @@ allocscreen(Image *image, Image *fill, int public)
 	int id, try;
 	Display *d;
 
+	if(image == nil || fill == nil || image->display == nil)
+		return nil;
 	d = image->display;
 	if(d != fill->display){
 		kwerrstr("allocscreen: image and fill on different displays");
@@ -30,6 +34,8 @@ allocscreen(Image *image, Image *fill, int public)
 			free(s);
 			return 0;
 		}
+		if(screenid >= 2147483647)
+			screenid = 0;
 		id = ++screenid;
 		a[0] = 'A';
 		BPLONG(a+1, id);
@@ -39,10 +45,13 @@ allocscreen(Image *image, Image *fill, int public)
 		if(flushimage(d, 0) != -1)
 			break;
 	}
+	if(try == 25){
+		free(s);
+		return nil;
+	}
 	s->display = d;
 	s->id = id;
 	s->image = image;
-//	assert(s->image && s->image->chan != 0);
 
 	s->fill = fill;
 	return s;
@@ -76,29 +85,29 @@ publicscreen(Display *d, int id, ulong chan)
 	return s;
 }
 
+/* Consume the local Screen even if its best-effort server-side release cannot be sent. */
 int
 freescreen(Screen *s)
 {
 	uchar *a;
-	Display *d;
+	Display *display;
+	int result;
 
-	if(s == 0)
+	if(s == nil)
 		return 0;
-	d = s->display;
-	a = bufimage(d, 1+4);
-	if(a == 0)
-		return -1;
-	a[0] = 'F';
-	BPLONG(a+1, s->id);
-	/*
-	 * flush(1) because screen is likely holding last reference to
-	 * window, and want it to disappear visually.
-	 */
-	if(flushimage(d, 1) < 0)
-		return -1;
+	display = s->display;
+	a = bufimage(display, 5);
+	result = -1;
+	if(a != nil){
+		a[0] = 'F';
+		BPLONG(a+1, s->id);
+		if(flushimage(display, 1) >= 0)
+			result = 1;
+	}
 	free(s);
-	return 1;
+	return result;
 }
+
 
 Image*
 allocwindow(Screen *s, Rectangle r, int ref, ulong val)

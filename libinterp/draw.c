@@ -267,38 +267,38 @@ struct Cache
 /* not visible to Limbo; used only for internal reference counting */
 struct DRef
 {
-	int		ref;
-	Display*	display;
+	int ref; // Native display leases, independent of managed Heap references.
+	Display *display; // Native display owned until the final native lease retires.
 };
 
 struct DDisplay
 {
-	Draw_Display	drawdisplay;
-	Display*	display;
-	DRef*		dref;
+	Draw_Display drawdisplay; // Managed public fields; map excludes private native pointers.
+	Display *display; // Native display, detached before managed child destruction.
+	DRef *dref; // One independently owned native display lease.
 };
 
 struct DImage
 {
-	Draw_Image	drawimage;
-	Image*		image;
-	void*		refreshptr;
-	DRef*		dref;
-	int		flush;
+	Draw_Image drawimage; // Managed public image fields and references.
+	Image *image; // Native image consumed only by its owning wrapper's retirement.
+	void *refreshptr; // Borrowed refresh context, not a managed reference.
+	DRef *dref; // Native display lease held through all managed reference cleanup.
+	int flush; // Existing automatic flush policy.
 };
 
 struct DScreen
 {
-	Draw_Screen	drawscreen;
-	Screen*		screen;
-	DRef*		dref;
+	Draw_Screen drawscreen; // Managed image/fill/display owners.
+	Screen *screen; // Native screen retired before its borrowed native images disappear.
+	DRef *dref; // Native display lease held through mapped owner retirement.
 };
 
 struct DFont
 {
-	Draw_Font	drawfont;
-	Font*		font;
-	DRef*		dref;
+	Draw_Font drawfont; // Managed font name/display owners.
+	Font *font; // Native cached font, or nil for a partial/retired wrapper.
+	DRef *dref; // Native display lease independent of managed references.
 };
 
 Cache*	sfcache[BIHASH];
@@ -329,6 +329,44 @@ void		freeallsubfonts(Display*);
 extern char rootdir[];
 
 
+/* Build private native wrapper descriptors; the caller owns every partial descriptor on refusal. */
+static int
+drawmaketypes(Type **types, uchar *fontbits, uchar *imagebits, uchar *screenbits, uchar *displaybits)
+{
+	memset(fontbits, 0, sizeof(fontmap));
+	nativeptrmap(fontbits, sizeof(fontmap), sizeof(DFont), O(DFont, drawfont.name));
+	nativeptrmap(fontbits, sizeof(fontmap), sizeof(DFont), O(DFont, drawfont.display));
+	memset(imagebits, 0, sizeof(imagemap));
+	nativeptrmap(imagebits, sizeof(imagemap), sizeof(DImage), O(DImage, drawimage.display));
+	nativeptrmap(imagebits, sizeof(imagemap), sizeof(DImage), O(DImage, drawimage.screen));
+	nativeptrmap(imagebits, sizeof(imagemap), sizeof(DImage), O(DImage, drawimage.iname));
+	memset(screenbits, 0, sizeof(screenmap));
+	nativeptrmap(screenbits, sizeof(screenmap), sizeof(DScreen), O(DScreen, drawscreen.image));
+	nativeptrmap(screenbits, sizeof(screenmap), sizeof(DScreen), O(DScreen, drawscreen.fill));
+	nativeptrmap(screenbits, sizeof(screenmap), sizeof(DScreen), O(DScreen, drawscreen.display));
+	memset(displaybits, 0, sizeof(displaymap));
+	nativeptrmap(displaybits, sizeof(displaymap), sizeof(DDisplay), O(DDisplay, drawdisplay.image));
+	nativeptrmap(displaybits, sizeof(displaymap), sizeof(DDisplay), O(DDisplay, drawdisplay.white));
+	nativeptrmap(displaybits, sizeof(displaymap), sizeof(DDisplay), O(DDisplay, drawdisplay.black));
+	nativeptrmap(displaybits, sizeof(displaymap), sizeof(DDisplay), O(DDisplay, drawdisplay.opaque));
+	nativeptrmap(displaybits, sizeof(displaymap), sizeof(DDisplay), O(DDisplay, drawdisplay.transparent));
+
+	types[0] = dtype(freedrawfont, sizeof(DFont), fontbits, sizeof(fontmap));
+	if(types[0] == nil)
+		return 0;
+	types[1] = dtype(freedrawimage, sizeof(DImage), imagebits, sizeof(imagemap));
+	if(types[1] == nil)
+		return 0;
+	types[2] = dtype(freedrawscreen, sizeof(DScreen), screenbits, sizeof(screenmap));
+	if(types[2] == nil)
+		return 0;
+	types[3] = dtype(freedrawdisplay, sizeof(DDisplay), displaybits, sizeof(displaymap));
+	if(types[3] == nil)
+		return 0;
+	return 1;
+}
+
+
 /* Stage every wrapper descriptor before publishing a complete Draw module.
  * Caller holds VM initialization exclusion. dtype returns nil; builtinmod owns
  * its protected failure cleanup. No wrapper type escapes on either refusal. */
@@ -351,36 +389,8 @@ drawmodinit(void)
 		error("partial Draw type initialization");
 		return;
 	}
-	memset(fontbits, 0, sizeof(fontbits));
-	nativefieldmap(fontbits, DFont, drawfont.name);
-	nativefieldmap(fontbits, DFont, drawfont.display);
-	memset(imagebits, 0, sizeof(imagebits));
-	nativefieldmap(imagebits, DImage, drawimage.display);
-	nativefieldmap(imagebits, DImage, drawimage.screen);
-	nativefieldmap(imagebits, DImage, drawimage.iname);
-	memset(screenbits, 0, sizeof(screenbits));
-	nativefieldmap(screenbits, DScreen, drawscreen.image);
-	nativefieldmap(screenbits, DScreen, drawscreen.fill);
-	nativefieldmap(screenbits, DScreen, drawscreen.display);
-	memset(displaybits, 0, sizeof(displaybits));
-	nativefieldmap(displaybits, DDisplay, drawdisplay.image);
-	nativefieldmap(displaybits, DDisplay, drawdisplay.white);
-	nativefieldmap(displaybits, DDisplay, drawdisplay.black);
-	nativefieldmap(displaybits, DDisplay, drawdisplay.opaque);
-	nativefieldmap(displaybits, DDisplay, drawdisplay.transparent);
-
 	failure = exNomem;
-	types[0] = dtype(freedrawfont, sizeof(DFont), fontbits, sizeof(fontbits));
-	if(types[0] == nil)
-		goto failed;
-	types[1] = dtype(freedrawimage, sizeof(DImage), imagebits, sizeof(imagebits));
-	if(types[1] == nil)
-		goto failed;
-	types[2] = dtype(freedrawscreen, sizeof(DScreen), screenbits, sizeof(screenbits));
-	if(types[2] == nil)
-		goto failed;
-	types[3] = dtype(freedrawdisplay, sizeof(DDisplay), displaybits, sizeof(displaybits));
-	if(types[3] == nil)
+	if(!drawmaketypes(types, fontbits, imagebits, screenbits, displaybits))
 		goto failed;
 #ifndef DIS_NATIVE64_DRAW_HEADER
 	if(builtinmod("$Draw", Drawmodtab, Drawmodlen) == nil){
@@ -406,6 +416,65 @@ failed:
 	for(i=0; i<4; i++)
 		freetype(types[i]);
 	error(failure);
+}
+
+
+typedef struct DrawHeapBuild DrawHeapBuild;
+
+struct DrawHeapBuild {
+	Type *type; // Borrowed complete descriptor under VM admission.
+	Heap *owner; // New unpublished managed allocation, or H on refusal.
+};
+
+
+/* Keep a failed heap allocation inside the private constructor, before any native resource escapes. */
+static int
+drawheapbuild(void *argument)
+{
+	DrawHeapBuild *build;
+
+	build = argument;
+	build->owner = heap(build->type);
+	return build->owner != H;
+}
+
+
+/* Preserve the existing H-return allocation API while retaining the actual VM diagnostic. */
+static Heap*
+drawheap(Type *type)
+{
+	DrawHeapBuild build;
+
+	build.type = type;
+	build.owner = H;
+	if(!kprotect(drawheapbuild, &build))
+		return H;
+	return build.owner;
+}
+
+
+/* Roll back a newly allocated native image without losing the managed allocation diagnostic. */
+static void
+drawdiscardimage(Image *image)
+{
+	char reason[ERRMAX];
+
+	kgerrstr(reason, sizeof(reason));
+	freeimage(image);
+	kwerrstr("%s", reason);
+}
+
+
+/* Publish an owned result before retirement, preserving the requested operation's diagnostic. */
+static void
+drawcommitresult(void *slot, void *value, void *old)
+{
+	char reason[ERRMAX];
+
+	kgerrstr(reason, sizeof(reason));
+	memmove(slot, &value, sizeof(value));
+	destroy(old);
+	kwerrstr("%s", reason);
 }
 
 
@@ -778,8 +847,10 @@ display_dec(void *v)
 
 	d = dr->display;
 	locked = lockdisplay(d);
-	font_close(d->defaultfont);
-	subfont_close(d->defaultsubfont);
+	if(d->defaultfont != nil)
+		font_close(d->defaultfont);
+	if(d->defaultsubfont != nil)
+		subfont_close(d->defaultsubfont);
 	if(locked)
 		unlockdisplay(d);
 	freeallsubfonts(d);
@@ -787,30 +858,30 @@ display_dec(void *v)
 	free(dr);
 }
 
+/* Detach native default aliases before managed child cleanup can retire their Image allocations. */
 void
 freedrawdisplay(Heap *h, int swept)
 {
 	DDisplay *dd;
-	Display *d;
+	Display *display;
+	DRef *reference;
 
 	dd = H2D(DDisplay*, h);
-
-	if(!swept) {
-		destroy(dd->drawdisplay.image);
-		destroy(dd->drawdisplay.black);
-		destroy(dd->drawdisplay.white);
-		destroy(dd->drawdisplay.opaque);
-		destroy(dd->drawdisplay.transparent);
+	display = dd->display;
+	reference = dd->dref;
+	dd->display = nil;
+	dd->dref = nil;
+	if(display != nil){
+		display->image = nil;
+		display->white = nil;
+		display->black = nil;
+		display->opaque = nil;
+		display->transparent = nil;
 	}
-	/* we've now released dd->image etc.; make sure they're not freed again */
-	d = dd->display;
-	d->image = nil;
-	d->white = nil;
-	d->black = nil;
-	d->opaque = nil;
-	d->transparent = nil;
-	display_dec(dd->dref);
-	/* Draw_Display header will be freed by caller */
+	if(!swept)
+		freeptrs(dd, h->t);
+	if(reference != nil)
+		display_dec(reference);
 }
 
 void
@@ -1550,41 +1621,62 @@ Image_border(void *fp)
 	drawborder(fp, SoverD);
 }
 
+/* Stage the new image while aliased source/result owners remain alive, then publish before retirement. */
 void
 Display_newimage(void *fp)
 {
 	F_Display_newimage *f;
-	Display *d;
+	Draw_Display *source;
+	Draw_Image *result;
+	void *old, *slot;
+	Display *display;
 	int locked;
 
 	f = fp;
-	d = checkdisplay(f->d);
-	destroy(*f->ret);
-	*f->ret = H;
-	locked = lockdisplay(d);
-	*f->ret = allocdrawimage((DDisplay*)f->d, f->r, f->chans.desc,
-				nil, f->repl, f->color);
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	source = f->d;
+	display = checkdisplay(source);
+	locked = lockdisplay(display);
+	result = allocdrawimage((DDisplay*)source, f->r, f->chans.desc, nil, f->repl, f->color);
 	if(locked)
-		unlockdisplay(d);
+		unlockdisplay(display);
+	drawcommitresult(slot, result, old);
 }
 
+/* Keep an aliased display owner until native colour mixing and managed wrapping have finished. */
 void
 Display_colormix(void *fp)
 {
 	F_Display_colormix *f;
-	Display *disp;
-	Image *i;
+	Draw_Display *source;
+	Draw_Image *result;
+	Display *display;
+	Image *image;
+	void *old, *slot;
 	int locked;
 
 	f = fp;
-	destroy(*f->ret);
-	*f->ret = H;
-	disp = checkdisplay(f->d);
-	locked = lockdisplay(disp);
-	i = allocimagemix(disp, f->c1, f->c2);
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	source = f->d;
+	display = checkdisplay(source);
+	locked = lockdisplay(display);
+	image = allocimagemix(display, f->c1, f->c2);
+	result = image == nil ? H : mkdrawimage(image, H, source, nil);
+	if(image != nil && result == H)
+		drawdiscardimage(image);
 	if(locked)
-		unlockdisplay(disp);
-	*f->ret = mkdrawimage(i, H, f->d, nil);
+		unlockdisplay(display);
+	drawcommitresult(slot, result, old);
 }
 
 
@@ -2053,6 +2145,7 @@ mkdrawscreen(Screen *s, Draw_Display *display)
 	return &ds->drawscreen;
 }
 
+/* Construct allocdrawscreen privately; native input ownership transfers only after managed allocation succeeds. */
 static DScreen*
 allocdrawscreen(Draw_Image *dimage, Draw_Image *dfill, int public)
 {
@@ -2060,15 +2153,20 @@ allocdrawscreen(Draw_Image *dimage, Draw_Image *dfill, int public)
 	Screen *s;
 	DScreen *ds;
 	Image *image, *fill;
+	char reason[ERRMAX];
 
 	image = ((DImage*)dimage)->image;
 	fill = ((DImage*)dfill)->image;
 	s = allocscreen(image, fill, public);
 	if(s == 0)
 		return nil;
-	h = heap(TScreen);
-	if(h == H)
+	h = drawheap(TScreen);
+	if(h == H){
+		kgerrstr(reason, sizeof(reason));
+		freescreen(s);
+		kwerrstr("%s", reason);
 		return nil;
+	}
 	ds = H2D(DScreen*, h);
 	ds->screen = s;
 	ds->drawscreen.fill = dfill;
@@ -2083,89 +2181,116 @@ allocdrawscreen(Draw_Image *dimage, Draw_Image *dfill, int public)
 	return ds;
 }
 
+/* Keep source images rooted until the new Screen owns them; replace aliased results only afterward. */
 void
 Screen_allocate(void *fp)
 {
 	F_Screen_allocate *f;
-	DScreen *ds;
-	Image *image;
+	Draw_Image *image, *fill;
+	Draw_Screen *result;
+	DScreen *created;
+	Image *native;
+	void *old, *slot;
 	int locked;
 
 	f = fp;
-	destroy(*f->ret);
-	*f->ret = H;
-	image = checkimage(f->image);
-	checkimage(f->fill);
-	locked = lockdisplay(image->display);
-	ds = allocdrawscreen(f->image, f->fill, f->public);
-	if(ds != nil)
-		*f->ret = &ds->drawscreen;
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	image = f->image;
+	fill = f->fill;
+	native = checkimage(image);
+	checkimage(fill);
+	locked = lockdisplay(native->display);
+	created = allocdrawscreen(image, fill, f->public);
+	result = created == nil ? H : &created->drawscreen;
 	if(locked)
-		unlockdisplay(image->display);
+		unlockdisplay(native->display);
+	drawcommitresult(slot, result, old);
 }
 
+/* Roll back native screens on managed allocation refusal and retain an aliased display through publication. */
 void
 Display_publicscreen(void *fp)
 {
 	F_Display_publicscreen *f;
+	Draw_Display *source;
+	Draw_Screen *result;
 	Heap *h;
-	Screen *s;
+	Screen *screen;
 	DScreen *ds;
-	Display *disp;
+	Display *display;
+	void *old, *slot;
+	char reason[ERRMAX];
 	int locked;
 
 	f = fp;
-	destroy(*f->ret);
-	*f->ret = H;
-	disp = checkdisplay(f->d);
-	locked = lockdisplay(disp);
-	s = publicscreen(disp, f->id, disp->image->chan);
-	if(locked)
-		unlockdisplay(disp);
-	if(s == nil)
-		return;
-	h = heap(TScreen);
-	if(h == H)
-		return;
-	ds = H2D(DScreen*, h);
-	ds->screen = s;
-	ds->drawscreen.fill = H;
-	ds->drawscreen.image =H;
-	ds->drawscreen.id = s->id;
-	ds->drawscreen.display = f->d;
-	D2H(f->d)->ref++;
-	ds->dref = disp->limbo;
-	ds->dref->ref++;
-	*f->ret = &ds->drawscreen;
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	source = f->d;
+	display = checkdisplay(source);
+	result = H;
+	if(display->image != nil){
+		locked = lockdisplay(display);
+		screen = publicscreen(display, f->id, display->image->chan);
+		if(screen != nil){
+			h = drawheap(TScreen);
+			if(h == H){
+				kgerrstr(reason, sizeof(reason));
+				freescreen(screen);
+				kwerrstr("%s", reason);
+			}else{
+				ds = H2D(DScreen*, h);
+				ds->screen = screen;
+				ds->drawscreen.fill = H;
+				ds->drawscreen.image = H;
+				ds->drawscreen.id = screen->id;
+				ds->drawscreen.display = source;
+				D2H(source)->ref++;
+				ds->dref = display->limbo;
+				ds->dref->ref++;
+				result = &ds->drawscreen;
+			}
+		}
+		if(locked)
+			unlockdisplay(display);
+	}
+	drawcommitresult(slot, result, old);
 }
 
+/* Retire the native screen while its images/display remain owned, then release each mapped edge once. */
 void
 freedrawscreen(Heap *h, int swept)
 {
 	DScreen *ds;
-	Screen *s;
-	Display *disp;
+	Screen *screen;
+	DRef *reference;
+	Display *display;
 	int locked;
 
 	ds = H2D(DScreen*, h);
-	if(!swept) {
-		destroy(ds->drawscreen.image);
-		destroy(ds->drawscreen.fill);
-		destroy(ds->drawscreen.display);
+	screen = ds->screen;
+	reference = ds->dref;
+	ds->screen = nil;
+	ds->dref = nil;
+	if(screen != nil){
+		display = screen->display;
+		locked = lockdisplay(display);
+		freescreen(screen);
+		if(locked)
+			unlockdisplay(display);
 	}
-	s = lookupscreen(&ds->drawscreen);
-	if(s == nil){
-		if(!swept)
-			freeptrs(ds, TScreen);
-		return;
-	}
-	disp = s->display;
-	locked = lockdisplay(disp);
-	freescreen(s);
-	if(locked)
-		unlockdisplay(disp);
-	display_dec(ds->dref);
-	/* screen header will be freed by caller */
+	if(!swept)
+		freeptrs(ds, h->t);
+	if(reference != nil)
+		display_dec(reference);
 }
 
 void
@@ -2434,19 +2559,25 @@ Font_bbox(void *fp)
  * Instead only the subfonts are cached and the fonts are
  * freed when released.
  */
+/* A partial font owner may have no native font or display lease; mapped fields still retire once. */
 void
-freedrawfont(Heap*h, int swept)
+freedrawfont(Heap *h, int swept)
 {
-	Draw_Font *d;
-	Font *f;
-	d = H2D(Draw_Font*, h);
-	f = lookupfont(d);
-	if(!swept) {
-		destroy(d->name);
-		destroy(d->display);
-	}
-	font_close(f);
-	display_dec(((DFont*)d)->dref);
+	DFont *df;
+	Font *font;
+	DRef *reference;
+
+	df = H2D(DFont*, h);
+	font = df->font;
+	reference = df->dref;
+	df->font = nil;
+	df->dref = nil;
+	if(font != nil)
+		font_close(font);
+	if(!swept)
+		freeptrs(df, h->t);
+	if(reference != nil)
+		display_dec(reference);
 }
 
 void
@@ -2641,13 +2772,16 @@ color(DDisplay *dd, ulong color)
 	return allocdrawimage(dd, r, c, nil, 1, color);
 }
 
+/* Construct mkdrawimage privately; native input ownership transfers only after managed allocation succeeds. */
 Draw_Image*
 mkdrawimage(Image *i, Draw_Screen *screen, Draw_Display *display, void *ref)
 {
 	Heap *h;
 	DImage *di;
 
-	h = heap(TImage);
+	if(i == nil || i->display == nil || i->display->limbo == nil)
+		return H;
+	h = drawheap(TImage);
 	if(h == H)
 		return H;
 
@@ -2672,35 +2806,40 @@ mkdrawimage(Image *i, Draw_Screen *screen, Draw_Display *display, void *ref)
 	return &di->drawimage;
 }
 
+/* Retain the source screen through window allocation/wrapping before replacing a possibly aliased result. */
 void
 Screen_newwindow(void *fp)
 {
 	F_Screen_newwindow *f;
-	Image *i;
-	Screen *s;
-	Rectangle r;
-	int locked;
-	void *v;
+	Draw_Screen *source;
+	Draw_Image *result;
+	Image *image;
+	Screen *screen;
+	Rectangle rectangle;
+	void *old, *slot;
+	int locked, backing;
 
 	f = fp;
-	s = checkscreen(f->screen);
-	R2R(r, f->r);
-
-	if(f->backing != Refnone && f->backing != Refbackup)
-		f->backing = Refbackup;
-
-	v = *f->ret;
-	*f->ret = H;
-	destroy(v);
-
-	locked = lockdisplay(s->display);
-	i = allocwindow(s, r, f->backing, f->color);
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	source = f->screen;
+	screen = checkscreen(source);
+	R2R(rectangle, f->r);
+	backing = f->backing;
+	if(backing != Refnone && backing != Refbackup)
+		backing = Refbackup;
+	locked = lockdisplay(screen->display);
+	image = allocwindow(screen, rectangle, backing, f->color);
+	result = image == nil ? H : mkdrawimage(image, source, source->display, nil);
+	if(image != nil && result == H)
+		drawdiscardimage(image);
 	if(locked)
-		unlockdisplay(s->display);
-	if(i == nil)
-		return;
-
-	*f->ret = mkdrawimage(i, f->screen, f->screen->display, 0);
+		unlockdisplay(screen->display);
+	drawcommitresult(slot, result, old);
 }
 
 /* Treat nil window arrays as empty and bound native pointer-vector allocation. */
@@ -2758,28 +2897,32 @@ Screen_bottom(void *fp)
 	screentopbot(f->screen, f->wins, bottomnwindows);
 }
 
+/* Detach the native image before cleanup; release mapped owners once, unless the collector owns them. */
 void
 freedrawimage(Heap *h, int swept)
 {
-	Image *i;
+	DImage *di;
+	Image *image;
+	DRef *reference;
+	Display *display;
 	int locked;
-	Display *disp;
-	Draw_Image *d;
 
-	d = H2D(Draw_Image*, h);
-	i = lookupimage(d);
-	if(i == nil) {
-		if(!swept)
-			freeptrs(d, TImage);
-		return;
+	di = H2D(DImage*, h);
+	image = di->image;
+	reference = di->dref;
+	di->image = nil;
+	di->dref = nil;
+	if(image != nil){
+		display = image->display;
+		locked = lockdisplay(display);
+		freeimage(image);
+		if(locked)
+			unlockdisplay(display);
 	}
-	disp = i->display;
-	locked = lockdisplay(disp);
-	freeimage(i);
-	if(locked)
-		unlockdisplay(disp);
-	display_dec(((DImage*)d)->dref);
-	/* image/layer header will be freed by caller */
+	if(!swept)
+		freeptrs(di, h->t);
+	if(reference != nil)
+		display_dec(reference);
 }
 
 void
@@ -2835,6 +2978,7 @@ Image_bottom(void *fp)
 		unlockdisplay(i->display);
 }
 
+/* Construct allocdrawimage privately; native input ownership transfers only after managed allocation succeeds. */
 Draw_Image*
 allocdrawimage(DDisplay *ddisplay, Draw_Rect r, ulong chan, Image *iimage, int repl, int color)
 {
@@ -2842,7 +2986,11 @@ allocdrawimage(DDisplay *ddisplay, Draw_Rect r, ulong chan, Image *iimage, int r
 	DImage *di;
 	Rectangle rr;
 	Image *image;
+	char reason[ERRMAX];
 
+	if(ddisplay == nil || (void*)ddisplay == H || ddisplay->display == nil ||
+	   ddisplay->display->limbo == nil || (iimage != nil && iimage->display != ddisplay->display))
+		return H;
 	image = iimage;
 	if(iimage == nil){
 		R2R(rr, r);
@@ -2851,10 +2999,13 @@ allocdrawimage(DDisplay *ddisplay, Draw_Rect r, ulong chan, Image *iimage, int r
 			return H;
 	}
 
-	h = heap(TImage);
+	h = drawheap(TImage);
 	if(h == H){
-		if(iimage == nil)
+		if(iimage == nil){
+			kgerrstr(reason, sizeof(reason));
 			freeimage(image);
+			kwerrstr("%s", reason);
+		}
 		return H;
 	}
 

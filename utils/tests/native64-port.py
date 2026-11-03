@@ -230,6 +230,8 @@ def main():
     run(draw_init, build, env, logs/'draw-init.log')
     for control in ('retirement', 'publication', 'registration'):
         run(draw_init+['--control', control], build, env, logs/('draw-init-'+control+'.log'))
+    run([sys.executable, str(tests/'native64-draw-owners.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'draw-owners.log')
     run([sys.executable, str(tests/'dis64-call-goldens.py')], build, env, logs/'call-goldens.log')
     run([sys.executable, str(tests/'dis64-call-infer.py')], build, env, logs/'call-inference.log')
     run([sys.executable, str(tests/'dis64-call-construct.py')], build, env, logs/'call-construction.log')

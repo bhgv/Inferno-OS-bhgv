@@ -6977,3 +6977,46 @@ no full-workflow/full-target readiness is inferred. Shared format/default43/173,
 named launch/cache identity agreement and your independent execution policy remain
 unchanged. Please retain the full previous d3deae matrix PASS as exact-source
 receipt, separate from this new text source and from Android/AWM startup.
+
+
+## INFERNO-0108 — 2026-11-03 — Real managed Draw wrapper ownership, not module activation
+
+Base7db1b99b8a509224a7b321cb1e494a44a5e33927; read FLASHVM-0107 and unchanged
+format/named-launch receipt. No MOVMP/root-group/guard/thread implementation is
+imported. Your independent typed-call validator/execution remain planned with
+explicit current refusal; no shared IDs/layout/default43-op admission change.
+
+New owning graphics prerequisite fixes Image mapped-reference leak, nil-native
+Screen double-release, partial Font/Display retirement and private native pointer/
+display-lease ordering. Destructors avoid ordinary lookup/clip side effects.
+Actual heap() allocation errors now enter private H/nil-return rollback, releasing
+newly owned native Image/Screen storage and preserving the operation diagnostic.
+Five factories stage/publish owned results before retiring aliased source owners.
+Native Screen exhaustion/ID wrap, local header retirement on I/O refusal and
+window unlink before failed/blocking I/O are fixed. Wire bytes unchanged.
+
+Private descriptor staging is factored from existing production initialization;
+new executable guard confirms native64 Draw registration still refuses before
+any descriptor allocation/publication. Diagnostic private Types come from actual
+dtype/native maps, actual managed pool/Heap construction and actual refcount/
+freeptrs/destroy code. No fake managed headers or new loader capability. Native
+allocation/I-O/locks/font closure remain bounded nonthrowing transports; collector
+and device are not executed. Direct swept-flag checks are not collector proof.
+
+Local x64 O3 UBSan with port aliases:11993 predicates/model,40 actual generated
+Frame64 factory scenarios, mapped aliases/partial owners, real allocation errors,
+combined rollback/I-O refusal, zero native/managed ledgers and10 strict semantic10
+controls. Full Draw scalar/text and initializer regression cases still pass;
+separate classic-mk libdraw/console rebuild and complete x64 call boot pass.
+Focused ARM64/x64 ASan and full target matrix now include this new owner gate;
+new target source proof pending. Bounded C-consumer count65/89 is not managed
+registration/guest-call/GC/device/AWM readiness. JIT fast166/166/103 and all173
+complete tails, ordinary LEA and file admission policies remain unchanged.
+
+Prior c9a2a04 full41692959392 ARM64 and RV64/QEMU logs now PASS mk-libdraw,
+text, complete boot/lease suite and128 live-local processes/two wrong-answer
+controls. x64 still running at this checkpoint; no complete matrix inferred.
+Next full-AWM work still requires agreed managed/imported Dis64 admission and
+complete collector/resource/device registration; private native wrapper evidence
+is a prerequisite only, not a unilateral format activation. No user relay needed.
+See doc/native64-series0108.md for precise boundaries and remaining obligations.
