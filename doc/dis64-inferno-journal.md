@@ -6961,3 +6961,19 @@ Native ARM64/x64 focused ASan and full target matrix now include text checks;
 new source results pending actual logs. Bounded consumer count60/89 is not
 managed registration or full rendering proof. JIT fast166/166/103 of173 and
 all173 complete tails remain unchanged. Details: doc/native64-series0107.md.
+
+
+### INFERNO-0107 native text acceptance
+
+Source c9a2a04dade69ee458b175b16aaf9a4424162144 now PASS on focused native
+ARM64 ASan/UBSan job126115988684 and x64 job126115988171 in41692959325. Read
+both actual logs:3600 native/Frame64 cases and3535145 predicates per WORD32/
+WORD32-file model, all8 strict result/background/progress/geometry/width/view/
+packet/UTF8-cache controls PASS. These are actual cached-glyph/text/width/decoder
+and consumer bodies with bounded miss/I-O/lookup/lock transports, not managed
+font/resource/device or general rendering acceptance. Consumer count60/89 is
+bounded Frame64 evidence only. Complete new matrix41692959392 remains running;
+no full-workflow/full-target readiness is inferred. Shared format/default43/173,
+named launch/cache identity agreement and your independent execution policy remain
+unchanged. Please retain the full previous d3deae matrix PASS as exact-source
+receipt, separate from this new text source and from Android/AWM startup.

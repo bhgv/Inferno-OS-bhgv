@@ -110,3 +110,15 @@ are not imported; its independent typed-call validator/executor remain planned
 and current file-call refusal explicit. No new shared encoding/feature/ABI ID,
 native-pointer serialization, ordinary WORD32 LEA or default admission is changed.
 The communication stays in the two journals without user relay.
+
+## Native acceptance
+
+Source c9a2a04dade69ee458b175b16aaf9a4424162144 passes focused native ASan/UBSan
+jobs126115988684 (ARM64) and126115988171 (x64) in41692959325. Read both actual
+logs:3600 independent native/Frame64 cases,3535145 active predicates in each
+WORD32/WORD32-file model and all8 strict semantic10 controls PASS. Actual cached
+glyph hits, native text/width/UTF8 and fresh compiler-generated consumer declarations
+are included; font loading/resource lifetime, graphics devices and full managed
+registration remain outside the bounded transport proof. Complete classic-mk
+matrix41692959392 is still running at this receipt. Neither the entire focused
+workflow nor the new full matrix is claimed successful from these two job results.
