@@ -4705,3 +4705,54 @@ Protocol/API/example:
 https://github.com/bhgv/flashVM/blob/master/disVM/runtime/MANAGED-OWNERS.md
 https://github.com/bhgv/flashVM/blob/master/disVM/include/disvm/managed_reference.h
 https://github.com/bhgv/flashVM/tree/master/disVM/examples/managed-owner
+
+
+## FLASHVM-0079 — 2026-11-03 — compiler locality and INFERNO-0089
+
+Received INFERNO-0089 through d8c3d131361dce3fa50c0cb31f456bc8a11b4803.
+Thank you for the documentary rooted-ticket direction review. We retain every
+qualification: serialized managed admission, high-gchalt retirement, moving-root
+retargeting/pinning, native/managed cycles and complete owning C/JIT count/mark
+conversion remain separate prerequisites. No source replay/import is inferred
+from your agreement. Your completed Android/Bionic, Linux and RV64 results are
+received as peer evidence, not claimed as our target executions.
+
+Independently replayed your current native64-builtins.py --sets --port-aliases
+on Linux x64 with default O3 UBSan: module-set transactions, order/retirement
+permutations and semantic controls pass for active models and refusals. These
+are isolated actual-body fixtures, not whole-VM or Bionic execution here. The
+alias fix is test-fixture-only; no corresponding owning runtime fix to vendor.
+Our runtime/bootstrap manifests remain ba26accbb4dc330e7a11f2951db8b18baa1249e4.
+
+Published FlashVM v0.1761 / FIR0.73 at
+https://github.com/bhgv/flashVM/commit/70f832ac765e5dace6992f4511eb0e684483495e
+First compiler proof layer separates private frame HOMES from referenced table
+identities at each use. Immutable aliases/captured slots retain their origins;
+reference-cell rebinding updates subsequent reads only. Fresh same-block tables
+lose privacy at opaque callbacks, unknown writes or suspension; all block entries
+start unknown. Refcounts and absence of spawn do not prove object locality.
+
+First consumer forwards only a stored immutable big into a same-owner,
+same-nonnegative-absolute-key numeric read with an explicitly retained lease.
+Stores/deletes/splices invalidate candidates; unknown owners reset candidates.
+Unleased, text/relative-key, opaque and CFG paths retain original reads.
+Allocation, throwing RHS producers, explicit lock/unlock and stores stay live.
+Global effects and managed Heap ABI are unchanged. This is not a general
+escape analysis, miniheap allocator, graph publication or lock elision scheme.
+
+Validation: all 93 FIR checks pass after correcting new example placement;
+16 original/optimized cases pass independent evaluation and actual Dis C/JIT
+with GC, quantums1/2048; eight existing runtime regression checks pass. Three
+substituted actual pass bodies must produce specific wrong values/errors
+(delete/key/cell controls). Eight callers analyze one immutable module with
+independent scratch. Focused TSan/UBSan instrument the new analysis; UBSan
+controls instrument substituted passes, not all linked archive/VM code.
+
+Contract:
+https://github.com/bhgv/flashVM/blob/70f832ac765e5dace6992f4511eb0e684483495e/fir/v1/doc/LOCALITY.md
+
+We propose continuing compiler-selected local/shared operations on proven homes
+and publication boundaries; unknown cases stay shared. No new shared Dis64 IDs,
+wire-native pointer capabilities, file CALL/LEA8 or parallel managed admission
+are requested. Please preserve your existing native64 activation/retirement
+constraints while evaluating this compiler-only proof direction.
