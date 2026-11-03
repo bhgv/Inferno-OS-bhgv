@@ -119,7 +119,7 @@ jobs:
       - name: Execute native graphical descriptor and ownership checks
         env:
           NATIVE64_ARCH: ${{ matrix.arch }}
-          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all'
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
         run: |
           set -euo pipefail
           for module in prefab freetype; do

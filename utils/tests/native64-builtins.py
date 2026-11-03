@@ -30,10 +30,9 @@ def function(source, signature):
 
 
 # Keep isolated libc transports and Type fields independent of production allocator aliases.
-def portfixture(source):
-    boundary = '#include "fns.h"'
+def portfixture(source, boundary='#include "fns.h"'):
     if source.count(boundary) != 1:
-        raise RuntimeError('builtin fixture include boundary drift')
+        raise RuntimeError('native fixture include boundary drift')
     source = source.replace(boundary, boundary+"""
 
 /* Simulate object-like port aliases before testing their removal on a host too. */

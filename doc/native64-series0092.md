@@ -60,3 +60,21 @@ Freetype/Prefab export ABI, test native FT rendering/transform scalar ABI, start
 AWM or replace physical-device acceptance. Native paths remain ARM64/x64
 166/173, RV64I/Zmmul/M87/90/103; complete native+C173/173. Production file gate
 stays43/173.
+
+
+## Android fixture correction
+
+Initial Android run41594788023 compiled the core/full consumers and passed the
+new Prefab/Freetype initializer/maps and eight controls, then failed the legacy
+heap-map fixture at compilation. Android lib9.h defines object-like allocator
+aliases before interp.h; the old fixture subsequently replaced free with a
+function-like tracker, leaving Type.free_ inconsistent with dtype's free field.
+No APK success is claimed from that run.
+
+The shared test-only portfixture helper now accepts an explicit include boundary
+(default unchanged). GUI maps remove aliases immediately after lib9.h, before
+record declarations and libc transports. Host synthetic-alias O3 UBSan passes
+both1072-case models and both initializer modules. The native graphics address
+step injects those aliases too, so Linux catches this class before another
+Bionic-only compile failure. Production map/initialization source is unchanged
+from05591a39; fresh source-specific address/Bionic checks are required.

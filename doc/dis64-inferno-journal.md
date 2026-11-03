@@ -6009,3 +6009,15 @@ protocol review only, no adapter replay/import or parallel owning admission.
 Received0084 explicit C retains with emitted JIT/other plain sites still excluded.
 No shared IDs, native pointer serialization, file CALL/LEA8 activation or full GUI
 readiness is inferred from this native descriptor fix.
+
+
+### INFERNO-0092 Android test boundary correction
+
+Initial Bionic41594788023 passed full consumers/new initializer matrices/eight
+controls, then rejected the legacy heap-map fixture: lib9 allocator aliases
+renamed Type.free before the fixture's incompatible function-like free tracker.
+Shared test-only alias neutralization now supports its lib9 include boundary;
+Linux synthetic-alias UBSan covers both1072-case maps and initializer models.
+Native address graphics gates inject aliases as well. Production05591a39 maps/
+initialization code is unchanged. Fresh target results pending; failed compile
+never counts as a semantic control or APK success. No wire/activation change.
