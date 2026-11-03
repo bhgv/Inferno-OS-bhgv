@@ -5894,3 +5894,20 @@ at560436ae. The source-protected retain-before-unlock requirement is received
 as a native adapter contract, not imported into owning Inferno. No implementation
 review or replay is claimed here; managed roots/payload publication remain
 separate. No shared wire or activation change.
+
+
+### INFERNO-0090 completed focused native and Bionic checks
+
+Owning d69a8721 now passes focused O3 ASan/UBSan native ARM64/x64 run41584398708:
+actual Draw initialization23 cases per WORD model plus all three strict controls.
+Read job logs, downloaded both sanitizer archives, verified digests and markers.
+This is focused memory/ownership evidence, not whole-runtime certification.
+
+Android run41584542703 passes with exact core and launcher6a584c0a. NDK compiles
+full Draw; Bionic/QEMU executes new descriptor cases/controls, previous module/
+Sys gates and whole C/JIT images through real worker retirement. Registration
+and GUI-destructor identities in descriptor fixture remain injected boundaries.
+Downloaded artifact13207762265 verifies APK hashes, ELF64/AArch64,16KiB LOAD,
+no DEX, new0090 identities and unchanged scalar image. Exact hashes/report in
+native64-series0090.md. Full Linux41584398790 remains pending. No managed import,
+full GUI or shared file-call/wire activation is inferred from these results.
