@@ -2,6 +2,8 @@
 #include "freetype/freetype.h"
 #include "freetype/internal/ftstream.h"
 #include "freetype.h"
+#include "t1afm.h"
+#include "freetype/internal/psnames.h"
 #include <stdio.h>
 
 static int checks, saw_matrix, saw_vector; // Active native-ABI observations.
@@ -62,6 +64,8 @@ fterrstr(int code)
 	return code == 0 ? nil : "renderer failure";
 }
 
+SORT_ENTRIES
+
 NATIVE_ENTRIES
 
 
@@ -73,6 +77,12 @@ main(void)
 	FTmatrix m[2]; // Adjacent bounded record keeps the restored-cast control memory-safe.
 	FTvector v[2]; // Two records cover even the old native-long cast extent.
 	FTglyph glyph, poison;
+	T1_Kern_Pair kern[6];
+	PS_UniMap maps[6];
+	FT_UInt keys[6] = {0, 1, 0x7fffffffU, 0x80000000U, 0xffff0000U, 0xffffffffU};
+	int (*kern_compare)(void*, void*) = compare_kern_pairs;
+	int (*map_compare)(void*, void*) = compare_uni_maps;
+	int j, expected;
 	uchar bytes[4] = {1,2,3,4};
 	char *err;
 	int i;
@@ -95,6 +105,18 @@ main(void)
 		check(FT_PEEK_LONG(input) == expected_long && FT_PEEK_LONG_LE(reverse) == expected_long);
 		cursor = input;
 		check(FT_NEXT_LONG(cursor) == expected_long && cursor == input+4);
+	}
+	for(i=0; i<6; i++){
+		memset(&kern[i], 0, sizeof(kern[i]));
+		kern[i].glyph1 = keys[i] >> 16;
+		kern[i].glyph2 = keys[i]&65535;
+		maps[i].unicode = keys[i];
+	}
+	for(i=0; i<6; i++)
+	for(j=0; j<6; j++){
+		expected = keys[i] < keys[j] ? -1 : keys[i] > keys[j] ? 1 : 0;
+		check(kern_compare(&kern[i], &kern[j]) == expected);
+		check(map_compare(&maps[i], &maps[j]) == expected);
 	}
 	f.ft_face = &face;
 	f.ft_lib = nil;

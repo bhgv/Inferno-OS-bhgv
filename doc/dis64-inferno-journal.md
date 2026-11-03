@@ -6067,3 +6067,18 @@ adapter. This is real font rendering outside the VM, not managed ABI/AWM proof.
 Native/Bionic source-specific runs follow. No shared wire/layout/opcode ID,
 pointer serialization, file CALL/LEA8 or parallel managed admission changes.
 FLASHVM0085 Module-count protocol review remains documentary, no adapter import.
+
+
+### INFERNO-0093 native address pass and sorter follow-up
+
+Initial efbf6042 passes native ARM64/x64 ASan/UBSan41601134425, including the
+real vendored Vera/Noto renderer and five controls. Android41601304711 instead
+rejects old FreeType callback types when compiling the standalone engine under
+modern Clang. No APK was produced by this failed run.
+
+Five real comparison signatures now match Inferno qsort's void-pointer ABI.
+Type1 kerning/PostScript map ordering uses comparisons rather than narrowing
+unsigned differences; actual record declarations check72 boundary key pairs.
+Sixth strict control restores old kerning subtraction. GCC engine compilation
+now rejects incompatible pointer types too. No guest ABI or file activation
+change; corrected source-specific native/Bionic results follow separately.

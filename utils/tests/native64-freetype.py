@@ -47,7 +47,16 @@ ftsettransform(FTface f, FTmatrix *m, FTvector *v)
     fixture = (ROOT/'utils/tests/native64-freetype-bridge.c').read_text()
     fixture = fixture.replace('FONT_WRAPPER', vm[vm.index('typedef struct Face Face;'):vm.index('Type*\tTMatrix')])
     fixture = fixture.replace('FONT_ENTRIES', entries)
+    sorting = '#define KERN_INDEX(g1,g2) (((FT_ULong)(g1)<<16)|(g2)) // Retained native glyph-key encoding.\n'
+    for file, name in (('t1afm.c', 'compare_kern_pairs'), ('psmodule.c', 'compare_uni_maps')):
+        sorting += extract((ROOT/('libfreetype/'+file)).read_text(), 'FT_CALLBACK_DEF( int )\n  '+name+'(')+'\n\n'
+    if control == 'sort':
+        old = 'return index1 < index2 ? -1 : index1 > index2 ? 1 : 0;'
+        if sorting.count(old) != 1:
+            raise RuntimeError('Kerning sort control drift')
+        sorting = sorting.replace(old, 'return index1-index2;', 1)
     native_fixture = (ROOT/'utils/tests/native64-freetype-native.c').read_text()
+    native_fixture = native_fixture.replace('SORT_ENTRIES', sorting)
     native_fixture = native_fixture.replace('NATIVE_ENTRIES', bridge+'\n\n'+extract(native, 'char*\nftloadglyph('))
     return support['portfixture'](fixture, '#include "lib9.h"'), support['portfixture'](native_fixture, '#include "lib9.h"')
 
@@ -60,6 +69,7 @@ def engine(work, compiler, flags, includes, runner, env):
     names = ('freetype', 'autohint', 'ftbase', 'ftglyph', 'cff', 'psaux', 'psnames',
              'raster', 'sfnt', 'smooth', 'truetype', 'type1', 'type42', 'ftsystem',
              'ftinit', 'pshinter', 'pfr')
+    flags = flags+['-Werror=incompatible-pointer-types']
     objects = []
     sort = work/'qsort.o'
     subprocess.run(compiler+flags+includes+['-include', str(prelude), '-c', str(ROOT/'lib9/qsort.c'), '-o', str(sort)], env=env, check=True)
@@ -78,7 +88,7 @@ def engine(work, compiler, flags, includes, runner, env):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--engine', action='store_true', help='Also render two bundled fonts with the actual vendored engine and libc I/O')
-    parser.add_argument('--control', choices=('vm-transform', 'native-transform', 'pitch', 'limits', 'result'))
+    parser.add_argument('--control', choices=('vm-transform', 'native-transform', 'pitch', 'limits', 'result', 'sort'))
     args = parser.parse_args()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     env = dict(os.environ)
@@ -86,7 +96,7 @@ def main():
     compiler = shlex.split(env.get('CC', 'cc'))
     flags = shlex.split(env.get('NATIVE64_CFLAGS', '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
     runner = shlex.split(env.get('NATIVE64_RUNNER', ''))
-    includes = ['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'include', 'libinterp', 'include/freetype')]
+    includes = ['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'include', 'libinterp', 'include/freetype', 'libfreetype')]
     vm, native = units(args.control)
     with tempfile.TemporaryDirectory(prefix='native64-freetype-', dir=env.get('NATIVE64_TMPDIR', ROOT)) as directory:
         work = Path(directory)

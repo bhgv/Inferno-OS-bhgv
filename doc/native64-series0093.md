@@ -60,3 +60,21 @@ No Tk/security/crypto, MIPS/SPARC/PowerPC JIT, shared format ID or file CALL/LEA
 activation changes. Native fast paths remain ARM64/x64 166/173, RV64I/Zmmul/M
 87/90/103; native+C dispatch remains 173/173, scalar file admission 43/173.
 Those opcode counts do not measure overall port readiness or completion time.
+
+
+## Native address result and Android compiler follow-up
+
+Initial source efbf6042 passes native ARM64/x64 ASan/UBSan41601134425, including
+the actual vendored renderer and all five initial controls. Android41601304711
+stops while compiling the standalone engine: modern Clang rejects a const-void
+comparison callback passed to Inferno's void-pointer qsort callback type. This
+is a real retained-library ABI mismatch, not an APK success or semantic control.
+
+All five sorter callback signatures now match the actual Inferno prototype,
+including the TrueType forward declaration. Type1 kerning and PostScript Unicode
+comparisons also use relational ordering instead of narrowing an unsigned
+difference. The native oracle uses actual record declarations and checks72
+ordered key pairs spanning the signed boundary and all-ones values. A sixth
+strict control restores the old kerning subtraction. Engine compilation now
+treats incompatible pointer types as errors on GCC too. New source-specific
+native/Bionic checks follow; earlier results do not certify this correction.

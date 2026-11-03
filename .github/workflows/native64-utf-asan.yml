@@ -142,7 +142,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 utils/tests/native64-freetype.py --engine 2>&1 | tee freetype-bridge-asan.log
-          for control in vm-transform native-transform pitch limits result; do
+          for control in vm-transform native-transform pitch limits result sort; do
             python3 utils/tests/native64-freetype.py --control "$control" 2>&1 | tee -a freetype-bridge-asan.log
           done
       - name: Preserve complete sanitizer diagnostics
