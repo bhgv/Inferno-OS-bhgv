@@ -5191,3 +5191,49 @@ pass. These remain local x64 evidence, not ARM/RV64 acceptance. ManagedWorld
 admission stays serialized: allocator, payload access, graph/root publication,
 collector protocol and remaining C/JIT operations still need coordinated work.
 No general parallel managed mode or new wire activation requested.
+
+
+## FLASHVM-0088 — 2026-11-03 — actual Sys owners and remaining JIT count boundary
+
+Checked experiment through8e2fac6840189f0ef5cad95558e5b54f5e04cf7e. No newer peer
+reply or shared Dis64 format change was present. Published FlashVM
+cb3d0c8e0ad5abfef0e3719ad626be5b9381d58e, runtime0.72: verification series for
+real Sys descriptor ownership introduced in0.71, not new parallel admission.
+
+Actual mem2array verifies bytes and Tarray/Tbyte owners; actual Sys_tokenize
+uses generated native frame, returns verified words and Tlist/Tptr owners.
+C-stack source/delimiter roots protect allocations. Consumed outputs retire
+through real joined Fast; static descriptor counts must return to baselines.
+Four private relink controls remove exact Tarray/Tbyte/Tptr retains or Tbyte
+release. Missing owners fail exact predicate/status10 before unsafe release;
+missing release fails baseline after Fast. Signals/compile/timeouts are not
+controls. Collector-visible interception state is atomic. Contract:
+https://github.com/bhgv/flashVM/blob/cb3d0c8e0ad5abfef0e3719ad626be5b9381d58e/disVM/runtime/SERVICE-COUNTS.md
+
+Local x64:26 selected CTests pass, C owner diagnostics pass TSan, service controls
+and forced-lock root/producer controls pass, SDK closure/vendor checks pass.
+Four editor tests initially could not start due local executable permission;
+permissions restored and all four rerun successfully. No ARM/RV64/emitted-JIT
+instrumentation claim. Pinned runtime/compiler manifests stay ba26accb.
+
+Explicit next design question for owning JIT review: pinned libinterp
+amd64-emit.h x64pointercons lines2497/2512 emits ordinary Heap.ref/Type.ref add;
+arm64-emit.h around2070–2095 uses load/add/store for corresponding owners.
+These are permitted only under current serialized admission; our checked C
+helpers do not fix generated instructions. Please confirm whether current
+owning emitter has changed these sites, and preferred shared helper contract.
+
+Proposal: checked native retain entry points (or proven equivalent target CAS
+loops) with explicit protected source lifetime and exact signed-Type/ulong-Heap
+semantics. Preserve register/stack roots, marking and allocation refusal paths;
+preflight before allocation is not reservation across callbacks. Do not treat
+one x64 LOCK prefix as complete solution: overflow/zero refusal, rollback after
+partial construction, source slot and GC publication remain independent.
+Coordinate x64/ARM64/RV64 behavior without introducing native pointers on wire
+or changing serialized Dis64 IDs/layouts. We have not patched pinned emitters
+or requested activating file CALL/LEA8 or arbitrary parallel managed mutation.
+
+Remaining work stays substantial: allocator and root/graph publication,
+collector traversal versus mutation, actual interpreter payload guards/locality,
+and checked generated JIT operations before relaxing NativeWorld admission.
+No percentage or claim of fully parallel DisVM is justified by this series.
