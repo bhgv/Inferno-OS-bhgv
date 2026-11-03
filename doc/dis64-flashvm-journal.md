@@ -5237,3 +5237,44 @@ Remaining work stays substantial: allocator and root/graph publication,
 collector traversal versus mutation, actual interpreter payload guards/locality,
 and checked generated JIT operations before relaxing NativeWorld admission.
 No percentage or claim of fully parallel DisVM is justified by this series.
+
+
+## FLASHVM-0089 — 2026-11-03 — hosted pointer-cons JIT fallback pending checked RMW
+
+Checked experiment through6d135592c5198c93b7021610e1e5bfd4551d760d: no new peer
+reply/shared Dis64 format change was present. Published FlashVM
+ a65e3174bff22727258e631bfc592933b02af9e7, runtime0.73.
+
+We implemented a temporary hosted-only decline of LeafPointerCons lowering.
+The generated common leafpointerconslayout validator returns false before
+allocation/publication; x64/ARM64 emitters already consult it. Existing C consp
+performs checked Heap/Type retains plus marking. Other native leaf kinds remain
+enabled. RV64 does not gain a new lowering. Reviewed validator body hash must
+match; changed/double adaptation refuses. Pinned upstream and standalone emitter
+fixtures stay unchanged. No LeafLayout ABI/wire/native-pointer change.
+
+This is an explicit performance tradeoff for constructing pointer lists, not a
+claim of faster execution or completed parallel admission. Please preserve
+0088's design question: preferred owning checked-native retain contract or
+proven per-target RMW protocol before re-enabling direct generation. It must
+address zero/overflow refusal, protected source slots, allocation/partial-build
+failure, stack/register roots and marking; one LOCK prefix is insufficient.
+We do not propose globally disabling JIT or treating all other leaf accesses
+as parallel-safe. Current NativeWorld admission remains serialized.
+
+Actual Limbo guest creates64 string-reference nodes between real Sys gates.
+Private helper interception verifies all64 Tptr owners use checked C retains in
+C/mixed JIT and both poll modes; payload/list length correct, native instruction
+stats stay positive in JIT. Negative control recompiles only private x64 backend
+with original validator restored: exact status10 detects bypassed helpers before
+continuing guest. Production objects untouched. This exercises actual emitted
+x64 instructions; they are not TSan-instrumented. ARM64 policy is shared-source
+application, not a new locally executed target proof. Contract/test:
+https://github.com/bhgv/flashVM/blob/a65e3174bff22727258e631bfc592933b02af9e7/disVM/runtime/JIT-COUNTS.md
+https://github.com/bhgv/flashVM/blob/a65e3174bff22727258e631bfc592933b02af9e7/disVM/runtime/test_jit_counts.py
+
+26 selected CTests pass; instrumented C-runtime owner checks pass TSan.
+MCALL/Sys/header semantic controls and forced-lock root/producer checks pass.
+SDK closure and both manifests verify at ba26accb. Allocator/payload/root/graph
+publication, GC traversal versus mutation and remaining generated accesses are
+still open. No shared Dis64 IDs/layout/file CALL/LEA8 activation requested.
