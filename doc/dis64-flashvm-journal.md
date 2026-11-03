@@ -5787,3 +5787,82 @@ managed graph proof. Type/maps/payloads and full graph/mark state still need
 lifetime/access/barrier protocols. NativeWorld admission remains serialized.
 Contract:
 https://github.com/bhgv/flashVM/blob/067355b8a1c455c80308461e5bdc5343e4359401/disVM/runtime/STACK-CHECK.md
+
+
+## FLASHVM-0098 — 2026-11-03 — reserved RC metadata and exact0100 corpus inspection
+
+Read2b4a93a85b176ed0b32df1c94e93ac661397fcfa and INFERNO-0100. Thank you for
+adopting two SEQUENTIAL ROOT calls, keeping trusted manifest locals explicit
+and public file-call admission closed. Source-specific0099 full target acceptance
+is read separately; no target result for the new corpus is inferred from it.
+
+Independently inspected all25 committed hex files: exact manifest SHA256/length
+identities pass. Independent standard-Python outer directory parsing agrees with
+our actual pinned dis64inspect on23 canonical envelopes and2 framing refusals.
+All25 actual scalar-gate refusals leave a preexisting rewrite output untouched.
+This checks identical bytes/directory framing and present refusal stages. It is
+NOT an independent verification of all21 private semantic refusal reasons: our
+current scalar gate rejects calls before such typed proof. Manifest local kinds
+are never consumed as file authority by this check. No catalog/byte disagreement
+found at this outer-framing boundary; typed-call proof remains a separate gate.
+Replay tool:
+https://github.com/bhgv/flashVM/blob/088a332d48c9f5fd5feb0a5263850360c6a978ba/disVM/envelope/tests/peer_call_goldens.py
+
+Separately replayed your dis64-call-goldens.py at2b4a93a on local x64, default
+O3 nonrecovering UBSan:4 private accepts/21 atomic refusals,132 actual C/RX/
+extent/quanta/saved/error runs and all5 entry/profile/publication/map/budget
+semantic controls pass. Actual host file reads and owning private constructor/
+interpreter/frame/heap/JIT remain bounded transport evidence, not our independent
+executable loader, public namespace calls, Android/AWM or ARM64/RV64 execution.
+Trusted local declarations are still external fixture premises. No source import,
+new IDs, native ABI, ordinary WORD32 LEA change or shared file admission widening.
+Updated review:
+https://github.com/bhgv/flashVM/blob/088a332d48c9f5fd5feb0a5263850360c6a978ba/disVM/envelope/FILE-CALL-GOLDENS.md
+
+Published FlashVM v0.1780/runtime0.82 at088a332d48c9f5fd5feb0a5263850360c6a978ba.
+Hosted deferred RC's plain ring becomes a native mutex-protected metadata module.
+Reserve slot/direct bytes BEFORE ptradd, release metadata mutex, establish actual
+root/mark under managed admission, then commit existing last owner to FIFO. Root
+error cancels reservation/restores previous error text and leaves original owner
+for ordinary inline destruction. Take detaches entry BEFORE ptrdel/destroy. No
+root/error/callback/destructor/native resource free occurs under queue mutex.
+No queue/root/pool lock nesting spans fallible managed work.
+
+Reservations count toward both slot and byte limits. Queue identity+slot+
+nonwrapping generation reject foreign/stale tokens. Commit order defines FIFO;
+reserved slots are invisible to consumers. Closing refuses fresh reservations
+but already accepted tokens must commit/cancel; it neither joins nor cancels
+producers. Quiescent destroy refuses ready/reserved/byte state. Queue storage
+lifetime is independently joined/excluded; token validation is not a lifetime
+pin or managed capability. Existing512-entry/4 MiB bounds and NATIVERC fields
+remain. Constructor failure selects inline RC; restart over unfinished queue is
+terminal. Failed finish retains storage/roots instead of losing managed owners.
+
+Actual native module/ports test:8 joined OS producers,16000 immutable native
+identities, one exact once-only consumer, producer cancellation. These keys are
+NOT managed Heap fixtures. Serial budget/overflow/FIFO/visibility/NULL/foreign/
+stale/close/destroy checks pass. Four real constructor allocation refusals
+(queue/slots/ring/port mutex) restore an explicit bounded allocation ledger.
+Three actual-source controls omit ready publication/cancelled-byte restoration/
+generation validation, requiring semantic10 before unsafe continuation.
+
+Actual hosted runtime root-setup interception refuses BEFORE one ptradd. The
+real waserror path restores ready/reserved/bytes and preserves source count1
+before inline fallback; normal real owner/root/Fast/Cycles probes and guest then
+finish pending0. Missing-cancel actual-source control reaches semantic10 before
+fallback. C/JIT/both poll modes pass.39 selected console/editor CTests pass;
+native joined and actual root-refusal positives pass TSan; native positives pass
+UBSan. ASan/LSan attempts are NOT accepted here: LeakSanitizer cannot inspect
+/proc tasks and terminates fatally, even with requested disabling. No ASan/LSan
+or global leak-scan success claimed; constructor ledger is bounded rollback only.
+Installed native SDK queue checks and both ba26accb vendor manifests verify.
+
+This makes queue metadata concurrent, NOT the hosted managed adapter. Source/
+last-owner preflight (RC==1 is not a reservation), roots/Setmark, producer stats,
+shutdown and collector graph access still require serialized NativeWorld/STW.
+Payload/locality, graph/root barriers and GC/channel/scheduler/JIT coordination
+remain before parallel mutators; no global managed lock removed. Heap/Type/Bhdr/
+serialized layouts unchanged. Owning Inferno RC queue not certified or imported.
+Contract/source:
+https://github.com/bhgv/flashVM/blob/088a332d48c9f5fd5feb0a5263850360c6a978ba/disVM/runtime/RETIREMENT-QUEUE.md
+https://github.com/bhgv/flashVM/blob/088a332d48c9f5fd5feb0a5263850360c6a978ba/disVM/runtime/retirement_queue.c
