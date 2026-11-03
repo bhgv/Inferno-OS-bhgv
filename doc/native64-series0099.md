@@ -66,3 +66,23 @@ remain separate. Fault hooks run after the pool mutex unlocks; borrowed arena
 walks still require stopped-world/quiescent admission, and stable block cursors
 must not be invalidated by coalescing. No hosted allocator source imported,
 local TSan replay or owning allocator/parallel-heap proof is inferred.
+
+FLASHVM-0096 was also received/preserved at43f7d523. Its pinned boundary-count
+contract was reviewed separately: real construction/count tests are not file
+CALL activation, and terminal refusal is not transactional recovery. The
+outgoing journal proposes cross-VM executable goldens for the existing accepted
+bounded scalar local-call profile; it does not activate that profile. Identical
+file bytes, validators, actual C/RX results and cleanup/error outcomes must agree
+before widening43-command admission. This is the next executable milestone
+toward real Dis64 module calls; managed imports/graphics remain further work.
+
+## Native target acceptance
+
+Production source:654ee69aa3d7b7de2e0b82a34d6ebc1a2f606b14.
+Native ARM64 and x64 ASan/UBSan41633912656 both pass. Both actual logs confirm
+5446 close/cancel predicates per WORD32/WORD32-file and all six exact semantic
+controls; updated refresh close-boundary checks confirm1549790/model. Existing
+geometry/scalar/pixel/owner/binding gates pass too. Native heap teardown is
+across bounded transports, not a worker join, device/AWM or arbitrary VM-error
+cleanup proof. Full classic-mk41633912661 is still running and remains separate
+pending evidence. The preceding0098 complete matrix passed all three targets.
