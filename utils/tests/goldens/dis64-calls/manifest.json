@@ -1,0 +1,1253 @@
+{
+  "purpose": "private whole-image executable goldens; no production file-call activation",
+  "declarations": "trusted fixture/compiler locals; hashes are identity, not authentication",
+  "format": "existing Dis64 v1.0 ABI1 with no extensions or new IDs",
+  "private_policy": {
+    "object_bytes": 4096,
+    "instructions": 256,
+    "types": 64,
+    "functions": 64
+  },
+  "cases": [
+    {
+      "name": "answer42",
+      "sha256": "47508a1a5453840e9347c50130e682faa28a89a5c846f3e2216694a25a1a6226",
+      "bytes": 330,
+      "private_accept": true,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Entry calls one int32 helper and copies returned42.",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "chain42",
+      "sha256": "a2b1fc5629de99e689deed91be5ba3afd97a128bbcd5b231eb294a900528a98c",
+      "bytes": 443,
+      "private_accept": true,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 1,
+      "description": "Two sequential root-to-leaf calls; second consumes the copied first result. No helper-to-helper call.",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          13,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ],
+        [
+          2,
+          15,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "divide-zero",
+      "sha256": "46338c506cbcc71c04b71f535c8a53f90616fe80b9c2d706941093ff9089a9bd",
+      "bytes": 340,
+      "private_accept": true,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 1,
+      "chain": 0,
+      "description": "Static proof succeeds; actual callee raises zero divide before result publication.",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reordered42",
+      "sha256": "129dc4c207263316736b55b23a13e8f38d3f0d0c4ea3216e730b3eff4a3a3f34",
+      "bytes": 330,
+      "private_accept": true,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Same meaning with a different legal section-directory order.",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-interior",
+      "sha256": "add1b2174524a6059681f3bd831338a461ad9f541358a809986c354e03a5ce44",
+      "bytes": 330,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Raw call-role refusal: interior",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-frame",
+      "sha256": "20360eb6faa60ce6ba8a2beed3e645bcdf37160f442f6e059ec5e648657fe60e",
+      "bytes": 330,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Raw call-role refusal: frame",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-argument",
+      "sha256": "a3fc6bfa0604dbb17d77070c6fade75d496f22b6cf1930c92cab3d6378069122",
+      "bytes": 328,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Raw call-role refusal: argument",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-pointer-cell",
+      "sha256": "4bec121d4690ebeb533c2ee6cf99fca14734f7cab3a2abfee04f7629488be2e2",
+      "bytes": 329,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Raw call-role refusal: reserved",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-result-cell",
+      "sha256": "2b1f42960c2876b2a8695d328f8bb2561885d2af7d0b7b315b8486f1afa40372",
+      "bytes": 330,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Raw call-role refusal: result",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-lea-destination",
+      "sha256": "3ff3fd4b12514de14a7d06f96f10d41292da839c9d0826691a5ebd92c59ba34e",
+      "bytes": 330,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Raw call-role refusal: destination",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-lea-mode",
+      "sha256": "2164a90a646507fb00a99e25a26fcedab48b6301f8252edc39bf806994f65a8b",
+      "bytes": 329,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Raw call-role refusal: mode",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-unready-result",
+      "sha256": "c5bc4c6ec1a35d22b2973001534e633da7cf6440a8544c804f786341785dc94a",
+      "bytes": 331,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Raw call-role refusal: unready",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-signature",
+      "sha256": "cdf4b89ac4284d166847c8b407dffab29c76ce7d0641ee247b0995d972847014",
+      "bytes": 330,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Raw call-role refusal: signature",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-result-kind",
+      "sha256": "3a388512d1e83b5c23014da4a6216fdb4e8b08c2daa6352859b41751e42a7a00",
+      "bytes": 330,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Raw call-role refusal: kind",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-result-width",
+      "sha256": "c5b088798ccd546ac921869978bbdd3f998db7b500d0b83ac702b9c0516fdf13",
+      "bytes": 330,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Raw call-role refusal: width",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-return",
+      "sha256": "9020db6ec46f310db0cae8ef38e53f8fa816ec26e3119299545d205279f90c89",
+      "bytes": 329,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Raw call-role refusal: return",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-managed-type",
+      "sha256": "5f0d5cdcfa6949186349e755d2aa9d513e8e0fa3be954650a3221bcabb1609ee",
+      "bytes": 339,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Unused managed descriptors are outside the private np0 constructor contract.",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-type-budget",
+      "sha256": "6ec8c3a6e02ba512505d474788313656196407dd4759a67e5939f4a4604ef5e2",
+      "bytes": 897,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Private descriptor population exceeds the declared64-type budget.",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-entry",
+      "sha256": "30727072b43ba604f85a748124622bcc2d6309b9b40facbcb8ca577cbca31b35",
+      "bytes": 330,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Module entry differs from the canonical exported root.",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-module-frame",
+      "sha256": "58bb03111661ec96e0357a0bdfc0a0c5ed45160eefe5cdba4b3844f864ed8297",
+      "bytes": 330,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Module frame differs from its exported entry.",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-library",
+      "sha256": "749fe2a836ac1f5fc058fa204af7ec68470e7a66e2a471f675f2e1be6b200412",
+      "bytes": 322,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Library metadata cannot authorize an executable root.",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-data",
+      "sha256": "d1a5279c466472e91fb595428ed68eb8a9fd4f7480bb8e24b5f5bb492cb14256",
+      "bytes": 334,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "This private composition profile refuses module data.",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-imports",
+      "sha256": "9ede7c6a7e2af85b0e3e72c5d7cb483abe0f0d7d08ee3a95e8b4f7c004eb2a6c",
+      "bytes": 346,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Even an empty imports section is outside this private profile.",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-truncated",
+      "sha256": "3bee14fa64238120712c5e068071e773be33b6d847465537c3afdcb5edea3e48",
+      "bytes": 329,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "The whole image loses its final byte.",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "reject-trailer",
+      "sha256": "41bcbed533bfd18ba6f8d068855d8101d12e11785520b218961603f20885ee15",
+      "bytes": 331,
+      "private_accept": false,
+      "production_accept": false,
+      "result_kind": 1,
+      "result": 42,
+      "second_result": 42,
+      "runtime_error": 0,
+      "chain": 0,
+      "description": "Unlisted bytes follow the complete container.",
+      "locals": [
+        [
+          0,
+          0,
+          0,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              80,
+              1
+            ],
+            [
+              88,
+              1
+            ]
+          ]
+        ],
+        [
+          1,
+          7,
+          1,
+          [
+            [
+              64,
+              1
+            ],
+            [
+              72,
+              1
+            ]
+          ]
+        ]
+      ]
+    }
+  ]
+}

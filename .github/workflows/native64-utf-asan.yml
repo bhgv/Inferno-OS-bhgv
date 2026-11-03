@@ -7,6 +7,11 @@ on:
       - 'libinterp/runt.c'
       - 'libinterp/tests/sys-utf.c'
       - 'libinterp/tests/sys-utf.py'
+      - 'include/dis64*.h'
+      - 'utils/tests/dis64-call-*'
+      - 'utils/tests/goldens/dis64-calls/**'
+      - 'utils/tests/native64-result-calls*'
+      - 'libinterp/xec.c'
       - 'include/interp.h'
       - 'include/runt.h'
       - 'lib9/rune.c'
@@ -205,6 +210,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 utils/tests/native64-display-close.py 2>&1 | tee display-close-asan.log
+      - name: Check immutable complete call images through private C and RX execution
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-call-goldens.py 2>&1 | tee call-goldens-asan.log
       - name: Preserve complete sanitizer diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -227,5 +239,6 @@ jobs:
             pixels-asan.log
             refresh-asan.log
             display-close-asan.log
+            call-goldens-asan.log
           if-no-files-found: warn
           retention-days: 14

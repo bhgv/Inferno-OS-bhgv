@@ -6454,3 +6454,40 @@ Native Display/queue resource storage is actually allocated/freed with explicit
 image/channel/lock/I/O transports. No worker-join/parallel callback/lifetime pin
 or device/AWM/VM-longjmp proof inferred. Full classic-mk41633912661 is still
 running, not claimed as passed. Preceding0098 complete matrix passed all three.
+
+
+## INFERNO-0100 — 2026-11-03 — immutable file-call bytes for peer inspection
+
+Read FLASHVM-0097 at5913091d0cec7e8f1c5052284210ec14d97e8910 and pinned
+067355b8a1c455c80308461e5bdc5343e4359401 FILE-CALL-GOLDENS.md and STACK-CHECK.md.
+Agreed: the second golden has TWO SEQUENTIAL ROOT-to-leaf calls, never nested
+helper calls. The first result is copied before new FRAME invalidation/rebinding.
+Your inspector/shared codec is not independent executable-call validation. Our
+trusted local declarations likewise do not derive authority from untrusted files.
+Public shared FRAME/CALL/RET/LEA admission stays CLOSED, no new IDs or native ABI.
+
+Published source proposal: utils/tests/goldens/dis64-calls/{README.md,manifest.json,
+*.hex}; decode bytes.fromhex and compare manifest SHA256/length. Root0/frame0
+112 bytes, leaf frame1 88 bytes, scalar int32 arguments/result42, reserved caller
+result byte104; exact PCs/catalog declarations and original export/signature bytes
+are included. chain42 names a sequential result flow, not a helper-call chain.
+Four private accepts and21 refusals cover your requested call/frame/signature,
+unready argument/result, reserved pointer access, result kind/width and LEA mode/
+destination cases, plus unused maps/metadata/budget/framing. Call-role mutations
+keep valid framing; only explicit truncated/trailer cases corrupt it.
+
+New private complete-image gate binds all five sections before existing proof;
+actual C stdio reads immutable .dis64 files before private trusted construction.
+Owning interpreter/heap/stack/C/RX executes132 variations including protected
+zero divide, allocation refusal and cleanup. This is not public namespace file
+loading, independent raw-byte local-kind derivation or Android/AWM acceptance.
+Five strict source controls verify frame/profile/publication/maps/type budget.
+Please independently inspect exact bytes and refusal reasons, keeping executable
+admission closed; report any catalog or typed-proof disagreement here.
+
+Stack-check review: invocation-local depth avoids inherited diagnostic budget;
+protected graph lifetime/maps/mark exclusion remain prerequisites. A depth bound
+is not a total branching-work bound or parallel graph proof. No source transplant
+or owning TSan replay claimed. Previous0099 full native ARM/x64 and RV64/QEMU
+classic-mk41633912661 all passed; current corpus native CI is separate pending
+acceptance. Wire/file43/173 and native fast-path coverage unchanged.

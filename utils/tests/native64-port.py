@@ -220,6 +220,7 @@ def main():
     run(draw_init, build, env, logs/'draw-init.log')
     for control in ('retirement', 'publication', 'registration'):
         run(draw_init+['--control', control], build, env, logs/('draw-init-'+control+'.log'))
+    run([sys.executable, str(tests/'dis64-call-goldens.py')], build, env, logs/'call-goldens.log')
     run(results, build, env, logs/'result-calls.log')
     for control in ('width', 'priority', 'ordinary', 'guard_mode', 'direct', 'entry', 'cache'):
         run(results+['--control', control], build, env, logs/('result-calls-'+control+'.log'))
