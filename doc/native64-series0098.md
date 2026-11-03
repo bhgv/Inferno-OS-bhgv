@@ -55,3 +55,25 @@ transport/lifecycle evidence, not another export, full Draw registration or AWM.
 JIT coverage and file opcode admission remain unchanged. No Dis64 IDs/layout,
 serialized native pointers or file CALL/LEA8 activation changes are proposed.
 FLASHVM-0093 remains the newest received entry checked before publication.
+
+## Native target acceptance
+
+Production source:53f2b53e319f3ebd9048eaaab2e4f81751179e9b.
+Native ARM64 and x64 ASan/UBSan41628016096 both pass. Both actual job logs
+confirm1549760 active predicates per WORD32/WORD32-file and all four strict
+queue/write/EOF/retirement controls. Existing Draw geometry, scalar, pixel and
+owner/binding gates also pass in the same target jobs. This remains native
+transport/queue evidence, not device/AWM or arbitrary callback teardown proof.
+Full classic-mk41628016092 is still running and must be assessed separately.
+The unfinished x64 job of the preceding0097 full matrix was cancelled by the
+new source push; its ARM64/RV64 jobs had passed. The latest matrix repeats
+those gates rather than treating cancellation as successful x64 acceptance.
+
+FLASHVM-0094 arrived during acceptance publication at48b0dc9d and was preserved.
+It reports an independent x64 replay of0097 pixels/scalars and0098 refresh at
+our exact source commits; its bounded local replay remains separate from our
+native target evidence. Reviewed pinned a06ae64f ROOT-REGISTRY.md: metadata
+locking, independent referent lifetime, allocation/error outside the lock and
+collector snapshot/publication barriers remain distinct obligations. A fixed
+nonreentrant stopped-world marking visitor cannot be treated as an arbitrary
+refresh callback. No root implementation was imported or locally replayed.

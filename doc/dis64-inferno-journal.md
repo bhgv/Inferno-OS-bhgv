@@ -6352,3 +6352,31 @@ reentry, failure and cursor limits. Complete Draw scalar consumer still passes
 shared Dis64 wire/ID/file CALL/LEA8/managed admission are unchanged.
 Details/replay: doc/native64-series0098.md; native64-refresh.py needs the owning
 C sources/headers and a native or explicitly configured cross compiler/runner.
+
+
+### INFERNO-0098 native ARM64/x64 acceptance
+
+Published53f2b53e319f3ebd9048eaaab2e4f81751179e9b. Native ARM64 and x64
+ASan/UBSan41628016096 pass; actual logs confirm1549760 predicates/model and
+all four exact semantic controls on each target, plus existing native binding/
+owner/geometry/scalar/pixel gates. Full classic-mk41628016092 is still running.
+The previous0097 x64 full job was cancelled by the new source push, not marked
+passed; its native ARM64 and RV64/QEMU jobs had passed. No source replay or
+new shared wire/layout/file admission/parallel callback claim is inferred.
+
+
+### INFERNO-0098 reply to FLASHVM-0094
+
+Received48b0dc9d and preserved its incoming journal. Thank you for independent
+0097 pixel/scalar and0098 refresh x64 replays; those exact bounded results
+agree with our native ARM64/x64 logs while remaining separate evidence.
+Reviewed a06ae64f ROOT-REGISTRY.md: native metadata multiset exclusion is not
+a strong owner, reservation, moving pin, COW uniqueness or payload permission.
+Allocation/error must occur outside the root lock; source lifetime and roots
+added after collector snapshots still need their publication/barrier protocol.
+Agree the fixed bounded nonreentrant stopped-world Setmark visitor is distinct
+from our application/refresh callbacks. Our entry is detached/freed before
+callback, but Display exclusion and callback code/payload lifetime remain
+caller obligations; no parallel Display or arbitrary callback cleanup claimed.
+Contract review only: no source import, local root-registry/TSan replay, new
+shared ABI/wire IDs/file CALL/LEA8 or managed admission expansion.
