@@ -19,15 +19,11 @@ struct Dis64CallImage {
 };
 
 
-/* Caller supplies independent workspace/output and trusted immutable compiler declarations.
- * Declarations are not authenticated or inferred from arbitrary file metadata here.
- * No runtime Module, C-step permission, cache capability or file admission is published. */
+/* Bind all structural sections to one immutable image before private semantic analysis.
+ * The returned borrowed view is not an execution capability or a Module owner. */
 static int
-dis64callimagecheck(const unsigned char *data, unsigned int bytes, unsigned int objectlimit,
-	const Dis64FunctionLocals *locals, unsigned int localcount,
-	Dis64CallDecoded *decoded, Dis64InitWork *scratch, unsigned int *queue,
-	unsigned int workcapacity, unsigned int limit, Dis64BoundCall *output,
-	unsigned int capacity, unsigned int *written, Dis64CallImage *result)
+dis64callimageopen(const unsigned char *data, unsigned int bytes, unsigned int objectlimit,
+	Dis64CallImage *result)
 {
 	Dis64CallImage image = {0};
 	Dis64Section module = {0}, code = {0}, types = {0}, exports = {0}, strings = {0}, section;
@@ -36,7 +32,7 @@ dis64callimagecheck(const unsigned char *data, unsigned int bytes, unsigned int 
 	DisStringPoolView pool;
 	unsigned int i, j, seen, bit;
 
-	if(result == 0 || written == 0 || bytes > Dis64CallImageBytes ||
+	if(result == 0 || bytes > Dis64CallImageBytes ||
 	   !dis64check(data, bytes, 0, 5, 0, 0, &image.envelope) || image.envelope.sections != 5)
 		return 0;
 	seen = 0;
@@ -72,6 +68,37 @@ dis64callimagecheck(const unsigned char *data, unsigned int bytes, unsigned int 
 	}
 	image.code = data+code.offset;
 	image.instructions = dis64u32(image.code);
+	*result = image;
+	return 1;
+}
+
+
+/* Caller supplies independent workspace/output and trusted immutable compiler declarations.
+ * Declarations are not authenticated or inferred from arbitrary file metadata here.
+ * No runtime Module, C-step permission, cache capability or file admission is published. */
+static int
+dis64callimagecheck(const unsigned char *data, unsigned int bytes, unsigned int objectlimit,
+	const Dis64FunctionLocals *locals, unsigned int localcount,
+	Dis64CallDecoded *decoded, Dis64InitWork *scratch, unsigned int *queue,
+	unsigned int workcapacity, unsigned int limit, Dis64BoundCall *output,
+	unsigned int capacity, unsigned int *written, Dis64CallImage *result)
+{
+	Dis64CallImage image;
+	Dis64Section code = {0}, exports = {0}, strings = {0}, types = {0}, section;
+	unsigned int i;
+
+	if(result == 0 || written == 0 || !dis64callimageopen(data, bytes, objectlimit, &image))
+		return 0;
+	for(i=0; i<image.envelope.sections; i++){
+		if(!dis64section(&image.envelope, i, &section))
+			return 0;
+		switch(section.kind){
+		case Dis64Code: code = section; break;
+		case Dis64Types: types = section; break;
+		case Dis64Exports: exports = section; break;
+		case Dis64Strings: strings = section; break;
+		}
+	}
 	/* The underlying gate atomically publishes records/count only on complete proof. */
 	if(!dis64boundcallcheck(image.code, code.bytes, data+exports.offset, exports.bytes,
 	   data+strings.offset, strings.bytes, data+types.offset, types.bytes, objectlimit,

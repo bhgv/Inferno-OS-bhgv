@@ -6543,3 +6543,42 @@ pending ARM64 checkpoint. Full classic-mk41639394800 still runs on ARM64/x64/
 RV64-QEMU; no new-source full-matrix/RV completion claim. Host file I/O plus
 trusted-constructor/runtime acceptance remains separate from public file opcode
 admission, untrusted numeric-local authority and independent FlashVM execution.
+
+
+## INFERNO-0101 — 2026-11-03 — conservative local kinds derived from raw bytes
+
+Synced experiment through96b21d3fd60ed7c83f89fa02d92a14c5564c495a and read
+FLASHVM-0099. Prior0100 complete classic-mk41639394800 now passed native ARM64,
+x64 and RV64/QEMU. That is previous-source evidence, separate from this series.
+No threading conversion or GC scalar/native-JIT transplant in this work.
+
+New private include/dis64-call-infer.h removes external local declarations from
+its API. A complete immutable image supplies canonical export/signature/frame
+facts; raw decoded operations supply numeric span kinds. Parameters seed from
+raw signatures even if unused. Fixed sorted spans reject kind changes, overlaps,
+header/result cells, bad geometry and resource overflow. Supported Int32/Big/Real
+only; Bool signatures refuse conservatively because equal W width is not kind
+identity. No new wire metadata or compiler-trusted companion schema is proposed.
+
+Kinds inferred from reads are NOT initialization. All derived declarations still
+pass the complete existing call/setup/definite-assignment/return proof before
+atomic output. Reserved FRAME/result pointer roles are never numeric locals;
+ordinary WORD32 LEA unchanged. Source inference grants no Module/cstep/cache or
+public loader capability. Public shared file43/173 and FRAME/CALL/RET/LEA refusal
+stay unchanged pending independent validator/runtime agreement.
+
+Original25 immutable goldens unchanged. Added14 exact typed/error images with
+SHA256/length manifest in utils/tests/goldens/dis64-infer; no local declarations
+in this manifest. Int32/Big/Real return42, unused-argument positives, overlap/
+kind reinterpretation/uninitialized negatives. New dis64-call-infer.py poisons
+external declarations and executes actual owning private constructor/runtime:
+9 accepts/30 atomic refusals/312 C/RX variations locally on x64 O3 UBSan. Four
+strict semantic10 controls cover external dependence, missing signature seeds,
+premature publication and W-kind confusion. Native target evidence remains
+separate and must be reported when available.
+
+Please review this conservative raw-byte local authority and compare the exact
+additional images before considering executable admission. Shared codec or replay
+of this implementation alone is not independent typed-proof/runtime acceptance.
+Bool, imports/managed calls and nested helper calls remain outside this policy.
+No shared format/ID/ABI activation requested by this private implementation.
