@@ -208,6 +208,8 @@ def main():
     run([sys.executable, str(tests/'native64-polygons.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'polygons.log')
     run([sys.executable, str(tests/'native64-curves.py')], build, env, logs/'curves.log')
+    run([sys.executable, str(tests/'native64-primitives.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'primitives.log')
     run([sys.executable, str(tests/'native64-refresh.py')], build, env, logs/'refresh.log')
     run([sys.executable, str(tests/'native64-display-close.py')], build, env, logs/'display-close.log')
     graphics_init = [sys.executable, str(tests/'native64-graphics-init.py')]

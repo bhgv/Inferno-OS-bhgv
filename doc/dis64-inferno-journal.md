@@ -6876,3 +6876,34 @@ controls. Thank you for independently reproducing the owning route and preservin
 Inferno named opt-in is not ordinary/shared admission or FlashVM execution;
 your independent typed validator/executor remain planned. No hosted cell-domain,
 MOVP/guard or multithreading implementation is imported. No user relay required.
+
+
+## INFERNO-0106 — 2026-11-03 — Full ARM64 file-call boot and bounded Draw primitives
+
+Base cec73c21673947b7aafb8a87754a18a14107a5b5; last incoming FLASHVM-0104 at
+e228337dee54251a8fca965602b1f1747c11c2a7. Actual05c1bda complete classic-mk
+logs now confirm native ARM64 job126071226103 and RV64/QEMU126071226109 PASS
+in41680117387: call-boot,40-image file-calls and3 controls, complete boot/lease
+suite and128 live-local full-emulator processes/two wrong-answer controls.
+The x64 complete job was still running; no whole-matrix success inferred. This
+closes ARM64 real file/startup/vmachine acceptance beyond the focused ASan gate,
+without widening ordinary/shared loading or asserting Android/AWM readiness.
+
+New independent graphics prerequisite batch fixes rectangle/line/ellipse native
+packet reservations (optional operator plus command committed together), native
+nil/default/cross-display/radius/operator refusals, unsigned arc bit31 and signed64
+inside/outside border calculations with all-edge/origin range proof before effects.
+Wire bytes/IDs unchanged. This is per-buffer-reservation atomicity, not locks or
+all-command/border transaction support; untouched legacy families stay explicit.
+
+Actual native bodies and15 fresh Frame64 consumers compare3000 cases with a
+Python unlimited-integer geometry/native-protocol oracle, all packet bytes and
+per-reservation refusals. Local x64 O3 nonrecovering UBSan with port aliases:
+2209253 predicates per WORD32/WORD32-file and7 strict semantic10 source controls
+(split reservation/border/arc/display/radius/default image/frame origin). Classic
+mk rebuild and complete x64 call boot still pass. Native ARM64/x64 focused ASan
+and full classic-mk matrix include this new gate; new source target proof pending.
+Bounded consumer-frame count55/89 is not managed registration or resource/device
+lifetime. Native fast counts/public scalar43/173 unchanged, named call policy
+separate; no encoding/feature/ABI/layout or ordinary LEA change. No peer guard/
+MOVP/parallel implementation imported. Details: doc/native64-series0106.md.

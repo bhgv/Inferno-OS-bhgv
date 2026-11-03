@@ -1,20 +1,25 @@
 #include "lib9.h"
 #include "draw.h"
+#include "draw-packet.h"
 
+
+/* Draw an outlined segment using the default compositing operator. */
 void
 line(Image *dst, Point p0, Point p1, int end0, int end1, int radius, Image *src, Point sp)
 {
 	lineop(dst, p0, p1, end0, end1, radius, src, sp, SoverD);
 }
 
+
+/* Refuse invalid image/radius/operator input before reserving the complete line packet. */
 void
 lineop(Image *dst, Point p0, Point p1, int end0, int end1, int radius, Image *src, Point sp, Drawop op)
 {
 	uchar *a;
 
-	_setdrawop(dst->display, op);
-
-	a = bufimage(dst->display, 1+4+2*4+2*4+4+4+4+4+2*4);
+	if(dst == nil || src == nil || dst->display == nil || dst->display != src->display || radius < 0)
+		return;
+	a = drawpacket(dst->display, 45, op);
 	if(a == 0){
 		_drawprint(2, "image line: %r\n");
 		return;

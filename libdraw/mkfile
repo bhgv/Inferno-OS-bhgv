@@ -48,6 +48,7 @@ OFILES=	alloc.$O\
 	writesubfont.$O\
 
 HFILES=\
+	draw-packet.h\
 	$ROOT/include/draw.h \
 	$ROOT/include/interp.h\
 
