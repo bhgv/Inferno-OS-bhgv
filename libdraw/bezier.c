@@ -1,125 +1,208 @@
 #include "lib9.h"
 #include "draw.h"
 
-#define PINC 32 // Native point-list allocation granularity.
+#define PINC 32 // Initial native point-list capacity.
+#define BezierPoints 65536 // Maximum vertices representable by one polygon message.
+#define BezierWork 1048576U // Per-list subdivision admission, including all spline segments.
+#define BezierDepth 64U // Maximum live subdivision depth before clean refusal.
+#define BezierDistance 1048576LL // Exact projection domain keeping cubic products within signed64.
 
 typedef struct Plist Plist;
 
-struct Plist
-{
+struct Plist {
 	Point *p; // Owned native vertices, retained until replacement succeeds.
-	int np; // Initialized vertex count, or minus one after owned allocation refusal.
+	int np; // Initialized count, or minus one after clean allocation/resource refusal.
+	unsigned int capacity; // Actual native vertex slots, grown geometrically up to the output bound.
+	unsigned int work; // Remaining per-list subdivision admissions, never process-global.
 };
 
-/* Preserve the old allocation on realloc refusal, then retire the whole failed list once. */
+typedef struct BPoint BPoint;
+
+struct BPoint {
+	vlong x; // Widened fixed-point coordinate; scale never exceeds32768.
+	vlong y; // Convex subdivision bounds intermediate magnitude below2^47.
+};
+
+
+/* Retire the sole native vertex owner once and leave all later appends inert. */
+static void
+failpts(Plist *l)
+{
+	free(l->p);
+	l->p = nil;
+	l->capacity = 0;
+	l->np = -1;
+}
+
+
+/* Bound wire-sized output before growth and preserve the old owner on realloc refusal. */
 static void
 appendpt(Plist *l, Point p)
 {
 	Point *next;
+	unsigned int capacity;
 
 	if(l->np < 0)
 		return;
-	if(l->np == 0)
-		next = malloc(PINC*sizeof(Point));
-	else if(l->np%PINC == 0){
-		if(l->np > 0x7fffffff/sizeof(Point)-PINC)
-			next = nil;
-		else
-			next = realloc(l->p, (l->np+PINC)*sizeof(Point));
-	}else
-		next = l->p;
-	if(next == nil){
-		free(l->p);
-		l->p = nil;
-		l->np = -1;
+	if(l->np >= BezierPoints){
+		failpts(l);
 		return;
 	}
-	l->p = next;
+	if((unsigned int)l->np == l->capacity){
+		capacity = l->capacity == 0 ? PINC : l->capacity*2;
+		if(capacity > BezierPoints)
+			capacity = BezierPoints;
+		if(l->p == nil)
+			next = malloc(capacity*sizeof(Point));
+		else
+			next = realloc(l->p, capacity*sizeof(Point));
+		if(next == nil){
+			failpts(l);
+			return;
+		}
+		l->p = next;
+		l->capacity = capacity;
+	}
 	l->p[l->np++] = p;
 }
 
-
-/* Measure the existing integer squared distance for the retained curve algorithm. */
-static int
-normsq(Point p)
+/* Square only bounded relative components established by the distance calculation. */
+static vlong
+normsq(vlong x, vlong y)
 {
-	return p.x*p.x+p.y*p.y;
+	return x*x+y*y;
 }
 
 
-/* Measure the existing control-point distance from a segment. */
-static int
+/* Retain integer projection semantics in a safe domain; larger spans subdivide conservatively. */
+static vlong
 psdist(Point p, Point a, Point b)
 {
-	int num, den;
+	vlong px, py, bx, by, num, den, x, y;
 
-	p = subpt(p, a);
-	b = subpt(b, a);
-	num = p.x*b.x + p.y*b.y;
+	px = (vlong)p.x-a.x;
+	py = (vlong)p.y-a.y;
+	bx = (vlong)b.x-a.x;
+	by = (vlong)b.y-a.y;
+	if((px == 0 && py == 0) || (px == bx && py == by))
+		return 0;
+	if(px < -BezierDistance || px > BezierDistance || py < -BezierDistance || py > BezierDistance ||
+	   bx < -BezierDistance || bx > BezierDistance || by < -BezierDistance || by > BezierDistance)
+		return 2;
+	num = px*bx+py*by;
 	if(num <= 0)
-		return normsq(p);
-	den = normsq(b);
+		return normsq(px, py);
+	den = normsq(bx, by);
 	if(num >= den)
-		return normsq(subpt(b, p));
-	return normsq(subpt(divpt(mulpt(b, num), den), p));
+		return normsq(bx-px, by-py);
+	x = bx*num/den-px;
+	y = by*num/den-py;
+	return normsq(x, y);
 }
 
-/*
- * Convert cubic Bezier curve control points to polyline
- * vertices.  Leaves the last vertex off, so you can continue
- * with another curve.
- */
 
-/* Stop subdivision after allocation refusal; otherwise retain existing curve geometry. */
-static void
-bpts1(Plist *l, Point p0, Point p1, Point p2, Point p3, int scale)
+/* Widen native control coordinates before any fixed-point sum or multiplication. */
+static BPoint
+widept(Point p)
 {
-	Point p01, p12, p23, p012, p123, p0123;
+	BPoint q;
+
+	q.x = p.x;
+	q.y = p.y;
+	return q;
+}
+
+
+/* Add bounded fixed-point coordinates without narrowing through native Point fields. */
+static BPoint
+addwide(BPoint a, BPoint b)
+{
+	a.x += b.x;
+	a.y += b.y;
+	return a;
+}
+
+
+/* Scale bounded convex control coordinates while preserving their existing integer representation. */
+static BPoint
+mulwide(BPoint p, int n)
+{
+	p.x *= n;
+	p.y *= n;
+	return p;
+}
+
+
+/* Validate the narrowed native result; only positive bounded scales are internally generated. */
+static int
+nativept(BPoint p, int scale, Point *result)
+{
+	vlong x, y;
+
+	if(scale <= 0)
+		return 0;
+	x = p.x/scale;
+	y = p.y/scale;
+	if(x < (-0x7fffffff-1) || x > 0x7fffffff || y < (-0x7fffffff-1) || y > 0x7fffffff)
+		return 0;
+	result->x = x;
+	result->y = y;
+	return 1;
+}
+
+
+/* Preserve fixed-point subdivision order with per-list work/output and per-path depth bounds. */
+static void
+bpts1(Plist *l, BPoint p0, BPoint p1, BPoint p2, BPoint p3, int scale, unsigned int depth)
+{
+	BPoint p01, p12, p23, p012, p123, p0123;
 	Point tp0, tp1, tp2, tp3;
+
 	if(l->np < 0)
 		return;
-	tp0=divpt(p0, scale);
-	tp1=divpt(p1, scale);
-	tp2=divpt(p2, scale);
-	tp3=divpt(p3, scale);
-	if(psdist(tp1, tp0, tp3)<=1 && psdist(tp2, tp0, tp3)<=1){
+	if(l->work == 0 || depth > BezierDepth){
+		failpts(l);
+		return;
+	}
+	l->work--;
+	if(!nativept(p0, scale, &tp0) || !nativept(p1, scale, &tp1) ||
+	   !nativept(p2, scale, &tp2) || !nativept(p3, scale, &tp3)){
+		failpts(l);
+		return;
+	}
+	if(psdist(tp1, tp0, tp3) <= 1 && psdist(tp2, tp0, tp3) <= 1){
 		appendpt(l, tp0);
 		appendpt(l, tp1);
 		appendpt(l, tp2);
+		return;
 	}
-	else{
-		/*
-		 * if scale factor is getting too big for comfort,
-		 * rescale now & concede the rounding error
-		 */
-		if(scale>(1<<12)){
-			p0=tp0;
-			p1=tp1;
-			p2=tp2;
-			p3=tp3;
-			scale=1;
-		}
-		p01=addpt(p0, p1);
-		p12=addpt(p1, p2);
-		p23=addpt(p2, p3);
-		p012=addpt(p01, p12);
-		p123=addpt(p12, p23);
-		p0123=addpt(p012, p123);
-		bpts1(l, mulpt(p0, 8), mulpt(p01, 4), mulpt(p012, 2), p0123, scale*8);
-		bpts1(l, p0123, mulpt(p123, 2), mulpt(p23, 4), mulpt(p3, 8), scale*8);
+	if(scale > (1<<12)){
+		p0 = widept(tp0);
+		p1 = widept(tp1);
+		p2 = widept(tp2);
+		p3 = widept(tp3);
+		scale = 1;
 	}
+	p01 = addwide(p0, p1);
+	p12 = addwide(p1, p2);
+	p23 = addwide(p2, p3);
+	p012 = addwide(p01, p12);
+	p123 = addwide(p12, p23);
+	p0123 = addwide(p012, p123);
+	bpts1(l, mulwide(p0, 8), mulwide(p01, 4), mulwide(p012, 2), p0123, scale*8, depth+1);
+	bpts1(l, p0123, mulwide(p123, 2), mulwide(p23, 4), mulwide(p3, 8), scale*8, depth+1);
 }
 
 
-/* Start subdivision with the existing unit scale. */
+/* Start one curve inside the current list's shared work and output budgets. */
 static void
 bpts(Plist *l, Point p0, Point p1, Point p2, Point p3)
 {
-	bpts1(l, p0, p1, p2, p3, 1);
+	bpts1(l, widept(p0), widept(p1), widept(p2), widept(p3), 1, 0);
 }
 
 
-/* Append the final endpoint after the existing curve subdivision. */
+/* Append the original final endpoint only if subdivision completed successfully. */
 static void
 bezierpts(Plist *l, Point p0, Point p1, Point p2, Point p3)
 {
@@ -128,7 +211,19 @@ bezierpts(Plist *l, Point p0, Point p1, Point p2, Point p3)
 }
 
 
-/* Stop scanning spline segments when vertex allocation has failed. */
+/* Compute existing spline convex averages without overflowing at large coordinate translations. */
+static Point
+blendpt(Point a, int wa, Point b, int wb, int divisor)
+{
+	Point p;
+
+	p.x = ((vlong)a.x*wa+(vlong)b.x*wb)/divisor;
+	p.y = ((vlong)a.y*wa+(vlong)b.y*wb)/divisor;
+	return p;
+}
+
+
+/* Validate the source span and share one bounded work/output list across every spline segment. */
 static void
 bezsplinepts(Plist *l, Point *pt, int npt)
 {
@@ -136,37 +231,56 @@ bezsplinepts(Plist *l, Point *pt, int npt)
 	Point a, b, c, d;
 	int periodic;
 
-	if(npt<3)
+	if(npt < 0 || npt > BezierPoints || (npt != 0 && (pt == nil ||
+	   (uintptr)pt > (uintptr)-1-(ulong)npt*sizeof(Point)))){
+		failpts(l);
+		return;
+	}
+	if(npt < 3)
 		return;
 	ep = &pt[npt-3];
 	periodic = eqpt(pt[0], ep[2]);
 	if(periodic){
-		a = divpt(addpt(ep[1], pt[0]), 2);
-		b = divpt(addpt(ep[1], mulpt(pt[0], 5)), 6);
-		c = divpt(addpt(mulpt(pt[0], 5), pt[1]), 6);
-		d = divpt(addpt(pt[0], pt[1]), 2);
+		a = blendpt(ep[1], 1, pt[0], 1, 2);
+		b = blendpt(ep[1], 1, pt[0], 5, 6);
+		c = blendpt(pt[0], 5, pt[1], 1, 6);
+		d = blendpt(pt[0], 1, pt[1], 1, 2);
 		bpts(l, a, b, c, d);
 	}
 	for(p=pt; p<=ep && l->np >= 0; p++){
-		if(p==pt && !periodic){
+		if(p == pt && !periodic){
 			a = p[0];
-			b = divpt(addpt(p[0], mulpt(p[1], 2)), 3);
+			b = blendpt(p[0], 1, p[1], 2, 3);
+		}else{
+			a = blendpt(p[0], 1, p[1], 1, 2);
+			b = blendpt(p[0], 1, p[1], 5, 6);
 		}
-		else{
-			a = divpt(addpt(p[0], p[1]), 2);
-			b = divpt(addpt(p[0], mulpt(p[1], 5)), 6);
-		}
-		if(p==ep && !periodic){
-			c = divpt(addpt(mulpt(p[1], 2), p[2]), 3);
+		if(p == ep && !periodic){
+			c = blendpt(p[1], 2, p[2], 1, 3);
 			d = p[2];
-		}
-		else{
-			c = divpt(addpt(mulpt(p[1], 5), p[2]), 6);
-			d = divpt(addpt(p[1], p[2]), 2);
+		}else{
+			c = blendpt(p[1], 5, p[2], 1, 6);
+			d = blendpt(p[1], 1, p[2], 1, 2);
 		}
 		bpts(l, a, b, c, d);
 	}
 	appendpt(l, d);
+}
+
+
+/* Check translated source coordinates before publishing native geometry to a draw transport. */
+static int
+beziersource(Point sp, Point first, Point vertex, Point *result)
+{
+	vlong x, y;
+
+	x = (vlong)sp.x-first.x+vertex.x;
+	y = (vlong)sp.y-first.y+vertex.y;
+	if(x < (-0x7fffffff-1) || x > 0x7fffffff || y < (-0x7fffffff-1) || y > 0x7fffffff)
+		return 0;
+	result->x = x;
+	result->y = y;
+	return 1;
 }
 
 
@@ -175,8 +289,13 @@ int
 getbezsplinepts(Point *pt, int npt, Point **pp)
 {
 	Plist l;
+
+	if(pp == nil)
+		return -1;
 	l.np = 0;
 	l.p = nil;
+	l.capacity = 0;
+	l.work = BezierWork;
 	bezsplinepts(&l, pt, npt);
 	*pp  = l.p;
 	return l.np;
@@ -196,14 +315,21 @@ int
 bezierop(Image *dst, Point p0, Point p1, Point p2, Point p3, int end0, int end1, int radius, Image *src, Point sp, Drawop op)
 {
 	Plist l;
+	Point source;
 
 	l.np = 0;
 	l.p = nil;
+	l.capacity = 0;
+	l.work = BezierWork;
 	bezierpts(&l, p0, p1, p2, p3);
 	if(l.np == -1)
 		return 0;
 	if(l.np != 0){
-		polyop(dst, l.p, l.np, end0, end1, radius, src, addpt(subpt(sp, p0), l.p[0]), op);
+		if(!beziersource(sp, p0, l.p[0], &source)){
+			free(l.p);
+			return 0;
+		}
+		polyop(dst, l.p, l.np, end0, end1, radius, src, source, op);
 		free(l.p);
 	}
 	return 1;
@@ -223,14 +349,21 @@ int
 bezsplineop(Image *dst, Point *pt, int npt, int end0, int end1, int radius, Image *src, Point sp, Drawop op)
 {
 	Plist l;
+	Point source;
 
 	l.np = 0;
 	l.p = nil;
+	l.capacity = 0;
+	l.work = BezierWork;
 	bezsplinepts(&l, pt, npt);
 	if(l.np==-1)
 		return 0;
 	if(l.np != 0){
-		polyop(dst, l.p, l.np, end0, end1, radius, src, addpt(subpt(sp, pt[0]), l.p[0]), op);
+		if(!beziersource(sp, pt[0], l.p[0], &source)){
+			free(l.p);
+			return 0;
+		}
+		polyop(dst, l.p, l.np, end0, end1, radius, src, source, op);
 		free(l.p);
 	}
 	return 1;
@@ -250,14 +383,21 @@ int
 fillbezierop(Image *dst, Point p0, Point p1, Point p2, Point p3, int w, Image *src, Point sp, Drawop op)
 {
 	Plist l;
+	Point source;
 
 	l.np = 0;
 	l.p = nil;
+	l.capacity = 0;
+	l.work = BezierWork;
 	bezierpts(&l, p0, p1, p2, p3);
 	if(l.np == -1)
 		return 0;
 	if(l.np != 0){
-		fillpolyop(dst, l.p, l.np, w, src, addpt(subpt(sp, p0), l.p[0]), op);
+		if(!beziersource(sp, p0, l.p[0], &source)){
+			free(l.p);
+			return 0;
+		}
+		fillpolyop(dst, l.p, l.np, w, src, source, op);
 		free(l.p);
 	}
 	return 1;
@@ -277,14 +417,21 @@ int
 fillbezsplineop(Image *dst, Point *pt, int npt, int w, Image *src, Point sp, Drawop op)
 {
 	Plist l;
+	Point source;
 
 	l.np = 0;
 	l.p = nil;
+	l.capacity = 0;
+	l.work = BezierWork;
 	bezsplinepts(&l, pt, npt);
 	if(l.np == -1)
 		return 0;
 	if(l.np > 0){
-		fillpolyop(dst, l.p, l.np, w, src, addpt(subpt(sp, pt[0]), l.p[0]), op);
+		if(!beziersource(sp, pt[0], l.p[0], &source)){
+			free(l.p);
+			return 0;
+		}
+		fillpolyop(dst, l.p, l.np, w, src, source, op);
 		free(l.p);
 	}
 	return 1;

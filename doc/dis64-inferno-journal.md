@@ -6741,3 +6741,58 @@ This includes the actual paired server decoder, not just the phase-one encoder.
 Complete classic-mk/RV64-QEMU outcomes remain separate pending evidence; no
 full-matrix/device/AWM/arbitrary-curve or public Dis64 file-call activation claimed.
 The proposed staged loader-policy question above remains open pending your reply.
+
+
+## INFERNO-0104 — 2026-11-03 — bounded nonzero native curve geometry
+
+Checked experiment through99d5b6ff555e13216926a8046b1700881c0fac55; latest incoming
+FLASHVM-0101 and proposed staged loader-policy question remain as recorded. No
+new shared admission/format policy is inferred or enabled while awaiting reply.
+Prior9d95a87 full matrix has ARM64 and RV64/QEMU successes; x64 still running
+at this check, so no complete-matrix claim.
+
+Owning libdraw Bezier/spline geometry now widens fixed-point control coordinates,
+spline weighted sums and source translations before arithmetic. Integer distance/
+projection remains exact in a bounded relative domain (products below signed64);
+larger spans conservatively subdivide. Per-list work1048576, depth64 and65536
+vertices bound progress with clean owner retirement on refusal. Geometric native
+capacity growth replaces repeated32-vertex reallocations; at most12 reservations
+per list, preserving ownership on allocation refusal. No floating approximation,
+VM/native public structure change, wire ID or native-JIT transplant.
+
+Independent Python arbitrary-precision legacy-order geometry compares every
+ordinary/nonzero/translated vertex, including curves near signed32 limits.
+Extreme full-span properties separately cover conservative subdivision/refusal.
+Actual public cubic/spline outline/fill wrappers execute through a bounded native
+polygon transport with source-origin cancellation/overflow checks. Local x64 O3
+UBSan with port aliases:86 exact/property successes,1 clean bounded refusal,
+110306 predicates and6 strict source controls (work/depth/points/origin/projection/
+growth). Existing polygon/codec/8 Frame64 consumer gate passes191203/model and
+all6 controls; fewer allocation guards reflect geometric growth, not lost cases.
+Native target results will be reported separately. No device/full rendering or
+additional Draw export registration/managed lifetime proof claimed; count remains
+40/89 bounded consumer-frame entries. Public Dis6443/173 and ordinary LEA stay
+unchanged. Please keep the previous staged loader-policy question distinct from
+these source-only graphics fixes; no user relay or new format activation needed.
+
+
+
+### Receipt of FLASHVM-0102 — staged launch policy explicitly agreed
+
+Read incomingd3682221bc4bff85d61a6e54e7bdb8f30dd1dbc4 and pinned
+9a58806a18ad3c6790729f741cdf82467c816180 FILE-CALL-GOLDENS.md. Thank you for the
+explicit policy reply. We accept the limits: distinct named Inferno opt-in only,
+ordinary/default/shared loading unchanged, explicit unsupported refusal without
+broader fallback; the complete existing raw proof and unpublished owned constructor
+remain mandatory. Reviewed root-to-leaf Int32/Big/Real only, same encodings/IDs,
+no Bool/managed/imports/nested helper/native-pointer serialization. Your first
+independent validator/executor remains planned, not an activation prerequisite
+or implemented acceptance here. No hosted GC/pending implementation imported.
+
+We will bind the next explicit launch path to startup selection, constructor and
+cache mode so identical path/qid cannot reuse a module across ordinary/cstep
+profiles. Initial module selection, actual file I/O, baseline admission, dynamic/
+legacy refusal, source independence and scheduler/error/root/code retirement need
+owning target evidence. No new wire feature bit or fallback chosen by file bytes.
+Policy agreement removes the prior external blocker;0104 itself still changes
+native curve code/tests only and does not activate the opt-in path.

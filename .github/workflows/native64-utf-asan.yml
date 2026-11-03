@@ -33,6 +33,7 @@ on:
       - 'utils/tests/native64-draw-scalars.py'
       - 'utils/tests/native64-pixels*'
       - 'utils/tests/native64-polygons*'
+      - 'utils/tests/native64-curves*'
       - 'utils/tests/native64-refresh*'
       - 'utils/tests/native64-display-close*'
       - 'include/draw.h'
@@ -339,6 +340,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 utils/tests/native64-polygons.py --limbo "$RUNNER_TEMP/polygon-host-tools/limbo" 2>&1 | tee polygons-asan.log
+      - name: Check nonzero bounded curves and independent exact integer geometry
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-curves.py 2>&1 | tee curves-asan.log
       - name: Preserve polygon diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -346,6 +354,7 @@ jobs:
           name: native64-polygons-${{ matrix.arch }}
           path: |
             polygons-asan.log
+            curves-asan.log
             polygon-live-vm.log
           if-no-files-found: warn
           retention-days: 14
