@@ -3,10 +3,190 @@
 #include "pool.h"
 #include "interp.h"
 #include "isa.h"
+/* Use one explicit int32/ref64 interface for every owning Draw consumer. */
+#ifdef DIS_NATIVE64_DRAW_HEADER
+#if !defined(DIS_WORD32) || DIS_WORD32 != 1
+#error native64 Draw declarations require DIS_WORD32=1
+#endif
+#define Rect_Xrect Draw_Rect_Xrect // Preserve the generated qualified callable identity.
+#define F_Rect_Xrect F_Draw_Rect_Xrect // Use the corresponding generated Frame64 declaration.
+#define Point_add Draw_Point_add // Preserve the generated qualified callable identity.
+#define F_Point_add F_Draw_Point_add // Use the corresponding generated Frame64 declaration.
+#define Rect_addpt Draw_Rect_addpt // Preserve the generated qualified callable identity.
+#define F_Rect_addpt F_Draw_Rect_addpt // Use the corresponding generated Frame64 declaration.
+#define Display_allocate Draw_Display_allocate // Preserve the generated qualified callable identity.
+#define F_Display_allocate F_Draw_Display_allocate // Use the corresponding generated Frame64 declaration.
+#define Screen_allocate Draw_Screen_allocate // Preserve the generated qualified callable identity.
+#define F_Screen_allocate F_Draw_Screen_allocate // Use the corresponding generated Frame64 declaration.
+#define Image_arc Draw_Image_arc // Preserve the generated qualified callable identity.
+#define F_Image_arc F_Draw_Image_arc // Use the corresponding generated Frame64 declaration.
+#define Image_arcop Draw_Image_arcop // Preserve the generated qualified callable identity.
+#define F_Image_arcop F_Draw_Image_arcop // Use the corresponding generated Frame64 declaration.
+#define Image_arrow Draw_Image_arrow // Preserve the generated qualified callable identity.
+#define F_Image_arrow F_Draw_Image_arrow // Use the corresponding generated Frame64 declaration.
+#define Font_bbox Draw_Font_bbox // Preserve the generated qualified callable identity.
+#define F_Font_bbox F_Draw_Font_bbox // Use the corresponding generated Frame64 declaration.
+#define Image_bezier Draw_Image_bezier // Preserve the generated qualified callable identity.
+#define F_Image_bezier F_Draw_Image_bezier // Use the corresponding generated Frame64 declaration.
+#define Image_bezierop Draw_Image_bezierop // Preserve the generated qualified callable identity.
+#define F_Image_bezierop F_Draw_Image_bezierop // Use the corresponding generated Frame64 declaration.
+#define Image_bezspline Draw_Image_bezspline // Preserve the generated qualified callable identity.
+#define F_Image_bezspline F_Draw_Image_bezspline // Use the corresponding generated Frame64 declaration.
+#define Image_bezsplineop Draw_Image_bezsplineop // Preserve the generated qualified callable identity.
+#define F_Image_bezsplineop F_Draw_Image_bezsplineop // Use the corresponding generated Frame64 declaration.
+#define Image_border Draw_Image_border // Preserve the generated qualified callable identity.
+#define F_Image_border F_Draw_Image_border // Use the corresponding generated Frame64 declaration.
+#define Image_bottom Draw_Image_bottom // Preserve the generated qualified callable identity.
+#define F_Image_bottom F_Draw_Image_bottom // Use the corresponding generated Frame64 declaration.
+#define Screen_bottom Draw_Screen_bottom // Preserve the generated qualified callable identity.
+#define F_Screen_bottom F_Draw_Screen_bottom // Use the corresponding generated Frame64 declaration.
+#define Font_build Draw_Font_build // Preserve the generated qualified callable identity.
+#define F_Font_build F_Draw_Font_build // Use the corresponding generated Frame64 declaration.
+#define Rect_canon Draw_Rect_canon // Preserve the generated qualified callable identity.
+#define F_Rect_canon F_Draw_Rect_canon // Use the corresponding generated Frame64 declaration.
+#define Rect_clip Draw_Rect_clip // Preserve the generated qualified callable identity.
+#define F_Rect_clip F_Draw_Rect_clip // Use the corresponding generated Frame64 declaration.
+#define Display_cmap2rgb Draw_Display_cmap2rgb // Preserve the generated qualified callable identity.
+#define F_Display_cmap2rgb F_Draw_Display_cmap2rgb // Use the corresponding generated Frame64 declaration.
+#define Display_cmap2rgba Draw_Display_cmap2rgba // Preserve the generated qualified callable identity.
+#define F_Display_cmap2rgba F_Draw_Display_cmap2rgba // Use the corresponding generated Frame64 declaration.
+#define Display_color Draw_Display_color // Preserve the generated qualified callable identity.
+#define F_Display_color F_Draw_Display_color // Use the corresponding generated Frame64 declaration.
+#define Display_colormix Draw_Display_colormix // Preserve the generated qualified callable identity.
+#define F_Display_colormix F_Draw_Display_colormix // Use the corresponding generated Frame64 declaration.
+#define Rect_combine Draw_Rect_combine // Preserve the generated qualified callable identity.
+#define F_Rect_combine F_Draw_Rect_combine // Use the corresponding generated Frame64 declaration.
+#define Rect_contains Draw_Rect_contains // Preserve the generated qualified callable identity.
+#define F_Rect_contains F_Draw_Rect_contains // Use the corresponding generated Frame64 declaration.
+#define Chans_depth Draw_Chans_depth // Preserve the generated qualified callable identity.
+#define F_Chans_depth F_Draw_Chans_depth // Use the corresponding generated Frame64 declaration.
+#define Point_div Draw_Point_div // Preserve the generated qualified callable identity.
+#define F_Point_div F_Draw_Point_div // Use the corresponding generated Frame64 declaration.
+#define Image_draw Draw_Image_draw // Preserve the generated qualified callable identity.
+#define F_Image_draw F_Draw_Image_draw // Use the corresponding generated Frame64 declaration.
+#define Image_drawop Draw_Image_drawop // Preserve the generated qualified callable identity.
+#define F_Image_drawop F_Draw_Image_drawop // Use the corresponding generated Frame64 declaration.
+#define Rect_dx Draw_Rect_dx // Preserve the generated qualified callable identity.
+#define F_Rect_dx F_Draw_Rect_dx // Use the corresponding generated Frame64 declaration.
+#define Rect_dy Draw_Rect_dy // Preserve the generated qualified callable identity.
+#define F_Rect_dy F_Draw_Rect_dy // Use the corresponding generated Frame64 declaration.
+#define Image_ellipse Draw_Image_ellipse // Preserve the generated qualified callable identity.
+#define F_Image_ellipse F_Draw_Image_ellipse // Use the corresponding generated Frame64 declaration.
+#define Image_ellipseop Draw_Image_ellipseop // Preserve the generated qualified callable identity.
+#define F_Image_ellipseop F_Draw_Image_ellipseop // Use the corresponding generated Frame64 declaration.
+#define Chans_eq Draw_Chans_eq // Preserve the generated qualified callable identity.
+#define F_Chans_eq F_Draw_Chans_eq // Use the corresponding generated Frame64 declaration.
+#define Point_eq Draw_Point_eq // Preserve the generated qualified callable identity.
+#define F_Point_eq F_Draw_Point_eq // Use the corresponding generated Frame64 declaration.
+#define Rect_eq Draw_Rect_eq // Preserve the generated qualified callable identity.
+#define F_Rect_eq F_Draw_Rect_eq // Use the corresponding generated Frame64 declaration.
+#define Image_fillarc Draw_Image_fillarc // Preserve the generated qualified callable identity.
+#define F_Image_fillarc F_Draw_Image_fillarc // Use the corresponding generated Frame64 declaration.
+#define Image_fillarcop Draw_Image_fillarcop // Preserve the generated qualified callable identity.
+#define F_Image_fillarcop F_Draw_Image_fillarcop // Use the corresponding generated Frame64 declaration.
+#define Image_fillbezier Draw_Image_fillbezier // Preserve the generated qualified callable identity.
+#define F_Image_fillbezier F_Draw_Image_fillbezier // Use the corresponding generated Frame64 declaration.
+#define Image_fillbezierop Draw_Image_fillbezierop // Preserve the generated qualified callable identity.
+#define F_Image_fillbezierop F_Draw_Image_fillbezierop // Use the corresponding generated Frame64 declaration.
+#define Image_fillbezspline Draw_Image_fillbezspline // Preserve the generated qualified callable identity.
+#define F_Image_fillbezspline F_Draw_Image_fillbezspline // Use the corresponding generated Frame64 declaration.
+#define Image_fillbezsplineop Draw_Image_fillbezsplineop // Preserve the generated qualified callable identity.
+#define F_Image_fillbezsplineop F_Draw_Image_fillbezsplineop // Use the corresponding generated Frame64 declaration.
+#define Image_fillellipse Draw_Image_fillellipse // Preserve the generated qualified callable identity.
+#define F_Image_fillellipse F_Draw_Image_fillellipse // Use the corresponding generated Frame64 declaration.
+#define Image_fillellipseop Draw_Image_fillellipseop // Preserve the generated qualified callable identity.
+#define F_Image_fillellipseop F_Draw_Image_fillellipseop // Use the corresponding generated Frame64 declaration.
+#define Image_fillpoly Draw_Image_fillpoly // Preserve the generated qualified callable identity.
+#define F_Image_fillpoly F_Draw_Image_fillpoly // Use the corresponding generated Frame64 declaration.
+#define Image_fillpolyop Draw_Image_fillpolyop // Preserve the generated qualified callable identity.
+#define F_Image_fillpolyop F_Draw_Image_fillpolyop // Use the corresponding generated Frame64 declaration.
+#define Image_flush Draw_Image_flush // Preserve the generated qualified callable identity.
+#define F_Image_flush F_Draw_Image_flush // Use the corresponding generated Frame64 declaration.
+#define Image_gendraw Draw_Image_gendraw // Preserve the generated qualified callable identity.
+#define F_Image_gendraw F_Draw_Image_gendraw // Use the corresponding generated Frame64 declaration.
+#define Image_gendrawop Draw_Image_gendrawop // Preserve the generated qualified callable identity.
+#define F_Image_gendrawop F_Draw_Image_gendrawop // Use the corresponding generated Frame64 declaration.
+#define Display_getwindow Draw_Display_getwindow // Preserve the generated qualified callable identity.
+#define F_Display_getwindow F_Draw_Display_getwindow // Use the corresponding generated Frame64 declaration.
+#define Point_in Draw_Point_in // Preserve the generated qualified callable identity.
+#define F_Point_in F_Draw_Point_in // Use the corresponding generated Frame64 declaration.
+#define Rect_inrect Draw_Rect_inrect // Preserve the generated qualified callable identity.
+#define F_Rect_inrect F_Draw_Rect_inrect // Use the corresponding generated Frame64 declaration.
+#define Rect_inset Draw_Rect_inset // Preserve the generated qualified callable identity.
+#define F_Rect_inset F_Draw_Rect_inset // Use the corresponding generated Frame64 declaration.
+#define Image_line Draw_Image_line // Preserve the generated qualified callable identity.
+#define F_Image_line F_Draw_Image_line // Use the corresponding generated Frame64 declaration.
+#define Image_lineop Draw_Image_lineop // Preserve the generated qualified callable identity.
+#define F_Image_lineop F_Draw_Image_lineop // Use the corresponding generated Frame64 declaration.
+#define Chans_mk Draw_Chans_mk // Preserve the generated qualified callable identity.
+#define F_Chans_mk F_Draw_Chans_mk // Use the corresponding generated Frame64 declaration.
+#define Point_mul Draw_Point_mul // Preserve the generated qualified callable identity.
+#define F_Point_mul F_Draw_Point_mul // Use the corresponding generated Frame64 declaration.
+#define Image_name Draw_Image_name // Preserve the generated qualified callable identity.
+#define F_Image_name F_Draw_Image_name // Use the corresponding generated Frame64 declaration.
+#define Display_namedimage Draw_Display_namedimage // Preserve the generated qualified callable identity.
+#define F_Display_namedimage F_Draw_Display_namedimage // Use the corresponding generated Frame64 declaration.
+#define Display_newimage Draw_Display_newimage // Preserve the generated qualified callable identity.
+#define F_Display_newimage F_Draw_Display_newimage // Use the corresponding generated Frame64 declaration.
+#define Screen_newwindow Draw_Screen_newwindow // Preserve the generated qualified callable identity.
+#define F_Screen_newwindow F_Draw_Screen_newwindow // Use the corresponding generated Frame64 declaration.
+#define Display_open Draw_Display_open // Preserve the generated qualified callable identity.
+#define F_Display_open F_Draw_Display_open // Use the corresponding generated Frame64 declaration.
+#define Font_open Draw_Font_open // Preserve the generated qualified callable identity.
+#define F_Font_open F_Draw_Font_open // Use the corresponding generated Frame64 declaration.
+#define Image_origin Draw_Image_origin // Preserve the generated qualified callable identity.
+#define F_Image_origin F_Draw_Image_origin // Use the corresponding generated Frame64 declaration.
+#define Image_poly Draw_Image_poly // Preserve the generated qualified callable identity.
+#define F_Image_poly F_Draw_Image_poly // Use the corresponding generated Frame64 declaration.
+#define Image_polyop Draw_Image_polyop // Preserve the generated qualified callable identity.
+#define F_Image_polyop F_Draw_Image_polyop // Use the corresponding generated Frame64 declaration.
+#define Display_publicscreen Draw_Display_publicscreen // Preserve the generated qualified callable identity.
+#define F_Display_publicscreen F_Draw_Display_publicscreen // Use the corresponding generated Frame64 declaration.
+#define Display_readimage Draw_Display_readimage // Preserve the generated qualified callable identity.
+#define F_Display_readimage F_Draw_Display_readimage // Use the corresponding generated Frame64 declaration.
+#define Image_readpixels Draw_Image_readpixels // Preserve the generated qualified callable identity.
+#define F_Image_readpixels F_Draw_Image_readpixels // Use the corresponding generated Frame64 declaration.
+#define Display_rgb Draw_Display_rgb // Preserve the generated qualified callable identity.
+#define F_Display_rgb F_Draw_Display_rgb // Use the corresponding generated Frame64 declaration.
+#define Display_rgb2cmap Draw_Display_rgb2cmap // Preserve the generated qualified callable identity.
+#define F_Display_rgb2cmap F_Draw_Display_rgb2cmap // Use the corresponding generated Frame64 declaration.
+#define Rect_size Draw_Rect_size // Preserve the generated qualified callable identity.
+#define F_Rect_size F_Draw_Rect_size // Use the corresponding generated Frame64 declaration.
+#define Display_startrefresh Draw_Display_startrefresh // Preserve the generated qualified callable identity.
+#define F_Display_startrefresh F_Draw_Display_startrefresh // Use the corresponding generated Frame64 declaration.
+#define Point_sub Draw_Point_sub // Preserve the generated qualified callable identity.
+#define F_Point_sub F_Draw_Point_sub // Use the corresponding generated Frame64 declaration.
+#define Rect_subpt Draw_Rect_subpt // Preserve the generated qualified callable identity.
+#define F_Rect_subpt F_Draw_Rect_subpt // Use the corresponding generated Frame64 declaration.
+#define Chans_text Draw_Chans_text // Preserve the generated qualified callable identity.
+#define F_Chans_text F_Draw_Chans_text // Use the corresponding generated Frame64 declaration.
+#define Image_text Draw_Image_text // Preserve the generated qualified callable identity.
+#define F_Image_text F_Draw_Image_text // Use the corresponding generated Frame64 declaration.
+#define Image_textbg Draw_Image_textbg // Preserve the generated qualified callable identity.
+#define F_Image_textbg F_Draw_Image_textbg // Use the corresponding generated Frame64 declaration.
+#define Image_textbgop Draw_Image_textbgop // Preserve the generated qualified callable identity.
+#define F_Image_textbgop F_Draw_Image_textbgop // Use the corresponding generated Frame64 declaration.
+#define Image_textop Draw_Image_textop // Preserve the generated qualified callable identity.
+#define F_Image_textop F_Draw_Image_textop // Use the corresponding generated Frame64 declaration.
+#define Image_top Draw_Image_top // Preserve the generated qualified callable identity.
+#define F_Image_top F_Draw_Image_top // Use the corresponding generated Frame64 declaration.
+#define Screen_top Draw_Screen_top // Preserve the generated qualified callable identity.
+#define F_Screen_top F_Draw_Screen_top // Use the corresponding generated Frame64 declaration.
+#define Font_width Draw_Font_width // Preserve the generated qualified callable identity.
+#define F_Font_width F_Draw_Font_width // Use the corresponding generated Frame64 declaration.
+#define Display_writeimage Draw_Display_writeimage // Preserve the generated qualified callable identity.
+#define F_Display_writeimage F_Draw_Display_writeimage // Use the corresponding generated Frame64 declaration.
+#define Image_writepixels Draw_Image_writepixels // Preserve the generated qualified callable identity.
+#define F_Image_writepixels F_Draw_Image_writepixels // Use the corresponding generated Frame64 declaration.
+#include DIS_NATIVE64_DRAW_HEADER
+#else
 #include "runt.h"
+#endif
 #include "raise.h"
 #include "nativeptrmap.h"
+#ifndef DIS_NATIVE64_DRAW_HEADER
 #include "drawmod.h"
+#endif
 #include "draw.h"
 #include "drawif.h"
 #include "memdraw.h"
@@ -161,6 +341,10 @@ drawmodinit(void)
 	char reason[ERRMAX], *failure;
 	int i;
 
+#ifdef DIS_NATIVE64_DRAW_HEADER
+	error("experimental native64 Draw registration is not supported");
+	return;
+#endif
 	if(TFont != nil || TImage != nil || TScreen != nil || TDisplay != nil){
 		if(TFont != nil && TImage != nil && TScreen != nil && TDisplay != nil)
 			return;
@@ -198,6 +382,7 @@ drawmodinit(void)
 	types[3] = dtype(freedrawdisplay, sizeof(DDisplay), displaybits, sizeof(displaybits));
 	if(types[3] == nil)
 		goto failed;
+#ifndef DIS_NATIVE64_DRAW_HEADER
 	if(builtinmod("$Draw", Drawmodtab, Drawmodlen) == nil){
 		reason[0] = 0;
 		kgerrstr(reason, sizeof(reason));
@@ -205,6 +390,7 @@ drawmodinit(void)
 		failure = reason[0] != 0 ? reason : "Draw module registration failed";
 		goto failed;
 	}
+#endif
 
 	/* No allocation or callback separates module registration from this publication. */
 	memmove(fontmap, fontbits, sizeof(fontmap));
@@ -2018,17 +2204,18 @@ Font_width(void *fp)
 	}
 }
 
+
+/* Preserve the placeholder rectangle while supporting every caller byte alignment. */
 void
 Font_bbox(void *fp)
 {
 	F_Font_bbox *f;
-	Draw_Rect *ret;
+	Draw_Rect result;
 
 	/* place holder for the real thing */
 	f = fp;
-	ret = f->ret;
-	ret->min.x = ret->min.y = 0;
-	ret->max.x = ret->max.y = 0;
+	memset(&result, 0, sizeof(result));
+	memmove(f->ret, &result, sizeof(result));
 }
 
 /*
@@ -2064,22 +2251,30 @@ Chans_text(void *fp)
 		retstr(buf, f->ret);
 }
 
+
+/* Return channel depth without assuming result alignment. */
 void
 Chans_depth(void *fp)
 {
+	WORD result;
 	F_Chans_depth *f;
 
 	f = fp;
-	*f->ret = chantodepth(f->c.desc);
+	result = chantodepth(f->c.desc);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+
+/* Compare both channel inputs before writing a possibly aliased result. */
 void
 Chans_eq(void *fp)
 {
+	WORD result;
 	F_Chans_eq *f;
 
 	f = fp;
-	*f->ret = f->c.desc == f->d.desc;
+	result = f->c.desc == f->d.desc;
+	memmove(f->ret, &result, sizeof(result));
 }
 
 void
@@ -2091,6 +2286,8 @@ Chans_mk(void *fp)
 	f->ret->desc = strtochan(string2c(f->s));
 }
 
+
+/* Allocate a solid colour using unsigned packed RGB channel bits. */
 void
 Display_rgb(void *fp)
 {
@@ -2106,7 +2303,8 @@ Display_rgb(void *fp)
 	destroy(r);
 	disp = checkdisplay(f->d);
 
-	c = ((f->r&255)<<24)|((f->g&255)<<16)|((f->b&255)<<8)|0xFF;
+	c = ((ulong)(f->r&255)<<24)|((ulong)(f->g&255)<<16)|
+		((ulong)(f->b&255)<<8)|0xFFUL;
 
 	locked = lockdisplay(disp);
 	*f->ret = color((DDisplay*)f->d, c);
@@ -2114,80 +2312,108 @@ Display_rgb(void *fp)
 		unlockdisplay(disp);
 }
 
+
+/* Map RGB before copying the complete VM scalar result. */
 void
 Display_rgb2cmap(void *fp)
 {
+	WORD result;
 	F_Display_rgb2cmap *f;
 
 	f = fp;
 	/* f->display is unused, but someday may have color map */
-	*f->ret = rgb2cmap(f->r, f->g, f->b);
+	result = rgb2cmap(f->r, f->g, f->b);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+
+/* Finish the complete tuple before copying to an unaligned or overlapping result. */
 void
 Display_cmap2rgb(void *fp)
 {
+	WORD result[3];
 	F_Display_cmap2rgb *f;
 	ulong c;
 
 	f = fp;
 	/* f->display is unused, but someday may have color map */
 	c = cmap2rgb(f->c);
-	f->ret->t0 = (c>>16)&0xFF;
-	f->ret->t1 = (c>>8)&0xFF;
-	f->ret->t2 = (c>>0)&0xFF;
+	result[0] = (c>>16)&0xFF;
+	result[1] = (c>>8)&0xFF;
+	result[2] = (c>>0)&0xFF;
+	memmove(f->ret, result, sizeof(result));
 }
 
+
+/* Copy packed colour bits without an aligned caller-address requirement. */
 void
 Display_cmap2rgba(void *fp)
 {
+	WORD result;
 	F_Display_cmap2rgba *f;
 
 	f = fp;
 	/* f->display is unused, but someday may have color map */
-	*f->ret = cmap2rgba(f->c);
+	result = cmap2rgba(f->c);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+
+/* Complete alpha conversion before publishing the VM scalar. */
 void
 Draw_setalpha(void *fp)
 {
+	WORD result;
 	F_Draw_setalpha *f;
 
 	f = fp;
-	*f->ret = setalpha(f->c, f->a);
+	result = setalpha(f->c, f->a);
+	memmove(f->ret, &result, sizeof(result));
 }
 
+
+/* Finish the complete tuple before copying to an unaligned or overlapping result. */
 void
 Draw_icossin(void *fp)
 {
+	WORD result[2];
 	F_Draw_icossin *f;
 	int s, c;
 
 	f = fp;
 	icossin(f->deg, &s, &c);
-	f->ret->t0 = s;
-	f->ret->t1 = c;
+	result[0] = s;
+	result[1] = c;
+	memmove(f->ret, result, sizeof(result));
 }
 
+
+/* Finish the complete tuple before copying to an unaligned or overlapping result. */
 void
 Draw_icossin2(void *fp)
 {
+	WORD result[2];
 	F_Draw_icossin2 *f;
 	int s, c;
 
 	f = fp;
 	icossin2(f->p.x, f->p.y, &s, &c);
-	f->ret->t0 = s;
-	f->ret->t1 = c;
+	result[0] = s;
+	result[1] = c;
+	memmove(f->ret, result, sizeof(result));
 }
 
+
+/* Read the full rectangle before writing a possibly overlapping scalar. */
 void
 Draw_bytesperline(void *fp)
 {
+	WORD result;
 	F_Draw_bytesperline *f;
 
 	f = fp;
-	*f->ret = bytesperline(IRECT(f->r), f->d);
+	result = bytesperline(IRECT(f->r), f->d);
+	memmove(f->ret, &result, sizeof(result));
 }
 
 Draw_Image*

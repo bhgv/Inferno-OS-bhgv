@@ -221,10 +221,13 @@ short cosinus[] = {
 	720,	/* 1.01 */
 };
 
+
+/* Widen before absolute value and ratio scaling, including INT_MIN coordinates. */
 void
 icossin2(int x, int y, int *cosp, int *sinp)
 {
 	int sinsign, cossign, tan, tan10, rem;
+	uvlong ax, ay;
 	short *stp, *ctp;
 
 	if(x == 0){
@@ -234,22 +237,22 @@ icossin2(int x, int y, int *cosp, int *sinp)
 			*sinp = -ICOSSCALE, *cosp = 0;
 		return;
 	}
+	ax = x < 0 ? -(vlong)x : x;
+	ay = y < 0 ? -(vlong)y : y;
 	sinsign = cossign = 1;
 	if(x < 0){
 		cossign = -1;
-		x = -x;
 	}
 	if(y < 0){
 		sinsign = -1;
-		y = -y;
 	}
-	if(y > x){
-		tan = 1000*x/y;
+	if(ay > ax){
+		tan = 1000*ax/ay;
 		tan10 = tan/10;
 		stp = &cosinus[tan10];
 		ctp = &sinus[tan10];
 	}else{
-		tan = 1000*y/x;
+		tan = 1000*ay/ax;
 		tan10 = tan/10;
 		stp = &sinus[tan10];
 		ctp = &cosinus[tan10];

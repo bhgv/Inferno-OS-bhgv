@@ -199,6 +199,8 @@ def main():
         build, env, logs/'freetype-register.log')
     run([sys.executable, str(tests/'native64-geometry.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'geometry.log')
+    run([sys.executable, str(tests/'native64-draw-scalars.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'draw-scalars.log')
     graphics_init = [sys.executable, str(tests/'native64-graphics-init.py')]
     for module in ('prefab', 'freetype'):
         run(graphics_init+['--module', module, '--limbo', str(tools/'limbo')], build, env, logs/('graphics-init-'+module+'.log'))

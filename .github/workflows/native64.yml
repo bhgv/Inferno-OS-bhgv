@@ -12,6 +12,8 @@ on:
       - 'emu/**'
       - 'libinterp/**'
       - 'libfreetype/**'
+      - 'libdraw/**'
+      - 'libmemdraw/**'
       - 'lib9/**'
       - 'libmath/**'
       - 'limbo/**'

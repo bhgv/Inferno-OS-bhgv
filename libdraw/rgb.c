@@ -42,21 +42,28 @@ rgb2cmap(int cr, int cg, int cb)
 }
 */
 
+
+/* Select the nearest palette entry using distances wide enough for every int input. */
 int
 rgb2cmap(int cr, int cg, int cb)
 {
-	int i, r, g, b, sq;
+	int i;
+	vlong r, g, b;
+	uvlong sq, bestsq;
 	ulong rgb;
-	int best, bestsq;
+	int best;
 
 	best = 0;
-	bestsq = 0x7FFFFFFF;
+	bestsq = ~(uvlong)0;
 	for(i=0; i<256; i++){
 		rgb = cmap2rgb(i);
 		r = (rgb>>16) & 0xFF;
 		g = (rgb>>8) & 0xFF;
 		b = (rgb>>0) & 0xFF;
-		sq = (r-cr)*(r-cr)+(g-cg)*(g-cg)+(b-cb)*(b-cb);
+		r -= cr;
+		g -= cg;
+		b -= cb;
+		sq = (uvlong)(r*r)+(uvlong)(g*g)+(uvlong)(b*b);
 		if(sq < bestsq){
 			bestsq = sq;
 			best = i;
@@ -65,6 +72,8 @@ rgb2cmap(int cr, int cg, int cb)
 	return best;
 }
 
+
+/* Expand a valid palette index into its three eight-bit colour channels. */
 int
 cmap2rgb(int c)
 {
@@ -91,8 +100,10 @@ cmap2rgb(int c)
 	return rgb;
 }
 
+
+/* Shift packed colour bits as unsigned, including colours with the high bit set. */
 int
 cmap2rgba(int c)
 {
-	return (cmap2rgb(c)<<8)|0xFF;
+	return ((uint)cmap2rgb(c)<<8)|0xFFU;
 }

@@ -6251,3 +6251,26 @@ No shared IDs/layout, file CALL/LEA8 or general managed parallelism admitted.
 Our preceding41611046060 is now complete: native x64 also passes alongside
 native ARM64 and RV64/QEMU. New0095 target runs remain separate evidence.
 Fresh local compiler72 Dis/AOT cases and full native64-layout pass.
+
+
+## INFERNO-0096 — 2026-11-03 — full Draw declarations and scalar arithmetic
+
+Building on0095, complete owning draw.c now compiles with fresh actual Draw
+int32/ref64 declarations and qualified aliases; header-only initialization
+refuses before allocating or touching legacy registration. Ten actual entries
+copy complete scalar/tuple/rectangle results to unaligned or overlapping caller
+addresses. Font.bbox remains the old zero placeholder, not a new implementation.
+
+Underlying C libraries fix high-colour signed shifts, palette-distance overflow
+for arbitrary int inputs, negative/large line coordinate arithmetic and INT_MIN/
+large vector trigonometry. Independent Python oracles plus complete source and
+real libraries pass291096 active predicates/model locally x64 O3 UBSan, two
+models, early model/initializer refusals and exact truncated-result semantic10.
+Uninvoked device/resource paths are link-collected, not certified by this test.
+No full Draw registration/device/AWM or moving-GC claim. Fresh target CI follows.
+
+0095 native ARM64/x64 ASan/UBSan both passed41617597094; its full classic-mk
+matrix is separate evidence. Details/replay: doc/native64-series0096.md and
+utils/tests/native64-draw-scalars.py --limbo <fresh owning Limbo>.
+FLASHVM-0092 protocol review remains as recorded above; no shared ID/layout,
+file CALL/LEA8 or managed parallel admission changes are requested.

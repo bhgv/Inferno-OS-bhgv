@@ -178,6 +178,8 @@ drawld2chan[] = {
 	CMAP8,
 };
 
+
+/* Assemble premultiplied channel bits without overflowing a signed int shift. */
 ulong
 setalpha(ulong color, uchar alpha)
 {
@@ -190,7 +192,7 @@ setalpha(ulong color, uchar alpha)
 	red = (red * alpha)/255;
 	green = (green * alpha)/255;
 	blue = (blue * alpha)/255;
-	return (red<<3*8) | (green<<2*8) | (blue<<1*8) | (alpha<<0*8);
+	return ((ulong)red<<24) | ((ulong)green<<16) | ((ulong)blue<<8) | alpha;
 }
 
 Point	ZP;

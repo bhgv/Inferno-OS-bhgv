@@ -21,6 +21,9 @@ on:
       - 'libinterp/geom.c'
       - 'module/draw-native64.m'
       - 'utils/tests/native64-geometry*'
+      - 'utils/tests/native64-draw-scalars.py'
+      - 'libdraw/**'
+      - 'libmemdraw/**'
       - 'module/freetype-native64.m'
       - 'module/freetype.m'
       - 'module/draw.m'
@@ -170,6 +173,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 utils/tests/native64-geometry.py --limbo "$RUNNER_TEMP/font-host-tools/limbo" 2>&1 | tee geometry-asan.log
+      - name: Check complete Draw consumer and real scalar libraries
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-draw-scalars.py --limbo "$RUNNER_TEMP/font-host-tools/limbo" 2>&1 | tee draw-scalars-asan.log
       - name: Preserve complete sanitizer diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -188,5 +198,6 @@ jobs:
             freetype-bridge-asan.log
             freetype-register-asan.log
             geometry-asan.log
+            draw-scalars-asan.log
           if-no-files-found: warn
           retention-days: 14
