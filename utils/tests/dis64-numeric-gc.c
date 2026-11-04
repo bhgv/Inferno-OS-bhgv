@@ -115,7 +115,7 @@ numericcollect(Prog *process)
 
 /* Run single-instruction quanta with collection between them, then execute IEXIT. */
 static int
-numericgc(Module *module, Dis64StorageOwner *lease, int jit, char *omit)
+numericgc(Module *module, Dis64StorageOwner *lease, Modlink *ready, int jit, char *omit)
 {
 	Modlink *link;
 	Frame *entry, *source;
@@ -132,14 +132,17 @@ numericgc(Module *module, Dis64StorageOwner *lease, int jit, char *omit)
 	process.state = Pready;
 	process.quanta = 1;
 	module->ref++;
-	link = mklinkmod(module, 0);
-	link->MP = module->origmp;
-	D2H(link->MP)->ref++;
+	link = ready;
+	if(link == nil){
+		link = mklinkmod(module, 0);
+		link->MP = module->origmp;
+		D2H(link->MP)->ref++;
+	}
 	process.R.M = link;
-	process.R.PC = module->entry;
+	process.R.PC = ready == nil ? module->entry : link->links[0].u.pc;
 	entry = mallocz(module->entryt->size, 1);
 	require(entry != nil);
-	entry->t = module->entryt;
+	entry->t = ready == nil ? module->entryt : link->links[0].frame;
 	source = entry;
 	R.s = &source;
 	newstack(&process);
@@ -150,6 +153,8 @@ numericgc(Module *module, Dis64StorageOwner *lease, int jit, char *omit)
 	memmove(&value, frameSlot+8, sizeof(value));
 	require(value == H);
 	free(entry);
+	if(ready != nil)
+		ptrdel(D2H(ready));
 	free64storage(lease);
 	for(slot=0; slot<PTRHASH; slot++)
 		require(ptrtab[slot] == nil);
@@ -238,8 +243,10 @@ main(int argc, char **argv)
 	uchar image[4096], consumer[4096];
 	size_t bytes, consumerbytes;
 	Module *module;
+	Modlink *ready;
 	Dis64StorageOwner *lease;
-	int jit, survived, rejected, before;
+	int jit, survived, rejected, before, attempts, failure, slot;
+	int refusals = 0;
 
 	require(argc >= 2 && argc <= 4);
 	bytes = numericread(argv[1], image, sizeof(image));
@@ -255,17 +262,42 @@ main(int argc, char **argv)
 			require(prepare64numeric("numeric-gc", image, bytes, jit, &lease) == nil);
 			require(lease == nil && allocations == before);
 		}
-		if(consumerbytes != 0)
-			module = prepare64provider("numeric-provider", image, bytes, jit,
-				&lease, consumer, consumerbytes, 0);
-		else
+		ready = nil;
+		if(consumerbytes != 0){
+			ready = prepare64providerlink("numeric-provider", image, bytes, jit,
+				consumer, consumerbytes, 0);
+			if(rejected){
+				require(ready == nil && allocations == before && live == 0);
+				continue;
+			}
+			require(ready != nil && ready->nlinks == 1);
+			module = ready->m;
+			require(module->ref == 1 && ready->MP == module->origmp);
+			require(ready->links[0].u.pc == module->entry);
+			require(ready->links[0].frame == module->entryt);
+			numericcollect(nil);
+			require(numericowner(D2H(ready))->magic == MAGIC_A);
+			require(numericowner(D2H(ready->MP))->magic == MAGIC_A);
+		}else{
 			module = prepare64numeric("numeric-gc", image, bytes, jit, &lease);
-		if(rejected){
-			require(module == nil && lease == nil && allocations == before && live == 0);
-			continue;
+			require(module != nil && lease != nil);
 		}
-		require(module != nil && lease != nil);
-		survived = numericgc(module, lease, jit, argc == 3 ? argv[2] : nil);
+		attempts = allocations-before;
+		survived = numericgc(module, lease, ready, jit, argc == 3 ? argv[2] : nil);
+		if(consumerbytes != 0){
+			for(failure=1; failure<=attempts; failure++){
+				failat = allocations+failure;
+				require(prepare64providerlink("numeric-provider", image, bytes, jit,
+					consumer, consumerbytes, 0) == nil);
+				require(allocations >= failat);
+				failat = 0;
+				numericdrain();
+				require(live == 0 && Tmodlink.ref == 1);
+				for(slot=1; slot<GcSlots; slot++)
+					require(numericblock(slot)->magic == MAGIC_F);
+				refusals++;
+			}
+		}
 		if(survived != 3){
 			fprintf(stderr, "numeric GC mismatch: %s child was swept\n", survived == 1 ? "frame" : survived == 2 ? "mp" : "both");
 			return 10;
@@ -276,5 +308,7 @@ main(int argc, char **argv)
 	else
 		printf("PASS %s C/RX with real collector: %lu epochs, %d checks\n",
 			consumerbytes != 0 ? "matched provider" : "numeric", gcepochs, checks);
+	if(refusals != 0)
+		printf("PASS provider link rollback: %d native allocation refusals\n", refusals);
 	return 0;
 }

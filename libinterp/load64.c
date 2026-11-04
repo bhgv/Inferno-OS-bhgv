@@ -897,3 +897,68 @@ prepare64provider(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOw
 	}
 	return dis64numericbuild(path, image, bytes, jit, roots, &view, ordinal);
 }
+
+
+typedef struct Dis64ProviderLink Dis64ProviderLink;
+
+struct Dis64ProviderLink {
+	Module *module; // Owned until mklinkmod returns.
+	Modlink *link; // Owned partial instance until external root acquisition.
+};
+
+
+/* Materialize the one matched binding and root it before releasing the MP lease. */
+static int
+dis64providerlink(void *argument)
+{
+	Dis64ProviderLink *build;
+	Module *module;
+	Modlink *link;
+
+	build = argument;
+	module = build->module;
+	build->link = link = mklinkmod(module, 1);
+	build->module = nil;
+	link->links[0].u.pc = module->entry;
+	link->links[0].frame = module->entryt;
+	if(module->origmp != H){
+		D2H(module->origmp)->ref++;
+		link->MP = module->origmp;
+	}
+	ptradd(D2H(link));
+	return 1;
+}
+
+
+/* Return an owned, externally rooted instance with binding slot zero.
+ * The caller holds VM exclusion, then removes this one ptradd root after
+ * publishing an independent collector root or immediately before destroy.
+ * Allocation monitoring must stay disabled during private construction. */
+Modlink*
+prepare64providerlink(char *path, uchar *image, ulong bytes, int jit,
+	const uchar *consumer, ulong consumerbytes, unsigned int ordinal)
+{
+	Dis64ProviderLink build;
+	Dis64StorageOwner *lease;
+	int ok;
+
+	if(heapmonitor != nil){
+		kwerrstr("Dis64 provider link requires unmonitored allocation");
+		return nil;
+	}
+	lease = nil;
+	build.link = nil;
+	build.module = prepare64provider(path, image, bytes, jit, &lease,
+		consumer, consumerbytes, ordinal);
+	if(build.module == nil)
+		return nil;
+	ok = kprotect(dis64providerlink, &build);
+	if(!ok){
+		if(build.link != nil)
+			destroy(build.link);
+		else
+			unload(build.module);
+	}
+	free64storage(lease);
+	return ok ? build.link : nil;
+}

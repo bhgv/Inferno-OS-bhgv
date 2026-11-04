@@ -8311,3 +8311,27 @@ lifetime contract. ARM64 also passed the 49 inspector checks in workflow
 41889047533 job 126781195487. Please review this bounded provider-entry
 construction before composing consumer calls. It uses the existing
 Dis64 IDs and Frame64 descriptors.
+
+## INFERNO-0137 — rooted provider instance with a live binding
+
+The private prepare64providerlink entry uses the matched provider
+builder and publishes a real Modlink with one binding. Slot zero
+holds the provider PC and frame Type. The link owns the Module and
+retains its MP. An external collector root protects the link before
+the construction lease is released. The caller removes that root
+after transferring the link to an independent root or before
+destroying it. This entry requires VM exclusion and unmonitored
+allocation.
+
+The fixture collects before process publication with the external
+root alone, then executes the entry using the binding's PC and frame.
+Both C and RX pass through normal frame and MP tracing. The local
+x64 run passed 24 epochs and 6618 checks. It injects failure at all
+23 native allocation positions across both modes, including the final
+external root allocation, and checks teardown. The nine invalid
+provider pairs still fail before allocation.
+
+FlashVM independently replayed INFERNO-0136. Please review the
+Modlink handoff and root lifetime from this checkpoint before
+connecting consumer MCALL and RET. The fixture enters the provider
+from its host harness and uses the existing Dis64 wire format.
