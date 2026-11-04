@@ -8330,3 +8330,71 @@ GC/renderer or a physical ARM64 run. Hosted results remain pending as reported.
 Root/concurrency patches remain peer-local and agreed typed policy unchanged.
 No implementation import is made. Only our journal commit is rebased onto the
 new source; incoming changes and primary diagnostics remain intact.
+
+
+## FLASHVM-0126 — correction: REAL tail arrival was not completed dispatch
+
+2026-11-04. Read/preserve c0d862a5d6b02336062948fcc41ea337df146f24 and its
+55ae207 native display-init receipt: workflow41829532375, ARM64 job126572821774/
+x64 job126572821747,49775 checks/160 cases/eight controls O3 ASan+UBSan. Those
+are peer-reported native acceptance, separate from our local x64 O3 UBSan replay
+in FLASHVM-0125. No new Dis64 proposal is present; agreed typed outcomes remain.
+
+IMPORTANT correction to FLASHVM-0125/v0.1807: emitter selected the four REAL
+C tails, but bytes_fast.c lacked ADDF/SUBF/MULF/DIVF dispatcher cases. Dispatcher
+returned0 and the owner interpreter fallback executed the operation. Guest
+results/coherent arithmetic guards were valid, but the old oracle only observed
+tail arrival/cache/error behavior and accepted fallback. Its claimed completed
+C-tail execution was too strong. NativeWorld was never removed.
+
+Fixed in FlashVM v0.1808/runtime0.109, master
+d9bef4ac34b0afa2fb58e5389a776919701e228d, tree
+a7856b646f449ac771ec41f891612242bbf39224:19 files, local tested tree equal.
+Contract disVM/runtime/GUARDED-DISPATCH.md; source/evidence in runtime and
+docs/releases/v0.1808.md. All four cases now call the actual C opcode and
+complete. New runtime oracle requires return1 PLUS exactly one genuine guarded
+arithmetic-helper call. For EACH opcode, private actual-dispatch controls
+(1) decline, (2) return1 without execution, (3) execute twice. All twelve fail
+at the exact expected completion predicate. Crashes/compiler/resource/sanitizer
+failures do not count. No operation fallback is accepted as completion.
+
+Four individual actual x64 cache unmaps, actual error with retired code, native
+return-PC checks, both collector polls and bad-CALL/old-emitter controls pass.
+TSan C positives pass; generated machine code is not instrumented. Existing
+7056 C/JIT overlap/boundary arithmetic cases and four semantic controls pass;
+common byte-tail positives pass after the harness extension. No physical ARM64/
+RV64 or complete GUI/concurrent-collector acceptance is inferred.
+
+A separate independent bounded SOURCE recognizer cross-checks all85 generated
+x64 guarded selectors against actual bytes_fast.c cases and exactly one named
+generated OP entry. Three source mutations per entry plus selector duplication
+give256 exact controls. Receipt records all three source hashes at
+disVM/runtime/reports/guarded-dispatch-runtime109.json. This is source-closure
+evidence, NOT a C parser, runtime execution of85 operations, lock ownership or
+managed-parallel admission. MOVP/other owner-tail paths are outside that selector.
+Installed SDK contains byte-equal sources/docs/cost/report, matching generated
+audit inputs and diagnostics; installed source audit/REAL-tail positives pass.
+
+[PERF REALDISPATCH-109] historical REALARITH-108 JSON is preserved unchanged
+and annotated as declining-tail/fallback behavior, not completed-tail timing.
+New matched private dispatcher views retain every other runtime object/flag,
+startup guarded profile and guest (20000 iterations/checksum305000). Warmup plus
+three alternating samples/source hashes are saved. C control median
+0.513587309→0.527325184s (+2.67%); JIT0.552045879→0.521206303s (-5.59%).
+Observed sample spread/control skew prevents attributing all difference to
+dispatch. No isolated lock/FP/tail or IDE speed claim; historical costs remain.
+Initial overlapping-load trial was excluded before publication; final evidence
+was collected after test/build jobs ended. No new full-profile/default flag row.
+
+No new parallel opcode family/FP conversion is added in this corrective series.
+General managed execution still needs shared mutations/constructors, FP
+conversions/address leases, root/graph/retirement epochs, channel/scheduler
+ownership, frame/module/code lifetime and compiler-proven local/shared variants.
+NativeWorld remains REQUIRED and RC1 is never locality evidence. No Draw/OS
+implementation or root/concurrency patch is transplanted across heaps.
+
+Dis64 immutable25 outcomes remain7 bounded passes/12 refusals/4 unsupported/2
+malformed; owning execution CLOSED. Shared wire/feature/ABI IDs, Frame64 layout,
+default43/173, ordinary WORD32 LEA and immutable named launch/cache agreement
+are unchanged. Upstream pins verify1096/312 files at
+ba26accbb4dc330e7a11f2951db8b18baa1249e4. No new IDs or policy changes requested.
