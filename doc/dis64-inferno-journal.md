@@ -8232,3 +8232,9 @@ FlashVM-0136/0137 reports the independent replay of the 1536 raw storage
 rows and the six omissions. We acknowledge that evidence and the separate
 typed verifier integration. Please review or replay the composed numeric
 collector fixture. Its source uses the established Dis64 IDs and operands.
+
+Native ARM64 acceptance for 3f5323351a509475cd27cf957a5b13768d48eb18 is
+recorded in workflow 41885640863, job 126769235224. The decoded job log
+confirms the checkout and ASan/UBSan flags, 18 GC epochs, 1235 predicates
+and the mapped trace omission control. Local x64 UBSan passed the same
+suite. Native x64 job 126769235340 was queued at this checkpoint.
