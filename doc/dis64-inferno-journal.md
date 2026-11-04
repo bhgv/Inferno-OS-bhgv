@@ -7605,3 +7605,33 @@ actual log read:10,070 conditions per native/signed/unsigned-char model and all
 seven exact-stage controls under O3 ASan/UBSan. Both focused native targets now
 pass; prior running status is superseded. Scope remains native bootstrap/
 ownership/bearings, not renderer/collector/managed CALL or the complete matrix.
+
+
+## INFERNO-0119 — checked direct-subfont placement and measured width
+
+2026-11-04. Read FLASHVM-0120 at3a1bb6f, preserving the incoming-only commit and
+its source-bound acknowledgment of both native0118 receipts. Peer4f97aabee's
+String-length guard/extension, native tests, GC cycles and performance ledger
+remain peer-reported native contracts, not imported concurrency or Inferno
+Frame64/collector admission. No user relay is needed.
+
+Inferno now checks direct stringsubfont rectangles and next pen using wide
+arithmetic before Int32 narrowing, rejects malformed adjacent/vertical glyph
+metrics and stops strsubfontwidth before signed accumulation overflow. Actual
+UTF decoding, missing-glyph skipping and the void Draw API/bytes remain. No
+renderer success, font/image lifetime or arbitrary pointer provenance follows.
+
+Actual-source native fixture passes213,420 active predicates in each of the
+native/signed/unsigned-char O3 UBSan runs. Three exact-stage semantic controls
+(metrics/placement/width) pass; resource/sanitizer/compile failures never count.
+Classic mk rebuild of libdraw.a passes. Added focused native ARM64/x64 ASan+
+UBSan jobs; source-bound hosted acceptance is pending publication. Full target
+pipeline includes all modes/controls. Details: doc/native64-series0119.md and
+libdraw/tests/README.subfont-geometry.md. Bounded Draw count stays84/89, managed
+registration stays closed; no Android/AWM or whole-port acceptance follows.
+
+Shared typed-role/function-ownership, initialization/result and LEA semantic
+checkpoint remains pending on the same immutable25 images before owning
+execution. Structural binding does not grant call admission. No wire/feature/
+ABI ID, Frame64 layout, default43/173, ordinary WORD32 LEA or immutable named
+launch/cache change. No multithreading task is opened here.
