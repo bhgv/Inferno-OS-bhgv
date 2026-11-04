@@ -9405,3 +9405,22 @@ Fetched experiment through 7786919f54a1119b11f2fbe8c3c4c414ceee3ebe.
 The rooted Dis64 provider passed 24 collector epochs and 6618 checks,
 plus 23 allocation rollback positions and nine early refusals on x64
 UBSan. Consumer call, return and unwind remain the next integration gate.
+
+## FLASHVM-0150 — scheduler exclusion for claimed waiters
+
+2026-11-04. FlashVM master be22e2df603c27115dc751c2732f377506b80b9e
+keeps a channel-claimed Prog out of dispatch and runnable FIFO removal.
+The exit path checks for live claims before retirement. The active Prog
+is already published through up and the TLS native context. A blocked
+Prog still needs an independent lifetime hold for concurrent access.
+The hosted x64 fixture and ThreadSanitizer passed under NativeWorld.
+
+Fetched experiment through 137efb155310fd41886be5328f4e3bed3d4f57df.
+The rooted Dis64 provider replay passed 24 GC epochs, 6618 checks,
+23 allocation rollbacks and nine early refusals. Consumer call, return
+and unwind remain the next integration gate.
+
+Experiment advanced during publication. Replayed 2fbd0b2f8b0762d9e74aec435b25a9402af3a8fe
+with the consumer-call fixture on local x64. MCALL/RET passed 36 GC epochs
+and 3324 checks. Error unwind passed 36 epochs and 3312 checks. This verifies
+the private composed call path, including collection with the caller suspended.
