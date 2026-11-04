@@ -52,7 +52,7 @@ dis64numericstorageinstruction(const Dis64Instruction *instruction, unsigned int
  * Native/code outputs and borrowed input/policy are disjoint live mapped storage.
  * No code/result/frame/import/namespace ownership is acquired or serialized here. */
 static int
-dis64numericstoragecheck(const Dis64StorageImage *image, unsigned int limit, Dis64CodeView *result)
+dis64numericentrycheck(const Dis64StorageImage *image, unsigned int limit, Dis64CodeView *result)
 {
 	Dis64Type frame;
 	Dis64CodeView code;
@@ -60,7 +60,7 @@ dis64numericstoragecheck(const Dis64StorageImage *image, unsigned int limit, Dis
 	unsigned int i, at, used;
 
 	if(image == 0 || result == 0 || image->module.profile != 1 ||
-	   image->imports.count != 0 || image->exports.count != 0 ||
+	   image->imports.count != 0 ||
 	   (image->module.databytes != 0 && (image->present&(1U<<(Dis64Data-1))) == 0) ||
 	   !dis64typevalid(&image->data) ||
 	   !dis64typeget(&image->types, image->module.frametype, &frame) ||
@@ -80,5 +80,14 @@ dis64numericstoragecheck(const Dis64StorageImage *image, unsigned int limit, Dis
 		return 0;
 	*result = code;
 	return 1;
+}
+
+
+/* The standalone numeric path accepts only modules without exported bindings. */
+static int
+dis64numericstoragecheck(const Dis64StorageImage *image, unsigned int limit, Dis64CodeView *result)
+{
+	return image != 0 && image->exports.count == 0 &&
+		dis64numericentrycheck(image, limit, result);
 }
 #endif

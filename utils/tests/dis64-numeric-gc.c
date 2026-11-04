@@ -115,10 +115,8 @@ numericcollect(Prog *process)
 
 /* Run single-instruction quanta with collection between them, then execute IEXIT. */
 static int
-numericgc(uchar *image, unsigned int bytes, int jit, char *omit)
+numericgc(Module *module, Dis64StorageOwner *lease, int jit, char *omit)
 {
-	Dis64StorageOwner *lease;
-	Module *module;
 	Modlink *link;
 	Frame *entry, *source;
 	Prog process;
@@ -129,9 +127,6 @@ numericgc(uchar *image, unsigned int bytes, int jit, char *omit)
 	int before, survived, slot, quantum;
 	WORD result;
 
-	lease = nil;
-	module = prepare64numeric("numeric-gc", image, bytes, jit, &lease);
-	require(module != nil && lease != nil);
 	memset(&process, 0, sizeof(process));
 	process.exval = H;
 	process.state = Pready;
@@ -220,31 +215,66 @@ numericgc(uchar *image, unsigned int bytes, int jit, char *omit)
 }
 
 
-/* Check C and machine-code execution, with separate mapped trace omission control. */
+/* Read one complete raw fixture before constructing live owners. */
+static size_t
+numericread(char *path, uchar *data, size_t capacity)
+{
+	FILE *file;
+	size_t bytes;
+
+	file = fopen(path, "rb");
+	require(file != nil);
+	bytes = fread(data, 1, capacity, file);
+	require(bytes > 0 && bytes < capacity && feof(file));
+	require(fclose(file) == 0);
+	return bytes;
+}
+
+
+/* Check C and machine-code execution with a standalone or matched entry. */
 int
 main(int argc, char **argv)
 {
-	FILE *file;
-	uchar image[4096];
-	size_t bytes;
-	int jit, survived;
+	uchar image[4096], consumer[4096];
+	size_t bytes, consumerbytes;
+	Module *module;
+	Dis64StorageOwner *lease;
+	int jit, survived, rejected, before;
 
-	require(argc == 2 || argc == 3);
-	file = fopen(argv[1], "rb");
-	require(file != nil);
-	bytes = fread(image, 1, sizeof(image), file);
-	require(bytes > 0 && bytes < sizeof(image) && feof(file));
-	fclose(file);
+	require(argc >= 2 && argc <= 4);
+	bytes = numericread(argv[1], image, sizeof(image));
+	consumerbytes = argc == 4 ? numericread(argv[2], consumer, sizeof(consumer)) : 0;
+	rejected = argc == 4 && strcmp(argv[3], "reject") == 0;
 	numericpoolinit();
 	optab[IADDW] = addw;
 	optab[IEXIT] = iexit;
 	for(jit=0; jit<=1; jit++){
-		survived = numericgc(image, bytes, jit, argc == 3 ? argv[2] : nil);
+		lease = nil;
+		before = allocations;
+		if(consumerbytes != 0 && !rejected){
+			require(prepare64numeric("numeric-gc", image, bytes, jit, &lease) == nil);
+			require(lease == nil && allocations == before);
+		}
+		if(consumerbytes != 0)
+			module = prepare64provider("numeric-provider", image, bytes, jit,
+				&lease, consumer, consumerbytes, 0);
+		else
+			module = prepare64numeric("numeric-gc", image, bytes, jit, &lease);
+		if(rejected){
+			require(module == nil && lease == nil && allocations == before && live == 0);
+			continue;
+		}
+		require(module != nil && lease != nil);
+		survived = numericgc(module, lease, jit, argc == 3 ? argv[2] : nil);
 		if(survived != 3){
 			fprintf(stderr, "numeric GC mismatch: %s child was swept\n", survived == 1 ? "frame" : survived == 2 ? "mp" : "both");
 			return 10;
 		}
 	}
-	printf("PASS numeric C/RX with real collector: %lu epochs, %d checks\n", gcepochs, checks);
+	if(rejected)
+		printf("PASS private provider refusal before allocation\n");
+	else
+		printf("PASS %s C/RX with real collector: %lu epochs, %d checks\n",
+			consumerbytes != 0 ? "matched provider" : "numeric", gcepochs, checks);
 	return 0;
 }

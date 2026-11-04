@@ -798,18 +798,33 @@ dis64numericconstruct(void *argument)
 }
 
 
-/* Explicit native MP-only numeric Module construction, not readmod or managed file admission.
- * Caller retains VM exclusion and immutable/disjoint image/path/output until return.
- * roots must point to nil on entry and remains unchanged on refusal. On success
- * caller owns BOTH Module and returned lease. Keep the lease until Module/MP has
- * an independent live collector root; release each owner once on every path.
- * Initialize entry frame reference slots with initmem before publication. */
-Module*
-prepare64numeric(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOwner **roots)
+static const Dis64StorageLimits dis64numericlimits = {
+	64, 65536, Dis64RuntimeObject, 65536, Dis64RuntimeCode, 1024, 256, 1024
+};
+
+
+/* Check a void, zero-argument import against the provider's own entry. */
+static int
+dis64providerentry(const Dis64StorageImage *consumer, unsigned int ordinal,
+	const Dis64StorageImage *provider, Dis64CodeView *code)
+{
+	Dis64Binding imported;
+	Dis64ImportMatch match;
+
+	return dis64bindingget(&consumer->imports, ordinal, &imported) &&
+		imported.signature.result == Dis64Void && imported.signature.parameters == 0 &&
+		dis64importmatch(consumer, ordinal, provider, &match) &&
+		match.entry == provider->module.entry && match.frame == provider->module.frametype &&
+		dis64numericentrycheck(provider, Dis64RuntimeCode, code);
+}
+
+
+/* Construct an owned numeric entry and keep its MP rooted through handoff. */
+static Module*
+dis64numericbuild(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOwner **roots,
+	const Dis64StorageImage *consumer, unsigned int ordinal)
 {
 	Dis64NumericLoad load;
-	Dis64StorageLimits limits = {64, 65536, Dis64RuntimeObject, 65536,
-		Dis64RuntimeCode, 1024, 256, 1024};
 	Dis64CodeView code;
 	Dis64Instruction instruction;
 	unsigned int i, at, used, rune;
@@ -819,8 +834,9 @@ prepare64numeric(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOwn
 	   roots == nil || roots == H || (uintptr)roots%sizeof(*roots) != 0 ||
 	   (uintptr)roots > (uintptr)-1-sizeof(*roots) || *roots != nil || bytes > Dis64RuntimeBytes ||
 	   (uintptr)image > (uintptr)-1-bytes || (jit != 0 && jit != 1) ||
-	   !dis64storageimagecheck(image, bytes, &limits, &load.image) ||
-	   !dis64numericstoragecheck(&load.image, Dis64RuntimeCode, &code) ||
+	   !dis64storageimagecheck(image, bytes, &dis64numericlimits, &load.image) ||
+	   !(consumer == nil ? dis64numericstoragecheck(&load.image, Dis64RuntimeCode, &code) :
+	     dis64providerentry(consumer, ordinal, &load.image, &code)) ||
 	   !disstringpoolget(&load.image.strings, load.image.module.name, &load.name) ||
 	   load.name.count == 0 || load.name.count > Dis64RuntimeName){
 		kwerrstr("unsupported Dis64 private numeric Module");
@@ -851,4 +867,33 @@ prepare64numeric(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOwn
 	free64storage(load.lease);
 	kwerrstr("Dis64 numeric Module construction failed");
 	return nil;
+}
+
+
+
+/* Build the standalone MP-only entry. Keep the lease until MP is rooted and
+ * initialize the entry frame with initmem before publication. */
+Module*
+prepare64numeric(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOwner **roots)
+{
+	return dis64numericbuild(path, image, bytes, jit, roots, nil, 0);
+}
+
+
+/* Build the explicitly selected provider for a checked import. The caller
+ * owns the returned Module and lease under the same contract as the standalone
+ * builder. Input spans stay immutable through the call and can be freed after it. */
+Module*
+prepare64provider(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOwner **roots,
+	const uchar *consumer, ulong consumerbytes, unsigned int ordinal)
+{
+	Dis64StorageImage view;
+
+	if(!dis64runtimemodel() || consumer == nil || consumer == H ||
+	   consumerbytes > Dis64RuntimeBytes || (uintptr)consumer > (uintptr)-1-consumerbytes ||
+	   !dis64storageimagecheck(consumer, consumerbytes, &dis64numericlimits, &view)){
+		kwerrstr("unsupported Dis64 consumer image");
+		return nil;
+	}
+	return dis64numericbuild(path, image, bytes, jit, roots, &view, ordinal);
 }

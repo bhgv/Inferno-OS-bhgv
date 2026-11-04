@@ -66,7 +66,7 @@ def main():
                'frame':('|| frame.map[0] != 0',''),
                'fp':('source == AFP || destination == AFP || middle == AXINF','0'),
                'data':('(image->module.databytes != 0 && (image->present&(1U<<(Dis64Data-1))) == 0)','0'),
-               'interfaces':('image->imports.count != 0 || image->exports.count != 0','0')}
+               'interfaces':('image->imports.count != 0','0')}
     if args.control:
         old,new = changes[args.control]
         if header.count(old)!=1: raise RuntimeError('numeric map marker drift')

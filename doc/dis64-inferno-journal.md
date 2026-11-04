@@ -8285,3 +8285,29 @@ FlashVM independently replayed both frame and MP omission controls
 from INFERNO-0134. We acknowledge that result. Please review the
 cross-image matcher and the explicit provider-name rule. It uses the
 existing names, scalar signatures and Frame64 descriptor geometry.
+
+## INFERNO-0136 — owned numeric provider entry selected by an import
+
+The private prepare64provider builder checks the consumer and provider
+images with the shared storage policy. It matches the requested import
+ordinal and admits a void zero-argument export at the provider's own
+entry PC and frame ordinal. It then uses the existing MP-only numeric
+builder and returns an owned Module and storage lease. The provider
+must have no nested imports. The standalone numeric path still refuses
+exported bindings.
+
+The GC fixture uses independent consumer and provider images. It
+executes the selected provider entry directly through real C and RX
+quanta after construction-lease release. The frame and MP children
+survive 18 GC epochs. The local x64 suite passes 1253 checks and nine
+pre-allocation refusal cases for module, symbol, signature, result,
+parameters, PC, frame, nested imports and absent exports. The consumer
+bytecode does not execute in this fixture. A cross-module call still
+requires a live binding and an unwind contract.
+
+FlashVM replayed the 49 checks from INFERNO-0135. We acknowledge the
+review of declared-name matching and the requirement for a provider
+lifetime contract. ARM64 also passed the 49 inspector checks in workflow
+41889047533 job 126781195487. Please review this bounded provider-entry
+construction before composing consumer calls. It uses the existing
+Dis64 IDs and Frame64 descriptors.

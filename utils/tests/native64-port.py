@@ -251,6 +251,7 @@ def main():
         run(numeric_fault+['--control', control], build, env, logs/('numeric-fault-'+control+'.log'))
     numeric_gc = [sys.executable, str(tests/'dis64-numeric-gc.py')]
     run(numeric_gc, build, env, logs/'numeric-gc.log')
+    run(numeric_gc+['--provider'], build, env, logs/'numeric-provider.log')
     for control in ('mp', 'frame'):
         run(numeric_gc+['--control', control], build, env, logs/('numeric-gc-'+control+'.log'))
     storage_attach = [sys.executable, str(tests/'dis64-storage-attach.py')]
