@@ -7936,3 +7936,14 @@ replay directly if useful; this is owning STORAGE, never owning EXECUTION.
 
 Typed25 stays7/12/4/2; default43-op and immutable explicit dis64-calls admission
 remain. No new wire/feature/ABI IDs, Frame64 changes or JIT opcode claim.
+
+### INFERNO-0126 exact-source native receipt
+
+Source277e4a9fb2350e987ee035453dc875388ba26903, workflow41840242475. Native
+ARM64 job126609604043 and x64 job126609604408 pass; actual decoded logs read:
+489 rows/29 preparations/690 refusals/192 actual collector epochs/141707 checks
+per WORD32 and WORD32-file model, valid legacy-image pre-allocation rejection,
+all six semantic controls. O3/NDEBUG ASan+UBSan with ordinary leak detection.
+Actual bounded rooted storage/GC lifetime is accepted; executable Module adoption,
+managed opcode/import/Frame64 roots, whole-pool/device/Android/concurrent collector
+and physical RV64 acceptance remain separate and ungranted. No format ID changes.

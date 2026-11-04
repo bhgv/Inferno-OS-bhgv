@@ -43,3 +43,15 @@ No shared wire/feature/ABI IDs, Frame64, loader admission or JIT counts change.
 Fast ARM64/x64166/173; RV64M103/173; C dispatch173/173. This is actual bounded
 storage/GC progress; managed instruction/call/import graphs, frame/result roots,
 full Module adoption/retirement and Android/AWM startup still remain.
+
+## Exact-source native acceptance
+
+Source277e4a9fb2350e987ee035453dc875388ba26903, workflow41840242475:
+native ARM64 job126609604043 and x64 job126609604408 both completed success.
+Actual decoded logs read from both jobs show489 rows/29 constructions/690 refusals/
+192 collector epochs/141707 checks for EACH WORD32 and WORD32-file model, valid
+legacy-image rejection before allocation, and all six named semantic controls.
+Build flagsO3/NDEBUG ASan+UBSan; ordinary leak detection remains enabled. This
+accepts actual bounded rooted storage/GC lifetime, not an entire workflow matrix,
+full production pool, scheduler/managed execution, arbitrary destructors, concurrent
+collector, Android/AWM or physical RV64. No executable admission gate is relaxed.
