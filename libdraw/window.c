@@ -16,7 +16,8 @@ allocscreen(Image *image, Image *fill, int public)
 	int id, try;
 	Display *d;
 
-	if(image == nil || fill == nil || image->display == nil)
+	if(image == nil || fill == nil || image->display == nil || image->display->closing ||
+	   image->chan == 0 || chantodepth(image->chan) == 0)
 		return nil;
 	d = image->display;
 	if(d != fill->display){
@@ -54,15 +55,22 @@ allocscreen(Image *image, Image *fill, int public)
 	s->image = image;
 
 	s->fill = fill;
+	s->chan = image->chan;
 	return s;
 }
 
+
+/* Retain the validated channel independently of unavailable public-screen image owners. */
 Screen*
 publicscreen(Display *d, int id, ulong chan)
 {
 	uchar *a;
 	Screen *s;
 
+	if(d == nil || d->closing || id <= 0 || chan == 0 || chantodepth(chan) == 0){
+		kwerrstr("publicscreen: invalid display, screen ID or channel");
+		return nil;
+	}
 	s = malloc(sizeof(Screen));
 	if(s == 0)
 		return 0;
@@ -82,6 +90,7 @@ publicscreen(Display *d, int id, ulong chan)
 	s->id = id;
 	s->image = 0;
 	s->fill = 0;
+	s->chan = chan;
 	return s;
 }
 
@@ -109,6 +118,7 @@ freescreen(Screen *s)
 }
 
 
+/* Attach only a successfully constructed native window to its refresh source. */
 Image*
 allocwindow(Screen *s, Rectangle r, int ref, ulong val)
 {
@@ -118,13 +128,20 @@ allocwindow(Screen *s, Rectangle r, int ref, ulong val)
 	return i;
 }
 
+
+/* Public screens have no image owner; use their retained native channel and publish only success. */
 Image*
 _allocwindow(Image *i, Screen *s, Rectangle r, int ref, ulong val)
 {
 	Display *d;
 
+	if(s == nil || s->display == nil || s->display->closing || s->id <= 0 ||
+	   s->chan == 0 || chantodepth(s->chan) == 0){
+		kwerrstr("allocwindow: invalid screen descriptor");
+		return nil;
+	}
 	d = s->display;
-	i = _allocimage(i, d, r, s->image->chan, 0, val, s->id, ref);
+	i = _allocimage(i, d, r, s->chan, 0, val, s->id, ref);
 	if(i == 0)
 		return 0;
 	i->screen = s;

@@ -234,6 +234,10 @@ def main():
     run(bezier_consumers, build, env, logs/'bezier-consumers.log')
     for control in ('capture', 'source', 'flush', 'operator', 'radius', 'foreign', 'unlock'):
         run(bezier_consumers+['--control', control], build, env, logs/('bezier-consumers-'+control+'.log'))
+    native_screen_channel = [sys.executable, str(ROOT/'libdraw/tests/screen-channel.py')]
+    run(native_screen_channel, build, env, logs/'native-screen-channel.log')
+    for control in ('owned', 'public', 'channel', 'publication', 'attachment', 'validation'):
+        run(native_screen_channel+['--control', control], build, env, logs/('native-screen-channel-'+control+'.log'))
     native_display_init = [sys.executable, str(ROOT/'libdraw/tests/display-init.py')]
     run(native_display_init, build, env, logs/'native-display-init.log')
     for control in ('memory', 'channel', 'image', 'lock', 'descriptor', 'path', 'diagnostic', 'complete'):

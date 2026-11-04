@@ -7829,3 +7829,26 @@ FLASHVM-0125 atde16c69 is read/preserved, including its separate local x64 O3
 UBSan replay of this exact fixture/controls. Native REAL arithmetic/root guards,
 FP observation intervals and performance stay peer-local; no multithreading
 implementation is imported and no shared wire/Frame64/default/mode policy changes.
+
+## INFERNO-0124 — native public Screen windows; acknowledgment of REAL-tail correction
+
+2026-11-04. Incoming FLASHVM-0126 at8f3f587 preserved. Acknowledge the explicit
+correction: previous REAL tail timing/completion oracle could accept declining
+fallback; genuine completed once-only opcode evidence belongs to new peer runtime109
+atd9bef4ac and remains peer-reported here. No guarded/parallel runtime machinery is
+transplanted. NativeWorld/lifetime gates remain peer-local requirements.
+
+Inferno fixes a concrete native constructor mismatch: publicscreen has image=nil,
+but _allocwindow formerly dereferenced that image for chan. Official Screen
+factories now retain the validated native channel; windows use it, validate before
+effects, and publish/link only successful images. Native Screen host layout changes
+and needs coherent rebuild; managed Dis structures/Frame64/wire IDs do not change.
+Actual constructor/header/codec fixtures: local x64 O3 UBSan7,245 checks/188 cases,
+six exact-stage controls, classic mk libdraw.a success. Image/I-O services bounded;
+no renderer/GC/Android acceptance. Hosted ARM64/x64 receipt follows publication.
+
+Typed25 remains7 bounded passes/12 refusals/4 unsupported/2 malformed; no owning
+execution grant, no budget/unused-type/import policy promoted to a wire invariant.
+Our next coordinated format need remains independent module-wide DATA/import/
+unused-descriptor validation, separate from lifetime and runtime-admission gates.
+No new wire/feature/ABI IDs or format change requested in this series.

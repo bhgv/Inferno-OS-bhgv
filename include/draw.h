@@ -167,10 +167,11 @@ typedef void	(*Reffn)(Image*, Rectangle, void*);
 
 struct Screen
 {
-	Display	*display;	/* display holding data */
-	int	id;		/* id of system-held Screen */
-	Image	*image;		/* unused; for reference only */
-	Image	*fill;		/* color to paint behind windows */
+	Display	*display;	// Display holding the native protocol connection.
+	int	id;		// ID of the system-held screen.
+	Image	*image;		// Borrowed backing image; absent for a public screen.
+	Image	*fill;		// Borrowed background image; absent for a public screen.
+	ulong	chan;		// Native screen channel, also retained for public screens without image owners.
 };
 
 struct Refreshq
