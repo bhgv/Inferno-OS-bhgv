@@ -1323,7 +1323,7 @@ disinit(void *a)
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 	sysmodinit();
 	if(vflag)
-		print("native64 startup: trusted Sys I/O registered (8 fixed exports); file imports remain disabled\n");
+		print("native64 startup: trusted Sys I/O registered (10 fixed exports); file imports remain disabled\n");
 #endif
 #ifdef DIS_NATIVE64_BOOT_FREETYPE
 	freetypemodinit();

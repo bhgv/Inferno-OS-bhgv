@@ -222,9 +222,9 @@ The existing minimum-block/coalescing checks remain active.
 ## Trusted Sys I/O startup (INFERNO-0046)
 
 The explicit scalar runtime can additionally initialize native64 Sys descriptors
-and register eight fixed-frame Sys exports: byte2char, char2byte, utfbytes, read,
-readn, write, pread and pwrite. This is a selected trusted C profile, not the full
-Sys module and not a file-import admission change. Complex I/O bodies stay in C.
+and register ten fixed-frame Sys exports. The set includes byte2char, char2byte,
+utfbytes, read, readn, write, pread, pwrite, pctl and file2chan. These entries
+use the trusted C registration path.
 
 ```
 python3 utils/configure.py --host linux --target linux --arch arm64 --console \
@@ -242,7 +242,7 @@ Default and externally selected native64 Sys declarations retain the existing
 registration refusal. Explicit conflicting header selectors fail compilation.
 
 Real Linux ARM64 static/QEMU and x64 hosted emulators now initialize Sys, register
-Math and the eight-entry Sys profile, and finish both pilot modules with JIT off
+Math and the ten-entry Sys profile, and finish both pilot modules with JIT off
 and on. Require the selected startup markers and continued closed admission:
 
 ```
@@ -251,7 +251,7 @@ python3 utils/tests/native64-scalar-boot.py --math --sys-io \
 ```
 
 The test still rejects `$Sys`, `$Math` and legacy images. It does not invoke these
-eight exports from a Dis64 file. No generic CALL/MCALL, builtin import, typed
+ten exports from a Dis64 file. No generic CALL/MCALL, builtin import, typed
 variadic wire metadata or general shell startup is enabled. Scalar file execution
 is still the43-op np0 profile. Native dispatch counts remain unchanged.
 
@@ -265,8 +265,8 @@ python3 utils/tests/native64-sys.py --limbo /host/tools/limbo
 
 All support the same NATIVE64_ARCH/CC/NATIVE64_CFLAGS/NATIVE64_RUNNER environment.
 The registration gate compiles both complete owning production units, executes
-the actual registration and constructor bodies, validates the eight published
-names/types/maps, dispatches bounded identity callbacks, fails every21 constructor
+the actual registration and constructor bodies, validates the ten published
+names/types/maps, dispatches bounded identity callbacks, fails all 25 constructor
 allocation, rejects descriptor initialization before allocation, and retries.
 The callback/descriptor boundary is explicitly bounded there: use the separate
 Sys handler/initializer gates for actual implementation evidence. Registration

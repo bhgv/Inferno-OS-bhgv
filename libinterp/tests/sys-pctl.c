@@ -32,6 +32,8 @@ static Chan channels[8];
 static Chan *oldslots[8],*newslots[8];
 static int released,enters,leaves,locked,failgroup,created,badargs,closes,cleanup;
 static int emptypgrp,emptyegrp,currentcalls;
+static Pgrp oldnamespace, newnamespace; // Bounded namespace owners for AWM startup flags.
+static int namespacemode, namespacefail, namespaceclosed, grouped;
 static int capturephase, armed, mutated, frameoffset, nodeoffset;
 static union {
 	uvlong align; // Host alignment for byte-shifted borrowed frames.
@@ -230,8 +232,13 @@ closefgrp(Fgrp *group)
 void
 closepgrp(Pgrp *group)
 {
-	pctltest(released && group==nil);
-	emptypgrp++;
+	pctltest(released);
+	if(group == nil){
+		emptypgrp++;
+		return;
+	}
+	pctltest(namespacemode && group == (namespacefail ? &newnamespace : &oldnamespace));
+	namespaceclosed++;
 }
 
 
@@ -252,14 +259,43 @@ unexpected(void)
 	return nil;
 }
 
-#define newpgrp(...) unexpected() // Namespace branches are outside this descriptor fixture.
+/* Allocate the private namespace under released VM ownership. */
+static Pgrp*
+namespacealloc(void)
+{
+	pctltest(namespacemode && released);
+	return &newnamespace;
+}
+
+
+/* Simulate the namespace copy or its failure before publication. */
+static void
+namespacecopy(Pgrp *target, Pgrp *source)
+{
+	pctltest(namespacemode && released && target == &newnamespace && source == &oldnamespace);
+	if(namespacefail)
+		error(injected);
+	target->nodevs = source->nodevs;
+}
+
+
+/* Observe process grouping after the replacement namespace is published. */
+static void
+namespacegroup(Prog *p)
+{
+	pctltest(namespacemode && released && p == &program && ((Osenv*)p->osenv)->pgrp == &newnamespace);
+	grouped++;
+}
+
+
+#define newpgrp() namespacealloc() // Track the unpublished namespace.
 #define cclone(...) unexpected() // Reject untested channel cloning.
 #define cnameclose(...) unexpected() // Reject untested name release.
 #define newcname(...) unexpected() // Reject untested name allocation.
-#define pgrpcpy(...) unexpected() // Reject untested namespace copying.
+#define pgrpcpy(to, from) namespacecopy(to, from) // Exercise fork and copy failure.
 #define newegrp(...) unexpected() // Reject untested environment allocation.
 #define egrpcpy(...) unexpected() // Reject untested environment copying.
-#define newgrp(...) unexpected() // Reject untested process grouping.
+#define newgrp(p) namespacegroup(p) // Observe the startup process group.
 IMPLEMENTATION
 
 
@@ -530,12 +566,46 @@ pctlmatrix(void)
 }
 
 
+/* Exercise the exact namespace and process flags used by AWM initialization. */
+static void
+awmnamespace(void)
+{
+	F_Sys_pctl frame = {0};
+	WORD result;
+
+	namespacemode = 1;
+	worker.env = &environment;
+	program.osenv = &environment;
+	program.pid = 42;
+	oldnamespace.nodevs = 1;
+	frame.flags = Sys_NEWPGRP|Sys_FORKNS;
+	frame.movefd = H;
+	frame.ret = &result;
+	for(namespacefail=0; namespacefail<=1; namespacefail++){
+		environment.pgrp = &oldnamespace;
+		raised = nil;
+		result = -2;
+		enters = leaves = namespaceclosed = grouped = 0;
+		pctltest(kprotect(invoke, &frame));
+		pctltest(enters == 1 && leaves == 1 && !released && worker.nerr == 0);
+		pctltest(namespaceclosed == 1 && grouped == !namespacefail);
+		pctltest(result == (namespacefail ? -1 : 42));
+		pctltest(raised == (namespacefail ? injected : nil));
+		pctltest(environment.pgrp == (namespacefail ? &oldnamespace : &newnamespace));
+		pctltest(newnamespace.nodevs == 1);
+	}
+	namespacemode = 0;
+	printf("PASS AWM pctl namespace fork and copy-error retirement WORD%zu\n", sizeof(WORD)*8);
+}
+
+
 /* Execute real nested VM errors on a tracked pthread stack. */
 static void*
 pctlworker(void *unused)
 {
 	(void)unused;
 	pctltest(pctlmatrix() == 0);
+	awmnamespace();
 	return nil;
 }
 

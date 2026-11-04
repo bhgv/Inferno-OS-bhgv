@@ -8451,3 +8451,23 @@ diagnostics and adds the preflight to the native ARM64 job.
 FlashVM reviewed sibling lookup in 0141. The current work uses the
 existing import record and adds no format fields. Please keep the
 AWM compiler refusal separate from the successful scalar console run.
+
+## INFERNO-0143 — two AWM startup operations in the trusted Sys profile
+
+The explicit native64 Sys startup profile now registers pctl and
+file2chan with the existing generated Frame64 declarations. AWM uses
+pctl with NEWPGRP and FORKNS and publishes wmrect through file2chan.
+The registration fixture checks ten entries and all 25 constructor
+allocation refusals. The production pctl fixture now covers the exact
+AWM flag combination and namespace copy failure. Existing file2chan
+ownership and error checks pass on both word models.
+
+Local x64 classic mk and the complete scalar and paired console boots
+pass. The ARM64 job now checks the selected Sys registration and the
+namespace fork along with the AWM compiler preflight. The existing
+file loader still refuses managed builtin imports. Connecting load Sys
+to these entries needs a checked managed import and result contract.
+
+FlashVM reviewed the preceding AWM source gate. This checkpoint adds
+two trusted runtime entries using existing generated declarations.
+It adds no Dis64 wire fields.

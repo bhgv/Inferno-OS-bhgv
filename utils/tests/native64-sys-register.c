@@ -1,8 +1,8 @@
 #define LIMBO_NATIVE64_TABLES // Complete specifications, explicitly selected implementations.
 #include "sys-native64.h"
 
-static int initialized, invoked[8], rejectinit; // Bounded OS descriptor boundary and observed callback identities.
-static const char *names[] = {"byte2char", "char2byte", "utfbytes", "read", "readn", "write", "pread", "pwrite"}; // Exact trusted profile.
+static int initialized, invoked[10], rejectinit; // Bounded OS descriptor boundary and observed callback identities.
+static const char *names[] = {"byte2char", "char2byte", "utfbytes", "read", "readn", "write", "pread", "pwrite", "pctl", "file2chan"}; // Exact trusted profile.
 
 
 /* Observe the descriptor boundary; its real owning body is tested separately. */
@@ -78,6 +78,25 @@ Sys_pwrite(void *frame)
 	invoked[7]++;
 }
 
+
+
+/* Observe pctl registration without changing host groups in this fixture. */
+void
+Sys_pctl(void *frame)
+{
+	check(frame == &baseline);
+	invoked[8]++;
+}
+
+
+/* Observe file2chan registration without publishing a service here. */
+void
+Sys_file2chan(void *frame)
+{
+	check(frame == &baseline);
+	invoked[9]++;
+}
+
 SYS_PROFILE
 SYS_REGISTRATION
 
@@ -102,9 +121,9 @@ main(void)
 	baseline.ref = 7;
 	check(kprotect(initialize, nil));
 	allocations = attempts;
-	check(initialized == 1 && modules != &baseline && modules->ntype == 8);
+	check(initialized == 1 && modules != &baseline && modules->ntype == nelem(names));
 	m = modules;
-	for(i=0; i<8; i++){
+	for(i=0; i<nelem(names); i++){
 		check(strcmp(m->ext[i].name, names[i]) == 0);
 		check(m->type[i]->size == native64sysio[i]->frame_size);
 		check(m->type[i]->np == native64sysio[i]->map_bytes);
@@ -132,6 +151,6 @@ main(void)
 	check(kprotect(initialize, nil));
 	unload(modules);
 	check(modules == &baseline && live == 0);
-	printf("PASS trusted Sys profile: 8 published entries, %d allocation refusals, descriptor refusal and retry; callbacks bounded\n", failures);
+	printf("PASS trusted Sys profile: 10 published entries, %d allocation refusals, descriptor refusal and retry; callbacks bounded\n", failures);
 	return 0;
 }

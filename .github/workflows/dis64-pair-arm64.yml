@@ -7,6 +7,10 @@ on:
       - 'emu/port/main.c'
       - 'emu/port/dis.c'
       - 'libinterp/readmod.c'
+      - 'libinterp/runt.c'
+      - 'emu/port/inferno.c'
+      - 'utils/tests/native64-sys-register.*'
+      - 'libinterp/tests/sys-pctl.*'
       - 'libinterp/load64.c'
       - 'include/dis64*.h'
       - 'limbo/**'
@@ -41,6 +45,17 @@ jobs:
           set -o pipefail
           python3 utils/tests/awm-native64-preflight.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
             | tee "$RUNNER_TEMP/native64-pair/port-logs/awm-preflight.log"
+      - name: Check the selected native Sys registration
+        run: |
+          set -o pipefail
+          NATIVE64_ARCH=arm64 python3 utils/tests/native64-sys-register.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/sys-registration.log"
+          PCTL_PLATFORM=emu PCTL_WORD=32 CFLAGS='-O2 -g -DNDEBUG -fsanitize=undefined -fno-sanitize-recover=all' \
+            python3 libinterp/tests/sys-pctl.py \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/awm-pctl.log"
+          python3 utils/tests/native64-scalar-boot.py --math --sys-io --freetype \
+            --root "$RUNNER_TEMP/native64-pair" --emu "$RUNNER_TEMP/native64-pair/emu/Linux/o.emu-g" \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/sys-boot.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
