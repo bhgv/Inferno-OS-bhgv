@@ -52,7 +52,7 @@ dis64numericstorageinstruction(const Dis64Instruction *instruction, unsigned int
  * Native/code outputs and borrowed input/policy are disjoint live mapped storage.
  * No code/result/frame/import/namespace ownership is acquired or serialized here. */
 static int
-dis64numericentrycheck(const Dis64StorageImage *image, unsigned int limit, Dis64CodeView *result)
+dis64numericentrycheck(const Dis64StorageImage *image, unsigned int limit, int returns, Dis64CodeView *result)
 {
 	Dis64Type frame;
 	Dis64CodeView code;
@@ -71,8 +71,12 @@ dis64numericentrycheck(const Dis64StorageImage *image, unsigned int limit, Dis64
 		return 0;
 	at = 4;
 	for(i=0; i<code.count; i++){
-		if(at > code.bytes || !dis64instructionread(code.data+at, code.bytes-at, &instruction, &used) ||
-		   !dis64numericstorageinstruction(&instruction, code.count, &image->data, frame.bytes))
+		if(at > code.bytes || !dis64instructionread(code.data+at, code.bytes-at, &instruction, &used))
+			return 0;
+		if(instruction.op == IRET){
+			if(!returns || instruction.mode != ((AXXX<<3)|AXXX))
+				return 0;
+		}else if(!dis64numericstorageinstruction(&instruction, code.count, &image->data, frame.bytes))
 			return 0;
 		at += used;
 	}
@@ -88,6 +92,6 @@ static int
 dis64numericstoragecheck(const Dis64StorageImage *image, unsigned int limit, Dis64CodeView *result)
 {
 	return image != 0 && image->exports.count == 0 &&
-		dis64numericentrycheck(image, limit, result);
+		dis64numericentrycheck(image, limit, 0, result);
 }
 #endif

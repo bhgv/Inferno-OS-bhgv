@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 # Reuse the real execution closure and substitute a sweepable pool for its host allocations.
-def unit():
+def unit(calls=False):
     execution = runpy.run_path(str(ROOT/'utils/tests/dis64-numeric-exec.py'))
     extract = runpy.run_path(str(ROOT/'libinterp/tests/dis64-runtime.py'))['function']
     source = execution['unit']().split('/* Execute an actual Frame/Modlink/decoder/VM/JIT program')[0]
@@ -25,7 +25,18 @@ def unit():
     end = source.index('/* Native staging state is deliberately distinct', start)
     source = source[:start]+'''#define malloc(n) trackedallocate(n,0) // Track external root metadata.
 '''+collector+'\n#undef malloc\n'+source[end:]
-    return source+(ROOT/'utils/tests/dis64-numeric-gc.c').read_text()
+    fixture = (ROOT/'utils/tests/dis64-numeric-gc.c').read_text()
+    if calls:
+        stack = (ROOT/'libinterp/stack.c').read_text()
+        xec = (ROOT/'libinterp/xec.c').read_text()
+        for signature in ('void\nextend(', 'void\nunextend('):
+            source += '\n'+extract(stack, signature)+'\n'
+        for signature in ('static int\nmoduleentry(', 'static int\nframefits(',
+                          'OP(mframe)', 'OP(mcall)', 'OP(ret)'):
+            source += '\n'+extract(xec, signature)+'\n'
+        fixture = fixture.split('/* Check C and machine-code execution with a standalone')[0]
+        fixture += (ROOT/'utils/tests/dis64-provider-call.c').read_text()
+    return source+fixture
 
 
 # Build independent paired images for native provider admission and refusal.
@@ -52,6 +63,7 @@ def provider_cases(fixtures, common):
                         types=common['types']+[fixtures['D'](80, 8)])
     yield 'nested-import', pair(imports=[binding()])
     yield 'no-export', pair(exports=[])
+    yield 'ret-operand', pair(code=fixtures['W'](1)+fixtures['I']('IRET', 19, source=0))
 
 
 # Keep the raw image independent and require the controlled missing trace to be detected.
@@ -59,9 +71,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--control', nargs='?', const='mp', choices=('mp', 'frame'))
     parser.add_argument('--provider', action='store_true')
+    parser.add_argument('--calls', action='store_true')
     args = parser.parse_args()
-    if args.provider and args.control:
-        parser.error('select either provider or trace control')
+    if sum(bool(option) for option in (args.provider, args.control, args.calls)) > 1:
+        parser.error('select one execution mode')
     fixtures = runpy.run_path(str(ROOT/'utils/tests/dis64-numeric-module.py'))
     instruction = fixtures['I']('IADDW', 16, source=2, destination=8)
     words = fixtures['W']
@@ -81,11 +94,21 @@ def main():
     command += ['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
     with tempfile.TemporaryDirectory(prefix='numeric-gc-', dir=os.environ.get('NATIVE64_TMPDIR', ROOT)) as directory:
         work = Path(directory)
-        (work/'test.c').write_text(unit())
+        (work/'test.c').write_text(unit(args.calls))
         (work/'image').write_bytes(raw)
         binary = work/'test'
         subprocess.run(command+[str(work/'test.c'), str(ROOT/'libinterp/dec.c'), '-Wl,--wrap=free', '-lm', '-o', str(binary)], check=True)
         runner = shlex.split(os.environ.get('NATIVE64_RUNNER', ''))
+        if args.calls:
+            for failure in (False, True):
+                terminal = fixtures['I']('IDIVW', 16, source=0, destination=8) if failure else fixtures['I']('IRET', 27)
+                pair = next(provider_cases(fixtures, common | {'code': words(3)+instruction*2+terminal}))[1]
+                consumer, provider = pair
+                (work/'consumer').write_bytes(consumer)
+                (work/'image').write_bytes(provider)
+                subprocess.run(runner+[str(binary), str(work/'image'), str(work/'consumer'),
+                                       'error' if failure else 'return'], check=True, timeout=60)
+            return
         if args.provider:
             for name, (consumer, provider) in provider_cases(fixtures, common):
                 (work/'image').write_bytes(provider)

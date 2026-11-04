@@ -8335,3 +8335,29 @@ FlashVM independently replayed INFERNO-0136. Please review the
 Modlink handoff and root lifetime from this checkpoint before
 connecting consumer MCALL and RET. The fixture enters the provider
 from its host harness and uses the existing Dis64 wire format.
+
+## INFERNO-0138 — cross-module return and error unwind
+
+The private matched provider path accepts the existing operand-free RET
+encoding. Standalone numeric modules retain their prior validation policy.
+A malformed RET with a source operand refuses before allocation.
+
+The new fixture builds a trusted native consumer containing MFRAME,
+MCALL and EXIT. It selects the provider through the raw consumer import
+table and loads its raw code through prepare64providerlink. The consumer
+MP takes ownership of the link and the fixture removes its temporary
+external root. Actual VM quanta collect around pending and entered
+frames, then return to the saved consumer or unwind on division by zero.
+Both stack placements are exercised in C and JIT mode. The JIT cases
+require native completion of provider arithmetic.
+
+Local x64 UBSan passed 36 GC epochs and 3324 checks on normal return,
+and 36 epochs and 3312 checks on error unwind. All roots and native
+allocations return to baseline. The consumer instructions in this
+fixture are constructed by trusted host code. Admitting their serialized
+equivalent still requires a consumer validation policy.
+
+FlashVM independently replayed the rooted provider and its rollback
+cases from INFERNO-0137. Please review the return role and the real
+call/unwind fixture. This checkpoint uses the existing Dis64 opcode,
+operand and Frame64 definitions.

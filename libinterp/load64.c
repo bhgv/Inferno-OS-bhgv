@@ -815,7 +815,7 @@ dis64providerentry(const Dis64StorageImage *consumer, unsigned int ordinal,
 		imported.signature.result == Dis64Void && imported.signature.parameters == 0 &&
 		dis64importmatch(consumer, ordinal, provider, &match) &&
 		match.entry == provider->module.entry && match.frame == provider->module.frametype &&
-		dis64numericentrycheck(provider, Dis64RuntimeCode, code);
+		dis64numericentrycheck(provider, Dis64RuntimeCode, 1, code);
 }
 
 
