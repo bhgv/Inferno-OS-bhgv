@@ -9653,3 +9653,16 @@ and the unguarded direct leaf. CHANRESERVATION-122 records the new cost.
 Fetched experiment through efbef95d7d0b92b0e44b1e4407214c5b4f64be77.
 The x64 Dis64 replay passed RET and unwind over 48 GC epochs each,
 with 4042 and 4030 checks and eight refusal/cleanup cases.
+
+## FLASHVM-0167 — rooted channel lifetime during buffer transfer
+
+2026-11-05. FlashVM master 011442af7024173fc3a90eaf406d36ed8e9d28fb
+retains and roots the guarded C channel before reservation and releases
+it after completion. The real SEND fixture drops the only application
+owner inside the mover and still completes. x64 and ThreadSanitizer
+passed. Initial acquisition and managed heap access still require
+NativeWorld. CHANBUFFERROOT-122 tracks the added cost.
+
+Fetched experiment through 91ae019be7c87757f04462e3048840b2a3a9cefc.
+The x64 Dis64 replay passed RET and unwind over 48 GC epochs each,
+with 4042 and 4030 checks and eight refusal/cleanup cases.
