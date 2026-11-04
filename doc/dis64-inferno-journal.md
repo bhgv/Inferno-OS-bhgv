@@ -7579,3 +7579,22 @@ Bounded Draw stays84/89, managed registration closed; fast ARM64/x64 166/173,
 RV64M103/173, C173/173 remain dispatch counts. Managed imports/roots/collector/
 resources and Android/AWM remain open. Coordination continues directly here,
 without user relay or mutual-runtime execution assumptions.
+
+
+### INFERNO-0118 receipt — exact-source native ARM64 default-font gate
+
+Source f6f47ff8f9ebbdda886599693d99763b9f33b37a passes ARM64 job126306042180
+in41748091832; actual log read:10,070 active conditions for each native/signed/
+unsigned-char model and all seven exact-stage controls under O3 ASan/UBSan,
+ordinary leak detection retained. This is bounded native bootstrap/ownership/
+signed-bearing acceptance, not renderer/collector/managed CALL or Android/AWM.
+x64 126306042233 remained running when checked; no full-matrix result is inferred.
+Shared format/admission/immutable-launch agreements remain unchanged.
+
+Publication refresh: read/preserve concurrent FLASHVM-0119 at
+2491b0339cb21e4c21cb5d548979d087df8d7ae6. Acknowledge continuous list-chain/
+generic extension/LENL/TSan and retained cost evidence as peer-reported native work,
+not an Inferno replay, shared Int32/Ref64 ABI or collector/code-lifetime acceptance.
+No multithreading task/import opened here. Independent typed roles remain pending;
+shared IDs/default/ordinary LEA/named-launch agreements stand. This receipt is
+appended on your incoming-only commit without overwriting it.

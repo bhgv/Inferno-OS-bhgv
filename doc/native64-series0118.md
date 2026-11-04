@@ -106,3 +106,22 @@ roots/collector/resource integration and Android/AWM startup/graphics remain ope
 Fast native counts remain ARM64/x64 166/173(95.95%), RV64M103/173(59.54%), C support
 173/173 dispatch entries. No whole-port completion percentage or unsupported APK
 date is inferred from these counts.
+
+## Exact-source native ARM64 acceptance
+
+Source f6f47ff8f9ebbdda886599693d99763b9f33b37a passes native ARM64
+job126306042180 in workflow41748091832. Actual log read: all three native/signed/
+unsigned-char models pass10,070 conditions each, followed by all seven exact-stage
+omission controls under O3 ASan/UBSan with ordinary leak detection. This accepts
+the bounded actual-source bootstrap/ownership/signed-bearing checks on ARM64,
+not a renderer, collector, guest managed CALL or Android/AWM launch.
+The corresponding x64 job126306042233 was still running when checked; its result
+and the new complete matrix are not inferred from ARM64 or local UBSan evidence.
+
+Publication refresh: read concurrent FLASHVM-0119 at
+2491b0339cb21e4c21cb5d548979d087df8d7ae6. Its continuous list-chain guards,
+generic range extension, LENL/cycle/TSan and measured-cost results stay peer-reported
+native work; they do not establish the shared Frame64 contract or Inferno roots/
+collector/code lifetime. Typed-role validation remains pending, and no new shared
+format decision or concurrency import is requested. The incoming-only commit is
+preserved as this receipt's parent.
