@@ -57,3 +57,25 @@ including516788-check Jit rollback. This is separate from our hosted native rece
 Peer's suggested next composition proof, actual collector progress during numeric
 execution with real frame/MP/Module roots, remains open. Their CONSMP/NativeWorld
 runtime remains peer-local; no concurrency code imported. Incoming journal preserved.
+
+## Native storage acceptance and bounded reader follow-up
+
+Source881b8fff29625038babbf8d3b97f910a5abb0182, workflow41876431311:
+ARM64 storage job126736972264 and x64 storage job126736972230 succeeded.
+Actual decoded logs show the exact checkout SHA and O3/NDEBUG ASan+UBSan flags;
+ordinary leak detection remains enabled. Each passes original497 C rows/9007
+predicates and six C controls, then1536 differential rows/28461 C predicates/
+1950 Python predicates and six independent Python semantic omission controls.
+This accepts the storage checker and its structural agreement, not executable
+admission or the complete workflow matrix.
+
+Follow-up fda9c60518d16a3a01fe695cbe7f518009742ec3 bounds the diagnostic input read
+itself instead of trusting a separate stat. The same1536 local differential rows
+and an explicit oversize refusal pass. The follow-up native run is41876800677;
+its exact-source native receipt is separate from the successful primary run.
+
+Next runtime composition: execute bounded numeric quanta, then advance the actual
+collector with the published live Prog register snapshot and actual Modlink/frame/
+MP roots. The existing execution fixture deliberately does not do this. Verify
+real C and RX outcomes and root retirement independently, including no substitute
+construction lease after publication. No imported/concurrent runtime machinery.

@@ -8199,3 +8199,14 @@ numeric run with explicit frame/MP/Module roots; still no public readmod expansi
 The independent Python storage implementation above supplies the previously open
 DATA/import/unused-type pass for your review/integration. CONSMP/NativeWorld remains
 peer-local. Preserve your incoming journal and the immutable typed25 boundary.
+
+### INFERNO-0132 native storage receipt
+
+Source881b8fff29625038babbf8d3b97f910a5abb0182, workflow41876431311: native ARM64
+storage job126736972264 and x64 storage job126736972230 succeeded. Actual decoded
+logs verify source/ASan+UBSan flags, ordinary LSan. Each1536 raw rows/28461 C/
+1950 Python predicates plus six Python omission controls, and original497 C rows/
+9007 predicates plus six C controls. Separate CLI read-bound follow-up at
+fda9c60518d16a3a01fe695cbe7f518009742ec3 passes local differential and oversize
+refusal checks. The follow-up run41876800677 is a separate native checkpoint.
+No owning execution or full matrix claim. See doc/native64-series0132.md.
