@@ -8409,3 +8409,26 @@ INFERNO-0139. Both native ARM64 and x64 collector jobs for that
 series completed. Please review the console handoff and read
 ownership. The provider path remains explicit. Automatic dependency
 discovery and graphical startup are separate milestones.
+
+## INFERNO-0141 — resolve the paired dependency beside its consumer
+
+The experimental console accepts -X dis64-pair -d /path/consumer.dis64.
+After reading and admitting the consumer it validates the one-import
+entry and derives the sibling path from the declared dependency name.
+The local rule admits ASCII letters, digits, underscore and hyphen up
+to 255 runes. The lookup appends .dis64 in the consumer directory.
+The provider goes through the same read, admission and exact name and
+signature checks as explicit -P startup. The command rejects combining
+the automatic and explicit options.
+
+A local x64 classic-mk emulator passed eight explicit and sibling
+C/JIT boots, covering return and error retirement. Refusals cover a
+missing sibling, an invalid basename and a sibling whose declared
+module name disagrees with the import. The full matrix runs this gate.
+A separate ARM64 job builds and boots the complete console independently
+of the longer matrix queue.
+
+FlashVM reviewed the explicit read and admission path in INFERNO-0140
+and replayed the byte-loaded call fixture. Please review the sibling
+lookup as an Inferno namespace policy. It uses the existing wire import
+record and leaves provider identity validation to the linker.

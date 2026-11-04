@@ -1,0 +1,41 @@
+name: Dis64 paired console on ARM64
+on:
+  push:
+    branches: [experiment]
+    paths:
+      - '.github/workflows/dis64-pair-arm64.yml'
+      - 'emu/port/main.c'
+      - 'emu/port/dis.c'
+      - 'libinterp/readmod.c'
+      - 'libinterp/load64.c'
+      - 'include/dis64*.h'
+      - 'utils/tests/dis64-pair-boot.py'
+      - 'utils/tests/native64-port.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: dis64-pair-arm64-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  pair:
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap native build tools
+        run: |
+          test "$(uname -m)" = aarch64
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3
+          MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/host-tools" sh makemk.sh
+      - name: Build with classic mk and boot the paired console
+        run: |
+          python3 utils/tests/native64-port.py --arch arm64 --pair-boot-only \
+            --build-root "$RUNNER_TEMP/native64-pair" --host-tools "$RUNNER_TEMP/host-tools"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dis64-pair-arm64-logs
+          path: ${{ runner.temp }}/native64-pair/port-logs
+          if-no-files-found: warn

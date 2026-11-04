@@ -131,7 +131,8 @@ typedef struct Dis64PairRead Dis64PairRead;
 
 struct Dis64PairRead {
 	char *consumer; // Explicit namespace path for the startup module.
-	char *provider; // Explicit namespace path for its dependency.
+	char *provider; // Explicit or resolved namespace path for its dependency.
+	char sibling[1024]; // Bounded path assembled from consumer directory and import.
 	uchar *images[2]; // Owned read buffers, kept through linking.
 	ulong sizes[2]; // Complete file extents.
 	int fd; // Current open namespace descriptor, or -1.
@@ -181,6 +182,28 @@ read64pairimage(Dis64PairRead *read, char *path, int index)
 }
 
 
+/* Look up only a sibling file, leaving the final name match to the linker. */
+static int
+read64pairsibling(Dis64PairRead *read)
+{
+	char *slash;
+	size_t prefix;
+
+	slash = strrchr(read->consumer, '/');
+	prefix = slash == nil ? 0 : slash-read->consumer+1;
+	if(prefix >= sizeof(read->sibling)-sizeof(".dis64") ||
+	   !dis64pairdependency(read->images[0], read->sizes[0], read->sibling+prefix,
+	      sizeof(read->sibling)-prefix-sizeof(".dis64")+1)){
+		kwerrstr("invalid Dis64 sibling dependency name or path");
+		return 0;
+	}
+	memmove(read->sibling, read->consumer, prefix);
+	strcat(read->sibling+prefix, ".dis64");
+	read->provider = read->sibling;
+	return 1;
+}
+
+
 /* Build the linked instance only after both namespace files pass admission. */
 static int
 read64pairprotected(void *argument)
@@ -189,6 +212,7 @@ read64pairprotected(void *argument)
 
 	read = argument;
 	if(!read64pairimage(read, read->consumer, 0) ||
+	   (read->provider == nil && !read64pairsibling(read)) ||
 	   !read64pairimage(read, read->provider, 1))
 		return 0;
 	read->link = prepare64consumerlink(read->consumer, read->images[0], read->sizes[0],

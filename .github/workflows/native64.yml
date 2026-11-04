@@ -123,7 +123,7 @@ jobs:
           stage = Path(sys.argv[1])
           consumer, provider = runpy.run_path('utils/tests/dis64-pair-boot.py')['images'](False)
           (stage/'consumer.dis64').write_bytes(consumer)
-          (stage/'provider.dis64').write_bytes(provider)
+          (stage/'unit.dis64').write_bytes(provider)
           PYPAIR
           file "$stage/emu"
           printf '%s\n' \
@@ -133,7 +133,8 @@ jobs:
             'Also run /case.dis64 for the numeric-case source example (module Native64Case).' \
             'Also run /procedures.dis64 for bounded source helpers (module Native64Procedure).' \
             'Expected module: Native64Probe; clean exit and empty scheduler after retirement.' \
-            'For an explicit one-import pair, run ./emu -v -r "$PWD" -c 1 -d /consumer.dis64 -P /provider.dis64.' \
+            'For an explicit one-import pair, run ./emu -v -r "$PWD" -c 1 -d /consumer.dis64 -P /unit.dis64.' \
+            'For sibling lookup, run ./emu -v -r "$PWD" -c 1 -X dis64-pair -d /consumer.dis64.' \
             'The console supports bounded Dis64 profiles and explicit paired startup.' \
             'This Linux executable is not an Android APK.' > "$stage/README.txt"
           tar -czf "$RUNNER_TEMP/Inferno-Linux-$NATIVE64_ARCH-scalar.tar.gz" -C "$stage" .

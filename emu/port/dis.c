@@ -1333,11 +1333,11 @@ disinit(void *a)
 	excinit();
 
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
-	if(dis64bootprovider != nil){
+	if(dis64bootprovider != nil || dis64bootauto){
 		linked = read64pair(initmod, dis64bootprovider);
 		if(linked == nil){
 			kgerrstr(up->genbuf, sizeof up->genbuf);
-			panic("loading Dis64 pair \"%s\" and \"%s\": %s", initmod, dis64bootprovider, up->genbuf);
+			panic("loading Dis64 pair \"%s\": %s", initmod, up->genbuf);
 		}
 		p = schedpair(linked);
 	}else

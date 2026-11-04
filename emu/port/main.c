@@ -12,6 +12,7 @@ int		rebootargc = 0;
 char**		rebootargv;
 static	char	*imod = "/dis/emuinit.dis";
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+int dis64bootauto; // Resolve the sole import beside the consumer.
 char *dis64bootprovider; // Explicit provider namespace path for paired startup.
 #endif
 static int imodexplicit; // A selected call profile requires an explicit initial module.
@@ -43,6 +44,7 @@ usage(void)
 		"\t-X dis64-calls (experimental; requires -d module.dis64)\n"
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 		"\t-P provider.dis64 (experimental pair; requires -d consumer.dis64)\n"
+		"\t-X dis64-pair (find the provider beside the -d consumer.dis64 file)\n"
 #endif
 		"\t-s\n"
 		"\t-v\n"
@@ -159,7 +161,14 @@ option(int argc, char *argv[], void (*badusage)(void))
 		break;
 	case 'X':		/* Explicit startup-only experimental file profile. */
 #ifdef DIS64_PILOT_LOADER
-		if(!dis64selectlaunch(EARGF(badusage())))
+		cp = EARGF(badusage());
+#ifdef DIS_NATIVE64_SCALAR_BOOT
+		if(strcmp(cp, "dis64-pair") == 0){
+			dis64bootauto = 1;
+			break;
+		}
+#endif
+		if(!dis64selectlaunch(cp))
 			badusage();
 #else
 		badusage();
@@ -226,8 +235,8 @@ launchoptions(void)
 {
 #ifdef DIS64_PILOT_LOADER
 #if defined(DIS_NATIVE64_SCALAR_BOOT)
-	if(dis64bootprovider != nil)
-		return imodexplicit && !dis64launchmode();
+	if(dis64bootprovider != nil || dis64bootauto)
+		return imodexplicit && !dis64launchmode() && !(dis64bootprovider != nil && dis64bootauto);
 #endif
 	return !dis64launchmode() || imodexplicit;
 #else

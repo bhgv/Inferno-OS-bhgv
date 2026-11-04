@@ -854,6 +854,40 @@ dis64consumerentry(const Dis64StorageImage *image, Dis64CodeView *code)
 }
 
 
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+
+
+/* Extract a safe namespace basename from the sole checked consumer import. */
+int
+dis64pairdependency(const uchar *image, ulong bytes, char *name, unsigned int capacity)
+{
+	Dis64StorageImage consumer;
+	Dis64CodeView code;
+	Dis64Binding binding;
+	DisRuneView dependency;
+	unsigned int i, rune;
+
+	if(image == nil || image == H || name == nil || name == H ||
+	   bytes > Dis64RuntimeBytes || (uintptr)image > (uintptr)-1-bytes ||
+	   !dis64storageimagecheck(image, bytes, &dis64numericlimits, &consumer) ||
+	   !dis64consumerentry(&consumer, &code) ||
+	   !dis64bindingget(&consumer.imports, 0, &binding) ||
+	   !disstringpoolget(&consumer.strings, binding.module, &dependency) ||
+	   dependency.count == 0 || dependency.count > Dis64RuntimeName || dependency.count >= capacity)
+		return 0;
+	for(i=0; i<dependency.count; i++){
+		if(!disruneat(&dependency, i, &rune) ||
+		   !((rune >= 'a' && rune <= 'z') || (rune >= 'A' && rune <= 'Z') ||
+		     (rune >= '0' && rune <= '9') || rune == '_' || rune == '-'))
+			return 0;
+		name[i] = rune;
+	}
+	name[dependency.count] = 0;
+	return 1;
+}
+#endif
+
+
 /* Construct an owned numeric entry and keep its MP rooted through handoff. */
 static Module*
 dis64numericbuild(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOwner **roots,

@@ -46,6 +46,7 @@ def main():
     parser.add_argument('--test-cc', default='', help='owning C gate compiler command; defaults to CROSS gcc (use dynamic libc for GNU --wrap=free fixtures)')
     parser.add_argument('--runner', default='', help='target execution command, e.g. qemu-aarch64 -L /sysroot')
     parser.add_argument('--test-cflags', default='-O3 -g -DNDEBUG -fno-strict-aliasing', help='additional owning C gate flags; add UBSan where available')
+    parser.add_argument('--pair-boot-only', action='store_true', help='build the complete console and run only the paired boot gate')
     args = parser.parse_args()
     build = args.build_root.resolve()
     tools = args.host_tools.resolve()
@@ -87,8 +88,13 @@ def main():
             target.unlink()
         target.symlink_to(tools/name)
     run([str(tools/'mk'), 'CONF=emu-g', 'CONFLIST=emu-g'], build/'emu/Linux', env, logs/'mk.log')
-    run([str(tools/'mk'), 'install'], build/'libdraw', env, logs/'mk-libdraw.log')
     tests = build/'utils/tests'
+    run([sys.executable, str(tests/'dis64-pair-boot.py'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'pair-boot.log')
+    if args.pair_boot_only:
+        print('PASS classic-mk console and Dis64 pair boot')
+        return
+    run([str(tools/'mk'), 'install'], build/'libdraw', env, logs/'mk-libdraw.log')
     builtinenv = dict(env, NATIVE64_LIMBO=str(tools/'limbo'))
     run([sys.executable, str(tests/'native64-builtins.py'), '--sets', '--port-aliases'],
         build, builtinenv, logs/'builtin-port-aliases.log')
@@ -96,8 +102,6 @@ def main():
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--math', '--sys-io', '--freetype'], build, env, logs/'boot.log')
     run([sys.executable, str(tests/'dis64-call-boot.py'), '--root', str(build),
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'call-boot.log')
-    run([sys.executable, str(tests/'dis64-pair-boot.py'), '--root', str(build),
-         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'pair-boot.log')
     run([sys.executable, str(tests/'native64-limbo-boot.py'), '--limbo', str(tools/'limbo'),
          '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
         build, env, logs/'limbo-boot.log')

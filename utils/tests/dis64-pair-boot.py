@@ -14,16 +14,19 @@ RAW = runpy.run_path(str(ROOT/'utils/tests/dis64-numeric-module.py'))
 
 
 # Serialize the caller and provider independently of the runtime decoder.
-def images(failure):
+def images(failure, dependency_name="unit"):
     words, ins = RAW['W'], RAW['I']
     frame = ins('IMFRAME', 65, source=0, middle=0, destination=64)
     call = ins('IMCALL', 72, source=64, middle=0, destination=0)
     binding = RAW['RAW']['RAW']['binding']
-    caller = RAW['IMAGE'](RAW['SECTIONS'](
+    sections = RAW['SECTIONS'](
         name=5, databytes=8, imports=[binding(module=0)],
         types=[RAW['D'](80, 8), RAW['D'](8, 8, b'\x80')],
         code=words(3)+frame+call+RAW['EXIT'],
-    ))
+    )
+    names = (dependency_name, 'symbol', 'symbol', 'module', 'module', 'other')
+    pool = words(len(names))+b''.join(words(len(name), *(ord(rune) for rune in name)) for name in names)
+    caller = RAW['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
     terminal = ins('IDIVW', 16, source=0, destination=8) if failure else ins('IRET', 27)
     common = dict(data=words(1, 8, 1, 40),
                   code=words(2)+ins('IADDW', 16, source=2, destination=8)+terminal)
@@ -45,18 +48,23 @@ def main():
         work = Path(directory)
         consumer, provider = work/'consumer.dis64', work/'provider.dis64'
         pair = ['-d', '/'+str(consumer.relative_to(root)), '-P', '/'+str(provider.relative_to(root))]
+        sibling = work/'unit.dis64'
+        automatic = pair[:2]+['-X', 'dis64-pair']
         for failure in (False, True):
             caller, dependency = images(failure)
             consumer.write_bytes(caller)
             provider.write_bytes(dependency)
+            sibling.write_bytes(dependency)
             for jit in (0, 1):
-                output = execute(command+['-c', str(jit)]+pair)
-                status = 'zero divide' if failure else ''
-                module = 'unit' if failure else 'other'
-                marker = f'native64 scalar module {module}: jit={jit}, exit="{status}"'
-                if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
-                    raise RuntimeError('paired boot did not complete: '+output)
-        for options in (pair[2:], pair+['-X', 'dis64-calls'], ['-P']):
+                for options in (pair, automatic):
+                    output = execute(command+['-c', str(jit)]+options)
+                    status = 'zero divide' if failure else ''
+                    module = 'unit' if failure else 'other'
+                    marker = f'native64 scalar module {module}: jit={jit}, exit="{status}"'
+                    if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                        raise RuntimeError('paired boot did not complete: '+output)
+        for options in (pair[2:], pair+['-X', 'dis64-calls'], ['-P'], automatic[2:],
+                        automatic+pair[2:], automatic+['-X', 'dis64-calls']):
             refused = subprocess.run(command+options, capture_output=True, text=True, timeout=20)
             if refused.returncode != 1 or 'Usage: emu' not in refused.stderr+refused.stdout:
                 raise RuntimeError('paired boot CLI did not refuse '+repr(options))
@@ -68,7 +76,22 @@ def main():
             output = execute(command+pair)
             if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
                 raise RuntimeError('invalid provider reached the scheduler: '+output)
-    print('PASS complete Dis64 pair boot: C and JIT return/unwind, CLI and provider refusals')
+        sibling.unlink()
+        output = execute(command+automatic)
+        if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+            raise RuntimeError('missing sibling reached scheduler: '+output)
+        for name in ('', '../unit', 'sub/unit', 'unit.dis64', 'unit\0', 'ü', 'x'*256):
+            consumer.write_bytes(images(False, name)[0])
+            output = execute(command+automatic)
+            if 'invalid Dis64 sibling dependency name or path' not in output or BOOT['RETIRED'] in output:
+                raise RuntimeError('unsafe sibling name reached lookup: '+repr(name)+' '+output)
+        caller, dependency = images(False, 'other')
+        consumer.write_bytes(caller)
+        (work/'other.dis64').write_bytes(dependency)
+        output = execute(command+automatic)
+        if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+            raise RuntimeError('sibling with wrong declared name reached scheduler: '+output)
+    print('PASS complete Dis64 pair boot: explicit and sibling C/JIT return/unwind, CLI and dependency refusals')
 
 
 if __name__ == '__main__':
