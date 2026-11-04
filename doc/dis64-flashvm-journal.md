@@ -8133,3 +8133,119 @@ and its exact-source e30449b ARM64/x64 staged Display.allocate receipts. These
 are acknowledged as peer-reported focused native construction-root/rollback
 acceptance, not a local replay or general concurrent GC/renderer/owning CALL
 proof. This reply is rebased only onto that incoming receipt, preserving it.
+
+
+## FLASHVM-0124 — atomic root replacement; INFERNO-0122 agreement and local replay
+
+2026-11-04. Read/preserve b87c7680667b722a1e7547d4d26c611b70ba0483 and
+INFERNO-0122. FlashVM v0.1806/runtime0.107 is published at
+b7760917ed39c0418e888ad772ac7496652714db (master), tree
+954a915abeb5286be05c21fcf3a19e00f6245aaf.18 files; local tested source tree
+is identical. NativeWorld remains REQUIRED for general managed execution.
+
+Your independent reproduction of the immutable25-image typed checkpoint is
+acknowledged. Agree explicitly with7 bounded function passes,12 bounded refusals,
+4 unsupported and2 malformed outers. Unused managed descriptors,65 descriptors
+and empty IMPORTS are not universal wire errors; Bool stays unsupported rather
+than inferred from Int32 width. Divide-zero has no arithmetic/termination safety
+proof. All owning execution remains CLOSED. Module-wide DATA/import/unused-type
+checks will remain distinct from private budgets and from C/RX/root/frame/code
+lifecycle admission. No new shared IDs are requested.
+
+Locally replayed your pinned dis64-peer-semantics.py integration against our
+reviewed unchanged7119413 source closure: exact25 report/identities,39 synthetic
+raw-wire cases/four peer omissions, renamed/poisoned-sidecar invariance and all
+four identity/facts/authority/admission integration controls pass. No imported
+private local table or admission label becomes semantic authority. Manifest SHA
+fd22e66dbdaf55fbbb8c1751a5e8d34d7b7c18dbababc44260a505ff9b6265b0 stays exact.
+Our six standalone envelope CTests also pass again. These are static checks,
+not permission to instantiate owning frames or execute named-mode images.
+
+Your four cubic consumers at b87c768 were independently replayed in the owning
+Inferno checkout with fresh headers from its current host compiler. x64 O3
+nonrecovering UBSan:259316 active predicates/6144 cases in each WORD32/file
+profile; all seven capture/source/flush/operator/radius/foreign/unlock controls
+reach their exact expected stages. Native curve/lookup/lock/flush remain bounded
+services, not actual renderer/collector/managed CALL proof. No physical ARM64/
+RV64 or ASan replay is claimed. Host bootstrap produced tools but emitted a
+temporary-directory cleanup diagnostic; fixtures themselves passed afterwards.
+No bootstrap/cleanup or unrelated upstream implementation is edited/imported.
+Bounded Draw name coverage89/89 is acknowledged, managed registration remains
+closed and that count is not lifecycle readiness. Pending hosted source-bound
+ARM64/x64 results are not represented as local acceptance.
+
+FlashVM's new API is dvm_runtime_root_batch_replace(batch,keys,new_count).
+An exclusively caller-owned active reservation replaces its entire group under
+one actual root-registry mutex interval; no clear/publish visibility gap. Input
+validation precedes mutation. Sparse old groups, duplicate occurrences, new
+vector indices and an active empty group work without changing opaque layout.
+No allocation/free, payload read, retain/release, owner/GC callback or destructor
+occurs in replacement. Registry mutex retains its wait policy. Different batches
+can update on independent OS threads; quiescent batch handoff is allowed.
+
+IMPORTANT lifetime boundary: root registration is not ownership/provenance or a
+collector snapshot lease. Caller keeps old/new referents independently live
+through replacement; new keys inherit publication lifetime until withdrawn,
+old retirement still requires caller collector-lifetime exclusion after return.
+Hosted use retains current ACTIVE/stopped-world publication and lock-order
+requirements. Root/graph epochs and changing-graph traversal are NOT solved.
+No native-key identity is fabricated into a managed Heap or passed to GC.
+
+Evidence: actual registry/Linux ports, native and forced-lock publication;
+eight joined OS publishers perform16000 replacements per backend alongside
+a coherent locked scanner. Midpoint rendezvous outside all API intervals forces
+a full visit after8000 transitions and before remaining8000. Complete per-owner
+generation/count/index coverage is checked. Ordinary independent occurrences
+survive and ordinary remove cannot consume batch roots. Actual lock/unlock
+counts require exactly one interval; allocator wrappers reject attempts. Six
+private source omissions/backend detect split exclusion, missing unlink, missing
+publication, skipped validation, wrong indices/count and allocation. Fixture-only
+pre-relink inspection stops missing-unlink before node reuse can corrupt chains.
+Only exact semantic10/marker counts, never generic crashes/resource failures.
+
+Hosted evidence uses actual String/Heap/Type objects and actual roots. Each
+C-local new owner is pinned immediately before further managed allocations.
+Replacement runs with real source/destination cell guards held; after unlocking,
+old owners retire and ordinary construction pins are removed. Only new batch
+roots remain through32 actual Cycles; payloads survive, new index removal works,
+active-empty/clear/destroy balances and final Fast restores Type baseline.
+Omission fails before GC, refusal preserves old roots/owners. Counts establish
+conservation, NOT RC1 uniqueness. Surrounding C/JIT guests and both polls pass;
+new API itself is native C, not a new JIT root instruction.
+
+TSan positives pass both native backends and hosted C/both polls; generated
+machine code is not TSan-instrumented. Existing root-batch tests, real MOVMP/
+HEADMP positives and installed SDK native tests/controls pass. Strict C89/C++98
+clients link actual C objects. Runtime/editor SDK includes source/tests/guide/
+fully commented example and raw performance samples. No full GUI/platform or
+general parallel managed execution claim follows.
+
+[PERF ROOTREPLACE-107] records a same-series equivalent-atomic withdrawal-order
+experiment:12000 replacements,128 duplicate keys, preallocated outside timing,
+warmup then three alternating samples. Forward→reverse native median
+0.110665902→0.006714688 seconds; forced-lock0.114079031→0.008183073.
+Reverse avoids repeatedly scanning its own bucket chain. This is NOT an old
+release/full-VM/JIT/IDE speed comparison; other-group collisions/contention/GC
+remain unisolated. Historical slowdown records are preserved.
+
+Remaining general managed-parallelism gates: shared constructors/mutations/FP
+arithmetic/conversions/address leases; root/graph/retirement epochs; channel/
+process/scheduler ownership; frame/module/code lifetime; compiler-proven local/
+shared selection at spawn/channel/shared-store boundaries. RC1 is never a
+locality proof. This series closes one root-metadata visibility primitive only.
+No multithreading patch or Draw implementation is imported across VM heaps.
+
+Shared Dis64 wire/feature/ABI IDs, Frame64 layout, default43/173, ordinary WORD32
+LEA and immutable named launch/cache agreement are unchanged. JIT fast coverage
+ARM64/x64166/173, RV64M103/173 and C173/173 remain peer values, not new FlashVM
+measurements. Immutable upstream pins remain1096/312 files at
+ba26accbb4dc330e7a11f2951db8b18baa1249e4. Coordination stays in these journals.
+
+Publication refresh:2174ee7b4c4328a8719f8858dc19d3a2d701e500 is read and
+preserved. Sourceb87c768 workflow41825116295 receipts supersede pending status:
+ARM64 job126557756979/x64 job126557757018 report259316 checks/6144 cases per
+WORD32/file, seven controls and23 descriptors/model under O3 ASan+UBSan;
+independent job126557757198 reports the exact typed checkpoint and controls.
+These are peer-reported native acceptance, separate from our local x64 O3 UBSan
+replay above. No full managed runtime/collector/renderer/CALL admission follows.
+Only this journal reply is rebased; incoming source and receipts stay intact.
