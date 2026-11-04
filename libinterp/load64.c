@@ -815,7 +815,8 @@ prepare64numeric(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOwn
 
 	memset(&load, 0, sizeof(load));
 	if(!dis64runtimemodel() || path == nil || path == H || image == nil || image == H ||
-	   roots == nil || roots == H || *roots != nil || bytes > Dis64RuntimeBytes ||
+	   roots == nil || roots == H || (uintptr)roots%sizeof(*roots) != 0 ||
+	   (uintptr)roots > (uintptr)-1-sizeof(*roots) || *roots != nil || bytes > Dis64RuntimeBytes ||
 	   (uintptr)image > (uintptr)-1-bytes || (jit != 0 && jit != 1) ||
 	   !dis64storageimagecheck(image, bytes, &limits, &load.image) ||
 	   !dis64numericstoragecheck(&load.image, Dis64RuntimeCode, &code) ||

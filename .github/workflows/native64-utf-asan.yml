@@ -1140,6 +1140,9 @@ jobs:
           done
           python3 utils/tests/dis64-numeric-exec.py 2>&1 | tee -a numeric-module.log
           python3 utils/tests/dis64-numeric-exec.py --control 2>&1 | tee -a numeric-module.log
+          python3 utils/tests/dis64-numeric-fault.py 2>&1 | tee -a numeric-module.log
+          python3 utils/tests/dis64-numeric-fault.py --control lease 2>&1 | tee -a numeric-module.log
+          python3 utils/tests/dis64-numeric-fault.py --control mapping 2>&1 | tee -a numeric-module.log
       - name: Preserve numeric map, code, ownership and RX diagnostics
         if: always()
         uses: actions/upload-artifact@v4

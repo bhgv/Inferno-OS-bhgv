@@ -26,3 +26,10 @@ compiler/runner/flag overrides apply. Hosted jobs use O3/NDEBUG ASan+UBSan and
 ordinary leak detection. Controls accept only exact semantic failures, never a
 compiler error, sanitizer report, crash or timeout. See doc/native64-series0130.md
 for the private API boundaries, ownership contract and measured counts.
+
+`python3 utils/tests/dis64-numeric-fault.py` adds actual Jit-constructor rollback:
+every native allocation fails once by return and once through the real VM error
+stack; mmap and mprotect each fail by return and error. Real host mappings and
+permission changes are observed through linker wrappers. `--control lease` and
+`--control mapping` must fail their exact ownership baselines. No guest execution
+or collector runs in this fault fixture. See doc/native64-series0131.md.

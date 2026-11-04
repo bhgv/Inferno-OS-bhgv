@@ -245,6 +245,10 @@ def main():
     numeric_exec = [sys.executable, str(tests/'dis64-numeric-exec.py')]
     run(numeric_exec, build, env, logs/'numeric-exec.log')
     run(numeric_exec+['--control'], build, env, logs/'numeric-exec-decline.log')
+    numeric_fault = [sys.executable, str(tests/'dis64-numeric-fault.py')]
+    run(numeric_fault, build, env, logs/'numeric-fault.log')
+    for control in ('lease', 'mapping'):
+        run(numeric_fault+['--control', control], build, env, logs/('numeric-fault-'+control+'.log'))
     storage_attach = [sys.executable, str(tests/'dis64-storage-attach.py')]
     run(storage_attach, build, env, logs/'dis64-storage-attach.log')
     for control in ('type', 'data', 'mark', 'ordinal', 'atomic', 'cached'):

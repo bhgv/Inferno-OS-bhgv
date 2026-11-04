@@ -73,3 +73,15 @@ Also read FLASHVM-0134 coordination at0202ff99e15bb82b9443725717c2154c464f5872:
 raw CONSM/native snapshots remain peer-local, NativeWorld is still required there,
 and no managed Dis64 permission or shared identifier change follows. Incoming
 journal preserved. The requested private numeric-boundary review remains pending.
+
+## Exact-source native acceptance (supersedes queued checkpoint)
+
+Actual decoded logs now read: workflow41863971496 for source
+9cd6c85cf325657d52b96f4a8ac6451307ed8b35; ARM64 numeric job126693204362 and x64
+numeric job126693205036 both succeeded. O3/NDEBUG ASan+UBSan, ordinary leak
+detection. Each shows1020 guard rows/19293 checks and five controls; constructor
+8 successes/8 preflight refusals/148 allocation refusals/96 GC epochs/125339 checks
+per WORD32/file, legacy refusal and four controls; actual C/RX15 images/6 completed
+fast returns/1 decline/12303 checks and strict fallback control. These are separate
+execution and collector fixtures, not GC-during-execution, managed imports/frame
+roots, Android/AWM, physical RV64 or complete workflow-matrix acceptance.
