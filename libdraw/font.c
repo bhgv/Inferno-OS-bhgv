@@ -182,11 +182,12 @@ cf2subfont(Cachefont *cf, Font *f)
 	return sf;
 }
 
-/* return 1 if load succeeded, 0 if failed, -1 if must retry */
+
+/* Publish only after cache and transport preparation: 1 loads, 0 refuses, -1 retries. */
 int
 loadchar(Font *f, Rune r, Cacheinfo *c, int h, int noflush, char **subfontname)
 {
-	int i, oi, wid, top, bottom;
+	int i, oi, wid, top, bottom, depth;
 	Rune pic;
 	Fontchar *fi;
 	Cachefont *cf;
@@ -237,7 +238,7 @@ loadchar(Font *f, Rune r, Cacheinfo *c, int h, int noflush, char **subfontname)
 				f->subf = of;
 				goto Toss;
 			}
-			memmove(f->subf, of, (f->nsubf+DSUBF)*sizeof *subf);
+			memmove(f->subf, of, f->nsubf*sizeof *subf);
 			memset(f->subf+f->nsubf, 0, DSUBF*sizeof *subf);
 			subf = &f->subf[f->nsubf];
 			f->nsubf += DSUBF;
@@ -293,27 +294,30 @@ loadchar(Font *f, Rune r, Cacheinfo *c, int h, int noflush, char **subfontname)
 		 */
 		if(noflush)
 			return -1;
-		if(f->width < wid)
-			f->width = wid;
-		if(f->maxdepth < subf->f->bits->depth)
-			f->maxdepth = subf->f->bits->depth;
-		i = fontresize(f, f->width, f->ncache, f->maxdepth);
+		if(wid < f->width)
+			wid = f->width;
+		depth = subf->f->bits->depth;
+		if(depth < f->maxdepth)
+			depth = f->maxdepth;
+		i = fontresize(f, wid, f->ncache, depth);
 		if(i <= 0)
 			return i;
 		/* c is still valid as didn't reallocate f->cache */
 	}
-	c->value = r;
 	top = fi->top + (f->ascent-subf->f->ascent);
 	bottom = fi->bottom + (f->ascent-subf->f->ascent);
-	c->width = fi->width;
-	c->x = h*f->width;
-	c->left = fi->left;
-	flushimage(f->display, 0);	/* flush any pending errors */
+	if(flushimage(f->display, 0) < 0)
+		return 0;
 	if (f->cacheimage == 0)
 		return 0;
 	b = bufimage(f->display, 37);
 	if(b == 0)
 		return 0;
+	/* Packet reservation is the final fallible local step before cache publication. */
+	c->value = r;
+	c->width = fi->width;
+	c->x = h*f->width;
+	c->left = fi->left;
 	b[0] = 'l';
 	BPLONG(b+1, f->cacheimage->id);
 	BPLONG(b+5, subf->f->bits->id);
@@ -355,7 +359,8 @@ freeup(Font *f)
 	return nf;
 }
 
-/* return whether resize succeeded && f->cache is unchanged */
+
+/* Commit new cache geometry only after image initialization; retain old geometry on refusal. */
 static int
 fontresize(Font *f, int wid, int ncache, int depth)
 {
@@ -365,6 +370,10 @@ fontresize(Font *f, int wid, int ncache, int depth)
 	uchar *b;
 	Display *d;
 
+	/* Font.width is short and Cacheinfo.x is ushort even on native64 hosts. */
+	if(wid < 0 || wid > 32767 || ncache <= NFLOOK || ncache > MAXFCACHE ||
+	   (vlong)(ncache-1)*wid > 65535)
+		return 0;
 	ret = 0;
 	d = f->display;
 	if(depth <= 0)
@@ -376,7 +385,10 @@ fontresize(Font *f, int wid, int ncache, int depth)
 /*		abort(); */
 		goto Return;
 	}
-	flushimage(d, 0);	/* flush any pending errors */
+	if(flushimage(d, 0) < 0){
+		freeimage(new);
+		goto Return;
+	}
 	b = bufimage(d, 1+4+4+1);
 	if(b == 0){
 		freeimage(new);

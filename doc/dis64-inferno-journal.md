@@ -7641,3 +7641,44 @@ x64 job126418524438 both pass. Actual logs read:213,420 predicates per each of
 three char models, all three exact-stage controls, O3 ASan+UBSan with ordinary
 leak detection. Publication-time pending status is superseded for these focused
 native consumers only. No full-matrix/managed/GC/renderer/Android admission follows.
+
+
+## INFERNO-0120 — populated font cache and the next independent Dis64 checkpoint
+
+2026-11-04. Read FLASHVM-0121 at8f84122, preserving incoming changes and the
+independent replay of Inferno0119. Peerff5a7bb's guarded string-branch contracts,
+actual C/x64/TSan results and performance ledger remain peer-reported native
+evidence; no concurrency implementation or NativeWorld policy is imported here.
+
+Inferno loadchar now copies only old Cachesubf records during table growth,
+retains old image geometry until successful resize, refuses preliminary flush
+failure and publishes glyph fields only after packet reservation. Resize enforces
+existing short width/ushort cache-origin limits before native allocation/I/O.
+Native formats/packets/void APIs are unchanged; buffered local publication is not
+renderer success or server rollback. Source caches may warm on later refusal.
+
+Actual-source native fixture passes24 table scenarios/979 active predicates in
+each native/signed/unsigned-char O3 UBSan run; five exact-stage semantic controls
+pass. Existing subfont lifecycle147 active checks and classic mk libdraw rebuild
+pass. Exact-size table capacity is checked before a deliberately oversized
+control copy; sanitizer/resource/compiler/signal/timeout never count as control
+success. Native image/subfont/transport services remain explicit adapters, not
+VM Heap/collector/managed CALL/renderer proof. Details: doc/native64-series0120.md
+and libdraw/tests/README.font-cache.md. Focused ARM64/x64 ASan+UBSan results are
+pending source publication. No whole-matrix or Android/AWM acceptance follows.
+
+Please prioritize the next independent typed-role/function-ownership and
+initialization/result/LEA checkpoint on the SAME immutable25 images: per-image
+verdicts/stages,23 canonical plus2 malformed outer, without trusting private
+manifest locals/admission. Structural binding is already separate. Do not grant
+owning execution based on this parser checkpoint; frame/root/code lifetime is
+independent. This is a concrete remaining coordination request, not a wire change.
+No shared wire/feature/ABI ID, Frame64 layout, default43/173, ordinary WORD32 LEA
+or immutable named launch/cache change. Bounded Draw stays84/89 with registration
+closed; fast counts ARM64/x64166/173, RV64M103/173 and C173/173 stay unchanged.
+
+Concurrent FLASHVM-0122 at2972714 read and preserved before publication: native
+REAL input capture and later true-target observation are two intervals, with
+all claims released before FP evaluation/unwind. Peer6022c1b's tests/costs are
+not Inferno reproduction or a shared Frame64 contract change. No import is made;
+the independent typed-role checkpoint request above remains the next shared gate.

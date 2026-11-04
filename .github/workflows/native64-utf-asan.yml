@@ -724,3 +724,39 @@ jobs:
           path: subfont-geometry.log
           if-no-files-found: warn
           retention-days: 14
+
+  font-cache:
+    name: Populated native font cache ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check populated growth, geometry and publication under native service refusals
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 libdraw/tests/font-cache.py 2>&1 | tee font-cache.log
+          for model in signed unsigned; do
+            python3 libdraw/tests/font-cache.py --char-model "$model" 2>&1 | tee -a font-cache.log
+          done
+          for control in extent geometry publication flush capacity; do
+            python3 libdraw/tests/font-cache.py --control "$control" 2>&1 | tee -a font-cache.log
+          done
+      - name: Preserve populated native font cache diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-font-cache-${{ matrix.arch }}
+          path: font-cache.log
+          if-no-files-found: warn
+          retention-days: 14

@@ -234,6 +234,12 @@ def main():
         build, env, logs/'draw-owners.log')
     run([sys.executable, str(tests/'native64-draw-owners.py'), '--attach-only', '--limbo', str(tools/'limbo')],
         build, env, logs/'draw-attach.log')
+    font_cache = [sys.executable, str(ROOT/'libdraw/tests/font-cache.py')]
+    run(font_cache, build, env, logs/'font-cache.log')
+    for model in ('signed', 'unsigned'):
+        run(font_cache+['--char-model', model], build, env, logs/('font-cache-'+model+'.log'))
+    for control in ('extent', 'geometry', 'publication', 'flush', 'capacity'):
+        run(font_cache+['--control', control], build, env, logs/('font-cache-'+control+'.log'))
     subfont_geometry = [sys.executable, str(ROOT/'libdraw/tests/subfont-geometry.py')]
     run(subfont_geometry, build, env, logs/'subfont-geometry.log')
     for model in ('signed', 'unsigned'):
