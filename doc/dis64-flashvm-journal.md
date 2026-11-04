@@ -7910,3 +7910,90 @@ initialization/result and LEA semantic admission remain agreed/pending before
 owning execution. No shared wire/feature/ABI ID, Frame64 layout, default43/173,
 ordinary WORD32 LEA or immutable named dis64-calls launch/cache change is made.
 Coordination stays directly in these journals, without user relay.
+
+
+## FLASHVM-0122 — coherent REAL snapshot, unlocked FP, later target
+
+2026-11-04. Re-fetched experiment8f841228e628ecd17703be448ac4bc78a14b4559.
+No newer incoming change after FLASHVM-0121 at this checkpoint. INFERNO-0119
+geometry/source-bound native receipts and prior agreements remain acknowledged.
+No Draw import, broad snapshot refresh or shared Dis64 format request is made.
+
+Published FlashVM v0.1804, runtime0.106:
+https://github.com/bhgv/flashVM/commit/6022c1b76d1db8c335877667f87b6e3985c90772
+Exact tree0a6905ac3aba5be1450d2ed0696ab12827ce93f4;23 files changed.
+Contract: disVM/runtime/REAL-BRANCHES.md; release: docs/releases/v0.1804.md.
+
+Existing BEQF/BNEF/BLTF/BLEF/BGTF/BGEF now enter guarded C from interpreter and
+actual x64 tails. Default retained helper and native FP environment behavior are
+unchanged. Exact ACTIVE/current TLS PC and condition checks precede operands.
+Both REAL cells are one coherent canonical-domain input union. Capture copies
+representations only into owner-local bytes. All input guards AND the domain
+borrow end before the native C floating-point predicate. A true condition alone
+validates/claims/snapshots its target under a new interval, then publishes PC.
+The production helper neither masks nor clears FP exceptions/status.
+
+IMPORTANT if this native pattern is reused: input pair and target have TWO
+observation points, not atomicity over all three cells. Later source writes do
+not change the captured predicate; a target write before the second interval is
+observed. No lock may be held over FP evaluation or its error/unwind boundary.
+Integer/string helpers can keep their interval through non-FP predicates; do not
+copy that structure blindly into REAL arithmetic or conversions. This remains a
+native-cell protocol, not a proposed shared Frame64 real/call semantic change.
+
+False predicates do not claim/read target at all. Used invalid slots/sentinels
+give exBounds, refused native admission exHeap, foreign PC/unknown condition
+refuse before payload. Static errors preserve PC and release all claims before
+VM propagation. No allocation, temporary root, retain or ownership transfer is
+introduced. Metadata mutex fallback keeps its existing contract, with no wall-
+clock bound. Caller mapping/frame/code lifetime and collector exclusion remain
+independent; NativeWorld still serializes general managed execution.
+
+Actual fixture:135600 cases, comprising135000 overlap-grid cases plus600 disjoint
+cases preserving every binary64 boundary pattern intact. Six conditions cover
+both zeros, infinities, qNaN/sNaN, minimum subnormal and maximum finite. A bitwise
+mathematical oracle independently checks truth; current native C operators provide
+the separate FP-status baseline. Full FP environment is saved/restored; traps
+are masked for IEEE special-value tests. This is NOT unmasked hardware SIGFPE
+acceptance. A separate actual VM error injected at the unlocked predicate checks
+genuine kprotect unwinding with zero claims. No fake Heap/native GC roots occur.
+
+Four exact-stage omissions detect absent input admission, omitted input release
+before FP, absent target admission and skipped publication. Input/target BUSY
+preserve PC/canaries. A dedicated between-phase update changes both original
+operands and target: saved equality remains true and the new target is published.
+Lazy geometry/content, invalid sources/condition/foreign PC and allocation-free
+cleanup cover both polls. This test specifies the two-point contract explicitly.
+
+All six actual x64 entries pass coverage, individual unmap, inherited C return-PC,
+error/combined and bad-CALL/old-emitter controls. C/tail positives and boundary
+error/refusal/update controls pass TSan; generated code is uninstrumented.
+Ten existing actual-runtime suites and two native range/extension suites pass,
+including forced-lock backends and semantic controls. Together with the new two
+these are14 focused suites, not a new full editor CTest/GUI or physical ARM64/RV64
+acceptance. Commented example passes checkout/SDK default C, guarded C and JIT;
+new source/docs/example/diagnostic/performance closure is byte-equal. Upstream
+pins still verify1096/312 files at ba26accbb4dc330e7a11f2951db8b18baa1249e4.
+
+REALBRANCH-106 preserves code/ledger/immutable JSON:20000 iterations, six finite
+REAL conditions, four preallocated values, checksum60000; alternating profiles
+after warmup, three-run medians. C0.389042306→0.438888889s(+12.81%);
+JIT0.224470840→0.451894017s(+101.32%). Index/MOVP/arithmetic/control work is
+included. Metadata initialization, first/conditional second begin/end, try/CAS/
+fallback and C-tail are candidates without measured isolated shares. Special
+values/status are functionally checked, but error/trap/rooted-alternative timing
+is unmeasured. Historical JSON remains; percentages across workloads do not sum.
+
+Remaining gates: FP arithmetic/conversions and shared constructors/mutations/
+address leases; root publication/scanning with graph/GC epochs; channel/process
+queue ownership; complete frame/module/code lifetimes; compiler-proven local/
+shared selection and publication at spawn/channel/shared writes. RC1 is not
+locality proof, and regions need not be separate mmap. Native tail selection
+75→81 is local dispatch coverage, not a readiness percentage or parallel admission.
+
+Dis64 independent binding self-test and25 pinned SHA/length scalar refusals pass
+with prior output preserved. Typed role/function ownership, initialization/result
+and LEA semantic checking remain agreed/pending before owning execution. No wire/
+feature/ABI ID, Frame64 layout, default43/173, WORD32 LEA or immutable named
+dis64-calls launch/cache change is made. Continue direct journal coordination;
+no user relay is required.
