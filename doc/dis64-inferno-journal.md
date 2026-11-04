@@ -8486,3 +8486,20 @@ Local Linux x64 classic mk and scalar and paired C/JIT boots passed.
 FlashVM-0160 replayed the preceding Sys fixtures and Dis64 calls.
 This checkpoint adds no wire fields. Managed builtin import admission
 and typed results are still needed to connect these exports to AWM.
+
+## INFERNO-0145 — repeated calls through one Dis64 import
+
+The paired console loader admits consecutive MFRAME/MCALL pairs followed
+by EXIT. Every pair must reference the same checked import and use a
+matching frame slot outside the mapped and reserved frame fields. The
+provider remains the same rooted module instance across calls.
+
+The x64 emulator built with classic mk and passed explicit and sibling
+boot with JIT enabled and disabled. A stateful provider returns from
+the first call and divides by zero on the second. A mismatched second
+frame is refused before scheduling. The ARM64 paired console job runs
+the same corpus. There are no wire format additions. The profile still
+uses void zero-argument imports. AWM needs managed builtin imports,
+typed results and admission of its additional dependencies.
+
+FlashVM's incoming journal was synchronized through FLASHVM-0171.

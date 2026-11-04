@@ -14,15 +14,18 @@ RAW = runpy.run_path(str(ROOT/'utils/tests/dis64-numeric-module.py'))
 
 
 # Serialize the caller and provider independently of the runtime decoder.
-def images(failure, dependency_name="unit"):
+def images(failure, dependency_name="unit", *, calls=1, late_failure=False, wrong_slot=False):
     words, ins = RAW['W'], RAW['I']
     frame = ins('IMFRAME', 65, source=0, middle=0, destination=64)
     call = ins('IMCALL', 72, source=64, middle=0, destination=0)
+    tail_frame = ins('IMFRAME', 65, source=0, middle=0, destination=72)
+    tail_call = ins('IMCALL', 72, source=64 if wrong_slot else 72, middle=0, destination=0)
+    sequence = frame+call+(tail_frame+tail_call)*(calls-1)
     binding = RAW['RAW']['RAW']['binding']
     sections = RAW['SECTIONS'](
         name=5, databytes=8, imports=[binding(module=0)],
         types=[RAW['D'](80, 8), RAW['D'](8, 8, b'\x80')],
-        code=words(3)+frame+call+RAW['EXIT'],
+        code=words(2*calls+1)+sequence+RAW['EXIT'],
     )
     names = (dependency_name, 'symbol', 'symbol', 'module', 'module', 'other')
     pool = words(len(names))+b''.join(words(len(name), *(ord(rune) for rune in name)) for name in names)
@@ -30,6 +33,10 @@ def images(failure, dependency_name="unit"):
     terminal = ins('IDIVW', 16, source=0, destination=8) if failure else ins('IRET', 27)
     common = dict(data=words(1, 8, 1, 40),
                   code=words(2)+ins('IADDW', 16, source=2, destination=8)+terminal)
+    if late_failure:
+        common = dict(data=words(1, 8, 1, 2),
+                      code=words(3)+ins('ISUBW', 16, source=1, destination=8)
+                      +ins('IDIVW', 0, source=8, destination=12)+ins('IRET', 27))
     _, provider = next(GC['provider_cases'](RAW, common))[1]
     return caller, provider
 
@@ -50,8 +57,10 @@ def main():
         pair = ['-d', '/'+str(consumer.relative_to(root)), '-P', '/'+str(provider.relative_to(root))]
         sibling = work/'unit.dis64'
         automatic = pair[:2]+['-X', 'dis64-pair']
-        for failure in (False, True):
-            caller, dependency = images(failure)
+        scenarios = ((False, 1, False), (True, 1, False), (False, 4, False),
+                     (False, 1, True), (True, 2, True))
+        for failure, calls, late_failure in scenarios:
+            caller, dependency = images(failure, calls=calls, late_failure=late_failure)
             consumer.write_bytes(caller)
             provider.write_bytes(dependency)
             sibling.write_bytes(dependency)
@@ -62,7 +71,16 @@ def main():
                     module = 'unit' if failure else 'other'
                     marker = f'native64 scalar module {module}: jit={jit}, exit="{status}"'
                     if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
-                        raise RuntimeError('paired boot did not complete: '+output)
+                        raise RuntimeError(f'paired boot did not complete ({failure}, {calls}, {late_failure}): '+output)
+        caller, dependency = images(False, calls=2, wrong_slot=True)
+        consumer.write_bytes(caller)
+        provider.write_bytes(dependency)
+        sibling.write_bytes(dependency)
+        for options in (pair, automatic):
+            output = execute(command+options)
+            if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+                raise RuntimeError('mismatched second frame reached scheduler: '+output)
+        consumer.write_bytes(images(False)[0])
         for options in (pair[2:], pair+['-X', 'dis64-calls'], ['-P'], automatic[2:],
                         automatic+pair[2:], automatic+['-X', 'dis64-calls']):
             refused = subprocess.run(command+options, capture_output=True, text=True, timeout=20)
@@ -91,7 +109,7 @@ def main():
         output = execute(command+automatic)
         if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
             raise RuntimeError('sibling with wrong declared name reached scheduler: '+output)
-    print('PASS complete Dis64 pair boot: explicit and sibling C/JIT return/unwind, CLI and dependency refusals')
+    print('PASS complete Dis64 pair boot: explicit and sibling C/JIT single/repeated return and late unwind, CLI and dependency refusals')
 
 
 if __name__ == '__main__':

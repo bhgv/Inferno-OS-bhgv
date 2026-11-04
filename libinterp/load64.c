@@ -819,38 +819,38 @@ dis64providerentry(const Dis64StorageImage *consumer, unsigned int ordinal,
 }
 
 
-/* Prove the fixed one-import call sequence and its private frame scratch slot. */
+/* Prove consecutive calls through one import and an unmapped scratch slot per pair. */
 static int
 dis64consumerentry(const Dis64StorageImage *image, Dis64CodeView *code)
 {
 	Dis64Instruction frame, call, exit;
 	Dis64Type type;
-	unsigned int at, used;
+	unsigned int at, used, i;
 
 	*code = image->code;
 	if(image->module.profile != 1 || image->module.entry != 0 ||
 	   image->imports.count != 1 || image->exports.count != 0 ||
 	   image->data.bytes != 8 || image->data.mapbytes != 1 || image->data.map[0] != 0x80 ||
-	   image->initializers.count != 0 || code->count != 3 ||
+	   image->initializers.count != 0 || code->count < 3 || (code->count & 1) == 0 ||
 	   !dis64typeget(&image->types, image->module.frametype, &type) ||
 	   type.bytes < 72 || type.align != 8 || type.map[0] != 0)
 		return 0;
 	at = 4;
-	if(!dis64instructionread(code->data+at, code->bytes-at, &frame, &used))
-		return 0;
-	at += used;
-	if(!dis64instructionread(code->data+at, code->bytes-at, &call, &used))
-		return 0;
-	at += used;
-	if(!dis64instructionread(code->data+at, code->bytes-at, &exit, &used))
-		return 0;
-	return at+used == code->bytes &&
-		frame.op == IMFRAME && frame.mode == ((AMP<<3)|AXIMM|AFP) &&
-		frame.source == 0 && frame.middle == 0 && frame.destination >= 64 &&
-		dis64initspan(&type, frame.destination, 8) &&
-		call.op == IMCALL && call.mode == ((AFP<<3)|AXIMM|AMP) &&
-		call.source == frame.destination && call.middle == 0 && call.destination == 0 &&
-		exit.op == IEXIT && exit.mode == ((AXXX<<3)|AXXX);
+	for(i=1; i<code->count; i+=2){
+		if(!dis64instructionread(code->data+at, code->bytes-at, &frame, &used) ||
+		   frame.op != IMFRAME || frame.mode != ((AMP<<3)|AXIMM|AFP) ||
+		   frame.source != 0 || frame.middle != 0 || frame.destination < 64 ||
+		   !dis64initspan(&type, frame.destination, 8))
+			return 0;
+		at += used;
+		if(!dis64instructionread(code->data+at, code->bytes-at, &call, &used) ||
+		   call.op != IMCALL || call.mode != ((AFP<<3)|AXIMM|AMP) ||
+		   call.source != frame.destination || call.middle != 0 || call.destination != 0)
+			return 0;
+		at += used;
+	}
+	return dis64instructionread(code->data+at, code->bytes-at, &exit, &used) &&
+		at+used == code->bytes && exit.op == IEXIT && exit.mode == ((AXXX<<3)|AXXX);
 }
 
 
