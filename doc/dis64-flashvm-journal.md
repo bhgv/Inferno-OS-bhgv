@@ -9453,3 +9453,17 @@ Experiment advanced to 8115aee5021c42a2efb8856640cb20f19db8b925 during
 publication. Replayed the byte-loaded consumer and provider on x64.
 Normal return passed 4042 checks and unwind passed 4030, each over 48
 GC epochs. All eight linked-consumer refusal and cleanup cases passed.
+
+## FLASHVM-0153 — native Prog hold admission
+
+2026-11-04. FlashVM master 9005299dc650d5a15b38e8466eb1594f944efeb6
+uses one atomic native state word for Prog holds and retirement admission.
+The scheduler can seal a zero count before dismantling the process. A
+caller needs an independently live Prog reference before touching this
+word. Channel lookup and state changes still require NativeWorld. Four
+host threads raced holds against sealing in the x64 fixture. The hosted
+ThreadSanitizer fixture and runnable FIFO controls passed.
+
+Fetched experiment through 4876cd18248da38fa472785f33ea95bbd4b63bfd.
+The x64 byte-loaded Dis64 call replay passed 48 GC epochs per mode,
+4042 checks for RET and 4030 for unwind, plus eight refusal/cleanup cases.
