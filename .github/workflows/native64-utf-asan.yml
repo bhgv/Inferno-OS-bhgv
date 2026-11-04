@@ -46,6 +46,8 @@ on:
       - 'utils/tests/dis64-peer-schema.py'
       - 'utils/tests/native64-draw-owners*'
       - 'utils/tests/native64-display-allocate*'
+      - 'utils/tests/native64-bezier-consumers*'
+      - 'utils/tests/dis64-peer-semantics.py'
       - 'utils/tests/native64-draw-attach.c'
       - 'utils/tests/native64-draw-info.py'
       - 'utils/tests/native64-draw-mix*'
@@ -797,5 +799,76 @@ jobs:
           path: |
             display-init.log
             display-allocate.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  bezier-consumers:
+    name: Cubic Frame64 consumers ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap compiler for four fresh curve interfaces
+        run: MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/bezier-consumer-tools" sh makemk.sh
+      - name: Check captured arguments and native C dispatch/refusal boundaries
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-draw-init.py 2>&1 | tee bezier-init.log
+          python3 utils/tests/native64-bezier-consumers.py --limbo "$RUNNER_TEMP/bezier-consumer-tools/limbo" 2>&1 | tee bezier-consumers.log
+          for control in capture source flush operator radius foreign unlock; do
+            python3 utils/tests/native64-bezier-consumers.py --limbo "$RUNNER_TEMP/bezier-consumer-tools/limbo" --control "$control" 2>&1 | tee -a bezier-consumers.log
+          done
+      - name: Preserve native cubic-consumer diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-bezier-consumers-${{ matrix.arch }}
+          path: |
+            bezier-init.log
+            bezier-consumers.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  peer-typed-semantics:
+    name: Independent Dis64 typed roles, initialization and result proof
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout the reviewed independent semantic checkpoint
+        uses: actions/checkout@v4
+        with:
+          repository: bhgv/flashVM
+          ref: 7119413a641d69bee54adf315ec6e65725a542ba
+          path: .dis64-peer-semantics
+          sparse-checkout: |
+            disVM/envelope/tests
+            disVM/envelope/reports
+      - name: Replay exact verdicts, semantic omissions and authority boundaries
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-peer-semantics.py --peer-root .dis64-peer-semantics --report peer-typed-semantics.json 2>&1 | tee peer-typed-semantics.log
+          for control in identity facts authority admission; do
+            python3 utils/tests/dis64-peer-semantics.py --peer-root .dis64-peer-semantics --control "$control" 2>&1 | tee -a peer-typed-semantics.log
+          done
+      - name: Preserve independent semantic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dis64-independent-typed-semantics
+          path: |
+            peer-typed-semantics.json
+            peer-typed-semantics.log
           if-no-files-found: warn
           retention-days: 14

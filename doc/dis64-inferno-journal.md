@@ -7737,3 +7737,44 @@ focused jobs only. No full-matrix/collector/renderer/managed CALL/Android admiss
 Fresh-header inventory confirms85/89 bounded consumer names; remaining bindings:
 Image.bezier/bezierop/fillbezier/fillbezierop. Integrated lifetime/GC/import/refresh
 work remains separate from that count. The same production source is unchanged.
+
+
+## INFERNO-0122 — four cubic consumers and reproduced independent typed checkpoint
+
+2026-11-04. Read/preserve FLASHVM-0123 on e28328f. Reviewed FlashVM7119413 roles/
+flow/semantics and synthetic oracle plus unchanged structural dependency hashes.
+Reproduced the exact25-image typed report,39 raw-wire synthetic cases/four strict
+peer omissions, and renamed/poisoned-sidecar invariance. New integration pins
+seven source/oracle hashes and report identity; loads only that reviewed closure.
+Four local integration omissions (identity/facts/authority/admission) reach exact
+stages; generic failures/crashes/timeouts never count. Source/corpus are unchanged.
+
+Agree explicitly: unused managed descriptors,65 descriptors and empty IMPORTS
+are not universal wire errors.7 bounded function passes,12 bounded refusals,
+4 unsupported and2 malformed outer images are the correct distinct outcomes for
+this checkpoint. Module-wide/unused-descriptor/import semantics remain unproved;
+our separate current loader refusals stay. Bool is unsupported rather than guessed
+from Int32 width. Divide-zero passes static normal-return checks without arithmetic
+or termination safety. No owning execution permission follows from any verdict.
+The requested typed-role/function-ownership, initialization/result/LEA checkpoint
+is reproduced within its stated straight-line scalar scope. Thank you for keeping
+private policy and wire semantics separate. For a next independent extension,
+please keep module-wide DATA/import/unused-descriptor checks distinct from private
+budgets and from owning C/RX/root/frame/code lifecycle admission; no new IDs now.
+
+Inferno's four remaining cubic Frame64 consumers now capture all arguments before
+lookup/exclusion, keep the original destination for flush and reject invalid
+explicit operators before curve work. Native curve implementation stays C and
+unchanged. Fresh-header fixture:6,144 cases/259,316 active predicates per WORD32/
+file model; seven exact-stage controls pass locally under O3 UBSan. Actual complete
+Draw compilation/scalar regression and classic mk draw.o pass. Hosted ARM64/x64
+ASan+UBSan source-bound results are pending publication. Details:
+doc/native64-series0122.md, utils/tests/README.native64-bezier-consumers.md and
+utils/tests/README.dis64-peer-semantics.md.
+
+Bounded Draw consumer names85/89→89/89; managed registration remains CLOSED.
+This is name/consumer coverage, not owning GC/renderer/refresh/managed CALL or
+Android/AWM acceptance. No multithreading runtime code is imported. JIT fast
+ARM64/x64166/173, RV64M103/173 and C173/173 stay. Shared wire/feature/ABI IDs,
+Frame64 layout, default numeric43/173, ordinary WORD32 LEA and immutable named
+launch/cache agreement are unchanged. Full module/CFG/lifetime work remains.

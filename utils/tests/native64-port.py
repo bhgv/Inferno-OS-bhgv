@@ -230,6 +230,10 @@ def main():
     run(draw_init, build, env, logs/'draw-init.log')
     for control in ('retirement', 'publication', 'registration'):
         run(draw_init+['--control', control], build, env, logs/('draw-init-'+control+'.log'))
+    bezier_consumers = [sys.executable, str(tests/'native64-bezier-consumers.py'), '--limbo', str(tools/'limbo')]
+    run(bezier_consumers, build, env, logs/'bezier-consumers.log')
+    for control in ('capture', 'source', 'flush', 'operator', 'radius', 'foreign', 'unlock'):
+        run(bezier_consumers+['--control', control], build, env, logs/('bezier-consumers-'+control+'.log'))
     display_allocate = [sys.executable, str(tests/'native64-display-allocate.py'), '--limbo', str(tools/'limbo')]
     run(display_allocate, build, env, logs/'display-allocate.log')
     for control in ('input', 'publication', 'image', 'display', 'unlock', 'root', 'edges'):

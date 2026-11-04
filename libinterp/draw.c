@@ -1304,32 +1304,49 @@ Image_bezsplineop(void *fp)
 	drawsplinepoly(fp, 1, f->op);
 }
 
+
+/* Capture the complete outlined curve before lookup or display exclusion can observe caller storage. */
 static void
 drawbezier(void *fp, int op)
 {
 	F_Image_bezier *f;
+	Draw_Image *destination, *source;
 	Image *d, *s;
-	int locked;
+	Point a, b, c, end, origin;
+	int end0, end1, radius, locked;
 
 	f = fp;
-	d = checkimage(f->dst);
-	s = checkimage(f->src);
-	if(d->display != s->display || f->radius < 0)
+	destination = f->dst;
+	source = f->src;
+	a = IPOINT(f->a);
+	b = IPOINT(f->b);
+	c = IPOINT(f->c);
+	end = IPOINT(f->d);
+	origin = IPOINT(f->sp);
+	end0 = f->end0;
+	end1 = f->end1;
+	radius = f->radius;
+	d = checkimage(destination);
+	s = checkimage(source);
+	if(d->display != s->display || radius < 0 || (unsigned int)op >= Ncomp)
 		return;
 	locked = lockdisplay(d->display);
-	bezierop(d, IPOINT(f->a), IPOINT(f->b), IPOINT(f->c),
-		  IPOINT(f->d), f->end0, f->end1, f->radius, s, IPOINT(f->sp), op);
-	checkflush(f->dst);
+	bezierop(d, a, b, c, end, end0, end1, radius, s, origin, op);
+	checkflush(destination);
 	if(locked)
 		unlockdisplay(d->display);
 }
 
+
+/* Draw an outlined cubic with the established default operator. */
 void
 Image_bezier(void *fp)
 {
 	drawbezier(fp, SoverD);
 }
 
+
+/* Capture the explicit operator before dispatching the outlined cubic. */
 void
 Image_bezierop(void *fp)
 {
@@ -1339,32 +1356,47 @@ Image_bezierop(void *fp)
 	drawbezier(fp, f->op);
 }
 
+
+/* Capture the complete filled curve and winding rule before native lookup or exclusion. */
 static void
 drawfillbezier(void *fp, int op)
 {
 	F_Image_fillbezier *f;
+	Draw_Image *destination, *source;
 	Image *d, *s;
-	int locked;
+	Point a, b, c, end, origin;
+	int wind, locked;
 
 	f = fp;
-	d = checkimage(f->dst);
-	s = checkimage(f->src);
-	if(d->display != s->display)
+	destination = f->dst;
+	source = f->src;
+	a = IPOINT(f->a);
+	b = IPOINT(f->b);
+	c = IPOINT(f->c);
+	end = IPOINT(f->d);
+	origin = IPOINT(f->sp);
+	wind = f->wind;
+	d = checkimage(destination);
+	s = checkimage(source);
+	if(d->display != s->display || (unsigned int)op >= Ncomp)
 		return;
 	locked = lockdisplay(d->display);
-	fillbezierop(d, IPOINT(f->a), IPOINT(f->b), IPOINT(f->c),
-			IPOINT(f->d), f->wind, s, IPOINT(f->sp), op);
-	checkflush(f->dst);
+	fillbezierop(d, a, b, c, end, wind, s, origin, op);
+	checkflush(destination);
 	if(locked)
 		unlockdisplay(d->display);
 }
 
+
+/* Draw a filled cubic with the established default operator. */
 void
 Image_fillbezier(void *fp)
 {
 	drawfillbezier(fp, SoverD);
 }
 
+
+/* Capture the explicit operator before dispatching the filled cubic. */
 void
 Image_fillbezierop(void *fp)
 {
