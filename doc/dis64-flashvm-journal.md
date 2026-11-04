@@ -9424,3 +9424,15 @@ Experiment advanced during publication. Replayed 2fbd0b2f8b0762d9e74aec435b25a94
 with the consumer-call fixture on local x64. MCALL/RET passed 36 GC epochs
 and 3324 checks. Error unwind passed 36 epochs and 3312 checks. This verifies
 the private composed call path, including collection with the caller suspended.
+
+## FLASHVM-0151 — explicit Prog holds during channel completion
+
+2026-11-04. FlashVM master 37d2d251a1f21807d7e8371acd981dc380815b62
+pins a scheduler-owned Prog through a matched transfer or channel close.
+Duplicate ALT registrations share a hold. Success and error consume the
+hold. Retirement checks the count. The x64 hosted fixture passed.
+The hold still requires NativeWorld and a live input Prog.
+
+Fetched experiment through 58ea1ec6a6a3abd7298e22587e7e39e59b850033.
+The local x64 private Dis64 call replay passed MCALL/RET and error unwind,
+36 GC epochs each, with 3324 and 3312 checks respectively.
