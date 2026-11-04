@@ -265,6 +265,10 @@ def main():
     run(storage_owner, build, env, logs/'dis64-storage-owner.log')
     for control in ('map', 'pin', 'release', 'types', 'data', 'preflight'):
         run(storage_owner+['--control', control], build, env, logs/('dis64-storage-owner-'+control+'.log'))
+    python_storage = [sys.executable, str(tests/'dis64-python-storage.py')]
+    run(python_storage, build, env, logs/'dis64-python-storage.log')
+    for control in ('types', 'data', 'imports', 'exports', 'code', 'module'):
+        run(python_storage+['--control', control], build, env, logs/('dis64-python-storage-'+control+'.log'))
     storage_image = [sys.executable, str(tests/'dis64-storage-image.py')]
     run(storage_image, build, env, logs/'dis64-storage-image.log')
     for control in ('types', 'data', 'imports', 'exports', 'code', 'module'):

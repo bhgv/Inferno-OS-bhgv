@@ -49,6 +49,8 @@ on:
       - 'utils/tests/native64-bezier-consumers*'
       - 'utils/tests/dis64-peer-semantics.py'
       - 'utils/tests/dis64-storage-image*'
+      - 'utils/dis64_storage.py'
+      - 'utils/tests/dis64-python-storage.py'
       - 'utils/tests/dis64-storage-owner*'
       - 'utils/tests/dis64-storage-clone*'
       - 'utils/tests/dis64-storage-attach*'
@@ -968,6 +970,10 @@ jobs:
           python3 utils/tests/dis64-storage-image.py 2>&1 | tee dis64-storage-image.log
           for control in types data imports exports code module; do
             python3 utils/tests/dis64-storage-image.py --control "$control" 2>&1 | tee -a dis64-storage-image.log
+          done
+          python3 utils/tests/dis64-python-storage.py 2>&1 | tee -a dis64-storage-image.log
+          for control in types data imports exports code module; do
+            python3 utils/tests/dis64-python-storage.py --control "$control" 2>&1 | tee -a dis64-storage-image.log
           done
       - name: Preserve joined storage diagnostics
         if: always()
