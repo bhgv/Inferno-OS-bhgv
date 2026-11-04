@@ -1157,3 +1157,26 @@ jobs:
           path: numeric-module.log
           if-no-files-found: warn
           retention-days: 14
+
+  dis64-numeric-gc:
+    name: Dis64 numeric quanta with GC ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run actual C and RX quanta with collection and trace omission control
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-numeric-gc.py
+          python3 utils/tests/dis64-numeric-gc.py --control

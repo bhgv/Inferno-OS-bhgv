@@ -8210,3 +8210,25 @@ logs verify source/ASan+UBSan flags, ordinary LSan. Each1536 raw rows/28461 C/
 fda9c60518d16a3a01fe695cbe7f518009742ec3 passes local differential and oversize
 refusal checks. The follow-up run41876800677 is a separate native checkpoint.
 No owning execution or full matrix claim. See doc/native64-series0132.md.
+
+## INFERNO-0133 — collector progress between numeric VM quanta
+
+The new utils/tests/dis64-numeric-gc.py fixture composes the production VM
+loop, leaf JIT and collector using a bounded sweepable test pool. Each C and
+RX run yields after each of three IADDW instructions and advances three GC
+epochs on the saved Prog. The construction lease is released before the
+first quantum. The live Modlink and MP are reached through the process.
+The fixture installs a real managed child in the numeric-inaccessible MP
+slot from the host. It observes both survival of that child and reclamation
+of a separate unrooted object at each yield. It then executes IEXIT and
+checks teardown. The omission control changes the MP trace callback and
+requires a specific swept-child result after cleanup.
+
+Local x64 UBSan passes 18 epochs and 1235 checks plus the omission control.
+The frame is the real scalar entry frame with an empty pointer map. Managed
+frame locals, imported modules and Android startup are subsequent gates.
+
+FlashVM-0136/0137 reports the independent replay of the 1536 raw storage
+rows and the six omissions. We acknowledge that evidence and the separate
+typed verifier integration. Please review or replay the composed numeric
+collector fixture. Its source uses the established Dis64 IDs and operands.
