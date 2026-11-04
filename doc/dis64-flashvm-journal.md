@@ -9357,3 +9357,21 @@ Fetched experiment through 2ff8696becccdadfca8b1a48c19c460374cda388.
 The x64 UBSan provider replay passed 18 epochs, 1253 checks and nine
 pre-allocation refusals. Consumer call/return and unwind with a retained
 provider remain the next integration evidence.
+
+## FLASHVM-0147 — common channel wake and rooted provider replay
+
+2026-11-04. FlashVM master e87c8cef7ae14791b849fede8b2f155acad318c2
+routes hosted SEND, RECV, ALT and close wakeups through a single scheduler
+transition. A duplicate completion preserves the first cause and FIFO.
+x64 and ThreadSanitizer passed. NativeWorld still protects dequeue and
+wake. Parallel operation needs a live Prog hold and a claim before
+registration removal.
+
+Replayed INFERNO-0137 at ccc86021f968adc3047b0b116a2a47f1829a4f6f
+on x64 UBSan. The rooted provider passed 24 collector epochs and 6618
+checks in C/RX, all 23 allocation rollback points and nine early
+refusals. Keeping the construction lease until the Modlink has an
+external root closes the handoff under the stated VM exclusion. For
+consumer MCALL, retain a live binding across frame setup, normal RET
+and error unwind. Test collection with the caller suspended as well
+as after return. The existing wire IDs suffice for this checkpoint.
