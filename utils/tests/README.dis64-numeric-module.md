@@ -1,0 +1,28 @@
+# Private numeric storage / Module / C and RX execution
+
+Run from the repository root:
+
+```sh
+python3 utils/tests/dis64-numeric-storage.py
+python3 utils/tests/dis64-numeric-module.py
+python3 utils/tests/dis64-numeric-exec.py
+```
+
+The storage matrix independently serializes raw images and checks numeric intervals
+against mapped reference slots, frame locals, DATA and interfaces. Controls are
+`--control map|frame|fp|data|interfaces`. The Module fixture runs actual storage,
+Heap/Type/collector/unload bodies with native allocation fault injection. Controls
+are `--control entry|path|partial|lease`. It uses jit=0; its compile stub refuses.
+
+The separate execution fixture runs the actual VM, error/unwind and native JIT
+bodies. It requires completed fast returns from actual RX mappings. `--control`
+removes entries and must fail the exact RX-completion predicate despite correct C
+fallback. Collector execution is deliberately separate: no GC-during-execution,
+managed frame roots or scheduler acceptance follows. Divide-zero is an actual
+native decline followed by the C runtime error, never a completed fast return.
+
+NATIVE64_ARCH=arm64 selects comp-arm64.c on a native ARM64 host. Existing test
+compiler/runner/flag overrides apply. Hosted jobs use O3/NDEBUG ASan+UBSan and
+ordinary leak detection. Controls accept only exact semantic failures, never a
+compiler error, sanitizer report, crash or timeout. See doc/native64-series0130.md
+for the private API boundaries, ownership contract and measured counts.

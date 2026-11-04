@@ -8,6 +8,7 @@
 #include "dis64-pilot.h"
 #include "dis64-call-infer.h"
 #include "dis64-storage-image.h"
+#include "dis64-numeric-storage.h"
 
 #define Dis64RuntimeBytes (8U*1024U*1024U) // Maximum complete input image for this experimental loader.
 #define Dis64RuntimeObject (1024U*1024U) // Maximum scalar data or entry-frame extent.
@@ -733,4 +734,119 @@ attach64storage(Module *target, Dis64StorageOwner *source)
 	target->mptype = ordinal;
 	target->origmp = source->data;
 	return 1;
+}
+
+
+typedef struct Dis64NumericLoad Dis64NumericLoad;
+
+struct Dis64NumericLoad {
+	Dis64StorageImage image; // Complete immutable storage identity through construction.
+	DisRuneView name; // Checked ASCII module label, copied before return.
+	char *path; // Borrowed caller label, copied before return.
+	Dis64StorageOwner *lease; // Separate construction root, returned on complete success.
+	Module *module; // Partial unpublished native owner retired through real unload.
+	int jit; // Explicit existing native leaf compilation request, never a file-mode choice.
+};
+
+
+/* Build an owned program/entry only after complete private role/map/native lowering proof. */
+static int
+dis64numericconstruct(void *argument)
+{
+	Dis64NumericLoad *load;
+	Dis64Instruction instruction;
+	Module *module;
+	unsigned int i, at, used, rune;
+
+	load = argument;
+	load->module = module = mallocz(sizeof(*module), 1);
+	if(module == nil)
+		return 0;
+	module->ref = 1;
+	module->rt = DONTCOMPILE;
+	module->origmp = H;
+	load->lease = prepare64storage((uchar*)load->image.envelope.data, load->image.envelope.bytes);
+	if(load->lease == nil || !attach64storage(module, load->lease))
+		return 0;
+	module->entryt = module->type[load->image.module.frametype];
+	module->nprog = load->image.code.count;
+	module->prog = mallocz(module->nprog*sizeof(Inst), 1);
+	if(module->prog == nil)
+		return 0;
+	at = 4;
+	for(i=0; i<load->image.code.count; i++){
+		if(!dis64instructionread(load->image.code.data+at, load->image.code.bytes-at, &instruction, &used))
+			return 0;
+		dis64runtimeinst(module->prog+i, &instruction, module->prog);
+		at += used;
+	}
+	module->entry = module->prog+load->image.module.entry;
+	module->name = mallocz(load->name.count+1, 1);
+	if(module->name == nil)
+		return 0;
+	for(i=0; i<load->name.count; i++){
+		if(!disruneat(&load->name, i, &rune))
+			return 0;
+		module->name[i] = rune;
+	}
+	module->path = strdup(load->path);
+	if(module->path == nil)
+		return 0;
+	if(load->jit && !compile(module, module->nprog, nil))
+		return 0;
+	return 1;
+}
+
+
+/* Explicit native MP-only numeric Module construction, not readmod or managed file admission.
+ * Caller retains VM exclusion and immutable/disjoint image/path/output until return.
+ * roots must point to nil on entry and remains unchanged on refusal. On success
+ * caller owns BOTH Module and returned lease. Keep the lease until Module/MP has
+ * an independent live collector root; release each owner once on every path. */
+Module*
+prepare64numeric(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOwner **roots)
+{
+	Dis64NumericLoad load;
+	Dis64StorageLimits limits = {64, 65536, Dis64RuntimeObject, 65536,
+		Dis64RuntimeCode, 1024, 256, 1024};
+	Dis64CodeView code;
+	Dis64Instruction instruction;
+	unsigned int i, at, used, rune;
+
+	memset(&load, 0, sizeof(load));
+	if(!dis64runtimemodel() || path == nil || path == H || image == nil || image == H ||
+	   roots == nil || roots == H || *roots != nil || bytes > Dis64RuntimeBytes ||
+	   (uintptr)image > (uintptr)-1-bytes || (jit != 0 && jit != 1) ||
+	   !dis64storageimagecheck(image, bytes, &limits, &load.image) ||
+	   !dis64numericstoragecheck(&load.image, Dis64RuntimeCode, &code) ||
+	   !disstringpoolget(&load.image.strings, load.image.module.name, &load.name) ||
+	   load.name.count == 0 || load.name.count > Dis64RuntimeName){
+		kwerrstr("unsupported Dis64 private numeric Module");
+		return nil;
+	}
+	for(i=0; i<load.name.count; i++)
+		if(!disruneat(&load.name, i, &rune) || rune == 0 || rune > 127){
+			kwerrstr("unsupported Dis64 numeric display name");
+			return nil;
+		}
+	at = 4;
+	for(i=0; i<code.count; i++){
+		if(!dis64instructionread(code.data+at, code.bytes-at, &instruction, &used) ||
+		   !dis64runtimeinstruction(&instruction)){
+			kwerrstr("unsupported Dis64 numeric lowering");
+			return nil;
+		}
+		at += used;
+	}
+	load.path = path;
+	load.jit = jit;
+	if(kprotect(dis64numericconstruct, &load)){
+		*roots = load.lease;
+		return load.module;
+	}
+	if(load.module != nil)
+		unload(load.module);
+	free64storage(load.lease);
+	kwerrstr("Dis64 numeric Module construction failed");
+	return nil;
 }

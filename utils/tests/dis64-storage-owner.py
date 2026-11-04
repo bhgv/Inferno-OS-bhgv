@@ -31,6 +31,8 @@ def unit(control, clones=False):
         heaps += '\n'+heap[heap.index('typedef struct ArrayCopy'):heap.index('/* Read packed maps and validate complete spans')]
         heaps += '\n\n'+'\n\n'.join(fn(heap,s) for s in ('void\nfreearray(', 'void\nacheck(', 'Heap*\nnheap(', 'Heap*\nheaparray(', 'void\ninitarray(', 'void\nnewmp('))
         heaps = 'void freearray(Heap*,int);\nvoid *arraycpy(Array*);\n'+next(line for line in heap.splitlines() if line.startswith('Type\tTarray'))+'\n'+heaps
+    # Numeric code/entry construction has its own verifier and C/RX execution fixture.
+    bodies = bodies.split('\n\ntypedef struct Dis64NumericLoad')[0]
     mutations = {
         'map': ('(uchar*)type.map, type.mapbytes', 'nil, 0'),
         'pin': ('ptradd(heap);', '/* omitted root acquisition */'),

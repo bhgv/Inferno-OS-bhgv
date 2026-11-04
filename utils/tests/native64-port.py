@@ -234,6 +234,17 @@ def main():
     run(bezier_consumers, build, env, logs/'bezier-consumers.log')
     for control in ('capture', 'source', 'flush', 'operator', 'radius', 'foreign', 'unlock'):
         run(bezier_consumers+['--control', control], build, env, logs/('bezier-consumers-'+control+'.log'))
+    numeric_storage = [sys.executable, str(tests/'dis64-numeric-storage.py')]
+    run(numeric_storage, build, env, logs/'numeric-storage.log')
+    for control in ('map', 'frame', 'fp', 'data', 'interfaces'):
+        run(numeric_storage+['--control', control], build, env, logs/('numeric-storage-'+control+'.log'))
+    numeric_module = [sys.executable, str(tests/'dis64-numeric-module.py')]
+    run(numeric_module, build, env, logs/'numeric-module.log')
+    for control in ('entry', 'path', 'partial', 'lease'):
+        run(numeric_module+['--control', control], build, env, logs/('numeric-module-'+control+'.log'))
+    numeric_exec = [sys.executable, str(tests/'dis64-numeric-exec.py')]
+    run(numeric_exec, build, env, logs/'numeric-exec.log')
+    run(numeric_exec+['--control'], build, env, logs/'numeric-exec-decline.log')
     storage_attach = [sys.executable, str(tests/'dis64-storage-attach.py')]
     run(storage_attach, build, env, logs/'dis64-storage-attach.log')
     for control in ('type', 'data', 'mark', 'ordinal', 'atomic', 'cached'):
