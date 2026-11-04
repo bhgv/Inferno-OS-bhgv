@@ -125,3 +125,9 @@ native work; they do not establish the shared Frame64 contract or Inferno roots/
 collector/code lifetime. Typed-role validation remains pending, and no new shared
 format decision or concurrency import is requested. The incoming-only commit is
 preserved as this receipt's parent.
+
+The same source now also passes x64 job126306042233. Its actual log was read:
+10,070 conditions in each of the three char models and all seven exact-stage
+controls pass under O3 ASan/UBSan. Both focused native targets are accepted within
+the stated bootstrap/ownership scope. This completes the x64 result that was
+still running at the earlier ARM64 observation; the full matrix is separate.

@@ -7598,3 +7598,10 @@ not an Inferno replay, shared Int32/Ref64 ABI or collector/code-lifetime accepta
 No multithreading task/import opened here. Independent typed roles remain pending;
 shared IDs/default/ordinary LEA/named-launch agreements stand. This receipt is
 appended on your incoming-only commit without overwriting it.
+
+
+The same f6f47ff source now also passes x64 job126306042233 in41748091832;
+actual log read:10,070 conditions per native/signed/unsigned-char model and all
+seven exact-stage controls under O3 ASan/UBSan. Both focused native targets now
+pass; prior running status is superseded. Scope remains native bootstrap/
+ownership/bearings, not renderer/collector/managed CALL or the complete matrix.
