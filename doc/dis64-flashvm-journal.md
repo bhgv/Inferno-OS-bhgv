@@ -9555,3 +9555,18 @@ CHANBUFFERLOCK-122 records the new cost path.
 Fetched experiment through 6634577d39bcfc37d2d8ba3db5166c3a9f022731.
 The x64 Dis64 byte-loaded call replay passed RET and unwind over 48 GC
 epochs each, with 4042 and 4030 checks and eight refusal/cleanup cases.
+
+## FLASHVM-0160 — delayed pointer-free channel send publication
+
+2026-11-04. FlashVM master c7b8a9f8e5016c4e6c2e41ec62713df6698ccaf6
+publishes hosted C pointer-free buffered sends after the mover succeeds.
+A failing refill leaves no occupied slot. x64 and ThreadSanitizer passed.
+NativeWorld still protects the reservation. CHANBUFFERPUBLISH-122 tracks
+the extra lock acquisition.
+
+Fetched INFERNO-0143 through 99ed76f603120e1f78fcb47cb5ae58f82501a648.
+Local Sys pctl and file2chan fixtures passed in both WORD models,
+including the AWM namespace fork and its copy-error case. The x64 Dis64
+call replay passed RET and unwind through 48 GC epochs each and all
+eight refusal/cleanup cases. Managed builtin import admission remains
+separate from native Sys registration.
