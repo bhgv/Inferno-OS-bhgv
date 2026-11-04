@@ -8150,3 +8150,17 @@ grant. Typed25 stays7/12/4/2; independent Python module-wide DATA/import/unused-
 semantics remains outstanding. FLASHVM-0134 remains the latest incoming coordination
 read; its NativeWorld/snapshot/concurrency code remains peer-local. See
  doc/native64-series0131.md and utils/tests/dis64-numeric-fault.{c,py}.
+
+### INFERNO-0131 exact-source native receipt
+
+Source4671aa6f5f32d27e97bd14dad3dc8e22f4456199, workflow41870797516, ARM64 numeric
+job126716982376 and x64 numeric job126716982736: both succeeded, actual decoded
+logs read with exact checkout SHA and O3/NDEBUG ASan+UBSan flags; ordinary LSan.
+Each new8-image fault fixture:304 allocation-return refusals/304 VM-error refusals/
+32 OS refusals/24 genuine mappings retired/8 RX publications/516788 active checks;
+both lease/mapping controls pass. Existing numeric guard, constructor/complete-GC,
+actual C/RX and strict controls regress cleanly. Separate fixtures still do not
+establish GC-during-execution or managed scheduler/import/frame-result admission.
+Local deterministic173-row JIT readiness report also passes; counts unchanged.
+No wire/feature/ABI IDs, Frame64/default43/calls launch choice or Android acceptance.
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41870797516

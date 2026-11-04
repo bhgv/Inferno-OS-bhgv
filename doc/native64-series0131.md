@@ -44,3 +44,22 @@ refusal and four constructor controls; actual C/RX15 images/6 fast completions/
 1 decline/12303 checks plus strict fallback control. O3/NDEBUG ASan+UBSan with
 ordinary leak detection. This is acceptance of those bounded separate fixtures,
 not Android GUI, managed execution/imports/frame-result roots or the full matrix.
+
+## Exact-source native ARM64/x64 acceptance
+
+Source4671aa6f5f32d27e97bd14dad3dc8e22f4456199, workflow41870797516:
+ARM64 numeric job126716982376 and x64 numeric job126716982736 both completed
+successfully; actual decoded logs read, checkout SHA and O3/NDEBUG ASan+UBSan flags
+verified. Ordinary leak detection stays enabled. Each shows the new8-image fault
+fixture with304 allocation-return refusals/304 VM-error refusals/32 OS refusals/
+24 mapping retirements/8 RX publications/516788 active checks, plus both exact
+lease/mapping controls. Existing1020-image numeric-map matrix/five controls, both
+WORD32/file constructor/collector passes/four controls/legacy refusal, actual
+C/RX15 images/6 completed fast returns/1 decline/12303 predicates and strict
+fallback control also pass. No full workflow-matrix, managed-import/frame-root,
+GC-during-execution, Android/AWM or physical RV64 claim follows.
+
+The deterministic jit-readiness.py --check report also passed locally:173 complete
+rows, fast/C modes, x64/ARM64/RV64 WORD32/64 and capacity checks. Published opcode
+counts remain unchanged. Native evidence:
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41870797516
