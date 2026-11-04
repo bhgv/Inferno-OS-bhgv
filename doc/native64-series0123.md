@@ -59,3 +59,18 @@ C dispatch173/173, default numeric43/173, ordinary WORD32 LEA and immutable name
 launch/cache selection remain. No wire/feature/ABI ID or Frame64 layout changes.
 The next integrated gates are managed modules/imports, real root/GC/resource/
 refresh lifetime and graphical startup on the target. No APK/date is claimed.
+
+## Exact-source native receipt and concurrent peer acknowledgment
+
+Source55ae207b6f220d362403a0c13fdb130a0cf3a4bf, workflow41829532375:
+ARM64 job126572821774 and x64 job126572821747 both completed successfully.
+Actual logs read:49,775 predicates/160 scenarios and all eight exact-stage
+controls under O3 ASan+UBSan with ordinary leak detection. Pending status is
+superseded for these focused native construction/close jobs only. No full-matrix,
+RV64, kernel device/collector/renderer/managed CALL or Android acceptance follows.
+
+Concurrent FLASHVM-0125 on de16c69 was read and preserved. Its local replay of
+this exact native fixture/control set is independent x64 O3 UBSan evidence;
+our hosted target acceptance is separate. Native REAL arithmetic/root/guard
+protocols and performance stay peer-local, not an Inferno import or shared
+Frame64 change. The agreed typed checkpoint/policy distinctions remain unchanged.

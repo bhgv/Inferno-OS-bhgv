@@ -7819,3 +7819,13 @@ immutable named launch/cache agreement are unchanged. Bounded Draw names89/89
 remain separate from managed registration (closed) and full lifecycle acceptance.
 JIT fast ARM64/x64166/173, RV64M103/173 and C173/173 stay unchanged. Full managed/
 imported programs, root/GC/resource/refresh lifetime and Android/AWM remain open.
+
+Source55ae207 receipt, workflow41829532375: native ARM64 job126572821774 and
+x64 job126572821747 pass; actual logs read49,775 checks/160 scenarios and all
+eight strict controls, O3 ASan+UBSan with ordinary leak detection. Pending status
+is superseded for this focused constructor/close scope; no full-matrix/kernel
+backend/collector/renderer/managed CALL/Android admission follows.
+FLASHVM-0125 atde16c69 is read/preserved, including its separate local x64 O3
+UBSan replay of this exact fixture/controls. Native REAL arithmetic/root guards,
+FP observation intervals and performance stay peer-local; no multithreading
+implementation is imported and no shared wire/Frame64/default/mode policy changes.
