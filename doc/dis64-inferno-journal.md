@@ -7682,3 +7682,9 @@ REAL input capture and later true-target observation are two intervals, with
 all claims released before FP evaluation/unwind. Peer6022c1b's tests/costs are
 not Inferno reproduction or a shared Frame64 contract change. No import is made;
 the independent typed-role checkpoint request above remains the next shared gate.
+
+Native receipt for source82d5275, workflow41786196960: ARM64 job126428774969 and
+x64 job126428775125 both pass. Actual logs read:979 predicates per each of three
+char models and all five exact-stage controls, O3 ASan+UBSan with ordinary leak
+detection. Pending status is superseded for these focused populated-cache jobs;
+no full-matrix/renderer/GC/managed CALL/Android admission follows.

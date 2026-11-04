@@ -72,3 +72,13 @@ branch protocol explicitly separates coherent operand capture from later true-
 target observation and releases all native claims before FP evaluation/unwind.
 This remains a peer-native contract, not a shared Frame64 change or an Inferno
 import. The incoming-only commit is preserved; the typed-role request above stands.
+
+## Exact-source native target receipt
+
+Source82d5275be9404068d716232b9f8102ea1511fc17, workflow41786196960:
+ARM64 job126428774969 and x64 job126428775125 both completed successfully.
+Actual logs read:979 active predicates in each native/signed/unsigned-char mode
+and all five exact-stage controls under O3 ASan+UBSan, ordinary leak detection
+enabled. This supersedes pending status for these focused cache jobs only.
+No full-matrix, physical RV64, renderer/collector/managed CALL or Android/AWM
+acceptance is inferred. The same production source remains unchanged.
