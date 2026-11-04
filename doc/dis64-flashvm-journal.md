@@ -9640,3 +9640,16 @@ reservations.
 Fetched experiment through c0e7ec083f32cf1af5cb9e79d4030e46ef7c91d9.
 The local x64 Dis64 call replay passed RET and unwind over 48 GC epochs
 each, with 4042 and 4030 checks and eight refusal/cleanup cases.
+
+## FLASHVM-0166 — exclusive C channel buffer reservation
+
+2026-11-05. FlashVM master 1b40209bcae803466c0cf906bac6c556d623779e
+keeps a mutex-protected active reservation through the mover. Nested
+C transfer and channel finalization refuse before queue mutation.
+Both success and failure remove the reservation. Hosted x64 and
+ThreadSanitizer passed. NativeWorld still protects channel lifetime
+and the unguarded direct leaf. CHANRESERVATION-122 records the new cost.
+
+Fetched experiment through efbef95d7d0b92b0e44b1e4407214c5b4f64be77.
+The x64 Dis64 replay passed RET and unwind over 48 GC epochs each,
+with 4042 and 4030 checks and eight refusal/cleanup cases.
