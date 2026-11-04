@@ -652,3 +652,85 @@ clone64storage(Dis64StorageOwner *source)
 	kwerrstr("Dis64 storage clone failed");
 	return nil;
 }
+
+
+/* Retain prepared storage in an empty native Module without installing code or imports.
+ * Caller holds VM exclusion and keeps the genuine source lease independently live
+ * and unchanged through attachment AND until the Module gains a real cache/root
+ * owner. This function does not consume that lease or grant file execution policy.
+ * Target/source are disjoint mapped native storage. Failure preserves both owners. */
+int
+attach64storage(Module *target, Dis64StorageOwner *source)
+{
+	Module *cached;
+	Type **types, *datatype;
+	Heap *data;
+	unsigned int i, ordinal;
+	int found;
+
+	if(!dis64runtimemodel() || target == nil || target == H || source == nil || source == H ||
+	   target->ref != 1 || target->rt != DONTCOMPILE || target->type != nil || target->ntype != 0 ||
+	   target->origmp != H || target->entryt != nil || target->entry != nil || target->prog != nil ||
+	   target->nprog != 0 || target->compiled || target->jit != nil || target->cstep != nil ||
+	   target->ext != nil || target->ldt != nil || target->htab != nil || target->pctab != nil || target->link != nil ||
+	   source->count > 65536 || (source->count != 0 && (source->types == nil || source->types == H)) ||
+	   source->data == nil){
+		kwerrstr("invalid Dis64 storage attachment");
+		return 0;
+	}
+	for(cached=modules; cached != nil; cached=cached->link)
+		if(cached == target){
+			kwerrstr("Dis64 storage target is already published");
+			return 0;
+		}
+	data = nil;
+	datatype = nil;
+	if(source->data != H){
+		data = D2H(source->data);
+		if(!source->pinned || data->ref == 0 || data->ref == (ulong)~0 || data->t == nil || data->t == H){
+			kwerrstr("unavailable Dis64 module data retain");
+			return 0;
+		}
+		datatype = data->t;
+	}
+	ordinal = 0;
+	found = datatype == nil;
+	for(i=0; i<source->count; i++){
+		if(source->types[i] == nil || source->types[i] == H ||
+		   source->types[i]->ref <= 0 || source->types[i]->ref == 0x7fffffff){
+			kwerrstr("unavailable Dis64 attachment type retain");
+			return 0;
+		}
+		if(source->types[i] == datatype){
+			ordinal = i;
+			found = 1;
+		}
+	}
+	if(!found){
+		kwerrstr("foreign Dis64 attachment data type");
+		return 0;
+	}
+	types = nil;
+	if(source->count != 0){
+		types = mallocz(source->count*sizeof(Type*), 1);
+		if(types == nil){
+			kwerrstr("Dis64 attachment table allocation failed");
+			return 0;
+		}
+	}
+	/* All refusal points precede ownership acquisition/publication. No VM poll or
+	 * callback occurs between these checked retains and the final native commit. */
+	for(i=0; i<source->count; i++){
+		types[i] = source->types[i];
+		types[i]->ref++;
+	}
+	if(data != nil){
+		data->ref++;
+		Setmark(data);
+	}
+	target->type = types;
+	target->ntype = source->count;
+	target->mptype = ordinal;
+	target->origmp = source->data;
+	return 1;
+}

@@ -562,6 +562,7 @@ extern	void		opinit(void);
 extern	Module*		parsemod(char*, uchar*, ulong, Dir*);
 /* Scalar constructors return unpublished owners; file admission belongs to the selected loader. */
 extern Dis64StorageOwner* prepare64storage(uchar*, ulong); // Serialized VM preparation only; no code/import admission.
+extern int attach64storage(Module*, Dis64StorageOwner*); // Retain storage in an empty unpublished Module; caller keeps lease rooted until publication.
 extern Dis64StorageOwner* clone64storage(Dis64StorageOwner*); // Independent rooted data; source lease stays live under VM exclusion.
 extern void free64storage(Dis64StorageOwner*); // Consume the native lease and its private data root.
 extern	Module*		prepare64pilot(char*, uchar*, ulong, int);

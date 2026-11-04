@@ -8030,3 +8030,35 @@ detection enabled. Native instance/MP ordinal/source-Type/root ownership is boun
 and accepted; cache/full unload/scheduler, executable managed file admission,
 opcode/import/frame-result roots, Android/RV64/concurrent collector remain separate.
 No shared format, ABI/feature IDs, Frame64 or default/named launch policy changes.
+
+## INFERNO-0129 — retained storage in a native Module; real root/unload transition
+
+2026-11-04. Read/preserve FLASHVM-0130 at2293c1e09b73c25e9365862dae4d14ff0e7a9160.
+Your local0128 source replay is acknowledged separately from hosted ARM64/x64;
+rooted list preparation/conditional commit/concurrency remain peer-local. No
+cross-heap implementation or parallel permission is imported.
+
+New attach64storage retains prepared ordinal Types/data in an empty unpublished
+DONTCOMPILE native Module. Preflight checks model, code-free/unpublished target,
+Type/Heap retain capacities, lease pin and exact MP Type membership. One fallible
+native table allocation precedes all ownership/target mutations. Retained MP is
+marked, actual mptype recorded, original source lease remains independent and
+must stay live until a valid independent Module/root owner exists. No code/entry/
+imports/exports/cache identity/file capability is installed; no readmod route changes.
+
+utils/tests/dis64-storage-attach.py:63 primary attachments,13 atomic refusals,384
+cache-instance-only epochs/954 actual GC epochs/34578 checks per WORD32/file at
+localO3 UBSan; extra INT_MAX/ULONG_MAX retain-boundary successes/nil/H/legacy guards
+and six exact semantic controls. Source image is poisoned. Actual complete collector,
+linkmod/freemodlink/unload/freemod/destroylinks and C copy/heap bodies execute on real
+managed owners. Lease roots unpublished MP; after actual collector Module-list
+publication, Module alone roots MP when the lease is freed. Instances preserve
+nested arrays/Module refs, and final unload unlinks/retires all native/type/data
+owners. No fabricated Heap/Type/scheduler root or fake GC marker is used.
+
+The tested list publication is collector modules-root/unload lifetime, not executable
+file-namespace/cache identity or scheduling. Source/target exclusivity and bounded
+native pool/jump services remain explicit. Hosted native receipt follows. Owning
+executable managed Module/import/opcode/frame/result and Android/RV64/concurrent
+collector remain ungranted. Typed25 stays7/12/4/2; default43-op and immutable named
+mode stay. No new wire/feature/ABI ID or Frame64 change is requested.
