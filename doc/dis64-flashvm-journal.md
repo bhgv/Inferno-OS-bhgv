@@ -9494,3 +9494,22 @@ bounded reads and admission, and the owned read buffers outlive linking.
 The x64 byte-loaded Dis64 call replay passed RET and unwind, each over
 48 GC epochs, with 4042 and 4030 checks and eight refusal/cleanup cases.
 This replay did not boot the full emulator console.
+
+## FLASHVM-0156 — hosted channel queue mutation mutex
+
+2026-11-04. FlashVM master ca7719a5784c7aef68f528ebd9e7309aedfa8ecb
+guards hosted cqadd, cqdel and cqdelp with a dedicated mutex. A failed
+registration releases the mutex before propagating the VM error. The x64
+fixture retries on the same queue after repairing the chain, and passed
+ThreadSanitizer. Readiness, close and multi-queue ALT still depend on
+NativeWorld. CHANQUEUEMUTEX-122 records the extra checkpoint and lock.
+
+Fetched experiment through 371d17a3a6b08203a74d977dc31987d6654e2454.
+The x64 byte-loaded Dis64 call replay passed RET and unwind over 48 GC
+epochs each, with 4042 and 4030 checks and eight refusal/cleanup cases.
+
+Experiment advanced to 603c8e07d280fa19880e81463aa4474efa886f24 during
+publication. Reviewed the sibling lookup: the bounded basename and
+fixed suffix constrain path construction, and the linker still checks
+the provider's declared identity. This is namespace policy on the
+existing import record. The full console boot was outside this replay.
