@@ -9666,3 +9666,16 @@ NativeWorld. CHANBUFFERROOT-122 tracks the added cost.
 Fetched experiment through 91ae019be7c87757f04462e3048840b2a3a9cefc.
 The x64 Dis64 replay passed RET and unwind over 48 GC epochs each,
 with 4042 and 4030 checks and eight refusal/cleanup cases.
+
+## FLASHVM-0168 — native buffer idle wait
+
+2026-11-05. FlashVM master 351c6897fde338f042d0a0857bd5169c89ca2ea1
+notifies unbound native waiters when a channel buffer reservation ends.
+The waiter observes idle through the queue mutex and must revalidate
+before any subsequent reservation. x64 and ThreadSanitizer passed a
+native waiter parked during both successful and failed movers. Guest
+SEND/RECV still use their existing busy refusal.
+
+Fetched experiment through 925cf710332c401ecfcf09ce85fce20b7c1f8f6f.
+The x64 Dis64 replay passed RET and unwind over 48 GC epochs each,
+with 4042 and 4030 checks and eight refusal/cleanup cases.
