@@ -2,28 +2,96 @@
 #include "draw.h"
 #include "kernel.h"
 
-/* Skip separators between font description fields. */
-static char*
-skip(char *s)
+
+/* Font fields use ASCII whitespace, including CRLF descriptions from other hosts. */
+static int
+fontspace(int value)
 {
-	while(*s==' ' || *s=='\n' || *s=='\t')
-		s++;
-	return s;
+	return value == ' ' || value == '\t' || value == '\n' ||
+	       value == '\r' || value == '\f' || value == '\v';
 }
 
-/* Parse representable font dimensions and retain ownership on allocation failure. */
+
+/* Skip complete separators without allowing numeric parsing to consume a partial token. */
+static char*
+skip(char *text)
+{
+	while(fontspace((uchar)*text))
+		text++;
+	return text;
+}
+
+
+/* Return one for Int32, minus one for a complete overflowing number, zero for a filename token. */
+static int
+fontinteger(char *text, char **end, int *result)
+{
+	char *cursor;
+	uvlong value, limit;
+	int base, negative, digits, digit, overflow;
+
+	cursor = text;
+	negative = 0;
+	if(*cursor == '-' || *cursor == '+'){
+		negative = *cursor == '-';
+		cursor++;
+	}
+	base = 10;
+	if(*cursor == '0'){
+		base = 8;
+		if(cursor[1] == 'x' || cursor[1] == 'X'){
+			base = 16;
+			cursor += 2;
+		}
+	}
+	limit = negative ? 2147483648ULL : 2147483647ULL;
+	value = 0;
+	digits = 0;
+	overflow = 0;
+	for(;; cursor++){
+		if(*cursor >= '0' && *cursor <= '9')
+			digit = *cursor-'0';
+		else if(*cursor >= 'a' && *cursor <= 'f')
+			digit = *cursor-'a'+10;
+		else if(*cursor >= 'A' && *cursor <= 'F')
+			digit = *cursor-'A'+10;
+		else
+			break;
+		if(digit >= base)
+			break;
+		if(value > (limit-digit)/base)
+			overflow = 1;
+		if(!overflow)
+			value = value*base+digit;
+		digits = 1;
+	}
+	if(digits == 0 || (*cursor != 0 && !fontspace((uchar)*cursor)))
+		return 0;
+	*end = cursor;
+	if(overflow)
+		return -1;
+	if(negative)
+		*result = value == 2147483648ULL ? (-2147483647-1) : -(int)value;
+	else
+		*result = value;
+	return 1;
+}
+
+
+/* Parse complete C-format numeric fields before narrowing, retaining every owner on refusal. */
 Font*
 buildfont(Display *d, char *buf, char *name)
 {
 	Font *fnt;
 	Cachefont *c, **sub;
 	char *s, *t;
-	ulong min, max;
-	long height, ascent;
-	int offset;
-	char badform[] = "bad font format: number expected (char position %d)";
+	int min, max, height, ascent, offset, numeric;
 
-	s = buf;
+	if(buf == nil || name == nil){
+		kwerrstr("bad font format: nil description or name");
+		return nil;
+	}
+	s = skip(buf);
 	fnt = malloc(sizeof(Font));
 	if(fnt == 0)
 		return 0;
@@ -43,10 +111,16 @@ buildfont(Display *d, char *buf, char *name)
 		free(fnt);
 		return 0;
 	}
-	height = strtol(s, &s, 0);
-	s = skip(s);
-	ascent = strtol(s, &s, 0);
-	s = skip(s);
+	if(fontinteger(s, &t, &height) != 1 || !fontspace((uchar)*t)){
+		kwerrstr("bad font format: invalid height");
+		goto Err2;
+	}
+	s = skip(t);
+	if(fontinteger(s, &t, &ascent) != 1 || !fontspace((uchar)*t)){
+		kwerrstr("bad font format: invalid ascent");
+		goto Err2;
+	}
+	s = skip(t);
 	if(height <= 0 || height > 0x7fff || ascent <= 0 || ascent > 0x7fff){
 		kwerrstr("bad height or ascent in font file");
 		goto Err2;
@@ -61,31 +135,33 @@ buildfont(Display *d, char *buf, char *name)
 	memset(fnt->cache, 0, fnt->ncache*sizeof(fnt->cache[0]));
 	fnt->age = 1;
 	do{
-		/* must be looking at a number now */
-		if(*s<'0' || '9'<*s){
-			kwerrstr(badform, s-buf);
+		if(fontinteger(s, &t, &min) != 1 || !fontspace((uchar)*t)){
+			kwerrstr("bad font format: invalid range minimum");
 			goto Err3;
 		}
-		min = strtol(s, &s, 0);
-		s = skip(s);
-		/* must be looking at a number now */
-		if(*s<'0' || '9'<*s){
-			kwerrstr(badform, s-buf);
+		s = skip(t);
+		if(fontinteger(s, &t, &max) != 1 || !fontspace((uchar)*t)){
+			kwerrstr("bad font format: invalid range maximum");
 			goto Err3;
 		}
-		max = strtol(s, &s, 0);
-		s = skip(s);
-		if(*s==0 || min>=Runemax || max>=Runemax || min>max){
+		s = skip(t);
+		if(*s == 0 || min < 0 || max < 0 || min > Runemax || max > Runemax || min > max){
 			kwerrstr("illegal subfont range");
     Err3:
 			freefont(fnt);
-			return 0;
+			return nil;
 		}
 		t = s;
-		offset = strtol(s, &t, 0);
-		if(t>s && (*t==' ' || *t=='\t' || *t=='\n'))
+		offset = 0;
+		numeric = fontinteger(s, &t, &offset);
+		/* The last token is a filename, even when it is entirely numeric. */
+		if(numeric != 0 && *t != 0 && *skip(t) != 0){
+			if(numeric < 0){
+				kwerrstr("subfont offset is outside Int32");
+				goto Err3;
+			}
 			s = skip(t);
-		else
+		}else
 			offset = 0;
 		/* nsub is a signed short in the public Font layout. */
 		if(fnt->nsub == 0x7fff){
@@ -104,7 +180,7 @@ buildfont(Display *d, char *buf, char *name)
 		c->max = max;
 		c->offset = offset;
 		t = s;
-		while(*s && *s!=' ' && *s!='\n' && *s!='\t')
+		while(*s && !fontspace((uchar)*s))
 			s++;
 		if(*s != 0)
 			*s++ = 0;
@@ -119,6 +195,7 @@ buildfont(Display *d, char *buf, char *name)
 	}while(*s);
 	return fnt;
 }
+
 
 /* Release every owned subfont, cache entry and allocation. */
 void

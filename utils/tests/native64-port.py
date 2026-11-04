@@ -234,6 +234,10 @@ def main():
         build, env, logs/'draw-owners.log')
     run([sys.executable, str(tests/'native64-draw-owners.py'), '--attach-only', '--limbo', str(tools/'limbo')],
         build, env, logs/'draw-attach.log')
+    font_input = [sys.executable, str(ROOT/'libdraw/tests/font-loading.py')]
+    run(font_input, build, env, logs/'font-input.log')
+    for control in ('range', 'separator', 'unicode', 'offset'):
+        run(font_input+['--control', control], build, env, logs/('font-input-'+control+'.log'))
     run([sys.executable, str(tests/'native64-channels.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'channels.log')
     run([sys.executable, str(tests/'dis64-call-goldens.py')], build, env, logs/'call-goldens.log')
