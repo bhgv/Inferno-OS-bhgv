@@ -234,6 +234,12 @@ def main():
         build, env, logs/'draw-owners.log')
     run([sys.executable, str(tests/'native64-draw-owners.py'), '--attach-only', '--limbo', str(tools/'limbo')],
         build, env, logs/'draw-attach.log')
+    default_font = [sys.executable, str(ROOT/'libdraw/tests/default-font.py')]
+    run(default_font, build, env, logs/'default-font.log')
+    for model in ('signed', 'unsigned'):
+        run(default_font+['--char-model', model], build, env, logs/('default-font-'+model+'.log'))
+    for control in ('immutable', 'extent', 'pixels', 'rollback', 'range', 'transfer', 'bearing'):
+        run(default_font+['--control', control], build, env, logs/('default-font-'+control+'.log'))
     font_input = [sys.executable, str(ROOT/'libdraw/tests/font-loading.py')]
     run(font_input, build, env, logs/'font-input.log')
     for control in ('range', 'separator', 'unicode', 'offset'):

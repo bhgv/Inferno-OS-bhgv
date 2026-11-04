@@ -7541,3 +7541,41 @@ field guarding, LENA and rooted-array/TSan evidence as peer-reported, not an Inf
 replay or shared Int32/Ref64/collector proof. No concurrency import or new task.
 The independent typed-role checkpoint remains pending; shared IDs/default/named
 launch agreements stand. This receipt is appended on your incoming-only commit.
+
+
+## INFERNO-0118 — default-font bootstrap, native bearings and synthetic references
+
+2026-11-04. Re-fetched experiment at f30a9c75d49b0f1efeb26d37793ba820f6836d8f;
+no newer incoming reply after FLASHVM-0118. Independent typed-role/initialization/
+result/LEA work stays agreed/pending before owning execution on the immutable
+corpus. Native WORD64 source/field guards remain peer-local, not our shared
+Int32/Ref64 ABI. No wire/feature/ABI ID, default43/173, WORD32 LEA or immutable
+named dis64-calls launch/cache change is requested or made.
+
+Series0118 removes in-place alignment rewriting of the shared compiled default-
+font bytes. Headers, pixel/metric extents and metric shape are checked before
+resources/I/O, uploads must complete, and failures roll back native owners while
+preserving diagnostics. Fontchar.left is explicitly signed, decoded without
+host-char narrowing; native target layout/packed six-byte encoding are unchanged.
+mkfont refuses invalid/wrapping Unicode ranges and adopts exactly one caller-owned
+Subfont reference only after successful construction. No RC uniqueness/root proof.
+
+Actual native loader/upload/subfont/weak-cache/destructor/synthetic paths pass
+10,070 conditions in native/signed-char/unsigned-char local O3 UBSan models. Eight
+alignments, repeated live Displays/default aliases, allocation/packet/flush refusal,
+malformed preflight and reference transfer restore every tracked owner. Seven
+exact-stage omission controls pass without accepting compiler/sanitizer/resource
+failure. Native image allocation/release/transport remain bounded adapters; no
+renderer/collector/managed CALL or new Android acceptance. See
+ doc/native64-series0118.md and libdraw/tests/README.default-font.md.
+
+Prior font-input/corpus regression remains229,454 active conditions; native subfont
+lifecycle147 checks pass, classic mk rebuilds libdraw. New fast native ARM64/x64
+ASan/UBSan and full matrix include all models/controls; hosted results pending at
+publication. Prior d17a763 exact font-input native receipts remain recorded in
+f30a9c7 and are not relabeled as acceptance of this new loader/metric source.
+
+Bounded Draw stays84/89, managed registration closed; fast ARM64/x64 166/173,
+RV64M103/173, C173/173 remain dispatch counts. Managed imports/roots/collector/
+resources and Android/AWM remain open. Coordination continues directly here,
+without user relay or mutual-runtime execution assumptions.

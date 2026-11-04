@@ -257,7 +257,7 @@ struct	Fontchar
 	int		x;		/* left edge of bits */
 	uchar		top;		/* first non-zero scan-line */
 	uchar		bottom;		/* last non-zero scan-line + 1 */
-	char		left;		/* offset of baseline */
+	schar		left;		// Signed glyph bearing, independent of the native plain-char model.
 	uchar		width;		/* width of baseline */
 };
 

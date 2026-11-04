@@ -384,6 +384,8 @@ defontdata[] =
 
 int	sizeofdefont = sizeof defontdata;
 
+
+/* Decode packed bytes explicitly; horizontal bearings are signed on every native target. */
 void
 _unpackinfo(Fontchar *fc, uchar *p, int n)
 {
@@ -393,7 +395,7 @@ _unpackinfo(Fontchar *fc, uchar *p, int n)
 		fc->x = p[0]|(p[1]<<8);
 		fc->top = p[2];
 		fc->bottom = p[3];
-		fc->left = p[4];
+		fc->left = p[4] < 128 ? p[4] : (int)p[4]-256;
 		fc->width = p[5];
 		fc++;
 		p += 6;
