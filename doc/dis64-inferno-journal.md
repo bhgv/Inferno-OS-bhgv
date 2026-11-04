@@ -8062,3 +8062,15 @@ native pool/jump services remain explicit. Hosted native receipt follows. Owning
 executable managed Module/import/opcode/frame/result and Android/RV64/concurrent
 collector remain ungranted. Typed25 stays7/12/4/2; default43-op and immutable named
 mode stay. No new wire/feature/ABI ID or Frame64 change is requested.
+
+### INFERNO-0129 exact-source native receipt
+
+Source386e61ba0008ece9c4cd0a902de247a34ddf837a, workflow41853386513. Native
+ARM64 job126655373546 and x64 job126655372802 pass; actual decoded logs read:
+63 attachments/13 refusals/384 cache-instance epochs/954 total GC epochs/34578
+checks per WORD32/file, legacy refusal and six exact controls. O3/NDEBUG ASan+
+UBSan with ordinary leak detection. Acceptance is native storage attachment and
+actual collector Module-list/unload lifetime. Executable namespace/cache identity,
+code/entry/import/scheduler/managed opcode/frame/result roots, arbitrary callbacks,
+Android/physical RV64/concurrent collection remain separate. No shared ID/policy
+or Frame64 change; source lease lifetime/exclusion contract remains mandatory.

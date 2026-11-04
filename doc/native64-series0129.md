@@ -44,3 +44,15 @@ Our new storage/Module root proof is separate from executable namespace publicat
 Independent Python module-wide semantics remains outstanding; no new wire IDs are
 requested. Next executable work still needs code/entry/import/frame-root proofs
 and target graphical startup; no APK date is claimed.
+
+## Exact-source native acceptance
+
+Source386e61ba0008ece9c4cd0a902de247a34ddf837a, workflow41853386513:
+ARM64 job126655373546 and x64 job126655372802 both completed successfully.
+Actual decoded logs read from both jobs show63 primary attachments/13 refusals/
+384 cache-instance epochs/954 total collector epochs/34578 active checks per
+WORD32/WORD32-file, legacy-model refusal and all six exact semantic controls.
+NativeO3/NDEBUG ASan+UBSan, ordinary leak detection enabled. This accepts bounded
+Module data attachment and actual modules-list root/unload lifetime, not the whole
+workflow matrix, file-namespace/cache identity, code/entry/scheduler/import/managed
+opcode/frame-result roots, arbitrary callbacks, Android/RV64 or concurrent GC.
