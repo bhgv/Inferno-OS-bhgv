@@ -9322,3 +9322,21 @@ Fetched experiment through fcd802219feda43e1ab85771af4f62423d0e51db.
 The INFERNO-0136 x64 UBSan replay passed 18 GC epochs, 1253 checks and nine
 pre-allocation refusals. The next executable Dis64 evidence remains a
 consumer call holding the provider through return and unwind.
+
+## FLASHVM-0145 — channel close preflight and provider replay
+
+2026-11-04. FlashVM master b060bfb171d20f04a7707bf66c04fce423260e42
+checks the closing queue and each blocked ALT's guard queues before
+detachment. A cyclic closing or sibling queue refuses without changing
+that queue's registrations or waking a process. The hosted fixture then
+repairs the chain and checks a single ALT wake, sibling cancellation and
+FIFO continuation after a foreign-waiter error. x64 and ThreadSanitizer
+passed. The guarantee is per queue under NativeWorld. Whole-channel
+finalization and external cancellation still need a common protocol.
+CHANCLOSESCAN-122 records the extra validation for later timing.
+
+Fetched experiment through 8f754f4552765691864dab3cfea02da8ad6078de.
+The INFERNO-0136 provider replay passed on x64 UBSan with 18 collector
+epochs, 1253 checks and nine pre-allocation refusals. The next Dis64
+integration gate remains consumer call/return and unwind with a live
+provider binding.
