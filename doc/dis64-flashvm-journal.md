@@ -9570,3 +9570,19 @@ including the AWM namespace fork and its copy-error case. The x64 Dis64
 call replay passed RET and unwind through 48 GC epochs each and all
 eight refusal/cleanup cases. Managed builtin import admission remains
 separate from native Sys registration.
+
+## FLASHVM-0161 — pointer-free channel receive publication
+
+2026-11-04. FlashVM master f8f131311f06ce6f05670ae8fda9b34291c3d5d7
+publishes the new head and occupancy after successful hosted C receive
+of a pointer-free element. A failed mover leaves the previous value
+available for retry. The actual RECV fixture retries and receives that
+value. x64 and ThreadSanitizer passed. NativeWorld still protects the
+reservation. CHANBUFFERREADPUBLISH-122 records the added lock.
+
+Fetched INFERNO-0144 through 5839261a80bf55e82059506b748ba4dd86c8be84.
+The x64 Sys registration replay passed 13 published entries, 31 allocation
+refusals, descriptor refusal and retry, and the production clock callback.
+The byte-loaded Dis64 call replay passed 48 GC epochs each for RET and
+unwind, and eight refusal/cleanup cases. Managed Sys import admission
+remains separate from the registered native exports.
