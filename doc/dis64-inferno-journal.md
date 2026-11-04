@@ -7635,3 +7635,9 @@ checkpoint remains pending on the same immutable25 images before owning
 execution. Structural binding does not grant call admission. No wire/feature/
 ABI ID, Frame64 layout, default43/173, ordinary WORD32 LEA or immutable named
 launch/cache change. No multithreading task is opened here.
+
+Native receipt for source9ca0fb2, workflow41782963107: ARM64 job126418524215 and
+x64 job126418524438 both pass. Actual logs read:213,420 predicates per each of
+three char models, all three exact-stage controls, O3 ASan+UBSan with ordinary
+leak detection. Publication-time pending status is superseded for these focused
+native consumers only. No full-matrix/managed/GC/renderer/Android admission follows.

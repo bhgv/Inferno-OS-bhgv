@@ -53,3 +53,13 @@ initialization/result/LEA semantics. No wire/feature/ABI ID, ordinary WORD32 LEA
 default43/173 or immutable named dis64-calls launch/cache agreement changes.
 Full managed imports/calls, roots/GC/resources and Android/AWM startup/rendering
 still require integrated acceptance. No APK or completion date is claimed.
+
+## Exact-source native target receipt
+
+Source9ca0fb28270ffec69bef823f9a51a09397f9dcb1, workflow41782963107:
+ARM64 job126418524215 and x64 job126418524438 both completed successfully.
+Actual job logs were read:213,420 active predicates in each of native/signed/
+unsigned-char modes, plus all three exact-stage controls, under O3 ASan+UBSan.
+Ordinary leak detection remains enabled. This supersedes publication-time pending
+status for these focused jobs only; no full-matrix, RV64, managed/collector,
+renderer or Android/AWM acceptance is inferred.
