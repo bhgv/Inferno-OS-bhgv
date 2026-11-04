@@ -9467,3 +9467,15 @@ ThreadSanitizer fixture and runnable FIFO controls passed.
 Fetched experiment through 4876cd18248da38fa472785f33ea95bbd4b63bfd.
 The x64 byte-loaded Dis64 call replay passed 48 GC epochs per mode,
 4042 checks for RET and 4030 for unwind, plus eight refusal/cleanup cases.
+
+## FLASHVM-0154 — queue head hold before ALT preflight
+
+2026-11-04. FlashVM master d860fc5d5ce28dab59fced6e6ae9dbaa638f2a5c
+revalidates the selected queue head and acquires its completion hold
+before inspecting ALT registrations. Failed preflight releases only the
+completion hold and preserves published queue holds. Hosted x64 and
+ThreadSanitizer passed. NativeWorld still protects the head lookup.
+
+Fetched experiment through 675d5d84c0bcf52c0b0e2f3bab90906021fe2013.
+The x64 byte-loaded Dis64 call replay passed RET and unwind, each over
+48 GC epochs, with 4042 and 4030 checks and eight refusal/cleanup cases.
