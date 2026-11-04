@@ -8694,3 +8694,61 @@ Typed25 stays7 bounded passes/12 refusals/4 unsupported/2 malformed with owning
 EXECUTION closed. No shared wire/feature/ABI IDs, Frame64 layout, default43/173,
 WORD32 LEA or immutable named launch/cache agreement changes. Pins remain
 1096/312 files at ba26accbb4dc330e7a11f2951db8b18baa1249e4.
+
+## FLASHVM-0130 — rooted pointer-list preparation and dependent-tail rebuild
+
+2026-11-04. Published FlashVM v0.1812/runtime0.113 at
+b50bdc1985a8cd6007c675383e878b16fb066987; tested tree
+c2e5d6188345842d7ff9401b5fa5ca65e589384f. Internal pointer_prepare.c borrows
+successful rooted source/tail HeapHold inputs, reserves native candidate metadata,
+uses extracted transactional pointer_stage.c, links the actual held tail, publishes
+a candidate Heap root before removing its ordinary construction pin, and returns
+one exclusive unpublished owner. No destination write happens during preparation.
+Monitor observes coherent head/tailH and may inspect/raise, not retain the private
+node, alter borrowed inputs or leave ordinary managed admission. Error rollback
+tracks acquired source/tail/Type/node/root stages, including linked-tail release
+when candidate-root publication refuses. Output stays zero on refusal.
+
+Integration uses a real rooted mapped container and actual compliant MOVP writer
+between preparation and heap_commit: stale dependent candidate is explicitly
+finished; observed tail refreshed; candidate rebuilt against that fresh tail;
+only then committed. Merely refreshing observed and committing an old-tail node
+would lose updates and is prohibited. Source/retired/observed leases and creator
+owners are then released; actual destination graph survives32 real Cycles plus
+final Fast restores Tstring/Tlist/Tptr baselines. No fake Heap/scheduler root.
+Seven refusal boundaries: two native reservation allocations, two descriptor
+acquisitions, managed node allocation, monitor error and root publication after
+link. Three private source omissions stop at exact semantic10 before unsafe GC:
+linked-tail rollback, linkage itself and ordinary construction-pin withdrawal.
+Legacy constructor alias/monitor/allocation/Type rollback regression remains.
+C/JIT surrounding guests/both collector polls and TSan native-C positives pass;
+installed SDK sources match and complete installed fixture passes. Full commented
+worked C fixture/API guide/cost ledger/backup patch accompany the series.
+
+This is a prepared candidate API, NOT a newly compiled CONSP or general parallel
+allocator. Old CONSP continues through the original serialized entry using the
+shared stage. No object guards surround allocation/callback/cleanup. NativeWorld,
+Type/frame/code/root lifetime and ordinary managed allocator/collector exclusion
+remain mandatory. PREPARE-113 records native reservation/root handoff/stale rebuild
+cost paths; no matched timing or GUI speed claim. Remaining gates include actual
+constructor operand lifetime/integration, shared writes/address leases, root/graph/
+retirement epochs, channels/process/scheduler and frame/module/code lifetime,
+compiler local/shared selection. Do not infer readiness by opcode percentage.
+
+Read INFERNO-0128 sourcebc1f793ab013858c85ebbef6befa102887c5e6a7 and receipt
+2a18f7c8f5c5d0206c84c2832b4f6a4bf0ccffdf. Reviewed explicit Module.mptype,
+selected real-source Heap Type validation before allocation, and coherent native
+rebuild requirement. Replayed owning utils/tests/native64-module-mptype.py locally:
+WORD32 and WORD32-file each20 cases/17 refusals/20 accounting unloads/54 actual GC
+epochs/16061 checks, all four exact-source controls. Receipt reports hosted native
+ARM64 job126638090660 and x64 job126638090585/workflow41848469072 at O3 ASan+UBSan;
+these are peer-reported platform evidence, separate from our local x64 replay.
+Agree this implements existing datatype-ordinal meaning in host-native Module
+metadata and requests no wire/feature/ABI ID. No cross-heap machinery transplanted;
+immutable vendor snapshots remain1096/312 files at ba26accbb4dc330e7a11f2951db8b18baa1249e4.
+
+Owning executable Dis64 Module/cache/import/frame/result adoption remains closed;
+independent Python module-wide DATA/import/unused-descriptor implementation remains
+outstanding (review/replay is not that implementation). Typed25 stays7/12/4/2,
+default43/173 and immutable explicit dis64-calls launch/cache agreement unchanged.
+No Frame64 change, Android/physical RV64/full GUI/concurrent collector permission.
