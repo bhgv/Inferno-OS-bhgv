@@ -1,9 +1,12 @@
-/* Inspect or canonically rewrite only the agreed Dis64 container envelope. */
+/* Inspect Dis64 envelopes, scalar pilots and explicit import matches. */
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "isa.h"
 #include "dis64-pilot.h"
+#include "dis64-storage-image.h"
 
 #define InspectLimit (64U*1024U*1024U) // Explicit host-tool file resource limit.
 
@@ -89,6 +92,48 @@ rewrite(const char *path, const Dis64View *view)
 }
 
 
+/* Report provider coordinates for a single structurally checked import. */
+static int
+matchimport(const char *consumerpath, const char *ordinaltext, const char *providerpath)
+{
+	Dis64StorageLimits limits = {4096, 65536, InspectLimit, 65536,
+		1048576, 1024, 256, 1024};
+	Dis64StorageImage consumer, provider;
+	Dis64ImportMatch match;
+	unsigned char *input, *dependency;
+	unsigned int inputbytes, dependencybytes;
+	unsigned long ordinal;
+	int matched;
+
+	if(*ordinaltext == 0 || ordinaltext[strspn(ordinaltext, "0123456789")] != 0){
+		fprintf(stderr, "invalid import ordinal\n");
+		return 2;
+	}
+	errno = 0;
+	ordinal = strtoul(ordinaltext, 0, 10);
+	if(errno == ERANGE || ordinal > UINT_MAX){
+		fprintf(stderr, "invalid import ordinal\n");
+		return 2;
+	}
+	input = readimage(consumerpath, &inputbytes);
+	dependency = readimage(providerpath, &dependencybytes);
+	matched = input != 0 && dependency != 0 &&
+		dis64storageimagecheck(input, inputbytes, &limits, &consumer) &&
+		dis64storageimagecheck(dependency, dependencybytes, &limits, &provider) &&
+		dis64importmatch(&consumer, (unsigned int)ordinal, &provider, &match);
+	free(dependency);
+	free(input);
+	if(!matched){
+		fprintf(stderr, "cannot match import in checked provider\n");
+		return 1;
+	}
+	printf("{\"import_ordinal\":%u,\"export_ordinal\":%u,\"entry_pc\":%u,"
+		"\"frame_type\":%u,\"execution_supported\":false}\n",
+		(unsigned int)ordinal, match.ordinal, match.entry, match.frame);
+	return 0;
+}
+
+
 /* Report structural acceptance explicitly without promising executable support. */
 int
 main(int argc, char **argv)
@@ -100,12 +145,16 @@ main(int argc, char **argv)
 	Dis64View view;
 	Dis64Section section;
 
+	if(argc == 5 && strcmp(argv[2], "--match-import") == 0)
+		return matchimport(argv[1], argv[3], argv[4]);
+
 	/* Flags have one unambiguous order and never execute container code. */
 	pilotmode = argc > 2 && strcmp(argv[2], "--pilot") == 0;
 	rewriteindex = pilotmode ? 3 : 2;
 	if(argc != rewriteindex && !(argc == rewriteindex+2 &&
 	   strcmp(argv[rewriteindex], "--rewrite") == 0)){
-		fprintf(stderr, "usage: dis64inspect input [--pilot] [--rewrite output]\n");
+		fprintf(stderr, "usage: dis64inspect input [--pilot] [--rewrite output]\n"
+			"       dis64inspect input --match-import ordinal provider\n");
 		return 2;
 	}
 	data = readimage(argv[1], &bytes);

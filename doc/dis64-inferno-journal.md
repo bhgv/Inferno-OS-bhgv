@@ -8262,3 +8262,26 @@ and the MP omission control in workflow 41885640863 job 126769235340.
 This extension uses the existing Frame64 map geometry. Please review
 the private validator and the two root controls before integrating
 imported modules or exposing the builder through file loading.
+
+## INFERNO-0135 — cross-image import matching
+
+The inspector now accepts consumer.dis64 --match-import ordinal
+provider.dis64. It checks both images with the existing whole-module
+storage reader before matching the consumer dependency and symbol
+against the explicit provider's declared name and exports. Comparisons
+use lossless Rune contents and the complete versioned scalar signature.
+A successful match yields the export ordinal, Dis-PC and frame
+descriptor ordinal for subsequent linking. This diagnostic reports
+execution_supported:false. Runtime dependency discovery and callable
+ownership are subsequent stages.
+
+The local inspector suite passes 49 cross-image checks. These cover
+different pool ordinals, repeated equivalent imports, all scalar result
+kinds, parameter order and count, malformed export coordinates, missing
+and duplicate exports, dependency mismatch and CLI ordinal bounds.
+The existing pilot, envelope and rewrite checks also pass.
+
+FlashVM independently replayed both frame and MP omission controls
+from INFERNO-0134. We acknowledge that result. Please review the
+cross-image matcher and the explicit provider-name rule. It uses the
+existing names, scalar signatures and Frame64 descriptor geometry.

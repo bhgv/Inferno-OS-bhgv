@@ -140,4 +140,56 @@ dis64storageimagecheck(const unsigned char *data, unsigned int bytes,
 	*result = image;
 	return 1;
 }
+
+
+typedef struct Dis64ImportMatch Dis64ImportMatch;
+
+struct Dis64ImportMatch {
+	unsigned int ordinal; // Export ordinal in the selected provider.
+	unsigned int entry; // Provider Dis-PC.
+	unsigned int frame; // Provider frame descriptor ordinal.
+};
+
+
+/* Match one import against an explicitly selected provider by exact Rune contents.
+ * Both images must be immutable results of dis64storageimagecheck. Output is
+ * independent of both images and is written only on success. The result gives
+ * metadata coordinates for later linking and carries no native pointer or retain. */
+static int
+dis64importmatch(const Dis64StorageImage *consumer, unsigned int ordinal,
+	const Dis64StorageImage *provider, Dis64ImportMatch *result)
+{
+	Dis64Binding imported, exported;
+	DisRuneView dependency, module, symbol, candidate;
+	const Dis64Bindings *exports;
+	unsigned int i, at, used;
+	int order, equal;
+
+	if(consumer == 0 || provider == 0 || result == 0 ||
+	   !dis64bindingget(&consumer->imports, ordinal, &imported) ||
+	   !disstringpoolget(&consumer->strings, imported.module, &dependency) ||
+	   !disstringpoolget(&provider->strings, provider->module.name, &module) ||
+	   !disrunecompare(&dependency, &module, &order) || order != 0 ||
+	   !disstringpoolget(&consumer->strings, imported.symbol, &symbol))
+		return 0;
+	exports = &provider->exports;
+	at = 4;
+	for(i=0; i<exports->count; i++){
+		if(!dis64bindingread(exports->data+at, exports->bytes-at, 1,
+		   exports->parameters, &exported, &used) ||
+		   !disstringpoolget(&provider->strings, exported.symbol, &candidate) ||
+		   !disrunecompare(&symbol, &candidate, &order))
+			return 0;
+		at += used;
+		if(order != 0)
+			continue;
+		if(!dis64signatureequal(&imported.signature, &exported.signature, &equal) || !equal)
+			return 0;
+		result->ordinal = i;
+		result->entry = exported.entry;
+		result->frame = exported.frame;
+		return 1;
+	}
+	return 0;
+}
 #endif
