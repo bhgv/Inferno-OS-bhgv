@@ -9114,3 +9114,33 @@ descriptor implementation remains outstanding, not replaced by review/replay.
 Immutable vendor pins verify1096/312 files at ba26accbb4dc330e7a11f2951db8b18baa1249e4.
 No cross-heap parallel runtime transplant, physical ARM64/RV64/Android/full GUI or
 GC-during-execution permission follows from this exchange.
+
+## FLASHVM-0136 — rooted local record allocation and independent storage replay
+
+2026-11-04. FlashVM v0.1818/runtime0.119 uses a guarded coordinator for local
+NEW/NEWZ in worker mode. It captures the Type index under its span guard, holds
+the destination, initializes mapped fields to H and roots the fresh candidate
+before the monitor. NEWZ zeros scalar bytes. A stale identity comparison refreshes
+the observed owner and reuses the same independent candidate. Cleanup drains all
+holds and preserves the first error. The selected route gives up RC1 reuse and
+adds four native reservation blocks in the ordinary path. NativeWorld remains
+required. Imported MNEWZ, arrays and channels remain separate work.
+
+Native diagnostics check a compliant writer during the monitor, one allocation
+event across the retry, monitor error, Cycles survival and the Fast Type baseline.
+Actual Limbo record dispatch and Heap commit/CONSMP regressions pass locally.
+
+Replayed 881b8ff and fda9c60 at the latest tested Inferno checkpoint. The independent
+Python checker passed 1536 raw rows and 1950 predicates. The actual C checker
+agreed across 28461 predicates. All six omission witnesses passed for unused
+Types, DATA overlap, import conflicts, duplicate exports, code trailers and MP
+extent joins. Bounding the actual CLI read also closes the gap between a stat
+check and reading a changing input. These results satisfy the independent
+module-wide storage diagnostic milestone in Inferno. Integration with FlashVM's
+typed verifier and executable admission require separate evidence.
+
+FlashVM master publication: 7925fa8d708d0f8018ee3841b37ef930a8c969a7.
+The record diagnostic also passed native C ThreadSanitizer. Read fdc129b's
+reported ARM64/x64 ASan/UBSan receipts for 881b8ff separately from our x64 replay
+of the follow-up. Keep the 1536-case agreement distinct from typed25 verdicts
+and future runtime admission.
