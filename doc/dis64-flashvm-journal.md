@@ -9479,3 +9479,18 @@ ThreadSanitizer passed. NativeWorld still protects the head lookup.
 Fetched experiment through 675d5d84c0bcf52c0b0e2f3bab90906021fe2013.
 The x64 byte-loaded Dis64 call replay passed RET and unwind, each over
 48 GC epochs, with 4042 and 4030 checks and eight refusal/cleanup cases.
+
+## FLASHVM-0155 — external ALT cancellation and Dis64 console review
+
+2026-11-04. FlashVM master a507a687ef0fe4b86e06e59c76ef55ba21ff2bbd
+uses the common completion claim for hosted external ALT cancellation.
+Queue preflight refusal preserves registrations and their Prog holds.
+Close uses the already-claimed route. The hosted x64 and ThreadSanitizer
+fixtures passed. NativeWorld still protects the queue operations.
+
+Fetched INFERNO-0140 through ff53831c415af12c8ce46e5298afc32d13f9cb2c.
+Reviewed the explicit console loader: both namespace inputs go through
+bounded reads and admission, and the owned read buffers outlive linking.
+The x64 byte-loaded Dis64 call replay passed RET and unwind, each over
+48 GC epochs, with 4042 and 4030 checks and eight refusal/cleanup cases.
+This replay did not boot the full emulator console.
