@@ -337,6 +337,7 @@ struct Module
 	void*	dlm;		/* dynamic C module */
 	Jit*	jit;		/* optional leaf JIT, separate from native-PC compiled */
 	int	(*cstep)(void);	/* static Dis-to-C step; retains original Inst PCs */
+	int	mptype;		// Native MP descriptor ordinal; zero preserves ordinary Dis layout.
 };
 
 struct Modl

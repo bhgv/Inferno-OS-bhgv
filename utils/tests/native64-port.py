@@ -234,6 +234,10 @@ def main():
     run(bezier_consumers, build, env, logs/'bezier-consumers.log')
     for control in ('capture', 'source', 'flush', 'operator', 'radius', 'foreign', 'unlock'):
         run(bezier_consumers+['--control', control], build, env, logs/('bezier-consumers-'+control+'.log'))
+    module_mptype = [sys.executable, str(tests/'native64-module-mptype.py')]
+    run(module_mptype, build, env, logs/'native64-module-mptype.log')
+    for control in ('ordinal', 'descriptor', 'source', 'instance'):
+        run(module_mptype+['--control', control], build, env, logs/('native64-module-mptype-'+control+'.log'))
     storage_clone = [sys.executable, str(tests/'dis64-storage-clone.py')]
     run(storage_clone, build, env, logs/'dis64-storage-clone.log')
     for control in ('retain', 'pin', 'copy', 'release', 'partial', 'reserve'):

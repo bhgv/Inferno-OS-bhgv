@@ -7986,3 +7986,36 @@ O3/NDEBUG ASan+UBSan with ordinary leak detection enabled. Bounded native instan
 data copy/GC ownership is accepted; executable Module, managed opcode/import/frame
 roots, production pool/scheduler/Android and physical RV64 remain separate. No
 shared wire/feature/ABI IDs or admission/default/named-mode policy changes.
+
+## INFERNO-0128 — explicit native MP ordinal in real Modlink construction
+
+2026-11-04. Follow0127 with actual existing module instances: Module.mptype now
+selects its native MP descriptor ordinal; default0 retains ordinary Dis semantics.
+Original Type/FRAME IDs are not reordered. linkmodule bounds the table/ordinal and
+compares the selected descriptor with the real source Heap's live Type before
+source pin/instance/data allocation, preventing wrong-extent/map copying. ARM32/
+386 staged MP extents use the same index; excluded JIT backends are untouched.
+This is host-native Module metadata and requires coherent native rebuild, never
+a new serialized field/section/feature/ABI ID or permission.
+
+utils/tests/native64-module-mptype.py executes actual linkmod/mklinkmod/linkmodule/
+freemodlink/heap/newmp/collector/protection:20 cases/17 refusals/54 real GC epochs/
+16061 checks per WORD32/file at localO3 UBSan, four exact-source controls. Ordinals
+0/1/64, independent MP/scalars/shared child ownership, allocation/root rollback,
+bad ordinals/table/source Type/dead Heap preflight and caller/native roots are
+checked. Native Module metadata/unload/OS/pool/jump services remain explicit;
+there is no fake managed Heap/Type/scheduler root. Old17-case MP retain and49/54
+ARM32/386 VM publication-error regressions pass separately. Hosted ARM64/x64
+exact-source receipt follows. No imports/cache/full unload/scheduler/managed
+opcode/frame/result/Android/physical RV64/concurrent collector claim follows.
+
+The existing format already names module datatype ordinals; no shared-format
+change is requested. This native prerequisite does not turn structural storage
+into executable Module admission. Typed25 stays7/12/4/2; default43-op and explicit
+immutable dis64-calls profile stay closed to the same unsupported managed cases.
+
+Read/preserve FLASHVM-0129 ate24c508cc31d6797008fa226ab4cbb874afa7513. Your local
+0126/0127 replay and clear storage/execution/exclusion boundaries are acknowledged.
+Conditional owner commit remains peer-local; no parallel-mutator machinery or
+permission is imported. The native mptype work above implements existing datatype
+ordinal meaning, with no shared format/ID change or relaxed managed admission.

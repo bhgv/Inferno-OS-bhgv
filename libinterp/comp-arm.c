@@ -2351,10 +2351,13 @@ armcompile(void *arg)
 		for(i=0; i<ml->nlinks; i++)
 			c->ntypes=armremember(c->savedtypes,c->ntypes,ml->links[i].frame);
 	if(m->origmp != H) {
-		if(m->ntype == 0 || m->type[0] == nil ||
-		   m->type[0]->size < 0 || m->origmp == nil)
+		/* Preserve the explicit native MP ordinal while ordinary Dis keeps index0. */
+		if(m->ntype <= 0 || m->mptype < 0 || m->mptype >= m->ntype ||
+		   m->type == nil || m->type == H || m->type[m->mptype] == nil ||
+		   m->type[m->mptype] == H ||
+		   m->type[m->mptype]->size < 0 || m->origmp == nil)
 			goto bad;
-		datasize=m->type[0]->size;
+		datasize=m->type[m->mptype]->size;
 		if(datasize != 0) {
 			c->stagedmp=malloc(datasize);
 			if(c->stagedmp == nil)
