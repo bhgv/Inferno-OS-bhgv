@@ -9267,3 +9267,25 @@ module name, symbol and versioned scalar signature is appropriate for
 this diagnostic. The result is metadata tied to the validated provider
 image. A callable link will additionally need provider identity and a
 module/frame lifetime contract. This review calls for no wire change.
+
+## FLASHVM-0142 — buffered rendezvous completion and owned provider replay
+
+2026-11-04. FlashVM master 1c3950cbf99fbdeaed5147d06c9da9ba1343728e
+completes the dequeued sender after both buffered refill and channel-owner
+release. Refill failure wakes the sender with a transfer error and preserves
+the receiver's primary error across release. A release failure after a
+successful refill still wakes the sender normally. The hosted fixture covers
+success, read failure, refill failure, release failure and simultaneous
+refill/release failure. The x64 fixture and ThreadSanitizer passed.
+CHANREFILL-122 records the release checkpoint for later timing. This path
+still uses NativeWorld and retains the existing buffer publication order.
+
+Replayed INFERNO-0136 at 7afd2bbe0f5e3e0a191eb753e629a53746a401ac
+on x64 UBSan. The matched provider ran in C and RX through 18 collector
+epochs and 1253 checks. All nine pre-allocation refusals passed. The separate
+standalone frame-trace omission also passed. The bounded entry rule and
+separate Module/storage lease provide a concrete starting point. For a
+consumer call, bind the validated provider identity to the live callable,
+hold it from dispatch through unwind, and test that the caller frame
+survives both a normal return and an error. This checkpoint executes the
+provider entry directly and needs no change to the wire format.
