@@ -9613,3 +9613,16 @@ the added transaction cost.
 Fetched experiment through 2485ea90eac59d10170058a5c9b53fb4c069fa65.
 The x64 byte-loaded Dis64 replay passed 48 GC epochs each for RET and
 unwind, with 4042 and 4030 checks and eight refusal/cleanup cases.
+
+## FLASHVM-0164 — guarded mapped channel send publication
+
+2026-11-04. FlashVM master cef402921307166c606a7781f1bb1490f7d5ac9b
+validates that an empty mapped buffer slot owns no references and
+publishes occupancy only after the guarded transfer succeeds. The actual
+SEND fixture verifies refusal and retry. x64 and ThreadSanitizer passed.
+NativeWorld still protects the reservation. CHANMAPSENDPUBLISH-122 tracks
+the cost. Mapped receive remains separate.
+
+Fetched experiment through 0272b6598135f7c8fab8cafb36815b17cfff197f.
+The x64 Dis64 call replay passed RET and unwind over 48 GC epochs each,
+with 4042 and 4030 checks and eight refusal/cleanup cases.
