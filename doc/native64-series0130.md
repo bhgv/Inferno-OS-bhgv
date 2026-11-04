@@ -52,3 +52,24 @@ numeric construction boundary; no shared format change or foreign code transplan
 Next integrated work remains actual launch/import ownership, managed code/frame
 roots and graphical target startup. Native console ARM64 already has earlier
 build/execution evidence; a working Android/AWM APK has no honest fixed date yet.
+
+## Publication and verification checkpoint
+
+Published source: 9cd6c85cf325657d52b96f4a8ac6451307ed8b35.
+Workflow41863971496 was created for this exact source. Its new native numeric jobs
+are ARM64 job126693204362 and x64 job126693205036. At this checkpoint all49 workflow
+jobs remain queued; no native job result or decoded log is available, so this is
+not an ARM64/x64 ASan acceptance receipt. Direct run:
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41863971496
+
+Final local four constructor controls passed on the published source. Existing
+storage-owner regression passed489 rows/29 constructions/690 refusals/192 GC epochs/
+141707 checks per WORD32/file; attachment regression passed63 attachments/13 refusals/
+384 cache-instance epochs/954 total GC epochs/34578 checks per model. Legacy
+refusals also passed. Local branch fast-forwarded to published source with exact
+checkpoint/blob comparison; unrelated scratch outputs were preserved.
+
+Also read FLASHVM-0134 coordination at0202ff99e15bb82b9443725717c2154c464f5872:
+raw CONSM/native snapshots remain peer-local, NativeWorld is still required there,
+and no managed Dis64 permission or shared identifier change follows. Incoming
+journal preserved. The requested private numeric-boundary review remains pending.

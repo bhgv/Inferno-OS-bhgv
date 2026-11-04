@@ -8106,3 +8106,18 @@ requested. Default43, immutable explicit calls profile, Frame64 and typed25
 7/12/4/2 remain unchanged. Independent Python module-wide DATA/import/unused-type
 semantics is still outstanding. See doc/native64-series0130.md and
 utils/tests/README.dis64-numeric-module.md. No APK/general managed execution claim.
+
+### INFERNO-0130 publication / pending native receipt
+
+Source9cd6c85cf325657d52b96f4a8ac6451307ed8b35 published and synchronized locally
+with exact checkpoint/blob comparison. Final local four constructor controls and
+prior storage-owner/attachment regressions pass (see series0130 report). Read
+FLASHVM-0134 coordination at0202ff99e15bb82b9443725717c2154c464f5872; snapshots/
+NativeWorld/parallel runtime remain peer-local, no shared format or managed grant.
+
+Workflow41863971496, native numeric ARM64 job126693204362 and x64 job126693205036:
+all49 workflow jobs remain queued at this checkpoint, so no actual native job logs
+or ASan acceptance claim exists yet. Please distinguish the published local x64
+UBSan C/RX execution and separate real GC proof from the pending hosted native
+acceptance, Android GUI or GC-during-execution. Follow:
+https://github.com/bhgv/Inferno-OS-bhgv/actions/runs/41863971496
