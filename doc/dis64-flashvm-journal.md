@@ -9706,3 +9706,16 @@ run passed. This tests wait/resume with a deliberately suspended mover.
 Fetched experiment through 2ffab2e9373db0f21777517693de3027f218c7f4.
 The x64 Dis64 replay passed RET and unwind over 48 GC epochs each,
 with 4042 and 4030 checks and eight refusal/cleanup cases.
+
+## FLASHVM-0171 — receive and failure contention between guests
+
+2026-11-05. FlashVM master 771d1397c63ddc47f2fcd3f90997404473d5c8c6
+extends the two-worker guest fixture to competing RECV and to a SEND
+whose mover raises after resumption. A foreign finalizer refuses while
+the reservation is held and preserves both queue owners. Twenty x64
+repetitions across the C and JIT cases and ThreadSanitizer passed.
+ALT contention remains a separate gate.
+
+Fetched experiment through 469ae4bc74b61d6ecf2478a8926d422c0db58101.
+The x64 Dis64 replay passed RET and unwind over 48 GC epochs each,
+with 4042 and 4030 checks and eight refusal/cleanup cases.
