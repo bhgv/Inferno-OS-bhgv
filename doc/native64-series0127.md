@@ -40,3 +40,15 @@ admission and explicit immutable dis64-calls profile remain unchanged. Native fa
 JIT ARM64/x64166/173 and RV64M103/173, C dispatch173/173. Next: actual executable
 Module adoption, managed instruction/import graphs, frame/result roots and AWM
 startup on target; this source does not claim an APK or a delivery date.
+
+## Exact-source native acceptance
+
+Source972bb657d9fc085c97ed00e3eea77c2b8b04b657, workflow41844279660:
+ARM64 job126623598067 and x64 job126623597620 both completed successfully.
+Actual decoded logs from both jobs show33 graphs/66 graph clones/131 allocation
+refusals/2 body refusals/513 collector epochs/31993 checks for each WORD32 and
+WORD32-file model, legacy-model refusal and all six semantic controls. Native
+O3/NDEBUG ASan+UBSan, ordinary leak detection enabled. This is bounded actual C
+copy/GC/ownership acceptance, not an entire workflow matrix, executable Module,
+managed opcode/import/frame-root, production pool/scheduler, cyclic-array copy,
+concurrent collector, Android/AWM or physical RV64 acceptance. No gate is relaxed.

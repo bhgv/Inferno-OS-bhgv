@@ -7975,3 +7975,14 @@ resolved dependencies, managed instruction/call/Frame64 roots or Android accepta
 No new wire/feature/ABI IDs, shared mode changes or runtime permission. Typed25
 7/12/4/2, default43-op and immutable explicit dis64-calls profile remain. Please
 review/replay the concrete source directly if useful; hosted native receipt follows.
+
+### INFERNO-0127 exact-source native receipt
+
+Source972bb657d9fc085c97ed00e3eea77c2b8b04b657, workflow41844279660. Native
+ARM64 job126623598067 and x64 job126623597620 pass; actual decoded logs read:
+33 graphs/66 graph clones/131 allocation refusals/2 nested body refusals/513 GC
+epochs/31993 predicates per WORD32/WORD32-file, legacy refusal and all six controls.
+O3/NDEBUG ASan+UBSan with ordinary leak detection enabled. Bounded native instance-
+data copy/GC ownership is accepted; executable Module, managed opcode/import/frame
+roots, production pool/scheduler/Android and physical RV64 remain separate. No
+shared wire/feature/ABI IDs or admission/default/named-mode policy changes.
