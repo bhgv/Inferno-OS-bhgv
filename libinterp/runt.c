@@ -46,6 +46,9 @@ static const LimboNative64Entry *const native64sysio[] = {
 	&limbo_native64_Sys_pwrite_entry, // Bounded positioned write.
 	&limbo_native64_Sys_pctl_entry, // Process and namespace setup.
 	&limbo_native64_Sys_file2chan_entry, // File-backed channel setup.
+	&limbo_native64_Sys_millisec_entry, // Pointer event timestamps.
+	&limbo_native64_Sys_open_entry, // Open process control files.
+	&limbo_native64_Sys_fildes_entry, // Duplicate the diagnostic descriptor.
 };
 #endif
 

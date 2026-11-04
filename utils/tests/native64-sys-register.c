@@ -1,8 +1,11 @@
 #define LIMBO_NATIVE64_TABLES // Complete specifications, explicitly selected implementations.
 #include "sys-native64.h"
 
-static int initialized, invoked[10], rejectinit; // Bounded OS descriptor boundary and observed callback identities.
-static const char *names[] = {"byte2char", "char2byte", "utfbytes", "read", "readn", "write", "pread", "pwrite", "pctl", "file2chan"}; // Exact trusted profile.
+char exNilref[] = "dereference of nil", exBounds[] = "array bounds error"; // VM frame diagnostics.
+
+static int initialized, rejectinit, clockreads; // Bounded OS descriptor boundary and observed callback identities.
+static const char *names[] = {"byte2char", "char2byte", "utfbytes", "read", "readn", "write", "pread", "pwrite", "pctl", "file2chan", "millisec", "open", "fildes"}; // Exact trusted profile.
+static int invoked[nelem(names)]; // One dispatch counter per expected export.
 
 
 /* Observe the descriptor boundary; its real owning body is tested separately. */
@@ -97,6 +100,33 @@ Sys_file2chan(void *frame)
 	invoked[9]++;
 }
 
+/* Supply a known time and count calls across the production Sys frame boundary. */
+long
+osmillisec(void)
+{
+	clockreads++;
+	return 123456;
+}
+
+
+/* Observe open registration without opening a file in this fixture. */
+void
+Sys_open(void *frame)
+{
+	check(frame == &baseline);
+	invoked[11]++;
+}
+
+
+/* Observe fildes registration without duplicating a host descriptor. */
+void
+Sys_fildes(void *frame)
+{
+	check(frame == &baseline);
+	invoked[12]++;
+}
+
+SYS_MILLISEC
 SYS_PROFILE
 SYS_REGISTRATION
 
@@ -111,11 +141,25 @@ initialize(void *unused)
 }
 
 
+/* Dispatch the published production clock callback under the VM error frame. */
+static int
+readclock(void *argument)
+{
+	F_Sys_millisec *frame;
+
+	frame = argument;
+	modules->ext[10].u.runt(frame);
+	return 1;
+}
+
+
 /* Fail every constructor allocation, then resolve the exact published fixed-frame profile. */
 int
 main(void)
 {
 	Module *m;
+	F_Sys_millisec frame = {0};
+	WORD stamp = -1;
 	int i, allocations, failures;
 
 	baseline.ref = 7;
@@ -128,9 +172,21 @@ main(void)
 		check(m->type[i]->size == native64sysio[i]->frame_size);
 		check(m->type[i]->np == native64sysio[i]->map_bytes);
 		check(memcmp(m->type[i]->map, native64sysio[i]->map, m->type[i]->np) == 0);
+		if(i == 10)
+			continue;
 		m->ext[i].u.runt(&baseline);
 		check(invoked[i] == 1);
 	}
+	frame.ret = H;
+	check(!kprotect(readclock, &frame));
+	check(strcmp(diagnostic, exNilref) == 0);
+	frame.ret = (WORD*)((uintptr)-2);
+	check(!kprotect(readclock, &frame));
+	check(strcmp(diagnostic, exBounds) == 0);
+	check(clockreads == 0 && stamp == -1 && worker.nerr == 0);
+	frame.ret = &stamp;
+	check(kprotect(readclock, &frame));
+	check(clockreads == 1 && stamp == 123456);
 	unload(m);
 	check(modules == &baseline && live == 0 && baseline.ref == 7);
 	failures = 0;
@@ -151,6 +207,6 @@ main(void)
 	check(kprotect(initialize, nil));
 	unload(modules);
 	check(modules == &baseline && live == 0);
-	printf("PASS trusted Sys profile: 10 published entries, %d allocation refusals, descriptor refusal and retry; callbacks bounded\n", failures);
+	printf("PASS trusted Sys profile: %d published entries, %d allocation refusals, descriptor refusal and retry, production clock callback\n", (int)nelem(names), failures);
 	return 0;
 }

@@ -30,6 +30,10 @@ def main():
         start = runt.index('static const LimboNative64Entry *const native64sysio[]')
         profile = runt[start:runt.index('\n#endif', start)]
         body = (ROOT/'utils/tests/native64-sys-register.c').read_text().replace('SYS_PROFILE', profile).replace('SYS_REGISTRATION', support['function'](runt, 'void\nsysmodinit('))
+        inferno = (ROOT/'emu/port/inferno.c').read_text()
+        clock = '\n'.join(support['function'](inferno, signature) for signature in
+                          ('static void\nsysstatusframe(', 'void\nSys_millisec('))
+        body = body.replace('SYS_MILLISEC', clock)
         unit = work/'test.c'; unit.write_text(support['constructor']()+body)
         includes = ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
         base = ['-DDIS_WORD32=1', '-DDIS64_PILOT_LOADER=1', '-DDIS_NATIVE64_SCALAR_BOOT=1', '-DDIS_NATIVE64_BOOT_SYS_IO=1']

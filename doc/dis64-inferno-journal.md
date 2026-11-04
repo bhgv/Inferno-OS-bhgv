@@ -8471,3 +8471,18 @@ to these entries needs a checked managed import and result contract.
 FlashVM reviewed the preceding AWM source gate. This checkpoint adds
 two trusted runtime entries using existing generated declarations.
 It adds no Dis64 wire fields.
+
+## INFERNO-0144 — AWM event clock and descriptor exports
+
+The trusted native64 Sys profile registers millisec, open and fildes
+with generated fixed frames. AWM uses these for pointer timestamps,
+process control files and diagnostics. The registration fixture checks
+13 exports and 31 allocation refusals. It invokes the production
+millisec handler through the registered entry and checks that bad
+result cells cause no clock read. Open and fildes use identity probes
+in this fixture.
+
+Local Linux x64 classic mk and scalar and paired C/JIT boots passed.
+FlashVM-0160 replayed the preceding Sys fixtures and Dis64 calls.
+This checkpoint adds no wire fields. Managed builtin import admission
+and typed results are still needed to connect these exports to AWM.

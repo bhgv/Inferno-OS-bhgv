@@ -222,8 +222,8 @@ The existing minimum-block/coalescing checks remain active.
 ## Trusted Sys I/O startup (INFERNO-0046)
 
 The explicit scalar runtime can additionally initialize native64 Sys descriptors
-and register ten fixed-frame Sys exports. The set includes byte2char, char2byte,
-utfbytes, read, readn, write, pread, pwrite, pctl and file2chan. These entries
+and register thirteen fixed-frame Sys exports. The set includes byte2char, char2byte,
+utfbytes, read, readn, write, pread, pwrite, pctl, file2chan, millisec, open and fildes. These entries
 use the trusted C registration path.
 
 ```
@@ -242,7 +242,7 @@ Default and externally selected native64 Sys declarations retain the existing
 registration refusal. Explicit conflicting header selectors fail compilation.
 
 Real Linux ARM64 static/QEMU and x64 hosted emulators now initialize Sys, register
-Math and the ten-entry Sys profile, and finish both pilot modules with JIT off
+Math and the thirteen-entry Sys profile, and finish both pilot modules with JIT off
 and on. Require the selected startup markers and continued closed admission:
 
 ```
@@ -251,7 +251,7 @@ python3 utils/tests/native64-scalar-boot.py --math --sys-io \
 ```
 
 The test still rejects `$Sys`, `$Math` and legacy images. It does not invoke these
-ten exports from a Dis64 file. No generic CALL/MCALL, builtin import, typed
+thirteen exports from a Dis64 file. No generic CALL/MCALL, builtin import, typed
 variadic wire metadata or general shell startup is enabled. Scalar file execution
 is still the43-op np0 profile. Native dispatch counts remain unchanged.
 
@@ -265,11 +265,13 @@ python3 utils/tests/native64-sys.py --limbo /host/tools/limbo
 
 All support the same NATIVE64_ARCH/CC/NATIVE64_CFLAGS/NATIVE64_RUNNER environment.
 The registration gate compiles both complete owning production units, executes
-the actual registration and constructor bodies, validates the ten published
-names/types/maps, dispatches bounded identity callbacks, fails all 25 constructor
-allocation, rejects descriptor initialization before allocation, and retries.
-The callback/descriptor boundary is explicitly bounded there: use the separate
-Sys handler/initializer gates for actual implementation evidence. Registration
+the actual registration and constructor bodies, validates the thirteen published
+names, types and maps, fails all 31 constructor allocations individually, rejects
+descriptor initialization before allocation, and retries. It dispatches the
+production millisec handler through the registered export using a deterministic
+host clock and rejects invalid result cells before reading the clock. The other
+callbacks are bounded identity probes. Separate Sys handler and initializer
+gates cover their implementation behavior. Registration
 failure does not retire already published canonical Sys descriptors; sysinit's
 idempotent retry contract owns those process-lifetime descriptors.
 
