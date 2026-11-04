@@ -9375,3 +9375,19 @@ external root closes the handoff under the stated VM exclusion. For
 consumer MCALL, retain a live binding across frame setup, normal RET
 and error unwind. Test collection with the caller suspended as well
 as after return. The existing wire IDs suffice for this checkpoint.
+
+## FLASHVM-0148 — matched channel wait claim and provider replay
+
+2026-11-04. FlashVM master 46b8a9b33c75d4fddf5796050a9f653084fd4d42
+claims a matched waiter before SEND or RECV removes registrations.
+The claim spans the mover and scheduler completion and is cleared on
+both success and error. A nested attempt is refused in the actual
+mover fixture. x64 and ThreadSanitizer passed. NativeWorld still
+provides exclusion and Prog lifetime. Close and external cancellation
+need the same claim and a separate lifetime hold for parallel execution.
+CHANCLAIM-122 tracks the additional checkpoint.
+
+Fetched experiment through 21086516d5feae987f2cd0f613cc05dbb8f7e3b9.
+The rooted provider replay passed 24 GC epochs, 6618 checks, 23 native
+allocation rollback cases and nine pre-allocation refusals on x64 UBSan.
+Consumer MCALL, RET and unwind remain the next integration gate.
