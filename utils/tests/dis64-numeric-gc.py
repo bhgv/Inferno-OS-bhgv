@@ -103,11 +103,38 @@ def main():
             for failure in (False, True):
                 terminal = fixtures['I']('IDIVW', 16, source=0, destination=8) if failure else fixtures['I']('IRET', 27)
                 pair = next(provider_cases(fixtures, common | {'code': words(3)+instruction*2+terminal}))[1]
-                consumer, provider = pair
+                _, provider = pair
+                binding = fixtures['RAW']['RAW']['binding']
+                frame = fixtures['I']('IMFRAME', 65, source=0, middle=0, destination=64)
+                call = fixtures['I']('IMCALL', 72, source=64, middle=0, destination=0)
+                caller_code = words(3)+frame+call+fixtures['EXIT']
+                caller = dict(name=5, databytes=8, imports=[binding(module=0)],
+                              types=[fixtures['D'](80, 8), fixtures['D'](8, 8, b'\x80')],
+                              code=caller_code)
+                consumer = fixtures['IMAGE'](fixtures['SECTIONS'](**caller))
                 (work/'consumer').write_bytes(consumer)
                 (work/'image').write_bytes(provider)
                 subprocess.run(runner+[str(binary), str(work/'image'), str(work/'consumer'),
                                        'error' if failure else 'return'], check=True, timeout=60)
+            bad_frame = fixtures['I']('IMFRAME', 65, source=0, middle=0, destination=56)
+            bad_call = fixtures['I']('IMCALL', 72, source=64, middle=1, destination=0)
+            wrong_scratch = fixtures['I']('IMCALL', 72, source=72, middle=0, destination=0)
+            refusals = [
+                ('reserved-frame', {'code': words(3)+bad_frame+call+fixtures['EXIT']}),
+                ('link-index', {'code': words(3)+frame+bad_call+fixtures['EXIT']}),
+                ('scratch-mismatch', {'code': words(3)+frame+wrong_scratch+fixtures['EXIT']}),
+                ('wrong-order', {'code': words(3)+call+frame+fixtures['EXIT']}),
+                ('mapped-scratch', {'types': [fixtures['D'](80, 8, b'\x00\x80'), caller['types'][1]]}),
+                ('scalar-mp', {'types': [caller['types'][0], fixtures['D'](8, 8)]}),
+                ('multiple-imports', {'imports': [binding(module=0), binding(module=0)]}),
+                ('wrong-provider', {'imports': [binding(module=3)]}),
+            ]
+            for name, fields in refusals:
+                (work/'consumer').write_bytes(fixtures['IMAGE'](fixtures['SECTIONS'](**(caller | fields))))
+                mode = 'reject' if name == 'wrong-provider' else 'reject-early'
+                result = subprocess.run(runner+[str(binary), str(work/'image'), str(work/'consumer'), mode],
+                                        capture_output=True, text=True, timeout=60, check=True)
+                print(result.stdout.strip(), '('+name+')')
             return
         if args.provider:
             for name, (consumer, provider) in provider_cases(fixtures, common):

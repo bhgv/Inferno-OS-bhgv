@@ -819,10 +819,45 @@ dis64providerentry(const Dis64StorageImage *consumer, unsigned int ordinal,
 }
 
 
+/* Prove the fixed one-import call sequence and its private frame scratch slot. */
+static int
+dis64consumerentry(const Dis64StorageImage *image, Dis64CodeView *code)
+{
+	Dis64Instruction frame, call, exit;
+	Dis64Type type;
+	unsigned int at, used;
+
+	*code = image->code;
+	if(image->module.profile != 1 || image->module.entry != 0 ||
+	   image->imports.count != 1 || image->exports.count != 0 ||
+	   image->data.bytes != 8 || image->data.mapbytes != 1 || image->data.map[0] != 0x80 ||
+	   image->initializers.count != 0 || code->count != 3 ||
+	   !dis64typeget(&image->types, image->module.frametype, &type) ||
+	   type.bytes < 72 || type.align != 8 || type.map[0] != 0)
+		return 0;
+	at = 4;
+	if(!dis64instructionread(code->data+at, code->bytes-at, &frame, &used))
+		return 0;
+	at += used;
+	if(!dis64instructionread(code->data+at, code->bytes-at, &call, &used))
+		return 0;
+	at += used;
+	if(!dis64instructionread(code->data+at, code->bytes-at, &exit, &used))
+		return 0;
+	return at+used == code->bytes &&
+		frame.op == IMFRAME && frame.mode == ((AMP<<3)|AXIMM|AFP) &&
+		frame.source == 0 && frame.middle == 0 && frame.destination >= 64 &&
+		dis64initspan(&type, frame.destination, 8) &&
+		call.op == IMCALL && call.mode == ((AFP<<3)|AXIMM|AMP) &&
+		call.source == frame.destination && call.middle == 0 && call.destination == 0 &&
+		exit.op == IEXIT && exit.mode == ((AXXX<<3)|AXXX);
+}
+
+
 /* Construct an owned numeric entry and keep its MP rooted through handoff. */
 static Module*
 dis64numericbuild(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOwner **roots,
-	const Dis64StorageImage *consumer, unsigned int ordinal)
+	const Dis64StorageImage *consumer, unsigned int ordinal, int linked)
 {
 	Dis64NumericLoad load;
 	Dis64CodeView code;
@@ -835,7 +870,8 @@ dis64numericbuild(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOw
 	   (uintptr)roots > (uintptr)-1-sizeof(*roots) || *roots != nil || bytes > Dis64RuntimeBytes ||
 	   (uintptr)image > (uintptr)-1-bytes || (jit != 0 && jit != 1) ||
 	   !dis64storageimagecheck(image, bytes, &dis64numericlimits, &load.image) ||
-	   !(consumer == nil ? dis64numericstoragecheck(&load.image, Dis64RuntimeCode, &code) :
+	   !(linked ? dis64consumerentry(&load.image, &code) :
+	     consumer == nil ? dis64numericstoragecheck(&load.image, Dis64RuntimeCode, &code) :
 	     dis64providerentry(consumer, ordinal, &load.image, &code)) ||
 	   !disstringpoolget(&load.image.strings, load.image.module.name, &load.name) ||
 	   load.name.count == 0 || load.name.count > Dis64RuntimeName){
@@ -876,7 +912,7 @@ dis64numericbuild(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOw
 Module*
 prepare64numeric(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOwner **roots)
 {
-	return dis64numericbuild(path, image, bytes, jit, roots, nil, 0);
+	return dis64numericbuild(path, image, bytes, jit, roots, nil, 0, 0);
 }
 
 
@@ -895,7 +931,7 @@ prepare64provider(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOw
 		kwerrstr("unsupported Dis64 consumer image");
 		return nil;
 	}
-	return dis64numericbuild(path, image, bytes, jit, roots, &view, ordinal);
+	return dis64numericbuild(path, image, bytes, jit, roots, &view, ordinal, 0);
 }
 
 
@@ -904,6 +940,7 @@ typedef struct Dis64ProviderLink Dis64ProviderLink;
 struct Dis64ProviderLink {
 	Module *module; // Owned until mklinkmod returns.
 	Modlink *link; // Owned partial instance until external root acquisition.
+	int bindings; // Zero for the consumer and one for its provider.
 };
 
 
@@ -917,16 +954,40 @@ dis64providerlink(void *argument)
 
 	build = argument;
 	module = build->module;
-	build->link = link = mklinkmod(module, 1);
+	build->link = link = mklinkmod(module, build->bindings);
 	build->module = nil;
-	link->links[0].u.pc = module->entry;
-	link->links[0].frame = module->entryt;
+	if(build->bindings != 0){
+		link->links[0].u.pc = module->entry;
+		link->links[0].frame = module->entryt;
+	}
 	if(module->origmp != H){
 		D2H(module->origmp)->ref++;
 		link->MP = module->origmp;
 	}
 	ptradd(D2H(link));
 	return 1;
+}
+
+
+/* Consume the module and its lease, returning one rooted instance on success. */
+static Modlink*
+dis64rootlink(Module *module, Dis64StorageOwner *lease, int bindings)
+{
+	Dis64ProviderLink build;
+	int ok;
+
+	build.module = module;
+	build.link = nil;
+	build.bindings = bindings;
+	ok = kprotect(dis64providerlink, &build);
+	if(!ok){
+		if(build.link != nil)
+			destroy(build.link);
+		else
+			unload(build.module);
+	}
+	free64storage(lease);
+	return ok ? build.link : nil;
 }
 
 
@@ -938,27 +999,53 @@ Modlink*
 prepare64providerlink(char *path, uchar *image, ulong bytes, int jit,
 	const uchar *consumer, ulong consumerbytes, unsigned int ordinal)
 {
-	Dis64ProviderLink build;
+	Module *module;
 	Dis64StorageOwner *lease;
-	int ok;
 
 	if(heapmonitor != nil){
 		kwerrstr("Dis64 provider link requires unmonitored allocation");
 		return nil;
 	}
 	lease = nil;
-	build.link = nil;
-	build.module = prepare64provider(path, image, bytes, jit, &lease,
+	module = prepare64provider(path, image, bytes, jit, &lease,
 		consumer, consumerbytes, ordinal);
-	if(build.module == nil)
+	if(module == nil)
 		return nil;
-	ok = kprotect(dis64providerlink, &build);
-	if(!ok){
-		if(build.link != nil)
-			destroy(build.link);
-		else
-			unload(build.module);
+	return dis64rootlink(module, lease, 1);
+}
+
+
+/* Construct a private one-import consumer from two explicit Dis64 images.
+ * The caller owns the rooted link and initializes its entry frame before
+ * process publication. VM exclusion and unmonitored allocation are required. */
+Modlink*
+prepare64consumerlink(char *path, uchar *image, ulong bytes, char *providerpath,
+	uchar *providerimage, ulong providerbytes, int jit)
+{
+	Module *module;
+	Modlink *caller, *provider;
+	Dis64StorageOwner *lease;
+
+	if(heapmonitor != nil){
+		kwerrstr("Dis64 consumer link requires unmonitored allocation");
+		return nil;
 	}
-	free64storage(lease);
-	return ok ? build.link : nil;
+	lease = nil;
+	module = dis64numericbuild(path, image, bytes, jit, &lease, nil, 0, 1);
+	if(module == nil)
+		return nil;
+	caller = dis64rootlink(module, lease, 0);
+	if(caller == nil)
+		return nil;
+	provider = prepare64providerlink(providerpath, providerimage, providerbytes,
+		jit, image, bytes, 0);
+	if(provider == nil){
+		ptrdel(D2H(caller));
+		destroy(caller);
+		return nil;
+	}
+	memmove(caller->MP, &provider, sizeof(provider));
+	Setmark(D2H(provider));
+	ptrdel(D2H(provider));
+	return caller;
 }

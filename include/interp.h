@@ -565,6 +565,7 @@ extern Dis64StorageOwner* prepare64storage(uchar*, ulong); // Serialized VM prep
 extern Module* prepare64numeric(char*, uchar*, ulong, int, Dis64StorageOwner**); // Private MP-only numeric builder. Keep lease until rooted and initmem the entry frame.
 extern Module* prepare64provider(char*, uchar*, ulong, int, Dis64StorageOwner**, const uchar*, ulong, unsigned int); // Private matched provider entry with owned Module and lease.
 extern Modlink* prepare64providerlink(char*, uchar*, ulong, int, const uchar*, ulong, unsigned int); // Own one Modlink and one external root.
+extern Modlink* prepare64consumerlink(char*, uchar*, ulong, char*, uchar*, ulong, int); // Own one rooted linked consumer.
 extern int attach64storage(Module*, Dis64StorageOwner*); // Retain storage in an empty unpublished Module; caller keeps lease rooted until publication.
 extern Dis64StorageOwner* clone64storage(Dis64StorageOwner*); // Independent rooted data; source lease stays live under VM exclusion.
 extern void free64storage(Dis64StorageOwner*); // Consume the native lease and its private data root.

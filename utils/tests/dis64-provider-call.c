@@ -24,49 +24,6 @@ callquantum(Prog *process)
 }
 
 
-/* Build a trusted consumer program using the existing native operand layout. */
-static Modlink*
-callconsumer(Modlink *provider, int jit, int grow)
-{
-	Module *module;
-	Modlink *link;
-	Inst *code;
-	uchar map = 0x80; // The MP slot owns the provider link.
-
-	module = mallocz(sizeof(*module), 1);
-	require(module != nil);
-	module->ref = 1;
-	module->rt = DONTCOMPILE;
-	module->ss = grow ? 0 : 4096;
-	module->origmp = H;
-	module->ntype = 2;
-	module->type = mallocz(2*sizeof(Type*), 1);
-	require(module->type != nil);
-	module->type[0] = dtype(freeheap, 8, &map, 1);
-	module->type[1] = dtype(freeheap, 80, nil, 0);
-	require(module->type[0] != nil && module->type[1] != nil);
-	module->entryt = module->type[1];
-	module->nprog = 3;
-	module->prog = code = mallocz(3*sizeof(*code), 1);
-	require(code != nil);
-	module->entry = code;
-	code[0].op = IMFRAME;
-	code[0].add = (AMP<<3)|AXIMM|AFP;
-	code[0].d.ind = 64;
-	code[1].op = IMCALL;
-	code[1].add = (AFP<<3)|AXIMM|AMP;
-	code[1].s.ind = 64;
-	code[2].op = IEXIT;
-	code[2].add = (AXXX<<3)|AXXX;
-	if(jit)
-		require(compile(module, module->nprog, nil));
-	link = mklinkmod(module, 0);
-	link->MP = H2D(uchar*, heapz(module->type[0]));
-	memmove(link->MP, &provider, sizeof(provider));
-	return link;
-}
-
-
 /* Transfer the provider root to the consumer, then check calls across GC epochs. */
 static void
 providercall(uchar *image, size_t bytes, uchar *consumer, size_t consumerbytes, int jit, int failure, int grow)
@@ -81,9 +38,14 @@ providercall(uchar *image, size_t bytes, uchar *consumer, size_t consumerbytes, 
 	int before, slot, step;
 	WORD result;
 
-	provider = prepare64providerlink("numeric-provider", image, bytes, jit, consumer, consumerbytes, 0);
-	require(provider != nil);
-	caller = callconsumer(provider, jit, grow);
+	caller = prepare64consumerlink("numeric-consumer", consumer, consumerbytes,
+		"numeric-provider", image, bytes, jit);
+	require(caller != nil);
+	numericcollect(nil);
+	memmove(&provider, caller->MP, sizeof(provider));
+	require(provider != nil && provider != H);
+	require(numericowner(D2H(provider))->magic == MAGIC_A);
+	caller->m->ss = grow ? 0 : 4096;
 	memset(&process, 0, sizeof(process));
 	process.exval = H;
 	process.state = Pready;
@@ -95,10 +57,11 @@ providercall(uchar *image, size_t bytes, uchar *consumer, size_t consumerbytes, 
 	entry->t = caller->m->entryt;
 	R.s = &entry;
 	newstack(&process);
+	initmem(caller->m->entryt, process.R.FP);
 	free(entry);
 	root = process.R.FP;
 	callprocess = &process;
-	ptrdel(D2H(provider));
+	ptrdel(D2H(caller));
 
 	require(callquantum(&process) == 1 && process.R.M == caller);
 	memmove(&pending, root+64, sizeof(pending));
@@ -157,13 +120,25 @@ main(int argc, char **argv)
 {
 	uchar image[4096], consumer[4096];
 	size_t bytes, consumerbytes;
-	int jit, failure, grow;
+	int jit, failure, grow, slot;
 
 	require(argc == 4);
 	bytes = numericread(argv[1], image, sizeof(image));
 	consumerbytes = numericread(argv[2], consumer, sizeof(consumer));
 	failure = strcmp(argv[3], "error") == 0;
 	numericpoolinit();
+	if(strncmp(argv[3], "reject", 6) == 0){
+		require(prepare64consumerlink("numeric-consumer", consumer, consumerbytes,
+			"numeric-provider", image, bytes, 1) == nil);
+		if(strcmp(argv[3], "reject-early") == 0)
+			require(allocations == 0);
+		numericdrain();
+		require(live == 0 && Tmodlink.ref == 1 && worker.nerr == 0);
+		for(slot=1; slot<GcSlots; slot++)
+			require(numericblock(slot)->magic == MAGIC_F);
+		printf("PASS linked consumer refusal and cleanup\n");
+		return 0;
+	}
 	optab[IMFRAME] = mframe;
 	optab[IMCALL] = mcall;
 	optab[IRET] = ret;

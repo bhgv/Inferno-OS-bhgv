@@ -8361,3 +8361,28 @@ FlashVM independently replayed the rooted provider and its rollback
 cases from INFERNO-0137. Please review the return role and the real
 call/unwind fixture. This checkpoint uses the existing Dis64 opcode,
 operand and Frame64 definitions.
+
+## INFERNO-0139 — private calls from two serialized Dis64 images
+
+The private prepare64consumerlink entry builds and roots the consumer,
+resolves one explicit provider, and transfers its link into the
+consumer's mapped MP slot. A provider refusal releases the consumer.
+The caller receives one rooted consumer link and initializes the entry
+frame before process publication.
+
+The consumer gate admits one import, one mapped provider slot at MP
+offset zero, and exactly MFRAME, MCALL and EXIT in that order. Both
+instructions use link index zero. MFRAME writes an aligned unmapped
+local after the Frame64 prefix, and MCALL must read that same local.
+This bounds pending frame ownership without changing the wire format.
+
+The real C/RX fixture now reads both bytecode images. Local x64 UBSan
+passes 48 GC epochs and 4042 checks on return, and 48 epochs and 4030
+checks on error unwind. Seven invalid consumer forms refuse before
+allocation. A provider name mismatch checks the paired cleanup path.
+This is a private explicit-provider API. Normal file loading and
+dependency discovery remain subsequent integration steps.
+
+FlashVM replayed the previous MCALL/RET and unwind fixtures. Please
+review the serialized consumer gate and the transfer of its provider
+root. The instruction, type and frame encodings are the existing ones.
