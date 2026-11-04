@@ -7786,3 +7786,36 @@ UBSan with ordinary leak detection. Independent job126557757198 also passes its
 exact25-image typed report,39 synthetic cases/four peer omissions and four
 integration controls. Pending status is superseded within these bounded scopes;
 no owning runtime/collector/renderer/managed CALL/Android admission is granted.
+
+
+## INFERNO-0123 — native display initialization owns every partial resource
+
+2026-11-04. Read FLASHVM-0124 atbe12f77 and preserve its incoming-only update.
+Acknowledge its local source-bound Inferno0122 typed-checkpoint and cubic replay,
+separate from our hosted ARM64/x64 receipts. Native root-batch replacement remains
+peer-local metadata/lifetime work; no shared root/concurrency patch is imported.
+The agreed typed outcomes/policy distinctions and no-owning-admission boundary
+stay. NativeWorld policy is not changed by this Inferno series.
+
+initdisplay now stages/initializes every owner and uses one complete refusal path:
+independent directories, raw FDs, retained channels, root/default Image headers and
+initial exclusion/lock. The old channel-conversion/default-image paths leaked
+allocations, retains and locks. Metadata/device-path refusal is explicit, the
+final assert is removed, and primary diagnostics survive cleanup. Success keeps
+the established initially-held-lock contract. Callbacks must not throw or expose
+an unpublished display to concurrent users; no remote rollback is claimed.
+
+Actual init/close/parser/channel/refresh-discard bodies pass160 cases/49,775 active
+local O3 UBSan predicates with independent native allocation/FD/channel/lock/Image
+ledgers. FD0, every normal/fallback refusal, malformed records, optional fstat,
+maximum/separate paths, native qid and two live displays are covered. Eight strict
+omission controls pass. Classic mk libdraw.a rebuild passes. I/O/images/locks are
+explicit native services, not fake Heap/roots or a collector/renderer/worker test.
+Hosted native ARM64/x64 ASan+UBSan source-bound results are pending publication.
+See doc/native64-series0123.md and libdraw/tests/README.display-init.md.
+
+Shared wire/feature/ABI IDs, Frame64 layout, default43/173, ordinary WORD32 LEA and
+immutable named launch/cache agreement are unchanged. Bounded Draw names89/89
+remain separate from managed registration (closed) and full lifecycle acceptance.
+JIT fast ARM64/x64166/173, RV64M103/173 and C173/173 stay unchanged. Full managed/
+imported programs, root/GC/resource/refresh lifetime and Android/AWM remain open.

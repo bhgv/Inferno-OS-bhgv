@@ -112,12 +112,12 @@ Refuse:
 #define	NINFO	(12*12) // Bound the native display information response.
 
 
-/* Create the native display with independent directory, lock and channel owners. */
+/* Stage native descriptors, channels and images; one refusal path retires every acquired owner. */
 Display*
 initdisplay(char *dev, char *win, void(*error)(Display*, char*))
 {
-	char buf[128], info[NINFO+1], *t;
-	int datafd, ctlfd, reffd, directory;
+	char buf[128], info[NINFO+1], reason[ERRMAX], *windowdir, *devdir;
+	int datafd, ctlfd, reffd, directory, locked, received;
 	Image parsed;
 	Display *disp;
 	Image *image;
@@ -126,78 +126,68 @@ initdisplay(char *dev, char *win, void(*error)(Display*, char*))
 
 	fmtinstall('P', Pfmt);
 	fmtinstall('R', Rfmt);
-	if(dev == 0)
+	if(dev == nil)
 		dev = "/dev";
-	if(win == 0)
+	if(win == nil)
 		win = "/dev";
-	if(strlen(dev)>sizeof buf-25 || strlen(win)>sizeof buf-25){
+	if(strlen(dev)>sizeof(buf)-25 || strlen(win)>sizeof(buf)-25){
 		kwerrstr("initdisplay: directory name too long");
 		return nil;
 	}
-	t = strdup(win);
-	if(t == nil)
-		return nil;
-
+	windowdir = nil;
+	devdir = nil;
+	q = nil;
+	disp = nil;
+	image = nil;
+	dir = nil;
+	ctlfd = datafd = reffd = -1;
+	locked = 0;
+	windowdir = strdup(win);
+	if(windowdir == nil)
+		goto Refuse;
 	q = libqlalloc();
-	if(q == nil){
-		free(t);
-		return nil;
-	}
-
+	if(q == nil)
+		goto Refuse;
 	if(_drawdebug)
 		print("initdisplay: prog=%p, proc=%p\n", (void*)currun(), (void*)up);
-
 	sprint(buf, "%s/draw/new", dev);
 	ctlfd = libopen(buf, ORDWR);
 	if(ctlfd < 0){
-		if(libbind("#i", dev, MBEFORE) < 0){
-    Error1:
-			libqlfree(q);
-			free(t);
-			kwerrstr("initdisplay: %s: %r", buf);
-			return 0;
-		}
+		if(libbind("#i", dev, MBEFORE) < 0)
+			goto Refuse;
 		ctlfd = libopen(buf, ORDWR);
+		if(ctlfd < 0)
+			goto Refuse;
 	}
-	if(ctlfd < 0)
-		goto Error1;
-	if(libread(ctlfd, info, sizeof info) != NINFO){
-    Error2:
-		libclose(ctlfd);
-		goto Error1;
+	received = libread(ctlfd, info, sizeof(info));
+	if(received != NINFO){
+		if(received >= 0)
+			kwerrstr("invalid display image information length");
+		goto Refuse;
 	}
-
-	if(!drawimageinfo(info, &parsed, &directory)){
-		kwerrstr("invalid image information in %s", buf);
-		goto Error2;
+	if(!drawimageinfo(info, &parsed, &directory) || parsed.chan == 0){
+		kwerrstr("invalid display image information");
+		goto Refuse;
 	}
-
 	sprint(buf, "%s/draw/%d/data", dev, directory);
 	datafd = libopen(buf, ORDWR);
 	if(datafd < 0)
-		goto Error2;
+		goto Refuse;
 	sprint(buf, "%s/draw/%d/refresh", dev, directory);
 	reffd = libopen(buf, OREAD);
-	if(reffd < 0){
-    Error3:
-		libclose(datafd);
-		goto Error2;
-	}
-	strcpy(buf, "allocation failed");
-	disp = malloc(sizeof(Display));
-	if(disp == 0){
-    Error4:
-		libclose(reffd);
-		goto Error3;
-	}
-	image = malloc(sizeof(Image));
-	if(image == 0){
-    Error5:
-		free(disp);
-		goto Error4;
-	}
-	memset(image, 0, sizeof(Image));
-	memset(disp, 0, sizeof(Display));
+	if(reffd < 0)
+		goto Refuse;
+	disp = malloc(sizeof(*disp));
+	if(disp == nil)
+		goto Refuse;
+	memset(disp, 0, sizeof(*disp));
+	image = malloc(sizeof(*image));
+	if(image == nil)
+		goto Refuse;
+	memset(image, 0, sizeof(*image));
+	devdir = strdup(dev);
+	if(devdir == nil)
+		goto Refuse;
 	image->display = disp;
 	image->id = 0;
 	image->chan = parsed.chan;
@@ -205,57 +195,80 @@ initdisplay(char *dev, char *win, void(*error)(Display*, char*))
 	image->repl = parsed.repl;
 	image->r = parsed.r;
 	image->clipr = parsed.clipr;
-
 	disp->dirno = directory;
-	disp->datachan = libfdtochan(datafd, ORDWR);
-	disp->refchan = libfdtochan(reffd, OREAD);
-	disp->ctlchan = libfdtochan(ctlfd, ORDWR);
-	if(disp->datachan == nil || disp->refchan == nil || disp->ctlchan == nil)
-		goto Error4;
-	disp->bufsize = Displaybufsize;	/* TO DO: iounit(datafd) */
-	if(disp->bufsize <= 0)
-		disp->bufsize = Displaybufsize;
-	if(disp->bufsize < 512){
-		kwerrstr("iounit %d too small", disp->bufsize);
-		goto Error5;
-	}
-	/* TO DO: allocate buffer */
-
-	libclose(datafd);
-	libclose(reffd);
 	disp->image = image;
 	disp->bufp = disp->buf;
+	disp->bufsize = Displaybufsize;
 	disp->error = error;
 	disp->chan = image->chan;
 	disp->depth = image->depth;
-	disp->windir = t;
-	disp->devdir = strdup(dev);
+	disp->windir = windowdir;
+	disp->devdir = devdir;
 	disp->qlock = q;
+	disp->datachan = libfdtochan(datafd, ORDWR);
+	if(disp->datachan == nil)
+		goto Refuse;
+	disp->refchan = libfdtochan(reffd, OREAD);
+	if(disp->refchan == nil)
+		goto Refuse;
+	disp->ctlchan = libfdtochan(ctlfd, ORDWR);
+	if(disp->ctlchan == nil)
+		goto Refuse;
 	libqlock(q);
-	disp->white = allocimage(disp, Rect(0, 0, 1, 1), GREY1, 1, DWhite);
-	disp->black = allocimage(disp, Rect(0, 0, 1, 1), GREY1, 1, DBlack);
-	disp->opaque = allocimage(disp, Rect(0, 0, 1, 1), GREY1, 1, DWhite);
-	disp->transparent = allocimage(disp, Rect(0, 0, 1, 1), GREY1, 1, DBlack);
-	if(disp->white == nil || disp->black == nil || disp->opaque == nil || disp->transparent == nil){
-		free(image);
-		free(disp->devdir);
-		free(disp->white);
-		free(disp->black);
-		libclose(ctlfd);
-		goto Error5;
-	}
-	if((dir = libdirfstat(ctlfd))!=nil && dir->type=='i'){
+	locked = 1;
+	disp->white = allocimage(disp, Rect(0,0,1,1), GREY1, 1, DWhite);
+	if(disp->white == nil)
+		goto Refuse;
+	disp->black = allocimage(disp, Rect(0,0,1,1), GREY1, 1, DBlack);
+	if(disp->black == nil)
+		goto Refuse;
+	disp->opaque = allocimage(disp, Rect(0,0,1,1), GREY1, 1, DWhite);
+	if(disp->opaque == nil)
+		goto Refuse;
+	disp->transparent = allocimage(disp, Rect(0,0,1,1), GREY1, 1, DBlack);
+	if(disp->transparent == nil)
+		goto Refuse;
+	dir = libdirfstat(ctlfd);
+	if(dir != nil && dir->type == 'i'){
 		disp->local = 1;
 		disp->dataqid = dir->qid.path;
 	}
 	free(dir);
+	libclose(reffd);
+	libclose(datafd);
 	libclose(ctlfd);
-
 	if(CHECKLOCKING)
-		disp->local = 0;	/* force display locking even for local access */
-
-	assert(disp->chan != 0 && image->chan != 0);
+		disp->local = 0;
+	/* The complete display adopts every staged owner and retains its initial exclusion. */
 	return disp;
+
+Refuse:
+	kgerrstr(reason, sizeof(reason));
+	if(disp != nil){
+		freeimage(disp->white);
+		freeimage(disp->black);
+		freeimage(disp->opaque);
+		freeimage(disp->transparent);
+		if(locked)
+			libqunlock(q);
+		libchanclose(disp->datachan);
+		libchanclose(disp->refchan);
+		libchanclose(disp->ctlchan);
+	}
+	free(image);
+	free(disp);
+	if(reffd >= 0)
+		libclose(reffd);
+	if(datafd >= 0)
+		libclose(datafd);
+	if(ctlfd >= 0)
+		libclose(ctlfd);
+	if(q != nil)
+		libqlfree(q);
+	free(devdir);
+	free(windowdir);
+	kwerrstr("initdisplay: %s", reason[0] != 0 ? reason : "native initialization failed");
+	return nil;
 }
 
 

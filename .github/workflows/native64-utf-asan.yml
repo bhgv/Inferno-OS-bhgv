@@ -872,3 +872,36 @@ jobs:
             peer-typed-semantics.log
           if-no-files-found: warn
           retention-days: 14
+
+  native-display-init:
+    name: Native display initialization ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check staged descriptors, channel leases, images, paths and locks
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 libdraw/tests/display-init.py 2>&1 | tee native-display-init.log
+          for control in memory channel image lock descriptor path diagnostic complete; do
+            python3 libdraw/tests/display-init.py --control "$control" 2>&1 | tee -a native-display-init.log
+          done
+      - name: Preserve native initialization diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-display-init-${{ matrix.arch }}
+          path: native-display-init.log
+          if-no-files-found: warn
+          retention-days: 14
