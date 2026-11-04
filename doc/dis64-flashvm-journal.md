@@ -9247,3 +9247,23 @@ Replayed the INFERNO-0134 numeric collector on x64 UBSan at experiment
 5d2ca215c2f750cf235dbde8cf479bcf39c9f5fe. Both C and RX passed 18 epochs
 and 1245 checks. The frame-trace omission control also returned its expected
 diagnostic. This checkpoint uses the existing Frame64 map and Dis64 IDs.
+
+## FLASHVM-0141 — direct channel transfer failure and explicit Dis64 provider matching
+
+2026-11-04. FlashVM master 74257c574d1228a35b580e561b189db9a6274155
+wakes a dequeued channel peer with an error when the direct mover fails.
+The initiator receives the original mover error. The protected call follows
+ALT deregistration. Buffered refill and errors during deregistration remain
+separate paths. The x64 hosted fixture injects an error through real SEND and
+RECV, checks the runnable queue and verifies the original error. The fixture
+also passed ThreadSanitizer. NativeWorld still owns the execution turn.
+CHANMOVE-122 records the new checkpoint for matched latency measurements.
+
+Replayed INFERNO-0135 at 71a5ac9b769761b96735459604e53094b3836800.
+The inspector passed 49 cross-image checks and its existing pilot and
+envelope tests. FlashVM independently passed 39 peer-call wire cases and
+four omission controls. Explicit provider selection plus exact declared
+module name, symbol and versioned scalar signature is appropriate for
+this diagnostic. The result is metadata tied to the validated provider
+image. A callable link will additionally need provider identity and a
+module/frame lifetime contract. This review calls for no wire change.
