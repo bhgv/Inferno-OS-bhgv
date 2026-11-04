@@ -8752,3 +8752,78 @@ independent Python module-wide DATA/import/unused-descriptor implementation rema
 outstanding (review/replay is not that implementation). Typed25 stays7/12/4/2,
 default43/173 and immutable explicit dis64-calls launch/cache agreement unchanged.
 No Frame64 change, Android/physical RV64/full GUI/concurrent collector permission.
+
+## FLASHVM-0131 — actual guarded CONSP integration and complete error retirement
+
+2026-11-04. FlashVM v0.1813/runtime0.114 published at
+ed42c0349dd368179dd19abb2056a987c79c2970, tested tree
+4ff1648237deaa2ea5600e3217b8193fc0d357a4. With immutable --guarded-copies and
+ACTIVE/NativeWorld, the actual hosted CONSP dispatcher and existing SysV x64 tail
+entry select pointer_transaction.c. Unselected/serial-inline mode retains the old
+builder; invalid selected role refuses before operand reads, not unsafe fallback.
+The coordinator uses saved stable native operand addresses, never borrowed REG
+or a return PC in code that a callback may retire. Caller still supplies mapped
+owning rooted cells and frame/Type/code lifetime, no object guards or admission
+release. This does NOT remove NativeWorld or admit general parallel allocation.
+
+Source is captured once, including aliased source/destination. Each attempt holds
+the current tail, prepares a rooted node and conditionally commits. A stale tail
+finishes the candidate and observation before fresh capture and full rebuild;
+it never blindly commits an old-tail node. Eight preparations bound pathological
+callback writers; final error preserves their actual destination. Successful
+commit moves the candidate into the cell and displaces its owner into retirement.
+A native ledger drains EVERY candidate/retired/tail/source lease after the body,
+even if a consuming destructor raises. Body error wins; otherwise first cleanup
+error wins. Fields clear before consumption; no destructor is retried. A cleanup
+error after commit does not undo the committed graph. Pending last-owner graphs
+remain rooted until actual Fast rather than pretending immediate destruction.
+
+Eight real native scenarios cover ordinary, H, alias, one stale rebuild, eight
+repeated stale writes, alias+stale (original source snapshot), primary+multiple
+secondary errors, and successful commit followed by multiple cleanup errors.
+Nine exact refusal boundaries cover six root-reservation allocations, managed
+node allocation and both Type retains. Actual Strings/mapped List destination,
+Cycles/Fast and descriptor baselines are used, no fabricated Heap/scheduler root.
+Three scoped actual-source omissions fail at semantic10 for missing stale
+candidate retirement, incomplete unwind and overwritten primary error. C/JIT
+guests/both collector polls, TSan native-C positives, complete installed SDK
+fixture/source closure pass. Guarded x64 tail regression separately covers
+foreign REG, actual code unmap, VM error, combined unmap/error and strict bad-CALL
+control. Legacy builder/Heap hold/preparation/commit controls pass; preparation/
+commit omissions are now scoped to the intended call because startup constructors
+also use those helpers. No mutable startup-profile toggle is used for isolation.
+
+[PERF CONSP-114] records exact-source matched constructor comparison:5000 build/
+retire operations, sample payload/checksum30000, same guarded profile and other
+current objects. Only pointer_builder.c differs (published runtime0.113 SHA
+63271a5f58165fdabadfc6a37758ee4fd9c0e18c7f821e0c87275cbe06d4906e versus current).
+After warmup, three alternating raw samples retained with source identities:
+C median0.057399231->0.072251189s (+25.87%); JIT0.066887672->0.069530421s (+3.95%).
+Initial run is retained separately (+28.57%/+16.28%): short process-inclusive
+samples vary. No universal percentage, individual calloc/guard/root-mutex timing,
+contention/stale/destructor-error timing or IDE speed claim. Six native metadata
+allocations/capture/mark/commit/retirement paths are marked for later optimization.
+Historical18 full-profile/default comparisons are unchanged; this is matched-body.
+
+Read/reviewed INFERNO-0129 source386e61ba0008ece9c4cd0a902de247a34ddf837a and
+receipt2e887b64bab70311cdca2400216ccf36b13c8296. Replayed owning repository's
+utils/tests/dis64-storage-attach.py locally: each WORD32/WORD32-file63 attachments,
+13 refusals,384 cache-instance-only epochs,954 total actual GC epochs/34578 checks;
+legacy pre-allocation refusal and all six type/data/mark/ordinal/atomic/cached
+controls pass. Reviewed one fallible table allocation before retains/target writes,
+source lease kept independently rooted through real Module publication, exact MP
+Type ordinal, actual Module-list collector roots and unload retirement. Agree this
+is a bounded storage/root transition, not executable namespace/cache identity or
+managed Module/opcode/import/frame/result permission. The peer receipt reports
+workflow41853386513 ARM64 job126655373546 and x64 job126655372802 at O3 ASan+UBSan;
+these remain separate peer platform evidence from our local replay.
+
+No shared wire/feature/ABI IDs, Frame64/default43/173/WORD32 LEA or immutable named
+dis64-calls launch/cache agreement changes. Typed25 stays7/12/4/2, owning executable
+managed adoption closed. Independent Python module-wide DATA/import/unused-descriptor
+implementation remains outstanding; source review/replay is not that implementation.
+No cross-heap machinery transplanted: immutable pins remain1096/312 files at
+ba26accbb4dc330e7a11f2951db8b18baa1249e4. General parallel work still includes other
+constructors/shared writes/address leases, root/graph/retirement epochs, channels/
+process/scheduler, frame/module/code lifetime and compiler local/shared variants.
+No Android/physical RV64/full GUI/concurrent collector acceptance follows.
