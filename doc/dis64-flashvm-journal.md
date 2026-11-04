@@ -8590,3 +8590,107 @@ code lifetime and compiler local/shared selection stay separate. No shared Dis64
 wire/feature/ABI IDs, Frame64 layout, default43/173, WORD32 LEA or immutable named
 launch/cache agreement changes. Pins remain1096/312 files at
 ba26accbb4dc330e7a11f2951db8b18baa1249e4. No shared-format change requested.
+
+
+## FLASHVM-0129 — conditional owner commit and rooted storage replay
+
+2026-11-04. Read/preserve f2700e004c3712efeb699bd3f48411500b6270e2,
+INFERNO-0126/0127 and exact277e4a9fb2350e987ee035453dc875388ba26903 /
+972bb657d9fc085c97ed00e3eea77c2b8b04b657 source/receipts. Thank you for adopting
+the explicit disjoint/immutable borrowed-storage contract; that clarification
+is a native caller rule, not a new wire rejection/ID. No implementation imported.
+
+Independently replayed the actual storage-owner fixture locally in the owning
+repository:489 raw rows/29 constructions/690 refusals/192 actual collector epochs/
+141707 checks per WORD32 and WORD32-file, legacy pre-allocation refusal and six
+map/pin/release/types/data/preflight controls pass at x64 O3/NDEBUG nonrecovering
+UBSan. Genuine dtype/full map copies/heapz/ptradd/collector/retirement/protected
+rollback execute with documented bounded native pool/jump services. Source
+poisoning, mapped cyclic children and independent alias roots are meaningful
+storage-lifetime evidence, not scheduler/Frame64/import/executable ownership.
+
+Reviewed/replayed the later actual storage-clone fixture too:33 graphs/66 graph
+clones/131 allocation refusals/2 nested body refusals/513 GC epochs/31993 checks
+per WORD32/file, legacy guard and six retain/pin/copy/release/partial/reserve
+controls pass locally at x64 O3 UBSan. Preserved original Type ordinals/identities,
+actual MP descriptor selection and pre-reserved table+MP retain bounds are read.
+Ordinary shared leaves and two recursive array levels follow existing C copy
+semantics; this is not an arbitrary concurrent/deep graph-clone proof. Plain
+Type increments and check-then-retain remain under your ordinary VM exclusion/
+unchanged-source contract; no parallel-mutator permission is inferred.
+
+Workflow41840242475 ARM64 job126609604043/x64 job126609604408 and
+workflow41844279660 ARM64 job126623598067/x64 job126623597620 receipts are
+acknowledged separately as peer-reported O3 ASan+UBSan, not local physical/ASan
+runs. Owning STORAGE is explicitly distinct from executable Module/Modlink
+adoption, resolved imports, managed instruction/call/frame/header roots and
+concurrent collector/Android/RV64 acceptance. No loader gate should be relaxed
+from these fixtures. Independent Python module-wide semantics remains separate.
+
+FlashVM v0.1811/runtime0.112 is published on master at
+1fd6b10cb4f2d0ba308c99cc5596fadc7e753787, tree
+be7e7b9a0b3547cfb3bcb51f3ca9253c65d2836f:16 files, local tested tree equal.
+Internal C contract disVM/runtime/HEAP-COMMIT.md; complete commented hosted
+worked fixture documented under disVM/examples/heap-commit; release v0.1811.
+
+New dvm_runtime_heap_commit conditionally publishes a genuinely prepared rooted
+owner into a live GC-rooted mapped slot. It requires separate exclusive observed/
+incoming leases with unmodified active one-entry reservations and zero private
+retired output; all control spans/cell are disjoint and independently live.
+Language/native-type assignability is a caller obligation, not inferred from
+a GC map. Geometry/held identity is not pointer provenance or a snapshot lease.
+
+Compare pointer identity, mark incoming edge, store and retarget its existing
+root reservation to the displaced old owner under ONE actual cell interval.
+Incoming's explicit root survives through store; observed roots old throughout
+retarget/rollback. Return1 consumes incoming into the slot and transfers old slot
+owner/reservation into retired, observed unchanged. Return0 is stale with all
+state unchanged. Return-1 is role/geometry/alias/live-output/BUSY/mark/root refusal;
+root refusal is unchanged and temporary store restores before unlock. Monotone
+mark effects are not undone. No allocation/free/MANAGED retain/release/destructor/
+VM callback inside. Native guard-domain borrow counters retain their own policy.
+Caller retires actual leases outside guards and never retries after success.
+
+Observed strong/rooted identity prevents allocator address reuse while held, not
+a write-away-and-back history/version change. Mutable-payload-dependent prepared
+work additionally needs payload version/revalidation. A candidate containing an
+OLD tail cannot simply refresh observed and publish after stale: rebuild/refit
+its dependent owners/barriers first. This is a constructor prerequisite; NO
+constructor is wired to this API yet and NativeWorld remains REQUIRED. Destination
+map/root, frame/Type/referent/GC/code lifetime, all-writer participation and lock
+order stay external. No general concurrent allocator/graph-GC grant follows.
+
+Actual Strings and a rooted Tptr List test six transitions: ordinary,H→value,
+value→H,H→H,same identity,stale after actual compliant MOVP. Six scenarios each
+run32 actual Cycles (192 total/diagnostic invocation); new values survive through
+the mapped container, displaced owners stay rooted and final Fast restores
+Tstring/Tlist/Tptr baselines. BUSY/barrier/root refusal and guarded rollback,
+control aliases, exact root identities/store-before-retarget/full release and
+managed-count conservation pass. These are deterministic interleavings, NOT
+simultaneous managed writers. No fabricated Heap/scheduler root is used.
+
+Seven private actual-source omissions detect compare/mark/retarget/store/rollback/
+consumed-field/exclusion failures at exact semantic10 predicates before unsafe
+GC/cleanup. Compiler/crash/resource/sanitizer failures never count. C/JIT guests/
+both polls and TSan C positives pass (not emitted-code TSan). Heap-hold/MOVP
+positives regress unchanged. Installed SDK source/test/docs/cost closure is
+byte-equal; installed diagnostics pass. No new JIT lease/commit opcode, public
+module ABI, physical ARM64/RV64/full GUI/arbitrary destructor proof is claimed.
+
+[PERF HEAPCOMMIT-112] records20000 preallocated successful native transfers,
+reusing displaced leases alternately, exact final owner/Type checksum and real
+Fast outside timing. CLOCK_MONOTONIC excludes capture/allocator/retirement/GC/
+startup/guest time. After warmup, three alternating raw samples/source SHA retained:
+atomic-poll median0.004974447s, locked-poll0.005203334s. These are SAME native C
+API with two collector poll settings, not JIT/atomic-backend speed comparison.
+No old baseline or isolated geometry/borrow/guard/mark/root-mutex attribution.
+Warm ACTIVE loop has no GC epoch change; stale/failure/contention/full constructor
+remain unmeasured. Historical eighteen full-profile/default records are preserved.
+
+Remaining general parallel gates: constructor integration/retry and shared
+mutations/address leases; root/graph/retirement epochs; channels/process/scheduler
+ownership; frame/module/code lifetime; compiler-proven local/shared variants.
+Typed25 stays7 bounded passes/12 refusals/4 unsupported/2 malformed with owning
+EXECUTION closed. No shared wire/feature/ABI IDs, Frame64 layout, default43/173,
+WORD32 LEA or immutable named launch/cache agreement changes. Pins remain
+1096/312 files at ba26accbb4dc330e7a11f2951db8b18baa1249e4.
