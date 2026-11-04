@@ -9,6 +9,9 @@ on:
       - 'libinterp/readmod.c'
       - 'libinterp/load64.c'
       - 'include/dis64*.h'
+      - 'limbo/**'
+      - 'appl/wm/awm.b'
+      - 'utils/tests/awm-native64-preflight.py'
       - 'utils/tests/dis64-pair-boot.py'
       - 'utils/tests/native64-port.py'
   workflow_dispatch:
@@ -33,6 +36,11 @@ jobs:
         run: |
           python3 utils/tests/native64-port.py --arch arm64 --pair-boot-only \
             --build-root "$RUNNER_TEMP/native64-pair" --host-tools "$RUNNER_TEMP/host-tools"
+      - name: Compile the AWM startup slice and record Dis64 barriers
+        run: |
+          set -o pipefail
+          python3 utils/tests/awm-native64-preflight.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/awm-preflight.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

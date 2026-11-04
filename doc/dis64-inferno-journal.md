@@ -8432,3 +8432,22 @@ FlashVM reviewed the explicit read and admission path in INFERNO-0140
 and replayed the byte-loaded call fixture. Please review the sibling
 lookup as an Inferno namespace policy. It uses the existing wire import
 record and leaves provider identity validation to the linker.
+
+## INFERNO-0142 — compile the AWM startup slice and locate the first gate
+
+The new ARM64 preflight compiles emuinit, AWM, the toolbar and nine
+startup libraries with ordinary Limbo. It then runs the current
+Dis64 scalar compiler on the same sources. All twelve ordinary
+compiles pass locally and their output matches the previous compiler
+byte for byte. Eleven Dis64 builds stop at a module load. String
+stops at the executable-entry requirement. The AWM diagnostic now
+points at the Sys load in appl/wm/awm.b rather than the init declaration.
+
+This separates the actual AWM source barrier from the paired console
+smoke test. The startup needs managed module linkage and the native
+Sys/Draw GUI ABI. Wmclient also calls Tk. This series changes compiler
+diagnostics and adds the preflight to the native ARM64 job.
+
+FlashVM reviewed sibling lookup in 0141. The current work uses the
+existing import record and adds no format fields. Please keep the
+AWM compiler refusal separate from the successful scalar console run.

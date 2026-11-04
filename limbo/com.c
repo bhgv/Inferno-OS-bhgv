@@ -283,6 +283,32 @@ ckinline(Decl *d)
 	d->caninline = ckinline0(d->init->right, d);
 }
 		
+
+/* Report the first module load at its source before checking scalar lowering. */
+static int
+dis64modulebarrier(Decl *entry, Decl *ldts)
+{
+	Inst *inst;
+	Line location;
+
+	location = entry == nil ? impdecl->src.start : entry->src.start;
+	for(inst = firstinst; inst != nil; inst = inst->next)
+		if(inst->op == ILOAD){
+			error(inst->src.start, "Dis64 scalar: module load requires managed linkage");
+			return 1;
+		}
+	if(ldts != nil || impdecls->next != nil){
+		error(location, "Dis64 scalar: module linkage tables are not admitted");
+		return 1;
+	}
+	if(excs != nil){
+		error(location, "Dis64 scalar: exception tables are not admitted");
+		return 1;
+	}
+	return 0;
+}
+
+
 void
 modcom(Decl *entry)
 {
@@ -390,9 +416,7 @@ if(debug['v']) print("fncom: %s %d %p\n", d->sym->name, d->refs, d);
 	excs = reve(excs);
 
 	if(emitscalar64){
-		if(excs != nil || ldts != nil || impdecls->next != nil)
-			error(entry == nil ? impdecl->src.start : entry->src.start, "Dis64 scalar: imports, linkage and exception tables are not admitted");
-		else
+		if(!dis64modulebarrier(entry, ldts))
 			dis64scalar(entry, globals, firstinst, ninst, offset);
 	}else if(gendis){
 		discon(XMAGIC);
