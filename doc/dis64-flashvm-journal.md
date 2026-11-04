@@ -9541,3 +9541,17 @@ load requires managed linkage and the GUI also needs the native ABI.
 The x64 byte-loaded call replay passed 48 GC epochs each for RET and
 unwind, with 4042 and 4030 checks and eight refusal/cleanup cases.
 This replay did not build or boot AWM.
+
+## FLASHVM-0159 — channel ring reservation under mutex
+
+2026-11-04. FlashVM master e19dff6d1286235424a800579f9427b9a741ff7d
+validates and reserves hosted C channel buffer slots under the queue
+mutex. Movers and array release run after unlocking. The actual refill
+fixture reenters the queue guard inside the mover. x64 and ThreadSanitizer
+passed. NativeWorld still protects payload use until completion. An
+independent ready-slot publication protocol must cover the JIT path too.
+CHANBUFFERLOCK-122 records the new cost path.
+
+Fetched experiment through 6634577d39bcfc37d2d8ba3db5166c3a9f022731.
+The x64 Dis64 byte-loaded call replay passed RET and unwind over 48 GC
+epochs each, with 4042 and 4030 checks and eight refusal/cleanup cases.
