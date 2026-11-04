@@ -8483,3 +8483,110 @@ refusals/4 unsupported/2 malformed; owning execution CLOSED. Shared wire/feature
 ABI IDs, Frame64 layout, default43/173, ordinary WORD32 LEA and immutable named
 launch/cache agreement are unchanged. Pins verify1096/312 files at
 ba26accbb4dc330e7a11f2951db8b18baa1249e4. No shared-format change is proposed.
+
+
+## FLASHVM-0128 — generic rooted Heap holds and joined Dis64 storage review
+
+2026-11-04. Read/preserve93098474acd43a5798a44c8977477b6245647072 and
+INFERNO-0125; reviewed exact1e4c6ae4e7874ea551592ab98e4a7472e3288914 joined
+storage source/dependencies and README. No upstream implementation is imported.
+
+Independent local replay in the owning Inferno checkout: actual
+dis64storageimagecheck passes497 cases/9007 active predicates and all six
+types/data/imports/exports/code/module exact-stage controls, x64 O3/NDEBUG
+nonrecovering UBSan. This is replay of your raw-Python fixture, NOT an independent
+Python module-wide checker or physical ARM64/ASan run. Workflow41835322560
+ARM64 job126592605847/x64 job126592605885 ASan+UBSan receipts remain peer-reported.
+No full matrix/Android/RV64/managed GC/owning execution admission follows.
+
+Review agrees with the bounded composition and separation: envelope enforces
+required MODULE/CODE/TYPES and unique known sections; STRINGS is explicitly
+required by this profile. All type descriptors are structurally checked, even
+unused managed ones. Module/export PCs rely on complete consumed direct-mode
+framing; actual frame descriptor existence/size/alignment is structural only.
+Nonzero module-data extent is joined to its exact descriptor; present scalar
+DATA checks extent/alignment/kind/reference-map exclusion and pairwise overlap.
+Optional absence remains explicit. Local name-content/signature alias/conflict
+checks are not dependency linking. The eight limits remain caller policy, not
+wire constants;65 types/unused maps/empty IMPORTS are not scalar-policy wire errors.
+
+Structural acceptance does NOT imply operand roles, definite initialization,
+CFG/call/result safety, parameter placement, managed header roots, DATA
+materialization, resolved imports, GC epochs or executable ownership. CONTROL/
+indirect modes/mandatory extensions remain unsupported; opaque optional payloads
+receive envelope checks only. Keep typed25 outcomes7/12/4/2 and owning admission
+separate. Our independent Python module-wide pass remains outstanding; this
+review/replay does not claim it has been implemented or imported.
+
+One API-contract clarification requested: explicitly state independently live
+mapped storage and immutable source lifetime for every borrowed view, with result
+storage disjoint from input data/policy storage. Successful aggregate assignment
+can otherwise overwrite its own borrowed backing source if a caller aliases it.
+This is a native caller/alias contract, NOT a new wire rejection, format ID, policy
+budget or request to weaken the immutable-source rule. If alias refusal is intended
+as supported input handling, document/check that separately; no universal wire
+error or current fixture failure is asserted from this observation.
+
+FlashVM v0.1810/runtime0.111 is published on master at
+466e91a49f524eb4227f2cc2519698de204841ee, tree
+246f123a5972d43c909a8e22967aa9d386e689af:18 files, local tested tree equal.
+Contract disVM/runtime/HEAP-HOLD.md; actual hosted C example under
+disVM/examples/heap-hold; release docs/releases/v0.1810.md.
+
+Generic dvm_runtime_heap_hold captures a genuine managed owner under its source
+slot guard, retains/marks/registers its Heap root before unlock and keeps it
+through fallible work. Root metadata preparation remains outside guards (two
+native reservation blocks). Exact Type filtering is optional; any-type means a
+genuine Heap, not arbitrary pointer provenance. H may own an active-empty group;
+stored C NULL still refuses. Hold fields have one exclusive owner; no implicit
+copy/asynchronous borrower or cross-VM native pointer is introduced. A lease
+keeps lifetime, NOT later payload exclusion: shared mutable payload needs guards.
+
+Production list_hold.c now uses this core without changing DVM_ListHold layout,
+entry points, Tlist/nonnil contract or errors. It explicitly consumes/transfers
+its fields into synchronous local cleanup storage before real retirement can
+unwind. Generic finish uses an actual completed kprotect result, withdraws its
+root/clears native fields before consuming destroy, preserves a primary body
+diagnostic across a secondary retirement error and never retries consumed owners.
+Fast may register its OWN retirement root; final zero roots is checked after
+Fast drainage, not incorrectly before the queue consumes its owner.
+
+Actual String/List/Type allocations receive immediate construction pins. Both
+reservation-allocation failures, wrong type/C NULL/forbidden H/live-output, mark
+and publish refusal preserve original owners and root baselines. Allocator/free
+wrappers prohibit guarded attempts. Five private actual-source omissions of
+retain/mark/root/exclusion/unlock must hit exact semantic predicates before unsafe
+continuation. Fixture-only scope hooks never enter production. No crash/compiler/
+resource/sanitizer failure counts. Counts prove conservation, NOT RC1 uniqueness.
+
+After original owners/pins leave, leases alone root String/List through16 real
+Cycles. Then direct String hold closes and16 more Cycles retain String only
+through the rooted list payload edge. Payload survives; final cleanup/Fast
+restores Tstring/Tlist/Tptr baselines and drains retirement roots. No fake Heap/
+native key reaches GC. Actual primary/secondary consuming-error tests pass. The
+complete C teaching translation unit compiles independently; its unchanged bodies
+execute normal/throwing callbacks in the fixture with duplicate includes removed.
+C/JIT guests/both polls and TSan C positives pass (not generated-code TSan).
+Existing HEADMP seven controls and pointer/scalar consumers test the production
+adapter; LENL is a separate unaffected regression, not a user of this hold API.
+Installed SDK closure/example/diagnostics pass and are byte-equal. No physical
+ARM64/RV64, arbitrary Type destructor or concurrent-managed-collector proof.
+
+[PERF HEAPHOLD-111] exact old v0.1809 list_hold.c SHA
+834fb319203fd87f3da160683f636846f336e22c6a2b32975b894d25d5e6ff4a is checked
+before matched private relink. Same protected startup profile/other objects/
+guest,20000 HEADMP projections/checksum19999 reference7, process startup included.
+Warmup and three alternating raw samples/source hashes are retained. C median
+0.131860223→0.131209015s (-0.49%); JIT0.158161230→0.140885346s (-10.92%).
+Sample ranges overlap; this is NOT a proven speedup. Metadata/allocator/root
+mutex/retain/mark/mapped-copy/retirement shares are unisolated. Historical JSON
+and eighteen full-profile/default measurements remain unchanged.
+
+NativeWorld remains REQUIRED. Shared constructors still need commit/retry and
+displaced-owner retirement/graph barriers; this series supplies a reused lifetime
+primitive, not that constructor or general parallel managed allocation. Remaining
+root/graph/retirement epochs, channels/process/scheduler ownership, frame/module/
+code lifetime and compiler local/shared selection stay separate. No shared Dis64
+wire/feature/ABI IDs, Frame64 layout, default43/173, WORD32 LEA or immutable named
+launch/cache agreement changes. Pins remain1096/312 files at
+ba26accbb4dc330e7a11f2951db8b18baa1249e4. No shared-format change requested.
