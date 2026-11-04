@@ -230,6 +230,10 @@ def main():
     run(draw_init, build, env, logs/'draw-init.log')
     for control in ('retirement', 'publication', 'registration'):
         run(draw_init+['--control', control], build, env, logs/('draw-init-'+control+'.log'))
+    display_allocate = [sys.executable, str(tests/'native64-display-allocate.py'), '--limbo', str(tools/'limbo')]
+    run(display_allocate, build, env, logs/'display-allocate.log')
+    for control in ('input', 'publication', 'image', 'display', 'unlock', 'root', 'edges'):
+        run(display_allocate+['--control', control], build, env, logs/('display-allocate-'+control+'.log'))
     run([sys.executable, str(tests/'native64-draw-owners.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'draw-owners.log')
     run([sys.executable, str(tests/'native64-draw-owners.py'), '--attach-only', '--limbo', str(tools/'limbo')],

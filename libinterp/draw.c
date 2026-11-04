@@ -319,6 +319,7 @@ Type*	TDisplay;
 
 Draw_Image*	allocdrawimage(DDisplay*, Draw_Rect, ulong, Image*, int, int);
 Draw_Image*	color(DDisplay*, ulong);
+void		display_dec(void*); // Release the final native display lease after staged cleanup.
 Draw_Screen	*mkdrawscreen(Screen*, Draw_Display*);
 
 char		deffontname[] = "*default*";
@@ -694,77 +695,170 @@ drawcachedisplay(Draw_Display **result, String *device)
 }
 
 
-/* Allocate an explicit display or return an owned default-display reference. */
+typedef struct DrawDisplayImages DrawDisplayImages;
+
+struct DrawDisplayImages {
+	DDisplay *owner; // Unpublished managed display, pinned before nested managed allocation.
+	Image *native[5]; // Borrowed identities; rollback returns staged image ownership to the native display.
+	Draw_Image *images[5]; // Aliases of the staged child owners transferred into the mapped parent fields.
+	Draw_Image **slots[5]; // Actual mapped public parent fields, never external caller result storage.
+	int rooted; // One successful ptradd, removed only after publication or protected rollback.
+};
+
+
+/* Pin the partial parent and expose each new child through its actual map before another allocation. */
+static int
+drawdisplayimages(void *argument)
+{
+	DrawDisplayImages *build;
+	int i;
+
+	build = argument;
+	ptradd(D2H(build->owner));
+	build->rooted = 1;
+	for(i=0; i<5; i++){
+		if(build->native[i] == nil){
+			kwerrstr("display: missing default image");
+			return 0;
+		}
+		build->images[i] = allocdrawimage(build->owner, DRECT(build->native[i]->r),
+			build->native[i]->chan, build->native[i], i != 0, 0);
+		if(build->images[i] == H)
+			return 0;
+		*build->slots[i] = build->images[i];
+		Setmark(D2H(build->owner));
+	}
+	return 1;
+}
+
+
+/* Build a rooted private graph; the caller keeps its pin through publication of the owned result. */
+static Draw_Display*
+drawallocatedisplay(char *device, int *rooted)
+{
+	DrawDisplayImages build;
+	Display *display;
+	DDisplay *owner;
+	DRef *reference;
+	Heap *h;
+	Subfont *font;
+	Cache *cache;
+	char description[128], reason[ERRMAX];
+	int i;
+
+	memset(&build, 0, sizeof(build));
+	owner = nil;
+	*rooted = 0;
+	for(i=0; i<5; i++)
+		build.images[i] = H;
+	reference = malloc(sizeof(*reference));
+	if(reference == nil)
+		return H;
+	reference->ref = 0;
+	reference->display = nil;
+	display = initdisplay(device, device, nil);
+	if(display == nil){
+		free(reference);
+		return H;
+	}
+	reference->ref = 1;
+	reference->display = display;
+	display->limbo = reference;
+	h = drawheap(TDisplay);
+	if(h == H)
+		goto Refuse;
+	owner = H2D(DDisplay*, h);
+	owner->display = display;
+	owner->dref = reference;
+	build.owner = owner;
+	build.native[0] = display->image;
+	build.native[1] = display->black;
+	build.native[2] = display->white;
+	build.native[3] = display->opaque;
+	build.native[4] = display->transparent;
+	build.slots[0] = &owner->drawdisplay.image;
+	build.slots[1] = &owner->drawdisplay.black;
+	build.slots[2] = &owner->drawdisplay.white;
+	build.slots[3] = &owner->drawdisplay.opaque;
+	build.slots[4] = &owner->drawdisplay.transparent;
+	/* Mutable ownership lives outside kprotect's platform-specific error frame. */
+	if(!kprotect(drawdisplayimages, &build))
+		goto Refuse;
+
+	/* Preserve the existing optional default-font/cache policy after fallible wrapper construction. */
+	font = getdefont(display);
+	if(font != nil){
+		display->defaultsubfont = font;
+		sprint(description, "%d %d\n0 %d\t%s\n", font->height, font->ascent, font->n-1, deffontname);
+		display->defaultfont = buildfont(display, description, deffontname);
+		if(display->defaultfont != nil){
+			cache = cacheinstall(fcache, display, deffontname, display->defaultfont, "font");
+			if(cache != nil)
+				cache->ref++;
+		}
+	}
+	/* initdisplay returns with this lock held, including for local displays. */
+	libqunlock(display->qlock);
+	*rooted = build.rooted;
+	return &owner->drawdisplay;
+
+Refuse:
+	kgerrstr(reason, sizeof(reason));
+	libqunlock(display->qlock);
+	for(i=0; i<5; i++){
+		if(owner != nil)
+			*build.slots[i] = H;
+		if(build.images[i] != H){
+			/* Return the native image to display ownership before dropping the managed backedge. */
+			((DImage*)build.images[i])->image = nil;
+			destroy(build.images[i]);
+		}
+	}
+	if(owner != nil){
+		/* Its defaults still belong to the native display, not this refused public graph. */
+		owner->display = nil;
+		if(build.rooted)
+			ptrdel(D2H(owner));
+		destroy(owner);
+	}else
+		display_dec(reference);
+	kwerrstr("%s", reason);
+	return H;
+}
+
+
+/* Capture inputs and publish a complete display before retiring a possibly aliased result. */
 void
 Display_allocate(void *fp)
 {
 	F_Display_allocate *f;
-	char buf[128], *dev;
-	Subfont *df;
-	Display *display;
-	DDisplay *dd;
-	Heap *h;
-	Draw_Rect r;
-	DRef *dr;
-	Cache *c;
+	String *device;
+	Draw_Display *result;
+	void *slot, *old;
+	char *name;
+	int rooted;
 
 	f = fp;
-	if(drawcachedisplay(f->ret, f->dev))
-		return;
-	destroy(*f->ret);
-	*f->ret = H;
-
-	if(cacheqlock == nil){
-		cacheqlock = libqlalloc();
+	slot = f->ret;
+	if(slot == nil || slot == H || (uintptr)slot > (uintptr)-1-sizeof(old))
+		error(exHeap);
+	memmove(&old, slot, sizeof(old));
+	if(old == nil)
+		error(exNilref);
+	device = f->dev;
+	result = H;
+	rooted = 0;
+	if(!drawcachedisplay(&result, device)){
 		if(cacheqlock == nil)
-			return;
-	}
-	dev = string2c(f->dev);
-	if(dev[0] == 0)
-		dev = 0;
-	display = initdisplay(dev, dev, nil);	/* TO DO: win, error */
-	if(display == 0)
-		return;
-
-	dr = malloc(sizeof(DRef));
-	if(dr == nil)
-		return;
-	h = heap(TDisplay);
-	if(h == H){
-		closedisplay(display);
-		return;
-	}
-	dd = H2D(DDisplay*, h);
-	dd->display = display;
-	*f->ret = &dd->drawdisplay;
-	dd->dref = dr;
-	display->limbo = dr;
-	dr->display = display;
-	dr->ref = 1;
-	df = getdefont(display);
-	if(df){
-		display->defaultsubfont = df;
-		sprint(buf, "%d %d\n0 %d\t%s\n", df->height, df->ascent,
-			df->n-1, deffontname);
-		display->defaultfont = buildfont(display, buf, deffontname);
-		if(display->defaultfont){
-			c = cacheinstall(fcache, display, deffontname, display->defaultfont, "font");
-			if(c)
-				c->ref++;
-			/* else BUG? */
+			cacheqlock = libqlalloc();
+		if(cacheqlock != nil){
+			name = string2c(device);
+			result = drawallocatedisplay(name[0] == 0 ? nil : name, &rooted);
 		}
 	}
-
-	R2R(r, display->image->r);
-	dd->drawdisplay.image = allocdrawimage(dd, r, display->image->chan, display->image, 0, 0);
-	R2R(r, display->white->r);
-	dd->drawdisplay.black = allocdrawimage(dd, r, display->black->chan, display->black, 1, 0);
-	dd->drawdisplay.white = allocdrawimage(dd, r, display->white->chan, display->white, 1, 0);
-	dd->drawdisplay.opaque = allocdrawimage(dd, r, display->opaque->chan, display->opaque, 1, 0);
-	dd->drawdisplay.transparent = allocdrawimage(dd, r, display->transparent->chan, display->transparent, 1, 0);
-
-	/* don't call unlockdisplay because the qlock was left up by initdisplay */
-	libqunlock(display->qlock);
+	drawcommitresult(slot, result, old);
+	if(rooted)
+		ptrdel(D2H(result));
 }
 
 

@@ -45,6 +45,7 @@ on:
       - 'utils/tests/native64-channels*'
       - 'utils/tests/dis64-peer-schema.py'
       - 'utils/tests/native64-draw-owners*'
+      - 'utils/tests/native64-display-allocate*'
       - 'utils/tests/native64-draw-attach.c'
       - 'utils/tests/native64-draw-info.py'
       - 'utils/tests/native64-draw-mix*'
@@ -758,5 +759,43 @@ jobs:
         with:
           name: native64-font-cache-${{ matrix.arch }}
           path: font-cache.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  display-allocate:
+    name: Staged native Display allocation ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap compiler for fresh Draw Frame64 declarations
+        run: MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/display-allocation-tools" sh makemk.sh
+      - name: Check private roots, alias publication and partial resource rollback
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-draw-init.py 2>&1 | tee display-init.log
+          python3 utils/tests/native64-display-allocate.py --limbo "$RUNNER_TEMP/display-allocation-tools/limbo" 2>&1 | tee display-allocate.log
+          for control in input publication image display unlock root edges; do
+            python3 utils/tests/native64-display-allocate.py --limbo "$RUNNER_TEMP/display-allocation-tools/limbo" --control "$control" 2>&1 | tee -a display-allocate.log
+          done
+      - name: Preserve staged display diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-display-allocation-${{ matrix.arch }}
+          path: |
+            display-init.log
+            display-allocate.log
           if-no-files-found: warn
           retention-days: 14

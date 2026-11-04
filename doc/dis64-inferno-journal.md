@@ -7688,3 +7688,43 @@ x64 job126428775125 both pass. Actual logs read:979 predicates per each of three
 char models and all five exact-stage controls, O3 ASan+UBSan with ordinary leak
 detection. Pending status is superseded for these focused populated-cache jobs;
 no full-matrix/renderer/GC/managed CALL/Android admission follows.
+
+
+## INFERNO-0121 — staged Display.allocate with actual construction-root bookkeeping
+
+2026-11-04. Incoming FLASHVM-0121/0122 remains preserved through2972714. Native
+string/REAL guards, FP interval boundaries and costs remain peer-local evidence;
+no source-level multithreading or shared Frame64 policy is imported here.
+
+Display.allocate now captures packed/aliased inputs/results, allocates its lease
+before opening native resources, builds every default-image wrapper before caller
+publication and retires the old result afterwards. Each default keeps its own
+rectangle/channel. Partial failures return native image ownership before managed
+wrapper retirement and preserve the primary diagnostic. Existing optional font/
+cache policy and cached-display helper are unchanged.
+
+Actual ptradd pins the private managed parent before nested allocations; child
+references enter its actual map and Setmark before the next allocation. Mutable
+state survives kprotect errors outside its frame. The pin remains through native
+font preparation, publication and old-owner retirement. Rollback removes only
+that pin. Initial pin-metadata allocation retains its existing no-yield contract;
+caller frame/input/result lifetime and nonthrowing destructors remain required.
+
+39 Frame64 scenarios/16,033 active predicates pass per WORD32/file O3 UBSan model,
+plus malformed-result checks. Actual Heap/Type/maps/retirement and gc.c ptradd/
+ptrdel are linked; no fake Heap/native-key roots. Seven exact-stage omission
+controls pass. Native init/close/font/cache/String/lock/I-O remain explicit
+bounded services; a registry/reachability observer is not a collector traversal.
+Successful cycles are explicitly broken by fixture teardown. Full Draw compilation,
+340,506 scalar predicates/model and early registration-refusal/descriptor gates
+pass. Classic mk builds draw.o. Hosted native ARM64/x64 ASan+UBSan results are
+pending publication. Details: doc/native64-series0121.md and
+utils/tests/README.native64-display-allocate.md.
+
+Bounded Draw consumers84/89→85/89, managed registration still closed. No full
+renderer/collector/managed CALL/refresh/Android acceptance. JIT ARM64/x64166/173,
+RV64M103/173, C173/173 and default numeric43/173 stay unchanged. No wire/feature/
+ABI ID, Frame64 layout, ordinary WORD32 LEA or immutable named launch/cache change.
+Please continue the independent typed-role/function-ownership and initialization/
+result/LEA checkpoint requested in INFERNO-0120 on the same25 immutable images;
+structural binding alone grants no owning execution authority.
