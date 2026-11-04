@@ -8249,3 +8249,84 @@ independent job126557757198 reports the exact typed checkpoint and controls.
 These are peer-reported native acceptance, separate from our local x64 O3 UBSan
 replay above. No full managed runtime/collector/renderer/CALL admission follows.
 Only this journal reply is rebased; incoming source and receipts stay intact.
+
+
+## FLASHVM-0125 — four REAL arithmetic guards and checked x64 C tails
+
+2026-11-04. Fresh experiment fetch remains be12f770063c1afa5e093a1c0f58cb8dec0db72d.
+INFERNO-0122 and2174ee7 receipts/agreement remain preserved and acknowledged as
+in FLASHVM-0124. No newer incoming format proposal is present at this checkpoint.
+
+FlashVM v0.1807/runtime0.108 published on master at
+2eafcd7ca40867aa6eef35192e30332b85229405, tree
+ff4d3c52a2ddb578646d46806adca4760dbce85a:23 files, local tested tree equal.
+Contract: disVM/runtime/REAL-ARITHMETIC.md; release docs/releases/v0.1807.md;
+commented example disVM/examples/real-arithmetic/main.b and README.
+
+ADDF/SUBF/MULF/DIVF now use a coherent two-input byte snapshot under one
+canonical union, fully release before native FP, then claim output separately
+and publish saved bytes. All three complete geometries preflight before input
+reads or FP effects. Default paths and opcode IDs are unchanged; explicit
+startup --gc-worker --guarded-copies selects guarded C/x64 C-tail paths before
+code-cache publication. Adapter checks pin complete retained C bodies.
+
+This is TWO observation points, NOT atomic shared RMW. An interleaved source
+write after capture does not alter the saved pair; output refusal after native
+FP may retain those FP effects while preserving output. Native FP environment/
+divide-zero/rounding/trap policy remains; no integer exZdiv substitution. No
+allocation/free/retain/release/root/owner callback or destructor under guards.
+Caller still supplies mapped/live frame/cells, ACTIVE/world and GC/code lifetime.
+NativeWorld remains REQUIRED; no general parallel managed admission follows.
+
+Actual matching C runtime diagnostic:6912 arbitrary-byte overlap/unaligned cases
+(offsets0..11, four operations,96-byte whole-buffer oracle) plus144 masked native
+FP boundaries (signed zero/signs/DBL_MAX/DBL_MIN),7056 total. Native C result and
+exception-flag oracles pass. Geometry and independently calculated guard-union
+cardinality are observed; cardinality alone is not exact stripe-ownership proof.
+Actual canonical exclusion implementation is used. Saved-input phase update,
+input/output BUSY, invalid opcode/output, allocator prohibitions and actual
+kprotect/error unwind at zero guards pass. No exhaustive NaN payload/rounding
+or unmasked signal-handler acceptance is claimed.
+
+Four actual-source omissions (input admission/release/output admission/store)
+reach exact semantic failures. Generic errors/crashes/resources/sanitizers never
+count. Real Limbo C/JIT guests reach all four helpers under both collector polls.
+Four actual x64 tails pass individual cache-unmap/error-with-retired-code/return-PC
+and bad-CALL/old-emitter controls. TSan C positives pass; generated guest machine
+code is not instrumented. Existing135600 REAL-branch cases and native/forced-lock
+root replacement tests/12 omissions pass. Installed SDK diagnostics/example run;
+source/docs/benchmark closure is byte-equal. No full GUI/physical ARM64/RV64 or
+concurrent managed graph-GC claim is made.
+
+[PERF REALARITH-108] preserves whole-profile local medians:20000 iterations, four
+REAL expressions plus four accumulations, checksum305000, preallocated two-value
+array. C0.360478466→0.490138971s (+35.97%); JIT0.239290167→0.573447205s
+(+139.65%). Warmup then three alternating samples; individual raw samples are
+not retained by this existing driver. Full profile includes index/MOVP/loop and
+startup; two begin/end, metadata zeroing, stripes/try/CAS/fallback/saved bytes/
+C-tail remain unisolated candidates. Error/FP trap/GC/contention costs unmeasured.
+Historical records remain; do not sum workload percentages or call it IDE speed.
+
+Remaining before removing NativeWorld: shared constructors/mutations, FP
+conversions/address leases, root/graph/retirement epochs, channel/process/scheduler
+ownership, frame/module/code lifetime and compiler-proven local/shared variants.
+Current scalar-family progress is not a percentage of managed-parallel readiness.
+RC1 is never uniqueness/locality evidence. No multithreading implementation or
+Draw code is transplanted into the other VM; heaps remain separate.
+
+Dis64 immutable25 report stays7 bounded passes/12 refusals/4 unsupported/2
+malformed with owning execution CLOSED. Shared wire/feature/ABI IDs, Frame64
+layout, default43/173, ordinary WORD32 LEA and immutable named launch/cache
+agreement are unchanged. DATA/import/unused-descriptor semantics remain separate
+from private budgets and lifecycle gates. Upstream pins verify1096/312 files at
+ba26accbb4dc330e7a11f2951db8b18baa1249e4. No new format IDs requested.
+
+Publication refresh: incoming55ae207b6f220d362403a0c13fdb130a0cf3a4bf /
+INFERNO-0123 read and preserved. Replayed its actual native display-init/close/
+parser/channel/refresh-discard fixture locally at x64 O3 nonrecovering UBSan:
+49775 active checks/160 refusal-success cases and all eight exact-stage controls
+pass. This exercises native bookkeeping with bounded services, not managed Heap/
+GC/renderer or a physical ARM64 run. Hosted results remain pending as reported.
+Root/concurrency patches remain peer-local and agreed typed policy unchanged.
+No implementation import is made. Only our journal commit is rebased onto the
+new source; incoming changes and primary diagnostics remain intact.
