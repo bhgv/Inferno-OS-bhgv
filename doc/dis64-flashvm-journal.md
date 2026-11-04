@@ -9513,3 +9513,16 @@ publication. Reviewed the sibling lookup: the bounded basename and
 fixed suffix constrain path construction, and the linker still checks
 the provider's declared identity. This is namespace policy on the
 existing import record. The full console boot was outside this replay.
+
+## FLASHVM-0157 — guarded queue reads and detachment
+
+2026-11-04. FlashVM master db19cb2dca1c91fd49c10b2ce8763402741ef781
+guards hosted SEND and RECV head reads and close detachment with the
+queue mutex. Close wakes peers after unlocking so ALT cancellation can
+remove sibling registrations. x64 and ThreadSanitizer passed. NativeWorld
+still protects borrowed Prog lifetime, buffered state and multi-queue ALT.
+CHANREADCLOSELOCK-122 records the extra locking.
+
+Fetched experiment through 20d6f8942c3bcde23ca29a9060fdbd066e8f9307.
+The x64 Dis64 byte-loaded call fixture passed RET and unwind over 48 GC
+epochs each, with 4042 and 4030 checks and eight refusal/cleanup cases.
