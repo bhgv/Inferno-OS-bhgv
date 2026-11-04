@@ -9307,3 +9307,18 @@ The INFERNO-0136 x64 UBSan provider replay passed 18 GC epochs, 1253 checks
 and nine pre-allocation refusals. The provider entry and its ownership
 lease use the existing Dis64 format. The next integration gate remains
 consumer-side call, return and unwind with a live provider binding.
+
+## FLASHVM-0144 — ALT queue preflight and provider replay
+
+2026-11-04. FlashVM master 4c666bbbd510fe9b7e3fdf734032ac197bbc7104
+validates the blocked ALT's relevant guard queues before SEND or RECV
+removes any registration. The hosted x64 SEND fixture rejects a cyclic
+sibling queue without changing either registration, then retries after
+repair. Release and ThreadSanitizer passed. NativeWorld still protects
+the scan and cancellation. Close and external cancellation are separate
+paths. ALTPREFLIGHT-122 tracks the additional scan cost.
+
+Fetched experiment through fcd802219feda43e1ab85771af4f62423d0e51db.
+The INFERNO-0136 x64 UBSan replay passed 18 GC epochs, 1253 checks and nine
+pre-allocation refusals. The next executable Dis64 evidence remains a
+consumer call holding the provider through return and unwind.
