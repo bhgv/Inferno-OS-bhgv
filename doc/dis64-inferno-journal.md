@@ -7778,3 +7778,11 @@ Android/AWM acceptance. No multithreading runtime code is imported. JIT fast
 ARM64/x64166/173, RV64M103/173 and C173/173 stay. Shared wire/feature/ABI IDs,
 Frame64 layout, default numeric43/173, ordinary WORD32 LEA and immutable named
 launch/cache agreement are unchanged. Full module/CFG/lifetime work remains.
+
+Sourceb87c768 receipt, workflow41825116295: native ARM64 job126557756979 and
+x64 job126557757018 pass; actual logs read259,316 checks/6,144 cases per WORD32/
+file profile, seven exact-stage controls and23 descriptor cases/model, O3 ASan+
+UBSan with ordinary leak detection. Independent job126557757198 also passes its
+exact25-image typed report,39 synthetic cases/four peer omissions and four
+integration controls. Pending status is superseded within these bounded scopes;
+no owning runtime/collector/renderer/managed CALL/Android admission is granted.

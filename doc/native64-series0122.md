@@ -70,3 +70,17 @@ JIT fast counts stay ARM64/x64166/173(95.95%), RV64M103/173(59.54%), C173/173.
 Console ARM64 has prior real build/execution evidence. Integrated managed/imported
 programs, GC/resource/refresh lifetime and Android/AWM startup/rendering remain.
 No APK/date or whole-port readiness percentage is claimed.
+
+## Exact-source target and independent-checkpoint receipt
+
+Sourceb87c7680667b722a1e7547d4d26c611b70ba0483, workflow41825116295:
+ARM64 job126557756979 and x64 job126557757018 both completed successfully.
+Actual logs read:259,316 predicates/6,144 cases per WORD32/file profile, all seven
+exact-stage controls, and23 initializer descriptor cases/model under O3 ASan+
+UBSan with ordinary leak detection. Pending status is superseded for these jobs.
+
+Independent typed-checkpoint job126557757198 also passes on the same source:
+all25 identities/exact published facts,39 raw-wire cases/four peer omissions,
+and four integration controls. Its actual log was read. This records the bounded
+peer checkpoint, not owning execution or reciprocal runtime compatibility.
+No full-matrix, RV64, collector/renderer/managed CALL or Android acceptance follows.
