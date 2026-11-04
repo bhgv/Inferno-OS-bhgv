@@ -69,7 +69,10 @@ dis64storagecode(const unsigned char *data, unsigned int bytes, unsigned int lim
 /* Inspect one immutable image before any Type/Module/root/cache/native allocation.
  * Missing optional DATA/import/export tables remain explicitly absent, not synthesized.
  * CONTROL semantics and mandatory extensions remain unsupported. Unknown optional
- * payloads are envelope-checked only. Success grants no code or ownership capability. */
+ * payloads are envelope-checked only. Success grants no code or ownership capability.
+ * Source/policy/result occupy independent disjoint live mapped storage. Every
+ * borrowed source span remains immutable and mapped for the complete view lifetime;
+ * aggregate publication does not provide alias handling or acquire source lifetime. */
 static int
 dis64storageimagecheck(const unsigned char *data, unsigned int bytes,
 	const Dis64StorageLimits *limits, Dis64StorageImage *result)

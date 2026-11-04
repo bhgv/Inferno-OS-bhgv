@@ -7,6 +7,7 @@
 #include "kernel.h"
 #include "dis64-pilot.h"
 #include "dis64-call-infer.h"
+#include "dis64-storage-image.h"
 
 #define Dis64RuntimeBytes (8U*1024U*1024U) // Maximum complete input image for this experimental loader.
 #define Dis64RuntimeObject (1024U*1024U) // Maximum scalar data or entry-frame extent.
@@ -433,4 +434,120 @@ prepare64calls(char *path, uchar *image, ulong bytes, int jit)
 	if(!success)
 		kwerrstr("Dis64 call module construction failed");
 	return module;
+}
+
+
+/* Native staging state is deliberately distinct from Module/Modlink execution owners. */
+struct Dis64StorageOwner {
+	Type **types; // Owned copies of every structurally checked descriptor and its map8.
+	unsigned int count; // Complete array population, with nil partial entries on refusal.
+	uchar *data; // Owned unpublished module-data object, or runtime H for zero bytes.
+	int pinned; // Exactly one external GC root acquired by this lease.
+};
+
+typedef struct Dis64StorageLoad Dis64StorageLoad;
+
+struct Dis64StorageLoad {
+	Dis64StorageImage image; // Borrowed immutable checked input, used only during construction.
+	Dis64StorageOwner *owner; // Partial native owner retained across protected errors.
+};
+
+
+/* Consume a staging lease under VM exclusion; neither a failed pin nor another root is removed. */
+void
+free64storage(Dis64StorageOwner *owner)
+{
+	unsigned int i;
+	uchar *data;
+
+	if(owner == nil)
+		return;
+	data = owner->data;
+	owner->data = H;
+	if(owner->pinned){
+		owner->pinned = 0;
+		ptrdel(D2H(data));
+	}
+	destroy(data);
+	if(owner->types != nil){
+		for(i=0; i<owner->count; i++)
+			freetype(owner->types[i]);
+		free(owner->types);
+	}
+	free(owner);
+}
+
+
+/* Adopt each allocation immediately; map bytes become independent of the input before data allocation. */
+static int
+dis64storageconstruct(void *argument)
+{
+	Dis64StorageLoad *load;
+	Dis64StorageOwner *owner;
+	Dis64Type type;
+	Heap *heap;
+	void *nilvalue;
+	unsigned int i;
+
+	load = argument;
+	load->owner = owner = mallocz(sizeof(*owner), 1);
+	if(owner == nil)
+		return 0;
+	owner->data = H;
+	owner->count = load->image.types.count;
+	if(owner->count != 0){
+		owner->types = mallocz(owner->count*sizeof(Type*), 1);
+		if(owner->types == nil)
+			return 0;
+	}
+	for(i=0; i<owner->count; i++){
+		if(!dis64typeget(&load->image.types, i, &type))
+			return 0;
+		owner->types[i] = dtype(freeheap, type.bytes, (uchar*)type.map, type.mapbytes);
+		if(owner->types[i] == nil)
+			return 0;
+	}
+	if(load->image.module.databytes != 0){
+		heap = heapz(owner->types[load->image.module.datatype]);
+		owner->data = H2D(uchar*, heap);
+		/* ptradd's native metadata allocation does not run a VM collector poll.
+		 * Acquire this root before any subsequent VM allocation or publication. */
+		ptradd(heap);
+		owner->pinned = 1;
+		/* Absent DATA keeps private heapz zero/nil staging, not an executable wire default. */
+		if((load->image.present&(1U<<(Dis64Data-1))) != 0){
+			nilvalue = H;
+			if(!dis64initializersapply(&load->image.initializers, &load->image.data,
+			   owner->data, load->image.module.databytes, (uchar*)&nilvalue))
+				return 0;
+		}
+	}
+	return 1;
+}
+
+
+/* Prepare owned Types/data with actual GC rooting, never executable instructions or dependency links.
+ * Caller holds ordinary VM exclusion; input remains immutable/disjoint until return.
+ * Success requires one free64storage call under that same exclusion. The opaque lease
+ * retains no source pointers and cannot be scheduled as a Module. Structural
+ * success grants no code/import/Frame64 root semantics or managed file admission. */
+Dis64StorageOwner*
+prepare64storage(uchar *image, ulong bytes)
+{
+	Dis64StorageLoad load;
+	Dis64StorageLimits limits = {64, 65536, Dis64RuntimeObject, 65536,
+		Dis64RuntimeCode, 1024, 256, 1024};
+
+	memset(&load, 0, sizeof(load));
+	if(!dis64runtimemodel() || image == nil || image == H ||
+	   bytes > Dis64RuntimeBytes || (uintptr)image > (uintptr)-1-bytes ||
+	   !dis64storageimagecheck(image, bytes, &limits, &load.image)){
+		kwerrstr("unsupported Dis64 storage image or runtime model");
+		return nil;
+	}
+	if(kprotect(dis64storageconstruct, &load))
+		return load.owner;
+	free64storage(load.owner);
+	kwerrstr("Dis64 storage construction failed");
+	return nil;
 }

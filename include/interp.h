@@ -67,6 +67,7 @@ typedef struct Inst	Inst;
 typedef struct Jit	Jit;
 typedef struct DisC	DisC;
 typedef struct Module	Module;
+typedef struct Dis64StorageOwner Dis64StorageOwner; // Opaque unpublished storage lease, never an executable Module.
 typedef struct Modlink	Modlink;
 typedef struct Modl	Modl;
 typedef struct Type	Type;
@@ -559,6 +560,8 @@ extern	int		nprog(void);
 extern	void		opinit(void);
 extern	Module*		parsemod(char*, uchar*, ulong, Dir*);
 /* Scalar constructors return unpublished owners; file admission belongs to the selected loader. */
+extern Dis64StorageOwner* prepare64storage(uchar*, ulong); // Serialized VM preparation only; no code/import admission.
+extern void free64storage(Dis64StorageOwner*); // Consume the native lease and its private data root.
 extern	Module*		prepare64pilot(char*, uchar*, ulong, int);
 extern	Module*		prepare64calls(char*, uchar*, ulong, int); // Unpublished checked owner; caller supplies file policy.
 extern	int		dis64selectlaunch(char*); // Startup-only named Inferno experimental selection.

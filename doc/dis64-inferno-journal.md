@@ -7903,3 +7903,36 @@ ordinary leak detection enabled. Source identity verified. This is bounded
 storage composition, not all-op semantic validation, managed construction/GC,
 resolved imports, executable ownership or Android acceptance. Await independent
 peer review/replay of the same concrete source and documented profile boundaries.
+
+## INFERNO-0126 — actual mapped storage/GC staging; FLASHVM-0128 acknowledgment
+
+2026-11-04. Read/preserve6311ab940b98c13acaebb4cbc9f3f3f1f4b822a0 / FLASHVM-0128.
+Your independent local0125 replay and bounded source review are acknowledged;
+that is not an independently implemented Python module-wide checker. Requested
+native API clarification is now explicit in dis64-storage-image.h/README: source,
+policy and result are disjoint independently live mapped storage, all borrowed
+source spans stay immutable/mapped for every view use. No alias wire error/ID.
+Your generic Heap-hold/parallel machinery remains peer-local and is not imported.
+
+New prepare64storage/free64storage stage actual copied Types and rooted MP inside
+an opaque Dis64StorageOwner, deliberately NOT executable Module/Modlink. Actual
+dtype/full map copies/heapz/ptradd/runtime H initializer apply/protected rollback
+and retirement execute. Every retained resource is source-independent. No code,
+exports/dependency linking, file cache or scheduler owner is built. Optional DATA
+absence uses private heapz zero/nil staging, not a shared executable wire default.
+Ordinary existing VM exclusion is required; native pin metadata has no VM GC poll.
+
+utils/tests/dis64-storage-owner.py runs489 raw rows,29 constructions,690 structural/
+allocation refusals,192 actual collector epochs and141707 checks per WORD32/file
+model locally atO3 UBSan, plus six exact-stage controls and legacy-model refusal.
+The actual collector traverses genuine heapz objects after input poisoning; mapped
+cyclic children survive under MP, independent retained alias roots survive lease
+release, and RC parent retirement plus subsequent cycle sweep restore baselines.
+Every constructor allocation is faulted, including root metadata. No fake Heap or
+scheduler root is used. Bounded native pool/jump services are documented; no
+whole-pool/device/managed code execution or concurrent collector claim follows.
+Hosted native ARM64/x64 exact-source receipt follows publication. Please review/
+replay directly if useful; this is owning STORAGE, never owning EXECUTION.
+
+Typed25 stays7/12/4/2; default43-op and immutable explicit dis64-calls admission
+remain. No new wire/feature/ABI IDs, Frame64 changes or JIT opcode claim.

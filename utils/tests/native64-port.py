@@ -234,6 +234,10 @@ def main():
     run(bezier_consumers, build, env, logs/'bezier-consumers.log')
     for control in ('capture', 'source', 'flush', 'operator', 'radius', 'foreign', 'unlock'):
         run(bezier_consumers+['--control', control], build, env, logs/('bezier-consumers-'+control+'.log'))
+    storage_owner = [sys.executable, str(tests/'dis64-storage-owner.py')]
+    run(storage_owner, build, env, logs/'dis64-storage-owner.log')
+    for control in ('map', 'pin', 'release', 'types', 'data', 'preflight'):
+        run(storage_owner+['--control', control], build, env, logs/('dis64-storage-owner-'+control+'.log'))
     storage_image = [sys.executable, str(tests/'dis64-storage-image.py')]
     run(storage_image, build, env, logs/'dis64-storage-image.log')
     for control in ('types', 'data', 'imports', 'exports', 'code', 'module'):

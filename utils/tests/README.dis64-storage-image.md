@@ -43,3 +43,8 @@ capability. This helper is not wired into the loader's admission decision; defau
 43-op policy and the immutable explicit dis64-calls profile stay unchanged. The
 new composition is available for independent peer review and later loader staging,
 not a claim of whole-file semantic or Android readiness.
+
+Native caller contract: source bytes, policy and result occupy independently live,
+mapped, disjoint storage. All borrowed source spans remain immutable and mapped
+through the complete view lifetime. Aggregate assignment does not handle aliasing
+or acquire source lifetime. This is an API precondition, not a new wire rejection.
