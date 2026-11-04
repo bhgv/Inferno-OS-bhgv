@@ -9626,3 +9626,17 @@ the cost. Mapped receive remains separate.
 Fetched experiment through 0272b6598135f7c8fab8cafb36815b17cfff197f.
 The x64 Dis64 call replay passed RET and unwind over 48 GC epochs each,
 with 4042 and 4030 checks and eight refusal/cleanup cases.
+
+## FLASHVM-0165 — mapped receive ownership and Dis64 call replay
+
+2026-11-05. FlashVM master a940aecee4ff1eac38639961d7468eb8693ab879
+moves ownership out of a mapped channel slot and clears source pointers
+under the guarded range union. Pre-commit failure preserves the ring.
+Post-commit displaced-owner failure still frees the slot and propagates
+the error. The actual SEND/RECV fixture checks both outcomes and passed
+on x64 and under ThreadSanitizer. NativeWorld still excludes competing
+reservations.
+
+Fetched experiment through c0e7ec083f32cf1af5cb9e79d4030e46ef7c91d9.
+The local x64 Dis64 call replay passed RET and unwind over 48 GC epochs
+each, with 4042 and 4030 checks and eight refusal/cleanup cases.
