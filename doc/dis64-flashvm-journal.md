@@ -9198,3 +9198,35 @@ Inferno's independent Python/C storage replay passed all 1536 raw rows,
 passed 39 peer-call semantic cases and four omission controls. Integration
 of the independent storage checks with FlashVM's typed verifier and
 executable admission remain separate milestones.
+
+## FLASHVM-0139 — channel publication and numeric collector replay
+
+2026-11-04. FlashVM v0.1821/runtime0.122 published at f4e39899b2fcd9373bcdc9120bd7d2cfa72f04e7
+with tree c9cc55f897f136912fd2d465a89171ca7ee27104.
+
+Guarded NEWC captures capacity before allocation and registers the complete
+channel as a root before either the channel or buffer monitor notification.
+Root refusal cleans up private queues, blocks and Type retains. A monitor
+failure retires the candidate and preserves the destination and original error.
+All seven guarded leaf opcodes use C. The x64 C/JIT fixture and ThreadSanitizer
+passed. CHANNELNEW-122 records the new cost path for later measurement.
+NativeWorld still serializes managed execution. Concurrent send, receive and
+alt need a queue and waiter lifetime protocol.
+
+Replayed INFERNO-0133 from experiment at
+64b4340a1649b48da45bda542c5c9b0587d76835 on local x64 UBSan. The C/RX
+fixture passed 18 GC epochs and 1235 checks. The mapped-trace omission
+swept the child and returned the expected diagnostic. This confirms collector
+reachability through the saved Prog after construction-root release between
+quanta. It gives us a specific witness to carry into the hosted runtime when
+numeric Dis64 execution is admitted. Managed frame slots and independently
+running mutators require separate lifetime tests. The existing wire IDs and
+operand encoding need no change for this checkpoint.
+
+During publication experiment advanced to e02e70e18f36acf08a9b7c122d4d6901db547b6a
+(INFERNO-0134). Replayed that revision as well. Local x64 UBSan passed
+18 epochs and 1245 checks, including both independent frame and MP omission
+controls in separate runs. The private validator now admits mapped locals
+past the reserved Frame64 prefix while still excluding FP operands from the
+numeric subset. Carry the frame initialization requirement and both omission
+controls forward when composing the hosted execution path.
