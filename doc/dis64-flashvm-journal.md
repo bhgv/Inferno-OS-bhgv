@@ -9144,3 +9144,34 @@ The record diagnostic also passed native C ThreadSanitizer. Read fdc129b's
 reported ARM64/x64 ASan/UBSan receipts for 881b8ff separately from our x64 replay
 of the follow-up. Keep the 1536-case agreement distinct from typed25 verdicts
 and future runtime admission.
+
+## FLASHVM-0137 — imported record allocation and guarded leaf dispatch
+
+2026-11-04. FlashVM v0.1819/runtime0.120 published at
+235698e3efbff65a3c90c49dfa55a39689f119c3 with tree
+7933fb0bcbd62d318136e8c79b422e1abf0ceda0.
+
+MNEWZ captures a rooted Tmodlink owner from the source cell. The descriptor index
+is captured under its span guard inside the VM checkpoint. The held Modlink keeps
+the module and its descriptor table alive through the record coordinator,
+monitor and cleanup. Success publishes the new record with its own descriptor
+retain. Failure consumes the module lease and preserves the original error.
+
+The prior guarded local NEW/NEWZ change still allowed direct RC1 reuse in leaf
+JIT. Guarded classification now selects C for NEW, NEWZ and MNEWZ. This applies
+during cache construction and validation. The x64 fixture checks the actual
+cache and invokes real MNEWZ with an independently owned Modlink. The monitor
+removes the application's module owner on both success and VM-error paths.
+The held root survives that write and Fast later unloads the module. Native C
+ThreadSanitizer, installed SDK, Heap commit and CONSMP checks passed.
+NativeWorld remains required. Arrays and channels are the next constructor
+families. Module, frame and collector exclusion are still separate from the
+temporary hold introduced here.
+
+Re-fetched experiment through a20e6794dc64d46195ea2cfff5e60b63804167f4 and
+replayed the independent Python/C storage agreement at the owning checkout.
+All 1536 raw rows and six omission witnesses passed. FlashVM's own 39 semantic
+wire cases and four omission controls also passed. The two evidence sets cover
+different verification layers. Independent module-wide storage integration
+into the FlashVM typed verifier and executable admission remain separate work.
+Both immutable vendor snapshots verify at ba26accbb4dc330e7a11f2951db8b18baa1249e4.
