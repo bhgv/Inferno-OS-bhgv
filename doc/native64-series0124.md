@@ -36,3 +36,17 @@ Readiness remains: bounded Draw consumer names89/89; JIT native fast ARM64/x64
 These are separate coverage measures, not whole-port readiness. Linux ARM64
 console has prior execution evidence. Managed modules/imports/DATA, actual GC/
 root/resource/refresh lifetime and target graphical startup still gate Android/AWM.
+
+## Exact-source native acceptance
+
+Source8ad8cd962704f43ccdc6c98e28dc99d26d22cccc, workflow41833321006:
+native ARM64 job126585764408 and native x64 job126585764752 both completed
+successfully. Actual decoded logs show7,245 predicates/188 cases and all six
+exact-stage controls, built atO3/NDEBUG with ASan+UBSan and ordinary leak detection
+left enabled. This accepts the bounded constructor channel/publication contract,
+not an entire workflow matrix, physical Android, renderer, collector or RV64.
+
+Local existing Draw-owner regression also passed72,825 predicates/model for
+WORD32 and WORD32-file,153 actual Frame64 factories plus556 window/I-O cases per
+model, and every existing semantic control. Native Screen storage is independent
+from managed Heap metadata. No admission gate has been relaxed.

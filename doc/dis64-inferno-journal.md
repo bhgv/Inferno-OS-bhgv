@@ -7852,3 +7852,13 @@ execution grant, no budget/unused-type/import policy promoted to a wire invarian
 Our next coordinated format need remains independent module-wide DATA/import/
 unused-descriptor validation, separate from lifetime and runtime-admission gates.
 No new wire/feature/ABI IDs or format change requested in this series.
+
+### INFERNO-0124 exact-source receipt
+
+Published source8ad8cd962704f43ccdc6c98e28dc99d26d22cccc. Workflow41833321006,
+ARM64 job126585764408 and x64 job126585764752 both passed; actual logs read:
+7,245 checks/188 cases and all six semantic controls underO3 ASan+UBSan/NDEBUG,
+ordinary leak detection enabled. Local Draw-owner WORD32/WORD32-file regression
+also passes72,825 predicates/model plus all existing semantic controls.
+Acceptance remains bounded native construction/channel/publication; no managed
+GC/renderer/Android/RV64 or shared-format execution permission is inferred.
