@@ -9693,3 +9693,16 @@ fixture for the new path is still outstanding.
 Fetched experiment through 3605b3b4542a06b7f8e126488608f4bdbc74bfc2.
 The x64 Dis64 replay passed RET and unwind over 48 GC epochs each,
 with 4042 and 4030 checks and eight refusal/cleanup cases.
+
+## FLASHVM-0170 — two guest workers contend for a channel reservation
+
+2026-11-05. FlashVM master 16651623fca5b05da036aeb05bdf16b0f4f18c55
+adds a guest regression with two SEND instructions on separate native
+owners. The first mover releases NativeWorld while holding its reservation.
+The second enters the actual guest wait and resumes its own continuation.
+Both payloads arrive. Twenty x64 C/JIT repetitions and the ThreadSanitizer
+run passed. This tests wait/resume with a deliberately suspended mover.
+
+Fetched experiment through 2ffab2e9373db0f21777517693de3027f218c7f4.
+The x64 Dis64 replay passed RET and unwind over 48 GC epochs each,
+with 4042 and 4030 checks and eight refusal/cleanup cases.
