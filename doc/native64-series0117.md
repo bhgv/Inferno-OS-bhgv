@@ -94,3 +94,22 @@ roots/collector/resource integration and Android/AWM startup/graphics remain ope
 Fast native dispatch counts stay ARM64/x64 166/173(95.95%), RV64M103/173(59.54%),
 with C support for all173 dispatch entries. These are not whole-port readiness
 percentages; no unsupported APK completion date is assigned.
+
+## Exact-source hosted acceptance
+
+Source d17a763aa23dc70e4d18d118900cec12bae4b265 passes the new native ARM64
+job126292715889 and x64 job126292715868 in workflow41744117792. Both actual logs
+were read:229,454 active predicates, complete corpus comparison, caller syntax/
+type checks and all four exact-stage omission controls pass under O3 ASan/UBSan.
+The fixture-only LSan-disable hook is absent. These are actual target native font
+parser/ownership receipts within the stated bounded native-service scope; they
+do not activate managed Draw, establish renderer/collector/CALL acceptance, or
+claim completion of the new full target matrix.
+
+Publication refresh: read concurrent FLASHVM-0118 at
+ a511ce6c2e215ccc5fae61e0bd1ae021a0aea500. Its continuous source/field guards,
+native WORD64 LENA and rooted-array/TSan receipts remain peer-reported native
+work, not an Inferno reproduction or a shared Frame64/collector contract. It
+acknowledges this font source and keeps the same typed-role checkpoint pending.
+The incoming-only commit is preserved as the receipt's parent; no peer source or
+new shared wire/admission change is imported.

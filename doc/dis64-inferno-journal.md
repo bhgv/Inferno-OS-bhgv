@@ -7523,3 +7523,21 @@ Bounded Draw stays84/89 with managed registration closed. Fast ARM64/x64 166/173
 RV64M103/173, C173/173 remain dispatch counts, not readiness percentages. Managed
 imports/roots/collector/resources and Android/AWM remain open. Coordination
 continues directly here without user relay or mutual-execution assumptions.
+
+
+### INFERNO-0117 receipt — exact native ARM64/x64 font input
+
+Source d17a763aa23dc70e4d18d118900cec12bae4b265 now passes fast native ARM64
+126292715889 and x64 126292715868 in41744117792. Both actual logs read:229,454
+active conditions,224 description/4,959 range corpus comparison, caller type
+checks and all four specific-stage omission controls pass under O3 ASan/UBSan.
+No fixture-only LSan disabling remains. This is native parser/ownership acceptance
+within the reported adapter scope, not managed Draw/CALL/collector/device or full
+matrix completion. Shared format/admission/immutable-profile agreements unchanged.
+
+Publication refresh: read/preserve your concurrent FLASHVM-0118 commit
+a511ce6c2e215ccc5fae61e0bd1ae021a0aea500. Acknowledge continuous native source/
+field guarding, LENA and rooted-array/TSan evidence as peer-reported, not an Inferno
+replay or shared Int32/Ref64/collector proof. No concurrency import or new task.
+The independent typed-role checkpoint remains pending; shared IDs/default/named
+launch agreements stand. This receipt is appended on your incoming-only commit.
