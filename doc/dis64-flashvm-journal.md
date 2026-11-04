@@ -8827,3 +8827,63 @@ ba26accbb4dc330e7a11f2951db8b18baa1249e4. General parallel work still includes o
 constructors/shared writes/address leases, root/graph/retirement epochs, channels/
 process/scheduler, frame/module/code lifetime and compiler local/shared variants.
 No Android/physical RV64/full GUI/concurrent collector acceptance follows.
+
+## FLASHVM-0132 — rooted scalar/raw list candidates, C/JIT routing still separate
+
+2026-11-04. Published v0.1814/runtime0.115 at
+ ddf1589487831e57ee419a6c382af1f209d1093e, tested tree
+23c82f248fb5f88e9228adc65e7d3a070daa76ee. New value_prepare.c borrows a private
+immutable unmapped byte snapshot and genuine held Tlist/H tail; reserves native
+candidate roots, acquires tail/Tlist owners, creates a complete raw-head/nil-element-
+Type node before its pinned monitor callback, links/marks tail, publishes candidate
+root and only then withdraws ordinary construction pin. Every failure rolls back
+exact resources without destructor/monitor recursion. Inputs remain unchanged and
+output zero on refusal. Root publication refusal after linkage must undo that
+extra tail owner, never leave a half-published node.
+
+This API does NOT accept arbitrary shared VM payload addresses: caller must first
+capture scalar/raw bytes under proper cell/range exclusion into private immutable
+storage. Embedded managed references/mapped records are explicitly excluded;
+those require typed map/ownership staging. Zero extent ignores the byte address.
+No RC1 uniqueness, arbitrary-pointer provenance or payload permission is inferred.
+ACTIVE/NativeWorld, ordinary allocator/collector exclusion and Type/code/input
+lifetime remain mandatory. Use heap_commit's separate rooted destination contract;
+stale identity requires finishing the old candidate and rebuilding for fresh tail.
+
+Six payload extents0/1/4/8/17/257 run C/JIT surrounding guests and both collector
+polls. Seven refusal boundaries cover both reservation allocations, actual node
+allocation, Tlist retain, actual ordinary-pin registration, monitor error and
+candidate root publication. Genuine wrong-tail Type and oversized extent reject
+before construction. Real MOVP interleaving/stale discard/rebuild, actual mapped
+destination graph,32 Cycles and final Fast restore Type/owner baselines; unrelated
+String source ownership remains unchanged. No fake Heap/Type/scheduler root.
+Four scoped source controls stop at exact semantic10 for missing linked-tail
+rollback, corrupted payload, ordinary-pin leak and missing candidate publication.
+Native-C TSan positives, installed SDK fixture/closure and guarded CONSP regression
+pass. Complete commented C fixture/API guide and backup patch accompany release.
+
+Important next gate: direct scalar x64 emitter still builds nodes outside the C
+constructor path. We have NOT switched CONS B/W/L/F/M C opcodes or that emitter in
+this series. Changing only C would leave a bypass. A shared capture/commit/retry
+coordinator and consistent checked C/JIT routing need separate implementation and
+code-unmap/error/foreign-REG checks. Mapped CONSMP remains a separate ownership
+problem. This series is preparation, not completed scalar/raw concurrent opcodes.
+VALUEPREP-115 records reservation/build/copy/root handoff/stale rebuild paths with
+no invented matched timing. Actual scalar opcode cost is unchanged this release.
+
+Fresh experiment fetch remains a1237befdfd6322e6fff17753d549f7f09fae184, containing
+our0131 and your0129 receipt2e887b64bab70311cdca2400216ccf36b13c8296; no new peer
+proposal was pending at publication. Preserve prior local attach replay/peer ARM64/
+x64 receipt and source386e61ba0008ece9c4cd0a902de247a34ddf837a boundaries: real
+native Module-list root/unload lifetime is not executable namespace/cache identity
+or managed opcode/import/frame/result admission. No cross-heap implementation or
+parallel permission imported. Independent Python module-wide DATA/import/unused-
+descriptor implementation remains outstanding; replay does not substitute for it.
+
+No shared wire/feature/ABI IDs, Frame64/default43/173/WORD32 LEA or immutable named
+dis64-calls launch/cache policy changes. Typed25 stays7/12/4/2 and owning executable
+managed adoption closed. Immutable vendor pins verify1096/312 files unchanged at
+ba26accbb4dc330e7a11f2951db8b18baa1249e4. General parallel gates remain other
+constructors/shared writes/address leases, root/graph/retirement epochs, channels/
+process/scheduler, frame/module/code lifetime and compiler local/shared selection.
+No physical ARM64/RV64/Android/full GUI/concurrent collector claim follows.
