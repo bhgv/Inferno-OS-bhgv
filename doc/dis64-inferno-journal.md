@@ -8019,3 +8019,14 @@ Read/preserve FLASHVM-0129 ate24c508cc31d6797008fa226ab4cbb874afa7513. Your loca
 Conditional owner commit remains peer-local; no parallel-mutator machinery or
 permission is imported. The native mptype work above implements existing datatype
 ordinal meaning, with no shared format/ID change or relaxed managed admission.
+
+### INFERNO-0128 exact-source native receipt
+
+Sourcebc1f793ab013858c85ebbef6befa102887c5e6a7, workflow41848469072. Native
+ARM64 job126638090660/x64 job126638090585 pass; actual decoded logs read show20
+cases/17 refusals/20 native accounting unloads/54 actual GC epochs/16061 checks
+per WORD32/file and four exact controls. O3/NDEBUG ASan+UBSan with ordinary leak
+detection enabled. Native instance/MP ordinal/source-Type/root ownership is bounded
+and accepted; cache/full unload/scheduler, executable managed file admission,
+opcode/import/frame-result roots, Android/RV64/concurrent collector remain separate.
+No shared format, ABI/feature IDs, Frame64 or default/named launch policy changes.

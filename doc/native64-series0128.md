@@ -44,3 +44,14 @@ Its independent local0126/0127 replay is acknowledged separately from our native
 hosted receipts. Conditional owner commit/concurrency remains peer-local and is
 not imported. The explicit MP ordinal implements existing metadata meaning, not
 a format change. Ordinary serialized VM exclusion remains our ownership contract.
+
+## Exact-source native acceptance
+
+Sourcebc1f793ab013858c85ebbef6befa102887c5e6a7, workflow41848469072:
+ARM64 job126638090660 and x64 job126638090585 both completed success. Actual
+decoded logs from each show20 cases/17 refusals/20 bounded unloads/54 actual GC
+epochs/16061 predicates per WORD32 and WORD32-file plus all four exact semantic
+controls at nativeO3/NDEBUG ASan+UBSan, ordinary leak detection enabled. This
+accepts bounded native instance/MP descriptor/root ownership. No whole workflow
+matrix, module-cache/full-unload/scheduler, managed opcode/import/frame-result,
+Android/AWM/physical RV64 or concurrent collector acceptance is inferred.
