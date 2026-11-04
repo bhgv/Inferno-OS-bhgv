@@ -8946,3 +8946,72 @@ ba26accbb4dc330e7a11f2951db8b18baa1249e4. No cross-heap parallel machinery impor
 Typed25 stays7/12/4/2; no wire/feature/ABI IDs, Frame64/default43/173/WORD32 LEA or
 immutable named dis64-calls launch/cache agreement changes. No physical ARM64/
 RV64/Android/full GUI/concurrent collector or executable managed Dis64 permission.
+
+## FLASHVM-0134 — raw CONSM snapshots, native cleanup and existing x64 tail
+
+2026-11-04. FlashVM v0.1816/runtime0.117 published at
+65e3839f41b5d9e27f73e82222cae197666dd991, tested tree
+3c0bde3a22e4c07d281f72626989cdac63078466. Actual selected hosted CONSM and the
+existing aggregate SysV x64 tail now use raw_cons.c. The native WORD count is
+captured under its guard; negative/oversized counts and invalid operand geometry
+refuse before allocation. A nonempty source is copied under span/range exclusion
+into one native immutable snapshot, before any callback. Zero ignores source
+and does not allocate. The two separate count/source captures rely on present
+NativeWorld exclusion; they are NOT a coherent transaction against hypothetical
+parallel writers. Genuine mapped owning operands/rooted frame/container/Type/code
+lifetime and no object guards remain mandatory. Mapped reference records belong
+to CONSMP and are explicitly excluded.
+
+Current tail hold, complete rooted value preparation, conditional publication
+and at most8 stale rebuilds reuse that same immutable snapshot. A compliant
+callback can change original bytes/count and independently write destination;
+retry still publishes original captured payload with the fresh tail, never an
+old-tail candidate or reread changed source. Complete candidate/retired/tail drain
+continues across consuming-release errors, retaining first body/cleanup error.
+Native snapshot is freed after ALL lease cleanup and before rethrow; no consumed
+release is retried. Postcommit error does not undo publication. Discarded last-
+owner graphs may remain rooted for Fast, not immediate recursive reclamation.
+No allocating/destructor/VM callback work occurs under object guards.
+
+Selected x64 already tail-enters actual C CONSM; its preflight now also rejects
+held object guards before operand reads. There is no new native allocator bypass,
+RX return PC or borrowed REG read after callback mapping retirement. Unselected/
+serial-inline C declines before operands to retained original body. No new opcode,
+wire/public ABI/feature ID or Frame64 layout. NativeWorld still serializes managed
+work; this is not general parallel allocator/collector or address-lease admission.
+
+Eight transaction cases/seven refusal boundaries cover alias/H-tail, one/repeated
+stale writers, original snapshot preservation, primary/secondary destructor errors
+and first retirement error after success. Four root-reservation allocations,
+actual node allocation, Tlist retain and native snapshot allocation are faulted.
+Exact snapshot allocation/free is tracked across these errors and repeated retry.
+Five additional extents0/1/17/257/513 mutate original bytes AND count and force
+one stale tail; second preparation publishes the original full payload. Negative/
+oversized count, nonempty NULL source and NULL destination refuse. Actual roots/
+Cycles/Fast/Type baselines, real unmapped Pair CONSM C/JIT guests and both collector
+polls pass; no fabricated Heap/Type/scheduler root. Four source controls detect
+missing stale retirement, incomplete cleanup, native leak and overwritten primary
+error at exact semantic10 before unsafe continuation. Native-C TSan positives and
+installed fixture/source closure pass. Separate raw-CONSM x64 tail fixture covers
+cold/foreign REG, actual mapping unmap, VM error, combined unmap/error and strict
+bad-CALL control. Scalar/CONSP/value-preparation/Heap-commit controls regress cleanly.
+Readable C algorithm/fixture/guide/SDK and backup patch accompany publication.
+
+RAWCONS-117 records count/source guards, one nonempty native malloc/free, full
+source copy, four native root reservation allocations, prepare/commit/retirement
+and stale rebuild work. No matched timing yet; earlier CONSP/scalar ratios are
+not transferred. Snapshot reuse avoids repeated source capture/copy across retry.
+General remaining gates include mapped CONSMP, other shared writes/address leases,
+GC/root/graph/retirement epochs, channels/process/scheduler, frame/module/code
+lifetime and compiler local/shared selection. Opcode count is not a readiness %.
+
+Fresh experiment head remains d0dbbc5cac9cc83e41799f27d0070a14eeab134f: no new
+peer Dis64 proposal pending. Preserve prior0129 real Module-list/unload evidence
+versus executable namespace/cache identity/opcode/import/frame-result exclusion.
+Independent Python module-wide DATA/import/unused-descriptor implementation is
+still outstanding; review/replay is not that implementation. Immutable vendor
+pins verify1096/312 files at ba26accbb4dc330e7a11f2951db8b18baa1249e4; no cross-
+heap parallel machinery imported. Typed25 stays7/12/4/2; no wire/feature/ABI IDs,
+Frame64/default43/173/WORD32 LEA or immutable named dis64-calls launch/cache policy
+changes. No physical ARM64/RV64/Android/full GUI/concurrent collector or executable
+managed Dis64 permission follows.
