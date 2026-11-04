@@ -114,6 +114,135 @@ providercall(uchar *image, size_t bytes, uchar *consumer, size_t consumerbytes, 
 }
 
 
+typedef struct F_Sys_millisec F_Sys_millisec;
+
+struct F_Sys_millisec {
+	Frame regs; // Native Frame64 prefix.
+	WORD *ret; // Borrowed caller result address at byte 32.
+	uchar temps[24]; // Reserved scalar bytes.
+};
+
+static int clockreads; // Observe exactly one production handler call per test.
+
+
+/* Return a deterministic value from the hosted clock boundary. */
+long
+osmillisec(void)
+{
+	clockreads++;
+	return 123456;
+}
+
+
+CLOCK_HANDLER
+
+
+#include "native64-entry.h"
+
+static const uchar clockmap[] = {0}; // Complete map of the fixed clock frame.
+static const LimboNative64Entry limbo_native64_Sys_millisec_entry = {
+	"millisec", Sys_millisec, 0x616977e8U, 64, sizeof(clockmap), clockmap
+}; // Generated Frame64 ABI mirrored for this isolated scheduler fixture.
+static const LimboNative64Entry *const native64sysio[] = {
+	&limbo_native64_Sys_millisec_entry,
+}; // Only the clock export is needed by this fixture.
+
+CLOCK_RESOLVER
+
+
+/* Exercise the real VM stack, native result binding and builtin MCALL. */
+static void
+clockcall(uchar *image, size_t bytes, int jit, int grow)
+{
+	Dis64StorageOwner *lease;
+	Module sys, *module;
+	Type *frame;
+	Link export;
+	Modlink *caller, *clock;
+	Frame *entry, *pending;
+	Prog process;
+	uchar *root;
+	WORD stamp;
+	int before, slot;
+
+	frame = dtype(freeheap, 64, (uchar*)clockmap, sizeof(clockmap));
+	require(frame != nil && sizeof(F_Sys_millisec) == 64 && O(F_Sys_millisec, ret) == 32);
+	memset(&sys, 0, sizeof(sys));
+	sys.ref = 1;
+	sys.path = "$Sys";
+	sys.origmp = H;
+	sys.ntype = 1;
+	sys.type = &frame;
+	sys.ext = &export;
+	export.name = "millisec";
+	export.sig = 0x616977e8U;
+	export.frame = frame;
+	export.u.runt = Sys_millisec;
+	modules = &sys;
+	clock = prepare64sysclocklink(image, bytes, 0);
+	require(clock != nil && sys.ref == 2);
+	lease = nil;
+	module = dis64numericbuild("clock-caller", image, bytes, 0, &lease, nil, 0, 1, nil);
+	require(module != nil && module->nprog == 5);
+	/* The fixture inserts the existing native result bind after decoding. */
+	module->prog[2] = module->prog[1];
+	module->prog[0].d.ind = 40;
+	module->prog[2].s.ind = 40;
+	memset(&module->prog[1], 0, sizeof(Inst));
+	module->prog[1].op = ILEA;
+	module->prog[1].add = SRC(AFP)|DST(AFP|AIND);
+	module->prog[1].s.ind = 72;
+	module->prog[1].d.i.f = 40;
+	module->prog[1].d.i.s = 32;
+	module->prog[3] = module->prog[4];
+	module->nprog = 4;
+	module->cstep = native64lea8step;
+	require(!jit || compile(module, module->nprog, nil));
+	caller = dis64rootlink(module, lease, 0, nil, nil);
+	require(caller != nil);
+	memmove(caller->MP, &clock, sizeof(clock));
+	Setmark(D2H(clock));
+	ptrdel(D2H(clock));
+	caller->m->ss = grow ? 0 : 4096;
+	memset(&process, 0, sizeof(process));
+	process.exval = H;
+	process.state = Pready;
+	process.quanta = 1;
+	process.R.M = caller;
+	process.R.PC = caller->m->entry;
+	entry = mallocz(caller->m->entryt->size, 1);
+	require(entry != nil);
+	entry->t = caller->m->entryt;
+	R.s = &entry;
+	newstack(&process);
+	initmem(caller->m->entryt, process.R.FP);
+	free(entry);
+	root = process.R.FP;
+	callprocess = &process;
+	ptrdel(D2H(caller));
+	before = clockreads;
+	require(callquantum(&process) == 1 && process.R.M == caller);
+	memmove(&pending, root+40, sizeof(pending));
+	require(pending != nil && (pending->t == nil) == grow);
+	numericcollect(&process);
+	require(callquantum(&process) == 1 && process.R.M == caller);
+	require(((F_Sys_millisec*)pending)->ret == (WORD*)(root+72));
+	numericcollect(&process);
+	require(callquantum(&process) == 1 && process.R.M == caller && process.R.FP == root);
+	memmove(&stamp, root+72, sizeof(stamp));
+	require(stamp == 123456 && clockreads == before+1 && D2H(clock)->ref == 1);
+	require(callquantum(&process) == 0 && message[0] == 0);
+	destroystack(&R);
+	numericdrain();
+	require(sys.ref == 1 && worker.nerr == 0 && Tmodlink.ref == 1);
+	modules = nil;
+	freetype(frame);
+	require(live == 0);
+	for(slot=1; slot<GcSlots; slot++)
+		require(numericblock(slot)->magic == MAGIC_F);
+}
+
+
 /* Exercise real C and JIT call/return and error paths with the same raw provider. */
 int
 main(int argc, char **argv)
@@ -145,6 +274,13 @@ main(int argc, char **argv)
 	optab[IADDW] = addw;
 	optab[IDIVW] = divw;
 	optab[IEXIT] = iexit;
+	if(strcmp(argv[3], "clock") == 0){
+		for(jit=0; jit<=1; jit++)
+			for(grow=0; grow<=1; grow++)
+				clockcall(consumer, consumerbytes, jit, grow);
+		printf("PASS VM Sys clock MFRAME, result bind and C MCALL in four C/JIT stack modes\n");
+		return 0;
+	}
 	for(jit=0; jit<=1; jit++)
 		for(grow=0; grow<=1; grow++)
 			providercall(image, bytes, consumer, consumerbytes, jit, failure, grow);

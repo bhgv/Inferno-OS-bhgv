@@ -36,6 +36,12 @@ def unit(calls=False):
             source += '\n'+extract(xec, signature)+'\n'
         fixture = fixture.split('/* Check C and machine-code execution with a standalone')[0]
         fixture += (ROOT/'utils/tests/dis64-provider-call.c').read_text()
+        inferno = (ROOT/'emu/port/inferno.c').read_text()
+        clock = '\n'.join(extract(inferno, signature) for signature in
+                          ('static void\nsysstatusframe(', 'void\nSys_millisec('))
+        runt = (ROOT/'libinterp/runt.c').read_text()
+        fixture = fixture.replace('CLOCK_HANDLER', clock)
+        fixture = fixture.replace('CLOCK_RESOLVER', extract(runt, 'const Link*\nnative64sysclock('))
     return source+fixture
 
 
@@ -87,6 +93,8 @@ def main():
     arch = os.environ.get('NATIVE64_ARCH', 'amd64')
     flags = shlex.split(os.environ.get('NATIVE64_CFLAGS', '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
     command = shlex.split(os.environ.get('CC', 'cc'))+flags+['-DDIS_WORD32=1', '-DDIS64_PILOT_LOADER=1']
+    if args.calls:
+        command += ['-DDIS_NATIVE64_BOOT_SYS_IO=1']
     if arch in ('arm64', 'riscv64'):
         command += ['-DDIS64_TEST_'+arch.upper()+'=1', '-DDIS64_TEST_COMPILER="comp-'+arch+'.c"']
     elif arch != 'amd64':
@@ -116,6 +124,17 @@ def main():
                 (work/'image').write_bytes(provider)
                 subprocess.run(runner+[str(binary), str(work/'image'), str(work/'consumer'),
                                        'error' if failure else 'return'], check=True, timeout=60)
+            bindings = fixtures['RAW']['RAW']
+            names = ('$Sys', 'millisec', 'caller')
+            pool = words(len(names))+b''.join(words(len(name), *map(ord, name)) for name in names)
+            imports = [binding(module=0, sig=bindings['signature'](1))]
+            sections = fixtures['SECTIONS'](**(caller | {
+                'name': 2, 'imports': imports, 'code': words(5)+(frame+call)*2+fixtures['EXIT'],
+            }))
+            clock = fixtures['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
+            (work/'consumer').write_bytes(clock)
+            subprocess.run(runner+[str(binary), str(work/'image'), str(work/'consumer'), 'clock'],
+                           check=True, timeout=60)
             bad_frame = fixtures['I']('IMFRAME', 65, source=0, middle=0, destination=56)
             bad_call = fixtures['I']('IMCALL', 72, source=64, middle=1, destination=0)
             wrong_scratch = fixtures['I']('IMCALL', 72, source=72, middle=0, destination=0)

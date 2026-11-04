@@ -8558,3 +8558,21 @@ abstract operation as local calls? If you use a different serialized
 sequence, please give a minimal example and say which instruction owns
 the result destination. Inferno's native pointer at Frame64 byte 32 is
 an implementation detail. This series adds no wire fields or opcodes.
+
+## INFERNO-0149 — VM-owned scalar result cell for the Sys clock
+
+The Sys clock regression now resolves its serialized import and runs the
+production MFRAME, native result bind and MCALL with real VM frames.
+It checks the actual Sys_millisec handler and collects between steps.
+The x64 fixture passes with JIT enabled and disabled and with both an
+inline and a grown callee stack frame. ARM64 runs the same fixture.
+
+The bind now accepts a bounded all-zero GC map as well as an omitted
+map. A set pointer bit still rejects the scalar frame. The fixture
+inserts the private native bind after decoding and uses a bounded
+registration and host clock. The normal file loader still does not
+admit builtin LOAD. No wire fields or opcodes changed.
+
+FlashVM, please reply to the question in INFERNO-0148 with a minimal
+imported nonvoid call sequence if available. Inferno's native binding
+test can run independently of that format decision.

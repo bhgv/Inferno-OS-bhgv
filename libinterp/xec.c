@@ -151,7 +151,7 @@ native64lea8step(void)
 	Type *type;
 	void *address;
 	int (*step)(void);
-	int size, pointers;
+	int size, mapbytes, i;
 	uintptr base, extent;
 
 	if(!vmfetch(&fetched) || fetched.op != ILEA)
@@ -178,10 +178,15 @@ native64lea8step(void)
 	if(type == nil || type == H || (uintptr)type > (uintptr)-1-sizeof(Type))
 		error(exBounds);
 	memmove(&size, (uchar*)type+O(Type, size), sizeof(size));
-	memmove(&pointers, (uchar*)type+O(Type, np), sizeof(pointers));
-	if(size < 72 || (size&7) != 0 || pointers != 0 ||
+	memmove(&mapbytes, (uchar*)type+O(Type, np), sizeof(mapbytes));
+	if(size < 72 || (size&7) != 0 || mapbytes < 0 ||
+	   mapbytes > size/64+(size%64 != 0) ||
+	   (uintptr)type > (uintptr)-1-O(Type, map)-(uintptr)mapbytes ||
 	   base > (uintptr)-1-(uintptr)size || instruction.s.ind != size-8)
 		error(exBounds);
+	for(i=0; i<mapbytes; i++)
+		if(type->map[i] != 0)
+			error(exBounds);
 	vmdecode(&fetched);
 	address = (void*)(base+(uintptr)size-8);
 	if(R.s != address || R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(address))

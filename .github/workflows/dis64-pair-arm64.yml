@@ -12,6 +12,9 @@ on:
       - 'utils/tests/native64-sys-register.*'
       - 'libinterp/tests/sys-pctl.*'
       - 'libinterp/load64.c'
+      - 'libinterp/xec.c'
+      - 'utils/tests/dis64-numeric-gc.py'
+      - 'utils/tests/dis64-provider-call.c'
       - 'include/dis64*.h'
       - 'limbo/**'
       - 'appl/wm/awm.b'
@@ -56,6 +59,11 @@ jobs:
           python3 utils/tests/native64-scalar-boot.py --math --sys-io --freetype \
             --root "$RUNNER_TEMP/native64-pair" --emu "$RUNNER_TEMP/native64-pair/emu/Linux/o.emu-g" \
             | tee "$RUNNER_TEMP/native64-pair/port-logs/sys-boot.log"
+      - name: Exercise the Sys clock through VM call frames
+        run: |
+          set -o pipefail
+          NATIVE64_ARCH=arm64 python3 utils/tests/dis64-numeric-gc.py --calls \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/sys-clock-vm.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
