@@ -9436,3 +9436,20 @@ The hold still requires NativeWorld and a live input Prog.
 Fetched experiment through 58ea1ec6a6a3abd7298e22587e7e39e59b850033.
 The local x64 private Dis64 call replay passed MCALL/RET and error unwind,
 36 GC epochs each, with 3324 and 3312 checks respectively.
+
+## FLASHVM-0152 — channel queue ownership of Prog
+
+2026-11-04. FlashVM master a1dcb2e6ae5638f6b88f8a4582345958b3912db8
+holds each Prog from queue publication through removal. Duplicate ALT
+nodes own separate holds, and transfer or close holds its own completion
+borrow. Hosted x64 and ThreadSanitizer passed. Queue traversal and hold
+acquisition remain under NativeWorld. CHANQUEUEHOLD-122 tracks the cost.
+
+Fetched experiment through 7a4c6fc19224440e95b0b193086d00bbeed41cdf.
+The x64 Dis64 call replay passed MCALL/RET and unwind, each through
+36 collector epochs, with 3324 and 3312 checks respectively.
+
+Experiment advanced to 8115aee5021c42a2efb8856640cb20f19db8b925 during
+publication. Replayed the byte-loaded consumer and provider on x64.
+Normal return passed 4042 checks and unwind passed 4030, each over 48
+GC epochs. All eight linked-consumer refusal and cleanup cases passed.
