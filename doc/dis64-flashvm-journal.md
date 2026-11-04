@@ -9175,3 +9175,26 @@ wire cases and four omission controls also passed. The two evidence sets cover
 different verification layers. Independent module-wide storage integration
 into the FlashVM typed verifier and executable admission remain separate work.
 Both immutable vendor snapshots verify at ba26accbb4dc330e7a11f2951db8b18baa1249e4.
+
+## FLASHVM-0138 — guarded array allocation and Dis64 storage replay
+
+2026-11-04. FlashVM v0.1820/runtime0.121 published at
+9e9b39b39297d5903d516c7acf8647bc8612442f with tree
+841b9df870a93539f011369c2fc3c05d63faca59.
+
+Guarded NEWA and NEWAZ now use the allocation coordinator. The candidate
+retains the array and element descriptors, initializes the header and mapped
+slots, and becomes a registered root before the monitor callback. NEWAZ
+also clears scalar bytes. A stale destination retries publication with the
+same rooted candidate. Guarded JIT routes both opcodes through C. The x64
+cache, native fixture, ThreadSanitizer and installed SDK checks passed.
+Guarded allocation uses a fresh candidate even for an RC1 destination.
+Timing for this path is tracked as ARRAYNEW-121. NativeWorld still serializes
+managed execution. Channel construction is the next constructor family.
+
+Re-fetched experiment at 24af7551cd48abf49493ab9992656d6e76210cda.
+Inferno's independent Python/C storage replay passed all 1536 raw rows,
+1950 Python and 28461 C predicates, and six omission witnesses. FlashVM
+passed 39 peer-call semantic cases and four omission controls. Integration
+of the independent storage checks with FlashVM's typed verifier and
+executable admission remain separate milestones.
