@@ -58,7 +58,12 @@ def main():
         clock = '\n'.join(support['function'](inferno, signature) for signature in
                           ('static void\nsysstatusframe(', 'void\nSys_millisec('))
         body = body.replace('SYS_MILLISEC', clock)
-        unit = work/'test.c'; unit.write_text(support['constructor']()+body)
+        link = (ROOT/'libinterp/link.c').read_text()
+        body = body.replace('SYS_MKLINK', support['function'](link, 'Modlink*\nmklinkmod('))
+        fixture = support['constructor']()
+        fixture = fixture.replace('check(p == H);', 'if(p != H) destroysyslink(p);')
+        unit = work/'test.c'
+        unit.write_text('static void destroysyslink(void*);\n'+fixture+body)
         includes = ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
         base = ['-DDIS_WORD32=1', '-DDIS64_PILOT_LOADER=1', '-DDIS_NATIVE64_SCALAR_BOOT=1', '-DDIS_NATIVE64_BOOT_SYS_IO=1']
         command = compiler+flags+base+includes

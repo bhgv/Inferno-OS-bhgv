@@ -809,7 +809,7 @@ static const Dis64StorageLimits dis64numericlimits = {
 /* Match an exact checked scalar import to the trusted registered Sys clock.
  * The caller holds VM exclusion and the image remains immutable for the call. */
 const Link*
-dis64sysclockimport(const uchar *image, ulong bytes, unsigned int ordinal)
+dis64sysclockimport(const uchar *image, ulong bytes, unsigned int ordinal, Module **owner)
 {
 	static const uchar sys[] = {0,0,0,'$', 0,0,0,'S', 0,0,0,'y', 0,0,0,'s'};
 	static const uchar millisec[] = {
@@ -820,7 +820,7 @@ dis64sysclockimport(const uchar *image, ulong bytes, unsigned int ordinal)
 	Dis64Binding binding;
 	DisRuneView module, symbol;
 
-	if(image == nil || image == H || bytes > Dis64RuntimeBytes ||
+	if(owner == nil || image == nil || image == H || bytes > Dis64RuntimeBytes ||
 	   (uintptr)image > (uintptr)-1-bytes ||
 	   !dis64storageimagecheck(image, bytes, &dis64numericlimits, &consumer) ||
 	   consumer.module.profile != 1 ||
@@ -831,7 +831,7 @@ dis64sysclockimport(const uchar *image, ulong bytes, unsigned int ordinal)
 	   !disstringpoolget(&consumer.strings, binding.symbol, &symbol) ||
 	   symbol.count != sizeof(millisec)/4 || memcmp(symbol.values, millisec, sizeof(millisec)) != 0)
 		return nil;
-	return native64sysclock();
+	return native64sysclock(owner);
 }
 #endif
 
@@ -1048,6 +1048,7 @@ struct Dis64ProviderLink {
 	Modlink *link; // Owned partial instance until external root acquisition.
 	int bindings; // Number of runtime links to allocate.
 	const Dis64PairPlan *plan; // Borrowed checked provider coordinates for paired startup.
+	const Link *builtin; // Borrowed trusted C export while the owned Module stays live.
 };
 
 
@@ -1064,7 +1065,10 @@ dis64providerlink(void *argument)
 	module = build->module;
 	build->link = link = mklinkmod(module, build->bindings);
 	build->module = nil;
-	if(build->plan != nil){
+	if(build->builtin != nil){
+		link->links[0].u.runt = build->builtin->u.runt;
+		link->links[0].frame = build->builtin->frame;
+	}else if(build->plan != nil){
 		for(i=0; i<build->bindings; i++){
 			link->links[i].u.pc = module->prog+build->plan->matches[i].entry;
 			link->links[i].frame = module->entryt;
@@ -1084,7 +1088,8 @@ dis64providerlink(void *argument)
 
 /* Consume the module and its lease, returning one rooted instance on success. */
 static Modlink*
-dis64rootlink(Module *module, Dis64StorageOwner *lease, int bindings, const Dis64PairPlan *plan)
+dis64rootlink(Module *module, Dis64StorageOwner *lease, int bindings,
+	const Dis64PairPlan *plan, const Link *builtin)
 {
 	Dis64ProviderLink build;
 	int ok;
@@ -1093,6 +1098,7 @@ dis64rootlink(Module *module, Dis64StorageOwner *lease, int bindings, const Dis6
 	build.link = nil;
 	build.bindings = bindings;
 	build.plan = plan;
+	build.builtin = builtin;
 	ok = kprotect(dis64providerlink, &build);
 	if(!ok){
 		if(build.link != nil)
@@ -1103,6 +1109,31 @@ dis64rootlink(Module *module, Dis64StorageOwner *lease, int bindings, const Dis6
 	free64storage(lease);
 	return ok ? build.link : nil;
 }
+
+
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+
+
+/* Build a rooted one-slot Sys clock instance under VM exclusion. */
+Modlink*
+prepare64sysclocklink(const uchar *image, ulong bytes, unsigned int ordinal)
+{
+	const Link *entry;
+	Module *module;
+
+	if(heapmonitor != nil){
+		kwerrstr("Dis64 Sys clock link requires unmonitored allocation");
+		return nil;
+	}
+	entry = dis64sysclockimport(image, bytes, ordinal, &module);
+	if(entry == nil || module->ref <= 0 || module->ref == INT_MAX){
+		kwerrstr("unavailable Dis64 Sys clock import");
+		return nil;
+	}
+	module->ref++;
+	return dis64rootlink(module, nil, 1, nil, entry);
+}
+#endif
 
 
 /* Return an owned, externally rooted instance with binding slot zero.
@@ -1125,7 +1156,7 @@ prepare64providerlink(char *path, uchar *image, ulong bytes, int jit,
 		consumer, consumerbytes, ordinal);
 	if(module == nil)
 		return nil;
-	return dis64rootlink(module, lease, 1, nil);
+	return dis64rootlink(module, lease, 1, nil, nil);
 }
 
 
@@ -1150,7 +1181,7 @@ prepare64consumerlink(char *path, uchar *image, ulong bytes, char *providerpath,
 	module = dis64numericbuild(path, image, bytes, jit, &lease, nil, 0, 1, nil);
 	if(module == nil)
 		return nil;
-	caller = dis64rootlink(module, lease, 0, nil);
+	caller = dis64rootlink(module, lease, 0, nil, nil);
 	if(caller == nil)
 		return nil;
 	lease = nil;
@@ -1159,7 +1190,7 @@ prepare64consumerlink(char *path, uchar *image, ulong bytes, char *providerpath,
 		module = dis64numericbuild(providerpath, providerimage, providerbytes, jit,
 			&lease, &consumer, 0, 0, &plan);
 		if(module != nil)
-			provider = dis64rootlink(module, lease, plan.count, &plan);
+			provider = dis64rootlink(module, lease, plan.count, &plan, nil);
 	}
 	if(provider == nil){
 		ptrdel(D2H(caller));

@@ -132,6 +132,79 @@ SYS_REGISTRATION
 SYS_IMPORTS
 
 
+Type Tmodlink = {.ref = 1}; // Fixture descriptor for the production link allocator.
+void (*heapmonitor)(int, void*, ulong); // Explicitly controlled allocation monitor.
+char exHeap[] = "invalid heap"; // Link allocation diagnostic.
+static Heap *clockroot; // Exactly one external root can be active in this fixture.
+static Modlink *clocklink; // Instance used by the protected callback test.
+static int rejectroot; // Inject an error before external root publication.
+
+
+/* Supply tracked heap allocation to the real mklinkmod constructor. */
+Heap*
+nheap(int bytes)
+{
+	Heap *heap;
+
+	heap = allocate(sizeof(*heap)+bytes);
+	if(heap == nil)
+		error(exNomem);
+	heap->ref = 1;
+	return heap;
+}
+
+
+/* Record publication or raise before making the instance visible. */
+void
+ptradd(Heap *heap)
+{
+	check(clockroot == nil);
+	if(rejectroot)
+		error(exNomem);
+	clockroot = heap;
+}
+
+
+/* Verify the caller releases precisely the external root it owns. */
+void
+ptrdel(Heap *heap)
+{
+	check(clockroot == heap);
+	clockroot = nil;
+}
+
+
+/* Retire the link and release its module under the fixture's bounded heap. */
+static void
+destroysyslink(void *object)
+{
+	Modlink *link;
+
+	link = object;
+	check(D2H(link) != clockroot && D2H(link)->t == &Tmodlink && link->MP == H);
+	Tmodlink.ref--;
+	unload(link->m);
+	releaseowned(D2H(link));
+}
+
+
+SYS_MKLINK
+
+
+/* Borrow a link only for the import-matching tests. */
+static const Link*
+clockimport(const uchar *image, ulong bytes, unsigned int ordinal)
+{
+	Module *owner;
+	const Link *entry;
+
+	owner = nil;
+	entry = dis64sysclockimport(image, bytes, ordinal, &owner);
+	check(owner == (entry == nil ? nil : modules));
+	return entry;
+}
+
+
 /* Run the owning registration body through the real protected VM error frame. */
 static int
 initialize(void *unused)
@@ -146,13 +219,8 @@ initialize(void *unused)
 static int
 readclock(void *argument)
 {
-	F_Sys_millisec *frame;
-	const Link *link;
-
-	frame = argument;
-	link = dis64sysclockimport(clock_image, sizeof(clock_image), 0);
-	check(link != nil);
-	link->u.runt(frame);
+	check(clocklink != nil && clocklink->nlinks == 1);
+	clocklink->links[0].u.runt(argument);
 	return 1;
 }
 
@@ -164,10 +232,10 @@ main(void)
 	Module *m;
 	F_Sys_millisec frame = {0};
 	WORD stamp = -1;
-	int i, allocations, failures;
+	int i, allocations, failures, before;
 
 	baseline.ref = 7;
-	check(dis64sysclockimport(clock_image, sizeof(clock_image), 0) == nil);
+	check(clockimport(clock_image, sizeof(clock_image), 0) == nil);
 	check(kprotect(initialize, nil));
 	allocations = attempts;
 	check(initialized == 1 && modules != &baseline && modules->ntype == nelem(names));
@@ -182,20 +250,33 @@ main(void)
 		m->ext[i].u.runt(&baseline);
 		check(invoked[i] == 1);
 	}
-	check(dis64sysclockimport(clock_image, sizeof(clock_image), 0) == &m->ext[10]);
-	check(dis64sysclockimport(clock_image, sizeof(clock_image), 1) == nil);
-	check(dis64sysclockimport(clock_image, sizeof(clock_image)-1, 0) == nil);
-	check(dis64sysclockimport(wrong_module, sizeof(wrong_module), 0) == nil);
-	check(dis64sysclockimport(wrong_symbol, sizeof(wrong_symbol), 0) == nil);
-	check(dis64sysclockimport(wrong_result, sizeof(wrong_result), 0) == nil);
-	check(dis64sysclockimport(wrong_parameters, sizeof(wrong_parameters), 0) == nil);
+	check(clockimport(clock_image, sizeof(clock_image), 0) == &m->ext[10]);
+	check(clockimport(clock_image, sizeof(clock_image), 1) == nil);
+	check(clockimport(clock_image, sizeof(clock_image)-1, 0) == nil);
+	check(clockimport(wrong_module, sizeof(wrong_module), 0) == nil);
+	check(clockimport(wrong_symbol, sizeof(wrong_symbol), 0) == nil);
+	check(clockimport(wrong_result, sizeof(wrong_result), 0) == nil);
+	check(clockimport(wrong_parameters, sizeof(wrong_parameters), 0) == nil);
 	m->ext[10].u.runt = Sys_open;
-	check(dis64sysclockimport(clock_image, sizeof(clock_image), 0) == nil);
+	check(clockimport(clock_image, sizeof(clock_image), 0) == nil);
 	m->ext[10].u.runt = Sys_millisec;
 	m->type[10]->map[0] ^= 1;
-	check(dis64sysclockimport(clock_image, sizeof(clock_image), 0) == nil);
+	check(clockimport(clock_image, sizeof(clock_image), 0) == nil);
 	m->type[10]->map[0] ^= 1;
 	check(m->ref == 1 && baseline.ref == 7);
+	before = live;
+	fail_after = 0;
+	check(prepare64sysclocklink(clock_image, sizeof(clock_image), 0) == nil);
+	fail_after = -1;
+	check(m->ref == 1 && live == before && clockroot == nil && Tmodlink.ref == 1);
+	rejectroot = 1;
+	check(prepare64sysclocklink(clock_image, sizeof(clock_image), 0) == nil);
+	rejectroot = 0;
+	check(m->ref == 1 && live == before && clockroot == nil && Tmodlink.ref == 1);
+	clocklink = prepare64sysclocklink(clock_image, sizeof(clock_image), 0);
+	check(clocklink != nil && clockroot == D2H(clocklink));
+	check(clocklink->m == m && m->ref == 2 && clocklink->prog == nil && clocklink->MP == H);
+	check(clocklink->links[0].frame == m->ext[10].frame);
 	frame.ret = H;
 	check(!kprotect(readclock, &frame));
 	check(strcmp(diagnostic, exNilref) == 0);
@@ -206,6 +287,9 @@ main(void)
 	frame.ret = &stamp;
 	check(kprotect(readclock, &frame));
 	check(clockreads == 1 && stamp == 123456);
+	ptrdel(D2H(clocklink));
+	destroy(clocklink);
+	check(m->ref == 1 && live == before && clockroot == nil && Tmodlink.ref == 1);
 	unload(m);
 	check(modules == &baseline && live == 0 && baseline.ref == 7);
 	failures = 0;
@@ -226,6 +310,6 @@ main(void)
 	check(kprotect(initialize, nil));
 	unload(modules);
 	check(modules == &baseline && live == 0);
-	printf("PASS trusted Sys profile: %d published entries, %d allocation refusals, descriptor refusal and retry, serialized clock import resolution and production callback\n", (int)nelem(names), failures);
+	printf("PASS trusted Sys profile: %d published entries, %d allocation refusals, descriptor refusal and retry, rooted clock import, two rollback controls and production callback\n", (int)nelem(names), failures);
 	return 0;
 }

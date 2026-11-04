@@ -54,7 +54,7 @@ static const LimboNative64Entry *const native64sysio[] = {
 
 /* Borrow the generated clock export only while the caller holds VM exclusion. */
 const Link*
-native64sysclock(void)
+native64sysclock(Module **owner)
 {
 	const LimboNative64Entry *entry;
 	Module *module;
@@ -62,6 +62,8 @@ native64sysclock(void)
 	Type *frame;
 	unsigned int i;
 
+	if(owner == nil)
+		return nil;
 	entry = &limbo_native64_Sys_millisec_entry;
 	for(module=modules; module != nil; module=module->link)
 		if(module->path != nil && strcmp(module->path, "$Sys") == 0)
@@ -81,6 +83,7 @@ native64sysclock(void)
 	   frame == nil || link->frame != frame || frame->size != entry->frame_size ||
 	   frame->np != entry->map_bytes || memcmp(frame->map, entry->map, entry->map_bytes) != 0)
 		return nil;
+	*owner = module;
 	return link;
 }
 #endif

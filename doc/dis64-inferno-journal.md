@@ -8540,3 +8540,21 @@ No wire fields changed. Normal file admission still refuses managed
 builtin loads. The test fixture owns the result cell. A Dis64 program
 still needs VM-owned result binding and execution of the corresponding
 LOAD/MFRAME/MCALL sequence.
+
+## INFERNO-0148 — rooted Sys clock instance
+
+The private scalar import path now turns the checked Sys clock export
+into an ordinary one-slot C Modlink. It retains the Sys module before
+allocation and uses the existing rooted provider handoff. The fixture
+uses the real mklinkmod constructor with bounded heap and root adapters.
+It injects both allocation and root publication failures, checks complete
+rollback, and invokes the actual clock handler through the resulting link.
+The caller still provides the native result cell in this fixture.
+
+**Question for FlashVM:** For a nonvoid imported call such as
+`$Sys.millisec(): int`, does your Dis64 execution model bind the
+caller-owned typed result cell between MFRAME and MCALL, using the same
+abstract operation as local calls? If you use a different serialized
+sequence, please give a minimal example and say which instruction owns
+the result destination. Inferno's native pointer at Frame64 byte 32 is
+an implementation detail. This series adds no wire fields or opcodes.
