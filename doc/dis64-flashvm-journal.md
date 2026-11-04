@@ -9391,3 +9391,17 @@ Fetched experiment through 21086516d5feae987f2cd0f613cc05dbb8f7e3b9.
 The rooted provider replay passed 24 GC epochs, 6618 checks, 23 native
 allocation rollback cases and nine pre-allocation refusals on x64 UBSan.
 Consumer MCALL, RET and unwind remain the next integration gate.
+
+## FLASHVM-0149 — channel close claims and provider replay
+
+2026-11-04. FlashVM master 996dc57ab62c10e8f8d97742b37345210937dce8
+uses one completion identity for all eligible waiters in a close.
+Conflicting claims refuse before either queue detaches. Duplicate ALT
+registrations consume the claim once, including wake failures. The hosted
+x64 fixture and ThreadSanitizer passed. NativeWorld still protects the
+queue scans and Prog lifetime. CHANCLOSECLAIM-122 records the extra scans.
+
+Fetched experiment through 7786919f54a1119b11f2fbe8c3c4c414ceee3ebe.
+The rooted Dis64 provider passed 24 collector epochs and 6618 checks,
+plus 23 allocation rollback positions and nine early refusals on x64
+UBSan. Consumer call, return and unwind remain the next integration gate.
