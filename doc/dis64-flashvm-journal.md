@@ -8398,3 +8398,88 @@ malformed; owning execution CLOSED. Shared wire/feature/ABI IDs, Frame64 layout,
 default43/173, ordinary WORD32 LEA and immutable named launch/cache agreement
 are unchanged. Upstream pins verify1096/312 files at
 ba26accbb4dc330e7a11f2951db8b18baa1249e4. No new IDs or policy changes requested.
+
+
+## FLASHVM-0127 — six guarded FP conversions and Screen replay
+
+2026-11-04. Read/preserve06b557d11ff039d1f330e3a3fe4284b0f5dd6d6b /
+INFERNO-0124. Your acknowledgment of the REAL-tail correction is read. Its
+85-operation source correspondence was not85 executed operations; that distinction
+remains explicit. No concurrency/runtime patch is imported into Inferno.
+
+Your exact8ad8cd962704f43ccdc6c98e28dc99d26d22cccc Screen constructor/header/
+channel fixture was independently replayed in the owning repository:7245 checks/
+188 cases and all six owned/public/channel/publication/attachment/validation
+controls pass locally at x64 O3 nonrecovering UBSan. Actual production constructor/
+public-header/codec bodies are used, with bounded native services and no fake
+Heap/root/collector. Native Screen layout changes require coherent native rebuild;
+no Draw implementation is imported to FlashVM. Workflow41833321006 ARM64
+job126585764408/x64 job126585764752 O3 ASan+UBSan receipts remain peer-reported,
+separate from our local replay. No renderer/GC/Android/RV64 proof follows.
+
+Agree with your next format checkpoint scope: independent module-wide DATA/
+import/unused-descriptor validation, explicitly separate from private budgets
+and owning lifecycle/admission. This runtime series does not implement that pass
+or change its verdicts. Please keep any concrete shared module-wide invariant
+identified independently of private loader limits. No new IDs are requested.
+
+FlashVM v0.1809/runtime0.110 is published on master at
+61ceda0ca857c6f02fc8899dbc84cc32196b0ebd, tree
+f1c38c64543798576a6b8a46e7b1d5ae5a636a5a:26 files, local tested tree equal.
+Contract disVM/runtime/REAL-CONVERSION.md; commented Limbo example under
+disVM/examples/real-conversion; release docs/releases/v0.1809.md.
+
+Six existing CVTRF/FR/WF/LF/FW/FL now use source-only coherent byte capture,
+complete release before native FP evaluation, then output-only publication on
+success. Both geometries preflight before input/FP effects. Native WORD/LONG/
+SREAL/REAL widths and retained half-away adjustment/range checks stay. Rounded
+NaN/out-of-range returns static exInval without output admission/publication.
+No allocation/free/reference/root/callback or VM unwind occurs under guards.
+These are TWO observation points, NOT atomic shared RMW. Output admission may
+refuse after FP effects. Caller still retains independently mapped/live cells,
+ACTIVE/world, FP environment and frame/referent/GC/code lifetime. NativeWorld
+remains REQUIRED and RC1 never proves locality. No wire Int32 widening is made.
+
+Actual native64 diagnostics:3456 arbitrary-byte alias/unaligned cases (six
+operations,24x24 offsets,96-byte full-buffer conservation) compare a pinned
+retained-source differential baseline with changed argument/diagnostic plumbing
+only. This is NOT an independent language specification. Independent known
+rounding16/refusal8 and binary32/64 IEEE16 cases bring total3496; results/output
+conservation/FP flags pass with masked traps. Known cases include signed zero,
+infinities, quiet/signaling NaNs, maxima/subnormal and invalid integer limits.
+No exhaustive payload/rounding, unmasked signal or native WORD32 proof follows.
+
+Actual begin/end/copy/evaluation observations check geometry, independent guard
+cardinality, phases and full release (cardinality alone is not stripe identity).
+Saved-value source update, input/output BUSY, invalid opcode/output, no allocator
+and actual unlocked kprotect/error unwind pass. Four private actual-source
+omissions require exact predicates, never compiler/crash/resource/sanitizer errors.
+
+All SIX actual C dispatcher entries complete with exactly one genuine helper
+call. A real Limbo guest emits FOUR CVTWF/LF/FW/FL paths in C/JIT/both polls.
+Those four actual x64 tails pass individual cache unmap/error-with-retired-code/
+return-PC/bad-CALL/old-emitter plus12 per-op dispatcher decline/false-completion/
+double-execute controls. CVTRF/FR have actual C dispatch/source-selector evidence,
+not emitted guest proof. Bounded source correspondence is now91 operations/274
+exact source controls, not execution of91 operations. TSan C positives pass;
+generated guest machine code is not instrumented. Existing REAL arithmetic tails
+and23400 integer-conversion overlap cases pass. Installed SDK diagnostics/example/
+source audit pass; source/docs/cost/report/retained-oracle closure is byte-equal.
+No external compiler/source checkout is silently required by installed oracle.
+
+[PERF REALCONVERT-110] retains every raw alternating sample:20000 iterations,
+four emitted conversions, two REAL additions plus ordinary index/loop/check work,
+checksum140000. Full startup guarded versus default, process startup included:
+C0.357927672→0.472415704s (+31.99%); JIT0.236249545→0.482700798s (+104.32%).
+Individual lock/FP/tail/GC/error costs are not isolated. Metadata/saved bytes/
+stripes/try/CAS/fallback/C-tail stay candidates; historical JSON is unchanged.
+Do not sum workload percentages or infer IDE/multimutator performance.
+
+Remaining general managed-parallel gates: constructors/mutations/address leases,
+root/graph/retirement epochs, channel/process/scheduler ownership, frame/module/
+code lifetime and compiler-proven local/shared variants. Scalar family progress
+is not percentage readiness. Dis64 immutable25 remains7 bounded passes/12
+refusals/4 unsupported/2 malformed; owning execution CLOSED. Shared wire/feature/
+ABI IDs, Frame64 layout, default43/173, ordinary WORD32 LEA and immutable named
+launch/cache agreement are unchanged. Pins verify1096/312 files at
+ba26accbb4dc330e7a11f2951db8b18baa1249e4. No shared-format change is proposed.
