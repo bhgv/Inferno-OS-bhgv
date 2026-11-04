@@ -551,3 +551,104 @@ prepare64storage(uchar *image, ulong bytes)
 	kwerrstr("Dis64 storage construction failed");
 	return nil;
 }
+
+
+typedef struct Dis64StorageClone Dis64StorageClone;
+
+struct Dis64StorageClone {
+	Dis64StorageOwner *source; // Borrowed opaque source, independently live throughout the operation.
+	Dis64StorageOwner *owner; // Partial destination owned across protected errors.
+	Type *datatype; // Actual MP Heap descriptor, independent of its original table ordinal.
+};
+
+
+/* Share retained descriptor identities, then root a fresh nil-initialized MP before recursive C copying. */
+static int
+dis64storagecopy(void *argument)
+{
+	Dis64StorageClone *copy;
+	Dis64StorageOwner *source, *owner;
+	Heap *heap;
+	unsigned int i;
+
+	copy = argument;
+	source = copy->source;
+	copy->owner = owner = mallocz(sizeof(*owner), 1);
+	if(owner == nil)
+		return 0;
+	owner->data = H;
+	owner->count = source->count;
+	if(owner->count != 0){
+		owner->types = mallocz(owner->count*sizeof(Type*), 1);
+		if(owner->types == nil)
+			return 0;
+	}
+	for(i=0; i<owner->count; i++){
+		owner->types[i] = source->types[i];
+		owner->types[i]->ref++;
+	}
+	if(copy->datatype != nil){
+		heap = heapz(copy->datatype);
+		owner->data = H2D(uchar*, heap);
+		ptradd(heap);
+		owner->pinned = 1;
+		/* newmp preserves native array-copy semantics and owns partial mapped cleanup. */
+		newmp(owner->data, source->data, copy->datatype);
+	}
+	return 1;
+}
+
+
+/* Clone only a live opaque lease under VM exclusion; success owns independent rooted data.
+ * The caller keeps source unchanged and live until return. Original type ordinals
+ * and descriptor identities are preserved without assuming the MP descriptor is0.
+ * No executable Module, import, cache, frame or JIT capability is constructed. */
+Dis64StorageOwner*
+clone64storage(Dis64StorageOwner *source)
+{
+	Dis64StorageClone copy;
+	Type *type;
+	unsigned int i;
+	int found;
+
+	memset(&copy, 0, sizeof(copy));
+	if(!dis64runtimemodel() || source == nil || source == H || source->count > 65536 ||
+	   (source->count != 0 && (source->types == nil || source->types == H)) || source->data == nil){
+		kwerrstr("invalid Dis64 storage source");
+		return nil;
+	}
+	if(source->data != H){
+		if(!source->pinned){
+			kwerrstr("unrooted Dis64 storage source");
+			return nil;
+		}
+		copy.datatype = D2H(source->data)->t;
+		if(copy.datatype == nil || copy.datatype == H){
+			kwerrstr("invalid Dis64 storage data type");
+			return nil;
+		}
+	}
+	found = copy.datatype == nil;
+	/* Official preparations/clones have one distinct Type per ordinal. Reserve
+	 * one table retain and the MP Type's additional heapz retain before allocation. */
+	for(i=0; i<source->count; i++){
+		type = source->types[i];
+		if(type == nil || type == H || type->ref <= 0 ||
+		   type->ref > 0x7ffffffe - (type == copy.datatype)){
+			kwerrstr("unavailable Dis64 storage type retain");
+			return nil;
+		}
+		if(type == copy.datatype)
+			found = 1;
+	}
+	if(!found){
+		kwerrstr("foreign Dis64 storage data type");
+		return nil;
+	}
+	copy.source = source;
+	if(kprotect(dis64storagecopy, &copy))
+		return copy.owner;
+	free64storage(copy.owner);
+	kwerrstr("Dis64 storage clone failed");
+	return nil;
+}

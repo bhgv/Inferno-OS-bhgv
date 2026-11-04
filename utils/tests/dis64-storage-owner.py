@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 # Keep actual heap/collector/protected-constructor bodies; bound only native pools and platform jumps.
-def unit(control):
+def unit(control, clones=False):
     fn = runpy.run_path(str(ROOT/'utils/tests/native64-builtins.py'))['function']
     prefix = (ROOT/'libinterp/tests/gc-roots.c').read_text().split('COLLECTOR_IMPLEMENTATION')[0]
     for signature in ('void\nfreetype(', 'void\nerror(', 'int\n__lsan_is_turned_off('):
@@ -25,6 +25,12 @@ def unit(control):
     owner = (ROOT/'libinterp/load64.c').read_text()
     bodies = '#define Dis64RuntimeObject (1024U*1024U) // Actual constructor resource policy.\n#define Dis64RuntimeCode 65536U // Actual constructor instruction policy.\n#define Dis64RuntimeBytes (8U*1024U*1024U) // Actual complete-source policy.\n'
     bodies += fn(owner,'static int\ndis64runtimemodel(')+'\n'+owner[owner.index('/* Native staging state is deliberately distinct'):]
+    if not clones:
+        bodies = bodies.split('\n\ntypedef struct Dis64StorageClone')[0]
+    else:
+        heaps += '\n'+heap[heap.index('typedef struct ArrayCopy'):heap.index('/* Read packed maps and validate complete spans')]
+        heaps += '\n\n'+'\n\n'.join(fn(heap,s) for s in ('void\nfreearray(', 'void\nacheck(', 'Heap*\nnheap(', 'Heap*\nheaparray(', 'void\ninitarray(', 'void\nnewmp('))
+        heaps = 'void freearray(Heap*,int);\nvoid *arraycpy(Array*);\n'+next(line for line in heap.splitlines() if line.startswith('Type\tTarray'))+'\n'+heaps
     mutations = {
         'map': ('(uchar*)type.map, type.mapbytes', 'nil, 0'),
         'pin': ('ptradd(heap);', '/* omitted root acquisition */'),

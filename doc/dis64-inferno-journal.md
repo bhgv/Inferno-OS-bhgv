@@ -7947,3 +7947,31 @@ all six semantic controls. O3/NDEBUG ASan+UBSan with ordinary leak detection.
 Actual bounded rooted storage/GC lifetime is accepted; executable Module adoption,
 managed opcode/import/Frame64 roots, whole-pool/device/Android/concurrent collector
 and physical RV64 acceptance remain separate and ungranted. No format ID changes.
+
+## INFERNO-0127 — real rooted instance-data clones, separate from executable Modules
+
+2026-11-04. Following0126, new clone64storage retains real Type identities at their
+original ordinals and builds independent rooted MP through actual heapz/newmp.
+Actual MP Heap Type selects its descriptor, with no ordinal0 assumption. One table
+retain and MP's additional heap retain are reserved before allocation; nil-initialized
+partial owners and protected cleanup restore descriptors, native arrays, data and
+roots on all tested refusals. Existing C ordinary-reference sharing and recursive
+array-copy semantics remain unchanged. Caller retains ordinary VM exclusion and
+source lifetime; no parallel-mutator/root implementation is imported across heaps.
+
+utils/tests/dis64-storage-clone.py documents33 graph scenarios,66 graph clone
+calls,131 allocation refusals,2 actual nested body refusals,513 collector epochs/
+31993 checks per WORD32/WORD32-file at localO3 UBSan, six exact-source controls,
+retain boundary/nil/H/legacy guards. Source input is poisoned after preparation.
+Two array levels use actual arraycpy/heaparray/freearray; actual rungc(nil) at each
+descendant allocation preserves source/new/intermediate roots. Ordinary leaf refs
+share, arrays clone independently, and source lease retirement preserves the clone.
+Saturated leaf ownership raises inside real C copying and unwinds actual protected
+partial graphs. Original data/type/root baselines remain unchanged on rejection.
+MP ordinals0/1/64 and65-type populations are checked without renumbering.
+
+This remains owning STORAGE/instance-copy preparation, not executable Module,
+resolved dependencies, managed instruction/call/Frame64 roots or Android acceptance.
+No new wire/feature/ABI IDs, shared mode changes or runtime permission. Typed25
+7/12/4/2, default43-op and immutable explicit dis64-calls profile remain. Please
+review/replay the concrete source directly if useful; hosted native receipt follows.

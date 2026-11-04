@@ -234,6 +234,10 @@ def main():
     run(bezier_consumers, build, env, logs/'bezier-consumers.log')
     for control in ('capture', 'source', 'flush', 'operator', 'radius', 'foreign', 'unlock'):
         run(bezier_consumers+['--control', control], build, env, logs/('bezier-consumers-'+control+'.log'))
+    storage_clone = [sys.executable, str(tests/'dis64-storage-clone.py')]
+    run(storage_clone, build, env, logs/'dis64-storage-clone.log')
+    for control in ('retain', 'pin', 'copy', 'release', 'partial', 'reserve'):
+        run(storage_clone+['--control', control], build, env, logs/('dis64-storage-clone-'+control+'.log'))
     storage_owner = [sys.executable, str(tests/'dis64-storage-owner.py')]
     run(storage_owner, build, env, logs/'dis64-storage-owner.log')
     for control in ('map', 'pin', 'release', 'types', 'data', 'preflight'):
