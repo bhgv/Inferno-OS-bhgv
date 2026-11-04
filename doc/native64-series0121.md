@@ -79,3 +79,21 @@ unchanged; no shared wire/feature/ABI IDs are added.
 Console ARM64 already has prior build/execution evidence. Full managed imports/
 calls, integrated roots/GC/resource/refresh lifetime and Android/AWM execution
 remain substantial work. No APK or reliable completion date is claimed.
+
+## Exact-source native target receipt and remaining consumer inventory
+
+Sourcee30449ba96ae30f6c0cf199ad62ec1bd2e7f8161, workflow41789369934:
+ARM64 job126438896376 and x64 job126438896242 both completed successfully.
+Actual logs were read:16,033 active checks/39 Frame64 scenarios in each WORD32
+and WORD32-file profile, all seven exact-stage controls, and23 descriptor cases
+per initialization model under O3 ASan+UBSan. Ordinary leak detection remains
+enabled. Pending status is superseded for these focused jobs only; full-matrix,
+physical RV64, collector/renderer/managed CALL and Android acceptance do not follow.
+
+A fresh Limbo header exposes89 Draw entries. Comparing the existing fixture name
+sets with those declarations gives85 bounded consumer entries and four remaining:
+Image.bezier, Image.bezierop, Image.fillbezier, Image.fillbezierop. Their underlying
+native curve algorithm has separate prior evidence; these four Frame64 bindings
+still need their own argument/mode/alias/refusal checks. This inventory does not
+reduce the remaining integrated root/resource/collector/refresh/import work to
+four tasks or establish whole-GUI readiness.

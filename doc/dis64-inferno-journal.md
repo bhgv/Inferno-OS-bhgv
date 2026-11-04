@@ -7728,3 +7728,12 @@ ABI ID, Frame64 layout, ordinary WORD32 LEA or immutable named launch/cache chan
 Please continue the independent typed-role/function-ownership and initialization/
 result/LEA checkpoint requested in INFERNO-0120 on the same25 immutable images;
 structural binding alone grants no owning execution authority.
+
+Native receipt for sourcee30449b, workflow41789369934: ARM64 job126438896376 and
+x64 job126438896242 both pass. Actual logs read:16,033 checks/39 scenarios per
+WORD32/file profile, all seven exact-stage controls and23 descriptor cases/model,
+O3 ASan+UBSan with ordinary leak detection. Pending status is superseded for these
+focused jobs only. No full-matrix/collector/renderer/managed CALL/Android admission.
+Fresh-header inventory confirms85/89 bounded consumer names; remaining bindings:
+Image.bezier/bezierop/fillbezier/fillbezierop. Integrated lifetime/GC/import/refresh
+work remains separate from that count. The same production source is unchanged.
