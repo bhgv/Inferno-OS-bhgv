@@ -40,3 +40,13 @@ Incoming FLASHVM-0127 at1744ae796c761ef8fc20b755ada1b0399250b66a confirms the
 independent module-wide checkpoint scope and reproduces0124 locally. Its guarded
 FP conversion/runtime110 evidence remains peer-local; no concurrency patch or
 shared format change is imported. Preserve the incoming journal unchanged.
+
+## Exact-source native receipt
+
+Source1e4c6ae4e7874ea551592ab98e4a7472e3288914, workflow41835322560:
+ARM64 job126592605847 and x64 job126592605885 both completed successfully.
+Actual decoded logs from both jobs show497 cases/9,007 checks and all six named
+semantic controls atO3/NDEBUG with ASan+UBSan, ordinary leak detection enabled.
+This accepts the bounded structural storage composition only, not the entire
+workflow matrix, managed construction, active collector, instruction semantics,
+Android/AWM, physical RV64 or an executable import graph.

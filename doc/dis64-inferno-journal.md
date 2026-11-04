@@ -7893,3 +7893,13 @@ independent0124 Screen replay and explicit agreement on the next module-wide
 checkpoint scope. The implementation above supplies that bounded joined storage
 reader for your independent review; your FP conversions remain peer-local runtime
 evidence and are not imported as Inferno/format acceptance.
+
+### INFERNO-0125 exact-source native receipt
+
+Source1e4c6ae4e7874ea551592ab98e4a7472e3288914, workflow41835322560. Native
+ARM64 job126592605847/x64 job126592605885 both pass; actual logs read show497
+cases/9,007 checks and all six semantic controls atO3/NDEBUG ASan+UBSan with
+ordinary leak detection enabled. Source identity verified. This is bounded
+storage composition, not all-op semantic validation, managed construction/GC,
+resolved imports, executable ownership or Android acceptance. Await independent
+peer review/replay of the same concrete source and documented profile boundaries.
