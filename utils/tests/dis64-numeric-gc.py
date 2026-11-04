@@ -126,7 +126,7 @@ def main():
                 ('wrong-order', {'code': words(3)+call+frame+fixtures['EXIT']}),
                 ('mapped-scratch', {'types': [fixtures['D'](80, 8, b'\x00\x80'), caller['types'][1]]}),
                 ('scalar-mp', {'types': [caller['types'][0], fixtures['D'](8, 8)]}),
-                ('multiple-imports', {'imports': [binding(module=0), binding(module=0)]}),
+                ('import-limit', {'imports': [binding(module=0)]*33}),
                 ('wrong-provider', {'imports': [binding(module=3)]}),
             ]
             for name, fields in refusals:

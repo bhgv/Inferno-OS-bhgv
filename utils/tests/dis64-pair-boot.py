@@ -41,6 +41,33 @@ def images(failure, dependency_name="unit", *, calls=1, late_failure=False, wron
     return caller, provider
 
 
+# Use reversed exports so consumer ordinals cannot be mistaken for export ordinals.
+def two_symbols(*, second=1, terminal_failure=False, wrong_ordinal=False,
+                missing_symbol=False, wrong_signature=False, other_module=False):
+    words, ins = RAW['W'], RAW['I']
+    bindings = RAW['RAW']['RAW']
+    binding = bindings['binding']
+    frame = ins('IMFRAME', 65, source=0, middle=0, destination=64)
+    call = ins('IMCALL', 72, source=64, middle=0, destination=0)
+    tail = ins('IMFRAME', 65, source=0, middle=second, destination=64)
+    tail += ins('IMCALL', 72, source=64, middle=0 if wrong_ordinal else second, destination=0)
+    caller = RAW['IMAGE'](RAW['SECTIONS'](
+        name=5, databytes=8,
+        imports=[binding(module=0), binding(module=3 if other_module else 0, symbol=5)],
+        types=[RAW['D'](80, 8), RAW['D'](8, 8, b'\x80')],
+        code=words(5)+frame+call+tail+RAW['EXIT'],
+    ))
+    ret = ins('IRET', 27)
+    terminal = ins('IDIVW', 16, source=0, destination=8) if terminal_failure else ret
+    signature = bindings['signature'](1 if wrong_signature else 0)
+    provider = RAW['IMAGE'](RAW['SECTIONS'](
+        data=words(1, 8, 1, 40), code=words(2)+ret+terminal,
+        exports=[binding(export=True, symbol=3 if missing_symbol else 5, entry=1, sig=signature),
+                 binding(export=True)],
+    ))
+    return caller, provider
+
+
 # Require the real scheduler to retire after returning or unwinding the pair.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -72,6 +99,29 @@ def main():
                     marker = f'native64 scalar module {module}: jit={jit}, exit="{status}"'
                     if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
                         raise RuntimeError(f'paired boot did not complete ({failure}, {calls}, {late_failure}): '+output)
+        for second, terminal_failure in ((0, True), (1, False), (1, True)):
+            caller, dependency = two_symbols(second=second, terminal_failure=terminal_failure)
+            consumer.write_bytes(caller)
+            provider.write_bytes(dependency)
+            sibling.write_bytes(dependency)
+            failure = second == 1 and terminal_failure
+            module, status = ('unit', 'zero divide') if failure else ('other', '')
+            for jit in (0, 1):
+                for options in (pair, automatic):
+                    output = execute(command+['-c', str(jit)]+options)
+                    marker = f'native64 scalar module {module}: jit={jit}, exit="{status}"'
+                    if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                        raise RuntimeError('two-symbol boot did not complete: '+output)
+        for case in ({'wrong_ordinal': True}, {'second': 2}, {'missing_symbol': True},
+                     {'wrong_signature': True}, {'other_module': True}):
+            caller, dependency = two_symbols(**case)
+            consumer.write_bytes(caller)
+            provider.write_bytes(dependency)
+            sibling.write_bytes(dependency)
+            for options in (pair, automatic):
+                output = execute(command+options)
+                if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+                    raise RuntimeError(f'{case} reached the scheduler: '+output)
         caller, dependency = images(False, calls=2, wrong_slot=True)
         consumer.write_bytes(caller)
         provider.write_bytes(dependency)
@@ -109,7 +159,7 @@ def main():
         output = execute(command+automatic)
         if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
             raise RuntimeError('sibling with wrong declared name reached scheduler: '+output)
-    print('PASS complete Dis64 pair boot: explicit and sibling C/JIT single/repeated return and late unwind, CLI and dependency refusals')
+    print('PASS complete Dis64 pair boot: explicit and sibling C/JIT single/repeated and two-symbol calls, return and late unwind, CLI and dependency refusals')
 
 
 if __name__ == '__main__':

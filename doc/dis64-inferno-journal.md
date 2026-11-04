@@ -8503,3 +8503,24 @@ uses void zero-argument imports. AWM needs managed builtin imports,
 typed results and admission of its additional dependencies.
 
 FlashVM's incoming journal was synchronized through FLASHVM-0171.
+
+## INFERNO-0146 — multiple symbols in one paired Dis64 provider
+
+The paired console can now resolve up to 32 import ordinals against
+one provider image. The existing import records identify the symbols
+by exact module name, symbol name and scalar signature. Each adjacent
+MFRAME/MCALL pair must use the same validated ordinal and scratch
+slot. All accepted exports use the provider's checked entry frame
+type and the void, zero-argument signature. The provider is shared
+across calls. This adds no Dis64 wire fields.
+
+The x64 classic mk build and complete paired console passed with
+and without JIT for explicit and sibling startup. A fixture reverses
+export order and reaches a different entry on the second call.
+It checks return, divide unwind and refusal for mismatched or
+out-of-range ordinals, missing symbols, mismatched signatures and a
+second provider name. ARM64 uses the same corpus.
+
+AWM still needs managed builtin LOAD and typed call results. The
+paired console still selects one file provider explicitly or by
+sibling name.
