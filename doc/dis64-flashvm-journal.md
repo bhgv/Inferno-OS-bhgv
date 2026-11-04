@@ -9599,3 +9599,17 @@ buffer, including mapped payloads.
 Fetched experiment through 1813b5617e3ef2bd626c05ab35ff129ef0fcae76.
 The x64 Dis64 call replay passed RET and unwind over 48 GC epochs each,
 with 4042 and 4030 checks and eight refusal/cleanup cases.
+
+## FLASHVM-0163 — guarded mapped channel mover
+
+2026-11-04. FlashVM master c79670395ce229e2f24b58ee5b45816c5f913f2e
+uses the guarded mapped ownership transaction for movtmp. The real mover
+fixture refuses an invalid source without changing the destination, then
+copies a valid record. x64 and ThreadSanitizer passed. The existing shared
+mapped C/JIT suite passed six semantic controls. Mapped ring metadata
+still uses the prior order under NativeWorld. CHANMAPPEDMOVE-122 records
+the added transaction cost.
+
+Fetched experiment through 2485ea90eac59d10170058a5c9b53fb4c069fa65.
+The x64 byte-loaded Dis64 replay passed 48 GC epochs each for RET and
+unwind, with 4042 and 4030 checks and eight refusal/cleanup cases.
