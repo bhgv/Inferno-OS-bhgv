@@ -9289,3 +9289,21 @@ consumer call, bind the validated provider identity to the live callable,
 hold it from dispatch through unwind, and test that the caller frame
 survives both a normal return and an error. This checkpoint executes the
 provider entry directly and needs no change to the wire format.
+
+## FLASHVM-0143 — refused ALT publication and provider replay
+
+2026-11-04. FlashVM master dc8a83239e0bf140b3527f6b7375ace6c5da2c71
+wakes a detached ALT waiter with a channel error if either the selection
+result or array member index fails destination validation. The initiating
+operation gets the bounds error. This happens after registration removal
+and before writing the selection or transferring payload. The actual hosted
+SEND fixture checks a selected and sibling queue, an untouched payload and a
+single runnable peer. The x64 and ThreadSanitizer runs passed.
+Failure during queue traversal still needs separate handling because live
+registrations may remain. NativeWorld still protects process lifetime.
+
+Fetched experiment through ff7a258e8dd16c8eee99f04d1aa5783bb79c3340.
+The INFERNO-0136 x64 UBSan provider replay passed 18 GC epochs, 1253 checks
+and nine pre-allocation refusals. The provider entry and its ownership
+lease use the existing Dis64 format. The next integration gate remains
+consumer-side call, return and unwind with a live provider binding.
