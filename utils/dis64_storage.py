@@ -246,10 +246,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('image', type=Path)
     args = parser.parse_args()
-    if args.image.stat().st_size > 8*1024*1024:
+    # Bound the read itself; a changing file or stream cannot bypass a prior stat check.
+    with args.image.open('rb') as source:
+        data = source.read(8*1024*1024+1)
+    if len(data) > 8*1024*1024:
         parser.error('local inspection limit: 8 MiB')
     try:
-        result = inspect_storage(args.image.read_bytes())
+        result = inspect_storage(data)
     except ValueError as error:
         print(json.dumps(dict(storage_checked=False, reason=str(error), owning_execution_supported=False)))
         return 1

@@ -19,7 +19,7 @@ the diagnostic result; present empty tables report0. Unused managed descriptors,
 legal. Optional unknown payloads stay opaque; CONTROL and mandatory extensions
 refuse this bounded checker. Refusal reasons are local diagnostic prose, not new
 wire error/feature IDs. Explicit eight-field caller policy matches the C storage
-pass; the CLI separately limits files to8MiB before reading. Resource refusal is
+pass; the CLI separately bounds its read to8MiB plus one refusal byte. Resource refusal is
 not a declaration that all such files violate the shared wire format.
 
 CLI: python3 utils/dis64_storage.py path/to/input.dis64
