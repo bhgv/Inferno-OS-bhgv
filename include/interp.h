@@ -610,6 +610,10 @@ extern	String*		stringdup(String*);
 extern	String*		stringheap(int, int, int, int);
 extern	char*		syserr(char*, char*, Prog*);
 extern	void		sysinit(void);
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+extern const Link* native64sysclock(void); // Borrowed generated export under VM exclusion.
+extern const Link* dis64sysclockimport(const uchar*, ulong, unsigned int); // Private checked scalar import resolution.
+#endif
 extern	void		sysmodinit(void);
 extern	void		tellsomeone(Prog*, char*);
 extern	void		tkmodinit(void);

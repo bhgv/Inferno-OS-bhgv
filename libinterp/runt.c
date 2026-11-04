@@ -50,6 +50,39 @@ static const LimboNative64Entry *const native64sysio[] = {
 	&limbo_native64_Sys_open_entry, // Open process control files.
 	&limbo_native64_Sys_fildes_entry, // Duplicate the diagnostic descriptor.
 };
+
+
+/* Borrow the generated clock export only while the caller holds VM exclusion. */
+const Link*
+native64sysclock(void)
+{
+	const LimboNative64Entry *entry;
+	Module *module;
+	const Link *link;
+	Type *frame;
+	unsigned int i;
+
+	entry = &limbo_native64_Sys_millisec_entry;
+	for(module=modules; module != nil; module=module->link)
+		if(module->path != nil && strcmp(module->path, "$Sys") == 0)
+			break;
+	if(module == nil || module->prog != nil || module->origmp != H ||
+	   module->ntype != sizeof(native64sysio)/sizeof(native64sysio[0]) ||
+	   module->type == nil || module->ext == nil)
+		return nil;
+	for(i=0; i<module->ntype && native64sysio[i] != entry; i++)
+		;
+	if(i == module->ntype)
+		return nil;
+	link = &module->ext[i];
+	frame = module->type[i];
+	if(link->name == nil || strcmp(link->name, entry->name) != 0 ||
+	   link->u.runt != entry->function || (UWORD)link->sig != entry->legacy_signature ||
+	   frame == nil || link->frame != frame || frame->size != entry->frame_size ||
+	   frame->np != entry->map_bytes || memcmp(frame->map, entry->map, entry->map_bytes) != 0)
+		return nil;
+	return link;
+}
 #endif
 
 

@@ -8524,3 +8524,19 @@ second provider name. ARM64 uses the same corpus.
 AWM still needs managed builtin LOAD and typed call results. The
 paired console still selects one file provider explicitly or by
 sibling name.
+
+## INFERNO-0147 — resolve the first scalar Sys import from Dis64
+
+The private Sys gate checks a serialized import for exact Rune names
+`$Sys` and `millisec` and the existing canonical `fn(): int` signature.
+It matches the generated C callback and complete frame layout against
+the live trusted registration. The borrowed export requires VM
+exclusion. The fixture provides a native frame and a result cell,
+calls the real handler and verifies the returned WORD. It also
+rejects malformed bytes, names, signatures and inconsistent native
+metadata.
+
+No wire fields changed. Normal file admission still refuses managed
+builtin loads. The test fixture owns the result cell. A Dis64 program
+still needs VM-owned result binding and execution of the corresponding
+LOAD/MFRAME/MCALL sequence.

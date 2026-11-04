@@ -803,6 +803,39 @@ static const Dis64StorageLimits dis64numericlimits = {
 };
 
 
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+
+
+/* Match an exact checked scalar import to the trusted registered Sys clock.
+ * The caller holds VM exclusion and the image remains immutable for the call. */
+const Link*
+dis64sysclockimport(const uchar *image, ulong bytes, unsigned int ordinal)
+{
+	static const uchar sys[] = {0,0,0,'$', 0,0,0,'S', 0,0,0,'y', 0,0,0,'s'};
+	static const uchar millisec[] = {
+		0,0,0,'m', 0,0,0,'i', 0,0,0,'l', 0,0,0,'l',
+		0,0,0,'i', 0,0,0,'s', 0,0,0,'e', 0,0,0,'c',
+	};
+	Dis64StorageImage consumer;
+	Dis64Binding binding;
+	DisRuneView module, symbol;
+
+	if(image == nil || image == H || bytes > Dis64RuntimeBytes ||
+	   (uintptr)image > (uintptr)-1-bytes ||
+	   !dis64storageimagecheck(image, bytes, &dis64numericlimits, &consumer) ||
+	   consumer.module.profile != 1 ||
+	   !dis64bindingget(&consumer.imports, ordinal, &binding) ||
+	   binding.signature.result != Dis64Int || binding.signature.parameters != 0 ||
+	   !disstringpoolget(&consumer.strings, binding.module, &module) ||
+	   module.count != sizeof(sys)/4 || memcmp(module.values, sys, sizeof(sys)) != 0 ||
+	   !disstringpoolget(&consumer.strings, binding.symbol, &symbol) ||
+	   symbol.count != sizeof(millisec)/4 || memcmp(symbol.values, millisec, sizeof(millisec)) != 0)
+		return nil;
+	return native64sysclock();
+}
+#endif
+
+
 #define Dis64PairBindings 32U // Maximum import ordinals in the paired console profile.
 
 typedef struct Dis64PairPlan Dis64PairPlan;
