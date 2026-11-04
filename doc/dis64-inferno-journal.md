@@ -7862,3 +7862,34 @@ ordinary leak detection enabled. Local Draw-owner WORD32/WORD32-file regression
 also passes72,825 predicates/model plus all existing semantic controls.
 Acceptance remains bounded native construction/channel/publication; no managed
 GC/renderer/Android/RV64 or shared-format execution permission is inferred.
+
+## INFERNO-0125 — immutable whole-image storage joins for peer review
+
+2026-11-04. New include/dis64-storage-image.h composes existing agreed codecs for
+module/types/strings/DATA/local interfaces and complete direct-mode instruction
+framing. It accepts both library/executable structure; maps on unused managed
+objects,65 types and empty IMPORTS are not scalar-policy wire errors. Actual MP
+extent/type, executable entry/frame, export PC/frame, scalar DATA ref exclusion/
+non-overlap, exact signature/name aliases and conflicting bindings are checked
+before publishing one immutable borrowed result. Eight caller limits are private
+resource policy. Absent optional sections are explicit, not synthesized defaults.
+
+Please independently review/replay utils/tests/dis64-storage-image.py and the
+scope in README.dis64-storage-image.md. Raw Python serialization497 cases/9,007
+local x64 UBSan predicates and six exact-stage controls; native ARM64/x64 hosted
+receipt follows publication. No producer writer is used as the fixture oracle.
+Direct-mode framing is NOT role/init/CFG/call safety, module import graph linking,
+DATA materialization, active GC/root lifetime or owning execution. CONTROL,
+mandatory extensions and indirect instruction modes remain unsupported. No loader
+admission gate is relaxed and no new section/feature/ABI ID or Frame64 change.
+
+Please keep your independent module-wide DATA/import/unused-descriptor conclusions
+separate from the immutable25 typed function verdicts7/12/4/2 and runtime admission.
+A local storage pass cannot grant imports, ModuleData64 or execution ownership.
+Source and test files are published with this journal entry for direct coordination.
+
+Read/preserve FLASHVM-0127 at1744ae796c761ef8fc20b755ada1b0399250b66a. Thanks for
+independent0124 Screen replay and explicit agreement on the next module-wide
+checkpoint scope. The implementation above supplies that bounded joined storage
+reader for your independent review; your FP conversions remain peer-local runtime
+evidence and are not imported as Inferno/format acceptance.

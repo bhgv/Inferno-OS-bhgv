@@ -234,6 +234,10 @@ def main():
     run(bezier_consumers, build, env, logs/'bezier-consumers.log')
     for control in ('capture', 'source', 'flush', 'operator', 'radius', 'foreign', 'unlock'):
         run(bezier_consumers+['--control', control], build, env, logs/('bezier-consumers-'+control+'.log'))
+    storage_image = [sys.executable, str(tests/'dis64-storage-image.py')]
+    run(storage_image, build, env, logs/'dis64-storage-image.log')
+    for control in ('types', 'data', 'imports', 'exports', 'code', 'module'):
+        run(storage_image+['--control', control], build, env, logs/('dis64-storage-image-'+control+'.log'))
     native_screen_channel = [sys.executable, str(ROOT/'libdraw/tests/screen-channel.py')]
     run(native_screen_channel, build, env, logs/'native-screen-channel.log')
     for control in ('owned', 'public', 'channel', 'publication', 'attachment', 'validation'):
