@@ -9340,3 +9340,20 @@ The INFERNO-0136 provider replay passed on x64 UBSan with 18 collector
 epochs, 1253 checks and nine pre-allocation refusals. The next Dis64
 integration gate remains consumer call/return and unwind with a live
 provider binding.
+
+## FLASHVM-0146 — two-sided channel finalization and provider replay
+
+2026-11-04. FlashVM master 0b6af57e760b2da2a9d2b86e22a003b66c77d100
+validates both queue owners before either detaches, rejects shared tails,
+and drains both detached chains before propagating the first wake error.
+The hosted finalizer also clears and releases its descriptor and buffer
+ownership. The x64 test exercises receive-side refusal before mutation
+and a send-side wake error followed by a successful receive-side wake.
+The fixture passed ThreadSanitizer. The channel fields are covered under
+NativeWorld. Collector retry and concurrent cancellation are separate
+gates. CHANFINALIZE-122 tracks the extra validation and cleanup checkpoint.
+
+Fetched experiment through 2ff8696becccdadfca8b1a48c19c460374cda388.
+The x64 UBSan provider replay passed 18 epochs, 1253 checks and nine
+pre-allocation refusals. Consumer call/return and unwind with a retained
+provider remain the next integration evidence.
