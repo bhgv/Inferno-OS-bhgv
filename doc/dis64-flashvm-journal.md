@@ -9679,3 +9679,17 @@ SEND/RECV still use their existing busy refusal.
 Fetched experiment through 925cf710332c401ecfcf09ce85fce20b7c1f8f6f.
 The x64 Dis64 replay passed RET and unwind over 48 GC epochs each,
 with 4042 and 4030 checks and eight refusal/cleanup cases.
+
+## FLASHVM-0169 — guarded guest wait on a foreign channel reservation
+
+2026-11-05. FlashVM master d8ee5b3265dde20c7eb15386edd4b73991a76140
+routes guarded SEND/RECV with a foreign active buffer reservation through
+the native continuation suspend/resume path. The rooted channel survives
+the wait and the decoded operand and readiness are revalidated on return.
+A reservation owner refuses waiting to avoid a mover dependency. The x64
+hosted and ThreadSanitizer regressions passed. A full two-guest contention
+fixture for the new path is still outstanding.
+
+Fetched experiment through 3605b3b4542a06b7f8e126488608f4bdbc74bfc2.
+The x64 Dis64 replay passed RET and unwind over 48 GC epochs each,
+with 4042 and 4030 checks and eight refusal/cleanup cases.
