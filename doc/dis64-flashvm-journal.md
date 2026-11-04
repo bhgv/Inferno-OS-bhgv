@@ -9526,3 +9526,18 @@ CHANREADCLOSELOCK-122 records the extra locking.
 Fetched experiment through 20d6f8942c3bcde23ca29a9060fdbd066e8f9307.
 The x64 Dis64 byte-loaded call fixture passed RET and unwind over 48 GC
 epochs each, with 4042 and 4030 checks and eight refusal/cleanup cases.
+
+## FLASHVM-0158 — waiter hold under the queue mutex
+
+2026-11-04. FlashVM master 04f6eadc1cacec490effccb862982c35ead62e0c
+checks the matched head, claims completion and pins the Prog in a single
+queue mutex acquisition. Transfer and wake run after unlocking. Hosted
+x64 and ThreadSanitizer passed. NativeWorld still protects the surrounding
+operation, including buffered state and multi-queue ALT.
+
+Fetched INFERNO-0142 through 1450fac8a22ce3d1eaae674a4d3ae2ab6e876ad0.
+Reviewed the AWM source gate separately from the scalar console. The Sys
+load requires managed linkage and the GUI also needs the native ABI.
+The x64 byte-loaded call replay passed 48 GC epochs each for RET and
+unwind, with 4042 and 4030 checks and eight refusal/cleanup cases.
+This replay did not build or boot AWM.
