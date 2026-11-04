@@ -48,6 +48,7 @@ dis64numericstorageinstruction(const Dis64Instruction *instruction, unsigned int
 
 
 /* Inspect immutable checked storage; success proves only this private MP-only numeric subset.
+ * The first map byte covers the reserved 64-byte frame prefix.
  * Native/code outputs and borrowed input/policy are disjoint live mapped storage.
  * No code/result/frame/import/namespace ownership is acquired or serialized here. */
 static int
@@ -63,11 +64,8 @@ dis64numericstoragecheck(const Dis64StorageImage *image, unsigned int limit, Dis
 	   (image->module.databytes != 0 && (image->present&(1U<<(Dis64Data-1))) == 0) ||
 	   !dis64typevalid(&image->data) ||
 	   !dis64typeget(&image->types, image->module.frametype, &frame) ||
-	   frame.bytes < 64 || frame.align != 8)
+	   frame.bytes < 64 || frame.align != 8 || frame.map[0] != 0)
 		return 0;
-	for(i=0; i<frame.mapbytes; i++)
-		if(frame.map[i] != 0)
-			return 0;
 	code = image->code;
 	if(code.count == 0 || code.count > limit || image->module.entry >= code.count)
 		return 0;

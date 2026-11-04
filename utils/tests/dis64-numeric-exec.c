@@ -46,7 +46,7 @@ numericrun(Module *module, Dis64StorageOwner *roots, unsigned long long expected
 	if(link->MP != H) D2H(link->MP)->ref++;
 	process.R.M=link; process.R.PC=module->entry;
 	entry=mallocz(module->entryt->size,1); require(entry != nil); entry->t=module->entryt;
-	source=entry; R.s=&source; newstack(&process); free(entry); process.quanta=1000;
+	source=entry; R.s=&source; newstack(&process); initmem(module->entryt, process.R.FP); free(entry); process.quanta=1000;
 	rxcompleted=rxdeclined=0;
 	if(jit){
 		require(module->jit != nil && module->jit->code != nil && module->jit->size > 0);

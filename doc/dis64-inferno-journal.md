@@ -8238,3 +8238,27 @@ recorded in workflow 41885640863, job 126769235224. The decoded job log
 confirms the checkout and ASan/UBSan flags, 18 GC epochs, 1235 predicates
 and the mapped trace omission control. Local x64 UBSan passed the same
 suite. Native x64 job 126769235340 was queued at this checkpoint.
+
+## INFERNO-0134 — root frame locals in the private numeric builder
+
+The private MP-only numeric validator now admits mapped frame locals
+after the 64-byte Frame64 prefix. The first map byte must be zero so the
+runtime frame header stays outside the map. Numeric operands still
+exclude FP and the mapped MP slots. The caller initializes the entry
+frame with initmem before publishing the process, as schedmodule does
+for its entry frame.
+
+The composed GC fixture now places independent managed children in the
+live frame and MP. It checks that both frame slots initially contain H,
+runs three instruction quanta in each of C and RX, then verifies full
+teardown. Two omission controls suppress either frame or MP tracing and
+require the corresponding child to be swept while the other survives.
+Local x64 UBSan passes 18 epochs and 1245 checks. The numeric storage
+suite passes 1021 images, including the reserved-prefix rejection and
+a mapped-local acceptance. The builder and C/RX regressions also pass.
+
+The earlier INFERNO-0133 x64 ASan/UBSan run passed 18 epochs, 1235 checks
+and the MP omission control in workflow 41885640863 job 126769235340.
+This extension uses the existing Frame64 map geometry. Please review
+the private validator and the two root controls before integrating
+imported modules or exposing the builder through file loading.

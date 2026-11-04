@@ -50,6 +50,7 @@ def cases():
     base = W(2)+I('IADDW',16,source=2,destination=8)+EXIT
     rows += [('mapped-frame',0,IMAGE(SECTIONS(data=W(0),code=base,types=[D(80,8,b'\x80\x00'),D(16,8,b'\x80')])),RAW['POLICY']),
              ('missing-data',0,IMAGE(SECTIONS(code=base)),RAW['POLICY']),
+             ('mapped-frame-local',1,IMAGE(SECTIONS(data=W(0),code=base,types=[D(80,8,b'\x00\xc0'),D(16,8,b'\x80')])),RAW['POLICY']),
              ('nonempty-import',0,IMAGE(SECTIONS(data=W(0),code=base,imports=[RAW['binding']()])),RAW['POLICY']),
              ('empty-import',1,IMAGE(SECTIONS(data=W(0),code=base,imports=[])),RAW['POLICY'])]
     return rows
@@ -62,7 +63,7 @@ def main():
     args = parser.parse_args()
     header = (ROOT/'include/dis64-numeric-storage.h').read_text()
     changes = {'map':('!dis64initspan(data, (unsigned int)instruction->source, sourcewidth)','0'),
-               'frame':('if(frame.map[i] != 0)','if(0 && frame.map[i] != 0)'),
+               'frame':('|| frame.map[0] != 0',''),
                'fp':('source == AFP || destination == AFP || middle == AXINF','0'),
                'data':('(image->module.databytes != 0 && (image->present&(1U<<(Dis64Data-1))) == 0)','0'),
                'interfaces':('image->imports.count != 0 || image->exports.count != 0','0')}

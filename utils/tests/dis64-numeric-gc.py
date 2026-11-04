@@ -31,13 +31,14 @@ def unit():
 # Keep the raw image independent and require the controlled missing trace to be detected.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--control', action='store_true')
+    parser.add_argument('--control', nargs='?', const='mp', choices=('mp', 'frame'))
     args = parser.parse_args()
     fixtures = runpy.run_path(str(ROOT/'utils/tests/dis64-numeric-module.py'))
     instruction = fixtures['I']('IADDW', 16, source=2, destination=8)
     words = fixtures['W']
     raw = fixtures['IMAGE'](fixtures['SECTIONS'](
         data=words(1, 8, 1, 40),
+        types=[fixtures['D'](80,8,b'\x00\xc0'), fixtures['D'](16,8,b'\x80')],
         code=words(4)+instruction*3+fixtures['EXIT'],
     ))
     arch = os.environ.get('NATIVE64_ARCH', 'amd64')
@@ -55,11 +56,11 @@ def main():
         binary = work/'test'
         subprocess.run(command+[str(work/'test.c'), str(ROOT/'libinterp/dec.c'), '-Wl,--wrap=free', '-lm', '-o', str(binary)], check=True)
         runner = shlex.split(os.environ.get('NATIVE64_RUNNER', ''))
-        result = subprocess.run(runner+[str(binary), str(work/'image')]+(['omit-trace'] if args.control else []), capture_output=True, text=True, timeout=60)
+        result = subprocess.run(runner+[str(binary), str(work/'image')]+([args.control] if args.control else []), capture_output=True, text=True, timeout=60)
         if args.control:
-            if result.returncode != 10 or result.stderr.strip() != 'numeric GC mismatch: mapped child was swept':
+            if result.returncode != 10 or result.stderr.strip() != 'numeric GC mismatch: '+args.control+' child was swept':
                 raise RuntimeError('mapped trace control failed: '+str(result.returncode)+' '+result.stdout+result.stderr)
-            print('PASS numeric GC mapped trace control:', arch)
+            print('PASS numeric GC trace control:', args.control, arch)
         elif result.returncode:
             raise RuntimeError(result.stdout+result.stderr)
         else:

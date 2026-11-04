@@ -802,7 +802,8 @@ dis64numericconstruct(void *argument)
  * Caller retains VM exclusion and immutable/disjoint image/path/output until return.
  * roots must point to nil on entry and remains unchanged on refusal. On success
  * caller owns BOTH Module and returned lease. Keep the lease until Module/MP has
- * an independent live collector root; release each owner once on every path. */
+ * an independent live collector root; release each owner once on every path.
+ * Initialize entry frame reference slots with initmem before publication. */
 Module*
 prepare64numeric(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOwner **roots)
 {

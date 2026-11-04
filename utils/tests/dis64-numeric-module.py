@@ -29,6 +29,7 @@ def cases():
              ('mapped-read',0,IMAGE(SECTIONS(data=W(0),code=W(2)+I('IMOVW',0,source=0,destination=8)+EXIT)),0,8,4,0),
              ('uninitialized-fp',0,IMAGE(SECTIONS(data=W(0),code=W(2)+I('IMOVW',8,source=64,destination=8)+EXIT)),0,8,4,0),
              ('frame-map',0,IMAGE(SECTIONS(**base,types=[D(80,8,b'\x80\x00'),D(16,8,b'\x80')])),0,8,4,0),
+             ('frame-local-map',1,IMAGE(SECTIONS(**base,types=[D(80,8,b'\x00\xc0'),D(16,8,b'\x80')])),42,8,4,0),
              ('import',0,IMAGE(SECTIONS(**base,imports=[RAW['RAW']['binding']()])),0,8,4,0),
              ('missing-data',0,IMAGE(SECTIONS(code=base['code'])),0,8,4,0),
              ('long-middle',0,IMAGE(SECTIONS(data=W(0),code=W(2)+I('IADDL',80,source=2,middle=1,destination=8)+EXIT)),0,8,4,0)]

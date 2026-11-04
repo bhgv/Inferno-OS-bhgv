@@ -1179,4 +1179,5 @@ jobs:
         run: |
           set -euo pipefail
           python3 utils/tests/dis64-numeric-gc.py
-          python3 utils/tests/dis64-numeric-gc.py --control
+          python3 utils/tests/dis64-numeric-gc.py --control mp
+          python3 utils/tests/dis64-numeric-gc.py --control frame

@@ -115,16 +115,17 @@ numericcollect(Prog *process)
 
 /* Run single-instruction quanta with collection between them, then execute IEXIT. */
 static int
-numericgc(uchar *image, unsigned int bytes, int jit, int omit)
+numericgc(uchar *image, unsigned int bytes, int jit, char *omit)
 {
 	Dis64StorageOwner *lease;
 	Module *module;
 	Modlink *link;
 	Frame *entry, *source;
 	Prog process;
-	Heap *child, *garbage;
+	Heap *child, *frameChild, *garbage;
 	Type *scalar, *mpType;
 	void *value;
+	uchar *frameSlot;
 	int before, survived, slot, quantum;
 	WORD result;
 
@@ -147,6 +148,12 @@ numericgc(uchar *image, unsigned int bytes, int jit, int omit)
 	source = entry;
 	R.s = &source;
 	newstack(&process);
+	initmem(module->entryt, process.R.FP);
+	frameSlot = process.R.FP+64;
+	memmove(&value, frameSlot, sizeof(value));
+	require(value == H);
+	memmove(&value, frameSlot+8, sizeof(value));
+	require(value == H);
 	free(entry);
 	free64storage(lease);
 	for(slot=0; slot<PTRHASH; slot++)
@@ -160,8 +167,13 @@ numericgc(uchar *image, unsigned int bytes, int jit, int omit)
 	value = H2D(void*, child);
 	memmove(link->MP, &value, sizeof(value));
 	mpType = D2H(link->MP)->t;
-	if(omit)
+	frameChild = heapz(scalar);
+	value = H2D(void*, frameChild);
+	memmove(frameSlot, &value, sizeof(value));
+	if(omit != nil && strcmp(omit, "mp") == 0)
 		mpType->mark = noptrs;
+	if(omit != nil && strcmp(omit, "frame") == 0)
+		module->entryt->mark = noptrs;
 	rxcompleted = rxdeclined = 0;
 	if(jit){
 		require(module->jit != nil && module->jit->code != nil);
@@ -169,7 +181,7 @@ numericgc(uchar *image, unsigned int bytes, int jit, int omit)
 		rxend = rxbegin+module->jit->size;
 	}
 	before = raised;
-	survived = 1;
+	survived = 3;
 	for(quantum=1; quantum<=3; quantum++){
 		garbage = heapz(scalar);
 		require(kprotect(execute, &process) == 1 && raised == before);
@@ -181,10 +193,15 @@ numericgc(uchar *image, unsigned int bytes, int jit, int omit)
 		require(numericowner(D2H(link->MP))->magic == MAGIC_A);
 		memmove(&result, link->MP+8, sizeof(result));
 		require(result == 40+2*quantum);
-		if(survived && numericowner(child)->magic != MAGIC_A){
-			survived = 0;
+		if((survived & 1) && numericowner(child)->magic != MAGIC_A){
+			survived &= ~1;
 			value = H;
 			memmove(link->MP, &value, sizeof(value));
+		}
+		if((survived & 2) && numericowner(frameChild)->magic != MAGIC_A){
+			survived &= ~2;
+			value = H;
+			memmove(frameSlot, &value, sizeof(value));
 		}
 	}
 	freetype(scalar);
@@ -210,7 +227,7 @@ main(int argc, char **argv)
 	FILE *file;
 	uchar image[4096];
 	size_t bytes;
-	int jit;
+	int jit, survived;
 
 	require(argc == 2 || argc == 3);
 	file = fopen(argv[1], "rb");
@@ -222,8 +239,9 @@ main(int argc, char **argv)
 	optab[IADDW] = addw;
 	optab[IEXIT] = iexit;
 	for(jit=0; jit<=1; jit++){
-		if(!numericgc(image, bytes, jit, argc == 3)){
-			fprintf(stderr, "numeric GC mismatch: mapped child was swept\n");
+		survived = numericgc(image, bytes, jit, argc == 3 ? argv[2] : nil);
+		if(survived != 3){
+			fprintf(stderr, "numeric GC mismatch: %s child was swept\n", survived == 1 ? "frame" : survived == 2 ? "mp" : "both");
 			return 10;
 		}
 	}
