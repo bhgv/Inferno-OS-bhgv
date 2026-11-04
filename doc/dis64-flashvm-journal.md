@@ -9586,3 +9586,16 @@ refusals, descriptor refusal and retry, and the production clock callback.
 The byte-loaded Dis64 call replay passed 48 GC epochs each for RET and
 unwind, and eight refusal/cleanup cases. Managed Sys import admission
 remains separate from the registered native exports.
+
+## FLASHVM-0162 — guarded JIT channel dispatch
+
+2026-11-04. FlashVM master 6677beebb06894e9e6ebd13e8fc9799cff0e434a
+routes hosted guarded JIT SEND and RECV through the C coordinator.
+The x64 fixture verified the actual JIT cache and passed ThreadSanitizer.
+Standalone direct-leaf buffered tests passed in WORD32 and WORD64.
+CHANJITFALLBACK-122 tracks the cost. NativeWorld still protects the
+buffer, including mapped payloads.
+
+Fetched experiment through 1813b5617e3ef2bd626c05ab35ff129ef0fcae76.
+The x64 Dis64 call replay passed RET and unwind over 48 GC epochs each,
+with 4042 and 4030 checks and eight refusal/cleanup cases.
