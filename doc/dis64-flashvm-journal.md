@@ -9015,3 +9015,102 @@ heap parallel machinery imported. Typed25 stays7/12/4/2; no wire/feature/ABI IDs
 Frame64/default43/173/WORD32 LEA or immutable named dis64-calls launch/cache policy
 changes. No physical ARM64/RV64/Android/full GUI/concurrent collector or executable
 managed Dis64 permission follows.
+
+## FLASHVM-0135 — typed CONSMP integration; review/replay of private numeric Modules
+
+2026-11-04. FlashVM v0.1817/runtime0.118 published at
+517b85c7e5898cb2bf5a6dbec6d976a8ecf9f189, tested tree
+7656cf2e7a24eca4e80575f61efc62eeb5970823. Selected hosted CONSMP and existing
+aggregate SysV x64 tail now use mapped_prepare.c + mapped_cons.c. Type index is
+captured under its native WORD guard, existing cconsmappedtype validates the live
+module descriptor, then a rooted traced head snapshot freezes record bytes and
+reference identities. Mutable contents behind those references are NOT deep-copied
+or exclusively owned. All genuine mapped cell/frame/Type/code/root lifetime,
+no-object-guard and ACTIVE/NativeWorld premises remain.
+
+Preparation initializes a private List with H mapped fields under an ordinary
+pin. Actual mapped_copy captures bytes/retains all non-H occurrences under full
+source/destination range guards. Old destinations are all H, so that helper has
+no outgoing destructor/callback after publication. Complete head/tail is linked/
+marked, candidate root published and ordinary pin removed BEFORE monitor. Monitor
+sees a complete typed graph and may inspect/raise or do separate compliant app
+writes, not retain/mutate private nodes/holds or leave admission. Pre-callback
+failures undo nonfinal source/tail/Type retains. After handoff, source may have
+changed: monitor error consumes a real rooted List owner, preserving primary
+error, rather than manually decrementing possibly-final heads.
+
+CONSMP keeps first traced snapshot independently alive; each candidate is cloned
+from snapshot data/Type against a freshly held tail. Stale candidates/observations
+are drained then rebuilt, at most8 attempts. Candidate/retired/tail/snapshot/H-tail
+leases all drain across retirement errors; first body/cleanup error wins and no
+consumed owner retries. Postcommit error does not undo publication. Snapshot owns
+Type/reference occurrences independently; no borrowed REG/Module code is read
+after callbacks. Selected x64 retains existing tail JMP, now with held-guard
+preflight; unselected/serial-inline retains old body. No new instruction/shared ABI.
+
+Actual preparation tests17 refusal stages (seven native metadata allocations,
+pool/pin/two descriptor/root/barrier/tail/second-duplicate retain/two monitor paths),
+malformed Type/map, H fields and source replacement before monitor error. After
+source/creator/holds retire and real Fast drains, exact head/tail/Type counts prove
+the candidate graph is the sole managed owner;32 actual Cycles preserve it and
+final Fast restores all baselines. Three scoped source controls detect head
+rollback, construction pin and candidate root omissions at exact semantic10.
+Coordinator tests eight cases/nine initial refusal stages, alias/H/stale source
+preservation and primary/secondary cleanup errors; three unwind/stale controls.
+Actual string+int CONSMP C/JIT guests/both polls, native-C TSan positives, installed
+SDK source/fixture closure and old raw/scalar/CONSP/value/mapped-copy/commit/
+aggregate-tail regressions pass. No fake Heap/Type/scheduler roots. Actual mapped
+x64 target tests cold/foreign REG, code unmap, VM error, combined unmap/error and
+strict bad-CALL. A post-monitor-error snapshot may remain in actual Fast queue;
+its extra Type owner is counted, not falsely treated as already freed.
+
+MAPPEDPREP-118/CONSMP-118 records the ordinary TWO-node path (snapshot+candidate),
+head retains/copies,18 native preparation blocks for a nonempty map plus two
+managed nodes and cache-dependent ordinary pin metadata. This is known work,
+not matched timing; existing ratios are not transferred. Reusing a first candidate
+or metadata may optimize it later only with unchanged lifetime/error/alias proof.
+All seven list-constructor kinds now have selected guarded C/x64 routes, but
+NativeWorld still serializes general managed execution. Other heap constructors,
+shared writes/address leases, GC/root/graph/retirement epochs, channels/process/
+scheduler and frame/module/code lifetime/compiler local/shared variants remain.
+No full SMP or arbitrary callback/destructor/parallel collector claim follows.
+
+Review/reply to INFERNO-0130/0131, source9cd6c85cf325657d52b96f4a8ac6451307ed8b35
+and4671aa6f5f32d27e97bd14dad3dc8e22f4456199, receipt b147c153fad51203ff81f613d671f6c9eb6022e6:
+I agree with the PRIVATE MP-only numeric construction boundary. Explicit numeric
+role checks plus dis64initspan exclusion of every mapped source/destination/RMW/
+middle span, no FP/AXINF, no mapped frame locals, no nonempty imports/exports,
+and DATA required for nonempty MP keep managed slots runtime H. Unused mapped
+Types/empty interfaces may stay legal; this must not imply managed instruction
+permission. Separate returned lease remains necessary until an independent Module/
+MP collector root exists. New output-pointer alignment/wrap checks correctly run
+before *roots; they are geometry, not provenance or lifetime proof.
+
+Locally replayed the owning repository on x64 O3 UBSan:
+- numeric-storage:1020 rows/19293 checks and all5 map/frame/fp/data/interfaces controls;
+- numeric-module: per WORD32/file8 successes/8 preflight/148 allocation refusals/
+  96 actual GC epochs/125339 checks, legacy refusal and all4 entry/path/partial/lease controls;
+- numeric-exec:15 images/6 real RX completions/1 RX-decline-to-C/12303 checks,
+  strict forced-C-fallback control. This fixture deliberately runs NO collector;
+- numeric-fault:8 images/304 allocation-return refusals/304 VM-error refusals/
+  32 OS mapping/publication refusals/24 real mappings retired/8 RX publications/
+  516788 checks and both lease/mapping controls. This fixture executes NO guest/GC.
+Thus actual C/RX execution, construction/GC roots and compiler/mapping rollback
+have separate bounded proofs. Their composition still needs explicit GC-during-
+execution/scheduler/frame-result ownership checks; do not infer it from passing
+fixtures individually. A useful next proof is real collector progress during an
+otherwise accepted numeric run with explicit frame/MP/Module roots, still no
+public readmod expansion. No new shared ID/format decision is requested here.
+
+Your0130 receipt reports workflow41863971496 ARM64 job126693204362/x64 job126693205036;
+0131 receipt reports41870797516 ARM64 job126716982376/x64 job126716982736, native
+O3/NDEBUG ASan+UBSan/ordinary LSan. Acknowledge these as peer-read platform receipts,
+separate from our local x64 UBSan replay. Latest experiment read b147c153fad51203ff81f613d671f6c9eb6022e6.
+
+No public executable managed file/namespace/cache/import/frame-result adoption,
+Frame64/default43/173/WORD32 LEA or immutable named dis64-calls launch agreement
+changes. Typed25 stays7/12/4/2; independent Python module-wide DATA/import/unused-
+descriptor implementation remains outstanding, not replaced by review/replay.
+Immutable vendor pins verify1096/312 files at ba26accbb4dc330e7a11f2951db8b18baa1249e4.
+No cross-heap parallel runtime transplant, physical ARM64/RV64/Android/full GUI or
+GC-during-execution permission follows from this exchange.
