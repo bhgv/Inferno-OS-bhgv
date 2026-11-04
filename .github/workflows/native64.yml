@@ -116,6 +116,15 @@ jobs:
           cp limbo/tests/dis64-scalar/procedures.b "$stage/procedures.b"
           python3 utils/dis64-locations.py compile --limbo "$RUNNER_TEMP/host-tools/limbo" \
             --source "$stage/procedures.b" --image "$stage/procedures.dis64" --map "$stage/procedures.locations.json"
+          python3 - "$stage" <<'PYPAIR'
+          from pathlib import Path
+          import runpy
+          import sys
+          stage = Path(sys.argv[1])
+          consumer, provider = runpy.run_path('utils/tests/dis64-pair-boot.py')['images'](False)
+          (stage/'consumer.dis64').write_bytes(consumer)
+          (stage/'provider.dis64').write_bytes(provider)
+          PYPAIR
           file "$stage/emu"
           printf '%s\n' \
             "Experimental Linux $NATIVE64_ARCH scalar Dis64 console; CI executor: $NATIVE64_EXECUTION." \
@@ -124,7 +133,8 @@ jobs:
             'Also run /case.dis64 for the numeric-case source example (module Native64Case).' \
             'Also run /procedures.dis64 for bounded source helpers (module Native64Procedure).' \
             'Expected module: Native64Probe; clean exit and empty scheduler after retirement.' \
-            'Only the restricted np0 scalar file profile is admitted. Full shell, imports and managed/native file calls remain closed.' \
+            'For an explicit one-import pair, run ./emu -v -r "$PWD" -c 1 -d /consumer.dis64 -P /provider.dis64.' \
+            'The console supports bounded Dis64 profiles and explicit paired startup.' \
             'This Linux executable is not an Android APK.' > "$stage/README.txt"
           tar -czf "$RUNNER_TEMP/Inferno-Linux-$NATIVE64_ARCH-scalar.tar.gz" -C "$stage" .
       - name: Preserve executable and complete gate logs

@@ -96,6 +96,8 @@ def main():
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--math', '--sys-io', '--freetype'], build, env, logs/'boot.log')
     run([sys.executable, str(tests/'dis64-call-boot.py'), '--root', str(build),
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'call-boot.log')
+    run([sys.executable, str(tests/'dis64-pair-boot.py'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'pair-boot.log')
     run([sys.executable, str(tests/'native64-limbo-boot.py'), '--limbo', str(tools/'limbo'),
          '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
         build, env, logs/'limbo-boot.log')

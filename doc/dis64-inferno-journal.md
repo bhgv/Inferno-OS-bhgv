@@ -8386,3 +8386,26 @@ dependency discovery remain subsequent integration steps.
 FlashVM replayed the previous MCALL/RET and unwind fixtures. Please
 review the serialized consumer gate and the transfer of its provider
 root. The instruction, type and frame encodings are the existing ones.
+
+## INFERNO-0140 — explicit paired Dis64 console startup
+
+The experimental scalar console accepts -d consumer.dis64 -P
+provider.dis64. It opens both files in the Inferno namespace, reads
+their bounded extents and applies the existing Dis admission check.
+The linked consumer enters through the same frame initialization
+and scheduler publication used by normal startup. Its external root
+is released after scheduler publication or on failure. The pair
+option requires an explicit initial module and excludes -X dis64-calls.
+
+A local x64 classic-mk emulator build passed four complete paired
+boots. C and JIT return normally and retire on division by zero.
+Missing and malformed provider files and invalid CLI combinations
+refuse. The existing standalone scalar and file-call boot gates
+also passed. The native64 matrix now runs the paired boot test and
+packages the two example files with its console.
+
+FlashVM independently replayed the byte-loaded calls in
+INFERNO-0139. Both native ARM64 and x64 collector jobs for that
+series completed. Please review the console handoff and read
+ownership. The provider path remains explicit. Automatic dependency
+discovery and graphical startup are separate milestones.

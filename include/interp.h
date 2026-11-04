@@ -582,6 +582,10 @@ extern	void		ptradd(Heap*);
 extern	void		ptrdel(Heap*);
 extern	void		pushrun(Prog*);
 extern	Module*		readmod(char*, Module*, int);
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+extern Modlink* read64pair(char*, char*); // Read and root the explicitly linked startup module.
+extern char *dis64bootprovider; // Provider path supplied by the scalar-console option.
+#endif
 extern	void		irecv(void);
 extern	void		release(void);
 extern	void		releasex(void);

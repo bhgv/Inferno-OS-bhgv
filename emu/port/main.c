@@ -11,6 +11,9 @@
 int		rebootargc = 0;
 char**		rebootargv;
 static	char	*imod = "/dis/emuinit.dis";
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+char *dis64bootprovider; // Explicit provider namespace path for paired startup.
+#endif
 static int imodexplicit; // A selected call profile requires an explicit initial module.
 extern	char*	hosttype;
 char*	tkfont;	/* for libtk/utils.c */
@@ -38,6 +41,9 @@ usage(void)
 		"\t-c[0-9]\n"
 		"\t-d file.dis\n"
 		"\t-X dis64-calls (experimental; requires -d module.dis64)\n"
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+		"\t-P provider.dis64 (experimental pair; requires -d consumer.dis64)\n"
+#endif
 		"\t-s\n"
 		"\t-v\n"
 		"\t-p<poolname>=maxsize\n"
@@ -159,6 +165,13 @@ option(int argc, char *argv[], void (*badusage)(void))
 		badusage();
 #endif
 		break;
+	case 'P':
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+		dis64bootprovider = EARGF(badusage());
+#else
+		badusage();
+#endif
+		break;
 	case 'd':		/* run as a daemon */
 		dflag++;
 		imod = EARGF(badusage());
@@ -212,6 +225,10 @@ static int
 launchoptions(void)
 {
 #ifdef DIS64_PILOT_LOADER
+#if defined(DIS_NATIVE64_SCALAR_BOOT)
+	if(dis64bootprovider != nil)
+		return imodexplicit && !dis64launchmode();
+#endif
 	return !dis64launchmode() || imodexplicit;
 #else
 	return 1;
@@ -292,7 +309,7 @@ main(int argc, char *argv[])
 	}
 	option(argc, argv, usage);
 	if(!launchoptions()){
-		fprint(2, "emu: experimental dis64-calls requires -d module.dis64\n");
+		fprint(2, "emu: select one experimental profile and specify -d module.dis64\n");
 		usage();
 	}
 #ifdef DIS_NATIVE64_SCALAR_BOOT

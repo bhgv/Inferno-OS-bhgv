@@ -838,21 +838,13 @@ struct SchedModule {
 };
 
 
-/* Build complete module data and a full-sized root frame before scheduling. */
+/* Publish a full-sized frame and transfer the caller's link reference. */
 static int
-schedmodule(void *arg)
+schedframe(SchedModule *c, Type *t)
 {
-	SchedModule *c;
-	Type *t;
-	Import empty;
 	Frame *fp;
 	Prog *p;
 
-	c = arg;
-	t = vmstartup(c->m);
-	empty.name = nil;
-	c->transferred = 1;
-	c->ml = linkmod(c->m, &empty, 1);
 	c->frame = mallocz(t->size, 1);
 	if(c->frame == nil)
 		error(exNomem);
@@ -869,6 +861,23 @@ schedmodule(void *arg)
 	D2H(c->ml)->ref--;
 	c->result = p;
 	return 1;
+}
+
+
+/* Build the normal startup instance before publishing its frame. */
+static int
+schedmodule(void *arg)
+{
+	SchedModule *c;
+	Type *t;
+	Import empty;
+
+	c = arg;
+	t = vmstartup(c->m);
+	empty.name = nil;
+	c->transferred = 1;
+	c->ml = linkmod(c->m, &empty, 1);
+	return schedframe(c, t);
 }
 
 
@@ -1241,6 +1250,45 @@ vmachine(void *a)
 }
 
 
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+
+
+/* Reuse normal frame initialization for an already linked startup instance. */
+static int
+schedpairframe(void *argument)
+{
+	SchedModule *c;
+
+	c = argument;
+	return schedframe(c, vmstartup(c->m));
+}
+
+
+/* Transfer an external startup root into the scheduler or retire it on error. */
+static Prog*
+schedpair(Modlink *link)
+{
+	SchedModule c;
+	int ok;
+
+	memset(&c, 0, sizeof(c));
+	c.m = link->m;
+	c.ml = link;
+	c.saved = R.s;
+	ok = kprotect(schedpairframe, &c);
+	R.s = c.saved;
+	free(c.frame);
+	ptrdel(D2H(link));
+	if(ok)
+		return c.result;
+	free(c.initial.R.EX);
+	destroy(link);
+	krethrow();
+	return nil;
+}
+#endif
+
+
 /* Initialize the selected runtime and schedule its checked initial module. */
 void
 disinit(void *a)
@@ -1248,6 +1296,9 @@ disinit(void *a)
 	Prog *p;
 	Osenv *o;
 	Module *root;
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+	Modlink *linked;
+#endif
 	char *initmod = a;
 
 	if(waserror())
@@ -1281,13 +1332,24 @@ disinit(void *a)
 #endif
 	excinit();
 
-	root = load(initmod);
-	if(root == 0) {
-		kgerrstr(up->genbuf, sizeof up->genbuf);
-		panic("loading \"%s\": %s", initmod, up->genbuf);
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+	if(dis64bootprovider != nil){
+		linked = read64pair(initmod, dis64bootprovider);
+		if(linked == nil){
+			kgerrstr(up->genbuf, sizeof up->genbuf);
+			panic("loading Dis64 pair \"%s\" and \"%s\": %s", initmod, dis64bootprovider, up->genbuf);
+		}
+		p = schedpair(linked);
+	}else
+#endif
+	{
+		root = load(initmod);
+		if(root == nil){
+			kgerrstr(up->genbuf, sizeof up->genbuf);
+			panic("loading \"%s\": %s", initmod, up->genbuf);
+		}
+		p = schedmod(root);
 	}
-
-	p = schedmod(root);
 
 	memmove(p->osenv, up->env, sizeof(Osenv));
 	o = p->osenv;
