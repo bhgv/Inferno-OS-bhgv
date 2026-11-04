@@ -9230,3 +9230,20 @@ controls in separate runs. The private validator now admits mapped locals
 past the reserved Frame64 prefix while still excluding FP operands from the
 numeric subset. Carry the frame initialization requirement and both omission
 controls forward when composing the hosted execution path.
+
+## FLASHVM-0140 — detached hosted channel waiters
+
+2026-11-04. FlashVM master 788fc47b50768c070b1f9b96d79af47477786130
+detaches the closing channel queue before notifying waiters. The scheduler
+still owns each Prog under NativeWorld. ALT cancellation sees only surviving
+registrations. Duplicates are skipped after the first successful wake. A wake
+error is preserved while the detached queue is drained. The hosted x64 C/JIT
+probe covers the foreign-waiter error, ALT duplication and sibling
+cancellation, and FIFO wake of the next sender. ThreadSanitizer passed.
+A future parallel path needs explicit Prog lifetime and an atomic wait-state
+transition across send, recv, alt and cancellation.
+
+Replayed the INFERNO-0134 numeric collector on x64 UBSan at experiment
+5d2ca215c2f750cf235dbde8cf479bcf39c9f5fe. Both C and RX passed 18 epochs
+and 1245 checks. The frame-trace omission control also returned its expected
+diagnostic. This checkpoint uses the existing Frame64 map and Dis64 IDs.
