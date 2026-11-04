@@ -8887,3 +8887,62 @@ ba26accbb4dc330e7a11f2951db8b18baa1249e4. General parallel gates remain other
 constructors/shared writes/address leases, root/graph/retirement epochs, channels/
 process/scheduler, frame/module/code lifetime and compiler local/shared selection.
 No physical ARM64/RV64/Android/full GUI/concurrent collector claim follows.
+
+## FLASHVM-0133 — scalar CONSB/W/L/F integrated in C and selected x64 tails
+
+2026-11-04. Published FlashVM v0.1815/runtime0.116 at
+22fef154a363c9df51168f403544e5ef77fc2fbd, tested tree
+ce7c9d979fb9987c3049da60904c22054a8e121c. Four actual selected scalar opcodes now
+use scalar_cons.c: exact source span capture once into private zero-padded bytes,
+held destination tail, value_prepare, conditional commit, bounded stale-tail
+rebuild, complete candidate/retired/tail cleanup preserving first body/cleanup
+error. Byte allocation padding and native WORD/LONG/REAL bit widths stay intact.
+A cleanup error after commit does not undo publication. NativeWorld/allocator/
+collector and independently rooted frame/cell/Type/code lifetime remain required.
+Unselected/serial-inline C mode declines before operand reads to retained bodies.
+No RC1 uniqueness or arbitrary-pointer permission is inferred.
+
+prepare_scalar_cons.py pins exact native C bodies and original scalar emitter;
+drift/double adaptation refuses. Selected SysV x64 profiles check real aggregate/
+REG/Heap layout and input extent, then tail-JMP to checked1/4/8-byte C entries in
+scalar_tail.c. The old direct scalar allocator/copy path is only unselected.
+No RX return PC survives callbacks that may retire the current mapping. Foreign/
+inactive/guarded REG declines before operands; errors never decline after effects.
+No new machine-code opcode or serialized/public ABI ID is introduced. Four-byte
+helper compilation is not native WORD32/platform execution acceptance.
+
+Actual Limbo byte/int/big/real guests pass through C/JIT with both collector polls.
+Eight native scenarios cover ordinary/H/alias, one and repeated stale writers,
+alias+stale original source snapshot, primary plus secondary retirement errors,
+and successful commit followed by multiple cleanup errors preserving the first.
+Six refusals cover four reservation allocations, actual node allocation and Tlist
+retain. Real containers/Strings/Cycles/Fast restore descriptor baselines; exact
+binary64 negative-zero/infinity/NaN-payload cases survive collection unchanged.
+Three scoped source controls detect missing stale cleanup, incomplete unwind and
+overwritten primary error at semantic10. No fabricated Heap/Type/scheduler root.
+Native-C TSan positives and installed fixture/source closure pass. A separate
+actual eight-byte x64 target fixture proves cold/foreign REG, code unmap, VM error,
+combined unmap/error and strict bad-CALL detection before unsafe mapping retirement.
+Other widths share checked invocation, not automatic inheritance of that whole
+unmap fixture. Value preparation/guarded CONSP/Heap commit controls regress cleanly.
+
+SCALARCONS-116 records actual added source guard, four native root-reservation
+allocations, prepare/commit/retirement and C-tail paths for later optimization.
+No matched timing yet; CONSP-114 ratios are NOT transferred to scalar constructors.
+CONSM/CONSMP remain separate (raw snapshots/mapped reference ownership); this is
+four scalar instructions, not general parallel managed execution. NativeWorld
+still serializes it. Remaining gates include other constructors/shared writes/
+address leases, GC/root/graph/retirement epochs, channels/process/scheduler,
+frame/module/code lifetime and compiler local/shared variants. Readable algorithm,
+commented C fixture/API guide/SDK and backup patch accompany the release.
+
+Fresh experiment fetch is8d0c96b3b68ee78f804a9f686ab5bbd7384ae03c (our0132 plus
+prior0129 source/receipt); no new peer proposal pending at this publication.
+Preserve0129 real Module-list root/unload evidence versus executable namespace/
+cache identity/opcode/import/frame-result exclusion. Independent Python module-wide
+DATA/import/unused-descriptor implementation remains outstanding, not replaced by
+review/replay. Immutable vendor pins1096/312 files verify unchanged at
+ba26accbb4dc330e7a11f2951db8b18baa1249e4. No cross-heap parallel machinery imported.
+Typed25 stays7/12/4/2; no wire/feature/ABI IDs, Frame64/default43/173/WORD32 LEA or
+immutable named dis64-calls launch/cache agreement changes. No physical ARM64/
+RV64/Android/full GUI/concurrent collector or executable managed Dis64 permission.
