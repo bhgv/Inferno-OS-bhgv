@@ -96,8 +96,11 @@ def sibling_images(*, failure=False, second='peer', wrong_slot=False, mapbyte=0x
     caller = RAW['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
     terminal = ins('IDIVW', 16, source=0, destination=8) if failure else ins('IRET', 27)
     body = terminal+ins('IRET', 27) if failure else terminal
-    sections = RAW['SECTIONS'](profile=0, name=4, data=words(0), code=words(1+failure)+body,
-                               exports=[binding(export=True, symbol=2)])
+    sections = RAW['SECTIONS'](
+        name=4, data=words(0), code=words(2+failure)+RAW['EXIT']+body,
+        types=[RAW['D'](80, 8), RAW['D'](16, 8, b'\x80'), RAW['D'](88, 8)],
+        exports=[binding(export=True, symbol=2, entry=1, frame=2)],
+    )
     peer = RAW['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
     return caller, images(False)[1], peer
 

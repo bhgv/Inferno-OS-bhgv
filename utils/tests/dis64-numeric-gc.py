@@ -65,9 +65,16 @@ def provider_cases(fixtures, common):
     yield 'signature', pair({'sig': signature(1)})
     yield 'result', pair({'sig': signature(1)}, {'sig': signature(1)})
     yield 'parameters', pair({'sig': signature(0, (1,))}, {'sig': signature(0, (1,))})
-    yield 'entry', pair(export_args={'entry': 1})
-    yield 'frame', pair(export_args={'frame': 2},
-                        types=common['types']+[fixtures['D'](80, 8)])
+    terminal = fixtures['EXIT']
+    yield 'alternate-export', pair(
+        export_args={'entry': 1, 'frame': 2},
+        types=common['types']+[fixtures['D'](88, 8, b'\x00\xc0')],
+        code=fixtures['W'](5)+terminal+common['code'][4:],
+    )
+    yield 'reserved-export-frame', pair(
+        export_args={'frame': 2},
+        types=common['types']+[fixtures['D'](80, 8, b'\x80\x00')],
+    )
     yield 'nested-import', pair(imports=[binding()])
     yield 'no-export', pair(exports=[])
     yield 'ret-operand', pair(code=fixtures['W'](1)+fixtures['I']('IRET', 19, source=0))
@@ -153,7 +160,7 @@ def main():
             for name, (consumer, provider) in provider_cases(fixtures, common):
                 (work/'image').write_bytes(provider)
                 (work/'consumer').write_bytes(consumer)
-                mode = 'match' if name == 'match' else 'reject'
+                mode = name if name in ('match', 'alternate-export') else 'reject'
                 result = subprocess.run(
                     runner+[str(binary), str(work/'image'), str(work/'consumer'), mode],
                     capture_output=True, text=True, timeout=60,

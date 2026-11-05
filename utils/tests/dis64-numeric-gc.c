@@ -121,7 +121,8 @@ numericgc(Module *module, Dis64StorageOwner *lease, Modlink *ready, int jit, cha
 	Frame *entry, *source;
 	Prog process;
 	Heap *child, *frameChild, *garbage;
-	Type *scalar, *mpType;
+	Type *scalar, *mpType, *entrytype;
+	Inst *entrypc;
 	void *value;
 	uchar *frameSlot;
 	int before, survived, slot, quantum;
@@ -139,14 +140,16 @@ numericgc(Module *module, Dis64StorageOwner *lease, Modlink *ready, int jit, cha
 		D2H(link->MP)->ref++;
 	}
 	process.R.M = link;
-	process.R.PC = ready == nil ? module->entry : link->links[0].u.pc;
-	entry = mallocz(module->entryt->size, 1);
+	entrypc = ready == nil ? module->entry : link->links[0].u.pc;
+	entrytype = ready == nil ? module->entryt : link->links[0].frame;
+	process.R.PC = entrypc;
+	entry = mallocz(entrytype->size, 1);
 	require(entry != nil);
-	entry->t = ready == nil ? module->entryt : link->links[0].frame;
+	entry->t = entrytype;
 	source = entry;
 	R.s = &source;
 	newstack(&process);
-	initmem(module->entryt, process.R.FP);
+	initmem(entrytype, process.R.FP);
 	frameSlot = process.R.FP+64;
 	memmove(&value, frameSlot, sizeof(value));
 	require(value == H);
@@ -173,7 +176,7 @@ numericgc(Module *module, Dis64StorageOwner *lease, Modlink *ready, int jit, cha
 	if(omit != nil && strcmp(omit, "mp") == 0)
 		mpType->mark = noptrs;
 	if(omit != nil && strcmp(omit, "frame") == 0)
-		module->entryt->mark = noptrs;
+		entrytype->mark = noptrs;
 	rxcompleted = rxdeclined = 0;
 	if(jit){
 		require(module->jit != nil && module->jit->code != nil);
@@ -185,7 +188,7 @@ numericgc(Module *module, Dis64StorageOwner *lease, Modlink *ready, int jit, cha
 	for(quantum=1; quantum<=3; quantum++){
 		garbage = heapz(scalar);
 		require(kprotect(execute, &process) == 1 && raised == before);
-		require(process.R.PC == module->entry+quantum);
+		require(process.R.PC == entrypc+quantum);
 		require(process.R.M == link && process.R.FP != nil);
 		numericcollect(&process);
 		require(numericowner(garbage)->magic == MAGIC_F);
@@ -273,8 +276,14 @@ main(int argc, char **argv)
 			require(ready != nil && ready->nlinks == 1);
 			module = ready->m;
 			require(module->ref == 1 && ready->MP == module->origmp);
-			require(ready->links[0].u.pc == module->entry);
-			require(ready->links[0].frame == module->entryt);
+			if(strcmp(argv[3], "alternate-export") == 0){
+				require(module->entry == module->prog && module->entryt == module->type[0]);
+				require(ready->links[0].u.pc == module->prog+1);
+				require(ready->links[0].frame == module->type[2] && module->type[2]->size == 88);
+			}else{
+				require(ready->links[0].u.pc == module->entry);
+				require(ready->links[0].frame == module->entryt);
+			}
 			numericcollect(nil);
 			require(numericowner(D2H(ready))->magic == MAGIC_A);
 			require(numericowner(D2H(ready->MP))->magic == MAGIC_A);

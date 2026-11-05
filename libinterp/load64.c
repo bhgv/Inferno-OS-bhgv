@@ -758,7 +758,6 @@ struct Dis64NumericLoad {
 	Module *module; // Partial unpublished native owner retired through real unload.
 	int jit; // Explicit existing native leaf compilation request, never a file-mode choice.
 	int clock; // Exact private Sys clock call sequence with a checked result bind.
-	Dis64ImportMatch library; // Selected export for the one-slot entryless provider path.
 	const Link *clockload; // Checked Sys export for an executing LOAD, or nil.
 };
 
@@ -818,8 +817,8 @@ dis64numericconstruct(void *argument)
 	if(load->clockload != nil && !dis64clockloadmetadata(module, load->clockload))
 		return 0;
 #endif
-	module->entryt = module->type[load->image.module.profile == 0 ?
-		load->library.frame : load->image.module.frametype];
+	if(load->image.module.profile == 1)
+		module->entryt = module->type[load->image.module.frametype];
 	module->nprog = load->image.code.count;
 	module->prog = mallocz(module->nprog*sizeof(Inst), 1);
 	if(module->prog == nil)
@@ -836,8 +835,8 @@ dis64numericconstruct(void *argument)
 		}
 		at += used;
 	}
-	module->entry = module->prog+(load->image.module.profile == 0 ?
-		load->library.entry : load->image.module.entry);
+	if(load->image.module.profile == 1)
+		module->entry = module->prog+load->image.module.entry;
 	module->name = mallocz(load->name.count+1, 1);
 	if(module->name == nil)
 		return 0;
@@ -979,6 +978,7 @@ dis64clockcode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64C
 #endif
 
 
+#define Dis64AllBindings ((unsigned int)-1) // Resolve every consumer import against one provider.
 #define Dis64PairBindings 32U // Maximum import ordinals in the paired console profile.
 
 typedef struct Dis64PairPlan Dis64PairPlan;
@@ -1000,31 +1000,31 @@ dis64providerentry(const Dis64StorageImage *consumer, unsigned int ordinal,
 	return dis64bindingget(&consumer->imports, ordinal, &imported) &&
 		imported.signature.result == Dis64Void && imported.signature.parameters == 0 &&
 		dis64importmatch(consumer, ordinal, provider, match) &&
-		(provider->module.profile == 0 ? dis64numericframe(provider, match->frame, &frame) :
-		 match->frame == provider->module.frametype);
+		dis64numericframe(provider, match->frame, &frame);
 }
 
 
 /* Resolve every ordinal against the same validated numeric provider. */
 static int
 dis64providerplan(const Dis64StorageImage *consumer, unsigned int ordinal,
-	const Dis64StorageImage *provider, Dis64CodeView *code, Dis64PairPlan *plan,
-	Dis64ImportMatch *selected)
+	const Dis64StorageImage *provider, Dis64CodeView *code, Dis64PairPlan *plan)
 {
 	unsigned int i;
 
 	if(!(provider->module.profile == 0 ? dis64numericlibrarycheck(provider, Dis64RuntimeCode, code) :
 	     dis64numericentrycheck(provider, Dis64RuntimeCode, 1, code)))
 		return 0;
-	if(plan == nil)
-		return dis64providerentry(consumer, ordinal, provider, selected) &&
-			(provider->module.profile == 0 || selected->entry == provider->module.entry);
+	if(ordinal != Dis64AllBindings){
+		if(!dis64providerentry(consumer, ordinal, provider, &plan->matches[0]))
+			return 0;
+		plan->count = 1;
+		return 1;
+	}
 	if(consumer->imports.count == 0 || consumer->imports.count > Dis64PairBindings)
 		return 0;
 	for(i=0; i<consumer->imports.count; i++)
 		if(!dis64providerentry(consumer, i, provider, &plan->matches[i]))
 			return 0;
-	*selected = plan->matches[0];
 	plan->count = consumer->imports.count;
 	return 1;
 }
@@ -1178,7 +1178,7 @@ dis64numericbuild(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOw
 	   !dis64storageimagecheck(image, bytes, &dis64numericlimits, &load.image) ||
 	   !(linked ? dis64consumerentry(&load.image, &code, linked == 2) :
 	     consumer == nil ? dis64numericstoragecheck(&load.image, Dis64RuntimeCode, &code) :
-	     dis64providerplan(consumer, ordinal, &load.image, &code, plan, &load.library)) ||
+	     dis64providerplan(consumer, ordinal, &load.image, &code, plan)) ||
 	   !disstringpoolget(&load.image.strings, load.image.module.name, &load.name) ||
 	   load.name.count == 0 || load.name.count > Dis64RuntimeName){
 		kwerrstr("unsupported Dis64 private numeric Module");
@@ -1222,12 +1222,10 @@ prepare64numeric(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOwn
 }
 
 
-/* Build the explicitly selected provider for a checked import. The caller
- * owns the returned Module and lease under the same contract as the standalone
- * builder. Input spans stay immutable through the call and can be freed after it. */
-Module*
+/* Build an explicitly selected provider and keep its export coordinates separate. */
+static Module*
 prepare64provider(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOwner **roots,
-	const uchar *consumer, ulong consumerbytes, unsigned int ordinal)
+	const uchar *consumer, ulong consumerbytes, unsigned int ordinal, Dis64PairPlan *plan)
 {
 	Dis64StorageImage view;
 
@@ -1237,7 +1235,7 @@ prepare64provider(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOw
 		kwerrstr("unsupported Dis64 consumer image");
 		return nil;
 	}
-	return dis64numericbuild(path, image, bytes, jit, roots, &view, ordinal, 0, nil);
+	return dis64numericbuild(path, image, bytes, jit, roots, &view, ordinal, 0, plan);
 }
 
 
@@ -1273,9 +1271,6 @@ dis64providerlink(void *argument)
 			link->links[i].u.pc = module->prog+build->plan->matches[i].entry;
 			link->links[i].frame = module->type[build->plan->matches[i].frame];
 		}
-	}else if(build->bindings != 0){
-		link->links[0].u.pc = module->entry;
-		link->links[0].frame = module->entryt;
 	}
 	if(module->origmp != H){
 		D2H(module->origmp)->ref++;
@@ -1430,17 +1425,22 @@ prepare64providerlink(char *path, uchar *image, ulong bytes, int jit,
 {
 	Module *module;
 	Dis64StorageOwner *lease;
+	Dis64PairPlan plan;
 
+	if(ordinal == Dis64AllBindings){
+		kwerrstr("invalid Dis64 provider ordinal");
+		return nil;
+	}
 	if(heapmonitor != nil){
 		kwerrstr("Dis64 provider link requires unmonitored allocation");
 		return nil;
 	}
 	lease = nil;
 	module = prepare64provider(path, image, bytes, jit, &lease,
-		consumer, consumerbytes, ordinal);
+		consumer, consumerbytes, ordinal, &plan);
 	if(module == nil)
 		return nil;
-	return dis64rootlink(module, lease, 1, nil, nil);
+	return dis64rootlink(module, lease, 1, &plan, nil);
 }
 
 
@@ -1472,7 +1472,7 @@ prepare64consumerlink(char *path, uchar *image, ulong bytes, char *providerpath,
 	provider = nil;
 	if(dis64storageimagecheck(image, bytes, &dis64numericlimits, &consumer)){
 		module = dis64numericbuild(providerpath, providerimage, providerbytes, jit,
-			&lease, &consumer, 0, 0, &plan);
+			&lease, &consumer, Dis64AllBindings, 0, &plan);
 		if(module != nil)
 			provider = dis64rootlink(module, lease, plan.count, &plan, nil);
 	}

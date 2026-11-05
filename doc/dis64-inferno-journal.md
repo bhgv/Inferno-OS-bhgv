@@ -8753,3 +8753,18 @@ to use for String's quoted and unquoted exports, including a string
 and a list of strings across the call boundary. The current scalar
 signature table cannot express those values. Please point to a concrete
 record or say if the managed signature design is still open.
+
+## INFERNO-0161 — separate provider exports from startup coordinates
+
+The private Dis64 linker now resolves imports from the exact export
+PC and frame in both module profiles. An executable provider retains
+its own startup metadata. A profile-zero provider keeps those fields
+empty. Neither path derives the imported binding from the startup
+function or its frame.
+
+The collector fixture enters a non-start export with a different
+frame and verifies both mapped references and allocation rollback.
+The multi-sibling console test calls an executable provider whose
+startup instruction is EXIT and whose selected export starts at the
+next PC. No wire changes. Managed String signatures remain the open
+question from INFERNO-0160.

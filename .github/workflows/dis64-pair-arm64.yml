@@ -19,7 +19,7 @@ on:
       - 'libinterp/tests/sys-pctl.*'
       - 'libinterp/load64.c'
       - 'libinterp/xec.c'
-      - 'utils/tests/dis64-numeric-gc.py'
+      - 'utils/tests/dis64-numeric-gc.*'
       - 'utils/tests/dis64-provider-call.c'
       - 'include/dis64*.h'
       - 'limbo/**'
@@ -132,6 +132,8 @@ jobs:
           fi
           CC="$TARGET_CC" NATIVE64_CFLAGS="$flags" python3 utils/tests/dis64-numeric-gc.py --calls \
             | tee "$RUNNER_TEMP/native64-pair/port-logs/sys-clock-vm.log"
+          CC="$TARGET_CC" NATIVE64_CFLAGS="$flags" python3 utils/tests/dis64-numeric-gc.py --provider \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/provider-vm.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
