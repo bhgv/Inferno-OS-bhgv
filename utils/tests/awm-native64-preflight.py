@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Compile the AWM startup slice and report the current Dis64 compiler barriers."""
 import argparse
+import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import tempfile
 
@@ -78,6 +80,50 @@ def check_builtin_imports(limbo, work):
         raise RuntimeError('AWM startup assembly is missing the Sys or Draw LOAD')
 
 
+def check_string_frames(limbo, work):
+    """Verify the two managed String call shapes before assigning wire kinds."""
+    header = subprocess.check_output(
+        [str(limbo), '-H', '-M', 'String', '-I', 'module', 'module/string.m'],
+        cwd=ROOT, timeout=60,
+    )
+    (work/'string-native64.h').write_bytes(header)
+    source = work/'string-frames.c'
+    source.write_text(r'''
+#include "lib9.h"
+#include "isa.h"
+#include "interp.h"
+#include "string-native64.h"
+
+#define FIELD_IS(frame, field, type) _Generic(((frame*)0)->field, type: 1, default: 0)
+_Static_assert(sizeof(F_String_quoted) == 72 && sizeof(F_String_unquoted) == 72,
+    "managed frame extent");
+_Static_assert(offsetof(F_String_quoted, argv) == 64 &&
+    offsetof(F_String_unquoted, args) == 64, "mapped argument offset");
+_Static_assert(offsetof(F_String_quoted, ret) == 32 &&
+    offsetof(F_String_unquoted, ret) == 32, "transient result address offset");
+_Static_assert(FIELD_IS(F_String_quoted, argv, List*) &&
+    FIELD_IS(F_String_quoted, ret, String**), "quoted: list -> string");
+_Static_assert(FIELD_IS(F_String_unquoted, args, String*) &&
+    FIELD_IS(F_String_unquoted, ret, List**), "unquoted: string -> list");
+
+int main(void)
+{
+    static const uchar quoted[] = F_String_quoted_map;
+    static const uchar unquoted[] = F_String_unquoted_map;
+    return !(sizeof(quoted) == 2 && sizeof(unquoted) == 2 &&
+        quoted[0] == 0 && quoted[1] == 0x80 &&
+        unquoted[0] == 0 && unquoted[1] == 0x80);
+}
+''')
+    binary = work/'string-frames'
+    command = shlex.split(os.environ.get('CC', 'cc'))
+    subprocess.run(command+['-std=gnu11', '-DDIS_WORD32=1', '-I', 'Linux/386/include',
+                           '-I', 'include', str(source), '-o', str(binary)],
+                   cwd=ROOT, check=True, timeout=60)
+    subprocess.run([str(binary)], check=True, timeout=30)
+    print('PASS generated String quoted/unquoted: typed arguments, result addresses and map8')
+
+
 # Keep ordinary source compilation and experimental Dis64 admission separate.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -88,6 +134,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='awm-preflight-', dir=ROOT) as directory:
         work = Path(directory)
         check_builtin_imports(limbo, work)
+        check_string_frames(limbo, work)
         for source in STARTUP:
             legacy = work / (Path(source).stem + '.dis')
             result = compile_module(limbo, source, legacy, [])
