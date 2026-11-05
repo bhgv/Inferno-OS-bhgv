@@ -1,6 +1,6 @@
 # Scalar source locations: private tooling and shared proposal (series 0055)
 
-The restricted `limbo -6` path now has optional diagnostic instruction/source
+The restricted `limbo -64` path now has optional diagnostic instruction/source
 correspondence. This changes no image byte, accepted opcode, wire ID, entry ABI,
 GC map or native-call witness. The ordinary compiler products remain separate.
 The shared source-location contract below is a proposal to FlashVM, not an

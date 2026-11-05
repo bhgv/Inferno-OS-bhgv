@@ -97,7 +97,7 @@ def compile_map(args):
             for i, a in enumerate(paths) for b in paths[i+1:]):
         raise ValueError('Source, image and source map must be different files')
     env = dict(os.environ, LIMBO_DIS64_TRACE='1')
-    result = subprocess.run([str(args.limbo.resolve()), '-6', '-o', str(image), str(source)],
+    result = subprocess.run([str(args.limbo.resolve()), '-64', '-o', str(image), str(source)],
                             env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if result.returncode:
         raise ValueError(result.stderr.decode(errors='replace'))

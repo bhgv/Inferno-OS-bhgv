@@ -203,7 +203,7 @@ def main():
         for text in (PREFIX + 'key: string; init(){case key {"x"=>key="y"; * =>key="z";}}', PREFIX + 'key:=0; init(){case key {' + ' '.join((str(i * 100) + '=>key=1;' for i in range(9))) + ' * =>key=2;}}'):
             source.write_text(text)
             command([compiler, '-o', legacy, source])
-            command([compiler, '-6', '-o', image, source], False)
+            command([compiler, '-64', '-o', image, source], False)
             if image.exists():
                 raise RuntimeError('Refused case left output')
     if seen != {'case', 'casel', 'goto'} or controls == 0:

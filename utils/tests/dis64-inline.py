@@ -670,7 +670,7 @@ def main():
             refused += 1
             source.write_text(PREFIX+globals_+'\n'+body+'\n')
             command([args.limbo.resolve(), '-o', legacy, source])
-            result = subprocess.run([str(args.limbo.resolve()), '-6', '-o', str(image), str(source)],
+            result = subprocess.run([str(args.limbo.resolve()), '-64', '-o', str(image), str(source)],
                                     capture_output=True, timeout=30)
             diagnostic = result.stdout+result.stderr
             if result.returncode <= 0 or b'Dis64 scalar:' not in diagnostic or b'runtime error:' in diagnostic:

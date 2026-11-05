@@ -47,7 +47,7 @@ def main():
             if result.returncode != 0 or not legacy.is_file() or legacy.stat().st_size == 0:
                 raise RuntimeError(f'{source}: ordinary compilation failed\n{result.stdout}')
             target = legacy.with_suffix('.dis64')
-            result = compile_module(limbo, source, target, ['-6'])
+            result = compile_module(limbo, source, target, ['-64'])
             if result.returncode == 0:
                 if not target.is_file() or target.stat().st_size == 0:
                     raise RuntimeError(f'{source}: Dis64 compiler omitted its output')

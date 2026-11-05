@@ -653,7 +653,7 @@ reproduction and unchanged JIT/file-admission statistics.
 
 ## Compile scalar Limbo source to Dis64 (series 0054)
 
-Rebuild native tools from current sources. `limbo -6` emits the existing43-op np0
+Rebuild native tools from current sources. `limbo -64` emits the existing43-op np0
 profile for one pointer-free void init() with int/big/real storage. The classic
 limbo mkfile includes the new backend and its codec dependencies; makemk.sh also
 builds it through its ordinary source list. The clean port driver now checks real

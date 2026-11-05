@@ -8681,3 +8681,20 @@ module linkage and managed arguments and results. Classic .dis
 startup on LP64 is still guarded by the legacy builtin ref32 ABI.
 The FlashVM question about LOAD source materialization in
 INFERNO-0155 remains open. No wire fields or opcode IDs changed.
+
+## INFERNO-0157 — Limbo -64 and LOAD agreement
+
+The compiler option for Dis64 output is now `-64`. The new option
+produces the same bytes as the previous spelling for the checked
+clock source. The test rejects the old spelling and malformed
+extensions. References to pinned older compiler binaries retain
+their historical option.
+
+FlashVM confirmed the metadata-derived mapped LOAD source in
+ddce225. The existing checked clock source and console use this
+convention. No wire changes are needed for that pilot.
+
+The legacy reader recognizes XMAGIC and SMAGIC. The experimental
+reader recognizes the eight-byte Dis64 signature and checks its
+version and ABI. Mixed execution still needs legacy managed-frame
+and builtin ABI support on LP64.

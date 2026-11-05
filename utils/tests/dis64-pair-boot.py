@@ -110,11 +110,16 @@ init()
     for bad in (template.replace('Sys->PATH', '"$Other"'),
                 template.replace('millisec()', 'sleep(1)')):
         source.write_text(bad)
-        command = [str(limbo), '-I', str(ROOT/'module'), '-6', '-o', str(output), str(source)]
+        command = [str(limbo), '-I', str(ROOT/'module'), '-64', '-o', str(output), str(source)]
         result = subprocess.run(command, capture_output=True, text=True, timeout=30)
         if result.returncode <= 0 or output.exists() or 'requires managed linkage' not in result.stderr:
             raise RuntimeError('compiler did not refuse changed clock source: '+result.stderr)
     source.write_text(template)
+    for flag in ('-6', '-640'):
+        invalid = [flag if value == '-64' else value for value in command]
+        result = subprocess.run(invalid, capture_output=True, text=True, timeout=30)
+        if result.returncode <= 0 or output.exists() or '[-64]' not in result.stderr:
+            raise RuntimeError('compiler accepted invalid Dis64 flag '+flag)
     subprocess.run(command, check=True, timeout=30)
     return output.read_bytes()
 

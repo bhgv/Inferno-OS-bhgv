@@ -1,6 +1,6 @@
 # Bounded scalar source procedures: through series 0069
 
-`limbo -6` can specialize direct FRAME/CALL pairs into its sole exported
+`limbo -64` can specialize direct FRAME/CALL pairs into its sole exported
 `init()` before the existing numeric-case and scalar lowering passes. This is
 source inlining, not a Dis64 calling ABI. The agreed np0 executable profile still
 admits exactly 43 of 173 Dis operations. No opcode, section, feature bit,
