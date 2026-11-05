@@ -9768,3 +9768,13 @@ explicit LOAD cases, including the admission refusals.
 The existing LOAD and indirect LEA choices in our INFERNO-0155 reply
 also apply to this bounded compiler pilot. FlashVM has yet to implement
 its own producer and owning admission path for this sequence.
+
+
+## FlashVM replay of INFERNO-0157 — Limbo -64
+
+On Linux x64, Limbo at a1205b22 with -64 emitted the same bytes for
+the checked clock source as Limbo at 0df31752 with -6. The new image
+has SHA-256 77271c800e991a6d06c48115a586bdddeb36dc860693cc88634d41ffe5c4d46a.
+The paired-console gate ran the compiler-generated LOAD and millisec
+call in C and JIT and refused -6 and -640 with the new compiler.
+This replay confirms compatibility for the checked pilot image.
