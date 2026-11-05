@@ -27,9 +27,12 @@ def unit(control, instrument=False, instrument_source=False):
     stack = (ROOT/'libinterp/stack.c').read_text()
     parts = [extract(stack, s) for s in ('void\nextend(', 'void\nunextend(')]
     parts += [extract(xec, s) for s in ('static Type*\nmoduletype(', 'static int\nframefits(', 'OP(frame)',
-              'OP(call)', 'OP(ret)', 'OP(lea)', 'OP(cvtwf)', 'int\nnative64lea8step(')]
+              'OP(call)', 'OP(ret)', 'OP(lea)', 'OP(cvtwf)', 'static int\nnative64bindresult(')]
     if control == 'width':
-        parts[-1] = parts[-1].replace('memmove(R.d, &address, sizeof(address));', 'memmove(R.d, &address, sizeof(WORD));')
+        marker = 'memmove(destination, &address, sizeof(address));'
+        if parts[-1].count(marker) != 1:
+            raise RuntimeError('native result write marker drift')
+        parts[-1] = parts[-1].replace(marker, 'memmove(destination, &address, sizeof(WORD));')
     elif control == 'guard_mode':
         parts[-1] = parts[-1].replace('instruction.add != (SRC(AFP)|DST(AFP|AIND)) ||', '0 ||')
     elif control == 'priority' and not instrument:
@@ -44,6 +47,7 @@ def unit(control, instrument=False, instrument_source=False):
         if source.count(marker) != 1:
             raise RuntimeError('decoded LEA guard marker drift')
         source = source.replace(marker, 'if(0 && step != nil)\n\t\t\terror(exCompile);')
+    parts.extend(extract(xec, s) for s in ('int\nnative64lea8step(', 'int\nnative64managedlea8step('))
     if instrument:
         profile = extract((ROOT/'emu/port/devprof.c').read_text(), 'static void\ncpxec(')
         debug = extract((ROOT/'emu/port/devprog.c').read_text(), 'void\ndbgxec(')

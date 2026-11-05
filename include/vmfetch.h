@@ -156,6 +156,8 @@ vminstrument(VmFetch *f, void **source)
 		memmove(&step, (uchar*)f->module+O(Module, cstep), sizeof(step));
 		if(step == native64lea8step && step())
 			return;
+		if(step == native64managedlea8step && step())
+			return;
 	}
 	vmdecode(f);
 	if(source != nil)

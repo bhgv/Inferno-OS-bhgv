@@ -470,6 +470,7 @@ extern	Channel*	cnewcmapped(Modlink*, WORD, int);
 /* Complete one decoded operation; never retain a Module/Jit pointer across its C handler. */
 extern	int		cjitexec(REG*, int, int (*)(REG*));
 extern	int		native64lea8step(void); // Trusted Module.cstep binding; never selected from a file flag.
+extern	int		native64managedlea8step(void); // Trusted mapped, nil result cell binding.
 
 
 extern	int		compile(Module*, int, Modlink*);

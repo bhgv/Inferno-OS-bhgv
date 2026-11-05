@@ -143,8 +143,8 @@ OP(lea)
  * xec invokes this before ordinary JIT entries, so cached WORD-sized LEA stays ordinary.
  * Only a checked constructor or trusted native owner may select this callback.
  */
-int
-native64lea8step(void)
+static int
+native64bindresult(int managed)
 {
 	VmFetch fetched;
 	Inst instruction;
@@ -153,13 +153,14 @@ native64lea8step(void)
 	Frame *pending;
 	Stkext *active;
 	int (*step)(void);
-	int size, mapbytes, i;
+	int size, mapbytes, i, resultbyte, resultbit;
+	void *previous;
 	uintptr base, extent, start, top, target;
 
 	if(!vmfetch(&fetched) || fetched.op != ILEA)
 		return 0;
 	memmove(&step, (uchar*)fetched.module+O(Module, cstep), sizeof(step));
-	if(step != native64lea8step)
+	if(step != (managed ? native64managedlea8step : native64lea8step))
 		return 0;
 	memmove(&instruction, fetched.pc, sizeof(instruction));
 	if(sizeof(void*) != 8 || instruction.add != (SRC(AFP)|DST(AFP|AIND)) ||
@@ -186,8 +187,12 @@ native64lea8step(void)
 	   (uintptr)type > (uintptr)-1-O(Type, map)-(uintptr)mapbytes ||
 	   base > (uintptr)-1-(uintptr)size || instruction.s.ind != size-8)
 		error(exBounds);
+	resultbyte = (size-8)/64;
+	resultbit = 0x80 >> ((size-8)/8%8);
+	if(managed && resultbyte >= mapbytes)
+		error(exBounds);
 	for(i=0; i<mapbytes; i++)
-		if(type->map[i] != 0)
+		if(type->map[i] != (managed && i == resultbyte ? resultbit : 0))
 			error(exBounds);
 	/* The checked sequence prepares exactly one frame at the top of the stack. */
 	active = (Stkext*)R.EX;
@@ -209,11 +214,28 @@ native64lea8step(void)
 		error(exBounds);
 	address = (void*)(base+(uintptr)size-8);
 	destination = (void*)(target+32);
+	if(managed){
+		memmove(&previous, address, sizeof(previous));
+		if(previous != H)
+			error(exBounds);
+	}
 	vmdecode(&fetched);
 	if(R.s != address || R.d != destination)
 		error(exBounds);
 	memmove(destination, &address, sizeof(address));
 	return 1;
+}
+
+int
+native64lea8step(void)
+{
+	return native64bindresult(0);
+}
+
+int
+native64managedlea8step(void)
+{
+	return native64bindresult(1);
 }
 
 

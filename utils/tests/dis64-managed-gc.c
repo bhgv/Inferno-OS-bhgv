@@ -136,6 +136,13 @@ managedmcall(void *unused)
 	return 1;
 }
 
+static int
+managedbind(void *unused)
+{
+	USED(unused);
+	return native64managedlea8step();
+}
+
 static Modlink*
 managedmodule(int links)
 {
@@ -182,6 +189,16 @@ managedvmcase(Type *callerframe, Type *calleeframe, int reverse, int empty, int 
 	caller = managedmodule(0);
 	if(grow)
 		caller->m->ss = 0;
+	caller->m->cstep = native64managedlea8step;
+	caller->m->nprog = 1;
+	caller->m->prog = mallocz(sizeof(Inst), 1);
+	require(caller->m->prog != nil);
+	caller->prog = caller->m->prog;
+	caller->prog[0].op = ILEA;
+	caller->prog[0].add = SRC(AFP)|DST(AFP|AIND);
+	caller->prog[0].s.ind = 64;
+	caller->prog[0].d.i.f = 40;
+	caller->prog[0].d.i.s = 32;
 	ptradd(D2H(caller));
 	callee = managedmodule(1);
 	ptradd(D2H(callee));
@@ -190,6 +207,7 @@ managedvmcase(Type *callerframe, Type *calleeframe, int reverse, int empty, int 
 	process.exval = H;
 	process.state = Pready;
 	process.R.M = caller;
+	process.R.PC = caller->prog;
 	entry = mallocz(callerframe->size, 1);
 	require(entry != nil);
 	entry->t = callerframe;
@@ -207,15 +225,34 @@ managedvmcase(Type *callerframe, Type *calleeframe, int reverse, int empty, int 
 	require(pending != nil && pending->t == (grow ? nil : calleeframe));
 	if(grow)
 		require(((Stkext*)R.EX)->reg.TR == calleeframe);
+	memmove(root+40, &pending, sizeof(pending));
+	resultslot = root+64;
+	/* Neither an absent map bit nor a non-nil cell may publish the address. */
+	result = nil;
+	memmove((uchar*)pending+32, &result, sizeof(result));
+	callerframe->map[1] = 0;
+	require(!kprotect(managedbind, nil) && R.PC == caller->prog);
+	callerframe->map[1] = 0x80;
+	memmove(resultslot, &result, sizeof(result));
+	require(!kprotect(managedbind, nil) && R.PC == caller->prog);
+	memmove(&result, (uchar*)pending+32, sizeof(result));
+	require(result == nil);
+	result = H;
+	memmove(resultslot, &result, sizeof(result));
+	result = (uchar*)pending+sizeof(void*);
+	memmove(root+40, &result, sizeof(result));
+	require(!kprotect(managedbind, nil) && R.PC == caller->prog);
+	memmove(&result, (uchar*)pending+32, sizeof(result));
+	require(result == nil);
+	memmove(root+40, &pending, sizeof(pending));
+	require(kprotect(managedbind, nil) && R.PC == caller->prog+1);
+	memmove(&result, (uchar*)pending+32, sizeof(result));
+	require(result == resultslot);
 	text = empty ? H : managedstring();
 	argument = reverse && !empty ? (void*)managedlist(text) : text;
 	managedput((uchar*)pending+64, argument);
-	resultslot = root+64;
-	if(reverse)
-		((F_String_quoted*)pending)->ret = resultslot;
-	else
-		((F_String_unquoted*)pending)->ret = resultslot;
 	R.s = &pending;
+	R.m = &ordinal;
 	R.d = &callee;
 	managedprocess = &process;
 	managederror = unwind;

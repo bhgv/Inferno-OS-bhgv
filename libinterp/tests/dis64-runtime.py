@@ -84,7 +84,9 @@ def buildunit(resultcalls=False):
              'beqf', 'bnef', 'bltf', 'blef', 'bgtf', 'bgef', 'jmp', 'iexit')
     parts += [function(xec, 'OP('+name+')') for name in names]
     if not resultcalls:
-        parts.append(function(xec, 'int\nnative64lea8step('))
+        parts.extend(function(xec, signature) for signature in
+                     ('static int\nnative64bindresult(', 'int\nnative64lea8step(',
+                      'int\nnative64managedlea8step('))
     loader = (ROOT/'libinterp/load64.c').read_text()
     # Non-executable storage leases have their own actual collector/ownership fixture.
     loader = loader[:loader.index('/* Native staging state is deliberately distinct')]
