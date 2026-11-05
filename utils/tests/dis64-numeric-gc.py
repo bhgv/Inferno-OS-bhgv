@@ -36,14 +36,16 @@ def unit(calls=False, managed=False):
         source += '\nType Tlist = {1, freelist, marklist, sizeof(List)};\n'
         source += extract((ROOT/'libinterp/xec.c').read_text(), 'List*\ncons(')+'\n'
         fixture += (ROOT/'utils/tests/dis64-managed-gc.c').read_text()
-    if calls:
+    if calls or managed:
         stack = (ROOT/'libinterp/stack.c').read_text()
         xec = (ROOT/'libinterp/xec.c').read_text()
         for signature in ('void\nextend(', 'void\nunextend('):
             source += '\n'+extract(stack, signature)+'\n'
         for signature in ('static int\nmoduleentry(', 'static int\nframefits(',
-                          'OP(mframe)', 'OP(mcall)', 'OP(ret)'):
+                          'OP(mframe)', 'OP(mcall)'):
             source += '\n'+extract(xec, signature)+'\n'
+    if calls:
+        source += '\n'+extract(xec, 'OP(ret)')+'\n'
         fixture = fixture.split('/* Check C and machine-code execution with a standalone')[0]
         fixture += (ROOT/'utils/tests/dis64-provider-call.c').read_text()
         source += '\nString* c2string(char*, int);\n'

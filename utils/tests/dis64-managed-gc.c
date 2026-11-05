@@ -2,6 +2,14 @@
 #include "string-native64.h"
 
 static Type *stringelement;
+static Prog *managedprocess;
+static int managederror, managedcalls;
+
+Prog*
+currun(void)
+{
+	return managedprocess;
+}
 
 static void
 managedput(void *slot, void *owned)
@@ -59,6 +67,151 @@ managedhead(List *list)
 
 	memmove(&value, list->data, sizeof(value));
 	return value;
+}
+
+/* Exercise native dispatch and the generated result cell with fixture callbacks. */
+static void
+managedcallback(void *argument, void *destination, int reverse)
+{
+	String *text;
+	void *result;
+	Heap *staging;
+	void **stage;
+
+	managedcalls++;
+	managedprocess->R = R;
+	numericcollect(managedprocess);
+	text = argument == H ? H : reverse ? managedhead(argument) : argument;
+	if(text != H){
+		require(numericowner(D2H(text))->magic == MAGIC_A);
+		D2H(text)->ref++;
+	}
+	result = text == H ? H : reverse ? (void*)text : managedlist(text);
+	staging = heapz(stringelement);
+	ptradd(staging);
+	stage = H2D(void**, staging);
+	managedput(stage, result);
+	numericcollect(managedprocess);
+	if(result != H)
+		require(numericowner(D2H(result))->magic == MAGIC_A);
+	if(!managederror){
+		*stage = H;
+		managedput(destination, result);
+	}
+	ptrdel(staging);
+	destroy(stage);
+	if(managederror)
+		error("managed MCALL unwind");
+}
+
+void
+String_quoted(void *frame)
+{
+	F_String_quoted *call = frame;
+	managedcallback(call->argv, call->ret, 1);
+}
+
+void
+String_unquoted(void *frame)
+{
+	F_String_unquoted *call = frame;
+	managedcallback(call->args, call->ret, 0);
+}
+
+static int
+managedmcall(void *unused)
+{
+	USED(unused);
+	mcall();
+	return 1;
+}
+
+static Modlink*
+managedmodule(int links)
+{
+	Module *module;
+
+	module = mallocz(sizeof(*module), 1);
+	require(module != nil);
+	module->ref = 1;
+	module->origmp = H;
+	module->ss = 4096;
+	return mklinkmod(module, links);
+}
+
+static void
+managedvmcase(Type *callerframe, Type *calleeframe, int reverse, int empty, int unwind, int grow)
+{
+	Prog process = {0};
+	Modlink *caller, *callee;
+	Frame *entry, *pending;
+	WORD ordinal = 0;
+	String *text;
+	void *argument, *result, *resultslot;
+	uchar *root;
+	int before, slot;
+
+	caller = managedmodule(0);
+	if(grow)
+		caller->m->ss = 0;
+	ptradd(D2H(caller));
+	callee = managedmodule(1);
+	ptradd(D2H(callee));
+	callee->links[0].frame = calleeframe;
+	callee->links[0].u.runt = reverse ? String_quoted : String_unquoted;
+	process.exval = H;
+	process.state = Pready;
+	process.R.M = caller;
+	entry = mallocz(callerframe->size, 1);
+	require(entry != nil);
+	entry->t = callerframe;
+	R.s = &entry;
+	newstack(&process);
+	free(entry);
+	R = process.R;
+	root = R.FP;
+	initmem(callerframe, root);
+	ptrdel(D2H(caller));
+	R.s = &callee;
+	R.m = &ordinal;
+	R.d = &pending;
+	mframe();
+	require(pending != nil && pending->t == (grow ? nil : calleeframe));
+	if(grow)
+		require(((Stkext*)R.EX)->reg.TR == calleeframe);
+	text = empty ? H : managedstring();
+	argument = reverse && !empty ? (void*)managedlist(text) : text;
+	managedput((uchar*)pending+64, argument);
+	resultslot = root+64;
+	if(reverse)
+		((F_String_quoted*)pending)->ret = resultslot;
+	else
+		((F_String_unquoted*)pending)->ret = resultslot;
+	R.s = &pending;
+	R.d = &callee;
+	managedprocess = &process;
+	managederror = unwind;
+	before = managedcalls;
+	require(kprotect(managedmcall, nil) == !unwind && managedcalls == before+1);
+	memmove(&result, resultslot, sizeof(result));
+	if(unwind){
+		require(result == H && R.M == callee && R.FP == (uchar*)pending);
+		require(strcmp(message, "managed MCALL unwind") == 0);
+	}else{
+		require(R.M == caller && R.FP == root && D2H(callee)->ref == 1);
+		require((result == H) == empty);
+		process.R = R;
+		numericcollect(&process);
+		if(!empty)
+			require((reverse ? (String*)result : managedhead(result))->Sascii[0] == 'x');
+	}
+	destroystack(&R);
+	ptrdel(D2H(callee));
+	destroy(callee);
+	require(worker.nerr == 0 && Tmodlink.ref == 1);
+	for(slot=1; slot<GcSlots; slot++)
+		require(numericblock(slot)->magic == MAGIC_F);
+	require(Tstring.ref == 1 && Tlist.ref == 1 && stringelement->ref == 1);
 }
 
 /* Trace only actual mapped storage. Neither the transient address nor C locals root values. */
@@ -167,9 +320,9 @@ managedmapcontrol(Type *frame)
 int
 main(void)
 {
-	static uchar two[] = {0xc0}, one[] = {0x80};
+	static uchar two[] = {0xc0}, one[] = {0x80}, resultmap[] = {0, 0x80};
 	static uchar quotedmap[] = F_String_quoted_map, unquotedmap[] = F_String_unquoted_map;
-	Type *slots, *frames[2];
+	Type *slots, *frames[2], *callerframe;
 	int reverse, empty, unwind;
 
 	numericpoolinit();
@@ -180,12 +333,17 @@ main(void)
 	slots = dtype(freeheap, 2*sizeof(void*), two, sizeof(two));
 	frames[0] = dtype(freeheap, sizeof(F_String_unquoted), unquotedmap, sizeof(unquotedmap));
 	frames[1] = dtype(freeheap, sizeof(F_String_quoted), quotedmap, sizeof(quotedmap));
-	require(stringelement != nil && slots != nil && frames[0] != nil && frames[1] != nil);
+	callerframe = dtype(freeheap, 72, resultmap, sizeof(resultmap));
+	require(stringelement != nil && slots != nil && frames[0] != nil && frames[1] != nil && callerframe != nil);
 	for(reverse=0; reverse<2; reverse++)
 		for(empty=0; empty<2; empty++)
-			for(unwind=0; unwind<2; unwind++)
+			for(unwind=0; unwind<2; unwind++){
 				managedcase(slots, frames[reverse], reverse, empty, unwind);
+				managedvmcase(callerframe, frames[reverse], reverse, empty, unwind, 0);
+				managedvmcase(callerframe, frames[reverse], reverse, empty, unwind, 1);
+			}
 	managedmapcontrol(frames[0]);
+	freetype(callerframe);
 	freetype(frames[1]);
 	freetype(frames[0]);
 	freetype(slots);
@@ -193,5 +351,6 @@ main(void)
 	numericdrain();
 	require(live == 0);
 	printf("PASS generated String frames with real GC: 8 ownership cases, missing-map control, %lu epochs, %d checks\n", gcepochs, checks);
+	printf("PASS production MFRAME/MCALL with symbolic String callbacks: %d calls\n", managedcalls);
 	return 0;
 }
