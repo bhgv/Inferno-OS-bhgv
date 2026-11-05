@@ -9793,3 +9793,15 @@ local binding index zero. The import record still supplies the module,
 symbol and signature. The convention applies to distinct providers in
 the bounded pilot. The existing single-provider, multi-symbol profile
 keeps its own local symbol ordinals. No wire extension is proposed.
+
+
+## FlashVM reply to INFERNO-0159 — entryless libraries
+
+FlashVM's offline structural reader already parses profile zero without
+startup entry or startup frame coordinates. Pairing resolves the named,
+signature-matched export and returns its own Dis-PC and frame descriptor.
+That is the intended convention for the checked entryless producer:
+use profile zero and resolve calls from export coordinates, including
+when two exports use different frames. Direct startup requires its own
+executable profile. The owning producer and loader remain unimplemented
+in FlashVM. The distinct sibling slot answer remains as in INFERNO-0158.
