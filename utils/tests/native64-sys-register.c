@@ -246,6 +246,24 @@ SYS_LINKER
 SYS_ILOAD
 #undef OP
 
+static struct {
+	Heap heap;
+	String value;
+} sysname;
+static int rejectname;
+
+String*
+c2string(char *text, int bytes)
+{
+	check(bytes == 4 && memcmp(text, "$Sys", bytes) == 0);
+	if(rejectname)
+		return H;
+	memmove(sysname.value.Sascii, "$Sys", 5);
+	return &sysname.value;
+}
+
+SYS_LOAD_METADATA
+
 static int
 loadsysgroup(void *unused)
 {
@@ -258,23 +276,48 @@ loadsysgroup(void *unused)
 static void
 checksysgroup(Module *sys)
 {
-	Import imports[] = {{.name = "open"}, {.name = "millisec"}, {0}};
-	Import *tables[] = {imports, nil};
-	Module caller = {.rt = HASLDT, .ldt = tables, .cstep = native64lea8step};
-	Modlink current = {.m = &caller, .MP = H}, *destination, *published;
-	String name = {0}, *source = &name;
+	const Link *entries[] = {&sys->ext[11], &sys->ext[10]};
+	Module *caller;
+	Import *imports;
+	Modlink current = {.MP = H}, *destination, *published;
+	String *source;
 	WORD ordinal = 0;
-	int before;
+	int before, failure;
 
-	imports[0].sig = sys->ext[11].sig;
-	imports[1].sig = sys->ext[10].sig;
-	memmove(name.Sascii, "$Sys", 5);
+	before = live;
+	for(failure=0; failure<5; failure++){
+		caller = mallocz(sizeof(*caller), 1);
+		check(caller != nil);
+		caller->ref = 1;
+		source = H;
+		caller->origmp = (uchar*)&source;
+		fail_after = failure < 4 ? failure : -1;
+		rejectname = failure == 4;
+		check(!dis64sysloadmetadata(caller, entries, nelem(entries)));
+		check(source == H && !(caller->rt & HASLDT));
+		fail_after = -1;
+		rejectname = 0;
+		caller->origmp = H;
+		unload(caller);
+		check(live == before);
+	}
+
+	caller = mallocz(sizeof(*caller), 1);
+	check(caller != nil);
+	caller->ref = 1;
+	source = H;
+	caller->origmp = (uchar*)&source;
+	caller->cstep = native64lea8step;
+	check(dis64sysloadmetadata(caller, entries, nelem(entries)));
+	check(source == &sysname.value && caller->ldt[1] == nil);
+	imports = caller->ldt[0];
+	check(imports[2].name == nil);
+	current.m = caller;
 	R.M = &current;
 	R.s = &source;
 	R.m = &ordinal;
 	R.d = &destination;
 	destination = H;
-	before = live;
 	check(kprotect(loadsysgroup, nil));
 	check(destination != H && destination->m == sys && destination->nlinks == 2);
 	check(destination->links[0].u.runt == Sys_open && destination->links[0].frame == sys->ext[11].frame);
@@ -290,8 +333,10 @@ checksysgroup(Module *sys)
 	rejectroot = 0;
 	check(destination == published && sys->ref == 2);
 	destroy(destination);
+	caller->origmp = H;
+	unload(caller);
 	check(sys->ref == 1 && live == before && clockroot == nil && Tmodlink.ref == 1);
-	puts("PASS production ILOAD and linkmod: ordered Sys group, bad second signature and root failure");
+	puts("PASS production Sys metadata, ILOAD and linkmod: two exports and seven rollback cases");
 }
 
 

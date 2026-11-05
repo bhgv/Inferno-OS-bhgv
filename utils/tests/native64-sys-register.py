@@ -65,6 +65,9 @@ def main():
         iload = '\n'.join(support['function'](xec, signature) for signature in
                           ('static Import*\nmoduleimports(', 'OP(iload)'))
         body = body.replace('SYS_ILOAD', iload)
+        load64 = (ROOT/'libinterp/load64.c').read_text()
+        metadata = support['function'](load64, 'static int\ndis64sysloadmetadata(')
+        body = body.replace('SYS_LOAD_METADATA', metadata)
         fixture = support['constructor']()
         fixture = fixture.replace('check(p == H);', 'if(p != H) destroysyslink(p);')
         unit = work/'test.c'

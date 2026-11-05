@@ -765,23 +765,28 @@ struct Dis64NumericLoad {
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 
 
-/* Materialize the one checked import and the managed source string for LOAD. */
+/* Materialize one checked Sys import group in the existing ILOAD layout. */
 static int
-dis64clockloadmetadata(Module *module, const Link *entry)
+dis64sysloadmetadata(Module *module, const Link *const *entries, unsigned int count)
 {
 	Import *imports;
 	String *path;
+	unsigned int i;
 
+	if(count == 0 || count > 32)
+		return 0;
 	module->ldt = mallocz(2*sizeof(Import*), 1);
 	if(module->ldt == nil)
 		return 0;
-	module->ldt[0] = imports = mallocz(2*sizeof(Import), 1);
+	module->ldt[0] = imports = mallocz((count+1)*sizeof(Import), 1);
 	if(imports == nil)
 		return 0;
-	imports[0].name = strdup(entry->name);
-	if(imports[0].name == nil)
-		return 0;
-	imports[0].sig = entry->sig;
+	for(i=0; i<count; i++){
+		imports[i].name = strdup(entries[i]->name);
+		if(imports[i].name == nil)
+			return 0;
+		imports[i].sig = entries[i]->sig;
+	}
 	path = c2string("$Sys", 4);
 	if(path == nil || path == H)
 		return 0;
@@ -814,7 +819,7 @@ dis64numericconstruct(void *argument)
 	if(load->lease == nil || !attach64storage(module, load->lease))
 		return 0;
 	#ifdef DIS_NATIVE64_BOOT_SYS_IO
-	if(load->clockload != nil && !dis64clockloadmetadata(module, load->clockload))
+	if(load->clockload != nil && !dis64sysloadmetadata(module, &load->clockload, 1))
 		return 0;
 #endif
 	if(load->image.module.profile == 1)
