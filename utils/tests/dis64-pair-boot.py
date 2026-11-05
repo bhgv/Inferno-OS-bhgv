@@ -68,6 +68,30 @@ def two_symbols(*, second=1, terminal_failure=False, wrong_ordinal=False,
     return caller, provider
 
 
+# Encode a distinct mapped provider slot per import using existing operands.
+def sibling_images(*, failure=False, second='peer', wrong_slot=False, mapbyte=0xc0):
+    words, ins = RAW['W'], RAW['I']
+    binding = RAW['RAW']['RAW']['binding']
+    names = ('unit', second, 'symbol', 'caller', 'peer')
+    pool = words(len(names))+b''.join(words(len(name), *map(ord, name)) for name in names)
+    code = b''
+    for slot in (0, 8):
+        code += ins('IMFRAME', 65, source=slot, middle=0, destination=64)
+        code += ins('IMCALL', 72, source=64, middle=0,
+                    destination=0 if wrong_slot and slot else slot)
+    sections = RAW['SECTIONS'](
+        name=3, databytes=16, imports=[binding(module=0, symbol=2), binding(module=1, symbol=2)],
+        types=[RAW['D'](80, 8), RAW['D'](16, 8, bytes([mapbyte]))],
+        code=words(5)+code+RAW['EXIT'],
+    )
+    caller = RAW['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
+    terminal = ins('IDIVW', 16, source=0, destination=8) if failure else ins('IRET', 27)
+    sections = RAW['SECTIONS'](name=4, data=words(0), code=words(1)+terminal,
+                               exports=[binding(export=True, symbol=2)])
+    peer = RAW['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
+    return caller, images(False)[1], peer
+
+
 # Serialize the private Sys clock sequence with the existing indirect LEA codec.
 def clock_image(*, result_offset=72, module='$Sys', signature=1, repeats=1,
                 copy=False, early_copy=False, copy_destination=64, load=False, load_slot=8,
@@ -180,6 +204,31 @@ def main():
                 output = execute(command+options)
                 if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
                     raise RuntimeError(f'{case} reached the scheduler: '+output)
+        peer_file = work/'peer.dis64'
+        for failure in (False, True):
+            caller, first, peer = sibling_images(failure=failure)
+            consumer.write_bytes(caller)
+            sibling.write_bytes(first)
+            peer_file.write_bytes(peer)
+            for jit in (0, 1):
+                output = execute(command+['-c', str(jit)]+automatic)
+                module, status = ('peer', 'zero divide') if failure else ('caller', '')
+                marker = f'native64 scalar module {module}: jit={jit}, exit="{status}"'
+                if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                    raise RuntimeError('multi-sibling boot did not complete: '+output)
+        for case in ({'second': '../peer'}, {'second': 'unit'}, {'wrong_slot': True},
+                     {'mapbyte': 0x80}, {'second': 'missing'}):
+            caller, first, peer = sibling_images(**case)
+            consumer.write_bytes(caller)
+            output = execute(command+automatic)
+            if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+                raise RuntimeError(f'{case} reached the scheduler: '+output)
+        consumer.write_bytes(sibling_images()[0])
+        peer_file.write_bytes(sibling_images()[1])
+        output = execute(command+automatic)
+        if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+            raise RuntimeError('second sibling with the wrong name reached the scheduler: '+output)
+        print('PASS multiple Dis64 sibling providers with C/JIT, unwind and atomic refusal')
         caller, dependency = images(False, calls=2, wrong_slot=True)
         consumer.write_bytes(caller)
         provider.write_bytes(dependency)

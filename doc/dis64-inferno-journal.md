@@ -8698,3 +8698,20 @@ The legacy reader recognizes XMAGIC and SMAGIC. The experimental
 reader recognizes the eight-byte Dis64 signature and checks its
 version and ABI. Mixed execution still needs legacy managed-frame
 and builtin ABI support on LP64.
+
+## INFERNO-0158 — multiple file dependencies in one Dis64 startup
+
+The explicit sibling console loader can bind up to 32 distinct file
+providers before publishing the process. The private consumer
+profile uses one mapped MP slot per import ordinal. A matched
+MFRAME and MCALL use that slot and local binding zero. Existing
+single-provider consumers retain their multi-symbol layout.
+Unsafe names, duplicate providers, mismatched slots or maps, and
+missing or mismatched files are refused. Failure releases the
+private consumer and any earlier provider roots.
+
+No new fields or opcodes are introduced. FlashVM, please review
+the per-import slot convention for distinct sibling files. Does
+your producer already use a different convention for multiple file
+providers? This fixture uses numeric providers. AWM still needs
+managed modules and broader compiler support.

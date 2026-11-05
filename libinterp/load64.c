@@ -1023,35 +1023,56 @@ dis64providerplan(const Dis64StorageImage *consumer, unsigned int ordinal,
 }
 
 
-/* Prove consecutive calls through one import and an unmapped scratch slot per pair. */
+/* Prove consecutive calls through checked imports and unmapped frame scratch. */
 static int
-dis64consumerentry(const Dis64StorageImage *image, Dis64CodeView *code)
+dis64consumerentry(const Dis64StorageImage *image, Dis64CodeView *code, int siblings)
 {
 	Dis64Instruction frame, call, exit;
 	Dis64Type type;
-	unsigned int at, used, i;
+	unsigned int at, used, i, j, slots;
+	Dis64Binding binding, previous;
+	int order;
 
 	*code = image->code;
+	slots = siblings ? image->imports.count : 1;
 	if(image->module.profile != 1 || image->module.entry != 0 ||
 	   image->imports.count == 0 || image->imports.count > Dis64PairBindings ||
 	   image->exports.count != 0 ||
-	   image->data.bytes != 8 || image->data.mapbytes != 1 || image->data.map[0] != 0x80 ||
+	   image->data.bytes != 8*slots || image->data.mapbytes != (slots+7)/8 ||
 	   image->initializers.count != 0 || code->count < 3 || (code->count & 1) == 0 ||
 	   !dis64typeget(&image->types, image->module.frametype, &type) ||
 	   type.bytes < 72 || type.align != 8 || type.map[0] != 0)
 		return 0;
+	for(i=0; i<slots; i++)
+		if((image->data.map[i/8] & (0x80U>>(i%8))) == 0)
+			return 0;
+	if(siblings){
+		if(slots < 2)
+			return 0;
+		for(i=0; i<slots; i++){
+			if(!dis64bindingget(&image->imports, i, &binding))
+				return 0;
+			for(j=0; j<i; j++)
+				if(!dis64bindingget(&image->imports, j, &previous) ||
+				   !disstringpoolcompare(&image->strings, binding.module, previous.module, &order) ||
+				   order == 0)
+					return 0;
+		}
+	}
 	at = 4;
 	for(i=1; i<code->count; i+=2){
 		if(!dis64instructionread(code->data+at, code->bytes-at, &frame, &used) ||
 		   frame.op != IMFRAME || frame.mode != ((AMP<<3)|AXIMM|AFP) ||
-		   frame.source != 0 || frame.middle < 0 || frame.middle >= image->imports.count ||
+		   (siblings ? (frame.source < 0 || frame.source%8 != 0 ||
+		    frame.source/8 >= slots || frame.middle != 0) :
+		    (frame.source != 0 || frame.middle < 0 || frame.middle >= image->imports.count)) ||
 		   frame.destination < 64 ||
 		   !dis64initspan(&type, frame.destination, 8))
 			return 0;
 		at += used;
 		if(!dis64instructionread(code->data+at, code->bytes-at, &call, &used) ||
 		   call.op != IMCALL || call.mode != ((AFP<<3)|AXIMM|AMP) ||
-		   call.source != frame.destination || call.middle != frame.middle || call.destination != 0)
+		   call.source != frame.destination || call.middle != frame.middle || call.destination != frame.source)
 			return 0;
 		at += used;
 	}
@@ -1063,30 +1084,19 @@ dis64consumerentry(const Dis64StorageImage *image, Dis64CodeView *code)
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 
 
-/* Extract the shared safe namespace basename from the checked consumer imports. */
-int
-dis64pairdependency(const uchar *image, ulong bytes, char *name, unsigned int capacity)
+/* Copy a safe namespace basename only after checking every Rune. */
+static int
+dis64dependencyname(const Dis64StorageImage *consumer, unsigned int ordinal,
+	char *name, unsigned int capacity)
 {
-	Dis64StorageImage consumer;
-	Dis64CodeView code;
-	Dis64Binding binding, next;
+	Dis64Binding binding;
 	DisRuneView dependency;
 	unsigned int i, rune;
-	int order;
 
-	if(image == nil || image == H || name == nil || name == H ||
-	   bytes > Dis64RuntimeBytes || (uintptr)image > (uintptr)-1-bytes ||
-	   !dis64storageimagecheck(image, bytes, &dis64numericlimits, &consumer) ||
-	   !dis64consumerentry(&consumer, &code) ||
-	   !dis64bindingget(&consumer.imports, 0, &binding) ||
-	   !disstringpoolget(&consumer.strings, binding.module, &dependency) ||
+	if(name == nil || name == H || !dis64bindingget(&consumer->imports, ordinal, &binding) ||
+	   !disstringpoolget(&consumer->strings, binding.module, &dependency) ||
 	   dependency.count == 0 || dependency.count > Dis64RuntimeName || dependency.count >= capacity)
 		return 0;
-	for(i=1; i<consumer.imports.count; i++)
-		if(!dis64bindingget(&consumer.imports, i, &next) ||
-		   !disstringpoolcompare(&consumer.strings, binding.module, next.module, &order) ||
-		   order != 0)
-			return 0;
 	for(i=0; i<dependency.count; i++){
 		if(!disruneat(&dependency, i, &rune) ||
 		   !((rune >= 'a' && rune <= 'z') || (rune >= 'A' && rune <= 'Z') ||
@@ -1096,6 +1106,49 @@ dis64pairdependency(const uchar *image, ulong bytes, char *name, unsigned int ca
 	}
 	name[dependency.count] = 0;
 	return 1;
+}
+
+
+/* Extract the shared safe namespace basename from the checked consumer imports. */
+int
+dis64pairdependency(const uchar *image, ulong bytes, char *name, unsigned int capacity)
+{
+	Dis64StorageImage consumer;
+	Dis64CodeView code;
+	Dis64Binding binding, next;
+	unsigned int i;
+	int order;
+
+	if(image == nil || image == H || bytes > Dis64RuntimeBytes ||
+	   (uintptr)image > (uintptr)-1-bytes ||
+	   !dis64storageimagecheck(image, bytes, &dis64numericlimits, &consumer) ||
+	   !dis64consumerentry(&consumer, &code, 0) ||
+	   !dis64bindingget(&consumer.imports, 0, &binding))
+		return 0;
+	for(i=1; i<consumer.imports.count; i++)
+		if(!dis64bindingget(&consumer.imports, i, &next) ||
+		   !disstringpoolcompare(&consumer.strings, binding.module, next.module, &order) ||
+		   order != 0)
+			return 0;
+	return dis64dependencyname(&consumer, 0, name, capacity);
+}
+
+
+/* Return the total count only for a checked per-import sibling layout. */
+int
+dis64siblingdependency(const uchar *image, ulong bytes, unsigned int ordinal,
+	char *name, unsigned int capacity)
+{
+	Dis64StorageImage consumer;
+	Dis64CodeView code;
+
+	if(image == nil || image == H || bytes > Dis64RuntimeBytes ||
+	   (uintptr)image > (uintptr)-1-bytes ||
+	   !dis64storageimagecheck(image, bytes, &dis64numericlimits, &consumer) ||
+	   !dis64consumerentry(&consumer, &code, 1) ||
+	   !dis64dependencyname(&consumer, ordinal, name, capacity))
+		return 0;
+	return consumer.imports.count;
 }
 #endif
 
@@ -1116,7 +1169,7 @@ dis64numericbuild(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOw
 	   (uintptr)roots > (uintptr)-1-sizeof(*roots) || *roots != nil || bytes > Dis64RuntimeBytes ||
 	   (uintptr)image > (uintptr)-1-bytes || (jit != 0 && jit != 1) ||
 	   !dis64storageimagecheck(image, bytes, &dis64numericlimits, &load.image) ||
-	   !(linked ? dis64consumerentry(&load.image, &code) :
+	   !(linked ? dis64consumerentry(&load.image, &code, linked == 2) :
 	     consumer == nil ? dis64numericstoragecheck(&load.image, Dis64RuntimeCode, &code) :
 	     dis64providerplan(consumer, ordinal, &load.image, &code, plan)) ||
 	   !disstringpoolget(&load.image.strings, load.image.module.name, &load.name) ||
@@ -1426,3 +1479,22 @@ prepare64consumerlink(char *path, uchar *image, ulong bytes, char *providerpath,
 	ptrdel(D2H(provider));
 	return caller;
 }
+
+
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+
+
+/* Return an independently rooted consumer for incremental sibling binding. */
+Modlink*
+prepare64siblings(char *path, uchar *image, ulong bytes, int jit)
+{
+	Dis64StorageOwner *lease;
+	Module *module;
+
+	if(heapmonitor != nil)
+		return nil;
+	lease = nil;
+	module = dis64numericbuild(path, image, bytes, jit, &lease, nil, 0, 2, nil);
+	return module == nil ? nil : dis64rootlink(module, lease, 0, nil, nil);
+}
+#endif

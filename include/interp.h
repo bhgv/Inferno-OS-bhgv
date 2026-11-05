@@ -585,6 +585,8 @@ extern	Module*		readmod(char*, Module*, int);
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 extern Modlink* read64pair(char*, char*); // Read and root the explicitly linked startup module.
 extern int dis64bootauto; // Select sibling dependency resolution for paired startup.
+extern int dis64siblingdependency(const uchar*, ulong, unsigned int, char*, unsigned int); // Checked per-import sibling and total count.
+extern Modlink* prepare64siblings(char*, uchar*, ulong, int); // Own one rooted sibling consumer.
 extern int dis64pairdependency(const uchar*, ulong, char*, unsigned int); // Checked import name for sibling lookup.
 extern char *dis64bootprovider; // Provider path supplied by the scalar-console option.
 #endif

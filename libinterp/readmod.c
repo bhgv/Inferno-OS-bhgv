@@ -186,24 +186,66 @@ read64pairimage(Dis64PairRead *read, char *path, int index)
 }
 
 
-/* Look up only a sibling file, leaving the final name match to the linker. */
+/* Construct a bounded namespace sibling path for either layout. */
 static int
-read64pairsibling(Dis64PairRead *read)
+read64pairsibling(Dis64PairRead *read, int ordinal)
 {
 	char *slash;
-	size_t prefix;
+	size_t prefix, capacity;
+	int count;
 
 	slash = strrchr(read->consumer, '/');
 	prefix = slash == nil ? 0 : slash-read->consumer+1;
-	if(prefix >= sizeof(read->sibling)-sizeof(".dis64") ||
-	   !dis64pairdependency(read->images[0], read->sizes[0], read->sibling+prefix,
-	      sizeof(read->sibling)-prefix-sizeof(".dis64")+1)){
-		kwerrstr("invalid Dis64 sibling dependency name or path");
+	if(prefix >= sizeof(read->sibling)-sizeof(".dis64"))
 		return 0;
-	}
+	capacity = sizeof(read->sibling)-prefix-sizeof(".dis64")+1;
+	if(ordinal < 0)
+		count = dis64pairdependency(read->images[0], read->sizes[0],
+			read->sibling+prefix, capacity);
+	else
+		count = dis64siblingdependency(read->images[0], read->sizes[0], ordinal,
+			read->sibling+prefix, capacity);
+	if(count == 0)
+		return 0;
 	memmove(read->sibling, read->consumer, prefix);
 	strcat(read->sibling+prefix, ".dis64");
 	read->provider = read->sibling;
+	return count;
+}
+
+
+/* Publish sibling links only in the private rooted consumer, one mapped slot at a time. */
+static int
+read64siblinggraph(Dis64PairRead *read)
+{
+	Modlink *provider;
+	int count, i;
+
+	count = read64pairsibling(read, 0);
+	if(count == 0){
+		kwerrstr("invalid Dis64 sibling dependency name or path");
+		return 0;
+	}
+	read->link = prepare64siblings(read->consumer, read->images[0], read->sizes[0], cflag != 0);
+	if(read->link == nil)
+		return 0;
+	for(i=0; i<count; i++){
+		if(!read64pairsibling(read, i)){
+			kwerrstr("invalid Dis64 sibling dependency name or path");
+			return 0;
+		}
+		if(!read64pairimage(read, read->provider, 1))
+			return 0;
+		provider = prepare64providerlink(read->provider, read->images[1], read->sizes[1],
+			cflag != 0, read->images[0], read->sizes[0], i);
+		free(read->images[1]);
+		read->images[1] = nil;
+		if(provider == nil)
+			return 0;
+		memmove(read->link->MP+i*sizeof(provider), &provider, sizeof(provider));
+		Setmark(D2H(provider));
+		ptrdel(D2H(provider));
+	}
 	return 1;
 }
 
@@ -224,8 +266,9 @@ read64pairprotected(void *argument)
 		return read->link != nil;
 	}
 #endif
-	if((read->provider == nil && !read64pairsibling(read)) ||
-	   !read64pairimage(read, read->provider, 1))
+	if(read->provider == nil && !read64pairsibling(read, -1))
+		return read64siblinggraph(read);
+	if(!read64pairimage(read, read->provider, 1))
 		return 0;
 	read->link = prepare64consumerlink(read->consumer, read->images[0], read->sizes[0],
 		read->provider, read->images[1], read->sizes[1], cflag != 0);
@@ -243,7 +286,11 @@ read64pair(char *consumer, char *provider)
 	read.consumer = consumer;
 	read.provider = provider;
 	read.fd = -1;
-	kprotect(read64pairprotected, &read);
+	if(!kprotect(read64pairprotected, &read) && read.link != nil){
+		ptrdel(D2H(read.link));
+		destroy(read.link);
+		read.link = nil;
+	}
 	if(read.fd >= 0)
 		kclose(read.fd);
 	free(read.dir);
