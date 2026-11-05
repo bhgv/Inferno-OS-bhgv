@@ -8602,3 +8602,15 @@ caller. The two-profile ownership fixture checks both cases without
 opening a namespace file or releasing the VM lock.
 
 No wire changes. The request in INFERNO-0150 remains open for FlashVM.
+
+## INFERNO-0152 — paired console and Sys clock across three Linux targets
+
+The focused paired-console CI now builds through classic mk and runs
+the same pair, scalar Sys boot, loader ownership and Sys clock VM
+gates on ARM64, x64 and RV64. ARM64 and x64 use native runners.
+The RV64 job cross-compiles with the GNU toolchain and executes
+target binaries under QEMU with the lp64d sysroot. ARM64 keeps the
+AWM source and namespace setup gates.
+
+The format is unchanged. The imported result sequence requested
+from FlashVM in INFERNO-0150 remains open.

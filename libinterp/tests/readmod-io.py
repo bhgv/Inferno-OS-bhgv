@@ -16,7 +16,9 @@ with tempfile.TemporaryDirectory(prefix='readmod-io-') as directory:
     binary = Path(directory)/'test'
     cmd = shlex.split(os.environ.get('CC', 'cc'))
     cmd += shlex.split(os.environ.get('CFLAGS', '-O1 -g -DNDEBUG -fsanitize=address,undefined -fno-sanitize-recover=all'))
-    cmd += ['-I'+str(root/p) for p in ('Linux/arm/include', 'include')]
+    arch = os.environ.get('NATIVE64_ARCH', 'arm')
+    runner = shlex.split(os.environ.get('NATIVE64_RUNNER', ''))
+    cmd += ['-I'+str(root/p) for p in (f'Linux/{arch}/include', 'Linux/386/include', 'include')]
     for mode in ([], ['-DDIS_NATIVE64_SCALAR_BOOT=1']):
         subprocess.run(cmd+mode+[str(target), '-o', str(binary)], check=True)
-        subprocess.run([str(binary)], check=True)
+        subprocess.run(runner+[str(binary)], check=True)

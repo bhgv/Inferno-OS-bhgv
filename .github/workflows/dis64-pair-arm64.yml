@@ -1,9 +1,14 @@
-name: Dis64 paired console on ARM64
+name: Dis64 paired console on 64-bit Linux
 on:
   push:
     branches: [experiment]
     paths:
       - '.github/workflows/dis64-pair-arm64.yml'
+      - 'makemk.sh'
+      - 'mkfiles/**'
+      - 'Linux/**'
+      - 'libinterp/comp-*.c'
+      - 'libinterp/comp-leaf64.h'
       - 'emu/port/main.c'
       - 'emu/port/dis.c'
       - 'libinterp/readmod.c'
@@ -30,21 +35,56 @@ concurrency:
   cancel-in-progress: true
 jobs:
   pair:
-    runs-on: ubuntu-22.04-arm
+    name: Linux ${{ matrix.arch }} (${{ matrix.execution }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+            execution: native
+            compiler: gcc
+            cross: ''
+            executor: ''
+          - arch: amd64
+            runner: ubuntu-22.04
+            execution: native
+            compiler: gcc
+            cross: ''
+            executor: ''
+          - arch: riscv64
+            runner: ubuntu-22.04
+            execution: QEMU
+            compiler: riscv64-linux-gnu-gcc
+            cross: riscv64-linux-gnu-
+            executor: qemu-riscv64 -L /usr/riscv64-linux-gnu
+    env:
+      NATIVE64_ARCH: ${{ matrix.arch }}
+      NATIVE64_RUNNER: ${{ matrix.executor }}
+      TARGET_CC: ${{ matrix.compiler }}
+      TARGET_CROSS: ${{ matrix.cross }}
     steps:
       - uses: actions/checkout@v4
       - name: Bootstrap native build tools
         run: |
-          test "$(uname -m)" = aarch64
+          if [ "$NATIVE64_ARCH" = arm64 ]; then
+            test "$(uname -m)" = aarch64
+          fi
           sudo apt-get update
           sudo apt-get install -y build-essential python3
+          if [ "$NATIVE64_ARCH" = riscv64 ]; then
+            sudo apt-get install -y gcc-riscv64-linux-gnu binutils-riscv64-linux-gnu qemu-user
+          fi
           MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/host-tools" sh makemk.sh
       - name: Build with classic mk and boot the paired console
         run: |
-          python3 utils/tests/native64-port.py --arch arm64 --pair-boot-only \
+          python3 utils/tests/native64-port.py --arch "$NATIVE64_ARCH" --pair-boot-only \
+            --cross "$TARGET_CROSS" --runner "$NATIVE64_RUNNER" \
             --build-root "$RUNNER_TEMP/native64-pair" --host-tools "$RUNNER_TEMP/host-tools"
       - name: Compile the AWM startup slice and record Dis64 barriers
+        if: matrix.arch == 'arm64'
         run: |
           set -o pipefail
           python3 utils/tests/awm-native64-preflight.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
@@ -52,28 +92,49 @@ jobs:
       - name: Check the selected native Sys registration
         run: |
           set -o pipefail
-          NATIVE64_ARCH=arm64 python3 utils/tests/native64-sys-register.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+          flags='-O3 -g -DNDEBUG -fno-strict-aliasing'
+          if [ "$NATIVE64_ARCH" != riscv64 ]; then
+            flags="$flags -fsanitize=undefined -fno-sanitize-recover=all"
+          fi
+          CC="$TARGET_CC" NATIVE64_CFLAGS="$flags" \
+            python3 utils/tests/native64-sys-register.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
             | tee "$RUNNER_TEMP/native64-pair/port-logs/sys-registration.log"
+      - name: Check AWM namespace setup on ARM64
+        if: matrix.arch == 'arm64'
+        run: |
+          set -o pipefail
           PCTL_PLATFORM=emu PCTL_WORD=32 CFLAGS='-O2 -g -DNDEBUG -fsanitize=undefined -fno-sanitize-recover=all' \
             python3 libinterp/tests/sys-pctl.py \
             | tee "$RUNNER_TEMP/native64-pair/port-logs/awm-pctl.log"
+      - name: Boot the scalar Sys profile
+        run: |
+          set -o pipefail
           python3 utils/tests/native64-scalar-boot.py --math --sys-io --freetype \
+            --runner "$NATIVE64_RUNNER" \
             --root "$RUNNER_TEMP/native64-pair" --emu "$RUNNER_TEMP/native64-pair/emu/Linux/o.emu-g" \
             | tee "$RUNNER_TEMP/native64-pair/port-logs/sys-boot.log"
       - name: Check module loader ownership in both startup profiles
         run: |
           set -o pipefail
-          CFLAGS='-O2 -g -DNDEBUG -fsanitize=undefined -fno-sanitize-recover=all' \
+          flags='-O2 -g -DNDEBUG'
+          if [ "$NATIVE64_ARCH" != riscv64 ]; then
+            flags="$flags -fsanitize=undefined -fno-sanitize-recover=all"
+          fi
+          CC="$TARGET_CC" CFLAGS="$flags" \
             python3 libinterp/tests/readmod-io.py \
             | tee "$RUNNER_TEMP/native64-pair/port-logs/readmod-ownership.log"
       - name: Exercise the Sys clock through VM call frames
         run: |
           set -o pipefail
-          NATIVE64_ARCH=arm64 python3 utils/tests/dis64-numeric-gc.py --calls \
+          flags='-O3 -g -DNDEBUG -fno-strict-aliasing'
+          if [ "$NATIVE64_ARCH" != riscv64 ]; then
+            flags="$flags -fsanitize=undefined -fno-sanitize-recover=all"
+          fi
+          CC="$TARGET_CC" NATIVE64_CFLAGS="$flags" python3 utils/tests/dis64-numeric-gc.py --calls \
             | tee "$RUNNER_TEMP/native64-pair/port-logs/sys-clock-vm.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: dis64-pair-arm64-logs
+          name: dis64-pair-${{ matrix.arch }}-logs
           path: ${{ runner.temp }}/native64-pair/port-logs
           if-no-files-found: warn
