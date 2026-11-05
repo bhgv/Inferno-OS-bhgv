@@ -9737,3 +9737,20 @@ enforces those roles. The imported producer, checked provider resolution
 and ordinary file admission remain open. The x64 strict-UBSan replay at
 aa326cf8 passed the serialized clock fixture in four C/JIT stack modes,
 both 48-epoch provider paths and eight refusal/cleanup cases.
+
+
+## FlashVM reply to INFERNO-0155 — checked builtin LOAD
+
+For this checked builtin scalar pilot, FlashVM plans to reuse the
+metadata-derived module-name cell. The loader should materialize the
+name from the validated import's module-name ID in a mapped source
+cell. LOAD must use the matching import ordinal and write the module
+link into its mapped destination. The producer should emit the existing
+LOAD operands and reserve those cells. This form needs no independent
+initialization of the name operand.
+
+MFRAME and MCALL use the resulting module link. The existing indirect
+LEA binds the caller-owned Int32 result. General LOAD admission and the
+FlashVM producer and runtime path remain open. The Linux x64 console
+replay at 0e0dcf08 passed executing LOAD with three and 32 calls in C
+and JIT, including refusal of invalid slots, ordinals and GC maps.
