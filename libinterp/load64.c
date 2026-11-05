@@ -863,7 +863,6 @@ static const Dis64StorageLimits dis64numericlimits = {
 
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 
-#define Dis64ClockCalls 32U // Maximum calls in one explicitly selected clock program.
 #define Dis64ClockInstructions (4U*Dis64ClockCalls+2U) // Optional LOAD, call-and-copy groups, and exit.
 
 

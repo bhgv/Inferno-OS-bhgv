@@ -133,17 +133,15 @@ dis64trace(Dis64Lower *lower)
 static int
 dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes)
 {
-	static const ushort ops[] = {ILOAD, IMFRAME, ILEA, IMCALL, IRET};
-	static const uchar sm[] = {Amp, Afp, Afp, Afp, Anone};
-	static const uchar dm[] = {Afp, Afp, Afpind, Afp, Anone};
-	static const long source[] = {0, 32, 40, 36, 0};
-	static const long destination[] = {32, 36, 36, 32, 0};
+	static const ushort ops[] = {IMFRAME, ILEA, IMCALL};
+	static const uchar destinations[] = {Afp, Afpind, Afp};
 	Decl *import, *export, *path;
-	unsigned int i;
+	unsigned int i, step;
+	long frame, result, source, destination;
 
 	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 ||
 	   entry->ty->ids != nil || entry->ty->varargs || entry->ty->tof->kind != Tnone ||
-	   count != nelem(ops) || databytes != 8 ||
+	   count < 5 || count > 3*Dis64ClockCalls+2 || (count-2)%3 != 0 || databytes != 8 ||
 	   ldts == nil || ldts->next != nil || ldts->init == nil ||
 	   ldts->init->val != 1 || ldts->init->decl == nil)
 		return 0;
@@ -167,25 +165,44 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 		if(export->store == Dglobal || (export->store == Dfn && export->sym != entry->sym))
 			return 0;
 	i = 0;
+	frame = result = 0;
 	for(; input != nil; input=input->next){
 		if(input->op == INOOP)
 			continue;
-		if(i >= nelem(ops) || input->op != ops[i] || input->sm != sm[i] ||
-		   input->dm != dm[i] || (i < 4 &&
-		   (input->s.reg != source[i] || input->d.reg != destination[i])))
+		if(i >= count)
 			return 0;
-		if(i == 0 && (input->mm != Aldt || input->m.reg != 0))
-			return 0;
-		if((i == 1 || i == 3) && (input->mm != Aoff || input->m.decl == nil ||
-		   input->m.decl->iface != import || import->offset != 0))
-			return 0;
-		if((i == 2 || i == 4) && input->mm != Anone)
-			return 0;
-		if(i == 2 && input->d.offset != 16)
-			return 0;
+		if(i == 0){
+			if(input->op != ILOAD || input->sm != Amp || input->s.reg != 0 ||
+			   input->mm != Aldt || input->m.reg != 0 || input->dm != Afp || input->d.reg != 32)
+				return 0;
+		}else if(i == count-1){
+			if(input->op != IRET || input->sm != Anone || input->mm != Anone || input->dm != Anone)
+				return 0;
+		}else{
+			step = (i-1)%nelem(ops);
+			if(input->op != ops[step] || input->sm != Afp || input->dm != destinations[step])
+				return 0;
+			if(step == 0){
+				frame = input->d.reg;
+				if(frame != 36 && frame != 40)
+					return 0;
+				/* The scalar result and legacy call-frame pointer occupy distinct cells. */
+				result = frame == 36 ? 40 : 36;
+			}
+			source = step == 0 ? 32 : step == 1 ? result : frame;
+			destination = step == 2 ? 32 : frame;
+			if(input->s.reg != source || input->d.reg != destination)
+				return 0;
+			if(step == 1){
+				if(input->mm != Anone || input->d.offset != 16)
+					return 0;
+			}else if(input->mm != Aoff || input->m.decl == nil ||
+			         input->m.decl->iface != import || import->offset != 0)
+				return 0;
+		}
 		i++;
 	}
-	return i == nelem(ops);
+	return i == count;
 }
 
 
@@ -193,19 +210,19 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 int
 dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes)
 {
-	static const uchar instructions[] = {
-		ILOAD, SRC(AMP)|AXIMM|DST(AMP), 0, 0, 8,
+	static const uchar load[] = {ILOAD, SRC(AMP)|AXIMM|DST(AMP), 0, 0, 8};
+	static const uchar call[] = {
 		IMFRAME, SRC(AMP)|AXIMM|DST(AFP), 0, 8, 40,
 		ILEA, SRC(AFP)|DST(AFP|AIND), 0x80, 72, 40, 32,
 		IMCALL, SRC(AFP)|AXIMM|DST(AMP), 0, 40, 8,
-		IEXIT, SRC(AXXX)|DST(AXXX),
 	};
+	static const uchar exit[] = {IEXIT, SRC(AXXX)|DST(AXXX)};
 	static const uchar datamap[] = {0xc0}, framemap[] = {0, 0};
 	Dis64Type types[] = {{16, 8, datamap, 1}, {80, 8, framemap, 2}};
 	Dis64ModuleInfo module = {0};
 	DisStringPoolRecord names[3];
 	Dis64Payload sections[5];
-	uchar metadata[24], code[4+sizeof(instructions)], typedata[32], imports[28];
+	uchar metadata[24], code[4+sizeof(load)+Dis64ClockCalls*sizeof(call)+sizeof(exit)], typedata[32], imports[28];
 	uchar runes[3][4+4*255], strings[4+sizeof(runes)], output[2048];
 	unsigned int sizes[5], i, j, length, written;
 	const char *labels[] = {"$Sys", "millisec", impdecl->sym->name};
@@ -229,9 +246,15 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 	module.name = 2;
 	module.databytes = 16;
 	module.frametype = 1;
-	dis64put32(code, 5);
-	memmove(code+4, instructions, sizeof(instructions));
-	sizes[1] = sizeof(code);
+	dis64put32(code, count);
+	sizes[1] = 4+sizeof(load);
+	memmove(code+4, load, sizeof(load));
+	for(i=0; i<(count-2)/3; i++){
+		memmove(code+sizes[1], call, sizeof(call));
+		sizes[1] += sizeof(call);
+	}
+	memmove(code+sizes[1], exit, sizeof(exit));
+	sizes[1] += sizeof(exit);
 	dis64put32(imports, 1);
 	dis64put32(imports+4, 0);
 	dis64put32(imports+8, 1);

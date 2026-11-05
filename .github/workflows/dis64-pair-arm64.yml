@@ -23,7 +23,19 @@ on:
       - 'utils/tests/dis64-provider-call.c'
       - 'include/dis64*.h'
       - 'limbo/**'
+      - 'module/**'
+      - 'appl/cmd/emuinit.b'
+      - 'appl/cmd/sh/sh.b'
       - 'appl/wm/awm.b'
+      - 'appl/wm/atoolbar.b'
+      - 'appl/lib/arg.b'
+      - 'appl/lib/string.b'
+      - 'appl/lib/wmsrv.b'
+      - 'appl/lib/wmclient.b'
+      - 'appl/lib/winplace.b'
+      - 'appl/lib/wmlib.b'
+      - 'appl/lib/titlebar.b'
+      - 'appl/lib/tkclient.b'
       - 'utils/tests/awm-native64-preflight.py'
       - 'utils/tests/dis64-pair-boot.py'
       - 'utils/tests/native64-port.py'
@@ -68,6 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Bootstrap native build tools
+        id: bootstrap
         run: |
           if [ "$NATIVE64_ARCH" = arm64 ]; then
             test "$(uname -m)" = aarch64
@@ -78,17 +91,18 @@ jobs:
             sudo apt-get install -y gcc-riscv64-linux-gnu binutils-riscv64-linux-gnu qemu-user
           fi
           MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/host-tools" sh makemk.sh
-      - name: Build with classic mk and boot the paired console
-        run: |
-          python3 utils/tests/native64-port.py --arch "$NATIVE64_ARCH" --pair-boot-only \
-            --cross "$TARGET_CROSS" --runner "$NATIVE64_RUNNER" \
-            --build-root "$RUNNER_TEMP/native64-pair" --host-tools "$RUNNER_TEMP/host-tools"
       - name: Compile the AWM startup slice and record Dis64 barriers
         if: matrix.arch == 'arm64'
         run: |
           set -o pipefail
           python3 utils/tests/awm-native64-preflight.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
-            | tee "$RUNNER_TEMP/native64-pair/port-logs/awm-preflight.log"
+            | tee "$RUNNER_TEMP/awm-preflight.log"
+      - name: Build with classic mk and boot the paired console
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        run: |
+          python3 utils/tests/native64-port.py --arch "$NATIVE64_ARCH" --pair-boot-only \
+            --cross "$TARGET_CROSS" --runner "$NATIVE64_RUNNER" \
+            --build-root "$RUNNER_TEMP/native64-pair" --host-tools "$RUNNER_TEMP/host-tools"
       - name: Check the selected native Sys registration
         run: |
           set -o pipefail
@@ -138,5 +152,7 @@ jobs:
         if: always()
         with:
           name: dis64-pair-${{ matrix.arch }}-logs
-          path: ${{ runner.temp }}/native64-pair/port-logs
+          path: |
+            ${{ runner.temp }}/native64-pair/port-logs
+            ${{ runner.temp }}/awm-preflight.log
           if-no-files-found: warn

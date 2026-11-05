@@ -42,7 +42,9 @@ def unit(calls=False):
                           ('static void\nsysstatusframe(', 'void\nSys_millisec('))
         runt = (ROOT/'libinterp/runt.c').read_text()
         fixture = fixture.replace('CLOCK_HANDLER', clock)
-        fixture = fixture.replace('CLOCK_RESOLVER', extract(runt, 'const Link*\nnative64sysclock('))
+        resolver = '\n'.join(extract(runt, signature) for signature in
+                             ('const Link*\nnative64sysexport(', 'const Link*\nnative64sysclock('))
+        fixture = fixture.replace('CLOCK_RESOLVER', resolver)
     return source+fixture
 
 

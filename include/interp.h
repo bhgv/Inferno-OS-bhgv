@@ -613,6 +613,7 @@ extern	char*		syserr(char*, char*, Prog*);
 extern	void		sysinit(void);
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 extern const Link* native64sysclock(Module**); // Borrowed generated export under VM exclusion.
+extern const Link* native64sysexport(const char*, Module**); // Exact name in the selected trusted Sys profile.
 extern const Link* dis64sysclockimport(const uchar*, ulong, unsigned int, Module**); // Private borrowed scalar import and module.
 extern Modlink* prepare64sysclocklink(const uchar*, ulong, unsigned int); // Own one Modlink and one external root.
 extern Modlink* prepare64sysclockconsumer(char*, const uchar*, ulong, int); // Own one rooted private clock consumer.

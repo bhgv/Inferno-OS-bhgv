@@ -121,7 +121,7 @@ def main():
                 command([compiler, "-64", "-o", image, input_file])
                 encoded = image.read_bytes()
                 if other:
-                    command([other, "-6", "-o", alternate, input_file])
+                    command([other, "-64", "-o", alternate, input_file])
                     if alternate.read_bytes() != encoded:
                         raise RuntimeError("Compiler byte mismatch at layout " +
                                            repr((big_count, word_count)))

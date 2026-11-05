@@ -63,7 +63,7 @@ def main():
     args = parser.parse_args()
     header = (ROOT/'include/dis64-numeric-storage.h').read_text()
     changes = {'map':('!dis64initspan(data, (unsigned int)instruction->source, sourcewidth)','0'),
-               'frame':('|| frame.map[0] != 0',''),
+               'frame':(' && frame->map[0] == 0',''),
                'fp':('source == AFP || destination == AFP || middle == AXINF','0'),
                'data':('(image->module.databytes != 0 && (image->present&(1U<<(Dis64Data-1))) == 0)','0'),
                'interfaces':('image->imports.count != 0','0')}

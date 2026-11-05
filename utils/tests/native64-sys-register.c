@@ -229,7 +229,7 @@ readclock(void *argument)
 int
 main(void)
 {
-	Module *m;
+	Module *m, *owner;
 	F_Sys_millisec frame = {0};
 	WORD stamp = -1;
 	int i, allocations, failures, before;
@@ -241,6 +241,8 @@ main(void)
 	check(initialized == 1 && modules != &baseline && modules->ntype == nelem(names));
 	m = modules;
 	for(i=0; i<nelem(names); i++){
+		owner = nil;
+		check(native64sysexport(names[i], &owner) == &m->ext[i] && owner == m);
 		check(strcmp(m->ext[i].name, names[i]) == 0);
 		check(m->type[i]->size == native64sysio[i]->frame_size);
 		check(m->type[i]->np == native64sysio[i]->map_bytes);
@@ -250,6 +252,12 @@ main(void)
 		m->ext[i].u.runt(&baseline);
 		check(invoked[i] == 1);
 	}
+	owner = nil;
+	check(native64sysexport("fprint", &owner) == nil && owner == nil);
+	check(native64sysexport("Millisec", &owner) == nil && owner == nil);
+	m->ext[11].sig ^= 1;
+	check(native64sysexport("open", &owner) == nil && owner == nil);
+	m->ext[11].sig ^= 1;
 	check(clockimport(clock_image, sizeof(clock_image), 0) == &m->ext[10]);
 	check(clockimport(clock_image, sizeof(clock_image), 1) == nil);
 	check(clockimport(clock_image, sizeof(clock_image)-1, 0) == nil);

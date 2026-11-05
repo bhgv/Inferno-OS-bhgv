@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 import runpy
 import shlex
+import struct
 import subprocess
 import tempfile
 
@@ -132,7 +133,7 @@ def clock_image(*, result_offset=72, module='$Sys', signature=1, repeats=1,
 
 
 # Compile an actual Limbo LOAD and imported call, then reject nearby unsupported bodies.
-def compile_clock(limbo, work):
+def compile_clocks(limbo, work):
     source = work/'clock.b'
     output = work/'clock.dis64'
     template = """implement Clock;
@@ -144,21 +145,36 @@ init()
     now := sys->millisec();
 }
 """
+    def repeated(count):
+        return template.replace('    now := sys->millisec();\n',
+                                '    now := sys->millisec();\n' + '    now = sys->millisec();\n'*(count-1))
+
+    command = [str(limbo), '-I', str(ROOT/'module'), '-64', '-o', str(output), str(source)]
     for bad in (template.replace('Sys->PATH', '"$Other"'),
-                template.replace('millisec()', 'sleep(1)')):
+                template.replace('millisec()', 'sleep(1)'),
+                repeated(33),
+                repeated(3).replace('    now = sys->millisec();\n', '    now++;\n', 1)):
         source.write_text(bad)
-        command = [str(limbo), '-I', str(ROOT/'module'), '-64', '-o', str(output), str(source)]
         result = subprocess.run(command, capture_output=True, text=True, timeout=30)
         if result.returncode <= 0 or output.exists() or 'requires managed linkage' not in result.stderr:
             raise RuntimeError('compiler did not refuse changed clock source: '+result.stderr)
-    source.write_text(template)
+    source.write_text(repeated(1))
     for flag in ('-6', '-640'):
         invalid = [flag if value == '-64' else value for value in command]
         result = subprocess.run(invalid, capture_output=True, text=True, timeout=30)
         if result.returncode <= 0 or output.exists() or '[-64]' not in result.stderr:
             raise RuntimeError('compiler accepted invalid Dis64 flag '+flag)
-    subprocess.run(command, check=True, timeout=30)
-    return output.read_bytes()
+    for repeats in (1, 3, 32):
+        source.write_text(repeated(repeats))
+        subprocess.run(command, check=True, timeout=30)
+        image = output.read_bytes()
+        expected = clock_image(repeats=repeats, load=True)
+        # Both images put CODE second; the raw fixture encodes all call groups independently.
+        _, _, offset, size = struct.unpack_from('>HHII', image, 44)
+        _, _, expected_offset, expected_size = struct.unpack_from('>HHII', expected, 44)
+        if image[offset:offset+size] != expected[expected_offset:expected_offset+expected_size]:
+            raise RuntimeError(f'compiler did not preserve all {repeats} clock calls')
+        yield repeats, image
 
 
 # Compile a real entryless library whose second export observes the first export's write.
@@ -332,12 +348,13 @@ def main():
                     if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
                         raise RuntimeError('Sys clock file boot did not complete: '+output)
             if args.limbo is not None:
-                consumer.write_bytes(compile_clock(args.limbo.resolve(), work))
-                for jit in (0, 1):
-                    output = execute(command+['-c', str(jit)]+builtin)
-                    marker = f'native64 scalar module Clock: jit={jit}, exit=""'
-                    if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
-                        raise RuntimeError('compiler-produced clock did not complete: '+output)
+                for repeats, image in compile_clocks(args.limbo.resolve(), work):
+                    consumer.write_bytes(image)
+                    for jit in (0, 1):
+                        output = execute(command+['-c', str(jit)]+builtin)
+                        marker = f'native64 scalar module Clock: jit={jit}, exit=""'
+                        if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                            raise RuntimeError(f'compiler-produced {repeats}-call clock did not complete: '+output)
                 print('PASS Limbo source to Dis64 LOAD and imported clock execution in C/JIT')
             for options in (pair[:2], automatic, pair):
                 output = execute(command+options)

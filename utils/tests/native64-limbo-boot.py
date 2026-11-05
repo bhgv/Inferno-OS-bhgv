@@ -79,7 +79,7 @@ def refusals():
     yield 'call-byte-argument', PREFIX+'a: int; helper(x:byte){a+=int x;} init(){helper(byte 7);}'
     yield 'arguments', 'implement FromLimbo; FromLimbo:module{init:fn(a:int);}; init(a:int){a++;}'
     yield 'result', 'implement FromLimbo; FromLimbo:module{init:fn():int;}; init():int{return 3;}'
-    yield 'library', 'implement FromLimbo; FromLimbo:module{run:fn();}; run(){}'
+    yield 'library-with-argument', 'implement FromLimbo; FromLimbo:module{run:fn(a:int);}; run(a:int){a++;}'
     yield 'export', 'implement FromLimbo; FromLimbo:module{init:fn(); extra:fn();}; init(){} extra(){}'
     yield 'global-export', 'implement FromLimbo; FromLimbo:module{init:fn(); a:int;}; init(){a=3;}'
 
@@ -111,7 +111,7 @@ def main():
             count = inspect(image.read_bytes())
             if args.reference_limbo:
                 reference = work/'reference.dis64'
-                subprocess.run([str(args.reference_limbo.resolve()), '-6', '-o', str(reference), str(source)], env=env, check=True)
+                subprocess.run([str(args.reference_limbo.resolve()), '-64', '-o', str(reference), str(source)], env=env, check=True)
                 if reference.read_bytes() != image.read_bytes():
                     raise RuntimeError('Target compiler changed portable Dis64 bytes: '+name)
             subprocess.run(limbo+['-o', str(legacy), str(source)], env=env, check=True)

@@ -52,9 +52,9 @@ static const LimboNative64Entry *const native64sysio[] = {
 };
 
 
-/* Borrow the generated clock export only while the caller holds VM exclusion. */
+/* Borrow a verified export from the selected native Sys profile under VM exclusion. */
 const Link*
-native64sysclock(Module **owner)
+native64sysexport(const char *name, Module **owner)
 {
 	const LimboNative64Entry *entry;
 	Module *module;
@@ -62,9 +62,8 @@ native64sysclock(Module **owner)
 	Type *frame;
 	unsigned int i;
 
-	if(owner == nil)
+	if(name == nil || owner == nil)
 		return nil;
-	entry = &limbo_native64_Sys_millisec_entry;
 	for(module=modules; module != nil; module=module->link)
 		if(module->path != nil && strcmp(module->path, "$Sys") == 0)
 			break;
@@ -72,10 +71,11 @@ native64sysclock(Module **owner)
 	   module->ntype != sizeof(native64sysio)/sizeof(native64sysio[0]) ||
 	   module->type == nil || module->ext == nil)
 		return nil;
-	for(i=0; i<module->ntype && native64sysio[i] != entry; i++)
+	for(i=0; i<module->ntype && strcmp(native64sysio[i]->name, name) != 0; i++)
 		;
 	if(i == module->ntype)
 		return nil;
+	entry = native64sysio[i];
 	link = &module->ext[i];
 	frame = module->type[i];
 	if(link->name == nil || strcmp(link->name, entry->name) != 0 ||
@@ -85,6 +85,14 @@ native64sysclock(Module **owner)
 		return nil;
 	*owner = module;
 	return link;
+}
+
+
+/* Keep the clock pilot's exact export selection. */
+const Link*
+native64sysclock(Module **owner)
+{
+	return native64sysexport("millisec", owner);
 }
 #endif
 
