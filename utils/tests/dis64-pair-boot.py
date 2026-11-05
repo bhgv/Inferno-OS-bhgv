@@ -94,6 +94,31 @@ def clock_image(*, result_offset=72, module='$Sys', signature=1, repeats=1,
     return RAW['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
 
 
+# Compile an actual Limbo LOAD and imported call, then reject nearby unsupported bodies.
+def compile_clock(limbo, work):
+    source = work/'clock.b'
+    output = work/'clock.dis64'
+    template = """implement Clock;
+include "sys.m";
+Clock: module { init: fn(); };
+init()
+{
+    sys := load Sys Sys->PATH;
+    now := sys->millisec();
+}
+"""
+    for bad in (template.replace('Sys->PATH', '"$Other"'),
+                template.replace('millisec()', 'sleep(1)')):
+        source.write_text(bad)
+        command = [str(limbo), '-I', str(ROOT/'module'), '-6', '-o', str(output), str(source)]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+        if result.returncode <= 0 or output.exists() or 'requires managed linkage' not in result.stderr:
+            raise RuntimeError('compiler did not refuse changed clock source: '+result.stderr)
+    source.write_text(template)
+    subprocess.run(command, check=True, timeout=30)
+    return output.read_bytes()
+
+
 # Require the real scheduler to retire after returning or unwinding the pair.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -101,6 +126,7 @@ def main():
     parser.add_argument('--emu', type=Path, required=True)
     parser.add_argument('--runner', default='')
     parser.add_argument('--sys-clock', action='store_true')
+    parser.add_argument('--limbo', type=Path)
     args = parser.parse_args()
     root = args.root.resolve()
     command = shlex.split(args.runner)+[str(args.emu.resolve()), '-v', '-r', str(root)]
@@ -173,6 +199,14 @@ def main():
                     marker = f'native64 scalar module caller: jit={jit}, exit=""'
                     if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
                         raise RuntimeError('Sys clock file boot did not complete: '+output)
+            if args.limbo is not None:
+                consumer.write_bytes(compile_clock(args.limbo.resolve(), work))
+                for jit in (0, 1):
+                    output = execute(command+['-c', str(jit)]+builtin)
+                    marker = f'native64 scalar module Clock: jit={jit}, exit=""'
+                    if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                        raise RuntimeError('compiler-produced clock did not complete: '+output)
+                print('PASS Limbo source to Dis64 LOAD and imported clock execution in C/JIT')
             for options in (pair[:2], automatic, pair):
                 output = execute(command+options)
                 if BOOT['RETIRED'] in output or 'panic:' not in output:

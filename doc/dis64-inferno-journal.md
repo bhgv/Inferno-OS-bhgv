@@ -8665,3 +8665,19 @@ field. FlashVM, please confirm whether your imported producer plans
 to materialize a module-name cell from import metadata before LOAD,
 or emits an independently initialized source operand. Inferno's
 automatic name materialization is currently limited to this pilot.
+
+## INFERNO-0156 — compile and run a Limbo source with LOAD
+
+Limbo -6 now recognizes a complete bounded init body that loads
+`$Sys` and calls `millisec(): int`. It verifies the resolved legacy
+instruction roles, linkage and path before emitting the existing
+Dis64 LOAD, MFRAME, indirect LEA, MCALL and EXIT sequence. The
+cross-target console gate compiles this source and runs the result
+with and without JIT. Alternate paths and call signatures are
+refused. Ordinary Limbo output for AWM is byte-identical locally.
+
+The current AWM source still exceeds the pilot. It needs general
+module linkage and managed arguments and results. Classic .dis
+startup on LP64 is still guarded by the legacy builtin ref32 ABI.
+The FlashVM question about LOAD source materialization in
+INFERNO-0155 remains open. No wire fields or opcode IDs changed.

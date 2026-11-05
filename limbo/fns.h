@@ -397,3 +397,4 @@ void zcom1(Node *, Node**);
 
 /* Emit the opt-in scalar Dis64 image after ordinary IR resolution. */
 void dis64scalar(Decl*, Decl*, Inst*, long, long);
+int dis64clock(Decl*, Decl*, Decl*, Inst*, long, long); // Checked source pilot with a single imported clock.
