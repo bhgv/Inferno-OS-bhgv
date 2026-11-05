@@ -3,6 +3,7 @@
 #define DIS64_MANAGED_SIGNATURE_H
 
 #include "dis64-storage-image.h"
+#include "dis64-bound-call.h"
 #include "native64-entry.h"
 
 typedef struct Dis64ManagedSchema Dis64ManagedSchema;
@@ -167,25 +168,63 @@ dis64managedtable(const unsigned char *data, unsigned int bytes, unsigned int ex
 	return 1;
 }
 
-/* Join two complete candidate storage images. This grants no executable admission. */
+/* Check the entire trial provider body, including its unentered first instruction. */
+static int
+dis64managedprovidercode(const unsigned char *data, unsigned int bytes, unsigned int limit,
+	Dis64CodeView *result)
+{
+	Dis64CallDecoded decoded;
+	unsigned int used, at;
+
+	if(bytes < 8 || limit < 3 || dis64u32(data) != 3 ||
+	   data[4] != IEXIT || data[5] != (SRC(AXXX)|DST(AXXX)) ||
+	   !dis64callread(data+6, bytes-6, &decoded, &used) ||
+	   (decoded.instruction.op != ICONSP && decoded.instruction.op != IHEADP) ||
+	   decoded.instruction.mode != (SRC(AFP)|DST(AFP|AIND)) ||
+	   decoded.instruction.source != 64 || decoded.instruction.destination != 32 ||
+	   decoded.secondary != 0)
+		return 0;
+	at = 6+used;
+	if(bytes-at != 2 || data[at] != IRET || data[at+1] != (SRC(AXXX)|DST(AXXX)))
+		return 0;
+	*result = (Dis64CodeView){data, bytes, 3};
+	return 1;
+}
+
+/* Join complete trial images and return only the bounded one-token body. */
+typedef struct Dis64ManagedBody Dis64ManagedBody;
+struct Dis64ManagedBody {
+	const unsigned char *data; // Borrowed two-instruction body without a count prefix.
+	unsigned int bytes;
+};
+
 static int
 dis64managedimagepair(const unsigned char *consumer, unsigned int consumerbytes,
 	const unsigned char *provider, unsigned int providerbytes, const Dis64StorageLimits *limits,
-	const Dis64ManagedSchema *schema, const LimboNative64Managed *shape, Dis64Binding *result)
+	const Dis64ManagedSchema *schema, const LimboNative64Managed *shape,
+	Dis64Binding *result, Dis64ManagedBody *body)
 {
 	Dis64StorageImage in, out;
+	Dis64Binding selected;
 
-	if(!dis64storageimagecheckrecords(consumer, consumerbytes, limits, &in,
+	if(result == 0 || body == 0 || !dis64storageimagecheckrecords(consumer, consumerbytes, limits, &in,
 	   dis64storagecode, dis64managedtable, schema) ||
 	   !dis64storageimagecheckrecords(provider, providerbytes, limits, &out,
-	   dis64storagecode, dis64managedtable, schema) ||
+	   dis64managedprovidercode, dis64managedtable, schema) ||
 	   in.module.profile != 1 || out.module.profile != 0 ||
+	   out.module.databytes != 0 || (out.present&(1U<<(Dis64Data-1))) != 0 ||
 	   in.imports.count != 1 || in.exports.count != 0 ||
 	   out.imports.count != 0 || out.exports.count != 1)
 		return 0;
-	return dis64managedpair(in.imports.data+4, in.imports.bytes-4,
+	if(!dis64managedpair(in.imports.data+4, in.imports.bytes-4,
 		out.exports.data+4, out.exports.bytes-4, schema,
-		&in.strings, &out.strings, out.module.name, shape, &out.types, out.code.count, result);
+		&in.strings, &out.strings, out.module.name, shape, &out.types, out.code.count, &selected) ||
+	   selected.entry != 1 ||
+	   out.code.data[6] != (shape->result == LimboNative64ListString ? ICONSP : IHEADP))
+		return 0;
+	*body = (Dis64ManagedBody){out.code.data+6, out.code.bytes-6};
+	*result = selected;
+	return 1;
 }
 
 #endif

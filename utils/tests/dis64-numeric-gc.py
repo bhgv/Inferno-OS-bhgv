@@ -104,6 +104,7 @@ def managed_images(fixtures):
     signatures = (words(0xface0010, 1, 0x72, 0x71, 0x71),
                   words(0xface0010, 1, 0x71, 0x72, 0x71))
     symbols = ('unquoted', 'quoted')
+    indirect = runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['indirect']
     rows = []
 
     def build(names, **fields):
@@ -112,14 +113,18 @@ def managed_images(fixtures):
 
     for direction, signature in enumerate(signatures):
         symbol = symbols[direction]
+        opcode = ('ICONSP', 'IHEADP')[direction]
+        terminal = fixtures['I']('IRET', 27)
+        body = indirect(opcode, 64, 32, 0)+terminal
         consumer = build(('caller', symbol, 'String'), name=0, databytes=0,
                          types=[desc(72, 8, b'\x00\x80')],
                          imports=[binding(module=2, symbol=1, sig=signature)])
         def provider(*, name='String', export_name=symbol, sig=signature, entry=1,
-                     frame_map=b'\x00\x80', duplicate=False):
+                     frame_map=b'\x00\x80', duplicate=False, code=body,
+                     prefix=fixtures['EXIT']):
             export = binding(symbol=2, export=True, entry=entry, frame=0, sig=sig)
             return build((name, 'unused', export_name), name=0, profile=0, databytes=0,
-                         code=words(2)+fixtures['EXIT']*2, types=[desc(72, 8, frame_map)],
+                         code=words(3)+prefix+code, types=[desc(72, 8, frame_map)],
                          exports=[export]*(2 if duplicate else 1))
 
         good = provider()
@@ -127,7 +132,10 @@ def managed_images(fixtures):
             (1, good), (0, good[:-1]), (0, provider(name='Other')),
             (0, provider(export_name=symbols[1-direction])),
             (0, provider(sig=signatures[1-direction])), (0, provider(entry=2)),
-            (0, provider(frame_map=b'\x00\x00')), (0, provider(duplicate=True))))
+            (0, provider(frame_map=b'\x00\x00')), (0, provider(duplicate=True)),
+            (0, provider(code=indirect(('IHEADP', 'ICONSP')[direction], 64, 32, 0)+terminal)),
+            (0, provider(code=indirect(opcode, 64, 32, 8)+terminal)),
+            (0, provider(prefix=terminal)), (0, provider(code=body+terminal))))
     declarations, entries = [], []
     for index, (direction, accepted, consumer, provider) in enumerate(rows):
         for label, data in (('consumer', consumer), ('provider', provider)):

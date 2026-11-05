@@ -115,9 +115,11 @@ images with an independent Python writer. The import's module and symbol use
 different string ordinals from the provider's name and export. The candidate
 reader first checks the complete envelope, storage and record counts, then
 matches the names by Rune contents and verifies the selected PC and frame.
-Both directions pass. Fourteen mutations cover truncation, name, symbol,
-signature, entry, map and duplicate export. The ordinary scalar storage reader
-still refuses each managed consumer. The candidate gate returns metadata only.
+Both directions pass. Twenty-two mutations cover truncation, names, signature,
+entry, map, duplicate export, the unentered prefix, opcode, indirect offset
+and code trailers. The ordinary scalar storage reader still refuses each
+managed consumer. The candidate gate returns checked coordinates and a borrowed
+provider body to the isolated fixture.
 
 The fixture also executes two minimal one-token providers in the Inferno VM.
 It decodes the existing indirect destination operands and calls the provider
@@ -126,4 +128,7 @@ the supplied string and HEADP returns the first element of a supplied list.
 RET, stack growth and a failing provider body run with the real collector.
 These bodies exercise the ownership boundary for one token. They do not
 implement the Limbo String module's quoting, whitespace or tokenization.
-The complete candidate file pairs remain metadata fixtures.
+The successful bytecode runs take the provider body from those checked images.
+The harness still constructs the caller in memory and injects a separate
+fault body for unwind tests. The normal Inferno loader does not select this
+trial gate.

@@ -18,6 +18,7 @@ static Type *stringelement;
 static Prog *managedprocess;
 static int managederror, managedcalls;
 static int managedbytecodes, managedfast;
+static Dis64ManagedBody managedbodies[2];
 
 /* Independent trial bytes, with deliberately local version/tag values. */
 static const Dis64ManagedSchema trialschema = {0xface0010U, 0x71, 0x72};
@@ -32,6 +33,7 @@ managedimagecontrol(void)
 	static const Dis64StorageLimits limits = {8, 8, 128, 8, 8, 8, 2, 2};
 	Dis64StorageImage scalar;
 	Dis64Binding result;
+	Dis64ManagedBody body;
 	const ManagedImageCase *test;
 	const LimboNative64Managed *shape;
 	unsigned int i;
@@ -42,12 +44,16 @@ managedimagecontrol(void)
 		shape = test->direction ? &limbo_native64_String_quoted_managed :
 			&limbo_native64_String_unquoted_managed;
 		result.entry = 99;
+		body = (Dis64ManagedBody){nil, 99};
 		require(!dis64storageimagecheck(test->consumer, test->consumerbytes, &limits, &scalar));
 		require(dis64managedimagepair(test->consumer, test->consumerbytes,
-			test->provider, test->providerbytes, &limits, &trialschema, shape, &result) == test->accepted);
+			test->provider, test->providerbytes, &limits, &trialschema, shape, &result, &body) == test->accepted);
 		require(result.entry == (test->accepted ? 1 : 99));
-		if(test->accepted)
-			require(result.frame == 0);
+		if(test->accepted){
+			require(result.frame == 0 && body.bytes == 8);
+			managedbodies[test->direction] = body;
+		}else
+			require(body.data == nil && body.bytes == 99);
 	}
 	require(allocations == before);
 }
@@ -304,13 +310,9 @@ managedmodule(int links)
 static Inst*
 managedprogram(int reverse, int unwind)
 {
-	static const uchar bodies[][8] = {
-		{ICONSP, SRC(AFP)|DST(AFP|AIND), 0x80,64, 32,0, IRET, SRC(AXXX)|DST(AXXX)},
-		{IHEADP, SRC(AFP)|DST(AFP|AIND), 0x80,64, 32,0, IRET, SRC(AXXX)|DST(AXXX)},
-		{IDIVW, SRC(AIMM)|DST(AFP), 0,40, IRET, SRC(AXXX)|DST(AXXX)},
-	};
-	const uchar *bytes = bodies[unwind ? 2 : reverse];
-	unsigned int at, i, used, size = unwind ? 6 : 8;
+	static const uchar fault[] = {IDIVW, SRC(AIMM)|DST(AFP), 0,40, IRET, SRC(AXXX)|DST(AXXX)};
+	const uchar *bytes = unwind ? fault : managedbodies[reverse].data;
+	unsigned int at, i, used, size = unwind ? sizeof(fault) : managedbodies[reverse].bytes;
 	Dis64CallDecoded decoded;
 	Inst *body;
 
