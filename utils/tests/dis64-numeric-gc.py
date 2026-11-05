@@ -124,14 +124,7 @@ def main():
                 (work/'image').write_bytes(provider)
                 subprocess.run(runner+[str(binary), str(work/'image'), str(work/'consumer'),
                                        'error' if failure else 'return'], check=True, timeout=60)
-            bindings = fixtures['RAW']['RAW']
-            names = ('$Sys', 'millisec', 'caller')
-            pool = words(len(names))+b''.join(words(len(name), *map(ord, name)) for name in names)
-            imports = [binding(module=0, sig=bindings['signature'](1))]
-            sections = fixtures['SECTIONS'](**(caller | {
-                'name': 2, 'imports': imports, 'code': words(5)+(frame+call)*2+fixtures['EXIT'],
-            }))
-            clock = fixtures['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
+            clock = runpy.run_path(str(ROOT/'utils/tests/dis64-pair-boot.py'))['clock_image']()
             (work/'consumer').write_bytes(clock)
             subprocess.run(runner+[str(binary), str(work/'image'), str(work/'consumer'), 'clock'],
                            check=True, timeout=60)

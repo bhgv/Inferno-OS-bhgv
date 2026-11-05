@@ -74,8 +74,9 @@ dis64storagecode(const unsigned char *data, unsigned int bytes, unsigned int lim
  * borrowed source span remains immutable and mapped for the complete view lifetime;
  * aggregate publication does not provide alias handling or acquire source lifetime. */
 static int
-dis64storageimagecheck(const unsigned char *data, unsigned int bytes,
-	const Dis64StorageLimits *limits, Dis64StorageImage *result)
+dis64storageimagecheckcode(const unsigned char *data, unsigned int bytes,
+	const Dis64StorageLimits *limits, Dis64StorageImage *result,
+	int (*checkcode)(const unsigned char*, unsigned int, unsigned int, Dis64CodeView*))
 {
 	Dis64StorageImage image = {0};
 	Dis64Section sections[8] = {{0}}, section;
@@ -110,7 +111,7 @@ dis64storageimagecheck(const unsigned char *data, unsigned int bytes,
 	   !disstringpoolget(&image.strings, image.module.name, &name))
 		return 0;
 	section = sections[Dis64Code-1];
-	if(!dis64storagecode(data+section.offset, section.bytes, limits->instructions, &image.code))
+	if(!checkcode(data+section.offset, section.bytes, limits->instructions, &image.code))
 		return 0;
 	if(image.module.profile == 1 &&
 	   (image.module.entry >= image.code.count ||
@@ -139,6 +140,15 @@ dis64storageimagecheck(const unsigned char *data, unsigned int bytes,
 	}
 	*result = image;
 	return 1;
+}
+
+
+/* Keep ordinary storage admission restricted to the direct decoder. */
+static int
+dis64storageimagecheck(const unsigned char *data, unsigned int bytes,
+	const Dis64StorageLimits *limits, Dis64StorageImage *result)
+{
+	return dis64storageimagecheckcode(data, bytes, limits, result, dis64storagecode);
 }
 
 

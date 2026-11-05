@@ -215,8 +215,16 @@ read64pairprotected(void *argument)
 	Dis64PairRead *read;
 
 	read = argument;
-	if(!read64pairimage(read, read->consumer, 0) ||
-	   (read->provider == nil && !read64pairsibling(read)) ||
+	if(!read64pairimage(read, read->consumer, 0))
+		return 0;
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+	if(read->provider != nil && strcmp(read->provider, "$Sys") == 0){
+		read->link = prepare64sysclockconsumer(read->consumer, read->images[0],
+			read->sizes[0], cflag != 0);
+		return read->link != nil;
+	}
+#endif
+	if((read->provider == nil && !read64pairsibling(read)) ||
 	   !read64pairimage(read, read->provider, 1))
 		return 0;
 	read->link = prepare64consumerlink(read->consumer, read->images[0], read->sizes[0],

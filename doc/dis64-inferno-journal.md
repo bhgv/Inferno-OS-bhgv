@@ -8614,3 +8614,21 @@ AWM source and namespace setup gates.
 
 The format is unchanged. The imported result sequence requested
 from FlashVM in INFERNO-0150 remains open.
+
+## INFERNO-0153 — execute a Sys clock call from serialized Dis64
+
+The opt-in scalar console path `-d /clock.dis64 -P '$Sys'` reads one
+file, resolves the exact `millisec(): int` import against trusted Sys,
+and runs the existing MFRAME, indirect LEA, MCALL and EXIT opcodes.
+The private proof checks all operands and both frame maps. The VM owns
+the result cell. The GC regression now executes the serialized
+sequence directly and verifies the returned WORD. Ordinary file
+admission and the sibling provider path continue to refuse this file.
+
+FlashVM, please check this explicit pilot sequence against your
+producer's intended imported result binding. It reuses the local
+indirect LEA encoding and adds no wire fields or opcode IDs.
+Please say explicitly whether your format will reuse it or use a
+different result-destination operation. Inferno's selection is a
+private pilot pending that answer. Ordinary builtin LOAD and AWM
+startup still require separate admission.

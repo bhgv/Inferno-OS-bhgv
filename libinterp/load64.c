@@ -527,6 +527,22 @@ dis64storageconstruct(void *argument)
 }
 
 
+/* Build a storage lease from a view already checked by its owning profile. */
+static Dis64StorageOwner*
+dis64storagefromview(const Dis64StorageImage *view)
+{
+	Dis64StorageLoad load;
+
+	memset(&load, 0, sizeof(load));
+	load.image = *view;
+	if(kprotect(dis64storageconstruct, &load))
+		return load.owner;
+	free64storage(load.owner);
+	kwerrstr("Dis64 storage construction failed");
+	return nil;
+}
+
+
 /* Prepare owned Types/data with actual GC rooting, never executable instructions or dependency links.
  * Caller holds ordinary VM exclusion; input remains immutable/disjoint until return.
  * Success requires one free64storage call under that same exclusion. The opaque lease
@@ -535,22 +551,17 @@ dis64storageconstruct(void *argument)
 Dis64StorageOwner*
 prepare64storage(uchar *image, ulong bytes)
 {
-	Dis64StorageLoad load;
+	Dis64StorageImage view;
 	Dis64StorageLimits limits = {64, 65536, Dis64RuntimeObject, 65536,
 		Dis64RuntimeCode, 1024, 256, 1024};
 
-	memset(&load, 0, sizeof(load));
 	if(!dis64runtimemodel() || image == nil || image == H ||
 	   bytes > Dis64RuntimeBytes || (uintptr)image > (uintptr)-1-bytes ||
-	   !dis64storageimagecheck(image, bytes, &limits, &load.image)){
+	   !dis64storageimagecheck(image, bytes, &limits, &view)){
 		kwerrstr("unsupported Dis64 storage image or runtime model");
 		return nil;
 	}
-	if(kprotect(dis64storageconstruct, &load))
-		return load.owner;
-	free64storage(load.owner);
-	kwerrstr("Dis64 storage construction failed");
-	return nil;
+	return dis64storagefromview(&view);
 }
 
 
@@ -746,6 +757,7 @@ struct Dis64NumericLoad {
 	Dis64StorageOwner *lease; // Separate construction root, returned on complete success.
 	Module *module; // Partial unpublished native owner retired through real unload.
 	int jit; // Explicit existing native leaf compilation request, never a file-mode choice.
+	int clock; // Exact private Sys clock call sequence with a checked result bind.
 };
 
 
@@ -754,7 +766,8 @@ static int
 dis64numericconstruct(void *argument)
 {
 	Dis64NumericLoad *load;
-	Dis64Instruction instruction;
+	Dis64CallDecoded decoded;
+	Inst *instruction;
 	Module *module;
 	unsigned int i, at, used, rune;
 
@@ -765,7 +778,7 @@ dis64numericconstruct(void *argument)
 	module->ref = 1;
 	module->rt = DONTCOMPILE;
 	module->origmp = H;
-	load->lease = prepare64storage((uchar*)load->image.envelope.data, load->image.envelope.bytes);
+	load->lease = dis64storagefromview(&load->image);
 	if(load->lease == nil || !attach64storage(module, load->lease))
 		return 0;
 	module->entryt = module->type[load->image.module.frametype];
@@ -775,9 +788,14 @@ dis64numericconstruct(void *argument)
 		return 0;
 	at = 4;
 	for(i=0; i<load->image.code.count; i++){
-		if(!dis64instructionread(load->image.code.data+at, load->image.code.bytes-at, &instruction, &used))
+		if(!dis64callread(load->image.code.data+at, load->image.code.bytes-at, &decoded, &used))
 			return 0;
-		dis64runtimeinst(module->prog+i, &instruction, module->prog);
+		instruction = module->prog+i;
+		dis64runtimeinst(instruction, &decoded.instruction, module->prog);
+		if(load->clock && decoded.instruction.op == ILEA){
+			instruction->d.i.f = decoded.instruction.destination;
+			instruction->d.i.s = decoded.secondary;
+		}
 		at += used;
 	}
 	module->entry = module->prog+load->image.module.entry;
@@ -792,6 +810,8 @@ dis64numericconstruct(void *argument)
 	module->path = strdup(load->path);
 	if(module->path == nil)
 		return 0;
+	if(load->clock)
+		module->cstep = native64lea8step;
 	if(load->jit && !compile(module, module->nprog, nil))
 		return 0;
 	return 1;
@@ -806,32 +826,78 @@ static const Dis64StorageLimits dis64numericlimits = {
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 
 
-/* Match an exact checked scalar import to the trusted registered Sys clock.
- * The caller holds VM exclusion and the image remains immutable for the call. */
-const Link*
-dis64sysclockimport(const uchar *image, ulong bytes, unsigned int ordinal, Module **owner)
+/* Resolve one exact scalar import from an already validated image. */
+static const Link*
+dis64sysclockview(const Dis64StorageImage *consumer, unsigned int ordinal, Module **owner)
 {
 	static const uchar sys[] = {0,0,0,'$', 0,0,0,'S', 0,0,0,'y', 0,0,0,'s'};
 	static const uchar millisec[] = {
 		0,0,0,'m', 0,0,0,'i', 0,0,0,'l', 0,0,0,'l',
 		0,0,0,'i', 0,0,0,'s', 0,0,0,'e', 0,0,0,'c',
 	};
-	Dis64StorageImage consumer;
 	Dis64Binding binding;
 	DisRuneView module, symbol;
 
-	if(owner == nil || image == nil || image == H || bytes > Dis64RuntimeBytes ||
-	   (uintptr)image > (uintptr)-1-bytes ||
-	   !dis64storageimagecheck(image, bytes, &dis64numericlimits, &consumer) ||
-	   consumer.module.profile != 1 ||
-	   !dis64bindingget(&consumer.imports, ordinal, &binding) ||
+	if(consumer->module.profile != 1 ||
+	   !dis64bindingget(&consumer->imports, ordinal, &binding) ||
 	   binding.signature.result != Dis64Int || binding.signature.parameters != 0 ||
-	   !disstringpoolget(&consumer.strings, binding.module, &module) ||
+	   !disstringpoolget(&consumer->strings, binding.module, &module) ||
 	   module.count != sizeof(sys)/4 || memcmp(module.values, sys, sizeof(sys)) != 0 ||
-	   !disstringpoolget(&consumer.strings, binding.symbol, &symbol) ||
+	   !disstringpoolget(&consumer->strings, binding.symbol, &symbol) ||
 	   symbol.count != sizeof(millisec)/4 || memcmp(symbol.values, millisec, sizeof(millisec)) != 0)
 		return nil;
 	return native64sysclock(owner);
+}
+
+
+/* Resolve a direct-mode import without taking a module reference. */
+const Link*
+dis64sysclockimport(const uchar *image, ulong bytes, unsigned int ordinal, Module **owner)
+{
+	Dis64StorageImage view;
+
+	if(owner == nil || image == nil || image == H || bytes > Dis64RuntimeBytes ||
+	   (uintptr)image > (uintptr)-1-bytes ||
+	   !dis64storageimagecheck(image, bytes, &dis64numericlimits, &view))
+		return nil;
+	return dis64sysclockview(&view, ordinal, owner);
+}
+
+
+/* Decode only the private MFRAME, existing LEA, MCALL, EXIT wire sequence. */
+static int
+dis64clockcode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64CodeView *code)
+{
+	static const uchar ops[] = {IMFRAME, ILEA, IMCALL, IEXIT};
+	static const uchar modes[] = {SRC(AMP)|AXIMM|DST(AFP), SRC(AFP)|DST(AFP|AIND),
+		SRC(AFP)|AXIMM|DST(AMP), SRC(AXXX)|DST(AXXX)};
+	Dis64CallDecoded decoded;
+	unsigned int at, i, used;
+
+	if(limit < nelem(ops) || bytes < 4 || dis64u32(data) != nelem(ops))
+		return 0;
+	at = 4;
+	for(i=0; i<nelem(ops); i++){
+		if(!dis64callread(data+at, bytes-at, &decoded, &used) ||
+		   decoded.instruction.op != ops[i] || decoded.instruction.mode != modes[i])
+			return 0;
+		if(i == 0 && (decoded.instruction.source != 0 || decoded.instruction.middle != 0 ||
+		   decoded.instruction.destination != 40))
+			return 0;
+		if(i == 1 && (decoded.instruction.source != 72 ||
+		   decoded.instruction.destination != 40 || decoded.secondary != 32))
+			return 0;
+		if(i == 2 && (decoded.instruction.source != 40 || decoded.instruction.middle != 0 ||
+		   decoded.instruction.destination != 0))
+			return 0;
+		at += used;
+	}
+	if(at != bytes)
+		return 0;
+	code->data = data;
+	code->bytes = bytes;
+	code->count = nelem(ops);
+	return 1;
 }
 #endif
 
@@ -1114,6 +1180,19 @@ dis64rootlink(Module *module, Dis64StorageOwner *lease, int bindings,
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 
 
+/* Retain a checked builtin while its new instance acquires the collector root. */
+static Modlink*
+dis64rootclock(Module *module, const Link *entry)
+{
+	if(entry == nil || module->ref <= 0 || module->ref == INT_MAX){
+		kwerrstr("unavailable Dis64 Sys clock import");
+		return nil;
+	}
+	module->ref++;
+	return dis64rootlink(module, nil, 1, nil, entry);
+}
+
+
 /* Build a rooted one-slot Sys clock instance under VM exclusion. */
 Modlink*
 prepare64sysclocklink(const uchar *image, ulong bytes, unsigned int ordinal)
@@ -1125,13 +1204,69 @@ prepare64sysclocklink(const uchar *image, ulong bytes, unsigned int ordinal)
 		kwerrstr("Dis64 Sys clock link requires unmonitored allocation");
 		return nil;
 	}
+	module = nil;
 	entry = dis64sysclockimport(image, bytes, ordinal, &module);
-	if(entry == nil || module->ref <= 0 || module->ref == INT_MAX){
-		kwerrstr("unavailable Dis64 Sys clock import");
+	return dis64rootclock(module, entry);
+}
+
+
+/* Own the explicitly selected Sys clock consumer and link before scheduling. */
+Modlink*
+prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
+{
+	Dis64NumericLoad load;
+	Dis64Type frame;
+	Module *sys;
+	const Link *entry;
+	Modlink *caller, *clock;
+	unsigned int i, rune;
+
+	memset(&load, 0, sizeof(load));
+	if(heapmonitor != nil || !dis64runtimemodel() || path == nil || path == H ||
+	   image == nil || image == H || bytes > Dis64RuntimeBytes ||
+	   (uintptr)image > (uintptr)-1-bytes || (jit != 0 && jit != 1) ||
+	   !dis64storageimagecheckcode(image, bytes, &dis64numericlimits, &load.image, dis64clockcode) ||
+	   load.image.module.profile != 1 || load.image.module.entry != 0 ||
+	   load.image.imports.count != 1 || load.image.exports.count != 0 ||
+	   load.image.data.bytes != 8 || load.image.data.mapbytes != 1 ||
+	   load.image.data.map[0] != 0x80 || load.image.initializers.count != 0 ||
+	   !dis64typeget(&load.image.types, load.image.module.frametype, &frame) ||
+	   frame.bytes != 80 || frame.align != 8 || frame.mapbytes != 2 ||
+	   frame.map[0] != 0 || frame.map[1] != 0 ||
+	   !disstringpoolget(&load.image.strings, load.image.module.name, &load.name) ||
+	   load.name.count == 0 || load.name.count > Dis64RuntimeName){
+		kwerrstr("unsupported Dis64 Sys clock consumer");
 		return nil;
 	}
-	module->ref++;
-	return dis64rootlink(module, nil, 1, nil, entry);
+	for(i=0; i<load.name.count; i++)
+		if(!disruneat(&load.name, i, &rune) || rune == 0 || rune > 127){
+			kwerrstr("unsupported Dis64 Sys clock display name");
+			return nil;
+		}
+	sys = nil;
+	entry = dis64sysclockview(&load.image, 0, &sys);
+	clock = dis64rootclock(sys, entry);
+	if(clock == nil)
+		return nil;
+	load.path = path;
+	load.jit = jit;
+	load.clock = 1;
+	caller = nil;
+	if(kprotect(dis64numericconstruct, &load))
+		caller = dis64rootlink(load.module, load.lease, 0, nil, nil);
+	else{
+		if(load.module != nil)
+			unload(load.module);
+		free64storage(load.lease);
+	}
+	if(caller != nil){
+		memmove(caller->MP, &clock, sizeof(clock));
+		Setmark(D2H(clock));
+	}
+	ptrdel(D2H(clock));
+	if(caller == nil)
+		destroy(clock);
+	return caller;
 }
 #endif
 

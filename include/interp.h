@@ -614,6 +614,7 @@ extern	void		sysinit(void);
 extern const Link* native64sysclock(Module**); // Borrowed generated export under VM exclusion.
 extern const Link* dis64sysclockimport(const uchar*, ulong, unsigned int, Module**); // Private borrowed scalar import and module.
 extern Modlink* prepare64sysclocklink(const uchar*, ulong, unsigned int); // Own one Modlink and one external root.
+extern Modlink* prepare64sysclockconsumer(char*, const uchar*, ulong, int); // Own one rooted private clock consumer.
 #endif
 extern	void		sysmodinit(void);
 extern	void		tellsomeone(Prog*, char*);

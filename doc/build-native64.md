@@ -250,10 +250,13 @@ python3 utils/tests/native64-scalar-boot.py --math --sys-io \
   --emu /build/emu/Linux/o.emu-g --root /build --runner qemu-aarch64
 ```
 
-The test still rejects `$Sys`, `$Math` and legacy images. It does not invoke these
-thirteen exports from a Dis64 file. No generic CALL/MCALL, builtin import, typed
-variadic wire metadata or general shell startup is enabled. Scalar file execution
-is still the43-op np0 profile. Native dispatch counts remain unchanged.
+Ordinary file admission still rejects builtin modules and legacy images.
+The explicit clock pilot accepts one checked scalar import and one fixed
+call sequence. Run a pilot image with `emu -c 1 -d /clock.dis64 -P '$Sys'`
+and repeat with `-c 0` for the interpreter. The paired boot test with
+`--sys-clock` generates the image and checks both modes. The pilot
+reserves `$Sys` as an explicit provider selector and shares the
+existing indirect LEA encoding with the local result binder.
 
 Additional gates separate registration ownership from actual callback behavior:
 

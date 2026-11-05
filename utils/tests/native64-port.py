@@ -90,7 +90,7 @@ def main():
     run([str(tools/'mk'), 'CONF=emu-g', 'CONFLIST=emu-g'], build/'emu/Linux', env, logs/'mk.log')
     tests = build/'utils/tests'
     run([sys.executable, str(tests/'dis64-pair-boot.py'), '--root', str(build),
-         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'pair-boot.log')
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--sys-clock'], build, env, logs/'pair-boot.log')
     if args.pair_boot_only:
         print('PASS classic-mk console and Dis64 pair boot')
         return

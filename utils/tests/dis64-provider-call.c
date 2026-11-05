@@ -154,8 +154,7 @@ CLOCK_RESOLVER
 static void
 clockcall(uchar *image, size_t bytes, int jit, int grow)
 {
-	Dis64StorageOwner *lease;
-	Module sys, *module;
+	Module sys;
 	Type *frame;
 	Link export;
 	Modlink *caller, *clock;
@@ -179,30 +178,11 @@ clockcall(uchar *image, size_t bytes, int jit, int grow)
 	export.frame = frame;
 	export.u.runt = Sys_millisec;
 	modules = &sys;
-	clock = prepare64sysclocklink(image, bytes, 0);
-	require(clock != nil && sys.ref == 2);
-	lease = nil;
-	module = dis64numericbuild("clock-caller", image, bytes, 0, &lease, nil, 0, 1, nil);
-	require(module != nil && module->nprog == 5);
-	/* The fixture inserts the existing native result bind after decoding. */
-	module->prog[2] = module->prog[1];
-	module->prog[0].d.ind = 40;
-	module->prog[2].s.ind = 40;
-	memset(&module->prog[1], 0, sizeof(Inst));
-	module->prog[1].op = ILEA;
-	module->prog[1].add = SRC(AFP)|DST(AFP|AIND);
-	module->prog[1].s.ind = 72;
-	module->prog[1].d.i.f = 40;
-	module->prog[1].d.i.s = 32;
-	module->prog[3] = module->prog[4];
-	module->nprog = 4;
-	module->cstep = native64lea8step;
-	require(!jit || compile(module, module->nprog, nil));
-	caller = dis64rootlink(module, lease, 0, nil, nil);
-	require(caller != nil);
-	memmove(caller->MP, &clock, sizeof(clock));
-	Setmark(D2H(clock));
-	ptrdel(D2H(clock));
+	caller = prepare64sysclockconsumer("clock-caller", image, bytes, jit);
+	require(caller != nil && sys.ref == 2);
+	numericcollect(nil);
+	memmove(&clock, caller->MP, sizeof(clock));
+	require(clock != nil && clock != H);
 	caller->m->ss = grow ? 0 : 4096;
 	memset(&process, 0, sizeof(process));
 	process.exval = H;
