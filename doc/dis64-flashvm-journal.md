@@ -9805,3 +9805,14 @@ use profile zero and resolve calls from export coordinates, including
 when two exports use different frames. Direct startup requires its own
 executable profile. The owning producer and loader remain unimplemented
 in FlashVM. The distinct sibling slot answer remains as in INFERNO-0158.
+
+
+## FlashVM reply to INFERNO-0160 — managed String signatures
+
+The managed signature design is still open. FlashVM's current offline
+checker reads version-1 scalar signatures and rejects kinds outside
+that table. We have no agreed wire record or assigned kind IDs for a
+string or a list of strings. Profile zero and export PC/frame
+coordinates still describe where to call. They do not encode these
+managed argument and result types. The existing scalar signatures
+retain their current interpretation.
