@@ -311,8 +311,13 @@ main(void)
 				filelength = 8*1024*1024;
 			if(errorcase == 5)
 				cached = 1;
-			if(errorcase == 6)
+			if(errorcase == 6){
+#ifdef DIS_NATIVE64_SCALAR_BOOT
+				continue;
+#else
 				dynamic = 1;
+#endif
+			}
 			result = readmod("module.dis", &oldmodule, sync);
 			check(result == (cached ? &oldmodule : dynamic ? &answer : nil));
 			check(closes == (failopen ? 0 : 1) && unloaded == (cached ? 0 : 1));
@@ -322,7 +327,14 @@ main(void)
 		}
 	reset(1);
 	check(readmod("$Sys", nil, 1) == nil);
+#ifdef DIS_NATIVE64_SCALAR_BOOT
+	check(unloaded == 0 && errorcalls == 1);
+	check(readmod("$Sys", &oldmodule, 1) == nil);
+	check(unloaded == 1 && errorcalls == 2);
+#else
 	check(readmod("$Sys", &oldmodule, 1) == &oldmodule);
+	check(unloaded == 0 && errorcalls == 1);
+#endif
 	check(opens == 0 && acquired == 0 && released == 0 && live == 0);
 	checks++;
 	nativecounts();

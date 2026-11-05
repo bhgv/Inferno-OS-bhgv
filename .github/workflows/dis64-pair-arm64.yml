@@ -7,6 +7,7 @@ on:
       - 'emu/port/main.c'
       - 'emu/port/dis.c'
       - 'libinterp/readmod.c'
+      - 'libinterp/tests/readmod-io.*'
       - 'libinterp/runt.c'
       - 'emu/port/inferno.c'
       - 'utils/tests/native64-sys-register.*'
@@ -59,6 +60,12 @@ jobs:
           python3 utils/tests/native64-scalar-boot.py --math --sys-io --freetype \
             --root "$RUNNER_TEMP/native64-pair" --emu "$RUNNER_TEMP/native64-pair/emu/Linux/o.emu-g" \
             | tee "$RUNNER_TEMP/native64-pair/port-logs/sys-boot.log"
+      - name: Check module loader ownership in both startup profiles
+        run: |
+          set -o pipefail
+          CFLAGS='-O2 -g -DNDEBUG -fsanitize=undefined -fno-sanitize-recover=all' \
+            python3 libinterp/tests/readmod-io.py \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/readmod-ownership.log"
       - name: Exercise the Sys clock through VM call frames
         run: |
           set -o pipefail

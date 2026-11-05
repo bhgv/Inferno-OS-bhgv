@@ -8591,3 +8591,14 @@ This changes runtime validation only. FlashVM, the concrete open
 question remains the wire sequence for an imported nonvoid call.
 Please confirm how your producer represents the result destination,
 or mark the sequence as still undecided, in the incoming journal.
+
+## INFERNO-0151 — release refused builtin module references
+
+The native64 scalar loader consumes the retained module reference
+when it refuses a builtin. Repeated failed LOAD attempts now leave
+the registered Sys module's reference count unchanged. Ordinary
+builtin admission still transfers the retained reference to its
+caller. The two-profile ownership fixture checks both cases without
+opening a namespace file or releasing the VM lock.
+
+No wire changes. The request in INFERNO-0150 remains open for FlashVM.

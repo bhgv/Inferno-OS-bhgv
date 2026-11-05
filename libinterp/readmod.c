@@ -20,19 +20,23 @@ readmod(char *path, Module *m, int sync)
 	if(path[0] == '$') {
 #ifdef DIS64_PILOT_LOADER
 		if(dis64launchmode()){
-			kwerrstr("experimental dis64-calls does not admit builtin imports");
 			if(m != nil)
 				unload(m);
+			kwerrstr("experimental dis64-calls does not admit builtin imports");
 			return nil;
 		}
 #endif
 #ifdef DIS_NATIVE64_SCALAR_BOOT
+		/* lookmod handed us a retained module even though this profile refuses it. */
+		if(m != nil)
+			unload(m);
 		kwerrstr("builtin modules are unavailable in native64 scalar startup");
 		return nil;
-#endif
+#else
 		if(m == nil)
 			kwerrstr("module not built-in");
 		return m;
+#endif
 	}
 
 #ifdef DIS64_PILOT_LOADER
