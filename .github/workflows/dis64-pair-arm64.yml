@@ -20,6 +20,7 @@ on:
       - 'libinterp/load64.c'
       - 'libinterp/xec.c'
       - 'utils/tests/dis64-numeric-gc.*'
+      - 'utils/tests/dis64-managed-gc.c'
       - 'utils/tests/dis64-provider-call.c'
       - 'include/dis64*.h'
       - 'limbo/**'
@@ -138,7 +139,7 @@ jobs:
           CC="$TARGET_CC" CFLAGS="$flags" \
             python3 libinterp/tests/readmod-io.py \
             | tee "$RUNNER_TEMP/native64-pair/port-logs/readmod-ownership.log"
-      - name: Exercise the Sys clock through VM call frames
+      - name: Exercise Sys and provider calls and managed GC ownership
         run: |
           set -o pipefail
           flags='-O3 -g -DNDEBUG -fno-strict-aliasing'
@@ -149,6 +150,8 @@ jobs:
             | tee "$RUNNER_TEMP/native64-pair/port-logs/sys-clock-vm.log"
           CC="$TARGET_CC" NATIVE64_CFLAGS="$flags" python3 utils/tests/dis64-numeric-gc.py --provider \
             | tee "$RUNNER_TEMP/native64-pair/port-logs/provider-vm.log"
+          CC="$TARGET_CC" NATIVE64_CFLAGS="$flags" python3 utils/tests/dis64-numeric-gc.py --managed \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/managed-string-gc.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

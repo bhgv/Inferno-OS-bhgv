@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 # Reuse the real execution closure and substitute a sweepable pool for its host allocations.
-def unit(calls=False):
+def unit(calls=False, managed=False):
     execution = runpy.run_path(str(ROOT/'utils/tests/dis64-numeric-exec.py'))
     extract = runpy.run_path(str(ROOT/'libinterp/tests/dis64-runtime.py'))['function']
     source = execution['unit']().split('/* Execute an actual Frame/Modlink/decoder/VM/JIT program')[0]
@@ -26,6 +26,16 @@ def unit(calls=False):
     source = source[:start]+'''#define malloc(n) trackedallocate(n,0) // Track external root metadata.
 '''+collector+'\n#undef malloc\n'+source[end:]
     fixture = (ROOT/'utils/tests/dis64-numeric-gc.c').read_text()
+    if managed:
+        fixture = fixture.split('/* Run single-instruction quanta')[0]
+        source = source.replace('#include "tests/leaf-cons-stub.h"',
+                                '#define cons fixture_leaf_cons\n#include "tests/leaf-cons-stub.h"\n#undef cons')
+        heap = (ROOT/'libinterp/heap.c').read_text()
+        source += '\n'.join(extract(heap, signature) for signature in
+                            ('void\nfreelist(', 'void\nfreestring('))
+        source += '\nType Tlist = {1, freelist, marklist, sizeof(List)};\n'
+        source += extract((ROOT/'libinterp/xec.c').read_text(), 'List*\ncons(')+'\n'
+        fixture += (ROOT/'utils/tests/dis64-managed-gc.c').read_text()
     if calls:
         stack = (ROOT/'libinterp/stack.c').read_text()
         xec = (ROOT/'libinterp/xec.c').read_text()
@@ -88,8 +98,9 @@ def main():
     parser.add_argument('--control', nargs='?', const='mp', choices=('mp', 'frame'))
     parser.add_argument('--provider', action='store_true')
     parser.add_argument('--calls', action='store_true')
+    parser.add_argument('--managed', action='store_true')
     args = parser.parse_args()
-    if sum(bool(option) for option in (args.provider, args.control, args.calls)) > 1:
+    if sum(bool(option) for option in (args.provider, args.control, args.calls, args.managed)) > 1:
         parser.error('select one execution mode')
     fixtures = runpy.run_path(str(ROOT/'utils/tests/dis64-numeric-module.py'))
     instruction = fixtures['I']('IADDW', 16, source=2, destination=8)
@@ -112,11 +123,14 @@ def main():
     command += ['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
     with tempfile.TemporaryDirectory(prefix='numeric-gc-', dir=os.environ.get('NATIVE64_TMPDIR', ROOT)) as directory:
         work = Path(directory)
-        (work/'test.c').write_text(unit(args.calls))
+        (work/'test.c').write_text(unit(args.calls, args.managed))
         (work/'image').write_bytes(raw)
         binary = work/'test'
         subprocess.run(command+[str(work/'test.c'), str(ROOT/'libinterp/dec.c'), '-Wl,--wrap=free', '-lm', '-o', str(binary)], check=True)
         runner = shlex.split(os.environ.get('NATIVE64_RUNNER', ''))
+        if args.managed:
+            subprocess.run(runner+[str(binary)], check=True, timeout=60)
+            return
         if args.calls:
             for failure in (False, True):
                 terminal = fixtures['I']('IDIVW', 16, source=0, destination=8) if failure else fixtures['I']('IRET', 27)
