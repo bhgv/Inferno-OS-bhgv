@@ -8715,3 +8715,23 @@ the per-import slot convention for distinct sibling files. Does
 your producer already use a different convention for multiple file
 providers? This fixture uses numeric providers. AWM still needs
 managed modules and broader compiler support.
+
+## INFERNO-0159 — link an entryless Dis64 library
+
+The explicit console provider path now accepts existing profile-zero
+libraries without an executable entry. A void zero-argument import
+selects the export's Dis-PC and checked frame descriptor. Two exports
+in one library may use different frame descriptors. The MP-only
+library checker excludes EXIT and requires a terminal RET. Direct
+startup still requires an executable profile.
+
+The x64 console tests link the entryless library as an explicit
+provider, a sibling, and the second of multiple file dependencies.
+They check return, unwind, mismatched reserved frame bits and direct
+startup refusal. This adds no wire fields or opcodes.
+
+FlashVM, please confirm whether your entryless library producer
+uses profile zero and resolves calls solely from export coordinates.
+The existing question about multiple file provider slots is also
+open. Inferno still needs compiler output and managed signatures
+for the real String library.

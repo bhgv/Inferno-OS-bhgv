@@ -47,27 +47,21 @@ dis64numericstorageinstruction(const Dis64Instruction *instruction, unsigned int
 }
 
 
-/* Inspect immutable checked storage; success proves only this private MP-only numeric subset.
- * The first map byte covers the reserved 64-byte frame prefix.
- * Native/code outputs and borrowed input/policy are disjoint live mapped storage.
- * No code/result/frame/import/namespace ownership is acquired or serialized here. */
+/* Check the complete MP-only instruction stream for the selected role. */
 static int
-dis64numericentrycheck(const Dis64StorageImage *image, unsigned int limit, int returns, Dis64CodeView *result)
+dis64numericbody(const Dis64StorageImage *image, unsigned int limit, int returns,
+	int library, unsigned int framebytes, Dis64CodeView *result)
 {
-	Dis64Type frame;
 	Dis64CodeView code;
 	Dis64Instruction instruction;
 	unsigned int i, at, used;
 
-	if(image == 0 || result == 0 || image->module.profile != 1 ||
-	   image->imports.count != 0 ||
+	if(image->imports.count != 0 ||
 	   (image->module.databytes != 0 && (image->present&(1U<<(Dis64Data-1))) == 0) ||
-	   !dis64typevalid(&image->data) ||
-	   !dis64typeget(&image->types, image->module.frametype, &frame) ||
-	   frame.bytes < 64 || frame.align != 8 || frame.map[0] != 0)
+	   !dis64typevalid(&image->data))
 		return 0;
 	code = image->code;
-	if(code.count == 0 || code.count > limit || image->module.entry >= code.count)
+	if(code.count == 0 || code.count > limit)
 		return 0;
 	at = 4;
 	for(i=0; i<code.count; i++){
@@ -76,14 +70,46 @@ dis64numericentrycheck(const Dis64StorageImage *image, unsigned int limit, int r
 		if(instruction.op == IRET){
 			if(!returns || instruction.mode != ((AXXX<<3)|AXXX))
 				return 0;
-		}else if(!dis64numericstorageinstruction(&instruction, code.count, &image->data, frame.bytes))
+		}else if((library && instruction.op == IEXIT) ||
+		   !dis64numericstorageinstruction(&instruction, code.count, &image->data, framebytes))
 			return 0;
 		at += used;
 	}
-	if(at != code.bytes)
+	if(at != code.bytes || (library && instruction.op != IRET))
 		return 0;
 	*result = code;
 	return 1;
+}
+
+
+/* Validate the reserved frame prefix before allowing native frame links. */
+static int
+dis64numericframe(const Dis64StorageImage *image, unsigned int ordinal, Dis64Type *frame)
+{
+	return dis64typeget(&image->types, ordinal, frame) &&
+		frame->bytes >= 64 && frame->align == 8 && frame->map[0] == 0;
+}
+
+
+/* Check an executable entry without taking code, frame or module ownership. */
+static int
+dis64numericentrycheck(const Dis64StorageImage *image, unsigned int limit, int returns, Dis64CodeView *result)
+{
+	Dis64Type frame;
+
+	return image != 0 && result != 0 && image->module.profile == 1 &&
+		image->module.entry < image->code.count &&
+		dis64numericframe(image, image->module.frametype, &frame) &&
+		dis64numericbody(image, limit, returns, 0, frame.bytes, result);
+}
+
+
+/* An entryless provider executes only through independently checked exports. */
+static int
+dis64numericlibrarycheck(const Dis64StorageImage *image, unsigned int limit, Dis64CodeView *result)
+{
+	return image != 0 && result != 0 && image->module.profile == 0 &&
+		image->exports.count != 0 && dis64numericbody(image, limit, 1, 1, 64, result);
 }
 
 

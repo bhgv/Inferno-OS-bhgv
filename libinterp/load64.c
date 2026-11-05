@@ -758,6 +758,7 @@ struct Dis64NumericLoad {
 	Module *module; // Partial unpublished native owner retired through real unload.
 	int jit; // Explicit existing native leaf compilation request, never a file-mode choice.
 	int clock; // Exact private Sys clock call sequence with a checked result bind.
+	Dis64ImportMatch library; // Selected export for the one-slot entryless provider path.
 	const Link *clockload; // Checked Sys export for an executing LOAD, or nil.
 };
 
@@ -817,7 +818,8 @@ dis64numericconstruct(void *argument)
 	if(load->clockload != nil && !dis64clockloadmetadata(module, load->clockload))
 		return 0;
 #endif
-	module->entryt = module->type[load->image.module.frametype];
+	module->entryt = module->type[load->image.module.profile == 0 ?
+		load->library.frame : load->image.module.frametype];
 	module->nprog = load->image.code.count;
 	module->prog = mallocz(module->nprog*sizeof(Inst), 1);
 	if(module->prog == nil)
@@ -834,7 +836,8 @@ dis64numericconstruct(void *argument)
 		}
 		at += used;
 	}
-	module->entry = module->prog+load->image.module.entry;
+	module->entry = module->prog+(load->image.module.profile == 0 ?
+		load->library.entry : load->image.module.entry);
 	module->name = mallocz(load->name.count+1, 1);
 	if(module->name == nil)
 		return 0;
@@ -992,32 +995,36 @@ dis64providerentry(const Dis64StorageImage *consumer, unsigned int ordinal,
 	const Dis64StorageImage *provider, Dis64ImportMatch *match)
 {
 	Dis64Binding imported;
+	Dis64Type frame;
 
 	return dis64bindingget(&consumer->imports, ordinal, &imported) &&
 		imported.signature.result == Dis64Void && imported.signature.parameters == 0 &&
 		dis64importmatch(consumer, ordinal, provider, match) &&
-		match->frame == provider->module.frametype;
+		(provider->module.profile == 0 ? dis64numericframe(provider, match->frame, &frame) :
+		 match->frame == provider->module.frametype);
 }
 
 
 /* Resolve every ordinal against the same validated numeric provider. */
 static int
 dis64providerplan(const Dis64StorageImage *consumer, unsigned int ordinal,
-	const Dis64StorageImage *provider, Dis64CodeView *code, Dis64PairPlan *plan)
+	const Dis64StorageImage *provider, Dis64CodeView *code, Dis64PairPlan *plan,
+	Dis64ImportMatch *selected)
 {
-	Dis64ImportMatch match;
 	unsigned int i;
 
-	if(!dis64numericentrycheck(provider, Dis64RuntimeCode, 1, code))
+	if(!(provider->module.profile == 0 ? dis64numericlibrarycheck(provider, Dis64RuntimeCode, code) :
+	     dis64numericentrycheck(provider, Dis64RuntimeCode, 1, code)))
 		return 0;
 	if(plan == nil)
-		return dis64providerentry(consumer, ordinal, provider, &match) &&
-			match.entry == provider->module.entry;
+		return dis64providerentry(consumer, ordinal, provider, selected) &&
+			(provider->module.profile == 0 || selected->entry == provider->module.entry);
 	if(consumer->imports.count == 0 || consumer->imports.count > Dis64PairBindings)
 		return 0;
 	for(i=0; i<consumer->imports.count; i++)
 		if(!dis64providerentry(consumer, i, provider, &plan->matches[i]))
 			return 0;
+	*selected = plan->matches[0];
 	plan->count = consumer->imports.count;
 	return 1;
 }
@@ -1171,7 +1178,7 @@ dis64numericbuild(char *path, uchar *image, ulong bytes, int jit, Dis64StorageOw
 	   !dis64storageimagecheck(image, bytes, &dis64numericlimits, &load.image) ||
 	   !(linked ? dis64consumerentry(&load.image, &code, linked == 2) :
 	     consumer == nil ? dis64numericstoragecheck(&load.image, Dis64RuntimeCode, &code) :
-	     dis64providerplan(consumer, ordinal, &load.image, &code, plan)) ||
+	     dis64providerplan(consumer, ordinal, &load.image, &code, plan, &load.library)) ||
 	   !disstringpoolget(&load.image.strings, load.image.module.name, &load.name) ||
 	   load.name.count == 0 || load.name.count > Dis64RuntimeName){
 		kwerrstr("unsupported Dis64 private numeric Module");
@@ -1264,7 +1271,7 @@ dis64providerlink(void *argument)
 	}else if(build->plan != nil){
 		for(i=0; i<build->bindings; i++){
 			link->links[i].u.pc = module->prog+build->plan->matches[i].entry;
-			link->links[i].frame = module->entryt;
+			link->links[i].frame = module->type[build->plan->matches[i].frame];
 		}
 	}else if(build->bindings != 0){
 		link->links[0].u.pc = module->entry;

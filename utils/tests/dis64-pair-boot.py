@@ -43,7 +43,8 @@ def images(failure, dependency_name="unit", *, calls=1, late_failure=False, wron
 
 # Use reversed exports so consumer ordinals cannot be mistaken for export ordinals.
 def two_symbols(*, second=1, terminal_failure=False, wrong_ordinal=False,
-                missing_symbol=False, wrong_signature=False, other_module=False):
+                missing_symbol=False, wrong_signature=False, other_module=False,
+                library=False, frame_map=b"\x00\x00", end_with_exit=False):
     words, ins = RAW['W'], RAW['I']
     bindings = RAW['RAW']['RAW']
     binding = bindings['binding']
@@ -59,10 +60,18 @@ def two_symbols(*, second=1, terminal_failure=False, wrong_ordinal=False,
     ))
     ret = ins('IRET', 27)
     terminal = ins('IDIVW', 16, source=0, destination=8) if terminal_failure else ret
+    body = ret+terminal
+    if library and terminal_failure:
+        body += ret
+    if end_with_exit:
+        body += RAW['EXIT']
+    count = 2+int(library and terminal_failure)+int(end_with_exit)
     signature = bindings['signature'](1 if wrong_signature else 0)
     provider = RAW['IMAGE'](RAW['SECTIONS'](
-        data=words(1, 8, 1, 40), code=words(2)+ret+terminal,
-        exports=[binding(export=True, symbol=3 if missing_symbol else 5, entry=1, sig=signature),
+        profile=0 if library else 1, data=words(1, 8, 1, 40), code=words(count)+body,
+        types=[RAW['D'](80, 8), RAW['D'](16, 8, b'\x80'), RAW['D'](88, 8, frame_map)],
+        exports=[binding(export=True, symbol=3 if missing_symbol else 5, entry=1,
+                         frame=2 if library else 0, sig=signature),
                  binding(export=True)],
     ))
     return caller, provider
@@ -86,7 +95,8 @@ def sibling_images(*, failure=False, second='peer', wrong_slot=False, mapbyte=0x
     )
     caller = RAW['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
     terminal = ins('IDIVW', 16, source=0, destination=8) if failure else ins('IRET', 27)
-    sections = RAW['SECTIONS'](name=4, data=words(0), code=words(1)+terminal,
+    body = terminal+ins('IRET', 27) if failure else terminal
+    sections = RAW['SECTIONS'](profile=0, name=4, data=words(0), code=words(1+failure)+body,
                                exports=[binding(export=True, symbol=2)])
     peer = RAW['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
     return caller, images(False)[1], peer
@@ -194,6 +204,30 @@ def main():
                     marker = f'native64 scalar module {module}: jit={jit}, exit="{status}"'
                     if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
                         raise RuntimeError('two-symbol boot did not complete: '+output)
+        for failure in (False, True):
+            caller, dependency = two_symbols(library=True, terminal_failure=failure)
+            consumer.write_bytes(caller)
+            provider.write_bytes(dependency)
+            sibling.write_bytes(dependency)
+            module, status = ('unit', 'zero divide') if failure else ('other', '')
+            for jit in (0, 1):
+                for options in (pair, automatic):
+                    output = execute(command+['-c', str(jit)]+options)
+                    marker = f'native64 scalar module {module}: jit={jit}, exit="{status}"'
+                    if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                        raise RuntimeError('entryless library calls did not complete: '+output)
+        for changes in ({'frame_map': b'\x80\x00'}, {'end_with_exit': True}):
+            caller, dependency = two_symbols(library=True, **changes)
+            consumer.write_bytes(caller)
+            provider.write_bytes(dependency)
+            output = execute(command+pair)
+            if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+                raise RuntimeError(f'invalid library {changes} reached scheduler: '+output)
+        provider.write_bytes(two_symbols(library=True)[1])
+        output = execute(command+['-d', '/'+str(provider.relative_to(root))])
+        if 'panic: loading' not in output or BOOT['RETIRED'] in output:
+            raise RuntimeError('entryless library accepted as startup program: '+output)
+        print('PASS entryless Dis64 libraries with distinct export frame types, C/JIT and refusals')
         for case in ({'wrong_ordinal': True}, {'second': 2}, {'missing_symbol': True},
                      {'wrong_signature': True}, {'other_module': True}):
             caller, dependency = two_symbols(**case)
