@@ -31,4 +31,18 @@ struct LimboNative64Fields
 	const LimboNative64Field *fields; // Immutable compiler-owned source argument descriptions.
 	unsigned int count; // Number of declared arguments, not the number of eligible scalar fields.
 };
+
+/* Private compiler symbols. These values are never written into Dis64. */
+typedef enum {
+	LimboNative64String = 1,
+	LimboNative64ListString,
+} LimboNative64ManagedKind;
+
+typedef struct LimboNative64Managed LimboNative64Managed;
+struct LimboNative64Managed
+{
+	const LimboNative64Entry *entry;
+	LimboNative64ManagedKind argument;
+	LimboNative64ManagedKind result;
+};
 #endif

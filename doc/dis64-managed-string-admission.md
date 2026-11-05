@@ -41,3 +41,10 @@ production MFRAME, MCALL, stack teardown and GC with the generated declarations.
 The callbacks are fixture implementations of the two ownership directions.
 File-level managed signatures and execution of the Limbo String bodies require
 separate tests.
+
+Limbo's opt-in `LIMBO_NATIVE64_MANAGED` declarations now derive the two
+supported symbolic shapes directly from `module/string.m`. The collector
+fixture matches the generated entry, argument kind, and result kind before
+constructing its call frames. A compiler control checks that a list of int
+does not receive the list-of-string witness. These are private C symbols
+and do not define file kind numbers.

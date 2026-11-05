@@ -1,9 +1,19 @@
 /* Symbolic String/List ownership fixture. No file kind or VM call is admitted here. */
+#define LIMBO_NATIVE64_MANAGED
 #include "string-native64.h"
+#undef LIMBO_NATIVE64_MANAGED
 
 static Type *stringelement;
 static Prog *managedprocess;
 static int managederror, managedcalls;
+
+static int
+managedmatch(const LimboNative64Managed *signature, const LimboNative64Entry *entry,
+	LimboNative64ManagedKind argument, LimboNative64ManagedKind result)
+{
+	return signature->entry == entry && signature->argument == argument &&
+		signature->result == result;
+}
 
 Prog*
 currun(void)
@@ -150,6 +160,24 @@ managedvmcase(Type *callerframe, Type *calleeframe, int reverse, int empty, int 
 	void *argument, *result, *resultslot;
 	uchar *root;
 	int before, slot;
+	const LimboNative64Managed *signature;
+	const LimboNative64Entry *entryspec;
+	LimboNative64ManagedKind argumentkind, resultkind;
+
+	signature = reverse ? &limbo_native64_String_quoted_managed : &limbo_native64_String_unquoted_managed;
+	entryspec = reverse ? &limbo_native64_String_quoted_entry : &limbo_native64_String_unquoted_entry;
+	argumentkind = reverse ? LimboNative64ListString : LimboNative64String;
+	resultkind = reverse ? LimboNative64String : LimboNative64ListString;
+	before = allocations;
+	require(!managedmatch(signature, entryspec, resultkind, argumentkind));
+	require(!managedmatch(signature, entryspec, argumentkind, argumentkind));
+	require(!managedmatch(signature, reverse ? &limbo_native64_String_unquoted_entry :
+		&limbo_native64_String_quoted_entry, argumentkind, resultkind));
+	require(allocations == before);
+	require(managedmatch(signature, entryspec, argumentkind, resultkind));
+	require(entryspec->frame_size == calleeframe->size &&
+		entryspec->map_bytes == calleeframe->np &&
+		memcmp(entryspec->map, calleeframe->map, entryspec->map_bytes) == 0);
 
 	caller = managedmodule(0);
 	if(grow)
@@ -158,7 +186,7 @@ managedvmcase(Type *callerframe, Type *calleeframe, int reverse, int empty, int 
 	callee = managedmodule(1);
 	ptradd(D2H(callee));
 	callee->links[0].frame = calleeframe;
-	callee->links[0].u.runt = reverse ? String_quoted : String_unquoted;
+	callee->links[0].u.runt = entryspec->function;
 	process.exval = H;
 	process.state = Pready;
 	process.R.M = caller;

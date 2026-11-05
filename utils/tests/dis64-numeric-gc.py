@@ -132,6 +132,14 @@ def main():
             (work/'string-native64.h').write_bytes(subprocess.check_output(
                 [str(args.limbo.resolve()), '-H', '-M', 'String', '-I'+str(ROOT/'module'),
                  str(ROOT/'module/string.m')], timeout=60))
+            probe = work/'unsupported.m'
+            probe.write_text('Unsupported: module { wrong: fn(s: list of int): string; '
+                             'same: fn(s: string): string; };\n')
+            unsupported = subprocess.check_output([str(args.limbo.resolve()), '-H', str(probe)],
+                                                  timeout=60)
+            if b'limbo_native64_Unsupported_wrong_managed' in unsupported or \
+               b'limbo_native64_Unsupported_same_managed' in unsupported:
+                raise RuntimeError('Limbo emitted a managed witness for an unsupported type')
         (work/'test.c').write_text(unit(args.calls, args.managed))
         (work/'image').write_bytes(raw)
         binary = work/'test'

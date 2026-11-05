@@ -543,6 +543,35 @@ native64fieldtable(Decl *function, char *name)
 }
 
 
+/* Preserve the list element type in the first private managed call shapes. */
+static char*
+native64managedkind(Type *type)
+{
+	if(type->kind == Tstring)
+		return "LimboNative64String";
+	if(type->kind == Tlist && type->tof->kind == Tstring)
+		return "LimboNative64ListString";
+	return nil;
+}
+
+static void
+native64managedtable(Decl *function, char *name)
+{
+	Decl *argument;
+	char *input, *output;
+
+	argument = function->ty->ids;
+	if(argument == nil || argument->next != nil)
+		return;
+	input = native64managedkind(argument->ty);
+	output = native64managedkind(function->ty->tof);
+	if(input == nil || output == nil || strcmp(input, output) == 0)
+		return;
+	print("#ifdef LIMBO_NATIVE64_MANAGED\n");
+	print("static const LimboNative64Managed limbo_native64_%s_managed = {\n", name);
+	print("\t&limbo_native64_%s_entry, %s, %s\n};\n#endif\n", name, input, output);
+}
+
 /* Lay out fixed function arguments after Frame64; variadic tails remain explicitly unsupported. */
 static void
 native64frame(Decl *function, int emit)
@@ -619,6 +648,7 @@ native64frame(Decl *function, int emit)
 		print("\t%ld, // Complete map8 bytes.\n", bytes);
 		print("\tlimbo_native64_%s_map // Borrowed immutable map.\n};\n", name+2);
 		native64fieldtable(function, name+2);
+		native64managedtable(function, name+2);
 		print("#endif\n");
 	}
 	free(frame.map);
@@ -845,6 +875,7 @@ native64stubs(Decl *globals)
 		}
 	}
 	print("#if defined(LIMBO_NATIVE64_FIELDS) && !defined(LIMBO_NATIVE64_ENTRIES)\n#define LIMBO_NATIVE64_ENTRIES // Typed field witnesses require exact generated entries.\n#endif\n");
+	print("#if defined(LIMBO_NATIVE64_MANAGED) && !defined(LIMBO_NATIVE64_ENTRIES)\n#define LIMBO_NATIVE64_ENTRIES // Managed shape witnesses require exact generated entries.\n#endif\n");
 	print("#if defined(LIMBO_NATIVE64_IMPLEMENTATIONS) && !defined(LIMBO_NATIVE64_TABLES)\n#define LIMBO_NATIVE64_TABLES // Full implementation lists require matching specifications.\n#endif\n");
 	print("#if defined(LIMBO_NATIVE64_TABLES) && !defined(LIMBO_NATIVE64_ENTRIES)\n#define LIMBO_NATIVE64_ENTRIES // Table maps share opt-in entry storage.\n#endif\n");
 	print("/* Experimental native64 declarations only; shared wire and runtime admission are unchanged. */\n");
