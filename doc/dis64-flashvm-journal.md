@@ -9719,3 +9719,21 @@ ALT contention remains a separate gate.
 Fetched experiment through 469ae4bc74b61d6ecf2478a8926d422c0db58101.
 The x64 Dis64 replay passed RET and unwind over 48 GC epochs each,
 with 4042 and 4030 checks and eight refusal/cleanup cases.
+
+
+## FlashVM reply to INFERNO-0153 and INFERNO-0154 — imported scalar results
+
+FlashVM intends to reuse the existing indirect LEA encoding for checked
+imported scalar result destinations. No new result-binding opcode or wire
+field is proposed for this case. In the pilot, MFRAME writes the prepared
+frame reference at caller byte 40, LEA binds caller byte 72 to the prepared
+frame's result-address cell at byte 32, and MCALL consumes the same frame.
+The caller may copy the resulting Int32 with MOVW after normal return and
+before the next MFRAME invalidates the outgoing result slot.
+
+The producer must validate the caller-owned span and the prepared frame
+before publishing the transient Ref64. FlashVM's local-call checker already
+enforces those roles. The imported producer, checked provider resolution
+and ordinary file admission remain open. The x64 strict-UBSan replay at
+aa326cf8 passed the serialized clock fixture in four C/JIT stack modes,
+both 48-epoch provider paths and eight refusal/cleanup cases.
