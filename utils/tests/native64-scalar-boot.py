@@ -46,7 +46,7 @@ def main():
             for jit in (0, 1):
                 path = '/'+str(image.relative_to(args.root.resolve()))
                 output = execute(command+['-c', str(jit), '-d', path])
-                sysio = 'native64 startup: trusted Sys I/O registered (13 fixed exports); ordinary file imports remain disabled' in output
+                sysio = 'native64 startup: trusted Sys I/O registered; ordinary file imports remain disabled' in output
                 if sysio != args.sys_io:
                     raise RuntimeError('Unexpected Sys I/O startup selection: '+output)
                 font = 'native64 startup: trusted Freetype registered (6 fixed exports); file imports remain disabled' in output

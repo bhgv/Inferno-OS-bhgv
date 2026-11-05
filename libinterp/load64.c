@@ -1409,11 +1409,12 @@ prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
 		return nil;
 	}
 	dynamic = load.image.code.data[4] == ILOAD;
-	if(!dynamic && load.image.imports.count != 1)
+	if((!dynamic && load.image.imports.count != 1) ||
+	   (load.image.imports.count == 1 &&
+	    !dis64syscode(load.image.code.data, load.image.code.bytes, Dis64ClockInstructions, &load.image.code, 0))){
+		kwerrstr("Dis64 Sys calls do not match the imported group");
 		return nil;
-	if(load.image.imports.count == 1 &&
-	   !dis64syscode(load.image.code.data, load.image.code.bytes, Dis64ClockInstructions, &load.image.code, 0))
-		return nil;
+	}
 	if(load.image.data.bytes != (dynamic ? 16 : 8) ||
 	   load.image.data.map[0] != (dynamic ? 0xc0 : 0x80)){
 		kwerrstr("unsupported Dis64 Sys clock module data");

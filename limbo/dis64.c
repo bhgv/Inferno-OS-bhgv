@@ -131,18 +131,17 @@ dis64trace(Dis64Lower *lower)
 
 /* Match the complete lowered init body before changing its frame geometry. */
 static int
-dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes)
+dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes,
+	uchar *calls, unsigned int *ncalls)
 {
-	static const ushort ops[] = {IMFRAME, ILEA, IMCALL};
-	static const uchar destinations[] = {Afp, Afpind, Afp};
 	Decl *import, *export, *path;
-	unsigned int i, step;
-	long frame, result, source, destination;
-	int sleep, tail;
+	unsigned int i, phase, binding, used;
+	long frame;
+	int sleep;
 
 	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 ||
 	   entry->ty->ids != nil || entry->ty->varargs || entry->ty->tof->kind != Tnone ||
-	   count < 5 || count > 3*Dis64ClockCalls+3 || databytes != 8 ||
+	   count < 5 || count > 4*Dis64ClockCalls+2 || databytes != 8 ||
 	   ldts == nil || ldts->next != nil || ldts->init == nil ||
 	   ldts->init->decl == nil)
 		return 0;
@@ -163,7 +162,7 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 	   import->ty->tof->kind != Tint)
 		return 0;
 	sleep = import->next != nil;
-	if(ldts->init->val != 1+sleep || (count-2-4*sleep)%3 != 0 || count < 5+4*sleep)
+	if(ldts->init->val != 1+sleep)
 		return 0;
 	if(sleep){
 		Decl *second = import->next;
@@ -175,8 +174,8 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 	for(export=impdecl->ty->tof->ids; export != nil; export=export->next)
 		if(export->store == Dglobal || (export->store == Dfn && export->sym != entry->sym))
 			return 0;
-	i = 0;
-	frame = result = 0;
+	i = phase = binding = used = 0;
+	frame = 0;
 	for(; input != nil; input=input->next){
 		if(input->op == INOOP)
 			continue;
@@ -187,42 +186,49 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 			   input->mm != Aldt || input->m.reg != 0 || input->dm != Afp || input->d.reg != 32)
 				return 0;
 		}else if(i == count-1){
-			if(input->op != IRET || input->sm != Anone || input->mm != Anone || input->dm != Anone)
+			if(phase != 0 || used == 0 || input->op != IRET ||
+			   input->sm != Anone || input->mm != Anone || input->dm != Anone)
 				return 0;
-		}else{
-			tail = sleep && i >= count-5;
-			if(tail && i == count-4){
-				if(input->op != IMOVW || input->sm != Aimm || input->s.offset != 0 ||
-				   input->mm != Anone || input->dm != Afpind ||
-				   input->d.reg != frame || input->d.offset != 32)
-					return 0;
-				i++;
-				continue;
-			}
-			step = tail ? (i == count-5 ? 0 : i-(count-4)) : (i-1)%nelem(ops);
-			if(input->op != ops[step] || input->sm != Afp || input->dm != destinations[step])
+		}else switch(phase){
+		case 0:
+			if(input->op != IMFRAME || input->sm != Afp || input->s.reg != 32 ||
+			   input->dm != Afp || (input->d.reg != 36 && input->d.reg != 40) ||
+			   input->mm != Aoff || input->m.decl == nil)
 				return 0;
-			if(step == 0){
-				frame = input->d.reg;
-				if(frame != 36 && frame != 40)
-					return 0;
-				/* The scalar result and legacy call-frame pointer occupy distinct cells. */
-				result = frame == 36 ? 40 : 36;
-			}
-			source = step == 0 ? 32 : step == 1 ? result : frame;
-			destination = step == 2 ? 32 : frame;
-			if(input->s.reg != source || input->d.reg != destination)
+			binding = sleep && input->m.decl->iface == import->next;
+			if(input->m.decl->iface != (binding ? import->next : import) ||
+			   input->m.decl->iface->offset != binding)
 				return 0;
-			if(step == 1){
-				if(input->mm != Anone || input->d.offset != 16)
-					return 0;
-			}else if(input->mm != Aoff || input->m.decl == nil ||
-			         input->m.decl->iface != (tail ? import->next : import) ||
-			         input->m.decl->iface->offset != tail)
+			frame = input->d.reg;
+			phase = binding ? 3 : 1;
+			break;
+		case 3:
+			if(input->op != IMOVW || input->sm != Aimm || input->s.offset != 0 ||
+			   input->mm != Anone || input->dm != Afpind ||
+			   input->d.reg != frame || input->d.offset != 32)
 				return 0;
+			phase = 1;
+			break;
+		case 1:
+			if(input->op != ILEA || input->sm != Afp || input->s.reg != (frame == 36 ? 40 : 36) ||
+			   input->mm != Anone || input->dm != Afpind ||
+			   input->d.reg != frame || input->d.offset != 16)
+				return 0;
+			phase = 2;
+			break;
+		case 2:
+			if(input->op != IMCALL || input->sm != Afp || input->s.reg != frame ||
+			   input->dm != Afp || input->d.reg != 32 || input->mm != Aoff ||
+			   input->m.decl == nil || input->m.decl->iface != (binding ? import->next : import) ||
+			   used == Dis64ClockCalls)
+				return 0;
+			calls[used++] = binding;
+			phase = 0;
+			break;
 		}
 		i++;
 	}
+	*ncalls = used;
 	return i == count ? 1+sleep : 0;
 }
 
@@ -249,12 +255,13 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 	Dis64ModuleInfo module = {0};
 	DisStringPoolRecord names[4];
 	Dis64Payload sections[5];
-	uchar metadata[24], code[4+sizeof(load)+Dis64ClockCalls*sizeof(call)+sizeof(sleepcall)+sizeof(exit)];
+	uchar metadata[24], code[4+sizeof(load)+Dis64ClockCalls*sizeof(sleepcall)+sizeof(exit)];
 	uchar typedata[32], imports[56], runes[4][4+4*255], strings[4+sizeof(runes)], output[2048];
-	unsigned int sizes[5], i, j, length, written, bindings, sleep, period = Dis64Int;
+	uchar calls[Dis64ClockCalls];
+	unsigned int sizes[5], i, j, length, written, bindings, ncalls, sleep, period = Dis64Int;
 	const char *labels[] = {"$Sys", "millisec", impdecl->sym->name, "sleep"};
 
-	bindings = dis64clockshape(entry, globals, ldts, input, count, databytes);
+	bindings = dis64clockshape(entry, globals, ldts, input, count, databytes, calls, &ncalls);
 	if(bindings == 0)
 		return 0;
 	sleep = bindings == 2;
@@ -278,13 +285,14 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 	dis64put32(code, count);
 	sizes[1] = 4+sizeof(load);
 	memmove(code+4, load, sizeof(load));
-	for(i=0; i<(count-2-4*sleep)/3; i++){
-		memmove(code+sizes[1], call, sizeof(call));
-		sizes[1] += sizeof(call);
-	}
-	if(sleep){
-		memmove(code+sizes[1], sleepcall, sizeof(sleepcall));
-		sizes[1] += sizeof(sleepcall);
+	for(i=0; i<ncalls; i++){
+		if(calls[i]){
+			memmove(code+sizes[1], sleepcall, sizeof(sleepcall));
+			sizes[1] += sizeof(sleepcall);
+		}else{
+			memmove(code+sizes[1], call, sizeof(call));
+			sizes[1] += sizeof(call);
+		}
 	}
 	memmove(code+sizes[1], exit, sizeof(exit));
 	sizes[1] += sizeof(exit);
