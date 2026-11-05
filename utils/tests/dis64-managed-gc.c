@@ -59,6 +59,69 @@ managedrecordcontrol(void)
 	require(allocations == before);
 }
 
+#define TRIALWORD(x) 0, 0, 0, (x)
+static const uchar trialpool[] = {
+	TRIALWORD(3),
+	TRIALWORD(6), TRIALWORD('S'), TRIALWORD('t'), TRIALWORD('r'), TRIALWORD('i'), TRIALWORD('n'), TRIALWORD('g'),
+	TRIALWORD(8), TRIALWORD('u'), TRIALWORD('n'), TRIALWORD('q'), TRIALWORD('u'),
+	TRIALWORD('o'), TRIALWORD('t'), TRIALWORD('e'), TRIALWORD('d'),
+	TRIALWORD(6), TRIALWORD('q'), TRIALWORD('u'), TRIALWORD('o'), TRIALWORD('t'), TRIALWORD('e'), TRIALWORD('d'),
+};
+#undef TRIALWORD
+
+static int
+managedpair(int reverse, const LimboNative64Managed *shape)
+{
+	uchar imported[12+Dis64ManagedSignatureBytes], exported[16+Dis64ManagedSignatureBytes];
+	uchar descriptors[] = {0,0,0,1, 0,0,0,72, 0,0,0,8, 0,0x80};
+	DisStringPoolView names;
+	Dis64TypeTable types;
+	Dis64Binding selected;
+	unsigned int symbol = reverse+1;
+
+	require(disstringpoolcheck(trialpool, sizeof(trialpool), 3, &names));
+	require(dis64typescheck(descriptors, sizeof(descriptors), 1, 72, &types));
+	dis64put32(imported, 0);
+	dis64put32(imported+4, symbol);
+	dis64put32(imported+8, Dis64ManagedSignatureBytes);
+	memmove(imported+12, trialrecords[reverse], Dis64ManagedSignatureBytes);
+	dis64put32(exported, symbol);
+	dis64put32(exported+4, 1);
+	dis64put32(exported+8, 0);
+	dis64put32(exported+12, Dis64ManagedSignatureBytes);
+	memmove(exported+16, trialrecords[reverse], Dis64ManagedSignatureBytes);
+
+	selected.entry = 99;
+	require(!dis64managedpair(imported, sizeof(imported)-1, exported, sizeof(exported),
+		&trialschema, &names, &names, 0, shape, &types, 2, &selected));
+	require(!dis64managedpair(imported, sizeof(imported), exported, sizeof(exported),
+		&trialschema, &names, &names, 1, shape, &types, 2, &selected));
+	require(!dis64managedpair(imported, sizeof(imported), exported, sizeof(exported),
+		&trialschema, &names, &names, 0, shape, &types, 1, &selected));
+	dis64put32(exported, 3-symbol);
+	require(!dis64managedpair(imported, sizeof(imported), exported, sizeof(exported),
+		&trialschema, &names, &names, 0, shape, &types, 2, &selected));
+	dis64put32(exported, symbol);
+	dis64put32(exported+8, 1);
+	require(!dis64managedpair(imported, sizeof(imported), exported, sizeof(exported),
+		&trialschema, &names, &names, 0, shape, &types, 2, &selected));
+	dis64put32(exported+8, 0);
+	memmove(exported+16, trialrecords[!reverse], Dis64ManagedSignatureBytes);
+	require(!dis64managedpair(imported, sizeof(imported), exported, sizeof(exported),
+		&trialschema, &names, &names, 0, shape, &types, 2, &selected));
+	memmove(exported+16, trialrecords[reverse], Dis64ManagedSignatureBytes);
+	descriptors[13] = 0;
+	require(dis64typescheck(descriptors, sizeof(descriptors), 1, 72, &types));
+	require(!dis64managedpair(imported, sizeof(imported), exported, sizeof(exported),
+		&trialschema, &names, &names, 0, shape, &types, 2, &selected));
+	descriptors[13] = 0x80;
+	require(dis64typescheck(descriptors, sizeof(descriptors), 1, 72, &types));
+	require(selected.entry == 99);
+	return dis64managedpair(imported, sizeof(imported), exported, sizeof(exported),
+		&trialschema, &names, &names, 0, shape, &types, 2, &selected) &&
+		selected.entry == 1 && selected.frame == 0;
+}
+
 Prog*
 currun(void)
 {
@@ -223,6 +286,7 @@ managedvmcase(Type *callerframe, Type *calleeframe, int reverse, int empty, int 
 	require(!dis64managedmatch(&swapped, signature, entryspec));
 	require(!dis64managedmatch(&decoded, signature, reverse ? &limbo_native64_String_unquoted_entry :
 		&limbo_native64_String_quoted_entry));
+	require(managedpair(reverse, signature));
 	require(allocations == before);
 	require(dis64managedmatch(&decoded, signature, entryspec));
 	require(entryspec->frame_size == calleeframe->size &&

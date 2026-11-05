@@ -81,3 +81,31 @@ export and allocating frames. It checks every one-bit mutation of both trial
 records, every shorter length, a trailing byte, a nested list, and the
 unchanged rejection of the trial records by the scalar reader. No normal
 Dis64 reader or loader selects the trial schema.
+
+## Shared trial fixtures
+
+FlashVM's review accepts this record shape for the bounded pilot. For
+independent fixture replay, use the following big-endian words. The values
+`face0010`, `71` and `72` are test-only substitutions for the symbolic
+version, String tag and List tag. They carry no registry assignment.
+
+| Record | Hex words |
+|---|---|
+| Import `String.unquoted` | `0 1 14 face0010 1 72 71 71` |
+| Export `unquoted` | `1 1 0 14 face0010 1 72 71 71` |
+| Import `String.quoted` | `0 2 14 face0010 1 71 72 71` |
+| Export `quoted` | `2 1 0 14 face0010 1 71 72 71` |
+
+The name pool is `String`, `unquoted`, `quoted` in that order. The provider
+name is pool entry zero. Both exports select Dis-PC one in a two-instruction
+extent and descriptor zero. The descriptor is 72 bytes, aligned to eight,
+with map bytes `00 80`. These are independent record fixtures. They omit
+module, code and table-count envelopes and make no claim about an executable
+provider.
+
+Expected refusals include truncating the import by a byte, selecting another
+provider name, reducing the instruction extent to one, substituting the other
+symbol, changing the frame ID to one, swapping the export signature, and
+changing the descriptor map to `00 00`. Refusal must preserve the output and
+take place before native allocation. The ordinary version-1 scalar reader
+continues to reject the trial signature records.
