@@ -59,7 +59,12 @@ def main():
                           ('static void\nsysstatusframe(', 'void\nSys_millisec('))
         body = body.replace('SYS_MILLISEC', clock)
         link = (ROOT/'libinterp/link.c').read_text()
-        body = body.replace('SYS_MKLINK', support['function'](link, 'Modlink*\nmklinkmod('))
+        linker = link[link.index('static int\nlinkm('):link.index('/* Release partial or complete export tables')]
+        body = body.replace('SYS_LINKER', linker)
+        xec = (ROOT/'libinterp/xec.c').read_text()
+        iload = '\n'.join(support['function'](xec, signature) for signature in
+                          ('static Import*\nmoduleimports(', 'OP(iload)'))
+        body = body.replace('SYS_ILOAD', iload)
         fixture = support['constructor']()
         fixture = fixture.replace('check(p == H);', 'if(p != H) destroysyslink(p);')
         unit = work/'test.c'

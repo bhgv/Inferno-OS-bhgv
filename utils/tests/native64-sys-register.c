@@ -188,7 +188,111 @@ destroysyslink(void *object)
 }
 
 
-SYS_MKLINK
+REG R;
+int mutator, nprop;
+char exModule[] = "invalid module";
+
+void
+krethrow(void)
+{
+	nexterror();
+}
+
+/* This fixture supplies only the builtin name and forbids filesystem fallback. */
+char*
+string2c(String *name)
+{
+	check(name != nil && name != H);
+	return name->Sascii;
+}
+
+Module*
+lookmod(char *name)
+{
+	USED(name);
+	abort();
+}
+
+Module*
+readmod(char *name, Module *cached, int sync)
+{
+	USED(name); USED(cached); USED(sync);
+	abort();
+}
+
+int
+native64lea8step(void)
+{
+	abort();
+}
+
+void
+newdyndata(Modlink *link)
+{
+	USED(link);
+	abort();
+}
+
+void
+newmp(void *destination, void *source, Type *type)
+{
+	USED(destination); USED(source); USED(type);
+	abort();
+}
+
+SYS_LINKER
+
+#define OP(name) void name(void)
+SYS_ILOAD
+#undef OP
+
+static int
+loadsysgroup(void *unused)
+{
+	USED(unused);
+	iload();
+	return 1;
+}
+
+/* Load two generated exports through production ILOAD and linkmod. */
+static void
+checksysgroup(Module *sys)
+{
+	Import imports[] = {{.name = "open"}, {.name = "millisec"}, {0}};
+	Import *tables[] = {imports, nil};
+	Module caller = {.rt = HASLDT, .ldt = tables, .cstep = native64lea8step};
+	Modlink current = {.m = &caller, .MP = H}, *destination, *published;
+	String name = {0}, *source = &name;
+	WORD ordinal = 0;
+	int before;
+
+	imports[0].sig = sys->ext[11].sig;
+	imports[1].sig = sys->ext[10].sig;
+	memmove(name.Sascii, "$Sys", 5);
+	R.M = &current;
+	R.s = &source;
+	R.m = &ordinal;
+	R.d = &destination;
+	destination = H;
+	before = live;
+	check(kprotect(loadsysgroup, nil));
+	check(destination != H && destination->m == sys && destination->nlinks == 2);
+	check(destination->links[0].u.runt == Sys_open && destination->links[0].frame == sys->ext[11].frame);
+	check(destination->links[1].u.runt == Sys_millisec && destination->links[1].frame == sys->ext[10].frame);
+	check(sys->ref == 2 && clockroot == nil);
+	published = destination;
+	imports[1].sig ^= 1;
+	check(!kprotect(loadsysgroup, nil) && strcmp(diagnostic, exModule) == 0);
+	check(destination == published && sys->ref == 2);
+	imports[1].sig ^= 1;
+	rejectroot = 1;
+	check(!kprotect(loadsysgroup, nil) && strcmp(diagnostic, exNomem) == 0);
+	rejectroot = 0;
+	check(destination == published && sys->ref == 2);
+	destroy(destination);
+	check(sys->ref == 1 && live == before && clockroot == nil && Tmodlink.ref == 1);
+	puts("PASS production ILOAD and linkmod: ordered Sys group, bad second signature and root failure");
+}
 
 
 /* Borrow a link only for the import-matching tests. */
@@ -258,6 +362,7 @@ main(void)
 	m->ext[11].sig ^= 1;
 	check(native64sysexport("open", &owner) == nil && owner == nil);
 	m->ext[11].sig ^= 1;
+	checksysgroup(m);
 	check(clockimport(clock_image, sizeof(clock_image), 0) == &m->ext[10]);
 	check(clockimport(clock_image, sizeof(clock_image), 1) == nil);
 	check(clockimport(clock_image, sizeof(clock_image)-1, 0) == nil);
