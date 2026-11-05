@@ -825,6 +825,9 @@ static const Dis64StorageLimits dis64numericlimits = {
 
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 
+#define Dis64ClockCalls 32U // Maximum calls in one explicitly selected clock program.
+#define Dis64ClockInstructions (4U*Dis64ClockCalls+1U) // Call-and-copy groups plus exit.
+
 
 /* Resolve one exact scalar import from an already validated image. */
 static const Link*
@@ -864,41 +867,70 @@ dis64sysclockimport(const uchar *image, ulong bytes, unsigned int ordinal, Modul
 }
 
 
-/* Decode only the private MFRAME, existing LEA, MCALL, EXIT wire sequence. */
+/* Decode bounded clock calls and an optional WORD copy after each completed call. */
 static int
 dis64clockcode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64CodeView *code)
 {
-	static const uchar ops[] = {IMFRAME, ILEA, IMCALL, IEXIT};
-	static const uchar modes[] = {SRC(AMP)|AXIMM|DST(AFP), SRC(AFP)|DST(AFP|AIND),
-		SRC(AFP)|AXIMM|DST(AMP), SRC(AXXX)|DST(AXXX)};
 	Dis64CallDecoded decoded;
-	unsigned int at, i, used;
+	Dis64Instruction *inst;
+	unsigned int at, i, used, count, phase, calls;
+	int copied;
 
-	if(limit < nelem(ops) || bytes < 4 || dis64u32(data) != nelem(ops))
+	if(bytes < 4)
+		return 0;
+	count = dis64u32(data);
+	if(count < 4 || count > limit || count > Dis64ClockInstructions)
 		return 0;
 	at = 4;
-	for(i=0; i<nelem(ops); i++){
-		if(!dis64callread(data+at, bytes-at, &decoded, &used) ||
-		   decoded.instruction.op != ops[i] || decoded.instruction.mode != modes[i])
-			return 0;
-		if(i == 0 && (decoded.instruction.source != 0 || decoded.instruction.middle != 0 ||
-		   decoded.instruction.destination != 40))
-			return 0;
-		if(i == 1 && (decoded.instruction.source != 72 ||
-		   decoded.instruction.destination != 40 || decoded.secondary != 32))
-			return 0;
-		if(i == 2 && (decoded.instruction.source != 40 || decoded.instruction.middle != 0 ||
-		   decoded.instruction.destination != 0))
+	phase = calls = copied = 0;
+	for(i=0; i<count; i++){
+		if(!dis64callread(data+at, bytes-at, &decoded, &used))
 			return 0;
 		at += used;
+		inst = &decoded.instruction;
+		switch(inst->op){
+		case IMFRAME:
+			if(phase != 0 || inst->mode != (SRC(AMP)|AXIMM|DST(AFP)) ||
+			   inst->source != 0 || inst->middle != 0 || inst->destination != 40)
+				return 0;
+			phase = 1;
+			copied = 0;
+			break;
+		case ILEA:
+			if(phase != 1 || inst->mode != (SRC(AFP)|DST(AFP|AIND)) ||
+			   inst->source != 72 || inst->destination != 40 || decoded.secondary != 32)
+				return 0;
+			phase = 2;
+			break;
+		case IMCALL:
+			if(phase != 2 || inst->mode != (SRC(AFP)|AXIMM|DST(AMP)) ||
+			   inst->source != 40 || inst->middle != 0 || inst->destination != 0)
+				return 0;
+			phase = 0;
+			if(++calls > Dis64ClockCalls)
+				return 0;
+			break;
+		case IMOVW:
+			if(phase != 0 || calls == 0 || copied || inst->mode != (SRC(AFP)|DST(AFP)) ||
+			   inst->source != 72 || inst->destination != 64)
+				return 0;
+			copied = 1;
+			break;
+		case IEXIT:
+			if(phase != 0 || calls == 0 || i+1 != count ||
+			   inst->mode != (SRC(AXXX)|DST(AXXX)) || at != bytes)
+				return 0;
+			code->data = data;
+			code->bytes = bytes;
+			code->count = count;
+			return 1;
+		default:
+			return 0;
+		}
 	}
-	if(at != bytes)
-		return 0;
-	code->data = data;
-	code->bytes = bytes;
-	code->count = nelem(ops);
-	return 1;
+	return 0;
 }
+
 #endif
 
 

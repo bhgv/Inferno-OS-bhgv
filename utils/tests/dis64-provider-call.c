@@ -130,7 +130,7 @@ long
 osmillisec(void)
 {
 	clockreads++;
-	return 123456;
+	return 123456+clockreads;
 }
 
 
@@ -216,7 +216,16 @@ clockcall(uchar *image, size_t bytes, int jit, int grow)
 	numericcollect(&process);
 	require(callquantum(&process) == 1 && process.R.M == caller && process.R.FP == root);
 	memmove(&stamp, root+72, sizeof(stamp));
-	require(stamp == 123456 && clockreads == before+1 && D2H(clock)->ref == 1);
+	require(stamp == 123456+before+1 && clockreads == before+1 && D2H(clock)->ref == 1);
+	require(callquantum(&process) == 1 && process.R.M == caller);
+	memmove(&stamp, root+64, sizeof(stamp));
+	require(stamp == 123456+before+1);
+	for(slot=0; slot<4; slot++){
+		numericcollect(&process);
+		require(callquantum(&process) == 1 && process.R.M == caller);
+	}
+	memmove(&stamp, root+64, sizeof(stamp));
+	require(stamp == 123456+before+2 && clockreads == before+2 && D2H(clock)->ref == 1);
 	require(callquantum(&process) == 0 && message[0] == 0);
 	destroystack(&R);
 	numericdrain();
@@ -258,6 +267,7 @@ main(int argc, char **argv)
 	optab[IMCALL] = mcall;
 	optab[IRET] = ret;
 	optab[IADDW] = addw;
+	optab[IMOVW] = movw;
 	optab[IDIVW] = divw;
 	optab[IEXIT] = iexit;
 	if(strcmp(argv[3], "clock") == 0){

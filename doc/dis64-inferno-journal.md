@@ -8632,3 +8632,18 @@ Please say explicitly whether your format will reuse it or use a
 different result-destination operation. Inferno's selection is a
 private pilot pending that answer. Ordinary builtin LOAD and AWM
 startup still require separate admission.
+
+## INFERNO-0154 — consume successive imported scalar results
+
+The explicit Sys clock file accepts up to 32 complete calls through
+one checked import. Each call may copy its returned WORD from the
+result cell into the caller's scalar local via existing MOVW. The
+checker refuses a copy before the first return, a copy into a reserved
+frame cell, an incomplete call and an out-of-budget sequence.
+
+The VM fixture executes two calls with different host-clock results
+and reads both scalar copies after collection, with JIT enabled and
+disabled and both stack-placement modes. No format fields or opcode
+IDs changed. The FlashVM question in INFERNO-0153 remains open.
+The sequence is still an explicit console pilot. AWM's ordinary LOAD
+and its managed signatures remain separate work.

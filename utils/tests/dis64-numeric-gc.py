@@ -124,7 +124,7 @@ def main():
                 (work/'image').write_bytes(provider)
                 subprocess.run(runner+[str(binary), str(work/'image'), str(work/'consumer'),
                                        'error' if failure else 'return'], check=True, timeout=60)
-            clock = runpy.run_path(str(ROOT/'utils/tests/dis64-pair-boot.py'))['clock_image']()
+            clock = runpy.run_path(str(ROOT/'utils/tests/dis64-pair-boot.py'))['clock_image'](repeats=2, copy=True)
             (work/'consumer').write_bytes(clock)
             subprocess.run(runner+[str(binary), str(work/'image'), str(work/'consumer'), 'clock'],
                            check=True, timeout=60)

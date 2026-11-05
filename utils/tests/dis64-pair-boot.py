@@ -69,20 +69,24 @@ def two_symbols(*, second=1, terminal_failure=False, wrong_ordinal=False,
 
 
 # Serialize the private Sys clock sequence with the existing indirect LEA codec.
-def clock_image(*, result_offset=72, module='$Sys', signature=1):
+def clock_image(*, result_offset=72, module='$Sys', signature=1, repeats=1,
+                copy=False, early_copy=False, copy_destination=64):
     words, ins = RAW['W'], RAW['I']
     bindings = RAW['RAW']['RAW']
     calls = runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))
     frame = ins('IMFRAME', 65, source=0, middle=0, destination=40)
     bind = calls['indirect']('ILEA', result_offset, 40, 32)
     call = ins('IMCALL', 72, source=40, middle=0, destination=0)
+    move = ins('IMOVW', 9, source=72, destination=copy_destination)
+    group = (move if early_copy else b'')+frame+bind+call+(move if copy else b'')
+    count = repeats*(3+copy+early_copy)+1
     names = (module, 'millisec', 'caller')
     pool = words(len(names))+b''.join(words(len(name), *map(ord, name)) for name in names)
     sections = RAW['SECTIONS'](
         name=2, databytes=8,
         imports=[bindings['binding'](module=0, sig=bindings['signature'](signature))],
         types=[RAW['D'](80, 8), RAW['D'](8, 8, b'\x80')],
-        code=words(4)+frame+bind+call+RAW['EXIT'],
+        code=words(count)+group*repeats+RAW['EXIT'],
     )
     return RAW['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
 
@@ -159,16 +163,20 @@ def main():
         if args.sys_clock:
             builtin = pair[:2]+['-P', '$Sys']
             consumer.write_bytes(clock_image())
-            for jit in (0, 1):
-                output = execute(command+['-c', str(jit)]+builtin)
-                marker = f'native64 scalar module caller: jit={jit}, exit=""'
-                if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
-                    raise RuntimeError('Sys clock file boot did not complete: '+output)
+            for repeats, copy in ((1, False), (3, True), (32, True)):
+                consumer.write_bytes(clock_image(repeats=repeats, copy=copy))
+                for jit in (0, 1):
+                    output = execute(command+['-c', str(jit)]+builtin)
+                    marker = f'native64 scalar module caller: jit={jit}, exit=""'
+                    if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                        raise RuntimeError('Sys clock file boot did not complete: '+output)
             for options in (pair[:2], automatic, pair):
                 output = execute(command+options)
                 if BOOT['RETIRED'] in output or 'panic:' not in output:
                     raise RuntimeError('Sys clock file bypassed explicit selection: '+output)
-            for case in ({'result_offset': 64}, {'module': '$sys'}, {'signature': 0}):
+            for case in ({'result_offset': 64}, {'module': '$sys'}, {'signature': 0},
+                         {'early_copy': True}, {'copy': True, 'copy_destination': 40},
+                         {'repeats': 33}):
                 consumer.write_bytes(clock_image(**case))
                 output = execute(command+builtin)
                 if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
