@@ -73,10 +73,15 @@ dis64storagecode(const unsigned char *data, unsigned int bytes, unsigned int lim
  * Source/policy/result occupy independent disjoint live mapped storage. Every
  * borrowed source span remains immutable and mapped for the complete view lifetime;
  * aggregate publication does not provide alias handling or acquire source lifetime. */
+typedef int (*Dis64StorageBindingCheck)(const unsigned char*, unsigned int, unsigned int,
+	const DisStringPoolView*, const Dis64TypeTable*, unsigned int, unsigned int,
+	unsigned int, Dis64Bindings*, const void*);
+
 static int
-dis64storageimagecheckcode(const unsigned char *data, unsigned int bytes,
+dis64storageimagecheckrecords(const unsigned char *data, unsigned int bytes,
 	const Dis64StorageLimits *limits, Dis64StorageImage *result,
-	int (*checkcode)(const unsigned char*, unsigned int, unsigned int, Dis64CodeView*))
+	int (*checkcode)(const unsigned char*, unsigned int, unsigned int, Dis64CodeView*),
+	Dis64StorageBindingCheck checkbindings, const void *context)
 {
 	Dis64StorageImage image = {0};
 	Dis64Section sections[8] = {{0}}, section;
@@ -130,16 +135,32 @@ dis64storageimagecheckcode(const unsigned char *data, unsigned int bytes,
 			return 0;
 	}
 	for(i=Dis64Imports; i<=Dis64Exports; i++){
+		Dis64Bindings *bindings;
+
 		if((image.present&(1U<<(i-1))) == 0)
 			continue;
 		section = sections[i-1];
-		if(!dis64bindingscheck(data+section.offset, section.bytes, i == Dis64Exports,
+		bindings = i == Dis64Imports ? &image.imports : &image.exports;
+		if(checkbindings != 0){
+			if(!checkbindings(data+section.offset, section.bytes, i == Dis64Exports,
+			   &image.strings, &image.types, image.code.count, limits->bindings,
+			   limits->parameters, bindings, context))
+				return 0;
+		}else if(!dis64bindingscheck(data+section.offset, section.bytes, i == Dis64Exports,
 		   &image.strings, &image.types, image.code.count, limits->bindings,
-		   limits->parameters, i == Dis64Imports ? &image.imports : &image.exports))
+		   limits->parameters, bindings))
 			return 0;
 	}
 	*result = image;
 	return 1;
+}
+
+static int
+dis64storageimagecheckcode(const unsigned char *data, unsigned int bytes,
+	const Dis64StorageLimits *limits, Dis64StorageImage *result,
+	int (*checkcode)(const unsigned char*, unsigned int, unsigned int, Dis64CodeView*))
+{
+	return dis64storageimagecheckrecords(data, bytes, limits, result, checkcode, 0, 0);
 }
 
 

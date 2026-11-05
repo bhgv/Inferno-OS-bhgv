@@ -2,7 +2,7 @@
 #ifndef DIS64_MANAGED_SIGNATURE_H
 #define DIS64_MANAGED_SIGNATURE_H
 
-#include "dis64-bindings.h"
+#include "dis64-storage-image.h"
 #include "native64-entry.h"
 
 typedef struct Dis64ManagedSchema Dis64ManagedSchema;
@@ -140,6 +140,52 @@ dis64managedpair(const unsigned char *imported, unsigned int importbytes,
 			return 0;
 	*result = out;
 	return 1;
+}
+
+/* A trial table has one managed record. The scalar accessor cannot read it. */
+static int
+dis64managedtable(const unsigned char *data, unsigned int bytes, unsigned int exports,
+	const DisStringPoolView *pool, const Dis64TypeTable *types, unsigned int instructions,
+	unsigned int limit, unsigned int parameters, Dis64Bindings *result, const void *context)
+{
+	Dis64Binding binding;
+	Dis64ManagedSignature signature;
+	DisRuneView name;
+	Dis64Type frame;
+
+	if(bytes < 4 || dis64u32(data) != 1 || limit == 0 || parameters == 0 ||
+	   !dis64managedbindingread(data+4, bytes-4, exports, context, &binding, &signature) ||
+	   !disstringpoolget(pool, binding.symbol, &name))
+		return 0;
+	if(exports){
+		if(binding.entry >= instructions || !dis64typeget(types, binding.frame, &frame) ||
+		   frame.bytes < 64 || frame.align != 8)
+			return 0;
+	}else if(!disstringpoolget(pool, binding.module, &name))
+		return 0;
+	*result = (Dis64Bindings){data, bytes, 1, exports, parameters};
+	return 1;
+}
+
+/* Join two complete candidate storage images. This grants no executable admission. */
+static int
+dis64managedimagepair(const unsigned char *consumer, unsigned int consumerbytes,
+	const unsigned char *provider, unsigned int providerbytes, const Dis64StorageLimits *limits,
+	const Dis64ManagedSchema *schema, const LimboNative64Managed *shape, Dis64Binding *result)
+{
+	Dis64StorageImage in, out;
+
+	if(!dis64storageimagecheckrecords(consumer, consumerbytes, limits, &in,
+	   dis64storagecode, dis64managedtable, schema) ||
+	   !dis64storageimagecheckrecords(provider, providerbytes, limits, &out,
+	   dis64storagecode, dis64managedtable, schema) ||
+	   in.module.profile != 1 || out.module.profile != 0 ||
+	   in.imports.count != 1 || in.exports.count != 0 ||
+	   out.imports.count != 0 || out.exports.count != 1)
+		return 0;
+	return dis64managedpair(in.imports.data+4, in.imports.bytes-4,
+		out.exports.data+4, out.exports.bytes-4, schema,
+		&in.strings, &out.strings, out.module.name, shape, &out.types, out.code.count, result);
 }
 
 #endif

@@ -4,6 +4,16 @@
 #undef LIMBO_NATIVE64_MANAGED
 #include "dis64-managed-signature.h"
 
+typedef struct ManagedImageCase ManagedImageCase;
+struct ManagedImageCase {
+	int direction, accepted;
+	const uchar *consumer;
+	unsigned int consumerbytes;
+	const uchar *provider;
+	unsigned int providerbytes;
+};
+#include "managed-images.h"
+
 static Type *stringelement;
 static Prog *managedprocess;
 static int managederror, managedcalls;
@@ -14,6 +24,32 @@ static const uchar trialrecords[2][Dis64ManagedSignatureBytes] = {
 	{0xfa,0xce,0,0x10, 0,0,0,1, 0,0,0,0x72, 0,0,0,0x71, 0,0,0,0x71},
 	{0xfa,0xce,0,0x10, 0,0,0,1, 0,0,0,0x71, 0,0,0,0x72, 0,0,0,0x71},
 };
+
+static void
+managedimagecontrol(void)
+{
+	static const Dis64StorageLimits limits = {8, 8, 128, 8, 8, 8, 2, 2};
+	Dis64StorageImage scalar;
+	Dis64Binding result;
+	const ManagedImageCase *test;
+	const LimboNative64Managed *shape;
+	unsigned int i;
+	int before = allocations;
+
+	for(i=0; i<nelem(managedimages); i++){
+		test = &managedimages[i];
+		shape = test->direction ? &limbo_native64_String_quoted_managed :
+			&limbo_native64_String_unquoted_managed;
+		result.entry = 99;
+		require(!dis64storageimagecheck(test->consumer, test->consumerbytes, &limits, &scalar));
+		require(dis64managedimagepair(test->consumer, test->consumerbytes,
+			test->provider, test->providerbytes, &limits, &trialschema, shape, &result) == test->accepted);
+		require(result.entry == (test->accepted ? 1 : 99));
+		if(test->accepted)
+			require(result.frame == 0);
+	}
+	require(allocations == before);
+}
 
 static void
 managedrecordcontrol(void)
@@ -507,6 +543,7 @@ main(void)
 
 	numericpoolinit();
 	managedrecordcontrol();
+	managedimagecontrol();
 	Tstring.size = sizeof(String);
 	Tstring.free = freestring;
 	Tstring.mark = noptrs;

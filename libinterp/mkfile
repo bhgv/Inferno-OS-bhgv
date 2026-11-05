@@ -167,6 +167,7 @@ ipint.$O:	ipint.h ipintsmod.h
 loader.$O:	loadermod.h
 freetype.$O:	freetypemod.h $ROOT/include/freetype.h $NATIVE64_BOOT_FREETYPE_HEADERS
 math.$O:	math-fixed-call.h $ROOT/include/native64-math-call.h $ROOT/include/native64-frame-cell.h $ROOT/include/mathi.h $ROOT/include/fdlibm-names.h
+load64.$O:	$ROOT/include/dis64-storage-image.h $ROOT/include/dis64-bindings.h
 
 das-spim.c:N:	das-mips.c
 comp-spim.c:N:	comp-mips.c

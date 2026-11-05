@@ -94,6 +94,47 @@ def provider_cases(fixtures, common):
     yield 'ret-operand', pair(code=fixtures['W'](1)+fixtures['I']('IRET', 19, source=0))
 
 
+# Build complete trial images with independent Python envelope and record writers.
+def managed_images(fixtures):
+    words, desc = fixtures['W'], fixtures['D']
+    image, sections = fixtures['IMAGE'], fixtures['SECTIONS']
+    binding = fixtures['RAW']['RAW']['binding']
+    signatures = (words(0xface0010, 1, 0x72, 0x71, 0x71),
+                  words(0xface0010, 1, 0x71, 0x72, 0x71))
+    symbols = ('unquoted', 'quoted')
+    rows = []
+
+    def build(names, **fields):
+        pool = words(len(names))+b''.join(words(len(name), *map(ord, name)) for name in names)
+        return image([(kind, pool if kind == 7 else body) for kind, body in sections(**fields)])
+
+    for direction, signature in enumerate(signatures):
+        symbol = symbols[direction]
+        consumer = build(('caller', symbol, 'String'), name=0, databytes=0,
+                         types=[desc(72, 8, b'\x00\x80')],
+                         imports=[binding(module=2, symbol=1, sig=signature)])
+        def provider(*, name='String', export_name=symbol, sig=signature, entry=1,
+                     frame_map=b'\x00\x80', duplicate=False):
+            export = binding(symbol=2, export=True, entry=entry, frame=0, sig=sig)
+            return build((name, 'unused', export_name), name=0, profile=0, databytes=0,
+                         code=words(2)+fixtures['EXIT']*2, types=[desc(72, 8, frame_map)],
+                         exports=[export]*(2 if duplicate else 1))
+
+        good = provider()
+        rows.extend((direction, accepted, consumer, peer) for accepted, peer in (
+            (1, good), (0, good[:-1]), (0, provider(name='Other')),
+            (0, provider(export_name=symbols[1-direction])),
+            (0, provider(sig=signatures[1-direction])), (0, provider(entry=2)),
+            (0, provider(frame_map=b'\x00\x00')), (0, provider(duplicate=True))))
+    declarations, entries = [], []
+    for index, (direction, accepted, consumer, provider) in enumerate(rows):
+        for label, data in (('consumer', consumer), ('provider', provider)):
+            declarations.append(f'static const uchar {label}{index}[] = {{'+','.join(map(str, data))+'};')
+        entries.append(f'{{{direction},{accepted},consumer{index},sizeof(consumer{index}),'
+                       f'provider{index},sizeof(provider{index})}}')
+    return '\n'.join(declarations)+'\nstatic const ManagedImageCase managedimages[] = {\n'+',\n'.join(entries)+'\n};\n'
+
+
 # Keep the raw image independent and require the controlled missing trace to be detected.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -129,6 +170,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='numeric-gc-', dir=os.environ.get('NATIVE64_TMPDIR', ROOT)) as directory:
         work = Path(directory)
         if args.managed:
+            (work/'managed-images.h').write_text(managed_images(fixtures))
             (work/'string-native64.h').write_bytes(subprocess.check_output(
                 [str(args.limbo.resolve()), '-H', '-M', 'String', '-I'+str(ROOT/'module'),
                  str(ROOT/'module/string.m')], timeout=60))

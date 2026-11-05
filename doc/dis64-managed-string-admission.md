@@ -109,3 +109,12 @@ symbol, changing the frame ID to one, swapping the export signature, and
 changing the descriptor map to `00 00`. Refusal must preserve the output and
 take place before native allocation. The ordinary version-1 scalar reader
 continues to reject the trial signature records.
+
+The managed collector test also builds complete consumer and entryless provider
+images with an independent Python writer. The import's module and symbol use
+different string ordinals from the provider's name and export. The candidate
+reader first checks the complete envelope, storage and record counts, then
+matches the names by Rune contents and verifies the selected PC and frame.
+Both directions pass. Fourteen mutations cover truncation, name, symbol,
+signature, entry, map and duplicate export. The ordinary scalar storage reader
+still refuses each managed consumer. The candidate gate returns metadata only.
