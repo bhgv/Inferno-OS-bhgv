@@ -835,7 +835,7 @@ dis64numericconstruct(void *argument)
 			return 0;
 		instruction = module->prog+i;
 		dis64runtimeinst(instruction, &decoded.instruction, module->prog);
-		if(load->clock && decoded.instruction.op == ILEA){
+		if(load->clock && UDST(decoded.instruction.mode) == (AFP|AIND)){
 			instruction->d.i.f = decoded.instruction.destination;
 			instruction->d.i.s = decoded.secondary;
 		}
@@ -869,7 +869,7 @@ static const Dis64StorageLimits dis64numericlimits = {
 
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 
-#define Dis64ClockInstructions (4U*Dis64ClockCalls+2U) // Optional LOAD, call-and-copy groups, and exit.
+#define Dis64ClockInstructions (5U*Dis64ClockCalls+2U) // LOAD, argument/call/copy groups, and exit.
 
 
 /* Resolve one exact scalar import from an already validated image. */
@@ -895,7 +895,7 @@ dis64sysclockview(const Dis64StorageImage *consumer, unsigned int ordinal, Modul
 	return native64sysclock(owner);
 }
 
-/* The second scalar entry exercises binding only; the clock body cannot call it. */
+/* Verify the second scalar entry before admitting its fixed call frame. */
 static const Link*
 dis64syssleepview(const Dis64StorageImage *consumer, Module **owner)
 {
@@ -932,11 +932,11 @@ dis64sysclockimport(const uchar *image, ulong bytes, unsigned int ordinal, Modul
 
 /* Decode bounded clock calls and an optional WORD copy after each completed call. */
 static int
-dis64clockcode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64CodeView *code)
+dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64CodeView *code, int sleep)
 {
 	Dis64CallDecoded decoded;
 	Dis64Instruction *inst;
-	unsigned int at, i, used, count, phase, calls, slot;
+	unsigned int at, i, used, count, phase, calls, slot, binding;
 	int copied;
 
 	if(bytes < 4)
@@ -945,7 +945,7 @@ dis64clockcode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64C
 	if(count < 4 || count > limit || count > Dis64ClockInstructions)
 		return 0;
 	at = 4;
-	phase = calls = copied = slot = 0;
+	phase = calls = copied = slot = binding = 0;
 	for(i=0; i<count; i++){
 		if(!dis64callread(data+at, bytes-at, &decoded, &used))
 			return 0;
@@ -960,9 +960,11 @@ dis64clockcode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64C
 			break;
 		case IMFRAME:
 			if(phase != 0 || inst->mode != (SRC(AMP)|AXIMM|DST(AFP)) ||
-			   inst->source != slot || inst->middle != 0 || inst->destination != 40)
+			   inst->source != slot || inst->destination != 40 ||
+			   (inst->middle != 0 && !(sleep && slot == 8 && inst->middle == 1)))
 				return 0;
-			phase = 1;
+			binding = inst->middle;
+			phase = binding == 0 ? 1 : 3;
 			copied = 0;
 			break;
 		case ILEA:
@@ -973,13 +975,20 @@ dis64clockcode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64C
 			break;
 		case IMCALL:
 			if(phase != 2 || inst->mode != (SRC(AFP)|AXIMM|DST(AMP)) ||
-			   inst->source != 40 || inst->middle != 0 || inst->destination != slot)
+			   inst->source != 40 || inst->middle != binding || inst->destination != slot)
 				return 0;
 			phase = 0;
 			if(++calls > Dis64ClockCalls)
 				return 0;
 			break;
 		case IMOVW:
+			if(phase == 3){
+				if(inst->mode != (SRC(AIMM)|DST(AFP|AIND)) ||
+				   inst->source != 0 || inst->destination != 40 || decoded.secondary != 64)
+					return 0;
+				phase = 1;
+				break;
+			}
 			if(phase != 0 || calls == 0 || copied || inst->mode != (SRC(AFP)|DST(AFP)) ||
 			   inst->source != 72 || inst->destination != 64)
 				return 0;
@@ -998,6 +1007,12 @@ dis64clockcode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64C
 		}
 	}
 	return 0;
+}
+
+static int
+dis64clockcode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64CodeView *code)
+{
+	return dis64syscode(data, bytes, limit, code, 1);
 }
 
 #endif
@@ -1395,6 +1410,9 @@ prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
 	}
 	dynamic = load.image.code.data[4] == ILOAD;
 	if(!dynamic && load.image.imports.count != 1)
+		return nil;
+	if(load.image.imports.count == 1 &&
+	   !dis64syscode(load.image.code.data, load.image.code.bytes, Dis64ClockInstructions, &load.image.code, 0))
 		return nil;
 	if(load.image.data.bytes != (dynamic ? 16 : 8) ||
 	   load.image.data.map[0] != (dynamic ? 0xc0 : 0x80)){

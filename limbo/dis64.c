@@ -138,12 +138,13 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 	Decl *import, *export, *path;
 	unsigned int i, step;
 	long frame, result, source, destination;
+	int sleep, tail;
 
 	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 ||
 	   entry->ty->ids != nil || entry->ty->varargs || entry->ty->tof->kind != Tnone ||
-	   count < 5 || count > 3*Dis64ClockCalls+2 || (count-2)%3 != 0 || databytes != 8 ||
+	   count < 5 || count > 3*Dis64ClockCalls+3 || databytes != 8 ||
 	   ldts == nil || ldts->next != nil || ldts->init == nil ||
-	   ldts->init->val != 1 || ldts->init->decl == nil)
+	   ldts->init->decl == nil)
 		return 0;
 	path = nil;
 	for(; globals != nil; globals=globals->next){
@@ -157,10 +158,20 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 	if(path == nil)
 		return 0;
 	import = ldts->init->decl->ty->ids;
-	if(import == nil || import->next != nil || strcmp(import->sym->name, "millisec") != 0 ||
+	if(import == nil || strcmp(import->sym->name, "millisec") != 0 ||
 	   import->ty->kind != Tfn || import->ty->ids != nil || import->ty->varargs ||
 	   import->ty->tof->kind != Tint)
 		return 0;
+	sleep = import->next != nil;
+	if(ldts->init->val != 1+sleep || (count-2-4*sleep)%3 != 0 || count < 5+4*sleep)
+		return 0;
+	if(sleep){
+		Decl *second = import->next;
+		if(second->next != nil || strcmp(second->sym->name, "sleep") != 0 ||
+		   second->ty->kind != Tfn || second->ty->ids == nil || second->ty->ids->next != nil ||
+		   second->ty->ids->ty->kind != Tint || second->ty->varargs || second->ty->tof->kind != Tint)
+			return 0;
+	}
 	for(export=impdecl->ty->tof->ids; export != nil; export=export->next)
 		if(export->store == Dglobal || (export->store == Dfn && export->sym != entry->sym))
 			return 0;
@@ -179,7 +190,16 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 			if(input->op != IRET || input->sm != Anone || input->mm != Anone || input->dm != Anone)
 				return 0;
 		}else{
-			step = (i-1)%nelem(ops);
+			tail = sleep && i >= count-5;
+			if(tail && i == count-4){
+				if(input->op != IMOVW || input->sm != Aimm || input->s.offset != 0 ||
+				   input->mm != Anone || input->dm != Afpind ||
+				   input->d.reg != frame || input->d.offset != 32)
+					return 0;
+				i++;
+				continue;
+			}
+			step = tail ? (i == count-5 ? 0 : i-(count-4)) : (i-1)%nelem(ops);
 			if(input->op != ops[step] || input->sm != Afp || input->dm != destinations[step])
 				return 0;
 			if(step == 0){
@@ -197,12 +217,13 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 				if(input->mm != Anone || input->d.offset != 16)
 					return 0;
 			}else if(input->mm != Aoff || input->m.decl == nil ||
-			         input->m.decl->iface != import || import->offset != 0)
+			         input->m.decl->iface != (tail ? import->next : import) ||
+			         input->m.decl->iface->offset != tail)
 				return 0;
 		}
 		i++;
 	}
-	return i == count;
+	return i == count ? 1+sleep : 0;
 }
 
 
@@ -216,20 +237,28 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 		ILEA, SRC(AFP)|DST(AFP|AIND), 0x80, 72, 40, 32,
 		IMCALL, SRC(AFP)|AXIMM|DST(AMP), 0, 40, 8,
 	};
+	static const uchar sleepcall[] = {
+		IMFRAME, SRC(AMP)|AXIMM|DST(AFP), 1, 8, 40,
+		IMOVW, SRC(AIMM)|DST(AFP|AIND), 0, 40, 0x80, 64,
+		ILEA, SRC(AFP)|DST(AFP|AIND), 0x80, 72, 40, 32,
+		IMCALL, SRC(AFP)|AXIMM|DST(AMP), 1, 40, 8,
+	};
 	static const uchar exit[] = {IEXIT, SRC(AXXX)|DST(AXXX)};
 	static const uchar datamap[] = {0xc0}, framemap[] = {0, 0};
 	Dis64Type types[] = {{16, 8, datamap, 1}, {80, 8, framemap, 2}};
 	Dis64ModuleInfo module = {0};
-	DisStringPoolRecord names[3];
+	DisStringPoolRecord names[4];
 	Dis64Payload sections[5];
-	uchar metadata[24], code[4+sizeof(load)+Dis64ClockCalls*sizeof(call)+sizeof(exit)], typedata[32], imports[28];
-	uchar runes[3][4+4*255], strings[4+sizeof(runes)], output[2048];
-	unsigned int sizes[5], i, j, length, written;
-	const char *labels[] = {"$Sys", "millisec", impdecl->sym->name};
+	uchar metadata[24], code[4+sizeof(load)+Dis64ClockCalls*sizeof(call)+sizeof(sleepcall)+sizeof(exit)];
+	uchar typedata[32], imports[56], runes[4][4+4*255], strings[4+sizeof(runes)], output[2048];
+	unsigned int sizes[5], i, j, length, written, bindings, sleep, period = Dis64Int;
+	const char *labels[] = {"$Sys", "millisec", impdecl->sym->name, "sleep"};
 
-	if(!dis64clockshape(entry, globals, ldts, input, count, databytes))
+	bindings = dis64clockshape(entry, globals, ldts, input, count, databytes);
+	if(bindings == 0)
 		return 0;
-	for(i=0; i<nelem(names); i++){
+	sleep = bindings == 2;
+	for(i=0; i<3+sleep; i++){
 		length = strlen(labels[i]);
 		if(length == 0 || length > 255)
 			return 0;
@@ -249,24 +278,38 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 	dis64put32(code, count);
 	sizes[1] = 4+sizeof(load);
 	memmove(code+4, load, sizeof(load));
-	for(i=0; i<(count-2)/3; i++){
+	for(i=0; i<(count-2-4*sleep)/3; i++){
 		memmove(code+sizes[1], call, sizeof(call));
 		sizes[1] += sizeof(call);
 	}
+	if(sleep){
+		memmove(code+sizes[1], sleepcall, sizeof(sleepcall));
+		sizes[1] += sizeof(sleepcall);
+	}
 	memmove(code+sizes[1], exit, sizeof(exit));
 	sizes[1] += sizeof(exit);
-	dis64put32(imports, 1);
+	dis64put32(imports, bindings);
 	dis64put32(imports+4, 0);
 	dis64put32(imports+8, 1);
 	dis64put32(imports+12, 12);
 	if(!dis64modulewrite(metadata, sizeof(metadata), &module, &sizes[0]) ||
 	   !dis64typeswrite(typedata, sizeof(typedata), types, nelem(types), &sizes[2]) ||
 	   !dis64signaturewrite(imports+16, 12, Dis64Int, nil, 0, &written) ||
-	   !disstringpoolwrite(strings, sizeof(strings), names, nelem(names), &sizes[4])){
+	   !disstringpoolwrite(strings, sizeof(strings), names, 3+sleep, &sizes[4])){
 		dis64error(entry, "cannot encode checked clock import");
 		return 1;
 	}
-	sizes[3] = sizeof(imports);
+	sizes[3] = 28;
+	if(sleep){
+		dis64put32(imports+28, 0);
+		dis64put32(imports+32, 3);
+		dis64put32(imports+36, 16);
+		if(!dis64signaturewrite(imports+40, 16, Dis64Int, &period, 1, &written)){
+			dis64error(entry, "cannot encode checked sleep import");
+			return 1;
+		}
+		sizes[3] = sizeof(imports);
+	}
 	sections[0] = (Dis64Payload){Dis64Module, Dis64Required, metadata, sizes[0]};
 	sections[1] = (Dis64Payload){Dis64Code, Dis64Required, code, sizes[1]};
 	sections[2] = (Dis64Payload){Dis64Types, Dis64Required, typedata, sizes[2]};

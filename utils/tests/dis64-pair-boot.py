@@ -109,7 +109,8 @@ def sibling_images(*, failure=False, second='peer', wrong_slot=False, mapbyte=0x
 # Serialize the private Sys clock sequence with the existing indirect LEA codec.
 def clock_image(*, result_offset=72, module='$Sys', signature=1, repeats=1,
                 copy=False, early_copy=False, copy_destination=64, load=False, load_slot=8,
-                load_index=0, load_map=b"\xc0", second=None, call_index=0):
+                load_index=0, load_map=b"\xc0", second=None, call_index=0,
+                sleep_tail=False, period=0, period_offset=64, sleep_index=1):
     words, ins = RAW['W'], RAW['I']
     bindings = RAW['RAW']['RAW']
     calls = runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))
@@ -121,6 +122,13 @@ def clock_image(*, result_offset=72, module='$Sys', signature=1, repeats=1,
     group = (move if early_copy else b'')+frame+bind+call+(move if copy else b'')
     prefix = ins('ILOAD', 64, source=0, middle=load_index, destination=load_slot) if load else b''
     count = repeats*(3+copy+early_copy)+1+load
+    tail = b''
+    if sleep_tail:
+        tail = (ins('IMFRAME', 65, source=slot, middle=1, destination=40)
+                + calls['indirect']('IMOVW', period, 40, period_offset, sm=2)
+                + bind
+                + ins('IMCALL', 72, source=40, middle=sleep_index, destination=slot))
+        count += 4
     names = (module, 'millisec', 'caller')
     imports = [bindings['binding'](module=0, sig=bindings['signature'](signature))]
     if second is not None:
@@ -133,7 +141,7 @@ def clock_image(*, result_offset=72, module='$Sys', signature=1, repeats=1,
         name=2, databytes=16 if load else 8,
         imports=imports,
         types=[RAW['D'](80, 8), RAW['D'](16, 8, load_map) if load else RAW['D'](8, 8, b'\x80')],
-        code=words(count)+prefix+group*repeats+RAW['EXIT'],
+        code=words(count)+prefix+group*repeats+tail+RAW['EXIT'],
     )
     return RAW['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
 
@@ -155,6 +163,13 @@ init()
         return template.replace('    now := sys->millisec();\n',
                                 '    now := sys->millisec();\n' + '    now = sys->millisec();\n'*(count-1))
 
+    def code_bytes(image):
+        # The compiler puts CODE second, as does the independent fixture.
+        kind, _, offset, size = struct.unpack_from('>HHII', image, 44)
+        if kind != 2 or len(image) < offset+size:
+            raise RuntimeError('invalid clock CODE section')
+        return image[offset:offset+size]
+
     command = [str(limbo), '-I', str(ROOT/'module'), '-64', '-o', str(output), str(source)]
     for bad in (template.replace('Sys->PATH', '"$Other"'),
                 template.replace('millisec()', 'sleep(1)'),
@@ -175,12 +190,22 @@ init()
         subprocess.run(command, check=True, timeout=30)
         image = output.read_bytes()
         expected = clock_image(repeats=repeats, load=True)
-        # Both images put CODE second; the raw fixture encodes all call groups independently.
-        _, _, offset, size = struct.unpack_from('>HHII', image, 44)
-        _, _, expected_offset, expected_size = struct.unpack_from('>HHII', expected, 44)
-        if image[offset:offset+size] != expected[expected_offset:expected_offset+expected_size]:
+        if code_bytes(image) != code_bytes(expected):
             raise RuntimeError(f'compiler did not preserve all {repeats} clock calls')
         yield repeats, image
+    mixed = template.replace('    now := sys->millisec();', '    now := sys->millisec();\n    now = sys->sleep(0);')
+    output.unlink()
+    source.write_text(mixed.replace('sleep(0)', 'sleep(1)'))
+    result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+    if result.returncode <= 0 or output.exists() or 'requires managed linkage' not in result.stderr:
+        raise RuntimeError('compiler did not refuse a positive sleep period: '+result.stderr)
+    source.write_text(mixed)
+    subprocess.run(command, check=True, timeout=30)
+    image = output.read_bytes()
+    expected = clock_image(load=True, second=('sleep', (1,)), sleep_tail=True)
+    if code_bytes(image) != code_bytes(expected):
+        raise RuntimeError('compiler did not preserve the checked sleep call')
+    yield 'clock plus zero sleep', image
 
 
 # Compile a real entryless library whose second export observes the first export's write.
@@ -373,6 +398,10 @@ def main():
                          {'load': True, 'second': ('missing', (1,))},
                          {'load': True, 'second': ('sleep', (2,))},
                          {'load': True, 'second': ('sleep', (1,)), 'call_index': 1},
+                         {'load': True, 'sleep_tail': True},
+                         {'load': True, 'second': ('sleep', (1,)), 'sleep_tail': True, 'period': 1},
+                         {'load': True, 'second': ('sleep', (1,)), 'sleep_tail': True, 'period_offset': 32},
+                         {'load': True, 'second': ('sleep', (1,)), 'sleep_tail': True, 'sleep_index': 0},
                          {'second': ('sleep', (1,))},
                          {'load': True, 'load_index': 1}, {'load': True, 'load_map': b'\x80'}):
                 consumer.write_bytes(clock_image(**case))
