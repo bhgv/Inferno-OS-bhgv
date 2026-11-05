@@ -757,7 +757,8 @@ struct Dis64NumericLoad {
 	Dis64StorageOwner *lease; // Separate construction root, returned on complete success.
 	Module *module; // Partial unpublished native owner retired through real unload.
 	int jit; // Explicit existing native leaf compilation request, never a file-mode choice.
-	int clock; // Exact private Sys clock call sequence with a checked result bind.
+	int indirect; // The selected proof admits indirect destination operands.
+	int (*step)(void); // Trusted result binding selected by the owning constructor.
 	const Link *clockload[2]; // Checked exports for an executing Sys LOAD.
 	unsigned int clockimports;
 };
@@ -835,7 +836,7 @@ dis64numericconstruct(void *argument)
 			return 0;
 		instruction = module->prog+i;
 		dis64runtimeinst(instruction, &decoded.instruction, module->prog);
-		if(load->clock && UDST(decoded.instruction.mode) == (AFP|AIND)){
+		if(load->indirect && UDST(decoded.instruction.mode) == (AFP|AIND)){
 			instruction->d.i.f = decoded.instruction.destination;
 			instruction->d.i.s = decoded.secondary;
 		}
@@ -854,8 +855,7 @@ dis64numericconstruct(void *argument)
 	module->path = strdup(load->path);
 	if(module->path == nil)
 		return 0;
-	if(load->clock)
-		module->cstep = native64lea8step;
+	module->cstep = load->step;
 	if(load->jit && !compile(module, module->nprog, nil))
 		return 0;
 	return 1;
@@ -1446,7 +1446,8 @@ prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
 	}
 	load.path = path;
 	load.jit = jit;
-	load.clock = 1;
+	load.indirect = 1;
+	load.step = native64lea8step;
 	caller = nil;
 	if(kprotect(dis64numericconstruct, &load))
 		caller = dis64rootlink(load.module, load.lease, 0, nil, nil);

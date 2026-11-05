@@ -140,3 +140,11 @@ sequence and both maps before returning either body. The VM fixture decodes
 both checked bodies and executes them with collection between quanta. The
 fixture supplies the input and constructs the linked owners in memory. The
 normal file loader still has no trial-schema entry point.
+
+The paired execution fixture now hands the checked storage views to the
+existing Inferno module constructor and rooted link constructor. It takes
+the provider's selected PC and frame from the validated export, installs
+the link in the caller's mapped MP slot, and collects before starting the
+caller. The allocation-failure sweep covers the partial caller and provider
+construction and root handoff. Input setup remains fixture-owned, and the
+normal command-line loader still does not select the trial schema.
