@@ -448,6 +448,29 @@ def main():
                 output = execute(command+pair)
                 if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
                     raise RuntimeError('managed trial bypassed explicit selection: '+output)
+                if args.limbo is not None:
+                    symbol = 'quoted' if direction else 'unquoted'
+                    argument = 'list of string' if direction else 'string'
+                    result_type = 'string' if direction else 'list of string'
+                    expression = 'hd value' if direction else 'value :: nil'
+                    source = work/'managed-provider.b'
+                    text = (f'implement String;\nString: module {{ {symbol}: fn(value: {argument}): {result_type}; }};\n'
+                            f'{symbol}(value: {argument}): {result_type} {{ return {expression}; }}\n')
+                    provider.unlink()
+                    compile_command = [str(args.limbo.resolve()), '-o', str(provider)]
+                    for flag, code in (('-64', text), ('-64m', text.replace(expression, 'nil')),
+                                       ('-64m', text.replace('string', 'int'))):
+                        source.write_text(code)
+                        refused = subprocess.run(compile_command+[flag, str(source)], capture_output=True, text=True, timeout=30)
+                        if refused.returncode <= 0 or provider.exists() or 'Dis64' not in refused.stderr:
+                            raise RuntimeError('unsupported managed provider compiled: '+refused.stderr)
+                    source.write_text(text)
+                    subprocess.run(compile_command+['-64m', str(source)], check=True, timeout=30)
+                    for jit in (0, 1):
+                        output = execute(command+['-c', str(jit)]+pair+trial)
+                        marker = f'native64 scalar module {module}: jit={jit if direction else 0}, exit="{status}"'
+                        if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                            raise RuntimeError('compiler-produced managed provider did not retire: '+output)
             else:
                 output = execute(command+pair+trial)
                 if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:

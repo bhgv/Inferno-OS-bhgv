@@ -36,6 +36,7 @@ def unit(calls=False, managed=False):
         source += '\nType Tlist = {1, freelist, marklist, sizeof(List)};\n'
         source += extract((ROOT/'libinterp/xec.c').read_text(), 'List*\ncons(')+'\n'
         source += '#include "dis64-managed-signature.h"\n'
+        source += '#include "dis64-managed-trial.h"\n'
         load64 = (ROOT/'libinterp/load64.c').read_text()
         source += '\n'.join(extract(load64, signature) for signature in
                             ('static Modlink*\ndis64managedowner(', 'Modlink*\nprepare64managedtrial('))

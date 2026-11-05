@@ -11,6 +11,7 @@
 #include "dis64-numeric-storage.h"
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 #include "dis64-managed-signature.h"
+#include "dis64-managed-trial.h"
 #endif
 
 #define Dis64RuntimeBytes (8U*1024U*1024U) // Maximum complete input image for this experimental loader.
@@ -1380,7 +1381,7 @@ Modlink*
 prepare64managedtrial(char *path, const uchar *image, ulong bytes, char *peerpath,
 	const uchar *peer, ulong peerbytes, int jit)
 {
-	static const Dis64ManagedSchema schema = {0xface0010U, 0x71, 0x72};
+	static const Dis64ManagedSchema schema = {Dis64TrialVersion, Dis64TrialString, Dis64TrialList};
 	static const uchar map[] = {0, 0x80};
 	static const LimboNative64Entry entries[] = {
 		{"unquoted", nil, 0, 72, sizeof(map), map},

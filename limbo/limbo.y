@@ -1748,10 +1748,10 @@ main(int argc, char *argv[])
 		gendis = 0;
 		break;
 	case '6':
-		if(strcmp(_args, "4") != 0)
+		if(strcmp(_args, "4") != 0 && strcmp(_args, "4m") != 0)
 			usage();
+		emitscalar64 = strcmp(_args, "4m") == 0 ? 2 : 1;
 		(void)ARGF();
-		emitscalar64 = 1;
 		break;
 	case 'H':
 		emitstub = emitnative64 = 1;
@@ -1880,7 +1880,7 @@ main(int argc, char *argv[])
 static void
 usage(void)
 {
-	fprint(2, "usage: limbo [-64] [-CGSHacgwe] [-I incdir] [-M native64-module] [-o outfile] [-{T|t|d} module] [-D debug] file ...\n");
+	fprint(2, "usage: limbo [-64] [-64m] [-CGSHacgwe] [-I incdir] [-M native64-module] [-o outfile] [-{T|t|d} module] [-D debug] file ...\n");
 	exits("usage");
 }
 

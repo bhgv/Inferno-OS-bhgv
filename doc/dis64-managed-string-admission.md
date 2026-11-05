@@ -161,3 +161,22 @@ the process. The provider can use the JIT with `-c 1`, while the caller
 uses the checked predecode result binding and interpreter. The test harness
 also exercises non-nil inputs and allocation failures through the same
 pair constructor. The ordinary scalar file modes reject these trial images.
+
+## Compiling a trial provider
+
+`limbo -64m -o provider.dis64 provider.b` selects the private trial producer.
+It checks the resolved legacy instruction sequence and exports a profile-zero
+provider. For example:
+
+```limbo
+implement String;
+String: module { unquoted: fn(value: string): list of string; };
+unquoted(value: string): list of string { return value :: nil; }
+```
+
+The other accepted source has `quoted: fn(value: list of string): string`
+and returns `hd value`. The compiler preserves the exact symbolic direction.
+It fuses the legacy temporary list into the mapped result and writes no
+module-data reference into the output. The two bodies exercise a single
+token. The full `appl/lib/string.b` library still needs general managed
+lowering. Ordinary `-64` continues to use the scalar format.

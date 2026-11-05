@@ -35,6 +35,7 @@ HFILES=	limbo.h\
 	$ROOT/include/dis64-types.h\
 	$ROOT/include/dis64-numeric-storage.h\
 	$ROOT/include/dis64-storage-image.h\
+	$ROOT/include/dis64-managed-trial.h\
 	$ROOT/include/dis64-bindings.h\
 	$ROOT/include/dis64-signature.h\
 	$ROOT/include/dis64-data.h\
