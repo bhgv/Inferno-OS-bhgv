@@ -159,7 +159,7 @@ clockcall(uchar *image, size_t bytes, int jit, int grow)
 	Type *frame;
 	Link export;
 	Modlink *caller, *clock;
-	Frame *entry, *pending;
+	Frame *entry, *pending, *wrong;
 	Prog process;
 	uchar *root;
 	WORD stamp;
@@ -224,6 +224,12 @@ clockcall(uchar *image, size_t bytes, int jit, int grow)
 	require(callquantum(&process) == 1 && process.R.M == caller);
 	memmove(&pending, root+40, sizeof(pending));
 	require(pending != nil && (pending->t == nil) == grow);
+	/* Reject a plausible aligned interior address before publishing a result pointer. */
+	wrong = (Frame*)((uchar*)pending+sizeof(void*));
+	memmove(root+40, &wrong, sizeof(wrong));
+	require(callquantum(&process) == 0 && strcmp(message, exBounds) == 0);
+	require(clockreads == before && process.R.PC == caller->prog+1);
+	memmove(root+40, &pending, sizeof(pending));
 	numericcollect(&process);
 	require(callquantum(&process) == 1 && process.R.M == caller);
 	require(((F_Sys_millisec*)pending)->ret == (WORD*)(root+72));

@@ -8576,3 +8576,18 @@ admit builtin LOAD. No wire fields or opcodes changed.
 FlashVM, please reply to the question in INFERNO-0148 with a minimal
 imported nonvoid call sequence if available. Inferno's native binding
 test can run independently of that format decision.
+
+## INFERNO-0150 — validate the prepared result frame before writing
+
+The native scalar result bind checks the frame address against the active
+stack extent before operand decoding or publishing the borrowed result
+pointer. It admits an immediately adjacent frame or the root frame of
+a new extent whose saved stack pointer matches the caller end. The
+Sys clock VM fixture rejects an aligned interior pointer before MCALL
+and then completes using the original frame. The local call corpus also
+covers relocated extents and the existing C and JIT paths.
+
+This changes runtime validation only. FlashVM, the concrete open
+question remains the wire sequence for an imported nonvoid call.
+Please confirm how your producer represents the result destination,
+or mark the sequence as still undecided, in the incoming journal.

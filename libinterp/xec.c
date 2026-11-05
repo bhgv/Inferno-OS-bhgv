@@ -141,7 +141,7 @@ OP(lea)
 
 /* Bind a complete result address only for an explicitly trusted Module.cstep owner.
  * xec invokes this before ordinary JIT entries, so cached WORD-sized LEA stays ordinary.
- * No file reader selects this callback; checked constructor/runtime integration is separate.
+ * Only a checked constructor or trusted native owner may select this callback.
  */
 int
 native64lea8step(void)
@@ -149,10 +149,12 @@ native64lea8step(void)
 	VmFetch fetched;
 	Inst instruction;
 	Type *type;
-	void *address;
+	void *address, *destination;
+	Frame *pending;
+	Stkext *active;
 	int (*step)(void);
 	int size, mapbytes, i;
-	uintptr base, extent;
+	uintptr base, extent, start, top, target;
 
 	if(!vmfetch(&fetched) || fetched.op != ILEA)
 		return 0;
@@ -187,11 +189,30 @@ native64lea8step(void)
 	for(i=0; i<mapbytes; i++)
 		if(type->map[i] != 0)
 			error(exBounds);
-	vmdecode(&fetched);
-	address = (void*)(base+(uintptr)size-8);
-	if(R.s != address || R.d == nil || R.d == H || (uintptr)R.d > (uintptr)-1-sizeof(address))
+	/* The checked sequence prepares exactly one frame at the top of the stack. */
+	active = (Stkext*)R.EX;
+	top = (uintptr)R.SP;
+	extent = (uintptr)active;
+	if(active == nil || active == H || extent%sizeof(void*) != 0 ||
+	   extent > (uintptr)-1-OA(Stkext, reg.tos.fu) ||
+	   R.TS == nil || R.TS == H || top > (uintptr)R.TS)
 		error(exBounds);
-	memmove(R.d, &address, sizeof(address));
+	start = extent+OA(Stkext, reg.tos.fu);
+	memmove(&pending, (uchar*)R.FP+instruction.d.i.f, sizeof(pending));
+	target = (uintptr)pending;
+	if(target < start || target > top || top-target < 32+sizeof(address))
+		error(exBounds);
+	if(base >= start && base < top){
+		if(target != base+(uintptr)size)
+			error(exBounds);
+	}else if(target != start || (uintptr)active->reg.SP != base+(uintptr)size)
+		error(exBounds);
+	address = (void*)(base+(uintptr)size-8);
+	destination = (void*)(target+32);
+	vmdecode(&fetched);
+	if(R.s != address || R.d != destination)
+		error(exBounds);
+	memmove(destination, &address, sizeof(address));
 	return 1;
 }
 
