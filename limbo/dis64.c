@@ -391,6 +391,30 @@ dis64libraryname(const char *name, uchar *bytes, DisStringPoolRecord *record)
 }
 
 
+/* Return the supported symbolic direction for one exact Limbo signature. */
+static int
+dis64manageddirection(Decl *function)
+{
+	Decl *argument;
+	Type *result;
+	int quoted;
+
+	if(function == nil || function->ty->kind != Tfn || function->ty->varargs ||
+	   function->ty->polys != nil)
+		return -1;
+	quoted = strcmp(function->sym->name, "quoted") == 0;
+	if(!quoted && strcmp(function->sym->name, "unquoted") != 0)
+		return -1;
+	argument = function->ty->ids;
+	result = function->ty->tof;
+	if(argument == nil || argument->next != nil ||
+	   (quoted ? (argument->ty->kind != Tlist || argument->ty->tof->kind != Tstring ||
+	    result->kind != Tstring) : (argument->ty->kind != Tstring || result->kind != Tlist ||
+	    result->tof->kind != Tstring)))
+		return -1;
+	return quoted;
+}
+
 /* Check the exact legacy lowering before fusing its temporary list into the result. */
 static int
 dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, long databytes,
@@ -401,8 +425,7 @@ dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, lo
 	static const uchar destinations[][5] = {{Afp, Afp, Afpind, Afp, Anone}, {Afpind, Anone}};
 	static const long source[][5] = {{0, 32, 36, 0, 0}, {32, 0}};
 	static const long destination[][5] = {{36, 36, 16, 36, 0}, {16, 0}};
-	Decl *export, *function, *argument;
-	Type *result;
+	Decl *export, *function;
 	int direction, i;
 
 	if(entry != nil || strcmp(impdecl->sym->name, "String") != 0)
@@ -417,18 +440,8 @@ dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, lo
 			return 0;
 		function = export;
 	}
-	if(function == nil || function->pc == nil || function->pc->pc != 0 ||
-	   function->ty->varargs || function->ty->polys != nil)
-		return 0;
-	direction = strcmp(function->sym->name, "quoted") == 0;
-	if(!direction && strcmp(function->sym->name, "unquoted") != 0)
-		return 0;
-	argument = function->ty->ids;
-	result = function->ty->tof;
-	if(argument == nil || argument->next != nil ||
-	   (direction ? (argument->ty->kind != Tlist || argument->ty->tof->kind != Tstring ||
-	    result->kind != Tstring) : (argument->ty->kind != Tstring || result->kind != Tlist ||
-	    result->tof->kind != Tstring)))
+	direction = dis64manageddirection(function);
+	if(direction < 0 || function->pc == nil || function->pc->pc != 0)
 		return 0;
 	if(direction ? (databytes != 0 || count != 2) : (databytes != 4 || count != 5))
 		return 0;
@@ -455,51 +468,138 @@ dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, lo
 	return 1;
 }
 
-void
-dis64managedlibrary(Decl *entry, Decl *globals, Inst *input, long count, long databytes)
+/* Check the legacy LOAD/call sequence before replacing LOAD with an explicit pair. */
+static int
+dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
+	long count, long databytes, int *quoted)
 {
-	static const uchar map[] = {0, 0x80};
-	Dis64Type type = {72, 8, map, sizeof(map)};
-	Dis64ModuleInfo module = {0};
-	DisStringPoolRecord names[2];
-	Dis64Payload sections[5];
-	uchar metadata[24], types[16], pool[80], name[28], symbol[36], exports[40], output[512];
-	uchar code[] = {0,0,0,3, IEXIT,SRC(AXXX)|DST(AXXX),
-		ICONSP,SRC(AFP)|DST(AFP|AIND),0x80,64,32,0, IRET,SRC(AXXX)|DST(AXXX)};
-	unsigned int sizes[5], written;
-	int quoted;
+	static const ushort ops[] = {ILOAD, IMFRAME, IMOVP, ILEA, IMCALL, IRET};
+	static const uchar sm[] = {Amp, Afp, Afp, Afp, Afp, Anone};
+	static const uchar dm[] = {Afp, Afp, Afpind, Afpind, Afp, Anone};
+	static const uchar mm[] = {Aldt, Aoff, Anone, Anone, Aoff, Anone};
+	static const long source[] = {0, 36, 32, 44, 40};
+	static const long destination[] = {36, 40, 40, 40, 36};
+	Decl *import, *export, *path, *argument;
+	int direction;
+	unsigned int i;
 
-	if(!dis64managedlibraryshape(entry, globals, input, count, databytes, &quoted)){
-		error(impdecl->src.start, "Dis64 managed trial: expected one-token String.quoted or String.unquoted");
+	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 ||
+	   entry->ty->varargs || entry->ty->tof->kind != Tnone || count != nelem(ops) ||
+	   databytes != 4 || ldts == nil || ldts->next != nil || ldts->init == nil ||
+	   ldts->init->val != 1 || ldts->init->decl == nil)
+		return 0;
+	import = ldts->init->decl->ty->ids;
+	direction = dis64manageddirection(import);
+	if(direction < 0 || import->next != nil || import->offset != 0)
+		return 0;
+	argument = entry->ty->ids;
+	if(argument == nil || argument->next != nil ||
+	   (direction ? (argument->ty->kind != Tlist || argument->ty->tof->kind != Tstring) :
+	    argument->ty->kind != Tstring))
+		return 0;
+	for(export=impdecl->ty->tof->ids; export != nil; export=export->next)
+		if(export->store == Dglobal || (export->store == Dfn && export->sym != entry->sym))
+			return 0;
+	path = nil;
+	for(; globals != nil; globals=globals->next){
+		if(globals->store != Dglobal)
+			continue;
+		if(path != nil || globals->offset != 0 || globals->ty->kind != Tstring ||
+		   globals->init == nil || globals->init->op != Oconst || globals->init->decl == nil ||
+		   strcmp(globals->init->decl->sym->name, "/dis/lib/string.dis") != 0)
+			return 0;
+		path = globals;
+	}
+	if(path == nil)
+		return 0;
+	i = 0;
+	for(; input != nil; input=input->next){
+		if(input->op == INOOP)
+			continue;
+		if(i >= nelem(ops) || input->op != ops[i] || input->sm != sm[i] ||
+		   input->dm != dm[i] || input->mm != mm[i] ||
+		   (i < nelem(source) && (input->s.reg != source[i] || input->d.reg != destination[i])))
+			return 0;
+		if((i == 0 && input->m.reg != 0) ||
+		   (i == 2 && input->d.offset != 32) || (i == 3 && input->d.offset != 16) ||
+		   ((i == 1 || i == 4) && (input->m.decl == nil || input->m.decl->iface != import)))
+			return 0;
+		i++;
+	}
+	if(i != nelem(ops))
+		return 0;
+	*quoted = direction;
+	return 1;
+}
+
+void
+dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes)
+{
+	static const uchar map[] = {0, 0x80}, callermap[] = {0, 0xc0}, mpmap[] = {0x80};
+	static const uchar caller[] = {0,0,0,5,
+		IMFRAME,SRC(AMP)|AXIMM|DST(AFP),0,0,40,
+		IMOVP,SRC(AFP)|DST(AFP|AIND),0x80,64,40,0x80,64,
+		ILEA,SRC(AFP)|DST(AFP|AIND),0x80,72,40,32,
+		IMCALL,SRC(AFP)|AXIMM|DST(AMP),0,40,0,
+		IEXIT,SRC(AXXX)|DST(AXXX)};
+	uchar provider[] = {0,0,0,3, IEXIT,SRC(AXXX)|DST(AXXX),
+		ICONSP,SRC(AFP)|DST(AFP|AIND),0x80,64,32,0, IRET,SRC(AXXX)|DST(AXXX)};
+	Dis64Type types[] = {{72, 8, map, sizeof(map)}, {8, 8, mpmap, sizeof(mpmap)}};
+	Dis64ModuleInfo module = {0};
+	DisStringPoolRecord names[3];
+	Dis64Payload sections[5];
+	uchar metadata[24], typedata[32], pool[1100], name[28], symbol[36], callername[4+4*255];
+	uchar binding[40], output[2048];
+	unsigned int sizes[5], written, header;
+	int quoted, consumer;
+
+	consumer = entry != nil;
+	if(!(consumer ? dis64managedcallershape(entry, globals, ldts, input, count, databytes, &quoted) :
+	     ldts == nil && dis64managedlibraryshape(entry, globals, input, count, databytes, &quoted))){
+		error(impdecl->src.start, "Dis64 managed trial: unsupported one-token String provider or caller");
 		return;
 	}
-	code[6] = quoted ? IHEADP : ICONSP;
-	dis64put32(exports, 1);
-	dis64put32(exports+4, 1);
-	dis64put32(exports+8, 1);
-	dis64put32(exports+12, 0);
-	dis64put32(exports+16, 20);
-	dis64put32(exports+20, Dis64TrialVersion);
-	dis64put32(exports+24, 1);
-	dis64put32(exports+28, quoted ? Dis64TrialString : Dis64TrialList);
-	dis64put32(exports+32, quoted ? Dis64TrialList : Dis64TrialString);
-	dis64put32(exports+36, Dis64TrialString);
+	if(consumer){
+		module.name = 2;
+		module.profile = 1;
+		module.databytes = 8;
+		module.datatype = 1;
+		types[0] = (Dis64Type){80, 8, callermap, sizeof(callermap)};
+		if(!dis64libraryname(impdecl->sym->name, callername, &names[2])){
+			error(impdecl->src.start, "Dis64 managed trial: unsupported caller name");
+			return;
+		}
+	}
+	provider[6] = quoted ? IHEADP : ICONSP;
+	dis64put32(binding, 1);
+	dis64put32(binding+4, consumer ? 0 : 1);
+	dis64put32(binding+8, 1);
+	if(!consumer)
+		dis64put32(binding+12, 0);
+	header = consumer ? 16 : 20;
+	dis64put32(binding+header-4, 20);
+	dis64put32(binding+header, Dis64TrialVersion);
+	dis64put32(binding+header+4, 1);
+	dis64put32(binding+header+8, quoted ? Dis64TrialString : Dis64TrialList);
+	dis64put32(binding+header+12, quoted ? Dis64TrialList : Dis64TrialString);
+	dis64put32(binding+header+16, Dis64TrialString);
 	if(!dis64libraryname("String", name, &names[0]) ||
 	   !dis64libraryname(quoted ? "quoted" : "unquoted", symbol, &names[1]) ||
 	   !dis64modulewrite(metadata, sizeof(metadata), &module, &sizes[0]) ||
-	   !dis64typeswrite(types, sizeof(types), &type, 1, &sizes[2]) ||
-	   !disstringpoolwrite(pool, sizeof(pool), names, nelem(names), &sizes[3])){
-		error(impdecl->src.start, "Dis64 managed trial: cannot encode provider");
+	   !dis64typeswrite(typedata, sizeof(typedata), types, 1+consumer, &sizes[2]) ||
+	   !disstringpoolwrite(pool, sizeof(pool), names, 2+consumer, &sizes[3])){
+		error(impdecl->src.start, "Dis64 managed trial: cannot encode image");
 		return;
 	}
 	sections[0] = (Dis64Payload){Dis64Module, Dis64Required, metadata, sizes[0]};
-	sections[1] = (Dis64Payload){Dis64Code, Dis64Required, code, sizeof(code)};
-	sections[2] = (Dis64Payload){Dis64Types, Dis64Required, types, sizes[2]};
+	sections[1] = (Dis64Payload){Dis64Code, Dis64Required, consumer ? caller : provider,
+		consumer ? sizeof(caller) : sizeof(provider)};
+	sections[2] = (Dis64Payload){Dis64Types, Dis64Required, typedata, sizes[2]};
 	sections[3] = (Dis64Payload){Dis64Strings, Dis64Required, pool, sizes[3]};
-	sections[4] = (Dis64Payload){Dis64Exports, Dis64Required, exports, sizeof(exports)};
+	sections[4] = (Dis64Payload){consumer ? Dis64Imports : Dis64Exports, Dis64Required, binding, header+20};
 	if(!dis64write(output, sizeof(output), nil, 0, sections, nelem(sections), &written) ||
 	   Bwrite(bout, output, written) != written)
-		error(impdecl->src.start, "Dis64 managed trial: cannot write provider");
+		error(impdecl->src.start, "Dis64 managed trial: cannot write image");
 }
 
 

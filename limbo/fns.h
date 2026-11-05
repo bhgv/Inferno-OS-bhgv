@@ -397,6 +397,6 @@ void zcom1(Node *, Node**);
 
 /* Emit the opt-in scalar Dis64 image after ordinary IR resolution. */
 void dis64library(Decl*, Inst*, long, long); // Checked entryless numeric exports.
-void dis64managedlibrary(Decl*, Decl*, Inst*, long, long); // Explicit one-token managed trial.
+void dis64managed(Decl*, Decl*, Decl*, Inst*, long, long); // Explicit one-token managed trial.
 void dis64scalar(Decl*, Decl*, Inst*, long, long);
 int dis64clock(Decl*, Decl*, Decl*, Inst*, long, long); // Checked source pilot with a single imported clock.

@@ -180,3 +180,23 @@ It fuses the legacy temporary list into the mapped result and writes no
 module-data reference into the output. The two bodies exercise a single
 token. The full `appl/lib/string.b` library still needs general managed
 lowering. Ordinary `-64` continues to use the scalar format.
+
+The explicit `-64m` producer also accepts a matching one-call consumer:
+
+```limbo
+implement Caller;
+include "string.m";
+Caller: module { init: fn(value: string); };
+init(value: string)
+{
+    lib := load String String->PATH;
+    result := lib->unquoted(value);
+}
+```
+
+Compile both sides with `limbo -64m -I module` and pass both output files
+to the explicit console trial. The compiler checks the original LOAD path,
+the import and entry types and the entire lowered call sequence. It emits a
+prelinked import for the file-pair loader. The GC suite uses the compiled
+pairs for non-nil execution and keeps independent byte fixtures for refusal
+tests. The console starts with a nil argument.

@@ -157,8 +157,33 @@ def managed_image_cases(fixtures):
     return rows
 
 
-def managed_images(fixtures):
+def managed_sources(direction):
+    symbol = 'quoted' if direction else 'unquoted'
+    argument = 'list of string' if direction else 'string'
+    result = 'string' if direction else 'list of string'
+    expression = 'hd value' if direction else 'value :: nil'
+    provider = (f'implement String;\nString: module {{ {symbol}: fn(value: {argument}): {result}; }};\n'
+                f'{symbol}(value: {argument}): {result} {{ return {expression}; }}\n')
+    caller = ('implement Caller;\ninclude "string.m";\n'
+              f'Caller: module {{ init: fn(value: {argument}); }};\n'
+              f'init(value: {argument}) {{\n'
+              '    lib := load String String->PATH;\n'
+              f'    result := lib->{symbol}(value);\n}}\n')
+    return caller, provider
+
+
+def managed_images(fixtures, limbo, work):
     rows = managed_image_cases(fixtures)
+    for direction in (0, 1):
+        compiled = []
+        for label, text in zip(('caller', 'provider'), managed_sources(direction)):
+            source = work/f'{label}-{direction}.b'
+            output = source.with_suffix('.dis64')
+            source.write_text(text)
+            subprocess.run([str(limbo.resolve()), '-64m', '-I', str(ROOT/'module'),
+                            '-o', str(output), str(source)], check=True, timeout=60)
+            compiled.append(output.read_bytes())
+        rows.append((direction, 1, *compiled))
     declarations, entries = [], []
     for index, (direction, accepted, consumer, provider) in enumerate(rows):
         for label, data in (('consumer', consumer), ('provider', provider)):
@@ -203,7 +228,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='numeric-gc-', dir=os.environ.get('NATIVE64_TMPDIR', ROOT)) as directory:
         work = Path(directory)
         if args.managed:
-            (work/'managed-images.h').write_text(managed_images(fixtures))
+            (work/'managed-images.h').write_text(managed_images(fixtures, args.limbo, work))
             (work/'string-native64.h').write_bytes(subprocess.check_output(
                 [str(args.limbo.resolve()), '-H', '-M', 'String', '-I'+str(ROOT/'module'),
                  str(ROOT/'module/string.m')], timeout=60))

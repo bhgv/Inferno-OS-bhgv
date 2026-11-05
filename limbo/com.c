@@ -416,10 +416,10 @@ if(debug['v']) print("fncom: %s %d %p\n", d->sym->name, d->refs, d);
 	excs = reve(excs);
 
 	if(emitscalar64 == 2){
-		if(excs != nil || ldts != nil || impdecls->next != nil)
-			error(impdecl->src.start, "Dis64 managed trial: imports and exception tables are unsupported");
+		if(excs != nil || impdecls->next != nil)
+			error(impdecl->src.start, "Dis64 managed trial: unsupported module or exception table");
 		else
-			dis64managedlibrary(entry, globals, firstinst, ninst, offset);
+			dis64managed(entry, globals, ldts, firstinst, ninst, offset);
 	}else if(emitscalar64){
 		if(!(excs == nil && impdecls->next == nil &&
 		     dis64clock(entry, globals, ldts, firstinst, ninst, offset)) &&
