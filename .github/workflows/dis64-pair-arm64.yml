@@ -24,6 +24,7 @@ on:
       - 'include/dis64*.h'
       - 'limbo/**'
       - 'module/**'
+      - 'emu/Android/emu'
       - 'appl/cmd/emuinit.b'
       - 'appl/cmd/sh/sh.b'
       - 'appl/wm/awm.b'

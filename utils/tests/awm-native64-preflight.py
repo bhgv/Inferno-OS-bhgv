@@ -32,6 +32,52 @@ def compile_module(limbo, source, target, options):
     )
 
 
+def check_builtin_imports(limbo, work):
+    """Compare actual LOAD import groups with the generated C export tables."""
+    config = (ROOT/'emu/Android/emu').read_text()
+    mods = re.search(r'^mod\n((?:[ \t]+[^\n]*\n|\n)+)', config, re.M)
+    if mods is None:
+        raise RuntimeError('Android configuration has no mod section')
+    builtins = {line.split()[0] for line in mods[1].splitlines() if line.strip()}
+
+    assembly = work/'awm.s'
+    result = compile_module(limbo, 'appl/wm/awm.b', assembly, ['-S'])
+    if result.returncode:
+        raise RuntimeError(result.stdout)
+    code = assembly.read_text()
+    paths = dict(re.findall(r'^\s*string\s+@mp\+(\d+),"([^"]+)"$', code, re.M))
+    groups = re.split(r'^\s*word\s+@ldt\+(\d+),(\d+)\s*$', code, flags=re.M)
+    tables = {}
+    for ordinal, count, body in zip(groups[1::3], groups[2::3], groups[3::3]):
+        imports = re.findall(r'^\s*ext\s+@ldt\+\d+,(0x[0-9a-f]+),"([^"]+)"$', body, re.M)
+        if len(imports) != int(count):
+            raise RuntimeError(f'AWM import table {ordinal} has the wrong size')
+        tables[ordinal] = imports
+
+    checked = set()
+    for offset, ordinal in re.findall(r'^\s*load\s+(\d+)\(mp\),\$(\d+),', code, re.M):
+        path = paths.get(offset, '')
+        if not path.startswith('$'):
+            continue
+        module = path[1:]
+        if module.lower() not in builtins:
+            raise RuntimeError(f'AWM loads {path}, absent from the Android mod section')
+        # Use the same generator and declaration root as libinterp/mkfile.
+        exports = subprocess.check_output(
+            [str(limbo), '-t', module, '-I', 'module', 'module/runt.m'],
+            cwd=ROOT, text=True, timeout=60,
+        )
+        signatures = {name: int(value, 16) for name, value in re.findall(
+            r'^\s*"([^"]+)",(0x[0-9a-f]+),', exports, re.M)}
+        for value, name in tables[ordinal]:
+            if signatures.get(name) != int(value, 16):
+                raise RuntimeError(f'AWM import {path}->{name} does not match generated exports')
+        checked.add(path)
+        print(f'PASS AWM {path} import group {ordinal}: {len(tables[ordinal])} generated signatures')
+    if not {'$Sys', '$Draw'} <= checked:
+        raise RuntimeError('AWM startup assembly is missing the Sys or Draw LOAD')
+
+
 # Keep ordinary source compilation and experimental Dis64 admission separate.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -41,6 +87,7 @@ def main():
     refused = 0
     with tempfile.TemporaryDirectory(prefix='awm-preflight-', dir=ROOT) as directory:
         work = Path(directory)
+        check_builtin_imports(limbo, work)
         for source in STARTUP:
             legacy = work / (Path(source).stem + '.dis')
             result = compile_module(limbo, source, legacy, [])
