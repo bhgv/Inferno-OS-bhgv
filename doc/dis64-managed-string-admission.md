@@ -118,3 +118,12 @@ matches the names by Rune contents and verifies the selected PC and frame.
 Both directions pass. Fourteen mutations cover truncation, name, symbol,
 signature, entry, map and duplicate export. The ordinary scalar storage reader
 still refuses each managed consumer. The candidate gate returns metadata only.
+
+The fixture also executes two minimal one-token providers in the Inferno VM.
+It decodes the existing indirect destination operands and calls the provider
+through MFRAME, managed LEA and MCALL. CONSP constructs a list containing
+the supplied string and HEADP returns the first element of a supplied list.
+RET, stack growth and a failing provider body run with the real collector.
+These bodies exercise the ownership boundary for one token. They do not
+implement the Limbo String module's quoting, whitespace or tokenization.
+The complete candidate file pairs remain metadata fixtures.

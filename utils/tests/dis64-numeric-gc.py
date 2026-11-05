@@ -42,10 +42,12 @@ def unit(calls=False, managed=False):
         for signature in ('void\nextend(', 'void\nunextend('):
             source += '\n'+extract(stack, signature)+'\n'
         for signature in ('static int\nmoduleentry(', 'static int\nframefits(',
-                          'OP(mframe)', 'OP(mcall)'):
+                          'OP(mframe)', 'OP(mcall)', 'OP(ret)'):
+            source += '\n'+extract(xec, signature)+'\n'
+    if managed:
+        for signature in ('OP(movp)', 'OP(consp)', 'static List*\nlisthead(', 'OP(headp)'):
             source += '\n'+extract(xec, signature)+'\n'
     if calls:
-        source += '\n'+extract(xec, 'OP(ret)')+'\n'
         fixture = fixture.split('/* Check C and machine-code execution with a standalone')[0]
         fixture += (ROOT/'utils/tests/dis64-provider-call.c').read_text()
         source += '\nString* c2string(char*, int);\n'

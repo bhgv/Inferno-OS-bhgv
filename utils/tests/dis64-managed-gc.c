@@ -17,6 +17,7 @@ struct ManagedImageCase {
 static Type *stringelement;
 static Prog *managedprocess;
 static int managederror, managedcalls;
+static int managedbytecodes, managedfast;
 
 /* Independent trial bytes, with deliberately local version/tag values. */
 static const Dis64ManagedSchema trialschema = {0xface0010U, 0x71, 0x72};
@@ -299,8 +300,38 @@ managedmodule(int links)
 	return mklinkmod(module, links);
 }
 
+/* Decode a bounded one-token provider through the same operand reader as Dis64. */
+static Inst*
+managedprogram(int reverse, int unwind)
+{
+	static const uchar bodies[][8] = {
+		{ICONSP, SRC(AFP)|DST(AFP|AIND), 0x80,64, 32,0, IRET, SRC(AXXX)|DST(AXXX)},
+		{IHEADP, SRC(AFP)|DST(AFP|AIND), 0x80,64, 32,0, IRET, SRC(AXXX)|DST(AXXX)},
+		{IDIVW, SRC(AIMM)|DST(AFP), 0,40, IRET, SRC(AXXX)|DST(AXXX)},
+	};
+	const uchar *bytes = bodies[unwind ? 2 : reverse];
+	unsigned int at, i, used, size = unwind ? 6 : 8;
+	Dis64CallDecoded decoded;
+	Inst *body;
+
+	body = mallocz(2*sizeof(*body), 1);
+	require(body != nil);
+	at = 0;
+	for(i=0; i<2; i++){
+		require(dis64callread(bytes+at, size-at, &decoded, &used));
+		dis64runtimeinst(body+i, &decoded.instruction, body);
+		if(UDST(decoded.instruction.mode) == (AFP|AIND)){
+			body[i].d.i.f = decoded.instruction.destination;
+			body[i].d.i.s = decoded.secondary;
+		}
+		at += used;
+	}
+	require(at == size);
+	return body;
+}
+
 static void
-managedvmcase(Type *callerframe, Type *calleeframe, int reverse, int empty, int unwind, int grow)
+managedvmcase(Type *callerframe, Type *calleeframe, int reverse, int empty, int unwind, int grow, int bytecode)
 {
 	Prog process = {0};
 	Modlink *caller, *callee;
@@ -347,6 +378,18 @@ managedvmcase(Type *callerframe, Type *calleeframe, int reverse, int empty, int 
 	ptradd(D2H(callee));
 	callee->links[0].frame = calleeframe;
 	callee->links[0].u.runt = entryspec->function;
+	if(bytecode){
+		require(!empty);
+		callee->m->prog = callee->prog = managedprogram(reverse, unwind);
+		callee->m->nprog = 2;
+		callee->links[0].u.pc = callee->prog;
+		if(bytecode == 2){
+			require(compile(callee->m, callee->m->nprog, nil));
+			require(callee->m->jit != nil && callee->m->jit->code != nil);
+			rxbegin = (uintptr)callee->m->jit->code;
+			rxend = rxbegin+callee->m->jit->size;
+		}
+	}
 	process.exval = H;
 	process.state = Pready;
 	process.R.M = caller;
@@ -408,11 +451,27 @@ managedvmcase(Type *callerframe, Type *calleeframe, int reverse, int empty, int 
 	managedprocess = &process;
 	managederror = unwind;
 	before = managedcalls;
-	require(kprotect(managedmcall, nil) == !unwind && managedcalls == before+1);
+	if(bytecode){
+		require(kprotect(managedmcall, nil) && managedcalls == before);
+		require(R.M == callee && R.FP == (uchar*)pending && R.PC == callee->prog);
+		process.quanta = 1;
+		process.R = R;
+		numericcollect(&process);
+		before = rxcompleted;
+		require(kprotect(execute, &process) == !unwind);
+		managedfast += rxcompleted-before;
+		if(!unwind){
+			require(process.R.M == callee && process.R.PC == callee->prog+1);
+			numericcollect(&process);
+			require(kprotect(execute, &process));
+		}
+		managedbytecodes++;
+	}else
+		require(kprotect(managedmcall, nil) == !unwind && managedcalls == before+1);
 	memmove(&result, resultslot, sizeof(result));
 	if(unwind){
 		require(result == H && R.M == callee && R.FP == (uchar*)pending);
-		require(strcmp(message, "managed MCALL unwind") == 0);
+		require(strcmp(message, bytecode ? exZdiv : "managed MCALL unwind") == 0);
 	}else{
 		require(R.M == caller && R.FP == root && D2H(callee)->ref == 1);
 		require((result == H) == empty);
@@ -427,7 +486,7 @@ managedvmcase(Type *callerframe, Type *calleeframe, int reverse, int empty, int 
 	require(worker.nerr == 0 && Tmodlink.ref == 1);
 	for(slot=1; slot<GcSlots; slot++)
 		require(numericblock(slot)->magic == MAGIC_F);
-	require(Tstring.ref == 1 && Tlist.ref == 1 && stringelement->ref == 1);
+	require(Tstring.ref == 1 && Tlist.ref == 1 && stringelement->ref == 1 && Tptr.ref == 1);
 }
 
 /* Trace only actual mapped storage. Neither the transient address nor C locals root values. */
@@ -542,6 +601,13 @@ main(void)
 	int reverse, empty, unwind;
 
 	numericpoolinit();
+	Tptr.size = sizeof(void*);
+	Tptr.np = 1;
+	Tptr.map[0] = 0x80;
+	optab[ICONSP] = consp;
+	optab[IHEADP] = headp;
+	optab[IDIVW] = divw;
+	optab[IRET] = ret;
 	managedrecordcontrol();
 	managedimagecontrol();
 	Tstring.size = sizeof(String);
@@ -557,8 +623,14 @@ main(void)
 		for(empty=0; empty<2; empty++)
 			for(unwind=0; unwind<2; unwind++){
 				managedcase(slots, frames[reverse], reverse, empty, unwind);
-				managedvmcase(callerframe, frames[reverse], reverse, empty, unwind, 0);
-				managedvmcase(callerframe, frames[reverse], reverse, empty, unwind, 1);
+				managedvmcase(callerframe, frames[reverse], reverse, empty, unwind, 0, 0);
+				managedvmcase(callerframe, frames[reverse], reverse, empty, unwind, 1, 0);
+				if(!empty){
+					managedvmcase(callerframe, frames[reverse], reverse, empty, unwind, 0, 1);
+					managedvmcase(callerframe, frames[reverse], reverse, empty, unwind, 1, 1);
+					managedvmcase(callerframe, frames[reverse], reverse, empty, unwind, 0, 2);
+					managedvmcase(callerframe, frames[reverse], reverse, empty, unwind, 1, 2);
+				}
 			}
 	managedmapcontrol(frames[0]);
 	freetype(callerframe);
@@ -568,7 +640,12 @@ main(void)
 	freetype(stringelement);
 	numericdrain();
 	require(live == 0);
+#if defined(__x86_64__)
+	require(managedfast == 4);
+#endif
 	printf("PASS generated String frames with real GC: 8 ownership cases, missing-map control, %lu epochs, %d checks\n", gcepochs, checks);
 	printf("PASS production MFRAME/MCALL with symbolic String callbacks: %d calls\n", managedcalls);
+	printf("PASS managed bytecode providers: %d calls with CONS/HEAD/RET or unwind, %d native completions\n",
+		managedbytecodes, managedfast);
 	return 0;
 }
