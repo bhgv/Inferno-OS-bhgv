@@ -148,3 +148,16 @@ the link in the caller's mapped MP slot, and collects before starting the
 caller. The allocation-failure sweep covers the partial caller and provider
 construction and root handoff. Input setup remains fixture-owned, and the
 normal command-line loader still does not select the trial schema.
+
+## Explicit console trial
+
+The Linux native64 console can read the two checked trial images with
+`emu -v -X dis64-managed-trial -d /consumer.dis64 -P /provider.dis64`.
+This option requires both explicit files and is mutually exclusive with
+sibling lookup and other experimental launch profiles. The argument starts
+at VM nil. The one-token CONSP provider returns a list with a nil element.
+The HEADP provider raises the VM's nil-reference error. Both paths retire
+the process. The provider can use the JIT with `-c 1`, while the caller
+uses the checked predecode result binding and interpreter. The test harness
+also exercises non-nil inputs and allocation failures through the same
+pair constructor. The ordinary scalar file modes reject these trial images.

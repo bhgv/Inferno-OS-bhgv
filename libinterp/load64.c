@@ -9,6 +9,9 @@
 #include "dis64-call-infer.h"
 #include "dis64-storage-image.h"
 #include "dis64-numeric-storage.h"
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+#include "dis64-managed-signature.h"
+#endif
 
 #define Dis64RuntimeBytes (8U*1024U*1024U) // Maximum complete input image for this experimental loader.
 #define Dis64RuntimeObject (1024U*1024U) // Maximum scalar data or entry-frame extent.
@@ -1344,6 +1347,86 @@ dis64rootlink(Module *module, Dis64StorageOwner *lease, int bindings,
 	free64storage(lease);
 	return ok ? build.link : nil;
 }
+
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+/* Construct only storage already checked by the explicit managed trial. */
+static Modlink*
+dis64managedowner(const Dis64StorageImage *image, char *path, int jit, const Dis64PairPlan *plan)
+{
+	Dis64NumericLoad load = {0};
+	unsigned int i, rune;
+
+	load.image = *image;
+	load.path = path;
+	load.jit = jit;
+	load.indirect = 1;
+	load.step = plan == nil ? native64managedlea8step : nil;
+	if(!disstringpoolget(&image->strings, image->module.name, &load.name) ||
+	   load.name.count == 0 || load.name.count > Dis64RuntimeName)
+		return nil;
+	for(i=0; i<load.name.count; i++)
+		if(!disruneat(&load.name, i, &rune) || rune == 0 || rune > 127)
+			return nil;
+	if(kprotect(dis64numericconstruct, &load))
+		return dis64rootlink(load.module, load.lease, plan == nil ? 0 : 1, plan, nil);
+	if(load.module != nil)
+		unload(load.module);
+	free64storage(load.lease);
+	return nil;
+}
+
+/* Only the explicit console option can select these unassigned trial values. */
+Modlink*
+prepare64managedtrial(char *path, const uchar *image, ulong bytes, char *peerpath,
+	const uchar *peer, ulong peerbytes, int jit)
+{
+	static const Dis64ManagedSchema schema = {0xface0010U, 0x71, 0x72};
+	static const uchar map[] = {0, 0x80};
+	static const LimboNative64Entry entries[] = {
+		{"unquoted", nil, 0, 72, sizeof(map), map},
+		{"quoted", nil, 0, 72, sizeof(map), map},
+	};
+	static const LimboNative64Managed shapes[] = {
+		{&entries[0], LimboNative64String, LimboNative64ListString},
+		{&entries[1], LimboNative64ListString, LimboNative64String},
+	};
+	Dis64ManagedPlan checked;
+	Dis64PairPlan plan = {0};
+	Modlink *caller, *provider;
+	unsigned int i;
+
+	if(heapmonitor != nil || !dis64runtimemodel() || path == nil || path == H ||
+	   peerpath == nil || peerpath == H || image == nil || image == H || peer == nil || peer == H ||
+	   bytes > Dis64RuntimeBytes || peerbytes > Dis64RuntimeBytes ||
+	   (uintptr)image > (uintptr)-1-bytes || (uintptr)peer > (uintptr)-1-peerbytes ||
+	   (jit != 0 && jit != 1))
+		return nil;
+	for(i=0; i<nelem(shapes); i++)
+		if(dis64managedimagepair(image, bytes, peer, peerbytes, &dis64numericlimits,
+		   &schema, &shapes[i], &checked))
+			break;
+	if(i == nelem(shapes)){
+		kwerrstr("unsupported Dis64 managed trial pair");
+		return nil;
+	}
+	caller = dis64managedowner(&checked.consumer, path, 0, nil);
+	if(caller == nil)
+		return nil;
+	plan.count = 1;
+	plan.matches[0].entry = checked.selected.entry;
+	plan.matches[0].frame = checked.selected.frame;
+	provider = dis64managedowner(&checked.provider, peerpath, jit, &plan);
+	if(provider == nil){
+		ptrdel(D2H(caller));
+		destroy(caller);
+		return nil;
+	}
+	memmove(caller->MP, &provider, sizeof(provider));
+	Setmark(D2H(provider));
+	ptrdel(D2H(provider));
+	return caller;
+}
+#endif
 
 
 #ifdef DIS_NATIVE64_BOOT_SYS_IO

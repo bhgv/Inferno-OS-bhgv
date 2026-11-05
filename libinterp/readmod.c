@@ -259,6 +259,13 @@ read64pairprotected(void *argument)
 	read = argument;
 	if(!read64pairimage(read, read->consumer, 0))
 		return 0;
+	if(dis64bootmanaged){
+		if(!read64pairimage(read, read->provider, 1))
+			return 0;
+		read->link = prepare64managedtrial(read->consumer, read->images[0], read->sizes[0],
+			read->provider, read->images[1], read->sizes[1], cflag != 0);
+		return read->link != nil;
+	}
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 	if(read->provider != nil && strcmp(read->provider, "$Sys") == 0){
 		read->link = prepare64sysclockconsumer(read->consumer, read->images[0],

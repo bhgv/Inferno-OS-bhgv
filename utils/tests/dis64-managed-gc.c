@@ -19,7 +19,7 @@ static Prog *managedprocess;
 static int managederror, managedcalls;
 static int managedbytecodes, managedfast;
 static Dis64ManagedBody managedbodies[2];
-static Dis64ManagedPlan managedplans[2];
+static const ManagedImageCase *managedfixtures[2];
 
 /* Independent trial bytes, with deliberately local version/tag values. */
 static const Dis64ManagedSchema trialschema = {0xface0010U, 0x71, 0x72};
@@ -53,7 +53,7 @@ managedimagecontrol(void)
 		if(test->accepted){
 			require(plan.selected.frame == 0 && plan.provider.code.bytes == 14);
 			managedbodies[test->direction] = (Dis64ManagedBody){plan.provider.code.data+6, 8};
-			managedplans[test->direction] = plan;
+			managedfixtures[test->direction] = test;
 		}else
 			require(plan.consumer.code.data == nil && plan.provider.code.data == nil);
 	}
@@ -342,48 +342,13 @@ managedprogram(int reverse, int unwind)
 	return manageddecode(managedbodies[reverse].data, managedbodies[reverse].bytes, 2);
 }
 
-/* Reuse the owning module, storage lease and rooted link constructors. */
-static Modlink*
-managedimageowner(const Dis64StorageImage *image, int jit, const Dis64PairPlan *plan)
-{
-	Dis64NumericLoad load = {0};
-
-	load.image = *image;
-	load.path = plan == nil ? "managed-caller" : "managed-provider";
-	load.jit = jit;
-	load.indirect = 1;
-	load.step = plan == nil ? native64managedlea8step : nil;
-	require(disstringpoolget(&image->strings, image->module.name, &load.name));
-	if(kprotect(dis64numericconstruct, &load))
-		return dis64rootlink(load.module, load.lease, plan == nil ? 0 : 1, plan, nil);
-	if(load.module != nil)
-		unload(load.module);
-	free64storage(load.lease);
-	return nil;
-}
-
 static Modlink*
 managedlinkpair(int reverse, int jit)
 {
-	const Dis64ManagedPlan *checked = &managedplans[reverse];
-	Dis64PairPlan plan = {0};
-	Modlink *caller, *callee;
+	const ManagedImageCase *test = managedfixtures[reverse];
 
-	caller = managedimageowner(&checked->consumer, 0, nil);
-	if(caller == nil)
-		return nil;
-	plan.count = 1;
-	plan.matches[0].entry = checked->selected.entry;
-	plan.matches[0].frame = checked->selected.frame;
-	callee = managedimageowner(&checked->provider, jit, &plan);
-	if(callee == nil){
-		ptrdel(D2H(caller));
-		destroy(caller);
-		return nil;
-	}
-	managedput(caller->MP, callee);
-	ptrdel(D2H(callee));
-	return caller;
+	return prepare64managedtrial("managed-caller", test->consumer, test->consumerbytes,
+		"managed-provider", test->provider, test->providerbytes, jit);
 }
 
 static int

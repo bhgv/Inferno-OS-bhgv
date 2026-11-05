@@ -35,6 +35,11 @@ def unit(calls=False, managed=False):
                             ('void\nfreelist(', 'void\nfreestring('))
         source += '\nType Tlist = {1, freelist, marklist, sizeof(List)};\n'
         source += extract((ROOT/'libinterp/xec.c').read_text(), 'List*\ncons(')+'\n'
+        source += '#include "dis64-managed-signature.h"\n'
+        load64 = (ROOT/'libinterp/load64.c').read_text()
+        source += '\n'.join(extract(load64, signature) for signature in
+                            ('static Modlink*\ndis64managedowner(', 'Modlink*\nprepare64managedtrial('))
+        source += '\n'
         fixture += (ROOT/'utils/tests/dis64-managed-gc.c').read_text()
     if calls or managed:
         stack = (ROOT/'libinterp/stack.c').read_text()
@@ -97,7 +102,7 @@ def provider_cases(fixtures, common):
 
 
 # Build complete trial images with independent Python envelope and record writers.
-def managed_images(fixtures):
+def managed_image_cases(fixtures):
     words, desc = fixtures['W'], fixtures['D']
     image, sections = fixtures['IMAGE'], fixtures['SECTIONS']
     binding = fixtures['RAW']['RAW']['binding']
@@ -148,6 +153,11 @@ def managed_images(fixtures):
         rows.extend((direction, 0, bad, good) for bad in (
             caller(frame_map=b'\x00\x40'), caller(mp_map=b'\x00'),
             caller(argument=72), caller(target=64)))
+    return rows
+
+
+def managed_images(fixtures):
+    rows = managed_image_cases(fixtures)
     declarations, entries = [], []
     for index, (direction, accepted, consumer, provider) in enumerate(rows):
         for label, data in (('consumer', consumer), ('provider', provider)):

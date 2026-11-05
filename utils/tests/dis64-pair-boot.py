@@ -434,6 +434,30 @@ def main():
                     raise RuntimeError(f'bad Sys clock input {case} reached the scheduler: '+output)
             print('PASS explicit Sys clock file boot with prelink and executing LOAD, C/JIT and admission refusals')
             consumer.write_bytes(images(False)[0])
+        trial = ['-X', 'dis64-managed-trial']
+        for direction, accepted, payload, dependency in GC['managed_image_cases'](RAW):
+            consumer.write_bytes(payload)
+            provider.write_bytes(dependency)
+            if accepted:
+                for jit in (0, 1):
+                    output = execute(command+['-c', str(jit)]+pair+trial)
+                    module, status = ('String', 'dereference of nil') if direction else ('caller', '')
+                    marker = f'native64 scalar module {module}: jit={jit if direction else 0}, exit="{status}"'
+                    if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                        raise RuntimeError('managed file execution did not retire: '+output)
+                output = execute(command+pair)
+                if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+                    raise RuntimeError('managed trial bypassed explicit selection: '+output)
+            else:
+                output = execute(command+pair+trial)
+                if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+                    raise RuntimeError('invalid managed pair reached scheduler: '+output)
+        for options in (pair[:2]+trial, pair+trial+['-X', 'dis64-pair'], pair[:2]+trial+['-P', '$Sys']):
+            refused = subprocess.run(command+options, capture_output=True, text=True, timeout=20)
+            if refused.returncode != 1 or 'Usage: emu' not in refused.stderr+refused.stdout:
+                raise RuntimeError('managed trial CLI did not refuse '+repr(options))
+        print('PASS explicit managed file trial: both directions, C/JIT, invalid pairs and options')
+        consumer.write_bytes(images(False)[0])
         for dependency in (None, b'invalid provider'):
             if dependency is None:
                 provider.unlink()
