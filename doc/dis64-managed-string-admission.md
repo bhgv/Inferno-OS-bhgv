@@ -19,6 +19,31 @@ the number of mapped references would confuse the two rows above.
 This proposal leaves version numbers, tags and byte encoding for joint review
 with FlashVM. No file admission or registry entry is enabled by this document.
 
+### Candidate record for review
+
+Keep the enclosing import/export signature length. Inside that span, use a
+big-endian version word, a parameter-count word, one result expression, then
+exactly that many parameter expressions in order. Each expression begins with
+one big-endian type tag. A leaf consumes one word. A list consumes its tag
+followed by one element expression. For this pilot the parser can reject a
+list immediately unless its child is the string leaf. This gives a maximum
+depth of two without allocating a type graph.
+
+| Symbolic record words | Signature |
+|---|---|
+| `managed-version, 1, List, String, String` | `unquoted` |
+| `managed-version, 1, String, List, String` | `quoted` |
+
+Each record consumes five words. The enclosing length must match exactly.
+Reject truncated leaves, missing children, unknown tags, a list with an
+element other than string, extra words, and counts other than one in this
+pilot. Match the argument and result in order. A width or map comparison
+would accept the swapped signature, since both records carry a single mapped
+argument and return a reference.
+
+The table uses symbolic words pending agreement. A reviewer can compare these
+records and refusal cases without allocating any version or tag values.
+
 ## Admission and execution checks
 
 1. Validate the full parameter and result expressions and match them to the

@@ -215,8 +215,23 @@ native64bindresult(int managed)
 	address = (void*)(base+(uintptr)size-8);
 	destination = (void*)(target+32);
 	if(managed){
+		Modlink *entered;
+
 		memmove(&previous, address, sizeof(previous));
 		if(previous != H)
+			error(exBounds);
+		/* The first managed shapes have one mapped argument in a 72-byte frame. */
+		if(top-target != 72)
+			error(exBounds);
+		memmove(&entered, (uchar*)pending+O(Frame, mr), sizeof(entered));
+		memmove(&type, (uchar*)pending+O(Frame, t), sizeof(type));
+		if(entered != nil)
+			error(exBounds);
+		if(type == nil && target == start && (base < start || base >= top))
+			type = active->reg.TR;
+		if(type == nil || type == H || (uintptr)type%sizeof(void*) != 0 ||
+		   (uintptr)type > (uintptr)-1-O(Type, map)-2 ||
+		   type->size != 72 || type->np != 2 || type->map[0] != 0 || type->map[1] != 0x80)
 			error(exBounds);
 	}
 	vmdecode(&fetched);

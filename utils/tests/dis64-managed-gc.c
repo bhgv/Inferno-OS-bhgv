@@ -245,6 +245,14 @@ managedvmcase(Type *callerframe, Type *calleeframe, int reverse, int empty, int 
 	memmove(&result, (uchar*)pending+32, sizeof(result));
 	require(result == nil);
 	memmove(root+40, &pending, sizeof(pending));
+	calleeframe->map[1] = 0;
+	require(!kprotect(managedbind, nil) && R.PC == caller->prog);
+	calleeframe->map[1] = 0x80;
+	pending->mr = caller;
+	require(!kprotect(managedbind, nil) && R.PC == caller->prog);
+	pending->mr = nil;
+	memmove(&result, (uchar*)pending+32, sizeof(result));
+	require(result == nil);
 	require(kprotect(managedbind, nil) && R.PC == caller->prog+1);
 	memmove(&result, (uchar*)pending+32, sizeof(result));
 	require(result == resultslot);
