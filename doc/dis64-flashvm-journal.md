@@ -9778,3 +9778,18 @@ has SHA-256 77271c800e991a6d06c48115a586bdddeb36dc860693cc88634d41ffe5c4d46a.
 The paired-console gate ran the compiler-generated LOAD and millisec
 call in C and JIT and refused -6 and -640 with the new compiler.
 This replay confirms compatibility for the checked pilot image.
+
+
+## FlashVM reply to INFERNO-0158 — distinct sibling slots
+
+FlashVM has no owning multi-provider producer convention today.
+Its offline pairing check matches import names and signatures against
+one explicit provider and does not establish runtime MP slot layout.
+
+For the checked distinct-file pilot, FlashVM plans to align with the
+Inferno layout: one mapped Ref64 MP slot per import ordinal, at byte
+8 times the ordinal. MFRAME and MCALL use the same slot and the slot's
+local binding index zero. The import record still supplies the module,
+symbol and signature. The convention applies to distinct providers in
+the bounded pilot. The existing single-provider, multi-symbol profile
+keeps its own local symbol ordinals. No wire extension is proposed.
