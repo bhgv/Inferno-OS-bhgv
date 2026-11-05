@@ -2,17 +2,61 @@
 #define LIMBO_NATIVE64_MANAGED
 #include "string-native64.h"
 #undef LIMBO_NATIVE64_MANAGED
+#include "dis64-managed-signature.h"
 
 static Type *stringelement;
 static Prog *managedprocess;
 static int managederror, managedcalls;
 
-static int
-managedmatch(const LimboNative64Managed *signature, const LimboNative64Entry *entry,
-	LimboNative64ManagedKind argument, LimboNative64ManagedKind result)
+/* Independent trial bytes, with deliberately local version/tag values. */
+static const Dis64ManagedSchema trialschema = {0xface0010U, 0x71, 0x72};
+static const uchar trialrecords[2][Dis64ManagedSignatureBytes] = {
+	{0xfa,0xce,0,0x10, 0,0,0,1, 0,0,0,0x72, 0,0,0,0x71, 0,0,0,0x71},
+	{0xfa,0xce,0,0x10, 0,0,0,1, 0,0,0,0x71, 0,0,0,0x72, 0,0,0,0x71},
+};
+
+static void
+managedrecordcontrol(void)
 {
-	return signature->entry == entry && signature->argument == argument &&
-		signature->result == result;
+	Dis64ManagedSignature signature, sentinel = {LimboNative64String, LimboNative64String};
+	Dis64Signature scalar;
+	Dis64ManagedSchema wrong = trialschema;
+	uchar bad[Dis64ManagedSignatureBytes+1];
+	static const uchar scalarclock[] = {0,0,0,1, 0,0,0,Dis64Int, 0,0,0,0};
+	unsigned int direction, size, byte, bit;
+	int before = allocations;
+
+	require(dis64signaturecheck(scalarclock, sizeof(scalarclock), 1, &scalar));
+	require(!dis64managedread(scalarclock, sizeof(scalarclock), &trialschema, &signature));
+	for(direction=0; direction<2; direction++){
+		memmove(bad, trialrecords[direction], Dis64ManagedSignatureBytes);
+		bad[Dis64ManagedSignatureBytes] = 0;
+		require(!dis64signaturecheck(bad, Dis64ManagedSignatureBytes, 1, &scalar));
+		for(size=0; size<=sizeof(bad); size++){
+			if(size == Dis64ManagedSignatureBytes)
+				continue;
+			signature = sentinel;
+			require(!dis64managedread(bad, size, &trialschema, &signature));
+			require(signature.argument == sentinel.argument && signature.result == sentinel.result);
+		}
+		for(byte=0; byte<Dis64ManagedSignatureBytes; byte++)
+			for(bit=0; bit<8; bit++){
+				bad[byte] ^= 1U<<bit;
+				signature = sentinel;
+				require(!dis64managedread(bad, Dis64ManagedSignatureBytes, &trialschema, &signature));
+				require(signature.argument == sentinel.argument && signature.result == sentinel.result);
+				bad[byte] ^= 1U<<bit;
+			}
+		wrong.version = 1;
+		require(!dis64managedread(bad, Dis64ManagedSignatureBytes, &wrong, &signature));
+		wrong = trialschema;
+		wrong.listtag = wrong.stringtag;
+		require(!dis64managedread(bad, Dis64ManagedSignatureBytes, &wrong, &signature));
+		wrong = trialschema;
+		dis64put32(bad+(direction ? 16 : 12), trialschema.listtag);
+		require(!dis64managedread(bad, Dis64ManagedSignatureBytes, &trialschema, &signature));
+	}
+	require(allocations == before);
 }
 
 Prog*
@@ -169,19 +213,18 @@ managedvmcase(Type *callerframe, Type *calleeframe, int reverse, int empty, int 
 	int before, slot;
 	const LimboNative64Managed *signature;
 	const LimboNative64Entry *entryspec;
-	LimboNative64ManagedKind argumentkind, resultkind;
+	Dis64ManagedSignature decoded, swapped;
 
 	signature = reverse ? &limbo_native64_String_quoted_managed : &limbo_native64_String_unquoted_managed;
 	entryspec = reverse ? &limbo_native64_String_quoted_entry : &limbo_native64_String_unquoted_entry;
-	argumentkind = reverse ? LimboNative64ListString : LimboNative64String;
-	resultkind = reverse ? LimboNative64String : LimboNative64ListString;
 	before = allocations;
-	require(!managedmatch(signature, entryspec, resultkind, argumentkind));
-	require(!managedmatch(signature, entryspec, argumentkind, argumentkind));
-	require(!managedmatch(signature, reverse ? &limbo_native64_String_unquoted_entry :
-		&limbo_native64_String_quoted_entry, argumentkind, resultkind));
+	require(dis64managedread(trialrecords[reverse], Dis64ManagedSignatureBytes, &trialschema, &decoded));
+	require(dis64managedread(trialrecords[!reverse], Dis64ManagedSignatureBytes, &trialschema, &swapped));
+	require(!dis64managedmatch(&swapped, signature, entryspec));
+	require(!dis64managedmatch(&decoded, signature, reverse ? &limbo_native64_String_unquoted_entry :
+		&limbo_native64_String_quoted_entry));
 	require(allocations == before);
-	require(managedmatch(signature, entryspec, argumentkind, resultkind));
+	require(dis64managedmatch(&decoded, signature, entryspec));
 	require(entryspec->frame_size == calleeframe->size &&
 		entryspec->map_bytes == calleeframe->np &&
 		memcmp(entryspec->map, calleeframe->map, entryspec->map_bytes) == 0);
@@ -399,6 +442,7 @@ main(void)
 	int reverse, empty, unwind;
 
 	numericpoolinit();
+	managedrecordcontrol();
 	Tstring.size = sizeof(String);
 	Tstring.free = freestring;
 	Tstring.mark = noptrs;

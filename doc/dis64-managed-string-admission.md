@@ -73,3 +73,11 @@ fixture matches the generated entry, argument kind, and result kind before
 constructing its call frames. A compiler control checks that a list of int
 does not receive the list-of-string witness. These are private C symbols
 and do not define file kind numbers.
+
+The candidate reader in `include/dis64-managed-signature.h` takes the version
+and type tags from an explicit schema. The managed collector fixture uses
+local trial values and decodes both directions before matching the generated
+export and allocating frames. It checks every one-bit mutation of both trial
+records, every shorter length, a trailing byte, a nested list, and the
+unchanged rejection of the trial records by the scalar reader. No normal
+Dis64 reader or loader selects the trial schema.
