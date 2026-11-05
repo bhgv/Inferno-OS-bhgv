@@ -14,6 +14,10 @@ STARTUP = (
     'appl/wm/awm.b',
     'appl/wm/atoolbar.b',
     'appl/lib/arg.b',
+    'appl/lib/bufio.b',
+    'appl/lib/env.b',
+    'appl/lib/filepat.b',
+    'appl/lib/readdir.b',
     'appl/lib/string.b',
     'appl/lib/wmsrv.b',
     'appl/lib/wmclient.b',
@@ -34,50 +38,93 @@ def compile_module(limbo, source, target, options):
     )
 
 
-def check_builtin_imports(limbo, work):
-    """Compare actual LOAD import groups with the generated C export tables."""
-    config = (ROOT/'emu/Android/emu').read_text()
-    mods = re.search(r'^mod\n((?:[ \t]+[^\n]*\n|\n)+)', config, re.M)
-    if mods is None:
-        raise RuntimeError('Android configuration has no mod section')
-    builtins = {line.split()[0] for line in mods[1].splitlines() if line.strip()}
+# Installed file paths for the startup modules in this slice.
+FILE_PROVIDERS = {
+    '/dis/sh.dis': 'appl/cmd/sh/sh.b',
+    **{f'/dis/lib/{Path(source).stem}.dis': source for source in STARTUP
+       if source.startswith('appl/lib/')},
+    **{f'/dis/wm/{Path(source).stem}.dis': source for source in STARTUP
+       if source.startswith('appl/wm/')},
+}
 
-    assembly = work/'awm.s'
-    result = compile_module(limbo, 'appl/wm/awm.b', assembly, ['-S'])
-    if result.returncode:
-        raise RuntimeError(result.stdout)
-    code = assembly.read_text()
+
+def assembly_imports(code):
     paths = dict(re.findall(r'^\s*string\s+@mp\+(\d+),"([^"]+)"$', code, re.M))
     groups = re.split(r'^\s*word\s+@ldt\+(\d+),(\d+)\s*$', code, flags=re.M)
     tables = {}
     for ordinal, count, body in zip(groups[1::3], groups[2::3], groups[3::3]):
         imports = re.findall(r'^\s*ext\s+@ldt\+\d+,(0x[0-9a-f]+),"([^"]+)"$', body, re.M)
         if len(imports) != int(count):
-            raise RuntimeError(f'AWM import table {ordinal} has the wrong size')
-        tables[ordinal] = imports
+            raise RuntimeError(f'import table {ordinal} has the wrong size')
+        tables[ordinal] = [(name, int(value, 16)) for value, name in imports]
 
-    checked = set()
     for offset, ordinal in re.findall(r'^\s*load\s+(\d+)\(mp\),\$(\d+),', code, re.M):
         path = paths.get(offset, '')
-        if not path.startswith('$'):
-            continue
-        module = path[1:]
-        if module.lower() not in builtins:
-            raise RuntimeError(f'AWM loads {path}, absent from the Android mod section')
-        # Use the same generator and declaration root as libinterp/mkfile.
-        exports = subprocess.check_output(
-            [str(limbo), '-t', module, '-I', 'module', 'module/runt.m'],
-            cwd=ROOT, text=True, timeout=60,
-        )
-        signatures = {name: int(value, 16) for name, value in re.findall(
-            r'^\s*"([^"]+)",(0x[0-9a-f]+),', exports, re.M)}
-        for value, name in tables[ordinal]:
-            if signatures.get(name) != int(value, 16):
-                raise RuntimeError(f'AWM import {path}->{name} does not match generated exports')
-        checked.add(path)
-        print(f'PASS AWM {path} import group {ordinal}: {len(tables[ordinal])} generated signatures')
-    if not {'$Sys', '$Draw'} <= checked:
-        raise RuntimeError('AWM startup assembly is missing the Sys or Draw LOAD')
+        # MP offsets in the assembly can be reused for non-module literals.
+        if path.startswith(('$', '/dis/')):
+            yield path, ordinal, tables[ordinal]
+
+
+def check_startup_imports(limbo, work):
+    """Check static LOAD records against real builtins and file exports."""
+    config = (ROOT/'emu/Android/emu').read_text()
+    mods = re.search(r'^mod\n((?:[ \t]+[^\n]*\n|\n)+)', config, re.M)
+    if mods is None:
+        raise RuntimeError('Android configuration has no mod section')
+    builtins = {line.split()[0] for line in mods[1].splitlines() if line.strip()}
+    assemblies = {}
+    file_exports = {}
+    for source in STARTUP:
+        assembly = work/(Path(source).stem + '.s')
+        result = compile_module(limbo, source, assembly, ['-S'])
+        if result.returncode:
+            raise RuntimeError(f'{source}: {result.stdout}')
+        code = assembly.read_text()
+        assemblies[source] = code
+        file_exports[source] = {name: int(value, 16) for value, name in re.findall(
+            r'^\s*link\s+[^,]+,[^,]+,(0x[0-9a-f]+),"([^"]+)"$', code, re.M)}
+
+    native_exports = {}
+    awm_paths = set()
+    counts = {'builtin': 0, 'file': 0, 'self': 0}
+    outside = set()
+    for source, code in assemblies.items():
+        for path, ordinal, imports in assembly_imports(code):
+            if path == '$self':
+                exports = file_exports[source]
+                kind = 'self'
+            elif path.startswith('$'):
+                module = path[1:]
+                if module.lower() not in builtins:
+                    raise RuntimeError(f'{source}: {path} is absent from the Android mod section')
+                if path not in native_exports:
+                    table = subprocess.check_output(
+                        [str(limbo), '-t', module, '-I', 'module', 'module/runt.m'],
+                        cwd=ROOT, text=True, timeout=60,
+                    )
+                    native_exports[path] = {name: int(value, 16) for name, value in re.findall(
+                        r'^\s*"([^"]+)",(0x[0-9a-f]+),', table, re.M)}
+                exports = native_exports[path]
+                kind = 'builtin'
+            elif path in FILE_PROVIDERS:
+                exports = file_exports[FILE_PROVIDERS[path]]
+                kind = 'file'
+            else:
+                outside.add(path)
+                continue
+            for name, signature in imports:
+                if exports.get(name) != signature:
+                    raise RuntimeError(f'{source}: {path}->{name} does not match provider exports')
+            counts[kind] += 1
+            if source == 'appl/wm/awm.b':
+                awm_paths.add(path)
+                symbols = ', '.join(name for name, _ in imports)
+                print(f'PASS AWM {path} import group {ordinal}: {symbols or "(empty)"}')
+    if not {'$Sys', '$Draw', '/dis/lib/string.dis', '/dis/lib/wmclient.dis'} <= awm_paths:
+        raise RuntimeError('AWM startup assembly is missing expected static LOAD records')
+    print(f'PASS AWM startup slice: {counts["builtin"]} builtin, {counts["file"]} file and {counts["self"]} self import groups')
+    if outside:
+        print('Static LOAD paths outside the startup slice: ' + ', '.join(sorted(outside)))
 
 
 def check_string_frames(limbo, work):
@@ -133,7 +180,7 @@ def main():
     refused = 0
     with tempfile.TemporaryDirectory(prefix='awm-preflight-', dir=ROOT) as directory:
         work = Path(directory)
-        check_builtin_imports(limbo, work)
+        check_startup_imports(limbo, work)
         check_string_frames(limbo, work)
         for source in STARTUP:
             legacy = work / (Path(source).stem + '.dis')
@@ -151,7 +198,7 @@ def main():
                                if 'Dis64 scalar:' in line), '')
             if result.returncode < 0 or target.exists() or not diagnostic:
                 raise RuntimeError(f'{source}: unexpected Dis64 refusal\n{result.stdout}')
-            if source == 'appl/wm/awm.b':
+            if source == 'appl/wm/awm.b' and 'module load requires managed linkage' in diagnostic:
                 witness = re.search(r':(\d+): Dis64 scalar: module load requires managed linkage', diagnostic)
                 if not witness or 'load ' not in (ROOT/source).read_text().splitlines()[int(witness[1])-1]:
                     raise RuntimeError(f'{source}: missing load-site diagnostic\n{result.stdout}')
