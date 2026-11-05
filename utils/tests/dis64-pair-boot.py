@@ -109,23 +109,29 @@ def sibling_images(*, failure=False, second='peer', wrong_slot=False, mapbyte=0x
 # Serialize the private Sys clock sequence with the existing indirect LEA codec.
 def clock_image(*, result_offset=72, module='$Sys', signature=1, repeats=1,
                 copy=False, early_copy=False, copy_destination=64, load=False, load_slot=8,
-                load_index=0, load_map=b"\xc0"):
+                load_index=0, load_map=b"\xc0", second=None, call_index=0):
     words, ins = RAW['W'], RAW['I']
     bindings = RAW['RAW']['RAW']
     calls = runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))
     slot = 8 if load else 0
-    frame = ins('IMFRAME', 65, source=slot, middle=0, destination=40)
+    frame = ins('IMFRAME', 65, source=slot, middle=call_index, destination=40)
     bind = calls['indirect']('ILEA', result_offset, 40, 32)
-    call = ins('IMCALL', 72, source=40, middle=0, destination=slot)
+    call = ins('IMCALL', 72, source=40, middle=call_index, destination=slot)
     move = ins('IMOVW', 9, source=72, destination=copy_destination)
     group = (move if early_copy else b'')+frame+bind+call+(move if copy else b'')
     prefix = ins('ILOAD', 64, source=0, middle=load_index, destination=load_slot) if load else b''
     count = repeats*(3+copy+early_copy)+1+load
     names = (module, 'millisec', 'caller')
+    imports = [bindings['binding'](module=0, sig=bindings['signature'](signature))]
+    if second is not None:
+        symbol, parameters = second
+        names += (symbol,)
+        imports.append(bindings['binding'](module=0, symbol=3,
+                                          sig=bindings['signature'](1, parameters)))
     pool = words(len(names))+b''.join(words(len(name), *map(ord, name)) for name in names)
     sections = RAW['SECTIONS'](
         name=2, databytes=16 if load else 8,
-        imports=[bindings['binding'](module=0, sig=bindings['signature'](signature))],
+        imports=imports,
         types=[RAW['D'](80, 8), RAW['D'](16, 8, load_map) if load else RAW['D'](8, 8, b'\x80')],
         code=words(count)+prefix+group*repeats+RAW['EXIT'],
     )
@@ -340,8 +346,9 @@ def main():
         if args.sys_clock:
             builtin = pair[:2]+['-P', '$Sys']
             consumer.write_bytes(clock_image())
-            for repeats, copy, load in ((1, False, False), (3, True, True), (32, True, True)):
-                consumer.write_bytes(clock_image(repeats=repeats, copy=copy, load=load))
+            for repeats, copy, load, second in ((1, False, False, None), (3, True, True, None),
+                                                (32, True, True, None), (3, True, True, ('sleep', (1,)))):
+                consumer.write_bytes(clock_image(repeats=repeats, copy=copy, load=load, second=second))
                 for jit in (0, 1):
                     output = execute(command+['-c', str(jit)]+builtin)
                     marker = f'native64 scalar module caller: jit={jit}, exit=""'
@@ -363,6 +370,10 @@ def main():
             for case in ({'result_offset': 64}, {'module': '$sys'}, {'signature': 0},
                          {'early_copy': True}, {'copy': True, 'copy_destination': 40},
                          {'repeats': 33}, {'load': True, 'load_slot': 0},
+                         {'load': True, 'second': ('missing', (1,))},
+                         {'load': True, 'second': ('sleep', (2,))},
+                         {'load': True, 'second': ('sleep', (1,)), 'call_index': 1},
+                         {'second': ('sleep', (1,))},
                          {'load': True, 'load_index': 1}, {'load': True, 'load_map': b'\x80'}):
                 consumer.write_bytes(clock_image(**case))
                 output = execute(command+builtin)

@@ -4,7 +4,7 @@
 char exNilref[] = "dereference of nil", exBounds[] = "array bounds error"; // VM frame diagnostics.
 
 static int initialized, rejectinit, clockreads; // Bounded OS descriptor boundary and observed callback identities.
-static const char *names[] = {"byte2char", "char2byte", "utfbytes", "read", "readn", "write", "pread", "pwrite", "pctl", "file2chan", "millisec", "open", "fildes"}; // Exact trusted profile.
+static const char *names[] = {"byte2char", "char2byte", "utfbytes", "read", "readn", "write", "pread", "pwrite", "pctl", "file2chan", "millisec", "open", "fildes", "sleep"}; // Exact trusted profile.
 static int invoked[nelem(names)]; // One dispatch counter per expected export.
 
 
@@ -127,6 +127,13 @@ Sys_fildes(void *frame)
 }
 
 SYS_MILLISEC
+void
+Sys_sleep(void *frame)
+{
+	check(frame == &baseline);
+	invoked[13]++;
+}
+
 SYS_PROFILE
 SYS_REGISTRATION
 SYS_IMPORTS

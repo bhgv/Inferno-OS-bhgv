@@ -758,7 +758,8 @@ struct Dis64NumericLoad {
 	Module *module; // Partial unpublished native owner retired through real unload.
 	int jit; // Explicit existing native leaf compilation request, never a file-mode choice.
 	int clock; // Exact private Sys clock call sequence with a checked result bind.
-	const Link *clockload; // Checked Sys export for an executing LOAD, or nil.
+	const Link *clockload[2]; // Checked exports for an executing Sys LOAD.
+	unsigned int clockimports;
 };
 
 
@@ -819,7 +820,7 @@ dis64numericconstruct(void *argument)
 	if(load->lease == nil || !attach64storage(module, load->lease))
 		return 0;
 	#ifdef DIS_NATIVE64_BOOT_SYS_IO
-	if(load->clockload != nil && !dis64sysloadmetadata(module, &load->clockload, 1))
+	if(load->clockimports != 0 && !dis64sysloadmetadata(module, load->clockload, load->clockimports))
 		return 0;
 #endif
 	if(load->image.module.profile == 1)
@@ -892,6 +893,26 @@ dis64sysclockview(const Dis64StorageImage *consumer, unsigned int ordinal, Modul
 	   symbol.count != sizeof(millisec)/4 || memcmp(symbol.values, millisec, sizeof(millisec)) != 0)
 		return nil;
 	return native64sysclock(owner);
+}
+
+/* The second scalar entry exercises binding only; the clock body cannot call it. */
+static const Link*
+dis64syssleepview(const Dis64StorageImage *consumer, Module **owner)
+{
+	static const uchar sys[] = {0,0,0,'$', 0,0,0,'S', 0,0,0,'y', 0,0,0,'s'};
+	static const uchar sleep[] = {0,0,0,'s', 0,0,0,'l', 0,0,0,'e', 0,0,0,'e', 0,0,0,'p'};
+	Dis64Binding binding;
+	DisRuneView module, symbol;
+
+	if(!dis64bindingget(&consumer->imports, 1, &binding) ||
+	   binding.signature.result != Dis64Int || binding.signature.parameters != 1 ||
+	   dis64u32(binding.signature.data+12) != Dis64Int ||
+	   !disstringpoolget(&consumer->strings, binding.module, &module) ||
+	   module.count != sizeof(sys)/4 || memcmp(module.values, sys, sizeof(sys)) != 0 ||
+	   !disstringpoolget(&consumer->strings, binding.symbol, &symbol) ||
+	   symbol.count != sizeof(sleep)/4 || memcmp(symbol.values, sleep, sizeof(sleep)) != 0)
+		return nil;
+	return native64sysexport("sleep", owner);
 }
 
 
@@ -1361,7 +1382,8 @@ prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
 	   (uintptr)image > (uintptr)-1-bytes || (jit != 0 && jit != 1) ||
 	   !dis64storageimagecheckcode(image, bytes, &dis64numericlimits, &load.image, dis64clockcode) ||
 	   load.image.module.profile != 1 || load.image.module.entry != 0 ||
-	   load.image.imports.count != 1 || load.image.exports.count != 0 ||
+	   load.image.imports.count == 0 || load.image.imports.count > nelem(load.clockload) ||
+	   load.image.exports.count != 0 ||
 	   load.image.data.mapbytes != 1 || load.image.initializers.count != 0 ||
 	   !dis64typeget(&load.image.types, load.image.module.frametype, &frame) ||
 	   frame.bytes != 80 || frame.align != 8 || frame.mapbytes != 2 ||
@@ -1372,6 +1394,8 @@ prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
 		return nil;
 	}
 	dynamic = load.image.code.data[4] == ILOAD;
+	if(!dynamic && load.image.imports.count != 1)
+		return nil;
 	if(load.image.data.bytes != (dynamic ? 16 : 8) ||
 	   load.image.data.map[0] != (dynamic ? 0xc0 : 0x80)){
 		kwerrstr("unsupported Dis64 Sys clock module data");
@@ -1387,8 +1411,15 @@ prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
 	if(entry == nil)
 		return nil;
 	clock = nil;
-	if(dynamic)
-		load.clockload = entry;
+	if(dynamic){
+		load.clockload[0] = entry;
+		load.clockimports = load.image.imports.count;
+		if(load.clockimports == 2){
+			load.clockload[1] = dis64syssleepview(&load.image, &sys);
+			if(load.clockload[1] == nil)
+				return nil;
+		}
+	}
 	else{
 		clock = dis64rootclock(sys, entry);
 		if(clock == nil)
