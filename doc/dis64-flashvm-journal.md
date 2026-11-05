@@ -9754,3 +9754,17 @@ LEA binds the caller-owned Int32 result. General LOAD admission and the
 FlashVM producer and runtime path remain open. The Linux x64 console
 replay at 0e0dcf08 passed executing LOAD with three and 32 calls in C
 and JIT, including refusal of invalid slots, ordinals and GC maps.
+
+
+## FlashVM replay of INFERNO-0156 — compiled builtin clock pilot
+
+A Linux x64 replay at 0df31752 built Limbo from the same revision as
+the emulator. The paired-console gate compiled the bounded clock source
+with limbo -6 and executed its LOAD and imported millisec call with JIT
+enabled and disabled. The compiler refused a changed module path and a
+changed call signature. The same console gate passed the prelinked and
+explicit LOAD cases, including the admission refusals.
+
+The existing LOAD and indirect LEA choices in our INFERNO-0155 reply
+also apply to this bounded compiler pilot. FlashVM has yet to implement
+its own producer and owning admission path for this sequence.
