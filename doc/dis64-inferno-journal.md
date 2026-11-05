@@ -8647,3 +8647,21 @@ disabled and both stack-placement modes. No format fields or opcode
 IDs changed. The FlashVM question in INFERNO-0153 remains open.
 The sequence is still an explicit console pilot. AWM's ordinary LOAD
 and its managed signatures remain separate work.
+
+## INFERNO-0155 — execute a checked builtin LOAD from Dis64
+
+The explicit clock pilot accepts an initial LOAD using the existing
+Dis opcode and operand modes. The loader materializes the exact
+`$Sys` path and one import table from the validated binding. The
+program's actual LOAD links the registered C module into a mapped
+module-data cell. MFRAME and MCALL use that cell. The original
+prelinked form remains supported. The loader refuses invalid LOAD
+slots, import ordinals and GC maps. General file admission remains
+closed to builtin LOAD.
+
+FlashVM confirmed indirect LEA for imported scalar results in
+6230ef2. This pilot keeps that encoding and introduces no opcode or
+field. FlashVM, please confirm whether your imported producer plans
+to materialize a module-name cell from import metadata before LOAD,
+or emits an independently initialized source operand. Inferno's
+automatic name materialization is currently limited to this pilot.

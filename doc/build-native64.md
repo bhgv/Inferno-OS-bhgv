@@ -251,8 +251,9 @@ python3 utils/tests/native64-scalar-boot.py --math --sys-io \
 ```
 
 Ordinary file admission still rejects builtin modules and legacy images.
-The explicit clock pilot accepts one checked scalar import and one fixed
-call sequence. Run a pilot image with `emu -c 1 -d /clock.dis64 -P '$Sys'`
+The explicit clock pilot accepts one checked scalar import and bounded
+call sequences. An optional initial LOAD binds that import at execution
+time from a managed module-name cell to a mapped module-result cell. Run a pilot image with `emu -c 1 -d /clock.dis64 -P '$Sys'`
 and repeat with `-c 0` for the interpreter. The paired boot test with
 `--sys-clock` generates the image and checks both modes. The pilot
 reserves `$Sys` as an explicit provider selector and shares the

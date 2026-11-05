@@ -3264,6 +3264,21 @@ OP(iload)
 			}
 		}
 	}
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+	else if(m->cstep == native64lea8step && strcmp(n, "$Sys") == 0){
+		const Link *entry;
+		Module *sys;
+
+		sys = nil;
+		entry = native64sysclock(&sys);
+		if(entry == nil || sys->ref <= 0 || sys->ref == 0x7fffffff ||
+		   ldt[0].name == nil || strcmp(ldt[0].name, entry->name) != 0 ||
+		   ldt[0].sig != entry->sig || ldt[1].name != nil)
+			error(exModule);
+		sys->ref++;
+		ml = linkmod(sys, ldt, 0);
+	}
+#endif
 	else {
 		m = readmod(n, lookmod(n), 1);
 		ml = linkmod(m, ldt, 1);

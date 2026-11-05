@@ -758,7 +758,39 @@ struct Dis64NumericLoad {
 	Module *module; // Partial unpublished native owner retired through real unload.
 	int jit; // Explicit existing native leaf compilation request, never a file-mode choice.
 	int clock; // Exact private Sys clock call sequence with a checked result bind.
+	const Link *clockload; // Checked Sys export for an executing LOAD, or nil.
 };
+
+
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+
+
+/* Materialize the one checked import and the managed source string for LOAD. */
+static int
+dis64clockloadmetadata(Module *module, const Link *entry)
+{
+	Import *imports;
+	String *path;
+
+	module->ldt = mallocz(2*sizeof(Import*), 1);
+	if(module->ldt == nil)
+		return 0;
+	module->ldt[0] = imports = mallocz(2*sizeof(Import), 1);
+	if(imports == nil)
+		return 0;
+	imports[0].name = strdup(entry->name);
+	if(imports[0].name == nil)
+		return 0;
+	imports[0].sig = entry->sig;
+	path = c2string("$Sys", 4);
+	if(path == nil || path == H)
+		return 0;
+	memmove(module->origmp, &path, sizeof(path));
+	Setmark(D2H(path));
+	module->rt |= HASLDT;
+	return 1;
+}
+#endif
 
 
 /* Build an owned program/entry only after complete private role/map/native lowering proof. */
@@ -781,6 +813,10 @@ dis64numericconstruct(void *argument)
 	load->lease = dis64storagefromview(&load->image);
 	if(load->lease == nil || !attach64storage(module, load->lease))
 		return 0;
+	#ifdef DIS_NATIVE64_BOOT_SYS_IO
+	if(load->clockload != nil && !dis64clockloadmetadata(module, load->clockload))
+		return 0;
+#endif
 	module->entryt = module->type[load->image.module.frametype];
 	module->nprog = load->image.code.count;
 	module->prog = mallocz(module->nprog*sizeof(Inst), 1);
@@ -826,7 +862,7 @@ static const Dis64StorageLimits dis64numericlimits = {
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 
 #define Dis64ClockCalls 32U // Maximum calls in one explicitly selected clock program.
-#define Dis64ClockInstructions (4U*Dis64ClockCalls+1U) // Call-and-copy groups plus exit.
+#define Dis64ClockInstructions (4U*Dis64ClockCalls+2U) // Optional LOAD, call-and-copy groups, and exit.
 
 
 /* Resolve one exact scalar import from an already validated image. */
@@ -873,7 +909,7 @@ dis64clockcode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64C
 {
 	Dis64CallDecoded decoded;
 	Dis64Instruction *inst;
-	unsigned int at, i, used, count, phase, calls;
+	unsigned int at, i, used, count, phase, calls, slot;
 	int copied;
 
 	if(bytes < 4)
@@ -882,16 +918,22 @@ dis64clockcode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64C
 	if(count < 4 || count > limit || count > Dis64ClockInstructions)
 		return 0;
 	at = 4;
-	phase = calls = copied = 0;
+	phase = calls = copied = slot = 0;
 	for(i=0; i<count; i++){
 		if(!dis64callread(data+at, bytes-at, &decoded, &used))
 			return 0;
 		at += used;
 		inst = &decoded.instruction;
 		switch(inst->op){
+		case ILOAD:
+			if(i != 0 || inst->mode != (SRC(AMP)|AXIMM|DST(AMP)) ||
+			   inst->source != 0 || inst->middle != 0 || inst->destination != 8)
+				return 0;
+			slot = 8;
+			break;
 		case IMFRAME:
 			if(phase != 0 || inst->mode != (SRC(AMP)|AXIMM|DST(AFP)) ||
-			   inst->source != 0 || inst->middle != 0 || inst->destination != 40)
+			   inst->source != slot || inst->middle != 0 || inst->destination != 40)
 				return 0;
 			phase = 1;
 			copied = 0;
@@ -904,7 +946,7 @@ dis64clockcode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64C
 			break;
 		case IMCALL:
 			if(phase != 2 || inst->mode != (SRC(AFP)|AXIMM|DST(AMP)) ||
-			   inst->source != 40 || inst->middle != 0 || inst->destination != 0)
+			   inst->source != 40 || inst->middle != 0 || inst->destination != slot)
 				return 0;
 			phase = 0;
 			if(++calls > Dis64ClockCalls)
@@ -1252,6 +1294,7 @@ prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
 	const Link *entry;
 	Modlink *caller, *clock;
 	unsigned int i, rune;
+	int dynamic;
 
 	memset(&load, 0, sizeof(load));
 	if(heapmonitor != nil || !dis64runtimemodel() || path == nil || path == H ||
@@ -1260,14 +1303,19 @@ prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
 	   !dis64storageimagecheckcode(image, bytes, &dis64numericlimits, &load.image, dis64clockcode) ||
 	   load.image.module.profile != 1 || load.image.module.entry != 0 ||
 	   load.image.imports.count != 1 || load.image.exports.count != 0 ||
-	   load.image.data.bytes != 8 || load.image.data.mapbytes != 1 ||
-	   load.image.data.map[0] != 0x80 || load.image.initializers.count != 0 ||
+	   load.image.data.mapbytes != 1 || load.image.initializers.count != 0 ||
 	   !dis64typeget(&load.image.types, load.image.module.frametype, &frame) ||
 	   frame.bytes != 80 || frame.align != 8 || frame.mapbytes != 2 ||
 	   frame.map[0] != 0 || frame.map[1] != 0 ||
 	   !disstringpoolget(&load.image.strings, load.image.module.name, &load.name) ||
 	   load.name.count == 0 || load.name.count > Dis64RuntimeName){
 		kwerrstr("unsupported Dis64 Sys clock consumer");
+		return nil;
+	}
+	dynamic = load.image.code.data[4] == ILOAD;
+	if(load.image.data.bytes != (dynamic ? 16 : 8) ||
+	   load.image.data.map[0] != (dynamic ? 0xc0 : 0x80)){
+		kwerrstr("unsupported Dis64 Sys clock module data");
 		return nil;
 	}
 	for(i=0; i<load.name.count; i++)
@@ -1277,9 +1325,16 @@ prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
 		}
 	sys = nil;
 	entry = dis64sysclockview(&load.image, 0, &sys);
-	clock = dis64rootclock(sys, entry);
-	if(clock == nil)
+	if(entry == nil)
 		return nil;
+	clock = nil;
+	if(dynamic)
+		load.clockload = entry;
+	else{
+		clock = dis64rootclock(sys, entry);
+		if(clock == nil)
+			return nil;
+	}
 	load.path = path;
 	load.jit = jit;
 	load.clock = 1;
@@ -1291,6 +1346,8 @@ prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
 			unload(load.module);
 		free64storage(load.lease);
 	}
+	if(clock == nil)
+		return caller;
 	if(caller != nil){
 		memmove(caller->MP, &clock, sizeof(clock));
 		Setmark(D2H(clock));

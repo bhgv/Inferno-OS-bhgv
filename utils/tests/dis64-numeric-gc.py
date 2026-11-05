@@ -36,6 +36,7 @@ def unit(calls=False):
             source += '\n'+extract(xec, signature)+'\n'
         fixture = fixture.split('/* Check C and machine-code execution with a standalone')[0]
         fixture += (ROOT/'utils/tests/dis64-provider-call.c').read_text()
+        source += '\nString* c2string(char*, int);\n'
         inferno = (ROOT/'emu/port/inferno.c').read_text()
         clock = '\n'.join(extract(inferno, signature) for signature in
                           ('static void\nsysstatusframe(', 'void\nSys_millisec('))

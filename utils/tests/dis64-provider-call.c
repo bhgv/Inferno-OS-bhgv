@@ -134,6 +134,17 @@ osmillisec(void)
 }
 
 
+/* This fixture exercises the prelinked profile. Full console tests own LOAD strings. */
+String*
+c2string(char *bytes, int length)
+{
+	USED(bytes);
+	USED(length);
+	require(0);
+	return H;
+}
+
+
 CLOCK_HANDLER
 
 
