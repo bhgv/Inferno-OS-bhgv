@@ -199,4 +199,13 @@ to the explicit console trial. The compiler checks the original LOAD path,
 the import and entry types and the entire lowered call sequence. It emits a
 prelinked import for the file-pair loader. The GC suite uses the compiled
 pairs for non-nil execution and keeps independent byte fixtures for refusal
-tests. The console starts with a nil argument.
+tests. By default the console starts with a nil argument. Pass `-A text`
+to seed a string for `unquoted` or a one-element list for `quoted`.
+
+```sh
+emu -c 1 -X dis64-managed-trial -d /caller.dis64 -P /provider.dis64 -A 'Grüße 世界'
+```
+
+The trial option accepts up to 4096 bytes of UTF-8, including an empty
+string. The seed belongs to the managed startup frame and is traced by
+the same pointer map as the call result.

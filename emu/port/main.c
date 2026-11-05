@@ -13,6 +13,7 @@ char**		rebootargv;
 static	char	*imod = "/dis/emuinit.dis";
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 int dis64bootauto; // Resolve the sole import beside the consumer.
+char *dis64bootmanagedinput;
 int dis64bootmanaged; // Select the explicit managed file-pair trial.
 char *dis64bootprovider; // Explicit provider namespace path for paired startup.
 #endif
@@ -47,6 +48,7 @@ usage(void)
 		"\t-P provider.dis64 (experimental pair; requires -d consumer.dis64)\n"
 		"\t-X dis64-pair (find the provider beside the -d consumer.dis64 file)\n"
 		"\t-X dis64-managed-trial (requires -d consumer.dis64 and -P provider.dis64)\n"
+		"\t-A text (managed trial input, up to 4096 UTF-8 bytes)\n"
 #endif
 		"\t-s\n"
 		"\t-v\n"
@@ -180,6 +182,11 @@ option(int argc, char *argv[], void (*badusage)(void))
 		badusage();
 #endif
 		break;
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+	case 'A':
+		dis64bootmanagedinput = EARGF(badusage());
+		break;
+#endif
 	case 'P':
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 		dis64bootprovider = EARGF(badusage());
@@ -243,7 +250,10 @@ launchoptions(void)
 #if defined(DIS_NATIVE64_SCALAR_BOOT)
 	if(dis64bootmanaged)
 		return imodexplicit && dis64bootprovider != nil && !dis64bootauto && !dis64launchmode() &&
-			dis64bootprovider[0] != '$';
+			dis64bootprovider[0] != '$' &&
+			(dis64bootmanagedinput == nil || strlen(dis64bootmanagedinput) <= 4096);
+	if(dis64bootmanagedinput != nil)
+		return 0;
 	if(dis64bootprovider != nil || dis64bootauto)
 		return imodexplicit && !dis64launchmode() && !(dis64bootprovider != nil && dis64bootauto);
 #endif

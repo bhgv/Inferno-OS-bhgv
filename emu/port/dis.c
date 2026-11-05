@@ -834,6 +834,10 @@ struct SchedModule {
 	Prog *result; // Published process, assigned only after newprog succeeds.
 	Frame *frame; // Temporary full-sized source frame.
 	void *saved; // Caller scratch register restored on all protected paths.
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+	void *input; // Owned until transferred into the mapped startup frame.
+	int inputroot;
+#endif
 	int transferred; // linkmod has consumed the input Module reference.
 };
 
@@ -1253,6 +1257,37 @@ vmachine(void *a)
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 
 
+/* Seed the mapped input slot of the already validated managed trial. */
+static void
+schedpairseed(SchedModule *c)
+{
+	Modlink *provider;
+	String *text;
+	List *list;
+
+	memmove(&provider, c->ml->MP, sizeof(provider));
+	text = c2string(dis64bootmanagedinput, strlen(dis64bootmanagedinput));
+	c->input = text;
+	ptradd(D2H(text));
+	c->inputroot = 1;
+	if(provider->links[0].u.pc->op == IHEADP){
+		if(Tptr.ref <= 0 || Tptr.ref == 0x7fffffff)
+			error(exHeap);
+		list = H;
+		cons(sizeof(text), &list);
+		Tptr.ref++;
+		list->t = &Tptr;
+		memmove(list->data, &text, sizeof(text));
+		Setmark(D2H(text));
+		ptrdel(D2H(text));
+		c->input = list;
+		c->inputroot = 0;
+		ptradd(D2H(list));
+		c->inputroot = 1;
+	}
+}
+
+
 /* Reuse normal frame initialization for an already linked startup instance. */
 static int
 schedpairframe(void *argument)
@@ -1260,6 +1295,8 @@ schedpairframe(void *argument)
 	SchedModule *c;
 
 	c = argument;
+	if(dis64bootmanagedinput != nil)
+		schedpairseed(c);
 	return schedframe(c, vmstartup(c->m));
 }
 
@@ -1278,6 +1315,15 @@ schedpair(Modlink *link)
 	ok = kprotect(schedpairframe, &c);
 	R.s = c.saved;
 	free(c.frame);
+	if(c.input != nil){
+		if(c.inputroot)
+			ptrdel(D2H(c.input));
+		if(ok){
+			memmove((uchar*)c.result->R.FP+64, &c.input, sizeof(c.input));
+			Setmark(D2H(c.input));
+		}else
+			destroy(c.input);
+	}
 	ptrdel(D2H(link));
 	if(ok)
 		return c.result;
