@@ -191,9 +191,15 @@ native64bindresult(int managed)
 	resultbit = 0x80 >> ((size-8)/8%8);
 	if(managed && resultbyte >= mapbytes)
 		error(exBounds);
-	for(i=0; i<mapbytes; i++)
-		if(type->map[i] != (managed && i == resultbyte ? resultbit : 0))
+	for(i=0; i<mapbytes; i++){
+		int map = type->map[i];
+
+		/* The paired String caller also owns its argument at byte 64. */
+		if(managed && size == 80 && i == 1)
+			map &= ~0x80;
+		if(map != (managed && i == resultbyte ? resultbit : 0))
 			error(exBounds);
+	}
 	/* The checked sequence prepares exactly one frame at the top of the stack. */
 	active = (Stkext*)R.EX;
 	top = (uintptr)R.SP;

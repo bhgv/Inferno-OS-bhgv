@@ -132,3 +132,11 @@ The successful bytecode runs take the provider body from those checked images.
 The harness still constructs the caller in memory and injects a separate
 fault body for unwind tests. The normal Inferno loader does not select this
 trial gate.
+
+The candidate caller now carries MFRAME, MOVP, LEA, MCALL and EXIT. It owns
+the input at Frame64 byte 64, the result at byte 72, and the linked provider
+at MP byte zero. The candidate gate checks the complete caller instruction
+sequence and both maps before returning either body. The VM fixture decodes
+both checked bodies and executes them with collection between quanta. The
+fixture supplies the input and constructs the linked owners in memory. The
+normal file loader still has no trial-schema entry point.

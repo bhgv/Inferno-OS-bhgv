@@ -19,6 +19,7 @@ static Prog *managedprocess;
 static int managederror, managedcalls;
 static int managedbytecodes, managedfast;
 static Dis64ManagedBody managedbodies[2];
+static Dis64ManagedBody managedcallers[2];
 
 /* Independent trial bytes, with deliberately local version/tag values. */
 static const Dis64ManagedSchema trialschema = {0xface0010U, 0x71, 0x72};
@@ -33,7 +34,7 @@ managedimagecontrol(void)
 	static const Dis64StorageLimits limits = {8, 8, 128, 8, 8, 8, 2, 2};
 	Dis64StorageImage scalar;
 	Dis64Binding result;
-	Dis64ManagedBody body;
+	Dis64ManagedBody body, caller;
 	const ManagedImageCase *test;
 	const LimboNative64Managed *shape;
 	unsigned int i;
@@ -45,15 +46,18 @@ managedimagecontrol(void)
 			&limbo_native64_String_unquoted_managed;
 		result.entry = 99;
 		body = (Dis64ManagedBody){nil, 99};
+		caller = body;
 		require(!dis64storageimagecheck(test->consumer, test->consumerbytes, &limits, &scalar));
 		require(dis64managedimagepair(test->consumer, test->consumerbytes,
-			test->provider, test->providerbytes, &limits, &trialschema, shape, &result, &body) == test->accepted);
+			test->provider, test->providerbytes, &limits, &trialschema, shape,
+			&result, &caller, &body) == test->accepted);
 		require(result.entry == (test->accepted ? 1 : 99));
 		if(test->accepted){
 			require(result.frame == 0 && body.bytes == 8);
 			managedbodies[test->direction] = body;
+			managedcallers[test->direction] = caller;
 		}else
-			require(body.data == nil && body.bytes == 99);
+			require(body.data == nil && body.bytes == 99 && caller.data == nil && caller.bytes == 99);
 	}
 	require(allocations == before);
 }
@@ -306,20 +310,18 @@ managedmodule(int links)
 	return mklinkmod(module, links);
 }
 
-/* Decode a bounded one-token provider through the same operand reader as Dis64. */
+/* Decode a checked body through the same operand reader as Dis64. */
 static Inst*
-managedprogram(int reverse, int unwind)
+manageddecode(const uchar *bytes, unsigned int size, unsigned int count)
 {
-	static const uchar fault[] = {IDIVW, SRC(AIMM)|DST(AFP), 0,40, IRET, SRC(AXXX)|DST(AXXX)};
-	const uchar *bytes = unwind ? fault : managedbodies[reverse].data;
-	unsigned int at, i, used, size = unwind ? sizeof(fault) : managedbodies[reverse].bytes;
+	unsigned int at, i, used;
 	Dis64CallDecoded decoded;
 	Inst *body;
 
-	body = mallocz(2*sizeof(*body), 1);
+	body = mallocz(count*sizeof(*body), 1);
 	require(body != nil);
 	at = 0;
-	for(i=0; i<2; i++){
+	for(i=0; i<count; i++){
 		require(dis64callread(bytes+at, size-at, &decoded, &used));
 		dis64runtimeinst(body+i, &decoded.instruction, body);
 		if(UDST(decoded.instruction.mode) == (AFP|AIND)){
@@ -330,6 +332,87 @@ managedprogram(int reverse, int unwind)
 	}
 	require(at == size);
 	return body;
+}
+
+static Inst*
+managedprogram(int reverse, int unwind)
+{
+	static const uchar fault[] = {IDIVW, SRC(AIMM)|DST(AFP), 0,40, IRET, SRC(AXXX)|DST(AXXX)};
+
+	if(unwind)
+		return manageddecode(fault, sizeof(fault), 2);
+	return manageddecode(managedbodies[reverse].data, managedbodies[reverse].bytes, 2);
+}
+
+/* Both instruction streams come from the checked images. Only the input is supplied by C. */
+static int
+managedfullcase(Type *callerframe, Type *calleeframe, int reverse, int jit, int grow)
+{
+	Prog process = {0};
+	Modlink *caller, *callee;
+	Frame *entry, *pending;
+	String *text;
+	void *argument, *result;
+	int step, before;
+
+	caller = managedmodule(0);
+	ptradd(D2H(caller));
+	callee = managedmodule(1);
+	ptradd(D2H(callee));
+	caller->m->prog = caller->prog = manageddecode(managedcallers[reverse].data,
+		managedcallers[reverse].bytes, 5);
+	caller->m->nprog = 5;
+	caller->m->cstep = native64managedlea8step;
+	if(grow)
+		caller->m->ss = 0;
+	callee->m->prog = callee->prog = managedprogram(reverse, 0);
+	callee->m->nprog = 2;
+	callee->links[0].u.pc = callee->prog;
+	callee->links[0].frame = calleeframe;
+	if(jit){
+		require(compile(callee->m, 2, nil) && callee->m->jit != nil && callee->m->jit->code != nil);
+		rxbegin = (uintptr)callee->m->jit->code;
+		rxend = rxbegin+callee->m->jit->size;
+	}
+	caller->MP = H2D(uchar*, heapz(stringelement));
+	managedput(caller->MP, callee);
+	ptrdel(D2H(callee));
+	process.exval = H;
+	process.state = Pready;
+	process.quanta = 1;
+	process.R.M = caller;
+	process.R.PC = caller->prog;
+	entry = mallocz(callerframe->size, 1);
+	require(entry != nil);
+	entry->t = callerframe;
+	R.s = &entry;
+	newstack(&process);
+	free(entry);
+	initmem(callerframe, process.R.FP);
+	text = managedstring();
+	argument = reverse ? (void*)managedlist(text) : text;
+	managedput(process.R.FP+64, argument);
+	ptrdel(D2H(caller));
+	managedprocess = &process;
+	before = rxcompleted;
+	for(step=0; step<6; step++){
+		require(kprotect(execute, &process));
+		numericcollect(&process);
+		if(step == 0){
+			memmove(&pending, process.R.FP+40, sizeof(pending));
+			require(pending != nil && pending->t == (grow ? nil : calleeframe));
+			if(grow)
+				require(((Stkext*)process.R.EX)->reg.TR == calleeframe);
+		}
+	}
+	require(process.R.M == caller && process.R.PC == caller->prog+4);
+	memmove(&result, process.R.FP+72, sizeof(result));
+	require(result != H && result != nil);
+	require((reverse ? (String*)result : managedhead(result))->Sascii[0] == 'x');
+	require(!kprotect(execute, &process) && message[0] == 0);
+	destroystack(&R);
+	require(Tstring.ref == 1 && Tlist.ref == 1 && Tptr.ref == 1 && Tmodlink.ref == 1);
+	return rxcompleted-before;
 }
 
 static void
@@ -597,10 +680,10 @@ managedmapcontrol(Type *frame)
 int
 main(void)
 {
-	static uchar two[] = {0xc0}, one[] = {0x80}, resultmap[] = {0, 0x80};
+	static uchar two[] = {0xc0}, one[] = {0x80}, resultmap[] = {0, 0x80}, callermap[] = {0, 0xc0};
 	static uchar quotedmap[] = F_String_quoted_map, unquotedmap[] = F_String_unquoted_map;
-	Type *slots, *frames[2], *callerframe;
-	int reverse, empty, unwind;
+	Type *slots, *frames[2], *callerframe, *imageframe;
+	int reverse, empty, unwind, jit, grow, imagefast = 0;
 
 	numericpoolinit();
 	Tptr.size = sizeof(void*);
@@ -610,6 +693,10 @@ main(void)
 	optab[IHEADP] = headp;
 	optab[IDIVW] = divw;
 	optab[IRET] = ret;
+	optab[IMOVP] = movp;
+	optab[IMFRAME] = mframe;
+	optab[IMCALL] = mcall;
+	optab[IEXIT] = iexit;
 	managedrecordcontrol();
 	managedimagecontrol();
 	Tstring.size = sizeof(String);
@@ -620,6 +707,8 @@ main(void)
 	frames[0] = dtype(freeheap, sizeof(F_String_unquoted), unquotedmap, sizeof(unquotedmap));
 	frames[1] = dtype(freeheap, sizeof(F_String_quoted), quotedmap, sizeof(quotedmap));
 	callerframe = dtype(freeheap, 72, resultmap, sizeof(resultmap));
+	imageframe = dtype(freeheap, 80, callermap, sizeof(callermap));
+	require(imageframe != nil);
 	require(stringelement != nil && slots != nil && frames[0] != nil && frames[1] != nil && callerframe != nil);
 	for(reverse=0; reverse<2; reverse++)
 		for(empty=0; empty<2; empty++)
@@ -635,6 +724,11 @@ main(void)
 				}
 			}
 	managedmapcontrol(frames[0]);
+	for(reverse=0; reverse<2; reverse++)
+		for(jit=0; jit<2; jit++)
+			for(grow=0; grow<2; grow++)
+				imagefast += managedfullcase(imageframe, frames[reverse], reverse, jit, grow);
+	freetype(imageframe);
 	freetype(callerframe);
 	freetype(frames[1]);
 	freetype(frames[0]);
@@ -644,10 +738,12 @@ main(void)
 	require(live == 0);
 #if defined(__x86_64__)
 	require(managedfast == 4);
+	require(imagefast == 4);
 #endif
 	printf("PASS generated String frames with real GC: 8 ownership cases, missing-map control, %lu epochs, %d checks\n", gcepochs, checks);
 	printf("PASS production MFRAME/MCALL with symbolic String callbacks: %d calls\n", managedcalls);
 	printf("PASS managed bytecode providers: %d calls with CONS/HEAD/RET or unwind, %d native completions\n",
 		managedbytecodes, managedfast);
+	printf("PASS paired managed image bytecode: 8 calls, %d native completions\n", imagefast);
 	return 0;
 }

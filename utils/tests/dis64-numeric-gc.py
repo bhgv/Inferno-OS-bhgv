@@ -116,9 +116,18 @@ def managed_images(fixtures):
         opcode = ('ICONSP', 'IHEADP')[direction]
         terminal = fixtures['I']('IRET', 27)
         body = indirect(opcode, 64, 32, 0)+terminal
-        consumer = build(('caller', symbol, 'String'), name=0, databytes=0,
-                         types=[desc(72, 8, b'\x00\x80')],
+        ins = fixtures['I']
+        def caller(*, frame_map=b'\x00\xc0', mp_map=b'\x80', argument=64, target=72):
+            code = (ins('IMFRAME', 65, source=0, middle=0, destination=40)
+                    + indirect('IMOVP', argument, 40, 64)
+                    + indirect('ILEA', target, 40, 32)
+                    + ins('IMCALL', 72, source=40, middle=0, destination=0)
+                    + fixtures['EXIT'])
+            return build(('caller', symbol, 'String'), name=0, databytes=8, code=words(5)+code,
+                         types=[desc(80, 8, frame_map), desc(8, 8, mp_map)],
                          imports=[binding(module=2, symbol=1, sig=signature)])
+
+        consumer = caller()
         def provider(*, name='String', export_name=symbol, sig=signature, entry=1,
                      frame_map=b'\x00\x80', duplicate=False, code=body,
                      prefix=fixtures['EXIT']):
@@ -136,6 +145,9 @@ def managed_images(fixtures):
             (0, provider(code=indirect(('IHEADP', 'ICONSP')[direction], 64, 32, 0)+terminal)),
             (0, provider(code=indirect(opcode, 64, 32, 8)+terminal)),
             (0, provider(prefix=terminal)), (0, provider(code=body+terminal))))
+        rows.extend((direction, 0, bad, good) for bad in (
+            caller(frame_map=b'\x00\x40'), caller(mp_map=b'\x00'),
+            caller(argument=72), caller(target=64)))
     declarations, entries = [], []
     for index, (direction, accepted, consumer, provider) in enumerate(rows):
         for label, data in (('consumer', consumer), ('provider', provider)):

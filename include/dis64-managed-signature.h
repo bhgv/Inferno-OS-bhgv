@@ -194,24 +194,54 @@ dis64managedprovidercode(const unsigned char *data, unsigned int bytes, unsigned
 /* Join complete trial images and return only the bounded one-token body. */
 typedef struct Dis64ManagedBody Dis64ManagedBody;
 struct Dis64ManagedBody {
-	const unsigned char *data; // Borrowed two-instruction body without a count prefix.
+	const unsigned char *data; // Borrowed instruction bytes without a count prefix.
 	unsigned int bytes;
 };
+
+/* Exact caller layout: mapped argument at 64, mapped result at 72, link at MP 0. */
+static int
+dis64managedcallercode(const unsigned char *data, unsigned int bytes, unsigned int limit,
+	Dis64CodeView *result)
+{
+	static const unsigned char instructions[] = {
+		IMFRAME, SRC(AMP)|AXIMM|DST(AFP), 0, 0, 40,
+		IMOVP, SRC(AFP)|DST(AFP|AIND), 0x80,64, 40, 0x80,64,
+		ILEA, SRC(AFP)|DST(AFP|AIND), 0x80,72, 40,32,
+		IMCALL, SRC(AFP)|AXIMM|DST(AMP), 0, 40,0,
+		IEXIT, SRC(AXXX)|DST(AXXX),
+	};
+	unsigned int i;
+
+	if(bytes != 4+sizeof(instructions) || limit < 5 || dis64u32(data) != 5)
+		return 0;
+	for(i=0; i<sizeof(instructions); i++)
+		if(data[4+i] != instructions[i])
+			return 0;
+	*result = (Dis64CodeView){data, bytes, 5};
+	return 1;
+}
 
 static int
 dis64managedimagepair(const unsigned char *consumer, unsigned int consumerbytes,
 	const unsigned char *provider, unsigned int providerbytes, const Dis64StorageLimits *limits,
 	const Dis64ManagedSchema *schema, const LimboNative64Managed *shape,
-	Dis64Binding *result, Dis64ManagedBody *body)
+	Dis64Binding *result, Dis64ManagedBody *caller, Dis64ManagedBody *body)
 {
 	Dis64StorageImage in, out;
 	Dis64Binding selected;
+	Dis64Type callerframe;
 
-	if(result == 0 || body == 0 || !dis64storageimagecheckrecords(consumer, consumerbytes, limits, &in,
-	   dis64storagecode, dis64managedtable, schema) ||
+	if(result == 0 || caller == 0 || body == 0 ||
+	   !dis64storageimagecheckrecords(consumer, consumerbytes, limits, &in,
+	   dis64managedcallercode, dis64managedtable, schema) ||
 	   !dis64storageimagecheckrecords(provider, providerbytes, limits, &out,
 	   dis64managedprovidercode, dis64managedtable, schema) ||
-	   in.module.profile != 1 || out.module.profile != 0 ||
+	   in.module.profile != 1 || in.module.entry != 0 || out.module.profile != 0 ||
+	   in.data.bytes != 8 || in.data.align != 8 || in.data.mapbytes != 1 || in.data.map[0] != 0x80 ||
+	   (in.present&(1U<<(Dis64Data-1))) != 0 ||
+	   !dis64typeget(&in.types, in.module.frametype, &callerframe) ||
+	   callerframe.bytes != 80 || callerframe.mapbytes != 2 ||
+	   callerframe.map[0] != 0 || callerframe.map[1] != 0xc0 ||
 	   out.module.databytes != 0 || (out.present&(1U<<(Dis64Data-1))) != 0 ||
 	   in.imports.count != 1 || in.exports.count != 0 ||
 	   out.imports.count != 0 || out.exports.count != 1)
@@ -223,6 +253,7 @@ dis64managedimagepair(const unsigned char *consumer, unsigned int consumerbytes,
 	   out.code.data[6] != (shape->result == LimboNative64ListString ? ICONSP : IHEADP))
 		return 0;
 	*body = (Dis64ManagedBody){out.code.data+6, out.code.bytes-6};
+	*caller = (Dis64ManagedBody){in.code.data+4, in.code.bytes-4};
 	*result = selected;
 	return 1;
 }
