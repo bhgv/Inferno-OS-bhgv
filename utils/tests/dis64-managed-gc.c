@@ -1,16 +1,26 @@
 /* Symbolic String/List ownership fixture. No file kind or VM call is admitted here. */
+#include "string-native64.h"
+
 static Type *stringelement;
 
 static void
-managedput(void **slot, void *owned)
+managedput(void *slot, void *owned)
 {
 	void *old;
 
-	old = *slot;
-	*slot = owned;
+	memmove(&old, slot, sizeof(old));
+	memmove(slot, &owned, sizeof(owned));
 	if(owned != H)
 		Setmark(D2H(owned));
 	destroy(old);
+}
+
+static int
+managedfail(void *unused)
+{
+	USED(unused);
+	error("managed fixture unwind");
+	return 0;
 }
 
 static String*
@@ -53,27 +63,40 @@ managedhead(List *list)
 
 /* Trace only actual mapped storage. Neither the transient address nor C locals root values. */
 static void
-managedcase(Type *slots, int reverse, int empty, int unwind)
+managedcase(Type *slots, Type *frame, int reverse, int empty, int unwind)
 {
-	Heap *caller, *callee;
-	void **outer, **inner, *result, *argument;
+	Heap *caller, *callee, *staging;
+	void **outer, *parameter, *stage, *result, *argument;
+	void *bound;
 	String *text;
 	int slot;
 
 	caller = heapz(slots);
 	ptradd(caller);
-	callee = heapz(slots);
+	callee = heapz(frame);
 	ptradd(callee);
+	staging = heapz(stringelement);
+	ptradd(staging);
 	outer = H2D(void**, caller);
-	inner = H2D(void**, callee);
-	require(outer[0] == H && outer[1] == H && inner[0] == H && inner[1] == H);
+	stage = H2D(void*, staging);
+	if(reverse){
+		F_String_quoted *call = H2D(F_String_quoted*, callee);
+		call->ret = (String**)(outer+1);
+		parameter = &call->argv;
+	}else{
+		F_String_unquoted *call = H2D(F_String_unquoted*, callee);
+		call->ret = (List**)(outer+1);
+		parameter = &call->args;
+	}
+	memmove(&argument, parameter, sizeof(argument));
+	require(outer[0] == H && outer[1] == H && argument == H && *(void**)stage == H);
 
 	text = empty ? H : managedstring();
 	argument = reverse && !empty ? (void*)managedlist(text) : text;
 	managedput(outer, argument);
 	if(argument != H)
 		D2H(argument)->ref++;
-	managedput(inner, argument);
+	managedput(parameter, argument);
 	managedput(outer, H);
 	numericcollect(nil);
 	if(argument != H){
@@ -85,15 +108,23 @@ managedcase(Type *slots, int reverse, int empty, int unwind)
 		D2H(text)->ref++;
 	}
 	result = empty ? H : reverse ? (void*)text : managedlist(text);
-	managedput(inner+1, result);
+	managedput(stage, result);
 	numericcollect(nil);
 	require(outer[1] == H);
 	if(result != H)
 		require(numericowner(D2H(result))->magic == MAGIC_A);
 	if(!unwind){
-		inner[1] = H;
-		managedput(outer+1, result);
+		bound = reverse ? (void*)H2D(F_String_quoted*, callee)->ret :
+			(void*)H2D(F_String_unquoted*, callee)->ret;
+		require(bound == outer+1);
+		*(void**)stage = H;
+		managedput(bound, result);
+	}else{
+		require(!kprotect(managedfail, nil) && worker.nerr == 0);
+		require(strcmp(message, "managed fixture unwind") == 0 && outer[1] == H);
 	}
+	ptrdel(staging);
+	destroy(stage);
 	ptrdel(callee);
 	destroy(H2D(void*, callee));
 	numericcollect(nil);
@@ -110,11 +141,35 @@ managedcase(Type *slots, int reverse, int empty, int unwind)
 	require(Tstring.ref == 1 && Tlist.ref == 1 && stringelement->ref == 1);
 }
 
+/* An omitted frame trace must lose the argument after the collection epochs. */
+static void
+managedmapcontrol(Type *frame)
+{
+	Heap *owner;
+	F_String_unquoted *call;
+	String *text;
+
+	owner = heapz(frame);
+	ptradd(owner);
+	call = H2D(F_String_unquoted*, owner);
+	text = managedstring();
+	managedput(&call->args, text);
+	frame->mark = noptrs;
+	numericcollect(nil);
+	require(numericowner(D2H(text))->magic == MAGIC_F);
+	call->args = H;
+	frame->mark = markheap;
+	ptrdel(owner);
+	destroy(call);
+	require(Tstring.ref == 1);
+}
+
 int
 main(void)
 {
 	static uchar two[] = {0xc0}, one[] = {0x80};
-	Type *slots;
+	static uchar quotedmap[] = F_String_quoted_map, unquotedmap[] = F_String_unquoted_map;
+	Type *slots, *frames[2];
 	int reverse, empty, unwind;
 
 	numericpoolinit();
@@ -123,15 +178,20 @@ main(void)
 	Tstring.mark = noptrs;
 	stringelement = dtype(freeheap, sizeof(String*), one, sizeof(one));
 	slots = dtype(freeheap, 2*sizeof(void*), two, sizeof(two));
-	require(stringelement != nil && slots != nil);
+	frames[0] = dtype(freeheap, sizeof(F_String_unquoted), unquotedmap, sizeof(unquotedmap));
+	frames[1] = dtype(freeheap, sizeof(F_String_quoted), quotedmap, sizeof(quotedmap));
+	require(stringelement != nil && slots != nil && frames[0] != nil && frames[1] != nil);
 	for(reverse=0; reverse<2; reverse++)
 		for(empty=0; empty<2; empty++)
 			for(unwind=0; unwind<2; unwind++)
-				managedcase(slots, reverse, empty, unwind);
+				managedcase(slots, frames[reverse], reverse, empty, unwind);
+	managedmapcontrol(frames[0]);
+	freetype(frames[1]);
+	freetype(frames[0]);
 	freetype(slots);
 	freetype(stringelement);
 	numericdrain();
 	require(live == 0);
-	printf("PASS symbolic String/List GC: 8 ownership cases, %lu epochs, %d checks\n", gcepochs, checks);
+	printf("PASS generated String frames with real GC: 8 ownership cases, missing-map control, %lu epochs, %d checks\n", gcepochs, checks);
 	return 0;
 }

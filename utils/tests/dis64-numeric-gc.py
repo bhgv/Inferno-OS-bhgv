@@ -99,9 +99,12 @@ def main():
     parser.add_argument('--provider', action='store_true')
     parser.add_argument('--calls', action='store_true')
     parser.add_argument('--managed', action='store_true')
+    parser.add_argument('--limbo', type=Path)
     args = parser.parse_args()
     if sum(bool(option) for option in (args.provider, args.control, args.calls, args.managed)) > 1:
         parser.error('select one execution mode')
+    if args.managed and args.limbo is None:
+        parser.error('--managed requires --limbo to generate the String frames')
     fixtures = runpy.run_path(str(ROOT/'utils/tests/dis64-numeric-module.py'))
     instruction = fixtures['I']('IADDW', 16, source=2, destination=8)
     words = fixtures['W']
@@ -123,6 +126,10 @@ def main():
     command += ['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
     with tempfile.TemporaryDirectory(prefix='numeric-gc-', dir=os.environ.get('NATIVE64_TMPDIR', ROOT)) as directory:
         work = Path(directory)
+        if args.managed:
+            (work/'string-native64.h').write_bytes(subprocess.check_output(
+                [str(args.limbo.resolve()), '-H', '-M', 'String', '-I'+str(ROOT/'module'),
+                 str(ROOT/'module/string.m')], timeout=60))
         (work/'test.c').write_text(unit(args.calls, args.managed))
         (work/'image').write_bytes(raw)
         binary = work/'test'
