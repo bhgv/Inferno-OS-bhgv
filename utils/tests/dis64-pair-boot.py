@@ -158,6 +158,33 @@ init()
     return output.read_bytes()
 
 
+# Compile a real entryless library whose second export observes the first export's write.
+def compile_library(limbo, work):
+    source = work/'library.b'
+    output = work/'library.dis64'
+    template = """implement unit;
+unit: module {
+    symbol: fn();
+    other: fn();
+};
+counter := 40;
+divisor := 2;
+symbol() { divisor -= 2; }
+other() { counter /= divisor; }
+"""
+    command = [str(limbo), '-64', '-o', str(output), str(source)]
+    invalid = template.replace('other: fn();', 'other: fn(value: int);')
+    invalid = invalid.replace('other() { counter /= divisor; }',
+                              'other(value: int) { counter /= value; }')
+    source.write_text(invalid)
+    result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+    if result.returncode <= 0 or output.exists() or 'entryless library' not in result.stderr:
+        raise RuntimeError('compiler accepted an unsupported library signature: '+result.stderr)
+    source.write_text(template)
+    subprocess.run(command, check=True, timeout=30)
+    return output.read_bytes()
+
+
 # Require the real scheduler to retire after returning or unwinding the pair.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -216,6 +243,20 @@ def main():
                     marker = f'native64 scalar module {module}: jit={jit}, exit="{status}"'
                     if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
                         raise RuntimeError('entryless library calls did not complete: '+output)
+        if args.limbo is not None:
+            dependency = compile_library(args.limbo.resolve(), work)
+            provider.write_bytes(dependency)
+            sibling.write_bytes(dependency)
+            for second in (0, 1):
+                consumer.write_bytes(two_symbols(second=second)[0])
+                module, status = ('unit', 'zero divide') if second else ('other', '')
+                for jit in (0, 1):
+                    for options in (pair, automatic):
+                        output = execute(command+['-c', str(jit)]+options)
+                        marker = f'native64 scalar module {module}: jit={jit}, exit="{status}"'
+                        if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                            raise RuntimeError('compiler-produced library did not complete: '+output)
+            print('PASS Limbo source to entryless Dis64 library and shared MP in C/JIT')
         for changes in ({'frame_map': b'\x80\x00'}, {'end_with_exit': True}):
             caller, dependency = two_symbols(library=True, **changes)
             consumer.write_bytes(caller)

@@ -418,8 +418,12 @@ if(debug['v']) print("fncom: %s %d %p\n", d->sym->name, d->refs, d);
 	if(emitscalar64){
 		if(!(excs == nil && impdecls->next == nil &&
 		     dis64clock(entry, globals, ldts, firstinst, ninst, offset)) &&
-		   !dis64modulebarrier(entry, ldts))
-			dis64scalar(entry, globals, firstinst, ninst, offset);
+		   !dis64modulebarrier(entry, ldts)){
+			if(entry == nil)
+				dis64library(globals, firstinst, ninst, offset);
+			else
+				dis64scalar(entry, globals, firstinst, ninst, offset);
+		}
 	}else if(gendis){
 		discon(XMAGIC);
 		hints = 0;

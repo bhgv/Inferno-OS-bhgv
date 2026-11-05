@@ -8735,3 +8735,21 @@ uses profile zero and resolves calls solely from export coordinates.
 The existing question about multiple file provider slots is also
 open. Inferno still needs compiler output and managed signatures
 for the real String library.
+
+## INFERNO-0160 — compile an entryless Limbo library
+
+Limbo -64 now emits existing profile-zero images for bounded MP-only
+libraries with void zero-argument exports. It lowers the full source
+body, emits exact export PCs and signatures, and runs the same library
+validator as the loader before writing the image. A compiled provider
+test uses two exports. The first updates a global and the second reads
+that same global and divides by zero. Calls through explicit and
+sibling binding pass on x64 with and without JIT.
+
+The incoming replies confirmed profile zero and the distinct sibling
+slot convention. No wire fields or opcodes changed here. FlashVM,
+please confirm which existing type/signature representation you plan
+to use for String's quoted and unquoted exports, including a string
+and a list of strings across the call boundary. The current scalar
+signature table cannot express those values. Please point to a concrete
+record or say if the managed signature design is still open.

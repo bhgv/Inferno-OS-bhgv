@@ -2,6 +2,7 @@
 #include "dis64-lower.h"
 #include "dis64-inline.h"
 #include "dis64-signature.h"
+#include "dis64-numeric-storage.h"
 
 #define ScalarOutputLimit (8U*1024U*1024U) // Match the complete-image admission bound.
 
@@ -255,6 +256,183 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 }
 
 
+/* Share exact scalar initializer widths between executable and library output. */
+static int
+dis64globalinitializer(Decl *decl, Dis64Initializer *record)
+{
+	ulong real[2];
+	uvlong bits;
+
+	if(decl->init->op != Oconst || decl->offset < 0 ||
+	   decl->init->ty->kind != decl->ty->kind)
+		return 0;
+	record->offset = decl->offset;
+	bits = decl->init->val;
+	switch(decl->ty->kind){
+	case Tint:
+		record->kind = Dis64Int;
+		record->high = 0;
+		record->low = bits;
+		break;
+	case Tbig:
+		record->kind = Dis64Big;
+		record->high = bits>>32;
+		record->low = bits;
+		break;
+	case Treal:
+		record->kind = Dis64Real;
+		dtocanon(decl->init->rval, real);
+		record->high = real[0];
+		record->low = real[1];
+		break;
+	default:
+		return 0;
+	}
+	return 1;
+}
+
+
+#define ScalarLibraryExports 32U // Maximum exported procedures in the bounded library producer.
+
+
+/* Encode one ASCII name as a borrowed Rune32 string-pool record. */
+static int
+dis64libraryname(const char *name, uchar *bytes, DisStringPoolRecord *record)
+{
+	unsigned int i, length;
+
+	length = strlen(name);
+	if(length == 0 || length > 255)
+		return 0;
+	dis64put32(bytes, length);
+	for(i=0; i<length; i++){
+		if((uchar)name[i] > 127)
+			return 0;
+		dis64put32(bytes+4+4*i, (uchar)name[i]);
+	}
+	record->data = bytes;
+	record->bytes = 4+4*length;
+	return 1;
+}
+
+
+/* Produce an entryless MP-only library with independently named void exports. */
+void
+dis64library(Decl *globals, Inst *instructions, long count, long databytes)
+{
+	Dis64ModuleInfo module = {0};
+	Dis64Type types[2];
+	Dis64Lower lower = {0};
+	Dis64StorageImage checked;
+	Dis64CodeView codeview;
+	Dis64StorageLimits limits = {64, 65536, ScalarObjectLimit, 65536, ScalarCodeLimit, 1024, 256, 1024};
+	Dis64Initializer initializers[Dis64PilotInitializers];
+	DisStringPoolRecord names[ScalarLibraryExports+1];
+	Dis64Payload sections[6];
+	Decl *export, *decl;
+	uchar metadata[24], frame[2] = {0, 0}, exports[4+28*ScalarLibraryExports];
+	uchar *code, *maps, *typedata, *data, *runes, *strings, *output;
+	unsigned int sizes[6], i, n, at, used, ninit, poolbytes, typebytes;
+	char *failure;
+
+	code = maps = typedata = data = runes = strings = output = nil;
+	failure = "entryless library requires bounded MP-only scalar code and void exports without arguments";
+	if(count <= 0 || count > ScalarCodeLimit || databytes < 0 || databytes > ScalarObjectLimit ||
+	   !dis64scalarlist(globals, 0) ||
+	   !dis64lower(instructions, count, databytes, 80, 64, &lower) ||
+	   lower.databytes != databytes || lower.nconstants != 0)
+		goto done;
+	maps = allocmem((databytes+63)/64+1);
+	memset(maps, 0, (databytes+63)/64+1);
+	types[0] = (Dis64Type){80, 8, frame, sizeof(frame)};
+	types[1] = (Dis64Type){databytes, databytes == 0 ? 1 : 4, maps, (databytes+63)/64};
+	code = allocmem(4+14*lower.count);
+	dis64put32(code, lower.count);
+	at = 4;
+	for(i=0; i<lower.count; i++){
+		if(lower.origin[i]->op == IRET)
+			lower.code[i].op = IRET;
+		else if(lower.code[i].op == IEXIT ||
+			!dis64numericstorageinstruction(&lower.code[i], lower.count, &types[1], 64))
+			goto done;
+		if(!dis64encode(code, &at, &lower.code[i]))
+			goto done;
+	}
+	sizes[1] = at;
+	runes = allocmem((ScalarLibraryExports+1)*(4+4*255));
+	if(!dis64libraryname(impdecl->sym->name, runes, &names[0]))
+		goto done;
+	n = 0;
+	poolbytes = 4+names[0].bytes;
+	for(export=impdecl->ty->tof->ids; export != nil; export=export->next){
+		if(export->store == Dglobal)
+			goto done;
+		if(export->store != Dfn)
+			continue;
+		if(n == ScalarLibraryExports || export->pc == nil || export->pc->pc < 0 ||
+		   export->pc->pc >= count || export->ty->ids != nil || export->ty->varargs ||
+		   export->ty->tof->kind != Tnone || !dis64nomap(export->desc) ||
+		   !dis64libraryname(export->sym->name, runes+(n+1)*(4+4*255), &names[n+1]))
+			goto done;
+		poolbytes += names[n+1].bytes;
+		at = 4+28*n;
+		dis64put32(exports+at, n+1);
+		dis64put32(exports+at+4, lower.pcs[export->pc->pc]);
+		dis64put32(exports+at+8, 0);
+		dis64put32(exports+at+12, 12);
+		if(!dis64signaturewrite(exports+at+16, 12, Dis64Void, nil, 0, &used))
+			goto done;
+		n++;
+	}
+	if(n == 0)
+		goto done;
+	dis64put32(exports, n);
+	sizes[4] = 4+28*n;
+	ninit = 0;
+	for(decl=globals; decl != nil; decl=decl->next){
+		if(decl->store != Dglobal || decl->init == nil)
+			continue;
+		if(ninit == nelem(initializers) || !dis64globalinitializer(decl, &initializers[ninit]))
+			goto done;
+		ninit++;
+	}
+	typebytes = 20+types[0].mapbytes+types[1].mapbytes;
+	typedata = allocmem(typebytes);
+	data = allocmem(4+16*ninit);
+	strings = allocmem(poolbytes);
+	module.databytes = databytes;
+	module.datatype = 1;
+	if(!dis64modulewrite(metadata, sizeof(metadata), &module, &sizes[0]) ||
+	   !dis64typeswrite(typedata, typebytes, types, nelem(types), &sizes[2]) ||
+	   !dis64initializerswrite(data, 4+16*ninit, &types[1], initializers, ninit, &sizes[3]) ||
+	   !disstringpoolwrite(strings, poolbytes, names, n+1, &sizes[5]))
+		goto done;
+	sections[0] = (Dis64Payload){Dis64Module, Dis64Required, metadata, sizes[0]};
+	sections[1] = (Dis64Payload){Dis64Code, Dis64Required, code, sizes[1]};
+	sections[2] = (Dis64Payload){Dis64Types, Dis64Required, typedata, sizes[2]};
+	sections[3] = (Dis64Payload){Dis64Data, Dis64Required, data, sizes[3]};
+	sections[4] = (Dis64Payload){Dis64Exports, Dis64Required, exports, sizes[4]};
+	sections[5] = (Dis64Payload){Dis64Strings, Dis64Required, strings, sizes[5]};
+	output = allocmem(ScalarOutputLimit);
+	if(!dis64write(output, ScalarOutputLimit, nil, 0, sections, nelem(sections), &used) ||
+	   !dis64storageimagecheck(output, used, &limits, &checked) ||
+	   !dis64numericlibrarycheck(&checked, ScalarCodeLimit, &codeview))
+		goto done;
+	if(Bwrite(bout, output, used) != used){
+		failure = "cannot write the complete checked library";
+		goto done;
+	}
+	dis64trace(&lower);
+	failure = nil;
+done:
+	free(code); free(maps); free(typedata); free(data);
+	free(runes); free(strings); free(output);
+	dis64lowerfree(&lower);
+	if(failure != nil)
+		dis64error(nil, failure);
+}
+
+
 /* Compile the existing np0 scalar profile; no imports, managed ABI or shared IDs are added. */
 void
 dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long databytes)
@@ -270,8 +448,6 @@ dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long dat
 	Decl *decl;
 	Inst *input;
 	uchar *parts[5], *maps[2], *runes, *output;
-	ulong real[2];
-	uvlong bits;
 	unsigned int i, n, at, written, frame, scratch, length, typesbytes, sizes[5];
 	char *failure;
 
@@ -340,19 +516,8 @@ dis64scalar(Decl *entry, Decl *globals, Inst *instructions, long count, long dat
 			goto done;
 		if(decl->init == nil || dis64scalartable(decl))
 			continue;
-		if(n == Dis64PilotInitializers || decl->init->op != Oconst || decl->offset < 0 ||
-		   decl->init->ty->kind != decl->ty->kind)
+		if(n == Dis64PilotInitializers || !dis64globalinitializer(decl, &records[n]))
 			goto done;
-		records[n].offset = decl->offset;
-		records[n].kind = decl->ty->kind == Tint ? Dis64Int : decl->ty->kind == Tbig ? Dis64Big : Dis64Real;
-		bits = decl->init->val;
-		if(decl->ty->kind == Treal){
-			dtocanon(decl->init->rval, real);
-			records[n].high = real[0]; records[n].low = real[1];
-		}else{
-			records[n].high = decl->ty->kind == Tint ? 0 : bits>>32;
-			records[n].low = (unsigned int)bits;
-		}
 		n++;
 	}
 	if(lower.nconstants > Dis64PilotInitializers-n)
