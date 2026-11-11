@@ -99,3 +99,34 @@ checks are separate from running AWM bytecode. `result.json` records both
 selected interfaces and still records `awm_started: false`. Ordinary startup
 continues to reject the remaining legacy module set. This step changes trusted
 C metadata and consumers only; it assigns no new Dis64 wire IDs or import ABI.
+
+## Complete fixed-argument Sys set
+
+Use `--native64-tk --native64-draw --native64-sys-fixed` to build the full GUI
+native graph with all 39 fixed Sys exports, beyond the separate 15-entry console
+pilot. Both Sys C owners and the service/channel consumer select the same fresh
+`sys-native64.h`. The normal Android startup ABI guard remains active.
+
+The Sys initializer allocates all five descriptors before asking the real
+`builtinmod64` constructor to publish the complete module. Descriptor globals
+and channel maps are published only after registration succeeds, with no later
+allocation. Failed registration retires the staged descriptors while preserving
+the diagnostic. Repeated initialization verifies the complete module and its
+maps; incompatible preexisting modules or partial descriptor sets are refused
+without claiming their owners. The original legacy and console pilot paths are
+unchanged.
+
+`native64-sys-fixed.py` compiles both complete Sys owners, tests all 39 generated
+links/frames/maps and checks the actual descriptor/module initializers. It covers
+88 allocation refusals, 32 preexisting-state refusals and 4005 staging observations.
+Sixty calls through published links execute the production Unicode handlers,
+including tuple/unaligned results, invalid runes and bounds-error nonpublication.
+Other callbacks are aborting identity witnesses, so this fixture does not claim
+OS I/O or GUI execution. Host UBSan, ARM64, RV64 and ARM64/Bionic checks pass.
+
+The selected NativeActivity also links with 16KiB LOAD alignment. Its result
+records `sys_fixed_native64_selected: true`, alongside Draw/Tk selection and
+`awm_started: false`. This fixed set intentionally contains no print/fprint/sprint/
+aprint entries. Their typed C gateways are separate from the unimplemented
+ordinary variadic frame-tail/compiler contract. No shared Dis64 tags or general
+managed file-call admission are added by C registration.

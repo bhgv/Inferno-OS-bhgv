@@ -4,6 +4,13 @@
 #include "interp.h"
 #include "isa.h"
 #include "native64-scalar-boot.h"
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+#if DIS_NATIVE64_GUI_SYS_FIXED != 1 || defined(DIS_NATIVE64_SYS_HEADER) || defined(DIS_NATIVE64_BOOT_SYS_IO) || defined(DIS_NATIVE64_SCALAR_BOOT)
+#error native64 GUI Sys selection owns its generated declarations
+#endif
+#define DIS_NATIVE64_SYS_HEADER "sys-native64.h"
+#include "native64-sys-fixed.h"
+#endif
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 #ifdef DIS_NATIVE64_SYS_HEADER
 #error native64 Sys startup owns its generated metadata selection
@@ -60,6 +67,9 @@ sysinit(void)
 	uchar readmap[sizeof(rmap)], writemap[sizeof(wmap)];
 	ulong readslot, dataslot, replyslot;
 	int i;
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+	char reason[ERRMAX], *failure = exNomem;
+#endif
 
 	if(TFD != nil || TFileIO != nil || FioTread != nil || FioTwrite != nil || Tdir != nil){
 		if(TFD != nil && TFileIO != nil && FioTread != nil && FioTwrite != nil && Tdir != nil)
@@ -102,6 +112,15 @@ sysinit(void)
 	if(types[4] == nil)
 		goto failed;
 
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+	if(!sysnative64registerfixed()){
+		reason[0] = 0;
+		kgerrstr(reason, sizeof(reason));
+		reason[sizeof(reason)-1] = 0;
+		failure = reason[0] != 0 ? reason : "native64 Sys registration failed";
+		goto failed;
+	}
+#endif
 	memmove(rmap, readmap, sizeof(rmap));
 	memmove(wmap, writemap, sizeof(wmap));
 	TFD = types[0];
@@ -113,8 +132,33 @@ sysinit(void)
 failed:
 	for(i=0; i<5; i++)
 		freetype(types[i]);
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+	error(failure);
+#else
 	error(exNomem);
+#endif
 }
+
+
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+/* Verify the complete native descriptor set before accepting an idempotent module startup. */
+int
+sysnative64typesready(void)
+{
+	Type *types[] = {TFD, TFileIO, FioTread, FioTwrite, Tdir};
+	uchar *maps[] = {FDmap, FileIOmap, rmap, wmap, dmap};
+	unsigned int sizes[] = {sizeof(FD), sizeof(Sys_FileIO), sizeof(Sys_FileIO_read), sizeof(Sys_FileIO_write), sizeof(Sys_Dir)};
+	unsigned int bytes[] = {sizeof(FDmap), sizeof(FileIOmap), sizeof(rmap), sizeof(wmap), sizeof(dmap)};
+	unsigned int i;
+
+	for(i=0; i<nelem(types); i++)
+		if(types[i] == nil || types[i]->size != sizes[i] || types[i]->np != bytes[i] ||
+		   memcmp(types[i]->map, maps[i], bytes[i]) != 0)
+			return 0;
+	return TFD->free == freeFD && TFileIO->free == freeFileIO &&
+		FioTread->free == freeheap && FioTwrite->free == freeheap && Tdir->free == freeheap;
+}
+#endif
 
 
 void

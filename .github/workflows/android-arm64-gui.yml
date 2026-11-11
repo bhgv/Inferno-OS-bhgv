@@ -7,6 +7,7 @@ on:
       - 'utils/tests/android-gui-build.py'
       - 'utils/tests/native64-tk-register.*'
       - 'utils/tests/native64-draw-register.*'
+      - 'utils/tests/native64-sys-fixed.*'
       - 'module/draw-native64.m'
       - 'module/gui-native64.m'
       - 'module/tk-native64.m'
@@ -54,6 +55,7 @@ jobs:
           python3 libdraw/tests/screen-channel.py
           python3 utils/tests/native64-tk-register.py --limbo "$RUNNER_TEMP/host-tools/limbo"
           python3 utils/tests/native64-draw-register.py --limbo "$RUNNER_TEMP/host-tools/limbo"
+          python3 utils/tests/native64-sys-fixed.py --limbo "$RUNNER_TEMP/host-tools/limbo"
           python3 android-app/tests/framebuffer-lifecycle.py
           python3 android-app/tests/framebuffer-startup.py
           python3 android-app/tests/framebuffer-pixels.py
@@ -63,11 +65,11 @@ jobs:
           python3 utils/tests/android-gui-build.py --ndk "$RUNNER_TEMP/android-ndk-r27c" \
             --host-tools "$RUNNER_TEMP/host-tools" --app-root "$GITHUB_WORKSPACE/android-app" \
             --build-root "$RUNNER_TEMP/android-gui"
-      - name: Link full GUI with coherent native64 Draw/Tk frames
+      - name: Link full GUI with native64 Draw/Tk and fixed Sys frames
         run: |
           python3 utils/tests/android-gui-build.py --ndk "$RUNNER_TEMP/android-ndk-r27c" \
             --host-tools "$RUNNER_TEMP/host-tools" --app-root "$GITHUB_WORKSPACE/android-app" \
-            --build-root "$RUNNER_TEMP/android-gui-tk" --native64-tk --native64-draw
+            --build-root "$RUNNER_TEMP/android-gui-tk" --native64-tk --native64-draw --native64-sys-fixed
       - uses: actions/upload-artifact@v4
         if: always()
         with:

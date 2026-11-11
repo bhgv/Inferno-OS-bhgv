@@ -200,3 +200,5 @@ $ROOT/libinterp/draw-native64.h:D: $ROOT/module/draw-native64.m $ROOT/module/dra
 	limbo -H -M Draw -I$ROOT/module $ROOT/module/draw-native64.m > $target.tmp && mv $target.tmp $target
 
 draw.$O geom.$O: $NATIVE64_BOOT_DRAW_HEADERS
+
+runt.$O: $ROOT/include/native64-sys-fixed.h

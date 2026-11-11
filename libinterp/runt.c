@@ -2,6 +2,14 @@
 #include "isa.h"
 #include "interp.h"
 #include "native64-scalar-boot.h"
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+#if DIS_NATIVE64_GUI_SYS_FIXED != 1 || defined(DIS_NATIVE64_SYS_HEADER) || defined(DIS_NATIVE64_BOOT_SYS_IO) || defined(DIS_NATIVE64_SCALAR_BOOT)
+#error native64 GUI Sys selection owns its generated declarations
+#endif
+#define DIS_NATIVE64_SYS_HEADER "sys-native64.h"
+#define LIMBO_NATIVE64_IMPLEMENTATIONS
+#include "native64-sys-fixed.h"
+#endif
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 #ifdef DIS_NATIVE64_SYS_HEADER
 #error native64 Sys startup owns its generated metadata selection
@@ -99,11 +107,77 @@ native64sysclock(Module **owner)
 #endif
 
 
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+/* Only the staged Sys initializer calls this constructor while holding VM startup exclusion. */
+int
+sysnative64registerfixed(void)
+{
+	Module *module;
+
+	for(module=modules; module != nil; module=module->link)
+		if(module->path != nil && strcmp(module->path, "$Sys") == 0){
+			kwerrstr("Sys module already registered");
+			return 0;
+		}
+	return builtinmod64("$Sys", limbo_native64_Sys_specs, limbo_native64_Sys_spec_count,
+		limbo_native64_Sys_implementations, limbo_native64_Sys_implementation_count) != nil;
+}
+
+/* Repeated startup accepts only the complete selected module and its already-published types. */
+static int
+sysnative64fixedmatches(Module *module)
+{
+	const LimboNative64Entry *entry;
+	Link *link;
+	Type *type;
+	unsigned int i;
+
+	if(module->prog != nil || module->origmp != H || module->ext == nil || module->type == nil ||
+	   module->ntype != limbo_native64_Sys_implementation_count)
+		return 0;
+	for(i=0; i<module->ntype; i++){
+		entry = limbo_native64_Sys_implementations[i];
+		link = module->ext+i;
+		type = module->type[i];
+		if(link->name == nil || strcmp(link->name, entry->name) != 0 ||
+		   link->u.runt != entry->function || (UWORD)link->sig != entry->legacy_signature ||
+		   type == nil || link->frame != type || type->size != entry->frame_size ||
+		   type->np != entry->map_bytes || memcmp(type->map, entry->map, entry->map_bytes) != 0)
+			return 0;
+	}
+	return module->ext[module->ntype].name == nil;
+}
+#endif
+
+
 /* Register only the explicitly selected trusted profile; ordinary native64 declarations stay closed. */
 void
 sysmodinit(void)
 {
-#ifdef DIS_NATIVE64_BOOT_SYS_IO
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+	Module *module;
+
+	if(!limbo_native64_Sys_layout()){
+		error("native64 Sys layout mismatch");
+		return;
+	}
+	for(module=modules; module != nil; module=module->link)
+		if(module->path != nil && strcmp(module->path, "$Sys") == 0){
+			if(sysnative64fixedmatches(module) && sysnative64typesready()) return;
+			error("incompatible native64 Sys initialization");
+			return;
+		}
+	if(sysnative64typesready()){
+		error("Sys types already initialized without the selected module");
+		return;
+	}
+	sysinit(); /* Registers the module only after all five descriptors are staged. */
+	for(module=modules; module != nil; module=module->link)
+		if(module->path != nil && strcmp(module->path, "$Sys") == 0 &&
+		   sysnative64fixedmatches(module) && sysnative64typesready())
+			return;
+	error("native64 Sys initialization incomplete");
+#elif defined(DIS_NATIVE64_BOOT_SYS_IO)
 	if(!limbo_native64_Sys_layout()){
 		error("native64 Sys layout mismatch");
 		return;

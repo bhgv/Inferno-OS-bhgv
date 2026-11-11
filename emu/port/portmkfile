@@ -196,3 +196,6 @@ devgui.$O: $NATIVE64_BOOT_GUI_HEADERS
 
 $ROOT/libinterp/gui-native64.h:D: $ROOT/module/gui-native64.m $ROOT/module/sys.m $ROOT/module/draw.m $ROOT/module/tk.m
 	limbo -H -I$ROOT/module $ROOT/module/gui-native64.m > $target.tmp && mv $target.tmp $target
+
+inferno.$O: $ROOT/include/native64-sys-fixed.h
+devsrv.$O: $NATIVE64_BOOT_SYS_HEADERS

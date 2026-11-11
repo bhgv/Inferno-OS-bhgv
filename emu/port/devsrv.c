@@ -3,7 +3,14 @@
 #include	"error.h"
 #include	"interp.h"
 #include	<isa.h>
-#include	"runt.h"
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+#if !defined(DIS_WORD32) || DIS_WORD32 != 1
+#error native64 service declarations require DIS_WORD32=1
+#endif
+#include "sys-native64.h"
+#else
+#include "runt.h"
+#endif
 
 typedef struct SrvFile SrvFile;
 typedef struct Pending Pending;
