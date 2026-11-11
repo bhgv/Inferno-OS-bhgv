@@ -32,6 +32,7 @@ def function(source, signature):
 template=(ROOT/'libinterp/tests/sys-pctl.c').read_text()
 with tempfile.TemporaryDirectory(prefix='sys-pctl-') as directory:
     td=Path(directory)
+    runner=shlex.split(os.environ.get('NATIVE64_RUNNER', ''))
     command=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('CFLAGS','-O1 -g -DNDEBUG -fsanitize=address,undefined -fno-sanitize-recover=all'))
     for platform in ('emu','os'):
         if os.environ.get('PCTL_PLATFORM', platform) != platform:
@@ -66,4 +67,4 @@ with tempfile.TemporaryDirectory(prefix='sys-pctl-') as directory:
             includes=['-I'+str(model)]+['-I'+str(ROOT/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
             binary=td/(platform+str(bits)+'-pctl')
             subprocess.run(command+['-pthread']+includes+[str(target),'-o',str(binary)],check=True)
-            subprocess.run([str(binary)],check=True)
+            subprocess.run(runner+[str(binary)],check=True)

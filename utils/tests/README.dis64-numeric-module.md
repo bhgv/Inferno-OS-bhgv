@@ -80,3 +80,40 @@ python3 utils/tests/dis64-pair-boot.py --sys-clock --limbo /path/to/limbo \
 
 The full AWM Sys group additionally needs fildes, file2chan, fprint, open, pctl
 and sprint. Its managed and variadic arguments remain outside this profile.
+
+## Cross execution on Linux
+
+The complete console and the ownership fixtures can run through QEMU user mode.
+Use a runner reservation large enough to retain addresses above 4 GiB.
+For QEMU 10.0.13, the following runner avoids an early PIE/brk collision
+observed without an explicit reservation.
+
+```sh
+export NATIVE64_ARCH=arm64
+export CC=aarch64-linux-gnu-gcc
+export NATIVE64_RUNNER='qemu-aarch64 -R 0x10000000000 -L /usr/aarch64-linux-gnu'
+export NATIVE64_CFLAGS='-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'
+python3 utils/tests/dis64-numeric-gc.py --managed --limbo /path/to/host/limbo
+python3 utils/tests/dis64-numeric-gc.py --calls
+python3 utils/tests/dis64-numeric-gc.py --provider
+CC="$CC" CFLAGS="$NATIVE64_CFLAGS" python3 libinterp/tests/sys-pctl.py
+```
+
+For RV64, select `NATIVE64_ARCH=riscv64`, `CC=riscv64-linux-gnu-gcc` and
+`qemu-riscv64 -R 0x10000000000 -L /usr/riscv64-linux-gnu`. The RV64 CI
+flags currently omit UBSan. Native host tools, including Limbo, run directly
+on the build host. The target fixture binaries run through
+`NATIVE64_RUNNER`, including the emu/os pctl tests in both WORD models.
+
+On 2026-11-11, GCC 14.2.0 and QEMU 10.0.13 built and executed both complete
+console targets. The paired boot corpus covered compiled libraries, shared
+MP, multiple dependencies, scalar Sys LOAD groups, managed String pairs and
+admission failures. The scalar corpus completed 38 processes and 1096
+in-program checks on each target.
+
+The managed GC fixture requires four native provider completions and four
+native paired-image completions on ARM64 and AMD64. RV64 currently executes
+these managed operations through C handlers and reports zero completions for
+these two counters. Both target runs cover 483 collection epochs and 19
+constructor allocation refusals. Full AWM startup and hardware acceptance
+remain separate milestones.

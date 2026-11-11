@@ -762,7 +762,7 @@ main(void)
 	freetype(stringelement);
 	numericdrain();
 	require(live == 0);
-#if defined(__x86_64__)
+#if defined(__x86_64__) || defined(__aarch64__)
 	require(managedfast == 4);
 	require(imagefast == 4);
 #endif

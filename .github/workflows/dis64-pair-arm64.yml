@@ -80,7 +80,7 @@ jobs:
             execution: QEMU
             compiler: riscv64-linux-gnu-gcc
             cross: riscv64-linux-gnu-
-            executor: qemu-riscv64 -L /usr/riscv64-linux-gnu
+            executor: qemu-riscv64 -R 0x10000000000 -L /usr/riscv64-linux-gnu
     env:
       NATIVE64_ARCH: ${{ matrix.arch }}
       NATIVE64_RUNNER: ${{ matrix.executor }}
@@ -122,11 +122,14 @@ jobs:
           CC="$TARGET_CC" NATIVE64_CFLAGS="$flags" \
             python3 utils/tests/native64-sys-register.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
             | tee "$RUNNER_TEMP/native64-pair/port-logs/sys-registration.log"
-      - name: Check AWM namespace setup on ARM64
-        if: matrix.arch == 'arm64'
+      - name: Check AWM namespace setup on each target
         run: |
           set -o pipefail
-          PCTL_PLATFORM=emu PCTL_WORD=32 CFLAGS='-O2 -g -DNDEBUG -fsanitize=undefined -fno-sanitize-recover=all' \
+          flags='-O2 -g -DNDEBUG'
+          if [ "$NATIVE64_ARCH" != riscv64 ]; then
+            flags="$flags -fsanitize=undefined -fno-sanitize-recover=all"
+          fi
+          CC="$TARGET_CC" PCTL_PLATFORM=emu PCTL_WORD=32 CFLAGS="$flags" \
             python3 libinterp/tests/sys-pctl.py \
             | tee "$RUNNER_TEMP/native64-pair/port-logs/awm-pctl.log"
       - name: Boot the scalar Sys profile
