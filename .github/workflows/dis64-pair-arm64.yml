@@ -101,10 +101,32 @@ jobs:
           if [ "$NATIVE64_ARCH" = arm64 ]; then
             test "$(uname -m)" = aarch64
           fi
-          sudo apt-get update
-          sudo apt-get install -y build-essential python3
+          packages=()
+          for tool in cc gcc ar make; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              packages+=(build-essential)
+              break
+            fi
+          done
+          if ! command -v python3 >/dev/null 2>&1; then
+            packages+=(python3)
+          fi
           if [ "$NATIVE64_ARCH" = riscv64 ]; then
-            sudo apt-get install -y gcc-riscv64-linux-gnu binutils-riscv64-linux-gnu qemu-user
+            if ! command -v riscv64-linux-gnu-gcc >/dev/null 2>&1; then
+              packages+=(gcc-riscv64-linux-gnu)
+            fi
+            if ! command -v riscv64-linux-gnu-ar >/dev/null 2>&1; then
+              packages+=(binutils-riscv64-linux-gnu)
+            fi
+            if ! command -v qemu-riscv64 >/dev/null 2>&1; then
+              packages+=(qemu-user)
+            fi
+          fi
+          if [ "${#packages[@]}" -gt 0 ]; then
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 \
+              -o Acquire::https::Timeout=20 -o APT::Update::Error-Mode=any update
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 \
+              -o Acquire::https::Timeout=20 install -y --no-install-recommends "${packages[@]}"
           fi
           MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/host-tools" sh makemk.sh
       - name: Compile the AWM startup slice and record Dis64 barriers

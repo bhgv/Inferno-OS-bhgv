@@ -697,6 +697,23 @@ dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, lo
 	return 1;
 }
 
+/* Local pointer assignments carry identities; only the two retained values are callable. */
+static long*
+dis64managedlocal(long *slots, long *values, unsigned int *used, long slot)
+{
+	unsigned int i;
+
+	for(i=0; i<*used; i++)
+		if(slots[i] == slot)
+			return &values[i];
+	if(*used == 8*Dis64ManagedCalls+1)
+		return nil;
+	slots[*used] = slot;
+	values[*used] = 0;
+	return &values[(*used)++];
+}
+
+
 /* Prove legacy value identities and kinds while preserving import/reload positions. */
 static int
 dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
@@ -707,12 +724,13 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	static const uchar dm[] = {Afp, Afp, Afpind, Afpind, Afp, Anone};
 	static const uchar mm[] = {Aldt, Aoff, Anone, Anone, Aoff, Anone};
 	Decl *imports[2], *import, *export, *path, *argument;
-	long module = -1, frame = -1, result = -1, current = 32, previous = -1;
-	unsigned int i, n, groups = 0, phase = 1, pending = 0, step, binding = 0, seen = 0;
+	long module = -1, frame = -1, result = -1, current = 1, previous = 0;
+	long slots[8*Dis64ManagedCalls+1], values[8*Dis64ManagedCalls+1], *source, *destination;
+	unsigned int i, n, groups = 0, phase = 1, pending = 0, step, binding = 0, seen = 0, used = 0;
 	int direction, currentkind, previouskind = 0;
 
 	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 || entry->ty->varargs ||
-	   entry->ty->tof->kind != Tnone || entry->desc == nil || count < 6 || count > 5*Dis64ManagedCalls+1 ||
+	   entry->ty->tof->kind != Tnone || entry->desc == nil || count < 6 || count > 8*Dis64ManagedCalls+1 ||
 	   databytes != 4 || ldts == nil || ldts->next != nil || ldts->init == nil ||
 	   ldts->init->val < 1 || ldts->init->val > 2 || ldts->init->decl == nil)
 		return 0;
@@ -747,10 +765,25 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 		path = globals;
 	}
 	if(path == nil) return 0;
+	*dis64managedlocal(slots, values, &used, 32) = current;
 	for(i=0; input != nil; input=input->next){
 		if(input->op == INOOP) continue;
 		if(i >= count) return 0;
-		step = i == 0 ? 0 : i == count-1 ? 5 : phase;
+		if(i != count-1 && phase == 1 && input->op == IMOVP &&
+		   input->sm == Afp && input->dm == Afp && input->mm == Anone){
+			if(!dis64clockslot(input->s.reg, entry->desc->size) ||
+			   !dis64clockslot(input->d.reg, entry->desc->size) ||
+			   input->s.reg == module || input->d.reg == module)
+				return 0;
+			source = dis64managedlocal(slots, values, &used, input->s.reg);
+			destination = dis64managedlocal(slots, values, &used, input->d.reg);
+			if(source == nil || destination == nil || *source == 0)
+				return 0;
+			*destination = *source;
+			i++;
+			continue;
+		}
+		step = module < 0 ? 0 : i == count-1 ? 5 : phase;
 		if(i != 0 && i != count-1 && phase == 1 && input->op == ILOAD && emitscalar64 == 3 && !pending)
 			step = 0;
 		if(input->op != ops[step] || input->sm != sm[step] || input->dm != dm[step] || input->mm != mm[step])
@@ -761,26 +794,34 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			   !dis64clockslot(input->d.reg, entry->desc->size) || input->d.reg == 32 ||
 			   (module >= 0 && module != input->d.reg)) return 0;
 			module = input->d.reg;
+			destination = dis64managedlocal(slots, values, &used, module);
+			if(destination == nil) return 0;
+			*destination = 0;
 			plan->reloads[groups] = pending = 1;
 			break;
 		case 1:
 			if(groups == Dis64ManagedCalls || input->s.reg != module || input->m.decl == nil ||
 			   !dis64clockslot(input->d.reg, entry->desc->size) || input->d.reg == module ||
-			   input->d.reg == current || input->d.reg == previous || input->d.reg == 32) return 0;
+			   input->d.reg == 32) return 0;
 			for(binding=0; binding<n; binding++)
 				if(input->m.decl->iface == imports[binding]) break;
 			if(binding == n) return 0;
 			frame = input->d.reg;
+			destination = dis64managedlocal(slots, values, &used, frame);
+			if(destination == nil) return 0;
+			*destination = 0;
 			phase = 2;
 			break;
 		case 2:
 			if(input->d.reg != frame || input->d.offset != 32 || input->s.reg == module || input->s.reg == frame)
 				return 0;
-			if(previous >= 0 && input->s.reg == previous){
+			source = dis64managedlocal(slots, values, &used, input->s.reg);
+			if(source == nil || *source == 0) return 0;
+			if(previous != 0 && *source == previous){
 				plan->transfers[groups] = 1;
 				current = previous;
 				currentkind = previouskind;
-			}else if(current < 0 || input->s.reg != current)
+			}else if(*source != current)
 				return 0;
 			if(currentkind != (plan->directions[binding] ? 2 : 1)) return 0;
 			phase = 3;
@@ -795,9 +836,11 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			if(input->s.reg != frame || input->d.reg != module || input->m.decl == nil ||
 			   input->m.decl->iface != imports[binding]) return 0;
 			plan->ordinals[groups++] = binding;
-			previous = result;
+			previous = groups+1;
 			previouskind = plan->directions[binding] ? 1 : 2;
-			if(current == result) current = -1;
+			destination = dis64managedlocal(slots, values, &used, result);
+			if(destination == nil) return 0;
+			*destination = previous;
 			pending = 0; phase = 1;
 			break;
 		case 5:

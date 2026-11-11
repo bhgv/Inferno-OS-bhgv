@@ -387,7 +387,7 @@ entries. The file bridge checks these kinds and uses the generated frame sizes
 and map8 values alongside the hashes. Unsupported or changed interfaces cannot
 silently inherit a hand-written frame specification.
 
-The expanded fixture checks 188 independent/compiled wire pairs, both ordinal
+The expanded fixture checks 192 independent/compiled wire pairs, both ordinal
 orders and both provider body orders. Its 80 additional C/JIT/GC scenarios cover
 864 LOADs and 536 native completions, including prelinked execution, stack growth,
 cache replacement and a replacement file missing either requested method. String
@@ -399,3 +399,39 @@ previous managed tests, collection runs through 53211 epochs on the checked
 These are still the bounded one-token String bodies, not full tokenization or
 general managed signatures. Arrays, ADTs, channels and the remaining AWM module
 interfaces require further lowering; no new public wire tags are assigned here.
+
+## Local names and pointer assignments
+
+The caller may copy String and List[String] values between local variables before
+LOAD and between complete calls. For example, this body uses the same provider
+and compiler/run commands as the preceding example:
+
+```limbo
+init(value: string)
+{
+    original := value;
+    lib := load String String->PATH;
+    items := lib->unquoted(original);
+    nextitems := items;
+    lib = load String String->PATH;
+    result := lib->quoted(nextitems);
+    nextvalue := result;
+    items = lib->unquoted(nextvalue);
+}
+```
+
+The compiler tracks value identities through local pointer assignments, frame
+writes and returned results. A local name is not a native root of its own: when
+a call uses the latest result, that value replaces the previous argument root.
+Using an alias of that older argument after replacement is still refused. Likewise,
+an alias of an older result cannot be used after another call has replaced the
+result root. Supporting those uses needs more mapped roots; copying a local name
+does not silently add one. Nil assignments, branches and module aliases remain
+outside this bounded caller profile.
+
+Direct and aliased source versions must emit the same complete CODE bytes.
+Console tests execute both versions, both initial kinds, prelinked/file modes,
+4/32 calls, Unicode/empty/nil inputs and C/JIT execution. The 32-call aliased
+versions also run through the actual ILOAD/cache/GC matrix. Eight compiler
+refusals cover stale original and stale intermediate aliases, in both initial
+kinds and both compiler modes, without producing a partial output file.

@@ -988,31 +988,33 @@ def main():
                     if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
                         raise RuntimeError('invalid managed import group reached the scheduler: '+output)
         if args.limbo is not None:
-            for initial in (0, 1):
-                for file_mode in (False, True):
-                    for calls, reloads in ((4, ()), (32, file_mode)):
-                        text, body = group['sources'](initial, calls, reloads, reverse_provider=bool(initial))
-                        if file_mode: text = text.replace('String->PATH', '"'+load_path+'"')
-                        source = work/'group-provider.b'; source.write_text(body)
-                        subprocess.run([str(args.limbo.resolve()), '-64m', '-o', str(provider), str(source)], check=True, timeout=30)
-                        source = work/'group-caller.b'; source.write_text(text)
-                        subprocess.run([str(args.limbo.resolve()), '-64l' if file_mode else '-64m', '-I', str(ROOT/'module'),
-                                        '-o', str(consumer), str(source)], check=True, timeout=30)
-                        # Compare complete CODE against independently serialized ordinal orders.
-                        candidates = group['cases'](RAW, load_path if file_mode else None)
-                        expected_count = 6*calls-1+(calls if file_mode and reloads else int(file_mode))
-                        actual = code_bytes(consumer.read_bytes())
-                        if int.from_bytes(actual[:4], 'big') != expected_count or not any(
-                                ok and initial == direction and code_bytes(image) == actual
-                                for direction, ok, image, _ in candidates):
-                            raise RuntimeError('compiler changed managed transfer/call count')
-                        for jit in (0, 1):
-                            for seed in (trial_input, ['-A', ''], []):
-                                output = execute(command+['-c', str(jit)]+pair+trial+seed)
-                                module, status = ('String', 'dereference of nil') if initial and not seed else ('Caller', '')
-                                marker = f'native64 scalar module {module}: jit={jit if initial and not seed else 0}, exit="{status}"'
-                                if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
-                                    raise RuntimeError('compiled dual managed call group did not retire: '+output)
+            group['check_alias_refusals'](args.limbo, work)
+            for aliases in (False, True):
+                for initial in (0, 1):
+                    for file_mode in (False, True):
+                        for calls, reloads in ((4, ()), (32, file_mode)):
+                            text, body = group['sources'](initial, calls, reloads, reverse_provider=bool(initial), aliases=aliases)
+                            if file_mode: text = text.replace('String->PATH', '"'+load_path+'"')
+                            source = work/'group-provider.b'; source.write_text(body)
+                            subprocess.run([str(args.limbo.resolve()), '-64m', '-o', str(provider), str(source)], check=True, timeout=30)
+                            source = work/'group-caller.b'; source.write_text(text)
+                            subprocess.run([str(args.limbo.resolve()), '-64l' if file_mode else '-64m', '-I', str(ROOT/'module'),
+                                            '-o', str(consumer), str(source)], check=True, timeout=30)
+                            # Compare complete CODE against independently serialized ordinal orders.
+                            candidates = group['cases'](RAW, load_path if file_mode else None)
+                            expected_count = 6*calls-1+(calls if file_mode and reloads else int(file_mode))
+                            actual = code_bytes(consumer.read_bytes())
+                            if int.from_bytes(actual[:4], 'big') != expected_count or not any(
+                                    ok and initial == direction and code_bytes(image) == actual
+                                    for direction, ok, image, _ in candidates):
+                                raise RuntimeError('compiler changed managed transfer/call count')
+                            for jit in (0, 1):
+                                for seed in (trial_input, ['-A', ''], []):
+                                    output = execute(command+['-c', str(jit)]+pair+trial+seed)
+                                    module, status = ('String', 'dereference of nil') if initial and not seed else ('Caller', '')
+                                    marker = f'native64 scalar module {module}: jit={jit if initial and not seed else 0}, exit="{status}"'
+                                    if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                                        raise RuntimeError('compiled dual managed call group did not retire: '+output)
         print('PASS two managed String imports/exports: both ordinal orders, typed result chains, file LOAD, C/JIT and malformed group refusals')
         for options in (pair[:2]+trial, pair+trial+['-X', 'dis64-pair'], pair[:2]+trial+['-P', '$Sys'],
                         pair+trial_input, pair+trial+['-A', 'x'*4097]):

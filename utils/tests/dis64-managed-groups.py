@@ -7,7 +7,7 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def sources(initial=0, calls=4, reloads=(), reverse_provider=False):
+def sources(initial=0, calls=4, reloads=(), reverse_provider=False, aliases=False):
     reloads = () if reloads is False else reloads
     argument = 'list of string' if initial else 'string'
     definitions = (
@@ -17,11 +17,17 @@ def sources(initial=0, calls=4, reloads=(), reverse_provider=False):
                 'unquoted: fn(value: string): list of string;\n'
                 'quoted: fn(value: list of string): string;\n};\n'
                 +'\n'.join(definitions[::-1] if reverse_provider else definitions)+'\n')
-    body = ['    lib := load String String->PATH;']
+    body = ['    alias0 := value;'] if aliases else []
+    body.append('    lib := load String String->PATH;')
     for i in range(calls):
+        if aliases and i:
+            body.append(f'    alias{i} := result{i-1};')
         if i and (reloads is True or i in reloads):
             body.append('    lib = load String String->PATH;')
-        if i % 2 == 0:
+        if aliases:
+            method = ('quoted' if initial else 'unquoted') if i % 2 == 0 else ('unquoted' if initial else 'quoted')
+            body.append(f'    result{i} := lib->{method}(alias{i});')
+        elif i % 2 == 0:
             body.append(f'    other {":=" if i == 0 else "="} lib->{"quoted" if initial else "unquoted"}(value);')
         else:
             body.append(f'    value = lib->{"unquoted" if initial else "quoted"}(other);')
@@ -122,7 +128,28 @@ def cases(raw, path=None):
     return rows
 
 
+def check_alias_refusals(limbo, work):
+    """Aliases cannot recover an older value after its native root was replaced."""
+    count = 0
+    for initial in (0, 1):
+        text, _ = sources(initial, 6, aliases=True)
+        for old, new in (('alias2 := result1', 'alias2 := value'),
+                         ('alias4 := result3', 'alias4 := result1')):
+            source = work/'stale-alias.b'
+            source.write_text(text.replace(old, new))
+            for flag in ('-64m', '-64l'):
+                output = work/'stale-alias.dis64'
+                output.unlink(missing_ok=True)
+                result = subprocess.run([str(limbo.resolve()), flag, '-I', str(ROOT/'module'),
+                                         '-o', str(output), str(source)], capture_output=True, text=True, timeout=60)
+                if result.returncode != 1 or output.exists() or 'Dis64 managed trial:' not in result.stdout+result.stderr:
+                    raise RuntimeError('stale managed alias bypassed compiler refusal: '+result.stdout+result.stderr)
+                count += 1
+    print(f'PASS managed alias identities: {count} stale-value compiler refusals')
+
+
 def header(raw, limbo, work):
+    check_alias_refusals(limbo, work)
     rows = cases(raw)+cases(raw, '/managed-provider.dis64')
     for initial in (0, 1):
         for file_mode in (False, True):
@@ -136,6 +163,18 @@ def header(raw, limbo, work):
                 subprocess.run([str(limbo.resolve()), flag, '-I', str(ROOT/'module'), '-o', str(output), str(source)], check=True, timeout=60)
                 compiled.append(output.read_bytes())
             rows.append((initial, 1, *compiled))
+    compiled_rows = rows[-4:]
+    for initial in (0, 1):
+        for file_mode in (False, True):
+            text, _ = sources(initial, 32, reloads=file_mode, aliases=True)
+            if file_mode: text = text.replace('String->PATH', '"/managed-provider.dis64"')
+            source = work/f'alias-caller-{initial}-{file_mode}.b'
+            output = source.with_suffix('.dis64')
+            source.write_text(text)
+            subprocess.run([str(limbo.resolve()), '-64l' if file_mode else '-64m', '-I', str(ROOT/'module'),
+                            '-o', str(output), str(source)], check=True, timeout=60)
+            provider = compiled_rows[2*initial+int(file_mode)][3]
+            rows.append((initial, 1, output.read_bytes(), provider))
     valid_providers = {provider for _, ok, _, provider in rows if ok}
     declarations, entries = [], []
     for index, (initial, ok, consumer, provider) in enumerate(rows):

@@ -199,6 +199,12 @@ for the source example and remaining profile limits.
 Two managed String methods may now share one provider and import group. The
 String/List[String] result chain uses explicit retain/transfer/clear steps;
 independent type-flow checks prove each ordinal and value kind. The dual-method
-corpus adds 188 wire pairs, 80 C/JIT/GC scenarios, 864 LOADs, 536 native
+corpus adds 192 wire pairs, 80 C/JIT/GC scenarios, 864 LOADs, 536 native
 completions and 52 partial-construction allocation refusals. Method removal in a
 changed file is exercised through the ordinary linker's failure cleanup.
+
+The two-method caller also accepts pure local String/List[String] assignments.
+The compiler follows value identities rather than reusing a slot after it was
+overwritten. Aliased and direct sources are checked against identical independent
+CODE bytes and executed on the console; eight stale-alias source cases must fail
+without output. The 32-call alias variants are included in the GC/cache matrix.
