@@ -873,7 +873,7 @@ static const Dis64StorageLimits dis64numericlimits = {
 
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 
-#define Dis64ClockInstructions (6U*Dis64ClockCalls+2U) // LOAD, argument/call/copy groups, and exit.
+#define Dis64ClockInstructions (6U*Dis64ClockCalls+3U) // LOAD, argument/call/copy groups, and exit.
 
 
 /* Resolve one exact scalar import from an already validated image. */
@@ -961,7 +961,7 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 	Dis64CallDecoded decoded;
 	Dis64Instruction *inst;
 	unsigned int at, i, used, count, phase, calls, slot, binding, parameter, expected;
-	int copied;
+	int copied, initialized;
 
 	if(bytes < 4)
 		return 0;
@@ -969,7 +969,7 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 	if(count < 4 || count > limit || count > Dis64ClockInstructions)
 		return 0;
 	at = 4;
-	phase = calls = copied = slot = binding = parameter = expected = 0;
+	phase = calls = copied = initialized = slot = binding = parameter = expected = 0;
 	for(i=0; i<count; i++){
 		if(!dis64callread(data+at, bytes-at, &decoded, &used))
 			return 0;
@@ -1011,16 +1011,27 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 			break;
 		case IMOVW:
 			if(phase == 1){
-				if(inst->mode != (SRC(AIMM)|DST(AFP|AIND)) ||
-				   parameter >= expected || inst->destination != 40 || decoded.secondary != 64+4*parameter)
+				if(parameter >= expected || inst->destination != 40 || decoded.secondary != 64+4*parameter)
+					return 0;
+				if(inst->mode == (SRC(AFP)|DST(AFP|AIND))){
+					if(!((inst->source == 72 && calls != 0) || (inst->source == 64 && initialized)))
+						return 0;
+				}else if(inst->mode != (SRC(AIMM)|DST(AFP|AIND)))
 					return 0;
 				parameter++;
 				break;
 			}
-			if(phase != 0 || calls == 0 || copied || inst->mode != (SRC(AFP)|DST(AFP)) ||
-			   inst->source != 72 || inst->destination != 64)
+			if(phase != 0 || inst->destination != 64)
 				return 0;
-			copied = 1;
+			if(inst->mode == (SRC(AIMM)|DST(AFP))){
+				if(slot != 8 || calls != 0 || initialized)
+					return 0;
+			}else{
+				if(calls == 0 || copied || inst->mode != (SRC(AFP)|DST(AFP)) || inst->source != 72)
+					return 0;
+				copied = 1;
+			}
+			initialized = 1;
 			break;
 		case IEXIT:
 			if(phase != 0 || calls == 0 || i+1 != count ||

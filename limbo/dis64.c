@@ -130,19 +130,48 @@ dis64trace(Dis64Lower *lower)
 }
 
 
+typedef struct Dis64ClockCall Dis64ClockCall;
+struct Dis64ClockCall {
+	unsigned int binding;
+	uchar modes[2];
+	long values[2];
+	int save; // Preserve a returned value which replaces the saved local.
+};
+
+typedef struct Dis64ClockPlan Dis64ClockPlan;
+struct Dis64ClockPlan {
+	Dis64ClockCall calls[Dis64ClockCalls];
+	uchar arguments[3];
+	unsigned int count;
+	int initialize;
+	long initial;
+};
+
+
+/* Legacy scalar slots are remapped only after the complete caller body matches. */
+static int
+dis64clockslot(long offset, long bytes)
+{
+	return offset >= ScalarLegacyPrefix && offset%IBY2WD == 0 && offset <= bytes-IBY2WD;
+}
+
+
 /* Match the complete lowered init body before changing its frame geometry. */
 static int
 dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes,
-	uchar *calls, unsigned int *ncalls, uchar *arguments, long values[][2])
+	Dis64ClockPlan *output)
 {
 	Decl *import, *export, *path, *argument, *target;
 	unsigned int i, j, phase, binding, used, parameter, seen;
-	long frame;
+	Dis64ClockPlan plan = {0};
+	long frame, module, result, previous, saved;
 	int kind;
 
 	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 ||
 	   entry->ty->ids != nil || entry->ty->varargs || entry->ty->tof->kind != Tnone ||
-	   count < 5 || count > 5*Dis64ClockCalls+2 || databytes != 8 ||
+	   count < 5 || count > 5*Dis64ClockCalls+3 || databytes != 8 ||
+	   entry->desc == nil || entry->desc->size < ScalarLegacyPrefix+IBY2WD ||
+	   entry->desc->size > ScalarObjectLimit ||
 	   ldts == nil || ldts->next != nil || ldts->init == nil ||
 	   ldts->init->decl == nil)
 		return 0;
@@ -171,11 +200,11 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 		if(kind < 0 || (seen & (1U<<kind)))
 			return 0;
 		seen |= 1U<<kind;
-		arguments[i] = kind;
+		plan.arguments[i] = kind;
 		for(argument=export->ty->ids, j=0; argument != nil; argument=argument->next, j++)
-			if(j >= arguments[i] || argument->ty->kind != Tint)
+			if(j >= plan.arguments[i] || argument->ty->kind != Tint)
 				return 0;
-		if(j != arguments[i])
+		if(j != plan.arguments[i])
 			return 0;
 	}
 	if(i != ldts->init->val)
@@ -184,80 +213,113 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 		if(export->store == Dglobal || (export->store == Dfn && export->sym != entry->sym))
 			return 0;
 	i = phase = binding = used = 0;
-	frame = 0;
+	frame = module = result = 0;
+	previous = saved = -1;
 	target = nil;
 	parameter = 0;
 	for(; input != nil; input=input->next){
 		if(input->op == INOOP)
 			continue;
 		if(i >= count)
-			return 0;
+			return -1;
 		if(i == 0){
 			if(input->op != ILOAD || input->sm != Amp || input->s.reg != 0 ||
-			   input->mm != Aldt || input->m.reg != 0 || input->dm != Afp || input->d.reg != 32)
-				return 0;
+			   input->mm != Aldt || input->m.reg != 0 || input->dm != Afp ||
+			   !dis64clockslot(input->d.reg, entry->desc->size))
+				return -1;
+			module = input->d.reg;
 		}else if(i == count-1){
 			if(phase != 0 || used == 0 || input->op != IRET ||
 			   input->sm != Anone || input->mm != Anone || input->dm != Anone)
-				return 0;
+				return -1;
 		}else switch(phase){
 		case 0:
-			if(input->op != IMFRAME || input->sm != Afp || input->s.reg != 32 ||
-			   input->dm != Afp || (input->d.reg != 36 && input->d.reg != 40) ||
+			if(input->op == IMOVW && used == 0 && !plan.initialize){
+				if(input->sm != Aimm || input->mm != Anone || input->dm != Afp ||
+				   input->s.offset < -536870912L || input->s.offset > 536870911L ||
+				   !dis64clockslot(input->d.reg, entry->desc->size) || input->d.reg == module)
+					return -1;
+				saved = input->d.reg;
+				plan.initialize = 1;
+				plan.initial = input->s.offset;
+				break;
+			}
+			if(input->op != IMFRAME || input->sm != Afp || input->s.reg != module ||
+			   input->dm != Afp || !dis64clockslot(input->d.reg, entry->desc->size) ||
+			   input->d.reg == module || input->d.reg == saved ||
 			   input->mm != Aoff || input->m.decl == nil)
-				return 0;
+				return -1;
 			if(used == Dis64ClockCalls)
-				return 0;
+				return -1;
 			for(target=import, binding=0; target != nil && target != input->m.decl->iface;
 			    target=target->next, binding++)
 				;
 			if(target == nil || target->offset != binding)
-				return 0;
+				return -1;
 			parameter = 0;
 			frame = input->d.reg;
-			phase = arguments[binding] ? 3 : 1;
+			phase = plan.arguments[binding] ? 3 : 1;
 			break;
 		case 3:
-			if(input->op != IMOVW || input->sm != Aimm ||
-			   input->s.offset < -536870912L || input->s.offset > 536870911L ||
-			   input->mm != Anone || input->dm != Afpind ||
+			if(input->op != IMOVW || input->mm != Anone || input->dm != Afpind ||
 			   input->d.reg != frame || input->d.offset != 32+4*parameter)
-				return 0;
-			values[used][parameter++] = input->s.offset;
-			if(parameter == arguments[binding])
+				return -1;
+			if(input->sm == Aimm){
+				if(input->s.offset < -536870912L || input->s.offset > 536870911L)
+					return -1;
+				plan.calls[used].modes[parameter] = AIMM;
+				plan.calls[used].values[parameter] = input->s.offset;
+			}else if(input->sm == Afp && input->s.reg != frame && input->s.reg != module){
+				plan.calls[used].modes[parameter] = AFP;
+				if(used != 0 && input->s.reg == previous)
+					plan.calls[used].values[parameter] = 72;
+				else if(plan.initialize && input->s.reg == saved)
+					plan.calls[used].values[parameter] = 64;
+				else
+					return -1;
+			}else
+				return -1;
+			if(++parameter == plan.arguments[binding])
 				phase = 1;
 			break;
 		case 1:
-			if(input->op != ILEA || input->sm != Afp || input->s.reg != (frame == 36 ? 40 : 36) ||
+			if(input->op != ILEA || input->sm != Afp || !dis64clockslot(input->s.reg, entry->desc->size) ||
+			   input->s.reg == module || input->s.reg == frame ||
 			   input->mm != Anone || input->dm != Afpind ||
 			   input->d.reg != frame || input->d.offset != 16)
-				return 0;
+				return -1;
+			result = input->s.reg;
 			phase = 2;
 			break;
 		case 2:
 			if(input->op != IMCALL || input->sm != Afp || input->s.reg != frame ||
-			   input->dm != Afp || input->d.reg != 32 || input->mm != Aoff ||
+			   input->dm != Afp || input->d.reg != module || input->mm != Aoff ||
 			   input->m.decl == nil || input->m.decl->iface != target)
-				return 0;
-			calls[used++] = binding;
+				return -1;
+			plan.calls[used].binding = binding;
+			plan.calls[used++].save = result == saved;
+			previous = result;
 			phase = 0;
 			break;
 		}
 		i++;
 	}
-	*ncalls = used;
-	return i == count ? ldts->init->val : 0;
+	if(i != count)
+		return -1;
+	plan.count = used;
+	*output = plan;
+	return ldts->init->val;
 }
 
 
-/* Preserve one scalar immediate in the prepared native frame. */
+/* Preserve one checked immediate or initialized scalar slot in the prepared native frame. */
 static int
-dis64clockargument(uchar *code, unsigned int *at, long value, unsigned int ordinal)
+dis64clockargument(uchar *code, unsigned int *at, unsigned int mode, long value, unsigned int ordinal)
 {
 	unsigned int used;
 
 	code[(*at)++] = IMOVW;
-	code[(*at)++] = SRC(AIMM)|DST(AFP|AIND);
+	code[(*at)++] = SRC(mode)|DST(AFP|AIND);
 	used = disoperand(code+*at, 4, value);
 	if(used == 0)
 		return 0;
@@ -285,17 +347,22 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 	Dis64ModuleInfo module = {0};
 	DisStringPoolRecord names[5];
 	Dis64Payload sections[5];
-	uchar metadata[24], code[4+sizeof(load)+Dis64ClockCalls*(sizeof(frame)+18+sizeof(result)+sizeof(call))+sizeof(exit)];
+	uchar metadata[24], code[4+sizeof(load)+Dis64ClockCalls*(sizeof(frame)+18+sizeof(result)+sizeof(call)+6)+sizeof(exit)+8];
 	uchar typedata[32], imports[100], runes[5][4+4*255], strings[4+sizeof(runes)], output[4096];
-	uchar calls[Dis64ClockCalls], arguments[3];
-	long values[Dis64ClockCalls][2];
-	unsigned int sizes[5], i, j, length, written, bindings, ncalls, ordinal, parameters[] = {Dis64Int, Dis64Int};
+	Dis64ClockPlan plan;
+	Dis64Instruction word = {IMOVW, SRC(AIMM)|DST(AFP), 0, 0, 64};
+	unsigned int sizes[5], i, j, length, written, bindings, instructions, ordinal, parameters[] = {Dis64Int, Dis64Int};
 	const char *labels[] = {"$Sys", nil, impdecl->sym->name, nil, nil};
 	Decl *import;
+	int matched;
 
-	bindings = dis64clockshape(entry, globals, ldts, input, count, databytes, calls, &ncalls, arguments, values);
-	if(bindings == 0)
-		return 0;
+	matched = dis64clockshape(entry, globals, ldts, input, count, databytes, &plan);
+	if(matched <= 0){
+		if(matched < 0)
+			dis64error(entry, "unsupported checked Sys body or uninitialized scalar argument");
+		return matched < 0;
+	}
+	bindings = matched;
 	for(import=ldts->init->decl->ty->ids, i=0; import != nil; import=import->next, i++)
 		labels[i == 0 ? 1 : i+2] = import->sym->name;
 	for(i=0; i<2+bindings; i++){
@@ -315,16 +382,24 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 	module.name = 2;
 	module.databytes = 16;
 	module.frametype = 1;
-	dis64put32(code, count);
+	instructions = 2;
 	sizes[1] = 4+sizeof(load);
 	memmove(code+4, load, sizeof(load));
-	for(i=0; i<ncalls; i++){
-		ordinal = calls[i];
+	if(plan.initialize){
+		word.source = plan.initial;
+		if(!dis64encode(code, &sizes[1], &word)){
+			dis64error(entry, "cannot initialize checked Sys local");
+			return 1;
+		}
+		instructions++;
+	}
+	for(i=0; i<plan.count; i++){
+		ordinal = plan.calls[i].binding;
 		memmove(code+sizes[1], frame, sizeof(frame));
 		code[sizes[1]+2] = ordinal;
 		sizes[1] += sizeof(frame);
-		for(j=0; j<arguments[ordinal]; j++)
-			if(!dis64clockargument(code, &sizes[1], values[i][j], j)){
+		for(j=0; j<plan.arguments[ordinal]; j++)
+			if(!dis64clockargument(code, &sizes[1], plan.calls[i].modes[j], plan.calls[i].values[j], j)){
 				dis64error(entry, "cannot encode checked Sys argument");
 				return 1;
 			}
@@ -333,18 +408,29 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 		memmove(code+sizes[1], call, sizeof(call));
 		code[sizes[1]+2] = ordinal;
 		sizes[1] += sizeof(call);
+		instructions += 3+plan.arguments[ordinal];
+		if(plan.calls[i].save){
+			word.mode = SRC(AFP)|DST(AFP);
+			word.source = 72;
+			if(!dis64encode(code, &sizes[1], &word)){
+				dis64error(entry, "cannot preserve checked Sys local");
+				return 1;
+			}
+			instructions++;
+		}
 	}
 	memmove(code+sizes[1], exit, sizeof(exit));
 	sizes[1] += sizeof(exit);
+	dis64put32(code, instructions);
 	dis64put32(imports, bindings);
 	sizes[3] = 4;
 	for(i=0; i<bindings; i++){
-		length = 12+4*arguments[i];
+		length = 12+4*plan.arguments[i];
 		dis64put32(imports+sizes[3], 0);
 		dis64put32(imports+sizes[3]+4, i == 0 ? 1 : i+2);
 		dis64put32(imports+sizes[3]+8, length);
 		if(!dis64signaturewrite(imports+sizes[3]+12, length, Dis64Int,
-		   parameters, arguments[i], &written)){
+		   parameters, plan.arguments[i], &written)){
 			dis64error(entry, "cannot encode checked Sys import");
 			return 1;
 		}

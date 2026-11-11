@@ -42,8 +42,8 @@ imports in any ordinal order.
 | Symbol | Result | Arguments |
 | --- | --- | --- |
 | millisec | int | none |
-| sleep | int | one constant int |
-| dup | int | two constant ints |
+| sleep | int | one int |
+| dup | int | two ints |
 
 For example, compile this source with the host Limbo compiler.
 
@@ -54,9 +54,12 @@ Clock: module { init: fn(); };
 init()
 {
     sys := load Sys Sys->PATH;
-    status := sys->dup(-1, -1);
-    status = sys->sleep(1);
-    status = sys->millisec();
+    value := -1;
+    status := sys->dup(value, value);
+    status = sys->dup(status, value);
+    value = sys->sleep(0);
+    status = sys->dup(-1, value);
+    status = sys->sleep(value);
 }
 ```
 
@@ -70,9 +73,18 @@ record's symbol and structural signature against trusted Sys exports, builds
 the import group in the recorded order, and executes ILOAD through the VM.
 The checker verifies each MFRAME/MCALL ordinal and requires the argument setup
 matching that entry. A source may contain 1 through 32 calls. The compiler
-preserves their order. Each immediate must fit signed30, from -536870912
-through 536870911. The runtime uses 32-bit argument cells at frame offsets 64
-and 68, with a full native result pointer at offset 32. Positive sleep periods
+preserves their order. The producer tracks one initialized local integer and
+the latest returned integer. Arguments may use either value or a literal.
+Legacy module, prepared-frame and result slots are checked against the actual
+Limbo frame extent before remapping, so their placement may vary.
+
+Each immediate initializer or argument must fit signed30, from -536870912
+through 536870911. Values returned by Sys retain their full 32-bit integer
+representation. The caller stores the saved local at offset 64 and the latest
+result at offset 72. Prepared callee argument cells are at offsets 64 and 68,
+with the full native result address at offset 32. These offsets belong to
+different frames. A call which replaces the saved local also copies its new
+result into the saved caller cell. Positive sleep periods
 use the normal Sys wait/release/acquire path. Negative periods retain ordinary
 Sys behavior. Large positive periods are checked for encoding without executing
 the corresponding long waits in the test corpus.
@@ -84,8 +96,15 @@ signature and the generated native export before publishing a caller.
 The test command below runs independently serialized reversed groups,
 sleep-only and two-argument calls, all six orders of a three-symbol group,
 compiler-produced sources, signed30 encoding boundaries, invalid ordinals
-including negative values, and signature/count/argument-slot refusals in C and
-JIT modes.
+including negative values, initialized-local and result chains, and
+signature/count/argument-slot refusals in C and JIT modes. Admission rejects a
+read of either scalar cell before its initializer or completed call. Prefix,
+prepared-frame pointer and unrecognized scalar offsets are excluded.
+
+A recognized Sys interface with unsupported scalar body or argument state
+produces the diagnostic `unsupported checked Sys body or uninitialized scalar
+argument`. Additional simultaneously live locals and general expressions need
+broader scalar lowering.
 
 ```sh
 python3 utils/tests/dis64-pair-boot.py --sys-clock --limbo /path/to/limbo \

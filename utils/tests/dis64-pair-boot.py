@@ -154,7 +154,7 @@ def clock_image(*, result_offset=72, module='$Sys', signature=1, repeats=1,
 
 
 # Independently serialize scalar Sys groups with zero, one or two integer arguments.
-def sys_integer_image(sequence, *, symbols=None, signatures=None, offsets=None, call_index=None):
+def sys_integer_image(sequence, *, symbols=None, signatures=None, offsets=None, call_index=None, initial=None, copies=()):
     words, ins = RAW['W'], RAW['I']
     bindings = RAW['RAW']['RAW']
     indirect = runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['indirect']
@@ -166,15 +166,24 @@ def sys_integer_image(sequence, *, symbols=None, signatures=None, offsets=None, 
                for i, name in enumerate(symbols)]
     code = ins('ILOAD', 64, source=0, middle=0, destination=8)
     count = 2
-    for name, arguments in sequence:
+    if initial is not None:
+        initializers = initial if isinstance(initial, tuple) else (initial,)
+        for value in initializers:
+            code += ins('IMOVW', 17, source=value, destination=64)
+            count += 1
+    for step, (name, arguments) in enumerate(sequence):
         index = symbols.index(name) if call_index is None else call_index
         code += ins('IMFRAME', 65, source=8, middle=index, destination=40)
         for ordinal, value in enumerate(arguments):
             offset = 64+4*ordinal if offsets is None else offsets[ordinal]
-            code += indirect('IMOVW', value, 40, offset, sm=2)
+            source, mode = (value[1], 1) if isinstance(value, tuple) else (value, 2)
+            code += indirect('IMOVW', source, 40, offset, sm=mode)
         code += indirect('ILEA', 72, 40, 32)
         code += ins('IMCALL', 72, source=40, middle=index, destination=8)
         count += 3+len(arguments)
+        if step in copies:
+            code += ins('IMOVW', 9, source=72, destination=64)
+            count += 1
     pool = words(len(names))+b''.join(words(len(name), *map(ord, name)) for name in names)
     sections = RAW['SECTIONS'](name=2, databytes=16, imports=imports,
                types=[RAW['D'](80, 8), RAW['D'](16, 8, b'\xc0')],
@@ -213,7 +222,7 @@ init()
                 repeated(3).replace('    now = sys->millisec();\n', '    now++;\n', 1)):
         source.write_text(bad)
         result = subprocess.run(command, capture_output=True, text=True, timeout=30)
-        if result.returncode <= 0 or output.exists() or 'requires managed linkage' not in result.stderr:
+        if result.returncode <= 0 or output.exists() or 'Dis64 scalar:' not in result.stderr:
             raise RuntimeError('compiler did not refuse changed clock source: '+result.stderr)
     source.write_text(repeated(1))
     for flag in ('-6', '-640'):
@@ -265,7 +274,7 @@ init()
     source.write_text(repeated(32).replace('    now := sys->millisec();',
                                           '    now := sys->sleep(0);\n    now = sys->millisec();'))
     result = subprocess.run(command, capture_output=True, text=True, timeout=30)
-    if result.returncode <= 0 or output.exists() or 'requires managed linkage' not in result.stderr:
+    if result.returncode <= 0 or output.exists() or 'Dis64 scalar:' not in result.stderr:
         raise RuntimeError('compiler did not refuse 33 mixed Sys calls: '+result.stderr)
 
     sequences = (
@@ -287,6 +296,34 @@ init()
         if code_bytes(image) != code_bytes(sys_integer_image(sequence)):
             raise RuntimeError('compiler changed scalar Sys arguments or call order')
         yield f'{len(sequence)} integer-argument', image
+    result = ('fp', 72)
+    local = ('fp', 64)
+    bodies = (
+        ("""    status := sys->dup(-1, -1);
+    status = sys->dup(status, status);
+    status = sys->sleep(status);""",
+         [('dup', (-1, -1)), ('dup', (result, result)), ('sleep', (result,))], None, ()),
+        ("""    value := -1;
+    status := sys->dup(value, value);
+    status = sys->dup(status, value);
+    value = sys->sleep(0);
+    status = sys->dup(-1, value);
+    status = sys->sleep(value);""",
+         [('dup', (local, local)), ('dup', (result, local)), ('sleep', (0,)),
+          ('dup', (-1, result)), ('sleep', (local,))], -1, (2,)),
+        ("""    value := 0;
+    value = sys->sleep(value);
+    value = sys->sleep(value);""",
+         [('sleep', (local,)), ('sleep', (result,))], 0, (0, 1)),
+    )
+    for body, sequence, initial, copies in bodies:
+        source.write_text(template.replace('    now := sys->millisec();', body))
+        subprocess.run(command, check=True, timeout=30)
+        image = output.read_bytes()
+        expected = sys_integer_image(sequence, initial=initial, copies=copies)
+        if code_bytes(image) != code_bytes(expected):
+            raise RuntimeError('compiler changed an initialized scalar or previous-result argument')
+        yield 'initialized scalar arguments', image
     for value in (-536870912, -8193, -8192, -65, -64, 63, 64, 8191, 8192, 536870911):
         source.write_text(template.replace('millisec()', f'sleep({value})'))
         subprocess.run(command, check=True, timeout=30)
@@ -298,6 +335,15 @@ init()
         refused = subprocess.run(command, capture_output=True, text=True, timeout=30)
         if refused.returncode <= 0 or output.exists():
             raise RuntimeError('compiler accepted an unsupported scalar Sys argument')
+
+
+    for body in (
+            "    one := -1; two := -2; status := sys->dup(one, two);",
+            "    one := sys->dup(-1, -1); two := sys->dup(-2, -2); status := sys->dup(one, two);"):
+        source.write_text(template.replace('    now := sys->millisec();', body))
+        refused = subprocess.run(command, capture_output=True, text=True, timeout=30)
+        if refused.returncode <= 0 or output.exists() or 'unsupported checked Sys body' not in refused.stderr:
+            raise RuntimeError('compiler accepted scalar state outside the checked Sys caller')
 
 
 
@@ -511,6 +557,31 @@ def main():
                 output = execute(command+builtin)
                 if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
                     raise RuntimeError('invalid integer-argument Sys group reached scheduler: '+output)
+            result, local = ('fp', 72), ('fp', 64)
+            variable_cases = (
+                ([('dup', (-1, -1)), ('dup', (result, result)), ('sleep', (result,))], {}),
+                ([('dup', (local, local)), ('dup', (result, local))], {'initial': -1}),
+                ([('sleep', (local,))]*32, {'initial': 0, 'copies': tuple(range(32))}),
+                ([('dup', (-1, -1)), ('dup', (local, result))], {'copies': (0,)}),
+            )
+            for sequence, options in variable_cases:
+                consumer.write_bytes(sys_integer_image(sequence, **options))
+                for jit in (0, 1):
+                    output = execute(command+['-c', str(jit)]+builtin)
+                    marker = f'native64 scalar module caller: jit={jit}, exit=""'
+                    if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                        raise RuntimeError('initialized scalar Sys arguments did not complete: '+output)
+            for sequence, options in (
+                    ([('sleep', (result,))], {}),
+                    ([('dup', (local, -1))], {}),
+                    ([('sleep', (('fp', 40),))], {'initial': 0}),
+                    ([('sleep', (('fp', 68),))], {'initial': 0}),
+                    ([('sleep', (('fp', 0),))], {'initial': 0}),
+                    ([('sleep', (local,))], {'initial': (0, 1)})):
+                consumer.write_bytes(sys_integer_image(sequence, **options))
+                output = execute(command+builtin)
+                if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+                    raise RuntimeError('uninitialized or reserved scalar Sys input reached scheduler: '+output)
             if args.limbo is not None:
                 for repeats, image in compile_clocks(args.limbo.resolve(), work):
                     consumer.write_bytes(image)
