@@ -32,4 +32,20 @@ struct Native64SysWriteRequest
 /* Explicit native64 typed output; completion reports status separately from the published write count. */
 int Sys_print64(const Native64SysWriteRequest*);
 int Sys_fprint64(const Native64SysWriteRequest*);
+/* Trusted call-site recipe for one active MFRAME/MCALL frame; no file metadata is accepted. */
+typedef struct Native64SysFrameRequest Native64SysFrameRequest;
+struct Native64SysFrameRequest
+{
+    Prog *prog;
+    void *frame; // Exact current native callee frame in REG.
+    Type *type, *caller_type; // Borrowed live complete descriptors owned by the call site.
+    unsigned int result_offset; // Declared caller field; the callee's return address must match it exactly.
+    const Native64TailSlot *slots; // Immutable explicit ordered kinds and reference Type identities.
+    unsigned int count;
+    int initial, limit;
+};
+int Sys_sprintframe64(const Native64SysFrameRequest*);
+int Sys_aprintframe64(const Native64SysFrameRequest*);
+int Sys_printframe64(const Native64SysFrameRequest*);
+int Sys_fprintframe64(const Native64SysFrameRequest*);
 #endif

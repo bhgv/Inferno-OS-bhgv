@@ -8,6 +8,7 @@ on:
       - 'utils/tests/native64-tk-register.*'
       - 'utils/tests/native64-draw-register.*'
       - 'utils/tests/native64-sys-fixed.*'
+      - 'utils/tests/native64-sys-frame.c'
       - 'utils/tests/native64-prefix.*'
       - 'utils/tests/native64-arguments.*'
       - 'utils/tests/native64-result.*'

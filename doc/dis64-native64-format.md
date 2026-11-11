@@ -141,3 +141,41 @@ Sys UTF error-unwind finding is not reclassified by formatter success. A new
 native x64/ARM64 ASan+UBSan and RV64/QEMU CI matrix preserves this coverage.
 Process-inspection leak scanning remains outside the bounded collector fixture;
 its explicit allocation/refcount/root balance predicates stay active.
+
+## Active VM frame bridge
+
+`Sys_sprintframe64`, `Sys_aprintframe64`, `Sys_printframe64` and
+`Sys_fprintframe64` consume a trusted active native frame through
+`Native64SysFrameRequest`. A complete frame Type must exactly match the generated
+fixed prefix plus an explicit immutable typed-tail recipe. The source is the
+current MCALL frame in REG, not an arbitrary raw data pointer. Both callee and
+caller boundaries are found by walking the current extent; full maps, Type
+identities, process/module identity and the caller result span are checked before
+payload reads. The return-address cell at offset 32 must equal that exact result
+field. Scalar WORD results require an unmarked four-byte field; managed results
+require a complete marked pointer field. The trusted call site supplies the
+language result kind; map bits alone do not establish it.
+
+Before constructing the owned argument copy the bridge publishes live REG to
+Prog for collector visibility. Result resolution checks the active frame and
+map again after formatting/conversion and, for print/fprint, after reacquisition.
+Kill flags, process identity, guarded epoch changes and conflicting caller leases
+cause refusal. Old results survive refusal; owned temporary frames, metadata and
+produced results still retire through the existing guards. This interface borrows
+the active VM process and descriptors, and does not authorize reset, reentry,
+stack retirement or escaped asynchronous use. Older caller extents are refused.
+
+The complete formatter gate adds 384 real MFRAME/MCALL cases per emu/os and
+WORD32/WORD32-file combination. Normal and 150-slot calls exercise the actual
+opcode C bodies, heap, collector and Sys gateways. Negative cases cover full-map
+mismatch, frame bounds/identity, canonical kinds, result roots/width/address,
+invalid process state, cancellation during result allocation or after a write,
+epoch invalidation and independent old-result preservation. Module references,
+input owners, output owners, Type/vector allocations and error depth must balance.
+The two new removal controls independently delete the return-address equality
+check and full-map comparison, then require a semantic predicate failure.
+
+These tests set up decoded operands/result addresses in trusted C. They do not
+claim a Limbo variadic source producer, serialized variadic file admission, new
+LEA semantics, JIT execution or AWM startup. All existing four packed-entry
+refusals and the 39-entry fixed Sys registration remain unchanged.

@@ -530,6 +530,28 @@ Sys_fprint64(const Native64SysWriteRequest *request)
 {
 	return native64syswrite(request, 1);
 }
+#include "native64-sys-frame.h"
+
+int
+Sys_sprintframe64(const Native64SysFrameRequest *request)
+{
+	return native64sysframe(request, 0);
+}
+int
+Sys_aprintframe64(const Native64SysFrameRequest *request)
+{
+	return native64sysframe(request, 1);
+}
+int
+Sys_printframe64(const Native64SysFrameRequest *request)
+{
+	return native64sysframe(request, 2);
+}
+int
+Sys_fprintframe64(const Native64SysFrameRequest *request)
+{
+	return native64sysframe(request, 3);
+}
 #endif
 #endif
 

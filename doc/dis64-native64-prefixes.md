@@ -119,3 +119,63 @@ These are trusted C metadata and call interfaces. Their type identities are not
 serialized. The existing Dis64 variadic bytecode admission and ordinary AWM
 startup restrictions remain in place until the compiler/runtime tail contract
 is connected separately.
+
+## Consume a live VM frame
+
+The four `Sys_*frame64` functions bridge an already prepared native VM frame to
+the typed C gateways. They are intended for trusted native callbacks whose call
+site already owns a complete fixed-plus-tail frame descriptor. They do not add
+a variadic export to the ordinary Sys table or infer a tail from a printf string.
+
+The following helper assumes an active MCALL callback and borrowed, immutable
+call-site metadata. The `fp` argument is its exact current callee frame. The
+caller and callee must occupy the same current stack extent, and their complete
+Type descriptors must remain live through the synchronous call. The result
+field offset and language kind are supplied by the trusted call site; a GC map
+alone cannot distinguish String from Array, or a WORD field from Real/padding.
+The callee's eight-byte return address at offset 32 must already point exactly
+to that field. Tail values must already occupy canonical eight-byte slots.
+
+```c
+static int render_vm_frame(Prog *prog, void *fp, Type *callee, Type *caller,
+    unsigned int result_offset, const Native64TailSlot *tail, unsigned int count)
+{
+    Native64SysFrameRequest request = {0};
+    request.prog = prog;
+    request.frame = fp;
+    request.type = callee;
+    request.caller_type = caller;
+    request.result_offset = result_offset;
+    request.slots = tail;
+    request.count = count;
+    request.initial = 16;
+    request.limit = 4096;
+    return Sys_sprintframe64(&request);
+}
+```
+
+The bridge checks the live process/module/frame identities, walks complete
+current-extent frame boundaries, matches the entire fixed-plus-tail GC map and
+checks the result address before reading payload. It then lets the existing
+gateway copy and pin the arguments. Every late result resolution repeats the
+frame and map checks, including process cancellation, guarded epoch and live-REG
+identity. A mismatched result address or invalidated activation preserves the
+old result. Print/fprint reacquire the VM and resolve again after the native
+write. Cancellation can therefore leave an already-issued write visible while
+withholding its scalar result.
+
+This is a borrowed native-activation interface, not a new scheduler lifetime
+lease. The caller must not reenter the VM, destroy/reset its process or retire
+its stack/Types while the call is active. The bridge refuses an existing caller
+lease, foreign process/frame identities and caller frames in older extents.
+Reference provenance is the VM/C caller's obligation: numeric bounds cannot
+authenticate arbitrary native pointers or repair an already-corrupt VM frame.
+
+`native64-arguments.py --formatter` now executes 384 real MFRAME/MCALL cases per
+port/model in addition to the previous gateway suite. It uses production opcode
+bodies with trusted C-provided decoded operands and result-address binding; it
+does not decode a serialized variadic Dis64 image, extend LEA admission or execute
+JIT code. The cases cover all four operations, 150-slot frames, root-extent Type
+fallback, malformed metadata/cells, cancellation, epoch invalidation, GC and
+complete cleanup. Separate removal controls must fail if the exact return-address
+check or full frame-map comparison is deleted.

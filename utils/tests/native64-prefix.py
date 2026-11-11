@@ -53,7 +53,7 @@ def main():
             raise RuntimeError('Prefix opt-in was bypassed')
         tutorial = (ROOT/'doc/dis64-native64-prefixes.md').read_text()
         examples = re.findall(r'```c\n(.*?)```', tutorial, re.S)
-        if len(examples) != 2: raise RuntimeError('Expected both complete C tutorial examples')
+        if len(examples) != 3: raise RuntimeError('Expected all three complete C tutorial examples')
         source = work/'tutorial.c'; source.write_text('\n'.join(examples))
         subprocess.run(compiler+flags+['-DDIS_WORD32=1', '-Werror=implicit-function-declaration']+includes+
                        ['-c', str(source), '-o', str(work/'tutorial.o')], env=env, check=True)

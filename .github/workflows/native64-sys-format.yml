@@ -22,7 +22,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: native64-sys-format-${{ github.ref }}
+  group: native64-sys-format-v2-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   formatter:
@@ -71,6 +71,8 @@ jobs:
           python3 utils/tests/native64-arguments.py --formatter --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/formatter.log"
       - uses: actions/upload-artifact@v4
+        timeout-minutes: 3
+        continue-on-error: true # A storage outage must not block later runtime test runs.
         if: always()
         with:
           name: typed-sys-${{ matrix.arch }}

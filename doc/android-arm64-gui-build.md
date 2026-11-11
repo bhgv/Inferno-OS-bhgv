@@ -172,3 +172,17 @@ write-ownership suite with static Bionic under QEMU, preserving
 variadic prefix schemas come from the actual `sys.m`; all 39 fixed Sys exports
 retain their separate registration path. This does not provide a compiler or
 bytecode producer for typed variadic tails and does not enable ordinary AWM startup.
+
+## VM-frame consumers in the typed formatter build
+
+The same `--native64-formatter` build now also requires defined dynamic symbols
+for `Sys_sprintframe64`, `Sys_aprintframe64`, `Sys_printframe64` and
+`Sys_fprintframe64`. The complete GUI library therefore links both the original
+four typed-request gateways and four checked active-VM-frame consumers. No
+ordinary Sys variadic export is registered by this build option.
+
+The Bionic formatter gate includes 384 actual MFRAME/MCALL cases per port/model,
+using trusted C operand and result-address setup, with collection inside gateway allocations,
+150-slot frames, return-cell checks, cancellation and cleanup. It remains separate
+from serialized Dis64 variadic compilation/admission and from device GUI/AWM
+execution. `awm_started` stays false.

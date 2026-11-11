@@ -34,7 +34,7 @@ def main():
         env['TMPDIR'] = str(work)
         limbo = args.limbo.resolve()
         roots = work/'roots.m'
-        roots.write_text('Roots: module { Node: adt { next: ref Node; }; copy: fn(source: array of ref Node): array of ref Node; caller: fn(padding: big, result: array of byte, tail: array of byte); many: fn('+','.join('a'+str(i)+': array of byte' for i in range(150))+'); };')
+        roots.write_text('Roots: module { Node: adt { next: ref Node; }; copy: fn(source: array of ref Node): array of ref Node; caller: fn(padding: big, result: array of byte, tail: array of byte); bridge: fn(count: int, canary: int, stringresult: string, arrayresult: array of byte, text: string); many: fn('+','.join('a'+str(i)+': array of byte' for i in range(150))+'); };')
         for name, source in [('math', ROOT/'module/math.m'), ('sys', ROOT/'module/sys.m'), ('roots', roots)]:
             (work/(name+'-native64.h')).write_bytes(subprocess.check_output([str(limbo), '-H', str(source)], cwd=work, env=env))
         if args.android_ndk:
@@ -84,8 +84,11 @@ def main():
                     source += 'char *syserr(char*, char*, Prog*);\nint hmsize(void*);\n'+core
                     source += (ROOT/'utils/tests/native64-format.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_formatter_main(int argc, char **argv)', 1)
                     source += (ROOT/'utils/tests/native64-sys-format.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_sysformat_main(int argc, char **argv)', 1)
-                    source += (ROOT/'utils/tests/native64-sys-write.c').read_text()
-                    for signature in ('int\nSys_sprint64(', 'int\nSys_aprint64(', 'int\nSys_print64(', 'int\nSys_fprint64('):
+                    source += (ROOT/'utils/tests/native64-sys-write.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_syswrite_main(int argc, char **argv)', 1)
+                    vm = (ROOT/'libinterp/xec.c').read_text()
+                    bodies = '#define OP(fn) void fn(void)\n'+'\n'.join(function(vm, signature) for signature in ('static int\nmoduleentry(', 'static int\nframefits(', 'OP(mframe)', 'OP(mcall)'))
+                    source += (ROOT/'utils/tests/native64-sys-frame.c').read_text().replace('VM_FRAME_IMPLEMENTATION', bodies)
+                    for signature in ('int\nSys_sprint64(', 'int\nSys_aprint64(', 'int\nSys_print64(', 'int\nSys_fprint64(', 'int\nSys_sprintframe64(', 'int\nSys_aprintframe64(', 'int\nSys_printframe64(', 'int\nSys_fprintframe64('):
                         source += '\n'+function(runtime, signature)+'\n'
                     extra = [str(ROOT/('lib9/'+name+'.c')) for name in ('rune','sprint','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')]+['-pthread']
                 unit.write_text(source)
@@ -102,7 +105,9 @@ def main():
                             ('sys-result', 'native64-sys-format.h', 'if(!native64sysformatreference(nil, old, call->array ? &Tarray : &Tstring))', 'if(0)'),
                             ('sys-element', 'native64-sys-format.h', 'if(call->array && old != H && ((Array*)old)->t != &Tbyte)', 'if(0)'),
                             ('write-acquire', 'native64-sys-write.h', 'native64syswriteacquire(&call);', '(void)0;'),
-                            ('write-fd-map', 'native64-sys-write.h', 'uchar fprintmap[] = F_Sys_fprint_map;', 'uchar fprintmap[] = {0, 0x40};')):
+                            ('write-fd-map', 'native64-sys-write.h', 'uchar fprintmap[] = F_Sys_fprint_map;', 'uchar fprintmap[] = {0, 0x40};'),
+                            ('vm-return', 'native64-sys-frame.h', 'return (uintptr)address == result ? (void*)result : nil;', 'return (void*)result;'),
+                            ('vm-map', 'native64-sys-frame.h', 'if(type->map[i] != expected) return 0;', 'if(0) return 0;')):
                         adapter = (ROOT/('include/'+header)).read_text()
                         if adapter.count(boundary) != 1:
                             raise RuntimeError('Typed format control boundary changed: '+name)
