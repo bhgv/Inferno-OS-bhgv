@@ -682,10 +682,10 @@ dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, lo
 	return 1;
 }
 
-/* Check the legacy LOAD/call sequence before replacing LOAD with an explicit pair. */
+/* Check complete legacy call islands, preserving file LOAD positions in file mode. */
 static int
 dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
-	long count, long databytes, int *quoted, unsigned int *calls, char **loadpath)
+	long count, long databytes, int *quoted, unsigned int *calls, char **loadpath, uchar *reloads)
 {
 	static const ushort ops[] = {ILOAD, IMFRAME, IMOVP, ILEA, IMCALL, IRET};
 	static const uchar sm[] = {Amp, Afp, Afp, Afp, Afp, Anone};
@@ -694,12 +694,11 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	long module, frame, result, destination;
 	Decl *import, *export, *path, *argument;
 	int direction;
-	unsigned int i, step, groups;
+	unsigned int i, step, groups, phase, pending;
 
 	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 ||
 	   entry->ty->varargs || entry->ty->tof->kind != Tnone ||
-	   entry->desc == nil || count < 6 || (count-2)%4 != 0 ||
-	   (count-2)/4 > Dis64ManagedCalls ||
+	   entry->desc == nil || count < 6 || count > 5*Dis64ManagedCalls+1 ||
 	   databytes != 4 || ldts == nil || ldts->next != nil || ldts->init == nil ||
 	   ldts->init->val != 1 || ldts->init->decl == nil)
 		return 0;
@@ -730,34 +729,43 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 		return 0;
 	i = 0;
 	module = frame = result = -1;
-	groups = (count-2)/4;
+	groups = 0;
+	phase = 1;
+	pending = 0;
 	for(; input != nil; input=input->next){
 		if(input->op == INOOP)
 			continue;
 		if(i >= count)
 			return 0;
-		step = i == 0 ? 0 : i == count-1 ? 5 : 1+(i-1)%4;
+		step = i == 0 ? 0 : i == count-1 ? 5 : phase;
+		if(i != 0 && i != count-1 && phase == 1 && input->op == ILOAD && emitscalar64 == 3 && !pending)
+			step = 0;
 		if(input->op != ops[step] || input->sm != sm[step] ||
 		   input->dm != dm[step] || input->mm != mm[step])
 			return 0;
 		switch(step){
 		case 0:
-			if(input->s.reg != 0 || input->m.reg != 0 ||
-			   !dis64clockslot(input->d.reg, entry->desc->size) || input->d.reg == 32)
+			if(pending || groups == Dis64ManagedCalls || input->s.reg != 0 || input->m.reg != 0 ||
+			   !dis64clockslot(input->d.reg, entry->desc->size) || input->d.reg == 32 ||
+			   (module >= 0 && module != input->d.reg))
 				return 0;
 			module = input->d.reg;
+			reloads[groups] = 1;
+			pending = 1;
 			break;
 		case 1:
-			if(input->s.reg != module ||
+			if(groups == Dis64ManagedCalls || input->s.reg != module ||
 			   !dis64clockslot(input->d.reg, entry->desc->size) ||
 			   input->d.reg == module || input->d.reg == 32 ||
 			   (input->m.decl == nil || input->m.decl->iface != import))
 				return 0;
 			frame = input->d.reg;
+			phase = 2;
 			break;
 		case 2:
 			if(input->s.reg != 32 || input->d.reg != frame || input->d.offset != 32)
 				return 0;
+			phase = 3;
 			break;
 		case 3:
 			destination = input->s.reg;
@@ -766,10 +774,18 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			   (result >= 0 && destination != result) || input->d.reg != frame || input->d.offset != 16)
 				return 0;
 			result = destination;
+			phase = 4;
 			break;
 		case 4:
 			if(input->s.reg != frame || input->d.reg != module ||
 			   input->m.decl == nil || input->m.decl->iface != import)
+				return 0;
+			groups++;
+			pending = 0;
+			phase = 1;
+			break;
+		case 5:
+			if(phase != 1 || pending || groups == 0)
 				return 0;
 			break;
 		}
@@ -796,7 +812,8 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		IMCALL,SRC(AFP)|AXIMM|DST(AMP),0,40,0};
 	static const uchar clear[] = {IMOVP,SRC(AMP)|DST(AFP),8,0x80,72};
 	static const uchar exit[] = {IEXIT,SRC(AXXX)|DST(AXXX)};
-	uchar caller[4+sizeof(load)+Dis64ManagedCalls*(sizeof(call)+sizeof(clear))+sizeof(exit)];
+	uchar caller[4+Dis64ManagedCalls*(sizeof(load)+sizeof(call)+sizeof(clear))+sizeof(exit)];
+	uchar reloads[Dis64ManagedCalls] = {0};
 	uchar provider[] = {0,0,0,3, IEXIT,SRC(AXXX)|DST(AXXX),
 		ICONSP,SRC(AFP)|DST(AFP|AIND),0x80,64,32,0, IRET,SRC(AXXX)|DST(AXXX)};
 	Dis64Type types[] = {{72, 8, map, sizeof(map)}, {8, 8, mpmap, sizeof(mpmap)}};
@@ -805,13 +822,13 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	Dis64Payload sections[5];
 	uchar metadata[24], typedata[32], pool[2200], name[28], symbol[36], callername[4+4*255], pathname[4+4*255];
 	uchar binding[40], output[4096];
-	unsigned int sizes[5], written, header, calls, at, i;
+	unsigned int sizes[5], written, header, calls, at, i, loads;
 	int quoted, consumer, fileload;
 	char *loadpath;
 
 	consumer = entry != nil;
 	fileload = consumer && emitscalar64 == 3;
-	if(!(consumer ? dis64managedcallershape(entry, globals, ldts, input, count, databytes, &quoted, &calls, &loadpath) :
+	if(!(consumer ? dis64managedcallershape(entry, globals, ldts, input, count, databytes, &quoted, &calls, &loadpath, reloads) :
 	     ldts == nil && dis64managedlibraryshape(entry, globals, input, count, databytes, &quoted))){
 		error(impdecl->src.start, "Dis64 managed trial: unsupported one-token String provider or caller");
 		return;
@@ -826,16 +843,19 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 			types[1] = (Dis64Type){16, 8, callermap+1, 1};
 		if(fileload)
 			types[1] = (Dis64Type){24, 8, loadmap, 1};
-		dis64put32(caller, calls*5+fileload);
+		loads = 0;
+		for(i=0; i<calls; i++)
+			loads += fileload && reloads[i];
+		dis64put32(caller, calls*5+loads);
 		at = 4;
-		if(fileload){
-			memmove(caller+at, load, sizeof(load));
-			at += sizeof(load);
-		}
 		for(i=0; i<calls; i++){
 			if(i != 0){
 				memmove(caller+at, clear, sizeof(clear));
 				at += sizeof(clear);
+			}
+			if(fileload && reloads[i]){
+				memmove(caller+at, load, sizeof(load));
+				at += sizeof(load);
 			}
 			memmove(caller+at, call, sizeof(call));
 			at += sizeof(call);

@@ -182,6 +182,15 @@ in-program checks on each target.
 
 The managed GC fixture requires four native provider completions and 132
 native paired-image completions on ARM64, AMD64 and RV64. RV64 now includes
-both pointer HEAD and pointer CONS. All three target runs cover 5859 collection epochs, 264 paired calls and 19
+both pointer HEAD and pointer CONS. All three target runs cover 25083 collection epochs, 264 paired calls and 19
 constructor allocation refusals. Full AWM startup and hardware acceptance
 remain separate milestones.
+
+
+The managed file corpus also executes repeated filesystem LOADs through the
+ordinary module cache and linker. The controlled-I/O/production-GC fixture checks
+56 cases, 832 LOADs and 400 additional native completions: distinct instances
+reuse the same Module/JIT for unchanged files and replace it after identity
+changes. Malformed replacement files, short reads, open failures and signing
+refusals retire without leaked owners. See `doc/dis64-managed-string-admission.md`
+for the source example and remaining profile limits.

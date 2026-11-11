@@ -28,6 +28,8 @@ def unit(calls=False, managed=False):
     fixture = (ROOT/'utils/tests/dis64-numeric-gc.c').read_text()
     if managed:
         fixture = fixture.split('/* Run single-instruction quanta')[0]
+        # A reload retains the previous instance until the new one is published; list input adds two nodes.
+        fixture = fixture.replace('#define GcSlots 8', '#define GcSlots 16')
         source = source.replace('#include "tests/leaf-cons-stub.h"',
                                 '#define cons fixture_leaf_cons\n#include "tests/leaf-cons-stub.h"\n#undef cons')
         heap = (ROOT/'libinterp/heap.c').read_text()
@@ -57,6 +59,7 @@ String* c2string(char *text, int length)
     value->tmp = nil;
     value->len = value->max = length;
     memmove(value->Sascii, text, length);
+    value->Sascii[length] = 0;
     return value;
 }
 '''
@@ -64,10 +67,19 @@ String* c2string(char *text, int length)
         begin = load64.index('#ifdef DIS_NATIVE64_MANAGED_FILES\n/* Generated')
         end = load64.index('/* Only the explicit console option', begin)
         source += load64[begin:end]
+        load = (ROOT/'libinterp/load.c').read_text()
+        readmod = (ROOT/'libinterp/readmod.c').read_text()
+        source += '\nint cflag, dontcompile;\n'+extract((ROOT/'emu/port/dis.c').read_text(), 'void\nkrethrow(')+'\n'
+        source += load[load.index('typedef struct DisLoad'):load.index('#if defined(DIS64_PILOT_LOADER)', load.index('typedef struct DisLoad'))]
+        source += extract(load, 'static int\ndis64parse(')+'\n'+extract(load, 'Module*\nlookmod(')+'\n'
+        source += '#define snprint snprintf\n'+extract(link, 'static int\nlinkm(')+'\n#undef snprint\n'
+        source += link[link.index('typedef struct LinkModule'):link.index('/* Preflight MP descriptors')]
+        source += extract(link, 'static int\nlinkmodule(')+'\n'+extract(link, 'Modlink*\nlinkmod(')+'\n'
+        source += '#define DIS_NATIVE64_SCALAR_BOOT 1\n'+extract(readmod, 'Module*\nreadmod(')+'\n#undef DIS_NATIVE64_SCALAR_BOOT\n'
         source += '\n'.join(extract(load64, signature) for signature in
                             ('static Modlink*\ndis64managedowner(', 'Modlink*\nprepare64managedtrial('))
         source += '\n'
-        fixture += (ROOT/'utils/tests/dis64-managed-gc.c').read_text()
+        fixture += (ROOT/'utils/tests/dis64-managed-gc.c').read_text()+'\n'+(ROOT/'utils/tests/dis64-managed-load.c').read_text()
     if calls or managed:
         stack = (ROOT/'libinterp/stack.c').read_text()
         xec = (ROOT/'libinterp/xec.c').read_text()
@@ -77,7 +89,7 @@ String* c2string(char *text, int length)
                           'OP(mframe)', 'OP(mcall)', 'OP(ret)'):
             source += '\n'+extract(xec, signature)+'\n'
     if managed:
-        for signature in ('OP(movp)', 'OP(consp)', 'static List*\nlisthead(', 'OP(headp)'):
+        for signature in ('static Import*\nmoduleimports(', 'OP(iload)', 'OP(movp)', 'OP(consp)', 'static List*\nlisthead(', 'OP(headp)'):
             source += '\n'+extract(xec, signature)+'\n'
     if calls:
         fixture = fixture.split('/* Check C and machine-code execution with a standalone')[0]
@@ -134,7 +146,7 @@ def provider_cases(fixtures, common):
 
 
 # Build complete trial images with independent Python envelope and record writers.
-def managed_image_cases(fixtures, load_path=None):
+def managed_image_cases(fixtures, load_path=None, reloads=()):
     words, desc = fixtures['W'], fixtures['D']
     image, sections = fixtures['IMAGE'], fixtures['SECTIONS']
     binding = fixtures['RAW']['RAW']['binding']
@@ -155,18 +167,33 @@ def managed_image_cases(fixtures, load_path=None):
         body = indirect(opcode, 64, 32, 0)+terminal
         ins = fixtures['I']
         def caller(*, frame_map=b'\x00\xc0', mp_map=None, argument=64, target=72,
-                   repeats=1, clear_source=8, clear_target=72, clear_mode=1, cleanup=True, mp_bytes=None):
+                   repeats=1, clear_source=8, clear_target=72, clear_mode=1, cleanup=True, mp_bytes=None,
+                   reload_source=16, reload_target=0, reload_binding=0, duplicate_reload=False, load_before_clear=False, initial_load=True,
+                   trailing_load=False, load_in_call=False):
             call = (ins('IMFRAME', 65, source=0, middle=0, destination=40)
                     + indirect('IMOVP', argument, 40, 64)
                     + indirect('ILEA', target, 40, 32)
                     + ins('IMCALL', 72, source=40, middle=0, destination=0))
+            if load_in_call:
+                frame_bytes = len(ins('IMFRAME', 65, source=0, middle=0, destination=40))
+                call = call[:frame_bytes]+ins('ILOAD', 64, source=16, middle=0, destination=0)+call[frame_bytes:]
             clear = ins('IMOVP', clear_mode, source=clear_source, destination=clear_target) if cleanup else b''
-            code = call+(clear+call)*(repeats-1)+fixtures['EXIT']
-            count = 1+4*repeats+(repeats-1 if cleanup else 0)
             fileload = load_path is not None
-            if fileload:
-                code = ins('ILOAD', 64, source=16, middle=0, destination=0)+code
-                count += 1
+            code, count = b'', 1
+            for index in range(repeats):
+                reload = index > 0 and (reloads is True or index in reloads)
+                load = ins('ILOAD', 64, source=16 if index == 0 else reload_source,
+                           middle=0 if index == 0 else reload_binding,
+                           destination=0 if index == 0 else reload_target) if (fileload and index == 0 and initial_load) or reload else b''
+                if duplicate_reload and reload:
+                    load += load
+                cleanup_code = clear if index else b''
+                code += (load+cleanup_code if load_before_clear else cleanup_code+load)+call
+                count += 4+int(load_in_call)+int(bool(cleanup_code))+int(bool(load))+(int(duplicate_reload and reload))
+            if trailing_load:
+                code += clear+ins('ILOAD', 64, source=16, middle=0, destination=0)
+                count += 1+int(bool(clear))
+            code += fixtures['EXIT']
             mp_bytes = (24 if fileload else 8 if repeats == 1 else 16) if mp_bytes is None else mp_bytes
             mp_map = (b'\xe0' if fileload else b'\x80' if repeats == 1 else b'\xc0') if mp_map is None else mp_map
             names = ('caller', symbol, 'String', load_path) if fileload else ('caller', symbol, 'String')
@@ -202,6 +229,12 @@ def managed_image_cases(fixtures, load_path=None):
             caller(repeats=2, clear_target=40), caller(repeats=2, clear_mode=9),
             caller(repeats=2, mp_map=b'\x80'), caller(repeats=2, mp_bytes=8),
             caller(mp_bytes=16, mp_map=b'\xc0')))
+        if reloads:
+            rows.extend((direction, 0, bad, good) for bad in (
+                caller(repeats=2, reload_source=8), caller(repeats=2, reload_target=8),
+                caller(repeats=2, reload_binding=1), caller(repeats=2, duplicate_reload=True),
+                caller(repeats=2, load_before_clear=True), caller(repeats=2, initial_load=False),
+                caller(repeats=2, trailing_load=True), caller(repeats=2, load_in_call=True)))
     return rows
 
 
@@ -237,7 +270,26 @@ def managed_images(fixtures, limbo, work):
                                 '-o', str(output), str(source)], check=True, timeout=60)
                 compiled.append(output.read_bytes())
             rows.append((direction, 1, *compiled))
-    rows.extend(row for row in managed_image_cases(fixtures, '/managed-provider.dis64') if row[1])
+    rows.extend(managed_image_cases(fixtures, '/managed-provider.dis64'))
+    rows.extend(managed_image_cases(fixtures, '/managed-provider.dis64', reloads=True))
+    # The real cached-load/GC execution uses compiler-produced repeated file LOADs, too.
+    for direction in (0, 1):
+        caller, provider = managed_sources(direction)
+        symbol = 'quoted' if direction else 'unquoted'
+        path = '/managed-provider.dis64'
+        statement = f'    result := lib->{symbol}(value);'
+        reload_line = '    lib = load String "'+path+'";'
+        caller = caller.replace('String->PATH', '"'+path+'"').replace(statement,
+            statement+'\n'+(reload_line+'\n'+f'    result = lib->{symbol}(value);\n')*31)
+        compiled = []
+        for label, text, flag in (('caller', caller, '-64l'), ('provider', provider, '-64m')):
+            source = work/f'cached-{label}-{direction}.b'
+            output = source.with_suffix('.dis64')
+            source.write_text(text)
+            subprocess.run([str(limbo.resolve()), flag, '-I', str(ROOT/'module'),
+                            '-o', str(output), str(source)], check=True, timeout=60)
+            compiled.append(output.read_bytes())
+        rows.append((direction, 1, *compiled))
     good_providers = {provider for _, accepted, _, provider in rows if accepted}
     declarations, entries = [], []
     for index, (direction, accepted, consumer, provider) in enumerate(rows):

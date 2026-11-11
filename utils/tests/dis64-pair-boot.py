@@ -891,6 +891,20 @@ def main():
                 output = execute(command+pair+trial)
                 if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
                     raise RuntimeError('malformed managed filesystem image reached scheduler: '+output)
+        reload_cases = GC['managed_image_cases'](RAW, load_path, reloads=True)
+        for direction, accepted, payload, dependency in reload_cases:
+            consumer.write_bytes(payload)
+            provider.write_bytes(dependency)
+            if accepted:
+                for jit in (0, 1):
+                    output = execute(command+['-c', str(jit)]+pair+trial+trial_input)
+                    if 'native64 scalar module caller: jit=0, exit=""' not in output or \
+                            BOOT['RETIRED'] not in output or 'panic:' in output:
+                        raise RuntimeError('managed file reload did not complete: '+output)
+            else:
+                output = execute(command+pair+trial)
+                if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+                    raise RuntimeError('malformed managed file reload reached scheduler: '+output)
         if args.limbo is not None:
             for direction in (0, 1):
                 text, body = GC['managed_sources'](direction)
@@ -914,6 +928,44 @@ def main():
                         if 'native64 scalar module Caller: jit=0, exit=""' not in output or \
                                 BOOT['RETIRED'] not in output or 'panic:' in output:
                             raise RuntimeError('compiled managed filesystem ILOAD did not complete: '+output)
+                for repetitions, reload_at in ((2, (1,)), (3, (1, 2)), (32, tuple(range(1, 32))), (32, (1, 31))):
+                    lines = [statement]
+                    for index in range(1, repetitions):
+                        if index in reload_at:
+                            lines.append('    lib = load String "'+load_path+'";')
+                        lines.append(f'    result = lib->{symbol}(value);')
+                    source.write_text(text.replace(statement, '\n'.join(lines)))
+                    subprocess.run(compile_command, check=True, timeout=30)
+                    candidates = GC['managed_image_cases'](RAW, load_path, reloads=reload_at)
+                    expected = next(raw for d, ok, raw, _ in candidates if ok and d == direction and
+                                    int.from_bytes(code_bytes(raw)[:4], 'big') == 5*repetitions+1+len(reload_at))
+                    if code_bytes(consumer.read_bytes()) != code_bytes(expected):
+                        raise RuntimeError('compiler changed managed LOAD positions')
+                    for jit in (0, 1):
+                        for seed in (trial_input, ['-A', '']):
+                            output = execute(command+['-c', str(jit)]+pair+trial+seed)
+                            if 'native64 scalar module Caller: jit=0, exit=""' not in output or \
+                                    BOOT['RETIRED'] not in output or 'panic:' in output:
+                                raise RuntimeError('compiled managed reload did not complete: '+output)
+                # No dangling LOAD, extra import, or 33rd call may reach the file producer.
+                reload_line = '    lib = load String "'+load_path+'";'
+                for invalid in (statement+'\n'+reload_line,
+                                statement+'\n'+(reload_line+'\n'+f'    result = lib->{symbol}(value);\n')*32,
+                                statement+'\n'+reload_line+'\n'+reload_line+'\n'+f'    result = lib->{symbol}(value);'):
+                    consumer.unlink(missing_ok=True)
+                    source.write_text(text.replace(statement, invalid))
+                    refused = subprocess.run(compile_command, capture_output=True, text=True, timeout=30)
+                    if refused.returncode <= 0 or consumer.exists() or 'Dis64' not in refused.stderr:
+                        raise RuntimeError('compiler accepted an incomplete or excessive managed reload body')
+                # Pair mode must not silently discard source-level reloads.
+                consumer.unlink(missing_ok=True)
+                old_source = text.replace('"'+load_path+'"', 'String->PATH')
+                old_source = old_source.replace(statement, statement+'\n    lib = load String String->PATH;\n'+f'    result = lib->{symbol}(value);')
+                source.write_text(old_source)
+                refused = subprocess.run(['-64m' if item == '-64l' else item for item in compile_command],
+                                         capture_output=True, text=True, timeout=30)
+                if refused.returncode <= 0 or consumer.exists() or 'Dis64' not in refused.stderr:
+                    raise RuntimeError('prelinked mode silently discarded a managed file reload')
                 # A serialized path cannot silently bind the explicitly supplied different file.
                 source.write_text(text.replace(load_path, '/wrong-provider.dis64'))
                 subprocess.run(compile_command, check=True, timeout=30)

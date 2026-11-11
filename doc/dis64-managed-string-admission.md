@@ -288,3 +288,43 @@ mutations. The 48-case allocation-failure sweep covers both the file export owne
 the unlinked caller's LDT/path construction, including cleanup of partial tables.
 This adds real filesystem loading for the bounded String trial. General
 managed libraries, multiple signatures and full AWM remain separate work.
+
+## Repeated filesystem LOAD and cache ownership
+
+File mode also accepts reassigning the same module variable between completed
+calls, using the same absolute path and imported interface:
+
+```limbo
+    lib := load String String->PATH;
+    result := lib->unquoted(value);
+    lib = load String String->PATH;
+    result = lib->unquoted(value);
+```
+
+The compiler preserves each LOAD position. The code checker consumes complete
+call islands, verifies the declared instruction count, and permits an optional
+reload only after result cleanup and before the next MFRAME. There are at most
+32 calls and at most one LOAD before each call. Partial frames, consecutive/dangling
+LOADs, changed paths, wrong reload operands and a 33rd call are refused. The
+existing single-LOAD and prelinked formats remain accepted. Pointer maps and
+signature tags are unchanged.
+
+Every successful ILOAD creates a new Modlink. Ordinary readmod reuses the same
+Module and JIT mapping when file identity is unchanged; linkmod builds the new
+instance before the destination releases the old one. A changed QID causes
+rereading, independent validation and replacement. The old Module remains live
+until its existing instance is released. Failed reads or admission publish VM
+nil through the ordinary ILOAD behavior; the following MFRAME refuses it.
+
+The collector fixture executes the actual ILOAD, readmod, managed Dis64 parser,
+linkmod and VM handlers with controlled namespace I/O. It compares Module and
+JIT identities across cache hits, checks new Modlink identity, and exercises a
+changed file, replacement on every LOAD, malformed replacement, short read, open failure and signing refusal.
+The namespace callbacks provide file bytes/metadata; they do not supply a cached
+Module or a linking result. Compiler-produced 32-LOAD callers run in both symbolic
+directions, C/JIT modes and with stack growth, collecting after every instruction.
+Across 56 cases, the fixture executes 832 LOADs and 400 native completions, and
+verifies all module/instance ownership is released. Together with the existing
+managed corpus this covers 25083 collection epochs. Complete console tests also
+execute independent wire images and compiled sources on x64, ARM64 and RV64,
+including sparse reload positions between repeated calls.

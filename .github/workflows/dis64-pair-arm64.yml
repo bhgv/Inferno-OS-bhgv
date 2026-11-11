@@ -25,6 +25,7 @@ on:
       - 'libinterp/xec.c'
       - 'utils/tests/dis64-numeric-gc.*'
       - 'utils/tests/dis64-managed-gc.c'
+      - 'utils/tests/dis64-managed-load.c'
       - 'utils/tests/dis64-provider-call.c'
       - 'include/dis64*.h'
       - 'include/interp.h'

@@ -206,7 +206,30 @@ struct Dis64ManagedPlan {
 	Dis64Binding selected;
 };
 
-/* Repeat exact managed call islands, clearing the old mapped result before reuse. */
+/* Consume a complete fixed instruction island without reading beyond the code extent. */
+static int
+dis64managedbytes(const unsigned char *data, unsigned int bytes, unsigned int *at,
+	const unsigned char *expected, unsigned int count)
+{
+	unsigned int i;
+
+	if(*at > bytes || count > bytes-*at)
+		return 0;
+	for(i=0; i<count; i++)
+		if(data[*at+i] != expected[i])
+			return 0;
+	*at += count;
+	return 1;
+}
+
+/* This is layout classification only; callers still require complete image/code proof. */
+static int
+dis64managedfilecode(const Dis64CodeView *code)
+{
+	return code != 0 && code->data != 0 && code->bytes >= 5 && code->data[4] == ILOAD;
+}
+
+/* Repeat checked calls and optional file reloads; clear the old result before reuse. */
 static int
 dis64managedcallercode(const unsigned char *data, unsigned int bytes, unsigned int limit,
 	Dis64CodeView *result)
@@ -218,37 +241,41 @@ dis64managedcallercode(const unsigned char *data, unsigned int bytes, unsigned i
 		IMCALL, SRC(AFP)|AXIMM|DST(AMP), 0, 40,0,
 	};
 	static const unsigned char clear[] = {IMOVP, SRC(AMP)|DST(AFP), 8, 0x80,72};
-	static const unsigned char exit[] = {IEXIT, SRC(AXXX)|DST(AXXX)};
-	unsigned int count, calls, at, i, j, fileload;
+	static const unsigned char load[] = {ILOAD,SRC(AMP)|AXIMM|DST(AMP),0,16,0};
+	static const unsigned char exit[] = {IEXIT,SRC(AXXX)|DST(AXXX)};
+	unsigned int count, calls, at, instructions, fileload;
 
-	if(bytes < 4)
+	if(bytes < 5)
 		return 0;
 	count = dis64u32(data);
-	fileload = count%5 == 1;
-	if(count < 5 || (count%5 != 0 && !fileload) || count > limit)
-		return 0;
-	calls = count/5;
-	if(calls > Dis64ManagedCalls || bytes != 4+fileload*5+calls*sizeof(call)+(calls-1)*sizeof(clear)+sizeof(exit))
+	if(count < 5 || count > limit || count > 6*Dis64ManagedCalls)
 		return 0;
 	at = 4;
+	calls = instructions = 0;
+	fileload = data[at] == ILOAD;
 	if(fileload){
-		static const unsigned char load[] = {ILOAD,SRC(AMP)|AXIMM|DST(AMP),0,16,0};
-		for(j=0; j<sizeof(load); j++)
-			if(data[at++] != load[j])
-				return 0;
-	}
-	for(i=0; i<calls; i++){
-		if(i != 0)
-			for(j=0; j<sizeof(clear); j++)
-				if(data[at++] != clear[j])
-					return 0;
-		for(j=0; j<sizeof(call); j++)
-			if(data[at++] != call[j])
-				return 0;
-	}
-	for(j=0; j<sizeof(exit); j++)
-		if(data[at++] != exit[j])
+		if(!dis64managedbytes(data, bytes, &at, load, sizeof(load)))
 			return 0;
+		instructions++;
+	}
+	for(;;){
+		if(calls == Dis64ManagedCalls || !dis64managedbytes(data, bytes, &at, call, sizeof(call)))
+			return 0;
+		calls++;
+		instructions += 4;
+		if(at < bytes && data[at] == IEXIT)
+			break;
+		if(!dis64managedbytes(data, bytes, &at, clear, sizeof(clear)))
+			return 0;
+		instructions++;
+		if(fileload && at < bytes && data[at] == ILOAD){
+			if(!dis64managedbytes(data, bytes, &at, load, sizeof(load)))
+				return 0;
+			instructions++;
+		}
+	}
+	if(!dis64managedbytes(data, bytes, &at, exit, sizeof(exit)) || at != bytes || instructions+1 != count)
+		return 0;
 	*result = (Dis64CodeView){data, bytes, count};
 	return 1;
 }
@@ -268,8 +295,8 @@ dis64managedimagepair(const unsigned char *consumer, unsigned int consumerbytes,
 	   !dis64storageimagecheckrecords(provider, providerbytes, limits, out,
 	   dis64managedprovidercode, dis64managedtable, schema) ||
 	   in->module.profile != 1 || in->module.entry != 0 || out->module.profile != 0 ||
-	   in->data.bytes != (in->code.count%5 == 1 ? 24 : in->code.count == 5 ? 8 : 16) || in->data.align != 8 ||
-	   in->data.mapbytes != 1 || in->data.map[0] != (in->code.count%5 == 1 ? 0xe0 : in->code.count == 5 ? 0x80 : 0xc0) ||
+	   in->data.bytes != (dis64managedfilecode(&in->code) ? 24 : in->code.count == 5 ? 8 : 16) || in->data.align != 8 ||
+	   in->data.mapbytes != 1 || in->data.map[0] != (dis64managedfilecode(&in->code) ? 0xe0 : in->code.count == 5 ? 0x80 : 0xc0) ||
 	   (in->present&(1U<<(Dis64Data-1))) != 0 ||
 	   !dis64typeget(&in->types, in->module.frametype, &callerframe) ||
 	   callerframe.bytes != 80 || callerframe.mapbytes != 2 ||

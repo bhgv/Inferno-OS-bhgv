@@ -1,4 +1,4 @@
-/* Symbolic String/List ownership fixture. No file kind or VM call is admitted here. */
+/* Managed String/List ownership, bytecode and file-owner acceptance with real collection. */
 #define LIMBO_NATIVE64_MANAGED
 #include "string-native64.h"
 #undef LIMBO_NATIVE64_MANAGED
@@ -20,7 +20,8 @@ static int managederror, managedcalls;
 static int managedbytecodes, managedfast;
 static Dis64ManagedBody managedbodies[2];
 static const ManagedImageCase *managedfixtures[2], *managedrepeatfixtures[2];
-static const ManagedImageCase *managedfilefixtures[2];
+static const ManagedImageCase *managedfilefixtures[2], *managedcachefixtures[2];
+static void managedcachecontrol(void);
 static int managedimagecalls;
 
 /* Independent trial bytes, with deliberately local version/tag values. */
@@ -55,9 +56,11 @@ managedimagecontrol(void)
 		if(test->accepted){
 			require(plan.selected.frame == 0 && plan.provider.code.bytes == 14);
 			managedbodies[test->direction] = (Dis64ManagedBody){plan.provider.code.data+6, 8};
-			if(plan.consumer.code.count%5 == 1)
+			if(dis64managedfilecode(&plan.consumer.code)){
 				managedfilefixtures[test->direction] = test;
-			else if(plan.consumer.code.count == 5)
+				if(plan.consumer.code.count == 6*Dis64ManagedCalls)
+					managedcachefixtures[test->direction] = test;
+			}else if(plan.consumer.code.count == 5)
 				managedfixtures[test->direction] = test;
 			else
 				managedrepeatfixtures[test->direction] = test;
@@ -807,6 +810,7 @@ main(void)
 	optab[IHEADP] = headp;
 	optab[IDIVW] = divw;
 	optab[IRET] = ret;
+	optab[ILOAD] = iload;
 	optab[IMOVP] = movp;
 	optab[IMFRAME] = mframe;
 	optab[IMCALL] = mcall;
@@ -845,6 +849,7 @@ main(void)
 				imagefast += managedfullcase(reverse, jit, grow, 0);
 				imagefast += managedfullcase(reverse, jit, grow, 1);
 			}
+	managedcachecontrol();
 	freetype(callerframe);
 	freetype(frames[1]);
 	freetype(frames[0]);

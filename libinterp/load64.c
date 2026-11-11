@@ -1628,7 +1628,7 @@ prepare64managedtrial(char *path, const uchar *image, ulong bytes, char *peerpat
 		return nil;
 	}
 #ifdef DIS_NATIVE64_MANAGED_FILES
-	if(checked.consumer.code.count%5 == 1){
+	if(dis64managedfilecode(&checked.consumer.code)){
 		Dis64ManagedFileCaller file;
 		Dis64StorageImage view;
 		Dis64Binding selected;
@@ -1654,7 +1654,7 @@ prepare64managedtrial(char *path, const uchar *image, ulong bytes, char *peerpat
 		return nil;
 	}
 #else
-	if(checked.consumer.code.count%5 == 1)
+	if(dis64managedfilecode(&checked.consumer.code))
 		return nil;
 #endif
 	caller = dis64managedowner(&checked.consumer, path, 0, nil);
