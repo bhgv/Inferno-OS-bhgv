@@ -33,3 +33,50 @@ stack; mmap and mprotect each fail by return and error. Real host mappings and
 permission changes are observed through linker wrappers. `--control lease` and
 `--control mapping` must fail their exact ownership baselines. No guest execution
 or collector runs in this fault fixture. See doc/native64-series0131.md.
+
+## Executing a checked Sys LOAD
+
+The private console profile accepts one or both of these scalar imports in
+either ordinal order.
+
+| Symbol | Result | Arguments |
+| --- | --- | --- |
+| millisec | int | none |
+| sleep | int | one int, currently the constant zero |
+
+For example, compile this source with the host Limbo compiler.
+
+```limbo
+implement Clock;
+include "sys.m";
+Clock: module { init: fn(); };
+init()
+{
+    sys := load Sys Sys->PATH;
+    status := sys->sleep(0);
+}
+```
+
+```sh
+limbo -64 -I module -o clock.dis64 clock.b
+emu -r /path/to/root -c 1 -d /clock.dis64 -P '$Sys'
+```
+
+Place the output at the console root's `clock.dis64`. The loader resolves each
+record's symbol and structural signature against trusted Sys exports, builds
+the import group in the recorded order, and executes ILOAD through the VM.
+The checker verifies each MFRAME/MCALL ordinal and requires the argument setup
+matching that entry. A source may contain 1 through 32 calls. The compiler
+preserves their order.
+
+The test command below runs independently serialized reversed groups,
+sleep-only groups, compiler-produced sources, invalid ordinals including
+negative values, and signature/argument refusals in C and JIT modes.
+
+```sh
+python3 utils/tests/dis64-pair-boot.py --sys-clock --limbo /path/to/limbo \
+    --root /path/to/root --emu /path/to/emu
+```
+
+The full AWM Sys group additionally needs fildes, file2chan, fprint, open, pctl
+and sprint. Its managed and variadic arguments remain outside this profile.

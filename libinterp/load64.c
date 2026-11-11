@@ -899,16 +899,16 @@ dis64sysclockview(const Dis64StorageImage *consumer, unsigned int ordinal, Modul
 	return native64sysclock(owner);
 }
 
-/* Verify the second scalar entry before admitting its fixed call frame. */
+/* Resolve a sleep entry at its actual ordinal in the checked import group. */
 static const Link*
-dis64syssleepview(const Dis64StorageImage *consumer, Module **owner)
+dis64syssleepview(const Dis64StorageImage *consumer, unsigned int ordinal, Module **owner)
 {
 	static const uchar sys[] = {0,0,0,'$', 0,0,0,'S', 0,0,0,'y', 0,0,0,'s'};
 	static const uchar sleep[] = {0,0,0,'s', 0,0,0,'l', 0,0,0,'e', 0,0,0,'e', 0,0,0,'p'};
 	Dis64Binding binding;
 	DisRuneView module, symbol;
 
-	if(!dis64bindingget(&consumer->imports, 1, &binding) ||
+	if(!dis64bindingget(&consumer->imports, ordinal, &binding) ||
 	   binding.signature.result != Dis64Int || binding.signature.parameters != 1 ||
 	   dis64u32(binding.signature.data+12) != Dis64Int ||
 	   !disstringpoolget(&consumer->strings, binding.module, &module) ||
@@ -936,7 +936,7 @@ dis64sysclockimport(const uchar *image, ulong bytes, unsigned int ordinal, Modul
 
 /* Decode bounded clock calls and an optional WORD copy after each completed call. */
 static int
-dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64CodeView *code, int sleep)
+dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64CodeView *code, unsigned int bindings, int arguments)
 {
 	Dis64CallDecoded decoded;
 	Dis64Instruction *inst;
@@ -965,14 +965,15 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 		case IMFRAME:
 			if(phase != 0 || inst->mode != (SRC(AMP)|AXIMM|DST(AFP)) ||
 			   inst->source != slot || inst->destination != 40 ||
-			   (inst->middle != 0 && !(sleep && slot == 8 && inst->middle == 1)))
+			   (inst->middle < 0 || inst->middle >= bindings ||
+			    (inst->middle == 1 && slot != 8)))
 				return 0;
 			binding = inst->middle;
-			phase = binding == 0 ? 1 : 3;
+			phase = arguments < 0 || (arguments & (1U << binding)) ? 3 : 1;
 			copied = 0;
 			break;
 		case ILEA:
-			if(phase != 1 || inst->mode != (SRC(AFP)|DST(AFP|AIND)) ||
+			if((phase != 1 && !(arguments < 0 && phase == 3)) || inst->mode != (SRC(AFP)|DST(AFP|AIND)) ||
 			   inst->source != 72 || inst->destination != 40 || decoded.secondary != 32)
 				return 0;
 			phase = 2;
@@ -1016,7 +1017,7 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 static int
 dis64clockcode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64CodeView *code)
 {
-	return dis64syscode(data, bytes, limit, code, 1);
+	return dis64syscode(data, bytes, limit, code, 2, -1);
 }
 
 #endif
@@ -1472,7 +1473,7 @@ prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
 	Module *sys;
 	const Link *entry;
 	Modlink *caller, *clock;
-	unsigned int i, rune;
+	unsigned int i, rune, arguments;
 	int dynamic;
 
 	memset(&load, 0, sizeof(load));
@@ -1493,10 +1494,8 @@ prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
 		return nil;
 	}
 	dynamic = load.image.code.data[4] == ILOAD;
-	if((!dynamic && load.image.imports.count != 1) ||
-	   (load.image.imports.count == 1 &&
-	    !dis64syscode(load.image.code.data, load.image.code.bytes, Dis64ClockInstructions, &load.image.code, 0))){
-		kwerrstr("Dis64 Sys calls do not match the imported group");
+	if(!dynamic && load.image.imports.count != 1){
+		kwerrstr("Dis64 direct Sys call requires one import");
 		return nil;
 	}
 	if(load.image.data.bytes != (dynamic ? 16 : 8) ||
@@ -1510,21 +1509,27 @@ prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
 			return nil;
 		}
 	sys = nil;
-	entry = dis64sysclockview(&load.image, 0, &sys);
-	if(entry == nil)
-		return nil;
 	clock = nil;
-	if(dynamic){
-		load.clockload[0] = entry;
-		load.clockimports = load.image.imports.count;
-		if(load.clockimports == 2){
-			load.clockload[1] = dis64syssleepview(&load.image, &sys);
-			if(load.clockload[1] == nil)
-				return nil;
+	arguments = 0;
+	for(i=0; i<load.image.imports.count; i++){
+		entry = dis64sysclockview(&load.image, i, &sys);
+		if(entry == nil && dynamic){
+			entry = dis64syssleepview(&load.image, i, &sys);
+			arguments |= 1 << i;
 		}
+		if(entry == nil)
+			return nil;
+		load.clockload[i] = entry;
 	}
+	if(!dis64syscode(load.image.code.data, load.image.code.bytes, Dis64ClockInstructions,
+	   &load.image.code, load.image.imports.count, arguments)){
+		kwerrstr("Dis64 Sys calls do not match the imported group");
+		return nil;
+	}
+	if(dynamic)
+		load.clockimports = load.image.imports.count;
 	else{
-		clock = dis64rootclock(sys, entry);
+		clock = dis64rootclock(sys, load.clockload[0]);
 		if(clock == nil)
 			return nil;
 	}

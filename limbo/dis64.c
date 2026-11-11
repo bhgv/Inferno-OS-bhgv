@@ -133,7 +133,7 @@ dis64trace(Dis64Lower *lower)
 /* Match the complete lowered init body before changing its frame geometry. */
 static int
 dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes,
-	uchar *calls, unsigned int *ncalls)
+	uchar *calls, unsigned int *ncalls, uchar *arguments)
 {
 	Decl *import, *export, *path;
 	unsigned int i, phase, binding, used;
@@ -158,20 +158,23 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 	if(path == nil)
 		return 0;
 	import = ldts->init->decl->ty->ids;
-	if(import == nil || strcmp(import->sym->name, "millisec") != 0 ||
-	   import->ty->kind != Tfn || import->ty->ids != nil || import->ty->varargs ||
-	   import->ty->tof->kind != Tint)
+	if(ldts->init->val < 1 || ldts->init->val > 2)
 		return 0;
-	sleep = import->next != nil;
-	if(ldts->init->val != 1+sleep)
-		return 0;
-	if(sleep){
-		Decl *second = import->next;
-		if(second->next != nil || strcmp(second->sym->name, "sleep") != 0 ||
-		   second->ty->kind != Tfn || second->ty->ids == nil || second->ty->ids->next != nil ||
-		   second->ty->ids->ty->kind != Tint || second->ty->varargs || second->ty->tof->kind != Tint)
+	for(export=import, i=0; export != nil; export=export->next, i++){
+		if(i >= 2 || (i == 1 && export->sym == import->sym) || export->ty->kind != Tfn || export->ty->varargs ||
+		   export->ty->tof->kind != Tint)
 			return 0;
+		sleep = strcmp(export->sym->name, "sleep") == 0;
+		if(sleep){
+			if(export->ty->ids == nil || export->ty->ids->next != nil ||
+			   export->ty->ids->ty->kind != Tint)
+				return 0;
+		}else if(strcmp(export->sym->name, "millisec") != 0 || export->ty->ids != nil)
+			return 0;
+		arguments[i] = sleep;
 	}
+	if(i != ldts->init->val)
+		return 0;
 	for(export=impdecl->ty->tof->ids; export != nil; export=export->next)
 		if(export->store == Dglobal || (export->store == Dfn && export->sym != entry->sym))
 			return 0;
@@ -196,12 +199,12 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 			   input->dm != Afp || (input->d.reg != 36 && input->d.reg != 40) ||
 			   input->mm != Aoff || input->m.decl == nil)
 				return 0;
-			binding = sleep && input->m.decl->iface == import->next;
+			binding = import->next != nil && input->m.decl->iface == import->next;
 			if(input->m.decl->iface != (binding ? import->next : import) ||
 			   input->m.decl->iface->offset != binding)
 				return 0;
 			frame = input->d.reg;
-			phase = binding ? 3 : 1;
+			phase = arguments[binding] ? 3 : 1;
 			break;
 		case 3:
 			if(input->op != IMOVW || input->sm != Aimm || input->s.offset != 0 ||
@@ -230,7 +233,7 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 		i++;
 	}
 	*ncalls = used;
-	return i == count ? 1+sleep : 0;
+	return i == count ? ldts->init->val : 0;
 }
 
 
@@ -258,15 +261,17 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 	Dis64Payload sections[5];
 	uchar metadata[24], code[4+sizeof(load)+Dis64ClockCalls*sizeof(sleepcall)+sizeof(exit)];
 	uchar typedata[32], imports[56], runes[4][4+4*255], strings[4+sizeof(runes)], output[2048];
-	uchar calls[Dis64ClockCalls];
-	unsigned int sizes[5], i, j, length, written, bindings, ncalls, sleep, period = Dis64Int;
+	uchar calls[Dis64ClockCalls], arguments[2];
+	unsigned int sizes[5], i, j, length, written, bindings, ncalls, ordinal, period = Dis64Int;
 	const char *labels[] = {"$Sys", "millisec", impdecl->sym->name, "sleep"};
 
-	bindings = dis64clockshape(entry, globals, ldts, input, count, databytes, calls, &ncalls);
+	bindings = dis64clockshape(entry, globals, ldts, input, count, databytes, calls, &ncalls, arguments);
 	if(bindings == 0)
 		return 0;
-	sleep = bindings == 2;
-	for(i=0; i<3+sleep; i++){
+	labels[1] = ldts->init->decl->ty->ids->sym->name;
+	if(bindings == 2)
+		labels[3] = ldts->init->decl->ty->ids->next->sym->name;
+	for(i=0; i<2+bindings; i++){
 		length = strlen(labels[i]);
 		if(length == 0 || length > 255)
 			return 0;
@@ -287,37 +292,40 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 	sizes[1] = 4+sizeof(load);
 	memmove(code+4, load, sizeof(load));
 	for(i=0; i<ncalls; i++){
-		if(calls[i]){
+		ordinal = calls[i];
+		if(arguments[ordinal]){
 			memmove(code+sizes[1], sleepcall, sizeof(sleepcall));
+			code[sizes[1]+2] = ordinal;
+			code[sizes[1]+sizeof(sleepcall)-3] = ordinal;
 			sizes[1] += sizeof(sleepcall);
 		}else{
 			memmove(code+sizes[1], call, sizeof(call));
+			code[sizes[1]+2] = ordinal;
+			code[sizes[1]+sizeof(call)-3] = ordinal;
 			sizes[1] += sizeof(call);
 		}
 	}
 	memmove(code+sizes[1], exit, sizeof(exit));
 	sizes[1] += sizeof(exit);
 	dis64put32(imports, bindings);
-	dis64put32(imports+4, 0);
-	dis64put32(imports+8, 1);
-	dis64put32(imports+12, 12);
-	if(!dis64modulewrite(metadata, sizeof(metadata), &module, &sizes[0]) ||
-	   !dis64typeswrite(typedata, sizeof(typedata), types, nelem(types), &sizes[2]) ||
-	   !dis64signaturewrite(imports+16, 12, Dis64Int, nil, 0, &written) ||
-	   !disstringpoolwrite(strings, sizeof(strings), names, 3+sleep, &sizes[4])){
-		dis64error(entry, "cannot encode checked clock import");
-		return 1;
-	}
-	sizes[3] = 28;
-	if(sleep){
-		dis64put32(imports+28, 0);
-		dis64put32(imports+32, 3);
-		dis64put32(imports+36, 16);
-		if(!dis64signaturewrite(imports+40, 16, Dis64Int, &period, 1, &written)){
-			dis64error(entry, "cannot encode checked sleep import");
+	sizes[3] = 4;
+	for(i=0; i<bindings; i++){
+		length = arguments[i] ? 16 : 12;
+		dis64put32(imports+sizes[3], 0);
+		dis64put32(imports+sizes[3]+4, i == 0 ? 1 : 3);
+		dis64put32(imports+sizes[3]+8, length);
+		if(!dis64signaturewrite(imports+sizes[3]+12, length, Dis64Int,
+		   arguments[i] ? &period : nil, arguments[i], &written)){
+			dis64error(entry, "cannot encode checked Sys import");
 			return 1;
 		}
-		sizes[3] = sizeof(imports);
+		sizes[3] += 12+length;
+	}
+	if(!dis64modulewrite(metadata, sizeof(metadata), &module, &sizes[0]) ||
+	   !dis64typeswrite(typedata, sizeof(typedata), types, nelem(types), &sizes[2]) ||
+	   !disstringpoolwrite(strings, sizeof(strings), names, 2+bindings, &sizes[4])){
+		dis64error(entry, "cannot encode checked Sys imports");
+		return 1;
 	}
 	sections[0] = (Dis64Payload){Dis64Module, Dis64Required, metadata, sizes[0]};
 	sections[1] = (Dis64Payload){Dis64Code, Dis64Required, code, sizes[1]};

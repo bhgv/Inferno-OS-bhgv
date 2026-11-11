@@ -111,7 +111,7 @@ def clock_image(*, result_offset=72, module='$Sys', signature=1, repeats=1,
                 copy=False, early_copy=False, copy_destination=64, load=False, load_slot=8,
                 load_index=0, load_map=b"\xc0", second=None, call_index=0,
                 sleep_tail=False, period=0, period_offset=64, sleep_index=1,
-                sleep_first=False):
+                sleep_first=False, sleep_only=False, reverse=False):
     words, ins = RAW['W'], RAW['I']
     bindings = RAW['RAW']['RAW']
     calls = runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))
@@ -125,15 +125,20 @@ def clock_image(*, result_offset=72, module='$Sys', signature=1, repeats=1,
     count = repeats*(3+copy+early_copy)+1+load
     tail = b''
     if sleep_tail or sleep_first:
-        tail = (ins('IMFRAME', 65, source=slot, middle=1, destination=40)
+        tail = (ins('IMFRAME', 65, source=slot, middle=sleep_index, destination=40)
                 + calls['indirect']('IMOVW', period, 40, period_offset, sm=2)
                 + bind
                 + ins('IMCALL', 72, source=40, middle=sleep_index, destination=slot))
         count += 4*(sleep_tail+sleep_first)
-    names = (module, 'millisec', 'caller')
-    imports = [bindings['binding'](module=0, sig=bindings['signature'](signature))]
+    if sleep_only:
+        group = (ins('IMFRAME', 65, source=slot, middle=call_index, destination=40)
+                 + calls['indirect']('IMOVW', period, 40, period_offset, sm=2)
+                 + bind + ins('IMCALL', 72, source=40, middle=call_index, destination=slot))
+        count = repeats*4+1+load
+    names = (module, 'sleep' if sleep_only or reverse else 'millisec', 'caller')
+    imports = [bindings['binding'](module=0, sig=bindings['signature'](signature, (1,) if sleep_only or reverse else ()))]
     if second is not None:
-        symbol, parameters = second
+        symbol, parameters = ('millisec', ()) if reverse else second
         names += (symbol,)
         imports.append(bindings['binding'](module=0, symbol=3,
                                           sig=bindings['signature'](1, parameters)))
@@ -194,6 +199,14 @@ init()
         if code_bytes(image) != code_bytes(expected):
             raise RuntimeError(f'compiler did not preserve all {repeats} clock calls')
         yield repeats, image
+    for repeats in (1, 3, 32):
+        source.write_text(repeated(repeats).replace('millisec()', 'sleep(0)'))
+        subprocess.run(command, check=True, timeout=30)
+        image = output.read_bytes()
+        expected = clock_image(repeats=repeats, load=True, sleep_only=True)
+        if code_bytes(image) != code_bytes(expected):
+            raise RuntimeError('compiler changed the sleep-only import group')
+        yield f'{repeats} sleep-only', image
     mixed = template.replace('    now := sys->millisec();', '    now := sys->millisec();\n    now = sys->sleep(0);')
     output.unlink()
     source.write_text(mixed.replace('sleep(0)', 'sleep(1)'))
@@ -402,6 +415,17 @@ def main():
                     marker = f'native64 scalar module caller: jit={jit}, exit=""'
                     if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
                         raise RuntimeError('Sys clock file boot did not complete: '+output)
+            for case in ({'sleep_only': True}, {'sleep_only': True, 'repeats': 32},
+                         {'reverse': True, 'call_index': 1, 'sleep_index': 0,
+                          'second': ('sleep', (1,)), 'sleep_tail': True},
+                         {'reverse': True, 'call_index': 1, 'sleep_index': 0,
+                          'second': ('sleep', (1,)), 'sleep_first': True}):
+                consumer.write_bytes(clock_image(load=True, **case))
+                for jit in (0, 1):
+                    output = execute(command+['-c', str(jit)]+builtin)
+                    if f'native64 scalar module caller: jit={jit}, exit=""' not in output or \
+                            BOOT['RETIRED'] not in output or 'panic:' in output:
+                        raise RuntimeError('Sys group order or sleep-only execution failed: '+output)
             if args.limbo is not None:
                 for repeats, image in compile_clocks(args.limbo.resolve(), work):
                     consumer.write_bytes(image)
@@ -415,7 +439,13 @@ def main():
                 output = execute(command+options)
                 if BOOT['RETIRED'] in output or 'panic:' not in output:
                     raise RuntimeError('Sys clock file bypassed explicit selection: '+output)
-            for case in ({'result_offset': 64}, {'module': '$sys'}, {'signature': 0},
+            for case in ({'reverse': True, 'load': True, 'second': ('sleep', (1,))},
+                         {'sleep_only': True, 'load': True, 'period': 1},
+                         {'sleep_only': True, 'load': True, 'signature': 2},
+                         {'sleep_only': True, 'load': True, 'call_index': 1},
+                         {'load': True, 'call_index': -1},
+                         {'load': True, 'call_index': 1},
+                         {'result_offset': 64}, {'module': '$sys'}, {'signature': 0},
                          {'early_copy': True}, {'copy': True, 'copy_destination': 40},
                          {'repeats': 33}, {'load': True, 'load_slot': 0},
                          {'load': True, 'second': ('missing', (1,))},
