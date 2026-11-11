@@ -37,13 +37,19 @@ typedef struct Native64SysFrameRequest Native64SysFrameRequest;
 struct Native64SysFrameRequest
 {
     Prog *prog;
-    void *frame; // Exact current native callee frame in REG.
+    void *frame; // Exact pending FRAME/MFRAME target or current entered native callee.
     Type *type, *caller_type; // Borrowed live complete descriptors owned by the call site.
     unsigned int result_offset; // Declared caller field; the callee's return address must match it exactly.
     const Native64TailSlot *slots; // Immutable explicit ordered kinds and reference Type identities.
     unsigned int count;
     int initial, limit;
 };
+/* Private trusted-C operations; these numeric values are never serialized. */
+typedef enum Native64SysFrameOperation {
+    Native64SysSprint, Native64SysAprint, Native64SysPrint, Native64SysFprint
+} Native64SysFrameOperation;
+/* Bind the caller's full pointer before MCALL; no formatting, allocation or opcode admission. */
+int Sys_bindframe64(const Native64SysFrameRequest*, Native64SysFrameOperation);
 int Sys_sprintframe64(const Native64SysFrameRequest*);
 int Sys_aprintframe64(const Native64SysFrameRequest*);
 int Sys_printframe64(const Native64SysFrameRequest*);

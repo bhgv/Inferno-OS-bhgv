@@ -73,6 +73,63 @@ static void vmcallback(void *frame)
 static int vmframe(void *context) { if(context) frame(); else mframe(); return 1; }
 static int vmcall(void *context) { USED(context); mcall(); return 1; }
 
+/* Refused pending bindings preserve all eight result-address bytes and reserved storage. */
+static void vmbindrefusals(Native64SysFrameRequest *request, int operation)
+{
+    Native64SysFrameRequest candidate;
+    REG registers = R;
+    Frame *pending = request->frame;
+    Modlink *mr = pending->mr;
+    uvlong guard = 0x12345678deadbeefULL, observed, epoch = process.native64epoch;
+    uchar reserved[24], map = request->type->map[1];
+    int size = request->type->size, probe, before = contextattempt, owners = contextlive;
+    memset(reserved, 0xa5, sizeof(reserved));
+    memmove((uchar*)pending+40, reserved, sizeof(reserved));
+    for(probe=0; probe<32; probe++) {
+        candidate = *request;
+        memmove((uchar*)pending+32, &guard, sizeof(guard));
+        switch(probe) {
+        case 0: candidate.frame = (void*)1; break;
+        case 1: candidate.frame = R.FP; break;
+        case 2: candidate.caller_type = &Tbyte; break;
+        case 3: candidate.type = &Tbyte; break;
+        case 4: candidate.result_offset = 32; break;
+        case 5: candidate.result_offset++; break;
+        case 6: candidate.result_offset = operation < 2 ? offsetof(F_Roots_bridge, count) : offsetof(F_Roots_bridge, stringresult); break;
+        case 7: candidate.count = Native64BindEntries+1; break;
+        case 8: candidate.slots = nil; break;
+        case 9: request->type->map[1] ^= 0x20; break;
+        case 10: request->type->size += 8; break;
+        case 11: process.state = Palt; break;
+        case 12: process.kill = "pending cancellation"; break;
+        case 13: process.flags |= Pkilled; break;
+        case 14: process.native64holds = 1; break;
+        case 15: process.native64epoch = ~(uvlong)0; break;
+        case 16: pending->mr = H; break;
+        case 17: R.SP = (uchar*)R.SP-8; break;
+        case 18: R.FP = request->frame; break;
+        case 19: R.EX = nil; break;
+        case 20: R.M = nil; break;
+        case 21: candidate.prog = (Prog*)1; break;
+        case 22: process.native64live = (REG*)1; break;
+        case 23: R.TS = (uchar*)R.SP-1; break;
+        case 24: candidate.frame = nil; break;
+        case 25: R.FP = R.EX; break;
+        case 26: candidate.limit = 0; break;
+        case 27: candidate.result_offset = request->caller_type->size; break;
+        case 28: candidate.prog = nil; break;
+        }
+        check(!Sys_bindframe64(probe == 29 ? nil : &candidate,
+            probe == 30 ? (Native64SysFrameOperation)-1 : probe == 31 ? (Native64SysFrameOperation)4 : (Native64SysFrameOperation)operation));
+        R = registers; request->type->size = size; request->type->map[1] = map;
+        pending->mr = mr; process.state = Pready; process.kill = nil; process.flags &= ~Pkilled;
+        process.native64holds = 0; process.native64epoch = epoch; process.native64live = nil;
+        memmove(&observed, (uchar*)pending+32, sizeof(observed));
+        check(observed == guard && memcmp((uchar*)pending+40, reserved, sizeof(reserved)) == 0);
+        check(contextattempt == before && contextlive == owners && writes == 0 && errdepth == 0);
+    }
+}
+
 static void vmcase(int phase, int operation, int mode, int useframe)
 {
     const LimboNative64Prefix *prefix;
@@ -152,11 +209,22 @@ static void vmcase(int phase, int operation, int mode, int useframe)
         else { bits = i == 0 ? (uvlong)(vlong)-1 : 0; memmove((uchar*)pending+plan.tail+i*8, &bits, 8); }
     }
     result = operation == 0 ? (void*)&caller->stringresult : operation == 1 ? (void*)&caller->arrayresult : (void*)&caller->count;
-    memmove((uchar*)pending+32, &result, sizeof(result));
     memset(&vmrequest, 0, sizeof(vmrequest));
     vmtype = callee_type; vmrequest.prog = &process; vmrequest.type = callee_type; vmrequest.caller_type = caller_type;
     vmrequest.slots = slots; vmrequest.count = count; vmrequest.initial = 8; vmrequest.limit = 128;
     vmrequest.result_offset = (uchar*)result-(uchar*)caller;
+    vmrequest.frame = pending;
+    vmbindrefusals(&vmrequest, operation);
+    caller->regs.t = nil; // Binding also supports the root-extent Type fallback.
+    rootlink->prog = &next; // A bytecode caller may bind before entering the native target.
+    check(Sys_bindframe64(&vmrequest, (Native64SysFrameOperation)operation));
+    rootlink->prog = nil; caller->regs.t = caller_type;
+    memmove(&bad, (uchar*)pending+32, sizeof(bad));
+    check(bad == result); // Also proves all eight bytes replace the nonzero upper guard.
+#ifndef __BIONIC__
+    check((uintptr)result > 0xffffffffU); // GNU PIE fixtures exercise a genuinely high result cell.
+#endif
+
     if(mode == 3) vmrequest.count = Native64BindEntries+1;
     if(mode == 4) { bits = 0xffffffffULL; memmove((uchar*)pending+plan.tail, &bits, 8); }
     if(mode == 5) slots[1].type = &Tarray;
@@ -226,6 +294,6 @@ int main(int argc, char **argv)
     for(useframe=0; useframe<2; useframe++) for(phase=0; phase<3; phase++) for(operation=0; operation<4; operation++) for(mode=0; mode<32; mode++) {
         vmcase(phase, operation, mode, useframe); cases++;
     }
-    printf("PASS typed Sys VM frames: %d real FRAME/MFRAME/MCALL/GC cases with source-derived tail plans, four gateways, 150-slot frames, refusal and result/cleanup checks\n", cases);
+    printf("PASS typed Sys VM frames: %d real FRAME/MFRAME/MCALL/GC cases with source-derived tail plans, four gateways, checked eight-byte binding/32 refusals, 150-slot frames, refusal and result/cleanup checks\n", cases);
     return 0;
 }

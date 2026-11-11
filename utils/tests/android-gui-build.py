@@ -127,6 +127,7 @@ def main():
     required = ['ANativeActivity_onCreate', 'android_main', 'amain']
     if args.native64_formatter:
         required += ['Sys_'+name+'64' for name in ('print', 'fprint', 'sprint', 'aprint')]
+        required += ['Sys_bindframe64']
         required += ['Sys_'+name+'frame64' for name in ('print', 'fprint', 'sprint', 'aprint')]
     for name in required:
         if name not in {line.split()[-1] for line in symbols.splitlines() if line.split()}:

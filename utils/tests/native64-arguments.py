@@ -90,7 +90,7 @@ def main():
                     vm = (ROOT/'libinterp/xec.c').read_text()
                     bodies = '#define OP(fn) void fn(void)\n'+'\n'.join(function(vm, signature) for signature in ('static Type*\nmoduletype(', 'static int\nmoduleentry(', 'static int\nframefits(', 'OP(frame)', 'OP(mframe)', 'OP(mcall)'))
                     source += (ROOT/'utils/tests/native64-sys-frame.c').read_text().replace('VM_FRAME_IMPLEMENTATION', bodies)
-                    for signature in ('int\nSys_sprint64(', 'int\nSys_aprint64(', 'int\nSys_print64(', 'int\nSys_fprint64(', 'int\nSys_sprintframe64(', 'int\nSys_aprintframe64(', 'int\nSys_printframe64(', 'int\nSys_fprintframe64('):
+                    for signature in ('int\nSys_sprint64(', 'int\nSys_aprint64(', 'int\nSys_print64(', 'int\nSys_fprint64(', 'int\nSys_bindframe64(', 'int\nSys_sprintframe64(', 'int\nSys_aprintframe64(', 'int\nSys_printframe64(', 'int\nSys_fprintframe64('):
                         source += '\n'+function(runtime, signature)+'\n'
                     extra = [str(ROOT/('lib9/'+name+'.c')) for name in ('rune','sprint','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')]+['-pthread']
                 unit.write_text(source)
@@ -109,7 +109,9 @@ def main():
                             ('write-acquire', 'native64-sys-write.h', 'native64syswriteacquire(&call);', '(void)0;'),
                             ('write-fd-map', 'native64-sys-write.h', 'uchar fprintmap[] = F_Sys_fprint_map;', 'uchar fprintmap[] = {0, 0x40};'),
                             ('vm-return', 'native64-sys-frame.h', 'return (uintptr)address == result ? (void*)result : nil;', 'return (void*)result;'),
-                            ('vm-map', 'native64-sys-frame.h', 'if(type->map[i] != expected) return 0;', 'if(0) return 0;')):
+                            ('vm-map', 'native64-sys-frame.h', 'if(type->map[i] != expected) return 0;', 'if(0) return 0;'),
+                            ('bind-width', 'native64-sys-frame.h', 'memmove((uchar*)call.request.frame+32, &result, sizeof(result));', 'memmove((uchar*)call.request.frame+32, &result, sizeof(WORD));'),
+                            ('bind-pending', 'native64-sys-frame.h', ': active.mr != nil)', ': 0)')):
                         adapter = (ROOT/('include/'+header)).read_text()
                         if adapter.count(boundary) != 1:
                             raise RuntimeError('Typed format control boundary changed: '+name)

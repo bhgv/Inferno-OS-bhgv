@@ -9,10 +9,11 @@ struct Native64SysFrameCall {
     Native64TailPlan plan;
     const LimboNative64Entry *fixed;
     uvlong epoch; // Detect guarded activation invalidation without claiming a scheduler lifetime lease.
-    Modlink *module; // Exact active native module retained by MCALL.
+    Modlink *module; // Exact current module; native only after MCALL.
     void *extent; // This first bridge accepts caller and callee in one current extent.
     REG *live;
     int pid;
+    int entered; // Pending FRAME binding or entered MCALL result resolution.
     int operation; // Private selector: sprint/aprint/print/fprint; never serialized.
 };
 
@@ -72,19 +73,21 @@ native64sysframecell(void *argument)
     if(request->prog != currun() || request->prog->state != Pready || request->prog->kill != nil ||
        request->prog->pid <= 0 || request->prog->pid != call->pid ||
        request->prog->native64live != call->live || (call->live != nil && call->live != &R) || request->prog->native64holds != 0 || request->prog->native64epoch != call->epoch || call->epoch == ~(uvlong)0 ||
-       (request->prog->flags & Pkilled) || R.M != call->module || call->module->prog != nil || R.FP != request->frame ||
+       (request->prog->flags & Pkilled) || R.M != call->module ||
+       (call->entered && (call->module->prog != nil || R.FP != request->frame)) ||
        R.EX != call->extent || R.EX == nil || R.EX == H || R.SP == nil || R.TS == nil)
         return nil;
     extent = (Stkext*)R.EX;
     first = (uintptr)R.EX;
     if(first%sizeof(void*) != 0 || first > (uintptr)-1-OA(Stkext, reg.tos.fu)) return nil;
     first += OA(Stkext, reg.tos.fu);
-    stop = (uintptr)R.SP; top = (uintptr)R.TS; callee = (uintptr)R.FP;
+    stop = (uintptr)R.SP; top = (uintptr)R.TS; callee = (uintptr)request->frame;
     if(stop < first || top < stop || top-(uintptr)R.EX > Native64BindFrame ||
        callee < first || callee > stop || stop-callee < sizeof(Frame)) return nil;
     memmove(&active, (void*)callee, sizeof(active));
-    caller = (uintptr)active.fp;
-    if(caller < first || caller >= callee || active.mr == nil || active.mr == H) return nil;
+    caller = call->entered ? (uintptr)active.fp : (uintptr)R.FP;
+    if(caller < first || caller >= callee ||
+       (call->entered ? active.mr == nil || active.mr == H : active.mr != nil)) return nil;
     for(cursor=first; cursor<stop; cursor=end) {
         if(stop-cursor < sizeof(Frame)) return nil;
         memmove(&frame, (void*)cursor, sizeof(frame));
@@ -108,8 +111,52 @@ native64sysframecell(void *argument)
     slot = request->result_offset/8;
     if(!!(request->caller_type->map[slot/8] & (0x80>>(slot%8))) != (call->operation < 2)) return nil;
     result = caller+request->result_offset;
+    if(!call->entered) return (void*)result;
     memmove(&address, (uchar*)request->frame+32, sizeof(address));
     return (uintptr)address == result ? (void*)result : nil;
+}
+
+/* Capture one trusted call-site recipe for a pending or entered activation. */
+static int
+native64sysframeprepare(Native64SysFrameCall *call, const Native64SysFrameRequest *request,
+    int operation, int entered)
+{
+    const LimboNative64Prefix *prefix;
+    if(!native64model() || request == nil || request->prog == nil || request->prog == H || request->prog != currun() ||
+       request->initial <= UTFmax+2 || request->limit < request->initial ||
+       request->frame == nil || request->frame == H || (uintptr)request->frame%8 != 0 ||
+       R.M == nil || R.M == H || (entered && R.M->prog != nil) || operation < Native64SysSprint || operation > Native64SysFprint)
+        return 0;
+    prefix = operation == 0 ? &limbo_native64_Sys_sprint_prefix :
+        operation == 1 ? &limbo_native64_Sys_aprint_prefix :
+        operation == 2 ? &limbo_native64_Sys_print_prefix : &limbo_native64_Sys_fprint_prefix;
+    memset(call, 0, sizeof(*call));
+    call->entered = entered;
+    call->request = *request;
+    call->fixed = &prefix->fixed;
+    call->operation = operation;
+    call->module = R.M;
+    call->extent = R.EX;
+    call->epoch = request->prog->native64epoch;
+    call->pid = request->prog->pid;
+    call->live = request->prog->native64live;
+    if(!native64tailplan(&prefix->fixed, request->slots, request->count, &call->plan) ||
+       !native64sysframecell(call)) return 0;
+    return 1;
+}
+
+/* Bind an eight-byte result address only after complete pending-frame/caller checks.
+ * No allocation/callback can invalidate the checked address before this single write. */
+static int
+native64sysframebind(const Native64SysFrameRequest *request, int operation)
+{
+    Native64SysFrameCall call;
+    void *result;
+    if(!native64sysframeprepare(&call, request, operation, 0)) return 0;
+    result = native64sysframecell(&call);
+    if(result == nil) return 0;
+    memmove((uchar*)call.request.frame+32, &result, sizeof(result));
+    return 1;
 }
 
 /* Borrow only an exact current VM frame, then let the existing gateways snapshot and root its values.
@@ -119,30 +166,11 @@ native64sysframe(const Native64SysFrameRequest *request, int operation)
 {
     Native64SysFrameCall call;
     Native64SysWriteRequest output = {0};
-    const LimboNative64Prefix *prefix;
     String *pattern;
     void *fd;
     unsigned int offset;
 
-    if(!native64model() || request == nil || request->prog == nil || request->prog == H || request->prog != currun() ||
-       request->initial <= UTFmax+2 || request->limit < request->initial ||
-       request->frame == nil || request->frame == H || (uintptr)request->frame%8 != 0 ||
-       R.M == nil || R.M == H || R.M->prog != nil || operation < 0 || operation > 3)
-        return 0;
-    prefix = operation == 0 ? &limbo_native64_Sys_sprint_prefix :
-        operation == 1 ? &limbo_native64_Sys_aprint_prefix :
-        operation == 2 ? &limbo_native64_Sys_print_prefix : &limbo_native64_Sys_fprint_prefix;
-    memset(&call, 0, sizeof(call));
-    call.request = *request;
-    call.fixed = &prefix->fixed;
-    call.operation = operation;
-    call.module = R.M;
-    call.extent = R.EX;
-    call.epoch = request->prog->native64epoch;
-    call.pid = request->prog->pid;
-    call.live = request->prog->native64live;
-    if(!native64tailplan(&prefix->fixed, request->slots, request->count, &call.plan) ||
-       !native64sysframecell(&call)) return 0;
+    if(!native64sysframeprepare(&call, request, operation, 1)) return 0;
     offset = operation == 3 ? offsetof(F_Sys_fprint, s) : offsetof(F_Sys_sprint, s);
     memmove(&pattern, (uchar*)request->frame+offset, sizeof(pattern));
     fd = H;

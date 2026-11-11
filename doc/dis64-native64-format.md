@@ -190,3 +190,12 @@ canonical tail geometry; 4096/4097 descriptor-count boundary tests retain
 legacy output unchanged. This diagnostic JSON is not a wire section or a
 managed signature assignment. Values and result-address binding remain
 trusted C inputs, and ordinary source-to-Dis64 variadic admission is pending.
+
+
+Trusted pending-frame result binding is available as `Sys_bindframe64`. It
+validates the active caller, exact pending frame/map and declared result-cell
+role before writing the full pointer at byte 32. The entered gateways repeat
+all late resolution checks. Runtime tests use this production operation rather
+than a manual return-pointer store, with 32 refusal cases per VM transaction
+and pointer-width/pending-state removal controls. This adds no file metadata,
+new LEA semantics, signature IDs or ordinary variadic exports.

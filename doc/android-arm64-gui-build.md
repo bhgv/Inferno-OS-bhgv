@@ -193,3 +193,11 @@ opt-in `-Dq` call-site producer, then runs 768 FRAME/MFRAME/MCALL cases per
 port/model. The diagnostic preserves legacy output and is not a Dis64 wire
 section. Runtime values and return-address binding in that gate are still
 trusted C inputs; source-to-Dis64 variadic execution and AWM remain pending.
+
+
+The formatter build now also requires the exported `Sys_bindframe64` symbol
+(nine typed Sys gateway/binding symbols in total). Its runtime test replaces
+manual return-address setup with a checked full-pointer bind before MCALL and
+checks 32 refusals for each of the 768 VM cases. This closes the trusted-C
+pending-frame binding step; ordinary WORD32 LEA and serialized call admission
+retain their existing behavior.

@@ -173,7 +173,7 @@ authenticate arbitrary native pointers or repair an already-corrupt VM frame.
 
 `native64-arguments.py --formatter` now executes 768 real FRAME/MFRAME/MCALL cases per
 port/model in addition to the previous gateway suite. It uses production opcode
-bodies with source-derived tail plans, trusted C-provided values/decoded operands and result-address binding; it
+bodies with source-derived tail plans, trusted C-provided values/decoded operands and production result-address binding; it
 does not decode a serialized variadic Dis64 image, extend LEA admission or execute
 JIT code. The cases cover all four operations, 150-slot frames, root-extent Type
 fallback, malformed metadata/cells, cancellation, epoch invalidation, GC and
@@ -226,3 +226,60 @@ The source is still compiled to legacy `.dis` for the unchanged-output check;
 the test supplies runtime values, Type identities and the result-address binding
 from trusted C. It does not yet compile that source to an executable variadic
 `.dis64`, serialize the diagnostic, change file admission or execute JIT code.
+
+
+## Bind the result before entering the native callee
+
+Ordinary WORD32 `LEA` stores a four-byte VM address. A trusted native64 call
+owner must use `Sys_bindframe64` to prepare the complete eight-byte return
+address at byte 32 of a pending frame. Do this after FRAME/MFRAME and before
+MCALL, while `R.FP` is still the caller and the pending frame is exactly at the
+top of the current extent. The original caller may be bytecode; it does not
+need to be a native module. The entered `Sys_*frame64` gateway still requires
+the actual native callee activation.
+
+```c
+static int bind_sprint_result(Prog *prog, void *pending, Type *callee, Type *caller,
+    unsigned int result_offset, const Native64TailSlot *tail, unsigned int count)
+{
+    Native64SysFrameRequest request = {0};
+    request.prog = prog;
+    request.frame = pending;
+    request.type = callee;
+    request.caller_type = caller;
+    request.result_offset = result_offset;
+    request.slots = tail;
+    request.count = count;
+    request.initial = 16;
+    request.limit = 4096;
+    return Sys_bindframe64(&request, Native64SysSprint);
+}
+```
+
+Use `Native64SysAprint`, `Native64SysPrint` or `Native64SysFprint` for the other
+three trusted call-site kinds. These are private C operation selectors and are
+never serialized. The call site supplies the declared result offset and kind;
+the GC bitmap does not establish the complete language type of that field.
+
+The binder shares the full-frame geometry and process/extent checks with the
+entered gateway. It requires the exact caller Type, complete callee map and a
+pending frame whose `mr` is still nil. It checks destination width, alignment,
+extent and scalar/reference root role before writing any address bytes. A
+refusal preserves all eight old address bytes and the reserved temporary area.
+The successful operation performs one pointer-sized write, without allocation,
+formatting, reference acquisition or callbacks. Argument canonicalization and
+old String/Array result identity are checked later by the existing gateway.
+Binding alone does not validate values or publish a new language result.
+
+The 768 VM cases now use this production binder instead of a manual return
+pointer store. Each case also checks 32 refused bindings (24,576 per port/model),
+root-extent Type fallback and a caller marked with a non-nil bytecode `prog`
+(the test still uses decoded C operands). GNU PIE runs verify result cells
+above 4 GiB. The static Bionic fixture also seeds nonzero upper address bytes,
+so a four-byte implementation cannot pass even when its actual cell is below
+4 GiB. Two additional removal controls detect pointer-width truncation and
+acceptance of an already-entered pending frame.
+
+This trusted API does not widen ordinary LEA or authorize a serialized call.
+The compiled call-site plan still needs its bytecode producer, owned runtime
+metadata and loader binding before ordinary variadic Dis64 execution is ready.
