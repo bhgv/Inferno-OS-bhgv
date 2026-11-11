@@ -328,3 +328,74 @@ verifies all module/instance ownership is released. Together with the existing
 managed corpus this covers 25083 collection epochs. Complete console tests also
 execute independent wire images and compiled sources on x64, ARM64 and RV64,
 including sparse reload positions between repeated calls.
+
+## Two imported functions and typed result chains
+
+The trial now supports one or both String methods in one provider and one
+import group. Both export bodies and every requested signature are validated,
+including an unused export. Binding uses Rune names and complete structural
+signatures, so import order, export order and code order need not agree.
+
+A minimal two-method provider is:
+
+```limbo
+implement String;
+String: module {
+    unquoted: fn(value: string): list of string;
+    quoted: fn(value: list of string): string;
+};
+unquoted(value: string): list of string { return value :: nil; }
+quoted(value: list of string): string { return hd value; }
+```
+
+A matching caller can use a result as the next argument:
+
+```limbo
+implement Caller;
+include "string.m";
+Caller: module { init: fn(value: string); };
+init(value: string)
+{
+    lib := load String String->PATH;
+    items := lib->unquoted(value);
+    value = lib->quoted(items);
+    lib = load String String->PATH;
+    items = lib->unquoted(value);
+    value = lib->quoted(items);
+}
+```
+
+Compile the provider with `-64m` and the caller with `-64l`, then run the
+explicit file trial as above. Without the second LOAD, `-64m` also accepts
+the caller for prelinked execution. The same 32-call limit applies. The two
+callable entries have independently selected PCs and generated legacy hashes;
+the actual import table is sentinel terminated and may contain two entries.
+Startup input is selected from the first called ordinal, which may be one.
+
+The caller still owns only the mapped cells at 64 and 72. Before passing the
+latest result, MOVP retains it in the argument cell and releases the previous
+argument. Only then does the ordinary cleanup clear the result cell. Independent
+flow validation tracks String versus List[String] through both cells and checks
+each MFRAME/MCALL ordinal. Missing, doubled or incorrect transfers, incompatible
+signatures and duplicate names are refused before either owner is constructed.
+The compiler also tracks legacy value identities, so an overwritten or no longer
+available source local cannot silently select a stale native cell.
+
+Generated `LIMBO_NATIVE64_ARGUMENT_*` and `LIMBO_NATIVE64_RESULT_*` macros now
+preserve the `.m` argument/result kinds independently of optional C function
+entries. The file bridge checks these kinds and uses the generated frame sizes
+and map8 values alongside the hashes. Unsupported or changed interfaces cannot
+silently inherit a hand-written frame specification.
+
+The expanded fixture checks 188 independent/compiled wire pairs, both ordinal
+orders and both provider body orders. Its 80 additional C/JIT/GC scenarios cover
+864 LOADs and 536 native completions, including prelinked execution, stack growth,
+cache replacement and a replacement file missing either requested method. String
+pointer identity survives the complete round trip. A 52-case allocation-failure
+sweep checks partial two-export and two-import table cleanup. Together with the
+previous managed tests, collection runs through 53211 epochs on the checked
+64-bit targets. Complete console tests execute Unicode, empty and nil inputs.
+
+These are still the bounded one-token String bodies, not full tokenization or
+general managed signatures. Arrays, ADTs, channels and the remaining AWM module
+interfaces require further lowering; no new public wire tags are assigned here.

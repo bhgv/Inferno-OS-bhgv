@@ -144,51 +144,107 @@ dis64managedpair(const unsigned char *imported, unsigned int importbytes,
 	return 1;
 }
 
-/* A trial table has one managed record. The scalar accessor cannot read it. */
+/* Read one private record without routing managed tags through the scalar accessor. */
+static int
+dis64managedget(const Dis64Bindings *table, unsigned int index, const Dis64ManagedSchema *schema,
+	Dis64Binding *binding, Dis64ManagedSignature *signature)
+{
+	Dis64Binding record;
+	unsigned int i, at, used;
+
+	if(table == 0 || index >= table->count)
+		return 0;
+	at = 4;
+	for(i=0; i<=index; i++){
+		if(at > table->bytes || !dis64bindingrecord(table->data+at, table->bytes-at, table->exports, &record, &used))
+			return 0;
+		if(i == index)
+			return dis64managedbindingread(table->data+at, used, table->exports, schema, binding, signature);
+		at += used;
+	}
+	return 0;
+}
+
+/* A trial table has one or two unique managed records. */
 static int
 dis64managedtable(const unsigned char *data, unsigned int bytes, unsigned int exports,
 	const DisStringPoolView *pool, const Dis64TypeTable *types, unsigned int instructions,
 	unsigned int limit, unsigned int parameters, Dis64Bindings *result, const void *context)
 {
-	Dis64Binding binding;
+	Dis64Binding binding, previous;
 	Dis64ManagedSignature signature;
 	DisRuneView name;
 	Dis64Type frame;
+	unsigned int count, at, i, j, used;
+	int order;
 
-	if(bytes < 4 || dis64u32(data) != 1 || limit == 0 || parameters == 0 ||
-	   !dis64managedbindingread(data+4, bytes-4, exports, context, &binding, &signature) ||
-	   !disstringpoolget(pool, binding.symbol, &name))
+	if(bytes < 4 || parameters == 0 || exports > 1)
 		return 0;
-	if(exports){
-		if(binding.entry >= instructions || !dis64typeget(types, binding.frame, &frame) ||
-		   frame.bytes < 64 || frame.align != 8)
+	count = dis64u32(data);
+	if(count == 0 || count > 2 || count > limit)
+		return 0;
+	at = 4;
+	for(i=0; i<count; i++){
+		if(at > bytes || !dis64bindingrecord(data+at, bytes-at, exports, &binding, &used) ||
+		   !dis64managedbindingread(data+at, used, exports, context, &binding, &signature) ||
+		   !disstringpoolget(pool, binding.symbol, &name))
 			return 0;
-	}else if(!disstringpoolget(pool, binding.module, &name))
+		if(exports){
+			if(binding.entry >= instructions || !dis64typeget(types, binding.frame, &frame) || frame.bytes < 64 || frame.align != 8)
+				return 0;
+		}else if(!disstringpoolget(pool, binding.module, &name))
+			return 0;
+		for(j=0; j<i; j++){
+			Dis64Bindings prefix = {data, at, i, exports, parameters};
+			if(!dis64managedget(&prefix, j, context, &previous, &signature) ||
+			   !disstringpoolcompare(pool, binding.symbol, previous.symbol, &order))
+				return 0;
+			if(order == 0){
+				if(exports || !disstringpoolcompare(pool, binding.module, previous.module, &order) || order == 0)
+					return 0;
+			}
+		}
+		at += used;
+	}
+	if(at != bytes)
 		return 0;
-	*result = (Dis64Bindings){data, bytes, 1, exports, parameters};
+	*result = (Dis64Bindings){data, bytes, count, exports, parameters};
 	return 1;
 }
 
-/* Check the entire trial provider body, including its unentered first instruction. */
+/* Check one or both one-token provider bodies, including the unentered prefix. */
 static int
 dis64managedprovidercode(const unsigned char *data, unsigned int bytes, unsigned int limit,
 	Dis64CodeView *result)
 {
 	Dis64CallDecoded decoded;
-	unsigned int used, at;
+	unsigned int used, at, count, i, seen, bit;
 
-	if(bytes < 8 || limit < 3 || dis64u32(data) != 3 ||
-	   data[4] != IEXIT || data[5] != (SRC(AXXX)|DST(AXXX)) ||
-	   !dis64callread(data+6, bytes-6, &decoded, &used) ||
-	   (decoded.instruction.op != ICONSP && decoded.instruction.op != IHEADP) ||
-	   decoded.instruction.mode != (SRC(AFP)|DST(AFP|AIND)) ||
-	   decoded.instruction.source != 64 || decoded.instruction.destination != 32 ||
-	   decoded.secondary != 0)
+	if(bytes < 8 || data[4] != IEXIT || data[5] != (SRC(AXXX)|DST(AXXX)))
 		return 0;
-	at = 6+used;
-	if(bytes-at != 2 || data[at] != IRET || data[at+1] != (SRC(AXXX)|DST(AXXX)))
+	count = dis64u32(data);
+	if((count != 3 && count != 5) || count > limit)
 		return 0;
-	*result = (Dis64CodeView){data, bytes, 3};
+	at = 6;
+	seen = 0;
+	for(i=1; i<count; i+=2){
+		if(at > bytes || !dis64callread(data+at, bytes-at, &decoded, &used) ||
+		   (decoded.instruction.op != ICONSP && decoded.instruction.op != IHEADP) ||
+		   decoded.instruction.mode != (SRC(AFP)|DST(AFP|AIND)) || decoded.instruction.source != 64 ||
+		   decoded.instruction.destination != 32 || decoded.secondary != 0)
+			return 0;
+		bit = decoded.instruction.op == ICONSP ? 1 : 2;
+		if(seen & bit)
+			return 0;
+		seen |= bit;
+		at += used;
+		if(bytes-at < 2 || data[at] != IRET || data[at+1] != (SRC(AXXX)|DST(AXXX)))
+			return 0;
+		at += 2;
+	}
+	if(at != bytes)
+		return 0;
+	*result = (Dis64CodeView){data, bytes, count};
 	return 1;
 }
 
@@ -203,7 +259,9 @@ typedef struct Dis64ManagedPlan Dis64ManagedPlan;
 struct Dis64ManagedPlan {
 	Dis64StorageImage consumer;
 	Dis64StorageImage provider;
-	Dis64Binding selected;
+	Dis64Binding selected; // Compatibility view of matches[0].
+	Dis64Binding matches[2];
+	unsigned int shapes[2], count, initial;
 };
 
 /* Consume a complete fixed instruction island without reading beyond the code extent. */
@@ -234,21 +292,23 @@ static int
 dis64managedcallercode(const unsigned char *data, unsigned int bytes, unsigned int limit,
 	Dis64CodeView *result)
 {
-	static const unsigned char call[] = {
+	static const unsigned char pattern[] = {
 		IMFRAME, SRC(AMP)|AXIMM|DST(AFP), 0, 0, 40,
 		IMOVP, SRC(AFP)|DST(AFP|AIND), 0x80,64, 40, 0x80,64,
 		ILEA, SRC(AFP)|DST(AFP|AIND), 0x80,72, 40,32,
 		IMCALL, SRC(AFP)|AXIMM|DST(AMP), 0, 40,0,
 	};
+	static const unsigned char transfer[] = {IMOVP,SRC(AFP)|DST(AFP),0x80,72,0x80,64};
 	static const unsigned char clear[] = {IMOVP, SRC(AMP)|DST(AFP), 8, 0x80,72};
 	static const unsigned char load[] = {ILOAD,SRC(AMP)|AXIMM|DST(AMP),0,16,0};
 	static const unsigned char exit[] = {IEXIT,SRC(AXXX)|DST(AXXX)};
-	unsigned int count, calls, at, instructions, fileload;
+	unsigned char call[sizeof(pattern)];
+	unsigned int count, calls, at, instructions, fileload, i, binding;
 
 	if(bytes < 5)
 		return 0;
 	count = dis64u32(data);
-	if(count < 5 || count > limit || count > 6*Dis64ManagedCalls)
+	if(count < 5 || count > limit || count > 7*Dis64ManagedCalls)
 		return 0;
 	at = 4;
 	calls = instructions = 0;
@@ -259,12 +319,23 @@ dis64managedcallercode(const unsigned char *data, unsigned int bytes, unsigned i
 		instructions++;
 	}
 	for(;;){
-		if(calls == Dis64ManagedCalls || !dis64managedbytes(data, bytes, &at, call, sizeof(call)))
+		if(calls == Dis64ManagedCalls || bytes-at < 3 || data[at+2] > 1)
+			return 0;
+		binding = data[at+2];
+		for(i=0; i<sizeof(pattern); i++)
+			call[i] = pattern[i];
+		call[2] = call[sizeof(call)-3] = binding;
+		if(!dis64managedbytes(data, bytes, &at, call, sizeof(call)))
 			return 0;
 		calls++;
 		instructions += 4;
 		if(at < bytes && data[at] == IEXIT)
 			break;
+		if(at < bytes && data[at] == IMOVP && bytes-at >= 2 && data[at+1] == (SRC(AFP)|DST(AFP))){
+			if(!dis64managedbytes(data, bytes, &at, transfer, sizeof(transfer)))
+				return 0;
+			instructions++;
+		}
 		if(!dis64managedbytes(data, bytes, &at, clear, sizeof(clear)))
 			return 0;
 		instructions++;
@@ -280,39 +351,141 @@ dis64managedcallercode(const unsigned char *data, unsigned int bytes, unsigned i
 	return 1;
 }
 
+/* Validate every exported body against a registered generated managed shape. */
 static int
-dis64managedimagepair(const unsigned char *consumer, unsigned int consumerbytes,
+dis64managedexports(const Dis64StorageImage *provider, const Dis64ManagedSchema *schema,
+	const LimboNative64Managed *shapes, unsigned int count, Dis64Binding *exports, unsigned int *ids)
+{
+	Dis64ManagedSignature signature;
+	DisRuneView name;
+	unsigned char imported[12+Dis64ManagedSignatureBytes];
+	unsigned int i, j, at, rune, seen = 0;
+	static const char module[] = "String";
+
+	if(shapes == 0 || exports == 0 || ids == 0 || count == 0 || count > 2 || provider->module.profile != 0 || provider->module.databytes != 0 ||
+	   (provider->present&(1U<<(Dis64Data-1))) != 0 || provider->imports.count != 0 ||
+	   provider->exports.count == 0 || provider->exports.count > count ||
+	   provider->exports.count != (provider->code.count-1)/2 ||
+	   !disstringpoolget(&provider->strings, provider->module.name, &name) || name.count != sizeof(module)-1)
+		return 0;
+	for(i=0; i<name.count; i++)
+		if(!disruneat(&name, i, &rune) || rune != (unsigned char)module[i])
+			return 0;
+	for(i=0; i<provider->exports.count; i++){
+		if(!dis64managedget(&provider->exports, i, schema, &exports[i], &signature))
+			return 0;
+		dis64put32(imported, provider->module.name);
+		dis64put32(imported+4, exports[i].symbol);
+		dis64put32(imported+8, Dis64ManagedSignatureBytes);
+		for(j=0; j<Dis64ManagedSignatureBytes; j++)
+			imported[12+j] = exports[i].signature.data[j];
+		for(j=0; j<count; j++)
+			if(dis64managedpair(imported, sizeof(imported), exports[i].signature.data-16,
+			   16+exports[i].signature.bytes, schema, &provider->strings, &provider->strings,
+			   provider->module.name, &shapes[j], &provider->types, provider->code.count, &exports[i]))
+				break;
+		if(j == count || exports[i].entry < 1 || (exports[i].entry&1) == 0 ||
+		   exports[i].entry >= provider->code.count || (seen & (1U<<j)))
+			return 0;
+		at = 6+4*(exports[i].entry-1);
+		if(at >= provider->code.bytes || provider->code.data[at] !=
+		   (shapes[j].result == LimboNative64ListString ? ICONSP : IHEADP))
+			return 0;
+		seen |= 1U<<j;
+		ids[i] = j;
+	}
+	return 1;
+}
+
+/* Prove type flow through the two mapped caller cells, including result-to-argument transfer. */
+static int
+dis64managedflow(const Dis64CodeView *code, const LimboNative64Managed *shapes,
+	const unsigned int *ids, unsigned int bindings, unsigned int *initial)
+{
+	Dis64CallDecoded decoded;
+	Dis64Instruction *inst;
+	unsigned int at = 4, used, i, current = 0, latest = 0;
+
+	for(i=0; i<code->count; i++){
+		if(at > code->bytes || !dis64callread(code->data+at, code->bytes-at, &decoded, &used))
+			return 0;
+		at += used;
+		inst = &decoded.instruction;
+		if(inst->op == IMFRAME || inst->op == IMCALL){
+			if(inst->middle < 0 || inst->middle >= bindings)
+				return 0;
+			if(inst->op == IMFRAME){
+				if(current == 0)
+					*initial = current = shapes[ids[inst->middle]].argument;
+				if(current != shapes[ids[inst->middle]].argument)
+					return 0;
+			}else
+				latest = shapes[ids[inst->middle]].result;
+		}else if(inst->op == IMOVP && inst->mode == (SRC(AFP)|DST(AFP))){
+			if(latest == 0)
+				return 0;
+			current = latest;
+		}else if(inst->op == IMOVP && inst->mode == (SRC(AMP)|DST(AFP)))
+			latest = 0;
+	}
+	return at == code->bytes && current != 0;
+}
+
+static int
+dis64managedimagegroup(const unsigned char *consumer, unsigned int consumerbytes,
 	const unsigned char *provider, unsigned int providerbytes, const Dis64StorageLimits *limits,
-	const Dis64ManagedSchema *schema, const LimboNative64Managed *shape,
+	const Dis64ManagedSchema *schema, const LimboNative64Managed *shapes, unsigned int count,
 	Dis64ManagedPlan *result)
 {
-	Dis64ManagedPlan plan;
+	Dis64ManagedPlan plan = {0};
 	Dis64StorageImage *in = &plan.consumer, *out = &plan.provider;
 	Dis64Type callerframe;
+	Dis64Binding exported[2], imported;
+	Dis64ManagedSignature signature;
+	unsigned int ids[2], i, j, found;
 
-	if(result == 0 || !dis64storageimagecheckrecords(consumer, consumerbytes, limits, in,
+	if(result == 0 || shapes == 0 || count == 0 || count > 2 || !dis64storageimagecheckrecords(consumer, consumerbytes, limits, in,
 	   dis64managedcallercode, dis64managedtable, schema) ||
 	   !dis64storageimagecheckrecords(provider, providerbytes, limits, out,
 	   dis64managedprovidercode, dis64managedtable, schema) ||
-	   in->module.profile != 1 || in->module.entry != 0 || out->module.profile != 0 ||
+	   in->module.profile != 1 || in->module.entry != 0 || in->imports.count == 0 || in->imports.count > count ||
 	   in->data.bytes != (dis64managedfilecode(&in->code) ? 24 : in->code.count == 5 ? 8 : 16) || in->data.align != 8 ||
 	   in->data.mapbytes != 1 || in->data.map[0] != (dis64managedfilecode(&in->code) ? 0xe0 : in->code.count == 5 ? 0x80 : 0xc0) ||
 	   (in->present&(1U<<(Dis64Data-1))) != 0 ||
-	   !dis64typeget(&in->types, in->module.frametype, &callerframe) ||
-	   callerframe.bytes != 80 || callerframe.mapbytes != 2 ||
-	   callerframe.map[0] != 0 || callerframe.map[1] != 0xc0 ||
-	   out->module.databytes != 0 || (out->present&(1U<<(Dis64Data-1))) != 0 ||
-	   in->imports.count != 1 || in->exports.count != 0 ||
-	   out->imports.count != 0 || out->exports.count != 1)
+	   !dis64typeget(&in->types, in->module.frametype, &callerframe) || callerframe.bytes != 80 ||
+	   callerframe.mapbytes != 2 || callerframe.map[0] != 0 || callerframe.map[1] != 0xc0 || in->exports.count != 0 ||
+	   !dis64managedexports(out, schema, shapes, count, exported, ids))
 		return 0;
-	if(!dis64managedpair(in->imports.data+4, in->imports.bytes-4,
-		out->exports.data+4, out->exports.bytes-4, schema,
-		&in->strings, &out->strings, out->module.name, shape, &out->types, out->code.count, &plan.selected) ||
-	   plan.selected.entry != 1 ||
-	   out->code.data[6] != (shape->result == LimboNative64ListString ? ICONSP : IHEADP))
+	plan.count = in->imports.count;
+	for(i=0; i<plan.count; i++){
+		if(!dis64managedget(&in->imports, i, schema, &imported, &signature))
+			return 0;
+		found = 0;
+		for(j=0; j<out->exports.count; j++)
+			if(dis64managedpair(imported.signature.data-12, 12+imported.signature.bytes,
+			   exported[j].signature.data-16, 16+exported[j].signature.bytes, schema,
+			   &in->strings, &out->strings, out->module.name, &shapes[ids[j]], &out->types,
+			   out->code.count, &plan.matches[i])){
+				plan.shapes[i] = ids[j];
+				found++;
+			}
+		if(found != 1)
+			return 0;
+	}
+	if(!dis64managedflow(&in->code, shapes, plan.shapes, plan.count, &plan.initial))
 		return 0;
+	plan.selected = plan.matches[0];
 	*result = plan;
 	return 1;
+}
+
+/* Compatibility entry point for an explicitly selected single signature. */
+static int
+dis64managedimagepair(const unsigned char *consumer, unsigned int consumerbytes,
+	const unsigned char *provider, unsigned int providerbytes, const Dis64StorageLimits *limits,
+	const Dis64ManagedSchema *schema, const LimboNative64Managed *shape, Dis64ManagedPlan *result)
+{
+	return dis64managedimagegroup(consumer, consumerbytes, provider, providerbytes, limits, schema, shape, 1, result);
 }
 
 #endif

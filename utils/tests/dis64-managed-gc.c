@@ -13,6 +13,8 @@ struct ManagedImageCase {
 	unsigned int providerbytes;
 };
 #include "managed-images.h"
+#include "group-images.h"
+static void managedgroupcontrol(void);
 
 static Type *stringelement;
 static Prog *managedprocess;
@@ -850,6 +852,7 @@ main(void)
 				imagefast += managedfullcase(reverse, jit, grow, 1);
 			}
 	managedcachecontrol();
+	managedgroupcontrol();
 	freetype(callerframe);
 	freetype(frames[1]);
 	freetype(frames[0]);

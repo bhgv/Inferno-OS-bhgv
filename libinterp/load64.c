@@ -1451,7 +1451,7 @@ dis64managedowner(const Dis64StorageImage *image, char *path, int jit, const Dis
 		if(!disruneat(&load.name, i, &rune) || rune == 0 || rune > 127)
 			return nil;
 	if(kprotect(dis64numericconstruct, &load))
-		return dis64rootlink(load.module, load.lease, plan == nil ? 0 : 1, plan, nil);
+		return dis64rootlink(load.module, load.lease, plan == nil ? 0 : plan->count, plan, nil);
 	if(load.module != nil)
 		unload(load.module);
 	free64storage(load.lease);
@@ -1460,56 +1460,45 @@ dis64managedowner(const Dis64StorageImage *image, char *path, int jit, const Dis
 
 #ifdef DIS_NATIVE64_MANAGED_FILES
 /* Generated from String.m by Limbo -H: legacy hashes are consistency checks only. */
-static const LimboNative64Entry*
-dis64managedfileview(const uchar *image, ulong bytes, Dis64StorageImage *view, Dis64Binding *selected)
+static unsigned int
+dis64managedfileview(const uchar *image, ulong bytes, Dis64StorageImage *view, Dis64Binding *selected, const LimboNative64Entry **entries)
 {
 	static const Dis64ManagedSchema schema = {Dis64TrialVersion, Dis64TrialString, Dis64TrialList};
-	static const uchar map[] = {0, 0x80};
-	static const LimboNative64Entry entries[] = {
-		{"unquoted", nil, LIMBO_NATIVE64_SIGNATURE_String_unquoted, 72, 2, map},
-		{"quoted", nil, LIMBO_NATIVE64_SIGNATURE_String_quoted, 72, 2, map},
+	typedef char GeneratedStringShape[
+		LIMBO_NATIVE64_ARGUMENT_String_unquoted == LimboNative64String &&
+		LIMBO_NATIVE64_RESULT_String_unquoted == LimboNative64ListString &&
+		LIMBO_NATIVE64_ARGUMENT_String_quoted == LimboNative64ListString &&
+		LIMBO_NATIVE64_RESULT_String_quoted == LimboNative64String &&
+		F_String_unquoted_size == 72 && F_String_quoted_size == 72 ? 1 : -1];
+	static const uchar maps[2][2] = {F_String_unquoted_map, F_String_quoted_map};
+	static const LimboNative64Entry specs[] = {
+		{"unquoted", nil, LIMBO_NATIVE64_SIGNATURE_String_unquoted, F_String_unquoted_size, sizeof(maps[0]), maps[0]},
+		{"quoted", nil, LIMBO_NATIVE64_SIGNATURE_String_quoted, F_String_quoted_size, sizeof(maps[1]), maps[1]},
 	};
 	static const LimboNative64Managed shapes[] = {
-		{&entries[0], LimboNative64String, LimboNative64ListString},
-		{&entries[1], LimboNative64ListString, LimboNative64String},
+		{&specs[0], LimboNative64String, LimboNative64ListString},
+		{&specs[1], LimboNative64ListString, LimboNative64String},
 	};
-	static const char name[] = "String";
-	Dis64Binding exported;
-	Dis64ManagedSignature signature;
-	DisRuneView module;
-	uchar imported[12+Dis64ManagedSignatureBytes];
-	unsigned int i, rune;
+	unsigned int i, ids[2];
 
-	if(image == nil || image == H || bytes > Dis64RuntimeBytes ||
-	   (uintptr)image > (uintptr)-1-bytes ||
+	USED(sizeof(GeneratedStringShape));
+
+	if(image == nil || image == H || bytes > Dis64RuntimeBytes || (uintptr)image > (uintptr)-1-bytes ||
 	   !dis64storageimagecheckrecords(image, bytes, &dis64numericlimits, view,
 	   dis64managedprovidercode, dis64managedtable, &schema) ||
-	   view->module.profile != 0 || view->module.databytes != 0 ||
-	   (view->present&(1U<<(Dis64Data-1))) != 0 || view->imports.count != 0 || view->exports.count != 1 ||
-	   !dis64managedbindingread(view->exports.data+4, view->exports.bytes-4, 1, &schema, &exported, &signature) ||
-	   !disstringpoolget(&view->strings, view->module.name, &module) || module.count != sizeof(name)-1)
-		return nil;
-	for(i=0; i<module.count; i++)
-		if(!disruneat(&module, i, &rune) || rune != name[i])
-			return nil;
-	dis64put32(imported, view->module.name);
-	dis64put32(imported+4, exported.symbol);
-	dis64put32(imported+8, Dis64ManagedSignatureBytes);
-	memmove(imported+12, exported.signature.data, Dis64ManagedSignatureBytes);
-	for(i=0; i<nelem(shapes); i++)
-		if(dis64managedpair(imported, sizeof(imported), view->exports.data+4, view->exports.bytes-4,
-		   &schema, &view->strings, &view->strings, view->module.name, &shapes[i],
-		   &view->types, view->code.count, selected) && selected->entry == 1 &&
-		   view->code.data[6] == (i == 0 ? ICONSP : IHEADP))
-			return &entries[i];
-	return nil;
+	   !dis64managedexports(view, &schema, shapes, nelem(shapes), selected, ids))
+		return 0;
+	for(i=0; i<view->exports.count; i++)
+		entries[i] = &specs[ids[i]];
+	return view->exports.count;
 }
 
 typedef struct Dis64ManagedFileLoad Dis64ManagedFileLoad;
 struct Dis64ManagedFileLoad {
 	Dis64NumericLoad load;
-	Dis64Binding selected;
-	const LimboNative64Entry *entry;
+	Dis64Binding selected[2];
+	const LimboNative64Entry *entries[2];
+	unsigned int count;
 };
 
 static int
@@ -1517,16 +1506,18 @@ dis64managedfileconstruct(void *argument)
 {
 	Dis64ManagedFileLoad *file;
 	Module *module;
+	unsigned int i;
 
 	file = argument;
 	if(!dis64numericconstruct(&file->load))
 		return 0;
 	module = file->load.module;
-	module->ext = mallocz(2*sizeof(Link), 1);
+	module->ext = mallocz((file->count+1)*sizeof(Link), 1);
 	if(module->ext == nil)
 		return 0;
-	mlink(module, module->ext, (uchar*)file->entry->name, file->entry->legacy_signature,
-		file->selected.entry, module->type[file->selected.frame]);
+	for(i=0; i<file->count; i++)
+		mlink(module, module->ext+i, (uchar*)file->entries[i]->name, file->entries[i]->legacy_signature,
+			file->selected[i].entry, module->type[file->selected[i].frame]);
 	module->rt |= Dis64ManagedFile;
 	return 1;
 }
@@ -1541,8 +1532,8 @@ prepare64managedfile(char *path, uchar *image, ulong bytes, int jit)
 	if(!dis64bootmanaged || !dis64runtimemodel() || path == nil || path == H ||
 	   dis64bootprovider == nil || strcmp(path, dis64bootprovider) != 0 || (jit != 0 && jit != 1))
 		return nil;
-	file.entry = dis64managedfileview(image, bytes, &file.load.image, &file.selected);
-	if(file.entry == nil || !disstringpoolget(&file.load.image.strings, file.load.image.module.name, &file.load.name))
+	file.count = dis64managedfileview(image, bytes, &file.load.image, file.selected, file.entries);
+	if(file.count == 0 || !disstringpoolget(&file.load.image.strings, file.load.image.module.name, &file.load.name))
 		return nil;
 	file.load.path = path;
 	file.load.jit = jit;
@@ -1559,7 +1550,8 @@ prepare64managedfile(char *path, uchar *image, ulong bytes, int jit)
 typedef struct Dis64ManagedFileCaller Dis64ManagedFileCaller;
 struct Dis64ManagedFileCaller {
 	Modlink *caller;
-	const LimboNative64Entry *entry;
+	const LimboNative64Entry *entries[2];
+	unsigned int count;
 	char *path;
 };
 
@@ -1570,19 +1562,22 @@ dis64managedfilemetadata(void *argument)
 	Module *module;
 	Import *imports;
 	String *path;
+	unsigned int i;
 
 	file = argument;
 	module = file->caller->m;
 	module->ldt = mallocz(2*sizeof(Import*), 1);
 	if(module->ldt == nil)
 		return 0;
-	module->ldt[0] = imports = mallocz(2*sizeof(Import), 1);
+	module->ldt[0] = imports = mallocz((file->count+1)*sizeof(Import), 1);
 	if(imports == nil)
 		return 0;
-	imports->name = strdup(file->entry->name);
-	if(imports->name == nil)
-		return 0;
-	imports->sig = file->entry->legacy_signature;
+	for(i=0; i<file->count; i++){
+		imports[i].name = strdup(file->entries[i]->name);
+		if(imports[i].name == nil)
+			return 0;
+		imports[i].sig = file->entries[i]->legacy_signature;
+	}
 	path = c2string(file->path, strlen(file->path));
 	if(path == nil || path == H)
 		return 0;
@@ -1619,30 +1614,37 @@ prepare64managedtrial(char *path, const uchar *image, ulong bytes, char *peerpat
 	   (uintptr)image > (uintptr)-1-bytes || (uintptr)peer > (uintptr)-1-peerbytes ||
 	   (jit != 0 && jit != 1))
 		return nil;
-	for(i=0; i<nelem(shapes); i++)
-		if(dis64managedimagepair(image, bytes, peer, peerbytes, &dis64numericlimits,
-		   &schema, &shapes[i], &checked))
-			break;
-	if(i == nelem(shapes)){
+	if(!dis64managedimagegroup(image, bytes, peer, peerbytes, &dis64numericlimits,
+	   &schema, shapes, nelem(shapes), &checked)){
 		kwerrstr("unsupported Dis64 managed trial pair");
 		return nil;
 	}
 #ifdef DIS_NATIVE64_MANAGED_FILES
 	if(dis64managedfilecode(&checked.consumer.code)){
-		Dis64ManagedFileCaller file;
+		Dis64ManagedFileCaller file = {0};
 		Dis64StorageImage view;
-		Dis64Binding selected;
+		Dis64Binding selected[2];
+		const LimboNative64Entry *entries[2];
 		DisRuneView encoded;
-		unsigned int rune;
+		unsigned int rune, exports, j;
 
-		file.entry = dis64managedfileview(peer, peerbytes, &view, &selected);
-		if(file.entry == nil || !disstringpoolget(&checked.consumer.strings, 3, &encoded) ||
+		exports = dis64managedfileview(peer, peerbytes, &view, selected, entries);
+		if(exports == 0 || !disstringpoolget(&checked.consumer.strings, 3, &encoded) ||
 		   encoded.count == 0 || encoded.count > Dis64RuntimeName || peerpath[0] != '/' ||
 		   strlen(peerpath) != encoded.count)
 			return nil;
 		for(i=0; i<encoded.count; i++)
 			if(!disruneat(&encoded, i, &rune) || rune == 0 || rune > 127 || rune != (uchar)peerpath[i])
 				return nil;
+		file.count = checked.count;
+		for(i=0; i<file.count; i++){
+			for(j=0; j<exports; j++)
+				if(selected[j].entry == checked.matches[i].entry && selected[j].frame == checked.matches[i].frame)
+					break;
+			if(j == exports)
+				return nil;
+			file.entries[i] = entries[j];
+		}
 		file.path = peerpath;
 		file.caller = caller = dis64managedowner(&checked.consumer, path, 0, nil);
 		if(caller == nil)
@@ -1660,9 +1662,11 @@ prepare64managedtrial(char *path, const uchar *image, ulong bytes, char *peerpat
 	caller = dis64managedowner(&checked.consumer, path, 0, nil);
 	if(caller == nil)
 		return nil;
-	plan.count = 1;
-	plan.matches[0].entry = checked.selected.entry;
-	plan.matches[0].frame = checked.selected.frame;
+	plan.count = checked.count;
+	for(i=0; i<plan.count; i++){
+		plan.matches[i].entry = checked.matches[i].entry;
+		plan.matches[i].frame = checked.matches[i].frame;
+	}
 	provider = dis64managedowner(&checked.provider, peerpath, jit, &plan);
 	if(provider == nil){
 		ptrdel(D2H(caller));

@@ -182,7 +182,7 @@ in-program checks on each target.
 
 The managed GC fixture requires four native provider completions and 132
 native paired-image completions on ARM64, AMD64 and RV64. RV64 now includes
-both pointer HEAD and pointer CONS. All three target runs cover 25083 collection epochs, 264 paired calls and 19
+both pointer HEAD and pointer CONS. All three target runs cover 53211 collection epochs, 264 paired calls and 19
 constructor allocation refusals. Full AWM startup and hardware acceptance
 remain separate milestones.
 
@@ -194,3 +194,11 @@ reuse the same Module/JIT for unchanged files and replace it after identity
 changes. Malformed replacement files, short reads, open failures and signing
 refusals retire without leaked owners. See `doc/dis64-managed-string-admission.md`
 for the source example and remaining profile limits.
+
+
+Two managed String methods may now share one provider and import group. The
+String/List[String] result chain uses explicit retain/transfer/clear steps;
+independent type-flow checks prove each ordinal and value kind. The dual-method
+corpus adds 188 wire pairs, 80 C/JIT/GC scenarios, 864 LOADs, 536 native
+completions and 52 partial-construction allocation refusals. Method removal in a
+changed file is exercised through the ordinary linker's failure cleanup.

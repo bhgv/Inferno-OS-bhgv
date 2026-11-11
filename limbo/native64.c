@@ -580,7 +580,7 @@ native64frame(Decl *function, int emit)
 	Decl *argument;
 	long offset, bytes;
 	int arguments = 0;
-	char name[2*StrSize], symbol[2*StrSize+64];
+	char name[2*StrSize], symbol[2*StrSize+64], *managedin, *managedout;
 
 	native64name(function, name, sizeof(name)-2);
 	if(function->ty->polys != nil)
@@ -636,6 +636,14 @@ native64frame(Decl *function, int emit)
 	name[1] = '_';
 	native64descriptor(name, &frame);
 	if(!function->ty->varargs){
+		if(function->ty->polys == nil && function->ty->ids != nil && function->ty->ids->next == nil){
+			managedin = native64managedkind(function->ty->ids->ty);
+			managedout = native64managedkind(function->ty->tof);
+			if(managedin != nil && managedout != nil && strcmp(managedin, managedout) != 0){
+				print("#define LIMBO_NATIVE64_ARGUMENT_%s %s // Generated managed input kind.\n", name+2, managedin);
+				print("#define LIMBO_NATIVE64_RESULT_%s %s // Generated managed result kind.\n", name+2, managedout);
+			}
+		}
 		print("#ifdef LIMBO_NATIVE64_ENTRIES\n");
 		native64descriptorsymbol(name, "map", symbol, sizeof(symbol));
 		print("static const uchar limbo_native64_%s_map[] = %s; // Complete fixed-frame map8.\n", name+2, symbol);

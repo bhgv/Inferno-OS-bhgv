@@ -30,6 +30,14 @@ def unit(calls=False, managed=False):
         fixture = fixture.split('/* Run single-instruction quanta')[0]
         # A reload retains the previous instance until the new one is published; list input adds two nodes.
         fixture = fixture.replace('#define GcSlots 8', '#define GcSlots 16')
+        fixture = fixture.replace('/* Fail if the collector unexpectedly enters its diagnostic branch. */',
+            'static int expectedlinkerrors;\n/* Permit only an expected missing-method linker diagnostic. */')
+        fixture = fixture.replace('\tUSED(format);\n\trequire(0);\n\treturn 0;\n}',
+            '\tif(expectedlinkerrors && strcmp(format, "%s\\n") == 0){\n'
+            '\t\tva_list args; char *text;\n\t\tva_start(args, format); text = va_arg(args, char*); va_end(args);\n'
+            '\t\trequire(strncmp(text, "link failed fn String->", 23) == 0 && strstr(text, "not implemented") != nil);\n'
+            '\t\texpectedlinkerrors--; return 0;\n\t}\n\trequire(0);\n\treturn 0;\n}', 1)
+
         source = source.replace('#include "tests/leaf-cons-stub.h"',
                                 '#define cons fixture_leaf_cons\n#include "tests/leaf-cons-stub.h"\n#undef cons')
         heap = (ROOT/'libinterp/heap.c').read_text()
@@ -104,7 +112,7 @@ String* c2string(char *text, int length)
                              ('const Link*\nnative64sysexport(', 'const Link*\nnative64sysclock('))
         fixture = fixture.replace('CLOCK_RESOLVER', resolver)
     if managed:
-        source = '#include "dis64-managed-trial.h"\nextern int dis64bootmanaged; extern char *dis64bootprovider;\n'+source
+        source = '#include <stdarg.h>\n#include "dis64-managed-trial.h"\nextern int dis64bootmanaged; extern char *dis64bootprovider;\n'+source
     source = source.replace('require(int condition)', 'requireline(int condition, int line)', 1)
     source = source.replace('failed after %d predicates\\n", checks);', 'failed after %d predicates at line %d\\n", checks, line);', 1)
     source = source.replace('/* Bound each allocation', '#define require(condition) requireline((condition), __LINE__)\n\n/* Bound each allocation', 1)
@@ -338,20 +346,25 @@ def main():
         work = Path(directory)
         if args.managed:
             (work/'managed-images.h').write_text(managed_images(fixtures, args.limbo, work))
+            groups = runpy.run_path(str(ROOT/'utils/tests/dis64-managed-groups.py'))
+            (work/'group-images.h').write_text(groups['header'](fixtures, args.limbo, work))
             (work/'string-native64.h').write_bytes(subprocess.check_output(
                 [str(args.limbo.resolve()), '-H', '-M', 'String', '-I'+str(ROOT/'module'),
                  str(ROOT/'module/string.m')], timeout=60))
             header = (work/'string-native64.h').read_text()
             (work/'string-hashes.h').write_text('\n'.join(line for line in header.splitlines()
-                if line.startswith(('#define LIMBO_NATIVE64_SIGNATURE_String_quoted ',
-                                    '#define LIMBO_NATIVE64_SIGNATURE_String_unquoted ')))+'\n')
+                if any(line.startswith('#define '+prefix+name+' ') for prefix in
+                       ('LIMBO_NATIVE64_SIGNATURE_', 'LIMBO_NATIVE64_ARGUMENT_', 'LIMBO_NATIVE64_RESULT_', 'F_')
+                       for name in ('String_quoted', 'String_unquoted', 'String_quoted_size', 'String_unquoted_size', 'String_quoted_map', 'String_unquoted_map')))+'\n')
             probe = work/'unsupported.m'
             probe.write_text('Unsupported: module { wrong: fn(s: list of int): string; '
                              'same: fn(s: string): string; };\n')
             unsupported = subprocess.check_output([str(args.limbo.resolve()), '-H', str(probe)],
                                                   timeout=60)
             if b'limbo_native64_Unsupported_wrong_managed' in unsupported or \
-               b'limbo_native64_Unsupported_same_managed' in unsupported:
+               b'limbo_native64_Unsupported_same_managed' in unsupported or \
+               b'LIMBO_NATIVE64_ARGUMENT_Unsupported_wrong' in unsupported or \
+               b'LIMBO_NATIVE64_ARGUMENT_Unsupported_same' in unsupported:
                 raise RuntimeError('Limbo emitted a managed witness for an unsupported type')
         (work/'test.c').write_text(unit(args.calls, args.managed))
         (work/'image').write_bytes(raw)
