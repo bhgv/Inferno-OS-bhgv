@@ -241,6 +241,11 @@ dis64parse(DisLoad *load)
 		kwerrstr("security violation: not signed");
 		return 0;
 	}
+#ifdef DIS_NATIVE64_MANAGED_FILES
+	if(dis64bootmanaged)
+		load->m = module = prepare64managedfile(load->path, load->code, load->length, cflag && !dontcompile);
+	else
+#endif
 	if(dis64launchmode())
 		load->m = module = prepare64calls(load->path, load->code, load->length, cflag && !dontcompile);
 	else

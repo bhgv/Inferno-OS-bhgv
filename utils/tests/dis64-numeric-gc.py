@@ -38,6 +38,32 @@ def unit(calls=False, managed=False):
         source += '#include "dis64-managed-signature.h"\n'
         source += '#include "dis64-managed-trial.h"\n'
         load64 = (ROOT/'libinterp/load64.c').read_text()
+        link = (ROOT/'libinterp/link.c').read_text()
+        source = source.replace(extract(source, 'void\ndestroylinks('), extract(link, 'void\ndestroylinks('), 1)
+        source += '\n#define malloc(n) trackedallocate(n,0)\n'+extract(link, 'static void\nnewlink(')+'\n'+extract(link, 'void\nmlink(')+'\n#undef malloc\n'
+        source += '#include "string-hashes.h"\nint dis64bootmanaged; char *dis64bootprovider;\n'
+        source += r'''/* ASCII filename allocator only; complete UTF conversion runs in console tests. */
+String* c2string(char *text, int length)
+{
+    Heap *heap;
+    String *value;
+    int i;
+    require(length >= 0);
+    for(i=0; i<length; i++) require((uchar)text[i] < 128);
+    heap = nheap(sizeof(String)+length);
+    heap->t = &Tstring;
+    Tstring.ref++;
+    value = H2D(String*, heap);
+    value->tmp = nil;
+    value->len = value->max = length;
+    memmove(value->Sascii, text, length);
+    return value;
+}
+'''
+
+        begin = load64.index('#ifdef DIS_NATIVE64_MANAGED_FILES\n/* Generated')
+        end = load64.index('/* Only the explicit console option', begin)
+        source += load64[begin:end]
         source += '\n'.join(extract(load64, signature) for signature in
                             ('static Modlink*\ndis64managedowner(', 'Modlink*\nprepare64managedtrial('))
         source += '\n'
@@ -65,6 +91,11 @@ def unit(calls=False, managed=False):
         resolver = '\n'.join(extract(runt, signature) for signature in
                              ('const Link*\nnative64sysexport(', 'const Link*\nnative64sysclock('))
         fixture = fixture.replace('CLOCK_RESOLVER', resolver)
+    if managed:
+        source = '#include "dis64-managed-trial.h"\nextern int dis64bootmanaged; extern char *dis64bootprovider;\n'+source
+    source = source.replace('require(int condition)', 'requireline(int condition, int line)', 1)
+    source = source.replace('failed after %d predicates\\n", checks);', 'failed after %d predicates at line %d\\n", checks, line);', 1)
+    source = source.replace('/* Bound each allocation', '#define require(condition) requireline((condition), __LINE__)\n\n/* Bound each allocation', 1)
     return source+fixture
 
 
@@ -103,7 +134,7 @@ def provider_cases(fixtures, common):
 
 
 # Build complete trial images with independent Python envelope and record writers.
-def managed_image_cases(fixtures):
+def managed_image_cases(fixtures, load_path=None):
     words, desc = fixtures['W'], fixtures['D']
     image, sections = fixtures['IMAGE'], fixtures['SECTIONS']
     binding = fixtures['RAW']['RAW']['binding']
@@ -132,9 +163,14 @@ def managed_image_cases(fixtures):
             clear = ins('IMOVP', clear_mode, source=clear_source, destination=clear_target) if cleanup else b''
             code = call+(clear+call)*(repeats-1)+fixtures['EXIT']
             count = 1+4*repeats+(repeats-1 if cleanup else 0)
-            mp_bytes = (8 if repeats == 1 else 16) if mp_bytes is None else mp_bytes
-            mp_map = (b'\x80' if repeats == 1 else b'\xc0') if mp_map is None else mp_map
-            return build(('caller', symbol, 'String'), name=0, databytes=mp_bytes, code=words(count)+code,
+            fileload = load_path is not None
+            if fileload:
+                code = ins('ILOAD', 64, source=16, middle=0, destination=0)+code
+                count += 1
+            mp_bytes = (24 if fileload else 8 if repeats == 1 else 16) if mp_bytes is None else mp_bytes
+            mp_map = (b'\xe0' if fileload else b'\x80' if repeats == 1 else b'\xc0') if mp_map is None else mp_map
+            names = ('caller', symbol, 'String', load_path) if fileload else ('caller', symbol, 'String')
+            return build(names, name=0, databytes=mp_bytes, code=words(count)+code,
                          types=[desc(80, 8, frame_map), desc(mp_bytes, 8, mp_map)],
                          imports=[binding(module=2, symbol=1, sig=signature)])
 
@@ -201,11 +237,13 @@ def managed_images(fixtures, limbo, work):
                                 '-o', str(output), str(source)], check=True, timeout=60)
                 compiled.append(output.read_bytes())
             rows.append((direction, 1, *compiled))
+    rows.extend(row for row in managed_image_cases(fixtures, '/managed-provider.dis64') if row[1])
+    good_providers = {provider for _, accepted, _, provider in rows if accepted}
     declarations, entries = [], []
     for index, (direction, accepted, consumer, provider) in enumerate(rows):
         for label, data in (('consumer', consumer), ('provider', provider)):
             declarations.append(f'static const uchar {label}{index}[] = {{'+','.join(map(str, data))+'};')
-        entries.append(f'{{{direction},{accepted},consumer{index},sizeof(consumer{index}),'
+        entries.append(f'{{{direction},{accepted},{int(provider in good_providers)},consumer{index},sizeof(consumer{index}),'
                        f'provider{index},sizeof(provider{index})}}')
     return '\n'.join(declarations)+'\nstatic const ManagedImageCase managedimages[] = {\n'+',\n'.join(entries)+'\n};\n'
 
@@ -237,6 +275,8 @@ def main():
     command = shlex.split(os.environ.get('CC', 'cc'))+flags+['-DDIS_WORD32=1', '-DDIS64_PILOT_LOADER=1']
     if args.calls:
         command += ['-DDIS_NATIVE64_BOOT_SYS_IO=1']
+    if args.managed:
+        command += ['-DDIS_NATIVE64_MANAGED_FILES=1']
     if arch in ('arm64', 'riscv64'):
         command += ['-DDIS64_TEST_'+arch.upper()+'=1', '-DDIS64_TEST_COMPILER="comp-'+arch+'.c"']
     elif arch != 'amd64':
@@ -249,6 +289,10 @@ def main():
             (work/'string-native64.h').write_bytes(subprocess.check_output(
                 [str(args.limbo.resolve()), '-H', '-M', 'String', '-I'+str(ROOT/'module'),
                  str(ROOT/'module/string.m')], timeout=60))
+            header = (work/'string-native64.h').read_text()
+            (work/'string-hashes.h').write_text('\n'.join(line for line in header.splitlines()
+                if line.startswith(('#define LIMBO_NATIVE64_SIGNATURE_String_quoted ',
+                                    '#define LIMBO_NATIVE64_SIGNATURE_String_unquoted ')))+'\n')
             probe = work/'unsupported.m'
             probe.write_text('Unsupported: module { wrong: fn(s: list of int): string; '
                              'same: fn(s: string): string; };\n')

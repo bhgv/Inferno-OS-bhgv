@@ -608,6 +608,7 @@ native64frame(Decl *function, int emit)
 	if(!emit)
 		return;
 	print("\n\n/* Experimental fixed frame for %s; this does not enable a native call. */\n", name);
+	print("#define LIMBO_NATIVE64_SIGNATURE_%s 0x%luxU // Compiler-computed legacy hash.\n", name, (ulong)sign(function));
 	print("void %s(void*);\ntypedef struct F_%s F_%s;\n\nstruct F_%s {\n", name, name, name, name);
 	print("\tFrame regs; // Native links occupy bytes 0..31.\n\t");
 	if(function->ty->tof->kind == Tnone)

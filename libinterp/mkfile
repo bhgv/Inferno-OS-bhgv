@@ -117,6 +117,9 @@ tkmod.h:D: $MODULES
 $ROOT/libinterp/sys-native64.h:D: $ROOT/module/sys.m
 	limbo -H $ROOT/module/sys.m > $target.tmp && mv $target.tmp $target
 
+$ROOT/libinterp/string-native64.h:D: $ROOT/module/string.m
+	limbo -H -M String -I$ROOT/module $ROOT/module/string.m > $target.tmp && mv $target.tmp $target
+
 # Generate private C metadata only when the explicit startup profile requests it.
 math-native64.h:D: ../module/math.m
 	limbo -H ../module/math.m > $target.tmp && mv $target.tmp $target
@@ -167,7 +170,7 @@ ipint.$O:	ipint.h ipintsmod.h
 loader.$O:	loadermod.h
 freetype.$O:	freetypemod.h $ROOT/include/freetype.h $NATIVE64_BOOT_FREETYPE_HEADERS
 math.$O:	math-fixed-call.h $ROOT/include/native64-math-call.h $ROOT/include/native64-frame-cell.h $ROOT/include/mathi.h $ROOT/include/fdlibm-names.h
-load64.$O:	$ROOT/include/dis64-storage-image.h $ROOT/include/dis64-bindings.h $ROOT/include/dis64-managed-signature.h $ROOT/include/dis64-managed-trial.h
+load64.$O:	$NATIVE64_BOOT_STRING_HEADERS $ROOT/include/dis64-storage-image.h $ROOT/include/dis64-bindings.h $ROOT/include/dis64-managed-signature.h $ROOT/include/dis64-managed-trial.h
 
 das-spim.c:N:	das-mips.c
 comp-spim.c:N:	comp-mips.c
@@ -179,7 +182,7 @@ comp-spim.c:N:	comp-mips.c
 #	it works only on UNIX and Plan 9.
 
 nuke:EV:	nuke-std
-	rm -f freetype-native64.h freetype-native64.h.tmp sys-native64.h sys-native64.h.tmp math-native64.h math-native64.h.tmp runt.h sysmod.h drawmod.h prefabmod.h tkmod.h mathmod.h keyring.h readimagemod.h loadermod.h freetypemod.h cryptmod.h keyringif.h ipintsmod.h
+	rm -f string-native64.h string-native64.h.tmp freetype-native64.h freetype-native64.h.tmp sys-native64.h sys-native64.h.tmp math-native64.h math-native64.h.tmp runt.h sysmod.h drawmod.h prefabmod.h tkmod.h mathmod.h keyring.h readimagemod.h loadermod.h freetypemod.h cryptmod.h keyringif.h ipintsmod.h
 
 comp-riscv.$O comp-riscv64.$O: riscv-emit.h comp-riscv.c
 

@@ -415,7 +415,7 @@ if(debug['v']) print("fncom: %s %d %p\n", d->sym->name, d->refs, d);
 
 	excs = reve(excs);
 
-	if(emitscalar64 == 2){
+	if(emitscalar64 >= 2){
 		if(excs != nil || impdecls->next != nil)
 			error(impdecl->src.start, "Dis64 managed trial: unsupported module or exception table");
 		else

@@ -1257,6 +1257,8 @@ vmachine(void *a)
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 
 
+#include "dis64-managed-trial.h"
+
 /* Seed the mapped input slot of the already validated managed trial. */
 static void
 schedpairseed(SchedModule *c)
@@ -1264,13 +1266,30 @@ schedpairseed(SchedModule *c)
 	Modlink *provider;
 	String *text;
 	List *list;
+	int quoted;
 
 	memmove(&provider, c->ml->MP, sizeof(provider));
+	if(provider == H){
+		Import *entry;
+
+		/* A file LOAD has not run yet; only its checked, owned LDT describes input. */
+		if(!(c->m->rt & Dis64ManagedFile) || c->m->ldt == nil || c->m->ldt[0] == nil)
+			error(exModule);
+		entry = c->m->ldt[0];
+		if(entry->name == nil || entry[1].name != nil ||
+		   (strcmp(entry->name, "quoted") != 0 && strcmp(entry->name, "unquoted") != 0))
+			error(exModule);
+		quoted = strcmp(entry->name, "quoted") == 0;
+	}else{
+		if(provider == nil)
+			error(exModule);
+		quoted = provider->links[0].u.pc->op == IHEADP;
+	}
 	text = c2string(dis64bootmanagedinput, strlen(dis64bootmanagedinput));
 	c->input = text;
 	ptradd(D2H(text));
 	c->inputroot = 1;
-	if(provider->links[0].u.pc->op == IHEADP){
+	if(quoted){
 		if(Tptr.ref <= 0 || Tptr.ref == 0x7fffffff)
 			error(exHeap);
 		list = H;

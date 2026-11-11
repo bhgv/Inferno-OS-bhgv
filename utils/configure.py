@@ -97,13 +97,14 @@ def main():
     text=assign(text,'NATIVE64_FREETYPE_DIR','libfreetype' if args.native64_freetype_boot else '')
     text=assign(text,'NATIVE64_FREETYPE_LIBS','freetype' if args.native64_freetype_boot else '')
     text=assign(text,'NATIVE64_BOOT_FREETYPE_HEADERS',args.root+'/libinterp/freetype-native64.h' if args.native64_freetype_boot else '')
+    text=assign(text,'NATIVE64_BOOT_STRING_HEADERS',args.root+'/libinterp/string-native64.h' if args.native64_scalar_boot and args.native64_sys_io_boot else '')
     if not args.native64_scalar_boot and re.search(r'^DISMODELFLAGS=.*DIS_NATIVE64_SCALAR_BOOT',text,re.M):
         text=assign(text,'DISMODELFLAGS','')
     # Compose the model once so later selections cannot discard lifetime guards.
     if args.native64_scalar_boot:
         flags=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DDIS_NATIVE64_SCALAR_BOOT=1']
         if args.native64_sys_io_boot:
-            flags.append('-DDIS_NATIVE64_BOOT_SYS_IO=1')
+            flags.extend(['-DDIS_NATIVE64_BOOT_SYS_IO=1', '-DDIS_NATIVE64_MANAGED_FILES=1'])
             text=assign(text,'NATIVE64_BOOT_SYS_HEADERS',args.root+'/libinterp/sys-native64.h')
         if args.native64_math_boot:
             flags.append('-DDIS_NATIVE64_BOOT_MATH=1')

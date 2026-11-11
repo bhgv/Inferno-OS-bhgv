@@ -584,6 +584,9 @@ extern	void		pushrun(Prog*);
 extern	Module*		readmod(char*, Module*, int);
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 extern Modlink* read64pair(char*, char*); // Read and root the explicitly linked startup module.
+#ifdef DIS_NATIVE64_MANAGED_FILES
+extern Module* prepare64managedfile(char*, uchar*, ulong, int); // Unpublished checked file provider.
+#endif
 extern Modlink* prepare64managedtrial(char*, const uchar*, ulong, char*, const uchar*, ulong, int);
 extern char *dis64bootmanagedinput;
 extern int dis64bootmanaged; // Explicit trial schema, with an explicit provider file.

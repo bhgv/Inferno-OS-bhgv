@@ -6,7 +6,7 @@
 
 typedef struct ManagedImageCase ManagedImageCase;
 struct ManagedImageCase {
-	int direction, accepted;
+	int direction, accepted, provideraccepted;
 	const uchar *consumer;
 	unsigned int consumerbytes;
 	const uchar *provider;
@@ -20,6 +20,7 @@ static int managederror, managedcalls;
 static int managedbytecodes, managedfast;
 static Dis64ManagedBody managedbodies[2];
 static const ManagedImageCase *managedfixtures[2], *managedrepeatfixtures[2];
+static const ManagedImageCase *managedfilefixtures[2];
 static int managedimagecalls;
 
 /* Independent trial bytes, with deliberately local version/tag values. */
@@ -54,7 +55,9 @@ managedimagecontrol(void)
 		if(test->accepted){
 			require(plan.selected.frame == 0 && plan.provider.code.bytes == 14);
 			managedbodies[test->direction] = (Dis64ManagedBody){plan.provider.code.data+6, 8};
-			if(plan.consumer.code.count == 5)
+			if(plan.consumer.code.count%5 == 1)
+				managedfilefixtures[test->direction] = test;
+			else if(plan.consumer.code.count == 5)
 				managedfixtures[test->direction] = test;
 			else
 				managedrepeatfixtures[test->direction] = test;
@@ -381,6 +384,79 @@ managedlinkcontrol(void)
 			require(numericblock(slot)->magic == MAGIC_F);
 	}
 	return attempts;
+}
+
+/* Exercise ordinary file-owner exports and unlinked caller metadata under allocation failure. */
+static int
+managedfilecontrol(void)
+{
+	const ManagedImageCase *test;
+	Module *module;
+	Modlink *caller;
+	void *value;
+	int direction, mode, before, first, attempts, failure, total = 0;
+
+	dis64bootmanaged = 1;
+	dis64bootprovider = "/managed-provider.dis64";
+	for(direction=0; direction<2; direction++){
+		test = managedfilefixtures[direction];
+		require(test != nil);
+		for(mode=0; mode<2; mode++){
+			numericdrain();
+			before = live;
+			first = allocations;
+			if(mode == 0){
+				module = prepare64managedfile(dis64bootprovider, (uchar*)test->provider, test->providerbytes, 0);
+				require(module != nil && (module->rt & Dis64ManagedFile) && module->ext != nil);
+				require(module->ext[0].sig == (direction ? LIMBO_NATIVE64_SIGNATURE_String_quoted : LIMBO_NATIVE64_SIGNATURE_String_unquoted));
+				attempts = allocations-first;
+				unload(module);
+			}else{
+				caller = prepare64managedtrial("file-caller", test->consumer, test->consumerbytes,
+					dis64bootprovider, test->provider, test->providerbytes, 0);
+				require(caller != nil && (caller->m->rt & HASLDT));
+				memmove(&value, caller->MP, sizeof(value));
+				require(value == H);
+				memmove(&value, caller->MP+8, sizeof(value));
+				require(value == H);
+				memmove(&value, caller->MP+16, sizeof(value));
+				require(value != H && value != nil && caller->m->ldt[0][0].name != nil);
+				attempts = allocations-first;
+				ptrdel(D2H(caller));
+				destroy(caller);
+			}
+			numericdrain();
+			require(live == before);
+			for(failure=1; failure<=attempts; failure++){
+				failat = allocations+failure;
+				if(mode == 0)
+					require(prepare64managedfile(dis64bootprovider, (uchar*)test->provider, test->providerbytes, 0) == nil);
+				else
+					require(prepare64managedtrial("file-caller", test->consumer, test->consumerbytes,
+						dis64bootprovider, test->provider, test->providerbytes, 0) == nil);
+				failat = 0;
+				numericdrain();
+				require(live == before && Tmodlink.ref == 1 && worker.nerr == 0);
+			}
+			total += attempts;
+		}
+		require(prepare64managedfile("/other.dis64", (uchar*)test->provider, test->providerbytes, 0) == nil);
+		require(prepare64managedtrial("file-caller", test->consumer, test->consumerbytes,
+			"/other.dis64", test->provider, test->providerbytes, 0) == nil);
+	}
+	for(direction=0; direction<nelem(managedimages); direction++){
+		test = &managedimages[direction];
+		numericdrain();
+		before = live;
+		module = prepare64managedfile(dis64bootprovider, (uchar*)test->provider, test->providerbytes, 0);
+		require((module != nil) == test->provideraccepted);
+		if(module != nil) unload(module);
+		numericdrain();
+		require(live == before);
+	}
+	dis64bootmanaged = 0;
+	dis64bootprovider = nil;
+	return total;
 }
 
 /* Both instruction streams come from the checked images. Only the input is supplied by C. */
@@ -761,6 +837,7 @@ main(void)
 			}
 	managedmapcontrol(frames[0]);
 	refusals = managedlinkcontrol();
+	printf("PASS managed file constructors: %d allocation refusals, export/LDT cleanup and path isolation\n", managedfilecontrol());
 	for(reverse=0; reverse<2; reverse++)
 		for(jit=0; jit<2; jit++)
 			for(grow=0; grow<2; grow++)

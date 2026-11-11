@@ -65,6 +65,11 @@ def main():
                     raise RuntimeError('Caller lease flags are not coherent: '+arch)
                 if ('-DDIS_NATIVE64_BOOT_SYS_IO=1' in model[0])!=sysio:
                     raise RuntimeError('Caller lease selected the wrong Sys profile')
+                if ('-DDIS_NATIVE64_MANAGED_FILES=1' in model[0])!=sysio:
+                    raise RuntimeError('Managed file profile does not follow the selected native console')
+                expected='NATIVE64_BOOT_STRING_HEADERS='+ (str(ROOT)+'/libinterp/string-native64.h' if sysio else '')
+                if expected not in lines:
+                    raise RuntimeError('Managed file profile lost or retained its generated String dependency')
         # The font profile adds a headless archive and a selected native header on all Linux backends.
         for arch in ('amd64','arm64','riscv64'):
             subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--arch',arch,'--console',

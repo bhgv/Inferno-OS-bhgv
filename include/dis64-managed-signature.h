@@ -219,17 +219,24 @@ dis64managedcallercode(const unsigned char *data, unsigned int bytes, unsigned i
 	};
 	static const unsigned char clear[] = {IMOVP, SRC(AMP)|DST(AFP), 8, 0x80,72};
 	static const unsigned char exit[] = {IEXIT, SRC(AXXX)|DST(AXXX)};
-	unsigned int count, calls, at, i, j;
+	unsigned int count, calls, at, i, j, fileload;
 
 	if(bytes < 4)
 		return 0;
 	count = dis64u32(data);
-	if(count < 5 || count%5 != 0 || count > limit)
+	fileload = count%5 == 1;
+	if(count < 5 || (count%5 != 0 && !fileload) || count > limit)
 		return 0;
 	calls = count/5;
-	if(calls > Dis64ManagedCalls || bytes != 4+calls*sizeof(call)+(calls-1)*sizeof(clear)+sizeof(exit))
+	if(calls > Dis64ManagedCalls || bytes != 4+fileload*5+calls*sizeof(call)+(calls-1)*sizeof(clear)+sizeof(exit))
 		return 0;
 	at = 4;
+	if(fileload){
+		static const unsigned char load[] = {ILOAD,SRC(AMP)|AXIMM|DST(AMP),0,16,0};
+		for(j=0; j<sizeof(load); j++)
+			if(data[at++] != load[j])
+				return 0;
+	}
 	for(i=0; i<calls; i++){
 		if(i != 0)
 			for(j=0; j<sizeof(clear); j++)
@@ -261,8 +268,8 @@ dis64managedimagepair(const unsigned char *consumer, unsigned int consumerbytes,
 	   !dis64storageimagecheckrecords(provider, providerbytes, limits, out,
 	   dis64managedprovidercode, dis64managedtable, schema) ||
 	   in->module.profile != 1 || in->module.entry != 0 || out->module.profile != 0 ||
-	   in->data.bytes != (in->code.count == 5 ? 8 : 16) || in->data.align != 8 ||
-	   in->data.mapbytes != 1 || in->data.map[0] != (in->code.count == 5 ? 0x80 : 0xc0) ||
+	   in->data.bytes != (in->code.count%5 == 1 ? 24 : in->code.count == 5 ? 8 : 16) || in->data.align != 8 ||
+	   in->data.mapbytes != 1 || in->data.map[0] != (in->code.count%5 == 1 ? 0xe0 : in->code.count == 5 ? 0x80 : 0xc0) ||
 	   (in->present&(1U<<(Dis64Data-1))) != 0 ||
 	   !dis64typeget(&in->types, in->module.frametype, &callerframe) ||
 	   callerframe.bytes != 80 || callerframe.mapbytes != 2 ||

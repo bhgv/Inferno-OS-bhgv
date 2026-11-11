@@ -14,6 +14,10 @@
 #include "dis64-managed-trial.h"
 #endif
 
+#ifdef DIS_NATIVE64_MANAGED_FILES
+#include "string-native64.h"
+#endif
+
 #define Dis64RuntimeBytes (8U*1024U*1024U) // Maximum complete input image for this experimental loader.
 #define Dis64RuntimeObject (1024U*1024U) // Maximum scalar data or entry-frame extent.
 #define Dis64RuntimeCode 65536U // Maximum instructions admitted before allocation.
@@ -80,6 +84,12 @@ dis64launchcompatible(Module *module)
 	calls = dis64launchmode();
 	if(module == nil)
 		return 0;
+#ifdef DIS_NATIVE64_MANAGED_FILES
+	if(module->rt & Dis64ManagedFile)
+		return dis64bootmanaged && !calls;
+	if(dis64bootmanaged)
+		return 0;
+#endif
 	if(calls)
 		return module->cstep == native64lea8step;
 	return module->cstep != native64lea8step;
@@ -1448,6 +1458,141 @@ dis64managedowner(const Dis64StorageImage *image, char *path, int jit, const Dis
 	return nil;
 }
 
+#ifdef DIS_NATIVE64_MANAGED_FILES
+/* Generated from String.m by Limbo -H: legacy hashes are consistency checks only. */
+static const LimboNative64Entry*
+dis64managedfileview(const uchar *image, ulong bytes, Dis64StorageImage *view, Dis64Binding *selected)
+{
+	static const Dis64ManagedSchema schema = {Dis64TrialVersion, Dis64TrialString, Dis64TrialList};
+	static const uchar map[] = {0, 0x80};
+	static const LimboNative64Entry entries[] = {
+		{"unquoted", nil, LIMBO_NATIVE64_SIGNATURE_String_unquoted, 72, 2, map},
+		{"quoted", nil, LIMBO_NATIVE64_SIGNATURE_String_quoted, 72, 2, map},
+	};
+	static const LimboNative64Managed shapes[] = {
+		{&entries[0], LimboNative64String, LimboNative64ListString},
+		{&entries[1], LimboNative64ListString, LimboNative64String},
+	};
+	static const char name[] = "String";
+	Dis64Binding exported;
+	Dis64ManagedSignature signature;
+	DisRuneView module;
+	uchar imported[12+Dis64ManagedSignatureBytes];
+	unsigned int i, rune;
+
+	if(image == nil || image == H || bytes > Dis64RuntimeBytes ||
+	   (uintptr)image > (uintptr)-1-bytes ||
+	   !dis64storageimagecheckrecords(image, bytes, &dis64numericlimits, view,
+	   dis64managedprovidercode, dis64managedtable, &schema) ||
+	   view->module.profile != 0 || view->module.databytes != 0 ||
+	   (view->present&(1U<<(Dis64Data-1))) != 0 || view->imports.count != 0 || view->exports.count != 1 ||
+	   !dis64managedbindingread(view->exports.data+4, view->exports.bytes-4, 1, &schema, &exported, &signature) ||
+	   !disstringpoolget(&view->strings, view->module.name, &module) || module.count != sizeof(name)-1)
+		return nil;
+	for(i=0; i<module.count; i++)
+		if(!disruneat(&module, i, &rune) || rune != name[i])
+			return nil;
+	dis64put32(imported, view->module.name);
+	dis64put32(imported+4, exported.symbol);
+	dis64put32(imported+8, Dis64ManagedSignatureBytes);
+	memmove(imported+12, exported.signature.data, Dis64ManagedSignatureBytes);
+	for(i=0; i<nelem(shapes); i++)
+		if(dis64managedpair(imported, sizeof(imported), view->exports.data+4, view->exports.bytes-4,
+		   &schema, &view->strings, &view->strings, view->module.name, &shapes[i],
+		   &view->types, view->code.count, selected) && selected->entry == 1 &&
+		   view->code.data[6] == (i == 0 ? ICONSP : IHEADP))
+			return &entries[i];
+	return nil;
+}
+
+typedef struct Dis64ManagedFileLoad Dis64ManagedFileLoad;
+struct Dis64ManagedFileLoad {
+	Dis64NumericLoad load;
+	Dis64Binding selected;
+	const LimboNative64Entry *entry;
+};
+
+static int
+dis64managedfileconstruct(void *argument)
+{
+	Dis64ManagedFileLoad *file;
+	Module *module;
+
+	file = argument;
+	if(!dis64numericconstruct(&file->load))
+		return 0;
+	module = file->load.module;
+	module->ext = mallocz(2*sizeof(Link), 1);
+	if(module->ext == nil)
+		return 0;
+	mlink(module, module->ext, (uchar*)file->entry->name, file->entry->legacy_signature,
+		file->selected.entry, module->type[file->selected.frame]);
+	module->rt |= Dis64ManagedFile;
+	return 1;
+}
+
+/* The ordinary parser owns signing, namespace metadata and cache publication. */
+Module*
+prepare64managedfile(char *path, uchar *image, ulong bytes, int jit)
+{
+	Dis64ManagedFileLoad file = {0};
+	Module *module;
+
+	if(!dis64bootmanaged || !dis64runtimemodel() || path == nil || path == H ||
+	   dis64bootprovider == nil || strcmp(path, dis64bootprovider) != 0 || (jit != 0 && jit != 1))
+		return nil;
+	file.entry = dis64managedfileview(image, bytes, &file.load.image, &file.selected);
+	if(file.entry == nil || !disstringpoolget(&file.load.image.strings, file.load.image.module.name, &file.load.name))
+		return nil;
+	file.load.path = path;
+	file.load.jit = jit;
+	file.load.indirect = 1;
+	module = nil;
+	if(kprotect(dis64managedfileconstruct, &file))
+		module = file.load.module;
+	else if(file.load.module != nil)
+		unload(file.load.module);
+	free64storage(file.load.lease);
+	return module;
+}
+
+typedef struct Dis64ManagedFileCaller Dis64ManagedFileCaller;
+struct Dis64ManagedFileCaller {
+	Modlink *caller;
+	const LimboNative64Entry *entry;
+	char *path;
+};
+
+static int
+dis64managedfilemetadata(void *argument)
+{
+	Dis64ManagedFileCaller *file;
+	Module *module;
+	Import *imports;
+	String *path;
+
+	file = argument;
+	module = file->caller->m;
+	module->ldt = mallocz(2*sizeof(Import*), 1);
+	if(module->ldt == nil)
+		return 0;
+	module->ldt[0] = imports = mallocz(2*sizeof(Import), 1);
+	if(imports == nil)
+		return 0;
+	imports->name = strdup(file->entry->name);
+	if(imports->name == nil)
+		return 0;
+	imports->sig = file->entry->legacy_signature;
+	path = c2string(file->path, strlen(file->path));
+	if(path == nil || path == H)
+		return 0;
+	memmove(file->caller->MP+16, &path, sizeof(path));
+	Setmark(D2H(path));
+	module->rt |= HASLDT|Dis64ManagedFile;
+	return 1;
+}
+#endif
+
 /* Only the explicit console option can select these unassigned trial values. */
 Modlink*
 prepare64managedtrial(char *path, const uchar *image, ulong bytes, char *peerpath,
@@ -1482,6 +1627,36 @@ prepare64managedtrial(char *path, const uchar *image, ulong bytes, char *peerpat
 		kwerrstr("unsupported Dis64 managed trial pair");
 		return nil;
 	}
+#ifdef DIS_NATIVE64_MANAGED_FILES
+	if(checked.consumer.code.count%5 == 1){
+		Dis64ManagedFileCaller file;
+		Dis64StorageImage view;
+		Dis64Binding selected;
+		DisRuneView encoded;
+		unsigned int rune;
+
+		file.entry = dis64managedfileview(peer, peerbytes, &view, &selected);
+		if(file.entry == nil || !disstringpoolget(&checked.consumer.strings, 3, &encoded) ||
+		   encoded.count == 0 || encoded.count > Dis64RuntimeName || peerpath[0] != '/' ||
+		   strlen(peerpath) != encoded.count)
+			return nil;
+		for(i=0; i<encoded.count; i++)
+			if(!disruneat(&encoded, i, &rune) || rune == 0 || rune > 127 || rune != (uchar)peerpath[i])
+				return nil;
+		file.path = peerpath;
+		file.caller = caller = dis64managedowner(&checked.consumer, path, 0, nil);
+		if(caller == nil)
+			return nil;
+		if(kprotect(dis64managedfilemetadata, &file))
+			return caller;
+		ptrdel(D2H(caller));
+		destroy(caller);
+		return nil;
+	}
+#else
+	if(checked.consumer.code.count%5 == 1)
+		return nil;
+#endif
 	caller = dis64managedowner(&checked.consumer, path, 0, nil);
 	if(caller == nil)
 		return nil;

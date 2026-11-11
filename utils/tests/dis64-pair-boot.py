@@ -873,6 +873,54 @@ def main():
                 output = execute(command+pair+trial)
                 if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
                     raise RuntimeError('invalid managed pair reached scheduler: '+output)
+        load_path = '/'+str(provider.relative_to(args.root.resolve()))
+        load_cases = GC['managed_image_cases'](RAW, load_path)
+        for direction, accepted, payload, dependency in load_cases:
+            consumer.write_bytes(payload)
+            provider.write_bytes(dependency)
+            if accepted:
+                for jit in (0, 1):
+                    for seed in ([], trial_input, ['-A', '']):
+                        output = execute(command+['-c', str(jit)]+pair+trial+seed)
+                        module, status = ('String', 'dereference of nil') if direction and not seed else ('caller', '')
+                        marker = f'native64 scalar module {module}: jit={jit if direction and not seed else 0}, exit="{status}"'
+                        if marker not in output or \
+                                BOOT['RETIRED'] not in output or 'panic:' in output:
+                            raise RuntimeError('managed filesystem ILOAD did not complete: '+output)
+            else:
+                output = execute(command+pair+trial)
+                if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+                    raise RuntimeError('malformed managed filesystem image reached scheduler: '+output)
+        if args.limbo is not None:
+            for direction in (0, 1):
+                text, body = GC['managed_sources'](direction)
+                source = work/'load-provider.b'
+                source.write_text(body)
+                subprocess.run([str(args.limbo.resolve()), '-64m', '-o', str(provider), str(source)], check=True, timeout=30)
+                source = work/'load-caller.b'
+                symbol = 'quoted' if direction else 'unquoted'
+                statement = f'    result := lib->{symbol}(value);'
+                text = text.replace('String->PATH', '"'+load_path+'"')
+                compile_command = [str(args.limbo.resolve()), '-64l', '-I', str(ROOT/'module'), '-o', str(consumer), str(source)]
+                for repetitions in (1, 2, 32):
+                    source.write_text(text.replace(statement, statement+'\n'+f'    result = lib->{symbol}(value);\n'*(repetitions-1)))
+                    subprocess.run(compile_command, check=True, timeout=30)
+                    expected = next(raw for d, ok, raw, _ in load_cases if ok and d == direction and
+                                    int.from_bytes(code_bytes(raw)[:4], 'big') == 5*repetitions+1)
+                    if code_bytes(consumer.read_bytes()) != code_bytes(expected):
+                        raise RuntimeError('compiler changed managed filesystem ILOAD or call islands')
+                    for jit in (0, 1):
+                        output = execute(command+['-c', str(jit)]+pair+trial+trial_input)
+                        if 'native64 scalar module Caller: jit=0, exit=""' not in output or \
+                                BOOT['RETIRED'] not in output or 'panic:' in output:
+                            raise RuntimeError('compiled managed filesystem ILOAD did not complete: '+output)
+                # A serialized path cannot silently bind the explicitly supplied different file.
+                source.write_text(text.replace(load_path, '/wrong-provider.dis64'))
+                subprocess.run(compile_command, check=True, timeout=30)
+                output = execute(command+pair+trial+trial_input)
+                if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+                    raise RuntimeError('managed filesystem path mismatch bypassed admission: '+output)
+        print('PASS managed filesystem ILOAD through readmod/parsemod/linkmod, generated hashes, C/JIT and path/map refusals')
         for options in (pair[:2]+trial, pair+trial+['-X', 'dis64-pair'], pair[:2]+trial+['-P', '$Sys'],
                         pair+trial_input, pair+trial+['-A', 'x'*4097]):
             refused = subprocess.run(command+options, capture_output=True, text=True, timeout=20)

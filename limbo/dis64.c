@@ -685,7 +685,7 @@ dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, lo
 /* Check the legacy LOAD/call sequence before replacing LOAD with an explicit pair. */
 static int
 dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
-	long count, long databytes, int *quoted, unsigned int *calls)
+	long count, long databytes, int *quoted, unsigned int *calls, char **loadpath)
 {
 	static const ushort ops[] = {ILOAD, IMFRAME, IMOVP, ILEA, IMCALL, IRET};
 	static const uchar sm[] = {Amp, Afp, Afp, Afp, Afp, Anone};
@@ -721,7 +721,8 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			continue;
 		if(path != nil || globals->offset != 0 || globals->ty->kind != Tstring ||
 		   globals->init == nil || globals->init->op != Oconst || globals->init->decl == nil ||
-		   strcmp(globals->init->decl->sym->name, "/dis/lib/string.dis") != 0)
+		   (emitscalar64 == 3 ? globals->init->decl->sym->name[0] != '/' :
+	    strcmp(globals->init->decl->sym->name, "/dis/lib/string.dis") != 0))
 			return 0;
 		path = globals;
 	}
@@ -778,6 +779,7 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 		return 0;
 	*quoted = direction;
 	*calls = groups;
+	*loadpath = path->init->decl->sym->name;
 	return 1;
 }
 
@@ -785,6 +787,8 @@ void
 dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes)
 {
 	static const uchar map[] = {0, 0x80}, callermap[] = {0, 0xc0}, mpmap[] = {0x80};
+	static const uchar load[] = {ILOAD,SRC(AMP)|AXIMM|DST(AMP),0,16,0};
+	static const uchar loadmap[] = {0xe0};
 	static const uchar call[] = {
 		IMFRAME,SRC(AMP)|AXIMM|DST(AFP),0,0,40,
 		IMOVP,SRC(AFP)|DST(AFP|AIND),0x80,64,40,0x80,64,
@@ -792,20 +796,22 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		IMCALL,SRC(AFP)|AXIMM|DST(AMP),0,40,0};
 	static const uchar clear[] = {IMOVP,SRC(AMP)|DST(AFP),8,0x80,72};
 	static const uchar exit[] = {IEXIT,SRC(AXXX)|DST(AXXX)};
-	uchar caller[4+Dis64ManagedCalls*(sizeof(call)+sizeof(clear))+sizeof(exit)];
+	uchar caller[4+sizeof(load)+Dis64ManagedCalls*(sizeof(call)+sizeof(clear))+sizeof(exit)];
 	uchar provider[] = {0,0,0,3, IEXIT,SRC(AXXX)|DST(AXXX),
 		ICONSP,SRC(AFP)|DST(AFP|AIND),0x80,64,32,0, IRET,SRC(AXXX)|DST(AXXX)};
 	Dis64Type types[] = {{72, 8, map, sizeof(map)}, {8, 8, mpmap, sizeof(mpmap)}};
 	Dis64ModuleInfo module = {0};
-	DisStringPoolRecord names[3];
+	DisStringPoolRecord names[4];
 	Dis64Payload sections[5];
-	uchar metadata[24], typedata[32], pool[1100], name[28], symbol[36], callername[4+4*255];
-	uchar binding[40], output[2048];
+	uchar metadata[24], typedata[32], pool[2200], name[28], symbol[36], callername[4+4*255], pathname[4+4*255];
+	uchar binding[40], output[4096];
 	unsigned int sizes[5], written, header, calls, at, i;
-	int quoted, consumer;
+	int quoted, consumer, fileload;
+	char *loadpath;
 
 	consumer = entry != nil;
-	if(!(consumer ? dis64managedcallershape(entry, globals, ldts, input, count, databytes, &quoted, &calls) :
+	fileload = consumer && emitscalar64 == 3;
+	if(!(consumer ? dis64managedcallershape(entry, globals, ldts, input, count, databytes, &quoted, &calls, &loadpath) :
 	     ldts == nil && dis64managedlibraryshape(entry, globals, input, count, databytes, &quoted))){
 		error(impdecl->src.start, "Dis64 managed trial: unsupported one-token String provider or caller");
 		return;
@@ -813,13 +819,19 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	if(consumer){
 		module.name = 2;
 		module.profile = 1;
-		module.databytes = calls == 1 ? 8 : 16;
+		module.databytes = fileload ? 24 : calls == 1 ? 8 : 16;
 		module.datatype = 1;
 		types[0] = (Dis64Type){80, 8, callermap, sizeof(callermap)};
 		if(calls != 1)
 			types[1] = (Dis64Type){16, 8, callermap+1, 1};
-		dis64put32(caller, calls*5);
+		if(fileload)
+			types[1] = (Dis64Type){24, 8, loadmap, 1};
+		dis64put32(caller, calls*5+fileload);
 		at = 4;
+		if(fileload){
+			memmove(caller+at, load, sizeof(load));
+			at += sizeof(load);
+		}
 		for(i=0; i<calls; i++){
 			if(i != 0){
 				memmove(caller+at, clear, sizeof(clear));
@@ -834,6 +846,10 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 			error(impdecl->src.start, "Dis64 managed trial: unsupported caller name");
 			return;
 		}
+	}
+	if(fileload && !dis64libraryname(loadpath, pathname, &names[3])){
+		error(impdecl->src.start, "Dis64 managed file: unsupported absolute path");
+		return;
 	}
 	provider[6] = quoted ? IHEADP : ICONSP;
 	dis64put32(binding, 1);
@@ -852,7 +868,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	   !dis64libraryname(quoted ? "quoted" : "unquoted", symbol, &names[1]) ||
 	   !dis64modulewrite(metadata, sizeof(metadata), &module, &sizes[0]) ||
 	   !dis64typeswrite(typedata, sizeof(typedata), types, 1+consumer, &sizes[2]) ||
-	   !disstringpoolwrite(pool, sizeof(pool), names, 2+consumer, &sizes[3])){
+	   !disstringpoolwrite(pool, sizeof(pool), names, 2+consumer+fileload, &sizes[3])){
 		error(impdecl->src.start, "Dis64 managed trial: cannot encode image");
 		return;
 	}

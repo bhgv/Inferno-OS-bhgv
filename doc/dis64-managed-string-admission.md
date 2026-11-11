@@ -240,7 +240,51 @@ ARM64 and RV64 the fixture completes 264 paired calls, 132 native provider
 completions, 5859 collection epochs and the constructor allocation-failure
 sweep. The caller continues to use the interpreter's managed address binder.
 
-This is still the explicitly selected, prelinked String trial with its private
-schema. It does not execute a general filesystem LOAD, implement full String
-quoting/tokenization, or admit arbitrary managed signatures. Those remain
+The `-64m` path remains an explicitly selected, prelinked String trial with
+its private schema. The `-64l` path below adds bounded filesystem loading.
+Full String quoting/tokenization and arbitrary managed signatures remain
 requirements for ordinary AWM modules.
+
+## Filesystem LOAD with generated interface hashes
+
+`limbo -64l` is the explicit managed-file producer. Unlike `-64m`, it retains
+an ILOAD in CODE and records the absolute ASCII load path in STRINGS. No new
+signature tags or assigned Dis64 kinds are introduced. The existing String
+trial shape and the 32-call limit still apply.
+
+For example, use the provider and Caller above, compile the provider to the
+path declared by `String->PATH`, and compile Caller in file mode:
+
+```sh
+mkdir -p "$ROOT/dis/lib"
+limbo -64m -o "$ROOT/dis/lib/string.dis" provider.b
+limbo -64l -I module -o "$ROOT/caller.dis64" caller.b
+emu -r "$ROOT" -c 1 -X dis64-managed-trial \
+    -d /caller.dis64 -P /dis/lib/string.dis -A 'Grüße 世界'
+```
+
+The explicit `-P` path remains required for this trial and must exactly match
+the serialized path. Admission validates both images but does not construct
+or prebind a provider Modlink. It installs the checked import table and path
+in the caller. The ordinary VM ILOAD reads the path, calls readmod/parsemod,
+checks the file admission policy, publishes its validated provider in the
+normal module cache, and calls linkmod. MFRAME and MCALL then use that link.
+The input seed is selected from the checked import before ILOAD executes.
+
+The build generates `string-native64.h` with `limbo -H -M String` from the
+real `module/string.m`. Generated `LIMBO_NATIVE64_SIGNATURE_*` constants
+supply the legacy hashes used by both import and export tables. Structural
+String/List signatures, exported PC/frame, pointer maps and the complete
+one-token provider body are still checked independently of those hashes.
+The parser admits only the explicitly selected provider path and this bounded
+provider shape. A native-only cache flag prevents reuse across launch modes;
+it is not a serialized type or a substitute for validation.
+
+The file caller owns three mapped MP cells: provider at 0 (initially nil),
+cleanup nil at 8, and load path at 16. DATA initializers remain forbidden.
+Tests compare compiler output with independent ILOAD fixtures, execute both
+symbolic directions in C/JIT on all three targets, and reject path/map/body
+mutations. The 48-case allocation-failure sweep covers both the file export owner and
+the unlinked caller's LDT/path construction, including cleanup of partial tables.
+This adds real filesystem loading for the bounded String trial. General
+managed libraries, multiple signatures and full AWM remain separate work.

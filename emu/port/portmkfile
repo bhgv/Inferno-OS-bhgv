@@ -146,7 +146,7 @@ devsrv.$O:	$ROOT/libinterp/runt.h\
 		$INTERP
 devtk.$O:	$INTERP
 # Caller leases inline frame validation; rebuild the owner when that contract changes.
-dis.$O: $ROOT/include/native64-caller.h $ROOT/include/native64-frame-cell.h $ROOT/include/native64-model.h $ROOT/include/dis-layout.h
+dis.$O: $ROOT/include/dis64-managed-trial.h $ROOT/include/native64-caller.h $ROOT/include/native64-frame-cell.h $ROOT/include/native64-model.h $ROOT/include/dis-layout.h
 dis.$O:	$INTERP
 discall.$O:	$INTERP
 exception.$O:	$INTERP
