@@ -7,6 +7,7 @@ on:
       - 'limbo/**'
       - 'doc/dis64-native64-prefixes.md'
       - 'include/native64*.h'
+      - 'include/interp.h'
       - 'libinterp/**'
       - 'lib9/**'
       - 'utils/tests/native64-*'

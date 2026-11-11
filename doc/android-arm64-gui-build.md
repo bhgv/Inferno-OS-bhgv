@@ -201,3 +201,10 @@ manual return-address setup with a checked full-pointer bind before MCALL and
 checks 32 refusals for each of the 768 VM cases. This closes the trusted-C
 pending-frame binding step; ordinary WORD32 LEA and serialized call admission
 retain their existing behavior.
+
+
+The native formatter link additionally checks four module-owned recipe APIs:
+`Sys_setframes64`, `Sys_clearframes64`, `Sys_bindsite64` and `Sys_callsite64`
+(13 typed Sys symbols in total). Runtime tests cover source-vector retirement,
+partial construction/unwind, caller-module identity and actual `freemod` cleanup.
+These native metadata owners do not enable a serialized variadic call or AWM.

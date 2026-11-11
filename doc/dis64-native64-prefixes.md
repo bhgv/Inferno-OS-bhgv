@@ -283,3 +283,66 @@ acceptance of an already-entered pending frame.
 This trusted API does not widen ordinary LEA or authorize a serialized call.
 The compiled call-site plan still needs its bytecode producer, owned runtime
 metadata and loader binding before ordinary variadic Dis64 execution is ready.
+
+
+## Give call-site recipes a module owner
+
+`Sys_setframes64` installs a complete trusted C recipe table on a live Module.
+It copies every source record and tail vector, and retains the exact caller,
+callee and tail-reference Type identities. The complete maps live inside the
+retained frame Types; Type layouts must remain immutable. Both frame Types must
+already occur in that Module's Type table. This is a constructor for trusted
+loader/C metadata, not a parser for JSON or a serialized Dis64 section.
+
+```c
+static int install_sprint_site(Module *module, Type *callee, Type *caller,
+    unsigned int result_offset, const Native64TailSlot *tail, unsigned int count)
+{
+    Native64SysFrameSpec spec = {0};
+    spec.operation = Native64SysSprint;
+    spec.type = callee;
+    spec.caller_type = caller;
+    spec.result_offset = result_offset;
+    spec.slots = tail;
+    spec.count = count;
+    spec.initial = 16;
+    spec.limit = 4096;
+    return Sys_setframes64(module, &spec, 1);
+}
+```
+
+After success, the source `spec` and vector storage may be retired. The Module
+owns the copied table until `Sys_clearframes64` or ordinary `freemod`. The latter
+invokes the trusted teardown callback before releasing its Type table. The
+private pointer/callback fields begin as nil in ordinary Module constructors;
+they are never supplied by file bytes or flags. A failed installation publishes
+nothing and releases all partial vectors and Type reservations, including when
+an allocation throws or a duplicate Type would overflow its reference count.
+The table is bounded to 256 sites and 4096 total tail slots.
+
+A trusted VM owner uses `Sys_bindsite64(module, index, prog, pending)` before
+MCALL, then `Sys_callsite64(module, index, prog, active)` inside the native
+callback. These functions derive requests from the owned record instead of
+borrowing the compiler's temporary vector. Before binding, the active Modlink
+must belong to that exact Module. After entry, the retained caller Modlink in
+`Frame.mr` must belong to it. The table also records its exact owning Module;
+a shallow copy is not a second owner. The active caller link keeps Module
+lifetime valid during the call. The APIs require VM exclusion and the existing
+no-reentry/immutable-metadata contract.
+
+Retirement and recursive use are refused while an owned call is active. A
+protected error, cancellation or native write failure clears that active state
+before returning, so later retirement is possible. Clearing an idle table
+detaches its fields before freeing native storage and Type owners; clearing it
+again succeeds without releasing anything twice.
+
+The runtime gate now uses owned recipes for normal/150-slot calls, canonical
+value refusal, native write failure, cancellation, changed return addresses and
+epoch invalidation. It overwrites the original source records/vectors, checks
+foreign-caller refusal and retirement from allocating callbacks, injects both
+nil-returning and throwing allocations after partial acquisition, checks Type
+reference overflow, and executes the production `freemod` body. Independent
+removal controls detect lost vector copies, caller-owner checks and retirement.
+The values/decoded operands are still C-supplied; no serialized producer, PC-to-
+site mapping, loader admission, JIT execution or ordinary variadic export is
+created by this storage API.

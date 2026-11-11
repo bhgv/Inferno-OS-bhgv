@@ -538,6 +538,29 @@ Sys_bindframe64(const Native64SysFrameRequest *request, Native64SysFrameOperatio
 	return native64sysframebind(request, operation);
 }
 
+#include "native64-sys-sites.h"
+
+int
+Sys_setframes64(Module *module, const Native64SysFrameSpec *specs, unsigned int count)
+{
+    return native64syssitesinstall(module, specs, count);
+}
+int
+Sys_clearframes64(Module *module)
+{
+    return native64syssitesclear(module);
+}
+int
+Sys_bindsite64(Module *module, unsigned int index, Prog *prog, void *frame)
+{
+    return native64syssitesrun(module, index, prog, frame, 0);
+}
+int
+Sys_callsite64(Module *module, unsigned int index, Prog *prog, void *frame)
+{
+    return native64syssitesrun(module, index, prog, frame, 1);
+}
+
 int
 Sys_sprintframe64(const Native64SysFrameRequest *request)
 {

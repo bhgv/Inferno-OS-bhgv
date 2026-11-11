@@ -3,6 +3,7 @@
 char exNomem[] = "out of memory: main"; // Match the runtime allocation diagnostic from raise.c.
 
 static void *contextblocks[64]; // Real mallocz allocations owned by Type/vector/map/scratch state.
+static int contextsitethrow; // Protected owned-site constructor unwind injection.
 static int contextlive, contextattempt, contextfailure; // Exact C allocation accounting and refusal point.
 static Native64Arguments *observedcontext; // Caller-owned context observed during retirement.
 static int contextfreediagnostic; // Exercise diagnostic preservation during native output retirement.
@@ -21,6 +22,7 @@ mallocz(ulong bytes, int zero)
 	int i;
 
 	contextattempt++;
+	if(contextattempt == contextsitethrow) error("owned site allocation throw");
 	if(contextattempt == contextfailure)
 		return nil;
 	if(mutate_type && contextattempt == 4)

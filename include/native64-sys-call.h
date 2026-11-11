@@ -50,6 +50,20 @@ typedef enum Native64SysFrameOperation {
 } Native64SysFrameOperation;
 /* Bind the caller's full pointer before MCALL; no formatting, allocation or opcode admission. */
 int Sys_bindframe64(const Native64SysFrameRequest*, Native64SysFrameOperation);
+/* Trusted loader/C recipe, owned by the module after successful installation. */
+typedef struct Native64SysFrameSpec Native64SysFrameSpec;
+struct Native64SysFrameSpec {
+    Native64SysFrameOperation operation;
+    Type *type, *caller_type; // Exact identities present in the owning Module's Type table.
+    unsigned int result_offset;
+    const Native64TailSlot *slots;
+    unsigned int count;
+    int initial, limit;
+};
+int Sys_setframes64(Module*, const Native64SysFrameSpec*, unsigned int);
+int Sys_clearframes64(Module*); // Refuses retirement while an owned call is active.
+int Sys_bindsite64(Module*, unsigned int, Prog*, void*);
+int Sys_callsite64(Module*, unsigned int, Prog*, void*);
 int Sys_sprintframe64(const Native64SysFrameRequest*);
 int Sys_aprintframe64(const Native64SysFrameRequest*);
 int Sys_printframe64(const Native64SysFrameRequest*);

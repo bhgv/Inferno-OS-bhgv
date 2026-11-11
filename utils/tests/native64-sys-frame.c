@@ -1,5 +1,6 @@
 /* Real MFRAME/MCALL owners, with bounded current-extent and scheduler transports. */
 #include "native64-sys-frame.h"
+#include "native64-sys-sites.h"
 #include "callsites-native64.h"
 char exModule[] = "module";
 REG R;
@@ -13,6 +14,28 @@ VM_FRAME_IMPLEMENTATION
 static Native64SysFrameRequest vmrequest;
 static int vmoperation, vmmode, vmstatus, vmcalls;
 static Type *vmtype;
+static int vmownedlive;
+static Module *vmowner;
+static int vmsiteowned(int mode)
+{
+    return mode == 0 || mode == 4 || mode == 10 || mode == 14 || mode == 21 || mode == 22 || mode == 23;
+}
+
+/* A separately installed table is valid metadata but cannot operate on another caller's frames. */
+static int vmsitesforeign(Module *module, Prog *prog, void *frame, int entered)
+{
+    Module foreign = *module;
+    Native64SysSites *table = module->native64sysframes;
+    int status, before;
+    foreign.native64sysframes = nil; foreign.native64sysframesfree = nil;
+    check(Sys_setframes64(&foreign, &table->sites[0].spec, 1));
+    before = contextattempt;
+    status = entered ? Sys_callsite64(&foreign, 0, prog, frame) : Sys_bindsite64(&foreign, 0, prog, frame);
+    check(contextattempt == before);
+    check(Sys_clearframes64(&foreign));
+    return status;
+}
+
 static void vmcheck(int ok, int line)
 {
     if(!ok) fprintf(stderr, "VM frame predicate: operation=%d mode=%d line=%d status=%d\n", vmoperation, vmmode, line, vmstatus);
@@ -60,7 +83,11 @@ static void vmcallback(void *frame)
     if(vmmode == 27) vmrequest.frame = (void*)1;
     if(vmmode == 31) ((Frame*)frame)->fp = R.EX;
     vmcalls++;
-    switch(vmoperation) {
+    if(vmsiteowned(vmmode)) {
+        if(vmmode == 0 || vmmode == 14) check(!vmsitesforeign(vmowner, &process, frame, 1));
+        vmstatus = Sys_callsite64(vmowner, 0, &process, frame);
+    }
+    else switch(vmoperation) {
     case 0: vmstatus = Sys_sprintframe64(&vmrequest); break;
     case 1: vmstatus = Sys_aprintframe64(&vmrequest); break;
     case 2: vmstatus = Sys_printframe64(&vmrequest); break;
@@ -130,6 +157,78 @@ static void vmbindrefusals(Native64SysFrameRequest *request, int operation)
     }
 }
 
+static void vmsitesmonitor(int freeing, void *pointer, ulong bytes)
+{
+    contextmonitor(freeing, pointer, bytes);
+    if(vmownedlive && !freeing) check(!Sys_clearframes64(vmowner));
+}
+
+static void vmsitesinstall(Module *module, Native64SysFrameRequest *request, int operation)
+{
+    Native64SysFrameSpec spec = {0}, bad, pair[2];
+    Module *detached;
+    int i, before, owners, callerrefs = request->caller_type->ref, calleerefs = request->type->ref;
+    int stringrefs = Tstring.ref;
+    spec.operation = operation; spec.type = request->type; spec.caller_type = request->caller_type;
+    spec.result_offset = request->result_offset; spec.slots = request->slots; spec.count = request->count;
+    spec.initial = request->initial; spec.limit = request->limit;
+    before = contextattempt; owners = contextlive;
+    for(i=0; i<8; i++) {
+        bad = spec;
+        if(i == 0) bad.operation = (Native64SysFrameOperation)4;
+        if(i == 1) bad.type = &Tbyte;
+        if(i == 2) bad.caller_type = &Tbyte;
+        if(i == 3) bad.result_offset = 32;
+        if(i == 4) bad.result_offset++;
+        if(i == 5) bad.count = 4097;
+        if(i == 6) bad.slots = nil;
+        check(!Sys_setframes64(module, &bad, i == 7 ? 0 : 1));
+        check(contextattempt == before && contextlive == owners && module->native64sysframes == nil);
+    }
+    for(i=1; i<=2; i++) {
+        contextfailure = contextattempt+i;
+        check(!Sys_setframes64(module, &spec, 1));
+        check(contextlive == owners && module->native64sysframes == nil && module->native64sysframesfree == nil);
+        check(request->caller_type->ref == callerrefs && request->type->ref == calleerefs && Tstring.ref == stringrefs);
+    }
+    contextfailure = 0;
+    pair[0] = pair[1] = spec;
+    pair[1].count = 4097;
+    before = contextattempt;
+    check(!Sys_setframes64(module, pair, 2) && contextattempt == before);
+    pair[1] = spec;
+    contextfailure = contextattempt+3; // Fail after the first record has acquired its Type owners.
+    check(!Sys_setframes64(module, pair, 2));
+    contextfailure = 0;
+    contextsitethrow = contextattempt+3;
+    check(!Sys_setframes64(module, pair, 2));
+    contextsitethrow = 0;
+    check(errdepth == 0);
+    check(contextlive == owners && module->native64sysframes == nil);
+    check(request->caller_type->ref == callerrefs && request->type->ref == calleerefs && Tstring.ref == stringrefs);
+    Tstring.ref = 0x7ffffffe;
+    check(!Sys_setframes64(module, pair, 2)); // Duplicate reference reservations must not overflow.
+    Tstring.ref = stringrefs;
+    check(contextlive == owners && module->native64sysframes == nil);
+    check(request->caller_type->ref == callerrefs && request->type->ref == calleerefs);
+    Tstring.ref = 0x7fffffff;
+    check(!Sys_setframes64(module, &spec, 1));
+    Tstring.ref = stringrefs;
+    check(contextlive == owners && module->native64sysframes == nil);
+    check(request->caller_type->ref == callerrefs && request->type->ref == calleerefs);
+    detached = mallocz(sizeof(Module), 1); check(detached != nil);
+    detached->ref = 1; detached->ntype = 2;
+    detached->type = mallocz(2*sizeof(Type*), 0); check(detached->type != nil);
+    detached->type[0] = request->caller_type; detached->type[1] = request->type;
+    request->caller_type->ref++; request->type->ref++;
+    check(Sys_setframes64(detached, &spec, 1));
+    native64_owned_freemod(detached); // Verbatim production metadata teardown, including its callback.
+    check(contextlive == owners && request->caller_type->ref == callerrefs && request->type->ref == calleerefs && Tstring.ref == stringrefs);
+    check(Sys_setframes64(module, &spec, 1));
+    check(!Sys_setframes64(module, &spec, 1)); // No overwriting a live metadata owner.
+    memset(&spec, 0xa5, sizeof(spec)); // Installation must not borrow this source record.
+}
+
 static void vmcase(int phase, int operation, int mode, int useframe)
 {
     const LimboNative64Prefix *prefix;
@@ -146,18 +245,18 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     uvlong bits;
     WORD ordinal = 0;
     Inst next = {0};
-    Type *table[1], **savedtypes;
+    Type *table[2], **savedtypes;
     Native64TailSlot *source;
     const uchar *sourcemap;
     UWORD sourcesignature;
-    WORD typeindex = 0;
+    WORD typeindex = 1;
     int savedcount;
     unsigned int count = mode == 14 ? 150 : 2, i, offset;
     int baseline, before, expected, completed;
 
     contextstart(phase, Pready);
     process.pid = 99;
-    nativewriteobserver = nil; vmhook = 0;
+    nativewriteobserver = nil; vmhook = 0; vmownedlive = 0; vmowner = rootlink->m; vmowner->ref = 1;
     vmoperation = operation; vmmode = mode; vmstatus = -1; vmcalls = 0;
     writemode = mode == 10 ? 4 : mode == 17 ? 15 : 0;
     writefprint = operation == 3;
@@ -193,7 +292,7 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     R = process.R; R.FP = (uchar*)caller; R.TS = stackspace.bytes+sizeof(stackspace.bytes); R.PC = &next;
     R.s = &rootlink; R.m = &ordinal; R.d = &pending;
     savedtypes = rootlink->m->type; savedcount = rootlink->m->ntype;
-    table[0] = callee_type; rootlink->m->type = table; rootlink->m->ntype = 1;
+    table[0] = caller_type; table[1] = callee_type; rootlink->m->type = table; rootlink->m->ntype = 2;
     if(useframe) R.s = &typeindex;
     beforefp = R.FP;
     check(kprotect(vmframe, useframe ? &typeindex : nil) && pending != nil && pending->t == callee_type);
@@ -217,7 +316,13 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     vmbindrefusals(&vmrequest, operation);
     caller->regs.t = nil; // Binding also supports the root-extent Type fallback.
     rootlink->prog = &next; // A bytecode caller may bind before entering the native target.
-    check(Sys_bindframe64(&vmrequest, (Native64SysFrameOperation)operation));
+    if(vmsiteowned(mode)) {
+        vmsitesinstall(vmowner, &vmrequest, operation);
+        memset(slots, 0xa5, count*sizeof(*slots)); // All later metadata comes from the module-owned copy.
+        check(!vmsitesforeign(vmowner, &process, pending, 0));
+        check(Sys_bindsite64(vmowner, 0, &process, pending));
+        check(!Sys_bindsite64(vmowner, 1, &process, pending));
+    } else check(Sys_bindframe64(&vmrequest, (Native64SysFrameOperation)operation));
     rootlink->prog = nil; caller->regs.t = caller_type;
     memmove(&bad, (uchar*)pending+32, sizeof(bad));
     check(bad == result); // Also proves all eight bytes replace the nonzero upper guard.
@@ -251,7 +356,9 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     baseline = contextlive; before = contextattempt;
     R.s = &pending; R.m = &ordinal; R.d = &rootlink;
     allocationcollections = 1;
+    if(mode == 0 || mode == 14) { vmownedlive = 1; heapmonitor = vmsitesmonitor; }
     completed = kprotect(vmcall, nil);
+    vmownedlive = 0;
     check(completed == (mode != 21));
     if(mode == 21) { check(strcmp(up->env->errstr, "VM frame cancelled") == 0); process.kill = nil; }
     nativewriteobserver = nil;
@@ -279,6 +386,7 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     ptrdel(D2H(pattern)); destroy(pattern);
     freeptrs(caller, caller_type); initmem(caller_type, caller);
     process.R = R; process.R.EX = process.R.SP = process.R.FP = nil;
+    check(Sys_clearframes64(vmowner) && Sys_clearframes64(vmowner));
     rootlink->m->type = savedtypes; rootlink->m->ntype = savedcount;
     rootlink->nlinks = 0; rootlink->links[0].frame = nil; rootlink->links[0].u.runt = nil;
     memset(&R, 0, sizeof(R));
@@ -294,6 +402,6 @@ int main(int argc, char **argv)
     for(useframe=0; useframe<2; useframe++) for(phase=0; phase<3; phase++) for(operation=0; operation<4; operation++) for(mode=0; mode<32; mode++) {
         vmcase(phase, operation, mode, useframe); cases++;
     }
-    printf("PASS typed Sys VM frames: %d real FRAME/MFRAME/MCALL/GC cases with source-derived tail plans, four gateways, checked eight-byte binding/32 refusals, 150-slot frames, refusal and result/cleanup checks\n", cases);
+    printf("PASS typed Sys VM frames: %d real FRAME/MFRAME/MCALL/GC cases with source-derived tail plans, four gateways, owned site copies/rollback/busy retirement, checked eight-byte binding/32 refusals, 150-slot frames, refusal and result/cleanup checks\n", cases);
     return 0;
 }

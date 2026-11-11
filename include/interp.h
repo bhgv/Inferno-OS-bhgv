@@ -338,6 +338,8 @@ struct Module
 	Jit*	jit;		/* optional leaf JIT, separate from native-PC compiled */
 	int	(*cstep)(void);	/* static Dis-to-C step; retains original Inst PCs */
 	int	mptype;		// Native MP descriptor ordinal; zero preserves ordinary Dis layout.
+	void* native64sysframes; // Private owned call-site table; never decoded from file flags.
+	void (*native64sysframesfree)(Module*); // Trusted nonthrowing teardown before Type retirement.
 };
 
 struct Modl

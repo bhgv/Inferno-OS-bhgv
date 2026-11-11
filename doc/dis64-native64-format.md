@@ -199,3 +199,13 @@ all late resolution checks. Runtime tests use this production operation rather
 than a manual return-pointer store, with 32 refusal cases per VM transaction
 and pointer-width/pending-state removal controls. This adds no file metadata,
 new LEA semantics, signature IDs or ordinary variadic exports.
+
+
+Trusted C call-site recipes can now be owned by a Module. Installation copies
+ordered tail metadata and retains exact frame/reference Types, then publishes
+the table atomically. Binding and entered dispatch require the actual caller's
+Module identity, and active calls block explicit table retirement. Ordinary
+`freemod` retires this metadata before its Type table. The private fields/callback
+are never parsed from file flags. There is still no agreed serialized site/PC
+record or general variadic file admission; compiler diagnostic plans cannot be
+installed as executable bytecode merely by parsing their JSON.

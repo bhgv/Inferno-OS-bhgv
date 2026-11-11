@@ -982,6 +982,8 @@ freemod(Module *m)
 	Except *e;
 	Import *i1, **i2;
 
+	if(m->native64sysframesfree != nil)
+		m->native64sysframesfree(m);
 	if(m->type != nil) {
 		for(i = 0; i < m->ntype; i++)
 			freetype(m->type[i]);
