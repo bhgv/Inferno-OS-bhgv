@@ -130,3 +130,28 @@ records `sys_fixed_native64_selected: true`, alongside Draw/Tk selection and
 aprint entries. Their typed C gateways are separate from the unimplemented
 ordinary variadic frame-tail/compiler contract. No shared Dis64 tags or general
 managed file-call admission are added by C registration.
+
+## ARM64/Bionic managed execution gate
+
+The Android workflow also builds and executes the bounded managed String/List
+runtime fixture against the NDK's real Bionic headers and static libc. It runs
+under `qemu-aarch64`; a GNU ARM64 sysroot is not used for this gate:
+
+```sh
+NATIVE64_RUNNER=qemu-aarch64 python3 utils/tests/dis64-numeric-gc.py \
+  --managed --limbo /path/to/host-tools/limbo \
+  --android-ndk /path/to/android-ndk-r27c
+```
+
+The explicit option selects ARM64 NDK clang, Android port headers and a static
+Bionic executable. Compiler temporaries remain within the fixture's writable
+work directory. The fixture honors Inferno's private Android `free_` name at its
+tracked allocation boundary and uses the Android header's inline `getcallerpc`.
+The Linux build and allocation hooks retain their existing selection.
+
+This gate executes the real managed loader, collector, bytecode owners and JIT,
+including 96 nil/alias/file-reload/stack-growth cases and 324 native completions.
+It checks exact active JIT mapping bounds and complete root/module retirement.
+The workflow preserves `bionic-managed.log` with the native build artifacts.
+QEMU/Bionic execution is separate from AWM's remaining general compiler and
+variadic ABI work, and from GUI/input/storage testing on an Android device.

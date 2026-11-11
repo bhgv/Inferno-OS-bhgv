@@ -8,6 +8,9 @@ on:
       - 'utils/tests/native64-tk-register.*'
       - 'utils/tests/native64-draw-register.*'
       - 'utils/tests/native64-sys-fixed.*'
+      - 'utils/tests/dis64-numeric-*'
+      - 'utils/tests/dis64-managed-*'
+      - 'libinterp/tests/dis64-runtime.*'
       - 'module/draw-native64.m'
       - 'module/gui-native64.m'
       - 'module/tk-native64.m'
@@ -49,6 +52,10 @@ jobs:
           echo "59c2f6dc96743b5daf5d1626684640b20a6bd2b1d85b13156b90333741bad5cc  $RUNNER_TEMP/ndk.zip" | sha256sum -c -
           unzip -q "$RUNNER_TEMP/ndk.zip" -d "$RUNNER_TEMP"
           MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/host-tools" sh makemk.sh
+          if ! command -v qemu-aarch64 >/dev/null 2>&1; then
+            sudo apt-get -o Acquire::Retries=3 update
+            sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends qemu-user
+          fi
       - name: Check real Android objects and GUI ownership
         run: |
           python3 utils/tests/host64-android.py --ndk "$RUNNER_TEMP/android-ndk-r27c"
@@ -60,6 +67,13 @@ jobs:
           python3 android-app/tests/framebuffer-startup.py
           python3 android-app/tests/framebuffer-pixels.py
           python3 android-app/tests/cmake-abis.py
+      - name: Execute ARM64 Bionic managed C and JIT with collection
+        run: |
+          set -o pipefail
+          NATIVE64_RUNNER=qemu-aarch64 python3 utils/tests/dis64-numeric-gc.py \
+            --managed --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            --android-ndk "$RUNNER_TEMP/android-ndk-r27c" 2>&1 \
+            | tee "$RUNNER_TEMP/bionic-managed.log"
       - name: Compile full Draw/Tk core and link ordinary NativeActivity
         run: |
           python3 utils/tests/android-gui-build.py --ndk "$RUNNER_TEMP/android-ndk-r27c" \
@@ -75,6 +89,7 @@ jobs:
         with:
           name: Android-arm64-GUI-native-link-not-AWM-APK
           path: |
+            ${{ runner.temp }}/bionic-managed.log
             ${{ runner.temp }}/android-gui/logs/
             ${{ runner.temp }}/android-gui/result.json
             ${{ runner.temp }}/android-gui/native/libinferno_os_app.so

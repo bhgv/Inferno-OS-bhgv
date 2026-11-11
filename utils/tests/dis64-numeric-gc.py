@@ -23,7 +23,8 @@ def unit(calls=False, managed=False):
     collector = '\n'.join(line for line in collector.splitlines() if not line.startswith('#include'))
     start = source.index('typedef struct Ptrhash')
     end = source.index('/* Native staging state is deliberately distinct', start)
-    source = source[:start]+'''#define malloc(n) trackedallocate(n,0) // Track external root metadata.
+    source = source[:start]+'''#undef malloc // Android headers may name the native allocator privately.
+#define malloc(n) trackedallocate(n,0) // Track external root metadata.
 '''+collector+'\n#undef malloc\n'+source[end:]
     fixture = (ROOT/'utils/tests/dis64-numeric-gc.c').read_text()
     if managed:
@@ -316,9 +317,12 @@ def main():
     parser.add_argument('--calls', action='store_true')
     parser.add_argument('--managed', action='store_true')
     parser.add_argument('--limbo', type=Path)
+    parser.add_argument('--android-ndk', type=Path, help='build the ARM64/Bionic fixture with NDK clang and Android headers')
     args = parser.parse_args()
     if sum(bool(option) for option in (args.provider, args.control, args.calls, args.managed)) > 1:
         parser.error('select one execution mode')
+    if args.android_ndk and not args.managed:
+        parser.error('--android-ndk currently requires --managed')
     if args.managed and args.limbo is None:
         parser.error('--managed requires --limbo to generate the String frames')
     fixtures = runpy.run_path(str(ROOT/'utils/tests/dis64-numeric-module.py'))
@@ -330,9 +334,17 @@ def main():
         code=words(4)+instruction*3+fixtures['EXIT'],
     )
     raw = fixtures['IMAGE'](fixtures['SECTIONS'](**common))
-    arch = os.environ.get('NATIVE64_ARCH', 'amd64')
-    flags = shlex.split(os.environ.get('NATIVE64_CFLAGS', '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
-    command = shlex.split(os.environ.get('CC', 'cc'))+flags+['-DDIS_WORD32=1', '-DDIS64_PILOT_LOADER=1']
+    arch = 'arm64' if args.android_ndk else os.environ.get('NATIVE64_ARCH', 'amd64')
+    default_flags = '-O3 -g -DNDEBUG -fno-strict-aliasing'+(' -static' if args.android_ndk else ' -fsanitize=undefined -fno-sanitize-recover=all')
+    flags = shlex.split(os.environ.get('NATIVE64_CFLAGS', default_flags))
+    if args.android_ndk:
+        compiler = args.android_ndk.resolve()/'toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang'
+        if not compiler.is_file(): parser.error('Missing NDK ARM64 clang: '+str(compiler))
+        command = [str(compiler)]+flags
+        command += ['-I'+str(ROOT/p) for p in ('Android/arm64/include', 'Android/arm/include')]
+    else:
+        command = shlex.split(os.environ.get('CC', 'cc'))+flags
+    command += ['-DDIS_WORD32=1', '-DDIS64_PILOT_LOADER=1']
     if args.calls:
         command += ['-DDIS_NATIVE64_BOOT_SYS_IO=1']
     if args.managed:
@@ -369,7 +381,7 @@ def main():
         (work/'test.c').write_text(unit(args.calls, args.managed))
         (work/'image').write_bytes(raw)
         binary = work/'test'
-        subprocess.run(command+[str(work/'test.c'), str(ROOT/'libinterp/dec.c'), '-Wl,--wrap=free', '-lm', '-o', str(binary)], check=True)
+        subprocess.run(command+[str(work/'test.c'), str(ROOT/'libinterp/dec.c'), '-Wl,--wrap=free', '-lm', '-o', str(binary)], check=True, env=dict(os.environ, TMPDIR=str(work)))
         runner = shlex.split(os.environ.get('NATIVE64_RUNNER', ''))
         if args.managed:
             subprocess.run(runner+[str(binary)], check=True, timeout=60)
