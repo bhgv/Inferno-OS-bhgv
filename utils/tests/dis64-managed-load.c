@@ -255,6 +255,94 @@ managedcachecontrol(void)
 	printf("PASS real managed ILOAD/readmod/linkmod: %d cases, %d LOADs, %d native completions; cache identity/JIT reuse, changed files and I/O/signing refusal\n", cachecases, cacheloads, cachefast);
 }
 
+/* Execute compiler-produced nil writes with real roots, collection and provider RX code. */
+static void
+managednilcontrol(void)
+{
+	const ManagedNilCase *test;
+	ManagedImageCase namespace = {0};
+	Prog process;
+	Modlink *caller, *loaded;
+	Type *frame;
+	Frame *entry;
+	String *text;
+	void *argument, *result;
+	Inst *pc;
+	int i, jit, grow, step, success, completed, before, stringresult, cases = 0, fast = 0;
+
+	for(i=0; i<nelem(managednils); i++)
+		for(jit=0; jit<2; jit++)
+			for(grow=0; grow<2; grow++){
+				test = &managednils[i];
+				numericdrain(); require(modules == nil);
+				namespace = (ManagedImageCase){test->direction, 1, 1, test->consumer, test->consumerbytes,
+					test->provider, test->providerbytes};
+				managednamespace = &namespace;
+				cacheopens = cachecloses = cachereads = cacheparses = cachechecks = 0;
+				cachereleases = cacheacquires = cachefd = cacheoffset = cachekind = 0;
+				dis64bootmanaged = 1;
+				dis64bootprovider = "/managed-provider.dis64";
+				cflag = jit;
+				caller = prepare64managedtrial("nil-caller", test->consumer, test->consumerbytes,
+					dis64bootprovider, test->provider, test->providerbytes, jit);
+				require(caller != nil);
+				if(jit && !test->filemode){
+					memmove(&loaded, caller->MP, sizeof(loaded));
+					require(loaded != nil && loaded != H && loaded->m->jit != nil);
+					rxbegin = (uintptr)loaded->m->jit->code;
+					rxend = rxbegin+loaded->m->jit->size;
+				}
+				frame = caller->m->entryt;
+				caller->m->ss = grow ? 0 : 4096;
+				memset(&process, 0, sizeof(process));
+				process.exval = H; process.state = Pready; process.quanta = 1;
+				process.R.M = caller; process.R.PC = caller->prog;
+				entry = mallocz(frame->size, 1); require(entry != nil); entry->t = frame;
+				R.s = &entry; newstack(&process); free(entry); initmem(frame, process.R.FP);
+				text = managedstring();
+				argument = test->direction ? (void*)managedlist(text) : text;
+				managedput(process.R.FP+64, argument);
+				ptrdel(D2H(caller)); managedprocess = &process;
+				before = rxcompleted; completed = 0; success = 1;
+				for(step=0; step<1024; step++){
+					pc = process.R.PC;
+					if(process.R.M == caller && pc == caller->prog+caller->m->nprog-1) break;
+					success = kprotect(execute, &process);
+					if(!success) break;
+					if(jit && pc->op == ILOAD){
+						memmove(&loaded, caller->MP, sizeof(loaded));
+						require(loaded != nil && loaded != H && loaded->m->jit != nil);
+						rxbegin = (uintptr)loaded->m->jit->code;
+						rxend = rxbegin+loaded->m->jit->size;
+					}
+					if(pc->op == IRET) completed++;
+					numericcollect(&process);
+				}
+				require(step < 1024 && cachefd == 0 && cachereleases == cacheacquires && expectedlinkerrors == 0);
+				if(test->failure){
+					if(success || completed != test->failure-1 || strcmp(message, exNilref) != 0)
+						fprintf(stderr, "managed nil: case=%d jit=%d grow=%d step=%d completed=%d expected=%d success=%d message=%s\n", i, jit, grow, step, completed, test->failure-1, success, message);
+					require(!success && completed == test->failure-1 && strcmp(message, exNilref) == 0);
+				}else{
+					require(success && completed == test->calls);
+					memmove(&result, process.R.FP+72, sizeof(result));
+					stringresult = (test->direction+test->calls-1)%2;
+					require(stringresult ? result == H : result != H && managedhead(result) == H);
+					require(!kprotect(execute, &process) && message[0] == 0);
+				}
+				fast += rxcompleted-before;
+				destroystack(&R); numericdrain();
+				require(modules == nil && Tstring.ref == 1 && Tlist.ref == 1 && Tptr.ref == 1 && Tmodlink.ref == 1);
+				dis64bootmanaged = 0; dis64bootprovider = nil; cflag = 0;
+				cases++;
+			}
+	managednamespace = nil;
+#if defined(__x86_64__) || defined(__aarch64__) || (defined(__riscv) && __riscv_xlen == 64)
+	require(fast == 324);
+#endif
+	printf("PASS compiled managed nil: %d C/JIT/GC/stack cases, %d native completions; nil results and HEAD unwind, file reloads and root retirement\n", cases, fast);
+}
+
 /* Check every interface record/body, then execute compiled two-import chains with real GC. */
 static void
 managedgroupcontrol(void)
@@ -346,6 +434,7 @@ managedgroupcontrol(void)
 #if defined(__x86_64__) || defined(__aarch64__) || (defined(__riscv) && __riscv_xlen == 64)
 	require(cachefast-fastbefore == 536);
 #endif
+	managednilcontrol();
 	printf("PASS dual managed imports/exports: %d wire pairs, %d C/JIT/GC cases, %d LOADs, %d native completions; typed result transfer and pointer identity\n",
 		(int)nelem(managedgroups), cachecases-casesbefore, cacheloads-loadsbefore, cachefast-fastbefore);
 }

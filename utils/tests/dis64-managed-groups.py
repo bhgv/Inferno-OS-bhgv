@@ -7,7 +7,7 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def sources(initial=0, calls=4, reloads=(), reverse_provider=False, aliases=False, provider_style=0, cleanup=False, module_alias=False):
+def sources(initial=0, calls=4, reloads=(), reverse_provider=False, aliases=False, provider_style=0, cleanup=False, module_alias=False, nil_calls=(), nil_style=0):
     reloads = () if reloads is False else reloads
     argument = 'list of string' if initial else 'string'
     bodies = (
@@ -44,6 +44,26 @@ def sources(initial=0, calls=4, reloads=(), reverse_provider=False, aliases=Fals
             body.append(f'    other {":=" if i == 0 else "="} lib->{"quoted" if initial else "unquoted"}(value);')
         else:
             body.append(f'    value = lib->{"unquoted" if initial else "quoted"}(other);')
+    if nil_calls:
+        expanded = []
+        for line in body:
+            if '->' in line and ('result' in line or 'other' in line or 'value =' in line):
+                # Every source variant emits exactly one method call per result.
+                ordinal = sum('->' in item and '(' in item for item in expanded)
+                if ordinal in nil_calls:
+                    argument_text = line[line.index('(')+1:line.index(')')]
+                    if nil_style:
+                        kind = 'list of string' if '->quoted(' in line else 'string'
+                        expanded.append(f'    empty{ordinal}: {kind} = nil;')
+                        if nil_style == 2:
+                            expanded.append(f'    nilalias{ordinal} := empty{ordinal};')
+                            expanded.append(f'    empty{ordinal} = nil;')
+                        replacement = f'nilalias{ordinal}' if nil_style == 2 else f'empty{ordinal}'
+                    else:
+                        replacement = 'nil'
+                    line = line.replace('('+argument_text+')', '('+replacement+')')
+            expanded.append(line)
+        body = expanded
     if module_alias:
         body = [line.replace('lib->', 'active->') for line in body]
         expanded = []
@@ -59,7 +79,7 @@ def sources(initial=0, calls=4, reloads=(), reverse_provider=False, aliases=Fals
     return caller, provider
 
 
-def cases(raw, path=None):
+def cases(raw, path=None, include_nil=False):
     word, desc, ins = raw['W'], raw['D'], raw['I']
     base = raw['RAW']['RAW']
     binding = base['binding']
@@ -73,13 +93,13 @@ def cases(raw, path=None):
 
     def consumer(sequence, order=(0, 1), *, transfers=None, reloads=(), frame_map=b'\x00\xc0',
                  mp_map=None, duplicate=False, wrong_call=False, transfer_source=72,
-                 transfer_target=64, double_transfer=False, cleanup=True, signatures=None):
+                 transfer_target=64, double_transfer=False, cleanup=True, signatures=None, nil_calls=(), nil_source=8, nil_target=64, double_nil=False):
         records = [binding(module=2, symbol=1 if direction == 0 else 4,
                            sig=(signatures or {}).get(direction, sig[direction])) for direction in order]
         if duplicate: records[1] = records[0]
         code, count = b'', 1
         for i, direction in enumerate(sequence):
-            if i and (transfers is None or i in transfers):
+            if i and i not in nil_calls and (transfers is None or i in transfers):
                 move = ins('IMOVP', 9, source=transfer_source, destination=transfer_target)
                 code += move*(2 if double_transfer else 1)
                 count += 2 if double_transfer else 1
@@ -89,13 +109,16 @@ def cases(raw, path=None):
             if path is not None and (i == 0 or reloads is True or i in reloads):
                 code += ins('ILOAD', 64, source=16, middle=0, destination=0)
                 count += 1
+            if i in nil_calls:
+                code += ins('IMOVP', 1, source=nil_source, destination=nil_target)*(2 if double_nil else 1)
+                count += 2 if double_nil else 1
             ordinal = order.index(direction) if direction in order else 1
             code += (ins('IMFRAME', 65, source=0, middle=ordinal, destination=40)
                      +indirect('IMOVP', 64, 40, 64)+indirect('ILEA', 72, 40, 32)
                      +ins('IMCALL', 72, source=40, middle=1-ordinal if wrong_call else ordinal, destination=0))
             count += 4
-        mp_bytes = 24 if path is not None else 8 if len(sequence) == 1 else 16
-        mp_map = mp_map if mp_map is not None else b'\xe0' if path is not None else b'\x80' if len(sequence) == 1 else b'\xc0'
+        mp_bytes = 24 if path is not None else 8 if len(sequence) == 1 and not nil_calls else 16
+        mp_map = mp_map if mp_map is not None else b'\xe0' if path is not None else b'\x80' if len(sequence) == 1 and not nil_calls else b'\xc0'
         return build(('caller', 'unquoted', 'String', path or 'unused', 'quoted'), name=0,
                      databytes=mp_bytes, code=word(count)+code+raw['EXIT'],
                      types=[desc(80, 8, frame_map), desc(mp_bytes, 8, mp_map)], imports=records)
@@ -131,7 +154,22 @@ def cases(raw, path=None):
         rows.append((initial, 1, consumer((initial,)*4, (initial,), transfers=()), good))
         rows.append((initial, 1, consumer((initial,)*4, (initial,), transfers=()), provider((initial,), (initial,))))
         rows.append((initial, 1, consumer((initial,initial,1-initial,1-initial), transfers=(2,)), good))
+        if include_nil:
+            for resets in ((0,), (1,), (2,), (0, 2), (1, 3)):
+                for order in ((0, 1), (1, 0)):
+                    rows.append((initial, 1, consumer(sequence, order, nil_calls=resets, reloads=path is not None), good))
+            rows.append((initial, 1, consumer((initial,), (initial,), nil_calls=(0,)), good))
+            for resets in ((0, 2, 16), (1, 3, 17)):
+                for order in ((0, 1), (1, 0)):
+                    rows.append((initial, 1, consumer(tuple((initial+i)%2 for i in range(32)), order,
+                                                    nil_calls=resets, reloads=path is not None), good))
         bad_consumers = (
+            consumer(sequence, nil_calls=(0,), nil_source=0),
+            consumer(sequence, nil_calls=(0,), nil_source=16),
+            consumer(sequence, nil_calls=(1,), nil_target=65),
+            consumer(sequence, nil_calls=(1,), nil_target=72),
+            consumer(sequence, nil_calls=(0,), double_nil=True),
+            consumer(sequence, nil_calls=(0,), mp_map=b'\x80'),
             consumer(sequence, transfers=()), consumer(sequence, frame_map=b'\x00\x80'),
             consumer(sequence, mp_map=b'\x00'), consumer(sequence, duplicate=True),
             consumer(sequence, wrong_call=True), consumer(sequence, transfer_source=64),
@@ -215,8 +253,8 @@ def check_provider_locals(limbo, work):
 
 
 def check_caller_cleanup(limbo, work):
-    """Discarding a source name preserves its live copy, never resurrects nil."""
-    positives = negatives = 0
+    """Discarding a source name preserves its live copy and its emitted root lifetime."""
+    positives = 0
     for initial in (0, 1):
         for calls in (4, 32):
             for file_mode in (False, True):
@@ -235,20 +273,7 @@ def check_caller_cleanup(limbo, work):
                     if reference is None: reference = image
                     if image != reference: raise RuntimeError('discarded local changed the complete caller image')
                     positives += 1
-        text, _ = sources(initial, 4, aliases=True, cleanup=True)
-        for old, new in (('(alias0)', '(value)'), ('(alias1)', '(result0)'),
-                         ('alias2 := result1', 'alias2 := alias0')):
-            source = work/'caller-cleared-value.b'; source.write_text(text.replace(old, new))
-            for flag in ('-64m', '-64l'):
-                output = work/'caller-cleared-value.dis64'
-                subprocess.run([str(limbo.resolve()), '-I', str(ROOT/'module'), '-o', str(output), str(source)], check=True, timeout=60)
-                output.unlink()
-                result = subprocess.run([str(limbo.resolve()), flag, '-I', str(ROOT/'module'),
-                                         '-o', str(output), str(source)], capture_output=True, text=True, timeout=60)
-                if result.returncode != 1 or output.exists() or 'Dis64 managed trial:' not in result.stdout+result.stderr:
-                    raise RuntimeError('cleared caller value bypassed refusal: '+result.stdout+result.stderr)
-                negatives += 1
-    print(f'PASS managed caller cleanup: {positives} identical images, {negatives} cleared-value refusals')
+    print(f'PASS managed caller cleanup: {positives} identical images')
 
 
 def check_module_aliases(limbo, work):
@@ -285,12 +310,68 @@ def check_module_aliases(limbo, work):
     print(f'PASS managed module aliases: {positives} identical images, {negatives} stale/cleared-module refusals')
 
 
+def check_nil_refusals(limbo, work):
+    """Writing H replaces the current root; stale aliases cannot recover its old owner."""
+    refusals = 0
+    for initial in (0, 1):
+        text, _ = sources(initial, 6, aliases=True, nil_calls=(2,))
+        for replacement in ('alias0', 'result1'):
+            source = work/'nil-stale-owner.b'
+            source.write_text(text.replace('alias4 := result3', 'alias4 := '+replacement))
+            for flag in ('-64m', '-64l'):
+                output = source.with_suffix('.dis64')
+                subprocess.run([str(limbo.resolve()), '-I', str(ROOT/'module'), '-o', str(output), str(source)],
+                               check=True, timeout=60)
+                output.unlink()
+                result = subprocess.run([str(limbo.resolve()), flag, '-I', str(ROOT/'module'), '-o', str(output), str(source)],
+                                        capture_output=True, text=True, timeout=60)
+                if result.returncode != 1 or output.exists() or 'Dis64 managed trial:' not in result.stdout+result.stderr:
+                    raise RuntimeError('nil write resurrected a stale root: '+result.stdout+result.stderr)
+                refusals += 1
+    print(f'PASS managed nil ownership: {refusals} stale-root compiler refusals')
+
+
+def nil_rows(limbo, work, file_path='/managed-provider.dis64'):
+    """Compile nil at first/later calls, aliases and reloads; compare all CODE bytes independently."""
+    raw = runpy.run_path(str(ROOT/'utils/tests/dis64-numeric-module.py'))
+    code_bytes = runpy.run_path(str(ROOT/'utils/tests/dis64-pair-boot.py'))['code_bytes']
+    rows = []
+    for initial in (0, 1):
+        for file_mode in (False, True):
+            for calls, resets in ((1, (0,)), (4, (0,)), (4, (1,)), (4, (2,)),
+                                  (32, (0, 2, 16)), (32, (1, 3, 17))):
+                reference = None
+                for style in range(3):
+                    text, body = sources(initial, calls, reloads=file_mode, aliases=True,
+                                         cleanup=True, module_alias=True, nil_calls=resets, nil_style=style)
+                    if file_mode: text = text.replace('String->PATH', '"'+file_path+'"')
+                    source = work/'nil-caller.b'; output = source.with_suffix('.dis64')
+                    source.write_text(text)
+                    subprocess.run([str(limbo.resolve()), '-64l' if file_mode else '-64m', '-I', str(ROOT/'module'),
+                                    '-o', str(output), str(source)], check=True, timeout=60)
+                    image = output.read_bytes()
+                    if reference is None: reference = image
+                    if image != reference: raise RuntimeError('nil alias changed the complete Dis64 image')
+                if not any(ok and direction == initial and code_bytes(candidate) == code_bytes(reference)
+                           for direction, ok, candidate, _ in cases(raw, file_path if file_mode else None, include_nil=True)):
+                    raise RuntimeError(f'nil compiler CODE differs from independent serializer: {initial=} {file_mode=} {calls=} {resets=} '+code_bytes(reference).hex())
+                source = work/'nil-provider.b'; source.write_text(body)
+                subprocess.run([str(limbo.resolve()), '-64m', '-o', str(output), str(source)], check=True, timeout=60)
+                dependency = output.read_bytes()
+                # At each reset, String nil can be consed; HEAD of List nil must unwind.
+                failure = next((i+1 for i in resets if (initial+i)%2), 0)
+                rows.append((initial, calls, int(file_mode), int(failure), reference, dependency))
+    print(f'PASS managed nil compiler: {3*len(rows)} complete images; literal/local/alias, first/later calls and reloads')
+    return rows
+
+
 def header(raw, limbo, work):
     check_alias_refusals(limbo, work)
     check_provider_locals(limbo, work)
     check_caller_cleanup(limbo, work)
     check_module_aliases(limbo, work)
-    rows = cases(raw)+cases(raw, '/managed-provider.dis64')
+    check_nil_refusals(limbo, work)
+    rows = cases(raw, include_nil=True)+cases(raw, '/managed-provider.dis64', include_nil=True)
     for initial in (0, 1):
         for file_mode in (False, True):
             text, body = sources(initial, 32, reloads=file_mode, reverse_provider=bool(initial))
@@ -324,4 +405,14 @@ def header(raw, limbo, work):
             declarations.append(f'static const uchar {label}{index}[] = {{'+','.join(map(str, payload))+'};')
         entries.append(f'{{{initial},{ok},{int(provider in valid_providers)},groupconsumer{index},sizeof(groupconsumer{index}),'
                        f'groupprovider{index},sizeof(groupprovider{index})}}')
-    return '\n'.join(declarations)+'\nstatic const ManagedImageCase managedgroups[] = {\n'+',\n'.join(entries)+'\n};\n'
+    nilentries = []
+    for index, (initial, calls, filemode, failure, consumer, provider) in enumerate(nil_rows(limbo, work)):
+        for label, payload in (('nilconsumer', consumer), ('nilprovider', provider)):
+            declarations.append(f'static const uchar {label}{index}[] = {{'+','.join(map(str, payload))+'};')
+        nilentries.append(f'{{{initial},{calls},{filemode},{failure},nilconsumer{index},sizeof(nilconsumer{index}),'
+                          f'nilprovider{index},sizeof(nilprovider{index})}}')
+    return ('\n'.join(declarations)+'\nstatic const ManagedImageCase managedgroups[] = {\n'+',\n'.join(entries)+'\n};\n'
+            +'typedef struct ManagedNilCase ManagedNilCase;\n'
+            +'struct ManagedNilCase { int direction, calls, filemode, failure; const uchar *consumer; unsigned int consumerbytes; '
+            +'const uchar *provider; unsigned int providerbytes; };\n'
+            +'static const ManagedNilCase managednils[] = {\n'+',\n'.join(nilentries)+'\n};\n')

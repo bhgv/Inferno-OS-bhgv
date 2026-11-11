@@ -426,7 +426,7 @@ a call uses the latest result, that value replaces the previous argument root.
 Using an alias of that older argument after replacement is still refused. Likewise,
 an alias of an older result cannot be used after another call has replaced the
 result root. Supporting those uses needs more mapped roots; copying a local name
-does not silently add one. Explicit nil arguments and branches remain outside this bounded caller profile.
+does not silently add one. Explicit nil arguments are supported as described below; branches remain outside this bounded caller profile.
 
 Direct and aliased source versions must emit the same complete CODE bytes.
 Console tests execute both versions, both initial kinds, prelinked/file modes,
@@ -504,8 +504,8 @@ init(value: string)
 A nil assignment discards that source name from the compiler's value map. It does
 not erase its live aliases or generate an extra native root. The compiler checks
 the legacy nil constant and path offsets independently, including a nil constant
-that precedes the path in MP. Calling with an explicitly cleared value is still
-refused: emitting a new nil argument root is separate work. Native root lifetime
+that precedes the path in MP. Calling with an explicitly cleared String/List value now emits the nil root write
+described below. Cleared module references remain refused. Native root lifetime
 may extend past clearing a source local, as with other compiled temporaries.
 
 Module aliases carry a distinct identity for each LOAD. MFRAME and MCALL must
@@ -515,8 +515,62 @@ bounded profile retains one current module instance; it does not silently bind
 an old source alias to a newer instance. No wire tags or runtime maps changed.
 
 Compiler checks compare 24 caller images with different cleanup/path layouts,
-and 12 module-alias images including reloads into another local. Twelve
-cleared-value and four stale/cleared-module cases must fail after successful
-ordinary Limbo compilation. The 32-call aliased, explicitly cleared callers and
+and 12 module-alias images including reloads into another local. Four stale/cleared-module cases must fail after successful ordinary Limbo
+compilation; cleared String/List values are covered by the nil tests below. The 32-call aliased, explicitly cleared callers and
 reassigned providers run through the existing C/JIT, file-cache, stack-growth
 and per-instruction GC matrix on the checked targets.
+
+## Explicit nil arguments and root replacement
+
+The private `-64m`/`-64l` String caller now accepts a literal `nil`, a typed
+local assigned nil, or an alias of that local. For example:
+
+```limbo
+init(value: string)
+{
+    lib := load String String->PATH;
+    empty: string = nil;
+    alias := empty;
+    items := lib->unquoted(alias);
+    result := lib->quoted(items);
+    items = lib->unquoted(nil);
+}
+```
+
+This is still the checked one-token String provider, not the complete
+`appl/lib/string.b`. The nil argument is copied from the mapped MP nil cell
+at offset 8 into the mapped argument root at FP+64 before MFRAME. It replaces
+the previous argument owner through the real MOVP write/retirement path. A
+single prelinked call therefore needs 16 bytes of MP rather than 8; file callers
+retain their 24-byte MP layout. Old images and their generated CODE remain
+unchanged. No wire tag, signature version, callback ABI or public admission flag
+is added.
+
+The compiler distinguishes unknown locals, nil values, loaded module instances
+and live managed identities. Clearing a String/List local preserves its nil
+identity; copying or calling it is valid. Nil is valid for either checked
+managed argument kind. Replacing the argument root does not retain its old
+aliases: attempting to use an earlier nonnil value after a nil replacement is
+refused. A cleared module still cannot supply MFRAME or MCALL. The source proof
+allows up to 12 legacy instructions per bounded call to accommodate nil aliases and
+reload cleanup, while retaining the 32-call limit.
+
+The candidate reader permits only the exact MP+8 to FP+64 nil write before a
+call. Its type-flow check allows that empty root to take the selected import's
+argument kind; it still checks both export signatures and all provider bodies.
+Wrong sources/destinations, duplicate writes, missing map bits and stale source
+identities remain negative controls. `unquoted(nil)` returns a nonnil one-element
+list whose head is nil. `quoted(nil)` raises the ordinary nil-dereference error;
+returning nil from `quoted(unquoted(nil))` is a successful result.
+
+The compiler suite checks 72 complete images across literal/local/alias forms,
+first/later calls, 1/4/32 calls and prelinked/file-reload modes. CODE is compared
+with an independent serializer. Eight stale-root sources must compile normally
+and then fail both experimental modes without leaving partial output. The real
+collector fixture executes 96 C/JIT cases with per-instruction collection and
+forced stack growth, checking nil results, HEAD unwind and complete root/module
+retirement. The full console gate additionally runs Unicode, empty-string and
+nil startup seeds through the scheduler and actual readmod/parsemod/linkmod
+file loading. The real startup seed helper checks and skips the exact optional
+nil-write prefix when locating the first import ordinal; the seed remains rooted
+until that instruction replaces it. These are bounded managed call tests, not AWM admission.

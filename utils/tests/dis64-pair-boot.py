@@ -828,8 +828,7 @@ def main():
                     compile_command = [str(args.limbo.resolve()), '-I', str(ROOT/'module'),
                                        '-o', str(consumer)]
                     for flag, code in (('-64', text),
-                                       ('-64m', text.replace('String->PATH', '"/wrong.dis"')),
-                                       ('-64m', text.replace(f'lib->{symbol}(value)', f'lib->{symbol}(nil)'))):
+                                       ('-64m', text.replace('String->PATH', '"/wrong.dis"'))):
                         source.write_text(code)
                         refused = subprocess.run(compile_command+[flag, str(source)], capture_output=True,
                                                  text=True, timeout=30)
@@ -992,6 +991,7 @@ def main():
             group['check_provider_locals'](args.limbo, work)
             group['check_caller_cleanup'](args.limbo, work)
             group['check_module_aliases'](args.limbo, work)
+            group['check_nil_refusals'](args.limbo, work)
             for aliases, cleanup in ((False, False), (True, False), (True, True)):
                 for initial in (0, 1):
                     for file_mode in (False, True):
@@ -1019,6 +1019,18 @@ def main():
                                     marker = f'native64 scalar module {module}: jit={jit if initial and not seed else 0}, exit="{status}"'
                                     if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
                                         raise RuntimeError('compiled dual managed call group did not retire: '+output)
+        if args.limbo is not None:
+            for initial, calls, filemode, failure, payload, dependency in group['nil_rows'](args.limbo, work, load_path):
+                consumer.write_bytes(payload); provider.write_bytes(dependency)
+                for jit in (0, 1):
+                    for seed in (trial_input, ['-A', ''], []):
+                        output = execute(command+['-c', str(jit)]+pair+trial+seed)
+                        error = failure or (initial and not seed)
+                        module, status = ('String', 'dereference of nil') if error else ('Caller', '')
+                        marker = f'native64 scalar module {module}: jit={jit if error else 0}, exit="{status}"'
+                        if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                            raise RuntimeError('compiled managed nil failed scheduler return/unwind: '+output)
+            print('PASS compiled managed nil through complete scheduler: literal/local/alias, C/JIT, file reload, Unicode/empty/nil seeds')
         print('PASS two managed String imports/exports: both ordinal orders, typed result chains, file LOAD, C/JIT and malformed group refusals')
         for options in (pair[:2]+trial, pair+trial+['-X', 'dis64-pair'], pair[:2]+trial+['-P', '$Sys'],
                         pair+trial_input, pair+trial+['-A', 'x'*4097]):

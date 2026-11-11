@@ -300,6 +300,7 @@ dis64managedcallercode(const unsigned char *data, unsigned int bytes, unsigned i
 	};
 	static const unsigned char transfer[] = {IMOVP,SRC(AFP)|DST(AFP),0x80,72,0x80,64};
 	static const unsigned char clear[] = {IMOVP, SRC(AMP)|DST(AFP), 8, 0x80,72};
+	static const unsigned char empty[] = {IMOVP, SRC(AMP)|DST(AFP), 8, 0x80,64};
 	static const unsigned char load[] = {ILOAD,SRC(AMP)|AXIMM|DST(AMP),0,16,0};
 	static const unsigned char exit[] = {IEXIT,SRC(AXXX)|DST(AXXX)};
 	unsigned char call[sizeof(pattern)];
@@ -319,6 +320,11 @@ dis64managedcallercode(const unsigned char *data, unsigned int bytes, unsigned i
 		instructions++;
 	}
 	for(;;){
+		if(at < bytes && data[at] == IMOVP){
+			if(!dis64managedbytes(data, bytes, &at, empty, sizeof(empty)))
+				return 0;
+			instructions++;
+		}
 		if(calls == Dis64ManagedCalls || bytes-at < 3 || data[at+2] > 1)
 			return 0;
 		binding = data[at+2];
@@ -404,7 +410,7 @@ dis64managedflow(const Dis64CodeView *code, const LimboNative64Managed *shapes,
 {
 	Dis64CallDecoded decoded;
 	Dis64Instruction *inst;
-	unsigned int at = 4, used, i, current = 0, latest = 0;
+	unsigned int at = 4, used, i, current = 0, latest = 0, empty = 0;
 
 	for(i=0; i<code->count; i++){
 		if(at > code->bytes || !dis64callread(code->data+at, code->bytes-at, &decoded, &used))
@@ -417,6 +423,9 @@ dis64managedflow(const Dis64CodeView *code, const LimboNative64Managed *shapes,
 			if(inst->op == IMFRAME){
 				if(current == 0)
 					*initial = current = shapes[ids[inst->middle]].argument;
+				if(empty)
+					current = shapes[ids[inst->middle]].argument;
+				empty = 0;
 				if(current != shapes[ids[inst->middle]].argument)
 					return 0;
 			}else
@@ -425,8 +434,12 @@ dis64managedflow(const Dis64CodeView *code, const LimboNative64Managed *shapes,
 			if(latest == 0)
 				return 0;
 			current = latest;
-		}else if(inst->op == IMOVP && inst->mode == (SRC(AMP)|DST(AFP)))
-			latest = 0;
+		}else if(inst->op == IMOVP && inst->mode == (SRC(AMP)|DST(AFP))){
+			if(inst->destination == 64)
+				empty = 1;
+			else
+				latest = 0;
+		}
 	}
 	return at == code->bytes && current != 0;
 }

@@ -636,6 +636,8 @@ struct Dis64ManagedCompilePlan {
 	char *path;
 };
 
+#define Dis64ManagedNil (-1L-Dis64ManagedCalls) // Distinct from unknown, values and LOAD identities.
+
 /* Track pointer value identities across ordinary local assignments. */
 static long*
 dis64managedlocal(long *slots, long *values, unsigned int *used, long slot)
@@ -645,7 +647,7 @@ dis64managedlocal(long *slots, long *values, unsigned int *used, long slot)
 	for(i=0; i<*used; i++)
 		if(slots[i] == slot)
 			return &values[i];
-	if(*used == 10*Dis64ManagedCalls+1)
+	if(*used == 12*Dis64ManagedCalls+1)
 		return nil;
 	slots[*used] = slot;
 	values[*used] = 0;
@@ -660,7 +662,7 @@ dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, lo
 {
 	Decl *export, *functions[2], *temporary;
 	unsigned int n = 0, i, seen = 0, used, effect, returned;
-	long pc = 0, end, value, slots[10*Dis64ManagedCalls+1], values[10*Dis64ManagedCalls+1], *cell;
+	long pc = 0, end, value, slots[12*Dis64ManagedCalls+1], values[12*Dis64ManagedCalls+1], *cell;
 	int direction, hasnil;
 
 	if(entry != nil || strcmp(impdecl->sym->name, "String") != 0 || count < 2 || count > 10*Dis64ManagedCalls)
@@ -751,12 +753,12 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	static const uchar mm[] = {Aldt, Aoff, Anone, Anone, Aoff, Anone};
 	Decl *imports[2], *import, *export, *path, *argument, *nilvalue;
 	long module = -1, modulevalue = 0, frame = -1, result = -1, current = 1, previous = 0;
-	long slots[10*Dis64ManagedCalls+1], values[10*Dis64ManagedCalls+1], *source, *destination;
+	long slots[12*Dis64ManagedCalls+1], values[12*Dis64ManagedCalls+1], *source, *destination;
 	unsigned int i, n, groups = 0, phase = 1, pending = 0, step, binding = 0, seen = 0, used = 0;
 	int direction, currentkind, previouskind = 0;
 
 	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 || entry->ty->varargs ||
-	   entry->ty->tof->kind != Tnone || entry->desc == nil || count < 6 || count > 10*Dis64ManagedCalls+1 ||
+	   entry->ty->tof->kind != Tnone || entry->desc == nil || count < 6 || count > 12*Dis64ManagedCalls+1 ||
 	   (databytes != 4 && databytes != 8) || ldts == nil || ldts->next != nil || ldts->init == nil ||
 	   ldts->init->val < 1 || ldts->init->val > 2 || ldts->init->decl == nil)
 		return 0;
@@ -810,7 +812,7 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			if(destination == nil) return 0;
 			if(input->sm == Amp){
 				if(nilvalue == nil || input->s.reg != nilvalue->offset) return 0;
-				*destination = 0; /* Discard this name; nil arguments need an emitted root write. */
+				*destination = Dis64ManagedNil; /* A known empty value, distinct from an unknown local. */
 			}else{
 				if(!dis64clockslot(input->s.reg, entry->desc->size)) return 0;
 				source = dis64managedlocal(slots, values, &used, input->s.reg);
@@ -823,7 +825,8 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 		step = module < 0 ? 0 : i == count-1 ? 5 : phase;
 		if(i != 0 && i != count-1 && phase == 1 && input->op == ILOAD && emitscalar64 == 3 && !pending)
 			step = 0;
-		if(input->op != ops[step] || input->sm != sm[step] || input->dm != dm[step] || input->mm != mm[step])
+		if(input->op != ops[step] || (input->sm != sm[step] && !(step == 2 && input->sm == Amp)) ||
+		   input->dm != dm[step] || input->mm != mm[step])
 			return 0;
 		switch(step){
 		case 0:
@@ -852,9 +855,19 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 		case 2:
 			if(input->d.reg != frame || input->d.offset != 32 || input->s.reg == frame)
 				return 0;
-			source = dis64managedlocal(slots, values, &used, input->s.reg);
-			if(source == nil || *source == 0) return 0;
-			if(previous != 0 && *source == previous){
+			if(input->sm == Amp){
+				if(nilvalue == nil || input->s.reg != nilvalue->offset) return 0;
+				source = nil;
+			}else{
+				if(!dis64clockslot(input->s.reg, entry->desc->size)) return 0;
+				source = dis64managedlocal(slots, values, &used, input->s.reg);
+				if(source == nil || *source == 0) return 0;
+			}
+			if(source == nil || *source == Dis64ManagedNil){
+				plan->transfers[groups] = 2;
+				current = Dis64ManagedNil;
+				currentkind = plan->directions[binding] ? 2 : 1;
+			}else if(previous != 0 && *source == previous){
 				plan->transfers[groups] = 1;
 				current = previous;
 				currentkind = previouskind;
@@ -901,6 +914,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	static const uchar load[] = {ILOAD,SRC(AMP)|AXIMM|DST(AMP),0,16,0};
 	static const uchar transfer[] = {IMOVP,SRC(AFP)|DST(AFP),0x80,72,0x80,64};
 	static const uchar clear[] = {IMOVP,SRC(AMP)|DST(AFP),8,0x80,72};
+	static const uchar empty[] = {IMOVP,SRC(AMP)|DST(AFP),8,0x80,64};
 	static const uchar exit[] = {IEXIT,SRC(AXXX)|DST(AXXX)};
 	static const uchar call[] = {IMFRAME,SRC(AMP)|AXIMM|DST(AFP),0,0,40,
 		IMOVP,SRC(AFP)|DST(AFP|AIND),0x80,64,40,0x80,64,
@@ -927,9 +941,9 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	for(i=0; i<plan.bindings; i++)
 		if(!dis64libraryname(plan.directions[i] ? "quoted" : "unquoted", symbols[i], &names[consumer && i ? 4 : 1+i])) return;
 	if(consumer){
-		module.name = 2; module.profile = 1; module.databytes = fileload ? 24 : plan.calls == 1 ? 8 : 16; module.datatype = 1;
+		module.name = 2; module.profile = 1; module.databytes = fileload ? 24 : plan.calls == 1 && plan.transfers[0] != 2 ? 8 : 16; module.datatype = 1;
 		types[0] = (Dis64Type){80, 8, callermap, 2};
-		if(plan.calls != 1) types[1] = (Dis64Type){16, 8, callermap+1, 1};
+		if(plan.calls != 1 || plan.transfers[0] == 2) types[1] = (Dis64Type){16, 8, callermap+1, 1};
 		if(fileload) types[1] = (Dis64Type){24, 8, loadmap, 1};
 		if(!dis64libraryname(impdecl->sym->name, callername, &names[2]) ||
 		   ((fileload || plan.bindings == 2) && !dis64libraryname(plan.path, pathname, &names[3]))){
@@ -938,9 +952,10 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		if(plan.bindings == 2) poolcount = 5;
 		at = 4; instructions = 5*plan.calls;
 		for(i=0; i<plan.calls; i++){
-			if(plan.transfers[i]){ memmove(caller+at, transfer, sizeof(transfer)); at += sizeof(transfer); instructions++; }
+			if(plan.transfers[i] == 1){ memmove(caller+at, transfer, sizeof(transfer)); at += sizeof(transfer); instructions++; }
 			if(i != 0){ memmove(caller+at, clear, sizeof(clear)); at += sizeof(clear); }
 			if(fileload && plan.reloads[i]){ memmove(caller+at, load, sizeof(load)); at += sizeof(load); instructions++; }
+			if(plan.transfers[i] == 2){ memmove(caller+at, empty, sizeof(empty)); at += sizeof(empty); instructions++; }
 			memmove(caller+at, call, sizeof(call));
 			caller[at+2] = caller[at+sizeof(call)-3] = plan.ordinals[i];
 			at += sizeof(call);
