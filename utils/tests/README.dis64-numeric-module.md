@@ -56,6 +56,8 @@ init()
     sys := load Sys Sys->PATH;
     value := -1;
     status := sys->dup(value, value);
+    value += 4;
+    status += value;
     status = sys->dup(status, value);
     value = sys->sleep(0);
     status = sys->dup(-1, value);
@@ -103,8 +105,22 @@ prepared-frame pointer and unrecognized scalar offsets are excluded.
 
 A recognized Sys interface with unsupported scalar body or argument state
 produces the diagnostic `unsupported checked Sys body or uninitialized scalar
-argument`. Additional simultaneously live locals and general expressions need
-broader scalar lowering.
+argument`. Additional simultaneously live locals, branches and loops need broader
+scalar lowering. Linear integer assignments and `+`, `-`, `*`, `/`, `%`,
+`&`, `|`, `^`, `<<` and `>>` are supported between calls using the existing
+scalar instruction lowering. Reads must refer to the initialized saved local
+or the latest completed result. The checker proves those facts independently
+of the compiler. Arithmetic retains ordinary 32-bit VM behavior, including
+overflow and runtime zero-divide exceptions. Binary immediate middle operands
+must fit signed16.
+
+A body may contain at most 64 scalar instructions, including initializers,
+assignments, arithmetic and compiler-inserted copies of call results into the
+saved local. This is separate from the 32-call limit. A body exceeding either
+limit is rejected before publication. Tests cover both exact boundaries,
+combined copy/arithmetic budgets, shifts and bit operations, overflow,
+zero-divide execution, and malformed operands in independently serialized
+images as well as compiler-produced sources.
 
 ```sh
 python3 utils/tests/dis64-pair-boot.py --sys-clock --limbo /path/to/limbo \

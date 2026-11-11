@@ -138,13 +138,19 @@ struct Dis64ClockCall {
 	int save; // Preserve a returned value which replaces the saved local.
 };
 
+typedef struct Dis64ClockWord Dis64ClockWord;
+struct Dis64ClockWord {
+	unsigned int before; // Number of completed calls before this scalar step.
+	Dis64Instruction instruction;
+};
+
 typedef struct Dis64ClockPlan Dis64ClockPlan;
 struct Dis64ClockPlan {
 	Dis64ClockCall calls[Dis64ClockCalls];
 	uchar arguments[3];
 	unsigned int count;
-	int initialize;
-	long initial;
+	Dis64ClockWord words[Dis64ClockWords];
+	unsigned int nwords;
 };
 
 
@@ -156,20 +162,83 @@ dis64clockslot(long offset, long bytes)
 }
 
 
+/* Resolve only initialized scalar values, independently of legacy register placement. */
+static int
+dis64clockvalue(int mode, Addr *address, long saved, long previous, Addr *mapped)
+{
+	if(mode == Aimm){
+		if(address->offset < -536870912L || address->offset > 536870911L)
+			return 0;
+		mapped->offset = address->offset;
+		return 1;
+	}
+	if(mode != Afp)
+		return 0;
+	if(previous >= 0 && address->reg == previous)
+		mapped->reg = 40; // Existing scalar rebasing maps this to the result cell at 72.
+	else if(saved >= 0 && address->reg == saved)
+		mapped->reg = 32; // Existing scalar rebasing maps this to the saved cell at 64.
+	else
+		return 0;
+	return 1;
+}
+
+
+/* Reuse scalar lowering after resolving the two live integer identities. */
+static int
+dis64clockword(Inst *input, long module, long bytes, long *saved, long *previous,
+	Dis64Instruction *output)
+{
+	Inst mapped;
+	long destination;
+	int known;
+
+	if(!dis64clockwordop(input->op) || input->dm != Afp ||
+	   !dis64clockslot(input->d.reg, bytes) || input->d.reg == module)
+		return 0;
+	known = input->d.reg == *saved || input->d.reg == *previous;
+	if(input->op != IMOVW && input->mm == Anone && !known)
+		return 0;
+	if(input->d.reg == *saved)
+		destination = 32;
+	else if(input->d.reg == *previous)
+		destination = 40;
+	else if(*saved < 0)
+		destination = 32;
+	else
+		return 0;
+	mapped = *input;
+	if(!dis64clockvalue(input->sm, &input->s, *saved, *previous, &mapped.s))
+		return 0;
+	if(input->mm != Anone &&
+	   !dis64clockvalue(input->mm, &input->m, *saved, *previous, &mapped.m))
+		return 0;
+	mapped.d.reg = destination;
+	if(!dis64scalarinst(&mapped, 1, 0, 80, 64, output))
+		return 0;
+	if(destination == 32){
+		*saved = input->d.reg;
+		if(*previous == *saved)
+			*previous = -1;
+	}
+	return 1;
+}
+
+
 /* Match the complete lowered init body before changing its frame geometry. */
 static int
 dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes,
 	Dis64ClockPlan *output)
 {
 	Decl *import, *export, *path, *argument, *target;
-	unsigned int i, j, phase, binding, used, parameter, seen;
+	unsigned int i, j, phase, binding, used, parameter, seen, copies;
 	Dis64ClockPlan plan = {0};
 	long frame, module, result, previous, saved;
 	int kind;
 
 	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 ||
 	   entry->ty->ids != nil || entry->ty->varargs || entry->ty->tof->kind != Tnone ||
-	   count < 5 || count > 5*Dis64ClockCalls+3 || databytes != 8 ||
+	   count < 5 || count > 5*Dis64ClockCalls+2+Dis64ClockWords || databytes != 8 ||
 	   entry->desc == nil || entry->desc->size < ScalarLegacyPrefix+IBY2WD ||
 	   entry->desc->size > ScalarObjectLimit ||
 	   ldts == nil || ldts->next != nil || ldts->init == nil ||
@@ -212,7 +281,7 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 	for(export=impdecl->ty->tof->ids; export != nil; export=export->next)
 		if(export->store == Dglobal || (export->store == Dfn && export->sym != entry->sym))
 			return 0;
-	i = phase = binding = used = 0;
+	i = phase = binding = used = copies = 0;
 	frame = module = result = 0;
 	previous = saved = -1;
 	target = nil;
@@ -234,14 +303,12 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 				return -1;
 		}else switch(phase){
 		case 0:
-			if(input->op == IMOVW && used == 0 && !plan.initialize){
-				if(input->sm != Aimm || input->mm != Anone || input->dm != Afp ||
-				   input->s.offset < -536870912L || input->s.offset > 536870911L ||
-				   !dis64clockslot(input->d.reg, entry->desc->size) || input->d.reg == module)
+			if(dis64clockwordop(input->op)){
+				if(plan.nwords == Dis64ClockWords ||
+				   !dis64clockword(input, module, entry->desc->size, &saved, &previous,
+				     &plan.words[plan.nwords].instruction))
 					return -1;
-				saved = input->d.reg;
-				plan.initialize = 1;
-				plan.initial = input->s.offset;
+				plan.words[plan.nwords++].before = used;
 				break;
 			}
 			if(input->op != IMFRAME || input->sm != Afp || input->s.reg != module ||
@@ -273,7 +340,7 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 				plan.calls[used].modes[parameter] = AFP;
 				if(used != 0 && input->s.reg == previous)
 					plan.calls[used].values[parameter] = 72;
-				else if(plan.initialize && input->s.reg == saved)
+				else if(saved >= 0 && input->s.reg == saved)
 					plan.calls[used].values[parameter] = 64;
 				else
 					return -1;
@@ -298,13 +365,15 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 				return -1;
 			plan.calls[used].binding = binding;
 			plan.calls[used++].save = result == saved;
+			if(result == saved)
+				copies++;
 			previous = result;
 			phase = 0;
 			break;
 		}
 		i++;
 	}
-	if(i != count)
+	if(i != count || plan.nwords+copies > Dis64ClockWords)
 		return -1;
 	plan.count = used;
 	*output = plan;
@@ -347,11 +416,11 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 	Dis64ModuleInfo module = {0};
 	DisStringPoolRecord names[5];
 	Dis64Payload sections[5];
-	uchar metadata[24], code[4+sizeof(load)+Dis64ClockCalls*(sizeof(frame)+18+sizeof(result)+sizeof(call)+6)+sizeof(exit)+8];
+	uchar metadata[24], code[4+sizeof(load)+Dis64ClockCalls*(sizeof(frame)+18+sizeof(result)+sizeof(call))+Dis64ClockWords*14+sizeof(exit)];
 	uchar typedata[32], imports[100], runes[5][4+4*255], strings[4+sizeof(runes)], output[4096];
 	Dis64ClockPlan plan;
-	Dis64Instruction word = {IMOVW, SRC(AIMM)|DST(AFP), 0, 0, 64};
-	unsigned int sizes[5], i, j, length, written, bindings, instructions, ordinal, parameters[] = {Dis64Int, Dis64Int};
+	Dis64Instruction copy = {IMOVW, SRC(AFP)|DST(AFP), 0, 72, 64};
+	unsigned int sizes[5], i, j, length, written, bindings, instructions, ordinal, step, parameters[] = {Dis64Int, Dis64Int};
 	const char *labels[] = {"$Sys", nil, impdecl->sym->name, nil, nil};
 	Decl *import;
 	int matched;
@@ -385,15 +454,17 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 	instructions = 2;
 	sizes[1] = 4+sizeof(load);
 	memmove(code+4, load, sizeof(load));
-	if(plan.initialize){
-		word.source = plan.initial;
-		if(!dis64encode(code, &sizes[1], &word)){
-			dis64error(entry, "cannot initialize checked Sys local");
-			return 1;
+	step = 0;
+	for(i=0; i<=plan.count; i++){
+		while(step < plan.nwords && plan.words[step].before == i){
+			if(!dis64encode(code, &sizes[1], &plan.words[step++].instruction)){
+				dis64error(entry, "cannot lower checked Sys scalar expression");
+				return 1;
+			}
+			instructions++;
 		}
-		instructions++;
-	}
-	for(i=0; i<plan.count; i++){
+		if(i == plan.count)
+			break;
 		ordinal = plan.calls[i].binding;
 		memmove(code+sizes[1], frame, sizeof(frame));
 		code[sizes[1]+2] = ordinal;
@@ -410,9 +481,7 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 		sizes[1] += sizeof(call);
 		instructions += 3+plan.arguments[ordinal];
 		if(plan.calls[i].save){
-			word.mode = SRC(AFP)|DST(AFP);
-			word.source = 72;
-			if(!dis64encode(code, &sizes[1], &word)){
+			if(!dis64encode(code, &sizes[1], &copy)){
 				dis64error(entry, "cannot preserve checked Sys local");
 				return 1;
 			}

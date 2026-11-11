@@ -873,7 +873,7 @@ static const Dis64StorageLimits dis64numericlimits = {
 
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 
-#define Dis64ClockInstructions (6U*Dis64ClockCalls+3U) // LOAD, argument/call/copy groups, and exit.
+#define Dis64ClockInstructions (5U*Dis64ClockCalls+2U+Dis64ClockWords) // LOAD, argument/call/copy groups, and exit.
 
 
 /* Resolve one exact scalar import from an already validated image. */
@@ -953,6 +953,48 @@ dis64sysclockimport(const uchar *image, ulong bytes, unsigned int ordinal, Modul
 }
 
 
+/* A scalar value is available only after an actual defining step in the linear program. */
+static int
+dis64clockready(long offset, unsigned int calls, int initialized)
+{
+	return (offset == 64 && initialized) || (offset == 72 && calls != 0);
+}
+
+
+/* Reuse scalar role validation, then restrict reads and writes to the two proven int cells. */
+static int
+dis64clockwordcheck(const Dis64Instruction *inst, unsigned int count,
+	unsigned int calls, int *initialized)
+{
+	unsigned int sm, mm;
+
+	if(!dis64clockwordop(inst->op) || !dis64instructioncheck(inst, count, 0, 80) ||
+	   UDST(inst->mode) != AFP || (inst->destination != 64 && inst->destination != 72) ||
+	   (inst->destination == 72 && calls == 0))
+		return 0;
+	sm = USRC(inst->mode);
+	if(sm == AFP){
+		if(!dis64clockready(inst->source, calls, *initialized))
+			return 0;
+	}else if(sm != AIMM)
+		return 0;
+	if(inst->op != IMOVW){
+		mm = inst->mode&ARM;
+		if(mm == AXNON){
+			if(!dis64clockready(inst->destination, calls, *initialized))
+				return 0;
+		}else if(mm == AXINF){
+			if(!dis64clockready(inst->middle, calls, *initialized))
+				return 0;
+		}else if(mm != AXIMM || inst->middle < -32768 || inst->middle > 32767)
+			return 0;
+	}
+	if(inst->destination == 64)
+		*initialized = 1;
+	return 1;
+}
+
+
 /* Decode bounded clock calls and an optional WORD copy after each completed call. */
 static int
 dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64CodeView *code,
@@ -960,8 +1002,8 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 {
 	Dis64CallDecoded decoded;
 	Dis64Instruction *inst;
-	unsigned int at, i, used, count, phase, calls, slot, binding, parameter, expected;
-	int copied, initialized;
+	unsigned int at, i, used, count, phase, calls, slot, binding, parameter, expected, words;
+	int initialized;
 
 	if(bytes < 4)
 		return 0;
@@ -969,7 +1011,7 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 	if(count < 4 || count > limit || count > Dis64ClockInstructions)
 		return 0;
 	at = 4;
-	phase = calls = copied = initialized = slot = binding = parameter = expected = 0;
+	phase = calls = initialized = slot = binding = parameter = expected = words = 0;
 	for(i=0; i<count; i++){
 		if(!dis64callread(data+at, bytes-at, &decoded, &used))
 			return 0;
@@ -992,7 +1034,6 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 			expected = arguments < 0 ? 2 : (arguments >> (2*binding)) & 3;
 			parameter = 0;
 			phase = 1;
-			copied = 0;
 			break;
 		case ILEA:
 			if(phase != 1 || (arguments >= 0 && parameter != expected) ||
@@ -1009,6 +1050,14 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 			if(++calls > Dis64ClockCalls)
 				return 0;
 			break;
+		case IEXIT:
+			if(phase != 0 || calls == 0 || i+1 != count ||
+			   inst->mode != (SRC(AXXX)|DST(AXXX)) || at != bytes)
+				return 0;
+			code->data = data;
+			code->bytes = bytes;
+			code->count = count;
+			return 1;
 		case IMOVW:
 			if(phase == 1){
 				if(parameter >= expected || inst->destination != 40 || decoded.secondary != 64+4*parameter)
@@ -1021,28 +1070,13 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 				parameter++;
 				break;
 			}
-			if(phase != 0 || inst->destination != 64)
-				return 0;
-			if(inst->mode == (SRC(AIMM)|DST(AFP))){
-				if(slot != 8 || calls != 0 || initialized)
-					return 0;
-			}else{
-				if(calls == 0 || copied || inst->mode != (SRC(AFP)|DST(AFP)) || inst->source != 72)
-					return 0;
-				copied = 1;
-			}
-			initialized = 1;
-			break;
-		case IEXIT:
-			if(phase != 0 || calls == 0 || i+1 != count ||
-			   inst->mode != (SRC(AXXX)|DST(AXXX)) || at != bytes)
-				return 0;
-			code->data = data;
-			code->bytes = bytes;
-			code->count = count;
-			return 1;
+			/* Fall through to the shared scalar dataflow checks. */
 		default:
-			return 0;
+			if(phase != 0 || words == Dis64ClockWords ||
+			   !dis64clockwordcheck(inst, count, calls, &initialized))
+				return 0;
+			words++;
+			break;
 		}
 	}
 	return 0;

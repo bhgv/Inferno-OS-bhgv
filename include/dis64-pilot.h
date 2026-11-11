@@ -2,6 +2,7 @@
 #ifndef DIS64_PILOT_H
 #define DIS64_PILOT_H // First scalar module semantic validation guard.
 #define Dis64PilotInitializers 1024U // Explicit resource cap for pairwise initializer validation.
+#define Dis64ClockWords 64U // Scalar steps, including saved return values, in a Sys caller.
 #define Dis64ClockCalls 32U // Resource cap for the explicit Sys clock pilot.
 
 #include "dis64-module.h"
@@ -9,6 +10,21 @@
 #include "dis64-data.h"
 #include "dis64-code.h"
 #include "dis-string-pool.h"
+
+/* Limit the Sys caller to existing direct Word operations with no control transfer. */
+static int
+dis64clockwordop(unsigned int op)
+{
+	switch(op){
+	case IMOVW:
+	case IADDW: case ISUBW: case IMULW: case IDIVW: case IMODW:
+	case IANDW: case IORW: case IXORW: case ISHLW: case ISHRW:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
 
 typedef struct Dis64Pilot Dis64Pilot;
 struct Dis64Pilot {

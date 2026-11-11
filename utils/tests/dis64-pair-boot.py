@@ -154,7 +154,7 @@ def clock_image(*, result_offset=72, module='$Sys', signature=1, repeats=1,
 
 
 # Independently serialize scalar Sys groups with zero, one or two integer arguments.
-def sys_integer_image(sequence, *, symbols=None, signatures=None, offsets=None, call_index=None, initial=None, copies=()):
+def sys_integer_image(sequence, *, symbols=None, signatures=None, offsets=None, call_index=None, initial=None, copies=(), steps=None):
     words, ins = RAW['W'], RAW['I']
     bindings = RAW['RAW']['RAW']
     indirect = runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['indirect']
@@ -171,7 +171,22 @@ def sys_integer_image(sequence, *, symbols=None, signatures=None, offsets=None, 
         for value in initializers:
             code += ins('IMOVW', 17, source=value, destination=64)
             count += 1
+    def scalar_word(operation, source, destination, middle=None):
+        sm = 1 if isinstance(source, tuple) and source[0] == 'fp' else 0 if isinstance(source, tuple) else 2
+        value = source[1] if isinstance(source, tuple) else source
+        mode = (sm<<3)|1
+        lhs = 0
+        if middle is not None:
+            lhs = middle[1] if isinstance(middle, tuple) else middle
+            mode |= (128 if middle[0] == 'fp' else 192) if isinstance(middle, tuple) else 64
+        return ins(operation, mode, source=value, middle=lhs, destination=destination)
+
+    def scalar_steps(index):
+        return b''.join(scalar_word(*operation) for operation in (steps or {}).get(index, ()))
+
     for step, (name, arguments) in enumerate(sequence):
+        code += scalar_steps(step)
+        count += len((steps or {}).get(step, ()))
         index = symbols.index(name) if call_index is None else call_index
         code += ins('IMFRAME', 65, source=8, middle=index, destination=40)
         for ordinal, value in enumerate(arguments):
@@ -184,12 +199,21 @@ def sys_integer_image(sequence, *, symbols=None, signatures=None, offsets=None, 
         if step in copies:
             code += ins('IMOVW', 9, source=72, destination=64)
             count += 1
+    code += scalar_steps(len(sequence))
+    count += len((steps or {}).get(len(sequence), ()))
     pool = words(len(names))+b''.join(words(len(name), *map(ord, name)) for name in names)
     sections = RAW['SECTIONS'](name=2, databytes=16, imports=imports,
                types=[RAW['D'](80, 8), RAW['D'](16, 8, b'\xc0')],
                code=words(count)+code+RAW['EXIT'])
     return RAW['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
 
+
+def code_bytes(image):
+    # The compiler puts CODE second, as does the independent fixture.
+    kind, _, offset, size = struct.unpack_from('>HHII', image, 44)
+    if kind != 2 or len(image) < offset+size:
+        raise RuntimeError('invalid clock CODE section')
+    return image[offset:offset+size]
 
 # Compile an actual Limbo LOAD and imported call, then reject nearby unsupported bodies.
 def compile_clocks(limbo, work):
@@ -208,18 +232,12 @@ init()
         return template.replace('    now := sys->millisec();\n',
                                 '    now := sys->millisec();\n' + '    now = sys->millisec();\n'*(count-1))
 
-    def code_bytes(image):
-        # The compiler puts CODE second, as does the independent fixture.
-        kind, _, offset, size = struct.unpack_from('>HHII', image, 44)
-        if kind != 2 or len(image) < offset+size:
-            raise RuntimeError('invalid clock CODE section')
-        return image[offset:offset+size]
 
     command = [str(limbo), '-I', str(ROOT/'module'), '-64', '-o', str(output), str(source)]
     for bad in (template.replace('Sys->PATH', '"$Other"'),
                 template.replace('millisec()', 'sleep(536870912)'),
                 repeated(33),
-                repeated(3).replace('    now = sys->millisec();\n', '    now++;\n', 1)):
+                repeated(3).replace('    now = sys->millisec();\n', '    if(now < 0) now = 0;\n', 1)):
         source.write_text(bad)
         result = subprocess.run(command, capture_output=True, text=True, timeout=30)
         if result.returncode <= 0 or output.exists() or 'Dis64 scalar:' not in result.stderr:
@@ -237,7 +255,7 @@ init()
         expected = clock_image(repeats=repeats, load=True)
         if code_bytes(image) != code_bytes(expected):
             raise RuntimeError(f'compiler did not preserve all {repeats} clock calls')
-        yield repeats, image
+        yield repeats, image, ''
     for repeats in (1, 3, 32):
         source.write_text(repeated(repeats).replace('millisec()', 'sleep(0)'))
         subprocess.run(command, check=True, timeout=30)
@@ -245,7 +263,7 @@ init()
         expected = clock_image(repeats=repeats, load=True, sleep_only=True)
         if code_bytes(image) != code_bytes(expected):
             raise RuntimeError('compiler changed the sleep-only import group')
-        yield f'{repeats} sleep-only', image
+        yield f'{repeats} sleep-only', image, ''
     mixed = template.replace('    now := sys->millisec();', '    now := sys->millisec();\n    now = sys->sleep(0);')
     source.write_text(mixed)
     subprocess.run(command, check=True, timeout=30)
@@ -253,7 +271,7 @@ init()
     expected = clock_image(load=True, second=('sleep', (1,)), sleep_tail=True)
     if code_bytes(image) != code_bytes(expected):
         raise RuntimeError('compiler did not preserve the checked sleep call')
-    yield 'clock plus zero sleep', image
+    yield 'clock plus zero sleep', image, ''
     source.write_text(mixed.replace('    now := sys->millisec();',
                                     '    now := sys->sleep(0);\n    now = sys->millisec();'))
     subprocess.run(command, check=True, timeout=30)
@@ -261,7 +279,7 @@ init()
     expected = clock_image(load=True, second=('sleep', (1,)), sleep_first=True, sleep_tail=True)
     if code_bytes(image) != code_bytes(expected):
         raise RuntimeError('compiler changed the order of mixed Sys calls')
-    yield 'sleep, clock, sleep', image
+    yield 'sleep, clock, sleep', image, ''
     source.write_text(repeated(31).replace('    now := sys->millisec();',
                                           '    now := sys->sleep(0);\n    now = sys->millisec();'))
     subprocess.run(command, check=True, timeout=30)
@@ -269,7 +287,7 @@ init()
     expected = clock_image(load=True, repeats=31, second=('sleep', (1,)), sleep_first=True)
     if code_bytes(image) != code_bytes(expected):
         raise RuntimeError('compiler did not preserve the 32-call mixed sequence')
-    yield '32 mixed Sys calls', image
+    yield '32 mixed Sys calls', image, ''
     output.unlink()
     source.write_text(repeated(32).replace('    now := sys->millisec();',
                                           '    now := sys->sleep(0);\n    now = sys->millisec();'))
@@ -295,14 +313,14 @@ init()
         image = output.read_bytes()
         if code_bytes(image) != code_bytes(sys_integer_image(sequence)):
             raise RuntimeError('compiler changed scalar Sys arguments or call order')
-        yield f'{len(sequence)} integer-argument', image
+        yield f'{len(sequence)} integer-argument', image, ''
     result = ('fp', 72)
     local = ('fp', 64)
     bodies = (
         ("""    status := sys->dup(-1, -1);
     status = sys->dup(status, status);
     status = sys->sleep(status);""",
-         [('dup', (-1, -1)), ('dup', (result, result)), ('sleep', (result,))], None, ()),
+         [('dup', (-1, -1)), ('dup', (result, result)), ('sleep', (result,))], None, (), {}, ''),
         ("""    value := -1;
     status := sys->dup(value, value);
     status = sys->dup(status, value);
@@ -310,20 +328,79 @@ init()
     status = sys->dup(-1, value);
     status = sys->sleep(value);""",
          [('dup', (local, local)), ('dup', (result, local)), ('sleep', (0,)),
-          ('dup', (-1, result)), ('sleep', (local,))], -1, (2,)),
+          ('dup', (-1, result)), ('sleep', (local,))], -1, (2,), {}, ''),
         ("""    value := 0;
     value = sys->sleep(value);
     value = sys->sleep(value);""",
-         [('sleep', (local,)), ('sleep', (result,))], 0, (0, 1)),
+         [('sleep', (local,)), ('sleep', (result,))], 0, (0, 1), {}, ''),
+        ("""    value := -5;
+    value += 4;
+    status := sys->dup(value, value);
+    status += value;
+    value = status * 2;
+    value /= 2;
+    value ^= 1;
+    status = sys->dup(status, value);
+    status = sys->sleep(0);""",
+         [('dup', (local, local)), ('dup', (result, local)), ('sleep', (0,))], -5, (),
+         {0: [('IADDW', 4, 64)],
+          1: [('IADDW', local, 72), ('IMULW', 2, 64, result),
+              ('IDIVW', 2, 64), ('IXORW', 1, 64)]}, ''),
+        ("""    status := sys->dup(-1, -1);
+    status += 4;
+    status %= 3;
+    status -= 1;
+    status = sys->dup(status, status);""",
+         [('dup', (-1, -1)), ('dup', (result, result))], None, (),
+         {1: [('IADDW', 4, 72), ('IMODW', 3, 72), ('ISUBW', 1, 72)]}, ''),
+        ("""    value := 3;
+    value <<= 2;
+    value >>= 1;
+    value |= 8;
+    value &= 15;
+    value ^= 1;
+    value %= 7;
+    value -= 2;
+    status := sys->dup(-1, value);
+    status += value;
+    status = sys->sleep(0);""",
+         [('dup', (-1, local)), ('sleep', (0,))], 3, (),
+         {0: [('ISHLW', 2, 64), ('ISHRW', 1, 64), ('IORW', 8, 64),
+              ('IANDW', 15, 64), ('IXORW', 1, 64), ('IMODW', 7, 64), ('ISUBW', 2, 64)],
+          1: [('IADDW', local, 72)]}, ''),
+        ("""    value := 536870911;
+    value += 1;
+    value <<= 2;
+    value /= -1;
+    value %= -1;
+    status := sys->sleep(value);""",
+         [('sleep', (local,))], 536870911, (),
+         {0: [('IADDW', 1, 64), ('ISHLW', 2, 64), ('IDIVW', -1, 64), ('IMODW', -1, 64)]}, ''),
+        ("""    value := -1;
+    status := sys->dup(value, value);
+    value += 1;
+    status /= value;""",
+         [('dup', (local, local))], -1, (),
+         {1: [('IADDW', 1, 64), ('IDIVW', local, 72)]}, 'zero divide'),
+        ("""    value := -1;
+    status := sys->dup(value, value);
+    value += 1;
+    status %= value;""",
+         [('dup', (local, local))], -1, (),
+         {1: [('IADDW', 1, 64), ('IMODW', local, 72)]}, 'zero divide'),
+        ("    value := 0;\n" + "    value ^= 1;\n"*31 +
+         "    value = sys->sleep(value);\n"*32,
+         [('sleep', (local,))]+[('sleep', (result,))]*31, 0, tuple(range(32)),
+         {0: [('IXORW', 1, 64)]*31}, ''),
     )
-    for body, sequence, initial, copies in bodies:
+    for body, sequence, initial, copies, steps, status in bodies:
         source.write_text(template.replace('    now := sys->millisec();', body))
         subprocess.run(command, check=True, timeout=30)
         image = output.read_bytes()
-        expected = sys_integer_image(sequence, initial=initial, copies=copies)
+        expected = sys_integer_image(sequence, initial=initial, copies=copies, steps=steps)
         if code_bytes(image) != code_bytes(expected):
             raise RuntimeError('compiler changed an initialized scalar or previous-result argument')
-        yield 'initialized scalar arguments', image
+        yield 'scalar expressions and arguments', image, status
     for value in (-536870912, -8193, -8192, -65, -64, 63, 64, 8191, 8192, 536870911):
         source.write_text(template.replace('millisec()', f'sleep({value})'))
         subprocess.run(command, check=True, timeout=30)
@@ -339,6 +416,8 @@ init()
 
     for body in (
             "    one := -1; two := -2; status := sys->dup(one, two);",
+            "    value := -1;\n" + "    value ^= 1;\n"*64 + "    status := sys->sleep(value);",
+            "    value := 0;\n" + "    value ^= 1;\n"*32 + "    value = sys->sleep(value);\n"*32,
             "    one := sys->dup(-1, -1); two := sys->dup(-2, -2); status := sys->dup(one, two);"):
         source.write_text(template.replace('    now := sys->millisec();', body))
         refused = subprocess.run(command, capture_output=True, text=True, timeout=30)
@@ -577,17 +656,61 @@ def main():
                     ([('sleep', (('fp', 40),))], {'initial': 0}),
                     ([('sleep', (('fp', 68),))], {'initial': 0}),
                     ([('sleep', (('fp', 0),))], {'initial': 0}),
-                    ([('sleep', (local,))], {'initial': (0, 1)})):
+                    ([('sleep', (local,))], {'initial': (0,)*65}),
+                    ([('sleep', (local,))], {'initial': (0,)*64, 'copies': (0,)})):
                 consumer.write_bytes(sys_integer_image(sequence, **options))
                 output = execute(command+builtin)
                 if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
                     raise RuntimeError('uninitialized or reserved scalar Sys input reached scheduler: '+output)
+            arithmetic = (
+                ([('dup', (-1, local))],
+                 {'steps': {0: [('IADDW', 1, 64, 2)]}}, ''),
+                ([('dup', (-1, local))],
+                 {'steps': {0: [('IADDW', 1, 64, -32768)]}}, ''),
+                ([('dup', (-1, local))],
+                 {'steps': {0: [('IADDW', 1, 64, 32767)]}}, ''),
+                ([('sleep', (local,))],
+                 {'initial': (0,)*64}, ''),
+                ([('dup', (local, local)), ('dup', (result, local))],
+                 {'initial': -5, 'steps': {0: [('IADDW', 4, 64)],
+                  1: [('IADDW', local, 72), ('IMULW', 2, 64, result),
+                      ('IDIVW', 2, 64), ('IXORW', 1, 64)]}}, ''),
+                ([('dup', (local, local))],
+                 {'initial': -1, 'steps': {1: [('IADDW', 1, 64), ('IDIVW', local, 72)]}}, 'zero divide'),
+                ([('dup', (local, local))],
+                 {'initial': -1, 'steps': {1: [('IADDW', 1, 64), ('IMODW', local, 72)]}}, 'zero divide'),
+            )
+            for sequence, options, status in arithmetic:
+                consumer.write_bytes(sys_integer_image(sequence, **options))
+                for jit in (0, 1):
+                    output = execute(command+['-c', str(jit)]+builtin)
+                    marker = f'native64 scalar module caller: jit={jit}, exit="{status}"'
+                    if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                        raise RuntimeError('Sys scalar expression did not retire correctly: '+output)
+            for operation in (
+                    ('IADDW', 1, 64),
+                    ('IADDW', 1, 64, local),
+                    ('IADDW', ('fp', 72), 64, 1),
+                    ('IADDW', 1, 64, 32768),
+                    ('IADDW', 1, 64, -32769),
+                    ('IADDW', 1, 40, 2),
+                    ('IADDW', ('mp', 0), 64, 1),
+                    ('IMOVW', 0, 72),
+                    ('IADDW', 1, 72, 2),
+                    ('IADDW', 1, 64, ('fp', 40)),
+                    ('IADDW', 1, 64, ('mp', 0)),
+                    ('IADDL', 1, 64, 2),
+                    ('IMOVL', 0, 64)):
+                consumer.write_bytes(sys_integer_image([('sleep', (0,))], steps={0: [operation]}))
+                output = execute(command+builtin)
+                if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+                    raise RuntimeError('unsafe Sys scalar expression reached the scheduler: '+output)
             if args.limbo is not None:
-                for repeats, image in compile_clocks(args.limbo.resolve(), work):
+                for repeats, image, status in compile_clocks(args.limbo.resolve(), work):
                     consumer.write_bytes(image)
                     for jit in (0, 1):
                         output = execute(command+['-c', str(jit)]+builtin)
-                        marker = f'native64 scalar module Clock: jit={jit}, exit=""'
+                        marker = f'native64 scalar module Clock: jit={jit}, exit="{status}"'
                         if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
                             raise RuntimeError(f'compiler-produced {repeats}-call clock did not complete: '+output)
                 print('PASS Limbo source to Dis64 LOAD and imported clock execution in C/JIT')
