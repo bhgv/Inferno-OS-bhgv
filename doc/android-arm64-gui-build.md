@@ -44,3 +44,34 @@ its window, input, storage permissions and JIT policy on a device.
 The next startup work is coherent native64 C declarations, module registration,
 frame/maps and general managed compiler/runtime support for the AWM dependency
 closure. A scalar module's success or a linked GUI library is insufficient proof.
+
+## Native64 Tk registration step
+
+Add `--native64-tk` to compile the whole GUI graph with generated Frame64
+Tk declarations and its real `builtinmod64` registration path. Classic mk
+regenerates `tk-native64.h` from the actual Sys/Draw/Tk `.m` dependency closure;
+only the Tk call table is emitted. The `TkTop` public prefix is checked against
+the generated `Tk_Toplevel` field offsets and extent at compile time.
+
+The new initializer stages its descriptor before registration, publishes no
+partial top on failure, preserves the registration diagnostic and installs the
+formatter/widget table only after success. Repeated initialization is
+idempotent. Header-only selection and an implicit WORD model remain refused.
+The legacy initializer retains its existing order.
+
+`python3 utils/tests/native64-tk-register.py --limbo /path/to/limbo` compiles
+all actual Tk callback bodies and exercises the real module/descriptor
+constructor and initializer with controlled allocation/error boundaries. It
+checks all 10 generated links, maps, callback identities, the public-prefix
+geometry, idempotence, 26 allocation refusals and 378 staging observations.
+The GUI callback witnesses abort if called: this registration test deliberately
+does not claim GUI operation. Host UBSan and ARM64/Bionic QEMU runs pass;
+portable compiler/runner options use `CC`, `NATIVE64_ARCH`, `NATIVE64_CFLAGS`
+and `NATIVE64_RUNNER`, as with the other native64 gates.
+
+The full GUI shared library also links with this selection and retains 16KiB
+LOAD alignment. `result.json` records `tk_native64_selected: true` while
+`awm_started` remains false. Ordinary Android startup still refuses the mixed
+legacy builtin set. Draw, the full Sys variadic/import contract and general
+managed Dis64 compilation remain startup work; this flag does not bypass that
+boundary or produce a working AWM APK.

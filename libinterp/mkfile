@@ -124,6 +124,10 @@ $ROOT/libinterp/string-native64.h:D: $ROOT/module/string.m $ROOT/limbo/native64.
 math-native64.h:D: ../module/math.m
 	limbo -H ../module/math.m > $target.tmp && mv $target.tmp $target
 
+# Keep the Tk module's native frames and dependent Draw public types coherent.
+$ROOT/libinterp/tk-native64.h:D: $ROOT/module/tk-native64.m $ROOT/module/tk.m $ROOT/module/draw.m $ROOT/module/sys.m
+	limbo -H -M Tk -I$ROOT/module $ROOT/module/tk-native64.m > $target.tmp && mv $target.tmp $target
+
 # Generate only the Freetype interface, retaining its real dependent Point declaration.
 $ROOT/libinterp/freetype-native64.h:D: $ROOT/module/freetype-native64.m $ROOT/module/freetype.m $ROOT/module/draw.m $ROOT/module/sys.m
 	limbo -H -M Freetype -I$ROOT/module $ROOT/module/freetype-native64.m > $target.tmp && mv $target.tmp $target
@@ -188,3 +192,6 @@ comp-riscv.$O comp-riscv64.$O: riscv-emit.h comp-riscv.c
 
 # Stack and interpreter guards inline the same frame-cell contract as the native Math gateway.
 stack.$O xec.$O: $ROOT/include/native64-caller.h $ROOT/include/native64-frame-cell.h $ROOT/include/native64-model.h $ROOT/include/dis-layout.h
+
+# The explicit GUI Tk selection owns only its generated declaration input.
+tk.$O: $NATIVE64_BOOT_TK_HEADERS
