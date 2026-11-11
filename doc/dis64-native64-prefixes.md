@@ -386,3 +386,52 @@ offsets and four-byte argument positions cannot be passed directly to the
 native64 site constructor. The next producer must lower the values/instructions,
 construct native caller/callee Types and emit an agreed owned PC/site mapping;
 this diagnostic assigns no wire records or managed signature IDs.
+
+
+## Lower canonical argument stores
+
+`-Dq` also emits `NATIVE64_CALL_LOWER`, matched by the same diagnostic ID.
+The initial pass proves a complete region of direct argument writes between
+the captured FRAME and LEA. Each declared field must be written exactly once;
+no branch, unproved address, computation or temporary cleanup is silently
+skipped. Unsupported regions produce `lowered:false` with no partial program.
+
+For `sys->sprint("%d|%s", number, text)`, the native destinations are:
+
+| Value | Operation | Destination |
+| --- | --- | --- |
+| Fixed format String | MOVP | Byte 64 |
+| Int tail argument | CVTWL | Byte 72 |
+| String tail argument | MOVP | Byte 80 |
+
+MOVW alone is insufficient for an int/fix tail: it writes four bytes, while the
+canonical slot must contain the sign-extended eight-byte value. The pass selects
+CVTWL. Big values use MOVL or an existing WORD-to-LONG conversion; real values
+use MOVF or the existing WORD/LONG-to-REAL conversions. MOVP retains and marks
+references through the production handler. Fixed fields and packed tail offsets
+come from captured compiler declarations; native offsets are not obtained by
+doubling legacy argument offsets. Byte and other unproved store forms remain
+outside this initial pass.
+
+Each store names its original legacy PC, source mode/value, field ordinal,
+canonical operation and native destination. `source_space:legacy-operands`
+explicitly means that source FP/MP offsets are still legacy operands. These
+records are not ready-to-serialize Dis64 instructions. Caller storage layout,
+source relocation, initializers, control flow and owned PC/site binding still
+need their native64 producer/admission path.
+
+The independent classic decoder checks the original write and derives the
+expected opcode/destination from its declared type. It covers 2/150/4096-slot
+calls, empty/mixed tails, literal immediates and raw big/real copies. Arithmetic
+arguments and the outer call of a nested expression currently refuse lowering
+when their temporary operations are not covered; their ordinary legacy code
+continues to compile unchanged.
+
+The runtime gate executes the generated store choices through actual MOVP,
+CVTWL, MOVL, MOVF and CVTWF bodies. The 768 FRAME/MFRAME/MCALL cases no longer
+manually pack their prefix/tail values. Additional cases check full signed32
+extension, exact float conversion, signed64/IEEE bits (including signed zero,
+infinity and NaN payloads), packed source slots and guard bytes. Removal controls
+must detect replacing CVTWL with a four-byte move or MOVP with a raw pointer
+copy. The gate still supplies trusted C source cells/values and decoded operand
+addresses; it does not run the complete source program or a variadic Dis64 file.

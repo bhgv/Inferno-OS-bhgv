@@ -5,9 +5,25 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def checked_run(command, **options):
+    try:
+        result = subprocess.run(command, **options)
+        diagnostic = result.stderr or b''
+        if isinstance(diagnostic, bytes): diagnostic = diagnostic.decode(errors='replace')
+        if any(marker in diagnostic for marker in ('AddressSanitizer', 'UndefinedBehaviorSanitizer', 'runtime error:')):
+            raise RuntimeError('Compiler sanitizer failure:\n'+diagnostic)
+        return result
+    except subprocess.CalledProcessError as failure:
+        diagnostic = failure.stderr or b''
+        if isinstance(diagnostic, bytes): diagnostic = diagnostic.decode(errors='replace')
+        sys.stderr.write(diagnostic)
+        raise
 
 
 def legacy_instructions(data):
@@ -61,6 +77,50 @@ def verify_locations(data, records, diagnostics):
     return by_id
 
 
+def verify_stores(data, records, diagnostics):
+    """Check native packing against independent decoded legacy writes and declared tail kinds."""
+    locations = {json.loads(line.split(' ', 1)[1])['id']: json.loads(line.split(' ', 1)[1]) for line in diagnostics.splitlines() if line.startswith('NATIVE64_CALL_PC ')}
+    lower = [json.loads(line.split(' ', 1)[1]) for line in diagnostics.splitlines() if line.startswith('NATIVE64_CALL_LOWER ')]
+    by_id = {r['id']: r for r in lower}
+    if len(by_id) != len(records) or len(lower) != len(records): raise RuntimeError('Missing native store program/refusal')
+    _, code = legacy_instructions(data)
+    for record in records:
+        program = by_id[record['id']]
+        if not record['accepted']:
+            if program['lowered'] or 'stores' in program: raise RuntimeError('Refused type acquired a partial native program')
+            continue
+        if not program['lowered'] or program['frame_bytes'] != record['frame_bytes'] or program['source_space'] != 'legacy-operands':
+            raise RuntimeError('Simple source arguments did not lower: '+str(program))
+        location = locations[record['id']]
+        fields = set()
+        if len(program['stores']) != record['fixed_arguments']+len(record['tail']): raise RuntimeError('Missing field write')
+        for store in program['stores']:
+            pc = store['legacy_pc']; origin = code[pc]
+            if not location['frame_pc'] < pc < location['result_pc'] or origin['m'] is not None:
+                raise RuntimeError('Native store was not an actual argument write')
+            source_mode = (origin['mode'] >> 3) & 7
+            if store['source_mode'] != {0:'mp', 1:'fp', 2:'immediate'}.get(source_mode) or origin['s'] != [store['source_value']]:
+                raise RuntimeError('Source operand provenance was rewritten or widened by guessing')
+            key = (store['fixed'], store['ordinal'])
+            if key in fields: raise RuntimeError('Duplicate native field store')
+            fields.add(key)
+            if store['fixed']:
+                expected_destination = 64+8*store['ordinal']; expected_legacy = 32+4*store['ordinal']; expected_opcode = 41
+                if store['opcode'] != expected_opcode or origin['op'] != 41: raise RuntimeError('Fixed reference lost MOVP ownership')
+            else:
+                slot = record['tail'][store['ordinal']]
+                expected_destination = record['fixed_bytes']+slot['offset']; expected_legacy = slot['legacy_offset']
+                if slot['kind'] in ('int','fix'): expected_opcode = 138 if origin['op'] == 45 else -1
+                elif slot['kind'] == 'big': expected_opcode = origin['op'] if origin['op'] in (118,138) else -1
+                elif slot['kind'] == 'real': expected_opcode = origin['op'] if origin['op'] in (46,50,135) else -1
+                elif slot['kind'] == 'string': expected_opcode = 41 if origin['op'] == 41 else -1
+                else: expected_opcode = -1
+                if store['kind'] != slot['kind'] or store['opcode'] != expected_opcode: raise RuntimeError('Wrong canonical value opcode')
+            if store['destination'] != expected_destination or store['bytes'] != 8 or origin['d'] != [location['frame_slot'], expected_legacy]:
+                raise RuntimeError('Native destination does not match complete typed packing')
+    return by_id
+
+
 def generate(limbo, work, env):
     source = work/'callsites.b'
     calls = []
@@ -77,16 +137,18 @@ def generate(limbo, work, env):
                       '\n'.join(calls)+'\n}\n')
     command = [str(limbo), '-I', str(ROOT/'module')]
     ordinary = work/'ordinary.dis'; traced = work/'traced.dis'
-    subprocess.run(command+['-o', str(ordinary), str(source)], env=env, check=True, capture_output=True)
-    result = subprocess.run(command+['-Dq', '-o', str(traced), str(source)], env=env, check=True, capture_output=True, text=True)
+    checked_run(command+['-o', str(ordinary), str(source)], env=env, check=True, capture_output=True)
+    result = checked_run(command+['-Dq', '-o', str(traced), str(source)], env=env, check=True, capture_output=True, text=True)
     if ordinary.read_bytes() != traced.read_bytes(): raise RuntimeError('Call-site diagnostics changed legacy output')
     records = [json.loads(line.removeprefix('NATIVE64_CALL ')) for line in result.stderr.splitlines() if line.startswith('NATIVE64_CALL ')]
     verify_locations(traced.read_bytes(), records, result.stderr)
-    repeat = subprocess.run(command+['-Dq', '-o', str(traced), str(source)], env=env, check=True, capture_output=True, text=True)
+    programs = verify_stores(traced.read_bytes(), records, result.stderr)
+    repeat = checked_run(command+['-Dq', '-o', str(traced), str(source)], env=env, check=True, capture_output=True, text=True)
     if repeat.stderr != result.stderr: raise RuntimeError('Call-site plans are nondeterministic')
     if len(records) != 11 or sum(r['accepted'] for r in records) != 10: raise RuntimeError('Missing accepted/refused source call-site plans: '+str(records))
     if records[-1]['reason'] != 'tail-kind': raise RuntimeError('Opaque reference was admitted without an exact Type witness')
-    header = ['/* Generated only from the current compiler\'s typechecked source call plans. */']
+    header = ['/* Generated only from the current compiler\'s typechecked source call plans. */',
+              'typedef struct Native64GeneratedStore { unsigned int op, destination, fixed, ordinal; long source; unsigned int immediate; } Native64GeneratedStore;']
     for operation, name in enumerate(('sprint', 'aprint', 'print', 'fprint')):
         for index, count in enumerate((2, 150)):
             record = records[operation*2+index]
@@ -109,12 +171,15 @@ def generate(limbo, work, env):
                        'static Native64TailSlot callslots_'+label+'[] = {']
             header += ['{'+('Native64TailRef' if slot['kind'] == 'string' else 'Native64TailInt')+','+str(slot['offset'])+',8,'+('&Tstring' if slot['kind'] == 'string' else 'nil')+'},' for slot in record['tail']]
             header += ['};']
+            header += ['static const Native64GeneratedStore callstores_'+label+'[] = {']
+            header += ['{'+','.join(map(str, (store['opcode'], store['destination'], int(store['fixed']), store['ordinal'], store['source_value'], int(store['source_mode']=='immediate'))))+'},' for store in programs[record['id']]['stores']]
+            header += ['};']
     if records[8]['tail'] or records[8]['frame_bytes'] != 72: raise RuntimeError('Empty tail layout failed')
     if [s['kind'] for s in records[9]['tail']] != ['int', 'big', 'real', 'string']: raise RuntimeError('Numeric source kinds lost')
     for flag in ('-64', '-64m'):
         refused = work/('refused'+flag+'.dis64')
-        attempt = subprocess.run(command+[flag, '-Dq', '-o', str(refused), str(source)], env=env, capture_output=True, text=True)
-        if attempt.returncode == 0 or refused.exists(): raise RuntimeError('Diagnostic plan bypassed Dis64 admission')
+        attempt = checked_run(command+[flag, '-Dq', '-o', str(refused), str(source)], env=env, capture_output=True, text=True)
+        if attempt.returncode != 1 or refused.exists(): raise RuntimeError('Diagnostic plan bypassed Dis64 admission')
     # Verify the runtime's private descriptor-count boundary from actual source,
     # while keeping the legacy producer usable for the refused call as well.
     for count in (4096, 4097):
@@ -124,13 +189,14 @@ def generate(limbo, work, env):
                             ', '.join(['number']*count)+'); }')
         ordinary_boundary = work/'boundary.dis'
         traced_boundary = work/'boundary-trace.dis'
-        subprocess.run(command+['-o', str(ordinary_boundary), str(boundary)], env=env, check=True, capture_output=True)
-        output = subprocess.run(command+['-Dq', '-o', str(traced_boundary), str(boundary)], env=env, check=True, capture_output=True, text=True)
+        checked_run(command+['-o', str(ordinary_boundary), str(boundary)], env=env, check=True, capture_output=True)
+        output = checked_run(command+['-Dq', '-o', str(traced_boundary), str(boundary)], env=env, check=True, capture_output=True, text=True)
         if ordinary_boundary.read_bytes() != traced_boundary.read_bytes(): raise RuntimeError('Boundary diagnostics changed legacy output')
         plans = [json.loads(line.removeprefix('NATIVE64_CALL ')) for line in output.stderr.splitlines() if line.startswith('NATIVE64_CALL ')]
         if len(plans) != 1 or plans[0]['accepted'] != (count == 4096): raise RuntimeError('Tail-count boundary was not enforced')
         plan = plans[0]
         verify_locations(traced_boundary.read_bytes(), plans, output.stderr)
+        verify_stores(traced_boundary.read_bytes(), plans, output.stderr)
         if count == 4097:
             if plan['reason'] != 'tail-count': raise RuntimeError('Incorrect boundary refusal')
         elif len(plan['tail']) != count or plan['frame_bytes'] != 72+count*8 or plan['map'] != [0, 0x80]+[0]*512:
@@ -139,11 +205,14 @@ def generate(limbo, work, env):
     nested.write_text('implement Nested; include "sys.m"; Nested: module { init: fn(); }; '
                       'answer: string; init() { sys := load Sys Sys->PATH; answer = sys->sprint("%s", sys->sprint("nested")); }')
     nested_plain = work/'nested.dis'; nested_trace = work/'nested-trace.dis'
-    subprocess.run(command+['-o', str(nested_plain), str(nested)], env=env, check=True, capture_output=True)
-    output = subprocess.run(command+['-Dq', '-o', str(nested_trace), str(nested)], env=env, check=True, capture_output=True, text=True)
+    checked_run(command+['-o', str(nested_plain), str(nested)], env=env, check=True, capture_output=True)
+    output = checked_run(command+['-Dq', '-o', str(nested_trace), str(nested)], env=env, check=True, capture_output=True, text=True)
     if nested_plain.read_bytes() != nested_trace.read_bytes(): raise RuntimeError('Nested provenance changed legacy output')
     nested_records = [json.loads(line.removeprefix('NATIVE64_CALL ')) for line in output.stderr.splitlines() if line.startswith('NATIVE64_CALL ')]
     positions = verify_locations(nested_trace.read_bytes(), nested_records, output.stderr)
+    nested_lower = {r['id']:r for r in (json.loads(line.split(' ',1)[1]) for line in output.stderr.splitlines() if line.startswith('NATIVE64_CALL_LOWER '))}
+    if nested_lower[nested_records[0]['id']]['lowered'] or 'stores' in nested_lower[nested_records[0]['id']] or not nested_lower[nested_records[1]['id']]['lowered']:
+        raise RuntimeError('Nested temporary cleanup was silently dropped from lowering')
     outer, inner = [positions[r['id']] for r in nested_records]
     if not inner['call_pc'] < outer['frame_pc'] or {outer['result_space'], inner['result_space']} != {'fp', 'mp'}:
         raise RuntimeError('Nested call provenance confused source order and execution order')
@@ -151,21 +220,49 @@ def generate(limbo, work, env):
     asynchronous.write_text('implement Asynchronous; Async: module { log: fn(fmt: string, *); }; '
                              'Asynchronous: module { init: fn(); }; init() { other := load Async "$Async"; spawn other->log("spawn"); }')
     async_plain = work/'asynchronous.dis'; async_trace = work/'asynchronous-trace.dis'
-    subprocess.run(command+['-o', str(async_plain), str(asynchronous)], env=env, check=True, capture_output=True)
-    output = subprocess.run(command+['-Dq', '-o', str(async_trace), str(asynchronous)], env=env, check=True, capture_output=True, text=True)
+    checked_run(command+['-o', str(async_plain), str(asynchronous)], env=env, check=True, capture_output=True)
+    output = checked_run(command+['-Dq', '-o', str(async_trace), str(asynchronous)], env=env, check=True, capture_output=True, text=True)
     if async_plain.read_bytes() != async_trace.read_bytes(): raise RuntimeError('Spawn diagnostics changed legacy output')
     async_sites = [json.loads(line.removeprefix('NATIVE64_CALL_PC ')) for line in output.stderr.splitlines() if line.startswith('NATIVE64_CALL_PC ')]
     if len(async_sites) != 1 or not async_sites[0]['located'] or async_sites[0]['linked'] or async_sites[0]['result_pc'] != -1:
         raise RuntimeError('Void/spawn transport was mistaken for a synchronous result call')
     _, async_code = legacy_instructions(async_trace.read_bytes())
     if async_code[async_sites[0]['call_pc']]['op'] != 10: raise RuntimeError('Spawn location was not the serialized MSPAWN')
-    output = subprocess.run(command+['-Dq', str(nested), str(asynchronous)], cwd=work, env=env, check=True, capture_output=True, text=True)
+    output = checked_run(command+['-Dq', str(nested), str(asynchronous)], cwd=work, env=env, check=True, capture_output=True, text=True)
     batch_records = [json.loads(line.removeprefix('NATIVE64_CALL ')) for line in output.stderr.splitlines() if line.startswith('NATIVE64_CALL ')]
     batch_sites = [json.loads(line.removeprefix('NATIVE64_CALL_PC ')) for line in output.stderr.splitlines() if line.startswith('NATIVE64_CALL_PC ')]
     if len(batch_records) != 3 or len({r['id'] for r in batch_records}) != 3 or {s['module'] for s in batch_sites} != {'Nested', 'Asynchronous'}:
         raise RuntimeError('Module-local PC notes leaked or identities repeated in a multi-file compile')
+    extra_programs = {}
+    extra_sources = {
+        'literal': 'sys->sprint("%d|%s", -1, "ok");',
+        'wide': 'wide := big -17; fraction := -1.25; sys->sprint("%bd|%g", wide, fraction);',
+        'computed': 'number := -1; sys->sprint("%d", number+1);',
+    }
+    for label, body in extra_sources.items():
+        probe = work/(label+'.b')
+        probe.write_text('implement Probe; include "sys.m"; Probe: module { init: fn(); }; init() { sys := load Sys Sys->PATH; '+body+' }')
+        plain = work/(label+'.dis'); traced_probe = work/(label+'-trace.dis')
+        checked_run(command+['-o', str(plain), str(probe)], env=env, check=True, capture_output=True)
+        output = checked_run(command+['-Dq', '-o', str(traced_probe), str(probe)], env=env, check=True, capture_output=True, text=True)
+        if plain.read_bytes() != traced_probe.read_bytes(): raise RuntimeError('Store lowering changed legacy output')
+        probe_records = [json.loads(line.split(' ', 1)[1]) for line in output.stderr.splitlines() if line.startswith('NATIVE64_CALL ')]
+        verify_locations(traced_probe.read_bytes(), probe_records, output.stderr)
+        if label == 'computed':
+            refused = [json.loads(line.split(' ',1)[1]) for line in output.stderr.splitlines() if line.startswith('NATIVE64_CALL_LOWER ')]
+            if len(refused) != 1 or refused[0]['lowered'] or 'stores' in refused[0]: raise RuntimeError('Unsupported arithmetic emitted a partial store program')
+        else:
+            extra_programs[label] = verify_stores(traced_probe.read_bytes(), probe_records, output.stderr)[probe_records[0]['id']]
+    for label, program in extra_programs.items():
+        header += ['static const Native64GeneratedStore call'+label+'stores[] = {']
+        header += ['{'+','.join(map(str, (store['opcode'], store['destination'], int(store['fixed']), store['ordinal'], store['source_value'], int(store['source_mode']=='immediate'))))+'},' for store in program['stores']]
+        header += ['};']
+    mixed = programs[records[9]['id']]
+    header += ['static const Native64GeneratedStore callmixedstores[] = {']
+    header += ['{'+','.join(map(str, (store['opcode'], store['destination'], int(store['fixed']), store['ordinal'], store['source_value'], int(store['source_mode']=='immediate'))))+'},' for store in mixed['stores']]
+    header += ['};']
     (work/'callsites-native64.h').write_text('\n'.join(header)+'\n')
-    print('PASS source call-site plans: four Sys operations, 2/150/4096 slots, 4097 refusal, empty/mixed tails, complete maps, opaque-reference refusal, deterministic diagnostics, unchanged legacy bytecode and preserved Dis64 refusal, byte-decoded final PCs and nested FP/MP result locations', flush=True)
+    print('PASS source call-site plans: four Sys operations, 2/150/4096 slots, 4097 refusal, empty/mixed tails, complete maps, opaque-reference refusal, deterministic diagnostics, unchanged legacy bytecode and preserved Dis64 refusal, byte-decoded final PCs, nested FP/MP results and canonical native store programs', flush=True)
     return records
 
 

@@ -218,3 +218,14 @@ classic decoder checks the written bytes, including nested and multi-file calls.
 The trace explicitly names the legacy PC space and does not convert those PCs,
 WORD32 offsets or descriptors into executable native64 code. Owned Dis64 PC/site
 mapping and general serialized variadic lowering/admission remain separate.
+
+
+The compiler's private argument-store pass now selects canonical native writes
+from proven legacy argument fields: CVTWL for eight-byte sign-extended int/fix,
+MOVL/MOVF or existing conversions for big/real, and MOVP for reference ownership.
+It publishes only complete direct-write regions. Independent decoding validates
+the original operands; VM fixtures execute the generated choices rather than
+manually packing values. The source operands are explicitly still legacy FP/MP
+coordinates, with C-provided mappings in the runtime gate. This introduces no
+serialized instruction/profile admission and does not bypass unsupported
+arithmetic or temporary cleanup regions.

@@ -208,3 +208,11 @@ The native formatter link additionally checks four module-owned recipe APIs:
 (13 typed Sys symbols in total). Runtime tests cover source-vector retirement,
 partial construction/unwind, caller-module identity and actual `freemod` cleanup.
 These native metadata owners do not enable a serialized variadic call or AWM.
+
+
+The formatter gate now consumes the compiler's canonical argument-store choices
+and executes their production handlers before the existing owned-site bind/call
+path. Signed extension, reference retention and raw big/real bit preservation
+are tested on each target. The source-cell mapping remains a decoded C transport;
+this is distinct from compiling and executing an ordinary variadic Dis64 module
+or running AWM on an Android device.

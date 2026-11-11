@@ -71,6 +71,16 @@ jobs:
             | tee "$RUNNER_TEMP/prefix.log"
           python3 utils/tests/native64-arguments.py --formatter --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/formatter.log"
+      - name: Check source compiler call-site memory safety
+        if: matrix.arch == 'amd64'
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: |
+          set -o pipefail
+          CFLAGS='-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all' \
+            MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/compiler-sanitized" sh makemk.sh
+          python3 utils/tests/native64-callsites.py --limbo "$RUNNER_TEMP/compiler-sanitized/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/source-compiler.log"
       - uses: actions/upload-artifact@v4
         timeout-minutes: 3
         continue-on-error: true # A storage outage must not block later runtime test runs.
@@ -80,5 +90,6 @@ jobs:
           path: |
             ${{ runner.temp }}/prefix.log
             ${{ runner.temp }}/formatter.log
+            ${{ runner.temp }}/source-compiler.log
           if-no-files-found: warn
           retention-days: 14

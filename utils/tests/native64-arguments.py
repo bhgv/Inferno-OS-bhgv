@@ -88,7 +88,7 @@ def main():
                     source += (ROOT/'utils/tests/native64-sys-format.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_sysformat_main(int argc, char **argv)', 1)
                     source += (ROOT/'utils/tests/native64-sys-write.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_syswrite_main(int argc, char **argv)', 1)
                     vm = (ROOT/'libinterp/xec.c').read_text()
-                    bodies = '#define OP(fn) void fn(void)\n'+'\n'.join(function(vm, signature) for signature in ('static Type*\nmoduletype(', 'static int\nmoduleentry(', 'static int\nframefits(', 'OP(frame)', 'OP(mframe)', 'OP(mcall)'))
+                    bodies = '#define OP(fn) void fn(void)\n'+'\n'.join(function(vm, signature) for signature in ('static Type*\nmoduletype(', 'static int\nmoduleentry(', 'static int\nframefits(', 'OP(frame)', 'OP(mframe)', 'OP(mcall)', 'OP(movw)', 'OP(movp)', 'OP(movl)', 'OP(movf)', 'OP(cvtwl)', 'OP(cvtwf)'))
                     source += '\n'+function((ROOT/'libinterp/load.c').read_text(), 'void\nfreemod(').replace('void\nfreemod(', 'void\nnative64_owned_freemod(', 1)+'\n'
                     source += (ROOT/'utils/tests/native64-sys-frame.c').read_text().replace('VM_FRAME_IMPLEMENTATION', bodies)
                     for signature in ('int\nSys_sprint64(', 'int\nSys_aprint64(', 'int\nSys_print64(', 'int\nSys_fprint64(', 'int\nSys_setframes64(', 'int\nSys_clearframes64(', 'int\nSys_bindsite64(', 'int\nSys_callsite64(', 'int\nSys_bindframe64(', 'int\nSys_sprintframe64(', 'int\nSys_aprintframe64(', 'int\nSys_printframe64(', 'int\nSys_fprintframe64('):
@@ -115,8 +115,10 @@ def main():
                             ('bind-pending', 'native64-sys-frame.h', ': active.mr != nil)', ': 0)'),
                             ('sites-copy', 'native64-sys-sites.h', 'memmove(site->slots, site->spec.slots, site->spec.count*sizeof(*site->slots));', 'memset(site->slots, 0, site->spec.count*sizeof(*site->slots));'),
                             ('sites-owner', 'native64-sys-sites.h', 'if(((Modlink*)active.mr)->m != module) return 0;', '(void)0;'),
-                            ('sites-retire', 'native64-sys-sites.h', 'native64syssitesdiscard(table);', 'free(table);')):
-                        adapter = (ROOT/('include/'+header)).read_text()
+                            ('sites-retire', 'native64-sys-sites.h', 'native64syssitesdiscard(table);', 'free(table);'),
+                            ('store-canonical', '@unit', 'case ICVTWL: cvtwl(); break; // Canonical eight-byte integer argument.', 'case ICVTWL: movw(); break; // Deliberately omit sign extension.'),
+                            ('store-reference', '@unit', 'case IMOVP: movp(); break; // Managed retain/mark before result publication.', 'case IMOVP: memmove(R.d, R.s, sizeof(void*)); break; // Deliberately omit ownership.')):
+                        adapter = source if header == '@unit' else (ROOT/('include/'+header)).read_text()
                         if adapter.count(boundary) != 1:
                             raise RuntimeError('Typed format control boundary changed: '+name)
                         control_unit = work/(port+'-'+name+'-unchecked.c')
@@ -125,7 +127,7 @@ def main():
                             if adapter.count('fprintmap[1] != 0xc0') != 1:
                                 raise RuntimeError('FD map guard changed')
                             adapter = adapter.replace('fprintmap[1] != 0xc0', 'fprintmap[1] != 0x40')
-                        control_source = source.replace('#include "'+header+'"', adapter, 1)
+                        control_source = adapter if header == '@unit' else source.replace('#include "'+header+'"', adapter, 1)
                         if name == 'write-fd-map':
                             schema = (work/'sys-native64.h').read_text()
                             boundary = '#define F_Sys_fprint_map {0x00,0xc0}'

@@ -403,5 +403,5 @@ int dis64clock(Decl*, Decl*, Decl*, Inst*, long, long); // Checked source pilot 
 unsigned int native64callplan(Decl*, Type*); // Opt-in source call-site diagnostics; no bytecode admission.
 
 void native64callreset(void);
-void native64callnote(unsigned int, Inst*, Inst*, Inst*);
+void native64callnote(unsigned int, Inst*, Inst*, Inst*, Decl*, Type*);
 void native64callpcs(Inst*, long); // Final legacy Dis coordinates, never Dis64 admission.

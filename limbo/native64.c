@@ -1072,40 +1072,81 @@ native64stubs(Decl *globals)
 }
 
 /* Diagnostic-only provenance. Never retain these IR pointers after this module. */
+typedef struct Native64CallArg Native64CallArg;
+struct Native64CallArg {
+    int kind, fixed;
+    long legacy;
+    unsigned int native, ordinal;
+};
 typedef struct Native64CallPC Native64CallPC;
 struct Native64CallPC {
     unsigned int id;
     Inst *frame, *result, *call;
     Decl *caller; // Persistent function identity; its frame descriptor is resolved later.
+    Native64CallArg *args; // Owned primitive field witnesses copied before AST retirement.
+    unsigned int arguments, nativebytes;
+    char *lowerreason;
     Native64CallPC *next;
 };
 static Native64CallPC *native64pcfirst, *native64pclast;
-static unsigned int native64pccount;
+static unsigned int native64pccount, native64pcarguments;
 
 void
 native64callreset(void)
 {
     Native64CallPC *note, *next;
-    for(note=native64pcfirst; note != nil; note=next) { next = note->next; free(note); }
+    for(note=native64pcfirst; note != nil; note=next) { next = note->next; free(note->args); free(note); }
     native64pcfirst = native64pclast = nil;
-    native64pccount = 0;
+    native64pccount = native64pcarguments = 0;
 }
 
 void
-native64callnote(unsigned int id, Inst *frame, Inst *result, Inst *call)
+native64callnote(unsigned int id, Inst *frame, Inst *result, Inst *call, Decl *callee, Type *actual)
 {
     Native64CallPC *note;
+    Decl *argument, *fixed;
+    unsigned int count = 0, i, tail = 0, offset = 64, width;
+    char name[2*StrSize];
     if(native64pccount == 65536) {
         fprint(2, "NATIVE64_CALL_PC {\"id\":%ud,\"module\":\"%s\",\"pc_space\":\"legacy-dis\",\"located\":false,\"reason\":\"site-limit\"}\n", id, impdecl->sym->name);
         return;
     }
     note = allocmem(sizeof(*note));
+    memset(note, 0, sizeof(*note));
     note->caller = curfn;
     note->id = id; note->frame = frame; note->result = result; note->call = call; note->next = nil;
     if(native64pclast != nil) native64pclast->next = note;
     else native64pcfirst = note;
     native64pclast = note;
     native64pccount++;
+    dotprint(name, name+sizeof(name), callee, '_');
+    if(strcmp(name, "Sys_sprint") != 0 && strcmp(name, "Sys_aprint") != 0 &&
+       strcmp(name, "Sys_print") != 0 && strcmp(name, "Sys_fprint") != 0) {
+        note->lowerreason = "callee"; return;
+    }
+    for(argument=actual->ids; argument != nil; argument=argument->next)
+        if(++count > 4098) { note->lowerreason = "argument-count"; return; }
+    if(count > 1024*1024-native64pcarguments) { note->lowerreason = "argument-limit"; return; }
+    note->args = allocmem(count*sizeof(*note->args));
+    note->arguments = count; native64pcarguments += count;
+    fixed = callee->ty->ids;
+    for(argument=actual->ids, i=0; argument != nil; argument=argument->next, i++) {
+        Native64CallArg *field = &note->args[i];
+        field->kind = argument->ty->kind; field->legacy = argument->offset;
+        field->fixed = fixed != nil;
+        if(fixed != nil) {
+            width = native64callwidth(fixed->ty);
+            if(width == 0) { note->lowerreason = "fixed-kind"; return; }
+            offset = (offset+width-1)&~(width-1);
+            field->native = offset; field->ordinal = i;
+            offset += width; fixed = fixed->next;
+            if(fixed == nil) offset = (offset+7)&~7U;
+        } else {
+            if(tail == 4096 || native64callkind(argument->ty) == nil) { note->lowerreason = "tail-kind-or-count"; return; }
+            field->native = offset; field->ordinal = tail++; offset += 8;
+        }
+    }
+    note->nativebytes = offset;
 }
 
 static int
@@ -1125,6 +1166,8 @@ native64pcspace(int mode)
     }
     return "other";
 }
+
+static void native64callstores(Native64CallPC*, int);
 
 /* Report final reachable legacy coordinates only after PC/descriptor/import resolution.
  * Missing or rewritten instructions are explicit refusals, never guessed PC offsets. */
@@ -1147,6 +1190,7 @@ native64callpcs(Inst *first, long count)
         if(!native64pcpresent(image, count, frame) || !native64pcpresent(image, count, call) ||
            (result != nil && !native64pcpresent(image, count, result))) {
             fprint(2, "NATIVE64_CALL_PC {\"id\":%ud,\"module\":\"%s\",\"pc_space\":\"legacy-dis\",\"located\":false,\"reason\":\"missing-or-rewritten\"}\n", note->id, impdecl->sym->name);
+            native64callstores(note, 0);
             continue;
         }
         callerdesc = note->caller == nil || note->caller->desc == nil ? -1 : note->caller->desc->id;
@@ -1164,7 +1208,85 @@ native64callpcs(Inst *first, long count)
         if(result != nil)
             fprint(2, ",\"result_space\":\"%s\",\"result_offset\":%ld,\"result_indirect\":%ld", native64pcspace(result->sm), result->s.reg, result->s.offset);
         fprint(2, "}\n");
+        native64callstores(note, linked);
     }
     free(image);
     native64callreset();
+}
+
+/* Lower only proven direct argument writes. Source FP/MP relocation remains explicit
+ * compiler work: these records are an internal store program, not an executable image. */
+static void
+native64callstores(Native64CallPC *note, int linked)
+{
+    typedef struct Store Store;
+    struct Store { Inst *origin; unsigned int field, op; };
+    Store *stores = nil;
+    uchar *seen = nil;
+    Native64CallArg *field;
+    Inst *in;
+    unsigned int count = 0, i, low, high, middle, op;
+    char *reason = note->lowerreason, *kind, *source;
+    long value;
+    if(reason == nil && !linked) reason = "unlinked";
+    if(reason == nil && note->args == nil) reason = "missing-fields";
+    if(reason == nil) {
+        stores = allocmem(note->arguments*sizeof(*stores));
+        seen = allocmem(note->arguments); memset(seen, 0, note->arguments);
+        for(in=note->frame->next; in != note->result; in=in->next) {
+            if(in == nil) { reason = "instruction-range"; break; }
+            if(in->op == INOOP) continue;
+            if(count == note->arguments || in->branch != nil || in->mm != Anone ||
+               in->dm != Afpind || in->d.reg != note->frame->d.reg ||
+               (in->sm != Afp && in->sm != Amp && in->sm != Aimm)) { reason = "argument-address"; break; }
+            low = 0; high = note->arguments;
+            while(low < high) {
+                middle = low+(high-low)/2;
+                if(note->args[middle].legacy < in->d.offset) low = middle+1;
+                else high = middle;
+            }
+            if(low == note->arguments || note->args[low].legacy != in->d.offset || seen[low]) { reason = "argument-field"; break; }
+            field = &note->args[low]; op = 0;
+            switch(field->kind) {
+            case Tint: case Tfix:
+                if(!field->fixed && in->op == IMOVW) op = ICVTWL;
+                break;
+            case Tbig:
+                if(in->op == ICVTWL || (in->op == IMOVL && in->sm != Aimm)) op = in->op;
+                break;
+            case Treal:
+                if(in->op == ICVTWF || (in->sm != Aimm && (in->op == IMOVF || in->op == ICVTLF))) op = in->op;
+                break;
+            case Tstring: case Tref: case Tarray: case Tlist: case Tchan: case Tmodule:
+                if(in->op == IMOVP && in->sm != Aimm && (field->fixed || field->kind == Tstring)) op = IMOVP;
+                break;
+            }
+            if(op == 0) { reason = "argument-opcode"; break; }
+            seen[low] = 1;
+            stores[count].origin = in; stores[count].field = low; stores[count].op = op; count++;
+        }
+        if(reason == nil && count != note->arguments) reason = "incomplete-arguments";
+    }
+    if(reason != nil) {
+        fprint(2, "NATIVE64_CALL_LOWER {\"id\":%ud,\"module\":\"%s\",\"lowered\":false,\"reason\":\"%s\"}\n", note->id, impdecl->sym->name, reason);
+    } else {
+        fprint(2, "NATIVE64_CALL_LOWER {\"id\":%ud,\"module\":\"%s\",\"lowered\":true,\"source_space\":\"legacy-operands\",\"frame_bytes\":%ud,\"stores\":[", note->id, impdecl->sym->name, note->nativebytes);
+        for(i=0; i<count; i++) {
+            in = stores[i].origin; field = &note->args[stores[i].field];
+            switch(field->kind) {
+            case Tint: kind = "int"; break;
+            case Tfix: kind = "fix"; break;
+            case Tbig: kind = "big"; break;
+            case Treal: kind = "real"; break;
+            case Tstring: kind = "string"; break;
+            default: kind = "reference"; break;
+            }
+            source = in->sm == Aimm ? "immediate" : native64pcspace(in->sm);
+            value = in->sm == Aimm ? in->s.offset : in->s.reg;
+            fprint(2, "%s{\"legacy_pc\":%ld,\"opcode\":%ud,\"fixed\":%s,\"ordinal\":%ud,\"kind\":\"%s\",\"source_mode\":\"%s\",\"source_value\":%ld,\"destination\":%ud,\"bytes\":8}",
+                i == 0 ? "" : ",", in->pc, stores[i].op, field->fixed ? "true" : "false", field->ordinal, kind, source, value, field->native);
+        }
+        fprint(2, "]}\n");
+    }
+    free(seen); free(stores);
 }

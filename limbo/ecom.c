@@ -1852,7 +1852,7 @@ callcom(Src *src, int op, Node *n, Node *ret)
 		in->d.decl = nfn->decl;
 		in->dm = Apc;
 	}
-	if(callid) native64callnote(callid, callframe, callresult, callinst);
+	if(callid) native64callnote(callid, callframe, callresult, callinst, callee, nfn->ty);
 	tfree(&frame);
 }
 
