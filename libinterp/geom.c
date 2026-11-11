@@ -2,6 +2,14 @@
 #include "interp.h"
 #include "isa.h"
 #include "draw.h"
+#ifdef DIS_NATIVE64_GUI_DRAW
+#if DIS_NATIVE64_GUI_DRAW != 1 || defined(DIS_NATIVE64_GEOMETRY_HEADER)
+#error native64 GUI geometry selection owns its generated declarations
+#endif
+#define DIS_NATIVE64_GEOMETRY_HEADER "draw-native64.h"
+#elif defined(DIS_NATIVE64_DRAW_HEADER) && !defined(DIS_NATIVE64_GEOMETRY_HEADER)
+#define DIS_NATIVE64_GEOMETRY_HEADER DIS_NATIVE64_DRAW_HEADER
+#endif
 #ifdef DIS_NATIVE64_GEOMETRY_HEADER
 #if !defined(DIS_WORD32) || DIS_WORD32 != 1
 #error native64 geometry declarations require DIS_WORD32=1

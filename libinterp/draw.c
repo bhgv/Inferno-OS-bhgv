@@ -3,6 +3,19 @@
 #include "pool.h"
 #include "interp.h"
 #include "isa.h"
+#ifdef DIS_NATIVE64_GUI_DRAW
+#if DIS_NATIVE64_GUI_DRAW != 1 || defined(DIS_NATIVE64_DRAW_REGISTER) || defined(DIS_NATIVE64_DRAW_HEADER)
+#error native64 GUI Draw selection owns its generated declarations
+#endif
+#define DIS_NATIVE64_DRAW_REGISTER 1
+#define DIS_NATIVE64_DRAW_HEADER "draw-native64.h"
+#endif
+#if defined(DIS_NATIVE64_DRAW_REGISTER) && DIS_NATIVE64_DRAW_REGISTER != 1
+#error DIS_NATIVE64_DRAW_REGISTER must be 1 when selected
+#endif
+#if defined(DIS_NATIVE64_DRAW_REGISTER) && !defined(DIS_NATIVE64_DRAW_HEADER)
+#error native64 Draw registration requires an explicit generated header
+#endif
 /* Use one explicit int32/ref64 interface for every owning Draw consumer. */
 #ifdef DIS_NATIVE64_DRAW_HEADER
 #if !defined(DIS_WORD32) || DIS_WORD32 != 1
@@ -178,6 +191,9 @@
 #define F_Display_writeimage F_Draw_Display_writeimage // Use the corresponding generated Frame64 declaration.
 #define Image_writepixels Draw_Image_writepixels // Preserve the generated qualified callable identity.
 #define F_Image_writepixels F_Draw_Image_writepixels // Use the corresponding generated Frame64 declaration.
+#ifdef DIS_NATIVE64_DRAW_REGISTER
+#define LIMBO_NATIVE64_IMPLEMENTATIONS
+#endif
 #include DIS_NATIVE64_DRAW_HEADER
 #else
 #include "runt.h"
@@ -381,8 +397,15 @@ drawmodinit(void)
 	int i;
 
 #ifdef DIS_NATIVE64_DRAW_HEADER
+#ifdef DIS_NATIVE64_DRAW_REGISTER
+	if(!limbo_native64_Draw_layout()){
+		error("native64 Draw layout mismatch");
+		return;
+	}
+#else
 	error("experimental native64 Draw registration is not supported");
 	return;
+#endif
 #endif
 	if(TFont != nil || TImage != nil || TScreen != nil || TDisplay != nil){
 		if(TFont != nil && TImage != nil && TScreen != nil && TDisplay != nil)
@@ -393,15 +416,21 @@ drawmodinit(void)
 	failure = exNomem;
 	if(!drawmaketypes(types, fontbits, imagebits, screenbits, displaybits))
 		goto failed;
-#ifndef DIS_NATIVE64_DRAW_HEADER
-	if(builtinmod("$Draw", Drawmodtab, Drawmodlen) == nil){
+#ifdef DIS_NATIVE64_DRAW_REGISTER
+	if(builtinmod64("$Draw", limbo_native64_Draw_specs, limbo_native64_Draw_spec_count,
+	   limbo_native64_Draw_implementations, limbo_native64_Draw_implementation_count) == nil)
+#elif !defined(DIS_NATIVE64_DRAW_HEADER)
+	if(builtinmod("$Draw", Drawmodtab, Drawmodlen) == nil)
+#else
+	if(1) /* Header-only mode has already refused before allocating. */
+#endif
+	{
 		reason[0] = 0;
 		kgerrstr(reason, sizeof(reason));
 		reason[sizeof(reason)-1] = 0;
 		failure = reason[0] != 0 ? reason : "Draw module registration failed";
 		goto failed;
 	}
-#endif
 
 	/* No allocation or callback separates module registration from this publication. */
 	memmove(fontmap, fontbits, sizeof(fontmap));

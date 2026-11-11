@@ -47,7 +47,7 @@ closure. A scalar module's success or a linked GUI library is insufficient proof
 
 ## Native64 Tk registration step
 
-Add `--native64-tk` to compile the whole GUI graph with generated Frame64
+Add `--native64-tk --native64-draw` to compile the whole GUI graph with generated Frame64
 Tk declarations and its real `builtinmod64` registration path. Classic mk
 regenerates `tk-native64.h` from the actual Sys/Draw/Tk `.m` dependency closure;
 only the Tk call table is emitted. The `TkTop` public prefix is checked against
@@ -72,6 +72,30 @@ and `NATIVE64_RUNNER`, as with the other native64 gates.
 The full GUI shared library also links with this selection and retains 16KiB
 LOAD alignment. `result.json` records `tk_native64_selected: true` while
 `awm_started` remains false. Ordinary Android startup still refuses the mixed
-legacy builtin set. Draw, the full Sys variadic/import contract and general
+legacy builtin set. The full Sys variadic/import contract and general
 managed Dis64 compilation remain startup work; this flag does not bypass that
 boundary or produce a working AWM APK.
+
+## Coherent Draw, geometry and devgui frames
+
+The Draw owner now registers all 89 fixed exports through generated native64
+metadata, retaining staging and rollback for its four native wrappers. Geometry
+methods in `geom.c` select the same Draw declarations. The `devgui` C caller
+uses one generated Sys/Draw/Tk declaration set for its direct API calls, instead
+of silently constructing old frames for new callbacks. The GUI driver requires
+Draw and Tk together; either flag alone is refused before creating output.
+
+`native64-draw-register.py` compiles both complete owners and validates every
+registered name/hash/frame/map/callback, four wrapper descriptors, idempotence,
+187 allocation refusals and 17766 staging observations. It links the actual
+`geom.c` and invokes 301 published geometry callbacks, checking modular
+arithmetic, zero-divide without result publication, unaligned and aliased Point
+results, and the tuple returned by Rect.clip. Other window/device callbacks
+are identity witnesses that abort if executed; no window presentation is claimed.
+
+The complete Android NativeActivity links with both new GUI interfaces and
+16KiB LOAD alignment. Host UBSan, ARM64, RV64 and ARM64/Bionic registration
+checks are separate from running AWM bytecode. `result.json` records both
+selected interfaces and still records `awm_started: false`. Ordinary startup
+continues to reject the remaining legacy module set. This step changes trusted
+C metadata and consumers only; it assigns no new Dis64 wire IDs or import ABI.

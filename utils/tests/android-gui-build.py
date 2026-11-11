@@ -30,10 +30,13 @@ def main():
     parser.add_argument('--host-tools', type=Path, required=True)
     parser.add_argument('--app-root', type=Path, required=True, help='Inferno-OS_Android source checkout')
     parser.add_argument('--build-root', type=Path, required=True, help='empty directory outside both checkouts')
+    parser.add_argument('--native64-draw', action='store_true', help='select native64 Draw C frames/registration; full GUI startup stays guarded')
     parser.add_argument('--native64-tk', action='store_true', help='select native64 Tk C frames/registration; full GUI startup stays guarded')
     parser.add_argument('--cmake', default='cmake')
     parser.add_argument('--ninja', default='ninja')
     args = parser.parse_args()
+    if args.native64_tk != args.native64_draw:
+        parser.error("Draw and Tk must be selected together: devgui directly calls both interfaces")
     build, tools, ndk, app = (path.resolve() for path in
                              (args.build_root, args.host_tools, args.ndk, args.app_root))
     for source in (ROOT, app):
@@ -76,9 +79,13 @@ def main():
     # Compile the full GUI graph, not emu-scalar. Legacy registration stays guarded.
     with (core/'mkconfig').open('a') as stream:
         flags = '-DDIS_WORD32=1'+(' -DDIS_NATIVE64_GUI_TK=1' if args.native64_tk else '')
+        flags += ' -DDIS_NATIVE64_GUI_DRAW=1' if args.native64_draw else ''
         stream.write("\nDISMODELFLAGS='"+flags+"'\n")
         if args.native64_tk:
             stream.write('NATIVE64_BOOT_TK_HEADERS='+str(core/'libinterp/tk-native64.h')+'\n')
+        if args.native64_draw:
+            stream.write('NATIVE64_BOOT_DRAW_HEADERS='+str(core/'libinterp/draw-native64.h')+'\n')
+            stream.write('NATIVE64_BOOT_GUI_HEADERS='+str(core/'libinterp/gui-native64.h')+'\n')
     binary = core/'Android/arm64/bin'; binary.mkdir(parents=True, exist_ok=True)
     archives = core/'Android/arm64/lib'; archives.mkdir(parents=True, exist_ok=True)
     for name in ('mk', 'limbo', 'iyacc', 'decgen'):
@@ -117,7 +124,7 @@ def main():
     dirty = subprocess.run(['git', 'diff', '--quiet', 'HEAD'], cwd=ROOT).returncode
     if dirty not in (0, 1):
         raise RuntimeError('Cannot inspect core source provenance')
-    report = dict(tk_native64_selected=args.native64_tk, core_worktree_dirty=bool(dirty), core_tracked_inputs_sha256=digest.hexdigest(), ndk=(ndk/'source.properties').read_text(),
+    report = dict(draw_native64_selected=args.native64_draw, tk_native64_selected=args.native64_tk, core_worktree_dirty=bool(dirty), core_tracked_inputs_sha256=digest.hexdigest(), ndk=(ndk/'source.properties').read_text(),
                   core_revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                   app_revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=app, text=True).strip(),
                   library_sha256=hashlib.sha256(library.read_bytes()).hexdigest(),

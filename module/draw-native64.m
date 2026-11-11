@@ -1,3 +1,3 @@
-# Owning source dependencies for the explicit Draw int32/ref64 C interface.
+# Explicit native64 Draw declarations retain the real Sys dependency.
 include "sys.m";
 include "draw.m";

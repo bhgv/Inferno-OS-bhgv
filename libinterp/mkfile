@@ -195,3 +195,8 @@ stack.$O xec.$O: $ROOT/include/native64-caller.h $ROOT/include/native64-frame-ce
 
 # The explicit GUI Tk selection owns only its generated declaration input.
 tk.$O: $NATIVE64_BOOT_TK_HEADERS
+
+$ROOT/libinterp/draw-native64.h:D: $ROOT/module/draw-native64.m $ROOT/module/draw.m $ROOT/module/sys.m
+	limbo -H -M Draw -I$ROOT/module $ROOT/module/draw-native64.m > $target.tmp && mv $target.tmp $target
+
+draw.$O geom.$O: $NATIVE64_BOOT_DRAW_HEADERS
