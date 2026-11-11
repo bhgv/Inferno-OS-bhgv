@@ -4,6 +4,7 @@
 
 #include "dis64-storage-image.h"
 #include "dis64-bound-call.h"
+#include "dis64-managed-trial.h"
 #include "native64-entry.h"
 
 typedef struct Dis64ManagedSchema Dis64ManagedSchema;
@@ -205,26 +206,43 @@ struct Dis64ManagedPlan {
 	Dis64Binding selected;
 };
 
-/* Exact caller layout: mapped argument at 64, mapped result at 72, link at MP 0. */
+/* Repeat exact managed call islands, clearing the old mapped result before reuse. */
 static int
 dis64managedcallercode(const unsigned char *data, unsigned int bytes, unsigned int limit,
 	Dis64CodeView *result)
 {
-	static const unsigned char instructions[] = {
+	static const unsigned char call[] = {
 		IMFRAME, SRC(AMP)|AXIMM|DST(AFP), 0, 0, 40,
 		IMOVP, SRC(AFP)|DST(AFP|AIND), 0x80,64, 40, 0x80,64,
 		ILEA, SRC(AFP)|DST(AFP|AIND), 0x80,72, 40,32,
 		IMCALL, SRC(AFP)|AXIMM|DST(AMP), 0, 40,0,
-		IEXIT, SRC(AXXX)|DST(AXXX),
 	};
-	unsigned int i;
+	static const unsigned char clear[] = {IMOVP, SRC(AMP)|DST(AFP), 8, 0x80,72};
+	static const unsigned char exit[] = {IEXIT, SRC(AXXX)|DST(AXXX)};
+	unsigned int count, calls, at, i, j;
 
-	if(bytes != 4+sizeof(instructions) || limit < 5 || dis64u32(data) != 5)
+	if(bytes < 4)
 		return 0;
-	for(i=0; i<sizeof(instructions); i++)
-		if(data[4+i] != instructions[i])
+	count = dis64u32(data);
+	if(count < 5 || count%5 != 0 || count > limit)
+		return 0;
+	calls = count/5;
+	if(calls > Dis64ManagedCalls || bytes != 4+calls*sizeof(call)+(calls-1)*sizeof(clear)+sizeof(exit))
+		return 0;
+	at = 4;
+	for(i=0; i<calls; i++){
+		if(i != 0)
+			for(j=0; j<sizeof(clear); j++)
+				if(data[at++] != clear[j])
+					return 0;
+		for(j=0; j<sizeof(call); j++)
+			if(data[at++] != call[j])
+				return 0;
+	}
+	for(j=0; j<sizeof(exit); j++)
+		if(data[at++] != exit[j])
 			return 0;
-	*result = (Dis64CodeView){data, bytes, 5};
+	*result = (Dis64CodeView){data, bytes, count};
 	return 1;
 }
 
@@ -243,7 +261,8 @@ dis64managedimagepair(const unsigned char *consumer, unsigned int consumerbytes,
 	   !dis64storageimagecheckrecords(provider, providerbytes, limits, out,
 	   dis64managedprovidercode, dis64managedtable, schema) ||
 	   in->module.profile != 1 || in->module.entry != 0 || out->module.profile != 0 ||
-	   in->data.bytes != 8 || in->data.align != 8 || in->data.mapbytes != 1 || in->data.map[0] != 0x80 ||
+	   in->data.bytes != (in->code.count == 5 ? 8 : 16) || in->data.align != 8 ||
+	   in->data.mapbytes != 1 || in->data.map[0] != (in->code.count == 5 ? 0x80 : 0xc0) ||
 	   (in->present&(1U<<(Dis64Data-1))) != 0 ||
 	   !dis64typeget(&in->types, in->module.frametype, &callerframe) ||
 	   callerframe.bytes != 80 || callerframe.mapbytes != 2 ||

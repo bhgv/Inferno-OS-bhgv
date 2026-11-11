@@ -180,8 +180,8 @@ MP, multiple dependencies, scalar Sys LOAD groups, managed String pairs and
 admission failures. The scalar corpus completed 38 processes and 1096
 in-program checks on each target.
 
-The managed GC fixture requires four native provider completions and four
+The managed GC fixture requires four native provider completions and 132
 native paired-image completions on ARM64, AMD64 and RV64. RV64 now includes
-both pointer HEAD and pointer CONS. Both target runs cover 483 collection epochs and 19
+both pointer HEAD and pointer CONS. All three target runs cover 5859 collection epochs, 264 paired calls and 19
 constructor allocation refusals. Full AWM startup and hardware acceptance
 remain separate milestones.

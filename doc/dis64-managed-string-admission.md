@@ -115,7 +115,7 @@ images with an independent Python writer. The import's module and symbol use
 different string ordinals from the provider's name and export. The candidate
 reader first checks the complete envelope, storage and record counts, then
 matches the names by Rune contents and verifies the selected PC and frame.
-Both directions pass. Twenty-two mutations cover truncation, names, signature,
+Both directions pass. Refusal cases cover truncation, names, signature,
 entry, map, duplicate export, the unentered prefix, opcode, indirect offset
 and code trailers. The ordinary scalar storage reader still refuses each
 managed consumer. The candidate gate returns checked coordinates and a borrowed
@@ -181,7 +181,7 @@ module-data reference into the output. The two bodies exercise a single
 token. The full `appl/lib/string.b` library still needs general managed
 lowering. Ordinary `-64` continues to use the scalar format.
 
-The explicit `-64m` producer also accepts a matching one-call consumer:
+The explicit `-64m` producer also accepts a matching consumer with 1 through 32 calls:
 
 ```limbo
 implement Caller;
@@ -191,6 +191,8 @@ init(value: string)
 {
     lib := load String String->PATH;
     result := lib->unquoted(value);
+    result = lib->unquoted(value);
+    result = lib->unquoted(value);
 }
 ```
 
@@ -209,3 +211,36 @@ emu -c 1 -X dis64-managed-trial -d /caller.dis64 -P /provider.dis64 -A 'Grüße 
 The trial option accepts up to 4096 bytes of UTF-8, including an empty
 string. The seed belongs to the managed startup frame and is traced by
 the same pointer map as the call result.
+
+## Repeated managed calls
+
+The private caller may repeat the same imported function with its original
+input, assigning each result to the same local. The compiler checks the legacy
+module, pending-frame and result slots rather than assuming one fixed placement.
+It emits the existing MFRAME/MOVP/LEA/MCALL sequence for each call, with an
+ordinary MOVP of VM nil into the result slot before every subsequent call.
+MOVP releases the old result through the normal ownership path. The managed
+result-address binder still requires an empty, mapped result cell.
+
+The caller frame remains 80 bytes: input at 64 and result at 72, both mapped.
+A repeated caller has 16 bytes of mapped MP: the provider at zero and an
+immutable nil source at eight. DATA initializers are forbidden, so that nil
+cell cannot be replaced by an image payload. A one-call caller retains its
+original eight-byte MP. The checker verifies every call and cleanup byte,
+including exact ordering, map bits, source/destination cells and the 32-call
+limit, before constructing either owner. Missing cleanup, wrong cleanup
+operands, inconsistent MP maps/extents and a 33rd call are refused.
+
+Independent wire fixtures cover 1, 2, 3 and 32 calls in both directions. The
+compiler corpus compares emitted call/cleanup bytes with those fixtures and
+executes Unicode and empty-string inputs in C/JIT provider modes. Production
+GC tests execute independently serialized and compiler-produced 32-call pairs
+with collection after each instruction, including stack growth. On x64,
+ARM64 and RV64 the fixture completes 264 paired calls, 132 native provider
+completions, 5859 collection epochs and the constructor allocation-failure
+sweep. The caller continues to use the interpreter's managed address binder.
+
+This is still the explicitly selected, prelinked String trial with its private
+schema. It does not execute a general filesystem LOAD, implement full String
+quoting/tokenization, or admit arbitrary managed signatures. Those remain
+requirements for ordinary AWM modules.

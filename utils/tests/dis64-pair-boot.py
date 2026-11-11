@@ -848,6 +848,27 @@ def main():
                             if 'native64 scalar module Caller: jit=0, exit=""' not in output or \
                                     BOOT['RETIRED'] not in output or 'panic:' in output:
                                 raise RuntimeError('seeded compiler-produced managed pair did not retire: '+output)
+                    statement = f'    result := lib->{symbol}(value);'
+                    for repetitions in (2, 3, 32):
+                        body = statement+'\n'+f'    result = lib->{symbol}(value);\n'*(repetitions-1)
+                        source.write_text(text.replace(statement, body))
+                        subprocess.run(compile_command+['-64m', str(source)], check=True, timeout=30)
+                        expected = next(raw for d, ok, raw, _ in GC['managed_image_cases'](RAW)
+                                        if ok and d == direction and int.from_bytes(code_bytes(raw)[:4], 'big') == 5*repetitions)
+                        if code_bytes(consumer.read_bytes()) != code_bytes(expected):
+                            raise RuntimeError('compiler changed repeated managed call/cleanup islands')
+                        for jit in (0, 1):
+                            for seed in (trial_input, ['-A', '']):
+                                output = execute(command+['-c', str(jit)]+pair+trial+seed)
+                                if 'native64 scalar module Caller: jit=0, exit=""' not in output or \
+                                        BOOT['RETIRED'] not in output or 'panic:' in output:
+                                    raise RuntimeError('repeated compiler-produced managed pair did not retire: '+output)
+                    consumer.unlink()
+                    source.write_text(text.replace(statement, statement+'\n'+f'    result = lib->{symbol}(value);\n'*32))
+                    refused = subprocess.run(compile_command+['-64m', str(source)], capture_output=True,
+                                             text=True, timeout=30)
+                    if refused.returncode <= 0 or consumer.exists() or 'Dis64' not in refused.stderr:
+                        raise RuntimeError('compiler accepted more than 32 managed calls')
             else:
                 output = execute(command+pair+trial)
                 if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:

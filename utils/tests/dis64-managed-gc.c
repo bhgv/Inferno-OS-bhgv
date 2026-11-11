@@ -19,7 +19,8 @@ static Prog *managedprocess;
 static int managederror, managedcalls;
 static int managedbytecodes, managedfast;
 static Dis64ManagedBody managedbodies[2];
-static const ManagedImageCase *managedfixtures[2];
+static const ManagedImageCase *managedfixtures[2], *managedrepeatfixtures[2];
+static int managedimagecalls;
 
 /* Independent trial bytes, with deliberately local version/tag values. */
 static const Dis64ManagedSchema trialschema = {0xface0010U, 0x71, 0x72};
@@ -31,7 +32,7 @@ static const uchar trialrecords[2][Dis64ManagedSignatureBytes] = {
 static void
 managedimagecontrol(void)
 {
-	static const Dis64StorageLimits limits = {8, 8, 128, 8, 8, 8, 2, 2};
+	static const Dis64StorageLimits limits = {8, 8, 128, 8, 256, 8, 2, 2};
 	Dis64StorageImage scalar;
 	Dis64ManagedPlan plan;
 	const ManagedImageCase *test;
@@ -53,7 +54,10 @@ managedimagecontrol(void)
 		if(test->accepted){
 			require(plan.selected.frame == 0 && plan.provider.code.bytes == 14);
 			managedbodies[test->direction] = (Dis64ManagedBody){plan.provider.code.data+6, 8};
-			managedfixtures[test->direction] = test;
+			if(plan.consumer.code.count == 5)
+				managedfixtures[test->direction] = test;
+			else
+				managedrepeatfixtures[test->direction] = test;
 		}else
 			require(plan.consumer.code.data == nil && plan.provider.code.data == nil);
 	}
@@ -381,7 +385,7 @@ managedlinkcontrol(void)
 
 /* Both instruction streams come from the checked images. Only the input is supplied by C. */
 static int
-managedfullcase(int reverse, int jit, int grow)
+managedfullcase(int reverse, int jit, int grow, int repeated)
 {
 	Prog process = {0};
 	Modlink *caller, *callee;
@@ -389,9 +393,13 @@ managedfullcase(int reverse, int jit, int grow)
 	Frame *entry, *pending;
 	String *text;
 	void *argument, *result;
-	int step, before;
+	int step, before, calls;
+	const ManagedImageCase *test;
 
-	caller = managedlinkpair(reverse, jit);
+	test = repeated ? managedrepeatfixtures[reverse] : managedfixtures[reverse];
+	require(test != nil);
+	caller = prepare64managedtrial("managed-caller", test->consumer, test->consumerbytes,
+		"managed-provider", test->provider, test->providerbytes, jit);
 	require(caller != nil);
 	numericcollect(nil);
 	memmove(&callee, caller->MP, sizeof(callee));
@@ -423,7 +431,9 @@ managedfullcase(int reverse, int jit, int grow)
 	ptrdel(D2H(caller));
 	managedprocess = &process;
 	before = rxcompleted;
-	for(step=0; step<6; step++){
+	calls = caller->m->nprog/5;
+	managedimagecalls += calls;
+	for(step=0; step<7*calls-1; step++){
 		require(kprotect(execute, &process));
 		numericcollect(&process);
 		if(step == 0){
@@ -433,7 +443,7 @@ managedfullcase(int reverse, int jit, int grow)
 				require(((Stkext*)process.R.EX)->reg.TR == calleeframe);
 		}
 	}
-	require(process.R.M == caller && process.R.PC == caller->prog+4);
+	require(process.R.M == caller && process.R.PC == caller->prog+caller->m->nprog-1);
 	memmove(&result, process.R.FP+72, sizeof(result));
 	require(result != H && result != nil);
 	require((reverse ? (String*)result : managedhead(result))->Sascii[0] == 'x');
@@ -754,7 +764,10 @@ main(void)
 	for(reverse=0; reverse<2; reverse++)
 		for(jit=0; jit<2; jit++)
 			for(grow=0; grow<2; grow++)
-				imagefast += managedfullcase(reverse, jit, grow);
+				{
+				imagefast += managedfullcase(reverse, jit, grow, 0);
+				imagefast += managedfullcase(reverse, jit, grow, 1);
+			}
 	freetype(callerframe);
 	freetype(frames[1]);
 	freetype(frames[0]);
@@ -764,13 +777,13 @@ main(void)
 	require(live == 0);
 #if defined(__x86_64__) || defined(__aarch64__) || (defined(__riscv) && __riscv_xlen == 64)
 	require(managedfast == 4);
-	require(imagefast == 4);
+	require(imagefast == 132);
 #endif
 	printf("PASS generated String frames with real GC: 8 ownership cases, missing-map control, %lu epochs, %d checks\n", gcepochs, checks);
 	printf("PASS production MFRAME/MCALL with symbolic String callbacks: %d calls\n", managedcalls);
 	printf("PASS managed bytecode providers: %d calls with CONS/HEAD/RET or unwind, %d native completions\n",
 		managedbytecodes, managedfast);
-	printf("PASS paired managed image bytecode: 8 calls, %d native completions\n", imagefast);
+	printf("PASS paired managed image bytecode: %d calls, %d native completions\n", managedimagecalls, imagefast);
 	printf("PASS paired managed image constructor: %d allocation refusals\n", refusals);
 	return 0;
 }

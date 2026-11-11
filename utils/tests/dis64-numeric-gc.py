@@ -123,14 +123,19 @@ def managed_image_cases(fixtures):
         terminal = fixtures['I']('IRET', 27)
         body = indirect(opcode, 64, 32, 0)+terminal
         ins = fixtures['I']
-        def caller(*, frame_map=b'\x00\xc0', mp_map=b'\x80', argument=64, target=72):
-            code = (ins('IMFRAME', 65, source=0, middle=0, destination=40)
+        def caller(*, frame_map=b'\x00\xc0', mp_map=None, argument=64, target=72,
+                   repeats=1, clear_source=8, clear_target=72, clear_mode=1, cleanup=True, mp_bytes=None):
+            call = (ins('IMFRAME', 65, source=0, middle=0, destination=40)
                     + indirect('IMOVP', argument, 40, 64)
                     + indirect('ILEA', target, 40, 32)
-                    + ins('IMCALL', 72, source=40, middle=0, destination=0)
-                    + fixtures['EXIT'])
-            return build(('caller', symbol, 'String'), name=0, databytes=8, code=words(5)+code,
-                         types=[desc(80, 8, frame_map), desc(8, 8, mp_map)],
+                    + ins('IMCALL', 72, source=40, middle=0, destination=0))
+            clear = ins('IMOVP', clear_mode, source=clear_source, destination=clear_target) if cleanup else b''
+            code = call+(clear+call)*(repeats-1)+fixtures['EXIT']
+            count = 1+4*repeats+(repeats-1 if cleanup else 0)
+            mp_bytes = (8 if repeats == 1 else 16) if mp_bytes is None else mp_bytes
+            mp_map = (b'\x80' if repeats == 1 else b'\xc0') if mp_map is None else mp_map
+            return build(('caller', symbol, 'String'), name=0, databytes=mp_bytes, code=words(count)+code,
+                         types=[desc(80, 8, frame_map), desc(mp_bytes, 8, mp_map)],
                          imports=[binding(module=2, symbol=1, sig=signature)])
 
         consumer = caller()
@@ -154,6 +159,13 @@ def managed_image_cases(fixtures):
         rows.extend((direction, 0, bad, good) for bad in (
             caller(frame_map=b'\x00\x40'), caller(mp_map=b'\x00'),
             caller(argument=72), caller(target=64)))
+        rows.extend((direction, 1, caller(repeats=n), good) for n in (2, 3, 32))
+        rows.extend((direction, 0, bad, good) for bad in (
+            caller(repeats=33), caller(repeats=2, cleanup=False),
+            caller(repeats=2, clear_source=0), caller(repeats=2, clear_target=64),
+            caller(repeats=2, clear_target=40), caller(repeats=2, clear_mode=9),
+            caller(repeats=2, mp_map=b'\x80'), caller(repeats=2, mp_bytes=8),
+            caller(mp_bytes=16, mp_map=b'\xc0')))
     return rows
 
 
@@ -175,15 +187,20 @@ def managed_sources(direction):
 def managed_images(fixtures, limbo, work):
     rows = managed_image_cases(fixtures)
     for direction in (0, 1):
-        compiled = []
-        for label, text in zip(('caller', 'provider'), managed_sources(direction)):
-            source = work/f'{label}-{direction}.b'
-            output = source.with_suffix('.dis64')
-            source.write_text(text)
-            subprocess.run([str(limbo.resolve()), '-64m', '-I', str(ROOT/'module'),
-                            '-o', str(output), str(source)], check=True, timeout=60)
-            compiled.append(output.read_bytes())
-        rows.append((direction, 1, *compiled))
+        for repetitions in (1, 32):
+            compiled = []
+            for label, text in zip(('caller', 'provider'), managed_sources(direction)):
+                if label == 'caller' and repetitions != 1:
+                    symbol = 'quoted' if direction else 'unquoted'
+                    statement = f'    result := lib->{symbol}(value);'
+                    text = text.replace(statement, statement+'\n'+f'    result = lib->{symbol}(value);\n'*(repetitions-1))
+                source = work/f'{label}-{direction}-{repetitions}.b'
+                output = source.with_suffix('.dis64')
+                source.write_text(text)
+                subprocess.run([str(limbo.resolve()), '-64m', '-I', str(ROOT/'module'),
+                                '-o', str(output), str(source)], check=True, timeout=60)
+                compiled.append(output.read_bytes())
+            rows.append((direction, 1, *compiled))
     declarations, entries = [], []
     for index, (direction, accepted, consumer, provider) in enumerate(rows):
         for label, data in (('consumer', consumer), ('provider', provider)):
