@@ -435,3 +435,47 @@ Console tests execute both versions, both initial kinds, prelinked/file modes,
 versions also run through the actual ILOAD/cache/GC matrix. Eight compiler
 refusals cover stale original and stale intermediate aliases, in both initial
 kinds and both compiler modes, without producing a partial output file.
+
+## Provider locals and equivalent method bodies
+
+Provider validation now follows pointer value identities rather than requiring
+one exact legacy instruction sequence. For example, the two-method provider may
+use these bodies:
+
+```limbo
+unquoted(value: string): list of string
+{
+    copy := value;
+    value = nil;
+    items := copy :: nil;
+    result := items;
+    return result;
+}
+quoted(value: list of string): string
+{
+    copy := value;
+    value = nil;
+    result := hd copy;
+    answer := result;
+    return answer;
+}
+```
+
+The proof starts with the typed argument, tracks nil and local aliases, and
+requires exactly one CONS or HEAD of that original argument and exactly one
+write of its result through the return address. CONS must start with a known
+nil tail. Local frame slots are checked against that function's frame size;
+unknown values, another effect, a replaced result, other instructions and an
+invalid function boundary are refused. Clearing a local or the original argument
+after saving its value does not lose the saved identity. The generated Dis64
+provider remains byte-for-byte identical to the direct-body version.
+
+Compiler checks compare 24 complete images: four body variants, either function
+order, and one or both exports. Six other valid Limbo providers must fail the
+experimental compiler without leaving output: two CONS operations, returning nil
+instead of the constructed list, no construction, HEAD after TAIL, replacing a
+HEAD result with nil, and two HEAD operations. Ordinary Limbo compilation of each
+negative source is checked first. The aliased/reassigned providers also run in
+the existing prelinked and file LOAD C/JIT/GC scenarios on all three targets.
+This proof still admits one-token bodies only; it does not compile the complete
+String implementation or enable AWM's remaining managed interfaces.

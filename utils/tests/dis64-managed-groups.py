@@ -7,12 +7,20 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def sources(initial=0, calls=4, reloads=(), reverse_provider=False, aliases=False):
+def sources(initial=0, calls=4, reloads=(), reverse_provider=False, aliases=False, provider_style=0):
     reloads = () if reloads is False else reloads
     argument = 'list of string' if initial else 'string'
-    definitions = (
-        'unquoted(value: string): list of string { return value :: nil; }',
-        'quoted(value: list of string): string { return hd value; }')
+    bodies = (
+        ('return value :: nil;', 'return hd value;'),
+        ('copy := value; items := copy :: nil; result := items; return result;',
+         'copy := value; result := hd copy; answer := result; return answer;'),
+        ('copy := value; value = nil; return copy :: nil;',
+         'copy := value; value = nil; return hd copy;'),
+        ('result := value :: nil; value = nil; answer := result; return answer;',
+         'result := hd value; value = nil; answer := result; return answer;'),
+    )[provider_style]
+    definitions = (f'unquoted(value: string): list of string {{ {bodies[0]} }}',
+                   f'quoted(value: list of string): string {{ {bodies[1]} }}')
     provider = ('implement String;\nString: module {\n'
                 'unquoted: fn(value: string): list of string;\n'
                 'quoted: fn(value: list of string): string;\n};\n'
@@ -148,8 +156,53 @@ def check_alias_refusals(limbo, work):
     print(f'PASS managed alias identities: {count} stale-value compiler refusals')
 
 
+def check_provider_locals(limbo, work):
+    """Compare complete images, then prove valid source with other effects is refused."""
+    count = 0
+    for only in (None, 'unquoted', 'quoted'):
+        for reverse in (False, True):
+            reference = None
+            for style in range(4):
+                _, text = sources(reverse_provider=reverse, provider_style=style)
+                if only is not None:
+                    other = 'quoted' if only == 'unquoted' else 'unquoted'
+                    text = '\n'.join(line for line in text.splitlines() if not line.lstrip().startswith(other+'(')
+                                     and not line.lstrip().startswith(other+':'))+'\n'
+                source = work/'provider-locals.b'
+                output = work/'provider-locals.dis64'
+                source.write_text(text)
+                subprocess.run([str(limbo.resolve()), '-64m', '-o', str(output), str(source)], check=True, timeout=60)
+                image = output.read_bytes()
+                if reference is None: reference = image
+                if image != reference:
+                    raise RuntimeError('provider local assignments changed the Dis64 image')
+                count += 1
+    bodies = (
+        ('return value :: value :: nil;', 'return hd value;'),
+        ('items := value :: nil; items = nil; return items;', 'return hd value;'),
+        ('return nil;', 'return hd value;'),
+        ('return value :: nil;', 'return hd tl value;'),
+        ('return value :: nil;', 'result := hd value; result = nil; return result;'),
+        ('return value :: nil;', 'result := hd value; return hd value;'),
+    )
+    for unquoted, quoted in bodies:
+        _, text = sources()
+        text = text.replace('return value :: nil;', unquoted).replace('return hd value;', quoted)
+        source = work/'provider-other-effect.b'
+        output = work/'provider-other-effect.dis64'
+        source.write_text(text)
+        subprocess.run([str(limbo.resolve()), '-o', str(output), str(source)], check=True, timeout=60)
+        output.unlink()
+        result = subprocess.run([str(limbo.resolve()), '-64m', '-o', str(output), str(source)],
+                                capture_output=True, text=True, timeout=60)
+        if result.returncode != 1 or output.exists() or 'Dis64 managed trial:' not in result.stdout+result.stderr:
+            raise RuntimeError('unsupported provider effect bypassed refusal: '+result.stdout+result.stderr)
+    print(f'PASS managed provider locals: {count} identical images, {len(bodies)} other-effect refusals')
+
+
 def header(raw, limbo, work):
     check_alias_refusals(limbo, work)
+    check_provider_locals(limbo, work)
     rows = cases(raw)+cases(raw, '/managed-provider.dis64')
     for initial in (0, 1):
         for file_mode in (False, True):
@@ -163,18 +216,20 @@ def header(raw, limbo, work):
                 subprocess.run([str(limbo.resolve()), flag, '-I', str(ROOT/'module'), '-o', str(output), str(source)], check=True, timeout=60)
                 compiled.append(output.read_bytes())
             rows.append((initial, 1, *compiled))
-    compiled_rows = rows[-4:]
     for initial in (0, 1):
         for file_mode in (False, True):
-            text, _ = sources(initial, 32, reloads=file_mode, aliases=True)
+            text, body = sources(initial, 32, reloads=file_mode, aliases=True, provider_style=2+int(file_mode))
             if file_mode: text = text.replace('String->PATH', '"/managed-provider.dis64"')
             source = work/f'alias-caller-{initial}-{file_mode}.b'
             output = source.with_suffix('.dis64')
             source.write_text(text)
             subprocess.run([str(limbo.resolve()), '-64l' if file_mode else '-64m', '-I', str(ROOT/'module'),
                             '-o', str(output), str(source)], check=True, timeout=60)
-            provider = compiled_rows[2*initial+int(file_mode)][3]
-            rows.append((initial, 1, output.read_bytes(), provider))
+            consumer = output.read_bytes()
+            source = work/f'local-provider-{initial}-{file_mode}.b'
+            source.write_text(body)
+            subprocess.run([str(limbo.resolve()), '-64m', '-o', str(output), str(source)], check=True, timeout=60)
+            rows.append((initial, 1, consumer, output.read_bytes()))
     valid_providers = {provider for _, ok, _, provider in rows if ok}
     declarations, entries = [], []
     for index, (initial, ok, consumer, provider) in enumerate(rows):

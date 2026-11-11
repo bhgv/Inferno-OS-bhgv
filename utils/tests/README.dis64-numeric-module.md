@@ -208,3 +208,9 @@ The compiler follows value identities rather than reusing a slot after it was
 overwritten. Aliased and direct sources are checked against identical independent
 CODE bytes and executed on the console; eight stale-alias source cases must fail
 without output. The 32-call alias variants are included in the GC/cache matrix.
+
+Provider lowering now proves the single CONS/HEAD result through local copies,
+nil assignments and return temporaries. Compiler coverage includes 24 identical
+complete provider images and six valid-source other-effect refusals. The compiled
+32-call GC/cache pairs use providers with saved arguments, cleared source locals
+and returned aliases, alongside the aliased callers.

@@ -636,68 +636,7 @@ struct Dis64ManagedCompilePlan {
 	char *path;
 };
 
-/* Validate each complete legacy provider body before fusing its temporary result. */
-static int
-dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, long databytes,
-	Dis64ManagedCompilePlan *plan)
-{
-	static const ushort ops[][5] = {{IMOVP, ICONSP, IMOVP, IMOVP, IRET}, {IHEADP, IRET}};
-	static const uchar sm[][5] = {{Amp, Afp, Afp, Amp, Anone}, {Afp, Anone}};
-	static const uchar dm[][5] = {{Afp, Afp, Afpind, Afp, Anone}, {Afpind, Anone}};
-	static const long source[][5] = {{0, 32, 36, 0, 0}, {32, 0}};
-	static const long destination[][5] = {{36, 36, 16, 36, 0}, {16, 0}};
-	Decl *export, *functions[2], *temporary;
-	unsigned int n = 0, i, j, length, seen = 0;
-	long pc = 0;
-	int direction;
-
-	if(entry != nil || strcmp(impdecl->sym->name, "String") != 0)
-		return 0;
-	for(export=impdecl->ty->tof->ids; export != nil; export=export->next){
-		if(export->store == Dglobal)
-			return 0;
-		if(export->store != Dfn)
-			continue;
-		if(n == 2 || export->pc == nil || dis64manageddirection(export) < 0)
-			return 0;
-		functions[n++] = export;
-	}
-	if(n == 0)
-		return 0;
-	if(n == 2 && functions[0]->pc->pc > functions[1]->pc->pc){
-		temporary = functions[0]; functions[0] = functions[1]; functions[1] = temporary;
-	}
-	for(i=0; i<n; i++){
-		direction = dis64manageddirection(functions[i]);
-		if((seen & (1U<<direction)) || functions[i]->pc->pc != pc)
-			return 0;
-		seen |= 1U<<direction;
-		plan->directions[i] = direction;
-		length = direction ? 2 : 5;
-		for(j=0; j<length; j++){
-			while(input != nil && input->op == INOOP) input = input->next;
-			if(input == nil || input->op != ops[direction][j] || input->mm != Anone ||
-			   input->sm != sm[direction][j] || input->dm != dm[direction][j] ||
-			   (input->sm != Anone && input->s.reg != source[direction][j]) ||
-			   (input->dm != Anone && input->d.reg != destination[direction][j]) ||
-			   (input->dm == Afpind && input->d.offset != 0))
-				return 0;
-			input = input->next;
-			pc++;
-		}
-	}
-	while(input != nil && input->op == INOOP) input = input->next;
-	if(input != nil || pc != count || databytes != ((seen & 1) ? 4 : 0))
-		return 0;
-	for(; globals != nil; globals=globals->next)
-		if(globals->store == Dglobal && (!(seen & 1) || globals->offset != 0 || globals->init != nil ||
-		   globals->ty->kind != Tany || strcmp(globals->sym->name, "nil") != 0))
-			return 0;
-	plan->bindings = n;
-	return 1;
-}
-
-/* Local pointer assignments carry identities; only the two retained values are callable. */
+/* Track pointer value identities across ordinary local assignments. */
 static long*
 dis64managedlocal(long *slots, long *values, unsigned int *used, long slot)
 {
@@ -711,6 +650,93 @@ dis64managedlocal(long *slots, long *values, unsigned int *used, long slot)
 	slots[*used] = slot;
 	values[*used] = 0;
 	return &values[(*used)++];
+}
+
+
+/* Prove the one CONS/HEAD effect independently of legacy temporary allocation. */
+static int
+dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, long databytes,
+	Dis64ManagedCompilePlan *plan)
+{
+	Decl *export, *functions[2], *temporary;
+	unsigned int n = 0, i, seen = 0, used, effect, returned;
+	long pc = 0, end, value, slots[8*Dis64ManagedCalls+1], values[8*Dis64ManagedCalls+1], *cell;
+	int direction, hasnil;
+
+	if(entry != nil || strcmp(impdecl->sym->name, "String") != 0 || count < 2 || count > 8*Dis64ManagedCalls)
+		return 0;
+	hasnil = 0;
+	for(; globals != nil; globals=globals->next){
+		if(globals->store != Dglobal) continue;
+		if(hasnil || globals->offset != 0 || globals->init != nil ||
+		   globals->ty->kind != Tany || strcmp(globals->sym->name, "nil") != 0)
+			return 0;
+		hasnil = 1;
+	}
+	if(databytes != (hasnil ? 4 : 0)) return 0;
+	for(export=impdecl->ty->tof->ids; export != nil; export=export->next){
+		if(export->store == Dglobal)
+			return 0;
+		if(export->store != Dfn)
+			continue;
+		if(n == 2 || export->pc == nil || export->desc == nil || dis64manageddirection(export) < 0)
+			return 0;
+		functions[n++] = export;
+	}
+	if(n == 0) return 0;
+	if(n == 2 && functions[0]->pc->pc > functions[1]->pc->pc){
+		temporary = functions[0]; functions[0] = functions[1]; functions[1] = temporary;
+	}
+	for(i=0; i<n; i++){
+		direction = dis64manageddirection(functions[i]);
+		if((seen & (1U<<direction)) || functions[i]->pc->pc != pc)
+			return 0;
+		seen |= 1U<<direction;
+		plan->directions[i] = direction;
+		end = i+1 < n ? functions[i+1]->pc->pc : count;
+		if(end <= pc || end > count) return 0;
+		used = effect = returned = 0;
+		*dis64managedlocal(slots, values, &used, 32) = 2; /* 0 unknown, 1 nil, 2 argument, 3 result. */
+		for(; pc<end; pc++){
+			while(input != nil && input->op == INOOP) input = input->next;
+			if(input == nil || input->mm != Anone) return 0;
+			if(input->op == IRET){
+				if(pc != end-1 || input->sm != Anone || input->dm != Anone || effect != 1 || returned != 1)
+					return 0;
+			}else{
+				if(pc == end-1) return 0;
+				if(input->sm == Amp && input->s.reg == 0 && hasnil)
+					value = 1;
+				else if(input->sm == Afp && dis64clockslot(input->s.reg, functions[i]->desc->size)){
+					cell = dis64managedlocal(slots, values, &used, input->s.reg);
+					if(cell == nil || *cell == 0) return 0;
+					value = *cell;
+				}else return 0;
+				if(input->op == IHEADP){
+					if(!direction || value != 2 || effect++) return 0;
+					value = 3;
+				}else if(input->op == ICONSP){
+					if(direction || value != 2 || effect++ || input->dm != Afp ||
+					   !dis64clockslot(input->d.reg, functions[i]->desc->size)) return 0;
+					cell = dis64managedlocal(slots, values, &used, input->d.reg);
+					if(cell == nil || *cell != 1) return 0;
+					value = 3;
+				}else if(input->op != IMOVP) return 0;
+				if(input->dm == Afp && dis64clockslot(input->d.reg, functions[i]->desc->size)){
+					cell = dis64managedlocal(slots, values, &used, input->d.reg);
+					if(cell == nil) return 0;
+					*cell = value;
+				}else if(input->dm == Afpind && input->d.reg == 16 && input->d.offset == 0 && value == 3){
+					if(returned++) return 0;
+				}else return 0;
+			}
+			input = input->next;
+		}
+	}
+	while(input != nil && input->op == INOOP) input = input->next;
+	if(input != nil || pc != count) return 0;
+	plan->bindings = n;
+	return 1;
 }
 
 
