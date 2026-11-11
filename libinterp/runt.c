@@ -17,6 +17,9 @@
 #define DIS_NATIVE64_SYS_HEADER "sys-native64.h" // Coherent generated Sys types for the explicit startup profile.
 #define LIMBO_NATIVE64_TABLES // Trusted selected fixed-frame entries; variadic prefixes remain excluded.
 #endif
+#ifdef DIS_NATIVE64_FORMATTER
+#define LIMBO_NATIVE64_PREFIXES // Typed Sys gateways consume non-callable generated variadic schemas.
+#endif
 /* Explicit native64 consumers must use one coherent generated Sys declaration set. */
 #ifdef DIS_NATIVE64_SYS_HEADER
 #ifndef DIS_WORD32

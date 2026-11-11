@@ -93,3 +93,51 @@ survive. A separately compiled control removes final native-output retirement
 and must fail allocation-balance predicates, alongside the existing kind/pin/Type
 controls. Complete actual c2string and mem2array bodies are included in the gate.
 The earlier ASan unwind finding remains open and is not suppressed here.
+
+## Generated variadic prefix schemas and target execution
+
+The four typed Sys gateways now consume `LimboNative64Prefix` records emitted
+by fresh `limbo -H module/sys.m`, selected by `LIMBO_NATIVE64_PREFIXES`.
+Each schema holds the module-relative name, existing Limbo hash, fixed argument
+count, full fixed-frame size and map8, with a nil function pointer. It is separate
+from `LimboNative64Entry` implementation tables. The 39 fixed Sys exports remain
+unchanged; no variadic prefix becomes a callable builtin entry.
+
+The gateways validate the generated schema against their C prefix and then lend
+its immutable fixed record to the existing typed-tail constructor. They no longer
+construct a second handwritten fixed record. Name/hash/count, C extent and maps
+must all agree. Formatter/type checks, complete tail maps and protected result
+ownership still apply. See [the prefix/C gateway tutorial](dis64-native64-prefixes.md).
+
+`native64-prefix.py` verifies nine schemas with 159 active predicates per model:
+all four Sys prefixes, qualified ADT methods, mixed byte/int/big/real/String
+prefixes, inline ADTs, an all-variadic module and a 150-reference fixed prefix.
+It checks complete tail-map composition, malformed schemas, refusal to bind a
+prefix as a fixed implementation, deterministic output and explicit opt-in.
+
+The full formatter/constructor/gateway suite now accepts `NATIVE64_RUNNER`, and
+runs on GNU x64, ARM64 and RV64. Its `--android-ndk` option selects ARM64 NDK clang,
+Android port headers and static Bionic. For example:
+
+```sh
+NATIVE64_RUNNER=qemu-aarch64 python3 utils/tests/native64-arguments.py \
+  --formatter --limbo /path/to/host-tools/limbo \
+  --android-ndk /path/to/android-ndk-r27c
+```
+
+The emu/os protected-body fixtures and WORD32/WORD32-file combinations each run
+456 constructor/combined-call, 384 growth, 1,728 formatter, 1,104 Sys result and
+1,200 Sys write transactions, plus eight root/Type/removal controls. Android
+allocator aliases remain test boundaries; real heap/collector/format/gateway
+bodies are retained. The Android GUI library can also link all four exported
+`Sys_*64` gateways using `--native64-formatter`; bytecode variadic calls and AWM
+startup are still not admitted by that switch.
+
+Current x64 O2 and O3/NDEBUG strict-aliasing ASan+UBSan runs pass the complete
+formatter suite and its removal controls. The historical optimized injected-
+unwind report above did not reproduce in those runs; its original root cause
+has not been established by a revision/toolchain bisect. The separate historical
+Sys UTF error-unwind finding is not reclassified by formatter success. A new
+native x64/ARM64 ASan+UBSan and RV64/QEMU CI matrix preserves this coverage.
+Process-inspection leak scanning remains outside the bounded collector fixture;
+its explicit allocation/refcount/root balance predicates stay active.

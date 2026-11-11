@@ -8,6 +8,12 @@ on:
       - 'utils/tests/native64-tk-register.*'
       - 'utils/tests/native64-draw-register.*'
       - 'utils/tests/native64-sys-fixed.*'
+      - 'utils/tests/native64-prefix.*'
+      - 'utils/tests/native64-arguments.*'
+      - 'utils/tests/native64-result.*'
+      - 'utils/tests/native64-gc.*'
+      - 'utils/tests/native64-*format*'
+      - 'utils/tests/native64-sys-write.c'
       - 'utils/tests/dis64-numeric-*'
       - 'utils/tests/dis64-managed-*'
       - 'libinterp/tests/dis64-runtime.*'
@@ -27,6 +33,7 @@ on:
       - 'mkfiles/**'
       - 'utils/configure.py'
       - 'limbo/**'
+      - 'doc/dis64-native64-prefixes.md'
   workflow_dispatch:
 permissions:
   contents: read
@@ -63,6 +70,7 @@ jobs:
           python3 utils/tests/native64-tk-register.py --limbo "$RUNNER_TEMP/host-tools/limbo"
           python3 utils/tests/native64-draw-register.py --limbo "$RUNNER_TEMP/host-tools/limbo"
           python3 utils/tests/native64-sys-fixed.py --limbo "$RUNNER_TEMP/host-tools/limbo"
+          python3 utils/tests/native64-prefix.py --limbo "$RUNNER_TEMP/host-tools/limbo"
           python3 android-app/tests/framebuffer-lifecycle.py
           python3 android-app/tests/framebuffer-startup.py
           python3 android-app/tests/framebuffer-pixels.py
@@ -74,6 +82,13 @@ jobs:
             --managed --limbo "$RUNNER_TEMP/host-tools/limbo" \
             --android-ndk "$RUNNER_TEMP/android-ndk-r27c" 2>&1 \
             | tee "$RUNNER_TEMP/bionic-managed.log"
+      - name: Execute typed Sys formatter gateways against ARM64 Bionic
+        run: |
+          set -o pipefail
+          NATIVE64_RUNNER=qemu-aarch64 python3 utils/tests/native64-arguments.py \
+            --formatter --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            --android-ndk "$RUNNER_TEMP/android-ndk-r27c" 2>&1 \
+            | tee "$RUNNER_TEMP/bionic-sys-format.log"
       - name: Compile full Draw/Tk core and link ordinary NativeActivity
         run: |
           python3 utils/tests/android-gui-build.py --ndk "$RUNNER_TEMP/android-ndk-r27c" \
@@ -83,13 +98,14 @@ jobs:
         run: |
           python3 utils/tests/android-gui-build.py --ndk "$RUNNER_TEMP/android-ndk-r27c" \
             --host-tools "$RUNNER_TEMP/host-tools" --app-root "$GITHUB_WORKSPACE/android-app" \
-            --build-root "$RUNNER_TEMP/android-gui-tk" --native64-tk --native64-draw --native64-sys-fixed
+            --build-root "$RUNNER_TEMP/android-gui-tk" --native64-tk --native64-draw --native64-sys-fixed --native64-formatter
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: Android-arm64-GUI-native-link-not-AWM-APK
           path: |
             ${{ runner.temp }}/bionic-managed.log
+            ${{ runner.temp }}/bionic-sys-format.log
             ${{ runner.temp }}/android-gui/logs/
             ${{ runner.temp }}/android-gui/result.json
             ${{ runner.temp }}/android-gui/native/libinferno_os_app.so

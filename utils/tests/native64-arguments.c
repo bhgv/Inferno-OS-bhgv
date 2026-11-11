@@ -409,3 +409,19 @@ main(int argc, char **argv)
 	printf("PASS managed arguments: %d predicates, 264 owner-balanced constructions + 192 combined C transactions, actual heap/Type/collector and partial failures\n", checks);
 	return 0;
 }
+
+#ifdef __BIONIC__
+/* Use Bionic for native storage while observing Inferno's private allocation names. */
+#undef malloc
+#undef free
+#undef calloc
+#undef realloc
+void *malloc_(size_t bytes) { return malloc(bytes); }
+void *calloc_(size_t count, size_t bytes) { return calloc(count, bytes); }
+void *realloc_(void *value, size_t bytes) { return realloc(value, bytes); }
+void free_(void *value) { __wrap_free(value); }
+#define malloc malloc_
+#define free free_
+#define calloc calloc_
+#define realloc realloc_
+#endif

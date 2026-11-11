@@ -84,7 +84,7 @@ native64sysformat(const Native64SysFormatRequest *request, int array)
 {
 	uchar sprintmap[] = F_Sys_sprint_map;
 	uchar aprintmap[] = F_Sys_aprint_map;
-	LimboNative64Entry fixed;
+	const LimboNative64Entry *fixed;
 	Native64ArgumentSource source;
 	Native64SysFormatCall call;
 
@@ -98,13 +98,13 @@ native64sysformat(const Native64SysFormatRequest *request, int array)
 		return 0;
 	call.request = *request;
 	call.array = array;
-	memset(&fixed, 0, sizeof(fixed));
-	fixed.name = array ? "aprint" : "sprint";
-	fixed.frame_size = sizeof(F_Sys_sprint);
-	fixed.map_bytes = sizeof(sprintmap);
-	fixed.map = sprintmap;
+	fixed = native64tailprefix(array ? &limbo_native64_Sys_aprint_prefix : &limbo_native64_Sys_sprint_prefix,
+		array ? "aprint" : "sprint", array ? LIMBO_NATIVE64_SIGNATURE_Sys_aprint : LIMBO_NATIVE64_SIGNATURE_Sys_sprint,
+		1, sizeof(F_Sys_sprint), sprintmap, sizeof(sprintmap));
+	if(fixed == nil)
+		return 0;
 	memset(&source, 0, sizeof(source));
-	source.fixed = &fixed;
+	source.fixed = fixed;
 	source.prefix = &call.request.pattern;
 	source.prefix_bytes = sizeof(call.request.pattern);
 	source.slots = call.request.slots;

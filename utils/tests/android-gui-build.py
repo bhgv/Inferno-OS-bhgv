@@ -30,12 +30,15 @@ def main():
     parser.add_argument('--host-tools', type=Path, required=True)
     parser.add_argument('--app-root', type=Path, required=True, help='Inferno-OS_Android source checkout')
     parser.add_argument('--build-root', type=Path, required=True, help='empty directory outside both checkouts')
+    parser.add_argument('--native64-formatter', action='store_true', help='link the four typed Sys C gateways; no variadic bytecode admission')
     parser.add_argument('--native64-sys-fixed', action='store_true', help='register all 39 fixed Sys exports; variadic and AWM startup remain unavailable')
     parser.add_argument('--native64-draw', action='store_true', help='select native64 Draw C frames/registration; full GUI startup stays guarded')
     parser.add_argument('--native64-tk', action='store_true', help='select native64 Tk C frames/registration; full GUI startup stays guarded')
     parser.add_argument('--cmake', default='cmake')
     parser.add_argument('--ninja', default='ninja')
     args = parser.parse_args()
+    if args.native64_formatter and not args.native64_sys_fixed:
+        parser.error("Typed Sys formatting requires the generated fixed Sys profile")
     if args.native64_sys_fixed and not (args.native64_tk and args.native64_draw):
         parser.error("GUI fixed Sys selection requires coherent Draw and Tk")
     if args.native64_tk != args.native64_draw:
@@ -84,6 +87,7 @@ def main():
         flags = '-DDIS_WORD32=1'+(' -DDIS_NATIVE64_GUI_TK=1' if args.native64_tk else '')
         flags += ' -DDIS_NATIVE64_GUI_DRAW=1' if args.native64_draw else ''
         flags += ' -DDIS_NATIVE64_GUI_SYS_FIXED=1' if args.native64_sys_fixed else ''
+        flags += ' -DDIS_NATIVE64_FORMATTER=1' if args.native64_formatter else ''
         stream.write("\nDISMODELFLAGS='"+flags+"'\n")
         if args.native64_tk:
             stream.write('NATIVE64_BOOT_TK_HEADERS='+str(core/'libinterp/tk-native64.h')+'\n')
@@ -120,7 +124,10 @@ def main():
         raise RuntimeError('The GUI shared library lacks 16KiB LOAD alignment')
     symbols = subprocess.check_output([str(llvm/'llvm-nm'), '-D', '--defined-only', str(library)], text=True)
     (logs/'symbols.txt').write_text(symbols)
-    for name in ('ANativeActivity_onCreate', 'android_main', 'amain'):
+    required = ['ANativeActivity_onCreate', 'android_main', 'amain']
+    if args.native64_formatter:
+        required += ['Sys_'+name+'64' for name in ('print', 'fprint', 'sprint', 'aprint')]
+    for name in required:
         if name not in {line.split()[-1] for line in symbols.splitlines() if line.split()}:
             raise RuntimeError('Missing native GUI entry: '+name)
     digest = hashlib.sha256()
@@ -130,7 +137,7 @@ def main():
     dirty = subprocess.run(['git', 'diff', '--quiet', 'HEAD'], cwd=ROOT).returncode
     if dirty not in (0, 1):
         raise RuntimeError('Cannot inspect core source provenance')
-    report = dict(sys_fixed_native64_selected=args.native64_sys_fixed, draw_native64_selected=args.native64_draw, tk_native64_selected=args.native64_tk, core_worktree_dirty=bool(dirty), core_tracked_inputs_sha256=digest.hexdigest(), ndk=(ndk/'source.properties').read_text(),
+    report = dict(typed_sys_formatter_linked=args.native64_formatter, sys_fixed_native64_selected=args.native64_sys_fixed, draw_native64_selected=args.native64_draw, tk_native64_selected=args.native64_tk, core_worktree_dirty=bool(dirty), core_tracked_inputs_sha256=digest.hexdigest(), ndk=(ndk/'source.properties').read_text(),
                   core_revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                   app_revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=app, text=True).strip(),
                   library_sha256=hashlib.sha256(library.read_bytes()).hexdigest(),

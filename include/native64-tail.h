@@ -35,6 +35,21 @@ struct Native64TailPlan
 };
 
 
+/* Match a trusted generated variadic schema to the consuming C prefix, without granting a call. */
+static const LimboNative64Entry*
+native64tailprefix(const LimboNative64Prefix *prefix, const char *name, UWORD signature,
+	unsigned int arguments, unsigned int bytes, const uchar *map, unsigned int mapbytes)
+{
+	if(!native64model() || prefix == nil || arguments > Native64BindEntries ||
+	   prefix->arguments != arguments || !native64bindrecord(&prefix->fixed, 0) ||
+	   !native64bindname(name) || !native64bindsame(prefix->fixed.name, name) ||
+	   prefix->fixed.legacy_signature != signature || prefix->fixed.frame_size != bytes ||
+	   prefix->fixed.map_bytes != mapbytes || map == nil ||
+	   memcmp(prefix->fixed.map, map, mapbytes) != 0)
+		return nil;
+	return &prefix->fixed;
+}
+
 /* Validate all descriptors before reading values or changing output; borrowed metadata must remain immutable. */
 static int
 native64tailplan(const LimboNative64Entry *fixed, const Native64TailSlot *slots,

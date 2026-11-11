@@ -18,12 +18,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--limbo', type=Path, required=True)
     parser.add_argument('--formatter', action='store_true', help='Also exercise the actual shared formatter with typed slots and real lib9')
+    parser.add_argument('--android-ndk', type=Path, help='build typed formatter fixtures against ARM64 Bionic with NDK clang')
     args = parser.parse_args()
+    if args.android_ndk and not args.formatter:
+        parser.error('--android-ndk currently requires --formatter')
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     support = runpy.run_path(str(ROOT/'utils/tests/native64-result.py'))
     function = support['function']
     env = dict(os.environ)
-    flags = shlex.split(env.get('NATIVE64_CFLAGS', '-O1 -g -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
+    runner = shlex.split(env.get('NATIVE64_RUNNER', ''))
+    default_flags = '-O3 -g -DNDEBUG -fno-strict-aliasing -static' if args.android_ndk else '-O1 -g -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'
+    flags = shlex.split(env.get('NATIVE64_CFLAGS', default_flags))
     with tempfile.TemporaryDirectory(prefix='native64-arguments-', dir=env.get('NATIVE64_TMPDIR', ROOT)) as directory:
         work = Path(directory)
         env['TMPDIR'] = str(work)
@@ -32,8 +37,15 @@ def main():
         roots.write_text('Roots: module { Node: adt { next: ref Node; }; copy: fn(source: array of ref Node): array of ref Node; caller: fn(padding: big, result: array of byte, tail: array of byte); many: fn('+','.join('a'+str(i)+': array of byte' for i in range(150))+'); };')
         for name, source in [('math', ROOT/'module/math.m'), ('sys', ROOT/'module/sys.m'), ('roots', roots)]:
             (work/(name+'-native64.h')).write_bytes(subprocess.check_output([str(limbo), '-H', str(source)], cwd=work, env=env))
-        compiler = shlex.split(env.get('CC', 'cc'))
+        if args.android_ndk:
+            clang = args.android_ndk.resolve()/'toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang'
+            if not clang.is_file(): parser.error('Missing NDK ARM64 clang: '+str(clang))
+            compiler = [str(clang)]
+        else:
+            compiler = shlex.split(env.get('CC', 'cc'))
         includes = ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/386/include', 'emu/port', 'include', 'libinterp')]
+        if args.android_ndk:
+            includes[0:0] = ['-I'+str(ROOT/p) for p in ('Android/arm64/include', 'Android/arm/include')]
         for label, model in [('WORD32', ['-DDIS_WORD32=1']), ('WORD32-file', ['-DDIS_WORD32=1', '-DDIS64_PILOT_LOADER=1'])]:
             command = compiler+flags+model+includes+['-ffunction-sections', '-fdata-sections']
             objects = []
@@ -79,9 +91,9 @@ def main():
                 unit.write_text(source)
                 binary = work/(label+'-'+port)
                 subprocess.run(command+[str(unit)]+objects+extra+['-Wl,--wrap=free', '-Wl,--gc-sections', '-lm', '-o', str(binary)], env=env, check=True)
-                subprocess.run([str(binary)], env=env, check=True)
+                subprocess.run(runner+[str(binary)], env=env, check=True)
                 for control in ('frame', 'types'):
-                    result = subprocess.run([str(binary), control], env=env, capture_output=True, text=True)
+                    result = subprocess.run(runner+[str(binary), control], env=env, capture_output=True, text=True)
                     if result.returncode != -signal.SIGABRT or 'GC root predicate failed' not in result.stderr:
                         raise RuntimeError('Argument ownership control did not reach its predicate: '+control+'\n'+result.stdout+result.stderr)
                 if args.formatter:
@@ -100,10 +112,18 @@ def main():
                             if adapter.count('fprintmap[1] != 0xc0') != 1:
                                 raise RuntimeError('FD map guard changed')
                             adapter = adapter.replace('fprintmap[1] != 0xc0', 'fprintmap[1] != 0x40')
-                        control_unit.write_text(source.replace('#include "'+header+'"', adapter, 1))
+                        control_source = source.replace('#include "'+header+'"', adapter, 1)
+                        if name == 'write-fd-map':
+                            schema = (work/'sys-native64.h').read_text()
+                            boundary = '#define F_Sys_fprint_map {0x00,0xc0}'
+                            if schema.count(boundary) != 1:
+                                raise RuntimeError('Generated FD map control boundary changed')
+                            schema = schema.replace(boundary, '#define F_Sys_fprint_map {0x00,0x40}')
+                            control_source = control_source.replace('#include "sys-native64.h"', schema, 1)
+                        control_unit.write_text(control_source)
                         control_binary = work/(label+'-'+port+'-'+name+'-unchecked')
                         subprocess.run(command+[str(control_unit)]+objects+extra+['-Wl,--wrap=free', '-Wl,--gc-sections', '-lm', '-o', str(control_binary)], env=env, check=True)
-                        result = subprocess.run([str(control_binary)], env=env, capture_output=True, text=True)
+                        result = subprocess.run(runner+[str(control_binary)], env=env, capture_output=True, text=True)
                         if result.returncode != -signal.SIGABRT or 'GC root predicate failed' not in result.stderr:
                             raise RuntimeError('Typed format control did not reach its predicate: '+name+'\n'+result.stdout+result.stderr)
                         print('PASS typed formatter removal control:', name, port, label, flush=True)

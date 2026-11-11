@@ -155,3 +155,20 @@ It checks exact active JIT mapping bounds and complete root/module retirement.
 The workflow preserves `bionic-managed.log` with the native build artifacts.
 QEMU/Bionic execution is separate from AWM's remaining general compiler and
 variadic ABI work, and from GUI/input/storage testing on an Android device.
+
+## Typed Sys C gateways in the full GUI library
+
+Add `--native64-formatter` together with `--native64-tk --native64-draw
+--native64-sys-fixed` to compile and link the existing four typed C gateways.
+The driver checks that `Sys_print64`, `Sys_fprint64`, `Sys_sprint64` and
+`Sys_aprint64` are defined dynamic symbols in the resulting ARM64 library,
+alongside the NativeActivity entries and 16KiB LOAD alignment. It records
+`typed_sys_formatter_linked: true` and still records `awm_started: false`.
+The option is refused before output creation if the fixed Sys profile is absent.
+
+The Android workflow executes the complete typed formatter/argument/result/
+write-ownership suite with static Bionic under QEMU, preserving
+`bionic-sys-format.log`, then builds this full GUI configuration. Its non-callable
+variadic prefix schemas come from the actual `sys.m`; all 39 fixed Sys exports
+retain their separate registration path. This does not provide a compiler or
+bytecode producer for typed variadic tails and does not enable ordinary AWM startup.

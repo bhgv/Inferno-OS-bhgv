@@ -659,6 +659,15 @@ native64frame(Decl *function, int emit)
 		native64fieldtable(function, name+2);
 		native64managedtable(function, name+2);
 		print("#endif\n");
+	}else{
+		print("#ifdef LIMBO_NATIVE64_PREFIXES\n");
+		native64descriptorsymbol(name, "map", symbol, sizeof(symbol));
+		print("static const uchar limbo_native64_%s_prefix_map[] = %s;\n", name+2, symbol);
+		print("static const LimboNative64Prefix limbo_native64_%s_prefix = {\n\t{", name+2);
+		native64symbol(function);
+		print(", 0, 0x%luxU, %ld, %ld, limbo_native64_%s_prefix_map},\n",
+			(ulong)sign(function), frame.size, bytes, name+2);
+		print("\t%d // Fixed arguments only; no tail or callable implementation.\n};\n#endif\n", arguments);
 	}
 	free(frame.map);
 }
@@ -877,6 +886,12 @@ native64stubs(Decl *globals)
 			native64register(symbol, function);
 			seprint(symbol, symbol+sizeof(symbol), "limbo_native64_%s_field_table", name);
 			native64register(symbol, function);
+			if(function->ty->varargs){
+				seprint(symbol, symbol+sizeof(symbol), "limbo_native64_%s_prefix", name);
+				native64register(symbol, function);
+				seprint(symbol, symbol+sizeof(symbol), "limbo_native64_%s_prefix_map", name);
+				native64register(symbol, function);
+			}
 			seprint(symbol, symbol+sizeof(symbol), "F_%s", name);
 			native64reservenamed(symbol, function);
 			seprint(symbol, symbol+sizeof(symbol), "F_%s_variadic", name);
@@ -898,7 +913,7 @@ native64stubs(Decl *globals)
 	print("\tif(CHAR_BIT != 8 || FLT_RADIX != 2 || DBL_MANT_DIG != 53 || DBL_MAX_EXP != 1024 ||\n\t   sizeof(WORD) != 4 || sizeof(void*) != 8 || sizeof(LONG) != 8 || sizeof(REAL) != 8 ||\n");
 	print("\t   offsetof(LimboNative64WordAlign, value) != 4 || offsetof(LimboNative64RefAlign, value) != 8 ||\n\t   offsetof(LimboNative64BigAlign, value) != 8 || offsetof(LimboNative64RealAlign, value) != 8 ||\n\t   sizeof(Frame) != 32 || offsetof(Frame, lr) != 0 || offsetof(Frame, fp) != 8 ||\n");
 	print("\t   offsetof(Frame, mr) != 16 || offsetof(Frame, t) != 24)\n\t\treturn 0;\n\treturn 1;\n}\n#endif\n");
-	print("#ifdef LIMBO_NATIVE64_ENTRIES\n#include \"native64-entry.h\"\n#endif\n");
+	print("#if defined(LIMBO_NATIVE64_ENTRIES) || defined(LIMBO_NATIVE64_PREFIXES)\n#include \"native64-entry.h\"\n#endif\n");
 	for(layout=native64types; layout != nil; layout=layout->next){
 		if((layout->type->kind == Tadt || layout->type->kind == Ttuple) &&
 		   layout->type->decl != nil && layout->type->decl->sym != anontupsym){

@@ -114,7 +114,7 @@ tkmod.h:D: $MODULES
 	rm -f $target && limbo -t Tk -I../module ../module/runt.m > $target
 
 # Generate coherent Sys declarations only for the explicit trusted startup profile.
-$ROOT/libinterp/sys-native64.h:D: $ROOT/module/sys.m
+$ROOT/libinterp/sys-native64.h:D: $ROOT/module/sys.m $ROOT/limbo/native64.c
 	limbo -H $ROOT/module/sys.m > $target.tmp && mv $target.tmp $target
 
 $ROOT/libinterp/string-native64.h:D: $ROOT/module/string.m $ROOT/limbo/native64.c

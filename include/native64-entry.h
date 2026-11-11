@@ -13,6 +13,15 @@ struct LimboNative64Entry
 	const uchar *map; // Borrowed immutable map storage.
 };
 
+/* A variadic prefix is a schema only: it has no callable C entry or complete tail. */
+typedef struct LimboNative64Prefix LimboNative64Prefix;
+
+struct LimboNative64Prefix
+{
+	LimboNative64Entry fixed; // Compiler-generated fixed geometry/hash/map; function is always nil.
+	unsigned int arguments; // Declared fixed argument count, excluding the unknown typed tail.
+};
+
 typedef struct LimboNative64Field LimboNative64Field;
 
 struct LimboNative64Field
