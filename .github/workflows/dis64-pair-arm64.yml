@@ -115,6 +115,9 @@ jobs:
             if ! command -v riscv64-linux-gnu-gcc >/dev/null 2>&1; then
               packages+=(gcc-riscv64-linux-gnu)
             fi
+            if ! printf '#include <sys/types.h>\n#include <stdint.h>\n' | riscv64-linux-gnu-gcc -E -x c - >/dev/null 2>&1; then
+              packages+=(libc6-dev-riscv64-cross)
+            fi
             if ! command -v riscv64-linux-gnu-ar >/dev/null 2>&1; then
               packages+=(binutils-riscv64-linux-gnu)
             fi
