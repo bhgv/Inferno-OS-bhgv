@@ -209,3 +209,12 @@ Module identity, and active calls block explicit table retirement. Ordinary
 are never parsed from file flags. There is still no agreed serialized site/PC
 record or general variadic file admission; compiler diagnostic plans cannot be
 installed as executable bytecode merely by parsing their JSON.
+
+
+Compiler call-site provenance now includes final legacy FRAME/LEA/MCALL PCs,
+descriptor ordinals, prepared-frame registers and resolved result/import/module
+operands, correlated to source type plans by diagnostic identity. An independent
+classic decoder checks the written bytes, including nested and multi-file calls.
+The trace explicitly names the legacy PC space and does not convert those PCs,
+WORD32 offsets or descriptors into executable native64 code. Owned Dis64 PC/site
+mapping and general serialized variadic lowering/admission remain separate.

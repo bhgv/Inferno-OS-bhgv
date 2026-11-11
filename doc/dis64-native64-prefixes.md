@@ -346,3 +346,43 @@ removal controls detect lost vector copies, caller-owner checks and retirement.
 The values/decoded operands are still C-supplied; no serialized producer, PC-to-
 site mapping, loader admission, JIT execution or ordinary variadic export is
 created by this storage API.
+
+
+## Locate the actual compiled call
+
+The opt-in `-Dq` output now gives every `NATIVE64_CALL` an `id` and emits a
+matching `NATIVE64_CALL_PC` record after instruction, descriptor and import
+resolution. IDs are unique across a multi-file compiler invocation; temporary
+IR notes are retired between modules. Nested calls are matched by ID, not by
+assuming source order equals execution order.
+
+| Field | Meaning |
+| --- | --- |
+| `module`, `id` | Caller module name and matching diagnostic plan identity. |
+| `pc_space` | Always `legacy-dis`; these are not Dis64 coordinates. |
+| `caller_pc`, `caller_descriptor` | Original caller entry and frame descriptor, resolved after function lowering. |
+| `frame_pc`, `frame_descriptor`, `frame_slot` | Final FRAME instruction ordinal, legacy descriptor ordinal and FP frame-pointer slot. |
+| `result_pc` | Final LEA ordinal, or -1 when there is no result address. |
+| `result_space`, `result_offset`, `result_indirect` | Actual legacy FP/MP addressing operands. |
+| `call_pc`, `call_opcode`, `binding`, `module_space`, `module_offset` | Final call instruction and resolved import/module operands. |
+| `located`, `linked` | Captured instructions survived and satisfy the local synchronous FRAME/LEA/MCALL operand relation. |
+
+The local relation checks the same prepared-frame register at allocation,
+return-address binding and MCALL, including the legacy return-header offset.
+It is not a proof of general control flow or an authorization to execute a
+native call. A void MSPAWN can be located while `linked` remains false. Missing
+or rewritten instructions are refused instead of guessing replacement PCs.
+The diagnostic lookup is bounded to 65,536 notes and 1,048,576 instructions.
+
+An independent classic Dis reader in `native64-callsites.py` decodes the actual
+written image and checks all reported operands/PCs. This covers all four Sys
+operations, 2/150/4096 slots, the 4097 refusal, nested FP/MP destinations, a void
+spawn and a multi-file compiler invocation. Tracing leaves the legacy bytes
+unchanged, and existing `-64`/`-64m` refusals remain in force.
+
+The native frame geometry in the plan and these legacy coordinates describe
+different representations. In particular, legacy descriptor ordinals, result
+offsets and four-byte argument positions cannot be passed directly to the
+native64 site constructor. The next producer must lower the values/instructions,
+construct native caller/callee Types and emit an agreed owned PC/site mapping;
+this diagnostic assigns no wire records or managed signature IDs.

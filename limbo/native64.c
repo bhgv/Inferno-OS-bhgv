@@ -39,6 +39,7 @@ static int native64count; // Bound pathological input before allocating another 
 
 static Native64Type *native64type(Type*, int);
 static void native64ctype(Type*, int);
+static unsigned int native64callsequence; // Diagnostic identity across one compiler invocation.
 
 /* Spell private tail kinds rather than serializing the runtime's C enum values. */
 static char*
@@ -71,7 +72,7 @@ native64callwidth(Type *type)
 
 /* Describe actual typechecked variadic arguments after legacy idoffsets, without changing
  * descriptors, instructions, signatures, target selection or the output file. */
-void
+unsigned int
 native64callplan(Decl *callee, Type *instantiated)
 {
 	Decl *fixed, *actual, *tail, *argument;
@@ -79,9 +80,12 @@ native64callplan(Decl *callee, Type *instantiated)
 	unsigned int offset = 64, count = 0, fixedcount = 0, i, width, slot, bytes, references;
 	char name[2*StrSize];
 	char *reason = nil, *result;
+    unsigned int id;
 
 	if(callee == nil || callee->ty == nil || !callee->ty->varargs || instantiated == nil)
-		return;
+		return 0;
+    if(native64callsequence == (unsigned int)-1) return 0;
+    id = ++native64callsequence;
 	dotprint(name, name+sizeof(name), callee, '_');
 	result = callee->ty->tof->kind == Tnone ? "none" : native64callkind(callee->ty->tof);
 	if(callee->ty->tof->kind == Tarray && callee->ty->tof->tof->kind == Tbyte) result = "array-byte";
@@ -112,20 +116,21 @@ native64callplan(Decl *callee, Type *instantiated)
 	/* The combined frame, not each half independently, must fit the bounded map. */
 	if(reason == nil && offset+count*8 > sizeof(map)*64) reason = "frame-size";
 	if(reason != nil){
-		fprint(2, "NATIVE64_CALL {\"schema\":\"native64-call-v1\",\"callee\":\"%s\",\"accepted\":false,\"reason\":\"%s\"}\n", name, reason);
-		return;
+		fprint(2, "NATIVE64_CALL {\"schema\":\"native64-call-v1\",\"id\":%ud,\"callee\":\"%s\",\"accepted\":false,\"reason\":\"%s\"}\n", id, name, reason);
+		return id;
 	}
 	bytes = (offset+count*8+63)/64;
 	for(argument=tail, i=0; argument != nil; argument=argument->next, i++)
 		if(argument->ty->kind == Tstring){ slot = offset/8+i; map[slot/8] |= 0x80>>(slot%8); }
-	fprint(2, "NATIVE64_CALL {\"schema\":\"native64-call-v1\",\"callee\":\"%s\",\"accepted\":true,\"signature\":%lud,\"result\":\"%s\",\"fixed_arguments\":%ud,\"fixed_bytes\":%ud,\"frame_bytes\":%ud,\"references\":%ud,\"map\":[",
-		name, (ulong)sign(callee), result, fixedcount, offset, offset+count*8, references);
+	fprint(2, "NATIVE64_CALL {\"schema\":\"native64-call-v1\",\"id\":%ud,\"callee\":\"%s\",\"accepted\":true,\"signature\":%lud,\"result\":\"%s\",\"fixed_arguments\":%ud,\"fixed_bytes\":%ud,\"frame_bytes\":%ud,\"references\":%ud,\"map\":[",
+		id, name, (ulong)sign(callee), result, fixedcount, offset, offset+count*8, references);
 	for(i=0; i<bytes; i++) fprint(2, "%s%ud", i == 0 ? "" : ",", map[i]);
 	fprint(2, "],\"tail\":[");
 	for(argument=tail, i=0; argument != nil; argument=argument->next, i++)
 		fprint(2, "%s{\"kind\":\"%s\",\"legacy_offset\":%ld,\"offset\":%ud,\"bytes\":8}",
 			i == 0 ? "" : ",", native64callkind(argument->ty), argument->offset, i*8);
 	fprint(2, "]}\n");
+    return id;
 }
 
 
@@ -1064,4 +1069,102 @@ native64stubs(Decl *globals)
 	native64namecount = 0;
 	native64types = nil;
 	native64count = 0;
+}
+
+/* Diagnostic-only provenance. Never retain these IR pointers after this module. */
+typedef struct Native64CallPC Native64CallPC;
+struct Native64CallPC {
+    unsigned int id;
+    Inst *frame, *result, *call;
+    Decl *caller; // Persistent function identity; its frame descriptor is resolved later.
+    Native64CallPC *next;
+};
+static Native64CallPC *native64pcfirst, *native64pclast;
+static unsigned int native64pccount;
+
+void
+native64callreset(void)
+{
+    Native64CallPC *note, *next;
+    for(note=native64pcfirst; note != nil; note=next) { next = note->next; free(note); }
+    native64pcfirst = native64pclast = nil;
+    native64pccount = 0;
+}
+
+void
+native64callnote(unsigned int id, Inst *frame, Inst *result, Inst *call)
+{
+    Native64CallPC *note;
+    if(native64pccount == 65536) {
+        fprint(2, "NATIVE64_CALL_PC {\"id\":%ud,\"module\":\"%s\",\"pc_space\":\"legacy-dis\",\"located\":false,\"reason\":\"site-limit\"}\n", id, impdecl->sym->name);
+        return;
+    }
+    note = allocmem(sizeof(*note));
+    note->caller = curfn;
+    note->id = id; note->frame = frame; note->result = result; note->call = call; note->next = nil;
+    if(native64pclast != nil) native64pclast->next = note;
+    else native64pcfirst = note;
+    native64pclast = note;
+    native64pccount++;
+}
+
+static int
+native64pcpresent(Inst **image, long count, Inst *inst)
+{
+    return image != nil && inst != nil && inst->pc >= 0 && inst->pc < count && image[inst->pc] == inst;
+}
+
+static char*
+native64pcspace(int mode)
+{
+    switch(mode) {
+    case Afp: return "fp";
+    case Amp: return "mp";
+    case Afpind: return "fp-indirect";
+    case Ampind: return "mp-indirect";
+    }
+    return "other";
+}
+
+/* Report final reachable legacy coordinates only after PC/descriptor/import resolution.
+ * Missing or rewritten instructions are explicit refusals, never guessed PC offsets. */
+void
+native64callpcs(Inst *first, long count)
+{
+    Native64CallPC *note;
+    Inst **image = nil, *inst, *frame, *result, *call;
+    long binding, callerpc;
+    int linked, callerdesc;
+    if(native64pcfirst == nil) return;
+    if(count > 0 && count <= 1024*1024) {
+        image = allocmem(count*sizeof(*image));
+        memset(image, 0, count*sizeof(*image));
+        for(inst=first; inst != nil; inst=inst->next)
+            if(inst->op != INOOP && inst->pc >= 0 && inst->pc < count) image[inst->pc] = inst;
+    }
+    for(note=native64pcfirst; note != nil; note=note->next) {
+        frame = note->frame; result = note->result; call = note->call;
+        if(!native64pcpresent(image, count, frame) || !native64pcpresent(image, count, call) ||
+           (result != nil && !native64pcpresent(image, count, result))) {
+            fprint(2, "NATIVE64_CALL_PC {\"id\":%ud,\"module\":\"%s\",\"pc_space\":\"legacy-dis\",\"located\":false,\"reason\":\"missing-or-rewritten\"}\n", note->id, impdecl->sym->name);
+            continue;
+        }
+        callerdesc = note->caller == nil || note->caller->desc == nil ? -1 : note->caller->desc->id;
+        callerpc = note->caller == nil || note->caller->pc == nil ? -1 : note->caller->pc->pc;
+        binding = -1;
+        if(call->mm == Aoff && call->m.decl != nil && call->m.decl->iface != nil) binding = call->m.decl->iface->offset;
+        linked = callerdesc >= 0 && callerpc >= 0 && callerpc <= frame->pc && frame->op == IFRAME && frame->sm == Adesc && frame->dm == Afp &&
+            call->op == IMCALL && call->sm == Afp && binding >= 0 && frame->d.reg == call->s.reg &&
+            result != nil && result->op == ILEA && result->dm == Afpind &&
+            result->d.reg == frame->d.reg && result->d.offset == REGRET*IBY2WD &&
+            frame->pc < result->pc && result->pc < call->pc;
+        fprint(2, "NATIVE64_CALL_PC {\"id\":%ud,\"module\":\"%s\",\"pc_space\":\"legacy-dis\",\"located\":true,\"linked\":%s,\"caller_pc\":%ld,\"caller_descriptor\":%d,\"frame_pc\":%ld,\"frame_opcode\":%ud,\"frame_descriptor\":%ld,\"frame_slot\":%ld,\"result_pc\":%ld,\"call_pc\":%ld,\"call_opcode\":%ud,\"binding\":%ld,\"module_space\":\"%s\",\"module_offset\":%ld",
+            note->id, impdecl->sym->name, linked ? "true" : "false", callerpc, callerdesc, frame->pc, frame->op, frame->s.offset, frame->d.reg,
+            result == nil ? -1 : result->pc, call->pc, call->op, binding, native64pcspace(call->dm), call->d.reg);
+        if(result != nil)
+            fprint(2, ",\"result_space\":\"%s\",\"result_offset\":%ld,\"result_indirect\":%ld", native64pcspace(result->sm), result->s.reg, result->s.offset);
+        fprint(2, "}\n");
+    }
+    free(image);
+    native64callreset();
 }

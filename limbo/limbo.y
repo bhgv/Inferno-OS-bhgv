@@ -1722,7 +1722,7 @@ main(int argc, char *argv[])
 		 * g	print out globals
 		 * m	module declaration and type checking
 		 * n	nil references
-		 * q	native64 variadic call-site plans (diagnostics only)
+		 * q	native64 call-site plans and final legacy Dis positions
 		 * s	print sizes of output file sections
 		 * S	type signing
 		 * t	type checking function bodies
