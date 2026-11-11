@@ -197,7 +197,7 @@ def sys_integer_image(sequence, *, symbols=None, signatures=None, offsets=None, 
         code += ins('IMCALL', 72, source=40, middle=index, destination=8)
         count += 3+len(arguments)
         if step in copies:
-            code += ins('IMOVW', 9, source=72, destination=64)
+            code += ins('IMOVW', 9, source=72, destination=copies[step] if isinstance(copies, dict) else 64)
             count += 1
     code += scalar_steps(len(sequence))
     count += len((steps or {}).get(len(sequence), ()))
@@ -316,7 +316,31 @@ init()
         yield f'{len(sequence)} integer-argument', image, ''
     result = ('fp', 72)
     local = ('fp', 64)
+    second, third = ('fp', 68), ('fp', 76)
     bodies = (
+        ("""    one := -1;
+    two := -2;
+    three := -3;
+    status := sys->dup(one, two);
+    one = sys->sleep(0);
+    two = sys->dup(three, three);
+    three += two;
+    status = sys->dup(one, three);
+    status = sys->sleep(one);""",
+         [('dup', (local, second)), ('sleep', (0,)), ('dup', (third, third)),
+          ('dup', (local, third)), ('sleep', (local,))], -1, {1: 64, 2: 68},
+         {0: [('IMOVW', -2, 68), ('IMOVW', -3, 76)], 3: [('IADDW', result, 76)]}, ''),
+        ("""    one := -1;
+    two := -2;
+    three := -3;
+    status := sys->dup(one, two);
+    three = sys->sleep(0);
+    status = sys->dup(two, three);
+    one += 1;
+    status /= one;""",
+         [('dup', (local, second)), ('sleep', (0,)), ('dup', (second, result))],
+         -1, {1: 76}, {0: [('IMOVW', -2, 68), ('IMOVW', -3, 76)],
+                             3: [('IADDW', 1, 64), ('IDIVW', local, 72)]}, 'zero divide'),
         ("""    status := sys->dup(-1, -1);
     status = sys->dup(status, status);
     status = sys->sleep(status);""",
@@ -415,7 +439,7 @@ init()
 
 
     for body in (
-            "    one := -1; two := -2; status := sys->dup(one, two);",
+            "    one := -1; two := -2; three := -3; four := -4; status := sys->dup(one, four);",
             "    value := -1;\n" + "    value ^= 1;\n"*64 + "    status := sys->sleep(value);",
             "    value := 0;\n" + "    value ^= 1;\n"*32 + "    value = sys->sleep(value);\n"*32,
             "    one := sys->dup(-1, -1); two := sys->dup(-2, -2); status := sys->dup(one, two);"):
@@ -655,6 +679,8 @@ def main():
                     ([('dup', (local, -1))], {}),
                     ([('sleep', (('fp', 40),))], {'initial': 0}),
                     ([('sleep', (('fp', 68),))], {'initial': 0}),
+                    ([('sleep', (('fp', 76),))], {'initial': 0}),
+                    ([('sleep', (local,))], {'steps': {0: [('IMOVW', 0, 68), ('IMOVW', 0, 76)]}}),
                     ([('sleep', (('fp', 0),))], {'initial': 0}),
                     ([('sleep', (local,))], {'initial': (0,)*65}),
                     ([('sleep', (local,))], {'initial': (0,)*64, 'copies': (0,)})):
@@ -663,6 +689,11 @@ def main():
                 if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
                     raise RuntimeError('uninitialized or reserved scalar Sys input reached scheduler: '+output)
             arithmetic = (
+                ([('dup', (('fp', 68), ('fp', 76))), ('dup', (local, ('fp', 68)))],
+                 {'steps': {0: [('IMOVW', -1, 64), ('IMOVW', -2, 68), ('IMOVW', -3, 76)],
+                            1: [('IADDW', ('fp', 76), 68), ('IMOVW', ('fp', 68), 64)]}}, ''),
+                ([('dup', (-1, -1)), ('sleep', (('fp', 76),))],
+                 {'copies': {0: 76}, 'steps': {1: [('IADDW', 1, 76)]}}, ''),
                 ([('dup', (-1, local))],
                  {'steps': {0: [('IADDW', 1, 64, 2)]}}, ''),
                 ([('dup', (-1, local))],
@@ -680,6 +711,10 @@ def main():
                 ([('dup', (local, local))],
                  {'initial': -1, 'steps': {1: [('IADDW', 1, 64), ('IMODW', local, 72)]}}, 'zero divide'),
             )
+            for cell in (64, 68, 76):
+                arithmetic += (([('dup', (-1, -1))],
+                    {'steps': {0: [('IMOVW', -1, cell)],
+                               1: [('IADDW', 1, cell), ('IDIVW', ('fp', cell), 72)]}}, 'zero divide'),)
             for sequence, options, status in arithmetic:
                 consumer.write_bytes(sys_integer_image(sequence, **options))
                 for jit in (0, 1):
@@ -688,6 +723,10 @@ def main():
                     if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
                         raise RuntimeError('Sys scalar expression did not retire correctly: '+output)
             for operation in (
+                    ('IADDW', 1, 68),
+                    ('IADDW', 1, 76),
+                    ('IMOVW', ('fp', 68), 64),
+                    ('IMOVW', ('fp', 76), 64),
                     ('IADDW', 1, 64),
                     ('IADDW', 1, 64, local),
                     ('IADDW', ('fp', 72), 64, 1),
@@ -699,6 +738,8 @@ def main():
                     ('IADDW', 1, 72, 2),
                     ('IADDW', 1, 64, ('fp', 40)),
                     ('IADDW', 1, 64, ('mp', 0)),
+                    ('IMOVW', 0, 70),
+                    ('IMOVW', 0, 80),
                     ('IADDL', 1, 64, 2),
                     ('IMOVL', 0, 64)):
                 consumer.write_bytes(sys_integer_image([('sleep', (0,))], steps={0: [operation]}))

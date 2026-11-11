@@ -957,11 +957,14 @@ dis64sysclockimport(const uchar *image, ulong bytes, unsigned int ordinal, Modul
 static int
 dis64clockready(long offset, unsigned int calls, int initialized)
 {
-	return (offset == 64 && initialized) || (offset == 72 && calls != 0);
+	int local;
+
+	local = dis64clocklocal(offset);
+	return (local >= 0 && (initialized & (1U<<local))) || (offset == 72 && calls != 0);
 }
 
 
-/* Reuse scalar role validation, then restrict reads and writes to the two proven int cells. */
+/* Reuse scalar role validation, then restrict reads and writes to the proven int cells. */
 static int
 dis64clockwordcheck(const Dis64Instruction *inst, unsigned int count,
 	unsigned int calls, int *initialized)
@@ -969,7 +972,7 @@ dis64clockwordcheck(const Dis64Instruction *inst, unsigned int count,
 	unsigned int sm, mm;
 
 	if(!dis64clockwordop(inst->op) || !dis64instructioncheck(inst, count, 0, 80) ||
-	   UDST(inst->mode) != AFP || (inst->destination != 64 && inst->destination != 72) ||
+	   UDST(inst->mode) != AFP || (dis64clocklocal(inst->destination) < 0 && inst->destination != 72) ||
 	   (inst->destination == 72 && calls == 0))
 		return 0;
 	sm = USRC(inst->mode);
@@ -989,8 +992,8 @@ dis64clockwordcheck(const Dis64Instruction *inst, unsigned int count,
 		}else if(mm != AXIMM || inst->middle < -32768 || inst->middle > 32767)
 			return 0;
 	}
-	if(inst->destination == 64)
-		*initialized = 1;
+	if(dis64clocklocal(inst->destination) >= 0)
+		*initialized |= 1U<<dis64clocklocal(inst->destination);
 	return 1;
 }
 
@@ -1063,7 +1066,7 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 				if(parameter >= expected || inst->destination != 40 || decoded.secondary != 64+4*parameter)
 					return 0;
 				if(inst->mode == (SRC(AFP)|DST(AFP|AIND))){
-					if(!((inst->source == 72 && calls != 0) || (inst->source == 64 && initialized)))
+					if(!dis64clockready(inst->source, calls, initialized))
 						return 0;
 				}else if(inst->mode != (SRC(AIMM)|DST(AFP|AIND)))
 					return 0;

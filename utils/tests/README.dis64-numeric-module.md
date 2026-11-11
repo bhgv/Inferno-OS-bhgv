@@ -75,15 +75,15 @@ record's symbol and structural signature against trusted Sys exports, builds
 the import group in the recorded order, and executes ILOAD through the VM.
 The checker verifies each MFRAME/MCALL ordinal and requires the argument setup
 matching that entry. A source may contain 1 through 32 calls. The compiler
-preserves their order. The producer tracks one initialized local integer and
-the latest returned integer. Arguments may use either value or a literal.
+preserves their order. The producer tracks up to three initialized local integers and
+the latest returned integer. Arguments may use any initialized value or a literal.
 Legacy module, prepared-frame and result slots are checked against the actual
 Limbo frame extent before remapping, so their placement may vary.
 
 Each immediate initializer or argument must fit signed30, from -536870912
 through 536870911. Values returned by Sys retain their full 32-bit integer
-representation. The caller stores the saved local at offset 64 and the latest
-result at offset 72. Prepared callee argument cells are at offsets 64 and 68,
+representation. The caller stores persistent locals at offsets 64, 68 and 76 and the latest
+result at offset 72. Each local has an independent initialization bit. Prepared callee argument cells are at offsets 64 and 68,
 with the full native result address at offset 32. These offsets belong to
 different frames. A call which replaces the saved local also copies its new
 result into the saved caller cell. Positive sleep periods
@@ -105,14 +105,34 @@ prepared-frame pointer and unrecognized scalar offsets are excluded.
 
 A recognized Sys interface with unsupported scalar body or argument state
 produces the diagnostic `unsupported checked Sys body or uninitialized scalar
-argument`. Additional simultaneously live locals, branches and loops need broader
+argument`. More than three persistent locals, branches and loops need broader
 scalar lowering. Linear integer assignments and `+`, `-`, `*`, `/`, `%`,
 `&`, `|`, `^`, `<<` and `>>` are supported between calls using the existing
-scalar instruction lowering. Reads must refer to the initialized saved local
+scalar instruction lowering. Reads must refer to an initialized persistent local
 or the latest completed result. The checker proves those facts independently
 of the compiler. Arithmetic retains ordinary 32-bit VM behavior, including
 overflow and runtime zero-divide exceptions. Binary immediate middle operands
 must fit signed16.
+
+For example, all three integers remain available across subsequent calls:
+
+```limbo
+    one := -1;
+    two := -2;
+    three := -3;
+    status := sys->dup(one, two);
+    one = sys->sleep(0);
+    two = sys->dup(three, three);
+    three += two;
+    status = sys->dup(one, three);
+```
+
+The latest-result cell is transient: an otherwise unpreserved call result is
+replaced by the next call. Assign a result to an already initialized local to
+preserve it. The compiler emits a checked copy to that local after MCALL; all
+three destination cells are covered by execution tests. Local cells cannot
+alias the native module slot, prepared-frame pointer, or result-address field.
+The module and frame pointer maps and the 80-byte frame size stay unchanged.
 
 A body may contain at most 64 scalar instructions, including initializers,
 assignments, arithmetic and compiler-inserted copies of call results into the

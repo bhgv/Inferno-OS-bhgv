@@ -135,7 +135,7 @@ struct Dis64ClockCall {
 	unsigned int binding;
 	uchar modes[2];
 	long values[2];
-	int save; // Preserve a returned value which replaces the saved local.
+	int save; // Native destination of a persistent returned value, or zero.
 };
 
 typedef struct Dis64ClockWord Dis64ClockWord;
@@ -162,10 +162,25 @@ dis64clockslot(long offset, long bytes)
 }
 
 
-/* Resolve only initialized scalar values, independently of legacy register placement. */
-static int
-dis64clockvalue(int mode, Addr *address, long saved, long previous, Addr *mapped)
+/* Persistent cells are assigned only after a defining instruction is checked. */
+static long
+dis64clockcell(long *locals, long legacy)
 {
+	unsigned int i;
+
+	for(i=0; i<Dis64ClockLocals; i++)
+		if(locals[i] >= 0 && locals[i] == legacy)
+			return i == 2 ? 76 : 64+4*i;
+	return 0;
+}
+
+
+/* Resolve initialized scalar values independently of legacy register placement. */
+static int
+dis64clockvalue(int mode, Addr *address, long *locals, long previous, Addr *mapped)
+{
+	long cell;
+
 	if(mode == Aimm){
 		if(address->offset < -536870912L || address->offset > 536870911L)
 			return 0;
@@ -175,52 +190,56 @@ dis64clockvalue(int mode, Addr *address, long saved, long previous, Addr *mapped
 	if(mode != Afp)
 		return 0;
 	if(previous >= 0 && address->reg == previous)
-		mapped->reg = 40; // Existing scalar rebasing maps this to the result cell at 72.
-	else if(saved >= 0 && address->reg == saved)
-		mapped->reg = 32; // Existing scalar rebasing maps this to the saved cell at 64.
-	else
+		cell = 72;
+	else if((cell = dis64clockcell(locals, address->reg)) == 0)
 		return 0;
+	mapped->reg = cell-32; // Existing scalar lowering rebases legacy FP by 32.
 	return 1;
 }
 
 
-/* Reuse scalar lowering after resolving the two live integer identities. */
+/* Reuse scalar lowering after resolving the initialized integer identities. */
 static int
-dis64clockword(Inst *input, long module, long bytes, long *saved, long *previous,
+dis64clockword(Inst *input, long module, long bytes, long *locals, long *previous,
 	Dis64Instruction *output)
 {
 	Inst mapped;
 	long destination;
-	int known;
+	unsigned int i;
+	int allocate;
 
 	if(!dis64clockwordop(input->op) || input->dm != Afp ||
 	   !dis64clockslot(input->d.reg, bytes) || input->d.reg == module)
 		return 0;
-	known = input->d.reg == *saved || input->d.reg == *previous;
-	if(input->op != IMOVW && input->mm == Anone && !known)
+	destination = dis64clockcell(locals, input->d.reg);
+	if(destination == 0 && input->d.reg == *previous)
+		destination = 72;
+	if(input->op != IMOVW && input->mm == Anone && destination == 0)
 		return 0;
-	if(input->d.reg == *saved)
-		destination = 32;
-	else if(input->d.reg == *previous)
-		destination = 40;
-	else if(*saved < 0)
-		destination = 32;
-	else
-		return 0;
+	allocate = -1;
+	if(destination == 0){
+		for(i=0; i<Dis64ClockLocals; i++)
+			if(locals[i] < 0){
+				allocate = i;
+				destination = i == 2 ? 76 : 64+4*i;
+				break;
+			}
+		if(allocate < 0)
+			return 0;
+	}
 	mapped = *input;
-	if(!dis64clockvalue(input->sm, &input->s, *saved, *previous, &mapped.s))
+	if(!dis64clockvalue(input->sm, &input->s, locals, *previous, &mapped.s))
 		return 0;
 	if(input->mm != Anone &&
-	   !dis64clockvalue(input->mm, &input->m, *saved, *previous, &mapped.m))
+	   !dis64clockvalue(input->mm, &input->m, locals, *previous, &mapped.m))
 		return 0;
-	mapped.d.reg = destination;
+	mapped.d.reg = destination-32;
 	if(!dis64scalarinst(&mapped, 1, 0, 80, 64, output))
 		return 0;
-	if(destination == 32){
-		*saved = input->d.reg;
-		if(*previous == *saved)
-			*previous = -1;
-	}
+	if(allocate >= 0)
+		locals[allocate] = input->d.reg;
+	if(destination != 72 && *previous == input->d.reg)
+		*previous = -1;
 	return 1;
 }
 
@@ -233,7 +252,7 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 	Decl *import, *export, *path, *argument, *target;
 	unsigned int i, j, phase, binding, used, parameter, seen, copies;
 	Dis64ClockPlan plan = {0};
-	long frame, module, result, previous, saved;
+	long frame, module, result, previous, locals[Dis64ClockLocals], cell;
 	int kind;
 
 	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 ||
@@ -283,7 +302,9 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 			return 0;
 	i = phase = binding = used = copies = 0;
 	frame = module = result = 0;
-	previous = saved = -1;
+	previous = -1;
+	for(j=0; j<Dis64ClockLocals; j++)
+		locals[j] = -1;
 	target = nil;
 	parameter = 0;
 	for(; input != nil; input=input->next){
@@ -305,7 +326,7 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 		case 0:
 			if(dis64clockwordop(input->op)){
 				if(plan.nwords == Dis64ClockWords ||
-				   !dis64clockword(input, module, entry->desc->size, &saved, &previous,
+				   !dis64clockword(input, module, entry->desc->size, locals, &previous,
 				     &plan.words[plan.nwords].instruction))
 					return -1;
 				plan.words[plan.nwords++].before = used;
@@ -313,7 +334,7 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 			}
 			if(input->op != IMFRAME || input->sm != Afp || input->s.reg != module ||
 			   input->dm != Afp || !dis64clockslot(input->d.reg, entry->desc->size) ||
-			   input->d.reg == module || input->d.reg == saved ||
+			   input->d.reg == module || dis64clockcell(locals, input->d.reg) != 0 ||
 			   input->mm != Aoff || input->m.decl == nil)
 				return -1;
 			if(used == Dis64ClockCalls)
@@ -340,8 +361,8 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 				plan.calls[used].modes[parameter] = AFP;
 				if(used != 0 && input->s.reg == previous)
 					plan.calls[used].values[parameter] = 72;
-				else if(saved >= 0 && input->s.reg == saved)
-					plan.calls[used].values[parameter] = 64;
+				else if((cell = dis64clockcell(locals, input->s.reg)) != 0)
+					plan.calls[used].values[parameter] = cell;
 				else
 					return -1;
 			}else
@@ -364,8 +385,8 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 			   input->m.decl == nil || input->m.decl->iface != target)
 				return -1;
 			plan.calls[used].binding = binding;
-			plan.calls[used++].save = result == saved;
-			if(result == saved)
+			plan.calls[used++].save = dis64clockcell(locals, result);
+			if(dis64clockcell(locals, result) != 0)
 				copies++;
 			previous = result;
 			phase = 0;
@@ -481,6 +502,7 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 		sizes[1] += sizeof(call);
 		instructions += 3+plan.arguments[ordinal];
 		if(plan.calls[i].save){
+			copy.destination = plan.calls[i].save;
 			if(!dis64encode(code, &sizes[1], &copy)){
 				dis64error(entry, "cannot preserve checked Sys local");
 				return 1;

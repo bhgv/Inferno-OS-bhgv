@@ -11,6 +11,15 @@
 #include "dis64-code.h"
 #include "dis-string-pool.h"
 
+#define Dis64ClockLocals 3U
+
+/* Three persistent Word cells share the existing 80-byte frame with result 72. */
+static int
+dis64clocklocal(long offset)
+{
+	return offset == 64 ? 0 : offset == 68 ? 1 : offset == 76 ? 2 : -1;
+}
+
 /* Limit the Sys caller to existing direct Word operations with no control transfer. */
 static int
 dis64clockwordop(unsigned int op)
