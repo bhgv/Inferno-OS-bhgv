@@ -79,7 +79,7 @@ port
 	uqid
 
 code
-	int dontcompile = 1;
+	/* Android startup selects interpreter mode in amain. */
 	unsigned long strtochan(char *s) {return 0;}
 
 init

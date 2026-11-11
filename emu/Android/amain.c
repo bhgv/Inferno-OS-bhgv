@@ -24,8 +24,9 @@
 	char**		rebootargv;
 	static	char	*imod = "/dis/emuinit.dis";
 extern	char*	hosttype;
-	char*	tkfont = nil;	/* for libtk/utils.c */
-	int	tkstylus = 1;	/* libinterp/tk.c */
+extern	char*	tkfont;	/* owned by libtk/utils.c */
+extern	int	tkstylus;	/* owned by libinterp/tk.c */
+extern	int	dontcompile;	/* owned by libinterp/load.c */
 extern	int	mflag;
 	int	dflag = 0;
 	int vflag = 0;
@@ -303,6 +304,8 @@ amain(void)
 	else
 		is_run = 1;
 
+	tkstylus = 1;
+	dontcompile = 1;
 	if(coherence == nil)
 		coherence = nofence;
 	quotefmtinstall();

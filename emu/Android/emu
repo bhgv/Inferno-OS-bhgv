@@ -91,7 +91,7 @@ port
 #	main
 
 code
-	int dontcompile = 1;
+	/* Android startup selects interpreter mode in amain. */
 
 init
 	emuinit

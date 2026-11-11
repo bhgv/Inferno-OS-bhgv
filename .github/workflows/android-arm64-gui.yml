@@ -1,0 +1,65 @@
+name: Android ARM64 GUI native link (AWM pending)
+on:
+  push:
+    branches: [experiment]
+    paths:
+      - '.github/workflows/android-arm64-gui.yml'
+      - 'utils/tests/android-gui-build.py'
+      - 'emu/Android/**'
+      - 'emu/port/**'
+      - 'include/**'
+      - 'libdraw/**'
+      - 'libtk/**'
+      - 'libinterp/**'
+      - 'libfreetype/**'
+      - 'mkfiles/**'
+      - 'utils/configure.py'
+      - 'limbo/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-arm64-gui-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-gui:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: bhgv/Inferno-OS_Android
+          ref: ed8b80ecb64524c86ca1bd2b21e1abbfb494473f
+          path: android-app
+      - name: Prepare pinned NDK and native build tools
+        run: |
+          python3 -m pip install --user cmake==4.4.4 ninja==1.13.2
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          curl -fL --retry 3 https://dl.google.com/android/repository/android-ndk-r27c-linux.zip -o "$RUNNER_TEMP/ndk.zip"
+          echo "59c2f6dc96743b5daf5d1626684640b20a6bd2b1d85b13156b90333741bad5cc  $RUNNER_TEMP/ndk.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/ndk.zip" -d "$RUNNER_TEMP"
+          MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/host-tools" sh makemk.sh
+      - name: Check real Android objects and GUI ownership
+        run: |
+          python3 utils/tests/host64-android.py --ndk "$RUNNER_TEMP/android-ndk-r27c"
+          python3 libdraw/tests/screen-channel.py
+          python3 android-app/tests/framebuffer-lifecycle.py
+          python3 android-app/tests/framebuffer-startup.py
+          python3 android-app/tests/framebuffer-pixels.py
+          python3 android-app/tests/cmake-abis.py
+      - name: Compile full Draw/Tk core and link ordinary NativeActivity
+        run: |
+          python3 utils/tests/android-gui-build.py --ndk "$RUNNER_TEMP/android-ndk-r27c" \
+            --host-tools "$RUNNER_TEMP/host-tools" --app-root "$GITHUB_WORKSPACE/android-app" \
+            --build-root "$RUNNER_TEMP/android-gui"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android-arm64-GUI-native-link-not-AWM-APK
+          path: |
+            ${{ runner.temp }}/android-gui/logs/
+            ${{ runner.temp }}/android-gui/result.json
+            ${{ runner.temp }}/android-gui/native/libinferno_os_app.so
+          if-no-files-found: warn
+          retention-days: 14

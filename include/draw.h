@@ -391,6 +391,7 @@ extern	ulong	setalpha(ulong, uchar);
  */
 extern Screen*	allocscreen(Image*, Image*, int);
 extern Image*	_allocwindow(Image*, Screen*, Rectangle, int, ulong);
+extern void	attachtowindow(Image*);
 extern Image*	allocwindow(Screen*, Rectangle, int, ulong);
 extern void	bottomnwindows(Image**, int);
 extern void	bottomwindow(Image*);

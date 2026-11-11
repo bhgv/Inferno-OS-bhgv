@@ -797,3 +797,10 @@ precede writes. Deterministic information-budget and hard visit/queue bounds
 refuse transactionally. Context/catalog binding and callee return guarantees
 remain separate. See [scope](dis64-local-initialized.md) and
 [series0078](native64-series0078.md).
+
+## Full Android ARM64 GUI native build
+
+The ordinary framebuffer Draw/Tk graph can now be compiled and linked with a
+modern NDK. See [the full GUI build reproduction](android-arm64-gui-build.md).
+This is separate from scalar APK probes; AWM startup remains blocked by native
+builtin ABI and general managed compiler/runtime admission.
