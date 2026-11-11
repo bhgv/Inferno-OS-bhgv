@@ -214,3 +214,11 @@ nil assignments and return temporaries. Compiler coverage includes 24 identical
 complete provider images and six valid-source other-effect refusals. The compiled
 32-call GC/cache pairs use providers with saved arguments, cleared source locals
 and returned aliases, alongside the aliased callers.
+
+Caller coverage also includes explicit nil cleanup of source names and aliases
+of the current loaded module. Checks compare 24 cleanup/path-layout images and
+12 module-alias images; 12 cleared-value and four stale/cleared-module uses are
+refused. The 32-call GC/cache fixtures combine cleared locals, module aliases,
+file reloads and provider-local reassignment. One native current module/root
+contract is retained; general nil argument writes and old-instance calls remain
+outside the checked compiler profile.

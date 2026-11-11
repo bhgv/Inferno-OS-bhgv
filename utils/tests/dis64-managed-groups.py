@@ -7,7 +7,7 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def sources(initial=0, calls=4, reloads=(), reverse_provider=False, aliases=False, provider_style=0):
+def sources(initial=0, calls=4, reloads=(), reverse_provider=False, aliases=False, provider_style=0, cleanup=False, module_alias=False):
     reloads = () if reloads is False else reloads
     argument = 'list of string' if initial else 'string'
     bodies = (
@@ -26,19 +26,33 @@ def sources(initial=0, calls=4, reloads=(), reverse_provider=False, aliases=Fals
                 'quoted: fn(value: list of string): string;\n};\n'
                 +'\n'.join(definitions[::-1] if reverse_provider else definitions)+'\n')
     body = ['    alias0 := value;'] if aliases else []
+    if cleanup:
+        if not aliases: raise ValueError('cleanup requires aliased sources')
+        body.append('    value = nil;')
     body.append('    lib := load String String->PATH;')
     for i in range(calls):
         if aliases and i:
             body.append(f'    alias{i} := result{i-1};')
+            if cleanup: body.append(f'    result{i-1} = nil;')
         if i and (reloads is True or i in reloads):
             body.append('    lib = load String String->PATH;')
         if aliases:
             method = ('quoted' if initial else 'unquoted') if i % 2 == 0 else ('unquoted' if initial else 'quoted')
             body.append(f'    result{i} := lib->{method}(alias{i});')
+            if cleanup: body.append(f'    alias{i} = nil;')
         elif i % 2 == 0:
             body.append(f'    other {":=" if i == 0 else "="} lib->{"quoted" if initial else "unquoted"}(value);')
         else:
             body.append(f'    value = lib->{"unquoted" if initial else "quoted"}(other);')
+    if module_alias:
+        body = [line.replace('lib->', 'active->') for line in body]
+        expanded = []
+        for line in body:
+            expanded.append(line)
+            if 'load String' in line:
+                expanded.append('    active '+(':=' if ':=' in line else '=')+' lib;')
+                expanded.append('    lib = nil;')
+        body = expanded
     caller = ('implement Caller;\ninclude "string.m";\n'
               f'Caller: module {{ init: fn(value: {argument}); }};\n'
               f'init(value: {argument}) {{\n'+'\n'.join(body)+'\n}\n')
@@ -200,9 +214,82 @@ def check_provider_locals(limbo, work):
     print(f'PASS managed provider locals: {count} identical images, {len(bodies)} other-effect refusals')
 
 
+def check_caller_cleanup(limbo, work):
+    """Discarding a source name preserves its live copy, never resurrects nil."""
+    positives = negatives = 0
+    for initial in (0, 1):
+        for calls in (4, 32):
+            for file_mode in (False, True):
+                reference = None
+                for layout in (0, 1, 2):
+                    text, _ = sources(initial, calls, reloads=file_mode, aliases=True, cleanup=layout != 0)
+                    if layout == 2:
+                        text = text.replace('    value = nil;\n', '').replace(
+                            '    lib := load String String->PATH;',
+                            '    lib := load String String->PATH;\n    value = nil;')
+                    source = work/'caller-cleanup.b'; source.write_text(text)
+                    output = work/'caller-cleanup.dis64'
+                    subprocess.run([str(limbo.resolve()), '-64l' if file_mode else '-64m', '-I', str(ROOT/'module'),
+                                    '-o', str(output), str(source)], check=True, timeout=60)
+                    image = output.read_bytes()
+                    if reference is None: reference = image
+                    if image != reference: raise RuntimeError('discarded local changed the complete caller image')
+                    positives += 1
+        text, _ = sources(initial, 4, aliases=True, cleanup=True)
+        for old, new in (('(alias0)', '(value)'), ('(alias1)', '(result0)'),
+                         ('alias2 := result1', 'alias2 := alias0')):
+            source = work/'caller-cleared-value.b'; source.write_text(text.replace(old, new))
+            for flag in ('-64m', '-64l'):
+                output = work/'caller-cleared-value.dis64'
+                subprocess.run([str(limbo.resolve()), '-I', str(ROOT/'module'), '-o', str(output), str(source)], check=True, timeout=60)
+                output.unlink()
+                result = subprocess.run([str(limbo.resolve()), flag, '-I', str(ROOT/'module'),
+                                         '-o', str(output), str(source)], capture_output=True, text=True, timeout=60)
+                if result.returncode != 1 or output.exists() or 'Dis64 managed trial:' not in result.stdout+result.stderr:
+                    raise RuntimeError('cleared caller value bypassed refusal: '+result.stdout+result.stderr)
+                negatives += 1
+    print(f'PASS managed caller cleanup: {positives} identical images, {negatives} cleared-value refusals')
+
+
+def check_module_aliases(limbo, work):
+    positives = negatives = 0
+    for initial in (0, 1):
+        for file_mode in (False, True):
+            reference = None
+            for alias in (0, 1, 2):
+                text, _ = sources(initial, 32, reloads=file_mode, aliases=True, cleanup=True, module_alias=bool(alias))
+                if alias == 2:
+                    text = text.replace('    lib = load String String->PATH;\n    active = lib;\n    lib = nil;',
+                                        '    active = load String String->PATH;')
+                source = work/'module-alias.b'; source.write_text(text)
+                output = work/'module-alias.dis64'
+                subprocess.run([str(limbo.resolve()), '-64l' if file_mode else '-64m', '-I', str(ROOT/'module'),
+                                '-o', str(output), str(source)], check=True, timeout=60)
+                image = output.read_bytes()
+                if reference is None: reference = image
+                if image != reference: raise RuntimeError('module alias changed the complete Dis64 image')
+                positives += 1
+        text, _ = sources(initial, 4, reloads=True, aliases=True, cleanup=True, module_alias=True)
+        text = text.replace('    lib = nil;', '    saved := active;\n    lib = nil;', 1)
+        for old, new in (('result1 := active->', 'result1 := saved->'),
+                         ('result1 := active->', 'result1 := lib->')):
+            source = work/'stale-module-alias.b'; source.write_text(text.replace(old, new))
+            output = work/'stale-module-alias.dis64'
+            subprocess.run([str(limbo.resolve()), '-I', str(ROOT/'module'), '-o', str(output), str(source)], check=True, timeout=60)
+            output.unlink()
+            result = subprocess.run([str(limbo.resolve()), '-64l', '-I', str(ROOT/'module'), '-o', str(output), str(source)],
+                                    capture_output=True, text=True, timeout=60)
+            if result.returncode != 1 or output.exists() or 'Dis64 managed trial:' not in result.stdout+result.stderr:
+                raise RuntimeError('stale/cleared module alias bypassed refusal: '+result.stdout+result.stderr)
+            negatives += 1
+    print(f'PASS managed module aliases: {positives} identical images, {negatives} stale/cleared-module refusals')
+
+
 def header(raw, limbo, work):
     check_alias_refusals(limbo, work)
     check_provider_locals(limbo, work)
+    check_caller_cleanup(limbo, work)
+    check_module_aliases(limbo, work)
     rows = cases(raw)+cases(raw, '/managed-provider.dis64')
     for initial in (0, 1):
         for file_mode in (False, True):
@@ -218,7 +305,7 @@ def header(raw, limbo, work):
             rows.append((initial, 1, *compiled))
     for initial in (0, 1):
         for file_mode in (False, True):
-            text, body = sources(initial, 32, reloads=file_mode, aliases=True, provider_style=2+int(file_mode))
+            text, body = sources(initial, 32, reloads=file_mode, aliases=True, provider_style=2+int(file_mode), cleanup=True, module_alias=True)
             if file_mode: text = text.replace('String->PATH', '"/managed-provider.dis64"')
             source = work/f'alias-caller-{initial}-{file_mode}.b'
             output = source.with_suffix('.dis64')

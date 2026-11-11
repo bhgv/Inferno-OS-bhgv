@@ -426,8 +426,7 @@ a call uses the latest result, that value replaces the previous argument root.
 Using an alias of that older argument after replacement is still refused. Likewise,
 an alias of an older result cannot be used after another call has replaced the
 result root. Supporting those uses needs more mapped roots; copying a local name
-does not silently add one. Nil assignments, branches and module aliases remain
-outside this bounded caller profile.
+does not silently add one. Explicit nil arguments and branches remain outside this bounded caller profile.
 
 Direct and aliased source versions must emit the same complete CODE bytes.
 Console tests execute both versions, both initial kinds, prelinked/file modes,
@@ -479,3 +478,45 @@ negative source is checked first. The aliased/reassigned providers also run in
 the existing prelinked and file LOAD C/JIT/GC scenarios on all three targets.
 This proof still admits one-token bodies only; it does not compile the complete
 String implementation or enable AWM's remaining managed interfaces.
+
+## Discarding caller locals and naming loaded modules
+
+Caller locals may now be explicitly cleared after preserving a live copy:
+
+```limbo
+init(value: string)
+{
+    original := value;
+    value = nil;
+    lib := load String String->PATH;
+    active := lib;
+    lib = nil;
+    items := active->unquoted(original);
+    original = nil;
+    nextitems := items;
+    items = nil;
+    active = load String String->PATH;
+    result := active->quoted(nextitems);
+    nextitems = nil;
+}
+```
+
+A nil assignment discards that source name from the compiler's value map. It does
+not erase its live aliases or generate an extra native root. The compiler checks
+the legacy nil constant and path offsets independently, including a nil constant
+that precedes the path in MP. Calling with an explicitly cleared value is still
+refused: emitting a new nil argument root is separate work. Native root lifetime
+may extend past clearing a source local, as with other compiled temporaries.
+
+Module aliases carry a distinct identity for each LOAD. MFRAME and MCALL must
+both select an alias of the current instance. Reloading into another local is
+accepted, while calling an alias of the previous instance is refused. This
+bounded profile retains one current module instance; it does not silently bind
+an old source alias to a newer instance. No wire tags or runtime maps changed.
+
+Compiler checks compare 24 caller images with different cleanup/path layouts,
+and 12 module-alias images including reloads into another local. Twelve
+cleared-value and four stale/cleared-module cases must fail after successful
+ordinary Limbo compilation. The 32-call aliased, explicitly cleared callers and
+reassigned providers run through the existing C/JIT, file-cache, stack-growth
+and per-instruction GC matrix on the checked targets.

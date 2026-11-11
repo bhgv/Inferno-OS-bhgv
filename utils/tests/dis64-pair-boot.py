@@ -990,12 +990,14 @@ def main():
         if args.limbo is not None:
             group['check_alias_refusals'](args.limbo, work)
             group['check_provider_locals'](args.limbo, work)
-            for aliases in (False, True):
+            group['check_caller_cleanup'](args.limbo, work)
+            group['check_module_aliases'](args.limbo, work)
+            for aliases, cleanup in ((False, False), (True, False), (True, True)):
                 for initial in (0, 1):
                     for file_mode in (False, True):
                         for calls, reloads in ((4, ()), (32, file_mode)):
                             text, body = group['sources'](initial, calls, reloads, reverse_provider=bool(initial), aliases=aliases,
-                                                          provider_style=(2+int(file_mode)) if aliases else 0)
+                                                          provider_style=(2+int(file_mode)) if aliases else 0, cleanup=cleanup, module_alias=cleanup)
                             if file_mode: text = text.replace('String->PATH', '"'+load_path+'"')
                             source = work/'group-provider.b'; source.write_text(body)
                             subprocess.run([str(args.limbo.resolve()), '-64m', '-o', str(provider), str(source)], check=True, timeout=30)
