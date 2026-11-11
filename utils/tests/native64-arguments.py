@@ -37,6 +37,8 @@ def main():
         roots.write_text('Roots: module { Node: adt { next: ref Node; }; copy: fn(source: array of ref Node): array of ref Node; caller: fn(padding: big, result: array of byte, tail: array of byte); bridge: fn(count: int, canary: int, stringresult: string, arrayresult: array of byte, text: string); many: fn('+','.join('a'+str(i)+': array of byte' for i in range(150))+'); };')
         for name, source in [('math', ROOT/'module/math.m'), ('sys', ROOT/'module/sys.m'), ('roots', roots)]:
             (work/(name+'-native64.h')).write_bytes(subprocess.check_output([str(limbo), '-H', str(source)], cwd=work, env=env))
+        if args.formatter:
+            runpy.run_path(str(ROOT/'utils/tests/native64-callsites.py'))['generate'](limbo, work, env)
         if args.android_ndk:
             clang = args.android_ndk.resolve()/'toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang'
             if not clang.is_file(): parser.error('Missing NDK ARM64 clang: '+str(clang))
@@ -86,7 +88,7 @@ def main():
                     source += (ROOT/'utils/tests/native64-sys-format.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_sysformat_main(int argc, char **argv)', 1)
                     source += (ROOT/'utils/tests/native64-sys-write.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_syswrite_main(int argc, char **argv)', 1)
                     vm = (ROOT/'libinterp/xec.c').read_text()
-                    bodies = '#define OP(fn) void fn(void)\n'+'\n'.join(function(vm, signature) for signature in ('static int\nmoduleentry(', 'static int\nframefits(', 'OP(mframe)', 'OP(mcall)'))
+                    bodies = '#define OP(fn) void fn(void)\n'+'\n'.join(function(vm, signature) for signature in ('static Type*\nmoduletype(', 'static int\nmoduleentry(', 'static int\nframefits(', 'OP(frame)', 'OP(mframe)', 'OP(mcall)'))
                     source += (ROOT/'utils/tests/native64-sys-frame.c').read_text().replace('VM_FRAME_IMPLEMENTATION', bodies)
                     for signature in ('int\nSys_sprint64(', 'int\nSys_aprint64(', 'int\nSys_print64(', 'int\nSys_fprint64(', 'int\nSys_sprintframe64(', 'int\nSys_aprintframe64(', 'int\nSys_printframe64(', 'int\nSys_fprintframe64('):
                         source += '\n'+function(runtime, signature)+'\n'

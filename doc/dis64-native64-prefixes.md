@@ -171,11 +171,58 @@ lease, foreign process/frame identities and caller frames in older extents.
 Reference provenance is the VM/C caller's obligation: numeric bounds cannot
 authenticate arbitrary native pointers or repair an already-corrupt VM frame.
 
-`native64-arguments.py --formatter` now executes 384 real MFRAME/MCALL cases per
+`native64-arguments.py --formatter` now executes 768 real FRAME/MFRAME/MCALL cases per
 port/model in addition to the previous gateway suite. It uses production opcode
-bodies with trusted C-provided decoded operands and result-address binding; it
+bodies with source-derived tail plans, trusted C-provided values/decoded operands and result-address binding; it
 does not decode a serialized variadic Dis64 image, extend LEA admission or execute
 JIT code. The cases cover all four operations, 150-slot frames, root-extent Type
 fallback, malformed metadata/cells, cancellation, epoch invalidation, GC and
 complete cleanup. Separate removal controls must fail if the exact return-address
 check or full frame-map comparison is deleted.
+
+
+## Obtain plans from actual Limbo calls
+
+`limbo -Dq -I module -o example.dis example.b` emits one `NATIVE64_CALL`
+JSON diagnostic for each compiled variadic call. It reads the original `.m`
+function signature and the instantiated, typechecked argument list after legacy
+argument offsets have been assigned. The plan contains the fixed-prefix extent,
+complete native64 frame extent/map, original result kind/fixed argument count
+and ordered eight-byte tail slots. Slot kinds
+are names, never the runtime's private numeric C tags. The recorded legacy
+argument offsets are provenance for the diagnostic, not native64 addresses.
+
+For example, inside an ordinary Limbo function:
+
+```limbo
+sys := load Sys Sys->PATH;
+text := sys->sprint("%d|%s", -1, "ok");
+```
+
+The `Sys_sprint` plan has a 72-byte fixed prefix, an 88-byte complete frame,
+map `[0, 0xa0]`, and `int`/`string` tail slots at offsets 0 and 8. Bit 0x80
+roots the format at byte 64; bit 0x20 roots the string at byte 80. The scalar
+at byte 72 is not a root. The signature is computed from the original `sys.m`
+declaration, including its variadic flag, rather than the expanded call type.
+
+The initial producer accepts fixed scalar/reference fields and tails containing
+byte/int/fix/big/real/String kinds. A by-value fixed aggregate or another managed
+tail kind produces an explicit `accepted:false` record. An opaque managed
+reference needs an exact runtime Type witness before the C bridge can consume
+it; a GC bit alone is insufficient. The diagnostic is opt-in, deterministic and
+leaves ordinary legacy bytecode byte-for-byte unchanged.
+
+`native64-callsites.py` compiles real source calls for all four Sys operations,
+2-slot and 150-slot tails, empty and mixed numeric tails, and an opaque-reference
+refusal. It also checks the 4096-slot boundary and 4097-slot refusal from real
+source while preserving legacy output. `native64-arguments.py --formatter` consumes those generated plans as C
+slot descriptors, checks their signatures/maps against the generated Sys prefix,
+and runs both production FRAME/MCALL and MFRAME/MCALL paths. FRAME resolves the
+call-site descriptor from the active module's type table, as ordinary variadic
+Limbo lowering does; MFRAME remains a separate fixed-export transport control.
+
+This is the compiler-side plan producer and a decoded-C VM integration test.
+The source is still compiled to legacy `.dis` for the unchanged-output check;
+the test supplies runtime values, Type identities and the result-address binding
+from trusted C. It does not yet compile that source to an executable variadic
+`.dis64`, serialize the diagnostic, change file admission or execute JIT code.

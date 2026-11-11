@@ -400,3 +400,4 @@ void dis64library(Decl*, Inst*, long, long); // Checked entryless numeric export
 void dis64managed(Decl*, Decl*, Decl*, Inst*, long, long); // Explicit one-token managed trial.
 void dis64scalar(Decl*, Decl*, Inst*, long, long);
 int dis64clock(Decl*, Decl*, Decl*, Inst*, long, long); // Checked source pilot with a single imported clock.
+void native64callplan(Decl*, Type*); // Opt-in source call-site diagnostics; no bytecode admission.

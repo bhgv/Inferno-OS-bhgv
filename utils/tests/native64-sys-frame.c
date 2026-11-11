@@ -1,5 +1,6 @@
 /* Real MFRAME/MCALL owners, with bounded current-extent and scheduler transports. */
 #include "native64-sys-frame.h"
+#include "callsites-native64.h"
 char exModule[] = "module";
 REG R;
 Prog *currun(void) { return &process; }
@@ -69,10 +70,10 @@ static void vmcallback(void *frame)
     ((Frame*)frame)->t = actual; ((Frame*)frame)->fp = caller; process.native64holds = 0; process.flags &= ~Pkilled;
 }
 
-static int vmframe(void *context) { USED(context); mframe(); return 1; }
+static int vmframe(void *context) { if(context) frame(); else mframe(); return 1; }
 static int vmcall(void *context) { USED(context); mcall(); return 1; }
 
-static void vmcase(int phase, int operation, int mode)
+static void vmcase(int phase, int operation, int mode, int useframe)
 {
     const LimboNative64Prefix *prefix;
     Native64TailSlot slots[150];
@@ -88,6 +89,12 @@ static void vmcase(int phase, int operation, int mode)
     uvlong bits;
     WORD ordinal = 0;
     Inst next = {0};
+    Type *table[1], **savedtypes;
+    Native64TailSlot *source;
+    const uchar *sourcemap;
+    UWORD sourcesignature;
+    WORD typeindex = 0;
+    int savedcount;
     unsigned int count = mode == 14 ? 150 : 2, i, offset;
     int baseline, before, expected, completed;
 
@@ -110,14 +117,14 @@ static void vmcase(int phase, int operation, int mode)
     } else if(operation == 1) caller->arrayresult = oldarray = mem2array("old", 3);
     prefix = operation == 0 ? &limbo_native64_Sys_sprint_prefix : operation == 1 ? &limbo_native64_Sys_aprint_prefix :
         operation == 2 ? &limbo_native64_Sys_print_prefix : &limbo_native64_Sys_fprint_prefix;
-    for(i=0; i<count; i++) slots[i] = (Native64TailSlot){Native64TailInt, i*8, 8, nil};
-    slots[1].kind = Native64TailRef; slots[1].type = &Tstring;
-    if(count == 150) {
-        slots[70].kind = slots[149].kind = Native64TailRef;
-        slots[70].type = slots[149].type = &Tstring;
-    }
+#define CALLSITE(OP) case OP: source = count == 150 ? callslots_##OP##_150 : callslots_##OP##_2; sourcemap = count == 150 ? callmap_##OP##_150 : callmap_##OP##_2; sourcesignature = count == 150 ? callsignature_##OP##_150 : callsignature_##OP##_2; break
+    switch(operation) { CALLSITE(0); CALLSITE(1); CALLSITE(2); CALLSITE(3); default: abort(); }
+#undef CALLSITE
+    memmove(slots, source, count*sizeof(*slots));
+    check(sourcesignature == prefix->fixed.legacy_signature);
     check(native64tailplan(&prefix->fixed, slots, count, &plan));
     check(plan.map_bytes <= sizeof(map) && native64tailmap(&prefix->fixed, slots, count, map, sizeof(map)));
+    check(memcmp(map, sourcemap, plan.map_bytes) == 0);
     callee_type = dtype(freeheap, plan.size, map, plan.map_bytes); check(callee_type != nil);
     if(operation == 3) {
         uchar empty[] = {0};
@@ -128,8 +135,11 @@ static void vmcase(int phase, int operation, int mode)
     rootlink->links[0].frame = callee_type; rootlink->links[0].u.runt = vmcallback;
     R = process.R; R.FP = (uchar*)caller; R.TS = stackspace.bytes+sizeof(stackspace.bytes); R.PC = &next;
     R.s = &rootlink; R.m = &ordinal; R.d = &pending;
+    savedtypes = rootlink->m->type; savedcount = rootlink->m->ntype;
+    table[0] = callee_type; rootlink->m->type = table; rootlink->m->ntype = 1;
+    if(useframe) R.s = &typeindex;
     beforefp = R.FP;
-    check(kprotect(vmframe, nil) && pending != nil && pending->t == callee_type);
+    check(kprotect(vmframe, useframe ? &typeindex : nil) && pending != nil && pending->t == callee_type);
     offset = operation == 3 ? offsetof(F_Sys_fprint, s) : offsetof(F_Sys_sprint, s);
     native64argumentstore((uchar*)pending+offset, pattern, &Tstring);
     if(operation == 3) {
@@ -201,6 +211,7 @@ static void vmcase(int phase, int operation, int mode)
     ptrdel(D2H(pattern)); destroy(pattern);
     freeptrs(caller, caller_type); initmem(caller_type, caller);
     process.R = R; process.R.EX = process.R.SP = process.R.FP = nil;
+    rootlink->m->type = savedtypes; rootlink->m->ntype = savedcount;
     rootlink->nlinks = 0; rootlink->links[0].frame = nil; rootlink->links[0].u.runt = nil;
     memset(&R, 0, sizeof(R));
     epochs(6); freetype(caller_type); freetype(callee_type); freetype(fdtype); TFD = nil; clearrootcache();
@@ -210,11 +221,11 @@ static void vmcase(int phase, int operation, int mode)
 
 int main(int argc, char **argv)
 {
-    int phase, operation, mode, cases = 0;
+    int phase, operation, mode, useframe, cases = 0;
     native64_syswrite_main(argc, argv);
-    for(phase=0; phase<3; phase++) for(operation=0; operation<4; operation++) for(mode=0; mode<32; mode++) {
-        vmcase(phase, operation, mode); cases++;
+    for(useframe=0; useframe<2; useframe++) for(phase=0; phase<3; phase++) for(operation=0; operation<4; operation++) for(mode=0; mode<32; mode++) {
+        vmcase(phase, operation, mode, useframe); cases++;
     }
-    printf("PASS typed Sys VM frames: %d real MFRAME/MCALL/GC cases, four gateways, 150-slot frames, refusal and result/cleanup checks\n", cases);
+    printf("PASS typed Sys VM frames: %d real FRAME/MFRAME/MCALL/GC cases with source-derived tail plans, four gateways, 150-slot frames, refusal and result/cleanup checks\n", cases);
     return 0;
 }

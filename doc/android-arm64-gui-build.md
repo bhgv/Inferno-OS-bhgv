@@ -186,3 +186,10 @@ using trusted C operand and result-address setup, with collection inside gateway
 150-slot frames, return-cell checks, cancellation and cleanup. It remains separate
 from serialized Dis64 variadic compilation/admission and from device GUI/AWM
 execution. `awm_started` stays false.
+
+
+The formatter gate also obtains typed tails from real Limbo calls using the
+opt-in `-Dq` call-site producer, then runs 768 FRAME/MFRAME/MCALL cases per
+port/model. The diagnostic preserves legacy output and is not a Dis64 wire
+section. Runtime values and return-address binding in that gate are still
+trusted C inputs; source-to-Dis64 variadic execution and AWM remain pending.

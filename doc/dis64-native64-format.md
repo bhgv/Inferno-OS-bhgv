@@ -179,3 +179,14 @@ These tests set up decoded operands/result addresses in trusted C. They do not
 claim a Limbo variadic source producer, serialized variadic file admission, new
 LEA semantics, JIT execution or AWM startup. All existing four packed-entry
 refusals and the 39-entry fixed Sys registration remain unchanged.
+
+
+The next compiler/VM integration stage uses `limbo -Dq` to derive private
+call-site plans from original variadic declarations and instantiated argument
+types. Tests feed the generated 2/150-slot descriptors into production
+FRAME/MFRAME/MCALL, with 768 GC/cancellation/refusal cases per port/model.
+The producer records the original signature and result kind, complete map and
+canonical tail geometry; 4096/4097 descriptor-count boundary tests retain
+legacy output unchanged. This diagnostic JSON is not a wire section or a
+managed signature assignment. Values and result-address binding remain
+trusted C inputs, and ordinary source-to-Dis64 variadic admission is pending.

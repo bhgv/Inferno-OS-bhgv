@@ -40,6 +40,94 @@ static int native64count; // Bound pathological input before allocating another 
 static Native64Type *native64type(Type*, int);
 static void native64ctype(Type*, int);
 
+/* Spell private tail kinds rather than serializing the runtime's C enum values. */
+static char*
+native64callkind(Type *type)
+{
+	switch(type->kind){
+	case Tbyte: return "byte";
+	case Tint: return "int";
+	case Tfix: return "fix";
+	case Tbig: return "big";
+	case Treal: return "real";
+	case Tstring: return "string";
+	}
+	return nil;
+}
+
+/* Independent fixed-prefix geometry for the first scalar/reference call-site producer.
+ * Refuse by-value aggregates here instead of widening the compiler's legacy offsets. */
+static int
+native64callwidth(Type *type)
+{
+	switch(type->kind){
+	case Tbyte: return 1;
+	case Tint: case Tfix: return 4;
+	case Tbig: case Treal: case Tstring: case Tref:
+	case Tarray: case Tlist: case Tchan: case Tmodule: return 8;
+	}
+	return 0;
+}
+
+/* Describe actual typechecked variadic arguments after legacy idoffsets, without changing
+ * descriptors, instructions, signatures, target selection or the output file. */
+void
+native64callplan(Decl *callee, Type *instantiated)
+{
+	Decl *fixed, *actual, *tail, *argument;
+	uchar map[(64+2*4096*8+63)/64];
+	unsigned int offset = 64, count = 0, fixedcount = 0, i, width, slot, bytes, references;
+	char name[2*StrSize];
+	char *reason = nil, *result;
+
+	if(callee == nil || callee->ty == nil || !callee->ty->varargs || instantiated == nil)
+		return;
+	dotprint(name, name+sizeof(name), callee, '_');
+	result = callee->ty->tof->kind == Tnone ? "none" : native64callkind(callee->ty->tof);
+	if(callee->ty->tof->kind == Tarray && callee->ty->tof->tof->kind == Tbyte) result = "array-byte";
+	if(result == nil) reason = "result-kind";
+	memset(map, 0, sizeof(map));
+	actual = instantiated->ids;
+	for(fixed=callee->ty->ids; fixed != nil; fixed=fixed->next){
+		if(actual == nil || ++fixedcount > 4096){ reason = "fixed-arguments"; break; }
+		width = native64callwidth(fixed->ty);
+		if(width == 0){ reason = "fixed-aggregate"; break; }
+		offset = (offset+width-1)&~(width-1);
+		if(fixed->ty->kind == Tstring || fixed->ty->kind == Tref || fixed->ty->kind == Tarray ||
+		   fixed->ty->kind == Tlist || fixed->ty->kind == Tchan || fixed->ty->kind == Tmodule){
+			slot = offset/8; map[slot/8] |= 0x80>>(slot%8);
+		}
+		offset += width;
+		actual = actual->next;
+	}
+	offset = (offset+7)&~7U;
+	tail = actual;
+	count = references = 0;
+	if(reason == nil)
+		for(argument=tail; argument != nil; argument=argument->next){
+			if(++count > 4096){ reason = "tail-count"; break; }
+			if(native64callkind(argument->ty) == nil){ reason = "tail-kind"; break; }
+			if(argument->ty->kind == Tstring) references++;
+		}
+	/* The combined frame, not each half independently, must fit the bounded map. */
+	if(reason == nil && offset+count*8 > sizeof(map)*64) reason = "frame-size";
+	if(reason != nil){
+		fprint(2, "NATIVE64_CALL {\"schema\":\"native64-call-v1\",\"callee\":\"%s\",\"accepted\":false,\"reason\":\"%s\"}\n", name, reason);
+		return;
+	}
+	bytes = (offset+count*8+63)/64;
+	for(argument=tail, i=0; argument != nil; argument=argument->next, i++)
+		if(argument->ty->kind == Tstring){ slot = offset/8+i; map[slot/8] |= 0x80>>(slot%8); }
+	fprint(2, "NATIVE64_CALL {\"schema\":\"native64-call-v1\",\"callee\":\"%s\",\"accepted\":true,\"signature\":%lud,\"result\":\"%s\",\"fixed_arguments\":%ud,\"fixed_bytes\":%ud,\"frame_bytes\":%ud,\"references\":%ud,\"map\":[",
+		name, (ulong)sign(callee), result, fixedcount, offset, offset+count*8, references);
+	for(i=0; i<bytes; i++) fprint(2, "%s%ud", i == 0 ? "" : ",", map[i]);
+	fprint(2, "],\"tail\":[");
+	for(argument=tail, i=0; argument != nil; argument=argument->next, i++)
+		fprint(2, "%s{\"kind\":\"%s\",\"legacy_offset\":%ld,\"offset\":%ud,\"bytes\":8}",
+			i == 0 ? "" : ",", native64callkind(argument->ty), argument->offset, i*8);
+	fprint(2, "]}\n");
+}
+
 
 /* Reject ambiguous C names before printing any declaration, including descriptor macros. */
 static Native64Name*

@@ -1730,6 +1730,8 @@ callcom(Src *src, int op, Node *n, Node *ret)
 	if(nfn->ty->varargs){
 		nfn->decl = dupdecl(nfn->right->decl);
 		nfn->decl->desc = gendesc(nfn->right->decl, idoffsets(nfn->ty->ids, MaxTemp, MaxAlign), nfn->ty->ids);
+		if(debug['q'])
+			native64callplan(callee, nfn->ty);
 	}
 
 	talloc(&frame, tint, nil);
