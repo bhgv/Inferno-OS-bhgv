@@ -11,6 +11,8 @@ on:
       - 'libinterp/comp-leaf64.h'
       - 'libinterp/riscv-emit.h'
       - 'libinterp/tests/owner-native.*'
+      - 'libinterp/tests/payload-cons-native.*'
+      - 'libinterp/tests/payload-cons-layouts.py'
       - 'emu/port/main.c'
       - 'emu/port/dis.c'
       - 'libinterp/readmod.c'
@@ -174,6 +176,8 @@ jobs:
           fi
           CC="$TARGET_CC" CFLAGS="$flags" python3 libinterp/tests/owner-native.py \
             | tee "$RUNNER_TEMP/native64-pair/port-logs/pointer-ownership.log"
+          CC="$TARGET_CC" CFLAGS="$flags" python3 libinterp/tests/payload-cons-native.py \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/pointer-construction.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

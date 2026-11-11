@@ -112,7 +112,7 @@ admission failures. The scalar corpus completed 38 processes and 1096
 in-program checks on each target.
 
 The managed GC fixture requires four native provider completions and four
-native paired-image completions on ARM64 and AMD64. RV64 requires two completions in each counter for HEADP after the
-owner-path addition. Pointer CONS continues through the C handler. Both target runs cover 483 collection epochs and 19
+native paired-image completions on ARM64, AMD64 and RV64. RV64 now includes
+both pointer HEAD and pointer CONS. Both target runs cover 483 collection epochs and 19
 constructor allocation refusals. Full AWM startup and hardware acceptance
 remain separate milestones.

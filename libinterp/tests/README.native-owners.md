@@ -112,5 +112,5 @@ malformed layouts, then executes 3160 preflight cases and 385856 C
 differential cases per WORD model. The differential covers reference
 counts across the 32-bit boundary, nil and invalid owners, unaligned and
 aliased slots, collector marking, error priority and FP state. The managed
-String GC fixture now requires two RV64 native completions in each
-provider/image counter. Pointer CONS continues through C.
+String GC fixture now requires four RV64 native completions in each
+provider/image counter after adding pointer CONS.

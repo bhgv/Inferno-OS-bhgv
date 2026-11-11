@@ -9,7 +9,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory(prefix='payload-cons-layouts-') as temporary:
     td = Path(temporary)
-    for arch in ('amd64', 'arm64'):
+    for arch in ('amd64', 'arm64', 'riscv64'):
         source = td/(arch+'.c')
         source.write_text('''#include <stdint.h>
 #include <string.h>
@@ -109,6 +109,15 @@ main(void)
     return 0;
 }
 '''.replace('HEADER', '"'+arch+'-emit.h"'))
+        if arch == 'riscv64':
+            fields = ('wordbytes pc s d m module listdata listtail listtype typeref '
+                      'heapref heapcolor refbytes markcolor consentry ptrtype mutator nprop').split()
+            adapter = '#include "riscv-emit.h"\n#include "leaf64-ops.h"\n'
+            adapter += 'static int consadapter(u32int *out, int cap, LeafLayout *layout, int op) { RvLayout a={0}; a.xlen=64;'
+            adapter += ''.join('a.'+field+'=layout->'+field+';' for field in fields)
+            adapter += 'return rvemit(out,cap,&a,op); }\n#define leafemit consadapter\n'
+            text = source.read_text().replace('#include "riscv64-emit.h"', adapter)
+            source.write_text(text.replace('128', '384'))
         binary = td/(arch+'-layouts')
         command = shlex.split(os.environ.get('CC', 'cc'))
         command += shlex.split(os.environ.get('CFLAGS', '-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all'))

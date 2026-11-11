@@ -1,12 +1,13 @@
 /*
  * RV32I/RV64I leaf code for decoded Dis operations.
- * a0 points to REG; only caller-saved t0-t6 are clobbered. No native stack,
- * compressed instructions, relocations or helper calls in leaf bodies.
+ * a0 points to REG; numeric leaves use caller-saved t0-t6 without a native stack.
+ * Pointer construction uses an ABI-aligned save area around the C allocator call.
+ * Emitted bodies use uncompressed instructions without relocations.
  * Guarded RV64 owner leaves materialize trusted GC flag addresses in registers.
  * The separate RV64 complete-tail bridge below embeds trusted executor/fast pointers.
  * Include isa.h first. u32int must be exactly 32 bits, independently of XLEN.
  */
-enum { Rvzero=0, Rvra=1, Rvt0=5, Rvt1=6, Rvt2=7, Rva0=10,
+enum { Rvzero=0, Rvra=1, Rvsp=2, Rvt0=5, Rvt1=6, Rvt2=7, Rva0=10, Rva1=11,
 	   Rvt3=28, Rvt4=29, Rvt5=30, Rvt6=31, RvMax=384 };
 
 typedef struct RvLayout RvLayout;
@@ -26,6 +27,8 @@ struct RvLayout {
 	int heapref, heapcolor, refbytes;
 	void *mutator, *nprop;
 	int markcolor;
+	void *consentry, *ptrtype;
+	int listtype, typeref;
 };
 typedef struct RvBuf RvBuf;
 struct RvBuf {
@@ -180,6 +183,111 @@ rvownerstore(RvBuf *b, int pointer, int reg)
 		rvi(b, 0x13, 5, Rvt5, reg, 8*i);
 		rvs(b, 0, pointer, Rvt5, i);
 	}
+}
+
+
+/* Allocate a pointer-list node through the existing C allocator, then retain and publish
+ * its captured head. An allocation error unwinds the native save area through the VM boundary. */
+static int
+rvpointercons(u32int *out, int cap, RvLayout *abi)
+{
+	u32int code[RvMax];
+	RvBuf b;
+	unsigned long long allocator, descriptor, cells[3];
+	int i, j, fields[3], empty, marked;
+
+	allocator = (unsigned long long)abi->consentry;
+	descriptor = (unsigned long long)abi->ptrtype;
+	cells[0] = (unsigned long long)abi->mutator;
+	cells[1] = (unsigned long long)abi->nprop;
+	if(abi->xlen != 64 || allocator == 0 || allocator == ~0ULL || allocator%2 ||
+	   abi->refbytes != 8 || abi->heapref <= 0 || abi->heapref > 128 || abi->heapref%8 ||
+	   abi->heapcolor < abi->heapref+4 || abi->heapcolor > 255 || abi->heapcolor%4 ||
+	   abi->typeref < 0 || abi->typeref > 2047 || abi->typeref%4 ||
+	   descriptor == 0 || descriptor%8 || descriptor > ~0ULL-(abi->typeref+4) ||
+	   abi->markcolor < 0 || abi->markcolor > 255)
+		return 0;
+	cells[2] = descriptor+abi->typeref;
+	fields[0] = abi->listtail; fields[1] = abi->listtype; fields[2] = abi->listdata;
+	for(i=0; i<3; i++){
+		if(fields[i] < 0 || fields[i] > 2047 || fields[i]%8 ||
+		   cells[i] == 0 || cells[i]%4 || cells[i] > ~0ULL-4)
+			return 0;
+		for(j=0; j<i; j++)
+			if(fields[i] == fields[j] || cells[i] == cells[j])
+				return 0;
+	}
+	b.out = code; b.n = b.bad = 0; b.cap = RvMax; b.abi = abi;
+	rvptr(&b, Rvt0, abi->s);
+	rvownerspan(&b, Rvt0, 8);
+	rvownerload(&b, Rvt2, Rvt0);
+	rvguard(&b, 1, Rvt2, Rvzero);
+	rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
+	empty = b.n;
+	rvbranch(&b, 0, Rvt2, Rvt6, 0);
+	rvi(&b, 0x13, 0, Rvt6, Rvzero, abi->heapcolor);
+	rvguard(&b, 6, Rvt6, Rvt2);
+	rvi(&b, 0x13, 7, Rvt3, Rvt2, 7);
+	rvguard(&b, 0, Rvt3, Rvzero);
+	rvi(&b, 0x03, 3, Rvt3, Rvt2, -abi->heapref);
+	rvguard(&b, 1, Rvt3, Rvzero);
+	rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
+	rvguard(&b, 1, Rvt3, Rvt6);
+	rvpatchbranch(&b, empty, 0, Rvt2, Rvt6);
+	rvconstant(&b, Rvt6, descriptor);
+	rvi(&b, 0x03, 2, Rvt3, Rvt6, abi->typeref);
+	rvguard(&b, 4, Rvzero, Rvt3);
+	rvput(&b, 0x7ffff000U | (u32int)Rvt4<<7 | 0x37); /* lui t4, 0x7ffff */
+	rvi(&b, 0x13, 0, Rvt4, Rvt4, 2047);
+	rvi(&b, 0x13, 0, Rvt4, Rvt4, 2047);
+	rvi(&b, 0x13, 0, Rvt4, Rvt4, 1);
+	rvguard(&b, 1, Rvt3, Rvt4);
+	rvptr(&b, Rvt1, abi->d);
+	rvownerspan(&b, Rvt1, 8);
+	/* Preserve the head and return address in one ABI-aligned native save area. */
+	rvi(&b, 0x13, 0, Rvsp, Rvsp, -16);
+	rvs(&b, 3, Rvsp, Rvt2, 0);
+	rvs(&b, 3, Rvsp, Rvra, 8);
+	rvi(&b, 0x13, 0, Rva1, Rvt1, 0);
+	rvi(&b, 0x13, 0, Rva0, Rvzero, 8);
+	rvconstant(&b, Rvt6, allocator);
+	rvi(&b, 0x67, 0, Rvra, Rvt6, 0);
+	rvi(&b, 0x03, 3, Rvt2, Rvsp, 0);
+	rvi(&b, 0x03, 3, Rvra, Rvsp, 8);
+	rvi(&b, 0x13, 0, Rvsp, Rvsp, 16);
+	/* The allocator may collect. Reload descriptor counts and collector colors after it returns. */
+	rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
+	empty = b.n;
+	rvbranch(&b, 0, Rvt2, Rvt6, 0);
+	rvi(&b, 0x03, 3, Rvt3, Rvt2, -abi->heapref);
+	rvi(&b, 0x13, 0, Rvt3, Rvt3, 1);
+	rvs(&b, 3, Rvt2, Rvt3, -abi->heapref);
+	rvi(&b, 0x03, 2, Rvt3, Rvt2, -abi->heapcolor);
+	rvconstant(&b, Rvt6, cells[0]);
+	rvi(&b, 0x03, 2, Rvt4, Rvt6, 0);
+	marked = b.n;
+	rvbranch(&b, 0, Rvt3, Rvt4, 0);
+	rvi(&b, 0x13, 0, Rvt3, Rvzero, abi->markcolor);
+	rvs(&b, 2, Rvt2, Rvt3, -abi->heapcolor);
+	rvconstant(&b, Rvt6, cells[1]);
+	rvi(&b, 0x13, 0, Rvt3, Rvzero, 1);
+	rvs(&b, 2, Rvt6, Rvt3, 0);
+	rvpatchbranch(&b, marked, 0, Rvt3, Rvt4);
+	rvpatchbranch(&b, empty, 0, Rvt2, Rvt6);
+	rvconstant(&b, Rvt6, descriptor);
+	rvi(&b, 0x03, 2, Rvt3, Rvt6, abi->typeref);
+	rvi(&b, 0x13, 0, Rvt3, Rvt3, 1);
+	rvs(&b, 2, Rvt6, Rvt3, abi->typeref);
+	rvs(&b, 3, Rva0, Rvt6, abi->listtype);
+	rvs(&b, 3, Rva0, Rvt2, abi->listdata);
+	rvi(&b, 0x13, 0, Rva0, Rvzero, 1);
+	rvi(&b, 0x67, 0, Rvzero, Rvra, 0);
+	if(b.bad || b.n > cap)
+		return 0;
+	if(out != 0)
+		for(i=0; i<b.n; i++)
+			out[i] = code[i];
+	return b.n;
 }
 
 
@@ -366,6 +474,8 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	   abi->pc > 2047 || abi->s > 2047 || abi->d > 2047 || abi->m > 2047 ||
 	   (abi->pc|abi->s|abi->d|abi->m) % (abi->xlen/8) != 0)
 		return 0;
+	if(op == ICONSP)
+		return rvpointercons(out, cap, abi);
 	if(op == IMOVP || op == ISELF || op == IHEADP || op == ITAIL)
 		return rvowner(out, cap, abi, op);
 	b.out=out; b.n=0; b.cap=cap; b.bad=0; b.abi=abi;
@@ -923,7 +1033,6 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 
 
 enum {
-	Rva1=11, // Opcode argument to the ordinary C executor.
 	Rva2=12, // Optional native fast-entry argument.
 	RvBridgeWords=15, // Fixed RV64I tail and full-width literal pool budget.
 };

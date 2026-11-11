@@ -205,6 +205,10 @@ rvcompile(void *arg)
 	abi.mutator = &mutator;
 	abi.nprop = &nprop;
 	abi.markcolor = propagator;
+	abi.consentry = (void*)cons;
+	abi.ptrtype = &Tptr;
+	abi.listtype = O(List, t);
+	abi.typeref = O(Type, ref);
 	abi.framelr = O(Frame, lr);
 	abi.framefp = O(Frame, fp);
 	abi.arraytype = O(Array, t);

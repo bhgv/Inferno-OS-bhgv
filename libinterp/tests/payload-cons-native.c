@@ -14,7 +14,10 @@ void (*heapmonitor)(int, void*, ulong);
 char exHeap[]="heap", exNilref[]="nil";
 static jmp_buf boundary;
 static char *raised;
-static int calls, live, failure, changegc;
+static int calls, live, failure, changegc, redirectgc;
+static void *alternate;
+static uchar redirected[16];
+static WORD redirectedmiddle;
 static void *blocks[8];
 static ulong amounts[8];
 
@@ -51,6 +54,7 @@ poolalloc(Pool *pool, ulong size)
     object=malloc(size+32); if(object==nil)abort();
     memset(object,0xa5,size+32); blocks[i]=object; amounts[i]=size; live++;
     if(changegc){mutator=11;Tptr.ref=5;}
+    if(redirectgc){R.s=redirected;R.m=&redirectedmiddle;R.d=&alternate;}
     return object;
 }
 
@@ -243,6 +247,44 @@ rawcases(Jit *jit)
 }
 
 
+/* Pointer and descriptor refusals must precede every allocator callback and publication. */
+static void
+pointerpreflight(Jit *jit)
+{
+    void *head, *tail;
+    REG saved;
+    int profile, route, beforecalls, typerefs;
+    char *expected;
+
+    for(profile=0;profile<10;profile++)for(route=0;route<2;route++){
+        head=tail=H;Tlist.ref=Tptr.ref=1;failure=1;
+        memset(&R,0,sizeof(R));R.s=&head;R.d=&tail;expected=exHeap;
+        switch(profile){
+        case 0:R.s=nil;break;
+        case 1:R.s=H;break;
+        case 2:R.s=(void*)((uintptr)-7);break;
+        case 3:R.d=nil;break;
+        case 4:R.d=H;break;
+        case 5:R.d=(void*)((uintptr)-7);break;
+        case 6:head=nil;R.d=(void*)1;expected=exNilref;break;
+        case 7:Tptr.ref=0;R.d=(void*)1;break;
+        case 8:Tptr.ref=0x7fffffff;R.d=(void*)1;break;
+        case 9:head=(void*)1;R.d=(void*)1;break;
+        }
+        saved=R;typerefs=Tptr.ref;beforecalls=calls;raised=nil;
+        if(setjmp(boundary)==0){
+            if(route && jit->entry[ICONSP](&R)!=0)abort();
+            consp();
+        }
+        failure=0;
+        if(raised!=expected || calls!=beforecalls || live || tail!=H ||
+           Tlist.ref!=1 || Tptr.ref!=typerefs || memcmp(&R,&saved,sizeof(R)))abort();
+    }
+    Tptr.ref=1;
+    puts("PASS CONSP preflight: 20 slot/source/type/error-priority cases");
+}
+
+
 /* Retain sources after allocation while loading live collector and Type cells. */
 static void
 pointercases(Jit *jit)
@@ -250,14 +292,15 @@ pointercases(Jit *jit)
     List *tail, *source, *value, *actual, *result;
     Heap th, sh, expectedtail, expectedsource;
     REG registers;
+    void *destination;
     uchar slots[256], before[256], expected[256];
     int profile, sa, da, alias, pass, valid, sourcevalid, typevalid, failed, beforecalls, typerefs, postrefs, flags, status, beforelist;
     unsigned long checks=0;
 
     Tptr.size=sizeof(void*);Tptr.np=1;Tptr.map[0]=0x80;
-    for(profile=0;profile<19;profile++)for(sa=0;sa<8;sa++)for(da=0;da<8;da++)for(alias=0;alias<2;alias++)for(pass=0;pass<2;pass++){
+    for(profile=0;profile<20;profile++)for(sa=0;sa<8;sa++)for(da=0;da<8;da++)for(alias=0;alias<2;alias++)for(pass=0;pass<2;pass++){
         if(getenv("PAYLOAD_NO_ERRORS") && profile!=0 && profile!=1 && profile!=11 && profile!=15 && profile!=16 && profile!=17)continue;
-        Tlist.ref=1;Tptr.ref=1;failure=changegc=0;mutator=7;nprop=0;
+        Tlist.ref=1;Tptr.ref=1;failure=changegc=redirectgc=0;alternate=H;mutator=7;nprop=0;
         tail=rootnode(64);source=rootnode(64);D2H(tail)->ref=2;
         D2H(tail)->color=D2H(source)->color=7;D2H(tail)->hprof=D2H(source)->hprof=0x12345678;
         value=source;failed=0;
@@ -280,6 +323,7 @@ pointercases(Jit *jit)
         case 16:changegc=1;break;
         case 17:nprop=1;break;
         case 18:Tlist.ref=0x7fffffff;break;
+        case 19:redirectgc=1;break;
         }
         memset(slots,0x5a,sizeof(slots));memset(&R,0,sizeof(R));R.s=slots+sa;R.d=slots+128+da;
         if(alias)R.s=R.d;
@@ -288,7 +332,9 @@ pointercases(Jit *jit)
                     (actual==source && D2H(source)->ref!=0 && D2H(source)->ref!=(ulong)-1);
         typevalid=Tptr.ref>0 && Tptr.ref!=0x7fffffff;
         valid=sourcevalid && typevalid && profile!=13 && profile!=14 && profile!=18;
-        th=*D2H(tail);sh=*D2H(source);registers=R;beforelist=Tlist.ref;typerefs=Tptr.ref;beforecalls=calls;
+        th=*D2H(tail);sh=*D2H(source);registers=R;destination=R.d;
+        if(redirectgc){registers.s=redirected;registers.m=&redirectedmiddle;registers.d=&alternate;}
+        beforelist=Tlist.ref;typerefs=Tptr.ref;beforecalls=calls;
         memmove(before,slots,sizeof(slots));memmove(expected,slots,sizeof(slots));raised=nil;failure=failed;
         fesetround(FE_DOWNWARD);feclearexcept(FE_ALL_EXCEPT);feraiseexcept(FE_DIVBYZERO);flags=fetestexcept(FE_ALL_EXCEPT);
         if(setjmp(boundary)==0){
@@ -302,7 +348,7 @@ pointercases(Jit *jit)
                 }else if(status!=1 || !sourcevalid || !typevalid)abort();
             }else consp();
         }
-        failure=changegc=0;
+        failure=changegc=redirectgc=0;
         if(!valid || failed){
             if(raised!=(actual==nil?exNilref:exHeap) || calls!=beforecalls+(failed&&valid) || live!=2 || Tlist.ref!=beforelist || Tptr.ref!=typerefs || nprop ||
                memcmp(slots,before,sizeof(slots)) || memcmp(D2H(tail),&th,sizeof(th)) || memcmp(D2H(source),&sh,sizeof(sh)))
@@ -312,7 +358,7 @@ pointercases(Jit *jit)
             postrefs=profile==16?5:typerefs;
             if(raised || calls!=beforecalls+1 || live!=3 || Tptr.ref!=postrefs+1 || Tlist.ref!=4)
                 failcase(1,8,profile,sa,da,alias,pass,__LINE__);
-            memmove(&result,R.d,sizeof(result));memmove(expected+128+da,&result,sizeof(result));
+            memmove(&result,destination,sizeof(result));memmove(expected+128+da,&result,sizeof(result));
             expectedtail=th;expectedsource=sh;
             expectedtail.color=th.color==mutator?mutator:propagator;
             if(actual==tail)expectedtail.ref++;
@@ -323,7 +369,7 @@ pointercases(Jit *jit)
                D2H(result)->ref!=1 || D2H(result)->t!=&Tlist || D2H(result)->color!=mutator)
                 failcase(1,8,profile,sa,da,alias,pass,__LINE__);
         }
-        if(memcmp(&R,&registers,sizeof(R)) || fegetround()!=FE_DOWNWARD || fetestexcept(FE_ALL_EXCEPT)!=flags)abort();
+        if(alternate!=H || memcmp(&R,&registers,sizeof(R)) || fegetround()!=FE_DOWNWARD || fetestexcept(FE_ALL_EXCEPT)!=flags)abort();
         if(!valid || failed){Tptr.ref=1;Tlist.ref=3;D2H(tail)->ref=2;D2H(source)->ref=1;}
         else {if(profile==6 || profile==7)D2H(source)->ref=1;}
         destroy(result);
@@ -344,9 +390,16 @@ main(void)
     Inst instructions[2]={{0}};
 
     instructions[0].op=ICONSM;instructions[1].op=ICONSP;compiled.prog=instructions;compiled.nprog=2;
-    if(!compile(&compiled,2,nil) || compiled.jit==nil || compiled.jit->entry[ICONSM]==nil || compiled.jit->entry[ICONSP]==nil)abort();
-    if(!getenv("PAYLOAD_NO_ERRORS"))spanpreflight(compiled.jit);
-    if(!getenv("PAYLOAD_PREFLIGHT_ONLY")){rawcases(compiled.jit);pointercases(compiled.jit);}
+    if(!compile(&compiled,2,nil) || compiled.jit==nil || compiled.jit->entry[ICONSP]==nil)abort();
+#if !defined(__riscv)
+    if(compiled.jit->entry[ICONSM]==nil)abort();
+#endif
+    if(compiled.jit->entry[ICONSM]!=nil){
+        if(!getenv("PAYLOAD_NO_ERRORS"))spanpreflight(compiled.jit);
+        if(!getenv("PAYLOAD_PREFLIGHT_ONLY"))rawcases(compiled.jit);
+    }
+    if(!getenv("PAYLOAD_NO_ERRORS"))pointerpreflight(compiled.jit);
+    if(!getenv("PAYLOAD_PREFLIGHT_ONLY"))pointercases(compiled.jit);
     compiled.jit->freecode(compiled.jit->code,compiled.jit->size);free(compiled.jit);
     return 0;
 }

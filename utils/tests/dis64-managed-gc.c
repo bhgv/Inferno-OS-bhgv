@@ -762,12 +762,9 @@ main(void)
 	freetype(stringelement);
 	numericdrain();
 	require(live == 0);
-#if defined(__x86_64__) || defined(__aarch64__)
+#if defined(__x86_64__) || defined(__aarch64__) || (defined(__riscv) && __riscv_xlen == 64)
 	require(managedfast == 4);
 	require(imagefast == 4);
-#elif defined(__riscv) && __riscv_xlen == 64
-	require(managedfast == 2);
-	require(imagefast == 2);
 #endif
 	printf("PASS generated String frames with real GC: 8 ownership cases, missing-map control, %lu epochs, %d checks\n", gcepochs, checks);
 	printf("PASS production MFRAME/MCALL with symbolic String callbacks: %d calls\n", managedcalls);
