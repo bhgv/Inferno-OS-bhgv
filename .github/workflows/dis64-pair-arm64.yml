@@ -9,6 +9,8 @@ on:
       - 'Linux/**'
       - 'libinterp/comp-*.c'
       - 'libinterp/comp-leaf64.h'
+      - 'libinterp/riscv-emit.h'
+      - 'libinterp/tests/owner-native.*'
       - 'emu/port/main.c'
       - 'emu/port/dis.c'
       - 'libinterp/readmod.c'
@@ -163,6 +165,15 @@ jobs:
           CC="$TARGET_CC" NATIVE64_CFLAGS="$flags" python3 utils/tests/dis64-numeric-gc.py --managed \
             --limbo "$RUNNER_TEMP/host-tools/limbo" \
             | tee "$RUNNER_TEMP/native64-pair/port-logs/managed-string-gc.log"
+      - name: Compare native pointer ownership with C in both WORD models
+        run: |
+          set -o pipefail
+          flags='-O3 -g -DNDEBUG -fno-strict-aliasing'
+          if [ "$NATIVE64_ARCH" != riscv64 ]; then
+            flags="$flags -fsanitize=undefined -fno-sanitize-recover=all"
+          fi
+          CC="$TARGET_CC" CFLAGS="$flags" python3 libinterp/tests/owner-native.py \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/pointer-ownership.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

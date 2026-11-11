@@ -20,7 +20,7 @@ FIELDS = ('xlen wordbytes hasm pc s d m arraylen arraydata stringlen stringdata 
 
 
 class Layout(C.Structure):
-    _fields_ = [(name, C.c_int) for name in FIELDS]
+    _fields_ = [(name, C.c_int) for name in FIELDS + ['heapref', 'heapcolor', 'refbytes']] + [('mutator', C.c_void_p), ('nprop', C.c_void_p), ('markcolor', C.c_int)]
 
 
 # Fail explicitly so optimized Python retains every regression check.

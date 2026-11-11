@@ -10,9 +10,12 @@ import subprocess
 import tempfile
 
 machine=platform.machine().lower()
-backend='amd64' if machine in ('x86_64','amd64') else 'arm64' if machine in ('aarch64','arm64') else None
+backend = os.environ.get('NATIVE64_ARCH')
 if backend is None:
-    print('SKIP native owner operations: requires AMD64 or ARM64')
+    backend = {'x86_64': 'amd64', 'amd64': 'amd64', 'aarch64': 'arm64',
+               'arm64': 'arm64', 'riscv64': 'riscv64'}.get(machine)
+if backend not in ('amd64', 'arm64', 'riscv64'):
+    print('SKIP native owner operations: requires AMD64, ARM64 or RV64')
     sys.exit(0)
 
 root = Path(__file__).resolve().parents[2]
@@ -39,6 +42,7 @@ with tempfile.TemporaryDirectory(prefix='owner-native-') as directory:
     td = Path(directory)
     target = td/'branches.c'
     target.write_text(unit)
+    runner = shlex.split(os.environ.get('NATIVE64_RUNNER', ''))
     cmd = shlex.split(os.environ.get('CC','cc'))
     cmd += shlex.split(os.environ.get('CFLAGS','-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
     for bits in (64,32):
@@ -52,4 +56,4 @@ with tempfile.TemporaryDirectory(prefix='owner-native-') as directory:
         includes = ['-I'+str(model)]+['-I'+str(root/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
         binary = td/('branches'+str(bits))
         subprocess.run(cmd+includes+[str(target),'-o',str(binary),'-lm'],check=True)
-        subprocess.run([str(binary)],check=True)
+        subprocess.run(runner+[str(binary)],check=True)

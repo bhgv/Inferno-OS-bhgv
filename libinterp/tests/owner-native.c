@@ -227,11 +227,72 @@ badlists(Module *module)
 	return checks;
 }
 
+#if defined(__riscv) && __riscv_xlen == 64
+/* Check exact capacities and malformed private layouts before executing any generated entry. */
+static void
+owneremission(void)
+{
+	RvLayout abi = {0}, malformed;
+	u32int code[RvMax+2];
+	int operations[] = {IMOVP, ISELF, IHEADP, ITAIL};
+	int op, size, cap, i, bad;
+
+	abi.xlen = 64; abi.wordbytes = sizeof(WORD);
+	abi.pc = O(REG, PC); abi.s = O(REG, s); abi.d = O(REG, d); abi.m = O(REG, m);
+	abi.module = O(REG, M); abi.listdata = O(List, data); abi.listtail = O(List, tail);
+	abi.heapref = sizeof(Heap)-O(Heap, ref); abi.heapcolor = sizeof(Heap)-O(Heap, color);
+	abi.refbytes = sizeof(((Heap*)0)->ref);
+	abi.mutator = &mutator; abi.nprop = &nprop; abi.markcolor = propagator;
+	for(op=0; op<4; op++){
+		size = rvemit(nil, RvMax, &abi, operations[op]);
+		ownercheck(size > 0 && size <= RvMax);
+		for(cap=0; cap<=size; cap++){
+			memset(code, 0xa5, sizeof(code));
+			ownercheck(rvemit(code+1, cap, &abi, operations[op]) == (cap < size ? 0 : size));
+			for(i=0; i<RvMax+2; i++)
+				if(cap < size || i == 0 || i > size)
+					ownercheck(code[i] == 0xa5a5a5a5U);
+		}
+		for(bad=0; bad<18; bad++){
+			malformed = abi;
+			switch(bad){
+			case 0: malformed.heapref = 0; break;
+			case 1: malformed.heapref = 256; break;
+			case 2: malformed.heapref = 7; break;
+			case 3: malformed.heapcolor = 0; break;
+			case 4: malformed.heapcolor = 256; break;
+			case 5: malformed.heapcolor = 2; break;
+			case 6: malformed.refbytes = 4; break;
+			case 7: malformed.heapcolor = malformed.heapref; break;
+			case 8: malformed.mutator = nil; break;
+			case 9: malformed.nprop = nil; break;
+			case 10: malformed.nprop = malformed.mutator; break;
+			case 11: malformed.mutator = (void*)1; break;
+			case 12: malformed.markcolor = -1; break;
+			case 13: malformed.markcolor = 256; break;
+			case 14: malformed.module = -1; break;
+			case 15: malformed.module = 1; break;
+			case 16: malformed.module = 2048; break;
+			case 17: malformed.xlen = 32; break;
+			}
+			memset(code, 0xa5, sizeof(code));
+			ownercheck(rvemit(code, RvMax, &malformed, operations[op]) == 0);
+			for(i=0; i<RvMax+2; i++)
+				ownercheck(code[i] == 0xa5a5a5a5U);
+		}
+	}
+	printf("PASS RV64 owner emitter: exact capacities, canaries and malformed layouts WORD%zu\n", sizeof(WORD)*8);
+}
+#endif
+
+
 /* Compare both executions against independent reference, mark and byte expectations. */
 int
 main(void)
 {
 	Module module={0}; Inst instructions[4]={{0}};
+	Jit *cached;
+	int (*moveentry)(REG*);
 	int codes[4]={IMOVP,ISELF,IHEADP,ITAIL};
 	void (*handlers[4])(void)={movp,self,headp,tail};
 	Heap *heap, *previous;
@@ -262,9 +323,19 @@ main(void)
 	}
 	module.prog=instructions; module.nprog=4;
 	ownercheck(compile(&module,4,nil));
+	cached = module.jit;
+	moveentry = cached->entry[IMOVP];
+	ownercheck(compile(&module,4,nil) && module.jit == cached);
+	cached->entry[IMOVP] = cached->entry[ISELF];
+	ownercheck(!compile(&module,4,nil) && module.jit == cached);
+	cached->entry[IMOVP] = moveentry;
+	ownercheck(compile(&module,4,nil) && module.jit == cached);
 	for(op=0;op<4;op++)
 		ownercheck(module.jit->entry[codes[op]]);
 
+#if defined(__riscv) && __riscv_xlen == 64
+	owneremission();
+#endif
 	checkpreflight(&module);
 	if(getenv("OWNER_PREFLIGHT_ONLY"))goto finished;
 	for(op=0;op<4;op++)for(sa=0;sa<8;sa++)for(da=0;da<8;da++)

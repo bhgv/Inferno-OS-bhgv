@@ -199,6 +199,12 @@ rvcompile(void *arg)
 	abi.modulenprog = O(Module, nprog);
 	abi.instbytes = sizeof(Inst);
 	abi.heaptype = sizeof(Heap)-O(Heap, t);
+	abi.heapref = sizeof(Heap)-O(Heap, ref);
+	abi.heapcolor = sizeof(Heap)-O(Heap, color);
+	abi.refbytes = sizeof(((Heap*)0)->ref);
+	abi.mutator = &mutator;
+	abi.nprop = &nprop;
+	abi.markcolor = propagator;
 	abi.framelr = O(Frame, lr);
 	abi.framefp = O(Frame, fp);
 	abi.arraytype = O(Array, t);

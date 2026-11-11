@@ -72,17 +72,16 @@ Latest ownership preflight fixes and validation: [README.owner-preflight.md](REA
 
 The production sizing emitters report 175 opcode slots. `INOP` is invalid and
 `IECLR` is unused, leaving 173 active commands. AMD64 and ARM64 now have native
-fast paths for 166 commands (95.95%); seven use C through complete JIT entries. RV64 profiles
-retain their earlier counts. WORD32/native-pointer and legacy WORD64
+fast paths for 166 commands (95.95%); seven use C through complete JIT entries. RV64 now also has guarded IMOVP, ISELF, IHEADP and ITAIL paths. WORD32/native-pointer and legacy WORD64
 configurations have the same opcode counts at this checkpoint.
 
 | Backend/profile | Active commands | Native fast path | C implementation without fast path |
 | --- | ---: | ---: | ---: |
 | AMD64 | 173 | 166 | 7 |
 | ARM64 | 173 | 166 | 7 |
-| RV64 + M | 173 | 103 | 70 |
-| RV64 + Zmmul | 173 | 90 | 83 |
-| RV64I | 173 | 87 | 86 |
+| RV64 + M | 173 | 107 | 66 |
+| RV64 + Zmmul | 173 | 94 | 79 |
+| RV64I | 173 | 91 | 82 |
 
 The preceding addition is a guarded ICASEC path for empty string tables and exact
 lower-label owner identities or equal empty values at the first binary-search
