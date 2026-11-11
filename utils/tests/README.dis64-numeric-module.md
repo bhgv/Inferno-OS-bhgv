@@ -36,13 +36,14 @@ or collector runs in this fault fixture. See doc/native64-series0131.md.
 
 ## Executing a checked Sys LOAD
 
-The private console profile accepts one or both of these scalar imports in
-either ordinal order.
+The private console profile accepts a group of one through three scalar
+imports in any ordinal order.
 
 | Symbol | Result | Arguments |
 | --- | --- | --- |
 | millisec | int | none |
-| sleep | int | one int, currently the constant zero |
+| sleep | int | one constant int |
+| dup | int | two constant ints |
 
 For example, compile this source with the host Limbo compiler.
 
@@ -53,7 +54,9 @@ Clock: module { init: fn(); };
 init()
 {
     sys := load Sys Sys->PATH;
-    status := sys->sleep(0);
+    status := sys->dup(-1, -1);
+    status = sys->sleep(1);
+    status = sys->millisec();
 }
 ```
 
@@ -67,11 +70,22 @@ record's symbol and structural signature against trusted Sys exports, builds
 the import group in the recorded order, and executes ILOAD through the VM.
 The checker verifies each MFRAME/MCALL ordinal and requires the argument setup
 matching that entry. A source may contain 1 through 32 calls. The compiler
-preserves their order.
+preserves their order. Each immediate must fit signed30, from -536870912
+through 536870911. The runtime uses 32-bit argument cells at frame offsets 64
+and 68, with a full native result pointer at offset 32. Positive sleep periods
+use the normal Sys wait/release/acquire path. Negative periods retain ordinary
+Sys behavior. Large positive periods are checked for encoding without executing
+the corresponding long waits in the test corpus.
+
+The selected Sys profile now registers 15 entries, including dup, using
+Limbo-generated sys.m metadata. The loader checks both the structural wire
+signature and the generated native export before publishing a caller.
 
 The test command below runs independently serialized reversed groups,
-sleep-only groups, compiler-produced sources, invalid ordinals including
-negative values, and signature/argument refusals in C and JIT modes.
+sleep-only and two-argument calls, all six orders of a three-symbol group,
+compiler-produced sources, signed30 encoding boundaries, invalid ordinals
+including negative values, and signature/count/argument-slot refusals in C and
+JIT modes.
 
 ```sh
 python3 utils/tests/dis64-pair-boot.py --sys-clock --limbo /path/to/limbo \

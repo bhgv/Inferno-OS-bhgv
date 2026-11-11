@@ -4,7 +4,7 @@
 char exNilref[] = "dereference of nil", exBounds[] = "array bounds error"; // VM frame diagnostics.
 
 static int initialized, rejectinit, clockreads; // Bounded OS descriptor boundary and observed callback identities.
-static const char *names[] = {"byte2char", "char2byte", "utfbytes", "read", "readn", "write", "pread", "pwrite", "pctl", "file2chan", "millisec", "open", "fildes", "sleep"}; // Exact trusted profile.
+static const char *names[] = {"byte2char", "char2byte", "utfbytes", "read", "readn", "write", "pread", "pwrite", "pctl", "file2chan", "millisec", "open", "fildes", "sleep", "dup"}; // Exact trusted profile.
 static int invoked[nelem(names)]; // One dispatch counter per expected export.
 
 
@@ -132,6 +132,14 @@ Sys_sleep(void *frame)
 {
 	check(frame == &baseline);
 	invoked[13]++;
+}
+
+/* Observe the two-integer descriptor-duplication entry without changing fixture descriptors. */
+void
+Sys_dup(void *frame)
+{
+	check(frame == &baseline);
+	invoked[14]++;
 }
 
 SYS_PROFILE

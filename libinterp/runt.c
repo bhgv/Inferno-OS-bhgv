@@ -50,6 +50,7 @@ static const LimboNative64Entry *const native64sysio[] = {
 	&limbo_native64_Sys_open_entry, // Open process control files.
 	&limbo_native64_Sys_fildes_entry, // Duplicate the diagnostic descriptor.
 	&limbo_native64_Sys_sleep_entry, // Fixed scalar signature for the checked import group.
+	&limbo_native64_Sys_dup_entry, // Two scalar descriptor arguments.
 };
 
 

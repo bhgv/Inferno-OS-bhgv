@@ -133,16 +133,16 @@ dis64trace(Dis64Lower *lower)
 /* Match the complete lowered init body before changing its frame geometry. */
 static int
 dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes,
-	uchar *calls, unsigned int *ncalls, uchar *arguments)
+	uchar *calls, unsigned int *ncalls, uchar *arguments, long values[][2])
 {
-	Decl *import, *export, *path;
-	unsigned int i, phase, binding, used;
+	Decl *import, *export, *path, *argument, *target;
+	unsigned int i, j, phase, binding, used, parameter, seen;
 	long frame;
-	int sleep;
+	int kind;
 
 	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 ||
 	   entry->ty->ids != nil || entry->ty->varargs || entry->ty->tof->kind != Tnone ||
-	   count < 5 || count > 4*Dis64ClockCalls+2 || databytes != 8 ||
+	   count < 5 || count > 5*Dis64ClockCalls+2 || databytes != 8 ||
 	   ldts == nil || ldts->next != nil || ldts->init == nil ||
 	   ldts->init->decl == nil)
 		return 0;
@@ -158,20 +158,25 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 	if(path == nil)
 		return 0;
 	import = ldts->init->decl->ty->ids;
-	if(ldts->init->val < 1 || ldts->init->val > 2)
+	if(ldts->init->val < 1 || ldts->init->val > 3)
 		return 0;
+	seen = 0;
 	for(export=import, i=0; export != nil; export=export->next, i++){
-		if(i >= 2 || (i == 1 && export->sym == import->sym) || export->ty->kind != Tfn || export->ty->varargs ||
-		   export->ty->tof->kind != Tint)
+		if(i >= 3 || export->ty->kind != Tfn || export->ty->varargs ||
+		   export->ty->polys != nil || export->ty->tof->kind != Tint)
 			return 0;
-		sleep = strcmp(export->sym->name, "sleep") == 0;
-		if(sleep){
-			if(export->ty->ids == nil || export->ty->ids->next != nil ||
-			   export->ty->ids->ty->kind != Tint)
+		kind = strcmp(export->sym->name, "millisec") == 0 ? 0 :
+			strcmp(export->sym->name, "sleep") == 0 ? 1 :
+			strcmp(export->sym->name, "dup") == 0 ? 2 : -1;
+		if(kind < 0 || (seen & (1U<<kind)))
+			return 0;
+		seen |= 1U<<kind;
+		arguments[i] = kind;
+		for(argument=export->ty->ids, j=0; argument != nil; argument=argument->next, j++)
+			if(j >= arguments[i] || argument->ty->kind != Tint)
 				return 0;
-		}else if(strcmp(export->sym->name, "millisec") != 0 || export->ty->ids != nil)
+		if(j != arguments[i])
 			return 0;
-		arguments[i] = sleep;
 	}
 	if(i != ldts->init->val)
 		return 0;
@@ -180,6 +185,8 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 			return 0;
 	i = phase = binding = used = 0;
 	frame = 0;
+	target = nil;
+	parameter = 0;
 	for(; input != nil; input=input->next){
 		if(input->op == INOOP)
 			continue;
@@ -199,19 +206,26 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 			   input->dm != Afp || (input->d.reg != 36 && input->d.reg != 40) ||
 			   input->mm != Aoff || input->m.decl == nil)
 				return 0;
-			binding = import->next != nil && input->m.decl->iface == import->next;
-			if(input->m.decl->iface != (binding ? import->next : import) ||
-			   input->m.decl->iface->offset != binding)
+			if(used == Dis64ClockCalls)
 				return 0;
+			for(target=import, binding=0; target != nil && target != input->m.decl->iface;
+			    target=target->next, binding++)
+				;
+			if(target == nil || target->offset != binding)
+				return 0;
+			parameter = 0;
 			frame = input->d.reg;
 			phase = arguments[binding] ? 3 : 1;
 			break;
 		case 3:
-			if(input->op != IMOVW || input->sm != Aimm || input->s.offset != 0 ||
+			if(input->op != IMOVW || input->sm != Aimm ||
+			   input->s.offset < -536870912L || input->s.offset > 536870911L ||
 			   input->mm != Anone || input->dm != Afpind ||
-			   input->d.reg != frame || input->d.offset != 32)
+			   input->d.reg != frame || input->d.offset != 32+4*parameter)
 				return 0;
-			phase = 1;
+			values[used][parameter++] = input->s.offset;
+			if(parameter == arguments[binding])
+				phase = 1;
 			break;
 		case 1:
 			if(input->op != ILEA || input->sm != Afp || input->s.reg != (frame == 36 ? 40 : 36) ||
@@ -223,8 +237,7 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 		case 2:
 			if(input->op != IMCALL || input->sm != Afp || input->s.reg != frame ||
 			   input->dm != Afp || input->d.reg != 32 || input->mm != Aoff ||
-			   input->m.decl == nil || input->m.decl->iface != (binding ? import->next : import) ||
-			   used == Dis64ClockCalls)
+			   input->m.decl == nil || input->m.decl->iface != target)
 				return 0;
 			calls[used++] = binding;
 			phase = 0;
@@ -237,40 +250,54 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 }
 
 
+/* Preserve one scalar immediate in the prepared native frame. */
+static int
+dis64clockargument(uchar *code, unsigned int *at, long value, unsigned int ordinal)
+{
+	unsigned int used;
+
+	code[(*at)++] = IMOVW;
+	code[(*at)++] = SRC(AIMM)|DST(AFP|AIND);
+	used = disoperand(code+*at, 4, value);
+	if(used == 0)
+		return 0;
+	*at += used;
+	code[(*at)++] = 40;
+	used = disoperand(code+*at, 4, 64+4*ordinal);
+	if(used == 0)
+		return 0;
+	*at += used;
+	return 1;
+}
+
+
 /* Encode the checked imported clock pilot with the existing Dis64 sections. */
 int
 dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes)
 {
 	static const uchar load[] = {ILOAD, SRC(AMP)|AXIMM|DST(AMP), 0, 0, 8};
-	static const uchar call[] = {
-		IMFRAME, SRC(AMP)|AXIMM|DST(AFP), 0, 8, 40,
-		ILEA, SRC(AFP)|DST(AFP|AIND), 0x80, 72, 40, 32,
-		IMCALL, SRC(AFP)|AXIMM|DST(AMP), 0, 40, 8,
-	};
-	static const uchar sleepcall[] = {
-		IMFRAME, SRC(AMP)|AXIMM|DST(AFP), 1, 8, 40,
-		IMOVW, SRC(AIMM)|DST(AFP|AIND), 0, 40, 0x80, 64,
-		ILEA, SRC(AFP)|DST(AFP|AIND), 0x80, 72, 40, 32,
-		IMCALL, SRC(AFP)|AXIMM|DST(AMP), 1, 40, 8,
-	};
+	static const uchar frame[] = {IMFRAME, SRC(AMP)|AXIMM|DST(AFP), 0, 8, 40};
+	static const uchar result[] = {ILEA, SRC(AFP)|DST(AFP|AIND), 0x80, 72, 40, 32};
+	static const uchar call[] = {IMCALL, SRC(AFP)|AXIMM|DST(AMP), 0, 40, 8};
 	static const uchar exit[] = {IEXIT, SRC(AXXX)|DST(AXXX)};
 	static const uchar datamap[] = {0xc0}, framemap[] = {0, 0};
 	Dis64Type types[] = {{16, 8, datamap, 1}, {80, 8, framemap, 2}};
 	Dis64ModuleInfo module = {0};
-	DisStringPoolRecord names[4];
+	DisStringPoolRecord names[5];
 	Dis64Payload sections[5];
-	uchar metadata[24], code[4+sizeof(load)+Dis64ClockCalls*sizeof(sleepcall)+sizeof(exit)];
-	uchar typedata[32], imports[56], runes[4][4+4*255], strings[4+sizeof(runes)], output[2048];
-	uchar calls[Dis64ClockCalls], arguments[2];
-	unsigned int sizes[5], i, j, length, written, bindings, ncalls, ordinal, period = Dis64Int;
-	const char *labels[] = {"$Sys", "millisec", impdecl->sym->name, "sleep"};
+	uchar metadata[24], code[4+sizeof(load)+Dis64ClockCalls*(sizeof(frame)+18+sizeof(result)+sizeof(call))+sizeof(exit)];
+	uchar typedata[32], imports[100], runes[5][4+4*255], strings[4+sizeof(runes)], output[4096];
+	uchar calls[Dis64ClockCalls], arguments[3];
+	long values[Dis64ClockCalls][2];
+	unsigned int sizes[5], i, j, length, written, bindings, ncalls, ordinal, parameters[] = {Dis64Int, Dis64Int};
+	const char *labels[] = {"$Sys", nil, impdecl->sym->name, nil, nil};
+	Decl *import;
 
-	bindings = dis64clockshape(entry, globals, ldts, input, count, databytes, calls, &ncalls, arguments);
+	bindings = dis64clockshape(entry, globals, ldts, input, count, databytes, calls, &ncalls, arguments, values);
 	if(bindings == 0)
 		return 0;
-	labels[1] = ldts->init->decl->ty->ids->sym->name;
-	if(bindings == 2)
-		labels[3] = ldts->init->decl->ty->ids->next->sym->name;
+	for(import=ldts->init->decl->ty->ids, i=0; import != nil; import=import->next, i++)
+		labels[i == 0 ? 1 : i+2] = import->sym->name;
 	for(i=0; i<2+bindings; i++){
 		length = strlen(labels[i]);
 		if(length == 0 || length > 255)
@@ -293,29 +320,31 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 	memmove(code+4, load, sizeof(load));
 	for(i=0; i<ncalls; i++){
 		ordinal = calls[i];
-		if(arguments[ordinal]){
-			memmove(code+sizes[1], sleepcall, sizeof(sleepcall));
-			code[sizes[1]+2] = ordinal;
-			code[sizes[1]+sizeof(sleepcall)-3] = ordinal;
-			sizes[1] += sizeof(sleepcall);
-		}else{
-			memmove(code+sizes[1], call, sizeof(call));
-			code[sizes[1]+2] = ordinal;
-			code[sizes[1]+sizeof(call)-3] = ordinal;
-			sizes[1] += sizeof(call);
-		}
+		memmove(code+sizes[1], frame, sizeof(frame));
+		code[sizes[1]+2] = ordinal;
+		sizes[1] += sizeof(frame);
+		for(j=0; j<arguments[ordinal]; j++)
+			if(!dis64clockargument(code, &sizes[1], values[i][j], j)){
+				dis64error(entry, "cannot encode checked Sys argument");
+				return 1;
+			}
+		memmove(code+sizes[1], result, sizeof(result));
+		sizes[1] += sizeof(result);
+		memmove(code+sizes[1], call, sizeof(call));
+		code[sizes[1]+2] = ordinal;
+		sizes[1] += sizeof(call);
 	}
 	memmove(code+sizes[1], exit, sizeof(exit));
 	sizes[1] += sizeof(exit);
 	dis64put32(imports, bindings);
 	sizes[3] = 4;
 	for(i=0; i<bindings; i++){
-		length = arguments[i] ? 16 : 12;
+		length = 12+4*arguments[i];
 		dis64put32(imports+sizes[3], 0);
-		dis64put32(imports+sizes[3]+4, i == 0 ? 1 : 3);
+		dis64put32(imports+sizes[3]+4, i == 0 ? 1 : i+2);
 		dis64put32(imports+sizes[3]+8, length);
 		if(!dis64signaturewrite(imports+sizes[3]+12, length, Dis64Int,
-		   arguments[i] ? &period : nil, arguments[i], &written)){
+		   parameters, arguments[i], &written)){
 			dis64error(entry, "cannot encode checked Sys import");
 			return 1;
 		}

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Boot an explicitly linked Dis64 pair through the complete emulator."""
+from itertools import permutations
 import argparse
 from pathlib import Path
 import runpy
@@ -152,6 +153,35 @@ def clock_image(*, result_offset=72, module='$Sys', signature=1, repeats=1,
     return RAW['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
 
 
+# Independently serialize scalar Sys groups with zero, one or two integer arguments.
+def sys_integer_image(sequence, *, symbols=None, signatures=None, offsets=None, call_index=None):
+    words, ins = RAW['W'], RAW['I']
+    bindings = RAW['RAW']['RAW']
+    indirect = runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['indirect']
+    kinds = {'millisec': (), 'sleep': (1,), 'dup': (1, 1)}
+    symbols = symbols or tuple(sorted({name for name, _ in sequence}))
+    names = ('$Sys', symbols[0], 'caller', *symbols[1:])
+    imports = [bindings['binding'](module=0, symbol=1 if i == 0 else i+2,
+               sig=bindings['signature'](1, (signatures or {}).get(name, kinds[name])))
+               for i, name in enumerate(symbols)]
+    code = ins('ILOAD', 64, source=0, middle=0, destination=8)
+    count = 2
+    for name, arguments in sequence:
+        index = symbols.index(name) if call_index is None else call_index
+        code += ins('IMFRAME', 65, source=8, middle=index, destination=40)
+        for ordinal, value in enumerate(arguments):
+            offset = 64+4*ordinal if offsets is None else offsets[ordinal]
+            code += indirect('IMOVW', value, 40, offset, sm=2)
+        code += indirect('ILEA', 72, 40, 32)
+        code += ins('IMCALL', 72, source=40, middle=index, destination=8)
+        count += 3+len(arguments)
+    pool = words(len(names))+b''.join(words(len(name), *map(ord, name)) for name in names)
+    sections = RAW['SECTIONS'](name=2, databytes=16, imports=imports,
+               types=[RAW['D'](80, 8), RAW['D'](16, 8, b'\xc0')],
+               code=words(count)+code+RAW['EXIT'])
+    return RAW['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
+
+
 # Compile an actual Limbo LOAD and imported call, then reject nearby unsupported bodies.
 def compile_clocks(limbo, work):
     source = work/'clock.b'
@@ -178,7 +208,7 @@ init()
 
     command = [str(limbo), '-I', str(ROOT/'module'), '-64', '-o', str(output), str(source)]
     for bad in (template.replace('Sys->PATH', '"$Other"'),
-                template.replace('millisec()', 'sleep(1)'),
+                template.replace('millisec()', 'sleep(536870912)'),
                 repeated(33),
                 repeated(3).replace('    now = sys->millisec();\n', '    now++;\n', 1)):
         source.write_text(bad)
@@ -208,11 +238,6 @@ init()
             raise RuntimeError('compiler changed the sleep-only import group')
         yield f'{repeats} sleep-only', image
     mixed = template.replace('    now := sys->millisec();', '    now := sys->millisec();\n    now = sys->sleep(0);')
-    output.unlink()
-    source.write_text(mixed.replace('sleep(0)', 'sleep(1)'))
-    result = subprocess.run(command, capture_output=True, text=True, timeout=30)
-    if result.returncode <= 0 or output.exists() or 'requires managed linkage' not in result.stderr:
-        raise RuntimeError('compiler did not refuse a positive sleep period: '+result.stderr)
     source.write_text(mixed)
     subprocess.run(command, check=True, timeout=30)
     image = output.read_bytes()
@@ -242,6 +267,39 @@ init()
     result = subprocess.run(command, capture_output=True, text=True, timeout=30)
     if result.returncode <= 0 or output.exists() or 'requires managed linkage' not in result.stderr:
         raise RuntimeError('compiler did not refuse 33 mixed Sys calls: '+result.stderr)
+
+    sequences = (
+        [('sleep', (1,))], [('sleep', (-1,))], [('dup', (-1, -1))],
+        [('dup', (-1, -1)), ('sleep', (1,)), ('millisec', ())],
+        [('sleep', (1,)), ('dup', (-1, -1)), ('millisec', ())],
+        [('dup', (-1, -1))]*32, [('dup', (-65, -8193))],
+        [('dup', (-8193, -65))],
+        [('sleep', (value,)) for value in (-64, -65, -8192, -8193, -536870912)],
+    )
+    for sequence in sequences:
+        statements = []
+        for i, (name, values) in enumerate(sequence):
+            operator = ':=' if i == 0 else '='
+            statements.append(f'    now {operator} sys->{name}('+', '.join(map(str, values))+');')
+        source.write_text(template.replace('    now := sys->millisec();', '\n'.join(statements)))
+        subprocess.run(command, check=True, timeout=30)
+        image = output.read_bytes()
+        if code_bytes(image) != code_bytes(sys_integer_image(sequence)):
+            raise RuntimeError('compiler changed scalar Sys arguments or call order')
+        yield f'{len(sequence)} integer-argument', image
+    for value in (-536870912, -8193, -8192, -65, -64, 63, 64, 8191, 8192, 536870911):
+        source.write_text(template.replace('millisec()', f'sleep({value})'))
+        subprocess.run(command, check=True, timeout=30)
+        if code_bytes(output.read_bytes()) != code_bytes(sys_integer_image([('sleep', (value,))])):
+            raise RuntimeError(f'compiler changed signed30 argument {value}')
+    output.unlink()
+    for changed in ('sleep(536870912)', 'sleep(-536870913)', 'dup(-1, -1, -1)'):
+        source.write_text(template.replace('millisec()', changed))
+        refused = subprocess.run(command, capture_output=True, text=True, timeout=30)
+        if refused.returncode <= 0 or output.exists():
+            raise RuntimeError('compiler accepted an unsupported scalar Sys argument')
+
+
 
 
 # Compile a real entryless library whose second export observes the first export's write.
@@ -426,6 +484,33 @@ def main():
                     if f'native64 scalar module caller: jit={jit}, exit=""' not in output or \
                             BOOT['RETIRED'] not in output or 'panic:' in output:
                         raise RuntimeError('Sys group order or sleep-only execution failed: '+output)
+            sequence = [('dup', (-1, -1)), ('sleep', (1,)), ('millisec', ())]
+            for symbols in permutations(('dup', 'millisec', 'sleep')):
+                consumer.write_bytes(sys_integer_image(sequence, symbols=symbols))
+                for jit in (0, 1):
+                    output = execute(command+['-c', str(jit)]+builtin)
+                    marker = f'native64 scalar module caller: jit={jit}, exit=""'
+                    if marker not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                        raise RuntimeError('three-symbol Sys group did not complete: '+output)
+            invalid = (
+                ([('dup', (-1,))], {}),
+                ([('dup', (-1, -1, -1))], {}),
+                ([('sleep', ())], {}), ([('sleep', (0, 0))], {}),
+                ([('millisec', (0,))], {}),
+                ([('dup', (-1, -1))], {'signatures': {'dup': (1,)}}),
+                ([('dup', (-1, -1))], {'signatures': {'dup': (1, 2)}}),
+                ([('dup', (-1, -1))], {'signatures': {'dup': (1, 1, 1)}}),
+                ([('dup', (-1, -1))], {'offsets': (64, 72)}),
+                ([('dup', (-1, -1))], {'offsets': (64, 64)}),
+                ([('dup', (-1, -1))], {'call_index': 1}),
+                (sequence, {'call_index': 3}),
+                ([('dup', (-1, -1))]*33, {}),
+            )
+            for sequence, options in invalid:
+                consumer.write_bytes(sys_integer_image(sequence, **options))
+                output = execute(command+builtin)
+                if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+                    raise RuntimeError('invalid integer-argument Sys group reached scheduler: '+output)
             if args.limbo is not None:
                 for repeats, image in compile_clocks(args.limbo.resolve(), work):
                     consumer.write_bytes(image)
@@ -440,7 +525,6 @@ def main():
                 if BOOT['RETIRED'] in output or 'panic:' not in output:
                     raise RuntimeError('Sys clock file bypassed explicit selection: '+output)
             for case in ({'reverse': True, 'load': True, 'second': ('sleep', (1,))},
-                         {'sleep_only': True, 'load': True, 'period': 1},
                          {'sleep_only': True, 'load': True, 'signature': 2},
                          {'sleep_only': True, 'load': True, 'call_index': 1},
                          {'load': True, 'call_index': -1},
@@ -452,7 +536,6 @@ def main():
                          {'load': True, 'second': ('sleep', (2,))},
                          {'load': True, 'second': ('sleep', (1,)), 'call_index': 1},
                          {'load': True, 'sleep_tail': True},
-                         {'load': True, 'second': ('sleep', (1,)), 'sleep_tail': True, 'period': 1},
                          {'load': True, 'second': ('sleep', (1,)), 'sleep_tail': True, 'period_offset': 32},
                          {'load': True, 'second': ('sleep', (1,)), 'sleep_tail': True, 'sleep_index': 0},
                          {'load': True, 'second': ('sleep', (1,)), 'sleep_first': True, 'repeats': 32},

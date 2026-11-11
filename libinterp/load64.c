@@ -763,7 +763,7 @@ struct Dis64NumericLoad {
 	int jit; // Explicit existing native leaf compilation request, never a file-mode choice.
 	int indirect; // The selected proof admits indirect destination operands.
 	int (*step)(void); // Trusted result binding selected by the owning constructor.
-	const Link *clockload[2]; // Checked exports for an executing Sys LOAD.
+	const Link *clockload[3]; // Checked exports for an executing Sys LOAD.
 	unsigned int clockimports;
 };
 
@@ -873,7 +873,7 @@ static const Dis64StorageLimits dis64numericlimits = {
 
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 
-#define Dis64ClockInstructions (5U*Dis64ClockCalls+2U) // LOAD, argument/call/copy groups, and exit.
+#define Dis64ClockInstructions (6U*Dis64ClockCalls+2U) // LOAD, argument/call/copy groups, and exit.
 
 
 /* Resolve one exact scalar import from an already validated image. */
@@ -899,24 +899,43 @@ dis64sysclockview(const Dis64StorageImage *consumer, unsigned int ordinal, Modul
 	return native64sysclock(owner);
 }
 
-/* Resolve a sleep entry at its actual ordinal in the checked import group. */
+/* Resolve the fixed integer-argument entries against their structural signatures. */
 static const Link*
-dis64syssleepview(const Dis64StorageImage *consumer, unsigned int ordinal, Module **owner)
+dis64sysintegerview(const Dis64StorageImage *consumer, unsigned int ordinal,
+	unsigned int *parameters, Module **owner)
 {
 	static const uchar sys[] = {0,0,0,'$', 0,0,0,'S', 0,0,0,'y', 0,0,0,'s'};
-	static const uchar sleep[] = {0,0,0,'s', 0,0,0,'l', 0,0,0,'e', 0,0,0,'e', 0,0,0,'p'};
 	Dis64Binding binding;
 	DisRuneView module, symbol;
+	char name[6];
+	unsigned int i, rune, count;
 
 	if(!dis64bindingget(&consumer->imports, ordinal, &binding) ||
-	   binding.signature.result != Dis64Int || binding.signature.parameters != 1 ||
-	   dis64u32(binding.signature.data+12) != Dis64Int ||
+	   binding.signature.result != Dis64Int ||
 	   !disstringpoolget(&consumer->strings, binding.module, &module) ||
 	   module.count != sizeof(sys)/4 || memcmp(module.values, sys, sizeof(sys)) != 0 ||
 	   !disstringpoolget(&consumer->strings, binding.symbol, &symbol) ||
-	   symbol.count != sizeof(sleep)/4 || memcmp(symbol.values, sleep, sizeof(sleep)) != 0)
+	   symbol.count == 0 || symbol.count >= sizeof(name))
 		return nil;
-	return native64sysexport("sleep", owner);
+	for(i=0; i<symbol.count; i++){
+		if(!disruneat(&symbol, i, &rune) || rune == 0 || rune > 127)
+			return nil;
+		name[i] = rune;
+	}
+	name[symbol.count] = 0;
+	if(strcmp(name, "sleep") == 0)
+		count = 1;
+	else if(strcmp(name, "dup") == 0)
+		count = 2;
+	else
+		return nil;
+	if(binding.signature.parameters != count)
+		return nil;
+	for(i=0; i<count; i++)
+		if(dis64u32(binding.signature.data+12+4*i) != Dis64Int)
+			return nil;
+	*parameters = count;
+	return native64sysexport(name, owner);
 }
 
 
@@ -936,11 +955,12 @@ dis64sysclockimport(const uchar *image, ulong bytes, unsigned int ordinal, Modul
 
 /* Decode bounded clock calls and an optional WORD copy after each completed call. */
 static int
-dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64CodeView *code, unsigned int bindings, int arguments)
+dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64CodeView *code,
+	unsigned int bindings, int arguments)
 {
 	Dis64CallDecoded decoded;
 	Dis64Instruction *inst;
-	unsigned int at, i, used, count, phase, calls, slot, binding;
+	unsigned int at, i, used, count, phase, calls, slot, binding, parameter, expected;
 	int copied;
 
 	if(bytes < 4)
@@ -949,7 +969,7 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 	if(count < 4 || count > limit || count > Dis64ClockInstructions)
 		return 0;
 	at = 4;
-	phase = calls = copied = slot = binding = 0;
+	phase = calls = copied = slot = binding = parameter = expected = 0;
 	for(i=0; i<count; i++){
 		if(!dis64callread(data+at, bytes-at, &decoded, &used))
 			return 0;
@@ -966,14 +986,17 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 			if(phase != 0 || inst->mode != (SRC(AMP)|AXIMM|DST(AFP)) ||
 			   inst->source != slot || inst->destination != 40 ||
 			   (inst->middle < 0 || inst->middle >= bindings ||
-			    (inst->middle == 1 && slot != 8)))
+			    (inst->middle != 0 && slot != 8)))
 				return 0;
 			binding = inst->middle;
-			phase = arguments < 0 || (arguments & (1U << binding)) ? 3 : 1;
+			expected = arguments < 0 ? 2 : (arguments >> (2*binding)) & 3;
+			parameter = 0;
+			phase = 1;
 			copied = 0;
 			break;
 		case ILEA:
-			if((phase != 1 && !(arguments < 0 && phase == 3)) || inst->mode != (SRC(AFP)|DST(AFP|AIND)) ||
+			if(phase != 1 || (arguments >= 0 && parameter != expected) ||
+			   inst->mode != (SRC(AFP)|DST(AFP|AIND)) ||
 			   inst->source != 72 || inst->destination != 40 || decoded.secondary != 32)
 				return 0;
 			phase = 2;
@@ -987,11 +1010,11 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 				return 0;
 			break;
 		case IMOVW:
-			if(phase == 3){
+			if(phase == 1){
 				if(inst->mode != (SRC(AIMM)|DST(AFP|AIND)) ||
-				   inst->source != 0 || inst->destination != 40 || decoded.secondary != 64)
+				   parameter >= expected || inst->destination != 40 || decoded.secondary != 64+4*parameter)
 					return 0;
-				phase = 1;
+				parameter++;
 				break;
 			}
 			if(phase != 0 || calls == 0 || copied || inst->mode != (SRC(AFP)|DST(AFP)) ||
@@ -1017,7 +1040,7 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 static int
 dis64clockcode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64CodeView *code)
 {
-	return dis64syscode(data, bytes, limit, code, 2, -1);
+	return dis64syscode(data, bytes, limit, code, 3, -1);
 }
 
 #endif
@@ -1473,7 +1496,7 @@ prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
 	Module *sys;
 	const Link *entry;
 	Modlink *caller, *clock;
-	unsigned int i, rune, arguments;
+	unsigned int i, rune, arguments, parameters;
 	int dynamic;
 
 	memset(&load, 0, sizeof(load));
@@ -1514,8 +1537,9 @@ prepare64sysclockconsumer(char *path, const uchar *image, ulong bytes, int jit)
 	for(i=0; i<load.image.imports.count; i++){
 		entry = dis64sysclockview(&load.image, i, &sys);
 		if(entry == nil && dynamic){
-			entry = dis64syssleepview(&load.image, i, &sys);
-			arguments |= 1 << i;
+			entry = dis64sysintegerview(&load.image, i, &parameters, &sys);
+			if(entry != nil)
+				arguments |= parameters << (2*i);
 		}
 		if(entry == nil)
 			return nil;
