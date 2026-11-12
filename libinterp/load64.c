@@ -1601,7 +1601,7 @@ managed64inputlist(Module *module, int ordinal)
 typedef struct Dis64ManagedFileCaller Dis64ManagedFileCaller;
 struct Dis64ManagedFileCaller {
 	Modlink *caller;
-	const LimboNative64Entry *entries[3];
+	const LimboNative64Entry *entries[6];
 	unsigned int count;
 	char *path;
 	Dis64ManagedLiteralsView literals;
@@ -1657,9 +1657,10 @@ prepare64sysstring(char *path, const uchar *image, ulong bytes, int jit)
 {
     Dis64NumericLoad load = {0};
     Dis64ManagedFileCaller file = {0};
-    LimboNative64Entry specification[3];
+    LimboNative64Entry specification[6];
     const char *method;
-    unsigned int i;
+    unsigned int i, framebytes, mapbytes, maplast;
+    int kind;
     const Link *entry;
     Module *sys = nil, *owner;
     Modlink *caller;
@@ -1675,9 +1676,14 @@ prepare64sysstring(char *path, const uchar *image, ulong bytes, int jit)
     file.count = load.image.imports.count; file.path = "$Sys";
     for(i=0; i<file.count; i++){
         method = dis64sysstringmethod(&load.image.strings,i ? 3+i : 1);
-        owner = nil; entry = method == nil ? nil : native64sysexport(method,&owner);
+        kind = dis64sysfixedkind(method);
+        if(kind < 0) return nil;
+        framebytes = dis64sysfixedargs(kind) ? 72 : 64;
+        mapbytes = framebytes == 64 ? 1 : 2; maplast = kind < 3 ? 0x80 : 0;
+        owner = nil; entry = native64sysexport(method,&owner);
         if(entry == nil || (sys != nil && owner != sys) || (frame=entry->frame) == nil ||
-           frame->size != 72 || frame->np != 2 || frame->map[0] != 0 || frame->map[1] != 0x80){
+           frame->size != framebytes || frame->np != mapbytes || frame->map[0] != 0 ||
+           (mapbytes == 2 && frame->map[1] != maplast)){
             kwerrstr("unavailable Dis64 Sys String export"); return nil;
         }
         sys = owner;

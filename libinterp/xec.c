@@ -229,8 +229,8 @@ native64bindresult(int managed)
 			memmove(&previous, address, sizeof(previous));
 			if(previous != H) error(exBounds);
 		}
-		/* The first managed shapes have one mapped argument in a 72-byte frame. */
-		if(top-target != 72)
+		/* Managed results use a mapped argument; fixed Sys also admits scalar-only frames. */
+		if(managed == 2 ? (top-target != 64 && top-target != 72) : top-target != 72)
 			error(exBounds);
 		memmove(&entered, (uchar*)pending+O(Frame, mr), sizeof(entered));
 		memmove(&type, (uchar*)pending+O(Frame, t), sizeof(type));
@@ -240,7 +240,10 @@ native64bindresult(int managed)
 			type = active->reg.TR;
 		if(type == nil || type == H || (uintptr)type%sizeof(void*) != 0 ||
 		   (uintptr)type > (uintptr)-1-O(Type, map)-2 ||
-		   type->size != 72 || type->np != 2 || type->map[0] != 0 || type->map[1] != 0x80)
+		   type->size != (int)(top-target) || type->map[0] != 0 ||
+           (managed == 2 ? (type->size == 64 ? type->np != 1 :
+            (type->np != 2 || (type->map[1] != 0 && type->map[1] != 0x80))) :
+            (type->size != 72 || type->np != 2 || type->map[1] != 0x80)))
 			error(exBounds);
 	}
 	vmdecode(&fetched);

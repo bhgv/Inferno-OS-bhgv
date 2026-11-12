@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Mixed fixed Sys signatures: independent records/ordinals and actual console boot."""
+from pathlib import Path
+import argparse
+import json
+import runpy
+import shlex
+import struct
+import subprocess
+import tempfile
+ROOT=Path(__file__).resolve().parents[2]
+BASE=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-string.py'))
+RAW=BASE['RAW'];section=BASE['section'];replace=BASE['replace']
+METHODS=('werrstr','chdir','remove','millisec','sleep','dup')
+ARGS={'werrstr':(0x71,),'chdir':(0x71,),'remove':(0x71,),'millisec':(),'sleep':(1,),'dup':(1,1)}
+
+
+def imports(image):
+    pool=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-multiliteral.py'))['pool_records'](image,section)
+    payload=section(image,5);at=4;names=[];signatures=[]
+    for i in range(struct.unpack_from('>I',payload)[0]):
+        owner,symbol,length=struct.unpack_from('>III',payload,at);at+=12
+        name=''.join(map(chr,pool[symbol]));signature=payload[at:at+length];at+=length
+        if name not in ARGS or owner!=0 or symbol!=(3+i if i else 1) or signature!=RAW['W'](0xface0010,len(ARGS[name]),1,*ARGS[name]):raise RuntimeError('mixed signature oracle mismatch')
+        names.append(name);signatures.append(signature)
+    if at!=len(payload) or len(names)!=len(set(names)):raise RuntimeError('mixed import framing/identity mismatch')
+    return names,signatures,pool
+
+
+def permute(image,order):
+    names,sigs,pool=imports(image);order=tuple(name for name in order if name in names)
+    if set(order)!=set(names):raise RuntimeError('incomplete fixed signature permutation')
+    decode=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['decode'];records=decode(section(image,2));code=b''
+    for name,mode,source,middle,dest,secondary,raw in records:
+        if name in ('IMFRAME','IMCALL'):raw=RAW['I'](name,mode,source=source,middle=order.index(names[middle]),destination=dest)
+        code+=raw
+    image=replace(image,2,RAW['W'](len(records))+code)
+    records=[]
+    for i,name in enumerate(order):
+        signature=sigs[names.index(name)];records.append(RAW['W'](0,3+i if i else 1,len(signature))+signature);pool[3+i if i else 1]=tuple(map(ord,name))
+    image=replace(image,5,RAW['W'](len(records))+b''.join(records))
+    return replace(image,7,RAW['W'](len(pool))+b''.join(RAW['W'](len(value),*value) for value in pool))
+
+
+# Events are source-level expectations for real handlers with a deterministic OS boundary.
+def programs():
+    allbody='t:=sys->millisec();r:=sys->werrstr("start");r=sys->sleep(t-t);r=sys->dup(-1,-1);r=sys->chdir("/ok");r=sys->remove("/missing");r=sys->werrstr("end");'
+    allevents=[('millisec',None,0,0,23),('werrstr','start',0,0,0),('sleep',None,0,0,0),('dup',None,-1,-1,-1),('chdir','/ok',0,0,0),('remove','/missing',0,0,-1),('werrstr','end',0,0,0)]
+    cases=[]
+    for shift in range(6):cases.append(('six-'+str(shift),allbody,allevents,METHODS[shift:]+METHODS[:shift]))
+    cases.append(('six-reverse',allbody,allevents,METHODS[::-1]))
+    cases += [
+      ('clock','r:=sys->millisec();',[('millisec',None,0,0,23)],METHODS),
+      ('numeric','t:=sys->millisec();r:=sys->sleep(0);r=sys->dup(-1,-1);',[('millisec',None,0,0,23),('sleep',None,0,0,0),('dup',None,-1,-1,-1)],METHODS),
+      ('sleep','r:=sys->sleep(0);r=sys->sleep(-1);r=sys->sleep(1);',[('sleep',None,0,0,0),('sleep',None,-1,0,0),('sleep',None,1,0,0)],METHODS),
+      ('dup','r:=sys->dup(-1,-1);r=sys->dup(-2,-3);',[('dup',None,-1,-1,-1),('dup',None,-2,-3,-1)],METHODS),
+      ('registers','r:=sys->werrstr("zero");a:=r+7;b:=a+2;r=sys->dup(a,b);',[('werrstr','zero',0,0,0),('dup',None,7,9,9)],METHODS),
+      ('saved','n:=sys->dup(-1,-1);r:=sys->werrstr("held");r=sys->sleep(n);',[('dup',None,-1,-1,-1),('werrstr','held',0,0,0),('sleep',None,-1,0,0)],METHODS),
+      ('nested','r:=sys->sleep(sys->werrstr("nested"));r=sys->werrstr("end");',[('werrstr','nested',0,0,0),('sleep',None,0,0,0),('werrstr','end',0,0,0)],METHODS),
+      ('loop','n:=0;r:=0;while(n<3){r=sys->werrstr("tick");r=sys->sleep(r);n++;}t:=sys->millisec();r=sys->dup(-1,-1);',[('werrstr','tick',0,0,0),('sleep',None,0,0,0)]*3+[('millisec',None,0,0,23),('dup',None,-1,-1,-1)],METHODS),
+      ('branch','r:=sys->dup(-1,-1);if(r<0){r=sys->werrstr("bad-fd");r=sys->sleep(0);}else r=sys->werrstr("unexpected");',[('dup',None,-1,-1,-1),('werrstr','bad-fd',0,0,0),('sleep',None,0,0,0)],METHODS),
+      ('reload','r:=sys->werrstr("before");sys=load Sys Sys->PATH;r=sys->sleep(r);r=sys->remove("/missing");sys=load Sys Sys->PATH;r=sys->dup(r,-1);r=sys->chdir("/ok");r=sys->werrstr("after");',[('werrstr','before',0,0,0),('sleep',None,0,0,0),('remove','/missing',0,0,-1),('dup',None,-1,-1,-1),('chdir','/ok',0,0,0),('werrstr','after',0,0,0)],METHODS),
+      ('bits','r:=sys->werrstr("bits");n:=r+536870911;n++;n<<=2;r=sys->dup(n,n);',[('werrstr','bits',0,0,0),('dup',None,-2147483648,-2147483648,-1)],METHODS),
+    ]
+    return cases
+
+
+def rows(limbo,work):
+    result=[]
+    for name,body,events,order in programs():
+        image=permute(BASE['compile_source'](limbo,work,'sys:=load Sys Sys->PATH;'+body),order)
+        if name=='clock':
+            ins=RAW['I'];indirect=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['indirect']
+            code=ins('ILOAD',64,source=16,middle=0,destination=0)+ins('IMFRAME',65,source=0,middle=0,destination=40)+indirect('ILEA',104,40,32)+ins('IMCALL',72,source=40,middle=0,destination=0)+RAW['EXIT']
+            if section(image,2)!=RAW['W'](5)+code:raise RuntimeError('zero-argument mixed CODE oracle mismatch')
+        result.append((name,image,events))
+    return result
+
+
+def refusals(limbo,work):
+    image=BASE['compile_source'](limbo,work,'sys:=load Sys Sys->PATH;r:=sys->dup(0,0);')
+    ins=RAW['I'];indirect=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['indirect']
+    code=[ins('ILOAD',64,source=16,middle=0,destination=0),ins('IMFRAME',65,source=0,middle=0,destination=40),indirect('IMOVW',0,40,64,2),indirect('IMOVW',104,40,68),indirect('ILEA',104,40,32),ins('IMCALL',72,source=40,middle=0,destination=0),RAW['EXIT']]
+    # An immediate first argument cannot define the uninitialized return cell read by the second.
+    yield replace(image,2,RAW['W'](len(code))+b''.join(code))
+    for offset in (64,68,72,76,80,84,88,96,108):
+        bad=list(code);bad[3]=indirect('IMOVW',offset,40,68);yield replace(image,2,RAW['W'](len(bad))+b''.join(bad))
+    for badarg in (64,72):
+        bad=list(code);bad[3]=indirect('IMOVW',0,40,badarg,2);yield replace(image,2,RAW['W'](len(bad))+b''.join(bad))
+    signature=section(image,5)
+    for offset,value in ((12,1),(16,1),(20,0x71),(24,0x71),(28,0x71),(32,0x71)):
+        bad=bytearray(signature);struct.pack_into('>I',bad,offset,value);yield replace(image,5,bad)
+
+
+def boot(command,work,consumer,limbo,execute,retired):
+    path='/'+str(work.relative_to(work.parent));(work/'ok').mkdir(exist_ok=True)
+    for name,body,events,order in programs():
+        body=body.replace('"/ok"',json.dumps(path+'/ok')).replace('"/missing"',json.dumps(path+'/missing'))
+        image=permute(BASE['compile_source'](limbo,work,'sys:=load Sys Sys->PATH;'+body),order);consumer.write_bytes(image)
+        for jit in (0,1):
+            output=execute(command+['-c',str(jit),'-d','/'+str(consumer.relative_to(work.parent)),'-P','$Sys','-X','dis64-managed-trial'])
+            if f'native64 scalar module SysText: jit={jit}, exit=""' not in output or retired not in output or 'panic:' in output:raise RuntimeError(name+' '+output)
+    for bad in refusals(limbo,work):
+        consumer.write_bytes(bad);output=execute(command+['-d','/'+str(consumer.relative_to(work.parent)),'-P','$Sys','-X','dis64-managed-trial'])
+        if retired in output or 'panic: loading Dis64 pair' not in output:raise RuntimeError('malformed fixed argument program scheduled: '+output)
+    print('PASS mixed fixed Sys: six signatures, 0/1/2 arguments, String/Word roots, nested/looped/reloaded calls, full CODE and argument-initialization refusals',flush=True)
+
+
+if __name__=='__main__':
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--limbo',required=True,type=Path);parser.add_argument('--root',required=True,type=Path);parser.add_argument('--emu',required=True,type=Path);parser.add_argument('--runner',default='');args=parser.parse_args()
+    base=runpy.run_path(str(ROOT/'utils/tests/native64-scalar-boot.py'))
+    with tempfile.TemporaryDirectory(prefix='sys-fixed-',dir=args.root.resolve()) as td:
+        work=Path(td);boot(shlex.split(args.runner)+[str(args.emu.resolve()),'-v','-r',str(args.root.resolve())],work,work/'consumer.dis64',args.limbo,base['execute'],base['RETIRED'])

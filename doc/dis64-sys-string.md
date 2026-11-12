@@ -2,7 +2,7 @@
 
 The private `-64l` file trial executes the real fixed `Sys->werrstr(string): int`
 entry through `LOAD $Sys`, MFRAME and MCALL. The same fixed String-to-Word
-group now admits `chdir` and `remove`, with up to three distinct imports. This connects serialized String
+group now admits `chdir` and `remove`, and can mix them with `millisec`, `sleep` and `dup`, with up to six distinct imports. This connects serialized String
 storage to a builtin native frame and a Word result. It remains an explicit
 trial; ordinary `-64`, variadic print, other builtin signatures and Android AWM
 are not enabled. [Русская версия](dis64-sys-string.ru.md).
@@ -145,7 +145,7 @@ identities are rejected. String-local assignments and aliases in a function
 with branches are conservatively rejected: the current pointer-identity proof
 does not merge such assignments across CFG edges. Pass a literal or nil at a
 conditional/looped call; existing straight-line String aliases still work.
-This remains a fixed String-to-Word group, not general or variadic Sys admission.
+The mixed fixed-signature extension below also admits numeric arguments; general and variadic Sys calls remain outside this trial.
 
 The owning flow gate checks actual error-text event sequences and call counts,
 32-bit wrap and bitwise expressions, branch outcomes, nested calls, normal/error
@@ -173,3 +173,52 @@ result address and exact four-byte status. Allocation-capable String conversion
 now occurs while the VM is held, before release; failure enters no OS operation
 and leaves release/acquire balanced. The existing scheduler/thread machinery is
 reused. See [module loading](dis64-module-loading.md) for why LOAD never calls init.
+
+
+## Mixing fixed String and numeric calls
+
+One caller can import all six methods through the same `$Sys` module and linker.
+No method-specific module loader or automatic `init` call is introduced.
+
+| Methods | Arguments | Native frame | Pointer map |
+| --- | --- | --- | --- |
+| `millisec` | none | 64 bytes | `00` |
+| `sleep` | one Word | 72 bytes | `00 00` |
+| `dup` | two Words | 72 bytes | `00 00` |
+| `werrstr`, `chdir`, `remove` | one String | 72 bytes | `00 80` |
+
+All return a four-byte Word through the checked full-pointer result address.
+Numeric arguments occupy native offsets 64/68; they never become GC roots.
+Mixed callers use the 112-byte layout above, even with no String arguments.
+The compiler and loader require each scalar argument to be initialized on every
+incoming path. Writing an argument in a pending frame does not initialize a
+caller cell. Generated entry identity, signature, size and pointer map must agree
+before any owning module allocation.
+
+Save as `sys-fixed.b` and compile/run with the same commands, replacing
+`sys-text` by `sys-fixed`:
+
+```limbo
+implement SysFixed;
+include "sys.m";
+SysFixed: module { init: fn(); };
+init()
+{
+    sys := load Sys Sys->PATH;
+    stamp := sys->millisec();
+    status := sys->werrstr("start");
+    status = sys->sleep(stamp-stamp);
+    status = sys->dup(-1, -1);
+    if(status < 0)
+        status = sys->werrstr("invalid descriptor");
+}
+```
+
+Run `utils/tests/dis64-sys-fixed.py` with the same `--limbo`, `--root`, `--emu`
+(and optional `--runner`) arguments as the group gate. The owning gate is
+`python3 utils/tests/dis64-sys-fixed-gc.py --limbo /host/tools/limbo`.
+It calls the real C handlers with controlled OS boundaries, forces GC and
+checks argument snapshots, exact Word results, import permutations, nested calls,
+loops, reloads and constructor rollback. A deliberate dataflow corruption must
+fail the admission predicate. These checks do not establish full shell/AWM
+support or native JIT coverage for every opcode.

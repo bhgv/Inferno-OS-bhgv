@@ -78,7 +78,7 @@ def compiler_refusals(limbo,work):
     body='sys:=load Sys Sys->PATH; r:=sys->werrstr("text");'
     for flag in ('-64','-64m'):compile_source(limbo,work,body,flag,False)
     for text in ('sys:=load Sys "$Other"; r:=sys->werrstr("text");',
-                 'sys:=load Sys Sys->PATH; r:=sys->werrstr("text"); n:=sys->sleep(r);',
+                 'sys:=load Sys Sys->PATH; r:=sys->werrstr("text"); n:=sys->fildes(r);',
                  'sys:=load Sys Sys->PATH; r:=sys->werrstr("'+('x'*256)+'");',
                  'sys:=load Sys Sys->PATH; '+'r:=sys->werrstr("a");'+'r=sys->werrstr("a");'*32):
         compile_source(limbo,work,text,accepted=False)

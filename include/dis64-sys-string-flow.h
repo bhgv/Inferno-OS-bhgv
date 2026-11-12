@@ -2,6 +2,22 @@
 #define DIS64_SYS_STRING_FLOW_H
 #include "dis64-pilot.h"
 
+/* Private selection indices only; these integers never enter a wire signature. */
+static const char *const dis64sysfixednames[] = {"werrstr","chdir","remove","millisec","sleep","dup"};
+static int
+dis64sysfixedkind(const char *name)
+{
+    unsigned int i;
+    if(name == 0) return -1;
+    for(i=0; i<6; i++) if(strcmp(name,dis64sysfixednames[i]) == 0) return i;
+    return -1;
+}
+static unsigned int
+dis64sysfixedargs(unsigned int kind)
+{
+    return kind < 3 ? 1 : kind-3;
+}
+
 /* Virtual scalar proof cells are independent of the real mapped String at FP64.
  * Keep the returned Word last, so the trusted full-pointer binder remains generic. */
 static long
