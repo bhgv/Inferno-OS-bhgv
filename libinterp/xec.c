@@ -187,7 +187,7 @@ native64bindresult(int managed)
 	   (uintptr)type > (uintptr)-1-O(Type, map)-(uintptr)mapbytes ||
 	   base > (uintptr)-1-(uintptr)size || instruction.s.ind != size-8)
 		error(exBounds);
-	if(managed == 2 && ((size != 80 && size != 112) || mapbytes != 2 || type->map[0] != 0 || type->map[1] != 0x80))
+	if(managed == 2 && ((size != 80 && size != 112) || mapbytes != 2 || type->map[0] != 0 || (type->map[1] != 0x80 && (size != 112 || type->map[1] != 0xc0))))
 		error(exBounds);
 	resultbyte = (size-8)/64;
 	resultbit = 0x80 >> ((size-8)/8%8);
@@ -196,9 +196,9 @@ native64bindresult(int managed)
 	for(i=0; i<mapbytes; i++){
 		int map = type->map[i];
 
-		/* The paired String caller also owns its argument at byte 64. */
+		/* Checked callers own one or two String argument roots from byte 64. */
 		if(managed && (size == 80 || (managed == 2 && size == 112)) && i == 1)
-			map &= ~0x80;
+			map &= managed == 2 && size == 112 ? ~0xc0 : ~0x80;
 		if(map != (managed == 1 && i == resultbyte ? resultbit : 0))
 			error(exBounds);
 	}
@@ -230,7 +230,7 @@ native64bindresult(int managed)
 			if(previous != H) error(exBounds);
 		}
 		/* Managed results use a mapped argument; fixed Sys also admits scalar-only frames. */
-		if(managed == 2 ? (top-target != 64 && top-target != 72) : top-target != 72)
+		if(managed == 2 ? (top-target != 64 && top-target != 72 && top-target != 80 && top-target != 88) : top-target != 72)
 			error(exBounds);
 		memmove(&entered, (uchar*)pending+O(Frame, mr), sizeof(entered));
 		memmove(&type, (uchar*)pending+O(Frame, t), sizeof(type));
@@ -242,7 +242,8 @@ native64bindresult(int managed)
 		   (uintptr)type > (uintptr)-1-O(Type, map)-2 ||
 		   type->size != (int)(top-target) || type->map[0] != 0 ||
            (managed == 2 ? (type->size == 64 ? type->np != 1 :
-            (type->np != 2 || (type->map[1] != 0 && type->map[1] != 0x80))) :
+            (type->np != 2 || (type->size == 72 ?
+             (type->map[1] != 0 && type->map[1] != 0x80) : type->map[1] != 0xc0))) :
             (type->size != 72 || type->np != 2 || type->map[1] != 0x80)))
 			error(exBounds);
 	}

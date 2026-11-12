@@ -712,11 +712,14 @@ Sys_unmount(void *fp)
 {
 	F_Sys_unmount local, *f;
 	WORD result;
+	char *first, *second;
 
 	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_unmount, ret), sizeof(*local.ret));
 	f = &local;
+	first = string2c(f->s1);
+	second = string2c(f->s2);
 	release();
-	result = kunmount(string2c(f->s1), string2c(f->s2));
+	result = kunmount(first, second);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
@@ -1168,6 +1171,7 @@ Sys_bind(void *fp)
 {
 	F_Sys_bind local, *f;
 	WORD result;
+	char *first, *second;
 
 	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_bind, ret), sizeof(*local.ret));
 	f = &local;
@@ -1177,8 +1181,10 @@ Sys_bind(void *fp)
 		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
+	first = string2c(f->s);
+	second = string2c(f->on);
 	release();
-	result = kbind(string2c(f->s), string2c(f->on), f->flags);
+	result = kbind(first, second, f->flags);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }

@@ -11,8 +11,8 @@ import tempfile
 ROOT=Path(__file__).resolve().parents[2]
 BASE=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-string.py'))
 RAW=BASE['RAW'];section=BASE['section'];replace=BASE['replace']
-METHODS=('werrstr','chdir','remove','millisec','sleep','dup')
-ARGS={'werrstr':(0x71,),'chdir':(0x71,),'remove':(0x71,),'millisec':(),'sleep':(1,),'dup':(1,1)}
+METHODS=('werrstr','chdir','remove','millisec','sleep','dup','unmount','bind')
+ARGS={'werrstr':(0x71,),'chdir':(0x71,),'remove':(0x71,),'millisec':(),'sleep':(1,),'dup':(1,1),'unmount':(0x71,0x71),'bind':(0x71,0x71,1)}
 
 
 def imports(image):
@@ -62,6 +62,18 @@ def programs():
       ('reload','r:=sys->werrstr("before");sys=load Sys Sys->PATH;r=sys->sleep(r);r=sys->remove("/missing");sys=load Sys Sys->PATH;r=sys->dup(r,-1);r=sys->chdir("/ok");r=sys->werrstr("after");',[('werrstr','before',0,0,0),('sleep',None,0,0,0),('remove','/missing',0,0,-1),('dup',None,-1,-1,-1),('chdir','/ok',0,0,0),('werrstr','after',0,0,0)],METHODS),
       ('bits','r:=sys->werrstr("bits");n:=r+536870911;n++;n<<=2;r=sys->dup(n,n);',[('werrstr','bits',0,0,0),('dup',None,-2147483648,-2147483648,-1)],METHODS),
     ]
+    pairbody=allbody+'r=sys->unmount("/left","/right");r=sys->bind("/source","/target",0);r=sys->werrstr("after-pair");'
+    pairevents=allevents+[('unmount','/left',0,0,-1,'/right'),('bind','/source',0,0,-1,'/target'),('werrstr','after-pair',0,0,0)]
+    for shift in range(8):cases.append(('pair-order-'+str(shift),pairbody,pairevents,METHODS[shift:]+METHODS[:shift]))
+    cases += [
+      ('pair-utf-bind','r:=sys->bind("исходник","цель",0);',[('bind','исходник',0,0,-1,'цель')],METHODS),
+      ('pair-utf','r:=sys->unmount("лево","право");r=sys->bind("исходник","цель",0);',[('unmount','лево',0,0,-1,'право'),('bind','исходник',0,0,-1,'цель')],METHODS),
+      ('pair-nil','r:=sys->unmount(nil,nil);r=sys->bind(nil,"/target",0);',[('unmount','',0,0,-1,''),('bind','',0,0,-1,'/target')],METHODS),
+      ('pair-alias','a:="/left";b:=a;a=nil;r:=sys->unmount(b,"/right");',[('unmount','/left',0,0,-1,'/right')],METHODS),
+      ('pair-flags','r:=sys->dup(-1,-1);r=sys->bind("/source","/target",r);',[('dup',None,-1,-1,-1),('bind','/source',-1,0,-1,'/target')],METHODS),
+      ('pair-loop','n:=0;r:=0;while(n<2){r=sys->unmount("/left","/right");r=sys->bind("/source","/target",n);n++;}',[('unmount','/left',0,0,-1,'/right'),('bind','/source',0,0,-1,'/target'),('unmount','/left',0,0,-1,'/right'),('bind','/source',1,0,-1,'/target')],METHODS),
+      ('pair-reload','r:=sys->unmount("/left","/right");sys=load Sys Sys->PATH;r=sys->bind("/source","/target",0);',[('unmount','/left',0,0,-1,'/right'),('bind','/source',0,0,-1,'/target')],METHODS),
+    ]
     return cases
 
 
@@ -92,6 +104,23 @@ def refusals(limbo,work):
         bad=bytearray(signature);struct.pack_into('>I',bad,offset,value);yield replace(image,5,bad)
 
 
+    pair=BASE['compile_source'](limbo,work,'sys:=load Sys Sys->PATH;r:=sys->bind("left","right",0);')
+    decode=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['decode']
+    records=decode(section(pair,2));raw=[record[-1] for record in records]
+    # Caller map, root publication, callee offsets, and scalar facts are separate checks.
+    types=bytearray(section(pair,3));types[13]=0x80;yield replace(pair,3,types)
+    for index in (1,2,4,5):
+        bad=list(raw);bad[index]=ins('IMOVW',66,source=0,destination=80);yield replace(pair,2,RAW['W'](len(bad))+b''.join(bad))
+    for offset in (64,68,72,76,80,84,88,96,108):
+        bad=list(raw);bad[6]=indirect('IMOVW',offset,40,80);yield replace(pair,2,RAW['W'](len(bad))+b''.join(bad))
+    bad=list(raw);bad[6]=indirect('IMOVW',104,40,80);yield replace(pair,2,RAW['W'](len(bad))+b''.join(bad))
+    for source,dest in ((64,72),(72,64),(80,72)):
+        bad=list(raw);bad[5]=indirect('IMOVP',source,40,dest);yield replace(pair,2,RAW['W'](len(bad))+b''.join(bad))
+    signature=section(pair,5)
+    for offset in (28,32):
+        bad=bytearray(signature);struct.pack_into('>I',bad,offset,1);yield replace(pair,5,bad)
+
+
 def boot(command,work,consumer,limbo,execute,retired):
     path='/'+str(work.relative_to(work.parent));(work/'ok').mkdir(exist_ok=True)
     for name,body,events,order in programs():
@@ -103,7 +132,7 @@ def boot(command,work,consumer,limbo,execute,retired):
     for bad in refusals(limbo,work):
         consumer.write_bytes(bad);output=execute(command+['-d','/'+str(consumer.relative_to(work.parent)),'-P','$Sys','-X','dis64-managed-trial'])
         if retired in output or 'panic: loading Dis64 pair' not in output:raise RuntimeError('malformed fixed argument program scheduled: '+output)
-    print('PASS mixed fixed Sys: six signatures, 0/1/2 arguments, String/Word roots, nested/looped/reloaded calls, full CODE and argument-initialization refusals',flush=True)
+    print('PASS mixed fixed Sys: eight signatures, 0/1/2/3 arguments, String/Word roots, nested/looped/reloaded calls, full CODE and argument-initialization refusals',flush=True)
 
 
 if __name__=='__main__':

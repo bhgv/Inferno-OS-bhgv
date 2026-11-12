@@ -3,19 +3,36 @@
 #include "dis64-pilot.h"
 
 /* Private selection indices only; these integers never enter a wire signature. */
-static const char *const dis64sysfixednames[] = {"werrstr","chdir","remove","millisec","sleep","dup"};
+static const char *const dis64sysfixednames[] = {"werrstr","chdir","remove","millisec","sleep","dup","unmount","bind"};
 static int
 dis64sysfixedkind(const char *name)
 {
     unsigned int i;
     if(name == 0) return -1;
-    for(i=0; i<6; i++) if(strcmp(name,dis64sysfixednames[i]) == 0) return i;
+    for(i=0; i<8; i++) if(strcmp(name,dis64sysfixednames[i]) == 0) return i;
     return -1;
 }
 static unsigned int
 dis64sysfixedargs(unsigned int kind)
 {
-    return kind < 3 ? 1 : kind-3;
+    return kind < 3 ? 1 : kind < 6 ? kind-3 : kind == 6 ? 2 : 3;
+}
+
+/* Fixed argument classes and offsets; generated native entries remain authoritative. */
+static int
+dis64sysfixedstring(unsigned int kind, unsigned int argument)
+{
+    return kind < 3 || (kind >= 6 && argument < 2);
+}
+static unsigned int
+dis64sysfixedoffset(unsigned int kind, unsigned int argument)
+{
+    return 64+(kind >= 6 ? 8 : 4)*argument;
+}
+static unsigned int
+dis64sysfixedframe(unsigned int kind)
+{
+    return kind >= 6 ? (kind == 6 ? 80 : 88) : dis64sysfixedargs(kind) ? 72 : 64;
 }
 
 /* Virtual scalar proof cells are independent of the real mapped String at FP64.

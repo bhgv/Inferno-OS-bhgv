@@ -65,6 +65,8 @@ static const LimboNative64Entry *const native64sysio[] = {
 	&limbo_native64_Sys_werrstr_entry, // Checked String-to-Word file trial.
 	&limbo_native64_Sys_chdir_entry, // Namespace status with a rooted String argument.
 	&limbo_native64_Sys_remove_entry, // Removal status with a rooted String argument.
+	&limbo_native64_Sys_unmount_entry, // Two independently rooted namespace operands.
+	&limbo_native64_Sys_bind_entry, // Two String operands followed by Word flags.
 };
 
 

@@ -4,7 +4,7 @@
 char exNilref[] = "dereference of nil", exBounds[] = "array bounds error"; // VM frame diagnostics.
 
 static int initialized, rejectinit, clockreads; // Bounded OS descriptor boundary and observed callback identities.
-static const char *names[] = {"byte2char", "char2byte", "utfbytes", "read", "readn", "write", "pread", "pwrite", "pctl", "file2chan", "millisec", "open", "fildes", "sleep", "dup", "werrstr", "chdir", "remove"}; // Exact trusted profile.
+static const char *names[] = {"byte2char", "char2byte", "utfbytes", "read", "readn", "write", "pread", "pwrite", "pctl", "file2chan", "millisec", "open", "fildes", "sleep", "dup", "werrstr", "chdir", "remove", "unmount", "bind"}; // Exact trusted profile.
 static int invoked[nelem(names)]; // One dispatch counter per expected export.
 
 
@@ -152,6 +152,8 @@ Sys_werrstr(void *frame)
 
 void Sys_chdir(void *frame){check(frame == &baseline);invoked[16]++;}
 void Sys_remove(void *frame){check(frame == &baseline);invoked[17]++;}
+void Sys_unmount(void *frame){check(frame == &baseline);invoked[18]++;}
+void Sys_bind(void *frame){check(frame == &baseline);invoked[19]++;}
 
 int native64stringlea8step(void){return 0;} // No result-binding VM execution in this registration gate.
 

@@ -10,6 +10,13 @@ grouprelease(void)
     WORD poison=99;
     void *wrong=&groupwrong;
     if(groupkind < 3){groupstringrelease();return;}
+    if(groupkind >= 6){
+        void *old,*empty=H;
+        memmove(&old,R.FP+64,sizeof(old));memmove(R.FP+64,&empty,sizeof(empty));destroy(old);
+        memmove(&old,R.FP+72,sizeof(old));memmove(R.FP+72,&empty,sizeof(empty));destroy(old);
+        if(groupkind == 7)memmove(R.FP+80,&poison,sizeof(poison));
+        memmove(R.FP+32,&wrong,sizeof(wrong));groupreleases++;groupcollect();return;
+    }
     require(groupkind == 4 || groupkind == 5);
     memmove(R.FP+64,&poison,sizeof(poison));
     if(groupkind == 5)memmove(R.FP+68,&poison,sizeof(poison));
@@ -38,10 +45,22 @@ limbosleep(ulong period)
     if(period != (ulong)fixedexpected->first){fprintf(stderr,"Sys fixed argument predicate\n");exit(18);}
     fixedos++;groupcollect();return 0;
 }
+static int
+pairnative(char *first,char *second,int flags)
+{
+    require(groupkind >= 6 && cachereleases == cacheacquires+1);
+    if(strcmp(first,fixedexpected->text) || strcmp(second,fixedexpected->other) ||
+       (groupkind == 7 && flags != fixedexpected->first)){
+        fprintf(stderr,"Sys paired argument predicate\n");exit(19);
+    }
+    fixedos++;groupcollect();return -1;
+}
+int kunmount(char *first,char *second){return pairnative(first,second,0);}
+int kbind(char *first,char *second,int flags){return pairnative(first,second,flags);}
 void seterror(char *text,...){USED(text);require(0);}
 
 static void
-fixedexecute(const SysFixedCase *test, int jit)
+fixedexecute(const SysFixedCase *test, int jit, int conversion)
 {
     Module *sys;
     Modlink *caller;
@@ -53,7 +72,7 @@ fixedexecute(const SysFixedCase *test, int jit)
     uvlong result,guard=0x1122334455667788ULL,expected;
     WORD first=0,second=0;
     unsigned int step,calls=0,ordinal;
-    int before,osbefore,pathbefore;
+    int before,osbefore,pathbefore,fault=0;
     numericdrain();require(modules == nil);before=live;sys=groupmodule();
     dis64bootmanaged=1;dis64bootprovider="$Sys";
     caller=prepare64sysstring("sys-fixed",test->image,test->bytes,jit);require(caller != nil);
@@ -73,12 +92,20 @@ fixedexecute(const SysFixedCase *test, int jit)
             require(ordinal<test->imports && strcmp(test->names[ordinal],event->method) == 0);
             groupkind=dis64sysfixedkind(event->method);fixedexpected=event;
             memmove(&pending,process.R.FP+40,sizeof(pending));
-            if(groupkind >= 4){
+            if(groupkind == 4 || groupkind == 5){
                 memmove(&first,(uchar*)pending+64,sizeof(first));
                 if(groupkind == 5)memmove(&second,(uchar*)pending+68,sizeof(second));
                 if(first != event->first || (groupkind == 5 && second != event->second)){fprintf(stderr,"Sys fixed argument predicate\n");exit(18);}
             }
             groupwrong=0xdeadbeefU;memmove(process.R.FP+104,&guard,sizeof(guard));
+            if(conversion){
+                require(groupkind >= 6 && calls == 0);
+                failat=allocations+conversion;
+                require(!kprotect(execute,&process) && strcmp(message,exNomem) == 0);failat=0;
+                memmove(&result,process.R.FP+104,sizeof(result));
+                require(result == guard && fixedos == 0 && groupreleases == 0 && cachereleases == cacheacquires);
+                fault=1;break;
+            }
         }
         require(kprotect(execute,&process));
         if(pc->op == IMCALL){
@@ -92,8 +119,11 @@ fixedexecute(const SysFixedCase *test, int jit)
         }
         numericcollect(&process);
     }
-    require(step<2048 && calls == test->calls && !fixedinside);
-    require(!kprotect(execute,&process) && message[0] == 0);
+    if(conversion)require(fault && !fixedinside);
+    else{
+        require(step<2048 && calls == test->calls && !fixedinside);
+        require(!kprotect(execute,&process) && message[0] == 0);
+    }
     destroystack(&R);managedprocess=nil;unload(sys);numericdrain();
     require(modules == nil && live == before && worker.nerr == 0 && Tstring.ref == 1 && Tmodlink.ref == 1 && cachereleases == cacheacquires);
     dis64bootmanaged=0;dis64bootprovider=nil;
@@ -139,6 +169,17 @@ fixedconstructors(int *native,int *heap)
         }
         *native+=attempts;*heap+=pools;
     }
+    start=allocations;poolstart=literalpoolcalls;
+    sys->type[6]->map[1]=0x80;
+    require(prepare64sysstring("bad-pair-map",sysfixed_cases[18].image,sysfixed_cases[18].bytes,0) == nil);
+    sys->type[6]->map[1]=0xc0;
+    sys->type[7]->size=80;
+    require(prepare64sysstring("bad-bind-size",sysfixed_cases[18].image,sysfixed_cases[18].bytes,0) == nil);
+    sys->type[7]->size=88;
+    sys->ext[7].u.runt=Sys_unmount;
+    require(prepare64sysstring("bad-bind-function",sysfixed_cases[18].image,sysfixed_cases[18].bytes,0) == nil);
+    sys->ext[7].u.runt=Sys_bind;
+    require(allocations == start && literalpoolcalls == poolstart && live == before && sys->ref == 1);
     unload(sys);numericdrain();dis64bootmanaged=0;dis64bootprovider=nil;
 }
 
@@ -152,8 +193,13 @@ main(void)
     optab[ILOAD]=iload;optab[IMOVP]=movp;optab[IMFRAME]=mframe;optab[IMCALL]=mcall;optab[IEXIT]=iexit;
     optab[IMOVW]=movw;optab[IADDW]=addw;optab[ISUBW]=subw;optab[ISHLW]=shlw;optab[IBGEW]=bgew;optab[IBNEW]=bnew;optab[IBEQW]=beqw;optab[IBLEW]=blew;optab[IJMP]=jmp;
     fixedconstructors(&native,&heap);
-    for(i=0;i<nelem(sysfixed_cases);i++){fixedexecute(sysfixed_cases+i,0);fixedexecute(sysfixed_cases+i,1);}
+    for(i=0;i<nelem(sysfixed_cases);i++){fixedexecute(sysfixed_cases+i,0,0);fixedexecute(sysfixed_cases+i,1,0);
+        if(sysfixed_cases[i].events[0].method && (strcmp(sysfixed_cases[i].events[0].method,"unmount") == 0 || strcmp(sysfixed_cases[i].events[0].method,"bind") == 0) &&
+           (uchar)sysfixed_cases[i].events[0].text[0] >= 128){
+            fixedexecute(sysfixed_cases+i,0,1);fixedexecute(sysfixed_cases+i,0,2);
+            fixedexecute(sysfixed_cases+i,1,1);fixedexecute(sysfixed_cases+i,1,2);
+        }}
     require(live == 0);
-    printf("PASS mixed fixed Sys owning runtime: %u C/JIT/GC cases, 64/72-byte callee maps, exact scalar args/results/ordinals, release snapshots, %u wire plus 3 generated-entry pre-allocation refusals, %d native/%d heap rollback refusals\n",2*(unsigned int)nelem(sysfixed_cases),(unsigned int)nelem(sysfixed_bad),native,heap);
+    printf("PASS mixed fixed Sys owning runtime: %u C/JIT/GC cases, 64/72/80/88-byte callee maps, exact scalar args/results/ordinals, release snapshots, 8 held-VM dual-conversion failures, %u wire plus 6 generated-entry pre-allocation refusals, %d native/%d heap rollback refusals\n",2*(unsigned int)nelem(sysfixed_cases),(unsigned int)nelem(sysfixed_bad),native,heap);
     return 0;
 }

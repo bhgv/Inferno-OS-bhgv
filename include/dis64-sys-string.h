@@ -20,7 +20,7 @@ static const char*
 dis64sysstringmethod(const DisStringPoolView *pool, unsigned int symbol)
 {
     unsigned int i;
-    for(i=0; i<6; i++) if(dis64sysstringname(pool,symbol,dis64sysfixednames[i])) return dis64sysfixednames[i];
+    for(i=0; i<8; i++) if(dis64sysstringname(pool,symbol,dis64sysfixednames[i])) return dis64sysfixednames[i];
     return 0;
 }
 
@@ -36,7 +36,7 @@ dis64sysstringtable(const unsigned char *data, unsigned int bytes, unsigned int 
     (void)types; (void)instructions; (void)context;
     if(exports || parameters == 0 || bytes < 4 || !dis64sysstringname(pool,0,"$Sys")) return 0;
     count = dis64u32(data);
-    if(count == 0 || count > 6 || count > limit) return 0;
+    if(count == 0 || count > 8 || count > limit) return 0;
     for(i=0; i<count; i++){
         if(at > bytes || !dis64bindingrecord(data+at,bytes-at,0,&binding,&used) ||
            binding.module != 0 || binding.symbol != (i ? 3+i : 1)) return 0;
@@ -45,7 +45,7 @@ dis64sysstringtable(const unsigned char *data, unsigned int bytes, unsigned int 
         arguments = dis64sysfixedargs(kind);
         if(binding.signature.bytes != 12+4*arguments || dis64u32(binding.signature.data) != Dis64TrialVersion ||
            dis64u32(binding.signature.data+4) != arguments || dis64u32(binding.signature.data+8) != Dis64Int) return 0;
-        for(j=0; j<arguments; j++) if(dis64u32(binding.signature.data+12+4*j) != (kind < 3 ? Dis64TrialString : Dis64Int)) return 0;
+        for(j=0; j<arguments; j++) if(dis64u32(binding.signature.data+12+4*j) != (dis64sysfixedstring(kind,j) ? Dis64TrialString : Dis64Int)) return 0;
         if(seen & (1U<<kind)) return 0;
         seen |= 1U<<kind; at += used;
     }
@@ -82,20 +82,22 @@ dis64sysstringview(const Dis64StorageImage *image, Dis64ManagedLiteralsView *lit
     unsigned char boundary[Dis64ClockInstructions];
     DisRuneView name;
     unsigned int i, at = 4, used, calls = 0, phase = 0, pending = 0, rune, words = 0, ordinal = 0, seen = 0, parameter = 0;
-    int kinds[6];
-    int extended;
+    int kinds[8];
+    int extended, pairroots=0;
     if(image->module.profile != 1 || image->module.entry != 0 || image->module.name != 2 ||
-       (image->imports.count == 0 || image->imports.count > 6) || image->exports.count != 0 || image->initializers.count != 0 || image->data.align != 8 ||
+       (image->imports.count == 0 || image->imports.count > 8) || image->exports.count != 0 || image->initializers.count != 0 || image->data.align != 8 ||
        image->types.count != 2 || image->module.frametype != 0 || image->module.datatype != 1 ||
        !dis64typeget(&image->types,0,&frame) || (frame.bytes != 80 && frame.bytes != 112) || frame.align != 8 ||
-       frame.mapbytes != 2 || frame.map[0] != 0 || frame.map[1] != 0x80 ||
+       frame.mapbytes != 2 || frame.map[0] != 0 || (frame.map[1] != 0x80 && frame.map[1] != 0xc0) ||
        !dis64sysstringname(&image->strings,3,"$Sys") ||
        !disstringpoolget(&image->strings,2,&name) || name.count == 0 || name.count > 255) return 0;
     extended = frame.bytes == 112;
     for(i=0; i<image->imports.count; i++){
         kinds[i] = dis64sysfixedkind(dis64sysstringmethod(&image->strings,i ? 3+i : 1));
+        if(kinds[i] >= 6) pairroots=1;
         if(kinds[i] < 0 || (!extended && kinds[i] >= 3)) return 0;
     }
+    if(frame.map[1] != (pairroots ? 0xc0 : 0x80) || (pairroots && !extended)) return 0;
     for(i=0; i<name.count; i++)
         if(!disruneat(&name,i,&rune) || rune == 0 || rune > 127) return 0;
     for(i=0; i<image->code.count; i++){
@@ -112,12 +114,19 @@ dis64sysstringview(const Dis64StorageImage *image, Dis64ManagedLiteralsView *lit
         }
         if(in.op == IMFRAME && phase == 1){
             if(in.mode != (SRC(AMP)|AXIMM|DST(AFP)) || in.source != 0 || in.destination != 40 ||
-               in.middle < 0 || (unsigned long)in.middle >= image->imports.count || kinds[in.middle] < 3) return 0;
+               in.middle < 0 || (unsigned long)in.middle >= image->imports.count || (kinds[in.middle] < 3 || kinds[in.middle] >= 6)) return 0;
             ordinal = in.middle; seen |= 1U<<ordinal; parameter=0;
             phase = dis64sysfixedargs(kinds[ordinal]) ? 6 : 4; continue;
         }
+        if(phase == 6 && dis64sysfixedstring(kinds[ordinal],parameter)){
+            if(in.op != IMOVP || in.mode != (SRC(AFP)|DST(AFP|AIND)) || in.source != 64+8*parameter ||
+               in.destination != 40 || decoded.secondary != 64+8*parameter) return 0;
+            flow[i] = (Dis64Instruction){IMOVW,SRC(AIMM)|DST(AFP|AIND),0,0,40};
+            if(++parameter == dis64sysfixedargs(kinds[ordinal])) phase=4;
+            continue;
+        }
         if(phase == 6){
-            if(in.op != IMOVW || in.destination != 40 || decoded.secondary != 64+4*parameter ||
+            if(in.op != IMOVW || in.destination != 40 || decoded.secondary != dis64sysfixedoffset(kinds[ordinal],parameter) ||
                (in.mode != (SRC(AFP)|DST(AFP|AIND)) && in.mode != (SRC(AIMM)|DST(AFP|AIND)))) return 0;
             if(USRC(in.mode) == AFP){
                 flow[i].source = dis64sysstringcell(in.source,0); if(flow[i].source < 0) return 0;
@@ -137,12 +146,21 @@ dis64sysstringview(const Dis64StorageImage *image, Dis64ManagedLiteralsView *lit
             flow[i] = (Dis64Instruction){ILOAD,0,0,0,0};
             phase = 2; break;
         case 2:
+            if(pairroots && in.op == IMOVP){
+                if(in.mode != (SRC(AMP)|DST(AFP)) || in.destination != 72 ||
+                   (in.source != 8 && (in.source < 24 || in.source%8 || (unsigned long)in.source >= image->data.bytes))) return 0;
+                flow[i] = (Dis64Instruction){ILOAD,0,0,0,0}; phase=7; break;
+            }
             if(in.op != IMFRAME || in.mode != (SRC(AMP)|AXIMM|DST(AFP)) || in.source != 0 || in.middle < 0 || (unsigned long)in.middle >= image->imports.count || in.destination != 40) return 0;
             ordinal = in.middle; if(kinds[ordinal] >= 3) return 0; seen |= 1U<<ordinal;
             phase = 3; break;
+        case 7:
+            if(in.op != IMFRAME || in.mode != (SRC(AMP)|AXIMM|DST(AFP)) || in.source != 0 ||
+               in.middle < 0 || (unsigned long)in.middle >= image->imports.count || in.destination != 40 || kinds[in.middle] < 6) return 0;
+            ordinal=in.middle; seen |= 1U<<ordinal; parameter=0; phase=6; break;
         case 3:
             if(in.op != IMOVP || in.mode != (SRC(AFP)|DST(AFP|AIND)) || in.source != 64 || in.destination != 40 || decoded.secondary != 64) return 0;
-            flow[i] = (Dis64Instruction){IMOVW,SRC(AIMM)|DST(AFP),0,0,72};
+            flow[i] = (Dis64Instruction){IMOVW,SRC(AIMM)|DST(AFP|AIND),0,0,40};
             phase = 4; break;
         case 4:
             if(in.op != ILEA || in.mode != (SRC(AFP)|DST(AFP|AIND)) || in.source != (long)frame.bytes-8 || in.destination != 40 || decoded.secondary != 32) return 0;

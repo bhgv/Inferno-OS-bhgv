@@ -2,7 +2,7 @@
 
 The private `-64l` file trial executes the real fixed `Sys->werrstr(string): int`
 entry through `LOAD $Sys`, MFRAME and MCALL. The same fixed String-to-Word
-group now admits `chdir` and `remove`, and can mix them with `millisec`, `sleep` and `dup`, with up to six distinct imports. This connects serialized String
+group now admits `chdir` and `remove`, and can mix them with `millisec`, `sleep` and `dup`, with up to eight distinct imports. This connects serialized String
 storage to a builtin native frame and a Word result. It remains an explicit
 trial; ordinary `-64`, variadic print, other builtin signatures and Android AWM
 are not enabled. [Русская версия](dis64-sys-string.ru.md).
@@ -131,8 +131,8 @@ An extended caller uses 112 bytes with the same `{0x00,0x80}` pointer map:
 | FP108 | Unmapped result padding |
 
 Only declared scalar cells can be read or written as Words. The full-pointer
-return binder accepts the checked 80/112-byte caller geometries and the same
-72-byte native callee geometry. It never treats a Word or its padding as a root.
+return binder accepts the checked 80/112-byte caller geometries and the checked
+fixed native callee geometries below. It never treats a Word or its padding as a root.
 The compiler and loader check definite initialization using a bounded CFG
 intersection solver, including the zero-iteration path through a loop. Branches
 can enter scalar steps, later LOADs or the start of a complete argument/call
@@ -177,7 +177,7 @@ reused. See [module loading](dis64-module-loading.md) for why LOAD never calls i
 
 ## Mixing fixed String and numeric calls
 
-One caller can import all six methods through the same `$Sys` module and linker.
+One caller can import all eight methods through the same `$Sys` module and linker.
 No method-specific module loader or automatic `init` call is introduced.
 
 | Methods | Arguments | Native frame | Pointer map |
@@ -222,3 +222,35 @@ checks argument snapshots, exact Word results, import permutations, nested calls
 loops, reloads and constructor rollback. A deliberate dataflow corruption must
 fail the admission predicate. These checks do not establish full shell/AWM
 support or native JIT coverage for every opcode.
+
+
+## Two String arguments in a mixed frame
+
+The same loader and linker now admit `unmount(string, string): int` and
+`bind(string, string, int): int`. Their generated native frames are 80 and 88
+bytes, both with map `00 c0`. Strings occupy offsets 64/72; bind flags occupy
+80. The 112-byte caller roots both Strings at FP64/FP72 with map `00 c0`.
+Its Word cells FP80/84/88 and result FP104 remain unmarked.
+
+```limbo
+implement SysPair;
+include "sys.m";
+SysPair: module { init: fn(); };
+init()
+{
+    sys := load Sys Sys->PATH;
+    status := sys->bind("/dis", "/dis", Sys->MAFTER);
+    if(status == 0)
+        status = sys->unmount("/dis", "/dis");
+    status = sys->werrstr("namespace calls completed");
+}
+```
+
+Save as `sys-pair.b` and use the commands above with `sys-pair` as the name.
+The example adds and removes a binding inside the emulator namespace.
+Both calls use the existing C wrappers. Both String conversions precede
+`release`; failure of either conversion enters no OS operation and preserves
+the result cell. The owning gate forces GC between instructions and at the OS
+boundary, mutates borrowed arguments after the wrapper snapshot and checks the
+original text, flags and result address. Publishing an argument pointer cannot
+establish an initialized scalar-result fact.
