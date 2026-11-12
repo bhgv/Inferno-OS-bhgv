@@ -259,15 +259,22 @@ and repeat with `-c 0` for the interpreter. The paired boot test with
 reserves `$Sys` as an explicit provider selector and shares the
 existing indirect LEA encoding with the local result binder.
 
-The real `limbo -64` backend and file loader also accept forward Word
-comparisons and `if/else` diamonds inside scalar regions **between** those
-calls. All six integer comparisons are supported. Joins retain only locals
-initialized on every incoming path. A branch may reach the next MFRAME, but
-cannot skip a Sys call, enter its argument/result setup, jump across a call
-barrier or go backward. Early returns, loops and conditional Sys invocation
-remain outside this bounded profile. Existing limits remain 32 call sites,
-64 scalar steps (including branches and saved-result copies), three persistent
-Word locals and an 80-byte entry frame.
+The real `limbo -64` backend and file loader accept Word comparisons,
+`if/else`, conditional fixed Sys calls, loops, `break`/`continue`, and early
+`return` from the void entry function. All six integer comparisons are
+supported. A descending fixed-point analysis intersects initialization facts
+at joins and loop headers; a backedge cannot manufacture a value missing on
+the first iteration. Call results needed across control flow are copied into
+stable Word cells instead of aliasing the most recent temporary result.
+
+A branch can skip a complete call but cannot enter its argument/result setup
+or re-enter the initial LOAD. All code, including the final exit, must be
+structurally reachable. The verifier's work is bounded; runtime iteration
+counts/termination are not proved. Existing limits remain 32 static call
+sites, 64 scalar steps (including branches and saved-result copies), three
+persistent Word locals and an 80-byte entry frame. Nested call expressions,
+managed/variadic arguments, exceptions and general exported functions remain
+outside this profile.
 
 For example, save this as `flow.b`:
 
@@ -278,9 +285,14 @@ Flow: module { init: fn(); };
 init()
 {
     sys := load Sys Sys->PATH;
-    value := sys->dup(-1, -1);
+    count := 0;
+    value := -1;
+    for(; count < 3; count++) {
+        if(count == 1)
+            value = sys->sleep(0);
+    }
     if(value < 0)
-        value = 0;
+        return;
     value = sys->sleep(value);
 }
 ```
@@ -307,9 +319,12 @@ python3 utils/tests/dis64-pair-boot.py --root /build \
 
 `--runner`, `CC` and `NATIVE64_CFLAGS` select cross execution/checker compilation.
 The full `--sys-clock` gate also runs these cases. Tests execute compiled
-conditions, nested diamonds and native-PC relocation after a saved return
-copy; check signed16 middle operands; reject malformed control flow before
-scheduling; and require an active intersection-to-union removal control to
+conditions, conditional calls, stable result identities, early returns,
+loop trip counts, break/continue and native-PC relocation after saved return
+copies; check signed16 middle operands; reject malformed control flow before
+scheduling; compare the shared flow check against an independent set-based
+reference on 256 deterministic graphs; and require an active
+intersection-to-union removal control to
 detect a local defined on only one branch. Existing wire tags and section
 layouts are unchanged.
 

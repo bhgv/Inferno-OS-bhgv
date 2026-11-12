@@ -178,6 +178,20 @@ dis64clockcell(long *locals, long legacy)
 }
 
 
+/* Conditional calls need a stable Word identity instead of aliasing whichever
+ * call most recently wrote the common result at byte72. */
+static long
+dis64clockretain(long *locals, long legacy)
+{
+    unsigned int i;
+    long cell = dis64clockcell(locals,legacy);
+    if(cell) return cell;
+    for(i=0; i<Dis64ClockLocals; i++) if(locals[i] < 0) {
+        locals[i] = legacy; return i == 2 ? 76 : 64+4*i;
+    }
+    return 0;
+}
+
 /* Resolve initialized scalar values independently of legacy register placement. */
 static int
 dis64clockvalue(int mode, Addr *address, long *locals, long previous, Addr *mapped)
@@ -247,14 +261,14 @@ dis64clockword(Inst *input, long module, long bytes, long *locals, long *previou
 }
 
 
-/* Map only existing Word comparisons and direct forward jumps. Targets are
+/* Map existing Word comparisons and direct jumps. Targets are
  * relocated after complete call-group expansion; no branch may enter a group. */
 static int
 dis64clocktest(Inst *input, long *locals, long previous, unsigned int count, Dis64Instruction *output)
 {
     Inst mapped = *input;
     if(!dis64clockbranch(input->op) || input->branch == nil || input->dm != Apc ||
-       input->branch->pc <= input->pc || input->branch->pc >= count) return 0;
+       input->branch->pc <= 0 || input->branch->pc >= count) return 0;
     if(input->op != IJMP) {
         if(!dis64clockvalue(input->sm,&input->s,locals,previous,&mapped.s) ||
            !dis64clockvalue(input->mm,&input->m,locals,previous,&mapped.m)) return 0;
@@ -269,10 +283,11 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 	Dis64ClockPlan *output)
 {
 	Decl *import, *export, *path, *argument, *target;
+    Inst *scan, *between;
 	unsigned int i, j, phase, binding, used, parameter, seen, copies;
 	Dis64ClockPlan plan = {0};
 	long frame, module, result, previous, locals[Dis64ClockLocals], cell;
-	int kind;
+	int kind, conditional = 0;
 
 	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 ||
 	   entry->ty->ids != nil || entry->ty->varargs || entry->ty->tof->kind != Tnone ||
@@ -282,6 +297,14 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 	   ldts == nil || ldts->next != nil || ldts->init == nil ||
 	   ldts->init->decl == nil)
 		return 0;
+    for(scan=input; scan != nil; scan=scan->next) {
+        if(scan->op == IRET && scan->pc < count-1) conditional = 1;
+        if(scan->branch != nil && scan->branch->pc <= scan->pc) conditional = 1;
+        if(scan->branch != nil && scan->branch->pc > scan->pc) {
+            for(between=scan->next; between != nil && between->pc < scan->branch->pc; between=between->next)
+                if(between->op == IMFRAME || between->op == IMCALL) conditional = 1;
+        }
+    }
 	path = nil;
 	for(; globals != nil; globals=globals->next){
 		if(globals->store != Dglobal || globals->init == nil)
@@ -343,6 +366,14 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 				return -1;
 		}else switch(phase){
 		case 0:
+            if(input->op == IRET && input->sm == Anone && input->mm == Anone && input->dm == Anone) {
+                if(plan.nwords == Dis64ClockWords) return -1;
+                plan.words[plan.nwords].legacy = input->pc;
+                plan.words[plan.nwords].target = count-1;
+                plan.words[plan.nwords].before = used;
+                plan.words[plan.nwords++].instruction = (Dis64Instruction){IJMP,SRC(AXXX)|DST(AIMM),0,0,count-1};
+                break;
+            }
 			if(dis64clockwordop(input->op) || dis64clockbranch(input->op)){
                 if(plan.nwords < Dis64ClockWords) {
                     plan.words[plan.nwords].legacy = input->pc;
@@ -402,6 +433,7 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 			   input->d.reg != frame || input->d.offset != 16)
 				return -1;
 			result = input->s.reg;
+            if(conditional && !dis64clockretain(locals,result)) return -1;
 			phase = 2;
 			break;
 		case 2:
@@ -413,7 +445,7 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 			plan.calls[used++].save = dis64clockcell(locals, result);
 			if(dis64clockcell(locals, result) != 0)
 				copies++;
-			previous = result;
+			previous = conditional ? -1 : result;
 			phase = 0;
 			break;
 		}

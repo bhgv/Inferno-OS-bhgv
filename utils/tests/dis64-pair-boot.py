@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Boot an explicitly linked Dis64 pair through the complete emulator."""
 import os
+import random
 from itertools import permutations
 import argparse
 from pathlib import Path
@@ -494,10 +495,23 @@ def sys_flow_image(change=None):
             ins('IMCALL',72,source=40,middle=0,destination=8), RAW['EXIT']]
     if change == 'uninitialized': code[5] = ins('IMOVW',17,source=0,destination=64)
     elif change == 'protected': code[2] = ins('IBEQW',146,source=0,middle=64,destination=7)
-    elif change == 'skip-call': code[2] = ins('IBEQW',146,source=0,middle=64,destination=11)
-    elif change == 'backward': code[4] = ins('IJMP',26,destination=1)
+    elif change in ('skip-call','take-call','missing-result'):
+        code[1] = ins('IMOVW',17,source=0 if change=='take-call' else 1,destination=64)
+        code[4] = ins('IJMP',26,destination=11)
+        if change=='missing-result': code[-1:-1] = [ins('IMOVW',9,source=72,destination=64)]
+    elif change == 'reenter-load': code[4] = ins('IJMP',26,destination=0)
     elif change == 'header-read': code[2] = ins('IBEQW',146,source=0,middle=40,destination=5)
     elif change == 'middle-overflow': code[2] = ins('IBEQW',82,source=0,middle=32768,destination=5)
+    if change in ('loop','word-loop','uninitialized-loop'):
+        call = [ins('IMFRAME',65,source=8,middle=0,destination=40),indirect('IMOVW',-1,40,64,sm=2),indirect('IMOVW',-1,40,68,sm=2),indirect('ILEA',72,40,32,sm=1),ins('IMCALL',72,source=40,middle=0,destination=8)]
+        prefix = [code[0],ins('IMOVW',17,source=0,destination=64)]
+        if change=='loop':
+            code = prefix+call+[ins('IADDW',17,source=1,destination=64),ins('IBLTW',74,source=64,middle=3,destination=2)]
+        elif change=='word-loop':
+            code = prefix+[ins('IADDW',17,source=1,destination=64),ins('IBLTW',74,source=64,middle=3,destination=2)]+call
+        else:
+            code = prefix+[ins('IJMP',26,destination=5),ins('IMOVW',17,source=0,destination=76),ins('IJMP',26,destination=5),ins('IADDW',17,source=1,destination=76),ins('IBEQW',146,source=0,middle=64,destination=3)]+call+[RAW['EXIT']]
+        if change!='uninitialized-loop': code += [ins('ISUBW',17,source=3,destination=64),ins('IDIVW',9,source=64,destination=72),RAW['EXIT']]
     if change in ('immediate-min','immediate-zero','immediate-max'):
         middle = {'immediate-min':-32768,'immediate-zero':0,'immediate-max':32767}[change]
         code[2] = ins('IBEQW',82,source=0,middle=middle,destination=5)
@@ -509,6 +523,52 @@ def sys_flow_image(change=None):
     return RAW['IMAGE']([(kind,pool if kind==7 else body) for kind,body in sections])
 
 
+def sys_flow_oracles():
+    rng = random.Random(0x64cafe)
+    cases = []
+    for _ in range(256):
+        nodes = [('ILOAD',64,0,0,8,set(),set(),False)]
+        if rng.randrange(2):
+            nodes += [('IMOVW',17,0,0,x,set(),{x},False) for x in (64,68,76)]
+        call_at = rng.randrange(2,12)
+        for index in range(16):
+            if index == call_at:
+                nodes += [('IMFRAME',65,0,8,40,set(),set(),False),
+                          ('IMOVW',21,0,-1,40,set(),set(),False),('IMOVW',21,0,-1,40,set(),set(),False),
+                          ('ILEA',13,0,72,40,set(),set(),False),('IMCALL',72,0,40,8,set(),{72},False)]
+            op = rng.randrange(5); dst = rng.choice((64,68,76)); src = rng.choice((64,68,76,72))
+            if op == 0: nodes.append(('IMOVW',17,0,0,dst,set(),{dst},False))
+            elif op == 1: nodes.append(('IMOVW',9,0,src,dst,{src},{dst},False))
+            elif op == 2: nodes.append(('IADDW',17,0,1,dst,{dst},{dst},False))
+            else: nodes.append(('IBEQW',146,src,0,-1,{src},set(),True))
+        nodes.append(('IEXIT',27,0,0,0,set(),set(),False))
+        boundary = [i for i,n in enumerate(nodes) if n[0] not in ('ILEA','IMCALL') and not(n[0]=='IMOVW' and n[1]==21)]
+        nodes = [n[:4]+(rng.choice(boundary),)+n[5:] if n[7] else n for n in nodes]
+        edges = [({n[4],i+1} if n[7] else {i+1} if n[0]!='IEXIT' else set()) for i,n in enumerate(nodes)]
+        good = all(not n[7] or n[4]!=0 for n in nodes)
+        reached = {0}; todo = [0]
+        while todo:
+            for target in edges[todo.pop()]:
+                if target not in reached: reached.add(target); todo.append(target)
+        good = good and len(reached)==len(nodes)
+        if good:
+            pred = [{p for p,e in enumerate(edges) if i in e} for i in range(len(nodes))]
+            top = {64,68,76,72}; outgoing = [set(top) for _ in nodes]
+            for sweep in range(4*len(nodes)+2):
+                incoming = []
+                for i in range(len(nodes)):
+                    states = [outgoing[p] for p in pred[i]]+([set()] if i==0 else [])
+                    incoming.append(set.intersection(*states) if states else set())
+                updated = [incoming[i]|n[6] for i,n in enumerate(nodes)]
+                if updated == outgoing: break
+                outgoing = updated
+            else: raise RuntimeError('reference flow solver did not converge')
+            good = all(n[5] <= incoming[i] for i,n in enumerate(nodes))
+        cases.append((nodes,good))
+    if not any(g for _,g in cases) or not any(not g for _,g in cases): raise RuntimeError('flow oracle lost positive/negative coverage')
+    return cases
+
+
 def check_sys_flow_gate(root, work, runner):
     source = work/'flow-check.c'
     source.write_text(r'''#include <stdio.h>
@@ -517,23 +577,46 @@ def check_sys_flow_gate(root, work, runner):
 #include "dis64-pilot.h"
 static int refuse(int ok) { if(!ok) { fprintf(stderr,"flow refusal predicate\n"); return 10; } return 0; }
 int main(void) {
- Dis64Instruction code[] = {
+ Dis64Instruction code[13] = {
  {ILOAD,64,0,0,8},{IMOVW,17,0,0,64},{IBEQW,146,64,0,5},
  {IMOVW,17,0,-1,68},{IJMP,26,0,0,6},{IMOVW,17,0,-2,68},
- {IMFRAME,65,0,8,40},{IMOVW,12,0,68,40},{IMOVW,12,0,68,40},
- {ILEA,12,0,72,40},{IMCALL,72,0,40,8},{IEXIT,27,0,0,0}};
- unsigned int i, count = sizeof(code)/sizeof(code[0]);
+ {IMFRAME,65,0,8,40},{IMOVW,13,0,68,40},{IMOVW,13,0,68,40},
+ {ILEA,13,0,72,40},{IMCALL,72,0,40,8},{IEXIT,27,0,0,0}};
+ unsigned int i, count = 12;
  if(!dis64clockflow(code,count)) return 2;
  code[5].destination=64; if(refuse(!dis64clockflow(code,count))) return 10; // Only one incoming path defines Word68.
  code[5].destination=68;
  code[2].destination=7; if(refuse(!dis64clockflow(code,count))) return 10; // Protected prepared-frame instruction.
- code[2].destination=11; if(refuse(!dis64clockflow(code,count))) return 10; // Sys call cannot be skipped.
- code[2].destination=5; code[4].destination=1; if(refuse(!dis64clockflow(code,count))) return 10;
+ code[2].destination=5; code[4].destination=11;
+ if(!dis64clockflow(code,count)) return 4; // A whole call may be skipped.
+ code[11]=(Dis64Instruction){IMOVW,9,0,72,64}; code[12]=(Dis64Instruction){IEXIT,27,0,0,0};
+ if(refuse(!dis64clockflow(code,13))) return 10; // Result72 is undefined on the skipped path.
+ code[11]=(Dis64Instruction){IEXIT,27,0,0,0};
+ code[2].destination=5; code[4].destination=1; if(!dis64clockflow(code,count)) return 5;
+ code[4].destination=0; if(refuse(!dis64clockflow(code,count))) return 10;
  code[4].destination=6;
  for(i=0;i<6;i++) { code[2].op=IBEQW+i; if(!dis64clockflow(code,count)) return 3; }
+ { Dis64Instruction loop[] = {
+ {ILOAD,64,0,0,8},{IMOVW,17,0,0,64},{IMFRAME,65,0,8,40},
+ {IMOVW,21,0,-1,40},{IMOVW,21,0,-1,40},{ILEA,13,0,72,40},{IMCALL,72,0,40,8},
+ {IADDW,17,0,1,64},{IBLTW,74,3,64,2},{ISUBW,17,0,3,64},{IDIVW,9,0,64,72},{IEXIT,27,0,0,0}};
+ if(!dis64clockflow(loop,12)) return 6;
+ loop[1].op=IADDW; if(refuse(!dis64clockflow(loop,12))) return 10; // A loop-carried definition is not an entry definition.
+ }
  return 0;
 }
 ''')
+    cases = sys_flow_oracles(); declarations = []
+    for index,(nodes,expected) in enumerate(cases):
+        declarations += ['static const Dis64Instruction oracle_'+str(index)+'[] = {']
+        declarations += ['{'+','.join(map(str,n[:5]))+'},' for n in nodes]
+        declarations += ['};']
+    declarations += ['static int randomized(void) {']
+    declarations += ['if(dis64clockflow(oracle_'+str(i)+','+str(len(nodes))+') != '+str(int(expected))+') { fprintf(stderr,"flow oracle '+str(i)+' mismatch\\n"); return 12; }' for i,(nodes,expected) in enumerate(cases)]
+    declarations += ['return 0; }']
+    text = source.read_text().replace('int main(void) {','\n'.join(declarations)+'\nint main(void) {',1)
+    text = text.replace(' return 0;\n}', ' return randomized();\n}',1)
+    source.write_text(text)
     compiler = shlex.split(os.environ.get('CC','cc'))
     flags = shlex.split(os.environ.get('NATIVE64_CFLAGS','-O2 -g -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
     binary = work/'flow-check'; run = shlex.split(runner)
@@ -547,7 +630,7 @@ int main(void) {
     result = subprocess.run(run+[str(binary)],capture_output=True,text=True,timeout=30)
     if result.returncode!=10 or result.stderr.strip()!='flow refusal predicate':
         raise RuntimeError('flow join removal control did not detect the uninitialized path: '+result.stdout+result.stderr)
-    print('PASS actual Sys flow gate and active intersection-removal control',flush=True)
+    print('PASS actual Sys flow gate: 256 independent CFG oracles and active intersection-removal control',flush=True)
 
 
 def boot_sys_flows(command, work, consumer, builtin, limbo, root, runner):
@@ -564,7 +647,19 @@ def boot_sys_flows(command, work, consumer, builtin, limbo, root, runner):
             output = execute(command+['-c',str(jit)]+builtin)
             if f'native64 scalar module FlowRaw: jit={jit}, exit="{status}"' not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
                 raise RuntimeError('signed16 conditional middle changed its value: '+change+' '+output)
-    for change in ('uninitialized','protected','skip-call','backward','header-read','middle-overflow'):
+    for change in ('loop','word-loop'):
+        consumer.write_bytes(sys_flow_image(change))
+        for jit in (0,1):
+            output = execute(command+['-c',str(jit)]+builtin)
+            if f'native64 scalar module FlowRaw: jit={jit}, exit="zero divide"' not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                raise RuntimeError('serialized loop changed its trip count: '+change+' '+output)
+    for change in ('skip-call','take-call'):
+        consumer.write_bytes(sys_flow_image(change))
+        for jit in (0,1):
+            output = execute(command+['-c',str(jit)]+builtin)
+            if f'native64 scalar module FlowRaw: jit={jit}, exit=""' not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                raise RuntimeError('conditional complete Sys group failed: '+change+' '+output)
+    for change in ('uninitialized','protected','missing-result','reenter-load','uninitialized-loop','header-read','middle-overflow'):
         consumer.write_bytes(sys_flow_image(change)); output = execute(command+builtin)
         if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
             raise RuntimeError('invalid Sys flow reached execution: '+change+' '+output)
@@ -583,6 +678,28 @@ def boot_sys_flows(command, work, consumer, builtin, limbo, root, runner):
         ('value := sys->dup(-1,-1); if(value < 0) value = 0; value = sys->sleep(value);',''),
         ('value := sys->dup(-1,-1); if(value < 0) { if(value == -1) value = 0; } value /= value;','zero divide'),
     ]
+    bodies += [
+        ('value := sys->dup(-1,-1); if(value < 0) value = sys->sleep(0); value /= value;','zero divide'),
+        ('value := sys->dup(-1,-1); if(value > 0) value = sys->sleep(0); value /= value;',''),
+        ('first := sys->dup(-1,-1); other := 0; if(first < 0) other = sys->sleep(0); first += 1; first /= first;','zero divide'),
+        ('first := sys->dup(-1,-1); other := 0; if(first > 0) other = sys->sleep(0); first += 1; first /= first;','zero divide'),
+        ('value := sys->dup(-1,-1); if(value < 0) value = sys->sleep(0); else value = sys->dup(-1,-1); value /= value;','zero divide'),
+        ('value := sys->dup(-1,-1); if(value > 0) value = sys->sleep(0); else value = sys->dup(-1,-1); value /= value;',''),
+        ('value := sys->dup(-1,-1); if(value < 0) return; value += 1; value /= value;',''),
+        ('value := sys->dup(-1,-1); if(value > 0) return; value += 1; value /= value;','zero divide'),
+        ('value := -1; if(value < 0) return; value = sys->dup(-1,-1); value += 1; value /= value;',''),
+        ('value := 1; if(value < 0) return; value = sys->dup(-1,-1); value += 1; value /= value;','zero divide'),
+        ('value := sys->dup(-1,-1); if(value < 0) { if(value == -1) return; value = sys->sleep(0); } value += 1; value /= value;',''),
+    ]
+    bodies += [
+        ('count := 0; value := -1; for(; count < 3; count++) { value = sys->dup(-1,-1); } count -= 3; value /= count;','zero divide'),
+        ('count := 0; for(; count < 3; count++) { } value := sys->dup(-1,-1); count -= 3; value /= count;','zero divide'),
+        ('count := 0; value := sys->dup(-1,-1); for(; count < 3; count++) { if(count == 1) value = sys->sleep(0); } value /= value;','zero divide'),
+        ('count := 0; first := sys->dup(-1,-1); other := 0; for(; count < 3; count++) { if(count == 1) other = sys->sleep(0); } first += 1; first /= first;','zero divide'),
+        ('count := 0; value := -1; for(; count < 5; count++) { value = sys->sleep(0); if(count == 2) break; } count -= 2; value = sys->dup(-1,-1); value /= count;','zero divide'),
+        ('count := 0; total := 0; for(; count < 3; count++) { if(count == 1) continue; total++; } value := sys->dup(-1,-1); total -= 2; value /= total;','zero divide'),
+        ('count := 0; total := 0; status := 0; for(; count < 3; count++) { status = sys->dup(-1,count); total += status; } total += 3; status /= total;','zero divide'),
+    ]
     for body,status in bodies:
         source.write_text(template.replace('BODY',body)); subprocess.run(compile_command,check=True,timeout=30)
         consumer.write_bytes(target.read_bytes())
@@ -591,15 +708,14 @@ def boot_sys_flows(command, work, consumer, builtin, limbo, root, runner):
             if f'native64 scalar module Flow: jit={jit}, exit="{status}"' not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
                 raise RuntimeError('compiled Sys scalar flow did not execute: '+body+' '+output)
     for body in (
-        'value := sys->dup(-1,-1); if(value < 0) value = sys->sleep(0);',
-        'value := 0; for(; value < 2; value++) { } value = sys->sleep(value);',
-        'value := sys->dup(-1,-1); if(value < 0) return; value = sys->sleep(0);'):
+        'value := sys->dup(-1,-1); for(;;) { value = sys->sleep(0); }',
+        'one := 1; two := 2; three := 3; flag := sys->dup(-1,-1); if(flag < 0) flag = sys->sleep(one+two+three);'):
         source.write_text(template.replace('BODY',body)); refused = subprocess.run(compile_command,capture_output=True,text=True,timeout=30)
         if any(marker in refused.stderr for marker in ('AddressSanitizer','UndefinedBehaviorSanitizer','runtime error:')):
             raise RuntimeError('compiler sanitizer failure during flow refusal: '+refused.stderr)
         if refused.returncode != 1 or target.exists() or 'Dis64 scalar:' not in refused.stderr:
             raise RuntimeError('compiler admitted flow outside the scalar island: '+refused.stderr)
-    print('PASS serialized Sys scalar flow: six comparisons, diamonds, joins, pre-call arguments, normal/error unwind, C/JIT requests and six pre-scheduler refusals')
+    print('PASS serialized Sys scalar flow: comparisons, scalar/conditional-call diamonds, stable result identities, early returns, normal/error cleanup, C/JIT requests loops and seven pre-scheduler refusals')
 
 
 def main():

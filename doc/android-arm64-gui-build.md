@@ -252,9 +252,13 @@ execution, allocation-failure ordering, FD setup and AWM startup are pending.
 
 
 Separately from the variadic transport, the real `limbo -64` backend and Linux
-native64 file loader now execute forward scalar conditions/diamonds between
-fixed `millisec/sleep/dup` calls. Complete console runs on x64, ARM64 and RV64
-exercise actual serialized modules, import LOAD and scheduler cleanup. Calls
-cannot be skipped or entered midway, and loops remain refused. This does not
-yet provide variadic Sys execution or an Android AWM startup result. See
-`build-native64.md` for the runnable Limbo example and focused gate.
+native64 file loader execute Word conditions, conditional fixed
+`millisec/sleep/dup` calls, loops with break/continue and early void-entry
+returns. Complete console runs on x64, ARM64 and RV64 exercise actual
+serialized modules, import LOAD, loop counts and scheduler cleanup. The
+compiler preserves call results across branches/iterations in stable Word
+cells; the loader checks initialization with a bounded fixed-point analysis
+before scheduling. Branches cannot enter argument/result preparation or
+re-enter the initial LOAD. This does not admit managed/variadic arguments,
+nested calls or AWM. See `build-native64.md` for the runnable Limbo example
+and focused gate.

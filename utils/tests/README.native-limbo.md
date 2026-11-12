@@ -97,14 +97,20 @@ Dis64 program, install native headers or enable builtin calls.
 
 ## Serialized conditional Sys callers
 
-The `-64` Sys `millisec/sleep/dup` producer now lowers forward Word conditions
-and scalar diamonds between its checked call groups. Target PCs account for
-expanded native result copies. The loader shares a definite-initialization
-intersection check and rejects entering/crossing a prepared call, skipping a
-call and backward edges before scheduling. This is executable `.dis64` output,
-not the `-Dq` source-plan transport. `dis64-pair-boot.py --sys-flow-only` runs
-compiled programs through the complete emulator with `-c 0` and `-c 1`, plus
-normal/error cleanup, signed middle widths and active malformed-flow controls.
-The same tests run in the full `--sys-clock` gate. JIT request mode does not
-prove machine-code completion of this Sys caller. Variadic Sys and AWM remain
-outside this profile.
+The `-64` Sys `millisec/sleep/dup` producer lowers Word conditions, conditional
+call diamonds, loops, break/continue and early void-entry returns. Target PCs
+account for expanded native result copies. Conditional/looping programs retain
+call results in stable Word cells; the shared descending fixed-point check
+requires initialization on every path, including the first loop iteration.
+Entering a prepared call, re-entering LOAD and unreachable exit paths are
+rejected before scheduling. This is executable `.dis64` output, not the `-Dq`
+source-plan transport. `dis64-pair-boot.py --sys-flow-only` runs compiled
+programs through the complete emulator with `-c 0` and `-c 1`, plus normal/error
+cleanup, trip-count/result-identity assertions, signed middle widths and active
+malformed-flow controls. The shared flow check is also compared with an
+independent set-based reference on 256 deterministic graphs, including
+backedges. An intersection-to-union mutation must fail. The same tests run in the full `--sys-clock` gate.
+JIT request mode does not prove machine-code completion of this Sys caller.
+The existing three-local, 32-site and scalar-step bounds still apply. Variadic
+Sys, managed arguments, nested call expressions and AWM remain outside this
+profile.
