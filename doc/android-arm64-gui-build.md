@@ -229,3 +229,10 @@ source layouts and per-read gathering. Its mutable String-alias case verifies
 that a later read sees the changed source while the pending call retains its
 old format across GC. Initial values still come from the C fixture. This
 progress does not yet supply a serialized variadic caller or enable AWM.
+
+The formatter source gate now validates supported MP initializer records against
+the compiler's actual classic data bytes. Its VM transport uses the original
+full format for 150 arguments and checks the complete String/array/native-write
+result. This replaces hardcoded format values in that transport, while FP
+locals and FD setup still come from C. It does not provide a serialized native
+caller or an Android AWM startup result.

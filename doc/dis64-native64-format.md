@@ -248,3 +248,12 @@ and exercises a String alias changed between format and tail reads with GC.
 This is a source-storage transport test; fixture C still supplies initial
 values, and serialized caller/initializer/result lowering remains pending.
 See `dis64-native64-prefixes.md` for the layout and ownership boundaries.
+
+Supported top-level MP constants now carry checked initializer records in the
+private store plan. The source gate compares their UTF bytes and scalar bits
+with actual classic Dis data records. VM transport uses the real format data,
+including a complete 449-byte result from 150 arguments, and materializes
+numeric, Unicode, embedded-NUL and canonical nil String cases. These records
+are initial module data, not reaching-definition proofs for mutable MP values;
+caller instructions, unsupported initializers and executable Dis64 admission
+remain pending.

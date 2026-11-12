@@ -229,6 +229,32 @@ static void vmsitesinstall(Module *module, Native64SysFrameRequest *request, int
     memset(&spec, 0xa5, sizeof(spec)); // Installation must not borrow this source record.
 }
 
+static const Native64GeneratedStore *vmprogram(int phase, int aliased, int operation, unsigned int count,
+    const Native64GeneratedBank **selected)
+{
+    const Native64GeneratedStore *program = nil;
+    const Native64GeneratedBank *bank = nil;
+#define STOREPROGRAM(OP) case OP: program = count == 150 ? callstores_##OP##_150 : callstores_##OP##_2; bank = count == 150 ? &callstores_##OP##_150_bank : &callstores_##OP##_2_bank; break
+    switch(operation) { STOREPROGRAM(0); STOREPROGRAM(1); STOREPROGRAM(2); STOREPROGRAM(3); default: abort(); }
+#undef STOREPROGRAM
+    if(phase == 1 && operation == 0 && count == 2) { program = callliteralstores; bank = &callliteralstores_bank; }
+    if(aliased) { program = callaliasstores; bank = &callaliasstores_bank; }
+    *selected = bank; return program;
+}
+
+static const Native64GeneratedCell *vmseedfield(int phase, int aliased, int operation, unsigned int count, int fixed, unsigned int ordinal)
+{
+    const Native64GeneratedBank *bank;
+    const Native64GeneratedStore *program = vmprogram(phase, aliased, operation, count, &bank), *store;
+    unsigned int i;
+    for(i=0; i<count+(operation == 3 ? 2 : 1); i++) {
+        store = program+i;
+        if(store->fixed == fixed && store->ordinal == ordinal && !store->immediate)
+            return bank->cells+store->cell;
+    }
+    return nil;
+}
+
 /* C seeds full native FP/MP storage; each original read gathers its current value
  * through generated source offsets before the canonical argument handler runs. */
 static void vmstores(int phase, int aliased, int operation, unsigned int count, void *pending, String *pattern, String *text, void *fd)
@@ -249,11 +275,7 @@ static void vmstores(int phase, int aliased, int operation, unsigned int count, 
     ulong refs;
     uvlong value;
     int baseline = contextlive;
-#define STOREPROGRAM(OP) case OP: program = count == 150 ? callstores_##OP##_150 : callstores_##OP##_2; bank = count == 150 ? &callstores_##OP##_150_bank : &callstores_##OP##_2_bank; break
-    switch(operation) { STOREPROGRAM(0); STOREPROGRAM(1); STOREPROGRAM(2); STOREPROGRAM(3); default: abort(); }
-#undef STOREPROGRAM
-    if(phase == 1 && operation == 0 && count == 2) { program = callliteralstores; bank = &callliteralstores_bank; }
-    if(aliased) { program = callaliasstores; bank = &callaliasstores_bank; }
+    program = vmprogram(phase, aliased, operation, count, &bank);
     check(bank->count <= nelem(filled)); memset(filled, 0, sizeof(filled));
     memset(refreshed, 0, sizeof(refreshed)); memset(fullmap, 0, sizeof(fullmap));
     total = bank->bytes;
@@ -283,6 +305,11 @@ static void vmstores(int phase, int aliased, int operation, unsigned int count, 
         R.d = (uchar*)input.value+bases[cell->space]+cell->offset;
         if(store->op == IMOVP) {
             reference = store->fixed ? operation == 3 && store->ordinal == 0 ? fd : pattern : text;
+            if(cell->seed) {
+                String *value = reference;
+                check(cell->space == 1 && cell->seed == 1 && value != H && value->len == cell->length);
+                check(memcmp(value->Sascii, cell->initial, cell->length) == 0); // Exact compiler MP initializer bytes.
+            }
             memmove(&previous, R.d, sizeof(previous)); check(previous == H);
             R.s = &reference; movp();
         } else { number = -1; R.s = &number; movw(); }
@@ -430,9 +457,60 @@ static void vmstorelongconversions(void)
     R = saved;
 }
 
+/* Materialize actual compiler constant bits, then use the production gather/store path. */
+static void vmseedscalars(void)
+{
+    uchar source[512] = {0}, transport[128], destination[128];
+    const Native64GeneratedStore *store;
+    const Native64GeneratedCell *cell;
+    static const uvlong expected[] = {0xffffffffffffffefULL, 0xffffffffffffffefULL, 0xbff4000000000000ULL};
+    uvlong bits, result;
+    unsigned int i, seen = 0;
+    REG saved = R;
+    for(i=0; i<nelem(callglobalseedstores); i++) {
+        store = callglobalseedstores+i; if(store->fixed) continue;
+        cell = callglobalseedstores_bank.cells+store->cell;
+        check(cell->space == 1 && cell->seed >= 2 && cell->seed <= 4 && store->ordinal < 3);
+        bits = ((uvlong)cell->high<<32)|cell->low; // Compiler-owned canonical initializer bits.
+        if(cell->bytes == 4) { WORD word = cell->low; memmove(source+256+cell->offset, &word, 4); }
+        else memmove(source+256+cell->offset, &bits, 8);
+        R.s = vmrawgather(&callglobalseedstores_bank, store, source, transport, 0); R.d = destination+store->destination;
+        switch(store->op) { case ICVTWL: cvtwl(); break; case IMOVL: movl(); break; case IMOVF: movf(); break; default: abort(); }
+        memmove(&result,R.d,8); check(result == expected[store->ordinal]); seen++;
+    }
+    check(seen == 3); R = saved;
+}
+
+/* Keep explicit UTF byte counts; never pass initializer text through strlen. */
+static void vmseedstrings(void)
+{
+    static const Rune hello[] = {0x41f,0x440,0x438,0x432,0x435,0x442};
+    const Native64GeneratedStore *store;
+    const Native64GeneratedCell *cell;
+    String *value;
+    unsigned int i, seen = 0;
+    for(i=0; i<nelem(callutfseedstores); i++) {
+        store = callutfseedstores+i; if(store->fixed) continue;
+        cell = callutfseedstores_bank.cells+store->cell;
+        check(cell->space == 1);
+        if(store->ordinal == 0) { check(cell->seed == 5); seen++; continue; } // Empty literal is canonical nil in classic Dis.
+        check(cell->seed == 1);
+        contextstart(0,Pready);
+        value = c2string((char*)cell->initial,cell->length); ptradd(D2H(value)); epochs(6);
+        if(store->ordinal == 0) check(value->len == 0);
+        else if(store->ordinal == 1) check(value->len == -6 && memcmp(value->Srune,hello,sizeof(hello)) == 0);
+        else check(store->ordinal == 2 && value->len == 3 && memcmp(value->Sascii,"a\0b",3) == 0);
+        ptrdel(D2H(value)); destroy(value); clearrootcache(); epochs(6);
+        check(contextlive == 0 && Tstring.ref == 1); seen++;
+    }
+    check(seen == 3);
+}
+
 static void vmcase(int phase, int operation, int mode, int useframe)
 {
     const LimboNative64Prefix *prefix;
+    const Native64GeneratedCell *seed;
+    char output[512]; unsigned int outputlen, item;
     Native64TailSlot slots[150];
     Native64TailPlan plan;
     Type *caller_type, *callee_type, *fdtype = nil;
@@ -469,8 +547,13 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     check(caller_type != nil);
     caller = (F_Roots_bridge*)stackframes(caller_type, 1);
     caller->count = 77; caller->canary = 88;
-    pattern = newstring(5); memmove(pattern->Sascii, "%d|%s", 6); ptradd(D2H(pattern));
-    text = newstring(2); memmove(text->Sascii, "ok", 3); caller->text = text;
+    seed = vmseedfield(phase, aliased, operation, count, 1, operation == 3 ? 1 : 0);
+    check(seed != nil && seed->seed == 1 && seed->space == 1);
+    pattern = c2string((char*)seed->initial, seed->length); ptradd(D2H(pattern));
+    seed = vmseedfield(phase, aliased, operation, count, 0, 1);
+    if(seed != nil && seed->seed == 1 && !aliased) text = c2string((char*)seed->initial, seed->length);
+    else { text = newstring(2); memmove(text->Sascii, "ok", 3); } // FP locals still need instruction lowering.
+    caller->text = text;
     if(operation == 0) {
         old = newstring(3); memmove(old->Sascii, "old", 4); caller->stringresult = old;
     } else if(operation == 1) caller->arrayresult = oldarray = mem2array("old", 3);
@@ -504,7 +587,7 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     result = operation == 0 ? (void*)&caller->stringresult : operation == 1 ? (void*)&caller->arrayresult : (void*)&caller->count;
     memset(&vmrequest, 0, sizeof(vmrequest));
     vmtype = callee_type; vmrequest.prog = &process; vmrequest.type = callee_type; vmrequest.caller_type = caller_type;
-    vmrequest.slots = slots; vmrequest.count = count; vmrequest.initial = 8; vmrequest.limit = 128;
+    vmrequest.slots = slots; vmrequest.count = count; vmrequest.initial = 8; vmrequest.limit = count == 150 ? 512 : 128;
     vmrequest.result_offset = (uchar*)result-(uchar*)caller;
     vmrequest.frame = pending;
     vmbindrefusals(&vmrequest, operation);
@@ -560,6 +643,15 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     check(D2H(rootlink)->ref == 1);
     check(vmcalls == 1 && R.FP == beforefp && R.M == rootlink && R.SP == (uchar*)pending);
     check(contextlive == baseline && errdepth == 0 && D2H(text)->ref == 1 && D2H(pattern)->ref == 1);
+    if(count == 150) {
+        outputlen = 0;
+        for(item=0; item<count; item++) {
+            if(item) output[outputlen++] = '|';
+            output[outputlen++] = item == 1 || item == 70 || item == 149 ? 'o' : '-';
+            output[outputlen++] = item == 1 || item == 70 || item == 149 ? 'k' : '1';
+        }
+        output[outputlen] = 0;
+    } else { outputlen = aliased == 1 ? 8 : 5; memmove(output, aliased == 1 ? "-1|%d|%s" : "-1|ok", outputlen+1); }
     expected = mode == 0 || mode == 14 || mode == 17 || mode == 18 || (mode == 10 && operation < 2);
     check(vmstatus == expected);
     if(mode == 1 || mode == 2 || mode == 3 || mode == 4 || mode == 5 || mode == 6 || mode == 7 || mode == 8 ||
@@ -567,14 +659,15 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     if(operation < 2 && expected) {
         if(operation == 0) {
             String *value = caller->stringresult;
-            check(value != old && value->len == (aliased == 1 ? 8 : 5) && memcmp(value->Sascii, aliased == 1 ? "-1|%d|%s" : "-1|ok", aliased == 1 ? 9 : 6) == 0);
-        } else check(caller->arrayresult->len == 5 && memcmp(caller->arrayresult->data, "-1|ok", 5) == 0);
+            check(value != old && value->len == outputlen && memcmp(value->Sascii, output, outputlen+1) == 0);
+        } else check(caller->arrayresult->len == outputlen && memcmp(caller->arrayresult->data, output, outputlen) == 0);
     } else if(operation == 0) check(caller->stringresult == old);
     else if(operation == 1) check(caller->arrayresult == oldarray);
     if(operation >= 2) {
         check(writes == (mode == 0 || mode == 10 || mode == 14 || mode == 17 || mode == 18 || mode == 21 || mode == 22));
         check(releases == writes && acquires == writes && !releasedvm);
-        check(caller->count == (expected ? operation == 3 && mode == 17 ? -1 : 5 : 77));
+        if(writes) check(nativecount == outputlen && memcmp(nativebytes, output, outputlen) == 0);
+        check(caller->count == (expected ? operation == 3 && mode == 17 ? -1 : outputlen : 77));
     }
     check(caller->canary == 88);
     ptrdel(D2H(pattern)); destroy(pattern);
@@ -597,9 +690,11 @@ int main(int argc, char **argv)
     vmstoreconversions();
     vmstoremoves();
     vmstorelongconversions();
+    vmseedscalars();
+    vmseedstrings();
     for(useframe=0; useframe<2; useframe++) for(phase=0; phase<3; phase++) for(operation=0; operation<4; operation++) for(mode=0; mode<32; mode++) {
         vmcase(phase, operation, mode, useframe); cases++;
     }
-    printf("PASS typed Sys VM frames: %d real FRAME/MFRAME/MCALL/GC cases with source-derived tail plans, four gateways, native FP/MP gather/banks/GC/mutable aliases, compiler-selected canonical stores, owned site copies/rollback/busy retirement, checked eight-byte binding/32 refusals, 150-slot frames, refusal and result/cleanup checks\n", cases);
+    printf("PASS typed Sys VM frames: %d real FRAME/MFRAME/MCALL/GC cases with source-derived tail plans, four gateways, compiler MP initializers/native FP/MP gather/GC/mutable aliases/full 150-argument output, compiler-selected canonical stores, owned site copies/rollback/busy retirement, checked eight-byte binding/32 refusals, 150-slot frames, refusal and result/cleanup checks\n", cases);
     return 0;
 }

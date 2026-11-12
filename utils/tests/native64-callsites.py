@@ -26,7 +26,7 @@ def checked_run(command, **options):
         raise
 
 
-def legacy_instructions(data, with_types=False):
+def legacy_instructions(data, with_types=False, with_data=False):
     """Independent classic Dis code reader; no diagnostic or Dis64 parser is reused."""
     at = 0
     def number():
@@ -57,7 +57,26 @@ def legacy_instructions(data, with_types=False):
         if identity in types or size < 0 or mapsize < 0 or mapsize > (size+31)//32 or at+mapsize > len(data):
             raise RuntimeError('Invalid classic descriptor')
         types[identity] = (size, data[at:at+mapsize]); at += mapsize
-    return header, code, types
+    if not with_data: return header, code, types
+    initial = {}
+    while True:
+        tag = data[at]; at += 1
+        if tag == 0: break
+        kind, count = tag>>4, tag&15
+        if not count: count = number()
+        offset = number()
+        if count < 0 or offset < 0: raise RuntimeError('Invalid classic data record')
+        if kind == 3:
+            if at+count > len(data): raise RuntimeError('Truncated classic String')
+            initial[offset] = dict(kind='string',bytes=list(data[at:at+count])); at += count
+        elif kind in (1,2,4,8):
+            width = {1:1,2:4,4:8,8:8}[kind]
+            if count > (len(data)-at)//width: raise RuntimeError('Truncated classic scalar data')
+            for i in range(count):
+                value = int.from_bytes(data[at:at+width],'big'); at += width
+                initial[offset+i*width] = dict(kind={1:'byte',2:'word',4:'real',8:'long'}[kind],high=value>>32,low=value&0xffffffff)
+        else: raise RuntimeError('Non-flat classic initializer in this bounded source gate')
+    return header, code, types, initial
 
 
 def verify_locations(data, records, diagnostics):
@@ -91,7 +110,7 @@ def verify_stores(data, records, diagnostics):
     lower = [json.loads(line.split(' ', 1)[1]) for line in diagnostics.splitlines() if line.startswith('NATIVE64_CALL_LOWER ')]
     by_id = {r['id']: r for r in lower}
     if len(by_id) != len(records) or len(lower) != len(records): raise RuntimeError('Missing native store program/refusal')
-    _, code, types = legacy_instructions(data, with_types=True)
+    _, code, types, initial = legacy_instructions(data, with_types=True, with_data=True)
     for record in records:
         program = by_id[record['id']]
         if not record['accepted']:
@@ -163,8 +182,16 @@ def verify_stores(data, records, diagnostics):
                 if old[0] == key[0] and key[1] < old[1]+old[2] and old[1] < key[1]+key[2] and old != key:
                     raise RuntimeError('Overlapping or differently typed source reads were admitted')
             index = unique.setdefault(key, len(unique)); cell = bank['cells'][store['source_cell']]
-            if store['source_cell'] != index or store['source_offset'] != 64+index*8 or cell != dict(source_mode=key[0],legacy_offset=key[1],legacy_bytes=width,native_offset=64+index*8,native_bytes=8 if root else width,origin_offset=source_offsets[key[0]][key[1]],**{'class':category}):
+            if store['source_cell'] != index or store['source_offset'] != 64+index*8 or cell != dict(source_mode=key[0],legacy_offset=key[1],legacy_bytes=width,native_offset=64+index*8,native_bytes=8 if root else width,origin_offset=source_offsets[key[0]][key[1]],initial=cell['initial'],**{'class':category}):
                 raise RuntimeError('Source relocation lost width, identity or aliasing')
+            if cell['initial'] is not None:
+                expected_seed = initial.get(key[1])
+                if cell['initial']['kind'] == 'nil-string':
+                    if category != 'string' or expected_seed is not None: raise RuntimeError('Nil String initializer overwrites actual data')
+                    expected_seed = dict(kind='nil-string')
+                elif cell['initial']['kind'] != category: raise RuntimeError('Initializer lost its exact scalar/reference kind')
+                if key[0] != 'mp' or cell['initial'] != expected_seed:
+                    raise RuntimeError('Native source initializer differs from actual classic data bytes')
             extent, roots = types[location['caller_descriptor'] if key[0]=='fp' else 0]
             if width == 8 and source_offsets[key[0]][key[1]+4] != cell['origin_offset']+4: raise RuntimeError('Packed scalar source was split')
             if key[1] < (20 if key[0]=='fp' else 0) or key[1]+width > extent: raise RuntimeError('Source escaped original descriptor')
@@ -186,9 +213,17 @@ def emit_program(label, program):
         lines += ['static const uchar '+label+'_source_map_'+str(index)+'[] = {'+','.join(map(str,layout['map'] or [0]))+'};']
     lines += ['static const Native64GeneratedSource '+label+'_sources[] = {']
     lines += ['{'+str(layout['bytes'])+','+str(len(layout['map']))+','+label+'_source_map_'+str(index)+'},' for index,layout in enumerate(bank['sources'])]
-    lines += ['};','static const Native64GeneratedCell '+label+'_cells[] = {']
-    lines += ['{'+','.join(map(str,(0 if c['source_mode']=='fp' else 1,c['origin_offset'],c['native_bytes'],int(c['class'] in ('string','reference')))))+'},' for c in bank['cells']]
-    if not bank['cells']: lines += ['{0,0,0,0},']
+    lines += ['};']
+    for index, cell in enumerate(bank['cells']):
+        seed = cell['initial']; payload = seed['bytes'] if seed and seed['kind']=='string' else []
+        lines += ['static const uchar '+label+'_seed_'+str(index)+'[] = {'+','.join(map(str,payload or [0]))+'};']
+    lines += ['static const Native64GeneratedCell '+label+'_cells[] = {']
+    for index, cell in enumerate(bank['cells']):
+        seed = cell['initial']; kind = 0 if seed is None else {'string':1,'word':2,'long':3,'real':4,'nil-string':5}[seed['kind']]
+        values = [0 if cell['source_mode']=='fp' else 1,cell['origin_offset'],cell['native_bytes'],int(cell['class'] in ('string','reference')),kind,
+                  len(seed['bytes']) if kind==1 else 0,seed['high'] if kind in (2,3,4) else 0,seed['low'] if kind in (2,3,4) else 0]
+        lines += ['{'+','.join(str(x)+'U' for x in values)+','+label+'_seed_'+str(index)+'},']
+    if not bank['cells']: lines += ['{0,0,0,0,0,0,0,0,0},']
     lines += ['};','static const Native64GeneratedBank '+label+'_bank = {'+str(bank['bytes'])+','+str(len(bank['cells']))+','+str(len(bank['map']))+','+label+'_map,'+label+'_sources,'+label+'_cells};']
     return lines
 
@@ -222,7 +257,7 @@ def generate(limbo, work, env):
     header = ['/* Generated only from the current compiler\'s typechecked source call plans. */',
               'typedef struct Native64GeneratedStore { unsigned int op, destination, fixed, ordinal; long source; unsigned int immediate; int cell; unsigned int source_offset; } Native64GeneratedStore;',
               'typedef struct Native64GeneratedSource { unsigned int bytes, mapbytes; const uchar *map; } Native64GeneratedSource;',
-              'typedef struct Native64GeneratedCell { unsigned int space, offset, bytes, root; } Native64GeneratedCell;',
+              'typedef struct Native64GeneratedCell { unsigned int space, offset, bytes, root, seed, length, high, low; const uchar *initial; } Native64GeneratedCell;',
               'typedef struct Native64GeneratedBank { unsigned int bytes, count, mapbytes; const uchar *map; const Native64GeneratedSource *sources; const Native64GeneratedCell *cells; } Native64GeneratedBank;']
     for operation, name in enumerate(('sprint', 'aprint', 'print', 'fprint')):
         for index, count in enumerate((2, 150)):
@@ -313,10 +348,12 @@ def generate(limbo, work, env):
         'wide': 'wide := big -17; fraction := -1.25; sys->sprint("%bd|%g", wide, fraction);',
         'castalias': 'wide := big -17; sys->sprint("%bd|%g", wide, real wide);',
         'computed': 'number := -1; sys->sprint("%d", number+1);',
+        'utfseed': 'sys->sprint("%s|%s|%s", "", "Привет", "a\\0b");',
+        'globalseed': 'sys->sprint("%d|%bd|%g", n, wide, fraction);',
     }
     for label, body in extra_sources.items():
         probe = work/(label+'.b')
-        probe.write_text('implement Probe; include "sys.m"; Probe: module { init: fn(); }; init() { sys := load Sys Sys->PATH; '+body+' }')
+        probe.write_text('implement Probe; include "sys.m"; Probe: module { init: fn(); }; '+('n: int = -17; wide: big = big -17; fraction: real = -1.25; ' if label=='globalseed' else '')+'init() { sys := load Sys Sys->PATH; '+body+' }')
         plain = work/(label+'.dis'); traced_probe = work/(label+'-trace.dis')
         checked_run(command+['-o', str(plain), str(probe)], env=env, check=True, capture_output=True)
         output = checked_run(command+['-Dq', '-o', str(traced_probe), str(probe)], env=env, check=True, capture_output=True, text=True)

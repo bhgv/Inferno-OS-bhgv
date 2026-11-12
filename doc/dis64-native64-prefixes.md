@@ -530,3 +530,46 @@ This closes the private source-layout and per-read gathering step. Compiling
 all caller operations and source initializers into those layouts, lowering
 result/module operands, admitting owned serialized PC/site metadata and
 executing an ordinary variadic Dis64 module remain required before AWM.
+
+## Preserve source MP constants
+
+`-Dq` now carries an `initial` record for an exact supported top-level MP
+initializer. The lookup uses the resolved global declaration and its legacy
+offset; the value is then associated with the already checked native origin
+cell. It never interprets source FP contents as constants.
+
+| Initial record | Meaning |
+| --- | --- |
+| `null` | No supported initializer proof; not a zero or nil value. |
+| `string`, explicit byte vector | Original UTF-8 bytes, including embedded NUL; no `strlen` conversion. |
+| `word`, high/low words | Four-byte int/fix representation, with zero high word. |
+| `long`, high/low words | Complete signed64 bit representation. |
+| `real`, high/low words | Canonical IEEE binary64 bits from `dtocanon`. |
+| `nil-string` | Canonical nil String in an uninitialized mapped MP cell; no heap allocation. |
+
+The independent classic reader now parses flat data records after the type
+table. It compares every emitted initializer to the actual String/scalar bytes
+at that offset. Explicit nil String records require absent initializer data and
+a previously checked String root role. Unsupported arrays/aggregate data are
+outside this bounded data reader; the producer does not pretend that unknown
+initializers were handled. Ordinary `.dis` output remains byte-identical.
+
+A module-load initializer is **not** a proof of the value at a later call. A
+mutable MP variable still requires the intervening instructions and per-read
+refreshes. These records remain private compiler diagnostics, not a new Dis64
+section or permission to install source storage as an executable Module.
+
+The transport fixture constructs its format Strings from those compiler bytes.
+The 150-argument calls now use the entire original 449-byte format and verify
+all 449 result bytes for String, array and native-write results. The observer
+buffer and this case's explicit output limit were enlarged to hold that result;
+the smaller refusal cases retain their existing limits. A literal String tail
+also comes from its original MP initializer. FP local values and FD creation
+remain fixture inputs and still need caller instruction lowering.
+
+Additional tests materialize negative int/big and real initializer bits through
+the actual gather/conversion handlers, and construct Unicode/embedded-NUL
+Strings with the production length-aware `c2string`. They separately recognize
+the classic empty-literal nil representation. Removal controls must detect a
+hardcoded short format and loss of the initializer's high 32 bits. Existing GC,
+mutable-alias, binding, owner-retirement and refusal controls remain active.

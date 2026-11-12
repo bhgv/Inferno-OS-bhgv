@@ -126,7 +126,9 @@ def main():
                             ('source-map', '@unit', 'type = dtype(freeheap, total, fullmap, (total+63)/64);', '{ uchar zeros[SlotBytes/64+1] = {0}; type = dtype(freeheap, total, zeros, (total+63)/64); }'),
                             ('source-once', '@unit', 'if(filled[store->cell]) continue;', 'if(0) continue;'),
                             ('source-cache', '@unit', 'movp(); // Refresh the bank root at every original source read.', 'if(!refreshed[store->cell]) movp(); // Deliberately cache the first reference read.'),
-                            ('source-origin', '@unit', 'origin = (uchar*)input.value+bases[cell->space]+cell->offset;', 'origin = (uchar*)input.value+sourceoffset; // Deliberately read the unfilled bank instead of FP/MP.')):
+                            ('source-origin', '@unit', 'origin = (uchar*)input.value+bases[cell->space]+cell->offset;', 'origin = (uchar*)input.value+sourceoffset; // Deliberately read the unfilled bank instead of FP/MP.'),
+                            ('initializer-value', '@unit', 'pattern = c2string((char*)seed->initial, seed->length);', 'pattern = c2string("%d|%s", 5);'),
+                            ('initializer-bits', '@unit', 'bits = ((uvlong)cell->high<<32)|cell->low; // Compiler-owned canonical initializer bits.', 'bits = cell->low; // Deliberately drop the high initializer word.')):
                         adapter = source if header == '@unit' else (ROOT/('include/'+header)).read_text()
                         if adapter.count(boundary) != 1:
                             raise RuntimeError('Typed format control boundary changed: '+name)

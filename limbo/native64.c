@@ -1167,12 +1167,12 @@ native64pcspace(int mode)
     return "other";
 }
 
-static void native64callstores(Native64CallPC*, int);
+static void native64callstores(Native64CallPC*, int, Decl*);
 
 /* Report final reachable legacy coordinates only after PC/descriptor/import resolution.
  * Missing or rewritten instructions are explicit refusals, never guessed PC offsets. */
 void
-native64callpcs(Inst *first, long count)
+native64callpcs(Inst *first, long count, Decl *globals)
 {
     Native64CallPC *note;
     Inst **image = nil, *inst, *frame, *result, *call;
@@ -1190,7 +1190,7 @@ native64callpcs(Inst *first, long count)
         if(!native64pcpresent(image, count, frame) || !native64pcpresent(image, count, call) ||
            (result != nil && !native64pcpresent(image, count, result))) {
             fprint(2, "NATIVE64_CALL_PC {\"id\":%ud,\"module\":\"%s\",\"pc_space\":\"legacy-dis\",\"located\":false,\"reason\":\"missing-or-rewritten\"}\n", note->id, impdecl->sym->name);
-            native64callstores(note, 0);
+            native64callstores(note, 0, globals);
             continue;
         }
         callerdesc = note->caller == nil || note->caller->desc == nil ? -1 : note->caller->desc->id;
@@ -1208,7 +1208,7 @@ native64callpcs(Inst *first, long count)
         if(result != nil)
             fprint(2, ",\"result_space\":\"%s\",\"result_offset\":%ld,\"result_indirect\":%ld", native64pcspace(result->sm), result->s.reg, result->s.offset);
         fprint(2, "}\n");
-        native64callstores(note, linked);
+        native64callstores(note, linked, globals);
     }
     free(image);
     native64callreset();
@@ -1251,10 +1251,51 @@ native64sourcelayout(Desc *desc, int fp, Native64SourceLayout *layout)
     return 1;
 }
 
+/* Emit only an exact typed top-level MP constant. Missing seeds are explicit:
+ * this is not reaching-definition analysis or a complete module initializer. */
+static void
+native64sourceseed(Decl *globals, long offset, int kind)
+{
+    Decl *d;
+    Node *n;
+    Sym *text;
+    uvlong bits;
+    ulong real[2];
+    unsigned int i;
+    for(d=globals; d != nil; d=d->next) {
+        if(d->store != Dglobal || d->offset != offset || d->ty == nil) continue;
+        if(d->init == nil) {
+            if(kind == Tstring && (d->ty->kind == Tstring || d->ty->kind == Tany)) {
+                fprint(2, "{\"kind\":\"nil-string\"}"); return;
+            }
+            continue;
+        }
+        n = d->init;
+        if(n->op != Oconst || n->ty == nil || d->ty == nil || n->ty->kind != d->ty->kind) continue;
+        if(kind == Tstring && d->ty->kind == Tstring && n->decl != nil && n->decl->sym != nil) {
+            text = n->decl->sym;
+            if(text->len < 0 || text->len > 1024*1024) break;
+            fprint(2, "{\"kind\":\"string\",\"bytes\":[");
+            for(i=0; i<text->len; i++) fprint(2, "%s%ud", i == 0 ? "" : ",", (uchar)text->name[i]);
+            fprint(2, "]}"); return;
+        }
+        bits = n->val;
+        if(kind == Tint && (d->ty->kind == Tint || d->ty->kind == Tfix)) bits &= 0xffffffffULL;
+        else if(kind == Tbig && d->ty->kind == Tbig) { /* Retain canonical signed64 bits. */ }
+        else if(kind == Treal && d->ty->kind == Treal) {
+            dtocanon(n->rval, real); bits = ((uvlong)real[0]<<32) | real[1];
+        } else continue;
+        fprint(2, "{\"kind\":\"%s\",\"high\":%ud,\"low\":%ud}",
+            kind == Tint ? "word" : kind == Tbig ? "long" : "real", (uint)(bits>>32), (uint)bits);
+        return;
+    }
+    fprint(2, "null");
+}
+
 /* Lower proven direct argument writes and private FP/MP source locations.
  * Records remain internal compiler plans, not an executable image. */
 static void
-native64callstores(Native64CallPC *note, int linked)
+native64callstores(Native64CallPC *note, int linked, Decl *globals)
 {
     typedef struct Store Store;
     struct Store { Inst *origin; unsigned int field, op, cell; };
@@ -1384,8 +1425,11 @@ native64callstores(Native64CallPC *note, int linked)
         for(i=0; i<ncells; i++) {
             kind = cells[i].kind == Tstring ? "string" : cells[i].kind == Tref ? "reference" :
                 cells[i].kind == Tint ? "word" : cells[i].kind == Tbig ? "long" : "real";
-            fprint(2, "%s{\"source_mode\":\"%s\",\"legacy_offset\":%ld,\"legacy_bytes\":%ud,\"native_offset\":%ud,\"native_bytes\":%ud,\"class\":\"%s\",\"origin_offset\":%ud}",
+            fprint(2, "%s{\"source_mode\":\"%s\",\"legacy_offset\":%ld,\"legacy_bytes\":%ud,\"native_offset\":%ud,\"native_bytes\":%ud,\"class\":\"%s\",\"origin_offset\":%ud,\"initial\":",
                 i == 0 ? "" : ",", native64pcspace(cells[i].mode), cells[i].legacy, cells[i].oldbytes, cells[i].native, cells[i].bytes, kind, cells[i].origin);
+            if(cells[i].mode == Amp) native64sourceseed(globals, cells[i].legacy, cells[i].kind);
+            else fprint(2, "null");
+            fprint(2, "}");
         }
         fprint(2, "],\"sources\":[");
         for(space=0; space<2; space++) {
