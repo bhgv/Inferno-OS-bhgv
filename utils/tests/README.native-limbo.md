@@ -93,3 +93,18 @@ argument declarations. See [the generator checkpoint](../../doc/dis64-native64-d
 for the supported shapes, model predicate and actual C checks. Normal `-a` and
 Dis/AOT remain on the existing target; this metadata mode does not emit a new
 Dis64 program, install native headers or enable builtin calls.
+
+
+## Serialized conditional Sys callers
+
+The `-64` Sys `millisec/sleep/dup` producer now lowers forward Word conditions
+and scalar diamonds between its checked call groups. Target PCs account for
+expanded native result copies. The loader shares a definite-initialization
+intersection check and rejects entering/crossing a prepared call, skipping a
+call and backward edges before scheduling. This is executable `.dis64` output,
+not the `-Dq` source-plan transport. `dis64-pair-boot.py --sys-flow-only` runs
+compiled programs through the complete emulator with `-c 0` and `-c 1`, plus
+normal/error cleanup, signed middle widths and active malformed-flow controls.
+The same tests run in the full `--sys-clock` gate. JIT request mode does not
+prove machine-code completion of this Sys caller. Variadic Sys and AWM remain
+outside this profile.

@@ -4,6 +4,7 @@
 #include "dis64-signature.h"
 #include "dis64-numeric-storage.h"
 #include "dis64-managed-trial.h"
+#include "dis64-bound-call.h"
 
 #define ScalarOutputLimit (8U*1024U*1024U) // Match the complete-image admission bound.
 
@@ -133,6 +134,7 @@ dis64trace(Dis64Lower *lower)
 typedef struct Dis64ClockCall Dis64ClockCall;
 struct Dis64ClockCall {
 	unsigned int binding;
+	long legacy; // Original MFRAME boundary for checked scalar branch relocation.
 	uchar modes[2];
 	long values[2];
 	int save; // Native destination of a persistent returned value, or zero.
@@ -141,6 +143,7 @@ struct Dis64ClockCall {
 typedef struct Dis64ClockWord Dis64ClockWord;
 struct Dis64ClockWord {
 	unsigned int before; // Number of completed calls before this scalar step.
+	long legacy, target; // Original scalar PC and branch target, or -1.
 	Dis64Instruction instruction;
 };
 
@@ -244,6 +247,22 @@ dis64clockword(Inst *input, long module, long bytes, long *locals, long *previou
 }
 
 
+/* Map only existing Word comparisons and direct forward jumps. Targets are
+ * relocated after complete call-group expansion; no branch may enter a group. */
+static int
+dis64clocktest(Inst *input, long *locals, long previous, unsigned int count, Dis64Instruction *output)
+{
+    Inst mapped = *input;
+    if(!dis64clockbranch(input->op) || input->branch == nil || input->dm != Apc ||
+       input->branch->pc <= input->pc || input->branch->pc >= count) return 0;
+    if(input->op != IJMP) {
+        if(!dis64clockvalue(input->sm,&input->s,locals,previous,&mapped.s) ||
+           !dis64clockvalue(input->mm,&input->m,locals,previous,&mapped.m)) return 0;
+    }
+    mapped.d.offset = input->branch->pc;
+    return dis64scalarinst(&mapped,count,0,80,64,output);
+}
+
 /* Match the complete lowered init body before changing its frame geometry. */
 static int
 dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes,
@@ -324,10 +343,15 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 				return -1;
 		}else switch(phase){
 		case 0:
-			if(dis64clockwordop(input->op)){
+			if(dis64clockwordop(input->op) || dis64clockbranch(input->op)){
+                if(plan.nwords < Dis64ClockWords) {
+                    plan.words[plan.nwords].legacy = input->pc;
+                    plan.words[plan.nwords].target = dis64clockbranch(input->op) && input->branch != nil ? input->branch->pc : -1;
+                }
 				if(plan.nwords == Dis64ClockWords ||
-				   !dis64clockword(input, module, entry->desc->size, locals, &previous,
-				     &plan.words[plan.nwords].instruction))
+                   !(dis64clockbranch(input->op) ? dis64clocktest(input,locals,previous,count,&plan.words[plan.nwords].instruction) :
+				   dis64clockword(input, module, entry->desc->size, locals, &previous,
+				     &plan.words[plan.nwords].instruction)))
 					return -1;
 				plan.words[plan.nwords++].before = used;
 				break;
@@ -345,6 +369,7 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 			if(target == nil || target->offset != binding)
 				return -1;
 			parameter = 0;
+            plan.calls[used].legacy = input->pc;
 			frame = input->d.reg;
 			phase = plan.arguments[binding] ? 3 : 1;
 			break;
@@ -440,6 +465,10 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 	uchar metadata[24], code[4+sizeof(load)+Dis64ClockCalls*(sizeof(frame)+18+sizeof(result)+sizeof(call))+Dis64ClockWords*14+sizeof(exit)];
 	uchar typedata[32], imports[100], runes[5][4+4*255], strings[4+sizeof(runes)], output[4096];
 	Dis64ClockPlan plan;
+    Dis64Instruction flow[Dis64ClockInstructions];
+    Dis64CallDecoded decoded;
+    long pcs[Dis64ClockInstructions];
+    unsigned int pc, at, used;
 	Dis64Instruction copy = {IMOVW, SRC(AFP)|DST(AFP), 0, 72, 64};
 	unsigned int sizes[5], i, j, length, written, bindings, instructions, ordinal, step, parameters[] = {Dis64Int, Dis64Int};
 	const char *labels[] = {"$Sys", nil, impdecl->sym->name, nil, nil};
@@ -453,6 +482,19 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 		return matched < 0;
 	}
 	bindings = matched;
+    for(i=0; i<nelem(pcs); i++) pcs[i] = -1;
+    pc = 1; step = 0;
+    for(i=0; i<=plan.count; i++) {
+        while(step < plan.nwords && plan.words[step].before == i) {
+            pcs[plan.words[step].legacy] = pc++; step++;
+        }
+        if(i != plan.count) { pcs[plan.calls[i].legacy] = pc; pc += 3+plan.arguments[plan.calls[i].binding]+!!plan.calls[i].save; }
+    }
+    pcs[count-1] = pc;
+    for(i=0; i<plan.nwords; i++) if(plan.words[i].target >= 0) {
+        if(plan.words[i].target >= count || pcs[plan.words[i].target] < 0) { dis64error(entry,"branch enters a prepared Sys call"); return 1; }
+        plan.words[i].instruction.destination = pcs[plan.words[i].target];
+    }
 	for(import=ldts->init->decl->ty->ids, i=0; import != nil; import=import->next, i++)
 		labels[i == 0 ? 1 : i+2] = import->sym->name;
 	for(i=0; i<2+bindings; i++){
@@ -513,6 +555,12 @@ dis64clock(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long
 	memmove(code+sizes[1], exit, sizeof(exit));
 	sizes[1] += sizeof(exit);
 	dis64put32(code, instructions);
+    at = 4;
+    for(i=0; i<instructions; i++) {
+        if(!dis64callread(code+at,sizes[1]-at,&decoded,&used)) { dis64error(entry,"invalid Sys flow encoding"); return 1; }
+        flow[i] = decoded.instruction; at += used;
+    }
+    if(!dis64clockflow(flow,instructions)) { dis64error(entry,"unsupported Sys scalar control flow or initialization"); return 1; }
 	dis64put32(imports, bindings);
 	sizes[3] = 4;
 	for(i=0; i<bindings; i++){

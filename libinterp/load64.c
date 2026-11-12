@@ -883,7 +883,7 @@ static const Dis64StorageLimits dis64numericlimits = {
 
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 
-#define Dis64ClockInstructions (5U*Dis64ClockCalls+2U+Dis64ClockWords) // LOAD, argument/call/copy groups, and exit.
+/* The shared Sys flow bound is defined in dis64-pilot.h. */
 
 
 /* Resolve one exact scalar import from an already validated image. */
@@ -1014,6 +1014,7 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 	unsigned int bindings, int arguments)
 {
 	Dis64CallDecoded decoded;
+	Dis64Instruction flow[Dis64ClockInstructions];
 	Dis64Instruction *inst;
 	unsigned int at, i, used, count, phase, calls, slot, binding, parameter, expected, words;
 	int initialized;
@@ -1030,6 +1031,12 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 			return 0;
 		at += used;
 		inst = &decoded.instruction;
+		flow[i] = *inst;
+		if(dis64clockbranch(inst->op)){
+			if(phase != 0 || words++ == Dis64ClockWords || !dis64instructioncheck(inst,count,0,80) ||
+               ((inst->mode&ARM) == AXIMM && (inst->middle < -32768 || inst->middle > 32767))) return 0;
+			continue;
+		}
 		switch(inst->op){
 		case ILOAD:
 			if(i != 0 || inst->mode != (SRC(AMP)|AXIMM|DST(AMP)) ||
@@ -1065,7 +1072,7 @@ dis64syscode(const uchar *data, unsigned int bytes, unsigned int limit, Dis64Cod
 			break;
 		case IEXIT:
 			if(phase != 0 || calls == 0 || i+1 != count ||
-			   inst->mode != (SRC(AXXX)|DST(AXXX)) || at != bytes)
+			   inst->mode != (SRC(AXXX)|DST(AXXX)) || at != bytes || !dis64clockflow(flow,count))
 				return 0;
 			code->data = data;
 			code->bytes = bytes;

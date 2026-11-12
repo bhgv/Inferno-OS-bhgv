@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Boot an explicitly linked Dis64 pair through the complete emulator."""
+import os
 from itertools import permutations
 import argparse
 from pathlib import Path
@@ -236,8 +237,7 @@ init()
     command = [str(limbo), '-I', str(ROOT/'module'), '-64', '-o', str(output), str(source)]
     for bad in (template.replace('Sys->PATH', '"$Other"'),
                 template.replace('millisec()', 'sleep(536870912)'),
-                repeated(33),
-                repeated(3).replace('    now = sys->millisec();\n', '    if(now < 0) now = 0;\n', 1)):
+                repeated(33)):
         source.write_text(bad)
         result = subprocess.run(command, capture_output=True, text=True, timeout=30)
         if result.returncode <= 0 or output.exists() or 'Dis64 scalar:' not in result.stderr:
@@ -479,12 +479,136 @@ other() { counter /= divisor; }
 
 
 # Require the real scheduler to retire after returning or unwinding the pair.
+def sys_flow_image(change=None):
+    w, ins = RAW['W'], RAW['I']; bindings = RAW['RAW']['RAW']
+    indirect = runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['indirect']
+    code = [ins('ILOAD',64,source=0,middle=0,destination=8),
+            ins('IMOVW',17,source=0,destination=64),
+            ins('IBEQW',146,source=0,middle=64,destination=5),
+            ins('IMOVW',17,source=-1,destination=68),
+            ins('IJMP',26,destination=6),
+            ins('IMOVW',17,source=-2,destination=68),
+            ins('IMFRAME',65,source=8,middle=0,destination=40),
+            indirect('IMOVW',68,40,64,sm=1), indirect('IMOVW',68,40,68,sm=1),
+            indirect('ILEA',72,40,32,sm=1),
+            ins('IMCALL',72,source=40,middle=0,destination=8), RAW['EXIT']]
+    if change == 'uninitialized': code[5] = ins('IMOVW',17,source=0,destination=64)
+    elif change == 'protected': code[2] = ins('IBEQW',146,source=0,middle=64,destination=7)
+    elif change == 'skip-call': code[2] = ins('IBEQW',146,source=0,middle=64,destination=11)
+    elif change == 'backward': code[4] = ins('IJMP',26,destination=1)
+    elif change == 'header-read': code[2] = ins('IBEQW',146,source=0,middle=40,destination=5)
+    elif change == 'middle-overflow': code[2] = ins('IBEQW',82,source=0,middle=32768,destination=5)
+    if change in ('immediate-min','immediate-zero','immediate-max'):
+        middle = {'immediate-min':-32768,'immediate-zero':0,'immediate-max':32767}[change]
+        code[2] = ins('IBEQW',82,source=0,middle=middle,destination=5)
+        code[-1:-1] = [ins('IADDW',17,source=1,destination=68),ins('IDIVW',9,source=68,destination=72)]
+    names = ('$Sys','dup','FlowRaw'); pool = w(len(names))+b''.join(w(len(n),*map(ord,n)) for n in names)
+    sections = RAW['SECTIONS'](name=2,databytes=16,
+        imports=[bindings['binding'](module=0,symbol=1,sig=bindings['signature'](1,(1,1)))],
+        types=[RAW['D'](80,8),RAW['D'](16,8,b'\xc0')],code=w(len(code))+b''.join(code))
+    return RAW['IMAGE']([(kind,pool if kind==7 else body) for kind,body in sections])
+
+
+def check_sys_flow_gate(root, work, runner):
+    source = work/'flow-check.c'
+    source.write_text(r'''#include <stdio.h>
+#include <string.h>
+#include "isa.h"
+#include "dis64-pilot.h"
+static int refuse(int ok) { if(!ok) { fprintf(stderr,"flow refusal predicate\n"); return 10; } return 0; }
+int main(void) {
+ Dis64Instruction code[] = {
+ {ILOAD,64,0,0,8},{IMOVW,17,0,0,64},{IBEQW,146,64,0,5},
+ {IMOVW,17,0,-1,68},{IJMP,26,0,0,6},{IMOVW,17,0,-2,68},
+ {IMFRAME,65,0,8,40},{IMOVW,12,0,68,40},{IMOVW,12,0,68,40},
+ {ILEA,12,0,72,40},{IMCALL,72,0,40,8},{IEXIT,27,0,0,0}};
+ unsigned int i, count = sizeof(code)/sizeof(code[0]);
+ if(!dis64clockflow(code,count)) return 2;
+ code[5].destination=64; if(refuse(!dis64clockflow(code,count))) return 10; // Only one incoming path defines Word68.
+ code[5].destination=68;
+ code[2].destination=7; if(refuse(!dis64clockflow(code,count))) return 10; // Protected prepared-frame instruction.
+ code[2].destination=11; if(refuse(!dis64clockflow(code,count))) return 10; // Sys call cannot be skipped.
+ code[2].destination=5; code[4].destination=1; if(refuse(!dis64clockflow(code,count))) return 10;
+ code[4].destination=6;
+ for(i=0;i<6;i++) { code[2].op=IBEQW+i; if(!dis64clockflow(code,count)) return 3; }
+ return 0;
+}
+''')
+    compiler = shlex.split(os.environ.get('CC','cc'))
+    flags = shlex.split(os.environ.get('NATIVE64_CFLAGS','-O2 -g -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
+    binary = work/'flow-check'; run = shlex.split(runner)
+    subprocess.run(compiler+flags+['-I'+str(root/'include'),str(source),'-o',str(binary)],check=True)
+    subprocess.run(run+[str(binary)],check=True,timeout=30)
+    header = (root/'include/dis64-pilot.h').read_text()
+    old = '*target = *target ? 16U|((*target & state)&15U) : state;'
+    if header.count(old)!=1: raise RuntimeError('flow join control drift')
+    (work/'dis64-pilot.h').write_text(header.replace(old,'*target |= state; /* Deliberately use union at a join. */',1))
+    subprocess.run(compiler+flags+['-I'+str(work),'-I'+str(root/'include'),str(source),'-o',str(binary)],check=True)
+    result = subprocess.run(run+[str(binary)],capture_output=True,text=True,timeout=30)
+    if result.returncode!=10 or result.stderr.strip()!='flow refusal predicate':
+        raise RuntimeError('flow join removal control did not detect the uninitialized path: '+result.stdout+result.stderr)
+    print('PASS actual Sys flow gate and active intersection-removal control',flush=True)
+
+
+def boot_sys_flows(command, work, consumer, builtin, limbo, root, runner):
+    execute = BOOT['execute']
+    check_sys_flow_gate(root,work,runner)
+    for jit in (0,1):
+        consumer.write_bytes(sys_flow_image())
+        output = execute(command+['-c',str(jit)]+builtin)
+        if f'native64 scalar module FlowRaw: jit={jit}, exit=""' not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+            raise RuntimeError('raw Sys scalar diamond did not execute: '+output)
+    for change,status in (('immediate-min','zero divide'),('immediate-zero',''),('immediate-max','zero divide')):
+        consumer.write_bytes(sys_flow_image(change))
+        for jit in (0,1):
+            output = execute(command+['-c',str(jit)]+builtin)
+            if f'native64 scalar module FlowRaw: jit={jit}, exit="{status}"' not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                raise RuntimeError('signed16 conditional middle changed its value: '+change+' '+output)
+    for change in ('uninitialized','protected','skip-call','backward','header-read','middle-overflow'):
+        consumer.write_bytes(sys_flow_image(change)); output = execute(command+builtin)
+        if 'panic: loading Dis64 pair' not in output or BOOT['RETIRED'] in output:
+            raise RuntimeError('invalid Sys flow reached execution: '+change+' '+output)
+    if limbo is None: return
+    source, target = work/'flow.b',work/'flow.dis64'
+    template = 'implement Flow; include "sys.m"; Flow: module { init: fn(); }; init() { sys := load Sys Sys->PATH; BODY }'
+    compile_command = [str(limbo),'-I',str(ROOT/'module'),'-64','-o',str(target),str(source)]
+    bodies = []
+    for op,truth in (('<',True),('<=',True),('>',False),('>=',False),('==',False),('!=',True)):
+        bodies.append((f'value := sys->dup(-1,-1); if(value {op} 0) value = 0; value /= value;', 'zero divide' if truth else ''))
+    bodies += [
+        ('value := 0; value = sys->dup(-1,-1); if(value < 0) value = 0; value /= value;','zero divide'),
+        ('value := sys->dup(-1,-1); if(value < 0) value = 2; else value = 0; value -= 2; value /= value;','zero divide'),
+        ('value := sys->dup(-1,-1); if(value > 0) value = 2; else value = 0; value /= value;','zero divide'),
+        ('left := -1; right := 0; if(left < right) left = 0; value := sys->dup(-1,-1); value /= left;','zero divide'),
+        ('value := sys->dup(-1,-1); if(value < 0) value = 0; value = sys->sleep(value);',''),
+        ('value := sys->dup(-1,-1); if(value < 0) { if(value == -1) value = 0; } value /= value;','zero divide'),
+    ]
+    for body,status in bodies:
+        source.write_text(template.replace('BODY',body)); subprocess.run(compile_command,check=True,timeout=30)
+        consumer.write_bytes(target.read_bytes())
+        for jit in (0,1):
+            output = execute(command+['-c',str(jit)]+builtin)
+            if f'native64 scalar module Flow: jit={jit}, exit="{status}"' not in output or BOOT['RETIRED'] not in output or 'panic:' in output:
+                raise RuntimeError('compiled Sys scalar flow did not execute: '+body+' '+output)
+    for body in (
+        'value := sys->dup(-1,-1); if(value < 0) value = sys->sleep(0);',
+        'value := 0; for(; value < 2; value++) { } value = sys->sleep(value);',
+        'value := sys->dup(-1,-1); if(value < 0) return; value = sys->sleep(0);'):
+        source.write_text(template.replace('BODY',body)); refused = subprocess.run(compile_command,capture_output=True,text=True,timeout=30)
+        if any(marker in refused.stderr for marker in ('AddressSanitizer','UndefinedBehaviorSanitizer','runtime error:')):
+            raise RuntimeError('compiler sanitizer failure during flow refusal: '+refused.stderr)
+        if refused.returncode != 1 or target.exists() or 'Dis64 scalar:' not in refused.stderr:
+            raise RuntimeError('compiler admitted flow outside the scalar island: '+refused.stderr)
+    print('PASS serialized Sys scalar flow: six comparisons, diamonds, joins, pre-call arguments, normal/error unwind, C/JIT requests and six pre-scheduler refusals')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--emu', type=Path, required=True)
     parser.add_argument('--runner', default='')
     parser.add_argument('--sys-clock', action='store_true')
+    parser.add_argument('--sys-flow-only', action='store_true')
     parser.add_argument('--limbo', type=Path)
     args = parser.parse_args()
     root = args.root.resolve()
@@ -495,6 +619,9 @@ def main():
         consumer, provider = work/'consumer.dis64', work/'provider.dis64'
         pair = ['-d', '/'+str(consumer.relative_to(root)), '-P', '/'+str(provider.relative_to(root))]
         sibling = work/'unit.dis64'
+        if args.sys_flow_only:
+            boot_sys_flows(command,work,consumer,pair[:2]+['-P','$Sys'],args.limbo.resolve() if args.limbo else None,root,args.runner)
+            return
         automatic = pair[:2]+['-X', 'dis64-pair']
         scenarios = ((False, 1, False), (True, 1, False), (False, 4, False),
                      (False, 1, True), (True, 2, True))
@@ -613,6 +740,7 @@ def main():
                 raise RuntimeError('paired boot CLI did not refuse '+repr(options))
         if args.sys_clock:
             builtin = pair[:2]+['-P', '$Sys']
+            boot_sys_flows(command,work,consumer,builtin,args.limbo.resolve() if args.limbo else None,root,args.runner)
             consumer.write_bytes(clock_image())
             for repeats, copy, load, second in ((1, False, False, None), (3, True, True, None),
                                                 (32, True, True, None), (3, True, True, ('sleep', (1,)))):

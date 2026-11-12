@@ -251,13 +251,67 @@ python3 utils/tests/native64-scalar-boot.py --math --sys-io \
 ```
 
 Ordinary file admission still rejects builtin modules and legacy images.
-The explicit clock pilot accepts one checked scalar import and bounded
-call sequences. An optional initial LOAD binds that import at execution
+The explicit Sys pilot accepts checked `millisec`, `sleep` and `dup` imports
+and bounded call sequences. An optional initial LOAD binds those imports at execution
 time from a managed module-name cell to a mapped module-result cell. Run a pilot image with `emu -c 1 -d /clock.dis64 -P '$Sys'`
 and repeat with `-c 0` for the interpreter. The paired boot test with
 `--sys-clock` generates the image and checks both modes. The pilot
 reserves `$Sys` as an explicit provider selector and shares the
 existing indirect LEA encoding with the local result binder.
+
+The real `limbo -64` backend and file loader also accept forward Word
+comparisons and `if/else` diamonds inside scalar regions **between** those
+calls. All six integer comparisons are supported. Joins retain only locals
+initialized on every incoming path. A branch may reach the next MFRAME, but
+cannot skip a Sys call, enter its argument/result setup, jump across a call
+barrier or go backward. Early returns, loops and conditional Sys invocation
+remain outside this bounded profile. Existing limits remain 32 call sites,
+64 scalar steps (including branches and saved-result copies), three persistent
+Word locals and an 80-byte entry frame.
+
+For example, save this as `flow.b`:
+
+```limbo
+implement Flow;
+include "sys.m";
+Flow: module { init: fn(); };
+init()
+{
+    sys := load Sys Sys->PATH;
+    value := sys->dup(-1, -1);
+    if(value < 0)
+        value = 0;
+    value = sys->sleep(value);
+}
+```
+
+Compile and run it with the real native64 console built above:
+
+```sh
+/host/tools/limbo -I /src/module -64 -o /build/flow.dis64 flow.b
+/build/emu/Linux/o.emu-g -c 0 -v -r /build -d /flow.dis64 -P '$Sys'
+```
+
+Repeat with `-c 1` to request JIT mode; the test does not claim that the Sys
+caller itself completed in machine code rather than the guarded interpreter.
+This uses the ordinary Dis64 file constructor, LOAD/import resolution,
+FRAME/MCALL execution and scheduler cleanup. It is independent of the private
+variadic argument transport and does not enable ordinary AWM startup.
+
+Run the focused serialized-code gate with:
+
+```sh
+python3 utils/tests/dis64-pair-boot.py --root /build \
+  --emu /build/emu/Linux/o.emu-g --limbo /host/tools/limbo --sys-flow-only
+```
+
+`--runner`, `CC` and `NATIVE64_CFLAGS` select cross execution/checker compilation.
+The full `--sys-clock` gate also runs these cases. Tests execute compiled
+conditions, nested diamonds and native-PC relocation after a saved return
+copy; check signed16 middle operands; reject malformed control flow before
+scheduling; and require an active intersection-to-union removal control to
+detect a local defined on only one branch. Existing wire tags and section
+layouts are unchanged.
 
 Additional gates separate registration ownership from actual callback behavior:
 

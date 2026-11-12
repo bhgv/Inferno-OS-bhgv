@@ -249,3 +249,12 @@ storage, rather than installing FP cells directly from flattened seed values.
 A mutation-before-assignment case checks that the call sees current MP data.
 The transport still uses a synthetic preallocated frame; complete caller
 execution, allocation-failure ordering, FD setup and AWM startup are pending.
+
+
+Separately from the variadic transport, the real `limbo -64` backend and Linux
+native64 file loader now execute forward scalar conditions/diamonds between
+fixed `millisec/sleep/dup` calls. Complete console runs on x64, ARM64 and RV64
+exercise actual serialized modules, import LOAD and scheduler cleanup. Calls
+cannot be skipped or entered midway, and loops remain refused. This does not
+yet provide variadic Sys execution or an Android AWM startup result. See
+`build-native64.md` for the runnable Limbo example and focused gate.

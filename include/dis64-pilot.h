@@ -35,6 +35,80 @@ dis64clockwordop(unsigned int op)
 }
 
 
+#define Dis64ClockInstructions (5U*Dis64ClockCalls+2U+Dis64ClockWords)
+
+static int
+dis64clockbranch(unsigned int op)
+{
+    return op == IJMP || op == IBEQW || op == IBNEW || op == IBLTW ||
+        op == IBLEW || op == IBGTW || op == IBGEW;
+}
+
+static unsigned int
+dis64clockbit(long offset)
+{
+    int local = dis64clocklocal(offset);
+    return local >= 0 ? 1U<<local : offset == 72 ? 8U : 0;
+}
+
+static void
+dis64clockjoin(unsigned int *target, unsigned int state)
+{
+    *target = *target ? 16U|((*target & state)&15U) : state;
+}
+
+/* Forward-only scalar diamonds cannot skip, repeat or enter a prepared Sys call.
+ * Merge by intersection: a Word must be initialized on every reaching path. */
+static int
+dis64clockflow(const Dis64Instruction *code, unsigned int count)
+{
+    unsigned int incoming[Dis64ClockInstructions] = {0};
+    unsigned int group[Dis64ClockInstructions], boundary[Dis64ClockInstructions];
+    unsigned int i, phase = 0, calls = 0, state, need, define, sm, mm, bit, target;
+    const Dis64Instruction *in;
+    if(code == 0 || count == 0 || count > Dis64ClockInstructions) return 0;
+    for(i=0; i<count; i++) {
+        in = code+i; group[i] = calls; boundary[i] = phase == 0;
+        if(in->op == IMFRAME) { if(phase) return 0; phase = 1; }
+        else if(in->op == ILEA) { if(phase != 1) return 0; phase = 2; }
+        else if(in->op == IMCALL) { if(phase != 2 || ++calls > Dis64ClockCalls) return 0; phase = 0; }
+        else if(phase && !(phase == 1 && in->op == IMOVW)) return 0;
+    }
+    if(phase || calls == 0) return 0;
+    incoming[0] = 16;
+    for(i=0; i<count; i++) {
+        in = code+i; state = incoming[i]; need = define = 0;
+        if(!state) return 0;
+        sm = USRC(in->mode); mm = in->mode&ARM;
+        if(dis64clockwordop(in->op) || (dis64clockbranch(in->op) && in->op != IJMP)) {
+            if(sm == AFP) { bit = dis64clockbit(in->source); if(!bit) return 0; need |= bit; }
+            else if(sm != AIMM) return 0;
+            if(in->op != IMOVW) {
+                if(mm == AXINF || mm == AXNON) {
+                    bit = dis64clockbit(mm == AXNON ? in->destination : in->middle);
+                    if(!bit) return 0; need |= bit;
+                } else if(mm != AXIMM) return 0;
+            }
+            if(!dis64clockbranch(in->op) && UDST(in->mode) == AFP) {
+                define = dis64clockbit(in->destination); if(!define) return 0;
+            }
+        } else if(in->op == IMCALL) define = 8;
+        else if(in->op != ILOAD && in->op != IMFRAME && in->op != ILEA &&
+                in->op != IEXIT && in->op != IJMP) return 0;
+        if(need & ~state) return 0;
+        state |= define;
+        if(dis64clockbranch(in->op)) {
+            if(!boundary[i] || in->destination <= i || in->destination >= count) return 0;
+            target = in->destination;
+            if(!boundary[target] || group[target] != group[i]) return 0;
+            dis64clockjoin(incoming+target,state);
+        }
+        if(i+1 < count && in->op != IJMP && in->op != IEXIT) dis64clockjoin(incoming+i+1,state);
+    }
+    return code[count-1].op == IEXIT;
+}
+
+
 typedef struct Dis64Pilot Dis64Pilot;
 struct Dis64Pilot {
 	Dis64View envelope; // Borrowed accepted container, not a runtime Module.
