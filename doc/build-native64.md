@@ -272,9 +272,8 @@ or re-enter the initial LOAD. All code, including the final exit, must be
 structurally reachable. The verifier's work is bounded; runtime iteration
 counts/termination are not proved. Existing limits remain 32 static call
 sites, 64 scalar steps (including branches and saved-result copies), three
-persistent Word locals and an 80-byte entry frame. Nested call expressions,
-managed/variadic arguments, exceptions and general exported functions remain
-outside this profile.
+persistent Word locals and an 80-byte entry frame. Managed/variadic arguments,
+exceptions and general exported functions remain outside this profile.
 
 For example, save this as `flow.b`:
 
@@ -316,6 +315,30 @@ Run the focused serialized-code gate with:
 python3 utils/tests/dis64-pair-boot.py --root /build \
   --emu /build/emu/Linux/o.emu-g --limbo /host/tools/limbo --sys-flow-only
 ```
+
+Nested expressions of these fixed integer calls also use the real backend.
+For example, the following body can replace `init()` in `flow.b`:
+
+```limbo
+init()
+{
+    sys := load Sys Sys->PATH;
+    value := sys->dup(sys->dup(-1, -1), sys->sleep(0));
+    value++;
+    value /= value;  # Expected zero divide: the outer dup returns -1.
+}
+```
+
+Limbo evaluates inner calls before preparing the outer call. The producer
+preserves an earlier result when it is read after a later call, including
+argument stores and implicit reads such as `++`. It also accepts the compiler's
+reuse of a dead scalar temporary as a frame-pointer slot: native frame pointers
+and remapped Word values occupy separate storage. The runtime still prepares
+one call at a time. Short-circuit `&&`/`||` conditions use the same checked
+branch/call boundaries. Stable results and ordinary locals share the existing
+three-cell budget; larger expressions can be refused. Flat callers without
+overlapping result lifetimes retain their existing code layout. This uses the
+existing opcodes, structural signatures and section layouts.
 
 `--runner`, `CC` and `NATIVE64_CFLAGS` select cross execution/checker compilation.
 The full `--sys-clock` gate also runs these cases. Tests execute compiled

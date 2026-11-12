@@ -418,9 +418,21 @@ init()
          [('sleep', (local,))]+[('sleep', (result,))]*31, 0, tuple(range(32)),
          {0: [('IXORW', 1, 64)]*31}, ''),
     )
+    bodies += (
+        ("    one := sys->dup(-1, -1); two := sys->dup(-2, -2); status := sys->dup(one, two);",
+         [('dup', (-1,-1)), ('dup', (-2,-2)), ('dup', (local,result))], None, {0:64}, {}, ''),
+        ("    value := sys->dup(sys->dup(-1,-1),sys->sleep(0)); value++; value /= value;",
+         [('dup', (-1,-1)), ('sleep', (0,)), ('dup', (local,result))], None, {0:64},
+         {3:[('IADDW',1,72),('IDIVW',result,72)]}, 'zero divide'),
+        ("    value := sys->sleep(sys->sleep(sys->sleep(0))); value /= value;",
+         [('sleep',(0,)), ('sleep',(result,)), ('sleep',(result,))], None, (),
+         {3:[('IDIVW',result,72)]}, 'zero divide'),
+    )
     for body, sequence, initial, copies, steps, status in bodies:
         source.write_text(template.replace('    now := sys->millisec();', body))
-        subprocess.run(command, check=True, timeout=30)
+        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+        if result.returncode:
+            raise RuntimeError('scalar source did not compile: '+body+'\n'+result.stdout+result.stderr)
         image = output.read_bytes()
         expected = sys_integer_image(sequence, initial=initial, copies=copies, steps=steps)
         if code_bytes(image) != code_bytes(expected):
@@ -442,8 +454,7 @@ init()
     for body in (
             "    one := -1; two := -2; three := -3; four := -4; status := sys->dup(one, four);",
             "    value := -1;\n" + "    value ^= 1;\n"*64 + "    status := sys->sleep(value);",
-            "    value := 0;\n" + "    value ^= 1;\n"*32 + "    value = sys->sleep(value);\n"*32,
-            "    one := sys->dup(-1, -1); two := sys->dup(-2, -2); status := sys->dup(one, two);"):
+            "    value := 0;\n" + "    value ^= 1;\n"*32 + "    value = sys->sleep(value);\n"*32):
         source.write_text(template.replace('    now := sys->millisec();', body))
         refused = subprocess.run(command, capture_output=True, text=True, timeout=30)
         if refused.returncode <= 0 or output.exists() or 'unsupported checked Sys body' not in refused.stderr:
@@ -700,8 +711,37 @@ def boot_sys_flows(command, work, consumer, builtin, limbo, root, runner):
         ('count := 0; total := 0; for(; count < 3; count++) { if(count == 1) continue; total++; } value := sys->dup(-1,-1); total -= 2; value /= total;','zero divide'),
         ('count := 0; total := 0; status := 0; for(; count < 3; count++) { status = sys->dup(-1,count); total += status; } total += 3; status /= total;','zero divide'),
     ]
+    # Limbo emits inner calls before the outer MFRAME. Their distinct result
+    # slots must survive later inner calls and scalar expression evaluation.
+    bodies += [
+        ('value := sys->sleep(sys->sleep(0)); value /= value;', 'zero divide'),
+        ('value := sys->dup(sys->dup(-1,-1),-1); value++; value /= value;', 'zero divide'),
+        ('value := sys->dup(-1,sys->sleep(0)); value++; value /= value;', 'zero divide'),
+        ('value := sys->dup(sys->dup(-1,-1),sys->sleep(0)); value++; value /= value;', 'zero divide'),
+        ('value := sys->dup(sys->sleep(0)-1,sys->dup(-1,-1)+1); value++; value /= value;', 'zero divide'),
+        ('value := sys->sleep(sys->dup(-1,-1)+1); value /= value;', 'zero divide'),
+        ('value := sys->dup(sys->dup(-1,-1),sys->dup(-1,-1)); value++; value /= value;', 'zero divide'),
+        ('value := sys->dup(sys->dup(-1,-1),sys->sleep(0)); if(value < 0) value = sys->sleep(0); value /= value;', 'zero divide'),
+        ('value := sys->dup(sys->dup(-1,-1),sys->sleep(0)); if(value > 0) value = sys->sleep(0); value++; value /= value;', 'zero divide'),
+        ('value := sys->sleep(sys->sleep(sys->sleep(0))); value /= value;', 'zero divide'),
+        ('left := sys->dup(-1,-1); right := sys->sleep(0); value := sys->dup(left,right); value++; value /= value;', 'zero divide'),
+        ('value := -1; for(; value < 0;) { value = sys->sleep(sys->sleep(0)); } value /= value;', 'zero divide'),
+        ('value := -1; for(; value < 0;) { value = sys->sleep(sys->dup(-1,-1)+1); } value /= value;', 'zero divide'),
+        ('value := sys->dup(sys->dup(-1,-1),sys->sleep(0)); if(value < 0) return; value++; value /= value;', ''),
+        ('value := 1; if(sys->dup(-1,-1) < 0 && sys->sleep(0) == 0) value = 0; value /= value;', 'zero divide'),
+        ('value := 1; if(sys->sleep(0) != 0 || sys->dup(-1,-1) < 0) value = 0; value /= value;', 'zero divide'),
+        ('value := 0; if(sys->sleep(0) != 0 && sys->dup(-1,-1) < 0) value = 1; value /= value;', 'zero divide'),
+        ('value := 1; if(sys->dup(-1,-1) < 0 || sys->sleep(0) != 0) value = 0; value /= value;', 'zero divide'),
+        ('value := 0; if(value > 0) value = sys->sleep(sys->sleep(0)); value /= value;', 'zero divide'),
+        ('value := 1; if(value > 0) value = sys->sleep(sys->sleep(0)); value /= value;', 'zero divide'),
+        ('left := sys->dup(-1,-1); right := sys->sleep(0); left++; left /= left;', 'zero divide'),
+        ('left := sys->dup(-1,-1); right := sys->sleep(0); value := right-left; value--; value /= value;', 'zero divide'),
+    ]
     for body,status in bodies:
-        source.write_text(template.replace('BODY',body)); subprocess.run(compile_command,check=True,timeout=30)
+        source.write_text(template.replace('BODY',body))
+        compiled = subprocess.run(compile_command,capture_output=True,text=True,timeout=30)
+        if compiled.returncode:
+            raise RuntimeError('Sys flow source did not compile: '+body+'\n'+compiled.stdout+compiled.stderr)
         consumer.write_bytes(target.read_bytes())
         for jit in (0,1):
             output = execute(command+['-c',str(jit)]+builtin)
@@ -709,13 +749,14 @@ def boot_sys_flows(command, work, consumer, builtin, limbo, root, runner):
                 raise RuntimeError('compiled Sys scalar flow did not execute: '+body+' '+output)
     for body in (
         'value := sys->dup(-1,-1); for(;;) { value = sys->sleep(0); }',
-        'one := 1; two := 2; three := 3; flag := sys->dup(-1,-1); if(flag < 0) flag = sys->sleep(one+two+three);'):
+        'one := 1; two := 2; three := 3; flag := sys->dup(-1,-1); if(flag < 0) flag = sys->sleep(one+two+three);',
+        'value := sys->dup(sys->dup(-1,-1),sys->dup(sys->dup(-1,-1),sys->dup(sys->dup(-1,-1),sys->dup(sys->dup(-1,-1),sys->sleep(0))))); value++; value /= value;'):
         source.write_text(template.replace('BODY',body)); refused = subprocess.run(compile_command,capture_output=True,text=True,timeout=30)
         if any(marker in refused.stderr for marker in ('AddressSanitizer','UndefinedBehaviorSanitizer','runtime error:')):
             raise RuntimeError('compiler sanitizer failure during flow refusal: '+refused.stderr)
         if refused.returncode != 1 or target.exists() or 'Dis64 scalar:' not in refused.stderr:
             raise RuntimeError('compiler admitted flow outside the scalar island: '+refused.stderr)
-    print('PASS serialized Sys scalar flow: comparisons, scalar/conditional-call diamonds, stable result identities, early returns, normal/error cleanup, C/JIT requests loops and seven pre-scheduler refusals')
+    print('PASS serialized Sys scalar flow: comparisons, scalar/conditional-call diamonds, stable result identities, early returns, normal/error cleanup, C/JIT requests, loops, nested expressions, short-circuit conditions and seven pre-scheduler refusals')
 
 
 def main():

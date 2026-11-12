@@ -178,8 +178,8 @@ dis64clockcell(long *locals, long legacy)
 }
 
 
-/* Conditional calls need a stable Word identity instead of aliasing whichever
- * call most recently wrote the common result at byte72. */
+/* Preserve overlapping Word lifetimes independently of the latest call result
+ * written to the common temporary at byte72. */
 static long
 dis64clockretain(long *locals, long legacy)
 {
@@ -275,6 +275,34 @@ dis64clocktest(Inst *input, long *locals, long previous, unsigned int count, Dis
     }
     mapped.d.offset = input->branch->pc;
     return dis64scalarinst(&mapped,count,0,80,64,output);
+}
+
+/* Straight-line calls need stable results only when an older result is read
+ * after a later MCALL and before a full redefinition or frame/result-slot reuse.
+ * Scalar updates before that call extend the value lifetime. Merely seeing
+ * different result registers would waste a fourth cell in existing programs. */
+static int
+dis64clockoverlap(Inst *result)
+{
+    Inst *scan;
+    long slot = result->s.reg;
+    int clobbered = 0;
+
+    for(scan=result->next; scan != nil && scan->op != IMCALL; scan=scan->next)
+        ;
+    if(scan == nil) return 0; // The complete shape checker diagnoses a missing MCALL.
+    for(scan=scan->next; scan != nil; scan=scan->next) {
+        if((scan->op == ILEA && scan->sm == Afp && scan->s.reg == slot) ||
+           (scan->op == IMFRAME && scan->dm == Afp && scan->d.reg == slot)) break;
+        if(dis64clockwordop(scan->op) || (dis64clockbranch(scan->op) && scan->op != IJMP)) {
+            if(clobbered && ((scan->sm == Afp && scan->s.reg == slot) ||
+               (scan->mm == Afp && scan->m.reg == slot) ||
+               (scan->op != IMOVW && scan->mm == Anone && scan->dm == Afp && scan->d.reg == slot))) return 1;
+            if(clobbered && scan->dm == Afp && scan->d.reg == slot) break;
+        }
+        if(scan->op == IMCALL) clobbered = 1;
+    }
+    return 0;
 }
 
 /* Match the complete lowered init body before changing its frame geometry. */
@@ -387,9 +415,11 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 				plan.words[plan.nwords++].before = used;
 				break;
 			}
+			/* Native pending frames use byte40 independently of remapped Word cells.
+			 * Limbo may reuse a dead scalar temporary as its next frame pointer. */
 			if(input->op != IMFRAME || input->sm != Afp || input->s.reg != module ||
 			   input->dm != Afp || !dis64clockslot(input->d.reg, entry->desc->size) ||
-			   input->d.reg == module || dis64clockcell(locals, input->d.reg) != 0 ||
+			   input->d.reg == module ||
 			   input->mm != Aoff || input->m.decl == nil)
 				return -1;
 			if(used == Dis64ClockCalls)
@@ -433,7 +463,7 @@ dis64clockshape(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count,
 			   input->d.reg != frame || input->d.offset != 16)
 				return -1;
 			result = input->s.reg;
-            if(conditional && !dis64clockretain(locals,result)) return -1;
+            if((conditional || dis64clockoverlap(input)) && !dis64clockretain(locals,result)) return -1;
 			phase = 2;
 			break;
 		case 2:

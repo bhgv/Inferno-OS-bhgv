@@ -259,6 +259,9 @@ serialized modules, import LOAD, loop counts and scheduler cleanup. The
 compiler preserves call results across branches/iterations in stable Word
 cells; the loader checks initialization with a bounded fixed-point analysis
 before scheduling. Branches cannot enter argument/result preparation or
-re-enter the initial LOAD. This does not admit managed/variadic arguments,
-nested calls or AWM. See `build-native64.md` for the runnable Limbo example
-and focused gate.
+re-enter the initial LOAD. This does not admit managed/variadic arguments
+or AWM. Nested expressions of the fixed integer calls now preserve results
+across later calls, and short-circuit conditions accept reused legacy frame
+temporaries. These remain bounded by the same three scalar cells and prepare
+one native call at a time. See `build-native64.md` for runnable Limbo examples
+and the focused gate.

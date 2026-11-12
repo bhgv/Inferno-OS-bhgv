@@ -112,5 +112,12 @@ independent set-based reference on 256 deterministic graphs, including
 backedges. An intersection-to-union mutation must fail. The same tests run in the full `--sys-clock` gate.
 JIT request mode does not prove machine-code completion of this Sys caller.
 The existing three-local, 32-site and scalar-step bounds still apply. Variadic
-Sys, managed arguments, nested call expressions and AWM remain outside this
-profile.
+Sys, managed arguments and AWM remain outside this profile.
+
+Nested expressions of the supported fixed integer calls are accepted. Earlier
+results read after a later call retain stable Word identities; reused legacy
+frame temporaries do not alias those native scalar cells. Tests cover both
+argument positions, arithmetic and implicit reads, nested chains, loops, early
+returns and both evaluated/skipped arms of short-circuit conditions. Results
+and locals share the same three-cell budget, with an explicit over-budget
+refusal. Existing flat-call byte layouts are checked unchanged.
