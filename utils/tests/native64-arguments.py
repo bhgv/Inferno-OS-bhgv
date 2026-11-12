@@ -123,8 +123,10 @@ def main():
                             ('store-canonical', '@unit', 'case ICVTWL: cvtwl(); break; // Canonical eight-byte integer argument.', 'case ICVTWL: movw(); break; // Deliberately omit sign extension.'),
                             ('store-reference', '@unit', 'case IMOVP: movp(); break; // Managed retain/mark before result publication.', 'case IMOVP: memmove(R.d, R.s, sizeof(void*)); break; // Deliberately omit ownership.'),
                             ('source-relocation', '@unit', 'sourceoffset = store->source_offset; // Compiler-selected source relocation.', 'sourceoffset = store->destination; // Deliberately confuse source and destination banks.'),
-                            ('source-map', '@unit', 'type = dtype(freeheap, bank->bytes, (uchar*)bank->map, bank->mapbytes);', '{ uchar zeros[514] = {0}; type = dtype(freeheap, bank->bytes, zeros, bank->mapbytes); }'),
-                            ('source-once', '@unit', 'if(filled[store->cell]) continue;', 'if(0) continue;')):
+                            ('source-map', '@unit', 'type = dtype(freeheap, total, fullmap, (total+63)/64);', '{ uchar zeros[SlotBytes/64+1] = {0}; type = dtype(freeheap, total, zeros, (total+63)/64); }'),
+                            ('source-once', '@unit', 'if(filled[store->cell]) continue;', 'if(0) continue;'),
+                            ('source-cache', '@unit', 'movp(); // Refresh the bank root at every original source read.', 'if(!refreshed[store->cell]) movp(); // Deliberately cache the first reference read.'),
+                            ('source-origin', '@unit', 'origin = (uchar*)input.value+bases[cell->space]+cell->offset;', 'origin = (uchar*)input.value+sourceoffset; // Deliberately read the unfilled bank instead of FP/MP.')):
                         adapter = source if header == '@unit' else (ROOT/('include/'+header)).read_text()
                         if adapter.count(boundary) != 1:
                             raise RuntimeError('Typed format control boundary changed: '+name)

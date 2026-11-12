@@ -229,16 +229,20 @@ static void vmsitesinstall(Module *module, Native64SysFrameRequest *request, int
     memset(&spec, 0xa5, sizeof(spec)); // Installation must not borrow this source record.
 }
 
-/* Source values still come from C, but each unique typed source is installed once.
- * Every generated operation then reads the compiler-selected native bank offset. */
+/* C seeds full native FP/MP storage; each original read gathers its current value
+ * through generated source offsets before the canonical argument handler runs. */
 static void vmstores(int phase, int aliased, int operation, unsigned int count, void *pending, String *pattern, String *text, void *fd)
 {
     const Native64GeneratedStore *program = nil, *store;
     const Native64GeneratedBank *bank = nil;
+    const Native64GeneratedCell *cell;
+    const Native64GeneratedSource *source;
     Native64Result input = {H, 0};
     Type *type;
     REG saved = R;
-    uchar filled[4098];
+    uchar filled[4098], refreshed[4098], fullmap[SlotBytes/64+1];
+    unsigned int bases[2], total, at, j, space;
+    void *origin;
     unsigned int i, length = count+(operation == 3 ? 2 : 1), sourceoffset, width;
     WORD number;
     void *reference, *previous;
@@ -251,9 +255,21 @@ static void vmstores(int phase, int aliased, int operation, unsigned int count, 
     if(phase == 1 && operation == 0 && count == 2) { program = callliteralstores; bank = &callliteralstores_bank; }
     if(aliased) { program = callaliasstores; bank = &callaliasstores_bank; }
     check(bank->count <= nelem(filled)); memset(filled, 0, sizeof(filled));
+    memset(refreshed, 0, sizeof(refreshed)); memset(fullmap, 0, sizeof(fullmap));
+    total = bank->bytes;
+    for(j=0; j<bank->mapbytes; j++) fullmap[j] = bank->map[j];
+    for(space=0; space<2; space++) {
+        source = bank->sources+space; bases[space] = total;
+        check(total%8 == 0 && source->bytes <= SlotBytes-total);
+        for(j=0; j<source->bytes/8; j++) if(source->map[j/8] & (0x80>>(j%8))) {
+            at = total/8+j; fullmap[at/8] |= 0x80>>(at%8);
+        }
+        total += source->bytes;
+    }
+    check(total <= SlotBytes);
     process.R = R; // Publish the pending frame before source-bank allocations/collection.
     if(fd != H) ptradd(D2H(fd));
-    type = dtype(freeheap, bank->bytes, (uchar*)bank->map, bank->mapbytes); check(type != nil);
+    type = dtype(freeheap, total, fullmap, (total+63)/64); check(type != nil);
     check(native64resultadopt(&input, H2D(void*, heapz(type))));
     for(i=0; i<length; i++) {
         store = &program[i]; if(store->immediate) continue;
@@ -261,7 +277,10 @@ static void vmstores(int phase, int aliased, int operation, unsigned int count, 
         if(filled[store->cell]) continue;
         filled[store->cell] = 1; sourceoffset = store->source_offset;
         check(sourceoffset == 64+(unsigned int)store->cell*8 && sourceoffset+8 <= bank->bytes);
-        R.d = (uchar*)input.value+sourceoffset;
+        cell = bank->cells+store->cell; check(cell->space < 2);
+        source = bank->sources+cell->space;
+        check(cell->offset <= source->bytes && cell->bytes <= source->bytes-cell->offset);
+        R.d = (uchar*)input.value+bases[cell->space]+cell->offset;
         if(store->op == IMOVP) {
             reference = store->fixed ? operation == 3 && store->ordinal == 0 ? fd : pattern : text;
             memmove(&previous, R.d, sizeof(previous)); check(previous == H);
@@ -278,7 +297,25 @@ static void vmstores(int phase, int aliased, int operation, unsigned int count, 
             sourceoffset = store->source_offset; // Compiler-selected source relocation.
             width = store->op == ICVTWL || store->op == ICVTWF ? sizeof(WORD) : 8;
             check(sourceoffset >= 64 && sourceoffset <= bank->bytes && width <= bank->bytes-sourceoffset);
+            cell = bank->cells+store->cell; source = bank->sources+cell->space;
+            check(width == cell->bytes && cell->offset <= source->bytes && width <= source->bytes-cell->offset);
+            origin = (uchar*)input.value+bases[cell->space]+cell->offset;
+            if(aliased == 2 && !store->fixed && store->ordinal == 1) {
+                R.d = origin; R.s = &text; movp(); // Mutate the shared MP source between its reads.
+                epochs(1);
+            }
+            R.d = (uchar*)input.value+sourceoffset; R.s = origin;
+            if(cell->root) {
+                memmove(&previous, R.d, sizeof(previous));
+                if(!refreshed[store->cell]) check(previous == H);
+                movp(); // Refresh the bank root at every original source read.
+            } else if(width == sizeof(WORD)) movw();
+            else movl();
+            refreshed[store->cell] = 1;
+            epochs(1);
             R.s = (uchar*)input.value+sourceoffset;
+            check(memcmp(R.s, origin, width) == 0);
+            R.d = (uchar*)pending+store->destination;
         }
         if(store->op == IMOVP) {
             memmove(&reference, R.s, sizeof(reference));
@@ -300,13 +337,29 @@ static void vmstores(int phase, int aliased, int operation, unsigned int count, 
     R = saved; process.R = R;
 }
 
+/* Packed scalar gathering uses the same generated native space/offset as reference reads.
+ * Alignment variants exercise production handlers without asserting host C alignment. */
+static void *vmrawgather(const Native64GeneratedBank *bank, const Native64GeneratedStore *store,
+    uchar *source, uchar *transport, unsigned int alignment)
+{
+    const Native64GeneratedCell *cell = bank->cells+store->cell;
+    check(store->cell >= 0 && (unsigned int)store->cell < bank->count && !cell->root);
+    check(cell->space < 2 && cell->offset+cell->bytes+alignment <= 256);
+    check(store->source_offset+cell->bytes+alignment <= 128);
+    R.s = source+cell->space*256+cell->offset+alignment;
+    R.d = transport+store->source_offset+alignment;
+    if(cell->bytes == sizeof(WORD)) movw(); else { check(cell->bytes == 8); movl(); }
+    check(memcmp(R.s, R.d, cell->bytes) == 0);
+    return R.d;
+}
+
 /* The mixed numeric producer selects CVTWL/CVTWF. Guard bytes expose partial stores. */
 static void vmstoreconversions(void)
 {
     static const WORD numbers[] = {(-2147483647-1), -1, 0, 2147483647};
     static const uvlong integers[] = {0xffffffff80000000ULL, ~0ULL, 0, 0x7fffffffULL};
     static const uvlong reals[] = {0xc1e0000000000000ULL, 0xbff0000000000000ULL, 0, 0x41dfffffffc00000ULL};
-    uchar source[128], destination[128];
+    uchar source[512], transport[128], destination[128];
     const Native64GeneratedStore *store;
     REG saved = R;
     unsigned int i, n, alignment, j;
@@ -316,8 +369,8 @@ static void vmstoreconversions(void)
         check(store->op == ICVTWL || store->op == ICVTWF);
         for(n=0; n<nelem(numbers); n++) for(alignment=0; alignment<8; alignment++) {
             memset(source, 0x5a, sizeof(source)); memset(destination, 0xa5, sizeof(destination));
-            memmove(source+store->source_offset+alignment, &numbers[n], sizeof(WORD));
-            R.s = source+store->source_offset+alignment; R.d = destination+store->destination;
+            memmove(source+callmixedstores_bank.cells[store->cell].space*256+callmixedstores_bank.cells[store->cell].offset+alignment, &numbers[n], sizeof(WORD));
+            R.s = vmrawgather(&callmixedstores_bank, store, source, transport, alignment); R.d = destination+store->destination;
             if(store->op == ICVTWL) cvtwl(); else cvtwf();
             memmove(&bits, R.d, sizeof(bits)); check(bits == (store->op == ICVTWL ? integers[n] : reals[n]));
             for(j=0; j<sizeof(destination); j++)
@@ -332,7 +385,7 @@ static void vmstoremoves(void)
 {
     static const uvlong patterns[] = {0, 1, ~0ULL, 0x8000000000000000ULL,
         0x7ff0000000000000ULL, 0xfff0000000000000ULL, 0x7ff8123456789abcULL, 0x7ff0123456789abcULL};
-    uchar source[128], destination[136];
+    uchar source[512], transport[128], destination[136];
     const Native64GeneratedStore *store;
     REG saved = R;
     unsigned int i, n, from, to, j, offset;
@@ -342,8 +395,8 @@ static void vmstoremoves(void)
         check(store->op == IMOVL || store->op == IMOVF);
         for(n=0; n<nelem(patterns); n++) for(from=0; from<8; from++) for(to=0; to<8; to++) {
             memset(source, 0x5a, sizeof(source)); memset(destination, 0xa5, sizeof(destination));
-            memmove(source+store->source_offset+from, &patterns[n], 8);
-            offset = store->destination+to; R.s = source+store->source_offset+from; R.d = destination+offset;
+            memmove(source+callwidestores_bank.cells[store->cell].space*256+callwidestores_bank.cells[store->cell].offset+from, &patterns[n], 8);
+            offset = store->destination+to; R.s = vmrawgather(&callwidestores_bank, store, source, transport, from); R.d = destination+offset;
             if(store->op == IMOVL) movl(); else movf();
             memmove(&bits, R.d, 8); check(bits == patterns[n]);
             for(j=0; j<sizeof(destination); j++)
@@ -358,7 +411,7 @@ static void vmstorelongconversions(void)
 {
     static const LONG values[] = {(-0x7fffffffffffffffLL-1), -17, 0, 0x20000000000000LL};
     static const uvlong expected[] = {0xc3e0000000000000ULL, 0xc031000000000000ULL, 0, 0x4340000000000000ULL};
-    uchar source[128], destination[128];
+    uchar source[512], transport[128], destination[128];
     const Native64GeneratedStore *store;
     REG saved = R;
     unsigned int i, n, alignment, j;
@@ -367,8 +420,8 @@ static void vmstorelongconversions(void)
         store = &callcastaliasstores[i]; if(store->op != ICVTLF) continue;
         for(n=0; n<nelem(values); n++) for(alignment=0; alignment<8; alignment++) {
             memset(source, 0x5a, sizeof(source)); memset(destination, 0xa5, sizeof(destination));
-            memmove(source+store->source_offset+alignment, &values[n], 8);
-            R.s = source+store->source_offset+alignment; R.d = destination+store->destination;
+            memmove(source+callcastaliasstores_bank.cells[store->cell].space*256+callcastaliasstores_bank.cells[store->cell].offset+alignment, &values[n], 8);
+            R.s = vmrawgather(&callcastaliasstores_bank, store, source, transport, alignment); R.d = destination+store->destination;
             cvtlf(); memmove(&bits, R.d, 8); check(bits == expected[n]);
             for(j=0; j<sizeof(destination); j++)
                 if(j < store->destination || j >= store->destination+8) check(destination[j] == 0xa5);
@@ -401,7 +454,7 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     int savedcount;
     unsigned int count = mode == 14 ? 150 : 2;
     int baseline, before, expected, completed;
-    int aliased = phase == 2 && operation == 0 && mode == 0;
+    int aliased = phase == 2 && operation == 0 && mode == 0 ? (useframe ? 2 : 1) : 0;
 
     contextstart(phase, Pready);
     sourcebankpool = 1; sourcebankallocs = sourcebankfrees = sourcebanklive = 0;
@@ -514,7 +567,7 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     if(operation < 2 && expected) {
         if(operation == 0) {
             String *value = caller->stringresult;
-            check(value != old && value->len == (aliased ? 8 : 5) && memcmp(value->Sascii, aliased ? "-1|%d|%s" : "-1|ok", aliased ? 9 : 6) == 0);
+            check(value != old && value->len == (aliased == 1 ? 8 : 5) && memcmp(value->Sascii, aliased == 1 ? "-1|%d|%s" : "-1|ok", aliased == 1 ? 9 : 6) == 0);
         } else check(caller->arrayresult->len == 5 && memcmp(caller->arrayresult->data, "-1|ok", 5) == 0);
     } else if(operation == 0) check(caller->stringresult == old);
     else if(operation == 1) check(caller->arrayresult == oldarray);
@@ -547,6 +600,6 @@ int main(int argc, char **argv)
     for(useframe=0; useframe<2; useframe++) for(phase=0; phase<3; phase++) for(operation=0; operation<4; operation++) for(mode=0; mode<32; mode++) {
         vmcase(phase, operation, mode, useframe); cases++;
     }
-    printf("PASS typed Sys VM frames: %d real FRAME/MFRAME/MCALL/GC cases with source-derived tail plans, four gateways, relocated source banks/GC/aliases, compiler-selected canonical stores, owned site copies/rollback/busy retirement, checked eight-byte binding/32 refusals, 150-slot frames, refusal and result/cleanup checks\n", cases);
+    printf("PASS typed Sys VM frames: %d real FRAME/MFRAME/MCALL/GC cases with source-derived tail plans, four gateways, native FP/MP gather/banks/GC/mutable aliases, compiler-selected canonical stores, owned site copies/rollback/busy retirement, checked eight-byte binding/32 refusals, 150-slot frames, refusal and result/cleanup checks\n", cases);
     return 0;
 }

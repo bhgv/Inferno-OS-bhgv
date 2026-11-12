@@ -223,3 +223,9 @@ and full maps with real heap/Type/pin/collector ownership. Repeated sources,
 format/String aliases and packed numeric reads are checked alongside the
 existing call-site lifetime tests. Inputs are still provided by the decoded-C
 fixture; a complete caller/MP/data lowering and AWM startup are not implied.
+
+The formatter transport gate additionally uses compiler-derived native FP/MP
+source layouts and per-read gathering. Its mutable String-alias case verifies
+that a later read sees the changed source while the pending call retains its
+old format across GC. Initial values still come from the C fixture. This
+progress does not yet supply a serialized variadic caller or enable AWM.

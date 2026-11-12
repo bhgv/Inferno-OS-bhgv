@@ -240,3 +240,11 @@ policy does not authorize value caching. VM tests read a real rooted/pinned
 bank at generated offsets with GC between reads, rather than substituting C
 operand addresses per operation. Bank values remain immutable C fixture inputs;
 this does not establish general caller/MP relocation or serialized admission.
+
+The private `-Dq` store plan now includes complete native source FP/MP layouts
+and each typed read's origin offset. The runtime fixture seeds those managed
+source extents, gathers at every original read through production MOV handlers,
+and exercises a String alias changed between format and tail reads with GC.
+This is a source-storage transport test; fixture C still supplies initial
+values, and serialized caller/initializer/result lowering remains pending.
+See `dis64-native64-prefixes.md` for the layout and ownership boundaries.

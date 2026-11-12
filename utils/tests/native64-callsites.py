@@ -128,6 +128,28 @@ def verify_stores(data, records, diagnostics):
                 raise RuntimeError('Native destination does not match complete typed packing')
         bank = program['bank']
         if bank['evaluation'] != 'per-read': raise RuntimeError('Source storage aliases must not imply value caching')
+        source_offsets = {}
+        for space_index, space in enumerate(('fp','mp')):
+            layout = bank['sources'][space_index]
+            reads = [c for c in bank['cells'] if c['source_mode'] == space]
+            expected = dict(space=space, policy='word4-ref8', legacy_bytes=0, bytes=0, map=[])
+            offsets = {}
+            if reads:
+                size, roots = types[location['caller_descriptor'] if space=='fp' else 0]
+                cursor = 64 if space=='fp' else 0; marks = []
+                for offset in range(0,size,4):
+                    slot = offset//4
+                    root = bool(slot//8<len(roots) and roots[slot//8]&(0x80>>(slot%8)))
+                    if space=='fp' and offset<20:
+                        if root: raise RuntimeError('Legacy header contains a managed source root')
+                        continue
+                    if root: cursor = (cursor+7)//8*8; marks.append(cursor)
+                    offsets[offset] = cursor; cursor += 8 if root else 4
+                size64 = max(8,(cursor+7)//8*8); mapping = [0]*((size64+63)//64)
+                for offset in marks: mapping[offset//64] |= 0x80>>((offset//8)%8)
+                expected.update(legacy_bytes=size, bytes=size64, map=mapping)
+            if layout != expected: raise RuntimeError('Complete native source layout differs from serialized descriptor')
+            source_offsets[space] = offsets
         unique = {}; expected_map = [0]*((bank['bytes']+63)//64)
         for store in program['stores']:
             if store['source_mode'] == 'immediate':
@@ -141,9 +163,10 @@ def verify_stores(data, records, diagnostics):
                 if old[0] == key[0] and key[1] < old[1]+old[2] and old[1] < key[1]+key[2] and old != key:
                     raise RuntimeError('Overlapping or differently typed source reads were admitted')
             index = unique.setdefault(key, len(unique)); cell = bank['cells'][store['source_cell']]
-            if store['source_cell'] != index or store['source_offset'] != 64+index*8 or cell != dict(source_mode=key[0],legacy_offset=key[1],legacy_bytes=width,native_offset=64+index*8,native_bytes=8 if root else width,**{'class':category}):
+            if store['source_cell'] != index or store['source_offset'] != 64+index*8 or cell != dict(source_mode=key[0],legacy_offset=key[1],legacy_bytes=width,native_offset=64+index*8,native_bytes=8 if root else width,origin_offset=source_offsets[key[0]][key[1]],**{'class':category}):
                 raise RuntimeError('Source relocation lost width, identity or aliasing')
             extent, roots = types[location['caller_descriptor'] if key[0]=='fp' else 0]
+            if width == 8 and source_offsets[key[0]][key[1]+4] != cell['origin_offset']+4: raise RuntimeError('Packed scalar source was split')
             if key[1] < (20 if key[0]=='fp' else 0) or key[1]+width > extent: raise RuntimeError('Source escaped original descriptor')
             for offset in range(key[1],key[1]+width,4):
                 slot = offset//4
@@ -158,8 +181,15 @@ def emit_program(label, program):
     bank = program['bank']
     lines = ['static const Native64GeneratedStore '+label+'[] = {']
     lines += ['{'+','.join(map(str,(x['opcode'],x['destination'],int(x['fixed']),x['ordinal'],x['source_value'],int(x['source_mode']=='immediate'),x['source_cell'],x['source_offset'])))+'},' for x in program['stores']]
-    lines += ['};','static const uchar '+label+'_map[] = {'+','.join(map(str,bank['map']))+'};',
-              'static const Native64GeneratedBank '+label+'_bank = {'+str(bank['bytes'])+','+str(len(bank['cells']))+','+str(len(bank['map']))+','+label+'_map};']
+    lines += ['};','static const uchar '+label+'_map[] = {'+','.join(map(str,bank['map']))+'};']
+    for index, layout in enumerate(bank['sources']):
+        lines += ['static const uchar '+label+'_source_map_'+str(index)+'[] = {'+','.join(map(str,layout['map'] or [0]))+'};']
+    lines += ['static const Native64GeneratedSource '+label+'_sources[] = {']
+    lines += ['{'+str(layout['bytes'])+','+str(len(layout['map']))+','+label+'_source_map_'+str(index)+'},' for index,layout in enumerate(bank['sources'])]
+    lines += ['};','static const Native64GeneratedCell '+label+'_cells[] = {']
+    lines += ['{'+','.join(map(str,(0 if c['source_mode']=='fp' else 1,c['origin_offset'],c['native_bytes'],int(c['class'] in ('string','reference')))))+'},' for c in bank['cells']]
+    if not bank['cells']: lines += ['{0,0,0,0},']
+    lines += ['};','static const Native64GeneratedBank '+label+'_bank = {'+str(bank['bytes'])+','+str(len(bank['cells']))+','+str(len(bank['map']))+','+label+'_map,'+label+'_sources,'+label+'_cells};']
     return lines
 
 
@@ -191,7 +221,9 @@ def generate(limbo, work, env):
     if records[-1]['reason'] != 'tail-kind': raise RuntimeError('Opaque reference was admitted without an exact Type witness')
     header = ['/* Generated only from the current compiler\'s typechecked source call plans. */',
               'typedef struct Native64GeneratedStore { unsigned int op, destination, fixed, ordinal; long source; unsigned int immediate; int cell; unsigned int source_offset; } Native64GeneratedStore;',
-              'typedef struct Native64GeneratedBank { unsigned int bytes, count, mapbytes; const uchar *map; } Native64GeneratedBank;']
+              'typedef struct Native64GeneratedSource { unsigned int bytes, mapbytes; const uchar *map; } Native64GeneratedSource;',
+              'typedef struct Native64GeneratedCell { unsigned int space, offset, bytes, root; } Native64GeneratedCell;',
+              'typedef struct Native64GeneratedBank { unsigned int bytes, count, mapbytes; const uchar *map; const Native64GeneratedSource *sources; const Native64GeneratedCell *cells; } Native64GeneratedBank;']
     for operation, name in enumerate(('sprint', 'aprint', 'print', 'fprint')):
         for index, count in enumerate((2, 150)):
             record = records[operation*2+index]

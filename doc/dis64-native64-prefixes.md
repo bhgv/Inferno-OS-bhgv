@@ -472,20 +472,61 @@ producer must gather/refresh the original source at the corresponding read
 point, or separately prove it immutable under the execution contract. Original
 PCs and operand provenance are retained for that work.
 
-The runtime gate supplies immutable C input values once per unique source,
-creates the actual managed bank Type from the generated map, pins its heap
-object, and forces GC between initialization and reads. Every generated store
-then obtains its operand address from the generated native offset. An alias
-case returns `-1|%d|%s`, demonstrating that the String argument reads the same
-cell as the format instead of receiving an unrelated per-destination C value.
-Packed scalar tests also use generated bank offsets, including a Big cell
-shared by MOVL and CVTLF. Guard bytes, root maps and per-generation pool
-allocation/free counts verify complete retirement.
+The runtime gate seeds C input values once per unique native source, creates
+actual source/bank Types from generated maps and pins the managed storage.
+Every generated store obtains its operand from the native bank after gathering
+its current source value, as described below. An unchanged alias returns
+`-1|%d|%s`: the String argument reads the same source as the format instead of
+receiving an unrelated per-destination C value. Packed scalar tests use both
+native origin and bank offsets, including a Big cell shared by MOVL and CVTLF.
+Guard bytes, root maps and per-generation pool allocation/free counts verify
+complete retirement.
 
 Removal controls detect a destination offset used as a source, a missing bank
 root map and repeated initialization of a shared immutable fixture input. This
-closes the decoded-C operand-address substitution step. The source values and
-bank initialization are still C-supplied; general native caller/MP layout,
-source gathering, data initializers, serialized PC/site metadata and ordinary
-Dis64 execution remain pending. The bank is a private lowering representation,
-not a new wire section or an assigned managed type signature.
+closes the decoded-C operand-address substitution step. Initial source values
+remain C-supplied. The private layout/gathering plan below still needs complete
+caller instruction/initializer lowering, serialized PC/site metadata and
+ordinary Dis64 execution. The bank is a private lowering representation, not a
+new wire section or an assigned managed type signature.
+
+## Gather each read from native FP/MP storage
+
+The private lowering plan now describes the complete source descriptors used by
+its reads. `bank.sources` has two entries, FP then MP. A used entry includes
+`legacy_bytes`, native `bytes`, a complete map8 and the `word4-ref8` policy;
+an unused entry has zero extent and an empty map. Every source cell adds an
+`origin_offset` in the corresponding native source extent. The independent
+classic Dis reader reconstructs these layouts from the serialized caller and
+module descriptors, rather than trusting the diagnostic offsets/maps.
+
+The layout reserves 64 bytes before FP locals (replacing the legacy 20-byte
+header), starts MP at zero, preserves four-byte scalar words, and aligns each
+widened reference to eight bytes. Padding is unmarked. Packed LONG/REAL reads
+must still span two adjacent scalar words; a split span refuses the complete
+plan. Extents are rounded to eight bytes. Source descriptors are bounded to
+1 MiB before allocating relocation scratch. These are private storage layouts,
+not Types installed in an executable Module, and do not change existing frame
+instructions or the wire format.
+
+The VM transport gate now creates actual managed native FP and MP extents from
+these maps and seeds each unique source there. Before **each** original read,
+it obtains the source through the generated space/offset, refreshes its bank
+cell using MOVP/MOVW/MOVL, and then executes the canonical argument operation.
+The test keeps all three extents in one pinned managed allocation with their
+maps combined at aligned offsets. GC runs between source initialization,
+gathering and argument writes. Source initialization remains fixture C code;
+it is not execution of a module's serialized initializers.
+
+A mutable-alias case stores a String as both format and tail source. After the
+format read, it changes the source to `"ok"`, runs GC, and verifies `"-1|ok"`.
+The pending frame must retain the old format while the later read sees the new
+String. The unchanged-alias case still returns `"-1|%d|%s"`. Removal controls
+must reject reading the unfilled bank instead of FP/MP and caching the first
+reference read. All earlier canonical-store, source-map and ownership controls
+remain active.
+
+This closes the private source-layout and per-read gathering step. Compiling
+all caller operations and source initializers into those layouts, lowering
+result/module operands, admitting owned serialized PC/site metadata and
+executing an ordinary variadic Dis64 module remain required before AWM.

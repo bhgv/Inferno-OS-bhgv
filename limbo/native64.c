@@ -1214,19 +1214,58 @@ native64callpcs(Inst *first, long count)
     native64callreset();
 }
 
-/* Lower only proven direct argument writes. Source FP/MP relocation remains explicit
- * compiler work: these records are an internal store program, not an executable image. */
+/* Private storage geometry only: it does not admit a serialized native caller.
+ * Keep scalar words packed, align widened references and reserve the native header. */
+typedef struct Native64SourceLayout Native64SourceLayout;
+struct Native64SourceLayout {
+    unsigned int *offsets;
+    uchar *map;
+    unsigned int bytes, mapbytes, legacybytes;
+};
+
+static int
+native64sourcelayout(Desc *desc, int fp, Native64SourceLayout *layout)
+{
+    unsigned int i, offset, bit, root, first = fp ? STemp : 0;
+    if(desc == nil || desc->size < first || desc->size > 1024*1024 || desc->size%4 != 0)
+        return 0;
+    layout->legacybytes = desc->size;
+    layout->offsets = allocmem((desc->size/4+1)*sizeof(*layout->offsets));
+    layout->map = allocmem((2*desc->size+64+63)/64);
+    memset(layout->map, 0, (2*desc->size+64+63)/64);
+    offset = fp ? 64 : 0;
+    for(i=0; i<desc->size; i+=4) {
+        bit = i/4; root = bit/8 < desc->nmap && (desc->map[bit/8] & (0x80>>(bit%8)));
+        if(i < first) {
+            if(root) return 0;
+            layout->offsets[bit] = 0;
+            continue;
+        }
+        if(root) offset = (offset+7)&~7U;
+        layout->offsets[bit] = offset;
+        if(root) layout->map[offset/64] |= 0x80>>((offset/8)%8);
+        offset += root ? 8 : 4;
+    }
+    layout->bytes = offset == 0 ? 8 : (offset+7)&~7U;
+    layout->mapbytes = (layout->bytes+63)/64;
+    return 1;
+}
+
+/* Lower proven direct argument writes and private FP/MP source locations.
+ * Records remain internal compiler plans, not an executable image. */
 static void
 native64callstores(Native64CallPC *note, int linked)
 {
     typedef struct Store Store;
     struct Store { Inst *origin; unsigned int field, op, cell; };
     typedef struct Cell Cell;
-    struct Cell { int mode, kind; long legacy; unsigned int oldbytes, bytes, native; };
+    struct Cell { int mode, kind; long legacy; unsigned int oldbytes, bytes, native, origin; };
     Cell *cells = nil;
     unsigned int ncells = 0, j, oldbytes, readbytes, readkind, root, bit, mapbytes, bankbytes;
     uchar bankmap[(64+4098*8+63)/64];
     Desc *descriptor;
+    Native64SourceLayout layouts[2] = {{0}, {0}}, *layout;
+    unsigned int space;
     Store *stores = nil;
     uchar *seen = nil;
     Native64CallArg *field;
@@ -1296,6 +1335,13 @@ native64callstores(Native64CallPC *note, int linked)
             }
         }
         if(reason != nil) break;
+        space = in->sm == Afp ? 0 : 1; layout = &layouts[space];
+        if(layout->offsets == nil && !native64sourcelayout(descriptor, space == 0, layout)) {
+            reason = "source-layout"; break;
+        }
+        if(oldbytes == 8 && layout->offsets[value/4+1] != layout->offsets[value/4]+4) {
+            reason = "source-scalar-span"; break;
+        }
         for(j=0; j<ncells; j++) if(cells[j].mode == in->sm) {
             if(value < cells[j].legacy+cells[j].oldbytes && cells[j].legacy < value+oldbytes) {
                 if(value != cells[j].legacy || oldbytes != cells[j].oldbytes || readkind != cells[j].kind) reason = "source-overlap-or-kind";
@@ -1306,6 +1352,7 @@ native64callstores(Native64CallPC *note, int linked)
         if(j == ncells) {
             cells[j].mode = in->sm; cells[j].kind = readkind; cells[j].legacy = value;
             cells[j].oldbytes = oldbytes; cells[j].bytes = readbytes; cells[j].native = 64+j*8;
+            cells[j].origin = layout->offsets[value/4];
             if(root) bankmap[cells[j].native/64] |= 0x80>>((cells[j].native/8)%8);
             ncells++;
         }
@@ -1337,10 +1384,19 @@ native64callstores(Native64CallPC *note, int linked)
         for(i=0; i<ncells; i++) {
             kind = cells[i].kind == Tstring ? "string" : cells[i].kind == Tref ? "reference" :
                 cells[i].kind == Tint ? "word" : cells[i].kind == Tbig ? "long" : "real";
-            fprint(2, "%s{\"source_mode\":\"%s\",\"legacy_offset\":%ld,\"legacy_bytes\":%ud,\"native_offset\":%ud,\"native_bytes\":%ud,\"class\":\"%s\"}",
-                i == 0 ? "" : ",", native64pcspace(cells[i].mode), cells[i].legacy, cells[i].oldbytes, cells[i].native, cells[i].bytes, kind);
+            fprint(2, "%s{\"source_mode\":\"%s\",\"legacy_offset\":%ld,\"legacy_bytes\":%ud,\"native_offset\":%ud,\"native_bytes\":%ud,\"class\":\"%s\",\"origin_offset\":%ud}",
+                i == 0 ? "" : ",", native64pcspace(cells[i].mode), cells[i].legacy, cells[i].oldbytes, cells[i].native, cells[i].bytes, kind, cells[i].origin);
+        }
+        fprint(2, "],\"sources\":[");
+        for(space=0; space<2; space++) {
+            layout = &layouts[space];
+            fprint(2, "%s{\"space\":\"%s\",\"policy\":\"word4-ref8\",\"legacy_bytes\":%ud,\"bytes\":%ud,\"map\":[",
+                space == 0 ? "" : ",", space == 0 ? "fp" : "mp", layout->legacybytes, layout->bytes);
+            for(j=0; j<layout->mapbytes; j++) fprint(2, "%s%ud", j == 0 ? "" : ",", layout->map[j]);
+            fprint(2, "]}");
         }
         fprint(2, "]}}\n");
     }
+    for(space=0; space<2; space++) { free(layouts[space].offsets); free(layouts[space].map); }
     free(cells); free(seen); free(stores);
 }
