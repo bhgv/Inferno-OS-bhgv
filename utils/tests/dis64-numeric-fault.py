@@ -22,9 +22,11 @@ def unit(control):
     source = source.replace(marker, marker+'\n\tif(allocations == numericthrowat)\n\t\tnumericthrow();', 1)
     if control == 'lease':
         marker = '\tfree64storage(load.lease);'
-        if source.count(marker) != 1:
+        fn = runpy.run_path(str(ROOT/'utils/tests/native64-builtins.py'))['function']
+        target = fn(source, 'static Module*\ndis64numericbuild(')
+        if target.count(marker) != 1:
             raise RuntimeError('partial lease marker drift')
-        source = source.replace(marker, '\t/* Deliberately omit partial lease retirement. */', 1)
+        source = source.replace(target, target.replace(marker, '\t/* Deliberately omit partial lease retirement. */', 1), 1)
     fixture = (ROOT/'utils/tests/dis64-numeric-fault.c').read_text()
     if control == 'mapping':
         # Omit only the OS release; the next baseline must detect the retained mapping.

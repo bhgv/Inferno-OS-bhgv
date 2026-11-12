@@ -55,7 +55,8 @@ def unit(control):
     fn=runpy.run_path(str(ROOT/'utils/tests/native64-builtins.py'))['function']
     source=runpy.run_path(str(ROOT/'utils/tests/dis64-storage-attach.py'))['unit'](None)
     source=source.replace('int\nmain(int argc, char **argv)','int\nstorage_attach_main(int argc, char **argv)',1)
-    source+='\n#include "dis64-numeric-storage.h"\n'
+    # The production constructor now decodes direct and indirect operands through dis64callread.
+    source+='\n#include "dis64-bound-call.h"\n#include "dis64-numeric-storage.h"\n'
     source+='#define Dis64RuntimeName 255U // Actual numeric display-name policy.\n'
     parts=numericparts()
     changes={'entry':('module->entry = module->prog+load->image.module.entry;','module->entry = nil;'),
@@ -64,8 +65,11 @@ def unit(control):
              'lease':('free64storage(load.lease);','/* omitted partial numeric lease cleanup */')}
     if control:
         old,new=changes[control]
-        if parts.count(old)!=1: raise RuntimeError('numeric constructor control drift')
-        parts=parts.replace(old,new,1)
+        # Other entry profiles own identical rollback statements; mutate this constructor only.
+        signature = 'static int\ndis64numericconstruct(' if control in ('entry','path') else 'static Module*\ndis64numericbuild('
+        target = fn(parts, signature)
+        if target.count(old)!=1: raise RuntimeError('numeric constructor control drift')
+        parts=parts.replace(target,target.replace(old,new,1),1)
     return source+(ROOT/'utils/tests/dis64-numeric-module.c').read_text().replace('NUMERIC_IMPLEMENTATION',parts)
 
 

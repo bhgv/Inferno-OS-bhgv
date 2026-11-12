@@ -39,7 +39,7 @@ def unit(control, clones=False):
         'release': ('ptrdel(D2H(data));', '/* omitted root retirement */'),
         'types': ('freetype(owner->types[i]);', 'USED(owner->types[i]);'),
         'data': ('if(!dis64initializersapply(', 'if(0 && !dis64initializersapply('),
-        'preflight': ('!dis64storageimagecheck(image, bytes, &limits, &load.image)', '(dis64storageimagecheck(image, bytes, &limits, &load.image), 0)'),
+        'preflight': ('!dis64storageimagecheck(image, bytes, &limits, &view)', '(dis64storageimagecheck(image, bytes, &limits, &view), 0)'),
     }
     if control:
         old,new = mutations[control]
