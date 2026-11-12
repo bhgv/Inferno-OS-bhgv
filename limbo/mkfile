@@ -42,6 +42,7 @@ HFILES=	limbo.h\
 	$ROOT/include/dis64-scalar.h\
 	$ROOT/include/dis64-code.h\
 	$ROOT/include/dis64-pilot.h\
+	$ROOT/include/dis64-sys-string-flow.h\
 	$ROOT/include/dis-string-pool.h\
 	$ROOT/include/dis-rune.h\
 	$ROOT/include/dis-layout.h\

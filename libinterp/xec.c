@@ -187,7 +187,7 @@ native64bindresult(int managed)
 	   (uintptr)type > (uintptr)-1-O(Type, map)-(uintptr)mapbytes ||
 	   base > (uintptr)-1-(uintptr)size || instruction.s.ind != size-8)
 		error(exBounds);
-	if(managed == 2 && (size != 80 || mapbytes != 2 || type->map[0] != 0 || type->map[1] != 0x80))
+	if(managed == 2 && ((size != 80 && size != 112) || mapbytes != 2 || type->map[0] != 0 || type->map[1] != 0x80))
 		error(exBounds);
 	resultbyte = (size-8)/64;
 	resultbit = 0x80 >> ((size-8)/8%8);
@@ -197,7 +197,7 @@ native64bindresult(int managed)
 		int map = type->map[i];
 
 		/* The paired String caller also owns its argument at byte 64. */
-		if(managed && size == 80 && i == 1)
+		if(managed && (size == 80 || (managed == 2 && size == 112)) && i == 1)
 			map &= ~0x80;
 		if(map != (managed == 1 && i == resultbyte ? resultbit : 0))
 			error(exBounds);

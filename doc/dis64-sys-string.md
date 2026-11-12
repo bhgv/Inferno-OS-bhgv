@@ -57,9 +57,8 @@ MP0 holds the loaded module, MP8 nil, MP16 the owned `$Sys` path and MP24+8*i
 independent String literals. Up to 32 roots, 255 runes each, 1024 total runes
 and 32 straight-line calls are accepted. Supported local aliases, nil and
 repeated LOADs use the same producer checks as the named String/List trial.
-The entry is `init()` without input; an optional `-A` seed is ignored. Consuming
-or branching on the Word result, other Sys methods and mixed file/builtin calls
-are still rejected by this profile.
+The entry is `init()` without input; an optional `-A` seed is ignored. The extended frame described below permits Word expressions and control flow.
+Other Sys methods and mixed file/builtin calls remain outside this profile.
 
 Run the exact byte-oracle, full-console and owning runtime gates:
 
@@ -78,3 +77,79 @@ maps, identities and signatures fail before owner allocation. Active controls
 remove the result store and literal publication and must fail explicit value
 predicates. Cross runs use `CC`, `NATIVE64_ARCH`, `NATIVE64_RUNNER`; flags use
 `NATIVE64_CFLAGS`.
+
+## Word results, conditions and loops
+
+Save the following as `sys-loop.b`. It makes three calls inside the loop and one
+after it; it does not print. Change `-c 0` to `-c 1` to request JIT mode.
+
+```limbo
+implement SysText;
+include "sys.m";
+SysText: module { init: fn(); };
+init()
+{
+    sys := load Sys Sys->PATH;
+    n := 0;
+    status := 0;
+    while(n < 3){
+        status = sys->werrstr("tick");
+        if(status != 0)
+            return;
+        n++;
+    }
+    status = sys->werrstr("done");
+}
+```
+
+```sh
+/host/tools/limbo -I module -64l -o /build/sys-loop.dis64 sys-loop.b
+/build/emu/Linux/o.emu-g -v -c 0 -r /build \
+    -d /sys-loop.dis64 -P '$Sys' -X dis64-managed-trial
+python3 utils/tests/dis64-pair-boot.py --root /build \
+    --emu /build/emu/Linux/o.emu-g --limbo /host/tools/limbo \
+    --sys-string-flow-only
+python3 utils/tests/dis64-sys-flow-gc.py --limbo /host/tools/limbo
+```
+
+The extended producer accepts Word arithmetic/bitwise operations, comparisons,
+conditional calls, loops with break/continue, early void returns, short-circuit
+conditions and nested `werrstr` expressions. It preserves live call results
+across later calls. Initial LOAD stays first; repeated LOADs retain their order
+relative to scalar effects. The existing 80-byte straight-line images remain
+byte-identical.
+
+An extended caller uses 112 bytes with the same `{0x00,0x80}` pointer map:
+
+| Cell | Meaning |
+| --- | --- |
+| FP64 | Owned String argument |
+| FP80, FP84, FP88 | Three persistent Word cells |
+| FP104 | Four-byte Word result |
+| FP108 | Unmapped result padding |
+
+Only declared scalar cells can be read or written as Words. The full-pointer
+return binder accepts the checked 80/112-byte caller geometries and the same
+72-byte native callee geometry. It never treats a Word or its padding as a root.
+The compiler and loader check definite initialization using a bounded CFG
+intersection solver, including the zero-iteration path through a loop. Branches
+can enter scalar steps, later LOADs or the start of a complete argument/call
+block; they cannot skip argument publication, enter a pending frame, or reenter
+the initial LOAD. Every encoded instruction must be structurally reachable.
+
+The bounds are 32 static call sites, 64 scalar/LOAD events and three persistent
+Word cells. A loop may execute a static call repeatedly. More live scalar
+identities are rejected. String-local assignments and aliases in a function
+with branches are conservatively rejected: the current pointer-identity proof
+does not merge such assignments across CFG edges. Pass a literal or nil at a
+conditional/looped call; existing straight-line String aliases still work.
+This remains the fixed `werrstr` trial, not general mixed or variadic Sys admission.
+
+The owning flow gate checks actual error-text event sequences and call counts,
+32-bit wrap and bitwise expressions, branch outcomes, nested calls, normal/error
+retirement and GC after every quantum. Independent raw CFG cases reject missing
+join definitions, loop-only definitions, reads of roots/padding and branches
+into call preparation before allocation. Active controls replace fact
+intersection with union and omit native result publication; both must fail at
+explicit semantic predicates. Native/heap constructor rollback and conversion
+errors after entering the 112-byte caller path are checked separately.

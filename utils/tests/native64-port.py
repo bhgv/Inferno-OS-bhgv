@@ -96,6 +96,7 @@ def main():
         print('PASS classic-mk console and Dis64 pair boot')
         return
     run([sys.executable, str(tests/'dis64-sys-string-gc.py'), '--limbo', str(tools/'limbo')], build, env, logs/'sys-string-gc.log')
+    run([sys.executable, str(tests/'dis64-sys-flow-gc.py'), '--limbo', str(tools/'limbo')], build, env, logs/'sys-flow-gc.log')
     run([str(tools/'mk'), 'install'], build/'libdraw', env, logs/'mk-libdraw.log')
     builtinenv = dict(env, NATIVE64_LIMBO=str(tools/'limbo'))
     run([sys.executable, str(tests/'native64-builtins.py'), '--sets', '--port-aliases'],

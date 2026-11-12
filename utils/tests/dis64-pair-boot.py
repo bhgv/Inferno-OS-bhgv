@@ -768,6 +768,7 @@ def main():
     parser.add_argument('--sys-flow-only', action='store_true')
     parser.add_argument('--managed-literal-only', action='store_true')
     parser.add_argument('--managed-module-only', action='store_true')
+    parser.add_argument('--sys-string-flow-only', action='store_true')
     parser.add_argument('--limbo', type=Path)
     args = parser.parse_args()
     root = args.root.resolve()
@@ -778,6 +779,11 @@ def main():
         consumer, provider = work/'consumer.dis64', work/'provider.dis64'
         pair = ['-d', '/'+str(consumer.relative_to(root)), '-P', '/'+str(provider.relative_to(root))]
         sibling = work/'unit.dis64'
+        if args.sys_string_flow_only:
+            if args.limbo is None: parser.error('--sys-string-flow-only requires --limbo')
+            flow=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-flow.py'))
+            flow['boot'](command,work,consumer,args.limbo.resolve(),execute,BOOT['RETIRED'])
+            return
         if args.managed_module_only:
             if args.limbo is None: parser.error('--managed-module-only requires --limbo')
             named=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-module.py'))
@@ -1087,6 +1093,8 @@ def main():
             named['boot'](command,work,consumer,provider,pair,args.limbo.resolve(),execute,BOOT['RETIRED'])
             sysstring=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-string.py'))
             sysstring['boot'](command,work,consumer,args.limbo.resolve(),execute,BOOT['RETIRED'])
+            sysflow=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-flow.py'))
+            sysflow['boot'](command,work,consumer,args.limbo.resolve(),execute,BOOT['RETIRED'])
         trial = ['-X', 'dis64-managed-trial']
         trial_input = ['-A', 'Grüße 世界']
         for direction, accepted, payload, dependency in GC['managed_image_cases'](RAW):

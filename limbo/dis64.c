@@ -5,6 +5,7 @@
 #include "dis64-numeric-storage.h"
 #include "dis64-managed-trial.h"
 #include "dis64-bound-call.h"
+#include "dis64-sys-string-flow.h"
 
 #define ScalarOutputLimit (8U*1024U*1024U) // Match the complete-image admission bound.
 
@@ -746,6 +747,8 @@ struct Dis64ManagedCompilePlan {
 	char *symbols[2]; // Actual export names in binding order.
 	Sym *literals[Dis64ManagedLiterals]; // Independently materialized String identities.
 	unsigned int nliterals;
+	int wordflow, branches;
+	Dis64ClockPlan scalar; // Word facts use virtual cells until final root-disjoint lowering.
 };
 
 #define Dis64ManagedLiteral (-2L-Dis64ManagedCalls)
@@ -878,7 +881,8 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	static const uchar dm[] = {Afp, Afp, Afpind, Afpind, Afp, Anone};
 	static const uchar mm[] = {Aldt, Aoff, Anone, Anone, Aoff, Anone};
 	Decl *imports[2], *import, *export, *path, *argument, *nilvalue, *emptyvalue, *literals[Dis64ManagedLiterals], *constants[3+Dis64ManagedLiterals];
-	Inst *load;
+	Inst *load, *scan;
+	long scalarprevious = -1, scalarlocals[Dis64ClockLocals];
 	long module = -1, modulevalue = 0, frame = -1, result = -1, current = 1, previous = 0, value;
 	long slots[12*Dis64ManagedCalls+1], values[12*Dis64ManagedCalls+1], *source, *destination;
 	unsigned int i, j, n, nliterals = 0, groups = 0, phase = 1, pending = 0, step, binding = 0, seen = 0, used = 0;
@@ -889,6 +893,11 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	   (databytes < 4 || databytes%4 || databytes > 4*(3+Dis64ManagedLiterals)) || ldts == nil || ldts->next != nil || ldts->init == nil ||
 	   ldts->init->val < 1 || ldts->init->val > 2 || ldts->init->decl == nil)
 		return 0;
+	for(i=0; i<Dis64ClockLocals; i++) scalarlocals[i] = -1;
+    if(builtin) for(scan=input; scan != nil; scan=scan->next){
+        if(dis64clockwordop(scan->op) || dis64clockbranch(scan->op) || (scan->op == IRET && scan->pc < count-1)) plan->wordflow = 1;
+        if(dis64clockbranch(scan->op) || (scan->op == IRET && scan->pc < count-1)) plan->branches = 1;
+    }
 	for(import=ldts->init->decl->ty->ids, n=0; import != nil; import=import->next, n++){
 		direction = dis64manageddirection(import);
         if(builtin){
@@ -967,9 +976,22 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	for(i=0; input != nil; input=input->next){
 		if(input->op == INOOP) continue;
 		if(i >= count) return 0;
+        if(builtin && phase == 1 && module >= 0 && (dis64clockwordop(input->op) || dis64clockbranch(input->op) || (input->op == IRET && i != count-1))){
+            Dis64ClockWord *word;
+            if(plan->scalar.nwords == Dis64ClockWords) return 0;
+            word = &plan->scalar.words[plan->scalar.nwords];
+            word->legacy = input->pc; word->before = groups; word->target = -1;
+            if(input->op == IRET){
+                word->instruction = (Dis64Instruction){IJMP,SRC(AXXX)|DST(AIMM),0,0,count-1}; word->target = count-1;
+            }else if(dis64clockbranch(input->op)){
+                if(!dis64clocktest(input,scalarlocals,scalarprevious,count,&word->instruction)) return 0;
+                word->target = input->branch->pc;
+            }else if(!dis64clockword(input,module,entry->desc->size,scalarlocals,&scalarprevious,&word->instruction)) return 0;
+            plan->scalar.nwords++; i++; continue;
+        }
 		if(i != count-1 && phase == 1 && input->op == IMOVP &&
 		   (input->sm == Afp || input->sm == Amp) && input->dm == Afp && input->mm == Anone){
-			if(!dis64clockslot(input->d.reg, entry->desc->size))
+			if((builtin && plan->branches) || !dis64clockslot(input->d.reg, entry->desc->size))
 				return 0;
 			destination = dis64managedlocal(slots, values, &used, input->d.reg);
 			if(destination == nil) return 0;
@@ -987,20 +1009,27 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			continue;
 		}
 		step = module < 0 ? 0 : i == count-1 ? 5 : phase;
-		if(i != 0 && i != count-1 && phase == 1 && input->op == ILOAD && emitscalar64 == 3 && !pending)
+		if(i != 0 && i != count-1 && phase == 1 && input->op == ILOAD && emitscalar64 == 3 && (!pending || (builtin && plan->wordflow)))
 			step = 0;
 		if(input->op != ops[step] || (input->sm != sm[step] && !(step == 2 && input->sm == Amp)) ||
 		   input->dm != dm[step] || input->mm != mm[step])
 			return 0;
 		switch(step){
 		case 0:
-			if(pending || groups == Dis64ManagedCalls || input->s.reg != path->offset || input->m.reg != 0 ||
+			if((pending && !(builtin && plan->wordflow)) || groups == Dis64ManagedCalls || input->s.reg != path->offset || input->m.reg != 0 ||
 			   !dis64clockslot(input->d.reg, entry->desc->size) || (argument != nil && input->d.reg == 32)) return 0;
 			module = input->d.reg;
 			destination = dis64managedlocal(slots, values, &used, module);
 			if(destination == nil) return 0;
 			*destination = --modulevalue;
 			plan->reloads[groups] = pending = 1;
+            if(builtin){
+                Dis64ClockWord *word;
+                if(plan->scalar.nwords == Dis64ClockWords) return 0;
+                word = &plan->scalar.words[plan->scalar.nwords++];
+                word->legacy = input->pc; word->before = groups; word->target = -1;
+                word->instruction = (Dis64Instruction){ILOAD,SRC(AMP)|AXIMM|DST(AMP),0,16,0};
+            }
 			break;
 		case 1:
 			source = dis64managedlocal(slots, values, &used, input->s.reg);
@@ -1010,6 +1039,7 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			for(binding=0; binding<n; binding++)
 				if(input->m.decl->iface == imports[binding]) break;
 			if(binding == n) return 0;
+			if(builtin) plan->scalar.calls[groups].legacy = input->pc;
 			frame = input->d.reg;
 			destination = dis64managedlocal(slots, values, &used, frame);
 			if(destination == nil) return 0;
@@ -1049,12 +1079,17 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			result = input->s.reg;
 			if(!dis64clockslot(result, entry->desc->size) || result == frame ||
 			   input->d.reg != frame || input->d.offset != 16) return 0;
+            if(builtin && plan->wordflow){
+                if((plan->branches || dis64clockoverlap(input)) && !dis64clockretain(scalarlocals,result)) return 0;
+                plan->scalar.calls[groups].save = dis64clockcell(scalarlocals,result);
+            }
 			phase = 4;
 			break;
 		case 4:
 			source = dis64managedlocal(slots, values, &used, input->d.reg);
 			if(input->s.reg != frame || source == nil || *source != modulevalue || input->m.decl == nil ||
 			   input->m.decl->iface != imports[binding]) return 0;
+			if(builtin) scalarprevious = plan->branches ? -1 : result;
 			plan->ordinals[groups++] = binding;
 			previous = groups+1;
 			previouskind = builtin ? 0 : plan->directions[binding] ? 1 : 2;
@@ -1064,12 +1099,17 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			pending = 0; phase = 1;
 			break;
 		case 5:
-			if(phase != 1 || pending || groups == 0) return 0;
+			if(phase != 1 || (pending && !(builtin && plan->wordflow)) || groups == 0) return 0;
 			break;
 		}
 		i++;
 	}
 	if(i != count) return 0;
+    if(builtin && plan->wordflow){
+        j = plan->scalar.nwords;
+        for(i=0; i<groups; i++) j += plan->scalar.calls[i].save != 0;
+        if(j > Dis64ClockWords) return 0;
+    }
 	for(j=0; j<nliterals; j++){
 		for(i=0; i<groups && plan->transfers[i] != 3+j; i++) ;
 		if(i == groups) return 0;
@@ -1100,6 +1140,71 @@ dis64managedliteral(Sym *literal, uchar *output, DisStringPoolRecord *record)
     return 1;
 }
 
+/* Lower the checked extended caller without moving LOAD across scalar effects. */
+static int
+dis64sysstringemit(Dis64ManagedCompilePlan *plan, long legacycount, uchar *code, unsigned int *bytes)
+{
+    static const uchar call[] = {IMFRAME,SRC(AMP)|AXIMM|DST(AFP),0,0,40,
+        IMOVP,SRC(AFP)|DST(AFP|AIND),0x80,64,40,0x80,64,
+        ILEA,SRC(AFP)|DST(AFP|AIND),0x80,104,40,32,
+        IMCALL,SRC(AFP)|AXIMM|DST(AMP),0,40,0};
+    Dis64Instruction instruction;
+    long pcs[12*Dis64ManagedCalls+1];
+    unsigned int i, step = 0, pc = 0, at = 4;
+    for(i=0; i<nelem(pcs); i++) pcs[i] = -1;
+    for(i=0; i<=plan->calls; i++){
+        while(step < plan->scalar.nwords && plan->scalar.words[step].before == i){
+            pcs[plan->scalar.words[step++].legacy] = pc++;
+        }
+        if(i != plan->calls){ pcs[plan->scalar.calls[i].legacy] = pc; pc += 5+!!plan->scalar.calls[i].save; }
+    }
+    pcs[legacycount-1] = pc++;
+    if(pc > Dis64ClockInstructions) return 0;
+    step = 0;
+    for(i=0; i<=plan->calls; i++){
+        while(step < plan->scalar.nwords && plan->scalar.words[step].before == i){
+            Dis64ClockWord *word = &plan->scalar.words[step++];
+            instruction = word->instruction;
+            if(word->target >= 0){
+                if(word->target >= legacycount || pcs[word->target] < 0) return 0;
+                instruction.destination = pcs[word->target];
+            }
+            if(instruction.op != ILOAD && !dis64sysstringword(&instruction,1)) return 0;
+            if(!dis64encode(code,&at,&instruction)) return 0;
+        }
+        if(i == plan->calls) break;
+        if(plan->transfers[i] != 2 && plan->transfers[i] < 3) return 0;
+        instruction = (Dis64Instruction){IMOVP,SRC(AMP)|DST(AFP),0,
+            plan->transfers[i] == 2 ? 8 : 24+8*(plan->transfers[i]-3),64};
+        if(!dis64encode(code,&at,&instruction)) return 0;
+        memmove(code+at,call,sizeof(call)); at += sizeof(call);
+        if(plan->scalar.calls[i].save){
+            instruction = (Dis64Instruction){IMOVW,SRC(AFP)|DST(AFP),0,104,
+                dis64sysstringcell(plan->scalar.calls[i].save,1)};
+            if(!dis64encode(code,&at,&instruction)) return 0;
+        }
+    }
+    code[at++] = IEXIT; code[at++] = SRC(AXXX)|DST(AXXX);
+    dis64put32(code,pc); *bytes = at;
+    {
+        Dis64Instruction flow[Dis64ClockInstructions];
+        Dis64CallDecoded decoded;
+        unsigned int cursor = 4, used;
+        for(i=0; i<pc; i++){
+            if(!dis64callread(code+cursor,at-cursor,&decoded,&used)) return 0;
+            cursor += used; flow[i] = decoded.instruction;
+            if(dis64clockwordop(flow[i].op) || dis64clockbranch(flow[i].op)){
+                if(!dis64sysstringword(flow+i,0)) return 0;
+            }else if(flow[i].op == IMOVP){
+                flow[i] = USRC(flow[i].mode) == AMP ? (Dis64Instruction){ILOAD,0,0,0,0} :
+                    (Dis64Instruction){IMOVW,SRC(AIMM)|DST(AFP),0,0,72};
+            }
+        }
+        if(cursor != at || !dis64clockflow(flow,pc)) return 0;
+    }
+    return 1;
+}
+
 void
 dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes)
 {
@@ -1118,7 +1223,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	Dis64ModuleInfo module = {0};
 	DisStringPoolRecord names[5+Dis64ManagedLiterals];
 	Dis64Payload sections[5];
-	uchar caller[4+Dis64ManagedCalls*(sizeof(load)+sizeof(call)+sizeof(transfer)+sizeof(clear))+2];
+	uchar caller[4+Dis64ManagedCalls*(sizeof(load)+sizeof(call)+sizeof(transfer)+sizeof(clear))+14*Dis64ClockWords+2];
 	uchar provider[22], metadata[24], typedata[32], pool[16384], literalbytes[Dis64ManagedLiterals][1024], literalmap[(3+Dis64ManagedLiterals+7)/8] = {0}, name[1024], symbols[2][1024];
 	uchar callername[1024], pathname[1024], binding[76], output[32768];
 	unsigned int sizes[5], written, i, j, at, header, bindingbytes, poolcount, instructions, runecount = 0;
@@ -1141,7 +1246,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		if(!dis64libraryname(plan.symbols[i], symbols[i], &names[consumer && i ? 4 : 1+i])) { error(impdecl->src.start,"Dis64 managed file: unsupported export name"); return; }
 	if(consumer){
 		module.name = 2; module.profile = 1; module.databytes = fileload ? 24 : plan.calls == 1 && plan.transfers[0] != 2 ? 8 : 16; module.datatype = 1;
-		types[0] = (Dis64Type){80, 8, builtin ? map : callermap, 2};
+		types[0] = (Dis64Type){builtin && plan.wordflow ? 112 : 80, 8, builtin ? map : callermap, 2};
 		if(plan.calls != 1 || plan.transfers[0] == 2) types[1] = (Dis64Type){16, 8, callermap+1, 1};
 		if(fileload) types[1] = (Dis64Type){24, 8, loadmap, 1};
 		if(plan.nliterals != 0) {
@@ -1163,6 +1268,11 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		}
 		if(plan.bindings == 2) poolcount = 5;
 		if(plan.nliterals != 0) poolcount = 3+plan.bindings+plan.nliterals;
+        if(builtin && plan.wordflow){
+            if(!dis64sysstringemit(&plan,count,caller,&at)){
+                error(impdecl->src.start,"Dis64 Sys String: unsupported scalar flow boundary"); return;
+            }
+        }else{
 		at = 4; instructions = builtin ? 4*plan.calls+1 : 5*plan.calls;
 		for(i=0; i<plan.calls; i++){
 			if(plan.transfers[i] == 1){ memmove(caller+at, transfer, sizeof(transfer)); at += sizeof(transfer); instructions++; }
@@ -1180,6 +1290,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		}
 		memmove(caller+at, exit, sizeof(exit)); at += sizeof(exit);
 		dis64put32(caller, instructions);
+        }
 	}else{
 		at = 4; memmove(provider+at, exit, sizeof(exit)); at += sizeof(exit);
 		for(i=0; i<plan.bindings; i++){

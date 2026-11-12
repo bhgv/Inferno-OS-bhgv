@@ -274,3 +274,5 @@ checked independently. See `dis64-managed-literals.md`. General managed
 linkage, managed Sys/variadic callers and AWM startup remain pending.
 
 The private managed file profile also executes fixed String-to-Word `Sys->werrstr` through the real builtin LOAD and native frame. See [the tutorial](dis64-sys-string.md) / [русский пример](dis64-sys-string.ru.md). General mixed/variadic calls and AWM remain pending.
+
+The fixed String-to-Word trial now uses returned Words in expressions, conditions and loops, with root-disjoint 112-byte frames and CFG initialization checks. See `dis64-sys-string.md` (and `.ru.md`). Mixed/variadic Sys calls, general managed types and Android AWM remain pending.

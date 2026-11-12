@@ -35,7 +35,7 @@ dis64clockwordop(unsigned int op)
 }
 
 
-#define Dis64ClockInstructions (5U*Dis64ClockCalls+2U+Dis64ClockWords)
+#define Dis64ClockInstructions (6U*Dis64ClockCalls+2U+Dis64ClockWords)
 
 static int
 dis64clockbranch(unsigned int op)
