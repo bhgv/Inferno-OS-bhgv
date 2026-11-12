@@ -744,8 +744,10 @@ struct Dis64ManagedCompilePlan {
 	unsigned int bindings, calls;
 	uchar directions[2], reloads[Dis64ManagedCalls], transfers[Dis64ManagedCalls], ordinals[Dis64ManagedCalls];
 	char *path;
+	Sym *literal; // One serialized, non-nil String value in the explicit file profile.
 };
 
+#define Dis64ManagedLiteral (-2L-Dis64ManagedCalls)
 #define Dis64ManagedNil (-1L-Dis64ManagedCalls) // Distinct from unknown, values and LOAD identities.
 
 /* Track pointer value identities across ordinary local assignments. */
@@ -861,15 +863,16 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	static const uchar sm[] = {Amp, Afp, Afp, Afp, Afp, Anone};
 	static const uchar dm[] = {Afp, Afp, Afpind, Afpind, Afp, Anone};
 	static const uchar mm[] = {Aldt, Aoff, Anone, Anone, Aoff, Anone};
-	Decl *imports[2], *import, *export, *path, *argument, *nilvalue;
-	long module = -1, modulevalue = 0, frame = -1, result = -1, current = 1, previous = 0;
+	Decl *imports[2], *import, *export, *path, *argument, *nilvalue, *emptyvalue, *literal, *constants[4];
+	Inst *load;
+	long module = -1, modulevalue = 0, frame = -1, result = -1, current = 1, previous = 0, value;
 	long slots[12*Dis64ManagedCalls+1], values[12*Dis64ManagedCalls+1], *source, *destination;
-	unsigned int i, n, groups = 0, phase = 1, pending = 0, step, binding = 0, seen = 0, used = 0;
+	unsigned int i, j, n, groups = 0, phase = 1, pending = 0, step, binding = 0, seen = 0, used = 0;
 	int direction, currentkind, previouskind = 0;
 
 	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 || entry->ty->varargs ||
 	   entry->ty->tof->kind != Tnone || entry->desc == nil || count < 6 || count > 12*Dis64ManagedCalls+1 ||
-	   (databytes != 4 && databytes != 8) || ldts == nil || ldts->next != nil || ldts->init == nil ||
+	   (databytes != 4 && databytes != 8 && databytes != 12 && databytes != 16) || ldts == nil || ldts->next != nil || ldts->init == nil ||
 	   ldts->init->val < 1 || ldts->init->val > 2 || ldts->init->decl == nil)
 		return 0;
 	for(import=ldts->init->decl->ty->ids, n=0; import != nil; import=import->next, n++){
@@ -883,16 +886,22 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	if(n != ldts->init->val)
 		return 0;
 	argument = entry->ty->ids;
-	if(argument == nil || argument->next != nil)
-		return 0;
-	currentkind = argument->ty->kind == Tstring ? 1 :
-		argument->ty->kind == Tlist && argument->ty->tof->kind == Tstring ? 2 : 0;
-	if(currentkind == 0)
-		return 0;
+	if(argument == nil){
+		if(emitscalar64 != 3) return 0;
+		current = currentkind = 0;
+	}else{
+		if(argument->next != nil) return 0;
+		currentkind = argument->ty->kind == Tstring ? 1 :
+			argument->ty->kind == Tlist && argument->ty->tof->kind == Tstring ? 2 : 0;
+		if(currentkind == 0) return 0;
+	}
 	for(export=impdecl->ty->tof->ids; export != nil; export=export->next)
 		if(export->store == Dglobal || (export->store == Dfn && export->sym != entry->sym))
 			return 0;
-	path = nilvalue = nil;
+	for(load=input; load != nil && load->op != ILOAD; load=load->next)
+		;
+	if(load == nil) return 0;
+	path = nilvalue = emptyvalue = literal = nil;
 	for(; globals != nil; globals=globals->next){
 		if(globals->store != Dglobal) continue;
 		if(globals->ty->kind == Tany && globals->init == nil && strcmp(globals->sym->name, "nil") == 0){
@@ -900,17 +909,32 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			nilvalue = globals;
 			continue;
 		}
-		if(path != nil || globals->ty->kind != Tstring || globals->init == nil ||
-		   globals->init->op != Oconst || globals->init->decl == nil ||
-		   (emitscalar64 == 3 ? globals->init->decl->sym->name[0] != '/' :
-		    strcmp(globals->init->decl->sym->name, "/dis/lib/string.dis") != 0))
-			return 0;
-		path = globals;
+		/* Limbo represents an empty String constant as an initialized nil cell. */
+		if(emitscalar64 == 3 && globals->ty->kind == Tstring && globals->init == nil && globals->sym->len == 0){
+			if(emptyvalue != nil || globals->offset == load->s.reg) return 0;
+			emptyvalue = globals;
+			continue;
+		}
+		if(globals->ty->kind != Tstring || globals->init == nil ||
+		   globals->init->op != Oconst || globals->init->decl == nil) return 0;
+		/* LOAD identifies the path by its MP operand; string contents may begin with '/'. */
+		if(load->s.reg == globals->offset){
+			if(path != nil || (emitscalar64 == 3 ? globals->init->decl->sym->name[0] != '/' :
+			   strcmp(globals->init->decl->sym->name, "/dis/lib/string.dis") != 0)) return 0;
+			path = globals;
+		}else{
+			if(emitscalar64 != 3 || literal != nil) return 0;
+			literal = globals;
+		}
 	}
-	if(path == nil || databytes != (nilvalue != nil ? 8 : 4) ||
-	   (path->offset != 0 && path->offset != 4) ||
-	   (nilvalue == nil ? path->offset != 0 : nilvalue->offset != 4-path->offset)) return 0;
-	*dis64managedlocal(slots, values, &used, 32) = current;
+	if(path == nil || databytes != 4*(1+(nilvalue != nil)+(emptyvalue != nil)+(literal != nil))) return 0;
+	constants[0] = path; constants[1] = nilvalue; constants[2] = emptyvalue; constants[3] = literal;
+	for(i=0; i<4; i++) if(constants[i] != nil){
+		if(constants[i]->offset < 0 || constants[i]->offset%4 || constants[i]->offset >= databytes) return 0;
+		for(j=0; j<i; j++) if(constants[j] != nil && constants[j]->offset == constants[i]->offset) return 0;
+	}
+	if(literal != nil) plan->literal = literal->init->decl->sym;
+	if(argument != nil) *dis64managedlocal(slots, values, &used, 32) = current;
 	for(i=0; input != nil; input=input->next){
 		if(input->op == INOOP) continue;
 		if(i >= count) return 0;
@@ -921,8 +945,9 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			destination = dis64managedlocal(slots, values, &used, input->d.reg);
 			if(destination == nil) return 0;
 			if(input->sm == Amp){
-				if(nilvalue == nil || input->s.reg != nilvalue->offset) return 0;
-				*destination = Dis64ManagedNil; /* A known empty value, distinct from an unknown local. */
+				if(literal != nil && input->s.reg == literal->offset) *destination = Dis64ManagedLiteral;
+				else if(((nilvalue != nil && input->s.reg == nilvalue->offset) || (emptyvalue != nil && input->s.reg == emptyvalue->offset))) *destination = Dis64ManagedNil;
+				else return 0; /* A known empty value, distinct from an unknown local. */
 			}else{
 				if(!dis64clockslot(input->s.reg, entry->desc->size)) return 0;
 				source = dis64managedlocal(slots, values, &used, input->s.reg);
@@ -941,7 +966,7 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 		switch(step){
 		case 0:
 			if(pending || groups == Dis64ManagedCalls || input->s.reg != path->offset || input->m.reg != 0 ||
-			   !dis64clockslot(input->d.reg, entry->desc->size) || input->d.reg == 32) return 0;
+			   !dis64clockslot(input->d.reg, entry->desc->size) || (argument != nil && input->d.reg == 32)) return 0;
 			module = input->d.reg;
 			destination = dis64managedlocal(slots, values, &used, module);
 			if(destination == nil) return 0;
@@ -952,7 +977,7 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			source = dis64managedlocal(slots, values, &used, input->s.reg);
 			if(groups == Dis64ManagedCalls || source == nil || modulevalue == 0 || *source != modulevalue ||
 			   input->m.decl == nil || !dis64clockslot(input->d.reg, entry->desc->size) ||
-			   input->d.reg == input->s.reg || input->d.reg == 32) return 0;
+			   input->d.reg == input->s.reg || (argument != nil && input->d.reg == 32)) return 0;
 			for(binding=0; binding<n; binding++)
 				if(input->m.decl->iface == imports[binding]) break;
 			if(binding == n) return 0;
@@ -966,8 +991,9 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			if(input->d.reg != frame || input->d.offset != 32 || input->s.reg == frame)
 				return 0;
 			if(input->sm == Amp){
-				if(nilvalue == nil || input->s.reg != nilvalue->offset) return 0;
-				source = nil;
+				if(literal != nil && input->s.reg == literal->offset) { value = Dis64ManagedLiteral; source = &value; }
+				else if(((nilvalue != nil && input->s.reg == nilvalue->offset) || (emptyvalue != nil && input->s.reg == emptyvalue->offset))) source = nil;
+				else return 0;
 			}else{
 				if(!dis64clockslot(input->s.reg, entry->desc->size)) return 0;
 				source = dis64managedlocal(slots, values, &used, input->s.reg);
@@ -977,6 +1003,10 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 				plan->transfers[groups] = 2;
 				current = Dis64ManagedNil;
 				currentkind = plan->directions[binding] ? 2 : 1;
+			}else if(*source == Dis64ManagedLiteral){
+				plan->transfers[groups] = 3;
+				current = Dis64ManagedLiteral;
+				currentkind = 1;
 			}else if(previous != 0 && *source == previous){
 				plan->transfers[groups] = 1;
 				current = previous;
@@ -1011,20 +1041,45 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 		i++;
 	}
 	if(i != count) return 0;
+	if(literal != nil){
+		for(i=0; i<groups && plan->transfers[i] != 3; i++) ;
+		if(i == groups) return 0;
+	}
 	plan->bindings = n;
 	plan->calls = groups;
 	plan->path = path->init->decl->sym->name;
+	if(strlen(plan->path) != path->init->decl->sym->len) return 0; // LOAD paths cannot silently truncate at NUL.
 	return 1;
+}
+
+/* Serialize a bounded source String as Rune32, without strlen or a nil sentinel. */
+static int
+dis64managedliteral(Sym *literal, uchar *output, DisStringPoolRecord *record)
+{
+    Rune rune;
+    unsigned int at = 0, count = 0, used;
+    if(literal == nil || literal->len < 0 || literal->len > 4*255) return 0;
+    while(at < literal->len) {
+        used = chartorune(&rune,literal->name+at);
+        if(used == 0 || used > literal->len-at || count == 255) return 0;
+        dis64put32(output+4+4*count++,rune);
+        at += used;
+    }
+    dis64put32(output,count);
+    record->data = output;
+    record->bytes = 4+4*count;
+    return 1;
 }
 
 void
 dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes)
 {
-	static const uchar map[] = {0, 0x80}, callermap[] = {0, 0xc0}, mpmap[] = {0x80}, loadmap[] = {0xe0};
+	static const uchar map[] = {0, 0x80}, callermap[] = {0, 0xc0}, mpmap[] = {0x80}, loadmap[] = {0xe0}, literalmap[] = {0xf0};
 	static const uchar load[] = {ILOAD,SRC(AMP)|AXIMM|DST(AMP),0,16,0};
 	static const uchar transfer[] = {IMOVP,SRC(AFP)|DST(AFP),0x80,72,0x80,64};
 	static const uchar clear[] = {IMOVP,SRC(AMP)|DST(AFP),8,0x80,72};
 	static const uchar empty[] = {IMOVP,SRC(AMP)|DST(AFP),8,0x80,64};
+	static const uchar literal[] = {IMOVP,SRC(AMP)|DST(AFP),24,0x80,64};
 	static const uchar exit[] = {IEXIT,SRC(AXXX)|DST(AXXX)};
 	static const uchar call[] = {IMFRAME,SRC(AMP)|AXIMM|DST(AFP),0,0,40,
 		IMOVP,SRC(AFP)|DST(AFP|AIND),0x80,64,40,0x80,64,
@@ -1033,11 +1088,11 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	Dis64ManagedCompilePlan plan = {0};
 	Dis64Type types[] = {{72, 8, map, 2}, {8, 8, mpmap, 1}};
 	Dis64ModuleInfo module = {0};
-	DisStringPoolRecord names[5];
+	DisStringPoolRecord names[6];
 	Dis64Payload sections[5];
 	uchar caller[4+Dis64ManagedCalls*(sizeof(load)+sizeof(call)+sizeof(transfer)+sizeof(clear))+2];
-	uchar provider[22], metadata[24], typedata[32], pool[2304], name[28], symbols[2][36];
-	uchar callername[1024], pathname[1024], binding[76], output[4096];
+	uchar provider[22], metadata[24], typedata[32], pool[4096], literalbytes[1024], name[28], symbols[2][36];
+	uchar callername[1024], pathname[1024], binding[76], output[8192];
 	unsigned int sizes[5], written, i, j, at, header, bindingbytes, poolcount, instructions;
 	int consumer = entry != nil, fileload = consumer && emitscalar64 == 3, direction;
 
@@ -1055,17 +1110,26 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		types[0] = (Dis64Type){80, 8, callermap, 2};
 		if(plan.calls != 1 || plan.transfers[0] == 2) types[1] = (Dis64Type){16, 8, callermap+1, 1};
 		if(fileload) types[1] = (Dis64Type){24, 8, loadmap, 1};
+		if(plan.literal != nil) {
+			if(!fileload || !dis64managedliteral(plan.literal,literalbytes,&names[3+plan.bindings])) {
+				error(impdecl->src.start,"Dis64 managed file: unsupported String literal"); return;
+			}
+			module.databytes = 32;
+			types[1] = (Dis64Type){32,8,literalmap,1};
+		}
 		if(!dis64libraryname(impdecl->sym->name, callername, &names[2]) ||
 		   ((fileload || plan.bindings == 2) && !dis64libraryname(plan.path, pathname, &names[3]))){
 			error(impdecl->src.start, "Dis64 managed file: unsupported name or absolute path"); return;
 		}
 		if(plan.bindings == 2) poolcount = 5;
+		if(plan.literal != nil) poolcount = 4+plan.bindings;
 		at = 4; instructions = 5*plan.calls;
 		for(i=0; i<plan.calls; i++){
 			if(plan.transfers[i] == 1){ memmove(caller+at, transfer, sizeof(transfer)); at += sizeof(transfer); instructions++; }
 			if(i != 0){ memmove(caller+at, clear, sizeof(clear)); at += sizeof(clear); }
 			if(fileload && plan.reloads[i]){ memmove(caller+at, load, sizeof(load)); at += sizeof(load); instructions++; }
 			if(plan.transfers[i] == 2){ memmove(caller+at, empty, sizeof(empty)); at += sizeof(empty); instructions++; }
+			if(plan.transfers[i] == 3){ memmove(caller+at, literal, sizeof(literal)); at += sizeof(literal); instructions++; }
 			memmove(caller+at, call, sizeof(call));
 			caller[at+2] = caller[at+sizeof(call)-3] = plan.ordinals[i];
 			at += sizeof(call);

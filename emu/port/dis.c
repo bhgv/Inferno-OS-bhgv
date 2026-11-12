@@ -1276,7 +1276,7 @@ schedpairseed(SchedModule *c)
 		first++;
 	/* The checked caller may explicitly replace the seeded root before its first call. */
 	if(first->op == IMOVP && first->add == (SRC(AMP)|DST(AFP)) && first->reg == 0 &&
-	   first->s.ind == 8 && first->d.ind == 64)
+	   (first->s.ind == 8 || first->s.ind == 24) && first->d.ind == 64)
 		first++;
 	if(first >= c->m->prog+c->m->nprog || first->op != IMFRAME || first->reg > 1)
 		error(exModule);

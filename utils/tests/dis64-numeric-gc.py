@@ -30,7 +30,7 @@ def unit(calls=False, managed=False):
     if managed:
         fixture = fixture.split('/* Run single-instruction quanta')[0]
         # A reload retains the previous instance until the new one is published; list input adds two nodes.
-        fixture = fixture.replace('#define GcSlots 8', '#define GcSlots 16')
+        fixture = fixture.replace('#define GcSlots 8', '#define GcSlots 16').replace('#define GcSlotBytes 256', '#define GcSlotBytes 2048')
         fixture = fixture.replace('/* Fail if the collector unexpectedly enters its diagnostic branch. */',
             'static int expectedlinkerrors;\n/* Permit only an expected missing-method linker diagnostic. */')
         fixture = fixture.replace('\tUSED(format);\n\trequire(0);\n\treturn 0;\n}',
@@ -73,6 +73,8 @@ String* c2string(char *text, int length)
 }
 '''
 
+        strings = (ROOT/'libinterp/string.c').read_text()
+        source += extract(strings,'String*\nnewstring(')+'\n'+extract(strings,'String*\nnewrunes(')+'\n'
         begin = load64.index('#ifdef DIS_NATIVE64_MANAGED_FILES\n/* Generated')
         end = load64.index('/* Only the explicit console option', begin)
         source += load64[begin:end]
@@ -88,7 +90,7 @@ String* c2string(char *text, int length)
         source += '\n'.join(extract(load64, signature) for signature in
                             ('static Modlink*\ndis64managedowner(', 'Modlink*\nprepare64managedtrial('))
         source += '\n'
-        fixture += (ROOT/'utils/tests/dis64-managed-gc.c').read_text()+'\n'+(ROOT/'utils/tests/dis64-managed-load.c').read_text()
+        fixture += (ROOT/'utils/tests/dis64-managed-gc.c').read_text()+'\n'+(ROOT/'utils/tests/dis64-managed-load.c').read_text()+'\n'+(ROOT/'utils/tests/dis64-managed-literal.c').read_text()
     if calls or managed:
         stack = (ROOT/'libinterp/stack.c').read_text()
         xec = (ROOT/'libinterp/xec.c').read_text()
@@ -360,6 +362,8 @@ def main():
             (work/'managed-images.h').write_text(managed_images(fixtures, args.limbo, work))
             groups = runpy.run_path(str(ROOT/'utils/tests/dis64-managed-groups.py'))
             (work/'group-images.h').write_text(groups['header'](fixtures, args.limbo, work))
+            literals=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-literal.py'))
+            (work/'literal-images.h').write_text(literals['header'](args.limbo,work))
             (work/'string-native64.h').write_bytes(subprocess.check_output(
                 [str(args.limbo.resolve()), '-H', '-M', 'String', '-I'+str(ROOT/'module'),
                  str(ROOT/'module/string.m')], timeout=60))
@@ -385,6 +389,18 @@ def main():
         runner = shlex.split(os.environ.get('NATIVE64_RUNNER', ''))
         if args.managed:
             subprocess.run(runner+[str(binary)], check=True, timeout=60)
+            # Removing the actual publication must fail the value predicate, not crash.
+            text=(work/'test.c').read_text()
+            marker='memmove(file->caller->MP+24,&literal,sizeof(literal));'
+            if text.count(marker) not in (1,2): raise RuntimeError('literal publication control drift')
+            mutant=work/'literal-control.c'
+            mutant.write_text(text.replace(marker,'/* Deliberately omit the MP root publication. */'))
+            control=work/'literal-control'
+            subprocess.run(command+[str(mutant),str(ROOT/'libinterp/dec.c'),'-Wl,--wrap=free','-lm','-o',str(control)],check=True,env=dict(os.environ,TMPDIR=str(work)))
+            result=subprocess.run(runner+[str(control)],capture_output=True,text=True,timeout=60)
+            if result.returncode!=10 or result.stderr.strip()!='literal root publication predicate':
+                raise RuntimeError('literal publication control missed its predicate: '+result.stdout+result.stderr)
+            print('PASS active literal root-publication removal control')
             return
         if args.calls:
             for failure in (False, True):

@@ -265,3 +265,10 @@ across later calls, and short-circuit conditions accept reused legacy frame
 temporaries. These remain bounded by the same three scalar cells and prepare
 one native call at a time. See `build-native64.md` for runnable Limbo examples
 and the focused gate.
+
+
+The separate managed file trial can now start a void entry with a String
+literal read from its serialized Rune32 pool, rather than a console input seed.
+Mapped MP ownership, exact values, collection and allocation rollback are
+checked independently. See `dis64-managed-literals.md`. General managed
+linkage, managed Sys/variadic callers and AWM startup remain pending.

@@ -121,3 +121,14 @@ argument positions, arithmetic and implicit reads, nested chains, loops, early
 returns and both evaluated/skipped arms of short-circuit conditions. Results
 and locals share the same three-cell budget, with an explicit over-budget
 refusal. Existing flat-call byte layouts are checked unchanged.
+
+
+## Serialized managed String literals
+
+`dis64-pair-boot.py --managed-literal-only` checks the explicit `-64l` void-entry
+profile without an external input seed. `dis64-managed-literal.py` generates
+independent payload expectations, malformed images and constructor fixtures;
+`dis64-managed-literal.c` checks actual Rune32 materialization, production GC
+and allocation rollback. The normal managed GC gate also requires the active
+root-publication removal control. See `doc/dis64-managed-literals.md` for a
+runnable provider/caller pair and the private profile boundaries.

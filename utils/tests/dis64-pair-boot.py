@@ -766,6 +766,7 @@ def main():
     parser.add_argument('--runner', default='')
     parser.add_argument('--sys-clock', action='store_true')
     parser.add_argument('--sys-flow-only', action='store_true')
+    parser.add_argument('--managed-literal-only', action='store_true')
     parser.add_argument('--limbo', type=Path)
     args = parser.parse_args()
     root = args.root.resolve()
@@ -776,6 +777,11 @@ def main():
         consumer, provider = work/'consumer.dis64', work/'provider.dis64'
         pair = ['-d', '/'+str(consumer.relative_to(root)), '-P', '/'+str(provider.relative_to(root))]
         sibling = work/'unit.dis64'
+        if args.managed_literal_only:
+            if args.limbo is None: parser.error('--managed-literal-only requires --limbo')
+            literals=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-literal.py'))
+            literals['boot'](command,work,consumer,provider,pair,args.limbo.resolve(),execute,BOOT['RETIRED'])
+            return
         if args.sys_flow_only:
             boot_sys_flows(command,work,consumer,pair[:2]+['-P','$Sys'],args.limbo.resolve() if args.limbo else None,root,args.runner)
             return
@@ -1067,6 +1073,9 @@ def main():
                     raise RuntimeError(f'bad Sys clock input {case} reached the scheduler: '+output)
             print('PASS explicit Sys clock file boot with prelink and executing LOAD, C/JIT and admission refusals')
             consumer.write_bytes(images(False)[0])
+        if args.limbo is not None:
+            literals=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-literal.py'))
+            literals['boot'](command,work,consumer,provider,pair,args.limbo.resolve(),execute,BOOT['RETIRED'])
         trial = ['-X', 'dis64-managed-trial']
         trial_input = ['-A', 'Grüße 世界']
         for direction, accepted, payload, dependency in GC['managed_image_cases'](RAW):
