@@ -62,7 +62,11 @@ def main():
                 source = source.replace(function(source, 'void*\nmallocz('), 'void *mallocz(ulong, int);', 1)
                 oldpool = function(source, 'void*\npoolalloc(')
                 newpool = oldpool.replace('\tcheck(pool == heapmem', '\tif(contextheapfail) return nil;\n\tcheck(pool == heapmem', 1)
+                newpool = newpool.replace('\t\tcheck(freed[index] == 0);', '\t\tif(sourcebankpool) { freed[index] = 0; sourcebankallocs++; sourcebanklive++; }\n\t\tcheck(freed[index] == 0);')
                 source = source.replace(oldpool, 'static int contextheapfail; // Fail only the actual heapz pool boundary.\n\n'+newpool, 1)
+                oldfree = function(source, 'void\npoolfree(')
+                newfree = oldfree.replace('\tfreed[index]++;', '\tfreed[index]++;\n\tif(sourcebankpool) { sourcebankfrees++; sourcebanklive--; check(sourcebanklive >= 0); }')
+                source = source.replace(oldfree, 'static int sourcebankpool, sourcebankallocs, sourcebankfrees, sourcebanklive; // Per-generation transport ownership.\n'+newfree, 1)
                 unit = work/(port+'.c')
                 source += (ROOT/'utils/tests/native64-arguments.c').read_text()
                 extra = []
@@ -88,7 +92,7 @@ def main():
                     source += (ROOT/'utils/tests/native64-sys-format.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_sysformat_main(int argc, char **argv)', 1)
                     source += (ROOT/'utils/tests/native64-sys-write.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_syswrite_main(int argc, char **argv)', 1)
                     vm = (ROOT/'libinterp/xec.c').read_text()
-                    bodies = '#define OP(fn) void fn(void)\n'+'\n'.join(function(vm, signature) for signature in ('static Type*\nmoduletype(', 'static int\nmoduleentry(', 'static int\nframefits(', 'OP(frame)', 'OP(mframe)', 'OP(mcall)', 'OP(movw)', 'OP(movp)', 'OP(movl)', 'OP(movf)', 'OP(cvtwl)', 'OP(cvtwf)'))
+                    bodies = '#define OP(fn) void fn(void)\n'+'\n'.join(function(vm, signature) for signature in ('static Type*\nmoduletype(', 'static int\nmoduleentry(', 'static int\nframefits(', 'OP(frame)', 'OP(mframe)', 'OP(mcall)', 'OP(movw)', 'OP(movp)', 'OP(movl)', 'OP(movf)', 'OP(cvtwl)', 'OP(cvtwf)', 'OP(cvtlf)'))
                     source += '\n'+function((ROOT/'libinterp/load.c').read_text(), 'void\nfreemod(').replace('void\nfreemod(', 'void\nnative64_owned_freemod(', 1)+'\n'
                     source += (ROOT/'utils/tests/native64-sys-frame.c').read_text().replace('VM_FRAME_IMPLEMENTATION', bodies)
                     for signature in ('int\nSys_sprint64(', 'int\nSys_aprint64(', 'int\nSys_print64(', 'int\nSys_fprint64(', 'int\nSys_setframes64(', 'int\nSys_clearframes64(', 'int\nSys_bindsite64(', 'int\nSys_callsite64(', 'int\nSys_bindframe64(', 'int\nSys_sprintframe64(', 'int\nSys_aprintframe64(', 'int\nSys_printframe64(', 'int\nSys_fprintframe64('):
@@ -117,7 +121,10 @@ def main():
                             ('sites-owner', 'native64-sys-sites.h', 'if(((Modlink*)active.mr)->m != module) return 0;', '(void)0;'),
                             ('sites-retire', 'native64-sys-sites.h', 'native64syssitesdiscard(table);', 'free(table);'),
                             ('store-canonical', '@unit', 'case ICVTWL: cvtwl(); break; // Canonical eight-byte integer argument.', 'case ICVTWL: movw(); break; // Deliberately omit sign extension.'),
-                            ('store-reference', '@unit', 'case IMOVP: movp(); break; // Managed retain/mark before result publication.', 'case IMOVP: memmove(R.d, R.s, sizeof(void*)); break; // Deliberately omit ownership.')):
+                            ('store-reference', '@unit', 'case IMOVP: movp(); break; // Managed retain/mark before result publication.', 'case IMOVP: memmove(R.d, R.s, sizeof(void*)); break; // Deliberately omit ownership.'),
+                            ('source-relocation', '@unit', 'sourceoffset = store->source_offset; // Compiler-selected source relocation.', 'sourceoffset = store->destination; // Deliberately confuse source and destination banks.'),
+                            ('source-map', '@unit', 'type = dtype(freeheap, bank->bytes, (uchar*)bank->map, bank->mapbytes);', '{ uchar zeros[514] = {0}; type = dtype(freeheap, bank->bytes, zeros, bank->mapbytes); }'),
+                            ('source-once', '@unit', 'if(filled[store->cell]) continue;', 'if(0) continue;')):
                         adapter = source if header == '@unit' else (ROOT/('include/'+header)).read_text()
                         if adapter.count(boundary) != 1:
                             raise RuntimeError('Typed format control boundary changed: '+name)

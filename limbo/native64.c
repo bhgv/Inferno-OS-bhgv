@@ -1220,7 +1220,13 @@ static void
 native64callstores(Native64CallPC *note, int linked)
 {
     typedef struct Store Store;
-    struct Store { Inst *origin; unsigned int field, op; };
+    struct Store { Inst *origin; unsigned int field, op, cell; };
+    typedef struct Cell Cell;
+    struct Cell { int mode, kind; long legacy; unsigned int oldbytes, bytes, native; };
+    Cell *cells = nil;
+    unsigned int ncells = 0, j, oldbytes, readbytes, readkind, root, bit, mapbytes, bankbytes;
+    uchar bankmap[(64+4098*8+63)/64];
+    Desc *descriptor;
     Store *stores = nil;
     uchar *seen = nil;
     Native64CallArg *field;
@@ -1232,6 +1238,8 @@ native64callstores(Native64CallPC *note, int linked)
     if(reason == nil && note->args == nil) reason = "missing-fields";
     if(reason == nil) {
         stores = allocmem(note->arguments*sizeof(*stores));
+        cells = allocmem(note->arguments*sizeof(*cells));
+        memset(bankmap, 0, sizeof(bankmap));
         seen = allocmem(note->arguments); memset(seen, 0, note->arguments);
         for(in=note->frame->next; in != note->result; in=in->next) {
             if(in == nil) { reason = "instruction-range"; break; }
@@ -1267,6 +1275,43 @@ native64callstores(Native64CallPC *note, int linked)
         }
         if(reason == nil && count != note->arguments) reason = "incomplete-arguments";
     }
+    /* One native source cell per identical typed legacy read. No affine widening:
+     * references grow4->8, WORD reads stay4 and LONG/REAL reads remain8. */
+    if(reason == nil) for(i=0; i<count; i++) {
+        in = stores[i].origin; stores[i].cell = (unsigned int)-1;
+        if(in->sm == Aimm) continue;
+        root = stores[i].op == IMOVP;
+        oldbytes = root || stores[i].op == ICVTWL || stores[i].op == ICVTWF ? 4 : 8;
+        readbytes = root ? 8 : oldbytes;
+        readkind = root ? (note->args[stores[i].field].kind == Tstring ? Tstring : Tref) :
+            stores[i].op == IMOVF ? Treal : oldbytes == 8 ? Tbig : Tint;
+        descriptor = in->sm == Afp ? note->caller->desc : descriptors;
+        value = in->s.reg;
+        if(descriptor == nil || descriptor->size < 0 || value < (in->sm == Afp ? STemp : 0) || value%4 != 0 ||
+           descriptor->size < oldbytes || value > descriptor->size-oldbytes) { reason = "source-bounds"; break; }
+        for(j=0; j<oldbytes/4; j++) {
+            bit = value/4+j;
+            if(!!(bit/8 < descriptor->nmap && (descriptor->map[bit/8] & (0x80>>(bit%8)))) != root) {
+                reason = "source-root-role"; break;
+            }
+        }
+        if(reason != nil) break;
+        for(j=0; j<ncells; j++) if(cells[j].mode == in->sm) {
+            if(value < cells[j].legacy+cells[j].oldbytes && cells[j].legacy < value+oldbytes) {
+                if(value != cells[j].legacy || oldbytes != cells[j].oldbytes || readkind != cells[j].kind) reason = "source-overlap-or-kind";
+                break;
+            }
+        }
+        if(reason != nil) break;
+        if(j == ncells) {
+            cells[j].mode = in->sm; cells[j].kind = readkind; cells[j].legacy = value;
+            cells[j].oldbytes = oldbytes; cells[j].bytes = readbytes; cells[j].native = 64+j*8;
+            if(root) bankmap[cells[j].native/64] |= 0x80>>((cells[j].native/8)%8);
+            ncells++;
+        }
+        stores[i].cell = j;
+    }
+    bankbytes = 64+ncells*8; mapbytes = (bankbytes+63)/64;
     if(reason != nil) {
         fprint(2, "NATIVE64_CALL_LOWER {\"id\":%ud,\"module\":\"%s\",\"lowered\":false,\"reason\":\"%s\"}\n", note->id, impdecl->sym->name, reason);
     } else {
@@ -1283,10 +1328,19 @@ native64callstores(Native64CallPC *note, int linked)
             }
             source = in->sm == Aimm ? "immediate" : native64pcspace(in->sm);
             value = in->sm == Aimm ? in->s.offset : in->s.reg;
-            fprint(2, "%s{\"legacy_pc\":%ld,\"opcode\":%ud,\"fixed\":%s,\"ordinal\":%ud,\"kind\":\"%s\",\"source_mode\":\"%s\",\"source_value\":%ld,\"destination\":%ud,\"bytes\":8}",
-                i == 0 ? "" : ",", in->pc, stores[i].op, field->fixed ? "true" : "false", field->ordinal, kind, source, value, field->native);
+            fprint(2, "%s{\"legacy_pc\":%ld,\"opcode\":%ud,\"fixed\":%s,\"ordinal\":%ud,\"kind\":\"%s\",\"source_mode\":\"%s\",\"source_value\":%ld,\"destination\":%ud,\"bytes\":8,\"source_cell\":%ld,\"source_offset\":%ud}",
+                i == 0 ? "" : ",", in->pc, stores[i].op, field->fixed ? "true" : "false", field->ordinal, kind, source, value, field->native, stores[i].cell == (unsigned int)-1 ? -1L : (long)stores[i].cell, stores[i].cell == (unsigned int)-1 ? 0 : cells[stores[i].cell].native);
         }
-        fprint(2, "]}\n");
+        fprint(2, "],\"bank\":{\"evaluation\":\"per-read\",\"bytes\":%ud,\"map\":[", bankbytes);
+        for(i=0; i<mapbytes; i++) fprint(2, "%s%ud", i == 0 ? "" : ",", bankmap[i]);
+        fprint(2, "],\"cells\":[");
+        for(i=0; i<ncells; i++) {
+            kind = cells[i].kind == Tstring ? "string" : cells[i].kind == Tref ? "reference" :
+                cells[i].kind == Tint ? "word" : cells[i].kind == Tbig ? "long" : "real";
+            fprint(2, "%s{\"source_mode\":\"%s\",\"legacy_offset\":%ld,\"legacy_bytes\":%ud,\"native_offset\":%ud,\"native_bytes\":%ud,\"class\":\"%s\"}",
+                i == 0 ? "" : ",", native64pcspace(cells[i].mode), cells[i].legacy, cells[i].oldbytes, cells[i].native, cells[i].bytes, kind);
+        }
+        fprint(2, "]}}\n");
     }
-    free(seen); free(stores);
+    free(cells); free(seen); free(stores);
 }

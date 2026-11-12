@@ -229,39 +229,75 @@ static void vmsitesinstall(Module *module, Native64SysFrameRequest *request, int
     memset(&spec, 0xa5, sizeof(spec)); // Installation must not borrow this source record.
 }
 
-/* Execute compiler-selected value operations with trusted C-provided source cells.
- * This replaces manual packed-tail writes; source FP/MP relocation is not claimed. */
-static void vmstores(int phase, int operation, unsigned int count, void *pending, String *pattern, String *text, void *fd)
+/* Source values still come from C, but each unique typed source is installed once.
+ * Every generated operation then reads the compiler-selected native bank offset. */
+static void vmstores(int phase, int aliased, int operation, unsigned int count, void *pending, String *pattern, String *text, void *fd)
 {
     const Native64GeneratedStore *program = nil, *store;
+    const Native64GeneratedBank *bank = nil;
+    Native64Result input = {H, 0};
+    Type *type;
     REG saved = R;
-    unsigned int i, length = count+(operation == 3 ? 2 : 1);
+    uchar filled[4098];
+    unsigned int i, length = count+(operation == 3 ? 2 : 1), sourceoffset, width;
     WORD number;
     void *reference, *previous;
     ulong refs;
     uvlong value;
-#define STOREPROGRAM(OP) case OP: program = count == 150 ? callstores_##OP##_150 : callstores_##OP##_2; break
+    int baseline = contextlive;
+#define STOREPROGRAM(OP) case OP: program = count == 150 ? callstores_##OP##_150 : callstores_##OP##_2; bank = count == 150 ? &callstores_##OP##_150_bank : &callstores_##OP##_2_bank; break
     switch(operation) { STOREPROGRAM(0); STOREPROGRAM(1); STOREPROGRAM(2); STOREPROGRAM(3); default: abort(); }
 #undef STOREPROGRAM
-    if(phase == 1 && operation == 0 && count == 2) program = callliteralstores;
+    if(phase == 1 && operation == 0 && count == 2) { program = callliteralstores; bank = &callliteralstores_bank; }
+    if(aliased) { program = callaliasstores; bank = &callaliasstores_bank; }
+    check(bank->count <= nelem(filled)); memset(filled, 0, sizeof(filled));
+    process.R = R; // Publish the pending frame before source-bank allocations/collection.
+    if(fd != H) ptradd(D2H(fd));
+    type = dtype(freeheap, bank->bytes, (uchar*)bank->map, bank->mapbytes); check(type != nil);
+    check(native64resultadopt(&input, H2D(void*, heapz(type))));
     for(i=0; i<length; i++) {
-        store = &program[i]; R.d = (uchar*)pending+store->destination;
-        number = store->immediate ? (WORD)store->source : -1;
+        store = &program[i]; if(store->immediate) continue;
+        check(store->cell >= 0 && (unsigned int)store->cell < bank->count);
+        if(filled[store->cell]) continue;
+        filled[store->cell] = 1; sourceoffset = store->source_offset;
+        check(sourceoffset == 64+(unsigned int)store->cell*8 && sourceoffset+8 <= bank->bytes);
+        R.d = (uchar*)input.value+sourceoffset;
         if(store->op == IMOVP) {
             reference = store->fixed ? operation == 3 && store->ordinal == 0 ? fd : pattern : text;
-            R.s = &reference;
+            memmove(&previous, R.d, sizeof(previous)); check(previous == H);
+            R.s = &reference; movp();
+        } else { number = -1; R.s = &number; movw(); }
+        epochs(1);
+    }
+    for(i=0; i<bank->count; i++) check(filled[i]);
+    for(i=0; i<length; i++) {
+        store = &program[i]; R.d = (uchar*)pending+store->destination;
+        number = (WORD)store->source;
+        if(store->immediate) R.s = &number;
+        else {
+            sourceoffset = store->source_offset; // Compiler-selected source relocation.
+            width = store->op == ICVTWL || store->op == ICVTWF ? sizeof(WORD) : 8;
+            check(sourceoffset >= 64 && sourceoffset <= bank->bytes && width <= bank->bytes-sourceoffset);
+            R.s = (uchar*)input.value+sourceoffset;
+        }
+        if(store->op == IMOVP) {
+            memmove(&reference, R.s, sizeof(reference));
             memmove(&previous, R.d, sizeof(previous)); check(previous == H);
             refs = reference == H ? 0 : D2H(reference)->ref;
-        } else R.s = &number;
+        }
+        epochs(1);
         switch(store->op) {
         case ICVTWL: cvtwl(); break; // Canonical eight-byte integer argument.
         case IMOVP: movp(); break; // Managed retain/mark before result publication.
         default: abort();
         }
         if(store->op == IMOVP) check(reference == H || D2H(reference)->ref == refs+1);
-        else { memmove(&value, R.d, sizeof(value)); check(value == (uvlong)(vlong)number); }
+        else { memmove(&value, R.d, sizeof(value)); check(value == ~0ULL); }
     }
-    R = saved;
+    native64resultclear(&input); epochs(6); freetype(type);
+    if(fd != H) ptrdel(D2H(fd));
+    check(contextlive == baseline);
+    R = saved; process.R = R;
 }
 
 /* The mixed numeric producer selects CVTWL/CVTWF. Guard bytes expose partial stores. */
@@ -270,7 +306,7 @@ static void vmstoreconversions(void)
     static const WORD numbers[] = {(-2147483647-1), -1, 0, 2147483647};
     static const uvlong integers[] = {0xffffffff80000000ULL, ~0ULL, 0, 0x7fffffffULL};
     static const uvlong reals[] = {0xc1e0000000000000ULL, 0xbff0000000000000ULL, 0, 0x41dfffffffc00000ULL};
-    uchar source[16], destination[128];
+    uchar source[128], destination[128];
     const Native64GeneratedStore *store;
     REG saved = R;
     unsigned int i, n, alignment, j;
@@ -280,8 +316,8 @@ static void vmstoreconversions(void)
         check(store->op == ICVTWL || store->op == ICVTWF);
         for(n=0; n<nelem(numbers); n++) for(alignment=0; alignment<8; alignment++) {
             memset(source, 0x5a, sizeof(source)); memset(destination, 0xa5, sizeof(destination));
-            memmove(source+alignment, &numbers[n], sizeof(WORD));
-            R.s = source+alignment; R.d = destination+store->destination;
+            memmove(source+store->source_offset+alignment, &numbers[n], sizeof(WORD));
+            R.s = source+store->source_offset+alignment; R.d = destination+store->destination;
             if(store->op == ICVTWL) cvtwl(); else cvtwf();
             memmove(&bits, R.d, sizeof(bits)); check(bits == (store->op == ICVTWL ? integers[n] : reals[n]));
             for(j=0; j<sizeof(destination); j++)
@@ -296,7 +332,7 @@ static void vmstoremoves(void)
 {
     static const uvlong patterns[] = {0, 1, ~0ULL, 0x8000000000000000ULL,
         0x7ff0000000000000ULL, 0xfff0000000000000ULL, 0x7ff8123456789abcULL, 0x7ff0123456789abcULL};
-    uchar source[16], destination[136];
+    uchar source[128], destination[136];
     const Native64GeneratedStore *store;
     REG saved = R;
     unsigned int i, n, from, to, j, offset;
@@ -306,12 +342,36 @@ static void vmstoremoves(void)
         check(store->op == IMOVL || store->op == IMOVF);
         for(n=0; n<nelem(patterns); n++) for(from=0; from<8; from++) for(to=0; to<8; to++) {
             memset(source, 0x5a, sizeof(source)); memset(destination, 0xa5, sizeof(destination));
-            memmove(source+from, &patterns[n], 8);
-            offset = store->destination+to; R.s = source+from; R.d = destination+offset;
+            memmove(source+store->source_offset+from, &patterns[n], 8);
+            offset = store->destination+to; R.s = source+store->source_offset+from; R.d = destination+offset;
             if(store->op == IMOVL) movl(); else movf();
             memmove(&bits, R.d, 8); check(bits == patterns[n]);
             for(j=0; j<sizeof(destination); j++)
                 if(j < offset || j >= offset+8) check(destination[j] == 0xa5);
+        }
+    }
+    R = saved;
+}
+
+/* The same source Big cell feeds MOVL and CVTLF without changing its native address. */
+static void vmstorelongconversions(void)
+{
+    static const LONG values[] = {(-0x7fffffffffffffffLL-1), -17, 0, 0x20000000000000LL};
+    static const uvlong expected[] = {0xc3e0000000000000ULL, 0xc031000000000000ULL, 0, 0x4340000000000000ULL};
+    uchar source[128], destination[128];
+    const Native64GeneratedStore *store;
+    REG saved = R;
+    unsigned int i, n, alignment, j;
+    uvlong bits;
+    for(i=0; i<nelem(callcastaliasstores); i++) {
+        store = &callcastaliasstores[i]; if(store->op != ICVTLF) continue;
+        for(n=0; n<nelem(values); n++) for(alignment=0; alignment<8; alignment++) {
+            memset(source, 0x5a, sizeof(source)); memset(destination, 0xa5, sizeof(destination));
+            memmove(source+store->source_offset+alignment, &values[n], 8);
+            R.s = source+store->source_offset+alignment; R.d = destination+store->destination;
+            cvtlf(); memmove(&bits, R.d, 8); check(bits == expected[n]);
+            for(j=0; j<sizeof(destination); j++)
+                if(j < store->destination || j >= store->destination+8) check(destination[j] == 0xa5);
         }
     }
     R = saved;
@@ -341,8 +401,10 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     int savedcount;
     unsigned int count = mode == 14 ? 150 : 2;
     int baseline, before, expected, completed;
+    int aliased = phase == 2 && operation == 0 && mode == 0;
 
     contextstart(phase, Pready);
+    sourcebankpool = 1; sourcebankallocs = sourcebankfrees = sourcebanklive = 0;
     process.pid = 99;
     nativewriteobserver = nil; vmhook = 0; vmownedlive = 0; vmowner = rootlink->m; vmowner->ref = 1;
     vmoperation = operation; vmmode = mode; vmstatus = -1; vmcalls = 0;
@@ -384,7 +446,7 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     if(useframe) R.s = &typeindex;
     beforefp = R.FP;
     check(kprotect(vmframe, useframe ? &typeindex : nil) && pending != nil && pending->t == callee_type);
-    vmstores(phase, operation, count, pending, pattern, text, fd);
+    vmstores(phase, aliased, operation, count, pending, pattern, text, fd);
     if(operation == 3 && fd != H) destroy(fd); // Drop the copied C source owner, retaining the frame owner.
     result = operation == 0 ? (void*)&caller->stringresult : operation == 1 ? (void*)&caller->arrayresult : (void*)&caller->count;
     memset(&vmrequest, 0, sizeof(vmrequest));
@@ -452,7 +514,7 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     if(operation < 2 && expected) {
         if(operation == 0) {
             String *value = caller->stringresult;
-            check(value != old && value->len == 5 && memcmp(value->Sascii, "-1|ok", 6) == 0);
+            check(value != old && value->len == (aliased ? 8 : 5) && memcmp(value->Sascii, aliased ? "-1|%d|%s" : "-1|ok", aliased ? 9 : 6) == 0);
         } else check(caller->arrayresult->len == 5 && memcmp(caller->arrayresult->data, "-1|ok", 5) == 0);
     } else if(operation == 0) check(caller->stringresult == old);
     else if(operation == 1) check(caller->arrayresult == oldarray);
@@ -471,7 +533,8 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     memset(&R, 0, sizeof(R));
     epochs(6); freetype(caller_type); freetype(callee_type); freetype(fdtype); TFD = nil; clearrootcache();
     check(contextlive == 0 && Tstring.ref == 1 && Tarray.ref == 1 && Tbyte.ref == 1 && errdepth == 0);
-    heapmonitor = nil;
+    check(sourcebanklive == 0 && sourcebankallocs == sourcebankfrees);
+    heapmonitor = nil; sourcebankpool = 0;
 }
 
 int main(int argc, char **argv)
@@ -480,9 +543,10 @@ int main(int argc, char **argv)
     native64_syswrite_main(argc, argv);
     vmstoreconversions();
     vmstoremoves();
+    vmstorelongconversions();
     for(useframe=0; useframe<2; useframe++) for(phase=0; phase<3; phase++) for(operation=0; operation<4; operation++) for(mode=0; mode<32; mode++) {
         vmcase(phase, operation, mode, useframe); cases++;
     }
-    printf("PASS typed Sys VM frames: %d real FRAME/MFRAME/MCALL/GC cases with source-derived tail plans, four gateways, compiler-selected canonical stores, owned site copies/rollback/busy retirement, checked eight-byte binding/32 refusals, 150-slot frames, refusal and result/cleanup checks\n", cases);
+    printf("PASS typed Sys VM frames: %d real FRAME/MFRAME/MCALL/GC cases with source-derived tail plans, four gateways, relocated source banks/GC/aliases, compiler-selected canonical stores, owned site copies/rollback/busy retirement, checked eight-byte binding/32 refusals, 150-slot frames, refusal and result/cleanup checks\n", cases);
     return 0;
 }

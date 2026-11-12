@@ -229,3 +229,14 @@ manually packing values. The source operands are explicitly still legacy FP/MP
 coordinates, with C-provided mappings in the runtime gate. This introduces no
 serialized instruction/profile admission and does not bypass unsupported
 arithmetic or temporary cleanup regions.
+
+
+Private store programs now carry typed source-bank relocation. WORD reads keep
+four-byte width, LONG/REAL keep eight, and reference reads expand from legacy4
+to native8. Original bounds/root maps are checked; identical typed reads share
+storage while conflicting overlaps are refused. The bank has a full native
+map/extent and retains original per-read provenance. Its explicit `per-read`
+policy does not authorize value caching. VM tests read a real rooted/pinned
+bank at generated offsets with GC between reads, rather than substituting C
+operand addresses per operation. Bank values remain immutable C fixture inputs;
+this does not establish general caller/MP relocation or serialized admission.

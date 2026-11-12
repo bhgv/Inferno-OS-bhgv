@@ -435,3 +435,57 @@ infinity and NaN payloads), packed source slots and guard bytes. Removal control
 must detect replacing CVTWL with a four-byte move or MOVP with a raw pointer
 copy. The gate still supplies trusted C source cells/values and decoded operand
 addresses; it does not run the complete source program or a variadic Dis64 file.
+
+
+## Relocate source reads into a checked bank
+
+The store program now includes a `bank` layout and a `source_cell` /
+`source_offset` for each non-immediate read. Original FP/MP coordinates remain
+in the record as provenance. Native reads use the bank offset, rather than
+reinterpreting a four-byte legacy reference cell as an eight-byte pointer.
+
+| Read class | Original span | Native span | Slot stride | Root |
+| --- | --- | --- | --- | --- |
+| WORD, including conversion inputs | 4 bytes | 4 bytes | 8 bytes | No |
+| LONG or REAL | 8 bytes | 8 bytes | 8 bytes | No |
+| String or fixed reference | 4 bytes | 8 bytes | 8 bytes | Yes |
+| Immediate WORD | Operand value | 4 bytes | No cell | No |
+
+The compiler checks source bounds against the original caller descriptor or
+module descriptor zero, and checks every original word's GC role. Identical
+typed reads share a native storage cell; overlapping reads with different
+widths or classes refuse the whole program. Each native cell starts at
+`64 + 8*index`. The bank carries its complete extent/map, including zero
+header and scalar bits. Root role comes from the operation and compiler type
+witnesses, with the original map used as a consistency check; it is not inferred
+from value bits or the printf pattern.
+
+For the 150-tail-slot test, repeated reads of the local number and text need
+only three input cells (including the format), while all 150 output arguments
+still have their own canonical destination slots. An immediate does not reserve
+a cell or a root. A String used both as format and as a string argument shares
+one source cell and still acquires both destination owners.
+
+`evaluation:per-read` is deliberate. Sharing a storage slot does **not** permit
+caching mutable FP/MP values or changing the order of original reads. A future
+producer must gather/refresh the original source at the corresponding read
+point, or separately prove it immutable under the execution contract. Original
+PCs and operand provenance are retained for that work.
+
+The runtime gate supplies immutable C input values once per unique source,
+creates the actual managed bank Type from the generated map, pins its heap
+object, and forces GC between initialization and reads. Every generated store
+then obtains its operand address from the generated native offset. An alias
+case returns `-1|%d|%s`, demonstrating that the String argument reads the same
+cell as the format instead of receiving an unrelated per-destination C value.
+Packed scalar tests also use generated bank offsets, including a Big cell
+shared by MOVL and CVTLF. Guard bytes, root maps and per-generation pool
+allocation/free counts verify complete retirement.
+
+Removal controls detect a destination offset used as a source, a missing bank
+root map and repeated initialization of a shared immutable fixture input. This
+closes the decoded-C operand-address substitution step. The source values and
+bank initialization are still C-supplied; general native caller/MP layout,
+source gathering, data initializers, serialized PC/site metadata and ordinary
+Dis64 execution remain pending. The bank is a private lowering representation,
+not a new wire section or an assigned managed type signature.

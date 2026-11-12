@@ -216,3 +216,10 @@ path. Signed extension, reference retention and raw big/real bit preservation
 are tested on each target. The source-cell mapping remains a decoded C transport;
 this is distinct from compiling and executing an ordinary variadic Dis64 module
 or running AWM on an Android device.
+
+
+The formatter gate now also exercises compiler-selected source-bank addresses
+and full maps with real heap/Type/pin/collector ownership. Repeated sources,
+format/String aliases and packed numeric reads are checked alongside the
+existing call-site lifetime tests. Inputs are still provided by the decoded-C
+fixture; a complete caller/MP/data lowering and AWM startup are not implied.

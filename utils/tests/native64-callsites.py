@@ -26,7 +26,7 @@ def checked_run(command, **options):
         raise
 
 
-def legacy_instructions(data):
+def legacy_instructions(data, with_types=False):
     """Independent classic Dis code reader; no diagnostic or Dis64 parser is reused."""
     at = 0
     def number():
@@ -49,7 +49,15 @@ def legacy_instructions(data):
         middle = number() if mode & 0xc0 else None
         source = operand((mode >> 3) & 7); destination = operand(mode & 7)
         code.append(dict(op=op, mode=mode, m=middle, s=source, d=destination))
-    return header, code
+    if not with_types: return header, code
+    types = {}
+    if not 0 <= header[5] <= 65536: raise RuntimeError('Unbounded descriptor table')
+    for _ in range(header[5]):
+        identity, size, mapsize = number(), number(), number()
+        if identity in types or size < 0 or mapsize < 0 or mapsize > (size+31)//32 or at+mapsize > len(data):
+            raise RuntimeError('Invalid classic descriptor')
+        types[identity] = (size, data[at:at+mapsize]); at += mapsize
+    return header, code, types
 
 
 def verify_locations(data, records, diagnostics):
@@ -83,7 +91,7 @@ def verify_stores(data, records, diagnostics):
     lower = [json.loads(line.split(' ', 1)[1]) for line in diagnostics.splitlines() if line.startswith('NATIVE64_CALL_LOWER ')]
     by_id = {r['id']: r for r in lower}
     if len(by_id) != len(records) or len(lower) != len(records): raise RuntimeError('Missing native store program/refusal')
-    _, code = legacy_instructions(data)
+    _, code, types = legacy_instructions(data, with_types=True)
     for record in records:
         program = by_id[record['id']]
         if not record['accepted']:
@@ -118,7 +126,41 @@ def verify_stores(data, records, diagnostics):
                 if store['kind'] != slot['kind'] or store['opcode'] != expected_opcode: raise RuntimeError('Wrong canonical value opcode')
             if store['destination'] != expected_destination or store['bytes'] != 8 or origin['d'] != [location['frame_slot'], expected_legacy]:
                 raise RuntimeError('Native destination does not match complete typed packing')
+        bank = program['bank']
+        if bank['evaluation'] != 'per-read': raise RuntimeError('Source storage aliases must not imply value caching')
+        unique = {}; expected_map = [0]*((bank['bytes']+63)//64)
+        for store in program['stores']:
+            if store['source_mode'] == 'immediate':
+                if store['source_cell'] != -1 or store['source_offset'] != 0: raise RuntimeError('Immediate acquired a reference cell')
+                continue
+            root = store['opcode'] == 41
+            width = 4 if root or store['opcode'] in (138,50) else 8
+            category = ('string' if store['kind'] == 'string' else 'reference') if root else 'real' if store['opcode'] == 46 else 'long' if width == 8 else 'word'
+            key = (store['source_mode'], store['source_value'], width, category)
+            for old in unique:
+                if old[0] == key[0] and key[1] < old[1]+old[2] and old[1] < key[1]+key[2] and old != key:
+                    raise RuntimeError('Overlapping or differently typed source reads were admitted')
+            index = unique.setdefault(key, len(unique)); cell = bank['cells'][store['source_cell']]
+            if store['source_cell'] != index or store['source_offset'] != 64+index*8 or cell != dict(source_mode=key[0],legacy_offset=key[1],legacy_bytes=width,native_offset=64+index*8,native_bytes=8 if root else width,**{'class':category}):
+                raise RuntimeError('Source relocation lost width, identity or aliasing')
+            extent, roots = types[location['caller_descriptor'] if key[0]=='fp' else 0]
+            if key[1] < (20 if key[0]=='fp' else 0) or key[1]+width > extent: raise RuntimeError('Source escaped original descriptor')
+            for offset in range(key[1],key[1]+width,4):
+                slot = offset//4
+                if bool(slot//8<len(roots) and roots[slot//8]&(0x80>>(slot%8))) != root: raise RuntimeError('Source read has wrong original root role')
+            if root: expected_map[(64+index*8)//64] |= 0x80>>index%8
+        if len(unique) != len(bank['cells']) or bank['bytes'] != 64+8*len(unique) or bank['map'] != expected_map:
+            raise RuntimeError('Source bank extent or full map is wrong')
     return by_id
+
+
+def emit_program(label, program):
+    bank = program['bank']
+    lines = ['static const Native64GeneratedStore '+label+'[] = {']
+    lines += ['{'+','.join(map(str,(x['opcode'],x['destination'],int(x['fixed']),x['ordinal'],x['source_value'],int(x['source_mode']=='immediate'),x['source_cell'],x['source_offset'])))+'},' for x in program['stores']]
+    lines += ['};','static const uchar '+label+'_map[] = {'+','.join(map(str,bank['map']))+'};',
+              'static const Native64GeneratedBank '+label+'_bank = {'+str(bank['bytes'])+','+str(len(bank['cells']))+','+str(len(bank['map']))+','+label+'_map};']
+    return lines
 
 
 def generate(limbo, work, env):
@@ -148,7 +190,8 @@ def generate(limbo, work, env):
     if len(records) != 11 or sum(r['accepted'] for r in records) != 10: raise RuntimeError('Missing accepted/refused source call-site plans: '+str(records))
     if records[-1]['reason'] != 'tail-kind': raise RuntimeError('Opaque reference was admitted without an exact Type witness')
     header = ['/* Generated only from the current compiler\'s typechecked source call plans. */',
-              'typedef struct Native64GeneratedStore { unsigned int op, destination, fixed, ordinal; long source; unsigned int immediate; } Native64GeneratedStore;']
+              'typedef struct Native64GeneratedStore { unsigned int op, destination, fixed, ordinal; long source; unsigned int immediate; int cell; unsigned int source_offset; } Native64GeneratedStore;',
+              'typedef struct Native64GeneratedBank { unsigned int bytes, count, mapbytes; const uchar *map; } Native64GeneratedBank;']
     for operation, name in enumerate(('sprint', 'aprint', 'print', 'fprint')):
         for index, count in enumerate((2, 150)):
             record = records[operation*2+index]
@@ -171,9 +214,7 @@ def generate(limbo, work, env):
                        'static Native64TailSlot callslots_'+label+'[] = {']
             header += ['{'+('Native64TailRef' if slot['kind'] == 'string' else 'Native64TailInt')+','+str(slot['offset'])+',8,'+('&Tstring' if slot['kind'] == 'string' else 'nil')+'},' for slot in record['tail']]
             header += ['};']
-            header += ['static const Native64GeneratedStore callstores_'+label+'[] = {']
-            header += ['{'+','.join(map(str, (store['opcode'], store['destination'], int(store['fixed']), store['ordinal'], store['source_value'], int(store['source_mode']=='immediate'))))+'},' for store in programs[record['id']]['stores']]
-            header += ['};']
+            header += emit_program('callstores_'+label, programs[record['id']])
     if records[8]['tail'] or records[8]['frame_bytes'] != 72: raise RuntimeError('Empty tail layout failed')
     if [s['kind'] for s in records[9]['tail']] != ['int', 'big', 'real', 'string']: raise RuntimeError('Numeric source kinds lost')
     for flag in ('-64', '-64m'):
@@ -236,7 +277,9 @@ def generate(limbo, work, env):
     extra_programs = {}
     extra_sources = {
         'literal': 'sys->sprint("%d|%s", -1, "ok");',
+        'alias': 'sys->sprint("%d|%s", -1, "%d|%s");',
         'wide': 'wide := big -17; fraction := -1.25; sys->sprint("%bd|%g", wide, fraction);',
+        'castalias': 'wide := big -17; sys->sprint("%bd|%g", wide, real wide);',
         'computed': 'number := -1; sys->sprint("%d", number+1);',
     }
     for label, body in extra_sources.items():
@@ -253,14 +296,10 @@ def generate(limbo, work, env):
             if len(refused) != 1 or refused[0]['lowered'] or 'stores' in refused[0]: raise RuntimeError('Unsupported arithmetic emitted a partial store program')
         else:
             extra_programs[label] = verify_stores(traced_probe.read_bytes(), probe_records, output.stderr)[probe_records[0]['id']]
-    for label, program in extra_programs.items():
-        header += ['static const Native64GeneratedStore call'+label+'stores[] = {']
-        header += ['{'+','.join(map(str, (store['opcode'], store['destination'], int(store['fixed']), store['ordinal'], store['source_value'], int(store['source_mode']=='immediate'))))+'},' for store in program['stores']]
-        header += ['};']
-    mixed = programs[records[9]['id']]
-    header += ['static const Native64GeneratedStore callmixedstores[] = {']
-    header += ['{'+','.join(map(str, (store['opcode'], store['destination'], int(store['fixed']), store['ordinal'], store['source_value'], int(store['source_mode']=='immediate'))))+'},' for store in mixed['stores']]
-    header += ['};']
+    if len(extra_programs['castalias']['bank']['cells']) != 2: raise RuntimeError('Big reads and conversions failed to share one typed source')
+    if len(extra_programs['alias']['bank']['cells']) != 1: raise RuntimeError('Identical String sources lost their shared cell')
+    for label, program in extra_programs.items(): header += emit_program('call'+label+'stores', program)
+    header += emit_program('callmixedstores', programs[records[9]['id']])
     (work/'callsites-native64.h').write_text('\n'.join(header)+'\n')
     print('PASS source call-site plans: four Sys operations, 2/150/4096 slots, 4097 refusal, empty/mixed tails, complete maps, opaque-reference refusal, deterministic diagnostics, unchanged legacy bytecode and preserved Dis64 refusal, byte-decoded final PCs, nested FP/MP results and canonical native store programs', flush=True)
     return records
