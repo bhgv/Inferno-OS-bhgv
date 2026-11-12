@@ -907,3 +907,5 @@ managed linkage and Android AWM startup.
 See [named user-defined modules](dis64-managed-modules.md) / [пользовательские модули](dis64-managed-modules.ru.md) for the same checked shapes with arbitrary interface and method names.
 
 The private managed file profile also executes fixed String-to-Word `Sys->werrstr` through the real builtin LOAD and native frame. See [the tutorial](dis64-sys-string.md) / [русский пример](dis64-sys-string.ru.md). General mixed/variadic calls and AWM remain pending.
+
+Commands and libraries share the module/link model: LOAD does not invoke init; sh calls the exported function explicitly. See [module loading](dis64-module-loading.md) / [загрузка модулей](dis64-module-loading.ru.md). The fixed native String group supports werrstr/chdir/remove through the shared loader and generated Sys exports; general signatures and AWM remain pending.

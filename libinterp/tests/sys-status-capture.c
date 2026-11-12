@@ -113,7 +113,8 @@ acquire(void)
 char*
 string2c(String *s)
 {
-	check(released || operation == 8 || operation == 9);
+	if(!TEST_OS && (operation == 1 || operation == 4))check(!released);
+	else check(released || operation == 8 || operation == 9);
 	conversions++;
 	callback(2);
 	if(s == &strings[0])

@@ -665,11 +665,14 @@ Sys_remove(void *fp)
 {
 	F_Sys_remove local, *f;
 	WORD result;
+	char *path;
 
 	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_remove, ret), sizeof(*local.ret));
 	f = &local;
+	/* Allocation failure must unwind while the VM is still held. */
+	path = string2c(f->s);
 	release();
-	result = kremove(string2c(f->s));
+	result = kremove(path);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
@@ -875,11 +878,14 @@ Sys_chdir(void *fp)
 {
 	F_Sys_chdir local, *f;
 	WORD result;
+	char *path;
 
 	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_chdir, ret), sizeof(*local.ret));
 	f = &local;
+	/* Allocation failure must unwind while the VM is still held. */
+	path = string2c(f->path);
 	release();
-	result = kchdir(string2c(f->path));
+	result = kchdir(path);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }

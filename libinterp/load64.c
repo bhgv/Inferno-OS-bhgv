@@ -1601,7 +1601,7 @@ managed64inputlist(Module *module, int ordinal)
 typedef struct Dis64ManagedFileCaller Dis64ManagedFileCaller;
 struct Dis64ManagedFileCaller {
 	Modlink *caller;
-	const LimboNative64Entry *entries[2];
+	const LimboNative64Entry *entries[3];
 	unsigned int count;
 	char *path;
 	Dis64ManagedLiteralsView literals;
@@ -1657,9 +1657,11 @@ prepare64sysstring(char *path, const uchar *image, ulong bytes, int jit)
 {
     Dis64NumericLoad load = {0};
     Dis64ManagedFileCaller file = {0};
-    LimboNative64Entry specification;
+    LimboNative64Entry specification[3];
+    const char *method;
+    unsigned int i;
     const Link *entry;
-    Module *sys = nil;
+    Module *sys = nil, *owner;
     Modlink *caller;
     Type *frame;
     if(!dis64bootmanaged || !dis64runtimemodel() || heapmonitor != nil || path == nil || path == H ||
@@ -1670,10 +1672,17 @@ prepare64sysstring(char *path, const uchar *image, ulong bytes, int jit)
        !dis64sysstringview(&load.image,&file.literals)){
         kwerrstr("unsupported Dis64 Sys String consumer"); return nil;
     }
-    entry = native64sysexport("werrstr",&sys);
-    if(entry == nil || (frame=entry->frame) == nil || frame->size != 72 || frame->np != 2 ||
-       frame->map[0] != 0 || frame->map[1] != 0x80){
-        kwerrstr("unavailable Dis64 Sys String export"); return nil;
+    file.count = load.image.imports.count; file.path = "$Sys";
+    for(i=0; i<file.count; i++){
+        method = dis64sysstringmethod(&load.image.strings,i ? 3+i : 1);
+        owner = nil; entry = method == nil ? nil : native64sysexport(method,&owner);
+        if(entry == nil || (sys != nil && owner != sys) || (frame=entry->frame) == nil ||
+           frame->size != 72 || frame->np != 2 || frame->map[0] != 0 || frame->map[1] != 0x80){
+            kwerrstr("unavailable Dis64 Sys String export"); return nil;
+        }
+        sys = owner;
+        specification[i] = (LimboNative64Entry){entry->name,nil,entry->sig,frame->size,frame->np,frame->map};
+        file.entries[i] = &specification[i];
     }
     load.path = path; load.jit = jit; load.indirect = 1; load.step = native64stringlea8step;
     if(!disstringpoolget(&load.image.strings,2,&load.name)) return nil;
@@ -1681,8 +1690,7 @@ prepare64sysstring(char *path, const uchar *image, ulong bytes, int jit)
     if(kprotect(dis64numericconstruct,&load)) caller = dis64rootlink(load.module,load.lease,0,nil,nil);
     else { if(load.module != nil) unload(load.module); free64storage(load.lease); }
     if(caller == nil) return nil;
-    specification = (LimboNative64Entry){entry->name,nil,entry->sig,frame->size,frame->np,frame->map};
-    file.caller = caller; file.count = 1; file.entries[0] = &specification; file.path = "$Sys";
+    file.caller = caller;
     if(!kprotect(dis64managedfilemetadata,&file)){
         ptrdel(D2H(caller)); destroy(caller); return nil;
     }

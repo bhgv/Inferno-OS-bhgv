@@ -276,3 +276,5 @@ linkage, managed Sys/variadic callers and AWM startup remain pending.
 The private managed file profile also executes fixed String-to-Word `Sys->werrstr` through the real builtin LOAD and native frame. See [the tutorial](dis64-sys-string.md) / [русский пример](dis64-sys-string.ru.md). General mixed/variadic calls and AWM remain pending.
 
 The fixed String-to-Word trial now uses returned Words in expressions, conditions and loops, with root-disjoint 112-byte frames and CFG initialization checks. See `dis64-sys-string.md` (and `.ru.md`). Mixed/variadic Sys calls, general managed types and Android AWM remain pending.
+
+Commands and libraries share the module/link model: LOAD does not invoke init; sh calls the exported function explicitly. See [module loading](dis64-module-loading.md) / [загрузка модулей](dis64-module-loading.ru.md). The fixed native String group supports werrstr/chdir/remove through the shared loader and generated Sys exports; general signatures and AWM remain pending.

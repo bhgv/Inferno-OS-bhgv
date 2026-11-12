@@ -71,7 +71,7 @@ def refusals(image):
         changed=indirect(op,source,40,target)
         yield replace(image,2,code.replace(original,changed,1))
     named=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-module.py'))
-    for index,text in ((0,'$sys'),(1,'remove'),(3,'$Other'),(1,'werrstr\0suffix')): yield named['rename'](image,index,text)
+    for index,text in ((0,'$sys'),(1,'open'),(3,'$Other'),(1,'werrstr\0suffix')): yield named['rename'](image,index,text)
 
 
 def compiler_refusals(limbo,work):

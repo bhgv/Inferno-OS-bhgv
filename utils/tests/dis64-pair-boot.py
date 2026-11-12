@@ -1095,6 +1095,8 @@ def main():
             sysstring['boot'](command,work,consumer,args.limbo.resolve(),execute,BOOT['RETIRED'])
             sysflow=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-flow.py'))
             sysflow['boot'](command,work,consumer,args.limbo.resolve(),execute,BOOT['RETIRED'])
+            sysgroups=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-groups.py'))
+            sysgroups['boot'](command,work,consumer,args.limbo.resolve(),execute,BOOT['RETIRED'])
         trial = ['-X', 'dis64-managed-trial']
         trial_input = ['-A', 'Grüße 世界']
         for direction, accepted, payload, dependency in GC['managed_image_cases'](RAW):

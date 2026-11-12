@@ -62,7 +62,8 @@ seterror(char *message,...)
 char*
 string2c(String *s)
 {
-	statuscheck(released || operation==14);
+	if(!TEST_OS && (operation==1 || operation==4))statuscheck(!released);
+	else statuscheck(released || operation==14);
 	if(s==&strings[0])return "first";
 	if(s==&strings[1])return "second";
 	statuscheck(s==&strings[2]);

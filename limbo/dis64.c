@@ -741,10 +741,10 @@ dis64manageddirection(Decl *function)
 typedef struct Dis64ManagedCompilePlan Dis64ManagedCompilePlan;
 struct Dis64ManagedCompilePlan {
 	unsigned int bindings, calls;
-	uchar directions[2], reloads[Dis64ManagedCalls], transfers[Dis64ManagedCalls], ordinals[Dis64ManagedCalls];
+	uchar directions[3], reloads[Dis64ManagedCalls], transfers[Dis64ManagedCalls], ordinals[Dis64ManagedCalls];
 	char *path;
 	char *module; // Actual source interface/module identity.
-	char *symbols[2]; // Actual export names in binding order.
+	char *symbols[3]; // Actual export names in binding order.
 	Sym *literals[Dis64ManagedLiterals]; // Independently materialized String identities.
 	unsigned int nliterals;
 	int wordflow, branches;
@@ -773,7 +773,7 @@ dis64managedlocal(long *slots, long *values, unsigned int *used, long slot)
 
 /* Prove the one CONS/HEAD effect independently of legacy temporary allocation. */
 static int
-dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, long databytes,
+dis64managedlibraryshape(Decl *globals, Inst *input, long count, long databytes,
 	Dis64ManagedCompilePlan *plan)
 {
 	Decl *export, *functions[2], *temporary;
@@ -781,7 +781,7 @@ dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, lo
 	long pc = 0, end, value, slots[12*Dis64ManagedCalls+1], values[12*Dis64ManagedCalls+1], *cell;
 	int direction, hasnil;
 
-	if(entry != nil || count < 2 || count > 10*Dis64ManagedCalls)
+	if(count < 2 || count > 10*Dis64ManagedCalls)
 		return 0;
 	hasnil = 0;
 	for(; globals != nil; globals=globals->next){
@@ -880,18 +880,18 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	static const uchar sm[] = {Amp, Afp, Afp, Afp, Afp, Anone};
 	static const uchar dm[] = {Afp, Afp, Afpind, Afpind, Afp, Anone};
 	static const uchar mm[] = {Aldt, Aoff, Anone, Anone, Aoff, Anone};
-	Decl *imports[2], *import, *export, *path, *argument, *nilvalue, *emptyvalue, *literals[Dis64ManagedLiterals], *constants[3+Dis64ManagedLiterals];
+	Decl *imports[3], *import, *export, *path, *argument, *nilvalue, *emptyvalue, *literals[Dis64ManagedLiterals], *constants[3+Dis64ManagedLiterals];
 	Inst *load, *scan;
 	long scalarprevious = -1, scalarlocals[Dis64ClockLocals];
 	long module = -1, modulevalue = 0, frame = -1, result = -1, current = 1, previous = 0, value;
 	long slots[12*Dis64ManagedCalls+1], values[12*Dis64ManagedCalls+1], *source, *destination;
 	unsigned int i, j, n, nliterals = 0, groups = 0, phase = 1, pending = 0, step, binding = 0, seen = 0, used = 0;
-	int direction, currentkind, previouskind = 0;
+	int direction, kind, currentkind, previouskind = 0;
 
 	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 || entry->ty->varargs ||
 	   entry->ty->tof->kind != Tnone || entry->desc == nil || count < 6 || count > 12*Dis64ManagedCalls+1 ||
 	   (databytes < 4 || databytes%4 || databytes > 4*(3+Dis64ManagedLiterals)) || ldts == nil || ldts->next != nil || ldts->init == nil ||
-	   ldts->init->val < 1 || ldts->init->val > 2 || ldts->init->decl == nil)
+	   ldts->init->val < 1 || ldts->init->val > (builtin ? 3 : 2) || ldts->init->decl == nil)
 		return 0;
 	for(i=0; i<Dis64ClockLocals; i++) scalarlocals[i] = -1;
     if(builtin) for(scan=input; scan != nil; scan=scan->next){
@@ -901,14 +901,16 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	for(import=ldts->init->decl->ty->ids, n=0; import != nil; import=import->next, n++){
 		direction = dis64manageddirection(import);
         if(builtin){
-            if(n != 0 || import->ty->kind != Tfn || import->ty->varargs || import->ty->polys != nil ||
+            kind = strcmp(import->sym->name,"werrstr") == 0 ? 0 :
+                strcmp(import->sym->name,"chdir") == 0 ? 1 : strcmp(import->sym->name,"remove") == 0 ? 2 : -1;
+            if(kind < 0 || (seen & (1U<<kind)) || import->ty->kind != Tfn || import->ty->varargs || import->ty->polys != nil ||
                import->ty->tof->kind != Tint || import->ty->ids == nil || import->ty->ids->next != nil ||
-               import->ty->ids->ty->kind != Tstring || strcmp(import->sym->name,"werrstr") != 0) return 0;
+               import->ty->ids->ty->kind != Tstring) return 0;
             direction = 0;
         }
-		if(n == 2 || direction < 0 || (seen & (1U<<direction)) || import->offset != n)
+		if(n == (builtin ? 3 : 2) || direction < 0 || (!builtin && (seen & (1U<<direction))) || import->offset != n)
 			return 0;
-		seen |= 1U<<direction;
+		seen |= 1U<<(builtin ? kind : direction);
 		imports[n] = import;
 		plan->directions[n] = direction;
 		plan->symbols[n] = import->sym->name;
@@ -1177,7 +1179,9 @@ dis64sysstringemit(Dis64ManagedCompilePlan *plan, long legacycount, uchar *code,
         instruction = (Dis64Instruction){IMOVP,SRC(AMP)|DST(AFP),0,
             plan->transfers[i] == 2 ? 8 : 24+8*(plan->transfers[i]-3),64};
         if(!dis64encode(code,&at,&instruction)) return 0;
-        memmove(code+at,call,sizeof(call)); at += sizeof(call);
+        memmove(code+at,call,sizeof(call));
+        code[at+2] = code[at+sizeof(call)-3] = plan->ordinals[i];
+        at += sizeof(call);
         if(plan->scalar.calls[i].save){
             instruction = (Dis64Instruction){IMOVW,SRC(AFP)|DST(AFP),0,104,
                 dis64sysstringcell(plan->scalar.calls[i].save,1)};
@@ -1221,29 +1225,33 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	Dis64ManagedCompilePlan plan = {0};
 	Dis64Type types[] = {{72, 8, map, 2}, {8, 8, mpmap, 1}};
 	Dis64ModuleInfo module = {0};
-	DisStringPoolRecord names[5+Dis64ManagedLiterals];
+	DisStringPoolRecord names[6+Dis64ManagedLiterals];
 	Dis64Payload sections[5];
 	uchar caller[4+Dis64ManagedCalls*(sizeof(load)+sizeof(call)+sizeof(transfer)+sizeof(clear))+14*Dis64ClockWords+2];
-	uchar provider[22], metadata[24], typedata[32], pool[16384], literalbytes[Dis64ManagedLiterals][1024], literalmap[(3+Dis64ManagedLiterals+7)/8] = {0}, name[1024], symbols[2][1024];
-	uchar callername[1024], pathname[1024], binding[76], output[32768];
+	uchar provider[22], metadata[24], typedata[32], pool[16384], literalbytes[Dis64ManagedLiterals][1024], literalmap[(3+Dis64ManagedLiterals+7)/8] = {0}, name[1024], symbols[3][1024];
+	uchar callername[1024], pathname[1024], binding[128], output[32768];
 	unsigned int sizes[5], written, i, j, at, header, bindingbytes, poolcount, instructions, runecount = 0;
 	Dis64Instruction literal = {IMOVP,SRC(AMP)|DST(AFP),0,24,64};
 	int consumer = entry != nil, fileload = consumer && emitscalar64 == 3, direction, builtin = 0;
 
-	if(fileload && dis64managedcallershape(entry, globals, ldts, input, count, databytes, &plan, 1))
+    /* An export named init is still an ordinary callable export. Prefer the
+     * complete provider proof over the compiler's optional bootstrap entry hint. */
+    if(ldts == nil && dis64managedlibraryshape(globals, input, count, databytes, &plan))
+        consumer = fileload = 0;
+	else if(fileload && dis64managedcallershape(entry, globals, ldts, input, count, databytes, &plan, 1))
 		builtin = 1;
 	else{
 		memset(&plan,0,sizeof(plan));
 		if(!(consumer ? dis64managedcallershape(entry, globals, ldts, input, count, databytes, &plan, 0) :
-		     ldts == nil && dis64managedlibraryshape(entry, globals, input, count, databytes, &plan))){
+		     ldts == nil && dis64managedlibraryshape(globals, input, count, databytes, &plan))){
 			error(impdecl->src.start, "Dis64 managed trial: unsupported checked String provider or caller");
 			return;
 		}
 	}
-	poolcount = consumer ? (fileload || plan.bindings == 2 ? 4 : 3) : 1+plan.bindings;
+	poolcount = consumer ? (fileload ? 3+plan.bindings : plan.bindings == 2 ? 4 : 3) : 1+plan.bindings;
 	if(!dis64libraryname(plan.module, name, &names[0])) { error(impdecl->src.start,"Dis64 managed file: unsupported interface name"); return; }
 	for(i=0; i<plan.bindings; i++)
-		if(!dis64libraryname(plan.symbols[i], symbols[i], &names[consumer && i ? 4 : 1+i])) { error(impdecl->src.start,"Dis64 managed file: unsupported export name"); return; }
+		if(!dis64libraryname(plan.symbols[i], symbols[i], &names[consumer && i ? 3+i : 1+i])) { error(impdecl->src.start,"Dis64 managed file: unsupported export name"); return; }
 	if(consumer){
 		module.name = 2; module.profile = 1; module.databytes = fileload ? 24 : plan.calls == 1 && plan.transfers[0] != 2 ? 8 : 16; module.datatype = 1;
 		types[0] = (Dis64Type){builtin && plan.wordflow ? 112 : 80, 8, builtin ? map : callermap, 2};
@@ -1305,7 +1313,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	for(i=0; i<plan.bindings; i++){
 		j = bindingbytes;
 		dis64put32(binding+j, consumer ? 0 : i+1);
-		dis64put32(binding+j+4, consumer ? (i == 0 ? 1 : 4) : 1+2*i);
+		dis64put32(binding+j+4, consumer ? (i == 0 ? 1 : 3+i) : 1+2*i);
 		if(!consumer) dis64put32(binding+j+8, 0);
 		header = j+(consumer ? 12 : 16);
 		dis64put32(binding+header-4, builtin ? 16 : 20);

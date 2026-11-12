@@ -71,7 +71,7 @@ def import_symbols(image,module,wrap,unwrap):
 # Compile arbitrary names, reversed method spelling, export order and the maximal metadata case.
 def rows(limbo,work,path='/managed-provider.dis64'):
     result=[]; output=work/'named.dis64'
-    variants=[('Box','pack','unpack','Caller',False,False),('Other','zpack','ahead','Caller',True,True),
+    variants=[('Box','pack','unpack','Caller',False,False),('InitLib','init','unpack','Caller',False,False),('Other','zpack','ahead','Caller',True,True),
               ('String','quoted','unquoted','Caller',True,False),
               ('M'+'x'*254,'w'+'x'*254,'u'+'x'*254,'C'+'x'*254,False,True)]
     for module,wrap,unwrap,caller,reverse,locals in variants:

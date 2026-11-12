@@ -1,9 +1,10 @@
 # Serialized String arguments to the native Sys module
 
 The private `-64l` file trial executes the real fixed `Sys->werrstr(string): int`
-entry through `LOAD $Sys`, MFRAME and MCALL. This connects serialized String
+entry through `LOAD $Sys`, MFRAME and MCALL. The same fixed String-to-Word
+group now admits `chdir` and `remove`, with up to three distinct imports. This connects serialized String
 storage to a builtin native frame and a Word result. It remains an explicit
-trial; ordinary `-64`, variadic print, mixed builtin groups and Android AWM
+trial; ordinary `-64`, variadic print, other builtin signatures and Android AWM
 are not enabled. [Русская версия](dis64-sys-string.ru.md).
 
 Save as `sys-text.b`:
@@ -58,7 +59,8 @@ independent String literals. Up to 32 roots, 255 runes each, 1024 total runes
 and 32 straight-line calls are accepted. Supported local aliases, nil and
 repeated LOADs use the same producer checks as the named String/List trial.
 The entry is `init()` without input; an optional `-A` seed is ignored. The extended frame described below permits Word expressions and control flow.
-Other Sys methods and mixed file/builtin calls remain outside this profile.
+`werrstr`, `chdir` and `remove` can share the same group; other methods and
+mixed file/builtin calls remain outside this profile.
 
 Run the exact byte-oracle, full-console and owning runtime gates:
 
@@ -143,7 +145,7 @@ identities are rejected. String-local assignments and aliases in a function
 with branches are conservatively rejected: the current pointer-identity proof
 does not merge such assignments across CFG edges. Pass a literal or nil at a
 conditional/looped call; existing straight-line String aliases still work.
-This remains the fixed `werrstr` trial, not general mixed or variadic Sys admission.
+This remains a fixed String-to-Word group, not general or variadic Sys admission.
 
 The owning flow gate checks actual error-text event sequences and call counts,
 32-bit wrap and bitwise expressions, branch outcomes, nested calls, normal/error
@@ -153,3 +155,21 @@ into call preparation before allocation. Active controls replace fact
 intersection with union and omit native result publication; both must fail at
 explicit semantic predicates. Native/heap constructor rollback and conversion
 errors after entering the 112-byte caller path are checked separately.
+
+## Fixed native String groups
+
+Use `python3 utils/tests/dis64-sys-groups.py --limbo /host/tools/limbo --root /build --emu /build/emu/Linux/o.emu-g`
+and `python3 utils/tests/dis64-sys-groups-gc.py --limbo /host/tools/limbo` to reproduce
+the group gates. They cover all six independently permuted import orders, exact
+MFRAME/MCALL ordinal matching, distinct method identities despite equal structural
+types, 80/112-byte callers, real namespace statuses and removal of a file created
+inside a fresh temporary emulator-root directory. The compiler retains its
+canonical import order; the independent wire permutations test the runtime.
+
+The owning gate calls the actual `Sys_chdir`/`Sys_remove` wrappers with controlled
+OS boundaries. It forces GC during release and native operations, retargets the
+borrowed pending frame after the wrapper snapshot, and verifies the original
+result address and exact four-byte status. Allocation-capable String conversion
+now occurs while the VM is held, before release; failure enters no OS operation
+and leaves release/acquire balanced. The existing scheduler/thread machinery is
+reused. See [module loading](dis64-module-loading.md) for why LOAD never calls init.

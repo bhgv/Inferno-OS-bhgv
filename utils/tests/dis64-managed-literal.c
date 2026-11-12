@@ -75,11 +75,17 @@ managedliteralexecute(const ManagedLiteralCase *test, int jit)
         pc = process.R.PC;
         if(process.R.M == caller && pc == caller->prog+caller->m->nprog-1) break;
         require(kprotect(execute,&process));
-        if(pc->op == ILOAD && jit){
+        if(pc->op == ILOAD){
             memmove(&loaded,caller->MP,sizeof(loaded));
-            require(loaded != nil && loaded != H && loaded->m->jit != nil);
-            rxbegin = (uintptr)loaded->m->jit->code;
-            rxend = rxbegin+loaded->m->jit->size;
+            require(loaded != nil && loaded != H && loaded->m->entry == nil);
+            /* LOAD links exports, including one named init; it never calls one.
+             * The first load has allocated no List before the explicit MCALL. */
+            if(step == 0) require(Tlist.ref == 1);
+            if(jit){
+                require(loaded->m->jit != nil);
+                rxbegin = (uintptr)loaded->m->jit->code;
+                rxend = rxbegin+loaded->m->jit->size;
+            }
         }
         numericcollect(&process);
         managedliteralroots(caller,test);
