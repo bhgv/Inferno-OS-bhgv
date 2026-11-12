@@ -1487,13 +1487,24 @@ native64callstores(Native64CallPC *note, int linked, Decl *globals, Inst **image
             in = cells[i].setup;
             if(in == nil) fprint(2, "null");
             else {
-                fprint(2, "{\"legacy_pc\":%ld,\"opcode\":%ud,\"source_mode\":\"%s\",\"source_value\":%ld,\"input\":",
-                    in->pc, in->op, in->sm == Aimm ? "immediate" : "mp", in->sm == Aimm ? in->s.offset : in->s.reg);
+                fprint(2, "{\"legacy_pc\":%ld,\"opcode\":%ud,\"source_mode\":\"%s\",\"source_value\":%ld,\"source_offset\":%ud,\"source_bytes\":%ud,\"input\":",
+                    in->pc, in->op, in->sm == Aimm ? "immediate" : "mp", in->sm == Aimm ? in->s.offset : in->s.reg,
+                    in->sm == Aimm ? 0 : layouts[1].offsets[in->s.reg/4],
+                    in->op == IMOVP ? 8 : in->op == IMOVW || in->op == ICVTWL || in->op == ICVTWF ? 4 : 8);
                 if(in->sm == Aimm) fprint(2, "{\"kind\":\"word\",\"high\":0,\"low\":%ud}", (uint)in->s.offset);
                 else native64sourceseed(globals, in->s.reg, in->op == IMOVP ? Tstring : in->op == IMOVW || in->op == ICVTWL || in->op == ICVTWF ? Tint : in->op == IMOVF ? Treal : Tbig);
                 fprint(2, "}");
             }
             fprint(2, "}");
+        }
+        fprint(2, "],\"preparation\":[");
+        memset(seen, 0, ncells);
+        for(j=0, high=0; j<ncells; j++) {
+            low = ncells;
+            for(i=0; i<ncells; i++) if(!seen[i] && cells[i].setup != nil &&
+               (low == ncells || cells[i].setup->pc < cells[low].setup->pc)) low = i;
+            if(low == ncells) break;
+            seen[low] = 1; fprint(2, "%s%ud", high++ == 0 ? "" : ",", low);
         }
         fprint(2, "],\"sources\":[");
         for(space=0; space<2; space++) {

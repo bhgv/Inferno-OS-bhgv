@@ -255,6 +255,34 @@ static const Native64GeneratedCell *vmseedfield(int phase, int aliased, int oper
     return nil;
 }
 
+/* Install module/current fixture inputs once, with managed ownership and exact aliases. */
+static void vmseedstorage(const Native64GeneratedCell *cell, void *reference, void *destination,
+    unsigned int width, uchar *installed, unsigned int offset)
+{
+    WORD number = cell->seed == 2 ? (WORD)cell->low : -1;
+    uvlong bits = ((uvlong)cell->high<<32)|cell->low;
+    void *previous;
+    unsigned int j, present = 0;
+    if(cell->root) {
+        if(cell->seed == 5) reference = H;
+        else if(cell->seed) {
+            String *value = reference;
+            check(cell->seed == 1 && value != H && value->len == cell->length);
+            check(memcmp(value->Sascii,cell->initial,cell->length) == 0);
+        }
+        R.s = &reference;
+    } else R.s = width == 4 ? (void*)&number : (void*)&bits;
+    check(offset <= SlotBytes && width <= SlotBytes-offset);
+    for(j=0; j<width; j++) present += !!installed[offset+j];
+    if(present) { check(present == width && memcmp(destination,R.s,width) == 0); return; }
+    R.d = destination;
+    if(cell->root) {
+        memmove(&previous,R.d,sizeof(previous)); check(previous == H);
+        movp();
+    } else if(width == 4) movw(); else { check(width == 8 && cell->seed >= 3); movl(); }
+    memset(installed+offset,1,width); epochs(1);
+}
+
 /* Compiler-proved FP definitions and MP initializers seed native storage; unknowns
  * (including FD setup) remain explicit C inputs. Each original read gathers its current value
  * through generated source offsets before the canonical argument handler runs. */
@@ -267,8 +295,8 @@ static void vmstores(int phase, int aliased, int operation, unsigned int count, 
     Native64Result input = {H, 0};
     Type *type;
     REG saved = R;
-    uchar filled[4098], refreshed[4098], fullmap[SlotBytes/64+1];
-    unsigned int bases[2], total, at, j, space;
+    uchar filled[4098], refreshed[4098], fullmap[SlotBytes/64+1], installed[SlotBytes];
+    unsigned int bases[2], total, at, j, space, index, lastpc = 0;
     void *origin;
     unsigned int i, length = count+(operation == 3 ? 2 : 1), sourceoffset, width;
     WORD number;
@@ -278,7 +306,7 @@ static void vmstores(int phase, int aliased, int operation, unsigned int count, 
     int baseline = contextlive;
     program = vmprogram(phase, aliased, operation, count, &bank);
     check(bank->count <= nelem(filled)); memset(filled, 0, sizeof(filled));
-    memset(refreshed, 0, sizeof(refreshed)); memset(fullmap, 0, sizeof(fullmap));
+    memset(refreshed, 0, sizeof(refreshed)); memset(fullmap, 0, sizeof(fullmap)); memset(installed,0,sizeof(installed));
     total = bank->bytes;
     for(j=0; j<bank->mapbytes; j++) fullmap[j] = bank->map[j];
     for(space=0; space<2; space++) {
@@ -298,32 +326,66 @@ static void vmstores(int phase, int aliased, int operation, unsigned int count, 
         store = &program[i]; if(store->immediate) continue;
         check(store->cell >= 0 && (unsigned int)store->cell < bank->count);
         if(filled[store->cell]) continue;
-        filled[store->cell] = 1; sourceoffset = store->source_offset;
+        check(!filled[store->cell]); filled[store->cell] = 1; sourceoffset = store->source_offset;
         check(sourceoffset == 64+(unsigned int)store->cell*8 && sourceoffset+8 <= bank->bytes);
         cell = bank->cells+store->cell; check(cell->space < 2);
-        source = bank->sources+cell->space;
-        check(cell->offset <= source->bytes && cell->bytes <= source->bytes-cell->offset);
-        R.d = (uchar*)input.value+bases[cell->space]+cell->offset;
-        if(store->op == IMOVP) {
-            reference = store->fixed ? operation == 3 && store->ordinal == 0 ? fd : pattern : text;
-            if(cell->seed) {
-                String *value = reference;
-                check((cell->space == 1 || cell->setupop == IMOVP) && cell->seed == 1 && value != H && value->len == cell->length);
-                check(memcmp(value->Sascii, cell->initial, cell->length) == 0); // Exact compiler MP initializer bytes.
-            }
-            memmove(&previous, R.d, sizeof(previous)); check(previous == H);
-            R.s = &reference; movp();
+        reference = store->fixed ? operation == 3 && store->ordinal == 0 ? fd : pattern : text;
+        if(cell->setupop && cell->seed) {
+            check(cell->space == 0);
+            if(!cell->setupmp) continue; // Immediate input is read when its defining instruction executes.
+            source = bank->sources+1;
+            check(cell->setupoffset <= source->bytes && cell->setupbytes <= source->bytes-cell->setupoffset);
+            at = bases[1]+cell->setupoffset;
+            vmseedstorage(cell,reference,(uchar*)input.value+at,cell->setupbytes,installed,at);
         } else {
-            number = -1;
-            if(cell->seed) {
-                check(cell->seed == 2 && cell->setupop == IMOVW && cell->space == 0);
-                number = (WORD)cell->low; // Proved FP input.
-            }
-            R.s = &number; movw();
+            source = bank->sources+cell->space;
+            check(cell->offset <= source->bytes && cell->bytes <= source->bytes-cell->offset);
+            at = bases[cell->space]+cell->offset;
+            vmseedstorage(cell,reference,(uchar*)input.value+at,cell->bytes,installed,at);
         }
-        epochs(1);
     }
-    for(i=0; i<bank->count; i++) check(filled[i]);
+    /* A current MP value may differ from the initializer before local assignment. */
+    if(phase == 2 && operation == 0 && vmmode == 18) {
+        for(i=0; i<bank->count; i++) {
+            cell = bank->cells+i;
+            if(cell->setupop == IMOVP && cell->setupmp) {
+                R.d = (uchar*)input.value+bases[1]+cell->setupoffset; R.s = &pattern; movp(); epochs(1);
+            }
+        }
+    }
+    check(bank->steps <= bank->count);
+    for(i=0; i<bank->steps; i++) {
+        index = bank->order[i]; // Compiler-defined preparation order.
+        check(index < bank->count); cell = bank->cells+index;
+        check(cell->setupop != 0 && (i == 0 || cell->setuppc > lastpc)); lastpc = cell->setuppc;
+        if(!cell->seed) continue; // The fixture still supplies explicitly unproved source values.
+        check(cell->space == 0 && cell->offset <= bank->sources[0].bytes && cell->bytes <= bank->sources[0].bytes-cell->offset);
+        if(cell->setupmp) {
+            source = bank->sources+1;
+            check(cell->setupoffset <= source->bytes && cell->setupbytes <= source->bytes-cell->setupoffset);
+            R.s = (uchar*)input.value+bases[1]+cell->setupoffset; // Actual MP input at defining PC.
+            for(j=0; j<cell->setupbytes; j++) check(installed[bases[1]+cell->setupoffset+j]);
+        } else { number = (WORD)cell->low; // Proved FP input.
+            R.s = &number; }
+        R.d = (uchar*)input.value+bases[0]+cell->offset;
+        switch(cell->setupop) {
+        case IMOVW: movw(); break;
+        case IMOVP: movp(); break;
+        case IMOVL: movl(); break;
+        case IMOVF: movf(); break;
+        case ICVTWL: cvtwl(); break;
+        case ICVTWF: cvtwf(); break;
+        case ICVTLF: cvtlf(); break;
+        default: abort();
+        }
+        filled[index] = 2;
+        memset(installed+bases[0]+cell->offset,1,cell->bytes); epochs(1);
+    }
+    for(i=0; i<bank->count; i++) {
+        cell = bank->cells+i;
+        check(filled[i] == (cell->setupop && cell->seed ? 2 : 1));
+        for(j=0; j<cell->bytes; j++) check(installed[bases[cell->space]+cell->offset+j]);
+    }
     for(i=0; i<length; i++) {
         store = &program[i]; R.d = (uchar*)pending+store->destination;
         number = (WORD)store->source;
@@ -571,6 +633,7 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     int savedcount;
     unsigned int count = mode == 14 ? 150 : 2;
     int baseline, before, expected, completed;
+    int setupchanged = phase == 2 && operation == 0 && mode == 18;
     int aliased = phase == 2 && operation == 0 && mode == 0 ? (useframe ? 2 : 1) : 0;
 
     contextstart(phase, Pready);
@@ -690,7 +753,7 @@ static void vmcase(int phase, int operation, int mode, int useframe)
             output[outputlen++] = item == 1 || item == 70 || item == 149 ? 'k' : '1';
         }
         output[outputlen] = 0;
-    } else { outputlen = aliased == 1 ? 8 : 5; memmove(output, aliased == 1 ? "-1|%d|%s" : "-1|ok", outputlen+1); }
+    } else { outputlen = aliased == 1 || setupchanged ? 8 : 5; memmove(output, aliased == 1 || setupchanged ? "-1|%d|%s" : "-1|ok", outputlen+1); }
     expected = mode == 0 || mode == 14 || mode == 17 || mode == 18 || (mode == 10 && operation < 2);
     check(vmstatus == expected);
     if(mode == 1 || mode == 2 || mode == 3 || mode == 4 || mode == 5 || mode == 6 || mode == 7 || mode == 8 ||
@@ -735,6 +798,6 @@ int main(int argc, char **argv)
     for(useframe=0; useframe<2; useframe++) for(phase=0; phase<3; phase++) for(operation=0; operation<4; operation++) for(mode=0; mode<32; mode++) {
         vmcase(phase, operation, mode, useframe); cases++;
     }
-    printf("PASS typed Sys VM frames: %d real FRAME/MFRAME/MCALL/GC cases with source-derived tail plans, four gateways, compiler FP definitions/MP initializers/native FP/MP gather/GC/mutable aliases/full 150-argument output, compiler-selected canonical stores, owned site copies/rollback/busy retirement, checked eight-byte binding/32 refusals, 150-slot frames, refusal and result/cleanup checks\n", cases);
+    printf("PASS typed Sys VM frames: %d real FRAME/MFRAME/MCALL/GC cases with source-derived tail plans, four gateways, ordered FP recipe replay/current MP reads/MP initializers/native FP/MP gather/GC/mutable aliases/full 150-argument output, compiler-selected canonical stores, owned site copies/rollback/busy retirement, checked eight-byte binding/32 refusals, 150-slot frames, refusal and result/cleanup checks\n", cases);
     return 0;
 }

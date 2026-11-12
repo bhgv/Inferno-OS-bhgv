@@ -266,3 +266,11 @@ transport now obtains local integer/String values from these recipes and
 checks local big/real definitions. MP input seeds still describe initial
 module state; reading a mutable source at its original PC and executing the
 complete caller remain work for the executable backend.
+
+The source plan now gives local recipes native MP input spans and a verified
+preparation order. The VM transport initializes MP storage and replays each
+known MOV/CVT definition against its current contents before argument reads.
+Changing MP between initialization and local assignment must change the FP
+value/result; using a cached seed or reversing preparation is rejected. This
+remains a C-driven transport, with full caller/frame-allocation ordering and
+serialized executable admission still pending.

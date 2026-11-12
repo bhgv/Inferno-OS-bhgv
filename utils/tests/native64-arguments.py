@@ -130,7 +130,9 @@ def main():
                             ('initializer-value', '@unit', 'pattern = c2string((char*)seed->initial, seed->length);', 'pattern = c2string("%d|%s", 5);'),
                             ('initializer-bits', '@unit', 'bits = ((uvlong)cell->high<<32)|cell->low; // Compiler-owned canonical initializer bits.', 'bits = cell->low; // Deliberately drop the high initializer word.'),
                             ('fp-value', '@unit', 'number = (WORD)cell->low; // Proved FP input.', 'number = 0; // Deliberately ignore the compiled FP assignment.'),
-                            ('fp-width', '@unit', 'case IMOVL: movl(); break; // Execute the actual full-width FP definition.', 'case IMOVL: movw(); break; // Deliberately truncate the local big definition.')):
+                            ('fp-width', '@unit', 'case IMOVL: movl(); break; // Execute the actual full-width FP definition.', 'case IMOVL: movw(); break; // Deliberately truncate the local big definition.'),
+                            ('fp-current-mp', '@unit', 'R.s = (uchar*)input.value+bases[1]+cell->setupoffset; // Actual MP input at defining PC.', 'R.s = &text; // Deliberately substitute the old String seed.'),
+                            ('fp-order', '@unit', 'index = bank->order[i]; // Compiler-defined preparation order.', 'index = bank->order[bank->steps-1-i]; // Deliberately reverse preparation.')):
                         adapter = source if header == '@unit' else (ROOT/('include/'+header)).read_text()
                         if adapter.count(boundary) != 1:
                             raise RuntimeError('Typed format control boundary changed: '+name)

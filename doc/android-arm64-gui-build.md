@@ -243,3 +243,9 @@ Source gates verify definition identity, overwrite/branch/call refusals and
 input bits; runtime gates retain GC and full 150-argument output checks.
 FD creation, unsupported local/control-flow paths and complete serialized
 caller execution remain pending, so this does not enable Android AWM startup.
+
+Known FP recipes are now replayed in compiler PC order against managed MP
+storage, rather than installing FP cells directly from flattened seed values.
+A mutation-before-assignment case checks that the call sees current MP data.
+The transport still uses a synthetic preallocated frame; complete caller
+execution, allocation-failure ordering, FD setup and AWM startup are pending.

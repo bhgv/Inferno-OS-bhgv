@@ -615,3 +615,40 @@ transport. It does not execute the complete caller, arbitrary control flow,
 FD construction or mutable MP history. Unknown cells still use explicit C
 fixture inputs; executable initializer/caller/result lowering and serialized
 PC/site admission remain required before AWM.
+
+## Replay local definitions against current managed MP storage
+
+FP recipes now carry `source_offset` and `source_bytes` in native MP storage
+(or zero offset/four operand bytes for an immediate). `bank.preparation` lists
+recipe-bearing source cells in increasing original definition-PC order. The
+classic reader checks each native input span against the original MP operand,
+complete map/relocation layout, and scalar/root width. It independently checks
+the full preparation order and rejects a reversed vector.
+
+The transport no longer installs a known FP value directly from its flattened
+seed. It first initializes managed MP inputs, retaining identical aliases once.
+It then executes the generated MOV/CVT recipes in definition-PC order, reading
+current MP memory into mapped FP cells. An immediate is supplied as the decoded
+operand. Only after preparation does the existing per-read bank gathering and
+argument-store path run. GC epochs occur between these stages. Unknown recipe
+inputs and FD setup remain explicit C fixture inputs.
+
+A byte-span installation ledger verifies complete source initialization and
+refuses partially overlapping or inconsistent duplicate seeds. Replaying a
+known recipe is mandatory before its FP cell can be gathered. Managed root
+writes use MOVP and retain/release through the actual heap/collector machinery;
+reference source bits are never copied with a raw pointer assignment.
+
+The new mutation case changes an MP String **after initialization but before
+its defining MOVP**. The local FP value and eventual result must see the new
+String (`"-1|%d|%s"`), rather than the old initializer (`"ok"`). This differs from
+the earlier alias test, which changes MP between argument reads. Removal
+controls detect substituting the original seed for the current MP input and
+reversing preparation. Existing integer-value, full-width, root-map, GC,
+call-site ownership and result checks remain active.
+
+These are ordered recipes in a C-driven VM transport with preallocated native
+storage and an already prepared synthetic frame. They do not replay every
+instruction relative to FRAME allocation, implement source-language allocation
+failure ordering, or execute an ordinary serialized caller. Full instruction,
+initializer, result and owned-site admission remain backend work before AWM.

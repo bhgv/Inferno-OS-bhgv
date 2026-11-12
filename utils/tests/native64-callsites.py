@@ -207,9 +207,13 @@ def verify_stores(data, records, diagnostics):
                     if branch['op'] in (4,6,13) or 87<=branch['op']<=110 or 129<=branch['op']<=134:
                         if branch['d'] and pc < branch['d'][0] <= location['frame_pc']: raise RuntimeError('Branch enters after the FP definition')
                 if mode == 2:
+                    if setup['source_offset'] != 0 or setup['source_bytes'] != 4: raise RuntimeError('Immediate definition acquired a native source address')
                     expected_input = dict(kind='word',high=0,low=setup['source_value']&0xffffffff)
                 else:
                     input_width = 4 if definition['op'] in (41,45,138,50) else 8
+                    expected_offset = source_offsets['mp'][setup['source_value']]
+                    if setup['source_offset'] != expected_offset or setup['source_bytes'] != (8 if definition['op']==41 else input_width): raise RuntimeError('Definition input relocation lost its exact source span')
+                    if input_width == 8 and source_offsets['mp'][setup['source_value']+4] != expected_offset+4: raise RuntimeError('Definition input scalar was split')
                     extent, roots = types[0]; offset = setup['source_value']
                     if offset<0 or offset%4 or offset+input_width>extent: raise RuntimeError('FP setup input escapes MP')
                     for byte in range(offset,offset+input_width,4):
@@ -233,6 +237,9 @@ def verify_stores(data, records, diagnostics):
                 slot = offset//4
                 if bool(slot//8<len(roots) and roots[slot//8]&(0x80>>(slot%8))) != root: raise RuntimeError('Source read has wrong original root role')
             if root: expected_map[(64+index*8)//64] |= 0x80>>index%8
+        expected_order = sorted((i for i,c in enumerate(bank['cells']) if c['setup'] is not None),key=lambda i:bank['cells'][i]['setup']['legacy_pc'])
+        if bank['preparation'] != expected_order or len({bank['cells'][i]['setup']['legacy_pc'] for i in expected_order}) != len(expected_order):
+            raise RuntimeError('Local preparation order lost instruction identity')
         if len(unique) != len(bank['cells']) or bank['bytes'] != 64+8*len(unique) or bank['map'] != expected_map:
             raise RuntimeError('Source bank extent or full map is wrong')
     return by_id
@@ -256,9 +263,9 @@ def emit_program(label, program):
         seed = cell['initial'] if cell['initial'] is not None else (cell['setup'] or {}).get('input'); kind = 0 if seed is None else {'string':1,'word':2,'long':3,'real':4,'nil-string':5}[seed['kind']]
         values = [0 if cell['source_mode']=='fp' else 1,cell['origin_offset'],cell['native_bytes'],int(cell['class'] in ('string','reference')),kind,
                   len(seed['bytes']) if kind==1 else 0,seed['high'] if kind in (2,3,4) else 0,seed['low'] if kind in (2,3,4) else 0]
-        lines += ['{'+','.join(str(x)+'U' for x in values)+','+label+'_seed_'+str(index)+','+str(cell['setup']['opcode'] if cell['setup'] else 0)+'},']
-    if not bank['cells']: lines += ['{0,0,0,0,0,0,0,0,0,0},']
-    lines += ['};','static const Native64GeneratedBank '+label+'_bank = {'+str(bank['bytes'])+','+str(len(bank['cells']))+','+str(len(bank['map']))+','+label+'_map,'+label+'_sources,'+label+'_cells};']
+        lines += ['{'+','.join(str(x)+'U' for x in values)+','+label+'_seed_'+str(index)+','+str(cell['setup']['opcode'] if cell['setup'] else 0)+','+str(cell['setup']['legacy_pc'] if cell['setup'] else 0)+','+str(int(cell['setup'] is not None and cell['setup']['source_mode']=='mp'))+','+str(cell['setup']['source_offset'] if cell['setup'] else 0)+','+str(cell['setup']['source_bytes'] if cell['setup'] else 0)+'},']
+    if not bank['cells']: lines += ['{0,0,0,0,0,0,0,0,0,0,0,0,0,0},']
+    lines += ['};','static const unsigned int '+label+'_order[] = {'+','.join(map(str,bank['preparation'] or [0]))+'};','static const Native64GeneratedBank '+label+'_bank = {'+str(bank['bytes'])+','+str(len(bank['cells']))+','+str(len(bank['map']))+','+label+'_map,'+label+'_sources,'+label+'_cells,'+str(len(bank['preparation']))+','+label+'_order};']
     return lines
 
 
@@ -289,12 +296,13 @@ def generate(limbo, work, env):
             if cell['source_mode']=='fp' and cell['class'] in ('word','string') and (cell['setup'] is None or cell['setup']['input'] is None):
                 raise RuntimeError('Fixture locals still require an unproved C source value')
     # A wrong definition identity or value must fail the independent bytecode oracle.
-    for fault in ('pc','opcode','value'):
+    for fault in ('pc','opcode','value','order'):
         altered = json.loads(json.dumps(programs[records[0]['id']]))
         cell = next(c for c in altered['bank']['cells'] if c['source_mode']=='fp' and c['class']=='word')
         if fault=='pc': cell['setup']['legacy_pc'] = verify_locations(traced.read_bytes(), records, result.stderr)[records[0]['id']]['frame_pc']
         elif fault=='opcode': cell['setup']['opcode'] = 41
-        else: cell['setup']['input']['low'] ^= 1
+        elif fault=='value': cell['setup']['input']['low'] ^= 1
+        else: altered['bank']['preparation'] = list(reversed(altered['bank']['preparation']))
         changed = '\n'.join('NATIVE64_CALL_LOWER '+json.dumps(altered) if line.startswith('NATIVE64_CALL_LOWER ') and json.loads(line.split(' ',1)[1])['id']==altered['id'] else line for line in result.stderr.splitlines())
         try: verify_stores(traced.read_bytes(), records, changed)
         except RuntimeError: pass
@@ -306,8 +314,8 @@ def generate(limbo, work, env):
     header = ['/* Generated only from the current compiler\'s typechecked source call plans. */',
               'typedef struct Native64GeneratedStore { unsigned int op, destination, fixed, ordinal; long source; unsigned int immediate; int cell; unsigned int source_offset; } Native64GeneratedStore;',
               'typedef struct Native64GeneratedSource { unsigned int bytes, mapbytes; const uchar *map; } Native64GeneratedSource;',
-              'typedef struct Native64GeneratedCell { unsigned int space, offset, bytes, root, seed, length, high, low; const uchar *initial; unsigned int setupop; } Native64GeneratedCell;',
-              'typedef struct Native64GeneratedBank { unsigned int bytes, count, mapbytes; const uchar *map; const Native64GeneratedSource *sources; const Native64GeneratedCell *cells; } Native64GeneratedBank;']
+              'typedef struct Native64GeneratedCell { unsigned int space, offset, bytes, root, seed, length, high, low; const uchar *initial; unsigned int setupop, setuppc, setupmp, setupoffset, setupbytes; } Native64GeneratedCell;',
+              'typedef struct Native64GeneratedBank { unsigned int bytes, count, mapbytes; const uchar *map; const Native64GeneratedSource *sources; const Native64GeneratedCell *cells; unsigned int steps; const unsigned int *order; } Native64GeneratedBank;']
     for operation, name in enumerate(('sprint', 'aprint', 'print', 'fprint')):
         for index, count in enumerate((2, 150)):
             record = records[operation*2+index]
