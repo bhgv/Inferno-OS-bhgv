@@ -1601,7 +1601,7 @@ managed64inputlist(Module *module, int ordinal)
 typedef struct Dis64ManagedFileCaller Dis64ManagedFileCaller;
 struct Dis64ManagedFileCaller {
 	Modlink *caller;
-	const LimboNative64Entry *entries[8];
+	const LimboNative64Entry *entries[10];
 	unsigned int count;
 	char *path;
 	Dis64ManagedLiteralsView literals;
@@ -1657,7 +1657,7 @@ prepare64sysstring(char *path, const uchar *image, ulong bytes, int jit)
 {
     Dis64NumericLoad load = {0};
     Dis64ManagedFileCaller file = {0};
-    LimboNative64Entry specification[8];
+    LimboNative64Entry specification[10];
     const char *method;
     unsigned int i, framebytes, mapbytes, maplast;
     int kind;
@@ -1679,7 +1679,7 @@ prepare64sysstring(char *path, const uchar *image, ulong bytes, int jit)
         kind = dis64sysfixedkind(method);
         if(kind < 0) return nil;
         framebytes = dis64sysfixedframe(kind);
-        mapbytes = framebytes == 64 ? 1 : 2; maplast = kind >= 6 ? 0xc0 : kind < 3 ? 0x80 : 0;
+        mapbytes = framebytes == 64 ? 1 : 2; maplast = kind == 6 || kind == 7 ? 0xc0 : kind < 3 || kind == 9 ? 0x80 : 0;
         owner = nil; entry = native64sysexport(method,&owner);
         if(entry == nil || (sys != nil && owner != sys) || (frame=entry->frame) == nil ||
            frame->size != framebytes || frame->np != mapbytes || frame->map[0] != 0 ||

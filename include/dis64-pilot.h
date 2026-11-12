@@ -48,13 +48,13 @@ static unsigned int
 dis64clockbit(long offset)
 {
     int local = dis64clocklocal(offset);
-    return local >= 0 ? 1U<<local : offset == 72 ? 8U : 0;
+    return local >= 0 ? 1U<<local : offset == 72 ? 8U : offset == 96 ? 32U : 0;
 }
 
 static void
 dis64clockjoin(unsigned int *target, unsigned int state)
 {
-    *target = *target ? 16U|((*target & state)&15U) : state;
+    *target = *target ? 16U|((*target & state)&47U) : state;
 }
 
 /* Word effects are recomputed from checked operands, not caller-supplied facts. */
@@ -75,7 +75,7 @@ dis64clockeffect(const Dis64Instruction *in, unsigned int *need, unsigned int *d
         if(!dis64clockbranch(in->op) && UDST(in->mode) == AFP) {
             *define = dis64clockbit(in->destination); if(!*define) return 0;
         }
-    } else if(in->op == IMCALL) *define = 8;
+    } else if(in->op == IMCALL) *define = in->middle == -1 ? 32 : 8; // Typed projection: FD result defines no Word.
     else if(in->op != ILOAD && in->op != IMFRAME && in->op != ILEA && in->op != IEXIT && in->op != IJMP) return 0;
     return 1;
 }
@@ -100,7 +100,7 @@ dis64clockflow(const Dis64Instruction *code, unsigned int count)
         else if(in->op == IMCALL) { if(phase != 2 || ++calls > Dis64ClockCalls) return 0; phase = 0; }
         else if(phase && !(phase == 1 && in->op == IMOVW)) return 0;
         if(!dis64clockeffect(in,&need,&define)) return 0;
-        incoming[i] = outgoing[i] = 31; // Reachable plus four top facts, monotonically removed below.
+        incoming[i] = outgoing[i] = 63; // Reachable plus five top facts, monotonically removed below.
     }
     if(phase || calls == 0 || code[count-1].op != IEXIT) return 0;
     for(i=0; i<count; i++) if(dis64clockbranch(code[i].op)) {
@@ -116,7 +116,7 @@ dis64clockflow(const Dis64Instruction *code, unsigned int count)
     }
     if(tail != count) return 0;
     head = 0; tail = 1%count; pending = 1; queue[0] = 0; queued[0] = 1;
-    budget = 16*count+1; // Four disappearing bits, at most two outgoing edges per instruction.
+    budget = 20*count+1; // Five disappearing bits, at most two outgoing edges per instruction.
     while(pending) {
         if(budget == 0) return 0; budget--;
         at = queue[head]; head = (head+1)%count; pending--; queued[at] = 0;

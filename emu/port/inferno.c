@@ -1974,7 +1974,12 @@ Sys_iounit(void *fp)
 		return;
 	}
 	release();
+	if(waserror()){
+		acquire();
+		nexterror();
+	}
 	result = kiounit(fd);
+	poperror();
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }

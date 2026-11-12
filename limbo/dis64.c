@@ -741,12 +741,12 @@ dis64manageddirection(Decl *function)
 typedef struct Dis64ManagedCompilePlan Dis64ManagedCompilePlan;
 struct Dis64ManagedCompilePlan {
 	unsigned int bindings, calls;
-	uchar directions[8], nativekind[8], reloads[Dis64ManagedCalls], transfers[Dis64ManagedCalls], ordinals[Dis64ManagedCalls];
+	uchar directions[10], nativekind[10], reloads[Dis64ManagedCalls], transfers[Dis64ManagedCalls], ordinals[Dis64ManagedCalls];
 	char *path;
 	char *module; // Actual source interface/module identity.
-	char *symbols[8]; // Actual export names in binding order.
+	char *symbols[10]; // Actual export names in binding order.
 	uchar pairtransfers[Dis64ManagedCalls][2];
-	int pairroots;
+	int pairroots, fdroots;
 	Sym *literals[Dis64ManagedLiterals]; // Independently materialized String identities.
 	uchar argmodes[Dis64ManagedCalls][3];
 	long argvalues[Dis64ManagedCalls][3];
@@ -864,6 +864,15 @@ dis64managedlibraryshape(Decl *globals, Inst *input, long count, long databytes,
 }
 
 
+static int
+dis64sysfdtype(Type *type)
+{
+    Decl *field;
+    if(type == nil || type->kind != Tref || type->tof == nil || type->tof->kind != Tadt) return 0;
+    field=type->tof->ids;
+    return field != nil && field->next == nil && field->store == Dfield && field->ty->kind == Tint;
+}
+
 /* Resolve an immutable MP constant to its abstract identity, never a native address. */
 static long
 dis64managedconstant(Decl *nilvalue, Decl *emptyvalue, Decl **literals, unsigned int count, long offset)
@@ -884,9 +893,10 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	static const uchar sm[] = {Amp, Afp, Afp, Afp, Afp, Anone};
 	static const uchar dm[] = {Afp, Afp, Afpind, Afpind, Afp, Anone};
 	static const uchar mm[] = {Aldt, Aoff, Anone, Anone, Aoff, Anone};
-	Decl *imports[8], *import, *export, *path, *argument, *nilvalue, *emptyvalue, *literals[Dis64ManagedLiterals], *constants[3+Dis64ManagedLiterals];
+	Decl *imports[10], *import, *export, *path, *argument, *nilvalue, *emptyvalue, *literals[Dis64ManagedLiterals], *constants[3+Dis64ManagedLiterals];
 	Inst *load, *scan;
 	long scalarprevious = -1, scalarlocals[Dis64ClockLocals];
+	long fdvalue = 0, oldidentity;
 	long module = -1, modulevalue = 0, frame = -1, result = -1, current = 1, previous = 0, value;
 	long slots[12*Dis64ManagedCalls+1], values[12*Dis64ManagedCalls+1], *source, *destination;
 	unsigned int i, j, n, nliterals = 0, groups = 0, phase = 1, pending = 0, step, binding = 0, seen = 0, used = 0;
@@ -897,7 +907,7 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 || entry->ty->varargs ||
 	   entry->ty->tof->kind != Tnone || entry->desc == nil || count < (builtin ? 5 : 6) || count > 12*Dis64ManagedCalls+1 ||
 	   (databytes < 4 || databytes%4 || databytes > 4*(3+Dis64ManagedLiterals)) || ldts == nil || ldts->next != nil || ldts->init == nil ||
-	   ldts->init->val < 1 || ldts->init->val > (builtin ? 8 : 2) || ldts->init->decl == nil)
+	   ldts->init->val < 1 || ldts->init->val > (builtin ? 10 : 2) || ldts->init->decl == nil)
 		return 0;
 	for(i=0; i<Dis64ClockLocals; i++) scalarlocals[i] = -1;
     if(builtin) for(scan=input; scan != nil; scan=scan->next){
@@ -905,22 +915,23 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
         if(dis64clockbranch(scan->op) || (scan->op == IRET && scan->pc < count-1)) plan->branches = 1;
     }
 	for(import=ldts->init->decl->ty->ids, n=0; import != nil; import=import->next, n++){
-        if(n == (builtin ? 8 : 2)) return 0;
+        if(n == (builtin ? 10 : 2)) return 0;
 		direction = dis64manageddirection(import);
         if(builtin){
             kind = dis64sysfixedkind(import->sym->name);
             if(kind < 0 || (seen & (1U<<kind)) || import->ty->kind != Tfn || import->ty->varargs ||
-               import->ty->polys != nil || import->ty->tof->kind != Tint) return 0;
+               import->ty->polys != nil || (kind == 8 ? !dis64sysfdtype(import->ty->tof) : import->ty->tof->kind != Tint)) return 0;
             arguments = dis64sysfixedargs(kind);
             for(field=import->ty->ids, j=0; field != nil; field=field->next, j++)
-                if(j >= arguments || field->ty->kind != (dis64sysfixedstring(kind,j) ? Tstring : Tint)) return 0;
+                if(j >= arguments || (kind == 9 ? !dis64sysfdtype(field->ty) : field->ty->kind != (dis64sysfixedstring(kind,j) ? Tstring : Tint))) return 0;
             if(j != arguments) return 0;
             plan->nativekind[n] = kind;
             if(kind >= 3) plan->wordflow = 1;
-            if(kind >= 6) plan->pairroots = 1;
+            if(kind == 6 || kind == 7) plan->pairroots = 1;
+            if(kind >= 8) plan->fdroots = 1;
             direction = 0;
         }
-		if(n == (builtin ? 8 : 2) || direction < 0 || (!builtin && (seen & (1U<<direction))) || import->offset != n)
+		if(n == (builtin ? 10 : 2) || direction < 0 || (!builtin && (seen & (1U<<direction))) || import->offset != n)
 			return 0;
 		seen |= 1U<<(builtin ? kind : direction);
 		imports[n] = import;
@@ -992,7 +1003,19 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 		if(i >= count) return 0;
         if(builtin && phase == 6){
             Addr mapped;
-            if(plan->nativekind[binding] >= 6 && parameter < 2){
+            if(plan->nativekind[binding] == 9){
+                if(input->op != IMOVP || input->mm != Anone || input->dm != Afpind || input->d.reg != frame ||
+                   input->d.offset != 32 || (input->sm != Amp && input->sm != Afp)) return 0;
+                if(input->sm == Amp) value=dis64managedconstant(nilvalue,emptyvalue,literals,nliterals,input->s.reg);
+                else{
+                    if(input->s.reg == frame || !dis64clockslot(input->s.reg,entry->desc->size)) return 0;
+                    source=dis64managedlocal(slots,values,&used,input->s.reg); if(source == nil) return 0; value=*source;
+                }
+                if(value != Dis64ManagedNil && (fdvalue == 0 || value != fdvalue)) return 0;
+                plan->argmodes[groups][0] = value == Dis64ManagedNil ? AMP : AFP;
+                phase=3; i++; continue;
+            }
+            if((plan->nativekind[binding] == 6 || plan->nativekind[binding] == 7) && parameter < 2){
                 if(input->op != IMOVP || input->mm != Anone || input->dm != Afpind || input->d.reg != frame ||
                    input->d.offset != 32+4*parameter || (input->sm != Amp && input->sm != Afp)) return 0;
                 if(input->sm == Amp) value = dis64managedconstant(nilvalue,emptyvalue,literals,nliterals,input->s.reg);
@@ -1034,6 +1057,7 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 				return 0;
 			destination = dis64managedlocal(slots, values, &used, input->d.reg);
 			if(destination == nil) return 0;
+            oldidentity=*destination;
 			if(input->sm == Amp){
 				value = dis64managedconstant(nilvalue,emptyvalue,literals,nliterals,input->s.reg);
 				if(value == 0) return 0;
@@ -1044,6 +1068,17 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 				if(source == nil || *source == 0) return 0;
 				*destination = *source;
 			}
+            if(builtin && plan->fdroots && fdvalue != 0 && oldidentity == fdvalue && *destination != fdvalue){
+                for(j=0; j<used && values[j] != fdvalue; j++) ;
+                if(j == used){
+                    Dis64ClockWord *word;
+                    if(plan->scalar.nwords == Dis64ClockWords) return 0;
+                    word=&plan->scalar.words[plan->scalar.nwords++];
+                    word->legacy=input->pc;word->before=groups;word->target=-1;
+                    word->instruction=(Dis64Instruction){IMOVP,SRC(AMP)|DST(AFP),0,8,96};
+                    fdvalue=0;
+                }
+            }
 			i++;
 			continue;
 		}
@@ -1119,7 +1154,7 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			result = input->s.reg;
 			if(!dis64clockslot(result, entry->desc->size) || result == frame ||
 			   input->d.reg != frame || input->d.offset != 16) return 0;
-            if(builtin && plan->wordflow){
+            if(builtin && plan->wordflow && plan->nativekind[binding] != 8){
                 if((plan->branches || dis64clockoverlap(input)) && !dis64clockretain(scalarlocals,result)) return 0;
                 plan->scalar.calls[groups].save = dis64clockcell(scalarlocals,result);
             }
@@ -1129,7 +1164,8 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			source = dis64managedlocal(slots, values, &used, input->d.reg);
 			if(input->s.reg != frame || source == nil || *source != modulevalue || input->m.decl == nil ||
 			   input->m.decl->iface != imports[binding]) return 0;
-			if(builtin) scalarprevious = plan->branches ? -1 : result;
+			if(builtin && plan->nativekind[binding] != 8) scalarprevious = plan->branches ? -1 : result;
+            if(builtin && plan->nativekind[binding] == 8) fdvalue=groups+2;
 			plan->ordinals[groups++] = binding;
 			previous = groups+1;
 			previouskind = builtin ? 0 : plan->directions[binding] ? 1 : 2;
@@ -1196,7 +1232,7 @@ dis64sysstringemit(Dis64ManagedCompilePlan *plan, long legacycount, uchar *code,
         while(step < plan->scalar.nwords && plan->scalar.words[step].before == i){
             pcs[plan->scalar.words[step++].legacy] = pc++;
         }
-        if(i != plan->calls){ pcs[plan->scalar.calls[i].legacy] = pc; pc += (plan->nativekind[plan->ordinals[i]] < 3 ? 5 : 3+dis64sysfixedargs(plan->nativekind[plan->ordinals[i]])+(plan->nativekind[plan->ordinals[i]] >= 6 ? 2 : 0))+!!plan->scalar.calls[i].save; }
+        if(i != plan->calls){ pcs[plan->scalar.calls[i].legacy] = pc; pc += (plan->nativekind[plan->ordinals[i]] < 3 ? 5 : 3+dis64sysfixedargs(plan->nativekind[plan->ordinals[i]])+((plan->nativekind[plan->ordinals[i]] == 6 || plan->nativekind[plan->ordinals[i]] == 7) ? 2 : plan->nativekind[plan->ordinals[i]] == 9 && plan->argmodes[i][0] == AMP ? 1 : 0))+!!plan->scalar.calls[i].save; }
     }
     pcs[legacycount-1] = pc++;
     if(pc > Dis64ClockInstructions) return 0;
@@ -1209,7 +1245,7 @@ dis64sysstringemit(Dis64ManagedCompilePlan *plan, long legacycount, uchar *code,
                 if(word->target >= legacycount || pcs[word->target] < 0) return 0;
                 instruction.destination = pcs[word->target];
             }
-            if(instruction.op != ILOAD && !dis64sysstringword(&instruction,1)) return 0;
+            if(instruction.op != ILOAD && instruction.op != IMOVP && !dis64sysstringword(&instruction,1)) return 0;
             if(!dis64encode(code,&at,&instruction)) return 0;
         }
         if(i == plan->calls) break;
@@ -1223,26 +1259,35 @@ dis64sysstringemit(Dis64ManagedCompilePlan *plan, long legacycount, uchar *code,
         }else{
             unsigned int j, mode;
             long value;
-            if(plan->nativekind[plan->ordinals[i]] >= 6) for(j=0; j<2; j++){
+            if(plan->nativekind[plan->ordinals[i]] == 6 || plan->nativekind[plan->ordinals[i]] == 7) for(j=0; j<2; j++){
                 unsigned int transfer = plan->pairtransfers[i][j];
                 if(transfer != 2 && transfer < 3) return 0;
                 instruction = (Dis64Instruction){IMOVP,SRC(AMP)|DST(AFP),0,transfer == 2 ? 8 : 24+8*(transfer-3),64+8*j};
                 if(!dis64encode(code,&at,&instruction)) return 0;
             }
+            if(plan->nativekind[plan->ordinals[i]] == 9 && plan->argmodes[i][0] == AMP){
+                instruction=(Dis64Instruction){IMOVP,SRC(AMP)|DST(AFP),0,8,64};
+                if(!dis64encode(code,&at,&instruction)) return 0;
+            }
             instruction = (Dis64Instruction){IMFRAME,SRC(AMP)|AXIMM|DST(AFP),plan->ordinals[i],0,40};
             if(!dis64encode(code,&at,&instruction)) return 0;
             for(j=0; j<dis64sysfixedargs(plan->nativekind[plan->ordinals[i]]); j++){
-                if(plan->nativekind[plan->ordinals[i]] >= 6 && j<2){
+                if(plan->nativekind[plan->ordinals[i]] == 9){
+                    code[at++]=IMOVP;code[at++]=SRC(AFP)|DST(AFP|AIND);
+                    at += disoperand(code+at,4,plan->argmodes[i][0] == AMP ? 64 : 96);code[at++]=40;
+                    at += disoperand(code+at,4,64);continue;
+                }
+                if((plan->nativekind[plan->ordinals[i]] == 6 || plan->nativekind[plan->ordinals[i]] == 7) && j<2){
                     code[at++]=IMOVP; code[at++]=SRC(AFP)|DST(AFP|AIND);
                     at += disoperand(code+at,4,64+8*j); code[at++]=40;
                     at += disoperand(code+at,4,64+8*j); continue;
                 }
                 mode = plan->argmodes[i][j]; value = plan->argvalues[i][j];
                 if(mode == AFP){value = dis64sysstringcell(value,1); if(value < 0) return 0;}
-                if(value < -536870912L || !dis64clockargument(code,&at,mode,value,plan->nativekind[plan->ordinals[i]] >= 6 ? 4 : j)) return 0;
+                if(value < -536870912L || !dis64clockargument(code,&at,mode,value,plan->nativekind[plan->ordinals[i]] == 7 ? 4 : j)) return 0;
             }
             code[at++]=ILEA; code[at++]=SRC(AFP)|DST(AFP|AIND);
-            at += disoperand(code+at,4,104); code[at++]=40; code[at++]=32;
+            at += disoperand(code+at,4,plan->nativekind[plan->ordinals[i]] == 8 ? 96 : 104); code[at++]=40; code[at++]=32;
             instruction = (Dis64Instruction){IMCALL,SRC(AFP)|AXIMM|DST(AMP),plan->ordinals[i],40,0};
             if(!dis64encode(code,&at,&instruction)) return 0;
         }
@@ -1267,6 +1312,12 @@ dis64sysstringemit(Dis64ManagedCompilePlan *plan, long legacycount, uchar *code,
                 }
             }else if(dis64clockwordop(flow[i].op) || dis64clockbranch(flow[i].op)){
                 if(!dis64sysstringword(flow+i,0)) return 0;
+            }else if(flow[i].op == IMCALL && plan->nativekind[flow[i].middle] == 8){
+                flow[i].middle=-1;
+            }else if(flow[i].op == IMOVP && UDST(flow[i].mode) == AFP && flow[i].destination == 96){
+                flow[i]=(Dis64Instruction){IMOVW,SRC(AIMM)|DST(AFP),0,0,96};
+            }else if(flow[i].op == IMOVP && USRC(flow[i].mode) == AFP && flow[i].source == 96){
+                flow[i]=(Dis64Instruction){IMOVW,SRC(AFP)|DST(AFP|AIND),0,96,40};
             }else if(flow[i].op == IMOVP){
                 flow[i] = USRC(flow[i].mode) == AMP ? (Dis64Instruction){ILOAD,0,0,0,0} :
                     (Dis64Instruction){IMOVW,SRC(AIMM)|DST(AFP|AIND),0,0,40};
@@ -1280,6 +1331,7 @@ dis64sysstringemit(Dis64ManagedCompilePlan *plan, long legacycount, uchar *code,
 void
 dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes)
 {
+	static const uchar fdmap[] = {0,0x88}, fdpairmap[] = {0,0xc8};
 	static const uchar map[] = {0, 0x80}, callermap[] = {0, 0xc0}, mpmap[] = {0x80}, loadmap[] = {0xe0};
 	static const uchar load[] = {ILOAD,SRC(AMP)|AXIMM|DST(AMP),0,16,0};
 	static const uchar transfer[] = {IMOVP,SRC(AFP)|DST(AFP),0x80,72,0x80,64};
@@ -1293,11 +1345,11 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	Dis64ManagedCompilePlan plan = {0};
 	Dis64Type types[] = {{72, 8, map, 2}, {8, 8, mpmap, 1}};
 	Dis64ModuleInfo module = {0};
-	DisStringPoolRecord names[11+Dis64ManagedLiterals];
+	DisStringPoolRecord names[13+Dis64ManagedLiterals];
 	Dis64Payload sections[5];
 	uchar caller[4+Dis64ManagedCalls*(sizeof(load)+sizeof(call)+sizeof(transfer)+sizeof(clear)+32)+14*Dis64ClockWords+2];
-	uchar provider[22], metadata[24], typedata[32], pool[16384], literalbytes[Dis64ManagedLiterals][1024], literalmap[(3+Dis64ManagedLiterals+7)/8] = {0}, name[1024], symbols[8][1024];
-	uchar callername[1024], pathname[1024], binding[320], output[32768];
+	uchar provider[22], metadata[24], typedata[32], pool[16384], literalbytes[Dis64ManagedLiterals][1024], literalmap[(3+Dis64ManagedLiterals+7)/8] = {0}, name[1024], symbols[10][1024];
+	uchar callername[1024], pathname[1024], binding[400], output[32768];
 	unsigned int sizes[5], written, i, j, at, header, bindingbytes, poolcount, instructions, runecount = 0;
 	Dis64Instruction literal = {IMOVP,SRC(AMP)|DST(AFP),0,24,64};
 	int consumer = entry != nil, fileload = consumer && emitscalar64 == 3, direction, builtin = 0;
@@ -1322,7 +1374,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		if(!dis64libraryname(plan.symbols[i], symbols[i], &names[consumer && i ? 3+i : 1+i])) { error(impdecl->src.start,"Dis64 managed file: unsupported export name"); return; }
 	if(consumer){
 		module.name = 2; module.profile = 1; module.databytes = fileload ? 24 : plan.calls == 1 && plan.transfers[0] != 2 ? 8 : 16; module.datatype = 1;
-		types[0] = (Dis64Type){builtin && plan.wordflow ? 112 : 80, 8, builtin && !plan.pairroots ? map : callermap, 2};
+		types[0] = (Dis64Type){builtin && plan.wordflow ? 112 : 80, 8, plan.fdroots ? (plan.pairroots ? fdpairmap : fdmap) : builtin && !plan.pairroots ? map : callermap, 2};
 		if(plan.calls != 1 || plan.transfers[0] == 2) types[1] = (Dis64Type){16, 8, callermap+1, 1};
 		if(fileload) types[1] = (Dis64Type){24, 8, loadmap, 1};
 		if(plan.nliterals != 0) {
@@ -1387,12 +1439,9 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		dis64put32(binding+header-4, builtin ? 12+4*dis64sysfixedargs(plan.nativekind[i]) : 20);
 		dis64put32(binding+header, Dis64TrialVersion); dis64put32(binding+header+4, 1);
 		if(builtin){
-            unsigned int k, arguments = dis64sysfixedargs(plan.nativekind[i]);
-            dis64put32(binding+header+4,arguments);
-            dis64put32(binding+header+8,Dis64Int);
-            for(k=0; k<arguments; k++) dis64put32(binding+header+12+4*k,dis64sysfixedstring(plan.nativekind[i],k) ? Dis64TrialString : Dis64Int);
-            bindingbytes = header+12+4*arguments;
-            continue;
+            unsigned int signaturebytes=dis64sysfixedsignature(plan.nativekind[i],binding+header);
+            dis64put32(binding+header-4,signaturebytes);
+            bindingbytes=header+signaturebytes;continue;
         }
 		direction = plan.directions[i];
 		dis64put32(binding+header+8, direction ? Dis64TrialString : Dis64TrialList);

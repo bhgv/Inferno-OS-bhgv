@@ -2,7 +2,7 @@
 
 The private `-64l` file trial executes the real fixed `Sys->werrstr(string): int`
 entry through `LOAD $Sys`, MFRAME and MCALL. The same fixed String-to-Word
-group now admits `chdir` and `remove`, and can mix them with `millisec`, `sleep` and `dup`, with up to eight distinct imports. This connects serialized String
+group now admits `chdir` and `remove`, and can mix them with `millisec`, `sleep` and `dup`, with up to ten distinct imports including `fildes` and `iounit`. This connects serialized String
 storage to a builtin native frame and a Word result. It remains an explicit
 trial; ordinary `-64`, variadic print, other builtin signatures and Android AWM
 are not enabled. [Русская версия](dis64-sys-string.ru.md).
@@ -177,7 +177,7 @@ reused. See [module loading](dis64-module-loading.md) for why LOAD never calls i
 
 ## Mixing fixed String and numeric calls
 
-One caller can import all eight methods through the same `$Sys` module and linker.
+One caller can import all ten methods through the same `$Sys` module and linker.
 No method-specific module loader or automatic `init` call is introduced.
 
 | Methods | Arguments | Native frame | Pointer map |
@@ -254,3 +254,59 @@ the result cell. The owning gate forces GC between instructions and at the OS
 boundary, mutates borrowed arguments after the wrapper snapshot and checks the
 original text, flags and result address. Publishing an argument pointer cannot
 establish an initialized scalar-result fact.
+
+
+## Managed FD results and arguments
+
+The explicit file trial also admits `fildes(int): ref Sys->FD` and
+`iounit(ref Sys->FD): int` through the same `$Sys` module and generated entries.
+The caller remains 112 bytes. FP96 is a separate full-pointer FD owner; FP104
+still holds only a four-byte numeric result. Its map is `00 88`, or `00 c8` when
+both String roots are needed. The callee frames are both 72 bytes: `fildes` has
+map `00 00`, and `iounit` has `00 80`.
+
+Save as `sys-fd.b` and use the compile/run commands above with `sys-fd`:
+
+```limbo
+implement SysFD;
+include "sys.m";
+SysFD: module { init: fn(); };
+init()
+{
+    sys := load Sys Sys->PATH;
+    fd := sys->fildes(1);
+    unit := sys->iounit(fd);
+    saved := fd;
+    fd = nil;
+    unit = sys->iounit(saved);
+    saved = nil;
+    fd = sys->fildes(2);
+    unit = sys->iounit(fd);
+    fd = nil;
+    status := sys->werrstr("FD calls completed");
+}
+```
+
+This duplicates the emulator's existing descriptors. Dropping the last local
+alias clears the FD root and closes the duplicate; retirement also releases it.
+The bounded producer retains one current FD identity, with aliases of that
+identity. Reading an older alias after a later `fildes` replaces it is refused;
+multiple independent live FDs and general ADT field access remain pending.
+Conditional pointer assignments retain the earlier conservative restrictions.
+Numeric inputs may be precomputed in Word locals. Returns from `fildes` inside
+branches and loops are supported, including paths with zero loop iterations.
+
+The private signature carries an explicit ref/one-field-ADT/int tree, rather
+than an integer return or a pointer-width guess. Its private `0x73`/`0x74` tags
+are not public format assignments or general ADT admission. Compiler and loader
+track FD availability separately from Word initialization. A managed return
+cannot initialize FP104, and pointer argument stores cannot invent scalar facts.
+
+The owning gate runs actual `Sys_fildes`, `Sys_iounit`, `mkfd`, `freeFD`, heap,
+collector, frames and linker against controlled OS descriptor boundaries. It
+checks replacement, aliases, last-owner nil, normal/error retirement, rollback
+before publication and allocation failure after duplication (with and without
+an old owner). `iounit(nil)` raises the existing native descriptor exception in
+the complete emulator; its wrapper now reacquires the VM before rethrowing.
+The exceptional result remains unpublished and owned descriptors still close.
+These two fixed FD signatures do not enable general file I/O or full AWM startup.

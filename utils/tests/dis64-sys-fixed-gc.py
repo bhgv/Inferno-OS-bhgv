@@ -15,11 +15,13 @@ def unit():
     extract=runpy.run_path(str(ROOT/'libinterp/tests/dis64-runtime.py'))['function']
     source=old['unit']().replace('int\nmain(void)','int\ngroupbasemain(void)',1)
     marker='&limbo_native64_Sys_remove_entry};'
-    source=source.replace(marker,'&limbo_native64_Sys_remove_entry,&limbo_native64_Sys_millisec_entry,&limbo_native64_Sys_sleep_entry,&limbo_native64_Sys_dup_entry,&limbo_native64_Sys_unmount_entry,&limbo_native64_Sys_bind_entry};',1)
-    source=source.replace('module->type=mallocz(3*sizeof(Type*),1);module->ext=mallocz(4*sizeof(Link),1);','module->type=mallocz(8*sizeof(Type*),1);module->ext=mallocz(9*sizeof(Link),1);').replace('for(i=0;i<3;i++){\n        entry=native64sysio[i];','for(i=0;i<8;i++){\n        entry=native64sysio[i];',1)
+    source=source.replace(marker,'&limbo_native64_Sys_remove_entry,&limbo_native64_Sys_millisec_entry,&limbo_native64_Sys_sleep_entry,&limbo_native64_Sys_dup_entry,&limbo_native64_Sys_unmount_entry,&limbo_native64_Sys_bind_entry,&limbo_native64_Sys_fildes_entry,&limbo_native64_Sys_iounit_entry};',1)
+    source=source.replace('module->type=mallocz(3*sizeof(Type*),1);module->ext=mallocz(4*sizeof(Link),1);','module->type=mallocz(10*sizeof(Type*),1);module->ext=mallocz(11*sizeof(Link),1);').replace('for(i=0;i<3;i++){\n        entry=native64sysio[i];','for(i=0;i<10;i++){\n        entry=native64sysio[i];',1)
     source=source.replace('static void\ngrouprelease(void)\n{','static void\ngroupstringrelease(void)\n{',1)
     port=(ROOT/'emu/port/inferno.c').read_text()
-    support='int kunmount(char*,char*);int kbind(char*,char*,int);\nchar Ebadarg[]="bad argument";\n'+'\n'.join(extract(port,signature) for signature in ('static int\nsysnativeint(','void\nSys_millisec(','void\nSys_dup(','void\nSys_sleep(','void\nSys_unmount(','void\nSys_bind('))
+    support='typedef struct FD FD;struct FD {Sys_FD fd;Fgrp *grp;};Type *TFD;static int fdclosing;\nint kiounit(int);\nint kunmount(char*,char*);int kbind(char*,char*,int);\nchar Ebadarg[]="bad argument";\n'+'\n'.join(extract(port,signature) for signature in ('static int\nsysnativeint(','void\nSys_millisec(','void\nSys_dup(','void\nSys_sleep(','void\nSys_unmount(','void\nSys_bind(','static void*\nsysresultowner(','static int\nsysiofd(','void\nfreeFD(','Sys_FD*\nmkfd(','void\nSys_fildes(','void\nSys_iounit('))
+    support=extract((ROOT/'libinterp/heap.c').read_text(),'Heap*\nheap(')+'\n'+support
+    support=support.replace('handle = H2D(FD*, h);\n\n\trelease();','handle = H2D(FD*, h);\n\tfdclosing++;\n\trelease();').replace('closefgrp(handle->grp);\n\tacquire();','closefgrp(handle->grp);\n\tacquire();\n\tfdclosing--;')
     source=source.replace('void\nSys_werrstr(',support+'\nvoid\nSys_werrstr(',1)
     return source+'\n'+(ROOT/'utils/tests/dis64-sys-fixed-gc.c').read_text()
 
@@ -37,7 +39,7 @@ def main():
         # Retain the old group fixture declarations for the unused regression helpers.
         output=['typedef struct SysGroupEvent {const char *method,*argument; int status;} SysGroupEvent;','typedef struct SysGroupCase {const uchar *image;unsigned int bytes,imports;const char *names[3];unsigned int calls;SysGroupEvent events[8];} SysGroupCase;','static const SysGroupCase sysgroup_cases[1]={{0}};','static const struct {const uchar *image;unsigned int bytes;} sysgroup_bad[1]={{0}};']
         (work/'sys-group-images.h').write_text('\n'.join(output)+'\n')
-        rows=fixed['rows'](args.limbo,work);output=['typedef struct SysFixedEvent {const char *method,*text,*other;WORD first,second,status;} SysFixedEvent;','typedef struct SysFixedCase {const uchar *image;unsigned int bytes,imports;const char *names[8];unsigned int calls;SysFixedEvent events[16];} SysFixedCase;']
+        rows=fixed['rows'](args.limbo,work);output=['typedef struct SysFixedEvent {const char *method,*text,*other;WORD first,second,status;} SysFixedEvent;','typedef struct SysFixedCase {const uchar *image;unsigned int bytes,imports;const char *names[10];unsigned int calls;SysFixedEvent events[16];} SysFixedCase;']
         for i,(_,image,_) in enumerate(rows):output.append('static const uchar fixed_image'+str(i)+'[]={'+','.join(map(str,image))+'};')
         output.append('static const SysFixedCase sysfixed_cases[]={')
         for i,(_,image,events) in enumerate(rows):
@@ -69,6 +71,15 @@ def main():
         result=subprocess.run(runner+[str(work/'pointer-control')],capture_output=True,text=True,timeout=90)
         if result.returncode!=14 or result.stderr.strip()!='Sys fixed admission predicate':raise RuntimeError('pointer-fact control missed predicate: '+result.stdout+result.stderr)
         print('PASS active fixed Sys pointer-store fact pollution control',flush=True)
+        (override/'dis64-sys-string.h').write_text(header)
+        pilot=(ROOT/'include/dis64-pilot.h').read_text();marker='in->middle == -1 ? 32 : 8'
+        if pilot.count(marker)!=1:raise RuntimeError('FD result control marker drift')
+        (override/'dis64-pilot.h').write_text(pilot.replace(marker,'in->middle == -1 ? 40 : 8'))
+        subprocess.run(common[:1]+['-I'+str(override)]+common[1:]+[str(work/'test.c'),'-o',str(work/'fd-result-control')],check=True)
+        result=subprocess.run(runner+[str(work/'fd-result-control')],capture_output=True,text=True,timeout=90)
+        if result.returncode!=14 or result.stderr.strip()!='Sys fixed admission predicate':raise RuntimeError('FD result control missed predicate: '+result.stdout+result.stderr)
+        print('PASS active fixed Sys FD-result-as-Word fact pollution control',flush=True)
+
 
 
 

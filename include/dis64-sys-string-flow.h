@@ -3,36 +3,53 @@
 #include "dis64-pilot.h"
 
 /* Private selection indices only; these integers never enter a wire signature. */
-static const char *const dis64sysfixednames[] = {"werrstr","chdir","remove","millisec","sleep","dup","unmount","bind"};
+static const char *const dis64sysfixednames[] = {"werrstr","chdir","remove","millisec","sleep","dup","unmount","bind","fildes","iounit"};
 static int
 dis64sysfixedkind(const char *name)
 {
     unsigned int i;
     if(name == 0) return -1;
-    for(i=0; i<8; i++) if(strcmp(name,dis64sysfixednames[i]) == 0) return i;
+    for(i=0; i<10; i++) if(strcmp(name,dis64sysfixednames[i]) == 0) return i;
     return -1;
 }
 static unsigned int
 dis64sysfixedargs(unsigned int kind)
 {
-    return kind < 3 ? 1 : kind < 6 ? kind-3 : kind == 6 ? 2 : 3;
+    return kind < 3 ? 1 : kind < 6 ? kind-3 : kind == 6 ? 2 : kind == 7 ? 3 : 1;
 }
 
 /* Fixed argument classes and offsets; generated native entries remain authoritative. */
 static int
 dis64sysfixedstring(unsigned int kind, unsigned int argument)
 {
-    return kind < 3 || (kind >= 6 && argument < 2);
+    return kind < 3 || ((kind == 6 || kind == 7) && argument < 2);
 }
 static unsigned int
 dis64sysfixedoffset(unsigned int kind, unsigned int argument)
 {
-    return 64+(kind >= 6 ? 8 : 4)*argument;
+    return 64+(kind == 6 || kind == 7 ? 8 : 4)*argument;
 }
 static unsigned int
 dis64sysfixedframe(unsigned int kind)
 {
-    return kind >= 6 ? (kind == 6 ? 80 : 88) : dis64sysfixedargs(kind) ? 72 : 64;
+    return kind == 6 || kind == 7 ? (kind == 6 ? 80 : 88) : dis64sysfixedargs(kind) ? 72 : 64;
+}
+
+/* Private structural ref-ADT tree, never a public Dis64 tag assignment. */
+enum { Dis64SysRef=0x73, Dis64SysAdt=0x74 };
+static unsigned int
+dis64sysfixedsignature(unsigned int kind, unsigned char *out)
+{
+    unsigned int words[10], n=0, i, argument;
+    words[n++]=0xface0010U; words[n++]=dis64sysfixedargs(kind);
+    for(i=0; i<=dis64sysfixedargs(kind); i++){
+        argument = i ? i-1 : 0;
+        if((i == 0 && kind == 8) || (i != 0 && kind == 9)){
+            words[n++]=Dis64SysRef; words[n++]=Dis64SysAdt; words[n++]=1; words[n++]=Dis64Int;
+        }else words[n++]=i && dis64sysfixedstring(kind,argument) ? 0x71U : Dis64Int;
+    }
+    for(i=0; i<n; i++) dis64put32(out+4*i,words[i]);
+    return 4*n;
 }
 
 /* Virtual scalar proof cells are independent of the real mapped String at FP64.

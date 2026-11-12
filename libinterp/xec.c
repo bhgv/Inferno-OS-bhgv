@@ -185,10 +185,11 @@ native64bindresult(int managed)
 	if(size < 72 || (size&7) != 0 || mapbytes < 0 ||
 	   mapbytes > size/64+(size%64 != 0) ||
 	   (uintptr)type > (uintptr)-1-O(Type, map)-(uintptr)mapbytes ||
-	   base > (uintptr)-1-(uintptr)size || instruction.s.ind != size-8)
+	   base > (uintptr)-1-(uintptr)size || (instruction.s.ind != size-8 && !(managed == 2 && size == 112 && instruction.s.ind == 96)))
 		error(exBounds);
-	if(managed == 2 && ((size != 80 && size != 112) || mapbytes != 2 || type->map[0] != 0 || (type->map[1] != 0x80 && (size != 112 || type->map[1] != 0xc0))))
+	if(managed == 2 && ((size != 80 && size != 112) || mapbytes != 2 || type->map[0] != 0 || (type->map[1] != 0x80 && (size != 112 || (type->map[1] != 0xc0 && type->map[1] != 0x88 && type->map[1] != 0xc8)))))
 		error(exBounds);
+	if(managed == 2 && instruction.s.ind == 96 && (type->map[1]&8) == 0) error(exBounds);
 	resultbyte = (size-8)/64;
 	resultbit = 0x80 >> ((size-8)/8%8);
 	if(managed == 1 && resultbyte >= mapbytes)
@@ -196,9 +197,9 @@ native64bindresult(int managed)
 	for(i=0; i<mapbytes; i++){
 		int map = type->map[i];
 
-		/* Checked callers own one or two String argument roots from byte 64. */
+		/* Checked callers own String roots from byte 64 and an optional FD at byte 96. */
 		if(managed && (size == 80 || (managed == 2 && size == 112)) && i == 1)
-			map &= managed == 2 && size == 112 ? ~0xc0 : ~0x80;
+			map &= managed == 2 && size == 112 ? ~0xc8 : ~0x80;
 		if(map != (managed == 1 && i == resultbyte ? resultbit : 0))
 			error(exBounds);
 	}
@@ -220,7 +221,7 @@ native64bindresult(int managed)
 			error(exBounds);
 	}else if(target != start || (uintptr)active->reg.SP != base+(uintptr)size)
 		error(exBounds);
-	address = (void*)(base+(uintptr)size-8);
+	address = (void*)(base+(uintptr)instruction.s.ind);
 	destination = (void*)(target+32);
 	if(managed){
 		Modlink *entered;
@@ -267,7 +268,7 @@ native64managedlea8step(void)
 }
 
 
-/* String arguments are roots; the result cell is an unmapped Word. */
+/* Checked Sys calls bind either an unmapped Word or the separate mapped FD result. */
 int
 native64stringlea8step(void)
 {
