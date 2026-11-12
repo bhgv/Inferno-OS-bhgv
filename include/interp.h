@@ -473,6 +473,7 @@ extern	Channel*	cnewcmapped(Modlink*, WORD, int);
 extern	int		cjitexec(REG*, int, int (*)(REG*));
 extern	int		native64lea8step(void); // Trusted Module.cstep binding; never selected from a file flag.
 extern	int		native64managedlea8step(void); // Trusted mapped, nil result cell binding.
+extern	int		native64stringlea8step(void); // Mapped String argument with an unmapped Word result.
 
 
 extern	int		compile(Module*, int, Modlink*);
@@ -590,6 +591,7 @@ extern Modlink* read64pair(char*, char*); // Read and root the explicitly linked
 extern Module* prepare64managedfile(char*, uchar*, ulong, int); // Unpublished checked file provider.
 #endif
 extern	int		managed64inputlist(Module*, int); // Checked private startup argument class; -1 invalid.
+extern Modlink* prepare64sysstring(char*, const uchar*, ulong, int);
 extern Modlink* prepare64managedtrial(char*, const uchar*, ulong, char*, const uchar*, ulong, int);
 extern char *dis64bootmanagedinput;
 extern int dis64bootmanaged; // Explicit trial schema, with an explicit provider file.

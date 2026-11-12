@@ -91,7 +91,7 @@ use the normal Sys wait/release/acquire path. Negative periods retain ordinary
 Sys behavior. Large positive periods are checked for encoding without executing
 the corresponding long waits in the test corpus.
 
-The selected Sys profile now registers 15 entries, including dup, using
+The selected Sys profile now registers 16 entries, including dup and werrstr, using
 Limbo-generated sys.m metadata. The loader checks both the structural wire
 signature and the generated native export before publishing a caller.
 

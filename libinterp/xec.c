@@ -160,7 +160,7 @@ native64bindresult(int managed)
 	if(!vmfetch(&fetched) || fetched.op != ILEA)
 		return 0;
 	memmove(&step, (uchar*)fetched.module+O(Module, cstep), sizeof(step));
-	if(step != (managed ? native64managedlea8step : native64lea8step))
+	if(step != (managed == 2 ? native64stringlea8step : managed ? native64managedlea8step : native64lea8step))
 		return 0;
 	memmove(&instruction, fetched.pc, sizeof(instruction));
 	if(sizeof(void*) != 8 || instruction.add != (SRC(AFP)|DST(AFP|AIND)) ||
@@ -187,9 +187,11 @@ native64bindresult(int managed)
 	   (uintptr)type > (uintptr)-1-O(Type, map)-(uintptr)mapbytes ||
 	   base > (uintptr)-1-(uintptr)size || instruction.s.ind != size-8)
 		error(exBounds);
+	if(managed == 2 && (size != 80 || mapbytes != 2 || type->map[0] != 0 || type->map[1] != 0x80))
+		error(exBounds);
 	resultbyte = (size-8)/64;
 	resultbit = 0x80 >> ((size-8)/8%8);
-	if(managed && resultbyte >= mapbytes)
+	if(managed == 1 && resultbyte >= mapbytes)
 		error(exBounds);
 	for(i=0; i<mapbytes; i++){
 		int map = type->map[i];
@@ -197,7 +199,7 @@ native64bindresult(int managed)
 		/* The paired String caller also owns its argument at byte 64. */
 		if(managed && size == 80 && i == 1)
 			map &= ~0x80;
-		if(map != (managed && i == resultbyte ? resultbit : 0))
+		if(map != (managed == 1 && i == resultbyte ? resultbit : 0))
 			error(exBounds);
 	}
 	/* The checked sequence prepares exactly one frame at the top of the stack. */
@@ -223,9 +225,10 @@ native64bindresult(int managed)
 	if(managed){
 		Modlink *entered;
 
-		memmove(&previous, address, sizeof(previous));
-		if(previous != H)
-			error(exBounds);
+		if(managed == 1){
+			memmove(&previous, address, sizeof(previous));
+			if(previous != H) error(exBounds);
+		}
 		/* The first managed shapes have one mapped argument in a 72-byte frame. */
 		if(top-target != 72)
 			error(exBounds);
@@ -259,6 +262,13 @@ native64managedlea8step(void)
 	return native64bindresult(1);
 }
 
+
+/* String arguments are roots; the result cell is an unmapped Word. */
+int
+native64stringlea8step(void)
+{
+    return native64bindresult(2);
+}
 
 /* Preserve overlapping scalar slots without requiring host alignment. */
 OP(movb)
@@ -3308,7 +3318,7 @@ OP(iload)
 		}
 	}
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
-	else if(m->cstep == native64lea8step && strcmp(n, "$Sys") == 0){
+	else if((m->cstep == native64lea8step || m->cstep == native64stringlea8step) && strcmp(n, "$Sys") == 0){
 		const Link *entry;
 		Module *sys;
 		Import *requested;

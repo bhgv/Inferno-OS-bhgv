@@ -1085,6 +1085,8 @@ def main():
         if args.limbo is not None:
             named=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-module.py'))
             named['boot'](command,work,consumer,provider,pair,args.limbo.resolve(),execute,BOOT['RETIRED'])
+            sysstring=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-string.py'))
+            sysstring['boot'](command,work,consumer,args.limbo.resolve(),execute,BOOT['RETIRED'])
         trial = ['-X', 'dis64-managed-trial']
         trial_input = ['-A', 'Grüße 世界']
         for direction, accepted, payload, dependency in GC['managed_image_cases'](RAW):
@@ -1335,7 +1337,7 @@ def main():
                             raise RuntimeError('compiled managed nil failed scheduler return/unwind: '+output)
             print('PASS compiled managed nil through complete scheduler: literal/local/alias, C/JIT, file reload, Unicode/empty/nil seeds')
         print('PASS two managed String imports/exports: both ordinal orders, typed result chains, file LOAD, C/JIT and malformed group refusals')
-        for options in (pair[:2]+trial, pair+trial+['-X', 'dis64-pair'], pair[:2]+trial+['-P', '$Sys'],
+        for options in (pair[:2]+trial, pair+trial+['-X', 'dis64-pair'], pair[:2]+trial+['-P', '$Math'],
                         pair+trial_input, pair+trial+['-A', 'x'*4097]):
             refused = subprocess.run(command+options, capture_output=True, text=True, timeout=20)
             if refused.returncode != 1 or 'Usage: emu' not in refused.stderr+refused.stdout:

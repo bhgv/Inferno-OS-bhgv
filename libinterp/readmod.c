@@ -260,6 +260,12 @@ read64pairprotected(void *argument)
 	if(!read64pairimage(read, read->consumer, 0))
 		return 0;
 	if(dis64bootmanaged){
+#if defined(DIS_NATIVE64_BOOT_SYS_IO) && defined(DIS_NATIVE64_MANAGED_FILES)
+        if(read->provider != nil && strcmp(read->provider,"$Sys") == 0){
+            read->link = prepare64sysstring(read->consumer,read->images[0],read->sizes[0],cflag != 0);
+            return read->link != nil;
+        }
+#endif
 		if(!read64pairimage(read, read->provider, 1))
 			return 0;
 		read->link = prepare64managedtrial(read->consumer, read->images[0], read->sizes[0],

@@ -871,7 +871,7 @@ dis64managedconstant(Decl *nilvalue, Decl *emptyvalue, Decl **literals, unsigned
 /* Prove legacy value identities and kinds while preserving import/reload positions. */
 static int
 dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
-	long count, long databytes, Dis64ManagedCompilePlan *plan)
+	long count, long databytes, Dis64ManagedCompilePlan *plan, int builtin)
 {
 	static const ushort ops[] = {ILOAD, IMFRAME, IMOVP, ILEA, IMCALL, IRET};
 	static const uchar sm[] = {Amp, Afp, Afp, Afp, Afp, Anone};
@@ -891,6 +891,12 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 		return 0;
 	for(import=ldts->init->decl->ty->ids, n=0; import != nil; import=import->next, n++){
 		direction = dis64manageddirection(import);
+        if(builtin){
+            if(n != 0 || import->ty->kind != Tfn || import->ty->varargs || import->ty->polys != nil ||
+               import->ty->tof->kind != Tint || import->ty->ids == nil || import->ty->ids->next != nil ||
+               import->ty->ids->ty->kind != Tstring || strcmp(import->sym->name,"werrstr") != 0) return 0;
+            direction = 0;
+        }
 		if(n == 2 || direction < 0 || (seen & (1U<<direction)) || import->offset != n)
 			return 0;
 		seen |= 1U<<direction;
@@ -905,7 +911,9 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	}
 	if(n != ldts->init->val)
 		return 0;
+	if(builtin){ if(strcmp(plan->module,"Sys") != 0) return 0; plan->module = "$Sys"; }
 	argument = entry->ty->ids;
+	if(builtin && argument != nil) return 0;
 	if(argument == nil){
 		if(emitscalar64 != 3) return 0;
 		current = currentkind = 0;
@@ -939,7 +947,7 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 		   globals->init->op != Oconst || globals->init->decl == nil) return 0;
 		/* LOAD identifies the path by its MP operand; string contents may begin with '/'. */
 		if(load->s.reg == globals->offset){
-			if(path != nil || (emitscalar64 == 3 ? globals->init->decl->sym->name[0] != '/' :
+			if(path != nil || (builtin ? strcmp(globals->init->decl->sym->name,"$Sys") != 0 : emitscalar64 == 3 ? globals->init->decl->sym->name[0] != '/' :
 			   strcmp(globals->init->decl->sym->name, "/dis/lib/string.dis") != 0)) return 0;
 			path = globals;
 		}else{
@@ -1049,7 +1057,7 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			   input->m.decl->iface != imports[binding]) return 0;
 			plan->ordinals[groups++] = binding;
 			previous = groups+1;
-			previouskind = plan->directions[binding] ? 1 : 2;
+			previouskind = builtin ? 0 : plan->directions[binding] ? 1 : 2;
 			destination = dis64managedlocal(slots, values, &used, result);
 			if(destination == nil) return 0;
 			*destination = previous;
@@ -1115,12 +1123,17 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	uchar callername[1024], pathname[1024], binding[76], output[32768];
 	unsigned int sizes[5], written, i, j, at, header, bindingbytes, poolcount, instructions, runecount = 0;
 	Dis64Instruction literal = {IMOVP,SRC(AMP)|DST(AFP),0,24,64};
-	int consumer = entry != nil, fileload = consumer && emitscalar64 == 3, direction;
+	int consumer = entry != nil, fileload = consumer && emitscalar64 == 3, direction, builtin = 0;
 
-	if(!(consumer ? dis64managedcallershape(entry, globals, ldts, input, count, databytes, &plan) :
-	     ldts == nil && dis64managedlibraryshape(entry, globals, input, count, databytes, &plan))){
-		error(impdecl->src.start, "Dis64 managed trial: unsupported checked String provider or caller");
-		return;
+	if(fileload && dis64managedcallershape(entry, globals, ldts, input, count, databytes, &plan, 1))
+		builtin = 1;
+	else{
+		memset(&plan,0,sizeof(plan));
+		if(!(consumer ? dis64managedcallershape(entry, globals, ldts, input, count, databytes, &plan, 0) :
+		     ldts == nil && dis64managedlibraryshape(entry, globals, input, count, databytes, &plan))){
+			error(impdecl->src.start, "Dis64 managed trial: unsupported checked String provider or caller");
+			return;
+		}
 	}
 	poolcount = consumer ? (fileload || plan.bindings == 2 ? 4 : 3) : 1+plan.bindings;
 	if(!dis64libraryname(plan.module, name, &names[0])) { error(impdecl->src.start,"Dis64 managed file: unsupported interface name"); return; }
@@ -1128,7 +1141,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		if(!dis64libraryname(plan.symbols[i], symbols[i], &names[consumer && i ? 4 : 1+i])) { error(impdecl->src.start,"Dis64 managed file: unsupported export name"); return; }
 	if(consumer){
 		module.name = 2; module.profile = 1; module.databytes = fileload ? 24 : plan.calls == 1 && plan.transfers[0] != 2 ? 8 : 16; module.datatype = 1;
-		types[0] = (Dis64Type){80, 8, callermap, 2};
+		types[0] = (Dis64Type){80, 8, builtin ? map : callermap, 2};
 		if(plan.calls != 1 || plan.transfers[0] == 2) types[1] = (Dis64Type){16, 8, callermap+1, 1};
 		if(fileload) types[1] = (Dis64Type){24, 8, loadmap, 1};
 		if(plan.nliterals != 0) {
@@ -1150,10 +1163,10 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		}
 		if(plan.bindings == 2) poolcount = 5;
 		if(plan.nliterals != 0) poolcount = 3+plan.bindings+plan.nliterals;
-		at = 4; instructions = 5*plan.calls;
+		at = 4; instructions = builtin ? 4*plan.calls+1 : 5*plan.calls;
 		for(i=0; i<plan.calls; i++){
 			if(plan.transfers[i] == 1){ memmove(caller+at, transfer, sizeof(transfer)); at += sizeof(transfer); instructions++; }
-			if(i != 0){ memmove(caller+at, clear, sizeof(clear)); at += sizeof(clear); }
+			if(i != 0 && !builtin){ memmove(caller+at, clear, sizeof(clear)); at += sizeof(clear); }
 			if(fileload && plan.reloads[i]){ memmove(caller+at, load, sizeof(load)); at += sizeof(load); instructions++; }
 			if(plan.transfers[i] == 2){ memmove(caller+at, empty, sizeof(empty)); at += sizeof(empty); instructions++; }
 			if(plan.transfers[i] >= 3){
@@ -1184,8 +1197,14 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		dis64put32(binding+j+4, consumer ? (i == 0 ? 1 : 4) : 1+2*i);
 		if(!consumer) dis64put32(binding+j+8, 0);
 		header = j+(consumer ? 12 : 16);
-		dis64put32(binding+header-4, 20);
+		dis64put32(binding+header-4, builtin ? 16 : 20);
 		dis64put32(binding+header, Dis64TrialVersion); dis64put32(binding+header+4, 1);
+		if(builtin){
+            dis64put32(binding+header+8,Dis64Int);
+            dis64put32(binding+header+12,Dis64TrialString);
+            bindingbytes = header+16;
+            continue;
+        }
 		direction = plan.directions[i];
 		dis64put32(binding+header+8, direction ? Dis64TrialString : Dis64TrialList);
 		dis64put32(binding+header+12, direction ? Dis64TrialList : Dis64TrialString);

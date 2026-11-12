@@ -272,3 +272,5 @@ literals read from its serialized Rune32 pool, rather than a console input seed.
 Mapped MP ownership, exact values, collection and allocation rollback are
 checked independently. See `dis64-managed-literals.md`. General managed
 linkage, managed Sys/variadic callers and AWM startup remain pending.
+
+The private managed file profile also executes fixed String-to-Word `Sys->werrstr` through the real builtin LOAD and native frame. See [the tutorial](dis64-sys-string.md) / [русский пример](dis64-sys-string.ru.md). General mixed/variadic calls and AWM remain pending.

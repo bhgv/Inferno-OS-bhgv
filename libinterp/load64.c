@@ -12,6 +12,7 @@
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 #include "dis64-managed-signature.h"
 #include "dis64-managed-trial.h"
+#include "dis64-sys-string.h"
 #endif
 
 #ifdef DIS_NATIVE64_MANAGED_FILES
@@ -1648,6 +1649,47 @@ dis64managedfilemetadata(void *argument)
 	module->rt |= HASLDT|Dis64ManagedFile;
 	return 1;
 }
+
+#ifdef DIS_NATIVE64_BOOT_SYS_IO
+/* Resolve a real generated Sys export, then publish independent literal/LDT owners. */
+Modlink*
+prepare64sysstring(char *path, const uchar *image, ulong bytes, int jit)
+{
+    Dis64NumericLoad load = {0};
+    Dis64ManagedFileCaller file = {0};
+    LimboNative64Entry specification;
+    const Link *entry;
+    Module *sys = nil;
+    Modlink *caller;
+    Type *frame;
+    if(!dis64bootmanaged || !dis64runtimemodel() || heapmonitor != nil || path == nil || path == H ||
+       dis64bootprovider == nil || strcmp(dis64bootprovider,"$Sys") != 0 ||
+       image == nil || image == H || bytes > Dis64RuntimeBytes || (uintptr)image > (uintptr)-1-bytes ||
+       (jit != 0 && jit != 1) ||
+       !dis64storageimagecheckrecords(image,bytes,&dis64numericlimits,&load.image,dis64sysstringcode,dis64sysstringtable,nil) ||
+       !dis64sysstringview(&load.image,&file.literals)){
+        kwerrstr("unsupported Dis64 Sys String consumer"); return nil;
+    }
+    entry = native64sysexport("werrstr",&sys);
+    if(entry == nil || (frame=entry->frame) == nil || frame->size != 72 || frame->np != 2 ||
+       frame->map[0] != 0 || frame->map[1] != 0x80){
+        kwerrstr("unavailable Dis64 Sys String export"); return nil;
+    }
+    load.path = path; load.jit = jit; load.indirect = 1; load.step = native64stringlea8step;
+    if(!disstringpoolget(&load.image.strings,2,&load.name)) return nil;
+    caller = nil;
+    if(kprotect(dis64numericconstruct,&load)) caller = dis64rootlink(load.module,load.lease,0,nil,nil);
+    else { if(load.module != nil) unload(load.module); free64storage(load.lease); }
+    if(caller == nil) return nil;
+    specification = (LimboNative64Entry){entry->name,nil,entry->sig,frame->size,frame->np,frame->map};
+    file.caller = caller; file.count = 1; file.entries[0] = &specification; file.path = "$Sys";
+    if(!kprotect(dis64managedfilemetadata,&file)){
+        ptrdel(D2H(caller)); destroy(caller); return nil;
+    }
+    return caller;
+}
+#endif
+
 #endif
 
 /* Only the explicit console option can select these unassigned trial values. */

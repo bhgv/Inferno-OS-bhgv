@@ -86,6 +86,12 @@ native64lea8step(void)
 	abort();
 }
 
+static int
+native64stringlea8step(void)
+{
+	abort();
+}
+
 static const Link*
 native64sysexport(const char *name, Module **owner)
 {

@@ -47,7 +47,7 @@ usage(void)
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 		"\t-P provider.dis64 (experimental pair; requires -d consumer.dis64)\n"
 		"\t-X dis64-pair (find the provider beside the -d consumer.dis64 file)\n"
-		"\t-X dis64-managed-trial (requires -d consumer.dis64 and -P provider.dis64)\n"
+		"\t-X dis64-managed-trial (requires -d consumer.dis64 and -P provider.dis64 or $Sys)\n"
 		"\t-A text (managed trial input, up to 4096 UTF-8 bytes)\n"
 #endif
 		"\t-s\n"
@@ -250,7 +250,11 @@ launchoptions(void)
 #if defined(DIS_NATIVE64_SCALAR_BOOT)
 	if(dis64bootmanaged)
 		return imodexplicit && dis64bootprovider != nil && !dis64bootauto && !dis64launchmode() &&
-			dis64bootprovider[0] != '$' &&
+			(dis64bootprovider[0] != '$'
+#if defined(DIS_NATIVE64_BOOT_SYS_IO) && defined(DIS_NATIVE64_MANAGED_FILES)
+			 || strcmp(dis64bootprovider, "$Sys") == 0
+#endif
+			) &&
 			(dis64bootmanagedinput == nil || strlen(dis64bootmanagedinput) <= 4096);
 	if(dis64bootmanagedinput != nil)
 		return 0;
