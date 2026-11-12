@@ -1,8 +1,8 @@
 # Self-contained String callers in the managed file profile
 
-The explicit `-64l` compiler profile now accepts a void `init()` and one materialized String
-literal. The compiler places the literal in the existing Rune32 string pool.
-The loader creates an owned VM String and publishes it in mapped module data
+The explicit `-64l` compiler profile now accepts a void `init()` and up to 32 materialized String
+literals. The compiler places the literals in the existing Rune32 string pool.
+The loader creates an owned VM String for each root and publishes it in mapped module data
 before scheduling. A console `-A` input is unnecessary. This remains the private
 String/List trial, selected with `-X dis64-managed-trial`; ordinary `-64` and
 general managed linkage are unchanged. It does not start Android AWM.
@@ -38,6 +38,11 @@ init()
     lib := load String "/literal-provider.dis64";
     items := lib->unquoted("Grüße 世界");
     value := lib->quoted(items);
+    items = lib->unquoted("second\0line");
+    value = lib->quoted(items);
+    lib = load String "/literal-provider.dis64";
+    items = lib->unquoted("Grüße 世界");
+    value = lib->quoted(items);
 }
 ```
 
@@ -67,14 +72,22 @@ local aliases retain the nil representation selected by the Limbo frontend.
 An independently serialized non-nil empty pool record creates an empty owned
 String; the constructor tests distinguish that object from a nil reference.
 
-The bounds are one distinct materialized source literal, at most 255 runes, two matching
-imports/exports and 32 calls. The argument/result cells remain at FP64/FP72.
-For literal callers, MP0 holds the loaded module, MP8 the nil reference, MP16
-the LOAD path and MP24 the literal; all four references are covered by map
-`f0`. The loader copies Rune32 values directly into owned rune storage,
-including embedded NUL and all signed32 bit patterns. It performs no UTF-8
-round trip. These are private profile conventions, not new public initializer,
-section or signature tags. Older literal-free images retain their layout.
+The bounds are 32 distinct materialized literals, at most 255 runes each and
+1024 runes in total, two matching imports/exports and 32 calls. Empty source
+constants still use nil and do not consume a materialized root. The
+argument/result cells remain at FP64/FP72. MP0 holds the loaded module, MP8 the
+nil reference, MP16 the LOAD path and MP24+8*i literal i. The pointer map spans
+all 3+n references, including additional map bytes. For 32 roots the data
+extent is 280 bytes and the map is `ff ff ff ff e0`.
+
+The loader checks every literal index, map bit and pool record before creating
+objects. Every materialized root must be used by the checked code. The loader
+copies Rune32 directly into independent owned rune storage, including embedded
+NUL and all signed32 bit patterns; equal serialized values also receive
+independent objects. No UTF-8 round trip, public initializer, section or
+signature tag is added. Older literal-free and single-root images keep their
+layout and bytes. MP and FP operands are separate address spaces, even when
+their numeric offsets coincide.
 
 Reproduce the focused complete-emulator gate:
 
@@ -91,8 +104,14 @@ boundary. It also rejects malformed maps, missing/oversized pool records,
 invalid MP operands and String-to-List type mismatches before scheduling.
 The second uses actual constructors, String allocators and the production
 collector to check exact Rune32 values, root survival and every allocation
-rollback. It also executes 32 unseeded C/JIT cases with collection after every
+rollback. It also executes unseeded C/JIT cases with collection after every
 VM quantum and checks the final String/list-head identity against the original
-MP literal. An active control removes literal-root publication and must fail
+expected MP literal and verifies all roots after collection. An active control removes literal-root publication and must fail
 at its explicit value predicate. Cross execution uses `CC`, `NATIVE64_ARCH` and `NATIVE64_RUNNER`; sanitizer flags use
 `NATIVE64_CFLAGS`.
+
+`dis64-managed-multiliteral.py` also compares complete emitted CODE and type
+maps with independent byte oracles derived from source argument order. Cases
+cover aliases, alternating strings, nil, Unicode/NUL, repeated LOADs, every map
+byte boundary through 32 roots, the exact 1024-rune limit and malformed upper
+indices/maps/pools.

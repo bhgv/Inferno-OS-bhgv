@@ -30,7 +30,9 @@ def unit(calls=False, managed=False):
     if managed:
         fixture = fixture.split('/* Run single-instruction quanta')[0]
         # A reload retains the previous instance until the new one is published; list input adds two nodes.
-        fixture = fixture.replace('#define GcSlots 8', '#define GcSlots 16').replace('#define GcSlotBytes 256', '#define GcSlotBytes 2048')
+        fixture = fixture.replace('#define GcSlots 8', '#define GcSlots 64').replace('#define GcSlotBytes 256', '#define GcSlotBytes 2048')
+        fixture='static int literalpoolcalls, literalpoolfail;\n'+fixture
+        fixture=fixture.replace('require(pool == heapmem && bytes <= GcSlotBytes-O(Bhdr, u.data));','require(pool == heapmem && bytes <= GcSlotBytes-O(Bhdr, u.data));\n\tliteralpoolcalls++;\n\tif(literalpoolfail && literalpoolcalls == literalpoolfail) return nil;',1)
         fixture = fixture.replace('/* Fail if the collector unexpectedly enters its diagnostic branch. */',
             'static int expectedlinkerrors;\n/* Permit only an expected missing-method linker diagnostic. */')
         fixture = fixture.replace('\tUSED(format);\n\trequire(0);\n\treturn 0;\n}',
@@ -391,7 +393,7 @@ def main():
             subprocess.run(runner+[str(binary)], check=True, timeout=60)
             # Removing the actual publication must fail the value predicate, not crash.
             text=(work/'test.c').read_text()
-            marker='memmove(file->caller->MP+24,&literal,sizeof(literal));'
+            marker='memmove(file->caller->MP+24+8*j,&literal,sizeof(literal));'
             if text.count(marker) not in (1,2): raise RuntimeError('literal publication control drift')
             mutant=work/'literal-control.c'
             mutant.write_text(text.replace(marker,'/* Deliberately omit the MP root publication. */'))

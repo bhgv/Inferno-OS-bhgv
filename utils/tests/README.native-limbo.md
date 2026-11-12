@@ -132,3 +132,9 @@ independent payload expectations, malformed images and constructor fixtures;
 and allocation rollback. The normal managed GC gate also requires the active
 root-publication removal control. See `doc/dis64-managed-literals.md` for a
 runnable provider/caller pair and the private profile boundaries.
+
+The literal profile now supports 32 independently mapped strings, 255 runes
+each and 1024 in aggregate. `dis64-managed-multiliteral.py` supplies complete
+CODE/type-map byte oracles and boundary/refusal cases. The owning GC fixture
+checks every root, distinct ownership for equal contents, final argument
+identity, allocation rollback and collection between all execution quanta.

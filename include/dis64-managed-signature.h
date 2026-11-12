@@ -301,11 +301,11 @@ dis64managedcallercode(const unsigned char *data, unsigned int bytes, unsigned i
 	static const unsigned char transfer[] = {IMOVP,SRC(AFP)|DST(AFP),0x80,72,0x80,64};
 	static const unsigned char clear[] = {IMOVP, SRC(AMP)|DST(AFP), 8, 0x80,72};
 	static const unsigned char empty[] = {IMOVP, SRC(AMP)|DST(AFP), 8, 0x80,64};
-	static const unsigned char literal[] = {IMOVP, SRC(AMP)|DST(AFP), 24, 0x80,64};
 	static const unsigned char load[] = {ILOAD,SRC(AMP)|AXIMM|DST(AMP),0,16,0};
 	static const unsigned char exit[] = {IEXIT,SRC(AXXX)|DST(AXXX)};
 	unsigned char call[sizeof(pattern)];
-	unsigned int count, calls, at, instructions, fileload, i, binding;
+	unsigned int count, calls, at, instructions, fileload, i, binding, used;
+	Dis64CallDecoded literal;
 
 	if(bytes < 5)
 		return 0;
@@ -322,9 +322,11 @@ dis64managedcallercode(const unsigned char *data, unsigned int bytes, unsigned i
 	}
 	for(;;){
 		if(at < bytes && data[at] == IMOVP){
-			if(fileload && bytes-at >= sizeof(literal) && data[at+2] == 24){
-				if(!dis64managedbytes(data,bytes,&at,literal,sizeof(literal))) return 0;
-			}else if(!dis64managedbytes(data, bytes, &at, empty, sizeof(empty))) return 0;
+			if(fileload && dis64callread(data+at,bytes-at,&literal,&used) &&
+			   literal.instruction.mode == (SRC(AMP)|DST(AFP)) && literal.instruction.destination == 64 &&
+			   literal.instruction.source >= 24 && literal.instruction.source%8 == 0 &&
+			   literal.instruction.source < 24+8*Dis64ManagedLiterals) at += used;
+			else if(!dis64managedbytes(data, bytes, &at, empty, sizeof(empty))) return 0;
 			instructions++;
 		}
 		if(calls == Dis64ManagedCalls || bytes-at < 3 || data[at+2] > 1)
@@ -440,7 +442,7 @@ dis64managedflow(const Dis64CodeView *code, const LimboNative64Managed *shapes,
 			current = latest;
 		}else if(inst->op == IMOVP && inst->mode == (SRC(AMP)|DST(AFP))){
 			if(inst->destination == 64){
-				if(inst->source == 24){ current = LimboNative64String; empty = 0; }
+				if(inst->source >= 24){ current = LimboNative64String; empty = 0; }
 				else empty = 1;
 			}
 			else
@@ -450,23 +452,52 @@ dis64managedflow(const Dis64CodeView *code, const LimboNative64Managed *shapes,
 	return at == code->bytes && current != 0;
 }
 
-/* Classify a fully checked caller's literal references and verify its private
- * MP/pool convention. No new public initializer or signature tag is assigned. */
+typedef struct Dis64ManagedLiteralsView Dis64ManagedLiteralsView;
+struct Dis64ManagedLiteralsView {
+    unsigned int count; // Number of independently mapped literal roots.
+    DisRuneView values[Dis64ManagedLiterals]; // Borrowed only during construction.
+};
+
+/* Validate every MP/pool root and every literal use before publishing a view.
+ * All roots must be referenced, and aggregate/individual Rune limits are independent. */
 static int
-dis64managedliteralview(const Dis64StorageImage *image, DisRuneView *literal)
+dis64managedliteralview(const Dis64StorageImage *image, Dis64ManagedLiteralsView *result)
 {
+    Dis64ManagedLiteralsView view = {0};
     Dis64CallDecoded decoded;
-    unsigned int at = 4, used, i, found = 0;
+    unsigned int at = 4, used, i, j, runes = 0, map, found = 0, expected;
+    long source;
+    if(dis64managedfilecode(&image->code)) {
+        if(image->data.bytes < 24 || image->data.bytes%8 ||
+           image->data.bytes > 24+8*Dis64ManagedLiterals) return 0;
+        view.count = (image->data.bytes-24)/8;
+        if(image->data.mapbytes != (3+view.count+7)/8) return 0;
+        for(i=0; i<image->data.mapbytes; i++) {
+            map = 0;
+            for(j=0; j<8 && i*8+j<3+view.count; j++) map |= 0x80U>>j;
+            if(image->data.map[i] != map) return 0;
+        }
+        for(i=0; i<view.count; i++) {
+            if(!disstringpoolget(&image->strings,3+image->imports.count+i,&view.values[i]) ||
+               view.values[i].count > 255) return 0;
+            runes += view.values[i].count;
+        }
+        if(runes > Dis64ManagedLiteralRunes) return 0;
+    }
     for(i=0; i<image->code.count; i++) {
         if(at > image->code.bytes || !dis64callread(image->code.data+at,image->code.bytes-at,&decoded,&used)) return 0;
         at += used;
         if(decoded.instruction.op == IMOVP && decoded.instruction.mode == (SRC(AMP)|DST(AFP)) &&
-           decoded.instruction.source == 24) found = 1;
+           decoded.instruction.destination == 64 && decoded.instruction.source >= 24) {
+            source = decoded.instruction.source;
+            if(source%8 || (source-24)/8 >= view.count) return 0;
+            found |= 1U<<((source-24)/8);
+        }
     }
-    if(!found) return image->data.bytes != 32;
-    return dis64managedfilecode(&image->code) && image->data.bytes == 32 &&
-        image->data.mapbytes == 1 && image->data.map[0] == 0xf0 &&
-        disstringpoolget(&image->strings,3+image->imports.count,literal) && literal->count <= 255;
+    expected = view.count == 32 ? 0xffffffffU : (1U<<view.count)-1;
+    if(found != expected || at != image->code.bytes) return 0;
+    *result = view;
+    return 1;
 }
 
 static int
@@ -480,7 +511,7 @@ dis64managedimagegroup(const unsigned char *consumer, unsigned int consumerbytes
 	Dis64Type callerframe;
 	Dis64Binding exported[2], imported;
 	Dis64ManagedSignature signature;
-	DisRuneView literal;
+	Dis64ManagedLiteralsView literals;
 	unsigned int ids[2], i, j, found;
 
 	if(result == 0 || shapes == 0 || count == 0 || count > 2 || !dis64storageimagecheckrecords(consumer, consumerbytes, limits, in,
@@ -488,12 +519,12 @@ dis64managedimagegroup(const unsigned char *consumer, unsigned int consumerbytes
 	   !dis64storageimagecheckrecords(provider, providerbytes, limits, out,
 	   dis64managedprovidercode, dis64managedtable, schema) ||
 	   in->module.profile != 1 || in->module.entry != 0 || in->imports.count == 0 || in->imports.count > count ||
-	   in->data.bytes != (dis64managedfilecode(&in->code) ? (in->data.bytes == 32 ? 32 : 24) : in->code.count == 5 ? 8 : 16) || in->data.align != 8 ||
-	   in->data.mapbytes != 1 || in->data.map[0] != (dis64managedfilecode(&in->code) ? (in->data.bytes == 32 ? 0xf0 : 0xe0) : in->code.count == 5 ? 0x80 : 0xc0) ||
+	   (!dis64managedfilecode(&in->code) && in->data.bytes != (in->code.count == 5 ? 8 : 16)) || in->data.align != 8 ||
+	   (!dis64managedfilecode(&in->code) && (in->data.mapbytes != 1 || in->data.map[0] != (in->code.count == 5 ? 0x80 : 0xc0))) ||
 	   (in->present&(1U<<(Dis64Data-1))) != 0 ||
 	   !dis64typeget(&in->types, in->module.frametype, &callerframe) || callerframe.bytes != 80 ||
 	   callerframe.mapbytes != 2 || callerframe.map[0] != 0 || callerframe.map[1] != 0xc0 || in->exports.count != 0 ||
-	   !dis64managedexports(out, schema, shapes, count, exported, ids) || !dis64managedliteralview(in,&literal))
+	   !dis64managedexports(out, schema, shapes, count, exported, ids) || !dis64managedliteralview(in,&literals))
 		return 0;
 	plan.count = in->imports.count;
 	for(i=0; i<plan.count; i++){

@@ -744,7 +744,8 @@ struct Dis64ManagedCompilePlan {
 	unsigned int bindings, calls;
 	uchar directions[2], reloads[Dis64ManagedCalls], transfers[Dis64ManagedCalls], ordinals[Dis64ManagedCalls];
 	char *path;
-	Sym *literal; // One serialized, non-nil String value in the explicit file profile.
+	Sym *literals[Dis64ManagedLiterals]; // Independently materialized String identities.
+	unsigned int nliterals;
 };
 
 #define Dis64ManagedLiteral (-2L-Dis64ManagedCalls)
@@ -854,6 +855,17 @@ dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, lo
 }
 
 
+/* Resolve an immutable MP constant to its abstract identity, never a native address. */
+static long
+dis64managedconstant(Decl *nilvalue, Decl *emptyvalue, Decl **literals, unsigned int count, long offset)
+{
+    unsigned int i;
+    if((nilvalue != nil && offset == nilvalue->offset) ||
+       (emptyvalue != nil && offset == emptyvalue->offset)) return Dis64ManagedNil;
+    for(i=0; i<count; i++) if(literals[i]->offset == offset) return Dis64ManagedLiteral-(long)i;
+    return 0;
+}
+
 /* Prove legacy value identities and kinds while preserving import/reload positions. */
 static int
 dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
@@ -863,16 +875,16 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	static const uchar sm[] = {Amp, Afp, Afp, Afp, Afp, Anone};
 	static const uchar dm[] = {Afp, Afp, Afpind, Afpind, Afp, Anone};
 	static const uchar mm[] = {Aldt, Aoff, Anone, Anone, Aoff, Anone};
-	Decl *imports[2], *import, *export, *path, *argument, *nilvalue, *emptyvalue, *literal, *constants[4];
+	Decl *imports[2], *import, *export, *path, *argument, *nilvalue, *emptyvalue, *literals[Dis64ManagedLiterals], *constants[3+Dis64ManagedLiterals];
 	Inst *load;
 	long module = -1, modulevalue = 0, frame = -1, result = -1, current = 1, previous = 0, value;
 	long slots[12*Dis64ManagedCalls+1], values[12*Dis64ManagedCalls+1], *source, *destination;
-	unsigned int i, j, n, groups = 0, phase = 1, pending = 0, step, binding = 0, seen = 0, used = 0;
+	unsigned int i, j, n, nliterals = 0, groups = 0, phase = 1, pending = 0, step, binding = 0, seen = 0, used = 0;
 	int direction, currentkind, previouskind = 0;
 
 	if(entry == nil || entry->pc == nil || entry->pc->pc != 0 || entry->ty->varargs ||
 	   entry->ty->tof->kind != Tnone || entry->desc == nil || count < 6 || count > 12*Dis64ManagedCalls+1 ||
-	   (databytes != 4 && databytes != 8 && databytes != 12 && databytes != 16) || ldts == nil || ldts->next != nil || ldts->init == nil ||
+	   (databytes < 4 || databytes%4 || databytes > 4*(3+Dis64ManagedLiterals)) || ldts == nil || ldts->next != nil || ldts->init == nil ||
 	   ldts->init->val < 1 || ldts->init->val > 2 || ldts->init->decl == nil)
 		return 0;
 	for(import=ldts->init->decl->ty->ids, n=0; import != nil; import=import->next, n++){
@@ -901,7 +913,7 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	for(load=input; load != nil && load->op != ILOAD; load=load->next)
 		;
 	if(load == nil) return 0;
-	path = nilvalue = emptyvalue = literal = nil;
+	path = nilvalue = emptyvalue = nil;
 	for(; globals != nil; globals=globals->next){
 		if(globals->store != Dglobal) continue;
 		if(globals->ty->kind == Tany && globals->init == nil && strcmp(globals->sym->name, "nil") == 0){
@@ -923,17 +935,18 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			   strcmp(globals->init->decl->sym->name, "/dis/lib/string.dis") != 0)) return 0;
 			path = globals;
 		}else{
-			if(emitscalar64 != 3 || literal != nil) return 0;
-			literal = globals;
+			if(emitscalar64 != 3 || nliterals == Dis64ManagedLiterals) return 0;
+			literals[nliterals++] = globals;
 		}
 	}
-	if(path == nil || databytes != 4*(1+(nilvalue != nil)+(emptyvalue != nil)+(literal != nil))) return 0;
-	constants[0] = path; constants[1] = nilvalue; constants[2] = emptyvalue; constants[3] = literal;
-	for(i=0; i<4; i++) if(constants[i] != nil){
+	if(path == nil || databytes != 4*(1+(nilvalue != nil)+(emptyvalue != nil)+nliterals)) return 0;
+	constants[0] = path; constants[1] = nilvalue; constants[2] = emptyvalue;
+	for(i=0; i<nliterals; i++) { constants[3+i] = literals[i]; plan->literals[i] = literals[i]->init->decl->sym; }
+	plan->nliterals = nliterals;
+	for(i=0; i<3+nliterals; i++) if(constants[i] != nil){
 		if(constants[i]->offset < 0 || constants[i]->offset%4 || constants[i]->offset >= databytes) return 0;
 		for(j=0; j<i; j++) if(constants[j] != nil && constants[j]->offset == constants[i]->offset) return 0;
 	}
-	if(literal != nil) plan->literal = literal->init->decl->sym;
 	if(argument != nil) *dis64managedlocal(slots, values, &used, 32) = current;
 	for(i=0; input != nil; input=input->next){
 		if(input->op == INOOP) continue;
@@ -945,9 +958,9 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			destination = dis64managedlocal(slots, values, &used, input->d.reg);
 			if(destination == nil) return 0;
 			if(input->sm == Amp){
-				if(literal != nil && input->s.reg == literal->offset) *destination = Dis64ManagedLiteral;
-				else if(((nilvalue != nil && input->s.reg == nilvalue->offset) || (emptyvalue != nil && input->s.reg == emptyvalue->offset))) *destination = Dis64ManagedNil;
-				else return 0; /* A known empty value, distinct from an unknown local. */
+				value = dis64managedconstant(nilvalue,emptyvalue,literals,nliterals,input->s.reg);
+				if(value == 0) return 0;
+				*destination = value;
 			}else{
 				if(!dis64clockslot(input->s.reg, entry->desc->size)) return 0;
 				source = dis64managedlocal(slots, values, &used, input->s.reg);
@@ -988,12 +1001,12 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 			phase = 2;
 			break;
 		case 2:
-			if(input->d.reg != frame || input->d.offset != 32 || input->s.reg == frame)
+			if(input->d.reg != frame || input->d.offset != 32 || (input->sm == Afp && input->s.reg == frame))
 				return 0;
 			if(input->sm == Amp){
-				if(literal != nil && input->s.reg == literal->offset) { value = Dis64ManagedLiteral; source = &value; }
-				else if(((nilvalue != nil && input->s.reg == nilvalue->offset) || (emptyvalue != nil && input->s.reg == emptyvalue->offset))) source = nil;
-				else return 0;
+				value = dis64managedconstant(nilvalue,emptyvalue,literals,nliterals,input->s.reg);
+				if(value == 0) return 0;
+				source = &value;
 			}else{
 				if(!dis64clockslot(input->s.reg, entry->desc->size)) return 0;
 				source = dis64managedlocal(slots, values, &used, input->s.reg);
@@ -1003,9 +1016,9 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 				plan->transfers[groups] = 2;
 				current = Dis64ManagedNil;
 				currentkind = plan->directions[binding] ? 2 : 1;
-			}else if(*source == Dis64ManagedLiteral){
-				plan->transfers[groups] = 3;
-				current = Dis64ManagedLiteral;
+			}else if(*source <= Dis64ManagedLiteral && *source > Dis64ManagedLiteral-(long)nliterals){
+				plan->transfers[groups] = 3+Dis64ManagedLiteral-*source;
+				current = *source;
 				currentkind = 1;
 			}else if(previous != 0 && *source == previous){
 				plan->transfers[groups] = 1;
@@ -1041,8 +1054,8 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 		i++;
 	}
 	if(i != count) return 0;
-	if(literal != nil){
-		for(i=0; i<groups && plan->transfers[i] != 3; i++) ;
+	for(j=0; j<nliterals; j++){
+		for(i=0; i<groups && plan->transfers[i] != 3+j; i++) ;
 		if(i == groups) return 0;
 	}
 	plan->bindings = n;
@@ -1074,12 +1087,11 @@ dis64managedliteral(Sym *literal, uchar *output, DisStringPoolRecord *record)
 void
 dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes)
 {
-	static const uchar map[] = {0, 0x80}, callermap[] = {0, 0xc0}, mpmap[] = {0x80}, loadmap[] = {0xe0}, literalmap[] = {0xf0};
+	static const uchar map[] = {0, 0x80}, callermap[] = {0, 0xc0}, mpmap[] = {0x80}, loadmap[] = {0xe0};
 	static const uchar load[] = {ILOAD,SRC(AMP)|AXIMM|DST(AMP),0,16,0};
 	static const uchar transfer[] = {IMOVP,SRC(AFP)|DST(AFP),0x80,72,0x80,64};
 	static const uchar clear[] = {IMOVP,SRC(AMP)|DST(AFP),8,0x80,72};
 	static const uchar empty[] = {IMOVP,SRC(AMP)|DST(AFP),8,0x80,64};
-	static const uchar literal[] = {IMOVP,SRC(AMP)|DST(AFP),24,0x80,64};
 	static const uchar exit[] = {IEXIT,SRC(AXXX)|DST(AXXX)};
 	static const uchar call[] = {IMFRAME,SRC(AMP)|AXIMM|DST(AFP),0,0,40,
 		IMOVP,SRC(AFP)|DST(AFP|AIND),0x80,64,40,0x80,64,
@@ -1088,12 +1100,13 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	Dis64ManagedCompilePlan plan = {0};
 	Dis64Type types[] = {{72, 8, map, 2}, {8, 8, mpmap, 1}};
 	Dis64ModuleInfo module = {0};
-	DisStringPoolRecord names[6];
+	DisStringPoolRecord names[5+Dis64ManagedLiterals];
 	Dis64Payload sections[5];
 	uchar caller[4+Dis64ManagedCalls*(sizeof(load)+sizeof(call)+sizeof(transfer)+sizeof(clear))+2];
-	uchar provider[22], metadata[24], typedata[32], pool[4096], literalbytes[1024], name[28], symbols[2][36];
-	uchar callername[1024], pathname[1024], binding[76], output[8192];
-	unsigned int sizes[5], written, i, j, at, header, bindingbytes, poolcount, instructions;
+	uchar provider[22], metadata[24], typedata[32], pool[8192], literalbytes[Dis64ManagedLiterals][1024], literalmap[(3+Dis64ManagedLiterals+7)/8] = {0}, name[28], symbols[2][36];
+	uchar callername[1024], pathname[1024], binding[76], output[16384];
+	unsigned int sizes[5], written, i, j, at, header, bindingbytes, poolcount, instructions, runecount = 0;
+	Dis64Instruction literal = {IMOVP,SRC(AMP)|DST(AFP),0,24,64};
 	int consumer = entry != nil, fileload = consumer && emitscalar64 == 3, direction;
 
 	if(!(consumer ? dis64managedcallershape(entry, globals, ldts, input, count, databytes, &plan) :
@@ -1110,26 +1123,36 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		types[0] = (Dis64Type){80, 8, callermap, 2};
 		if(plan.calls != 1 || plan.transfers[0] == 2) types[1] = (Dis64Type){16, 8, callermap+1, 1};
 		if(fileload) types[1] = (Dis64Type){24, 8, loadmap, 1};
-		if(plan.literal != nil) {
-			if(!fileload || !dis64managedliteral(plan.literal,literalbytes,&names[3+plan.bindings])) {
-				error(impdecl->src.start,"Dis64 managed file: unsupported String literal"); return;
+		if(plan.nliterals != 0) {
+			if(!fileload) { error(impdecl->src.start,"Dis64 managed file: literals require file mode"); return; }
+			for(i=0; i<plan.nliterals; i++){
+				if(!dis64managedliteral(plan.literals[i],literalbytes[i],&names[3+plan.bindings+i])) {
+					error(impdecl->src.start,"Dis64 managed file: unsupported String literal"); return;
+				}
+				runecount += dis64u32(literalbytes[i]);
 			}
-			module.databytes = 32;
-			types[1] = (Dis64Type){32,8,literalmap,1};
+			if(runecount > Dis64ManagedLiteralRunes) { error(impdecl->src.start,"Dis64 managed file: aggregate String literal limit"); return; }
+			module.databytes = 24+8*plan.nliterals;
+			for(i=0; i<3+plan.nliterals; i++) literalmap[i/8] |= 0x80>>(i%8);
+			types[1] = (Dis64Type){module.databytes,8,literalmap,(3+plan.nliterals+7)/8};
 		}
 		if(!dis64libraryname(impdecl->sym->name, callername, &names[2]) ||
 		   ((fileload || plan.bindings == 2) && !dis64libraryname(plan.path, pathname, &names[3]))){
 			error(impdecl->src.start, "Dis64 managed file: unsupported name or absolute path"); return;
 		}
 		if(plan.bindings == 2) poolcount = 5;
-		if(plan.literal != nil) poolcount = 4+plan.bindings;
+		if(plan.nliterals != 0) poolcount = 3+plan.bindings+plan.nliterals;
 		at = 4; instructions = 5*plan.calls;
 		for(i=0; i<plan.calls; i++){
 			if(plan.transfers[i] == 1){ memmove(caller+at, transfer, sizeof(transfer)); at += sizeof(transfer); instructions++; }
 			if(i != 0){ memmove(caller+at, clear, sizeof(clear)); at += sizeof(clear); }
 			if(fileload && plan.reloads[i]){ memmove(caller+at, load, sizeof(load)); at += sizeof(load); instructions++; }
 			if(plan.transfers[i] == 2){ memmove(caller+at, empty, sizeof(empty)); at += sizeof(empty); instructions++; }
-			if(plan.transfers[i] == 3){ memmove(caller+at, literal, sizeof(literal)); at += sizeof(literal); instructions++; }
+			if(plan.transfers[i] >= 3){
+				literal.source = 24+8*(plan.transfers[i]-3);
+				if(!dis64encode(caller,&at,&literal)) { error(impdecl->src.start,"Dis64 managed file: cannot encode literal"); return; }
+				instructions++;
+			}
 			memmove(caller+at, call, sizeof(call));
 			caller[at+2] = caller[at+sizeof(call)-3] = plan.ordinals[i];
 			at += sizeof(call);

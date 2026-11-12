@@ -899,7 +899,7 @@ builtin ABI and general managed compiler/runtime admission.
 
 
 The explicit managed file profile also supports self-contained void entries
-with one serialized String literal. See [the runnable String tutorial](dis64-managed-literals.md)
+with multiple independent serialized String literals. See [the runnable String tutorial](dis64-managed-literals.md)
 and its [Russian version](dis64-managed-literals.ru.md) for ownership, limits
 and complete-emulator/GC checks. This remains separate from ordinary `-64`
 managed linkage and Android AWM startup.

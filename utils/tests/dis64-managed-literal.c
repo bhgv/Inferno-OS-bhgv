@@ -9,6 +9,30 @@ hmsize(void *heap)
     return numericowner((Heap*)heap)->size-O(Bhdr,u.data);
 }
 
+/* Check every independently expected root, including map bytes above the first. */
+static void
+managedliteralroots(Modlink *caller, const ManagedLiteralCase *test)
+{
+    String *text, *other;
+    unsigned int root, rune, previous, value;
+    for(root=0; root<test->count; root++){
+        memmove(&text,caller->MP+24+8*root,sizeof(text));
+        if(text == nil || text == H || text->len != -(int)test->roots[root].count){
+            fprintf(stderr,"literal root publication predicate\n");
+            exit(10);
+        }
+        require(numericowner(D2H(text))->magic == MAGIC_A);
+        for(previous=0; previous<root; previous++){
+            memmove(&other,caller->MP+24+8*previous,sizeof(other));
+            require(other != text);
+        }
+        for(rune=0; rune<test->roots[root].count; rune++){
+            memmove(&value,text->Srune+rune,sizeof(value));
+            require(value == test->roots[root].values[rune]);
+        }
+    }
+}
+
 /* Execute unseeded serialized calls with collection after every VM quantum.
  * The final String (or list head) must be the original owned MP literal. */
 static void
@@ -36,7 +60,7 @@ managedliteralexecute(const ManagedLiteralCase *test, int jit)
     caller = prepare64managedtrial("literal-execution",test->consumer,test->consumerbytes,
         dis64bootprovider,test->provider,test->providerbytes,jit);
     require(caller != nil);
-    memmove(&literal,caller->MP+24,sizeof(literal));
+    memmove(&literal,caller->MP+24+8*test->final,sizeof(literal));
     frame = caller->m->entryt;
     caller->m->ss = 4096;
     process.exval = H; process.state = Pready; process.quanta = 1;
@@ -58,7 +82,7 @@ managedliteralexecute(const ManagedLiteralCase *test, int jit)
             rxend = rxbegin+loaded->m->jit->size;
         }
         numericcollect(&process);
-        require(numericowner(D2H(literal))->magic == MAGIC_A);
+        managedliteralroots(caller,test);
     }
     require(step < 1024 && cachefd == 0 && cacheopens == cachecloses && cachereleases == cacheacquires);
     memmove(&result,process.R.FP+72,sizeof(result));
@@ -79,9 +103,8 @@ managedliteralcontrol(void)
 {
     const ManagedLiteralCase *test;
     Modlink *caller;
-    String *text;
-    unsigned int i, j, value;
-    int before, first, attempts, failure, stringrefs, refusals = 0;
+    unsigned int i, roots = 0;
+    int before, first, attempts, failure, stringrefs, poolfirst, poolattempts, heaprefusals = 0, refusals = 0;
 
     dis64bootmanaged = 1;
     dis64bootprovider = "/managed-provider.dis64";
@@ -92,25 +115,16 @@ managedliteralcontrol(void)
         before = live;
         stringrefs = Tstring.ref;
         first = allocations;
+        poolfirst = literalpoolcalls;
         caller = prepare64managedtrial("literal-caller",test->consumer,test->consumerbytes,
             dis64bootprovider,test->provider,test->providerbytes,0);
         require(caller != nil);
         attempts = allocations-first;
-        memmove(&text,caller->MP+24,sizeof(text));
-        if(text == nil || text == H || text->len != -(int)test->count){
-            fprintf(stderr,"literal root publication predicate\n");
-            exit(10);
-        }
-        for(j=0; j<test->count; j++){
-            memmove(&value,text->Srune+j,sizeof(value));
-            require(value == test->values[j]);
-        }
+        poolattempts = literalpoolcalls-poolfirst;
+        roots += test->count;
+        managedliteralroots(caller,test);
         numericcollect(nil);
-        require(numericowner(D2H(text))->magic == MAGIC_A);
-        for(j=0; j<test->count; j++){
-            memmove(&value,text->Srune+j,sizeof(value));
-            require(value == test->values[j]);
-        }
+        managedliteralroots(caller,test);
         ptrdel(D2H(caller));
         destroy(caller);
         numericdrain();
@@ -123,6 +137,15 @@ managedliteralcontrol(void)
             numericdrain();
             require(live == before && modules == nil && worker.nerr == 0 && Tstring.ref == stringrefs);
         }
+        for(failure=1; failure<=poolattempts; failure++){
+            literalpoolfail = literalpoolcalls+failure;
+            require(prepare64managedtrial("literal-caller",test->consumer,test->consumerbytes,
+                dis64bootprovider,test->provider,test->providerbytes,0) == nil);
+            literalpoolfail = 0;
+            numericdrain();
+            require(live == before && modules == nil && worker.nerr == 0 && Tstring.ref == stringrefs);
+        }
+        heaprefusals += poolattempts;
         refusals += attempts;
     }
     for(i=0; i<nelem(literal_cases); i++){
@@ -130,6 +153,6 @@ managedliteralcontrol(void)
         managedliteralexecute(literal_cases+i,1);
     }
     dis64bootmanaged = 0;
-    printf("PASS unseeded literal execution: 32 C/JIT/GC cases, exact final pointer identity\n");
-    printf("PASS serialized String literals: %u exact Rune32/GC roots, %d allocation rollback refusals\n",(unsigned int)nelem(literal_cases),refusals);
+    printf("PASS unseeded literal execution: %u C/JIT/GC cases, all roots and exact final identity\n",2*(unsigned int)nelem(literal_cases));
+    printf("PASS serialized String literals: %u images, %u exact Rune32/GC roots, %d native and %d heap allocation rollback refusals\n",(unsigned int)nelem(literal_cases),roots,refusals,heaprefusals);
 }

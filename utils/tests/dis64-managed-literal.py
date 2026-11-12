@@ -76,6 +76,8 @@ def rows(limbo, work, path='/managed-provider.dis64'):
     values=(0,0xffffffff,0x80000000,0x1f642)
     encoded=struct.pack('>I',len(values))+b''.join(struct.pack('>I',v) for v in values)
     results.append((replace(image,7,pool[:at]+encoded),provider,values))
+    multi=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-multiliteral.py'))
+    results+=multi['rows'](limbo,work,path,provider,RAW,section,ROOT)
     return results
 
 
@@ -107,16 +109,27 @@ def refusals(image):
 
 # Generate constructor fixtures with independent expected payload bits.
 def header(limbo, work):
-    output=['typedef struct ManagedLiteralCase { const uchar *consumer; unsigned int consumerbytes; const uchar *provider; unsigned int providerbytes; unsigned int count; const unsigned int *values; unsigned int listresult; } ManagedLiteralCase;']
-    cases=rows(limbo,work)
+    multi=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-multiliteral.py'))
+    output=['typedef struct ManagedLiteralRoot { unsigned int count; const unsigned int *values; } ManagedLiteralRoot;',
+            'typedef struct ManagedLiteralCase { const uchar *consumer; unsigned int consumerbytes; const uchar *provider; unsigned int providerbytes; unsigned int count; const ManagedLiteralRoot *roots; unsigned int final; unsigned int listresult; } ManagedLiteralCase;']
+    cases=rows(limbo,work); roots=[]; finals=[]
     for i,(consumer,provider,values) in enumerate(cases):
+        bindings=struct.unpack_from('>I',section(consumer,5))[0]
+        records=multi['pool_records'](consumer,section)[3+bindings:]
+        roots.append(records)
+        code=section(consumer,2)
+        final=max(range(len(records)),key=lambda index:code.rfind(RAW['I']('IMOVP',1,source=24+8*index,destination=64)))
+        if records[final]!=values: raise RuntimeError('final argument identity differs from independent expectation')
+        finals.append(final)
         for label,data in (('c',consumer),('p',provider)):
             output.append('static const uchar literal_'+label+str(i)+'[]={'+','.join(map(str,data))+'};')
-        output.append('static const unsigned int literal_v'+str(i)+'[]={'+(','.join(str(v)+'U' for v in values) or '0')+'};')
+        for j,record in enumerate(records):
+            output.append('static const unsigned int literal_v'+str(i)+'_'+str(j)+'[]={'+(','.join(str(v)+'U' for v in record) or '0')+'};')
+        output.append('static const ManagedLiteralRoot literal_r'+str(i)+'[]={'+','.join('{'+str(len(record))+',literal_v'+str(i)+'_'+str(j)+'}' for j,record in enumerate(records))+'};')
     output.append('static const ManagedLiteralCase literal_cases[]={')
-    for i,(_,_,values) in enumerate(cases):
-        listresult=int(struct.unpack_from('>I',section(cases[i][0],5))[0]==1)
-        output.append('{literal_c'+str(i)+',sizeof(literal_c'+str(i)+'),literal_p'+str(i)+',sizeof(literal_p'+str(i)+'),'+str(len(values))+',literal_v'+str(i)+','+str(listresult)+'},')
+    for i,(consumer,_,_) in enumerate(cases):
+        listresult=int(struct.unpack_from('>I',section(consumer,5))[0]==1)
+        output.append('{literal_c'+str(i)+',sizeof(literal_c'+str(i)+'),literal_p'+str(i)+',sizeof(literal_p'+str(i)+'),'+str(len(roots[i]))+',literal_r'+str(i)+','+str(finals[i])+','+str(listresult)+'},')
     output.append('};')
     return '\n'.join(output)+'\n'
 
@@ -137,6 +150,12 @@ def boot(command, work, consumer, provider, pair, limbo, execute, retired):
         output=execute(command+pair+trial)
         if 'panic: loading Dis64 pair' not in output or retired in output:
             raise RuntimeError('invalid serialized literal reached scheduler: '+output)
+    multi=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-multiliteral.py'))
+    for malformed in multi['refusals'](next(image for image,_,_ in reversed(cases) if struct.unpack_from('>I',section(image,1),8)[0]==280),RAW,section,replace):
+        consumer.write_bytes(malformed)
+        output=execute(command+pair+trial)
+        if 'panic: loading Dis64 pair' not in output or retired in output:
+            raise RuntimeError('invalid multi-root literal reached scheduler: '+output)
     source=work/'void-nil.b'
     path='/'+str(provider.relative_to(work.parent))
     bodies=(
@@ -155,16 +174,21 @@ def boot(command, work, consumer, provider, pair, limbo, execute, retired):
             marker=f'native64 scalar module {module}: jit={jit if status else 0}, exit="{status}"'
             if marker not in output or retired not in output or 'panic:' in output:
                 raise RuntimeError('void/nil managed entry changed behavior: '+output)
-    # The single-literal resource cap and ordinary scalar mode remain explicit refusals.
-    for flag,body in (('-64l','items := lib->unquoted("a"); items = lib->unquoted("b");'),
+    # Aggregate/call bounds and ordinary scalar mode remain explicit refusals.
+    for flag,body in (('-64l','items := lib->unquoted("a"); '+'items = lib->unquoted("a");'*32),
                       ('-64l','items := lib->unquoted("'+'x'*256+'");'),
                       ('-64','items := lib->unquoted("x");')):
         source.write_text('implement Caller; include "string.m"; Caller: module {init: fn();}; init(){lib:=load String "'+path+'";'+body+'}')
         result=subprocess.run([str(limbo.resolve()),flag,'-I',str(ROOT/'module'),'-o',str(consumer),str(source)],capture_output=True,text=True,timeout=30)
         if result.returncode!=1 or consumer.exists() or 'Dis64' not in result.stderr or any(m in result.stderr for m in ('AddressSanitizer','runtime error:')):
             raise RuntimeError('managed literal bound/mode did not refuse cleanly: '+result.stderr)
+    oversized=' '.join('items '+(':=' if i==0 else '=')+' lib->unquoted('+json.dumps('x'*254+str(i))+');' for i in range(5))
+    source.write_text('implement Caller; include "string.m"; Caller: module {init: fn();}; init(){lib:=load String '+json.dumps(path)+';'+oversized+'}')
+    result=subprocess.run([str(limbo.resolve()),'-64l','-I',str(ROOT/'module'),'-o',str(consumer),str(source)],capture_output=True,text=True,timeout=30)
+    if result.returncode!=1 or consumer.exists() or 'aggregate String literal limit' not in result.stderr:
+        raise RuntimeError('aggregate literal source bound did not refuse: '+result.stderr)
     source.write_text('implement Caller; include "string.m"; Caller: module {init: fn();}; init(){lib:=load String '+json.dumps(path+'\0suffix')+'; items:=lib->unquoted("x");}')
     result=subprocess.run([str(limbo.resolve()),'-64l','-I',str(ROOT/'module'),'-o',str(consumer),str(source)],capture_output=True,text=True,timeout=30)
     if result.returncode!=1 or consumer.exists() or 'Dis64' not in result.stderr:
         raise RuntimeError('embedded NUL in LOAD path was silently truncated: '+result.stderr)
-    print(f'PASS serialized managed literals: {len(cases)} payloads, unseeded/seeded C/JIT requests, void/nil entries, 1/32-call single bindings and 8 pre-scheduler refusals',flush=True)
+    print(f'PASS serialized managed literals: {len(cases)} payloads, unseeded/seeded C/JIT requests, void/nil entries, 1/32-call single bindings and single/multi-root pre-scheduler refusals',flush=True)

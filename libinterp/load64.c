@@ -1560,8 +1560,7 @@ struct Dis64ManagedFileCaller {
 	const LimboNative64Entry *entries[2];
 	unsigned int count;
 	char *path;
-	DisRuneView literal;
-	int hasliteral;
+	Dis64ManagedLiteralsView literals;
 };
 
 static int
@@ -1571,7 +1570,7 @@ dis64managedfilemetadata(void *argument)
 	Module *module;
 	Import *imports;
 	String *path, *literal;
-	unsigned int i, rune;
+	unsigned int i, j, rune;
 
 	file = argument;
 	module = file->caller->m;
@@ -1592,14 +1591,14 @@ dis64managedfilemetadata(void *argument)
 		return 0;
 	memmove(file->caller->MP+16, &path, sizeof(path));
 	Setmark(D2H(path));
-	if(file->hasliteral){
-		literal = newrunes(file->literal.count);
+	for(j=0; j<file->literals.count; j++){
+		literal = newrunes(file->literals.values[j].count);
 		if(literal == nil || literal == H) return 0;
 		/* Publish the owned reference before any later operation can fail. */
-		memmove(file->caller->MP+24,&literal,sizeof(literal));
+		memmove(file->caller->MP+24+8*j,&literal,sizeof(literal));
 		Setmark(D2H(literal));
-		for(i=0; i<file->literal.count; i++){
-			if(!disruneat(&file->literal,i,&rune)) return 0;
+		for(i=0; i<file->literals.values[j].count; i++){
+			if(!disruneat(&file->literals.values[j],i,&rune)) return 0;
 			memmove(literal->Srune+i,&rune,sizeof(rune));
 		}
 	}
@@ -1665,10 +1664,7 @@ prepare64managedtrial(char *path, const uchar *image, ulong bytes, char *peerpat
 				return nil;
 			file.entries[i] = entries[j];
 		}
-		if(checked.consumer.data.bytes == 32){
-			if(!dis64managedliteralview(&checked.consumer,&file.literal)) return nil;
-			file.hasliteral = 1;
-		}
+		if(!dis64managedliteralview(&checked.consumer,&file.literals)) return nil;
 		file.path = peerpath;
 		file.caller = caller = dis64managedowner(&checked.consumer, path, 0, nil);
 		if(caller == nil)
