@@ -92,7 +92,7 @@ def cases(raw, path=None, include_nil=False):
         return raw['IMAGE']([(kind, strings if kind == 7 else body) for kind, body in raw['SECTIONS'](**fields)])
 
     def consumer(sequence, order=(0, 1), *, transfers=None, reloads=(), frame_map=b'\x00\xc0',
-                 mp_map=None, duplicate=False, wrong_call=False, transfer_source=72,
+                 mp_map=None, module="String", duplicate=False, wrong_call=False, transfer_source=72,
                  transfer_target=64, double_transfer=False, cleanup=True, signatures=None, nil_calls=(), nil_source=8, nil_target=64, double_nil=False):
         records = [binding(module=2, symbol=1 if direction == 0 else 4,
                            sig=(signatures or {}).get(direction, sig[direction])) for direction in order]
@@ -119,7 +119,7 @@ def cases(raw, path=None, include_nil=False):
             count += 4
         mp_bytes = 24 if path is not None else 8 if len(sequence) == 1 and not nil_calls else 16
         mp_map = mp_map if mp_map is not None else b'\xe0' if path is not None else b'\x80' if len(sequence) == 1 and not nil_calls else b'\xc0'
-        return build(('caller', 'unquoted', 'String', path or 'unused', 'quoted'), name=0,
+        return build(('caller', 'unquoted', module, path or 'unused', 'quoted'), name=0,
                      databytes=mp_bytes, code=word(count)+code+raw['EXIT'],
                      types=[desc(80, 8, frame_map), desc(mp_bytes, 8, mp_map)], imports=records)
 
@@ -144,6 +144,7 @@ def cases(raw, path=None, include_nil=False):
             for body_order in ((0, 1), (1, 0)):
                 for export_order in ((0, 1), (1, 0)):
                     rows.append((initial, 1, consumer(sequence, order), provider(body_order, export_order)))
+        rows.append((initial, 1, consumer(sequence,module='Other'), provider(module='Other')))
         good = provider()
         for n in (1, 2, 3, 32):
             chain = tuple((initial+i)%2 for i in range(n))

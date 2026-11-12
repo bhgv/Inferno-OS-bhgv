@@ -16,6 +16,7 @@ struct ManagedImageCase {
 #include "group-images.h"
 static void managedgroupcontrol(void);
 static void managedliteralcontrol(void);
+static void managedgenericcontrol(void);
 
 static Type *stringelement;
 static Prog *managedprocess;
@@ -855,6 +856,7 @@ main(void)
 	managedcachecontrol();
 	managedgroupcontrol();
 	managedliteralcontrol();
+	managedgenericcontrol();
 	freetype(callerframe);
 	freetype(frames[1]);
 	freetype(frames[0]);

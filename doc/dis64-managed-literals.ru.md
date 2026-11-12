@@ -59,3 +59,5 @@ CODE, порядок аргументов и карты на границах о
 удалённой публикацией корня обязан завершиться на
 соответствующей проверке. Режим `-c 1` проверяется отдельно, но сам по себе не
 доказывает исполнение всего вызывающего модуля машинным кодом.
+
+See [named user-defined modules](dis64-managed-modules.md) / [пользовательские модули](dis64-managed-modules.ru.md) for the same checked shapes with arbitrary interface and method names.

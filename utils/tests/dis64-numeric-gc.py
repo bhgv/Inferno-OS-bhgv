@@ -91,8 +91,9 @@ String* c2string(char *text, int length)
         source += '#define DIS_NATIVE64_SCALAR_BOOT 1\n'+extract(readmod, 'Module*\nreadmod(')+'\n#undef DIS_NATIVE64_SCALAR_BOOT\n'
         source += '\n'.join(extract(load64, signature) for signature in
                             ('static Modlink*\ndis64managedowner(', 'Modlink*\nprepare64managedtrial('))
-        source += '\n'
-        fixture += (ROOT/'utils/tests/dis64-managed-gc.c').read_text()+'\n'+(ROOT/'utils/tests/dis64-managed-load.c').read_text()+'\n'+(ROOT/'utils/tests/dis64-managed-literal.c').read_text()
+        source += '\ntypedef struct SchedModule { Module *m; Modlink *ml; void *input; int inputroot; } SchedModule;\nchar *dis64bootmanagedinput;\n'
+        source += extract((ROOT/'emu/port/dis.c').read_text(),'static void\nschedpairseed(')+'\n'
+        fixture += (ROOT/'utils/tests/dis64-managed-gc.c').read_text()+'\n'+(ROOT/'utils/tests/dis64-managed-load.c').read_text()+'\n'+(ROOT/'utils/tests/dis64-managed-literal.c').read_text()+'\n'+(ROOT/'utils/tests/dis64-managed-generic.c').read_text()
     if calls or managed:
         stack = (ROOT/'libinterp/stack.c').read_text()
         xec = (ROOT/'libinterp/xec.c').read_text()
@@ -304,6 +305,17 @@ def managed_images(fixtures, limbo, work):
             compiled.append(output.read_bytes())
         rows.append((direction, 1, *compiled))
     good_providers = {provider for _, accepted, _, provider in rows if accepted}
+    # A nominal rename is a valid standalone provider; its old caller still mismatches.
+    named=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-module.py'))
+    for provider in tuple(good_providers):
+        good_providers.add(named['rename'](provider,0,'Other'))
+        exports=named['section'](provider,6)
+        if int.from_bytes(exports[:4],'big')==1:
+            symbol=int.from_bytes(exports[4:8],'big')
+            records=named['MULTI']['pool_records'](provider,named['section'])
+            method=''.join(map(chr,records[symbol]))
+            good_providers.add(named['rename'](provider,symbol,'quoted' if method=='unquoted' else 'unquoted'))
+
     declarations, entries = [], []
     for index, (direction, accepted, consumer, provider) in enumerate(rows):
         for label, data in (('consumer', consumer), ('provider', provider)):
@@ -366,6 +378,8 @@ def main():
             (work/'group-images.h').write_text(groups['header'](fixtures, args.limbo, work))
             literals=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-literal.py'))
             (work/'literal-images.h').write_text(literals['header'](args.limbo,work))
+            named=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-module.py'))
+            (work/'named-seeds.h').write_text(named['seed_header'](args.limbo,work))
             (work/'string-native64.h').write_bytes(subprocess.check_output(
                 [str(args.limbo.resolve()), '-H', '-M', 'String', '-I'+str(ROOT/'module'),
                  str(ROOT/'module/string.m')], timeout=60))
@@ -403,6 +417,14 @@ def main():
             if result.returncode!=10 or result.stderr.strip()!='literal root publication predicate':
                 raise RuntimeError('literal publication control missed its predicate: '+result.stdout+result.stderr)
             print('PASS active literal root-publication removal control')
+            old='quoted = managed64inputlist(c->m,ordinal);'
+            if text.count(old)!=1: raise RuntimeError('named seed control drift')
+            mutant.write_text(text.replace(old,'quoted = strcmp(entry->name,"quoted") == 0;',1))
+            subprocess.run(command+[str(mutant),str(ROOT/'libinterp/dec.c'),'-Wl,--wrap=free','-lm','-o',str(control)],check=True,env=dict(os.environ,TMPDIR=str(work)))
+            result=subprocess.run(runner+[str(control)],capture_output=True,text=True,timeout=60)
+            if result.returncode!=11 or result.stderr.strip()!='named seed class predicate':
+                raise RuntimeError('named seed control missed its predicate: '+result.stdout+result.stderr)
+            print('PASS active name-based seed classification control')
             return
         if args.calls:
             for failure in (False, True):

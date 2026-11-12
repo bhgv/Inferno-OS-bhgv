@@ -903,3 +903,5 @@ with multiple independent serialized String literals. See [the runnable String t
 and its [Russian version](dis64-managed-literals.ru.md) for ownership, limits
 and complete-emulator/GC checks. This remains separate from ordinary `-64`
 managed linkage and Android AWM startup.
+
+See [named user-defined modules](dis64-managed-modules.md) / [пользовательские модули](dis64-managed-modules.ru.md) for the same checked shapes with arbitrary interface and method names.

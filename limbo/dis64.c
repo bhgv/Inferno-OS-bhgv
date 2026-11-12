@@ -726,9 +726,7 @@ dis64manageddirection(Decl *function)
 	if(function == nil || function->ty->kind != Tfn || function->ty->varargs ||
 	   function->ty->polys != nil)
 		return -1;
-	quoted = strcmp(function->sym->name, "quoted") == 0;
-	if(!quoted && strcmp(function->sym->name, "unquoted") != 0)
-		return -1;
+	quoted = function->ty->tof->kind == Tstring;
 	argument = function->ty->ids;
 	result = function->ty->tof;
 	if(argument == nil || argument->next != nil ||
@@ -744,6 +742,8 @@ struct Dis64ManagedCompilePlan {
 	unsigned int bindings, calls;
 	uchar directions[2], reloads[Dis64ManagedCalls], transfers[Dis64ManagedCalls], ordinals[Dis64ManagedCalls];
 	char *path;
+	char *module; // Actual source interface/module identity.
+	char *symbols[2]; // Actual export names in binding order.
 	Sym *literals[Dis64ManagedLiterals]; // Independently materialized String identities.
 	unsigned int nliterals;
 };
@@ -778,7 +778,7 @@ dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, lo
 	long pc = 0, end, value, slots[12*Dis64ManagedCalls+1], values[12*Dis64ManagedCalls+1], *cell;
 	int direction, hasnil;
 
-	if(entry != nil || strcmp(impdecl->sym->name, "String") != 0 || count < 2 || count > 10*Dis64ManagedCalls)
+	if(entry != nil || count < 2 || count > 10*Dis64ManagedCalls)
 		return 0;
 	hasnil = 0;
 	for(; globals != nil; globals=globals->next){
@@ -808,6 +808,7 @@ dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, lo
 			return 0;
 		seen |= 1U<<direction;
 		plan->directions[i] = direction;
+		plan->symbols[i] = functions[i]->sym->name;
 		end = i+1 < n ? functions[i+1]->pc->pc : count;
 		if(end <= pc || end > count) return 0;
 		used = effect = returned = 0;
@@ -850,6 +851,7 @@ dis64managedlibraryshape(Decl *entry, Decl *globals, Inst *input, long count, lo
 	}
 	while(input != nil && input->op == INOOP) input = input->next;
 	if(input != nil || pc != count) return 0;
+	plan->module = impdecl->sym->name;
 	plan->bindings = n;
 	return 1;
 }
@@ -894,6 +896,12 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 		seen |= 1U<<direction;
 		imports[n] = import;
 		plan->directions[n] = direction;
+		plan->symbols[n] = import->sym->name;
+		if(import->dot == nil || import->dot->sym == nil) return 0;
+		if(n == 0) plan->module = import->dot->sym->name;
+		else if(strcmp(plan->module,import->dot->sym->name) != 0) return 0;
+		if(emitscalar64 != 3 && (strcmp(plan->module,"String") != 0 ||
+		   strcmp(import->sym->name,direction ? "quoted" : "unquoted") != 0)) return 0;
 	}
 	if(n != ldts->init->val)
 		return 0;
@@ -1103,8 +1111,8 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	DisStringPoolRecord names[5+Dis64ManagedLiterals];
 	Dis64Payload sections[5];
 	uchar caller[4+Dis64ManagedCalls*(sizeof(load)+sizeof(call)+sizeof(transfer)+sizeof(clear))+2];
-	uchar provider[22], metadata[24], typedata[32], pool[8192], literalbytes[Dis64ManagedLiterals][1024], literalmap[(3+Dis64ManagedLiterals+7)/8] = {0}, name[28], symbols[2][36];
-	uchar callername[1024], pathname[1024], binding[76], output[16384];
+	uchar provider[22], metadata[24], typedata[32], pool[16384], literalbytes[Dis64ManagedLiterals][1024], literalmap[(3+Dis64ManagedLiterals+7)/8] = {0}, name[1024], symbols[2][1024];
+	uchar callername[1024], pathname[1024], binding[76], output[32768];
 	unsigned int sizes[5], written, i, j, at, header, bindingbytes, poolcount, instructions, runecount = 0;
 	Dis64Instruction literal = {IMOVP,SRC(AMP)|DST(AFP),0,24,64};
 	int consumer = entry != nil, fileload = consumer && emitscalar64 == 3, direction;
@@ -1115,9 +1123,9 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		return;
 	}
 	poolcount = consumer ? (fileload || plan.bindings == 2 ? 4 : 3) : 1+plan.bindings;
-	if(!dis64libraryname("String", name, &names[0])) return;
+	if(!dis64libraryname(plan.module, name, &names[0])) { error(impdecl->src.start,"Dis64 managed file: unsupported interface name"); return; }
 	for(i=0; i<plan.bindings; i++)
-		if(!dis64libraryname(plan.directions[i] ? "quoted" : "unquoted", symbols[i], &names[consumer && i ? 4 : 1+i])) return;
+		if(!dis64libraryname(plan.symbols[i], symbols[i], &names[consumer && i ? 4 : 1+i])) { error(impdecl->src.start,"Dis64 managed file: unsupported export name"); return; }
 	if(consumer){
 		module.name = 2; module.profile = 1; module.databytes = fileload ? 24 : plan.calls == 1 && plan.transfers[0] != 2 ? 8 : 16; module.datatype = 1;
 		types[0] = (Dis64Type){80, 8, callermap, 2};

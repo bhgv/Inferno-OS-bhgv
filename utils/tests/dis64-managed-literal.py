@@ -112,7 +112,10 @@ def header(limbo, work):
     multi=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-multiliteral.py'))
     output=['typedef struct ManagedLiteralRoot { unsigned int count; const unsigned int *values; } ManagedLiteralRoot;',
             'typedef struct ManagedLiteralCase { const uchar *consumer; unsigned int consumerbytes; const uchar *provider; unsigned int providerbytes; unsigned int count; const ManagedLiteralRoot *roots; unsigned int final; unsigned int listresult; } ManagedLiteralCase;']
-    cases=rows(limbo,work); roots=[]; finals=[]
+    cases=rows(limbo,work)
+    named=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-module.py'))
+    cases+=named['rows'](limbo,work)
+    roots=[]; finals=[]
     for i,(consumer,provider,values) in enumerate(cases):
         bindings=struct.unpack_from('>I',section(consumer,5))[0]
         records=multi['pool_records'](consumer,section)[3+bindings:]

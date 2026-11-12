@@ -370,16 +370,15 @@ dis64managedexports(const Dis64StorageImage *provider, const Dis64ManagedSchema 
 	DisRuneView name;
 	unsigned char imported[12+Dis64ManagedSignatureBytes];
 	unsigned int i, j, at, rune, seen = 0;
-	static const char module[] = "String";
 
 	if(shapes == 0 || exports == 0 || ids == 0 || count == 0 || count > 2 || provider->module.profile != 0 || provider->module.databytes != 0 ||
 	   (provider->present&(1U<<(Dis64Data-1))) != 0 || provider->imports.count != 0 ||
 	   provider->exports.count == 0 || provider->exports.count > count ||
 	   provider->exports.count != (provider->code.count-1)/2 ||
-	   !disstringpoolget(&provider->strings, provider->module.name, &name) || name.count != sizeof(module)-1)
+	   !disstringpoolget(&provider->strings, provider->module.name, &name) || name.count == 0 || name.count > 255)
 		return 0;
 	for(i=0; i<name.count; i++)
-		if(!disruneat(&name, i, &rune) || rune != (unsigned char)module[i])
+		if(!disruneat(&name, i, &rune) || rune == 0 || rune > 127)
 			return 0;
 	for(i=0; i<provider->exports.count; i++){
 		if(!dis64managedget(&provider->exports, i, schema, &exports[i], &signature))

@@ -115,3 +115,5 @@ maps with independent byte oracles derived from source argument order. Cases
 cover aliases, alternating strings, nil, Unicode/NUL, repeated LOADs, every map
 byte boundary through 32 roots, the exact 1024-rune limit and malformed upper
 indices/maps/pools.
+
+See [named user-defined modules](dis64-managed-modules.md) / [пользовательские модули](dis64-managed-modules.ru.md) for the same checked shapes with arbitrary interface and method names.

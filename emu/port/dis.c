@@ -1294,9 +1294,12 @@ schedpairseed(SchedModule *c)
 		if(count == 0 || ordinal >= count || entry[count].name != nil)
 			error(exModule);
 		entry += ordinal;
-		if(strcmp(entry->name, "quoted") != 0 && strcmp(entry->name, "unquoted") != 0)
-			error(exModule);
-		quoted = strcmp(entry->name, "quoted") == 0;
+#ifdef DIS_NATIVE64_MANAGED_FILES
+		quoted = managed64inputlist(c->m,ordinal);
+		if(quoted < 0) error(exModule);
+#else
+		error(exModule);
+#endif
 	}else{
 		if(provider == nil || ordinal >= provider->nlinks)
 			error(exModule);

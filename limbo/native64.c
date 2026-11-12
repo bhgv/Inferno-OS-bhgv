@@ -78,7 +78,7 @@ native64callplan(Decl *callee, Type *instantiated)
 	Decl *fixed, *actual, *tail, *argument;
 	uchar map[(64+2*4096*8+63)/64];
 	unsigned int offset = 64, count = 0, fixedcount = 0, i, width, slot, bytes, references;
-	char name[2*StrSize];
+	char name[4*StrSize];
 	char *reason = nil, *result;
     unsigned int id;
 
@@ -190,7 +190,7 @@ native64descriptorsymbol(char *name, char *suffix, char *symbol, int bytes)
 static void
 native64reservenamed(char *name, void *owner)
 {
-	char symbol[2*StrSize+64];
+	char symbol[4*StrSize+64];
 
 	native64register(name, owner);
 	native64descriptorsymbol(name, "size", symbol, sizeof(symbol));
@@ -290,7 +290,7 @@ native64type(Type *type, int depth)
 	Decl *field;
 	long offset, bytes;
 	int pointer, fields;
-	char name[2*StrSize];
+	char name[4*StrSize];
 
 	if(type == nil || depth >= Native64Depth)
 		fatal("native64 type missing or nested too deeply");
@@ -418,7 +418,7 @@ native64fields(Decl *fields, long start, int depth)
 static void
 native64ctype(Type *type, int depth)
 {
-	char name[2*StrSize];
+	char name[4*StrSize];
 
 	if(type == nil || depth >= Native64Depth)
 		fatal("native64 C spelling nested too deeply");
@@ -455,7 +455,7 @@ static void
 native64spellcheck(Type *type, int depth)
 {
 	Decl *field;
-	char name[2*StrSize];
+	char name[4*StrSize];
 
 	if(type == nil || depth >= Native64Depth)
 		fatal("native64 C spelling nested too deeply");
@@ -482,7 +482,7 @@ native64definition(Type *type, int depth)
 {
 	Native64Type *layout;
 	Decl *field;
-	char name[2*StrSize];
+	char name[4*StrSize];
 
 	if(depth >= Native64Depth)
 		fatal("native64 C definition nested too deeply");
@@ -509,7 +509,7 @@ static void
 native64descriptor(char *name, Native64Type *layout)
 {
 	long i, bytes;
-	char symbol[2*StrSize+64];
+	char symbol[4*StrSize+64];
 
 	bytes = (layout->size+63)/64;
 	native64descriptorsymbol(name, "size", symbol, sizeof(symbol));
@@ -539,7 +539,7 @@ native64symbol(Decl *function)
 static void
 native64constant(Decl *declaration)
 {
-	char name[2*StrSize];
+	char name[4*StrSize];
 	Long value;
 	int big;
 
@@ -565,8 +565,8 @@ static void
 native64table(Decl *module)
 {
 	Decl *function;
-	char name[2*StrSize], moduleid[2*StrSize];
-	char frame[2*StrSize+2], symbol[2*StrSize+64];
+	char name[4*StrSize], moduleid[4*StrSize];
+	char frame[4*StrSize+2], symbol[4*StrSize+64];
 	int count;
 
 	native64name(module, moduleid, sizeof(moduleid));
@@ -673,7 +673,7 @@ native64frame(Decl *function, int emit)
 	Decl *argument;
 	long offset, bytes;
 	int arguments = 0;
-	char name[2*StrSize], symbol[2*StrSize+64], *managedin, *managedout;
+	char name[4*StrSize], symbol[4*StrSize+64], *managedin, *managedout;
 
 	native64name(function, name, sizeof(name)-2);
 	if(function->ty->polys != nil)
@@ -804,7 +804,7 @@ native64checkbody(Decl *globals)
 	Native64Type *layout, *child;
 	Decl *module, *declaration, *function;
 	long size;
-	char name[2*StrSize], frame[2*StrSize+2];
+	char name[4*StrSize], frame[4*StrSize+2];
 
 	print("\tif(!limbo_native64_model())\n\t\treturn 0;\n");
 	for(layout=native64types; layout != nil; layout=layout->next){
@@ -865,7 +865,7 @@ static void
 native64checks(Decl *globals)
 {
 	Decl *module;
-	char name[2*StrSize];
+	char name[4*StrSize];
 
 	for(module=globals; module != nil; module=module->next){
 		if(!native64module(module))
@@ -884,7 +884,7 @@ native64stubs(Decl *globals)
 	Decl *module, *declaration, *function;
 	Native64Type *layout, *next;
 	Native64Name *entry, *following;
-	char name[2*StrSize], symbol[2*StrSize+32];
+	char name[4*StrSize], symbol[4*StrSize+32];
 	Decl *field;
 	int previous;
 
@@ -1106,7 +1106,7 @@ native64callnote(unsigned int id, Inst *frame, Inst *result, Inst *call, Decl *c
     Native64CallPC *note;
     Decl *argument, *fixed;
     unsigned int count = 0, i, tail = 0, offset = 64, width;
-    char name[2*StrSize];
+    char name[4*StrSize];
     if(native64pccount == 65536) {
         fprint(2, "NATIVE64_CALL_PC {\"id\":%ud,\"module\":\"%s\",\"pc_space\":\"legacy-dis\",\"located\":false,\"reason\":\"site-limit\"}\n", id, impdecl->sym->name);
         return;
