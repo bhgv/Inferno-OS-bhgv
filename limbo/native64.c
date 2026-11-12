@@ -1167,12 +1167,12 @@ native64pcspace(int mode)
     return "other";
 }
 
-static void native64callstores(Native64CallPC*, int, Decl*);
+static void native64callstores(Native64CallPC*, int, Decl*, Inst**, long, int);
 
 /* Report final reachable legacy coordinates only after PC/descriptor/import resolution.
  * Missing or rewritten instructions are explicit refusals, never guessed PC offsets. */
 void
-native64callpcs(Inst *first, long count, Decl *globals)
+native64callpcs(Inst *first, long count, Decl *globals, int noexceptions)
 {
     Native64CallPC *note;
     Inst **image = nil, *inst, *frame, *result, *call;
@@ -1190,7 +1190,7 @@ native64callpcs(Inst *first, long count, Decl *globals)
         if(!native64pcpresent(image, count, frame) || !native64pcpresent(image, count, call) ||
            (result != nil && !native64pcpresent(image, count, result))) {
             fprint(2, "NATIVE64_CALL_PC {\"id\":%ud,\"module\":\"%s\",\"pc_space\":\"legacy-dis\",\"located\":false,\"reason\":\"missing-or-rewritten\"}\n", note->id, impdecl->sym->name);
-            native64callstores(note, 0, globals);
+            native64callstores(note, 0, globals, image, count, noexceptions);
             continue;
         }
         callerdesc = note->caller == nil || note->caller->desc == nil ? -1 : note->caller->desc->id;
@@ -1208,7 +1208,7 @@ native64callpcs(Inst *first, long count, Decl *globals)
         if(result != nil)
             fprint(2, ",\"result_space\":\"%s\",\"result_offset\":%ld,\"result_indirect\":%ld", native64pcspace(result->sm), result->s.reg, result->s.offset);
         fprint(2, "}\n");
-        native64callstores(note, linked, globals);
+        native64callstores(note, linked, globals, image, count, noexceptions);
     }
     free(image);
     native64callreset();
@@ -1292,15 +1292,65 @@ native64sourceseed(Decl *globals, long offset, int kind)
     fprint(2, "null");
 }
 
+/* A local definition is accepted only in a straight direct-write suffix.
+ * Calls, address escape, indirect writes, unknown opcodes and hidden entries refuse. */
+static Inst*
+native64fpdefinition(Native64CallPC *note, long offset, unsigned int bytes, int kind,
+    Inst **image, long count, int noexceptions)
+{
+    Inst *in, *definition = nil;
+    long pc, j, first;
+    unsigned int width, input, bit;
+    int supported;
+    if(!noexceptions || image == nil || note->caller == nil || note->caller->pc == nil) return nil;
+    first = note->caller->pc->pc;
+    for(pc=note->frame->pc-1; pc>=first; pc--) {
+        in = image[pc];
+        if(in == nil || in->branch != nil || in->mm != Anone || in->dm != Afp) return nil;
+        switch(in->op) {
+        case IMOVW: width = 4; break;
+        case IMOVP: width = 4; break;
+        case IMOVL: case IMOVF: case ICVTWL: case ICVTWF: case ICVTLF: width = 8; break;
+        default: return nil;
+        }
+        if(in->d.reg < offset+bytes && offset < in->d.reg+width) {
+            supported = kind == Tint ? in->op == IMOVW : kind == Tstring ? in->op == IMOVP :
+                kind == Tbig ? in->op == IMOVL || in->op == ICVTWL :
+                kind == Treal ? in->op == IMOVF || in->op == ICVTWF || in->op == ICVTLF : 0;
+            if(!supported || in->d.reg != offset || width != bytes ||
+               (in->sm != Aimm && in->sm != Amp) ||
+               (in->sm == Aimm && in->op != IMOVW && in->op != ICVTWL && in->op != ICVTWF)) return nil;
+            definition = in; break;
+        }
+    }
+    if(definition == nil) return nil;
+    for(j=0; j<count; j++) {
+        in = image[j]; if(in == nil) continue;
+        if(in->op == IGOTO || in->op == ICASE || in->op == ICASEC || in->op == ICASEL ||
+           in->op == IALT || in->op == INBALT || (in->op == IJMP && in->branch == nil)) return nil;
+        if(in->branch != nil && in->branch->pc > definition->pc && in->branch->pc <= note->frame->pc) return nil;
+    }
+    if(definition->sm == Amp) {
+        input = definition->op == IMOVP || definition->op == IMOVW || definition->op == ICVTWL || definition->op == ICVTWF ? 4 : 8;
+        if(descriptors == nil || definition->s.reg < 0 || definition->s.reg%4 ||
+           descriptors->size < input || definition->s.reg > descriptors->size-input) return nil;
+        for(j=0; j<input/4; j++) {
+            bit = definition->s.reg/4+j;
+            if(!!(bit/8 < descriptors->nmap && (descriptors->map[bit/8]&(0x80>>(bit%8)))) != (definition->op == IMOVP)) return nil;
+        }
+    }
+    return definition;
+}
+
 /* Lower proven direct argument writes and private FP/MP source locations.
  * Records remain internal compiler plans, not an executable image. */
 static void
-native64callstores(Native64CallPC *note, int linked, Decl *globals)
+native64callstores(Native64CallPC *note, int linked, Decl *globals, Inst **image, long nimage, int noexceptions)
 {
     typedef struct Store Store;
     struct Store { Inst *origin; unsigned int field, op, cell; };
     typedef struct Cell Cell;
-    struct Cell { int mode, kind; long legacy; unsigned int oldbytes, bytes, native, origin; };
+    struct Cell { int mode, kind; long legacy; unsigned int oldbytes, bytes, native, origin; Inst *setup; };
     Cell *cells = nil;
     unsigned int ncells = 0, j, oldbytes, readbytes, readkind, root, bit, mapbytes, bankbytes;
     uchar bankmap[(64+4098*8+63)/64];
@@ -1399,6 +1449,10 @@ native64callstores(Native64CallPC *note, int linked, Decl *globals)
         }
         stores[i].cell = j;
     }
+    if(reason == nil) for(i=0; i<ncells; i++) {
+        cells[i].setup = cells[i].mode == Afp ? native64fpdefinition(note, cells[i].legacy, cells[i].oldbytes, cells[i].kind, image, nimage, noexceptions) : nil;
+        if(cells[i].setup != nil && cells[i].setup->sm == Amp && layouts[1].offsets == nil) cells[i].setup = nil;
+    }
     bankbytes = 64+ncells*8; mapbytes = (bankbytes+63)/64;
     if(reason != nil) {
         fprint(2, "NATIVE64_CALL_LOWER {\"id\":%ud,\"module\":\"%s\",\"lowered\":false,\"reason\":\"%s\"}\n", note->id, impdecl->sym->name, reason);
@@ -1429,6 +1483,16 @@ native64callstores(Native64CallPC *note, int linked, Decl *globals)
                 i == 0 ? "" : ",", native64pcspace(cells[i].mode), cells[i].legacy, cells[i].oldbytes, cells[i].native, cells[i].bytes, kind, cells[i].origin);
             if(cells[i].mode == Amp) native64sourceseed(globals, cells[i].legacy, cells[i].kind);
             else fprint(2, "null");
+            fprint(2, ",\"setup\":");
+            in = cells[i].setup;
+            if(in == nil) fprint(2, "null");
+            else {
+                fprint(2, "{\"legacy_pc\":%ld,\"opcode\":%ud,\"source_mode\":\"%s\",\"source_value\":%ld,\"input\":",
+                    in->pc, in->op, in->sm == Aimm ? "immediate" : "mp", in->sm == Aimm ? in->s.offset : in->s.reg);
+                if(in->sm == Aimm) fprint(2, "{\"kind\":\"word\",\"high\":0,\"low\":%ud}", (uint)in->s.offset);
+                else native64sourceseed(globals, in->s.reg, in->op == IMOVP ? Tstring : in->op == IMOVW || in->op == ICVTWL || in->op == ICVTWF ? Tint : in->op == IMOVF ? Treal : Tbig);
+                fprint(2, "}");
+            }
             fprint(2, "}");
         }
         fprint(2, "],\"sources\":[");

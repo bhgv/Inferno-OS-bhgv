@@ -404,4 +404,4 @@ unsigned int native64callplan(Decl*, Type*); // Opt-in source call-site diagnost
 
 void native64callreset(void);
 void native64callnote(unsigned int, Inst*, Inst*, Inst*, Decl*, Type*);
-void native64callpcs(Inst*, long, Decl*); // Final legacy Dis coordinates, never Dis64 admission.
+void native64callpcs(Inst*, long, Decl*, int); // Final legacy Dis coordinates, never Dis64 admission.

@@ -128,7 +128,9 @@ def main():
                             ('source-cache', '@unit', 'movp(); // Refresh the bank root at every original source read.', 'if(!refreshed[store->cell]) movp(); // Deliberately cache the first reference read.'),
                             ('source-origin', '@unit', 'origin = (uchar*)input.value+bases[cell->space]+cell->offset;', 'origin = (uchar*)input.value+sourceoffset; // Deliberately read the unfilled bank instead of FP/MP.'),
                             ('initializer-value', '@unit', 'pattern = c2string((char*)seed->initial, seed->length);', 'pattern = c2string("%d|%s", 5);'),
-                            ('initializer-bits', '@unit', 'bits = ((uvlong)cell->high<<32)|cell->low; // Compiler-owned canonical initializer bits.', 'bits = cell->low; // Deliberately drop the high initializer word.')):
+                            ('initializer-bits', '@unit', 'bits = ((uvlong)cell->high<<32)|cell->low; // Compiler-owned canonical initializer bits.', 'bits = cell->low; // Deliberately drop the high initializer word.'),
+                            ('fp-value', '@unit', 'number = (WORD)cell->low; // Proved FP input.', 'number = 0; // Deliberately ignore the compiled FP assignment.'),
+                            ('fp-width', '@unit', 'case IMOVL: movl(); break; // Execute the actual full-width FP definition.', 'case IMOVL: movw(); break; // Deliberately truncate the local big definition.')):
                         adapter = source if header == '@unit' else (ROOT/('include/'+header)).read_text()
                         if adapter.count(boundary) != 1:
                             raise RuntimeError('Typed format control boundary changed: '+name)

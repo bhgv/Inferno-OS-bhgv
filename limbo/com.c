@@ -406,7 +406,7 @@ if(debug['v']) print("fncom: %s %d %p\n", d->sym->name, d->refs, d);
 		for(dl = impdecls; dl != nil; dl = dl->next)
 			resolvemod(dl->d);
 	nlink = resolvemod(impdecl);
-	if(debug['q']) native64callpcs(firstinst, ninst, globals);
+	if(debug['q']) native64callpcs(firstinst, ninst, globals, excs == nil);
 
 	maxstack *= 10;
 	if(fixss != 0)

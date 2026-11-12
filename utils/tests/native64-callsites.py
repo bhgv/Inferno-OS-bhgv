@@ -110,7 +110,7 @@ def verify_stores(data, records, diagnostics):
     lower = [json.loads(line.split(' ', 1)[1]) for line in diagnostics.splitlines() if line.startswith('NATIVE64_CALL_LOWER ')]
     by_id = {r['id']: r for r in lower}
     if len(by_id) != len(records) or len(lower) != len(records): raise RuntimeError('Missing native store program/refusal')
-    _, code, types, initial = legacy_instructions(data, with_types=True, with_data=True)
+    header, code, types, initial = legacy_instructions(data, with_types=True, with_data=True)
     for record in records:
         program = by_id[record['id']]
         if not record['accepted']:
@@ -182,8 +182,42 @@ def verify_stores(data, records, diagnostics):
                 if old[0] == key[0] and key[1] < old[1]+old[2] and old[1] < key[1]+key[2] and old != key:
                     raise RuntimeError('Overlapping or differently typed source reads were admitted')
             index = unique.setdefault(key, len(unique)); cell = bank['cells'][store['source_cell']]
-            if store['source_cell'] != index or store['source_offset'] != 64+index*8 or cell != dict(source_mode=key[0],legacy_offset=key[1],legacy_bytes=width,native_offset=64+index*8,native_bytes=8 if root else width,origin_offset=source_offsets[key[0]][key[1]],initial=cell['initial'],**{'class':category}):
+            if store['source_cell'] != index or store['source_offset'] != 64+index*8 or cell != dict(source_mode=key[0],legacy_offset=key[1],legacy_bytes=width,native_offset=64+index*8,native_bytes=8 if root else width,origin_offset=source_offsets[key[0]][key[1]],initial=cell['initial'],setup=cell['setup'],**{'class':category}):
                 raise RuntimeError('Source relocation lost width, identity or aliasing')
+            setup = cell['setup']
+            if setup is not None:
+                pc = setup['legacy_pc']; definition = code[pc]
+                widths = {45:4,41:4,118:8,46:8,138:8,50:8,135:8}
+                allowed = {'word':(45,), 'string':(41,), 'long':(118,138), 'real':(46,50,135)}
+                if header[1]&32 or key[0] != 'fp' or not location['caller_pc'] <= pc < location['frame_pc']:
+                    raise RuntimeError('FP setup has no synchronous exception-free suffix')
+                if definition['op'] != setup['opcode'] or setup['opcode'] not in allowed.get(category,()) or definition['d'] != [key[1]] or definition['mode']&7 != 1 or widths[definition['op']] != width:
+                    raise RuntimeError('FP setup is not the actual exact-width definition')
+                mode = (definition['mode']>>3)&7
+                if setup['source_mode'] != {0:'mp',2:'immediate'}.get(mode) or definition['s'] != [setup['source_value']]:
+                    raise RuntimeError('FP setup source provenance was guessed')
+                for between in code[pc:location['frame_pc']]:
+                    if between['op'] not in widths or between['m'] is not None or between['mode']&7 != 1:
+                        raise RuntimeError('FP setup crosses a call, alias or unknown write')
+                for between in code[pc+1:location['frame_pc']]:
+                    if between['d'][0] < key[1]+width and key[1] < between['d'][0]+widths[between['op']]:
+                        raise RuntimeError('FP setup was overwritten')
+                for branch in code:
+                    if branch['op'] in (1,2,3,14,144,159): raise RuntimeError('FP setup has an untracked dispatch entry')
+                    if branch['op'] in (4,6,13) or 87<=branch['op']<=110 or 129<=branch['op']<=134:
+                        if branch['d'] and pc < branch['d'][0] <= location['frame_pc']: raise RuntimeError('Branch enters after the FP definition')
+                if mode == 2:
+                    expected_input = dict(kind='word',high=0,low=setup['source_value']&0xffffffff)
+                else:
+                    input_width = 4 if definition['op'] in (41,45,138,50) else 8
+                    extent, roots = types[0]; offset = setup['source_value']
+                    if offset<0 or offset%4 or offset+input_width>extent: raise RuntimeError('FP setup input escapes MP')
+                    for byte in range(offset,offset+input_width,4):
+                        bit = byte//4
+                        if bool(bit//8<len(roots) and roots[bit//8]&(0x80>>(bit%8))) != (definition['op']==41): raise RuntimeError('FP setup input root role is wrong')
+                    expected_input = initial.get(offset)
+                    if setup['input'] == dict(kind='nil-string') and definition['op']==41 and expected_input is None: expected_input = setup['input']
+                if setup['input'] is not None and setup['input'] != expected_input: raise RuntimeError('FP setup initializer differs from actual operand/data')
             if cell['initial'] is not None:
                 expected_seed = initial.get(key[1])
                 if cell['initial']['kind'] == 'nil-string':
@@ -215,15 +249,15 @@ def emit_program(label, program):
     lines += ['{'+str(layout['bytes'])+','+str(len(layout['map']))+','+label+'_source_map_'+str(index)+'},' for index,layout in enumerate(bank['sources'])]
     lines += ['};']
     for index, cell in enumerate(bank['cells']):
-        seed = cell['initial']; payload = seed['bytes'] if seed and seed['kind']=='string' else []
+        seed = cell['initial'] if cell['initial'] is not None else (cell['setup'] or {}).get('input'); payload = seed['bytes'] if seed and seed['kind']=='string' else []
         lines += ['static const uchar '+label+'_seed_'+str(index)+'[] = {'+','.join(map(str,payload or [0]))+'};']
     lines += ['static const Native64GeneratedCell '+label+'_cells[] = {']
     for index, cell in enumerate(bank['cells']):
-        seed = cell['initial']; kind = 0 if seed is None else {'string':1,'word':2,'long':3,'real':4,'nil-string':5}[seed['kind']]
+        seed = cell['initial'] if cell['initial'] is not None else (cell['setup'] or {}).get('input'); kind = 0 if seed is None else {'string':1,'word':2,'long':3,'real':4,'nil-string':5}[seed['kind']]
         values = [0 if cell['source_mode']=='fp' else 1,cell['origin_offset'],cell['native_bytes'],int(cell['class'] in ('string','reference')),kind,
                   len(seed['bytes']) if kind==1 else 0,seed['high'] if kind in (2,3,4) else 0,seed['low'] if kind in (2,3,4) else 0]
-        lines += ['{'+','.join(str(x)+'U' for x in values)+','+label+'_seed_'+str(index)+'},']
-    if not bank['cells']: lines += ['{0,0,0,0,0,0,0,0,0},']
+        lines += ['{'+','.join(str(x)+'U' for x in values)+','+label+'_seed_'+str(index)+','+str(cell['setup']['opcode'] if cell['setup'] else 0)+'},']
+    if not bank['cells']: lines += ['{0,0,0,0,0,0,0,0,0,0},']
     lines += ['};','static const Native64GeneratedBank '+label+'_bank = {'+str(bank['bytes'])+','+str(len(bank['cells']))+','+str(len(bank['map']))+','+label+'_map,'+label+'_sources,'+label+'_cells};']
     return lines
 
@@ -236,7 +270,7 @@ def generate(limbo, work, env):
             kinds = ['string' if i in (1, 70, 149) else 'int' for i in range(count)]
             fmt = '|'.join('%s' if k == 'string' else '%d' for k in kinds)
             values = ', '.join('text' if k == 'string' else 'number' for k in kinds)
-            calls.append('sys->'+name+'('+('fd, ' if name == 'fprint' else '')+json.dumps(fmt)+', '+values+');')
+            calls.append('number = -1; text = "ok"; sys->'+name+'('+('fd, ' if name == 'fprint' else '')+json.dumps(fmt)+', '+values+');')
     calls += ['sys->sprint("empty");', 'sys->sprint("%d|%bd|%g|%s", number, big number, real number, text);',
               'sys->sprint("%x", array[1] of byte);']
     source.write_text('implement CallSites;\ninclude "sys.m";\nCallSites: module { init: fn(); };\n'
@@ -250,6 +284,21 @@ def generate(limbo, work, env):
     records = [json.loads(line.removeprefix('NATIVE64_CALL ')) for line in result.stderr.splitlines() if line.startswith('NATIVE64_CALL ')]
     verify_locations(traced.read_bytes(), records, result.stderr)
     programs = verify_stores(traced.read_bytes(), records, result.stderr)
+    for record in records[:8]:
+        for cell in programs[record['id']]['bank']['cells']:
+            if cell['source_mode']=='fp' and cell['class'] in ('word','string') and (cell['setup'] is None or cell['setup']['input'] is None):
+                raise RuntimeError('Fixture locals still require an unproved C source value')
+    # A wrong definition identity or value must fail the independent bytecode oracle.
+    for fault in ('pc','opcode','value'):
+        altered = json.loads(json.dumps(programs[records[0]['id']]))
+        cell = next(c for c in altered['bank']['cells'] if c['source_mode']=='fp' and c['class']=='word')
+        if fault=='pc': cell['setup']['legacy_pc'] = verify_locations(traced.read_bytes(), records, result.stderr)[records[0]['id']]['frame_pc']
+        elif fault=='opcode': cell['setup']['opcode'] = 41
+        else: cell['setup']['input']['low'] ^= 1
+        changed = '\n'.join('NATIVE64_CALL_LOWER '+json.dumps(altered) if line.startswith('NATIVE64_CALL_LOWER ') and json.loads(line.split(' ',1)[1])['id']==altered['id'] else line for line in result.stderr.splitlines())
+        try: verify_stores(traced.read_bytes(), records, changed)
+        except RuntimeError: pass
+        else: raise RuntimeError('FP definition oracle accepted corrupt '+fault)
     repeat = checked_run(command+['-Dq', '-o', str(traced), str(source)], env=env, check=True, capture_output=True, text=True)
     if repeat.stderr != result.stderr: raise RuntimeError('Call-site plans are nondeterministic')
     if len(records) != 11 or sum(r['accepted'] for r in records) != 10: raise RuntimeError('Missing accepted/refused source call-site plans: '+str(records))
@@ -257,7 +306,7 @@ def generate(limbo, work, env):
     header = ['/* Generated only from the current compiler\'s typechecked source call plans. */',
               'typedef struct Native64GeneratedStore { unsigned int op, destination, fixed, ordinal; long source; unsigned int immediate; int cell; unsigned int source_offset; } Native64GeneratedStore;',
               'typedef struct Native64GeneratedSource { unsigned int bytes, mapbytes; const uchar *map; } Native64GeneratedSource;',
-              'typedef struct Native64GeneratedCell { unsigned int space, offset, bytes, root, seed, length, high, low; const uchar *initial; } Native64GeneratedCell;',
+              'typedef struct Native64GeneratedCell { unsigned int space, offset, bytes, root, seed, length, high, low; const uchar *initial; unsigned int setupop; } Native64GeneratedCell;',
               'typedef struct Native64GeneratedBank { unsigned int bytes, count, mapbytes; const uchar *map; const Native64GeneratedSource *sources; const Native64GeneratedCell *cells; } Native64GeneratedBank;']
     for operation, name in enumerate(('sprint', 'aprint', 'print', 'fprint')):
         for index, count in enumerate((2, 150)):
@@ -349,6 +398,9 @@ def generate(limbo, work, env):
         'castalias': 'wide := big -17; sys->sprint("%bd|%g", wide, real wide);',
         'computed': 'number := -1; sys->sprint("%d", number+1);',
         'utfseed': 'sys->sprint("%s|%s|%s", "", "Привет", "a\\0b");',
+        'branchsetup': 'number := sys->millisec(); if(number < 0) number = -1; sys->sprint("%d", number);',
+        'barriersetup': 'number := -1; ignored := sys->millisec(); sys->sprint("%d", number);',
+        'overwritesetup': 'number := -1; number = -2; sys->sprint("%d", number);',
         'globalseed': 'sys->sprint("%d|%bd|%g", n, wide, fraction);',
     }
     for label, body in extra_sources.items():
@@ -365,6 +417,11 @@ def generate(limbo, work, env):
             if len(refused) != 1 or refused[0]['lowered'] or 'stores' in refused[0]: raise RuntimeError('Unsupported arithmetic emitted a partial store program')
         else:
             extra_programs[label] = verify_stores(traced_probe.read_bytes(), probe_records, output.stderr)[probe_records[0]['id']]
+    for label in ('branchsetup','barriersetup'):
+        if any(c['setup'] is not None for c in extra_programs[label]['bank']['cells'] if c['source_mode']=='fp'):
+            raise RuntimeError('A branch or call silently became a local definition proof')
+    local = next(c for c in extra_programs['overwritesetup']['bank']['cells'] if c['source_mode']=='fp')
+    if local['setup']['input'] != dict(kind='word',high=0,low=0xfffffffe): raise RuntimeError('The latest FP definition was lost')
     if len(extra_programs['castalias']['bank']['cells']) != 2: raise RuntimeError('Big reads and conversions failed to share one typed source')
     if len(extra_programs['alias']['bank']['cells']) != 1: raise RuntimeError('Identical String sources lost their shared cell')
     for label, program in extra_programs.items(): header += emit_program('call'+label+'stores', program)

@@ -255,7 +255,8 @@ static const Native64GeneratedCell *vmseedfield(int phase, int aliased, int oper
     return nil;
 }
 
-/* C seeds full native FP/MP storage; each original read gathers its current value
+/* Compiler-proved FP definitions and MP initializers seed native storage; unknowns
+ * (including FD setup) remain explicit C inputs. Each original read gathers its current value
  * through generated source offsets before the canonical argument handler runs. */
 static void vmstores(int phase, int aliased, int operation, unsigned int count, void *pending, String *pattern, String *text, void *fd)
 {
@@ -307,12 +308,19 @@ static void vmstores(int phase, int aliased, int operation, unsigned int count, 
             reference = store->fixed ? operation == 3 && store->ordinal == 0 ? fd : pattern : text;
             if(cell->seed) {
                 String *value = reference;
-                check(cell->space == 1 && cell->seed == 1 && value != H && value->len == cell->length);
+                check((cell->space == 1 || cell->setupop == IMOVP) && cell->seed == 1 && value != H && value->len == cell->length);
                 check(memcmp(value->Sascii, cell->initial, cell->length) == 0); // Exact compiler MP initializer bytes.
             }
             memmove(&previous, R.d, sizeof(previous)); check(previous == H);
             R.s = &reference; movp();
-        } else { number = -1; R.s = &number; movw(); }
+        } else {
+            number = -1;
+            if(cell->seed) {
+                check(cell->seed == 2 && cell->setupop == IMOVW && cell->space == 0);
+                number = (WORD)cell->low; // Proved FP input.
+            }
+            R.s = &number; movw();
+        }
         epochs(1);
     }
     for(i=0; i<bank->count; i++) check(filled[i]);
@@ -479,6 +487,37 @@ static void vmseedscalars(void)
         memmove(&result,R.d,8); check(result == expected[store->ordinal]); seen++;
     }
     check(seen == 3); R = saved;
+}
+
+/* Execute compiler-selected local big/real definitions before their argument reads. */
+static void vmfpdefinitions(void)
+{
+    const Native64GeneratedBank *banks[] = {&callwidestores_bank,&callcastaliasstores_bank};
+    const Native64GeneratedCell *cell;
+    uchar source[256];
+    uvlong bits, result;
+    WORD word;
+    unsigned int b, i, seen;
+    REG saved = R;
+    for(b=0; b<nelem(banks); b++) {
+        seen = 0; memset(source,0xa5,sizeof(source));
+        for(i=0; i<banks[b]->count; i++) {
+            cell = banks[b]->cells+i; if(cell->root) continue;
+            check(cell->space == 0 && cell->offset+8 <= sizeof(source) && cell->setupop != 0);
+            bits = ((uvlong)cell->high<<32)|cell->low; word = cell->low;
+            R.s = cell->seed == 2 ? (void*)&word : (void*)&bits; R.d = source+cell->offset;
+            switch(cell->setupop) {
+            case ICVTWL: cvtwl(); break;
+            case IMOVL: movl(); break; // Execute the actual full-width FP definition.
+            case IMOVF: movf(); break;
+            default: abort();
+            }
+            memmove(&result,R.d,8);
+            check(result == (cell->setupop == IMOVF ? 0xbff4000000000000ULL : 0xffffffffffffffefULL)); seen++;
+        }
+        check(seen == (b == 0 ? 2 : 1));
+    }
+    R = saved;
 }
 
 /* Keep explicit UTF byte counts; never pass initializer text through strlen. */
@@ -691,10 +730,11 @@ int main(int argc, char **argv)
     vmstoremoves();
     vmstorelongconversions();
     vmseedscalars();
+    vmfpdefinitions();
     vmseedstrings();
     for(useframe=0; useframe<2; useframe++) for(phase=0; phase<3; phase++) for(operation=0; operation<4; operation++) for(mode=0; mode<32; mode++) {
         vmcase(phase, operation, mode, useframe); cases++;
     }
-    printf("PASS typed Sys VM frames: %d real FRAME/MFRAME/MCALL/GC cases with source-derived tail plans, four gateways, compiler MP initializers/native FP/MP gather/GC/mutable aliases/full 150-argument output, compiler-selected canonical stores, owned site copies/rollback/busy retirement, checked eight-byte binding/32 refusals, 150-slot frames, refusal and result/cleanup checks\n", cases);
+    printf("PASS typed Sys VM frames: %d real FRAME/MFRAME/MCALL/GC cases with source-derived tail plans, four gateways, compiler FP definitions/MP initializers/native FP/MP gather/GC/mutable aliases/full 150-argument output, compiler-selected canonical stores, owned site copies/rollback/busy retirement, checked eight-byte binding/32 refusals, 150-slot frames, refusal and result/cleanup checks\n", cases);
     return 0;
 }

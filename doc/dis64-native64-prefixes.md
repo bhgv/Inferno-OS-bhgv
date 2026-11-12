@@ -573,3 +573,45 @@ Strings with the production length-aware `c2string`. They separately recognize
 the classic empty-literal nil representation. Removal controls must detect a
 hardcoded short format and loss of the initializer's high 32 bits. Existing GC,
 mutable-alias, binding, owner-retirement and refusal controls remain active.
+
+## Prove direct local FP definitions
+
+A source cell may now carry a separate `setup` recipe. This is distinct from
+`initial`, which still describes module-load MP data only. A recipe preserves
+the defining legacy PC, actual opcode, source space/value and optional input
+seed. The input of an immediate definition is the operand itself; the input
+seed for an MP read describes **initial** module data, not a proof that a
+mutable MP value still has those bits when the definition executes. A real
+lowering must perform the source read at the original definition point.
+
+The producer searches backward from FRAME through a suffix of direct FP
+moves/conversions. It accepts only the latest exact-width definition with a
+supported immediate/MP source. Calls, address-taking, indirect writes,
+branches, unknown operations, overlaps and unsupported FP-to-FP dependencies
+stop the proof. MP input spans and root roles are checked against descriptor
+zero. An incoming branch may target the defining instruction, but may not
+skip it and enter the remainder of the suffix. Computed dispatch/alt/case
+instructions and exception tables conservatively disable these recipes.
+Missing proofs remain explicit `setup:null`; no zero or constant is guessed.
+
+The independent classic reader verifies the defining opcode/operands, suffix
+writes, absence of intervening overwrites, incoming branch targets and any
+input seed against the actual serialized instructions/data. Tests cover a
+conditional skip, an intervening call, the latest of two assignments and
+corrupt definition PC/opcode/value controls. Legacy output and existing
+Dis64 refusals remain unchanged.
+
+The runtime source fixture now places direct `number = -1` and `text = "ok"`
+assignments immediately before each of its eight principal Sys calls. Their
+FP cells must have compiler-produced recipes and inputs. The transport uses
+those values for native FP storage and uses the actual MOV handlers to install
+the String/integer owners before the established per-read gather path. It also
+executes selected local big/real definitions and checks all eight output bits.
+Removal controls detect ignoring the integer definition and truncating a
+full-width big assignment.
+
+This proves preparation of a bounded straight-line local suffix in the
+transport. It does not execute the complete caller, arbitrary control flow,
+FD construction or mutable MP history. Unknown cells still use explicit C
+fixture inputs; executable initializer/caller/result lowering and serialized
+PC/site admission remain required before AWM.

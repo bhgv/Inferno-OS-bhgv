@@ -236,3 +236,10 @@ full format for 150 arguments and checks the complete String/array/native-write
 result. This replaces hardcoded format values in that transport, while FP
 locals and FD setup still come from C. It does not provide a serialized native
 caller or an Android AWM startup result.
+
+Direct local FP definition recipes now supply the principal transport's
+integer and String values, replacing their hardcoded initialization there.
+Source gates verify definition identity, overwrite/branch/call refusals and
+input bits; runtime gates retain GC and full 150-argument output checks.
+FD creation, unsupported local/control-flow paths and complete serialized
+caller execution remain pending, so this does not enable Android AWM startup.

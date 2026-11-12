@@ -257,3 +257,12 @@ numeric, Unicode, embedded-NUL and canonical nil String cases. These records
 are initial module data, not reaching-definition proofs for mutable MP values;
 caller instructions, unsupported initializers and executable Dis64 admission
 remain pending.
+
+The private source plan additionally records proven direct FP definition
+recipes. Their original PCs/opcodes/operands are checked against serialized
+classic instructions, with conservative refusal across calls, aliases,
+control-flow joins, computed dispatch and exception tables. The main VM
+transport now obtains local integer/String values from these recipes and
+checks local big/real definitions. MP input seeds still describe initial
+module state; reading a mutable source at its original PC and executing the
+complete caller remain work for the executable backend.
