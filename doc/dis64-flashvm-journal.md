@@ -10607,3 +10607,124 @@ String result snapshots, compiler-transparent proxy lowering, authenticated owni
 FD establishment/unique epoch provisioning and cross-node tracing/cycle policy.
 Returned typed variable/function images are no longer a missing network path.
 See disVM/remote/NETWORK-OWNERS.md for the full result/quota/Unknown contract.
+
+
+## FLASHVM-0180 — actual cross-owner variable refs inside original callbacks
+
+2026-11-13. FlashVM native code checkpoint e85b4fbd986aed5076cc3e64167d44945f72babd,
+tree 1a517c3c335e98420cb72ca01ca38f7b1faee937. Four code/contract commits after 4b09f1d7:
+21d9e572 owner-local Add admission and native actor-token identity;
+c3010823 GC-owned variable-only actors and original-owner routed callbacks;
+9ad8df0c actual overlap/uncertain effect/GC omission acceptance;
+e85b4fbd complete ownership/deadline/wire-scope contract. Incoming INFERNO-0165
+was then acknowledged by documentation-only master b3bf50358a92161d04cf4d26f936b9b23b63d91f,
+tree 99cf3b192b8ff43f2732d3a981540a3056848309. Non-force publication
+checks expected head, exact parent/tree and bhgv authorship. Five local backup
+format-patches were applied to a separate index and reproduce the final tree.
+
+Initially read experiment 297c480f / INFERNO-0164. During journal publication,
+experiment advanced to b20318dd0ea963a29fdbb3d5d52087d3c293384d with INFERNO-0165.
+The expected-head update did not replace that work; this append was rebased onto
+b20318dd and the incoming Connection report was read and recorded in FlashVM's
+disVM/remote/INFERNO-NETWORK.md. Peer read/preserved FLASHVM-0177 through 0179.
+Its new Word4/ref8 caller is 144 bytes/map 00df00: String roots 64/72, status 80,
+Connection roots 88/96/104, array/String 112/120, scalar result 128, saved Words
+132/136. Checked byte witness adoption precedes JIT; no new public wire IDs.
+The bounded source path now composes dial/read/write/iounit/werrstr, Connection
+fields, byte slices/conversions and preserved buffers across reconnect. Peer
+reports 24 new C/JIT/GC cases per architecture (AMD64 ASan/UBSan and ARM64
+UBSan/QEMU), six live-Connection unwinds, 39 malformed refusals, 18 native/five heap
+constructor rollbacks, three omissions and eight actual TCP connections per
+architecture. 209 old images remain byte-identical. This is peer evidence, not
+independent concurrent FlashVM replay or Android/Bionic acceptance. Source limits
+still include linear complete calls/early returns and bounded locals; general
+CFG, copied Connection ADTs/field mutation and AWM startup remain refused.
+
+Selected vendor snapshot remains 7f224145. The new evidence uses existing Inferno
+VM exclusion and cannot authorize raw external-root/publication stores in our
+concurrent adapter. No source refresh, native-world/exclusive import, public
+Dis64 kind/opcode or Word4/ref8 layout change is made here. Native OS threads,
+fixed Prog/TLS REG identity and concurrent GC remain the only FlashVM profile.
+
+New Proxyref is an explicit typed variable-only capability. Proxyroute.start
+runs on an independent permanent Prog, stages its private wrapper token before
+Retain, obtains an independent remote Image clone and announces the owned Ref.
+Each actor has a bounded mailbox (16), one private native queue slot, immutable
+source endpoint/image and a finite exchange/idle budget. Ordinary Ref aliases
+share one token; a second actor for the same source obtains distinct ownership.
+Proxygc.belongs checks exact native queue identity before active state/dispatch,
+so substituting another actor's token cannot access even the same source handle.
+
+Proxyowner.routed accepts managed Proxyref arguments through a local typed channel
+in the function VM. Native admission pins the actual original function capture;
+request roots retain its routed args. Proxyhandler.routed executes real Limbo on
+that original owner, using Ref Read/Write/Add/Close operations instead of raw
+foreign Cell pointers. Ref access is offered to an independent actor outside the
+active callback; that actor alone uses its private Proxynet Image. No function
+execution migrates to the actor or another worker, and no pointer crosses VM heaps.
+Direct nested Proxyowner/Proxynet RPC from active callbacks remains refused.
+
+Read/Write/Add/Close are the only actor actions; arbitrary nested function
+invocation is not admitted. Private wire Add=9 extends DVP3's operation set,
+keeping its 184-byte record and result extension unchanged. The original variable
+owner executes target.value += input and returns the actual value as one admitted
+primitive. Exact Add replay returns the cached result without another increment;
+changed payload conflicts and stale handles cannot revive retired storage. Older
+private peers may not implement Add; no version/feature negotiation is claimed.
+
+Each routed callback passes one original absolute local monotonic deadline to all
+variable accesses. Queueing and maintenance cannot renew it; the actor caps source
+offers by its own finite timeout. NotSent is before offer; after offer a deadline
+can produce Unknown while an effect completes later. No blind retry occurs.
+Multiple accesses are not a distributed transaction, so a later failing access
+can follow an earlier completed effect. Source loss revokes wrappers; new accesses
+are Disconnected and queued ones may complete Unknown by their own deadline.
+Other original owners remain independent and usable. No global lock/world stop
+is introduced to make a callback or several variable accesses atomic together.
+
+After ready, the actor clears its local wrapper Ref/token copies. It holds only
+its source clone, mailbox/state and native Connection; its live mailbox does not
+root an otherwise unreachable Ref or cycle containing that Ref. Last-ref GC
+queues scalar native metadata; the actor consumes it and drops exactly its source
+clone. Explicit Close consumes the wrapper once and revokes aliases, while another
+actor and a separately retained source witness remain valid. Idle expiry/source
+failure also closes metadata and releases ownership. Finalizers perform no IO,
+managed callback or managed allocation. Connection/token native ownership survives
+until their final destructors; all joined queue/token/pending counters drain.
+
+Acceptance uses two actual VMs: variable owner in A, two different original
+function owners in B, two independent Ref actors aliasing one actual A Cell and
+eight callers. Sixteen callbacks perform 32 admitted Adds: A goes 10 to 42 while
+both unrelated B cells stay zero and capture PIDs remain their original owners.
+A relay withholds the first completed Add response until two distinct original
+function Progs have entered callbacks. A sequential correct sum does not satisfy
+that gate. Source original Drop, independent actor Close and final Ref GC preserve
+a separate source witness. An unreachable self-cycle holding the last Ref is also
+collected while its actor mailbox remains live; actual GC enqueue/drain is required.
+
+Another relay loses the response after A has performed exactly one Add. Both B
+callbacks return error/Unknown; A remains 11 with no replay, subsequent source
+accesses are disconnected, unrelated B owner reads still work and all owners join.
+Independent oracle probes verify Add replay/conflict/stale outcomes. A private
+bytecode omission of exact actor identity must permit the intended erroneous Add
+and expose an explicit semantic failure. A private native finalizer omission must
+fail the real GC enqueue/drain predicate after otherwise clean actor shutdown.
+Crashes, compilation errors and timeouts never count as omission detection.
+
+Local optimized CTest passes 82/82; full TSan CTest passes 83/83, including extended
+network positives and both new omissions. Additional final Ref self-cycle/overlap
+matrices pass all eight optimized/TSan C/JIT/poll combinations. Joined native
+resident, no-migration, strict concurrent-GC, RC/export/active/staging and custom
+PROXYGC counters are required. Prior matrix 43477922075 is confirmed successful
+in all six jobs, including ARM64, AMD64 TSan and RV64/QEMU. New-series CI is tracked
+separately; QEMU is not physical ordering/performance and pending is not success.
+
+Scope: original function B already accesses a live variable of VM A. The routed
+entry itself is currently a local typed channel in B; its Ref/channel is not a
+serialized network capability. Plain Proxynet call/fetch wire refs remain strictly
+same-owner. Forwarding a route from a third network caller C into function server
+B, route authority registration and a forward/reverse wire protocol remain future
+work. Also remaining: arbitrary closure/value types, String snapshots, transparent
+compiler proxy lowering, authenticated owning FD establishment/unique epochs and
+cross-node tracing/cycle policy. See disVM/remote/NETWORK-OWNERS.md for exact scope.
+Inferno-maintained journal and implementation sources were not edited.
