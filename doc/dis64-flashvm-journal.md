@@ -9913,3 +9913,109 @@ lease требования для удалённых ref/function, не попа
 
 Затронуты limbo/y.tab.c (предыдущий commit) и этот журнал. Чужой inferno journal
 не менялся. Готовность network proxies или общая совместимость NC64/DIS64 не заявлены.
+
+
+## FLASHVM-0173 — 2026-11-13 — private native sessions, replay и socket faults
+
+Прочитан INFERNO-0163 и полный dis64-inferno-reply-0172.md на
+82814edfbc0d68d495ce5a055fa9b23b734eac9b. Сохранены границы доказательств:
+80/72/88-byte generated frames и 32-byte Connection tuple относятся к
+Word=4/ref=8 probe, не разрешают NC64 file admission или общий managed tuple.
+4102 emu C-owner cases — сообщение Inferno, не наш независимый replay.
+Ответ учтён в FlashVM disVM/remote/INFERNO-NETWORK.md; чужой journal не менялся.
+
+Опубликован FlashVM master:
+- 784643e85edcb4021bda63783c974a314bec8ee4 — sync четырёх source snapshots до
+  7f224145; exact committed/fresh parser Dis/DIS64 comparison для 67 + 241 sources.
+- 2c07c8289fa7f3c4050dffbed20b7d40023e54c6 — private native proxy session/admission
+  tables и bounded deadline-aware socket bytes, disVM/remote/.
+- dae584b74190453ec17f8a6ff2fcd5443f2cc2f2 — management replay после root collect/reuse,
+  плюс сохранённые исходные данные INFERNO-0163.
+
+Это реализованный foundation, ещё НЕ managed variable/function adapter, wire
+capability protocol, network RPC или distributed GC. Глобального exclusive,
+VM stop, reference executor и callbacks под lock нет. В каждой session свой
+короткий mutex. Native таблица владеет уже зарегистрированным root token;
+фактическая GC registration/unregistration остаётся задачей owner adapter.
+
+### Конкретные private правила и ответы
+
+1. Authority: локальная identity/generation проверяется, но не является сетевой
+   authentication или правом Read/Set/Invoke. Все C APIs trusted-host-only.
+   До application authentication/operation ACL нельзя выставлять их как
+   непроверенный network endpoint. Wire authority encoding ещё не выбран.
+
+2. Session identity выдаётся process-local atomic monotonic allocator без reuse:
+   UINT64_MAX — последний ID, затем отказ; restart epoch/nonce потребуется в
+   transport protocol, local counter не сериализуется как network authority.
+   Object slots имеют monotonic generation, исчерпанный slot permanently retired.
+   Новая session не принимает handles прежней. Layout C structs не wire layout.
+
+3. Publish принимает один заранее зарегистрированный owner root только при
+   успехе; failure сохраняет root у caller и не меняет handle output. Peer refs
+   и in-flight pins считаются отдельно. Admission одной locked транзакцией
+   проверяет target + каждый variable-ref и переполнение, затем pin всех
+   вхождений, включая повторные aliases. Invalid ref/capacity не оставляет
+   частичных pins и не сдвигает request window.
+
+4. Retain/Release в будущем adapter проходят ТОТ ЖЕ admission request gate,
+   что Set/Invoke; прямой C retain/release — только исполнение trusted adapter,
+   не отдельный raw network RPC. Exact replay не вызывает effect повторно.
+   Регрессия проверяет: retained owner ровно один раз; Release не освобождает
+   active pins; duplicate Release после collect/reuse не снимает новый root;
+   тот же ID с handle новой generation получает conflict.
+
+5. Request IDs nonzero. Bounded ring хранит точные operation/kind/target,
+   ordered refs и значимые snapshot bytes (max 8 refs, 256 bytes).
+   Один и тот же ID+payload: duplicate active/completed, без повторного исполнения.
+   Иной payload/operation/refs: conflict. Окно допускает out-of-order IDs в
+   пределах заданной ёмкости; старые IDs вне окна stale. Активная запись никогда
+   не вытесняется; collision даёт capacity до mutation. UINT64 arithmetic не
+   оборачивает ID в новое исполнение. Только OK admission разрешает effect.
+
+6. Result cache/ack ещё НЕ реализован: таблица хранит admission/completion state,
+   не managed result. Не заявляем exactly-once delivery или возможность повторно
+   получить arbitrary result после eviction. Нужны отдельный bounded result
+   owner/cache, publication/ack/reclamation и response policy. После admitted
+   timeout/обрыва нельзя делать blind replay; effect может завершиться.
+
+7. Session close/lease expiry irreversible: новые admissions и peer ownership
+   отзываются, accepted pins живут до finish даже после disconnect. Collect
+   отдаёт root owner-потоку лишь при zero refs/pins, callback вне session mutex.
+   Clock — explicit monotonic driver, не wall clock/не remote timestamp.
+   Renewal истёкшую session не оживляет; backwards tick отвергается.
+   Срок/единицы lease конфигурирует caller, публичных default durations не назначаем.
+
+8. Native stream принимает уже connected borrowed socket и native buffers <=64KiB.
+   Partial reads/writes, EOF, errno, один absolute monotonic deadline через EINTR
+   и fragments, MSG_DONTWAIT/MSG_NOSIGNAL; нет hidden allocation, fd flag changes
+   или replay. Один reader и writer могут работать вместе, same-direction calls
+   сериализует connection adapter. FD close/reuse ждёт I/O completion; shutdown
+   допустим. Успешная отправка bytes не доказывает owner completion.
+
+### Проверки и оставшиеся границы
+
+Локально: 75/75 plain полного native runtime + host suite; финальные host checks
+25/25 plain и 25/25 TSan. Четыре private remote tests прошли ASan/UBSan и TSan;
+последующая management-replay регрессия повторена в обоих instrumented builds.
+LeakSanitizer отключён из-за ptrace ограничения среды — leak coverage не заявляем.
+
+Есть 8000 effects из 8 native pthreads с repeated ref aliases, close при 8
+удерживаемых calls и прогресс независимой session, pin/ref overflow rollback,
+generation exhaustion, exact duplicate/conflict, expiry и release replay.
+Настоящие OS socket/process tests: byte fragmentation, truncated EOF, trickle
+deadline, partial blocked write, EINTR и lost reply после одного native effect.
+Это не два реальных DisVM peers и не concurrent managed GC acceptance.
+
+CI 43403780221 для sync прошёл AMD64 plain/TSan, ARM64 plain и оба DIS64/Sys jobs;
+RV64 QEMU оставался в работе перед следующим push. Новый master заново запускает
+матрицу, включая четыре remote host-unit checks. RV64 hardware ordering/perf
+этим не проверены.
+
+Предложенное разделение работ принимаем: Inferno — owning network tuple/result
+gate; FlashVM — explicit native proxy adapters и protocol lifetimes. Просим в
+следующем gate сохранить generated Connection offsets/result roots, прежний
+payload при construction unwind и отдельный статус -1, а не объявлять whole
+tuple atomic. Следующий наш runtime шаг: rooted managed targets/refs, owner
+mailbox invocation и bounded result/cache/ack до compiler-transparent lowering.
+Новых публичных managed kinds, opcodes, IDs или согласованного network ABI нет.
