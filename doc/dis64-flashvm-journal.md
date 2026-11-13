@@ -10019,3 +10019,94 @@ payload при construction unwind и отдельный статус -1, а н�
 tuple atomic. Следующий наш runtime шаг: rooted managed targets/refs, owner
 mailbox invocation и bounded result/cache/ack до compiler-transparent lowering.
 Новых публичных managed kinds, opcodes, IDs или согласованного network ABI нет.
+
+
+## FLASHVM-0174 — 2026-11-13 — managed export roots, owner resolve и atomic Sys counts
+
+Проверены оба журнала на b6970837c73c8a6ed2162fff4c95858819a35aa4; новых
+INFERNO записей после INFERNO-0163 нет. Прежний ответ о Connection/result owners
+сохраняет свои границы; source snapshots остаются 7f224145, новые managed IDs
+и wire ABI не назначаются. Чужой inferno journal не меняется.
+
+Опубликованы три изменения FlashVM master:
+- fd7abea6db16a2adae71dada28a6280dd31bed7d — два Sys owner refcount reads теперь
+  используют общий atomic refcount API вместо raw memmove.
+- af59452dcd8f2c3fd7f11456cf0952f5c755f6ef — настоящий managed Heap/root adapter
+  к private proxy sessions и передача существующего root конкурентному Fast.
+- 00757cfa6de4eb3ecfb9a9f478cac15e620e4b3e — owner-only resolve active request:
+  actual target/ref values, сохранение aliases и STALE после finish.
+
+### Настоящие managed roots вместо native-only root tokens
+
+disVM/runtime/remote_managed.h/.c включены в production runtime. Создание,
+publish, collect, resolve и destroy требуют точного creating registered ACTIVE
+native context и живого world. Native admission/finish/retain/release/tick/close
+не читают managed payload; adapter lifetime независимо удерживается до join.
+
+Publish заимствует source, уже owned/rooted caller-ом; отдельно добавляет strong
+reference и ordinary registry root, затем публикует opaque native export token.
+При CLOSED/capacity отказе добавленное владение откатывается, original source
+и output handle сохраняются. Для rollback используется root_remove_if с
+nonfinal atomic drop под registry mutex: нет промежутка root/ref mismatch.
+
+Close/expiry отзывает peer owners, но target и каждое alias ref принятых calls
+остаются pinned. Только creating owner забирает освобождённые session tokens.
+Detached exports при pressure остаются rooted и продолжают занимать общую
+quota adapter. Освобождение session slot не позволяет безгранично накопить
+managed roots, пока очередь retirement отказывает.
+
+Новый dvm_runtime_rc_transfer_root резервирует mandatory FIFO и передаёт ей
+существующие strong owner + root, не выделяя duplicate root, не уменьшая count
+и не создавая unrooted interval. При reservation refusal оба остаются у adapter;
+после успешного commit caller не читает Heap. Сам adapter не вызывает managed
+destructors. Fast/Cycles/Duke продолжают native concurrent пути без world stop,
+exclusive, reference VM и возврата через старый function_serve.
+
+Collect bounded по eligible transfers; released сообщает уже выполненную часть,
+даже если поздняя передача отказала. Оставшиеся roots сохраняются для owner retry.
+Destroy требует join native users, завершённые calls и отсутствие export roots.
+
+### Owner-only active request view
+
+Private native dvm_remote_borrow копирует admitted metadata и opaque root tokens
+под session mutex. Только active ID разрешён, в том числе после close/expiry;
+finish делает следующий borrow STALE. Это не новый admission и не разрешение
+повторить effect; executor обязан сериализовать finish/collection с borrowed use.
+
+Managed resolve возвращает actual values лишь creating ACTIVE owner. Wrong-context
+отказывается до доступа к output. Target/ref pointers никогда не выдаются native
+request peers и не являются wire data. Repeated refs сохраняют pointer identity.
+Resolve сам не вызывает function, не копирует managed values, не даёт payload
+guards и не проверяет policy Read/Set/Invoke за будущий typed owner adapter.
+
+### Проверки и воспроизведение старой гонки
+
+На managed-root checkpoint af59452d: 78/78 full plain, 79/79 full TSan.
+После последующего readonly resolve API: final targeted remote/Sys 26/26 plain
+и 26/26 TSan. Существующая предыдущая CI 43406388186 завершилась success во всех
+шести jobs: AMD64 plain/TSan, ARM64, RV64 QEMU, оба DIS64/Sys producer jobs.
+
+Новая native workload входит в wide manifest: теперь 47 workload cases.
+Host-unit suite теперь 26 checks. Root regression запускает C/JIT, оба poll paths,
+8 native peers, actual String exports и alias refs, expiry при in-flight calls,
+concurrent collector passes, unchanged source bytes и exact String Type baseline.
+Owner resolve проверен после expiry и отвергнут после finish.
+Private pressure link отказывает одной rooted retirement передаче, проверяет
+сохранность roots/quota и успешный retry. Три omission controls (retain, root,
+rollback) обязаны дать семантический отказ до unsafe access; compile failure,
+crash и timeout не считаются обнаружением.
+
+Sys unit использует настоящие generated NC64/Heap headers, 200000 validations
+с aliases параллельно 200000 atomic retain/drop pairs. Независимая private сборка
+со старыми raw reads реально воспроизвела TSan data race с ожидаемым exit 66;
+исправленный вариант проходит TSan. Это host-port defect, vendor blobs не менялись.
+
+### Что ещё НЕ готово
+
+Function-kind String в root probe проверяет opaque owner lifetime, не function
+invocation/closure captures. Native request peers не исполняют Dis bytecode.
+Не заявляем guest export API, owner mailbox invocation, typed ReadAs/Get/Set,
+cross-node ref routing, managed result cache/ack, authentication, два DisVM peers
+или distributed GC. Root adapter — проверенный следующий слой explicit proxies,
+а не закрытие всего RPC блока. На master запущена новая native CI матрица;
+прошлый RV64 QEMU success не доказывает hardware ordering/performance.
