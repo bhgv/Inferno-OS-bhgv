@@ -3,46 +3,46 @@
 #include "dis64-pilot.h"
 
 /* Private selection indices only; these integers never enter a wire signature. */
-static const char *const dis64sysfixednames[] = {"werrstr","chdir","remove","millisec","sleep","dup","unmount","bind","fildes","iounit","open","create"};
+static const char *const dis64sysfixednames[] = {"werrstr","chdir","remove","millisec","sleep","dup","unmount","bind","fildes","iounit","open","create","read","write"};
 static int
 dis64sysfixedkind(const char *name)
 {
     unsigned int i;
     if(name == 0) return -1;
-    for(i=0; i<12; i++) if(strcmp(name,dis64sysfixednames[i]) == 0) return i;
+    for(i=0; i<14; i++) if(strcmp(name,dis64sysfixednames[i]) == 0) return i;
     return -1;
 }
 static unsigned int
 dis64sysfixedargs(unsigned int kind)
 {
-    return kind < 3 ? 1 : kind < 6 ? kind-3 : kind == 6 ? 2 : kind == 7 ? 3 : kind == 10 ? 2 : kind == 11 ? 3 : 1;
+    return kind < 3 ? 1 : kind < 6 ? kind-3 : kind == 6 ? 2 : kind == 7 ? 3 : kind == 10 ? 2 : kind == 11 || kind >= 12 ? 3 : 1;
 }
 
 /* Fixed argument classes and offsets; generated native entries remain authoritative. */
 static int
 dis64sysfixedstring(unsigned int kind, unsigned int argument)
 {
-    return kind < 3 || ((kind == 6 || kind == 7) && argument < 2) || (kind >= 10 && argument == 0);
+    return kind < 3 || ((kind == 6 || kind == 7) && argument < 2) || ((kind == 10 || kind == 11) && argument == 0);
 }
 static unsigned int
 dis64sysfixedoffset(unsigned int kind, unsigned int argument)
 {
-    return kind >= 10 ? (argument ? 68+4*argument : 64) : 64+(kind == 6 || kind == 7 ? 8 : 4)*argument;
+    return kind >= 12 ? 64+8*argument : kind >= 10 ? (argument ? 68+4*argument : 64) : 64+(kind == 6 || kind == 7 ? 8 : 4)*argument;
 }
 static unsigned int
 dis64sysfixedframe(unsigned int kind)
 {
-    return kind >= 10 ? 80 : kind == 6 || kind == 7 ? (kind == 6 ? 80 : 88) : dis64sysfixedargs(kind) ? 72 : 64;
+    return kind >= 12 ? 88 : kind >= 10 ? 80 : kind == 6 || kind == 7 ? (kind == 6 ? 80 : 88) : dis64sysfixedargs(kind) ? 72 : 64;
 }
 
 static int
 dis64sysfixedfdresult(unsigned int kind)
 {
-    return kind == 8 || kind >= 10;
+    return kind == 8 || kind == 10 || kind == 11;
 }
 
 /* Private structural ref-ADT tree, never a public Dis64 tag assignment. */
-enum { Dis64SysRef=0x73, Dis64SysAdt=0x74 };
+enum { Dis64SysRef=0x73, Dis64SysAdt=0x74, Dis64SysArray=0x75, Dis64SysByte=0x76 };
 static unsigned int
 dis64sysfixedsignature(unsigned int kind, unsigned char *out)
 {
@@ -50,9 +50,10 @@ dis64sysfixedsignature(unsigned int kind, unsigned char *out)
     words[n++]=0xface0010U; words[n++]=dis64sysfixedargs(kind);
     for(i=0; i<=dis64sysfixedargs(kind); i++){
         argument = i ? i-1 : 0;
-        if((i == 0 && dis64sysfixedfdresult(kind)) || (i != 0 && kind == 9)){
+        if((i == 0 && dis64sysfixedfdresult(kind)) || (i != 0 && (kind == 9 || (kind >= 12 && argument == 0)))){
             words[n++]=Dis64SysRef; words[n++]=Dis64SysAdt; words[n++]=1; words[n++]=Dis64Int;
-        }else words[n++]=i && dis64sysfixedstring(kind,argument) ? 0x71U : Dis64Int;
+        }else if(i && kind >= 12 && argument == 1){words[n++]=Dis64SysArray;words[n++]=Dis64SysByte;}
+        else words[n++]=i && dis64sysfixedstring(kind,argument) ? 0x71U : Dis64Int;
     }
     for(i=0; i<n; i++) dis64put32(out+4*i,words[i]);
     return 4*n;

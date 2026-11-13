@@ -2,7 +2,7 @@
 
 The private `-64l` file trial executes the real fixed `Sys->werrstr(string): int`
 entry through `LOAD $Sys`, MFRAME and MCALL. The same fixed String-to-Word
-group now admits `chdir` and `remove`, and can mix them with `millisec`, `sleep` and `dup`, with up to twelve distinct imports including `fildes` and `iounit`. This connects serialized String
+group now admits `chdir` and `remove`, and can mix them with `millisec`, `sleep` and `dup`, with up to fourteen distinct imports including `fildes`, `iounit`, `open`, `create`, `read` and `write`. This connects serialized String
 storage to a builtin native frame and a Word result. It remains an explicit
 trial; ordinary `-64`, variadic print, other builtin signatures and Android AWM
 are not enabled. [Русская версия](dis64-sys-string.ru.md).
@@ -358,4 +358,83 @@ extension on LP64. The gate covers this high-bit case, and a deliberate removal
 of that conversion must fail the native argument predicate. It also checks both
 scalar offsets independently, Unicode conversion failure, replacement success
 and failure, nil paths, loops, aliases, reloads and all twelve import identities.
-Full array-based read/write and general shell/AWM admission remain pending.
+The byte-array extension below enables bounded read/write; general shell/AWM admission remains pending.
+
+
+## Byte arrays and file contents
+
+The same `LOAD`/MFRAME/MCALL path now admits `read(ref FD, array of byte, int): int`
+and `write(ref FD, array of byte, int): int`. The runtime uses the existing C
+wrappers and generated Sys interfaces. Loading does not call `init`; the test
+launcher invokes the entry separately, as a shell would.
+
+Save as `sys-bytes.b`:
+
+```limbo
+implement SysBytes;
+include "sys.m";
+SysBytes: module { init: fn(); };
+init()
+{
+    sys := load Sys Sys->PATH;
+    fd := sys->create("/bytes-example.txt", Sys->OWRITE, 8r600);
+    b := array of byte "hello";
+    n := sys->write(fd, b, len b);
+    fd = nil;
+    fd = sys->open("/bytes-example.txt", Sys->OREAD);
+    b = array[5] of byte;
+    n = sys->read(fd, b, len b);
+    text := string b;
+    status := sys->werrstr(text);
+    fd = nil;
+    b = nil;
+    text = nil;
+    status = sys->remove("/bytes-example.txt");
+}
+```
+
+Compile with `limbo -z -I module -64l -o /build/sys-bytes.dis64 sys-bytes.b`,
+then use the earlier emulator command with `/sys-bytes.dis64`. This bounded
+example assumes successful operations and a known five-byte file. `werrstr`
+stores the read text; it does not print it. Run under a writable emulator root.
+
+`array of byte text` encodes UTF-8, and `string b` decodes UTF-8. Embedded NUL
+bytes remain part of an array and are passed to read/write using an explicit
+count. `len b` counts bytes, not Unicode characters. The count is clamped to the
+buffer length; nil buffers and negative counts follow the existing Sys wrapper
+behavior. A short read changes only the returned prefix. Converting the whole
+array also includes the remaining suffix; slicing to the returned length is
+outside this bounded compiler profile. `-z` selects zero-initializing NEWAZ;
+ordinary NEWA must not be assumed to initialize the bytes.
+
+| Caller offset | Meaning |
+| --- | --- |
+| FP64 / FP72 | First / optional second String argument root |
+| FP80 / FP84 / FP88 | Persistent Word locals |
+| FP96 | Current FD root, when the imports require it |
+| FP104 | Word result, never a managed root |
+| FP112 | Current byte-array root |
+| FP120 | Current converted String root |
+
+Array programs have a 128-byte caller frame, with one of the exact maps
+`00 83`, `00 8b`, `00 c3`, `00 cb`. The 88-byte read/write native frame uses
+`00 c0`: FD and array roots at 64/72, count at 80. The third serialized type is
+an explicit one-byte primitive descriptor with a zero pointer map. After
+validation, the loader adopts the runtime's canonical `Tbyte` before JIT
+compilation. Private structural signature tags `0x75`/`0x76` describe array/byte;
+these are not public format assignments.
+
+This profile permits one current array, one current converted String and one
+current FD, including aliases and last-owner nil cleanup. A replacement changes
+the tracked identity; using an older alias is refused. Arrays of other element
+types, array indexing/slicing and general ADTs remain separate work. Literal
+String arguments and converted Strings have separate roots, including both
+arguments of `bind`/`unmount`.
+
+The owning runtime gate exercises real array allocation, UTF-8 conversions,
+Sys C wrappers, collector and loader in C and JIT-requested execution. It checks
+partial reads, clamped writes, NUL data, zero-length buffers, replacement,
+release-time GC and allocation failures without losing the previous owner.
+Malformed root maps, primitive descriptors, signatures and uninitialized Word
+uses are refused. Deliberately corrupting the array/Word proof or omitting
+canonical byte-type adoption must also fail the gate.

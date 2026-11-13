@@ -11,8 +11,8 @@ import tempfile
 ROOT=Path(__file__).resolve().parents[2]
 BASE=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-string.py'))
 RAW=BASE['RAW'];section=BASE['section'];replace=BASE['replace']
-METHODS=('werrstr','chdir','remove','millisec','sleep','dup','unmount','bind','fildes','iounit','open','create')
-ARGS={'werrstr':(0x71,),'chdir':(0x71,),'remove':(0x71,),'millisec':(),'sleep':(1,),'dup':(1,1),'unmount':(0x71,0x71),'bind':(0x71,0x71,1),'fildes':(1,),'iounit':(0x73,0x74,1,1),'open':(0x71,1),'create':(0x71,1,1)}
+METHODS=('werrstr','chdir','remove','millisec','sleep','dup','unmount','bind','fildes','iounit','open','create','read','write')
+ARGS={'werrstr':(0x71,),'chdir':(0x71,),'remove':(0x71,),'millisec':(),'sleep':(1,),'dup':(1,1),'unmount':(0x71,0x71),'bind':(0x71,0x71,1),'fildes':(1,),'iounit':(0x73,0x74,1,1),'open':(0x71,1),'create':(0x71,1,1),'read':(0x73,0x74,1,1,0x75,0x76,1),'write':(0x73,0x74,1,1,0x75,0x76,1)}
 
 
 def imports(image):
@@ -21,7 +21,7 @@ def imports(image):
     for i in range(struct.unpack_from('>I',payload)[0]):
         owner,symbol,length=struct.unpack_from('>III',payload,at);at+=12
         name=''.join(map(chr,pool[symbol]));signature=payload[at:at+length];at+=length
-        if name not in ARGS or owner!=0 or symbol!=(3+i if i else 1) or signature!=RAW['W'](0xface0010,1 if name=='iounit' else len(ARGS[name]),*((0x73,0x74,1,1) if name in ('fildes','open','create') else (1,)),*ARGS[name]):raise RuntimeError('mixed signature oracle mismatch')
+        if name not in ARGS or owner!=0 or symbol!=(3+i if i else 1) or signature!=RAW['W'](0xface0010,1 if name=='iounit' else 3 if name in ('read','write') else len(ARGS[name]),*((0x73,0x74,1,1) if name in ('fildes','open','create') else (1,)),*ARGS[name]):raise RuntimeError('mixed signature oracle mismatch')
         names.append(name);signatures.append(signature)
     if at!=len(payload) or len(names)!=len(set(names)):raise RuntimeError('mixed import framing/identity mismatch')
     return names,signatures,pool
@@ -108,13 +108,37 @@ def programs():
       ('create-dir','r:=sys->werrstr("perm");n:=r+536870911;n++;n<<=2;n|=493;fd:=sys->create("/dir",r,n);fd=nil;',[('werrstr','perm',0,0,0),('create','/dir',0,-2147483155,151)],METHODS),
       ('open-reload','fd:=sys->open("/existing",0);sys=load Sys Sys->PATH;r:=sys->iounit(fd);fd=nil;',[('open','/existing',0,0,150),('iounit',None,150,0,4096)],METHODS),
     ]
+    cases += [
+      ('bytes-write','fd:=sys->open("/existing",1);b:=array of byte "hello";r:=sys->write(fd,b,len b);b=nil;fd=nil;',[('open','/existing',1,0,150),('write','hello',150,5,5)],METHODS),
+      ('bytes-read','fd:=sys->open("/existing",0);b:=array[5] of byte;r:=sys->read(fd,b,len b);s:=string b;r=sys->werrstr(s);s=nil;b=nil;fd=nil;',[('open','/existing',0,0,150),('read','hello',150,5,5),('werrstr','hello',0,0,0)],METHODS),
+      ('bytes-roundtrip','fd:=sys->create("/created",1,420);b:=array of byte "hello";r:=sys->write(fd,b,len b);fd=nil;fd=sys->open("/created",0);b=array[5] of byte;r=sys->read(fd,b,len b);s:=string b;r=sys->werrstr(s);fd=nil;b=nil;s=nil;',[('create','/created',1,420,151),('write','hello',151,5,5),('open','/created',0,0,150),('read','hello',150,5,5),('werrstr','hello',0,0,0)],METHODS),
+      ('bytes-utf','b:=array of byte "Grüße 世界";s:=string b;r:=sys->werrstr(s);',[('werrstr','Grüße 世界',0,0,0)],METHODS),
+      ('bytes-short-read','fd:=sys->open("/existing",0);b:=array of byte "????";r:=sys->read(fd,b,len b);s:=string b;r=sys->werrstr(s);',[('open','/existing',0,0,150),('read','hi',150,4,2),('werrstr','hi??',0,0,0)],METHODS),
+      ('bytes-clamp','fd:=sys->open("/existing",1);b:=array of byte "abc";r:=sys->write(fd,b,10);',[('open','/existing',1,0,150),('write','abc',150,10,3)],METHODS),
+      ('bytes-nil','r:=sys->write(nil,nil,0);r=sys->read(nil,nil,-1);',[('write','',-1,0,0),('read','',-1,-1,0)],METHODS),
+      ('bytes-alias','b:=array of byte "alias";saved:=b;b=nil;s:=string saved;r:=sys->werrstr(s);saved=nil;s=nil;',[('werrstr','alias',0,0,0)],METHODS),
+      ('bytes-length','b:=array of byte "hello";n:=len b;fd:=sys->open("/existing",1);r:=sys->write(fd,b,n);',[('open','/existing',1,0,150),('write','hello',150,5,5)],METHODS),
+    ]
+    cases += [
+      ('bytes-string-alias','b:=array of byte "owned";s:=string b;t:=s;s=nil;r:=sys->werrstr("other");r=sys->werrstr(t);t=nil;b=nil;',[('werrstr','other',0,0,0),('werrstr','owned',0,0,0)],METHODS),
+      ('bytes-convert-back','b:=array of byte "Grüße";s:=string b;b=array of byte s;fd:=sys->open("/existing",1);r:=sys->write(fd,b,len b);',[('open','/existing',1,0,150),('write','Grüße',150,7,7)],METHODS),
+      ('bytes-binary','fd:=sys->open("/existing",1);b:=array of byte "a\\0b";r:=sys->write(fd,b,len b);',[('open','/existing',1,0,150),('write','a\0b',150,3,3)],METHODS),
+      ('bytes-empty','fd:=sys->open("/existing",1);b:=array of byte "";r:=sys->write(fd,b,len b);',[('open','/existing',1,0,150),('write','',150,0,0)],METHODS),
+      ('bytes-zero','fd:=sys->open("/existing",1);b:=array[4] of byte;r:=sys->write(fd,b,len b);',[('open','/existing',1,0,150),('write','\0'*4,150,4,4)],METHODS),
+      ('bytes-string-allocation','b:=array of byte "old";s:=string b;b=array of byte "Grüße";s=string b;r:=sys->werrstr(s);',[('werrstr','Grüße',0,0,0)],METHODS),
+      ('bytes-allocation','b:=array of byte "old";b=array[7] of byte;b=array of byte "replacement";s:=string b;r:=sys->werrstr(s);',[('werrstr','replacement',0,0,0)],METHODS),
+    ]
+    cases.append(('bytes-two-strings','b:=array of byte "/right";s:=string b;r:=sys->unmount("/left",s);r=sys->bind(s,s,0);',[('unmount','/left',0,0,-1,'/right'),('bind','/right',0,0,-1,'/right')],METHODS))
+    allbytes='r:=sys->werrstr("all-bytes");t:=sys->millisec();r=sys->sleep(0);r=sys->dup(-1,-1);r=sys->chdir("/ok");r=sys->remove("/missing");r=sys->unmount("/left","/right");r=sys->bind("/source","/target",0);fd:=sys->fildes(1);r=sys->iounit(fd);fd=sys->create("/created",1,420);b:=array of byte "hello";r=sys->write(fd,b,len b);fd=sys->open("/created",0);b=array[5] of byte;r=sys->read(fd,b,len b);s:=string b;r=sys->werrstr(s);'
+    allbyteevents=[('werrstr','all-bytes',0,0,0),('millisec',None,0,0,23),('sleep',None,0,0,0),('dup',None,-1,-1,-1),('chdir','/ok',0,0,0),('remove','/missing',0,0,-1),('unmount','/left',0,0,-1,'/right'),('bind','/source',0,0,-1,'/target'),('fildes',None,1,0,101),('iounit',None,101,0,4096),('create','/created',1,420,151),('write','hello',151,5,5),('open','/created',0,0,150),('read','hello',150,5,5),('werrstr','hello',0,0,0)]
+    for shift in range(14):cases.append(('all-bytes-'+str(shift),allbytes,allbyteevents,METHODS[shift:]+METHODS[:shift]))
     return cases
 
 
 def rows(limbo,work):
     result=[]
     for name,body,events,order in programs():
-        image=permute(BASE['compile_source'](limbo,work,'sys:=load Sys Sys->PATH;'+body),order)
+        image=permute(BASE['compile_source'](limbo,work,'sys:=load Sys Sys->PATH;'+body,extra=('-z',) if name=='bytes-zero' else ()),order)
         if name=='clock':
             ins=RAW['I'];indirect=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['indirect']
             code=ins('ILOAD',64,source=16,middle=0,destination=0)+ins('IMFRAME',65,source=0,middle=0,destination=40)+indirect('ILEA',104,40,32)+ins('IMCALL',72,source=40,middle=0,destination=0)+RAW['EXIT']
@@ -187,21 +211,59 @@ def refusals(limbo,work):
         bad=bytearray(signature);struct.pack_into('>I',bad,offset,2);yield replace(image,5,bad)
 
 
+    image=BASE['compile_source'](limbo,work,'sys:=load Sys Sys->PATH;fd:=sys->open("/existing",1);b:=array of byte "hello";r:=sys->write(fd,b,len b);')
+    decoded=decode(section(image,2));raw=[r[-1] for r in decoded]
+    for i,r in enumerate(decoded):
+        if r[0]=='ICVTCA':constructor=i
+        if r[0]=='ILENA':length=i
+        if r[0]=='IMFRAME' and r[3]==1:pending=i
+    # Independent full byte-array setup, not an event supplied to the validator.
+    if decoded[constructor][1:6]!=(1,32,0,112,0) or decoded[length][1:6]!=(13,112,0,40,80):raise RuntimeError('byte constructor/inline length CODE oracle mismatch')
+    if section(image,3)[4:14]!=RAW['W'](128,8)+bytes((0,0x8b)) or section(image,3)[-9:]!=RAW['W'](1,1)+bytes((0,)):raise RuntimeError('byte frame/primitive descriptor oracle mismatch')
+    types=section(image,3)
+    for offset,value in ((13,0x89),(13,0x8a),(len(types)-1,0x80),(len(types)-5,8)):
+        bad=bytearray(types);bad[offset]=value;yield replace(image,3,bad)
+    for source in (64,72,96,104,120):
+        bad=list(raw);bad[length]=indirect('ILENA',source,40,80);yield replace(image,2,RAW['W'](len(bad))+b''.join(bad))
+    for dest in (64,96,104,120):
+        bad=list(raw);bad[constructor]=ins('ICVTCA',1,source=32,destination=dest);yield replace(image,2,RAW['W'](len(bad))+b''.join(bad))
+    bad=list(raw);bad[length]=indirect('IMOVW',104,40,80);yield replace(image,2,RAW['W'](len(bad))+b''.join(bad))
+    # Both CFG paths remain structural; one reaches the array use without its definition.
+    bad=list(raw);bad.insert(constructor,ins('IBEQW',82,source=0,middle=0,destination=pending+1));yield replace(image,2,RAW['W'](len(bad))+b''.join(bad))
+    signature=section(image,5);at=4
+    while at<len(signature):
+        size=int.from_bytes(signature[at+8:at+12],'big')
+        if size==40:
+            for relative in (12,16,20,24,28,32,36):
+                bad=bytearray(signature);struct.pack_into('>I',bad,at+12+relative,2);yield replace(image,5,bad)
+        at+=12+size
+    image=BASE['compile_source'](limbo,work,'sys:=load Sys Sys->PATH;b:=array[5] of byte;r:=sys->werrstr("end");')
+    decoded=decode(section(image,2));raw=[r[-1] for r in decoded]
+    for i,r in enumerate(decoded):
+        if r[0] in ('INEWA','INEWAZ'):constructor=i
+    for typeid in (0,1,3):
+        bad=list(raw);bad[constructor]=ins(decoded[constructor][0],81,source=5,middle=typeid,destination=112);yield replace(image,2,RAW['W'](len(bad))+b''.join(bad))
+    for body in ('a:=array[4] of int;r:=sys->werrstr("bad");','a:=array of byte "first";b:=array of byte "second";s:=string a;r:=sys->werrstr(s);'):
+        BASE['compile_source'](limbo,work,'sys:=load Sys Sys->PATH;'+body,accepted=False)
+
+
 def boot(command,work,consumer,limbo,execute,retired):
     path='/'+str(work.relative_to(work.parent));(work/'ok').mkdir(exist_ok=True);(work/'existing').write_text('native64 fixture\n')
     for name,body,events,order in programs():
+        if name.startswith('bytes-'):(work/'existing').write_bytes(b'hi' if name=='bytes-short-read' else b'hello')
         for local in ('existing','created','dir','不存在','создан','missing/child'):body=body.replace(json.dumps('/'+local,ensure_ascii=False),json.dumps(path+'/'+local,ensure_ascii=False))
         body=body.replace('"/ok"',json.dumps(path+'/ok')).replace('"/missing"',json.dumps(path+'/missing'))
-        image=permute(BASE['compile_source'](limbo,work,'sys:=load Sys Sys->PATH;'+body),order);consumer.write_bytes(image)
+        image=permute(BASE['compile_source'](limbo,work,'sys:=load Sys Sys->PATH;'+body,extra=('-z',) if name=='bytes-zero' else ()),order);consumer.write_bytes(image)
         for jit in (0,1):
             output=execute(command+['-c',str(jit),'-d','/'+str(consumer.relative_to(work.parent)),'-P','$Sys','-X','dis64-managed-trial'])
             nilfd=any(e[0]=='iounit' and e[2]<0 for e in events)
             marker='native64 scalar module $Sys: jit=0, exit="fd out of range or not open"' if nilfd else f'native64 scalar module SysText: jit={jit}, exit=""'
             if marker not in output or retired not in output or 'panic:' in output:raise RuntimeError(name+' '+output)
+            if (name=='bytes-roundtrip' or name.startswith('all-bytes-')) and (work/'created').read_bytes()!=b'hello':raise RuntimeError(name+' physical file payload mismatch')
     for bad in refusals(limbo,work):
         consumer.write_bytes(bad);output=execute(command+['-d','/'+str(consumer.relative_to(work.parent)),'-P','$Sys','-X','dis64-managed-trial'])
         if retired in output or 'panic: loading Dis64 pair' not in output:raise RuntimeError('malformed fixed argument program scheduled: '+output)
-    print('PASS mixed fixed Sys: twelve signatures, 0/1/2/3 arguments, String/Word roots, nested/looped/reloaded calls, full CODE and argument-initialization refusals',flush=True)
+    print('PASS mixed fixed Sys: fourteen signatures, 0/1/2/3 arguments, String/FD/byte-array roots, nested/looped/reloaded calls, full CODE and argument-initialization refusals',flush=True)
 
 
 if __name__=='__main__':

@@ -772,6 +772,7 @@ struct Dis64NumericLoad {
 	Dis64StorageOwner *lease; // Separate construction root, returned on complete success.
 	Module *module; // Partial unpublished native owner retired through real unload.
 	int jit; // Explicit existing native leaf compilation request, never a file-mode choice.
+	int bytearray; // Explicit checked primitive element witness at module type 2.
 	int indirect; // The selected proof admits indirect destination operands.
 	int (*step)(void); // Trusted result binding selected by the owning constructor.
 	const Link *clockload[3]; // Checked exports for an executing Sys LOAD.
@@ -835,6 +836,11 @@ dis64numericconstruct(void *argument)
 	load->lease = dis64storagefromview(&load->image);
 	if(load->lease == nil || !attach64storage(module, load->lease))
 		return 0;
+    if(load->bytearray){
+        Type *old;
+        if(module->ntype != 3 || Tbyte.size != 1 || Tbyte.np != 0 || Tbyte.ref <= 0 || Tbyte.ref == 0x7fffffff) return 0;
+        old=module->type[2];Tbyte.ref++;module->type[2]=&Tbyte;freetype(old);
+    }
 	#ifdef DIS_NATIVE64_BOOT_SYS_IO
 	if(load->clockimports != 0 && !dis64sysloadmetadata(module, load->clockload, load->clockimports))
 		return 0;
@@ -1601,7 +1607,7 @@ managed64inputlist(Module *module, int ordinal)
 typedef struct Dis64ManagedFileCaller Dis64ManagedFileCaller;
 struct Dis64ManagedFileCaller {
 	Modlink *caller;
-	const LimboNative64Entry *entries[12];
+	const LimboNative64Entry *entries[14];
 	unsigned int count;
 	char *path;
 	Dis64ManagedLiteralsView literals;
@@ -1657,7 +1663,7 @@ prepare64sysstring(char *path, const uchar *image, ulong bytes, int jit)
 {
     Dis64NumericLoad load = {0};
     Dis64ManagedFileCaller file = {0};
-    LimboNative64Entry specification[12];
+    LimboNative64Entry specification[14];
     const char *method;
     unsigned int i, framebytes, mapbytes, maplast;
     int kind;
@@ -1679,7 +1685,7 @@ prepare64sysstring(char *path, const uchar *image, ulong bytes, int jit)
         kind = dis64sysfixedkind(method);
         if(kind < 0) return nil;
         framebytes = dis64sysfixedframe(kind);
-        mapbytes = framebytes == 64 ? 1 : 2; maplast = kind == 6 || kind == 7 ? 0xc0 : kind < 3 || kind == 9 || kind >= 10 ? 0x80 : 0;
+        mapbytes = framebytes == 64 ? 1 : 2; maplast = kind == 6 || kind == 7 || kind >= 12 ? 0xc0 : kind < 3 || kind == 9 || kind >= 10 ? 0x80 : 0;
         owner = nil; entry = native64sysexport(method,&owner);
         if(entry == nil || (sys != nil && owner != sys) || (frame=entry->frame) == nil ||
            frame->size != framebytes || frame->np != mapbytes || frame->map[0] != 0 ||
@@ -1690,6 +1696,7 @@ prepare64sysstring(char *path, const uchar *image, ulong bytes, int jit)
         specification[i] = (LimboNative64Entry){entry->name,nil,entry->sig,frame->size,frame->np,frame->map};
         file.entries[i] = &specification[i];
     }
+    {Dis64Type callerframe; if(!dis64typeget(&load.image.types,0,&callerframe)) return nil;load.bytearray=callerframe.bytes == 128;}
     load.path = path; load.jit = jit; load.indirect = 1; load.step = native64stringlea8step;
     if(!disstringpoolget(&load.image.strings,2,&load.name)) return nil;
     caller = nil;

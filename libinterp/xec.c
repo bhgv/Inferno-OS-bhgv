@@ -185,10 +185,14 @@ native64bindresult(int managed)
 	if(size < 72 || (size&7) != 0 || mapbytes < 0 ||
 	   mapbytes > size/64+(size%64 != 0) ||
 	   (uintptr)type > (uintptr)-1-O(Type, map)-(uintptr)mapbytes ||
-	   base > (uintptr)-1-(uintptr)size || (instruction.s.ind != size-8 && !(managed == 2 && size == 112 && instruction.s.ind == 96)))
+	   base > (uintptr)-1-(uintptr)size || (instruction.s.ind != size-8 && !(managed == 2 && ((size == 112 && instruction.s.ind == 96) || (size == 128 && (instruction.s.ind == 96 || instruction.s.ind == 104))))))
 		error(exBounds);
-	if(managed == 2 && ((size != 80 && size != 112) || mapbytes != 2 || type->map[0] != 0 || (type->map[1] != 0x80 && (size != 112 || (type->map[1] != 0xc0 && type->map[1] != 0x88 && type->map[1] != 0xc8)))))
-		error(exBounds);
+	if(managed == 2 && (mapbytes != 2 || type->map[0] != 0 ||
+       (size == 80 ? type->map[1] != 0x80 :
+        size == 112 ? (type->map[1] != 0x80 && type->map[1] != 0xc0 && type->map[1] != 0x88 && type->map[1] != 0xc8) :
+        size == 128 ? (type->map[1] != 0x83 && type->map[1] != 0x8b && type->map[1] != 0xc3 && type->map[1] != 0xcb) : 1)))
+        error(exBounds);
+	if(managed == 2 && size == 128 && instruction.s.ind != 96 && instruction.s.ind != 104) error(exBounds);
 	if(managed == 2 && instruction.s.ind == 96 && (type->map[1]&8) == 0) error(exBounds);
 	resultbyte = (size-8)/64;
 	resultbit = 0x80 >> ((size-8)/8%8);
@@ -197,9 +201,9 @@ native64bindresult(int managed)
 	for(i=0; i<mapbytes; i++){
 		int map = type->map[i];
 
-		/* Checked callers own String roots from byte 64 and an optional FD at byte 96. */
-		if(managed && (size == 80 || (managed == 2 && size == 112)) && i == 1)
-			map &= managed == 2 && size == 112 ? ~0xc8 : ~0x80;
+		/* Checked callers own String roots at 64/72, optional FD at 96, and array/String at 112/120. */
+		if(managed && (size == 80 || (managed == 2 && (size == 112 || size == 128))) && i == 1)
+			map &= managed == 2 && size == 128 ? ~0xcb : managed == 2 && size == 112 ? ~0xc8 : ~0x80;
 		if(map != (managed == 1 && i == resultbyte ? resultbit : 0))
 			error(exBounds);
 	}

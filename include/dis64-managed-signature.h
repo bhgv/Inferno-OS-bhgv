@@ -486,8 +486,9 @@ dis64managedliteralview(const Dis64StorageImage *image, Dis64ManagedLiteralsView
     for(i=0; i<image->code.count; i++) {
         if(at > image->code.bytes || !dis64callread(image->code.data+at,image->code.bytes-at,&decoded,&used)) return 0;
         at += used;
-        if(decoded.instruction.op == IMOVP && decoded.instruction.mode == (SRC(AMP)|DST(AFP)) &&
-           (decoded.instruction.destination == 64 || decoded.instruction.destination == 72) && decoded.instruction.source >= 24) {
+        if(((decoded.instruction.op == IMOVP && decoded.instruction.mode == (SRC(AMP)|DST(AFP)) &&
+           (decoded.instruction.destination == 64 || decoded.instruction.destination == 72)) ||
+           (decoded.instruction.op == ICVTCA && decoded.instruction.mode == (SRC(AMP)|DST(AFP)) && decoded.instruction.destination == 112)) && decoded.instruction.source >= 24) {
             source = decoded.instruction.source;
             if(source%8 || (source-24)/8 >= view.count) return 0;
             found |= 1U<<((source-24)/8);

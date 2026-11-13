@@ -14,10 +14,10 @@ LITERAL=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-literal.py'))
 RAW=LITERAL['RAW']; section=LITERAL['section']; replace=LITERAL['replace']
 
 
-def compile_source(limbo,work,body,flag='-64l',accepted=True):
+def compile_source(limbo,work,body,flag='-64l',accepted=True,extra=()):
     source=work/'sys-string.b';output=work/'sys-string.dis64'
     source.write_text('implement SysText; include "sys.m"; SysText: module {init: fn();}; init(){'+body+'}')
-    result=subprocess.run([str(limbo.resolve()),'-I',str(ROOT/'module'),flag,'-o',str(output),str(source)],capture_output=True,text=True,timeout=30)
+    result=subprocess.run([str(limbo.resolve()),*extra,'-I',str(ROOT/'module'),flag,'-o',str(output),str(source)],capture_output=True,text=True,timeout=30)
     if accepted:
         if result.returncode: raise RuntimeError(body+'\n'+result.stderr)
         return output.read_bytes()

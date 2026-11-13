@@ -634,7 +634,7 @@ int main(void) {
     subprocess.run(compiler+flags+['-I'+str(root/'include'),str(source),'-o',str(binary)],check=True)
     subprocess.run(run+[str(binary)],check=True,timeout=30)
     header = (root/'include/dis64-pilot.h').read_text()
-    old = '*target = *target ? 16U|((*target & state)&47U) : state;'
+    old = '*target = *target ? 16U|((*target & state)&239U) : state;'
     if header.count(old)!=1: raise RuntimeError('flow join control drift')
     (work/'dis64-pilot.h').write_text(header.replace(old,'*target |= state; /* Deliberately use union at a join. */',1))
     subprocess.run(compiler+flags+['-I'+str(work),'-I'+str(root/'include'),str(source),'-o',str(binary)],check=True)
