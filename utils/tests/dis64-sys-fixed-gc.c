@@ -12,6 +12,13 @@ grouprelease(void)
     WORD poison=99;
     void *wrong=&groupwrong;
     if(fdclosing)return;
+    if(groupkind >= 10){
+        void *old,*empty=H;
+        memmove(&old,R.FP+64,sizeof(old));memmove(R.FP+64,&empty,sizeof(empty));destroy(old);
+        memmove(R.FP+72,&poison,sizeof(poison));
+        if(groupkind == 11)memmove(R.FP+76,&poison,sizeof(poison));
+        memmove(R.FP+32,&wrong,sizeof(wrong));groupreleases++;groupcollect();return;
+    }
     if(groupkind == 8){
         memmove(R.FP+64,&poison,sizeof(poison));memmove(R.FP+32,&wrong,sizeof(wrong));groupreleases++;groupcollect();return;
     }
@@ -77,6 +84,20 @@ int incref(Ref *ref){return ++ref->ref;}
 void closefgrp(Fgrp *group){require(group == &fdgroup && group->r.ref > 1);group->r.ref--;}
 int kfgrpclose(Fgrp *group,int fd){require(group == &fdgroup && fd >= 100 && fd < 200 && fdlive[fd]);fdlive[fd]=0;fdclosed++;return 0;}
 int kiounit(int fd){require(groupkind == 9 && fd == fixedexpected->first && cachereleases == cacheacquires+1);fixedos++;groupcollect();if(fdthrow)error("fd out of range or not open");return fd < 0 ? -1 : 4096;}
+static int
+openboundary(char *path,int mode,ulong perm)
+{
+    int fd=groupkind == 10 ? 150 : 151;
+    require(groupkind >= 10 && cachereleases == cacheacquires+1);
+    if(strcmp(path,fixedexpected->text) || mode != fixedexpected->first ||
+       (groupkind == 11 && perm != (ulong)(UWORD)fixedexpected->second)){
+        fprintf(stderr,"Sys open/create argument predicate\n");exit(20);
+    }
+    fixedos++;groupcollect();if(fixedexpected->status < 0)return -1;
+    require(!fdlive[fd]);fdlive[fd]=1;fdopened++;return fd;
+}
+int kopen(char *path,int mode){return groupkind >= 10 ? openboundary(path,mode,0) : basekopen(path,mode);}
+int kcreate(char *path,int mode,ulong perm){return openboundary(path,mode,perm);}
 void seterror(char *text,...){USED(text);require(0);}
 
 static void
@@ -121,8 +142,13 @@ fixedexecute(const SysFixedCase *test, int jit, int conversion)
                 if(groupkind == 5)memmove(&second,(uchar*)pending+68,sizeof(second));
                 if(first != event->first || (groupkind == 5 && second != event->second)){fprintf(stderr,"Sys fixed argument predicate\n");exit(18);}
             }
+            if(groupkind >= 10){
+                memmove(&first,(uchar*)pending+72,sizeof(first));
+                if(groupkind == 11)memmove(&second,(uchar*)pending+76,sizeof(second));
+                require(first == event->first && (groupkind != 11 || second == event->second));
+            }
             groupwrong=0xdeadbeefU;
-            if(groupkind == 8)memmove(&fdguard,process.R.FP+104,sizeof(fdguard));
+            if(dis64sysfixedfdresult(groupkind))memmove(&fdguard,process.R.FP+104,sizeof(fdguard));
             else memmove(process.R.FP+104,&guard,sizeof(guard));
             if(conversion == -2 || (conversion == -3 && groupkind == 9)){
                 require(groupkind == 9 && (conversion == -3 || calls == 0));fdthrow=1;
@@ -131,8 +157,8 @@ fixedexecute(const SysFixedCase *test, int jit, int conversion)
                 require(result == guard && cachereleases == cacheacquires);
                 fault=1;break;
             }
-            if(conversion == -1 || (conversion == -4 && groupkind == 8 && calls > 0)){
-                require(groupkind == 8 && (conversion == -4 || calls == 0));
+            if(conversion == -1 || (conversion == -4 && dis64sysfixedfdresult(groupkind) && calls > 0)){
+                require(dis64sysfixedfdresult(groupkind) && (conversion == -4 || calls == 0));
                 literalpoolfail=literalpoolcalls+1;
                 require(!kprotect(execute,&process) && strcmp(message,exHeap) == 0);literalpoolfail=0;
                 memmove(&fdresult,callerfp+96,sizeof(fdresult));
@@ -145,7 +171,7 @@ fixedexecute(const SysFixedCase *test, int jit, int conversion)
                 failat=allocations+conversion;
                 require(!kprotect(execute,&process) && strcmp(message,exNomem) == 0);failat=0;
                 memmove(&result,process.R.FP+104,sizeof(result));
-                require(result == guard && fixedos == 0 && groupreleases == 0 && cachereleases == cacheacquires);
+                require(result == (dis64sysfixedfdresult(groupkind) ? fdguard : guard) && fixedos == 0 && groupreleases == 0 && cachereleases == cacheacquires);
                 fault=1;break;
             }
         }
@@ -153,7 +179,7 @@ fixedexecute(const SysFixedCase *test, int jit, int conversion)
         if(dropping)require(fdclosed == dropbefore+(dropping == 2));
         if(pc->op == IMCALL){
             event=test->events+calls;memmove(&result,process.R.FP+104,sizeof(result));expected=0x1122334400000000ULL|(UWORD)event->status;
-            if(groupkind == 8){
+            if(dis64sysfixedfdresult(groupkind)){
                 require(result == fdguard);
                 memmove(&fdresult,process.R.FP+96,sizeof(fdresult));
                 if(event->status < 0)require(fdresult == H);
@@ -240,6 +266,18 @@ fixedconstructors(int *native,int *heap)
     require(prepare64sysstring("bad-fd-function",sysfixed_cases[j].image,sysfixed_cases[j].bytes,0) == nil);
     sys->ext[8].u.runt=Sys_fildes;
     require(allocations == start && literalpoolcalls == poolstart && live == before && sys->ref == 1);
+    for(j=0;j<nelem(sysfixed_cases) && sysfixed_cases[j].imports != 12;j++) ;
+    require(j<nelem(sysfixed_cases));start=allocations;poolstart=literalpoolcalls;
+    sys->type[10]->size=72;
+    require(prepare64sysstring("bad-open-frame",sysfixed_cases[j].image,sysfixed_cases[j].bytes,0) == nil);
+    sys->type[10]->size=80;
+    sys->type[11]->map[1]=0xc0;
+    require(prepare64sysstring("bad-create-map",sysfixed_cases[j].image,sysfixed_cases[j].bytes,0) == nil);
+    sys->type[11]->map[1]=0x80;
+    sys->ext[11].u.runt=Sys_open;
+    require(prepare64sysstring("bad-create-function",sysfixed_cases[j].image,sysfixed_cases[j].bytes,0) == nil);
+    sys->ext[11].u.runt=Sys_create;
+    require(allocations == start && literalpoolcalls == poolstart && live == before && sys->ref == 1);
     unload(sys);numericdrain();dis64bootmanaged=0;dis64bootprovider=nil;
 }
 
@@ -247,13 +285,13 @@ int
 main(void)
 {
     unsigned int i;
-    int native=0,heap=0,fdallocationchecked=0,fdexceptionchecked=0;
+    int native=0,heap=0,fdallocationchecked=0,fdexceptionchecked=0,openchecked=0,createchecked=0;
     numericpoolinit();Tstring.size=sizeof(String);Tstring.free=freestring;Tstring.mark=noptrs;
     worker.env=&worker.defenv;worker.env->errstr=worker.defenv.errbuf0;
     fdgroup.r.ref=1;worker.env->fgrp=&fdgroup;
     {uchar map[]={0};TFD=dtype(freeFD,sizeof(FD),map,sizeof(map));require(TFD != nil);}
     optab[ILOAD]=iload;optab[IMOVP]=movp;optab[IMFRAME]=mframe;optab[IMCALL]=mcall;optab[IEXIT]=iexit;
-    optab[IMOVW]=movw;optab[IADDW]=addw;optab[ISUBW]=subw;optab[ISHLW]=shlw;optab[IBGEW]=bgew;optab[IBNEW]=bnew;optab[IBEQW]=beqw;optab[IBLEW]=blew;optab[IJMP]=jmp;
+    optab[IMOVW]=movw;optab[IADDW]=addw;optab[ISUBW]=subw;optab[ISHLW]=shlw;optab[IORW]=orw;optab[IBGEW]=bgew;optab[IBNEW]=bnew;optab[IBEQW]=beqw;optab[IBLEW]=blew;optab[IJMP]=jmp;
     fixedconstructors(&native,&heap);
     for(i=0;i<nelem(sysfixed_cases);i++){fixedexecute(sysfixed_cases+i,0,0);fixedexecute(sysfixed_cases+i,1,0);
         if(!fdexceptionchecked && strcmp(sysfixed_cases[i].events[0].method,"iounit") == 0 && sysfixed_cases[i].events[0].first < 0){
@@ -264,12 +302,20 @@ main(void)
             fixedexecute(sysfixed_cases+i,0,-4);fixedexecute(sysfixed_cases+i,1,-4);
             fixedexecute(sysfixed_cases+i,0,-3);fixedexecute(sysfixed_cases+i,1,-3);fdallocationchecked=1;
         }
+        if((!openchecked && strcmp(sysfixed_cases[i].events[0].method,"open") == 0) ||
+           (!createchecked && strcmp(sysfixed_cases[i].events[0].method,"create") == 0)){
+            fixedexecute(sysfixed_cases+i,0,-1);fixedexecute(sysfixed_cases+i,1,-1);
+            fixedexecute(sysfixed_cases+i,0,-4);fixedexecute(sysfixed_cases+i,1,-4);
+            if(strcmp(sysfixed_cases[i].events[0].method,"open") == 0)openchecked=1;else createchecked=1;
+        }
+        if((strcmp(sysfixed_cases[i].events[0].method,"open") == 0 || strcmp(sysfixed_cases[i].events[0].method,"create") == 0) &&
+           sysfixed_cases[i].events[0].text[0] != 0 && (uchar)sysfixed_cases[i].events[0].text[1] >= 128){fixedexecute(sysfixed_cases+i,0,1);fixedexecute(sysfixed_cases+i,1,1);}
         if(sysfixed_cases[i].events[0].method && (strcmp(sysfixed_cases[i].events[0].method,"unmount") == 0 || strcmp(sysfixed_cases[i].events[0].method,"bind") == 0) &&
            (uchar)sysfixed_cases[i].events[0].text[0] >= 128){
             fixedexecute(sysfixed_cases+i,0,1);fixedexecute(sysfixed_cases+i,0,2);
             fixedexecute(sysfixed_cases+i,1,1);fixedexecute(sysfixed_cases+i,1,2);
         }}
-    require(fdallocationchecked && fdexceptionchecked);freetype(TFD);TFD=nil;require(live == 0 && fdopened == fdclosed && fdgroup.r.ref == 1);
-    printf("PASS mixed fixed Sys owning runtime: %u C/JIT/GC cases, 64/72/80/88-byte callee maps, exact scalar args/results/ordinals, FD lifetime/nil/replace/retire, 4 real mkfd allocation and 4 iounit native-error unwinds, release snapshots, 8 held-VM dual-conversion failures, %u wire plus 9 generated-entry pre-allocation refusals, %d native/%d heap rollback refusals\n",2*(unsigned int)nelem(sysfixed_cases),(unsigned int)nelem(sysfixed_bad),native,heap);
+    require(fdallocationchecked && fdexceptionchecked && openchecked && createchecked);freetype(TFD);TFD=nil;require(live == 0 && fdopened == fdclosed && fdgroup.r.ref == 1);
+    printf("PASS mixed fixed Sys owning runtime: %u C/JIT/GC cases, 64/72/80/88-byte callee maps, exact scalar args/results/ordinals, FD lifetime/nil/replace/retire, 12 real mkfd allocation and 4 iounit native-error unwinds, release snapshots, 12 held-VM conversion failures, %u wire plus 12 generated-entry pre-allocation refusals, %d native/%d heap rollback refusals\n",2*(unsigned int)nelem(sysfixed_cases),(unsigned int)nelem(sysfixed_bad),native,heap);
     return 0;
 }

@@ -68,6 +68,7 @@ static const LimboNative64Entry *const native64sysio[] = {
 	&limbo_native64_Sys_unmount_entry, // Two independently rooted namespace operands.
 	&limbo_native64_Sys_bind_entry, // Two String operands followed by Word flags.
 	&limbo_native64_Sys_iounit_entry, // Fixed FD argument and Word result.
+	&limbo_native64_Sys_create_entry, // String and scalar arguments with a managed FD result.
 };
 
 

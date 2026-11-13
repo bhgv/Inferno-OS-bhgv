@@ -491,6 +491,7 @@ void
 Sys_open(void *fp)
 {
 	int fd;
+	char *path;
 	F_Sys_open local, *f;
 	Sys_FD *old, *result;
 
@@ -504,8 +505,9 @@ Sys_open(void *fp)
 		seterror(Ebadarg);
 		return;
 	}
+	path = string2c(f->s);
 	release();
-	fd = kopen(string2c(f->s), f->mode);
+	fd = kopen(path, f->mode);
 	acquire();
 	if(fd == -1)
 		return;
@@ -635,6 +637,7 @@ void
 Sys_create(void *fp)
 {
 	int fd;
+	char *path;
 	F_Sys_create local, *f;
 	Sys_FD *old, *result;
 
@@ -648,8 +651,9 @@ Sys_create(void *fp)
 		seterror(Ebadarg);
 		return;
 	}
+	path = string2c(f->s);
 	release();
-	fd = kcreate(string2c(f->s), f->mode, f->perm);
+	fd = kcreate(path, f->mode, (UWORD)f->perm);
 	acquire();
 	if(fd == -1)
 		return;

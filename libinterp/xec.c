@@ -244,7 +244,7 @@ native64bindresult(int managed)
 		   type->size != (int)(top-target) || type->map[0] != 0 ||
            (managed == 2 ? (type->size == 64 ? type->np != 1 :
             (type->np != 2 || (type->size == 72 ?
-             (type->map[1] != 0 && type->map[1] != 0x80) : type->map[1] != 0xc0))) :
+             (type->map[1] != 0 && type->map[1] != 0x80) : (type->map[1] != 0xc0 && (type->size != 80 || type->map[1] != 0x80))))) :
             (type->size != 72 || type->np != 2 || type->map[1] != 0x80)))
 			error(exBounds);
 	}

@@ -2,7 +2,7 @@
 
 The private `-64l` file trial executes the real fixed `Sys->werrstr(string): int`
 entry through `LOAD $Sys`, MFRAME and MCALL. The same fixed String-to-Word
-group now admits `chdir` and `remove`, and can mix them with `millisec`, `sleep` and `dup`, with up to ten distinct imports including `fildes` and `iounit`. This connects serialized String
+group now admits `chdir` and `remove`, and can mix them with `millisec`, `sleep` and `dup`, with up to twelve distinct imports including `fildes` and `iounit`. This connects serialized String
 storage to a builtin native frame and a Word result. It remains an explicit
 trial; ordinary `-64`, variadic print, other builtin signatures and Android AWM
 are not enabled. [Русская версия](dis64-sys-string.ru.md).
@@ -177,7 +177,7 @@ reused. See [module loading](dis64-module-loading.md) for why LOAD never calls i
 
 ## Mixing fixed String and numeric calls
 
-One caller can import all ten methods through the same `$Sys` module and linker.
+One caller can import all twelve methods through the same `$Sys` module and linker.
 No method-specific module loader or automatic `init` call is introduced.
 
 | Methods | Arguments | Native frame | Pointer map |
@@ -290,7 +290,7 @@ init()
 This duplicates the emulator's existing descriptors. Dropping the last local
 alias clears the FD root and closes the duplicate; retirement also releases it.
 The bounded producer retains one current FD identity, with aliases of that
-identity. Reading an older alias after a later `fildes` replaces it is refused;
+identity. Reading an older alias after a later `fildes`, `open` or `create` replaces it is refused;
 multiple independent live FDs and general ADT field access remain pending.
 Conditional pointer assignments retain the earlier conservative restrictions.
 Numeric inputs may be precomputed in Word locals. Returns from `fildes` inside
@@ -310,3 +310,52 @@ an old owner). `iounit(nil)` raises the existing native descriptor exception in
 the complete emulator; its wrapper now reacquires the VM before rethrowing.
 The exceptional result remains unpublished and owned descriptors still close.
 These two fixed FD signatures do not enable general file I/O or full AWM startup.
+
+
+## Opening and creating files
+
+The same managed-result path admits `open(string, int): ref FD` and
+`create(string, int, int): ref FD`. Both generated callee frames are 80 bytes
+with map `00 80`: the path is rooted at native offset 64, mode occupies 72,
+and create permissions occupy 76. The caller keeps its String at FP64 and
+its FD result at FP96; these are distinct from Word locals and FP104.
+
+Save as `sys-open.b` and use the commands above with `sys-open`:
+
+```limbo
+implement SysOpen;
+include "sys.m";
+SysOpen: module { init: fn(); };
+init()
+{
+    sys := load Sys Sys->PATH;
+    fd := sys->create("/open-example.txt", Sys->OWRITE, 8r600);
+    unit := sys->iounit(fd);
+    fd = nil;
+    fd = sys->open("/open-example.txt", Sys->OREAD);
+    unit = sys->iounit(fd);
+    fd = nil;
+    status := sys->remove("/open-example.txt");
+}
+```
+
+Run it in a writable emulator root with that example path available for use.
+The file is created, closed, reopened, closed and removed. A failed open/create
+returns nil; as with the previous example, this bounded snippet assumes those
+operations succeed before calling `iounit`.
+
+String conversion happens while the VM is held, before `release`. The existing
+C wrappers retain their owner-replacement behavior: they clear the result and
+release its old FD before attempting the new operation. If native opening fails,
+the result stays nil. If `mkfd` fails after a successful native operation, its
+real cleanup closes the new descriptor; the old descriptor is already released.
+Neither failure publishes a half-constructed FD. The same current-FD/alias bounds
+apply to all three creators.
+
+Create permissions are a 32-bit Limbo bitmask. They are passed through `UWORD`
+to the native `ulong` parameter so `DMDIR` retains its bit pattern without sign
+extension on LP64. The gate covers this high-bit case, and a deliberate removal
+of that conversion must fail the native argument predicate. It also checks both
+scalar offsets independently, Unicode conversion failure, replacement success
+and failure, nil paths, loops, aliases, reloads and all twelve import identities.
+Full array-based read/write and general shell/AWM admission remain pending.
