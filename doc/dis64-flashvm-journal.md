@@ -10207,3 +10207,68 @@ client correlation/replay policy и два реальных DisVM peers оста
 gate. Из реализации можно переиспользовать staged alias refs/rollback и terminal
 owner cleanup, но frame/result geometry должна выводиться из ваших generated
 headers и owning schema. Чужой inferno journal не менялся.
+
+## FLASHVM-0176 — GC/ALT lock inversion after typed owner acceptance
+
+2026-11-13. Follow-up to FLASHVM-0175. FlashVM master:
+`6aedab6a1eb0157f15a08ff925284c399d0a3143`, tree
+`e2e1de151a18343be1af9d547844ddaf1b8d4d73`, development v0.1696.
+Read both journals through FLASHVM-0175 / INFERNO-0163 at Inferno
+`213a60bcd7acde2a8041c9c14a6e8e64df3cb0ee` before this append.
+
+### Failure and native-only correction
+
+The fresh matrix for master 881e1d40, run 43434189260, exposed an intermittent
+AMD64 plain guest-proxy timeout; the other five jobs passed. The preceding local
+80/80 plain and 81/81 TSan results in FLASHVM-0175 remain actual runs, but did
+not expose this schedule. Optimized local repetition reproduced the hang in
+both C and JIT, including locked-poll: it was not a JIT-only defect.
+
+Private native thread backtraces showed the cycle: ALT capture held the channel
+queue mutex while acquiring cell stripes; concurrent Cycles graph discovery held
+cell stripes while waiting for the queue mutex in channel quietness observation.
+Guest alarms, cancellation dispatch and unrelated channel work then waited behind
+that queue. No larger timeout, serial reference executor or world-stop was added.
+
+The portable sync adapter now exposes a single nonblocking mutex attempt on
+Linux/Android/macOS/Windows. Collector channel observation returns -1 on queue
+contention, 0 for active and 1 for quiet. Discovery preserves busy and its rooted
+candidate for retry; final graph confirmation returns CELL_BUSY. It must not
+classify contention as permanent intrinsic liveness and drop the cycle candidate.
+All field reservations are released by the existing failed-confirmation path.
+Actual ownership withdrawal/close protocols keep their existing queue-locked
+transaction; this observation is neither a root nor a last-owner reservation.
+
+A private forced-contention acceptance owns the real queue mutex, starts another
+OS thread and checks immediate -1 plus real discovery busy propagation using
+clearly synthetic channel metadata. After unlock the same empty channel is quiet.
+The broken blocking control unwinds after a bounded five-second fixture wait and
+exits 86; a second control deletes busy after real discovery and is also rejected.
+These probes do not claim a synthetic record is a genuine managed root.
+
+### Deadline acceptance and results
+
+The old 10ms / 80ms sleep-based Unknown fixture also conflated admission with
+scheduling: under load its deadline could expire before offer. It now starts a
+real caller; callback publishes entry in the original Cell and waits on its gate.
+Only after observing Unknown does the parent release the gate. The subsequent
+owner read proves the original aliased effect occurs exactly once without replay.
+Healthy-work deadlines allow scheduling headroom; the production absolute
+offer/reply deadline and NotSent/Unknown meanings are unchanged.
+
+Final optimized full suite: 80/80. Final full ThreadSanitizer: 81/81.
+Final targeted TSan guest proxy/channel snapshot: 3/3. Twenty additional complete
+optimized guest-proxy replays passed, each covering C/JIT and both poll paths.
+The original session-fence omission control also remains detected. New matrix
+run 43439432556 has started for published master; it is not recorded as green
+before completion. ARM64 and RV64/QEMU results of the preceding run are real
+functional evidence, not physical RV64 ordering/performance acceptance.
+
+The managed root/typed channel owner scope of FLASHVM-0175 is unchanged. In
+particular this is still process-local typed owner execution, not two connected
+DisVM network peers, distributed GC, response replay/cache, arbitrary closures,
+proxy-valued results or an authenticated DIS64 wire protocol. No shared IDs,
+vendor source bytes, Sys tuple layout or owning schema were changed. The useful
+cross-runtime lesson is the cell-to-queue / queue-to-cell lock-order audit and
+explicit transient retry, not adoption of private NC64 frame geometry. The
+Inferno-side journal remains untouched.
