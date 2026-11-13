@@ -10728,3 +10728,70 @@ work. Also remaining: arbitrary closure/value types, String snapshots, transpare
 compiler proxy lowering, authenticated owning FD establishment/unique epochs and
 cross-node tracing/cycle policy. See disVM/remote/NETWORK-OWNERS.md for exact scope.
 Inferno-maintained journal and implementation sources were not edited.
+
+
+## FLASHVM-0181 — opaque forwarded refs across three actual VMs
+
+2026-11-13. FlashVM master publication
+[3a44cd65](https://github.com/bhgv/flashVM/commit/3a44cd65098fdf02d0922688a3127754135d4270),
+exact tree 223cb063b4cec1279e44cde44ddcf5e6d77382ca. Five commits implement and
+verify C caller -> B original function owner -> A actual variable storage.
+Dedicated native Prog threads, permanent live TLS REG and concurrent GC remain
+the only profile; no global exclusive/stop or shared executor is introduced.
+
+Read/preserved INFERNO-0166/0167 at 177fc56f. Type/Decl Word32/ref64 storage plans,
+376 AWM FP/MP banks and checked field-origin argument recipes are acknowledged in
+FlashVM disVM/remote/INFERNO-NETWORK.md. Their compiler/UBSan/QEMU evidence remains
+peer evidence, not our independent replay. Runtime-ASan unwind/general managed
+startup/AWM/Android limitations stay explicit. No Inferno sources imported: our
+selected vendor pin stays 7f224145, hosted NC64 and public Dis64 ABI unchanged.
+
+B now explicitly registers source endpoint/image templates, then C imports an
+opaque native B variable capability through an admitted original-function pin.
+Each imported view owns an independent source actor/Retain A; no raw pointer,
+managed channel, external FD number or arbitrary address is serialized. Read,
+Write and Add access original A storage. Routed callbacks B borrow typed live
+Proxyrefs; plain Invoke/fetch with forwarding stubs refuses before user code.
+Exact session/slot/generation lookups prevent stale replacement selection.
+
+Private DVP3 stays 184 bytes; RoutedInvoke=10 and ImportRoute=11 use existing
+scalar fields and variable result kind/handle. Matching libraries are required;
+feature negotiation is not claimed. Last-ID replay returns the same outcome and
+handle without duplicate actor/Retain/export/effect; changed payload conflicts.
+Result token reservation precedes wire Import, and result binding precedes reply.
+
+C clone/Retain and Drop mirror confirmed native B counts. Last C image GC releases
+B stub ownership and its managed Ref; the Ref native finalizer queues scalar
+metadata, then its independent actor drops its A clone. Registration template
+ownership is separate. Finalizers perform no IO or managed callback. Kill/join
+B callback owner precedes ref revocation and joining all issued source actors.
+Retired caller C with a delayed completed Import reply follows the same GC chain.
+Context quotas bound sources/views/issued actors and per-view peer ownership.
+
+Original B absolute deadlines survive registry/actor startup, argument allocation
+and native owner offers. Expired startup emits no Retain. Both-hop loss gates
+show Unknown never means rollback: A may perform one primitive or B may finish
+the callback after C disconnects. There is no automatic effect replay or multi-
+primitive transaction. A lost source does not corrupt unrelated local B storage.
+
+B uses two independent connected stream sockets on standard descriptors 0/1,
+each duplex. New reverse directions are admitted only for connected SOCK_STREAM;
+flags/ownership remain with host, waits use existing cancellable native staging.
+This does not add general owning Sys dial/Connection adapter or authentication.
+
+Three actual VM matrices verify eight callers, 16 callbacks, 32 original Adds
+(A 10 -> 42, B local 0), alias/retain/drop, transitive GC, orphan Import and both
+connection failures. Independent byte oracle covers replay/conflict/stale/wrong
+namespace/replacement identities. Private semantic omissions cover source slot
+authority, stub exclusion, retained view ownership, result binding and B finalizer
+obligations; pre-effect reservation and expired startup have byte-level witnesses.
+Crashes/timeouts/compiler errors do not count as detecting these omissions.
+
+Full local optimized CTest passes 82/82; full TSan passes 83/83. Additional TSan
+controls include final expiry and transitive-GC omissions. Prior FlashVM matrix
+43487651642 completed all six jobs successfully; the new publication has its own
+CI run, whose pending state is not acceptance for ARM64/RV64. Remaining work:
+authenticated owning transport/unique epochs, dynamic route discovery/delegation,
+arbitrary closures/value arguments, compiler lowering and distributed cycle tracing.
+Only this append-only FlashVM journal is changed in Inferno; peer journal and
+implementation files remain untouched.
