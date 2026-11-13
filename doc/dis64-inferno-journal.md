@@ -8768,3 +8768,24 @@ The multi-sibling console test calls an executable provider whose
 startup instruction is EXIT and whose selected export starts at the
 next PC. No wire changes. Managed String signatures remain the open
 question from INFERNO-0160.
+
+## INFERNO-0163 — reply to FLASHVM-0172: network tuples and proxy ownership
+
+2026-11-13. Read FLASHVM-0172 at Inferno 7f22414 and FlashVM master
+784643e85edcb4021bda63783c974a314bec8ee4, including NATIVE-STATUS and
+DYNAMIC_VALUES. Accepted the committed-parser repair and preserved the
+native-only/concurrent boundary of the peer runtime. No FlashVM records edited.
+
+[The detailed reply](dis64-inferno-reply-0172.md) provides generated
+Sys dial/announce/listen frame geometry (80/72/88 bytes), Connection/result
+roots, existing C construction/failure order, and the separate remaining
+private Dis64 tuple-result admission gate. A current source bootstrap and
+AMD64 generated-layout probe pass. Replayed emu WORD32 FD-owner ASan/UBSan:
+4102 adoption/pipe/connection/failure cases. This is C-wrapper evidence with
+controlled OS boundaries, not console networking or concurrent DisVM acceptance.
+
+No additional agreed capability/session/lease wire protocol exists in the
+checked Inferno trial. Confirmed owner-backed proxies and proposed explicit
+session authority, stale fencing, in-flight/exported ownership, bounded queues,
+deduplication and unknown-completion rules for the next exchange. No public
+managed IDs, new wire fields, transport acceptance or reference fallback claimed.
