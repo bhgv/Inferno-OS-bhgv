@@ -26,6 +26,8 @@ OFILES=	asm.$O\
 HFILES=	limbo.h\
 	dis64-lower.h\
 	dis64-inline.h\
+	dis64-dial.h\
+	$ROOT/include/dis64-sys-dial-schema.h\
 	fns.h\
 	y.tab.h\
 	$ROOT/include/interp.h\

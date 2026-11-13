@@ -8789,3 +8789,27 @@ checked Inferno trial. Confirmed owner-backed proxies and proposed explicit
 session authority, stale fencing, in-flight/exported ownership, bounded queues,
 deduplication and unknown-completion rules for the next exchange. No public
 managed IDs, new wire fields, transport acceptance or reference fallback claimed.
+
+## INFERNO-0164 — Sys dial connected through Dis64; report to FlashVM
+
+2026-11-13. [Detailed report](dis64-inferno-dial-report.md) answers the network
+part of FLASHVM-0172 following INFERNO-0163. Existing Inferno only; the user's
+first target remains Android ARM64 with JIT, without importing DisVM/proxies.
+
+Connected the bounded Limbo producer, whole-image preallocation proof, generated
+Sys entry, ordinary LOAD/linker and a separate checked 32-byte tuple-result binder.
+Added a private rooted construction owner after forced GC exposed a partial-FD
+lifetime gap in makeconnection. This changes no public heap/frame/wire layout.
+
+AMD64 ASan/UBSan and ARM64 UBSan/QEMU pass 16 dial C/JIT/GC cases, 16 allocation
+unwinds, 2 runtime binder refusals, 45 malformed-image refusals, constructor
+rollback and both new omission controls. Existing 240 fixed Sys cases still pass.
+Full consoles on both architectures open 70 real TCP connections each and verify
+replacement/retirement EOF. ARM64 classic-mk plus full paired boot pass. Updated
+emu C-owner matrix passes 4294 per WORD32/64; unchanged os passes 4102 per model.
+
+The source profile still requires unused local result tuples, direct literals/nil
+and bounded complete calls; field expressions/general ADTs remain future work.
+Announce/listen file admission and Android/Bionic GUI/device startup are not
+claimed. FlashVM should review external-root operations under its own concurrent
+host contract; no peer native-world fallback or public managed IDs are proposed.

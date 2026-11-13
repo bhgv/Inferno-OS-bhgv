@@ -160,7 +160,7 @@ native64bindresult(int managed)
 	if(!vmfetch(&fetched) || fetched.op != ILEA)
 		return 0;
 	memmove(&step, (uchar*)fetched.module+O(Module, cstep), sizeof(step));
-	if(step != (managed == 2 ? native64stringlea8step : managed ? native64managedlea8step : native64lea8step))
+	if(step != (managed == 3 ? native64diallea8step : managed == 2 ? native64stringlea8step : managed ? native64managedlea8step : native64lea8step))
 		return 0;
 	memmove(&instruction, fetched.pc, sizeof(instruction));
 	if(sizeof(void*) != 8 || instruction.add != (SRC(AFP)|DST(AFP|AIND)) ||
@@ -182,6 +182,9 @@ native64bindresult(int managed)
 		error(exBounds);
 	memmove(&size, (uchar*)type+O(Type, size), sizeof(size));
 	memmove(&mapbytes, (uchar*)type+O(Type, np), sizeof(mapbytes));
+    if(managed==3){
+        if(size!=112 || mapbytes!=2 || base>(uintptr)-1-112 || type->map[0]!=0 || type->map[1]!=0xdc || instruction.s.ind!=80 || instruction.d.i.f!=40)error(exBounds);
+    }else{
 	if(size < 72 || (size&7) != 0 || mapbytes < 0 ||
 	   mapbytes > size/64+(size%64 != 0) ||
 	   (uintptr)type > (uintptr)-1-O(Type, map)-(uintptr)mapbytes ||
@@ -207,6 +210,7 @@ native64bindresult(int managed)
 		if(map != (managed == 1 && i == resultbyte ? resultbit : 0))
 			error(exBounds);
 	}
+    }
 	/* The checked sequence prepares exactly one frame at the top of the stack. */
 	active = (Stkext*)R.EX;
 	top = (uintptr)R.SP;
@@ -235,7 +239,7 @@ native64bindresult(int managed)
 			if(previous != H) error(exBounds);
 		}
 		/* Managed results use a mapped argument; fixed Sys also admits scalar-only frames. */
-		if(managed == 2 ? (top-target != 64 && top-target != 72 && top-target != 80 && top-target != 88) : top-target != 72)
+		if(managed == 3 ? top-target!=80 : managed == 2 ? (top-target != 64 && top-target != 72 && top-target != 80 && top-target != 88) : top-target != 72)
 			error(exBounds);
 		memmove(&entered, (uchar*)pending+O(Frame, mr), sizeof(entered));
 		memmove(&type, (uchar*)pending+O(Frame, t), sizeof(type));
@@ -246,7 +250,7 @@ native64bindresult(int managed)
 		if(type == nil || type == H || (uintptr)type%sizeof(void*) != 0 ||
 		   (uintptr)type > (uintptr)-1-O(Type, map)-2 ||
 		   type->size != (int)(top-target) || type->map[0] != 0 ||
-           (managed == 2 ? (type->size == 64 ? type->np != 1 :
+           (managed == 3 ? (type->size!=80 || type->np!=2 || type->map[1]!=0xc0) : managed == 2 ? (type->size == 64 ? type->np != 1 :
             (type->np != 2 || (type->size == 72 ?
              (type->map[1] != 0 && type->map[1] != 0x80) : (type->map[1] != 0xc0 && (type->size != 80 || type->map[1] != 0x80))))) :
             (type->size != 72 || type->np != 2 || type->map[1] != 0x80)))
@@ -257,6 +261,12 @@ native64bindresult(int managed)
 		error(exBounds);
 	memmove(destination, &address, sizeof(address));
 	return 1;
+}
+
+int
+native64diallea8step(void)
+{
+    return native64bindresult(3);
 }
 
 int
@@ -3327,7 +3337,7 @@ OP(iload)
 		}
 	}
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
-	else if((m->cstep == native64lea8step || m->cstep == native64stringlea8step) && strcmp(n, "$Sys") == 0){
+	else if((m->cstep == native64lea8step || m->cstep == native64stringlea8step || m->cstep == native64diallea8step) && strcmp(n, "$Sys") == 0){
 		const Link *entry;
 		Module *sys;
 		Import *requested;

@@ -14,15 +14,20 @@ def unit():
     old=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-groups-gc.py'))
     extract=runpy.run_path(str(ROOT/'libinterp/tests/dis64-runtime.py'))['function']
     source=old['unit']().replace('int\nmain(void)','int\ngroupbasemain(void)',1)
+    source=source.replace('int\nkclose(int fd)', 'int\nbasekclose(int fd)',1)
     source=source.replace('long\nkread(int fd, void *buffer, long bytes)', 'long\nbasekread(int fd, void *buffer, long bytes)',1)
     source=source.replace('int\nkopen(char *path, int mode)', 'int\nbasekopen(char *path, int mode)',1)
     marker='&limbo_native64_Sys_remove_entry};'
-    source=source.replace(marker,'&limbo_native64_Sys_remove_entry,&limbo_native64_Sys_millisec_entry,&limbo_native64_Sys_sleep_entry,&limbo_native64_Sys_dup_entry,&limbo_native64_Sys_unmount_entry,&limbo_native64_Sys_bind_entry,&limbo_native64_Sys_fildes_entry,&limbo_native64_Sys_iounit_entry,&limbo_native64_Sys_open_entry,&limbo_native64_Sys_create_entry,&limbo_native64_Sys_read_entry,&limbo_native64_Sys_write_entry};',1)
-    source=source.replace('module->type=mallocz(3*sizeof(Type*),1);module->ext=mallocz(4*sizeof(Link),1);','module->type=mallocz(14*sizeof(Type*),1);module->ext=mallocz(15*sizeof(Link),1);').replace('for(i=0;i<3;i++){\n        entry=native64sysio[i];','for(i=0;i<14;i++){\n        entry=native64sysio[i];',1)
+    source=source.replace(marker,'&limbo_native64_Sys_remove_entry,&limbo_native64_Sys_millisec_entry,&limbo_native64_Sys_sleep_entry,&limbo_native64_Sys_dup_entry,&limbo_native64_Sys_unmount_entry,&limbo_native64_Sys_bind_entry,&limbo_native64_Sys_fildes_entry,&limbo_native64_Sys_iounit_entry,&limbo_native64_Sys_open_entry,&limbo_native64_Sys_create_entry,&limbo_native64_Sys_read_entry,&limbo_native64_Sys_write_entry,&limbo_native64_Sys_dial_entry};',1)
+    source=source.replace('module->type=mallocz(3*sizeof(Type*),1);module->ext=mallocz(4*sizeof(Link),1);','module->type=mallocz(15*sizeof(Type*),1);module->ext=mallocz(16*sizeof(Link),1);').replace('for(i=0;i<3;i++){\n        entry=native64sysio[i];','for(i=0;i<15;i++){\n        entry=native64sysio[i];',1)
     source=source.replace('static void\ngrouprelease(void)\n{','static void\ngroupstringrelease(void)\n{',1)
     port=(ROOT/'emu/port/inferno.c').read_text()
     support='typedef struct FD FD;struct FD {Sys_FD fd;Fgrp *grp;};Type *TFD;static int fdclosing;\nint kiounit(int);\nint kunmount(char*,char*);int kbind(char*,char*,int);\nchar Ebadarg[]="bad argument";\n'+'\n'.join(extract(port,signature) for signature in ('static int\nsysnativeint(','void\nSys_millisec(','void\nSys_dup(','void\nSys_sleep(','void\nSys_unmount(','void\nSys_bind(','static void*\nsysresultowner(','static int\nsysiofd(','void\nfreeFD(','Sys_FD*\nmkfd(','void\nSys_fildes(','void\nSys_iounit(','void\nSys_open(','void\nSys_create(','static int\nsysiocount(','static void\nsysioframe(','void\nSys_read(','void\nSys_write('))
     support=extract((ROOT/'libinterp/heap.c').read_text(),'Heap*\nheap(')+'\n'+support
+    start=port.index('typedef struct FDResult FDResult;');end=port.index('/* Mark a descriptor',start)
+    support+='\nint kdial(char*,char*,char*,int*);int kclose(int);\n'+port[start:end]
+    support+='\n'+'\n'.join(extract(port,sig) for sig in ('static Sys_FD*\ntakefd(', 'static void\nfreefdresult(', 'static uchar*\nconnectionresultslot(', 'static void\nclearconnection(', 'static void\nsysfdresultowners(', 'static void\nmakeconnection(', 'void\nSys_dial('))
+
     support=support.replace('handle = H2D(FD*, h);\n\n\trelease();','handle = H2D(FD*, h);\n\tfdclosing++;\n\trelease();').replace('closefgrp(handle->grp);\n\tacquire();','closefgrp(handle->grp);\n\tacquire();\n\tfdclosing--;')
     source=source.replace('void\nSys_werrstr(',support+'\nvoid\nSys_werrstr(',1)
     strings=(ROOT/'libinterp/string.c').read_text();heap=(ROOT/'libinterp/heap.c').read_text();xec=(ROOT/'libinterp/xec.c').read_text()
@@ -33,7 +38,7 @@ def unit():
     arrays+='\n'+'\n'.join(extract(strings,signature) for signature in ('OP(cvtca)','OP(cvtac)'))
     source+='\n'+arrays
 
-    return source+'\n'+(ROOT/'utils/tests/dis64-sys-fixed-gc.c').read_text()
+    return source+'\n'+(ROOT/'utils/tests/dis64-sys-fixed-gc.c').read_text()+'\n'+(ROOT/'utils/tests/dis64-sys-dial-gc.c').read_text()
 
 
 def main():
@@ -64,6 +69,16 @@ def main():
         output.append('static const struct {const uchar *image;unsigned int bytes;} sysfixed_bad[]={')
         for i in range(len(bad)):output.append('{fixed_bad'+str(i)+',sizeof(fixed_bad'+str(i)+')},')
         output.append('};');(work/'sys-fixed-images.h').write_text('\n'.join(output)+'\n')
+        dial=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-dial.py'));dialrows=dial['rows'](args.limbo,work);dial['compiler_refusals'](args.limbo,work)
+        output=['typedef struct DialEvent {const char *address,*local;} DialEvent;','typedef struct DialCase {const uchar *image;unsigned int bytes,calls;DialEvent events[32];} DialCase;']
+        for i,(image,values) in enumerate(dialrows):output.append('static const uchar dial_image'+str(i)+'[]={'+','.join(map(str,image))+'};')
+        output.append('static const DialCase dial_cases[]={')
+        import json
+        for i,(image,values) in enumerate(dialrows):output.append('{dial_image'+str(i)+',sizeof(dial_image'+str(i)+'),'+str(len(values))+',{'+','.join('{'+json.dumps(a,ensure_ascii=False)+','+json.dumps(b,ensure_ascii=False)+'}' for a,b in values)+'}},')
+        output.append('};');dialbad=list(dial['refusals'](dialrows[0][0]))
+        for i,image in enumerate(dialbad):output.append('static const uchar dial_bad'+str(i)+'[]={'+','.join(map(str,image))+'};')
+        output.append('static const struct {const uchar *image;unsigned int bytes;} dial_bad[]={'+','.join('{dial_bad'+str(i)+',sizeof(dial_bad'+str(i)+')}' for i in range(len(dialbad)))+'};')
+        (work/'sys-dial-images.h').write_text('\n'.join(output)+'\n')
         source=unit();(work/'test.c').write_text(source)
         common=command+['-I'+str(work),str(ROOT/'libinterp/dec.c'),str(ROOT/'lib9/rune.c'),'-Wl,--wrap=free','-lm']
         runner=shlex.split(os.environ.get('NATIVE64_RUNNER',''))
@@ -129,6 +144,17 @@ def main():
 
 
 
+
+        (override/'dis64-pilot.h').write_text(pilot)
+        (override/'dis64-sys-string.h').write_text(header)
+        dialheader=(ROOT/'include/dis64-sys-dial.h').read_text()
+        for label,marker,replacement in (('tuple roots','frame.map[1]!=0xdc','0'),('tuple result address','in.source!=80','0')):
+            if dialheader.count(marker)!=1:raise RuntimeError('dial control marker drift: '+label)
+            (override/'dis64-sys-dial.h').write_text(dialheader.replace(marker,replacement))
+            subprocess.run(common[:1]+['-I'+str(override)]+common[1:]+[str(work/'test.c'),'-o',str(work/'dial-control')],check=True)
+            result=subprocess.run(runner+[str(work/'dial-control')],capture_output=True,text=True,timeout=90)
+            if result.returncode!=24 or result.stderr.strip()!='Sys dial admission predicate':raise RuntimeError('dial control missed predicate '+label+': '+result.stdout+result.stderr)
+            print('PASS active Sys dial '+label+' removal control',flush=True)
 
 
 if __name__=='__main__':main()

@@ -17,6 +17,7 @@ def unit():
     support='''
 #define DIS_NATIVE64_BOOT_SYS_IO 1
 #include "dis64-sys-string.h"
+#include "dis64-sys-dial.h"
 #include "native64-model.h"
 #define LIMBO_NATIVE64_TABLES
 #include "sys-native64.h"

@@ -1270,7 +1270,7 @@ schedpairseed(SchedModule *c)
 	Inst *first;
 
 	/* A void Sys String caller supplies every argument from its own mapped MP. */
-	if(c->m->cstep == native64stringlea8step) return;
+	if(c->m->cstep == native64stringlea8step || c->m->cstep == native64diallea8step) return;
 	first = c->m->prog;
 	if(c->m->nprog < 2)
 		error(exModule);

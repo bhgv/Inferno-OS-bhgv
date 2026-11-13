@@ -467,3 +467,6 @@ A slice used for `write` retains its backing array through release-time GC.
 Full-console examples cover prefix reads, middle/suffix slices, repeated slices,
 empty buffers and UTF-8 data in both C and JIT-requested execution. This adds no
 wire fields or opcode IDs and does not enable arbitrary array element types.
+
+
+[Separate bounded Sys dial tuple trial](dis64-sys-dial.md).

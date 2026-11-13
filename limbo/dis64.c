@@ -6,6 +6,7 @@
 #include "dis64-managed-trial.h"
 #include "dis64-bound-call.h"
 #include "dis64-sys-string-flow.h"
+#include "dis64-sys-dial-schema.h"
 
 #define ScalarOutputLimit (8U*1024U*1024U) // Match the complete-image admission bound.
 
@@ -1446,10 +1447,13 @@ dis64sysstringemit(Dis64ManagedCompilePlan *plan, long legacycount, uchar *code,
     return 1;
 }
 
+#include "dis64-dial.h"
+
 void
 dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes)
 {
 	static const uchar arraymaps[][2]={{0,0x83},{0,0x8b},{0,0xc3},{0,0xcb}}, bytemap[]={0};
+    static const uchar dialmap[]={0,0xdc};
     static const uchar fdmap[] = {0,0x88}, fdpairmap[] = {0,0xc8};
 	static const uchar map[] = {0, 0x80}, callermap[] = {0, 0xc0}, mpmap[] = {0x80}, loadmap[] = {0xe0};
 	static const uchar load[] = {ILOAD,SRC(AMP)|AXIMM|DST(AMP),0,16,0};
@@ -1477,7 +1481,9 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
      * complete provider proof over the compiler's optional bootstrap entry hint. */
     if(ldts == nil && dis64managedlibraryshape(globals, input, count, databytes, &plan))
         consumer = fileload = 0;
-	else if(fileload && dis64managedcallershape(entry, globals, ldts, input, count, databytes, &plan, 1))
+	else if(fileload && dis64dialshape(entry,globals,ldts,input,count,databytes,&plan))
+        builtin=2;
+    else if(fileload && dis64managedcallershape(entry, globals, ldts, input, count, databytes, &plan, 1))
 		builtin = 1;
 	else{
 		memset(&plan,0,sizeof(plan));
@@ -1493,7 +1499,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		if(!dis64libraryname(plan.symbols[i], symbols[i], &names[consumer && i ? 3+i : 1+i])) { error(impdecl->src.start,"Dis64 managed file: unsupported export name"); return; }
 	if(consumer){
 		module.name = 2; module.profile = 1; module.databytes = fileload ? 24 : plan.calls == 1 && plan.transfers[0] != 2 ? 8 : 16; module.datatype = 1;
-		types[0] = (Dis64Type){plan.arrayroots ? 128 : builtin && plan.wordflow ? 112 : 80, 8, plan.arrayroots ? arraymaps[2*plan.pairroots+!!plan.fdroots] : plan.fdroots ? (plan.pairroots ? fdpairmap : fdmap) : builtin && !plan.pairroots ? map : callermap, 2};
+		types[0] = (Dis64Type){builtin==2 ? 112 : plan.arrayroots ? 128 : builtin && plan.wordflow ? 112 : 80, 8, builtin==2 ? dialmap : plan.arrayroots ? arraymaps[2*plan.pairroots+!!plan.fdroots] : plan.fdroots ? (plan.pairroots ? fdpairmap : fdmap) : builtin && !plan.pairroots ? map : callermap, 2};
 		if(plan.calls != 1 || plan.transfers[0] == 2) types[1] = (Dis64Type){16, 8, callermap+1, 1};
 		if(fileload) types[1] = (Dis64Type){24, 8, loadmap, 1};
 		if(plan.nliterals != 0) {
@@ -1515,7 +1521,9 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		}
 		if(plan.bindings == 2) poolcount = 5;
 		if(plan.nliterals != 0) poolcount = 3+plan.bindings+plan.nliterals;
-        if(builtin && plan.wordflow){
+        if(builtin==2){
+            if(!dis64dialemit(&plan,caller,&at)){error(impdecl->src.start,"Dis64 dial: cannot encode caller");return;}
+        }else if(builtin && plan.wordflow){
             if(!dis64sysstringemit(&plan,count,caller,&at)){
                 error(impdecl->src.start,"Dis64 Sys String: unsupported scalar flow boundary"); return;
             }
@@ -1558,7 +1566,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		dis64put32(binding+header-4, builtin ? 12+4*dis64sysfixedargs(plan.nativekind[i]) : 20);
 		dis64put32(binding+header, Dis64TrialVersion); dis64put32(binding+header+4, 1);
 		if(builtin){
-            unsigned int signaturebytes=dis64sysfixedsignature(plan.nativekind[i],binding+header);
+            unsigned int signaturebytes=builtin==2 ? dis64sysdialsignature(binding+header) : dis64sysfixedsignature(plan.nativekind[i],binding+header);
             dis64put32(binding+header-4,signaturebytes);
             bindingbytes=header+signaturebytes;continue;
         }
@@ -1578,7 +1586,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	sections[2] = (Dis64Payload){Dis64Types, Dis64Required, typedata, sizes[2]};
 	sections[3] = (Dis64Payload){Dis64Strings, Dis64Required, pool, sizes[3]};
 	sections[4] = (Dis64Payload){consumer ? Dis64Imports : Dis64Exports, Dis64Required, binding, bindingbytes};
-	if(!dis64write(output, sizeof(output), nil, 0, sections, nelem(sections), &written) || Bwrite(bout, output, written) != written)
+    if(!dis64write(output, sizeof(output), nil, 0, sections, nelem(sections), &written) || Bwrite(bout, output, written) != written)
 		error(impdecl->src.start, "Dis64 managed trial: cannot write image");
 }
 

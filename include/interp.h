@@ -473,6 +473,7 @@ extern	Channel*	cnewcmapped(Modlink*, WORD, int);
 extern	int		cjitexec(REG*, int, int (*)(REG*));
 extern	int		native64lea8step(void); // Trusted Module.cstep binding; never selected from a file flag.
 extern	int		native64managedlea8step(void); // Trusted mapped, nil result cell binding.
+extern	int		native64diallea8step(void); // Exact String/String -> (Word, Connection) trial.
 extern	int		native64stringlea8step(void); // Mapped String argument with an unmapped Word result.
 
 

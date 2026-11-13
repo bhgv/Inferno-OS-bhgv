@@ -86,7 +86,7 @@ def buildunit(resultcalls=False):
     if not resultcalls:
         parts.extend(function(xec, signature) for signature in
                      ('static int\nnative64bindresult(', 'int\nnative64lea8step(',
-                      'int\nnative64managedlea8step(', 'int\nnative64stringlea8step('))
+                      'int\nnative64diallea8step(', 'int\nnative64managedlea8step(', 'int\nnative64stringlea8step('))
     loader = (ROOT/'libinterp/load64.c').read_text()
     # Non-executable storage leases have their own actual collector/ownership fixture.
     loader = loader[:loader.index('/* Native staging state is deliberately distinct')]

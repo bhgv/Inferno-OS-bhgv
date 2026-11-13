@@ -225,7 +225,13 @@ struct FDResult
 	int raw[2];
 	Sys_FD *handle[2];
 	String *directory;
+	Sys_Connection *stage;
+	int rooted;
 };
+
+/* Private construction owner: three native-width roots, never a wire type. */
+#define SYS_CONNECTION_STAGE 1
+static Type SysConnectionStage = {.ref=1,.free=freeheap,.mark=markheap,.size=sizeof(Sys_Connection),.np=1,.map={0xe0}};
 
 /* Mark a descriptor as transferred before mkfd can raise an allocation error. */
 static Sys_FD*
@@ -246,15 +252,21 @@ freefdresult(volatile FDResult *result)
 	int i;
 
 	memmove(saved, up->env->errstr, sizeof(saved));
+    /* ptradd can fail only before the empty stage acquires any children. */
+    if(result->stage != H && !result->rooted){destroy(result->stage);result->stage=H;}
 	for(i = 0; i < 2; i++){
 		if(result->raw[i] >= 0){
 			release();
 			kclose(result->raw[i]);
 			acquire();
 		}
-		destroy(result->handle[i]);
 	}
-	destroy(result->directory);
+    if(result->stage != H){
+        ptrdel(D2H(result->stage));destroy(result->stage);
+    }else{
+        for(i=0;i<2;i++)destroy(result->handle[i]);
+        destroy(result->directory);
+    }
 	memmove(up->env->errstr, saved, sizeof(saved));
 }
 
@@ -301,18 +313,27 @@ makeconnection(int datafd, int controlfd, char *directory, void *slot, const Sys
 	result.raw[1] = controlfd;
 	result.handle[0] = result.handle[1] = H;
 	result.directory = H;
+	result.stage = H;result.rooted=0;
 	if(waserror()){
 		freefdresult(&result);
 		nexterror();
 	}
+    result.stage=H2D(Sys_Connection*,heap(&SysConnectionStage));
+    result.stage->dfd=result.stage->cfd=H;result.stage->dir=H;
+    ptradd(D2H(result.stage));result.rooted=1;
 	result.handle[0] = takefd(&result.raw[0]);
+    result.stage->dfd=result.handle[0];Setmark(D2H(result.stage));
 	result.handle[1] = takefd(&result.raw[1]);
+    result.stage->cfd=result.handle[1];Setmark(D2H(result.stage));
 	result.directory = c2string(directory, strlen(directory));
+    result.stage->dir=result.directory;Setmark(D2H(result.stage));
 	poperror();
 	replacement.dfd = result.handle[0];
 	replacement.cfd = result.handle[1];
 	replacement.dir = result.directory;
 	memmove(slot, &replacement, sizeof(replacement));
+    result.stage->dfd=result.stage->cfd=H;result.stage->dir=H;
+    ptrdel(D2H(result.stage));destroy(result.stage);
 	destroy(old.dfd);
 	destroy(old.cfd);
 	destroy(old.dir);
@@ -562,6 +583,7 @@ Sys_pipe(void *fp)
 	result.raw[1] = fd[1];
 	result.handle[0] = result.handle[1] = H;
 	result.directory = H;
+	result.stage = H;result.rooted=0;
 	if(waserror()){
 		freefdresult(&result);
 		nexterror();
