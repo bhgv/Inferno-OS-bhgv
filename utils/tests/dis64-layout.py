@@ -71,11 +71,34 @@ def main():
     with tempfile.TemporaryDirectory(prefix='typed-layout-', dir=ROOT) as temp:
         work = Path(temp)
         binary = work/'layout'
+        native = (ROOT/'limbo/native64.c').read_text()
+        start = native.index('static int\nnative64sourcelayout(')
+        opening = native.index('{', start)
+        end, depth = opening+1, 1
+        while depth:
+            depth += (native[end]=='{')-(native[end]=='}')
+            end += 1
+        structure = native[native.index('typedef struct Native64SourceLayout'):start]
+        wrapper = work/'bank.c'
+        wrapper.write_text('#include "limbo.h"\n#include "dis64-layout.h"\n#include <assert.h>\n'+structure+native[start:end]+r'''
+int layoutbanktest(void)
+{
+    Native64SourceLayout bank={0};
+    Type good={0},bad={0}; Decl a={0},b={0}; Desc desc={0}; uchar map[]={0x80};
+    good.kind=Tstring; good.size=4; bad.kind=Tfn; bad.size=4;
+    a.store=b.store=Dglobal; a.ty=&good; b.ty=&bad; a.next=&b; b.offset=4;
+    desc.size=8; desc.nmap=1; desc.map=map;
+    assert(!native64sourcelayout(&desc,&a,nil,0,&bank));
+    assert(bank.typed.leaves==nil && bank.typed.reason==nil && bank.typed.count==0);
+    assert(bank.offsets==nil && bank.map==nil && bank.bytes==0);
+    return 1;
+}
+''')
         cc = shlex.split(env.get('CC', 'cc'))
         flags = shlex.split(env.get('NATIVE64_CFLAGS', '-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
         build = cc+flags+['-Dfree=layouttestfree', '-ffunction-sections', '-fdata-sections', '-I'+str(ROOT/'Linux/386/include'),
                      '-I'+str(ROOT/'include'), '-I'+str(ROOT/'limbo'),
-                     ROOT/'limbo/dis64-layout.c', ROOT/'utils/tests/dis64-layout.c',
+                     ROOT/'limbo/dis64-layout.c', ROOT/'utils/tests/dis64-layout.c', wrapper,
                      '-Wl,--gc-sections', '-o', binary]
         runner = shlex.split(env.get('NATIVE64_RUNNER', ''))
         run(build, cwd=ROOT, env=env)

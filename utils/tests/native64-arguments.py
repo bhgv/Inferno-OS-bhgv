@@ -18,10 +18,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--limbo', type=Path, required=True)
     parser.add_argument('--formatter', action='store_true', help='Also exercise the actual shared formatter with typed slots and real lib9')
+    parser.add_argument('--omission', action='append', help='Run only this named formatter omission (repeatable); default: all; positive and ownership tests always run')
     parser.add_argument('--android-ndk', type=Path, help='build typed formatter fixtures against ARM64 Bionic with NDK clang')
     args = parser.parse_args()
     if args.android_ndk and not args.formatter:
         parser.error('--android-ndk currently requires --formatter')
+    if args.omission and not args.formatter:
+        parser.error('--omission requires --formatter')
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     support = runpy.run_path(str(ROOT/'utils/tests/native64-result.py'))
     function = support['function']
@@ -71,6 +74,7 @@ def main():
                 source += (ROOT/'utils/tests/native64-arguments.c').read_text()
                 extra = []
                 if args.formatter:
+                    known_omissions=set()
                     runtime = (ROOT/'libinterp/runt.c').read_text()
                     a = runtime.index('typedef struct XprintString')
                     b = runtime.index('/* Validate borrowed string', a)
@@ -132,7 +136,11 @@ def main():
                             ('fp-value', '@unit', 'number = (WORD)cell->low; // Proved FP input.', 'number = 0; // Deliberately ignore the compiled FP assignment.'),
                             ('fp-width', '@unit', 'case IMOVL: movl(); break; // Execute the actual full-width FP definition.', 'case IMOVL: movw(); break; // Deliberately truncate the local big definition.'),
                             ('fp-current-mp', '@unit', 'R.s = (uchar*)input.value+bases[1]+cell->setupoffset; // Actual MP input at defining PC.', 'R.s = &text; // Deliberately substitute the old String seed.'),
-                            ('fp-order', '@unit', 'index = bank->order[i]; // Compiler-defined preparation order.', 'index = bank->order[bank->steps-1-i]; // Deliberately reverse preparation.')):
+                            ('fp-order', '@unit', 'index = bank->order[i]; // Compiler-defined preparation order.', 'index = bank->order[bank->steps-1-i]; // Deliberately reverse preparation.'),
+                            ('typed-field-origin', '@unit', 'origin=(uchar*)owner.value+bases[cell->space]+cell->offset; // Typed ADT field origin.', 'origin=(uchar*)owner.value+bases[cell->space]+store->source; // Deliberately reuse the legacy ADT field offset.')):
+                        known_omissions.add(name)
+                        if args.omission and name not in args.omission:
+                            continue
                         adapter = source if header == '@unit' else (ROOT/('include/'+header)).read_text()
                         if adapter.count(boundary) != 1:
                             raise RuntimeError('Typed format control boundary changed: '+name)
@@ -157,6 +165,8 @@ def main():
                         if result.returncode != -signal.SIGABRT or 'GC root predicate failed' not in result.stderr:
                             raise RuntimeError('Typed format control did not reach its predicate: '+name+'\n'+result.stdout+result.stderr)
                         print('PASS typed formatter removal control:', name, port, label, flush=True)
+                    if args.omission and set(args.omission)-known_omissions:
+                        parser.error('Unknown omission: '+', '.join(sorted(set(args.omission)-known_omissions)))
                 print('PASS managed argument contexts:', port, label, flush=True)
 
 

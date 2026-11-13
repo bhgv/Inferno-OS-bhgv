@@ -19,6 +19,7 @@ typedef struct Outer Outer;
 struct Outer { Oracle inner; void *array; int count; };
 typedef struct OracleFrame OracleFrame;
 struct OracleFrame { uchar prefix[64]; int a; void *s; Outer local; };
+extern int layoutbanktest(void);
 
 int main(void)
 {
@@ -122,6 +123,7 @@ int main(void)
 		assert(!dis64layouttype(deep,&p)); dis64layoutfree(&p);
 	}
 	assert(p.leaves==nil && p.count==0 && p.reason==nil);
+	assert(layoutbanktest());
 	assert(allocations==0);
 	return 0;
 }

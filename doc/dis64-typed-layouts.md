@@ -105,3 +105,8 @@ The next integration is opcode-aware use of these relocations, caller/callee
 result binding, payload descriptors, initializer/table writers and general
 managed loader admission. Exceptions and variadic tails remain additional work.
 This milestone does not execute AWM or produce a working Android GUI APK.
+
+The first consumer now uses these layouts for FP/MP argument source origins,
+nested initializer fields and checked projections of direct aggregate copies.
+See [typed source lowering](dis64-typed-source-lowering.md) for VM-handler replay
+and the remaining general-image integration.

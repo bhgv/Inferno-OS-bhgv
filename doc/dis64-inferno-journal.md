@@ -8865,3 +8865,31 @@ LIMBO_DIS64_LAYOUT=1. This provides general typed storage plans, not executable
 general managed lowering. Opcode/result/payload/initializer/table/loader work,
 exceptions and variadics still precede AWM. No new public IDs or Android GUI
 execution is claimed.
+
+## INFERNO-0167 — typed layouts now feed FP/MP argument execution
+
+2026-11-13. Base b1806799. Replaced the private Sys variadic producer's
+descriptor-only source widening with actual Type/Decl-driven FP/MP layouts and
+exact typed reads. Complete source maps/leaves now accompany the existing
+canonical argument stores. Unsupported partial banks retire before return.
+
+Added nested inline MP initializers, preserving Unicode/NUL and numeric bits,
+and checked field projections from direct MP-to-FP MOVMP. Original copy PCs,
+opcode/descriptor/source/destination remain independently verifiable. This is
+an argument recipe; full-copy owners/aliases and general managed image lowering
+remain work. Compiler AST/IR and existing serialized images are unchanged.
+
+AMD64 UBSan and ARM64 UBSan/QEMU pass emu/os and WORD32/WORD32-file matrices:
+768 real FRAME/MFRAME/MCALL/GC cases per combination, existing formatter/write/
+ownership/failure cases, plus three nested global/local/copied ADT source paths.
+Actual VM moves/conversions and generated C sizeof/offsetof prove field origins,
+canonical numbers, Unicode/NUL and source/gather/destination root ownership.
+The new field-origin omission and selected root/reference/current-MP controls
+fail semantically. Four copy-metadata corruptions fail the classic Dis oracle.
+
+Compiler ASan/UBSan and all 376 AWM layout plans pass; sixteen ordinary module
+outputs and 191 private managed/Sys image cases remain byte-identical. RU/EN
+example compiles with four checked projections. Runtime-ASan unwind evidence
+stays open. General managed/variadic startup and AWM/Android GUI still await
+integration; no public IDs or FlashVM concurrent/proxy machinery are imported.
+Report: doc/dis64-inferno-source-lowering-report.md.

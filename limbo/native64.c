@@ -1,4 +1,5 @@
 #include "limbo.h"
+#include "dis64-layout.h"
 
 extern char *ckindname[]; // Existing primitive C spellings; layout is computed independently.
 
@@ -1221,58 +1222,87 @@ struct Native64SourceLayout {
     unsigned int *offsets;
     uchar *map;
     unsigned int bytes, mapbytes, legacybytes;
+    Dis64Layout typed;
 };
 
 static int
-native64sourcelayout(Desc *desc, int fp, Native64SourceLayout *layout)
+native64sourcelayout(Desc *desc, Decl *arguments, Decl *locals, int fp, Native64SourceLayout *layout)
 {
-    unsigned int i, offset, bit, root, first = fp ? STemp : 0;
-    if(desc == nil || desc->size < first || desc->size > 1024*1024 || desc->size%4 != 0)
-        return 0;
+    unsigned int i, bit, width, root;
+    Dis64LayoutLeaf *leaf;
+    if(!dis64layoutstorage(arguments,locals,desc,fp,&layout->typed)) {
+        dis64layoutfree(&layout->typed); return 0;
+    }
     layout->legacybytes = desc->size;
     layout->offsets = allocmem((desc->size/4+1)*sizeof(*layout->offsets));
-    layout->map = allocmem((2*desc->size+64+63)/64);
-    memset(layout->map, 0, (2*desc->size+64+63)/64);
-    offset = fp ? 64 : 0;
-    for(i=0; i<desc->size; i+=4) {
-        bit = i/4; root = bit/8 < desc->nmap && (desc->map[bit/8] & (0x80>>(bit%8)));
-        if(i < first) {
-            if(root) return 0;
-            layout->offsets[bit] = 0;
-            continue;
+    for(i=0;i<=desc->size/4;i++) layout->offsets[i]=(unsigned int)-1;
+    layout->bytes=layout->typed.bytes;
+    layout->mapbytes=(layout->bytes+63)/64;
+    layout->map=allocmem(layout->mapbytes?layout->mapbytes:1);
+    memset(layout->map,0,layout->mapbytes);
+    for(i=0;i<layout->typed.count;i++) {
+        leaf=&layout->typed.leaves[i];
+        root=leaf->kind>=0 && leaf->oldbytes==4 && leaf->bytes==8;
+        if(root) layout->map[leaf->native/64] |= 0x80>>((leaf->native/8)%8);
+        if(leaf->kind<0) continue;
+        for(width=0;width+4<=leaf->oldbytes;width+=4) {
+            bit=leaf->legacy+width;
+            if(bit%4==0) layout->offsets[bit/4]=leaf->native+width;
         }
-        if(root) offset = (offset+7)&~7U;
-        layout->offsets[bit] = offset;
-        if(root) layout->map[offset/64] |= 0x80>>((offset/8)%8);
-        offset += root ? 8 : 4;
     }
-    layout->bytes = offset == 0 ? 8 : (offset+7)&~7U;
-    layout->mapbytes = (layout->bytes+63)/64;
     return 1;
 }
 
-/* Emit only an exact typed top-level MP constant. Missing seeds are explicit:
- * this is not reaching-definition analysis or a complete module initializer. */
+/* Resolve only inline aggregate fields. References, padding and dynamic initializers
+ * never turn into constant native reads. The AST and field offsets remain borrowed. */
+static int
+native64sourcefield(Type **type, Node **value, long offset)
+{
+    Type *t=*type;
+    Node *n=*value, *item;
+    Decl *field;
+    int depth=0;
+    while(t!=nil && (t->kind==Ttuple || t->kind==Tadt || t->kind==Texception)) {
+        if(++depth==128 || t->tags!=nil || offset<0 || offset>=t->size) return 0;
+        item=n==nil?nil:n->left;
+        for(field=t->ids;field!=nil;field=field->next) {
+            if(field->store!=Dfield) continue;
+            if(field->ty==nil) return 0;
+            if(offset>=field->offset && offset-field->offset<field->ty->size) break;
+            if(item!=nil) item=item->right;
+        }
+        if(field==nil || (n!=nil && (item==nil || item->left==nil))) return 0;
+        n=item==nil?nil:item->left;
+        offset-=field->offset; t=field->ty;
+    }
+    if(t==nil || offset!=0) return 0;
+    *type=t; *value=n; return 1;
+}
+
+/* Emit exact typed MP constants, including nested inline fields. Missing seeds
+ * remain explicit: this is not reaching-definition analysis or a complete initializer. */
 static void
 native64sourceseed(Decl *globals, long offset, int kind)
 {
     Decl *d;
     Node *n;
+    Type *type;
     Sym *text;
     uvlong bits;
     ulong real[2];
     unsigned int i;
     for(d=globals; d != nil; d=d->next) {
-        if(d->store != Dglobal || d->offset != offset || d->ty == nil) continue;
-        if(d->init == nil) {
-            if(kind == Tstring && (d->ty->kind == Tstring || d->ty->kind == Tany)) {
+        if(d->store != Dglobal || d->ty == nil || offset<d->offset || offset-d->offset>=d->ty->size) continue;
+        n=d->init; type=d->ty;
+        if(!native64sourcefield(&type,&n,offset-d->offset)) continue;
+        if(n == nil || (n->op==Oconst && n->ty!=nil && n->ty->kind==Tany)) {
+            if(kind == Tstring && (type->kind == Tstring || type->kind == Tany)) {
                 fprint(2, "{\"kind\":\"nil-string\"}"); return;
             }
             continue;
         }
-        n = d->init;
-        if(n->op != Oconst || n->ty == nil || d->ty == nil || n->ty->kind != d->ty->kind) continue;
-        if(kind == Tstring && d->ty->kind == Tstring && n->decl != nil && n->decl->sym != nil) {
+        if(n->op != Oconst || n->ty == nil || n->ty->kind != type->kind) continue;
+        if(kind == Tstring && type->kind == Tstring && n->decl != nil && n->decl->sym != nil) {
             text = n->decl->sym;
             if(text->len < 0 || text->len > 1024*1024) break;
             fprint(2, "{\"kind\":\"string\",\"bytes\":[");
@@ -1280,9 +1310,9 @@ native64sourceseed(Decl *globals, long offset, int kind)
             fprint(2, "]}"); return;
         }
         bits = n->val;
-        if(kind == Tint && (d->ty->kind == Tint || d->ty->kind == Tfix)) bits &= 0xffffffffULL;
-        else if(kind == Tbig && d->ty->kind == Tbig) { /* Retain canonical signed64 bits. */ }
-        else if(kind == Treal && d->ty->kind == Treal) {
+        if(kind == Tint && (type->kind == Tint || type->kind == Tfix)) bits &= 0xffffffffULL;
+        else if(kind == Tbig && type->kind == Tbig) { /* Retain canonical signed64 bits. */ }
+        else if(kind == Treal && type->kind == Treal) {
             dtocanon(n->rval, real); bits = ((uvlong)real[0]<<32) | real[1];
         } else continue;
         fprint(2, "{\"kind\":\"%s\",\"high\":%ud,\"low\":%ud}",
@@ -1296,17 +1326,42 @@ native64sourceseed(Decl *globals, long offset, int kind)
  * Calls, address escape, indirect writes, unknown opcodes and hidden entries refuse. */
 static Inst*
 native64fpdefinition(Native64CallPC *note, long offset, unsigned int bytes, int kind,
-    Inst **image, long count, int noexceptions)
+    Inst **image, long count, int noexceptions, Inst *projected, Inst **aggregate)
 {
     Inst *in, *definition = nil;
     long pc, j, first;
     unsigned int width, input, bit;
     int supported;
+    Type *copytype;
+    Dis64Layout copy;
+    unsigned int translated, leaf;
+    *aggregate=nil;
     if(!noexceptions || image == nil || note->caller == nil || note->caller->pc == nil) return nil;
     first = note->caller->pc->pc;
     for(pc=note->frame->pc-1; pc>=first; pc--) {
         in = image[pc];
-        if(in == nil || in->branch != nil || in->mm != Anone || in->dm != Afp) return nil;
+        if(in == nil || in->branch != nil || in->dm != Afp) return nil;
+        if(in->op==IMOVMP){
+            if(in->mm!=Adesc || in->m.decl==nil || in->m.decl->desc==nil ||
+               (copytype=in->m.decl->ty)==nil || in->m.decl->desc->size!=copytype->size ||
+               in->sm!=Amp || in->s.reg<0 || in->s.reg>Dis64LayoutBytes ||
+               offset<in->d.reg || offset-in->d.reg>copytype->size ||
+               bytes>copytype->size-(offset-in->d.reg)) return nil;
+            memset(&copy,0,sizeof(copy));
+            if(!dis64layouttype(copytype,&copy)){dis64layoutfree(&copy); return nil;}
+            supported=dis64layoutaddress(&copy,offset-in->d.reg,bytes,kind==Tstring,&translated);
+            for(leaf=0;leaf<copy.count;leaf++) if(copy.leaves[leaf].legacy==offset-in->d.reg) break;
+            if(!supported || leaf==copy.count || copy.leaves[leaf].oldbytes!=bytes ||
+               copy.leaves[leaf].kind!=kind){dis64layoutfree(&copy); return nil;}
+            dis64layoutfree(&copy);
+            *projected=*in; projected->mm=Anone;
+            memset(&projected->m,0,sizeof(projected->m));
+            projected->op=kind==Tstring?IMOVP:kind==Tint?IMOVW:kind==Tbig?IMOVL:kind==Treal?IMOVF:0;
+            if(projected->op==0) return nil;
+            projected->s.reg=in->s.reg+offset-in->d.reg; projected->d.reg=offset;
+            *aggregate=in; definition=projected; break;
+        }
+        if(in->mm!=Anone) return nil;
         switch(in->op) {
         case IMOVW: width = 4; break;
         case IMOVP: width = 4; break;
@@ -1350,9 +1405,9 @@ native64callstores(Native64CallPC *note, int linked, Decl *globals, Inst **image
     typedef struct Store Store;
     struct Store { Inst *origin; unsigned int field, op, cell; };
     typedef struct Cell Cell;
-    struct Cell { int mode, kind; long legacy; unsigned int oldbytes, bytes, native, origin; Inst *setup; };
+    struct Cell { int mode, kind; long legacy; unsigned int oldbytes, bytes, native, origin; Inst *setup, *aggregate; Inst projected; };
     Cell *cells = nil;
-    unsigned int ncells = 0, j, oldbytes, readbytes, readkind, root, bit, mapbytes, bankbytes;
+    unsigned int ncells = 0, j, oldbytes, readbytes, readkind, root, bit, mapbytes, bankbytes, origin;
     uchar bankmap[(64+4098*8+63)/64];
     Desc *descriptor;
     Native64SourceLayout layouts[2] = {{0}, {0}}, *layout;
@@ -1427,11 +1482,12 @@ native64callstores(Native64CallPC *note, int linked, Decl *globals, Inst **image
         }
         if(reason != nil) break;
         space = in->sm == Afp ? 0 : 1; layout = &layouts[space];
-        if(layout->offsets == nil && !native64sourcelayout(descriptor, space == 0, layout)) {
+        if(layout->offsets == nil && !native64sourcelayout(descriptor,
+           space==0?note->caller->ty->ids:globals,space==0?note->caller->locals:nil,space==0,layout)) {
             reason = "source-layout"; break;
         }
-        if(oldbytes == 8 && layout->offsets[value/4+1] != layout->offsets[value/4]+4) {
-            reason = "source-scalar-span"; break;
+        if(!dis64layoutaddress(&layout->typed,value,oldbytes,root,&origin)) {
+            reason = "source-typed-span"; break;
         }
         for(j=0; j<ncells; j++) if(cells[j].mode == in->sm) {
             if(value < cells[j].legacy+cells[j].oldbytes && cells[j].legacy < value+oldbytes) {
@@ -1443,15 +1499,22 @@ native64callstores(Native64CallPC *note, int linked, Decl *globals, Inst **image
         if(j == ncells) {
             cells[j].mode = in->sm; cells[j].kind = readkind; cells[j].legacy = value;
             cells[j].oldbytes = oldbytes; cells[j].bytes = readbytes; cells[j].native = 64+j*8;
-            cells[j].origin = layout->offsets[value/4];
+            cells[j].origin = origin;
             if(root) bankmap[cells[j].native/64] |= 0x80>>((cells[j].native/8)%8);
             ncells++;
         }
         stores[i].cell = j;
     }
     if(reason == nil) for(i=0; i<ncells; i++) {
-        cells[i].setup = cells[i].mode == Afp ? native64fpdefinition(note, cells[i].legacy, cells[i].oldbytes, cells[i].kind, image, nimage, noexceptions) : nil;
-        if(cells[i].setup != nil && cells[i].setup->sm == Amp && layouts[1].offsets == nil) cells[i].setup = nil;
+        cells[i].aggregate=nil;
+        cells[i].setup = cells[i].mode == Afp ? native64fpdefinition(note, cells[i].legacy, cells[i].oldbytes, cells[i].kind, image, nimage, noexceptions,&cells[i].projected,&cells[i].aggregate) : nil;
+        if(cells[i].setup != nil && cells[i].setup->sm == Amp) {
+            in=cells[i].setup;
+            root=in->op==IMOVP;
+            oldbytes=root || in->op==IMOVW || in->op==ICVTWL || in->op==ICVTWF ? 4 : 8;
+            if((layouts[1].offsets==nil && !native64sourcelayout(descriptors,globals,nil,0,&layouts[1])) ||
+               !dis64layoutaddress(&layouts[1].typed,in->s.reg,oldbytes,root,&origin)) cells[i].setup=nil;
+        }
     }
     bankbytes = 64+ncells*8; mapbytes = (bankbytes+63)/64;
     if(reason != nil) {
@@ -1495,6 +1558,10 @@ native64callstores(Native64CallPC *note, int linked, Decl *globals, Inst **image
                 else native64sourceseed(globals, in->s.reg, in->op == IMOVP ? Tstring : in->op == IMOVW || in->op == ICVTWL || in->op == ICVTWF ? Tint : in->op == IMOVF ? Treal : Tbig);
                 fprint(2, "}");
             }
+            fprint(2, ",\"aggregate\":");
+            in=cells[i].aggregate;
+            if(cells[i].setup==nil || in==nil) fprint(2,"null");
+            else fprint(2,"{\"opcode\":%ud,\"descriptor\":%ld,\"source\":%ld,\"destination\":%ld}",in->op,in->m.offset,in->s.reg,in->d.reg);
             fprint(2, "}");
         }
         fprint(2, "],\"preparation\":[");
@@ -1509,13 +1576,18 @@ native64callstores(Native64CallPC *note, int linked, Decl *globals, Inst **image
         fprint(2, "],\"sources\":[");
         for(space=0; space<2; space++) {
             layout = &layouts[space];
-            fprint(2, "%s{\"space\":\"%s\",\"policy\":\"word4-ref8\",\"legacy_bytes\":%ud,\"bytes\":%ud,\"map\":[",
+            fprint(2, "%s{\"space\":\"%s\",\"policy\":\"typed-word4-ref8\",\"legacy_bytes\":%ud,\"bytes\":%ud,\"map\":[",
                 space == 0 ? "" : ",", space == 0 ? "fp" : "mp", layout->legacybytes, layout->bytes);
             for(j=0; j<layout->mapbytes; j++) fprint(2, "%s%ud", j == 0 ? "" : ",", layout->map[j]);
+            fprint(2, "],\"leaves\":[");
+            for(j=0;j<layout->typed.count;j++) {
+                Dis64LayoutLeaf *leaf=&layout->typed.leaves[j];
+                fprint(2,"%s[%ud,%ud,%ud,%ud,%d]",j?",":"",leaf->legacy,leaf->native,leaf->oldbytes,leaf->bytes,leaf->kind);
+            }
             fprint(2, "]}");
         }
         fprint(2, "]}}\n");
     }
-    for(space=0; space<2; space++) { free(layouts[space].offsets); free(layouts[space].map); }
+    for(space=0; space<2; space++) { free(layouts[space].offsets); free(layouts[space].map); dis64layoutfree(&layouts[space].typed); }
     free(cells); free(seen); free(stores);
 }

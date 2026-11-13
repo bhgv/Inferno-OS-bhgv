@@ -56,6 +56,12 @@ still needed before managed loader admission and AWM execution. See the
 `python3 utils/tests/dis64-layout.py --limbo /path/to/limbo` to reproduce the
 independent layout and unchanged-bytecode checks.
 
+The private native Sys argument producer now consumes these typed FP/MP source
+layouts, including nested initializer fields and projections from direct
+aggregate copies. Actual VM-handler replay and the four-gateway call matrix pass
+on AMD64 and ARM64/QEMU. See [typed source lowering](dis64-typed-source-lowering.md).
+This does not yet admit general managed AWM modules or ordinary variadic startup.
+
 ## Native64 Tk registration step
 
 Add `--native64-tk --native64-draw` to compile the whole GUI graph with generated Frame64

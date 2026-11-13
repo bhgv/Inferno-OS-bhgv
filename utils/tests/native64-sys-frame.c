@@ -2,6 +2,7 @@
 #include "native64-sys-frame.h"
 #include "native64-sys-sites.h"
 #include "callsites-native64.h"
+#include "typedfield-native64.h"
 char exModule[] = "module";
 REG R;
 Prog *currun(void) { return &process; }
@@ -607,6 +608,104 @@ static void vmseedstrings(void)
     check(seen == 3);
 }
 
+/* Replay nested ADT field reads from compiler-selected native FP/MP storage.
+ * One owning mapped heap keeps source, gather and destination roots live at every GC. */
+static void vmtypedfields(void)
+{
+    const Native64GeneratedStore *programs[]={calltypedglobalstores,calltypedlocalstores,calltypedcopystores};
+    const Native64GeneratedBank *banks[]={&calltypedglobalstores_bank,&calltypedlocalstores_bank,&calltypedcopystores_bank};
+    const unsigned int sourcebases[]={calltypedglobalbase,calltypedlocalbase,calltypedcopybase};
+    const unsigned int offsets[]={offsetof(Probe_Outer,inner)+offsetof(Probe_Inner,count),
+        offsetof(Probe_Outer,inner)+offsetof(Probe_Inner,text),
+        offsetof(Probe_Outer,inner)+offsetof(Probe_Inner,wide),offsetof(Probe_Outer,fraction)};
+    static const Rune expected[]={0x47,0x72,0xfc,0xdf,0x65,0,0x4e16,0x754c};
+    const uvlong numbers[]={0xffffffffffffffefULL,0,0xffffffffffffffefULL,0xbff4000000000000ULL};
+    const Native64GeneratedStore *store;
+    const Native64GeneratedBank *bank;
+    const Native64GeneratedCell *cell;
+    const Native64GeneratedSource *source;
+    Native64Result owner={H,0};
+    Type *type;
+    uchar fullmap[SlotBytes/64+1];
+    unsigned int b,i,j,at,space,total,bases[2],callee,seen,inputwidth;
+    void *origin,*seedaddress;
+    String *text;
+    uvlong bits,observed;
+    WORD word;
+    REG saved=R;
+    check(sizeof(Probe_Inner)==24 && sizeof(Probe_Outer)==40);
+    for(b=0;b<nelem(banks);b++){
+        contextstart(0,Pready); sourcebankpool=1;
+        bank=banks[b]; memset(fullmap,0,sizeof(fullmap)); total=bank->bytes;
+        for(j=0;j<bank->mapbytes;j++) fullmap[j]=bank->map[j];
+        for(space=0;space<2;space++){
+            source=bank->sources+space; bases[space]=total;
+            check(total%8==0 && source->bytes<=SlotBytes-total);
+            for(j=0;j<source->bytes/8;j++) if(source->map[j/8]&(0x80>>(j%8))){
+                at=total/8+j; fullmap[at/8]|=0x80>>(at%8);
+            }
+            total+=source->bytes;
+        }
+        callee=total; total+=104; check(total<=SlotBytes);
+        for(i=0;i<5;i++) if(programs[b][i].op==IMOVP){
+            at=(callee+programs[b][i].destination)/8; fullmap[at/8]|=0x80>>(at%8);
+        }
+        type=dtype(freeheap,total,fullmap,(total+63)/64); check(type!=nil);
+        check(native64resultadopt(&owner,H2D(void*,heapz(type))));
+        seen=0;
+        for(i=0;i<5;i++){
+            store=programs[b]+i; if(store->fixed) continue;
+            check(store->cell>=0 && (unsigned int)store->cell<bank->count && store->ordinal<4);
+            cell=bank->cells+store->cell;
+            check(cell->space==(b==0?1:0) && cell->offset==sourcebases[b]+offsets[store->ordinal]);
+            origin=(uchar*)owner.value+bases[cell->space]+cell->offset; // Typed ADT field origin.
+            check(origin==(uchar*)owner.value+bases[cell->space]+sourcebases[b]+offsets[store->ordinal]);
+            check(b==0 || cell->setupop!=0);
+            seedaddress=origin;
+            if(b>0 && cell->setupmp){
+                check(cell->setupoffset+cell->setupbytes<=bank->sources[1].bytes);
+                seedaddress=(uchar*)owner.value+bases[1]+cell->setupoffset;
+            }
+            R.d=seedaddress;
+            if(cell->root){
+                check(store->ordinal==1 && cell->seed==1);
+                text=c2string((char*)cell->initial,cell->length);
+                R.s=&text; movp(); destroy(text);
+            }else{
+                check(cell->seed>=2 && cell->seed<=4);
+                bits=((uvlong)cell->high<<32)|cell->low; word=cell->low;
+                inputwidth=b>0 && cell->setupmp?cell->setupbytes:cell->seed==2?4:8;
+                R.s=inputwidth==4?(void*)&word:(void*)&bits;
+                if(inputwidth==4) movw(); else movl();
+            }
+            epochs(6);
+            if(b>0){
+                R.s=cell->setupmp?seedaddress:(void*)&word; R.d=origin;
+                switch(cell->setupop){case IMOVW: movw(); break; case IMOVP: movp(); break; case IMOVL: movl(); break; case IMOVF: movf(); break; case ICVTWL: cvtwl(); break; default: abort();}
+                epochs(6);
+            }
+            R.s=origin; R.d=(uchar*)owner.value+store->source_offset;
+            if(cell->root) movp(); else if(cell->bytes==4) movw(); else movl();
+            epochs(6);
+            R.s=(uchar*)owner.value+store->source_offset; R.d=(uchar*)owner.value+callee+store->destination;
+            switch(store->op){case IMOVP: movp(); break; case ICVTWL: cvtwl(); break; case IMOVL: movl(); break; case IMOVF: movf(); break; default: abort();}
+            epochs(6);
+            if(cell->root){
+                memmove(&text,R.d,sizeof(text));
+                check(text!=H && text->len==-8 && memcmp(text->Srune,expected,sizeof(expected))==0);
+                check(D2H(text)->ref==(b>0 && cell->setupmp?4:3));
+            }else{memmove(&observed,R.d,8); check(observed==numbers[store->ordinal]);}
+            seen++;
+        }
+        check(seen==4);
+        native64resultclear(&owner); epochs(6); freetype(type);
+        check(contextlive==0 && sourcebanklive==0 && Tstring.ref==1);
+        sourcebankpool=0;
+    }
+    R=saved; process.R=R;
+    printf("PASS typed ADT source replay: native C field offsets, FP definitions/MP initializers, Word/big/real bits, Unicode/NUL and owning source/gather/destination GC roots\n");
+}
+
 static void vmcase(int phase, int operation, int mode, int useframe)
 {
     const LimboNative64Prefix *prefix;
@@ -795,6 +894,7 @@ int main(int argc, char **argv)
     vmseedscalars();
     vmfpdefinitions();
     vmseedstrings();
+    vmtypedfields();
     for(useframe=0; useframe<2; useframe++) for(phase=0; phase<3; phase++) for(operation=0; operation<4; operation++) for(mode=0; mode<32; mode++) {
         vmcase(phase, operation, mode, useframe); cases++;
     }

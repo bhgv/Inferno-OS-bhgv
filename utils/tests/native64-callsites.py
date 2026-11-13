@@ -151,22 +151,31 @@ def verify_stores(data, records, diagnostics):
         for space_index, space in enumerate(('fp','mp')):
             layout = bank['sources'][space_index]
             reads = [c for c in bank['cells'] if c['source_mode'] == space]
-            expected = dict(space=space, policy='word4-ref8', legacy_bytes=0, bytes=0, map=[])
+            expected = dict(space=space, policy='typed-word4-ref8', legacy_bytes=0, bytes=0, map=[], leaves=[])
             offsets = {}
-            if reads:
+            if reads or (space=='mp' and any((c.get('setup') or {}).get('source_mode')=='mp' for c in bank['cells'])):
                 size, roots = types[location['caller_descriptor'] if space=='fp' else 0]
-                cursor = 64 if space=='fp' else 0; marks = []
-                for offset in range(0,size,4):
-                    slot = offset//4
-                    root = bool(slot//8<len(roots) and roots[slot//8]&(0x80>>(slot%8)))
-                    if space=='fp' and offset<20:
-                        if root: raise RuntimeError('Legacy header contains a managed source root')
-                        continue
-                    if root: cursor = (cursor+7)//8*8; marks.append(cursor)
-                    offsets[offset] = cursor; cursor += 8 if root else 4
-                size64 = max(8,(cursor+7)//8*8); mapping = [0]*((size64+63)//64)
-                for offset in marks: mapping[offset//64] |= 0x80>>((offset//8)%8)
-                expected.update(legacy_bytes=size, bytes=size64, map=mapping)
+                size64=layout['bytes']; mapping=[0]*((size64+63)//64)
+                if not 0<=size64<=1024*1024 or size64%8: raise RuntimeError('Invalid typed source extent')
+                marks=set(); occupied=set(); previous=0
+                for old,new,oldbytes,width,kind in layout['leaves']:
+                    if old<previous or oldbytes<=0 or old+oldbytes>size or new<(64 if space=='fp' else 0) or width<=0 or new+width>size64:
+                        raise RuntimeError('Typed leaf escapes source storage')
+                    previous=old+oldbytes
+                    if occupied.intersection(range(new,new+width)): raise RuntimeError('Typed target fields overlap')
+                    occupied.update(range(new,new+width))
+                    root=kind>=0 and oldbytes==4 and width==8
+                    if root:
+                        if old%4 or new%8: raise RuntimeError('Misaligned typed reference')
+                        marks.add(old//4); mapping[new//64] |= 0x80>>(new//8%8)
+                    elif kind>=0 and (oldbytes!=width or width not in (1,4,8) or new%width):
+                        raise RuntimeError('Invalid typed scalar width/alignment')
+                    if kind>=0:
+                        for byte in range(0,oldbytes-3,4):
+                            if (old+byte)%4==0: offsets[old+byte]=new+byte
+                actual={i*8+b for i,value in enumerate(roots) for b in range(8) if value&(0x80>>b)}
+                if marks!=actual: raise RuntimeError('Typed leaves disagree with serialized descriptor roots')
+                expected.update(legacy_bytes=size,bytes=size64,map=mapping,leaves=layout['leaves'])
             if layout != expected: raise RuntimeError('Complete native source layout differs from serialized descriptor')
             source_offsets[space] = offsets
         unique = {}; expected_map = [0]*((bank['bytes']+63)//64)
@@ -182,13 +191,26 @@ def verify_stores(data, records, diagnostics):
                 if old[0] == key[0] and key[1] < old[1]+old[2] and old[1] < key[1]+key[2] and old != key:
                     raise RuntimeError('Overlapping or differently typed source reads were admitted')
             index = unique.setdefault(key, len(unique)); cell = bank['cells'][store['source_cell']]
-            if store['source_cell'] != index or store['source_offset'] != 64+index*8 or cell != dict(source_mode=key[0],legacy_offset=key[1],legacy_bytes=width,native_offset=64+index*8,native_bytes=8 if root else width,origin_offset=source_offsets[key[0]][key[1]],initial=cell['initial'],setup=cell['setup'],**{'class':category}):
+            if store['source_cell'] != index or store['source_offset'] != 64+index*8 or cell != dict(source_mode=key[0],legacy_offset=key[1],legacy_bytes=width,native_offset=64+index*8,native_bytes=8 if root else width,origin_offset=source_offsets[key[0]][key[1]],initial=cell['initial'],setup=cell['setup'],aggregate=cell['aggregate'],**{'class':category}):
                 raise RuntimeError('Source relocation lost width, identity or aliasing')
             setup = cell['setup']
             if setup is not None:
                 pc = setup['legacy_pc']; definition = code[pc]
                 widths = {45:4,41:4,118:8,46:8,138:8,50:8,135:8}
                 allowed = {'word':(45,), 'string':(41,), 'long':(118,138), 'real':(46,50,135)}
+                aggregate=cell['aggregate']
+                if aggregate is not None:
+                    if definition['op']!=aggregate['opcode'] or definition['m']!=aggregate['descriptor'] or definition['s']!=[aggregate['source']] or definition['d']!=[aggregate['destination']] or (definition['mode']>>3)&7!=0 or definition['mode']&7!=1:
+                        raise RuntimeError('Aggregate projection lost its actual copy instruction')
+                    if definition['op']!=43: raise RuntimeError('Non-MOVMP became a projected definition')
+                    extent,copyroots=types[aggregate['descriptor']]
+                    relative=key[1]-aggregate['destination']
+                    if relative<0 or relative+width>extent: raise RuntimeError('Aggregate field escapes copied descriptor')
+                    for offset in range(relative,relative+width,4):
+                        bit=offset//4
+                        if bool(bit//8<len(copyroots) and copyroots[bit//8]&(0x80>>(bit%8)))!=root: raise RuntimeError('Aggregate projection changes root role')
+                    if setup['source_value']!=aggregate['source']+relative: raise RuntimeError('Aggregate projection changed source field')
+                    definition=dict(op=setup['opcode'],mode=1,s=[setup['source_value']],d=[key[1]],m=None)
                 if header[1]&32 or key[0] != 'fp' or not location['caller_pc'] <= pc < location['frame_pc']:
                     raise RuntimeError('FP setup has no synchronous exception-free suffix')
                 if definition['op'] != setup['opcode'] or setup['opcode'] not in allowed.get(category,()) or definition['d'] != [key[1]] or definition['mode']&7 != 1 or widths[definition['op']] != width:
@@ -196,7 +218,7 @@ def verify_stores(data, records, diagnostics):
                 mode = (definition['mode']>>3)&7
                 if setup['source_mode'] != {0:'mp',2:'immediate'}.get(mode) or definition['s'] != [setup['source_value']]:
                     raise RuntimeError('FP setup source provenance was guessed')
-                for between in code[pc:location['frame_pc']]:
+                for between in code[pc+(aggregate is not None):location['frame_pc']]:
                     if between['op'] not in widths or between['m'] is not None or between['mode']&7 != 1:
                         raise RuntimeError('FP setup crosses a call, alias or unknown write')
                 for between in code[pc+1:location['frame_pc']]:
@@ -238,8 +260,14 @@ def verify_stores(data, records, diagnostics):
                 if bool(slot//8<len(roots) and roots[slot//8]&(0x80>>(slot%8))) != root: raise RuntimeError('Source read has wrong original root role')
             if root: expected_map[(64+index*8)//64] |= 0x80>>index%8
         expected_order = sorted((i for i,c in enumerate(bank['cells']) if c['setup'] is not None),key=lambda i:bank['cells'][i]['setup']['legacy_pc'])
-        if bank['preparation'] != expected_order or len({bank['cells'][i]['setup']['legacy_pc'] for i in expected_order}) != len(expected_order):
+        if bank['preparation'] != expected_order:
             raise RuntimeError('Local preparation order lost instruction identity')
+        shared={}
+        for index in expected_order:
+            cell=bank['cells'][index]; pc=cell['setup']['legacy_pc']
+            if pc in shared and (cell['aggregate'] is None or cell['aggregate']!=shared[pc]):
+                raise RuntimeError('Different definitions share a setup PC')
+            shared[pc]=cell['aggregate']
         if len(unique) != len(bank['cells']) or bank['bytes'] != 64+8*len(unique) or bank['map'] != expected_map:
             raise RuntimeError('Source bank extent or full map is wrong')
     return by_id
@@ -283,7 +311,7 @@ def generate(limbo, work, env):
     source.write_text('implement CallSites;\ninclude "sys.m";\nCallSites: module { init: fn(); };\n'
                       'init() { sys := load Sys Sys->PATH; number := -1; text := "ok"; fd := sys->fildes(1);\n'+
                       '\n'.join(calls)+'\n}\n')
-    command = [str(limbo), '-I', str(ROOT/'module')]
+    command = [str(limbo), '-I', str(ROOT/'module'), '-I', str(work)]
     ordinary = work/'ordinary.dis'; traced = work/'traced.dis'
     checked_run(command+['-o', str(ordinary), str(source)], env=env, check=True, capture_output=True)
     result = checked_run(command+['-Dq', '-o', str(traced), str(source)], env=env, check=True, capture_output=True, text=True)
@@ -410,10 +438,19 @@ def generate(limbo, work, env):
         'barriersetup': 'number := -1; ignored := sys->millisec(); sys->sprint("%d", number);',
         'overwritesetup': 'number := -1; number = -2; sys->sprint("%d", number);',
         'globalseed': 'sys->sprint("%d|%bd|%g", n, wide, fraction);',
+        'typedglobal': 'sys->sprint("%d|%s|%bd|%g", seed.inner.count, seed.inner.text, seed.inner.wide, seed.fraction);',
+        'typedlocal': 'seed: Outer; seed.lead=byte 123; seed.inner.count=-17; seed.inner.text="Grüße\\0世界"; seed.inner.wide=big -17; seed.fraction=-1.25; sys->sprint("%d|%s|%bd|%g", seed.inner.count, seed.inner.text, seed.inner.wide, seed.fraction);',
+        'typedcopy': 'seed:=original; sys->sprint("%d|%s|%bd|%g", seed.inner.count, seed.inner.text, seed.inner.wide, seed.fraction);',
     }
+    typed_interface='Probe: module { Inner: adt { count: int; text: string; wide: big; }; Outer: adt { lead: byte; inner: Inner; fraction: real; }; init: fn(); };'
+    (work/'typedfield.m').write_text(typed_interface)
+    (work/'typedfield-native64.h').write_text(checked_run([str(limbo),'-H',str(work/'typedfield.m')],env=env,check=True,capture_output=True,text=True).stdout)
     for label, body in extra_sources.items():
         probe = work/(label+'.b')
-        probe.write_text('implement Probe; include "sys.m"; Probe: module { init: fn(); }; '+('n: int = -17; wide: big = big -17; fraction: real = -1.25; ' if label=='globalseed' else '')+'init() { sys := load Sys Sys->PATH; '+body+' }')
+        interface='include "typedfield.m";' if label.startswith('typed') else 'Probe: module { init: fn(); };'
+        globals=('n: int = -17; wide: big = big -17; fraction: real = -1.25; ' if label=='globalseed' else
+                 ('seed' if label=='typedglobal' else 'original')+': Outer = Outer(byte 123, Inner(-17, "Grüße\\0世界", big -17), -1.25); ' if label in ('typedglobal','typedcopy') else '')
+        probe.write_text('implement Probe; include "sys.m"; '+interface+globals+'init() { sys := load Sys Sys->PATH; '+body+' }')
         plain = work/(label+'.dis'); traced_probe = work/(label+'-trace.dis')
         checked_run(command+['-o', str(plain), str(probe)], env=env, check=True, capture_output=True)
         output = checked_run(command+['-Dq', '-o', str(traced_probe), str(probe)], env=env, check=True, capture_output=True, text=True)
@@ -425,6 +462,18 @@ def generate(limbo, work, env):
             if len(refused) != 1 or refused[0]['lowered'] or 'stores' in refused[0]: raise RuntimeError('Unsupported arithmetic emitted a partial store program')
         else:
             extra_programs[label] = verify_stores(traced_probe.read_bytes(), probe_records, output.stderr)[probe_records[0]['id']]
+            if label=='typedcopy':
+                for fault in ('origin','descriptor','source','projection'):
+                    altered=json.loads(json.dumps(extra_programs[label]))
+                    cell=next(c for c in altered['bank']['cells'] if c['aggregate'] is not None)
+                    if fault=='origin': cell['origin_offset']+=4
+                    elif fault=='projection': cell['setup']['source_value']+=4
+                    elif fault=='descriptor': cell['aggregate']['descriptor']=verify_locations(traced_probe.read_bytes(),probe_records,output.stderr)[probe_records[0]['id']]['caller_descriptor']
+                    else: cell['aggregate']['source']+=4
+                    changed='\n'.join('NATIVE64_CALL_LOWER '+json.dumps(altered) if line.startswith('NATIVE64_CALL_LOWER ') else line for line in output.stderr.splitlines())
+                    try: verify_stores(traced_probe.read_bytes(),probe_records,changed)
+                    except (RuntimeError,KeyError): pass
+                    else: raise RuntimeError('Aggregate oracle accepted corrupt '+fault)
     for label in ('branchsetup','barriersetup'):
         if any(c['setup'] is not None for c in extra_programs[label]['bank']['cells'] if c['source_mode']=='fp'):
             raise RuntimeError('A branch or call silently became a local definition proof')
@@ -433,6 +482,20 @@ def generate(limbo, work, env):
     if len(extra_programs['castalias']['bank']['cells']) != 2: raise RuntimeError('Big reads and conversions failed to share one typed source')
     if len(extra_programs['alias']['bank']['cells']) != 1: raise RuntimeError('Identical String sources lost their shared cell')
     for label, program in extra_programs.items(): header += emit_program('call'+label+'stores', program)
+    for label in ('typedglobal','typedlocal','typedcopy'):
+        program=extra_programs[label]
+        bank=program['bank']; space=1 if label=='typedglobal' else 0
+        byteleaves=[l for l in bank['sources'][space]['leaves'] if l[2:4]==[1,1]]
+        if len(byteleaves)!=1: raise RuntimeError('Missing unique typed ADT byte prefix')
+        oldbase,base=byteleaves[0][:2]
+        fields=[s for s in program['stores'] if not s['fixed']]
+        if [bank['cells'][s['source_cell']]['legacy_offset']-oldbase for s in fields]!=[8,12,16,24]:
+            raise RuntimeError('Source ADT field locations changed')
+        for store in fields:
+            cell=bank['cells'][store['source_cell']]
+            if cell['source_mode']!=('mp' if space else 'fp') or (cell['initial'] if space else (cell['setup'] or {}).get('input')) is None:
+                raise RuntimeError('Nested field lost its typed source initializer/definition: '+str(cell))
+        header += ['static const unsigned int call'+label+'base = '+str(base)+';']
     header += emit_program('callmixedstores', programs[records[9]['id']])
     (work/'callsites-native64.h').write_text('\n'.join(header)+'\n')
     print('PASS source call-site plans: four Sys operations, 2/150/4096 slots, 4097 refusal, empty/mixed tails, complete maps, opaque-reference refusal, deterministic diagnostics, unchanged legacy bytecode and preserved Dis64 refusal, byte-decoded final PCs, nested FP/MP results and canonical native store programs', flush=True)
