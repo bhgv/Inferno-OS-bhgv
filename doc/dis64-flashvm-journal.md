@@ -10110,3 +10110,100 @@ cross-node ref routing, managed result cache/ack, authentication, два DisVM p
 или distributed GC. Root adapter — проверенный следующий слой explicit proxies,
 а не закрытие всего RPC блока. На master запущена новая native CI матрица;
 прошлый RV64 QEMU success не доказывает hardware ordering/performance.
+
+
+## FLASHVM-0175 — 2026-11-13 — первый guest owner path: live variables/functions и ref args
+
+Прочитаны оба журнала на a9304e083a3f5e50ee3fdbaa2b1882e6bf4268bf.
+Новых INFERNO записей после INFERNO-0163 нет. Vendor source pins остаются
+7f224145; не расширяли Dis64 file admission, shared kinds/opcodes или network ABI.
+
+FlashVM master опубликован тремя коммитами:
+- b67f6315ec088e913d791ca30afc3674c03b5395 — hosted Proxyhost native module и
+  Proxyowner Limbo library: typed operations на постоянном serving Prog.
+- 0c84d9c403de27719da910256361e2fd47d7ee4f — настоящие callback/ref/deadline,
+  session fence, nested-wait refusal и owner-retirement regression tests.
+- 881e1d40c73a8c843d2e23bf50682628ffae0743 — disVM/remote/GUEST-OWNER.md с API,
+  lifetime, scope и оставшейся сетевой границей.
+
+### Теперь исполняется guest bytecode, не только native root probe
+
+Builtin $Proxyhost генерируется нашим matching NC64 Limbo producer из
+disVM/module/proxyhost.m, отдельным prepare_proxyhost.py. Declarations/table
+входят в compiled-view freshness/idempotency test. Нового vendor patch нет.
+
+Proxyowner.serve удерживает настоящие Cell.value/capture и callback module на
+одном permanent Prog/TLS REG. Клиенты передают typed channel offers с handles.
+Read/Write меняют исходную переменную, Invoke выполняет настоящий Limbo
+Proxyhandler.invoke на том же owner и возвращает scalar int. Handler module
+живёт в serving frame, а не сериализуется как native callback pointer.
+Это process-local channel adapter, пока НЕ соединение между двумя DisVM.
+
+Native begin делает bounded admit/resolve и выдаёт actual managed Cell refs в
+caller-mapped tuple с отдельным strong owner каждого occurrence, включая aliases.
+После callback, также после handled exception, guest вызывает finish.
+В tuple staging есть rollback добавленных refs при отказе; old result owners
+проверяются до очистки. Это private hosted NC64 ABI: нельзя перенести его на
+Word=4/ref=8 tuple только из совпадения полного размера или legacy hash.
+
+Первые typed handles содержат session/slot/generation. Проверяются target,
+каждый ref и Drop. Без session tag одинаковые slot/generation у другого endpoint
+или после reopen могли бы назвать локальный replacement object. Regression
+проверяет foreign refs/Drop и reopen на том же owner с теми же slot/generation.
+Private omission ровно session fence должен дать semantic failure до использования
+replacement root; compiler errors/crashes/timeouts не считаются обнаружением.
+
+### Deadlines, циклы и terminal cleanup
+
+Один monotonic deadline охватывает offer + reply. NotSent отличается от Unknown
+после delivery; receipt не admission. Unknown не означает отмену и не вызывает
+blind replay. Callback exception возвращает OwnerError и может включать уже
+выполненный частичный effect.
+
+Один finite child alarm на active caller; при completion/timeout caller делает
+killwait, чтобы быстрые calls не накапливали спящие OS threads. Signal/reply
+channels имеют capacity 1; late send не требует живого получателя. Cleanup/join
+зависит от OS scheduling, не объявляется hard real-time гарантией.
+
+Начальная cycle policy: active owner callback не блокируется на другом
+Proxyowner.call. Native TLS canwait отказывает до spawn/timer/send. Это
+консервативное explicit refusal, не global lock; continuations пока отсутствуют.
+В отдельной проверке второй owner исполняет функцию, пока первый блокируется
+в native sleep внутри своего callback.
+
+Retirement hook после публикации REG/stack snapshot и до удаления Prog root
+завершает abandoned admitted call, закрывает session и передаёт roots Fast.
+При pressure выходит из ACTIVE только этот owner; остальным admission не отзывается.
+Обработанный callback exception не закрывает serving session. Все Prog сохраняют
+native OS threads, original TLS REG; exclusive/reference fallback не появился.
+
+### Проверки
+
+Финальное дерево: 80/80 full plain и 81/81 full TSan. Guest regression выполняет
+C/JIT и оба poll paths; 8 clients вызывают original callback, repeated refs
+имеют actual alias identity и изменяют исходную Cell. Проверяются late effect
+без replay, частичный effect при raise, NotSent, Unknown, nested refusal,
+independent owner, explicit Drop/Stop и kill owner с активным callback.
+
+PROXYHOST opened=4 closed=4 exports=0 active=0, matched native joins и drained
+NATIVERC проверяются в каждом positive replay. Два дополнительных opens относятся
+к same-owner reopen regression, не к скрытым executors. Новый wide manifest —
+48 workloads; host-unit остаётся 26. Предыдущая native CI 43420935736 завершилась
+success во всех шести jobs, включая AMD64 TSan, ARM64 и RV64 QEMU.
+Для нового master снова запущена матрица; hardware RV64 performance не заявляем.
+
+### Scope остаётся явным
+
+Cell пока typed hosted int, максимум два same-owner ref arguments; function
+result пока copied scalar. Нет arbitrary closure/value types, String snapshots,
+proxy/function results, cross-owner ref routing, result cache/ack, authentication,
+автоматического Retain при копировании Handle или distributed GC. Drop отзывает
+общий export; это не finalizer каждой proxy-копии. Local serving request IDs
+считают обработанные offers и не являются network replay protocol.
+
+stream.c ещё не связан с этим endpoint; framing/authenticated session authority,
+client correlation/replay policy и два реальных DisVM peers остаются следующим
+сетевым участком. Просим не выдавать эти channel tests за Dis64 network tuple
+gate. Из реализации можно переиспользовать staged alias refs/rollback и terminal
+owner cleanup, но frame/result geometry должна выводиться из ваших generated
+headers и owning schema. Чужой inferno journal не менялся.
