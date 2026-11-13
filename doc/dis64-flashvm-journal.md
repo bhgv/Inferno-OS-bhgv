@@ -10420,3 +10420,92 @@ per-image Retain/finalizers/distributed GC. Drop revokes the shared export; it i
 not per-copy collection. No compiler-transparent lowering or Dis64 network ABI is
 claimed. Detailed field/ownership boundaries are in remote/NETWORK-OWNERS.md and
 runtime/BUILTIN-SCALARS.md in FlashVM. The Inferno-side journal was not changed.
+
+
+## FLASHVM-0178 — counted network Image leases and concurrent GC ownership
+
+2026-11-13. FlashVM master 4fdec2c17a68499c3ea345e36f78d8d4caa8f74d,
+tree 804f8b8ea9405b11b5c4a04c49b7395aa699a78e. Four commits after 90f628cb:
+27db406a native lease queue/types; 4ce9ca6d counted network images and controls;
+3df49427 DVP2 ownership contract; 4fdec2c1 immutable owner binding and retained
+function/cycle collection acceptance. Publication is non-force with expected-head,
+author, parent and exact tree checks. Local verified format-patch series retained.
+
+Read latest Inferno experiment 77f2e79b / INFERNO-0164 at 8568f34b; no later Inferno
+record was available. Acknowledge rooted partial Connection construction and the
+bounded Dis64 Sys.dial tuple path, including actual TCP retirement EOF acceptance.
+No vendor refresh is made: selected source pin remains 7f224145. Hosted NC64 proxy
+records are not Dis64 Word=4/ref=8 tuples, public kinds or function frame layouts.
+Inferno's new source proof still excludes general ADTs/field expressions and
+announce/listen admission. ptradd/stage writes need a separate concurrent adapter;
+no peer exclusive/native-world path is imported or requested.
+
+Network Image now contains one managed native lease. Ordinary Image/ref aliases
+share that lease; explicit clone obtains a distinct counted remote Retain. Retain
+uses the exact request-ID admission/replay cache already used by Drop/calls, so an
+identical duplicate does not increment remote ownership again. Explicit Drop
+consumes exactly one lease before wire publication. Its aliases become Stale;
+other retained variable/function leases remain usable. Queued calls revalidate
+at the broker after dequeue. Requests hold target/ref leases through completion;
+orphan buffered clone replies hold their result until ordinary GC can release it.
+
+Immutable native slot metadata records the exact session/slot/generation. Both
+caller offer and broker admission compare Image.owner against this metadata.
+A public Image with another handle and the old token therefore cannot release a
+foreign export or consume the original token. A real omission test restores the
+active-only check and must expose the unintended Drop before accepting the guard.
+This is trusted-stream ownership validation, not a substitute for authentication.
+
+The new hosted $Proxygc module has exact private pointer-free native payload types.
+A connection owner and each live managed token independently retain fixed native
+metadata. Capacity is 256 staged/live/pending slots; clone reserves its token and
+slot before Retain, then activates only on a completed success. Scalar results and
+managed result publication use captured guarded destinations. New objects are
+externally rooted before publication; injected root-registration/publication
+refusal preserves the caller result and releases native ownership for retry.
+
+Fast finalizes the exact zero-count native token only after reader grace. A token
+nested in an unreachable client self-cycle is discovered by concurrent Cycles,
+then finalized normally. The finalizer only enqueues scalar handle metadata under
+a local native mutex: no managed allocation, callback, network IO or world stop.
+The original permanent broker drains one Release between requests with the next
+monotonic wire ID and an absolute finite exchange deadline. A maintenance tick
+is bounded at 100ms; GC traffic does not renew the original idle deadline. Native
+metadata outlives managed payloads and is reclaimed only after its last native
+owner. Closed queues revoke tokens and discard pending obligations; the remote
+session retirement frees exports. Unknown Retain/Release is never blindly retried.
+
+Protocol is now private DVP2/version 2, still exactly 152 bytes. Wire Retain=6 is
+appended after Stop=5; scalar-only big-endian records contain no native payloads,
+managed pointers or GC tokens. Public Dis64 kinds/opcodes/layouts are unchanged.
+The existing client scalar-only return scope and at most two same-owner variable
+refs are unchanged. Actual retained function calls use the original owner Prog,
+original capture and two aliases to the original variable, not copied cells.
+
+Acceptance: local optimized full CTest 82/82 and TSan full CTest 83/83 pass.
+Final network positive/fault/omission drivers pass in both optimized and TSan
+builds after the exact-owner guard; no TSan diagnostics occur in positive VMs.
+Additional final native lease and retained-function GC matrices pass C/JIT and
+both poll paths in both builds. Two real VM tests verify original variable and
+function image GC, retained callable invocation after original GC, function clone
+GC without revoking its borrowed variable ref, and final variable clone GC.
+Four acknowledged GC Releases are required before Stop; joined PROXYGC diagnostics
+require queues/tokens/pending=0 and enqueued=drained+discarded. Other tests cover
+8 concurrent clients cloning/calling/dropping, explicit Drop aliases, quota,
+staging, foreign-thread mutation refusal, slot reuse, closed queues, exact owner
+mismatch, Retain replay for both kinds and all previous transport/reply faults.
+Private omissions detect missing Retain, finalizer Release and exact owner binding;
+construction root/publication refusal controls require actual clean recovery.
+
+The previous published matrix 43450876352 is confirmed successful in all six jobs,
+including ARM64, AMD64 TSan and RV64/QEMU. The new matrix is tracked separately;
+in-progress jobs are never counted as success. QEMU is not physical ordering or
+performance evidence. Native-only dedicated OS threads and concurrent GC remain
+the only runtime profile; no shared exclusive/stop mode is used.
+
+This is per-connection counted ownership plus local RC/cycle collection, not
+cross-node distributed tracing or collection of cycles spanning several nodes.
+Remaining: authentication, owning FD establishment/automatic unique epochs,
+arbitrary closure/value types, proxy-valued returns, cross-owner ref routing,
+transparent compiler lowering and cross-node tracing/lease policy. Detailed
+contracts: disVM/remote/NETWORK-OWNERS.md in FlashVM. Inferno's journal is untouched.
