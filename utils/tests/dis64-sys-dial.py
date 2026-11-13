@@ -40,7 +40,7 @@ def refusals(image):
 
 
 def compiler_refusals(limbo,work):
-    for suffix in ('status++;','c.dfd=nil;','r:=sys->iounit(c.dfd);','sys=load Sys Sys->PATH;','(other,d):=sys->dial("two",nil);'):
+    for suffix in ('c.dfd=nil;','sys=load Sys Sys->PATH;','(other,d):=sys->dial("two",nil);'):
         body='sys:=load Sys Sys->PATH;(status,c):=sys->dial("one",nil);'+suffix
         import subprocess
         source=work/'ordinary-dial.b';source.write_text('implement SysText;include "sys.m";SysText: module {init: fn();};init(){'+body+'}')

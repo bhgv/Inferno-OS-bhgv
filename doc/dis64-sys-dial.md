@@ -1,6 +1,6 @@
 # Sys dial in the private Dis64 file trial
 
-[Русский](dis64-sys-dial.ru.md). This extends the existing Inferno VM and JIT;
+[Русский](dis64-sys-dial.ru.md). See the [Connection I/O extension](dis64-sys-connection.md) for field access, status guards and data exchange. This extends the existing Inferno VM and JIT;
 it does not import DisVM or implement RPC proxies.
 
 `limbo -64l` now accepts a bounded void-entry module that loads `$Sys` and

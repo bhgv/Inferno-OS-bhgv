@@ -1101,6 +1101,8 @@ def main():
             sysfixed['boot'](command,work,consumer,args.limbo.resolve(),execute,BOOT['RETIRED'])
             sysdial=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-dial.py'))
             sysdial['boot'](command,work,consumer,args.limbo.resolve(),execute,BOOT['RETIRED'])
+            connection=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-connection.py'))
+            connection['boot'](command,work,consumer,args.limbo.resolve(),execute,BOOT['RETIRED'])
         trial = ['-X', 'dis64-managed-trial']
         trial_input = ['-A', 'Grüße 世界']
         for direction, accepted, payload, dependency in GC['managed_image_cases'](RAW):

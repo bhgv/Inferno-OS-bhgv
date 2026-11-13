@@ -38,7 +38,7 @@ def unit():
     arrays+='\n'+'\n'.join(extract(strings,signature) for signature in ('OP(cvtca)','OP(cvtac)'))
     source+='\n'+arrays
 
-    return source+'\n'+(ROOT/'utils/tests/dis64-sys-fixed-gc.c').read_text()+'\n'+(ROOT/'utils/tests/dis64-sys-dial-gc.c').read_text()
+    return source+'\n'+(ROOT/'utils/tests/dis64-sys-fixed-gc.c').read_text()+'\n'+(ROOT/'utils/tests/dis64-sys-dial-gc.c').read_text()+'\n'+(ROOT/'utils/tests/dis64-sys-connection-gc.c').read_text()
 
 
 def main():
@@ -79,6 +79,20 @@ def main():
         for i,image in enumerate(dialbad):output.append('static const uchar dial_bad'+str(i)+'[]={'+','.join(map(str,image))+'};')
         output.append('static const struct {const uchar *image;unsigned int bytes;} dial_bad[]={'+','.join('{dial_bad'+str(i)+',sizeof(dial_bad'+str(i)+')}' for i in range(len(dialbad)))+'};')
         (work/'sys-dial-images.h').write_text('\n'.join(output)+'\n')
+        connection=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-connection.py'));connectionrows=connection['rows'](args.limbo,work);connection['compiler_refusals'](args.limbo,work)
+        output=['typedef struct ConnectionCase {const uchar *image;unsigned int bytes,calls;SysFixedEvent events[16];WORD status;const char *name;} ConnectionCase;']
+        def quote(value):return '"'+value.replace('\\','\\\\').replace('"','\\"').replace('\0','\\000').replace('\n','\\n')+'"'
+        for i,(_,image,_,_) in enumerate(connectionrows):output.append('static const uchar connection_image'+str(i)+'[]={'+','.join(map(str,image))+'};')
+        output.append('static const ConnectionCase connection_cases[]={')
+        for i,(name,image,events,status) in enumerate(connectionrows):
+            def encode(e):
+                method,value,first,second,result=e[:5];other=e[5] if len(e)>5 else None
+                return '{"'+method+'",'+(quote(value) if value is not None else '0')+','+(quote(other) if other is not None else '0')+','+str(first)+','+str(second)+','+str(result)+'}'
+            output.append('{connection_image'+str(i)+',sizeof(connection_image'+str(i)+'),'+str(len(events))+',{'+','.join(encode(e) for e in events)+'},'+str(status)+',"'+name+'"},')
+        output.append('};');connectionbad=list(connection['refusals'](connectionrows))
+        for i,image in enumerate(connectionbad):output.append('static const uchar connection_bad'+str(i)+'[]={'+','.join(map(str,image))+'};')
+        output.append('static const struct {const uchar *image;unsigned int bytes;} connection_bad[]={'+','.join('{connection_bad'+str(i)+',sizeof(connection_bad'+str(i)+')}' for i in range(len(connectionbad)))+'};')
+        (work/'sys-connection-images.h').write_text('\n'.join(output)+'\n')
         source=unit();(work/'test.c').write_text(source)
         common=command+['-I'+str(work),str(ROOT/'libinterp/dec.c'),str(ROOT/'lib9/rune.c'),'-Wl,--wrap=free','-lm']
         runner=shlex.split(os.environ.get('NATIVE64_RUNNER',''))
@@ -155,6 +169,19 @@ def main():
             result=subprocess.run(runner+[str(work/'dial-control')],capture_output=True,text=True,timeout=90)
             if result.returncode!=24 or result.stderr.strip()!='Sys dial admission predicate':raise RuntimeError('dial control missed predicate '+label+': '+result.stdout+result.stderr)
             print('PASS active Sys dial '+label+' removal control',flush=True)
+
+        (override/'dis64-sys-dial.h').write_text(dialheader)
+        connectionheader=(ROOT/'include/dis64-sys-connection.h').read_text()
+        controls=(('Connection initialization','else if(!parameter && (in.source==88 || in.source==96))source=96;','else if(!parameter && (in.source==88 || in.source==96))source=0;'),
+                  ('FD as Word','return cell==80?64:','return cell==88?64:cell==80?64:'),
+                  ('mixed caller roots','frame.map[1]!=0xdf','0'))
+        for label,marker,replacement in controls:
+            if connectionheader.count(marker)!=1:raise RuntimeError('connection control marker drift: '+label)
+            (override/'dis64-sys-connection.h').write_text(connectionheader.replace(marker,replacement))
+            subprocess.run(common[:1]+['-I'+str(override)]+common[1:]+[str(work/'test.c'),'-o',str(work/'connection-control')],check=True)
+            result=subprocess.run(runner+[str(work/'connection-control')],capture_output=True,text=True,timeout=90)
+            if result.returncode!=26 or result.stderr.strip()!='Sys connection admission predicate':raise RuntimeError('connection control missed predicate '+label+': '+result.stdout+result.stderr)
+            print('PASS active Sys connection '+label+' removal control',flush=True)
 
 
 if __name__=='__main__':main()

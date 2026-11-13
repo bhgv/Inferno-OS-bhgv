@@ -103,7 +103,7 @@ C metadata and consumers only; it assigns no new Dis64 wire IDs or import ABI.
 ## Complete fixed-argument Sys set
 
 Use `--native64-tk --native64-draw --native64-sys-fixed` to build the full GUI
-native graph with all 39 fixed Sys exports, beyond the separate 15-entry console
+native graph with all 39 fixed Sys exports, beyond the separate 23-entry console
 pilot. Both Sys C owners and the service/channel consumer select the same fresh
 `sys-native64.h`. The normal Android startup ABI guard remains active.
 
@@ -278,3 +278,19 @@ The private managed file profile also executes fixed String-to-Word `Sys->werrst
 The fixed String-to-Word trial now uses returned Words in expressions, conditions and loops, with root-disjoint 112-byte frames and CFG initialization checks. See `dis64-sys-string.md` (and `.ru.md`). Mixed/variadic Sys calls, general managed types and Android AWM remain pending.
 
 Commands and libraries share the module/link model: LOAD does not invoke init; sh calls the exported function explicitly. See [module loading](dis64-module-loading.md) / [загрузка модулей](dis64-module-loading.ru.md). The fixed native String group supports werrstr/chdir/remove through the shared loader and generated Sys exports; general signatures and AWM remain pending.
+
+
+## Connection I/O and the current source gate
+
+The checked Dis64 console can now consume `Sys->dial` results: status guards,
+Connection FD/directory fields, read/write, byte arrays and String conversions.
+See [the executable client example](dis64-sys-connection.md). This reuses existing
+Inferno, without importing DisVM. AMD64 and ARM64/QEMU console results are not
+Android/Bionic GUI acceptance.
+
+`awm-native64-preflight.py` now checks both `-64` and `-64l` for all sixteen
+startup sources. Ordinary compilation succeeds; both Dis64 profiles still refuse
+the broader startup closure. Scalar mode stops at managed LOAD; the private
+managed mode additionally exposes the unsupported general provider/caller shapes
+and shell exception tables. General argument-bearing entry frames, library bodies
+and required variadic imports remain necessary before claiming a working AWM APK.

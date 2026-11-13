@@ -177,7 +177,7 @@ def main():
     parser.add_argument('--limbo', type=Path, required=True)
     args = parser.parse_args()
     limbo = args.limbo.resolve()
-    refused = 0
+    refused = {"scalar": 0, "managed": 0}
     with tempfile.TemporaryDirectory(prefix='awm-preflight-', dir=ROOT) as directory:
         work = Path(directory)
         check_startup_imports(limbo, work)
@@ -187,24 +187,25 @@ def main():
             result = compile_module(limbo, source, legacy, [])
             if result.returncode != 0 or not legacy.is_file() or legacy.stat().st_size == 0:
                 raise RuntimeError(f'{source}: ordinary compilation failed\n{result.stdout}')
-            target = legacy.with_suffix('.dis64')
-            result = compile_module(limbo, source, target, ['-64'])
-            if result.returncode == 0:
-                if not target.is_file() or target.stat().st_size == 0:
-                    raise RuntimeError(f'{source}: Dis64 compiler omitted its output')
-                print(f'{source}: emitted Dis64')
-                continue
-            diagnostic = next((line for line in result.stdout.splitlines()
-                               if 'Dis64 scalar:' in line), '')
-            if result.returncode < 0 or target.exists() or not diagnostic:
-                raise RuntimeError(f'{source}: unexpected Dis64 refusal\n{result.stdout}')
-            if source == 'appl/wm/awm.b' and 'module load requires managed linkage' in diagnostic:
-                witness = re.search(r':(\d+): Dis64 scalar: module load requires managed linkage', diagnostic)
-                if not witness or 'load ' not in (ROOT/source).read_text().splitlines()[int(witness[1])-1]:
-                    raise RuntimeError(f'{source}: missing load-site diagnostic\n{result.stdout}')
-            print(diagnostic)
-            refused += 1
-    print(f'PASS AWM compiler preflight: {len(STARTUP)} ordinary modules, {refused} Dis64 refusals')
+            for profile, option in (("scalar", "-64"), ("managed", "-64l")):
+                target = work / (Path(source).stem + '.' + profile + '.dis64')
+                result = compile_module(limbo, source, target, [option])
+                if result.returncode == 0:
+                    if not target.is_file() or target.stat().st_size == 0:
+                        raise RuntimeError(f'{source}: {profile} compiler omitted its output')
+                    print(f'{source}: emitted {profile} Dis64 (compiler evidence only)')
+                    continue
+                diagnostic = next((line for line in result.stdout.splitlines() if 'Dis64 ' in line), '')
+                if result.returncode < 0 or target.exists() or not diagnostic:
+                    raise RuntimeError(f'{source}: unexpected {profile} refusal\n{result.stdout}')
+                if profile == "scalar" and source == 'appl/wm/awm.b' and 'module load requires managed linkage' in diagnostic:
+                    witness = re.search(r':(\d+): Dis64 scalar: module load requires managed linkage', diagnostic)
+                    if not witness or 'load ' not in (ROOT/source).read_text().splitlines()[int(witness[1])-1]:
+                        raise RuntimeError(f'{source}: missing load-site diagnostic\n{result.stdout}')
+                print(f'[{profile}] {diagnostic}')
+                refused[profile] += 1
+    print(f'PASS AWM compiler preflight: {len(STARTUP)} ordinary modules, {refused["scalar"]} scalar and {refused["managed"]} managed Dis64 refusals; no AWM execution claimed')
+
 
 
 if __name__ == '__main__':

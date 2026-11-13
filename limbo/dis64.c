@@ -742,6 +742,8 @@ dis64manageddirection(Decl *function)
 typedef struct Dis64ManagedCompilePlan Dis64ManagedCompilePlan;
 struct Dis64ManagedCompilePlan {
 	unsigned int bindings, calls;
+    Dis64Instruction connectioncode[Dis64ClockInstructions];
+    unsigned int connectioncount;
 	uchar directions[14], nativekind[14], reloads[Dis64ManagedCalls], transfers[Dis64ManagedCalls], ordinals[Dis64ManagedCalls];
 	char *path;
 	char *module; // Actual source interface/module identity.
@@ -1448,12 +1450,13 @@ dis64sysstringemit(Dis64ManagedCompilePlan *plan, long legacycount, uchar *code,
 }
 
 #include "dis64-dial.h"
+#include "dis64-connection.h"
 
 void
 dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes)
 {
 	static const uchar arraymaps[][2]={{0,0x83},{0,0x8b},{0,0xc3},{0,0xcb}}, bytemap[]={0};
-    static const uchar dialmap[]={0,0xdc};
+    static const uchar dialmap[]={0,0xdc},connectionmap[]={0,0xdf,0};
     static const uchar fdmap[] = {0,0x88}, fdpairmap[] = {0,0xc8};
 	static const uchar map[] = {0, 0x80}, callermap[] = {0, 0xc0}, mpmap[] = {0x80}, loadmap[] = {0xe0};
 	static const uchar load[] = {ILOAD,SRC(AMP)|AXIMM|DST(AMP),0,16,0};
@@ -1470,7 +1473,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	Dis64ModuleInfo module = {0};
 	DisStringPoolRecord names[17+Dis64ManagedLiterals];
 	Dis64Payload sections[5];
-	uchar caller[4+Dis64ManagedCalls*(sizeof(load)+sizeof(call)+sizeof(transfer)+sizeof(clear)+32)+14*Dis64ClockWords+2];
+	uchar caller[4+14*Dis64ClockInstructions];
 	uchar provider[22], metadata[24], typedata[48], pool[16384], literalbytes[Dis64ManagedLiterals][1024], literalmap[(3+Dis64ManagedLiterals+7)/8] = {0}, name[1024], symbols[14][1024];
 	uchar callername[1024], pathname[1024], binding[640], output[32768];
 	unsigned int sizes[5], written, i, j, at, header, bindingbytes, poolcount, instructions, runecount = 0;
@@ -1481,9 +1484,11 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
      * complete provider proof over the compiler's optional bootstrap entry hint. */
     if(ldts == nil && dis64managedlibraryshape(globals, input, count, databytes, &plan))
         consumer = fileload = 0;
-	else if(fileload && dis64dialshape(entry,globals,ldts,input,count,databytes,&plan))
+	else if(fileload && dis64connectionshape(entry,globals,ldts,input,count,databytes,&plan))
+        builtin=3;
+    else if(fileload && (memset(&plan,0,sizeof(plan)),dis64dialshape(entry,globals,ldts,input,count,databytes,&plan)))
         builtin=2;
-    else if(fileload && dis64managedcallershape(entry, globals, ldts, input, count, databytes, &plan, 1))
+    else if(fileload && (memset(&plan,0,sizeof(plan)),dis64managedcallershape(entry, globals, ldts, input, count, databytes, &plan, 1)))
 		builtin = 1;
 	else{
 		memset(&plan,0,sizeof(plan));
@@ -1499,7 +1504,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		if(!dis64libraryname(plan.symbols[i], symbols[i], &names[consumer && i ? 3+i : 1+i])) { error(impdecl->src.start,"Dis64 managed file: unsupported export name"); return; }
 	if(consumer){
 		module.name = 2; module.profile = 1; module.databytes = fileload ? 24 : plan.calls == 1 && plan.transfers[0] != 2 ? 8 : 16; module.datatype = 1;
-		types[0] = (Dis64Type){builtin==2 ? 112 : plan.arrayroots ? 128 : builtin && plan.wordflow ? 112 : 80, 8, builtin==2 ? dialmap : plan.arrayroots ? arraymaps[2*plan.pairroots+!!plan.fdroots] : plan.fdroots ? (plan.pairroots ? fdpairmap : fdmap) : builtin && !plan.pairroots ? map : callermap, 2};
+		types[0] = (Dis64Type){builtin==3 ? 144 : builtin==2 ? 112 : plan.arrayroots ? 128 : builtin && plan.wordflow ? 112 : 80, 8, builtin==3 ? connectionmap : builtin==2 ? dialmap : plan.arrayroots ? arraymaps[2*plan.pairroots+!!plan.fdroots] : plan.fdroots ? (plan.pairroots ? fdpairmap : fdmap) : builtin && !plan.pairroots ? map : callermap, builtin==3 ? 3 : 2};
 		if(plan.calls != 1 || plan.transfers[0] == 2) types[1] = (Dis64Type){16, 8, callermap+1, 1};
 		if(fileload) types[1] = (Dis64Type){24, 8, loadmap, 1};
 		if(plan.nliterals != 0) {
@@ -1521,7 +1526,15 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		}
 		if(plan.bindings == 2) poolcount = 5;
 		if(plan.nliterals != 0) poolcount = 3+plan.bindings+plan.nliterals;
-        if(builtin==2){
+        if(builtin==3){
+            at=4;
+            for(i=0;i<plan.connectioncount;i++){
+                Dis64Instruction *in=&plan.connectioncode[i];
+                if(!dis64encode(caller,&at,in)){error(impdecl->src.start,"Dis64 connection: cannot encode instruction");return;}
+                if(UDST(in->mode)==(AFP|AIND))at+=disoperand(caller+at,4,in->middle);
+            }
+            dis64put32(caller,plan.connectioncount);
+        }else if(builtin==2){
             if(!dis64dialemit(&plan,caller,&at)){error(impdecl->src.start,"Dis64 dial: cannot encode caller");return;}
         }else if(builtin && plan.wordflow){
             if(!dis64sysstringemit(&plan,count,caller,&at)){
@@ -1566,7 +1579,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		dis64put32(binding+header-4, builtin ? 12+4*dis64sysfixedargs(plan.nativekind[i]) : 20);
 		dis64put32(binding+header, Dis64TrialVersion); dis64put32(binding+header+4, 1);
 		if(builtin){
-            unsigned int signaturebytes=builtin==2 ? dis64sysdialsignature(binding+header) : dis64sysfixedsignature(plan.nativekind[i],binding+header);
+            unsigned int signaturebytes=(builtin==2 || (builtin==3 && plan.nativekind[i]==14)) ? dis64sysdialsignature(binding+header) : dis64sysfixedsignature(plan.nativekind[i],binding+header);
             dis64put32(binding+header-4,signaturebytes);
             bindingbytes=header+signaturebytes;continue;
         }

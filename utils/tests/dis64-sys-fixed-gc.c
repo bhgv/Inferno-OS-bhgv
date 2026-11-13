@@ -1,4 +1,5 @@
 static void dialtests(void);
+static void connectiontests(void);
 
 /* Actual mixed handlers with argument observations and mutable borrowed native frames. */
 #include "sys-fixed-images.h"
@@ -392,6 +393,7 @@ main(void)
             fixedexecute(sysfixed_cases+i,1,1);fixedexecute(sysfixed_cases+i,1,2);
         }}
     dialtests();
+    connectiontests();
     require(fdallocationchecked && fdexceptionchecked && openchecked && createchecked && arrayfaults == 6 && slicefaults == 4 && sharedviews == 2);freetype(TFD);TFD=nil;require(live == 0 && fdopened == fdclosed && fdgroup.r.ref == 1);
     printf("PASS mixed fixed Sys owning runtime: %u C/JIT/GC cases, 64/72/80/88-byte callee maps, exact scalar args/results/ordinals, FD lifetime/nil/replace/retire, 12 real mkfd allocation and 4 iounit native-error unwinds, release snapshots, 12 held-VM conversion failures, 6 array/String allocation replacement and 4 slice allocation/bounds unwinds and 2 shared-view lifetimes, %u wire plus 12 generated-entry pre-allocation refusals, %d native/%d heap rollback refusals\n",2*(unsigned int)nelem(sysfixed_cases),(unsigned int)nelem(sysfixed_bad),native,heap);
     return 0;

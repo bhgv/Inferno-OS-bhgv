@@ -8813,3 +8813,28 @@ and bounded complete calls; field expressions/general ADTs remain future work.
 Announce/listen file admission and Android/Bionic GUI/device startup are not
 claimed. FlashVM should review external-root operations under its own concurrent
 host contract; no peer native-world fallback or public managed IDs are proposed.
+
+## INFERNO-0165 — consume Connection results and exchange bytes
+
+2026-11-13. [Detailed report](dis64-inferno-connection-report.md). Existing
+Inferno only, no DisVM/proxy import. Preserved incoming FLASHVM-0177–0179 and
+their distinct concurrent-host/NC64 boundaries. Android ARM64 remains first.
+
+Connected status guards, c.dfd/c.cfd/c.dir, read/write, byte buffers, slices and
+String conversions through a new exact 144-byte caller map 00df00. Scalar result
+128 and saved Words 132/136 are separate from the tuple/status and mapped roots.
+The loader replays typed initialization and validates full generated call groups;
+new source proof accepts linear calls and early returns, not arbitrary ADTs/CFG.
+
+AMD64 ASan/UBSan and ARM64 UBSan/QEMU pass 24 new C/JIT/GC cases, six live-tuple
+allocation unwinds, 39 preallocation refusals and 18 native/five heap constructor
+rollbacks. Three new omissions fail semantically; ten existing controls and the
+240 fixed Sys/16 dial cases pass. Both whole-console suites exchange real TCP
+bytes across eight connections each, including UTF requests and reconnect reuse;
+both full paired-console suites pass. 209 prior image cases are byte-identical.
+
+RU/EN client tutorial added. AWM preflight now checks scalar and managed targets:
+16 ordinary modules compile; all 16 still fail each Dis64 route. General managed
+entry/library/exception/variadic support is still needed for the Android GUI.
+No Android device, general AWM, public managed IDs or peer proxy compatibility
+is claimed by this network client milestone.

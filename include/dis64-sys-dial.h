@@ -3,21 +3,25 @@
 #include "dis64-sys-string.h"
 
 #include "dis64-sys-dial-schema.h"
+#include "dis64-sys-connection.h"
 
 static int
 dis64sysdialtable(const unsigned char *data,unsigned int bytes,unsigned int exports,
     const DisStringPoolView *pool,const Dis64TypeTable *types,unsigned int instructions,
     unsigned int limit,unsigned int parameters,Dis64Bindings *result,const void *context)
 {
-    Dis64Binding b;
-    unsigned char signature[72];
-    unsigned int used,n=dis64sysdialsignature(signature);
+    Dis64Binding b;unsigned char signature[72];unsigned int used,n,i,count,at=4,seen=0;int kind;
     (void)types;(void)instructions;(void)parameters;(void)context;
-    if(exports || limit < 1 || bytes < 4 || dis64u32(data)!=1 ||
-       !dis64bindingrecord(data+4,bytes-4,0,&b,&used) || used!=bytes-4 ||
-       b.module!=0 || b.symbol!=1 || b.signature.bytes!=n || memcmp(b.signature.data,signature,n) ||
-       !dis64sysstringname(pool,0,"$Sys") || !dis64sysstringname(pool,1,"dial"))return 0;
-    *result=(Dis64Bindings){data,bytes,1,0,2};return 1;
+    if(exports || bytes<4 || !dis64sysstringname(pool,0,"$Sys"))return 0;
+    count=dis64u32(data);if(!count || count>5 || count>limit)return 0;
+    for(i=0;i<count;i++){
+        if(at>bytes || !dis64bindingrecord(data+at,bytes-at,0,&b,&used) || b.module || b.symbol!=(i?3+i:1))return 0;
+        kind=dis64connectionkind(pool,b.symbol);if(kind<0 || (seen&(1U<<kind)))return 0;
+        seen|=1U<<kind;n=kind==14?dis64sysdialsignature(signature):dis64sysfixedsignature(kind,signature);
+        if(b.signature.bytes!=n || memcmp(b.signature.data,signature,n))return 0;at+=used;
+    }
+    if(at!=bytes || !(seen&(1U<<14)))return 0;
+    *result=(Dis64Bindings){data,bytes,count,0,3};return 1;
 }
 
 /* Every call owns two String arguments and a disjoint 32-byte result region. */
@@ -29,6 +33,7 @@ dis64sysdialview(const Dis64StorageImage *image,Dis64ManagedLiteralsView *litera
     Dis64Instruction in;
     unsigned int i,at=4,used,phase=0,calls=0;
     DisRuneView name;
+    if(dis64typeget(&image->types,0,&frame) && frame.bytes==144)return dis64sysconnectionview(image,literals);
     if(image->module.profile!=1 || image->module.entry!=0 || image->module.name!=2 ||
        image->module.frametype!=0 || image->module.datatype!=1 || image->types.count!=2 ||
        image->exports.count || image->imports.count!=1 || image->initializers.count ||

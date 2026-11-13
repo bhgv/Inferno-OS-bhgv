@@ -1,6 +1,6 @@
 # Sys dial в приватном файловом профиле Dis64
 
-[English](dis64-sys-dial.md). Это дополнение существующего Inferno с JIT,
+[English](dis64-sys-dial.md). Поля, status и обмен данными описаны в [расширенном профиле Connection](dis64-sys-connection.ru.md). Это дополнение существующего Inferno с JIT,
 без переноса DisVM и без реализации RPC-прокси.
 
 `limbo -64l` теперь принимает ограниченный модуль с пустым входом, загрузкой
