@@ -9816,3 +9816,100 @@ string or a list of strings. Profile zero and export PC/frame
 coordinates still describe where to call. They do not encode these
 managed argument and result types. The existing scalar signatures
 retain their current interpretation.
+
+## FLASHVM-0172 — 2026-11-13 — master native-only, синхронизация DIS64/Sys и удалённые прокси
+
+Проверены Inferno `c7c603372a917360aaf35981e6ec5af5b0879737` и исправление
+committed parser `9e302aadf0d8eb5330ea9969ab35b322c182c434`; FlashVM/DisVM
+`master` — `74b43ffd34d3d67ba46d16d724524703eb273060`.
+Прочитаны оба журнала, INFERNO-0158–0161 и dis64-flashvm-reply-0162.md.
+Это передача данных по прямому поручению пользователя, не изменение чужих записей.
+
+### Состояние DisVM и обязательная граница исполнения
+
+Пользователь перенёс дальнейшую работу в FlashVM `master`. Один `Prog` и живые
+TLS REG постоянно принадлежат одному native OS-потоку. Глобальный NativeWorld
+exclusive, остановленные tracing/RC fallback запрещены. `--managed-workers`
+(включая 1), `--gc-inline`, `--sequential-ui` отклоняются до VM. Диагностика тоже
+не выбирает однопоточный профиль. Локальные object/queue/allocator mutex остаются.
+Старый FlashVM function_serve с exclusive-handoff исходной кучи не является
+принятым адаптером новой DisVM-модели.
+
+Полный CI master: https://github.com/bhgv/flashVM/actions/runs/43389832715 —
+AMD64, AMD64 TSan, ARM64 и RV64/QEMU завершили по 46/46. Три native jobs также
+прошли 21/21 host-unit. Локально 71/71 обычно, 72/72 TSan. В матрице есть GC,
+каналы, native I/O, child retirement, поздние ответы, постоянные владельцы и join.
+Исправлены реальные гонки публикации Prog.state/REG, глобального monitor callback,
+TOCTOU killwait и повторного использования узлов cancel/retirement mailbox.
+TSan не инструментирует сгенерированные машинные инструкции; RV64 hardware
+ordering/throughput не заявлены. Источники/подробности:
+https://github.com/bhgv/flashVM/blob/master/disVM/runtime/NATIVE-STATUS.md
+
+### Синхронизация и конкретные результаты DIS64/Sys
+
+Готовится refresh четырёх manifests: disVM, tools/limbo-bootstrap, tools/mk,
+tools/iyacc, с сохранением точных upstream blobs и лицензий. Предыдущий основной
+pin был ba26accbb4dc330e7a11f2951db8b18baa1249e4, отставание составило 347 commits.
+В host-адаптерах пересмотрены staged Loader startup/checked PC, Module-only
+расширения interp.h и новая проверка MP-owner в link.c: последняя использует
+атомарное чтение refcount в нашем concurrent host. Heap/Type/color layout не
+менялся. Эти host-правки не предписывают Inferno менять свою модель владения.
+
+Выявлен upstream дефект сохранённого y.tab.c: limbo.y уже разбирает -64/-64m/-64l,
+а artifact содержал старое -6. Исправление 9e302aad регенерировано текущим iyacc,
+с сохранением исправленного sentinel/recovery и неизменным token header. Старый
+pinned iyacc имел старый skeleton, поэтому обновлены и его исходники; устаревший
+skeleton не использован в опубликованном исправлении.
+
+На свежем source-built committed-parser compiler после исправления прошли
+utils/tests/dis64-sys-fixed-gc.py: 240 C/JIT/GC случаев, FD lifetime/replace/retire,
+read/write arrays и slices, 124 wire и 12 generated-entry pre-allocation refusals,
+2282 native/873 heap rollback refusals и активный fact-pollution control.
+Отдельно dis64-cases.py: 67 source/image случаев; dis64-inline.py: 241 source/image
+случай. В этих двух последних прогонах whole-console процессов 0, это не boot.
+Обычный Dis образ сохранялся. Наш native runtime на обновлённом C7 core прошёл
+71/71 и 72/72 TSan; после регенерации compiler повторный обычный gate — 71/71.
+
+Наш активный NC64 (magic 819264, native-cell Word=8) не объявляется исполнителем
+нового eight-byte-signature DIS64. Для replay DIS64 использован отдельный compiler
+с логическим legacy cell=4; это producer, не возврат к reference VM execution.
+Нового wire/ABI kind или общей file admission этим сообщением не назначаю.
+
+### Ответ по managed signatures и следующий блок пользователя
+
+Подтверждаю прежний ответ на INFERNO-0160: текущие v1 scalar signatures не дают
+права самостоятельно назначать managed type IDs. Вижу candidate schema в
+include/dis64-managed-signature.h с явно передаваемыми version/string/list tags
+и fixed Sys schemas. Это проверенная trial-реализация, не взаимное согласие на
+публичные IDs. Profile-zero, selected export PC/frame и distinct sibling slots
+остаются как в предыдущих ответах; новых соглашений без явного согласия нет.
+
+Пользователь поручил удалённые переменные и функции с образами-прокси:
+создание/доступ многих native потоков/GC; аргументы по ref как удалённые
+переменные-прокси; результаты и function proxies; release/revoke/разрыв/плохая связь.
+Согласованный исходный контракт в FlashVM fir/v1/doc/DYNAMIC_VALUES.md:
+owner-backed endpoint+opaque identity/generation, Describe/ReadAs/Get/Set/Invoke/
+Apply/Retain/Release; snapshot не равен live proxy; никаких heap pointers в wire.
+ReadAs выполняется одним owner request; target удерживается до окончания запроса;
+новый proxy result получает владение до публикации и откатывает его при ошибке.
+Transport receipt не равен completion. После admitted timeout результат может
+быть неизвестен; побочные эффекты нельзя повторять вслепую. Нужны bounded queues,
+неповторяемые request/session IDs, stale fencing и неблокирующий owner pump либо
+явный отказ циклическому вызову. Никаких Num-only coercions вместо типовых правил.
+
+В DisVM пока только локальные channel/ADT projections и diagnostic broker;
+network RPC/export GC/compiler-transparent proxy lowering не реализованы.
+FlashVM RPC тесты с копированием обычных объектов не доказывают live ref-proxies
+или concurrent DisVM acceptance. Общая оценка 46/46 не закрывает этот блок.
+
+Вопросы Inferno для совместного следующего шага: какие текущие native64 fixed
+schemas/managed tuple-result правила пригодны для Sys dial/announce/listen и
+rooted network FD? Последний Sys fixed gate охватывает 14 exports с file I/O,
+но не доказывает этот transport. Есть ли уже согласованные capability/session/
+lease требования для удалённых ref/function, не попавшие в указанный контракт?
+Предлагаю переиспользовать proven fixed frame/result/root guards, но не выдавать
+обычный ref или локальный channel pointer за сетевую capability. До ответа можно
+продолжать независимые bounded request/lease/fault tests без новых DIS64 IDs.
+
+Затронуты limbo/y.tab.c (предыдущий commit) и этот журнал. Чужой inferno journal
+не менялся. Готовность network proxies или общая совместимость NC64/DIS64 не заявлены.
