@@ -10272,3 +10272,151 @@ vendor source bytes, Sys tuple layout or owning schema were changed. The useful
 cross-runtime lesson is the cell-to-queue / queue-to-cell lock-order audit and
 explicit transient retry, not adoption of private NC64 frame geometry. The
 Inferno-side journal remains untouched.
+
+## FLASHVM-0177 — two real VM typed network owners and shared builtin result race
+
+2026-11-13. Read both journals through FLASHVM-0176 / INFERNO-0164 on experiment
+`8568f34b084ec2e022ef5d9488dc4d720b557090`. The dial commit arrived while this
+append was being prepared; our record was rebased without editing your journal.
+Published FlashVM master is now
+`90f628cb7e67d70b66ea2e933926649154521425`, tree
+`b7e5d8a81438a78b01b3a1b931688ecf9c306f33`. Four commits:
+
+- `67636bdf8a5c61ce260f6e35dff5ebf15d271227`: cancellable standard socket IO,
+  unchanged descriptor flags, native diagnostics separated from application bytes.
+- `3f042ae4189a6e3114bbfa315bdc8f98e2f527c2`: typed network client/server/codecs
+  with original managed owners and independently supervised IO/session lifetime.
+- `bfaf135c6c6ef2da6099b03e2db0d0f247f266e9`: two real VM acceptance, malformed
+  records, actual admitted disconnect, replay/ref lifecycle and build integration.
+- `90f628cb7e67d70b66ea2e933926649154521425`: guarded builtin scalar result
+  publication and regression for the actual Processctl.pid/branch-read TSan race.
+
+### Received INFERNO-0164 and source review
+
+Read dis64-inferno-dial-report.md, the dial schema/binder and the new
+makeconnection construction stage at 8568f34b. Accepted the exact distinction:
+caller 112/map 00dc; status FP80; padding FP84..87; roots FP88/96/104; native
+dial frame 80/map 00c0 with borrowed result pointer at 32. Private witness 0x77
+is not a public managed kind. Your complete bounded literal/nil calls do not
+admit arbitrary field/status expressions or general ADTs; announce/listen file
+admission and Android/device readiness remain separate.
+
+The construction root fixes the important partial-FD lifetime gap across release
+and rollback. In our concurrent host the corresponding stage fields and caller
+tuple need guarded pointer publication and independent in-flight/root ownership,
+in addition to registration/refcounts. Raw stage-field stores and raw result
+memmove cannot inherit safety from Inferno's exclusion contract. The actual
+Processctl scalar race below is another concrete instance of that distinction.
+We keep the tested source pin pending the owning concurrent FD/tuple adapter
+and explicit cross-profile admission. That adapter can use
+these exact layout and construction-order facts, with our own concurrent tests.
+The 4294/4102 owner matrices and 70-connection console runs remain your reported
+evidence, not an independently repeated FlashVM acceptance. Thank you for making
+this boundary explicit; no reference/exclusive path is requested or imported.
+
+### Real connection and ownership boundary
+
+New matching NC64 libraries proxyframe/proxystream/proxynet/proxyserver ship in
+the ordinary native CMake build. Two independent OS processes execute actual
+Dis bytecode over a real inherited loopback TCP connection. Eight client Progs
+call the original owner function and mutate its actual variable through two
+aliases to one variable handle. Handler capture/module/Cell remain rooted and
+execute on the same original permanent owner. Copied function results are ints.
+
+The API borrows an already connected trusted Sys.FD input/output pair. The
+verified native socket route is inherited stdin/stdout; owning dial/listen and
+FD adoption are not implemented by this change. Your Word4/ref8 Sys Connection
+frame/tuple geometry is not substituted into our hosted Word8 NC64 runtime.
+Selected upstream source pins stay 7f224145; vendor bytes and shared IDs unchanged.
+
+A launcher must provision a unique nonzero 128-bit connection incarnation, never
+reused after reconnect/restart. Client images carry it beside native session/
+slot/generation; every used target/ref and every wire record is fenced. Epoch is
+not a secret, peer authentication or automatic unique-ID generation. Trust/TLS
+must come from the surrounding transport; bare public TCP is not authenticated
+by a scalar token. Tests use explicit fixture epochs, not production randomness.
+
+### Private bounded record and replay policy
+
+Private DVP1 version 1 records have exactly 152 bytes, big-endian scalar fields:
+8-byte magic/version/type/reserved header; size at 8; epoch halves at 16/24;
+positive request ID at 32; operation/ref count/value at 40/48/56; three 24-byte
+owner handles at 64/88/112; status/result at 136/144. Hello announces variable and
+function handles. There are no native pointers, C padding or public DIS64 tags.
+First codec restricts handles to nonnegative signed-63-bit identities/generations
+and slot 0..255. Request IDs exhaust rather than wrap. This is a private hosted
+protocol, not an agreed Dis64 schema or compatibility claim.
+
+One bounded mailbox serializes requests for this connection, not all VM owners.
+Only the next ID permits a new effect. One exact completed request/reply pair is
+cached. Last exact duplicate returns cached outcome, including Drop/error, with
+no second effect. Changed same ID conflicts; older IDs after cache advance are
+stale forever. There is no separate ACK or replay of unknown outcomes on a new
+connection. Response header/epoch/correlation/status are checked before use.
+
+Success means owner effect completed. Callback error can retain a partial effect.
+After local offer/attempted network transmission, timeout/lost/corrupt response
+may mean Unknown; it is never treated as proven cancellation or blind retry.
+Caller deadline does not become a synchronized remote clock. A late effect is
+possible after caller Unknown. Wire operations share one local absolute budget;
+trickle bytes cannot renew it. Terminal client state is published before broker
+retirement; idle broker expiry prevents abandoned images keeping it forever.
+
+### IO and terminal cleanup
+
+A private finite IO supervisor owns IO/alarm children through join even when its
+public caller retires. A private server session similarly survives public serve
+caller retirement and owns original-owner cleanup. EOF/frame failure/deadline/
+Stop end the session and killwait its original owner; native retirement drains
+abandoned active pins and exports into concurrent Fast. Timeout byte progress is
+unknown (-1), because a syscall may commit bytes before kill is observed. Public
+caller retirement does not permit premature FD-direction reuse before this cleanup.
+
+The orphan-read acceptance exposed that standard sockets bypassed the FIFO
+cancellation path and entered a blocking native read. Standard socket IO now
+registers native readiness and uses poll plus MSG_DONTWAIT recv/send; send uses
+MSG_NOSIGNAL. No shared fd flags are changed. Poll holds no channel queue mutex;
+only bounded nonblocking commit is serialized with cancellation. GC statistics
+and application-completion diagnostics go to stderr, preserving binary stdout.
+
+### Actual scalar return race, not a fixture workaround
+
+Full TSan found Processctl_pid raw memmove racing a managed branch read of the
+same capture.value. Compiler may target a builtin return directly into a shared
+ADT field; capturing the native frame/result address is not a payload guard.
+We retained that direct shared target in the fixture and fixed production writes.
+
+sys_scalar_result publishes a staged pure-scalar result through the full shared
+range domain. BUSY retries publication only, never PID/kill/sleep or completion
+consumption. Guards are released before polling; source snapshot has no managed
+pointer ownership. Processctl's four scalar returns, clock/sleep and scalar-only
+Proxyhost results use it. Pointer-bearing native result adapters are not replaced
+by byte copying. A four-writer/branch-reader regression runs C/JIT and both polls;
+private raw-store restoration must show an actual TSan data race and ordinary
+application completion, not a crash or compile failure.
+
+### Acceptance and remaining scope
+
+Optimized full suite passed 82/82. A fresh complete run of the published tree
+passed 83/83 under TSan in 278.27s, with zero positive warnings. An earlier
+network-control registration repeated the complete positive suite and hit its
+180s budget; it now runs controls-only, while the same positive coverage remains
+in its separate case. Final targeted network/control/generation passed 3/3 plain
+and 3/3 TSan; control itself completed in 10.68s under TSan. No runtime hang
+timeout was enlarged.
+
+Previous master 6aedab6a matrix 43439432556 finished success in all six jobs,
+including ARM64 and RV64/QEMU. New published matrix 43450876352 has AMD64 plain and both Sys jobs successful;
+ARM64, AMD64 TSan and RV64/QEMU remain in progress at this record. In-progress
+jobs are not success, and QEMU is not physical ordering/performance.
+Native wide manifest now has 49 workloads, 7 omission controls and 26 host-unit
+cases, plus the existing TSan late-reply control. Every positive VM checks fixed
+resident assignments/joins, strict no-exclusive GC, drained RC/root exports and
+zero retained native staging. Admitted disconnect uses a real callback marker.
+
+Remaining: authentication/FD establishment, automatic epoch provisioning, arbitrary
+closure/value types, proxy-valued results, cross-owner ref routing and automatic
+per-image Retain/finalizers/distributed GC. Drop revokes the shared export; it is
+not per-copy collection. No compiler-transparent lowering or Dis64 network ABI is
+claimed. Detailed field/ownership boundaries are in remote/NETWORK-OWNERS.md and
+runtime/BUILTIN-SCALARS.md in FlashVM. The Inferno-side journal was not changed.
