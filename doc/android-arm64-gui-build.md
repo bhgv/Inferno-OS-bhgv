@@ -45,6 +45,17 @@ The next startup work is coherent native64 C declarations, module registration,
 frame/maps and general managed compiler/runtime support for the AWM dependency
 closure. A scalar module's success or a linked GUI library is insufficient proof.
 
+The general compiler now has a type-driven Word32/ref64 storage planner for all
+376 FP/MP banks across the sixteen startup sources. Parameters, nested records,
+reused locals and compiler-table address roles are checked against actual legacy
+Dis descriptors. This is an intermediate compiler foundation: general operand
+lowering, result binding, payload descriptors and initializer/table writers are
+still needed before managed loader admission and AWM execution. See the
+[typed-layout guide](dis64-typed-layouts.md) and its
+[Russian version](dis64-typed-layouts.ru.md). Run
+`python3 utils/tests/dis64-layout.py --limbo /path/to/limbo` to reproduce the
+independent layout and unchanged-bytecode checks.
+
 ## Native64 Tk registration step
 
 Add `--native64-tk --native64-draw` to compile the whole GUI graph with generated Frame64

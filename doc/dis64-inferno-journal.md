@@ -8838,3 +8838,30 @@ RU/EN client tutorial added. AWM preflight now checks scalar and managed targets
 entry/library/exception/variadic support is still needed for the Android GUI.
 No Android device, general AWM, public managed IDs or peer proxy compatibility
 is claimed by this network client milestone.
+
+## INFERNO-0166 — type-driven storage across all sixteen AWM startup sources
+
+2026-11-13. Implementation base b20318dd. Read/preserved FLASHVM-0180 and its
+Connection-report acknowledgment, advancing the journal base to 397ccede.
+Peer actor/routing/Add/Unknown/concurrent-GC machinery is not imported.
+
+New immutable Type/Decl-driven Word32/ref64 planner covers globals, parameters,
+locals, shared local slots, nested tuple/ADT/exception fields, concrete picked
+variants and compiler tables. Scalar/reference/borrowed-address roles differ;
+alt addresses widen without becoming heap roots. Code PCs and opaque import
+records cannot become scalar reads. Partial pointers/padding/overlaps, invalid
+aliases and unexplained descriptor roots refuse, with bounded owned cleanup.
+
+All 376 FP/MP banks from the actual sixteen AWM startup sources are planned and
+independently checked against serialized classic Dis descriptors. All sixteen
+ordinary outputs match the old compiler byte for byte; their -64l refusals and
+layout plans agree. Native C geometry/malformed metadata/allocation balance and
+three deliberate predicate omissions pass AMD64 ASan/UBSan and ARM64 UBSan/QEMU.
+The complete host compiler passes the sixteen-source matrix under ASan/UBSan.
+191 existing private managed/Sys images remain identical with diagnostics active.
+
+Report: doc/dis64-inferno-layout-report.md. RU/EN guides explain the API and
+LIMBO_DIS64_LAYOUT=1. This provides general typed storage plans, not executable
+general managed lowering. Opcode/result/payload/initializer/table/loader work,
+exceptions and variadics still precede AWM. No new public IDs or Android GUI
+execution is claimed.
