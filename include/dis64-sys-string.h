@@ -116,6 +116,14 @@ dis64sysstringview(const Dis64StorageImage *image, Dis64ManagedLiteralsView *lit
             if(in.op != IEXIT || in.mode != (SRC(AXXX)|DST(AXXX)) || phase != 1 || (pending && !extended) || calls == 0) return 0;
             break;
         }
+        if(phase == 1 && arrayroots && in.op == ISLICEA){
+            unsigned int sourcekind=USRC(in.mode), middlekind=in.mode&ARM;
+            if(++words > Dis64ClockWords || UDST(in.mode) != AFP || in.destination != 112 ||
+               (sourcekind != AIMM && sourcekind != AFP) || (middlekind != AXIMM && middlekind != AXINF)) return 0;
+            if(sourcekind == AFP){in.source=dis64sysstringcell(in.source,0);if(in.source < 0)return 0;}
+            if(middlekind == AXINF){in.middle=dis64sysstringcell(in.middle,0);if(in.middle < 0)return 0;}
+            flow[i]=in;continue;
+        }
         if(phase == 1 && arrayroots && (in.op == ICVTCA || in.op == ICVTAC || in.op == ILENA || in.op == INEWA || in.op == INEWAZ)){
             unsigned int sourcekind=USRC(in.mode);
             long sourcevalue=in.source,destination;

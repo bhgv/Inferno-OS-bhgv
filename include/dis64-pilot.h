@@ -75,6 +75,13 @@ dis64clockeffect(const Dis64Instruction *in, unsigned int *need, unsigned int *d
         if(!dis64clockbranch(in->op) && UDST(in->mode) == AFP) {
             *define = dis64clockbit(in->destination); if(!*define) return 0;
         }
+    } else if(in->op == ISLICEA){
+        if(UDST(in->mode) != AFP || in->destination != 112) return 0;
+        *need=64; *define=64;
+        if(sm == AFP){bit=dis64clockbit(in->source);if(!bit || (bit&~15U))return 0;*need |= bit;}
+        else if(sm != AIMM)return 0;
+        if(mm == AXINF){bit=dis64clockbit(in->middle);if(!bit || (bit&~15U))return 0;*need |= bit;}
+        else if(mm != AXIMM)return 0;
     } else if(in->op == IMCALL) *define = in->middle == -1 ? 32 : 8; // Typed projection: FD result defines no Word.
     else if(in->op != ILOAD && in->op != IMFRAME && in->op != ILEA && in->op != IEXIT && in->op != IJMP) return 0;
     return 1;

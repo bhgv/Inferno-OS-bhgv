@@ -129,6 +129,20 @@ def programs():
       ('bytes-allocation','b:=array of byte "old";b=array[7] of byte;b=array of byte "replacement";s:=string b;r:=sys->werrstr(s);',[('werrstr','replacement',0,0,0)],METHODS),
     ]
     cases.append(('bytes-two-strings','b:=array of byte "/right";s:=string b;r:=sys->unmount("/left",s);r=sys->bind(s,s,0);',[('unmount','/left',0,0,-1,'/right'),('bind','/right',0,0,-1,'/right')],METHODS))
+    cases += [
+      ('bytes-slice-read','fd:=sys->open("/existing",0);b:=array[20] of byte;n:=sys->read(fd,b,len b);s:=string b[:n];r:=sys->werrstr(s);',[('open','/existing',0,0,150),('read','hello',150,20,5),('werrstr','hello',0,0,0)],METHODS),
+      ('bytes-slice-middle','b:=array of byte "abcdef";b=b[1:4];s:=string b;r:=sys->werrstr(s);',[('werrstr','bcd',0,0,0)],METHODS),
+      ('bytes-slice-lower','b:=array of byte "abcdef";lo:=2;b=b[lo:5];s:=string b;r:=sys->werrstr(s);',[('werrstr','cde',0,0,0)],METHODS),
+      ('bytes-slice-upper','b:=array of byte "abcdef";hi:=4;b=b[1:hi];s:=string b;r:=sys->werrstr(s);',[('werrstr','bcd',0,0,0)],METHODS),
+      ('bytes-slice-bounds','b:=array of byte "abcdef";lo:=1;hi:=5;b=b[lo:hi];s:=string b;r:=sys->werrstr(s);',[('werrstr','bcde',0,0,0)],METHODS),
+      ('bytes-slice-empty','b:=array of byte "abcdef";b=b[3:3];s:=string b;r:=sys->werrstr(s);',[('werrstr','',0,0,0)],METHODS),
+      ('bytes-slice-end','b:=array of byte "abcdef";b=b[6:];s:=string b;r:=sys->werrstr(s);',[('werrstr','',0,0,0)],METHODS),
+      ('bytes-slice-rest','b:=array of byte "abcdef";b=b[2:];s:=string b;r:=sys->werrstr(s);',[('werrstr','cdef',0,0,0)],METHODS),
+      ('bytes-slice-twice','b:=array of byte "abcdef";b=b[1:5];b=b[1:3];s:=string b;r:=sys->werrstr(s);',[('werrstr','cd',0,0,0)],METHODS),
+      ('bytes-slice-alias','b:=array of byte "abcdef";c:=b;c=c[1:4];b=nil;s:=string c;r:=sys->werrstr(s);c=nil;',[('werrstr','bcd',0,0,0)],METHODS),
+      ('bytes-slice-utf','b:=array of byte "Grüße 世界";b=b[2:7];s:=string b;r:=sys->werrstr(s);',[('werrstr','üße',0,0,0)],METHODS),
+      ('bytes-slice-write','fd:=sys->open("/existing",1);b:=array of byte "abcdef";b=b[1:4];r:=sys->write(fd,b,len b);',[('open','/existing',1,0,150),('write','bcd',150,3,3)],METHODS),
+    ]
     allbytes='r:=sys->werrstr("all-bytes");t:=sys->millisec();r=sys->sleep(0);r=sys->dup(-1,-1);r=sys->chdir("/ok");r=sys->remove("/missing");r=sys->unmount("/left","/right");r=sys->bind("/source","/target",0);fd:=sys->fildes(1);r=sys->iounit(fd);fd=sys->create("/created",1,420);b:=array of byte "hello";r=sys->write(fd,b,len b);fd=sys->open("/created",0);b=array[5] of byte;r=sys->read(fd,b,len b);s:=string b;r=sys->werrstr(s);'
     allbyteevents=[('werrstr','all-bytes',0,0,0),('millisec',None,0,0,23),('sleep',None,0,0,0),('dup',None,-1,-1,-1),('chdir','/ok',0,0,0),('remove','/missing',0,0,-1),('unmount','/left',0,0,-1,'/right'),('bind','/source',0,0,-1,'/target'),('fildes',None,1,0,101),('iounit',None,101,0,4096),('create','/created',1,420,151),('write','hello',151,5,5),('open','/created',0,0,150),('read','hello',150,5,5),('werrstr','hello',0,0,0)]
     for shift in range(14):cases.append(('all-bytes-'+str(shift),allbytes,allbyteevents,METHODS[shift:]+METHODS[:shift]))
@@ -246,6 +260,20 @@ def refusals(limbo,work):
     for body in ('a:=array[4] of int;r:=sys->werrstr("bad");','a:=array of byte "first";b:=array of byte "second";s:=string a;r:=sys->werrstr(s);'):
         BASE['compile_source'](limbo,work,'sys:=load Sys Sys->PATH;'+body,accepted=False)
 
+    image=BASE['compile_source'](limbo,work,'sys:=load Sys Sys->PATH;b:=array of byte "abcdef";b=b[1:4];s:=string b;r:=sys->werrstr(s);')
+    decoded=decode(section(image,2));raw=[r[-1] for r in decoded];at=next(i for i,r in enumerate(decoded) if r[0]=='ISLICEA')
+    if decoded[at][1:6]!=(81,1,4,112,0):raise RuntimeError('slice CODE oracle mismatch')
+    for dest in (64,72,80,96,104,120):
+        bad=list(raw);bad[at]=ins('ISLICEA',81,source=1,middle=4,destination=dest);yield replace(image,2,RAW['W'](len(bad))+b''.join(bad))
+    for cell in (64,72,80,84,88,96,104,112,120):
+        for mode in (73,145):
+            bad=list(raw);bad[at]=ins('ISLICEA',mode,source=cell if mode==73 else 1,middle=4 if mode==73 else cell,destination=112);yield replace(image,2,RAW['W'](len(bad))+b''.join(bad))
+    constructor=next(i for i,r in enumerate(decoded) if r[0]=='ICVTCA')
+    bad=list(raw);bad.insert(constructor,ins('IBEQW',82,source=0,middle=0,destination=at+1));yield replace(image,2,RAW['W'](len(bad))+b''.join(bad))
+    bad=list(raw);bad[constructor]=ins('IMOVW',17,source=0,destination=80);yield replace(image,2,RAW['W'](len(bad))+b''.join(bad))
+    for body in ('b:=array of byte "abcdef";c:=b;b=b[1:4];s:=string c;r:=sys->werrstr(s);', 'b:=array[2] of int;b=b[0:1];r:=sys->werrstr("bad");'):
+        BASE['compile_source'](limbo,work,'sys:=load Sys Sys->PATH;'+body,accepted=False)
+
 
 def boot(command,work,consumer,limbo,execute,retired):
     path='/'+str(work.relative_to(work.parent));(work/'ok').mkdir(exist_ok=True);(work/'existing').write_text('native64 fixture\n')
@@ -260,6 +288,13 @@ def boot(command,work,consumer,limbo,execute,retired):
             marker='native64 scalar module $Sys: jit=0, exit="fd out of range or not open"' if nilfd else f'native64 scalar module SysText: jit={jit}, exit=""'
             if marker not in output or retired not in output or 'panic:' in output:raise RuntimeError(name+' '+output)
             if (name=='bytes-roundtrip' or name.startswith('all-bytes-')) and (work/'created').read_bytes()!=b'hello':raise RuntimeError(name+' physical file payload mismatch')
+            if name=='bytes-slice-write' and (work/'existing').read_bytes()!=b'bcdlo':raise RuntimeError(name+' physical slice payload mismatch')
+    for lower,upper in ((-1,2),(4,3),(0,7)):
+        body='sys:=load Sys Sys->PATH;b:=array of byte "abcdef";b=b['+str(lower)+':'+str(upper)+'];s:=string b;r:=sys->werrstr(s);'
+        consumer.write_bytes(BASE['compile_source'](limbo,work,body))
+        for jit in (0,1):
+            output=execute(command+['-c',str(jit),'-d','/'+str(consumer.relative_to(work.parent)),'-P','$Sys','-X','dis64-managed-trial'])
+            if 'exit="array bounds error"' not in output or retired not in output or 'panic:' in output:raise RuntimeError('slice bounds '+output)
     for bad in refusals(limbo,work):
         consumer.write_bytes(bad);output=execute(command+['-d','/'+str(consumer.relative_to(work.parent)),'-P','$Sys','-X','dis64-managed-trial'])
         if retired in output or 'panic: loading Dis64 pair' not in output:raise RuntimeError('malformed fixed argument program scheduled: '+output)

@@ -1004,6 +1004,26 @@ dis64managedcallershape(Decl *entry, Decl *globals, Decl *ldts, Inst *input,
 	for(i=0; input != nil; input=input->next){
 		if(input->op == INOOP) continue;
 		if(i >= count) return 0;
+        if(builtin && phase == 1 && module >= 0 && input->op == ISLICEA){
+            Dis64ClockWord *word;
+            Dis64Instruction operation;
+            Addr lower, upper;
+            if(plan->scalar.nwords == Dis64ClockWords || input->dm != Afp ||
+               !dis64clockslot(input->d.reg,entry->desc->size) || input->d.reg == module ||
+               (destination=dis64managedlocal(slots,values,&used,input->d.reg)) == nil ||
+               !arrayvalue || *destination != arrayvalue ||
+               !dis64clockvalue(input->sm,&input->s,scalarlocals,scalarprevious,&lower) ||
+               !dis64clockvalue(input->mm,&input->m,scalarlocals,scalarprevious,&upper)) return 0;
+            operation=(Dis64Instruction){ISLICEA,
+                SRC(input->sm == Aimm ? AIMM : AFP)|(input->mm == Aimm ? AXIMM : AXINF)|DST(AFP),
+                input->mm == Aimm ? upper.offset : dis64sysstringcell(upper.reg+32,1),
+                input->sm == Aimm ? lower.offset : dis64sysstringcell(lower.reg+32,1),112};
+            plan->arrayroots=plan->wordflow=1;
+            arrayvalue=20000+input->pc;*destination=arrayvalue;
+            word=&plan->scalar.words[plan->scalar.nwords++];word->legacy=input->pc;
+            word->before=groups;word->target=-1;word->instruction=operation;
+            i++;continue;
+        }
         if(builtin && phase == 1 && module >= 0 && (input->op == ICVTCA || input->op == ICVTAC || input->op == ILENA || input->op == INEWA || input->op == INEWAZ)){
             Dis64ClockWord *word;
             Dis64Instruction operation;
@@ -1324,7 +1344,7 @@ dis64sysstringemit(Dis64ManagedCompilePlan *plan, long legacycount, uchar *code,
                 if(word->target >= legacycount || pcs[word->target] < 0) return 0;
                 instruction.destination = pcs[word->target];
             }
-            if(instruction.op != ILOAD && instruction.op != IMOVP && instruction.op != ICVTCA && instruction.op != ICVTAC && instruction.op != ILENA && instruction.op != INEWA && instruction.op != INEWAZ && !dis64sysstringword(&instruction,1)) return 0;
+            if(instruction.op != ILOAD && instruction.op != IMOVP && instruction.op != ISLICEA && instruction.op != ICVTCA && instruction.op != ICVTAC && instruction.op != ILENA && instruction.op != INEWA && instruction.op != INEWAZ && !dis64sysstringword(&instruction,1)) return 0;
             if(!dis64encode(code,&at,&instruction)) return 0;
         }
         if(i == plan->calls) break;
@@ -1390,7 +1410,10 @@ dis64sysstringemit(Dis64ManagedCompilePlan *plan, long legacycount, uchar *code,
         for(i=0; i<pc; i++){
             if(!dis64callread(code+cursor,at-cursor,&decoded,&used)) return 0;
             cursor += used; flow[i] = decoded.instruction;
-            if(flow[i].op == ICVTCA || flow[i].op == INEWA || flow[i].op == INEWAZ || flow[i].op == ICVTAC || flow[i].op == ILENA){
+            if(flow[i].op == ISLICEA){
+                if(USRC(flow[i].mode) == AFP){flow[i].source=dis64sysstringcell(flow[i].source,0);if(flow[i].source < 0)return 0;}
+                if((flow[i].mode&ARM) == AXINF){flow[i].middle=dis64sysstringcell(flow[i].middle,0);if(flow[i].middle < 0)return 0;}
+            }else if(flow[i].op == ICVTCA || flow[i].op == INEWA || flow[i].op == INEWAZ || flow[i].op == ICVTAC || flow[i].op == ILENA){
                 Dis64Instruction original=flow[i];
                 unsigned int sourcekind=USRC(original.mode);
                 long sourcevalue=original.source,destvalue=original.op == ICVTAC ? 120 : original.op == ILENA ? 0 : 112;

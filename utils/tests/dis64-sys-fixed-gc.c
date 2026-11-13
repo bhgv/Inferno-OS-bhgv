@@ -147,10 +147,26 @@ fixedexecute(const SysFixedCase *test, int jit, int conversion)
     newstack(&process);free(entry);initmem(frame,process.R.FP);ptrdel(D2H(caller));managedprocess=&process;
     fixedos=fixedinside=groupcalls=groupreleases=0;groupvictim=1;cachereleases=cacheacquires=0;
     for(step=0;step<2048;step++){
+        Array *shared=H;
         callerfp=process.R.FP;pc=process.R.PC;if(pc == caller->prog+caller->m->nprog-1)break;
         osbefore=fixedos;pathbefore=groupcalls;dropbefore=fdclosed;
         dropping=pc->op == IMOVP && pc->add == (SRC(AMP)|DST(AFP)) && pc->s.ind == 8 && pc->d.ind == 96;
         if(dropping){memmove(&fdresult,process.R.FP+96,sizeof(fdresult));dropping=fdresult != H ? 2 : 1;}
+        if((conversion == -8 || conversion == -9) && pc->op == ISLICEA){
+            Array *old,*after;
+            int arrayrefs=Tarray.ref,byterefs=Tbyte.ref;
+            WORD oldlen;
+            uchar *olddata;
+            memmove(&old,callerfp+112,sizeof(old));require(old != H);oldlen=old->len;olddata=old->data;
+            if(conversion == -8){D2H(old)->ref++;literalpoolfail=literalpoolcalls+1;}
+            else old->len=0;
+            require(!kprotect(execute,&process) && strcmp(message,conversion == -8 ? exHeap : exBounds) == 0);
+            literalpoolfail=0;require(old->data == olddata && old->len == (conversion == -8 ? oldlen : 0));old->len=oldlen;
+            memmove(&after,callerfp+112,sizeof(after));
+            require(old == after && Tarray.ref == arrayrefs && Tbyte.ref == byterefs && cachereleases == cacheacquires);
+            if(conversion == -8){require(D2H(old)->ref == 2);destroy(old);}
+            fault=1;break;
+        }
         if((conversion == -5 && (pc->op == INEWA || pc->op == INEWAZ)) ||
            (conversion == -6 && pc->op == ICVTCA) || (conversion == -7 && pc->op == ICVTAC)){
             void *old,*after;
@@ -210,7 +226,17 @@ fixedexecute(const SysFixedCase *test, int jit, int conversion)
                 fault=1;break;
             }
         }
-        require(kprotect(execute,&process));
+        if(conversion == -10 && pc->op == ISLICEA && !fault){
+            memmove(&shared,callerfp+112,sizeof(shared));require(shared != H && D2H(shared)->ref == 1);D2H(shared)->ref++;
+        }
+        if(!kprotect(execute,&process)){fprintf(stderr,"Sys case %s jit=%d op=%d: %s\n",test->label,jit,pc->op,message);require(0);}
+        if(shared != H){
+            Array *view;
+            memmove(&view,callerfp+112,sizeof(view));
+            require(view != H && view != shared && view->root == shared && view->len == 3 &&
+                    view->data == shared->data+1 && shared->len == 6 && D2H(shared)->ref == 2);
+            destroy(shared);fault=1;
+        }
         if(dropping)require(fdclosed == dropbefore+(dropping == 2));
         if(pc->op == IMCALL){
             event=test->events+calls;memmove(&result,process.R.FP+104,sizeof(result));expected=0x1122334400000000ULL|(UWORD)event->status;
@@ -228,8 +254,9 @@ fixedexecute(const SysFixedCase *test, int jit, int conversion)
         }
         numericcollect(&process);
     }
-    if(conversion)require(fault && !fixedinside);
+    if(conversion && conversion != -10)require(fault && !fixedinside);
     else{
+        if(conversion == -10)require(fault);
         require(step<2048 && calls == test->calls && !fixedinside);
         require(!kprotect(execute,&process) && message[0] == 0);
     }
@@ -320,20 +347,25 @@ int
 main(void)
 {
     unsigned int i;
-    int native=0,heap=0,fdallocationchecked=0,fdexceptionchecked=0,openchecked=0,createchecked=0,arrayfaults=0;
+    int native=0,heap=0,fdallocationchecked=0,fdexceptionchecked=0,openchecked=0,createchecked=0,arrayfaults=0,slicefaults=0,sharedviews=0;
     numericpoolinit();Tstring.size=sizeof(String);Tstring.free=freestring;Tstring.mark=noptrs;
     Tarray.size=sizeof(Array);Tarray.free=freearray;Tarray.mark=markarray;
     worker.env=&worker.defenv;worker.env->errstr=worker.defenv.errbuf0;
     fdgroup.r.ref=1;worker.env->fgrp=&fdgroup;
     {uchar map[]={0};TFD=dtype(freeFD,sizeof(FD),map,sizeof(map));require(TFD != nil);}
     optab[ILOAD]=iload;optab[IMOVP]=movp;optab[IMFRAME]=mframe;optab[IMCALL]=mcall;optab[IEXIT]=iexit;
-    optab[ICVTCA]=cvtca;optab[ICVTAC]=cvtac;optab[ILENA]=lena;optab[INEWA]=newa;optab[INEWAZ]=newaz;
+    optab[ICVTCA]=cvtca;optab[ICVTAC]=cvtac;optab[ILENA]=lena;optab[INEWA]=newa;optab[INEWAZ]=newaz;optab[ISLICEA]=slicea;
     optab[IMOVW]=movw;optab[IADDW]=addw;optab[ISUBW]=subw;optab[ISHLW]=shlw;optab[IORW]=orw;optab[IBGEW]=bgew;optab[IBNEW]=bnew;optab[IBEQW]=beqw;optab[IBLEW]=blew;optab[IJMP]=jmp;
     fixedconstructors(&native,&heap);
     for(i=0;i<nelem(sysfixed_cases);i++){fixedexecute(sysfixed_cases+i,0,0);fixedexecute(sysfixed_cases+i,1,0);
         if(strcmp(sysfixed_cases[i].label,"bytes-allocation") == 0){
             fixedexecute(sysfixed_cases+i,0,-5);fixedexecute(sysfixed_cases+i,1,-5);
             fixedexecute(sysfixed_cases+i,0,-6);fixedexecute(sysfixed_cases+i,1,-6);arrayfaults+=4;
+        }
+        if(strcmp(sysfixed_cases[i].label,"bytes-slice-middle") == 0){
+            fixedexecute(sysfixed_cases+i,0,-8);fixedexecute(sysfixed_cases+i,1,-8);
+            fixedexecute(sysfixed_cases+i,0,-9);fixedexecute(sysfixed_cases+i,1,-9);
+            fixedexecute(sysfixed_cases+i,0,-10);fixedexecute(sysfixed_cases+i,1,-10);slicefaults+=4;sharedviews+=2;
         }
         if(strcmp(sysfixed_cases[i].label,"bytes-string-allocation") == 0){fixedexecute(sysfixed_cases+i,0,-7);fixedexecute(sysfixed_cases+i,1,-7);arrayfaults+=2;}
         if(!fdexceptionchecked && strcmp(sysfixed_cases[i].events[0].method,"iounit") == 0 && sysfixed_cases[i].events[0].first < 0){
@@ -357,7 +389,7 @@ main(void)
             fixedexecute(sysfixed_cases+i,0,1);fixedexecute(sysfixed_cases+i,0,2);
             fixedexecute(sysfixed_cases+i,1,1);fixedexecute(sysfixed_cases+i,1,2);
         }}
-    require(fdallocationchecked && fdexceptionchecked && openchecked && createchecked && arrayfaults == 6);freetype(TFD);TFD=nil;require(live == 0 && fdopened == fdclosed && fdgroup.r.ref == 1);
-    printf("PASS mixed fixed Sys owning runtime: %u C/JIT/GC cases, 64/72/80/88-byte callee maps, exact scalar args/results/ordinals, FD lifetime/nil/replace/retire, 12 real mkfd allocation and 4 iounit native-error unwinds, release snapshots, 12 held-VM conversion failures, 6 array/String allocation replacement unwinds, %u wire plus 12 generated-entry pre-allocation refusals, %d native/%d heap rollback refusals\n",2*(unsigned int)nelem(sysfixed_cases),(unsigned int)nelem(sysfixed_bad),native,heap);
+    require(fdallocationchecked && fdexceptionchecked && openchecked && createchecked && arrayfaults == 6 && slicefaults == 4 && sharedviews == 2);freetype(TFD);TFD=nil;require(live == 0 && fdopened == fdclosed && fdgroup.r.ref == 1);
+    printf("PASS mixed fixed Sys owning runtime: %u C/JIT/GC cases, 64/72/80/88-byte callee maps, exact scalar args/results/ordinals, FD lifetime/nil/replace/retire, 12 real mkfd allocation and 4 iounit native-error unwinds, release snapshots, 12 held-VM conversion failures, 6 array/String allocation replacement and 4 slice allocation/bounds unwinds and 2 shared-view lifetimes, %u wire plus 12 generated-entry pre-allocation refusals, %d native/%d heap rollback refusals\n",2*(unsigned int)nelem(sysfixed_cases),(unsigned int)nelem(sysfixed_bad),native,heap);
     return 0;
 }

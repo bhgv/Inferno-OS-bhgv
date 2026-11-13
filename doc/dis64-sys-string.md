@@ -382,9 +382,9 @@ init()
     n := sys->write(fd, b, len b);
     fd = nil;
     fd = sys->open("/bytes-example.txt", Sys->OREAD);
-    b = array[5] of byte;
+    b = array[20] of byte;
     n = sys->read(fd, b, len b);
-    text := string b;
+    text := string b[:n];
     status := sys->werrstr(text);
     fd = nil;
     b = nil;
@@ -395,7 +395,7 @@ init()
 
 Compile with `limbo -z -I module -64l -o /build/sys-bytes.dis64 sys-bytes.b`,
 then use the earlier emulator command with `/sys-bytes.dis64`. This bounded
-example assumes successful operations and a known five-byte file. `werrstr`
+example assumes successful operations and a file no longer than the twenty-byte buffer. `werrstr`
 stores the read text; it does not print it. Run under a writable emulator root.
 
 `array of byte text` encodes UTF-8, and `string b` decodes UTF-8. Embedded NUL
@@ -403,8 +403,8 @@ bytes remain part of an array and are passed to read/write using an explicit
 count. `len b` counts bytes, not Unicode characters. The count is clamped to the
 buffer length; nil buffers and negative counts follow the existing Sys wrapper
 behavior. A short read changes only the returned prefix. Converting the whole
-array also includes the remaining suffix; slicing to the returned length is
-outside this bounded compiler profile. `-z` selects zero-initializing NEWAZ;
+array also includes the remaining suffix. Use `string b[:n]` after a successful
+read to convert only its returned prefix. `-z` selects zero-initializing NEWAZ;
 ordinary NEWA must not be assumed to initialize the bytes.
 
 | Caller offset | Meaning |
@@ -427,7 +427,7 @@ these are not public format assignments.
 This profile permits one current array, one current converted String and one
 current FD, including aliases and last-owner nil cleanup. A replacement changes
 the tracked identity; using an older alias is refused. Arrays of other element
-types, array indexing/slicing and general ADTs remain separate work. Literal
+types, array indexing and general ADTs remain separate work. Literal
 String arguments and converted Strings have separate roots, including both
 arguments of `bind`/`unmount`.
 
@@ -438,3 +438,32 @@ release-time GC and allocation failures without losing the previous owner.
 Malformed root maps, primitive descriptors, signatures and uninitialized Word
 uses are refused. Deliberately corrupting the array/Word proof or omitting
 canonical byte-type adoption must also fail the gate.
+
+
+## Slicing a byte buffer
+
+`b = b[lo:hi]`, `b = b[lo:]` and `string b[:n]` now lower to the existing
+SLICEA instruction. Bounds can be immediate integers or initialized Word locals,
+including a read result. Omitting the upper bound emits the existing array
+length instruction. Nested and empty slices are accepted. Bounds count bytes:
+for UTF-8 text, choose boundaries that do not split a multibyte character.
+
+SLICEA changes the current array identity. Only its destination becomes the
+current supported value; using an older alias afterward is refused. This is a
+bound of this compiler profile, not Limbo's general alias semantics. A temporary
+slice such as `string b[:n]` has the same bound: subsequent uses of the old `b`
+are not admitted. Clear it with nil or replace it with a new array instead.
+
+The loader independently checks that the array and both Word bounds are
+initialized on every incoming path. Array roots, String roots and FD roots
+cannot serve as bounds. It then executes the existing VM span/lifetime checks.
+A unique byte array narrows without allocating a new header. When a shared
+backing owner requires a view header, allocation failure leaves the old array
+unchanged. Out-of-range bounds likewise leave the destination unpublished.
+The owning gate checks both failures and deliberately removes array/bound
+initialization obligations to prove that malformed images are caught.
+
+A slice used for `write` retains its backing array through release-time GC.
+Full-console examples cover prefix reads, middle/suffix slices, repeated slices,
+empty buffers and UTF-8 data in both C and JIT-requested execution. This adds no
+wire fields or opcode IDs and does not enable arbitrary array element types.

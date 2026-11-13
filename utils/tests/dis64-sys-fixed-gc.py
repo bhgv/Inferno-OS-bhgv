@@ -29,7 +29,7 @@ def unit():
     source=source.replace(extract(source,'String* c2string('),extract(strings,'String*\nc2string('),1)
     arrays='Type Tbyte={1,0,0,1};char exType[]="type";\n'+'\n'.join(extract(heap,signature) for signature in ('void\nacheck(','void\ninitarray(','Heap*\nheaparray(','void\nfreearray('))
     arrays+='\n'+extract((ROOT/'libinterp/runt.c').read_text(),'Array*\nmem2array(')
-    arrays+='\n'+'\n'.join(extract(xec,signature) for signature in ('static Type*\nmoduletype(','static void\nnewarray(','OP(newa)','OP(newaz)','OP(lena)'))
+    arrays+='\n'+'\n'.join(extract(xec,signature) for signature in ('static Type*\nmoduletype(','static void\nnewarray(','OP(newa)','OP(newaz)','OP(lena)','static uchar*\narrayspan(','OP(slicea)'))
     arrays+='\n'+'\n'.join(extract(strings,signature) for signature in ('OP(cvtca)','OP(cvtac)'))
     source+='\n'+arrays
 
@@ -97,6 +97,20 @@ def main():
         result=subprocess.run(runner+[str(work/'permission-control')],capture_output=True,text=True,timeout=90)
         if result.returncode!=20 or result.stderr.strip()!='Sys open/create argument predicate':raise RuntimeError('permission mask control missed predicate: '+result.stdout+result.stderr)
         print('PASS active Sys create permission zero-extension removal control',flush=True)
+        marker='*need=64; *define=64;'
+        if pilot.count(marker)!=1:raise RuntimeError('slice fact control marker drift')
+        (override/'dis64-pilot.h').write_text(pilot.replace(marker,'*need=0; *define=64;'))
+        subprocess.run(common[:1]+['-I'+str(override)]+common[1:]+[str(work/'test.c'),'-o',str(work/'slice-control')],check=True)
+        result=subprocess.run(runner+[str(work/'slice-control')],capture_output=True,text=True,timeout=90)
+        if result.returncode!=14 or result.stderr.strip()!='Sys fixed admission predicate':raise RuntimeError('slice array fact control missed predicate: '+result.stdout+result.stderr)
+        print('PASS active slice array-initialization removal control',flush=True)
+        marker='if(!bit || (bit&~15U))return 0;*need |= bit;'
+        if pilot.count(marker)!=2:raise RuntimeError('slice bound control marker drift')
+        (override/'dis64-pilot.h').write_text(pilot.replace(marker,'if(!bit || (bit&~15U))return 0;'))
+        subprocess.run(common[:1]+['-I'+str(override)]+common[1:]+[str(work/'test.c'),'-o',str(work/'slice-bound-control')],check=True)
+        result=subprocess.run(runner+[str(work/'slice-bound-control')],capture_output=True,text=True,timeout=90)
+        if result.returncode!=14 or result.stderr.strip()!='Sys fixed admission predicate':raise RuntimeError('slice bound fact control missed predicate: '+result.stdout+result.stderr)
+        print('PASS active slice bound-initialization removal control',flush=True)
         marker='*define = dis64clockbit(in->destination); if(!*define) return 0;'
         if pilot.count(marker)!=1:raise RuntimeError('array result control marker drift')
         (override/'dis64-pilot.h').write_text(pilot.replace(marker,marker+' if(in->destination >= 112)*define |= 8;'))
