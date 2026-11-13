@@ -10795,3 +10795,86 @@ authenticated owning transport/unique epochs, dynamic route discovery/delegation
 arbitrary closures/value arguments, compiler lowering and distributed cycle tracing.
 Only this append-only FlashVM journal is changed in Inferno; peer journal and
 implementation files remain untouched.
+
+
+## FLASHVM-0182 — queue deadlines and sustained forwarding ownership
+
+2026-11-13. FlashVM master publication [cacb7976](https://github.com/bhgv/flashVM/commit/cacb79769443d1210590a96aaa46db9dccf8adc0); tree
+1dde578142a5ecbfc360d1d06c411d8ca47940f4. Native dedicated Prog/OS threads, permanent live TLS REG
+and concurrent GC remain mandatory. No global exclusive/stop is introduced.
+Read/preserved INFERNO-0166/0167; vendor selection remains 7f224145 and public
+Dis64 IDs/layout are unchanged. This only appends the FlashVM journal.
+
+Two independently verified deadline defects are fixed. Proxynet local Request
+now carries the original absolute caller deadline through buffered mailbox wait,
+result reservation and wire exchange. Broker rejects known-expired work before
+lease consumption, Retain/result reservation or request ID. Expired queued Stop
+leaves the connection usable. Wire encoding/write/read use the original remaining
+budget, capped by the configured exchange budget; automatic GC Drop keeps the
+existing idle deadline. If expiry happens after broker admission/consumption,
+terminal cleanup prevents an ID gap or ambiguous ownership from being reused.
+
+Proxyowner.serve now also checks Request.deadline before native begin/pins and
+before Stop/Retain/Drop. Previously the local owner only passed that deadline to
+routed callback primitives and still executed expired ordinary queued effects.
+Caller alarm Unknown is still Unknown; neither fix authorizes automatic replay
+or promises rollback of work already accepted by another node.
+
+A delayed-response relay between two actual VMs holds the first Read until a
+second queued Write caller has retired. Correct original storage stays 10 and
+expired lifecycle offers preserve the live broker and source lease. A private
+request-deadline renewal produces an actual original-owner Write=999 and exactly
+the intended semantic rejection. A separate original callback gate proves the
+same property in the local owner queue, including ten expired operation kinds.
+Omitting only that owner guard also produces actual Write=999, followed by clean
+owner Stop before rejection. Compile errors, crashes and timeouts do not count.
+C/JIT and both concurrent polling paths pass for optimized and TSan probes.
+
+Forwarding registry no longer exhausts its connection after 256 lifetime imports.
+It maintains sixteen outstanding completion records, nonblocking-reaps completed
+children, fences their managed retirement by exact PID, and reuses record slots.
+Each new actor is still a new dedicated Prog/PID; native resident reap/join remains
+a separate runtime responsibility verified by final evidence. Live actors are
+never evicted for admission. Capacity refusal precedes source Retain/export;
+after completions the connection can admit further imports. Cleanup waits all
+remaining completion records. Channels hold only scalar PIDs, not managed Refs.
+
+New architecture workload proxy-churn runs three actual VMs through forty imports,
+Add/Drop and native handle generations on one connection. A changes 10 -> 50;
+B local storage stays zero, consumed C leases stay stale and forty B wrapper
+finalizer obligations enqueue/drain. C/JIT and both polling paths are required.
+A private reaping omission gives exactly Capacity=4 at zero-based round sixteen after
+sixteen actual effects; A stays 26 and both servers cleanly retire/join.
+
+The prior 3a44cd65 CI TSan run failed in its twenty-second routed fixture, without
+an observed TSan race report. Its coarse error did not identify the precise inner
+status; four local two-CPU TSan repetitions passed. The queue defects above have
+independent deterministic evidence and are not inferred from that CI failure.
+Positive overlap now uses finite 60-second caller/connection and 30-second actor
+budgets; the missing-GC control keeps its private five-second fallback. Exact
+original-owner overlap/32 effects stay required, and diagnostics preserve primary
+VM error plus status/value/round. Whole-network omission suite has a 360-second
+aggregate CTest budget after an instrumented 243-second success; individual wire,
+caller and join bounds are not renewed. New omission groups are separately listed.
+
+Final ordinary CTest passes 86/86; its last modified base-network case also
+passes again. All 87 TSan cases are covered: 79 passed the full split run, the
+remaining eight pass 8/8 after completing the build and running two workloads
+concurrently. That replay includes base network, forty-import churn, both new
+omission groups and existing native GC/root controls. Reconfiguring a build view
+removes generated headers; testing/relinking must wait for its subsequent build.
+New positive success fixtures use finite sixty-second queue/caller budgets;
+short explicit fault/expiry tests keep their own original deadlines. Sustained
+forty-import C guest has a separate 240-second whole-process join bound.
+
+The old RV64/QEMU matrix completed 48/49; its sole failure was the combined
+network workload's exact 1200-second aggregate bound. Architecture selection now
+lists base network, three-VM forwarding, queue deadlines and sustained churn as
+four distinct cases, preserving all C/JIT/poll combinations and per-workload
+1200-second bounds. RV64/QEMU overall job budget is seventy-five minutes for
+this expanded 52-case matrix. Its new CI execution remains independent evidence;
+pending does not certify ARM64/RV64 ordering or physical performance.
+
+Authenticated owning transport, dynamic routing/delegation, general closure/value
+arguments, compiler lowering and distributed cycle tracing remain separate work.
+Inferno-maintained journal and implementation files are unchanged.
