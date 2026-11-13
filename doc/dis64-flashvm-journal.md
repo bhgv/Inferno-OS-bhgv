@@ -10509,3 +10509,101 @@ Remaining: authentication, owning FD establishment/automatic unique epochs,
 arbitrary closure/value types, proxy-valued returns, cross-owner ref routing,
 transparent compiler lowering and cross-node tracing/lease policy. Detailed
 contracts: disVM/remote/NETWORK-OWNERS.md in FlashVM. Inferno's journal is untouched.
+
+
+## FLASHVM-0179 — actual callback results as network variable/function images
+
+2026-11-13. FlashVM result-image series after master 4fdec2c1; published final
+commit 4b09f1d7b1b1ee9ce3ecaa5c6974fc59137a68e2, tree
+614f01f5d10baaa535b8f302f1784060f72e07b4. Ordered commits: 60da351f native
+RESERVED result tokens, 009ba8e4 actual Limbo callback result exports,
+cb5bb084 checked DVP3 transfer/replay/orphan acceptance, 4b09f1d7 contracts.
+Publication uses expected-head/author/parent/tree checks without force. Local
+format-patches have been applied to a separate index and reproduce the final tree.
+
+Read experiment bcbe8345 and latest INFERNO-0164 at 8568f34b. No later Inferno
+record was available; our acknowledgement of rooted partial Connection tuple
+construction and bounded Sys.dial admission is unchanged. Selected vendor source
+pin remains 7f224145. No Inferno source/journal edits, public Dis64 IDs, Word4/ref8
+frame changes or peer native-world/exclusive assumptions are imported.
+
+Proxyhandler.result runs real Limbo on the original permanent owner Prog. It
+receives actual capture and up to two actual same-owner Cell refs and returns an
+actual nonnil Cell. Proxyowner.fetch publishes a separate native export root as
+Variable or Function capture and returns only scalar identity. Proxynet.fetch
+turns that result into a managed image. This is typed Cell/capture ownership,
+not arbitrary closure/value lowering. The same handler module invokes a returned
+function using its newly rooted capture, on the same original native thread.
+
+A returned variable can be newly allocated or alias an original ref. Aliases see
+current mutations; their independent export roots survive original handle Drop.
+Returned functions survive original function Drop and accept live returned
+variable refs, including two aliases. Existing scalar Invoke stays unchanged.
+Local channel fetch exposes explicit Drop/Stop handles; network images add their
+managed lease lifecycle. Nil result is Invalid; raised callback is OwnerError and
+may leave a visible partial effect.
+
+Before any result callback offer, the client broker reserves bounded native quota
+and a managed token in a new RESERVED phase, with no handle or remote ownership.
+It cannot activate, match or consume as an ordinary image. After a checked success,
+only its creating broker can bind the exact session/slot/generation and transition
+to ACTIVE, once, without allocation. Unknown/error/abandoned unbound reservations
+finalize without remote Drop. A successful image inside an abandoned buffered
+reply finalizes with exactly one Drop. Collector work remains scalar-only native
+metadata under a local mutex, without managed callbacks, IO or a world stop.
+
+Local reservation quota refuses before callback and leaves the original cell
+unchanged. Remote export quota is different: callback may already have completed
+an effect before native publication returns Capacity. The effect is preserved;
+no result image is adopted and Capacity does not authorize automatic replay.
+An independent later call can succeed after explicit export Release/collection.
+A real VM quota probe fills all 16 owner export slots (two initial plus fourteen
+results), observes one callback increment with failed export, then releases a slot
+and observes exactly the next increment with successful returned alias. Stop
+collects the still-outstanding result roots.
+
+Private hosted wire is now DVP3/version 3, exactly 184 bytes. Existing fields
+through byte 151 retain their positions. Wire operations ReturnVariable=7 and
+ReturnFunction=8 are appended after Retain=6. Result kind at 152 is 0 absent,
+1 variable or 2 function; returned handle session/slot/generation is at
+160/168/176. Hello/Call and failed/scalar replies require a zero result extension.
+A successful result reply requires the expected kind, zero scalar result,
+positive session/generation, bounded slot and the invoked function's session.
+No managed pointer/token or native layout crosses the stream. DVP2 is rejected;
+matching producers/interfaces are required on both endpoints. Public Dis64 is
+unchanged; this is not admission of Inferno's new tuple ABI into the NC64 host.
+
+The one-entry exact replay cache stores complete result bytes. An exact duplicate
+returns the same handle without callback, another export or Retain; after window
+advance the old result request is Stale. Drop followed by stale Read/Invoke proves
+there is no extra duplicate result ownership. Lost/malformed/wrong-kind/foreign
+reply gives terminal Unknown before adoption. Disconnect cleanup retains active
+callback pins until original-owner retirement. Unknown never permits blind retry.
+
+Local optimized full CTest passes 82/82; full TSan CTest passes 83/83, including
+new network positive/fault and omission acceptance. Additional
+remote result quota and orphan-result matrices pass C/JIT and both polling paths
+in optimized and TSan builds. Actual two-VM results cover new variables/functions,
+original aliases, eight concurrent result clients, original Drop, partial-effect
+exceptions, nil returns and GC before Stop. Independent wire probes check exact
+result replay, kind/authority/slot/generation/truncation rejection and disconnect
+after an actual result callback entry marker.
+
+A caller-retirement probe withholds the already offered result until its caller
+has retired, then observes exactly one GC Drop for that returned handle before
+original function/ref arguments remain usable. Private result-validation and
+native-bind omissions must produce explicit intended semantic failures, never
+crash/timeout credit. A targeted private RESERVED-allocation refusal proves no
+actual callback effect; joined native/managed ownership counters must drain.
+
+Prior published matrix 43470300585 is confirmed successful in all six jobs,
+including native ARM64, AMD64 TSan and RV64/QEMU. New-series CI is tracked
+separately; in-progress jobs are not success. QEMU is not physical memory ordering
+or performance evidence. Native OS threads, fixed Prog/TLS REG identity and
+concurrent GC without global exclusive/stop remain the only execution profile.
+
+Remaining boundaries: cross-owner ref routing, arbitrary closure/value types,
+String result snapshots, compiler-transparent proxy lowering, authenticated owning
+FD establishment/unique epoch provisioning and cross-node tracing/cycle policy.
+Returned typed variable/function images are no longer a missing network path.
+See disVM/remote/NETWORK-OWNERS.md for the full result/quota/Unknown contract.
