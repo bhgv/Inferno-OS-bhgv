@@ -12649,3 +12649,69 @@ peer journal prefix preserved. Docs: disVM/runtime/JIT-FP.md/.ru.md;
 example: disVM/examples/jit-fp. / RU: Добавлены copied base FP/SIMD-регистры,
 REAL RX faults и восстановление исходного FP-окружения; повтор операции запрещён,
 карантин всей функции сохранён. Более широкие vector extensions не заявляются.
+
+
+## FLASHVM-0200 — native namespace groups and bounded JIT diagnostic scope
+
+2026-11-14. Published flashVM master09acc38a3e6d4443d664a9a78abd3b52a0dcee5a,
+tree2a880d03a4f4e1aae673ca2d38858d223ecd1213, parent62c50570. Inferno
+experiment4e345306 and the INFERNO-0182 scalar importing-file receipt remain
+unchanged/preserved. No vendor refresh or public Dis64/signature/kind change;
+vendor pin remains7f2241455734e1142a3254fad9d1ec4f94032ac7. No new peer source
+fix was imported or legacy OS exclusion/irestore execution re-enabled.
+
+New native-owned namespace group per resident: spawn shares an owning reference;
+Sys.pctl(0,nil) returns PID, FORKNS detaches a coherent copy, NEWNS rebases an
+empty group at resolved cwd. Sys.chdir updates group virtual cwd, not host cwd.
+Sys.bind supports existing like-kind host resources with MREPL; Sys.unmount has
+filtered/unfiltered exact-target removal. Other flags/movefd fail explicitly
+without partial changes. Sys.open/create/stat resolve current group; existing
+FD handles retain their original resource. Every private setup failure and final
+retirement releases the native group, independently of parent lifetime.
+
+Common namespace core uses libc and the existing portable per-group mutex API.
+Resolve snapshots freeze virtual/native paths and revision; native I/O does not
+hold a namespace mutex. Validation occurs outside it; commit rejects stale plans,
+with at most8 retries and no revision wrap. No managed pointers/roots are stored,
+no global execution exclusion/stop introduced, no live VM REG restored. Scalar
+returns use existing cell guards: BUSY retries publication only, never namespace
+effects. Seven-child public example includes four concurrent direct shared-ADT
+Sys.pctl return writers while parent executes guarded branch reads.
+
+This is explicitly host-path routing, NOT complete Inferno Chan/provider VFS or
+a security sandbox. Native spellings do not retain identity through rename/unlink;
+host symlinks/open FDs can leave NEWNS root. Virtual cwd is a spelling, so covering
+rebind affects later relative lookup until provider handles replace that boundary.
+Longest component prefix wins; sources freeze at bind time, nested bindings
+survive parent-prefix removal. Loader/cache still uses prior native resource
+lookup outside namespace; provider identity must enter its cache keys later.
+Union/mount transport/device/socket/channel providers, FD/env/credential groups,
+namespace inspection and dynamic C/Limbo providers remain pending. Shared-cwd/
+FORKNS and NEWNS intent was checked against emu/port/inferno.c; no source-body
+copy or whole-OS import. Linux64 executable coverage only; Windows/macOS/Android
+runtime adapters are not claimed by the portable common-core implementation.
+
+Validation: full ordinary67 groups passed (65 mandatory native workloads plus
+record/generation units); focused11 ordinary/11 TSan groups and12 further TSan
+lifecycle/debugger groups passed. After final guarded-return change, repeated
+namespace/concurrency/generation3 ordinary and4 TSan groups pass, including the
+new omission control: raw result copies cause actual ThreadSanitizer data races
+in interpreter/JIT. Safe control is test-linked only; crash/normal exit/compiler
+failure is not evidence. Standalone core passes ASan/UBSan with leak detection
+off due sandbox ptrace, so no leak coverage claimed. All33 changed files<=500
+lines,4739 tracked sources pass explicit-error check. Exact-tree backup reapplies
+in isolated index. RU/EN docs: disVM/runtime/VFS-NAMESPACE.md/.ru.md; public example:
+disVM/examples/namespace. New architecture CI is not counted as passed in advance.
+
+Prior master62c50570 explicitly bounded JIT diagnostics to actually used hosted
+mechanisms. Review final generated guarded bridges, not retained upstream inline
+emitters or test-injected RX FP instructions: those tests prove fault-boundary/
+context/quarantine behavior, not production inline arithmetic. Existing snapshots
+remain; unused AVX/SVE/RVV/Q diagnostic expansion is not pending work.
+
+RU: Добавлены общие/копируемые native namespace и стандартное подмножество Sys,
+без глобальной остановки. Это ещё не Chan/provider VFS: identity, loader namespace,
+union/mount и FD/env/credentials остаются следующими блоками. Исправлена guarded
+публикация новых scalar returns; реальная omission-гонка подтверждена TSan.
+Диагностика JIT ограничена фактически используемыми механизмами; тестовый RX
+не выдаётся за production inline-арифметику. Префикс peer-журнала сохранён.
