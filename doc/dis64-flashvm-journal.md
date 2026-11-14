@@ -11562,3 +11562,72 @@ INFERNO-0173/1ff6f592 and its multiple-call report/receipt of0189 stay acknowled
 peer source and journal entries preserved. No new peer source imported; vendor
 pin stays7f224145. Dedicated native threads without global stop/exclusive remain
 mandatory. This synchronization changes only the append-only FlashVM journal.
+
+
+
+## FLASHVM-0192 — progress publications, registry partitions and control-plane scope
+
+2026-11-14. FlashVM master90299f44f9a713f19d285de9f506ec057d0cdae2
+(tree d445e7b408a0c0d3c94faaf85cb334b68fd27514) adds single-owner atomic
+progress publications: callback entries, completed guest callbacks and dedicated
+condition-wait entries (including spurious wakeups). Counters start at zero and
+saturate at signed-big max. Inspector reads copied native counters only. Completed
+is acquired before dispatches; its release follows the corresponding dispatch,
+so copied completed <= dispatches. The triple is not an atomic snapshot,
+instruction count, syscall count, CPU/wall time or wait duration.
+
+Processctl.residentprogress(exact ID) returns status/three counters with zeroed
+missing/refusal payload. residentsummary returns a coherent native slot partition:
+created=registered+reaping+reaped and registered-done<=registered. Reaping owns
+detached slots through native join and deferred accounting; refused rootless
+leave restores links/count together. Shutdown joins may remain registered until
+service destruction. This is a registry summary, not a universal OS thread count.
+Existing resident APIs remain; new tuples use guarded scalar publication.
+
+Eight actual guests perform four channel pulse/ack rounds and five increasing
+readings; a ninth native guest continuously reads shared progress/summary ADTs
+while the parent publishes32/48-byte tuples. Canaries and independent field values
+survive; readers do not infer a coherent sum from separate field loads. All nine
+owners join, native/GC accounting drains. Invalid/absent IDs return zero payload.
+Boundary probe exercises LLONG_MAX saturation using the actual counter helper.
+Private join interception inspects summary inside actual unlink-to-join windows.
+Suppressing copied completed counts or in-flight summary must produce precise
+DETECTED diagnostics followed by normal completion/full ownership drain. Three
+existing phase/activity omissions remain active; crash/timeout/compile/sanitizer/
+nonzero exit never counts as semantic detection.
+
+Final selected CTest passes7/7 ordinary and7/7 TSan: process control, live registry,
+receiver/native cancellation, retirement storage, table transfer/retirement.
+Registry covers C/JIT and fast/locked polling, four copied-card omissions and the
+in-flight summary omission. Actual zero-helper CLI report produces exact JSON
+summary; three normalizer units pass. Changed handwritten sources stay below500
+lines. Architecture workload count stays56. CI43591586109 was running at this
+note; no complete new runtime/architecture result is claimed. FlashVM's three
+commits and exact-tree format-patch backup were completed before workspace loss.
+
+User explicitly requests separate debug/stat mailboxes and permits pausing an
+individual guest for external inspection. New runtime/CONTROL-PLANE.md records
+bounded separate queues/capabilities/generation/request identity, owner-bound
+capture, cooperative safe-boundary pause/resume, continuing diagnostics/GC and
+shared-object guards even while one Prog is paused. These are next-stage contracts,
+not newly implemented pause, priority, stack or external transport APIs. Permanent
+native owner/live TLS REG and no global stop/exclusive remain mandatory.
+
+The user also asks for thread controls, memory inventory, Inferno/clone-like
+copy/share environments and composable FS with C/Limbo providers. Current API
+readiness is explicit: child kill/wait cancellation and metadata exist; general
+supervisor/pause/priority, per-type/per-origin live allocation catalog, environment
+namespace/FD/env groups, bind/mount/unmount/Styx serving and VFS providers remain
+unfinished. C builtins and Limbo modules exist; no general .so/DLL loader is claimed.
+Allocation origin differs from shared retainers; typed channels need explicit
+framing/adapters for byte-oriented VFS handles. Copied upstream libraries do not
+imply active hosted services. These boundaries coordinate future work without
+importing peer synchronous execution/namespace assumptions as concurrent proof.
+
+INFERNO-0173/1ff6f592 remains acknowledged; peer implementation and journal entries
+are preserved. No source imported; vendor pin stays7f224145. Public Dis64/ISA/Sys
+IDs remain unchanged. The local execution transport disconnected after successful
+FlashVM publication/tests; this append is published through the GitHub connector
+and checked against its exact original prefix and requested suffix. No local
+journal format-patch or final local checkout state can be verified during that
+outage. Synchronization changes only this append-only journal.
