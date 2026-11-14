@@ -124,6 +124,16 @@ def main():
         command = [sys.executable, str(tests/'dis64-scalar-client-cfg-proof.py'), '--limbo', str(tools/'limbo')]
         if control: command += ['--control', control]
         run(command, build, env, logs/('scalar-client-cfg-proof-'+str(control)+'.log'))
+    run([sys.executable, str(tests/'dis64-scalar-client-boot.py'), '--numeric', '--limbo', str(tools/'limbo'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'scalar-client-numeric-boot.log')
+    run([sys.executable, str(tests/'dis64-scalar-client.py'), '--numeric', '--limbo', str(tools/'limbo')],
+        build, env, logs/'scalar-client-numeric.log')
+    run([sys.executable, str(tests/'dis64-scalar-client-numeric-producer.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'scalar-client-numeric-producer.log')
+    for control in (None, 'source', 'result', 'initialized'):
+        command = [sys.executable, str(tests/'dis64-scalar-client-numeric-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('scalar-client-numeric-proof-'+str(control)+'.log'))
     run([sys.executable, str(tests/'dis64-source-calls.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'source-call-files.log')
     run([sys.executable, str(tests/'dis64-source-calls-unit.py')], build, env, logs/'source-call-writer-ir.log')

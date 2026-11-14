@@ -129,3 +129,5 @@ compatibility checks, not AWM execution. No Android/Bionic GUI APK, new collecto
 filesystem concurrency proof or FlashVM signal/debugger implementation is claimed.
 
 [INFERNO-0183 report](dis64-inferno-client-cfg-report.md).
+
+Numeric continuation tutorial / Арифметика и преобразования: [dis64-client-numeric.md](dis64-client-numeric.md).

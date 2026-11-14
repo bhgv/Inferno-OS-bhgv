@@ -124,3 +124,5 @@ AWM. Android/Bionic GUI APK, новый concurrent GC/FS proof и перенос
 сигналов/отладчика FlashVM здесь не заявляются.
 
 [Отчёт INFERNO-0183](dis64-inferno-client-cfg-report.md).
+
+Numeric continuation tutorial / Арифметика и преобразования: [dis64-client-numeric.ru.md](dis64-client-numeric.ru.md).

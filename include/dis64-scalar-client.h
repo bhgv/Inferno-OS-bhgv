@@ -1,4 +1,4 @@
-/* Bounded linear importing command. No new wire IDs or serialized native facts. */
+/* Bounded scalar importing command. No new wire IDs or serialized native facts. */
 #ifndef DIS64_SCALAR_CLIENT_H
 #define DIS64_SCALAR_CLIENT_H
 #include "dis64-call-library.h"
@@ -41,21 +41,37 @@ dis64clientread(Dis64ClientSlot *slots,unsigned int *count,unsigned int frame,un
 {
  return mode==AIMM?kind==Dis64Int:mode==AFP && dis64clientslot(slots,count,frame,value,kind,0);
 }
+/* Derive exact numeric operand kinds; equal widths do not imply equal kinds. */
+static int
+dis64clientoperation(unsigned int op,unsigned int *source,unsigned int *destination,int *binary)
+{
+ *source=*destination=Dis64Int;*binary=0;
+ switch(op){
+ case IMOVW:break;
+ case IMOVL:*source=*destination=Dis64Big;break;
+ case IMOVF:case INEGF:*source=*destination=Dis64Real;break;
+ case ICVTWL:*destination=Dis64Big;break;
+ case ICVTWF:*destination=Dis64Real;break;
+ case ICVTLW:*source=Dis64Big;break;
+ case ICVTFW:*source=Dis64Real;break;
+ case ICVTLF:*source=Dis64Big;*destination=Dis64Real;break;
+ case ICVTFL:*source=Dis64Real;*destination=Dis64Big;break;
+ case IADDW:case ISUBW:case IMULW:case IDIVW:case IMODW:case IANDW:case IORW:case IXORW:case ISHLW:case ISHRW:*binary=1;break;
+ case IADDL:case ISUBL:case IMULL:case IDIVL:case IMODL:case IANDL:case IORL:case IXORL:*source=*destination=Dis64Big;*binary=1;break;
+ case ISHLL:case ISHRL:*destination=Dis64Big;*binary=1;break;
+ case IADDF:case ISUBF:case IMULF:case IDIVF:*source=*destination=Dis64Real;*binary=1;break;
+ default:return 0;
+ }
+ return 1;
+}
 /* No branches, hidden MP access, references or prepared-frame access here. */
 static int
 dis64clientnumeric(Dis64ClientSlot *slots,unsigned int *count,unsigned int frame,const Dis64Instruction *in)
 {
- unsigned int kind=Dis64Int,sourcekind,mm=in->mode&ARM,lm;long lhs;int binary=0;
- switch(in->op){
- case IMOVW:break;case IMOVL:kind=Dis64Big;break;case IMOVF:kind=Dis64Real;break;
- case ICVTWL:case ICVTWF:kind=in->op==ICVTWL?Dis64Big:Dis64Real;break;
- case IADDW:case ISUBW:case IMULW:case IDIVW:case IMODW:case IANDW:case IORW:case IXORW:case ISHLW:case ISHRW:binary=1;break;
- case IADDL:case ISUBL:case IMULL:case IDIVL:case IMODL:case IANDL:case IORL:case IXORL:case ISHLL:case ISHRL:kind=Dis64Big;binary=1;break;
- default:return 0;
- }
- /* Native Inst.reg holds a signed16 middle immediate; wire signed30 is wider. */
+ unsigned int kind,sourcekind,mm=in->mode&ARM,lm;long lhs;int binary;
+ if(!dis64clientoperation(in->op,&sourcekind,&kind,&binary))return 0;
+ /* Native Inst.reg holds a signed16 WORD middle immediate, never a REAL/LONG. */
  if(mm==AXIMM && (kind!=Dis64Int || in->middle < -32768 || in->middle > 32767))return 0;
- sourcekind=in->op==ICVTWL || in->op==ICVTWF || in->op==ISHLL || in->op==ISHRL?Dis64Int:kind;
  if(!dis64clientread(slots,count,frame,USRC(in->mode),in->source,sourcekind) || UDST(in->mode)!=AFP)return 0;
  if(binary){lm=mm==AXNON?AFP:mm==AXIMM?AIMM:mm==AXINF?AFP:AMP;lhs=mm==AXNON?in->destination:in->middle;
   if(!dis64clientread(slots,count,frame,lm,lhs,kind))return 0;
@@ -122,17 +138,15 @@ dis64clienteffect(Dis64ClientSlot *slots,unsigned int *count,unsigned int frame,
  unsigned int kind=Dis64Int,sourcekind,mm=in->mode&ARM,lm,branch=dis64clientbranch(in->op);long lhs;int binary=0;
  if(in->op==IJMP)return in->mode==(SRC(AXXX)|DST(AIMM));
  if((in->op==IBEQL || in->op==IBNEL) && in->mode==(SRC(AMP)|AXINM|DST(AIMM)))return in->source==0 && in->middle==8;
- switch(in->op){
- case IMOVW:case ICVTWL:case ICVTWF:break;
- case IMOVL:kind=Dis64Big;break;case IMOVF:kind=Dis64Real;break;
- case IADDW:case ISUBW:case IMULW:case IDIVW:case IMODW:case IANDW:case IORW:case IXORW:case ISHLW:case ISHRW:binary=1;break;
- case IADDL:case ISUBL:case IMULL:case IDIVL:case IMODL:case IANDL:case IORL:case IXORL:case ISHLL:case ISHRL:kind=Dis64Big;binary=1;break;
- case IBEQW:case IBNEW:case IBLTW:case IBLEW:case IBGTW:case IBGEW:break;
- case IBEQL:case IBNEL:case IBLTL:case IBLEL:case IBGTL:case IBGEL:kind=Dis64Big;break;
- case IBEQF:case IBNEF:case IBLTF:case IBLEF:case IBGTF:case IBGEF:kind=Dis64Real;break;
- default:return 0;
- }
- sourcekind=in->op==ISHLL || in->op==ISHRL?Dis64Int:kind;
+ if(branch){
+  switch(in->op){
+  case IBEQW:case IBNEW:case IBLTW:case IBLEW:case IBGTW:case IBGEW:break;
+  case IBEQL:case IBNEL:case IBLTL:case IBLEL:case IBGTL:case IBGEL:kind=Dis64Big;break;
+  case IBEQF:case IBNEF:case IBLTF:case IBLEF:case IBGTF:case IBGEF:kind=Dis64Real;break;
+  default:return 0;
+  }
+  sourcekind=kind;
+ }else if(!dis64clientoperation(in->op,&sourcekind,&kind,&binary))return 0;
  if(!dis64clientbit(slots,count,frame,USRC(in->mode),in->source,sourcekind,node->need))return 0;
  if(binary || branch){
   if(branch && mm==AXNON)return 0;
@@ -142,7 +156,6 @@ dis64clienteffect(Dis64ClientSlot *slots,unsigned int *count,unsigned int frame,
   if(!dis64clientbit(slots,count,frame,lm,lhs,kind,node->need))return 0;
  }
  if(branch)return UDST(in->mode)==AIMM;
- if(in->op==ICVTWL)kind=Dis64Big;if(in->op==ICVTWF)kind=Dis64Real;
  if(!dis64clientbit(slots,count,frame,UDST(in->mode),in->destination,kind,node->give))return 0;
  /* All spans are declared above; reuse the existing exact numeric mode checks. */
  return dis64clientnumeric(slots,count,frame,in);

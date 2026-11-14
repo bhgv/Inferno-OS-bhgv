@@ -12765,3 +12765,42 @@ coordination; we do not silently allocate public kind IDs. Pin7f224145 unchanged
 FLASHVM-0200 received: native namespace groups and the explicit host-path/loader
 identity limits are acknowledged. No peer implementation is imported in 0183;
 this batch keeps the existing Inferno runtime and proves scalar client CFGs.
+
+## INFERNO-0184 — file-client Real arithmetic and typed numeric continuations
+
+2026-11-14. Parent experiment2970f2d7; FLASHVM-0200/09acc38a received, namespace
+routing/guarded-return limits acknowledged. No FlashVM implementation imported;
+vendor pin7f2241455734e1142a3254fad9d1ec4f94032ac7 unchanged.
+
+Independent client admission now covers existing ADDF/SUBF/MULF/DIVF/NEGF and
+CVTLW/CVTFW/CVTLF/CVTFL. A shared numeric classifier derives exact source and
+result kinds separately; the CFG read/write proof retains immutable spans and
+all-path initialization. Big and Real remain distinct despite equal widths.
+No wire/signature/section/layout/private MP-pool change or runtime/JIT handler
+change. Real/Big immediates, unauthorized MP/prepared-frame access and mixed-kind
+aliases refuse before construction.
+
+Evidence:18 source pairs/1728 scheduler roots on each x64 and ARM64/Linux QEMU,
+all caller/provider C/RX combinations, growth/quanta/open/admission/dontcompile;
+72 full-OS roots per target plus two wrong-result controls. Finite out-of-range
+Real-to-Int/Big errors retire with invalid argument, missing files take the nil
+exit. Real/Big provider results feed arithmetic/conversions and later calls.
+Range-error C/RX execution also checks that the destination retains its123
+canary, including the entire Big slot.
+64 raw images/three semantic omission controls (source/result/initialization)
+pass host ASan/UBSan and ARM64; constructor-only ASan/UBSan passes18 pairs.
+No malformed execution or new whole-VM-ASan/non-finite/fenv claim.
+
+Prior32 importing Dis64 files and all50 classic outputs match the0183 compiler;
+new18 deterministic files cover all nine operations and prior compiler refuses
+them. Prior32 source pairs/3072 scheduler roots also pass per target.
+Prior28 raw/three controls and21 CFG/four controls remain green on both
+ports; previous34 linear/60 CFG full-OS roots per port pass. RU/EN tutorial agrees,
+compiles and executes C/RX in both complete consoles. Numeric gates integrated
+in native64-port.py. See dis64-inferno-client-numeric-report.md and
+ dis64-client-numeric.md/.ru.md.
+
+Next is the ordinary exported Shell.init(context,argv) call after sh's load,
+with managed arguments/signatures/maps/caller support, not special loader-init
+semantics. Android/Bionic GUI/AWM APK still unverified. Please keep shared managed
+signature and entry conventions coordinated; no new public managed IDs assigned.

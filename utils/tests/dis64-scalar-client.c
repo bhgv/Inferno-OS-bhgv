@@ -7,10 +7,14 @@ static void clientloadstep(void){
 static void clientempty(void){require(!live && !modules && !nlinkpins && !worker.nerr && !fileopen && fileopens==filecloses && Tstring.ref==1);}
 int main(int argc,char**argv)
 {
- static uchar client[1048576],saved[1048576],provider[1048576];Dis64ScalarClientView view;Module*m;Prog*p;uchar*root;uvlong expected,value;unsigned int result,offset=0;int failure,jit,pjit,grow,q,mode,steps,done,total,fault,guarded=0,materialize=0;
+ static uchar client[1048576],saved[1048576],provider[1048576];Dis64ScalarClientView view;Module*m;Prog*p;uchar*root;uvlong expected,value;unsigned int result,offset=0,erroroffset=0,errorbytes=0;int failure,jit,pjit,grow,q,mode,steps,done,total,fault,guarded=0,materialize=0;
  require(argc>=6 && argc<=8);for(int i=6;i<argc;i++){guarded|=!strcmp(argv[i],"guarded");materialize|=!strcmp(argv[i],"materialize");}clientfilebytes=libraryread(argv[1],client,sizeof(client));providerfilebytes=libraryread(argv[2],provider,sizeof(provider));clientfile=client;providerfile=provider;memmove(saved,client,clientfilebytes);
  result=atoi(argv[3]);expected=strtoull(argv[4],nil,10);failure=atoi(argv[5]);require(dis64clientcheck(client,clientfilebytes,&view));
  for(unsigned int i=0;i<view.count;i++)if(view.decoded[i].instruction.op==IMCALL && i+1<view.count && view.decoded[i+1].instruction.source==view.frame-8)offset=view.decoded[i+1].instruction.destination;
+ if(failure==2){
+  for(unsigned int i=0;i<view.count;i++)if(view.decoded[i].instruction.op==ICVTFW || view.decoded[i].instruction.op==ICVTFL){require(!errorbytes);erroroffset=view.decoded[i].instruction.destination;errorbytes=view.decoded[i].instruction.op==ICVTFW?4:8;}
+  require(errorbytes && erroroffset>=64);
+ }
  if(result)require(offset>=64);
  rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freeheap;
  require(dis64selectlaunch("dis64-calls"));optab[ILOAD]=clientloadstep;
@@ -31,7 +35,10 @@ int main(int argc,char**argv)
   for(steps=0;steps<10000;steps++){done=kprotect(executeprocess,p);if(!done)break;}
   require(steps<10000);namespacefault=admissionrequired=dontcompile=0;
   if(mode==1 || mode==2){if(guarded)require(!worker.env->errstr[0] && R.FP==root);else require(worker.env->errstr[0]);}
-  else if(failure)require(!strcmp(worker.env->errstr,exZdiv));
+  else if(failure){
+   require(!strcmp(worker.env->errstr,failure==2?exInval:exZdiv));
+   if(failure==2){value=0;memmove(&value,root+erroroffset,errorbytes);require(value==123);}
+  }
   else {require(!worker.env->errstr[0] && R.FP==root);value=0;if(result){memmove(&value,root+offset,result==Dis64Int?4:8);require(value==expected);}}
   namespaceend(p);clientempty();memmove(client,saved,clientfilebytes);
  }

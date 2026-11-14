@@ -395,3 +395,17 @@ OS roots plus conditional wrong-result controls. This lets a missing library
 return normally instead of breaking at MFRAME. AWM context/list init arguments,
 general managed heap admission and Android/Bionic GUI APK remain separate work.
 [Report](dis64-inferno-client-cfg-report.md).
+
+## Importing-client Real and conversion continuations (INFERNO-0184)
+
+The existing scalar file-client proof now admits Real arithmetic/negation and
+Big/Real/Word32 conversions, including arithmetic on values returned by a loaded
+file module. Eighteen source pairs execute through C/JIT on x64 and ARM64/Linux
+QEMU; both rebuilt complete consoles pass72 new roots, including nil-load exits
+and normal retirement after out-of-range conversion errors. RU/EN tutorial:
+[EN](dis64-client-numeric.md), [RU](dis64-client-numeric.ru.md).
+
+This extends scalar caller execution using the existing handlers and emitters.
+Shell.init still needs ordinary exported managed context/list calls and matching
+compiler/loader support. Android GUI/Bionic/device startup and a working AWM APK
+are not established by these Linux/QEMU results.
