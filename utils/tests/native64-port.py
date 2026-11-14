@@ -109,6 +109,13 @@ def main():
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'call-boot.log')
     run([sys.executable, str(tests/'dis64-source-call-boot.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'source-call-boot.log')
+    run([sys.executable, str(tests/'dis64-scalar-client-boot.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'scalar-client-boot.log')
+    for script in ('dis64-scalar-client-producer.py', 'dis64-scalar-client-proof.py', 'dis64-scalar-client.py'):
+        run([sys.executable, str(tests/script), '--limbo', str(tools/'limbo')], build, env, logs/(script+'.log'))
+    for control in ('initialized', 'result', 'map'):
+        run([sys.executable, str(tests/'dis64-scalar-client-proof.py'), '--limbo', str(tools/'limbo'), '--control', control],
+            build, env, logs/('scalar-client-proof-'+control+'.log'))
     run([sys.executable, str(tests/'dis64-source-calls.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'source-call-files.log')
     run([sys.executable, str(tests/'dis64-source-calls-unit.py')], build, env, logs/'source-call-writer-ir.log')

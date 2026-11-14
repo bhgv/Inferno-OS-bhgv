@@ -48,6 +48,7 @@ def buildunit():
     parts += [function(xec, 'OP('+name+')') for name in names]
     # Non-executable storage leases are checked separately with the actual collector.
     loader = (ROOT/'libinterp/load64.c').read_text().split('/* Native staging state is deliberately distinct')[0]
+    loader=loader.replace('#include "scalar-client.h"',(ROOT/'libinterp/scalar-client.h').read_text())
     parts += [re.sub(r'^#include[^\n]*\n', '', loader, flags=re.M)]
     parts += [function(scheduler, signature) for signature in ('static Prog**\npidlook(', 'Prog*\ncurrun(', 'int\nnprog(',
               'void\naddrun(', 'Prog*\ndelrun(', 'void\npushrun(', 'static Progs*\ndelgrp(',

@@ -177,3 +177,5 @@ done:
     free(types);free(maps);free(runes);free(strings);free(typedata);free(code);free(exports);free(image);free(proof);
     if(failure)error(entry?entry->src.start:impdecl->src.start,"Dis64 calls: %s",failure);
 }
+
+#include "dis64-client.h"

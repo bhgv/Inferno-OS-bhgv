@@ -41,6 +41,7 @@ Modlink*prepare64calllibrarylink(char*path,uchar*image,ulong bytes,int jit,const
    'acquire':('if(sync)acquire();','if(0)acquire();'),
    'profile':('if(!dis64launchmode() ||','if(0 ||')}[control]
   assert reader.count(before)==1;reader=reader.replace(before,after)
+ s=s.replace(extract(s,'Modlink*\nread64ownedimport('),'',1)
  s+='\n'+reader
  start=s.rfind(' optab[IMOVW]=countmovw;');end=s.index(' require(prepare64calls(',start);handlers=s[start:end]
  fixture=(ROOT/'utils/tests/dis64-library-namespace.c').read_text().replace('static unsigned int namespaceordinal;','').replace(' NAMESPACE_HANDLERS',handlers)

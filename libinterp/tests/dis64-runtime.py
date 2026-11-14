@@ -90,6 +90,7 @@ def buildunit(resultcalls=False):
     loader = (ROOT/'libinterp/load64.c').read_text()
     # Non-executable storage leases have their own actual collector/ownership fixture.
     loader = loader[:loader.index('/* Native staging state is deliberately distinct')]
+    loader=loader.replace('#include "scalar-client.h"',(ROOT/'libinterp/scalar-client.h').read_text())
     parts.append(re.sub(r'^#include[^\n]*\n', '', loader, flags=re.M))
     unit = (ROOT/'libinterp/tests/dis64-runtime.c').read_text()
     unit = unit.replace('IMPLEMENTATION', '\n\n'.join(parts))

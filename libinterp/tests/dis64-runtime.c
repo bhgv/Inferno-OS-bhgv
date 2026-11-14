@@ -105,12 +105,21 @@ free_(void *pointer)
 #include "fns.h"
 #include "pool.h"
 #include "dis64-pilot.h"
+#include "dis64-scalar-client.h"
+#include "dis64-import-owner.h"
 #include "dis64-call-library.h"
 #include "vmfetch.h"
 
 static Proc worker; // Actual emulator error-stack storage.
 static char message[128]; // Last raised runtime message, including empty IEXIT.
 static int raised; // Count actual instruction error transfers.
+/* Ordinary scalar fixtures never execute the new importing file profile.
+ * The namespace/client gate replaces this refusing seam with the actual reader. */
+Modlink*
+read64ownedimport(Module *m,WORD index,char *path)
+{
+ USED(m);USED(index);USED(path);require(0);return nil;
+}
 REG R;
 Module *modules;
 Type Tarray = {1}, Tstring = {1};

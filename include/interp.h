@@ -596,6 +596,7 @@ struct Native64ImportRequest {
  const uchar *imports, *strings;
  ulong importbytes, stringbytes;
 };
+extern Modlink* read64ownedimport(Module*, WORD, char*); // Private checked-constructor reader; one pinned instance.
 extern int install64callimports(Module*, const Native64ImportRequest*, uint, int); // Trusted unpublished caller; atomic deep copy.
 extern Modlink* read64calllibrary(char*, int, const uchar*, ulong, const uchar*, ulong, int);
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)

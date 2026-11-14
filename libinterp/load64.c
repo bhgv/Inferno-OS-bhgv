@@ -280,6 +280,8 @@ prepare64pilot(char *path, uchar *image, ulong bytes, int jit)
 
 #define Dis64CallRuntimeCode 256U // Bounded experimental constructor policy, not a wire code limit.
 
+#include "scalar-client.h"
+
 typedef struct Dis64CallRuntime Dis64CallRuntime;
 
 struct Dis64CallRuntime {
@@ -462,6 +464,10 @@ dis64callprepare(char *path, uchar *image, ulong bytes, int jit, int library)
 Module*
 prepare64calls(char *path,uchar *image,ulong bytes,int jit)
 {
+ Dis64ScalarClientView view;
+ if(dis64runtimemodel() && path!=nil && path!=H && image!=nil && image!=H &&
+    bytes<=Dis64CallImageBytes && (uintptr)image<=(uintptr)-1-bytes && (jit==0 || jit==1) &&
+    dis64clientopen(image,bytes,&view))return dis64clientprepare(path,image,bytes,jit);
  return dis64callprepare(path,image,bytes,jit,0);
 }
 

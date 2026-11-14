@@ -93,6 +93,12 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             else if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;
             for(i=pc+1;i<next;i++)inside[i-p->first]=1;
             pc=next;
+        }else if(c->external==2 && in->op==ILOAD){
+            long source,destination;unsigned int sm,dm;int actual;
+            if(in->mm!=Aldt || in->m.decl==nil || in->m.decl->offset!=0 || in->branch!=nil ||
+               !typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual) || actual!=Tstring ||
+               !typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&destination,&dm,&actual) || actual!=Tmodule){typedfail(p,"load-roles");goto fail;}
+            p->code[pc-p->first]=(Dis64Instruction){ILOAD,SRC(sm)|AXIMM|DST(dm),0,source,destination};pc++;
         }else{
             if(!typedinst(in,stop,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;
             pc++;
@@ -147,4 +153,10 @@ int
 dis64typedexternal(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p)
 {
     return typedmultilower(fn,globals,functions,nf,input,count,stop,p,1);
+}
+
+int
+dis64typedclient(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p)
+{
+ return typedmultilower(fn,globals,functions,nf,input,count,stop,p,2);
 }

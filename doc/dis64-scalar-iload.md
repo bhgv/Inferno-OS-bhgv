@@ -117,3 +117,7 @@ support are bounded fixtures. Real reader, ILOAD, scheduler, MFRAME/MCALL, retur
 reference destruction and accepted native leaf entries execute. These tests do not
 prove concurrent filesystem/collector behavior, a newly admitted importing Limbo
 file, Android/Bionic, AWM or a working GUI APK.
+
+Follow-up: [scalar importing Limbo files](dis64-scalar-clients.md) now remove the
+native-authored caller boundary for a bounded linear command, including positive
+full-OS x64/ARM64 runs. General managed clients remain outside that subset.

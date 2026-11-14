@@ -224,24 +224,23 @@ read64calllibrary(char *path,int jit,const uchar *requests,ulong requestbytes,
 
 /* Private native ownership, not an on-wire table or an arbitrary caller proof. */
 #if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1
-typedef struct Dis64ImportOwner Dis64ImportOwner;
-struct Dis64ImportOwner {
- uint count;
- int jit;
- Native64ImportRequest tables[64];
-};
+#include "dis64-import-owner.h"
+#endif
 
-static Modlink*
+Modlink*
 read64ownedimport(Module *module,WORD index,char *path)
 {
+#if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1
  Dis64ImportOwner *owner=module->native64imports;
  Native64ImportRequest *table;
  if(owner==nil || index<0 || (uint)index>=owner->count)error(exModule);
  table=owner->tables+index;
- return read64calllibrary(path,owner->jit,table->imports,table->importbytes,
+ return read64calllibrary(path,(module->rt&Dis64ScalarClient)?!!cflag:owner->jit,table->imports,table->importbytes,
   table->strings,table->stringbytes,1);
-}
+#else
+ USED(module);USED(index);USED(path);kwerrstr("Dis64 structural import reader is disabled");return nil;
 #endif
+}
 
 /* Attach all independently generated .m requests to a trusted unpublished
  * caller. One allocation owns every table/name/signature. No borrowed emitter

@@ -379,3 +379,11 @@ code, not Android/Bionic or an admitted importing Limbo client. Native Module
 layout adds two private fields: fully rebuild target objects/archives. AWM/GUI APK
 execution is still unverified; remaining file-client/managed admission is described
 in the [report](dis64-inferno-iload-report.md).
+
+2026-11-14, INFERNO-0182: [Limbo file clients](dis64-scalar-clients.md) now compile
+with -64c and execute actual LOAD/namespace/library calls in the complete ARM64
+Linux/QEMU console:34 C/RX OS roots, provider signature/missing-file/wrong-result
+controls and malformed-client refusal. Caller CODE/maps/imports come from the
+file rather than a C fixture. The client is still linear with one void no-argument
+init and scalar calls; ordinary AWM managed signatures/heap/CFG and a working
+Android/Bionic GUI APK remain unfinished. [Report](dis64-inferno-scalar-client-report.md).

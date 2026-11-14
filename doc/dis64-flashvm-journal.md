@@ -12516,3 +12516,57 @@ preserved. Contracts: disVM/runtime/JIT-SIGNALS.md/.ru.md and examples/jit-signa
 RU: Встроенный захват допущенных scalar RX аварий сохраняет CPU/Dis диагностику,
 отключает всю функцию и не повторяет instruction. GC/другие owners продолжают
 работу. Произвольная native corruption не объявляется безопасным recovery.
+
+## INFERNO-0182 — scalar importing Limbo file, including full-OS LOAD
+
+Base279345b2; FLASHVM-0198/42996e98 prefix preserved. Read peer fc84c649's
+scoped Linux64 integer RX signal capture, no replay/foreign REG restoration,
+whole-function quarantine after handler, socket0600 correction and pending
+architecture CI43622919835. Those remain peer reports, not a CI pass or imported
+Inferno signal/debugger implementation. Vendor pin remains7f224145.
+
+Existing -64c now produces a bounded importing command from complete checked
+Limbo source: one void argument-free init, one constant path/module local, scalar
+calls and linear continuations/reloads. Both caller/provider CODE come from files.
+No native-authored client instruction/map/import manifest is needed. Final LDT
+and .m declarations supply exact signaturev1/ordinals; normal Limbo narrowing
+remains (whole selected LDT, unlike the full .m optional embedding header).
+
+New allocation-free whole-client proof binds the five existing sections and
+all scalar/root/MP/call/result/initialization roles before any VM owner. The writer
+runs that independent raw proof before sole Bwrite. Constructor owns all code/
+Types/names/requests and a real filename String; MP pin spans construction/JIT,
+failure retires only acquired roots, success publishes/registers before another
+collecting operation. Production readmod/parsemod admission, MP cloning/startup,
+ILOAD, provider whole proof, MFRAME/MCALL and unwinding execute. Default startup
+refuses; libraries still have no implicit init. Native-only bit29 and trusted
+callback are constructor products, never wire flags/pointers. No public ID,
+signature/version, native layout or vendor changes.
+
+Shared-format scope: private Inferno bounded admission uses String pool0 command,
+1 path,2 interface,3+ordinal symbols; MP0 module root,8 H,16 owned path String.
+The constructor hydrates that filename from the checked pool. This is not a new
+generic managed DATA initializer or promised FlashVM execution convention. One
+interface/table only; managed argument/root graphs and public ID expansion remain
+outside. Client branches/loops/handlers/multiple functions/paths are refused.
+
+17 source pairs pass1632 scheduler roots each on x64/ARM64 Linux QEMU, with four
+caller/provider C/RX choices, growth/quanta, open/admission/JIT-policy cases,
+exact bits, accepted RX, poisoned client image and all read/constructor allocation
+failures. Fixture namespace/collector support remains bounded. Separately, BOTH
+complete consoles run34 real file-client C/RX OS roots, plus wrong-result provider
+controls, exact signature and missing-file faults with normal retirement, default
+profile refusal and malformed-map pre-execution refusal. This replaces0181's
+C-authored importing CODE boundary for this limited client subset.
+
+28 raw inputs/three omission controls pass both targets; raw and17 constructor
+pairs pass host ASan/UBSan without VM instruction execution. Runtime-ASan unwind
+limit remains open. Producer determinism,10 source refusals,64 parameters,1023-byte
+path and17 exact classic compiler comparisons pass. AWM body baseline stays14/346,
+not AWM execution. Full-console old56 roots/28 standalone-library refusals and
+writer/Sys compatibility stay green. Report/tutorials:
+doc/dis64-inferno-scalar-client-report.md; doc/dis64-scalar-clients.md / .ru.md.
+
+Next: caller CFG/managed graphs/ordinary init signatures/heap support toward
+Android AWM, then real Android/Bionic GUI/APK execution. No Android/device claim,
+no new concurrent GC/FS stress claim and no FlashVM code migration in this batch.
