@@ -3,11 +3,13 @@ typedef struct TypedMulti TypedMulti;
 struct TypedMulti {
     Decl *globals,**functions;
     Inst **instructions;
-    int *entries,nf;
+    int *entries,nf,external;
     Dis64TypedBody *bodies;
     uchar *state;
     unsigned int *height,count,cost;
 };
+
+#include "dis64-external.h"
 
 static int typedmultibody(TypedMulti*,unsigned int,unsigned int);
 
@@ -80,12 +82,15 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     if(i){c->state[index]=2;c->height[index]=1;return 1;}
     if(p->reason==nil || strcmp(p->reason,"unsupported-opcode"))goto fail;
     p->reason=nil;memset(p->code,0,p->count*sizeof(*p->code));memset(p->returns,0,p->count);
-    p->sites=allocmem((p->count/2+1)*sizeof(*p->sites));inside=allocmem(p->count);memset(inside,0,p->count);
+    p->sites=allocmem((p->count/2+1)*sizeof(*p->sites));
+    if(c->external)p->external=allocmem((p->count/2+1)*sizeof(*p->external));
+    inside=allocmem(p->count);memset(inside,0,p->count);
     for(pc=p->first;pc<stop;){
         in=c->instructions[pc];p->badpc=pc;
         if(in==nil){typedfail(p,"multi-instruction-order");goto fail;}
-        if(in->op==IFRAME){
-            if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;
+        if(in->op==IFRAME || (c->external && in->op==IMFRAME)){
+            if(in->op==IMFRAME){if(!typedexternalsite(c,p,pc,stop,&next))goto fail;}
+            else if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;
             for(i=pc+1;i<next;i++)inside[i-p->first]=1;
             pc=next;
         }else{
@@ -95,22 +100,22 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     }
     for(pc=p->first;pc<stop;pc++){
         in=c->instructions[pc];
-        if(in->op!=ICALL && in->branch!=nil && inside[in->branch->pc-p->first]){typedfail(p,"multi-setup-branch");goto fail;}
+        if(in->op!=ICALL && in->op!=IMCALL && in->branch!=nil && inside[in->branch->pc-p->first]){typedfail(p,"multi-setup-branch");goto fail;}
     }
-    if(!p->nsites || !typedresults(p))goto fail;
-    free(inside);p->tail=3;c->state[index]=2;c->height[index]=h;return 1;
+    if((!p->nsites && !p->nexternal) || !typedresults(p))goto fail;
+    free(inside);p->tail=c->external?4:3;c->state[index]=2;c->height[index]=h;return 1;
 fail:
     free(inside);c->state[index]=3;return 0;
 }
 
-int
-dis64typedmulti(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p)
+static int
+typedmultilower(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p,int external)
 {
     TypedMulti c={0};Inst *in;unsigned int i,root=0;int found=0,ok=0;
     USED(stop);
-    if(p->code!=nil || p->reason!=nil || p->sites!=nil)return typedfail(p,"nonempty-output");
+    if(p->code!=nil || p->reason!=nil || p->sites!=nil || p->external!=nil)return typedfail(p,"nonempty-output");
     if(nf<1 || nf>4096 || !count || count>TypedInstructions || functions==nil || input==nil)return typedfail(p,"multi-limit");
-    c.globals=globals;c.functions=functions;c.nf=nf;c.count=count;
+    c.external=external;c.globals=globals;c.functions=functions;c.nf=nf;c.count=count;
     c.bodies=allocmem(nf*sizeof(*c.bodies));memset(c.bodies,0,nf*sizeof(*c.bodies));
     c.state=allocmem(nf);memset(c.state,0,nf);c.height=allocmem(nf*sizeof(*c.height));memset(c.height,0,nf*sizeof(*c.height));
     c.instructions=allocmem(count*sizeof(*c.instructions));memset(c.instructions,0,count*sizeof(*c.instructions));
@@ -131,4 +136,15 @@ dis64typedmulti(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsig
 done:
     for(i=0;i<(unsigned int)nf;i++)dis64typedfree(c.bodies+i);
     free(c.bodies);free(c.state);free(c.height);free(c.instructions);free(c.entries);return ok;
+}
+
+int
+dis64typedmulti(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p)
+{
+    return typedmultilower(fn,globals,functions,nf,input,count,stop,p,0);
+}
+int
+dis64typedexternal(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p)
+{
+    return typedmultilower(fn,globals,functions,nf,input,count,stop,p,1);
 }

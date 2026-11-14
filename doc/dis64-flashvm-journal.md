@@ -11677,3 +11677,48 @@ INFERNO-0174 additional interface check: a separately compiled Limbo load Multi
 client uses a .m interface. Its16 serialized classic import hashes agree with
 provider exports and supply the runtime C consumer independently. This is
 interface evidence, not source external-MCALL lowering or file admission.
+
+## INFERNO-0175: complete source external-call bodies, native MFRAME/MCALL execution
+
+2026-11-14; base19d2962d. Continuing0174 without importing FlashVM/disVM.
+FLASHVM-0190/0191/0192 remain received with selected-test/transport limits intact;
+no newer peer note was present at the prepublication fetch.
+
+Final Limbo IR already supplies imported declarations, iface->offset and existing
+sign(Decl*) hashes. The new opt-in private external report lowers complete client
+functions with MFRAME/argument/result/MCALL islands, exact matching module/import
+identity, scalar/reference argument alignment, fresh/inherited/void results and
+whole-body CFG checks. Module operands are typed FP/MP module roots; ordinal
+bounds0..32767. No branch enters setup. Existing report/file profiles stay intact.
+The new schema inferno-typed-external-v1 is private metadata, not a public wire ID.
+
+Private native materialization now supports dynamic imported targets without
+embedding external native PCs, with atomic preflight for both site endpoints,
+frame/result/argument bounds and branch isolation. Production MFRAME/MCALL/RET,
+linkm/newmp and teardown execute17 source client functions/33 imported sites.
+Classic serialized instructions/import hashes independently check the source
+report; a separate mixed byte/int/big/string case checks64/68/72/80 argument slots.
+
+Each x64 and ARM64/Linux QEMU run passes912 cases:768 ordinary,48 source-loop
+reentry and96 managed continuation faults; all four provider/client C/RX pairs,
+growth/quanta1/3/1000/inputs, scalar widths, nil roots, fresh/inherited results,
+restored caller Module/MP, separate provider MP clones and full owner/pin cleanup.
+Eight atomic materializer refusals, three active materializer controls plus exact
+linkm hash control pass. Four compiler controls pass with allocation retirement
+under host ASan/UBSan and ARM64/QEMU UBSan. Constructor/materializer-only host
+ASan/UBSan passes; runtime uses UBSan, prior runtime-ASan unwind issue stays open.
+
+Provider construction is owned native Module from0174. Client Module/outer harness
+are still assembled by trusted C; inner bodies are now compiler-derived. Automatic
+client import assembly, arbitrary image validation, namespace/cache and general
+managed load/writer/loader remain unfinished. A loader helper emits actual .m
+import hashes but its typed body is refused; both -64m/-64l still reject the client.
+FP source-module runtime evidence is not MP-source runtime evidence; mixed args
+have compiler geometry evidence. String/list values remain opaque ownership graphs.
+
+Host prior module960, local-multi480/1728 binding refusals, compiler multi-IR and
+default body gates/active controls pass. All16 AWM outputs/376 plans retain bytes;
+default AWM stays14/346. No Android/Bionic/AWM/APK run or new public ISA/Sys/format
+IDs. Gates added to native64-port.py; RU/EN docs and report:
+doc/dis64-typed-external-calls.ru.md / .md;
+doc/dis64-inferno-external-source-report.md.

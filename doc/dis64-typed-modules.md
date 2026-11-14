@@ -130,3 +130,7 @@ images retain legacy bytes. No Android/Bionic device, AWM run or GUI APK is clai
 A library without an entry preserves entry=nil/entryt=nil. The constructor
 does not synthesize or invoke init. Its private C entry sentinel ~0U maps
 the classic header entry -1; invoking a command remains the caller's decision.
+
+Next: [source-derived imported call bodies](dis64-typed-external-calls.md) replace
+the C-written inner client functions. General load/image/cache admission remains
+a separate boundary.

@@ -297,7 +297,7 @@ dis64typedlocal(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsig
 void
 dis64typedfree(Dis64TypedBody *p)
 {
-	free(p->sites);free(p->code);free(p->returns); dis64layoutfree(&p->frame); dis64layoutfree(&p->data); memset(p,0,sizeof(*p));
+	free(p->external);free(p->sites);free(p->code);free(p->returns); dis64layoutfree(&p->frame); dis64layoutfree(&p->data); memset(p,0,sizeof(*p));
 }
 
 static void
@@ -383,17 +383,19 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
 	char *enabled=getenv("LIMBO_DIS64_TYPED");
 	char *tail=getenv("LIMBO_DIS64_TYPED_TAIL");
 	char *local=getenv("LIMBO_DIS64_TYPED_LOCAL");
+	char *external=getenv("LIMBO_DIS64_TYPED_EXTERNAL");
 	char *multi=getenv("LIMBO_DIS64_TYPED_MULTI");
 	if(enabled==nil || strcmp(enabled,"1")!=0) return;
 	for(n=0;n<nfunctions;n++){
 		fn=functions[n]; stop=count;
 		for(j=0;j<nfunctions;j++) if(functions[j]->pc->pc>fn->pc->pc && functions[j]->pc->pc<stop) stop=functions[j]->pc->pc;
 		memset(&p,0,sizeof(p));
-		if(multi!=nil && strcmp(multi,"1")==0) dis64typedmulti(fn,globals,functions,nfunctions,first,count,stop,&p);
+		if(external!=nil && strcmp(external,"1")==0) dis64typedexternal(fn,globals,functions,nfunctions,first,count,stop,&p);
+		else if(multi!=nil && strcmp(multi,"1")==0) dis64typedmulti(fn,globals,functions,nfunctions,first,count,stop,&p);
 		else if(local!=nil && strcmp(local,"1")==0) dis64typedlocal(fn,globals,functions,nfunctions,first,count,stop,&p);
 		else if(tail!=nil && strcmp(tail,"1")==0) dis64typedtail(fn,globals,functions,nfunctions,first,count,stop,&p);
 		else dis64typedlower(fn,globals,first,count,stop,&p);
-		fprint(2,"DIS64_TYPED {\"schema\":\"%s\",\"name\":",p.tail==3?"inferno-typed-multi-v1":p.tail==2?"inferno-typed-local-v1":p.tail?"inferno-typed-tail-v1":"inferno-typed-body-v2");typedquote(fn->sym);
+		fprint(2,"DIS64_TYPED {\"schema\":\"%s\",\"name\":",p.tail==4?"inferno-typed-external-v1":p.tail==3?"inferno-typed-multi-v1":p.tail==2?"inferno-typed-local-v1":p.tail?"inferno-typed-tail-v1":"inferno-typed-body-v2");typedquote(fn->sym);
 		if(p.tail==1 || p.tail==2) fprint(2,",\"tail\":[%ud,%ud]",p.target,p.targetdesc);
 		if(p.tail==2) fprint(2,",\"local\":[%ud,%ud,%ud]",p.callend,p.resultoffset,p.resultcontract);
         if(p.nsites && p.reason==nil){
@@ -401,10 +403,19 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
             for(i=0;i<p.nsites;i++)fprint(2,"%s[%ud,%ud,%ud,%ud,%ud,%ud,%ud]",i?",":"",p.sites[i].first,p.sites[i].end,p.sites[i].target,p.sites[i].descriptor,p.sites[i].resultoffset,p.sites[i].contract,p.sites[i].inherited);
             fprint(2,"]");
         }
+        if(p.nexternal && p.reason==nil){
+            fprint(2,",\"externals\":[");
+            for(i=0;i<p.nexternal;i++){
+                Dis64TypedExternal *e=p.external+i;
+                fprint(2,"%s{\"first\":%ud,\"end\":%ud,\"binding\":%ud,\"module\":[%ud,%ud],\"resultoffset\":%ud,\"contract\":%ud,\"inherited\":%ud,\"signature\":%ud,\"name\":",i?",":"",e->first,e->end,e->binding,e->modulemode,e->moduleoffset,e->resultoffset,e->contract,e->inherited,(unsigned int)sign(e->callee));
+                typedexportname(e->callee);fprint(2,",\"args\":");typedbindings(e->callee->ty->ids,1);fprint(2,"}");
+            }
+            fprint(2,"]");
+        }
 		fprint(2,",\"first\":%ud,\"accepted\":%s",p.first,p.reason==nil?"true":"false");
 		if(p.reason!=nil) fprint(2,",\"reason\":\"%s\",\"pc\":%ud",p.reason,p.badpc);
 		else{
-            if(multi!=nil && strcmp(multi,"1")==0){
+            if((multi!=nil && strcmp(multi,"1")==0) || (external!=nil && strcmp(external,"1")==0)){
                 fprint(2,",\"signature\":%ud,\"export_name\":",(unsigned int)sign(fn));typedexportname(fn);
             }
 			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);

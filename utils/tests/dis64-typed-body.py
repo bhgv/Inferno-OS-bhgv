@@ -63,7 +63,7 @@ def compile_source(limbo,work,source,filename=None,tail=False,local=False,multi=
     if filename is None:file.write_text(source)
     ordinary,traced=work/'plain.dis',work/'typed.dis'
     command=[str(limbo)]+(['-i'] if tail or local or multi else [])+['-I',str(ROOT/'module'),'-o']
-    env=dict(os.environ);env.pop('LIMBO_DIS64_TYPED',None);env.pop('LIMBO_DIS64_TYPED_TAIL',None);env.pop('LIMBO_DIS64_TYPED_LOCAL',None);env.pop('LIMBO_DIS64_TYPED_MULTI',None)
+    env=dict(os.environ);env.pop('LIMBO_DIS64_TYPED',None);env.pop('LIMBO_DIS64_TYPED_TAIL',None);env.pop('LIMBO_DIS64_TYPED_LOCAL',None);env.pop('LIMBO_DIS64_TYPED_MULTI',None);env.pop('LIMBO_DIS64_TYPED_EXTERNAL',None)
     traced_env=dict(env,LIMBO_DIS64_TYPED='1')
     if tail:traced_env['LIMBO_DIS64_TYPED_TAIL']='1'
     if local:traced_env['LIMBO_DIS64_TYPED_LOCAL']='1'

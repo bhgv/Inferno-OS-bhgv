@@ -330,3 +330,9 @@ Local-result calls and continuations: [dis64-typed-local-results.md](dis64-typed
 Multiple calls, prefix computation and void results: [dis64-typed-multiple-calls.md](dis64-typed-multiple-calls.md).
 
 Owned modules, export signatures and cross-module execution: [dis64-typed-modules.md](dis64-typed-modules.md).
+
+INFERNO-0175: complete source-derived Limbo external-call bodies now run against
+owned native providers on x64 and ARM64/Linux QEMU (912 cases each). This advances
+source MCALL lowering; it does not admit the whole client through a managed file
+loader or establish an Android/Bionic/AWM/APK run. See
+[RU](dis64-typed-external-calls.ru.md) / [EN](dis64-typed-external-calls.md).
