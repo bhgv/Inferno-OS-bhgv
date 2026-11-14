@@ -1,12 +1,13 @@
 /* Included with scalar call-file helpers; trusted final IR -> separately proved bytes. */
 #include "dis64-scalar-client.h"
+#include "dis64-command.h"
 void
 dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Inst *instructions,long count,long databytes)
 {
  Dis64TypedBody body={0};Dis64ScalarClientView *proof=nil;Dis64Binding bindings[64];DisStringPoolRecord names[67];Dis64Type types[2];Dis64ModuleInfo module={0};
  Dis64Payload sections[5];Decl *path=nil,*nilvalue=nil,*global,*fn,*arg,*imports[64];Dis64Instruction in,copy;Dis64TypedExternal *site;Dis64LayoutLeaf *leaf;
  uchar *runes=nil,*strings=nil,*requests=nil,*signatures=nil,*code=nil,*output=nil,*typedata=nil,*maps=nil;uchar metadata[24];DisStringPoolView pool;
- unsigned int i,j,n=0,np,params[64],used,sizes[5],at=4,total=0,moduleoffset=0,pathoffset=0,niloffset=0,loads=0,tail,bytes,k,pcs[129];
+ unsigned int i,j,n=0,np,params[64],used,sizes[5],at=4,total=0,moduleoffset=0,pathoffset=0,niloffset=0,loads=0,tail,bytes,k,pcs[129],command=0;
  char *failure="unsupported importing scalar command";
  if(!entry || nf!=1 || functions[0]!=entry || entry->ty->ids || entry->ty->tof->kind!=Tnone || entry->pc->pc ||
     !globals || (databytes!=4 && databytes!=8) || !ldts || ldts->next || !ldts->init || !ldts->init->decl || count>128 || count<4)goto done;
@@ -20,7 +21,7 @@ dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Ins
  for(i=0;i<body.frame.count;i++){
   leaf=body.frame.leaves+i;
   if(leaf->kind==Tmodule){if(loads++)goto done;moduleoffset=leaf->native;}
-  else if(leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=-1)goto done;
+  else if(leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=Tref && leaf->kind!=-1)goto done;
  }
  if(loads!=1 || body.data.count!=1+(nilvalue!=nil))goto done;
  for(i=0;i<body.data.count;i++){
@@ -47,11 +48,18 @@ dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Ins
  }
  for(i=0;i<n;i++){
   fn=imports[i];if(strcmp(fn->dot->sym->name,imports[0]->dot->sym->name) || !callfilename(fn->sym,runes+(i+3)*(4+4*1023),names+i+3))goto done;
+  if(dis64commandshape(fn)){
+   if(n!=1 || strcmp(imports[0]->dot->sym->name,"Command"))goto done;command=1;
+   sizes[3]=dis64commandbindingwrite(requests,0,sign(fn));
+   bindings[i]=(Dis64Binding){0};bindings[i].signature.data=requests+16;bindings[i].signature.bytes=16;
+   if(!dis64commandsignature(&bindings[i].signature))goto done;
+  }else{
   np=0;for(arg=fn->ty->ids;arg;arg=arg->next){int kind=callfilekind(arg->ty->kind);if(np==64 || kind<1)goto done;params[np++]=kind;}
   k=callfilekind(fn->ty->tof->kind);if(k>Dis64Real)goto done;
   if(!dis64signaturewrite(signatures+i*(12+64*4),12+64*4,k,params,np,&used))goto done;
   bindings[i]=(Dis64Binding){0};bindings[i].module=2;bindings[i].symbol=i+3;
   if(!dis64signaturecheck(signatures+i*(12+64*4),used,64,&bindings[i].signature))goto done;
+  }
  }
  tail=body.frame.bytes+8;
  for(i=0;i<body.count;i++){
@@ -84,16 +92,18 @@ dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Ins
  dis64put32(code,total);sizes[1]=at;maps[64]=0xe0;
  for(i=0;i<body.frame.count;i++){
   leaf=body.frame.leaves+i;
-  if(leaf->kind==Tstring || leaf->kind==Tlist || leaf->kind==Tany)maps[leaf->native/64]|=0x80>>((leaf->native/8)%8);
+  if(leaf->kind==Tstring || leaf->kind==Tlist || leaf->kind==Tany || leaf->kind==Tref)maps[leaf->native/64]|=0x80>>((leaf->native/8)%8);
  }
  types[0]=(Dis64Type){body.frame.bytes+16,8,maps,(body.frame.bytes+79)/64};types[1]=(Dis64Type){24,8,maps+64,1};
  module.profile=1;module.databytes=24;module.datatype=1;
  if(!dis64modulewrite(metadata,sizeof(metadata),&module,&sizes[0]) || !dis64typeswrite(typedata,CallFileBytes,types,2,&sizes[2]) ||
     !disstringpoolwrite(strings,CallFileBytes,names,n+3,&sizes[4]) || !disstringpoolcheck(strings,sizes[4],65536,&pool) ||
-    !dis64bindingswrite(requests,CallFileBytes,0,bindings,n,&pool,0,0,64,&sizes[3]))goto done;
+    (!command && !dis64bindingswrite(requests,CallFileBytes,0,bindings,n,&pool,0,0,64,&sizes[3])))goto done;
  sections[0]=(Dis64Payload){Dis64Module,Dis64Required,metadata,sizes[0]};sections[1]=(Dis64Payload){Dis64Code,Dis64Required,code,sizes[1]};
  sections[2]=(Dis64Payload){Dis64Types,Dis64Required,typedata,sizes[2]};sections[3]=(Dis64Payload){Dis64Imports,Dis64Required,requests,sizes[3]};sections[4]=(Dis64Payload){Dis64Strings,Dis64Required,strings,sizes[4]};
- if(!dis64write(output,CallFileBytes,nil,0,sections,5,&bytes) || !dis64clientcheck(output,bytes,proof))goto done;
+ failure="independent importing-client proof refused output";
+ if(!dis64write(output,CallFileBytes,nil,0,sections,5,&bytes))goto done;
+ if(!dis64clientcheck(output,bytes,proof))goto done;
  if(Bwrite(bout,output,bytes)!=bytes)goto done;failure=nil;
 done:
  dis64typedfree(&body);free(runes);free(strings);free(requests);free(signatures);free(code);free(output);free(typedata);free(maps);free(proof);

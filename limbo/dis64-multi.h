@@ -23,6 +23,20 @@ typedclientlist(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
  *out=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,destination};return 1;
 }
 
+/* Fixed Draw.Context geometry from trusted .m declarations, not a guessed C size. */
+static int
+typedclientcontext(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
+{
+ Dis64Layout layout={0};Decl *d=in->s.decl;unsigned int i,dm;long destination;int actual,ok=0;
+ if(in->sm!=Adesc || in->mm!=Anone || in->branch || !d || !d->ty || d->ty->kind!=Tadt || !d->desc || d->desc->id!=in->s.offset ||
+    !d->sym || strcmp(d->sym->name,"Context") || !d->dot || !d->dot->sym || strcmp(d->dot->sym->name,"Draw") ||
+    !dis64layouttype(d->ty,&layout) || layout.bytes!=24 || layout.count!=3)goto done;
+ for(i=0;i<3;i++)if(layout.leaves[i].native!=8*i || layout.leaves[i].oldbytes!=4 || layout.leaves[i].bytes!=8 || layout.leaves[i].kind<0)goto done;
+ if(!typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&destination,&dm,&actual) || actual!=Tref || dm!=AFP)goto done;
+ *out=(Dis64Instruction){in->op,SRC(AIMM)|DST(AFP),0,1,destination};ok=1;
+ done:dis64layoutfree(&layout);return ok?1:typedfail(p,"client-context-geometry");
+}
+
 static int typedmultibody(TypedMulti*,unsigned int,unsigned int);
 
 static int
@@ -92,7 +106,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     cost=p->frame.bytes+p->data.bytes+(p->frame.count+p->data.count)*sizeof(Dis64LayoutLeaf);
     if(cost>32*1024*1024-c->cost){typedfail(p,"multi-storage-budget");goto fail;}c->cost+=cost;
     if(i){c->state[index]=2;c->height[index]=1;return 1;}
-    if(p->reason==nil || strcmp(p->reason,"unsupported-opcode"))goto fail;
+    if(p->reason==nil || (strcmp(p->reason,"unsupported-opcode") && !(c->external==3 && p->code && !p->frame.reason && !p->data.reason)))goto fail;
     p->reason=nil;memset(p->code,0,p->count*sizeof(*p->code));memset(p->returns,0,p->count);
     p->sites=allocmem((p->count/2+1)*sizeof(*p->sites));
     if(c->external)p->external=allocmem((p->count/2+1)*sizeof(*p->external));
@@ -105,15 +119,17 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             else if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;
             for(i=pc+1;i<next;i++)inside[i-p->first]=1;
             pc=next;
-        }else if(c->external==2 && ((in->op==IBEQW || in->op==IBNEW || in->op==IBEQL || in->op==IBNEL) && ((in->s.decl && in->s.decl->ty && (in->s.decl->ty->kind==Tmodule || in->s.decl->ty->kind==Tlist)) || (in->m.decl && in->m.decl->ty && (in->m.decl->ty->kind==Tmodule || in->m.decl->ty->kind==Tlist))))){
+        }else if(c->external>=2 && ((in->op==IBEQW || in->op==IBNEW || in->op==IBEQL || in->op==IBNEL) && ((in->s.decl && in->s.decl->ty && (in->s.decl->ty->kind==Tmodule || in->s.decl->ty->kind==Tlist || in->s.decl->ty->kind==Tref)) || (in->m.decl && in->m.decl->ty && (in->m.decl->ty->kind==Tmodule || in->m.decl->ty->kind==Tlist || in->m.decl->ty->kind==Tref))))){
             long source,middle;unsigned int sm,mm;int sk,mk;
             if(in->dm!=Apc || in->branch==nil || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop || in->d.offset!=in->branch->pc ||
                !typedoperand(in->sm,&in->s,TypedRoot,0,0,p,&source,&sm,&sk) ||
                !typedoperand(in->mm,&in->m,TypedRoot,0,1,p,&middle,&mm,&mk)){typedfail(p,"load-nil-branch");goto fail;}
-            if(sk==Tany && (mk==Tmodule || mk==Tlist)){long v=source;unsigned int mode=sm;int kind=sk;source=middle;sm=mm;sk=mk;middle=v;mm=mode;mk=kind;}
-            if((sk!=Tmodule && sk!=Tlist) || mk!=Tany || sm!=AFP || mm!=AMP){typedfail(p,"load-nil-roles");goto fail;}
+            if(sk==Tany && (mk==Tmodule || mk==Tlist || mk==Tref)){long v=source;unsigned int mode=sm;int kind=sk;source=middle;sm=mm;sk=mk;middle=v;mm=mode;mk=kind;}
+            if((sk!=Tmodule && sk!=Tlist && sk!=Tref) || mk!=Tany || sm!=AFP || mm!=AMP){typedfail(p,"load-nil-roles");goto fail;}
             p->code[pc-p->first]=(Dis64Instruction){in->op==IBEQW?IBEQL:in->op==IBNEW?IBNEL:in->op,SRC(AFP)|AXINM|DST(AIMM),middle,source,in->branch->pc-p->first};pc++;
-        }else if(c->external==2 && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL)){
+        }else if(c->external>=2 && (in->op==INEW || in->op==INEWZ)){
+            if(!typedclientcontext(in,p,p->code+pc-p->first))goto fail;pc++;
+        }else if(c->external>=2 && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL)){
             if(!typedclientlist(in,p,p->code+pc-p->first))goto fail;pc++;
         }else if(c->external==2 && in->op==ILOAD){
             long source,destination;unsigned int sm,dm;int actual;
@@ -130,7 +146,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         in=c->instructions[pc];
         if(in->op!=ICALL && in->op!=IMCALL && in->branch!=nil && inside[in->branch->pc-p->first]){typedfail(p,"multi-setup-branch");goto fail;}
     }
-    if((!p->nsites && !p->nexternal) || !typedresults(p))goto fail;
+    if((c->external!=3 && !p->nsites && !p->nexternal) || !typedresults(p))goto fail;
     free(inside);p->tail=c->external?4:3;c->state[index]=2;c->height[index]=h;return 1;
 fail:
     free(inside);c->state[index]=3;return 0;
@@ -182,3 +198,5 @@ dis64typedclient(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsi
 {
  return typedmultilower(fn,globals,functions,nf,input,count,stop,p,2);
 }
+
+int dis64typedcommand(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p){return typedmultilower(fn,globals,functions,nf,input,count,stop,p,3);}

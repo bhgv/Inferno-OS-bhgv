@@ -410,4 +410,5 @@ void native64callpcs(Inst*, long, Decl*, int); // Final legacy Dis coordinates, 
 
 void dis64callsfile(Decl*, Decl*, Decl**, int, Inst*, long); // Checked scalar call file producer.
 
+int dis64commandfile(Decl*, Decl**, int, Inst*, long, long);
 void dis64clientfile(Decl*, Decl*, Decl*, Decl**, int, Inst*, long, long);

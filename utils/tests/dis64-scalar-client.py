@@ -34,12 +34,15 @@ def unit():
  pos=s.index('int\nkopen(');s=s[:pos]+'static uchar *clientfile,*providerfile;static unsigned int clientfilebytes,providerfilebytes;\n'+s[pos:]
  f2=f.replace('\n{','\n{\n if(!strcmp(path,"client.dis64")){filesource=clientfile;filebytes=clientfilebytes;}else if(!strcmp(path,"library.dis64")){filesource=providerfile;filebytes=providerfilebytes;}else return -1;',1);s=s.replace(f,f2,1)
  base=L['unit']();start=base.rfind(' optab[IMOVW]=countmovw;');end=base.index(' require(prepare64calls(',start);handlers=base[start:end]
+ s=s.replace(extract(s,'void\ndestroylinks('),extract((ROOT/'libinterp/link.c').read_text(),'void\ndestroylinks('),1)
  names=('addf','subf','mulf','divf','negf','cvtlw','cvtlf','cvtfl','cvtfw')
  xec=(ROOT/'libinterp/xec.c').read_text();s+='\n'+'\n'.join(extract(xec,'OP('+n+')')for n in names)+'\n'
  handlers+='\n'+'\n'.join('optab[I'+n.upper()+']=actual_'+n+';'for n in names)
  s=s.replace('#include "tests/leaf-cons-stub.h"','#define cons unused_client_cons_stub\n#include "tests/leaf-cons-stub.h"\n#undef cons')
  heap=(ROOT/'libinterp/heap.c').read_text();strings=(ROOT/'libinterp/string.c').read_text()
  s+='\n'+extract(heap,'void\nfreelist(')+'\nType Tlist={1,freelist,markheap,sizeof(List)};\n'+extract(xec,'List*\ncons(')+'\n'+extract(xec,'OP(movp)')+'\n#define movp actual_movp\n'+extract(xec,'static List*\nlisthead(')+'\n'
+ s+='\n'+extract(heap,'Heap*\nheap(')+'\n'+extract(xec,'static void\nnewrecord(')+'\n'+extract(xec,'OP(new)')+'\n'+extract(xec,'OP(newz)')+'\n'
+ handlers+='\noptab[INEW]=actual_new;optab[INEWZ]=actual_newz;\n'
  names=('consp','headp','tail','lenl');s+='\n'.join(extract(xec,'OP('+n+')')for n in names)+'\n'+extract(strings,'OP(lenc)')+'\n#undef movp\n'
  handlers+='\n'+'\n'.join('optab[I'+n.upper()+']=actual_'+n+';'for n in names+('movp','lenc'))
  return s+'\n'+(ROOT/'utils/tests/dis64-scalar-client.c').read_text().replace(' CLIENT_HANDLERS',handlers)

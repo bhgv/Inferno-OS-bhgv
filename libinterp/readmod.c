@@ -5,6 +5,7 @@
 #include "dynld.h"
 #include "raise.h"
 #include "native64-scalar-boot.h"
+#include "dis64-command-binding.h"
 
 
 /* Validate full-width native replies before advancing a complete module image. */
@@ -135,6 +136,7 @@ done1:
  * load owns a fresh read/admission/proof/instance, without legacy hash aliases. */
 #if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1
 #include "dis64-call-library.h"
+#include "dis64-command-binding.h"
 typedef struct Dis64LibraryRead Dis64LibraryRead;
 struct Dis64LibraryRead {
  char *path;
@@ -202,7 +204,7 @@ read64calllibrary(char *path,int jit,const uchar *requests,ulong requestbytes,
  for(n=0;n<1024 && path[n];n++);
  if(!n || n==1024 || path[0]=='$' ||
     !disstringpoolcheck(strings,stringbytes,65536,&pool) ||
-    !dis64bindingscheck(requests,requestbytes,0,&pool,0,0,Dis64LocalFunctions,Dis64LocalParameters,&bindings)){
+    !dis64clientbindingscheck(requests,requestbytes,0,&pool,0,0,Dis64LocalFunctions,Dis64LocalParameters,&bindings)){
   kwerrstr("invalid Dis64 scalar library path or interface");return nil;
  }
  read.path=path;read.requests=requests;read.requestbytes=requestbytes;read.strings=strings;

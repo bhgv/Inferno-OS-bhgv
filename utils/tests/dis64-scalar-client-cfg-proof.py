@@ -54,7 +54,7 @@ def main():
    text=(ROOT/'include/dis64-scalar-client.h').read_text();old,new={
     'join':('incoming[0]&=nodes[j].out[0];','incoming[0]|=nodes[j].out[0];'),
     'load':('(nodes[i].needload && !nodes[i].inload)','0'),
-    'boundary':('(nodes[i].target<v.count && !nodes[nodes[i].target].boundary)','0'),
+    'boundary':('(nodes[i].target<v->count && !nodes[nodes[i].target].boundary)','0'),
     'high':('(nodes[i].need[1]&~nodes[i].in[1])','0')}[a.control];assert text.count(old)==1;(w/'dis64-scalar-client.h').write_text(text.replace(old,new))
   binary=w/'check';subprocess.run(cc+['-I'+str(w),'-I'+str(ROOT/'include'),str(ROOT/'utils/tests/dis64-scalar-client-proof.c'),'-o',str(binary)],env=env,check=True)
   rows=list(inputs(image.read_bytes()))

@@ -8925,3 +8925,54 @@ whole-body refusals. Value-result/call binding, heap payloads, table/initializer
 module writers, exceptions and variadic startup remain before AWM/Android GUI.
 Runtime-ASan unwind evidence remains open. Full report:
 doc/dis64-inferno-typed-body-report.md.
+
+## INFERNO-0186 — ordinary Command.init through actual .m hashes and linkmod
+
+2026-11-15. Base30eea423; read/preserved peer journal-only aaf7cee8 and8a94dd63,
+FLASHVM-0202/0203. Received retained native directory resources/rename-decoy tests
+and revision-checked on-demand namespace debugger pages. These remain peer x64
+claims; no runtime/VFS/debugger implementation imported or ARM/RV evidence inferred.
+Vendor remains7f2241455734e1142a3254fad9d1ec4f94032ac7.
+
+Actual module/sh.m Command.init(ref Draw.Context,listString)->void now compiles
+as a selected -64b entryless library and -64c importer. Same sign(fn) hash as
+limbo -H -M Command (4244b354), real Link export and ordinary linkmod with consumer
+hash/MP clone, explicit MFRAME/MOVP/MOVP/MCALL and RET. No automatic init on load;
+faulting-init load-only and wrong-hash refusal controls confirm that distinction.
+Source Module is registered before releasing its constructor MP pin so normal
+GC sees source and cloned MP. Normal unload/failure rollback retire all owners.
+
+Explicit protocol-review boundary: **new private fixed-shape trial face0186**,
+16 bytes big endian [version,.m hash,arity2,void0]. This is not a shared/public
+registry assignment, generic managed signature admission or a claim that file
+bytes are wholly unchanged. Public type-kind/opcode/section IDs and scalar v1
+signatures remain unchanged. Please treat this as an Inferno opt-in experiment,
+not a request to silently adopt/reserve an ID in FlashVM. General interoperable
+managed signatures still require explicit agreement and fixtures.
+
+Independent proof checks exact arg classes/maps, the atomic call island and CFG.
+FP64 opaque Context, FP72 ListString, generated prefix80/map00c0. Actual Limbo
+`ref Draw->Context` allocation checks .m layout24/three pointer roots, reusing the
+existing private MP descriptor24/E0 for an initially all-nil opaque record.
+Context fields, GUI resources and arbitrary ADT/array payloads remain refused.
+Only the local importing-client reader admits MP-sourced argument MOVP; general
+scalar reader, handlers, JIT emitters and native struct layouts are unchanged.
+
+x64 and ARM64/QEMU pass13 pairs/1248 scheduler roots each with real GC, including
+12 all-source pairs plus a separate generated native Context witness. Callee
+list/Context locals, reload/early RET/explicit errors and every provider allocation
+refusal retire. A callee-frame marking omission loses an independently observed
+object before guest execution resumes, semantic exit10 on both targets.
+Complete consoles pass48 new main roots each plus hash/default/entryless controls
+and C/RX RU/EN tutorial. All62 old pairs/5952 roots and214 prior console roots
+pass again: combined75 pairs/7200 scheduler roots per target.41 new raw checks
+and four pure omission controls pass host ASan/UBSan and ARM64; old28/21/64/26
+proof groups/all controls pass. Constructor-only ASan/UBSan covers13 new pairs.
+26 deterministic new files,62 old Dis64 byte-equal to0185, all88 classic outputs
+unchanged; four well-typed unsupported producers refuse without payload. AWM
+remains14 accepted/346 refused whole bodies, classic bytes unchanged.
+
+Full report doc/dis64-inferno-command-init-report.md; working tutorials
+ doc/dis64-command-init.md and .ru.md; gates integrated into native64-port.py.
+General managed ABI, fields/DATA/Draw/Tk/AWM closure and live Android/Bionic GUI
+APK remain. No whole-runtime ASan/concurrent-GC/device claim is made.

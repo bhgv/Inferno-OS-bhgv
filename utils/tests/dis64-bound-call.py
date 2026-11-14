@@ -50,7 +50,7 @@ def fixture(root, leaves=None, slots=None, signatures=None, results=None, sizes=
 
 
 # Own framing parser preserves all helper bytes for a reference-only root projection.
-def decode(code):
+def decode(code, managed=False):
     at, output = 4, []
     for _ in range(int.from_bytes(code[:4], 'big')):
         start = at
@@ -62,7 +62,7 @@ def decode(code):
         sm, dm, mm = mode >> 3 & 7, mode & 7, mode & 192
         middle = source = destination = secondary = 0
         if dm == 5:
-            if mm or sm not in (1, 2):
+            if mm or (sm not in (1, 2) and not(managed and name=="IMOVP" and sm==0)):
                 raise ValueError('indirect role')
             source, at = OP.decode(code, at)
             destination, at = OP.decode(code, at)

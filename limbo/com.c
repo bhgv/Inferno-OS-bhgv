@@ -423,6 +423,8 @@ if(debug['v']) print("fncom: %s %d %p\n", d->sym->name, d->refs, d);
 	if(emitscalar64 >= 4){
         if(emitscalar64==4 && excs==nil && impdecls->next==nil && ldts!=nil)
             dis64clientfile(entry,globals,ldts,fns,nfns,firstinst,ninst,offset);
+        else if(emitscalar64==5 && excs==nil && impdecls->next==nil && ldts==nil && dis64commandfile(globals,fns,nfns,firstinst,ninst,offset))
+            ;
         else if(excs != nil || impdecls->next != nil || ldts != nil || globals != nil || offset != 0)
             error(impdecl->src.start, "Dis64 calls: module data/imports/handlers are outside the scalar call file profile");
         else dis64callsfile(emitscalar64==5?nil:entry,globals,fns,nfns,firstinst,ninst);

@@ -492,14 +492,22 @@ struct Dis64LibraryBuild {
  Module *module;
  Modlink *link;
  Dis64CallLibraryLinks links;
+ unsigned int commandhash;
 };
 
 static int
 dis64calllibraryconstruct(void *argument)
 {
  Dis64LibraryBuild *build=argument;unsigned int i;
+ if(build->module->ext!=nil){
+  Module *module=build->module;Import imports[2]={{0}};
+  imports[0].name=module->ext[0].name;imports[0].sig=build->commandhash;
+  build->module=nil;build->link=linkmod(module,imports,1);
+  if(build->link==H){build->link=nil;return 0;}
+ }else{
  build->link=mklinkmod(build->module,build->links.count);
- build->module=nil; /* The instance now owns the one input Module reference. */
+ build->module=nil;
+ } /* The instance now owns the one input Module reference. */
  for(i=0;i<build->links.count;i++){
   build->link->links[i].u.pc=build->link->m->prog+build->links.entry[i];
   build->link->links[i].frame=build->link->m->type[build->links.frame[i]];
@@ -516,7 +524,21 @@ Modlink*
 prepare64calllibrarylink(char *path,uchar *image,ulong bytes,int jit,
  const uchar *requests,ulong requestbytes,const uchar *strings,ulong stringbytes)
 {
- Dis64CallImage view;Dis64LibraryBuild build={0};int ok;
+ Dis64CallImage view;Dis64LibraryBuild build={0};int ok;Dis64ScalarClientView *command;
+ DisStringPoolView pool;Dis64Bindings bindings;Dis64Binding binding;
+ if(requestbytes<=Dis64LocalBytes && stringbytes<=Dis64LocalBytes && requests && requests!=(void*)H && strings && strings!=(void*)H &&
+    (uintptr)requests<=(uintptr)-1-requestbytes && (uintptr)strings<=(uintptr)-1-stringbytes &&
+    disstringpoolcheck(strings,stringbytes,65536,&pool) && dis64clientbindingscheck(requests,requestbytes,0,&pool,0,0,1,2,&bindings) &&
+    dis64clientbindingget(&bindings,0,&binding) && dis64commandsignature(&binding.signature)){
+  if(!dis64launchmode() || heapmonitor || !dis64runtimemodel() || !path || path==(void*)H || (jit!=0 && jit!=1) || bytes>Dis64CallImageBytes || !image || image==(void*)H ||
+     (uintptr)image>(uintptr)-1-bytes){kwerrstr("unsupported Command.init runtime profile");return nil;}
+  command=mallocz(sizeof(*command),1);if(!command){kwerrstr("Command.init proof allocation failed");return nil;}
+  ok=dis64commandcheck(image,bytes,command) && dis64commandmatch(command,requests,requestbytes,strings,stringbytes);free(command);if(!ok){kwerrstr("unsupported Command.init library or signature");return nil;}
+  build.links.count=1;build.commandhash=dis64u32(binding.signature.data+4);build.module=dis64clientpreparemode(path,image,bytes,jit,1);
+  if(!build.module)return nil;ok=kprotect(dis64calllibraryconstruct,&build);
+  if(!ok){if(build.link)destroy(build.link);else if(build.module)unload(build.module);}
+  return ok?build.link:nil;
+ }
  if(heapmonitor!=nil || requestbytes>Dis64LocalBytes || stringbytes>Dis64LocalBytes ||
     requests==nil || requests==H || strings==nil || strings==H ||
     (uintptr)requests>(uintptr)-1-requestbytes || (uintptr)strings>(uintptr)-1-stringbytes ||
@@ -529,7 +551,7 @@ prepare64calllibrarylink(char *path,uchar *image,ulong bytes,int jit,
  if(build.module==nil)return nil;
  ok=kprotect(dis64calllibraryconstruct,&build);
  if(!ok){
-  if(build.link!=nil)destroy(build.link);else unload(build.module);
+  if(build.link!=nil)destroy(build.link);else if(build.module)unload(build.module);
   kwerrstr("Dis64 scalar library instance construction failed");
  }
  return ok?build.link:nil;

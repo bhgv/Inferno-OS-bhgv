@@ -34,6 +34,7 @@ int dis64typedlocal(Decl*, Decl*, Decl**, int, Inst*, unsigned int, unsigned int
 int dis64typedmulti(Decl*, Decl*, Decl**, int, Inst*, unsigned int, unsigned int, Dis64TypedBody*);
 int dis64typedexternal(Decl*, Decl*, Decl**, int, Inst*, unsigned int, unsigned int, Dis64TypedBody*);
 int dis64typedclient(Decl*, Decl*, Decl**, int, Inst*, unsigned int, unsigned int, Dis64TypedBody*);
+int dis64typedcommand(Decl*, Decl*, Decl**, int, Inst*, unsigned int, unsigned int, Dis64TypedBody*);
 void dis64typedfree(Dis64TypedBody*);
 void dis64typedreport(Decl*, Decl**, int, Inst*, long);
 #endif

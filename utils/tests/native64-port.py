@@ -147,6 +147,18 @@ def main():
         command = [sys.executable, str(tests/'dis64-scalar-client-managed-proof.py'), '--limbo', str(tools/'limbo')]
         if control: command += ['--control', control]
         run(command, build, env, logs/('scalar-client-managed-proof-'+str(control)+'.log'))
+    run([sys.executable, str(tests/'dis64-command.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'command-init-gc.log')
+    run([sys.executable, str(tests/'dis64-command.py'), '--gc-control', 'callee-frame', '--case', 'callee-cons',
+         '--limbo', str(tools/'limbo')], build, env, logs/'command-init-callee-gc-control.log')
+    run([sys.executable, str(tests/'dis64-command-boot.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'command-init-boot.log')
+    run([sys.executable, str(tests/'dis64-command-producer.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'command-init-producer.log')
+    for control in (None, 'hash', 'class', 'arguments', 'export'):
+        command = [sys.executable, str(tests/'dis64-command-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('command-init-proof-'+str(control)+'.log'))
     run([sys.executable, str(tests/'dis64-source-calls.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'source-call-files.log')
     run([sys.executable, str(tests/'dis64-source-calls-unit.py')], build, env, logs/'source-call-writer-ir.log')

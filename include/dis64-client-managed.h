@@ -23,7 +23,7 @@ dis64clientrootoperand(Dis64ClientSlot *slots,unsigned int count,unsigned int mo
 static int
 dis64clientmanagedop(const Dis64Instruction *in)
 {
- switch(in->op){case IMOVP:case ILENC:case ILENL:case ICONSP:case IHEADP:case ITAIL:return 1;}
+ switch(in->op){case IMOVP:return UDST(in->mode)==AFP;case INEW:case INEWZ:case ILENC:case ILENL:case ICONSP:case IHEADP:case ITAIL:return 1;}
  return (in->op==IBEQL || in->op==IBNEL) && in->mode==(SRC(AFP)|AXINM|DST(AIMM));
 }
 static int
@@ -31,6 +31,8 @@ dis64clientmanagedroles(Dis64ClientSlot *slots,unsigned int *count,unsigned int 
  const Dis64Instruction *in,unsigned int need[2],unsigned int give[2])
 {
  unsigned int source,destination,sk=Dis64ClientRoot,dk=Dis64ClientRoot;
+ if(in->op==INEW || in->op==INEWZ)return in->mode==(SRC(AIMM)|DST(AFP)) && in->source==1 &&
+  dis64clientrootoperand(slots,*count,AFP,in->destination,Dis64ClientOpaque,give);
  if(in->op==IBEQL || in->op==IBNEL)return in->middle==8 &&
   dis64clientrootoperand(slots,*count,AFP,in->source,Dis64ClientRoot,need);
  if((in->mode&ARM)!=AXNON || UDST(in->mode)!=AFP)return 0;

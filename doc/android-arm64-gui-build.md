@@ -425,3 +425,18 @@ RU/EN working tutorial: [EN](dis64-client-managed.md),
 flat String lists; scalar provider signatures and the argument-free entry remain.
 Ordinary Shell.init(context,argv), context ADTs/general literals and Android GUI/
 Bionic/device execution remain open. No working AWM APK is claimed by this gate.
+
+## Ordinary Command.init file calls (INFERNO-0186)
+
+The actual `module/sh.m` Command.init interface now compiles and runs as a
+selected entryless Dis64 library plus importing executable, including
+`ref Draw->Context` and `list of string` arguments. Normal load/linkmod binds the
+export; the caller explicitly invokes init. Bare Context creation, pointer
+copies/nil tests and callee list operations are exercised with actual GC and
+both C/RX on x64/ARM64 Linux QEMU. New private signature trial `face0186` is not
+a public managed ABI assignment. No field/resource access or GUI startup follows
+from a non-nil Context. This does not yet establish an Android/Bionic GUI APK.
+
+Working examples: [English](dis64-command-init.md),
+[Russian](dis64-command-init.ru.md). Exact evidence and pending GUI boundary:
+[INFERNO-0186 report](dis64-inferno-command-init-report.md).

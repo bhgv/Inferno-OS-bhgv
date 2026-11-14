@@ -43,7 +43,7 @@ def main():
   if a.control:
    path='dis64-client-managed.h'if a.control=='class'else'dis64-scalar-client.h';text=(ROOT/'include'/path).read_text();old,new={
     'class':('(actual!=Dis64ClientRoot && kind!=Dis64ClientRoot && actual!=kind)','0'),
-    'tail':('8*i>v.frame-24','0'),
+    'tail':('8*i>v->frame-24','0'),
     'seed':('if(dis64clientisroot(slots[i].kind))seed[i/32]','if(0)seed[i/32]'),
     'alias':('if(!changed)break;','break;')}[a.control];assert text.count(old)==1;(w/path).write_text(text.replace(old,new))
    # Quoted nested includes must resolve the controlled managed helper locally.

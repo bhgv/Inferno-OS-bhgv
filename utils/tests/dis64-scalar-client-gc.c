@@ -18,10 +18,21 @@ clientobserve(void *value)
 static void
 clientcollect(Prog *process,Module *client,uchar *root)
 {
- Type *type=client->type[0];void *value;unsigned int i,bit;
+ Stkext *extent=(Stkext*)process->R.EX;uchar *top=process->R.SP,*fp;Type *type;Frame frame;
+ void *value;unsigned int i,bit,frames=0;USED(client);USED(root);
  clientgraphcount=0;
- for(i=0;i<(unsigned int)type->np;i++)for(bit=0;bit<8;bit++)if(type->map[i]&(0x80>>bit)){
-  memmove(&value,root+64*i+8*bit,sizeof(value));clientobserve(value);
+ while(extent!=nil){
+  fp=extent->reg.tos.fu;
+  while(fp!=top){
+   require(++frames<128 && (uintptr)fp<(uintptr)top && (uintptr)top-(uintptr)fp>=sizeof(Frame));
+   memmove(&frame,fp,sizeof(frame));type=frame.t?frame.t:extent->reg.TR;
+   require(native64localtype(type) && (uintptr)type->size<=(uintptr)top-(uintptr)fp);
+   for(i=0;i<(unsigned int)type->np;i++)for(bit=0;bit<8;bit++)if(type->map[i]&(0x80>>bit)){
+    memmove(&value,fp+64*i+8*bit,sizeof(value));clientobserve(value);
+   }
+   fp+=type->size;
+  }
+  top=extent->reg.SP;extent=(Stkext*)extent->reg.EX;
  }
  numericcollect(process);
  for(i=0;i<clientgraphcount;i++)if(numericowner(clientgraph[i])->magic!=MAGIC_A){
