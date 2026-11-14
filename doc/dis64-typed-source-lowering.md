@@ -104,3 +104,7 @@ unwind evidence remains the open issue in [owned arguments](dis64-native64-argum
 All 376 AWM storage plans still pass with unchanged ordinary bytecode. General
 managed image emission/admission, ordinary variadic frame-tail execution, payload
 descriptors, table writers and exceptions remain on the Android GUI path.
+
+The next consumer now lowers complete supported void bodies, including typed
+parameters, loops and early returns. See [complete typed bodies](dis64-typed-bodies.md)
+for actual VM-handler replay and the measured AWM body frontier.

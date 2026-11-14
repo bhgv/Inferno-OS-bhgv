@@ -42,6 +42,7 @@ def main():
             (work/(name+'-native64.h')).write_bytes(subprocess.check_output([str(limbo), '-H', str(source)], cwd=work, env=env))
         if args.formatter:
             runpy.run_path(str(ROOT/'utils/tests/native64-callsites.py'))['generate'](limbo, work, env)
+            runpy.run_path(str(ROOT/'utils/tests/dis64-typed-body.py'))['generate'](limbo, work, env)
         if args.android_ndk:
             clang = args.android_ndk.resolve()/'toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang'
             if not clang.is_file(): parser.error('Missing NDK ARM64 clang: '+str(clang))
@@ -97,8 +98,13 @@ def main():
                     source += (ROOT/'utils/tests/native64-sys-write.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_syswrite_main(int argc, char **argv)', 1)
                     vm = (ROOT/'libinterp/xec.c').read_text()
                     bodies = '#define OP(fn) void fn(void)\n'+'\n'.join(function(vm, signature) for signature in ('static Type*\nmoduletype(', 'static int\nmoduleentry(', 'static int\nframefits(', 'OP(frame)', 'OP(mframe)', 'OP(mcall)', 'OP(movw)', 'OP(movp)', 'OP(movl)', 'OP(movf)', 'OP(cvtwl)', 'OP(cvtwf)', 'OP(cvtlf)'))
+                    bodies += '\n#define JMP(r) branchpc(R.r, exBounds)\n'+function(vm,'static void\nbranchpc(')+'\n'
+                    bodies += '\n'.join(function(vm,'OP('+name+')') for name in ('addw','subw','addl','addf','jmp','beqw','bnew','bltw','blew','bgtw','bgew','lenl'))
+                    bodies += '\n'+function(strings,'OP(lenc)')+'\n'
+                    bodies += '\n'+function(vm,'List*\ncons(')+'\n'+function(vm,'OP(consp)')+'\n'
                     source += '\n'+function((ROOT/'libinterp/load.c').read_text(), 'void\nfreemod(').replace('void\nfreemod(', 'void\nnative64_owned_freemod(', 1)+'\n'
                     source += (ROOT/'utils/tests/native64-sys-frame.c').read_text().replace('VM_FRAME_IMPLEMENTATION', bodies)
+                    source += (ROOT/'utils/tests/native64-typed-body.c').read_text()
                     for signature in ('int\nSys_sprint64(', 'int\nSys_aprint64(', 'int\nSys_print64(', 'int\nSys_fprint64(', 'int\nSys_setframes64(', 'int\nSys_clearframes64(', 'int\nSys_bindsite64(', 'int\nSys_callsite64(', 'int\nSys_bindframe64(', 'int\nSys_sprintframe64(', 'int\nSys_aprintframe64(', 'int\nSys_printframe64(', 'int\nSys_fprintframe64('):
                         source += '\n'+function(runtime, signature)+'\n'
                     extra = [str(ROOT/('lib9/'+name+'.c')) for name in ('rune','sprint','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')]+['-pthread']
@@ -137,7 +143,8 @@ def main():
                             ('fp-width', '@unit', 'case IMOVL: movl(); break; // Execute the actual full-width FP definition.', 'case IMOVL: movw(); break; // Deliberately truncate the local big definition.'),
                             ('fp-current-mp', '@unit', 'R.s = (uchar*)input.value+bases[1]+cell->setupoffset; // Actual MP input at defining PC.', 'R.s = &text; // Deliberately substitute the old String seed.'),
                             ('fp-order', '@unit', 'index = bank->order[i]; // Compiler-defined preparation order.', 'index = bank->order[bank->steps-1-i]; // Deliberately reverse preparation.'),
-                            ('typed-field-origin', '@unit', 'origin=(uchar*)owner.value+bases[cell->space]+cell->offset; // Typed ADT field origin.', 'origin=(uchar*)owner.value+bases[cell->space]+store->source; // Deliberately reuse the legacy ADT field offset.')):
+                            ('typed-field-origin', '@unit', 'origin=(uchar*)owner.value+bases[cell->space]+cell->offset; // Typed ADT field origin.', 'origin=(uchar*)owner.value+bases[cell->space]+store->source; // Deliberately reuse the legacy ADT field offset.'),
+                            ('typed-body-branch', '@unit', 'target=program+step->d;R.d=&target;', 'target=program+pc+1;R.d=&target;')):
                         known_omissions.add(name)
                         if args.omission and name not in args.omission:
                             continue

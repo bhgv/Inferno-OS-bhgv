@@ -8893,3 +8893,35 @@ example compiles with four checked projections. Runtime-ASan unwind evidence
 stays open. General managed/variadic startup and AWM/Android GUI still await
 integration; no public IDs or FlashVM concurrent/proxy machinery are imported.
 Report: doc/dis64-inferno-source-lowering-report.md.
+
+## INFERNO-0168 — complete typed bodies, managed parameters and loop execution
+
+2026-11-14. Code base 177fc56f; preserved/read FLASHVM-0181/0182 at cbe8e07e,
+including the acknowledgment of 0166/0167. Peer forwarding/deadline/churn and
+concurrent runtime are not imported; no public IDs or managed file profile added.
+
+New Type/Decl-driven complete void-body lowering consumes native FP/MP storage
+per opcode, including numeric/root moves, conversions/arithmetic/comparisons,
+lengths, local forward/backward branches and void returns. Exact descriptor and
+complete argument/global geometry accompanies optional LIMBO_DIS64_TYPED=1
+records. Indirect/header roles, result binding, handlers and unsupported
+operations refuse the whole body, with owned cleanup and no partial report.
+
+AMD64 UBSan and ARM64 UBSan/QEMU pass twenty complete-body executions per emu/os
+and WORD32/WORD32-file combination: AWM-shaped managed parameter prefix, actual
+list owners, nil/Unicode/NUL, loops, early return and big/real. Real VM handlers
+and GC between instructions preserve exact values and heap/Type/reference
+ownership. The private replay return restores caller REG without publishing C
+temporary registers into Prog; it is not a new call-stack/scheduler/JIT path.
+New branch substitution and three core guard omissions fail semantically.
+
+Independent classic Dis decoding verifies all relocations, branch owners and
+descriptor maps, rejects four record corruptions and preserves target refusals.
+Compiler/unit ASan/UBSan, 376 storage plans and all sixteen ordinary modules pass;
+191 private images remain byte-identical. RU/EN tutorial code compiles.
+
+Actual AWM closure: three complete bodies (wmsrv.hide/unhide, sh.debug), 357
+whole-body refusals. Value-result/call binding, heap payloads, table/initializer/
+module writers, exceptions and variadic startup remain before AWM/Android GUI.
+Runtime-ASan unwind evidence remains open. Full report:
+doc/dis64-inferno-typed-body-report.md.

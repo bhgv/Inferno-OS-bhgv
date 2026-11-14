@@ -62,6 +62,13 @@ aggregate copies. Actual VM-handler replay and the four-gateway call matrix pass
 on AMD64 and ARM64/QEMU. See [typed source lowering](dis64-typed-source-lowering.md).
 This does not yet admit general managed AWM modules or ordinary variadic startup.
 
+Complete supported void bodies now lower through the typed layouts, including
+managed parameters, loops and early returns. Twenty body executions per port/model
+combination pass actual VM handlers with GC on AMD64 and ARM64/QEMU. In the actual
+startup closure, three of 360 bodies lower completely and 357 still refuse.
+[Complete typed bodies](dis64-typed-bodies.md) documents this intermediate step;
+value-result/call binding and general module writing remain before AWM execution.
+
 ## Native64 Tk registration step
 
 Add `--native64-tk --native64-draw` to compile the whole GUI graph with generated Frame64

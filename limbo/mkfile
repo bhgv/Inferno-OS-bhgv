@@ -10,6 +10,7 @@ OFILES=	asm.$O\
 	dis64-lower.$O\
 	dis64-inline.$O\
 	dis64-layout.$O\
+	dis64-typed.$O\
 	dtocanon.$O\
 	ecom.$O\
 	gen.$O\
@@ -28,6 +29,7 @@ HFILES=	limbo.h\
 	dis64-lower.h\
 	dis64-inline.h\
 	dis64-layout.h\
+	dis64-typed.h\
 	dis64-dial.h\
 	dis64-connection.h\
 	$ROOT/include/dis64-sys-dial-schema.h\

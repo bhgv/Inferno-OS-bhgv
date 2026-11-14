@@ -11,6 +11,7 @@ void unextend(Frame *frame) { USED(frame); abort(); }
 void Roots_bridge(void *frame) { USED(frame); abort(); }
 
 VM_FRAME_IMPLEMENTATION
+static void typedbodytests(void);
 
 static Native64SysFrameRequest vmrequest;
 static int vmoperation, vmmode, vmstatus, vmcalls;
@@ -895,6 +896,7 @@ int main(int argc, char **argv)
     vmfpdefinitions();
     vmseedstrings();
     vmtypedfields();
+    typedbodytests();
     for(useframe=0; useframe<2; useframe++) for(phase=0; phase<3; phase++) for(operation=0; operation<4; operation++) for(mode=0; mode<32; mode++) {
         vmcase(phase, operation, mode, useframe); cases++;
     }

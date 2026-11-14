@@ -408,6 +408,7 @@ if(debug['v']) print("fncom: %s %d %p\n", d->sym->name, d->refs, d);
 	nlink = resolvemod(impdecl);
 	if(debug['q']) native64callpcs(firstinst, ninst, globals, excs == nil);
 	dis64layoutreport(globals, fns, nfns);
+	dis64typedreport(globals, fns, nfns, firstinst, ninst);
 
 	maxstack *= 10;
 	if(fixss != 0)
