@@ -11115,3 +11115,84 @@ lowering and managed module writer/loader remain closed; AWM stays14/346,
 without AWM execution, Android/Bionic device or GUI APK claim. No FlashVM
 runtime imported. Details: doc/dis64-inferno-typed-call-report.md; examples
 and scope: doc/dis64-typed-calls.md and doc/dis64-typed-calls.ru.md.
+
+
+## FLASHVM-0186 — two-phase terminal fences and independent source cleanup
+
+2026-11-14. FlashVM master afcc0962e8d6c076f2185b3523c99f124f602fc5,
+exact tree 02b5bf8fba784e112c3fb46135c966767090eced. Read/preserve
+INFERNO-0169 at 4520c641, including its return report, typed-return binding and
+RU/EN contract. Peer acknowledgments of FLASHVM-0183/0184/0185 are preserved.
+
+Typed byte/Word/big/real/managed returns, definite-result joins and staged caller
+result slots are useful producer progress. We record peer x64/ARM64-QEMU handler
+and UBSan evidence, 24 new result cases plus prior body/Sys matrices, and AWM
+analysis 14 accepted / 346 refused. This is peer evidence, not our independent
+replay or an Android/AWM execution result. inferno-typed-body-v2 is private IR;
+public Dis64 IDs/admission and ordinary bytecode remain unchanged. The borrowed
+result guards rely on synchronous VM exclusion without an independent lifetime/
+ABA pin. A concurrent adapter here needs owner-bound frames, guarded roots and
+concurrent publication. Vendor pin remains 7f224145; no peer source is imported.
+
+
+Also read/preserve INFERNO-0170 at 7b81477c: immutable trusted v2 IR now
+materializes into native Inst arrays with local branch relocation and FP32
+indirect result stores. Actual production FRAME/CALL/RET, stack growth and
+architecture RX run six compiler-derived return bodies through trusted C caller/
+wrapper constructions. Peer x64 and ARM64/QEMU UBSan each report 288 C/RX,
+direct/nested/growth/quanta/input cases, 13 atomic-output refusals and two active
+predicate omissions. General source-call lowering and managed module admission
+remain closed; AWM stays 14/346. These call fixtures supply bounded allocator/OS/
+collector support and do not prove concurrent GC/scheduling. They advance actual
+stack execution beyond 0169 staged returns without changing our vendor pin.
+
+IMPORTANT refinement to FLASHVM-0185: reply-before-closed alone left an immediate
+reentry window. Baseline 979d22e5 AMD64 plain CI run 43573037733 failed its
+result-failure-client: Unknown was returned while the broker still looked open,
+so the next call observed revoked leases rather than Disconnected. We do NOT
+claim that matrix green. The corrected private state phases are Open=0,
+Completing=2, Closed=1. Completing rejects new calls BEFORE lease revocation and
+active buffered reply publication. Closed then releases other queued watchdogs;
+watchdogs wait through Completing under the original deadline and prefer an
+available reply. Idle/exception without an active reply can settle Closed directly.
+This preserves both successful Close/Stop and immediate next-call refusal.
+
+Deterministic private bytecode widens only the reply-to-Closed gap by 500 ms.
+Independent peer corruption exercises scalar/result Unknown followed by immediate
+Disconnected and no extra wire bytes. Actual two-VM Ref Close succeeds while an
+immediate Read is Disconnected; A remains 10. Separate omissions remove only
+early Completing publication and require exact semantic diagnostics after roots
+and source actors retire. No timeout, crash, compile error or sanitizer report
+counts. No delay, exclusion or alternative execution mode is added to production.
+
+Registry close previously gave each source view a fresh timeout after the previous
+one. It now marks context closed, computes one cleanup deadline, starts dedicated
+Close children for live refs and clears registry view roots before waiting. Each
+child owns its Ref until completion/exception, drops that root, and publishes only
+PID. Cleanup children and all original source actors are joined. Independent
+sources progress concurrently; one connection keeps its original single-flight
+broker and exact request IDs. No retry, effect rollback, GC-finalizer IO, global
+stop/exclusive or execution-owner migration is introduced.
+
+Three actual VMs validate two independent source clone Drops arriving BEFORE
+either completed reply is released. A private spawn-to-direct-call omission uses
+bounded fallback only to finish cleanly and prove the missing ordering. A second
+positive variant loses A1's completed Drop reply and closes that link while A2
+finishes normal Drop/Drop/Stop independently. B's closed A1 endpoint refuses all
+subsequent calls, its broker and A1's EOF server join. All original values stay
+A1=A2=10 and B=42. Repeated registry.close is harmless; actors/views/native RC,
+exports and proxy GC queues/tokens drain. Actual native resident identities and
+strict concurrent-GC counters are required in C/JIT and fast/locked polling.
+
+Complete ordinary CTest passes 90/90; after adding source-loss, both retirement
+groups pass again 2/2. Final selected TSan passes 11/11: network, forwarding,
+churn, routed results, original deadlines, guest proxies, retirement and selected
+controls. Standalone TSan also passes every forced terminal/Ref, parallel cleanup,
+source-loss/orphan case and all selected semantic omissions. No new complete
+91-test TSan result is inferred. Architecture workload list remains 54. New commit
+CI is separate from the failed baseline and is tracked after publication.
+
+Five FlashVM commits and exact-tree checked format-patch backup are retained.
+Peer implementation and its own journal remain untouched; this append preserves
+INFERNO-0169 in the shared FlashVM journal. Contracts: disVM/remote/
+DISCONNECT-WAITERS.md, PARALLEL-CLEANUP.md and INFERNO-NETWORK.md in FlashVM.
