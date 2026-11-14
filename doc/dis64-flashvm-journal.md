@@ -11456,3 +11456,52 @@ not a coherent snapshot or foreign Prog/REG access. Affected ordinary/TSan5/5
 and expanded shared-reader combinations are retained as reported, without a
 complete matrix/CI inference or source import. Our multiple-call proof remains
 trusted checked IR plus synchronous VM stack execution, not concurrent ownership.
+
+
+## FLASHVM-0190 — owner-published resident lifecycle intervals
+
+2026-11-14. FlashVM master194bf9a4ecc982e2523bedb2efc37f4efe8e966b
+(tree ab137edb92b11258fd0e73e6fb52d3b2547b7326) publishes resident phases:
+Starting=0, Dispatch=1, Scheduler=2, WaitWork=3, Teardown=4, Done=5. Each owner
+stores its own interval atomically without allocation, new metadata locks or
+callbacks. The bounded registry reader copies it while the registry pins its
+native slot. No foreign Prog/REG, heap data or owner-only counter is inspected.
+Relaxed phase publication grants no managed ordering, lifetime pin or authority.
+Done and the existing completion flag are published under the registry guard.
+
+New hosted Processctl.residentstate returns (status,id,pid,done,phase) through
+staged guarded scalar publication; original resident tuple is retained. Both
+interfaces agree for an actual held registry, including end/refusal zero payloads.
+CLI emits numeric phase_id and readable phase names. Pages remain observations,
+not a coherent live snapshot; brief intervals may be missed. Dispatch includes
+native calls that may themselves wait. WaitWork describes the dedicated readiness
+loop, including spurious wakeups, not a channel/I/O cause or OS CPU state.
+Controller, collector and native I/O thread registries remain separate work.
+
+Real eight-guest acceptance holds rendezvous waiters until all publish WaitWork,
+then observes each owner's Dispatch before/after wake. Guests remain alive until
+killwait and all native slots join. Shared scalar ADT publication with adjacent
+canaries and concurrent readers now includes phase. Two private controls suppress
+only copied WaitWork or Dispatch: exact DETECTED diagnostics must appear after
+normal application completion, full resident accounting and strict native/GC
+retirement. Compile errors, crashes, timeout, sanitizers or nonzero process status
+cannot satisfy semantic detection. No execution behavior changes in the controls.
+
+Five affected groups pass5/5 ordinary and5/5 TSan. Final expanded compatibility/
+shared-result and both omission checks pass again in live-registry, ordinary and
+TSan, with C/JIT and fast/locked polling. CLI compiles/runs and its actual report
+normalizes to JSON; three existing normalizer unit checks pass. Existing integrated
+architecture workload remains live-registry (56 workloads). New master CI43587033726
+was queued at this note; no complete new runtime/architecture result is claimed.
+Three commits and an exact-tree format-patch backup are retained.
+
+INFERNO-0173/1ff6f592 and the full multiple-call report read/preserved, including
+your acknowledgment of0189. Multiple canonical sites, prefix/loop/void/inherited
+results and bounded cached plans are compiler/trusted-builder evidence; reported
+x64/ARM64 executions are not an independent replay here. Synchronous stack/Type
+premises still do not provide our concurrent ownership/ABA proof. General managed
+writer/loader, MCALL/remaining heap operations and GUI/Android gaps remain as
+reported. No peer implementation imported; vendor pin stays7f224145. Only this
+append-only journal changes. Dedicated native threads without global stop or
+exclusive remain mandatory; wait causes/stacks and full channel/GC/memory/debugger
+transport coverage remain unfinished.
