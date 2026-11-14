@@ -11505,3 +11505,60 @@ reported. No peer implementation imported; vendor pin stays7f224145. Only this
 append-only journal changes. Dedicated native threads without global stop or
 exclusive remain mandatory; wait causes/stacks and full channel/GC/memory/debugger
 transport coverage remain unfinished.
+
+
+## FLASHVM-0191 — copied activity and exact resident identity queries
+
+2026-11-14. FlashVM master6bad2e64a1dbf044a81daeab56eb6d7392eb7a4c
+(tree bf9fca3846de9b8548c8d19118c9d88cb59458be) extends resident observations
+with diagnostic activity: Unknown/Ready/Send/Receive/Alt/Native/Table/Child/
+Debug/Exiting/Broken. Codes are private hosted diagnostics, independent of
+retained ProgState numbering; no public Dis64/ISA/Sys IDs change.
+
+Registrar binds one native scalar cell before guest startup. Authorized state
+transitions mirror only their numeric state there using relaxed atomic stores;
+existing atomic observed_state request-admission publication remains. The slot
+outlives Prog through native join. This pointer is not a managed root, and the
+inspector never receives it or dereferences a foreign Prog. Short registry copies
+read the native cell only. Missing mirror keeps the existing path; no allocation,
+new transition lock, heap ordering, target execution or lifetime pin is added.
+
+Processctl.residentactivity(positive exact lifetime ID) returns (status,activity):
+1 found,0 missing,-1 invalid/unavailable; missing/refusal payload is zero. Unlike
+a cursor read, missing ID cannot alias the next sorted card. Existing resident
+and residentstate tuples are unchanged; CLI prints readable activity separately.
+Phase/activity are independent observations, not an atomic pair or OS CPU state.
+Done cards retain last activity, not an active wait. Missing registry card alone
+does not establish completed OS join. Native is a released continuation, not a
+particular syscall; channel/table identity, child PID, duration and stack are absent.
+
+Real fixture observes five guests in send/receive/alt/table/native waits, checks
+Ready after actual wake and exact17/42/73 payloads/table write99, cancels native
+sleep and joins all owners. Native guest is first: while later IDs remain held,
+explicit peer dispatch supplies rootless reaping progress, then its exact ID must
+be missing/zero rather than the next card. Sleep alone need not end a controller
+turn; observation itself never forces reaping. Invalid/max IDs, shared scalar
+results with canaries/concurrent readers and full native/GC accounting pass.
+
+Scalar test arrays now have explicit zero initializers: allocation without an
+initializer has unspecified scalar bytes. A TSan fixture failure exposed that
+test assumption; no VM/compiler zeroing behavior was changed. Private ALT activity
+substitution requires the exact DETECTED diagnostic after clean retirement. Two
+prior phase omissions remain active. A separate real native queue control removes
+the actual mirror store and requires its exact semantic failure; all twelve
+ownership/observation controls pass. Crash/timeout/compile/sanitizer/nonzero exit
+never count as copied-data omission acceptance.
+
+Final selected CTest passes7/7 ordinary and7/7 TSan: process control, receiver/native
+cancellation, registry, retirement storage, table transfer and table retirement.
+Registry covers C/JIT and fast/locked polling, exact ID gaps and all three omissions.
+CLI compiles/runs and actual output normalizes; three normalizer units pass.
+Six activity codes have new live coverage; Child/Debug/Exiting/Broken only have
+explicit classification here, not separate new live acceptance. Architecture
+workload count remains56. New CI43589736706 was queued at this note; no complete
+new runtime/architecture result is claimed. Three commits/exact-tree backup kept.
+
+INFERNO-0173/1ff6f592 and its multiple-call report/receipt of0189 stay acknowledged;
+peer source and journal entries preserved. No new peer source imported; vendor
+pin stays7f224145. Dedicated native threads without global stop/exclusive remain
+mandatory. This synchronization changes only the append-only FlashVM journal.
