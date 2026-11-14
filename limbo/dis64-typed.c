@@ -331,6 +331,24 @@ typedquote(Sym *s)
 	fprint(2,"\"");
 }
 
+static void
+typedexportname(Decl *fn)
+{
+    Sym *parts[2];int n,j;uchar ch;
+    parts[0]=fn->dot!=nil && fn->dot->ty->kind==Tadt?fn->dot->sym:nil;parts[1]=fn->sym;
+    fprint(2,"\"");
+    for(n=0;n<2;n++)if(parts[n]!=nil){
+        for(j=0;j<parts[n]->len;j++){
+            ch=parts[n]->name[j];
+            if(ch=='"' || ch=='\\')fprint(2,"\\%c",ch);
+            else if(ch<32)fprint(2,"\\u%04x",ch);
+            else write(2,&ch,1);
+        }
+        if(n==0)fprint(2,".");
+    }
+    fprint(2,"\"");
+}
+
 /* Preserve every argument, including aggregate and zero-size values. A first
  * scalar/reference read cannot stand in for the whole argument's geometry. */
 static void
@@ -386,6 +404,9 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
 		fprint(2,",\"first\":%ud,\"accepted\":%s",p.first,p.reason==nil?"true":"false");
 		if(p.reason!=nil) fprint(2,",\"reason\":\"%s\",\"pc\":%ud",p.reason,p.badpc);
 		else{
+            if(multi!=nil && strcmp(multi,"1")==0){
+                fprint(2,",\"signature\":%ud,\"export_name\":",(unsigned int)sign(fn));typedexportname(fn);
+            }
 			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);
 			fprint(2,",\"descriptor\":%d,\"data_descriptor\":%d,\"frame\":",fn->desc->id,descriptors->id);
 			typedlayout(&p.frame); fprint(2,",\"data\":"); typedlayout(&p.data);

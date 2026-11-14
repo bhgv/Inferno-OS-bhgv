@@ -328,3 +328,5 @@ Source-derived forwarding calls: [dis64-typed-forwarding.md](dis64-typed-forward
 Local-result calls and continuations: [dis64-typed-local-results.md](dis64-typed-local-results.md).
 
 Multiple calls, prefix computation and void results: [dis64-typed-multiple-calls.md](dis64-typed-multiple-calls.md).
+
+Owned modules, export signatures and cross-module execution: [dis64-typed-modules.md](dis64-typed-modules.md).

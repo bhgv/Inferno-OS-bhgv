@@ -26,8 +26,10 @@ def checked_run(command, **options):
         raise
 
 
-def legacy_instructions(data, with_types=False, with_data=False):
+def legacy_instructions(data, with_types=False, with_data=False, with_exports=False, with_imports=False):
     """Independent classic Dis code reader; no diagnostic or Dis64 parser is reused."""
+    if with_imports: with_exports=True
+    if with_exports: with_types=with_data=True
     at = 0
     def number():
         nonlocal at
@@ -76,6 +78,30 @@ def legacy_instructions(data, with_types=False, with_data=False):
                 value = int.from_bytes(data[at:at+width],'big'); at += width
                 initial[offset+i*width] = dict(kind={1:'byte',2:'word',4:'real',8:'long'}[kind],high=value>>32,low=value&0xffffffff)
         else: raise RuntimeError('Non-flat classic initializer in this bounded source gate')
+    if with_exports:
+        def name():
+            nonlocal at
+            end=data.index(0,at);value=data[at:end].decode('utf-8');at=end+1;return value
+        module=name();exports=[]
+        assert 0<=header[6]<=65536
+        for _ in range(header[6]):
+            pc,descriptor=number(),number()
+            assert at+4<=len(data)
+            signature=int.from_bytes(data[at:at+4],'big');at+=4
+            exports.append(dict(pc=pc,descriptor=descriptor,signature=signature,name=name()))
+        if with_imports:
+            assert header[1]&64
+            count=number();assert 0<=count<=65536;tables=[]
+            for _ in range(count):
+                n=number();assert 0<=n<=65536;table=[]
+                for _ in range(n):
+                    assert at+4<=len(data)
+                    signature=int.from_bytes(data[at:at+4],'big');at+=4
+                    table.append(dict(signature=signature,name=name()))
+                tables.append(table)
+            assert number()==0
+            return header,code,types,initial,module,exports,tables
+        return header,code,types,initial,module,exports
     return header, code, types, initial
 
 

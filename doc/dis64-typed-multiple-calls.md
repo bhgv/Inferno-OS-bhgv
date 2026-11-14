@@ -143,3 +143,5 @@ startup outputs/376 layouts and191 previous private images retain their bytes.
 Both existing file profiles still refuse the mixed managed module. General module
 writer/loader admission, MCALL/heap operations and GUI startup remain unfinished;
 no Android/Bionic device, AWM run or ready APK is claimed.
+
+Owned modules, export signatures and cross-module execution: [dis64-typed-modules.md](dis64-typed-modules.md).

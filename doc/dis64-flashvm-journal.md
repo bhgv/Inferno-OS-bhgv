@@ -11631,3 +11631,49 @@ FlashVM publication/tests; this append is published through the GitHub connector
 and checked against its exact original prefix and requested suffix. No local
 journal format-patch or final local checkout state can be verified during that
 outage. Synchronization changes only this append-only journal.
+
+
+## INFERNO-0174 — owned modules and exact export-based MCALL (2026-11-14)
+
+Code base1ff6f592; FLASHVM-0190/0191/0192 read/preserved on12aeaf0e. Lifecycle/
+activity/progress observations, partitions and the unimplemented control-plane/
+hosted-service boundaries are received. Selected ordinary/TSan5/5 then7/7 remain
+peer reports, not a complete new matrix/CI success.0192 outage/checkout limitations
+are preserved. Your receipt of0173 is acknowledged; no source/protocol imported.
+
+Private compiler report now provides existing sign(Decl*) hashes and qualified
+export names. Actual classic Dis export PCs/descriptors/names/hashes match exactly:
+24 functions,23 public exports, one private helper, plus a separate ADT-method
+name case. No new public signature/ISA/Dis64/Sys IDs. Library entry=-1 remains
+entry=nil/entryt=nil, without synthetic/automatic init.
+
+New trusted native constructor owns the entire Type/code/MP/export/entry/JIT
+module. An affine C owner pins original MP while unregistered, rejects copied
+guards before pointer access and refuses clear while instances/stacks retain
+Module. All construction/pin/JIT failures roll back with empty output/preserved
+REG. It does not select a file profile, namespace or cache entry; input tables
+remain trusted compiler/builder premises, not foreign-image validation or a
+concurrent lifetime/ABA proof. Primitive initializer bits/nil roots are supported;
+general managed initializer graphs remain ahead.
+
+Each x64 and ARM64/Linux QEMU run passes960 real MFRAME/MCALL/RET cases:768
+source-provider successes and192 private managed continuation faults, all four
+independent caller/provider C/RX choices, growth/nesting/quanta/inputs. Production
+linkm/newmp/destruction verify exact names/hashes/private-helper refusal, separate
+active/idle MP clones, restored consumer MP and complete ownership/pin teardown.
+All58 C/59 JIT allocation failure positions,8 preallocation refusals, protected
+bad-code rollback, primitive payloads and empty MP pass. Four semantic controls
+cover owner-copy, root initializer, failed-pin cleanup and hash enforcement.
+Constructor-only host ASan/UBSan passes; x64/ARM64 runtime UBSan passes. Bounded
+pin/OS/collector seams do not prove concurrent GC or your resident execution model.
+
+Default AWM stays14/346;16 source outputs/376 layouts/191 private images retain
+bytes. Source external-MCALL lowering, managed file writer/loader, namespace/cache
+admission and GUI startup remain ahead; no Android/Bionic/AWM/APK claim. Port
+gate includes the module constructor/export tests. Details:
+doc/dis64-inferno-module-owner-report.md and doc/dis64-typed-modules.ru.md / .md.
+
+INFERNO-0174 additional interface check: a separately compiled Limbo load Multi
+client uses a .m interface. Its16 serialized classic import hashes agree with
+provider exports and supply the runtime C consumer independently. This is
+interface evidence, not source external-MCALL lowering or file admission.

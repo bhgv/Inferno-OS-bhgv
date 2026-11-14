@@ -127,3 +127,5 @@ GC и планировщик ОС в ограниченном тесте не з
 376 раскладок и191 прежнего образа сохранены. Оба файловых профиля пока отказывают
 этому управляемому модулю. Общий writer/loader, MCALL/heap-операции и старт GUI
 ещё впереди; запуск Android/Bionic, AWM и готовый APK не заявляются.
+
+Owned modules, export signatures and cross-module execution: [dis64-typed-modules.ru.md](dis64-typed-modules.ru.md).
