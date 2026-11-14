@@ -122,6 +122,11 @@ def main():
         build, env, logs/'scalar-requests.log')
     run([sys.executable, str(tests/'dis64-library-namespace.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'library-namespace.log')
+    run([sys.executable, str(tests/'dis64-library-namespace.py'), '--limbo', str(tools/'limbo'), '--iload'],
+        build, env, logs/'library-iload.log')
+    for control in ('copy', 'pin', 'route'):
+        run([sys.executable, str(tests/'dis64-library-namespace.py'), '--limbo', str(tools/'limbo'), '--iload', '--iload-control', control],
+            build, env, logs/('library-iload-'+control+'.log'))
     run([sys.executable, str(tests/'dis64-library-namespace.py'), '--limbo', str(tools/'limbo'), '--disabled'],
         build, env, logs/'library-namespace-disabled.log')
     for control in ('admission', 'close', 'acquire', 'profile'):

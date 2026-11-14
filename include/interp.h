@@ -340,6 +340,8 @@ struct Module
 	int	mptype;		// Native MP descriptor ordinal; zero preserves ordinary Dis layout.
 	void* native64sysframes; // Private owned call-site table; never decoded from file flags.
 	void (*native64sysframesfree)(Module*); // Trusted nonthrowing teardown before Type retirement.
+	void* native64imports; // Owned structural requests; never a serialized native pointer.
+	Modlink* (*native64importload)(Module*, WORD, char*); // Trusted installer only; returns a pinned instance or nil.
 };
 
 struct Modl
@@ -589,8 +591,14 @@ extern	void		ptradd(Heap*);
 extern	void		ptrdel(Heap*);
 extern	void		pushrun(Prog*);
 extern	Module*		readmod(char*, Module*, int);
+typedef struct Native64ImportRequest Native64ImportRequest;
+struct Native64ImportRequest {
+ const uchar *imports, *strings;
+ ulong importbytes, stringbytes;
+};
+extern int install64callimports(Module*, const Native64ImportRequest*, uint, int); // Trusted unpublished caller; atomic deep copy.
+extern Modlink* read64calllibrary(char*, int, const uchar*, ulong, const uchar*, ulong, int);
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
-extern Modlink* read64calllibrary(char*, int, const uchar*, ulong, const uchar*, ulong, int); // Explicit uncached namespace admission; one rooted scalar-library instance.
 extern Modlink* read64pair(char*, char*); // Read and root the explicitly linked startup module.
 #ifdef DIS_NATIVE64_MANAGED_FILES
 extern Module* prepare64managedfile(char*, uchar*, ulong, int); // Unpublished checked file provider.

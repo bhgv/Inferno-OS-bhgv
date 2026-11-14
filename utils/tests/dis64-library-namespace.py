@@ -17,7 +17,7 @@ def bindings(data):
   rows.append((names[module],names[name],values[1],values[3:]))
  r.end();nr.end();return rows
 
-def unit(control=None):
+def unit(control=None,iload=False,iloadcontrol=None):
  s=L['unit']();extract=S['FILES']['FILES']['function'];src=(ROOT/'libinterp/readmod.c').read_text()
  s=s.replace('int main(int argc,char**argv)','int memorylibrarymain(int argc,char**argv)',1)
  s=s.replace('in->s.ind=64;in->d.ind=40;','in->reg=namespaceordinal;in->s.ind=64;in->d.ind=40;',1).replace('in->s.ind=40;in->d.ind=64;','in->reg=namespaceordinal;in->s.ind=40;in->d.ind=64;',1)
@@ -44,17 +44,33 @@ Modlink*prepare64calllibrarylink(char*path,uchar*image,ulong bytes,int jit,const
  s+='\n'+reader
  start=s.rfind(' optab[IMOVW]=countmovw;');end=s.index(' require(prepare64calls(',start);handlers=s[start:end]
  fixture=(ROOT/'utils/tests/dis64-library-namespace.c').read_text().replace('static unsigned int namespaceordinal;','').replace(' NAMESPACE_HANDLERS',handlers)
- return s+'\n'+fixture
+ if iload:
+  fixture=fixture.replace('int main(int argc,char**argv)','int oldnamespace_main(int argc,char**argv)',1)
+  s+='\n'+extract(xec:=(ROOT/'libinterp/xec.c').read_text(),'static Import*\nmoduleimports(')+'\n'+extract(xec,'OP(iload)')+'\n'
+  s+='\nchar exNegsize[]="negative size";\nint hmsize(void*h){for(int i=0;i<RuntimeBlocks;i++)if(blocks[i].pointer==(uchar*)h-O(Bhdr,u.data))return blocks[i].bytes-O(Bhdr,u.data);require(0);return 0;}\n'+extract((ROOT/'libinterp/string.c').read_text(),'String*\nnewstring(')+'\n'
+  fixture+='\n'+(ROOT/'utils/tests/dis64-library-iload.c').read_text().replace(' NAMESPACE_HANDLERS',handlers)
+ result=s+'\n'+fixture
+ if iloadcontrol:
+  old,new={'copy':('owner->tables[i].imports=at;','/* active borrowed-request control */'),
+   'pin':('ptrdel(D2H(ml));','/* active retained-pin control */'),
+   'route':('structural = m->native64importload != nil;','structural = 0;')}[iloadcontrol]
+  if iloadcontrol=='pin':
+   body=extract(result,'OP(iload)');assert body.count(old)==1;result=result.replace(body,body.replace(old,new),1)
+  else:assert result.count(old)==1;result=result.replace(old,new)
+ return result
 
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',type=Path,required=True);p.add_argument('--baseline',type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--disabled',action='store_true');p.add_argument('--control',choices=('admission','close','acquire','profile'));a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',type=Path,required=True);p.add_argument('--baseline',type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--disabled',action='store_true');p.add_argument('--iload',action='store_true');p.add_argument('--iload-control',choices=('copy','pin','route'));p.add_argument('--control',choices=('admission','close','acquire','profile'));a=p.parse_args();
+ if a.iload and (a.control or a.disabled):p.error('--iload runs independently of reader controls/disabled gate')
+ if a.iload_control and (not a.iload or a.materialize_only):p.error('--iload-control requires --iload instruction execution')
+ env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
  with tempfile.TemporaryDirectory(prefix='library-namespace-',dir=ROOT)as td:
-  w=Path(td);env['TMPDIR']=str(w);source=w/'namespace.c';source.write_text(unit(a.control));cc=shlex.split(env.get('CC','cc'))+shlex.split(env.get('NATIVE64_CFLAGS','-O2 -g -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
+  w=Path(td);env['TMPDIR']=str(w);source=w/'namespace.c';source.write_text(unit(a.control,a.iload,a.iload_control));cc=shlex.split(env.get('CC','cc'))+shlex.split(env.get('NATIVE64_CFLAGS','-O2 -g -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
   if arch=='arm64':cc+=['-DDIS64_TEST_ARM64=1','-DDIS64_TEST_COMPILER="comp-arm64.c"']
   elif arch=='riscv64':cc+=['-DDIS64_TEST_RISCV64=1','-DDIS64_TEST_COMPILER="comp-riscv64.c"']
   elif arch!='amd64':raise RuntimeError(arch)
   cc+=['-DDIS_WORD32=1']+['-I'+str(x)for x in [w]+[ROOT/x for x in ('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')]]
-  runner=shlex.split(env.get('NATIVE64_RUNNER',''));rows=L['cases']()[:1]if a.control or a.disabled else L['cases']()
+  runner=shlex.split(env.get('NATIVE64_RUNNER',''));rows=L['cases']()[:1]if a.control or a.disabled or a.iload_control else L['cases']()
   for name,text,fn,kind,args,values,expected,failure in rows:
    b=w/(name+'.b');b.write_text(text);m=w/(name+'.m');m.write_text(declarations(text));image=w/(name+'.dis64')
    S['TYPED']['READ']['checked_run']([str(a.limbo.resolve()),'-64b','-o',str(image),str(b)],env=env,capture_output=True,check=True)
@@ -70,6 +86,9 @@ def main():
    argv=[str(image),str(kind),str(expected),str(failure),str(ordinal),'materialize'if a.materialize_only else'run','selected']+valueargs
    if a.control=='profile'or a.disabled:argv[6]='default'
    r=subprocess.run(runner+[str(binary)]+argv,env=env,capture_output=True,text=True,timeout=120)
+   if a.iload_control:
+    assert r.returncode==10 and 'library fixture predicate:'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(a.iload_control,r.returncode,r.stderr)
+    print('PASS ILOAD active control:',arch,a.iload_control,flush=True);return
    if a.control:
     diagnostic={'admission':'namespace admission route','close':'namespace descriptor cleanup','acquire':'namespace acquisition order','profile':'namespace startup profile'}[a.control]
     assert r.returncode==10 and ('library semantic failure: '+diagnostic)in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(a.control,r.returncode,r.stderr)
@@ -78,7 +97,9 @@ def main():
    if a.disabled:print('PASS disabled namespace bridge: no namespace/constructor work',flush=True);return
    if a.materialize_only:continue
    argv[6]='default';subprocess.run(runner+[str(binary)]+argv,env=env,check=True,capture_output=True,timeout=120)
-   print('PASS compiler .m -> namespace -> admitted library -> scheduler:',arch,name,flush=True)
+   print('PASS compiler .m -> '+('ILOAD -> 'if a.iload else'')+'namespace -> admitted library -> scheduler:',arch,name,flush=True)
+  if a.iload and a.materialize_only:
+   print('PASS owned structural requests under materialization-only:',arch,len(rows),flush=True);return
   for label,case,transform in [('unused','single',lambda text:text.replace('};','unused:fn(n:int):int;};')),('wrong-kind','big',lambda text:text.replace('big','real'))]:
    name,text,fn,kind,args,values,expected,failure=next(x for x in L['cases']()if x[0]==case)
    m=w/(label+'.m');m.write_text(transform(declarations(text)))

@@ -1000,6 +1000,7 @@ freemod(Module *m)
 	free(m->prog);
 	free(m->path);
 	free(m->pctab);
+	free(m->native64imports);
 	if(m->ldt != nil){
 		for(i2 = m->ldt; *i2 != nil; i2++){
 			for(i1 = *i2; i1->name != nil; i1++)

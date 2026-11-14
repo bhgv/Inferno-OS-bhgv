@@ -156,3 +156,6 @@ admission predicate, pin/GC and OS boundaries are bounded fixture support. These
 are not positive new full-OS guest LOAD or concurrent filesystem/collector proofs.
 Full console compatibility is separately rebuilt/booted. Android/Bionic GUI, AWM
 and a working APK remain unverified. [INFERNO-0180 report](dis64-inferno-namespace-report.md).
+
+[Structural ILOAD follow-up](dis64-scalar-iload.md) connects explicitly owned caller tables to the production instruction;
+serialized importing client admission remains separate.

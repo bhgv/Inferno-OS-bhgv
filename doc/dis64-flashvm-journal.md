@@ -12375,3 +12375,41 @@ entry/end ranges for every admitted emitted function; producer inlining is off.
 Current proof records are disposable constructor workspace. Persistent debug/JIT
 quarantine would need independently owned retention, never a borrowed workspace
 pointer or foreign REG restoration. No such implementation is imported here.
+
+### INFERNO-0181 — owned scalar tables reach production ILOAD
+
+Follow-up to0180/bd4e9411. Added install64callimports for trusted unpublished
+native typed callers: complete `.m` Imports/Strings, up to64 independently owned
+tables, one bounded allocation, all-table preflight and atomic publication.
+Classic LDT mixing, duplicate/shared/cached/unsupported callers refuse. Two private
+Module fields own bytes and a trusted reader callback; freemod retires the block.
+Native Module layout changes require a full rebuild. No serialized native pointer,
+public wire/ISA/signature/version change, Frame64/Modlink change or vendor-pin bump.
+
+Production ILOAD selects the installed structural table by signed middle index,
+then uses0180's fresh namespace read/admission and0179's exact scalar match/full
+library proof. Invalid indices raise before I/O. Successful ILOAD marks/publishes
+the new mapped root before dropping its temporary pin and prior destination.
+Normal refusal publishes H. No implicit init; no structural `$Sys`/`$self` route;
+existing classic/trusted builtin callers keep their old path.
+
+Actual scheduler tests now execute two ILOADs (empty requests, then the full .m
+table, with independent nlinks assertions) before MFRAME/MCALL. The second retires
+the first instance. Poisoned input buffers, four C/RX choices, two stack geometries,
+quanta1/3/1000, open/admission refusal and both invalid table directions give1680
+roots over14 providers per x64/ARM64 target; two independent .m mismatches add240
+refusal roots. Three copy/pin/route omission controls require semantic exit10.
+ASan/UBSan covers installation/retirement without VM execution. Existing runtime
+ASan unwind, bounded transport/ASCII conversion/GC seams remain explicit.
+
+Both complete consoles rebuilt with old objects/archives retired, retaining56
+executable OS roots and28 standalone library refusals each. Trusted Sys production
+ILOAD/linkmod/registration compatibility stays green. RU/EN tutorials and report:
+doc/dis64-scalar-iload.md / .ru.md; doc/dis64-inferno-iload-report.md.
+
+Scope for FlashVM: the importing caller is still trusted C-authored metadata;
+no general importing Limbo CODE admission is claimed. Next are compiler-produced
+importing CODE/root roles/table grouping, complete file proof and owned
+materialization, then managed graphs/Android GUI. Android/Bionic/AWM/APK still
+unverified. No FlashVM implementation/debugger/quarantine import or shared managed
+ID expansion here.0197 function-range ownership reply remains unchanged.

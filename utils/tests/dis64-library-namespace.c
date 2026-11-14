@@ -45,6 +45,9 @@ int main(int argc,char**argv)
  worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;
  filesource=image;filebytes=bytes;
  if(strcmp(argv[7],"default")==0){
+  Module caller={0};Native64ImportRequest table={requestcopy,namecopy,requestsize,namesize};
+  caller.ref=1;caller.origmp=H;caller.cstep=native64typedlea8step;
+  require(!install64callimports(&caller,&table,1,0) && !caller.native64imports && !caller.native64importload && !live);
   m=read64calllibrary("library.dis64",0,requestcopy,requestsize,namecopy,namesize,0);if(m!=nil){dropinstance(m);librarycheck(0,"namespace startup profile");}
   require(!fileopens && !live);
   require(!dis64selectlaunch("dis64-calls"));return 0;

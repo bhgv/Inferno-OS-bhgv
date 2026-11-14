@@ -3302,6 +3302,7 @@ OP(iload)
 	String *name;
 	WORD index;
 	Heap *h;
+	int structural;
 
 	current = R.M;
 	if(current == nil || current == H || (uintptr)current > (uintptr)-1-sizeof(*current))
@@ -3310,7 +3311,8 @@ OP(iload)
 	if(m == nil || m == H || (uintptr)m%sizeof(void*) != 0 ||
 	   (uintptr)m > (uintptr)-1-sizeof(*m))
 		error(exModule);
-	if(!(m->rt & HASLDT))
+	structural = m->native64importload != nil;
+	if(!structural && !(m->rt & HASLDT))
 		error("obsolete dis");
 	/* Bound and capture the result cell before any conversion/linker callback. */
 	if(R.m == nil || R.m == H || (uintptr)R.m > (uintptr)-1-sizeof(index) ||
@@ -3321,9 +3323,22 @@ OP(iload)
 	memmove(&mp, (uchar*)current+O(Modlink, MP), sizeof(mp));
 	memmove(&index, R.m, sizeof(index));
 	memmove(&name, R.s, sizeof(name));
-	ldt = moduleimports(m, index);
+	ldt = structural ? nil : moduleimports(m, index);
 	n = string2c(name);
-	if(strcmp(n, "$self") == 0) {
+	if(structural){
+  ml = m->native64importload(m, index, n);
+  if(ml == nil) ml = H;
+  else {
+   /* Keep the temporary pin until the mapped destination owns the instance. */
+   Setmark(D2H(ml));
+   memmove(&t, destination, sizeof(t));
+   memmove(destination, &ml, sizeof(ml));
+   ptrdel(D2H(ml));
+   destroy(t);
+   return;
+  }
+ }
+ else if(strcmp(n, "$self") == 0) {
 		if(mp == nil || m->ref <= 0 || m->ref == 0x7fffffff)
 			error(exModule);
 		h = nil;

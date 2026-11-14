@@ -3,6 +3,7 @@
 #include "interp.h"
 #include "kernel.h"
 #include "dynld.h"
+#include "raise.h"
 #include "native64-scalar-boot.h"
 
 
@@ -217,6 +218,70 @@ read64calllibrary(char *path,int jit,const uchar *requests,ulong requestbytes,
 #else
  USED(path);USED(jit);USED(requests);USED(requestbytes);USED(strings);USED(stringbytes);USED(sync);
  kwerrstr("Dis64 scalar library namespace bridge is disabled");return nil;
+#endif
+}
+
+
+/* Private native ownership, not an on-wire table or an arbitrary caller proof. */
+#if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1
+typedef struct Dis64ImportOwner Dis64ImportOwner;
+struct Dis64ImportOwner {
+ uint count;
+ int jit;
+ Native64ImportRequest tables[64];
+};
+
+static Modlink*
+read64ownedimport(Module *module,WORD index,char *path)
+{
+ Dis64ImportOwner *owner=module->native64imports;
+ Native64ImportRequest *table;
+ if(owner==nil || index<0 || (uint)index>=owner->count)error(exModule);
+ table=owner->tables+index;
+ return read64calllibrary(path,owner->jit,table->imports,table->importbytes,
+  table->strings,table->stringbytes,1);
+}
+#endif
+
+/* Attach all independently generated .m requests to a trusted unpublished
+ * caller. One allocation owns every table/name/signature. No borrowed emitter
+ * pointers, classic hashes or callback addresses come from serialized bytes.
+ * Caller code/root maps remain the checked native constructor's responsibility. */
+int
+install64callimports(Module *module,const Native64ImportRequest *tables,uint count,int jit)
+{
+#if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1
+ Dis64ImportOwner *owner;Module *cached;DisStringPoolView pool;Dis64Bindings bindings;
+ const Native64ImportRequest *table;uchar *at;ulong bytes=sizeof(*owner);uint i;
+ if(!dis64launchmode() || module==nil || module==H || module->ref!=1 ||
+    module->ldt!=nil || module->native64imports!=nil || module->native64importload!=nil ||
+    module->cstep!=native64typedlea8step || !count || count>64 || tables==nil || tables==(void*)H ||
+    (jit!=0 && jit!=1))return 0;
+ for(cached=modules;cached!=nil;cached=cached->link)if(cached==module)return 0;
+ for(i=0;i<count;i++){
+  table=tables+i;
+  if(table->imports==nil || table->imports==(void*)H || table->strings==nil || table->strings==(void*)H ||
+     table->importbytes>Dis64LocalBytes || table->stringbytes>Dis64LocalBytes ||
+     (uintptr)table->imports>(uintptr)-1-table->importbytes ||
+     (uintptr)table->strings>(uintptr)-1-table->stringbytes ||
+     table->importbytes+table->stringbytes>8*Dis64LocalBytes-bytes ||
+     !disstringpoolcheck(table->strings,table->stringbytes,65536,&pool) ||
+     !dis64bindingscheck(table->imports,table->importbytes,0,&pool,0,0,
+       Dis64LocalFunctions,Dis64LocalParameters,&bindings))return 0;
+  bytes+=table->importbytes+table->stringbytes;
+ }
+ owner=mallocz(bytes,1);if(owner==nil)return 0;
+ owner->count=count;owner->jit=jit;at=(uchar*)(owner+1);
+ for(i=0;i<count;i++){
+  table=tables+i;owner->tables[i]=*table;
+  owner->tables[i].imports=at;memmove(at,table->imports,table->importbytes);at+=table->importbytes;
+  owner->tables[i].strings=at;memmove(at,table->strings,table->stringbytes);at+=table->stringbytes;
+ }
+ module->native64imports=owner;
+ module->native64importload=read64ownedimport;
+ return 1;
+#else
+ USED(module);USED(tables);USED(count);USED(jit);return 0;
 #endif
 }
 

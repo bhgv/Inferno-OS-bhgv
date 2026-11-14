@@ -371,3 +371,11 @@ both I/O modes and allocation/I/O/policy controls. Guest Limbo ILOAD and managed
 importing-body admission remain next; no Android/Bionic/AWM/APK execution is claimed.
 [RU](dis64-scalar-namespace.ru.md) / [EN](dis64-scalar-namespace.md) /
 [report](dis64-inferno-namespace-report.md).
+
+2026-11-14, INFERNO-0181: [structural ILOAD](dis64-scalar-iload.md) now joins
+explicitly owned `.m` request tables to actual scheduled namespace library loads
+and calls. ARM64 evidence is Linux/QEMU with trusted native-authored importing
+code, not Android/Bionic or an admitted importing Limbo client. Native Module
+layout adds two private fields: fully rebuild target objects/archives. AWM/GUI APK
+execution is still unverified; remaining file-client/managed admission is described
+in the [report](dis64-inferno-iload-report.md).
