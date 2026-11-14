@@ -115,7 +115,7 @@ def verify(data,record):
 def generate(limbo,work,env=None):
     data,records=compile_source(limbo,work,SOURCE)
     assert {r['name'] for r in records}=={'run','mix','guard','count','identity','wide','fraction','octet','items'} and all(r['accepted'] for r in records),records
-    lines=['typedef struct Native64TypedStep { unsigned int op,mode; long s,m,d; unsigned int returned; } Native64TypedStep;']
+    lines=['#include "native64-typed-code.h"']
     for record in records:
         verify(data,record);name=record['name']
         lines+=['static const Native64TypedStep typed_'+name+'[] = {']+['{'+','.join(map(str,row))+'},' for row in record['code']]+['};']

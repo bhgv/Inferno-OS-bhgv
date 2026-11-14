@@ -67,3 +67,5 @@ Dis64, номера команд и обычный байткод не меня�
 
 В исходниках AWM проходят 14 полных тел, отклоняются 346. Это анализ исходников;
 запуск AWM, GUI APK и Android/Bionic JIT этой проверкой не подтверждаются.
+
+Next execution gate: [dis64-typed-calls.ru.md](dis64-typed-calls.ru.md).

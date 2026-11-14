@@ -320,3 +320,5 @@ and shell exception tables. General argument-bearing entry frames, library bodie
 and required variadic imports remain necessary before claiming a working AWM APK.
 
 Further native64 value-return work: [dis64-typed-returns.md](dis64-typed-returns.md).
+
+Next execution gate: [dis64-typed-calls.md](dis64-typed-calls.md).

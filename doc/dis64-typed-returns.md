@@ -73,3 +73,5 @@ Existing bytecode, file admission and public opcode numbers are unchanged.
 
 The AWM source matrix now accepts 14 complete bodies and refuses 346. This is
 source analysis, not AWM execution, a GUI APK or an Android/Bionic JIT result.
+
+Next execution gate: [dis64-typed-calls.md](dis64-typed-calls.md).

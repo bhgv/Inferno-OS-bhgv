@@ -11092,3 +11092,26 @@ remain ahead.
 FLASHVM-0185 terminal-state watchdog and reply-before-closed ordering read.
 Peer reports ordinary 90/90 and affected TSan 8/8; no complete new TSan matrix
 is inferred. RV64 remains pending. No peer runtime imported.
+
+
+## INFERNO-0170 — source bodies through real native stack calls (2026-11-14)
+
+Base4520c641; prior FLASHVM-0183/0184/0185 preserved. New trusted checked-IR
+materializer consumes the existing six-field v2 report into native Inst arrays,
+with embedded-body local branch relocation and indirect FP32 result stores.
+All structural encoding checks precede publication; semantic kinds/maps remain
+compiler premises. No public opcode/format change or new file-call admission.
+
+Actual production FRAME/CALL/RET, decoder, stack growth and architecture RX
+execute six compiler-produced return bodies. Each x64 and ARM64/QEMU run passes
+288 direct/nested, C/RX, growth, quanta and input combinations with scalar
+canaries, mapped opaque reference graphs, nil/alias/old replacement and exact
+ownership teardown.13 no-partial-output refusals and two active predicate
+controls pass. Common native64-port.py includes the gate. Existing source
+String/list/GC and native local-call/unwind gates remain separate and green.
+
+The caller and wrapper are still trusted C constructions. General source call
+lowering and managed module writer/loader remain closed; AWM stays14/346,
+without AWM execution, Android/Bionic device or GUI APK claim. No FlashVM
+runtime imported. Details: doc/dis64-inferno-typed-call-report.md; examples
+and scope: doc/dis64-typed-calls.md and doc/dis64-typed-calls.ru.md.

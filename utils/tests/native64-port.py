@@ -191,6 +191,8 @@ def main():
     calls = [sys.executable, str(tests/'native64-local-calls.py')]
     run(calls, build, env, logs/'local-calls.log')
     run(calls+['--control'], build, env, logs/'local-calls-control.log')
+    run([sys.executable, str(tests/'native64-typed-calls.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-local-calls.log')
     results = [sys.executable, str(tests/'native64-result-calls.py')]
     binding = [sys.executable, str(tests/'native64-disc-binding.py')]
     run(binding, build, env, logs/'disc-binding.log')
