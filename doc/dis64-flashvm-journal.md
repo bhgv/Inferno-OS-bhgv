@@ -11722,3 +11722,75 @@ default AWM stays14/346. No Android/Bionic/AWM/APK run or new public ISA/Sys/for
 IDs. Gates added to native64-port.py; RU/EN docs and report:
 doc/dis64-typed-external-calls.ru.md / .md;
 doc/dis64-inferno-external-source-report.md.
+
+
+## FLASHVM-0193 — independent bounded diagnostic mailboxes
+
+2026-11-14. FlashVM master61f3d1ffe6eccf1b3005de300927d06c367cffbe
+(tree 04fba41fdeb0d483832b9277d0a0987ad4b3df04) implements the first executable
+slice of0192's mailbox contract. Processctl.residentrequest/reply/forget use an
+independent native eight-credit mailbox per resident, never ordinary channel or
+owner request/reply nodes. Credits cover Pending/Ready/Closed together. Request
+and reply contain only scalars; no heap roots, remote RPC, getters or guest code.
+
+The permanent native owner verifies its TLS/context identity, answers at most two
+oldest pending tickets per servicing point, then permits ordinary dispatch. An
+atomic pending hint leaves the inactive path without mailbox locking. Enqueue
+copies requester/cookie under registry lifetime and signals only the destination
+owner's private condition. Channel-blocked guests answer without receiving ordinary
+payload. A blocking native callback may leave replies Pending until its safe return;
+no foreign thread impersonates that owner. Diagnostic forget does not cancel sleep,
+channel or application RPC. There is no global stop/exclusive or Prog migration.
+
+Tickets are monotonic signed-big-range identities scoped to target mailbox and
+original requester PID. Foreign requester read/forget is Denied with zero payload.
+Ready/Closed consume one credit; Pending does not. Forgotten/consumed tickets cannot
+alias future tickets. Native retirement closes Pending while Ready snapshots stay
+available until consume/forget/reaping; unregistered target/ticket returns Missing.
+All non-Ready reply fields and refused ticket outputs are zero. Effects are staged
+before guarded publication, so Busy retry never repeats submit/consume/forget.
+
+Requester retirement releases its credits across still registered mailboxes.
+Empty global credit hint skips this scan entirely; nonempty cleanup remains
+O(residents*8) under metadata guard, with requester indexing/global quotas future
+work. Boxes are freed on startup refusal, rootless reaping and shutdown after joins.
+NATIVEDEBUGMAILBOX must reconcile created=destroyed, live/requests/pending=0.
+No reader pins a target Prog or heap indefinitely. APIs are in-VM read-only scalar
+probes, not external debugger transport, control capabilities or full typed capture.
+
+Actual fixture uses six guests: channel target, continuous shared-reply watcher,
+foreign ticket thief, abandoned-ticket sender, concurrent inspector and native
+sleeper. Checks cover exact owner/cookie (including signed-big min/max), eight-credit
+quota, repeated ordinary32-value exchanges during diagnostic traffic, cancellation,
+sender quota reclamation and target native-wait retirement. Private wrapper checks
+actual permanent bound owner and budget2. Shared48-byte result has adjacent canaries.
+The production queue unit additionally proves completed-reply quota, FIFO after
+physical slot reuse, invalid budget/arguments, zero outputs, forgetting and
+idempotent close preserving Ready/closing Pending; its extra native box also drains.
+
+Two omission controls hide pending wake or requester cleanup. Both require exact
+DETECTED diagnostics, normal application exit and full native/GC ownership drain;
+crash/timeout/compile/sanitizer/nonzero exit cannot count. Final selected CTest is
+8/8 ordinary and8/8 TSan, covering control/registry/mailbox, receiver/native cancel,
+retirement storage and table transfer/retirement. After empty-credit optimization,
+control/mailbox pass2/2 again in both builds. Mailbox C/JIT and fast/locked polling
+all pass. Actual lifecycle JSON and three normalizer units pass. All handwritten
+sources stay below500 lines. New mandatory debug-mailbox workload makes57 (list
+verified); complete new architecture/runtime execution is not claimed. New master
+CI43595814013 was queued. Prior base90299f44 finished all six CI jobs successfully,
+including AMD64/ARM64 and RV64 userspace under QEMU, without implying this new
+commit passed them.
+
+Local workspace access is restored. FlashVM source/tests/commits and exact-tree
+format-patch backup are verified; current local master matches its published tree.
+CONTROL-PLANE/OBSERVABILITY now distinguish actual scalar mailbox from remaining
+source/stack capture, pause/resume/step, priority, external service/capabilities,
+allocator catalogs, environment groups and composable VFS/provider work.
+
+INFERNO-0174/19d2962d and0175/11971eb9 plus their full module-owner/external-source
+reports read/preserved: trusted owned whole modules/exact exports and compiler-derived
+imported MFRAME/MCALL bodies, existing hashes, reported x64/ARM64 execution/rollback.
+These are not concurrent lifetime/ABA, namespace/cache, general managed loader or
+Android/AWM proof. No peer implementation is imported; vendor pin stays7f224145.
+Public Dis64/ISA/Sys IDs stay unchanged. This synchronization only appends the
+FlashVM journal and preserves all peer source/receipts.
