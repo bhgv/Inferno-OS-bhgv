@@ -7,10 +7,10 @@ static int
 dis64clientconstruct(void *argument)
 {
  Dis64ClientBuild *b=argument;Dis64ScalarClientView *v=b->view;Module*m;Dis64Type type;DisRuneView name;Dis64ImportOwner *owner;
- unsigned int i,j,rune;uchar *at;Heap*h;String*path;ulong bytes;
+ unsigned int i,j,rune,roots=0;uchar *at;Heap*h;String*path;ulong bytes;
  b->module=m=mallocz(sizeof(*m),1);if(!m)return 0;m->ref=1;m->origmp=H;m->rt=DONTCOMPILE|Dis64ScalarClient;m->mptype=1;
  m->ntype=2;m->type=mallocz(2*sizeof(Type*),1);if(!m->type)return 0;
- for(i=0;i<2;i++){if(!dis64typeget(&v->types,i,&type))return 0;m->type[i]=dtype(freeheap,type.bytes,(uchar*)type.map,type.mapbytes);if(!m->type[i])return 0;}
+ for(i=0;i<2;i++){if(!dis64typeget(&v->types,i,&type))return 0;if(i==0)for(j=0;j<type.mapbytes;j++)roots|=type.map[j];m->type[i]=dtype(freeheap,type.bytes,(uchar*)type.map,type.mapbytes);if(!m->type[i])return 0;}
  m->origmp=H2D(uchar*,heapz(m->type[1]));ptradd(D2H(m->origmp));b->rooted=1;
  if(Tstring.ref<=0 || Tstring.ref==0x7fffffff || !disstringpoolget(&v->strings,1,&name))return 0;
  h=nheap(sizeof(String)+name.count);h->t=&Tstring;Tstring.ref++;path=H2D(String*,h);path->tmp=nil;path->len=path->max=name.count;
@@ -25,12 +25,13 @@ dis64clientconstruct(void *argument)
  for(i=0;i<v->count;i++){
   Dis64CallDecoded *d=v->decoded+i;if(!dis64runtimeinstruction(&d->instruction))return 0;
   dis64runtimeinst(m->prog+i,&d->instruction,m->prog);
+  if(roots && d->instruction.op==ILEA)m->prog[i].reg=8;
   if(UDST(d->instruction.mode)==(AFP|AIND)){m->prog[i].d.i.f=d->instruction.destination;m->prog[i].d.i.s=d->secondary;}
  }
  if(!disstringpoolget(&v->strings,0,&name))return 0;
  m->name=mallocz(name.count+1,1);if(!m->name)return 0;
  for(j=0;j<name.count;j++){disruneat(&name,j,&rune);m->name[j]=rune;}
- m->path=strdup(b->path);if(!m->path)return 0;m->entry=m->prog;m->entryt=m->type[0];m->cstep=native64lea8step;
+ m->path=strdup(b->path);if(!m->path)return 0;m->entry=m->prog;m->entryt=m->type[0];m->cstep=roots?native64typedlea8step:native64lea8step;
  if(b->jit && !compile(m,m->nprog,nil))return 0;return 1;
 }
 /* All descriptor/code/root roles come from the same independently checked file.

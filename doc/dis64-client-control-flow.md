@@ -131,3 +131,5 @@ filesystem concurrency proof or FlashVM signal/debugger implementation is claime
 [INFERNO-0183 report](dis64-inferno-client-cfg-report.md).
 
 Numeric continuation tutorial / Арифметика и преобразования: [dis64-client-numeric.md](dis64-client-numeric.md).
+
+Mapped String/list locals: [dis64-client-managed.md](dis64-client-managed.md).

@@ -20,18 +20,23 @@ struct Dis64ScalarClientView {
  Dis64CallDecoded decoded[Dis64ClientCode];
 };
 
+/* Internal proof classes only; never signature kinds or serialized type IDs. */
+enum { Dis64ClientRoot=0x100,Dis64ClientString,Dis64ClientListString };
+static int dis64clientisroot(unsigned int kind){return kind>=Dis64ClientRoot && kind<=Dis64ClientListString;}
+static unsigned int dis64clientwidth(unsigned int kind){return dis64clientisroot(kind)?8:dis64scalarwidth(kind);}
+
 typedef struct Dis64ClientSlot Dis64ClientSlot;
 struct Dis64ClientSlot {unsigned int offset,kind,initialized;};
 /* Numeric spans have one immutable kind; reads additionally require a definition. */
 static int
 dis64clientslot(Dis64ClientSlot *slots,unsigned int *count,unsigned int frame,long offset,unsigned int kind,int write)
 {
- unsigned int i,width=dis64scalarwidth(kind),at;
+ unsigned int i,width=dis64clientwidth(kind),at;
  if(!width || kind==Dis64Bool || offset<64 || (unsigned long)offset>frame-16)return 0;
  at=offset;if(at%width || width>frame-16-at)return 0;
  for(i=0;i<*count;i++){
   if(at==slots[i].offset){if(slots[i].kind!=kind || (!write && !slots[i].initialized))return 0;slots[i].initialized|=write;return 1;}
-  if(at<slots[i].offset+dis64scalarwidth(slots[i].kind) && slots[i].offset<at+width)return 0;
+  if(at<slots[i].offset+dis64clientwidth(slots[i].kind) && slots[i].offset<at+width)return 0;
  }
  if(!write || *count==Dis64ClientSlots)return 0;
  slots[*count]=(Dis64ClientSlot){at,kind,1};(*count)++;return 1;
@@ -94,7 +99,7 @@ dis64clientopen(const unsigned char *data,unsigned int bytes,Dis64ScalarClientVi
     !dis64typescheck(data+types.offset,types.bytes,2,4096,&v.types) || v.types.count!=2 ||
     !dis64typeget(&v.types,0,&frame) || !dis64typeget(&v.types,1,&mp) || frame.bytes<80 || frame.align!=8 ||
     mp.bytes!=24 || mp.align!=8 || mp.mapbytes!=1 || mp.map[0]!=0xe0)return 0;
- for(i=0;i<frame.mapbytes;i++)if(frame.map[i])return 0;
+
  if(!disstringpoolcheck(data+v.names.offset,v.names.bytes,65536,&v.strings) ||
     !dis64bindingscheck(data+v.requests.offset,v.requests.bytes,0,&v.strings,0,0,64,64,&v.imports) ||
     v.requests.bytes>Dis64LocalBytes || v.names.bytes>Dis64LocalBytes || !v.imports.count || v.strings.count!=v.imports.count+3 || v.code.bytes<4)return 0;
@@ -122,6 +127,7 @@ dis64clientbit(Dis64ClientSlot *slots,unsigned int *count,unsigned int frame,
  for(i=0;i<*count;i++)if(slots[i].offset==(unsigned long)value){bits[i/32]|=1U<<(i%32);return 1;}
  return 0;
 }
+#include "dis64-client-managed.h"
 static int
 dis64clientbranch(unsigned int op)
 {
@@ -136,6 +142,7 @@ dis64clienteffect(Dis64ClientSlot *slots,unsigned int *count,unsigned int frame,
  const Dis64Instruction *in,Dis64ClientNode *node)
 {
  unsigned int kind=Dis64Int,sourcekind,mm=in->mode&ARM,lm,branch=dis64clientbranch(in->op);long lhs;int binary=0;
+ if(dis64clientmanagedop(in))return dis64clientmanagedroles(slots,count,frame,in,node->need,node->give);
  if(in->op==IJMP)return in->mode==(SRC(AXXX)|DST(AIMM));
  if((in->op==IBEQL || in->op==IBNEL) && in->mode==(SRC(AMP)|AXINM|DST(AIMM)))return in->source==0 && in->middle==8;
  if(branch){
@@ -164,7 +171,7 @@ dis64clienteffect(Dis64ClientSlot *slots,unsigned int *count,unsigned int frame,
 /* Descending intersection: entry has no numeric definitions and no LOAD attempt.
  * Every boundary is structurally reachable; loops never invent first-entry facts. */
 static int
-dis64clientflow(Dis64ClientNode *nodes,unsigned int count)
+dis64clientflow(Dis64ClientNode *nodes,unsigned int count,const unsigned int seed[2])
 {
  unsigned int queue[Dis64ClientCode],head=0,tail=0,pending=0,i,j,k,at,budget=132*count+1,changed,edge[2],incoming[2],loaded;
  queue[tail++]=0;nodes[0].seen=1;
@@ -179,7 +186,7 @@ dis64clientflow(Dis64ClientNode *nodes,unsigned int count)
  }
  while(pending){
   if(!budget--)return 0;at=queue[head];head=(head+1)%count;pending--;nodes[at].queued=0;
-  incoming[0]=incoming[1]=at==0?0:~0U;loaded=at==0?0:1;
+  incoming[0]=at==0?seed[0]:~0U;incoming[1]=at==0?seed[1]:~0U;loaded=at==0?0:1;
   for(j=0;j<count;j++)if(nodes[j].boundary && (nodes[j].next==at || nodes[j].target==at)){
    incoming[0]&=nodes[j].out[0];incoming[1]&=nodes[j].out[1];loaded&=nodes[j].outload;
   }
@@ -201,11 +208,30 @@ static int
 dis64clientcheck(const unsigned char *data,unsigned int bytes,Dis64ScalarClientView *out)
 {
  Dis64ScalarClientView v;Dis64ClientSlot slots[Dis64ClientSlots]={{0}};Dis64ClientNode nodes[Dis64ClientCode]={{0}},*node;
- unsigned int nslots=0,i,j,at=4,used,offset,kind,width,result,ordinal,start;
+ unsigned int nslots=0,i,j,k,changed,seed[2]={0},previous[Dis64ClientSlots],at=4,used,offset,kind,width,result,ordinal,start;Dis64Type frame;
  Dis64CallDecoded *d;Dis64Instruction *in;Dis64Binding b;
  if(!out || !dis64clientopen(data,bytes,&v))return 0;
  for(i=0;i<v.count;i++){if(at>=v.code.bytes || !dis64callread(data+v.code.offset+at,v.code.bytes-at,v.decoded+i,&used))return 0;at+=used;}
  if(at!=v.code.bytes)return 0;
+ if(!dis64typeget(&v.types,0,&frame))return 0;
+ for(i=0;i<frame.mapbytes*8;i++)if(frame.map[i/8]&(0x80>>(i%8))){
+  if(i<8)return 0;
+  if(8*i>v.frame-24 || nslots==Dis64ClientSlots)return 0;
+  slots[nslots++]=(Dis64ClientSlot){8*i,Dis64ClientRoot,1};
+ }
+ /* Solve MOVP class equalities before deriving executable CFG facts. */
+ for(k=0;k<=Dis64ClientSlots;k++){
+  changed=nslots;for(i=0;i<nslots;i++)previous[i]=slots[i].kind;
+  for(i=0;i<v.count;i++)if(dis64clientmanagedop(&v.decoded[i].instruction)){
+   unsigned int reads[2]={0},writes[2]={0};
+   if(!dis64clientmanagedroles(slots,&nslots,v.frame,&v.decoded[i].instruction,reads,writes))return 0;
+  }
+  j=changed;changed=j!=nslots;for(i=0;i<j;i++)changed|=previous[i]!=slots[i].kind;
+  if(!changed)break;
+ }
+ if(k>Dis64ClientSlots)return 0;
+ for(i=0;i<nslots;i++)if(dis64clientisroot(slots[i].kind))seed[i/32]|=1U<<(i%32);
+
  for(i=0;i<v.count;i++){
   start=i;node=nodes+i;node->boundary=1;node->target=v.count;
   d=v.decoded+i;in=&d->instruction;
@@ -244,6 +270,6 @@ dis64clientcheck(const unsigned char *data,unsigned int bytes,Dis64ScalarClientV
  if(!v.calls || v.decoded[v.count-1].instruction.op!=IEXIT)return 0;
  for(i=0;i<v.count;i++)if(nodes[i].boundary && ((nodes[i].next<v.count && !nodes[nodes[i].next].boundary) ||
     (nodes[i].target<v.count && !nodes[nodes[i].target].boundary)))return 0;
- if(!dis64clientflow(nodes,v.count))return 0;*out=v;return 1;
+ if(!dis64clientflow(nodes,v.count,seed))return 0;*out=v;return 1;
 }
 #endif

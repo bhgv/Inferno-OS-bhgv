@@ -409,3 +409,19 @@ This extends scalar caller execution using the existing handlers and emitters.
 Shell.init still needs ordinary exported managed context/list calls and matching
 compiler/loader support. Android GUI/Bionic/device startup and a working AWM APK
 are not established by these Linux/QEMU results.
+
+## Mapped String/List file clients and actual GC (INFERNO-0185)
+
+The importing executable profile now admits String/list locals, reference copies,
+lengths, pointer cons/head/tail and full-width list nil branches. Its constructor
+selects the existing typed result-address binder for mapped callers. Actual GC
+runs between quanta in the source-client gate: all62 source pairs/5952 scheduler
+roots pass on each x64 and ARM64/Linux QEMU, including12 new managed pairs. Frame-
+mark/list-traversal omission controls prove actual graph loss before resuming VM
+execution. Both complete consoles pass48 new roots and166 prior roots per target.
+
+RU/EN working tutorial: [EN](dis64-client-managed.md),
+[RU](dis64-client-managed.ru.md). Values are currently the owned filename/nil and
+flat String lists; scalar provider signatures and the argument-free entry remain.
+Ordinary Shell.init(context,argv), context ADTs/general literals and Android GUI/
+Bionic/device execution remain open. No working AWM APK is claimed by this gate.

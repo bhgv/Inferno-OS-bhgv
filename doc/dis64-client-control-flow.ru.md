@@ -126,3 +126,5 @@ AWM. Android/Bionic GUI APK, новый concurrent GC/FS proof и перенос
 [Отчёт INFERNO-0183](dis64-inferno-client-cfg-report.md).
 
 Numeric continuation tutorial / Арифметика и преобразования: [dis64-client-numeric.ru.md](dis64-client-numeric.ru.md).
+
+Mapped String/list locals: [dis64-client-managed.ru.md](dis64-client-managed.ru.md).

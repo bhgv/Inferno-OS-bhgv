@@ -11,6 +11,18 @@ struct TypedMulti {
 
 #include "dis64-external.h"
 
+/* List primitives belong only to the selected importing-client lowering. */
+static int
+typedclientlist(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
+{
+ unsigned int sm,dm;long source,destination;int actual;
+ int sk=in->op==ICONSP?Tstring:Tlist,dk=in->op==IHEADP?Tstring:Tlist;
+ if(in->mm!=Anone || in->branch!=nil ||
+    !typedoperand(in->sm,&in->s,sk,0,0,p,&source,&sm,&actual) ||
+    !typedoperand(in->dm,&in->d,dk,0,0,p,&destination,&dm,&actual))return typedfail(p,"client-list-roles");
+ *out=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,destination};return 1;
+}
+
 static int typedmultibody(TypedMulti*,unsigned int,unsigned int);
 
 static int
@@ -93,14 +105,16 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             else if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;
             for(i=pc+1;i<next;i++)inside[i-p->first]=1;
             pc=next;
-        }else if(c->external==2 && ((in->op==IBEQW || in->op==IBNEW || in->op==IBEQL || in->op==IBNEL) && ((in->s.decl && in->s.decl->ty && in->s.decl->ty->kind==Tmodule) || (in->m.decl && in->m.decl->ty && in->m.decl->ty->kind==Tmodule)))){
+        }else if(c->external==2 && ((in->op==IBEQW || in->op==IBNEW || in->op==IBEQL || in->op==IBNEL) && ((in->s.decl && in->s.decl->ty && (in->s.decl->ty->kind==Tmodule || in->s.decl->ty->kind==Tlist)) || (in->m.decl && in->m.decl->ty && (in->m.decl->ty->kind==Tmodule || in->m.decl->ty->kind==Tlist))))){
             long source,middle;unsigned int sm,mm;int sk,mk;
             if(in->dm!=Apc || in->branch==nil || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop || in->d.offset!=in->branch->pc ||
                !typedoperand(in->sm,&in->s,TypedRoot,0,0,p,&source,&sm,&sk) ||
                !typedoperand(in->mm,&in->m,TypedRoot,0,1,p,&middle,&mm,&mk)){typedfail(p,"load-nil-branch");goto fail;}
-            if(sk==Tany && mk==Tmodule){long v=source;unsigned int mode=sm;int kind=sk;source=middle;sm=mm;sk=mk;middle=v;mm=mode;mk=kind;}
-            if(sk!=Tmodule || mk!=Tany || sm!=AFP || mm!=AMP){typedfail(p,"load-nil-roles");goto fail;}
+            if(sk==Tany && (mk==Tmodule || mk==Tlist)){long v=source;unsigned int mode=sm;int kind=sk;source=middle;sm=mm;sk=mk;middle=v;mm=mode;mk=kind;}
+            if((sk!=Tmodule && sk!=Tlist) || mk!=Tany || sm!=AFP || mm!=AMP){typedfail(p,"load-nil-roles");goto fail;}
             p->code[pc-p->first]=(Dis64Instruction){in->op==IBEQW?IBEQL:in->op==IBNEW?IBNEL:in->op,SRC(AFP)|AXINM|DST(AIMM),middle,source,in->branch->pc-p->first};pc++;
+        }else if(c->external==2 && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL)){
+            if(!typedclientlist(in,p,p->code+pc-p->first))goto fail;pc++;
         }else if(c->external==2 && in->op==ILOAD){
             long source,destination;unsigned int sm,dm;int actual;
             if(in->mm!=Aldt || in->m.decl==nil || in->m.decl->offset!=0 || in->branch!=nil ||

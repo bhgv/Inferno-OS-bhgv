@@ -20,7 +20,7 @@ dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Ins
  for(i=0;i<body.frame.count;i++){
   leaf=body.frame.leaves+i;
   if(leaf->kind==Tmodule){if(loads++)goto done;moduleoffset=leaf->native;}
-  else if(leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=-1)goto done;
+  else if(leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=-1)goto done;
  }
  if(loads!=1 || body.data.count!=1+(nilvalue!=nil))goto done;
  for(i=0;i<body.data.count;i++){
@@ -59,7 +59,10 @@ dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Ins
   if(dis64clientbranch(in.op)){
    if(in.destination<0 || (unsigned long)in.destination>=body.count)goto done;
    in.destination=pcs[in.destination];
-   if((in.op==IBEQL || in.op==IBNEL) && (in.mode&ARM)==AXINM){if(!nilvalue || in.mode!=(SRC(AFP)|AXINM|DST(AIMM)) || in.source!=moduleoffset || in.middle!=niloffset)goto done;in.mode=SRC(AMP)|AXINM|DST(AIMM);in.source=0;in.middle=8;}
+   if((in.op==IBEQL || in.op==IBNEL) && (in.mode&ARM)==AXINM){if(!nilvalue || in.mode!=(SRC(AFP)|AXINM|DST(AIMM)) || in.middle!=niloffset)goto done;if(in.source==moduleoffset){in.mode=SRC(AMP)|AXINM|DST(AIMM);in.source=0;}in.middle=8;}
+  }
+  if(in.op==IMOVP || in.op==ILENC || in.op==ILENL || in.op==ICONSP || in.op==IHEADP || in.op==ITAIL){
+   if(USRC(in.mode)==AMP){if(in.source==pathoffset)in.source=16;else if(nilvalue && in.source==niloffset)in.source=8;else goto done;}
   }
   if(in.op==ILOAD){if(in.mode!=(SRC(AMP)|AXIMM|DST(AFP)) || in.source!=pathoffset || in.destination!=moduleoffset || in.middle)goto done;in.mode=SRC(AMP)|AXIMM|DST(AMP);in.source=16;in.destination=0;loads++;}
   else if(in.op==IMFRAME || in.op==IMCALL){
@@ -79,6 +82,10 @@ dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Ins
  }
  if(!loads || total>Dis64ClientCode)goto done;
  dis64put32(code,total);sizes[1]=at;maps[64]=0xe0;
+ for(i=0;i<body.frame.count;i++){
+  leaf=body.frame.leaves+i;
+  if(leaf->kind==Tstring || leaf->kind==Tlist || leaf->kind==Tany)maps[leaf->native/64]|=0x80>>((leaf->native/8)%8);
+ }
  types[0]=(Dis64Type){body.frame.bytes+16,8,maps,(body.frame.bytes+79)/64};types[1]=(Dis64Type){24,8,maps+64,1};
  module.profile=1;module.databytes=24;module.datatype=1;
  if(!dis64modulewrite(metadata,sizeof(metadata),&module,&sizes[0]) || !dis64typeswrite(typedata,CallFileBytes,types,2,&sizes[2]) ||

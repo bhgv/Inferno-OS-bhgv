@@ -12898,3 +12898,48 @@ RU: Loader/cache теперь разрешают namespace один раз; ис
 образов пока immutable+atomic replacement, не arbitrary in-place transaction.
 INFERNO-0183 получен без импорта private ABI или старого exclusive-исполнения;
 префикс журнала сохранён. Полная Chan/provider VFS остаётся следующим слоем.
+
+## INFERNO-0185 — mapped client String/List roots and actual collection
+
+2026-11-15. Parent experimentaad0df12; FLASHVM-0201/6f2236c7 received. Frozen native
+namespace/open/cache provenance and the peer-hosted identity fix are acknowledged,
+including immutable+atomic replacement limits. No source import or inference of
+a zero-identity defect in Inferno's real filesystem. Prior peer prefix preserved;
+vendor pin7f2241455734e1142a3254fad9d1ec4f94032ac7 unchanged.
+
+Existing importing executable admits mapped String/List/nil locals, MOVP/LENC/LENL,
+CONSP/HEADP/TAIL and eight-byte list nil equality. New list lowering is selected-
+client-only; general AWM body admission remains14/346. Root classes are internal
+proof state, not serialized tags. Map-derived H seeds and bounded MOVP class
+unification precede exact opcode/CFG validation. Frame prefix/result tail,
+numeric/root overlap, String/List confusion and foreign payloads refuse. Same
+one-path/private MP-pool/scalar signature contract; no public wire/layout IDs.
+Mapped callers select existing native64typedlea8step with a constructor-only
+unmapped result-tail width. Scalar-only callers retain their existing binder.
+No handler, JIT emitter or collector body changes.
+
+Evidence:12 new source pairs/1152 scheduler roots per x64 and ARM64/Linux QEMU,
+all caller/provider C/RX, growth/quanta, read/admission/dontcompile variants.
+Actual gc.c runs three color epochs between nonterminal quanta in a sweepable
+arena. An independent reachable-graph observer checks frame/list/head survival.
+Omitting frame marking or list traversal reclaims an observed object and yields
+semantic exit10 before another instruction; both targets pass both controls.
+The50 prior pairs/4800 roots also pass with actual collection:62/5952 per target.
+All owned refs/descriptors/modules/stacks/arena slots retire. Namespace/transport
+seams remain fixtures; no concurrent-GC or whole-VM-ASan claim.
+
+Both full consoles execute48 new main roots per target, missing-provider nil
+exits and head/tail nil errors, wrong-result/default-profile controls, plus all
+166 earlier main roots.26 raw images/four omission controls (class/tail/seed/alias)
+pass host ASan/UBSan and ARM64; no malformed execution. Constructor-only ASan/
+UBSan passes12. Prior50 Dis64 and all62 classic files match0184; new12 deterministic
+files cover six operations and prior compiler refuses them. Old28/21/64 raw
+proof groups/controls remain green. Final client-only compiler produces exactly
+the12 executed images. RU/EN tutorial compiles and runs C/RX on both full consoles;
+managed GC/raw/producer gates integrated in native64-port.py.
+
+Docs: dis64-inferno-client-managed-report.md, dis64-client-managed.md/.ru.md.
+This is managed local heap/GC around scalar imports, not managed signatures for
+ordinary Shell.init(context,argv). That remains the next shared boundary with
+context ADTs/general literals/AWM. Init is an ordinary function called by sh
+after load. No new public managed IDs; Android/Bionic GUI/APK still unverified.

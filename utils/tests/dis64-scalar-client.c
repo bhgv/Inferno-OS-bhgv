@@ -4,7 +4,7 @@ static void clientloadstep(void){
  void*destination=R.d;Modlink*ml;actual_iload();memmove(&ml,destination,sizeof(ml));require(!nlinkpins);
  if(ml!=H){require(ml!=nil);observedispatch(ml->m,clientproviderjit && !dontcompile);clientloads++;}
 }
-static void clientempty(void){require(!live && !modules && !nlinkpins && !worker.nerr && !fileopen && fileopens==filecloses && Tstring.ref==1);}
+static void clientempty(void){require(!live && !modules && !nlinkpins && !worker.nerr && !fileopen && fileopens==filecloses && Tstring.ref==1 && Tlist.ref==1 && Tptr.ref==1);}
 int main(int argc,char**argv)
 {
  static uchar client[1048576],saved[1048576],provider[1048576];Dis64ScalarClientView view;Module*m;Prog*p;uchar*root;uvlong expected,value;unsigned int result,offset=0,erroroffset=0,errorbytes=0;int failure,jit,pjit,grow,q,mode,steps,done,total,fault,guarded=0,materialize=0;
@@ -16,7 +16,7 @@ int main(int argc,char**argv)
   require(errorbytes && erroroffset>=64);
  }
  if(result)require(offset>=64);
- rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freeheap;
+ rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freeheap;Tptr.free=freeheap;Tptr.mark=markheap;Tptr.size=sizeof(void*);Tptr.np=1;Tptr.map[0]=0x80;
  require(dis64selectlaunch("dis64-calls"));optab[ILOAD]=clientloadstep;
  CLIENT_HANDLERS
  for(jit=0;jit<2;jit++){
@@ -36,10 +36,10 @@ int main(int argc,char**argv)
   require(steps<10000);namespacefault=admissionrequired=dontcompile=0;
   if(mode==1 || mode==2){if(guarded)require(!worker.env->errstr[0] && R.FP==root);else require(worker.env->errstr[0]);}
   else if(failure){
-   require(!strcmp(worker.env->errstr,failure==2?exInval:exZdiv));
+   require(!strcmp(worker.env->errstr,failure==3?exNilref:failure==2?exInval:exZdiv));
    if(failure==2){value=0;memmove(&value,root+erroroffset,errorbytes);require(value==123);}
   }
-  else {require(!worker.env->errstr[0] && R.FP==root);value=0;if(result){memmove(&value,root+offset,result==Dis64Int?4:8);require(value==expected);}}
+  else {if(worker.env->errstr[0] || R.FP!=root)fprintf(stderr,"client execution: error=%s jit=%d provider=%d grow=%d q=%d mode=%d pc=%p\n",worker.env->errstr,jit,pjit,grow,q,mode,(void*)R.PC);require(!worker.env->errstr[0] && R.FP==root);value=0;if(result){memmove(&value,root+offset,result==Dis64Int?4:8);require(value==expected);}}
   namespaceend(p);clientempty();memmove(client,saved,clientfilebytes);
  }
  if(!failure)require(nativecalls && nativeaccepted && ccalls && bridgecalls);require(clientloads>0);return 0;
