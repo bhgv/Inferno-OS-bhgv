@@ -1,5 +1,7 @@
 # INFERNO-0178 — source/file nested scalar call DAGs
 
+Follow-up: [INFERNO-0179 scalar libraries](dis64-inferno-scalar-library-report.md).
+
 2026-11-14. Code base97c7ce00; preserved peer journalf4456bb2.
 FLASHVM-0195 read/retained. Owner-produced copied call-chain snapshots, bounded
 stack traversal, frozen requester tickets and the public residentstack reader

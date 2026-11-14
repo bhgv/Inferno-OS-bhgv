@@ -151,3 +151,7 @@ ready APK is claimed by Linux QEMU results.
 The separate [source scalar call file producer](dis64-source-call-files.md) now
 feeds the existing raw call-file loader. General managed/import serialization
 remains distinct from this trusted constructor.
+
+A separate [raw scalar library constructor](dis64-scalar-libraries.md) now builds
+a provider from its whole compiled file and structurally matched Imports/Strings.
+It has no guessed classic hash and admits no general managed/namespace LOAD.

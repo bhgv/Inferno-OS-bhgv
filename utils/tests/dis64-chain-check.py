@@ -35,7 +35,7 @@ def main():
   controls=[('cycle','if(j<n)continue;','if(0)continue;','self-cycle'),
    ('mutual-cycle','if(j<n)continue;','if(0)continue;','mutual-cycle'),
    ('atomic','done[i]=1;used++;progress=1;','output[i]=results[i];done[i]=1;used++;progress=1;','deep-return-missing'),
-   ('return-cover','if(i && !dis64returncover','if(0 && i && !dis64returncover','deep-leaf-return-missing'),
+   ('return-cover','if((library || i) && !dis64returncover','if(0 && (library || i) && !dis64returncover','deep-leaf-return-missing'),
    ('bind-owner','if((unsigned long)instruction->destination != pointer)','if(0)','deep-result-owner'),
    ('return-owner','instruction->destination!=32','0','deep-return-owner')]
   for name,before,after,case in controls:

@@ -114,6 +114,13 @@ def main():
     run([sys.executable, str(tests/'dis64-source-calls-unit.py')], build, env, logs/'source-call-writer-ir.log')
     run([sys.executable, str(tests/'dis64-chain-check.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'source-call-dag-check.log')
+    run([sys.executable, str(tests/'dis64-library-files.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'library-files.log')
+    run([sys.executable, str(tests/'dis64-library-check.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'library-proof.log')
+    for control in ('module', 'signature', 'entry', 'atomic'):
+        run([sys.executable, str(tests/'dis64-library-files.py'), '--limbo', str(tools/'limbo'), '--control', control],
+            build, env, logs/('library-control-'+control+'.log'))
     run([sys.executable, str(tests/'native64-limbo-boot.py'), '--limbo', str(tools/'limbo'),
          '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
         build, env, logs/'limbo-boot.log')

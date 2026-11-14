@@ -6,7 +6,7 @@
 static int
 dis64chainbody(const Dis64LocalFunction *functions, const Dis64LocalCallee *callees,
 	unsigned int functionsused,unsigned int owner, unsigned int framebytes, const Dis64FunctionLocals *locals,
-	const Dis64CallDecoded *decoded, Dis64InitWork *scratch, Dis64BoundCall *result)
+	const Dis64CallDecoded *decoded, Dis64InitWork *scratch, Dis64BoundCall *result, int library)
 {
 	Dis64LocalPlan plan;
 	Dis64LocalState state = {0};
@@ -48,7 +48,7 @@ dis64chainbody(const Dis64LocalFunction *functions, const Dis64LocalCallee *call
 				return 0;
 			call = &decoded[j].instruction;
 			chosen = functionsused;
-			for(j=1; j<functionsused; j++)
+			for(j=library?0:1; j<functionsused; j++)
 				if(call->destination >= 0 && (unsigned long)call->destination == functions[j].entry)
 					chosen = j;
 			if(chosen == functionsused || instruction->source < 0 ||
@@ -110,7 +110,7 @@ dis64chainbody(const Dis64LocalFunction *functions, const Dis64LocalCallee *call
 		}else if(state.site != 0){
 			return 0;
 		}else if(dm==(AFP|AIND)){
-            if(owner==0 || instruction->destination!=32 || decoded[pc].secondary!=0 ||
+            if((!library && owner==0) || instruction->destination!=32 || decoded[pc].secondary!=0 ||
                (instruction->mode&ARM)!=AXNON || !dis64returnfact(instruction,plan.result,locals->slots,locals->count,&fact))return 0;
             event.action=Dis64StateStore;event.kind=plan.result;
             if(plan.result==Dis64Bool){if(sm!=AIMM)return 0;event.boolean=instruction->source;}
@@ -140,11 +140,11 @@ dis64chainbody(const Dis64LocalFunction *functions, const Dis64LocalCallee *call
 			fact.write = id;
 			fact.reads = fact.source != 0;
 		}else if(instruction->op==IRET){
-            if(owner==0 || instruction->mode!=(SRC(AXXX)|DST(AXXX)) || pc+1!=end)return 0;
+            if((!library && owner==0) || instruction->mode!=(SRC(AXXX)|DST(AXXX)) || pc+1!=end)return 0;
             event.action=Dis64StateReturn;if(!dis64callstep(&plan,&state,&event))return 0;
             fact.edge=Dis64CFGTerminal;
 		}else if(instruction->op == IEXIT){
-			if(owner!=0 || instruction->mode != (SRC(AXXX)|DST(AXXX)) || pc+1 != end)
+			if(library || owner!=0 || instruction->mode != (SRC(AXXX)|DST(AXXX)) || pc+1 != end)
 				return 0;
 			fact.edge = Dis64CFGTerminal;
 		}else{
@@ -164,7 +164,7 @@ dis64chainbody(const Dis64LocalFunction *functions, const Dis64LocalCallee *call
  * before caller. Scratch/work may change on refusal; publication remains atomic. */
 static int
 dis64chaincheck(Dis64CallInference *work,Dis64CallDecoded *decoded,Dis64InitWork *scratch,unsigned int *queue,
-    unsigned int limit,Dis64BoundCall *output,unsigned int capacity,unsigned int *written)
+    unsigned int limit,Dis64BoundCall *output,unsigned int capacity,unsigned int *written,int library)
 {
     Dis64BoundCall results[Dis64LocalFunctions]={0};Dis64LocalCallee callees[Dis64LocalFunctions]={0};
     unsigned int edges[Dis64LocalFunctions][2]={{0}},done[Dis64LocalFunctions]={0},caller[Dis64LocalFunctions]={0};
@@ -179,7 +179,7 @@ dis64chaincheck(Dis64CallInference *work,Dis64CallDecoded *decoded,Dis64InitWork
             if(in->op==IFRAME)caller[i]=1;
             if(in->op!=ICALL)continue;
             caller[i]=1;target=n;
-            for(j=1;j<n;j++)if(in->destination>=0 && (unsigned long)in->destination==work->functions[j].entry)target=j;
+            for(j=library?0:1;j<n;j++)if(in->destination>=0 && (unsigned long)in->destination==work->functions[j].entry)target=j;
             if(target==n)return 0;edges[i][target/32]|=1U<<(target%32);
         }
     }
@@ -191,8 +191,8 @@ dis64chaincheck(Dis64CallInference *work,Dis64CallDecoded *decoded,Dis64InitWork
             if(j<n)continue;
             fn=work->functions+i;locals=work->locals+i;first=fn->entry;end=fn->end;kind=fn->signature.result;
             if(!dis64initseed(fn->signature.data,fn->signature.bytes,locals->slots,locals->count,seed,&parameters))return 0;
-            if(i==0 || caller[i]){
-                if(!dis64chainbody(work->functions,callees,n,i,work->frames[i],locals,decoded,scratch,results+i))return 0;
+            if((!library && i==0) || caller[i]){
+                if(!dis64chainbody(work->functions,callees,n,i,work->frames[i],locals,decoded,scratch,results+i,library))return 0;
                 if(results[i].steps>limit-spent)return 0;spent+=results[i].steps;
             }else for(pc=first;pc<end;pc++){
                 in=&decoded[pc].instruction;store=UDST(in->mode)==(AFP|AIND);if(in->op==IEXIT)return 0;
@@ -211,7 +211,7 @@ dis64chaincheck(Dis64CallInference *work,Dis64CallDecoded *decoded,Dis64InitWork
             }
             if(spent>=limit || !dis64initializedsolve(end-first,locals->count,parameters,seed,scratch+first,queue,limit-spent,&results[i].body.function.numeric))return 0;
             spent+=results[i].body.function.numeric.work;
-            if(i && !dis64returncover(scratch+first,end-first,kind,queue,limit-spent,&results[i].body))return 0;
+            if((library || i) && !dis64returncover(scratch+first,end-first,kind,queue,limit-spent,&results[i].body))return 0;
             spent+=results[i].body.work;
             results[i].body.function.symbol=fn->symbol;results[i].body.function.entry=first;results[i].body.function.end=end;results[i].body.function.frame=fn->frame;
             done[i]=1;used++;progress=1;
@@ -232,7 +232,21 @@ dis64callchaininfercheck(const unsigned char *data,unsigned int bytes,unsigned i
     if(!work || !decoded || !scratch || !queue || !output || !written || !result)return 0;
     if(dis64callinfercheck(data,bytes,objectlimit,work,decoded,scratch,queue,workcapacity,limit,output,capacity,written,result))return 1;
     if(!dis64callimageopen(data,bytes,objectlimit,&image) || !dis64callinferlocalsmode(&image,work,decoded,workcapacity,objectlimit,1) ||
-       !dis64chaincheck(work,decoded,scratch,queue,limit,output,capacity,written))return 0;
+       !dis64chaincheck(work,decoded,scratch,queue,limit,output,capacity,written,0))return 0;
     image.functions=*written;*result=image;return 1;
+}
+/* Library metadata has no command entry. Every function, including ordinal0,
+ * has ordinary incoming arguments/result and RET semantics. No entry is invoked. */
+static int
+dis64calllibraryinfercheck(const unsigned char *data,unsigned int bytes,unsigned int objectlimit,
+ Dis64CallInference *work,Dis64CallDecoded *decoded,Dis64InitWork *scratch,unsigned int *queue,unsigned int workcapacity,
+ unsigned int limit,Dis64BoundCall *output,unsigned int capacity,unsigned int *written,Dis64CallImage *result)
+{
+ Dis64CallImage image;
+ if(!work || !decoded || !scratch || !queue || !output || !written || !result ||
+    !dis64callimageopenmode(data,bytes,objectlimit,&image,1) ||
+    !dis64callinferlocalsmode(&image,work,decoded,workcapacity,objectlimit,2) ||
+    !dis64chaincheck(work,decoded,scratch,queue,limit,output,capacity,written,1))return 0;
+ image.functions=*written;*result=image;return 1;
 }
 #endif

@@ -6,7 +6,7 @@
 #include "raise.h"
 #include "kernel.h"
 #include "dis64-pilot.h"
-#include "dis64-call-chain.h"
+#include "dis64-call-library.h"
 #include "dis64-storage-image.h"
 #include "dis64-numeric-storage.h"
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
@@ -334,7 +334,7 @@ dis64callconstruct(void *argument)
 		if(module->type[i] == nil)
 			return 0;
 	}
-	module->entryt = module->type[work->image.module.frametype];
+	if(work->image.module.profile)module->entryt = module->type[work->image.module.frametype];
 	module->nprog = work->image.instructions;
 	module->prog = mallocz(module->nprog*sizeof(Inst), 1);
 	if(module->prog == nil)
@@ -348,7 +348,7 @@ dis64callconstruct(void *argument)
 			instruction->d.i.s = decoded->secondary;
 		}
 	}
-	module->entry = module->prog+work->image.module.entry;
+	if(work->image.module.profile)module->entry = module->prog+work->image.module.entry;
 	module->name = mallocz(load->name.count+1, 1);
 	if(module->name == nil)
 		return 0;
@@ -372,8 +372,8 @@ dis64callconstruct(void *argument)
  * One bounded native analysis allocation may occur before semantic refusal; no VM
  * owner is allocated until complete proof. This API does not select file policy,
  * cache a module, route readmod/parsemod or authorize imports/managed/Bools. */
-Module*
-prepare64calls(char *path, uchar *image, ulong bytes, int jit)
+static Module*
+dis64callprepare(char *path, uchar *image, ulong bytes, int jit, int library)
 {
 	Dis64CallLoad load;
 	Dis64CallImage structural;
@@ -391,7 +391,7 @@ prepare64calls(char *path, uchar *image, ulong bytes, int jit)
 		kwerrstr("unsupported Dis64 call runtime model or input");
 		return nil;
 	}
-	if(!dis64callimageopen(image, bytes, Dis64RuntimeObject, &structural) ||
+	if(!dis64callimageopenmode(image, bytes, Dis64RuntimeObject, &structural,library) ||
 	   structural.instructions == 0 || structural.instructions > Dis64CallRuntimeCode){
 		kwerrstr("unsupported Dis64 call image");
 		return nil;
@@ -420,9 +420,12 @@ prepare64calls(char *path, uchar *image, ulong bytes, int jit)
 		kwerrstr("Dis64 call workspace allocation failed");
 		return nil;
 	}
-	if(!dis64callchaininfercheck(image, bytes, Dis64RuntimeObject, &load.work->inferred,
+	if(!(library?dis64calllibraryinfercheck(image, bytes, Dis64RuntimeObject, &load.work->inferred,
 	   load.work->decoded, load.work->scratch, load.work->queue, Dis64CallRuntimeCode,
-	   Dis64CallLimit, load.work->proof, Dis64LocalFunctions, &records, &load.work->image)){
+	   Dis64CallLimit, load.work->proof, Dis64LocalFunctions, &records, &load.work->image):
+	   dis64callchaininfercheck(image, bytes, Dis64RuntimeObject, &load.work->inferred,
+	   load.work->decoded, load.work->scratch, load.work->queue, Dis64CallRuntimeCode,
+	   Dis64CallLimit, load.work->proof, Dis64LocalFunctions, &records, &load.work->image))){
 		free(load.work);
 		kwerrstr("unsupported Dis64 scalar call module");
 		return nil;
@@ -454,6 +457,14 @@ prepare64calls(char *path, uchar *image, ulong bytes, int jit)
 }
 
 
+/* Ordinary file startup remains executable-only. Libraries need an explicit
+ * structurally checked import request and never run an entry on construction. */
+Module*
+prepare64calls(char *path,uchar *image,ulong bytes,int jit)
+{
+ return dis64callprepare(path,image,bytes,jit,0);
+}
+
 /* Native staging state is deliberately distinct from Module/Modlink execution owners. */
 struct Dis64StorageOwner {
 	Type **types; // Owned copies of every structurally checked descriptor and its map8.
@@ -469,6 +480,54 @@ struct Dis64StorageLoad {
 	Dis64StorageOwner *owner; // Partial native owner retained across protected errors.
 };
 
+
+typedef struct Dis64LibraryBuild Dis64LibraryBuild;
+struct Dis64LibraryBuild {
+ Module *module;
+ Modlink *link;
+ Dis64CallLibraryLinks links;
+};
+
+static int
+dis64calllibraryconstruct(void *argument)
+{
+ Dis64LibraryBuild *build=argument;unsigned int i;
+ build->link=mklinkmod(build->module,build->links.count);
+ build->module=nil; /* The instance now owns the one input Module reference. */
+ for(i=0;i<build->links.count;i++){
+  build->link->links[i].u.pc=build->link->m->prog+build->links.entry[i];
+  build->link->links[i].frame=build->link->m->type[build->links.frame[i]];
+ }
+ ptradd(D2H(build->link)); /* No fallible work follows successful root acquisition. */
+ return 1;
+}
+
+/* Build an unpublished, rooted instance from raw library and Imports/Strings
+ * payloads. VM exclusion/unmonitored allocation and immutable input are required.
+ * This neither reads a namespace path nor caches/admits guest LOAD instructions.
+ * Caller must transfer the returned instance to a managed root, then ptrdel it. */
+Modlink*
+prepare64calllibrarylink(char *path,uchar *image,ulong bytes,int jit,
+ const uchar *requests,ulong requestbytes,const uchar *strings,ulong stringbytes)
+{
+ Dis64CallImage view;Dis64LibraryBuild build={0};int ok;
+ if(heapmonitor!=nil || requestbytes>Dis64LocalBytes || stringbytes>Dis64LocalBytes ||
+    requests==nil || requests==H || strings==nil || strings==H ||
+    (uintptr)requests>(uintptr)-1-requestbytes || (uintptr)strings>(uintptr)-1-stringbytes ||
+    bytes>Dis64CallImageBytes || image==nil || image==H || (uintptr)image>(uintptr)-1-bytes ||
+    !dis64callimageopenmode(image,bytes,Dis64RuntimeObject,&view,1) ||
+    !dis64calllibrarymatch(&view,requests,requestbytes,strings,stringbytes,&build.links)){
+  kwerrstr("unsupported Dis64 scalar library import request");return nil;
+ }
+ build.module=dis64callprepare(path,image,bytes,jit,1);
+ if(build.module==nil)return nil;
+ ok=kprotect(dis64calllibraryconstruct,&build);
+ if(!ok){
+  if(build.link!=nil)destroy(build.link);else unload(build.module);
+  kwerrstr("Dis64 scalar library instance construction failed");
+ }
+ return ok?build.link:nil;
+}
 
 /* Consume a staging lease under VM exclusion; neither a failed pin nor another root is removed. */
 void

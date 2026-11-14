@@ -63,11 +63,11 @@ dis64localshape(const Dis64Binding *binding, const Dis64TypeTable *types,
  * This checks metadata/geometry only, not instructions, CFG, boolean values or CALL ABI.
  */
 static int
-dis64localcatalogcheck(const unsigned char *exports, unsigned int exportbytes,
+dis64localcatalogcheckmode(const unsigned char *exports, unsigned int exportbytes,
 	const unsigned char *strings, unsigned int stringbytes,
 	const unsigned char *typedata, unsigned int typebytes, unsigned int objectlimit,
 	unsigned int instructions, unsigned int entry, unsigned int entryframe,
-	Dis64LocalFunction *output, unsigned int capacity, unsigned int *written)
+	Dis64LocalFunction *output, unsigned int capacity, unsigned int *written, int library)
 {
 	Dis64LocalFunction functions[Dis64LocalFunctions], moving;
 	Dis64Bindings bindings;
@@ -100,8 +100,8 @@ dis64localcatalogcheck(const unsigned char *exports, unsigned int exportbytes,
 		}
 		functions[j] = moving;
 	}
-	if(functions[0].entry != 0 || functions[0].frame != entryframe ||
-	   functions[0].signature.result != Dis64Void || functions[0].signature.parameters != 0)
+	if(functions[0].entry != 0 || (!library && (functions[0].frame != entryframe ||
+	   functions[0].signature.result != Dis64Void || functions[0].signature.parameters != 0)))
 		return 0;
 	for(i=0; i<bindings.count; i++){
 		if(i != 0 && functions[i-1].entry == functions[i].entry)
@@ -112,5 +112,15 @@ dis64localcatalogcheck(const unsigned char *exports, unsigned int exportbytes,
 		output[i] = functions[i];
 	*written = bindings.count;
 	return 1;
+}
+/* Original executable catalog policy remains the default for all prior callers. */
+static int
+dis64localcatalogcheck(const unsigned char *exports,unsigned int exportbytes,
+ const unsigned char *strings,unsigned int stringbytes,const unsigned char *typedata,unsigned int typebytes,
+ unsigned int objectlimit,unsigned int instructions,unsigned int entry,unsigned int entryframe,
+ Dis64LocalFunction *output,unsigned int capacity,unsigned int *written)
+{
+ return dis64localcatalogcheckmode(exports,exportbytes,strings,stringbytes,typedata,typebytes,
+  objectlimit,instructions,entry,entryframe,output,capacity,written,0);
 }
 #endif

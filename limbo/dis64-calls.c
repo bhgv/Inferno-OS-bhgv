@@ -63,12 +63,13 @@ dis64callsfile(Decl *entry,Decl *globals,Decl **functions,int nf,Inst *instructi
     DisStringPoolRecord names[Dis64LocalFunctions+1];Dis64Instruction in,copy;Dis64TypedSite *site;
     Decl *fn,*arg,*export;uchar *maps=nil,*runes=nil,*strings=nil,*typedata=nil,*code=nil,*exports=nil,*image=nil;
     unsigned int i,j,k,n=0,stop,total=0,at,used,records,parameters[Dis64LocalParameters],np,signaturebytes,exportat=4;
-    unsigned int bytes[5]={0},kind,tail,base,secondary;int root=-1,found;char *failure="unsupported source shape for scalar call file";
-    if(entry==nil || globals!=nil || nf<2 || nf>Dis64LocalFunctions || count<1 || count>CallFileCode)goto done;
+    unsigned int bytes[5]={0},kind,tail,base,secondary;int root=-1,found,library=entry==nil;char *failure="unsupported source shape for scalar call file";
+    if(globals!=nil || nf<(library?1:2) || nf>Dis64LocalFunctions || count<1 || count>CallFileCode)goto done;
     b=allocmem(nf*sizeof(*b));memset(b,0,nf*sizeof(*b));
     for(i=0;i<(unsigned int)nf;i++)if(functions[i]==entry)root=i;
-    if(root<0)goto done;
-    b[0].fn=entry;for(i=0;i<(unsigned int)nf;i++)if((int)i!=root)b[++n].fn=functions[i];
+    if(!library && root<0)goto done;
+    if(library){for(i=0;i<(unsigned int)nf;i++)b[i].fn=functions[i];}
+    else {b[0].fn=entry;for(i=0;i<(unsigned int)nf;i++)if((int)i!=root)b[++n].fn=functions[i];}
     /* The existing catalog covers all functions and exposes only declared exports. */
     for(i=0;i<(unsigned int)nf;i++){
         f=b+i;fn=f->fn;found=0;
@@ -78,7 +79,7 @@ dis64callsfile(Decl *entry,Decl *globals,Decl **functions,int nf,Inst *instructi
            (f->kind=callfilekind(fn->ty->tof->kind))>(unsigned int)Dis64Real)goto done;
         np=0;for(arg=fn->ty->ids;arg!=nil;arg=arg->next)
             if(++np>Dis64LocalParameters || callfilekind(arg->ty->kind)<1)goto done;
-        if(i==0 && (np || f->kind!=Dis64Void))goto done;
+        if(!library && i==0 && (np || f->kind!=Dis64Void))goto done;
         stop=count;for(j=0;j<(unsigned int)nf;j++)if(functions[j]->pc->pc>fn->pc->pc && (unsigned int)functions[j]->pc->pc<stop)stop=functions[j]->pc->pc;
         if(!dis64typedmulti(fn,globals,functions,nf,instructions,count,stop,&f->body) || f->body.nexternal ||
            f->body.frame.bytes>CallFileObject-16 || f->body.data.bytes)goto done;
@@ -87,7 +88,7 @@ dis64callsfile(Decl *entry,Decl *globals,Decl **functions,int nf,Inst *instructi
         f->pcs=allocmem((f->body.count+1)*sizeof(*f->pcs));f->first=total;
         for(j=0;j<f->body.count;j++){
             f->pcs[j]=total++;in=f->body.code[j];
-            if((i==0 || f->body.nsites) && callfilebranch(in.op))goto done;
+            if(((!library && i==0) || f->body.nsites) && callfilebranch(in.op))goto done;
             if(callfilestore(&in,f->body.returns[j]))total++;
             if(in.op==ICALL){
                 for(k=0;k<f->body.nsites;k++)if(f->body.sites[k].end==j)break;
@@ -98,7 +99,7 @@ dis64callsfile(Decl *entry,Decl *globals,Decl **functions,int nf,Inst *instructi
         }
         f->pcs[j]=total;f->count=total-f->first;
     }
-    if(!b[0].body.nsites)goto done;
+    if(!library && !b[0].body.nsites)goto done;
     types=allocmem(nf*sizeof(*types));maps=allocmem(nf*((CallFileObject+63)/64));memset(maps,0,nf*((CallFileObject+63)/64));
     runes=allocmem((nf+1)*(4+4*255));strings=allocmem(CallFileBytes);typedata=allocmem(CallFileBytes);
     code=allocmem(CallFileBytes);exports=allocmem(CallFileBytes);image=allocmem(CallFileBytes);proof=allocmem(sizeof(*proof));
@@ -118,7 +119,7 @@ dis64callsfile(Decl *entry,Decl *globals,Decl **functions,int nf,Inst *instructi
             if(in.op==IFRAME || in.op==ICALL){
                 for(k=0;k<f->body.nsites;k++)if((in.op==IFRAME?f->body.sites[k].first:f->body.sites[k].end)==j)break;
                 if(k==f->body.nsites)goto done;site=f->body.sites+k;
-                for(k=1;k<(unsigned int)nf;k++)if(b[k].body.first==site->target)break;
+                for(k=library?0:1;k<(unsigned int)nf;k++)if(b[k].body.first==site->target)break;
                 if(k==(unsigned int)nf)goto done;
                 if(in.op==IFRAME)in.source=k;else in.destination=b[k].first;
             }
@@ -131,7 +132,7 @@ dis64callsfile(Decl *entry,Decl *globals,Decl **functions,int nf,Inst *instructi
                 if(f->body.returns[j]>=64){base=40;secondary=in.destination;if(in.op==ILEA)in.source=tail;}
                 else {base=32;secondary=0;}
             }
-            if(i==0 && in.op==IRET)in.op=IEXIT;
+            if(!library && i==0 && in.op==IRET)in.op=IEXIT;
             if(callfilestore(&in,f->body.returns[j])){
                 in.mode=(in.mode&~7U)|DST(AFP);in.destination=f->body.frame.bytes;
                 if(!callfileencode(code,&at,&in,0,0))goto done;
@@ -143,7 +144,7 @@ dis64callsfile(Decl *entry,Decl *globals,Decl **functions,int nf,Inst *instructi
                 if(site->contract){
                     copy=(Dis64Instruction){IMOVW,SRC(AFP)|DST(AFP),0,tail,site->inherited?f->body.frame.bytes:site->resultoffset};
                     /* Eight-byte result kind comes from the callee, never binding opcode. */
-                    for(k=1;k<(unsigned int)nf;k++)if(b[k].body.first==site->target)break;
+                    for(k=library?0:1;k<(unsigned int)nf;k++)if(b[k].body.first==site->target)break;
                     copy.op=b[k].kind==Dis64Big?IMOVL:b[k].kind==Dis64Real?IMOVF:IMOVW;
                     if(!callfileencode(code,&at,&copy,0,0))goto done;
                     if(site->inherited){copy.source=f->body.frame.bytes;copy.mode=SRC(AFP)|DST(AFP|AIND);copy.destination=32;
@@ -152,7 +153,7 @@ dis64callsfile(Decl *entry,Decl *globals,Decl **functions,int nf,Inst *instructi
             }
         }
     }
-    dis64put32(code,total);dis64put32(exports,nf);module.profile=1;
+    dis64put32(code,total);dis64put32(exports,nf);module.profile=library?0:1;
     if(!dis64modulewrite(image,24,&module,&bytes[0]))goto done;
     /* Reuse no mutable output as a payload when writing the complete container. */
     {uchar metadata[24];memmove(metadata,image,bytes[0]);
@@ -165,8 +166,10 @@ dis64callsfile(Decl *entry,Decl *globals,Decl **functions,int nf,Inst *instructi
         if(!dis64write(image,CallFileBytes,nil,0,sections,5,&used))goto done;
     }
     failure="raw scalar call file proof refused the complete generated image";
-    if(!dis64callchaininfercheck(image,used,CallFileObject,&proof->inference,proof->decoded,proof->scratch,proof->queue,CallFileCode,
-       Dis64CallLimit,proof->records,Dis64LocalFunctions,&records,&proof->image) || records!=(unsigned int)nf)goto done;
+    if(!(library?dis64calllibraryinfercheck(image,used,CallFileObject,&proof->inference,proof->decoded,proof->scratch,proof->queue,CallFileCode,
+       Dis64CallLimit,proof->records,Dis64LocalFunctions,&records,&proof->image):
+       dis64callchaininfercheck(image,used,CallFileObject,&proof->inference,proof->decoded,proof->scratch,proof->queue,CallFileCode,
+       Dis64CallLimit,proof->records,Dis64LocalFunctions,&records,&proof->image)) || records!=(unsigned int)nf)goto done;
     if(Bwrite(bout,image,used)!=used){failure="cannot write complete scalar call image";goto done;}
     failure=nil;
 done:

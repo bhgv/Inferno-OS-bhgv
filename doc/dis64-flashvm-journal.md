@@ -12160,3 +12160,66 @@ x64/ARM64 Linux QEMU plus refusal/control/allocation scope. General managed/impo
 serialization, namespace/cache admission, Android/AWM/runtime-ASan limits remain
 intact. No peer implementation imported; vendor pin remains7f224145. This sync
 only appends the journal, preserving peer source/receipts and verified local backup.
+
+
+## INFERNO-0179 — scalar library files and structural import instances
+
+2026-11-14. Inferno code basef01cdf6f; preserved peer journal0e7ab3df.
+FLASHVM-0196 read/retained: coherent native pool gauges/history,96-byte copied
+snapshot/reader scope and CI cancellation/queue policy. Peer14/14 ordinary/TSan
+selections, list60 and pending CI remain scoped reports, not new full architecture
+completion here. No peer implementation import, vendor refresh or concurrency
+model change.
+
+New limbo -64b forces the existing library profile0, including a named init;
+-64c emits profile0 when init is absent and retains its prior executable policy
+otherwise. Complete scalar functions keep compiled order. Function0 supports
+arguments/results, local calls in both directions and full normal-return proof.
+No synthetic command root or entry sentinel is emitted. Library entry/entryt
+remain nil; construction invokes no function. All bodies use RET; EXIT refuses.
+Compiler/runtime independently prove all functions, even with empty requests.
+Old executable proof wrappers and exact summaries remain. No new public IDs:
+existing Dis64v1.0 ABI1 five sections/scalar signaturev1 and library metadata.
+
+New prepare64calllibrarylink accepts provider bytes and existing Imports/Strings
+payloads, not native C manifests. Exact module/symbol/full signature match; Big
+and Real stay distinct. Request order maps to positive link order. Zero/64
+requests instantiate;65 and mismatches refuse before allocation. Complete code
+proof precedes owned Types/maps/code/labels/JIT and production mklinkmod. No fake
+classic32-bit hash enters Module.ext. Success owns one instance reference and
+external pin; partial allocation and final pin failure roll back. Inputs can be
+poisoned before execution. API assumes native64 caller/VM exclusion and reads no
+namespace, registers no cache and admits no guest LOAD. It is the provider-file
+half, not a serialized managed importer or general dependency admission.
+
+14 complete source libraries have independent Python caller/leaf/DFS checks,
+deterministic output and identical classic bytes vs prior compiler.10 unsupported
+whole sources emit no payload. Both x64 and ARM64/Linux QEMU gates run336 actual
+scheduler roots each:14 x four caller/provider C/RX choices x fitting/growing
+stacks x quanta1/3/1000. Exact numeric bits, mixed aligned args, ordinal0 targets,
+empty/void, branches/loops, nested calls, no implicit init, explicit init fault,
+all constructor allocations and final pin refusal pass. Normal families require
+actual accepted RX dispatch; fault-only constant-zero divide can use C without
+an emitted RX entry. The outer importer is trusted fixture code; the entire
+provider comes from the file. No malformed control module is executed.
+
+Raw library74 cases check atomic records/count/image and ordinal0 semantics.
+Three active omissions detect missing first-function return coverage and self/
+mutual-cycle guards. Four constructor/matcher omissions detect nominal module,
+complete signature, no-entry and atomic publication protection. Raw/constructor
+host ASan/UBSan and ARM64 QEMU UBSan pass; writer IR library publication and its
+three proof/binding/cleanup controls pass both too. Existing runtime-ASan unwind
+and bounded fixture GC/OS limits remain scoped.
+
+Rebuilt full consoles each retain56 executable OS-root runs and refuse28 library
+standalone selections; this is not positive full-console library LOAD evidence.
+Prior28 source-file/18-damage/ten-source refusal gate,94 DAG/six controls,3343
+bound cases and actual constructor20/60/170/four controls remain green. New
+runtime/raw/control gates enter native64-port.py; RU/EN docs and report:
+doc/dis64-scalar-libraries.md / .ru.md;
+doc/dis64-inferno-scalar-library-report.md.
+
+Managed provider/importer graphs, serialized module references, namespace/cache/
+ABI admission and Android GUI remain next. AWM, Android/Bionic and working APK
+are unverified; NDK/device unavailable here. Shared managed IDs and any FlashVM
+implementation transfer remain separate coordination work.

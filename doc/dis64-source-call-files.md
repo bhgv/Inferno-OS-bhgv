@@ -7,6 +7,10 @@ explicit `dis64-calls` file loader. The file is checked from its own bytes befor
 writing and again by the runtime. No compiler-local C declarations or native
 pointer tables accompany execution.
 
+This page describes executable command files. Without an init entry, -64c now
+emits an existing profile0 library; -64b forces library output even with init.
+See [scalar libraries and structural imports](dis64-scalar-libraries.md).
+
 ## Compile and run
 
 Save as `calls.b`:

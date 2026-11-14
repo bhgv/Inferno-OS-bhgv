@@ -165,9 +165,9 @@ dis64callinferlocalsmode(const Dis64CallImage *image, Dis64CallInference *work,
 		case Dis64Types: types = section; break;
 		}
 	}
-	if(!dis64localcatalogcheck(data+exports.offset, exports.bytes, data+strings.offset,
+	if(!dis64localcatalogcheckmode(data+exports.offset, exports.bytes, data+strings.offset,
 	   strings.bytes, data+types.offset, types.bytes, objectlimit, image->instructions,
-	   image->module.entry, image->module.frametype, work->functions, Dis64LocalFunctions, &count))
+	   image->module.entry, image->module.frametype, work->functions, Dis64LocalFunctions, &count,chain==2))
 		return 0;
 	work->count = count;
 	for(i=0; i<count; i++){

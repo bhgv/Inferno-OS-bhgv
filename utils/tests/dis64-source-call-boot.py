@@ -22,5 +22,14 @@ def main():
                 runs+=1;print('PASS source full-emulator boot:',name,'jit='+str(jit),'error='+repr(error),flush=True)
         image=work/'sum-7.dis64';output=BOOT['execute'](command+['-d','/'+str(image.relative_to(args.root.resolve()))])
         assert 'panic: loading 'in output and BOOT['RETIRED']not in output,output
+        libraries=runpy.run_path(str(ROOT/'utils/tests/dis64-library-files.py'));refused=0
+        for name,text,*_ in libraries['cases']():
+            source=work/('library-'+name+'.b');source.write_text(text);image=source.with_suffix('.dis64')
+            SOURCE['TYPED']['READ']['checked_run']([str(args.limbo.resolve()),'-64b','-o',str(image),str(source)],capture_output=True,check=True)
+            for jit in (0,1):
+                output=BOOT['execute'](command+['-c',str(jit),'-X','dis64-calls','-d','/'+str(image.relative_to(args.root.resolve()))])
+                assert 'panic: loading 'in output and 'unsupported Dis64 call image'in output and BOOT['RETIRED']not in output,output
+                refused+=1
+        print('PASS library standalone boot refusal:',refused,'C/RX selections; no implicit command entry',flush=True)
     print('PASS source full-emulator pipeline:',runs,'C/RX OS roots; default profile refusal; no trusted caller metadata',flush=True)
 if __name__=='__main__':main()

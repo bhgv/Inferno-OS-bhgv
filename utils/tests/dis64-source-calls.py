@@ -52,7 +52,7 @@ def refusals():
       source('','a:=hidden(3);','hidden(n:int):int{return n;}'),
       source('id:fn(b:byte):byte;','a:=id(byte 7);','id(b:byte):byte{return b;}'),
       'implement Calls;Calls:module{init:fn(n:int);id:fn(n:int):int;};init(n:int){a:=id(n);}id(n:int):int{return n;}',
-      'implement Calls;Calls:module{id:fn(n:int):int;};id(n:int):int{return n;}',
+      'implement Calls;Calls:module{id:fn(n:string):string;};id(n:string):string{return n;}',
       source('id:fn(n:int):int;','a:=id(0);'+'a=id(a);'*60,'id(n:int):int{return n;}'),
       source('f:fn(x:real):real;','n:=1;r:=real n;a:=f(r);','f(x:real):real{return x+x;}')]
 
@@ -119,8 +119,8 @@ def sections(data):
         kind,flags,offset,size=struct.unpack_from('>HHII',data,32+12*i);assert flags==1 and offset+size<=len(data);result[kind]=data[offset:offset+size]
     assert set(result)=={1,2,3,6,7};return result
 
-def verify(data,rows,expected=True):
-    s=sections(data);assert struct.unpack('>IIIII',s[1])==(0,1,0,0,0)
+def verify(data,rows,expected=True,library=False):
+    s=sections(data);assert tuple(struct.unpack('>'+'I'*(len(s[1])//4),s[1]))==((0,0,0)if library else(0,1,0,0,0))
     decoded=CALLS.decode(s[2]);reader=CALLS.BASE.Reader(s[6]);exports=[]
     for i in range(reader.word()):
         symbol,pc,frame,length=[reader.word()for _ in range(4)];raw=reader.take(length);sig=struct.unpack('>'+'I'*(length//4),raw);assert sig[0]==1 and sig[2]==len(sig)-3;exports.append((symbol,pc,frame,sig))
@@ -151,7 +151,7 @@ def verify(data,rows,expected=True):
             for call,site in zip(calls,r.get('calls',[]))if expected else():
                 target=next(e for e in exports if byname[names[e[0]]]['first']==site[2]);assert call[4]==target[1]
     case=(s[2],s[6],s[7],s[3],1048576,0,0,tuple(locals_),256,64,CALLS.LIMIT)
-    assert bool(CHAIN['check'](CALLS,case))==expected,'independent raw DAG oracle disagreement'
+    assert bool(CHAIN['check'](CALLS,case,library=library))==expected,'independent raw DAG oracle disagreement'
     return s
 
 def unit():

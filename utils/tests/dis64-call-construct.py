@@ -52,7 +52,7 @@ def unit(control):
     elif control is not None:
         raise RuntimeError('Unsupported constructor control')
     if control is not None:
-        signature = 'Module*\nprepare64calls(' if control in ('workspace', 'partial') else 'static int\ndis64callconstruct('
+        signature = 'static Module*\ndis64callprepare(' if control in ('workspace', 'partial') else 'static int\ndis64callconstruct('
         actual = EXTRACT(source, signature)
         if actual.count(old) != 1: raise RuntimeError('Constructor source control drift: '+control)
         source = source.replace(actual, actual.replace(old, new, 1), 1)

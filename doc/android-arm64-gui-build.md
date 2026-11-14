@@ -355,3 +355,11 @@ and94 raw cases/six semantic controls cover graph/frame/result/refusal boundarie
 This remains the scalar console subset; managed imports, AWM and Android/Bionic
 GUI/APK execution remain unverified.
 [Report](dis64-inferno-nested-call-file-report.md).
+
+INFERNO-0179 adds existing-profile0 scalar library files (-64b, or -64c without
+init) and structurally matched rooted provider instances. No init is invoked on
+construction.14 whole libraries pass336 trusted-importer scheduler roots each on
+x64/ARM64 Linux QEMU, plus raw/ownership/control gates. General managed importing
+client emission, guest namespace/cache LOAD admission and Android/Bionic GUI/APK
+remain outside this milestone. [RU](dis64-scalar-libraries.ru.md) /
+[EN](dis64-scalar-libraries.md) / [report](dis64-inferno-scalar-library-report.md).

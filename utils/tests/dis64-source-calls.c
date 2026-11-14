@@ -29,6 +29,7 @@ int main(void)
     dis64callsfile(&root,nil,functions,2,code,8);
     assert(rejected==1 && capturedbytes==0); /* WRITER_PROOF */
     assert(owners==baseline);code[1]=save;
-    capturedbytes=0;rejected=0;dis64callsfile(nil,nil,functions,2,code,8);assert(rejected==1 && !capturedbytes && owners==baseline);
+    capturedbytes=0;rejected=0;dis64callsfile(nil,nil,functions,2,code,8);assert(!rejected && capturedbytes>0 && owners==baseline && dis64callimageopenmode(captured,capturedbytes,1048576,&checked,1) && checked.module.profile==0);
+    assert(!dis64callimageopen(captured,capturedbytes,1048576,&checked));
     typedfree(root.sym);typedfree(leaf.sym);typedfree(mod.sym);assert(owners==0);return 0;
 }

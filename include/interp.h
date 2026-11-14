@@ -569,6 +569,7 @@ extern	Module*		parsemod(char*, uchar*, ulong, Dir*);
 /* Scalar constructors return unpublished owners; file admission belongs to the selected loader. */
 extern Dis64StorageOwner* prepare64storage(uchar*, ulong); // Serialized VM preparation only; no code/import admission.
 extern Module* prepare64numeric(char*, uchar*, ulong, int, Dis64StorageOwner**); // Private MP-only numeric builder. Keep lease until rooted and initmem the entry frame.
+extern Modlink* prepare64calllibrarylink(char*, uchar*, ulong, int, const uchar*, ulong, const uchar*, ulong); // One rooted, structurally matched scalar library instance; no namespace admission.
 extern Modlink* prepare64providerlink(char*, uchar*, ulong, int, const uchar*, ulong, unsigned int); // Own one Modlink and one external root.
 extern Modlink* prepare64consumerlink(char*, uchar*, ulong, char*, uchar*, ulong, int); // Own one rooted linked consumer.
 extern int attach64storage(Module*, Dis64StorageOwner*); // Retain storage in an empty unpublished Module; caller keeps lease rooted until publication.

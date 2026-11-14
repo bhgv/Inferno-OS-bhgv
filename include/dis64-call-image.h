@@ -11,7 +11,7 @@ typedef struct Dis64CallImage Dis64CallImage;
 
 struct Dis64CallImage {
 	Dis64View envelope; // Borrowed complete immutable container identity.
-	Dis64ModuleInfo module; // Executable, zero-data metadata from this same image.
+	Dis64ModuleInfo module; // Profile-checked, zero-data metadata from this same image.
 	Dis64TypeTable types; // Borrowed checked descriptors inside this image.
 	const unsigned char *code; // Borrowed complete code payload, never native pointer bytes.
 	unsigned int instructions; // Exact decoded instruction population.
@@ -22,8 +22,8 @@ struct Dis64CallImage {
 /* Bind all structural sections to one immutable image before private semantic analysis.
  * The returned borrowed view is not an execution capability or a Module owner. */
 static int
-dis64callimageopen(const unsigned char *data, unsigned int bytes, unsigned int objectlimit,
-	Dis64CallImage *result)
+dis64callimageopenmode(const unsigned char *data, unsigned int bytes, unsigned int objectlimit,
+	Dis64CallImage *result, int library)
 {
 	Dis64CallImage image = {0};
 	Dis64Section module = {0}, code = {0}, types = {0}, exports = {0}, strings = {0}, section;
@@ -53,7 +53,7 @@ dis64callimageopen(const unsigned char *data, unsigned int bytes, unsigned int o
 		seen |= bit;
 	}
 	if(seen != 31 || !dis64modulecheck(data+module.offset, module.bytes, &image.module) ||
-	   image.module.profile != 1 || image.module.databytes != 0 ||
+	   image.module.profile != (unsigned int)(library?0:1) || image.module.databytes != 0 ||
 	   !dis64typescheck(data+types.offset, types.bytes, Dis64LocalFunctions, objectlimit, &image.types) ||
 	   !disstringpoolcheck(data+strings.offset, strings.bytes, 65536, &pool) ||
 	   !disstringpoolget(&pool, image.module.name, &name) || code.bytes < 4)
@@ -72,6 +72,13 @@ dis64callimageopen(const unsigned char *data, unsigned int bytes, unsigned int o
 	return 1;
 }
 
+
+/* Preserve executable-only admission for every existing raw call-image user. */
+static int
+dis64callimageopen(const unsigned char *data,unsigned int bytes,unsigned int objectlimit,Dis64CallImage *result)
+{
+ return dis64callimageopenmode(data,bytes,objectlimit,result,0);
+}
 
 /* Caller supplies independent workspace/output and trusted immutable compiler declarations.
  * Declarations are not authenticated or inferred from arbitrary file metadata here.
