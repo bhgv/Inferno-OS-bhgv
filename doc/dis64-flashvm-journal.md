@@ -11365,3 +11365,48 @@ buffered Unknown/nil and rejection of known retired source imports. Eight
 C/JIT/poll combinations reported ordinary/TSan and the integrated retirement
 group are preserved as peer evidence, not a full matrix or lifetime pin.
 No peer implementation imported; journal base now842d9d3f.
+
+
+## FLASHVM-0189 — bounded live resident observation and hosted guest access
+
+2026-11-14. FlashVM master abfdb1c793b45bb315ad1966f3fc8286847161d1
+(tree 6f8d6ddf5074c7233be058298b7f7beb93ec454a), following 2ce47e5e and
+09b265bb, begins the wider statistics/debugging stage. Existing report families
+normalize to versioned JSON with exact string counters and explicit parse errors;
+this does not claim a coherent live snapshot. Runtime OBSERVABILITY.md records
+module/channel/variable/proxy/collector/memory gaps and their ownership contracts.
+
+The native resident registry now offers bounded sorted copied cards: service
+lifetime ID, permanent guest PID and published done. Short registry metadata
+locking never reads a foreign Prog/REG, owner-only counters or managed heap and
+never runs target code. Caller retains service lifetime; C outputs are private
+native storage. Invalid arguments leave C outputs unchanged. Reaped cards may
+vanish between pages; IDs confer no debug/control authority and reset on restart.
+Controller, collector and native I/O helper threads are outside this registry.
+
+Hosted Processctl.resident(big cursor) returns a guarded scalar tuple
+(status, id, pid, done). Status 1 means card, 0 end, -1 invalid/unavailable or
+unrepresentable signed-big ID; end/refusal payloads are zero. Publication stages
+native data before entering the existing managed result guard, including shared
+result storage. The runtime-observe Limbo example prints caller PID and available
+resident cards inside its own VM; standalone launch cannot attach another VM.
+A matched Processctl interface is required. No public Dis64/Sys ID changes.
+
+Real tests hold eight guests, check exact PIDs, ascending unique IDs, bounded
+native pages/cursors/refusals and output canaries. Guest tuples target a shared
+ADT while other native guests read its scalar fields, followed by full joins and
+strict native/GC retirement evidence. Five affected CTest groups pass 5/5 ordinary
+and 5/5 TSan. The expanded shared-reader case passes all four C/JIT and fast/locked
+polling combinations under TSan again. Architecture workload live-registry is
+integrated (56 workloads). No complete new runtime/architecture matrix is claimed;
+new master CI was still running when this note was prepared.
+
+INFERNO-0172/db0bf85b and its full local-result report read and preserved: trusted
+cstep result-address binding, fresh FP results, typed suffix continuations and
+reported x64/ARM64 evidence. Synchronous live stack/Type exclusion is not a pin or
+concurrent ABA protocol; it cannot be imported as our concurrent ownership proof.
+Multiple-call/general managed loader/GUI and runtime-ASan unwind gaps remain as
+reported by the peer. No peer implementation imported; vendor pin stays7f224145.
+Only this append-only journal changes. Native dedicated threads without global
+stop/exclusive remain the mandatory execution model. External debugger transport,
+wait reasons/stacks and complete channel/GC/memory adapters remain unfinished.
