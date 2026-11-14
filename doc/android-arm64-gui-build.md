@@ -348,3 +348,10 @@ Sixteen source programs pass file proof/readmod/C/RX on x64 and ARM64/Linux QEMU
 each rebuilt complete console runs32 source-file OS roots. This is a scalar
 console milestone, not managed AWM/Android GUI admission.
 [RU](dis64-source-call-files.ru.md) / [EN](dis64-source-call-files.md).
+
+INFERNO-0178 extends this file path to acyclic nested scalar helpers:28 source
+programs execute on x64/ARM64 Linux QEMU, each full console runs56 C/RX roots,
+and94 raw cases/six semantic controls cover graph/frame/result/refusal boundaries.
+This remains the scalar console subset; managed imports, AWM and Android/Bionic
+GUI/APK execution remain unverified.
+[Report](dis64-inferno-nested-call-file-report.md).

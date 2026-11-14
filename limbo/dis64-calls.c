@@ -1,6 +1,6 @@
 #include "limbo.h"
 #include "dis64-typed.h"
-#include "dis64-call-infer.h"
+#include "dis64-call-chain.h"
 
 /* Existing raw call-file policy, not a new wire profile or public opcode ID. */
 enum { CallFileCode=256,CallFileBytes=1048576,CallFileObject=1048576 };
@@ -81,18 +81,18 @@ dis64callsfile(Decl *entry,Decl *globals,Decl **functions,int nf,Inst *instructi
         if(i==0 && (np || f->kind!=Dis64Void))goto done;
         stop=count;for(j=0;j<(unsigned int)nf;j++)if(functions[j]->pc->pc>fn->pc->pc && (unsigned int)functions[j]->pc->pc<stop)stop=functions[j]->pc->pc;
         if(!dis64typedmulti(fn,globals,functions,nf,instructions,count,stop,&f->body) || f->body.nexternal ||
-           f->body.frame.bytes>CallFileObject-16 || f->body.data.bytes || (i && f->body.nsites))goto done;
+           f->body.frame.bytes>CallFileObject-16 || f->body.data.bytes)goto done;
         for(j=0;j<f->body.frame.count;j++)if(f->body.frame.leaves[j].kind!=Tint && f->body.frame.leaves[j].kind!=Tbig &&
            f->body.frame.leaves[j].kind!=Treal && f->body.frame.leaves[j].kind!=-1)goto done;
         f->pcs=allocmem((f->body.count+1)*sizeof(*f->pcs));f->first=total;
         for(j=0;j<f->body.count;j++){
             f->pcs[j]=total++;in=f->body.code[j];
-            if(i==0 && callfilebranch(in.op))goto done;
+            if((i==0 || f->body.nsites) && callfilebranch(in.op))goto done;
             if(callfilestore(&in,f->body.returns[j]))total++;
-            if(i==0 && in.op==ICALL){
+            if(in.op==ICALL){
                 for(k=0;k<f->body.nsites;k++)if(f->body.sites[k].end==j)break;
                 if(k==f->body.nsites)goto done;
-                if(f->body.sites[k].contract)total++;
+                if(f->body.sites[k].contract)total+=f->body.sites[k].inherited?2:1;
             }
             if(total>CallFileCode)goto done;
         }
@@ -126,6 +126,7 @@ dis64callsfile(Decl *entry,Decl *globals,Decl **functions,int nf,Inst *instructi
                 if(in.destination<0 || (unsigned long)in.destination>=f->body.count)goto done;
                 in.destination=f->pcs[in.destination];
             }
+            for(k=0;k<f->body.nsites;k++)if(f->body.sites[k].inherited && f->body.sites[k].end==j+1){in.op=ILEA;in.source=tail;break;}
             if(UDST(in.mode)==(AFP|AIND)){
                 if(f->body.returns[j]>=64){base=40;secondary=in.destination;if(in.op==ILEA)in.source=tail;}
                 else {base=32;secondary=0;}
@@ -137,14 +138,16 @@ dis64callsfile(Decl *entry,Decl *globals,Decl **functions,int nf,Inst *instructi
                 kind=f->kind;copy=(Dis64Instruction){kind==Dis64Big?IMOVL:kind==Dis64Real?IMOVF:IMOVW,SRC(AFP)|DST(AFP|AIND),0,f->body.frame.bytes,32};
                 if(!callfileencode(code,&at,&copy,32,0))goto done;
             }else if(!callfileencode(code,&at,&in,base,secondary))goto done;
-            if(i==0 && in.op==ICALL){
+            if(in.op==ICALL){
                 for(k=0;k<f->body.nsites;k++)if(f->body.sites[k].end==j)break;site=f->body.sites+k;
                 if(site->contract){
-                    copy=(Dis64Instruction){IMOVW,SRC(AFP)|DST(AFP),0,tail,site->resultoffset};
+                    copy=(Dis64Instruction){IMOVW,SRC(AFP)|DST(AFP),0,tail,site->inherited?f->body.frame.bytes:site->resultoffset};
                     /* Eight-byte result kind comes from the callee, never binding opcode. */
                     for(k=1;k<(unsigned int)nf;k++)if(b[k].body.first==site->target)break;
                     copy.op=b[k].kind==Dis64Big?IMOVL:b[k].kind==Dis64Real?IMOVF:IMOVW;
-                    if(site->inherited || !callfileencode(code,&at,&copy,0,0))goto done;
+                    if(!callfileencode(code,&at,&copy,0,0))goto done;
+                    if(site->inherited){copy.source=f->body.frame.bytes;copy.mode=SRC(AFP)|DST(AFP|AIND);copy.destination=32;
+                        if(!callfileencode(code,&at,&copy,32,0))goto done;}
                 }
             }
         }
@@ -162,7 +165,7 @@ dis64callsfile(Decl *entry,Decl *globals,Decl **functions,int nf,Inst *instructi
         if(!dis64write(image,CallFileBytes,nil,0,sections,5,&used))goto done;
     }
     failure="raw scalar call file proof refused the complete generated image";
-    if(!dis64callinfercheck(image,used,CallFileObject,&proof->inference,proof->decoded,proof->scratch,proof->queue,CallFileCode,
+    if(!dis64callchaininfercheck(image,used,CallFileObject,&proof->inference,proof->decoded,proof->scratch,proof->queue,CallFileCode,
        Dis64CallLimit,proof->records,Dis64LocalFunctions,&records,&proof->image) || records!=(unsigned int)nf)goto done;
     if(Bwrite(bout,image,used)!=used){failure="cannot write complete scalar call image";goto done;}
     failure=nil;

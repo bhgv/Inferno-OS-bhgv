@@ -2,7 +2,7 @@
 
 [Русская версия](dis64-source-call-files.ru.md).
 
-`limbo -64c` now emits complete scalar caller/leaf programs for the existing
+`limbo -64c` now emits complete scalar acyclic call programs for the existing
 explicit `dis64-calls` file loader. The file is checked from its own bytes before
 writing and again by the runtime. No compiler-local C declarations or native
 pointer tables accompany execution.
@@ -65,19 +65,57 @@ twice(n: big): big {
 }
 ```
 
-Root `int` to `big` conversion now has explicit raw inference/proof support,
+`int` to `big` conversion has explicit raw inference/proof support in linear callers,
 alongside the existing `int` to `real` rule. Source and destination kinds must
-match, and a frame source must be definitely initialized. Conversions in helper
-bodies remain subject to the existing leaf-opcode proof; this does not open all
-numeric conversion combinations.
+match, and a frame source must be definitely initialized. Call-containing helpers
+also admit these two conversions. Call-free helpers retain their existing leaf
+opcode rules; this does not open all numeric conversion combinations.
+
+## Nested helpers
+
+```limbo
+implement Calls;
+Calls: module {
+    init: fn();
+    mid: fn(n: int): int;
+    leaf: fn(n: int): int;
+};
+init() { a := mid(7); b := mid(a); }
+mid(n: int): int {
+    a := leaf(n);
+    b := leaf(a);
+    return b;
+}
+leaf(n: int): int { return n+1; }
+```
+
+The final call returns11. `return leaf(n);` is supported too: the writer binds
+its own outgoing tail and copies the value to its own incoming result pointer
+after return. It never forwards that pointer to the next callee. This keeps
+result ownership local at every depth. Shared callees form a DAG; neither self
+recursion nor mutual recursion is admitted in this bounded file policy.
+
+The verifier derives graph edges from actual raw CALL targets, proves callees
+before callers and refuses a dependency cycle before publishing output. Linear
+callers receive parameter initialization, exact FRAME/argument/result binding,
+normal return coverage and budget checks. The earlier root/leaf checker is tried
+first, preserving its accepted files and exact proof summaries. The independent
+Python model instead uses DFS for cycles, its own linear value-state parser and
+the previous CFG/return oracle for unchanged call-free leaves.
+
+The raw checker covers94 positive/negative/budget/capacity cases, including both
+cycle forms and late refusals, with unchanged records/count/image on failure.
+Six active omissions detect lost self/mutual cycle protection, partial proof
+publication, missing leaf return coverage and wrong binding/return owners. The
+checker passes host ASan/UBSan and ARM64/Linux QEMU UBSan.
 
 ## Supported boundary
 
 The root is an exported argument-free void `init`. It is linear and may contain
-multiple calls and ordinary supported numeric operations. Helpers are exported
-scalar leaf functions and may contain checked branches/loops, multiple returns
-and arithmetic return expressions. Current scalar signatures use void/int/big/real;
-void parameters are invalid. Helper calls, root branches, module data/imports,
+multiple calls and ordinary supported numeric operations. Helpers are exported scalar functions. Call-free leaf functions may contain checked
+branches/loops, multiple returns and arithmetic return expressions. Helpers with
+calls must be linear and end with RET; their dependency graph must be acyclic. Current scalar signatures use void/int/big/real;
+void parameters are invalid. Recursive calls, branches in a call-containing body, module data/imports,
 managed references, byte signatures, handlers and nonexported compiled helpers refuse the
 complete source. Root must contain a call. Every compiled function must have a
 matching declared export; no private helper is exposed or dropped implicitly.
@@ -102,7 +140,7 @@ copy moves the completed value into its source local. Arithmetic return stores
 first compute into scratch and then issue an ordinary typed store through byte32.
 Leaf branch destinations account for inserted instructions. Root RET becomes EXIT.
 
-After constructing the whole container, the writer runs dis64callinfercheck over
+After constructing the whole container, the writer runs dis64callchaininfercheck over
 those raw bytes. This independently derives numeric local spans and checks full
 catalog/argument/initialization/call/result/return ownership before the first
 Bwrite. Refused source or raw proof publishes no image payload. This is semantic
@@ -119,12 +157,13 @@ its C metadata is not used as file authority here.
 ```sh
 python3 utils/tests/dis64-source-calls.py --limbo /path/to/limbo
 python3 utils/tests/dis64-source-calls-unit.py
+python3 utils/tests/dis64-chain-check.py --limbo /path/to/limbo
 python3 utils/tests/dis64-source-call-boot.py \
     --limbo /path/to/limbo --emu /path/to/emu --root /path/to/inferno
 ```
 
 Use the existing CC/NATIVE64_ARCH/NATIVE64_RUNNER variables for ARM64/Linux QEMU
-in the file runtime gate, and `--runner` for complete-emulator boot. All three
+in the file runtime gate, and `--runner` for complete-emulator boot. All four
 gates are included in native64-port.py. The writer IR unit supports host ASan:
 
 ```sh
@@ -133,24 +172,25 @@ NATIVE64_CFLAGS='-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all' 
 python3 utils/tests/dis64-source-calls-unit.py
 ```
 
-Sixteen source programs cover repeated calls, two arguments, loops, branch/return
+Twenty-eight source programs cover repeated calls, two arguments, loops, branch/return
 relocation, entry reordered after helpers, int/big/real/void, negative values,
-int32 min/max sign extension and root/leaf zero divide. Independent Python parses
+int32 min/max sign extension, nested fresh/forwarded results, multiple levels,
+shared DAGs, intermediate conversions and zero divide at several depths. Independent Python parses
 and checks raw wire/code/signatures against source reports and an independent call
 oracle. Output is deterministic with/without explicit `-i`. Classic bytes match
 the previous compiler when compiled with the same source path/options.
 
-Each x64 and ARM64/Linux QEMU file gate runs all16 through real readmod/cache,
+Each x64 and ARM64/Linux QEMU file gate runs all28 through real readmod/cache,
 short reads, admission, scheduler, C/RX and retirement, failing every read/parse/
 construct allocation in turn. Result bits are checked after execution, including
-signed int32-to-big boundaries. Eight damaged files refuse, and ten unsupported
+signed int32-to-big boundaries. Eighteen damaged files refuse, and ten unsupported
 whole sources emit no payload. Existing inference9-image/30-refusal/312-runtime
 checks and3343 catalog-bound cases pass. Active controls detect missing writer
 proof, incorrect result binding, leaked relocation storage and wrong conversion
 source/destination roles.
 
-Rebuilt complete console emulators each run32 real OS roots from these files:
-28 normal completions and four zero-divide retirements, C/RX. Numerical result
+Rebuilt complete console emulators each run56 real OS roots from these files:
+48 normal completions and eight zero-divide retirements, C/RX. Numerical result
 checks are in the separate file gate; boot checks actual startup, worker and
 retirement. Host compiler/writer-unit ASan/UBSan and runtime x64/ARM64 UBSan pass.
 Full console boot is separately built with its normal target flags. Existing

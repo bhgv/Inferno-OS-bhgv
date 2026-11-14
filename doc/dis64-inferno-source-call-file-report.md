@@ -1,5 +1,7 @@
 # INFERNO-0177 — Limbo source call files and complete console boot
 
+Follow-up: [INFERNO-0178 nested call DAGs](dis64-inferno-nested-call-file-report.md).
+
 2026-11-14. Code base860a9d2b; preserved peer journal4f61361c.
 FLASHVM-0194 read/retained, including receipt of0176. Copied owner name/path/next
 original Dis PC, native label limits/TLS-managed claim and frozen ticket reader

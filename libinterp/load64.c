@@ -6,7 +6,7 @@
 #include "raise.h"
 #include "kernel.h"
 #include "dis64-pilot.h"
-#include "dis64-call-infer.h"
+#include "dis64-call-chain.h"
 #include "dis64-storage-image.h"
 #include "dis64-numeric-storage.h"
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
@@ -420,7 +420,7 @@ prepare64calls(char *path, uchar *image, ulong bytes, int jit)
 		kwerrstr("Dis64 call workspace allocation failed");
 		return nil;
 	}
-	if(!dis64callinfercheck(image, bytes, Dis64RuntimeObject, &load.work->inferred,
+	if(!dis64callchaininfercheck(image, bytes, Dis64RuntimeObject, &load.work->inferred,
 	   load.work->decoded, load.work->scratch, load.work->queue, Dis64CallRuntimeCode,
 	   Dis64CallLimit, load.work->proof, Dis64LocalFunctions, &records, &load.work->image)){
 		free(load.work);

@@ -12,7 +12,7 @@ def main():
         command+=['-Dfree=typedfree','-ffunction-sections','-fdata-sections']+['-I'+str(ROOT/x)for x in ('Linux/386/include','include','limbo')]+[str(ROOT/'limbo/dis64-layout.c'),str(ROOT/'limbo/dis64-typed.c'),str(writer),str(fixture),'-Wl,--gc-sections','-o',str(binary)]
         runner=shlex.split(os.environ.get('NATIVE64_RUNNER',''));subprocess.run(command,check=True);subprocess.run(runner+[str(binary)],check=True,timeout=30)
         print('PASS scalar call writer: complete bytes, raw uninitialized-source refusal, no partial output and allocation retirement',flush=True)
-        old='if(!dis64callinfercheck(image,used,CallFileObject,&proof->inference,proof->decoded,proof->scratch,proof->queue,CallFileCode,\n       Dis64CallLimit,proof->records,Dis64LocalFunctions,&records,&proof->image) || records!=(unsigned int)nf)'
+        old='if(!dis64callchaininfercheck(image,used,CallFileObject,&proof->inference,proof->decoded,proof->scratch,proof->queue,CallFileCode,\n       Dis64CallLimit,proof->records,Dis64LocalFunctions,&records,&proof->image) || records!=(unsigned int)nf)'
         for before,after,marker in ((old,'if(0)','WRITER_PROOF'),('if(in.op==ILEA)in.source=tail;','if(0)in.source=tail;','WRITER_POSITIVE'),('free(b[i].pcs);',';','WRITER_OWNERS')):
             assert production.count(before)==1
             writer.write_text(production.replace(before,after));subprocess.run(command,check=True)

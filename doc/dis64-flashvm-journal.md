@@ -12031,3 +12031,54 @@ refusal/semantic-control scope. General managed/import serialization, namespace/
 cache and Android/AWM/runtime-ASan limits remain intact. No peer implementation
 imported; vendor pin stays7f224145. This synchronization only appends the journal
 and preserves peer source and every receipt; local experiment/backup are verified.
+
+
+## INFERNO-0178 — acyclic nested scalar source/file calls
+
+2026-11-14. Inferno code base97c7ce00, preserved peer journalf4456bb2.
+FLASHVM-0195 read/retained: bounded owner-produced copied Dis call-chain snapshots,
+original requester frozen stack/frame projections and reader cleanup/error scope.
+Peer11/11 ordinary/TSan selection, architecture list59, queued newest CI and older
+cancelled CI remain scoped peer reports; no new full architecture completion is
+claimed. No implementation import, VM-concurrency change or vendor-pin update.
+
+Existing limbo -64c and explicit dis64-calls raw-file loader now admit linear
+helper callers forming a DAG; call-free leaves retain branches/loops/returns.
+Fresh/inherited return values, multiple depths, shared callees, void and int-to-
+Big/Real conversions in intermediate callers work. Every depth binds its own
+outgoing tail; inherited return calls copy back through the current incoming
+FP32 pointer after normal return rather than forwarding it to the next callee.
+Writer relocation plans account for extra copies. No new public IDs: existing
+Dis64v1.0 ABI1 five sections and scalar signaturev1. Managed imports/byte/data/
+handlers, recursion and branches in call-containing bodies remain refused.
+
+New raw verifier derives edges from CALL bytes, proves callees before callers,
+refuses cyclic dependencies, rederives local spans and checks exact argument/
+result/frame/return/initialization/budget semantics. Old root/leaf checker is
+tried first and exact accepted records remain unchanged. Records/count/image
+publish only after complete proof; scratch is disposable. Compiler and loader
+both run this proof; no C declarations accompany file authority. Classic mk
+includes header dependencies; port driver includes the new raw checker.
+
+Twenty-eight full source programs have deterministic output and identical classic
+bytes vs prior compiler. Independent Python uses its own caller value-state/DFS
+model and previous CFG/return oracle for preserved leaf code. Both x64 and ARM64
+Linux QEMU gates run all28 files through actual readmod/cache/admission/scheduler,
+C/RX, exact numeric results and every read/parse/construct allocation failure.
+Eighteen corrupt files (including deep frame/result/return errors and self/mutual
+cycles) and ten unsupported sources refuse. Default launch remains closed.
+
+Rebuilt complete consoles each run56 real OS roots:48 normal/eight zero-divide
+retirements, C/RX. Raw checker94 cases compares old proof summaries and checks
+atomic refusal. Six active omissions detect self/mutual cycle, partial publication,
+leaf return coverage, binding owner and incoming return owner via semantic exit10,
+without executing malformed modules. Raw checker passes host ASan/UBSan and ARM64
+QEMU UBSan; writer IR and its three proof/binding/cleanup controls pass both too.
+Old inference9/30/312 plus four controls and3343 bound cases remain green.
+
+RU/EN source-file docs updated; report doc/dis64-inferno-nested-call-file-report.md.
+This is scalar source/file/console progress, not general managed client/import
+serialization or arbitrary load/cache/namespace ABI admission. AWM, Android/Bionic
+GUI and working APK remain unverified; NDK/device unavailable. Existing bounded
+fixture GC/OS and runtime-ASan unwind limitations remain scoped. Managed wire
+expansion still needs coordination; trusted owned imports remain a separate C path.

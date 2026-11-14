@@ -6,6 +6,7 @@ ROOT=Path(__file__).resolve().parents[2]
 FILES=runpy.run_path(str(ROOT/'utils/tests/dis64-file-calls.py'))
 TYPED=runpy.run_path(str(ROOT/'utils/tests/dis64-typed-body.py'))
 CALLS=FILES['INFER']['CALLS']
+CHAIN=runpy.run_path(str(ROOT/'utils/tests/dis64-chain-oracle.py'))
 
 def source(header,init,definitions):return 'implement Calls;Calls:module{init:fn();'+header+'};init(){'+init+'}'+definitions
 
@@ -27,11 +28,24 @@ def cases():
         rows.append(('big-'+str(n),source('wide:fn(n:big):big;',f'n:={n};v:=big n;a:=wide(v);','wide(n:big):big{return n+n;}'),2,(2*n)&((1<<64)-1),0))
     for suffix,value,tail in (('min',-2147483648,''),('max',2147483647,'n-=1;')):
         rows.append(('big-int32-'+suffix,source('wide:fn(n:big):big;','n:=1;n<<=30;n*=2;'+tail+'v:=big n;a:=wide(v);','wide(n:big):big{return n+n;}'),2,(2*value)&((1<<64)-1),0))
+    rows += [
+      ('nested-fresh',source('mid:fn(n:int):int;leaf:fn(n:int):int;','a:=mid(7);b:=mid(a);','mid(n:int):int{a:=leaf(n);b:=leaf(a);return b;}leaf(n:int):int{return n+1;}'),1,11,0),
+      ('nested-forward',source('mid:fn(n:int):int;leaf:fn(n:int):int;','a:=mid(7);','mid(n:int):int{return leaf(n);}leaf(n:int):int{return n+1;}'),1,8,0),
+      ('nested-deep',source('mid:fn(n:int):int;next:fn(n:int):int;leaf:fn(n:int):int;','a:=mid(7);','mid(n:int):int{return next(n);}next(n:int):int{return leaf(n);}leaf(n:int):int{return n+1;}'),1,8,0),
+      ('nested-loop-leaf',source('mid:fn(n:int):int;sum:fn(n:int):int;','a:=mid(7);','mid(n:int):int{return sum(n);}'+triangular),1,28,0),
+      ('nested-big',source('mid:fn(n:big):big;leaf:fn(n:big):big;','n:=-3;v:=big n;a:=mid(v);','mid(n:big):big{return leaf(n);}leaf(n:big):big{return n+n;}'),2,(-6)&((1<<64)-1),0),
+      ('nested-real',source('mid:fn(n:real):real;leaf:fn(n:real):real;','n:=42;v:=real n;a:=mid(v);','mid(n:real):real{return leaf(n);}leaf(n:real):real{return n;}'),3,struct.unpack('>Q',struct.pack('>d',42.0))[0],0),
+      ('nested-void',source('mid:fn(n:int);leaf:fn(n:int);','mid(7);','mid(n:int){leaf(n);}leaf(n:int){a:=n+1;}'),0,0,0),
+      ('nested-diamond',source('mid:fn(n:int):int;left:fn(n:int):int;right:fn(n:int):int;leaf:fn(n:int):int;','a:=mid(7);','mid(n:int):int{a:=left(n);b:=right(n);return a+b;}left(n:int):int{return leaf(n);}right(n:int):int{return leaf(n);}leaf(n:int):int{return n+1;}'),1,16,0),
+      ('nested-convert-big',source('mid:fn(n:int):big;leaf:fn(n:big):big;','a:=mid(-3);','mid(n:int):big{v:=big n;return leaf(v);}leaf(n:big):big{return n+n;}'),2,(-6)&((1<<64)-1),0),
+      ('nested-convert-real',source('mid:fn(n:int):real;leaf:fn(n:real):real;','a:=mid(42);','mid(n:int):real{v:=real n;return leaf(v);}leaf(n:real):real{return n;}'),3,struct.unpack('>Q',struct.pack('>d',42.0))[0],0),
+      ('nested-mid-error',source('mid:fn(n:int):int;leaf:fn(n:int):int;','a:=mid(0);','mid(n:int):int{one:=leaf(1);return one/n;}leaf(n:int):int{return n;}'),1,0,1),
+      ('nested-error',source('mid:fn(n:int):int;leaf:fn(n:int):int;','a:=mid(0);','mid(n:int):int{return leaf(n);}leaf(n:int):int{one:=1;return one/n;}'),1,0,1)]
     return rows
 
 def refusals():
     return [
-      source('id:fn(n:int):int;mid:fn(n:int):int;','a:=mid(3);','id(n:int):int{return n;}mid(n:int):int{return id(n);}'),
+      source('id:fn(n:int):int;mid:fn(n:int):int;','a:=mid(3);','id(n:int):int{return mid(n);}mid(n:int):int{return id(n);}'),
       source('id:fn(n:int):int;','a:=1;if(a>0){b:=id(a);}','id(n:int):int{return n;}'),
       source('id:fn(n:int):int;','a:=id(3);g=a;','g:int;id(n:int):int{return n;}'),
       source('id:fn(s:string):string;','s:=id(nil);','id(s:string):string{return s;}'),
@@ -63,6 +77,41 @@ def damaged(data):
     yield 'truncated',data[:-1]
     yield 'trailer',data+b'\0'
 
+def nested_damaged(data):
+    s=sections(data);decoded=CALLS.decode(s[2]);items=[x[-1]for x in decoded]
+    r=CALLS.BASE.Reader(s[6]);entries=[]
+    for _ in range(r.word()):
+        symbol,pc,frame,length=[r.word()for _ in range(4)];r.take(length);entries.append((pc,frame))
+    first,end=entries[1][0],entries[2][0]
+    framepc=next(i for i in range(first,end)if decoded[i][0]=='IFRAME')
+    callpc=next(i for i in range(first,end)if decoded[i][0]=='ICALL')
+    bindpc=next(i for i in range(first,end)if decoded[i][0]=='ILEA')
+    storepc=next(i for i in range(first,end)if decoded[i][1]&7==5 and decoded[i][4]==32)
+    mutations={
+      'self-cycle':{framepc:CALLS.frame(1,decoded[framepc][4]),callpc:CALLS.call(first,decoded[callpc][2])},
+      'deep-frame-owner':{framepc:CALLS.frame(0,decoded[framepc][4])},
+      'deep-result-owner':{bindpc:CALLS.indirect('ILEA',decoded[bindpc][2],48 if decoded[bindpc][4]==40 else 40,32)},
+      'deep-result-source':{bindpc:CALLS.indirect('ILEA',64,decoded[bindpc][4],32)},
+      'deep-return-owner':{storepc:CALLS.indirect('IMOVW',decoded[storepc][2],40,0)},
+      'deep-return-missing':{storepc:CALLS.INIT.move(0,64)},
+      'deep-leaf-return-missing':{next(i for i in range(end,len(decoded))if decoded[i][1]&7==5):CALLS.INIT.move(0,64)},
+      'deep-early-return':{framepc:CALLS.RET},
+      'deep-exit':{end-1:CALLS.EXIT}}
+    for name,changes in mutations.items():
+        out=items.copy()
+        for pc,raw in changes.items():out[pc]=raw
+        parts=dict(s);parts[2]=CALLS.IMAGE(out);yield name,rebuild(parts)
+
+def mutual_damaged(data):
+    s=sections(data);decoded=CALLS.decode(s[2]);r=CALLS.BASE.Reader(s[6]);entries=[]
+    for _ in range(r.word()):
+        symbol,pc,frame,length=[r.word()for _ in range(4)];r.take(length);entries.append((pc,frame))
+    first,end=entries[2][0],entries[3][0];items=[x[-1]for x in decoded]
+    framepc=next(i for i in range(first,end)if decoded[i][0]=='IFRAME')
+    callpc=next(i for i in range(first,end)if decoded[i][0]=='ICALL')
+    items[framepc]=CALLS.frame(1,decoded[framepc][4]);items[callpc]=CALLS.call(entries[1][0],decoded[callpc][2]);s[2]=CALLS.IMAGE(items)
+    yield 'mutual-cycle',rebuild(s)
+
 def sections(data):
     assert data[:8]==b'Dis64\r\n\x1a'and struct.unpack_from('>HHIIIII',data,8)==(1,0,92,1,0,0,5)
     result={}
@@ -70,7 +119,7 @@ def sections(data):
         kind,flags,offset,size=struct.unpack_from('>HHII',data,32+12*i);assert flags==1 and offset+size<=len(data);result[kind]=data[offset:offset+size]
     assert set(result)=={1,2,3,6,7};return result
 
-def verify(data,rows):
+def verify(data,rows,expected=True):
     s=sections(data);assert struct.unpack('>IIIII',s[1])==(0,1,0,0,0)
     decoded=CALLS.decode(s[2]);reader=CALLS.BASE.Reader(s[6]);exports=[]
     for i in range(reader.word()):
@@ -90,19 +139,19 @@ def verify(data,rows):
         spans=[]
         for old,new,oldbytes,width,k in r['frame']['leaves']:
             if k in (9,4,7):spans.append((new,kind(k)))
-        if i and any(x[0]not in ('IMOVW','IMOVL','IMOVF','IRET')and x[1]&7==5 for x in decoded[first:end]):raise AssertionError('unlowered expression result')
+        if i and any(x[0]not in ('IMOVW','IMOVL','IMOVF','IRET','ILEA')and x[1]&7==5 for x in decoded[first:end]):raise AssertionError('unlowered expression result')
         # Numeric expression scratch is observed from raw opcodes, not supplied to the VM.
         for opname,mode,src,mid,dest,secondary,raw in decoded[first:end]:
             if mode&7==1 and dest==r['frame']['bytes']:
-                k=3 if opname=='ICVTWF'else 2 if opname=='ICVTWL'else 2 if opname.endswith('L')else 1
+                k=3 if opname=='ICVTWF'or opname.endswith('F')else 2 if opname=='ICVTWL'else 2 if opname.endswith('L')else 1
                 if (dest,k)not in spans:spans.append((dest,k))
         locals_.append((symbol,first,frame,tuple(sorted(spans))))
-        if i==0:
+        if True:
             calls=[x for x in decoded[first:end]if x[0]=='ICALL'];assert len(calls)==len(r.get('calls',[]))
-            for call,site in zip(calls,r.get('calls',[])):
+            for call,site in zip(calls,r.get('calls',[]))if expected else():
                 target=next(e for e in exports if byname[names[e[0]]]['first']==site[2]);assert call[4]==target[1]
     case=(s[2],s[6],s[7],s[3],1048576,0,0,tuple(locals_),256,64,CALLS.LIMIT)
-    assert CALLS.oracle(case)is not None,'independent raw call oracle refused'
+    assert bool(CHAIN['check'](CALLS,case))==expected,'independent raw DAG oracle disagreement'
     return s
 
 def unit():
@@ -123,7 +172,8 @@ def main():
             b=w/(name+'.b');b.write_text(text);image=w/(name+'.dis64')
             TYPED['READ']['checked_run']([str(limbo),'-64c','-o',str(image),str(b)],env=env,check=True,capture_output=True)
             _,rows=TYPED['compile_source'](limbo,w,None,filename=b,multi=True)
-            verify(image.read_bytes(),rows)
+            try:verify(image.read_bytes(),rows)
+            except AssertionError as e:raise AssertionError(name)from e
             if args.baseline:
                 old=w/'baseline.dis';TYPED['READ']['checked_run']([str(args.baseline.resolve()),'-i','-o',str(old),str(b)],env=env,check=True,capture_output=True)
                 assert old.read_bytes()==(w/'plain.dis').read_bytes()
@@ -152,10 +202,12 @@ def main():
             print('PASS source file readmod/scheduler C/RX, all allocation failures:',arch,name,flush=True)
         first=next(x[1]for x in fixtures if x[0]=='sum-7')
         subprocess.run(runner+[str(binary),str(first),'1','0','0',str(pilot),'0','default'],env=env,check=True,capture_output=True)
-        for name,data in damaged(first.read_bytes()):
+        nested=next(x[1]for x in fixtures if x[0]=='nested-forward')
+        deep=next(x[1]for x in fixtures if x[0]=='nested-deep')
+        for name,data in list(damaged(first.read_bytes()))+list(nested_damaged(nested.read_bytes()))+list(mutual_damaged(deep.read_bytes())):
             path=w/('bad-'+name+'.dis64');path.write_bytes(data)
             result=subprocess.run(runner+[str(binary),str(path),'0','0','0',str(pilot),'0'],env=env,capture_output=True,text=True,timeout=120)
             assert result.returncode==0,name+'\n'+result.stderr
-        print('PASS source call file admission:',arch,'eight damaged images refused; default profile remains closed',flush=True)
+        print('PASS source call file admission:',arch,'eighteen damaged images refused; default profile remains closed',flush=True)
         print('PASS source call file pipeline:',arch,len(fixtures),'files, actual cache/admission/reader/scheduler/teardown',flush=True)
 if __name__=='__main__':main()

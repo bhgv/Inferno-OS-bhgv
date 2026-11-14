@@ -125,12 +125,25 @@ dis64inferinstruction(Dis64CallInference *work, unsigned int owner, const Dis64C
 }
 
 
+/* A chained caller's result tail is special storage at every depth. */
+static int
+dis64chaininferinstruction(Dis64CallInference *work,unsigned int owner,const Dis64CallDecoded *decoded)
+{
+    const Dis64Instruction *in=&decoded->instruction;unsigned int kind;
+    if((in->op==IMOVW || in->op==IMOVL || in->op==IMOVF) && USRC(in->mode)==AFP &&
+       in->source>=0 && (unsigned long)in->source==work->frames[owner]-8){
+        kind=in->op==IMOVW?Dis64Int:in->op==IMOVL?Dis64Big:Dis64Real;
+        return in->mode==(SRC(AFP)|DST(AFP)) && dis64inferslot(work,owner,in->destination,kind);
+    }
+    return dis64inferinstruction(work,owner,decoded);
+}
+
 /* Derive declarations solely from raw catalog signatures and complete decoded instruction roles.
  * Work/decoded are disposable, caller-owned, disjoint from immutable bytes and final outputs.
  * This does not prove definite initialization, result readiness or reachable control flow. */
 static int
-dis64callinferlocals(const Dis64CallImage *image, Dis64CallInference *work,
-	Dis64CallDecoded *decoded, unsigned int capacity, unsigned int objectlimit)
+dis64callinferlocalsmode(const Dis64CallImage *image, Dis64CallInference *work,
+	Dis64CallDecoded *decoded, unsigned int capacity, unsigned int objectlimit,int chain)
 {
 	Dis64Section exports = {0}, strings = {0}, types = {0}, section;
 	Dis64Type frame;
@@ -186,13 +199,19 @@ dis64callinferlocals(const Dis64CallImage *image, Dis64CallInference *work,
 		while(i >= work->functions[owner].end)
 			owner++;
 		if(!dis64callread(image->code+at, codebytes-at, decoded+i, &used) ||
-		   !dis64inferinstruction(work, owner, decoded+i))
+		   !(chain?dis64chaininferinstruction(work,owner,decoded+i):dis64inferinstruction(work, owner, decoded+i)))
 			return 0;
 		at += used;
 	}
 	return at == codebytes;
 }
 
+
+static int
+dis64callinferlocals(const Dis64CallImage *image,Dis64CallInference *work,Dis64CallDecoded *decoded,unsigned int capacity,unsigned int objectlimit)
+{
+    return dis64callinferlocalsmode(image,work,decoded,capacity,objectlimit,0);
+}
 
 /* Raw-image authority is derived locally; only the complete existing semantic proof publishes.
  * No external local declarations, runtime Module, C-step selection or file permission are accepted. */

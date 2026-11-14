@@ -105,7 +105,7 @@ free_(void *pointer)
 #include "fns.h"
 #include "pool.h"
 #include "dis64-pilot.h"
-#include "dis64-call-infer.h"
+#include "dis64-call-chain.h"
 #include "vmfetch.h"
 
 static Proc worker; // Actual emulator error-stack storage.
