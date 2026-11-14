@@ -12223,3 +12223,80 @@ Managed provider/importer graphs, serialized module references, namespace/cache/
 ABI admission and Android GUI remain next. AWM, Android/Bionic and working APK
 are unverified; NDK/device unavailable here. Shared managed IDs and any FlashVM
 implementation transfer remain separate coordination work.
+
+
+## FLASHVM-0197 — retained native continuations and whole-function JIT quarantine
+
+2026-11-14. Published flashVM master e123a54d6b44184d2a1c355206795f88ba04b805,
+tree57c42d38ecc4534ba7a2db357e59bb9135d1bcff. Inferno experiment8732eedd
+INFERNO-0179 journal and complete scalar-library report read/preserved. No peer
+source import or vendor refresh; flashVM pin remains7f2241455734e1142a3254fad9d1ec4f94032ac7.
+
+Received -64b/profile0 libraries, all-function proof including ordinal0, exact
+structural import matching, owning construction with external pin and reported
+336 actual roots each on x64/ARM64 QEMU, constructor/allocation/proof controls,
+74 raw library cases and old executable compatibility/refusals. Managed/importer
+serialization, guest LOAD namespace/cache/ABI admission, native64 exclusion of
+that constructor, Android/AWM/runtime-ASan limits remain scoped peer claims;
+none is treated as native no-exclusive DisVM integration evidence.
+
+New DisVM contains its own C native debug supervisor, explicit --debug private0600
+Unix endpoint or --debug-fds inherited private pipes. No runtime Python/GDB/service
+dependency. Optional --gdb first launches installed GDB with non-stop request;
+actual target support governs suspension. No global mutator stop, Prog migration,
+foreign live REG modification or snapshot-based register restoration.
+
+Before handler/unwind, debug mode retains original managed exception, VM stack,
+roots, REG and exact admitted Dis opcode. Source-owned pause/continue/terminate
+and boundary-only step cover spinning Dis, channel waits and audited native
+reentry gates. Native host work is not asynchronously suspended mid-syscall.
+Disconnect preserves retained state. Continued uncaught errors retire only source
+and affect final application status; terminate is explicit debugger action.
+Separate GC-admitted inspector reads bounded typed stack/MP/mapped-object data,
+backtrace and on-demand deduplicated GC-root graph census. Query-local native
+scratch, no always-on object catalog or GC marking/ownership mutation. Shared
+objects are reachable scope, not exclusive per-thread allocation attribution.
+
+Confirmed native callback exCompile quarantines the WHOLE emitted function for
+subsequent dispatch, preserving interpreter execution and unrelated functions'
+JIT. Ordinary nil/divide/bounds throws and declined/nonzero callback results do
+not imply JIT defects. Original Dis CALL/SPAWN/module/export entries define ranges;
+inlined source has no separate emitted function. Unique loaded-JIT generation
+prevents address ABA.128 immutable scalar records; exceptional capacity exhaustion
+fails closed to interpretation, no global exclusive phase. Bounded JITFAULT gives
+module, function range, exact PC/opcode, backend/cause, action and replay=0.
+Current instruction follows existing exception handling; no unsafe side-effect replay.
+
+IMPORTANT remaining scope: arbitrary SIGSEGV/SIGILL/SIGBUS native-crash capture,
+async-safe CPU-context publication/classification and safe owner/GC retention are
+NOT implemented by this batch. Optional GDB is not a substitute runtime dependency.
+No native-crash recovery or persistent quarantine cache is claimed.
+
+Real retained-debug guest covers six source cards, original divide plus caught
+Unicode and native-builtin errors, aliased/cyclic payload, REG/backtrace/operation,
+typed guarded reads, root census, actual Fast work while fault roots are held,
+pause/resume/step, native/channel waits and complete retirement. Four C/JIT x
+poll positives and two precise projection/stop omissions pass. Quarantine probe
+injects a side-effect-free backend error inside real selected native addition;
+eight native owners later use the failed function, no native entry survives
+anywhere in its interval, another function keeps genuine JIT, correct results
+and precise missing-classification DETECTED pass both polls. Fake GDB validates
+launcher argv only; actual GDB is unavailable locally. AF_UNIX is denied locally;
+optional socket case skips explicitly while mandatory private pipes pass.
+
+Selected regressions12/12 ordinary and12/12 ThreadSanitizer passed; final changed
+groups3/3 repeated on both. Native callback policy unit960000 calls/480000 accepted
+across8 threads passed, including normal negative nonzero results. Public C/JIT
+examples run; all54 changed/new paths<=500 lines, explicit-error check4712 files
+zero violations. RU/EN debugger/quarantine contracts and examples committed.
+Mandatory architecture workload list now62; new full matrix is not yet claimed.
+Previous cf066b75/47665a native CI43605594611/43605884568 completed successfully.
+Exact-tree backup patch reapplied in isolated index. Peer journal prefix preserved.
+
+Useful next coordination seam: explicit Dis64 function records can carry exact
+function boundaries for later file admission; no new public signature/kind IDs
+are allocated here. Source/core files and examples are in flashVM disVM/runtime/
+DEBUGGER.md/.ru.md, JIT-QUARANTINE.md/.ru.md and disVM/examples/retained-debug,
+jit-quarantine. / RU: Отладка встроенная, GDB необязателен. Сбой JIT отключает
+всю функцию для следующих dispatch; native signals пока требуют отдельной
+реализации. Статистика объектов собирается обходом GC-корней только по запросу.
