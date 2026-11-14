@@ -12082,3 +12082,81 @@ serialization or arbitrary load/cache/namespace ABI admission. AWM, Android/Bion
 GUI and working APK remain unverified; NDK/device unavailable. Existing bounded
 fixture GC/OS and runtime-ASan unwind limitations remain scoped. Managed wire
 expansion still needs coordination; trusted owned imports remain a separate C path.
+
+
+## FLASHVM-0196 — coherent live arena counters and native CI completion
+
+2026-11-14. FlashVM memory featurecf066b75eab1a93d605ac7df67716ec5af464110
+(tree599d49f6095f8bf84593e5749e5b7eed834a24ac), then master
+47665a7334b7a6b1b07bd6d56b06e8e9f8c26979
+(treeceb7ffbaab6c0e3cc9413973c5d6eae8697ab5c8), publishes four commits.
+No vendor refresh, public Dis64/ISA/Sys IDs, Module/Frame layout, global exclusive,
+forced suspension or resident REG ownership change is introduced.
+
+Pool allocation/free now update exact live/free span/block gauges and peak live
+span under the allocator's existing metadata mutex. Successful allocation/free
+history clamps at signed-big max with explicit loss flags; failed allocation/free/
+destruction has no accounting effect. Snapshot copies O(1) metadata under that same
+mutex without managed payload/Type/stack reads, references, callbacks or object walk.
+Pool lifetime remains independently pinned through callers; concurrent destruction
+is not supported. Native accounting failure returns zero output, never partial data.
+
+Processctl.memorysnapshot returns one coherent scalar record: status, arena/header/
+live/free spans, live/free blocks, block overhead, allocations/releases, peak and
+history flags. Exact partition: arena=header+live+free; without history flags,
+allocations-releases=liveblocks. All current gauges remain exact/bounded. Spans
+include native overhead/alignment; derived capacity still includes Heap headers.
+They are not requested payload, reachable object counts, RSS or OS committed bytes.
+Free extents are not coalesced, so aggregate free does not imply one large allocation.
+Deferred RC/GC changes counters only when actual poolfree executes.
+
+The matched NC64 tuple is96 bytes. Generic scalar result bound increases64->96,
+using the SAME existing shared range guards. One native snapshot is staged before
+publication; Busy retries only publication, not sampling. New Memoryview Limbo module
+has named caller-owned Stats and derived capacities with no mutable globals. Its
+returned ADT is allocated after the accounting instant. Native refusal gives nil;
+managed allocation errors propagate with no retained native ticket to clean up.
+Off-arena malloc/code/module/Type/OS stacks/FDs/debug buffers, object catalog and
+origin/retainer/per-thread/per-type attribution remain separate work, as do detailed
+GC state, pause/resume/step and external debugger capabilities/transport.
+
+Native acceptance uses eight actual OS owners and3200 private allocation/write/
+size/free rounds. Independent oracle sums actual native block headers under pool
+mutex and compares cached counters at the SAME instant. Whole-block/no-remainder,
+unchanged exhausted allocation/live destruction refusal, invalid/uninitialized/
+inconsistent zero output, history saturation and joined destroy pass. Oracle does
+not derive its sums from accounting fields or inspect managed payloads. The prior
+actual pool16000-allocation test and all three existing source controls also pass.
+
+VM fixture uses four allocating guests plus shared96-byte result observer,200
+coherent samples, adjacent canaries, monotonic traffic, ordinary byte payloads and
+all child joins. Limbo facade, public real-resident example and explicit native
+unavailable/zero-output path pass C/JIT x fast/locked poll; main also quantum1.
+Two copied-output omissions corrupt free-span or allocation-history projection;
+precise DETECTED with normal exit/full native/GC drain is required. These test
+projection omissions, not injected allocator-update omission controls.
+
+Final selected regressions pass14/14 ordinary and14/14 ThreadSanitizer, covering
+control/registry/mailbox/location/stack/memory, cancellation, retirement storage,
+table transfer/retirement, errors, packet charging and fast claims. Architecture
+list now60 (list verified); this is not full new matrix completion. All26 memory
+feature files and three CI-policy files <=500 lines. RU/EN contracts/readers/examples,
+actual README C/JIT command runs and exact-tree backup patches are verified; local
+master is clean at published tree. New feature CI43605594611 and final CI43605884568
+were pending at first checks. Prior stackCI43603394053: five jobs succeeded, RV64
+cancelled; no complete prior architecture success claimed.
+
+CI inspection found cancel-in-progress=true repeatedly cancelling long RV64/QEMU
+master runs with each next push. Final commit lets an already running master matrix
+finish; the same branch group keeps it plus latest pending work. Other refs retain
+cancellation. Workloads/timeouts/native profile/success criteria are unchanged.
+YAML parsed and all jobs/group verified unchanged; eventual queue/runtime behavior
+remains a CI observation, not inferred from local tests. New CI docs are RU/EN.
+
+INFERNO-0178/f01cdf6f journal and complete nested-call-file report read/preserved.
+Received scalar -64c DAG calls with canonical per-frame result tails, raw bottom-up
+proof, existing v1.0/ABI1 IDs and reported28 file/56 full-console roots each on
+x64/ARM64 Linux QEMU plus refusal/control/allocation scope. General managed/import
+serialization, namespace/cache admission, Android/AWM/runtime-ASan limits remain
+intact. No peer implementation imported; vendor pin remains7f224145. This sync
+only appends the journal, preserving peer source/receipts and verified local backup.
