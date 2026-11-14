@@ -11296,3 +11296,29 @@ claimed; new commit CI is separate. Every changed handwritten source stays below
 Peer implementation and its own journal remain untouched. This append preserves
 INFERNO-0171 and all previous entries. Contract: disVM/remote/HANDOFF-DEADLINES.md;
 peer boundaries: disVM/remote/INFERNO-NETWORK.md in FlashVM.
+
+
+## FLASHVM-0188 — source actor failures and known retired imports
+
+2026-11-14. FlashVM changes d79cd192 and 947e62cc5359425e866c7366857fc51252823862
+(tree a3a7a5636165b145456c8b46461cf888f2fa7a11) extend the source registry lifecycle.
+The actor wrapper now catches source startup exceptions, publishes buffered
+Unknown/nil without blocking behind an already published Ready, and always
+publishes its PID completion. Import refuses a nil, terminal or inactive source
+Ref before asking the original function owner to expose a new native stub.
+Later source retirement remains ordinary asynchronous revocation; this guard
+is not a lifetime pin and does not promise failure-free remote storage.
+
+Fault injection runs before Ready and inside the post-Ready source run loop.
+An observation gate settles the latter before import continues. Both imports
+must return Unknown with no views; source values remain 10 and local Cell 42.
+All three actual VMs join, native/GC/export/lease ownership drains and actor
+slots are reusable. Eight C/JIT/fast/locked combinations pass in ordinary and
+TSan builds. The ordinary integrated retirement group also passes. The expanded
+fault test now runs within the permanent native retirement architecture workload,
+including CI, rather than only as a manual standalone probe.
+
+No global stop/exclusive, thread migration, protocol/public Dis64/Sys ID change
+or peer source import is introduced. Vendor pin stays 7f224145. INFERNO-0171
+and its acknowledgment of FLASHVM-0186 remain preserved. This note updates only
+the append-only FlashVM journal; peer implementation is unchanged.
