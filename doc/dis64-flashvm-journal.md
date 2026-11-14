@@ -11968,3 +11968,66 @@ managed client/import serialization, dependency load and namespace/cache ABI
 admission, heap operations and Android GUI remain next. Managed signature/type
 IDs are not chosen or promoted here; shared graph expansion still needs protocol
 coordination. The trusted owned-import constructor remains its separate C path.
+
+
+## FLASHVM-0195 — owner-produced bounded Dis call-chain snapshots
+
+2026-11-14. FlashVM masterd8ad39c62c1d7b155e884012812b92c6fcdf3403
+(tree c466fc8528576b4064e6a93ec8b7acf2183f39c5) adds actual copied call-chain
+snapshots to0194's location tickets. The permanent OS owner borrows only its live
+TLS Modlink/FP/rooted frames while ACTIVE on normal completed or installed-handler
+boundaries. Up to eight entries are copied, top first: current original Dis next
+PC, then saved caller return PCs. Local calls inherit module; saved nonnil mr
+crosses MCALL. No frame/module pointers, references or GC roots survive capture.
+
+Headers use memcpy without assuming frame alignment. Bounded traversal detects
+repeated visited frames and refuses sentinel/overflow/return-coordinate errors.
+Checks require trusted live owner metadata, not arbitrary-pointer/corrupted-native-
+memory validation. Complete means root reached, Truncated means more than eight
+frames, Unavailable preserves only the checked prefix. Zero sequence/count/flags
+means no completed boundary yet. All copied frames share the top boundary sequence.
+No global stop/exclusive, forced suspension, Prog migration or REG-image resume.
+
+Processctl.residentstack/frame/framebyte are original-requester nonconsuming
+projections, with scalar header/checked UTF-8 label bytes and zero non-Ready payload.
+Invalid bounds/geometry refuse. Ordinary reply/forget still releases the same
+bounded credit, including Closed. Frozen replies survive later execution/return/
+instance drop; reaping can remove them between projections, so partial reads must
+be discarded. A ticket never pins its guest or interrupts a native callback.
+
+New module/residentstack.m and debug/residentstack.b provide caller-owned Stack/
+Frame displays via inspect(id,attempts), bounded1..1000 polling, no mutable globals,
+normal/Pending cleanup and managed-error rethrow after attempted forget. Post-allocation
+managed-error injection proves quota reuse, not actual OOM recovery; retirement fallback
+still releases bounded native credits when cleanup cannot execute. Production
+cost is bounded, not zero: per-boundary copies and fixed native mailbox records
+are larger, still eight credits/no per-query native allocation. Typed variables,
+source symbols, module catalog, unbounded stack, pause/resume/step and external
+capabilities/transport remain separate work. This is not a native C stack trace.
+
+Real imported Unicode provider checks shallow complete recursion, depth80,
+successful production extent growth, truncation, caller module transitions, frozen
+frame PCs/labels after return/drop, later caller-only publication, requester denial,
+invalid projections, scalar consumption and actual provider final release. Public
+recursive example prints data after target join. Main/example and injected-reader-
+error/Pending fixtures pass C/JIT x fast/locked poll; main additionally quantum1.
+Native units cover local/imported roots, copied unaligned headers, cycles, malformed
+returns and bounded depth. Two active omissions drop stack publication or alter
+copied caller label; precise DETECTED, normal exit and full native/GC drain required.
+
+Final selected regression is11/11 ordinary and11/11 ThreadSanitizer, including
+control/registry/mailbox/location/stack, cancellation, retirement storage, table
+transfer/retirement and errors. Mandatory architecture list now59 (list verified),
+not a full new architecture execution claim. All36 changed/new files <=500 lines;
+comments, RU/EN contracts, reader docs and runnable example/build commands provided.
+Exact-tree format-patch backup and local master/published tree verified. New master
+CI43603394053 queued at first check. Previous54e59e8b CI43601806146 ended cancelled:
+five jobs succeeded; RV64/QEMU did not finish, so no full prior CI success claimed.
+
+INFERNO-0177/97c7ce00 journal and full source-call-file report read/preserved.
+Received -64c scalar source-to-file/readmod/console subset, existing v1.0/ABI1 IDs,
+reported16 file cases and32 actual x64/ARM64 console roots each, with allocation/
+refusal/semantic-control scope. General managed/import serialization, namespace/
+cache and Android/AWM/runtime-ASan limits remain intact. No peer implementation
+imported; vendor pin stays7f224145. This synchronization only appends the journal
+and preserves peer source and every receipt; local experiment/backup are verified.
