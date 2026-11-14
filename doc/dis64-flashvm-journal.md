@@ -11844,3 +11844,68 @@ Trusted client import assembly is implemented; general managed image writer/read
 load, namespace/cache ABI admission, remaining heap operations and Android GUI
 remain ahead. Existing scalar/Sys/file paths retain separate capabilities. No new
 public IDs, Module/Frame layout change, Android/Bionic/AWM run or ready APK claim.
+
+
+## FLASHVM-0194 — copied owner locations and reusable Limbo reader
+
+2026-11-14. FlashVM master54e59e8b41f3038fe616f00e671585f7a1e97d97
+(tree 9c07171e1eb3ff7ed701506577ecc7c7f42e6cea) extends0193 with bounded copied
+module name/path and next original Dis PC. Only the permanent owner reads its live
+TLS Modlink/Module/PC while holding the active managed claim, on completed normal
+or installed-handler boundaries. Starting another turn clears the working record.
+Idle mailbox service copies native publications; it never reads foreign registers,
+walks another heap, runs getters or interrupts a native callback. No exclusive,
+global stop, Prog migration, Module/Frame layout or Dis64/ISA/Sys ID is added.
+
+The capture retains no Module/Modlink/stack pointer or reference. Native label
+capacities64/256 include NUL; at most63/255 UTF-8 bytes are copied without splitting
+a codepoint. Invalid captured UTF-8 or invalid/native-PC geometry makes location
+unavailable. Integer spans check alignment and next-PC range0..nprog inclusive;
+next PC is not last executed opcode/source line. Current leaf JIT preserves original
+Dis coordinates. Metadata is trusted immutable/live under its owner's root, not
+arbitrary native-pointer validation. Display labels are not a global Module ID.
+Owner boundary sequence saturates at signed-big max, scoped to that resident.
+
+Processctl.residentlocation returns status/sequence/nextPC/extent/label lengths/flags;
+residentlocationbyte projects one checked name/path byte. Both peek without consuming
+Pending/Ready/Closed credits. Original requester/exact target/ticket identify the
+immutable reply; ordinary scalar reply/forget release it. Foreign access is Denied,
+non-Ready payload is zero, bad part/index/geometry is Invalid. Repeated peeks remain
+frozen while the target executes elsewhere or drops the imported module instance.
+Target reaping can invalidate a multi-call read; no target lifetime pin is introduced.
+
+New debug/residentdebug.b and module/residentdebug.m provide inspect(id,attempts),
+with caller-owned strings, no mutable library globals, bounded polling1..1000 and
+forget on normal/Pending/managed-error exits. Partial reads are discarded. Managed
+errors are rethrown; an injected post-allocation managed error proves quota reuse,
+not actual allocator-OOM recovery. If cleanup cannot execute, existing requester/
+target retirement reclaims bounded credits. Pending native sleep is not cancelled.
+RU/EN contract, mailbox documentation, library README and runnable resident-debug
+example include build/run commands verified against the matching runtime/compiler.
+
+The imported-module fixture checks exact Unicode labels, next-PC bounds, original
+requester isolation, repeated frozen ticket reads after return/instance drop, later
+caller boundary sequence, scalar consumption and final provider registry release.
+Reader-failure/Pending fixtures check full eight-credit reuse and ordinary native
+work preservation. Main, library and public example pass C/JIT x fast/locked poll;
+the imported caller additionally runs quantum1. Native probes require actual active
+owner/TLS and cover end-PC, misalignment/native-PC refusal, invalid UTF-8 and whole
+truncated prefixes. Two semantic omissions suppress publication or corrupt copied
+path; exact DETECTED output, normal completion and full native/GC drain are required.
+
+Final affected regression selection passes10/10 ordinary and10/10 ThreadSanitizer:
+process control, resident registry, mailbox, owner location, receiver/native cancel,
+retirement storage, table transfer/retirement and errors. All36 changed/new files
+stay below500 lines. Exact final-tree format-patch backup verified. Mandatory native
+architecture list now has58 workloads; new full architecture/CI execution is pending.
+Previous61f3d1ff CI43595814013 completed successfully. Stack/typed-variable capture,
+unique module catalogs, pause/resume/step, priority, external debug transport,
+allocator catalogs, environment groups and composable VFS remain separate work.
+
+INFERNO-0176/860a9d2b journal and full owned-imports report read/preserved: trusted
+whole client imports, independent .m shapes/hashes, actual production linkmod and
+reported960 x64/ARM64-QEMU three-module cases plus rollback/controls. This advances
+trusted client import assembly, not general managed image loading, namespace/cache,
+concurrent GC/lifetime/ABA, Android/AWM or runtime-ASan unwind proof. No implementation
+is imported. Vendor pin remains7f224145. Synchronization only appends this journal,
+retaining peer source and all receipts; local experiment checkout/backup are verified.
