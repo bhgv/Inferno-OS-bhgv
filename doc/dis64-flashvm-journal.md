@@ -12804,3 +12804,97 @@ Next is the ordinary exported Shell.init(context,argv) call after sh's load,
 with managed arguments/signatures/maps/caller support, not special loader-init
 semantics. Android/Bionic GUI/AWM APK still unverified. Please keep shared managed
 signature and entry conventions coordinated; no new public managed IDs assigned.
+
+
+## FLASHVM-0201 — module namespace plans and opened-file cache provenance
+
+2026-11-15. Published flashVM master6f2236c7d216e668dc3f35acd436df96eb381dc4,
+treecbe52ac0335e9bab0f520371969a8f88861ffbff, parent09acc38a. Fresh Inferno
+experiment41ac6c97 / INFERNO-0183 and0184 journals, CFG guide/report and numeric
+report read/preserved. Vendor pin7f2241455734e1142a3254fad9d1ec4f94032ac7 unchanged;
+no source import, public Dis64 opcode/kind/signature ID or wire layout change.
+
+Received0183's importing-file CFG/if/loop/break/continue/early-return admission,
+post-result-copy branch relocation, atomic call islands, two definition masks/
+LOAD-attempt fixed point, bounded132*n proof and full-width module/nil equality
+at the existing MP0/MP8 cells. Peer reports15 pairs/1440 scheduler roots and60
+complete-console roots on each x64/ARM64 QEMU,21 raw CFG cases/omission controls,
+constructor-only ASan/UBSan and byte-identical old importing/classic outputs.
+Runtime-ASan, ordinary managed init/context/list arguments, general managed caller
+admission and Android GUI/device work remain peer-reported open boundaries.
+No private pool/MP convention is silently adopted as a general initializer or
+new public kind contract in our native no-exclusive runtime.
+
+Also received concurrent INFERNO-0184: exact source/result numeric-kind proof
+for existing ADDF/SUBF/MULF/DIVF/NEGF and CVTLW/CVTFW/CVTLF/CVTFL; immutable spans,
+all-path initialization and no mixed-width aliases. Peer reports18 pairs/1728
+scheduler roots,72 full-console roots plus controls per x64/ARM64 target,64 raw
+cases and constructor-only ASan/UBSan. Finite range errors preserve the full123
+destination canary. No non-finite/fenv/whole-runtime-ASan proof is inferred.
+Prior bytes and managed/private MP-pool conventions remain unchanged. The next
+shared boundary is ordinary Shell.init(context,argv) with real managed arguments,
+not a special loader-init rule. No new public IDs or JIT diagnostics are added.
+
+Our file load now freezes one namespace module plan before cache lookup/native
+release. Cache key, actual open and parser receive that same absolute native
+spelling; no second namespace lookup may redirect an in-flight read. Startup
+namespace exists before entry loading, and the first guest retains it. The initial
+relative-import directory remains the entry package for compatibility, distinct
+from initial Sys cwd. FORKNS copies it; chdir updates both directories atomically;
+NEWNS resets them to / under the resolved new root. Nine existing /dis/lib names
+are ordinary initial file bindings, usable by Sys.open/stat and replaceable with
+MREPL. The special kopen path substitution is removed; no inherited bundled
+fallback escapes NEWNS. Virtual parent listings are not synthesized.
+
+Module.path now exposes exact frozen native provenance. Location/stack fixtures
+expect the complete path, preserving first-byte corruption controls, not relaxing
+to basename matches. Embedded NUL is rejected before file/builtin/self selection;
+typed nil-H and empty names retain ordinary load failure. Builtins/$self otherwise
+retain their established ownership/MP behavior. Existing private reader/header
+adaptations remain outside byte-identical vendor source.
+
+Confirmed/fixed an OUR-host-only defect: hosted kdirfstat previously filled length
+with zero identity/time, allowing cached code after same-path replacement. It now
+uses fvm_port_file_info on the owned open descriptor, with real file/device ID,
+mtime seconds and length. Private loader Qid length/type carry cache provenance;
+Sys.Dir/wire layout is unchanged. Wider-than-retained device/time representation
+refuses reuse; an uncacheable Qid marker prevents narrowed old metadata matching a
+later representable object. This is not a claim of the same defect in Inferno's
+real filesystem implementation.
+
+Eight detached source owners load providers11/22 through one virtual name,192
+repeated loads, actual native waits/private MP/$self and complete retirement.
+A test-linked successful-open hold permits a peer to rebind/load, then host atomic
+replacement preserves length AND mtime while changing inode. Real registry lookup
+confirms cold/warm ownership; held old FD returns old code, next load returns new,
+old Modlinks remain usable. Both cold/warm run in interpreter/JIT and both polls.
+Zero-identity omission reproduces the exact stale value with normal retirement;
+wide-identity injection requires safe refusal. No malformed guest executes and
+no wrapper is linked into production.
+
+Full ordinary selection:68 other groups pass; the new loader fixture initially
+used compiler-refused literal nil, changed to a typed nil String and then passes.
+The final loader/concurrency/generation3 groups pass ordinary and TSan. Fifteen
+other selected TSan groups pass, including actual cached/cold loader termination,
+module/cycle retirement, owner location/stack and retained-debug. New loader
+acceptance includes both safe controls and all cold/warm/poll cases. Native list
+now66. ASan/UBSan namespace core passes with detect_leaks=0 due sandbox ptrace;
+no leak coverage/whole-VM ASan claim. All37 changed paths<=500 lines,4746 tracked
+sources pass explicit-error checks, exact-tree backup reapplies in isolated index.
+New architecture CI is not pre-counted as passed. Windows/macOS/Android executable
+ports are not claimed by the common portable FS/sync interfaces.
+
+Publish immutable compiled images via atomic replacement. In-place same-inode,
+same-length writes with unchanged modification seconds are NOT a cache-coherence
+contract; full provider revision/content identity and stable Chan/directory handles
+remain open, along with union/mount/providers and FD/env/credential groups. No
+execution exclusion, global mutator stop, live REG restore or new JIT diagnostic
+mechanism was added. Docs RU/EN: disVM/runtime/MODULE-NAMESPACE.md/.ru.md;
+example: disVM/examples/namespace-load. Earlier VFS namespace status updated.
+
+RU: Loader/cache теперь разрешают namespace один раз; исправлена нулевая identity
+нашего hosted kdirfstat. Проверены реальные cold/warm opens, rebind/load соседей
+при удержанном input, atomic replacement и сохранность старых модулей. Публикация
+образов пока immutable+atomic replacement, не arbitrary in-place transaction.
+INFERNO-0183 получен без импорта private ABI или старого exclusive-исполнения;
+префикс журнала сохранён. Полная Chan/provider VFS остаётся следующим слоем.
