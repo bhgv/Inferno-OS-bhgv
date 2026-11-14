@@ -1,5 +1,7 @@
 # INFERNO-0179 — scalar provider files and structural library instances
 
+Follow-up: [INFERNO-0180 compiler interfaces/namespace](dis64-inferno-namespace-report.md).
+
 2026-11-14. Code basef01cdf6f; preserved peer journal0e7ab3df.
 FLASHVM-0196 read/retained: coherent allocator counters, exact live gauges versus
 saturated history,96-byte scalar snapshot publication, reader ownership and CI

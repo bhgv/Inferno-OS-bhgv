@@ -130,6 +130,97 @@ done1:
 }
 
 
+/* Native scalar-library namespace bridge. It is deliberately uncached: every
+ * load owns a fresh read/admission/proof/instance, without legacy hash aliases. */
+#if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1
+#include "dis64-call-library.h"
+typedef struct Dis64LibraryRead Dis64LibraryRead;
+struct Dis64LibraryRead {
+ char *path;
+ const uchar *requests,*strings;
+ ulong requestbytes,stringbytes,bytes;
+ uchar *image;
+ Dir *dir;
+ int fd,jit;
+ Modlink *link;
+};
+
+/* No Module/VM object is constructed while the caller has released exclusion. */
+static int
+read64libraryimage(void *argument)
+{
+ Dis64LibraryRead *read=argument;ulong at;long count;int fd;
+ read->fd=kopen(read->path,OREAD);
+ if(read->fd<0)return 0;
+ read->dir=kdirfstat(read->fd);
+ if(read->dir==nil)return 0;
+ if(read->dir->length<=0 || (uvlong)read->dir->length>Dis64CallImageBytes){
+  kwerrstr("implausible Dis64 scalar library length");return 0;
+ }
+ read->bytes=read->dir->length;
+ read->image=mallocz(read->bytes,0);
+ if(read->image==nil)return 0;
+ for(at=0;at<read->bytes;at+=count){
+  count=kread(read->fd,read->image+at,read->bytes-at);
+  if(count<=0 || (ulong)count>read->bytes-at){kwerrstr("incomplete Dis64 scalar library read");return 0;}
+ }
+ fd=read->fd;read->fd=-1; /* Native kclose consumes this descriptor on every status. */
+ if(kclose(fd)<0){kwerrstr("cannot close Dis64 scalar library file");return 0;}
+ return 1;
+}
+
+/* Existing signed/unsigned-file policy runs under exclusion before construction. */
+static int
+read64libraryadmit(void *argument)
+{
+ Dis64LibraryRead *read=argument;
+ if(mustbesigned(read->path,read->image,read->bytes,read->dir)){
+  kwerrstr("security violation: not signed");return 0;
+ }
+ read->link=prepare64calllibrarylink(read->path,read->image,read->bytes,read->jit && !dontcompile,
+  read->requests,read->requestbytes,read->strings,read->stringbytes);
+ return read->link!=nil;
+}
+#endif
+
+/* Return one reference and one external GC pin, with exclusion held on return.
+ * Caller-owned native path/request buffers must stay immutable/live across I/O.
+ * This explicit bridge grants no guest ILOAD capability or cache provenance. */
+Modlink*
+read64calllibrary(char *path,int jit,const uchar *requests,ulong requestbytes,
+ const uchar *strings,ulong stringbytes,int sync)
+{
+#if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1
+ Dis64LibraryRead read={0};DisStringPoolView pool;Dis64Bindings bindings;unsigned int n;int ok;
+ if(!dis64launchmode() || (jit!=0 && jit!=1) || (sync!=0 && sync!=1) ||
+    path==nil || path==H || requests==nil || requests==H || strings==nil || strings==H ||
+    requestbytes>Dis64LocalBytes || stringbytes>Dis64LocalBytes ||
+    (uintptr)requests>(uintptr)-1-requestbytes || (uintptr)strings>(uintptr)-1-stringbytes){
+  kwerrstr("unsupported Dis64 scalar library namespace request");return nil;
+ }
+ for(n=0;n<1024 && path[n];n++);
+ if(!n || n==1024 || path[0]=='$' ||
+    !disstringpoolcheck(strings,stringbytes,65536,&pool) ||
+    !dis64bindingscheck(requests,requestbytes,0,&pool,0,0,Dis64LocalFunctions,Dis64LocalParameters,&bindings)){
+  kwerrstr("invalid Dis64 scalar library path or interface");return nil;
+ }
+ read.path=path;read.requests=requests;read.requestbytes=requestbytes;read.strings=strings;
+ read.stringbytes=stringbytes;read.jit=jit;read.fd=-1;
+ if(sync)release();
+ ok=kprotect(read64libraryimage,&read);
+ if(sync)acquire();
+ if(ok)ok=kprotect(read64libraryadmit,&read);
+ if(!ok && read.link!=nil){ptrdel(D2H(read.link));destroy(read.link);read.link=nil;}
+ if(read.fd>=0)kclose(read.fd);
+ free(read.dir);free(read.image);
+ return ok?read.link:nil;
+#else
+ USED(path);USED(jit);USED(requests);USED(requestbytes);USED(strings);USED(stringbytes);USED(sync);
+ kwerrstr("Dis64 scalar library namespace bridge is disabled");return nil;
+#endif
+}
+
+
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 typedef struct Dis64PairRead Dis64PairRead;
 

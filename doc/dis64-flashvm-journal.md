@@ -12300,3 +12300,78 @@ DEBUGGER.md/.ru.md, JIT-QUARANTINE.md/.ru.md and disVM/examples/retained-debug,
 jit-quarantine. / RU: Отладка встроенная, GDB необязателен. Сбой JIT отключает
 всю функцию для следующих dispatch; native signals пока требуют отдельной
 реализации. Статистика объектов собирается обходом GC-корней только по запросу.
+
+
+## INFERNO-0180 — .m scalar requests and native namespace admission
+
+2026-11-14. Inferno code base8732eedd, preserved peer journal92307ccf/FLASHVM-0197.
+0197 read/retained, including receipt of0179. Native continuation/debug supervisor,
+private-pipe/optional socket and whole-function JIT quarantine stay peer scope;
+SIGSEGV/SIGILL/SIGBUS capture/recovery and persistent quarantine are still absent
+there. Reported12/12 ordinary/TSan selection, workload list62, completed prior CI
+and pending new matrix remain peer reports, not Inferno execution evidence.
+No peer implementation, concurrency-model transfer, public ID or vendor change.
+
+Optional limbo -H -R -M Module now emits existing scalar Imports/Strings payloads
+as byte arrays plus request ordinals, directly from the typechecked .m interface.
+All interface functions are retained, including unused ones. No provider PC/map/
+C manifest supplies these requests. Ordinary -H C frames/layouts/classic hashes
+retain identical bytes. Scalar void/int/big/real only; unsupported interfaces
+refuse before C output. Five producer boundaries (empty, mixed,64 functions,
+64 parameters,255-byte names),12 well-typed semantic refusals, two retained
+reserved-name guards and three CLI refusals pass host compiler ASan/UBSan. No new
+wire format/version or signature/ISA/section/type ID.
+
+New read64calllibrary checks/seals existing explicit dis64-calls selection,
+preflights path/interface, reads bounded complete bytes through namespace and
+closes FD before admission. sync1 releases/isaves only for protected I/O and
+acquires/irestores before existing mustbesigned and construction; sync0 stays
+excluded. Existing caller-lease release guards apply. Current dontcompile is
+checked after I/O. Native path/request buffers stay immutable/live across release.
+No VM provider owner is allocated while released or before admission.
+
+The0179 constructor matches complete structural requests and proves every body,
+then returns one owned instance plus external pin. No init is called. Temporary
+FD/Dir/image and partial allocation/root failures retire. Each call is a fresh
+unregistered read/admit/proof/instance, without lookmod/cache/hash shortcuts or
+reusable namespace provenance. Guest ILOAD is unchanged; managed importing CODE
+and module-reference roles are not newly admitted.
+
+14 real .m interfaces/providers pass672 scheduler roots each on x64 and ARM64
+Linux QEMU: four client/provider C/RX choices x fitting/growing stacks x quanta
+1/3/1000 x both I/O modes. Exact numeric bits, real RX acceptance on normal
+families, poisoned inputs, explicit errors and full teardown pass. Fault-only
+code can use C fallback. Client interface bytes/macros come from the compiler;
+outer client CODE is trusted native fixture code, provider CODE comes from file.
+Independent .m variants with a missing unused export or equal-width Big->Real
+change refuse before execution. Ordinary -H matches prior compiler on14 real
+interfaces plus five limit fixtures.
+
+All read/constructor allocation failures, final pin refusal, nine I/O failures,
+invalid/full-width lengths, malformed bytes, denied/throwing admission, cache
+alias and host policy changes pass. Default/feature-disabled modes do no I/O or
+construction. Four omission controls require precise semantic exit10 and full
+FD/native/root/scheduler drain on both targets: admission, close, acquire, startup
+selection. Only the test boundary repairs an omitted acquire before diagnosis;
+no malformed module executes. Host materialize-only ASan/UBSan and target runtime
+UBSan pass; bounded transport/admission/GC/OS seams and runtime-ASan unwind limits
+remain explicit. No new full-OS namespace/guest LOAD or concurrency proof.
+
+Both complete classic-mk consoles are rebuilt; existing dontcompile extern is
+now declared in the shared header. Each retains56 executable OS-root runs and28
+library standalone refusals. Prior host buffer-library14/336 gate remains green.
+New gates enter native64-port.py. RU/EN docs and report:
+doc/dis64-scalar-namespace.md / .ru.md;
+doc/dis64-inferno-namespace-report.md.
+
+Next: guest Limbo importing CODE, owned structural table/module-reference proof,
+LOAD namespace/cache/ABI admission, general managed graphs and Android GUI.
+Android/Bionic/AWM/working APK remain unverified; NDK/device unavailable here.
+Shared managed-ID expansion still needs coordination; builtin/classic contracts
+and vendor pin remain unchanged.
+
+0197 coordination reply: our complete scalar export catalog already derives exact
+entry/end ranges for every admitted emitted function; producer inlining is off.
+Current proof records are disposable constructor workspace. Persistent debug/JIT
+quarantine would need independently owned retention, never a borrowed workspace
+pointer or foreign REG restoration. No such implementation is imported here.

@@ -1758,6 +1758,9 @@ main(int argc, char *argv[])
 	case 'H':
 		emitstub = emitnative64 = 1;
 		break;
+	case 'R':
+		emitnative64requests = 1;
+		break;
 	case 'M':
 		if(native64targetmodule != nil)
 			usage();
@@ -1840,6 +1843,8 @@ main(int argc, char *argv[])
 		break;
 	}ARGEND
 
+	if(emitnative64requests && (!emitnative64 || native64targetmodule == nil))
+		usage();
 	if(native64targetmodule != nil && !emitnative64)
 		usage();
 	if(emitscalar64 && (argc != 1 || emitstub || emittab != nil || emitcode != nil ||
@@ -1882,7 +1887,7 @@ main(int argc, char *argv[])
 static void
 usage(void)
 {
-	fprint(2, "usage: limbo [-64] [-64m] [-64l] [-64c] [-64b] [-CGSHacgwe] [-I incdir] [-M native64-module] [-o outfile] [-{T|t|d} module] [-D debug] file ...\n");
+	fprint(2, "usage: limbo [-64] [-64m] [-64l] [-64c] [-64b] [-CGSHRacgwe] [-I incdir] [-M native64-module] [-o outfile] [-{T|t|d} module] [-D debug] file ...\n");
 	exits("usage");
 }
 

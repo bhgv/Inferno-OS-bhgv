@@ -409,6 +409,7 @@ struct Handler
 
 extern	int	bflag;
 extern	int	cflag;
+extern	int	dontcompile; // Existing host policy, rechecked after namespace I/O.
 extern	int	nproc;
 extern	Type	Tarray;
 extern	Type	Tstring;
@@ -589,6 +590,7 @@ extern	void		ptrdel(Heap*);
 extern	void		pushrun(Prog*);
 extern	Module*		readmod(char*, Module*, int);
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+extern Modlink* read64calllibrary(char*, int, const uchar*, ulong, const uchar*, ulong, int); // Explicit uncached namespace admission; one rooted scalar-library instance.
 extern Modlink* read64pair(char*, char*); // Read and root the explicitly linked startup module.
 #ifdef DIS_NATIVE64_MANAGED_FILES
 extern Module* prepare64managedfile(char*, uchar*, ulong, int); // Unpublished checked file provider.

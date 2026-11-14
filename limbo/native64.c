@@ -1,5 +1,6 @@
 #include "limbo.h"
 #include "dis64-layout.h"
+#include "dis64-bindings.h"
 
 extern char *ckindname[]; // Existing primitive C spellings; layout is computed independently.
 
@@ -878,6 +879,81 @@ native64checks(Decl *globals)
 }
 
 
+/* Selected .m interface -> existing scalar Imports/Strings bytes. This opt-in
+ * emits no PC/map/function pointers and does not change classic signature hashes. */
+static int
+native64requestkind(Type *type)
+{
+ switch(type->kind){case Tnone:return Dis64Void;case Tint:return Dis64Int;
+ case Tbig:return Dis64Big;case Treal:return Dis64Real;}return -1;
+}
+
+static void
+native64requestname(Sym *symbol,uchar *out,DisStringPoolRecord *record)
+{
+ unsigned int i;
+ if(symbol==nil || symbol->len<1 || symbol->len>255)fatal("native64 scalar requests: invalid name length");
+ dis64put32(out,symbol->len);
+ for(i=0;i<(unsigned int)symbol->len;i++){
+  if(!symbol->name[i] || (uchar)symbol->name[i]>127)fatal("native64 scalar requests: ASCII names required");
+  dis64put32(out+4+4*i,(uchar)symbol->name[i]);
+ }
+ *record=(DisStringPoolRecord){out,4+4*symbol->len};
+}
+
+static void
+native64requestarray(char *name,uchar *data,unsigned int bytes)
+{
+ unsigned int i;
+ print("\nstatic const unsigned char %s[] = {",name);
+ for(i=0;i<bytes;i++)print("%s0x%2.2ux",i==0?"\n\t":i%16==0?",\n\t":",",data[i]);
+ print("\n};\n");
+}
+
+static void
+native64requests(Decl *globals,int emit)
+{
+ Decl *module,*function,*argument;Dis64Binding records[64];DisStringPoolRecord names[65];
+ DisStringPoolView pool;uchar *runes,*strings,*imports,*signatures;unsigned int count,np,bytes,importbytes,params[64];
+ char prefix[4*StrSize],symbol[4*StrSize+64];int kind;
+ runes=allocmem(65*(4+4*255));strings=allocmem(65*(4+4*255)+4);
+ imports=allocmem(64*(12+12+64*4)+4);signatures=allocmem(64*(12+64*4));
+ for(module=globals;module!=nil;module=module->next){
+  if(!native64module(module))continue;
+  count=0;native64requestname(module->sym,runes,names);
+  for(function=module->ty->tof->ids;function!=nil;function=function->next){
+   if(count==64 || function->ty->kind!=Tfn || function->ty->varargs || function->ty->polys!=nil ||
+      (function->dot!=nil && function->dot->ty->kind==Tadt) ||
+      (kind=native64requestkind(function->ty->tof))<0)fatal("native64 scalar requests: unsupported function");
+   np=0;
+   for(argument=function->ty->ids;argument!=nil;argument=argument->next){
+    int argkind=native64requestkind(argument->ty);
+    if(np==64 || argkind<=0)fatal("native64 scalar requests: unsupported parameter");
+    params[np++]=argkind;
+   }
+   native64requestname(function->sym,runes+(count+1)*(4+4*255),names+count+1);
+   records[count]=(Dis64Binding){0};records[count].symbol=count+1;
+   if(!dis64signaturewrite(signatures+count*(12+64*4),12+64*4,kind,params,np,&bytes) ||
+      !dis64signaturecheck(signatures+count*(12+64*4),bytes,64,&records[count].signature))
+    fatal("native64 scalar requests: cannot encode signature");
+   native64name(function,prefix,sizeof(prefix));
+   snprint(symbol,sizeof(symbol),"LIMBO_NATIVE64_IMPORT_%s",prefix);
+   if(!emit)native64register(symbol,function);else print("#define %s %ud // Ordinal in generated Imports, not a classic hash.\n",symbol,count);
+   count++;
+  }
+  if(!disstringpoolwrite(strings,65*(4+4*255)+4,names,count+1,&bytes) ||
+     !disstringpoolcheck(strings,bytes,65536,&pool) ||
+     !dis64bindingswrite(imports,64*(12+12+64*4)+4,0,records,count,&pool,0,0,64,&importbytes))
+   fatal("native64 scalar requests: cannot encode interface");
+  native64name(module,prefix,sizeof(prefix));
+  snprint(symbol,sizeof(symbol),"limbo_native64_%s_scalar_imports",prefix);
+  if(!emit)native64register(symbol,module);else native64requestarray(symbol,imports,importbytes);
+  snprint(symbol,sizeof(symbol),"limbo_native64_%s_scalar_strings",prefix);
+  if(!emit)native64register(symbol,module);else native64requestarray(symbol,strings,bytes);
+ }
+ free(runes);free(strings);free(imports);free(signatures);
+}
+
 /* Preflight every supported declaration before output; keep legacy target metadata immutable. */
 void
 native64stubs(Decl *globals)
@@ -992,6 +1068,7 @@ native64stubs(Decl *globals)
 			native64register(symbol, function);
 		}
 	}
+	if(emitnative64requests)native64requests(globals,0);
 	print("#if defined(LIMBO_NATIVE64_FIELDS) && !defined(LIMBO_NATIVE64_ENTRIES)\n#define LIMBO_NATIVE64_ENTRIES // Typed field witnesses require exact generated entries.\n#endif\n");
 	print("#if defined(LIMBO_NATIVE64_MANAGED) && !defined(LIMBO_NATIVE64_ENTRIES)\n#define LIMBO_NATIVE64_ENTRIES // Managed shape witnesses require exact generated entries.\n#endif\n");
 	print("#if defined(LIMBO_NATIVE64_IMPLEMENTATIONS) && !defined(LIMBO_NATIVE64_TABLES)\n#define LIMBO_NATIVE64_TABLES // Full implementation lists require matching specifications.\n#endif\n");
@@ -1056,6 +1133,7 @@ native64stubs(Decl *globals)
 		}
 	}
 	native64checks(globals);
+	if(emitnative64requests)native64requests(globals,1);
 	for(layout=native64types; layout != nil; layout=next){
 		next = layout->next;
 		free(layout->map);

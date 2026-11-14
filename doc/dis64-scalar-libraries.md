@@ -188,3 +188,8 @@ Rebuilt full consoles retain56 executable-file OS roots each and refuse28 librar
 standalone selections each. That is compatibility/refusal evidence, not a new
 positive full-console library LOAD run. AWM, Android/Bionic GUI and a working APK
 remain unverified. See [INFERNO-0179](dis64-inferno-scalar-library-report.md).
+
+The next [compiler-interface and namespace layer](dis64-scalar-namespace.md) now
+emits requests directly from .m with -H -R and reads/admit/proves provider files
+through an explicit uncached native API. Guest ILOAD/managed importer admission
+remains separate.

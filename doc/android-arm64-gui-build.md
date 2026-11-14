@@ -363,3 +363,11 @@ x64/ARM64 Linux QEMU, plus raw/ownership/control gates. General managed importin
 client emission, guest namespace/cache LOAD admission and Android/Bionic GUI/APK
 remain outside this milestone. [RU](dis64-scalar-libraries.ru.md) /
 [EN](dis64-scalar-libraries.md) / [report](dis64-inferno-scalar-library-report.md).
+
+INFERNO-0180 joins compiler -H -R .m interface payloads to an explicit uncached
+namespace reader/admission/structural library constructor.14 interfaces/providers
+pass672 trusted-importer scheduler roots per x64/ARM64 Linux QEMU target, with
+both I/O modes and allocation/I/O/policy controls. Guest Limbo ILOAD and managed
+importing-body admission remain next; no Android/Bionic/AWM/APK execution is claimed.
+[RU](dis64-scalar-namespace.ru.md) / [EN](dis64-scalar-namespace.md) /
+[report](dis64-inferno-namespace-report.md).

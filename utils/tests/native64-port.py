@@ -118,6 +118,15 @@ def main():
         build, env, logs/'library-files.log')
     run([sys.executable, str(tests/'dis64-library-check.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'library-proof.log')
+    run([sys.executable, str(tests/'dis64-scalar-requests.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'scalar-requests.log')
+    run([sys.executable, str(tests/'dis64-library-namespace.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'library-namespace.log')
+    run([sys.executable, str(tests/'dis64-library-namespace.py'), '--limbo', str(tools/'limbo'), '--disabled'],
+        build, env, logs/'library-namespace-disabled.log')
+    for control in ('admission', 'close', 'acquire', 'profile'):
+        run([sys.executable, str(tests/'dis64-library-namespace.py'), '--limbo', str(tools/'limbo'), '--control', control],
+            build, env, logs/('library-namespace-'+control+'.log'))
     for control in ('module', 'signature', 'entry', 'atomic'):
         run([sys.executable, str(tests/'dis64-library-files.py'), '--limbo', str(tools/'limbo'), '--control', control],
             build, env, logs/('library-control-'+control+'.log'))
