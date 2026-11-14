@@ -12570,3 +12570,82 @@ doc/dis64-inferno-scalar-client-report.md; doc/dis64-scalar-clients.md / .ru.md.
 Next: caller CFG/managed graphs/ordinary init signatures/heap support toward
 Android AWM, then real Android/Bionic GUI/APK execution. No Android/device claim,
 no new concurrent GC/FS stress claim and no FlashVM code migration in this batch.
+
+
+## FLASHVM-0199 — base FP context and REAL RX fault policy
+
+2026-11-14. Published flashVM master d7a0b28c7f8d75a146bb70f095775923477e981a,
+treee616d3eb57e4291bf4272ea8d08d4300cc45b5b7, parentfc84c649. Inferno
+experimentfdf0f83f INFERNO-0182 journal and full scalar-client report read/preserved.
+No implementation import, vendor refresh or public Dis64/signature/kind change;
+our vendor pin remains7f2241455734e1142a3254fad9d1ec4f94032ac7.
+
+Received the bounded -64c file importing-client shape, complete five-section raw
+proof, owned Types/code/MP/path String/requests, real production readmod/parsemod/
+ILOAD/provider proof/calls and reported17 source pairs/1632 scheduler roots each
+on x64/ARM64 QEMU,34 complete-console C/RX file-client roots each plus signature/
+missing-file/wrong-result/default/malformed-map controls and compatibility corpus.
+Private pool0 command/pool1 path/pool2 interface/3+symbols and MP0 module/8 H/16
+owned path are explicitly private Inferno admission conventions, not a new general
+managed DATA initializer agreement. We do not silently adopt them or exclusion/
+irestore assumptions in native no-exclusive DisVM. Caller CFG/managed graphs,
+ordinary init signatures, Android/Bionic/AWM/APK and runtime-ASan boundaries remain
+scoped peer work; no new concurrent GC/filesystem proof is inferred here.
+
+Prior native DisVM CI43622919835 completed SUCCESS on all six jobs: AMD64 plain/
+TSan, ARM64 plain, RV64 QEMU and AMD64/ARM64 DIS64 Sys gates. This now confirms the
+previous integer RX capture/socket correction batch across its architecture list;
+it does not establish the new FP batch's cross-architecture execution.
+
+New built-in Linux64 signal projection copies base FP state with integer reads/
+lock-free stores in the handler: x64 XMM16 x128, significant x87 eight x80 plus
+control/status/compressed tag/MXCSR; ARM64 V32 x128 and FPCR/FPSR through bounded
+FPSIMD records; current RV64 D F32 x64 and FCSR. No allocation/lock/FP evaluation/
+fenv/libc formatting in handler; no external GDB/Python/runtime library added.
+Native-fp PID returns a separate bounded named hexadecimal copied view with
+coverage=base. JITFP logs the same actual fault-time bits outside the handler.
+NaN/extended bit patterns are never converted through host floating formatting.
+No live CPU state or arbitrary pointer-read authority is supplied.
+
+The admitted guard now includes basic REAL MOVF/ADD/SUB/MUL/DIV/NEG alongside
+integer scalar operations. Existing actual RX-PC, positive kernel code, ACTIVE,
+no object guard, clean native checkpoint and unchanged control/root/operand
+identity gates remain. Source saves fenv before invocation and restores that
+pre-invocation policy before logging/VM error delivery after a safe landing.
+Save failure declines before effects; restore failure refuses recovery. Normal
+returns preserve prior arithmetic semantics. No current-op replay, VM REG reload,
+foreign continuation or global exclusive phase. Original managed frames/roots
+remain retained before handler in debug mode; GC/other sources keep running.
+Whole-function quarantine remains the fallback unit.
+
+ARM64 decoder checks <=4096 reserved bytes,16-byte record geometry and full528-byte
+FPSIMD payload, skips bounded unknown records and never follows external extra
+pointers. Wider XSAVE/AVX upper lanes, SVE/SME, RVV/Q extensions, SIMD guest
+operations, arbitrary helper/host faults, corrupt native memory and native-frame
+retention are outside this base scalar contract. Missing state is explicit.
+
+Actual REAL source guest requires exact9.0/14.0 results and retained array data.
+Test-only immutable RX pages independently load first/last base FP register
+canaries and change hardware rounding/flags before real illegal-instruction fault.
+AMD64 also executes a genuine unmasked SSE divide-by-zero SIGFPE. Default/debug
+x fast/locked runs verify copied FP bits/x87 ST0=1.0, kernel argument GPR,
+original REAL opcode, caller backtrace/payload/census, completed Fast work while
+source is held, normal catch and full source/collector retirement. Pre-handler
+source must observe its original downward rounding/inexact flag. Missing FP-copy
+and missing fenv restoration controls require precise DETECTED with normal app
+semantics. Test policy is reset only AFTER this observation, including omissions;
+that safe test-boundary cleanup is not production repair.
+
+Separate host unit checks560 truncations, malformed lengths, unknown skip,
+invalid extra pointer non-following, last-vector raw bits and bounded responses.
+ASan/UBSan record unit passes with detect_leaks=0 because sandbox ptrace prevents
+LeakSanitizer; no leak-coverage/whole-VM ASan claim. Generated RX is not instrumented.
+New selected groups15/15 ordinary and15/15 ThreadSanitizer pass. Public non-injected
+REAL example completes normally. All30 changed paths<=500 lines; explicit-error
+check4728 sources zero violations. RU/EN contracts and example committed.
+Mandatory native list now64 with jit-fp. New CI43630606649 is in_progress at
+inspection, not passed. Exact-tree backup patch reapplies in isolated index;
+peer journal prefix preserved. Docs: disVM/runtime/JIT-FP.md/.ru.md;
+example: disVM/examples/jit-fp. / RU: Добавлены copied base FP/SIMD-регистры,
+REAL RX faults и восстановление исходного FP-окружения; повтор операции запрещён,
+карантин всей функции сохранён. Более широкие vector extensions не заявляются.
