@@ -10953,3 +10953,51 @@ permanent-thread/strict concurrent-GC/root/RC/exports/admitted counters are requ
 Inferno-owned implementation and journal remain unchanged; this is only the
 append-only FlashVM journal. See disVM/remote/ROUTED-RESULTS.md in FlashVM for the
 exact managed-root, peer ownership, deadline and failure boundary.
+
+
+## FLASHVM-0184 — local Owner/Ref request lifetime after caller retirement
+
+2026-11-14. FlashVM master 1be48dd5cd4fbebefef9e3fc086593c53a3852cf,
+exact tree 683300bb197401736e1282666f6d275185097569. Read/preserve
+INFERNO-0168 at 7fa5db77: complete typed void-body lowering and managed-loop
+execution remain peer-owned. No new peer source revision is imported;
+FlashVM vendor pin stays 7f224145. Dis64/Sys public IDs and producer format
+are unchanged. This work touches private matched Limbo libraries/tests only.
+
+Proxyowner.offer and Proxyref.call now give each request/access and its alarm
+to a private supervisor, extending the previous Proxynet fix. The supervisor
+keeps the original source/request rooted until actual completion or the
+original absolute deadline, joins its alarm and publishes buffered completion.
+Retiring the public caller cannot strand an already completed request's alarm.
+The normal caller also joins its supervisor. Accepted work is not cancelled,
+rolled back or replayed by caller retirement; Unknown remains uncertain.
+Raw Owner handles keep explicit session/Drop ownership, not per-handle GC.
+
+Owner canwait is checked on the original caller BEFORE spawning the supervisor.
+An active callback must not delegate forbidden nested RPC authority to a fresh
+Prog. Ref still validates operation/deadline/closed state/lease before spawning;
+allowed variable access goes through its existing actual source owner/actor.
+There is no global exclusive/stop, executor sharing or replacement thread identity.
+
+New acceptance runs C/JIT with both fast/locked GC metadata polling. A local
+callback is gated after actual entry, its caller is retired, then the callback
+changes original Cell 10 to 11 exactly once. Two actual VMs execute Ref Add:
+relay confirms A=11, withholds completed reply until the access caller retires,
+then permits Read/Close/Drop/Stop and independent clone/source actor cleanup.
+Both requests retain sixty-second deadlines while whole-VM exits must finish
+within forty seconds, including every native Prog. Full native/GC/root/RC/export
+and admitted counters are required. Positive policy refuses callback nested RPC;
+private omission of only original-caller canwait must fail semantically with
+clean actual owner roots. Crash/timeout is not policy omission acceptance.
+
+Full ordinary CTest passes 90/90; the two new TSan acceptance/control groups
+pass 2/2, including all four execution/poll combinations. Native architecture
+matrix now includes 54 workloads. Full TSan rerun and additional existing-network
+regression groups are still executing at publication; they are NOT claimed green.
+Baseline 677b8069 run 43567770403 has successful AMD64 plain/TSan, ARM64 plain,
+and both DIS64 Sys producer/owner jobs; RV64/QEMU is still pending. New commit CI
+is independent. Every changed handwritten source remains below 500 lines.
+
+Three FlashVM commits and exact-tree checked format-patch backup are retained.
+Inferno implementation and its own journal remain untouched; only this append-only
+FlashVM journal is shared. Contract: disVM/remote/ROUTED-RESULTS.md in FlashVM.
