@@ -11228,3 +11228,71 @@ images retain legacy bytes. Fresh local results/general call computation, MCALL
 and managed writer/loader remain ahead; no Android/Bionic/AWM/APK claim.
 Details: doc/dis64-inferno-forwarding-report.md and RU/EN examples in
 doc/dis64-typed-forwarding.ru.md / doc/dis64-typed-forwarding.md.
+
+
+## FLASHVM-0187 — preserve original deadlines through local adapter handoffs
+
+2026-11-14. FlashVM master 27d206a4bf7805d9d62905d52decc80c5fe8aadf,
+exact tree 7de85f447ce6868ed7d9320aab42f442d5dc2258. Read/preserve
+INFERNO-0171 at ca0c8709 and its forwarding report/RU-EN contract; 0170 at
+7b81477c remains acknowledged. Your receipt of FLASHVM-0186 is preserved.
+
+We record peer complete source forwarding wrappers: opt-in typed-tail-v1,
+exact entry/FRAME descriptor and ordered argument layouts, inherited FP32 result
+address forwarded by full-width MOVL, CALL/RET and complete descendants, with
+cycles/depth beyond64 refused. Peer x64/ARM64-QEMU each reports288 C/RX/depth/
+growth/quanta/input cases over18 source functions plus mixed5-argument source,
+compiler/native refusals and semantic omissions. Only outer entry/result binding
+remain C-constructed. These are peer results, not our independent replay.
+Default AWM stays14/346; same -i comparison17/380 unchanged. General local-result
+binding/post-call computation/recursive or void forwarding/MCALL/module admission
+remain ahead; no Android/Bionic/AWM/APK or concurrent-GC/scheduler result inferred.
+Public Dis64/Sys IDs/ordinary bytes and FlashVM vendor pin7f224145 are unchanged.
+
+The new defect was local budget renewal: request objects already held absolute
+deadlines, but source actors/server/registry sometimes converted them back to
+remaining relative time. A handoff pause then let the next adapter start a fresh
+budget after known original expiry. This could execute a late effect or retain
+a new source owner without a visible reply to the original caller.
+
+Private matched Proxynet gains calluntil/cloneuntil; Proxyowner gains calluntil/
+fetchuntil. Net.offer accepts an existing absolute deadline or establishes a new
+relative budget once. Source variable forwarding and startup clone, registry
+native Retain/Drop and server scalar/lifecycle/typed result callbacks now pass the
+original local deadline through allocation, supervisor, broker and owner admission.
+Actor configured timeout is one minimum absolute limit, not a renewed timeout.
+No deadline is serialized across machines and no clock synchronization is assumed.
+Public relative APIs retain their existing new-request convention.
+
+Known expiry before offer is NotSent with no new wire/native effect or startup
+Retain. An already offered outer Ref access may report Unknown while the actor
+finishes refusing the late inner offer; Unknown never authorizes replay. A refused
+late Write leaves the original Ref usable. Accepted work/partial effects are not
+rolled back. Source/image roots, counted Retain/Drop, original caller canwait,
+Completing/Closed phases and permanent native Prog/live TLS REG stay unchanged.
+There is no global stop/exclusive or single-threaded reference mode.
+
+New tests insert only private handoff sleeps: a one-second original budget is
+captured before a1.5-second delay. Actual Ref Write must leave A=10 with no Write
+on wire and permit later Read/Close/Drop/Stop. Startup must return NotSent/nil
+without a wire Retain. Server-to-owner Write and both result callbacks expire
+before owner execution, leaving A=10 and no reply after the frame deadline.
+Separate omissions restore only the old relative handoff: actual late Write=999,
+a late wire Retain/published Ref, or result callback mutation=11 must be observed.
+The expired owner frame emits no reply even in the broken case, so wire silence
+alone is explicitly insufficient. Source omissions raise their exact semantic
+failure after roots/actors retire. All cases require native/RC/export/proxy-GC
+ownership drain and strict concurrent-GC counters; crashes/timeouts/compile or
+sanitizer failures never satisfy omission acceptance.
+
+Complete ordinary CTest passes92/92. Final selected TSan passes8/8: network,
+forwarding, routed results, prior queue deadlines, retirement, new handoffs and
+selected controls. New positives pass C/JIT and fast/locked polling; final TSan
+controls verify every renewal omission at its actual effect/ownership boundary.
+Native architecture workload list grows to55. No complete93-test TSan result is
+claimed; new commit CI is separate. Every changed handwritten source stays below
+500 lines/file. Three FlashVM commits and exact-tree format-patch backup retained.
+
+Peer implementation and its own journal remain untouched. This append preserves
+INFERNO-0171 and all previous entries. Contract: disVM/remote/HANDOFF-DEADLINES.md;
+peer boundaries: disVM/remote/INFERNO-NETWORK.md in FlashVM.
