@@ -39,7 +39,7 @@ typedoperand(int mode, Addr *a, int kind, int immediate, int middle,
 }
 
 static int
-typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out)
+typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out, unsigned char *result)
 {
 	unsigned int sm,mm=AXXX,dm;
 	int sk=Tint,mk=Tint,dk=Tint,sourcekind=0,destkind=0,middlekind=0;
@@ -92,6 +92,12 @@ typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out)
 		if(in->dm!=Apc || in->branch==nil || in->branch->pc<p->first || in->branch->pc>=stop || in->d.offset!=in->branch->pc)
 			return typedfail(p,"branch-owner");
 		out->destination=in->branch->pc-p->first; dm=AIMM;
+	}else if(in->dm==Afpind){
+		if(p->resultkind==Tnone || in->d.reg!=16 || in->d.offset!=0 ||
+		   (dk==TypedRoot ? !(p->resultkind==Tstring || p->resultkind==Tref || p->resultkind==Tarray || p->resultkind==Tlist || p->resultkind==Tchan || p->resultkind==Tmodule) :
+		    (dk!=p->resultkind && !(dk==Tint && p->resultkind==Tfix))) ||
+		   (binary && in->mm==Anone)) return typedfail(p,"result-destination");
+		out->destination=32; dm=AFP|AIND; destkind=p->resultkind; *result=1;
 	}else if(!typedoperand(in->dm,&in->d,dk,0,0,p,&out->destination,&dm,&destkind)) return 0;
 	if(branch==2){out->mode=SRC(AXXX)|DST(dm);return 1;}
 	if(!typedoperand(in->sm,&in->s,sk,immediate,0,p,&out->source,&sm,&sourcekind)) return 0;
@@ -105,6 +111,35 @@ typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out)
 	return 1;
 }
 
+/* Meet all reachable paths: a caller-owned result must be defined before RET. */
+static int
+typedresults(Dis64TypedBody *p)
+{
+	unsigned char *state;
+	unsigned int *queue,head=0,tail=0,n,pc,edge[2],i,flow,joined;
+	int ok=1;
+	if(p->resultkind==Tnone) return 1;
+	state=allocmem(p->count);memset(state,0,p->count);
+	queue=allocmem((2*p->count+1)*sizeof(*queue));state[0]=1;queue[tail++]=0;
+	while(head<tail){
+		pc=queue[head++];flow=p->returns[pc]?3:state[pc];n=0;
+		if(p->code[pc].op==IRET) continue;
+		if(p->code[pc].op==IJMP)edge[n++]=p->code[pc].destination;
+		else{
+			if(p->code[pc].op==IBEQW || p->code[pc].op==IBNEW || p->code[pc].op==IBLTW || p->code[pc].op==IBLEW || p->code[pc].op==IBGTW || p->code[pc].op==IBGEW ||
+			   p->code[pc].op==IBEQL || p->code[pc].op==IBNEL || p->code[pc].op==IBLTL || p->code[pc].op==IBLEL || p->code[pc].op==IBGTL || p->code[pc].op==IBGEL ||
+			   p->code[pc].op==IBEQF || p->code[pc].op==IBNEF || p->code[pc].op==IBLTF || p->code[pc].op==IBLEF || p->code[pc].op==IBGTF || p->code[pc].op==IBGEF)edge[n++]=p->code[pc].destination;
+			if(pc+1>=p->count){ok=typedfail(p,"result-fallthrough");break;}edge[n++]=pc+1;
+		}
+		for(i=0;i<n;i++){
+			joined=state[edge[i]]?state[edge[i]]&flow:flow;
+			if(joined!=state[edge[i]]){state[edge[i]]=joined;queue[tail++]=edge[i];}
+		}
+	}
+	if(ok)for(pc=0;pc<p->count;pc++)if(p->code[pc].op==IRET && state[pc]==1){p->badpc=p->first+pc;ok=typedfail(p,"undefined-result");break;}
+	free(state);free(queue);return ok;
+}
+
 int
 dis64typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned int stop, Dis64TypedBody *p)
 {
@@ -113,27 +148,37 @@ dis64typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsign
 	if(p->code!=nil || p->reason!=nil) return typedfail(p,"nonempty-output");
 	if(fn!=nil && fn->pc!=nil && fn->pc->pc>=0) p->first=fn->pc->pc;
 	if(fn==nil || fn->ty==nil || fn->pc==nil || fn->ty->kind!=Tfn || fn->ty->varargs ||
-	   fn->handler || fn->ty->polys!=nil || fn->ty->tof==nil || fn->ty->tof->kind!=Tnone || fn->pc->pc<0)
+	   fn->handler || fn->ty->polys!=nil || fn->ty->tof==nil || fn->pc->pc<0)
 		return typedfail(p,"function-result-or-polymorphism");
+	p->resultkind=fn->ty->tof->kind;
+	switch(p->resultkind){
+	case Tnone:break;
+	case Tbyte:p->resultbytes=1;break;
+	case Tint:case Tfix:p->resultbytes=4;break;
+	case Tbig:case Treal:case Tstring:case Tref:case Tarray:case Tlist:case Tchan:case Tmodule:p->resultbytes=8;break;
+	default:return typedfail(p,"aggregate-result");
+	}
 	p->first=fn->pc->pc;
 	if(count>TypedInstructions || stop>count || stop<=p->first) return typedfail(p,"code-limit");
 	if(!dis64layoutstorage(fn->ty->ids,fn->locals,fn->desc,1,&p->frame) ||
 	   !dis64layoutstorage(globals,nil,descriptors,0,&p->data)) return typedfail(p,"storage-layout");
 	p->count=stop-p->first; p->code=allocmem(p->count*sizeof(*p->code));
+	p->returns=allocmem(p->count);memset(p->returns,0,p->count);
 	for(in=input;in!=nil;in=in->next){
 		if(in->op==INOOP || in->pc<p->first || in->pc>=stop) continue;
 		p->badpc=in->pc;
 		if(at>=p->count || in->pc!=p->first+at) return typedfail(p,"instruction-order");
-		if(!typedinst(in,stop,p,p->code+at++)) return 0;
+		if(!typedinst(in,stop,p,p->code+at,p->returns+at)) return 0;
+		at++;
 	}
 	if(at!=p->count) return typedfail(p,"instruction-count");
-	return 1;
+	return typedresults(p);
 }
 
 void
 dis64typedfree(Dis64TypedBody *p)
 {
-	free(p->code); dis64layoutfree(&p->frame); dis64layoutfree(&p->data); memset(p,0,sizeof(*p));
+	free(p->code);free(p->returns); dis64layoutfree(&p->frame); dis64layoutfree(&p->data); memset(p,0,sizeof(*p));
 }
 
 static void
@@ -204,15 +249,16 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
 		fn=functions[n]; stop=count;
 		for(j=0;j<nfunctions;j++) if(functions[j]->pc->pc>fn->pc->pc && functions[j]->pc->pc<stop) stop=functions[j]->pc->pc;
 		memset(&p,0,sizeof(p)); dis64typedlower(fn,globals,first,count,stop,&p);
-		fprint(2,"DIS64_TYPED {\"schema\":\"inferno-typed-body-v1\",\"name\":");typedquote(fn->sym);
+		fprint(2,"DIS64_TYPED {\"schema\":\"inferno-typed-body-v2\",\"name\":");typedquote(fn->sym);
 		fprint(2,",\"first\":%ud,\"accepted\":%s",p.first,p.reason==nil?"true":"false");
 		if(p.reason!=nil) fprint(2,",\"reason\":\"%s\",\"pc\":%ud",p.reason,p.badpc);
 		else{
+			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);
 			fprint(2,",\"descriptor\":%d,\"data_descriptor\":%d,\"frame\":",fn->desc->id,descriptors->id);
 			typedlayout(&p.frame); fprint(2,",\"data\":"); typedlayout(&p.data);
 			fprint(2,",\"args\":");typedbindings(fn->ty->ids,1);
 			fprint(2,",\"code\":[");
-			for(i=0;i<p.count;i++) fprint(2,"%s[%ud,%ud,%ld,%ld,%ld]",i?",":"",p.code[i].op,p.code[i].mode,p.code[i].source,p.code[i].middle,p.code[i].destination);
+			for(i=0;i<p.count;i++) fprint(2,"%s[%ud,%ud,%ld,%ld,%ld,%ud]",i?",":"",p.code[i].op,p.code[i].mode,p.code[i].source,p.code[i].middle,p.code[i].destination,p.returns[i]?(p.resultbytes | (p.resultkind==Tstring || p.resultkind==Tref || p.resultkind==Tlist || p.resultkind==Tarray || p.resultkind==Tchan || p.resultkind==Tmodule?16:0)):0);
 			fprint(2,"],\"globals\":");typedbindings(globals,0);
 		}
 		fprint(2,"}\n"); dis64typedfree(&p);

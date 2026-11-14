@@ -318,3 +318,5 @@ the broader startup closure. Scalar mode stops at managed LOAD; the private
 managed mode additionally exposes the unsupported general provider/caller shapes
 and shell exception tables. General argument-bearing entry frames, library bodies
 and required variadic imports remain necessary before claiming a working AWM APK.
+
+Further native64 value-return work: [dis64-typed-returns.md](dis64-typed-returns.md).

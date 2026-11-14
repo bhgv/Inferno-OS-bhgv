@@ -97,7 +97,7 @@ def main():
                     source += (ROOT/'utils/tests/native64-sys-format.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_sysformat_main(int argc, char **argv)', 1)
                     source += (ROOT/'utils/tests/native64-sys-write.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_syswrite_main(int argc, char **argv)', 1)
                     vm = (ROOT/'libinterp/xec.c').read_text()
-                    bodies = '#define OP(fn) void fn(void)\n'+'\n'.join(function(vm, signature) for signature in ('static Type*\nmoduletype(', 'static int\nmoduleentry(', 'static int\nframefits(', 'OP(frame)', 'OP(mframe)', 'OP(mcall)', 'OP(movw)', 'OP(movp)', 'OP(movl)', 'OP(movf)', 'OP(cvtwl)', 'OP(cvtwf)', 'OP(cvtlf)'))
+                    bodies = '#define OP(fn) void fn(void)\n'+'\n'.join(function(vm, signature) for signature in ('static Type*\nmoduletype(', 'static int\nmoduleentry(', 'static int\nframefits(', 'OP(frame)', 'OP(mframe)', 'OP(mcall)', 'OP(movb)', 'OP(movw)', 'OP(movp)', 'OP(movl)', 'OP(movf)', 'OP(cvtwl)', 'OP(cvtwf)', 'OP(cvtlf)'))
                     bodies += '\n#define JMP(r) branchpc(R.r, exBounds)\n'+function(vm,'static void\nbranchpc(')+'\n'
                     bodies += '\n'.join(function(vm,'OP('+name+')') for name in ('addw','subw','addl','addf','jmp','beqw','bnew','bltw','blew','bgtw','bgew','lenl'))
                     bodies += '\n'+function(strings,'OP(lenc)')+'\n'
@@ -144,7 +144,9 @@ def main():
                             ('fp-current-mp', '@unit', 'R.s = (uchar*)input.value+bases[1]+cell->setupoffset; // Actual MP input at defining PC.', 'R.s = &text; // Deliberately substitute the old String seed.'),
                             ('fp-order', '@unit', 'index = bank->order[i]; // Compiler-defined preparation order.', 'index = bank->order[bank->steps-1-i]; // Deliberately reverse preparation.'),
                             ('typed-field-origin', '@unit', 'origin=(uchar*)owner.value+bases[cell->space]+cell->offset; // Typed ADT field origin.', 'origin=(uchar*)owner.value+bases[cell->space]+store->source; // Deliberately reuse the legacy ADT field offset.'),
-                            ('typed-body-branch', '@unit', 'target=program+step->d;R.d=&target;', 'target=program+pc+1;R.d=&target;')):
+                            ('typed-body-branch', '@unit', 'target=program+step->d;R.d=&target;', 'target=program+pc+1;R.d=&target;'),
+                            ('typed-return-width', 'native64-typed-return.h', 'b->width!=width', '0'),
+                            ('typed-return-map', 'native64-typed-return.h', '!= b->reference)', '!= b->reference && 0)')):
                         known_omissions.add(name)
                         if args.omission and name not in args.omission:
                             continue

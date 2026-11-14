@@ -6,8 +6,11 @@
 typedef struct Dis64TypedBody Dis64TypedBody;
 struct Dis64TypedBody {
 	Dis64Instruction *code;
+	unsigned char *returns;
 	Dis64Layout frame, data;
 	unsigned int first, count, badpc;
+	int resultkind;
+	unsigned int resultbytes;
 	char *reason;
 };
 /* Trusted, typechecked compiler IR only. Zero output and free after success/refusal. */

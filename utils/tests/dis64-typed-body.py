@@ -19,6 +19,12 @@ Kernel: module {
     run: fn(ctxt: ref Draw->Context, argv: list of string, text: string, n: int);
     mix: fn(x: big, y: real, k: int);
     guard: fn(text: string, n: int);
+    count: fn(n: int): int;
+    identity: fn(text: string): string;
+    wide: fn(x: big): big;
+    fraction: fn(x: real): real;
+    octet: fn(x: byte): byte;
+    items: fn(xs: list of string): list of string;
 };
 answer: int;
 result: string;
@@ -43,6 +49,12 @@ guard(text: string, n: int)
     answer=len text;
     result=text;
 }
+count(n: int): int { total:=0; while(n>0){total+=n;n--;} return total; }
+identity(text: string): string { return text; }
+wide(x: big): big { return x; }
+fraction(x: real): real { return x; }
+octet(x: byte): byte { return x; }
+items(xs: list of string): list of string { return xs; }
 '''
 
 
@@ -61,6 +73,7 @@ def compile_source(limbo,work,source,filename=None):
 
 
 def verify(data,record):
+    assert record['schema']=='inferno-typed-body-v2'
     header,code,types=READ['legacy_instructions'](data,with_types=True)
     if not record['accepted']:
         assert 'code' not in record and 'frame' not in record and 'reason' in record
@@ -82,7 +95,7 @@ def verify(data,record):
         assert {i*8+b for i,value in enumerate(serializedmap) for b in range(8) if value&(0x80>>b)}==oldmap
         offsets[name]=mapping
     branches=set(range(87,111))|set(range(129,135))
-    for index,(op,mode,s,m,d) in enumerate(record['code']):
+    for index,(op,mode,s,m,d,returned) in enumerate(record['code']):
         legacy=code[first+index]
         assert op==legacy['op'] and mode==legacy['mode']
         for label,address,old,new in (('s',(mode>>3)&7,legacy['s'],s),('d',mode&7,legacy['d'],d)):
@@ -90,6 +103,8 @@ def verify(data,record):
             elif op in branches|{13} and address==2 and label=='d':
                 assert new==old[0]-first and 0<=new<len(record['code'])
             elif address==2: assert new==old[0]
+            elif address==5 and label=='d':
+                assert old==[16,0] and new==32 and returned==(record['result'][1] | (16 if record['result'][0] in (3,6,10,11,12,13) else 0)) and record['result'][1]>0
             else: assert address in (0,1) and new==offsets['frame' if address else 'data'][old[0]][0]
         if mode&0xc0:
             mm=mode&0xc0
@@ -99,8 +114,8 @@ def verify(data,record):
 
 def generate(limbo,work,env=None):
     data,records=compile_source(limbo,work,SOURCE)
-    assert {r['name'] for r in records}=={'run','mix','guard'} and all(r['accepted'] for r in records),records
-    lines=['typedef struct Native64TypedStep { unsigned int op,mode; long s,m,d; } Native64TypedStep;']
+    assert {r['name'] for r in records}=={'run','mix','guard','count','identity','wide','fraction','octet','items'} and all(r['accepted'] for r in records),records
+    lines=['typedef struct Native64TypedStep { unsigned int op,mode; long s,m,d; unsigned int returned; } Native64TypedStep;']
     for record in records:
         verify(data,record);name=record['name']
         lines+=['static const Native64TypedStep typed_'+name+'[] = {']+['{'+','.join(map(str,row))+'},' for row in record['code']]+['};']
@@ -132,7 +147,7 @@ def generate(limbo,work,env=None):
         assert attempted==records
     for source in (
         'implement Nope; Nope: module { init: fn(); }; init(){a:=array[2]of int; a[0]=1;}',
-        'implement Nope; Nope: module { f: fn(): int; }; f():int{return 1;}',
+        'implement Nope; Nope: module { f: fn(): (int,int); }; f():(int,int){return (1,2);}',
     ):
         refused,rows=compile_source(limbo,work,source)
         assert any(not r['accepted'] for r in rows)
@@ -165,6 +180,8 @@ def main():
             ('in->branch->pc>=stop','0','BRANCH_OWNER'),
             ('sourcekind!=Tany && sourcekind!=destkind','0','REF_CLASS'),
             ('reference || width==8 ||','reference ||','WIDE_IMMEDIATE'),
+            ('p->code[pc].op==IRET && state[pc]==1','0','RESULT_DEFINED'),
+            ('state[edge[i]]&flow','state[edge[i]]|flow','RESULT_JOIN'),
         ):
             assert production.count(before)==1
             altered=work/(marker+'.c');modified=production.replace(before,after)

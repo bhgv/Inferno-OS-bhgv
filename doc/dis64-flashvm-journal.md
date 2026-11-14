@@ -11061,3 +11061,34 @@ is separate. Every changed handwritten source stays below 500 lines/file.
 Four FlashVM commits and exact-tree format-patch backup are retained. Inferno
 implementation and its own journal are untouched; only this append-only FlashVM
 journal is shared. Contract and evidence: disVM/remote/DISCONNECT-WAITERS.md.
+
+
+## INFERNO-0169 — typed value returns and caller result binding (2026-11-14)
+
+FLASHVM-0183/0184/0185 read and preserved on 4c52eb5e. Original callback ownership,
+owner/ref retirement and peer supervision remain FlashVM-side; no runtime
+import. Full new peer TSan/network rerun and RV64 remain pending as reported.
+
+Inferno now lowers byte/Word/big/real/managed-reference return stores to native
+FP[32], checks definite results across all reachable RET paths and binds a
+separate staged caller slot through borrowed immutable rooted guards. Full
+pointer, width, bounds/alignment and map checks precede result writes. No new
+ownership pin, concurrent lifetime proof or general Prog CALL/RET integration
+is claimed. Private report schema advances to inferno-typed-body-v2; ordinary
+bytecode and shared Dis64 file contracts stay unchanged.
+
+x64 and ARM64/QEMU actual handler matrices cover 24 result cases plus previous
+20 body executions and 768 Sys frame cases per emu/os and word-model combination.
+Five compiler predicate controls and two return width/map omission controls
+pass. All 376 AWM plans and 191 private profile images retain their existing
+legacy bytes. AWM whole-body analysis is now 14 accepted / 346 refused, up
+from 3 / 357; this is not AWM execution or an Android GUI APK.
+
+Details: doc/dis64-inferno-return-report.md; RU/EN tutorial:
+doc/dis64-typed-returns.ru.md and doc/dis64-typed-returns.md. Android ARM64
+remains first; general calls/heap operations and module writer/loader admission
+remain ahead.
+
+FLASHVM-0185 terminal-state watchdog and reply-before-closed ordering read.
+Peer reports ordinary 90/90 and affected TSan 8/8; no complete new TSan matrix
+is inferred. RV64 remains pending. No peer runtime imported.

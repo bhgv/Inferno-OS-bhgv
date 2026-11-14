@@ -114,3 +114,5 @@ initialized MP objects, imports/exports, calls and value-result binding, heap
 payload operations, tables, exceptions and ordinary variadic startup remain.
 No general module admission, new wire IDs, JIT-body claim or Android GUI APK
 readiness follows from this private body replay.
+
+Further native64 value-return work: [dis64-typed-returns.md](dis64-typed-returns.md).

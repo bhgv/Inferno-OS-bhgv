@@ -115,3 +115,5 @@ wide-immediate и ограничения кода. Три намеренно у�
 операции с содержимым heap, таблицы, исключения и обычный variadic-startup.
 Общий допуск модулей, новые wire-ID, исполнение тела JIT и готовность Android
 GUI APK этим этапом не заявляются.
+
+Further native64 value-return work: [dis64-typed-returns.ru.md](dis64-typed-returns.ru.md).

@@ -50,6 +50,21 @@ int main(void)
 		assert(!dis64typedlower(&function,globals,code,3,3,&p));dis64typedfree(&p);local=save; /* WIDE_IMMEDIATE */
 	}
 	args[0].ty=&string;
+	fn.tof=&word;code[0].op=IMOVW;code[0].sm=Aimm;code[0].s.offset=7;code[0].dm=Afpind;code[0].d.reg=16;code[0].d.offset=0;
+	assert(dis64typedlower(&function,globals,code,3,3,&p) && p.resultbytes==4 && p.returns[0] && p.code[0].destination==32);dis64typedfree(&p);
+	code[0].d.offset=4;assert(!dis64typedlower(&function,globals,code,3,3,&p));dis64typedfree(&p);code[0].d.offset=0;
+	code[0].d.reg=20;assert(!dis64typedlower(&function,globals,code,3,3,&p));dis64typedfree(&p);
+	code[0].dm=Afp;code[0].d.reg=36;
+	assert(!dis64typedlower(&function,globals,code,3,3,&p) && strcmp(p.reason,"undefined-result")==0);dis64typedfree(&p); /* RESULT_DEFINED */
+	{
+		Inst a=code[0],b=code[1];
+		code[0].op=IBEQW;code[0].mm=Afp;code[0].m.reg=36;code[0].dm=Apc;code[0].branch=code+2;code[0].d.offset=2;
+		code[1].op=IMOVW;code[1].sm=Aimm;code[1].s.offset=7;code[1].dm=Afpind;code[1].d.reg=16;code[1].d.offset=0;
+		assert(!dis64typedlower(&function,globals,code,3,3,&p) && strcmp(p.reason,"undefined-result")==0);dis64typedfree(&p); /* RESULT_JOIN */
+		code[0].branch=code+1;code[0].d.offset=1;
+		assert(dis64typedlower(&function,globals,code,3,3,&p));dis64typedfree(&p);code[0]=a;code[1]=b;
+	}
+	fn.tof=&none;
 	code[0].op=IJMP;code[0].sm=Anone;code[0].dm=Apc;code[0].branch=&outside;outside.pc=3;code[0].d.offset=3;
 	assert(!dis64typedlower(&function,globals,code,3,3,&p));dis64typedfree(&p); /* BRANCH_OWNER */
 	code[0].branch=code+2;code[0].d.offset=2;
