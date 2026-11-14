@@ -134,3 +134,5 @@ startup source outputs,376 layouts and191 existing private images retain their
 legacy bytes. Both managed file profiles still refuse the mixed local-result
 module. General calls, managed module writing/loading and Android GUI startup
 remain unfinished; no Android/Bionic device, AWM execution or ready APK is claimed.
+
+Multiple calls, prefix computation and void results: [dis64-typed-multiple-calls.md](dis64-typed-multiple-calls.md).

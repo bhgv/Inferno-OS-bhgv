@@ -121,3 +121,5 @@ ARM64 core и runtime — UBSan. Прежнее ограничение runtime-A
 376 раскладок и191 прежнего частного образа. Оба файловых профиля по-прежнему
 отказывают управляемому модулю этого набора. Общие вызовы, writer/loader
 и старт Android GUI ещё впереди; Android/Bionic, AWM и готовый APK не заявляются.
+
+Multiple calls, prefix computation and void results: [dis64-typed-multiple-calls.ru.md](dis64-typed-multiple-calls.ru.md).

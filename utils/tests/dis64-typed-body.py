@@ -58,15 +58,16 @@ items(xs: list of string): list of string { return xs; }
 '''
 
 
-def compile_source(limbo,work,source,filename=None,tail=False,local=False):
+def compile_source(limbo,work,source,filename=None,tail=False,local=False,multi=False):
     file=Path(filename) if filename else work/'typed-body.b'
     if filename is None:file.write_text(source)
     ordinary,traced=work/'plain.dis',work/'typed.dis'
-    command=[str(limbo)]+(['-i'] if tail or local else [])+['-I',str(ROOT/'module'),'-o']
-    env=dict(os.environ);env.pop('LIMBO_DIS64_TYPED',None);env.pop('LIMBO_DIS64_TYPED_TAIL',None);env.pop('LIMBO_DIS64_TYPED_LOCAL',None)
+    command=[str(limbo)]+(['-i'] if tail or local or multi else [])+['-I',str(ROOT/'module'),'-o']
+    env=dict(os.environ);env.pop('LIMBO_DIS64_TYPED',None);env.pop('LIMBO_DIS64_TYPED_TAIL',None);env.pop('LIMBO_DIS64_TYPED_LOCAL',None);env.pop('LIMBO_DIS64_TYPED_MULTI',None)
     traced_env=dict(env,LIMBO_DIS64_TYPED='1')
     if tail:traced_env['LIMBO_DIS64_TYPED_TAIL']='1'
     if local:traced_env['LIMBO_DIS64_TYPED_LOCAL']='1'
+    if multi:traced_env['LIMBO_DIS64_TYPED_MULTI']='1'
     READ['checked_run'](command+[str(ordinary),str(file)],env=env,check=True,capture_output=True)
     result=READ['checked_run'](command+[str(traced),str(file)],env=traced_env,check=True,capture_output=True,text=True)
     assert ordinary.read_bytes()==traced.read_bytes()

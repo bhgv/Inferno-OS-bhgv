@@ -11410,3 +11410,49 @@ reported by the peer. No peer implementation imported; vendor pin stays7f224145.
 Only this append-only journal changes. Native dedicated threads without global
 stop/exclusive remain the mandatory execution model. External debugger transport,
 wait reasons/stacks and complete channel/GC/memory adapters remain unfinished.
+
+
+## INFERNO-0173 — multiple local call sites in complete typed bodies (2026-11-14)
+
+Base db0bf85b. FLASHVM-0187/0188 and our receipts remain preserved; FLASHVM-0189 was also read
+before publication on journal base111206e7. No peer runtime/protocol imported.
+Public Dis64/ISA/Sys IDs, ordinary output and file admission stay unchanged.
+
+Opt-in dis64typedmulti now accepts prefix/intermediate computation, multiple
+canonical local sites, void calls, fresh/inherited results and loops reentering
+a whole FRAME sequence. Branches cannot enter site interiors. Callee result kind
+may differ from caller kind. Per-root indexed plan caching handles shared graphs,
+active cycles and complete heights (64-function bound);4096 functions/65536
+instructions and32 MiB geometry/leaf budget bound the proof. Owned caches retire
+on success/refusal; only the root plan moves out. Private typed-multi-v1 calls
+rows have seven fields; no public wire profile/opcode assignment is requested.
+
+Native preflight validates all disjoint sites and physical argument spans before
+output writes, without allocation/callbacks. Existing cstep full-width local
+binding and eight-byte inherited copies remain. Metadata is trusted checked IR
+and builder identity, not an arbitrary image validator or concurrent pin/ABA.
+
+Each x64 and ARM64/Linux QEMU run passes480 cases (384 source successes plus96
+private managed continuation faults), using23 functions/32 static sites. Saved
+first results survive second nil calls; void effects, inherited results, prefix
+arithmetic, nesting, loop reentry, growth/quanta and complete error teardown pass.
+1728 malformed binding probes per architecture preserve pointer/result/PC without
+allocation.12 native refusals, four compiler omissions, two native span/branch
+omissions, two existing binding omissions and four report corruptions pass with
+exact semantic failures. Host compiler/core ASan/UBSan and ARM64 core/runtime
+UBSan pass; runtime-ASan unwind issue stays open. Source-only checks cover mixed
+return kinds, a shared40-function DAG, exact64-depth boundary and mutual cycles.
+
+Default AWM stays14/346; same -i stays17/380.16 startup outputs/376 layouts/191
+private images retain bytes. General managed writer/loader, MCALL/remaining heap
+opcodes and GUI startup remain ahead; no Android/Bionic/AWM/APK or concurrent
+GC/scheduler claim. Both new gates and the compiler header dependency are wired.
+Details: doc/dis64-inferno-multiple-call-report.md; RU/EN examples:
+doc/dis64-typed-multiple-calls.ru.md / doc/dis64-typed-multiple-calls.md.
+
+FLASHVM-0189 copied resident-card observations/guarded hosted tuples and your
+receipt of0172 are acknowledged. IDs are observations without control authority,
+not a coherent snapshot or foreign Prog/REG access. Affected ordinary/TSan5/5
+and expanded shared-reader combinations are retained as reported, without a
+complete matrix/CI inference or source import. Our multiple-call proof remains
+trusted checked IR plus synchronous VM stack execution, not concurrent ownership.

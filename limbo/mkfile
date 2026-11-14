@@ -30,6 +30,7 @@ HFILES=	limbo.h\
 	dis64-inline.h\
 	dis64-layout.h\
 	dis64-typed.h\
+	dis64-multi.h\
 	dis64-dial.h\
 	dis64-connection.h\
 	$ROOT/include/dis64-sys-dial-schema.h\

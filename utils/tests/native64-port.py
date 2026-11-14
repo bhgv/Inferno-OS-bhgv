@@ -201,6 +201,10 @@ def main():
         build, env, logs/'typed-local-result-calls.log')
     run([sys.executable, str(tests/'dis64-typed-local-unit.py')],
         build, env, logs/'typed-local-result-ir.log')
+    run([sys.executable, str(tests/'native64-typed-multi.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-multiple-calls.log')
+    run([sys.executable, str(tests/'dis64-typed-multi-unit.py')],
+        build, env, logs/'typed-multiple-call-ir.log')
     results = [sys.executable, str(tests/'native64-result-calls.py')]
     binding = [sys.executable, str(tests/'native64-disc-binding.py')]
     run(binding, build, env, logs/'disc-binding.log')

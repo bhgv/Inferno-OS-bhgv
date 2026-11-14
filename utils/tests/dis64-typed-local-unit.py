@@ -21,7 +21,7 @@ def main():
         subprocess.run(command,check=True);subprocess.run(runner+[str(binary)],check=True,timeout=30)
         print('PASS local-result IR: exact typed destination, fresh-result definition, setup branch isolation, instruction order and allocation retirement',flush=True)
         production=core.read_text()
-        for before,after,marker in (('p->returns[pc]<32','1','LOCAL_RESULT_DEFINED'),('in->branch->pc<=call->pc','0','LOCAL_SETUP_BRANCH')):
+        for before,after,marker in (('p->returns[pc]<=32','1','LOCAL_RESULT_DEFINED'),('in->branch->pc<=call->pc','0','LOCAL_SETUP_BRANCH')):
             assert production.count(before)==1
             altered=work/(marker+'.c');altered.write_text(production.replace(before,after))
             subprocess.run([str(altered)if x==str(core)else x for x in command],check=True)

@@ -122,7 +122,7 @@ typedresults(Dis64TypedBody *p)
 	state=allocmem(p->count);memset(state,0,p->count);
 	queue=allocmem((2*p->count+1)*sizeof(*queue));state[0]=1;queue[tail++]=0;
 	while(head<tail){
-		pc=queue[head++];flow=(p->returns[pc] && p->returns[pc]<32)?3:state[pc];n=0;
+		pc=queue[head++];flow=(p->returns[pc] && p->returns[pc]<=32)?3:state[pc];n=0;
 		if(p->code[pc].op==IRET) continue;
 		if(p->code[pc].op==IJMP)edge[n++]=p->code[pc].destination;
 		else{
@@ -292,10 +292,12 @@ dis64typedlocal(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsig
     return typedtail(fn,globals,functions,nf,input,count,stop,p,active,0,1);
 }
 
+#include "dis64-multi.h"
+
 void
 dis64typedfree(Dis64TypedBody *p)
 {
-	free(p->code);free(p->returns); dis64layoutfree(&p->frame); dis64layoutfree(&p->data); memset(p,0,sizeof(*p));
+	free(p->sites);free(p->code);free(p->returns); dis64layoutfree(&p->frame); dis64layoutfree(&p->data); memset(p,0,sizeof(*p));
 }
 
 static void
@@ -363,17 +365,24 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
 	char *enabled=getenv("LIMBO_DIS64_TYPED");
 	char *tail=getenv("LIMBO_DIS64_TYPED_TAIL");
 	char *local=getenv("LIMBO_DIS64_TYPED_LOCAL");
+	char *multi=getenv("LIMBO_DIS64_TYPED_MULTI");
 	if(enabled==nil || strcmp(enabled,"1")!=0) return;
 	for(n=0;n<nfunctions;n++){
 		fn=functions[n]; stop=count;
 		for(j=0;j<nfunctions;j++) if(functions[j]->pc->pc>fn->pc->pc && functions[j]->pc->pc<stop) stop=functions[j]->pc->pc;
 		memset(&p,0,sizeof(p));
-		if(local!=nil && strcmp(local,"1")==0) dis64typedlocal(fn,globals,functions,nfunctions,first,count,stop,&p);
+		if(multi!=nil && strcmp(multi,"1")==0) dis64typedmulti(fn,globals,functions,nfunctions,first,count,stop,&p);
+		else if(local!=nil && strcmp(local,"1")==0) dis64typedlocal(fn,globals,functions,nfunctions,first,count,stop,&p);
 		else if(tail!=nil && strcmp(tail,"1")==0) dis64typedtail(fn,globals,functions,nfunctions,first,count,stop,&p);
 		else dis64typedlower(fn,globals,first,count,stop,&p);
-		fprint(2,"DIS64_TYPED {\"schema\":\"%s\",\"name\":",p.tail==2?"inferno-typed-local-v1":p.tail?"inferno-typed-tail-v1":"inferno-typed-body-v2");typedquote(fn->sym);
-		if(p.tail) fprint(2,",\"tail\":[%ud,%ud]",p.target,p.targetdesc);
+		fprint(2,"DIS64_TYPED {\"schema\":\"%s\",\"name\":",p.tail==3?"inferno-typed-multi-v1":p.tail==2?"inferno-typed-local-v1":p.tail?"inferno-typed-tail-v1":"inferno-typed-body-v2");typedquote(fn->sym);
+		if(p.tail==1 || p.tail==2) fprint(2,",\"tail\":[%ud,%ud]",p.target,p.targetdesc);
 		if(p.tail==2) fprint(2,",\"local\":[%ud,%ud,%ud]",p.callend,p.resultoffset,p.resultcontract);
+        if(p.nsites && p.reason==nil){
+            fprint(2,",\"calls\":[");
+            for(i=0;i<p.nsites;i++)fprint(2,"%s[%ud,%ud,%ud,%ud,%ud,%ud,%ud]",i?",":"",p.sites[i].first,p.sites[i].end,p.sites[i].target,p.sites[i].descriptor,p.sites[i].resultoffset,p.sites[i].contract,p.sites[i].inherited);
+            fprint(2,"]");
+        }
 		fprint(2,",\"first\":%ud,\"accepted\":%s",p.first,p.reason==nil?"true":"false");
 		if(p.reason!=nil) fprint(2,",\"reason\":\"%s\",\"pc\":%ud",p.reason,p.badpc);
 		else{

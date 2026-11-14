@@ -3,9 +3,15 @@
 #include "dis64-layout.h"
 #include "dis64-code.h"
 
+typedef struct Dis64TypedSite Dis64TypedSite;
+struct Dis64TypedSite {
+    unsigned int first,end,target,descriptor,resultoffset,contract,inherited;
+};
 typedef struct Dis64TypedBody Dis64TypedBody;
 struct Dis64TypedBody {
 	Dis64Instruction *code;
+	Dis64TypedSite *sites;
+	unsigned int nsites;
 	unsigned char *returns;
 	Dis64Layout frame, data;
 	unsigned int first, count, badpc;
@@ -18,6 +24,7 @@ struct Dis64TypedBody {
 int dis64typedlower(Decl*, Decl*, Inst*, unsigned int, unsigned int, Dis64TypedBody*);
 int dis64typedtail(Decl*, Decl*, Decl**, int, Inst*, unsigned int, unsigned int, Dis64TypedBody*);
 int dis64typedlocal(Decl*, Decl*, Decl**, int, Inst*, unsigned int, unsigned int, Dis64TypedBody*);
+int dis64typedmulti(Decl*, Decl*, Decl**, int, Inst*, unsigned int, unsigned int, Dis64TypedBody*);
 void dis64typedfree(Dis64TypedBody*);
 void dis64typedreport(Decl*, Decl**, int, Inst*, long);
 #endif
