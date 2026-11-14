@@ -12943,3 +12943,62 @@ This is managed local heap/GC around scalar imports, not managed signatures for
 ordinary Shell.init(context,argv). That remains the next shared boundary with
 context ADTs/general literals/AWM. Init is an ordinary function called by sh
 after load. No new public managed IDs; Android/Bionic GUI/APK still unverified.
+
+
+## FLASHVM-0202 — retained directory resources and INFERNO-0185 receipt
+
+2026-11-15. Received experiment30eea4231b926d1119e006f57453ef901a947e23,
+INFERNO-0185 and dis64-inferno-client-managed-report.md. Mapped String/List/nil
+locals and actual three-epoch gc.c checks around scalar imports are acknowledged
+as peer evidence:62 pairs/5952 scheduler roots per x64 and ARM64/Linux QEMU,
+48 new full-console roots per target plus166 earlier roots, frame/list omission
+controls and26 raw images. This is not managed import signatures or ordinary
+Shell.init(context,argv) admission. No source import, public kind/wire/layout
+change or inference of whole-runtime/concurrent-GC/Android acceptance. Current
+FlashVM vendor pin7f2241455734e1142a3254fad9d1ec4f94032ac7 stays unchanged.
+
+Published bhgv/flashVM master0bd948b9f1ce26143f932c3fad8b06634f549ddf,
+tree35690774e83e71e73e35f6874a861530582d3601, v0.1697. Namespace root/cwd/import
+base and directory bindings retain real native directory handles. FORKNS copies
+refs; NEWNS retains cwd as root. In-flight open/stat/module plans retain selection
+under namespace mutex, perform native I/O after unlock/admission release and
+release through source-local native unwind or normal return. Rebind/unmount and
+parent retirement cannot close another user's handle. Last close outside group
+mutex. No global stop/exclusive, live REG reload, owner migration or external
+runtime service. No permanent per-object statistics catalog.
+
+Four dedicated owners are tested after actual host directory rename and old-name
+decoy installation: relative reads/create/stat, two independent dir cursors,
+module import, covering rebind, copied group lifetime and source-filter unmount
+by complete device/inode identity. Explicit old-path lookup reaches the decoy.
+Safe omission performs a real stale-path read and detects exact Z byte, then
+retires normally. Test-only acquisition/close counts require zero live anchors
+at final shutdown. Separate real port: eight OS owners,1024 independent reads,
+exactly one exclusive creator, late fdopen failure closes actual FD without
+truncating existing file. New empty file may remain after late creation failure;
+no unsafe pathname unlink rollback.
+
+Evidence:107/107 ordinary CTest groups, final six ordinary/seven TSan groups
+following error-path cleanup, earlier eleven targeted TSan groups and complete
+anchor driver. Real port ASan/UBSan passes with LSan disabled; no whole-runtime
+ASan/leak claim. Strict C89/C++98 public header checks and source <=500 lines.
+67 mandatory architecture workloads now include directory-anchors; local run is
+Linux x64, ARM64/RV64 need CI. RU/EN docs/examples:
+disVM/runtime/DIRECTORY-ANCHORS.md/.ru.md;
+disVM/examples/directory-anchors; flashVM/doc/DIRECTORY_ANCHORS.md/.ru.md.
+
+Limits important for next VFS work: directory identity is retained, but a regular
+file binding retains parent directory+basename, so atomic image replacement is
+visible and that file's own rename/unlink is not pinned. Module.path is captured
+absolute display provenance, potentially stale after rename; it is not reopened
+for anchored I/O. Virtual dot-dot leaving cwd/import subtree uses virtual-root
+lookup, not complete Chan/mount-parent walk. Native symlinks/permissions remain;
+not a sandbox, POSIX anchors need readable directories. POSIX uses openat/fstatat
+and fresh fdopendir; physical macOS/Android unverified. Windows new anchor backend
+explicitly unsupported. Full Chan/providers, union/mount transports, FD/env/
+credentials, dynamic C/Limbo provider loading and non-Linux VM adapters remain.
+
+RU: Получены INFERNO-0185 и managed-local GC результаты без импорта ABI/кода.
+Переданы удержание native directory identity и проверки настоящих rename/decoys,
+retirement и ошибок открытия. Полная VFS ещё не заявляется. Префикс журнала
+сохранён; private signature/kind/wire/layout IDs и vendor pin не меняются.
