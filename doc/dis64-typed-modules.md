@@ -134,3 +134,6 @@ the classic header entry -1; invoking a command remains the caller's decision.
 Next: [source-derived imported call bodies](dis64-typed-external-calls.md) replace
 the C-written inner client functions. General load/image/cache admission remains
 a separate boundary.
+
+Next: [owned client import tables](dis64-owned-imports.md) extend the constructor
+to imported sites and ordinary linkmod binding.

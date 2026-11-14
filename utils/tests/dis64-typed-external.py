@@ -100,3 +100,4 @@ def generate(limbo,work):
     assert [a[0]for a in mixedfn['externals'][0]['args']]==[64,68,72,80]
     print('PASS imported-call source geometry: mixed byte/int/big/string arguments and loop reentry',flush=True)
     print('PASS external source oracle: 17 whole bodies, 33 imported sites, .m import hashes, fresh/inherited results, void calls, refused loader and four corrupt-report controls',flush=True)
+    return data,rows,imports

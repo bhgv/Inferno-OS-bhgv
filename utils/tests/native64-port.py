@@ -211,6 +211,8 @@ def main():
         build, env, logs/'typed-source-external-mcall.log')
     run([sys.executable, str(tests/'dis64-typed-external-unit.py')],
         build, env, logs/'typed-source-external-ir.log')
+    run([sys.executable, str(tests/'native64-typed-imports.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-owned-imports.log')
     results = [sys.executable, str(tests/'native64-result-calls.py')]
     binding = [sys.executable, str(tests/'native64-disc-binding.py')]
     run(binding, build, env, logs/'disc-binding.log')

@@ -5,9 +5,19 @@ typedef struct Native64ModuleSite Native64ModuleSite;
 typedef struct Native64ModuleFunction Native64ModuleFunction;
 typedef struct Native64ModuleInit Native64ModuleInit;
 typedef struct Native64ModuleSpec Native64ModuleSpec;
+typedef struct Native64ModuleImport Native64ModuleImport;
+typedef struct Native64ModuleTable Native64ModuleTable;
 typedef struct Native64ModuleOwner Native64ModuleOwner;
 struct Native64ModuleOwner {Module *module;int rooted;Native64ModuleOwner *self;};
-struct Native64ModuleSite {unsigned int first,end,target,contract,inherited;};
+struct Native64ModuleSite {
+    unsigned int first,end,target,contract,inherited;
+    unsigned int external,table,modulemode,moduleoffset;
+};
+struct Native64ModuleImport {
+    const char *name;unsigned int signature,bytes;
+    const uchar *map;unsigned int mapbytes;
+};
+struct Native64ModuleTable {const Native64ModuleImport *imports;unsigned int count;};
 struct Native64ModuleFunction {
     const char *name;
     unsigned int signature,exported;
@@ -27,6 +37,7 @@ struct Native64ModuleSpec {
     unsigned int mapbytes;
     const Native64ModuleInit *initial;
     unsigned int ninitial;
+    const Native64ModuleTable *tables;unsigned int ntables;
 };
 
 static int
@@ -49,20 +60,42 @@ native64modulemap(unsigned int bytes,const uchar *map,unsigned int n,int frame)
 
 /* Immutable readable checked-compiler metadata, not untrusted file inputs. */
 static int
-native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsigned int *exports,unsigned int *scratch)
+native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsigned int *exports,unsigned int *scratch,unsigned int *imports)
 {
-    unsigned int i,j,code=0,links=0,maxsites=0,total,end=0,at,bit;const Native64ModuleFunction *f;const Native64ModuleInit *v;
+    unsigned int i,j,code=0,links=0,maxsites=0,total,end=0,at,bit,nimports=0,bytes;const Native64ModuleFunction *f;const Native64ModuleInit *v;
+    const Native64ModuleImport *request;const Native64ModuleTable *table;const Native64ModuleSite *site;const uchar *map;
     if(!native64model() || s==nil || !native64modulename(s->name) || !native64modulename(s->path) ||
        !s->nfunctions || s->nfunctions>1024 || (s->entry!=~0U && s->entry>=s->nfunctions) || s->functions==nil ||
-       !native64modulemap(s->databytes,s->datamap,s->mapbytes,0) || s->ninitial>65536 || (s->ninitial && s->initial==nil))return 0;
+       !native64modulemap(s->databytes,s->datamap,s->mapbytes,0) || s->ninitial>65536 || (s->ninitial && s->initial==nil) || s->ntables>64 || (s->ntables && s->tables==nil))return 0;
     total=s->databytes;
+    for(i=0;i<s->ntables;i++){
+        table=s->tables+i;
+        if(!table->count || table->count>4096-nimports || table->imports==nil)return 0;
+        nimports+=table->count;
+        for(j=0;j<table->count;j++){
+            request=table->imports+j;
+            if(!native64modulename(request->name) || !native64modulemap(request->bytes,request->map,request->mapbytes,1) ||
+               request->bytes>65536 || request->bytes>32*1024*1024-total)return 0;
+            total+=request->bytes;
+        }
+    }
     for(i=0;i<s->nfunctions;i++){
         f=s->functions+i;
         if(!native64modulename(f->name) || f->exported>1 || !f->count || f->count>65536-code || f->code==nil ||
            !native64modulemap(f->bytes,f->map,f->mapbytes,1) || f->bytes>32*1024*1024-total ||
            f->nsites>f->count/2 || (f->nsites && f->sites==nil))return 0;
         for(j=0;j<i;j++)if(!strcmp(f->name,s->functions[j].name))return 0;
-        for(j=0;j<f->nsites;j++)if(f->sites[j].target>=s->nfunctions)return 0;
+        for(j=0;j<f->nsites;j++){
+            site=f->sites+j;if(site->external>1)return 0;
+            if(!site->external){if(site->target>=s->nfunctions)return 0;}
+            else{
+                if(site->table>=s->ntables || site->target>=s->tables[site->table].count ||
+                   (site->modulemode!=AFP && site->modulemode!=AMP) || site->moduleoffset%8)return 0;
+                bytes=site->modulemode==AFP?f->bytes:s->databytes;map=site->modulemode==AFP?f->map:s->datamap;
+                if(site->moduleoffset>bytes || 8>bytes-site->moduleoffset || (site->modulemode==AFP && site->moduleoffset<64))return 0;
+                bit=site->moduleoffset/8;if(!(map[bit/8]&(0x80>>(bit%8))))return 0;
+            }
+        }
         total+=f->bytes;code+=f->count;links+=f->exported;if(maxsites<f->nsites)maxsites=f->nsites;
     }
     for(i=0;i<s->ninitial;i++){
@@ -72,7 +105,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         for(at=v->offset;at<v->offset+v->width;at++){bit=at/8;if(s->datamap[bit/8]&(0x80>>(bit%8)))return 0;}
         end=v->offset+v->width;
     }
-    *instructions=code;*exports=links;*scratch=maxsites;return 1;
+    *instructions=code;*exports=links;*scratch=maxsites;*imports=nimports;return 1;
 }
 
 typedef struct Native64ModuleBuild Native64ModuleBuild;
@@ -81,7 +114,7 @@ struct Native64ModuleBuild {
     Module *module;
     Native64TypedCall *calls;
     unsigned int *offsets;
-    unsigned int code,exports,scratch;
+    unsigned int code,exports,scratch,imports;
     int jit,rooted;
 };
 
@@ -96,19 +129,34 @@ static int
 native64modulemake(void *arg)
 {
     Native64ModuleBuild *b=arg;const Native64ModuleSpec *s=b->spec;const Native64ModuleFunction *f;
-    Module *m;unsigned int i,j,pc=0,link=0;const Native64ModuleSite *site;const Native64ModuleInit *v;
+    Module *m;unsigned int i,j,k,pc=0,link=0,ordinal;Import *imports;const Native64ModuleImport *request;const Native64ModuleTable *table;const Native64ModuleSite *site;const Native64ModuleInit *v;
     m=b->module=mallocz(sizeof(*m),1);if(m==nil)error(exNomem);m->ref=1;m->origmp=H;m->rt=DONTCOMPILE;
     m->name=native64modulecopy(s->name);m->path=native64modulecopy(s->path);
-    m->type=mallocz((s->nfunctions+1)*sizeof(Type*),1);if(m->type==nil)error(exNomem);m->ntype=s->nfunctions+1;
+    m->type=mallocz((s->nfunctions+1+b->imports)*sizeof(Type*),1);if(m->type==nil)error(exNomem);m->ntype=s->nfunctions+1+b->imports;
     m->type[0]=dtype(freeheap,s->databytes,(uchar*)s->datamap,s->mapbytes);if(m->type[0]==nil)error(exNomem);
     for(i=0;i<s->nfunctions;i++){f=s->functions+i;m->type[i+1]=dtype(freeheap,f->bytes,(uchar*)f->map,f->mapbytes);if(m->type[i+1]==nil)error(exNomem);}
+    ordinal=s->nfunctions+1;
+    if(s->ntables){m->ldt=mallocz((s->ntables+1)*sizeof(Import*),1);if(m->ldt==nil)error(exNomem);}
+    for(i=0;i<s->ntables;i++){
+        table=s->tables+i;m->ldt[i]=imports=mallocz((table->count+1)*sizeof(Import),1);if(imports==nil)error(exNomem);
+        for(j=0;j<table->count;j++){
+            request=table->imports+j;imports[j].name=native64modulecopy(request->name);memmove(&imports[j].sig,&request->signature,4);
+            m->type[ordinal]=dtype(freeheap,request->bytes,(uchar*)request->map,request->mapbytes);if(m->type[ordinal++]==nil)error(exNomem);
+        }
+    }
     m->nprog=b->code;m->prog=mallocz(b->code*sizeof(Inst),1);if(m->prog==nil)error(exNomem);
     b->offsets=mallocz(s->nfunctions*sizeof(*b->offsets),1);if(b->offsets==nil)error(exNomem);
     if(b->scratch){b->calls=mallocz(b->scratch*sizeof(*b->calls),1);if(b->calls==nil)error(exNomem);}
     for(i=0;i<s->nfunctions;i++){b->offsets[i]=pc;pc+=s->functions[i].count;}
     for(i=0;i<s->nfunctions;i++){
         f=s->functions+i;
-        for(j=0;j<f->nsites;j++){site=f->sites+j;b->calls[j]=(Native64TypedCall){site->first,site->end,m->type[site->target+1],m->prog+b->offsets[site->target],site->target+1,site->contract,site->inherited};}
+        for(j=0;j<f->nsites;j++){
+            site=f->sites+j;
+            if(site->external){
+                ordinal=s->nfunctions+1+site->target;for(k=0;k<site->table;k++)ordinal+=s->tables[k].count;
+                b->calls[j]=(Native64TypedCall){site->first,site->end,m->type[ordinal],nil,site->target,site->contract,site->inherited,1,site->modulemode,site->moduleoffset};
+            }else b->calls[j]=(Native64TypedCall){site->first,site->end,m->type[site->target+1],m->prog+b->offsets[site->target],site->target+1,site->contract,site->inherited};
+        }
         if(!native64typedmulticode(m->prog+b->offsets[i],f->count,f->code,f->count,f->bytes,s->databytes,b->calls,f->nsites))error(exInval);
     }
     m->ext=mallocz((b->exports+1)*sizeof(Link),1);if(m->ext==nil)error(exNomem);
@@ -134,7 +182,7 @@ static int
 native64typedmodule(const Native64ModuleSpec *spec,int jit,Native64ModuleOwner *result)
 {
     Native64ModuleBuild b={0};REG saved;int ok;
-    if(result==nil || result->module!=nil || result->rooted || result->self!=nil || (jit!=0 && jit!=1) || !native64modulecheck(spec,&b.code,&b.exports,&b.scratch))return 0;
+    if(result==nil || result->module!=nil || result->rooted || result->self!=nil || (jit!=0 && jit!=1) || !native64modulecheck(spec,&b.code,&b.exports,&b.scratch,&b.imports))return 0;
     b.spec=spec;b.jit=jit;memmove(&saved,&R,sizeof(saved));ok=kprotect(native64modulemake,&b);
     memmove(&R,&saved,sizeof(R));free(b.calls);free(b.offsets);
     if(!ok){if(b.rooted)ptrdel(D2H(b.module->origmp));if(b.module!=nil)unload(b.module);memmove(&R,&saved,sizeof(R));return 0;}

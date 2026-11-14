@@ -11794,3 +11794,53 @@ These are not concurrent lifetime/ABA, namespace/cache, general managed loader o
 Android/AWM proof. No peer implementation is imported; vendor pin stays7f224145.
 Public Dis64/ISA/Sys IDs stay unchanged. This synchronization only appends the
 FlashVM journal and preserves all peer source/receipts.
+
+## INFERNO-0176: complete owned client imports and ordinary linkmod
+
+2026-11-14; code11971eb9, preserved journal977d2293. FLASHVM-0193 read/retained:
+independent eight-credit scalar mailbox, permanent TLS owner/budget2, ticket and
+requester retirement semantics and receipt of0174/0175. Selected8/8 ordinary/TSan,
+subsequent2/2 and queued new CI remain scoped peer reports, not current CI/full
+architecture success. Restored workspace/backup receipt is preserved. No peer VM,
+concurrent lifetime model, private protocol or vendor-pin change is imported.
+
+The trusted native Module constructor now deep-owns counted import tables as
+sentinel Module.ldt arrays, names/hashes and Type/maps, and builds local/imported
+sites together. Import frame shapes come from .m compiler probes, independent of
+provider locals/loading/native target PCs. Data ordinal0/function index+1 remain;
+request descriptors follow function descriptors. Bounds64 tables/4096 requests,
+argument frames64..65536 and prior32MiB budget. Table/import indices and mapped
+FP/MP module cells are checked before allocation. Semantic module type/ABI and
+readable immutable metadata remain trusted compiler premises, not file admission.
+
+All18 functions/exports of a loader-free client source are constructed, including
+33 imported sites and one local-wrapper site; no unsupported body is dropped.
+Separate actual classic Dis/.m tables give23 import identities/shapes, including
+seven unused leaf declarations retained by the module interface. Both complete
+client and provider are constructor outputs. The outer C harness invokes a client
+export through actual production linkmodule/linkmod/krethrow/linkm/newmp and
+MFRAME/MCALL/RET; local client calls then external calls share its owned program.
+Library entry=nil remains intact, with no synthetic/automatic init.
+
+Each x64 and ARM64/Linux QEMU run passes960 three-module cases:768 ordinary,
+48 loop,48 local-wrapper and96 managed continuation faults; all four client/provider
+C/RX pairs, growth/quanta/inputs, scalar widths, nil roots, fresh/inherited results,
+restored outer Module/MP, independent provider MP clones and full owner/pin cleanup.
+Constructor failure matrices cover every93/94(one table,no MP),140/141(two tables,
+no MP),142/143(two tables,mapped pinned MP) allocation positions C/JIT. Ten metadata
+refusals allocate nothing. Independent second-table relocation/name/hash/map copies
+and mapped-MP operand construction pass; source MP-module runtime is not claimed.
+Actual linkmod missing/late wrong hash and all four clone allocation failures drain.
+Three exact semantic controls cover table bounds, mapped-root role and link hashes.
+
+Constructor/link host ASan/UBSan and x64/ARM64 runtime UBSan pass; runtime-ASan unwind
+limit remains open. String/list identities remain opaque graphs; collector/OS/pin
+seams are bounded support. Prior host module960/external912 and active controls
+remain green. Limbo/writer emission is unchanged; no new AWM execution. New port
+gate and RU/EN docs/report:
+doc/dis64-owned-imports.ru.md / .md; doc/dis64-inferno-owned-imports-report.md.
+
+Trusted client import assembly is implemented; general managed image writer/reader/
+load, namespace/cache ABI admission, remaining heap operations and Android GUI
+remain ahead. Existing scalar/Sys/file paths retain separate capabilities. No new
+public IDs, Module/Frame layout change, Android/Bionic/AWM run or ready APK claim.

@@ -336,3 +336,9 @@ owned native providers on x64 and ARM64/Linux QEMU (912 cases each). This advanc
 source MCALL lowering; it does not admit the whole client through a managed file
 loader or establish an Android/Bionic/AWM/APK run. See
 [RU](dis64-typed-external-calls.ru.md) / [EN](dis64-typed-external-calls.md).
+
+INFERNO-0176: the trusted constructor now owns client import tables and builds
+all18 source client functions (local and imported sites). Existing linkmod binds
+source provider instances; x64 and ARM64/Linux QEMU each pass960 three-module
+cases. General image/load/cache admission and Android GUI startup remain ahead.
+See [RU](dis64-owned-imports.ru.md) / [EN](dis64-owned-imports.md).

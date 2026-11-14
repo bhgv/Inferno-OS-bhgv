@@ -139,3 +139,6 @@ scalar/Sys/file profiles retain their own permissions and evidence.
 All16 AWM source outputs/376 layouts retain classic bytes; the default body gate
 remains14 accepted/346 refused. No Android/Bionic device, AWM execution or ready
 APK is inferred from Linux QEMU.
+
+Follow-up: [owned imports](dis64-owned-imports.md) removes manual client Module
+assembly and constructs all client functions/local/imported sites together.
