@@ -7,6 +7,7 @@ OFILES=	asm.$O\
 	decls.$O\
 	dis.$O\
 	dis64.$O\
+	dis64-calls.$O\
 	dis64-lower.$O\
 	dis64-inline.$O\
 	dis64-layout.$O\
@@ -31,6 +32,7 @@ HFILES=	limbo.h\
 	dis64-layout.h\
 	dis64-typed.h\
 	dis64-multi.h\
+	dis64-external.h\
 	dis64-dial.h\
 	dis64-connection.h\
 	$ROOT/include/dis64-sys-dial-schema.h\
@@ -49,6 +51,8 @@ HFILES=	limbo.h\
 	$ROOT/include/dis64-data.h\
 	$ROOT/include/dis64-scalar.h\
 	$ROOT/include/dis64-code.h\
+	$ROOT/include/dis64-call-infer.h\
+	$ROOT/include/dis64-bound-call.h\
 	$ROOT/include/dis64-pilot.h\
 	$ROOT/include/dis64-sys-string-flow.h\
 	$ROOT/include/dis-string-pool.h\

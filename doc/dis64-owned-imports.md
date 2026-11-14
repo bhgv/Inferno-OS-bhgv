@@ -147,3 +147,7 @@ remaining heap operations and Android GUI startup remain separate work. Dynamic 
 module initialization is outside this fixture. Existing scalar/Sys/file profiles
 keep their own supported paths. No new AWM execution, Android/Bionic device run or
 ready APK is claimed by Linux QEMU results.
+
+The separate [source scalar call file producer](dis64-source-call-files.md) now
+feeds the existing raw call-file loader. General managed/import serialization
+remains distinct from this trusted constructor.

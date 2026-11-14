@@ -407,3 +407,5 @@ void dis64layoutreport(Decl*, Decl**, int);
 void dis64typedreport(Decl*, Decl**, int, Inst*, long);
 void native64callnote(unsigned int, Inst*, Inst*, Inst*, Decl*, Type*);
 void native64callpcs(Inst*, long, Decl*, int); // Final legacy Dis coordinates, never Dis64 admission.
+
+void dis64callsfile(Decl*, Decl*, Decl**, int, Inst*, long); // Checked scalar call file producer.

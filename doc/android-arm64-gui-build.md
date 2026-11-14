@@ -342,3 +342,9 @@ all18 source client functions (local and imported sites). Existing linkmod binds
 source provider instances; x64 and ARM64/Linux QEMU each pass960 three-module
 cases. General image/load/cache admission and Android GUI startup remain ahead.
 See [RU](dis64-owned-imports.ru.md) / [EN](dis64-owned-imports.md).
+
+INFERNO-0177 adds `limbo -64c` for the existing scalar `-X dis64-calls` loader.
+Sixteen source programs pass file proof/readmod/C/RX on x64 and ARM64/Linux QEMU;
+each rebuilt complete console runs32 source-file OS roots. This is a scalar
+console milestone, not managed AWM/Android GUI admission.
+[RU](dis64-source-call-files.ru.md) / [EN](dis64-source-call-files.md).

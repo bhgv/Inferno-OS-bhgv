@@ -96,9 +96,9 @@ dis64inferinstruction(Dis64CallInference *work, unsigned int owner, const Dis64C
 	case IMOVF: case IBEQF: case IBNEF: case IBLTF: case IBLEF: case IBGTF: case IBGEF:
 		kind = Dis64Real;
 		break;
-	case ICVTWF:
+	case ICVTWL:case ICVTWF:
 		return dis64inferoperand(work, owner, sm, instruction->source, Dis64Int) &&
-			dm == AFP && dis64inferslot(work, owner, instruction->destination, Dis64Real);
+			dm == AFP && dis64inferslot(work, owner, instruction->destination, op == ICVTWL ? Dis64Big : Dis64Real);
 	default:
 		return 0;
 	}

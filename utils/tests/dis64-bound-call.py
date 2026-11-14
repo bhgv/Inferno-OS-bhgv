@@ -191,10 +191,11 @@ def oracle(case):
                     return None
                 facts[pc] = ((), slots.index((destination, kind)) + 1)
                 counters[3] += 1
-            elif name == 'ICVTWF':
-                if mode not in (9, 17) or (destination, 3) not in slots:
+            elif name in ('ICVTWF', 'ICVTWL'):
+                converted = 2 if name == 'ICVTWL' else 3
+                if mode not in (9, 17) or (destination, converted) not in slots:
                     return None
-                facts[pc] = ((read(mode >> 3 & 7, source, 1),), slots.index((destination, 3)) + 1)
+                facts[pc] = ((read(mode >> 3 & 7, source, 1),), slots.index((destination, converted)) + 1)
             elif name == 'IEXIT':
                 if mode != 27 or pc + 1 != end:
                     return None
@@ -392,6 +393,10 @@ def cases():
                           leaves=[[RET]], results=[0, 0], slots=[((64, 4), (72, 3)), ()], sizes=[88, 72]))
     output.append(fixture([I('ICVTWF', 17, source=1, destination=64), EXIT],
                           leaves=[[RET]], results=[0, 0], slots=[((64, 2),), ()]))
+    output.append(fixture([I('ICVTWL',17,source=-7,destination=64),EXIT],leaves=[[RET]],results=[0,0],slots=[((64,2),),()]))
+    for sourcekind,destkind,initialized in ((1,2,True),(3,2,True),(1,3,True),(1,2,False)):
+        root=([I('ICVTWF',17,source=3,destination=64)if sourcekind==3 else INIT.move(3,64)]if initialized else [])+[I('ICVTWL',9,source=64,destination=72),EXIT]
+        output.append(fixture(root,leaves=[[RET]],results=[0,0],slots=[((64,sourcekind),(72,destkind)),()],sizes=[88,72]))
     output.extend(RETURNS.cases())
     return output
 
@@ -468,8 +473,8 @@ def main():
          'leaf_address': ('instruction.destination != 32 || ', ''),
          'conversion_source': ('instruction->source, Dis64Int, &fact.source)',
                                'instruction->source, Dis64Bool, &fact.source)'),
-         'conversion_destination': ('instruction->destination, Dis64Real, &id)',
-                                    'instruction->destination, Dis64Big, &id)')}
+         'conversion_destination': ('kind = instruction->op == ICVTWL ? Dis64Big : Dis64Real;',
+                                    'kind = instruction->op == ICVTWL ? Dis64Real : Dis64Big;')}
         if args.control:
             old, new = mutations[args.control]
             if header.count(old) != 1:

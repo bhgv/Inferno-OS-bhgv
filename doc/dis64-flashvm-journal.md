@@ -11909,3 +11909,62 @@ trusted client import assembly, not general managed image loading, namespace/cac
 concurrent GC/lifetime/ABA, Android/AWM or runtime-ASan unwind proof. No implementation
 is imported. Vendor pin remains7f224145. Synchronization only appends this journal,
 retaining peer source and all receipts; local experiment checkout/backup are verified.
+
+## INFERNO-0177: source scalar call files and full x64/ARM64 console boot
+
+2026-11-14; code860a9d2b, preserved journal4f61361c. FLASHVM-0194 read/retained,
+including receipt of0176, copied owner locations/next original PC, immutable
+requester ticket reads and Limbo reader cleanup. TLS/live-metadata assumptions,
+next-PC/display-label limits and absence of lifetime pin/global stop remain intact.
+Selected10/10 ordinary/TSan and prior/pending CI are scoped peer reports; no new
+full-matrix success inferred. No implementation/protocol/concurrency model/vendor
+pin change imported.
+
+New limbo -64c emits complete scalar root/leaf files for existing -X dis64-calls
+-d admission. Typed multi-call lowering supplies native scalar spans; all compiled
+functions must be declared exports. Init is ordered first, all calls/branches
+relocated, result tails copied into source locals after return, arithmetic return
+expressions split into scratch plus typed result store. Root RET becomes EXIT.
+Final dis64callinfercheck recomputes raw image/local/initialization/call/result/
+return proof before Bwrite; compiler C declarations do not authorize file execution.
+
+Existing envelopev1.0 ABI1 sections Module/Code/Types/Exports/Strings and scalar
+signaturev1/ISA operands are reused. No new public version/tag/profile/extension/
+section/opcode ID. -64c is an Inferno producer option, preserving -64/-64m/-64l/
+classic meanings and named startup/cache selection. It targets argument-free void
+init with a linear root and scalar leaf helpers; imports/data/handlers/references/
+byte signatures/nested helper calls/root branches stay refused. Limits256 code,
+64 functions/types/params,1MiB frame/image. General managed wire contract unchanged.
+
+Existing ICVTWL now has explicit raw-inference/root-call proof, like ICVTWF:
+Word source/initialization and correct Big/Real destination, with five new bound
+conversion cases and source/destination controls. This supports genuine source
+int→big seeds, including Word32 min/max, without importing trusted local kinds.
+
+Sixteen source programs have independent raw section/code/signature/call-oracle
+checks and deterministic -64c/-64c -i bytes. Each x64/ARM64 Linux QEMU file gate
+runs all16 in C/RX through real readmod/parsemod/cache/admission/scheduler, checks
+result bits and fails every read/parse/construct allocation. Eight corrupted images
+and ten unsupported sources refuse without owner leaks/output payload. Default
+profile remains closed. Cases include chains/two args/loops/branches/return/entry
+relocation, int/big/real/void and root/leaf faults.
+
+Rebuilt complete classic-mk x64 and ARM64 consoles each run32 actual source-file
+OS roots:28 successes/four zero-divide retirements, C/RX. Boot checks startup/worker/
+retirement; exact numbers are in the independent file gate. Host compiler/writer
+unit ASan/UBSan and target runtime/unit UBSan pass. Three writer omission controls
+cover final proof, result binding and relocation cleanup. Runtime-ASan unwind issue
+and bounded fixture GC/OS assumptions remain scoped. No Android/Bionic/AWM claim.
+
+Prior inference9/30/312 and four controls,3343 bound cases/conversion controls and
+host owned-import960/control gate pass. All16 AWM outputs/376 plans preserve bytes;
+no new AWM execution. New writer object and proof header dependencies are in classic
+mk; three owning gates added to native64-port.py. RU/EN commands/examples/report:
+doc/dis64-source-call-files.ru.md / .md;
+doc/dis64-inferno-source-call-file-report.md.
+
+Source→file→readmod→console is executable for this scalar call subset. General
+managed client/import serialization, dependency load and namespace/cache ABI
+admission, heap operations and Android GUI remain next. Managed signature/type
+IDs are not chosen or promoted here; shared graph expansion still needs protocol
+coordination. The trusted owned-import constructor remains its separate C path.

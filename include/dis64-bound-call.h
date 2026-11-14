@@ -245,13 +245,14 @@ dis64callroot(const Dis64LocalFunction *functions, const Dis64LocalCallee *calle
 			fact.write = id;
 			fact.kind = kind;
 			result->results++;
-		}else if(instruction->op == ICVTWF){
-			/* Existing int32-to-real conversion supplies a typed Real without inventing a seed. */
+		}else if(instruction->op == ICVTWF || instruction->op == ICVTWL){
+			/* Existing int32 conversion supplies a typed Big/Real without inventing a seed. */
+            kind = instruction->op == ICVTWL ? Dis64Big : Dis64Real;
 			if((instruction->mode != (SRC(AIMM)|DST(AFP)) && instruction->mode != (SRC(AFP)|DST(AFP))) ||
 			   !dis64localreadslot(locals->slots, locals->count, sm, instruction->source, Dis64Int, &fact.source) ||
-			   !dis64localreadslot(locals->slots, locals->count, AFP, instruction->destination, Dis64Real, &id))
+			   !dis64localreadslot(locals->slots, locals->count, AFP, instruction->destination, kind, &id))
 				return 0;
-			fact.kind = Dis64Real;
+			fact.kind = kind;
 			fact.write = id;
 			fact.reads = fact.source != 0;
 		}else if(instruction->op == IEXIT){

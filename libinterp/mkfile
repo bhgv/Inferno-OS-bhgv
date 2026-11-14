@@ -52,6 +52,8 @@ HFILES=\
 	$ROOT/include/dis64-data.h\
 	$ROOT/include/dis64-scalar.h\
 	$ROOT/include/dis64-code.h\
+	$ROOT/include/dis64-call-infer.h\
+	$ROOT/include/dis64-bound-call.h\
 	$ROOT/include/dis64-pilot.h\
 	$ROOT/include/runtab-legacy.h\
 	$ROOT/include/native64-model.h\

@@ -420,7 +420,11 @@ if(debug['v']) print("fncom: %s %d %p\n", d->sym->name, d->refs, d);
 
 	excs = reve(excs);
 
-	if(emitscalar64 >= 2){
+	if(emitscalar64 == 4){
+        if(excs != nil || impdecls->next != nil || ldts != nil || globals != nil || offset != 0)
+            error(impdecl->src.start, "Dis64 calls: module data/imports/handlers are outside the scalar call file profile");
+        else dis64callsfile(entry,globals,fns,nfns,firstinst,ninst);
+    }else if(emitscalar64 >= 2){
 		if(excs != nil || impdecls->next != nil)
 			error(impdecl->src.start, "Dis64 managed trial: unsupported module or exception table");
 		else

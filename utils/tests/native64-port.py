@@ -107,6 +107,11 @@ def main():
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--math', '--sys-io', '--freetype'], build, env, logs/'boot.log')
     run([sys.executable, str(tests/'dis64-call-boot.py'), '--root', str(build),
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'call-boot.log')
+    run([sys.executable, str(tests/'dis64-source-call-boot.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'source-call-boot.log')
+    run([sys.executable, str(tests/'dis64-source-calls.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'source-call-files.log')
+    run([sys.executable, str(tests/'dis64-source-calls-unit.py')], build, env, logs/'source-call-writer-ir.log')
     run([sys.executable, str(tests/'native64-limbo-boot.py'), '--limbo', str(tools/'limbo'),
          '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
         build, env, logs/'limbo-boot.log')
