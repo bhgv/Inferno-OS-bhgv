@@ -15,10 +15,12 @@ def main():
   def execute(jit,owner='Client',error=''):
    output=B['execute'](command+['-c',str(jit),'-X','dis64-calls','-d',vmc]);assert 'native64 scalar module '+owner+': jit='+str(jit)+', exit="'+error+'"'in output and B['RETIRED']in output and 'panic:'not in output and 'faults:'not in output and ('Broken:'in output)==bool(error),output
   for name,text,client,failure in C['cases'](len(vmp)):
-   if name=='context-non-nil':continue # Separate native C-seeded record witness, not guest construction.
-   compile(text,client)
-   for jit in (0,1):execute(jit,'Command'if failure else'Client','zero divide'if failure else'');runs+=1
-   saved=provider.read_bytes();provider.unlink()
+   if name in('context-non-nil','fields-native'):continue # Separate native C-seeded record witness, not guest construction.
+   # A valid provider must actually link; a nil-returning importer alone cannot
+   # distinguish a successful no-op init from admission refusal.
+   compile(text,client.replace('if(m==nil)return;','if(m==nil){z:=0;bad:=1/z;}'))
+   for jit in (0,1):execute(jit,'Command'if failure else'Client','dereference of nil'if failure==3 else'zero divide'if failure else'');runs+=1
+   saved=provider.read_bytes();compile(text,client);provider.unlink()
    for jit in (0,1):execute(jit);runs+=1
    provider.write_bytes(saved);print('PASS full OS ordinary init:',name,'C/RX + missing file',flush=True)
   # A valid wrong hash must refuse before the explicitly failing init can run.
@@ -31,7 +33,7 @@ def main():
   for path,flags in [(vmc,[]),(vmp,['-X','dis64-calls'])]:
    output=B['execute'](command+flags+['-d',path]);assert 'panic: loading 'in output and B['RETIRED']not in output,output
   examples=re.findall(r'```limbo\n(.*?)```',(ROOT/'doc/dis64-command-init.md').read_text(),re.S);assert len(examples)==3
-  (w/'command.m').write_text(examples[0]);compile(examples[1],examples[2])
+  (w/'command.m').write_text(examples[0]);compile(examples[1],examples[2].replace("if(m == nil) return;","if(m == nil){z:=0;bad:=1/z;}"))
   for jit in (0,1):execute(jit)
   print('PASS ordinary init RU/EN tutorial: C/RX',flush=True)
   print('PASS ordinary init full OS:',runs,'main C/RX roots + hash/default/entryless refusal controls',flush=True)

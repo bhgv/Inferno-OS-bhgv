@@ -7,6 +7,16 @@ dis64commandshape(Decl *fn)
  a=fn->ty->ids;b=a?a->next:nil;
  return a && b && !b->next && a->ty->kind==Tref && a->ty->tof->kind==Tadt && b->ty->kind==Tlist && b->ty->tof->kind==Tstring;
 }
+/* Existing Dis indirect-source operand order; selected field proof owns its role. */
+static int
+dis64clientencode(uchar *out,unsigned int *at,Dis64Instruction *in,long base,long secondary,long field)
+{
+ long values[3];unsigned int i,n;
+ if(USRC(in->mode)!=(AFP|AIND))return callfileencode(out,at,in,base,secondary);
+ if(in->op!=IMOVP || in->mode!=(SRC(AFP|AIND)|DST(AFP)) || *at>CallFileBytes-18)return 0;
+ out[(*at)++]=in->op;out[(*at)++]=in->mode;values[0]=in->source;values[1]=field;values[2]=in->destination;
+ for(i=0;i<3;i++){n=disoperand(out+*at,4,values[i]);if(!n)return 0;*at+=n;}return 1;
+}
 int
 dis64commandfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long count,long databytes)
 {
@@ -25,7 +35,7 @@ dis64commandfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long c
  if(nilvalue){if(body.data.leaves[0].kind!=Tany)goto done;niloffset=body.data.leaves[0].native;}
  for(i=0;i<body.frame.count;i++){
   leaf=body.frame.leaves+i;
-  if(leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tref && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=-1)goto done;
+  if(leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tref && leaf->kind!=Tchan && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=-1)goto done;
  }
  code=allocmem(CallFileBytes);output=allocmem(CallFileBytes);typedata=allocmem(CallFileBytes);strings=allocmem(CallFileBytes);runes=allocmem(4*(4+4*255));maps=allocmem(65);memset(maps,0,65);proof=allocmem(sizeof(*proof));
  {char *texts[]={"Command","command.dis64","Command","init"};unsigned int j,n;
@@ -36,11 +46,11 @@ dis64commandfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long c
   in=body.code[i];
   if((in.op==IBEQL || in.op==IBNEL) && (in.mode&ARM)==AXINM){if(!nilvalue || in.middle!=niloffset)goto done;in.middle=8;}
   if(USRC(in.mode)==AMP){if(!nilvalue || in.source!=niloffset)goto done;in.source=8;}
-  if(!callfileencode(code,&at,&in,0,0))goto done;
+  if(!dis64clientencode(code,&at,&in,in.destination,body.contextfields?body.contextfields[i]:0,body.contextfields?body.contextfields[i]:0))goto done;
  }
  dis64put32(code,body.count);sizes[1]=at;maps[64]=0xe0;
  for(i=0;i<body.frame.count;i++){
-  leaf=body.frame.leaves+i;if(leaf->kind==Tref || leaf->kind==Tstring || leaf->kind==Tlist || leaf->kind==Tany)maps[leaf->native/64]|=0x80>>((leaf->native/8)%8);
+  leaf=body.frame.leaves+i;if(leaf->kind==Tref || leaf->kind==Tchan || leaf->kind==Tstring || leaf->kind==Tlist || leaf->kind==Tany)maps[leaf->native/64]|=0x80>>((leaf->native/8)%8);
  }
  types[0]=(Dis64Type){body.frame.bytes+16,8,maps,(body.frame.bytes+79)/64};types[1]=(Dis64Type){24,8,maps+64,1};module.databytes=24;module.datatype=1;
  sizes[3]=dis64commandbindingwrite(exports,1,sign(fn));

@@ -151,6 +151,15 @@ def main():
         build, env, logs/'command-init-gc.log')
     run([sys.executable, str(tests/'dis64-command.py'), '--gc-control', 'callee-frame', '--case', 'callee-cons',
          '--limbo', str(tools/'limbo')], build, env, logs/'command-init-callee-gc-control.log')
+    run([sys.executable, str(tests/'dis64-command.py'), '--gc-control', 'context-map', '--case', 'fields-native',
+         '--limbo', str(tools/'limbo')], build, env, logs/'context-field-gc-control.log')
+    for role in ('source', 'destination'):
+        run([sys.executable, str(tests/'dis64-command.py'), '--field-offset-control', role, '--case', 'fields-native',
+             '--limbo', str(tools/'limbo')], build, env, logs/('context-field-'+role+'-offset-control.log'))
+    for control in (None, 'offset', 'owner', 'role'):
+        command = [sys.executable, str(tests/'dis64-context-fields-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('context-field-proof-'+str(control)+'.log'))
     run([sys.executable, str(tests/'dis64-command-boot.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'command-init-boot.log')
     run([sys.executable, str(tests/'dis64-command-producer.py'), '--limbo', str(tools/'limbo')],

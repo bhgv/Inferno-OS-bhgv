@@ -297,7 +297,7 @@ dis64typedlocal(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsig
 void
 dis64typedfree(Dis64TypedBody *p)
 {
-	free(p->external);free(p->sites);free(p->code);free(p->returns); dis64layoutfree(&p->frame); dis64layoutfree(&p->data); memset(p,0,sizeof(*p));
+	free(p->contextfields);free(p->external);free(p->sites);free(p->code);free(p->returns); dis64layoutfree(&p->frame); dis64layoutfree(&p->data); memset(p,0,sizeof(*p));
 }
 
 static void

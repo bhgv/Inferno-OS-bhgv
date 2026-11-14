@@ -54,3 +54,22 @@ dis64clientmanagedroles(Dis64ClientSlot *slots,unsigned int *count,unsigned int 
  if(in->op==ICONSP && !dis64clientrootoperand(slots,*count,AFP,in->destination,dk,need))return 0;
  return dis64clientrootoperand(slots,*count,AFP,in->destination,dk,give);
 }
+
+/* Context fields have disjoint opaque roles; none is a Context/list/string. */
+static int
+dis64clientfieldop(const Dis64CallDecoded *d)
+{
+ const Dis64Instruction *in=&d->instruction;
+ return in->op==IMOVP && (USRC(in->mode)==(AFP|AIND) || (UDST(in->mode)==(AFP|AIND) && d->secondary<24));
+}
+static int
+dis64clientfieldroles(Dis64ClientSlot *slots,unsigned int count,const Dis64CallDecoded *d,unsigned int need[2],unsigned int give[2])
+{
+ const Dis64Instruction *in=&d->instruction;int read=USRC(in->mode)==(AFP|AIND);unsigned int kind;
+ if((in->mode&ARM)!=AXNON || d->secondary<0 || d->secondary>16 || d->secondary%8 ||
+    (read?UDST(in->mode)!=AFP:UDST(in->mode)!=(AFP|AIND)))return 0;
+ kind=Dis64ClientDisplay+d->secondary/8;
+ if(!dis64clientrootoperand(slots,count,AFP,read?in->source:in->destination,Dis64ClientOpaque,need))return 0;
+ return read?dis64clientrootoperand(slots,count,AFP,in->destination,kind,give):
+  dis64clientrootoperand(slots,count,USRC(in->mode),in->source,kind,need);
+}

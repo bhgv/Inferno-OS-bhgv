@@ -6,7 +6,7 @@ ROOT=Path(__file__).resolve().parents[2]
 P=runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client.py'))
 C=runpy.run_path(str(ROOT/'utils/tests/dis64-command-cases.py'))
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--baseline',type=Path);a=p.parse_args();env=dict(os.environ)
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--baseline',type=Path);p.add_argument('--command-baseline',type=Path);a=p.parse_args();env=dict(os.environ)
  with tempfile.TemporaryDirectory(prefix='command-producer-',dir=ROOT)as td:
   w=Path(td);env['TMPDIR']=str(w);source=w/'source.b';image=w/'new.dis64';old=w/'old.dis64';plain=w/'plain.dis';oldplain=w/'old.dis'
   def compile(compiler,flag,target,check=True):
@@ -24,9 +24,14 @@ def main():
     if a.baseline:
      compile(a.baseline,'-i',oldplain);assert plain.read_bytes()==oldplain.read_bytes(),name
      old.unlink(missing_ok=True);r=compile(a.baseline,flag,old,False);assert r.returncode and(not old.exists()or not old.stat().st_size),(name,r.stderr)
+    if a.command_baseline:
+     compile(a.command_baseline,'-i',oldplain);assert plain.read_bytes()==oldplain.read_bytes(),name
+     old.unlink(missing_ok=True);r=compile(a.command_baseline,flag,old,False)
+     if not r.returncode:assert old.read_bytes()==data,(name,r.stderr)
+     else:assert name.startswith('fields-')and(not old.exists()or not old.stat().st_size)and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.stderr)
     count+=1
   prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
-  negatives=[prefix+'d:=ctxt.display;if(d!=nil)return;}',prefix+'local:=ref Draw->Context(nil,nil,nil);if(local!=nil)return;}',prefix+'s:="another literal";n:=len s;if(n==0)return;}',prefix+'xs:=array[2]of int;xs[0]=1;if(xs[0]==1)return;}']
+  negatives=[prefix+'d:=ctxt.display;img:=d.image;if(img!=nil)return;}',prefix+'local:=ref Draw->Display;if(local!=nil)return;}',prefix+'s:="another literal";n:=len s;if(n==0)return;}',prefix+'xs:=array[2]of int;xs[0]=1;if(xs[0]==1)return;}']
   for text in negatives:
    source.write_text(text);compile(a.limbo,'-i',plain);image.unlink(missing_ok=True);r=compile(a.limbo,'-64b',image,False)
    assert r.returncode and 'Dis64 command:'in r.stderr and(not image.exists()or not image.stat().st_size)and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,r.stderr

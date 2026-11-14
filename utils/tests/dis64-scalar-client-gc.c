@@ -13,6 +13,10 @@ clientobserve(void *value)
  if(h->t==&Tlist){
   list=value;clientobserve(list->tail);
   require(list->t==&Tptr);memmove(&head,list->data,sizeof(head));clientobserve(head);
+ }else{
+  for(i=0;i<(unsigned int)h->t->np*8;i++)if(h->t->map[i/8]&(0x80>>(i%8))){
+   require(8*i+8<=(unsigned int)h->t->size);memmove(&head,(uchar*)value+8*i,sizeof(head));clientobserve(head);
+  }
  }
 }
 static void

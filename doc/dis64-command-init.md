@@ -20,7 +20,17 @@ implement Command;
 include "command.m";
 init(ctxt: ref Draw->Context, argv: list of string)
 {
+    if(ctxt == nil) return;
     saved := ctxt;
+    display := ctxt.display;
+    screen := ctxt.screen;
+    wm := ctxt.wm;
+    ctxt.display = nil;
+    ctxt.screen = nil;
+    ctxt.wm = nil;
+    ctxt.display = display;
+    ctxt.screen = screen;
+    ctxt.wm = wm;
     total := 0;
     while(argv != nil){
         part := hd argv;
@@ -98,10 +108,20 @@ The actual collector sees both caller and callee frames, including callee-privat
 cons cells. Existing C dispatch and JIT paths execute the same checked code.
 
 `ctxt := ref Draw->Context;` creates a bare record with nil display/screen/wm.
-This trial treats the reference as opaque: allocation, copy and nil comparison
-are supported. Fields, GUI handles and `ref Draw->Context(nil,nil,nil)` field
-initialization are outside admission. A non-nil record does not establish a
-working display or window manager.
+The selected profile now admits the three Context pointer fields at native offsets
+0/8/16 (classic offsets0/4/8). Read a field into a typed local, then copy, clear,
+restore or nil-test that reference. Each field has its own internal opaque role;
+Display/Screen/wm values cannot be used as Context, String or ListString. The
+actual collector traces the three fields and their mapped frame aliases. Field
+writes use the existing MOVP reference-count/barrier behavior.
+
+This is reference transport, not resource creation: nested field dereferences,
+Display/Screen allocation, channel operations, indirect-to-indirect copies and
+fused field comparisons remain refused. Use explicit locals as in the example.
+A direct typed parameter assignment `ctxt = ref Draw->Context(nil,nil,nil)` is
+covered in a callee; constructor expressions that introduce an untyped temporary
+can still refuse. A non-nil record does not establish a display/window manager.
+For exact evidence see [INFERNO-0187](dis64-inferno-context-fields-report.md).
 
 ## Exact private boundary
 
@@ -116,7 +136,7 @@ The admitted provider has one Command.init export at PC0/frame0, no imports or
 helper calls, a bounded proven body and the existing private 24-byte MP layout.
 The executable importer still has an argument-free void process entry. One
 interface/path is admitted; arbitrary literals, general DATA initializers,
-additional exports, context fields and general ADT/array payloads remain refused.
+additional exports, arbitrary ADT fields and general ADT/array payloads remain refused.
 Only the selected client reader admits the required MP-to-prepared-frame MOVP;
 the general scalar instruction reader is unchanged.
 

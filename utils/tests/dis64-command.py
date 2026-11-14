@@ -9,7 +9,7 @@ def sections(data):
   k,f,at,n=struct.unpack_from('>HHII',data,32+12*i);assert f==1 and k not in d;d[k]=data[at:at+n]
  return d
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--gc-control',choices=('callee-frame',));p.add_argument('--case',action='append');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--gc-control',choices=('callee-frame','context-map'));p.add_argument('--field-offset-control',choices=('source','destination'));p.add_argument('--case',action='append');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
  with tempfile.TemporaryDirectory(prefix='command-init-',dir=ROOT)as td:
   w=Path(td);env['TMPDIR']=str(w);(w/'command.m').write_text(CASES['INTERFACE']);(w/'library.m').write_text('Library:module{inc:fn(n:int):int;};')
   # Legacy fixture declarations are compile-only; live interface comes solely from files.
@@ -19,12 +19,17 @@ def main():
   (w/'command-generated.h').write_text(header)
   hook='#include "command-generated.h"\n'+(ROOT/'utils/tests/dis64-command-context.c').read_text()
   at=text.index('/* Both caller CODE and provider CODE');text=text[:at]+hook+'\n'+text[at:]
-  text=text.replace('argc<=8','argc<=9').replace('guarded|=!strcmp(argv[i],"guarded");','commandcontext|=!strcmp(argv[i],"context");guarded|=!strcmp(argv[i],"guarded");')
+  text=text.replace('argc<=8','argc<=10').replace('guarded|=!strcmp(argv[i],"guarded");','commandfields|=!strcmp(argv[i],"fields");commandcontext|=!strcmp(argv[i],"context");guarded|=!strcmp(argv[i],"guarded");')
   head,tail=text.rsplit('root=p->R.FP;',1);text=head+'root=p->R.FP;if(commandcontext)commandcontextseed(&view,root);'+tail
   marker=' for(jit=0;jit<2;jit++){\n  cflag=jit;allocations=0;m=readmod("client.dis64"'
   assert text.count(marker)==1;text=text.replace(marker,' commandproviderfaults(&view);\n'+marker)
-  if a.gc_control:
+  if a.gc_control=='context-map':text=text.replace('commandcontextnomark=0','commandcontextnomark=1')
+  if a.gc_control=='callee-frame':
    assert text.count('clientloads++;')==1;text=text.replace('clientloads++;','ml->m->type[0]->mark=noptrs;clientloads++;')
+  if a.field_offset_control:
+   selected='s'if a.field_offset_control=='source'else'd';old='m->prog[i].'+selected+'.i.s=d->secondary;'
+   assert text.count(old)==1;text=text.replace(old,'m->prog[i].'+selected+'.i.s=' + ('0;'if selected=='s'else'(d->secondary<24?0:d->secondary);'))
+  assert text.count('namespaceend(p);clientempty();')==1;text=text.replace('namespaceend(p);clientempty();','commandfieldcheck();namespaceend(p);clientempty();')
   source.write_text(text)
   # Existing generated .m C table and the file signatures must use one hash.
   hashes=re.findall(r'(0x[0-9a-fA-F]+)U,\s*// Existing Limbo signature hash',header);assert hashes,header[-2000:];expectedhash=int(hashes[0],16)
@@ -40,9 +45,10 @@ def main():
     (w/(filename+'.b')).write_text(text);subprocess.run([str(a.limbo.resolve()),flag,'-I',str(ROOT/'module'),'-I',str(w),'-o',str(w/(filename+'.dis64')),str(w/(filename+'.b'))],env=env,check=True,capture_output=True)
    imported=sections((w/'client.dis64').read_bytes())[5];exported=sections((w/'command.dis64').read_bytes())[6]
    assert imported[16:]==exported[20:]and struct.unpack_from('>IIII',imported,16)==(0xface0186,expectedhash,2,0),(name,imported.hex(),exported.hex())
-   r=subprocess.run(shlex.split(env.get('NATIVE64_RUNNER',''))+[str(binary),str(w/'client.dis64'),str(w/'command.dis64'),'0','0',str(failure),'guarded']+(['context']if name=='context-non-nil'else[])+(['materialize']if a.materialize_only else[]),env=env,capture_output=True,text=True,timeout=120)
-   if a.gc_control:assert r.returncode==10 and 'client GC graph retention mismatch'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.returncode,r.stderr)
+   r=subprocess.run(shlex.split(env.get('NATIVE64_RUNNER',''))+[str(binary),str(w/'client.dis64'),str(w/'command.dis64'),'0','0',str(failure),'guarded']+(['context','fields']if name=='fields-native'else['context']if name=='context-non-nil'else[])+(['materialize']if a.materialize_only else[]),env=env,capture_output=True,text=True,timeout=120)
+   if a.field_offset_control:assert r.returncode==10 and 'Context field identity mismatch'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.returncode,r.stderr)
+   elif a.gc_control:assert r.returncode==10 and 'client GC graph retention mismatch'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.returncode,r.stderr)
    else:assert not r.returncode,(name,r.returncode,r.stderr)
    print('PASS ordinary .m init -> file LOAD -> managed MCALL/RET:',arch,name,flush=True)
-  print('PASS ordinary init pipeline:',arch,len(rows),'pairs; actual GC'+('; constructor-only'if a.materialize_only else'; semantic '+a.gc_control+' omission'if a.gc_control else';96 scheduler roots per pair'),flush=True)
+  print('PASS ordinary init pipeline:',arch,len(rows),'pairs; actual GC'+('; constructor-only'if a.materialize_only else'; semantic '+a.gc_control+' omission'if a.gc_control else'; semantic '+a.field_offset_control+' offset omission'if a.field_offset_control else';96 scheduler roots per pair'),flush=True)
 if __name__=='__main__':main()

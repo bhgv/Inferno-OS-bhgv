@@ -37,6 +37,28 @@ typedclientcontext(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
  done:dis64layoutfree(&layout);return ok?1:typedfail(p,"client-context-geometry");
 }
 
+/* One exact Context field and one direct mapped root. No nested dereference. */
+static int
+typedclientfield(Inst *in,Dis64TypedBody *p,unsigned int pc)
+{
+ Addr *a;Type *t;Dis64Layout layout={0};unsigned int i,bm,vm;long base,value;int actual,read,kind,ok=0;
+ read=in->sm==Afpind;a=read?&in->s:&in->d;
+ if(in->op!=IMOVP || in->mm!=Anone || in->branch || (read?in->dm!=Afp:in->dm!=Afpind) ||
+    !a->decl || !(t=a->decl->ty) || t->kind!=Tref || !(t=t->tof) || t->kind!=Tadt ||
+    !t->decl || !t->decl->sym || strcmp(t->decl->sym->name,"Context") || !t->decl->dot ||
+    !t->decl->dot->sym || strcmp(t->decl->dot->sym->name,"Draw") ||
+    a->offset<0 || a->offset>8 || a->offset%4 || !dis64layouttype(t,&layout) || layout.bytes!=24 || layout.count!=3)goto done;
+ for(i=0;i<3;i++)if(layout.leaves[i].legacy!=4*i || layout.leaves[i].native!=8*i || layout.leaves[i].oldbytes!=4 || layout.leaves[i].bytes!=8 || layout.leaves[i].kind!=(i==2?Tchan:Tref))goto done;
+ if(!typedoperand(Afp,a,TypedRoot,0,0,p,&base,&bm,&actual) || actual!=Tref)goto done;
+ kind=a->offset==8?Tchan:Tref;
+ if(!typedoperand(read?in->dm:in->sm,read?&in->d:&in->s,TypedRoot,0,0,p,&value,&vm,&actual) ||
+    (actual!=kind && actual!=Tany) || (read?vm!=AFP:vm!=AFP && vm!=AMP))goto done;
+ if(!p->contextfields){p->contextfields=allocmem(p->count*sizeof(long));memset(p->contextfields,0,p->count*sizeof(long));}
+ p->contextfields[pc]=2*a->offset;
+ p->code[pc]=(Dis64Instruction){IMOVP,read?SRC(AFP|AIND)|DST(AFP):SRC(vm)|DST(AFP|AIND),0,read?base:value,read?value:base};ok=1;
+ done:dis64layoutfree(&layout);return ok?1:typedfail(p,"context-field-roles");
+}
+
 static int typedmultibody(TypedMulti*,unsigned int,unsigned int);
 
 static int
@@ -106,7 +128,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     cost=p->frame.bytes+p->data.bytes+(p->frame.count+p->data.count)*sizeof(Dis64LayoutLeaf);
     if(cost>32*1024*1024-c->cost){typedfail(p,"multi-storage-budget");goto fail;}c->cost+=cost;
     if(i){c->state[index]=2;c->height[index]=1;return 1;}
-    if(p->reason==nil || (strcmp(p->reason,"unsupported-opcode") && !(c->external==3 && p->code && !p->frame.reason && !p->data.reason)))goto fail;
+    if(p->reason==nil || (strcmp(p->reason,"unsupported-opcode") && !(c->external>=2 && p->code && !p->frame.reason && !p->data.reason)))goto fail;
     p->reason=nil;memset(p->code,0,p->count*sizeof(*p->code));memset(p->returns,0,p->count);
     p->sites=allocmem((p->count/2+1)*sizeof(*p->sites));
     if(c->external)p->external=allocmem((p->count/2+1)*sizeof(*p->external));
@@ -119,13 +141,15 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             else if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;
             for(i=pc+1;i<next;i++)inside[i-p->first]=1;
             pc=next;
-        }else if(c->external>=2 && ((in->op==IBEQW || in->op==IBNEW || in->op==IBEQL || in->op==IBNEL) && ((in->s.decl && in->s.decl->ty && (in->s.decl->ty->kind==Tmodule || in->s.decl->ty->kind==Tlist || in->s.decl->ty->kind==Tref)) || (in->m.decl && in->m.decl->ty && (in->m.decl->ty->kind==Tmodule || in->m.decl->ty->kind==Tlist || in->m.decl->ty->kind==Tref))))){
+        }else if(c->external>=2 && in->op==IMOVP && (in->sm==Afpind || in->dm==Afpind)){
+            if(!typedclientfield(in,p,pc-p->first))goto fail;pc++;
+        }else if(c->external>=2 && ((in->op==IBEQW || in->op==IBNEW || in->op==IBEQL || in->op==IBNEL) && ((in->s.decl && in->s.decl->ty && (in->s.decl->ty->kind==Tmodule || in->s.decl->ty->kind==Tlist || in->s.decl->ty->kind==Tref || in->s.decl->ty->kind==Tchan)) || (in->m.decl && in->m.decl->ty && (in->m.decl->ty->kind==Tmodule || in->m.decl->ty->kind==Tlist || in->m.decl->ty->kind==Tref || in->m.decl->ty->kind==Tchan))))){
             long source,middle;unsigned int sm,mm;int sk,mk;
             if(in->dm!=Apc || in->branch==nil || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop || in->d.offset!=in->branch->pc ||
                !typedoperand(in->sm,&in->s,TypedRoot,0,0,p,&source,&sm,&sk) ||
                !typedoperand(in->mm,&in->m,TypedRoot,0,1,p,&middle,&mm,&mk)){typedfail(p,"load-nil-branch");goto fail;}
-            if(sk==Tany && (mk==Tmodule || mk==Tlist || mk==Tref)){long v=source;unsigned int mode=sm;int kind=sk;source=middle;sm=mm;sk=mk;middle=v;mm=mode;mk=kind;}
-            if((sk!=Tmodule && sk!=Tlist && sk!=Tref) || mk!=Tany || sm!=AFP || mm!=AMP){typedfail(p,"load-nil-roles");goto fail;}
+            if(sk==Tany && (mk==Tmodule || mk==Tlist || mk==Tref || mk==Tchan)){long v=source;unsigned int mode=sm;int kind=sk;source=middle;sm=mm;sk=mk;middle=v;mm=mode;mk=kind;}
+            if((sk!=Tmodule && sk!=Tlist && sk!=Tref && sk!=Tchan) || mk!=Tany || sm!=AFP || mm!=AMP){typedfail(p,"load-nil-roles");goto fail;}
             p->code[pc-p->first]=(Dis64Instruction){in->op==IBEQW?IBEQL:in->op==IBNEW?IBNEL:in->op,SRC(AFP)|AXINM|DST(AIMM),middle,source,in->branch->pc-p->first};pc++;
         }else if(c->external>=2 && (in->op==INEW || in->op==INEWZ)){
             if(!typedclientcontext(in,p,p->code+pc-p->first))goto fail;pc++;

@@ -21,12 +21,19 @@ struct Dis64ScalarClientView {
  Dis64CallDecoded decoded[Dis64ClientCode];
 };
 
-/* Existing indirect framing with an MP pointer source, admitted only by the
- * fixed managed argument island. The general scalar decoder stays unchanged. */
+/* Local indirect framing for checked managed arguments and Context fields.
+ * Exactly one operand is indirect; secondary holds its displacement. The
+ * general scalar decoder stays unchanged. */
 static int
 dis64clientinstructionread(const unsigned char *data,unsigned int bytes,Dis64CallDecoded *out,unsigned int *used)
 {
  Dis64CallDecoded d={0};unsigned int at=2,n;
+ if(data && bytes>=2 && data[0]==IMOVP && data[1]==(SRC(AFP|AIND)|DST(AFP))){
+  if(!out || !used || !dis64operandread(data+at,bytes-at,&d.instruction.source,&n))return 0;at+=n;
+  if(!dis64operandread(data+at,bytes-at,&d.secondary,&n))return 0;at+=n;
+  if(!dis64operandread(data+at,bytes-at,&d.instruction.destination,&n))return 0;at+=n;
+  d.instruction.op=IMOVP;d.instruction.mode=data[1];*out=d;*used=at;return 1;
+ }
  if(data && bytes>=2 && data[0]==IMOVP && data[1]==(SRC(AMP)|DST(AFP|AIND))){
   if(!out || !used || !dis64operandread(data+at,bytes-at,&d.instruction.source,&n))return 0;at+=n;
   if(!dis64operandread(data+at,bytes-at,&d.instruction.destination,&n))return 0;at+=n;
@@ -37,8 +44,8 @@ dis64clientinstructionread(const unsigned char *data,unsigned int bytes,Dis64Cal
 }
 
 /* Internal proof classes only; never signature kinds or serialized type IDs. */
-enum { Dis64ClientRoot=0x100,Dis64ClientString,Dis64ClientListString,Dis64ClientOpaque };
-static int dis64clientisroot(unsigned int kind){return kind>=Dis64ClientRoot && kind<=Dis64ClientOpaque;}
+enum { Dis64ClientRoot=0x100,Dis64ClientString,Dis64ClientListString,Dis64ClientOpaque,Dis64ClientDisplay,Dis64ClientScreen,Dis64ClientWm };
+static int dis64clientisroot(unsigned int kind){return kind>=Dis64ClientRoot && kind<=Dis64ClientWm;}
 static unsigned int dis64clientwidth(unsigned int kind){return dis64clientisroot(kind)?8:dis64scalarwidth(kind);}
 
 typedef struct Dis64ClientSlot Dis64ClientSlot;
@@ -257,9 +264,10 @@ dis64clientprove(Dis64ScalarClientView *v,int library)
  /* Solve MOVP class equalities before deriving executable CFG facts. */
  for(k=0;k<=Dis64ClientSlots;k++){
   changed=nslots;for(i=0;i<nslots;i++)previous[i]=slots[i].kind;
-  for(i=0;i<v->count;i++)if(dis64clientmanagedop(&v->decoded[i].instruction)){
+  for(i=0;i<v->count;i++)if(dis64clientmanagedop(&v->decoded[i].instruction) || dis64clientfieldop(v->decoded+i)){
    unsigned int reads[2]={0},writes[2]={0};
-   if(!dis64clientmanagedroles(slots,&nslots,v->frame,&v->decoded[i].instruction,reads,writes))return 0;
+   if(dis64clientfieldop(v->decoded+i)){if(!dis64clientfieldroles(slots,nslots,v->decoded+i,reads,writes))return 0;}
+   else if(!dis64clientmanagedroles(slots,&nslots,v->frame,&v->decoded[i].instruction,reads,writes))return 0;
   }
   if(!library)for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IMFRAME){
    Dis64Binding binding;unsigned int bits[2]={0};long ordinal=v->decoded[i].instruction.middle;
@@ -279,7 +287,8 @@ dis64clientprove(Dis64ScalarClientView *v,int library)
   if(in->op==IEXIT || (library && in->op==IRET)){if((library && in->op!=IRET) || in->mode!=(SRC(AXXX)|DST(AXXX)))return 0;node->next=v->count;continue;}
   if(i==v->count-1)return 0;
   if(in->op!=IMFRAME){
-   if(!dis64clienteffect(slots,&nslots,v->frame,in,node))return 0;
+   if(dis64clientfieldop(d)){if(!dis64clientfieldroles(slots,nslots,d,node->need,node->give))return 0;}
+   else if(!dis64clienteffect(slots,&nslots,v->frame,in,node))return 0;
    node->next=in->op==IJMP?v->count:i+1;
    if(dis64clientbranch(in->op)){if(in->destination<0 || (unsigned long)in->destination>=v->count)return 0;node->target=in->destination;}
    continue;

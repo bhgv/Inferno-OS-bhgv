@@ -17,11 +17,12 @@ dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Ins
   else goto done;
  }
  if(!path || databytes!=4+4*(nilvalue!=nil))goto done;
- if(!dis64typedclient(entry,globals,functions,nf,instructions,count,count,&body) || body.nsites || !body.nexternal || body.frame.bytes>4080)goto done;
+ if(!dis64typedclient(entry,globals,functions,nf,instructions,count,count,&body)){failure=body.reason?body.reason:failure;goto done;}
+ if(body.nsites || !body.nexternal || body.frame.bytes>4080)goto done;
  for(i=0;i<body.frame.count;i++){
   leaf=body.frame.leaves+i;
   if(leaf->kind==Tmodule){if(loads++)goto done;moduleoffset=leaf->native;}
-  else if(leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=Tref && leaf->kind!=-1)goto done;
+  else if(leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=Tref && leaf->kind!=Tchan && leaf->kind!=-1)goto done;
  }
  if(loads!=1 || body.data.count!=1+(nilvalue!=nil))goto done;
  for(i=0;i<body.data.count;i++){
@@ -80,8 +81,8 @@ dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Ins
    if(in.op==IMFRAME){in.mode=SRC(AMP)|AXIMM|DST(AFP);in.source=0;}else{in.mode=SRC(AFP)|AXIMM|DST(AMP);in.destination=0;}
   }else if(in.op==ILEA){if(body.returns[i]<128 || UDST(in.mode)!=(AFP|AIND))goto done;in.source=tail;}
   else if(in.op==IRET){in.op=IEXIT;}
-  if(UDST(in.mode)==(AFP|AIND)){if(body.returns[i]<64)goto done;if(!callfileencode(code,&at,&in,40,in.destination))goto done;}
-  else if(!callfileencode(code,&at,&in,0,0))goto done;
+  if(UDST(in.mode)==(AFP|AIND)){if(body.returns[i]>=64){if(!callfileencode(code,&at,&in,40,in.destination))goto done;}else if(!body.contextfields || !dis64clientencode(code,&at,&in,in.destination,body.contextfields[i],0))goto done;}
+  else if(!dis64clientencode(code,&at,&in,0,0,body.contextfields?body.contextfields[i]:0))goto done;
   if(in.op==IMCALL && site->contract){
    k=bindings[site->binding].signature.result;
    copy=(Dis64Instruction){k==Dis64Int?IMOVW:k==Dis64Big?IMOVL:IMOVF,SRC(AFP)|DST(AFP),0,tail,site->resultoffset};
@@ -92,7 +93,7 @@ dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Ins
  dis64put32(code,total);sizes[1]=at;maps[64]=0xe0;
  for(i=0;i<body.frame.count;i++){
   leaf=body.frame.leaves+i;
-  if(leaf->kind==Tstring || leaf->kind==Tlist || leaf->kind==Tany || leaf->kind==Tref)maps[leaf->native/64]|=0x80>>((leaf->native/8)%8);
+  if(leaf->kind==Tstring || leaf->kind==Tlist || leaf->kind==Tany || leaf->kind==Tref || leaf->kind==Tchan)maps[leaf->native/64]|=0x80>>((leaf->native/8)%8);
  }
  types[0]=(Dis64Type){body.frame.bytes+16,8,maps,(body.frame.bytes+79)/64};types[1]=(Dis64Type){24,8,maps+64,1};
  module.profile=1;module.databytes=24;module.datatype=1;

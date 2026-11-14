@@ -20,6 +20,7 @@ struct Dis64TypedBody {
     Dis64TypedExternal *external;
     unsigned int nexternal;
 	unsigned char *returns;
+    long *contextfields; /* Selected compiler-owned indirect field displacements. */
 	Dis64Layout frame, data;
 	unsigned int first, count, badpc;
 	int resultkind, tail;

@@ -61,7 +61,11 @@ def decode(code, managed=False):
         name = OP.NAMES[opcode] if opcode < len(OP.NAMES) else 'UNKNOWN'
         sm, dm, mm = mode >> 3 & 7, mode & 7, mode & 192
         middle = source = destination = secondary = 0
-        if dm == 5:
+        if managed and name=="IMOVP" and sm==5 and dm==1 and not mm:
+            source, at = OP.decode(code, at)
+            secondary, at = OP.decode(code, at)
+            destination, at = OP.decode(code, at)
+        elif dm == 5:
             if mm or (sm not in (1, 2) and not(managed and name=="IMOVP" and sm==0)):
                 raise ValueError('indirect role')
             source, at = OP.decode(code, at)

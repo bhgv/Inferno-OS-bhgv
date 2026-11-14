@@ -28,6 +28,7 @@ dis64clientconstruct(void *argument)
   Dis64CallDecoded *d=v->decoded+i;if(!dis64runtimeinstruction(&d->instruction))return 0;
   dis64runtimeinst(m->prog+i,&d->instruction,m->prog);
   if(roots && d->instruction.op==ILEA)m->prog[i].reg=8;
+  if(USRC(d->instruction.mode)==(AFP|AIND)){m->prog[i].s.i.f=d->instruction.source;m->prog[i].s.i.s=d->secondary;}
   if(UDST(d->instruction.mode)==(AFP|AIND)){m->prog[i].d.i.f=d->instruction.destination;m->prog[i].d.i.s=d->secondary;}
  }
  if(!disstringpoolget(&v->strings,0,&name))return 0;

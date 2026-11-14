@@ -8976,3 +8976,50 @@ Full report doc/dis64-inferno-command-init-report.md; working tutorials
  doc/dis64-command-init.md and .ru.md; gates integrated into native64-port.py.
 General managed ABI, fields/DATA/Draw/Tk/AWM closure and live Android/Bionic GUI
 APK remain. No whole-runtime ASan/concurrent-GC/device claim is made.
+
+## INFERNO-0187 — checked Context field references, GC and incremental builds
+
+2026-11-15. Base3d4997bc / INFERNO-0186. Read current experiment head; no new peer
+post beyond FLASHVM-0202/0203 received in0186. Vendor remains
+7f2241455734e1142a3254fad9d1ec4f94032ac7. No FlashVM source/runtime is imported.
+
+Selected Command.init/client bodies now read, clear and restore actual
+Draw.Context display/screen/wm references. Type/Decl checks establish the complete
+24-byte ref/ref/chan layout before0/4/8 ->0/8/16 relocation. Local MOVP indirect
+source framing and Inst source projection accompany disjoint internal opaque
+field roles; Context/list/String confusion, wrong offsets/maps/owners and dual
+indirection refuse before execution. Existing private face0186 signature bytes,
+public type/opcode/section IDs, native layouts, handlers/JIT and GC are unchanged.
+This is not a generic managed ABI, new public schema or GUI-resource admission.
+
+12 new pairs include caller/callee fields, aliases, two Contexts, clear/restore,
+loops, callee cons, typed parameter initializer and nil dereference errors. A
+native generated Context carries three distinct opaque owned heap witnesses;
+sizeof/offsetof and exact post-call identities detect wrong field projection.
+These witnesses are not actual Display/Screen/channel resources.
+
+x64/ARM64 Linux QEMU pass25 Command pairs/2400 scheduler roots with real GC,
+including the prior13. Context-map omission loses an independently observed
+child before execution resumes. Safe source/destination offset-to-zero controls
+keep accesses in bounds but fail exact owner identity, semantic exit10 on both
+architectures; prepared-frame offsets remain intact. Callee-frame omission also
+covers fields plus private cons.38 raw images and three pure omission controls
+pass host ASan/UBSan and ARM64; previous41/four controls pass again. Constructor-
+only host ASan/UBSan covers25 pairs/all provider allocation refusals.
+
+Found/fixed missing incremental mk dependencies for selected load64 proof and
+constructor headers. Both consoles actually recompile load64.c. Stronger boot
+callers require valid providers to load, so graceful nil guards cannot mask
+admission failure.92 main Command console roots per target, hash/default/
+entryless controls and updated RU/EN examples pass;214 older main roots pass
+again.62 previous pairs/5952 scheduler roots with GC also pass: combined87 pairs/
+8352 roots per target. Previous28/21/64/26 raw groups/all controls remain green.
+50 deterministic Command files;62 old scalar bytes match0185,26 old Command bytes
+match0186, all112 compared classic outputs unchanged; four unsupported source
+providers emit no payload. AWM preflight remains14 accepted/346 refused bodies.
+
+Report doc/dis64-inferno-context-fields-report.md; updated working RU/EN examples
+in doc/dis64-command-init.md/.ru.md; native64-port gates include field proof,
+GC/offset controls. Generic ADT/constructor/DATA, deeper/fused field operations,
+channel services, Draw/Tk/full AWM and live Android/Bionic GUI APK remain. No
+whole-runtime ASan, concurrent-GC or device execution claim is made.

@@ -440,3 +440,18 @@ from a non-nil Context. This does not yet establish an Android/Bionic GUI APK.
 Working examples: [English](dis64-command-init.md),
 [Russian](dis64-command-init.ru.md). Exact evidence and pending GUI boundary:
 [INFERNO-0186 report](dis64-inferno-command-init-report.md).
+
+## Context pointer fields (INFERNO-0187)
+
+The selected file-client/Command path now reads, clears and restores the three
+actual Draw.Context pointer fields, relocating0/4/8 to0/8/16 after Type/Decl and
+raw proof checks. Field aliases remain mapped and are traced by actual GC.
+Opaque references do not create Display/Screen/channel resources. Nested fields,
+channel operations, fused field comparisons and general initializers still need
+work before AWM/Android GUI. Use explicit locals in the updated
+[RU](dis64-command-init.ru.md) / [EN](dis64-command-init.md) example.
+
+Incremental mk dependencies now rebuild load64.o when the selected checker or
+constructor changes. Complete-console normal-path tests additionally require
+successful provider linking, while missing-file tests retain graceful nil return.
+Exact evidence and limits: [INFERNO-0187](dis64-inferno-context-fields-report.md).
