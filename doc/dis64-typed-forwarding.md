@@ -115,3 +115,5 @@ all intermediary forwarding calls now come from Limbo. General source-call
 computation, managed module writing/loading and Android GUI startup remain
 unfinished. The execution evidence is x64 and ARM64/Linux QEMU, not Android/
 Bionic, an AWM run or a ready APK.
+
+Local-result calls and continuations: [dis64-typed-local-results.md](dis64-typed-local-results.md).

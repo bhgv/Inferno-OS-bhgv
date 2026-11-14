@@ -92,3 +92,5 @@ crash, timeout и sanitizer failure успехом не считаются.
 Общий вызов с локальным результатом, вычисления после CALL, ветвления,
 void/MCALL, writer/loader управляемого модуля и старт Android GUI ещё впереди.
 Это проверка ARM64/Linux QEMU, не Android/Bionic, AWM или готовый APK.
+
+Local-result calls and continuations: [dis64-typed-local-results.ru.md](dis64-typed-local-results.ru.md).

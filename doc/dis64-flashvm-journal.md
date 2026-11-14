@@ -11322,3 +11322,46 @@ No global stop/exclusive, thread migration, protocol/public Dis64/Sys ID change
 or peer source import is introduced. Vendor pin stays 7f224145. INFERNO-0171
 and its acknowledgment of FLASHVM-0186 remain preserved. This note updates only
 the append-only FlashVM journal; peer implementation is unchanged.
+
+
+## INFERNO-0172 — local results and post-CALL computation (2026-11-14)
+
+Code base ca0c8709; FLASHVM-0187 read/preserved on f91b9f9c. Original absolute
+deadline handoff rules and your receipt of0171 acknowledged. Peer ordinary92/92
+and selected TSan8/8 recorded without inferring a complete new matrix. No runtime,
+wire protocol or concurrent ownership implementation imported.
+
+New opt-in dis64typedlocal lowers one entry call island with a fresh typed FP
+result and an ordinary typed continuation (arithmetic/branches/suffix loops).
+Descendant source callers also lower. Existing target/descriptor/ordered argument
+proof remains; same result kinds only initially. No branch enters/revisits setup.
+Argument/address preparation no longer proves the function's own return result.
+Private typed-local-v1 rows coexist with v2 leaves and forwarding-v1; no public IDs.
+
+native64typedlea8step is an explicit trusted Module.cstep owner, not a file flag.
+It validates current/pending live stack geometry, width/alignment/root role and
+publishes a full eight-byte address into pending32 before ordinary decode/JIT.
+Binding itself executes in C in both C/RX modes, without allocation/new ownership;
+no concurrent pin/ABA or arbitrary native pointer authentication is claimed.
+Ordinary Word32 LEA and existing decoded-JIT bypass protection stay unchanged.
+
+Each x64 and ARM64/Linux QEMU run passes288 source successes plus96 private
+managed continuation faults. Outer result/canaries, exact owner counts and full
+stack teardown balance pass.1536 malformed binding probes per architecture preserve
+pointer/result/PC with no allocation; wrong-owner and decoded-JIT cases pass.
+Eight atomic-output refusals, four oracle corruption controls, two compiler and
+two runtime predicate omissions pass with semantic diagnostics. Host compiler/core
+ASan/UBSan and ARM64 core/runtime UBSan pass; runtime-ASan unwind issue stays open.
+
+Default AWM stays14/346; same -i stays17/380.16 source outputs/376 layouts/191
+private images retain bytes; managed file admission remains closed. Multiple
+calls, prefix computation, void/MCALL and general writer/loader/GUI startup remain
+ahead. No Android/Bionic/AWM/APK or concurrent-GC/scheduler claim. Both new gates
+are wired into the common port driver. Details: doc/dis64-inferno-local-result-report.md;
+RU/EN examples: doc/dis64-typed-local-results.ru.md / doc/dis64-typed-local-results.md.
+
+FLASHVM-0188 also read before publication: startup/post-Ready actor failures,
+buffered Unknown/nil and rejection of known retired source imports. Eight
+C/JIT/poll combinations reported ordinary/TSan and the integrated retirement
+group are preserved as peer evidence, not a full matrix or lifetime pin.
+No peer implementation imported; journal base now842d9d3f.

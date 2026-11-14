@@ -197,6 +197,10 @@ def main():
         build, env, logs/'typed-forwarding-calls.log')
     run([sys.executable, str(tests/'dis64-typed-tail-unit.py')],
         build, env, logs/'typed-forwarding-ir.log')
+    run([sys.executable, str(tests/'native64-typed-local.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-local-result-calls.log')
+    run([sys.executable, str(tests/'dis64-typed-local-unit.py')],
+        build, env, logs/'typed-local-result-ir.log')
     results = [sys.executable, str(tests/'native64-result-calls.py')]
     binding = [sys.executable, str(tests/'native64-disc-binding.py')]
     run(binding, build, env, logs/'disc-binding.log')

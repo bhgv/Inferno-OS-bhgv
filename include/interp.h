@@ -471,6 +471,7 @@ extern	Channel*	cnewcraw(int, int);
 extern	Channel*	cnewcmapped(Modlink*, WORD, int);
 /* Complete one decoded operation; never retain a Module/Jit pointer across its C handler. */
 extern	int		cjitexec(REG*, int, int (*)(REG*));
+extern	int		native64typedlea8step(void); // Trusted checked-IR local-result binding only.
 extern	int		native64lea8step(void); // Trusted Module.cstep binding; never selected from a file flag.
 extern	int		native64managedlea8step(void); // Trusted mapped, nil result cell binding.
 extern	int		native64diallea8step(void); // Exact String/String -> (Word, Connection) trial.

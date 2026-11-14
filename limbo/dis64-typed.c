@@ -122,7 +122,7 @@ typedresults(Dis64TypedBody *p)
 	state=allocmem(p->count);memset(state,0,p->count);
 	queue=allocmem((2*p->count+1)*sizeof(*queue));state[0]=1;queue[tail++]=0;
 	while(head<tail){
-		pc=queue[head++];flow=p->returns[pc]?3:state[pc];n=0;
+		pc=queue[head++];flow=(p->returns[pc] && p->returns[pc]<32)?3:state[pc];n=0;
 		if(p->code[pc].op==IRET) continue;
 		if(p->code[pc].op==IJMP)edge[n++]=p->code[pc].destination;
 		else{
@@ -178,7 +178,7 @@ dis64typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsign
 /* Canonical forwarding calls: one prepared frame, all declared arguments,
  * inherited result address, CALL and RET. No branch may enter setup. */
 static int
-typedtail(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p,Decl **active,unsigned int depth)
+typedtail(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p,Decl **active,unsigned int depth,int local)
 {
     Inst *in,*frame,*call,*binding,*last;
     Decl *callee=nil,*arg;
@@ -195,10 +195,19 @@ typedtail(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned in
     for(in=input;in!=nil;in=in->next){
         if(in->op==INOOP || in->pc<p->first || in->pc>=stop)continue;
         if(n==0)frame=in;
-        if(in->pc==(int)stop-3)binding=in;
-        if(in->pc==(int)stop-2)call=in;
+        if(!local && in->pc==(int)stop-3)binding=in;
+        if(!local && in->pc==(int)stop-2)call=in;
         if(in->pc==(int)stop-1)last=in;
         n++;
+    }
+    if(local && frame!=nil){
+        binding=frame;
+        for(in=frame->next;in!=nil && in->pc<(int)stop;in=in->next){
+            if(in->op==INOOP)continue;
+            if(in->op==ICALL){call=in;break;}
+            if(in->dm!=Afpind)break;
+            binding=in;
+        }
     }
     if(frame==nil || frame->op!=IFRAME || frame->sm!=Adesc || frame->mm!=Anone || frame->dm!=Afp || frame->branch!=nil ||
        frame->d.reg<32 || frame->d.reg>fn->desc->size-4 ||
@@ -214,7 +223,7 @@ typedtail(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned in
        (call->branch!=nil && call->branch!=callee->pc))return typedfail(p,"tail-target");
     end=count;
     for(i=0;i<(unsigned int)nf;i++)if(functions[i]->pc->pc>callee->pc->pc && functions[i]->pc->pc<(int)end)end=functions[i]->pc->pc;
-    if(!typedtail(callee,globals,functions,nf,input,count,end,&child,active,depth+1)){
+    if(!typedtail(callee,globals,functions,nf,input,count,end,&child,active,depth+1,local)){
         typedfail(p,"tail-callee");goto done;
     }
     /* A successful normal callee return defines the inherited caller result.
@@ -229,7 +238,7 @@ typedtail(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned in
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
         if((!root && kind!=Tbyte && kind!=Tint && kind!=Tfix && kind!=Tbig && kind!=Treal) ||
            in==nil || in==binding || in->op!=op || in->mm!=Anone || in->dm!=Afpind || in->d.reg!=frame->d.reg ||
-           in->d.offset!=arg->offset || in->branch!=nil || index>=p->count-3 ||
+           in->d.offset!=arg->offset || in->branch!=nil || index>=(unsigned int)(call->pc-p->first)-1 ||
            !dis64layoutaddress(&child.frame,arg->offset,width,root,&offset) || offset>65535 ||
            !typedoperand(in->sm,&in->s,root?TypedRoot:kind,!root && width<8,0,p,&source,&sm,&actual) ||
            (root && actual!=kind && actual!=Tany)){
@@ -239,6 +248,25 @@ typedtail(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned in
         in=in->next;
     }
     while(in!=nil && in->op==INOOP)in=in->next;
+    if(local && in==binding && binding->op==ILEA && binding->sm==Afp){
+        kind=p->resultkind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
+        if(binding->mm!=Anone || binding->dm!=Afpind || binding->d.reg!=frame->d.reg || binding->d.offset!=16 || binding->branch!=nil ||
+           !typedoperand(Afp,&binding->s,root?TypedRoot:kind,0,0,p,&source,&sm,&actual) ||
+           (root && actual!=kind && actual!=Tany) || index!=(unsigned int)(call->pc-p->first)-1){typedfail(p,"local-result");goto done;}
+        p->resultoffset=source;p->resultcontract=p->resultbytes | (root?16:0);p->callend=call->pc-p->first;
+        p->code[index]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,source,32};p->returns[index++]=128|p->resultcontract;
+        p->code[index++]=(Dis64Instruction){ICALL,SRC(AFP)|DST(AIMM),0,40,call->d.offset};
+        for(in=call->next;in!=nil && in->pc<(int)stop;in=in->next){
+            if(in->op==INOOP)continue;
+            if(index>=p->count || in->pc!=(int)(p->first+index)){typedfail(p,"local-instruction-order");goto done;}
+            if(!typedinst(in,stop,p,p->code+index,p->returns+index))goto done;
+            if(in->branch!=nil && in->branch->pc<=call->pc){typedfail(p,"local-setup-branch");goto done;}
+            index++;
+        }
+        if(index!=p->count){typedfail(p,"local-instruction-count");goto done;}
+        if(!typedresults(p))goto done;
+        p->tail=2;p->target=callee->pc->pc;p->targetdesc=callee->desc->id;ok=1;goto done;
+    }
     if(in!=binding || binding->op!=ILEA || binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset!=0 ||
        binding->mm!=Anone || binding->dm!=Afpind || binding->d.reg!=frame->d.reg || binding->d.offset!=16 || binding->branch!=nil ||
        index!=p->count-3){typedfail(p,"tail-result");goto done;}
@@ -254,7 +282,14 @@ int
 dis64typedtail(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p)
 {
     Decl *active[64];
-    return typedtail(fn,globals,functions,nf,input,count,stop,p,active,0);
+    return typedtail(fn,globals,functions,nf,input,count,stop,p,active,0,0);
+}
+
+int
+dis64typedlocal(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p)
+{
+    Decl *active[64];
+    return typedtail(fn,globals,functions,nf,input,count,stop,p,active,0,1);
 }
 
 void
@@ -327,15 +362,18 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
 	int n,j;
 	char *enabled=getenv("LIMBO_DIS64_TYPED");
 	char *tail=getenv("LIMBO_DIS64_TYPED_TAIL");
+	char *local=getenv("LIMBO_DIS64_TYPED_LOCAL");
 	if(enabled==nil || strcmp(enabled,"1")!=0) return;
 	for(n=0;n<nfunctions;n++){
 		fn=functions[n]; stop=count;
 		for(j=0;j<nfunctions;j++) if(functions[j]->pc->pc>fn->pc->pc && functions[j]->pc->pc<stop) stop=functions[j]->pc->pc;
 		memset(&p,0,sizeof(p));
-		if(tail!=nil && strcmp(tail,"1")==0) dis64typedtail(fn,globals,functions,nfunctions,first,count,stop,&p);
+		if(local!=nil && strcmp(local,"1")==0) dis64typedlocal(fn,globals,functions,nfunctions,first,count,stop,&p);
+		else if(tail!=nil && strcmp(tail,"1")==0) dis64typedtail(fn,globals,functions,nfunctions,first,count,stop,&p);
 		else dis64typedlower(fn,globals,first,count,stop,&p);
-		fprint(2,"DIS64_TYPED {\"schema\":\"%s\",\"name\":",p.tail?"inferno-typed-tail-v1":"inferno-typed-body-v2");typedquote(fn->sym);
+		fprint(2,"DIS64_TYPED {\"schema\":\"%s\",\"name\":",p.tail==2?"inferno-typed-local-v1":p.tail?"inferno-typed-tail-v1":"inferno-typed-body-v2");typedquote(fn->sym);
 		if(p.tail) fprint(2,",\"tail\":[%ud,%ud]",p.target,p.targetdesc);
+		if(p.tail==2) fprint(2,",\"local\":[%ud,%ud,%ud]",p.callend,p.resultoffset,p.resultcontract);
 		fprint(2,",\"first\":%ud,\"accepted\":%s",p.first,p.reason==nil?"true":"false");
 		if(p.reason!=nil) fprint(2,",\"reason\":\"%s\",\"pc\":%ud",p.reason,p.badpc);
 		else{
@@ -344,7 +382,7 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
 			typedlayout(&p.frame); fprint(2,",\"data\":"); typedlayout(&p.data);
 			fprint(2,",\"args\":");typedbindings(fn->ty->ids,1);
 			fprint(2,",\"code\":[");
-			for(i=0;i<p.count;i++) fprint(2,"%s[%ud,%ud,%ld,%ld,%ld,%ud]",i?",":"",p.code[i].op,p.code[i].mode,p.code[i].source,p.code[i].middle,p.code[i].destination,p.tail?p.returns[i]:p.returns[i]?(p.resultbytes | (p.resultkind==Tstring || p.resultkind==Tref || p.resultkind==Tlist || p.resultkind==Tarray || p.resultkind==Tchan || p.resultkind==Tmodule?16:0)):0);
+			for(i=0;i<p.count;i++) fprint(2,"%s[%ud,%ud,%ld,%ld,%ld,%ud]",i?",":"",p.code[i].op,p.code[i].mode,p.code[i].source,p.code[i].middle,p.code[i].destination,p.returns[i]>=32?p.returns[i]:p.returns[i]?(p.resultbytes | (p.resultkind==Tstring || p.resultkind==Tref || p.resultkind==Tlist || p.resultkind==Tarray || p.resultkind==Tchan || p.resultkind==Tmodule?16:0)):0);
 			fprint(2,"],\"globals\":");typedbindings(globals,0);
 		}
 		fprint(2,"}\n"); dis64typedfree(&p);

@@ -7,6 +7,7 @@
 #include "kernel.h"
 #include "vmfetch.h"
 #include "vmchannel.h"
+#include "native64-local-bind.h"
 
 REG	R;			/* Virtual Machine registers */
 String	snil;			/* String known to be zero length */
@@ -263,6 +264,12 @@ native64bindresult(int managed)
 		error(exBounds);
 	memmove(destination, &address, sizeof(address));
 	return 1;
+}
+
+int
+native64typedlea8step(void)
+{
+    return native64localbind();
 }
 
 int
