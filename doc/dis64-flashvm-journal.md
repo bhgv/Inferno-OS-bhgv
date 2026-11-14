@@ -11001,3 +11001,63 @@ is independent. Every changed handwritten source remains below 500 lines.
 Three FlashVM commits and exact-tree checked format-patch backup are retained.
 Inferno implementation and its own journal remain untouched; only this append-only
 FlashVM journal is shared. Contract: disVM/remote/ROUTED-RESULTS.md in FlashVM.
+
+
+## FLASHVM-0185 — terminal-state wakeup for concurrent offered callers
+
+2026-11-14. FlashVM master 979d22e58466a733b11bf68d2d410aeb467e9e9d,
+exact tree 8adf7a3178eba240640c82673100561d6088e6f2. Read/preserve
+INFERNO-0168 at 7fa5db77 and previous FLASHVM-0184 at cf37ecb6. No new
+Inferno source is imported; vendor pin remains 7f224145. Public Dis64/Sys
+producer format and IDs are unchanged. These are private matched Limbo changes.
+
+After a broker or variable actor closed, already offered queued callers could
+still wait their original sixty-second deadlines. Proxynet/Proxyref supervisors
+now use one watchdog child per request, sleeping in slices of at most 100 ms
+until terminal state or the original absolute deadline. No new thread per poll,
+no deadline renewal, no transaction cancellation, replay or executor change.
+Caller-side canwait remains before supervisor spawn. Offered work without a
+reply returns Unknown; unoffered work can return Disconnected. Old images are
+not moved onto a replacement connection. GC finalizers still perform no IO.
+
+TSan exposed an important completion boundary during this change: a successful
+Close could race a premature closed flag and appear Unknown. The actual broker/
+source actor now publishes its active buffered reply BEFORE terminal state;
+supervisors recheck an available reply when the watchdog wakes. This preserves
+completed Stop/Close and releases other queued waiters. Exceptional termination
+without reply remains uncertain. Raw local Owner Handle ownership is unchanged.
+Closed endpoints held by application code may still root buffered managed
+requests; native leases are revoked, and unreachable objects follow normal GC.
+
+Two actual VMs and a relay validate the single original effect A=11. The relay
+holds that completed Add reply until a forwarding observer acknowledges seven
+more sends to the actual broker/actor mailbox, then disconnects both directions.
+Eight offered callers must return Unknown within three seconds after actual
+closed publication. Original request deadlines stay sixty seconds, whole client
+VM including every native Prog must exit within forty seconds. A remains 11.
+Separate variants retire one queued caller before disconnect: seven public
+replies plus the abandoned supervisor/watchdog must all join. C/JIT and both
+fast/locked GC metadata polling combinations pass for network and Ref callers.
+
+Two private omissions remove only one watchdog's terminal-state observation.
+The fixture detects missing completions, drains abandoned requests with synthetic
+Unknown ONLY for private omission cleanup, joins all children, releases the
+exercise frame and raises the exact semantic diagnostic. Exit 1, A=11, exact
+native child lifetimes, strict concurrent GC and zero native RC/GC/token ownership
+are required. Timeout, crash, compile error or sanitizer report is not acceptance.
+There is no production synthetic reply, owner bypass or global stop/exclusive mode.
+
+Full ordinary CTest passes 90/90. After the publication-order fix, ordinary
+routed-results/retirement/control pass again 3/3. Final affected TSan passes 8/8:
+forwarding, routed results, original queue deadlines, guest proxies, retirement
+positives and selected associated omissions. The standalone TSan driver also
+passes all execution/poll/orphan variants and all three policy/watchdog controls.
+This is not a claim of a new complete 91-test TSan result. The existing native
+architecture workload count stays 54; the retirement driver is expanded.
+Baseline 1be48dd5 CI run 43569470444 has successful AMD64 plain/TSan, ARM64 plain
+and both DIS64 Sys producer/owner jobs; RV64/QEMU remains pending. New commit CI
+is separate. Every changed handwritten source stays below 500 lines/file.
+
+Four FlashVM commits and exact-tree format-patch backup are retained. Inferno
+implementation and its own journal are untouched; only this append-only FlashVM
+journal is shared. Contract and evidence: disVM/remote/DISCONNECT-WAITERS.md.
