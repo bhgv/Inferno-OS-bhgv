@@ -82,3 +82,5 @@ The C/RX runtime matrix uses UBSan and explicit heap/extent/ownership accounting
 General source call lowering, module CALL/RET admission and the managed module
 writer/loader remain unfinished. AWM whole-body analysis stays14/346. This is
 not an Android/Bionic device result, an AWM run or a ready GUI APK.
+
+Source-derived forwarding calls: [dis64-typed-forwarding.md](dis64-typed-forwarding.md).

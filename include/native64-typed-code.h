@@ -78,4 +78,40 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 	}
 	return 1;
 }
+
+/* Canonical compiler-proved forwarding wrapper. target/type belong to the same
+ * unpublished trusted module; no native pointers are supplied by a file. */
+static int
+native64typedtailcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps,unsigned int count,unsigned int fpbytes,unsigned int mpbytes,Type *callee,Inst *target,unsigned int ordinal)
+{
+    unsigned int i,sm;
+    const Native64TypedStep *s;
+    Inst *p;
+    if(!native64model() || out==nil || steps==nil || count<4 || count>65536 || capacity<count ||
+       callee==nil || callee==H || target==nil || target==H || ordinal>536870911 ||
+       fpbytes<64 || fpbytes>1024*1024 || fpbytes%8 || mpbytes>1024*1024 || mpbytes%8 ||
+       callee->size<64 || callee->size>65536 || callee->size%8)return 0;
+    s=steps;
+    if(s->op!=IFRAME || s->mode!=(SRC(AIMM)|DST(AFP)) || s->m || s->d!=40 || s->returned)return 0;
+    for(i=1;i<count-3;i++){
+        s=steps+i;sm=USRC(s->mode);
+        if((s->op!=IMOVB && s->op!=IMOVW && s->op!=IMOVL && s->op!=IMOVF && s->op!=IMOVP) ||
+           s->mode!=(SRC(sm)|DST(AFP|AIND)) || s->m || s->returned!=64 ||
+           !native64typedcodeoperand(sm,s->s,fpbytes,mpbytes) || sm==AXXX ||
+           s->d<64 || (unsigned long)s->d>=(unsigned int)callee->size || s->d>65535)return 0;
+    }
+    s=steps+count-3;
+    if(s->op!=IMOVL || s->mode!=(SRC(AFP)|DST(AFP|AIND)) || s->s!=32 || s->m || s->d!=32 || s->returned!=64)return 0;
+    s=steps+count-2;
+    if(s->op!=ICALL || s->mode!=(SRC(AFP)|DST(AIMM)) || s->s!=40 || s->m || s->returned)return 0;
+    s=steps+count-1;
+    if(s->op!=IRET || s->mode!=(SRC(AXXX)|DST(AXXX)) || s->s || s->m || s->d || s->returned)return 0;
+    for(i=0;i<count;i++){
+        s=steps+i;p=out+i;memset(p,0,sizeof(*p));p->op=s->op;p->add=s->mode;
+        if(i==0){p->s.imm=ordinal;p->d.ind=40;}
+        else if(i==count-2){p->s.ind=40;p->d.ins=target;}
+        else if(i<count-1){p->s.imm=s->s;p->d.i.f=40;p->d.i.s=s->d;}
+    }
+    return 1;
+}
 #endif

@@ -175,6 +175,88 @@ dis64typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsign
 	return typedresults(p);
 }
 
+/* Canonical forwarding calls: one prepared frame, all declared arguments,
+ * inherited result address, CALL and RET. No branch may enter setup. */
+static int
+typedtail(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p,Decl **active,unsigned int depth)
+{
+    Inst *in,*frame,*call,*binding,*last;
+    Decl *callee=nil,*arg;
+    Dis64TypedBody child={0};
+    unsigned int i,n=0,index=0,sm,dm,offset,width,end;
+    int kind,actual,root,op,ok=0;
+    long source;
+    for(i=0;i<depth;i++)if(active[i]==fn)return typedfail(p,"tail-cycle");
+    if(depth==64 || nf<1 || nf>4096)return typedfail(p,"tail-limit");
+    active[depth]=fn;
+    if(dis64typedlower(fn,globals,input,count,stop,p))return 1;
+    if(p->reason==nil || strcmp(p->reason,"unsupported-opcode") || p->badpc!=p->first)return 0;
+    frame=nil;call=nil;binding=nil;last=nil;
+    for(in=input;in!=nil;in=in->next){
+        if(in->op==INOOP || in->pc<p->first || in->pc>=stop)continue;
+        if(n==0)frame=in;
+        if(in->pc==(int)stop-3)binding=in;
+        if(in->pc==(int)stop-2)call=in;
+        if(in->pc==(int)stop-1)last=in;
+        n++;
+    }
+    if(frame==nil || frame->op!=IFRAME || frame->sm!=Adesc || frame->mm!=Anone || frame->dm!=Afp || frame->branch!=nil ||
+       frame->d.reg<32 || frame->d.reg>fn->desc->size-4 ||
+       call==nil || call->op!=ICALL || call->sm!=Afp || call->s.reg!=frame->d.reg || call->mm!=Anone || call->dm!=Apc ||
+       last==nil || last->op!=IRET || last->sm!=Anone || last->mm!=Anone || last->dm!=Anone || last->branch!=nil ||
+       binding==nil || n!=p->count || p->resultkind==Tnone)return 0;
+    p->reason=nil;
+    for(i=0;i<(unsigned int)nf;i++)if(functions[i]!=nil && functions[i]->pc!=nil && functions[i]->pc->pc==call->d.offset){
+        if(callee!=nil)return typedfail(p,"tail-target");callee=functions[i];
+    }
+    if(callee==nil || callee->desc==nil || callee->desc->id!=frame->s.offset ||
+       callee->ty==nil || callee->ty->tof==nil || callee->ty->tof->kind!=p->resultkind ||
+       (call->branch!=nil && call->branch!=callee->pc))return typedfail(p,"tail-target");
+    end=count;
+    for(i=0;i<(unsigned int)nf;i++)if(functions[i]->pc->pc>callee->pc->pc && functions[i]->pc->pc<(int)end)end=functions[i]->pc->pc;
+    if(!typedtail(callee,globals,functions,nf,input,count,end,&child,active,depth+1)){
+        typedfail(p,"tail-callee");goto done;
+    }
+    /* A successful normal callee return defines the inherited caller result.
+     * The canonical wrapper has no alternate path to its only RET. */
+    memset(p->code,0,p->count*sizeof(*p->code));memset(p->returns,0,p->count);
+    p->code[index++]=(Dis64Instruction){IFRAME,SRC(AIMM)|DST(AFP),0,frame->s.offset,40};
+    in=frame->next;
+    for(arg=callee->ty->ids;arg!=nil;arg=arg->next){
+        while(in!=nil && in->op==INOOP)in=in->next;
+        kind=arg->ty->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
+        width=kind==Tbyte?1:kind==Tbig || kind==Treal?8:4;
+        op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
+        if((!root && kind!=Tbyte && kind!=Tint && kind!=Tfix && kind!=Tbig && kind!=Treal) ||
+           in==nil || in==binding || in->op!=op || in->mm!=Anone || in->dm!=Afpind || in->d.reg!=frame->d.reg ||
+           in->d.offset!=arg->offset || in->branch!=nil || index>=p->count-3 ||
+           !dis64layoutaddress(&child.frame,arg->offset,width,root,&offset) || offset>65535 ||
+           !typedoperand(in->sm,&in->s,root?TypedRoot:kind,!root && width<8,0,p,&source,&sm,&actual) ||
+           (root && actual!=kind && actual!=Tany)){
+            typedfail(p,"tail-argument");goto done;
+        }
+        dm=AFP|AIND;p->code[index]=(Dis64Instruction){op,SRC(sm)|DST(dm),0,source,offset};p->returns[index++]=64;
+        in=in->next;
+    }
+    while(in!=nil && in->op==INOOP)in=in->next;
+    if(in!=binding || binding->op!=ILEA || binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset!=0 ||
+       binding->mm!=Anone || binding->dm!=Afpind || binding->d.reg!=frame->d.reg || binding->d.offset!=16 || binding->branch!=nil ||
+       index!=p->count-3){typedfail(p,"tail-result");goto done;}
+    p->code[index]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[index++]=64;
+    p->code[index++]=(Dis64Instruction){ICALL,SRC(AFP)|DST(AIMM),0,40,call->d.offset};
+    p->code[index++]=(Dis64Instruction){IRET,SRC(AXXX)|DST(AXXX),0,0,0};
+    p->tail=1;p->target=callee->pc->pc;p->targetdesc=callee->desc->id;ok=1;
+done:
+    dis64typedfree(&child);return ok;
+}
+
+int
+dis64typedtail(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p)
+{
+    Decl *active[64];
+    return typedtail(fn,globals,functions,nf,input,count,stop,p,active,0);
+}
+
 void
 dis64typedfree(Dis64TypedBody *p)
 {
@@ -244,12 +326,16 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
 	unsigned int stop,i;
 	int n,j;
 	char *enabled=getenv("LIMBO_DIS64_TYPED");
+	char *tail=getenv("LIMBO_DIS64_TYPED_TAIL");
 	if(enabled==nil || strcmp(enabled,"1")!=0) return;
 	for(n=0;n<nfunctions;n++){
 		fn=functions[n]; stop=count;
 		for(j=0;j<nfunctions;j++) if(functions[j]->pc->pc>fn->pc->pc && functions[j]->pc->pc<stop) stop=functions[j]->pc->pc;
-		memset(&p,0,sizeof(p)); dis64typedlower(fn,globals,first,count,stop,&p);
-		fprint(2,"DIS64_TYPED {\"schema\":\"inferno-typed-body-v2\",\"name\":");typedquote(fn->sym);
+		memset(&p,0,sizeof(p));
+		if(tail!=nil && strcmp(tail,"1")==0) dis64typedtail(fn,globals,functions,nfunctions,first,count,stop,&p);
+		else dis64typedlower(fn,globals,first,count,stop,&p);
+		fprint(2,"DIS64_TYPED {\"schema\":\"%s\",\"name\":",p.tail?"inferno-typed-tail-v1":"inferno-typed-body-v2");typedquote(fn->sym);
+		if(p.tail) fprint(2,",\"tail\":[%ud,%ud]",p.target,p.targetdesc);
 		fprint(2,",\"first\":%ud,\"accepted\":%s",p.first,p.reason==nil?"true":"false");
 		if(p.reason!=nil) fprint(2,",\"reason\":\"%s\",\"pc\":%ud",p.reason,p.badpc);
 		else{
@@ -258,7 +344,7 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
 			typedlayout(&p.frame); fprint(2,",\"data\":"); typedlayout(&p.data);
 			fprint(2,",\"args\":");typedbindings(fn->ty->ids,1);
 			fprint(2,",\"code\":[");
-			for(i=0;i<p.count;i++) fprint(2,"%s[%ud,%ud,%ld,%ld,%ld,%ud]",i?",":"",p.code[i].op,p.code[i].mode,p.code[i].source,p.code[i].middle,p.code[i].destination,p.returns[i]?(p.resultbytes | (p.resultkind==Tstring || p.resultkind==Tref || p.resultkind==Tlist || p.resultkind==Tarray || p.resultkind==Tchan || p.resultkind==Tmodule?16:0)):0);
+			for(i=0;i<p.count;i++) fprint(2,"%s[%ud,%ud,%ld,%ld,%ld,%ud]",i?",":"",p.code[i].op,p.code[i].mode,p.code[i].source,p.code[i].middle,p.code[i].destination,p.tail?p.returns[i]:p.returns[i]?(p.resultbytes | (p.resultkind==Tstring || p.resultkind==Tref || p.resultkind==Tlist || p.resultkind==Tarray || p.resultkind==Tchan || p.resultkind==Tmodule?16:0)):0);
 			fprint(2,"],\"globals\":");typedbindings(globals,0);
 		}
 		fprint(2,"}\n"); dis64typedfree(&p);

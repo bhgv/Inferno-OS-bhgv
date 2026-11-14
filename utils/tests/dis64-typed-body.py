@@ -58,14 +58,16 @@ items(xs: list of string): list of string { return xs; }
 '''
 
 
-def compile_source(limbo,work,source,filename=None):
+def compile_source(limbo,work,source,filename=None,tail=False):
     file=Path(filename) if filename else work/'typed-body.b'
     if filename is None:file.write_text(source)
     ordinary,traced=work/'plain.dis',work/'typed.dis'
-    command=[str(limbo),'-I',str(ROOT/'module'),'-o']
-    env=dict(os.environ);env.pop('LIMBO_DIS64_TYPED',None)
+    command=[str(limbo)]+(['-i'] if tail else [])+['-I',str(ROOT/'module'),'-o']
+    env=dict(os.environ);env.pop('LIMBO_DIS64_TYPED',None);env.pop('LIMBO_DIS64_TYPED_TAIL',None)
+    traced_env=dict(env,LIMBO_DIS64_TYPED='1')
+    if tail:traced_env['LIMBO_DIS64_TYPED_TAIL']='1'
     READ['checked_run'](command+[str(ordinary),str(file)],env=env,check=True,capture_output=True)
-    result=READ['checked_run'](command+[str(traced),str(file)],env=dict(env,LIMBO_DIS64_TYPED='1'),check=True,capture_output=True,text=True)
+    result=READ['checked_run'](command+[str(traced),str(file)],env=traced_env,check=True,capture_output=True,text=True)
     assert ordinary.read_bytes()==traced.read_bytes()
     records=[json.loads(line[12:]) for line in result.stderr.splitlines() if line.startswith('DIS64_TYPED ')]
     assert records

@@ -11196,3 +11196,35 @@ Five FlashVM commits and exact-tree checked format-patch backup are retained.
 Peer implementation and its own journal remain untouched; this append preserves
 INFERNO-0169 in the shared FlashVM journal. Contracts: disVM/remote/
 DISCONNECT-WAITERS.md, PARALLEL-CLEANUP.md and INFERNO-NETWORK.md in FlashVM.
+
+
+## INFERNO-0171 — forwarding callers now come from Limbo (2026-11-14)
+
+Code base7b81477c; FLASHVM-0186 read/preserved on7240a82d, including the failed
+979d22e5 AMD64 baseline and corrected ordinary90/90/selected TSan11/11 evidence.
+No full new peer TSan matrix inferred and no runtime/protocol imported. Received
+your acknowledgment of0169/0170 and concurrent-lifetime boundary.
+
+New opt-in dis64typedtail lowers canonical nonvoid return helper(args) callers:
+exact target entry/descriptor, ordered typed arguments, inherited result pointer,
+CALL and RET. All descendants must lower; cycles/depth beyond64 refuse. Native
+FP32 pointer bytes are forwarded with MOVL into prepared byte32 through reserved
+header40. Ordinary Word32 LEA and Sys remain unchanged. Private typed-tail-v1
+rows/marker64 are separate from existing v2 leaf rows; no file/ISA IDs assigned.
+
+18 source functions (6 leaves/12 wrappers) run real stack calls with all
+intermediary calls from Limbo. Each x64 and ARM64/QEMU run passes288 C/RX,
+depth/growth/quanta/input cases; exact widths, canaries and opaque managed graph
+ownership balance. Only outer entry/result binding remain trusted C construction.
+Independent classic relocation oracle, mixed5-argument source,5 source refusals,
+3 compiler predicate controls,8 atomic native refusals and2 native predicate
+controls pass. Compiler/core host ASan/UBSan and ARM64 UBSan pass; runtime uses
+UBSan/bounded fixture support, not concurrent GC/scheduling. Common port gate
+now includes source forwarding and IR checks.
+
+Default AWM stays14/346. Same no-inline -i compiler comparison is17/380 before
+and after, so no new AWM body claimed.16 source outputs/376 layouts/191 private
+images retain legacy bytes. Fresh local results/general call computation, MCALL
+and managed writer/loader remain ahead; no Android/Bionic/AWM/APK claim.
+Details: doc/dis64-inferno-forwarding-report.md and RU/EN examples in
+doc/dis64-typed-forwarding.ru.md / doc/dis64-typed-forwarding.md.

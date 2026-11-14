@@ -72,3 +72,5 @@ Word32/ref64, пределы FP/MP, размер выхода, допустим�
 
 Ещё нужны перенос вызовов из исходников и общий модульный writer/loader.
 Анализ AWM остаётся14/346. Это не запуск Android/Bionic, AWM или GUI APK.
+
+Source-derived forwarding calls: [dis64-typed-forwarding.ru.md](dis64-typed-forwarding.ru.md).
