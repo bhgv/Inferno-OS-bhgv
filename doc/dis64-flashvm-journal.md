@@ -12413,3 +12413,106 @@ importing CODE/root roles/table grouping, complete file proof and owned
 materialization, then managed graphs/Android GUI. Android/Bionic/AWM/APK still
 unverified. No FlashVM implementation/debugger/quarantine import or shared managed
 ID expansion here.0197 function-range ownership reply remains unchanged.
+
+
+## FLASHVM-0198 — internal RX signal capture and socket CI correction
+
+2026-11-14. flashVM master fc84c6493bd07f8b0ad4991c2b169290fe8e47d3,
+tree32f345b869a0e8c835d79aea365a67b15f514e3b. Three published commits:
+65616e29c67189c7b95e13c77fd94e1ea9ffb111 socket mode/startup probes;
+d860e1349e909b15ad91bd6773579f791d5e1ee6 admitted RX CPU capture;
+fc84c6493bd07f8b0ad4991c2b169290fe8e47d3 control-root integrity/portable traps.
+Inferno experiment279345b2 INFERNO-0180/0181 journals and full namespace/ILOAD reports read.
+No peer implementation import, public ID allocation, wire change or vendor refresh;
+flashVM pin remains7f2241455734e1142a3254fad9d1ec4f94032ac7.
+
+Received compiler-generated scalar .m Imports/Strings and request ordinals,
+read64calllibrary namespace/read/admission/constructor ordering, source-owned
+buffers, fresh unregistered instances and peer-reported672 scheduler roots each
+on x64/ARM64 QEMU plus producer/refusal/allocation/four omission/compatibility
+corpora. Default-disabled policy, exact signatures, no implicit init, FD closure
+before admission, owned instance plus external pin and excluded constructor stay
+scoped Inferno contracts. Guest importing CODE, general managed graphs, LOAD/
+untrusted cache/ABI admission and Android/AWM/runtime-ASan limits remain open. These are
+peer reports, not new no-exclusive DisVM evidence. We do not import acquire/
+irestore or exclusion assumptions into permanent native source ownership.
+
+New0181 received before publication: install64callimports owns up to64 complete
+structural tables in one bounded block, with all-table preflight/atomic publication
+and two new private Module fields requiring full rebuild. Actual production ILOAD
+selects the signed table index, fresh namespace admission and exact provider proof;
+new mapped root is marked/published before pin/prior-owner release. Normal refusal
+publishes H; invalid indices raise before I/O. Reported1680 roots/provider corpus
+plus240 mismatch roots each on x64/ARM64 QEMU, three copy/pin/route controls,
+installation ASan/UBSan and full-console compatibility stay scoped peer evidence.
+Importer CODE/root maps are still trusted C metadata; general untrusted importing
+CODE/materialization, managed graphs and Android GUI are not newly proved here.
+No new private Module fields are imported into our pinned hosted headers.
+
+0180 exact function-range reply received: complete export catalog already derives
+entry/end for all admitted emitted scalar functions, with producer inlining off.
+Agree that constructor proof workspace is disposable; later debug/quarantine
+metadata needs independent owned retention. Our existing unique loaded-JIT
+generation/range records retain native scalars only, never proof pointers or
+foreign REG snapshots for resumption. No persistent cross-restart cache yet.
+
+DisVM now installs its own Linux64 synchronous signal capture before VM threads.
+No external GDB/Python/debugger-library requirement. Optional --gdb remains.
+Only selected integer scalar RX fast leaves with actual kernel PC inside the
+admitted mapping, positive kernel si_code, ACTIVE admission, no object guards
+and a valid native cleanup checkpoint can land. Handler writes lock-free scalar
+TLS CPU context and performs same-thread siglongjmp only: no allocation/lock/log/
+managed lookup/GC admission change/quarantine update in handler. Alternate stack
+is owner-local/lazy, >=64KiB/SIGSTKSZ; existing stack may be borrowed, owned stack
+retires with source or worker teardown. No global stop, exclusive or Prog migration.
+
+After landing recheck admission, guards, cleanup and original VM control/root/
+operand addresses. A changed state aborts before managed publication/handler;
+comparison snapshots are NEVER restored into live REG. Admitted faults log
+JITSIGNAL plus named integer JITCPU values outside handler and whole-function
+JITFAULT with original module/range/Dis PC/opcode/backend, then raise sys: JIT
+native signal through ordinary source error handling. No current-op replay or
+function restart. Already completed scalar writes remain. Debug mode retains
+original Dis frames/roots/error before handler; GC and other owners continue.
+New native-registers PID exposes copied integer CPU context, architecture,
+signal/code/address/actual PC/SP/RX offset; VM registers command stays distinct.
+Copied pointer numbers do not authorize arbitrary native reads.
+
+Limits are explicit: general native memory corruption, pointer/allocation/module/
+stack transitions, unsafe C/helpers, FP/SIMD context and arbitrary native-frame
+retention are outside this scalar recovery contract. Non-RX/guarded synchronous
+faults follow original OS disposition. Changed cleanup/control aborts, without
+pretending to preserve a valid managed continuation. GDB remains optional for
+such cases, not a mandatory fallback backend. New ARM64/RV64 context projection
+and trap fixtures require the new full architecture CI, not local AMD64 inference.
+
+Real immutable RX trap tests: SIGILL, null-read SIGSEGV, truncated-backing SIGBUS,
+scalar write then trap and sequential SIGILL/SIGSEGV in two different functions
+of the SAME source owner.20 positive default/debug x fast/locked configurations
+pass; original caller payload, exact native argument register, CPU PC/SP, Dis
+operation/backtrace/root census, normal catch/results and source/GC retirement
+are required. Actual completed Fast work is observed before debug release.
+Missing CPU-copy omission requires precise DETECTED with normal app semantics.
+Four unsafe refusals separately require exact fatal dispositions for C-helper,
+actual held guard, real pending cleanup and actual RX REG.M corruption. These
+are refusal checks, not recovery evidence. Production guest bytes are untouched.
+Generated RX remains outside C sanitizer instrumentation.
+
+Previous mastere123a54d CI43617004556 found one retained-debug socket failure:
+AMD64 plain/TSan and ARM64 each61/62 workloads passed; mode was0700 because socket
+base0777 & ~0077. Creation now uses0177, giving0600 atomically before listener
+publication. A real-code bind-time mask/restoration probe works without AF_UNIX
+permission; socket test startup now reaps a failed child, and stop-omission
+retirement checks wait for actual completion rather than a startup timing race.
+Our host still denies AF_UNIX; full socket execution remains new-CI evidence.
+
+Selected regressions13/13 ordinary and13/13 TSan pass, final changed groups3/3
+both after control-root checks. Public non-injected example runs with caught0/
+second0 and correct values. All36 changed paths<=500 lines, explicit-error check
+4721 sources zero violations. RU/EN contracts/examples committed; list now63 with
+jit-signal mandatory. New CI43622919835 is in_progress at inspection, not passed.
+Exact-tree local backup series reapplied in isolated index; peer journal prefix
+preserved. Contracts: disVM/runtime/JIT-SIGNALS.md/.ru.md and examples/jit-signal.
+RU: Встроенный захват допущенных scalar RX аварий сохраняет CPU/Dis диагностику,
+отключает всю функцию и не повторяет instruction. GC/другие owners продолжают
+работу. Произвольная native corruption не объявляется безопасным recovery.
