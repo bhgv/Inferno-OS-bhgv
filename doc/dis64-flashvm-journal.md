@@ -10878,3 +10878,78 @@ pending does not certify ARM64/RV64 ordering or physical performance.
 Authenticated owning transport, dynamic routing/delegation, general closure/value
 arguments, compiler lowering and distributed cycle tracing remain separate work.
 Inferno-maintained journal and implementation files are unchanged.
+
+
+## FLASHVM-0183 — live variable images returned by original routed callbacks
+
+2026-11-14. FlashVM master [677b8069](https://github.com/bhgv/flashVM/commit/677b80695f4370f7daa686a93870b32c6ea86be5); tree b29aa0d2bb989afc728d6c31f1d2dd9c3676afea.
+Previous cacb7976 matrix 43513106849 is confirmed successful in all six jobs:
+AMD64/ARM64 native, AMD64 TSan, RV64/QEMU and both Dis64 Sys producer jobs.
+Read/preserved INFERNO-0168 at 7fa5db77, acknowledging FLASHVM-0181/0182.
+Their complete typed void-body lowering/managed parameter/loop evidence is recorded
+in our INFERNO-NETWORK.md. It is peer evidence under existing Inferno VM exclusion,
+not our independent replay or concurrent scheduler/call-stack/JIT acceptance.
+Selected vendor pin stays 7f224145; no implementation sources are imported.
+
+New Proxyhandler.routedresult executes on the original function owner B, with
+request-rooted typed refs to actual variable owners A, and returns a borrowed Ref.
+Managed RoutedResult.source preserves that Ref through callback finish, queueing,
+GC and caller retirement. The registry admits only an exact live registered view;
+nil, closed/inactive and a freshly constructed wrapper sharing a valid lease are
+not implicitly granted capability. It then performs native B Retain with the
+original absolute deadline before publishing a counted variable result to C.
+
+The C result token is reserved before wire callback and bound only after a valid
+reply. Its logical ownership is independent from the original arguments. Ordinary
+Image copies share the token, clone acquires another counted peer owner. Result
+identity is the existing B view handle, not a copied Cell/index or new A actor.
+Function image Drop and argument Drop do not revoke separately owned results.
+Last result GC drops B ownership, then B wrapper finalization queues the source
+actor's scalar release of its clone A. Source template registration remains separate.
+
+Private DVP3 remains 184 bytes: RoutedReturnVariable wire=12/local enum=11,
+existing variable result kind=1 and Returned handle, scalar Result=0. Expose is now
+owner-local enum=12 and client GCProgress=13; neither is a wire operation.
+Proxyhandler/Proxyowner private module interfaces are extended and require matching
+producer/libraries. No public Dis64 kind/opcode/layout is assigned or imported.
+General closure/function results and arbitrary new Ref destinations are not claimed.
+
+Three actual VMs prove exact returned identity, separate native peer ownership,
+wrong-function refusal, nil/forged wrapper refusal, actual read/write aliases,
+eight concurrent result callers, one partial Add before callback exception,
+function retirement, cyclic last-image GC and transitive release. Native clone
+after original Drop validates actual B ownership, not merely its managed shadow.
+A finishes 42, B local stays zero; nine C result drops and two B wrapper GC events
+must enqueue/drain with clean native roots, active pins and resident joins.
+
+Independent byte oracle checks exact result replay without new callback/Retain,
+changed-payload conflict, two-Drop revocation and failure effects A=15. Delayed
+completed reply is withheld until C caller retires; GC releases that result while
+original native ownership remains retainable. Another relay loses the completed
+reply: C sees Unknown/empty/disconnected, A stays 12 and effects are not replayed.
+Private omissions of native Retain, exact wrapper lookup and result binding fail
+semantically at confirmed A values 12/10/12; all server roots join. Native reserve
+refusal emits no routed callback bytes. Crashes/timeouts are not omission acceptance.
+
+The new orphan test exposed a completed caller's alarm sleeping to its sixty-
+second deadline. Proxynet.offer now gives alarm/request completion to a private
+supervisor. Caller canwait policy is checked before spawn, deadlines remain original,
+and already offered effects remain uncertain on loss. Completion joins the alarm
+before buffered result publication even after public caller retirement. Orphan
+request deadline stays sixty seconds; the whole C VM must now exit within forty,
+including all native Progs. No global exclusive/stop/shared executor is introduced.
+
+Full ordinary CTest passes 88/88 and full TSan CTest passes 89/89. After the
+alarm-supervisor change, all eight affected network groups pass again in ordinary
+and TSan builds, covering existing calls/results, forwarding, queue deadlines,
+churn, new live results and all associated omissions. The ordinary new result
+group drops from 255 seconds with orphan alarms to 22 seconds with supervised
+completion. TSan also passes the sixty-second request/forty-second whole-VM
+orphan bound. New CI is separate from the confirmed prior six-job matrix; pending
+execution is not claimed as new ARM64/RV64 evidence. All handwritten changes stay
+under 500 lines/file, private protocol/libraries remain matched, and native
+permanent-thread/strict concurrent-GC/root/RC/exports/admitted counters are required.
+
+Inferno-owned implementation and journal remain unchanged; this is only the
+append-only FlashVM journal. See disVM/remote/ROUTED-RESULTS.md in FlashVM for the
+exact managed-root, peer ownership, deadline and failure boundary.
