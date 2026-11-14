@@ -93,6 +93,14 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             else if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;
             for(i=pc+1;i<next;i++)inside[i-p->first]=1;
             pc=next;
+        }else if(c->external==2 && ((in->op==IBEQW || in->op==IBNEW || in->op==IBEQL || in->op==IBNEL) && ((in->s.decl && in->s.decl->ty && in->s.decl->ty->kind==Tmodule) || (in->m.decl && in->m.decl->ty && in->m.decl->ty->kind==Tmodule)))){
+            long source,middle;unsigned int sm,mm;int sk,mk;
+            if(in->dm!=Apc || in->branch==nil || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop || in->d.offset!=in->branch->pc ||
+               !typedoperand(in->sm,&in->s,TypedRoot,0,0,p,&source,&sm,&sk) ||
+               !typedoperand(in->mm,&in->m,TypedRoot,0,1,p,&middle,&mm,&mk)){typedfail(p,"load-nil-branch");goto fail;}
+            if(sk==Tany && mk==Tmodule){long v=source;unsigned int mode=sm;int kind=sk;source=middle;sm=mm;sk=mk;middle=v;mm=mode;mk=kind;}
+            if(sk!=Tmodule || mk!=Tany || sm!=AFP || mm!=AMP){typedfail(p,"load-nil-roles");goto fail;}
+            p->code[pc-p->first]=(Dis64Instruction){in->op==IBEQW?IBEQL:in->op==IBNEW?IBNEL:in->op,SRC(AFP)|AXINM|DST(AIMM),middle,source,in->branch->pc-p->first};pc++;
         }else if(c->external==2 && in->op==ILOAD){
             long source,destination;unsigned int sm,dm;int actual;
             if(in->mm!=Aldt || in->m.decl==nil || in->m.decl->offset!=0 || in->branch!=nil ||

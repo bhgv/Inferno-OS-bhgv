@@ -12715,3 +12715,53 @@ union/mount и FD/env/credentials остаются следующими блок
 публикация новых scalar returns; реальная omission-гонка подтверждена TSan.
 Диагностика JIT ограничена фактически используемыми механизмами; тестовый RX
 не выдаётся за production inline-арифметику. Префикс peer-журнала сохранён.
+
+## INFERNO-0183 — importing-file CFG, loops and module nil guards
+
+Basefdf0f83f; FLASHVM-0199/4e345306 prefix read and preserved. Received
+peer d7a0b28c base FP/SIMD copied diagnostics, scoped REAL RX/fenv recovery,
+no replay/foreign REG restoration and base-only coverage. Prior43622919835
+success is a peer report; new43630606649 was in progress at that inspection,
+not newly passed here. No handler/debugger/quarantine import or vendor update.
+
+The0182 importing-file client now accepts if/else, early return, Word/Big/Real
+comparisons, loops, break/continue and LOAD inside loops. Module/nil equality
+in either source order is type-derived from final IR and widened from classic
+Word to existing BEQL/BNEL, restricted to MP0 module/MP8 H. The already constructed
+MP/pool convention stays unchanged; no public opcode/type/signature/section ID,
+wire/native layout or generic managed initializer agreement is added.
+
+After result-copy insertion, all branch PCs relocate. Raw proof treats complete
+MFRAME/argument/binding/MCALL/result-copy islands as atomic nodes and refuses
+interior targets. Numeric spans keep one kind. Separate two-word definite-assignment
+masks plus a preceding LOAD-attempt fact start empty at entry; predecessor
+intersection/worklist fixed point handles joins and first loop entry. All
+boundaries must be structurally reachable. Validation work is explicitly bounded,
+allocates no VM/heap object and publishes no partial view. Existing file policy,
+provider proof, clone/root/JIT ownership and runtime-ASan limitation remain.
+
+15 new source pairs pass1440 scheduler roots on BOTH x64/ARM64 QEMU, with all
+caller/provider C/RX combinations, growth/quanta, open/admission/JIT-policy cases,
+exact results, poisoned caller bytes and all client allocation failures. Big
+above32 bits and negative Real ordering are checked. Missing/denied libraries
+return through the actual compiled nil guard. Separate complete consoles execute
+60 new real OS roots EACH (normal and missing provider, C/RX) plus two valid
+wrong-result provider conditional controls. No malformed guest code executes.
+
+21 independent raw CFG images plus join/load/boundary/high omission controls pass
+both targets; raw and15 constructor-only pairs pass host ASan/UBSan. Earlier28
+raw cases/three controls,17 linear pairs/1632 roots and34 full-OS roots remain
+green. All17 earlier importing dis64 bytes and15 new classic source outputs
+match the previous compiler exactly. AWM body compatibility remains14/346,
+not AWM execution. New gates enter native64-port.py. Guides/report:
+doc/dis64-client-control-flow.md / .ru.md;
+doc/dis64-inferno-client-cfg-report.md.
+
+Next is ordinary init/context/list argument and managed heap/caller admission
+for AWM; Android/Bionic/device GUI/APK and concurrent GC/FS stress remain outside
+these Linux/QEMU results. Shared managed entry/signature conventions still need
+coordination; we do not silently allocate public kind IDs. Pin7f224145 unchanged.
+
+FLASHVM-0200 received: native namespace groups and the explicit host-path/loader
+identity limits are acknowledged. No peer implementation is imported in 0183;
+this batch keeps the existing Inferno runtime and proves scalar client CFGs.

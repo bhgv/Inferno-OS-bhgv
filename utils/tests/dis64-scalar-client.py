@@ -36,7 +36,7 @@ def unit():
  base=L['unit']();start=base.rfind(' optab[IMOVW]=countmovw;');end=base.index(' require(prepare64calls(',start);handlers=base[start:end]
  return s+'\n'+(ROOT/'utils/tests/dis64-scalar-client.c').read_text().replace(' CLIENT_HANDLERS',handlers)
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--case',action='append',choices=[r[0]for r in cases()]);a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--cfg',action='store_true');p.add_argument('--case',action='append',choices=[r[0]for r in cases()]+[r[0]for r in runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-cases.py'))['cases']()]);a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
  with tempfile.TemporaryDirectory(prefix='scalar-client-',dir=ROOT)as td:
   w=Path(td);env['TMPDIR']=str(w);source=w/'test.c';source.write_text(unit());cc=shlex.split(env.get('CC','cc'))+shlex.split(env.get('NATIVE64_CFLAGS','-O2 -g -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
   if arch=='arm64':cc+=['-DDIS64_TEST_ARM64=1','-DDIS64_TEST_COMPILER="comp-arm64.c"']
@@ -44,16 +44,17 @@ def main():
   elif arch!='amd64':raise ValueError(arch)
   cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1']+['-I'+str(x)for x in [w]+[ROOT/x for x in ('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')]]
   runner=shlex.split(env.get('NATIVE64_RUNNER',''))
-  rows=[r for r in cases()if not a.case or r[0]in a.case]
-  for name,text,fn,kind,args,values,expected,failure,callertext in rows:
+  rows=[r for r in (runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-cases.py'))['cases']()if a.cfg else(r+(False,)for r in cases()))if not a.case or r[0]in a.case]
+  for name,text,fn,kind,args,values,expected,failure,callertext,guarded in rows:
    b=w/'library.b';b.write_text(text);m=w/'library.m';m.write_text(NS['declarations'](text));provider=w/(name+'-library.dis64');caller=w/(name+'-client.dis64');c=w/'client.b';c.write_text(callertext)
    subprocess.run([str(a.limbo.resolve()),'-64b','-o',str(provider),str(b)],env=env,check=True,capture_output=True)
    r=subprocess.run([str(a.limbo.resolve()),'-64c','-I',str(w),'-o',str(caller),str(c)],env=env,capture_output=True,text=True);assert not r.returncode,(name,r.stderr)
-   parts=sections(caller.read_bytes());records=NS['bindings']({'imports':parts[5],'strings':parts[7]});assert records==([('Library','inc',1,(1,)),('Library','wide',2,(2,))]if name=='multiple-exports'else[('Library',fn,kind,tuple(args))])
-   decoded=S['CALLS'].decode(parts[2]);assert [r[0]for r in decoded].count('ILOAD')==2 and [r[0]for r in decoded].count('IMCALL')==(3 if name=='multiple-exports'else 2)
+   parts=sections(caller.read_bytes());records=NS['bindings']({'imports':parts[5],'strings':parts[7]});assert records==([('Library','inc',1,(1,)),('Library','wide',2,(2,))]if name=='multiple-exports'else[('Library',fn,1 if a.cfg else kind,tuple(args))])
+   decoded=S['CALLS'].decode(parts[2]);
+   if not a.cfg:assert [r[0]for r in decoded].count('ILOAD')==2 and [r[0]for r in decoded].count('IMCALL')==(3 if name=='multiple-exports'else 2)
    header=w/'library.h';header.write_bytes(subprocess.check_output([str(a.limbo.resolve()),'-H','-R','-M','Library',str(m)],env=env));binary=w/name
    subprocess.run(cc+['-DNAMESPACE_HEADER="library.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_'+fn,str(source),str(ROOT/'libinterp/dec.c'),'-Wl,--wrap=free','-lm','-o',str(binary)],env=env,check=True)
-   r=subprocess.run(runner+[str(binary),str(caller),str(provider),str(kind),str(expected),str(failure)]+(['materialize']if a.materialize_only else[]),env=env,capture_output=True,text=True,timeout=120);assert not r.returncode,(name,r.returncode,r.stderr)
+   r=subprocess.run(runner+[str(binary),str(caller),str(provider),str(kind),str(expected),str(failure)]+(['guarded']if guarded else[])+(['materialize']if a.materialize_only else[]),env=env,capture_output=True,text=True,timeout=120);assert not r.returncode,(name,r.returncode,r.stderr)
    print('PASS '+('file client construction/retirement:'if a.materialize_only else'file client -> ILOAD -> namespace library -> MCALL:'),arch,name,flush=True)
   print('PASS scalar importing client pipeline:',arch,len(rows),'source pairs',flush=True)
 if __name__=='__main__':main()

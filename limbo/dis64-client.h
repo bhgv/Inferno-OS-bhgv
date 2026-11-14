@@ -4,21 +4,38 @@ void
 dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Inst *instructions,long count,long databytes)
 {
  Dis64TypedBody body={0};Dis64ScalarClientView *proof=nil;Dis64Binding bindings[64];DisStringPoolRecord names[67];Dis64Type types[2];Dis64ModuleInfo module={0};
- Dis64Payload sections[5];Decl *path,*fn,*arg,*imports[64];Dis64Instruction in,copy;Dis64TypedExternal *site;Dis64LayoutLeaf *leaf;
+ Dis64Payload sections[5];Decl *path=nil,*nilvalue=nil,*global,*fn,*arg,*imports[64];Dis64Instruction in,copy;Dis64TypedExternal *site;Dis64LayoutLeaf *leaf;
  uchar *runes=nil,*strings=nil,*requests=nil,*signatures=nil,*code=nil,*output=nil,*typedata=nil,*maps=nil;uchar metadata[24];DisStringPoolView pool;
- unsigned int i,j,n=0,np,params[64],used,sizes[5],at=4,total=0,moduleoffset=0,pathoffset=0,loads=0,tail,bytes,k;
+ unsigned int i,j,n=0,np,params[64],used,sizes[5],at=4,total=0,moduleoffset=0,pathoffset=0,niloffset=0,loads=0,tail,bytes,k,pcs[129];
  char *failure="unsupported importing scalar command";
  if(!entry || nf!=1 || functions[0]!=entry || entry->ty->ids || entry->ty->tof->kind!=Tnone || entry->pc->pc ||
-    !globals || globals->next || databytes!=4 || !ldts || ldts->next || !ldts->init || !ldts->init->decl || count>128 || count<4)goto done;
- path=globals;if(path->ty->kind!=Tstring || !path->init || path->init->op!=Oconst || !path->init->decl || !path->init->decl->sym)goto done;
+    !globals || (databytes!=4 && databytes!=8) || !ldts || ldts->next || !ldts->init || !ldts->init->decl || count>128 || count<4)goto done;
+ for(global=globals;global;global=global->next){
+  if(global->ty->kind==Tany && global->init==nil && global->sym && !strcmp(global->sym->name,"nil")){if(nilvalue)goto done;nilvalue=global;}
+  else if(global->ty->kind==Tstring && global->init && global->init->op==Oconst && global->init->decl && global->init->decl->sym){if(path)goto done;path=global;}
+  else goto done;
+ }
+ if(!path || databytes!=4+4*(nilvalue!=nil))goto done;
  if(!dis64typedclient(entry,globals,functions,nf,instructions,count,count,&body) || body.nsites || !body.nexternal || body.frame.bytes>4080)goto done;
  for(i=0;i<body.frame.count;i++){
   leaf=body.frame.leaves+i;
   if(leaf->kind==Tmodule){if(loads++)goto done;moduleoffset=leaf->native;}
   else if(leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=-1)goto done;
  }
- if(loads!=1 || body.data.count!=1 || body.data.leaves[0].kind!=Tstring)goto done;
- pathoffset=body.data.leaves[0].native;loads=0;
+ if(loads!=1 || body.data.count!=1+(nilvalue!=nil))goto done;
+ for(i=0;i<body.data.count;i++){
+  leaf=body.data.leaves+i;
+  if(leaf->kind==Tstring && leaf->legacy==path->offset)pathoffset=leaf->native;
+  else if(nilvalue && leaf->kind==Tany && leaf->legacy==nilvalue->offset)niloffset=leaf->native;
+  else goto done;
+ }
+ loads=0;
+ if(body.count>128)goto done;
+ for(i=0;i<body.count;i++){
+  pcs[i]=total++;
+  if(body.code[i].op==IMCALL)for(j=0;j<body.nexternal;j++)if(body.external[j].end==i && body.external[j].contract)total++;
+ }
+ pcs[body.count]=total;
  for(fn=ldts->init->decl->ty->ids;fn;fn=fn->next){if(n==64 || fn->offset!=(long)n || fn->ty->kind!=Tfn || fn->ty->varargs || fn->ty->polys || !fn->dot || !fn->dot->sym)goto done;imports[n++]=fn;}
  if(!n || n!=(unsigned int)ldts->init->val)goto done;
  runes=allocmem(67*(4+4*1023));strings=allocmem(CallFileBytes);requests=allocmem(CallFileBytes);signatures=allocmem(64*(12+64*4));
@@ -39,6 +56,11 @@ dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Ins
  tail=body.frame.bytes+8;
  for(i=0;i<body.count;i++){
   in=body.code[i];
+  if(dis64clientbranch(in.op)){
+   if(in.destination<0 || (unsigned long)in.destination>=body.count)goto done;
+   in.destination=pcs[in.destination];
+   if((in.op==IBEQL || in.op==IBNEL) && (in.mode&ARM)==AXINM){if(!nilvalue || in.mode!=(SRC(AFP)|AXINM|DST(AIMM)) || in.source!=moduleoffset || in.middle!=niloffset)goto done;in.mode=SRC(AMP)|AXINM|DST(AIMM);in.source=0;in.middle=8;}
+  }
   if(in.op==ILOAD){if(in.mode!=(SRC(AMP)|AXIMM|DST(AFP)) || in.source!=pathoffset || in.destination!=moduleoffset || in.middle)goto done;in.mode=SRC(AMP)|AXIMM|DST(AMP);in.source=16;in.destination=0;loads++;}
   else if(in.op==IMFRAME || in.op==IMCALL){
    for(j=0;j<body.nexternal;j++)if((in.op==IMFRAME?body.external[j].first:body.external[j].end)==i)break;
@@ -46,14 +68,13 @@ dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Ins
    if(site->modulemode!=AFP || site->moduleoffset!=moduleoffset || site->binding>=n || site->inherited)goto done;
    if(in.op==IMFRAME){in.mode=SRC(AMP)|AXIMM|DST(AFP);in.source=0;}else{in.mode=SRC(AFP)|AXIMM|DST(AMP);in.destination=0;}
   }else if(in.op==ILEA){if(body.returns[i]<128 || UDST(in.mode)!=(AFP|AIND))goto done;in.source=tail;}
-  else if(in.op==IRET){if(i!=body.count-1)goto done;in.op=IEXIT;}
+  else if(in.op==IRET){in.op=IEXIT;}
   if(UDST(in.mode)==(AFP|AIND)){if(body.returns[i]<64)goto done;if(!callfileencode(code,&at,&in,40,in.destination))goto done;}
   else if(!callfileencode(code,&at,&in,0,0))goto done;
-  total++;
   if(in.op==IMCALL && site->contract){
    k=bindings[site->binding].signature.result;
    copy=(Dis64Instruction){k==Dis64Int?IMOVW:k==Dis64Big?IMOVL:IMOVF,SRC(AFP)|DST(AFP),0,tail,site->resultoffset};
-   if(!callfileencode(code,&at,&copy,0,0))goto done;total++;
+   if(!callfileencode(code,&at,&copy,0,0))goto done;
   }
  }
  if(!loads || total>Dis64ClientCode)goto done;

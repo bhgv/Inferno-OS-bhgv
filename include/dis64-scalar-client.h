@@ -90,30 +90,129 @@ dis64clientopen(const unsigned char *data,unsigned int bytes,Dis64ScalarClientVi
  v.count=dis64u32(data+v.code.offset);if(v.count<4 || v.count>Dis64ClientCode)return 0;
  v.frame=frame.bytes;*out=v;return 1;
 }
-/* Prove every decoded instruction from an empty entry state, publishing atomically.
- * No branch/call/function manifest can bypass the complete linear role proof. */
+/* Complete call islands are atomic CFG nodes: branch targets never enter setup. */
+typedef struct Dis64ClientNode Dis64ClientNode;
+struct Dis64ClientNode {
+ unsigned int need[2],give[2],next,target,load,needload,boundary,seen,queued;
+ unsigned int in[2],out[2],inload,outload;
+};
+static int
+dis64clientbit(Dis64ClientSlot *slots,unsigned int *count,unsigned int frame,
+ unsigned int mode,long value,unsigned int kind,unsigned int bits[2])
+{
+ unsigned int i;
+ if(mode==AIMM)return kind==Dis64Int;
+ if(mode!=AFP || !dis64clientslot(slots,count,frame,value,kind,1))return 0;
+ for(i=0;i<*count;i++)if(slots[i].offset==(unsigned long)value){bits[i/32]|=1U<<(i%32);return 1;}
+ return 0;
+}
+static int
+dis64clientbranch(unsigned int op)
+{
+ switch(op){case IJMP:case IBEQW:case IBNEW:case IBLTW:case IBLEW:case IBGTW:case IBGEW:
+ case IBEQL:case IBNEL:case IBLTL:case IBLEL:case IBGTL:case IBGEL:
+ case IBEQF:case IBNEF:case IBLTF:case IBLEF:case IBGTF:case IBGEF:return 1;}
+ return 0;
+}
+/* Derive reads/writes from opcodes and full typed spans, never a file manifest. */
+static int
+dis64clienteffect(Dis64ClientSlot *slots,unsigned int *count,unsigned int frame,
+ const Dis64Instruction *in,Dis64ClientNode *node)
+{
+ unsigned int kind=Dis64Int,sourcekind,mm=in->mode&ARM,lm,branch=dis64clientbranch(in->op);long lhs;int binary=0;
+ if(in->op==IJMP)return in->mode==(SRC(AXXX)|DST(AIMM));
+ if((in->op==IBEQL || in->op==IBNEL) && in->mode==(SRC(AMP)|AXINM|DST(AIMM)))return in->source==0 && in->middle==8;
+ switch(in->op){
+ case IMOVW:case ICVTWL:case ICVTWF:break;
+ case IMOVL:kind=Dis64Big;break;case IMOVF:kind=Dis64Real;break;
+ case IADDW:case ISUBW:case IMULW:case IDIVW:case IMODW:case IANDW:case IORW:case IXORW:case ISHLW:case ISHRW:binary=1;break;
+ case IADDL:case ISUBL:case IMULL:case IDIVL:case IMODL:case IANDL:case IORL:case IXORL:case ISHLL:case ISHRL:kind=Dis64Big;binary=1;break;
+ case IBEQW:case IBNEW:case IBLTW:case IBLEW:case IBGTW:case IBGEW:break;
+ case IBEQL:case IBNEL:case IBLTL:case IBLEL:case IBGTL:case IBGEL:kind=Dis64Big;break;
+ case IBEQF:case IBNEF:case IBLTF:case IBLEF:case IBGTF:case IBGEF:kind=Dis64Real;break;
+ default:return 0;
+ }
+ sourcekind=in->op==ISHLL || in->op==ISHRL?Dis64Int:kind;
+ if(!dis64clientbit(slots,count,frame,USRC(in->mode),in->source,sourcekind,node->need))return 0;
+ if(binary || branch){
+  if(branch && mm==AXNON)return 0;
+  if(mm==AXIMM && (kind!=Dis64Int || in->middle < -32768 || in->middle > 32767))return 0;
+  lm=mm==AXNON?UDST(in->mode):mm==AXIMM?AIMM:mm==AXINF?AFP:AMP;
+  lhs=mm==AXNON?in->destination:in->middle;
+  if(!dis64clientbit(slots,count,frame,lm,lhs,kind,node->need))return 0;
+ }
+ if(branch)return UDST(in->mode)==AIMM;
+ if(in->op==ICVTWL)kind=Dis64Big;if(in->op==ICVTWF)kind=Dis64Real;
+ if(!dis64clientbit(slots,count,frame,UDST(in->mode),in->destination,kind,node->give))return 0;
+ /* All spans are declared above; reuse the existing exact numeric mode checks. */
+ return dis64clientnumeric(slots,count,frame,in);
+}
+
+/* Descending intersection: entry has no numeric definitions and no LOAD attempt.
+ * Every boundary is structurally reachable; loops never invent first-entry facts. */
+static int
+dis64clientflow(Dis64ClientNode *nodes,unsigned int count)
+{
+ unsigned int queue[Dis64ClientCode],head=0,tail=0,pending=0,i,j,k,at,budget=132*count+1,changed,edge[2],incoming[2],loaded;
+ queue[tail++]=0;nodes[0].seen=1;
+ while(head<tail){at=queue[head++];edge[0]=nodes[at].next;edge[1]=nodes[at].target;
+  for(k=0;k<2;k++)if(edge[k]<count && !nodes[edge[k]].seen){nodes[edge[k]].seen=1;queue[tail++]=edge[k];}
+ }
+ head=tail=pending=0;
+ for(i=0;i<count;i++)if(nodes[i].boundary){
+  if(!nodes[i].seen)return 0;
+  nodes[i].in[0]=nodes[i].in[1]=nodes[i].out[0]=nodes[i].out[1]=~0U;nodes[i].inload=nodes[i].outload=1;
+  queue[tail]=i;tail=(tail+1)%count;pending++;nodes[i].queued=1;
+ }
+ while(pending){
+  if(!budget--)return 0;at=queue[head];head=(head+1)%count;pending--;nodes[at].queued=0;
+  incoming[0]=incoming[1]=at==0?0:~0U;loaded=at==0?0:1;
+  for(j=0;j<count;j++)if(nodes[j].boundary && (nodes[j].next==at || nodes[j].target==at)){
+   incoming[0]&=nodes[j].out[0];incoming[1]&=nodes[j].out[1];loaded&=nodes[j].outload;
+  }
+  nodes[at].in[0]=incoming[0];nodes[at].in[1]=incoming[1];nodes[at].inload=loaded;
+  incoming[0]|=nodes[at].give[0];incoming[1]|=nodes[at].give[1];loaded|=nodes[at].load;
+  changed=incoming[0]!=nodes[at].out[0] || incoming[1]!=nodes[at].out[1] || loaded!=nodes[at].outload;
+  if(changed){
+   nodes[at].out[0]=incoming[0];nodes[at].out[1]=incoming[1];nodes[at].outload=loaded;edge[0]=nodes[at].next;edge[1]=nodes[at].target;
+   for(k=0;k<2;k++)if(edge[k]<count && !nodes[edge[k]].queued){i=edge[k];queue[tail]=i;tail=(tail+1)%count;pending++;nodes[i].queued=1;}
+  }
+ }
+ for(i=0;i<count;i++)if(nodes[i].boundary && ((nodes[i].need[0]&~nodes[i].in[0]) ||
+    (nodes[i].need[1]&~nodes[i].in[1]) || (nodes[i].needload && !nodes[i].inload)))return 0;
+ return 1;
+}
+
+/* All instructions and islands are proved before CFG facts are solved. */
 static int
 dis64clientcheck(const unsigned char *data,unsigned int bytes,Dis64ScalarClientView *out)
 {
- Dis64ScalarClientView v;Dis64ClientSlot slots[Dis64ClientSlots]={{0}};unsigned int nslots=0,i,j,at=4,used,offset,kind,width,result,ordinal;int loaded=0;
+ Dis64ScalarClientView v;Dis64ClientSlot slots[Dis64ClientSlots]={{0}};Dis64ClientNode nodes[Dis64ClientCode]={{0}},*node;
+ unsigned int nslots=0,i,j,at=4,used,offset,kind,width,result,ordinal,start;
  Dis64CallDecoded *d;Dis64Instruction *in;Dis64Binding b;
  if(!out || !dis64clientopen(data,bytes,&v))return 0;
  for(i=0;i<v.count;i++){if(at>=v.code.bytes || !dis64callread(data+v.code.offset+at,v.code.bytes-at,v.decoded+i,&used))return 0;at+=used;}
  if(at!=v.code.bytes)return 0;
  for(i=0;i<v.count;i++){
+  start=i;node=nodes+i;node->boundary=1;node->target=v.count;
   d=v.decoded+i;in=&d->instruction;
-  if(in->op==ILOAD){if(in->mode!=(SRC(AMP)|AXIMM|DST(AMP)) || in->middle || in->source!=16 || in->destination)return 0;loaded=1;continue;}
-  if(in->op==IEXIT){if(i!=v.count-1 || in->mode!=(SRC(AXXX)|DST(AXXX)) || !v.calls)return 0;continue;}
+  if(in->op==ILOAD){if(in->mode!=(SRC(AMP)|AXIMM|DST(AMP)) || in->middle || in->source!=16 || in->destination)return 0;node->load=1;node->next=i+1;continue;}
+  if(in->op==IEXIT){if(in->mode!=(SRC(AXXX)|DST(AXXX)))return 0;node->next=v.count;continue;}
   if(i==v.count-1)return 0;
-  if(in->op!=IMFRAME){if(!dis64clientnumeric(slots,&nslots,v.frame,in))return 0;continue;}
-  if(!loaded || in->mode!=(SRC(AMP)|AXIMM|DST(AFP)) || in->source || in->destination!=40 || in->middle<0 ||
+  if(in->op!=IMFRAME){
+   if(!dis64clienteffect(slots,&nslots,v.frame,in,node))return 0;
+   node->next=in->op==IJMP?v.count:i+1;
+   if(dis64clientbranch(in->op)){if(in->destination<0 || (unsigned long)in->destination>=v.count)return 0;node->target=in->destination;}
+   continue;
+  }
+  if(in->mode!=(SRC(AMP)|AXIMM|DST(AFP)) || in->source || in->destination!=40 || in->middle<0 ||
      (unsigned long)in->middle>=v.imports.count || !dis64bindingget(&v.imports,in->middle,&b))return 0;
-  ordinal=in->middle;offset=64;
+  node->needload=1;ordinal=in->middle;offset=64;
   for(j=0;j<b.signature.parameters;j++){
    if(++i>=v.count)return 0;d=v.decoded+i;in=&d->instruction;kind=dis64u32(b.signature.data+12+4*j);width=dis64scalarwidth(kind);offset=(offset+width-1)&~(width-1);
    if(in->op!=(kind==Dis64Int?IMOVW:kind==Dis64Big?IMOVL:IMOVF) || (in->mode&ARM)!=AXNON ||
       UDST(in->mode)!=(AFP|AIND) || in->destination!=40 || d->secondary!=offset ||
-      !dis64clientread(slots,&nslots,v.frame,USRC(in->mode),in->source,kind))return 0;
+      !dis64clientbit(slots,&nslots,v.frame,USRC(in->mode),in->source,kind,node->need))return 0;
    offset+=width;
   }
   result=b.signature.result;
@@ -125,9 +224,13 @@ dis64clientcheck(const unsigned char *data,unsigned int bytes,Dis64ScalarClientV
   v.calls++;
   if(result){if(++i>=v.count)return 0;in=&v.decoded[i].instruction;
    if(in->op!=(result==Dis64Int?IMOVW:result==Dis64Big?IMOVL:IMOVF) || in->mode!=(SRC(AFP)|DST(AFP)) || in->source!=v.frame-8 ||
-      !dis64clientslot(slots,&nslots,v.frame,in->destination,result,1))return 0;
+      !dis64clientbit(slots,&nslots,v.frame,UDST(in->mode),in->destination,result,node->give))return 0;
   }
+  nodes[start].next=i+1;
  }
- if(v.decoded[v.count-1].instruction.op!=IEXIT)return 0;*out=v;return 1;
+ if(!v.calls || v.decoded[v.count-1].instruction.op!=IEXIT)return 0;
+ for(i=0;i<v.count;i++)if(nodes[i].boundary && ((nodes[i].next<v.count && !nodes[nodes[i].next].boundary) ||
+    (nodes[i].target<v.count && !nodes[nodes[i].target].boundary)))return 0;
+ if(!dis64clientflow(nodes,v.count))return 0;*out=v;return 1;
 }
 #endif

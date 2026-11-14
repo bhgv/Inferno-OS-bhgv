@@ -7,16 +7,32 @@ CLIENT=runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client.py'));BOOT=runpy
 def main():
  p=argparse.ArgumentParser(description=__doc__)
  for name in ('limbo','emu','root'):p.add_argument('--'+name,required=True,type=Path)
- p.add_argument('--runner',default='');a=p.parse_args();env=dict(os.environ);command=shlex.split(a.runner)+[str(a.emu.resolve()),'-v','-r',str(a.root.resolve())];runs=0
+ p.add_argument('--runner',default='');p.add_argument('--cfg',action='store_true');a=p.parse_args();env=dict(os.environ);command=shlex.split(a.runner)+[str(a.emu.resolve()),'-v','-r',str(a.root.resolve())];runs=0
  with tempfile.TemporaryDirectory(prefix='scalar-client-boot-',dir=a.root.resolve())as td:
   w=Path(td);env['TMPDIR']=str(w);provider=w/'library.dis64';caller=w/'client.dis64';vmprovider='/'+str(provider.relative_to(a.root.resolve()));vmcaller='/'+str(caller.relative_to(a.root.resolve()))
-  for name,text,fn,kind,args,values,expected,failure,callertext in CLIENT['cases']():
+  rows=runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-cases.py'))['cases']()if a.cfg else(row+(False,)for row in CLIENT['cases']())
+  for name,text,fn,kind,args,values,expected,failure,callertext,guarded in rows:
    (w/'library.m').write_text(CLIENT['NS']['declarations'](text));(w/'library.b').write_text(text);(w/'client.b').write_text(callertext.replace('"library.dis64"','"'+vmprovider+'"'))
    for flag,source,target in [('-64b','library.b',provider),('-64c','client.b',caller)]:subprocess.run([str(a.limbo.resolve()),flag,'-I',str(w),'-o',str(target),str(w/source)],env=env,check=True,capture_output=True)
    for jit in (0,1):
     output=BOOT['execute'](command+['-c',str(jit),'-X','dis64-calls','-d',vmcaller]);error='zero divide'if failure else''
     assert 'native64 scalar module '+('Library'if failure else'Client')+': jit='+str(jit)+', exit="'+error+'"'in output and BOOT['RETIRED']in output and 'panic:'not in output and 'faults:'not in output and ('Broken:'in output)==bool(failure),output
     runs+=1;print('PASS full OS importing Limbo client:',name,'jit='+str(jit),'error='+repr(error),flush=True)
+   if a.cfg:
+    saved=provider.read_bytes();provider.unlink()
+    for jit in (0,1):
+     output=BOOT['execute'](command+['-c',str(jit),'-X','dis64-calls','-d',vmcaller]);assert 'native64 scalar module Client: jit='+str(jit)+', exit=""'in output and BOOT['RETIRED']in output and 'Broken:'not in output and 'panic:'not in output and 'faults:'not in output,output
+     runs+=1
+    provider.write_bytes(saved)
+  if a.cfg:
+   wrong=(w/'library.b').read_text().replace('return n+1;','return n+2;');assert wrong!=(w/'library.b').read_text();(w/'library.b').write_text(wrong)
+   subprocess.run([str(a.limbo.resolve()),'-64b','-o',str(provider),str(w/'library.b')],env=env,check=True,capture_output=True)
+   for jit in (0,1):
+    output=BOOT['execute'](command+['-c',str(jit),'-X','dis64-calls','-d',vmcaller]);assert 'native64 scalar module Client:'in output and 'exit="zero divide"'in output and BOOT['RETIRED']in output and 'panic:'not in output and 'faults:'not in output,output
+   output=BOOT['execute'](command+['-c','1','-d',vmcaller]);assert 'panic: loading 'in output and BOOT['RETIRED']not in output,output
+   print('PASS CFG wrong-result conditional controls: C/RX',flush=True)
+   print('PASS full OS CFG clients including graceful missing-file returns:',runs,'C/RX OS roots',flush=True);return
+
   saved=provider.read_bytes()
   # Validly typed wrong implementation must trip the command's own integer result guard.
   wrong=(w/'library.b').read_text().replace('return n+1;','return n+2;');assert wrong!=(w/'library.b').read_text();(w/'library.b').write_text(wrong)

@@ -1,5 +1,8 @@
 # Limbo file clients that load scalar libraries
 
+This page records the0182 baseline. The current compiler also supports
+[branches, loops and module nil checks](dis64-client-control-flow.md).
+
 [Русская версия](dis64-scalar-clients.ru.md).
 
 A bounded importing Limbo command can now be compiled to Dis64 and started by the

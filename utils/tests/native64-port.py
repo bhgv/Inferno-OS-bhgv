@@ -116,6 +116,14 @@ def main():
     for control in ('initialized', 'result', 'map'):
         run([sys.executable, str(tests/'dis64-scalar-client-proof.py'), '--limbo', str(tools/'limbo'), '--control', control],
             build, env, logs/('scalar-client-proof-'+control+'.log'))
+    run([sys.executable, str(tests/'dis64-scalar-client-boot.py'), '--cfg', '--limbo', str(tools/'limbo'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'scalar-client-cfg-boot.log')
+    run([sys.executable, str(tests/'dis64-scalar-client.py'), '--cfg', '--limbo', str(tools/'limbo')],
+        build, env, logs/'scalar-client-cfg.log')
+    for control in (None, 'join', 'load', 'boundary', 'high'):
+        command = [sys.executable, str(tests/'dis64-scalar-client-cfg-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('scalar-client-cfg-proof-'+str(control)+'.log'))
     run([sys.executable, str(tests/'dis64-source-calls.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'source-call-files.log')
     run([sys.executable, str(tests/'dis64-source-calls-unit.py')], build, env, logs/'source-call-writer-ir.log')

@@ -48,7 +48,7 @@ def main():
   subprocess.run([str(a.limbo.resolve()),'-64c','-I',str(w),'-o',str(image),str(w/'client.b')],env=env,check=True)
   cc=shlex.split(env.get('CC','cc'))+shlex.split(env.get('NATIVE64_CFLAGS','-O2 -g -fsanitize=undefined -fno-sanitize-recover=all'))
   if a.control:
-   text=(ROOT/'include/dis64-scalar-client.h').read_text();old,new={'initialized':('if(!write || *count==Dis64ClientSlots)','if(*count==Dis64ClientSlots)'), 'result':('d->secondary!=32','0'), 'map':('if(frame.map[i])return 0;','if(0)return 0;')}[a.control];assert text.count(old)==1;(w/'dis64-scalar-client.h').write_text(text.replace(old,new))
+   text=(ROOT/'include/dis64-scalar-client.h').read_text();old,new={'initialized':('(nodes[i].need[0]&~nodes[i].in[0])','0'), 'result':('d->secondary!=32','0'), 'map':('if(frame.map[i])return 0;','if(0)return 0;')}[a.control];assert text.count(old)==1;(w/'dis64-scalar-client.h').write_text(text.replace(old,new))
   binary=w/'proof';subprocess.run(cc+['-I'+str(w),'-I'+str(ROOT/'include'),str(ROOT/'utils/tests/dis64-scalar-client-proof.c'),'-o',str(binary)],env=env,check=True);runner=shlex.split(env.get('NATIVE64_RUNNER',''));rows=[('valid',image.read_bytes(),1)]+[(name,data,0)for name,data in mutations(image.read_bytes())]
   if a.control:rows=[r for r in rows if r[0]=={'initialized':'undefined-argument','result':'result-cell','map':'frame-map'}[a.control]]
   for name,data,expected in rows:

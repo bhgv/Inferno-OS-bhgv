@@ -16,7 +16,7 @@ def main():
     old=w/'old.dis';subprocess.run([str(a.baseline.resolve()),'-I',str(w),'-i','-o',str(old),str(source)],env=env,check=True,capture_output=True);assert old.read_bytes()==ordinary.read_bytes(),name
   interface.write_text('Library:module{id:fn(n:int):int;};');base=P['client']('id',1,[1],[7]);negative=[
    base.replace('"library.dis64"','"$Sys"'),base.replace('"library.dis64"','""'),base.replace('"library.dis64"','"'+('p'*1024)+'"'),base.replace('"library.dis64"','"λ.dis64"'),
-   base.replace('a0:=7;','a0:=7;if(a0<0)return;'),base.replace('a0:=7;','a0:=7;while(a0>0)a0--;'),
+   base.replace('m=load Library "library.dis64";','m=load Library "other.dis64";'),base.replace('first:=m->id(a0);','first:=m->id(a0+3);'),
    base.replace('init:fn();','init:fn(n:int);').replace('init(){','init(n:int){'),
    base.replace('Client:module{init:fn();};','Client:module{init:fn();helper:fn();};')+'helper(){}',
    base.replace('};init(){','};g:int;init(){').replace('a0:=7;','a0:=7;g=a0;'),

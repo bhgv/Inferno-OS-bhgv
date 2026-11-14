@@ -387,3 +387,11 @@ controls and malformed-client refusal. Caller CODE/maps/imports come from the
 file rather than a C fixture. The client is still linear with one void no-argument
 init and scalar calls; ordinary AWM managed signatures/heap/CFG and a working
 Android/Bionic GUI APK remain unfinished. [Report](dis64-inferno-scalar-client-report.md).
+
+2026-11-14, INFERNO-0183: [file-client control flow](dis64-client-control-flow.md)
+now supports module nil guards, branches, loops, break/continue and early returns.
+Both complete x64/ARM64 Linux/QEMU consoles pass60 additional normal/missing-file
+OS roots plus conditional wrong-result controls. This lets a missing library
+return normally instead of breaking at MFRAME. AWM context/list init arguments,
+general managed heap admission and Android/Bionic GUI APK remain separate work.
+[Report](dis64-inferno-client-cfg-report.md).
