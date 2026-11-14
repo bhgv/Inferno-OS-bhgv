@@ -13002,3 +13002,55 @@ RU: Получены INFERNO-0185 и managed-local GC результаты бе�
 Переданы удержание native directory identity и проверки настоящих rename/decoys,
 retirement и ошибок открытия. Полная VFS ещё не заявляется. Префикс журнала
 сохранён; private signature/kind/wire/layout IDs и vendor pin не меняются.
+
+
+## FLASHVM-0203 — on-demand revision-checked namespace debugging
+
+2026-11-15. Published bhgv/flashVM master0c4f3711de4a07e7d8151a175a061911a3f4af9a,
+tree9a7fc2f95da0405367d5e1dbcc100ca465e746b9, parent0bd948b9. The built-in native
+debugger now supports namespace PID and namespace-read PID REVISION INDEX FIELD
+OFFSET on the existing authenticated private pipe/socket transport. Source must
+be retained at its original native gate (pause/fault); running guests refuse.
+The target keeps group lifetime while shared peers can continue mutations.
+
+Summary copies revision, number of bindings/group refs and held directory flags.
+Text fields cover root/cwd/import, held display sources, binding target/source
+and file component. Each request copies at most128 raw UTF-8 bytes as hex under
+group mutex, with full length/copied count. Revision uses decimal JSON string
+for all64 bits. Wrong revisions refuse, requiring complete enumeration restart;
+FORKNS list order need not match parent. Oversized offsets/indexes, invalid fields,
+overflow/signed numbers and trailing tokens refuse. No client pointers are read.
+
+No new persistent per-object statistics/snapshot catalog, allocation, native FS
+I/O, managed/GC inspector admission or global execution exclusion. Counts/index
+selection walk existing group records under its mutex; not lock-free/constant
+time. Refcount is instantaneous native group ownership, not per-thread bytes.
+Display paths can be stale after rename; held flags are capability ownership,
+not current path reachability or an immutable child-file snapshot. Complete
+Chan/provider graphs, union/mount, FD/env/credentials and non-Linux adapters remain.
+
+Evidence: public Limbo example retains shared/copied children at first-chance
+errors; parent actually rebinds A->B while children stay frozen. Long Unicode/
+quoted paths reconstruct over pages. Shared stale revision refuses; copied group
+keeps original cwd/import/source. An omission calls the real reader with a new
+revision and must expose actual /source-b bytes at the old request version;
+crash/timeout/parser refusal is not detection. Both C/JIT dispatch, both GC polls,
+normal retirement and private debugger transport checked. Native unit covers
+exact slice bounds/end offset, stale output preservation, invalid selectors and
+concurrent read/copy/rebind with six OS owners.
+
+13 focused ordinary and14 TSan CTest groups pass: namespace/imports/anchors,
+retained debug/mailbox, owner stack/location, memory statistics, GC requests,
+errors and load cancellation. Namespace core/concurrent observations pass host
+ASan/UBSan with LSan disabled; no whole-runtime sanitizer/leak claim.68 mandatory
+architecture workloads now include namespace-debug; local execution Linux x64,
+ARM64/RV64 need CI. RU/EN docs: disVM/runtime/NAMESPACE-DEBUG.md/.ru.md;
+example: disVM/examples/namespace-debug; native contract: vfs/observation.h.
+Sources <=500 lines; no external installed runtime tool/library introduced.
+
+Experiment parentaaf7cee8 contains INFERNO-0185 previously received in0202. No new
+peer code imported, no public kind/signature/wire/layout change. Vendor remains
+7f2241455734e1142a3254fad9d1ec4f94032ac7. Prior journal prefix preserved verbatim.
+RU: Переданы namespace summary/text pages по запросу, revision refusal и реальные
+shared/copy/omission проверки. Постоянной статистики и глобальной остановки нет;
+полная Chan/provider VFS этим не заявляется. Данные0185 сохранены без ABI импорта.
