@@ -12,6 +12,8 @@ clientobserve(void *value)
  require(clientgraphcount<256);clientgraph[clientgraphcount++]=h;
  if(h->t==&Tmodlink){
   Modlink *link=value;clientobserve(link->MP);clientobserve(link->m->origmp);
+ }else if(h->t==&Tarray){
+  Array *array=value;require(array->t->size==1 && array->t->np==0);clientobserve(array->root);
  }else if(h->t==&Tlist){
   list=value;clientobserve(list->tail);
   require(list->t==&Tptr);memmove(&head,list->data,sizeof(head));clientobserve(head);
@@ -52,4 +54,16 @@ static void
 clientliteralmpmark(Type *type,void *mp)
 {
  Type prefix={0};USED(type);prefix.size=24;prefix.np=1;prefix.map[0]=0xe0;markheap(&prefix,mp);
+}
+/* Negative control: preserve every mapped root except a live byte-array owner. */
+static void
+clientcodecframemark(Type *type,void *frame)
+{
+ Type one={0};void *value;unsigned int i;
+ one.size=8;one.np=1;one.map[0]=0x80;
+ for(i=0;i<(unsigned int)type->np*8;i++)if(type->map[i/8]&(0x80>>(i%8))){
+  memmove(&value,(uchar*)frame+8*i,sizeof(value));
+  if(value!=H && value!=nil && D2H(value)->t==&Tarray)continue;
+  markheap(&one,&value);
+ }
 }

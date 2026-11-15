@@ -60,6 +60,21 @@ typedclientfield(Inst *in,Dis64TypedBody *p,unsigned int pc,int probe)
 }
 
 static int
+typedclientcodec(Inst *in,Dis64TypedBody *p,unsigned int pc)
+{
+ unsigned int sk,dk,sm,dm;long source,destination;int actual;
+ switch(in->op){
+ case ICVTCW:sk=Tstring;dk=Tint;break;case ICVTCL:sk=Tstring;dk=Tbig;break;case ICVTCF:sk=Tstring;dk=Treal;break;
+ case ICVTWC:sk=Tint;dk=Tstring;break;case ICVTLC:sk=Tbig;dk=Tstring;break;case ICVTFC:sk=Treal;dk=Tstring;break;
+ case ICVTCA:sk=Tstring;dk=Tarray;break;case ICVTAC:sk=Tarray;dk=Tstring;break;
+ default:return 0;
+ }
+ if(in->mm!=Anone || in->branch || !typedoperand(in->sm,&in->s,sk,sk==Tint,0,p,&source,&sm,&actual) ||
+    !typedoperand(in->dm,&in->d,dk,0,0,p,&destination,&dm,&actual) || dm!=AFP)return typedfail(p,"client-codec-roles");
+ p->code[pc]=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,destination};return 1;
+}
+
+static int
 typedclientstring(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
 {
  unsigned int sm,mm,dm;long source,middle,destination;int actual,index=in->op==IINDC;
@@ -87,7 +102,7 @@ typedclientstring(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
 static int
 typedclientreferencekind(int kind)
 {
- return kind==Tref || kind==Tchan || kind==Tlist || kind==Tmodule || kind==Tany;
+ return kind==Tref || kind==Tchan || kind==Tarray || kind==Tlist || kind==Tmodule || kind==Tany;
 }
 static int
 typedclientcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
@@ -192,6 +207,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             else if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;
             for(i=pc+1;i<next;i++)inside[i-p->first]=1;
             pc=next;
+        }else if(c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)){
+            if(!typedclientcodec(in,p,pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)){
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->external>=2 && in->op==IMOVP && (in->sm==Afpind || in->dm==Afpind)){

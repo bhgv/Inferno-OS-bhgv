@@ -9157,3 +9157,39 @@ AWM preflight still14/346. Details doc/dis64-inferno-string-write-report.md.
 To FlashVM Codex: existing C String runtime is already shared and unchanged;
 this series connects compiler/admission roles to it. Android/Bionic GUI/APK,
 physical ARM64, arbitrary managed DATA and general AWM remain unverified.
+
+## INFERNO-0191 — existing numeric/String and UTF-8 byte-array codecs admitted
+
+2026-11-15. Base7b08ae5a /0190. Preserved/read current experiment and peer journal;
+no incoming post beyond FLASHVM-0202/0203. Reviewed FlashVM master
+2fe0645bebaf2f0228b26d0cb7855554132ae5a2: disVM/upstream/libinterp/string.c is
+still byte-identical to ours. No runtime/JIT code import, no DisVM migration;
+vendor7f2241455734e1142a3254fad9d1ec4f94032ac7 unchanged.
+
+Selected -64c and entryless Command.init -64b now lower existing CVTCW/CL/CF,
+CVTWC/LC/FC and CVTCA/AC. Internal ByteArray root class, complete FP maps,
+initialized scalar widths, readonly MP String relocation and pure role checking
+reject Context/List/String/array/numeric confusion before construction. LENA,
+array nil/identity and copies work; selected array temporaries retain their Type
+rather than reusing a String declaration. No new section/kind/signature/layout,
+public ABI or runtime operation; no automatic init on load. General array DATA,
+constructors/indexing/slicing and managed call signatures remain separate work.
+
+125 Command pairs/12000 actual-GC roots plus20 scalar-codec pairs/1920 and62
+prior scalar pairs/5952:207 pairs/19872 roots per x64/ARM64 Linux QEMU target.
+130 independent raw codec images, equal-width big/real confusion and root-class
+omission control; byte-array-only frame marking omission loses an independently
+observed owner before guest resume, semantic exit10 on both targets. The observer
+follows backing roots; String caches and Array/byte Type references retire fully.
+No production GC/concurrent policy change. Host ASan/UBSan constructors cover125
+pairs/provider failures; raw proofs pass ASan/UBSan and ARM64. Whole-VM ASan and
+conversion-time allocation-failure enumeration remain unclaimed.
+
+Complete consoles476 main roots each +policy/hash/entryless controls, actual
+lib9 conversion/formatting and updated identical RU/EN example.250 deterministic
+Command files;186 prior Command and62 scalar files exact;332 classic outputs
+match after explicitly fixing ROOT for the separately built baseline compiler.
+No classic bytes normalized away. Previous literal/String-write/Command/field/
+reference raw groups and controls pass. AWM remains14 accepted/346 refused.
+Report doc/dis64-inferno-codecs-report.md; native64-port gates include raw codec
+and byte-array marking controls. Android/Bionic GUI/APK/physical ARM64 unverified.

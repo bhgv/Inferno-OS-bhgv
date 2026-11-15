@@ -9,13 +9,13 @@ def sections(data):
   k,f,at,n=struct.unpack_from('>HHII',data,32+12*i);assert f==1 and k not in d;d[k]=data[at:at+n]
  return d
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--gc-control',choices=('callee-frame','context-map','mp-tail'));p.add_argument('--literal-wire',choices=('empty','signed-runes'));p.add_argument('--reference-width-control',action='store_true');p.add_argument('--field-offset-control',choices=('source','destination'));p.add_argument('--case',action='append');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--gc-control',choices=('callee-frame','context-map','mp-tail','codec-array'));p.add_argument('--literal-wire',choices=('empty','signed-runes'));p.add_argument('--reference-width-control',action='store_true');p.add_argument('--field-offset-control',choices=('source','destination'));p.add_argument('--case',action='append');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
  if a.literal_wire and(not a.materialize_only or a.case!=['literals-context']):p.error('--literal-wire requires --materialize-only --case literals-context')
  with tempfile.TemporaryDirectory(prefix='command-init-',dir=ROOT)as td:
   w=Path(td);env['TMPDIR']=str(w);(w/'command.m').write_text(CASES['INTERFACE']);(w/'library.m').write_text('Library:module{inc:fn(n:int):int;};')
   # Legacy fixture declarations are compile-only; live interface comes solely from files.
   (w/'library.h').write_bytes(subprocess.check_output([str(a.limbo.resolve()),'-H','-R','-M','Library',str(w/'library.m')],env=env))
-  source=w/'test.c';text=P['unit']();text=text.replace('require(int condition)', 'baserequire(int condition,const char *expression,int line)',1).replace('checks);\n\t\tabort();','checks);fprintf(stderr,"line=%d predicate=%s\\n",line,expression);exit(10);',1);text=text.replace('/* Bound each allocation','#define require(c) baserequire((c),#c,__LINE__)\n/* Bound each allocation',1).replace('#define require(c) libraryrequire','#undef require\n#define require(c) libraryrequire');text=runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-gc.py'))['instrument'](text);
+  source=w/'test.c';text=P['unit'](codecs=True);text=text.replace('require(int condition)', 'baserequire(int condition,const char *expression,int line)',1).replace('checks);\n\t\tabort();','checks);fprintf(stderr,"line=%d predicate=%s\\n",line,expression);exit(10);',1);text=text.replace('/* Bound each allocation','#define require(c) baserequire((c),#c,__LINE__)\n/* Bound each allocation',1).replace('#define require(c) libraryrequire','#undef require\n#define require(c) libraryrequire');text=runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-gc.py'))['instrument'](text);
   header=subprocess.check_output([str(a.limbo.resolve()),'-H','-M','Command','-I',str(ROOT/'module'),str(w/'command.m')],env=env,text=True)
   (w/'command-generated.h').write_text(header)
   width=(ROOT/'utils/tests/dis64-reference-width.c').read_text()
@@ -30,6 +30,8 @@ def main():
   text=text.replace('observedispatch(m,jit);m->ss=', 'commandliteralcheck(&view,m->origmp);observedispatch(m,jit);m->ss=')
   if a.gc_control=='mp-tail':text=text.replace('clientproviderjit=cflag=pjit;','m->type[1]->mark=clientliteralmpmark;clientproviderjit=cflag=pjit;')
   if a.gc_control=='context-map':text=text.replace('commandcontextnomark=0','commandcontextnomark=1')
+  if a.gc_control=='codec-array':
+   assert text.count('clientloads++;')==1;text=text.replace('clientloads++;','ml->m->type[0]->mark=clientcodecframemark;clientloads++;')
   if a.gc_control=='callee-frame':
    assert text.count('clientloads++;')==1;text=text.replace('clientloads++;','ml->m->type[0]->mark=noptrs;clientloads++;')
   if a.field_offset_control:

@@ -28,7 +28,7 @@ def cases():
   if label=='continuation-word':body=body.replace('last:=m->inc(first+3);','next:=first+3;last:=m->inc(next);after:=next+1;')[:-1]+'mask:=last^12;negated:=0-mask;nonzero:=mask|negated;shifted:=nonzero>>31;denom:=shifted+1;probe:=1/denom;}'
   yield (label,text,'inc',1,[1],[7],expected,0,body)
 
-def unit():
+def unit(codecs=False):
  s=NS['unit'](iload=True);assert s.count('int main(int argc,char**argv)')==1;s=s.replace('int main(int argc,char**argv)','int oldiloadmain(int argc,char**argv)')
  extract=S['FILES']['FILES']['function'];f=extract(s,'int\nkopen(')
  pos=s.index('int\nkopen(');s=s[:pos]+'static uchar *clientfile,*providerfile;static unsigned int clientfilebytes,providerfilebytes;\n'+s[pos:]
@@ -50,6 +50,8 @@ def unit():
  handlers+='\n'+'\n'.join('optab[I'+n.upper()+']=actual_'+n+';'for n in ('addc','insc','slicec'))
  s+='\n'+extract(strings,'int\nstringcmp(')+'\n'+extract(xec,'static void\nbranchstring(')+'\n'+extract(strings,'OP(indc)')+'\n'+'\n'.join(extract(xec,'OP('+n+')')for n in ('beqc','bnec','bltc','blec','bgtc','bgec'))
  handlers+='\noptab[IINDC]=actual_indc;\n'+'\n'.join('optab[I'+n.upper()+']=actual_'+n+';'for n in ('beqc','bnec','bltc','blec','bgtc','bgec'))
+ if codecs:
+  s,extra=runpy.run_path(str(ROOT/'utils/tests/dis64-client-codec-support.py'))['instrument'](s,extract);handlers+=extra
  return s+'\n'+(ROOT/'utils/tests/dis64-scalar-client.c').read_text().replace(' CLIENT_HANDLERS',handlers)
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--cfg',action='store_true');p.add_argument('--numeric',action='store_true');p.add_argument('--managed',action='store_true');p.add_argument('--gc',action='store_true');p.add_argument('--gc-control',choices=('frame','list'));p.add_argument('--case',action='append',choices=[r[0]for r in cases()]+[r[0]for r in runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-cases.py'))['cases']()]+[r[0]for r in runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-numeric-cases.py'))['cases']()]+[r[0]for r in runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-managed-cases.py'))['cases']()]);a=p.parse_args();

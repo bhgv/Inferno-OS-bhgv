@@ -7,6 +7,18 @@ dis64clientrootkind(Dis64ClientSlot *slots,unsigned int count,unsigned int mode,
  if(mode==AFP)for(i=0;i<count;i++)if(slots[i].offset==(unsigned long)offset && dis64clientisroot(slots[i].kind))return slots[i].kind;
  return 0;
 }
+/* Codec roles are proof classes, not public signature kinds. */
+static int
+dis64clientcodec(unsigned int op,unsigned int *sk,unsigned int *dk)
+{
+ unsigned int source=Dis64ClientString,destination=Dis64ClientString;
+ switch(op){
+ case ICVTCW:destination=Dis64Int;break;case ICVTCL:destination=Dis64Big;break;case ICVTCF:destination=Dis64Real;break;
+ case ICVTWC:source=Dis64Int;break;case ICVTLC:source=Dis64Big;break;case ICVTFC:source=Dis64Real;break;
+ case ICVTCA:destination=Dis64ClientByteArray;break;case ICVTAC:source=Dis64ClientByteArray;break;
+ default:return 0;
+ }*sk=source;*dk=destination;return 1;
+}
 /* Only exact mapped FP cells and readonly mapped MP cells are roots. */
 static int
 dis64clientrootoperand(Dis64ClientSlot *slots,unsigned int count,unsigned int mode,long offset,unsigned int kind,unsigned int bits[2])
@@ -23,7 +35,8 @@ dis64clientrootoperand(Dis64ClientSlot *slots,unsigned int count,unsigned int mo
 static int
 dis64clientmanagedop(const Dis64Instruction *in)
 {
- switch(in->op){case IMOVP:return UDST(in->mode)==AFP;case INEW:case INEWZ:case IADDC:case IINSC:case ISLICEC:case IINDC:case IBEQC:case IBNEC:case IBLTC:case IBLEC:case IBGTC:case IBGEC:case ILENC:case ILENL:case ICONSP:case IHEADP:case ITAIL:return 1;}
+ unsigned int sk,dk;if(dis64clientcodec(in->op,&sk,&dk))return 1;
+ switch(in->op){case ILENA:case IMOVP:return UDST(in->mode)==AFP;case INEW:case INEWZ:case IADDC:case IINSC:case ISLICEC:case IINDC:case IBEQC:case IBNEC:case IBLTC:case IBLEC:case IBGTC:case IBGEC:case ILENC:case ILENL:case ICONSP:case IHEADP:case ITAIL:return 1;}
  return (in->op==IBEQL || in->op==IBNEL) && in->mode==(SRC(AFP)|AXINM|DST(AIMM));
 }
 /* LONG numeric equality uses the same opcode/mode. A mapped root operand,
@@ -39,6 +52,14 @@ dis64clientmanagedroles(Dis64ClientSlot *slots,unsigned int *count,unsigned int 
  const Dis64Instruction *in,unsigned int need[2],unsigned int give[2])
 {
  unsigned int source,destination,sk=Dis64ClientRoot,dk=Dis64ClientRoot;
+ if(dis64clientcodec(in->op,&sk,&dk)){
+  if((in->mode&ARM)!=AXNON || UDST(in->mode)!=AFP)return 0;
+  if(dis64clientisroot(sk)){
+   if(!dis64clientrootoperand(slots,*count,USRC(in->mode),in->source,sk,need))return 0;
+  }else if(!dis64clientbit(slots,count,frame,USRC(in->mode),in->source,sk,need))return 0;
+  return dis64clientisroot(dk)?dis64clientrootoperand(slots,*count,AFP,in->destination,dk,give):
+   dis64clientbit(slots,count,frame,AFP,in->destination,dk,give);
+ }
  if(in->op==IADDC || in->op==IINSC || in->op==ISLICEC){
   unsigned int mm=in->mode&ARM;int numeric=in->op!=IADDC;
   if(UDST(in->mode)!=AFP)return 0;
@@ -80,6 +101,7 @@ dis64clientmanagedroles(Dis64ClientSlot *slots,unsigned int *count,unsigned int 
   if(!source || !destination)return 0;
   sk=dk=source==Dis64ClientRoot?destination:source;
  }else switch(in->op){
+ case ILENA:sk=Dis64ClientByteArray;break;
  case ILENC:sk=Dis64ClientString;break;
  case ILENL:case ITAIL:sk=Dis64ClientListString;dk=Dis64ClientListString;break;
  case ICONSP:sk=Dis64ClientString;dk=Dis64ClientListString;break;
@@ -87,7 +109,7 @@ dis64clientmanagedroles(Dis64ClientSlot *slots,unsigned int *count,unsigned int 
  default:return 0;
  }
  if(!dis64clientrootoperand(slots,*count,USRC(in->mode),in->source,sk,need))return 0;
- if(in->op==ILENC || in->op==ILENL)return dis64clientbit(slots,count,frame,AFP,in->destination,Dis64Int,give);
+ if(in->op==ILENA || in->op==ILENC || in->op==ILENL)return dis64clientbit(slots,count,frame,AFP,in->destination,Dis64Int,give);
  /* CONS reads the previous destination as its tail; middle operands are forbidden. */
  if(in->op==ICONSP && !dis64clientrootoperand(slots,*count,AFP,in->destination,dk,need))return 0;
  return dis64clientrootoperand(slots,*count,AFP,in->destination,dk,give);

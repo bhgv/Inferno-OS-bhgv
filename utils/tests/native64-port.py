@@ -173,6 +173,12 @@ def main():
     for value in ('empty', 'signed-runes'):
         run([sys.executable, str(tests/'dis64-command.py'), '--materialize-only', '--literal-wire', value,
              '--case', 'literals-context', '--limbo', str(tools/'limbo')], build, env, logs/('client-literal-wire-'+value+'.log'))
+    run([sys.executable, str(tests/'dis64-command.py'), '--gc-control', 'codec-array', '--case', 'codecs-bytes-alias',
+         '--limbo', str(tools/'limbo')], build, env, logs/'client-codec-array-gc-control.log')
+    for control in (None, 'classes'):
+        command = [sys.executable, str(tests/'dis64-client-codecs-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('client-codecs-proof-'+str(control)+'.log'))
     for control in (None, 'classes'):
         command = [sys.executable, str(tests/'dis64-client-string-write-proof.py'), '--limbo', str(tools/'limbo')]
         if control: command += ['--control', control]

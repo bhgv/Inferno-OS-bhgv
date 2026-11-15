@@ -59,6 +59,12 @@ init()
 {
     m := load Command "library.dis64";
     if(m == nil) return;
+    number := 42;
+    text := string number;
+    bytes := array of byte text;
+    decoded := string bytes;
+    parsed := int decoded;
+    if(parsed != number || len bytes != 2){ z := 0; bad := 1/z; }
     argv := "wm" :: "Привет" :: "a\0z" :: nil;
     ctxt := ref Draw->Context(nil, nil, nil);
     m->init(ctxt, argv);
@@ -180,3 +186,11 @@ INSC and SLICEC handlers. Mapped local owners are required; shared literals/alia
 are preserved by copy-on-write. Index equal to length appends one character; a
 larger or negative index raises bounds error. Slices use character indexes,
 including Unicode and NUL. General payload construction remains outside this profile.
+
+
+Numeric casts now use existing int/big/real String conversions. `array of byte s`
+encodes UTF-8; `string bytes` decodes it. Lengths differ for non-ASCII text:
+characters in String, bytes in the array; embedded NUL is preserved. These arrays
+are owned runtime values with mapped roots, not a new general DATA initializer.
+Only byte-array conversion, length, copies and identity are admitted here;
+general array construction/indexing/slicing remains separate work.

@@ -35,7 +35,7 @@ dis64commandfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long c
  failure="unsupported init data/local kinds";
  for(i=0;i<body.frame.count;i++){
   leaf=body.frame.leaves+i;
-  if(leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tref && leaf->kind!=Tchan && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=-1)goto done;
+  if(leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tref && leaf->kind!=Tchan && leaf->kind!=Tarray && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=-1)goto done;
  }
  code=allocmem(CallFileBytes);output=allocmem(CallFileBytes);typedata=allocmem(CallFileBytes);strings=allocmem(CallFileBytes);runes=allocmem((4+Dis64ManagedLiterals)*(4+4*1023));maps=allocmem(72);memset(maps,0,72);proof=allocmem(sizeof(*proof));
  {char *texts[]={"Command","command.dis64","Command","init"};unsigned int j,n;
@@ -54,7 +54,7 @@ dis64commandfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long c
  }
  dis64put32(code,body.count);sizes[1]=at;
  for(i=0;i<body.frame.count;i++){
-  leaf=body.frame.leaves+i;if(leaf->kind==Tref || leaf->kind==Tchan || leaf->kind==Tstring || leaf->kind==Tlist || leaf->kind==Tany)maps[leaf->native/64]|=0x80>>((leaf->native/8)%8);
+  leaf=body.frame.leaves+i;if(leaf->kind==Tarray || leaf->kind==Tref || leaf->kind==Tchan || leaf->kind==Tstring || leaf->kind==Tlist || leaf->kind==Tany)maps[leaf->native/64]|=0x80>>((leaf->native/8)%8);
  }
  types[0]=(Dis64Type){body.frame.bytes+16,8,maps,(body.frame.bytes+79)/64};ntypes=filestringtypes(&literals,types,maps);module.databytes=24+8*literals.literals;module.datatype=1;
  sizes[3]=dis64commandbindingwrite(exports,1,sign(fn));

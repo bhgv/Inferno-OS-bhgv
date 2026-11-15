@@ -130,6 +130,7 @@ tcontext(Type *t)
 static int
 tcontextcompatible(Type *a,Type *b)
 {
+ if(emitscalar64>=4 && (a->kind==Tarray || b->kind==Tarray))return a->kind==Tarray && b->kind==Tarray && a->tof==b->tof;
  return emitscalar64<4 || (!tcontext(a) && !tcontext(b)) || (a->kind==Tref && b->kind==Tref && a->tof==b->tof);
 }
 

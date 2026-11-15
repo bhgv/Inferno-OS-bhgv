@@ -48,8 +48,8 @@ dis64clientinstructionread(const unsigned char *data,unsigned int bytes,Dis64Cal
 }
 
 /* Internal proof classes only; never signature kinds or serialized type IDs. */
-enum { Dis64ClientRoot=0x100,Dis64ClientString,Dis64ClientListString,Dis64ClientOpaque,Dis64ClientDisplay,Dis64ClientScreen,Dis64ClientWm };
-static int dis64clientisroot(unsigned int kind){return kind>=Dis64ClientRoot && kind<=Dis64ClientWm;}
+enum { Dis64ClientRoot=0x100,Dis64ClientString,Dis64ClientListString,Dis64ClientOpaque,Dis64ClientDisplay,Dis64ClientScreen,Dis64ClientWm,Dis64ClientByteArray };
+static int dis64clientisroot(unsigned int kind){return kind>=Dis64ClientRoot && kind<=Dis64ClientByteArray;}
 static unsigned int dis64clientwidth(unsigned int kind){return dis64clientisroot(kind)?8:dis64scalarwidth(kind);}
 
 typedef struct Dis64ClientSlot Dis64ClientSlot;

@@ -495,3 +495,15 @@ x64/ARM64 Linux-QEMU execution and the source review against FlashVM DisVM, whos
 C String implementation is already identical. Updated [EN](dis64-command-init.md)
 and [RU](dis64-command-init.ru.md) examples exercise these operations.
 This does not admit general DATA/Draw/Tk/full AWM or establish Android device GUI.
+
+## Numeric and byte-array codecs (INFERNO-0191)
+
+Selected clients/Command.init now lower String conversions with int/big/real and
+UTF-8 byte arrays through existing C/JIT handlers. Array roots have a separate
+proof class; maps, numeric widths/definitions and read/write roles are checked.
+Array temporary identity survives fused conversions; classic images stay equal.
+[Report](dis64-inferno-codecs-report.md) distinguishes Linux/QEMU full-console
+execution and actual GC from constructor/raw proof checks. Updated
+[EN](dis64-command-init.md) / [RU](dis64-command-init.ru.md) examples convert a
+number through String and byte array before calling init. General arrays/DATA,
+Draw/Tk/full AWM and Android device GUI remain outside this result.

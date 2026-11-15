@@ -27,6 +27,7 @@ def cases(pathlength=13):
  yield from constructorcases(pathlength)
  yield from literalcases(pathlength)
  yield from stringwritecases(pathlength)
+ yield from codeccases(pathlength)
 
 def fieldcases(pathlength=13):
  prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
@@ -163,3 +164,42 @@ def stringwritecases(pathlength=13):
  for name,body,failure in rows:
   client='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;s:="wm";argv:=s::nil;'+('a:="client";b:="🚀";c:=a+b;c[0]=67;d:=c[1:];if(d!="lient🚀")'+bad if not failure else '')+'m->init(nil,argv);keep:=argv;}'
   yield 'strings-'+name,prefix+body+'}',client,failure
+
+
+def codeccases(pathlength=13):
+ prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
+ bad='{z:=0;bad:=1/z;}'
+ rows=[]
+ for name,value,expected in [('word','123',123),('word-negative',' -123tail',-123),('word-nul','42\\0junk',42),('word-unicode','42é',42),('word-empty','',0)]:
+  rows.append((name,'s:="'+value+'";n:=int s;if(n!='+str(expected)+')'+bad))
+ rows += [
+ ('word-max','s:="2147483647";n:=int s;want:=33554431;want<<=6;want+=63;if(n!=want)'+bad),
+ ('word-min','s:="-2147483648";n:=int s;want:=-33554432;want<<=6;if(n!=want)'+bad),
+ ('big','s:="7696581394432";n:=big s;seed:=7;want:=big seed;want<<=40;if(n!=want)'+bad),
+ ('big-negative','s:="-7696581394432";n:=big s;seed:=-7;want:=big seed;want<<=40;if(n!=want)'+bad),
+ ('big-nul','s:="42\\0junk";n:=big s;seed:=42;want:=big seed;if(n!=want)'+bad),
+ ('real','s:="1.25";r:=real s;seed:=4;scale:=real seed;r*=scale;n:=int r;if(n!=5)'+bad),
+ ('real-exponent','s:="1.25e2";r:=real s;n:=int r;if(n!=125)'+bad),
+ ('real-nil','s:string;r:=real s;n:=int r;if(n!=0)'+bad),
+ ('format-word','n:=-123;s:=string n;if(s!="-123")'+bad),
+ ('format-word-min','n:=-33554432;n<<=6;s:=string n;if(s!="-2147483648")'+bad),
+ ('format-big','seed:=7;n:=big seed;n<<=40;s:=string n;if(s!="7696581394432")'+bad),
+ ('format-big-negative','seed:=-7;n:=big seed;n<<=40;s:=string n;if(s!="-7696581394432")'+bad),
+ ('format-real','seed:=5;denom:=4;r:=real seed;d:=real denom;r/=d;s:=string r;if(s!="1.25")'+bad),
+ ('format-reuse','s:="a🚀bcdefghijklmnopqrstuvwxyz";s+="!";alias:=s;n:=123;s=string n;if(s!="123" || alias!="a🚀bcdefghijklmnopqrstuvwxyz!")'+bad),
+ ('roundtrip','n:=-987;s:=string n;back:=int s;if(back!=n)'+bad),
+ ('bytes-ascii','s:="abc";a:=array of byte s;t:=string a;if(len a!=3 || t!=s)'+bad),
+ ('bytes-unicode','s:="Привет";a:=array of byte s;t:=string a;if(len a!=12 || t!=s)'+bad),
+ ('bytes-supplementary','s:="a🚀z";a:=array of byte s;t:=string a;if(len a!=6 || t!=s)'+bad),
+ ('bytes-nul','s:="a\\0z";a:=array of byte s;t:=string a;if(len a!=3 || t!=s)'+bad),
+ ('bytes-empty','s:string;a:=array of byte s;t:=string a;if(len a!=0 || len t!=0)'+bad),
+ ('bytes-nil','a:array of byte;t:=string a;if(len t!=0)'+bad),
+ ('bytes-alias','s:="Привет";a:=array of byte s;alias:=a;s="z";a=array of byte s;t:=string alias;u:=string a;if(t!="Привет" || u!="z")'+bad),
+ ('bytes-reuse','s:="longer";a:=array of byte s;s="x";a=array of byte s;t:=string a;if(len a!=1 || t!="x")'+bad),
+ ('bytes-string-alias','s:="old";alias:=s;raw:=array of byte "new";s=string raw;if(s!="new" || alias!="old")'+bad),
+ ('bytes-identity','s:="abc";a:=array of byte s;alias:=a;if(a==nil || alias!=a)'+bad),
+ ('bytes-fused','s:="a🚀z";s=string array of byte s;if(s!="a🚀z")'+bad),
+ ('bytes-loop','s:="é";i:=0;while(i<3){a:=array of byte s;s=string a;i++;}if(s!="é")'+bad)]
+ for name,body in rows:
+  caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;s:="42";n:=int s;s=string n;raw:=array of byte s;s=string raw;argv:=s::nil;m->init(nil,argv);keep:=argv;}'
+  yield 'codecs-'+name,prefix+body+'}',caller,0
