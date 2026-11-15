@@ -3,7 +3,7 @@
 #include "styxserver.h"
 #include "styxaux.h"
 
-#define MAXSTAT	512
+#define MAXSTAT	(MSGMAX-9)
 #define EMSGLEN			256		/* %r */
 
 #define TABSZ	32	/* power of 2 */
@@ -152,7 +152,9 @@ nbread(Client *c, int nr)
 
 	if(c->state&CDISC)
 		return -1;
-	nb = styxrecv(c->server, c->fd, c->msg + c->nread, nr, 0);
+	do
+		nb = styxrecv(c->server, c->fd, c->msg + c->nread, nr, 0);
+	while(nb < 0 && errno == EINTR);
 	if(nb <= 0){
 		c->nread = 0;
 		c->state |= CDISC;
@@ -162,58 +164,67 @@ nbread(Client *c, int nr)
 	return 0;
 }
 
+/* Keep incomplete TCP frames until their remaining bytes arrive. */
 static int
 rd(Client *c, Fcall *r)
 {
-	if(c->nc > 0){	/* last convM2S consumed nc bytes */
+	u32int n;
+
+	if(c->nc > 0){
+		if(c->nc > c->nread)
+			goto Bad;
 		c->nread -= c->nc;
-		if((int)c->nread < 0){
-			r->ename = "negative size in rd";
-			return -1;
-		}
 		memmove(c->msg, c->msg+c->nc, c->nread);
 		c->nc = 0;
 	}
 	if(c->state&CRECV){
-		if(nbread(c, MSGMAX - c->nread) != 0){
-			r->ename = "unexpected EOF";
-			return -1;
-		}
 		c->state &= ~CRECV;
+		if(nbread(c, MSGMAX-c->nread) != 0)
+			goto Bad;
 	}
-	c->nc = convM2S((uchar*)(c->msg), c->nread, r);
-	if(c->nc < 0){
-		r->ename = "bad message format";
-		return -1;
-	}
-	if(c->nc == 0 && c->nread > 0){
-		c->nread = 0;
-		c->state &= ~CNREAD;
+	c->state &= ~CNREAD;
+	if(c->nread < BIT32SZ)
 		return 0;
-	}
-	if(c->nread > c->nc)
+	n = GBIT32((uchar*)c->msg);
+	if(n < 7 || n > MSGMAX)
+		goto Bad;
+	if(c->nread < n)
+		return 0;
+	c->nc = convM2S((uchar*)c->msg, n, r);
+	if(c->nc != n)
+		goto Bad;
+	if(c->nread > n)
 		c->state |= CNREAD;
-	else
-		c->state &= ~CNREAD;
-	if(c->nc == 0)
-		return 0;
-	/* fprint(2, "rd: %F\n", r); */
 	return 1;
+Bad:
+	c->state |= CDISC|CNREAD;
+	r->ename = "invalid or closed Styx stream";
+	return -1;
 }
 
+/* Complete one encoded reply; never discard a short transport write. */
 static int
 wr(Client *c, Fcall *r)
 {
-	int n;
+	int n, sent, m;
 	char buf[MSGMAX];
 
 	n = convS2M(r, (uchar*)buf, sizeof(buf));
-	if(n < 0){
-		r->ename = "bad message type in wr";
-		return -1;
+	if(n <= 0)
+		goto Bad;
+	for(sent = 0; sent < n; sent += m){
+		m = styxsend(c->server, c->fd, buf+sent, n-sent, 0);
+		if(m < 0 && errno == EINTR){
+			m = 0;
+			continue;
+		}
+		if(m <= 0 || m > n-sent)
+			goto Bad;
 	}
-	/* fprint(2, "wr: %F\n", r); */
-	return styxsend(c->server, c->fd, buf, n, 0);
+	return sent;
+Bad:
+	c->state |= CDISC|CNREAD;
+	return -1;
 }
 
 static void
@@ -630,7 +641,7 @@ run(Client *c)
 	Dir dir;
 	Qid qid;
 	Styxops *ops;
-	char strs[128];
+	char strs[MSGMAX+4];
 
 	ebuf[0] = 0;
 	if(rd(c, &f) <= 0)
@@ -873,6 +884,7 @@ run(Client *c)
 	case	Tstat:
 		if(Debug)
 			fprint(2, "Tstat %d qid=%llx\n", f.fid, fp->qid.path);
+		memset(&dir, 0, sizeof(dir));
 		f.stat = styxmalloc(MAXSTAT);
 		f.ename = "stat error";
 		if(ops->stat == nil && file != nil){
@@ -885,6 +897,10 @@ run(Client *c)
 		}
 		else
 			f.type = Rerror;
+		if(f.type == Rstat && f.nstat <= BIT16SZ){
+			f.type = Rerror;
+			f.ename = "stat record exceeds message capacity";
+		}
 		wr(c, &f);
 		styxfree(f.stat);
 		break;
@@ -892,7 +908,13 @@ run(Client *c)
 		if(Debug)
 			fprint(2, "Twstat %d\n", f.fid);
 		f.ename = Eperm;
-		convM2D(f.stat, f.nstat, &dir, strs);
+		memset(&dir, 0, sizeof(dir));
+		if(f.nstat < STATFIXLEN || convM2D(f.stat, f.nstat, &dir, strs) != f.nstat){
+			f.type = Rerror;
+			f.ename = "invalid stat record";
+			wr(c, &f);
+			break;
+		}
 		dir.name = nilconv(dir.name);
 		dir.uid = nilconv(dir.uid);
 		dir.gid = nilconv(dir.gid);
