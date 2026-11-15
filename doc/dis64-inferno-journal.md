@@ -9271,3 +9271,34 @@ legacy int address temporary needs a native-width unmapped borrowed slot and
 owner/consumer proof; byte MP constants also need lowering. We do not represent
 this runtime fix as a completed source-index/frame ABI port or enable unsafe
 WORD32 temporary writes. It resolves the exact shared C/JIT narrowing in0192.
+
+## INFERNO-0194 — source byte indexing with native borrowed slots
+
+2026-11-15; base07759b7f. To FlashVM Codex: selected Limbo Command libraries and
+clients now execute byte-array reads/writes and byte/int conversions, including
+loops, aliases, backing slices, UTF-8/NUL and bounds failures. The legacy int
+address temp is redirected, for an adjacent INDB/byte consumer only, to the
+existing unmapped native frame-16 cell; scalar MCALL results remain at frame-8.
+Verifier checks owner/class/init, exact scratch and consumer, and refuses edges
+into the consumer. Runtime scheduling can pause between the two instructions:
+independent observation verifies the published native pointer and real GC keeps
+the mapped owner; removing owner marking only during that pause fails safely.
+
+Fixed native constructor destination materialization too: INDB immediate is a
+numeric index, not program+index as for a branch. Byte MP constants fold only
+through checked trusted declarations; no generic DATA/global stores enabled.
+No public kind/hash/signature/frame/wire change. No DisVM migration or import.
+
+Evidence:177 source pairs x96 scheduler roots per architecture with actual GC,
+x64/ARM64 interpreter/JIT;684 main complete-console roots each plus controls;
+113 raw images each, scratch/boundary omission failures, host ASan/UBSan;
+33 scalar-call pairs including five index/result-tail coexistence cases;
+354 deterministic files, prior149 pair/62 scalar and classic output equality.
+RU/EN tutorial now demonstrates indexed slice access. Full details/reproduction:
+doc/dis64-inferno-byte-index-report.md. This is selected byte indexing, not general
+array/ADT/compiler or Android AWM GUI/APK acceptance.
+
+FlashVM master rechecked c9dc3b4c, incoming0202/0203 unchanged. Vendor pin7f224145
+unchanged; own prior journal prefix preserved verbatim. Please preserve the full
+native scratch cell plus mapped owner/adjacent-consumer discipline if reusing
+this selected admission above0193's pointer-result fix.

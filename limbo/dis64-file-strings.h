@@ -2,6 +2,7 @@
  * The complete independently checked output remains the admission boundary. */
 typedef struct FileStrings FileStrings;
 struct FileStrings {
+ Decl *bytes[128];unsigned int nbytes;
  Decl *nilvalue,*emptyvalue,*decls[Dis64ManagedLiterals+1];
  Sym *values[Dis64ManagedLiterals+1];
  long offsets[Dis64ManagedLiterals+1],niloffset,emptyoffset;
@@ -10,8 +11,14 @@ struct FileStrings {
 static int
 filestringscollect(FileStrings *p,Decl *globals,long bytes)
 {
- Decl *d;Sym *s;memset(p,0,sizeof(*p));p->path=-1;
+ long end=0;Decl *d;Sym *s;memset(p,0,sizeof(*p));p->path=-1;
  for(d=globals;d;d=d->next){
+  if(!d->ty || d->offset<0 || d->offset>bytes || d->ty->size<0 || d->ty->size>bytes-d->offset)return 0;
+  if(d->offset+d->ty->size>end)end=d->offset+d->ty->size;
+  if(d->ty->kind==Tbyte && d->init && d->init->op==Oconst && d->init->val>=0 && d->init->val<=255){
+   if(p->nbytes==128)return 0;p->bytes[p->nbytes++]=d;continue;
+  }
+
   if(d->ty->kind==Tany && !d->init && d->sym && !strcmp(d->sym->name,"nil")){
    if(p->nilvalue)return 0;p->nilvalue=d;continue;
   }
@@ -21,18 +28,19 @@ filestringscollect(FileStrings *p,Decl *globals,long bytes)
   if(!s || p->count==Dis64ManagedLiterals+1)return 0;
   p->decls[p->count]=d;p->values[p->count++]=s;
  }
- return bytes==4*(p->count+(p->nilvalue!=nil)+(p->emptyvalue!=nil));
+ return bytes==((end+3)&~3L);
 }
 static int
 filestringsplan(FileStrings *p,const Dis64TypedBody *body,int client)
 {
  unsigned int i,j;int found;
- if(body->data.count!=p->count+(p->nilvalue!=nil)+(p->emptyvalue!=nil))return 0;
+ if(body->data.count!=p->nbytes+p->count+(p->nilvalue!=nil)+(p->emptyvalue!=nil))return 0;
  for(i=0;i<body->data.count;i++){
   const Dis64LayoutLeaf *leaf=body->data.leaves+i;found=0;
   if(p->nilvalue && leaf->legacy==(unsigned long)p->nilvalue->offset && leaf->kind==Tany){p->niloffset=leaf->native;continue;}
   if(p->emptyvalue && leaf->legacy==(unsigned long)p->emptyvalue->offset && leaf->kind==Tstring){p->emptyoffset=leaf->native;continue;}
   for(j=0;j<p->count;j++)if(leaf->kind==Tstring && leaf->legacy==(unsigned long)p->decls[j]->offset){p->offsets[j]=leaf->native;found=1;break;}
+  for(j=0;j<p->nbytes && !found;j++)if(leaf->kind==Tbyte && leaf->legacy==(unsigned long)p->bytes[j]->offset)found=1;
   if(!found)return 0;
  }
  if(client){

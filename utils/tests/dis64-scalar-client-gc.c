@@ -2,6 +2,8 @@
  * a missing-root control has retired an observed object. Arena storage stays valid. */
 static Heap *clientgraph[256];
 static unsigned int clientgraphcount;
+static int clientindexpause;
+static unsigned int clientindexpauses;
 static void
 clientobserve(void *value)
 {
@@ -28,6 +30,24 @@ clientcollect(Prog *process,Module *client,uchar *root)
 {
  Stkext *extent=(Stkext*)process->R.EX;uchar *top=process->R.SP,*fp;Type *type;Frame frame;
  void *value;unsigned int i,bit,frames=0;USED(client);USED(root);
+ clientindexpause=0;
+ if(process->R.M!=H && process->R.M!=nil){
+  Module *m=process->R.M->m;uintptr pc=(uintptr)process->R.PC,base=(uintptr)m->prog;
+  if(pc>base && pc<=base+m->nprog*sizeof(Inst) && (pc-base)%sizeof(Inst)==0){
+   Inst *previous=process->R.PC-1;
+   if(previous->op==IINDB){
+    Array *array;uchar *address;WORD index;
+    require(USRC(previous->add)==AFP && (previous->add&ARM)==AXINF);
+    memmove(&array,process->R.FP+previous->s.ind,sizeof(array));
+    if(UDST(previous->add)==AIMM)memmove(&index,&previous->d,sizeof(index));
+    else memmove(&index,process->R.FP+previous->d.ind,sizeof(index));
+    memmove(&address,process->R.FP+previous->reg,sizeof(address));
+    require(array!=H && array!=nil && index>=0 && index<array->len && address==array->data+index);
+    require(previous->reg==m->type[0]->size-16);
+    clientindexpause=1;clientindexpauses++;
+   }
+  }
+ }
  clientgraphcount=0;clientobserve(process->R.M);clientobserve(client->origmp);
  while(extent!=nil){
   fp=extent->reg.tos.fu;
@@ -66,4 +86,12 @@ clientcodecframemark(Type *type,void *frame)
   if(value!=H && value!=nil && D2H(value)->t==&Tarray)continue;
   markheap(&one,&value);
  }
+}
+
+/* Omit the owner only while suspended after INDB, before its byte consumer. */
+static void
+clientindexframemark(Type *type,void *frame)
+{
+ if(clientindexpause)clientcodecframemark(type,frame);
+ else markheap(type,frame);
 }

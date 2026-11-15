@@ -14,7 +14,7 @@ dis64clientencode(uchar *out,unsigned int *at,Dis64Instruction *in,long base,lon
 {
  long values[4];unsigned int i,n,count=0;
  if(USRC(in->mode)!=(AFP|AIND))return callfileencode(out,at,in,base,secondary);
- if(*at>CallFileBytes-18 || !((in->op==IMOVP && in->mode==(SRC(AFP|AIND)|DST(AFP))) ||
+ if(*at>CallFileBytes-18 || !(((in->op==IMOVP || in->op==IMOVB || in->op==ICVTBW) && in->mode==(SRC(AFP|AIND)|DST(AFP))) ||
   ((in->op==IBEQL || in->op==IBNEL) && in->mode==(SRC(AFP|AIND)|AXINM|DST(AIMM)))))return 0;
  out[(*at)++]=in->op;out[(*at)++]=in->mode;if(in->mode&ARM)values[count++]=in->middle;
  values[count++]=in->source;values[count++]=field;values[count++]=in->destination;
@@ -35,7 +35,7 @@ dis64commandfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long c
  failure="unsupported init data/local kinds";
  for(i=0;i<body.frame.count;i++){
   leaf=body.frame.leaves+i;
-  if(leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tref && leaf->kind!=Tchan && leaf->kind!=Tarray && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=-1)goto done;
+  if(leaf->kind!=Tbyte && leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tref && leaf->kind!=Tchan && leaf->kind!=Tarray && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=-1)goto done;
  }
  code=allocmem(CallFileBytes);output=allocmem(CallFileBytes);typedata=allocmem(CallFileBytes);strings=allocmem(CallFileBytes);runes=allocmem((4+Dis64ManagedLiterals)*(4+4*1023));maps=allocmem(72);memset(maps,0,72);proof=allocmem(sizeof(*proof));
  {char *texts[]={"Command","command.dis64","Command","init"};unsigned int j,n;

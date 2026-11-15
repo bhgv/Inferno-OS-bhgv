@@ -9,13 +9,14 @@ def sections(data):
   k,f,at,n=struct.unpack_from('>HHII',data,32+12*i);assert f==1 and k not in d;d[k]=data[at:at+n]
  return d
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--gc-control',choices=('callee-frame','context-map','mp-tail','codec-array','array-backing'));p.add_argument('--literal-wire',choices=('empty','signed-runes'));p.add_argument('--reference-width-control',action='store_true');p.add_argument('--field-offset-control',choices=('source','destination'));p.add_argument('--case',action='append');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--gc-control',choices=('callee-frame','context-map','mp-tail','codec-array','array-backing','index-owner'));p.add_argument('--literal-wire',choices=('empty','signed-runes'));p.add_argument('--reference-width-control',action='store_true');p.add_argument('--field-offset-control',choices=('source','destination'));p.add_argument('--case',action='append');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
  if a.literal_wire and(not a.materialize_only or a.case!=['literals-context']):p.error('--literal-wire requires --materialize-only --case literals-context')
  with tempfile.TemporaryDirectory(prefix='command-init-',dir=ROOT)as td:
   w=Path(td);env['TMPDIR']=str(w);(w/'command.m').write_text(CASES['INTERFACE']);(w/'library.m').write_text('Library:module{inc:fn(n:int):int;};')
   # Legacy fixture declarations are compile-only; live interface comes solely from files.
   (w/'library.h').write_bytes(subprocess.check_output([str(a.limbo.resolve()),'-H','-R','-M','Library',str(w/'library.m')],env=env))
   source=w/'test.c';text=P['unit'](codecs=True);text=text.replace('require(int condition)', 'baserequire(int condition,const char *expression,int line)',1).replace('checks);\n\t\tabort();','checks);fprintf(stderr,"line=%d predicate=%s\\n",line,expression);exit(10);',1);text=text.replace('/* Bound each allocation','#define require(c) baserequire((c),#c,__LINE__)\n/* Bound each allocation',1).replace('#define require(c) libraryrequire','#undef require\n#define require(c) libraryrequire');text=runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-gc.py'))['instrument'](text);
+  text=text.replace('require(clientloads>0);return 0;','require(clientloads>0);fprintf(stderr,"index-pause-observations=%u\\n",clientindexpauses);return 0;')
   header=subprocess.check_output([str(a.limbo.resolve()),'-H','-M','Command','-I',str(ROOT/'module'),str(w/'command.m')],env=env,text=True)
   (w/'command-generated.h').write_text(header)
   width=(ROOT/'utils/tests/dis64-reference-width.c').read_text()
@@ -33,6 +34,8 @@ def main():
   if a.gc_control=='array-backing':text=text.replace('Tarray.mark=markarray;','Tarray.mark=noptrs;')
   if a.gc_control=='codec-array':
    assert text.count('clientloads++;')==1;text=text.replace('clientloads++;','ml->m->type[0]->mark=clientcodecframemark;clientloads++;')
+  if a.gc_control=='index-owner':
+   assert text.count('clientloads++;')==1;text=text.replace('clientloads++;','ml->m->type[0]->mark=clientindexframemark;clientloads++;')
   if a.gc_control=='callee-frame':
    assert text.count('clientloads++;')==1;text=text.replace('clientloads++;','ml->m->type[0]->mark=noptrs;clientloads++;')
   if a.field_offset_control:
@@ -60,7 +63,10 @@ def main():
    if a.reference_width_control:assert r.returncode==10 and 'reference width mismatch'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.returncode,r.stderr)
    elif a.field_offset_control:assert r.returncode==10 and 'Context field identity mismatch'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.returncode,r.stderr)
    elif a.gc_control:assert r.returncode==10 and 'client GC graph retention mismatch'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.returncode,r.stderr)
-   else:assert not r.returncode,(name,r.returncode,r.stderr)
+   else:
+    assert not r.returncode,(name,r.returncode,r.stderr)
+    if name.startswith('index-')and not a.materialize_only:
+     observed=re.search(r'index-pause-observations=(\d+)',r.stderr);assert observed and int(observed[1])>0,(name,r.stderr)
    print('PASS ordinary .m init -> file LOAD -> managed MCALL/RET:',arch,name,flush=True)
   print('PASS ordinary init pipeline:',arch,len(rows),'pairs; actual GC'+('; constructor-only'if a.materialize_only else'; semantic '+a.gc_control+' omission'if a.gc_control else'; semantic '+a.field_offset_control+' offset omission'if a.field_offset_control else'; semantic reference width omission'if a.reference_width_control else';96 scheduler roots per pair'),flush=True)
 if __name__=='__main__':main()

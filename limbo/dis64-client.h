@@ -17,7 +17,7 @@ dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Ins
  for(i=0;i<body.frame.count;i++){
   leaf=body.frame.leaves+i;
   if(leaf->kind==Tmodule){if(loads++)goto done;moduleoffset=leaf->native;}
-  else if(leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tarray && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=Tref && leaf->kind!=Tchan && leaf->kind!=-1)goto done;
+  else if(leaf->kind!=Tbyte && leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tarray && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=Tref && leaf->kind!=Tchan && leaf->kind!=-1)goto done;
  }
  if(loads!=1)goto done;
  loads=0;

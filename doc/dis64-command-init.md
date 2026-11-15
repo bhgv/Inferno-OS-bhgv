@@ -67,6 +67,9 @@ init()
     buffer := array[capacity] of byte;
     view := buffer[1:3];
     buffer = nil;
+    view[0] = byte 65;
+    value := int view[0];
+    if(value != 65){ z := 0; bad := 1/z; }
     if(len view != 2){ z := 0; bad := 1/z; }
     parsed := int decoded;
     if(parsed != number || len bytes != 2){ z := 0; bad := 1/z; }
@@ -197,13 +200,21 @@ Numeric casts now use existing int/big/real String conversions. `array of byte s
 encodes UTF-8; `string bytes` decodes it. Lengths differ for non-ASCII text:
 characters in String, bytes in the array; embedded NUL is preserved. These arrays
 are owned runtime values with mapped roots, not a new general DATA initializer.
-Byte-array conversion, length, copies, identity, zeroed construction and slices
-are admitted here; element indexing and other element types remain separate work.
+Byte-array conversion, length, copies, identity, zeroed construction, slices and
+byte indexing are admitted here; other element types remain separate work.
 
 
 Selected byte arrays now support `array[n] of byte` and slices such as
 `buffer[1:3]`. This profile zeros new byte buffers. A slice retains its backing
 array after the original variable is set to nil; its bounds and length count
 bytes. An extra checked primitive descriptor is emitted only for constructors;
-it does not replace the Context descriptor. Element indexing/stores, general
-array payload initialization and other element types remain outside this profile.
+it does not replace the Context descriptor. General array payload initialization
+and other element types remain outside this profile.
+
+Byte indexing now supports `n := int buffer[i]`, `b := buffer[i]` and
+`buffer[i] = byte n`, with an int local or constant index. Byte-to-int reads are
+unsigned. Negative, nil and end indexes raise the existing array bounds error.
+The compiler lowers the adjacent address/consumer pair to a reserved native
+pointer cell; its array owner remains mapped through scheduler and GC pauses.
+Branches cannot enter the consumer alone. This does not admit general array
+initializers, non-byte elements or byte compound arithmetic.

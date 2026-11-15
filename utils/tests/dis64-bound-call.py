@@ -61,7 +61,7 @@ def decode(code, managed=False):
         name = OP.NAMES[opcode] if opcode < len(OP.NAMES) else 'UNKNOWN'
         sm, dm, mm = mode >> 3 & 7, mode & 7, mode & 192
         middle = source = destination = secondary = 0
-        if managed and sm==5 and ((name=="IMOVP" and dm==1 and not mm)or(name in("IBEQL","IBNEL")and dm==2 and mm==192)):
+        if managed and sm==5 and ((name in("IMOVP","IMOVB","ICVTBW") and dm==1 and not mm)or(name in("IBEQL","IBNEL")and dm==2 and mm==192)):
             if mm: middle, at = OP.decode(code, at)
             source, at = OP.decode(code, at)
             secondary, at = OP.decode(code, at)

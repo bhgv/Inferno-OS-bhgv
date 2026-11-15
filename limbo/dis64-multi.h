@@ -59,6 +59,43 @@ typedclientfield(Inst *in,Dis64TypedBody *p,unsigned int pc,int probe)
  done:dis64layoutfree(&layout);return ok?1:typedfail(p,"context-field-roles");
 }
 
+/* Immutable byte constants are immediate operands, never mutable MP storage. */
+static int
+typedclientbyteoperand(int mode,Addr *a,int kind,Dis64TypedBody *p,long *value,unsigned int *wire)
+{
+ int actual;Decl *d=a->decl;
+ if(kind==Tbyte && mode==Amp && d && d->ty && d->ty->kind==Tbyte && d->init && d->init->op==Oconst &&
+    a->reg==d->offset && a->offset==0 && d->init->val>=0 && d->init->val<=255){*value=d->init->val;*wire=AIMM;return 1;}
+ return typedoperand(mode,a,kind,kind==Tint || kind==Tbyte,0,p,value,wire,&actual);
+}
+static int
+typedclientbyte(Inst *in,Dis64TypedBody *p,unsigned int pc)
+{
+ unsigned int sm,dm;long source,destination;int sk=in->op==ICVTWB?Tint:Tbyte,dk=in->op==ICVTBW?Tint:Tbyte,actual;
+ if(in->mm!=Anone || in->branch || !typedclientbyteoperand(in->sm,&in->s,sk,p,&source,&sm) ||
+    !typedoperand(in->dm,&in->d,dk,0,0,p,&destination,&dm,&actual) || dm!=AFP)return typedfail(p,"client-byte-roles");
+ p->code[pc]=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,destination};return 1;
+}
+/* Reuse the existing reserved first tail cell; the scalar result uses the second. */
+static int
+typedclientindex(Inst *in,Inst *use,Dis64TypedBody *p,unsigned int pc)
+{
+ unsigned int sm,dm,um;long source,index,value;int actual,read;Addr *a;
+ if(in->op!=IINDB || in->branch || in->mm!=Afp || !in->m.decl || in->m.offset ||
+    !typedoperand(in->sm,&in->s,Tarray,0,0,p,&source,&sm,&actual) || sm!=AFP ||
+    !typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual) || (dm!=AFP && dm!=AIMM))return typedfail(p,"client-index-roles");
+ if(!use || use->branch || use->mm!=Anone)return typedfail(p,"client-index-consumer");
+ read=use->sm==Afpind;a=read?&use->s:&use->d;
+ if(a->decl!=in->m.decl || a->reg!=in->m.reg || a->offset ||
+    (read?(use->op!=IMOVB && use->op!=ICVTBW):(use->op!=IMOVB && use->op!=ICVTWB) || use->dm!=Afpind))return typedfail(p,"client-index-address");
+ if(read){if(!typedoperand(use->dm,&use->d,use->op==IMOVB?Tbyte:Tint,0,0,p,&value,&um,&actual) || um!=AFP)return 0;}
+ else if(!typedclientbyteoperand(use->sm,&use->s,use->op==IMOVB?Tbyte:Tint,p,&value,&um) || (um!=AFP && um!=AIMM))return 0;
+ p->code[pc]=(Dis64Instruction){IINDB,SRC(AFP)|AXINF|DST(dm),p->frame.bytes,source,index};
+ p->code[pc+1]=(Dis64Instruction){use->op,read?SRC(AFP|AIND)|DST(AFP):SRC(um)|DST(AFP|AIND),0,read?p->frame.bytes:value,read?value:p->frame.bytes};
+ if(!p->contextfields){p->contextfields=allocmem(p->count*sizeof(long));memset(p->contextfields,0,p->count*sizeof(long));}
+ return 1;
+}
+
 static int
 typedclientarray(Inst *in,Dis64TypedBody *p,unsigned int pc)
 {
@@ -222,6 +259,11 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             pc=next;
         }else if(c->external>=2 && (in->op==INEWA || in->op==INEWAZ || in->op==ISLICEA)){
             if(!typedclientarray(in,p,pc-p->first))goto fail;pc++;
+        }else if(c->external>=2 && in->op==IINDB){
+            if(pc+1>=stop || !typedclientindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;
+            inside[pc+1-p->first]=1;pc+=2;
+        }else if(c->external>=2 && (in->op==IMOVB || in->op==ICVTBW || in->op==ICVTWB)){
+            if(!typedclientbyte(in,p,pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)){
             if(!typedclientcodec(in,p,pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)){

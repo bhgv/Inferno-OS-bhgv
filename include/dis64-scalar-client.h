@@ -30,7 +30,15 @@ static int
 dis64clientinstructionread(const unsigned char *data,unsigned int bytes,Dis64CallDecoded *out,unsigned int *used)
 {
  Dis64CallDecoded d={0};unsigned int at=2,n;
- if(data && bytes>=2 && ((data[0]==IMOVP && data[1]==(SRC(AFP|AIND)|DST(AFP))) ||
+ if(data && bytes>=2 && (data[0]==IMOVB || data[0]==ICVTWB) &&
+    (data[1]==(SRC(AFP)|DST(AFP|AIND)) || data[1]==(SRC(AIMM)|DST(AFP|AIND)))){
+  if(!out || !used || !dis64operandread(data+at,bytes-at,&d.instruction.source,&n))return 0;at+=n;
+  if(!dis64operandread(data+at,bytes-at,&d.instruction.destination,&n))return 0;at+=n;
+  if(!dis64operandread(data+at,bytes-at,&d.secondary,&n))return 0;at+=n;
+  d.instruction.op=data[0];d.instruction.mode=data[1];*out=d;*used=at;return 1;
+ }
+
+ if(data && bytes>=2 && (((data[0]==IMOVP || data[0]==IMOVB || data[0]==ICVTBW) && data[1]==(SRC(AFP|AIND)|DST(AFP))) ||
    ((data[0]==IBEQL || data[0]==IBNEL) && data[1]==(SRC(AFP|AIND)|AXINM|DST(AIMM))))){
   if(data[1]&ARM){if(!dis64operandread(data+at,bytes-at,&d.instruction.middle,&n))return 0;at+=n;}
   if(!out || !used || !dis64operandread(data+at,bytes-at,&d.instruction.source,&n))return 0;at+=n;
@@ -50,7 +58,8 @@ dis64clientinstructionread(const unsigned char *data,unsigned int bytes,Dis64Cal
 /* Internal proof classes only; never signature kinds or serialized type IDs. */
 enum { Dis64ClientRoot=0x100,Dis64ClientString,Dis64ClientListString,Dis64ClientOpaque,Dis64ClientDisplay,Dis64ClientScreen,Dis64ClientWm,Dis64ClientByteArray };
 static int dis64clientisroot(unsigned int kind){return kind>=Dis64ClientRoot && kind<=Dis64ClientByteArray;}
-static unsigned int dis64clientwidth(unsigned int kind){return dis64clientisroot(kind)?8:dis64scalarwidth(kind);}
+enum { Dis64ClientByte=0x200 };
+static unsigned int dis64clientwidth(unsigned int kind){return kind==Dis64ClientByte?1:dis64clientisroot(kind)?8:dis64scalarwidth(kind);}
 
 typedef struct Dis64ClientSlot Dis64ClientSlot;
 struct Dis64ClientSlot {unsigned int offset,kind,initialized;};
@@ -71,7 +80,7 @@ dis64clientslot(Dis64ClientSlot *slots,unsigned int *count,unsigned int frame,lo
 static int
 dis64clientread(Dis64ClientSlot *slots,unsigned int *count,unsigned int frame,unsigned int mode,long value,unsigned int kind)
 {
- return mode==AIMM?kind==Dis64Int:mode==AFP && dis64clientslot(slots,count,frame,value,kind,0);
+ return mode==AIMM?(kind==Dis64Int || (kind==Dis64ClientByte && value>=0 && value<=255)):mode==AFP && dis64clientslot(slots,count,frame,value,kind,0);
 }
 /* Derive exact numeric operand kinds; equal widths do not imply equal kinds. */
 static int
@@ -79,6 +88,9 @@ dis64clientoperation(unsigned int op,unsigned int *source,unsigned int *destinat
 {
  *source=*destination=Dis64Int;*binary=0;
  switch(op){
+ case IMOVB:*source=*destination=Dis64ClientByte;break;
+ case ICVTBW:*source=Dis64ClientByte;break;
+ case ICVTWB:*destination=Dis64ClientByte;break;
  case IMOVW:break;
  case IMOVL:*source=*destination=Dis64Big;break;
  case IMOVF:case INEGF:*source=*destination=Dis64Real;break;
@@ -149,12 +161,13 @@ dis64clientbit(Dis64ClientSlot *slots,unsigned int *count,unsigned int frame,
  unsigned int mode,long value,unsigned int kind,unsigned int bits[2])
 {
  unsigned int i;
- if(mode==AIMM)return kind==Dis64Int;
+ if(mode==AIMM)return kind==Dis64Int || (kind==Dis64ClientByte && value>=0 && value<=255);
  if(mode!=AFP || !dis64clientslot(slots,count,frame,value,kind,1))return 0;
  for(i=0;i<*count;i++)if(slots[i].offset==(unsigned long)value){bits[i/32]|=1U<<(i%32);return 1;}
  return 0;
 }
 #include "dis64-client-managed.h"
+#include "dis64-client-index.h"
 static int
 dis64clientbranch(unsigned int op)
 {
@@ -274,6 +287,9 @@ dis64clientprove(Dis64ScalarClientView *v,int library)
    if(dis64clientfieldop(v->decoded+i)){if(!dis64clientfieldroles(slots,nslots,v->decoded+i,reads,writes))return 0;}
    else if(!dis64clientmanagedroles(slots,&nslots,v->frame,&v->decoded[i].instruction,reads,writes))return 0;
   }
+  for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IINDB){unsigned int reads[2]={0},writes[2]={0};
+   if(!dis64clientindex(v,i,slots,&nslots,reads,writes))return 0;
+  }
   if(!library)for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IMFRAME){
    Dis64Binding binding;unsigned int bits[2]={0};long ordinal=v->decoded[i].instruction.middle;
    if(ordinal>=0 && (unsigned long)ordinal<v->imports.count && dis64clientbindingget(&v->imports,ordinal,&binding) && dis64commandsignature(&binding.signature))
@@ -291,6 +307,10 @@ dis64clientprove(Dis64ScalarClientView *v,int library)
   if(in->op==ILOAD){if(library || in->mode!=(SRC(AMP)|AXIMM|DST(AMP)) || in->middle || in->source!=16 || in->destination)return 0;node->load=1;node->next=i+1;continue;}
   if(in->op==IEXIT || (library && in->op==IRET)){if((library && in->op!=IRET) || in->mode!=(SRC(AXXX)|DST(AXXX)))return 0;node->next=v->count;continue;}
   if(i==v->count-1)return 0;
+  if(in->op==IINDB){
+   if(!dis64clientindex(v,i,slots,&nslots,node->need,node->give))return 0;
+   node->next=i+2;i++;continue;
+  }
   if(in->op!=IMFRAME){
    if(dis64clientfieldop(d)){if(!dis64clientfieldroles(slots,nslots,d,node->need,node->give))return 0;}
    else if(!dis64clienteffect(slots,&nslots,v->frame,in,node))return 0;

@@ -529,3 +529,16 @@ recorded in the [report](dis64-inferno-index-width-report.md). Selected Limbo
 indexing remains refused until its borrowed temporary slots and owner/consumer
 proof are ported. A corrected low-level address result does not enable general
 indexed AWM modules or establish Android device GUI/APK execution.
+
+## Selected byte-array indexing (INFERNO-0194)
+
+Selected Limbo clients/libraries now lower indexed byte reads/writes to an adjacent
+INDB/consumer pair with a full native pointer in the existing reserved frame tail.
+The owner remains a mapped GC root across scheduler pauses; control flow cannot
+enter the consumer alone. Native construction also preserves immediate indexes
+as numeric operands. See the [report](dis64-inferno-byte-index-report.md).
+
+The rebuilt Linux x64 and ARM64/QEMU consoles each pass684 main ordinary Command
+roots;177 source pairs pass real-GC interpreter/JIT execution on each target.
+This closes0193's selected byte-index compiler boundary. General element types,
+managed AWM dependencies and Android device GUI/APK execution remain outstanding.

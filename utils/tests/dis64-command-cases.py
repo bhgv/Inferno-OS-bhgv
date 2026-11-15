@@ -29,6 +29,7 @@ def cases(pathlength=13):
  yield from stringwritecases(pathlength)
  yield from codeccases(pathlength)
  yield from arraycases(pathlength)
+ yield from indexcases(pathlength)
 
 def fieldcases(pathlength=13):
  prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
@@ -238,3 +239,41 @@ def arraycases(pathlength=13):
   call='n:=2;buf:=array[n]of byte;part:=buf[1:];buf=nil;if(len part!=1)'+bad+'s:="wm";argv:=s::nil;m->init(nil,argv);keep:=part;'
   caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;'+call+'}'
   yield 'arrays-'+name,prefix+body+'}',caller,failure
+
+
+def indexcases(pathlength=13):
+ prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
+ bad='{z:=0;bad:=1/z;}'
+ rows=[
+ ('read','s:="abc";a:=array of byte s;i:=1;n:=int a[i];if(n!=98)'+bad,0),
+ ('read-immediate','s:="abc";a:=array of byte s;n:=int a[2];if(n!=99)'+bad,0),
+ ('byte-local','s:="abc";a:=array of byte s;b:=a[1];n:=int b;if(n!=98)'+bad,0),
+ ('write-constant','s:="abc";a:=array of byte s;i:=1;a[i]=byte 90;t:=string a;if(t!="aZc")'+bad,0),
+ ('write-word','s:="abc";a:=array of byte s;i:=1;n:=90;a[i]=byte n;t:=string a;if(t!="aZc")'+bad,0),
+ ('write-byte','s:="abc";a:=array of byte s;i:=1;n:=90;b:=byte n;a[i]=b;t:=string a;if(t!="aZc")'+bad,0),
+ ('unsigned','s:="é";a:=array of byte s;n:=int a[0];m:=int a[1];if(n!=195 || m!=169)'+bad,0),
+ ('zero','a:=array[3]of byte;n:=int a[2];if(n!=0)'+bad,0),
+ ('new-write','a:=array[3]of byte;a[0]=byte 97;a[1]=byte 98;a[2]=byte 99;s:=string a;if(s!="abc")'+bad,0),
+ ('alias','s:="abc";a:=array of byte s;alias:=a;a[1]=byte 90;n:=int alias[1];if(n!=90)'+bad,0),
+ ('slice','s:="abcdef";a:=array of byte s;b:=a[1:4];b[1]=byte 90;t:=string a;u:=string b;if(t!="abZdef" || u!="bZd")'+bad,0),
+ ('nested','s:="abcdef";a:=array of byte s;b:=a[1:5];c:=b[1:3];a=nil;b=nil;c[1]=byte 90;t:=string c;if(t!="cZ")'+bad,0),
+ ('drop-source','s:="abc";a:=array of byte s;b:=a[1:];a=nil;n:=int b[0];b[1]=byte 90;if(n!=98)'+bad,0),
+ ('nul','s:="abc";a:=array of byte s;a[1]=byte 0;t:=string a;if(len t!=3)'+bad+'n:=int a[1];if(n!=0)'+bad,0),
+ ('utf8','s:="a🚀z";a:=array of byte s;i:=1;n:=int a[i];if(n!=240)'+bad+'i=4;n=int a[i];if(n!=128)'+bad,0),
+ ('read-loop','s:="abc";a:=array of byte s;i:=0;sum:=0;while(i<len a){n:=int a[i];sum+=n;i++;}if(sum!=294)'+bad,0),
+ ('write-loop','a:=array[4]of byte;i:=0;while(i<len a){n:=97+i;a[i]=byte n;i++;}s:=string a;if(s!="abcd")'+bad,0),
+ ('pair-loop','a:=array[4]of byte;i:=0;while(i<4){a[i]=byte 7;n:=int a[i];if(n!=7)'+bad+'i++;}',0),
+ ('reassign','s:="abc";a:=array of byte s;n:=int a[0];a=array[2]of byte;a[1]=byte n;m:=int a[1];if(m!=97)'+bad,0),
+ ('context','s:="abc";a:=array of byte s;ctxt=ref Draw->Context(nil,nil,nil);n:=int a[0];a[1]=byte 90;if(n!=97 || ctxt==nil)'+bad,0),
+ ('negative','s:="abc";a:=array of byte s;i:=-1;n:=int a[i];',4),
+ ('end','s:="abc";a:=array of byte s;i:=len a;n:=int a[i];',4),
+ ('empty','a:=array[0]of byte;n:=int a[0];',4),
+ ('nil','a:array of byte;n:=int a[0];',4),
+ ('write-negative','a:=array[2]of byte;i:=-1;a[i]=byte 9;',4),
+ ('write-end','a:=array[2]of byte;i:=2;a[i]=byte 9;',4),
+ ('write-nil','a:array of byte;a[0]=byte 9;',4),
+ ('read-after-slice','s:="abcde";a:=array of byte s;a=a[1:4];n:=int a[2];if(n!=100)'+bad,0)]
+ for name,body,failure in rows:
+  call='s:="wm";a:=array of byte s;n:=int a[0];a[1]=byte 77;s=string a;if(n!=119 || s!="wM")'+bad+'argv:=s::nil;m->init(nil,argv);keep:=argv;'
+  caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;'+call+'}'
+  yield 'index-'+name,prefix+body+'}',caller,failure

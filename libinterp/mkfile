@@ -211,6 +211,7 @@ runt.$O: $ROOT/include/native64-sys-fixed.h
 
 # Selected file-client proof and constructor are included by load64.c.
 load64.$O: scalar-client.h $ROOT/include/dis64-scalar-client.h $ROOT/include/dis64-client-managed.h\
+	$ROOT/include/dis64-client-index.h\
  $ROOT/include/dis64-command-binding.h $ROOT/include/dis64-command-image.h
 readmod.$O: $ROOT/include/dis64-command-binding.h
 
